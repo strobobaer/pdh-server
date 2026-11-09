@@ -524,28 +524,6 @@ func (mw *mirrorWatch) walkedSince(label string) time.Time {
 	return mw.walkedAt[label]
 }
 
-func (mw *mirrorWatch) rootOf(label string) string {
-	mw.mu.Lock()
-	defer mw.mu.Unlock()
-	return mw.roots[label]
-}
-
-func (mw *mirrorWatch) hasWatch(dir string) bool {
-	mw.mu.Lock()
-	defer mw.mu.Unlock()
-	return mw.dirs[dir]
-}
-
-func (mw *mirrorWatch) watchedDirs() map[string]bool {
-	mw.mu.Lock()
-	defer mw.mu.Unlock()
-	c := make(map[string]bool, len(mw.dirs))
-	for d := range mw.dirs {
-		c[d] = true
-	}
-	return c
-}
-
 // --- Ausschlüsse ---
 
 // watchRule ist ein --exclude-Muster in der Form, wie sie in ha.MirrorSources

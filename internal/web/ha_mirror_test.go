@@ -217,9 +217,6 @@ func TestHAMirrorPerms(t *testing.T) {
 	if f.count("POST /v1/mirror/trash-empty") != 1 {
 		t.Errorf("Leeren nicht weitergereicht: %v", f.callList())
 	}
-	if perm := areaAdminPerm["file_mirror"]; perm != permFileMirrorAdmin {
-		t.Errorf("areaAdminPerm: %q", perm)
-	}
 	// Kein Nicht-Administrator (kein vpnAdminGuard-Durchlass)
 	req := httptest.NewRequest(http.MethodPost, "/x", strings.NewReader(""))
 	rec := httptest.NewRecorder()

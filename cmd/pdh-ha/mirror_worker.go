@@ -375,13 +375,6 @@ func keepOwn(per map[string]mirrorLabelState) map[string]mirrorLabelState {
 	return out
 }
 
-// unproven: die Quelle läuft ohne --delete.
-func (w *mirrorWorker) unproven(label string) bool {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	return w.st.PerLabel[label].Unproven
-}
-
 // markPromoted merkt (dauerhaft), dass dieser Server von passiv auf aktiv gewechselt
 // ist; der nächste Lauf prüft die Quellen auf Belege. Schreibt eine Datei und
 // meldet, ob sie auf der Platte steht; erst danach darf die Rolle "aktiv" gemerkt werden.
@@ -1039,13 +1032,9 @@ func vanishedOnly(err error) bool {
 	return errors.As(err, &ee) && ee.ExitCode() == rsyncVanished
 }
 
-// argv baut den rsync-Aufruf. Der Rechnername ist nur Platzhalter für rsync;
-// mirror-pipe verbindet anhand von --node.
-func (w *mirrorWorker) argv(m ha.MirrorSource, term uint64, s ha.Settings) []string {
-	return w.argvDel(m, term, s, true)
-}
-
-// argvDel: del=false lässt --delete weg (unbelegte Quelle: der Partner behält seine Dateien).
+// argvDel baut den rsync-Aufruf. Der Rechnername ist nur Platzhalter für rsync;
+// mirror-pipe verbindet anhand von --node. del=false lässt --delete weg
+// (unbelegte Quelle: der Partner behält seine Dateien).
 func (w *mirrorWorker) argvDel(m ha.MirrorSource, term uint64, s ha.Settings, del bool) []string {
 	a := []string{"rsync", "-a", "--numeric-ids", "--backup", "--partial-dir=.pdh-teil", "--delay-updates"}
 	if del {
@@ -1306,12 +1295,8 @@ func (w *mirrorWorker) onWatch(ctx context.Context, mw *mirrorWatch, label strin
 	mw.result(label, err == nil)
 }
 
-// runPaths überträgt genau diese Pfade (relativ zur Quelle) ohne --delete;
-// Gelöschtes behandelt der volle Abgleich. Wartet auf einen laufenden Abgleich.
-func (w *mirrorWorker) runPaths(ctx context.Context, label string, paths []string) error {
-	return w.runPathsOpt(ctx, label, paths, true)
-}
-
+// runPathsOpt überträgt genau diese Pfade (relativ zur Quelle) ohne --delete;
+// Gelöschtes behandelt der volle Abgleich. wait: auf einen laufenden Abgleich warten.
 func (w *mirrorWorker) runPathsOpt(ctx context.Context, label string, paths []string, wait bool) error {
 	if wait {
 		select {

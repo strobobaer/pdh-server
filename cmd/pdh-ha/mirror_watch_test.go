@@ -22,6 +22,29 @@ import (
 
 const watchWait = 15 * time.Second // großzügige Obergrenze; gewartet wird auf Ereignisse
 
+// Einblick in den Watch (nur Tests).
+func (mw *mirrorWatch) rootOf(label string) string {
+	mw.mu.Lock()
+	defer mw.mu.Unlock()
+	return mw.roots[label]
+}
+
+func (mw *mirrorWatch) hasWatch(dir string) bool {
+	mw.mu.Lock()
+	defer mw.mu.Unlock()
+	return mw.dirs[dir]
+}
+
+func (mw *mirrorWatch) watchedDirs() map[string]bool {
+	mw.mu.Lock()
+	defer mw.mu.Unlock()
+	c := make(map[string]bool, len(mw.dirs))
+	for d := range mw.dirs {
+		c[d] = true
+	}
+	return c
+}
+
 // watchRec sammelt die Aufrufe von emit.
 type watchRec struct {
 	ch    chan []string

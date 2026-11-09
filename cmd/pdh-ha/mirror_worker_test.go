@@ -33,6 +33,18 @@ func (f *fakeRsync) Run(ctx context.Context, argv, _ []string, stdin []byte) ([]
 	return nil, nil
 }
 
+// runPaths überträgt genau diese Pfade und wartet auf einen laufenden Abgleich (nur Tests).
+func (w *mirrorWorker) runPaths(ctx context.Context, label string, paths []string) error {
+	return w.runPathsOpt(ctx, label, paths, true)
+}
+
+// unproven: die Quelle läuft ohne --delete (nur Tests).
+func (w *mirrorWorker) unproven(label string) bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.st.PerLabel[label].Unproven
+}
+
 func (f *fakeRsync) count() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()

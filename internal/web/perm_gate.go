@@ -93,7 +93,7 @@ func (h *Handler) hasPermRec(r *http.Request, perm, refType, id string) bool {
 var areaAdminPerm = map[string]string{
 	"ticket": "tickets.admin", "fault": "faults.admin", "maintenance_task": "maintenance.admin", "maintenance": "maintenance.admin",
 	"task": "tasks.admin", "project": "projects.admin", "kvp": "kvp.admin", "infrastructure": "infrastructure.admin",
-	"file_mirror": "system.file_mirror_admin", "part": "inventory.admin", "storage": "inventory.admin", "purchase_order": "procurement.admin", "business_partner": "directory.admin", "it_asset": "it.admin",
+	"part": "inventory.admin", "storage": "inventory.admin", "purchase_order": "procurement.admin", "business_partner": "directory.admin", "it_asset": "it.admin",
 }
 
 // isAreaAdmin: Bereichsadministrator für diesen Datensatz?

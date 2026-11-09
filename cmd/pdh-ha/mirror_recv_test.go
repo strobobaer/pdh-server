@@ -596,11 +596,10 @@ func (f *inboxFix) prove(label string, files bool) {
 }
 
 // R22d: .ocdata wird nur verlangt, wenn dieser Empfänger die Quelle selbst schon einmal
-// vollständig bekommen hat – auch wenn der Partner "Erstabgleich fertig" meldet.
+// vollständig bekommen hat (die Meldung „Erstabgleich fertig“ des Partners zählt dafür nicht).
 func TestInboxOcdataOnlyWithOwnProof(t *testing.T) {
 	f := newInboxFix(t)
 	os.MkdirAll(f.root+"/nc/data", 0o755)
-	f.setView(func(v *mirrorInboxView) { v.FirstDone = true })
 	if _, d, r := f.accept("nextcloud-data", 3); r != "" {
 		t.Fatalf("ohne eigenen Beleg: %q", r)
 	} else {

@@ -225,7 +225,6 @@ type mirrorRT struct {
 	cache  atomic.Pointer[mirrorCache]
 	ncRes  atomic.Pointer[ncResult] // Prüflauf der Nextcloud-Dateien (nil = keiner)
 
-	ownFirst  atomic.Bool // eigener Stand „Erstabgleich fertig“ (aus dem Arbeiter)
 	kick      chan struct{}
 	ready     chan struct{} // zu, sobald der Empfänger gebaut ist
 	startOnce sync.Once
@@ -294,11 +293,6 @@ func (rt *mirrorRT) view() mirrorInboxView {
 		return mirrorInboxView{}
 	}
 	v := mirrorInboxView{Role: w.Role, Term: w.Term, Settings: w.Settings}
-	if w.PartnerSeen && w.PartnerRole == ha.Active {
-		v.FirstDone = w.PartnerFirst // der aktive Partner weiß es am besten
-	} else {
-		v.FirstDone = rt.ownFirst.Load()
-	}
 	rt.rmu.Lock()
 	v.ReturnedAt = rt.retAt
 	rt.rmu.Unlock()
@@ -546,7 +540,6 @@ func (rt *mirrorRT) reconcile(ctx context.Context) {
 			wk.noteWaiting()
 		}
 	}
-	rt.ownFirst.Store(wk.snapshot().FirstDone)
 }
 
 func (rt *mirrorRT) startWorker(ctx context.Context, wk *mirrorWorker) {

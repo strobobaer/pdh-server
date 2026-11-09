@@ -47,7 +47,6 @@ type mirrorInboxView struct {
 	Role       ha.Role
 	Term       uint64
 	Settings   ha.Settings
-	FirstDone  bool      // Erstabgleich ist laut Herzschlag des Absenders fertig
 	ReturnedAt time.Time // Zeitpunkt des Wechsels von aktiv auf passiv (leer = keiner)
 }
 
