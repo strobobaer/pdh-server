@@ -361,7 +361,7 @@ func TestKioskErrorTextCleanAndShort(t *testing.T) {
 		t.Errorf("Kürzung: %d %q", n, got)
 	}
 	out := kioskMapOpen("Halle 3", 503, []byte(`{"error":"`+long+`"}`), nil)
-	if out.Kind != "not_ready" || !strings.Contains(out.Message, "ääää…") {
+	if out.Kind != "not_ready" || !strings.HasSuffix(out.Message, "ääää…") {
 		t.Errorf("503 lang: %+v", out)
 	}
 	out = kioskMapOpen("Halle 3", 422, []byte(`{"error":"Das Ziel ist dieses Terminal selbst."}`), nil)

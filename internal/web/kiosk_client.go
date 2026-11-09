@@ -370,9 +370,9 @@ func kioskMapOpen(terminal string, code int, body []byte, err error) kioskOutcom
 	return out
 }
 
-// kioskSentence: Satzende ergänzen, ohne einen Punkt (oder „…“) zu verdoppeln.
+// kioskSentence: Satzende ergänzen, außer der Text endet schon mit . ! ? oder „…“.
 func kioskSentence(s string) string {
-	if strings.HasSuffix(s, ".") || strings.HasSuffix(s, "!") || strings.HasSuffix(s, "?") {
+	if strings.HasSuffix(s, ".") || strings.HasSuffix(s, "!") || strings.HasSuffix(s, "?") || strings.HasSuffix(s, "…") {
 		return s
 	}
 	return s + "."
