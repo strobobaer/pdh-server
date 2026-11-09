@@ -73,8 +73,9 @@ Datenbank eventuell eine Datei, die noch nicht übertragen ist (Abschnitt 8).
 | `ssl-pdh-nextcloud` | `/etc/ssl/pdh-nextcloud` | nein | |
 | `letsencrypt` | `/etc/letsencrypt` | nein | |
 
-Es gelten nur Quellen, die es gibt. Die Nextcloud-Einträge entfallen, wenn
-„Nextcloud mitnehmen“ aus ist.
+Es gelten nur Quellen, die es gibt. Ohne „Nextcloud mitnehmen“ gelten nur `uploads`,
+`chat_files` und `etc-pdh`; `nextcloud-data`, `nextcloud-app`, `nginx`,
+`ssl-pdh-nextcloud` und `letsencrypt` entfallen dann (`ha.MirrorSources`).
 
 **Bewusst nicht gespiegelt:**
 

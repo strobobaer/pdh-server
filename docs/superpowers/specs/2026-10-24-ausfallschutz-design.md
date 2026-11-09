@@ -159,6 +159,10 @@ Einrichtung virtuelle IP oder DNS-Skript ab.
 - Inhalt: Uploads, Chat-Dateien, `/etc/pdh` (ohne `/etc/pdh/ha/`), n8n-Daten,
   pgAdmin-/code-server-Einstellungen, nginx-Seiten, cloudflared-Konfiguration,
   Samba-Freigaben und -Benutzer.
+  Teil 6 setzt davon um: Uploads, Chat-Dateien, `/etc/pdh` (ohne `/ha/`) und mit
+  „Nextcloud mitnehmen“ Nextcloud, nginx und Zertifikate (Teil-Spec Abschnitt 3).
+  Die cloudflared-Konfiguration wird nie gespiegelt (das Token verteilt Teil 5);
+  n8n, pgAdmin, code-server und Samba folgen in späteren Schritten.
 - Papierkorb: gelöschte/überschriebene Dateien auf dem Ziel per `--backup-dir`,
   Aufbewahrung einstellbar (Standard 14 Tage).
 - Richtung folgt der Rolle; der neue aktive Knoten nimmt nichts mehr vom alten an
