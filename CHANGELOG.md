@@ -23,7 +23,7 @@ im Kapitel „Versionen & Updates“ an.
 - Nach einem harten Ausfall nennt der neue aktive Server die Nextcloud-Dateien, die noch nicht übertragen waren, in der Karte und im Alarm.
 - Jeder gespiegelte Ordner trägt eine Kennungsdatei `.pdh-mirror-id`; nach einem Plattentausch oder bei nicht eingehängtem Laufwerk löscht die Spiegelung nichts und meldet sich.
 - Handbuch: neuer Abschnitt „Datei-Spiegelung und Nextcloud im Verbund“ mit Einschalten, Bestätigen, Nextcloud, Papierkorb und Fehlerbildern.
-- Haben die Benutzer `pdh` oder `www-data` auf den beiden Servern verschiedene Nummern, hält die Spiegelung die betroffenen Ordner mit einem Alarm an; Karte und `pdh-ha mirror status` nennen beide Nummern.
+- Haben `pdh` (und mit „Nextcloud mitnehmen“ `www-data`) auf den beiden Servern verschiedene Benutzer- oder Gruppennummern, hält die Spiegelung die betroffenen Ordner mit einem Alarm an – auch schon beim ersten Abgleich nach dem Einschalten; Karte und `pdh-ha mirror status` nennen beide Nummern.
 
 ### Geändert
 - „Rollen tauschen“ und die Prüfung „alles grün“ vor einem Update warten, bis der Erstabgleich der Dateien fertig ist.

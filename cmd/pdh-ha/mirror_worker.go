@@ -908,7 +908,6 @@ func (w *mirrorWorker) runOnce(ctx context.Context, wait, final bool) error {
 	dataReset := w.st.DataReset
 	w.mu.Unlock()
 	firstDone := mirrorFirstDone(srcs, per0, present)
-	holds := w.uidHolds() // I3: Quellen mit abweichender Benutzerkennung laufen nicht
 
 	var out []mirrorOutcome
 	var saw = map[string]bool{}
@@ -941,8 +940,8 @@ func (w *mirrorWorker) runOnce(ctx context.Context, wait, final bool) error {
 			if len(snap) == 0 {
 				continue
 			}
-			if h := holds[m.Label]; h != "" {
-				out = append(out, mirrorOutcome{label: m.Label, err: errors.New(h), held: true})
+			if h := w.uidHold(m.Label); h != "" { // I3: je Quelle frisch geprüft
+				out = append(out, mirrorOutcome{label: m.Label, err: uidHoldError(h), held: true})
 				continue
 			}
 			if err := w.sendPaths(rctx, m, term, s, sortedKeys(snap)); err != nil {
@@ -980,6 +979,7 @@ func (w *mirrorWorker) runOnce(ctx context.Context, wait, final bool) error {
 		if covered[m.Label] {
 			continue
 		}
+		hold := w.uidHold(m.Label) // I3: je Quelle vor ihrem Lauf frisch geprüft
 		o := mirrorOutcome{label: m.Label}
 		switch {
 		case !present[m.Label] && per0[m.Label].SawFiles && per0[m.Label].LastOK.IsZero():
@@ -988,8 +988,8 @@ func (w *mirrorWorker) runOnce(ctx context.Context, wait, final bool) error {
 			w.alarm(o.err.Error())
 		case !present[m.Label]:
 			o.skipped = true
-		case holds[m.Label] != "":
-			o.err, o.held = errors.New(holds[m.Label]), true
+		case hold != "":
+			o.err, o.held = uidHoldError(hold), true
 		case m.Label == "nextcloud-data" && !w.d.exists(path.Join(m.Path, ".ocdata")):
 			o.err = fmt.Errorf("Quelle %s ist leer – nicht gespiegelt", m.Label)
 			w.alarm(o.err.Error())
@@ -1116,12 +1116,17 @@ func (w *mirrorWorker) finish(rctx, ctx context.Context, start time.Time, s ha.S
 			events = append(events, ha.Event{Kind: "info", Text: "Spiegelung läuft wieder"})
 		}
 	} else {
-		st.Err = first.Error()
-		switch {
-		case failed == nil && runErr == nil:
-			w.failSince = time.Time{} // nur angehaltene Quellen: kein „gestört“
-		case w.failSince.IsZero():
-			w.failSince = start
+		if failed == nil && runErr == nil {
+			// nur angehaltene Quellen: kein „gestört“; die Karte nennt es einmal (UIDWarn)
+			st.Err, w.failSince = "", time.Time{}
+		} else {
+			st.Err = first.Error()
+			if runErr == nil {
+				st.Err = failed.Error()
+			}
+			if w.failSince.IsZero() {
+				w.failSince = start
+			}
 		}
 	}
 	w.refreshFirstLocked(srcs, present)
@@ -1288,6 +1293,8 @@ func (w *mirrorWorker) onWatch(ctx context.Context, mw *mirrorWatch, label strin
 	switch {
 	case err == nil:
 		w.st.WatchErr = ""
+	case errors.As(err, new(uidHoldError)):
+		w.st.WatchErr = "" // angehalten, nicht gestört: die Karte nennt es einmal (UIDWarn)
 	case !errors.Is(err, errMirrorBusy) && !errors.Is(err, errMirrorAborted) && ctx.Err() == nil:
 		w.st.WatchErr = err.Error()
 	}
@@ -1327,8 +1334,8 @@ func (w *mirrorWorker) runPathsOpt(ctx context.Context, label string, paths []st
 	if !ok {
 		return fmt.Errorf("Unbekannte Quelle %s", label)
 	}
-	if h := w.uidHolds()[label]; h != "" {
-		return errors.New(h)
+	if h := w.uidHold(label); h != "" {
+		return uidHoldError(h)
 	}
 	err := w.sendPaths(rctx, m, term, s, paths)
 	if err != nil && rctx.Err() != nil && ctx.Err() == nil {

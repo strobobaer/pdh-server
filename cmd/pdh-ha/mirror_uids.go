@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"os"
 	"sort"
 	"strings"
@@ -9,11 +8,12 @@ import (
 	"pdh/internal/ha"
 )
 
-// Benutzerkennungen im Verbund (I3/R70): rsync überträgt Besitzer als Nummer
-// (--numeric-ids). Haben pdh oder www-data auf den Servern verschiedene
+// Benutzerkennungen im Verbund (I3/R70): rsync überträgt Besitzer und Gruppe als
+// Nummer (--numeric-ids). Haben pdh oder www-data auf den Servern verschiedene
 // Nummern, gehörten die gespiegelten Dateien am Partner einem fremden Konto –
 // erst nach dem Tausch fiele das auf. Der Herzschlag trägt deshalb die eigenen
-// Nummern; bei Abweichung hält der aktive Server die betroffenen Quellen an.
+// Nummern (auch bei ausgeschalteter Spiegelung, damit sie beim Einschalten schon
+// da sind); bei Abweichung hält der aktive Server die betroffenen Quellen an.
 
 // mirrorUIDUsers: geprüfte Benutzer und die Quellen, deren Dateien ihnen gehören.
 var mirrorUIDUsers = map[string][]string{
@@ -21,9 +21,26 @@ var mirrorUIDUsers = map[string][]string{
 	"www-data": {"nextcloud-data", "nextcloud-app"},
 }
 
-// uidsFromPasswd liest die Nummern der geprüften Benutzer aus dem Inhalt von
-// /etc/passwd, z. B. "pdh=998,www-data=33" (fehlende Benutzer entfallen).
-func uidsFromPasswd(passwd string) string {
+// uidHoldError: Quelle wegen abweichender Kennung angehalten. Die Karte nennt es
+// einmal (UIDWarn), nicht zusätzlich als Fehler des Laufs oder der Sofort-Übertragung.
+type uidHoldError string
+
+func (e uidHoldError) Error() string { return string(e) }
+
+// uidsFromFiles liest die Nummern der geprüften Benutzer aus dem Inhalt von
+// /etc/passwd (Benutzernummer) und /etc/group (Nummer der gleichnamigen Gruppe),
+// z. B. "pdh=998:998,www-data=33:33". Fehlende Benutzer entfallen, eine fehlende
+// Gruppe bleibt leer ("pdh=998:").
+func uidsFromFiles(passwd, group string) string {
+	gids := map[string]string{}
+	for _, line := range strings.Split(group, "\n") {
+		f := strings.Split(strings.TrimSpace(line), ":")
+		if len(f) >= 3 {
+			if _, ok := mirrorUIDUsers[f[0]]; ok {
+				gids[f[0]] = f[2]
+			}
+		}
+	}
 	var out []string
 	for _, line := range strings.Split(passwd, "\n") {
 		f := strings.Split(strings.TrimSpace(line), ":")
@@ -31,7 +48,7 @@ func uidsFromPasswd(passwd string) string {
 			continue
 		}
 		if _, ok := mirrorUIDUsers[f[0]]; ok && f[2] != "" {
-			out = append(out, f[0]+"="+f[2])
+			out = append(out, f[0]+"="+f[2]+":"+gids[f[0]])
 		}
 	}
 	sort.Strings(out)
@@ -40,38 +57,56 @@ func uidsFromPasswd(passwd string) string {
 
 // localUIDs: eigene Nummern von pdh und www-data ("" = keiner da oder unlesbar).
 func localUIDs() string {
-	b, err := os.ReadFile("/etc/passwd")
+	p, err := os.ReadFile("/etc/passwd")
 	if err != nil {
 		return ""
 	}
-	return uidsFromPasswd(string(b))
+	g, _ := os.ReadFile("/etc/group")
+	return uidsFromFiles(string(p), string(g))
 }
 
-func parseUIDs(s string) map[string]string {
-	m := map[string]string{}
+// parseUIDs: Benutzer -> [Benutzernummer, Gruppennummer] ("" = unbekannt).
+func parseUIDs(s string) map[string][2]string {
+	m := map[string][2]string{}
 	for _, kv := range strings.Split(s, ",") {
 		if k, v, ok := strings.Cut(strings.TrimSpace(kv), "="); ok && k != "" && v != "" {
-			m[k] = v
+			u, g, _ := strings.Cut(v, ":")
+			m[k] = [2]string{u, g}
 		}
 	}
 	return m
 }
 
+// mirrorUIDUsersFor: Benutzer, deren Quellen bei diesen Einstellungen gespiegelt
+// werden (www-data nur mit „Nextcloud mitnehmen“).
+func mirrorUIDUsersFor(nextcloud bool) []string {
+	if nextcloud {
+		return []string{"pdh", "www-data"}
+	}
+	return []string{"pdh"}
+}
+
 // uidMismatch vergleicht die eigenen Nummern mit denen des Partners und liefert
-// je abweichendem Benutzer den Hinweis. Kennt eine Seite den Benutzer nicht
-// (oder sendet der Partner das Feld noch nicht), gilt er als gleich.
-func uidMismatch(own, partner string) map[string]string {
+// je abweichendem Benutzer den Hinweis. Kennt eine Seite eine Nummer nicht (oder
+// sendet der Partner das Feld noch nicht), gilt sie als gleich.
+func uidMismatch(own, partner string, nextcloud bool) map[string]string {
 	if own == "" || partner == "" {
 		return nil
 	}
 	o, p := parseUIDs(own), parseUIDs(partner)
 	var out map[string]string
-	for u := range mirrorUIDUsers {
-		if o[u] != "" && p[u] != "" && o[u] != p[u] {
+	for _, u := range mirrorUIDUsersFor(nextcloud) {
+		var parts []string
+		for i, what := range []string{"Benutzerkennung", "Gruppenkennung"} {
+			if a, b := o[u][i], p[u][i]; a != "" && b != "" && a != b {
+				parts = append(parts, what+" "+u+": hier "+a+", Partner "+b)
+			}
+		}
+		if len(parts) > 0 {
 			if out == nil {
 				out = map[string]string{}
 			}
-			out[u] = fmt.Sprintf("Benutzerkennung %s: hier %s, Partner %s – vor dem Spiegeln angleichen", u, o[u], p[u])
+			out[u] = strings.Join(parts, "; ") + " – vor dem Spiegeln angleichen"
 		}
 	}
 	return out
@@ -91,13 +126,18 @@ func uidWarnText(mm map[string]string) string {
 	return strings.Join(texts, "; ")
 }
 
-// uidHolds: angehaltene Quellen (Name -> Hinweis). Meldet eine neue Abweichung
-// einmal als Alarm; ist sie behoben, darf eine spätere wieder melden.
-func (w *mirrorWorker) uidHolds() map[string]string {
+// uidHold: Hinweis, wenn diese Quelle wegen abweichender Kennung nicht laufen darf
+// ("" = darf). Liest den Stand frisch (je Quelle vor ihrem Lauf) und meldet eine
+// neue Abweichung einmal als Alarm; ist sie behoben, darf eine spätere wieder melden.
+func (w *mirrorWorker) uidHold(label string) string {
 	if w.d.uids == nil {
-		return nil
+		return ""
 	}
-	mm := uidMismatch(w.d.uids())
+	w.mu.Lock()
+	nc := w.cfg.MirrorNextcloud
+	w.mu.Unlock()
+	own, partner := w.d.uids()
+	mm := uidMismatch(own, partner, nc)
 	text := uidWarnText(mm)
 	w.mu.Lock()
 	report := text != "" && text != w.uidAlarm
@@ -106,11 +146,12 @@ func (w *mirrorWorker) uidHolds() map[string]string {
 	if report {
 		w.d.ev.add(ha.Event{Kind: "alarm", Text: "Spiegelung angehalten: " + text})
 	}
-	holds := map[string]string{}
 	for u, t := range mm {
 		for _, l := range mirrorUIDUsers[u] {
-			holds[l] = t
+			if l == label {
+				return t
+			}
 		}
 	}
-	return holds
+	return ""
 }

@@ -199,7 +199,6 @@ type mirrorWant struct {
 // mirrorCache: Zahlen aus der Dateiarbeit von scanLoop; der Herzschlag liest nur sie.
 type mirrorCache struct {
 	EnvSum, NCVer string
-	UIDs          string // eigene Benutzerkennungen (I3)
 	TrashB        int64
 	Orphans       int
 	CertCovers    *bool // Zertifikat enthält die mitwandernde Adresse (nil = kein TLS / unbekannt)
@@ -223,6 +222,7 @@ type mirrorRT struct {
 	inbox  atomic.Pointer[mirrorInbox]
 	cache  atomic.Pointer[mirrorCache]
 	ncRes  atomic.Pointer[ncResult] // Prüflauf der Nextcloud-Dateien (nil = keiner)
+	uids   atomic.Pointer[string]   // eigene Kennungen pdh/www-data (I3), gelesen in build und scan
 
 	kick      chan struct{}
 	ready     chan struct{} // zu, sobald der Empfänger gebaut ist
@@ -283,6 +283,23 @@ func (rt *mirrorRT) Accept(ctx context.Context, peerID, peerKind string, req mir
 		return nil, nil, "Dateiempfang noch nicht bereit"
 	}
 	return ib.Accept(ctx, peerID, peerKind, req)
+}
+
+// refreshUIDs liest die eigenen Kennungen (Datei, nie im Takt).
+func (rt *mirrorRT) refreshUIDs() {
+	u := rt.env.fnUIDs()
+	rt.uids.Store(&u)
+}
+
+// ownUIDsNow: zuletzt gelesene eigene Kennungen ("" = noch keine); nur Zeiger.
+func (rt *mirrorRT) ownUIDsNow() string {
+	if rt == nil {
+		return ""
+	}
+	if p := rt.uids.Load(); p != nil {
+		return *p
+	}
+	return ""
 }
 
 // view ist der Stand für den Empfänger; liest nur Zeiger, blockiert nie.
@@ -421,6 +438,7 @@ func (rt *mirrorRT) newWorker(partner string) *mirrorWorker {
 // aus der gemerkten Rolle ab, ob dieser Server nach einem Absturz als passiver
 // zurückkehrt.
 func (rt *mirrorRT) build() {
+	rt.refreshUIDs()
 	id := mirrorInboxDeps{ev: rt.ev, repo: rt.env.repo, view: rt.view, run: rt.env.run, statePath: rt.env.inboxPath, now: rt.env.now}
 	if rt.env.tune != nil {
 		rt.env.tune(nil, &id)
@@ -603,10 +621,10 @@ func (rt *mirrorRT) scan(ctx context.Context) {
 		return
 	}
 	now := rt.env.now()
+	rt.refreshUIDs() // auch bei ausgeschalteter Spiegelung (I3: beim Einschalten schon bekannt)
 	if w.On {
 		c := &mirrorCache{At: now}
 		c.EnvSum = rt.env.fnEnv()
-		c.UIDs = rt.env.fnUIDs()
 		if w.Settings.MirrorNextcloud {
 			c.NCVer = rt.env.fnNC(ctx, w.Settings)
 		}
@@ -867,7 +885,12 @@ func (d *daemon) mirrorTickLocked(ctx context.Context, before, after ha.Role, s 
 // (Zwischenspeicher und Zeiger, kein Dateizugriff).
 func (d *daemon) mirrorHBLocked(m *message) {
 	rt := d.mir
-	if rt == nil || d.node.Kind != "node" || !d.settingsLocked().MirrorOn {
+	if rt == nil || d.node.Kind != "node" {
+		return
+	}
+	// I3: die eigenen Kennungen immer (Server, nicht Zeuge), damit sie beim Einschalten schon vorliegen
+	m.UIDs = rt.ownUIDsNow()
+	if !d.settingsLocked().MirrorOn {
 		return
 	}
 	if wk := rt.worker.Load(); wk != nil {
@@ -878,7 +901,7 @@ func (d *daemon) mirrorHBLocked(m *message) {
 		m.MirrorDataID, m.MirrorProven, m.MirrorWait = ib.dataID(), ib.proofs(), ib.waits()
 	}
 	if c := rt.cache.Load(); c != nil {
-		m.EnvSum, m.NCVer, m.MirrorTrashB, m.MirrorOrphans, m.UIDs = c.EnvSum, c.NCVer, c.TrashB, c.Orphans, c.UIDs
+		m.EnvSum, m.NCVer, m.MirrorTrashB, m.MirrorOrphans = c.EnvSum, c.NCVer, c.TrashB, c.Orphans
 	}
 }
 
@@ -1019,7 +1042,7 @@ func (d *daemon) mirrorStatusLocked(st *apiStatus) {
 	if partnerSeen {
 		am.EnvSame = sameOrEmpty(cache.EnvSum, pm.EnvSum)
 		am.NCVerSame = sameOrEmpty(cache.NCVer, pm.NCVer)
-		if mm := uidMismatch(cache.UIDs, pm.UIDs); len(mm) > 0 {
+		if mm := uidMismatch(rt.ownUIDsNow(), pm.UIDs, st.Settings.MirrorNextcloud); len(mm) > 0 {
 			am.UIDWarn = uidWarnText(mm)
 			st.Warnings = append(st.Warnings, am.UIDWarn)
 		}
