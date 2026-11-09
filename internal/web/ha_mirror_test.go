@@ -621,6 +621,50 @@ func TestHAMirrorFinalActionsRefuseForeignSite(t *testing.T) {
 		if n := f.count(rt.call); n != 3 {
 			t.Errorf("%s: eigene Anfragen %d statt 3 weitergereicht", name, n)
 		}
+		// Runde 2 M7: ältere Browser ohne Sec-Fetch-Site – Origin einer Nachbarseite wird abgelehnt
+		rec := httptest.NewRecorder()
+		req := mwReq("/admin/server-config/ha/"+name, url.Values{"labels": {"uploads"}})
+		req.Header.Set("Origin", "https://cloud.firma.de")
+		rt.h(mwHandler())(rec, req)
+		if rec.Code != http.StatusForbidden || f.count(rt.call) != 3 {
+			t.Errorf("%s mit fremdem Origin: %d", name, rec.Code)
+		}
+	}
+}
+
+// Runde 2 M7: eine Prüfung für alle endgültigen Aktionen (Wartung, Spiegelung).
+func TestForeignSite(t *testing.T) {
+	cases := []struct {
+		sfs, origin, host, fwd string
+		foreign                bool
+	}{
+		{"same-origin", "", "pdh.firma.de", "", false},
+		{"none", "", "pdh.firma.de", "", false},
+		{"same-site", "", "pdh.firma.de", "", true},
+		{"cross-site", "https://pdh.firma.de", "pdh.firma.de", "", true}, // Kopfzeile gewinnt
+		{"", "", "pdh.firma.de", "", false},                              // Werkzeuge ohne beide
+		{"", "https://pdh.firma.de", "pdh.firma.de", "", false},
+		{"", "https://PDH.firma.de", "pdh.firma.de", "", false},
+		{"", "https://cloud.firma.de", "pdh.firma.de", "", true},
+		{"", "https://pdh.firma.de", "127.0.0.1:8090", "pdh.firma.de", false}, // hinter nginx
+		{"", "https://pdh.firma.de", "127.0.0.1:8090", "", true},
+		{"", "null", "pdh.firma.de", "", true},
+	}
+	for _, c := range cases {
+		r := httptest.NewRequest(http.MethodPost, "http://"+c.host+"/x", nil)
+		r.Host = c.host
+		if c.sfs != "" {
+			r.Header.Set("Sec-Fetch-Site", c.sfs)
+		}
+		if c.origin != "" {
+			r.Header.Set("Origin", c.origin)
+		}
+		if c.fwd != "" {
+			r.Header.Set("X-Forwarded-Host", c.fwd)
+		}
+		if got := foreignSite(r); got != c.foreign {
+			t.Errorf("%+v: %v", c, got)
+		}
 	}
 }
 

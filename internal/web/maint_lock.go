@@ -9,6 +9,7 @@ import (
 	"html/template"
 	"io/fs"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -539,8 +540,7 @@ func (h *Handler) maintStatusExtra(r *http.Request, v ha.UpdateView, out map[str
 // Schutz vor fremden Seiten wie bei maintAbortPost (Sec-Fetch-Site).
 func (h *Handler) maintActionPost(w http.ResponseWriter, r *http.Request, confirm bool) {
 	lang := h.requestLang(r)
-	if sfs := r.Header.Get("Sec-Fetch-Site"); sfs != "" && sfs != "same-origin" && sfs != "none" {
-		http.Error(w, tr(lang, "Anfrage von fremder Seite abgewiesen"), http.StatusForbidden)
+	if h.refuseForeignSite(w, r) {
 		return
 	}
 	u := h.sessionUser(r)
@@ -631,13 +631,47 @@ func (h *Handler) maintLoginPost(w http.ResponseWriter, r *http.Request, v ha.Up
 	http.Redirect(w, r, "/wartung", http.StatusSeeOther)
 }
 
+// foreignSite: Die Anfrage kommt nicht von dieser Seite selbst. Schutz der endgültigen
+// Aktionen (Wartung, Datei-Spiegelung) zusätzlich zum SameSite-Cookie, das eine Nachbarseite
+// derselben Website (z. B. Nextcloud unter einer Subdomain) nicht trennt. Sec-Fetch-Site:
+// nur same-origin und none gehen durch. Ohne die Kopfzeile (ältere Browser) entscheidet
+// Origin, falls vorhanden: Er muss zum eigenen Host passen (Host bzw. X-Forwarded-Host
+// hinter nginx). Ohne beide Kopfzeilen (Werkzeuge) geht die Anfrage durch.
+func foreignSite(r *http.Request) bool {
+	if sfs := r.Header.Get("Sec-Fetch-Site"); sfs != "" {
+		return sfs != "same-origin" && sfs != "none"
+	}
+	o := r.Header.Get("Origin")
+	if o == "" {
+		return false
+	}
+	u, err := url.Parse(o)
+	if err != nil || u.Host == "" {
+		return true // z. B. „null“ aus einer abgeschotteten Seite
+	}
+	fwd, _, _ := strings.Cut(r.Header.Get("X-Forwarded-Host"), ",")
+	for _, host := range []string{r.Host, strings.TrimSpace(fwd)} {
+		if host != "" && strings.EqualFold(u.Host, host) {
+			return false
+		}
+	}
+	return true
+}
+
+// refuseForeignSite lehnt eine Anfrage von fremder Seite mit 403 ab (true = abgelehnt).
+func (h *Handler) refuseForeignSite(w http.ResponseWriter, r *http.Request) bool {
+	if !foreignSite(r) {
+		return false
+	}
+	http.Error(w, tr(h.requestLang(r), "Anfrage von fremder Seite abgewiesen"), http.StatusForbidden)
+	return true
+}
+
 // maintAbortPost: POST /wartung/abbrechen – Recht prüfen, Abbruch anfordern,
-// protokollieren. Schutz vor fremden Seiten wie bei allen Formularen über das
-// SameSite-Cookie, zusätzlich Sec-Fetch-Site: nur same-origin, none oder ohne
-// Kopfzeile (ältere Browser, Werkzeuge) – same-site und cross-site nicht.
+// protokollieren. Schutz vor fremden Seiten über das SameSite-Cookie und
+// foreignSite (Sec-Fetch-Site, sonst Origin).
 func (h *Handler) maintAbortPost(w http.ResponseWriter, r *http.Request, v ha.UpdateView) {
-	if sfs := r.Header.Get("Sec-Fetch-Site"); sfs != "" && sfs != "same-origin" && sfs != "none" {
-		http.Error(w, tr(h.requestLang(r), "Anfrage von fremder Seite abgewiesen"), http.StatusForbidden)
+	if h.refuseForeignSite(w, r) {
 		return
 	}
 	u, admin := h.maintSession(r)
