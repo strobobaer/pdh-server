@@ -133,6 +133,15 @@ func TestNextcloudOhneVerbundUnveraendert(t *testing.T) {
 	}
 }
 
+// TestNextcloudMemcacheKlasse: In einfachen Anführungszeichen bleibt „\\“ doppelt –
+// Nextcloud fand die Klasse dann nicht, und occ brach nach der Installation ab
+// (Abnahme T14 Fall 4).
+func TestNextcloudMemcacheKlasse(t *testing.T) {
+	s := scriptText(t, ncScript)
+	mustContain(t, "Skript", s, `memcache.local --value='\OC\Memcache\APCu'`)
+	mustNotContain(t, "Skript", s, `\\OC\\Memcache`)
+}
+
 // TestNextcloudVerbundPruefungen: Rolle, Kennungen und pg_hba werden geprüft.
 func TestNextcloudVerbundPruefungen(t *testing.T) {
 	f := scriptFuncOf(t, ncScript, "verbund_pruefen")

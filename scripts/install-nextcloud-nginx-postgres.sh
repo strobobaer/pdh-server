@@ -588,7 +588,7 @@ sudo -u www-data php "${NEXTCLOUD_DIR}/occ" config:system:set trusted_domains 0 
 sudo -u www-data php "${NEXTCLOUD_DIR}/occ" config:system:set overwrite.cli.url --value="http://${NEXTCLOUD_DOMAIN}"
 sudo -u www-data php "${NEXTCLOUD_DIR}/occ" config:system:set default_phone_region --value="DE"
 sudo -u www-data php "${NEXTCLOUD_DIR}/occ" config:system:set maintenance_window_start --type=integer --value=1
-sudo -u www-data php "${NEXTCLOUD_DIR}/occ" config:system:set memcache.local --value='\\OC\\Memcache\\APCu'
+sudo -u www-data php "${NEXTCLOUD_DIR}/occ" config:system:set memcache.local --value='\OC\Memcache\APCu'
 sudo -u www-data php "${NEXTCLOUD_DIR}/occ" background:cron
 else
 log "Restore: leaving maintenance mode"
