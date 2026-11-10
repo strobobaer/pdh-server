@@ -524,8 +524,9 @@ func (m *mirrorInbox) Accept(ctx context.Context, peerID, peerKind string, req m
 	// Kennt dieser Server den Nextcloud-Datenordner (Beleg oder Kennung), muss er eingehängt sein.
 	// Vor der Kennung geprüft (R58): Der Alarm nennt die Ursache, nichts läuft aufs Systemlaufwerk.
 	if label == "nextcloud-data" && m.proofStored(label) {
-		if _, err := os.Lstat(filepath.Join(target, ".ocdata")); err != nil {
-			m.alarm("ocdata", "Nextcloud-Datenordner nicht erreichbar (.ocdata fehlt): Spiegelung wird nicht angenommen")
+		present := func(p string) bool { _, err := os.Lstat(p); return err == nil }
+		if !ncHasDataMarker(target, filepath.Join, present) {
+			m.alarm("ocdata", "Nextcloud-Datenordner nicht erreichbar ("+ncMarkerText+" fehlt): Spiegelung wird nicht angenommen")
 			return fail("Datenordner nicht erreichbar")
 		}
 	}

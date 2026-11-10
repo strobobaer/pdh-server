@@ -207,6 +207,14 @@ func TestInboxDataNotMounted(t *testing.T) {
 	if ev := f.events(); !strings.Contains(ev, "alarm: ") || !strings.Contains(ev, ".ocdata") {
 		t.Fatalf("Alarm fehlt:\n%s", ev)
 	}
+	// ab Nextcloud 30 heißt die Kennungsdatei .ncdata (Abnahme T14 Fall 4)
+	os.WriteFile(data+"/.ncdata", nil, 0o644)
+	if _, d, r := f.accept("nextcloud-data", 3); r != "" {
+		t.Fatalf("mit .ncdata: %q", r)
+	} else {
+		d(nil)
+	}
+	os.Remove(data + "/.ncdata")
 	os.WriteFile(data+"/.ocdata", nil, 0o644)
 	if _, d, r := f.accept("nextcloud-data", 3); r != "" {
 		t.Fatalf("mit .ocdata: %q", r)

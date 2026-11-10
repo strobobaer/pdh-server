@@ -990,7 +990,7 @@ func (w *mirrorWorker) runOnce(ctx context.Context, wait, final bool) error {
 			o.skipped = true
 		case hold != "":
 			o.err, o.held = uidHoldError(hold), true
-		case m.Label == "nextcloud-data" && !w.d.exists(path.Join(m.Path, ".ocdata")):
+		case m.Label == "nextcloud-data" && !ncHasDataMarker(m.Path, path.Join, w.d.exists):
 			o.err = fmt.Errorf("Quelle %s ist leer – nicht gespiegelt", m.Label)
 			w.alarm(o.err.Error())
 		case w.refusedEmpty(m):

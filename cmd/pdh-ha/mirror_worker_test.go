@@ -339,6 +339,22 @@ func TestMirrorSourceEmptyRefused(t *testing.T) {
 	if al := g.texts("alarm"); len(al) != 1 || !strings.Contains(al[0], "nextcloud-data ist leer") {
 		t.Fatalf("alarm: %v", al)
 	}
+
+	// Ab Nextcloud 30 heißt die Kennungsdatei .ncdata (Abnahme T14 Fall 4).
+	h := newMirrorFix(t)
+	h.files["/nc/data"], h.files["/nc/app"], h.files["/nc/data/.ncdata"] = true, true, true
+	h.full["/nc/data"], h.full["/nc/app"] = true, true
+	h.w.set(true, ha.Active, 1, s)
+	if err := h.w.runAll(ctx); err != nil {
+		t.Fatalf("mit .ncdata: %v", err)
+	}
+	sent := false
+	for _, c := range h.rs.calls {
+		sent = sent || strings.HasSuffix(c[len(c)-1], ":nextcloud-data")
+	}
+	if !sent || len(h.texts("alarm")) != 0 {
+		t.Fatalf("nextcloud-data mit .ncdata nicht gespiegelt, alarm: %v", h.texts("alarm"))
+	}
 }
 
 func TestMirrorFirstDoneOnlyAfterAll(t *testing.T) {

@@ -547,15 +547,32 @@ type ncCheck struct {
 	Checked int      // davon wirklich gegen das Dateisystem geprüft
 }
 
-// ncDataDirError: der Datenordner ist nicht eingehängt oder leer (.ocdata fehlt).
+// ncDataMarkers: Kennungsdateien eines Nextcloud-Datenordners – .ncdata ab
+// Nextcloud 30, .ocdata bei älteren Installationen.
+var ncDataMarkers = [...]string{".ncdata", ".ocdata"}
+
+// ncMarkerText nennt die Kennungsdateien für Meldungen.
+const ncMarkerText = ".ncdata/.ocdata"
+
+// ncHasDataMarker: eine der Kennungsdateien liegt in dir; ok prüft einen Pfad.
+func ncHasDataMarker(dir string, join func(...string) string, ok func(string) bool) bool {
+	for _, n := range ncDataMarkers {
+		if ok(join(dir, n)) {
+			return true
+		}
+	}
+	return false
+}
+
+// ncDataDirError: der Datenordner ist nicht eingehängt oder leer (Kennungsdatei fehlt).
 type ncDataDirError struct{ dir string }
 
 func (e ncDataDirError) Error() string {
-	return "Datenordner " + e.dir + " nicht eingehängt oder leer (.ocdata fehlt)"
+	return "Datenordner " + e.dir + " nicht eingehängt oder leer (" + ncMarkerText + " fehlt)"
 }
 
 // ncCheckFiles nennt von den neuesten ncQueryLimit Dateien (nach fileid), die die
-// Nextcloud-Datenbank kennt, die, die unter dataDir nicht liegen. Fehlt .ocdata im
+// Nextcloud-Datenbank kennt, die, die unter dataDir nicht liegen. Fehlt .ncdata/.ocdata im
 // Datenordner, wird nichts abgefragt und nichts geprüft. Es gibt keinen Zeitfilter:
 // storage_mtime kann alte Zeitstempel tragen. Ordner zählen nicht; andere Speicher
 // als home:: und local:: (unter dem Datenordner) werden übersprungen und nicht als
@@ -566,7 +583,11 @@ func ncCheckFiles(ctx context.Context, q ncQuery, dataDir string) (ncCheck, erro
 	if dataDir == "" {
 		return res, ncDataDirError{dir: "(nicht angegeben)"}
 	}
-	if st, err := os.Stat(filepath.Join(filepath.FromSlash(dataDir), ".ocdata")); err != nil || !st.Mode().IsRegular() {
+	regular := func(p string) bool {
+		st, err := os.Stat(p)
+		return err == nil && st.Mode().IsRegular()
+	}
+	if !ncHasDataMarker(filepath.FromSlash(dataDir), filepath.Join, regular) {
 		return res, ncDataDirError{dir: dataDir}
 	}
 	p := q.TablePrefix()

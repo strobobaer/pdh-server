@@ -331,6 +331,16 @@ func TestNcReloadOnlyOnRealTransition(t *testing.T) {
 	}
 }
 
+// Ab Nextcloud 30 heißt die Kennungsdatei .ncdata: der Prüflauf läuft auch damit (Abnahme T14 Fall 4).
+func TestNcCheckDataDirNcdata(t *testing.T) {
+	d := t.TempDir()
+	writeFile(t, filepath.Join(d, ".ncdata"), "# Nextcloud data directory\n")
+	q := &ncFakeQ{prefix: "oc_", out: ""}
+	if _, err := ncCheckFiles(context.Background(), q, filepath.ToSlash(d)); err != nil || len(q.sql) != 1 {
+		t.Fatalf("mit .ncdata: err=%v Abfragen=%d", err, len(q.sql))
+	}
+}
+
 // 6. Nicht eingehängter Datenordner: eigener Alarm, kein Lstat.
 func TestNcCheckDataDirNotMounted(t *testing.T) {
 	data := t.TempDir() // ohne .ocdata
