@@ -582,9 +582,14 @@ func (h *Handler) NextcloudSyncWeb(w http.ResponseWriter, r *http.Request) {
 			back("", err)
 			return
 		}
-		componentLog("nextcloud").Info().Str("von", getUser(r).ID).Msg("abgleich eingeschaltet")
+		kept := h.ncKeepAdmins(ctx, nextcloud.UserClientFromEnv())
+		componentLog("nextcloud").Info().Str("von", getUser(r).ID).Strs("administratoren_uebernommen", kept).Msg("abgleich eingeschaltet")
 		ncSyncSoon()
-		back("Abgleich eingeschaltet – der erste Lauf beginnt in wenigen Sekunden. Das PDH hat ab jetzt Vorrang vor Änderungen in Nextcloud.", nil)
+		msg := "Abgleich eingeschaltet – der erste Lauf beginnt in wenigen Sekunden. Das PDH hat ab jetzt Vorrang vor Änderungen in Nextcloud."
+		if len(kept) > 0 {
+			msg += " Diese PDH-Administratoren sind in Nextcloud schon Administrator und haben den Haken „Administrator in Nextcloud“ bekommen: " + strings.Join(kept, ", ") + "."
+		}
+		back(msg, nil)
 	case "off":
 		err := h.setUpdateSetting(ctx, keyNCSync, "0")
 		componentLog("nextcloud").Info().Str("von", getUser(r).ID).Msg("abgleich ausgeschaltet")
@@ -605,6 +610,58 @@ func (h *Handler) NextcloudSyncWeb(w http.ResponseWriter, r *http.Request) {
 	default:
 		back("", errors.New("unbekannte Aktion"))
 	}
+}
+
+// ncKeepAdmins: beim Einschalten den Stand übernehmen, damit niemand ausgesperrt wird –
+// PDH-Administratoren, deren verknüpftes Nextcloud-Konto dort schon Administrator ist,
+// bekommen das Kennzeichen. Liefert ihre Benutzernamen. Wer es danach nicht sein soll,
+// nimmt den Haken in der Benutzerkarte heraus.
+func (h *Handler) ncKeepAdmins(ctx context.Context, dir interface {
+	UserInfo(ctx context.Context, id string) (*nextcloud.RemoteUser, error)
+}) []string {
+	if h.db == nil {
+		return nil
+	}
+	rows, err := h.db.Query(ctx, `SELECT id::text, username, nextcloud_user_id FROM users
+		WHERE active AND role::text = 'admin' AND NOT nextcloud_admin AND COALESCE(nextcloud_user_id, '') <> '' ORDER BY username`)
+	if err != nil {
+		return nil
+	}
+	var cands []ncAdminCand
+	for rows.Next() {
+		var c ncAdminCand
+		if rows.Scan(&c.ID, &c.Name, &c.NCID) == nil {
+			cands = append(cands, c)
+		}
+	}
+	rows.Close()
+	var kept []string
+	for _, c := range ncAdminsInNextcloud(ctx, dir, cands) {
+		if _, err := h.db.Exec(ctx, `UPDATE users SET nextcloud_admin = true WHERE id = $1::uuid`, c.ID); err == nil {
+			kept = append(kept, c.Name)
+			h.addHistory(ctx, "user", c.ID, "update", "nextcloud_admin", "false", "true", "Beim Einschalten des Nextcloud-Abgleichs übernommen: in Nextcloud schon Administrator", "")
+		}
+	}
+	return kept
+}
+
+// ncAdminCand: PDH-Administrator ohne Kennzeichen mit verknüpftem Nextcloud-Konto.
+type ncAdminCand struct{ ID, Name, NCID string }
+
+// ncAdminsInNextcloud: die Kandidaten, deren Nextcloud-Konto dort Administrator ist.
+// Ist Nextcloud nicht erreichbar oder das Konto fort, bleibt die Person ohne Kennzeichen.
+func ncAdminsInNextcloud(ctx context.Context, dir interface {
+	UserInfo(ctx context.Context, id string) (*nextcloud.RemoteUser, error)
+}, cands []ncAdminCand) []ncAdminCand {
+	var out []ncAdminCand
+	for _, c := range cands {
+		info, err := dir.UserInfo(ctx, c.NCID)
+		if err != nil || info == nil || !hasFold(info.Groups, ncGroupAdmin) {
+			continue
+		}
+		out = append(out, c)
+	}
+	return out
 }
 
 // userNextcloudAdmin: Kennzeichen „Administrator in Nextcloud“ einer Person.

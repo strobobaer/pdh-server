@@ -144,7 +144,7 @@
   {{if .CanManage}}<form method="post" action="/admin/server-config/nextcloud/sync" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
     {{if .On}}<button class="btn btn-primary btn-small" name="action" value="run" type="submit" {{if not .Ready}}disabled{{end}}><i class="ti ti-refresh"></i> Jetzt abgleichen</button>
     <button class="btn btn-small" name="action" value="off" type="submit" onclick="return confirm('Abgleich ausschalten? Konten, Gruppen und Laufwerke in Nextcloud bleiben, wie sie sind.')"><i class="ti ti-player-pause"></i> Ausschalten</button>
-    {{else}}<button class="btn btn-primary btn-small" name="action" value="on" type="submit" {{if not .Ready}}disabled{{end}} onclick="return confirm('Abgleich einschalten? Das PDH legt für alle aktiven Benutzer Nextcloud-Konten an, setzt Namen, E-Mail und Gruppen und nimmt Personen ohne Kennzeichen die Administrator-Rechte in Nextcloud.')"><i class="ti ti-player-play"></i> Einschalten</button>{{end}}
+    {{else}}<button class="btn btn-primary btn-small" name="action" value="on" type="submit" {{if not .Ready}}disabled{{end}} onclick="return confirm('Abgleich einschalten? Das PDH legt für alle aktiven Benutzer Nextcloud-Konten an, setzt Namen, E-Mail und Gruppen und nimmt Personen ohne Kennzeichen die Administrator-Rechte in Nextcloud. PDH-Administratoren, die dort schon Administrator sind, bekommen das Kennzeichen von selbst.')"><i class="ti ti-player-play"></i> Einschalten</button>{{end}}
   </form>{{else}}<p class="sc-sub">Einschalten und starten darf, wer das Recht „Nextcloud-Abgleich einstellen und starten“ hat.</p>{{end}}
 </div>
 {{end}}{{with $.NCAdmin}}

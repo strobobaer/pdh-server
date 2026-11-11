@@ -242,6 +242,22 @@ func TestNCSyncDirectory(t *testing.T) {
 	}
 }
 
+// Beim Einschalten behalten nur die PDH-Administratoren das Kennzeichen, deren
+// Nextcloud-Konto dort wirklich Administrator ist.
+func TestNCAdminsInNextcloud(t *testing.T) {
+	nc := newFakeNC()
+	nc.add("anna", "Anna", "", true, "Admin", "pdh")
+	nc.add("bert", "Bert", "", true, "pdh")
+	got := ncAdminsInNextcloud(context.Background(), nc, []ncAdminCand{
+		{ID: "1", Name: "anna", NCID: "anna"},
+		{ID: "2", Name: "bert", NCID: "bert"},
+		{ID: "3", Name: "fort", NCID: "gibt-es-nicht"},
+	})
+	if len(got) != 1 || got[0].ID != "1" {
+		t.Errorf("übernommen: %+v", got)
+	}
+}
+
 func TestNCWantedGroups(t *testing.T) {
 	p := ncPerson{Role: "Team Lead", NCAdmin: true}
 	if got := strings.Join(p.wantedGroups(), ","); got != "pdh,pdh-rolle-team-lead" {

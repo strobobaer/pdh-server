@@ -57,6 +57,7 @@ im Kapitel „Versionen & Updates“ an.
 ### Sicherheit
 - Vier neue Rechte (Kategorie „System & Sicherheit“): „Nextcloud-Abgleich einstellen und starten“, „Netzlaufwerke in Nextcloud nutzen“, „Netzlaufwerke in Nextcloud: auch PDH-Daten bearbeiten“ und „Cloudflare verwalten (DNS, Proxy, Tunnel)“. Mit dem Update bekommen sie die Rollen, die überall die Server-Einstellungen pflegen dürfen.
 - Administrator in Nextcloud ist nur noch, wer im PDH Administrator ist und das Kennzeichen „Administrator in Nextcloud“ trägt; das Kennzeichen setzen nur Administratoren. Ohne eingeschalteten Abgleich ändert sich nichts.
+- Beim Einschalten des Nextcloud-Abgleichs bekommen PDH-Administratoren, die in Nextcloud schon Administrator sind, das Kennzeichen von selbst – niemand sperrt sich aus; die Meldung nennt die Namen, die Historie der Person hält es fest.
 - Neue Rechte „Datei-Spiegelung einstellen“ und „Datei-Spiegelung: Löschen am Partner freigeben und Papierkorb leeren“; Rollen, die „Server-Einstellungen (.env) bearbeiten & Server neu starten“ überall hatten, bekommen beide automatisch.
 - Die Dateien laufen durch den verschlüsselten Kanal des Verbunds (Port 7480) mit den Zertifikaten der Server; der Zeuge bekommt keine Dateien.
 - Der Empfänger nimmt nur Dateien an, wenn er passiv ist und sie vom aktuell aktiven Server kommen, setzt Zielpfad und Papierkorb selbst und lässt nur eine feste Liste von rsync-Optionen zu.
