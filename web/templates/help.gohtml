@@ -649,6 +649,45 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   {{template "hb-shots" (dict "Ref" (index $s "infrastructure") "Can" $can)}}
 </section>
 
+<section class="hb-ch" id="kiosk" data-title="Kiosk-Terminals" data-pages="kiosk-terminals">
+  <h2><i class="ti ti-device-desktop-share"></i> Kiosk-Terminals</h2>
+  <p>Ein <b>Kiosk-Terminal</b> (hmi-kiosk) ist der kleine Rechner mit Bildschirm am Bedienplatz einer Anlage. Ist der Anlage ein Terminal zugeordnet, holst du ein HMI aus PDH direkt auf diesen Bildschirm: Reiter <b>HMI</b> → <b>Am Terminal zeigen</b>. Die Browser-Ansicht (<b>Ansehen</b>/<b>Bedienen</b>) bleibt daneben bestehen.</p>
+  <ul>
+    <li><b>Am Terminal zeigen</b> – das Terminal öffnet das HMI nur zum Ansehen.</li>
+    <li><b>Am Terminal bedienen</b> – mit Tastatur und Maus am Terminal. Nur wenn am HMI „Bedienen erlaubt“ ist und du <b>HMI bedienen</b> darfst. Ist die Kachel am Terminal selbst auf „nur ansehen“ eingestellt, bleibt es dort beim Ansehen.</li>
+  </ul>
+  <p>Das VNC-Passwort schickt der PDH-Server direkt an das Terminal; es erscheint nie im Browser und wird nirgends protokolliert. Am Terminal steht in der Leiste „Anlage / HMI – von PDH: dein Name“. Jeder Befehl steht unter <b>Letzte Zugriffe</b> mit „am Terminal …“ und gegebenenfalls dem Grund, warum es nicht geklappt hat.</p>
+  <div class="hb-howto"><b><i class="ti ti-message-circle"></i> Was die Meldungen bedeuten</b>
+    <ul>
+      <li><b>geöffnet</b> – das HMI startet am Terminal (dauert ein paar Sekunden).</li>
+      <li><b>belegt</b> – am Terminal läuft schon eine Sitzung, auch eine Daueranzeige. PDH nennt das HMI und – falls bekannt – seit wann; hält ein anderes Terminal das HMI, steht dessen Name dabei. Erst dort beenden, dann noch einmal.</li>
+      <li><b>Angaben abgelehnt</b> – das Terminal prüft die VNC-Anmeldung am HMI vorab. Meist ist das VNC-Passwort des HMI falsch; PDH zeigt den Grund vom Terminal.</li>
+      <li><b>zu viele Fehlversuche</b> – nach mehreren falschen Schlüsseln sperrt das Terminal PDH eine Weile. Später erneut versuchen und den Schlüssel prüfen.</li>
+      <li><b>läuft gerade ein Befehl</b> – an dasselbe Terminal geht immer nur ein Befehl gleichzeitig. Kurz warten.</li>
+      <li><b>nicht bereit</b> – PDH zeigt den Grund, den das Terminal nennt: Wartung, laufende Sicherung, eine Sitzung startet gerade oder das HMI ist vom Terminal aus nicht erreichbar. Kurz warten bzw. die Ursache beheben.</li>
+      <li><b>Schlüssel abgelehnt</b> oder <b>Fingerabdruck stimmt nicht</b> – die Verbindung muss unter <b>Kiosk-Terminals</b> neu eingetragen werden.</li>
+      <li><b>nicht erreichbar</b> – Terminal aus, Netzwerk unterbrochen oder falsche Adresse.</li>
+    </ul></div>
+  <div class="hb-howto"><b><i class="ti ti-plug-connected"></i> So verbindest du ein Terminal mit PDH</b>
+    <ol class="hb-steps">
+      <li>Am Terminal die Admin-Seite öffnen (<code>https://&lt;Terminal&gt;:8443</code>) → <b>Netzwerk → Fernsteuerung (PDH)</b> → <b>Schlüssel erzeugen</b>. Den Schlüssel (beginnt mit <code>hmik_</code>) kopieren – er wird nur einmal angezeigt. Daneben steht der <b>Fingerabdruck</b>.</li>
+      <li>In PDH <b>Core-Einstellungen → Kiosk-Terminals</b> (oder Navigation → Kiosk-Terminals) → <b>Terminal hinzufügen</b>: Name, Adresse (<code>https://10.1.2.3:8443</code>), Schlüssel und Fingerabdruck (mit oder ohne Doppelpunkte) eintragen, <b>Speichern</b>.</li>
+      <li><b>Verbindung prüfen</b> zeigt Name und Version des Terminals und ob es gerade belegt ist.</li>
+      <li>Die Anlage öffnen → Reiter <b>Stammdaten</b> → <b>Kiosk-Terminal</b> wählen → <b>Speichern</b>. Jede Anlage hat höchstens ein Terminal; ein Terminal darf mehreren Anlagen dienen.</li>
+    </ol>
+    Der Schlüssel wird verschlüsselt gespeichert und nie wieder angezeigt („gesetzt“). Beim Ändern bleibt er, wenn du das Feld leer lässt – aber nur, solange Adresse und Fingerabdruck gleich bleiben. Änderst du eines davon, verwirft PDH den bisherigen Schlüssel und verlangt einen neuen; so kann niemand den Schlüssel (und damit die VNC-Passwörter) auf ein anderes Gerät umlenken. Das Ergebnis von „Verbindung prüfen“ steht direkt beim Terminal. Erzeugst du am Terminal einen neuen Schlüssel, gilt der alte nicht mehr – dann hier neu eintragen. PDH vertraut nur dem Terminal mit genau diesem Fingerabdruck; ein fremdes Gerät unter derselben Adresse bekommt weder Schlüssel noch Passwort. Inaktive Terminals sind in den Anlagen nicht wählbar und nehmen keine Befehle an.</div>
+  <div class="hb-howto"><b><i class="ti ti-device-desktop"></i> PDH auf dem Terminal (PDH-Terminalmodus)</b>
+    <ol class="hb-steps">
+      <li>Für das Terminal einen <b>Systembenutzer</b> in PDH anlegen (<b>Benutzer</b>, Haken „Systemnutzer“) – am besten mit dem Standort der Anlage (siehe <a href="#infrastructure">Terminal-Standort</a>).</li>
+      <li>Am Terminal auf der Admin-Seite eine <b>Web-Kachel</b> mit der PDH-Adresse anlegen.</li>
+      <li>Die Kachel einmal öffnen und als dieser Systembenutzer anmelden. Die Anmeldung bleibt im Profil des Terminals.</li>
+      <li>Wer am Terminal etwas erledigen will, meldet sich über <b>Anmelden zur Erledigung</b> (Karte oder eigenes Konto) kurz an; danach kehrt PDH zum Systembenutzer zurück.</li>
+    </ol>
+    Nach einer Wartung von PDH sind auch Systembenutzer abgemeldet – dann die Kachel öffnen und den Systembenutzer neu anmelden.</div>
+  <p>Rechte: <b>HMI am Kiosk-Terminal der Anlage zeigen</b> (<code>hmi.kiosk</code>) haben standardmäßig Administratoren, Manager, Techniker und Anlagenverantwortliche. Gilt ein Recht nur für eine Abteilung, gilt es auch hier nur für deren Anlagen. Anlagen ein Terminal zuordnen dürfen Personen mit <b>HMI-Verbindungen einrichten</b> (<code>hmi.manage</code>) für diese Anlage. Terminals selbst einrichten, ändern, prüfen und löschen dürfen nur Personen, die <code>hmi.manage</code> <b>ohne Abteilungsbegrenzung</b> haben (standardmäßig Administratoren) – ein Terminal kann Anlagen mehrerer Abteilungen dienen.</p>
+  {{template "hb-shots" (dict "Ref" (index $s "kiosk") "Can" $can)}}
+</section>
+
 <section class="hb-ch" id="watch" data-title="Anlagen-Schnellübersicht" data-pages="plant-watch">
   <h2><i class="ti ti-eye"></i> Anlagen-Schnellübersicht</h2>
   <p>Die <b>Anlagen-Schnellübersicht</b> (Navigation → Material &amp; Anlagen) zeigt Anlagen, auf die ihr ein besonderes Augenmerk legt, auf einen Blick – z. B. alle Trockenkammern mit ihren Motoren, Klappenmotoren, Heizungsventilen und -pumpen. Je Anlage gibt es eine Karte mit Ampel:</p>

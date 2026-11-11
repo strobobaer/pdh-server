@@ -214,12 +214,4 @@ func TestDeptScopeIntegration(t *testing.T) {
 	}
 }
 
-func keys(m map[string]bool) []string {
-	out := make([]string, 0, len(m))
-	for k := range m {
-		out = append(out, k)
-	}
-	return out
-}
-
 func itoa(n int) string { return strconv.Itoa(n) }

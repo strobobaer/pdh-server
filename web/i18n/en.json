@@ -134,6 +134,7 @@
  "Die neuesten offenen Störungen mit Anlage": "The latest open faults with asset",
  "Diese Seite im Chat teilen": "Share this page in chat",
  "Drucker": "Printers",
+ "Kiosk-Terminals": "Kiosk terminals",
  "Du meldest dich kurz mit deinem eigenen Konto an diesem Systemnutzer-Terminal an. Nach %d Minuten Inaktivität (oder per Klick auf „Zurück“) kehrt das Terminal automatisch zum Systemnutzer zurück.": "You are briefly signing in with your own account at this system-user terminal. After %d minutes of inactivity (or by clicking “Back”) the terminal automatically returns to the system user.",
  "E-Mail oder Benutzername": "Email or username",
  "Eigene Anordnung verwerfen und die Vorgabe wiederherstellen?": "Discard your arrangement and restore the default?",

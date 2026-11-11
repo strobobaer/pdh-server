@@ -416,6 +416,8 @@ Aenderungen pushen:
 make push
 ```
 
+Ende-zu-Ende-Test Kiosk-Terminal (echter Client gegen echte hmi-kiosk-Fernbefehle über TLS, Build-Tag `e2e`): im hmi-kiosk-Repository `PDH_DIR=<dieses Repository> bash test/pdh-e2e/run.sh` (Docker).
+
 ## Sicherheitshinweise
 
 Vor produktivem Einsatz pruefen:

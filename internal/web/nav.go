@@ -80,6 +80,7 @@ var navDefs = []navDef{
 	{navItem{"backup", "/admin/backup", "ti-database-export", "Datensicherung", "backup", false}, "admin", func(b *BaseData) bool { return b.CanBackup }},
 	{navItem{"cleanup", "/admin/cleanup", "ti-trash-x", "Bereinigung", "cleanup", false}, "admin", func(b *BaseData) bool { return b.CanCleanup }},
 	{navItem{"printers", "/admin/printers", "ti-printer", "Drucker", "printers", false}, "admin", func(b *BaseData) bool { return b.CanPrinters }},
+	{navItem{"kiosk", "/core/settings/kiosk-terminals", "ti-device-desktop-share", "Kiosk-Terminals", "kiosk-terminals", false}, "admin", func(b *BaseData) bool { return b.CanKioskTerminals }},
 
 	{navItem{"ms", "/ms", "ti-certificate-2", "Dokumente", "ms", false}, "ms", func(b *BaseData) bool { return b.CanMS }},
 	{navItem{"ms-handbook", "/ms?type=handbook", "ti-book-2", "Handbücher", "ms-handbook", false}, "ms", func(b *BaseData) bool { return b.CanMS }},

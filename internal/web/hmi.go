@@ -35,7 +35,7 @@ const (
 
 // hmiPerms: Stufen der angemeldeten Person (fuer Vorlagen und Pruefungen).
 type hmiPerms struct {
-	View, Control, Manage bool
+	View, Control, Manage, Kiosk bool
 }
 
 func (h *Handler) hmiPermsFor(r *http.Request) hmiPerms {
@@ -54,12 +54,15 @@ type hmiView struct {
 	HasPassword  bool   `json:"has_password"`
 	AllowControl bool   `json:"allow_control"`
 	Notes        string `json:"notes"`
-	CanControl   bool   `json:"can_control"` // Stufe der Person und Freigabe am HMI
+	CanControl   bool   `json:"can_control"`   // Stufe der Person und Freigabe am HMI
+	KioskView    bool   `json:"kiosk_view"`    // Knopf „Am Terminal zeigen“ (kiosk_terminals.go)
+	KioskControl bool   `json:"kiosk_control"` // Knopf „Am Terminal bedienen“
 }
 
 type hmiSessionView struct {
 	User      string     `json:"user"`
 	Mode      string     `json:"mode"`
+	Terminal  string     `json:"terminal,omitempty"` // Befehl an ein Kiosk-Terminal (Name zum Zeitpunkt)
 	StartedAt time.Time  `json:"started_at"`
 	EndedAt   *time.Time `json:"ended_at,omitempty"`
 	Error     string     `json:"error,omitempty"`
@@ -100,9 +103,21 @@ func (h *Handler) NoVNCScript(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) HMIList(w http.ResponseWriter, r *http.Request) {
 	p := h.hmiPermsFor(r)
-	if !p.View && !p.Manage {
+	// Kiosk-Knöpfe: Rechte für genau diese Anlage (Abteilung zählt, kiosk_terminals.go)
+	kp := hmiPerms{Kiosk: h.kioskPerm(r, permHMIKiosk, chi.URLParam(r, "id"))}
+	if kp.Kiosk {
+		kp.Control = h.kioskPerm(r, permHMIControl, chi.URLParam(r, "id"))
+	}
+	p.Kiosk = kp.Kiosk
+	if !p.View && !p.Manage && !p.Kiosk {
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "keine Berechtigung (HMI ansehen)"})
 		return
+	}
+	// zugeordnetes, aktives Kiosk-Terminal der Anlage (Knöpfe „Am Terminal …“)
+	var kioskTerminal string
+	if p.Kiosk {
+		_ = h.db.QueryRow(r.Context(), `SELECT COALESCE(k.name, '') FROM infrastructure i
+			LEFT JOIN kiosk_terminals k ON k.id = i.kiosk_terminal_id AND k.active WHERE i.id = $1::uuid`, chi.URLParam(r, "id")).Scan(&kioskTerminal)
 	}
 	rows, err := h.db.Query(r.Context(), `SELECT id::text, name, host, port, password_enc <> '', allow_control, notes
 		FROM infrastructure_hmis WHERE infrastructure_id = $1::uuid ORDER BY sort_order, lower(name)`, chi.URLParam(r, "id"))
@@ -119,12 +134,13 @@ func (h *Handler) HMIList(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		v.CanControl = p.Control && v.AllowControl
+		v.KioskView, v.KioskControl = kioskButtons(kp, kioskTerminal != "", v.AllowControl)
 		if !p.Manage {
 			v.Host, v.Port = "", 0
 		}
 		out = append(out, v)
 	}
-	writeJSON(w, http.StatusOK, map[string]interface{}{"hmis": out, "perms": p})
+	writeJSON(w, http.StatusOK, map[string]interface{}{"hmis": out, "perms": p, "kiosk_terminal": kioskTerminal})
 }
 
 var hmiHostRe = regexp.MustCompile(`^[A-Za-z0-9._:\-\[\]]{1,253}$`)
@@ -218,14 +234,17 @@ func (h *Handler) HMIDelete(w http.ResponseWriter, r *http.Request) {
 // HMISessions: die letzten Zugriffe (wer, wann, wie) – fuer alle mit HMI-Rechten.
 func (h *Handler) HMISessions(w http.ResponseWriter, r *http.Request) {
 	p := h.hmiPermsFor(r)
-	if !p.View && !p.Manage {
+	p.Kiosk = h.kioskPerm(r, permHMIKiosk, chi.URLParam(r, "id"))
+	if !p.View && !p.Manage && !p.Kiosk {
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "keine Berechtigung"})
 		return
 	}
-	rows, err := h.db.Query(r.Context(), `SELECT COALESCE(TRIM(u.first_name || ' ' || u.last_name), ''), s.mode, s.started_at, s.ended_at, s.error
+	rows, err := h.db.Query(r.Context(), `SELECT COALESCE(TRIM(u.first_name || ' ' || u.last_name), ''), s.mode, s.started_at, s.ended_at, s.error,
+			CASE WHEN s.kiosk_terminal_id IS NOT NULL OR s.kiosk_terminal_name <> '' THEN COALESCE(NULLIF(s.kiosk_terminal_name, ''), k.name, 'Kiosk-Terminal') ELSE '' END
 		FROM infrastructure_hmi_sessions s
 		JOIN infrastructure_hmis x ON x.id = s.hmi_id AND x.infrastructure_id = $1::uuid
 		LEFT JOIN users u ON u.id = s.user_id
+		LEFT JOIN kiosk_terminals k ON k.id = s.kiosk_terminal_id
 		WHERE s.hmi_id = $2::uuid ORDER BY s.started_at DESC LIMIT 20`, chi.URLParam(r, "id"), chi.URLParam(r, "hmiID"))
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Zugriffe konnten nicht geladen werden"})
@@ -235,7 +254,7 @@ func (h *Handler) HMISessions(w http.ResponseWriter, r *http.Request) {
 	out := []hmiSessionView{}
 	for rows.Next() {
 		var v hmiSessionView
-		if err := rows.Scan(&v.User, &v.Mode, &v.StartedAt, &v.EndedAt, &v.Error); err != nil {
+		if err := rows.Scan(&v.User, &v.Mode, &v.StartedAt, &v.EndedAt, &v.Error, &v.Terminal); err != nil {
 			break
 		}
 		out = append(out, v)

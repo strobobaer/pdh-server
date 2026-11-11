@@ -67,6 +67,7 @@ type BaseData struct {
 	CanChat                bool       // Chat-Navigation, Ungelesen-Zaehler und "Im Chat teilen"
 	CanBackup              bool       // Nav-Link "Datensicherung"
 	CanPrinters            bool       // Nav-Link "Drucker" (printers.manage)
+	CanKioskTerminals      bool       // Nav-Link "Kiosk-Terminals" (hmi.manage)
 	CanPrint               bool       // direkt auf eingerichtete Drucker drucken (printers.use)
 	CanCleanup             bool       // Nav-Link "Bereinigung"
 	CanServerConfig        bool       // Nav-Link "Server-Einstellungen" (nur Admins)
@@ -310,6 +311,7 @@ type Handler struct {
 
 	// Austauschbare Quellen (nur Tests; nil = echt): Rechteprüfung und gespeicherter Commit-Vergleich.
 	hasPermHook     func(*http.Request, string) bool
+	kioskPermHook   func(r *http.Request, perm, infraID string) bool // Tests: Rechte je Anlage ("" = ohne Abteilungsbegrenzung), kiosk_terminals.go
 	updateCheckHook func(context.Context) storedUpdateCheck
 }
 
@@ -509,6 +511,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/plant-watch/{id}/toggle", h.PlantWatchToggleWeb)
 	r.Get("/infrastructure/{id}", h.InfraDetail)
 	h.hmiRoutes(r)                                     // HMI-Fernzugriff (VNC) aus der Anlage
+	h.kioskRoutes(r)                                   // Kiosk-Terminals: HMI am Terminal zeigen (kiosk_terminals.go)
 	r.Post("/infrastructure/{id}/edit", h.InfraUpdate) // FIX: war PUT, wird von Cloudflare/Nginx blockiert
 	r.Get("/infrastructure/{id}/history", h.InfraHistoryWeb)
 	r.Get("/infrastructure/{id}/history.csv", h.InfraHistoryCSV)
@@ -1160,6 +1163,7 @@ func (h *Handler) baseData(r *http.Request, page, title, ctxTitle string) BaseDa
 		TerminalInfraID:        h.terminalInfraID(r),
 		CanBackup:              h.rbac.HasPermissionForUser(u.ID, string(u.Role), "system.backup"),
 		CanPrinters:            h.rbac.HasPermissionForUser(u.ID, string(u.Role), "printers.manage"),
+		CanKioskTerminals:      h.canManageKiosk(r),
 		CanPrint:               h.rbac.HasPermissionForUser(u.ID, string(u.Role), "printers.use"),
 		CanCleanup:             h.rbac.HasPermissionForUser(u.ID, string(u.Role), "system.cleanup"),
 		CanServerConfig:        u.Role == users.RoleAdmin && h.rbac.HasPermissionForUser(u.ID, string(u.Role), "system.server_config"),
