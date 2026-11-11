@@ -47,16 +47,19 @@ func (h *Handler) hmiPermsFor(r *http.Request) hmiPerms {
 }
 
 type hmiView struct {
-	ID           string `json:"id"`
-	Name         string `json:"name"`
-	Host         string `json:"host,omitempty"` // nur fuer „einrichten“
-	Port         int    `json:"port,omitempty"`
-	HasPassword  bool   `json:"has_password"`
-	AllowControl bool   `json:"allow_control"`
-	Notes        string `json:"notes"`
-	CanControl   bool   `json:"can_control"`   // Stufe der Person und Freigabe am HMI
-	KioskView    bool   `json:"kiosk_view"`    // Knopf „Am Terminal zeigen“ (kiosk_terminals.go)
-	KioskControl bool   `json:"kiosk_control"` // Knopf „Am Terminal bedienen“
+	ID                 string `json:"id"`
+	Name               string `json:"name"`
+	Host               string `json:"host,omitempty"` // nur fuer „einrichten“
+	Port               int    `json:"port,omitempty"`
+	HasPassword        bool   `json:"has_password"`
+	AllowControl       bool   `json:"allow_control"`
+	Notes              string `json:"notes"`
+	CanControl         bool   `json:"can_control"`                // Stufe der Person und Freigabe am HMI
+	KioskView          bool   `json:"kiosk_view"`                 // Knopf „Am Terminal zeigen“ (kiosk_terminals.go)
+	KioskControl       bool   `json:"kiosk_control"`              // Knopf „Am Terminal bedienen“
+	TerminalView       string `json:"terminal_view"`              // Anlagenterminal: everyone/card/never
+	TerminalControl    string `json:"terminal_control"`           // Anlagenterminal: never/card/everyone
+	TerminalControlEff string `json:"terminal_control_effective"` // mit allow_control verrechnet
 }
 
 type hmiSessionView struct {
@@ -119,7 +122,7 @@ func (h *Handler) HMIList(w http.ResponseWriter, r *http.Request) {
 		_ = h.db.QueryRow(r.Context(), `SELECT COALESCE(k.name, '') FROM infrastructure i
 			LEFT JOIN kiosk_terminals k ON k.id = i.kiosk_terminal_id AND k.active WHERE i.id = $1::uuid`, chi.URLParam(r, "id")).Scan(&kioskTerminal)
 	}
-	rows, err := h.db.Query(r.Context(), `SELECT id::text, name, host, port, password_enc <> '', allow_control, notes
+	rows, err := h.db.Query(r.Context(), `SELECT id::text, name, host, port, password_enc <> '', allow_control, notes, terminal_view, terminal_control
 		FROM infrastructure_hmis WHERE infrastructure_id = $1::uuid ORDER BY sort_order, lower(name)`, chi.URLParam(r, "id"))
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "HMIs konnten nicht geladen werden"})
@@ -129,11 +132,12 @@ func (h *Handler) HMIList(w http.ResponseWriter, r *http.Request) {
 	out := []hmiView{}
 	for rows.Next() {
 		var v hmiView
-		if err := rows.Scan(&v.ID, &v.Name, &v.Host, &v.Port, &v.HasPassword, &v.AllowControl, &v.Notes); err != nil {
+		if err := rows.Scan(&v.ID, &v.Name, &v.Host, &v.Port, &v.HasPassword, &v.AllowControl, &v.Notes, &v.TerminalView, &v.TerminalControl); err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "HMIs konnten nicht gelesen werden"})
 			return
 		}
 		v.CanControl = p.Control && v.AllowControl
+		v.TerminalControlEff = effectiveHMITerminalControl(v.AllowControl, v.TerminalControl)
 		v.KioskView, v.KioskControl = kioskButtons(kp, kioskTerminal != "", v.AllowControl)
 		if !p.Manage {
 			v.Host, v.Port = "", 0
@@ -148,19 +152,21 @@ var hmiHostRe = regexp.MustCompile(`^[A-Za-z0-9._:\-\[\]]{1,253}$`)
 // HMISave: anlegen (ohne hmiID) oder aendern. Leeres Passwort = unveraendert,
 // clear_password = entfernen.
 func (h *Handler) HMISave(w http.ResponseWriter, r *http.Request) {
-	if !h.hasPerm(r, permHMIManage) {
+	if !h.hasPermRec(r, permHMIManage, "infrastructure", chi.URLParam(r, "id")) {
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "keine Berechtigung (HMI einrichten)"})
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 16<<10)
 	var in struct {
-		Name          string `json:"name"`
-		Host          string `json:"host"`
-		Port          int    `json:"port"`
-		Password      string `json:"password"`
-		ClearPassword bool   `json:"clear_password"`
-		AllowControl  bool   `json:"allow_control"`
-		Notes         string `json:"notes"`
+		Name            string  `json:"name"`
+		Host            string  `json:"host"`
+		Port            int     `json:"port"`
+		Password        string  `json:"password"`
+		ClearPassword   bool    `json:"clear_password"`
+		AllowControl    bool    `json:"allow_control"`
+		Notes           string  `json:"notes"`
+		TerminalView    *string `json:"terminal_view"`
+		TerminalControl *string `json:"terminal_control"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "ungültige Eingabe"})
@@ -184,6 +190,15 @@ func (h *Handler) HMISave(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Passwort zu lang"})
 		return
 	}
+	// Anlagenterminal: fehlende Felder (alte Clients) bleiben unverändert (Standard nur beim Anlegen)
+	if in.TerminalView != nil && !validHMITerminalView(*in.TerminalView) {
+		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "Ansehen am Terminal ungültig"})
+		return
+	}
+	if in.TerminalControl != nil && !validHMITerminalControl(*in.TerminalControl) {
+		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "Bedienen am Terminal ungültig"})
+		return
+	}
 	pwEnc := ""
 	if in.Password != "" {
 		enc, err := encryptSecret(h.hmiKey(), in.Password)
@@ -196,15 +211,16 @@ func (h *Handler) HMISave(w http.ResponseWriter, r *http.Request) {
 	ctx, infraID, hmiID := r.Context(), chi.URLParam(r, "id"), chi.URLParam(r, "hmiID")
 	var err error
 	if hmiID == "" {
-		err = h.db.QueryRow(ctx, `INSERT INTO infrastructure_hmis (infrastructure_id, name, host, port, password_enc, allow_control, notes, created_by)
-			VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, NULLIF($8,'')::uuid) RETURNING id::text`,
-			infraID, in.Name, in.Host, in.Port, pwEnc, in.AllowControl, in.Notes, getUser(r).ID).Scan(&hmiID)
+		err = h.db.QueryRow(ctx, `INSERT INTO infrastructure_hmis (infrastructure_id, name, host, port, password_enc, allow_control, notes, created_by, terminal_view, terminal_control)
+			VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, NULLIF($8,'')::uuid, $9, $10) RETURNING id::text`,
+			infraID, in.Name, in.Host, in.Port, pwEnc, in.AllowControl, in.Notes, getUser(r).ID,
+			hmiTermOr(in.TerminalView, hmiTermEveryone), hmiTermOr(in.TerminalControl, hmiTermCard)).Scan(&hmiID)
 	} else {
 		var tag interface{ RowsAffected() int64 }
-		tag, err = h.db.Exec(ctx, `UPDATE infrastructure_hmis SET name=$3, host=$4, port=$5, allow_control=$6, notes=$7,
+		tag, err = h.db.Exec(ctx, `UPDATE infrastructure_hmis SET name=$3, host=$4, port=$5, allow_control=$6, notes=$7, terminal_view=COALESCE($10, terminal_view), terminal_control=COALESCE($11, terminal_control),
 				password_enc = CASE WHEN $9 THEN '' WHEN $8 <> '' THEN $8 ELSE password_enc END, updated_at=NOW()
 			WHERE id=$2::uuid AND infrastructure_id=$1::uuid`,
-			infraID, hmiID, in.Name, in.Host, in.Port, in.AllowControl, in.Notes, pwEnc, in.ClearPassword)
+			infraID, hmiID, in.Name, in.Host, in.Port, in.AllowControl, in.Notes, pwEnc, in.ClearPassword, in.TerminalView, in.TerminalControl)
 		if err == nil && tag.RowsAffected() == 0 {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "HMI nicht gefunden"})
 			return

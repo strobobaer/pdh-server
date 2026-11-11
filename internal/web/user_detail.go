@@ -30,6 +30,7 @@ type userMaster struct {
 	TerminalInfraID, TerminalInfraPath                  string // Standort des Terminals (Systembenutzer)
 	LeitstandID, LeitstandName                          string // direkt gewählter Leitstand des Terminals
 	LiveTranslate                                       bool   // Live-Übersetzung (live_translate.go)
+	TerminalIdle                                        string // eigene Rückkehrzeit des Terminals in Sekunden, "" = globaler Wert
 	TranslateLang                                       string // Zielsprache, "" = Sprache der Oberfläche
 }
 
@@ -235,6 +236,7 @@ func (h *Handler) loadUserMasterErr(ctx context.Context, id string) (userMaster,
 			COALESCE(u.leitstand_id::text, ''), COALESCE(l.name, '')
 			FROM users u LEFT JOIN leitstaende l ON l.id = u.leitstand_id WHERE u.id = $1::uuid`, id).Scan(&m.TerminalInfraID, &m.LiveTranslate, &m.TranslateLang, &m.LeitstandID, &m.LeitstandName)
 		m.TerminalInfraPath = h.infraPath(ctx, m.TerminalInfraID)
+		m.TerminalIdle = h.terminalIdleField(ctx, id)
 	}
 	return m, err
 }
@@ -384,6 +386,25 @@ func (h *Handler) UserMasterSaveWeb(w http.ResponseWriter, r *http.Request) {
 		userRedirect(w, r, id, "master", "", err)
 		return
 	}
+	// Rückkehrzeit des Terminals vorab prüfen (nur Benutzerverwaltung, nur System-Benutzer)
+	idleSent := false
+	if _, sent := r.Form["terminal_idle_seconds"]; sent && h.canManageUsers(r) {
+		sys, err := h.isSystemUser(ctx, id)
+		if err != nil {
+			componentLog("terminal").Error().Err(err).Str("user", id).Msg("systembenutzer prüfen")
+			userRedirect(w, r, id, "master", "", errTerminalIdleSave)
+			return
+		}
+		idleSent = sys
+	}
+	if idleSent {
+		if raw := v("terminal_idle_seconds"); raw != "" {
+			if _, err := parseTerminalIdle(raw); err != nil {
+				userRedirect(w, r, id, "master", "", err)
+				return
+			}
+		}
+	}
 	old := h.loadUserMaster(ctx, id)
 	brokerT, brokerF, brokerA, brokerM := old.BrokerTickets, old.BrokerFaults, old.BrokerTasks, old.BrokerMaintenance
 	if h.canManageUsers(r) {
@@ -417,6 +438,16 @@ func (h *Handler) UserMasterSaveWeb(w http.ResponseWriter, r *http.Request) {
 		if _, err := h.db.Exec(ctx, `
 			UPDATE users SET terminal_infrastructure_id = CASE WHEN is_system_user THEN NULLIF($1, '')::uuid END
 			WHERE id = $2::uuid`, v("terminal_infrastructure_id"), id); err != nil {
+			userRedirect(w, r, id, "master", "", err)
+			return
+		}
+	}
+	if idleSent {
+		if err := h.saveTerminalIdle(ctx, id, v("terminal_idle_seconds")); err != nil {
+			if !errors.Is(err, errTerminalIdle) {
+				componentLog("terminal").Error().Err(err).Str("user", id).Msg("rückkehrzeit speichern")
+				err = errTerminalIdleSave
+			}
 			userRedirect(w, r, id, "master", "", err)
 			return
 		}

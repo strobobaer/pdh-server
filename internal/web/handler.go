@@ -512,6 +512,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/infrastructure/{id}", h.InfraDetail)
 	h.hmiRoutes(r)                                     // HMI-Fernzugriff (VNC) aus der Anlage
 	h.kioskRoutes(r)                                   // Kiosk-Terminals: HMI am Terminal zeigen (kiosk_terminals.go)
+	h.terminalRoutes(r)                                // Anlagenterminal: Schoner, Störungsinfo, Neu (terminal_page.go)
 	r.Post("/infrastructure/{id}/edit", h.InfraUpdate) // FIX: war PUT, wird von Cloudflare/Nginx blockiert
 	r.Get("/infrastructure/{id}/history", h.InfraHistoryWeb)
 	r.Get("/infrastructure/{id}/history.csv", h.InfraHistoryCSV)
@@ -863,6 +864,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/core/settings/infra-responsible", h.InfraRespDefaultWeb)
 	r.Post("/core/settings/completion", h.CompletionSettingsWeb)
 	r.Post("/core/settings/easy-mode", h.EasyModeSettingsWeb)
+	r.Post("/core/settings/terminal", h.TerminalSettingsWeb)
 	r.Post("/core/settings/defaults", h.DefaultsSaveWeb)
 	r.Get("/leitstaende", h.LeitstaendePage)
 	r.Get("/leitstaende/{id}", h.LeitstaendePage)

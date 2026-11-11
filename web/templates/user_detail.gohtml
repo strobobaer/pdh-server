@@ -148,6 +148,9 @@
         {{range .Boards}}<option value="{{.ID}}" {{if eq .ID $m.LeitstandID}}selected{{end}}>{{.Name}}{{if .IsDefault}} ({{t "Standard"}}){{end}}{{if not .Active}} – {{t "inaktiv"}}{{end}}</option>{{end}}
       </select>
       <div class="rec-sub" style="margin-top:4px">Beim Anlegen von Tickets, Störungen &amp; Co. an diesem Terminal klappt die Infrastruktur-Auswahl bis hierhin auf.</div>
+      <label class="form-label" style="margin-top:8px" for="ud-terminal-idle">Rückkehrzeit zum Bildschirmschoner (Sekunden)</label>
+      <input class="form-input" id="ud-terminal-idle" name="terminal_idle_seconds" inputmode="numeric" pattern="[0-9]*" placeholder="global" value="{{$m.TerminalIdle}}">
+      <div class="rec-sub" style="margin-top:4px">30 bis 3600 Sekunden. Leer = globale Einstellung (Core-Einstellungen).</div>
     </div>{{end}}
 
     <div class="rec-sec">Organisation</div>
