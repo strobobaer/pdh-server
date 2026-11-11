@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"os"
 	"strings"
 	"time"
 )
@@ -92,7 +94,19 @@ var navDefs = []navDef{
 	{navItem{"export", "/export", "ti-database-export", "Export", "export", false}, "data", func(b *BaseData) bool { return b.CanExport }},
 
 	{navItem{"help", "/help", "ti-book", "Handbuch", "help", false}, "links", always},
-	{navItem{"nextcloud", "https://cloud.strobl-home.net", "ti-cloud", "Nextcloud", "", true}, "links", always},
+	// Adresse aus Server-Einstellungen → Nextcloud (buildNav setzt sie ein); ohne Adresse kein Eintrag
+	{navItem{"nextcloud", "", "ti-cloud", "Nextcloud", "", true}, "links", func(*BaseData) bool { return nextcloudLink() != "" }},
+}
+
+// nextcloudLink: Nextcloud-Adresse aus den Server-Einstellungen
+// (PDH_NEXTCLOUD_BASEURL), "" wenn keine oder keine gültige eingetragen ist.
+func nextcloudLink() string {
+	v := strings.TrimSpace(os.Getenv("PDH_NEXTCLOUD_BASEURL"))
+	u, err := url.Parse(v)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return ""
+	}
+	return v
 }
 
 // navDefaultGroups: Vorgabe-Gruppen (Schluessel, deutscher Name).
@@ -246,6 +260,9 @@ func buildNav(b *BaseData, layout []navLayoutGroup) []navGroup {
 			it := d.navItem
 			it.Icon = iconClass("nav." + key) // änderbar unter /admin/icons
 			it.Label = tr(b.Lang, it.Label)
+			if key == "nextcloud" {
+				it.Href = nextcloudLink()
+			}
 			if key == "trainings" && !b.CanTrainings {
 				it.Label = tr(b.Lang, "Meine Schulungen")
 			}

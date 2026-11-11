@@ -23,6 +23,8 @@ im Kapitel „Versionen & Updates“ an.
 - Nach einem harten Ausfall nennt der neue aktive Server die Nextcloud-Dateien, die noch nicht übertragen waren, in der Karte und im Alarm.
 - Jeder gespiegelte Ordner trägt eine Kennungsdatei `.pdh-mirror-id`; nach einem Plattentausch oder bei nicht eingehängtem Laufwerk löscht die Spiegelung nichts und meldet sich.
 - Handbuch: neuer Abschnitt „Datei-Spiegelung und Nextcloud im Verbund“ mit Einschalten, Bestätigen, Nextcloud, Papierkorb und Fehlerbildern.
+- Nextcloud verbindet sich von selbst: Liegt Nextcloud auf demselben Server, legt das PDH sein Konto „pdhNCadmin“ ohne Zutun an und trägt Adresse, Benutzer und Passwort in den Server-Einstellungen ein; alle Administratoren bekommen eine Nachricht.
+- Das Nextcloud-Installationsskript richtet bei einer neuen Nextcloud gleich Kalender, Kontakte und Deck ein (`--apps` wählt andere oder keine).
 - Haben `pdh` (und mit „Nextcloud mitnehmen“ `www-data`) auf den beiden Servern verschiedene Benutzer- oder Gruppennummern, hält die Spiegelung die betroffenen Ordner mit einem Alarm an – auch schon beim ersten Abgleich nach dem Einschalten; Karte und `pdh-ha mirror status` nennen beide Nummern.
 
 ### Geändert
@@ -41,6 +43,7 @@ im Kapitel „Versionen & Updates“ an.
 - Ein offener Update-Auftrag, den der aktive Partner nicht führt, meldet sich mit Alarm und lässt sich am passiven Server mit `pdh-ha update abort` beenden.
 - „Papierkorb leeren“ meldet die Rückkehrer-Dateien nur noch als erledigt, wenn wirklich alles geleert ist, und hört nach einem Rollenwechsel auf.
 - War der passive Server so lange weg, dass seine Datenbank neu kopiert werden muss, beginnt die Neukopie erst, wenn der aktive Server dafür bereit ist; sie scheitert nicht mehr gleich und wartet dann zehn Minuten.
+- Der Eintrag „Nextcloud“ in der Navigation öffnet jetzt die Nextcloud-Adresse aus den Server-Einstellungen statt einer fest eingebauten Adresse; ohne eingetragene Adresse erscheint er nicht.
 - Das Nextcloud-Installationsskript bricht nach der Installation nicht mehr mit „Memcache … not available“ ab; der Zwischenspeicher wird richtig eingetragen.
 - Die Datei-Spiegelung erkennt den Datenordner neuerer Nextcloud-Fassungen (ab 30, Kennungsdatei `.ncdata`) und meldet ihn nicht mehr als leer.
 

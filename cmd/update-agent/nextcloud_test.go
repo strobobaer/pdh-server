@@ -92,6 +92,16 @@ func TestNCServiceScript(t *testing.T) {
 		!strings.Contains(s, "user:add --password-from-env") || !strings.Contains(s, "group:adduser admin 'pdhNCadmin'") {
 		t.Errorf("Skript:\n%s", s)
 	}
+	// Die Adresse von Nextcloud geht mit zurück (automatische Ersteinrichtung im PDH).
+	if !strings.Contains(s, `echo "URL=$(occ config:system:get overwrite.cli.url`) {
+		t.Error("Skript meldet die Nextcloud-Adresse nicht")
+	}
+	if got := ncURLFromOutput("### Konto anlegen\nSTATUS=created\n URL=https://nc.example \n### fertig"); got != "https://nc.example" {
+		t.Errorf("Adresse aus der Ausgabe: %q", got)
+	}
+	if got := ncURLFromOutput("STATUS=updated\n### fertig"); got != "" {
+		t.Errorf("ohne URL-Zeile: %q", got)
+	}
 	if bash, err := exec.LookPath("bash"); err == nil {
 		f := filepath.Join(t.TempDir(), "svc.sh")
 		_ = os.WriteFile(f, []byte(s), 0o644)

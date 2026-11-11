@@ -201,6 +201,7 @@ else
   echo "STATUS=created"
 fi
 occ group:adduser admin '` + req.User + `' >/dev/null 2>&1 || true
+echo "URL=$(occ config:system:get overwrite.cli.url 2>/dev/null || true)"
 echo "### fertig"
 `, nil
 }
@@ -238,7 +239,17 @@ func (a *updateAgent) ncServiceHandler(w http.ResponseWriter, r *http.Request) {
 	if strings.Contains(text, "STATUS=created") {
 		status = "created"
 	}
-	writeMountJSON(w, http.StatusOK, map[string]any{"ok": true, "status": status, "output": text})
+	writeMountJSON(w, http.StatusOK, map[string]any{"ok": true, "status": status, "url": ncURLFromOutput(text), "output": text})
+}
+
+// ncURLFromOutput: Adresse von Nextcloud (overwrite.cli.url) aus der Zeile „URL=…“.
+func ncURLFromOutput(out string) string {
+	for _, l := range strings.Split(out, "\n") {
+		if v, ok := strings.CutPrefix(strings.TrimSpace(l), "URL="); ok {
+			return strings.TrimSpace(v)
+		}
+	}
+	return ""
 }
 
 // ncOIDCHandler: POST /v1/nextcloud/oidc → richtet die Anmeldung mit Microsoft ein.

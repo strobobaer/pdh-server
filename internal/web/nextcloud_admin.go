@@ -36,6 +36,7 @@ type ncAdminView struct {
 	LastError   string // letzter Fehlschlag von „Einrichten/Abgleichen“ – steht in der Karte
 	AgentReady  bool
 	Configured  bool // Adresse eingetragen
+	AutoPending bool // Ersteinrichtung steht noch aus – das PDH versucht es selbst
 	DefaultUser string
 }
 
@@ -48,19 +49,101 @@ func (h *Handler) ncAdminViewFor(ctx context.Context) ncAdminView {
 		AgentReady:  h.driveAgentConfigured(),
 		Configured:  strings.TrimSpace(os.Getenv("PDH_NEXTCLOUD_BASEURL")) != "",
 		DefaultUser: ncAdminDefaultUser,
+		AutoPending: h.ncAutoSetupPending(ctx),
 	}
 }
 
 // applyNCServiceAccount: Konto in Nextcloud anlegen bzw. Passwort setzen
-// (Update-Agent, occ). Liefert „created“ oder „updated“.
-func (h *Handler) applyNCServiceAccount(ctx context.Context, user, password string) (string, error) {
+// (Update-Agent, occ). Liefert „created“ oder „updated“ und die Adresse, die
+// Nextcloud von sich kennt (overwrite.cli.url; "" bei einem älteren Agenten).
+func (h *Handler) applyNCServiceAccount(ctx context.Context, user, password string) (string, string, error) {
 	var res struct {
 		Status string `json:"status"`
+		URL    string `json:"url"`
 	}
 	err := h.agentJSON(ctx, http.MethodPost, "/v1/nextcloud/service-account", map[string]any{
 		"dir": h.ncDir(ctx), "user": user, "password": password,
 	}, &res)
-	return res.Status, err
+	return res.Status, res.URL, err
+}
+
+// ncAutoSetupPending: Ersteinrichtung noch offen? Nur solange das PDH weder
+// Benutzer noch Passwort für Nextcloud kennt und nie jemand über das Konto
+// entschieden hat („Nicht mehr verwalten“ zählt als Entscheidung). Nicht am
+// Spiegel: dort ist die Datenbank nur lesbar.
+func (h *Handler) ncAutoSetupPending(ctx context.Context) bool {
+	return h.db != nil && !h.Mirror().On && h.driveAgentConfigured() &&
+		h.getUpdateSetting(ctx, keyNCAdminManaged, "") == "" &&
+		strings.TrimSpace(os.Getenv("PDH_NEXTCLOUD_USERNAME")) == "" && os.Getenv("PDH_NEXTCLOUD_PASSWORD") == ""
+}
+
+// ncAddressFrom: Adresse aus Nextcloud (overwrite.cli.url) nur übernehmen, wenn
+// sie für andere erreichbar ist – „http://localhost“ steht dort nach einer
+// Installation ohne Namen.
+func ncAddressFrom(raw string) string {
+	raw = strings.TrimRight(strings.TrimSpace(raw), "/")
+	u, err := url.Parse(raw)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return ""
+	}
+	if host := u.Hostname(); host == "localhost" || strings.HasPrefix(host, "127.") || host == "::1" {
+		return ""
+	}
+	return raw
+}
+
+// autoSetupNCServiceAccount: Ersteinrichtung ohne Zutun. Liegt Nextcloud auf
+// demselben Server, legt das PDH sein Dienstkonto selbst an, übernimmt die
+// Adresse aus Nextcloud und trägt alles in den Server-Einstellungen ein.
+func (h *Handler) autoSetupNCServiceAccount(ctx context.Context) {
+	user, pw := ncAdminDefaultUser, nextcloud.RandomPassword(32)
+	status, ncURL, err := h.applyNCServiceAccount(ctx, user, pw)
+	stamp := time.Now().Local().Format("02.01.2006 15:04")
+	if err != nil {
+		if strings.Contains(err.Error(), "nicht gefunden") { // keine Nextcloud auf diesem Server
+			componentLog("nextcloud").Debug().Err(err).Msg("ersteinrichtung: keine nextcloud auf diesem server")
+			return
+		}
+		componentLog("nextcloud").Warn().Err(err).Msg("ersteinrichtung: dienstkonto nicht angelegt")
+		_ = h.setUpdateSetting(ctx, keyNCAdminError, stamp+" – automatische Einrichtung: "+err.Error())
+		return
+	}
+	updates := map[string]string{"PDH_NEXTCLOUD_USERNAME": user, "PDH_NEXTCLOUD_PASSWORD": pw}
+	base := strings.TrimSpace(os.Getenv("PDH_NEXTCLOUD_BASEURL"))
+	if base == "" {
+		if base = ncAddressFrom(ncURL); base != "" {
+			updates["PDH_NEXTCLOUD_BASEURL"] = base
+		}
+	}
+	if _, err := h.applyEnvUpdates(ctx, updates, ""); err != nil {
+		componentLog("nextcloud").Error().Err(err).Msg("ersteinrichtung: im pdh nicht gespeichert")
+		_ = h.setUpdateSetting(ctx, keyNCAdminError, stamp+" – automatische Einrichtung: in Nextcloud angelegt, im PDH nicht gespeichert: "+err.Error())
+		return
+	}
+	_ = h.setUpdateSetting(ctx, keyNCAdminManaged, "1")
+	_ = h.setUpdateSetting(ctx, keyNCAdminError, "")
+	note := stamp + " – automatisch eingerichtet"
+	switch {
+	case base == "":
+		note += ", Nextcloud-Adresse fehlt noch"
+	default:
+		if isAdmin, cerr := nextcloud.NewUserClient(base, user, pw).CheckAdmin(ctx); cerr != nil {
+			note += ", Anmeldung geprüft: " + cerr.Error()
+		} else if !isAdmin {
+			note += ", angemeldet, aber nicht in der Gruppe admin"
+		} else {
+			note += ", angemeldet"
+		}
+	}
+	_ = h.setUpdateSetting(ctx, keyNCAdminChecked, note)
+	componentLog("nextcloud").Info().Str("konto", user).Str("status", status).Str("adresse", base).Msg("dienstkonto automatisch eingerichtet")
+	msg := "☁️ **Nextcloud gefunden und verbunden:** Das PDH hat sein Dienstkonto „" + user + "“ in Nextcloud angelegt und in den Server-Einstellungen eingetragen"
+	if base != "" {
+		msg += " (Adresse " + base + ")"
+	} else {
+		msg += ". Die Nextcloud-Adresse bitte noch unter Server-Einstellungen → Nextcloud eintragen"
+	}
+	h.notifyAdmins(ctx, msg+". Ablage und Deck übernehmen das Konto nach einem Neustart des PDH.")
 }
 
 // NextcloudAdminWeb: POST /admin/server-config/nextcloud/admin
@@ -110,7 +193,7 @@ func (h *Handler) NextcloudAdminWeb(w http.ResponseWriter, r *http.Request) {
 	// 1. in Nextcloud setzen (PDH hat Vorrang), 2. Anmeldung prüfen, 3. im PDH speichern
 	actx, cancel := context.WithTimeout(ctx, 3*time.Minute)
 	defer cancel()
-	status, err := h.applyNCServiceAccount(actx, user, pw)
+	status, _, err := h.applyNCServiceAccount(actx, user, pw)
 	if err != nil {
 		componentLog("nextcloud").Warn().Err(err).Str("konto", user).Msg("dienstkonto einrichten")
 		back("", fmt.Errorf("Nextcloud-Konto nicht eingerichtet: %w", err))
@@ -149,8 +232,14 @@ func (h *Handler) NextcloudAdminWeb(w http.ResponseWriter, r *http.Request) {
 	back(msg, nil)
 }
 
+// ncAutoSetupRetry: Abstand, solange die Ersteinrichtung offen ist – eine frisch
+// installierte Nextcloud ist so nach spätestens einer Viertelstunde verbunden.
+const ncAutoSetupRetry = 15 * time.Minute
+
 // StartNextcloudAdminSync: alle 6 Stunden prüfen, ob das Dienstkonto noch
 // hineinkommt; sonst das PDH-Passwort in Nextcloud wieder setzen (Vorrang PDH).
+// Solange noch kein Konto eingerichtet ist, alle 15 Minuten nachsehen, ob auf
+// dem Server eine Nextcloud liegt, und sie dann selbst verbinden.
 func (h *Handler) StartNextcloudAdminSync(ctx context.Context) {
 	if h.db == nil {
 		return
@@ -168,9 +257,17 @@ func (h *Handler) StartNextcloudAdminSync(ctx context.Context) {
 					continue
 				}
 				runCtx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
-				h.syncNCServiceAccount(runCtx)
+				next := 6 * time.Hour
+				if h.ncAutoSetupPending(runCtx) {
+					h.autoSetupNCServiceAccount(runCtx)
+					if h.ncAutoSetupPending(runCtx) {
+						next = ncAutoSetupRetry
+					}
+				} else {
+					h.syncNCServiceAccount(runCtx)
+				}
 				cancel()
-				timer.Reset(6 * time.Hour)
+				timer.Reset(next)
 			}
 		}
 	}()
@@ -196,7 +293,7 @@ func (h *Handler) syncNCServiceAccount(ctx context.Context) {
 		return
 	}
 	user := strings.TrimSpace(os.Getenv("PDH_NEXTCLOUD_USERNAME"))
-	if _, aerr := h.applyNCServiceAccount(ctx, user, os.Getenv("PDH_NEXTCLOUD_PASSWORD")); aerr != nil {
+	if _, _, aerr := h.applyNCServiceAccount(ctx, user, os.Getenv("PDH_NEXTCLOUD_PASSWORD")); aerr != nil {
 		componentLog("nextcloud").Error().Err(aerr).Str("konto", user).Msg("dienstkonto: passwort nicht durchgesetzt")
 		_ = h.setUpdateSetting(ctx, keyNCAdminChecked, stamp+" – Abgleich fehlgeschlagen: "+aerr.Error())
 		h.notifyAdmins(ctx, "⚠️ **Nextcloud-Dienstkonto „"+user+"“**: Anmeldung schlägt fehl, und das PDH konnte sein Passwort nicht wieder setzen ("+aerr.Error()+"). Server-Einstellungen → Nextcloud prüfen.")

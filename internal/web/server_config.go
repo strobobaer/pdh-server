@@ -509,7 +509,11 @@ func (h *Handler) applyEnvUpdates(ctx context.Context, updates map[string]string
 	h.reloadLiveConfig(ctx)
 	componentLog("konfiguration").Info().Strs("keys", keys).Str("user", userID).Msg("server-einstellungen geaendert")
 	if h.db != nil { // Sicherheits-Hinweis an alle Admins (ohne Werte)
-		h.notifyAdmins(ctx, "⚙️ **Server-Einstellungen geändert** von "+h.chatUserName(ctx, userID)+": "+strings.Join(keys, ", "))
+		who := "dem PDH selbst" // ohne Person: automatische Einrichtung
+		if userID != "" {
+			who = h.chatUserName(ctx, userID)
+		}
+		h.notifyAdmins(ctx, "⚙️ **Server-Einstellungen geändert** von "+who+": "+strings.Join(keys, ", "))
 	}
 	msg := fmt.Sprintf("Gespeichert (%d Wert(e)).", len(keys))
 	if len(restart) > 0 {

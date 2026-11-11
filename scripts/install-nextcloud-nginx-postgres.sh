@@ -30,6 +30,9 @@ VERBUND=""
 UID_WWW_DATA=""
 UID_PDH=""
 AKTIV_PHP=""
+# Apps, die eine neue Nextcloud gleich mitbekommt (Kalender, Kontakte, Deck für
+# den Abgleich mit dem PDH). Leer = keine.
+NEXTCLOUD_APPS="calendar contacts deck"
 INSTALL_LATEST_URL="https://download.nextcloud.com/server/releases/latest.tar.bz2"
 
 log() { printf '\n\033[1;34m==> %s\033[0m\n' "$*"; }
@@ -52,6 +55,8 @@ Optional:
   --install-dir PATH          Nextcloud install dir, default: /var/www/nextcloud
   --data-dir PATH             Nextcloud data dir, default: /var/ncdata
   --php-version VERSION       Override PHP version, e.g. 8.3
+  --apps "APP APP ..."        Apps installed right after a new install,
+                              default: "calendar contacts deck"; "" = none
   --purge-apache-mariadb      Stop and purge Apache/MariaDB packages first
   --restore                   Restore mode (pdh-restore.sh): files and database are
                               already back; install packages, tune PHP, adapt the
@@ -89,6 +94,7 @@ while [[ $# -gt 0 ]]; do
     --install-dir) NEXTCLOUD_DIR="${2:-}"; shift 2 ;;
     --data-dir) NEXTCLOUD_DATA_DIR="${2:-}"; shift 2 ;;
     --php-version) PHP_VERSION="${2:-}"; shift 2 ;;
+    --apps) NEXTCLOUD_APPS="${2:-}"; shift 2 ;;
     --purge-apache-mariadb) PURGE_APACHE_MARIADB="1"; shift ;;
     --restore) RESTORE="1"; shift ;;
     --verbund) VERBUND="${2:-}"; shift 2 ;;
@@ -99,6 +105,30 @@ while [[ $# -gt 0 ]]; do
     *) err "Unknown argument: $1"; usage; exit 2 ;;
   esac
 done
+
+# Install and enable the default apps of a new Nextcloud. A failing app (no
+# internet, not yet released for this Nextcloud version) is a warning, not an abort.
+# $1 = Nextcloud dir, $2 = app list separated by spaces
+install_default_apps() {
+  local dir="$1" app
+  for app in $2; do
+    if [[ ! "${app}" =~ ^[a-z0-9_]+$ ]]; then
+      warn "--apps: '${app}' is not an app id (lower-case letters, digits, _), skipped."
+      continue
+    fi
+    if nc_occ "${dir}" app:install "${app}" || nc_occ "${dir}" app:enable "${app}"; then
+      continue
+    fi
+    warn "App '${app}' could not be installed. Later: sudo -u www-data php ${dir}/occ app:install ${app}"
+  done
+}
+
+# occ of the Nextcloud in $1 as www-data.
+nc_occ() {
+  local dir="$1"
+  shift
+  sudo -u www-data php "${dir}/occ" "$@"
+}
 
 # PHP-FPM tuning (php.ini of every installed PHP version we know).
 tune_php_ini() {
@@ -590,6 +620,11 @@ sudo -u www-data php "${NEXTCLOUD_DIR}/occ" config:system:set default_phone_regi
 sudo -u www-data php "${NEXTCLOUD_DIR}/occ" config:system:set maintenance_window_start --type=integer --value=1
 sudo -u www-data php "${NEXTCLOUD_DIR}/occ" config:system:set memcache.local --value='\OC\Memcache\APCu'
 sudo -u www-data php "${NEXTCLOUD_DIR}/occ" background:cron
+
+if [[ -n "${NEXTCLOUD_APPS}" ]]; then
+  log "Installing default apps: ${NEXTCLOUD_APPS}"
+  install_default_apps "${NEXTCLOUD_DIR}" "${NEXTCLOUD_APPS}"
+fi
 else
 log "Restore: leaving maintenance mode"
 # Datenbank und Dateien stammen aus verschiedenen Zeitpunkten – Clients neu abgleichen lassen
@@ -617,6 +652,11 @@ printf 'Database:       %s / %s\n' "${NEXTCLOUD_DB_NAME}" "${NEXTCLOUD_DB_USER}"
 printf '\nNext step for HTTPS, once DNS points here:\n'
 printf '  sudo apt install -y certbot python3-certbot-nginx\n'
 printf '  sudo certbot --nginx -d %s\n' "${NEXTCLOUD_DOMAIN}"
+if [[ "${RESTORE}" != "1" ]]; then
+  printf '\nPDH on this server connects itself to this Nextcloud within 15 minutes:\n'
+  printf 'it creates its own admin account "pdhNCadmin" and enters address, user and\n'
+  printf 'password under Server-Einstellungen -> Nextcloud. Nothing to do by hand.\n'
+fi
 printf '\nCheck:\n'
 printf '  sudo -u www-data php %s/occ status\n' "${NEXTCLOUD_DIR}"
 printf '  sudo nginx -t\n'

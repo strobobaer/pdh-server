@@ -1405,12 +1405,14 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <tr><td><i class="ti ti-refresh"></i></td><td>wirkt erst nach einem <b>Neustart</b> – der Knopf <b>Server neu starten</b> erledigt das in wenigen Sekunden</td></tr>
   </table>
   <div class="hb-howto"><b><i class="ti ti-user-shield"></i> So richtest du den PDH-Administrator in Nextcloud ein</b>
+    <p><b>Meist ist nichts zu tun.</b> Liegt Nextcloud auf demselben Server und kennt das PDH noch keinen Nextcloud-Benutzer, richtet es das Konto <b>pdhNCadmin</b> selbst ein – wenige Minuten nach dem Start, danach alle 15 Minuten, bis es klappt. Es übernimmt dabei die Adresse, die in Nextcloud eingetragen ist, wenn oben noch keine steht, und meldet das allen Administratoren. Die Karte zeigt solange den Hinweis mit der Uhr. Danach einmal <b>Neu starten</b>. Ablage und Deck schaltet das PDH dabei nicht von selbst ein. Von Hand geht es so:</p>
     <ol class="hb-steps">
       <li>Server-Einstellungen → Reiter <b>Nextcloud</b>: oben die <b>Nextcloud-Adresse</b> eintragen und speichern.</li>
       <li>Karte <b>PDH-Administrator in Nextcloud</b> → Benutzername (Vorgabe <b>pdhNCadmin</b>) → <b>In Nextcloud einrichten</b>. Das PDH legt das Konto als Nextcloud-Admin an, erzeugt ein zufälliges Passwort und trägt Benutzer und Passwort selbst bei <b>Benutzer</b> / <b>App-Passwort</b> ein.</li>
       <li>Oben <b>Neu starten</b>, damit Ablage und Deck das Konto übernehmen.</li>
     </ol>
     Klappt das Einrichten nicht, steht der Grund rot in der Karte unter <b>Letzter Versuch</b>. Häufig hängt Nextcloud im Wartungsmodus (Meldung „503“): Dann auf dem Server <code>sudo -u www-data php /var/www/nextcloud/occ maintenance:mode --off</code> ausführen und erneut einrichten.
+    Der Eintrag <b>Nextcloud</b> in der Navigation (Gruppe „Hilfe &amp; Links“) öffnet die <b>Nextcloud-Adresse</b> aus diesem Reiter. Ist keine eingetragen, fehlt der Eintrag.
     Das Passwort kennt nur das PDH. Alle 6 Stunden prüft es die Anmeldung. Hat jemand das Passwort in Nextcloud geändert oder das Konto aus der Gruppe <b>admin</b> genommen, setzt das PDH sein Passwort und die Rechte wieder und meldet das allen Administratoren. <b>Neues Passwort</b> tauscht es jederzeit aus. <b>Nicht mehr verwalten</b> beendet den Abgleich, Konto und Passwort bleiben. Braucht den Update-Agenten und Nextcloud auf demselben Server. Gilt in Nextcloud Zwei-Faktor-Pflicht für Admins, das Konto davon ausnehmen.</div>
   <div class="hb-howto"><b><i class="ti ti-palette"></i> So bekommt Nextcloud den PDH-Look</b>
     <ol class="hb-steps">
@@ -1969,6 +1971,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
           <li><b>Neue Nextcloud:</b> <code>sudo bash scripts/install-nextcloud-nginx-postgres.sh --verbund aktiv-neu --domain cloud.firma.local --admin-pass … --db-pass … --data-dir /srv/nextcloud/data</code></li>
           <li><b>Vorhandene Nextcloud:</b> <code>sudo bash scripts/install-nextcloud-nginx-postgres.sh --verbund aktiv-vorhanden --install-dir /var/www/nextcloud --data-dir /srv/nextcloud/data</code> – prüft nur und ändert nichts.</li>
         </ul>
+        Eine neue Nextcloud bekommt gleich die Apps <b>Kalender</b>, <b>Kontakte</b> und <b>Deck</b> (andere Auswahl: <code>--apps "calendar deck"</code>, keine: <code>--apps ""</code>). Das PDH verbindet sich danach selbst mit ihr und legt sein Konto <b>pdhNCadmin</b> an (siehe <a href="#server">Server-Einstellungen</a>).
         Der <b>Name</b> bei <code>--domain</code> ist die Adresse, unter der alle Nextcloud erreichen: ein Name oder die mitwandernde Adresse, nie die feste Adresse eines Servers. Das Skript startet PostgreSQL nicht neu und schaltet dessen Autostart nicht ein.</li>
       <li>Am Ende zeigt das Skript den <b>vollständigen Befehl für den passiven Server</b> (mit den Nummern von <code>www-data</code> und <code>pdh</code> und der PHP-Fassung). Ihn kopieren.</li>
       <li><b>Am passiven Server</b>: Den Nextcloud-Datenordner anlegen bzw. das Laufwerk dafür einhängen, dann den kopierten Befehl im PDH-Ordner ausführen (<code>--verbund passiv …</code>). Er installiert nur Pakete, PHP und nginx und legt leere Ordner an – ohne Datenbankzugriff. PHP-FPM bleibt aus. Verschiedene Nummern oder PHP-Fassungen lehnt er mit dem passenden Befehl ab.</li>

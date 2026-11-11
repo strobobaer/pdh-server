@@ -142,6 +142,39 @@ func TestNextcloudMemcacheKlasse(t *testing.T) {
 	mustNotContain(t, "Skript", s, `\\OC\\Memcache`)
 }
 
+// TestNextcloudStandardApps: Eine neue Nextcloud bekommt Kalender, Kontakte und Deck;
+// eine App, die sich nicht installieren lässt, bricht die Installation nicht ab, und
+// nur gültige App-Kennungen erreichen occ. Wiederherstellung und passiver Server
+// installieren keine Apps.
+func TestNextcloudStandardApps(t *testing.T) {
+	s := scriptText(t, ncScript)
+	mustContain(t, "Skript", s, `NEXTCLOUD_APPS="calendar contacts deck"`, `--apps) NEXTCLOUD_APPS="${2:-}"; shift 2 ;;`,
+		`install_default_apps "${NEXTCLOUD_DIR}" "${NEXTCLOUD_APPS}"`, "pdhNCadmin")
+	i, j := strings.Index(s, "occ\" background:cron"), strings.Index(s, "maintenance:data-fingerprint")
+	k := strings.Index(s, `install_default_apps "${NEXTCLOUD_DIR}"`)
+	if i < 0 || j < 0 || k < i || k > j {
+		t.Error("die Apps gehören in den Zweig der Neuinstallation (nach background:cron, vor dem Wiederherstellen)")
+	}
+	mustNotContain(t, "verbund_passiv", scriptFuncOf(t, ncScript, "verbund_passiv"), "install_default_apps")
+
+	// occ durch eine Attrappe ersetzt: „deck“ scheitert bei install und enable.
+	stub := `warn() { echo "WARN $*"; }
+nc_occ() { echo "occ $2 $3"; [ "$3" != deck ]; }
+`
+	out, code := runShellFuncs(t, []string{"install_default_apps"}, stub+`install_default_apps /nc 'calendar deck Bad;rm contacts'`)
+	if code != 0 {
+		t.Errorf("Ausgang %d – eine fehlende App darf nicht abbrechen\n%s", code, out)
+	}
+	for _, want := range []string{"occ app:install calendar", "occ app:install deck", "occ app:enable deck", "WARN App 'deck'", "WARN --apps: 'Bad;rm'", "occ app:install contacts"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("Ausgabe ohne %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "occ app:enable calendar") || strings.Contains(out, "occ app:install Bad") {
+		t.Errorf("unerwarteter occ-Aufruf:\n%s", out)
+	}
+}
+
 // TestNextcloudVerbundPruefungen: Rolle, Kennungen und pg_hba werden geprüft.
 func TestNextcloudVerbundPruefungen(t *testing.T) {
 	f := scriptFuncOf(t, ncScript, "verbund_pruefen")

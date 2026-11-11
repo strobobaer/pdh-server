@@ -70,6 +70,55 @@ func TestBuildNavCustomLayout(t *testing.T) {
 	}
 }
 
+// Der Nextcloud-Eintrag führt auf die Adresse aus den Server-Einstellungen; ohne
+// (gültige) Adresse fehlt er – früher zeigte er fest auf eine fremde Nextcloud.
+func TestBuildNavNextcloudLink(t *testing.T) {
+	href := func() (string, bool) {
+		for _, g := range buildNav(&BaseData{Lang: "de"}, nil) {
+			for _, it := range g.Items {
+				if it.Key == "nextcloud" {
+					return it.Href, true
+				}
+			}
+		}
+		return "", false
+	}
+	t.Setenv("PDH_NEXTCLOUD_BASEURL", " https://nc.example/ ")
+	if h, ok := href(); !ok || h != "https://nc.example/" {
+		t.Errorf("Link %q sichtbar=%v, erwartet die eingetragene Adresse", h, ok)
+	}
+	for _, bad := range []string{"", "nc.example", "javascript:alert(1)", "ftp://nc.example"} {
+		t.Setenv("PDH_NEXTCLOUD_BASEURL", bad)
+		if h, ok := href(); ok {
+			t.Errorf("Adresse %q: Eintrag sichtbar mit %q", bad, h)
+		}
+	}
+	src, err := os.ReadFile("nav.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(src), "strobl-home.net") {
+		t.Error("nav.go enthält eine feste Nextcloud-Adresse")
+	}
+}
+
+// Die Adresse aus Nextcloud wird nur übernommen, wenn andere sie erreichen.
+func TestNCAddressFrom(t *testing.T) {
+	for in, want := range map[string]string{
+		"https://nc.example/":    "https://nc.example",
+		" http://10.10.0.15 ":    "http://10.10.0.15",
+		"http://localhost":       "",
+		"https://127.0.0.1:8436": "",
+		"http://[::1]":           "",
+		"nc.example":             "",
+		"":                       "",
+	} {
+		if got := ncAddressFrom(in); got != want {
+			t.Errorf("ncAddressFrom(%q) = %q, erwartet %q", in, got, want)
+		}
+	}
+}
+
 // Seiten muessen ihren Kopf ueber baseData bauen – sonst fehlen Navigation,
 // Rechte und Sprache (die Stoerungs-Detailseite hatte eine leere linke Leiste).
 func TestPagesUseBaseData(t *testing.T) {
