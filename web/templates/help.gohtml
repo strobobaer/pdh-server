@@ -694,11 +694,19 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <p>Das <b>Anlagenterminal</b> ist ein Bildschirm an der Anlage (Wandterminal), an dem jede Person ohne Anmeldung sieht, was an dieser Anlage und ihren Unteranlagen gerade los ist, und etwas melden kann. Es ist für den Einsatz mit Touch gedacht: große Flächen, wenig Text, kein PDH-Menü.</p>
   <div class="hb-howto"><b><i class="ti ti-plug-connected"></i> So richtest du ein Terminal ein</b>
     <ol class="hb-steps">
-      <li>Einen <b>Systembenutzer</b> für das Terminal anlegen (<b>Benutzer</b>, Haken „Systemnutzer“).</li>
-      <li>In den Stammdaten dieses Benutzers den <b>Terminal-Standort</b> wählen – das ist die Anlage, für die das Terminal gilt. Das Terminal zeigt diese Anlage und alle ihre Unteranlagen, sonst nichts.</li>
-      <li>Am Bildschirm im Browser <code>https://&lt;PDH-Adresse&gt;/terminal</code> öffnen, als dieser Systembenutzer anmelden und den Browser in den Vollbildmodus schalten.</li>
+      <li>Einen <b>Systembenutzer</b> für das Terminal anlegen (<b>Benutzer</b>, Haken „Systemnutzer“) und in seinen Stammdaten den <b>Terminal-Standort</b> wählen – das ist die Anlage, für die das Terminal gilt. Das Terminal zeigt diese Anlage und alle ihre Unteranlagen, sonst nichts.</li>
+      <li>Auf der Seite dieses Benutzers in der Karte <b>Gekoppelte Geräte</b> auf <b>Gerät koppeln</b> klicken. PDH zeigt einen Code im Format <code>XXXX-XXXX</code>. Er ist <b>10 Minuten</b> gültig und nur einmal verwendbar; ein neuer Code ersetzt den noch offenen.</li>
+      <li>Am PDH-Terminal (Raspberry Pi) die Admin-Seite öffnen: die obere rechte Ecke des Bildschirms 5 Sekunden lang drücken, dann das Admin-Passwort eingeben. Auf der Seite <b>PDH</b> die PDH-Adresse und den Code eintragen und auf <b>Koppeln</b> klicken.</li>
+      <li>Das Terminal meldet sich ab jetzt bei jedem Start selbst bei <code>/terminal</code> an. Dafür musst du dort nichts mehr anmelden.</li>
     </ol>
-    Ein eigenes Gerät für das Terminal (das Produkt „PDH-Terminal“) ist noch nicht verfügbar; bis dahin geht es in jedem Browser. Die Seite ist nur für Systembenutzer gedacht – andere Benutzer sehen den Hinweis, dass die Seite für Terminal-Benutzer bestimmt ist. Ist dem Benutzer keine Anlage zugeordnet oder die Anlage ausgeblendet, steht auf dem Terminal „Diesem Terminal ist keine Anlage zugeordnet“.</div>
+    Den Code nur am Terminal eingeben. Öffnet jemand die Kopplungsadresse in einem normalen Browser, ersetzt die Kopplung dessen bisherige Anmeldung. Die Seite ist nur für Systembenutzer gedacht – andere Benutzer sehen den Hinweis, dass die Seite für Terminal-Benutzer bestimmt ist. Ist dem Benutzer keine Anlage zugeordnet oder die Anlage ausgeblendet, steht auf dem Terminal „Diesem Terminal ist keine Anlage zugeordnet“.</div>
+  <h3>Gerät sperren</h3>
+  <p>Ist ein Terminal verloren gegangen oder soll es nicht mehr angemeldet sein, sperrst du es in der Karte <b>Gekoppelte Geräte</b> auf der Seite des Systembenutzers. Dort steht jedes gekoppelte Gerät mit <b>aktiv</b> oder <b>gesperrt</b> und dem Zeitpunkt, zu dem es zuletzt aktiv war. Mit <b>Sperren</b> und einer Bestätigung wird das Gerät gesperrt.</p>
+  <ul>
+    <li>Die Sperre wirkt <b>innerhalb von 30 Sekunden</b>; danach ist das Terminal abgemeldet.</li>
+    <li>Soll dasselbe Terminal wieder angemeldet werden, klicke <b>Gerät koppeln</b>, und gib den neuen Code am Terminal ein (wie oben).</li>
+    <li>Eine Wartung von PDH meldet gekoppelte Geräte nicht ab.</li>
+  </ul>
   <h3>Was am Terminal passiert</h3>
   <ul>
     <li><b>Bildschirmschoner</b> – Anlagenname und Uhrzeit. Eine Berührung öffnet die Störungsinfo.</li>
