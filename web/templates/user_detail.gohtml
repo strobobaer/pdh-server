@@ -83,6 +83,14 @@
       {{end}}
     </div>
   </div>
+  {{if .CanDevices}}
+  <div class="card">
+    <div class="card-title"><span><i class="ti ti-device-desktop"></i> Gekoppelte Geräte</span>
+      <form method="post" action="/users/{{$u.ID}}/terminal-code" style="margin:0"><button class="btn btn-small" type="submit"><i class="ti ti-link"></i> Gerät koppeln</button></form>
+    </div>
+    <p class="rec-sub">Noch kein Gerät gekoppelt.</p>
+  </div>
+  {{end}}
   {{if $m.Notes}}<div class="card"><div class="card-title"><span><i class="ti ti-notes"></i> Notizen</span></div><div class="rec-v" style="font-size:13px">{{$m.Notes}}</div></div>{{end}}
   {{if .CanMailSettings}}
   <div class="card">
