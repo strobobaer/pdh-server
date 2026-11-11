@@ -218,17 +218,16 @@ func (h *Handler) TerminalPairAPI(w http.ResponseWriter, r *http.Request) {
 // (nicht gesperrt, Benutzer aktiv und Terminal-Benutzer). Unbekannte Geräte
 // sind nicht aktiv, ohne Fehler.
 func (h *Handler) deviceByID(ctx context.Context, id string) (userID string, active bool, err error) {
-	var revoked, userActive, system bool
-	err = h.db.QueryRow(ctx, `SELECT d.user_id::text, d.revoked_at IS NOT NULL, u.active, u.is_system_user
+	err = h.db.QueryRow(ctx, `SELECT d.user_id::text, (`+deviceActiveSQL+`)
 		FROM terminal_devices d JOIN users u ON u.id = d.user_id
-		WHERE d.id = $1::uuid`, id).Scan(&userID, &revoked, &userActive, &system)
+		WHERE d.id = $1::uuid`, id).Scan(&userID, &active)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", false, nil
 	}
 	if err != nil {
 		return "", false, err
 	}
-	return userID, !revoked && userActive && system, nil
+	return userID, active, nil
 }
 
 // TerminalDeviceAPI: GET /api/terminal/v1/device mit Bearer-Geheimnis.
@@ -258,7 +257,7 @@ func (h *Handler) TerminalDeviceAPI(w http.ResponseWriter, r *http.Request) {
 	var devID, name, first, last, username string
 	err := h.db.QueryRow(ctx, `SELECT d.id::text, d.name, u.first_name, u.last_name, u.username
 		FROM terminal_devices d JOIN users u ON u.id = d.user_id
-		WHERE d.secret_sha256 = $1 AND d.revoked_at IS NULL AND u.active AND u.is_system_user`,
+		WHERE d.secret_sha256 = $1 AND `+deviceActiveSQL,
 		hashDeviceSecret(secret)).Scan(&devID, &name, &first, &last, &username)
 	if errors.Is(err, pgx.ErrNoRows) {
 		deny(true)

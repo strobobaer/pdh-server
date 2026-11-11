@@ -1,14 +1,22 @@
 package web
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"net/http"
+	"path/filepath"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5"
+
+	"pdh/internal/core/users"
 )
 
 // Gerätekopplung des Anlagenterminals (Migration 157): Ein Raspberry Pi wird
@@ -142,4 +150,142 @@ func (h *Handler) TerminalPairCodeWeb(w http.ResponseWriter, r *http.Request) {
 	componentLog("terminal").Info().Str("user", id).Str("von", getUser(r).ID).Msg("kopplungscode erzeugt")
 	d.Code = formatPairingCode(code)
 	h.render(w, "terminal_pair_code", d)
+}
+
+// deviceCookieMaxAge: Lebensdauer der Geräte-Cookies (400 Tage, Maximum der Browser).
+const deviceCookieMaxAge = 34560000
+
+// deviceActiveSQL ist die einzige Definition, wann eine Kopplung gilt: Gerät
+// nicht gesperrt, Benutzer aktiv und Terminal-Benutzer. Erwartet die Aliase
+// d (terminal_devices) und u (users).
+const deviceActiveSQL = `d.revoked_at IS NULL AND u.active AND u.is_system_user`
+
+// deviceCache hält das Ergebnis der Sperrprüfung höchstens ttl lang, damit
+// nicht jede Anfrage eines Geräts die Datenbank fragt.
+type deviceCache struct {
+	mu  sync.Mutex
+	ttl time.Duration
+	now func() time.Time
+	m   map[string]deviceCacheEntry
+}
+
+type deviceCacheEntry struct {
+	userID string
+	active bool
+	at     time.Time
+}
+
+func newDeviceCache(ttl time.Duration) *deviceCache {
+	return &deviceCache{ttl: ttl, now: time.Now, m: map[string]deviceCacheEntry{}}
+}
+
+// terminalDevices: Sperr-Zwischenspeicher der Gerätesitzungen (höchstens 30 s alt).
+var terminalDevices = newDeviceCache(30 * time.Second)
+
+// active: Gerät id gilt und gehört zum Benutzer userID. Ein Ladefehler zählt
+// als inaktiv und wird nicht gespeichert.
+func (c *deviceCache) active(ctx context.Context, id, userID string, load func(ctx context.Context, id string) (string, bool, error)) bool {
+	now := c.now()
+	c.mu.Lock()
+	e, ok := c.m[id]
+	c.mu.Unlock()
+	if !ok || now.Sub(e.at) >= c.ttl {
+		uid, act, err := load(ctx, id)
+		if err != nil {
+			componentLog("terminal").Error().Err(err).Str("device", id).Msg("sperrprüfung fehlgeschlagen")
+			return false
+		}
+		e = deviceCacheEntry{userID: uid, active: act, at: now}
+		c.mu.Lock()
+		if len(c.m) >= 1000 { // Speicher begrenzen
+			c.m = map[string]deviceCacheEntry{}
+		}
+		c.m[id] = e
+		c.mu.Unlock()
+	}
+	return e.active && e.userID == userID
+}
+
+// forget verwirft den gespeicherten Zustand (beim Sperren).
+func (c *deviceCache) forget(id string) {
+	c.mu.Lock()
+	delete(c.m, id)
+	c.mu.Unlock()
+}
+
+type terminalDeviceErrorPage struct {
+	Message string
+}
+
+const msgDeviceLoginDenied = "Gerät nicht gekoppelt oder gesperrt. Bitte in der Admin-Seite des Terminals neu koppeln."
+
+// renderDeviceError zeigt die große Fehlerseite des Terminals (kein PDH-Layout).
+func (h *Handler) renderDeviceError(w http.ResponseWriter, status int, msg string) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(status)
+	t, err := h.tmpl.Clone()
+	if err == nil {
+		t = bindLang(t, "de")
+		path := filepath.Join(filepath.Dir(terminalTemplatePath), "terminal_device_error.gohtml")
+		if _, err = t.ParseFiles(path); err == nil {
+			err = t.ExecuteTemplate(w, "terminal_device_error.gohtml", terminalDeviceErrorPage{Message: msg})
+		}
+	}
+	if err != nil {
+		componentLog("terminal").Error().Err(err).Msg("fehlerseite")
+		_, _ = w.Write([]byte(msg))
+	}
+}
+
+// TerminalDeviceLogin: POST /terminal/geraet (Formularfeld secret). Meldet das
+// Gerät als Terminal-Benutzer an und setzt die 400-Tage-Cookies.
+func (h *Handler) TerminalDeviceLogin(w http.ResponseWriter, r *http.Request) {
+	key := limiterKey(clientIP(r))
+	if terminalFailLimit.blocked(key, time.Now()) {
+		h.renderDeviceError(w, http.StatusTooManyRequests, "Zu viele Fehlversuche. Bitte in einigen Minuten erneut versuchen.")
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, terminalAPIMaxBody)
+	_ = r.ParseForm()
+	secret := strings.TrimSpace(r.PostFormValue("secret"))
+	ctx := r.Context()
+	deny := func() {
+		terminalFailLimit.fail(key, time.Now())
+		authLog(r, false, "terminal-gerät", "", "", "", "Geheimnis unbekannt, Gerät gesperrt oder Benutzer ungültig")
+		h.renderDeviceError(w, http.StatusForbidden, msgDeviceLoginDenied)
+	}
+	if secret == "" {
+		deny()
+		return
+	}
+	var devID, userID string
+	err := h.db.QueryRow(ctx, `SELECT d.id::text, d.user_id::text
+		FROM terminal_devices d JOIN users u ON u.id = d.user_id
+		WHERE d.secret_sha256 = $1 AND `+deviceActiveSQL, hashDeviceSecret(secret)).Scan(&devID, &userID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		deny()
+		return
+	}
+	var u *users.User
+	if err == nil {
+		u, err = h.userByID(ctx, userID)
+	}
+	if err != nil || u == nil {
+		componentLog("terminal").Error().Err(err).Msg("geräteanmeldung fehlgeschlagen")
+		h.renderDeviceError(w, http.StatusInternalServerError, "Anmeldung derzeit nicht möglich. Bitte später erneut versuchen.")
+		return
+	}
+	token, err := h.users.IssueToken(u, 10*365*24*time.Hour, map[string]interface{}{"device": devID})
+	if err != nil {
+		componentLog("terminal").Error().Err(err).Msg("geräte-token fehlgeschlagen")
+		h.renderDeviceError(w, http.StatusInternalServerError, "Anmeldung derzeit nicht möglich. Bitte später erneut versuchen.")
+		return
+	}
+	_, _ = h.db.Exec(ctx, `UPDATE terminal_devices SET last_seen_at = NOW() WHERE id = $1::uuid`, devID)
+	http.SetCookie(w, &http.Cookie{Name: "pdh_token", Value: token, Path: "/", MaxAge: deviceCookieMaxAge, SameSite: http.SameSiteLaxMode})
+	http.SetCookie(w, &http.Cookie{Name: "pdh_user_id", Value: u.ID, Path: "/", MaxAge: deviceCookieMaxAge, SameSite: http.SameSiteLaxMode})
+	http.SetCookie(w, &http.Cookie{Name: "pdh_return_token", Value: "", Path: "/", MaxAge: -1})
+	authLog(r, true, "terminal-gerät", u.Username, u.ID, strings.TrimSpace(u.FirstName+" "+u.LastName), "")
+	http.Redirect(w, r, "/terminal", http.StatusSeeOther)
 }
