@@ -22,6 +22,10 @@ im Kapitel „Versionen & Updates“ an.
 - Befehle an ein Terminal stehen unter „Letzte Zugriffe“ des HMI mit dem Namen des Terminals.
 - Ist das Terminal gerade nicht bereit, zeigt PDH den Grund, den das Terminal nennt (z. B. Wartung, Sicherung oder HMI vom Terminal aus nicht erreichbar).
 - Handbuch-Kapitel „Kiosk-Terminals“, auch zum PDH-Terminalmodus (Web-Kachel mit angemeldetem Systembenutzer am Terminal).
+- Terminal koppeln: Am Systembenutzer erzeugt „Gerät koppeln“ in der Karte „Gekoppelte Geräte“ einen Code (XXXX-XXXX, 10 Minuten gültig, nur einmal verwendbar). Am PDH-Terminal gibst du ihn auf der Admin-Seite unter „PDH“ ein; danach meldet sich das Terminal bei jedem Start selbst an.
+- Gekoppelte Geräte: Die Karte am Systembenutzer zeigt jedes Gerät mit Status „aktiv“ oder „gesperrt“ und dem letzten Kontakt; „Sperren“ sperrt ein Gerät nach Rückfrage.
+- Ein neuer Kopplungscode ersetzt den noch offenen Code des Benutzers.
+- Die Wartungssperre meldet gekoppelte Terminals nicht ab; ein gesperrtes oder entkoppeltes Terminal sieht eine Fehlerseite statt einer Weiterleitung.
 
 ### Geändert
 - Anlagenterminal: Störungen und Tickets zeigt das Terminal nur, wenn der Terminal-Benutzer „Störungen ansehen“ bzw. „Tickets ansehen“ für die Abteilung der Anlage hat; sonst erscheint an der Stelle ein Hinweis, ohne beide Rechte „Keine Berechtigung“.
@@ -39,6 +43,12 @@ im Kapitel „Versionen & Updates“ an.
 - Ändert sich Adresse oder Fingerabdruck eines Terminals, verwirft PDH den gespeicherten Schlüssel und verlangt einen neuen – Schlüssel und VNC-Passwörter lassen sich so nicht auf ein anderes Gerät umlenken.
 - An ein Terminal geht immer nur ein Befehl gleichzeitig; Befehle für archivierte Anlagen werden abgewiesen.
 - PDH vertraut einem Terminal nur, wenn der Fingerabdruck seines Zertifikatsschlüssels stimmt; Schlüssel und VNC-Passwort werden verschlüsselt gespeichert, nie angezeigt und nie protokolliert.
+- Terminal-Kopplung: Kopplungscodes und Geräte-Geheimnisse werden nur als SHA-256-Hash gespeichert, nie im Klartext.
+- Nach 5 Fehlversuchen innerhalb von 5 Minuten je Quelle sind Kopplung und Geräteanmeldung für 5 Minuten gesperrt.
+- Ein gesperrtes Gerät wird innerhalb von 30 Sekunden abgemeldet.
+- Geräte-Zugänge werden von der JSON-Schnittstelle `/api/v1` abgewiesen.
+- Die Geräte-Anmeldung liegt als HttpOnly-Cookie vor; Seiten-Skripte können sie nicht lesen.
+- Gesperrte Geräte können Stammdaten nicht mehr zur Löschung vormerken.
 
 ## [0.77.8] – 2026-10-30
 

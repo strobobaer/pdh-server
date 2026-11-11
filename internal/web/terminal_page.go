@@ -73,6 +73,7 @@ func (p terminalPage) FaultsMore() int  { return max(0, p.Info.FaultsTotal-len(p
 func (p terminalPage) TicketsMore() int { return max(0, p.Info.TicketsTotal-len(p.Info.Tickets)) }
 
 func (h *Handler) terminalRoutes(r chi.Router) {
+	r.Post("/terminal/geraet", h.TerminalDeviceLogin) // Geräteanmeldung (terminal_devices.go), ohne Sitzung erreichbar
 	r.Get("/terminal", h.TerminalSchoner)
 	r.Get("/terminal/info", h.TerminalInfoPage)
 	r.Get("/terminal/neu", h.TerminalNeuPage)

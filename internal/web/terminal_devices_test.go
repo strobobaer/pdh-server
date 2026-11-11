@@ -1,0 +1,245 @@
+package web
+
+import (
+	"context"
+	"encoding/base64"
+	"errors"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/golang-jwt/jwt/v5"
+)
+
+func TestPairingCodeFormat(t *testing.T) {
+	seen := map[string]bool{}
+	for i := 0; i < 200; i++ {
+		c, err := newPairingCode()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(c) != 8 {
+			t.Fatalf("Länge %d: %q", len(c), c)
+		}
+		for _, r := range c {
+			if !strings.ContainsRune(pairingAlphabet, r) {
+				t.Fatalf("Zeichen %q nicht im Alphabet: %q", r, c)
+			}
+		}
+		if seen[c] {
+			t.Fatalf("doppelter Code %q", c)
+		}
+		seen[c] = true
+	}
+}
+
+func TestNormalizePairingCode(t *testing.T) {
+	for _, in := range []string{"abcd-efgh", " ABCD EFGH ", "ABCDEFGH", "ab cd-ef gh"} {
+		if got := normalizePairingCode(in); got != "ABCDEFGH" {
+			t.Errorf("%q -> %q", in, got)
+		}
+	}
+}
+
+func TestFormatPairingCode(t *testing.T) {
+	if got := formatPairingCode("ABCDEFGH"); got != "ABCD-EFGH" {
+		t.Errorf("got %q", got)
+	}
+}
+
+func TestDeviceSecretFormat(t *testing.T) {
+	s, err := newDeviceSecret()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(s, "pdht_") {
+		t.Fatalf("Präfix fehlt: %q", s)
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(strings.TrimPrefix(s, "pdht_"))
+	if err != nil || len(raw) != 32 {
+		t.Fatalf("Base64url-Teil: %d Bytes, %v", len(raw), err)
+	}
+}
+
+func TestHashesDomainSeparated(t *testing.T) {
+	if hashPairingCode("x") == hashDeviceSecret("x") {
+		t.Error("Hashes nicht domänengetrennt")
+	}
+	if len(hashPairingCode("x")) != 64 {
+		t.Error("kein Hex-SHA-256")
+	}
+}
+
+func TestUserDetailDevicesCard(t *testing.T) {
+	tmpl := loadTestTemplates(t)
+	d := UserDetailData{CanDevices: true, User: UserView{ID: "u1", IsSystemUser: true}}
+	if out := renderPage(t, tmpl, "user_detail", d); !strings.Contains(out, `action="/users/u1/terminal-code"`) || !strings.Contains(out, "Noch kein Gerät gekoppelt.") {
+		t.Error("Karte „Gekoppelte Geräte“ mit Knopf fehlt")
+	}
+	d.CanDevices = false
+	if out := renderPage(t, tmpl, "user_detail", d); strings.Contains(out, "terminal-code") {
+		t.Error("Knopf ohne Recht sichtbar")
+	}
+}
+
+func TestDeviceCacheTTL(t *testing.T) {
+	now := time.Unix(1000, 0)
+	c := newDeviceCache(30 * time.Second)
+	c.now = func() time.Time { return now }
+	calls := 0
+	load := func(ctx context.Context, id string) (string, bool, error) {
+		calls++
+		return "u1", true, nil
+	}
+	ctx := context.Background()
+	if !c.active(ctx, "d1", "u1", load) || calls != 1 {
+		t.Fatalf("1. Aufruf: calls=%d", calls)
+	}
+	now = now.Add(29 * time.Second)
+	if !c.active(ctx, "d1", "u1", load) || calls != 1 {
+		t.Fatalf("innerhalb 30 s darf nicht neu geladen werden: calls=%d", calls)
+	}
+	now = now.Add(2 * time.Second) // 31 s
+	if !c.active(ctx, "d1", "u1", load) || calls != 2 {
+		t.Fatalf("nach 31 s muss neu geladen werden: calls=%d", calls)
+	}
+	c.forget("d1")
+	if !c.active(ctx, "d1", "u1", load) || calls != 3 {
+		t.Fatalf("forget muss Neuladen erzwingen: calls=%d", calls)
+	}
+	// falsche Benutzerzuordnung → inaktiv (aus dem Speicher beantwortet)
+	if c.active(ctx, "d1", "anderer", load) {
+		t.Fatal("anderer Benutzer darf nicht aktiv sein")
+	}
+	// gesperrt → inaktiv
+	c.forget("d2")
+	if c.active(ctx, "d2", "u1", func(context.Context, string) (string, bool, error) { return "u1", false, nil }) {
+		t.Fatal("gesperrtes Gerät aktiv")
+	}
+	// Fehler → inaktiv und nicht gespeichert
+	c.forget("d3")
+	errCalls := 0
+	bad := func(context.Context, string) (string, bool, error) {
+		errCalls++
+		return "", false, errors.New("db weg")
+	}
+	if c.active(ctx, "d3", "u1", bad) || c.active(ctx, "d3", "u1", bad) || errCalls != 2 {
+		t.Fatalf("Ladefehler: inaktiv und nicht gespeichert, errCalls=%d", errCalls)
+	}
+}
+
+func TestSessionTokenDeviceClaim(t *testing.T) {
+	h := &Handler{jwtSecret: "geheim"}
+	mk := func(extra jwt.MapClaims) *http.Request {
+		claims := jwt.MapClaims{"sub": "u1", "iat": time.Now().Unix(), "exp": time.Now().Add(time.Hour).Unix()}
+		for k, v := range extra {
+			claims[k] = v
+		}
+		s, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte("geheim"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		r := httptest.NewRequest("GET", "/", nil)
+		r.AddCookie(&http.Cookie{Name: "pdh_token", Value: s})
+		return r
+	}
+	sub, iat, dev := h.sessionToken(mk(jwt.MapClaims{"device": "dev-1"}))
+	if sub != "u1" || iat == 0 || dev != "dev-1" {
+		t.Errorf("mit device: %q %d %q", sub, iat, dev)
+	}
+	sub, iat, dev = h.sessionToken(mk(nil))
+	if sub != "u1" || iat == 0 || dev != "" {
+		t.Errorf("ohne device: %q %d %q", sub, iat, dev)
+	}
+	if s, i := h.sessionClaims(mk(jwt.MapClaims{"device": "dev-1"})); s != "u1" || i == 0 {
+		t.Errorf("sessionClaims: %q %d", s, i)
+	}
+	// zweckgebundenes Token bleibt abgelehnt
+	if sub, _, dev := h.sessionToken(mk(jwt.MapClaims{"scope": "x", "device": "d"})); sub != "" || dev != "" {
+		t.Errorf("scope-Token: %q %q", sub, dev)
+	}
+	raw, _ := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{"sub": "u1", "device": "dev-9"}).SignedString([]byte("geheim"))
+	if got := h.tokenDevice(raw); got != "dev-9" {
+		t.Errorf("tokenDevice: %q", got)
+	}
+	if got := h.tokenDevice("müll"); got != "" {
+		t.Errorf("tokenDevice Müll: %q", got)
+	}
+}
+
+// primeDevice füllt den Sperr-Zwischenspeicher, damit kein Datenbankzugriff nötig ist.
+func primeDevice(t *testing.T, dev, user string, active bool) {
+	t.Helper()
+	old := terminalDevices
+	terminalDevices = newDeviceCache(time.Hour)
+	terminalDevices.m[dev] = deviceCacheEntry{userID: user, active: active, at: time.Now()}
+	t.Cleanup(func() { terminalDevices = old })
+}
+
+func setCookiesCleared(rec *httptest.ResponseRecorder) bool {
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == "pdh_token" && c.MaxAge < 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// I1: Die Wartungssperre meldet gekoppelte Terminals nicht ab (Cookie bleibt),
+// normale Sitzungen schon; die Sperrseite schickt das Terminal danach auf /terminal.
+func TestMaintLockKeepsDeviceSession(t *testing.T) {
+	primeDevice(t, "dev-1", "u1", true)
+	h, _ := maintTestHandler(t, lockedView())
+	h.tmpl = loadTestTemplates(t)
+	hd, _ := maintPlain(h)
+	devTok := boardTestToken(t, jwt.MapClaims{"sub": "u1", "device": "dev-1", "iat": time.Now().Add(-time.Hour).Unix(), "exp": time.Now().Add(time.Hour).Unix()})
+	rec := maintDo(hd, maintReq{method: "GET", path: "/terminal", tok: devTok, hdr: htmlAccept})
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("Status %d", rec.Code)
+	}
+	if setCookiesCleared(rec) {
+		t.Error("Geräte-Cookie wurde während der Sperre gelöscht")
+	}
+	if !strings.Contains(rec.Body.String(), "device =  true ") {
+		t.Error("Sperrseite kennt das Terminal nicht (Device)")
+	}
+	normal := maintToken(t, "u1", time.Now())
+	rec = maintDo(hd, maintReq{method: "GET", path: "/tickets", tok: normal, hdr: htmlAccept})
+	if !setCookiesCleared(rec) {
+		t.Error("normale Sitzung wird nicht abgemeldet")
+	}
+	if !strings.Contains(rec.Body.String(), "device =  false ") {
+		t.Error("normale Sitzung: Device müsste false sein")
+	}
+}
+
+// I2: Ein gesperrtes Geräte-Token liefert keinen Bearbeiter mehr.
+func TestRequestActorDeviceToken(t *testing.T) {
+	h := &Handler{jwtSecret: "geheim"}
+	tok, _ := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{"sub": "u1", "device": "dev-1", "exp": time.Now().Add(time.Hour).Unix()}).SignedString([]byte("geheim"))
+	req := func() *http.Request {
+		r := httptest.NewRequest("DELETE", "/api/v1/inventory/x", nil)
+		r.AddCookie(&http.Cookie{Name: "pdh_token", Value: tok})
+		return r
+	}
+	primeDevice(t, "dev-1", "u1", true)
+	if got := h.requestActor(req()); got != "u1" {
+		t.Errorf("aktives Gerät: %q", got)
+	}
+	primeDevice(t, "dev-1", "u1", false)
+	if got := h.requestActor(req()); got != "" {
+		t.Errorf("gesperrtes Gerät: %q", got)
+	}
+	primeDevice(t, "dev-1", "anderer", true)
+	if got := h.requestActor(req()); got != "" {
+		t.Errorf("Gerät eines anderen Benutzers: %q", got)
+	}
+	plain, _ := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{"sub": "u2", "exp": time.Now().Add(time.Hour).Unix()}).SignedString([]byte("geheim"))
+	r := httptest.NewRequest("DELETE", "/x", nil)
+	r.AddCookie(&http.Cookie{Name: "pdh_token", Value: plain})
+	if got := h.requestActor(r); got != "u2" {
+		t.Errorf("normale Sitzung: %q", got)
+	}
+}

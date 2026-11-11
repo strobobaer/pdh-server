@@ -1,0 +1,21 @@
+{{template "base" .}}
+{{define "content"}}
+{{/* Kopplungscode für ein Anlagenterminal (terminal_devices.go). Der Code wird
+     nur hier angezeigt und nie in einer URL übertragen. */}}
+<div style="max-width:560px;margin:0 auto">
+  <h1 style="font-size:19px;font-weight:600;margin-bottom:14px"><i class="ti ti-device-desktop-plus"></i> Gerät koppeln</h1>
+  {{if .Error}}
+  <div class="card">
+    <p style="color:var(--red);margin-bottom:10px"><i class="ti ti-alert-circle"></i> {{.Error}}</p>
+    <a class="btn btn-small" href="/users/{{.UserID}}"><i class="ti ti-arrow-left"></i> Zurück</a>
+  </div>
+  {{else}}
+  <div class="card" style="text-align:center">
+    <p class="rec-sub" style="margin-bottom:10px">Kopplungscode für das Terminal von <b>{{.UserName}}</b></p>
+    <div style="font-family:monospace;font-size:44px;font-weight:700;letter-spacing:4px;margin:14px 0" data-pair-code>{{.Code}}</div>
+    <p class="rec-sub" style="margin-bottom:14px">Der Code ist {{.Minutes}} Minuten gültig und nur einmal verwendbar. Am Gerät eingeben, um es zu koppeln. Ein neuer Code ersetzt einen noch offenen.</p>
+    <a class="btn btn-small" href="/users/{{.UserID}}"><i class="ti ti-arrow-left"></i> Zurück</a>
+  </div>
+  {{end}}
+</div>
+{{end}}
