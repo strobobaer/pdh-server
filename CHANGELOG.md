@@ -25,9 +25,16 @@ im Kapitel „Versionen & Updates“ an.
 - Handbuch: neuer Abschnitt „Datei-Spiegelung und Nextcloud im Verbund“ mit Einschalten, Bestätigen, Nextcloud, Papierkorb und Fehlerbildern.
 - Nextcloud verbindet sich von selbst: Liegt Nextcloud auf demselben Server, legt das PDH sein Konto „pdhNCadmin“ ohne Zutun an und trägt Adresse, Benutzer und Passwort in den Server-Einstellungen ein; alle Administratoren bekommen eine Nachricht.
 - Das Nextcloud-Installationsskript richtet bei einer neuen Nextcloud gleich Kalender, Kontakte und Deck ein (`--apps` wählt andere oder keine).
+- Abgleich mit Nextcloud, das PDH hat Vorrang: Jeder aktive Benutzer bekommt ein Nextcloud-Konto mit Namen, E-Mail und Sprache aus dem PDH; Rollen, Abteilungen und Gruppen werden zu Nextcloud-Gruppen, deaktivierte Personen dort gesperrt. Einschalten unter Server-Einstellungen → Nextcloud.
+- Ist eine Person einem Microsoft-Konto zugeordnet und die Microsoft-Anmeldung für Nextcloud eingerichtet, bekommt ihr Nextcloud-Konto die Microsoft-E-Mail als Benutzer-ID – die Anmeldung klappt dann ohne eigenes Passwort.
+- Der Abgleich richtet in Nextcloud die Apps ein, die das PDH braucht (Kalender, Kontakte, je nach Einstellung Deck, externer Speicher, Microsoft-Anmeldung); weitere Apps installieren Administratoren in Nextcloud wie gewohnt.
+- Cloudflare im PDH: Mit einem API-Token lassen sich unter Server-Einstellungen → Cloudflare-Tunnel DNS-Einträge, der Proxy je Eintrag, die Verschlüsselung der Domain und die Ziele im Tunnel pflegen; für PDH und Nextcloud zeigt eine Tabelle, was fehlt, und richtet es auf Knopfdruck ein.
+- Benutzerkarte: Haken „Administrator in Nextcloud“ und Knopf „Neues Startpasswort“ für das Nextcloud-Konto.
+- Netzlaufwerke in Nextcloud: Mit dem Haken „in Nextcloud zeigen“ erscheint ein Laufwerk dort im Ordner „PDH-Laufwerke“; Laufwerke, die das PDH selbst benutzt, sind nur lesbar.
 - Haben `pdh` (und mit „Nextcloud mitnehmen“ `www-data`) auf den beiden Servern verschiedene Benutzer- oder Gruppennummern, hält die Spiegelung die betroffenen Ordner mit einem Alarm an – auch schon beim ersten Abgleich nach dem Einschalten; Karte und `pdh-ha mirror status` nennen beide Nummern.
 
 ### Geändert
+- Die Navigation zeigt Tickets, Störungen, Wartung, Aufgaben, Kalender, Ersatzteile, Lager, IT-Assets und Hersteller & Lieferanten nur noch, wenn die Person in dem Bereich wenigstens ein Recht hat.
 - „Rollen tauschen“ und die Prüfung „alles grün“ vor einem Update warten, bis der Erstabgleich der Dateien fertig ist.
 - Ein gescheiterter Tausch wird in zwei Schritten zurückgenommen: erst die Rolle, eine Sekunde später Datenbank, Dienste und mitwandernde Adresse.
 - Scheitert die Rücknahme, bleibt die Automatik an; der Server versucht es jede Sekunde neu, bleibt solange nur lesend ohne Dienste und zeigt solange die Warnung „Rücknahme hängt“.
@@ -48,6 +55,8 @@ im Kapitel „Versionen & Updates“ an.
 - Die Datei-Spiegelung erkennt den Datenordner neuerer Nextcloud-Fassungen (ab 30, Kennungsdatei `.ncdata`) und meldet ihn nicht mehr als leer.
 
 ### Sicherheit
+- Vier neue Rechte (Kategorie „System & Sicherheit“): „Nextcloud-Abgleich einstellen und starten“, „Netzlaufwerke in Nextcloud nutzen“, „Netzlaufwerke in Nextcloud: auch PDH-Daten bearbeiten“ und „Cloudflare verwalten (DNS, Proxy, Tunnel)“. Mit dem Update bekommen sie die Rollen, die überall die Server-Einstellungen pflegen dürfen.
+- Administrator in Nextcloud ist nur noch, wer im PDH Administrator ist und das Kennzeichen „Administrator in Nextcloud“ trägt; das Kennzeichen setzen nur Administratoren. Ohne eingeschalteten Abgleich ändert sich nichts.
 - Neue Rechte „Datei-Spiegelung einstellen“ und „Datei-Spiegelung: Löschen am Partner freigeben und Papierkorb leeren“; Rollen, die „Server-Einstellungen (.env) bearbeiten & Server neu starten“ überall hatten, bekommen beide automatisch.
 - Die Dateien laufen durch den verschlüsselten Kanal des Verbunds (Port 7480) mit den Zertifikaten der Server; der Zeuge bekommt keine Dateien.
 - Der Empfänger nimmt nur Dateien an, wenn er passiv ist und sie vom aktuell aktiven Server kommen, setzt Zielpfad und Papierkorb selbst und lässt nur eine feste Liste von rsync-Optionen zu.

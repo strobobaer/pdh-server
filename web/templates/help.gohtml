@@ -89,6 +89,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <li><b>Oben</b> findest du die <b>Uhr</b> mit Wochentag und Datum, daneben kleine Symbolknöpfe in Gruppen: <i class="ti ti-share"></i> Im Chat teilen, <i class="ti ti-messages"></i> Chat und <i class="ti ti-brain"></i> Copilot, dann <i class="ti ti-device-desktop"></i> Hell/Dunkel und die Sprache, ganz rechts dein Konto. Was ein Knopf tut, zeigt ein kurzer Hinweis, wenn du mit der Maus darauf zeigst. Uhr und Benutzermenü sind immer sichtbar. Ist der Bildschirm zu schmal (Smartphone, große Schrift), blendet PDH die übrigen Knöpfe der Reihe nach aus. „Im Chat teilen“, „Hell/Dunkel“ und „Suche, Hilfe &amp; mehr“ findest du dann im Benutzermenü, Chat und Copilot als Reiter in der rechten Seitenleiste. Ein Klick auf die Uhr öffnet die <b>Zeiterfassung</b>; fährst du mit der Maus darüber, siehst du auch die Kalenderwoche.</li>
     <li><b>Rechts</b> liegen senkrechte Reiter (Chat, Suche, Copilot, Aktivität, Hilfe). Ein Klick klappt die Leiste auf, ein zweiter wieder zu.</li>
     <li><b>Wer ist online?</b> Der Reiter <b>Aktivität</b> zeigt oben alle, die PDH gerade geöffnet haben (grüner Punkt), darunter aufklappbar die übrigen mit „zuletzt gesehen“ (z. B. „vor 20 Min.“, „gestern 14:10“). Die Liste aktualisiert sich alle 30 Sekunden; Terminals (Systembenutzer) erscheinen nicht.</li>
+    <li><b>Nur was du darfst:</b> Die Navigation zeigt einen Bereich nur, wenn du dort wenigstens ein Recht hast. Ohne Recht für Tickets, Störungen, Wartung, Aufgaben, Kalender, Ersatzteile und Lager, IT-Assets oder Hersteller &amp; Lieferanten fehlt der Eintrag ganz. Fehlt dir einer, fragt dein Administrator unter <b>Rollen &amp; Rechte</b> nach.</li>
     <li><b>Breite ändern:</b> Mit der Maus an den Innenrand der Navigation oder der aufgeklappten rechten Seitenleiste fahren – der Rand färbt sich, der Mauszeiger wird zu <b>↔</b>. Dann ziehen. Dein Browser merkt sich die Breite. <b>Doppelklick</b> auf den Rand stellt die Standardbreite wieder her. Mit der Tastatur: Rand mit Tab anwählen, dann Pfeiltasten. Auf Smartphone und Tablet entfällt das, dort fahren die Leisten über den Inhalt.</li>
     <li>Der <b>Hilfe-Reiter</b> rechts zeigt dir immer das passende Kapitel zur Seite, auf der du gerade bist.</li>
   </ul>
@@ -1366,6 +1367,14 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <tr><td><b><i class="ti ti-database-export"></i> Datensicherung</b></td><td>Neue Sicherungen werden im Ordner <code>PDH-Sicherungen</code> des Laufwerks gespeichert. Ältere Sicherungen bleiben im lokalen Ordner.</td></tr>
     <tr><td><b><i class="ti ti-files"></i> Dokumentenablage</b></td><td>Jeder neue Anhang (Foto, Dokument) wird zusätzlich nach Vorgang sortiert abgelegt: <code>PDH-Dokumente/Tickets/Tür klemmt (a1b2c3d4)/Foto.jpg</code>. <b>Vorhandene Dokumente übertragen</b> legt einmalig alle bisherigen Anhänge ab. PDH behält seine eigene Kopie.</td></tr>
   </table>
+  <div class="hb-howto" id="hb-drives-nextcloud"><b><i class="ti ti-cloud"></i> So zeigst du ein Laufwerk in Nextcloud</b>
+    <ol class="hb-steps">
+      <li>Der <a href="#hb-nc-sync">Abgleich mit Nextcloud</a> ist eingeschaltet, Nextcloud liegt auf demselben Server.</li>
+      <li>Beim Laufwerk <b>in Nextcloud zeigen</b> anhaken und speichern.</li>
+      <li>Unter <b>Rollen &amp; Rechte</b> (Kategorie „System &amp; Sicherheit“) festlegen, wer es sieht: <b>Netzlaufwerke in Nextcloud nutzen</b>. Wer auch die Daten des PDH ändern darf, bekommt zusätzlich <b>Netzlaufwerke in Nextcloud: auch PDH-Daten bearbeiten</b>.</li>
+      <li>Nach etwa 20 Sekunden steht das Laufwerk in Nextcloud unter <b>Dateien → PDH-Laufwerke</b>.</li>
+    </ol>
+    Ein Laufwerk mit einer Aufgabe (Datenspeicher, Import &amp; Export, Datensicherung, Dokumentenablage) ist in Nextcloud <b>nur lesbar</b>, damit niemand versehentlich Daten des PDH ändert. Mit dem zweiten Recht ist es beschreibbar. Laufwerke ohne Aufgabe sind für alle mit dem ersten Recht beschreibbar, außer sie sind „schreibgeschützt“. Ohne eines der Rechte sieht man in Nextcloud kein Laufwerk – das Sicherungslaufwerk enthält Zugangsdaten. Name und Pfad dürfen nur Buchstaben, Ziffern, Punkt, Binde- und Unterstrich enthalten (der Name auch Leerzeichen und Klammern). Bei einem lokalen Pfad muss der Webserver-Benutzer <code>www-data</code> selbst darauf zugreifen dürfen.</div>
   <p>Datenspeicher, Datensicherung und Dokumentenablage gibt es je einmal. Ein schreibgeschütztes Laufwerk eignet sich nur für Import &amp; Export. Eingebunden wird über den Update-Agenten: bei Docker-Installationen ist das ab dieser Version eingerichtet (nach dem Update einmal <code>docker compose up -d</code>); bei Installationen ohne Docker <code>sudo ./install-update-agent.sh</code> erneut ausführen, damit die Mount-Werkzeuge installiert werden.</p>
   {{template "hb-shots" (dict "Ref" (index $s "drives") "Can" $can)}}
 </section>
@@ -1414,6 +1423,23 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     Klappt das Einrichten nicht, steht der Grund rot in der Karte unter <b>Letzter Versuch</b>. Häufig hängt Nextcloud im Wartungsmodus (Meldung „503“): Dann auf dem Server <code>sudo -u www-data php /var/www/nextcloud/occ maintenance:mode --off</code> ausführen und erneut einrichten.
     Der Eintrag <b>Nextcloud</b> in der Navigation (Gruppe „Hilfe &amp; Links“) öffnet die <b>Nextcloud-Adresse</b> aus diesem Reiter. Ist keine eingetragen, fehlt der Eintrag.
     Das Passwort kennt nur das PDH. Alle 6 Stunden prüft es die Anmeldung. Hat jemand das Passwort in Nextcloud geändert oder das Konto aus der Gruppe <b>admin</b> genommen, setzt das PDH sein Passwort und die Rechte wieder und meldet das allen Administratoren. <b>Neues Passwort</b> tauscht es jederzeit aus. <b>Nicht mehr verwalten</b> beendet den Abgleich, Konto und Passwort bleiben. Braucht den Update-Agenten und Nextcloud auf demselben Server. Gilt in Nextcloud Zwei-Faktor-Pflicht für Admins, das Konto davon ausnehmen.</div>
+  <div class="hb-howto" id="hb-nc-sync"><b><i class="ti ti-arrows-exchange"></i> So gleichst du Benutzer, Rollen und Gruppen mit Nextcloud ab</b>
+    <p>Das PDH hat Vorrang. Es überträgt seine Benutzer nach Nextcloud und überschreibt dort, was abweicht.</p>
+    <ol class="hb-steps">
+      <li>Server-Einstellungen → Reiter <b>Nextcloud</b> → Karte <b>Abgleich mit Nextcloud</b> → <b>Einschalten</b>. Hat das PDH eine neue Nextcloud selbst verbunden, ist der Abgleich schon an.</li>
+      <li>Der erste Lauf beginnt nach wenigen Sekunden. Danach läuft er alle 30 Minuten und etwa 20 Sekunden nach jeder Änderung an Benutzern, Gruppen, Abteilungen, Rollen oder Netzlaufwerken. <b>Jetzt abgleichen</b> startet ihn sofort.</li>
+      <li>Die Karte zeigt den letzten Lauf: Personen, angelegte, geänderte und gesperrte Konten, rot die Fehler, gelb die Hinweise.</li>
+    </ol>
+    <ul>
+      <li><b>Konten:</b> Jeder aktive Benutzer bekommt ein Nextcloud-Konto (Terminal-Konten nicht). Name, E-Mail und Sprache kommen aus dem PDH. Wer im PDH deaktiviert wird, ist in Nextcloud gesperrt – gelöscht wird nie.</li>
+      <li><b>Microsoft:</b> Ist die Person einem Microsoft-Konto zugeordnet und „Mit Microsoft anmelden“ für Nextcloud eingerichtet, ist ihre Microsoft-E-Mail die Nextcloud-Benutzer-ID. Sie meldet sich dann ohne eigenes Passwort an.</li>
+      <li><b>Passwort:</b> Sonst setzt du in der Benutzerkarte mit <b>Neues Startpasswort</b> ein Passwort. Es wird nur einmal angezeigt.</li>
+      <li><b>Gruppen:</b> In Nextcloud entstehen die Gruppen „PDH“ (alle), „PDH-Rolle: …“, „Abteilung: …“ und „Gruppe: …“. Wer dort Mitglied ist, bestimmt allein das PDH. Benennst du im PDH um, heißt die Gruppe in Nextcloud genauso; löschst du sie, verschwindet sie dort. Eigene Nextcloud-Gruppen bleiben unberührt.</li>
+      <li><b>Administratoren:</b> In Nextcloud ist Administrator, wer im PDH die Rolle Administrator hat <b>und</b> in der Benutzerkarte den Haken <b>Administrator in Nextcloud</b> trägt. Den Haken setzen nur Administratoren. Ohne Haken nimmt der Abgleich der Person die Administrator-Rechte in Nextcloud. Das Dienstkonto des PDH bleibt immer Administrator.</li>
+      <li><b>Apps:</b> Liegt Nextcloud auf demselben Server, richtet der Abgleich die Apps ein, die das PDH braucht: Kalender und Kontakte immer, Deck mit eingeschaltetem Deck-Abgleich, „External storage“ mit einem freigegebenen Netzlaufwerk, „OpenID Connect“ mit der Microsoft-Anmeldung. Er schaltet nie eine App ab. Administratoren installieren in Nextcloud wie gewohnt weitere Apps.</li>
+      <li><b>Vorhandene Konten:</b> Gibt es in Nextcloud schon ein Konto mit demselben Namen, wird es übernommen. Ist es dort Administrator und fehlt der Haken, bleibt es unberührt, und die Karte nennt es gelb.</li>
+    </ul>
+    <b>Ausschalten</b> beendet den Abgleich. Konten, Gruppen und Laufwerke in Nextcloud bleiben dann, wie sie sind. Einschalten und starten darf, wer das Recht <b>Nextcloud-Abgleich einstellen und starten</b> hat. Am Spiegel und während der Wartung läuft kein Abgleich.</div>
   <div class="hb-howto"><b><i class="ti ti-palette"></i> So bekommt Nextcloud den PDH-Look</b>
     <ol class="hb-steps">
       <li>Server-Einstellungen → Reiter <b>Nextcloud</b>. Unten zeigt die Karte <b>Nextcloud im PDH-Look</b> die Vorschau: Name, Firmenfarbe und Logo aus dem Reiter <b>Erscheinungsbild</b>.</li>
@@ -1460,6 +1486,17 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li><b>Speichern</b> – wirkt sofort.</li>
     </ol>
     Bei „auto“ übersetzt DeepL alle Sprachen, die es kann; Mazedonisch, Kroatisch, Serbisch, Bosnisch, Albanisch, Persisch und Vietnamesisch übernimmt der Copilot. Fällt DeepL aus, springt der Copilot ein. Jeder Text wird je Sprache nur einmal übersetzt und für alle Benutzer zwischengespeichert; ein halbes Jahr nicht mehr gebrauchte Übersetzungen werden gelöscht.</div>
+  <div class="hb-howto" id="hb-cloudflare-api"><b><i class="ti ti-world-cog"></i> So pflegst du DNS, Proxy und Tunnel-Ziele bei Cloudflare im PDH</b>
+    <ol class="hb-steps">
+      <li>Im Cloudflare-Dashboard oben rechts <b>Mein Profil → API-Tokens → Token erstellen</b>. Rechte: <b>Zone lesen</b>, <b>DNS bearbeiten</b>, <b>Zonen-Einstellungen bearbeiten</b> (Zone) und <b>Cloudflare Tunnel bearbeiten</b> (Konto). Auf die eigene Domain beschränken. Den Wert einmal kopieren.</li>
+      <li>Server-Einstellungen → Reiter <b>Cloudflare-Tunnel</b>: <b>API-Token</b> und <b>Domain</b> (z. B. <code>firma.de</code>) eintragen und speichern. Der Token wird verschlüsselt gespeichert.</li>
+      <li>In der Karte <b>DNS, Proxy und Tunnel-Ziele</b> auf <b>Stand von Cloudflare laden</b>.</li>
+      <li><b>PDH und Nextcloud über den Tunnel:</b> Die Tabelle zeigt für den Hostnamen des PDH und die Nextcloud-Adresse, ob das Ziel im Tunnel und der DNS-Name stimmen. <b>Einrichten</b> legt beides an. Zeigt ein DNS-Eintrag woanders hin, fragt das PDH vorher nach.</li>
+      <li><b>Ziele im Tunnel:</b> Öffentlichen Namen und Ziel am Server eintragen (z. B. <code>http://localhost:80</code>) → <b>Ziel speichern</b>. Das PDH legt den DNS-Namen gleich mit an. Bei einem selbst ausgestellten Zertifikat am Ziel „Zertifikat des Ziels nicht prüfen“ anhaken.</li>
+      <li><b>Verschlüsselung der Domain:</b> Zwischen Cloudflare und Server wählen (empfohlen: Full oder Full strict) und „immer HTTPS“. Das gilt für die ganze Domain.</li>
+      <li><b>DNS-Einträge:</b> Einträge der Arten A, AAAA, CNAME und TXT anlegen und löschen. Ein Klick auf <b>an</b>/<b>aus</b> in der Spalte Proxy schaltet um, ob der Name über Cloudflare läuft oder direkt auf den Server zeigt. Namen, die auf den Tunnel zeigen, laufen immer über den Proxy.</li>
+    </ol>
+    Das PDH ändert bei Cloudflare nichts von selbst. Jede Änderung geht als Nachricht an alle Administratoren und steht im Protokoll. Die Karte sieht, wer das Recht <b>Cloudflare verwalten (DNS, Proxy, Tunnel)</b> hat. Meldet die Karte „lehnt den API-Token ab“, fehlt dem Token ein Recht oder die Domain. Die Ziele im Tunnel brauchen zusätzlich den Tunnel-Token. Zertifikate über Cloudflare stellt das PDH noch nicht aus.</div>
   <div class="hb-howto"><b><i class="ti ti-cloud-lock"></i> So machst du das PDH über einen Cloudflare-Tunnel erreichbar</b>
     Der Tunnel macht das PDH aus dem Internet erreichbar, ohne dass in der Firewall ein Port geöffnet wird. Du brauchst ein Cloudflare-Konto mit eurer Domain.
     <ol class="hb-steps">
@@ -1635,6 +1672,14 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li><b>„Automatische Wartung abbrechen“</b>: Wer es hat, bleibt während der Sperre angemeldet und darf auf dem Wartungsbildschirm abbrechen und zurücksetzen. Das Recht umfasst auch das <b>Absagen</b> der Wartungsfenster-Nachfrage und das <b>Abbrechen</b> eines Updates vor der Sperre. <b>Durchführen</b> braucht dasselbe Recht wie „Update installieren“ (Rollen &amp; Berechtigungen verwalten). Beim Update bekamen es alle Rollen mit „Rollen &amp; Berechtigungen verwalten“ und alle Bereichsadministratoren.</li>
     </ul>
     Als Ausgangspunkt zählt nur ein Recht, das überall gilt – eines, das auf eine Abteilung begrenzt ist, reicht nicht. Beide Rechte lassen sich wie alle anderen vergeben, aber nur an Personen, die sie selbst haben.</div>
+  <div class="hb-howto"><b><i class="ti ti-cloud"></i> Rechte für Nextcloud</b>
+    <ul>
+      <li><b>„Nextcloud-Abgleich einstellen und starten“</b> (<code>system.nextcloud_sync</code>): den Abgleich von Benutzern, Rollen, Gruppen und Laufwerken ein- und ausschalten und sofort starten (<a href="#hb-nc-sync">mehr</a>).</li>
+      <li><b>„Netzlaufwerke in Nextcloud nutzen“</b> (<code>system.nextcloud_drives</code>): die freigegebenen Netzlaufwerke in Nextcloud sehen. Laufwerke mit einer PDH-Aufgabe sind dabei nur lesbar (<a href="#hb-drives-nextcloud">mehr</a>).</li>
+      <li><b>„Netzlaufwerke in Nextcloud: auch PDH-Daten bearbeiten“</b> (<code>system.nextcloud_drives_write</code>): diese Laufwerke in Nextcloud auch beschreiben.</li>
+      <li><b>„Cloudflare verwalten (DNS, Proxy, Tunnel)“</b> (<code>system.cloudflare</code>): DNS-Einträge, Proxy, Verschlüsselung der Domain und Ziele im Tunnel bei Cloudflare ändern (<a href="#hb-cloudflare-api">mehr</a>).</li>
+    </ul>
+    Alle vier stehen in der Kategorie „System &amp; Sicherheit“. Mit dem Update bekommen sie die Rollen, die überall die Server-Einstellungen pflegen dürfen. Das Kennzeichen <b>Administrator in Nextcloud</b> in der Benutzerkarte setzen nur Administratoren.</div>
   <div class="hb-howto"><b><i class="ti ti-copy"></i> Rechte für die Datei-Spiegelung</b>
     <ul>
       <li><b>„Datei-Spiegelung einstellen“</b> (<code>system.file_mirror</code>, Kategorie „System &amp; Sicherheit“): Spiegelung und „Nextcloud mitnehmen“ ein- und ausschalten, Werte ändern und <b>Jetzt abgleichen</b> (<a href="#hb-dateispiegelung">mehr</a>).</li>

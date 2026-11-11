@@ -122,6 +122,11 @@ func (h *Handler) autoSetupNCServiceAccount(ctx context.Context) {
 	}
 	_ = h.setUpdateSetting(ctx, keyNCAdminManaged, "1")
 	_ = h.setUpdateSetting(ctx, keyNCAdminError, "")
+	// frisch verbunden: der Abgleich Benutzer/Gruppen läuft von Anfang an (noch nie entschieden = an)
+	if h.getUpdateSetting(ctx, keyNCSync, "") == "" && base != "" {
+		_ = h.setUpdateSetting(ctx, keyNCSync, "1")
+		ncSyncSoon()
+	}
 	note := stamp + " – automatisch eingerichtet"
 	switch {
 	case base == "":

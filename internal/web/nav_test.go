@@ -138,3 +138,26 @@ func TestPagesUseBaseData(t *testing.T) {
 		}
 	}
 }
+
+// Menüeinträge erscheinen nur, wenn die Person in dem Bereich wenigstens ein Recht hat –
+// „bearbeiten“ ohne „ansehen“ genügt, kein Recht blendet den Eintrag aus.
+func TestBuildNavHidesWithoutRights(t *testing.T) {
+	have := map[string]bool{"tickets.edit": true, "inventory.view": true}
+	b := &BaseData{Lang: "de", navCan: func(p string) bool { return have[p] }}
+	got := navKeys(buildNav(b, nil))
+	for _, want := range []string{"tickets", "inventory", "storage", "dashboard", "help"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("%s fehlt: %s", want, got)
+		}
+	}
+	for _, bad := range []string{"faults", "maintenance", "tasks", "calendar", "it,", "directory"} {
+		if strings.Contains(got, bad) {
+			t.Errorf("%s ohne Recht sichtbar: %s", bad, got)
+		}
+	}
+	// auch in einer eigenen Anordnung bleibt der Eintrag weg
+	layout, _ := sanitizeNavLayout([]navLayoutGroup{{Key: "top", Items: []string{"faults", "tickets"}}})
+	if got := navKeys(buildNav(b, layout)); !strings.HasPrefix(got, "top():tickets") {
+		t.Errorf("eigene Anordnung: %s", got)
+	}
+}

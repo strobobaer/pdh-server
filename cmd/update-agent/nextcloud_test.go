@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -104,6 +105,99 @@ func TestNCServiceScript(t *testing.T) {
 	}
 	if bash, err := exec.LookPath("bash"); err == nil {
 		f := filepath.Join(t.TempDir(), "svc.sh")
+		_ = os.WriteFile(f, []byte(s), 0o644)
+		if out, err := exec.Command(bash, "-n", f).CombinedOutput(); err != nil {
+			t.Errorf("Syntaxfehler %v %s", err, out)
+		}
+	}
+}
+
+// Netzlaufwerke in Nextcloud: nur Einträge unter /PDH-Laufwerke/ gehören dem PDH,
+// passende bleiben, alles andere dort wird ersetzt; fremde Speicher bleiben.
+func TestNCDrivePlan(t *testing.T) {
+	local := `\OC\Files\Storage\Local`
+	have := []ncExtMount{
+		{ID: 1, Point: "/Fremd", Storage: local, Config: map[string]any{"datadir": "/srv/fremd"}},
+		{ID: 2, Point: "/PDH-Laufwerke/NAS", Storage: local, Config: map[string]any{"datadir": "/mnt/pdh/nas"}, Options: map[string]any{"readonly": true}, Groups: []string{"pdh-laufwerke"}},
+		{ID: 3, Point: "/PDH-Laufwerke/NAS", Storage: local, Config: map[string]any{"datadir": "/mnt/pdh/nas"}, Options: map[string]any{"readonly": true}, Groups: []string{"pdh-laufwerke-schreiben"}},
+		{ID: 4, Point: "/PDH-Laufwerke/Alt", Storage: local, Config: map[string]any{"datadir": "/mnt/pdh/alt"}, Groups: []string{"pdh-laufwerke"}},
+		{ID: 5, Point: "/PDH-Laufwerke/Offen", Storage: local, Config: map[string]any{"datadir": "/mnt/pdh/offen"}},
+	}
+	want := []ncDriveMount{
+		{Name: "NAS", Path: "/mnt/pdh/nas", ReadOnly: true, Groups: []string{"pdh-laufwerke"}},
+		{Name: "NAS", Path: "/mnt/pdh/nas", ReadOnly: false, Groups: []string{"pdh-laufwerke-schreiben"}},
+		{Name: "Offen", Path: "/mnt/pdh/offen", Groups: []string{"pdh-laufwerke-schreiben", "pdh-laufwerke"}},
+	}
+	del, add := ncDrivePlan(have, want)
+	if fmt.Sprint(del) != "[3 4 5]" {
+		t.Errorf("zu löschen: %v", del)
+	}
+	if len(add) != 2 || add[0].ReadOnly || add[0].Name != "NAS" || add[1].Name != "Offen" {
+		t.Errorf("anzulegen: %+v", add)
+	}
+	if del, add := ncDrivePlan(have[:2], want[:1]); len(del)+len(add) != 0 {
+		t.Errorf("passender Stand wird angefasst: %v %v", del, add)
+	}
+
+	for name, bad := range map[string]ncDrivesRequest{
+		"name":       {Dir: "/var/www/nextcloud", Mounts: []ncDriveMount{{Name: "a'b", Path: "/mnt/x", Groups: []string{"g"}}}},
+		"pfad":       {Dir: "/var/www/nextcloud", Mounts: []ncDriveMount{{Name: "A", Path: "/mnt/x y", Groups: []string{"g"}}}},
+		"punkte":     {Dir: "/var/www/nextcloud", Mounts: []ncDriveMount{{Name: "A", Path: "/mnt/../etc", Groups: []string{"g"}}}},
+		"ohneGruppe": {Dir: "/var/www/nextcloud", Mounts: []ncDriveMount{{Name: "A", Path: "/mnt/x"}}},
+		"gruppe":     {Dir: "/var/www/nextcloud", Mounts: []ncDriveMount{{Name: "A", Path: "/mnt/x", Groups: []string{"g'; id"}}}},
+		"dir":        {Dir: "/var/www/nc; rm -rf /"},
+	} {
+		if err := validateNCDrives(&bad); err == nil {
+			t.Errorf("%s: ungültige Anfrage akzeptiert", name)
+		}
+	}
+	req := ncDrivesRequest{Dir: "/var/www/nextcloud", Mounts: want}
+	if err := validateNCDrives(&req); err != nil {
+		t.Fatal(err)
+	}
+	s := ncDrivesApplyScript(req.Dir, del, add)
+	// Erst Platzhalter und Gruppen, dann der echte Ordner – nie ein Eintrag für alle.
+	i, j, k := strings.Index(s, "datadir=/nonexistent-pdh"), strings.Index(s, "--add-group='pdh-laufwerke-schreiben'"), strings.Index(s, "datadir '/mnt/pdh/nas'")
+	if i < 0 || j < i || k < j {
+		t.Errorf("Reihenfolge Platzhalter → Gruppen → Ordner stimmt nicht:\n%s", s)
+	}
+	for _, want := range []string{"files_external:delete 3 --yes", "'/PDH-Laufwerke/Offen'", "readonly false", "--add-group='pdh-laufwerke' --add-group='pdh-laufwerke-schreiben'"} {
+		if !strings.Contains(s, want) {
+			t.Errorf("Skript enthält %q nicht:\n%s", want, s)
+		}
+	}
+	if bash, err := exec.LookPath("bash"); err == nil {
+		for n, src := range map[string]string{"apply": s, "list": ncDrivesListScript(req.Dir, true), "list0": ncDrivesListScript(req.Dir, false)} {
+			f := filepath.Join(t.TempDir(), n+".sh")
+			_ = os.WriteFile(f, []byte(src), 0o644)
+			if out, err := exec.Command(bash, "-n", f).CombinedOutput(); err != nil {
+				t.Errorf("%s: Syntaxfehler %v %s", n, err, out)
+			}
+		}
+	}
+}
+
+// Benötigte Apps: einschalten oder installieren, nie abbrechen, nur gültige Kennungen.
+func TestNCAppsScript(t *testing.T) {
+	s, err := ncAppsScript(ncAppsRequest{Dir: "/var/www/nextcloud", Apps: []string{"calendar", "files_external"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"occ app:enable 'calendar'", "occ app:install 'files_external'", `echo "APP calendar ok"`, `echo "APP files_external fehlt"`} {
+		if !strings.Contains(s, want) {
+			t.Errorf("Skript enthält %q nicht", want)
+		}
+	}
+	if strings.Contains(s, "app:disable") || strings.Contains(s, "app:remove") {
+		t.Error("das Skript darf keine App abschalten oder entfernen")
+	}
+	for _, bad := range []ncAppsRequest{{Dir: "/var/www/nextcloud", Apps: []string{"a'; id"}}, {Dir: "/var/www/nextcloud", Apps: []string{"Deck"}}, {Dir: "rel", Apps: []string{"deck"}}} {
+		if _, err := ncAppsScript(bad); err == nil {
+			t.Errorf("%+v akzeptiert", bad)
+		}
+	}
+	if bash, err := exec.LookPath("bash"); err == nil {
+		f := filepath.Join(t.TempDir(), "apps.sh")
 		_ = os.WriteFile(f, []byte(s), 0o644)
 		if out, err := exec.Command(bash, "-n", f).CombinedOutput(); err != nil {
 			t.Errorf("Syntaxfehler %v %s", err, out)

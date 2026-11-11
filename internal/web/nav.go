@@ -38,6 +38,23 @@ type navDef struct {
 
 func always(*BaseData) bool { return true }
 
+// needs: Eintrag nur zeigen, wenn die Person in dem Bereich wenigstens eines dieser
+// Rechte hat (das Bereichsadministrator-Recht zählt von selbst mit). Ohne
+// Rechteprüfung, z. B. im Test, immer.
+func needs(perms ...string) func(*BaseData) bool {
+	return func(b *BaseData) bool {
+		if b.navCan == nil {
+			return true
+		}
+		for _, p := range perms {
+			if b.navCan(p) {
+				return true
+			}
+		}
+		return false
+	}
+}
+
 // navDefs: alle Eintraege in Vorgabe-Reihenfolge.
 var navDefs = []navDef{
 	{navItem{"dashboard", "/", "ti-dashboard", "Dashboard", "dashboard", false}, navTopKey, always},
@@ -46,23 +63,23 @@ var navDefs = []navDef{
 	{navItem{"assignments", "/assignments", "ti-inbox", "Zuweisung", "assignments", false}, navTopKey, func(b *BaseData) bool { return b.IsBroker || b.CanManageRoles }},
 
 	{navItem{"chat", "/chat", "ti-messages", "Chat", "chat", false}, "work", func(b *BaseData) bool { return b.CanChat }},
-	{navItem{"tickets", "/tickets", "ti-ticket", "Tickets", "tickets", false}, "work", always},
-	{navItem{"faults", "/faults", "ti-alert-triangle", "Störungen", "faults", false}, "work", always},
-	{navItem{"maintenance", "/maintenance", "ti-tool", "Wartung", "maintenance", false}, "work", always},
-	{navItem{"tasks", "/tasks", "ti-list-check", "Aufgaben", "tasks", false}, "work", always},
+	{navItem{"tickets", "/tickets", "ti-ticket", "Tickets", "tickets", false}, "work", needs("tickets.view", "tickets.edit", "tickets.resolve")},
+	{navItem{"faults", "/faults", "ti-alert-triangle", "Störungen", "faults", false}, "work", needs("faults.view", "faults.edit", "faults.resolve")},
+	{navItem{"maintenance", "/maintenance", "ti-tool", "Wartung", "maintenance", false}, "work", needs("maintenance.view", "maintenance.edit", "maintenance.complete")},
+	{navItem{"tasks", "/tasks", "ti-list-check", "Aufgaben", "tasks", false}, "work", needs("tasks.view", "tasks.edit")},
 	{navItem{"projects", "/projects", "ti-timeline", "Projekte", "projects", false}, "work", always},
 	{navItem{"kvp", "/kvp", "ti-bulb", "KVP", "kvp", false}, "work", always},
 	{navItem{"time", "/time", "ti-clock", "Zeiterfassung", "time", false}, "work", always},
 	{navItem{"shifts", "/planner", "ti-calendar-time", "Planer", "planner", false}, "work", func(b *BaseData) bool { return b.CanPlanner }},
-	{navItem{"calendar", "/calendar", "ti-calendar-event", "Kalender", "calendar", false}, "work", always},
+	{navItem{"calendar", "/calendar", "ti-calendar-event", "Kalender", "calendar", false}, "work", needs("calendar.view")},
 
-	{navItem{"inventory", "/inventory", "ti-package", "Ersatzteile", "inventory", false}, "material", always},
-	{navItem{"storage", "/storage", "ti-building-warehouse", "Lager", "storage", false}, "material", always},
+	{navItem{"inventory", "/inventory", "ti-package", "Ersatzteile", "inventory", false}, "material", needs("inventory.view", "inventory.edit", "inventory.book", "inventory.correct", "inventory.create")},
+	{navItem{"storage", "/storage", "ti-building-warehouse", "Lager", "storage", false}, "material", needs("inventory.view", "inventory.edit", "inventory.book", "inventory.correct", "inventory.create")},
 	{navItem{"plantwatch", "/plant-watch", "ti-eye", "Anlagen-Schnellübersicht", "plant-watch", false}, "material", func(b *BaseData) bool { return b.CanViewInfra }},
 	{navItem{"infrastructure", "/infrastructure", "ti-hierarchy-2", "Infrastruktur", "infrastructure", false}, "material", func(b *BaseData) bool { return b.CanViewInfra }},
-	{navItem{"it", "/it", "ti-server-2", "IT-Assets", "it", false}, "material", always},
+	{navItem{"it", "/it", "ti-server-2", "IT-Assets", "it", false}, "material", needs("it.view", "it.edit")},
 	{navItem{"vpn", "/vpn", "ti-shield-lock", "VPN Maschinennetz", "vpn", false}, "material", func(b *BaseData) bool { return b.CanVPN }},
-	{navItem{"directory", "/directory", "ti-building-factory-2", "Hersteller & Lieferanten", "directory", false}, "material", always},
+	{navItem{"directory", "/directory", "ti-building-factory-2", "Hersteller & Lieferanten", "directory", false}, "material", needs("directory.view", "directory.edit", "directory.credentials")},
 	{navItem{"procurement", "/procurement", "ti-shopping-cart", "Beschaffung & Einkauf", "procurement", false}, "material", func(b *BaseData) bool { return b.CanProcurement }},
 	{navItem{"purchases", "/purchases", "ti-truck-delivery", "Bestellvorgänge", "purchases", false}, "material", func(b *BaseData) bool { return b.CanProcurement }},
 	{navItem{"m365", "/m365", "ti-brand-office", "Vorlagen & Signaturen", "m365", false}, "people", always},

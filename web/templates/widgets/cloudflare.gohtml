@@ -1,0 +1,92 @@
+{{/* Server-Einstellungen → Cloudflare: Stand von Cloudflare (DNS, Proxy, Verschlüsselung, Tunnel-Ziele).
+     Wird per htmx nach #cf-panel geladen (internal/web/cloudflare_api.go). */}}
+{{define "cf-panel"}}
+{{if .Message}}<div class="sc-sub" style="margin-bottom:10px;color:var(--green)"><i class="ti ti-check"></i> {{.Message}}</div>{{end}}
+{{if .Error}}<div class="sc-sub" style="margin-bottom:10px;color:var(--red)"><i class="ti ti-alert-circle"></i> {{.Error}}</div>{{end}}
+{{if .Zone}}
+<div class="sc-sub" style="margin-bottom:10px"><i class="ti ti-world"></i> Domain <b>{{.Zone}}</b>
+  <button type="button" class="btn btn-small" style="margin-left:8px" hx-get="/admin/server-config/cloudflare/panel" hx-target="#cf-panel" hx-disabled-elt="this"><i class="ti ti-refresh"></i> Neu laden</button></div>
+
+{{if .Targets}}
+<div class="form-label">PDH und Nextcloud über den Tunnel</div>
+<div style="overflow-x:auto;margin-bottom:14px"><table class="cf-table">
+  <tr><th>Dienst</th><th>Name</th><th>Ziel am Server</th><th>Tunnel</th><th>DNS</th><th></th></tr>
+  {{range .Targets}}<tr>
+    <td>{{.Label}}</td><td>{{.Host}}</td><td><code>{{.Service}}</code></td>
+    <td>{{if .TunnelOK}}<span class="badge b-green">{{.TunnelNote}}</span>{{else}}<span class="badge b-amber">{{.TunnelNote}}</span>{{end}}</td>
+    <td>{{if .DNSOK}}<span class="badge b-green">{{.DNSNote}}</span>{{else}}<span class="badge b-amber">{{.DNSNote}}</span>{{end}}</td>
+    <td>{{if not (and .TunnelOK .DNSOK)}}<form hx-post="/admin/server-config/cloudflare/tunnel" hx-target="#cf-panel" hx-disabled-elt="find button" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"
+        {{if .Replace}}hx-confirm="Für {{.Host}} gibt es schon einen DNS-Eintrag ({{.DNSNote}}). Er wird durch den Namen des Tunnels ersetzt. Fortfahren?"{{end}}>
+      <input type="hidden" name="action" value="save"><input type="hidden" name="hostname" value="{{.Host}}"><input type="hidden" name="old_hostname" value="{{.Host}}">
+      <input class="form-input" name="service" value="{{.Service}}" style="width:190px" aria-label="Ziel am Server">
+      {{if .NoTLS}}<input type="hidden" name="no_tls_verify" value="on">{{end}}{{if .Replace}}<input type="hidden" name="replace_dns" value="on">{{end}}
+      <button class="btn btn-primary btn-small" type="submit"><i class="ti ti-plug-connected"></i> Einrichten</button></form>{{end}}</td>
+  </tr>{{end}}
+</table></div>
+{{end}}
+
+<div class="form-label">Ziele im Tunnel</div>
+{{if .TunnelErr}}<p class="sc-sub" style="color:var(--amber)"><i class="ti ti-alert-triangle"></i> {{.TunnelErr}}</p>{{else}}
+<div style="overflow-x:auto"><table class="cf-table">
+  <tr><th>Öffentlicher Name</th><th>Ziel am Server</th><th></th></tr>
+  {{range .Ingress}}<tr>
+    <td>{{.Hostname}}{{if .Path}}<span class="sc-sub"> /{{.Path}}</span>{{end}}</td>
+    <td><code>{{.Service}}</code>{{if .NoTLSVerify}} <span class="sc-sub">(Zertifikat ungeprüft)</span>{{end}}</td>
+    <td><form hx-post="/admin/server-config/cloudflare/tunnel" hx-target="#cf-panel" hx-confirm="Ziel {{.Hostname}} aus dem Tunnel entfernen? Der Name ist dann von außen nicht mehr erreichbar." style="display:inline">
+      <input type="hidden" name="action" value="delete"><input type="hidden" name="hostname" value="{{.Hostname}}">
+      <button class="btn btn-small" type="submit" title="Entfernen" aria-label="Ziel {{.Hostname}} entfernen"><i class="ti ti-trash"></i></button></form></td>
+  </tr>{{else}}<tr><td colspan="3" class="sc-sub">Noch kein Ziel im Tunnel.</td></tr>{{end}}
+</table></div>
+<form hx-post="/admin/server-config/cloudflare/tunnel" hx-target="#cf-panel" hx-disabled-elt="find button" style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin:8px 0 14px">
+  <input type="hidden" name="action" value="save">
+  <div class="form-group" style="margin:0"><label class="form-label">Öffentlicher Name</label><input class="form-input" name="hostname" required placeholder="nc.{{.Zone}}"></div>
+  <div class="form-group" style="margin:0"><label class="form-label">Ziel am Server</label><input class="form-input" name="service" required placeholder="http://localhost:80"></div>
+  <label class="sc-sub"><input type="checkbox" name="no_tls_verify"> Zertifikat des Ziels nicht prüfen</label>
+  <label class="sc-sub"><input type="checkbox" name="replace_dns"> vorhandenen DNS-Eintrag ersetzen</label>
+  <button class="btn btn-small" type="submit"><i class="ti ti-plus"></i> Ziel speichern</button>
+</form>{{end}}
+
+<div class="form-label">Verschlüsselung der Domain</div>
+{{if .SettingsErr}}<p class="sc-sub" style="color:var(--amber)"><i class="ti ti-alert-triangle"></i> {{.SettingsErr}}</p>{{else}}
+<form hx-post="/admin/server-config/cloudflare/zone" hx-target="#cf-panel" hx-disabled-elt="find button" hx-confirm="Verschlüsselung für die ganze Domain {{.Zone}} ändern? Das gilt für alle Namen, die über Cloudflare laufen." style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:14px">
+  <div class="form-group" style="margin:0"><label class="form-label">Zwischen Cloudflare und Server</label>
+    <select class="form-input" name="ssl">
+      <option value="off" {{if eq .SSL "off"}}selected{{end}}>Aus (unverschlüsselt)</option>
+      <option value="flexible" {{if eq .SSL "flexible"}}selected{{end}}>Flexible – nur bis Cloudflare verschlüsselt</option>
+      <option value="full" {{if eq .SSL "full"}}selected{{end}}>Full – verschlüsselt, Zertifikat ungeprüft</option>
+      <option value="strict" {{if eq .SSL "strict"}}selected{{end}}>Full (strict) – verschlüsselt, Zertifikat geprüft</option>
+    </select></div>
+  <label class="sc-sub"><input type="checkbox" name="always_https" {{if .AlwaysHTTPS}}checked{{end}}> immer HTTPS (http wird umgeleitet)</label>
+  <button class="btn btn-small" type="submit"><i class="ti ti-device-floppy"></i> Speichern</button>
+</form>{{end}}
+
+<div class="form-label">DNS-Einträge</div>
+<div style="overflow-x:auto"><table class="cf-table">
+  <tr><th>Art</th><th>Name</th><th>Ziel</th><th>Proxy</th><th></th></tr>
+  {{range .Records}}<tr>
+    <td>{{.Type}}</td><td>{{.Name}}</td><td style="word-break:break-all">{{.Content}}{{if .Tunnel}} <span class="sc-sub">(Tunnel)</span>{{end}}</td>
+    <td>{{if eq .Type "TXT"}}<span class="sc-sub">–</span>{{else if .Tunnel}}<span class="badge b-amber" title="Namen auf den Tunnel laufen immer über den Proxy">an</span>{{else}}
+      <form hx-post="/admin/server-config/cloudflare/dns" hx-target="#cf-panel" style="display:inline"
+        hx-confirm="{{if .Proxied}}Proxy für {{.Name}} ausschalten? Der Name zeigt dann direkt auf {{.Content}} – die Adresse des Servers wird sichtbar.{{else}}Proxy für {{.Name}} einschalten? Zugriffe laufen dann über Cloudflare.{{end}}">
+        <input type="hidden" name="action" value="proxy"><input type="hidden" name="id" value="{{.ID}}">
+        <button class="btn btn-small" type="submit" title="Proxy umschalten" aria-label="Proxy für {{.Name}} umschalten">{{if .Proxied}}<span class="badge b-amber">an</span>{{else}}<span class="badge">aus</span>{{end}}</button></form>{{end}}</td>
+    <td><form hx-post="/admin/server-config/cloudflare/dns" hx-target="#cf-panel" hx-confirm="DNS-Eintrag {{.Type}} {{.Name}} löschen? Das lässt sich nicht rückgängig machen." style="display:inline">
+      <input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="{{.ID}}">
+      <button class="btn btn-small" type="submit" title="Löschen" aria-label="DNS-Eintrag {{.Name}} löschen"><i class="ti ti-trash"></i></button></form></td>
+  </tr>{{else}}<tr><td colspan="5" class="sc-sub">Keine Einträge.</td></tr>{{end}}
+</table></div>
+<form hx-post="/admin/server-config/cloudflare/dns" hx-target="#cf-panel" hx-disabled-elt="find button" style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-top:8px">
+  <input type="hidden" name="action" value="save">
+  <div class="form-group" style="margin:0"><label class="form-label">Art</label><select class="form-input" name="type">{{range .Types}}<option>{{.}}</option>{{end}}</select></div>
+  <div class="form-group" style="margin:0"><label class="form-label">Name</label><input class="form-input" name="name" required placeholder="nc oder @"></div>
+  <div class="form-group" style="margin:0"><label class="form-label">Ziel</label><input class="form-input" name="content" required placeholder="203.0.113.10"></div>
+  <label class="sc-sub"><input type="checkbox" name="proxied"> über Cloudflare (Proxy)</label>
+  <button class="btn btn-small" type="submit"><i class="ti ti-plus"></i> Eintrag anlegen</button>
+</form>
+{{end}}
+<style>
+.cf-table{width:100%;border-collapse:collapse;font-size:13px}
+.cf-table th{text-align:left;color:var(--muted);font-weight:500;padding:4px 8px;border-bottom:1px solid var(--border)}
+.cf-table td{padding:5px 8px;border-bottom:1px solid var(--border);vertical-align:middle}
+</style>
+{{end}}

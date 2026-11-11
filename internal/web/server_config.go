@@ -107,6 +107,8 @@ var envGroups = []envGroup{
 		{Key: "PDH_CLOUDFLARE_TUNNEL_TOKEN", Label: "Tunnel-Token", Help: "Aus dem Cloudflare-Dashboard (Networks → Tunnels → Tunnel → Configure). Der ganze Befehl „cloudflared service install …“ darf eingefügt werden.", Type: "text", Secret: true},
 		{Key: "PDH_CLOUDFLARE_HOSTNAME", Label: "Öffentlicher Hostname", Help: "Unter dieser Adresse ist das PDH erreichbar, z. B. pdh.firma.de – wie im Dashboard unter Public Hostname eingetragen.", Type: "text"},
 		{Key: "PDH_CLOUDFLARE_ORIGIN", Label: "Ziel im Tunnel", Help: "Wo cloudflared das PDH auf dem Server erreicht – im Dashboard als Service eintragen.", Type: "url", Default: "http://localhost:8090"},
+		{Key: "PDH_CLOUDFLARE_API_TOKEN", Label: "API-Token", Help: "Für DNS, Proxy und Tunnel-Ziele im PDH. Im Cloudflare-Dashboard unter Mein Profil → API-Tokens anlegen, mit den Rechten Zone lesen, DNS bearbeiten, Zonen-Einstellungen bearbeiten und Cloudflare Tunnel bearbeiten – nur für diese Domain.", Type: "text", Secret: true},
+		{Key: "PDH_CLOUDFLARE_ZONE", Label: "Domain", Help: "Die Domain bei Cloudflare, z. B. firma.de. Leer = aus dem öffentlichen Hostnamen abgeleitet.", Type: "text"},
 	}},
 	{"logging", "Protokoll", "ti-file-analytics", "Wie ausführlich das PDH protokolliert. Das Protokoll selbst findest du im Reiter „Protokoll ansehen“.", []envField{
 		{Key: "PDH_LOG_LEVEL", Label: "Protokollstufe", Help: "debug = sehr ausführlich (auch statische Dateien), info = Normalbetrieb, warn/error = nur Probleme.", Type: "select", Options: []string{"info", "debug", "warn", "error"}, Default: "info"},
@@ -184,6 +186,7 @@ type ServerConfigData struct {
 	AgentReady     bool            // Update-Agent kann .env.docker bereinigen
 	NCTheme        ncTheme         // Reiter Nextcloud: Erscheinungsbild übernehmen (nextcloud_theming.go)
 	NCAdmin        ncAdminView     // Reiter Nextcloud: Dienstkonto des PDH (nextcloud_admin.go)
+	NCSync         ncSyncView      // Reiter Nextcloud: Abgleich Benutzer, Gruppen, Laufwerke (nextcloud_sync.go)
 	TakeOverTotal  int             // Werte aus .env.docker, die noch nicht in der Datenbank sind
 	// Reiter „Passwörter“ (password_policy.go)
 	Policy          *users.PasswordPolicy
@@ -269,6 +272,7 @@ func (h *Handler) ServerConfigPage(w http.ResponseWriter, r *http.Request) {
 		d.Groups = append(d.Groups, gv)
 	}
 	d.CF = h.cloudflareView(r.Context())
+	d.CF.CanAPI = h.canCloudflare(r)
 	if h.db != nil {
 		show := ""
 		if d.Tab == "vpn" {
@@ -292,6 +296,7 @@ func (h *Handler) ServerConfigPage(w http.ResponseWriter, r *http.Request) {
 	h.fillEnvTakeover(r.Context(), &d)
 	d.NCTheme = h.nextcloudTheme()
 	d.NCAdmin = h.ncAdminViewFor(r.Context())
+	d.NCSync = h.ncSyncViewFor(r.Context(), h.hasPerm(r, permNCSync))
 	if h.db != nil {
 		p := h.users.Policy(r.Context())
 		d.Policy = &p

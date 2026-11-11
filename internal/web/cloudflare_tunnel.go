@@ -30,8 +30,9 @@ const (
 )
 
 var (
-	cfTokenRe = regexp.MustCompile(`^[A-Za-z0-9+/=_.-]{40,}$`)
-	cfHostRe  = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$`)
+	cfTokenRe    = regexp.MustCompile(`^[A-Za-z0-9+/=_.-]{40,}$`)
+	cfHostRe     = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$`)
+	cfAPITokenRe = regexp.MustCompile(`^[A-Za-z0-9_-]{30,200}$`)
 )
 
 // normalizeEnvValue: eingefügte Werte bereinigen, bevor sie geprüft werden –
@@ -43,6 +44,10 @@ func normalizeEnvValue(f envField, v string) string {
 		if fields := strings.Fields(v); len(fields) > 0 {
 			return fields[len(fields)-1]
 		}
+	case cfAPITokenKey:
+		return strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(v), "Bearer "))
+	case cfZoneKey:
+		return strings.TrimSuffix(strings.ToLower(strings.TrimSpace(v)), ".")
 	case cfHostKey:
 		v = strings.ToLower(strings.TrimSpace(v))
 		if i := strings.Index(v, "://"); i >= 0 {
@@ -65,6 +70,14 @@ func validateCloudflare(f envField, v string) error {
 	case cfHostKey:
 		if !cfHostRe.MatchString(v) {
 			return fmt.Errorf("%s: bitte nur den Hostnamen eingeben, z. B. pdh.firma.de", f.Label)
+		}
+	case cfAPITokenKey:
+		if !cfAPITokenRe.MatchString(v) {
+			return fmt.Errorf("%s: das sieht nicht wie ein API-Token aus – im Cloudflare-Dashboard unter Mein Profil → API-Tokens anlegen und den Wert einmal kopieren", f.Label)
+		}
+	case cfZoneKey:
+		if !cfHostRe.MatchString(v) {
+			return fmt.Errorf("%s: bitte nur die Domain eingeben, z. B. firma.de", f.Label)
 		}
 	}
 	return nil
@@ -92,6 +105,8 @@ type CloudflareView struct {
 	OriginScheme       string // HTTP/HTTPS – „Service Type“ im Dashboard
 	OriginAddr         string // localhost:8090 – „URL“ im Dashboard
 	PublicURLDifferent bool   // Öffentliche Adresse passt nicht zum Hostnamen
+	APITokenSet        bool   // API-Token gespeichert – DNS, Proxy und Tunnel-Ziele im PDH (cloudflare_api.go)
+	CanAPI             bool   // Recht „Cloudflare verwalten“
 }
 
 func (h *Handler) cloudflareView(ctx context.Context) *CloudflareView {
@@ -99,6 +114,9 @@ func (h *Handler) cloudflareView(ctx context.Context) *CloudflareView {
 	v := &CloudflareView{TokenSet: s.Token != "", Host: s.Host, Origin: s.Origin, OriginScheme: "HTTP", OriginAddr: "localhost:8090"}
 	if u, err := url.Parse(s.Origin); err == nil && u.Host != "" {
 		v.OriginScheme, v.OriginAddr = strings.ToUpper(u.Scheme), u.Host
+	}
+	if tok, _ := h.nextStartValue(ctx, cfAPITokenKey); strings.TrimSpace(tok) != "" {
+		v.APITokenSet = true
 	}
 	if s.Host != "" {
 		pub, _ := h.nextStartValue(ctx, "PDH_PUBLIC_URL")

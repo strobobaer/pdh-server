@@ -12,6 +12,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"pdh/internal/core/rbac"
 	"pdh/internal/core/users"
+	"pdh/internal/integrations/nextcloud"
 )
 
 // Benutzer-Detailseite (/users/{id}) mit Reitern: Uebersicht, Stammdaten,
@@ -77,6 +78,9 @@ type UserDetailData struct {
 	CanMakeAdmin        bool
 	CanDeactivate       bool
 	CanNextcloud        bool           // Knopf „Nextcloud-Konto anlegen“ (nextcloud_account.go)
+	NextcloudAdmin      bool           // Kennzeichen „Administrator in Nextcloud“ (nextcloud_sync.go)
+	CanNextcloudAdmin   bool           // nur Administratoren setzen es
+	CanNextcloudPW      bool           // Knopf „Neues Startpasswort“ für das Nextcloud-Konto
 	ChangeNotifications bool           // Chat-Hinweise zu Aenderungen an eigenen Vorgaengen
 	CanMailSettings     bool           // Testmail und E-Mail-Statusmeldungen (selbst oder Benutzerverwaltung)
 	CanSelfCert         bool           // eigenes Zertifikat für die Nextcloud-App ausstellen (pki_web.go)
@@ -145,6 +149,8 @@ func (h *Handler) UserDetailPage(w http.ResponseWriter, r *http.Request) {
 		CanMakeAdmin:   !self && h.actorIsAdmin(r) && u.Role != users.RoleAdmin && u.Active,
 		CanDeactivate:  !self && u.Active && h.canManageUsers(r) && h.outranksRole(r, string(u.Role)),
 		CanNextcloud:   h.canManageUsers(r) && (self || h.outranksRole(r, string(u.Role))) && nextcloudAccountReady(u.NextcloudUserID),
+		NextcloudAdmin: h.userNextcloudAdmin(ctx, id), CanNextcloudAdmin: h.actorIsAdmin(r),
+		CanNextcloudPW: u.NextcloudUserID != "" && h.canManageUsers(r) && (self || h.outranksRole(r, string(u.Role))) && nextcloud.UserClientFromEnv().Enabled(),
 		CreatedAt:      u.CreatedAt.Local().Format("02.01.2006"),
 	}
 	if h.db != nil {
