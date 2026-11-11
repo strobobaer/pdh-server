@@ -58,11 +58,12 @@ type UserDetailData struct {
 	AdminPasswordHint   string              // Richtlinie + Wechselzwang beim Setzen durch die Verwaltung
 	Password            users.PasswordState // Wechsel faellig? (Benutzerstamm)
 	CanEditMaster       bool
-	CanEditCore         bool         // Grunddaten-Dialog in der Benutzerliste
-	CanBroker           bool         // Broker-Rollen vergeben (nur Benutzerverwaltung)
-	CanDevices          bool         // Terminal-Geräte koppeln (System-Benutzer, Benutzerverwaltung, höherer Rang)
-	Boards              []*leitstand // Auswahl „Leitstand“ für Terminals
-	CanAvatar           bool         // Profilbild ändern (selbst oder Benutzerverwaltung)
+	CanEditCore         bool                // Grunddaten-Dialog in der Benutzerliste
+	CanBroker           bool                // Broker-Rollen vergeben (nur Benutzerverwaltung)
+	CanDevices          bool                // Terminal-Geräte koppeln (System-Benutzer, Benutzerverwaltung, höherer Rang)
+	Devices             []terminalDeviceRow // gekoppelte Terminal-Geräte (nur bei CanDevices)
+	Boards              []*leitstand        // Auswahl „Leitstand“ für Terminals
+	CanAvatar           bool                // Profilbild ändern (selbst oder Benutzerverwaltung)
 	CanPrivate          bool
 	CanPermissions      bool
 	Team                []UserOption
@@ -185,6 +186,13 @@ func (h *Handler) UserDetailPage(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		rows.Close()
+	}
+	if d.CanDevices {
+		var derr error
+		if d.Devices, derr = h.loadTerminalDevices(ctx, id); derr != nil {
+			componentLog("terminal").Error().Err(derr).Str("user", id).Msg("geräteliste laden fehlgeschlagen")
+			d.Error = "Die gekoppelten Geräte konnten nicht geladen werden"
+		}
 	}
 	d.Responsibilities = h.userResponsibilities(ctx, id)
 	// Broker: offene Vorgänge seiner Arten ohne Zuweisung (Sichtbarkeit des Betrachters)

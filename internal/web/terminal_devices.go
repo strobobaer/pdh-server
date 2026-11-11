@@ -289,3 +289,77 @@ func (h *Handler) TerminalDeviceLogin(w http.ResponseWriter, r *http.Request) {
 	authLog(r, true, "terminal-gerät", u.Username, u.ID, strings.TrimSpace(u.FirstName+" "+u.LastName), "")
 	http.Redirect(w, r, "/terminal", http.StatusSeeOther)
 }
+
+// terminalDeviceRow ist eine Zeile der Karte „Gekoppelte Geräte“ (Zeiten
+// deutsch formatiert; LastSeen „nie“, Revoked leer = nicht gesperrt).
+type terminalDeviceRow struct {
+	ID, Name                   string
+	Created, LastSeen, Revoked string
+}
+
+// loadTerminalDevices listet die Geräte eines Benutzers: aktive zuerst, dann
+// neueste zuerst.
+func (h *Handler) loadTerminalDevices(ctx context.Context, userID string) ([]terminalDeviceRow, error) {
+	rows, err := h.db.Query(ctx, `SELECT id::text, name, created_at, last_seen_at, revoked_at
+		FROM terminal_devices WHERE user_id = $1::uuid
+		ORDER BY (revoked_at IS NOT NULL), created_at DESC`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	const layout = "02.01.2006 15:04"
+	var out []terminalDeviceRow
+	for rows.Next() {
+		var d terminalDeviceRow
+		var created time.Time
+		var seen, revoked *time.Time
+		if err := rows.Scan(&d.ID, &d.Name, &created, &seen, &revoked); err != nil {
+			return nil, err
+		}
+		d.Created = created.Local().Format(layout)
+		d.LastSeen = "nie"
+		if seen != nil {
+			d.LastSeen = seen.Local().Format(layout)
+		}
+		if revoked != nil {
+			d.Revoked = revoked.Local().Format(layout)
+		}
+		out = append(out, d)
+	}
+	return out, rows.Err()
+}
+
+// TerminalDeviceRevokeWeb sperrt ein Gerät (POST /users/{id}/devices/{dev}/revoke).
+// Das Terminal ist spätestens nach Ablauf des Sperr-Zwischenspeichers (30 s) abgemeldet.
+func (h *Handler) TerminalDeviceRevokeWeb(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	id := chi.URLParam(r, "id")
+	dev := chi.URLParam(r, "dev")
+	u, err := h.users.GetByID(ctx, id)
+	if err != nil || u == nil {
+		http.Error(w, "Benutzer nicht gefunden", http.StatusNotFound)
+		return
+	}
+	if !h.canManageUsers(r) || !h.outranksRole(r, string(u.Role)) {
+		http.Error(w, "keine berechtigung", http.StatusForbidden)
+		return
+	}
+	var name string
+	err = h.db.QueryRow(ctx, `SELECT name FROM terminal_devices WHERE id::text = $1 AND user_id = $2::uuid`, dev, id).Scan(&name)
+	if errors.Is(err, pgx.ErrNoRows) {
+		http.Error(w, "Gerät nicht gefunden", http.StatusNotFound)
+		return
+	}
+	if err == nil {
+		_, err = h.db.Exec(ctx, `UPDATE terminal_devices SET revoked_at = NOW() WHERE id = $1::uuid AND revoked_at IS NULL`, dev)
+	}
+	if err != nil {
+		componentLog("terminal").Error().Err(err).Str("device", dev).Msg("gerät sperren fehlgeschlagen")
+		userRedirect(w, r, id, "", "", errors.New("Das Gerät konnte nicht gesperrt werden"))
+		return
+	}
+	terminalDevices.forget(dev)
+	h.addHistory(ctx, "user", id, "terminal_revoked", "", name, "", "", getUser(r).ID)
+	componentLog("terminal").Info().Str("user", id).Str("device", dev).Str("von", getUser(r).ID).Msg("gerät gesperrt")
+	userRedirect(w, r, id, "", "Gerät gesperrt", nil)
+}

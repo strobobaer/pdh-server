@@ -224,3 +224,65 @@ func TestTerminalDeviceLogin(t *testing.T) {
 		t.Errorf("Override-Rückkehr normal: %+v", c["pdh_token"])
 	}
 }
+
+// Gerät sperren (POST /users/{id}/devices/{dev}/revoke) und Geräteliste.
+func TestTerminalDeviceRevokeWeb(t *testing.T) {
+	e := newATEnv(t)
+	admin := e.user("rv_a", "admin", false)
+	e.grant(admin, "system.manage_users", "", true)
+	plain := e.user("rv_p", "viewer", false)
+	e.grant(plain, "system.manage_users", "", false)
+	term := e.user("rv_t", "viewer", true)
+	other := e.user("rv_o", "viewer", true)
+	e.warm()
+
+	h := &Handler{db: e.pool, rbac: e.rb, users: users.NewService(users.NewRepository(e.pool), "test-secret", 1), jwtSecret: "test-geheim", tmpl: loadTestTemplates(t)}
+	r := chi.NewRouter()
+	r.Post("/users/{id}/devices/{dev}/revoke", h.TerminalDeviceRevokeWeb)
+
+	mk := func(uid, name string) string {
+		s, err := newDeviceSecret()
+		e.must(err)
+		id := e.id(`INSERT INTO terminal_devices (user_id, name, secret_sha256) VALUES ($1::uuid, $2, $3) RETURNING id::text`, uid, name, hashDeviceSecret(s))
+		t.Cleanup(func() { _, _ = e.pool.Exec(e.ctx, `DELETE FROM terminal_devices WHERE id = $1::uuid`, id) })
+		return id
+	}
+	dev := mk(term, "Pi A")
+	foreign := mk(other, "Pi B")
+	post := func(uid, devID, actor, role string) *httptest.ResponseRecorder {
+		req := withUser(httptest.NewRequest("POST", "/users/"+uid+"/devices/"+devID+"/revoke", nil), &users.User{ID: actor, Role: users.Role(role)})
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, req)
+		return rec
+	}
+	revoked := func(id string) bool {
+		var ok bool
+		e.must(e.pool.QueryRow(e.ctx, `SELECT revoked_at IS NOT NULL FROM terminal_devices WHERE id = $1::uuid`, id).Scan(&ok))
+		return ok
+	}
+
+	if rec := post(term, dev, plain, "viewer"); rec.Code != http.StatusForbidden || revoked(dev) {
+		t.Errorf("ohne Recht: %d, gesperrt=%v", rec.Code, revoked(dev))
+	}
+	if rec := post(term, foreign, admin, "admin"); rec.Code != http.StatusNotFound || revoked(foreign) {
+		t.Errorf("Gerät eines anderen Benutzers: %d, gesperrt=%v", rec.Code, revoked(foreign))
+	}
+	terminalDevices.forget(dev)
+	rec := post(term, dev, admin, "admin")
+	if rec.Code != http.StatusSeeOther || !strings.Contains(rec.Header().Get("Location"), "Ger%C3%A4t+gesperrt") {
+		t.Errorf("Sperren: %d %s", rec.Code, rec.Header().Get("Location"))
+	}
+	if !revoked(dev) {
+		t.Error("revoked_at nicht gesetzt")
+	}
+	var n int
+	e.must(e.pool.QueryRow(e.ctx, `SELECT COUNT(*) FROM record_history WHERE ref_type='user' AND ref_id=$1 AND action='terminal_revoked'`, term).Scan(&n))
+	if n != 1 {
+		t.Errorf("Verlaufseinträge: %d", n)
+	}
+	rows, err := h.loadTerminalDevices(e.ctx, term)
+	e.must(err)
+	if len(rows) != 1 || rows[0].Name != "Pi A" || rows[0].Revoked == "" || rows[0].LastSeen != "nie" {
+		t.Errorf("Geräteliste: %+v", rows)
+	}
+}

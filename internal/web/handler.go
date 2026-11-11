@@ -735,6 +735,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/users/{id}/qualifications", h.UserQualificationSaveWeb)
 	r.Post("/users/{id}/groups", h.UserGroupsSaveWeb)
 	r.Post("/users/{id}/terminal-code", h.TerminalPairCodeWeb)
+	r.Post("/users/{id}/devices/{dev}/revoke", h.TerminalDeviceRevokeWeb)
 	r.Get("/admin/org-units", h.OrgUnitsPage)
 	r.Get("/trainings", h.TrainingsPage)
 	r.Get("/suggest", h.SuggestWeb)
