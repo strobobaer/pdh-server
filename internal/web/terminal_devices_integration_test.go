@@ -150,6 +150,9 @@ func TestTerminalDeviceLogin(t *testing.T) {
 	if rt := cs["pdh_return_token"]; rt == nil || rt.MaxAge >= 0 {
 		t.Errorf("pdh_return_token nicht gelöscht: %+v", rt)
 	}
+	if !tok.HttpOnly {
+		t.Error("Geräte-Cookie nicht HttpOnly")
+	}
 	var seen bool
 	e.must(e.pool.QueryRow(e.ctx, `SELECT last_seen_at IS NOT NULL FROM terminal_devices WHERE id = $1::uuid`, devID).Scan(&seen))
 	if !seen {
@@ -171,11 +174,48 @@ func TestTerminalDeviceLogin(t *testing.T) {
 	}
 	h.sessionNotBefore.Store(0)
 
+	// Wartungssperre über die Wurzel-Kette: Geräte-Cookie bleibt, nach dem Entsperren geht /terminal
+	root := h.MaintLockMiddleware(routes)
+	h.mlock.mu.Lock()
+	h.mlock.locked, h.mlock.view = true, lockedView()
+	h.mlock.mu.Unlock()
+	lreq := httptest.NewRequest("GET", "/terminal", nil)
+	lreq.Header.Set("Accept", "text/html")
+	lreq.AddCookie(&http.Cookie{Name: "pdh_token", Value: tok.Value})
+	lrec := httptest.NewRecorder()
+	root.ServeHTTP(lrec, lreq)
+	if lrec.Code != http.StatusServiceUnavailable {
+		t.Errorf("gesperrt: %d", lrec.Code)
+	}
+	for _, c := range lrec.Result().Cookies() {
+		if c.MaxAge < 0 {
+			t.Errorf("Cookie %s während der Sperre gelöscht", c.Name)
+		}
+	}
+	h.mlock.mu.Lock()
+	h.mlock.locked = false
+	h.mlock.mu.Unlock()
+	ureq := httptest.NewRequest("GET", "/terminal", nil)
+	ureq.AddCookie(&http.Cookie{Name: "pdh_token", Value: tok.Value})
+	urec := httptest.NewRecorder()
+	root.ServeHTTP(urec, ureq)
+	if urec.Code != 200 {
+		t.Errorf("nach Entsperren: %d", urec.Code)
+	}
+
 	// Sperren: nach Zwischenspeicher-Verfall bzw. forget keine Sitzung mehr
 	e.exec(`UPDATE terminal_devices SET revoked_at = NOW() WHERE id = $1::uuid`, devID)
 	terminalDevices.forget(devID)
-	if rec := get("/terminal", tok, uid); rec.Code != http.StatusFound || rec.Header().Get("Location") != "/global/" {
-		t.Errorf("gesperrt: %d %s", rec.Code, rec.Header().Get("Location"))
+	if rec := get("/terminal", tok, uid); rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), "Gerät nicht gekoppelt oder gesperrt") {
+		t.Errorf("gesperrt: %d %.200s", rec.Code, rec.Body.String())
+	}
+	// gesperrtes Geräte-Token darf nichts zur Löschung vormerken (ChangeTracking)
+	dreq := httptest.NewRequest("DELETE", "/api/v1/inventory/00000000-0000-0000-0000-000000000001", nil)
+	dreq.AddCookie(&http.Cookie{Name: "pdh_token", Value: tok.Value})
+	drec := httptest.NewRecorder()
+	h.ChangeTrackingMiddleware(http.NotFoundHandler()).ServeHTTP(drec, dreq)
+	if drec.Code != http.StatusUnauthorized {
+		t.Errorf("gesperrtes Token, DELETE: %d (erwartet 401)", drec.Code)
 	}
 	if rec := login("198.51.100.21", secret); rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), "Gerät nicht gekoppelt oder gesperrt. Bitte in der Admin-Seite des Terminals neu koppeln.") {
 		t.Errorf("gesperrtes Geheimnis: %d %.300s", rec.Code, rec.Body.String())
@@ -189,7 +229,7 @@ func TestTerminalDeviceLogin(t *testing.T) {
 	// Benutzer deaktiviert / kein Terminal-Benutzer mehr → Sitzung und Anmeldung abgewiesen
 	e.exec(`UPDATE users SET is_system_user = false WHERE id = $1::uuid`, term)
 	terminalDevices.forget(devID)
-	if rec := get("/terminal", tok, uid); rec.Code != http.StatusFound {
+	if rec := get("/terminal", tok, uid); rec.Code != http.StatusForbidden {
 		t.Errorf("kein System-Benutzer, Sitzung: %d", rec.Code)
 	}
 	if rec := login("198.51.100.22", secret); rec.Code != http.StatusForbidden {
@@ -210,18 +250,24 @@ func TestTerminalDeviceLogin(t *testing.T) {
 	// Override-Rückkehr mit Geräte-Token: 400-Tage-Cookie bleibt, sonst 1 Tag
 	devTok, err := h.users.IssueToken(&users.User{ID: term, Role: users.Role("viewer")}, time.Hour, map[string]interface{}{"device": devID})
 	e.must(err)
+	var backLoc string
 	back := func(token string) map[string]*http.Cookie {
 		req := httptest.NewRequest("POST", "/override-logout", nil)
 		req.AddCookie(&http.Cookie{Name: "pdh_return_token", Value: token})
 		rec := httptest.NewRecorder()
 		h.OverrideLogoutWeb(rec, req)
+		backLoc = rec.Header().Get("Location")
 		return cookies(rec)
 	}
 	if c := back(devTok); c["pdh_token"] == nil || c["pdh_token"].MaxAge != deviceCookieMaxAge || c["pdh_user_id"].MaxAge != deviceCookieMaxAge {
 		t.Errorf("Override-Rückkehr Gerät: %+v", c["pdh_token"])
+	} else if !c["pdh_token"].HttpOnly || backLoc != "/terminal" {
+		t.Errorf("Override-Rückkehr Gerät: HttpOnly=%v Ziel=%q", c["pdh_token"].HttpOnly, backLoc)
 	}
 	if c := back(normalTok); c["pdh_token"] == nil || c["pdh_token"].MaxAge != 86400 {
 		t.Errorf("Override-Rückkehr normal: %+v", c["pdh_token"])
+	} else if c["pdh_token"].HttpOnly || backLoc != "/" {
+		t.Errorf("Override-Rückkehr normal: HttpOnly=%v Ziel=%q", c["pdh_token"].HttpOnly, backLoc)
 	}
 }
 

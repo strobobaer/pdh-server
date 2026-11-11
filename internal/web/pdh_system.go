@@ -168,6 +168,12 @@ func (h *Handler) requestActor(r *http.Request) string {
 	}
 	claims, _ := tok.Claims.(jwt.MapClaims)
 	sub, _ := claims["sub"].(string)
+	if dev, _ := claims["device"].(string); dev != "" && sub != "" {
+		// Geräte-Token eines Terminals: nach Sperre/Entkopplung kein Bearbeiter mehr
+		if !terminalDevices.active(r.Context(), dev, sub, h.deviceByID) {
+			return ""
+		}
+	}
 	return sub
 }
 

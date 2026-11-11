@@ -135,7 +135,11 @@ func (h *Handler) TerminalPairCodeWeb(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback(ctx)
-	if _, err = tx.Exec(ctx, `DELETE FROM terminal_pairing_codes WHERE user_id = $1::uuid AND used_at IS NULL`, id); err == nil {
+	// Benutzerzeile sperren: gleichzeitige Code-Erzeugungen laufen nacheinander
+	if _, err = tx.Exec(ctx, `SELECT 1 FROM users WHERE id = $1::uuid FOR UPDATE`, id); err == nil {
+		_, err = tx.Exec(ctx, `DELETE FROM terminal_pairing_codes WHERE user_id = $1::uuid AND used_at IS NULL`, id)
+	}
+	if err == nil {
 		_, err = tx.Exec(ctx, `INSERT INTO terminal_pairing_codes (code_sha256, user_id, expires_at)
 			VALUES ($1, $2::uuid, NOW() + interval '10 minutes')`, hashPairingCode(code), id)
 	}
@@ -283,10 +287,11 @@ func (h *Handler) TerminalDeviceLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_, _ = h.db.Exec(ctx, `UPDATE terminal_devices SET last_seen_at = NOW() WHERE id = $1::uuid`, devID)
-	http.SetCookie(w, &http.Cookie{Name: "pdh_token", Value: token, Path: "/", MaxAge: deviceCookieMaxAge, SameSite: http.SameSiteLaxMode})
+	http.SetCookie(w, &http.Cookie{Name: "pdh_token", Value: token, Path: "/", MaxAge: deviceCookieMaxAge, HttpOnly: true, SameSite: http.SameSiteLaxMode})
 	http.SetCookie(w, &http.Cookie{Name: "pdh_user_id", Value: u.ID, Path: "/", MaxAge: deviceCookieMaxAge, SameSite: http.SameSiteLaxMode})
 	http.SetCookie(w, &http.Cookie{Name: "pdh_return_token", Value: "", Path: "/", MaxAge: -1})
 	authLog(r, true, "terminal-gerät", u.Username, u.ID, strings.TrimSpace(u.FirstName+" "+u.LastName), "")
+	componentLog("terminal").Info().Str("device", devID).Str("user", u.ID).Msg("gerät angemeldet")
 	http.Redirect(w, r, "/terminal", http.StatusSeeOther)
 }
 

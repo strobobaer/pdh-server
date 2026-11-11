@@ -168,3 +168,78 @@ func TestSessionTokenDeviceClaim(t *testing.T) {
 		t.Errorf("tokenDevice Müll: %q", got)
 	}
 }
+
+// primeDevice füllt den Sperr-Zwischenspeicher, damit kein Datenbankzugriff nötig ist.
+func primeDevice(t *testing.T, dev, user string, active bool) {
+	t.Helper()
+	old := terminalDevices
+	terminalDevices = newDeviceCache(time.Hour)
+	terminalDevices.m[dev] = deviceCacheEntry{userID: user, active: active, at: time.Now()}
+	t.Cleanup(func() { terminalDevices = old })
+}
+
+func setCookiesCleared(rec *httptest.ResponseRecorder) bool {
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == "pdh_token" && c.MaxAge < 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// I1: Die Wartungssperre meldet gekoppelte Terminals nicht ab (Cookie bleibt),
+// normale Sitzungen schon; die Sperrseite schickt das Terminal danach auf /terminal.
+func TestMaintLockKeepsDeviceSession(t *testing.T) {
+	primeDevice(t, "dev-1", "u1", true)
+	h, _ := maintTestHandler(t, lockedView())
+	h.tmpl = loadTestTemplates(t)
+	hd, _ := maintPlain(h)
+	devTok := boardTestToken(t, jwt.MapClaims{"sub": "u1", "device": "dev-1", "iat": time.Now().Add(-time.Hour).Unix(), "exp": time.Now().Add(time.Hour).Unix()})
+	rec := maintDo(hd, maintReq{method: "GET", path: "/terminal", tok: devTok, hdr: htmlAccept})
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("Status %d", rec.Code)
+	}
+	if setCookiesCleared(rec) {
+		t.Error("Geräte-Cookie wurde während der Sperre gelöscht")
+	}
+	if !strings.Contains(rec.Body.String(), "device =  true ") {
+		t.Error("Sperrseite kennt das Terminal nicht (Device)")
+	}
+	normal := maintToken(t, "u1", time.Now())
+	rec = maintDo(hd, maintReq{method: "GET", path: "/tickets", tok: normal, hdr: htmlAccept})
+	if !setCookiesCleared(rec) {
+		t.Error("normale Sitzung wird nicht abgemeldet")
+	}
+	if !strings.Contains(rec.Body.String(), "device =  false ") {
+		t.Error("normale Sitzung: Device müsste false sein")
+	}
+}
+
+// I2: Ein gesperrtes Geräte-Token liefert keinen Bearbeiter mehr.
+func TestRequestActorDeviceToken(t *testing.T) {
+	h := &Handler{jwtSecret: "geheim"}
+	tok, _ := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{"sub": "u1", "device": "dev-1", "exp": time.Now().Add(time.Hour).Unix()}).SignedString([]byte("geheim"))
+	req := func() *http.Request {
+		r := httptest.NewRequest("DELETE", "/api/v1/inventory/x", nil)
+		r.AddCookie(&http.Cookie{Name: "pdh_token", Value: tok})
+		return r
+	}
+	primeDevice(t, "dev-1", "u1", true)
+	if got := h.requestActor(req()); got != "u1" {
+		t.Errorf("aktives Gerät: %q", got)
+	}
+	primeDevice(t, "dev-1", "u1", false)
+	if got := h.requestActor(req()); got != "" {
+		t.Errorf("gesperrtes Gerät: %q", got)
+	}
+	primeDevice(t, "dev-1", "anderer", true)
+	if got := h.requestActor(req()); got != "" {
+		t.Errorf("Gerät eines anderen Benutzers: %q", got)
+	}
+	plain, _ := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{"sub": "u2", "exp": time.Now().Add(time.Hour).Unix()}).SignedString([]byte("geheim"))
+	r := httptest.NewRequest("DELETE", "/x", nil)
+	r.AddCookie(&http.Cookie{Name: "pdh_token", Value: plain})
+	if got := h.requestActor(r); got != "u2" {
+		t.Errorf("normale Sitzung: %q", got)
+	}
+}

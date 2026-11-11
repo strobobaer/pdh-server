@@ -2254,6 +2254,12 @@ func (h *Handler) authMiddleware(next http.Handler) http.Handler {
 		}
 		user := h.sessionUser(r)
 		if user == nil {
+			// Gesperrtes oder entkoppeltes Terminal: Fehlerseite statt Weiterleitung ins Leere
+			if _, _, dev := h.sessionToken(r); dev != "" {
+				clearSessionCookies(w)
+				h.renderDeviceError(w, http.StatusForbidden, msgDeviceLoginDenied)
+				return
+			}
 			// Cookie in jedem Fall loeschen - auch wenn das JWT selbst noch
 			// gueltig war, aber der Benutzer nicht mehr geladen werden kann
 			// (deaktiviert/geloescht). Sonst haengt der Browser dauerhaft an
@@ -3770,13 +3776,13 @@ func (h *Handler) OverrideLogoutWeb(w http.ResponseWriter, r *http.Request) {
 		h.Logout(w, r)
 		return
 	}
-	returnMaxAge := 86400
+	returnMaxAge, isDevice, target := 86400, false, "/"
 	if h.tokenDevice(returnCookie.Value) != "" {
-		returnMaxAge = deviceCookieMaxAge // Gerätesitzung behält ihre 400 Tage
+		returnMaxAge, isDevice, target = deviceCookieMaxAge, true, "/terminal" // Gerätesitzung behält ihre 400 Tage
 	}
-	http.SetCookie(w, &http.Cookie{Name: "pdh_token", Value: returnCookie.Value, Path: "/", MaxAge: returnMaxAge, SameSite: http.SameSiteLaxMode})
+	http.SetCookie(w, &http.Cookie{Name: "pdh_token", Value: returnCookie.Value, Path: "/", MaxAge: returnMaxAge, HttpOnly: isDevice, SameSite: http.SameSiteLaxMode})
 	http.SetCookie(w, &http.Cookie{Name: "pdh_user_id", Value: userID, Path: "/", MaxAge: returnMaxAge, SameSite: http.SameSiteLaxMode})
-	http.Redirect(w, r, "/", http.StatusFound)
+	http.Redirect(w, r, target, http.StatusFound)
 }
 
 // ── Wiederhergestellte Handler ────────────────────────────────

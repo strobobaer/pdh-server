@@ -92,7 +92,7 @@
     <div class="rec-row" style="flex-wrap:wrap;gap:8px{{if .Revoked}};opacity:.55{{end}}">
       <i class="ti ti-device-desktop" style="color:var(--muted)"></i>
       <div class="grow"><b>{{.Name}}</b> {{if .Revoked}}<span class="badge b-red">gesperrt</span>{{else}}<span class="badge b-green">aktiv</span>{{end}}
-        <div class="rec-sub">gekoppelt {{.Created}} · zuletzt aktiv {{.LastSeen}}{{if .Revoked}} · gesperrt {{.Revoked}}{{end}}</div></div>
+        <div class="rec-sub">gekoppelt {{.Created}} · zuletzt angemeldet {{.LastSeen}}{{if .Revoked}} · gesperrt {{.Revoked}}{{end}}</div></div>
       {{if not .Revoked}}<form method="post" action="/users/{{$u.ID}}/devices/{{.ID}}/revoke" style="margin:0" onsubmit="return confirm('Gerät sperren? Das Terminal wird innerhalb von 30 Sekunden abgemeldet.')"><button class="btn btn-small" type="submit" style="color:var(--red)"><i class="ti ti-ban"></i> Sperren</button></form>{{end}}
     </div>
     {{else}}<p class="rec-sub">Noch kein Gerät gekoppelt.</p>{{end}}

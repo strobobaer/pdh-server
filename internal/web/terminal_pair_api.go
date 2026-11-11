@@ -211,6 +211,7 @@ func (h *Handler) TerminalPairAPI(w http.ResponseWriter, r *http.Request) {
 	display := displayUserName(first, last, username)
 	authLog(r, true, "terminal-kopplung", username, userID, display, "")
 	h.addHistory(ctx, "user", userID, "terminal_paired", "", "", name, "", "")
+	componentLog("terminal").Info().Str("device", devID).Str("user", userID).Msg("gerät gekoppelt")
 	terminalJSON(w, http.StatusOK, map[string]string{"device_id": devID, "secret": secret, "user": display})
 }
 

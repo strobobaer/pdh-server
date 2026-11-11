@@ -467,7 +467,8 @@ func (h *Handler) MaintLockMiddleware(next http.Handler) http.Handler {
 			return
 		}
 		u, admin := h.maintSession(r)
-		if !admin {
+		_, _, device := h.sessionToken(r) // gekoppeltes Terminal: Sitzung bleibt bestehen
+		if !admin && device == "" {
 			if _, err := r.Cookie("pdh_token"); err == nil || u != nil {
 				clearSessionCookies(w) // Abmelden: Sitzung gilt nach der Sperre nicht mehr
 			}
@@ -483,7 +484,7 @@ func (h *Handler) MaintLockMiddleware(next http.Handler) http.Handler {
 			w.WriteHeader(http.StatusServiceUnavailable)
 			_ = json.NewEncoder(w).Encode(map[string]any{"error": "Wartung", "retry_after": maintRetryAfter})
 		default:
-			d := maintScreenData{View: v, Admin: admin, ShowLogin: p == "/wartung/anmelden" && !admin}
+			d := maintScreenData{View: v, Admin: admin, Device: device != "", ShowLogin: p == "/wartung/anmelden" && !admin}
 			if r.URL.Query().Get("abgebrochen") == "1" && p == "/wartung" {
 				d.Msg = tr(h.requestLang(r), "Abbruch angefordert – die bisherige Version wird wiederhergestellt")
 			}
@@ -676,6 +677,7 @@ type maintScreenData struct {
 	View      ha.UpdateView
 	Admin     bool // Abbruch-Knopf
 	ShowLogin bool // Anmeldeformular für Administratoren
+	Device    bool // gekoppeltes Terminal: danach zurück auf /terminal
 	Msg, Err  string
 }
 
@@ -694,6 +696,7 @@ type maintScreenPage struct {
 	Remaining             string
 	RollingBack           bool
 	Admin, ShowLogin      bool
+	Device                bool // gekoppeltes Terminal (Sitzung bleibt)
 	// CanAbort: Abbruch-Knopf zeigen (I7: nicht im Zurücksetzen und nicht ab der Freigabe);
 	// AbortNote erklärt sonst, warum es nichts mehr abzubrechen gibt.
 	CanAbort  bool
@@ -801,6 +804,7 @@ func (h *Handler) renderMaintScreen(w http.ResponseWriter, r *http.Request, stat
 		RollingBack: v.RollingBack,
 		Admin:       d.Admin,
 		ShowLogin:   d.ShowLogin,
+		Device:      d.Device,
 	}
 	if d.Admin {
 		switch {
