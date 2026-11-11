@@ -475,6 +475,10 @@ func main() {
 	// SSO routes must be mounted before the protected web UI.
 	r.Get("/sso/nextcloud", web.NextcloudSSOHandler(db.Pool, cfg.Auth.JWTSecret))
 
+	// Öffentliche Kopplungs-API der PDH-Terminals (Einmalcode / Geräte-Geheimnis).
+	r.Post("/api/terminal/v1/pair", webHandler.TerminalPairAPI)
+	r.Get("/api/terminal/v1/device", webHandler.TerminalDeviceAPI)
+
 	// Public shop-floor dashboard; its write actions authenticate each operator by RFID.
 	r.Mount("/global", webHandler.GlobalDashboardRoutes())
 
