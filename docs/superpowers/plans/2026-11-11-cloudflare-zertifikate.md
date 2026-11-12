@@ -30,8 +30,8 @@
 2. **Zertifikat mit kurzer Laufzeit** (unter 90 Tagen): Erneuerung beginnt bei einem Drittel Restlaufzeit, höchstens 30 Tage vorher – sonst erneuert ein 6-Tage-Zertifikat täglich oder nie. → Test in Task 1.
 3. **Nextcloud-Seite anders als erwartet** (keine oder mehrere `ssl_certificate`-Zeilen, mehrere `server`-Blöcke): Der Agent ändert nichts und meldet es, statt die Seite zu zerstören. → Test in Task 5.
 4. **Zwei Aufträge für denselben Namen gleichzeitig** (Doppelklick, Knopf während der täglichen Prüfung): Der zweite meldet „läuft schon“. → Test in Task 6.
-6. **Vorhandener DNS-Eintrag an der UDM Pro** unter einem geführten Namen, den jemand von Hand angelegt hat: Das PDH überschreibt ihn nur nach Rückfrage und löscht nie einen Eintrag, den es nicht selbst angelegt hat. → Test in Task 8a.
-5. **Fremder `_acme-challenge`-Eintrag** eines anderen Programms unter einem geführten Namen: Das Aufräumen löscht nur Einträge, deren Kennung das PDH selbst angelegt und sich gemerkt hat. → Test in Task 2.
+5. **Vorhandener DNS-Eintrag an der UDM Pro** unter einem geführten Namen, den jemand von Hand angelegt hat: Das PDH überschreibt ihn nur nach Rückfrage und löscht nie einen Eintrag, den es nicht selbst angelegt hat. → Test in Task 8a.
+6. **Fremder `_acme-challenge`-Eintrag** eines anderen Programms unter einem geführten Namen: Das Aufräumen löscht nur Einträge, deren Kennung das PDH selbst angelegt und sich gemerkt hat. → Test in Task 2.
 
 ---
 
