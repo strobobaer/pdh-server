@@ -1232,28 +1232,29 @@ mon6_start() {
     MON6_PID=$!
 }
 
-# mon6_attempts <Datei> [<IP>]: Zeitpunkte (cs), an denen der Server die
-# Adresse nach einem Setzversuch wieder entfernt hat (Deleted)
+# mon6_attempts <Datei> [<IP>]: Zeitpunkte (cs) der Setzversuche – jeder
+# Versuch beginnt mit einem neuen Eintrag „tentative“ (ohne dadfailed)
 mon6_attempts() {
-    grep -F " ${2:-$VIP6_IP}/128 " "$1" | grep -F Deleted | awk '{ print $1 }' || true
+    grep -F " ${2:-$VIP6_IP}/128 " "$1" | grep -vF Deleted | grep -vF dadfailed | grep -F tentative | awk '{ print $1 }' || true
 }
 
 # mon6_check <Datei> <Wer>: höchstens ein Setzversuch je Minute (Abstand
-# zwischen zwei Versuchen mindestens 55 s)
+# zwischen zwei Versuchen mindestens 55 s); mindestens ein Versuch scheiterte
+# an der Doppelprüfung
 mon6_check() {
     local -a at
-    local i n adds
+    local i n failed
     mapfile -t at < <(mon6_attempts "$1")
     n=${#at[@]}
-    adds="$(grep -F " $VIP6_IP/128 " "$1" | grep -vF Deleted | grep -vcF dadfailed || true)"
-    log "  $2: $n Setzversuche mit Konflikt (ip monitor: $adds neue Einträge, $n entfernt)"
+    failed="$(grep -F " $VIP6_IP/128 " "$1" | grep -F Deleted | grep -cF dadfailed || true)"
+    log "  $2: $n Setzversuche, davon $failed an der Doppelprüfung gescheitert und entfernt"
     for ((i = 0; i < n; i++)); do
-        log "    Versuch $((i + 1)) entfernt bei +$(((at[i] - at[0]) * 10)) ms"
+        log "    Versuch $((i + 1)) bei +$(((at[i] - at[0]) * 10)) ms"
     done
     for ((i = 1; i < n; i++)); do
         (((at[i] - at[i - 1]) * 10 >= 55000)) || fail "$2: zwei Setzversuche nur $(((at[i] - at[i - 1]) * 10)) ms auseinander (erwartet höchstens einer je Minute)"
     done
-    ((n >= 1)) || fail "$2: kein Setzversuch beobachtet – $(vip6_where)"
+    ((failed >= 1)) || fail "$2: kein gescheiterter Setzversuch beobachtet – $(vip6_where)"
 }
 
 DUP6_TEXT="IPv6-Adresse $VIP6_IP wird schon von einem anderen Gerät benutzt"
