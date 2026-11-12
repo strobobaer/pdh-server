@@ -123,20 +123,22 @@ func TestDemotePushFailsKeepsAll(t *testing.T) {
 	}
 }
 
-func TestDemoteTimeoutRestartsPDH(t *testing.T) {
+// R51: Auch nach der RÃ¼cknahme durch den Step hebt der Aktor nicht selbst auf.
+func TestDemoteTimeoutStaysFenced(t *testing.T) {
 	r := (&fakeRunner{}).
 		on("runuser", "pg_is_in_recovery", stPrimary, nil).
 		on("runuser", "pg_stat_replication", "pdh_ha_b|streaming|0/100|0/80|sync", nil)
 	a, svc := testActor(t, r)
+	a.phase = func(uint64) swapPhase { return phaseWithdrawn } // der Step hat zurückgenommen (R42)
 	err := a.Do(context.Background(), ha.Action{Kind: ha.ActDemote})
 	if err == nil || !strings.Contains(err.Error(), "Partner hat nicht aufgeholt") {
 		t.Fatalf("Frist: %v", err)
 	}
-	if has(r.list(), "pg_ctlcluster 18 main stop") || !svc.active {
-		t.Fatalf("nach Frist nichts gestoppt, pdh wieder an: %v", r.list())
+	if has(r.list(), "pg_ctlcluster 18 main stop") || svc.active {
+		t.Fatalf("nach Frist nichts gestoppt, pdh bleibt aus: %v", r.list())
 	}
-	if strings.Contains(confText(t, a), "default_transaction_read_only") {
-		t.Fatal("nur-lesend nicht zurückgenommen")
+	if !strings.Contains(confText(t, a), "default_transaction_read_only") {
+		t.Fatal("Abschottung vom Aktor zurückgenommen")
 	}
 }
 
@@ -609,5 +611,276 @@ func TestDemoteFreezeIdempotentWhenStopped(t *testing.T) {
 	l := r.list()
 	if has(l, "pg_ctlcluster") || has(l, "svc ") || has(l, "tun ") {
 		t.Fatalf("nichts zu tun: %v", l)
+	}
+}
+
+// finalLog: mirrorFinal-Fake, das seinen Aufruf in der Reihenfolge des fakeRunner festhält.
+func finalLog(r *fakeRunner, err error) func(context.Context) error {
+	return func(context.Context) error {
+		_, _ = r.Run(context.Background(), []string{"mirrorfinal"}, nil, nil)
+		return err
+	}
+}
+
+// Der letzte Dateiabgleich läuft nach dem Abschotten (Dienste aus, nur lesend)
+// und vor dem Warten auf den Gleichstand – so kann nach ihm nichts Neues kommen.
+func TestDemoteRunsFinalSyncAfterFence(t *testing.T) {
+	for _, kind := range []ha.ActionKind{ha.ActDemote, ha.ActDemoteFreeze} {
+		t.Run(string(kind), func(t *testing.T) {
+			r := (&fakeRunner{}).
+				on("runuser", "pg_is_in_recovery", stPrimary, nil).
+				on("runuser", "pg_stat_replication", "pdh_ha_b|streaming|0/100|0/100|sync", nil)
+			a, _ := testActor(t, r)
+			a.pushCfg = func(context.Context) error {
+				_, _ = r.Run(context.Background(), []string{"push"}, nil, nil)
+				return nil
+			}
+			a.mirrorFinal = finalLog(r, nil)
+			if err := a.Do(context.Background(), ha.Action{Kind: kind, Term: 3, Manual: true}); err != nil {
+				t.Fatal(err)
+			}
+			seq(t, r.list(), "push", "svc stop", "psql: SELECT pg_terminate_backend", "mirrorfinal",
+				"psql: SELECT application_name", "pg_ctlcluster 18 main stop")
+		})
+	}
+}
+
+// Scheitert der letzte Abgleich, wird zurückgenommen wie bei fehlendem Gleichstand.
+func TestDemoteFinalSyncFails(t *testing.T) {
+	for _, kind := range []ha.ActionKind{ha.ActDemote, ha.ActDemoteFreeze} {
+		t.Run(string(kind), func(t *testing.T) {
+			r := (&fakeRunner{}).
+				on("runuser", "pg_is_in_recovery", stPrimary, nil).
+				on("runuser", "pg_stat_replication", "pdh_ha_b|streaming|0/100|0/100|sync", nil)
+			a, svc := testActor(t, r)
+			a.phase = func(uint64) swapPhase { return phaseWithdrawn } // der Step hat zurückgenommen (R42)
+			a.mirrorFinal = finalLog(r, errors.New("rsync 23"))
+			err := a.Do(context.Background(), ha.Action{Kind: kind, Term: 3, Manual: true})
+			if err == nil || err.Error() != "Letzter Abgleich der Dateien nicht fertig: rsync 23" {
+				t.Fatalf("Fehler: %v", err)
+			}
+			l := r.list()
+			if has(l, "pg_ctlcluster 18 main stop") {
+				t.Fatalf("nach dem Fehler darf nichts mehr abgegeben werden: %v", l)
+			}
+			if svc.active || tunOf(a).active {
+				t.Fatal("Dienste vom Aktor wieder gestartet (R51)")
+			}
+			if !strings.Contains(confText(t, a), "default_transaction_read_only") {
+				t.Fatalf("Abschottung vom Aktor zurückgenommen:\n%s", confText(t, a))
+			}
+			if _, serr := os.Stat(filepath.Join(a.pg.c.DataDir, "standby.signal")); serr == nil {
+				t.Fatal("Rolle verändert: standby.signal liegt da")
+			}
+		})
+	}
+}
+
+// abandon (Rücktausch ohne Rückweg) und die Übernahme am Partner kennen keinen letzten Abgleich.
+func TestAbandonNoFinalSync(t *testing.T) {
+	r := (&fakeRunner{}).
+		on("runuser", "(SELECT timeline_id FROM pg_control_checkpoint())", stStandby, nil).
+		on("runuser", "SELECT pg_promote", "t", nil).
+		on("runuser", "SELECT pg_is_in_recovery()", "f", nil)
+	a, _ := testActor(t, r)
+	a.mirrorFinal = finalLog(r, errors.New("darf nicht laufen"))
+	if err := a.Do(context.Background(), ha.Action{Kind: ha.ActAbandon, Term: 3}); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Do(context.Background(), ha.Action{Kind: ha.ActPromote, Term: 4, Manual: true}); err != nil {
+		t.Fatal(err)
+	}
+	if has(r.list(), "mirrorfinal") {
+		t.Fatalf("letzter Abgleich bei abandon/Übernahme: %v", r.list())
+	}
+}
+
+// C1: Hat der Partner übernommen (Rücknahme nicht mehr erlaubt), bleibt der
+// Server abgeschottet – auch wenn der letzte Abgleich oder der Gleichstand scheitern.
+func TestDemoteNoUndoWhenRoleGone(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		mod  func(a *pgActor, r *fakeRunner)
+	}{
+		{"letzter Abgleich", func(a *pgActor, r *fakeRunner) { a.mirrorFinal = finalLog(r, errors.New("abgebrochen")) }},
+		{"Gleichstand", func(a *pgActor, r *fakeRunner) {}},
+	} {
+		for _, kind := range []ha.ActionKind{ha.ActDemote, ha.ActDemoteFreeze} {
+			t.Run(c.name+"/"+string(kind), func(t *testing.T) {
+				lag := "pdh_ha_b|streaming|0/100|0/100|sync"
+				if c.name == "Gleichstand" {
+					lag = "pdh_ha_b|streaming|0/100|0/80|sync"
+				}
+				r := (&fakeRunner{}).on("runuser", "pg_is_in_recovery", stPrimary, nil).on("runuser", "pg_stat_replication", lag, nil)
+				a, svc := testActor(t, r)
+				c.mod(a, r)
+				marked := false
+				a.phase = func(uint64) swapPhase { return phaseTaken }
+				a.refused = func() { marked = true }
+				err := a.Do(context.Background(), ha.Action{Kind: kind, Term: 3, Manual: true})
+				// N3: auf dem Fehlerpfad derselbe Fehlertyp wie vor dem Stopp, sonst setzt der Dienst Wartung
+				var taken swapTakenError
+				if !errors.As(err, &taken) {
+					t.Fatalf("swapTakenError erwartet: %T %v", err, err)
+				}
+				if has(r.list(), "svc start") || has(r.list(), "tun start") || svc.active || tunOf(a).active {
+					t.Fatalf("Dienste trotz verlorener Rolle wieder an: %v", r.list())
+				}
+				if !strings.Contains(confText(t, a), "default_transaction_read_only = on") {
+					t.Fatal("Datenbank trotz verlorener Rolle wieder schreibbar")
+				}
+				// die Marke „Rücknahme verweigert“ setzt nur demote, nicht demote_freeze (R32.4)
+				if marked != (kind == ha.ActDemote) {
+					t.Fatalf("Marke gesetzt=%v bei %s", marked, kind)
+				}
+			})
+		}
+	}
+}
+
+// Ungewisser Stand der Rolle (etwa abgeschaltet): keine Rücknahme, keine Marke, der ursprüngliche
+// Fehler bleibt; demote stoppt nicht. demote_freeze hält wie bisher nur ein zurückgenommener Tausch auf.
+func TestDemotePhaseUnknownStaysFenced(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		lag  string
+		mod  func(a *pgActor, r *fakeRunner)
+		want string
+	}{
+		{"letzter Abgleich", "pdh_ha_b|streaming|0/100|0/100|sync", func(a *pgActor, r *fakeRunner) { a.mirrorFinal = finalLog(r, errors.New("abgebrochen")) }, "Letzter Abgleich"},
+		{"Gleichstand", "pdh_ha_b|streaming|0/100|0/80|sync", func(*pgActor, *fakeRunner) {}, "nicht aufgeholt"},
+	} {
+		for _, kind := range []ha.ActionKind{ha.ActDemote, ha.ActDemoteFreeze} {
+			t.Run(c.name+"/"+string(kind), func(t *testing.T) {
+				r := (&fakeRunner{}).on("runuser", "pg_is_in_recovery", stPrimary, nil).on("runuser", "pg_stat_replication", c.lag, nil)
+				a, svc := testActor(t, r)
+				c.mod(a, r)
+				marked := false
+				a.phase = func(uint64) swapPhase { return phaseUnknown }
+				a.refused = func() { marked = true }
+				err := a.Do(context.Background(), ha.Action{Kind: kind, Term: 3, Manual: true})
+				if err == nil || !strings.Contains(err.Error(), c.want) {
+					t.Fatalf("Fehler: %v", err)
+				}
+				if has(r.list(), "svc start") || svc.active || tunOf(a).active || marked {
+					t.Fatalf("Dienste oder Marke trotz ungewisser Rolle: Marke=%v %v", marked, r.list())
+				}
+				if !strings.Contains(confText(t, a), "default_transaction_read_only = on") {
+					t.Fatal("Datenbank trotz ungewisser Rolle wieder schreibbar")
+				}
+				ungewiss := false
+				for _, e := range a.ev.since(0, 100) {
+					ungewiss = ungewiss || strings.Contains(e.Text, "ungewiss")
+				}
+				if !ungewiss {
+					t.Fatal("kein Alarm „Abschottung bleibt“")
+				}
+			})
+		}
+	}
+	// vor dem Stopp: demote lässt die Datenbank nur lesend und stoppt nicht
+	r := (&fakeRunner{}).on("runuser", "pg_is_in_recovery", stPrimary, nil).on("runuser", "pg_stat_replication", "pdh_ha_b|streaming|0/100|0/100|sync", nil)
+	a, _ := testActor(t, r)
+	a.phase = func(uint64) swapPhase { return phaseUnknown }
+	err := a.Do(context.Background(), ha.Action{Kind: ha.ActDemote, Term: 3, Manual: true})
+	var nm interface{ noMaint() }
+	if !errors.As(err, &nm) || has(r.list(), "pg_ctlcluster 18 main stop") || has(r.list(), "svc start") {
+		t.Fatalf("Fehler=%v: %v", err, r.list())
+	}
+}
+
+// M3: Ist der Tausch vor dem Stoppen schon zurückgenommen (handing false), wird nicht gestoppt.
+func TestDemoteChecksHandoverBeforeStop(t *testing.T) {
+	for _, kind := range []ha.ActionKind{ha.ActDemote, ha.ActDemoteFreeze} {
+		t.Run(string(kind), func(t *testing.T) {
+			r := (&fakeRunner{}).
+				on("runuser", "pg_is_in_recovery", stPrimary, nil).
+				on("runuser", "pg_stat_replication", "pdh_ha_b|streaming|0/100|0/100|sync", nil)
+			a, svc := testActor(t, r)
+			a.phase = func(uint64) swapPhase { return phaseWithdrawn } // Step hat zurückgenommen
+			if err := a.Do(context.Background(), ha.Action{Kind: kind, Term: 3, Manual: true}); err == nil {
+				t.Fatal("Fehler erwartet")
+			}
+			if has(r.list(), "pg_ctlcluster 18 main stop") {
+				t.Fatalf("gestoppt trotz zurückgenommenem Tausch: %v", r.list())
+			}
+			if svc.active || !strings.Contains(confText(t, a), "default_transaction_read_only = on") {
+				t.Fatal("vom Aktor zurückgenommen (R51)")
+			}
+		})
+	}
+}
+
+// R31.2: Übernahme von Hand nimmt einen laufenden, nur lesenden Primary an und schaltet ihn schreibbar;
+// ohne Handbefehl bleibt es bei der Ablehnung.
+func TestPromoteManualReadOnlyPrimary(t *testing.T) {
+	ro := "f|0/100|1|on|pdh_ha_b|"
+	r := (&fakeRunner{}).
+		on("runuser", "pg_is_in_recovery", ro, nil).
+		onFn("runuser", "SELECT pg_is_in_recovery()", func(c fakeCall) (string, error) {
+			if strings.Contains(c.stdin, "pg_last_wal") {
+				return ro, nil
+			}
+			return "f", nil
+		})
+	a, svc := testActor(t, r)
+	svc.active = false
+	if err := a.Do(context.Background(), ha.Action{Kind: ha.ActPromote, Term: 3}); err == nil {
+		t.Fatal("ohne Handbefehl muss das Hochstufen abgelehnt werden")
+	}
+	if err := a.Do(context.Background(), ha.Action{Kind: ha.ActPromote, Term: 3, Manual: true}); err != nil {
+		t.Fatalf("Übernahme von Hand: %v", err)
+	}
+	if has(r.list(), "psql: SELECT pg_promote") {
+		t.Fatal("pg_promote auf einem Primary")
+	}
+	if strings.Contains(confText(t, a), "default_transaction_read_only") || !svc.active || !tunOf(a).active {
+		t.Fatal("nicht schreibbar oder Dienste aus")
+	}
+}
+
+// R32.3: Hat der Partner übernommen, stoppt demote nicht und wird nicht Standby: die Datenbank
+// bleibt nur lesend, die Marke wird gesetzt (Wiederanbindung über pg_rewind). demote_freeze
+// läuft wie bisher zu Ende, ohne Marke.
+func TestDemoteTakenOverStaysReadOnly(t *testing.T) {
+	for _, kind := range []ha.ActionKind{ha.ActDemote, ha.ActDemoteFreeze} {
+		t.Run(string(kind), func(t *testing.T) {
+			r := (&fakeRunner{}).
+				on("runuser", "pg_is_in_recovery", stPrimary, nil).
+				on("runuser", "pg_stat_replication", "pdh_ha_b|streaming|0/100|0/100|sync", nil)
+			a, _ := testActor(t, r)
+			marked := false
+			a.phase = func(uint64) swapPhase { return phaseTaken }
+			a.refused = func() { marked = true }
+			err := a.Do(context.Background(), ha.Action{Kind: kind, Term: 3, Manual: true})
+			stopped := has(r.list(), "pg_ctlcluster 18 main stop")
+			if kind == ha.ActDemote {
+				var nm interface{ noMaint() }
+				if err == nil || !errors.As(err, &nm) || stopped || !marked || has(r.list(), "svc start") {
+					t.Fatalf("demote: Fehler=%v gestoppt=%v Marke=%v: %v", err, stopped, marked, r.list())
+				}
+				if !strings.Contains(confText(t, a), "default_transaction_read_only = on") {
+					t.Fatal("nicht mehr nur lesend")
+				}
+				return
+			}
+			if err != nil || !stopped || marked {
+				t.Fatalf("demote_freeze: Fehler=%v gestoppt=%v Marke=%v", err, stopped, marked)
+			}
+		})
+	}
+}
+
+// R31.4: „Rollentausch wurde inzwischen abgebrochen“ setzt wie der letzte Abgleich keine Wartung.
+func TestWithdrawnSwapErrorNoMaintenance(t *testing.T) {
+	r := (&fakeRunner{}).
+		on("runuser", "pg_is_in_recovery", stPrimary, nil).
+		on("runuser", "pg_stat_replication", "pdh_ha_b|streaming|0/100|0/100|sync", nil)
+	a, _ := testActor(t, r)
+	a.phase = func(uint64) swapPhase { return phaseWithdrawn }
+	err := a.Do(context.Background(), ha.Action{Kind: ha.ActDemote, Term: 3, Manual: true})
+	var nm interface{ noMaint() }
+	if err == nil || !errors.As(err, &nm) {
+		t.Fatalf("Fehler ohne Wartung erwartet: %v", err)
 	}
 }

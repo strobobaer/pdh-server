@@ -41,21 +41,24 @@ RUN apt-get update \
 FROM ubuntu:26.04 AS lab-pg
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-       postgresql postgresql-contrib iputils-ping iputils-arping iproute2 curl ca-certificates socat \
+       postgresql postgresql-contrib iputils-ping iputils-arping iproute2 curl ca-certificates socat rsync \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=build /out/pdh-ha /usr/local/bin/pdh-ha
 COPY deploy/ha-lab/pdh-dummy.sh /usr/local/bin/pdh-dummy
+COPY deploy/ha-lab/nc-dummy.sh /usr/local/bin/nc-dummy
 COPY deploy/ha-lab/lab-agent.sh /usr/local/bin/lab-agent
 COPY deploy/ha-lab/lab-pg-entrypoint.sh /usr/local/bin/pdh-ha-entrypoint
 COPY VERSION /usr/local/share/pdh-lab/VERSION
-RUN sed -i 's/\r$//' /usr/local/bin/pdh-dummy /usr/local/bin/lab-agent /usr/local/bin/pdh-ha-entrypoint \
-    && chmod 0755 /usr/local/bin/pdh-dummy /usr/local/bin/lab-agent /usr/local/bin/pdh-ha-entrypoint \
+RUN sed -i 's/\r$//' /usr/local/bin/pdh-dummy /usr/local/bin/nc-dummy /usr/local/bin/lab-agent /usr/local/bin/pdh-ha-entrypoint \
+    && chmod 0755 /usr/local/bin/pdh-dummy /usr/local/bin/nc-dummy /usr/local/bin/lab-agent /usr/local/bin/pdh-ha-entrypoint \
     && install -d -m 0700 /etc/pdh/ha /var/lib/pdh-ha \
-    && install -d -m 0755 /var/lib/pdh-lab
+    && install -d -m 0755 /var/lib/pdh-lab /opt/pdh-server /var/www
 # Update im Verbund: Agent und pdh-Platzhalter (lab-agent, pdh-dummy), Stand
-# je Takt aus der Datei, /health auf 8090
+# je Takt aus der Datei, /health auf 8090. Nextcloud als Attrappe (wirkt nur mit
+# occ im Programmordner und eingeschaltetem „Nextcloud mitnehmen“).
 ENV PDH_HA_SERVICE_CMD=/usr/local/bin/pdh-dummy \
     PDH_HA_AGENT_CMD=/usr/local/bin/lab-agent \
+    PDH_HA_NC_CMD=/usr/local/bin/nc-dummy \
     PDH_HA_COMMIT_FILE=/var/lib/pdh-lab/commit \
     PDH_SERVER_PORT=8090
 EXPOSE 7480/tcp 5432/tcp

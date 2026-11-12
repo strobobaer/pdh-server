@@ -42,6 +42,7 @@ import (
 // ── Template-Daten ───────────────────────────────────────────
 
 type BaseData struct {
+	navCan        func(perm string) bool // Rechteprüfung für die Navigation (nav.go); nil = alles zeigen
 	Title         string
 	Page          string
 	ContextTitle  string
@@ -361,6 +362,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Use(h.LangMiddleware)
 	r.Use(h.DepartmentScopeMiddleware)
 	r.Use(h.RequestOnceMiddleware) // Doppel-Absende-Sperre (request_once.go)
+	r.Use(h.NCSyncTrigger)         // Änderungen an Benutzern, Gruppen, Rollen, Laufwerken → Abgleich mit Nextcloud (nextcloud_sync.go)
 
 	r.Get("/", h.Dashboard)
 	r.Get("/assignments/new", h.AssignmentNewPage)
@@ -601,6 +603,10 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/admin/server-config/save", h.ServerConfigSaveWeb)
 	r.Post("/admin/server-config/test", h.ServerConfigTestWeb)
 	r.Get("/admin/server-config/cloudflared/script", h.CloudflaredScriptWeb)
+	r.Get("/admin/server-config/cloudflare/panel", h.CloudflarePanelWeb) // DNS, Proxy, Tunnel-Ziele (cloudflare_api.go)
+	r.Post("/admin/server-config/cloudflare/dns", h.CloudflareDNSWeb)
+	r.Post("/admin/server-config/cloudflare/zone", h.CloudflareZoneWeb)
+	r.Post("/admin/server-config/cloudflare/tunnel", h.CloudflareTunnelWeb)
 	// Reiter „Ausfallschutz“: Sicherung aufs Netzlaufwerk über den Update-Agenten (dr.go)
 	r.Post("/admin/server-config/dr/settings", h.DRSettingsWeb)
 	r.Post("/admin/server-config/dr/run", h.DRRunWeb)
@@ -616,6 +622,10 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/admin/server-config/ha/settings", h.HASettingsWeb)
 	r.Post("/admin/server-config/ha/window", h.HAWindowWeb) // Wartungsfenster (maint_window.go)
 	r.Post("/admin/server-config/ha/faulty-allow", h.HAFaultyAllowWeb)
+	r.Post("/admin/server-config/ha/mirror", h.HAMirrorWeb) // Datei-Spiegelung (ha_mirror.go)
+	r.Post("/admin/server-config/ha/mirror-run", h.HAMirrorRunWeb)
+	r.Post("/admin/server-config/ha/mirror-trash-empty", h.HAMirrorTrashEmptyWeb)
+	r.Post("/admin/server-config/ha/mirror-confirm", h.HAMirrorConfirmWeb)
 	r.Post("/admin/server-config/update-window", h.UpdateWindowWeb)
 	r.Post("/admin/server-config/ha/access", h.HAAccessWeb)
 	r.Post("/admin/server-config/ha/vip-test", h.HAVIPTestWeb)
@@ -636,6 +646,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/admin/server-config/vpn/zip", h.VPNZipWeb)
 	r.Post("/admin/server-config/restart", h.ServerRestartWeb)
 	r.Post("/admin/server-config/nextcloud/admin", h.NextcloudAdminWeb) // Dienstkonto pdhNCadmin (nextcloud_admin.go)
+	r.Post("/admin/server-config/nextcloud/sync", h.NextcloudSyncWeb)   // Abgleich PDH → Nextcloud (nextcloud_sync.go)
 	r.Post("/admin/server-config/import", h.ServerConfigImportWeb)
 	r.Post("/admin/server-config/takeover", h.ServerConfigTakeOverWeb)
 	r.Post("/admin/server-config/env-remove", h.ServerConfigEnvRemoveWeb)
@@ -726,6 +737,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/users/me/password", h.AccountPasswordWeb)
 	r.Post("/users/{id}/password-change", h.UserRequirePasswordChangeWeb)
 	r.Post("/users/{id}/nextcloud-account", h.UserNextcloudAccountWeb)
+	r.Post("/users/{id}/nextcloud-password", h.UserNextcloudPasswordWeb)
 	r.Post("/users/{id}/master", h.UserMasterSaveWeb)
 	r.Post("/users/{id}/private", h.UserPrivateSaveWeb)
 	r.Post("/users/{id}/qualifications", h.UserQualificationSaveWeb)
@@ -1165,6 +1177,7 @@ func (h *Handler) baseData(r *http.Request, page, title, ctxTitle string) BaseDa
 		CanServerConfig:        u.Role == users.RoleAdmin && h.rbac.HasPermissionForUser(u.ID, string(u.Role), "system.server_config"),
 		IsBroker:               h.isBroker(r.Context(), u.ID),
 	}
+	b.navCan = func(perm string) bool { return h.rbac.HasPermissionForUser(u.ID, string(u.Role), perm) } // Navigation: Einträge ohne Recht fehlen
 	b.Nav = buildNav(&b, h.userNavLayout(r.Context(), u.ID))
 	b.Mirror = h.mirrorBanner(r)
 	b.UserAvatar = h.userAvatarURL(r.Context(), u.ID)
@@ -3242,6 +3255,10 @@ func (h *Handler) UserSaveWeb(w http.ResponseWriter, r *http.Request) {
 	if err := h.users.UpdateWithPassword(ctx, currentUser, password); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
+	}
+	// Administrator in Nextcloud: Das Kennzeichen setzen nur Administratoren (nextcloud_sync.go).
+	if h.actorIsAdmin(r) && r.FormValue("nextcloud_admin_shown") == "1" {
+		_, _ = h.db.Exec(ctx, `UPDATE users SET nextcloud_admin = $1 WHERE id = $2::uuid`, r.FormValue("nextcloud_admin") == "on", userID)
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

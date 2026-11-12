@@ -168,6 +168,306 @@ func (d *daemon) deleteDivergedAt(node, id string) error {
 	return nil
 }
 
+// strandedText: Alarm und Statuswarnung für einen gestrandeten Server (R33).
+const strandedText = "Dieser Server ist nicht angebunden: Datenbank nur lesend, Partner aktiv. Wiederanbinden: sudo pdh-ha rejoin"
+
+// rewindUnsafeText: Alarm und Statuswarnung für einen Ordner aus einem abgebrochenen pg_rewind (R35).
+const rewindUnsafeText = "Datenbank nach abgebrochener Wiederanbindung gestoppt: Daten unsicher. Neu kopieren: sudo pdh-ha rejoin. Ist der Partner nicht erreichbar: aus der Sicherung wiederherstellen mit sudo bash scripts/pdh-restore.sh"
+
+// errDataUnsafe: promote und Rücknahme lehnen so einen Ordner ab, auch von Hand.
+var errDataUnsafe = errors.New("Daten nach abgebrochener Wiederanbindung unsicher – bitte aus der Sicherung wiederherstellen (sudo bash scripts/pdh-restore.sh)")
+
+const (
+	strandedAlarmKey = "stranded"
+	rewindUnsafeKey  = "rewind-unsafe"
+	// rewindMarkerSuffix: Datei neben dem Datenordner ab dem echten pg_rewind, bis der Server
+	// als Standby lief oder neu kopiert ist. Der Ordner kann halb zurückgespult sein oder
+	// ohne standby.signal dastehen; er sieht harmlos aus, darf aber nicht starten.
+	rewindMarkerSuffix = ".rewind-laeuft"
+	// strandedFreshPolls: so viele neue Zustandsabfragen, bevor der Alarm gilt. Es läuft
+	// immer nur eine, also begann die zweite erst, nachdem der Zustand schon galt; der
+	// Stand aus einem Rollentausch (abgeschottet vor dem Stopp) zählt damit nicht.
+	strandedFreshPolls = 2
+	// rejoinRetryWait: Abstand der Versuche, solange die Marke steht, aber die Datenbank
+	// gerade kein nur lesender Primary ist (Statusfehler, gestoppt).
+	rejoinRetryWait = 30 * time.Second
+)
+
+const (
+	frozenAlarmKey = "frozen-stranded"
+	// frozenStrandedText: Anfang von Alarm und Statuswarnung der Sackgasse (R60), der Hinweis folgt.
+	frozenStrandedText = "Dieser Server ist nicht angebunden: "
+)
+
+// frozenHintLocked (R60): Die Datenbank hier ist gestoppt und ein eingefrorener Primary-Stand
+// (kein standby.signal), etwa der Rückfallstand eines beendeten Update-Auftrags. Weder die Marke
+// noch der Handbefehl binden ihn an, solange er gestoppt ist (strandedStateErr). Der Hinweis nennt
+// den Weg: PostgreSQL starten (abgeschottet nur lesend), danach anbinden. "" sonst.
+func (d *daemon) frozenHintLocked() string { return d.frozenHintFor(d.lastPG()) }
+
+// frozenHintFor wie frozenHintLocked, für den Stand st (abort: frisch abgefragt, R65). R65 (U9): Nach
+// abgebrochenem pg_rewind ist der Ordner unsicher und kein Rückfallstand: kein Hinweis, der Weg ist die
+// Neukopie (rewindUnsafeText). „startet nur lesend“ stimmt, weil fence die nur lesende Konfiguration
+// auch bei gestoppter Datenbank schreibt (U10). mu gehalten.
+func (d *daemon) frozenHintFor(st *pgStatus) string {
+	pa := d.pgActorLocked()
+	if pa == nil || st == nil || st.State != "stopped" || pa.rewindUnsafe() || !pa.frozenPrimary() {
+		return ""
+	}
+	return "Die Datenbank ist gestoppt (eingefrorener Rückfallstand) und wird so nicht angebunden. Stand behalten: nichts tun. Anbinden: sudo pg_ctlcluster " +
+		pa.pg.c.Version + " " + pa.pg.c.Name + " start (startet nur lesend), danach: sudo pdh-ha rejoin (mit gesetzter Marke läuft es von selbst)"
+}
+
+// frozenStrandedLocked (R60): Sackgasse: passiv, kein Auftrag offen, keine Übergabe, Abgabe oder
+// Wiederanbindung unterwegs, der Partner führt, und hier liegt ein gestoppter eingefrorener Stand.
+// Alarm einmal, Statuswarnung dauerhaft.
+func (d *daemon) frozenStrandedLocked() bool {
+	return d.configured && !d.removed && d.node.Kind == "node" && d.p.Role == ha.Passive &&
+		!d.updateOpenLocked() && d.carry.HandoverPending == 0 && d.pendingDemotes.Load() == 0 &&
+		d.pendingRejoins.Load() == 0 && ha.PartnerLeads(d.last.Partner, d.p.Term) && d.frozenHintLocked() != ""
+}
+
+// strandedReasonLocked: nil, wenn dieser Server gestrandet ist und nur der Handbefehl hilft:
+// passiv, letzter Stand nur lesender Primary, Partner aktiv und Primary gesehen, kein Update-
+// Auftrag, keine Marke, keine Übergabe, keine Abgabe oder Wiederanbindung in der Warteschlange.
+// Sonst der Grund. Eine einzige Stelle für Alarm, Statuswarnung und Handbefehl (R33). Mit der
+// Datei aus dem Rewind gelten dieselben Bedingungen, der Datenbankstand zählt dann erst frisch
+// im Handbefehl (R35); den Alarm dafür gibt es getrennt.
+func (d *daemon) strandedReasonLocked() error {
+	pa := d.pgActorLocked()
+	unsafe := pa != nil && pa.rewindUnsafe()
+	switch {
+	case !d.configured:
+		return errNotConfigured
+	case d.removed:
+		return errors.New("Aus dem Cluster entfernt")
+	case d.node.Kind == "witness":
+		return errors.New("Auf dem Zeugen nicht möglich")
+	case d.modeLocked() == ha.Single:
+		return errors.New("Nur mit zwei Servern möglich")
+	case pa == nil:
+		return errors.New("Hier ist kein Datenbank-Spiegel eingerichtet")
+	case d.updateOpenLocked():
+		return d.updateOpenErrLocked() // eingefrorener Rückfallstand: nie anfassen
+	case d.p.Role != ha.Passive:
+		return errors.New("Nur auf einem passiven Server möglich")
+	case d.carry.HandoverPending != 0 || d.pendingDemotes.Load() > 0:
+		return errors.New("Die Abgabe läuft noch – bitte kurz warten")
+	case d.frozenHintLocked() != "":
+		return errors.New(d.frozenHintLocked()) // R60: nicht „läuft schon automatisch“, das stimmt hier nie
+	case d.undoRefused && !unsafe:
+		return errors.New("Die Wiederanbindung läuft schon automatisch")
+	case d.pendingRejoins.Load() > 0:
+		return errors.New("Eine Wiederanbindung läuft schon")
+	case d.cmd != ha.CmdNone:
+		return errors.New("Ein anderer Befehl ist noch offen – bitte kurz warten")
+	case !ha.PartnerLeads(d.last.Partner, d.p.Term):
+		return errors.New("Der Partner ist nicht als aktiver Server mit Primary-Datenbank zu sehen")
+	case unsafe:
+		return nil
+	}
+	st := d.lastPG()
+	if st == nil {
+		return errors.New("Der Stand der Datenbank ist noch nicht bekannt")
+	}
+	return strandedStateErr(*st)
+}
+
+// strandedConfirmLocked: der Zustand gilt und ist durch frische Abfragen belegt.
+func (d *daemon) strandedConfirmLocked() bool {
+	if d.strandedReasonLocked() != nil || d.rewindUnsafeLocked() {
+		d.strandedSample, d.strandedFresh = nil, 0
+		return false
+	}
+	if cur := d.lastPG(); cur != d.strandedSample {
+		if d.strandedSample != nil {
+			d.strandedFresh++
+		}
+		d.strandedSample = cur
+	}
+	return d.strandedFresh >= strandedFreshPolls
+}
+
+// strandedHoldLocked: Alarm und Warnung für den gestrandeten Server. Das Ende des Zustands zählt
+// erst nach alarmAfter, so gibt eine wackelnde Sicht auf den Partner nur einen Alarm. Hat die
+// eigene Seite den Zustand sicher verlassen (nicht mehr passiv, Standby), endet er sofort.
+func (d *daemon) strandedHoldLocked(now time.Duration) bool {
+	if d.strandedConfirmLocked() {
+		d.strandedGoneAt = 0
+		return true
+	}
+	st := d.lastPG()
+	if !d.alarms[strandedAlarmKey] || d.p.Role != ha.Passive || st != nil && st.State == "standby" || d.rewindUnsafeLocked() {
+		d.strandedGoneAt = 0
+		return false
+	}
+	if d.strandedGoneAt == 0 {
+		d.strandedGoneAt = now
+	}
+	return now-d.strandedGoneAt < alarmAfter
+}
+
+// rewindUnsafeLocked: die Datei aus dem abgebrochenen pg_rewind liegt hier vor.
+func (d *daemon) rewindUnsafeLocked() bool {
+	pa := d.pgActorLocked()
+	return pa != nil && pa.rewindUnsafe()
+}
+
+// rewindAlarmLocked: wie rewindUnsafeLocked, aber nicht, solange eine Wiederanbindung läuft
+// (dort gehört die Datei dazu; das Ergebnis zeigt der nächste Takt).
+func (d *daemon) rewindAlarmLocked() bool {
+	return d.pendingRejoins.Load() == 0 && d.rewindUnsafeLocked()
+}
+
+// rejoinCmd: Handbefehl „pdh-ha rejoin“. Prüft unter der Sperre, dann frisch den eigenen
+// Stand im Aktor, und reiht die Wiederanbindung ein; sonst ein Fehler mit Grund. Der Aktor
+// prüft beim Ausführen noch einmal. Ohne Marke geht es nur über diesen Befehl, nie von selbst.
+// Liegt die Datei aus dem Rewind, wird statt dessen neu kopiert, ohne weiteren pg_rewind (R35).
+func (d *daemon) rejoinCmd(ctx context.Context) error {
+	d.rejoinMu.Lock()
+	defer d.rejoinMu.Unlock()
+	d.lock()
+	err := d.strandedReasonLocked()
+	pa := d.pgActorLocked()
+	d.unlock()
+	if err != nil {
+		return err
+	}
+	kind, check := ha.ActRejoinStranded, strandedStateErr
+	if pa.rewindUnsafe() {
+		kind, check = ha.ActRecopyUnsafe, recopyStateErr
+	}
+	if err := check(pa.pg.status(ctx)); err != nil {
+		return err
+	}
+	d.lock()
+	err = d.strandedReasonLocked() // der Stand kann sich während der Abfrage geändert haben
+	if err != nil {
+		d.unlock()
+		return err
+	}
+	act := ha.Action{Kind: kind, Term: d.last.Partner.Term, Manual: true}
+	base := d.runCtx
+	d.unlock()
+	if base == nil {
+		base = context.Background()
+	}
+	d.event("info", "Befehl: Wiederanbinden")
+	d.enqueueActions(base, []ha.Action{act})
+	return nil
+}
+
+// strandedGuard: unmittelbar vor der Ausführung. Bis der Arbeiter dran ist, kann der Server
+// aktiv geworden oder ein Update-Auftrag offen sein; dann läuft nichts.
+func (d *daemon) strandedGuard() error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	switch {
+	case d.p.Role != ha.Passive:
+		return strandedWaitError{"dieser Server ist nicht mehr passiv"}
+	case d.updateOpenLocked():
+		return strandedWaitError{"ein Update-Auftrag ist offen"}
+	}
+	return nil
+}
+
+// strandedDone wertet den Ausgang von rejoin_stranded aus; zurück kommt, was als
+// Fehlschlag der Aktion zählt. Warten: nichts angefasst, kein Fehlschlag; mit Marke später
+// neu (N2). Sonst ist die Marke erledigt, auch nach einem Fehlschlag: die Automatik hatte
+// ihren einen Versuch, ab dann meldet R33 den Zustand und der Handbefehl führt heraus.
+func (d *daemon) strandedDone(err error) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	var wait strandedWaitError
+	if !errors.As(err, &wait) {
+		d.undoRefused, d.rejoinRetryAt, d.rejoinWaitWhy = false, 0, ""
+		return err
+	}
+	if !d.undoRefused {
+		d.event("warn", err.Error()) // Handbefehl: der Stand hat sich seit der Prüfung geändert
+		return nil
+	}
+	d.rejoinRetryAt = d.mono() + rejoinRetryWait
+	if d.rejoinWaitWhy != wait.why {
+		d.rejoinWaitWhy = wait.why
+		d.event("warn", "Wiederanbindung wartet: "+wait.why+" – neuer Versuch folgt")
+	}
+	return nil
+}
+
+func (a *pgActor) rewindMarkerPath() string {
+	return filepath.FromSlash(a.pg.c.DataDir) + rewindMarkerSuffix
+}
+
+// setRewindMarker: im Speicher und auf der Platte, bevor pg_rewind den Ordner verändert.
+func (a *pgActor) setRewindMarker() error {
+	a.rewindMem.Store(true)
+	if err := writeFileAtomic(a.rewindMarkerPath(), nil, 0o600); err != nil {
+		a.rewindMem.Store(false)
+		return err
+	}
+	return nil
+}
+
+// rewindUnsafe: Speicher oder Datei; ist die Datei nicht prüfbar, gilt der Ordner als unsicher.
+func (a *pgActor) rewindUnsafe() bool {
+	if a.rewindMem.Load() {
+		return true
+	}
+	_, err := os.Stat(a.rewindMarkerPath())
+	return !errors.Is(err, os.ErrNotExist)
+}
+
+// clearRewindMarker: der Server lief als Standby oder ist neu kopiert. Lässt sich die Datei
+// nicht entfernen, bleibt der Stand unsicher.
+func (a *pgActor) clearRewindMarker() {
+	if err := os.Remove(a.rewindMarkerPath()); err != nil && !errors.Is(err, os.ErrNotExist) {
+		a.ev.add(ha.Event{Kind: "alarm", Text: "Merker der Wiederanbindung nicht entfernt: " + err.Error()})
+		return
+	}
+	a.rewindMem.Store(false)
+}
+
+// recopyStateErr: nil nur für die gestoppte Datenbank (Handbefehl mit Datei aus dem Rewind).
+func recopyStateErr(st pgStatus) error {
+	switch st.State {
+	case "stopped":
+		return nil
+	case "standby":
+		return errAlreadyStandby
+	case "primary":
+		return strandedWaitError{"die Datenbank läuft noch; der nächste Abgleich stoppt sie, danach den Befehl wiederholen"}
+	}
+	return strandedWaitError{"der Stand der Datenbank ist nicht lesbar: " + st.Err}
+}
+
+// recopyUnsafe (R35): Neukopie vom aktiven Partner für einen Ordner aus einem abgebrochenen
+// pg_rewind, ohne weiteren pg_rewind und ohne Sicherung (die lief vor dem pg_rewind, der Ordner
+// ist dafür nicht mehr verlässlich). Scheitert die Kopie, kommt der alte Ordner zurück, die Datei
+// bleibt und die Datenbank gestoppt. Nach der Kopie liegt standby.signal: Start ist sicher.
+func (a *pgActor) recopyUnsafe(ctx context.Context) error {
+	if !a.rewindUnsafe() {
+		return strandedWaitError{"die Daten gelten nicht mehr als unsicher"}
+	}
+	if err := recopyStateErr(a.pg.status(ctx)); err != nil {
+		if errors.Is(err, errAlreadyStandby) {
+			return nil // der nächste Abgleich entfernt die Datei
+		}
+		return err
+	}
+	e := a.env()
+	if len(e.PartnerAddrs) == 0 {
+		return errors.New("Kein aktiver Partner bekannt")
+	}
+	if err := a.stopServices(ctx); err != nil {
+		return fmt.Errorf("pdh bzw. Tunnel nicht gestoppt: %w", err)
+	}
+	if err := a.fullCopy(ctx, e); err != nil {
+		return err
+	}
+	return errors.Join(a.becomeStandby(ctx, e), a.pg.ctl(ctx, "start"))
+}
+
 func (a *pgActor) binPath(name string) string {
 	return path.Join("/usr/lib/postgresql", a.pg.c.Version, "bin", name)
 }
@@ -188,7 +488,11 @@ func (a *pgActor) rejoin(ctx context.Context, term uint64) error {
 		return fmt.Errorf("pdh bzw. Tunnel nicht gestoppt: %w", err)
 	}
 	if st := a.pg.status(ctx); st.State == "standby" && st.Streaming {
+		a.clearRewindMarker()
 		return nil // folgt schon dem aktiven Knoten
+	}
+	if a.rewindUnsafe() {
+		return errors.New(rewindUnsafeText) // kein zweiter pg_rewind auf diesem Ordner (R35)
 	}
 	if err := a.pg.ctl(ctx, "stop"); err != nil && a.pg.status(ctx).State != "stopped" {
 		return err
@@ -222,6 +526,10 @@ func (a *pgActor) rejoin(ctx context.Context, term uint64) error {
 		}
 	}
 	if rewindOK {
+		// ab hier ist der Ordner verändert (R35); ohne Datei kein pg_rewind
+		if err := a.setRewindMarker(); err != nil {
+			return fmt.Errorf("Merker der Wiederanbindung nicht geschrieben – nichts überschrieben: %w", err)
+		}
 		_, err = a.pg.r.Run(ctx, []string{"runuser", "-u", "postgres", "--", a.binPath("pg_rewind"),
 			"--target-pgdata", a.pg.c.DataDir, "--source-server", src}, nil, nil)
 		rewindOK = err == nil
@@ -234,7 +542,13 @@ func (a *pgActor) rejoin(ctx context.Context, term uint64) error {
 	if err := a.becomeStandby(ctx, e); err != nil {
 		return err
 	}
-	return a.pg.ctl(ctx, "start")
+	if err := a.pg.ctl(ctx, "start"); err != nil {
+		return err
+	}
+	if a.pg.status(ctx).State == "standby" {
+		a.clearRewindMarker()
+	}
+	return nil
 }
 
 // fullCopy: Neukopie vom aktiven Knoten. Der alte Datenordner wird nur
@@ -275,6 +589,7 @@ func (a *pgActor) fullCopy(ctx context.Context, e pgEnv) error {
 		return restore(err)
 	}
 	os.Remove(marker)
+	a.clearRewindMarker() // frische Daten mit standby.signal: nichts mehr unsicher (R35)
 	a.ev.add(ha.Event{Kind: "info", Text: "Datenbank neu vom aktiven Server kopiert"})
 	if err := os.RemoveAll(alt); err != nil {
 		a.ev.add(ha.Event{Kind: "warn", Text: "Alter Datenordner nicht gelöscht (" + alt + "): " + err.Error()})
@@ -311,6 +626,9 @@ func (a *pgActor) recoverDataDir(ctx context.Context) error {
 	}
 	os.Remove(dd + copyMarkerSuffix)
 	a.ev.add(ha.Event{Kind: "alarm", Text: "Abgebrochene Neukopie: alter Datenordner zurückgeholt"})
+	if a.rewindUnsafe() {
+		return nil // Ordner aus einem abgebrochenen pg_rewind: nicht starten (R35)
+	}
 	return a.pg.ctl(ctx, "start")
 }
 
@@ -438,6 +756,10 @@ func (a *pgActor) freeBytes(ctx context.Context, dir string) (int64, error) {
 
 // queryDB wie query, aber in der Datenbank db.
 func (p *pgCtl) queryDB(ctx context.Context, db, sql string) (string, error) {
+	// psql behandelt einen Namen mit = als Verbindungszeichenkette (Optionen, Bibliotheken)
+	if db == "" || strings.HasPrefix(db, "-") || strings.ContainsAny(db, "=\t\n\r '\"\\") {
+		return "", fmt.Errorf("Ungültiger Datenbankname %q", db)
+	}
 	out, err := p.r.Run(ctx, []string{"runuser", "-u", "postgres", "--", "psql", "-XAtq",
 		"-p", strconv.Itoa(p.c.Port), "-d", db, "-v", "ON_ERROR_STOP=1"}, nil, []byte(sql))
 	return strings.TrimSpace(string(out)), err

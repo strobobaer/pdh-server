@@ -44,6 +44,7 @@ func (d *daemon) pgRound(ctx context.Context, pa *pgActor) {
 		defer d.pgQuerying.Store(false)
 		st := pa.pg.status(ctx)
 		d.pgSt.Store(&st)
+		d.pgSeq.Add(1) // R65: Zähler der fertigen Abfragen (frischer Stand für Alarme)
 	}()
 }
 
@@ -91,6 +92,9 @@ func (d *daemon) replInputLocked(ctx context.Context, in *ha.Input, s ha.Setting
 		d.dataCurrent = pt.PG == "primary" && pt.Sync && !pt.Stale
 	default:
 		d.dataCurrent = ha.DataCurrent(standby, lag, s.LagLimit, pt)
+	}
+	if pa.rewindUnsafe() {
+		d.dataCurrent = false // R35: die Automatik übernimmt diesen Stand nie
 	}
 	in.DataCurrent, in.DataAssumed = d.dataCurrent, false
 	d.maybeRecopyLocked(ctx, pa, st, in.Partner, in.Now)
@@ -282,7 +286,11 @@ func (d *daemon) hbPGLocked(m *message) {
 		partner, _ := d.peerIDsLocked()
 		m.Sync = pa.syncTarget() != ""
 		_, m.Stale = d.p.Stale[partner]
-		if _, err := os.Stat(d.needCopyMarker(partner)); err == nil {
+		// need_copy erst, wenn der Slot neu angelegt ist: Mit dem alten,
+		// ungültigen Slot scheitert pg_basebackup -S des Partners, und er
+		// versucht es erst nach recopyRetry wieder.
+		if _, err := os.Stat(d.needCopyMarker(partner)); err == nil &&
+			!slices.Contains(st.LostSlots, slotName(partner)) {
 			m.NeedCopy = true
 		}
 		if sb, ok := partnerStandby(st, partner); ok && st.LSN > sb.FlushLSN {

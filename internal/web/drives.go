@@ -51,6 +51,7 @@ type networkDrive struct {
 	ID, Key, Name, Kind, Source, Username, PasswordEnc, Domain, Options string
 	ReadOnly, AutoMount                                                 bool
 	UseData, UseImportExport, UseBackup, UseDocuments                   bool
+	NextcloudShow                                                       bool // in Nextcloud zeigen (nextcloud_drives.go)
 	LastStatus, LastError, LastChecked                                  string
 
 	// Laufzeit
@@ -117,7 +118,7 @@ func (h *Handler) loadDrives(ctx context.Context) []networkDrive {
 	rows, err := h.db.Query(ctx, `
 		SELECT id::text, key, name, kind, source, username, password_enc, domain, options, read_only, auto_mount,
 		       use_data, use_import_export, use_backup, use_documents, last_status, last_error,
-		       COALESCE(to_char(last_checked_at, 'DD.MM.YYYY HH24:MI'), '')
+		       COALESCE(to_char(last_checked_at, 'DD.MM.YYYY HH24:MI'), ''), nextcloud_show
 		  FROM network_drives ORDER BY lower(name)`)
 	if err != nil {
 		return nil
@@ -128,7 +129,7 @@ func (h *Handler) loadDrives(ctx context.Context) []networkDrive {
 		var d networkDrive
 		if rows.Scan(&d.ID, &d.Key, &d.Name, &d.Kind, &d.Source, &d.Username, &d.PasswordEnc, &d.Domain, &d.Options,
 			&d.ReadOnly, &d.AutoMount, &d.UseData, &d.UseImportExport, &d.UseBackup, &d.UseDocuments,
-			&d.LastStatus, &d.LastError, &d.LastChecked) == nil {
+			&d.LastStatus, &d.LastError, &d.LastChecked, &d.NextcloudShow) == nil {
 			out = append(out, d)
 		}
 	}
@@ -684,7 +685,7 @@ func (h *Handler) DriveSaveWeb(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	flags := map[string]bool{}
-	for _, f := range []string{"read_only", "auto_mount", "use_data", "use_import_export", "use_backup", "use_documents"} {
+	for _, f := range []string{"read_only", "auto_mount", "use_data", "use_import_export", "use_backup", "use_documents", "nextcloud_show"} {
 		flags[f] = r.FormValue(f) == "on"
 	}
 	if flags["read_only"] && (flags["use_data"] || flags["use_backup"] || flags["use_documents"]) {
@@ -707,7 +708,7 @@ func (h *Handler) DriveSaveWeb(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	args := []any{name, kind, source, strings.TrimSpace(r.FormValue("username")), strings.TrimSpace(r.FormValue("domain")), options,
-		flags["read_only"], flags["auto_mount"], flags["use_data"], flags["use_import_export"], flags["use_backup"], flags["use_documents"]}
+		flags["read_only"], flags["auto_mount"], flags["use_data"], flags["use_import_export"], flags["use_backup"], flags["use_documents"], flags["nextcloud_show"]}
 	if id == "" {
 		key := driveKeyFrom(name)
 		var n int
@@ -716,18 +717,18 @@ func (h *Handler) DriveSaveWeb(w http.ResponseWriter, r *http.Request) {
 			key = fmt.Sprintf("%s-%d", strings.TrimRight(key[:min(len(key), 28)], "-"), n+1)
 		}
 		err = tx.QueryRow(ctx, `INSERT INTO network_drives (name, kind, source, username, domain, options, read_only, auto_mount,
-			use_data, use_import_export, use_backup, use_documents, key, password_enc, created_by)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING id::text`,
+			use_data, use_import_export, use_backup, use_documents, nextcloud_show, key, password_enc, created_by)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING id::text`,
 			append(args, key, pwEnc, nullID(getUser(r).ID))...).Scan(&id)
 	} else {
 		set := `name=$1, kind=$2, source=$3, username=$4, domain=$5, options=$6, read_only=$7, auto_mount=$8,
-			use_data=$9, use_import_export=$10, use_backup=$11, use_documents=$12, updated_at=NOW()`
+			use_data=$9, use_import_export=$10, use_backup=$11, use_documents=$12, nextcloud_show=$13, updated_at=NOW()`
 		args = append(args, id)
 		if pwEnc != "" || r.FormValue("clear_password") == "on" {
-			set += ", password_enc=$14"
+			set += ", password_enc=$15"
 			args = append(args, pwEnc)
 		}
-		_, err = tx.Exec(ctx, `UPDATE network_drives SET `+set+` WHERE id=$13::uuid`, args...)
+		_, err = tx.Exec(ctx, `UPDATE network_drives SET `+set+` WHERE id=$14::uuid`, args...)
 	}
 	if err == nil {
 		err = tx.Commit(ctx)

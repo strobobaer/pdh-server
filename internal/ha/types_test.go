@@ -77,7 +77,7 @@ func TestSettingsJSON(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	const want = `{"tick_s":1,"fence_s":10,"takeover_trio_s":30,"takeover_duo_s":60,"cooldown_min":15,"max_per_day":3,"async_after_s":10,"lag_limit_mb":16,"slot_keep_gb":20,"auto_mode":"observe"}`
+	const want = `{"tick_s":1,"fence_s":10,"takeover_trio_s":30,"takeover_duo_s":60,"cooldown_min":15,"max_per_day":3,"async_after_s":10,"lag_limit_mb":16,"slot_keep_gb":20,"auto_mode":"observe","mirror_on":false,"mirror_nextcloud":false,"mirror_every_s":60,"mirror_trash_days":14,"mirror_alarm_min":5,"mirror_final_s":120,"mirror_bwlimit_kb":0,"nc_data_dir":"","nc_app_dir":"/var/www/nextcloud"}`
 	if string(out) != want {
 		t.Fatalf("Marshal: %s", out)
 	}

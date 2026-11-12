@@ -20,7 +20,7 @@ bash deploy/ha-lab/ha-lab.sh status      # pdh-ha status aller drei
 bash deploy/ha-lab/ha-lab.sh <Szenario>  # ein Szenario (jeweils frisch aufgebaut)
 bash deploy/ha-lab/ha-lab.sh alle        # alle Szenarien nacheinander
 bash deploy/ha-lab/ha-lab.sh down        # Labor samt Volumes entfernen
-bash deploy/ha-lab/ha-lab.sh race        # go test -race in golang:1.24
+bash deploy/ha-lab/ha-lab.sh race        # go test -race in golang:1.24, mit echtem rsync
 ```
 
 `up` richtet node1 ein, lässt node2 und den Zeugen mit Beitrittscode
@@ -137,3 +137,47 @@ dann niemand, die Zeilen aus der Sperre gingen beim Zurücksetzen gewollt verlor
 | `update-nacheinander-gleichstand` | WAL-Einspielen auf node2 angehalten, Zeile auf node1 geschrieben, Start „alle nacheinander“ mit Trotzdem (`force`) | node1 wird abgeschottet, Gleichstand kommt nicht: node2 wird nicht eingefroren, Ergebnis „Spiegel nicht auf Gleichstand – Update abgebrochen, nichts geändert“, Zeile bleibt erhalten, lab1 nicht fehlerhaft |
 | `update-abbruch-vorher` | `slow-install` auf node2 (Bau 40 s), Update starten, während des Baus `pdh-ha update abort` | Auftrag endet erst, nachdem node2 nach dem Bau wirklich auf lab0 zurückgedreht ist (letzter Lauf `rollback lab0`), beide bleiben auf lab0, lab1 nicht fehlerhaft |
 | `update-verweigert` | `refuse-install` auf node2 (Labor-Agent meldet wie `install_update.sh` „…; nichts geaendert.“), Update starten | Auftrag bricht vor der Sperre ab, Ergebnis „nicht eingespielt“ mit Grund, beide bleiben auf lab0, lab1 **nicht** fehlerhaft, keine `mig_lab1` |
+
+### Datei-Spiegelung und Nextcloud im Verbund
+
+Die Szenarien schalten die Spiegelung selbst ein (`pdh-ha settings`, Abstand 30 s,
+Alarm nach 1 min) und warten auf den Erstabgleich. Quellen liegen wie im Betrieb
+unter `/opt/pdh-server` (eigenes Volume), der Papierkorb daneben. Die Server haben
+dafür `rsync`.
+
+Nextcloud ist die Attrappe `nc-dummy` (`PDH_HA_NC_CMD`), Marke
+`/run/nc-dummy.running`, Protokoll `/var/lib/pdh-lab/nc.log` mit dem Stand der
+Datenbank bei jedem Start; Schalter `fail-nc-start`. Sie wirkt erst mit `occ` im
+Programmordner und „Nextcloud mitnehmen“: `/var/www/nextcloud` (nur `occ` und
+`config/config.php`) und `/srv/nc-data` liegen anfangs nur auf node1 und kommen über die
+Spiegelung auf node2. Der Prüflauf liest die Attrappen-Tabellen `oc_filecache`,
+`oc_storages` und `oc_mimetypes` in der Datenbank `nextcloud`.
+
+Eine hochgeladene Datei gilt als bestätigt, wenn sie geschrieben war, bevor
+`pdh-dummy stop` fertig ist (gemeinsame Sperrdatei, wie das echte pdh, das beim Stoppen
+auf offene Anfragen wartet). Wo zwei schreibende Server ausgeschlossen werden, misst
+`rw_probe` im Container alle 0,1 s die Schreibbarkeit (Lücken über 3 s und 5 gescheiterte Abfragen bei laufender Datenbank lassen die Prüfung scheitern, Selbsttest ohne Container: `ha-lab.sh rw-selbsttest`); `pg_rewind_wrap` ersetzt `pg_rewind`
+durch ein Skript, das jeden Aufruf protokolliert und den echten Lauf ausführt oder nach der ersten Änderung am Datenordner abbricht. `rw_probe_check` und `rw_probe_only` bestehen nicht, wenn die Messung am alten Server nie „schreibbar“ gelesen hat.
+
+| Szenario | Ablauf | Erwartung |
+|---|---|---|
+| `spiegel-datei` | Datei mit Leerzeichen und Umlaut auf node1, Besitzer `www-data`, danach ändern | binnen 10 s auf node2 mit gleichem Inhalt und Besitzer; alte Fassung im Papierkorb |
+| `spiegel-loeschen` | Datei auf node1 löschen | binnen eines Abstands auf node2 weg und im Papierkorb, Grundbestand bleibt, Zähler der Rückkehrer 0 |
+| `spiegel-tausch` | Hochladen auf node1 bis zum Stopp von pdh, Rollen tauschen | keine bestätigte Datei fehlt; nie zwei schreibbare Datenbanken (Messung 0,1 s); danach läuft die Spiegelung von node2 nach node1, Papierkorb von node1 leer |
+| `spiegel-tausch-frist` | 50 MB bei 200 KB/s, Frist 10 s, Tausch | Tausch bricht ab („Rollentausch abgebrochen“, Grund genannt), node1 aktiv mit pdh und schreibbarer Datenbank, gleiche Amtszeit, keine Wartung, auf node2 die alte Fassung; nach Freigabe der Bandbreite kommt die Datei an; node2 war nie schreibbar, node1 am Ende schon |
+| `spiegel-tausch-wiederholung` | wie `spiegel-tausch-frist`, dann Bandbreite frei und zweiter Tausch | zweiter Tausch gelingt in derselben Amtszeit (Amtszeit genau +1), große Datei auf node2; nie zwei schreibbare Datenbanken |
+| `spiegel-ausfall` | Nextcloud an, 30 MB unterwegs bei 200 KB/s, `oc_filecache` kennt die Datei schon, node1 hart anhalten | node2 übernimmt, Alarm und Status nennen `alice/files/unterwegs.bin` (und nicht die vorhandene Datei), Attrappe läuft auf node2 |
+| `spiegel-rueckkehr` | node1 hart anhalten, Datei in den gestoppten node1 legen, node2 übernimmt, node1 starten; rsync von Hand mit alter Amtszeit | Datei im Papierkorb von node1, Zähler 1 auf beiden; alter Absender abgelehnt (am aktiven node2 „nicht passiv“, nach dem Rücktausch am passiven node2 „alte Amtszeit“, je ein Ereignis) |
+| `spiegel-heartbeat` | 500 MB auf node1, dazu laufend neue Fassungen (2 min) | keine Rolle und Amtszeit ändert sich, beide sehen sich in jeder Sekunde, keine Ereignisse zu Tausch oder Übernahme; danach alle Dateien gleich |
+| `spiegel-nextcloud` | Tausch, Start von Hand am passiven Server, Neustart des passiven und des aktiven Servers, dann Tausch mit `fail-nc-start` | Attrappe läuft nur am aktiven Server und nie auf beiden; Start erst bei schreibbarer Datenbank; Startfehler gibt Alarm, aber keine Umschaltung und keine Wartung |
+| `spiegel-aus` | Standard (aus): Datei auf node1, `mirror run`, rsync von Hand, Tausch hin und zurück; dann ein- und wieder ausschalten | nichts übertragen, `mirror run` abgelehnt, Empfänger lehnt ab („Spiegelung ist aus“, Ereignis), Tausch wie bisher; nach dem Ausschalten nichts Neues mehr |
+| `spiegel-uebernahme-im-abgleich` | 50 MB bei 200 KB/s, Frist 90 s, Tausch hängt im letzten Abgleich, node2 „Übernahme erzwingen“ | nie zwei schreibbare Datenbanken (Messung 0,1 s, Wächter sofort); node1 wird über genau einen echten `pg_rewind` Standby, keine Neukopie, Merker weg; Spiegelung läuft von node2 nach node1 |
+| `spiegel-rejoin-abbruch` | node1 hart anhalten, node2 übernimmt und schreibt 300 MB, node1 startet, echtes `pg_rewind` wird beendet, sobald es den Datenordner verändert hat (sonst nicht bestanden), pdh-ha stirbt mit; dann node2 anhalten, node1 neu starten, node2 starten, `pdh-ha rejoin` | Datenbank auf node1 bleibt gestoppt, Markierdatei und Alarm, „Übernahme erzwingen“ abgelehnt, auch ohne Partner; nach dem Neustart wieder gestoppt; `rejoin` kopiert neu ohne weiteren `pg_rewind`, Markierdatei weg, synchroner Standby |
+| `spiegel-rolling-update` | erst im Erstabgleich Update und Tausch versuchen, dann Aufbau wie `update-ok` mit Hochladen bis zum Tausch | im Erstabgleich beides abgelehnt („Erstabgleich“); danach Update abgeschlossen, node2 aktiv, keine bestätigte Datei fehlt, Spiegelung in neuer Richtung; nie zwei schreibbare Datenbanken |
+| `spiegel-ruecknahme-uebernahme` | 200 MB bei 200 KB/s, Frist 10 s; sobald die Abgabe als gescheitert gemeldet ist, node2 „Übernahme erzwingen“ (lehnt node2 ab, weil node1 schon wieder aktiv ist, neuer Versuch nach einem Neustart von pdh-ha auf node2, der den Abstand der Takte verschiebt, höchstens 10) | nie zwei schreibbare Datenbanken (Wächter sofort, Messung 0,1 s); node1 ist nach der gemeldeten Abgabe nie mehr schreibbar und endet als Standby, entweder über die Marke („wird als Standby wieder angebunden“) oder, wenn sich die Takte kreuzen, über die höhere Amtszeit im zweiten Takt der Rücknahme („Aktiver Server abgelöst“), nie schreibbar |
+| `spiegel-ruecknahme-zweiter-takt` | wie oben, aber die Herzschläge von node1 kommen um 600 ms verzögert an (`tc netem` auf lan und vpn); „Übernahme erzwingen“ geht an node2, sobald node1 den Abbruch meldet (Takt N der Rücknahme), höchstens 14 Versuche (Trefferquote je Versuch rund 30 %, zufällig rot unter 1 %) mit Neustart von pdh-ha auf node2 nach zufälliger Wartezeit | Pflichtweg R51: node2 übernimmt, node1 sieht die höhere Amtszeit im zweiten Takt vor dem Einschalten („Aktiver Server abgelöst“ in der nächsten Amtszeit), wird ab der gemeldeten Abgabe nie mehr schreibbar und endet als Standby; der Weg über die Marke gilt nicht als bestanden |
+| `spiegel-netz-weg-im-abgleich` | 50 MB bei 200 KB/s, Frist 60 s, node1 verliert im letzten Abgleich alle Netze, node2 übernimmt mit dem Zeugen, node1 kommt zurück | node1 wird nie schreibbar und geht nach der Frist auf abgeschaltet; nach der Rückkehr über genau einen echten `pg_rewind` Standby |
+| `spiegel-bestaetigung` | node2 hat in `uploads` eine eigene Datei, `chat_files` ist dort leer; einschalten, in `chat_files` löschen, am passiven und am aktiven Server `pdh-ha mirror confirm`, Tausch hin und zurück | leeres Ziel löscht ohne Bestätigung; eigene Datei bleibt, ein Alarm, Status „wartet“; passiv abgelehnt; nach der Bestätigung im Papierkorb von node2; Tausch ohne neuen Alarm, Löschen geht weiter |
+| `spiegel-update-aus` | Update „ohne Unterbrechung“ bei ausgeschalteter Spiegelung, Datei auf node2, Rücktausch, einschalten | Datei bleibt auf node2 und liegt nicht im Papierkorb, ein Alarm, Status „wartet“ |
+
+`spiegel-heartbeat` braucht rund 2,5 GB freien Platz (Dateien auf beiden Servern und alte Fassungen im Papierkorb).

@@ -184,6 +184,8 @@
   </details>
   {{end}}
 
+  {{if .ShowMirror}}{{template "ha-mirror" .}}{{end}}
+
   <div class="card-title" style="margin-top:14px"><span><i class="ti ti-route"></i> Zugangsweg</span></div>
   <p class="vp-hint">Wie Anwender nach einer Umschaltung den neuen aktiven Server erreichen.</p>
   {{range .AccessRows}}

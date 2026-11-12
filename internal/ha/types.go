@@ -42,6 +42,17 @@ type Settings struct {
 	LagLimit   int64         // Verzögerungsgrenze der Spiegelung in Bytes
 	SlotKeep   int64         // Höchstmenge zurückgehaltener Änderungen in Bytes
 	AutoMode   string        // AutoObserve | AutoReal
+
+	// Datei-Spiegelung (Teil 6)
+	MirrorOn         bool          // Dateien auf den Standby spiegeln
+	MirrorNextcloud  bool          // Nextcloud (Daten, Programm, Webserver, Zertifikate) mitnehmen
+	MirrorEvery      time.Duration // Abstand der Abgleiche der nicht sofortigen Quellen
+	MirrorTrashDays  int           // Tage, die Gelöschtes im Papierkorb des Standby bleibt
+	MirrorAlarmAfter time.Duration // so lange ohne erfolgreichen Abgleich → Alarm
+	MirrorFinalMax   time.Duration // Frist des letzten Abgleichs vor einer geplanten Übergabe
+	MirrorBWLimitKB  int           // Bandbreite in KB/s; 0 = unbegrenzt
+	NCDataDir        string        // Nextcloud-Datenordner (Pflicht bei MirrorNextcloud)
+	NCAppDir         string        // Nextcloud-Programmordner
 }
 
 // Betriebsarten der automatischen Umschaltung.
@@ -66,6 +77,12 @@ func DefaultSettings() Settings {
 		LagLimit:     16 << 20,
 		SlotKeep:     20 << 30,
 		AutoMode:     AutoObserve,
+
+		MirrorEvery:      time.Minute,
+		MirrorTrashDays:  14,
+		MirrorAlarmAfter: 5 * time.Minute,
+		MirrorFinalMax:   120 * time.Second,
+		NCAppDir:         "/var/www/nextcloud",
 	}
 }
 
@@ -105,7 +122,7 @@ func (s Settings) Validate() error {
 	if s.TakeoverTrio < min || s.TakeoverDuo < min {
 		return errors.New("Übernahmezeit muss mindestens Selbst-Abschaltung + 2 × Takt + 5 s sein")
 	}
-	return nil
+	return s.validateMirror()
 }
 
 // Takeover liefert die Übernahmezeit der Betriebsart (Einzel: keine).
@@ -131,6 +148,16 @@ type settingsJSON struct {
 	LagLimitMB  int64  `json:"lag_limit_mb"`
 	SlotKeepGB  int64  `json:"slot_keep_gb"`
 	AutoMode    string `json:"auto_mode"`
+
+	MirrorOn        bool   `json:"mirror_on"`
+	MirrorNextcloud bool   `json:"mirror_nextcloud"`
+	MirrorEveryS    int    `json:"mirror_every_s"`
+	MirrorTrashDays int    `json:"mirror_trash_days"`
+	MirrorAlarmMin  int    `json:"mirror_alarm_min"`
+	MirrorFinalS    int    `json:"mirror_final_s"`
+	MirrorBWLimitKB int    `json:"mirror_bwlimit_kb"`
+	NCDataDir       string `json:"nc_data_dir"`
+	NCAppDir        string `json:"nc_app_dir"`
 }
 
 func (s Settings) MarshalJSON() ([]byte, error) {
@@ -145,6 +172,16 @@ func (s Settings) MarshalJSON() ([]byte, error) {
 		LagLimitMB:    s.LagLimit >> 20,
 		SlotKeepGB:    s.SlotKeep >> 30,
 		AutoMode:      s.AutoMode,
+
+		MirrorOn:        s.MirrorOn,
+		MirrorNextcloud: s.MirrorNextcloud,
+		MirrorEveryS:    int(s.MirrorEvery / time.Second),
+		MirrorTrashDays: s.MirrorTrashDays,
+		MirrorAlarmMin:  int(s.MirrorAlarmAfter / time.Minute),
+		MirrorFinalS:    int(s.MirrorFinalMax / time.Second),
+		MirrorBWLimitKB: s.MirrorBWLimitKB,
+		NCDataDir:       s.NCDataDir,
+		NCAppDir:        s.NCAppDir,
 	})
 }
 
@@ -164,6 +201,16 @@ func (s *Settings) UnmarshalJSON(b []byte) error {
 		LagLimit:     j.LagLimitMB << 20,
 		SlotKeep:     j.SlotKeepGB << 30,
 		AutoMode:     j.AutoMode,
+
+		MirrorOn:         j.MirrorOn,
+		MirrorNextcloud:  j.MirrorNextcloud,
+		MirrorEvery:      time.Duration(j.MirrorEveryS) * time.Second,
+		MirrorTrashDays:  j.MirrorTrashDays,
+		MirrorAlarmAfter: time.Duration(j.MirrorAlarmMin) * time.Minute,
+		MirrorFinalMax:   time.Duration(j.MirrorFinalS) * time.Second,
+		MirrorBWLimitKB:  j.MirrorBWLimitKB,
+		NCDataDir:        j.NCDataDir,
+		NCAppDir:         j.NCAppDir,
 	}
 	// Alte Dateien kennen die neuen Felder nicht: fehlend/0/leer → Standard.
 	def := DefaultSettings()
@@ -178,6 +225,21 @@ func (s *Settings) UnmarshalJSON(b []byte) error {
 	}
 	if j.AutoMode == "" {
 		s.AutoMode = def.AutoMode
+	}
+	if j.MirrorEveryS == 0 {
+		s.MirrorEvery = def.MirrorEvery
+	}
+	if j.MirrorTrashDays == 0 {
+		s.MirrorTrashDays = def.MirrorTrashDays
+	}
+	if j.MirrorAlarmMin == 0 {
+		s.MirrorAlarmAfter = def.MirrorAlarmAfter
+	}
+	if j.MirrorFinalS == 0 {
+		s.MirrorFinalMax = def.MirrorFinalMax
+	}
+	if j.NCAppDir == "" {
+		s.NCAppDir = def.NCAppDir
 	}
 	return nil
 }
@@ -202,6 +264,7 @@ type PeerObs struct {
 	LSN         uint64 // Schreibposition (Replay) des Partners
 	LagBytes    int64  // Verzögerung der Spiegelung in Bytes
 	Timeline    uint32 // Zeitlinie der Partner-Datenbank
+	Giving      bool   // der passive Partner gibt gerade ab (Rollentausch, Abgabe läuft)
 	Commit      string // Stand des Quelltexts des Partners (leer = unbekannt)
 }
 
@@ -220,6 +283,10 @@ type Persisted struct {
 
 	// Stale: Amtszeit → Schreibposition, ab der der Partner veraltet ist.
 	Stale map[string]uint64 `json:"stale,omitempty"`
+
+	// R51: Rolle aktiv ist gesendet, im nächsten Takt wird eingeschaltet. Gespeichert: Ein Neustart
+	// zwischen den Takten lässt den Server nicht aktiv und nur lesend stehen.
+	UnfencePending bool `json:"unfence_pending,omitempty"`
 }
 
 // Equal vergleicht zwei Zustände; die Karte Stale verhindert ==.
@@ -233,7 +300,7 @@ func (p Persisted) Equal(q Persisted) bool {
 			return false
 		}
 	}
-	return p.Term == q.Term && p.Role == q.Role && p.LastSwitch.Equal(q.LastSwitch) &&
+	return p.UnfencePending == q.UnfencePending && p.Term == q.Term && p.Role == q.Role && p.LastSwitch.Equal(q.LastSwitch) &&
 		p.SwitchDay == q.SwitchDay && p.SwitchCount == q.SwitchCount &&
 		p.Maint == q.Maint && p.MaintSeq == q.MaintSeq &&
 		p.PartnerVersion == q.PartnerVersion && p.VotedTerm == q.VotedTerm && p.VotedFor == q.VotedFor
@@ -244,16 +311,18 @@ func (p Persisted) Equal(q Persisted) bool {
 type ActionKind string
 
 const (
-	ActPromote     ActionKind = "promote"
-	ActDemote      ActionKind = "demote"
-	ActFence       ActionKind = "fence"
-	ActUnfence     ActionKind = "unfence"
-	ActVIPTake     ActionKind = "vip_take"
-	ActVIPRelease  ActionKind = "vip_release"
-	ActRequestVote ActionKind = "request_vote"
-	ActHandover    ActionKind = "handover"
-	ActRejoin      ActionKind = "rejoin"
-	ActProbeVote   ActionKind = "probe_vote"
+	ActPromote        ActionKind = "promote"
+	ActDemote         ActionKind = "demote"
+	ActFence          ActionKind = "fence"
+	ActUnfence        ActionKind = "unfence"
+	ActVIPTake        ActionKind = "vip_take"
+	ActVIPRelease     ActionKind = "vip_release"
+	ActRequestVote    ActionKind = "request_vote"
+	ActHandover       ActionKind = "handover"
+	ActRejoin         ActionKind = "rejoin"
+	ActRejoinStranded ActionKind = "rejoin_stranded" // Wiederanbindung nach verweigerter Rücknahme (R32)
+	ActRecopyUnsafe   ActionKind = "recopy_unsafe"   // Handbefehl: Neukopie nach abgebrochenem pg_rewind (R35)
+	ActProbeVote      ActionKind = "probe_vote"
 
 	// Tausch mit Einfrieren: Datenbank abgeben, aber eingefroren lassen
 	// (kein Wiederanlauf als Standby); ActAbandon verwirft den Stand.
@@ -264,7 +333,8 @@ const (
 type Action struct {
 	Kind   ActionKind
 	Term   uint64
-	Manual bool // durch Handbefehl ausgelöst: immer echt, auch bei Beobachtung
+	Manual bool   // durch Handbefehl ausgelöst: immer echt, auch bei Beobachtung
+	Seq    uint64 // Tauschversuch (nur demote/demote_freeze/abandon): Marken gelten je Versuch
 }
 
 // Event ist ein Protokolleintrag; Kind "role", "action", "alarm" oder "info".
@@ -303,8 +373,8 @@ type Input struct {
 	Handover         uint64 // >0: aktiver Partner übergibt diese Amtszeit
 	Command          CommandKind
 	ProbeGranted     uint64 // >0: Zeuge hat die Probe-Stimme für diese Amtszeit gegeben
-	DemoteDone       uint64 // >0: demote dieser Amtszeit ist abgeschlossen
-	DemoteFailed     uint64 // >0: demote dieser Amtszeit ist fehlgeschlagen
+	DemoteDone       uint64 // >0: demote dieses Tauschversuchs (Action.Seq) ist abgeschlossen
+	DemoteFailed     uint64 // >0: demote dieses Tauschversuchs ist fehlgeschlagen
 
 	Settings Settings
 	Persist  Persisted
@@ -323,6 +393,13 @@ type Input struct {
 	LastMutual      time.Duration // zuletzt gegenseitige Sicht mit Partner (Trio: oder Zeuge)
 	Would           ActionKind    // Beobachtung: zuletzt gemeldete „würde jetzt“-Aktion
 	HandoverReadyAt time.Duration // seit wann die Übergabe bereit ist (nach demote)
+	SwapSeq         uint64        // Nummer des letzten Tauschversuchs
+	RejoinAsked     bool          // Wiederanbindung für „Rücknahme verweigert“ schon ausgelöst
+	RejoinAlarmed   bool          // dazu schon gemeldet (ein erneuter Versuch meldet nicht noch einmal)
+	UndoRefused     bool          // Daemon-Speicher: demote hat die Rücknahme verweigert, weil der Partner übernommen hat
+	UpdateOpen      bool          // ein Update-Auftrag ist offen
+	RejoinBusy      bool          // eine Wiederanbindung ist eingereiht oder läuft
+	SwapKind        ActionKind    // Art der Abgabe des laufenden Tauschs (demote, demote_freeze, abandon)
 }
 
 // Output ist das Ergebnis eines Schrittes.
@@ -330,6 +407,10 @@ type Output struct {
 	Persist Persisted
 	Actions []Action
 	Events  []Event
+
+	// R42: Übergabe geräumt, während die Abgabe gescheitert ist oder läuft: abgeschottet
+	// bleiben, Wiederanbindung vormerken (Daemon-Speicher UndoRefused)
+	SetUndoRefused bool
 
 	HoldUntil       time.Duration
 	VotePending     uint64
@@ -344,4 +425,8 @@ type Output struct {
 	LastMutual      time.Duration
 	Would           ActionKind
 	HandoverReadyAt time.Duration
+	SwapSeq         uint64
+	SwapKind        ActionKind
+	RejoinAsked     bool
+	RejoinAlarmed   bool
 }

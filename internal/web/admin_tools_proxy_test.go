@@ -74,6 +74,15 @@ func TestServerConfigNextcloudAdminCard(t *testing.T) {
 			t.Errorf("Server-Einstellungen enthalten %q nicht", want)
 		}
 	}
+	// Der Hinweis auf die automatische Einrichtung steht nur, solange sie aussteht.
+	hint := "richtet das PDH das Konto innerhalb von 15 Minuten selbst ein"
+	if strings.Contains(out, hint) {
+		t.Error("Hinweis auf die automatische Einrichtung trotz eingerichtetem Konto")
+	}
+	d.NCAdmin = ncAdminView{AgentReady: true, AutoPending: true, DefaultUser: "pdhNCadmin"}
+	if out := renderPage(t, tmpl, "server_config", d); !strings.Contains(out, hint) {
+		t.Error("Hinweis auf die automatische Einrichtung fehlt")
+	}
 }
 
 func TestAgentTokenNotEditable(t *testing.T) {

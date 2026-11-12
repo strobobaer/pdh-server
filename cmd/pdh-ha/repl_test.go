@@ -153,10 +153,17 @@ func TestActiveLostSlotSignalsCopy(t *testing.T) {
 		}
 		return m
 	}
+	// Solange der Slot noch als ungültig gilt (neu Anlegen steht aus oder
+	// scheiterte), kein need_copy – sonst scheitert pg_basebackup -S des
+	// Partners am alten Slot und wird erst nach recopyRetry wiederholt.
+	if last().NeedCopy {
+		t.Fatal("need_copy, obwohl der Slot noch ungültig ist")
+	}
+	r.on("runuser", "wal_status = 'lost'", "", nil) // Slot neu angelegt
+	tickFor(t, d, now, 3)
 	if !last().NeedCopy {
 		t.Fatal("need_copy fehlt im Heartbeat")
 	}
-	r.on("runuser", "wal_status = 'lost'", "", nil)
 	r.on("runuser", "pg_stat_replication", "pdh_ha_b|streaming|0/100|0/100|sync", nil)
 	tickFor(t, d, now, 3)
 	if _, err := os.Stat(d.st.statePath("neukopie-b")); err == nil || last().NeedCopy {

@@ -26,6 +26,7 @@ func obsFrom(n clusterNode, v peerView, selfID string) ha.PeerObs {
 		o.VotedFor = m.VotedFor
 		o.PG, o.Sync, o.Stale, o.LSN, o.LagBytes, o.Timeline = m.PG, m.Sync, m.Stale, m.LSN, m.Lag, m.TL
 		o.SeesSelf = slices.Contains(m.Sees, selfID)
+		o.Giving = m.Giving
 	}
 	return o
 }
@@ -41,6 +42,8 @@ func (d *daemon) inputLocked(now time.Duration, wall time.Time, s ha.Settings, m
 		VoteSince: c.VoteSince, VoteAlarmed: c.VoteAlarmed, LastMutual: c.LastMutual,
 		HandoverReadyAt: c.HandoverReadyAt, Would: c.Would, DemoteDone: d.demoteDone,
 		DemoteFailed: d.demoteFailed, ProbeGranted: d.probeGranted,
+		SwapSeq: c.SwapSeq, SwapKind: c.SwapKind, RejoinAsked: c.RejoinAsked, RejoinAlarmed: c.RejoinAlarmed,
+		UndoRefused: d.undoRefused, UpdateOpen: d.updateOpenLocked(), RejoinBusy: d.pendingRejoins.Load() > 0,
 	}
 	if gl := time.Duration(d.gwOK.Load()); gl > 0 {
 		in.GatewayLastOK = gl
@@ -141,6 +144,16 @@ func (d *daemon) stateAlarmsLocked(pl *plan, now time.Duration, wall time.Time, 
 		}
 	}
 	set("version", versionDiff != "", versionDiff, "Versionen wieder gleich")
+	set(strandedAlarmKey, d.strandedHoldLocked(now), strandedText, "")
+	set(rewindUnsafeKey, d.rewindAlarmLocked(), rewindUnsafeText, "")
+	foreign, hand := d.foreignJobLocked(now)
+	// R65: erst mit einem Datenbankstand, dessen Abfrage nach Beginn des Zustands begann (es läuft
+	// immer nur eine, also die zweite fertige): Der Alarm kommt einmal, und sein Hinweis auf den
+	// eingefrorenen Stand hängt an diesem Stand. Ohne Datenbank-Spiegel gibt es keine Abfrage.
+	foreign = foreign && (d.pgActorLocked() == nil || d.pgSeq.Load() >= d.foreignPGSeq+strandedFreshPolls)
+	set("foreign-job", foreign, foreignJobText(d.up.job.ID, hand, d.frozenHintLocked()), "")
+	// R60: erst nach alarmAfter: ein kurz gestoppter Stand (Neustart, laufende Abgabe) ist keine Sackgasse
+	set(frozenAlarmKey, down(frozenAlarmKey, !d.frozenStrandedLocked()), frozenStrandedText+d.frozenHintLocked(), "")
 }
 
 // statusNow liefert die Anzeige für GET /v1/status.
@@ -280,6 +293,20 @@ func (d *daemon) statusLocked() apiStatus {
 	if versionDiff {
 		st.Warnings = append(st.Warnings, "Versionen unterschiedlich")
 	}
+	if d.alarms[strandedAlarmKey] {
+		st.Warnings = append(st.Warnings, strandedText)
+	}
+	if d.alarms[rewindUnsafeKey] {
+		st.Warnings = append(st.Warnings, rewindUnsafeText)
+	}
+	if d.alarms[frozenAlarmKey] {
+		st.Warnings = append(st.Warnings, frozenStrandedText+d.frozenHintLocked()) // R60: dauerhaft, bis es aufgelöst ist
+	}
+	if d.unfenceHang != "" {
+		// R64: ohne Wartung, aber nie still – solange die Rücknahme scheitert
+		st.Warnings = append(st.Warnings, "Rücknahme hängt: "+d.unfenceHang+" – dieser Server ist aktiv, aber nur lesend und ohne Dienste; sie wird in jedem Takt wiederholt")
+	}
+	d.mirrorStatusLocked(&st)
 	return st
 }
 
@@ -339,6 +366,12 @@ func (d *daemon) heartbeatLocked(gw bool, views map[string]peerView, wall time.T
 		m.Tun = d.tunnel.Sum()
 		m.PDH = d.pdhHBLocked() // Update im Verbund: „pdh auf B antwortet“
 		m.UpJob = !upEnded(d.up.job)
+		m.UpLead = "-"
+		if m.UpJob {
+			m.UpLead = d.up.job.ID
+		}
+		m.Giving = d.p.Role == ha.Passive && d.carry.HandoverPending != 0 // eigener Rollentausch: Abgabe läuft
+		d.mirrorHBLocked(&m)                                              // Zwischenspeicher, kein Dateizugriff
 	}
 	return m
 }

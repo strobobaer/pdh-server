@@ -17,6 +17,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"pdh/internal/ha"
 )
 
 const (
@@ -111,10 +113,13 @@ func drN8NSources(info drN8NInfo) []drSource {
 func drRsyncArgs(src drSource, target, day string) []string {
 	args := []string{"-rt", "--copy-links", "--delete", "--backup",
 		"--backup-dir=" + target + "/papierkorb/" + day + "/" + src.Label, "--exclude=.git"}
-	args = append(args, src.Filter...)
 	if src.File {
-		return append(args, src.Path, target+"/files/"+src.Label)
+		return append(append(args, src.Filter...), src.Path, target+"/files/"+src.Label)
 	}
+	// R63: Die Kennung der Datei-Spiegelung gehört zum Datenträger und kommt nie aufs Laufwerk;
+	// nach dem Zurückspielen auf einen neuen Datenträger fehlt sie, und die Spiegelung fragt nach
+	args = append(args, "--exclude="+ha.MirrorIDName) // ohne „/“: in jeder Tiefe (Datenordner unter dem Programmordner)
+	args = append(args, src.Filter...)
 	return append(args, src.Path+"/", target+"/files/"+src.Label+"/")
 }
 

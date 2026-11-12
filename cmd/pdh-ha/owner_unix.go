@@ -4,7 +4,9 @@ package main
 
 import (
 	"io/fs"
+	"os"
 	"os/user"
+	"path/filepath"
 	"strconv"
 	"syscall"
 )
@@ -31,4 +33,18 @@ func fileUID(fi fs.FileInfo) (uint32, bool) {
 		return 0, false
 	}
 	return st.Uid, true
+}
+
+// chownLikeParent setzt Besitzer und Gruppe von p auf die des Ordners, in dem p liegt (R63: die
+// Kennung der Datei-Spiegelung in config/ von Nextcloud muss für www-data schreibbar bleiben).
+func chownLikeParent(p string) error {
+	fi, err := os.Stat(filepath.Dir(p))
+	if err != nil {
+		return err
+	}
+	st, ok := fi.Sys().(*syscall.Stat_t)
+	if !ok {
+		return nil
+	}
+	return os.Lchown(p, int(st.Uid), int(st.Gid))
 }

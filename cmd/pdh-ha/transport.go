@@ -36,6 +36,7 @@ import (
 const (
 	alpnHA       = "pdh-ha/1"
 	alpnJoin     = "http/1.1"
+	alpnMirror   = "pdh-mirror/1" // Datei-Spiegelung (rsync) mit Client-Zertifikat
 	maxLine      = 64 << 10
 	joinCertDays = 730
 	maxJoinAddrs = 8
@@ -103,7 +104,22 @@ type message struct {
 	JobID string        `json:"job_id,omitempty"`
 	Ack   *ha.UpdateAck `json:"ack,omitempty"`
 	// hb eines Servers: ein Update-Auftrag läuft (der Zeuge zieht dann nicht nach)
-	UpJob bool `json:"upjob,omitempty"`
+	UpJob  bool   `json:"upjob,omitempty"`
+	UpLead string `json:"up_lead,omitempty"` // R53: Kennung des offenen Auftrags, „-“ = keiner; fehlt bei älteren Versionen
+
+	Giving bool `json:"giving,omitempty"` // Rollentausch: dieser passive Server gibt gerade ab
+
+	// Datei-Spiegelung (Teil 6), nur Server mit eingeschalteter Spiegelung
+	MirrorFirst   bool      `json:"mirror_first,omitempty"`   // Erstabgleich fertig
+	MirrorAt      time.Time `json:"mirror_at,omitzero"`       // letzter erfolgreicher Abgleich
+	MirrorOrphans int       `json:"mirror_orphans,omitempty"` // Rückkehrer-Dateien im Empfang
+	MirrorTrashB  int64     `json:"mirror_trash_b,omitempty"` // Größe der Papierkörbe
+	EnvSum        string    `json:"env_sum,omitempty"`        // Prüfsumme der .env (ohne Serverdaten)
+	NCVer         string    `json:"nc_ver,omitempty"`         // Nextcloud- und PHP-Fassung
+	MirrorDataID  string    `json:"mirror_data_id,omitempty"` // Kennung der Empfangsablage (ändert sich bei einem Ersatzserver)
+	MirrorProven  []string  `json:"mirror_proven,omitempty"`  // Quellen mit eigenem Beleg des Empfängers (R47)
+	MirrorWait    []string  `json:"mirror_wait,omitempty"`    // Quellen, deren Ziel nicht leer war: warten auf Bestätigung
+	UIDs          string    `json:"uids,omitempty"`           // Benutzerkennungen „pdh=…,www-data=…“ (I3; fehlt bei älteren Versionen)
 }
 
 var deliverTypes = map[string]bool{
@@ -111,6 +127,7 @@ var deliverTypes = map[string]bool{
 	"renew_req": true, "renew_resp": true, "removed": true,
 	"stale": true, "stale_ack": true, "current": true, "current_ack": true, "vote_probe": true,
 	"diverged_delete": true, "update_job": true, "update_node": true, "update_ack": true,
+	"mirror_trash_empty": true,
 }
 
 // pathStat beschreibt einen Weg; LastRecv monoton, 0 = nie.
@@ -190,6 +207,11 @@ type transport struct {
 	hsPerIP  map[string]int // laufende Handshakes je Quelladresse
 
 	rejects atomic.Uint64 // Zähler abgelehnter Verbindungen (Tests)
+
+	// mirrorRecv nimmt Datei-Spiegelungen an (Kanal pdh-mirror/1); vor serve setzen.
+	// nil: solche Verbindungen werden geschlossen.
+	mirrorRecv mirrorReceiver
+	mirrors    map[*mirrorStream]struct{} // laufende Spiegelströme (mu)
 }
 
 // newTransport erwartet in cert die Kette Knoten + CA (loadTLSCert), damit
@@ -348,6 +370,11 @@ func (t *transport) setCluster(cl clusterConfig) {
 			pc.close()
 		}
 	}
+	for ms := range t.mirrors {
+		if _, ok := t.nodeLocked(ms.peer); !ok || t.revokedLocked(ms.serial) {
+			ms.cancel()
+		}
+	}
 	t.reconcileLocked()
 }
 
@@ -475,20 +502,27 @@ func (t *transport) dialOnce(ctx context.Context, id, addr string) bool {
 
 // identify prüft Zertifikat, Sperrliste und Mitgliedschaft im Cluster.
 func (t *transport) identify(cs tls.ConnectionState) (id, serial string, err error) {
+	id, serial, _, err = t.identifyKind(cs)
+	return id, serial, err
+}
+
+// identifyKind wie identify, zusätzlich die Art des Knotens (laut Zertifikat und
+// Cluster, die übereinstimmen müssen).
+func (t *transport) identifyKind(cs tls.ConnectionState) (id, serial, nodeKind string, err error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	id, kind, err := peerIdentity(cs, t.cl.Revoked)
 	if err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
 	n, ok := t.nodeLocked(id)
 	if !ok || id == t.self.ID {
-		return "", "", fmt.Errorf("%q gehört nicht zum Cluster", id)
+		return "", "", "", fmt.Errorf("%q gehört nicht zum Cluster", id)
 	}
 	if n.Kind != kind {
-		return "", "", fmt.Errorf("%q hat die falsche Art %q", id, kind)
+		return "", "", "", fmt.Errorf("%q hat die falsche Art %q", id, kind)
 	}
-	return id, normHex(serialHex(cs.VerifiedChains[0][0])), nil
+	return id, normHex(serialHex(cs.VerifiedChains[0][0])), kind, nil
 }
 
 // runConn betreibt eine Verbindung: eigener Schreiber, Lesen mit Frist 3 Takte.
@@ -852,7 +886,7 @@ func (t *transport) serve(ctx context.Context, ln net.Listener, join http.Handle
 		},
 		ClientAuth: tls.VerifyClientCertIfGiven,
 		ClientCAs:  t.ca,
-		NextProtos: []string{alpnHA, alpnJoin},
+		NextProtos: []string{alpnHA, alpnMirror, alpnJoin},
 		MinVersion: tls.VersionTLS13,
 	}
 	sem := make(chan struct{}, 64) // gleichzeitige Handshakes
@@ -924,6 +958,10 @@ func (t *transport) handleConn(ctx context.Context, raw net.Conn, cfg *tls.Confi
 			return
 		}
 		t.runConn(ctx, id, t.localPath(c.LocalAddr()), c, raw, serial)
+		return
+	}
+	if cs.NegotiatedProtocol == alpnMirror {
+		t.serveMirror(ctx, c, raw)
 		return
 	}
 	if jl == nil || !jl.put(ctx, c) {

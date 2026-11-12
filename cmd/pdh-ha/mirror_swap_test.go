@@ -1,0 +1,184 @@
+package main
+
+import (
+	"context"
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+
+	"pdh/internal/ha"
+)
+
+// blockRsync: legt eine Quelle mit Datei an (sonst läuft nie ein rsync) und lässt rsync
+// hängen, bis der Lauf abgebrochen wird – der Erstabgleich bleibt offen. Der Kanal
+// meldet jeden rsync-Start.
+func blockRsync(t *testing.T, m *mdt) chan struct{} {
+	t.Helper()
+	up := filepath.Join(m.dir, "repo", "uploads")
+	if err := os.MkdirAll(up, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(up, "x"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	started := make(chan struct{}, 64)
+	m.rs.mu.Lock()
+	m.rs.fn = func(ctx context.Context, _ []string) error {
+		started <- struct{}{}
+		<-ctx.Done()
+		return ctx.Err()
+	}
+	m.rs.mu.Unlock()
+	return started
+}
+
+// awaitRsync wartet auf den Start eines rsync.
+func awaitRsync(t *testing.T, started chan struct{}) {
+	t.Helper()
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("rsync nicht gestartet")
+	}
+}
+
+const firstSyncMsg = "Erstabgleich der Dateien läuft – Rollentausch erst danach möglich"
+
+// Im Erstabgleich ist der Handtausch gesperrt; Übernahme erzwingen nie.
+func TestSwapRefusedDuringFirstSync(t *testing.T) {
+	m := newMDT(t, ha.Active, true, message{Role: "passiv"})
+	started := blockRsync(t, m)
+	m.tick()
+	m.ready()
+	awaitRsync(t, started)
+	if err := m.d.command("swap"); err == nil || err.Error() != firstSyncMsg {
+		t.Fatalf("swap im Erstabgleich: %v", err)
+	}
+	m.d.lock()
+	cmd := m.d.cmd
+	m.d.unlock()
+	if cmd != ha.CmdNone {
+		t.Fatalf("Befehl trotz Sperre vorgemerkt: %v", cmd)
+	}
+
+	// Übernahme erzwingen am nicht aktiven Server bleibt als Notweg offen.
+	p := newMDT(t, ha.Passive, true, message{Role: "passiv"})
+	blockRsync(t, p)
+	p.tick()
+	p.ready()
+	if err := p.d.command("force_takeover"); err != nil {
+		t.Fatalf("force_takeover gesperrt: %v", err)
+	}
+}
+
+// Ist der Erstabgleich fertig, geht der Tausch; bei ausgeschalteter Spiegelung auch.
+func TestSwapAllowedAfterFirstSyncOrMirrorOff(t *testing.T) {
+	m := newMDT(t, ha.Active, true, message{Role: "passiv"})
+	m.tick()
+	rt := m.ready()
+	waitFor(t, 3*time.Second, "Erstabgleich fertig", func() bool { return rt.worker.Load().snapshot().FirstDone })
+	if err := m.d.command("swap"); err != nil {
+		t.Fatalf("swap nach dem Erstabgleich: %v", err)
+	}
+
+	off := newMDT(t, ha.Active, false, message{Role: "passiv"})
+	off.tick()
+	if err := off.d.command("swap"); err != nil {
+		t.Fatalf("swap ohne Spiegelung: %v", err)
+	}
+}
+
+// „Alles grün“ bekommt die Spiegelung aus dem Zwischengespeicherten.
+func TestReadyObsMirror(t *testing.T) {
+	m := newMDT(t, ha.Active, true, message{Role: "passiv"})
+	started := blockRsync(t, m)
+	m.tick()
+	m.ready()
+	awaitRsync(t, started)
+	obs := func(d *daemon) ha.ReadyObs {
+		d.lock()
+		defer d.unlock()
+		partner, witness := d.peerIDsLocked()
+		o, _ := d.readyObsLocked(partner, witness, updateStartReq{})
+		return o
+	}
+	if o := obs(m.d); !o.MirrorOn || o.MirrorFirstDone {
+		t.Fatalf("im Erstabgleich: On=%v FirstDone=%v", o.MirrorOn, o.MirrorFirstDone)
+	}
+	m.setOn(false)
+	if o := obs(m.d); o.MirrorOn {
+		t.Fatalf("Spiegelung aus, aber On=%v", o.MirrorOn)
+	}
+}
+
+// Beim Rollentausch ist die Rolle sofort passiv; der Arbeiter muss für den
+// letzten Abgleich aber bis zur Übernahme des Partners aktiv bleiben.
+func TestMirrorWorkerStaysActiveDuringHandover(t *testing.T) {
+	m := newMDT(t, ha.Active, true, message{Role: "passiv"})
+	m.d.act = &recActor{}
+	m.tick()
+	rt := m.ready()
+	waitFor(t, 3*time.Second, "Erstabgleich fertig", func() bool { return rt.worker.Load().snapshot().FirstDone })
+	if err := m.d.command("swap"); err != nil {
+		t.Fatal(err)
+	}
+	m.tick()
+	waitFor(t, 2*time.Second, "demote erledigt", m.d.actionsIdle)
+	m.tick()
+	m.d.lock()
+	role, pending := m.d.p.Role, m.d.carry.HandoverPending
+	m.d.unlock()
+	if role != ha.Passive || pending == 0 {
+		t.Fatalf("Übergabe läuft nicht: Rolle %s, offen %d", role, pending)
+	}
+	wk := rt.worker.Load()
+	wk.mu.Lock()
+	active := wk.active()
+	wk.mu.Unlock()
+	if !active {
+		t.Fatal("Arbeiter während der Übergabe nicht aktiv: der letzte Abgleich bräche ab")
+	}
+}
+
+// mirrorFinalSync liest die Einstellungen erst beim Aufruf: aus = nichts zu tun,
+// später eingeschaltet = es wird abgeglichen.
+func TestMirrorFinalSyncReadsSettingsAtCall(t *testing.T) {
+	m := newMDT(t, ha.Active, false, message{Role: "passiv"})
+	m.tick()
+	if err := m.d.mirrorFinalSync(context.Background()); err != nil {
+		t.Fatalf("Spiegelung aus: %v", err)
+	}
+	m.setOn(true)
+	m.tick()
+	rt := m.ready()
+	waitFor(t, 3*time.Second, "Erstabgleich fertig", func() bool { return rt.worker.Load().snapshot().FirstDone })
+	m.d.lock()
+	m.d.p.Role, m.d.carry.HandoverPending = ha.Passive, 2 // Übergabe läuft
+	m.d.unlock()
+	if err := m.d.mirrorFinalSync(context.Background()); err != nil {
+		t.Fatalf("letzter Abgleich: %v", err)
+	}
+}
+
+// R27: Hat der Step den Tausch während des letzten Abgleichs zurückgenommen,
+// meldet mirrorFinalSync einen Fehler, und demote macht nicht weiter.
+func TestMirrorFinalSyncStopsWhenSwapWithdrawn(t *testing.T) {
+	m := newMDT(t, ha.Active, true, message{Role: "passiv"})
+	m.tick()
+	rt := m.ready()
+	waitFor(t, 3*time.Second, "Erstabgleich fertig", func() bool { return rt.worker.Load().snapshot().FirstDone })
+	set := func(role ha.Role, pending uint64) {
+		m.d.lock()
+		m.d.p.Role, m.d.carry.HandoverPending = role, pending
+		m.d.unlock()
+	}
+	set(ha.Passive, 2) // Übergabe läuft
+	if err := m.d.mirrorFinalSync(context.Background()); err != nil {
+		t.Fatalf("bei laufender Übergabe: %v", err)
+	}
+	set(ha.Active, 0) // Step hat zurückgenommen
+	if err := m.d.mirrorFinalSync(context.Background()); err == nil {
+		t.Fatal("Fehler erwartet: Tausch zurückgenommen")
+	}
+}

@@ -8,7 +8,9 @@ import (
 	"fmt"
 	"html/template"
 	"io/fs"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -539,8 +541,7 @@ func (h *Handler) maintStatusExtra(r *http.Request, v ha.UpdateView, out map[str
 // Schutz vor fremden Seiten wie bei maintAbortPost (Sec-Fetch-Site).
 func (h *Handler) maintActionPost(w http.ResponseWriter, r *http.Request, confirm bool) {
 	lang := h.requestLang(r)
-	if sfs := r.Header.Get("Sec-Fetch-Site"); sfs != "" && sfs != "same-origin" && sfs != "none" {
-		http.Error(w, tr(lang, "Anfrage von fremder Seite abgewiesen"), http.StatusForbidden)
+	if h.refuseForeignSite(w, r) {
 		return
 	}
 	u := h.sessionUser(r)
@@ -631,13 +632,85 @@ func (h *Handler) maintLoginPost(w http.ResponseWriter, r *http.Request, v ha.Up
 	http.Redirect(w, r, "/wartung", http.StatusSeeOther)
 }
 
+// foreignSite: Die Anfrage kommt laut Sec-Fetch-Site von einer anderen Seite (same-site
+// oder cross-site). Schutz der Wartungsaktionen zusätzlich zum SameSite-Cookie; ohne die
+// Kopfzeile (ältere Browser, einfaches HTTP, Werkzeuge) geht die Anfrage durch (R72).
+func foreignSite(r *http.Request) bool {
+	sfs := r.Header.Get("Sec-Fetch-Site")
+	return sfs != "" && sfs != "same-origin" && sfs != "none"
+}
+
+// foreignOrigin: strengere Prüfung für die endgültigen Aktionen der Datei-Spiegelung
+// (Bestätigen, Papierkorb leeren; R72). Mit Sec-Fetch-Site wie foreignSite. Ohne die
+// Kopfzeile entscheidet Origin, falls vorhanden: Sein Host muss zu Host, X-Forwarded-Host
+// oder PDH_PUBLIC_URL passen. Ist Host ein Loopback-Host (PDH hinter einem Proxy ohne
+// Host-Weitergabe), geht die Anfrage durch. Ohne beide Kopfzeilen (Werkzeuge) ebenso.
+func foreignOrigin(r *http.Request, publicURL string) bool {
+	if r.Header.Get("Sec-Fetch-Site") != "" {
+		return foreignSite(r)
+	}
+	o := r.Header.Get("Origin")
+	if o == "" {
+		return false
+	}
+	u, err := url.Parse(o)
+	if err != nil || u.Host == "" {
+		return true // z. B. „null“ aus einer abgeschotteten Seite
+	}
+	if loopbackHost(r.Host) {
+		return false
+	}
+	fwd, _, _ := strings.Cut(r.Header.Get("X-Forwarded-Host"), ",")
+	hosts := []string{r.Host, strings.TrimSpace(fwd)}
+	if pu, err := url.Parse(strings.TrimSpace(publicURL)); err == nil && pu.Host != "" {
+		hosts = append(hosts, pu.Host)
+	}
+	for _, host := range hosts {
+		if host != "" && strings.EqualFold(u.Host, host) {
+			return false
+		}
+	}
+	return true
+}
+
+// loopbackHost: localhost, 127.0.0.0/8 oder ::1 (mit oder ohne Port).
+func loopbackHost(hostport string) bool {
+	host := hostport
+	if h, _, err := net.SplitHostPort(hostport); err == nil {
+		host = h
+	}
+	host = strings.Trim(host, "[]")
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+// refuseForeignSite lehnt eine Wartungsaktion von fremder Seite mit 403 ab (true = abgelehnt).
+func (h *Handler) refuseForeignSite(w http.ResponseWriter, r *http.Request) bool {
+	if !foreignSite(r) {
+		return false
+	}
+	http.Error(w, tr(h.requestLang(r), "Anfrage von fremder Seite abgewiesen"), http.StatusForbidden)
+	return true
+}
+
+// refuseForeignOrigin lehnt eine endgültige Spiegel-Aktion von fremder Seite mit 403 ab.
+func (h *Handler) refuseForeignOrigin(w http.ResponseWriter, r *http.Request) bool {
+	if !foreignOrigin(r, h.mailCfg.PublicURL) {
+		return false
+	}
+	http.Error(w, tr(h.requestLang(r), "Anfrage von fremder Seite abgewiesen"), http.StatusForbidden)
+	return true
+}
+
 // maintAbortPost: POST /wartung/abbrechen – Recht prüfen, Abbruch anfordern,
 // protokollieren. Schutz vor fremden Seiten wie bei allen Formularen über das
 // SameSite-Cookie, zusätzlich Sec-Fetch-Site: nur same-origin, none oder ohne
 // Kopfzeile (ältere Browser, Werkzeuge) – same-site und cross-site nicht.
 func (h *Handler) maintAbortPost(w http.ResponseWriter, r *http.Request, v ha.UpdateView) {
-	if sfs := r.Header.Get("Sec-Fetch-Site"); sfs != "" && sfs != "same-origin" && sfs != "none" {
-		http.Error(w, tr(h.requestLang(r), "Anfrage von fremder Seite abgewiesen"), http.StatusForbidden)
+	if h.refuseForeignSite(w, r) {
 		return
 	}
 	u, admin := h.maintSession(r)

@@ -136,6 +136,13 @@
         {{if .CanNextcloud}}<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px">
           <button type="button" class="btn btn-small" hx-post="/users/{{$u.ID}}/nextcloud-account" hx-target="#ud-nc" hx-disabled-elt="this" hx-confirm="Nextcloud-Konto „{{$u.Username}}“ anlegen und verknüpfen?"><i class="ti ti-cloud-plus"></i> Nextcloud-Konto anlegen</button>
           <span id="ud-nc"></span></div>{{end}}
+        {{if .CanNextcloudPW}}<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px">
+          <button type="button" class="btn btn-small" hx-post="/users/{{$u.ID}}/nextcloud-password" hx-target="#ud-ncpw" hx-disabled-elt="this" hx-confirm="Neues Startpasswort für das Nextcloud-Konto „{{$u.NextcloudUserID}}“ setzen? Das bisherige gilt dann nicht mehr."><i class="ti ti-key"></i> Neues Startpasswort</button>
+          <span id="ud-ncpw"></span></div>{{end}}
+        {{if .CanNextcloudAdmin}}<input type="hidden" name="nextcloud_admin_shown" value="1">
+        <label style="font-size:13px;display:flex;gap:8px;align-items:center;margin-top:8px"><input type="checkbox" name="nextcloud_admin" {{if .NextcloudAdmin}}checked{{end}}> Administrator in Nextcloud</label>
+        <div style="font-size:12px;color:var(--muted)">Wirkt nur zusammen mit der Rolle Administrator. Ohne Haken nimmt der Abgleich der Person die Administrator-Rechte in Nextcloud.</div>
+        {{else if .NextcloudAdmin}}<div style="font-size:12px;color:var(--muted);margin-top:6px"><i class="ti ti-shield-check"></i> Administrator in Nextcloud</div>{{end}}
       </div>
       <div class="form-group"><label class="form-label">RFID-Karte</label><input name="rfid_uid" class="form-input" value="{{$u.RFIDUID}}"></div>
     </div>

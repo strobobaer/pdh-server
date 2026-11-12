@@ -145,6 +145,9 @@ WAL="/var/lib/postgresql/pdh-restore-wal"
 rm -rf "$WAL"; mkdir -p "$WAL"
 rsync -rt "$FROM/wal/" "$WAL/"
 chown -R postgres:postgres "$DATA" "$WAL"; chmod 700 "$DATA"
+# Marke von pdh-ha „Wiederanbindung abgebrochen, Daten unsicher“: gilt dem alten Ordner.
+# Der wiederhergestellte Stand ist gut – bliebe sie liegen, würde pdh-ha ihn ablehnen.
+rm -f "$DATA.rewind-laeuft"
 touch "$DATA/recovery.signal"
 {
   echo "# pdh-restore (wird nach der Wiederherstellung entfernt)"
@@ -181,7 +184,8 @@ if [[ "$COMMIT" != "-" ]]; then
 fi
 restore_dir() { # Label Zielordner [rsync-Filter …]
   [[ -d "$FROM/files/$1" ]] || return 0
-  mkdir -p "$2"; rsync -rtl "${@:3}" "$FROM/files/$1/" "$2/"
+  # Kennung der Datei-Spiegelung nie zurück (R63): auf einem neuen Datenträger muss sie fehlen
+  mkdir -p "$2"; rsync -rtl --exclude=.pdh-mirror-id "${@:3}" "$FROM/files/$1/" "$2/"
 }
 restore_dir uploads "$REPO/uploads"
 restore_dir chat_files "$REPO/chat_files"

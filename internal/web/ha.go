@@ -56,6 +56,8 @@ type haStatus struct {
 	Update        ha.UpdateView `json:"update"`
 	Faulty        []string      `json:"faulty"`
 	WindowLastRun time.Time     `json:"window_last_run"`
+
+	Mirror *haMirror `json:"mirror"` // Datei-Spiegelung; fehlt am Zeugen (ha_mirror.go)
 }
 
 // haAccess: Zugangsweg aus dem Status von pdh-ha (hier nur, was der Abgleich braucht).
@@ -176,6 +178,10 @@ type haView struct {
 
 	// Rechte der Sitzung für Durchführen bzw. Absagen/Abbrechen (Fortschrittskasten)
 	CanConfirmUpdate, CanAbortUpdate bool
+
+	// Datei-Spiegelung (ha_mirror.go): Rechte der Sitzung und die Nextcloud-Adresse des PDH
+	MirrorCan, MirrorAdmin bool
+	NCBaseURL              string
 }
 
 // UpdateBox: Auftrag samt Rechten der Sitzung für den Fortschrittskasten.
@@ -547,7 +553,7 @@ func (h *Handler) haSetting(ctx context.Context, key, def string) string {
 }
 
 func (h *Handler) haLoadView(ctx context.Context) haView {
-	v := haView{SuggestAddrs: h.haSuggestAddrs(ctx), Installed: haInstalled()}
+	v := haView{SuggestAddrs: h.haSuggestAddrs(ctx), Installed: haInstalled(), NCBaseURL: effectiveValue(nil, "PDH_NEXTCLOUD_BASEURL")}
 	if uid := haUserID(ctx); uid != "" {
 		if c, ok := haJoinCodes.take(uid, time.Now()); ok {
 			v.JoinCode, v.JoinCmd, v.JoinExpires = c.code, c.cmd, c.expires
@@ -830,6 +836,17 @@ func (h *Handler) haDoSettings(ctx context.Context, f url.Values) (string, error
 	if err := s.Validate(); err != nil {
 		return "", err
 	}
+	// Die Spiegel-Felder gehören nicht zu diesem Formular: aktuelle Werte lesen und behalten,
+	// sonst setzte jedes Speichern der Zeiten die Datei-Spiegelung zurück.
+	haSettingsMu.Lock()
+	defer haSettingsMu.Unlock()
+	cur, err := h.haCurrent(ctx)
+	if err != nil {
+		return "", err
+	}
+	s.MirrorOn, s.MirrorNextcloud, s.MirrorEvery, s.MirrorTrashDays = cur.Settings.MirrorOn, cur.Settings.MirrorNextcloud, cur.Settings.MirrorEvery, cur.Settings.MirrorTrashDays
+	s.MirrorAlarmAfter, s.MirrorFinalMax, s.MirrorBWLimitKB = cur.Settings.MirrorAlarmAfter, cur.Settings.MirrorFinalMax, cur.Settings.MirrorBWLimitKB
+	s.NCDataDir, s.NCAppDir = cur.Settings.NCDataDir, cur.Settings.NCAppDir
 	targets := haParseAddrs(f.Get("gateway_targets"))
 	if targets == nil {
 		targets = []string{} // leer = keine Ziele (nil hieße „unverändert“)

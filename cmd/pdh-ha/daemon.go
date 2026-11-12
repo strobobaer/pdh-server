@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -93,13 +94,14 @@ type daemon struct {
 	cmd          ha.CommandKind
 	handoverIn   uint64
 	voteGranted  uint64
-	demoteDone   uint64 // Amtszeit der zuletzt erfolgreich ausgeführten Abgabe (demote)
-	demoteFailed uint64 // Amtszeit einer gescheiterten Abgabe
+	demoteDone   uint64 // Tauschversuch (Action.Seq) der zuletzt erfolgreich ausgeführten Abgabe
+	demoteFailed uint64 // Tauschversuch einer gescheiterten Abgabe
 	probeGranted uint64 // Zeuge würde dieser Amtszeit zustimmen (Probestimme)
 	dataCurrent  bool   // echter Datenstand (Replikation)
 
 	pgSt          atomic.Pointer[pgStatus] // zuletzt bekannter Zustand von PostgreSQL
 	pgQuerying    atomic.Bool
+	pgSeq         atomic.Uint64 // fertige Abfragen von PostgreSQL (R65)
 	lastStreaming time.Duration // monoton: Partner zuletzt als streaming gesehen
 	// Amtszeit, in der lastStreaming gesetzt wurde
 	lastStreamingTerm uint64
@@ -113,12 +115,34 @@ type daemon struct {
 	reconcileWait atomic.Bool   // Abgleich steht in der Warteschlange
 
 	// Aktionen laufen nacheinander im Hintergrund, der Takt läuft weiter.
-	actQ        chan queuedAction
-	actOnce     sync.Once
-	actBatch    uint64       // nur unter mu
-	busy        atomic.Bool  // eine Aktion läuft gerade
-	pendingActs atomic.Int32 // wartend oder laufend
-	lastMode    ha.Mode
+	actQ           chan queuedAction
+	actOnce        sync.Once
+	actBatch       uint64        // nur unter mu
+	busy           atomic.Bool   // eine Aktion läuft gerade
+	pendingActs    atomic.Int32  // wartend oder laufend
+	pendingDemotes atomic.Int32  // davon: Abgaben (demote, demote_freeze, abandon)
+	pendingRejoins atomic.Int32  // davon: Wiederanbindungen (rejoin, rejoin_stranded)
+	foreignSince   time.Duration // nur unter mu: seit wann ein fremder Update-Auftrag gilt (R53, 0 = nicht)
+	foreignPGSeq   uint64        // nur unter mu: Stand von pgSeq, als der fremde Auftrag begann (R65)
+	undoRefused    bool          // nur unter mu: demote hat die Rücknahme verweigert (Partner übernommen), R32
+	// R64: Rücknahme nach aktiv (nur unter mu). unfenceWait: Rolle aktiv mit Rücknahme, ActUnfence
+	// noch nicht gelungen (Adresse folgt erst danach). unfenceHang: Grund, solange ActUnfence
+	// scheitert (dauerhafte Warnung). unfenceAlarmed: Alarm für diese Rücknahme gemeldet, gilt für
+	// unfenceTerm; Rollenverlust, neue Amtszeit und Erfolg setzen alles zurück.
+	unfenceWait    bool
+	unfenceHang    string
+	unfenceAlarmed bool
+	unfenceTerm    uint64
+	hooksRole      ha.Role // R64: zuletzt für die Rollenskripte gemeldete Rolle (beim Laden die gespeicherte)
+	lastMode       ha.Mode
+
+	// Gestrandeter Server (rejoin.go, R33)
+	rejoinMu       sync.Mutex    // Handbefehl rejoin: einer zur Zeit (vor clMu und mu)
+	rejoinRetryAt  time.Duration // nur unter mu: frühester neuer Versuch mit Marke (monoton, 0 = keiner)
+	rejoinWaitWhy  string        // nur unter mu: zuletzt gemeldeter Grund des Wartens
+	strandedSample *pgStatus     // nur unter mu: zuletzt gezählte Abfrage
+	strandedFresh  int           // nur unter mu: neue Abfragen, seit der Zustand gilt
+	strandedGoneAt time.Duration // nur unter mu: seit wann der Zustand nicht mehr gilt (monoton, 0 = gilt)
 
 	certNotAfter time.Time
 	renewKey     []byte
@@ -162,6 +186,10 @@ type daemon struct {
 	holdAfter   func(time.Duration) <-chan time.Time
 	probeHeld   *probeHolding // gehaltene Prüfadresse (nur unter mu)
 	vipChecking atomic.Bool   // ein Test läuft (auslösender Server)
+
+	// Datei-Spiegelung (mirror_api.go); mir entsteht beim ersten Takt eines Servers
+	mir        *mirrorRT
+	mirrorWire *mirrorWiring // nil = Produktion; Tests ersetzen die Umgebung
 
 	up  upState     // Update im Verbund (update_job.go)
 	wsu selfUpdater // Zeuge als Programm zieht sich nach (witness_update.go)
@@ -288,6 +316,7 @@ func (d *daemon) loadLocked() error {
 		d.net = newTransport(n, cl, cert, pool, d.mono, d.ev)
 	}
 	d.node, d.cl, d.p, d.removed = n, cl, p, removed
+	d.hooksRole = p.Role // R64: Skripte nur bei echtem Wechsel gegenüber der gespeicherten Rolle
 	d.certNotAfter = notAfter
 	d.configured, d.booting = true, true
 	d.lastMode = d.modeLocked()
@@ -383,6 +412,9 @@ func (d *daemon) startLocked() {
 		mux.HandleFunc("POST /v1/probe-release", d.probeReleaseHTTP)
 	}
 	var join http.Handler = mux
+	if rt := d.ensureMirrorLocked(); rt != nil {
+		tr.mirrorRecv = rt // vor serve setzen: der Empfänger lehnt selbst ab, wenn er nicht darf
+	}
 	if ok {
 		ctx, cancel := context.WithCancel(d.runCtx)
 		d.trCancel = cancel
@@ -413,6 +445,7 @@ func (d *daemon) selectActorLocked(ctx context.Context) {
 		defer d.mu.Unlock()
 		return d.pgEnvLocked(pg)
 	})
+	d.wireActor(pa)
 	d.act = pa
 	// PostgreSQL-Port für den Partner öffnen (ufwRules mit pg)
 	go d.applyFirewall()
@@ -488,7 +521,11 @@ func (d *daemon) maybeReconcileLocked(ctx context.Context, now time.Duration) {
 			defer d.reconcileWait.Store(false)
 			d.mu.Lock()
 			role, removed := d.p.Role, d.removed
+			handing := role == ha.Passive && d.carry.HandoverPending != 0
 			d.mu.Unlock()
+			if handing {
+				return // Übergabe läuft: die Abgabe schaltet selbst, nichts anfassen
+			}
 			pa.reconcile(ctx, role)
 			if !removed { // entfernt: wieder Einzelbetrieb mit Autostart
 				pa.keepAutostartOff(ctx)
@@ -666,10 +703,22 @@ func (d *daemon) enqueueActions(ctx context.Context, acts []ha.Action) {
 	d.mu.Unlock()
 	for _, a := range acts {
 		d.pendingActs.Add(1)
+		if isDemote(a.Kind) {
+			d.pendingDemotes.Add(1)
+		}
+		if isRejoin(a.Kind) {
+			d.pendingRejoins.Add(1)
+		}
 		select {
 		case d.actQ <- queuedAction{a: a, batch: b}:
 		case <-ctx.Done():
 			d.pendingActs.Add(-1)
+			if isDemote(a.Kind) {
+				d.pendingDemotes.Add(-1)
+			}
+			if isRejoin(a.Kind) {
+				d.pendingRejoins.Add(-1)
+			}
 			return
 		}
 	}
@@ -686,28 +735,80 @@ func (d *daemon) actionWorker(ctx context.Context) {
 				d.busy.Store(true)
 				q.fn(ctx)
 				d.busy.Store(false)
+			} else if q.batch == failed && q.a.Kind == ha.ActUnfence {
+				// R64: übersprungen zählt wie gescheitert, der nächste Takt wiederholt (sonst bliebe
+				// der Server still aktiv und nur lesend)
+				d.unfenceOutcome(q.a, errors.New("vorige Aktion im selben Takt gescheitert"))
 			} else if q.batch != failed {
 				d.busy.Store(true)
-				err := d.doAction(ctx, q.a)
-				if err != nil {
+				var err error
+				hand := q.a.Kind == ha.ActRejoinStranded || q.a.Kind == ha.ActRecopyUnsafe
+				if hand {
+					err = d.strandedGuard()
+				}
+				// R49, R56: Zwischen Einreihen und Ausführung kann ein Auftrag begonnen haben. Sein
+				// eingefrorener Rückfallstand bleibt unberührt: abschotten statt anbinden, die Marke
+				// holt die Wiederanbindung nach dem Auftrag nach.
+				skip := q.a.Kind == ha.ActRejoin && d.updateOpen()
+				if skip {
+					d.event("warn", "Wiederanbindung übersprungen: Update-Auftrag ist offen")
+					err = d.doAction(ctx, ha.Action{Kind: ha.ActFence, Term: q.a.Term})
+					d.lock()
+					d.undoRefused = true
+					d.unlock()
+				}
+				if err == nil && !skip {
+					err = d.doAction(ctx, q.a)
+				}
+				if hand {
+					err = d.strandedDone(err)
+				}
+				switch {
+				case q.a.Kind == ha.ActUnfence:
+					// R59, R64: wiederholbar ohne Wartung, Alarm einmal je Rücknahme
+					if d.unfenceOutcome(q.a, err) {
+						failed = q.batch
+					}
+				case err != nil:
 					failed = q.batch
 					d.actionFailed(q.a, err)
 				}
-				if q.a.Kind == ha.ActDemote || q.a.Kind == ha.ActDemoteFreeze || q.a.Kind == ha.ActAbandon {
+				if isDemote(q.a.Kind) {
 					// erst jetzt darf der Rollentausch übergeben (Step wartet darauf)
 					d.lock()
 					if err == nil {
-						d.demoteDone = q.a.Term
+						d.demoteDone = q.a.Seq
 					} else {
-						d.demoteFailed = q.a.Term
+						d.demoteFailed = q.a.Seq
 					}
 					d.unlock()
 				}
 				d.busy.Store(false)
 			}
+			if q.fn == nil && isDemote(q.a.Kind) {
+				d.pendingDemotes.Add(-1)
+			}
+			if q.fn == nil && isRejoin(q.a.Kind) {
+				d.pendingRejoins.Add(-1)
+			}
 			d.pendingActs.Add(-1)
 		}
 	}
+}
+
+// isDemote: Abgabe der eigenen Datenbank beim Rollentausch.
+func isDemote(k ha.ActionKind) bool {
+	return k == ha.ActDemote || k == ha.ActDemoteFreeze || k == ha.ActAbandon
+}
+
+// isRejoin: Wiederanbindung als Standby.
+func isRejoin(k ha.ActionKind) bool {
+	return k == ha.ActRejoin || k == ha.ActRejoinStranded || k == ha.ActRecopyUnsafe
+}
+
+// swapCommand: Handbefehl, der einen Rollentausch beginnt.
+func swapCommand(c ha.CommandKind) bool {
+	return c == ha.CmdSwap || c == ha.CmdSwapFreeze || c == ha.CmdSwapAbandon
 }
 
 // actionsIdle: keine Aktion wartet oder läuft.
@@ -726,8 +827,95 @@ func (d *daemon) doAction(ctx context.Context, a ha.Action) (err error) {
 	return act.Do(ctx, a)
 }
 
+// retryUnfence (R59): ActUnfence ist gescheitert, nicht an der Rolle (unfenceRoleError). Der Merker
+// UnfencePending wird wieder gesetzt und gespeichert: Der nächste Takt wiederholt die Rücknahme,
+// nachdem er die Amtszeit geprüft hat (eine höhere nimmt die Rolle, der Merker fällt). true, wenn
+// der Merker wieder steht (wiederholt wird).
+func (d *daemon) retryUnfence(a ha.Action, err error) bool {
+	var role unfenceRoleError
+	if errors.As(err, &role) {
+		return false
+	}
+	d.lock()
+	defer d.unlock()
+	if d.p.Role != ha.Active || d.p.Term != a.Term || d.unsaved {
+		return false
+	}
+	p := d.p
+	p.UnfencePending = true
+	if serr := d.saveFn(p); serr != nil {
+		d.unsaved = true
+		pl := plan{}
+		d.saveAlarmLocked(&pl, "Zustand nicht gespeichert: "+serr.Error())
+		d.events(pl.events)
+		return false
+	}
+	d.p = p
+	return true
+}
+
+// unfenceOutcome (R59, R64): Ergebnis von ActUnfence. Ein wiederholbarer Fehlschlag (der Merker steht
+// wieder, retryUnfence) schaltet keine Wartung ein – sie schaltete den Ausfallschutz still ab, auch
+// nach gelungener Wiederholung. Stattdessen: Alarm einmal je Rücknahme, dauerhafte Statuswarnung mit
+// dem letzten Grund (unfenceHang), bei Erfolg ein Ereignis. Nicht wiederholbare Fälle sagen nicht
+// „wird wiederholt“; am schon abgelösten Server gibt es keine Wartung. true: Die übrigen Aktionen
+// dieser Folge entfallen.
+func (d *daemon) unfenceOutcome(a ha.Action, err error) bool {
+	if err == nil {
+		d.lock()
+		hung := d.unfenceHang != ""
+		d.clearUnfenceLocked()
+		if d.access != nil {
+			// die Adresse folgt erst jetzt (R64), nicht schon mit der Rolle
+			d.access.set(accessWant(d.p.Role, d.carry.HandoverPending, d.p.UnfencePending, d.cl.Access), d.p.Role, d.p.Term)
+		}
+		d.unlock()
+		if hung {
+			d.event("info", "Rücknahme gelungen: Dieser Server ist wieder schreibbar, die Dienste laufen")
+		}
+		return false
+	}
+	if d.retryUnfence(a, err) {
+		d.lock()
+		first := !d.unfenceAlarmed || d.unfenceTerm != a.Term
+		d.unfenceWait, d.unfenceAlarmed, d.unfenceHang, d.unfenceTerm = true, true, err.Error(), a.Term
+		d.unlock()
+		if first {
+			d.event("alarm", fmt.Sprintf("Aktion %s fehlgeschlagen: %v – die Rücknahme wird in jedem Takt wiederholt, bis sie gelingt; bis dahin ist dieser Server aktiv, aber nur lesend und ohne Dienste", a.Kind, err))
+		}
+		return false
+	}
+	d.lock()
+	gone := d.p.Role != ha.Active || d.p.Term != a.Term
+	unsaved := d.unsaved
+	d.clearUnfenceLocked()
+	d.unlock()
+	if gone && !unsaved {
+		var role unfenceRoleError
+		if !errors.As(err, &role) {
+			err = fmt.Errorf("%w – die Rücknahme entfällt, dieser Server ist in Amtszeit %d nicht mehr aktiv", err, a.Term)
+		}
+		d.event("alarm", fmt.Sprintf("Aktion %s fehlgeschlagen: %v", a.Kind, err))
+		return true
+	}
+	d.actionFailed(a, err)
+	return true
+}
+
+// clearUnfenceLocked: Die Rücknahme ist gelungen oder entfällt (Rollenverlust, neue Amtszeit). mu gehalten.
+func (d *daemon) clearUnfenceLocked() {
+	d.unfenceWait, d.unfenceHang, d.unfenceAlarmed, d.unfenceTerm = false, "", false, 0
+}
+
 // actionFailed: Fehler beim Ausführen → Wartung an + Alarm.
 func (d *daemon) actionFailed(a ha.Action, err error) {
+	// R29/R31.4: Ein gescheiterter letzter Dateiabgleich (und ein zurückgenommener Tausch) ist nur Alarm und Rücknahme; die
+	// automatische Übernahme bleibt möglich (Spec 7).
+	var nm interface{ noMaint() }
+	if errors.As(err, &nm) {
+		d.event("alarm", fmt.Sprintf("Aktion %s fehlgeschlagen: %v", a.Kind, err))
+		return
+	}
 	d.lock()
 	p := d.p
 	p.Maint = true
@@ -901,6 +1089,9 @@ func (d *daemon) tickNodeLocked(ctx context.Context) plan {
 	pl := plan{net: d.net}
 	d.syncAccessLocked(ctx)
 	if d.removed {
+		if d.mir != nil { // aus dem Cluster entfernt: die Spiegelung ruht
+			d.mirrorTickLocked(ctx, d.p.Role, ha.Fenced, ha.DefaultSettings(), nil)
+		}
 		return pl
 	}
 	now, wall := d.mono(), d.wall()
@@ -918,10 +1109,19 @@ func (d *daemon) tickNodeLocked(ctx context.Context) plan {
 	d.pingRound(ctx, s.Tick)
 	in := d.inputLocked(now, wall, s, mode, views)
 	in.Booting = d.booting
+	if d.rejoinRetryAt != 0 && now >= d.rejoinRetryAt {
+		d.rejoinRetryAt, in.RejoinAsked = 0, false // N2: mit Marke neuer Versuch der Wiederanbindung
+	}
 	if d.unsaved && in.Persist.Role == ha.Active {
 		in.Persist.Role = ha.Fenced // Zustand auf der Platte ungewiss: nicht aktiv
 	}
 	in.VoteGranted, in.Handover, in.Command = d.voteGranted, d.handoverIn, d.cmd
+	if swapCommand(in.Command) && d.pendingDemotes.Load() > 0 {
+		// R28: Kein neuer Tausch, solange eine Abgabe läuft oder wartet (auch die
+		// Wiederholung des Updates); die Marke des alten Versuchs bliebe sonst übrig.
+		in.Command = ha.CmdNone
+		d.event("info", "Rollentausch zurückgestellt: die vorige Abgabe läuft noch")
+	}
 	d.replInputLocked(ctx, &in, s)
 	before, booting := d.p.Role, d.booting // für die Skripte beim Rollenwechsel
 	termBefore := d.p.Term                 // Update im Verbund: Übernahme erkennen
@@ -938,16 +1138,40 @@ func (d *daemon) tickNodeLocked(ctx context.Context) plan {
 				// Zustand auf der Platte ungewiss: nicht aktiv, Adresse abgeben
 				d.access.set(false, ha.Fenced, d.p.Term)
 			}
+			d.mirrorTickLocked(ctx, before, ha.Fenced, s, views) // auch die Spiegelung ruht
 			return pl
 		}
 		d.unsaved = false
 	}
 	d.handoverIn, d.cmd, d.booting = 0, ha.CmdNone, false
-	d.p, d.carry = out.Persist, out
-	if d.access != nil {
-		d.access.set(accessWant(out.Persist.Role, out.HandoverPending, d.cl.Access), out.Persist.Role, out.Persist.Term)
+	if out.Persist.Role == ha.Active {
+		d.undoRefused = false // wieder aktiv: die Marke gilt nicht mehr
+	} else if out.SetUndoRefused {
+		d.undoRefused = true // R42: der Partner führt, die Abgabe hat nicht geklappt
 	}
-	d.hooksChangedLocked(before, out.Persist.Role, booting)
+	d.p, d.carry = out.Persist, out
+	// R64: Die Rücknahme beginnt mit dem Merker (Takt N) und gilt, bis ActUnfence gelingt; Rollenverlust
+	// und eine neue Amtszeit beenden sie samt Alarm-Merker und Warnung.
+	switch {
+	case out.Persist.Role != ha.Active || d.unfenceWait && out.Persist.Term != d.unfenceTerm:
+		d.clearUnfenceLocked()
+	case out.Persist.UnfencePending && !d.unfenceWait:
+		d.unfenceWait, d.unfenceTerm = true, out.Persist.Term
+	}
+	if d.access != nil {
+		// R59, R64: Adresse erst nach gelungenem ActUnfence, nicht schon mit der Rolle und nicht beim Wiederholen
+		d.access.set(accessWant(out.Persist.Role, out.HandoverPending, out.Persist.UnfencePending || d.unfenceWait, d.cl.Access), out.Persist.Role, out.Persist.Term)
+	}
+	d.hooksFollowLocked(hookRole(out.Persist.Role, out.Persist.UnfencePending), booting)
+	// Während der eigenen Übergabe (Rolle schon passiv, Partner noch nicht
+	// übernommen) gleicht der Arbeiter weiter ab: der letzte Abgleich von demote
+	// bräuchte sonst eine aktive Rolle und bräche sofort ab. Nicht bei abandon:
+	// dort wird der eigene Stand aufgegeben, es wird nichts mehr übertragen.
+	mirrorRole := out.Persist.Role
+	if mirrorRole == ha.Passive && out.HandoverPending != 0 && out.SwapKind != ha.ActAbandon {
+		mirrorRole = ha.Active
+	}
+	d.mirrorTickLocked(ctx, before, mirrorRole, s, views)
 	in.Persist = out.Persist
 	d.last = in
 	if g := d.voteGranted; g != 0 && (d.carry.VotePending != g || d.p.Term >= g) {

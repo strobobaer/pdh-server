@@ -10,6 +10,67 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.77.9] – 2026-11-09
+
+### Neu
+- Ausfallschutz mit zwei Servern: Die neue Datei-Spiegelung überträgt Anhänge, Chat-Dateien und die Einstellungen in `/etc/pdh` fast in Echtzeit auf den passiven Server – nach einem Tausch fehlt keine Datei mehr; Standard ist aus.
+- Nextcloud im Verbund: Mit „Nextcloud mitnehmen“ werden Datenordner, Programm, nginx-Einstellungen und Zertifikate mitgespiegelt, Nextcloud ist auf beiden Servern startbereit und arbeitet immer nur auf dem aktiven – für Clients bleibt es derselbe Server.
+- Das Nextcloud-Installationsskript kennt `--verbund aktiv-neu`, `--verbund aktiv-vorhanden` und `--verbund passiv` und nennt am Ende den fertigen Befehl für den anderen Server.
+- Neue Karte „Datei-Spiegelung“ im Reiter Ausfallschutz mit Zustand, letztem Abgleich je Quelle, Fortschritt des Erstabgleichs, Papierkorb, Warnungen und Einstellungen; `pdh-ha status` hat eine Zeile „Spiegelung“, dazu `pdh-ha mirror status`, `pdh-ha mirror run` und `pdh-ha mirror trash-empty`.
+- Beim Rollentausch läuft in der kurzen Sperre ein letzter Abgleich der Dateien (höchstens 120 Sekunden); klappt er nicht, bricht der Tausch ohne Änderung ab.
+- Gelöschte und überschriebene Dateien landen am passiven Server 14 Tage lang in einem Papierkorb; „Papierkorb leeren“ leert ihn vorher.
+- Am Partner wird erst gelöscht, wenn sein Stand belegt ist: Ein gefüllter Ordner wartet auf „Dieser Server ist vollständig“ (Knopf oder `pdh-ha mirror confirm`).
+- Nach einem harten Ausfall nennt der neue aktive Server die Nextcloud-Dateien, die noch nicht übertragen waren, in der Karte und im Alarm.
+- Jeder gespiegelte Ordner trägt eine Kennungsdatei `.pdh-mirror-id`; nach einem Plattentausch oder bei nicht eingehängtem Laufwerk löscht die Spiegelung nichts und meldet sich.
+- Handbuch: neuer Abschnitt „Datei-Spiegelung und Nextcloud im Verbund“ mit Einschalten, Bestätigen, Nextcloud, Papierkorb und Fehlerbildern.
+- Nextcloud verbindet sich von selbst: Liegt Nextcloud auf demselben Server, legt das PDH sein Konto „pdhNCadmin“ ohne Zutun an und trägt Adresse, Benutzer und Passwort in den Server-Einstellungen ein; alle Administratoren bekommen eine Nachricht.
+- Das Nextcloud-Installationsskript richtet bei einer neuen Nextcloud gleich Kalender, Kontakte und Deck ein (`--apps` wählt andere oder keine).
+- Abgleich mit Nextcloud, das PDH hat Vorrang: Jeder aktive Benutzer bekommt ein Nextcloud-Konto mit Namen, E-Mail und Sprache aus dem PDH; Rollen, Abteilungen und Gruppen werden zu Nextcloud-Gruppen, deaktivierte Personen dort gesperrt. Einschalten unter Server-Einstellungen → Nextcloud.
+- Ist eine Person einem Microsoft-Konto zugeordnet und die Microsoft-Anmeldung für Nextcloud eingerichtet, bekommt ihr Nextcloud-Konto die Microsoft-E-Mail als Benutzer-ID – die Anmeldung klappt dann ohne eigenes Passwort.
+- Der Abgleich richtet in Nextcloud die Apps ein, die das PDH braucht (Kalender, Kontakte, je nach Einstellung Deck, externer Speicher, Microsoft-Anmeldung); weitere Apps installieren Administratoren in Nextcloud wie gewohnt.
+- Cloudflare im PDH: Mit einem API-Token lassen sich unter Server-Einstellungen → Cloudflare-Tunnel DNS-Einträge, der Proxy je Eintrag, die Verschlüsselung der Domain und die Ziele im Tunnel pflegen; für PDH und Nextcloud zeigt eine Tabelle, was fehlt, und richtet es auf Knopfdruck ein.
+- Benutzerkarte: Haken „Administrator in Nextcloud“ und Knopf „Neues Startpasswort“ für das Nextcloud-Konto.
+- Netzlaufwerke in Nextcloud: Mit dem Haken „in Nextcloud zeigen“ erscheint ein Laufwerk dort im Ordner „PDH-Laufwerke“; Laufwerke, die das PDH selbst benutzt, sind nur lesbar.
+- Haben `pdh` (und mit „Nextcloud mitnehmen“ `www-data`) auf den beiden Servern verschiedene Benutzer- oder Gruppennummern, hält die Spiegelung die betroffenen Ordner mit einem Alarm an – auch schon beim ersten Abgleich nach dem Einschalten; Karte und `pdh-ha mirror status` nennen beide Nummern.
+
+### Geändert
+- Die Navigation zeigt Tickets, Störungen, Wartung, Aufgaben, Kalender, Ersatzteile, Lager, IT-Assets und Hersteller & Lieferanten nur noch, wenn die Person in dem Bereich wenigstens ein Recht hat.
+- „Rollen tauschen“ und die Prüfung „alles grün“ vor einem Update warten, bis der Erstabgleich der Dateien fertig ist.
+- Ein gescheiterter Tausch wird in zwei Schritten zurückgenommen: erst die Rolle, eine Sekunde später Datenbank, Dienste und mitwandernde Adresse.
+- Scheitert die Rücknahme, bleibt die Automatik an; der Server versucht es jede Sekunde neu, bleibt solange nur lesend ohne Dienste und zeigt solange die Warnung „Rücknahme hängt“.
+- Ohne Sicht auf den Partner (und im Trio auf den Zeugen) nimmt ein Server einen gescheiterten Tausch nicht zurück, sondern bleibt abgeschottet.
+- Rollenskripte laufen nur noch bei einem echten Rollenwechsel, nicht beim Neustart von `pdh-ha`.
+- Sicherung, Wiederaufbau und Rückspielen nehmen die Kennungsdatei `.pdh-mirror-id` nicht mit.
+- Die Karte vergleicht neben der `.env` auch `/etc/pdh/pdh.env`; das Token des Update-Agenten gehört nur in die `.env`, `scripts/repair-update-agent-token.sh` nimmt es aus `pdh.env` heraus.
+- Nextcloud-Daten- und Programmordner dürfen nicht unter `/etc/pdh/ha` liegen und müssen verschieden sein.
+
+### Behoben
+- Übernimmt der Partner mitten in einem Tausch, wird der alte Server automatisch wieder als passiver Server angebunden, statt ohne Datenbank stehen zu bleiben.
+- Bricht das Zurückspulen der Datenbank beim Wiederanbinden ab, startet der halb zurückgespulte Stand nicht mehr unbemerkt; `pdh-ha rejoin` kopiert die Datenbank dann neu, `pdh-restore.sh` räumt die Markierung auf.
+- Ein offener Update-Auftrag, den der aktive Partner nicht führt, meldet sich mit Alarm und lässt sich am passiven Server mit `pdh-ha update abort` beenden.
+- „Papierkorb leeren“ meldet die Rückkehrer-Dateien nur noch als erledigt, wenn wirklich alles geleert ist, und hört nach einem Rollenwechsel auf.
+- War der passive Server so lange weg, dass seine Datenbank neu kopiert werden muss, beginnt die Neukopie erst, wenn der aktive Server dafür bereit ist; sie scheitert nicht mehr gleich und wartet dann zehn Minuten.
+- Der Eintrag „Nextcloud“ in der Navigation öffnet jetzt die Nextcloud-Adresse aus den Server-Einstellungen statt einer fest eingebauten Adresse; ohne eingetragene Adresse erscheint er nicht.
+- Das Nextcloud-Installationsskript bricht nach der Installation nicht mehr mit „Memcache … not available“ ab; der Zwischenspeicher wird richtig eingetragen.
+- Die Datei-Spiegelung erkennt den Datenordner neuerer Nextcloud-Fassungen (ab 30, Kennungsdatei `.ncdata`) und meldet ihn nicht mehr als leer.
+- Die Karte „Datei-Spiegelung“ frischt sich während Erstabgleich und Abgleich selbst auf; neu laden ist nicht mehr nötig.
+- Ist der zweite Server nicht erreichbar, zeigen Karte und `pdh-ha status` „wartet auf den zweiten Server“ statt „läuft“ mit einer rohen Fehlermeldung.
+- Bei einem Rollentausch erscheint nicht mehr jedes Mal die Warnung „Dateien … abgelehnt: Dieser Server ist nicht passiv“; der kurze Moment der Übergabe ist nur noch ein Hinweis.
+- Das Ereignisprotokoll des Verbunds verliert bei einem Stromausfall die letzten Zeilen nicht mehr, und Zeilen nach einem früheren Ausfall werden wieder gelesen.
+- Kommt ein Ordner erst nach einer Übernahme neu dazu, nennt der Alarm das jetzt so („Der Ordner ist neu dazugekommen …“) statt „bevor der Erstabgleich fertig war“.
+- Cloudflare: Ein API-Token, der in Cloudflare unter dem Konto angelegt ist, wird nicht mehr als „Invalid API Token (1000)“ abgelehnt.
+
+### Sicherheit
+- Vier neue Rechte (Kategorie „System & Sicherheit“): „Nextcloud-Abgleich einstellen und starten“, „Netzlaufwerke in Nextcloud nutzen“, „Netzlaufwerke in Nextcloud: auch PDH-Daten bearbeiten“ und „Cloudflare verwalten (DNS, Proxy, Tunnel)“. Mit dem Update bekommen sie die Rollen, die überall die Server-Einstellungen pflegen dürfen.
+- Administrator in Nextcloud ist nur noch, wer im PDH Administrator ist und das Kennzeichen „Administrator in Nextcloud“ trägt; das Kennzeichen setzen nur Administratoren. Ohne eingeschalteten Abgleich ändert sich nichts.
+- Beim Einschalten des Nextcloud-Abgleichs bekommen PDH-Administratoren, die in Nextcloud schon Administrator sind, das Kennzeichen von selbst – niemand sperrt sich aus; die Meldung nennt die Namen, die Historie der Person hält es fest.
+- Neue Rechte „Datei-Spiegelung einstellen“ und „Datei-Spiegelung: Löschen am Partner freigeben und Papierkorb leeren“; Rollen, die „Server-Einstellungen (.env) bearbeiten & Server neu starten“ überall hatten, bekommen beide automatisch.
+- Die Dateien laufen durch den verschlüsselten Kanal des Verbunds (Port 7480) mit den Zertifikaten der Server; der Zeuge bekommt keine Dateien.
+- Der Empfänger nimmt nur Dateien an, wenn er passiv ist und sie vom aktuell aktiven Server kommen, setzt Zielpfad und Papierkorb selbst und lässt nur eine feste Liste von rsync-Optionen zu.
+- `/etc/pdh/ha/`, die `.env` und `cloudflared` werden nie gespiegelt.
+- „Dieser Server ist vollständig“ und „Papierkorb leeren“ lehnen Anfragen ab, die von einer fremden Seite kommen (auch von einer Nachbarseite wie Nextcloud unter derselben Domain).
+- Texte vom Partner und Dateinamen erscheinen in Protokoll, Alarm, Chat und Mail ohne Steuerzeichen, Zeilentrenner und Schreibrichtungs-Zeichen.
+
 ## [0.77.8] – 2026-10-30
 
 ### Neu

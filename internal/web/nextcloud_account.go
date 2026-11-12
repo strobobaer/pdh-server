@@ -40,7 +40,8 @@ func nextcloudIDFromMicrosoftEmail(email string) (string, bool) {
 // Nextcloud eingeschaltet und die Person im Verzeichnis zugeordnet ist,
 // sonst der PDH-Benutzername.
 func (h *Handler) nextcloudIDForUser(ctx context.Context, userID, username string) string {
-	if h.getUpdateSetting(ctx, microsoftNextcloudSetting, "") == "1" {
+	// auch wenn Nextcloud „Mit Microsoft anmelden“ eingerichtet ist: sonst fände die Anmeldung das Konto nicht
+	if h.getUpdateSetting(ctx, microsoftNextcloudSetting, "") == "1" || h.getUpdateSetting(ctx, keyNCLoginAt, "") != "" {
 		var email string
 		_ = h.db.QueryRow(ctx, `SELECT email FROM microsoft_directory_users WHERE tenant_id=$1 AND pdh_user_id=$2::uuid LIMIT 1`,
 			h.microsoft.TenantID, userID).Scan(&email)
