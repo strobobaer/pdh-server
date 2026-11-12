@@ -723,14 +723,14 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <li><b>Nur Kartennummer</b> – nur das Feld <b>Kartennummer</b>. Wer eine Kartennummer kennt, kann sich als diese Person anmelden; diese Art nur an gut einsehbaren Terminals verwenden.</li>
     <li><b>Keine</b> – das Terminal zeigt <b>Kein Kartenleser – Anmeldung nicht möglich</b>; auch der Knopf entfällt.</li>
   </ul>
-  <p>Die <b>Terminal-PIN</b> (4 bis 8 Ziffern, nicht lauter gleiche und keine Zahlenfolge wie 1234) setzt jede Person unter <b>Mein Konto</b>; Benutzerverwalter können sie auch am Benutzer setzen oder entfernen. Nach <b>5</b> falschen PINs ist die PIN <b>15 Minuten</b> gesperrt (an allen Terminals); das Terminal zeigt <b>PIN gesperrt bis HH:MM</b>. Ändert sich die Anmeldeart oder der Knopf, übernimmt das Terminal das <b>sofort</b>, ohne Neuladen. Bei Fehlern erscheint kurz <b>Anmeldung fehlgeschlagen</b>, bei zu vielen Versuchen <b>Bitte kurz warten</b>.</p>
+  <p>Die <b>Terminal-PIN</b> (4 bis 8 Ziffern, nicht lauter gleiche und keine Zahlenfolge wie 1234) setzt jede Person unter <b>Mein Konto</b>; Benutzerverwalter können sie auch am Benutzer setzen oder entfernen. Nach <b>5</b> falschen PINs ist die PIN <b>15 Minuten</b> gesperrt (an allen Terminals); am Terminal erscheint dann nur <b>Anmeldung fehlgeschlagen</b>; die Sperrzeit (<b>PIN gesperrt bis HH:MM</b>) siehst du als Benutzerverwalter beim Benutzer. Ändert sich die Anmeldeart oder der Knopf, übernimmt das Terminal das <b>sofort</b>, ohne Neuladen. Bei Fehlern erscheint kurz <b>Anmeldung fehlgeschlagen</b>, bei zu vielen Versuchen <b>Bitte kurz warten</b>.</p>
   <p>Rührt niemand das Terminal an, kehrt es nach der <b>Rückkehrzeit</b> von Störungsinfo und „Neu“ zum Bildschirmschoner zurück.</p>
   <div class="hb-howto"><b><i class="ti ti-clock"></i> So stellst du die Rückkehrzeit ein</b>
     <ol class="hb-steps">
       <li><b>Für alle Terminals:</b> <b>Core-Einstellungen</b> → Karte <b>Anlagenterminal: Rückkehrzeit</b> → Sekunden eintragen → <b>Speichern</b>. Erlaubt sind 30 bis 3600 Sekunden, ohne Eintrag gelten <b>120</b> Sekunden. Die Karte sehen und ändern kann nur, wer Benutzer verwalten darf.</li>
       <li><b>Für ein einzelnes Terminal:</b> den Systembenutzer öffnen und im Terminal-Block <b>Rückkehrzeit zum Bildschirmschoner</b> eintragen. <b>Leer</b> heißt: die globale Einstellung gilt.</li>
     </ol>
-    Werte außerhalb von 30 bis 3600 oder Text lehnt PDH mit einer Meldung ab; der bisherige Wert bleibt. Ein geänderter Wert gilt, sobald das Terminal die Seite neu lädt.</div>
+    Werte außerhalb von 30 bis 3600 oder Text lehnt PDH mit einer Meldung ab; der bisherige Wert bleibt. Ein geänderter Wert gilt für das Terminal sofort, ohne Neuladen.</div>
   <h3>HMI am Terminal: Ansehen und Bedienen</h3>
   <p>Je HMI-Verbindung (Anlage → Reiter <b>HMI</b> → HMI anlegen oder bearbeiten) legst du fest, wer das HMI am Terminal ansehen und bedienen darf. Die Felder werden gespeichert; das HMI selbst erscheint am Terminal erst mit einem späteren Ausbau.</p>
   <ul>

@@ -147,6 +147,23 @@ func TestTerminalEventsStream(t *testing.T) {
 		t.Fatalf("nach Änderung: %+v", ev)
 	}
 
+	// M7: Ende des Stroms beim Kontextende - der Abonnent wird serverseitig abgemeldet
+	subsBefore := func() int { hub := h.eventHub(); hub.mu.Lock(); defer hub.mu.Unlock(); return len(hub.subs[term]) }
+	base := subsBefore()
+	resp3, cancel3 := get(cookieFor(term, dev))
+	evs3 := readSSE(bufio.NewReader(resp3.Body))
+	nextSSE(t, evs3)
+	if subsBefore() != base+1 {
+		t.Fatalf("Abonnent nicht angemeldet: %d", subsBefore())
+	}
+	cancel3()
+	for i := 0; i < 100 && subsBefore() != base; i++ {
+		time.Sleep(20 * time.Millisecond)
+	}
+	if subsBefore() != base {
+		t.Fatal("Abonnent bleibt nach Kontextende angemeldet")
+	}
+
 	// Sperren beendet den Strom, Neuverbindung -> 403
 	req := withUser(httptest.NewRequest("POST", "/users/"+term+"/devices/"+dev+"/revoke", nil), &users.User{ID: admin, Role: users.Role("admin")})
 	req.URL.Path = "/users/" + term + "/devices/" + dev + "/revoke"

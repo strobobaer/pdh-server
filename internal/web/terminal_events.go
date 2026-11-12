@@ -80,6 +80,8 @@ func (b *terminalEventHub) publish(userID, event string) {
 }
 
 // closeUser beendet alle Abonnements des Benutzers (Kanäle werden geschlossen).
+// Das trennt bewusst alle Geräte dieses Terminal-Benutzers; nicht gesperrte Geräte
+// verbinden sich von selbst neu.
 func (b *terminalEventHub) closeUser(userID string) {
 	b.mu.Lock()
 	defer b.mu.Unlock()

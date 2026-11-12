@@ -22,6 +22,8 @@ func TestTerminalLoginUI(t *testing.T) {
 	mgr := e.user("uimgr", "admin", false)
 	e.grant(mgr, "system.manage_users", "", true)
 	plain := e.user("uiplain", "viewer", false)
+	mgr2 := e.user("uimgr2", "viewer", false) // Benutzer verwalten, aber kein Rang über dem Ziel
+	e.grant(mgr2, "system.manage_users", "", true)
 	term := e.user("uiterm", "viewer", true)
 	norm := e.user("uinorm", "viewer", false)
 	e.warm()
@@ -78,6 +80,9 @@ func TestTerminalLoginUI(t *testing.T) {
 	do("POST", "/users/"+term+"/master", "terminal_manual_login=password&terminal_password_button=on", mgr)
 	if s := loginOf(); s.ManualLogin != loginPassword || !s.PasswordButton {
 		t.Errorf("gespeichert 2: %+v", s)
+	}
+	if n := mustInt(e, `SELECT COUNT(*) FROM record_history WHERE ref_type = 'user' AND ref_id = $1::uuid AND field_name = 'Anmeldung ohne Kartenleser' AND message = 'Anmeldung ohne Kartenleser: Nur Kartennummer'`, term); n != 1 {
+		t.Errorf("Verlauf Anmeldeart: %d", n)
 	}
 	// Ältere Formulare ohne die Felder: Werte bleiben
 	do("POST", "/users/"+term+"/master", "work_location=Halle", mgr)
@@ -147,8 +152,33 @@ func TestTerminalLoginUI(t *testing.T) {
 	if b := page("/users/"+norm+"?tab=master", mgr); !strings.Contains(b, want) {
 		t.Errorf("Sperre fehlt: %q", want)
 	}
+	// M10: „Benutzer verwalten“ ohne Rang über dem Ziel -> 403
+	if rec := pinPost("action=set&pin=2580", mgr2); rec.Code != http.StatusForbidden {
+		t.Errorf("ohne Rang: %d", rec.Code)
+	}
+	// I3: Verlauf ohne PIN-Wert
+	hist := func(ref, msg string) int {
+		return mustInt(e, `SELECT COUNT(*) FROM record_history WHERE ref_type = 'user' AND ref_id = $1::uuid AND message = $2 AND created_by = $3::uuid`, ref, msg, mgr)
+	}
+	if hist(norm, "Terminal-PIN gesetzt") != 1 {
+		t.Error("Verlaufseintrag „Terminal-PIN gesetzt“ fehlt")
+	}
+	if n := mustInt(e, `SELECT COUNT(*) FROM record_history WHERE ref_id = $1::uuid AND (message LIKE '%2580%' OR old_value LIKE '%2580%' OR new_value LIKE '%2580%')`, norm); n != 0 {
+		t.Error("PIN im Verlauf")
+	}
+	// M9: Systembenutzer haben keine Terminal-PIN
+	rec = do("POST", "/users/"+term+"/terminal-pin", "action=set&pin=2580", mgr)
+	if !strings.Contains(rec.Header().Get("Location"), "err=") {
+		t.Errorf("Systembenutzer-PIN ohne Fehler: %s", rec.Header().Get("Location"))
+	}
+	if has, _, _ := h.terminalPINState(e.ctx, term, time.Now()); has {
+		t.Error("PIN für Systembenutzer gesetzt")
+	}
 	// Entfernen hebt PIN und Sperre auf
 	pinPost("action=clear", mgr)
+	if hist(norm, "Terminal-PIN entfernt") != 1 {
+		t.Error("Verlaufseintrag „Terminal-PIN entfernt“ fehlt")
+	}
 	if has, locked, _ := h.terminalPINState(e.ctx, norm, time.Now()); has || locked != nil {
 		t.Errorf("entfernen: %v %v", has, locked)
 	}
@@ -173,6 +203,9 @@ func TestTerminalLoginUI(t *testing.T) {
 		t.Error("Konto-Seite: PIN im HTML bzw. Formular fehlt")
 	}
 	own("action=clear")
+	if n := mustInt(e, `SELECT COUNT(*) FROM record_history WHERE ref_type = 'user' AND ref_id = $1::uuid AND message LIKE 'Terminal-PIN%' AND created_by = $1::uuid`, plain); n != 2 {
+		t.Errorf("eigene PIN im Verlauf: %d Einträge", n)
+	}
 	if has, _, _ := h.terminalPINState(e.ctx, plain, time.Now()); has {
 		t.Error("eigene PIN nicht entfernt")
 	}

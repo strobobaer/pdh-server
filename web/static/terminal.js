@@ -192,14 +192,15 @@
           panel.hidden = loginMsg.hidden && fieldsEl.hidden && pwBtn.hidden;
         };
         onLoginChange = render;
-        var clearInputs = function () {
+        var clearInputs = function (keepFocus) {
           cardIn.value = ''; pinIn.value = ''; userIn.value = ''; passIn.value = '';
+          if (keepFocus) return; // nach Fehlschlag: Fokus im Feld lassen, nur der Inhalt wird geleert
           var ae = document.activeElement;
           if (ae && (ae === pinIn || ae === userIn || ae === passIn)) ae.blur(); // activeIn passt zum Fokus
           activeIn = cardIn;
         };
         var submit = function (data) {
-          var g = ++gen; // Antworten älterer Versuche/Abmelden verwerfen
+          var good = false, g = ++gen; // Antworten älterer Versuche/Abmelden verwerfen
           post('/terminal/login', data)
             .then(function (r) {
               var status = r.status;
@@ -208,12 +209,12 @@
             .then(function (x) {
               if (g !== gen) return;
               var d = x.d;
-              if (d && d.ok) { msgEl.hidden = true; dialogOpen = false; showBar(d.name); lastPing = Date.now(); }
+              if (d && d.ok) { good = true; msgEl.hidden = true; dialogOpen = false; showBar(d.name); lastPing = Date.now(); }
               else if (x.s === 429) showMsg((d && d.message) || 'Bitte kurz warten');
               else showMsg((d && d.message) || 'Anmeldung fehlgeschlagen');
             })
             .catch(function () { if (g === gen) showMsg('Anmeldung fehlgeschlagen'); }) // Netzfehler
-            .then(function () { clearInputs(); render(); }); // Eingaben nach jedem Versuch leeren
+            .then(function () { clearInputs(!good); render(); }); // Eingaben nach jedem Versuch leeren; blurren nur nach Erfolg
         };
 
         // Ziffernfeld: 0–9, A–F, Löschen, OK (Tasten mindestens 64 px, siehe .t-keypad)
@@ -258,7 +259,7 @@
         dForm.addEventListener('submit', function (ev) {
           ev.preventDefault();
           var u = userIn.value.trim(), p = passIn.value;
-          if (!u || !p) { showMsg('Anmeldung fehlgeschlagen'); clearInputs(); return; }
+          if (!u || !p) { showMsg('Anmeldung fehlgeschlagen'); clearInputs(true); return; }
           submit({ kind: 'password', user: u, password: p });
         });
 

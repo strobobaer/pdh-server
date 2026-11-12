@@ -4,8 +4,11 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
+
+	"golang.org/x/crypto/bcrypt"
 
 	"pdh/internal/core/users"
 )
@@ -36,7 +39,20 @@ func loginKindAllowed(s terminalLoginSettings, kind string) bool {
 	return false
 }
 
-func runeLen(s string) int { return utf8.RuneCountInString(s) }
+func loginFieldLen(s string) int { return utf8.RuneCountInString(s) }
+
+var (
+	dummyHashOnce sync.Once
+	dummyHash     []byte
+)
+
+// dummyLoginHash: fester Hash (Kosten wie bei echten Passwörtern) für den Scheinvergleich bei unbekanntem Benutzer.
+func dummyLoginHash() []byte {
+	dummyHashOnce.Do(func() {
+		dummyHash, _ = bcrypt.GenerateFromPassword([]byte("pdh-terminal-dummy"), bcrypt.DefaultCost)
+	})
+	return dummyHash
+}
 
 // TerminalLogin: POST /terminal/login
 // {"kind":"card_pin","card":"…","pin":"…"} | {"kind":"card_only","card":"…"} |
@@ -67,11 +83,11 @@ func (h *Handler) TerminalLogin(w http.ResponseWriter, r *http.Request) {
 	valid := false
 	switch in.Kind {
 	case loginCardPIN:
-		valid = runeLen(card) >= 1 && runeLen(card) <= cardMaxUID && in.PIN != "" && runeLen(in.PIN) <= loginMaxPIN
+		valid = loginFieldLen(card) >= 1 && loginFieldLen(card) <= cardMaxUID && in.PIN != "" && loginFieldLen(in.PIN) <= loginMaxPIN
 	case loginCardOnly:
-		valid = runeLen(card) >= 1 && runeLen(card) <= cardMaxUID
+		valid = loginFieldLen(card) >= 1 && loginFieldLen(card) <= cardMaxUID
 	case loginPassword:
-		valid = runeLen(user) >= 1 && runeLen(user) <= loginMaxCred && in.Password != "" && runeLen(in.Password) <= loginMaxCred
+		valid = loginFieldLen(user) >= 1 && loginFieldLen(user) <= loginMaxCred && in.Password != "" && loginFieldLen(in.Password) <= loginMaxCred
 	}
 	if !valid {
 		cardFail(w, http.StatusBadRequest, "Ungültige Anfrage")
@@ -98,9 +114,20 @@ func (h *Handler) TerminalLogin(w http.ResponseWriter, r *http.Request) {
 	login := ""
 	if in.Kind == loginPassword {
 		login = "Benutzer " + user
-		u, err := h.users.Authenticate(r.Context(), user, in.Password)
-		if err == nil {
-			p = u
+		u, err := h.users.GetByIdentifier(r.Context(), user)
+		switch {
+		case err == nil:
+			if bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(in.Password)) == nil {
+				p = u
+			}
+		default:
+			// Unbekannter Benutzer: trotzdem ein bcrypt-Vergleich, damit die Antwortzeit
+			// nichts über die Existenz des Benutzers verrät. Nur echte DB-Fehler loggen;
+			// die Antwort bleibt in jedem Fall "Anmeldung fehlgeschlagen".
+			_ = bcrypt.CompareHashAndPassword(dummyLoginHash(), []byte(in.Password))
+			if !isNoRows(err) {
+				componentLog("terminal").Error().Err(err).Msg("benutzer nachschlagen")
+			}
 		}
 	} else {
 		login = "Karte " + maskUID(card)

@@ -13,6 +13,7 @@ import (
 var errTerminalLoginSave = errors.New("Anmeldeart konnte nicht gespeichert werden")
 var errTerminalPINSave = errors.New("PIN konnte nicht gespeichert werden")
 var errTerminalLoginKind = errors.New("Unbekannte Anmeldeart")
+var errTerminalPINSystem = errors.New("Systembenutzer haben keine Terminal-PIN")
 
 // terminalPINView liefert für die Oberfläche: hat der Benutzer eine PIN, und ob
 // sie gesperrt ist ("HH:MM" in der Ortszeit des Servers, "" = nicht gesperrt).
@@ -34,7 +35,15 @@ func (h *Handler) terminalPINView(ctx context.Context, userID string) (bool, str
 
 // applyTerminalPIN führt die Formularaktion (set|clear) für einen Benutzer aus.
 // Rückgabe: Meldung für die Oberfläche (nie mit der PIN) oder Fehler.
-func (h *Handler) applyTerminalPIN(ctx context.Context, userID, action, pin string) (string, error) {
+func (h *Handler) applyTerminalPIN(ctx context.Context, userID, actorID, action, pin string) (string, error) {
+	sys, err := h.isSystemUser(ctx, userID)
+	if err != nil {
+		componentLog("terminal").Error().Err(err).Str("user", userID).Msg("systembenutzer prüfen")
+		return "", errTerminalPINSave
+	}
+	if sys {
+		return "", errTerminalPINSystem
+	}
 	switch action {
 	case "set":
 		if err := validTerminalPIN(pin); err != nil {
@@ -44,12 +53,15 @@ func (h *Handler) applyTerminalPIN(ctx context.Context, userID, action, pin stri
 			componentLog("terminal").Error().Err(err).Str("user", userID).Msg("pin setzen")
 			return "", errTerminalPINSave
 		}
+		// Verlauf ohne PIN-Wert.
+		h.addHistory(ctx, "user", userID, "update", "Terminal-PIN", "", "", "Terminal-PIN gesetzt", actorID)
 		return "PIN gesetzt", nil
 	case "clear":
 		if err := h.clearTerminalPIN(ctx, userID); err != nil {
 			componentLog("terminal").Error().Err(err).Str("user", userID).Msg("pin entfernen")
 			return "", errTerminalPINSave
 		}
+		h.addHistory(ctx, "user", userID, "update", "Terminal-PIN", "", "", "Terminal-PIN entfernt", actorID)
 		return "PIN entfernt", nil
 	}
 	return "", errors.New("Unbekannte Aktion")
@@ -68,7 +80,7 @@ func (h *Handler) UserTerminalPINWeb(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "keine berechtigung", http.StatusForbidden)
 		return
 	}
-	msg, err := h.applyTerminalPIN(r.Context(), id, r.FormValue("action"), r.FormValue("pin"))
+	msg, err := h.applyTerminalPIN(r.Context(), id, getUser(r).ID, r.FormValue("action"), r.FormValue("pin"))
 	userRedirect(w, r, id, "master", msg, err)
 }
 
@@ -79,7 +91,7 @@ func (h *Handler) AccountTerminalPINWeb(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, "nicht angemeldet", http.StatusUnauthorized)
 		return
 	}
-	msg, err := h.applyTerminalPIN(r.Context(), u.ID, r.FormValue("action"), r.FormValue("pin"))
+	msg, err := h.applyTerminalPIN(r.Context(), u.ID, u.ID, r.FormValue("action"), r.FormValue("pin"))
 	if err != nil {
 		msg = err.Error()
 	}

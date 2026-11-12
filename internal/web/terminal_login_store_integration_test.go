@@ -4,6 +4,7 @@ package web
 
 import (
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -176,4 +177,65 @@ func mustInt(e *atEnv, q string, args ...any) int {
 	var n int
 	e.must(e.pool.QueryRow(e.ctx, q, args...).Scan(&n))
 	return n
+}
+
+// I1: Sperrprüfung, Vergleich und Zählen sind ein atomarer Schritt je Benutzer;
+// auch bei vielen parallelen Anfragen gibt es höchstens 5 Vergleiche je Sperrfenster.
+func TestTerminalPINConcurrentLimitsComparisons(t *testing.T) {
+	e := newATEnv(t)
+	uid := e.user("pinl", "admin", true)
+	h := &Handler{db: e.pool}
+	e.must(h.setTerminalPIN(e.ctx, uid, "4711"))
+	now := time.Now()
+
+	var compares atomic.Int32
+	orig := terminalPINCompare
+	terminalPINCompare = func(hash, pw []byte) error {
+		compares.Add(1)
+		return orig(hash, pw)
+	}
+	t.Cleanup(func() { terminalPINCompare = orig })
+
+	var wg sync.WaitGroup
+	for i := 0; i < 20; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if ok, err := h.checkTerminalPIN(e.ctx, uid, "9999", now); ok || err != nil {
+				t.Errorf("ok=%v err=%v", ok, err)
+			}
+		}()
+	}
+	wg.Wait()
+	if n := compares.Load(); n != terminalPINMaxFailures {
+		t.Fatalf("Vergleiche je Sperrfenster: %d, erwartet %d", n, terminalPINMaxFailures)
+	}
+	_, lk, _ := h.terminalPINState(e.ctx, uid, now)
+	if lk == nil {
+		t.Fatal("nach 20 Fehlversuchen muss gesperrt sein")
+	}
+
+	// Gesperrt: parallele richtige und falsche Eingaben vergleichen nichts,
+	// melden nie Erfolg und löschen die Sperre nicht.
+	compares.Store(0)
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			pin := "4711"
+			if i%2 == 1 {
+				pin = "9999"
+			}
+			if ok, err := h.checkTerminalPIN(e.ctx, uid, pin, now); ok || err != nil {
+				t.Errorf("gesperrt: ok=%v err=%v", ok, err)
+			}
+		}(i)
+	}
+	wg.Wait()
+	if n := compares.Load(); n != 0 {
+		t.Fatalf("gesperrt: %d Vergleiche", n)
+	}
+	if _, lk2, _ := h.terminalPINState(e.ctx, uid, now); lk2 == nil || !lk2.Equal(*lk) {
+		t.Fatalf("Sperre verändert: %v -> %v", lk, lk2)
+	}
 }

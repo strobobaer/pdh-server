@@ -172,4 +172,26 @@ func TestTerminalLoginHandler(t *testing.T) {
 		t.Fatalf("429 erwartet: %d %v", rec.Code, m)
 	}
 	reset()
+
+	// M5: die Bremse gilt auch für Passwort und nur Karte
+	setKind(loginPassword, true)
+	for i := 0; i < 10; i++ {
+		rec, m = post(pwBody("niemand"+e.sfx, "falsch"))
+		failed("Passwort-Fehlschlag", rec, m)
+	}
+	rec, m = post(pwBody("lgpw"+e.sfx, "geheim-pw"))
+	if rec.Code != http.StatusTooManyRequests || m["ok"] != false || m["message"] != "Bitte kurz warten" {
+		t.Fatalf("429 (password) erwartet: %d %v", rec.Code, m)
+	}
+	reset()
+	setKind(loginCardOnly, true)
+	for i := 0; i < 10; i++ {
+		rec, m = post(cardBody("card_only", "NOPE"+e.sfx, ""))
+		failed("card_only-Fehlschlag", rec, m)
+	}
+	rec, m = post(cardBody("card_only", "DEADBEEF"+e.sfx, ""))
+	if rec.Code != http.StatusTooManyRequests || m["ok"] != false || m["message"] != "Bitte kurz warten" {
+		t.Fatalf("429 (card_only) erwartet: %d %v", rec.Code, m)
+	}
+	reset()
 }

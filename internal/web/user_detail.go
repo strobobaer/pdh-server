@@ -495,10 +495,15 @@ func (h *Handler) UserMasterSaveWeb(w http.ResponseWriter, r *http.Request) {
 	}
 	if loginSent {
 		ls := terminalLoginSettings{ManualLogin: v("terminal_manual_login"), PasswordButton: r.FormValue("terminal_password_button") == "on"}
+		oldLS, _ := h.terminalLoginSettings(ctx, id)
 		if err := h.saveTerminalLoginSettings(ctx, id, ls); err != nil {
 			componentLog("terminal").Error().Err(err).Str("user", id).Msg("anmeldeart speichern")
 			userRedirect(w, r, id, "master", "", errTerminalLoginSave)
 			return
+		}
+		if oldLS != ls {
+			h.addHistory(ctx, "user", id, "update", "Anmeldung ohne Kartenleser", loginSummary(oldLS), loginSummary(ls),
+				"Anmeldung ohne Kartenleser: "+loginKindLabel(ls.ManualLogin), getUser(r).ID)
 		}
 		h.notifyTerminalSettings(id)
 	}

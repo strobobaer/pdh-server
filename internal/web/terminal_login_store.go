@@ -26,6 +26,9 @@ const (
 	terminalPINLockMinutes = 15
 )
 
+// terminalPINCompare vergleicht PIN und Hash (austauschbar für Tests, die Vergleiche zählen).
+var terminalPINCompare = bcrypt.CompareHashAndPassword
+
 // terminalLoginSettings: Anmeldeeinstellungen eines Terminals.
 type terminalLoginSettings struct {
 	ManualLogin    string
@@ -59,7 +62,8 @@ func (h *Handler) terminalLoginSettings(ctx context.Context, userID string) (ter
 }
 
 // saveTerminalLoginSettings speichert die Anmeldeeinstellungen eines System-Benutzers;
-// die Rückkehrzeit bleibt unverändert. Unbekannte Art = Fehler.
+// die Rückkehrzeit bleibt unverändert. Unbekannte Art = Fehler. Bei Nicht-System-Benutzern
+// passiert nichts (wie saveTerminalIdle); die Aufrufer prüfen isSystemUser vorher.
 func (h *Handler) saveTerminalLoginSettings(ctx context.Context, userID string, s terminalLoginSettings) error {
 	if h.db == nil {
 		return errors.New("keine Datenbank")
@@ -138,16 +142,27 @@ func (h *Handler) clearTerminalPIN(ctx context.Context, userID string) error {
 }
 
 // checkTerminalPIN prüft die PIN. Ohne PIN oder bei aktiver Sperre: false, nil
-// (ohne Vergleich). Ein Fehlversuch wird atomar gezählt; beim 5. sperrt dasselbe
-// Statement für 15 Minuten und setzt den Zähler zurück.
+// (ohne Vergleich). Sperrprüfung, Vergleich und Zählen laufen in einer
+// Transaktion unter SELECT … FOR UPDATE auf der Benutzerzeile; parallele
+// Anfragen für denselben Benutzer werden so nacheinander abgearbeitet und
+// können die Sperre nicht umgehen (höchstens 5 Vergleiche je Sperrfenster).
+// Beim 5. Fehlversuch wird für 15 Minuten gesperrt und der Zähler zurückgesetzt;
+// die richtige PIN setzt den Zähler nur zurück, wenn nicht gesperrt ist.
 func (h *Handler) checkTerminalPIN(ctx context.Context, userID, pin string, now time.Time) (bool, error) {
 	if h.db == nil {
 		return false, errors.New("keine Datenbank")
 	}
+	tx, err := h.db.Begin(ctx)
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck // nach Commit wirkungslos
+
 	var hash *string
 	var locked *time.Time
-	err := h.db.QueryRow(ctx, `SELECT terminal_pin_hash, terminal_pin_locked_until FROM users WHERE id = $1::uuid`, userID).
-		Scan(&hash, &locked)
+	var failures int
+	err = tx.QueryRow(ctx, `SELECT terminal_pin_hash, terminal_pin_locked_until, terminal_pin_failures
+		FROM users WHERE id = $1::uuid FOR UPDATE`, userID).Scan(&hash, &locked, &failures)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return false, nil
 	}
@@ -157,22 +172,26 @@ func (h *Handler) checkTerminalPIN(ctx context.Context, userID, pin string, now 
 	if hash == nil || *hash == "" || (locked != nil && locked.After(now)) {
 		return false, nil
 	}
-	if bcrypt.CompareHashAndPassword([]byte(*hash), []byte(pin)) == nil {
-		if _, err := h.db.Exec(ctx, `UPDATE users SET terminal_pin_failures = 0, terminal_pin_locked_until = NULL
-			WHERE id = $1::uuid`, userID); err != nil {
-			return false, err
+	if terminalPINCompare([]byte(*hash), []byte(pin)) == nil {
+		if failures != 0 || locked != nil {
+			if _, err := tx.Exec(ctx, `UPDATE users SET terminal_pin_failures = 0, terminal_pin_locked_until = NULL
+				WHERE id = $1::uuid`, userID); err != nil {
+				return false, err
+			}
 		}
-		return true, nil
+		return true, tx.Commit(ctx)
 	}
-	// Fehlversuch atomar zählen und beim 5. im selben Statement sperren; eine
-	// bereits aktive Sperre (parallele Eingaben) wird weder gezählt noch verlängert.
-	_, err = h.db.Exec(ctx, `UPDATE users SET
-			terminal_pin_failures = CASE WHEN terminal_pin_failures + 1 >= $2 THEN 0 ELSE terminal_pin_failures + 1 END,
-			terminal_pin_locked_until = CASE WHEN terminal_pin_failures + 1 >= $2 THEN $3::timestamptz ELSE NULL END
-		WHERE id = $1::uuid AND (terminal_pin_locked_until IS NULL OR terminal_pin_locked_until <= $4::timestamptz)
-		RETURNING terminal_pin_failures`,
-		userID, terminalPINMaxFailures, now.Add(terminalPINLockMinutes*time.Minute), now)
-	return false, err
+	if failures+1 >= terminalPINMaxFailures {
+		_, err = tx.Exec(ctx, `UPDATE users SET terminal_pin_failures = 0, terminal_pin_locked_until = $2::timestamptz
+			WHERE id = $1::uuid`, userID, now.Add(terminalPINLockMinutes*time.Minute))
+	} else {
+		_, err = tx.Exec(ctx, `UPDATE users SET terminal_pin_failures = $2, terminal_pin_locked_until = NULL
+			WHERE id = $1::uuid`, userID, failures+1)
+	}
+	if err != nil {
+		return false, err
+	}
+	return false, tx.Commit(ctx)
 }
 
 // terminalPINState: hat der Benutzer eine PIN, und bis wann ist sie gesperrt
@@ -195,4 +214,28 @@ func (h *Handler) terminalPINState(ctx context.Context, userID string, now time.
 		locked = nil
 	}
 	return hash != nil && *hash != "", locked, nil
+}
+
+// loginKindLabel: Anzeigename der Anmeldeart (für den Verlauf).
+func loginKindLabel(k string) string {
+	switch k {
+	case loginCardPIN:
+		return "Kartennummer + PIN"
+	case loginPassword:
+		return "Benutzer + Passwort"
+	case loginCardOnly:
+		return "Nur Kartennummer"
+	case loginNone:
+		return "Keine"
+	}
+	return k
+}
+
+// loginSummary: Art und Knopf in einem Text (für den Verlauf).
+func loginSummary(s terminalLoginSettings) string {
+	btn := "Knopf aus"
+	if s.PasswordButton {
+		btn = "Knopf an"
+	}
+	return loginKindLabel(s.ManualLogin) + ", " + btn
 }
