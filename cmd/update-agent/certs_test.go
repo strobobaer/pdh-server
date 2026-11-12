@@ -831,7 +831,7 @@ func TestCertInstallPDHSymlinkRefused(t *testing.T) {
 	chain, key := certTestPEM(t, "pdh.firma.de")
 	for name, setup := range map[string]func(f *certFixture, link string) error{
 		"fremdes Ziel": func(f *certFixture, link string) error {
-			f.write(t, "/etc/nginx/eigene/mein.conf", "server {\n    listen 80;\n}\n")
+			f.write(t, "/etc/nginx/eigene/mein.conf", "server {\n    listen 443 ssl;\n    ssl_certificate /etc/ssl/pdh/pdh.firma.de/fullchain.pem;\n}\n")
 			return os.Symlink("/etc/nginx/eigene/mein.conf", link)
 		},
 		"ins Leere": func(f *certFixture, link string) error {
@@ -843,6 +843,7 @@ func TestCertInstallPDHSymlinkRefused(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			f := newCertFixture(t)
+			f.writeCertFiles(t, "pdh.firma.de")
 			link := f.real("/etc/nginx/conf.d/pdh.conf")
 			if err := setup(f, link); err != nil {
 				t.Skipf("Verknüpfungen nicht möglich: %v", err)
@@ -870,6 +871,12 @@ func TestCertInstallPDHSymlinkRefused(t *testing.T) {
 			if st, err := os.Lstat(link); err != nil || st.Mode()&os.ModeSymlink == 0 || len(f.commands()) != 0 {
 				t.Errorf("Entfernen griff ein: %v %v", resp, f.commands())
 			}
+			if msg, _ := resp["error"].(string); resp["ok"] != false || !strings.HasSuffix(msg, "– nicht geändert") {
+				t.Errorf("Entfernen muss abgelehnt werden: %v", resp)
+			}
+			if f.read(t, "/etc/ssl/pdh/pdh.firma.de/privkey.pem") != "SCHLUESSEL\n" {
+				t.Error("Zertifikatsdateien müssen nach abgelehntem Entfernen bleiben")
+			}
 		})
 	}
 }
@@ -884,5 +891,158 @@ func TestCertInstallPDHUnreadableRefused(t *testing.T) {
 	_, resp := f.call(t, f.agent.certInstallHandler, http.MethodPost, certInstallBody("pdh.firma.de", chain, key, "pdh"))
 	if resp["ok"] != false || !strings.HasSuffix(resp["error"].(string), "– nicht geändert") || len(f.commands()) != 0 || f.exists("/etc/ssl/pdh") {
 		t.Errorf("Antwort: %v", resp)
+	}
+}
+
+// ---- Entfernen: nie eine Seite ohne Zertifikat zurücklassen ----
+
+func (f *certFixture) writeCertFiles(t *testing.T, name string) {
+	t.Helper()
+	f.write(t, "/etc/ssl/pdh/"+name+"/fullchain.pem", "KETTE\n")
+	f.write(t, "/etc/ssl/pdh/"+name+"/privkey.pem", "SCHLUESSEL\n")
+}
+
+func certRemoveBody(name, role string) map[string]any {
+	return map[string]any{"name": name, "role": role}
+}
+
+// pdh.conf als Verknüpfung auf eine vom Agenten geschriebene Seite: Verknüpfung und Ziel verschwinden
+// mit dem Ordner, nginx wird geprüft und neu geladen; scheitert die Prüfung, kommt alles byte-gleich zurück.
+func TestCertRemoveLinkedPDHSite(t *testing.T) {
+	f := newCertFixture(t)
+	f.writeCertFiles(t, "pdh.firma.de")
+	site := certSiteConf("pdh.firma.de", "http://127.0.0.1:8090")
+	f.write(t, "/etc/nginx/eigene/pdh-seite.conf", site)
+	link := f.real("/etc/nginx/conf.d/pdh.conf")
+	if err := os.Symlink("/etc/nginx/eigene/pdh-seite.conf", link); err != nil {
+		t.Skipf("Verknüpfungen nicht möglich: %v", err)
+	}
+	before := f.snapshot(t)
+
+	f.nginxTest = func() (string, error) { return "kaputt", errors.New("exit status 1") }
+	_, resp := f.call(t, f.agent.certRemoveHandler, http.MethodPost, certRemoveBody("pdh.firma.de", "pdh"))
+	if resp["ok"] != false {
+		t.Fatalf("ok muss false sein: %v", resp)
+	}
+	after := f.snapshot(t)
+	if len(after) != len(before) {
+		t.Errorf("Dateistand weicht ab: %d statt %d", len(after), len(before))
+	}
+	for p, d := range before {
+		if after[p] != d {
+			t.Errorf("%s nicht byte-gleich zurück", p)
+		}
+	}
+
+	f.nginxTest = nil
+	f.mu.Lock()
+	f.cmds = nil
+	f.mu.Unlock()
+	_, resp = f.call(t, f.agent.certRemoveHandler, http.MethodPost, certRemoveBody("pdh.firma.de", "pdh"))
+	if resp["ok"] != true {
+		t.Fatalf("Antwort: %v", resp)
+	}
+	if _, err := os.Lstat(link); err == nil {
+		t.Error("Verknüpfung ist geblieben")
+	}
+	if f.exists("/etc/nginx/eigene/pdh-seite.conf") || f.exists("/etc/ssl/pdh/pdh.firma.de") {
+		t.Error("Ziel oder Zertifikatsordner sind geblieben")
+	}
+	if got := strings.Join(f.commands(), "|"); got != "nginx -t|systemctl reload nginx" {
+		t.Errorf("Befehle: %s", got)
+	}
+}
+
+// Verweist noch eine Seite auf den Ordner (fremde pdh.conf, Seite von Hand bei Rolle "") oder lässt sich
+// eine Seite nicht prüfen, bleibt alles stehen, und es läuft kein Befehl.
+func TestCertRemoveRefusedWhileReferenced(t *testing.T) {
+	ref := "server {\n    server_name wiki.firma.de;\n    ssl_certificate /etc/ssl/pdh/wiki.firma.de/fullchain.pem;\n    ssl_certificate_key /etc/ssl/pdh/wiki.firma.de/privkey.pem;\n}\n"
+	cases := map[string]struct {
+		role  string
+		setup func(t *testing.T, f *certFixture) error
+	}{
+		"fremde pdh.conf": {"pdh", func(t *testing.T, f *certFixture) error {
+			f.write(t, "/etc/nginx/conf.d/pdh.conf", ref)
+			return nil
+		}},
+		"Seite von Hand, Rolle leer": {"", func(t *testing.T, f *certFixture) error {
+			f.write(t, "/etc/nginx/conf.d/wiki.conf", ref)
+			return nil
+		}},
+		"pdh.conf ins Leere": {"pdh", func(t *testing.T, f *certFixture) error {
+			return os.Symlink("/etc/nginx/eigene/gibt-es-nicht.conf", f.real("/etc/nginx/conf.d/pdh.conf"))
+		}},
+		"pdh.conf nicht lesbar": {"pdh", func(t *testing.T, f *certFixture) error {
+			return os.Mkdir(f.real("/etc/nginx/conf.d/pdh.conf"), 0o755)
+		}},
+		"andere Seite nicht auflösbar, Rolle leer": {"", func(t *testing.T, f *certFixture) error {
+			return os.Symlink("/etc/nginx/eigene/gibt-es-nicht.conf", f.real("/etc/nginx/conf.d/kaputt.conf"))
+		}},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			f := newCertFixture(t)
+			f.writeCertFiles(t, "wiki.firma.de")
+			if err := c.setup(t, f); err != nil {
+				t.Skipf("nicht möglich: %v", err)
+			}
+			before := f.snapshot(t)
+			_, resp := f.call(t, f.agent.certRemoveHandler, http.MethodPost, certRemoveBody("wiki.firma.de", c.role))
+			msg, _ := resp["error"].(string)
+			if resp["ok"] != false || !strings.HasSuffix(msg, "– nicht geändert") {
+				t.Errorf("Antwort: %v", resp)
+			}
+			after := f.snapshot(t)
+			if len(after) != len(before) || len(f.commands()) != 0 {
+				t.Errorf("es wurde etwas angefasst: %v", f.commands())
+			}
+			for p, d := range before {
+				if after[p] != d {
+					t.Errorf("%s verändert", p)
+				}
+			}
+			if f.read(t, "/etc/ssl/pdh/wiki.firma.de/privkey.pem") != "SCHLUESSEL\n" {
+				t.Error("Zertifikatsdateien müssen bleiben")
+			}
+		})
+	}
+}
+
+// Rolle "" ohne Verweise: Ordner weg, nginx wird immer geprüft und neu geladen; ohne nginx nur löschen.
+func TestCertRemoveRoleEmptyAndWithoutNginx(t *testing.T) {
+	f := newCertFixture(t)
+	f.writeCertFiles(t, "wiki.firma.de")
+	f.write(t, "/etc/nginx/conf.d/anderes.conf", "server {\n    server_name anderes.firma.de;\n}\n")
+	_, resp := f.call(t, f.agent.certRemoveHandler, http.MethodPost, certRemoveBody("wiki.firma.de", ""))
+	if resp["ok"] != true || f.exists("/etc/ssl/pdh/wiki.firma.de") {
+		t.Errorf("Antwort: %v", resp)
+	}
+	if got := strings.Join(f.commands(), "|"); got != "nginx -t|systemctl reload nginx" {
+		t.Errorf("Befehle: %s", got)
+	}
+
+	// nginx -t scheitert: Ordner byte-gleich zurück
+	f2 := newCertFixture(t)
+	f2.writeCertFiles(t, "wiki.firma.de")
+	before := f2.snapshot(t)
+	f2.nginxTest = func() (string, error) { return "kaputt", errors.New("exit status 1") }
+	_, resp = f2.call(t, f2.agent.certRemoveHandler, http.MethodPost, certRemoveBody("wiki.firma.de", ""))
+	after := f2.snapshot(t)
+	if resp["ok"] != false || len(after) != len(before) {
+		t.Fatalf("Antwort: %v", resp)
+	}
+	for p, d := range before {
+		if after[p] != d {
+			t.Errorf("%s nicht byte-gleich zurück", p)
+		}
+	}
+
+	// ohne nginx: nur löschen, keine Befehle
+	f3 := newCertFixture(t)
+	f3.agent.certs.hasNginx = func() bool { return false }
+	f3.writeCertFiles(t, "wiki.firma.de")
+	_, resp = f3.call(t, f3.agent.certRemoveHandler, http.MethodPost, certRemoveBody("wiki.firma.de", ""))
+	if resp["ok"] != true || f3.exists("/etc/ssl/pdh/wiki.firma.de") || len(f3.commands()) != 0 {
+		t.Errorf("ohne nginx: %v %v", resp, f3.commands())
 	}
 }

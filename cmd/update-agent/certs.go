@@ -312,6 +312,7 @@ type certBackup struct {
 	data    []byte
 	mode    os.FileMode
 	existed bool
+	link    string // gesetzt: path war eine Verknüpfung auf diesen Text
 }
 
 func certTake(path string) (certBackup, error) {
@@ -332,6 +333,12 @@ func certTake(path string) (certBackup, error) {
 }
 
 func (b certBackup) restore() error {
+	if b.link != "" {
+		if err := os.Remove(b.path); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+		return os.Symlink(b.link, b.path)
+	}
 	if !b.existed {
 		if err := os.Remove(b.path); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return err
@@ -708,7 +715,101 @@ func (a *updateAgent) certInstallHandler(w http.ResponseWriter, r *http.Request)
 	writeMountJSON(w, http.StatusOK, resp)
 }
 
+// certFolderBackup hält den Inhalt des Zertifikatsordners im Speicher.
+type certFolderBackup struct {
+	dir   string
+	files map[string][]byte
+	modes map[string]os.FileMode
+	group string
+}
+
+func (a *updateAgent) certTakeFolder(dir, group string) (certFolderBackup, error) {
+	fb := certFolderBackup{dir: dir, files: map[string][]byte{}, modes: map[string]os.FileMode{}, group: group}
+	entries, err := os.ReadDir(dir)
+	if errors.Is(err, os.ErrNotExist) {
+		return fb, nil
+	}
+	if err != nil {
+		return fb, err
+	}
+	for _, e := range entries {
+		if !e.Type().IsRegular() {
+			return fb, errors.New("Zertifikatsordner enthält mehr als Dateien")
+		}
+		p := filepath.Join(dir, e.Name())
+		data, err := os.ReadFile(p)
+		if err != nil {
+			return fb, err
+		}
+		st, err := os.Stat(p)
+		if err != nil {
+			return fb, err
+		}
+		fb.files[e.Name()], fb.modes[e.Name()] = data, st.Mode().Perm()
+	}
+	return fb, nil
+}
+
+// restore legt den Ordner mit denselben Dateien wieder an; gibt die Namen zurück, die nicht gelangen.
+func (a *updateAgent) restoreFolder(fb certFolderBackup) []string {
+	if len(fb.files) == 0 {
+		return nil
+	}
+	var failed []string
+	if err := os.MkdirAll(fb.dir, 0o750); err != nil {
+		return []string{filepath.Base(fb.dir)}
+	}
+	_ = os.Chmod(fb.dir, 0o750)
+	_ = a.certChgrp(fb.dir, fb.group)
+	for name, data := range fb.files {
+		if err := a.certWriteAtomic(filepath.Join(fb.dir, name), data, fb.modes[name], fb.group); err != nil {
+			failed = append(failed, name)
+		}
+	}
+	sort.Strings(failed)
+	return failed
+}
+
+// certSiteReferencing sucht unter allen Seiten die erste, die noch auf den
+// Zertifikatsordner des Namens verweist. Eine Seite, die sich nicht auflösen
+// oder lesen lässt, zählt als „kann nicht sagen“ und wird ebenfalls genannt.
+func (a *updateAgent) certSiteReferencing(sitesDir, name string) (entry string, found bool, err error) {
+	entries, err := os.ReadDir(a.certPath(sitesDir))
+	if err != nil {
+		return "", false, errors.New("nginx-Seiten sind nicht lesbar")
+	}
+	needle := certDir(name) + "/"
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), ".") {
+			continue
+		}
+		p, rerr := a.certResolve(a.certPath(sitesDir + "/" + e.Name()))
+		if rerr != nil {
+			return e.Name(), true, nil
+		}
+		st, serr := os.Stat(p)
+		if serr != nil {
+			return e.Name(), true, nil
+		}
+		if st.IsDir() {
+			continue
+		}
+		data, rerr := os.ReadFile(p)
+		if rerr != nil {
+			return e.Name(), true, nil
+		}
+		if strings.Contains(string(data), needle) {
+			return e.Name(), true, nil
+		}
+	}
+	return "", false, nil
+}
+
 // certRemoveHandler: POST /v1/certs/remove
+//
+// Unveränderlich für jede Rolle: Der Zertifikatsordner verschwindet nur, wenn keine
+// nginx-Seite mehr darauf verweist. Seite und Ordner werden als ein Satz geändert;
+// scheitert „nginx -t“, kommt alles zurück.
 func (a *updateAgent) certRemoveHandler(w http.ResponseWriter, r *http.Request) {
 	req, ok := a.certRead(w, r)
 	if !ok {
@@ -723,70 +824,111 @@ func (a *updateAgent) certRemoveHandler(w http.ResponseWriter, r *http.Request) 
 	ctx, cancel := context.WithTimeout(r.Context(), 45*time.Second)
 	defer cancel()
 
-	withNginx := req.Role != "" && a.certNginxPresent()
-	if withNginx {
-		sitesDir, _ := a.certLayout()
-		var backups []certBackup
-		changed := false
-		switch req.Role {
-		case "pdh":
-			p := a.certPath(sitesDir + "/" + certPDHSite)
-			// Nur eine vom Agenten geschriebene Seite wird entfernt; eine eigene bleibt.
-			// Eine Verknüpfung (target != p) bleibt ebenso unberührt wie ein Lesefehler.
-			if target, exists, own, err := a.certOwnSite(p); err == nil && exists && own && target == p {
-				b, err := certTake(p)
-				if err != nil {
-					certFail(w, http.StatusOK, "nginx-Seite ist nicht lesbar")
+	dir := a.certPath(certDir(req.Name))
+	if !a.certNginxPresent() {
+		// Ohne nginx gibt es keine Seite, die die Dateien braucht.
+		if err := os.RemoveAll(dir); err != nil {
+			certFail(w, http.StatusOK, "Zertifikatsdateien lassen sich nicht löschen")
+			return
+		}
+		writeMountJSON(w, http.StatusOK, map[string]any{"ok": true})
+		return
+	}
+
+	sitesDir, group := a.certLayout()
+	var backups []certBackup
+	undo := func() []string { return certRestoreAll(backups) }
+	refuse := func(msg string) {
+		certFail(w, http.StatusOK, msg+certRollbackNote(undo()))
+	}
+
+	switch req.Role {
+	case "pdh":
+		p := a.certPath(sitesDir + "/" + certPDHSite)
+		target, exists, own, err := a.certOwnSite(p)
+		if err != nil {
+			refuse("Die nginx-Seite " + certPDHSite + " lässt sich nicht prüfen – nicht geändert")
+			return
+		}
+		if exists && own {
+			b, terr := certTake(target)
+			if terr != nil {
+				refuse("Die nginx-Seite " + certPDHSite + " ist nicht lesbar – nicht geändert")
+				return
+			}
+			if target != p { // Verknüpfung: erst sie, dann das Ziel
+				lt, lerr := os.Readlink(p)
+				if lerr != nil {
+					refuse("Die nginx-Seite " + certPDHSite + " ist nicht lesbar – nicht geändert")
 					return
 				}
-				backups = append(backups, b)
+				backups = append(backups, certBackup{path: p, link: lt})
 				if err := os.Remove(p); err != nil {
-					certFail(w, http.StatusOK, "nginx-Seite lässt sich nicht entfernen")
+					refuse("Die nginx-Seite " + certPDHSite + " lässt sich nicht entfernen – nicht geändert")
 					return
 				}
-				changed = true
-			}
-		case "nextcloud":
-			p, err := a.certFindNextcloudSite(sitesDir, req.Name)
-			if err != nil {
-				certFail(w, http.StatusOK, err.Error())
-				return
-			}
-			old, err := os.ReadFile(p)
-			if err != nil {
-				certFail(w, http.StatusOK, "Nextcloud-Seite ist nicht lesbar")
-				return
-			}
-			sw, err := certSwapLines(string(old), req.RestoreCert, req.RestoreKey)
-			if err != nil {
-				certFail(w, http.StatusOK, err.Error())
-				return
-			}
-			b, err := certTake(p)
-			if err != nil {
-				certFail(w, http.StatusOK, "Nextcloud-Seite ist nicht lesbar")
-				return
 			}
 			backups = append(backups, b)
-			if sw != string(old) {
-				if err := a.certWriteAtomic(p, []byte(sw), b.mode, ""); err != nil {
-					certFail(w, http.StatusOK, "Nextcloud-Seite lässt sich nicht schreiben"+certRollbackNote(certRestoreAll(backups)))
-					return
-				}
-				changed = true
+			if err := os.Remove(target); err != nil {
+				refuse("Die nginx-Seite " + certPDHSite + " lässt sich nicht entfernen – nicht geändert")
+				return
 			}
 		}
-		if changed {
-			rollback := func() []string { return certRestoreAll(backups) }
-			if err := a.certApplyNginx(ctx, rollback); err != nil {
-				certFail(w, http.StatusOK, err.Error())
+		// fremde, unlesbare oder fehlende Seite: bleibt; die Prüfung unten entscheidet.
+	case "nextcloud":
+		p, err := a.certFindNextcloudSite(sitesDir, req.Name)
+		if err != nil {
+			certFail(w, http.StatusOK, err.Error())
+			return
+		}
+		old, err := os.ReadFile(p)
+		if err != nil {
+			certFail(w, http.StatusOK, "Nextcloud-Seite ist nicht lesbar")
+			return
+		}
+		sw, err := certSwapLines(string(old), req.RestoreCert, req.RestoreKey)
+		if err != nil {
+			certFail(w, http.StatusOK, err.Error())
+			return
+		}
+		b, err := certTake(p)
+		if err != nil {
+			certFail(w, http.StatusOK, "Nextcloud-Seite ist nicht lesbar")
+			return
+		}
+		backups = append(backups, b)
+		if sw != string(old) {
+			if err := a.certWriteAtomic(p, []byte(sw), b.mode, ""); err != nil {
+				refuse("Nextcloud-Seite lässt sich nicht schreiben")
 				return
 			}
 		}
 	}
-	// Erst jetzt, wo nginx die Dateien nicht mehr braucht, verschwinden sie.
-	if err := os.RemoveAll(a.certPath(certDir(req.Name))); err != nil {
-		certFail(w, http.StatusOK, "Zertifikatsdateien lassen sich nicht löschen")
+
+	// Verweist noch eine Seite auf den Ordner (oder lässt sich eine nicht prüfen), bleibt alles.
+	if entry, found, err := a.certSiteReferencing(sitesDir, req.Name); err != nil {
+		refuse(err.Error())
+		return
+	} else if found {
+		refuse("Die nginx-Seite " + entry + " verweist noch auf das Zertifikat oder ist nicht lesbar – nicht geändert")
+		return
+	}
+
+	fb, err := a.certTakeFolder(dir, group)
+	if err != nil {
+		refuse("Zertifikatsordner ist nicht lesbar – nicht geändert")
+		return
+	}
+	rollback := func() []string {
+		failed := a.restoreFolder(fb)
+		return append(failed, certRestoreAll(backups)...)
+	}
+	if err := os.RemoveAll(dir); err != nil {
+		certFail(w, http.StatusOK, "Zertifikatsdateien lassen sich nicht löschen"+certRollbackNote(rollback()))
+		return
+	}
+	if err := a.certApplyNginx(ctx, rollback); err != nil {
+		certFail(w, http.StatusOK, err.Error())
 		return
 	}
 	writeMountJSON(w, http.StatusOK, map[string]any{"ok": true})
