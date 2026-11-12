@@ -188,7 +188,7 @@
 {{if not .CanUnifi}}
 <p class="sc-sub">Einträge an einer UniFi UDM Pro setzt das PDH für alle mit dem Recht „Namen im Haus eintragen (UniFi)“ (<code>system.unifi</code>).</p>
 {{else}}
-{{if not (and .Unifi.URL .Unifi.HasKey)}}<p class="sc-sub"><i class="ti ti-info-circle"></i> Mit einer UniFi UDM Pro trägt das PDH die Namen selbst ein: In UniFi Network unter „Integrationen“ einen API-Schlüssel anlegen, hier Adresse und Schlüssel speichern und den Fingerabdruck bestätigen. Ohne UniFi funktioniert alles andere wie bisher.</p>{{end}}
+{{if not (and .Unifi.URL .Unifi.HasKey)}}<p class="sc-sub"><i class="ti ti-info-circle"></i> Mit einer UniFi UDM Pro trägt das PDH die Namen selbst ein: In UniFi Network einen API-Schlüssel für die Netzwerk-Anwendung anlegen (wo, hängt von der Version ab), hier Adresse und Schlüssel speichern und den Fingerabdruck bestätigen. Ohne UniFi funktioniert alles andere wie bisher.</p>{{end}}
 {{if .Unifi.Err}}<div class="sc-sub" style="color:var(--amber)"><i class="ti ti-alert-triangle"></i> {{.Unifi.Err}}</div>{{end}}
 <form hx-post="/admin/server-config/certs/unifi" hx-target="#cert-panel" hx-swap="outerHTML" hx-disabled-elt="find button" class="cert-form">
   <div class="form-group" style="margin:0"><label class="form-label">Adresse der UDM Pro</label><input class="form-input" name="url" value="{{.Unifi.URL}}" placeholder="https://192.168.1.1" autocomplete="off"></div>
