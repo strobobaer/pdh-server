@@ -208,7 +208,7 @@ func (h *Handler) PermissionGateMiddleware(next http.Handler) http.Handler {
 		if hit {
 			if uid := h.requestActor(r); uid != "" && h.users != nil {
 				if u, err := h.users.GetByID(r.Context(), uid); err == nil && u != nil {
-					ok := h.rbac.HasPermissionForUser(u.ID, string(u.Role), perm)
+					ok := gatePermOK(perm, func(p string) bool { return h.rbac.HasPermissionForUser(u.ID, string(u.Role), p) })
 					if ok && id != "" {
 						ok = h.rbac.HasPermissionInDepartment(u.ID, string(u.Role), perm, h.recordDepartments(r.Context(), refType, id))
 					}
@@ -232,6 +232,25 @@ func (h *Handler) PermissionGateMiddleware(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// gateAltPerms: Rechte, die ein Gate-Recht ersetzen (eines von beiden genügt). Nur für
+// Regeln ohne Datensatz-ID – die Abteilungsprüfung danach gilt dem Gate-Recht.
+var gateAltPerms = map[string][]string{
+	permCerts: {permCertsAdmin}, // Bereichsadministrator der Zertifikate darf auch alles andere der Karte
+}
+
+// gatePermOK: hat jemand das Gate-Recht oder eines seiner Ersatzrechte?
+func gatePermOK(perm string, has func(string) bool) bool {
+	if has(perm) {
+		return true
+	}
+	for _, alt := range gateAltPerms[perm] {
+		if has(alt) {
+			return true
+		}
+	}
+	return false
 }
 
 // matchGate: Regel, nötiges Recht, Datensatz-Typ und -ID für eine Schreib-Route.

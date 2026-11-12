@@ -77,11 +77,17 @@ func (h *Handler) certMayRemove(r *http.Request) bool {
 	return h.isAreaAdmin(r, "certs", "")
 }
 
+// certCanManage: Karte sehen, Einstellungen, Namen eintragen, holen – mit system.certs oder
+// als Bereichsadministrator der Zertifikate (system.certs_admin allein genügt).
+func (h *Handler) certCanManage(r *http.Request) bool {
+	return h.hasPerm(r, permCerts) || h.certMayRemove(r)
+}
+
 // certPanelFor baut die Karte. Fragt nur die Datenbank, den Update-Agenten (kurz) und das
 // DNS des Servers – nie Let's Encrypt oder Cloudflare. Ein Fehler hier bricht nie die
 // Cloudflare-Karte.
 func (h *Handler) certPanelFor(ctx context.Context, r *http.Request, msg string, perr error) (p certPanel) {
-	p = certPanel{CanManage: h.hasPerm(r, permCerts), Msg: msg}
+	p = certPanel{CanManage: h.certCanManage(r), Msg: msg}
 	if perr != nil {
 		p.Err = certSafeText(perr.Error())
 	}
@@ -428,10 +434,11 @@ func (h *Handler) certRender(w http.ResponseWriter, p certPanel) {
 	}
 }
 
-// certAct: Recht prüfen, Aktion ausführen, protokollieren, melden, Karte neu zeichnen.
+// certAct: Recht prüfen (may: das Recht dieser Aktion), Aktion ausführen, protokollieren,
+// melden, Karte neu zeichnen.
 func (h *Handler) certAct(w http.ResponseWriter, r *http.Request, may bool, what string, notify bool,
 	do func(ctx context.Context, d certActDeps) (string, error)) {
-	if !may || !h.hasPerm(r, permCerts) {
+	if !may {
 		http.Error(w, "keine berechtigung", http.StatusForbidden)
 		return
 	}
@@ -456,7 +463,7 @@ func (h *Handler) certAct(w http.ResponseWriter, r *http.Request, may bool, what
 
 // CertPanelWeb: GET /admin/server-config/certs/panel
 func (h *Handler) CertPanelWeb(w http.ResponseWriter, r *http.Request) {
-	if !h.hasPerm(r, permCerts) {
+	if !h.certCanManage(r) {
 		http.Error(w, "keine berechtigung", http.StatusForbidden)
 		return
 	}
@@ -467,21 +474,21 @@ func (h *Handler) CertPanelWeb(w http.ResponseWriter, r *http.Request) {
 
 // CertSettingsWeb: POST /admin/server-config/certs/settings (email, staging)
 func (h *Handler) CertSettingsWeb(w http.ResponseWriter, r *http.Request) {
-	h.certAct(w, r, true, "einstellungen", true, func(ctx context.Context, d certActDeps) (string, error) {
+	h.certAct(w, r, h.certCanManage(r), "einstellungen", true, func(ctx context.Context, d certActDeps) (string, error) {
 		return certDoSettings(ctx, d, r.FormValue("email"), r.FormValue("staging") == "on")
 	})
 }
 
 // CertAddWeb: POST /admin/server-config/certs/add (name)
 func (h *Handler) CertAddWeb(w http.ResponseWriter, r *http.Request) {
-	h.certAct(w, r, true, "eintragen", true, func(ctx context.Context, d certActDeps) (string, error) {
+	h.certAct(w, r, h.certCanManage(r), "eintragen", true, func(ctx context.Context, d certActDeps) (string, error) {
 		return certDoAdd(ctx, d, r.FormValue("name"))
 	})
 }
 
 // CertIssueWeb: POST /admin/server-config/certs/issue (name)
 func (h *Handler) CertIssueWeb(w http.ResponseWriter, r *http.Request) {
-	h.certAct(w, r, true, "holen", false, func(ctx context.Context, d certActDeps) (string, error) {
+	h.certAct(w, r, h.certCanManage(r), "holen", false, func(ctx context.Context, d certActDeps) (string, error) {
 		return certDoIssue(ctx, d, r.FormValue("name"))
 	})
 }
@@ -496,7 +503,7 @@ func (h *Handler) CertRemoveWeb(w http.ResponseWriter, r *http.Request) {
 // CertStrictWeb: POST /admin/server-config/certs/strict (action=on|off) – dazu system.cloudflare
 func (h *Handler) CertStrictWeb(w http.ResponseWriter, r *http.Request) {
 	// certStrictOn/Off melden die Änderung selbst an die Administratoren.
-	h.certAct(w, r, h.hasPerm(r, permCloudflare), "full-strict", false, func(ctx context.Context, d certActDeps) (string, error) {
+	h.certAct(w, r, h.certCanManage(r) && h.hasPerm(r, permCloudflare), "full-strict", false, func(ctx context.Context, d certActDeps) (string, error) {
 		switch r.FormValue("action") {
 		case "on":
 			return certDoStrict(ctx, d, true)

@@ -6,10 +6,17 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"regexp"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"pdh/internal/core/rbac"
+	"pdh/internal/core/users"
 )
 
 // ── Karte ────────────────────────────────────────────────────
@@ -187,10 +194,10 @@ func TestCertGateRules(t *testing.T) {
 	}{
 		{"remove ohne Bereichsadministrator", deny(permCertsAdmin), func(h *Handler) http.HandlerFunc { return h.CertRemoveWeb }, "/admin/server-config/certs/remove"},
 		{"strict ohne system.cloudflare", deny(permCloudflare), func(h *Handler) http.HandlerFunc { return h.CertStrictWeb }, "/admin/server-config/certs/strict"},
-		{"issue ohne system.certs", deny(permCerts), func(h *Handler) http.HandlerFunc { return h.CertIssueWeb }, "/admin/server-config/certs/issue"},
-		{"add ohne system.certs", deny(permCerts), func(h *Handler) http.HandlerFunc { return h.CertAddWeb }, "/admin/server-config/certs/add"},
-		{"settings ohne system.certs", deny(permCerts), func(h *Handler) http.HandlerFunc { return h.CertSettingsWeb }, "/admin/server-config/certs/settings"},
-		{"strict ohne system.certs", deny(permCerts), func(h *Handler) http.HandlerFunc { return h.CertStrictWeb }, "/admin/server-config/certs/strict"},
+		{"issue ohne system.certs und ohne Bereichsadministrator", deny(permCerts, permCertsAdmin), func(h *Handler) http.HandlerFunc { return h.CertIssueWeb }, "/admin/server-config/certs/issue"},
+		{"add ohne system.certs und ohne Bereichsadministrator", deny(permCerts, permCertsAdmin), func(h *Handler) http.HandlerFunc { return h.CertAddWeb }, "/admin/server-config/certs/add"},
+		{"settings ohne system.certs und ohne Bereichsadministrator", deny(permCerts, permCertsAdmin), func(h *Handler) http.HandlerFunc { return h.CertSettingsWeb }, "/admin/server-config/certs/settings"},
+		{"strict ohne system.certs und ohne Bereichsadministrator", deny(permCerts, permCertsAdmin), func(h *Handler) http.HandlerFunc { return h.CertStrictWeb }, "/admin/server-config/certs/strict"},
 	}
 	for _, c := range cases {
 		if code := post(c.h, c.fn, c.path); code != http.StatusForbidden {
@@ -198,9 +205,154 @@ func TestCertGateRules(t *testing.T) {
 		}
 	}
 	rec := httptest.NewRecorder()
-	deny(permCerts).CertPanelWeb(rec, httptest.NewRequest("GET", "/admin/server-config/certs/panel", nil))
+	deny(permCerts, permCertsAdmin).CertPanelWeb(rec, httptest.NewRequest("GET", "/admin/server-config/certs/panel", nil))
 	if rec.Code != http.StatusForbidden {
 		t.Errorf("panel ohne system.certs: %d", rec.Code)
+	}
+}
+
+// system.certs_admin allein genügt für Karte, Holen und Entfernen; system.certs allein nicht fürs Entfernen.
+func TestCertAdminAloneSuffices(t *testing.T) {
+	tmpl := loadTestTemplates(t)
+	only := func(perms ...string) *Handler {
+		return &Handler{tmpl: tmpl, hasPermHook: func(_ *http.Request, p string) bool {
+			for _, x := range perms {
+				if x == p {
+					return true
+				}
+			}
+			return false
+		}}
+	}
+	post := func(fn http.HandlerFunc, path string) int {
+		req := httptest.NewRequest("POST", path, strings.NewReader("name=nc.firma.de"))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rec := httptest.NewRecorder()
+		fn(rec, req)
+		return rec.Code
+	}
+	admin := only(permCertsAdmin)
+	req := httptest.NewRequest("GET", "/admin/server-config/certs/panel", nil)
+	if !admin.certPanelFor(context.Background(), req, "", nil).CanManage {
+		t.Error("Bereichsadministrator allein muss die Karte sehen")
+	}
+	// Karte mit seinen Rechten: Formulare und Entfernen-Knopf
+	p := certPanel{CanManage: admin.certCanManage(req), Zone: "firma.de", AgentOK: true, NginxOK: true,
+		Lines: certLines([]certRow{{Name: "nc.firma.de", State: certStateGueltig}}, nil, admin.certMayRemove(req))}
+	if out := renderCertPanel(t, p); !strings.Contains(out, "<form") || !strings.Contains(out, `value="remove"`) {
+		t.Errorf("Formulare und Entfernen fehlen:\n%s", out)
+	}
+	rec := httptest.NewRecorder()
+	admin.CertPanelWeb(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Errorf("panel: %d", rec.Code)
+	}
+	for path, fn := range map[string]http.HandlerFunc{
+		"/admin/server-config/certs/remove":   admin.CertRemoveWeb,
+		"/admin/server-config/certs/issue":    admin.CertIssueWeb,
+		"/admin/server-config/certs/add":      admin.CertAddWeb,
+		"/admin/server-config/certs/settings": admin.CertSettingsWeb,
+	} {
+		if code := post(fn, path); code != http.StatusOK {
+			t.Errorf("%s mit system.certs_admin allein: %d", path, code)
+		}
+	}
+	if code := post(only(permCerts).CertRemoveWeb, "/admin/server-config/certs/remove"); code != http.StatusForbidden {
+		t.Errorf("remove nur mit system.certs: %d, erwartet 403", code)
+	}
+
+	// Das Gate lässt eines der beiden Rechte gelten – aber nur für system.certs.
+	has := func(perms ...string) func(string) bool {
+		return func(p string) bool {
+			for _, x := range perms {
+				if x == p {
+					return true
+				}
+			}
+			return false
+		}
+	}
+	if !gatePermOK(permCerts, has(permCertsAdmin)) || !gatePermOK(permCerts, has(permCerts)) || gatePermOK(permCerts, has()) {
+		t.Error("gatePermOK für system.certs")
+	}
+	if gatePermOK(permCertsAdmin, has(permCerts)) || gatePermOK(permCloudflare, has(permCertsAdmin)) {
+		t.Error("system.certs ersetzt nie den Bereichsadministrator, und nichts ersetzt system.cloudflare")
+	}
+}
+
+// Durch die echte PermissionGateMiddleware und isAreaAdmin (braucht eine Test-Datenbank).
+func TestCertGateMiddlewareIntegration(t *testing.T) {
+	dsn := os.Getenv("PDH_TEST_DSN")
+	if dsn == "" {
+		t.Skip("PDH_TEST_DSN nicht gesetzt")
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	must := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	sfx := strings.ReplaceAll(time.Now().Format("150405.000000"), ".", "")
+	roleAdmin, roleCerts := "zertadm"+sfx, "zert"+sfx
+	_, err = pool.Exec(ctx, `INSERT INTO roles (key, label, level) VALUES ($1, 'ZA', 40), ($2, 'Z', 40)`, roleAdmin, roleCerts)
+	must(err)
+	var uidAdmin, uidCerts string
+	must(pool.QueryRow(ctx, `INSERT INTO users (username, email, password_hash, first_name, last_name, role, department, phone)
+		VALUES ($1::text, $1::text || '@x', 'x', 'Z', 'A', $2, '', '') RETURNING id::text`, "za"+sfx, roleAdmin).Scan(&uidAdmin))
+	must(pool.QueryRow(ctx, `INSERT INTO users (username, email, password_hash, first_name, last_name, role, department, phone)
+		VALUES ($1::text, $1::text || '@x', 'x', 'Z', 'C', $2, '', '') RETURNING id::text`, "zc"+sfx, roleCerts).Scan(&uidCerts))
+	defer func() {
+		_, _ = pool.Exec(ctx, `DELETE FROM users WHERE id IN ($1::uuid, $2::uuid)`, uidAdmin, uidCerts)
+		_, _ = pool.Exec(ctx, `DELETE FROM roles WHERE key IN ($1, $2)`, roleAdmin, roleCerts)
+	}()
+	_, err = pool.Exec(ctx, `INSERT INTO role_permissions (role_id, permission_id)
+		SELECT r.id, p.id FROM roles r, permissions p WHERE (r.key = $1 AND p.key = 'system.certs_admin') OR (r.key = $2 AND p.key = 'system.certs')`, roleAdmin, roleCerts)
+	must(err)
+	rb := rbac.NewService(rbac.NewRepository(pool))
+	must(rb.Warm(ctx))
+	const secret = "test-secret-zertifikate-0123456789abcdef"
+	h := &Handler{db: pool, rbac: rb, users: users.NewService(users.NewRepository(pool), secret, 1), jwtSecret: secret}
+	reached := false
+	gate := h.PermissionGateMiddleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { reached = true }))
+	through := func(uid, path string) bool {
+		tok, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{"sub": uid}).SignedString([]byte(secret))
+		must(err)
+		req := httptest.NewRequest("POST", path, nil)
+		req.Header.Set("Authorization", "Bearer "+tok)
+		reached = false
+		gate.ServeHTTP(httptest.NewRecorder(), req)
+		return reached
+	}
+	for _, path := range []string{"remove", "issue", "add", "settings"} {
+		if !through(uidAdmin, "/admin/server-config/certs/"+path) {
+			t.Errorf("%s: Bereichsadministrator allein wird abgewiesen", path)
+		}
+	}
+	if through(uidAdmin, "/admin/server-config/certs/strict") {
+		t.Error("strict ohne system.cloudflare durchgelassen")
+	}
+	if through(uidCerts, "/admin/server-config/certs/remove") {
+		t.Error("remove nur mit system.certs durchgelassen")
+	}
+	if !through(uidCerts, "/admin/server-config/certs/issue") {
+		t.Error("issue mit system.certs abgewiesen")
+	}
+	// certMayRemove über isAreaAdmin/hasPermRec (rbac gesetzt)
+	asUser := func(uid, role string) *http.Request {
+		r := httptest.NewRequest("GET", "/", nil)
+		return r.WithContext(context.WithValue(r.Context(), "user", &users.User{ID: uid, Role: users.Role(role)}))
+	}
+	if !h.certMayRemove(asUser(uidAdmin, roleAdmin)) || !h.certCanManage(asUser(uidAdmin, roleAdmin)) {
+		t.Error("Bereichsadministrator: entfernen und Karte")
+	}
+	if h.certMayRemove(asUser(uidCerts, roleCerts)) || !h.certCanManage(asUser(uidCerts, roleCerts)) {
+		t.Error("system.certs: Karte ja, entfernen nein")
 	}
 }
 
