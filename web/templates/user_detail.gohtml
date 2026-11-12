@@ -166,6 +166,16 @@
       <label class="form-label" style="margin-top:8px" for="ud-terminal-idle">Rückkehrzeit zum Bildschirmschoner (Sekunden)</label>
       <input class="form-input" id="ud-terminal-idle" name="terminal_idle_seconds" inputmode="numeric" pattern="[0-9]*" placeholder="global" value="{{$m.TerminalIdle}}">
       <div class="rec-sub" style="margin-top:4px">30 bis 3600 Sekunden. Leer = globale Einstellung (Core-Einstellungen).</div>
+      <label class="form-label" style="margin-top:8px" for="ud-manual-login">Anmeldung ohne Kartenleser</label>
+      <select class="form-input" id="ud-manual-login" name="terminal_manual_login" onchange="var w=document.getElementById('ud-card-only-warn'); if(w) w.style.display=this.value==='card_only'?'':'none'">
+        <option value="card_pin" {{if eq $m.TerminalManualLogin "card_pin"}}selected{{end}}>Kartennummer + PIN</option>
+        <option value="password" {{if eq $m.TerminalManualLogin "password"}}selected{{end}}>Benutzer + Passwort</option>
+        <option value="card_only" {{if eq $m.TerminalManualLogin "card_only"}}selected{{end}}>Nur Kartennummer</option>
+        <option value="none" {{if eq $m.TerminalManualLogin "none"}}selected{{end}}>Keine</option>
+      </select>
+      <div id="ud-card-only-warn" class="rec-msg err" style="margin-top:6px;{{if ne $m.TerminalManualLogin "card_only"}}display:none{{end}}"><i class="ti ti-alert-triangle"></i> Wer eine Kartennummer kennt, kann sich als diese Person anmelden</div>
+      <label style="font-size:13px;display:flex;gap:8px;align-items:center;margin-top:8px"><input type="checkbox" name="terminal_password_button" {{if $m.TerminalPasswordButton}}checked{{end}}> Knopf „Mit Benutzer und Passwort“</label>
+      <div class="rec-sub" style="margin-top:4px">Gilt nur, wenn das Terminal keinen Kartenleser hat oder der Leser ausgefallen ist.</div>
     </div>{{end}}
 
     <div class="rec-sec">Organisation</div>
@@ -226,6 +236,21 @@
       <button class="btn btn-primary" type="submit"><i class="ti ti-device-floppy"></i> Speichern</button>
     </div>
   </form>
+  {{if and .CanSetPIN (not $u.IsSystemUser)}}
+  <div class="card rec-form" id="ud-terminal-pin" style="margin-top:12px">
+    <div class="rec-sec" style="margin-top:0">Terminal-PIN</div>
+    <div class="rec-sub" style="margin-bottom:8px">{{if .PINSet}}Eine PIN ist gesetzt.{{else}}Keine PIN gesetzt.{{end}} Die PIN wird nie angezeigt. 4 bis 8 Ziffern, nicht lauter gleiche und keine Zahlenfolge wie 1234.</div>
+    {{if .PINLockedUntil}}<div class="rec-msg err" style="margin-bottom:8px"><i class="ti ti-lock"></i> PIN gesperrt bis {{.PINLockedUntil}}</div>{{end}}
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+      <form method="post" action="/users/{{$u.ID}}/terminal-pin" autocomplete="off" style="display:flex;gap:8px;align-items:flex-end;margin:0">
+        <input type="hidden" name="action" value="set">
+        <div><label class="form-label" for="ud-pin">Neue PIN</label><input class="form-input" id="ud-pin" name="pin" type="password" inputmode="numeric" pattern="[0-9]{4,8}" minlength="4" maxlength="8" autocomplete="new-password" required></div>
+        <button class="btn btn-small btn-primary" type="submit"><i class="ti ti-key"></i> PIN setzen</button>
+      </form>
+      {{if .PINSet}}<form method="post" action="/users/{{$u.ID}}/terminal-pin" style="margin:0"><input type="hidden" name="action" value="clear"><button class="btn btn-small" type="submit" style="color:var(--red)"><i class="ti ti-trash"></i> PIN entfernen</button></form>{{end}}
+    </div>
+  </div>
+  {{end}}
   <form class="card rec-form" method="post" action="/users/{{$u.ID}}/groups" style="margin-top:12px">
     <div class="rec-sec" style="margin-top:0">Gruppen</div>
     {{if .AllGroups}}

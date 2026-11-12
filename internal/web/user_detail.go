@@ -32,6 +32,8 @@ type userMaster struct {
 	LiveTranslate                                       bool   // Live-Übersetzung (live_translate.go)
 	TerminalIdle                                        string // eigene Rückkehrzeit des Terminals in Sekunden, "" = globaler Wert
 	TranslateLang                                       string // Zielsprache, "" = Sprache der Oberfläche
+	TerminalManualLogin                                 string // Anmeldeart ohne Kartenleser (Systembenutzer)
+	TerminalPasswordButton                              bool   // Knopf „Mit Benutzer und Passwort“
 }
 
 type userPrivate struct {
@@ -60,6 +62,9 @@ type UserDetailData struct {
 	CanEditMaster       bool
 	CanEditCore         bool                // Grunddaten-Dialog in der Benutzerliste
 	CanBroker           bool                // Broker-Rollen vergeben (nur Benutzerverwaltung)
+	PINSet              bool                // Benutzer hat eine Terminal-PIN (die PIN selbst ist nie lesbar)
+	PINLockedUntil      string              // "HH:MM", wenn die PIN gesperrt ist
+	CanSetPIN           bool                // PIN setzen/entfernen (Benutzerverwaltung, Rang über dem Ziel)
 	CanDevices          bool                // Terminal-Geräte koppeln (System-Benutzer, Benutzerverwaltung, höherer Rang)
 	Devices             []terminalDeviceRow // gekoppelte Terminal-Geräte (nur bei CanDevices)
 	Boards              []*leitstand        // Auswahl „Leitstand“ für Terminals
@@ -141,6 +146,7 @@ func (h *Handler) UserDetailPage(w http.ResponseWriter, r *http.Request) {
 		User:   h.userView(string(actor.Role), u, h.roleLabelMap(ctx), userNames, map[string]bool{}),
 		IsSelf: self, HasPassword: self && u.PasswordHash != "", CanEditMaster: editMaster, CanEditCore: editCore,
 		CanBroker:      h.canManageUsers(r),
+		CanSetPIN:      h.canManageUsers(r) && (self || h.outranksRole(r, string(u.Role))),
 		CanDevices:     u.IsSystemUser && h.canManageUsers(r) && h.outranksRole(r, string(u.Role)),
 		Boards:         h.listLeitstaende(ctx),
 		CanAvatar:      self || h.canManageUsers(r),
@@ -167,6 +173,9 @@ func (h *Handler) UserDetailPage(w http.ResponseWriter, r *http.Request) {
 	if d.CanMailSettings = self || editMaster; d.CanMailSettings && h.db != nil {
 		_ = h.db.QueryRow(ctx, `SELECT mail_notifications FROM users WHERE id = $1::uuid`, id).Scan(&d.MailNotifications)
 		d.MailReady = h.mailConfigured()
+	}
+	if d.CanSetPIN {
+		d.PINSet, d.PINLockedUntil = h.terminalPINView(ctx, id)
 	}
 	if m, err := h.loadUserMasterErr(ctx, id); err != nil {
 		d.Error = "Die erweiterten Stammdaten sind noch nicht verfügbar – bitte den Server neu starten, damit Migration 070 ausgeführt wird (" + err.Error() + ")"
@@ -247,6 +256,12 @@ func (h *Handler) loadUserMasterErr(ctx context.Context, id string) (userMaster,
 			FROM users u LEFT JOIN leitstaende l ON l.id = u.leitstand_id WHERE u.id = $1::uuid`, id).Scan(&m.TerminalInfraID, &m.LiveTranslate, &m.TranslateLang, &m.LeitstandID, &m.LeitstandName)
 		m.TerminalInfraPath = h.infraPath(ctx, m.TerminalInfraID)
 		m.TerminalIdle = h.terminalIdleField(ctx, id)
+		m.TerminalManualLogin, m.TerminalPasswordButton = loginCardPIN, true
+		if ls, err := h.terminalLoginSettings(ctx, id); err == nil {
+			m.TerminalManualLogin, m.TerminalPasswordButton = ls.ManualLogin, ls.PasswordButton
+		} else {
+			componentLog("terminal").Error().Err(err).Str("user", id).Msg("anmeldeart (formular)")
+		}
 	}
 	return m, err
 }
@@ -415,6 +430,21 @@ func (h *Handler) UserMasterSaveWeb(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	// Anmeldeart des Terminals vorab prüfen (nur Benutzerverwaltung, nur System-Benutzer, nur wenn das Feld gesendet wurde)
+	loginSent := false
+	if _, sent := r.Form["terminal_manual_login"]; sent && h.canManageUsers(r) {
+		if !validLoginKind(v("terminal_manual_login")) {
+			userRedirect(w, r, id, "master", "", errTerminalLoginKind)
+			return
+		}
+		sys, err := h.isSystemUser(ctx, id)
+		if err != nil {
+			componentLog("terminal").Error().Err(err).Str("user", id).Msg("systembenutzer prüfen")
+			userRedirect(w, r, id, "master", "", errTerminalLoginSave)
+			return
+		}
+		loginSent = sys
+	}
 	old := h.loadUserMaster(ctx, id)
 	brokerT, brokerF, brokerA, brokerM := old.BrokerTickets, old.BrokerFaults, old.BrokerTasks, old.BrokerMaintenance
 	if h.canManageUsers(r) {
@@ -459,6 +489,15 @@ func (h *Handler) UserMasterSaveWeb(w http.ResponseWriter, r *http.Request) {
 				err = errTerminalIdleSave
 			}
 			userRedirect(w, r, id, "master", "", err)
+			return
+		}
+		h.notifyTerminalSettings(id)
+	}
+	if loginSent {
+		ls := terminalLoginSettings{ManualLogin: v("terminal_manual_login"), PasswordButton: r.FormValue("terminal_password_button") == "on"}
+		if err := h.saveTerminalLoginSettings(ctx, id, ls); err != nil {
+			componentLog("terminal").Error().Err(err).Str("user", id).Msg("anmeldeart speichern")
+			userRedirect(w, r, id, "master", "", errTerminalLoginSave)
 			return
 		}
 		h.notifyTerminalSettings(id)
