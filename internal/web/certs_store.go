@@ -31,7 +31,38 @@ const (
 	keyUnifiKey  = "unifi.key"
 	keyUnifiSite = "unifi.site"
 	keyUnifiPin  = "unifi.pin"
+
+	// IPv6-Einträge (Typ AAAA) der Namen im Haus, je normalisiertem Namen: Kennung eines
+	// Eintrags, den das PDH selbst angelegt hat, und Hinweis des Nachzieh-Laufs.
+	keyUnifiID6Prefix   = "unifi.id6."
+	keyUnifiHint6Prefix = "unifi.hint6."
 )
+
+// certSettingsPrefix: alle Einstellungen, deren Schlüssel mit prefix beginnt und deren Wert
+// nicht leer ist (Schlüssel → Wert). nil = nicht lesbar (dann nichts entscheiden).
+func (h *Handler) certSettingsPrefix(ctx context.Context, prefix string) map[string]string {
+	if h.db == nil || prefix == "" {
+		return nil
+	}
+	rows, err := h.db.Query(ctx, `SELECT key, value FROM app_settings WHERE left(key, length($1)) = $1 AND value <> ''`, prefix)
+	if err != nil {
+		componentLog("zertifikate").Warn().Str("fehler", certSafeText(err.Error())).Msg("einstellungen lesen")
+		return nil
+	}
+	defer rows.Close()
+	out := map[string]string{}
+	for rows.Next() {
+		var k, v string
+		if err := rows.Scan(&k, &v); err != nil {
+			return nil
+		}
+		out[k] = v
+	}
+	if rows.Err() != nil {
+		return nil
+	}
+	return out
+}
 
 // Zustände eines Zertifikats.
 const (

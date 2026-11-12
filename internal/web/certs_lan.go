@@ -66,17 +66,29 @@ func certLANNorm(s string) string {
 // certLANMatch: was für name zu tun ist, und der betroffene Eintrag (eigener bzw. fremder).
 // Nur Einträge Typ A gleichen Namens zählen; Groß/Klein und Punkt am Ende sind egal.
 func certLANMatch(recs []unifi.Record, name, ip, ownID string) (string, unifi.Record) {
+	return certLANMatchType(recs, "A", name, ip, ownID)
+}
+
+// certLANMatchType: wie certLANMatch für Einträge des Typs typ ("A" oder "AAAA"). Bei Typ A
+// zählt die Adresse buchstabengenau, sonst die Adresse unabhängig von der Schreibweise.
+func certLANMatchType(recs []unifi.Record, typ, name, ip, ownID string) (string, unifi.Record) {
 	n := certLANNorm(name)
 	var same []unifi.Record
 	for _, r := range recs {
-		if strings.EqualFold(r.Type, "A") && certLANNorm(r.Name) == n {
+		if strings.EqualFold(r.Type, typ) && certLANNorm(r.Name) == n {
 			same = append(same, r)
 		}
+	}
+	eq := func(v string) bool {
+		if strings.EqualFold(typ, "A") {
+			return strings.TrimSpace(v) == ip
+		}
+		return lan6Same(v, ip)
 	}
 	if ownID != "" {
 		for _, r := range same {
 			if r.ID == ownID {
-				if strings.TrimSpace(r.Value) == ip {
+				if eq(r.Value) {
 					return "stimmt", r
 				}
 				return "eigenen-aendern", r
@@ -84,7 +96,7 @@ func certLANMatch(recs []unifi.Record, name, ip, ownID string) (string, unifi.Re
 		}
 	}
 	for _, r := range same {
-		if strings.TrimSpace(r.Value) == ip {
+		if eq(r.Value) {
 			return "stimmt", r
 		}
 	}
@@ -135,6 +147,16 @@ func certDoLAN(ctx context.Context, d certActDeps, raw string, overwrite bool) (
 	if err != nil {
 		return "", err
 	}
+	msg, err := certDoLANv4(ctx, d, c, recs, row, ip, overwrite)
+	if err != nil || !overwrite {
+		// ohne „Überschreiben“ ändert sich hier an IPv6 nichts – das macht der 5-Minuten-Lauf
+		return msg, err
+	}
+	return msg + certLAN6Overwrite(ctx, d, c, recs, row.Name), nil
+}
+
+// certDoLANv4: der Eintrag Typ A eines geführten Namens (siehe certDoLAN).
+func certDoLANv4(ctx context.Context, d certActDeps, c certLANClient, recs []unifi.Record, row certRow, ip string, overwrite bool) (string, error) {
 	lg := componentLog("zertifikate")
 	action, rec := certLANMatch(recs, row.Name, ip, row.LANRecordID)
 	switch action {
@@ -177,17 +199,37 @@ func certDoLAN(ctx context.Context, d certActDeps, raw string, overwrite bool) (
 // certLANRemove löscht beim Entfernen eines Namens nur den Eintrag, den das PDH selbst
 // angelegt hat (gemerkte Kennung). Scheitert das, bleibt das Zertifikat trotzdem entfernt;
 // die Meldung nennt die Kennung zum Löschen von Hand.
+// Dazu gehört auch der IPv6-Eintrag, den das PDH für den Namen angelegt hat (unifi.id6.<name>).
 func certLANRemove(ctx context.Context, d certActDeps, row certRow) string {
 	_ = d.putSetting(ctx, keyUnifiHintPrefix+row.Name, "")
 	_ = d.putSetting(ctx, keyUnifiOtherPrefix+row.Name, "")
-	id := row.LANRecordID
+	n6 := certLANNorm(row.Name)
+	id6 := ""
+	if d.setting != nil {
+		id6 = d.setting(ctx, keyUnifiID6Prefix+n6)
+	}
+	_ = d.putSetting(ctx, keyUnifiHint6Prefix+n6, "")
+	if id6 != "" {
+		_ = d.putSetting(ctx, keyUnifiID6Prefix+n6, "")
+	}
+	return certLANRemoveOne(ctx, d, row.Name, row.LANRecordID, false) + certLANRemoveOne(ctx, d, row.Name, id6, true)
+}
+
+// certLANRemoveOne löscht einen eigenen Eintrag (Typ A bzw. bei v6 Typ AAAA) an der UDM Pro.
+func certLANRemoveOne(ctx context.Context, d certActDeps, name, id string, v6 bool) string {
 	if id == "" {
 		return ""
 	}
+	var what, gone, failed string
+	if v6 {
+		what, gone, failed = "IPv6-Eintrag im Haus", "ipv6-eintrag im haus entfernt", "ipv6-eintrag im haus nicht entfernt"
+	} else {
+		what, gone, failed = "Eintrag im Haus", "eintrag im haus gelöscht", "eintrag im haus nicht gelöscht"
+	}
 	lg := componentLog("zertifikate")
 	manual := func(why string) string {
-		lg.Warn().Str("name", row.Name).Str("kennung", id).Str("fehler", why).Msg("eintrag im haus nicht gelöscht")
-		return " Der Eintrag im Haus an der UDM Pro (Kennung " + id + ") ist nicht gelöscht: " + why + ". Bitte dort von Hand löschen."
+		lg.Warn().Str("name", name).Str("kennung", id).Str("fehler", why).Msg(failed)
+		return " Der " + what + " an der UDM Pro (Kennung " + id + ") ist nicht gelöscht: " + why + ". Bitte dort von Hand löschen."
 	}
 	if d.lan == nil {
 		return manual(errUnifiOff.Error())
@@ -201,8 +243,8 @@ func certLANRemove(ctx context.Context, d certActDeps, row certRow) string {
 	if err := c.Delete(lctx, id); err != nil {
 		return manual(certSafeText(err.Error()))
 	}
-	lg.Info().Str("name", row.Name).Str("kennung", id).Msg("eintrag im haus gelöscht")
-	return " Der Eintrag im Haus an der UDM Pro ist gelöscht."
+	lg.Info().Str("name", name).Str("kennung", id).Msg(gone)
+	return " Der " + what + " an der UDM Pro ist gelöscht."
 }
 
 // certLANDaily: nur lesen und Abweichungen als Hinweis merken – nie ändern, nie Alarm.
