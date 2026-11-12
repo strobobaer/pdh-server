@@ -14,7 +14,7 @@ im Kapitel „Versionen & Updates“ an.
 
 ### Neu
 
-- Zertifikate von Let's Encrypt: In der Cloudflare-Karte holt das PDH je Name ein Zertifikat, erneuert es 30 Tage vor Ablauf und warnt rechtzeitig – ein Zusatz, ohne den alles unverändert läuft.
+- Zertifikate von Let's Encrypt: Im Reiter Cloudflare-Tunnel („Zertifikate laden“) holt das PDH je Name ein Zertifikat, erneuert es 30 Tage vor Ablauf und warnt rechtzeitig – ein Zusatz, ohne den alles unverändert läuft.
 - Namen im Haus: Mit einer UniFi UDM Pro trägt das PDH die Namen im Firmennetz selbst ein – Adresse und API-Schlüssel stehen in den Server-Einstellungen im eigenen Reiter „UniFi“; ohne UniFi bleibt der Eintrag Typ A am DNS-Server von Hand.
 - Full (strict): Ein Knopf stellt Tunnel und Domain auf geprüfte Verschlüsselung um, „Zurückstellen“ nimmt es wieder zurück.
 - Im Ausfallschutz-Verbund werden die Zertifikate auf den zweiten Server gespiegelt und in die Sicherung aufgenommen; sobald Zertifikate vorhanden sind, richtet das Update nginx auf beiden Servern ein.
