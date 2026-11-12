@@ -228,21 +228,28 @@ func (c *certFakeCA) count() int {
 }
 
 type certFakeDNS struct {
-	mu      sync.Mutex
-	present int
-	cleaned []string
+	mu       sync.Mutex
+	present  int
+	cleaned  []string // erfolgreich gelöscht
+	events   []string // Reihenfolge: "present", "cleanup:<id>"
+	cleanErr error
 }
 
 func (d *certFakeDNS) Present(context.Context, string, string) (string, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.present++
+	d.events = append(d.events, "present")
 	return "rec-neu", nil
 }
 
 func (d *certFakeDNS) CleanUp(_ context.Context, id string) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	d.events = append(d.events, "cleanup:"+id)
+	if d.cleanErr != nil {
+		return d.cleanErr
+	}
 	d.cleaned = append(d.cleaned, id)
 	return nil
 }
@@ -933,5 +940,92 @@ func TestCertDailyLeftoverOnlyRemembered(t *testing.T) {
 		if r := e.store.get(n); r.ChallengeID != "" {
 			t.Errorf("%s: challenge_id=%q", n, r.ChallengeID)
 		}
+	}
+}
+
+// (a) Löschen des Prüf-Eintrags scheitert, das Zertifikat kommt trotzdem: die Kennung bleibt
+// gemerkt, und der nächste tägliche Lauf löscht den Eintrag und vergisst sie erst dann.
+func TestCertIssueKeepsChallengeWhenCleanUpFails(t *testing.T) {
+	e := newCertTestEnv(t, certRow{Name: "nc.firma.de", State: certStateNeu})
+	e.dns.cleanErr = errors.New("Cloudflare: 503")
+	if err := certIssue(context.Background(), e.deps(), "nc.firma.de"); err != nil {
+		t.Fatal(err)
+	}
+	r := e.store.get("nc.firma.de")
+	if r.State != certStateGueltig || r.ChallengeID != "rec-neu" {
+		t.Fatalf("state=%q challenge_id=%q", r.State, r.ChallengeID)
+	}
+	e.dns.cleanErr = nil
+	e.status = map[string]string{"nc.firma.de": r.Fingerprint}
+	certDaily(context.Background(), e.deps())
+	if len(e.dns.cleaned) != 1 || e.dns.cleaned[0] != "rec-neu" {
+		t.Fatalf("gelöscht: %v", e.dns.cleaned)
+	}
+	if r := e.store.get("nc.firma.de"); r.ChallengeID != "" {
+		t.Fatalf("challenge_id=%q", r.ChallengeID)
+	}
+}
+
+// Auch auf einem Fehlerweg bleibt eine nicht gelöschte Kennung gemerkt.
+func TestCertIssueKeepsChallengeOnFailure(t *testing.T) {
+	e := newCertTestEnv(t, certRow{Name: "nc.firma.de", State: certStateNeu})
+	e.dns.cleanErr = errors.New("Cloudflare: 503")
+	e.ca.acceptErr = errors.New("Prüfung fehlgeschlagen")
+	if err := certIssue(context.Background(), e.deps(), "nc.firma.de"); err == nil {
+		t.Fatal("Fehler erwartet")
+	}
+	if r := e.store.get("nc.firma.de"); r.State != certStateFehler || r.ChallengeID != "rec-neu" {
+		t.Fatalf("state=%q challenge_id=%q", r.State, r.ChallengeID)
+	}
+}
+
+// (b) Gemerkte Kennung und Knopf: der alte Eintrag wird vor dem neuen gelöscht; scheitert das,
+// gibt es keine CA-Anfrage und der Zustand ist "fehler".
+func TestCertIssueRemovesRememberedChallengeFirst(t *testing.T) {
+	e := newCertTestEnv(t, certRow{Name: "nc.firma.de", State: certStateFehler, ChallengeID: "rec-alt"})
+	if err := certIssue(context.Background(), e.deps(), "nc.firma.de"); err != nil {
+		t.Fatal(err)
+	}
+	if len(e.dns.events) < 2 || e.dns.events[0] != "cleanup:rec-alt" || e.dns.events[1] != "present" {
+		t.Fatalf("Reihenfolge: %v", e.dns.events)
+	}
+	if r := e.store.get("nc.firma.de"); r.State != certStateGueltig || r.ChallengeID != "" {
+		t.Fatalf("state=%q challenge_id=%q", r.State, r.ChallengeID)
+	}
+
+	e2 := newCertTestEnv(t, certRow{Name: "nc.firma.de", State: certStateFehler, ChallengeID: "rec-alt"})
+	e2.dns.cleanErr = errors.New("Cloudflare: 503")
+	err := certIssue(context.Background(), e2.deps(), "nc.firma.de")
+	if err == nil {
+		t.Fatal("Fehler erwartet")
+	}
+	r := e2.store.get("nc.firma.de")
+	if r.State != certStateFehler || !strings.Contains(r.LastError, "Alter Prüf-Eintrag") || r.ChallengeID != "rec-alt" {
+		t.Fatalf("Zustand: %+v", r)
+	}
+	if e2.caCalls != 0 || e2.ca.count() != 0 || e2.dns.present != 0 {
+		t.Fatalf("trotzdem weitergemacht: ca=%d orders=%d present=%d", e2.caCalls, e2.ca.count(), e2.dns.present)
+	}
+}
+
+// (c) Eine gemerkte Kennung, deren Eintrag nicht mehr in der Zone steht, gilt als gelöscht;
+// der Auftrag läuft weiter, gelöscht wird nur der neue Eintrag.
+func TestCertIssueRememberedChallengeGone(t *testing.T) {
+	e := newCertTestEnv(t, certRow{Name: "nc.firma.de", State: certStateFehler, ChallengeID: "rec-weg"})
+	api := &fakeCFRecords{}
+	d := e.deps()
+	d.dns = func() (acme.DNS, error) {
+		return &certDNS{api: api, zoneID: "z1", lookupTXT: func(context.Context, string) ([]string, error) {
+			return []string{"wert"}, nil
+		}}, nil
+	}
+	if err := certIssue(context.Background(), d, "nc.firma.de"); err != nil {
+		t.Fatal(err)
+	}
+	if len(api.deleted) != 1 || api.deleted[0] != "rec1" {
+		t.Fatalf("gelöscht: %v", api.deleted)
+	}
+	if r := e.store.get("nc.firma.de"); r.State != certStateGueltig || r.ChallengeID != "" {
+		t.Fatalf("state=%q challenge_id=%q", r.State, r.ChallengeID)
 	}
 }

@@ -119,16 +119,20 @@ func certSafeText(s string) string {
 
 // certRememberDNS merkt sich die Kennung des Prüf-Eintrags in der Datenbank, solange er
 // steht. Stürzt das PDH zwischen Anlegen und Löschen ab, räumt der tägliche Lauf ihn weg.
+// pending ist die Kennung, solange der Eintrag nicht gelöscht ist; certIssue merkt sie nach
+// dem Speichern erneut (certSaveIssued leert challenge_id).
 type certRememberDNS struct {
 	acme.DNS
-	ctx   context.Context
-	store certStore
-	name  string
+	ctx     context.Context
+	store   certStore
+	name    string
+	pending string
 }
 
 func (r *certRememberDNS) Present(ctx context.Context, fqdn, value string) (string, error) {
 	id, err := r.DNS.Present(ctx, fqdn, value)
 	if err == nil && id != "" {
+		r.pending = id
 		_ = r.store.certSetChallenge(r.ctx, r.name, id)
 	}
 	return id, err
@@ -137,6 +141,7 @@ func (r *certRememberDNS) Present(ctx context.Context, fqdn, value string) (stri
 func (r *certRememberDNS) CleanUp(ctx context.Context, id string) error {
 	err := r.DNS.CleanUp(ctx, id)
 	if err == nil {
+		r.pending = ""
 		_ = r.store.certSetChallenge(r.ctx, r.name, "")
 	} else {
 		componentLog("zertifikate").Warn().Str("name", r.name).Str("fehler", certSafeText(err.Error())).
@@ -229,6 +234,16 @@ func certIssue(ctx context.Context, d certDeps, name string) (err error) {
 	if err != nil {
 		return fail(err)
 	}
+	// Ein gemerkter Prüf-Eintrag (abgebrochener Auftrag, gescheitertes Löschen) wird vor
+	// dem neuen Auftrag gelöscht – nie ein neuer Eintrag über einem alten.
+	if row.ChallengeID != "" {
+		step = "aufraeumen"
+		if err := certRemoveChallenge(ctx, dns, name, row.ChallengeID); err != nil {
+			return fail(fmt.Errorf("Alter Prüf-Eintrag für %s ließ sich nicht löschen, deshalb kein neuer Auftrag: %w", name, err))
+		}
+		_ = d.store.certSetChallenge(sctx, name, "")
+		lg.Info().Str("name", name).Msg("übrig gebliebenen prüf-eintrag gelöscht")
+	}
 	ca, err := d.ca(row.Staging)
 	if err != nil {
 		return fail(err)
@@ -238,12 +253,19 @@ func certIssue(ctx context.Context, d certDeps, name string) (err error) {
 		_ = d.store.certSetStep(sctx, name, certStateLaeuft, s, "")
 		lg.Debug().Str("name", name).Str("schritt", s).Msg("zertifikat")
 	}
-	is, err := acme.Issue(ctx, ca, &certRememberDNS{DNS: dns, ctx: sctx, store: d.store, name: name}, name, onStep, certWait)
+	rd := &certRememberDNS{DNS: dns, ctx: sctx, store: d.store, name: name}
+	is, err := acme.Issue(ctx, ca, rd, name, onStep, certWait)
 	if err != nil {
-		return fail(err)
+		return fail(err) // eine nicht gelöschte Kennung bleibt gemerkt
 	}
 	step = "speichern"
-	if err := d.store.certSaveIssued(sctx, name, is); err != nil {
+	err = d.store.certSaveIssued(sctx, name, is)
+	if rd.pending != "" {
+		// Löschen gescheitert: certSaveIssued hat challenge_id geleert – wieder merken,
+		// damit der tägliche Lauf den Eintrag findet.
+		_ = d.store.certSetChallenge(sctx, name, rd.pending)
+	}
+	if err != nil {
 		return fail(fmt.Errorf("Zertifikat speichern: %w", err))
 	}
 	lg.Info().Str("name", name).Str("fingerabdruck", is.Fingerprint).Time("gueltig_bis", is.NotAfter).Msg("zertifikat geholt")
@@ -360,6 +382,22 @@ func certAlarmDue(row certRow, now time.Time, stored string) (mark string, send 
 // certChallengeLister: ein DNS-Zugang, der die Einträge der Zone nennen kann (Cloudflare).
 type certChallengeLister interface {
 	challengeRecords(ctx context.Context) ([]cloudflare.Record, error)
+}
+
+// certRemoveChallenge löscht einen gemerkten Prüf-Eintrag eines Namens. Mit Cloudflare-Zugang
+// nur, wenn er noch als TXT _acme-challenge.<name> in der Zone steht (wie certCleanLeftovers);
+// steht er dort nicht mehr, gilt er als gelöscht.
+func certRemoveChallenge(ctx context.Context, dns acme.DNS, name, id string) error {
+	if l, ok := dns.(certChallengeLister); ok {
+		recs, err := l.challengeRecords(ctx)
+		if err != nil {
+			return err
+		}
+		if len(certLeftovers(recs, map[string]string{id: "_acme-challenge." + name})) == 0 {
+			return nil
+		}
+	}
+	return dns.CleanUp(ctx, id)
 }
 
 func (d *certDNS) challengeRecords(ctx context.Context) ([]cloudflare.Record, error) {
