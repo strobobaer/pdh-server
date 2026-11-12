@@ -2,12 +2,15 @@ package web
 
 import (
 	"context"
+	"encoding/json"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -321,35 +324,99 @@ func TestHAAccessCardRenders(t *testing.T) {
 	}
 }
 
+// access6HA: pdh-ha, das sich das IPv6-Ende merkt (old=true: älterer Dienst, der das Feld
+// nicht kennt). puts sind die Körper der PUT /v1/access.
+type access6HA struct {
+	mu   sync.Mutex
+	old  bool
+	cur  string
+	puts []string
+}
+
+func startAccess6HA(t *testing.T, f *access6HA) {
+	t.Helper()
+	sock := filepath.Join(t.TempDir(), "a6.sock")
+	ln, err := net.Listen("unix", sock)
+	if err != nil {
+		t.Skipf("Unix-Socket nicht verfügbar: %v", err)
+	}
+	srv := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		switch {
+		case r.Method == http.MethodPut && r.URL.Path == "/v1/access":
+			f.puts = append(f.puts, string(b))
+			var in map[string]any
+			_ = json.Unmarshal(b, &in)
+			if s, ok := in["vip6_suffix"].(string); ok && !f.old {
+				f.cur = s
+			}
+			_, _ = w.Write([]byte(`{"ok":true}`))
+		case r.URL.Path == "/v1/status":
+			out, _ := json.Marshal(map[string]any{"ok": true, "configured": true, "access": map[string]any{"vip6_suffix": f.cur}})
+			_, _ = w.Write(out)
+		default:
+			_, _ = w.Write([]byte(`{"ok":true}`))
+		}
+	})}
+	go func() { _ = srv.Serve(ln) }()
+	t.Cleanup(func() { srv.Close() })
+	t.Setenv("PDH_HA_SOCKET", sock)
+}
+
 func TestHADoAccessSendsVIP6Suffix(t *testing.T) {
-	f := &fakeHA{status: haTrioStatus, events: `[]`}
-	startFakeHA(t, f)
+	f := &access6HA{}
+	startAccess6HA(t, f)
 	h := &Handler{}
 	form := url.Values{"vip": {"10.77.1.50/24"}, "vip_on": {"0", "1"}, "vip6_suffix": {" 15 "}}
-	if _, err := h.haDoAccess(context.Background(), form); err != nil {
+	msg, err := h.haDoAccess(context.Background(), form)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(f.bodies[0], `"vip6_suffix":"15"`) {
-		t.Errorf("Körper: %s", f.bodies[0])
+	if !strings.Contains(f.puts[0], `"vip6_suffix":"15"`) {
+		t.Errorf("Körper: %s", f.puts[0])
+	}
+	if !strings.Contains(msg, "IPv6-Ende 15 gespeichert") {
+		t.Errorf("Meldung: %q", msg)
+	}
+	// unverändert: kein Satz zum IPv6-Ende
+	if msg, err := h.haDoAccess(context.Background(), form); err != nil || strings.Contains(msg, "IPv6") {
+		t.Errorf("unverändert: %q %v", msg, err)
 	}
 	form = url.Values{"vip": {"10.77.1.50/24"}, "vip_on": {"0", "1"}, "vip6_suffix": {""}}
-	if _, err := h.haDoAccess(context.Background(), form); err != nil {
+	msg, err = h.haDoAccess(context.Background(), form)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(f.bodies[1], `"vip6_suffix":""`) {
-		t.Errorf("leeres Feld muss \"\" senden: %s", f.bodies[1])
+	if !strings.Contains(f.puts[2], `"vip6_suffix":""`) {
+		t.Errorf("leeres Feld muss \"\" senden: %s", f.puts[2])
+	}
+	if !strings.Contains(msg, "IPv6-Ende entfernt") {
+		t.Errorf("Meldung: %q", msg)
 	}
 }
 
 func TestHADoAccessClearsVIP6WhenVIPOff(t *testing.T) {
-	f := &fakeHA{status: haTrioStatus, events: `[]`}
-	startFakeHA(t, f)
+	f := &access6HA{cur: "15"}
+	startAccess6HA(t, f)
 	form := url.Values{"vip": {"10.77.1.50/24"}, "vip_on": {"0"}, "vip6_suffix": {"15"}}
 	if _, err := (&Handler{}).haDoAccess(context.Background(), form); err != nil {
 		t.Fatal(err)
 	}
-	if b := f.bodies[0]; !strings.Contains(b, `"vip6_suffix":""`) || !strings.Contains(b, `"vip_on":false`) {
+	if b := f.puts[0]; !strings.Contains(b, `"vip6_suffix":""`) || !strings.Contains(b, `"vip_on":false`) {
 		t.Errorf("Körper: %s", b)
+	}
+}
+
+// F8: ein älterer Verbund-Dienst verwirft das Feld – die Meldung sagt es.
+func TestHADoAccessVIP6NotTakenByOldService(t *testing.T) {
+	f := &access6HA{old: true}
+	startAccess6HA(t, f)
+	form := url.Values{"vip": {"10.77.1.50/24"}, "vip_on": {"0", "1"}, "vip6_suffix": {"15"}}
+	_, err := (&Handler{}).haDoAccess(context.Background(), form)
+	if err == nil || err.Error() != "Der Verbund-Dienst hat das IPv6-Ende nicht übernommen – erst beide Server aktualisieren." {
+		t.Fatalf("Meldung: %v", err)
 	}
 }
 

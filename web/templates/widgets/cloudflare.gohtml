@@ -146,7 +146,7 @@
       <button class="btn btn-small" type="submit" name="action" value="lan" title="Im Haus eintragen (UniFi)" aria-label="{{.Name}} im Haus eintragen"><i class="ti ti-home-plus"></i></button></form>{{end}}
     {{if .LAN6Other}}<form hx-post="/admin/server-config/certs/lan6" hx-target="#cert-panel" hx-swap="outerHTML" hx-disabled-elt="find button"
       hx-confirm="IPv6-Eintrag von {{.Name}} von {{.LAN6Other}} auf {{if $.LAN6}}{{$.LAN6}}{{else}}die mitwandernde IPv6-Adresse{{end}} ändern?">
-      <input type="hidden" name="name" value="{{.Name}}">
+      <input type="hidden" name="name" value="{{.Name}}"><input type="hidden" name="from" value="{{.LAN6Other}}">
       <button class="btn btn-small" type="submit" title="IPv6-Eintrag im Haus überschreiben" aria-label="IPv6-Eintrag für {{.Name}} im Haus überschreiben"><i class="ti ti-replace"></i> IPv6</button></form>{{end}}{{end}}
   </div>{{end}}
   {{if .Error}}<div class="sc-sub cert-err" style="color:{{if eq .State "fehler"}}var(--red){{else}}var(--amber){{end}}"><i class="ti ti-alert-triangle"></i> {{.Error}}</div>{{end}}
@@ -195,7 +195,7 @@
 <ul class="sc-sub cert-hand">{{range .Extra6}}<li><code>{{.Name}}</code>{{if .Hint}} <span style="color:var(--amber)"><i class="ti ti-home-question"></i> {{.Hint}}</span>{{end}}
   {{if and .Other $.LANReady}}<form class="cert-inline" hx-post="/admin/server-config/certs/lan6" hx-target="#cert-panel" hx-swap="outerHTML" hx-disabled-elt="find button"
     hx-confirm="IPv6-Eintrag von {{.Name}} von {{.Other}} auf {{if $.LAN6}}{{$.LAN6}}{{else}}die mitwandernde IPv6-Adresse{{end}} ändern?">
-    <input type="hidden" name="name" value="{{.Name}}">
+    <input type="hidden" name="name" value="{{.Name}}"><input type="hidden" name="from" value="{{.Other}}">
     <button class="btn btn-small" type="submit" title="IPv6-Eintrag im Haus überschreiben" aria-label="IPv6-Eintrag für {{.Name}} im Haus überschreiben"><i class="ti ti-replace"></i> IPv6</button></form>{{end}}</li>{{end}}</ul>{{end}}
 {{if .LANReady}}<p class="sc-sub"><i class="ti ti-router"></i> Die UniFi UDM Pro ist angebunden: Je Name trägt der Knopf <i class="ti ti-home-plus"></i> den Namen im Haus ein. Adresse und API-Schlüssel stehen im Reiter <a href="?tab=unifi">UniFi</a>.</p>
 {{else if .CanUnifi}}<p class="sc-sub"><i class="ti ti-router"></i> Mit einer UniFi UDM Pro trägt das PDH die Namen selbst ein. {{if .Unifi.URL}}Die Anbindung ist noch nicht fertig – im{{else}}Adresse und API-Schlüssel trägst du im{{end}} Reiter <a href="?tab=unifi">UniFi</a> {{if .Unifi.URL}}den Fingerabdruck bestätigen{{else}}ein{{end}}. Ohne UniFi funktioniert alles andere wie bisher.</p>

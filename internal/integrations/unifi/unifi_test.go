@@ -111,11 +111,15 @@ func TestPinAccepted(t *testing.T) {
 	if len(recs) != 3 {
 		t.Fatalf("Einträge: %+v", recs)
 	}
-	if recs[0] != (Record{ID: "1c3b0a58-5d0e-4c3a-9a51-0d2f3c7a1b01", Name: "nc.firma.de", Value: "192.168.1.20", Type: "A"}) {
+	if recs[0] != (Record{ID: "1c3b0a58-5d0e-4c3a-9a51-0d2f3c7a1b01", Name: "nc.firma.de", Value: "192.168.1.20", Type: "A", Enabled: true}) {
 		t.Errorf("A-Eintrag: %+v", recs[0])
 	}
 	if recs[1].Type != "CNAME" || recs[1].Value != "nc.firma.de" || recs[2].Type != "AAAA" {
 		t.Errorf("andere Arten: %+v", recs[1:])
+	}
+	// F3: abgeschalteter Eintrag (enabled:false) kommt als Enabled=false an
+	if !recs[1].Enabled || recs[2].Enabled {
+		t.Errorf("enabled: %+v", recs[1:])
 	}
 	for _, k := range f.keys {
 		if k != testKey {
@@ -178,7 +182,7 @@ func TestFallbackToStaticDNS(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(recs) != 2 || recs[0] != (Record{ID: "65a1b2c3d4e5f60718293a4b", Name: "nc.firma.de", Value: "192.168.1.20", Type: "A"}) {
+	if len(recs) != 2 || recs[0] != (Record{ID: "65a1b2c3d4e5f60718293a4b", Name: "nc.firma.de", Value: "192.168.1.20", Type: "A", Enabled: true}) {
 		t.Fatalf("Einträge aus static-dns: %+v", recs)
 	}
 	id, err := c.Create(ctx, "pdh.firma.de", "192.168.1.50")
@@ -393,5 +397,35 @@ func TestPublicHostRefusedBeforeHandshake(t *testing.T) {
 	}
 	if _, err := ValidateBase("https://169.254.1.1"); err != nil {
 		t.Errorf("Link-Local: %v", err)
+	}
+}
+
+// F3: enabled der älteren Schnittstelle kommt in Record an.
+func TestLegacyEnabled(t *testing.T) {
+	var l []legacyRecord
+	raw := `[{"_id":"1","key":"nas","record_type":"AAAA","value":"2a02::15","enabled":false,"ttl":0},` +
+		`{"_id":"2","key":"nas","record_type":"A","value":"10.0.0.5","enabled":true,"ttl":0}]`
+	if err := json.Unmarshal([]byte(raw), &l); err != nil {
+		t.Fatal(err)
+	}
+	if r := l[0].record(); r.Enabled || r.Type != "AAAA" {
+		t.Errorf("abgeschaltet: %+v", r)
+	}
+	if r := l[1].record(); !r.Enabled {
+		t.Errorf("eingeschaltet: %+v", r)
+	}
+}
+
+// F9: ValidName nimmt auch Kurznamen ohne Punkt an.
+func TestValidName(t *testing.T) {
+	for _, ok := range []string{"nas", "NAS", "nc.firma.de", "nc.firma.de."} {
+		if !ValidName(ok) {
+			t.Errorf("%q abgelehnt", ok)
+		}
+	}
+	for _, bad := range []string{"", "a b", "*.firma.de", "-x.firma.de", "nc..firma.de"} {
+		if ValidName(bad) {
+			t.Errorf("%q angenommen", bad)
+		}
 	}
 }

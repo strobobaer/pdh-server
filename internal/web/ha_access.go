@@ -260,8 +260,10 @@ func (h *Handler) haDoAccess(ctx context.Context, f url.Values) (string, error) 
 	}
 	flag("vip_on", "Mitwandernde Adresse")
 	flag("hooks_on", "Skripte")
-	if _, ok := f["vip6_suffix"]; ok {
-		suffix := strings.TrimSpace(f.Get("vip6_suffix"))
+	_, with6 := f["vip6_suffix"]
+	suffix := ""
+	if with6 {
+		suffix = strings.TrimSpace(f.Get("vip6_suffix"))
 		// Wird die Adresse ausgeschaltet, gilt kein IPv6-Ende mehr (pdh-ha
 		// lehnt ein Ende ohne eingeschaltete Adresse ab).
 		if on, set := body["vip_on"].(bool); set && !on {
@@ -272,10 +274,40 @@ func (h *Handler) haDoAccess(ctx context.Context, f url.Values) (string, error) 
 	if len(body) == 0 {
 		return "", errAccessEmpty
 	}
+	// Ende vorher und nachher lesen: Rückmeldung nur bei Änderung, und ein älterer
+	// Verbund-Dienst, der das Feld nicht kennt, fällt auf.
+	prev6, prevKnown := "", false
+	if with6 {
+		prev6, prevKnown = h.haVIP6Suffix(ctx)
+	}
 	if err := h.haDo(ctx, http.MethodPut, "/v1/access", body, nil); err != nil {
 		return "", err
 	}
+	if with6 {
+		switch {
+		case suffix != "" && (!prevKnown || prev6 != suffix):
+			msgs = append(msgs, "IPv6-Ende "+suffix+" gespeichert")
+		case suffix == "" && prevKnown && prev6 != "":
+			msgs = append(msgs, "IPv6-Ende entfernt")
+		}
+		if now6, ok := h.haVIP6Suffix(ctx); ok && now6 != suffix {
+			return "", errors.New("Der Verbund-Dienst hat das IPv6-Ende nicht übernommen – erst beide Server aktualisieren.")
+		}
+	}
 	return strings.Join(msgs, ", "), nil
+}
+
+// haVIP6Suffix: eingestelltes IPv6-Ende laut Verbund-Dienst; false = Status nicht lesbar.
+func (h *Handler) haVIP6Suffix(ctx context.Context) (string, bool) {
+	var st struct {
+		Access struct {
+			VIP6Suffix string `json:"vip6_suffix"`
+		} `json:"access"`
+	}
+	if err := h.haDo(ctx, http.MethodGet, "/v1/status", nil, &st); err != nil {
+		return "", false
+	}
+	return strings.TrimSpace(st.Access.VIP6Suffix), true
 }
 
 // haDoHooksRun: POST /v1/hooks/run – alle Skripte jetzt ausführen.

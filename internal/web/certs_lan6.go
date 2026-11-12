@@ -11,7 +11,6 @@ import (
 	"sync"
 	"time"
 
-	"pdh/internal/integrations/acme"
 	"pdh/internal/integrations/unifi"
 )
 
@@ -102,7 +101,8 @@ func certLAN6Names(recs []unifi.Record, v4 string) []string {
 	seen := map[string]bool{}
 	var out []string
 	for _, r := range recs {
-		if !strings.EqualFold(r.Type, "A") || !lan6Same(r.Value, v4) {
+		// nur eingeschaltete Einträge zeigen wirklich auf die Adresse
+		if !strings.EqualFold(r.Type, "A") || !r.Enabled || !lan6Same(r.Value, v4) {
 			continue
 		}
 		n := certLANNorm(r.Name)
@@ -148,6 +148,21 @@ func (m *lan6Marks) keepAll() {
 	}
 }
 
+// keepUnless: Merker der Namen, die nicht in done stehen, bleiben, wie sie vorher waren
+// (Lauf abgebrochen: was nicht fertig geprüft ist, ändert sich nicht).
+func (m *lan6Marks) keepUnless(done map[string]bool) {
+	for n := range m.cur {
+		if _, was := m.old[n]; !was && !done[n] {
+			delete(m.cur, n)
+		}
+	}
+	for n, v := range m.old {
+		if !done[n] {
+			m.cur[n] = v
+		}
+	}
+}
+
 func (m *lan6Marks) flush(put func(key, value string) error) {
 	all := map[string]string{}
 	for n := range m.old {
@@ -170,7 +185,9 @@ func (m *lan6Marks) flush(put func(key, value string) error) {
 // Verloren geht nichts nach einer einzelnen Beobachtung: Eine gemerkte Kennung wird erst
 // vergessen, wenn sie in zwei Läufen nacheinander in der Antwort fehlt, und ein eigener Eintrag
 // erst gelöscht, wenn der Name in zwei Läufen nacheinander nicht mehr auf die mitwandernde
-// Adresse zeigt (Zähler unifi.wait6.<name>). Ein sauber gemeldetes „aus“ löscht sofort.
+// Adresse zeigt oder IPv6 zweimal nacheinander sauber als „aus“ gemeldet wird (Zähler
+// unifi.wait6.<name>). Läuft die Frist mitten im Lauf ab, behalten die übrigen Namen ihre
+// Hinweise und Merker.
 func certLAN6Sync(ctx context.Context, d certDeps, t lan6Target) (changed int) {
 	d = d.withDefaults()
 	if d.blocked() || d.lanCheck == nil || d.settingsPrefix == nil {
@@ -285,12 +302,42 @@ func certLAN6Sync(ctx context.Context, d certDeps, t lan6Target) (changed int) {
 		names = names[:lan6MaxNames]
 	}
 
+	// Frist mitten im Lauf abgelaufen: abbrechen. Namen, die nicht fertig geprüft sind (nicht in
+	// checked), behalten Hinweise und Merker; ein Fehler der Frist wird nie zum Hinweis.
+	checked := map[string]bool{}
+	aborted := false
+	expired := func() bool {
+		if ctx.Err() != nil {
+			aborted = true
+		}
+		return aborted
+	}
+	defer func() { // läuft vor dem Schreiben der Merker (oben)
+		if aborted {
+			hints.keepUnless(checked)
+			other.keepUnless(checked)
+			wait.keepUnless(checked)
+			lg.Warn().Msg("ipv6-einträge im haus: frist abgelaufen – übrige namen im nächsten lauf")
+		}
+	}()
+
 	for _, n := range names {
+		if expired() {
+			break
+		}
+		checked[n] = true
 		var aaaa []unifi.Record
+		off := false
 		for _, r := range recs {
 			if strings.EqualFold(r.Type, "AAAA") && certLANNorm(r.Name) == n {
 				aaaa = append(aaaa, r)
+				off = off || !r.Enabled
 			}
+		}
+		if off {
+			// abgeschaltet (eigen oder fremd): weder anlegen noch ändern, kein Knopf
+			hints.cur[n] = "Der IPv6-Eintrag von " + n + " ist an der UDM Pro abgeschaltet. Nichts geändert."
+			continue
 		}
 		var mine *unifi.Record
 		if id := own[n]; id != "" {
@@ -314,6 +361,11 @@ func certLAN6Sync(ctx context.Context, d certDeps, t lan6Target) (changed int) {
 		}
 		update := func(r unifi.Record, ownRec bool) {
 			if err := c.Update(ctx, r.ID, n, t.V6); err != nil {
+				if ctx.Err() != nil {
+					aborted = true
+					delete(checked, n)
+					return
+				}
 				hints.cur[n] = "IPv6-Eintrag nicht geändert: " + certSafeText(err.Error())
 				lg.Warn().Str("name", n).Str("kennung", r.ID).Str("fehler", certSafeText(err.Error())).Msg("ipv6-eintrag im haus nicht geändert")
 				return
@@ -356,6 +408,11 @@ func certLAN6Sync(ctx context.Context, d certDeps, t lan6Target) (changed int) {
 		}
 		nid, err := c.Create(ctx, n, t.V6)
 		if err != nil {
+			if ctx.Err() != nil {
+				aborted = true
+				delete(checked, n)
+				break
+			}
 			hints.cur[n] = "IPv6-Eintrag nicht angelegt: " + certSafeText(err.Error())
 			lg.Warn().Str("name", n).Str("adresse", t.V6).Str("fehler", certSafeText(err.Error())).Msg("ipv6-eintrag im haus nicht angelegt")
 			continue
@@ -369,11 +426,20 @@ func certLAN6Sync(ctx context.Context, d certDeps, t lan6Target) (changed int) {
 	}
 
 	// Aufräumen: eigene Einträge von Namen, die nicht (mehr) auf die mitwandernde Adresse
-	// zeigen (zweimal in Folge beobachtet), oder alle eigenen, wenn IPv6 sauber aus ist.
+	// zeigen, oder alle eigenen, wenn IPv6 sauber aus ist – beides erst nach zwei gleichen
+	// Beobachtungen in Folge (ein kurz verlorenes Ende kostet keine Einträge).
+	what := "weg"
+	if !t.Wanted {
+		what = "aus"
+	}
 	for _, n := range lan6SortedKeys(own) {
 		if pointing[n] {
 			continue
 		}
+		if expired() {
+			break
+		}
+		checked[n] = true
 		id := own[n]
 		switch _, st := ownState(n, id); st {
 		case "weg":
@@ -387,15 +453,22 @@ func certLAN6Sync(ctx context.Context, d certDeps, t lan6Target) (changed int) {
 			hints.cur[n] = lan6ChangedHint(n)
 			continue
 		}
-		if t.Wanted && !observe(n, "weg") {
-			lg.Info().Str("name", n).Str("kennung", id).Msg("name zeigt nicht mehr auf die mitwandernde adresse – ipv6-eintrag erst beim nächsten lauf entfernt")
+		if !observe(n, what) {
+			if t.Wanted {
+				lg.Info().Str("name", n).Str("kennung", id).Msg("name zeigt nicht mehr auf die mitwandernde adresse – ipv6-eintrag erst beim nächsten lauf entfernt")
+			} else {
+				lg.Info().Str("name", n).Str("kennung", id).Msg("ipv6-ende ist aus – ipv6-eintrag erst beim nächsten lauf entfernt")
+			}
 			continue
 		}
 		if err := c.Delete(ctx, id); err != nil {
-			hints.cur[n] = "IPv6-Eintrag (Kennung " + id + ") nicht entfernt: " + certSafeText(err.Error())
-			if t.Wanted {
-				wait.cur[n] = "weg:1" // im nächsten Lauf gleich wieder versuchen
+			if ctx.Err() != nil {
+				aborted = true
+				delete(checked, n)
+				break
 			}
+			hints.cur[n] = "IPv6-Eintrag (Kennung " + id + ") nicht entfernt: " + certSafeText(err.Error())
+			wait.cur[n] = what + ":1" // im nächsten Lauf gleich wieder versuchen
 			lg.Warn().Str("name", n).Str("kennung", id).Str("fehler", certSafeText(err.Error())).Msg("ipv6-eintrag im haus nicht entfernt")
 			continue
 		}
@@ -434,7 +507,9 @@ var errLAN6Unknown = errors.New("Die mitwandernde IPv6-Adresse ist gerade nicht 
 // fremden AAAA-Eintrag eines Namens, der mit Typ A auf die mitwandernde Adresse zeigt, auf die
 // mitwandernde IPv6-Adresse – ohne ihn zu übernehmen. Der Name muss kein Zertifikat haben.
 // Legt nie etwas an, löscht nie, ändert nie einen Eintrag Typ A oder einen anderen Namen.
-func certDoLAN6(ctx context.Context, d certActDeps, raw string) (string, error) {
+// from ist die Adresse, die die Rückfrage gezeigt hat: geändert wird nur, wenn der fremde
+// Eintrag noch genau diese Adresse hat (fehlt from, wird nichts geändert).
+func certDoLAN6(ctx context.Context, d certActDeps, raw, from string) (string, error) {
 	if d.blocked() {
 		return "", errCertBlocked
 	}
@@ -444,14 +519,17 @@ func certDoLAN6(ctx context.Context, d certActDeps, raw string) (string, error) 
 	if strings.HasPrefix(strings.TrimSpace(raw), "*") {
 		return "", errors.New("Sammelnamen (*.…) werden nicht unterstützt")
 	}
-	n, err := acme.NormalizeName(raw)
-	if err != nil {
-		return "", err
+	// dieselbe Regel wie die UniFi-Anbindung: auch Kurznamen wie „nas“
+	n := certLANNorm(raw)
+	if n == "" {
+		return "", errors.New("Name fehlt")
+	}
+	if !unifi.ValidName(n) {
+		return "", fmt.Errorf("%q ist kein gültiger Name", raw)
 	}
 	if net.ParseIP(n) != nil {
 		return "", fmt.Errorf("%q ist ein Name, keine IP-Adresse", raw)
 	}
-	n = certLANNorm(n)
 	var t lan6Target
 	if d.lan6 != nil {
 		t = d.lan6(ctx)
@@ -487,6 +565,9 @@ func certDoLAN6(ctx context.Context, d certActDeps, raw string) (string, error) 
 		if !strings.EqualFold(r.Type, "AAAA") || certLANNorm(r.Name) != n {
 			continue
 		}
+		if !r.Enabled {
+			return "", errors.New("Der IPv6-Eintrag von " + n + " ist an der UDM Pro abgeschaltet. Nichts geändert.")
+		}
 		if lan6Same(r.Value, t.V6) {
 			clear()
 			return n + " zeigt für IPv6 schon auf " + t.V6 + ".", nil
@@ -504,6 +585,9 @@ func certDoLAN6(ctx context.Context, d certActDeps, raw string) (string, error) 
 		return "", errors.New("Für " + n + " gibt es mehrere IPv6-Einträge an der UDM Pro. Bitte dort von Hand aufräumen.")
 	}
 	rec := foreign[0]
+	if strings.TrimSpace(from) == "" || !lan6Same(rec.Value, from) {
+		return "", errors.New("Der IPv6-Eintrag von " + n + " hat sich inzwischen geändert. Bitte die Seite neu laden.")
+	}
 	if err := c.Update(ctx, rec.ID, n, t.V6); err != nil {
 		return "", err
 	}

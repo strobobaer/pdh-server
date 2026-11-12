@@ -106,7 +106,7 @@ type apiError struct {
 }
 
 func (p policy) record() Record {
-	r := Record{ID: p.ID, Name: p.Domain, Type: strings.TrimSuffix(p.Type, "_RECORD")}
+	r := Record{ID: p.ID, Name: p.Domain, Type: strings.TrimSuffix(p.Type, "_RECORD"), Enabled: p.Enabled}
 	switch p.Type {
 	case "A_RECORD":
 		r.Value = p.IPv4Address
@@ -127,7 +127,7 @@ func policyFor(name, ip string, v6 bool) policy {
 }
 
 func (l legacyRecord) record() Record {
-	return Record{ID: l.ID, Name: l.Key, Value: l.Value, Type: strings.ToUpper(l.RecordType)}
+	return Record{ID: l.ID, Name: l.Key, Value: l.Value, Type: strings.ToUpper(l.RecordType), Enabled: l.Enabled}
 }
 
 func legacyFor(name, ip string, v6 bool) legacyRecord {
@@ -141,8 +141,10 @@ func legacyFor(name, ip string, v6 bool) legacyRecord {
 // ── Typen und Fehler ─────────────────────────────────────────
 
 // Record: ein DNS-Eintrag der UDM Pro. Type ist "A", "AAAA", "CNAME", … ; Value bei A die IPv4-Adresse.
+// Enabled: an der UDM Pro eingeschaltet (Feld enabled beider Schnittstellen).
 type Record struct {
 	ID, Name, Value, Type string
+	Enabled               bool
 }
 
 var (
@@ -334,6 +336,12 @@ func ValidateBase(raw string) (string, error) {
 		return "", bad
 	}
 	return "https://" + strings.ToLower(u.Host), nil
+}
+
+// ValidName: ein Name, den die UniFi-Anbindung als DNS-Eintrag annimmt (Groß/Klein und ein
+// Punkt am Ende egal). Auch ein Name ohne Punkt wie „nas“ ist gültig.
+func ValidName(name string) bool {
+	return validHostname(strings.ToLower(strings.TrimSpace(name)))
 }
 
 func validHostname(h string) bool {

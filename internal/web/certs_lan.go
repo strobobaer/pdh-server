@@ -665,10 +665,10 @@ func (h *Handler) CertUnifiConfirmWeb(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// CertLAN6Web: POST /admin/server-config/certs/lan6 (name) – fremden IPv6-Eintrag überschreiben
+// CertLAN6Web: POST /admin/server-config/certs/lan6 (name, from) – fremden IPv6-Eintrag überschreiben
 func (h *Handler) CertLAN6Web(w http.ResponseWriter, r *http.Request) {
 	h.certAct(w, r, h.hasPerm(r, permUnifi), "ipv6-im-haus-ueberschreiben", true, func(ctx context.Context, d certActDeps) (string, error) {
-		return certDoLAN6(ctx, d, r.FormValue("name"))
+		return certDoLAN6(ctx, d, r.FormValue("name"), r.FormValue("from"))
 	})
 }
 

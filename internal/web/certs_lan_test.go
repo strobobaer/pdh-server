@@ -52,7 +52,7 @@ func (f *fakeLAN) Create(_ context.Context, name, ip string) (string, error) {
 	if strings.Contains(ip, ":") {
 		typ = "AAAA"
 	}
-	f.recs = append(f.recs, unifi.Record{ID: id, Name: name, Value: ip, Type: typ})
+	f.recs = append(f.recs, unifi.Record{ID: id, Name: name, Value: ip, Type: typ, Enabled: true})
 	return id, nil
 }
 
@@ -62,7 +62,7 @@ func (f *fakeLAN) Update(_ context.Context, id, name, ip string) error {
 	f.calls = append(f.calls, "update "+id+" "+name+" "+ip)
 	for i := range f.recs {
 		if f.recs[i].ID == id {
-			f.recs[i].Value = ip
+			f.recs[i].Value, f.recs[i].Enabled = ip, true // die UDM Pro schaltet ihn dabei ein
 		}
 	}
 	return nil
