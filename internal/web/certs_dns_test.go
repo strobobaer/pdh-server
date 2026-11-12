@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"testing"
 
 	"pdh/internal/integrations/cloudflare"
@@ -69,6 +70,9 @@ func TestCertDNSVisible(t *testing.T) {
 		{"fehlt", []string{"alt"}, nil, false, false},
 		{"nochNichtDa", nil, errors.New("lookup x: no such host"), false, false},
 		{"echterFehler", nil, errors.New("Netz kaputt"), false, true},
+		{"timeout", nil, &net.DNSError{Err: "i/o timeout", IsTimeout: true}, false, false},
+		{"servfail", nil, errors.New("lookup x on 1.2.3.4:53: server misbehaving"), false, false},
+		{"abgebrochen", nil, context.Canceled, false, true},
 	}
 	for _, c := range cases {
 		d := &certDNS{lookupTXT: func(context.Context, string) ([]string, error) { return c.vals, c.err }}
@@ -90,5 +94,26 @@ func TestCertLeftovers(t *testing.T) {
 	got := certLeftovers(recs, map[string]string{"a": "_acme-challenge.nc.firma.de", "gone": "_acme-challenge.nc.firma.de"})
 	if len(got) != 1 || got[0] != "a" {
 		t.Fatalf("got %v", got)
+	}
+}
+
+// Die Ablehnungszweige: Typ, Name oder Präfix weichen ab, oder nichts gemerkt → nichts löschen.
+func TestCertLeftoversRejects(t *testing.T) {
+	const n = "_acme-challenge.nc.firma.de"
+	recs := []cloudflare.Record{
+		{ID: "typ", Type: "CNAME", Name: n},
+		{ID: "name", Type: "TXT", Name: "_acme-challenge.fremd.firma.de"},
+		{ID: "praefix", Type: "TXT", Name: "nc.firma.de"},
+	}
+	rem := map[string]string{"typ": n, "name": n, "praefix": "nc.firma.de"}
+	if got := certLeftovers(recs, rem); len(got) != 0 {
+		t.Fatalf("got %v", got)
+	}
+	ok := []cloudflare.Record{{ID: "a", Type: "TXT", Name: n}}
+	if got := certLeftovers(ok, nil); len(got) != 0 {
+		t.Fatalf("nil: %v", got)
+	}
+	if got := certLeftovers(ok, map[string]string{}); len(got) != 0 {
+		t.Fatalf("leer: %v", got)
 	}
 }

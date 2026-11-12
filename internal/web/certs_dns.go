@@ -51,7 +51,7 @@ func (d *certDNS) CleanUp(ctx context.Context, id string) error {
 func (d *certDNS) Visible(ctx context.Context, fqdn, value string) (bool, error) {
 	vals, err := d.lookupTXT(ctx, strings.TrimSuffix(fqdn, "."))
 	if err != nil {
-		if txtNotThere(err) {
+		if txtNotThere(ctx, err) {
 			return false, nil
 		}
 		return false, err
@@ -64,14 +64,24 @@ func (d *certDNS) Visible(ctx context.Context, fqdn, value string) (bool, error)
 	return false, nil
 }
 
-// txtNotThere: der Name oder der TXT-Eintrag existiert (noch) nicht.
-func txtNotThere(err error) bool {
+// txtNotThere: der Eintrag ist (noch) nicht zu sehen und das kann sich noch ändern – er
+// fehlt, der Nameserver antwortet noch nicht oder nur vorübergehend nicht. Nur ein
+// abgebrochener oder abgelaufener Aufruf (ctx des Aufrufers) ist ein harter Fehler.
+func txtNotThere(ctx context.Context, err error) bool {
+	if ctx.Err() != nil || errors.Is(err, context.Canceled) {
+		return false
+	}
 	var de *net.DNSError
-	if errors.As(err, &de) && de.IsNotFound {
+	if errors.As(err, &de) && (de.IsNotFound || de.IsTimeout || de.IsTemporary) {
 		return true
 	}
 	m := strings.ToLower(err.Error())
-	return strings.Contains(m, "no such host") || strings.Contains(m, "nxdomain") || strings.Contains(m, "no data")
+	for _, k := range []string{"no such host", "nxdomain", "no data", "server misbehaving", "servfail", "i/o timeout", "connection refused", "timeout"} {
+		if strings.Contains(m, k) {
+			return true
+		}
+	}
+	return false
 }
 
 // certLeftovers nennt die Kennungen der Prüf-Einträge, die gelöscht werden dürfen. Das sind
@@ -99,6 +109,9 @@ func authoritativeTXT(zone string) func(ctx context.Context, fqdn string) ([]str
 	return func(ctx context.Context, fqdn string) ([]string, error) {
 		nss, err := net.DefaultResolver.LookupNS(ctx, strings.TrimSuffix(zone, "."))
 		if err != nil {
+			if txtNotThere(ctx, err) {
+				return nil, nil
+			}
 			return nil, err
 		}
 		if len(nss) == 0 {
@@ -115,10 +128,12 @@ func authoritativeTXT(zone string) func(ctx context.Context, fqdn string) ([]str
 					return (&net.Dialer{}).DialContext(dctx, network, net.JoinHostPort(host, "53"))
 				},
 			}
-			vals, err := res.LookupTXT(ctx, strings.TrimSuffix(fqdn, "."))
+			qctx, cancel := context.WithTimeout(ctx, 8*time.Second)
+			vals, err := res.LookupTXT(qctx, strings.TrimSuffix(fqdn, "."))
+			cancel()
 			if err != nil {
-				if txtNotThere(err) {
-					return nil, nil // bei diesem Nameserver noch nicht da
+				if txtNotThere(ctx, err) {
+					return nil, nil // bei diesem Nameserver noch nicht da oder nicht erreichbar
 				}
 				return nil, err
 			}
