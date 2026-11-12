@@ -25,7 +25,8 @@ const (
 	msgCardTooMany = "Zu viele unbekannte Karten. Bitte kurz warten."
 )
 
-// cardFailLimit: unbekannte Karten pro Terminal (Schlüssel "card:"+Terminal-ID);
+// cardFailLimit: Fehlversuche aller Anmeldewege pro Terminal (unbekannte Karten, falsche
+// PIN/Passwort über /terminal/login; Schlüssel "card:"+Terminal-ID);
 // ab 10 Fehlversuchen in 1 min antwortet der Handler mit 429.
 // Hinweis: Der Zähler liegt im Speicher und gilt je PDH-Instanz; unter HA ist die
 // effektive Grenze daher 10 × Anzahl der Instanzen.
@@ -35,6 +36,7 @@ func (h *Handler) cardRoutes(r chi.Router) {
 	r.Post("/terminal/card", h.TerminalCard)
 	r.Post("/terminal/card/ping", h.TerminalCardPing)
 	r.Post("/terminal/card/abmelden", h.TerminalCardLogout)
+	r.Post("/terminal/login", h.TerminalLogin)
 }
 
 // cardTerminal: Terminal-Benutzer des Geräts; sonst 403 (wie terminalGate).
