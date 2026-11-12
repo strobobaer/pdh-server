@@ -27,8 +27,8 @@ Neu:
 
 Anwender-Entscheidungen (2026-11-11): Zweck C (Haus und Strecke Cloudflare →
 Server), Weg 1 (nginx als gemeinsame Tür), lokale DNS-Einträge legt der
-Anwender selbst an (eigener DNS-Server im UniFi-Netz; Produkt noch offen, siehe
-Abschnitt 13).
+Anwender selbst an (UniFi UDM Pro, lokale DNS-Einträge in UniFi Network;
+Angabe vom 2026-11-12).
 
 Nicht in diesem Teil:
 
@@ -235,7 +235,9 @@ Browser, Desktop-Client und Handy-App ohne Warnung prüfen.
 ## 12. Handbuch, Änderungsprotokoll, Version
 
 - Handbuch-Kapitel zu Cloudflare: „So holst du ein Zertifikat“, „So zeigen die
-  Namen im Haus auf den Server“ (Schritte für den DNS-Server des Anwenders),
+  Namen im Haus auf den Server“ (Schritte für die UniFi UDM Pro: in UniFi
+  Network je Name ein lokaler DNS-Eintrag vom Typ A auf die mitwandernde
+  Adresse; für andere DNS-Server ein allgemeiner Satz),
   „Full (strict) einschalten“, Fehlerbilder. Der Satz „Zertifikate über
   Cloudflare stellt das PDH noch nicht aus“ entfällt. Skizze in
   `help_figures.gohtml` anpassen.
@@ -244,8 +246,9 @@ Browser, Desktop-Client und Handy-App ohne Warnung prüfen.
 
 ## 13. Offene Punkte für den Plan
 
-- Produkt des DNS-Servers im Haus (Anwender hat „eigener DNS-Server, UniFi“
-  genannt, das Produkt noch nicht) – nur für die Handbuch-Schritte nötig.
+- DNS-Server im Haus: geklärt, UniFi UDM Pro. Offen ist nur der genaue
+  Menüpfad der lokalen DNS-Einträge; er hängt von der Version von UniFi
+  Network ab und wird bei der Abnahme am Gerät des Anwenders abgelesen.
 - Wie der Agent den nginx-Benutzer und den Ort der Seiten je Distribution
   findet (heute Ubuntu: `www-data`, `/etc/nginx/sites-enabled`).
 - Ob der Tunnel den Namen auf dem Server über `/etc/hosts` oder über die
