@@ -10,6 +10,23 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.77.11] – 2026-11-12
+
+### Neu
+
+- Zertifikate von Let's Encrypt: In der Cloudflare-Karte holt das PDH je Name ein Zertifikat, erneuert es 30 Tage vor Ablauf und warnt rechtzeitig – ein Zusatz, ohne den alles unverändert läuft.
+- Namen im Haus: Mit einer UniFi UDM Pro trägt das PDH die Namen im Firmennetz selbst ein; ohne UniFi bleibt der Eintrag Typ A am DNS-Server von Hand.
+- Full (strict): Ein Knopf stellt Tunnel und Domain auf geprüfte Verschlüsselung um, „Zurückstellen“ nimmt es wieder zurück.
+- Im Ausfallschutz-Verbund werden die Zertifikate auf den zweiten Server gespiegelt und in die Sicherung aufgenommen; das Update richtet nginx auf beiden Servern ein.
+- Das Handbuch erklärt Zertifikate, Namen im Haus, Full (strict) und die möglichen Fehlerbilder.
+
+### Sicherheit
+
+- Neue Rechte „Zertifikate verwalten (Let's Encrypt)“ (`system.certs`), „Zertifikate: entfernen und widerrufen (Bereichsadministrator)“ (`system.certs_admin`) und „Namen im Haus eintragen (UniFi)“ (`system.unifi`); Rollen mit dem Cloudflare-Recht bekommen sie mit dem Update.
+- Entfernen und Widerrufen eines Zertifikats darf nur, wer das Recht `system.certs_admin` hat.
+- Die privaten Schlüssel der Zertifikate und der UniFi-API-Schlüssel liegen nur verschlüsselt in der Datenbank.
+- Die UniFi UDM Pro wird nur mit bestätigtem Fingerabdruck und nur über Adressen im eigenen Netz angesprochen.
+
 ## [0.77.10] – 2026-11-12
 
 ### Geändert
