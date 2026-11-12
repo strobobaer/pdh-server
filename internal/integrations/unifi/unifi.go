@@ -551,11 +551,8 @@ func legacyName(s string) string {
 	return s
 }
 
-// v6Global: globale Unicast-Adressen 2000::/3 ohne den Dokumentationsbereich 2001:db8::/32.
-var (
-	v6Global = netip.MustParsePrefix("2000::/3")
-	v6Doc    = netip.MustParsePrefix("2001:db8::/32")
-)
+// v6Global: globale Unicast-Adressen 2000::/3.
+var v6Global = netip.MustParsePrefix("2000::/3")
 
 // checkRecord prüft Name und Adresse; v6 sagt, ob ein AAAA-Eintrag nötig ist. IPv6 nur als
 // schlichte, globale Adresse (kein Zonenname, keine Präfixlänge, nicht IPv4-abgebildet).
@@ -565,7 +562,7 @@ func checkRecord(name, ip string) (v6 bool, err error) {
 	}
 	if strings.Contains(ip, ":") {
 		a, perr := netip.ParseAddr(ip)
-		if perr != nil || !a.Is6() || a.Is4In6() || a.Zone() != "" || !v6Global.Contains(a) || v6Doc.Contains(a) {
+		if perr != nil || !a.Is6() || a.Is4In6() || a.Zone() != "" || !v6Global.Contains(a) {
 			return false, fmt.Errorf("%q ist keine nutzbare IPv6-Adresse", ip)
 		}
 		return true, nil

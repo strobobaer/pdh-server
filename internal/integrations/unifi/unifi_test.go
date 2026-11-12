@@ -265,8 +265,8 @@ func TestCreateSendsARecord(t *testing.T) {
 	}
 	// ungültige Adresse oder Name: keine Anfrage
 	n := f.hits
-	if _, err := f.client().Create(context.Background(), "pdh.firma.de", "2001:db8::1"); err == nil {
-		t.Error("nur IPv4-Adressen")
+	if _, err := f.client().Create(context.Background(), "pdh.firma.de", "fe80::1"); err == nil {
+		t.Error("unbrauchbare Adresse wird abgelehnt")
 	}
 	if _, err := f.client().Create(context.Background(), "x y", "192.168.1.5"); err == nil {
 		t.Error("ungültiger Name")

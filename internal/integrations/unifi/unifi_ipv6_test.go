@@ -63,7 +63,7 @@ func TestCreateAAAALegacy(t *testing.T) {
 }
 
 func TestCheckRecord(t *testing.T) {
-	for _, ip := range []string{"fe80::1", "::1", "::", "fd00::1%eth0", "2a02::15/64", "::ffff:10.0.0.1", "fd00::1", "2001:db8::1"} {
+	for _, ip := range []string{"fe80::1", "::1", "::", "fd00::1%eth0", "2a02::15/64", "::ffff:10.0.0.1", "fd00::1"} {
 		if _, err := checkRecord("nc.firma.de", ip); err == nil || !strings.Contains(err.Error(), "keine nutzbare IPv6-Adresse") {
 			t.Errorf("%q: Fehler erwartet, bekam %v", ip, err)
 		}
@@ -71,10 +71,36 @@ func TestCheckRecord(t *testing.T) {
 	if v6, err := checkRecord("nc.firma.de", testV6); err != nil || !v6 {
 		t.Errorf("IPv6: %v %v", v6, err)
 	}
+	if v6, err := checkRecord("nc.firma.de", "2001:db8:77:1::15"); err != nil || !v6 {
+		t.Errorf("Laborpräfix: %v %v", v6, err)
+	}
 	if v6, err := checkRecord("nc.firma.de", "10.10.0.15"); err != nil || v6 {
 		t.Errorf("IPv4: %v %v", v6, err)
 	}
 	if _, err := checkRecord("nc.firma.de", "kein-ip"); err == nil || !strings.Contains(err.Error(), "keine IPv4-Adresse") {
 		t.Errorf("Unsinn: %v", err)
+	}
+}
+
+func TestUpdateAAAALegacy(t *testing.T) {
+	f := newFakeUDM(t)
+	f.legacy = true
+	if err := f.client().Update(context.Background(), "abc", "nc.firma.de", testV6); err != nil {
+		t.Fatal(err)
+	}
+	want := `{"_id":"abc","key":"nc.firma.de","record_type":"AAAA","value":"` + testV6 + `","enabled":true,"ttl":0}`
+	if got := f.lastBody(t, "PUT /proxy/network/v2/api/site/default/static-dns/abc"); got != want {
+		t.Errorf("Rumpf:\n got %s\nwant %s", got, want)
+	}
+}
+
+func TestCreateARecordBodyUnchanged(t *testing.T) {
+	f := newFakeUDM(t)
+	if _, err := f.client().Create(context.Background(), "pdh.firma.de", "192.168.1.50"); err != nil {
+		t.Fatal(err)
+	}
+	want := `{"type":"A_RECORD","enabled":true,"domain":"pdh.firma.de","ipv4Address":"192.168.1.50","ttlSeconds":300}`
+	if got := f.lastBody(t, "POST "+testPolicies); got != want {
+		t.Errorf("Rumpf:\n got %s\nwant %s", got, want)
 	}
 }
