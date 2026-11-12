@@ -46,6 +46,9 @@ type mirrorLabelState struct {
 	WaitAlarmed  bool   `json:"wait_alarmed,omitempty"`  // „wartet auf Bestätigung“ ist gemeldet (einmalig, auch über einen Neustart)
 
 	AbsentAtPromote bool `json:"absent_at_promote,omitempty"` // fehlte bei der Übernahme ohne eigenen Beleg: wird beim Erscheinen unbelegt (R63)
+	// Probe (nur optionale Quellen, mit AbsentAtPromote): 1 = Ordner ist erschienen, der Lauf ohne --delete
+	// läuft; 2 = dieser Lauf ist fertig, jetzt entscheidet der Bericht des Partners (leer: belegt, sonst R63).
+	Probe int `json:"probe,omitempty"`
 }
 
 type mirrorState struct {
@@ -413,11 +416,22 @@ func (w *mirrorWorker) settlePromotion(srcs []ha.MirrorSource, present map[strin
 		}
 		switch {
 		case own:
-			ls.AbsentAtPromote = false
+			ls.AbsentAtPromote, ls.Probe = false, 0
 		case !present[m.Label]:
-			ls.AbsentAtPromote = !ls.Unproven
+			ls.AbsentAtPromote, ls.Probe = !ls.Unproven, 0
+		case m.Optional && ls.AbsentAtPromote && !ls.Unproven && ls.Probe < 2:
+			// Optionale Quelle (Zertifikate) erscheint nach der Übernahme: erst ein Lauf ohne --delete
+			// (mayDelete sperrt, solange AbsentAtPromote steht). Ist das Ziel am Partner leer oder fehlt
+			// es, belegt der Empfänger es von selbst (R47); nichts ist zu schützen, kein Alarm.
+			ls.Probe = 1
+		case m.Optional && ls.AbsentAtPromote && !ls.Unproven && ls.Probe == 2 && !(w.d.partnerWait != nil && w.d.partnerWait(m.Label)):
+			// Lauf fertig, der Partner meldet keine Dateien ohne Beleg: wartet auf seinen Beleg
+			if w.d.partnerProof == nil || w.d.partnerProof(m.Label) {
+				ls.AbsentAtPromote, ls.Probe = false, 0
+			}
 		default:
-			ls.AbsentAtPromote = false
+			// bei Probe 2 meldet der Partner Dateien ohne Beleg: R63 unverändert (Alarm, Bestätigung)
+			ls.AbsentAtPromote, ls.Probe = false, 0
 			if !ls.Unproven {
 				ls.Unproven, ls.WaitAlarmed = true, true
 				marked = append(marked, m.Label)
@@ -693,7 +707,7 @@ func (w *mirrorWorker) liftUnproven(proof func(label string) (done, files bool))
 			continue
 		}
 		if done, _ := proof(l); done {
-			ls.Unproven, ls.WaitAlarmed, ls.AbsentAtPromote = false, false, false
+			ls.Unproven, ls.WaitAlarmed, ls.AbsentAtPromote, ls.Probe = false, false, false, 0
 			w.st.PerLabel[l] = ls
 			changed = true
 		}
@@ -1024,11 +1038,10 @@ func (w *mirrorWorker) runOnce(ctx context.Context, wait, final bool) error {
 		case m.Label == "nextcloud-data" && !ncHasDataMarker(m.Path, path.Join, w.d.exists):
 			o.err = fmt.Errorf("Quelle %s ist leer – nicht gespiegelt", m.Label)
 			w.alarm(o.err.Error())
-		case m.Optional && w.refusedEmpty(m):
-			// alle Zertifikate gelöscht: kein Fehler; der Partner behält seinen Stand (nichts wird
-			// gelöscht), bis wieder ein Zertifikat da ist
-			o.skipped = true
-		case w.refusedEmpty(m):
+		case !m.Optional && w.refusedEmpty(m):
+			// Optionale Quellen (Zertifikate unter /etc/ssl/pdh) sind ausgenommen: Der Agent leert den
+			// Ordner selbst, wenn das letzte Zertifikat entfernt wird; der leere, vorhandene Ordner
+			// läuft wie jeder andere (R57, die Kennung, gilt weiter)
 			o.err = fmt.Errorf("Quelle %s ist leer – nicht gespiegelt", m.Label)
 			w.alarm(o.err.Error())
 		default:
@@ -1137,6 +1150,9 @@ func (w *mirrorWorker) finish(rctx, ctx context.Context, start time.Time, s ha.S
 			ls.Err, ls.Skipped = "", true
 		default:
 			ls.Err, ls.LastOK, ls.Skipped = "", end, false
+			if ls.Probe == 1 {
+				ls.Probe = 2 // erster Lauf nach dem Erscheinen der optionalen Quelle ist durch
+			}
 			if v, ok := saw[o.label]; ok && v {
 				ls.SawFiles = true
 			}

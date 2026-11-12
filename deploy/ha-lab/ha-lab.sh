@@ -2500,7 +2500,8 @@ sc_spiegel_update_aus() {
 # Zertifikate des PDH (/etc/ssl/pdh, Quelle ssl-pdh): Ohne den Ordner ändert sich nichts (kein
 # Ordner am Partner, kein Alarm, keine Zeile im Status). Entsteht auf dem aktiven Server ein
 # Zertifikat, kommt es mit Besitzer und Rechten (Schlüssel 0640) auf den Partner; nach dem Tausch
-# sind Zertifikat und Schlüssel auf dem neuen aktiven Server byte-gleich, ohne Alarm.
+# sind Zertifikat und Schlüssel auf dem neuen aktiven Server byte-gleich, ohne Alarm. Wird das letzte
+# Zertifikat entfernt, verschwindet es auch am Partner und kommt nach dem Rücktausch nicht zurück.
 # mirror_lists_certs <Container>: die Statusliste der Spiegelung (Schnittstelle, nicht die Textausgabe) nennt ssl-pdh
 mirror_lists_certs() {
     docker exec "$1" curl -fsS --unix-socket /run/pdh-ha/api.sock http://pdh-ha/v1/mirror 2>/dev/null | grep -q '"label":"ssl-pdh"'
@@ -2540,6 +2541,19 @@ sc_spiegel_zertifikat() {
     [[ "$(cert_sums node1)" == "$a" ]] || fail "auf node1 haben sich die Zertifikate geändert"
     [[ "$(alarm_count node1 ssl-pdh)" == 0 && "$(alarm_count node2 ssl-pdh)" == 0 ]] || fail "Alarm zu ssl-pdh nach dem Tausch"
     log "nach dem Tausch auf beiden byte-gleich, Schlüssel 0640, kein Alarm"
+    log "Zertifikat auf dem neuen aktiven node2 entfernen (wie der Agent: nur der Namensordner, die Wurzel bleibt leer)"
+    docker exec node2 rm -rf "$d" || fail "Zertifikat auf node2 entfernen"
+    docker exec node2 test -d /etc/ssl/pdh || fail "Wurzel /etc/ssl/pdh fehlt auf node2"
+    docker exec node2 pdh-ha mirror run >/dev/null || fail "Abgleich auf node2"
+    wait_for 90 eval '! docker exec node1 test -e "$d"' || fail "entferntes Zertifikat bleibt auf node1 liegen"
+    log "Rücktausch: das entfernte Zertifikat darf nicht zurückkommen"
+    swap_on node2 || fail "Rollentausch auf node2"
+    wait_for 180 mirror_ok || fail "Rücktausch nicht abgeschlossen (node1=$R1, node2=$R2, Fehler $(jget merr <<<"$J1"))"
+    sleep 35 # ein ganzer Abgleich (Takt 30 s) nach dem Tausch
+    docker exec node1 test ! -e "$d" || fail "entferntes Zertifikat ist auf node1 zurück"
+    docker exec node2 test ! -e "$d" || fail "entferntes Zertifikat ist auf node2 zurück"
+    [[ "$(alarm_count node1 ssl-pdh)" == 0 && "$(alarm_count node2 ssl-pdh)" == 0 ]] || fail "Alarm zu ssl-pdh nach dem Entfernen"
+    log "nach Entfernen und Rücktausch auf beiden Servern weg, kein Alarm"
 }
 
 run_scenario() {

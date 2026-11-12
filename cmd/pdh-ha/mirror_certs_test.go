@@ -140,22 +140,36 @@ func TestMirrorSslPdhFinalOrder(t *testing.T) {
 	}
 }
 
-// Alle Zertifikate gelöscht: der Ordner bleibt leer zurück. Das ist kein Fehler und kein Alarm;
-// der Partner behält seinen Stand (nichts wird gelöscht), bis wieder ein Zertifikat da ist.
-func TestMirrorSslPdhEmptiedAfterFilesIsQuiet(t *testing.T) {
+// Alle Zertifikate entfernt: Der Ordner /etc/ssl/pdh bleibt leer zurück (der Agent löscht nur den
+// Namensordner). Das ist ein gewöhnlicher Lauf mit --delete – auch das letzte Zertifikat samt Schlüssel
+// verschwindet am Partner, sonst käme es nach dem nächsten Tausch zurück. Der Schutz vor einer leeren
+// Quelle (R55, Datenträger nicht eingehängt) gilt für Ordner unter /etc nicht; für uploads bleibt er.
+func TestMirrorSslPdhLastCertRemovedPropagates(t *testing.T) {
 	f := newMirrorFix(t)
 	f.files["/etc/ssl/pdh"], f.full["/etc/ssl/pdh"] = true, true
 	f.w.set(true, ha.Active, 1, mirrorSettings)
 	if err := f.w.runAll(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	f.full["/etc/ssl/pdh"] = false
-	before, _ := sslPdhCalls(f.rs)
+	// eines von zwei Zertifikaten entfernt: Ordner hat noch Inhalt, Lauf mit --delete
 	if err := runAgain(f.w); err != nil {
 		t.Fatal(err)
 	}
-	if n, _ := sslPdhCalls(f.rs); n != before {
-		t.Fatalf("leere Quelle gesendet (%d statt %d Aufrufe)", n, before)
+	n1, del1 := sslPdhCalls(f.rs)
+	if n1 != 2 || !del1 {
+		t.Fatalf("eines von zwei entfernt: %d Aufrufe, mit --delete %v", n1, del1)
+	}
+	// das letzte entfernt: Ordner da, aber leer
+	f.full["/etc/ssl/pdh"] = false
+	f.rs.mu.Lock()
+	f.rs.calls = nil
+	f.rs.mu.Unlock()
+	if err := runAgain(f.w); err != nil {
+		t.Fatal(err)
+	}
+	n, del := sslPdhCalls(f.rs)
+	if n != 1 || !del {
+		t.Fatalf("leerer Ordner: %d Aufrufe, mit --delete %v (erwartet 1, mit)", n, del)
 	}
 	if st := f.w.snapshot(); st.Err != "" || st.PerLabel["ssl-pdh"].Err != "" {
 		t.Fatalf("Fehler: %+v", st)
@@ -171,39 +185,112 @@ func TestMirrorSslPdhEmptiedAfterFilesIsQuiet(t *testing.T) {
 	}
 }
 
-// Das erste Zertifikat auf einem Verbund, der schon einmal getauscht hat (Ordner fehlte bei der
-// Übernahme): R63 bleibt in Kraft – kein --delete am Partner, ein Alarm, der sagt, was zu tun ist.
-// Vorher (Ordner fehlt) kein Alarm und keine Zeile in der Statusliste.
-func TestMirrorSslPdhFirstCertAfterPromotion(t *testing.T) {
+// Der Ordner fehlt ganz (letzter Namensordner samt Wurzel weg): weiter völlig still, kein Lauf.
+func TestMirrorSslPdhFolderGoneAfterRunIsQuiet(t *testing.T) {
 	f := newMirrorFix(t)
-	f.w.d.proof = func(l string) (bool, bool) { return l != "ssl-pdh", true } // die anderen Quellen sind belegt
-	f.w.d.partnerProof = func(string) bool { return true }
-	f.w.set(true, ha.Passive, 1, mirrorSettings)
-	f.w.set(true, ha.Active, 2, mirrorSettings) // Tausch: ssl-pdh fehlt, kein eigener Beleg
-	if err := f.w.runAll(context.Background()); err != nil {
+	f.files["/etc/ssl/pdh"], f.full["/etc/ssl/pdh"] = true, true
+	f.w.set(true, ha.Active, 1, mirrorSettings)
+	f.w.runAll(context.Background())
+	delete(f.files, "/etc/ssl/pdh")
+	before, _ := sslPdhCalls(f.rs)
+	if err := runAgain(f.w); err != nil {
 		t.Fatal(err)
 	}
+	if n, _ := sslPdhCalls(f.rs); n != before {
+		t.Fatalf("Lauf ohne Ordner: %d statt %d", n, before)
+	}
 	if got := kindTexts(f, "alarm", "warn", "error"); len(got) != 0 {
+		t.Fatalf("Meldungen: %v", got)
+	}
+}
+
+// partnerRig: Tausch ohne Zertifikate (Ordner fehlt bei der Übernahme, kein eigener Beleg); die
+// übrigen Quellen sind belegt. proven/waits steuern, was der Partner meldet.
+type partnerRig struct {
+	f      *mirrorFix
+	proven map[string]bool
+	waits  map[string]bool
+}
+
+func newPartnerRig(t *testing.T) *partnerRig {
+	t.Helper()
+	r := &partnerRig{f: newMirrorFix(t), proven: map[string]bool{"uploads": true, "chat_files": true, "etc-pdh": true}, waits: map[string]bool{}}
+	r.f.w.d.proof = func(l string) (bool, bool) { return l != "ssl-pdh", true }
+	r.f.w.d.partnerProof = func(l string) bool { return r.proven[l] }
+	r.f.w.d.partnerWait = func(l string) bool { return r.waits[l] }
+	r.f.w.set(true, ha.Passive, 1, mirrorSettings)
+	r.f.w.set(true, ha.Active, 2, mirrorSettings)
+	if err := r.f.w.runAll(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := kindTexts(r.f, "alarm", "warn", "error"); len(got) != 0 {
 		t.Fatalf("Meldungen ohne Zertifikate: %v", got)
 	}
-	if ls := f.w.snapshot().PerLabel["ssl-pdh"]; !mirrorQuietLabel("ssl-pdh", ls) {
+	if ls := r.f.w.snapshot().PerLabel["ssl-pdh"]; !mirrorQuietLabel("ssl-pdh", ls) {
 		t.Fatalf("Zeile ohne Inhalt sichtbar: %+v", ls)
 	}
-	// das erste Zertifikat entsteht
+	return r
+}
+
+// Das erste Zertifikat nach einem Tausch, am Partner fehlt der Ordner oder er ist leer: Es gibt dort
+// nichts, was --delete zerstören könnte. Kein Alarm, der erste Lauf (ohne --delete) belegt den Partner
+// von selbst, danach läuft alles normal – auch das spätere Entfernen kommt mit --delete an.
+func TestMirrorSslPdhFirstCertAfterPromotionEmptyPartner(t *testing.T) {
+	r := newPartnerRig(t)
+	f := r.f
 	f.files["/etc/ssl/pdh"], f.full["/etc/ssl/pdh"] = true, true
 	if err := runAgain(f.w); err != nil {
 		t.Fatal(err)
 	}
-	n, del := sslPdhCalls(f.rs)
-	if n != 1 || del {
-		t.Fatalf("ssl-pdh: %d Aufrufe, mit --delete %v (erwartet 1, ohne)", n, del)
+	if n, del := sslPdhCalls(f.rs); n != 1 || del {
+		t.Fatalf("erster Lauf: %d Aufrufe, mit --delete %v (erwartet 1, ohne)", n, del)
+	}
+	r.proven["ssl-pdh"] = true // der Empfänger hat den leeren Zielordner belegt (Herzschlag)
+	if err := runAgain(f.w); err != nil {
+		t.Fatal(err)
+	}
+	if n, del := sslPdhCalls(f.rs); n != 2 || !del {
+		t.Fatalf("zweiter Lauf: %d Aufrufe, mit --delete %v (erwartet 2, mit)", n, del)
+	}
+	if got := kindTexts(f, "alarm", "warn", "error"); len(got) != 0 {
+		t.Fatalf("Meldungen: %v", got)
+	}
+	if ls := f.w.snapshot().PerLabel["ssl-pdh"]; ls.Unproven || ls.AbsentAtPromote || ls.Probe != 0 {
+		t.Fatalf("Stand: %+v", ls)
+	}
+	// später alle entfernt: kommt am Partner an
+	f.full["/etc/ssl/pdh"] = false
+	if err := runAgain(f.w); err != nil {
+		t.Fatal(err)
+	}
+	if n, del := sslPdhCalls(f.rs); n != 3 || !del {
+		t.Fatalf("Entfernen: %d Aufrufe, mit --delete %v", n, del)
+	}
+}
+
+// Das erste Zertifikat nach einem Tausch, am Partner liegen schon Dateien (ohne Beleg): R63 gilt
+// unverändert – Alarm mit demselben Text, kein --delete, bis der Administrator bestätigt.
+func TestMirrorSslPdhFirstCertAfterPromotionPartnerHasFiles(t *testing.T) {
+	r := newPartnerRig(t)
+	f := r.f
+	f.files["/etc/ssl/pdh"], f.full["/etc/ssl/pdh"] = true, true
+	if err := runAgain(f.w); err != nil {
+		t.Fatal(err)
+	}
+	if n, del := sslPdhCalls(f.rs); n != 1 || del {
+		t.Fatalf("erster Lauf: %d Aufrufe, mit --delete %v", n, del)
+	}
+	r.waits["ssl-pdh"] = true // der Empfänger meldet: dort liegen Dateien ohne Beleg
+	if err := runAgain(f.w); err != nil {
+		t.Fatal(err)
+	}
+	if n, del := sslPdhCalls(f.rs); n != 2 || del {
+		t.Fatalf("zweiter Lauf: %d Aufrufe, mit --delete %v (erwartet 2, ohne)", n, del)
 	}
 	want := "Quelle ssl-pdh: Der Ordner ist neu dazugekommen, seit dieser Server aktiv wurde – einen eigenen Beleg gibt es dafür noch nicht. Auf dem Partner wird nichts gelöscht. Ist dieser Server vollständig: sudo pdh-ha mirror confirm"
-	got := f.texts("alarm")
-	if len(got) != 1 || got[0] != want {
+	if got := f.texts("alarm"); len(got) != 1 || got[0] != want {
 		t.Fatalf("Alarm: %q", got)
 	}
-	// Bestätigung hebt es auf
 	f.w.observeDataID("X")
 	if labels, err := f.w.confirm(nil); err != nil || strings.Join(labels, ",") != "ssl-pdh" {
 		t.Fatalf("confirm: %v %v", labels, err)
@@ -213,6 +300,24 @@ func TestMirrorSslPdhFirstCertAfterPromotion(t *testing.T) {
 	}
 	if _, del := sslPdhCalls(f.rs); !del {
 		t.Fatal("nach der Bestätigung weiter ohne --delete")
+	}
+}
+
+// Nicht-optionale Quellen ändern sich nicht: Erscheint uploads nach der Übernahme, gilt R63 sofort.
+func TestMirrorNonOptionalAppearingStillUnproven(t *testing.T) {
+	f := newMirrorFix(t)
+	delete(f.files, "/r/uploads")
+	f.w.d.proof = func(l string) (bool, bool) { return l != "uploads", true }
+	f.w.d.partnerProof = func(string) bool { return true }
+	f.w.set(true, ha.Passive, 1, mirrorSettings)
+	f.w.set(true, ha.Active, 2, mirrorSettings)
+	f.w.runAll(context.Background())
+	f.files["/r/uploads"] = true
+	if err := runAgain(f.w); err != nil {
+		t.Fatal(err)
+	}
+	if !f.w.snapshot().PerLabel["uploads"].Unproven || len(f.texts("alarm")) != 1 {
+		t.Fatalf("uploads: %+v, Alarme %v", f.w.snapshot().PerLabel["uploads"], f.texts("alarm"))
 	}
 }
 
