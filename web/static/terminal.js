@@ -138,7 +138,17 @@
         es.addEventListener('card', function (ev) {
           var d = null;
           try { d = JSON.parse(ev.data); } catch (e) { /* ungültig */ }
-          if (d && typeof d.uid === 'string' && d.uid) onCard(d.uid);
+          if (d && typeof d.uid === 'string' && d.uid) {
+            // Der Pi spielt beim Verbinden ein bis zu 5 s altes Ereignis erneut ab (jede Seitennavigation).
+            // Dasselbe Ereignis (uid + at) nur einmal verarbeiten, sonst wird eine Karte doppelt gemeldet
+            // bzw. nach "Abmelden" + Navigation die Person wieder angemeldet.
+            var evKey = d.uid + '|' + String(d.at);
+            var seen = null;
+            try { seen = sessionStorage.getItem('pdhLastCardEvent'); } catch (e) { /* kein Speicher */ }
+            if (seen === evKey) return;
+            try { sessionStorage.setItem('pdhLastCardEvent', evKey); } catch (e) { /* kein Speicher */ }
+            onCard(d.uid);
+          }
         });
         es.onerror = function () { /* stumm: der EventSource verbindet selbst neu */ };
       } catch (e) { /* kein Kartendienst */ }

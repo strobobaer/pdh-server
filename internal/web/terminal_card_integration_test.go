@@ -138,6 +138,7 @@ func cardHTTP(e *atEnv, h *Handler, termID, path, body string) *httptest.Respons
 	u, err := h.userByID(e.ctx, termID)
 	e.must(err)
 	req = req.WithContext(context.WithValue(req.Context(), "user", u))
+	req.AddCookie(cardDeviceCookie(e.t, h.jwtSecret, termID))
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 	return rec
@@ -157,7 +158,7 @@ func TestTerminalCardHandler(t *testing.T) {
 	sys := e.user("khsys", "user", true)
 	t.Cleanup(func() { e.exec(`DELETE FROM terminal_card_sessions WHERE terminal_user_id = $1::uuid`, term) })
 	uidOf := func(id, uid string) { e.exec(`UPDATE users SET rfid_uid = $2 WHERE id = $1::uuid`, id, uid+e.sfx) }
-	uidOf(p1, "CARD-P1")
+	uidOf(p1, "card-p1") // Kleinschreibung hinterlegt, Terminal sendet Großbuchstaben
 	uidOf(p2, "CARD-P2")
 	uidOf(inactive, "CARD-INACT")
 	uidOf(sys, "CARD-SYS")
@@ -179,7 +180,7 @@ func TestTerminalCardHandler(t *testing.T) {
 		return p.ID
 	}
 
-	rec, m := post("CARD-P1" + e.sfx)
+	rec, m := post("CARD-P1" + strings.ToUpper(e.sfx))
 	if rec.Code != 200 || m["ok"] != true || m["name"] != "T U" || sessionPerson() != p1 {
 		t.Fatalf("bekannte Karte: %d %v", rec.Code, m)
 	}
@@ -216,7 +217,7 @@ func TestTerminalCardHandler(t *testing.T) {
 	}
 
 	// Abmelden: 204.
-	post("CARD-P1" + e.sfx)
+	post("CARD-P1" + strings.ToUpper(e.sfx))
 	rec = cardHTTP(e, h, term, "/terminal/card/abmelden", ``)
 	if rec.Code != http.StatusNoContent || sessionPerson() != "" {
 		t.Fatalf("abmelden: %d", rec.Code)
@@ -229,5 +230,54 @@ func TestTerminalCardHandler(t *testing.T) {
 	rec, m = post("CARD-NOPE" + e.sfx)
 	if rec.Code != http.StatusTooManyRequests || m["message"] != "Zu viele unbekannte Karten. Bitte kurz warten." {
 		t.Fatalf("429 erwartet: %d %v", rec.Code, m)
+	}
+}
+
+// UID-Vergleich ohne Groß-/Kleinschreibung und Leerraum; bei Mehrdeutigkeit: nicht gefunden.
+func TestTerminalCardUIDCaseInsensitive(t *testing.T) {
+	e := newATEnv(t)
+	h := newCardHandler(e)
+	a := e.user("kci1", "user", false)
+	b := e.user("kci2", "user", false)
+	c := e.user("kci3", "user", false)
+	set := func(id, uid string) { e.exec(`UPDATE users SET rfid_uid = $2 WHERE id = $1::uuid`, id, uid) }
+	set(a, "deadbeef"+e.sfx)
+	for _, q := range []string{"DEADBEEF" + e.sfx, " deadbeef" + e.sfx + " ", "deadbeef" + e.sfx} {
+		p, err := h.users.GetByRFID(e.ctx, q)
+		if err != nil || p == nil || p.ID != a {
+			t.Fatalf("%q: %v %v", q, p, err)
+		}
+	}
+	// Zwei aktive Konten nur in Schreibweise verschieden: mehrdeutig -> nicht gefunden.
+	set(b, "ab12"+e.sfx)
+	set(c, "AB12"+e.sfx)
+	for _, q := range []string{"ab12" + e.sfx, "AB12" + e.sfx} {
+		if p, err := h.users.GetByRFID(e.ctx, q); err == nil || !isNoRows(err) {
+			t.Fatalf("%q mehrdeutig: %v %v", q, p, err)
+		}
+	}
+	// Ist eines der beiden inaktiv, ist die Karte wieder eindeutig.
+	e.exec(`UPDATE users SET active = false WHERE id = $1::uuid`, c)
+	if p, err := h.users.GetByRFID(e.ctx, "Ab12"+e.sfx); err != nil || p == nil || p.ID != b {
+		t.Fatalf("eindeutig: %v %v", p, err)
+	}
+}
+
+// Das Ablauf-Löschen ist bedingt: eine frische Sitzung bleibt, eine abgelaufene verschwindet.
+func TestTerminalCardExpireDeleteIsConditional(t *testing.T) {
+	e := newATEnv(t)
+	h := newCardHandler(e)
+	term := e.user("kexp", "user", true)
+	p1 := e.user("kexp1", "user", false)
+	t.Cleanup(func() { e.exec(`DELETE FROM terminal_card_sessions WHERE terminal_user_id = $1::uuid`, term) })
+	e.must(h.cardSessionStart(e.ctx, term, p1))
+	e.must(h.cardSessionExpire(e.ctx, term))
+	if cardRows(e, term) != 1 {
+		t.Fatal("frische Sitzung gelöscht")
+	}
+	e.exec(`UPDATE terminal_card_sessions SET last_seen_at = now() - interval '121 seconds' WHERE terminal_user_id = $1::uuid`, term)
+	e.must(h.cardSessionExpire(e.ctx, term))
+	if cardRows(e, term) != 0 {
+		t.Fatal("abgelaufene Sitzung nicht gelöscht")
 	}
 }

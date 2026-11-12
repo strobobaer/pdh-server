@@ -27,6 +27,8 @@ const (
 
 // cardFailLimit: unbekannte Karten pro Terminal (Schlüssel "card:"+Terminal-ID);
 // ab 10 Fehlversuchen in 1 min antwortet der Handler mit 429.
+// Hinweis: Der Zähler liegt im Speicher und gilt je PDH-Instanz; unter HA ist die
+// effektive Grenze daher 10 × Anzahl der Instanzen.
 var cardFailLimit = newFailLimiter(10, time.Minute)
 
 func (h *Handler) cardRoutes(r chi.Router) {
@@ -36,9 +38,11 @@ func (h *Handler) cardRoutes(r chi.Router) {
 }
 
 // cardTerminal: Terminal-Benutzer des Geräts; sonst 403 (wie terminalGate).
+// Nur Gerätesitzungen: Nur diese abonnieren den Kartenstrom (data-card-events),
+// eine Override-/Passwortsitzung eines Terminal-Benutzers darf keine Karte melden.
 func (h *Handler) cardTerminal(w http.ResponseWriter, r *http.Request) (string, bool) {
 	uid := h.terminalUserID(r)
-	if uid == "" {
+	if uid == "" || !h.terminalDeviceSession(r) {
 		http.Error(w, "Diese Seite ist nur für Terminal-Benutzer (Systembenutzer) bestimmt.", http.StatusForbidden)
 		return "", false
 	}

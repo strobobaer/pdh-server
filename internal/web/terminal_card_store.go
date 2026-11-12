@@ -42,7 +42,7 @@ func (h *Handler) cardSessionPerson(ctx context.Context, terminalID string) (*us
 		return nil, err
 	}
 	if expired {
-		return nil, h.cardSessionEnd(ctx, terminalID)
+		return nil, h.cardSessionExpire(ctx, terminalID)
 	}
 	p, err := h.userByID(ctx, personID)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -66,6 +66,16 @@ func (h *Handler) cardSessionTouch(ctx context.Context, terminalID string) (bool
 		return false, err
 	}
 	return tag.RowsAffected() > 0, nil
+}
+
+// cardSessionExpire: löscht die Sitzung nur, wenn sie (weiterhin) abgelaufen ist.
+// Die Bedingung steht im DELETE selbst: Eine zwischen SELECT und DELETE von einer
+// anderen HA-Instanz neu gestartete Sitzung bleibt so erhalten.
+func (h *Handler) cardSessionExpire(ctx context.Context, terminalID string) error {
+	_, err := h.db.Exec(ctx, `DELETE FROM terminal_card_sessions
+		WHERE terminal_user_id = $1::uuid AND last_seen_at < now() - make_interval(secs => $2)`,
+		terminalID, cardSessionIdle.Seconds())
+	return err
 }
 
 // cardSessionEnd: Sitzung beenden (kein Fehler, wenn keine existiert).

@@ -5,7 +5,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/rs/zerolog/log"
 )
 
 // Rollen im System
@@ -131,22 +133,46 @@ func (r *Repository) GetByIdentifier(ctx context.Context, identifier string) (*U
 }
 
 // GetByRFID findet einen Nutzer per RFID-Tag-UID - für die
-// Karten-/Transponder-Anmeldung. Der Tag muss (dank UNIQUE-Constraint aus
-// der Migration) höchstens einem aktiven Konto zugeordnet sein.
+// Karten-/Transponder-Anmeldung. Der Vergleich ignoriert Groß-/Kleinschreibung
+// und Leerraum (das Terminal sendet Großbuchstaben, ältere Einträge können
+// klein geschrieben sein). Passen mehrere aktive Konten (nur in der
+// Schreibweise verschieden), ist die Karte mehrdeutig: dann wird gewarnt und
+// pgx.ErrNoRows geliefert, es wird nie still ein Konto gewählt.
 func (r *Repository) GetByRFID(ctx context.Context, uid string) (*User, error) {
-	u := &User{}
 	query := `SELECT id, username, email, password_hash, first_name, last_name,
 		role, COALESCE(department, ''), COALESCE(phone, ''), active, is_system_user, rfid_uid, created_at, updated_at,
 		on_call_duty, shift_locksmith_1, shift_locksmith_2, sharpening, heating_fill, shift_leader
-		FROM users WHERE rfid_uid = $1 AND active = true`
-	err := r.db.QueryRow(ctx, query, uid).Scan(
-		&u.ID, &u.Username, &u.Email, &u.PasswordHash,
-		&u.FirstName, &u.LastName, &u.Role,
-		&u.Department, &u.Phone, &u.Active, &u.IsSystemUser, &u.RFIDUID,
-		&u.CreatedAt, &u.UpdatedAt,
-		&u.OnCallDuty, &u.ShiftLocksmith1, &u.ShiftLocksmith2, &u.Sharpening, &u.HeatingFill, &u.ShiftLeader,
-	)
-	return u, err
+		FROM users WHERE upper(btrim(rfid_uid)) = upper(btrim($1)) AND active = true LIMIT 2`
+	rows, err := r.db.Query(ctx, query, uid)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var found []*User
+	for rows.Next() {
+		u := &User{}
+		if err := rows.Scan(
+			&u.ID, &u.Username, &u.Email, &u.PasswordHash,
+			&u.FirstName, &u.LastName, &u.Role,
+			&u.Department, &u.Phone, &u.Active, &u.IsSystemUser, &u.RFIDUID,
+			&u.CreatedAt, &u.UpdatedAt,
+			&u.OnCallDuty, &u.ShiftLocksmith1, &u.ShiftLocksmith2, &u.Sharpening, &u.HeatingFill, &u.ShiftLeader,
+		); err != nil {
+			return nil, err
+		}
+		found = append(found, u)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	switch len(found) {
+	case 0:
+		return nil, pgx.ErrNoRows
+	case 1:
+		return found[0], nil
+	}
+	log.Warn().Str("bereich", "auth").Msg("rfid-karte mehrdeutig: mehrere aktive konten, behandelt als unbekannt")
+	return nil, pgx.ErrNoRows
 }
 
 func (r *Repository) List(ctx context.Context) ([]*User, error) {
