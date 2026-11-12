@@ -37,7 +37,7 @@ type certLine struct {
 	LANOther  string // Adresse eines fremden Eintrags gleichen Namens an der UDM Pro
 	LANHint   string // Abweichung aus der täglichen Prüfung
 	LAN6Hint  string // Hinweis des IPv6-Laufs (fremder AAAA-Eintrag, Fehler)
-	Note     string // Hinweis des Update-Agenten: Dateien abgelegt, nginx-Seite von Hand
+	Note      string // Hinweis des Update-Agenten: Dateien abgelegt, nginx-Seite von Hand
 }
 
 type certPanel struct {
@@ -137,7 +137,13 @@ func (h *Handler) certPanelFor(ctx context.Context, r *http.Request, msg string,
 	p.StrictOn = h.certSetting(ctx, keyCertStrictBefore) != ""
 	p.StrictReady = certStrictReady(rows, time.Now())
 	p.AgentOK, p.NginxOK = h.certAgentState(ctx)
-	lan, target := h.certLAN(ctx, rows)
+	// Status des Verbunds nur einmal je Zeichnen abrufen – und nur mit eingetragenen Namen.
+	var st haStatus
+	stErr := errors.New("keine Namen")
+	if len(rows) > 0 {
+		st, stErr = h.certHAStatus(ctx)
+	}
+	lan, target := h.certLAN(ctx, rows, st, stErr)
 	p.Lines = certLines(rows, lan, h.certMayRemove(r))
 	p.LANTarget = target
 	p.CanUnifi = h.hasPerm(r, permUnifi)
@@ -149,7 +155,7 @@ func (h *Handler) certPanelFor(ctx context.Context, r *http.Request, msg string,
 		p.Lines[i].LAN6Hint = h.certSetting(ctx, keyUnifiHint6Prefix+certLANNorm(p.Lines[i].Name))
 	}
 	if len(rows) > 0 {
-		if t := h.certLAN6Target(ctx); t.Wanted {
+		if t := lan6TargetFetched(st, stErr); t.Wanted {
 			p.LAN6 = t.V6
 		}
 	}
@@ -187,12 +193,13 @@ func (h *Handler) certAgentState(ctx context.Context) (agentOK, nginxOK bool) {
 
 // certLAN: Wohin zeigt jeder Name im Firmennetz (DNS des Servers)? Dazu die Zieladresse im
 // Haus (mitwandernde bzw. erste eigene) für die Anleitung von Hand.
-func (h *Handler) certLAN(ctx context.Context, rows []certRow) (map[string]string, string) {
+// st/stErr: Status des Verbunds, einmal je Zeichnen abgerufen (certHAStatus).
+func (h *Handler) certLAN(ctx context.Context, rows []certRow, st haStatus, stErr error) (map[string]string, string) {
 	out := map[string]string{}
 	if len(rows) == 0 {
 		return out, ""
 	}
-	iface, vip := h.certAddrs(ctx)
+	iface, vip := certOwnAddrs(), certVIPFrom(st, stErr)
 	own := append([]string(nil), iface...)
 	if vip != "" {
 		own = append(own, vip)

@@ -7,6 +7,7 @@ import (
 	"net/netip"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"pdh/internal/integrations/unifi"
@@ -133,6 +134,13 @@ func certLAN6Sync(ctx context.Context, d certDeps, t lan6Target) (changed int) {
 	if t.Wanted && (t.V4 == "" || t.V6 == "" || !t.Suffix.IsValid()) {
 		return 0 // Ziel unbekannt: nichts anlegen, nichts ändern, nichts löschen
 	}
+	// Merker nach einer gelungenen Änderung auch dann schreiben, wenn die Frist des Laufs
+	// gerade abläuft – sonst ginge eine Kennung verloren.
+	persist := func(k, v string) error {
+		pctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
+		return d.setSetting(pctx, k, v)
+	}
 	ownKeys := d.settingsPrefix(ctx, keyUnifiID6Prefix)
 	hintKeys := d.settingsPrefix(ctx, keyUnifiHint6Prefix)
 	if ownKeys == nil || hintKeys == nil {
@@ -150,12 +158,12 @@ func certLAN6Sync(ctx context.Context, d certDeps, t lan6Target) (changed int) {
 	defer func() {
 		for n, old := range oldHints {
 			if hints[n] != old {
-				_ = d.setSetting(ctx, keyUnifiHint6Prefix+n, hints[n])
+				_ = persist(keyUnifiHint6Prefix+n, hints[n])
 			}
 		}
 		for _, n := range lan6SortedKeys(hints) {
 			if _, had := oldHints[n]; !had && hints[n] != "" {
-				_ = d.setSetting(ctx, keyUnifiHint6Prefix+n, hints[n])
+				_ = persist(keyUnifiHint6Prefix+n, hints[n])
 			}
 		}
 	}()
@@ -178,9 +186,35 @@ func certLAN6Sync(ctx context.Context, d certDeps, t lan6Target) (changed int) {
 		hints = oldHints
 		return 0
 	}
-	ids := map[string]bool{}
+	if len(recs) == 0 {
+		// Eine leere Antwort ist kein Beweis, dass alles fehlt (falscher Standort, Gerät startet):
+		// unbekannt – nichts anlegen, nichts vergessen, nichts löschen.
+		lg.Info().Msg("ipv6-einträge im haus: udm pro meldet keine einträge – nichts geändert")
+		hints = oldHints
+		return 0
+	}
+	byID := map[string]unifi.Record{}
 	for _, r := range recs {
-		ids[r.ID] = true
+		if _, dup := byID[r.ID]; !dup {
+			byID[r.ID] = r
+		}
+	}
+	// ownState: was aus einer gemerkten Kennung an der UDM Pro geworden ist –
+	// "ok" (AAAA gleichen Namens), "weg" (nicht in der Antwort) oder "veraendert"
+	// (jetzt anderer Typ oder anderer Name: das PDH führt ihn nicht mehr, nie löschen).
+	ownState := func(n, id string) (unifi.Record, string) {
+		r, ok := byID[id]
+		switch {
+		case !ok:
+			return r, "weg"
+		case !strings.EqualFold(r.Type, "AAAA") || certLANNorm(r.Name) != n:
+			return r, "veraendert"
+		}
+		return r, "ok"
+	}
+	forget := func(n, id, why string) {
+		_ = persist(keyUnifiID6Prefix+n, "")
+		lg.Info().Str("name", n).Str("kennung", id).Msg(why)
 	}
 
 	var names []string
@@ -192,8 +226,10 @@ func certLAN6Sync(ctx context.Context, d certDeps, t lan6Target) (changed int) {
 		pointing[n] = true
 	}
 	if len(names) > lan6MaxNames {
-		lg.Warn().Int("namen", len(names)).Int("bearbeitet", lan6MaxNames).
-			Msg("mehr namen auf der mitwandernden adresse als erlaubt – ipv6 nur für die ersten")
+		if lan6CapWarnDue(d.now()) {
+			lg.Warn().Int("namen", len(names)).Int("bearbeitet", lan6MaxNames).
+				Msg("mehr namen auf der mitwandernden adresse als erlaubt – ipv6 nur für die ersten")
+		}
 		names = names[:lan6MaxNames]
 	}
 
@@ -204,17 +240,21 @@ func certLAN6Sync(ctx context.Context, d certDeps, t lan6Target) (changed int) {
 				aaaa = append(aaaa, r)
 			}
 		}
-		id := own[n]
 		var mine *unifi.Record
-		for i := range aaaa {
-			if id != "" && aaaa[i].ID == id {
-				mine = &aaaa[i]
+		if id := own[n]; id != "" {
+			r, st := ownState(n, id)
+			switch st {
+			case "ok":
+				mine = &r
+			case "weg":
+				// Dieselbe Antwort zeigt den Namen mit Typ A auf V4, aber nicht die Kennung:
+				// von Hand gelöscht – vergessen und wie üblich weiter.
+				forget(n, id, "ipv6-eintrag im haus fehlt an der udm pro – kennung vergessen")
+			default:
+				forget(n, id, "ipv6-eintrag im haus an der udm pro verändert – kennung vergessen")
+				hints[n] = lan6ChangedHint(n)
+				continue // erst im nächsten Lauf wie jeder andere Name behandeln
 			}
-		}
-		if id != "" && mine == nil && !ids[id] {
-			// eigener Eintrag an der UDM Pro verschwunden (von Hand gelöscht): Kennung vergessen
-			_ = d.setSetting(ctx, keyUnifiID6Prefix+n, "")
-			lg.Info().Str("name", n).Str("kennung", id).Msg("ipv6-eintrag im haus fehlt an der udm pro – kennung vergessen")
 		}
 		update := func(r unifi.Record, ownRec bool) {
 			if err := c.Update(ctx, r.ID, n, t.V6); err != nil {
@@ -264,7 +304,7 @@ func certLAN6Sync(ctx context.Context, d certDeps, t lan6Target) (changed int) {
 		}
 		changed++
 		lg.Info().Str("name", n).Str("adresse", t.V6).Str("kennung", nid).Msg("ipv6-eintrag im haus angelegt")
-		if err := d.setSetting(ctx, keyUnifiID6Prefix+n, nid); err != nil {
+		if err := persist(keyUnifiID6Prefix+n, nid); err != nil {
 			hints[n] = fmt.Sprintf("IPv6-Eintrag angelegt (Kennung %s), aber nicht gemerkt: %s", nid, certSafeText(err.Error()))
 			lg.Warn().Str("name", n).Str("kennung", nid).Str("fehler", certSafeText(err.Error())).Msg("kennung des ipv6-eintrags im haus nicht gemerkt")
 		}
@@ -277,9 +317,14 @@ func certLAN6Sync(ctx context.Context, d certDeps, t lan6Target) (changed int) {
 			continue
 		}
 		id := own[n]
-		if !ids[id] {
-			_ = d.setSetting(ctx, keyUnifiID6Prefix+n, "")
-			lg.Info().Str("name", n).Str("kennung", id).Msg("ipv6-eintrag im haus fehlt an der udm pro – kennung vergessen")
+		switch _, st := ownState(n, id); st {
+		case "weg":
+			// nicht in der (nicht leeren) Antwort: nichts zu löschen, Kennung vergessen
+			forget(n, id, "ipv6-eintrag im haus fehlt an der udm pro – kennung vergessen")
+			continue
+		case "veraendert":
+			forget(n, id, "ipv6-eintrag im haus an der udm pro verändert – kennung vergessen")
+			hints[n] = lan6ChangedHint(n)
 			continue
 		}
 		if err := c.Delete(ctx, id); err != nil {
@@ -288,16 +333,38 @@ func certLAN6Sync(ctx context.Context, d certDeps, t lan6Target) (changed int) {
 			continue
 		}
 		changed++
-		_ = d.setSetting(ctx, keyUnifiID6Prefix+n, "")
+		_ = persist(keyUnifiID6Prefix+n, "")
 		lg.Info().Str("name", n).Str("kennung", id).Msg("ipv6-eintrag im haus entfernt")
 	}
 	return changed
 }
 
+// lan6ChangedHint: Hinweis, wenn eine gemerkte Kennung an der UDM Pro jetzt etwas anderes ist.
+func lan6ChangedHint(name string) string {
+	return "Der IPv6-Eintrag von " + name + " wurde an der UDM Pro verändert. Das PDH führt ihn nicht mehr."
+}
+
+// lan6CapWarn: Warnung „mehr als 200 Namen“ höchstens einmal am Tag.
+var lan6CapWarn struct {
+	sync.Mutex
+	day string
+}
+
+func lan6CapWarnDue(now time.Time) bool {
+	lan6CapWarn.Lock()
+	defer lan6CapWarn.Unlock()
+	day := now.Format("2006-01-02")
+	if lan6CapWarn.day == day {
+		return false
+	}
+	lan6CapWarn.day = day
+	return true
+}
+
 // certLAN6Overwrite: „Überschreiben“ für einen geführten Namen – einen fremden AAAA-Eintrag
 // mit anderem Ziel auf die mitwandernde IPv6-Adresse ändern, ohne ihn zu übernehmen.
 func certLAN6Overwrite(ctx context.Context, d certActDeps, c certLANClient, recs []unifi.Record, name string) string {
-	if d.lan6 == nil {
+	if d.lan6 == nil || d.setting == nil {
 		return ""
 	}
 	t := d.lan6(ctx)
@@ -319,8 +386,15 @@ func certLAN6Overwrite(ctx context.Context, d certActDeps, c certLANClient, recs
 	return " Der IPv6-Eintrag zeigt jetzt auf " + t.V6 + " (vorher " + strings.TrimSpace(rec.Value) + ")."
 }
 
-// lan6TargetFrom: Ziel aus dem Status des Verbunds.
+// lan6Unknown: Ziel unbekannt – der Lauf legt nichts an, ändert nichts und löscht nichts.
+var lan6Unknown = lan6Target{Wanted: true}
+
+// lan6TargetFrom: Ziel aus dem Status des Verbunds. Nur ein sauberer Status (OK, ohne Fehler)
+// kann „aus“ bedeuten; ein Status mit Fehler (z. B. Einstellungen nicht ladbar) ist unbekannt.
 func lan6TargetFrom(st haStatus) lan6Target {
+	if !st.OK || strings.TrimSpace(st.Error) != "" {
+		return lan6Unknown
+	}
 	a := st.Access
 	t := lan6Target{Wanted: st.Configured && a.VIPOn && strings.TrimSpace(a.VIP6Suffix) != ""}
 	if !t.Wanted {
@@ -338,11 +412,13 @@ func lan6TargetFrom(st haStatus) lan6Target {
 
 // certLAN6Target: Ziel aus dem Verbund (2 s Frist). Nicht erreichbar = unbekannt (kein Löschen).
 func (h *Handler) certLAN6Target(ctx context.Context) lan6Target {
-	cctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
-	defer cancel()
-	st, err := h.haStatusFetch(cctx)
+	return lan6TargetFetched(h.certHAStatus(ctx))
+}
+
+// lan6TargetFetched: wie lan6TargetFrom; ein Abruffehler heißt unbekannt.
+func lan6TargetFetched(st haStatus, err error) lan6Target {
 	if err != nil {
-		return lan6Target{Wanted: true}
+		return lan6Unknown
 	}
 	return lan6TargetFrom(st)
 }

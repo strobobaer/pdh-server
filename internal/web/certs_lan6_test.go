@@ -8,6 +8,7 @@ import (
 	"net/netip"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -356,7 +357,7 @@ func TestLAN6Helpers(t *testing.T) {
 func TestLANRemoveAlsoRemovesAAAA(t *testing.T) {
 	ctx := context.Background()
 	store := newMemCertStore(certRow{Name: "nc.firma.de", State: certStateFehler, LANRecordID: "own1"})
-	f := &fakeLAN{}
+	f := &fakeLAN{recs: []unifi.Record{recA("own1", "nc.firma.de", lanTarget), recAAAA("o6", "nc.firma.de", l6V6)}}
 	l := &certActLog{settings: map[string]string{keyUnifiID6Prefix + "nc.firma.de": "o6", keyUnifiHint6Prefix + "nc.firma.de": "x"}}
 	d := testLANAct(store, l, f)
 	msg, err := certDoRemove(ctx, d, "nc.firma.de")
@@ -372,11 +373,84 @@ func TestLANRemoveAlsoRemovesAAAA(t *testing.T) {
 	}
 	// Löschen scheitert: Name trotzdem entfernt, Kennung in der Meldung
 	store = newMemCertStore(certRow{Name: "nc.firma.de", State: certStateFehler})
-	f = &fakeLAN{deleteErr: errors.New("weg")}
+	f = &fakeLAN{deleteErr: errors.New("weg"), recs: []unifi.Record{recAAAA("o7", "nc.firma.de", l6V6)}}
 	l = &certActLog{settings: map[string]string{keyUnifiID6Prefix + "nc.firma.de": "o7"}}
 	msg, err = certDoRemove(ctx, testLANAct(store, l, f), "nc.firma.de")
 	if err != nil || store.get("nc.firma.de").Name != "" || !strings.Contains(msg, "o7") {
 		t.Fatalf("gescheitert: %q %v", msg, err)
+	}
+	if l.settings[keyUnifiID6Prefix+"nc.firma.de"] != "o7" {
+		t.Fatalf("Kennung muss bei gescheitertem Löschen bleiben: %v", l.settings)
+	}
+}
+
+// fakeLANRecErr: UDM Pro, deren Liste scheitert.
+type fakeLANRecErr struct{ fakeLAN }
+
+func (f *fakeLANRecErr) Records(context.Context) ([]unifi.Record, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls = append(f.calls, "records")
+	return nil, errors.New("liste nicht lesbar")
+}
+
+// Entfernen eines Namens: Liste nicht lesbar → kein Delete, Kennung bleibt, Name trotzdem entfernt.
+func TestLANRemoveRecordsFailKeepsAAAA(t *testing.T) {
+	ctx := context.Background()
+	store := newMemCertStore(certRow{Name: "nc.firma.de", State: certStateFehler})
+	f := &fakeLANRecErr{}
+	l := &certActLog{settings: map[string]string{keyUnifiID6Prefix + "nc.firma.de": "o6"}}
+	d := testLANAct(store, l, &f.fakeLAN)
+	d.lan = func(context.Context) (certLANClient, error) { return f, nil }
+	msg, err := certDoRemove(ctx, d, "nc.firma.de")
+	if err != nil || store.get("nc.firma.de").Name != "" || !strings.Contains(msg, "o6") {
+		t.Fatalf("%q %v", msg, err)
+	}
+	if w := f.writes(); len(w) != 0 {
+		t.Fatalf("kein Delete: %v", w)
+	}
+	if l.settings[keyUnifiID6Prefix+"nc.firma.de"] != "o6" {
+		t.Fatalf("Kennung bleibt: %v", l.settings)
+	}
+}
+
+// Entfernen: Kennung gehört jetzt einem Eintrag Typ A bzw. einem AAAA anderen Namens → nie löschen,
+// Kennung vergessen, Hinweis.
+func TestLANRemoveChangedIDNotDeleted(t *testing.T) {
+	for _, rec := range []unifi.Record{recA("o6", "nc.firma.de", "10.0.0.9"), recAAAA("o6", "wiki.firma.de", l6V6)} {
+		ctx := context.Background()
+		store := newMemCertStore(certRow{Name: "nc.firma.de", State: certStateFehler})
+		f := &fakeLAN{recs: []unifi.Record{rec}}
+		l := &certActLog{settings: map[string]string{keyUnifiID6Prefix + "nc.firma.de": "o6"}}
+		msg, err := certDoRemove(ctx, testLANAct(store, l, f), "nc.firma.de")
+		if err != nil {
+			t.Fatal(err)
+		}
+		wantWrites(t, f)
+		if l.settings[keyUnifiID6Prefix+"nc.firma.de"] != "" || l.settings[keyUnifiHint6Prefix+"nc.firma.de"] != lan6ChangedHint("nc.firma.de") {
+			t.Fatalf("%s: %v", rec.Type, l.settings)
+		}
+		if !strings.Contains(msg, "verändert") {
+			t.Errorf("Meldung: %q", msg)
+		}
+	}
+}
+
+// Entfernen: ein weiterer (von Hand angelegter) Eintrag Typ A zeigt noch auf V4 → IPv6 bleibt samt Kennung.
+func TestLANRemoveKeepsAAAAWhileManualAPoints(t *testing.T) {
+	ctx := context.Background()
+	store := newMemCertStore(certRow{Name: "nc.firma.de", State: certStateFehler, LANRecordID: "own1"})
+	f := &fakeLAN{recs: []unifi.Record{recA("own1", "nc.firma.de", l6V4), recA("hand", "nc.firma.de", l6V4), recAAAA("o6", "nc.firma.de", l6V6)}}
+	l := &certActLog{settings: map[string]string{keyUnifiID6Prefix + "nc.firma.de": "o6"}}
+	d := testLANAct(store, l, f)
+	d.lan6 = func(context.Context) lan6Target { return l6Target() }
+	msg, err := certDoRemove(ctx, d, "nc.firma.de")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantWrites(t, f, "delete own1")
+	if l.settings[keyUnifiID6Prefix+"nc.firma.de"] != "o6" || !strings.Contains(msg, "bleibt") {
+		t.Fatalf("%q %v", msg, l.settings)
 	}
 }
 
@@ -444,6 +518,210 @@ func TestLANListShowsAAAAByHand(t *testing.T) {
 	}
 	if strings.Contains(out, "ändert sich, wenn der Anbieter das Präfix wechselt") {
 		t.Error("mit UniFi kein Satz für die Liste von Hand")
+	}
+}
+
+// ── Fix-Runde 1 ─────────────────────────────────────────────
+
+// Nur ein sauberer Status kann „aus“ heißen; alles Unklare ist „unbekannt“ (kein Löschen).
+func TestLAN6TargetFrom(t *testing.T) {
+	good := func() haStatus {
+		var st haStatus
+		st.OK, st.Configured = true, true
+		st.Access.VIP, st.Access.VIPOn, st.Access.VIP6Suffix, st.Access.VIP6 = l6V4+"/24", true, "15", l6V6
+		return st
+	}
+	unknown := func(t lan6Target) bool { return t.Wanted && t.V6 == "" }
+	off := func(t lan6Target) bool { return !t.Wanted }
+	cases := []struct {
+		name string
+		mod  func(*haStatus)
+		want func(lan6Target) bool
+	}{
+		{"Ladefehler", func(s *haStatus) { s.Configured = false; s.Error = "settings.json nicht lesbar" }, unknown},
+		{"nicht OK", func(s *haStatus) { s.OK = false }, unknown},
+		{"sauber nicht eingerichtet", func(s *haStatus) { s.Configured = false }, off},
+		{"VIP aus", func(s *haStatus) { s.Access.VIPOn = false }, off},
+		{"Ende leer", func(s *haStatus) { s.Access.VIP6Suffix = "" }, off},
+		{"VIP6 leer (Rollentausch)", func(s *haStatus) { s.Access.VIP6 = "" }, unknown},
+		{"VIP leer", func(s *haStatus) { s.Access.VIP = "" }, func(t lan6Target) bool { return t.Wanted && t.V4 == "" }},
+		{"Ende ungültig", func(s *haStatus) { s.Access.VIP6Suffix = "1::15" }, func(t lan6Target) bool { return t.Wanted && !t.Suffix.IsValid() }},
+		{"alles gesetzt", func(*haStatus) {}, func(t lan6Target) bool {
+			return t.Wanted && t.V4 == l6V4 && t.V6 == l6V6 && t.Suffix == netip.MustParseAddr("::15")
+		}},
+	}
+	for _, c := range cases {
+		st := good()
+		c.mod(&st)
+		if got := lan6TargetFrom(st); !c.want(got) {
+			t.Errorf("%s: %+v", c.name, got)
+		}
+	}
+	if got := lan6TargetFetched(good(), errors.New("nicht erreichbar")); !unknown(got) {
+		t.Errorf("Abruffehler: %+v", got)
+	}
+	// unbekannt → der Lauf löscht nichts
+	f, s, d := newLAN6(t, recA("a1", "nc.firma.de", l6V4), recAAAA("o6", "nc.firma.de", l6V6))
+	s[keyUnifiID6Prefix+"nc.firma.de"] = "o6"
+	st := good()
+	st.Configured, st.Error = false, "kaputt"
+	certLAN6Sync(context.Background(), d, lan6TargetFrom(st))
+	if len(f.calls) != 0 || s[keyUnifiID6Prefix+"nc.firma.de"] != "o6" {
+		t.Fatalf("unbekannt darf nichts ändern: %v %v", f.calls, s)
+	}
+}
+
+// Leere Antwort der UDM Pro = unbekannt: keine Einstellung geändert, nichts geschrieben.
+func TestLAN6SyncEmptyAnswer(t *testing.T) {
+	for _, wanted := range []bool{true, false} {
+		f, s, d := newLAN6(t)
+		s[keyUnifiID6Prefix+"nc.firma.de"] = "o6"
+		s[keyUnifiHint6Prefix+"nc.firma.de"] = "alt"
+		tg := l6Target()
+		tg.Wanted = wanted
+		certLAN6Sync(context.Background(), d, tg)
+		wantWrites(t, f)
+		if s[keyUnifiID6Prefix+"nc.firma.de"] != "o6" || s[keyUnifiHint6Prefix+"nc.firma.de"] != "alt" {
+			t.Fatalf("wanted=%v: %v", wanted, s)
+		}
+	}
+}
+
+// Kennung fehlt in der Antwort, die den Namen mit Typ A auf V4 zeigt → vergessen, neu anlegen.
+func TestLAN6SyncForgetsMissingIDWhenAPoints(t *testing.T) {
+	f, s, d := newLAN6(t, recA("a1", "nc.firma.de", l6V4))
+	s[keyUnifiID6Prefix+"nc.firma.de"] = "weg"
+	certLAN6Sync(context.Background(), d, l6Target())
+	wantWrites(t, f, "create nc.firma.de "+l6V6)
+	if s[keyUnifiID6Prefix+"nc.firma.de"] != "neu1" {
+		t.Fatalf("%v", s)
+	}
+}
+
+// Kennung fehlt, Name zeigt nicht (mehr) auf V4, Antwort nicht leer → nichts zu löschen, vergessen.
+func TestLAN6SyncMissingIDWithoutA(t *testing.T) {
+	f, s, d := newLAN6(t, recA("x", "anderes.firma.de", "10.0.0.1"))
+	s[keyUnifiID6Prefix+"nc.firma.de"] = "weg"
+	certLAN6Sync(context.Background(), d, l6Target())
+	wantWrites(t, f)
+	if s[keyUnifiID6Prefix+"nc.firma.de"] != "" {
+		t.Fatalf("%v", s)
+	}
+}
+
+// Kennung gehört jetzt einem Eintrag Typ A oder einem AAAA anderen Namens → nie löschen.
+func TestLAN6SyncChangedIDNeverDeleted(t *testing.T) {
+	for _, rec := range []unifi.Record{recA("o6", "nc.firma.de", "10.0.0.9"), recAAAA("o6", "wiki.firma.de", l6V6)} {
+		f, s, d := newLAN6(t, rec)
+		s[keyUnifiID6Prefix+"nc.firma.de"] = "o6"
+		tg := l6Target()
+		tg.Wanted = false
+		certLAN6Sync(context.Background(), d, tg)
+		wantWrites(t, f)
+		if s[keyUnifiID6Prefix+"nc.firma.de"] != "" || s[keyUnifiHint6Prefix+"nc.firma.de"] != lan6ChangedHint("nc.firma.de") {
+			t.Fatalf("%s: %v", rec.Type, s)
+		}
+	}
+}
+
+// Kennung steht unter anderem Namen, der eigene Name zeigt auf V4 → nicht still neu anlegen;
+// erst vergessen und Hinweis, im nächsten Lauf normal weiter.
+func TestLAN6SyncOwnershipLost(t *testing.T) {
+	f, s, d := newLAN6(t, recA("a1", "nc.firma.de", l6V4), recAAAA("o6", "wiki.firma.de", "2a02:aaaa::99"))
+	s[keyUnifiID6Prefix+"nc.firma.de"] = "o6"
+	certLAN6Sync(context.Background(), d, l6Target())
+	wantWrites(t, f)
+	if s[keyUnifiID6Prefix+"nc.firma.de"] != "" || s[keyUnifiHint6Prefix+"nc.firma.de"] != lan6ChangedHint("nc.firma.de") {
+		t.Fatalf("%v", s)
+	}
+	certLAN6Sync(context.Background(), d, l6Target())
+	wantWrites(t, f, "create nc.firma.de "+l6V6)
+	if s[keyUnifiHint6Prefix+"nc.firma.de"] != "" {
+		t.Fatalf("Hinweis bleibt: %v", s)
+	}
+}
+
+// Die Kennung wird auch gemerkt, wenn die Frist des Laufs abgelaufen ist.
+func TestLAN6SyncPersistsAfterDeadline(t *testing.T) {
+	f, s, d := newLAN6(t, recA("a1", "nc.firma.de", l6V4))
+	d.setSetting = func(c context.Context, k, v string) error {
+		if c.Err() != nil {
+			return c.Err()
+		}
+		s[k] = v
+		return nil
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	f.onCreate = cancel // Frist läuft während des Anlegens ab
+	certLAN6Sync(ctx, d, l6Target())
+	if s[keyUnifiID6Prefix+"nc.firma.de"] != "neu1" {
+		t.Fatalf("Kennung verloren: %v", s)
+	}
+}
+
+func TestLAN6CapWarnOncePerDay(t *testing.T) {
+	d1 := time.Date(2091, 3, 4, 8, 0, 0, 0, time.UTC)
+	if !lan6CapWarnDue(d1) || lan6CapWarnDue(d1.Add(time.Hour)) {
+		t.Fatal("am selben Tag nur einmal")
+	}
+	if !lan6CapWarnDue(d1.Add(24 * time.Hour)) {
+		t.Fatal("am nächsten Tag wieder")
+	}
+}
+
+// Überschreiben: IPv4 stimmt, nur der AAAA-Eintrag ist fremd → nur dieser wird geändert.
+func TestOverwriteAAAAOnly(t *testing.T) {
+	ctx := context.Background()
+	store := newMemCertStore(certRow{Name: "nc.firma.de", State: certStateGueltig})
+	f := &fakeLAN{recs: []unifi.Record{recA("a1", "nc.firma.de", lanTarget), recAAAA("f6", "nc.firma.de", "2a02:f90:e198:1700::99")}}
+	l := &certActLog{settings: map[string]string{keyUnifiHint6Prefix + "nc.firma.de": "fremd"}}
+	d := testLANAct(store, l, f)
+	d.lan6 = func(context.Context) lan6Target { return l6Target() }
+	msg, err := certDoLAN(ctx, d, "nc.firma.de", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantWrites(t, f, "update f6 nc.firma.de "+l6V6)
+	if l.settings[keyUnifiID6Prefix+"nc.firma.de"] != "" || l.settings[keyUnifiHint6Prefix+"nc.firma.de"] != "" || !strings.Contains(msg, "IPv6") {
+		t.Fatalf("%q %v", msg, l.settings)
+	}
+}
+
+// Rückfrage beim Überschreiben nennt IPv6; Knopf auch, wenn nur der AAAA-Eintrag fremd ist;
+// weitere Namen ohne Knopf, mit „von Hand ändern“.
+func TestLANOverwriteConfirmMentionsIPv6(t *testing.T) {
+	base := func() certPanel {
+		return certPanel{CanManage: true, CanUnifi: true, Zone: "firma.de", AgentOK: true, NginxOK: true, LANTarget: lanTarget, LAN6: l6V6,
+			Unifi: unifiPanel{URL: "https://192.168.1.1", HasKey: true, Confirmed: true, Pin: "AB"},
+			Lines: []certLine{{Name: "nc.firma.de", State: certStateGueltig, LANOther: "192.168.1.20"}}}
+	}
+	also := "Auch der IPv6-Eintrag wird auf " + l6V6 + " geändert."
+	p := base()
+	if out := renderCertPanel(t, p); !strings.Contains(out, "192.168.1.20") || strings.Contains(out, also) {
+		t.Errorf("ohne IPv6-Hinweis kein IPv6-Satz:\n%s", out)
+	}
+	p.Lines[0].LAN6Hint = "fremder IPv6-Eintrag"
+	if out := renderCertPanel(t, p); !strings.Contains(out, also) {
+		t.Errorf("mit IPv6-Hinweis fehlt %q:\n%s", also, out)
+	}
+	// nur der AAAA-Eintrag fremd
+	p = base()
+	p.Lines[0].LANOther = ""
+	p.Lines[0].LAN6Hint = "fremder IPv6-Eintrag"
+	out := renderCertPanel(t, p)
+	if !strings.Contains(out, `name="overwrite" value="1"`) || !strings.Contains(out, "IPv6-Eintrag von nc.firma.de auf "+l6V6+" ändern?") {
+		t.Errorf("Knopf für IPv6 fehlt:\n%s", out)
+	}
+	// weitere Namen: kein Knopf, Satz „von Hand ändern“
+	p = base()
+	p.Lines[0].LANOther = ""
+	p.Extra6 = []lan6Extra{{Name: "wiki.firma.de", Hint: "An der UDM Pro steht für wiki.firma.de schon ein IPv6-Eintrag auf x. Nichts geändert."}}
+	out = renderCertPanel(t, p)
+	if !strings.Contains(out, "Nichts geändert. Bitte an der UDM Pro von Hand ändern.") {
+		t.Errorf("Satz fehlt:\n%s", out)
+	}
+	if strings.Contains(out, `value="wiki.firma.de"`) {
+		t.Error("für weitere Namen kein Knopf")
 	}
 }
 

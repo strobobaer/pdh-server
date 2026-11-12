@@ -23,6 +23,7 @@ type fakeLAN struct {
 	deleteErr error
 	createErr map[string]error // Name → Fehler beim Anlegen
 	seq       int              // für mehrere Create ohne nextID
+	onCreate  func()           // wird bei jedem Create aufgerufen (z. B. Frist ablaufen lassen)
 }
 
 func (f *fakeLAN) Records(context.Context) ([]unifi.Record, error) {
@@ -36,6 +37,9 @@ func (f *fakeLAN) Create(_ context.Context, name, ip string) (string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls = append(f.calls, "create "+name+" "+ip)
+	if f.onCreate != nil {
+		f.onCreate()
+	}
 	if err := f.createErr[name]; err != nil {
 		return "", err
 	}

@@ -203,33 +203,96 @@ func certDoLANv4(ctx context.Context, d certActDeps, c certLANClient, recs []uni
 func certLANRemove(ctx context.Context, d certActDeps, row certRow) string {
 	_ = d.putSetting(ctx, keyUnifiHintPrefix+row.Name, "")
 	_ = d.putSetting(ctx, keyUnifiOtherPrefix+row.Name, "")
-	n6 := certLANNorm(row.Name)
-	id6 := ""
-	if d.setting != nil {
-		id6 = d.setting(ctx, keyUnifiID6Prefix+n6)
-	}
-	_ = d.putSetting(ctx, keyUnifiHint6Prefix+n6, "")
-	if id6 != "" {
-		_ = d.putSetting(ctx, keyUnifiID6Prefix+n6, "")
-	}
-	return certLANRemoveOne(ctx, d, row.Name, row.LANRecordID, false) + certLANRemoveOne(ctx, d, row.Name, id6, true)
+	_ = d.putSetting(ctx, keyUnifiHint6Prefix+certLANNorm(row.Name), "")
+	return certLANRemoveOne(ctx, d, row.Name, row.LANRecordID) + certLANRemove6(ctx, d, row)
 }
 
-// certLANRemoveOne löscht einen eigenen Eintrag (Typ A bzw. bei v6 Typ AAAA) an der UDM Pro.
-func certLANRemoveOne(ctx context.Context, d certActDeps, name, id string, v6 bool) string {
+// certLANRemove6: den eigenen IPv6-Eintrag des Namens entfernen – nur wenn die UDM Pro die
+// gemerkte Kennung als AAAA-Eintrag dieses Namens zeigt. Zeigt noch ein weiterer Eintrag Typ A
+// des Namens auf die mitwandernde Adresse, bleibt der IPv6-Eintrag samt Kennung (der Lauf
+// würde ihn sonst gleich wieder anlegen).
+func certLANRemove6(ctx context.Context, d certActDeps, row certRow) string {
+	if d.setting == nil {
+		return ""
+	}
+	n := certLANNorm(row.Name)
+	id := d.setting(ctx, keyUnifiID6Prefix+n)
 	if id == "" {
 		return ""
 	}
-	var what, gone, failed string
-	if v6 {
-		what, gone, failed = "IPv6-Eintrag im Haus", "ipv6-eintrag im haus entfernt", "ipv6-eintrag im haus nicht entfernt"
-	} else {
-		what, gone, failed = "Eintrag im Haus", "eintrag im haus gelöscht", "eintrag im haus nicht gelöscht"
+	lg := componentLog("zertifikate")
+	keep := func(why string) string { // Kennung bleibt; der 5-Minuten-Lauf räumt später auf
+		lg.Warn().Str("name", n).Str("kennung", id).Str("fehler", why).Msg("ipv6-eintrag im haus nicht entfernt")
+		return " Der IPv6-Eintrag im Haus an der UDM Pro (Kennung " + id + ") ist nicht gelöscht: " + why + ". Bitte dort von Hand löschen."
+	}
+	if d.lan == nil {
+		return keep(errUnifiOff.Error())
+	}
+	lctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+	defer cancel()
+	c, err := d.lan(lctx)
+	if err != nil {
+		return keep(certSafeText(err.Error()))
+	}
+	recs, err := c.Records(lctx)
+	if err != nil {
+		return keep(certSafeText(err.Error()))
+	}
+	if len(recs) == 0 {
+		return keep("die UDM Pro meldet keine Einträge")
+	}
+	var rec unifi.Record
+	found := false
+	for _, r := range recs {
+		if r.ID == id {
+			rec, found = r, true
+			break
+		}
+	}
+	forget := func() { _ = d.putSetting(lctx, keyUnifiID6Prefix+n, "") }
+	if !found {
+		forget()
+		lg.Info().Str("name", n).Str("kennung", id).Msg("ipv6-eintrag im haus fehlt an der udm pro – kennung vergessen")
+		return ""
+	}
+	if !strings.EqualFold(rec.Type, "AAAA") || certLANNorm(rec.Name) != n {
+		forget()
+		_ = d.putSetting(lctx, keyUnifiHint6Prefix+n, lan6ChangedHint(n))
+		lg.Info().Str("name", n).Str("kennung", id).Msg("ipv6-eintrag im haus an der udm pro verändert – kennung vergessen")
+		return " " + lan6ChangedHint(n)
+	}
+	v4 := ""
+	if d.lan6 != nil {
+		v4 = d.lan6(lctx).V4
+	}
+	if v4 == "" && d.lanTarget != nil {
+		v4, _ = d.lanTarget(lctx)
+	}
+	if v4 != "" {
+		for _, r := range recs {
+			if strings.EqualFold(r.Type, "A") && certLANNorm(r.Name) == n && r.ID != row.LANRecordID && lan6Same(r.Value, v4) {
+				lg.Info().Str("name", n).Str("kennung", id).Str("a-eintrag", r.ID).Msg("ipv6-eintrag im haus bleibt (weiterer a-eintrag auf die mitwandernde adresse)")
+				return " Der IPv6-Eintrag im Haus bleibt, weil an der UDM Pro noch ein weiterer Eintrag Typ A für " + n + " auf " + v4 + " zeigt."
+			}
+		}
+	}
+	if err := c.Delete(lctx, id); err != nil {
+		return keep(certSafeText(err.Error()))
+	}
+	forget()
+	lg.Info().Str("name", n).Str("kennung", id).Msg("ipv6-eintrag im haus entfernt")
+	return " Der IPv6-Eintrag im Haus an der UDM Pro ist gelöscht."
+}
+
+// certLANRemoveOne löscht den eigenen Eintrag Typ A an der UDM Pro.
+func certLANRemoveOne(ctx context.Context, d certActDeps, name, id string) string {
+	if id == "" {
+		return ""
 	}
 	lg := componentLog("zertifikate")
 	manual := func(why string) string {
-		lg.Warn().Str("name", name).Str("kennung", id).Str("fehler", why).Msg(failed)
-		return " Der " + what + " an der UDM Pro (Kennung " + id + ") ist nicht gelöscht: " + why + ". Bitte dort von Hand löschen."
+		lg.Warn().Str("name", name).Str("kennung", id).Str("fehler", why).Msg("eintrag im haus nicht gelöscht")
+		return " Der Eintrag im Haus an der UDM Pro (Kennung " + id + ") ist nicht gelöscht: " + why + ". Bitte dort von Hand löschen."
 	}
 	if d.lan == nil {
 		return manual(errUnifiOff.Error())
@@ -243,8 +306,8 @@ func certLANRemoveOne(ctx context.Context, d certActDeps, name, id string, v6 bo
 	if err := c.Delete(lctx, id); err != nil {
 		return manual(certSafeText(err.Error()))
 	}
-	lg.Info().Str("name", name).Str("kennung", id).Msg(gone)
-	return " Der " + what + " an der UDM Pro ist gelöscht."
+	lg.Info().Str("name", name).Str("kennung", id).Msg("eintrag im haus gelöscht")
+	return " Der Eintrag im Haus an der UDM Pro ist gelöscht."
 }
 
 // certLANDaily: nur lesen und Abweichungen als Hinweis merken – nie ändern, nie Alarm.
@@ -448,6 +511,29 @@ func (h *Handler) unifiClient(ctx context.Context) (certLANClient, error) {
 
 // certAddrs: eigene Adressen (ohne Loopback, Link-Local) und die mitwandernde des Verbunds.
 func (h *Handler) certAddrs(ctx context.Context) (own []string, vip string) {
+	st, err := h.certHAStatus(ctx)
+	return certOwnAddrs(), certVIPFrom(st, err)
+}
+
+// certHAStatus: Status des Verbunds mit 2 s Frist (pdh-ha ist optional).
+func (h *Handler) certHAStatus(ctx context.Context) (haStatus, error) {
+	cctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
+	defer cancel()
+	return h.haStatusFetch(cctx)
+}
+
+// certVIPFrom: mitwandernde Adresse aus dem Status; nicht erreichbar heißt keine Zusatzadresse.
+func certVIPFrom(st haStatus, err error) string {
+	if err == nil && st.Configured && st.Access.VIPOn && st.Access.VIP != "" {
+		if ip := net.ParseIP(vipAddr(st.Access.VIP)); ip != nil {
+			return ip.String()
+		}
+	}
+	return ""
+}
+
+// certOwnAddrs: eigene Adressen ohne Loopback, Link-Local und unbestimmte.
+func certOwnAddrs() (own []string) {
 	seen := map[string]bool{}
 	if addrs, err := net.InterfaceAddrs(); err == nil {
 		for _, a := range addrs {
@@ -461,15 +547,7 @@ func (h *Handler) certAddrs(ctx context.Context) (own []string, vip string) {
 			}
 		}
 	}
-	// Verbund (pdh-ha) ist optional; nicht erreichbar heißt einfach: keine Zusatzadresse
-	cctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
-	defer cancel()
-	if st, err := h.haStatusFetch(cctx); err == nil && st.Configured && st.Access.VIPOn && st.Access.VIP != "" {
-		if ip := net.ParseIP(vipAddr(st.Access.VIP)); ip != nil {
-			vip = ip.String()
-		}
-	}
-	return own, vip
+	return own
 }
 
 // certLANTargetFrom: mitwandernde Adresse, ohne Verbund die erste eigene IPv4-Adresse
