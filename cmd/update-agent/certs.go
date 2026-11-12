@@ -383,15 +383,21 @@ func certFail(w http.ResponseWriter, status int, msg string) {
 // certResolve folgt Verknüpfungen einer nginx-Seite. Absolute Ziele gelten im
 // Host (nicht im Namensraum des Agenten, sonst landet ein Schreibzugriff auf
 // dessen schreibgeschütztem /etc); relative Ziele gelten ab dem Ordner der Verknüpfung.
-func (a *updateAgent) certResolve(p string) string {
+func (a *updateAgent) certResolve(p string) (string, error) {
 	for i := 0; i < 8; i++ {
 		st, err := os.Lstat(p)
-		if err != nil || st.Mode()&os.ModeSymlink == 0 {
-			return p
+		if err != nil {
+			if i == 0 && errors.Is(err, os.ErrNotExist) {
+				return p, nil // am Pfad selbst liegt nichts
+			}
+			return "", err // Verknüpfung ins Leere oder nicht zugänglich
+		}
+		if st.Mode()&os.ModeSymlink == 0 {
+			return p, nil
 		}
 		t, err := os.Readlink(p)
 		if err != nil {
-			return p
+			return "", err
 		}
 		if strings.HasPrefix(t, "/") || filepath.IsAbs(t) {
 			p = a.certPath(filepath.ToSlash(t))
@@ -399,7 +405,7 @@ func (a *updateAgent) certResolve(p string) string {
 			p = filepath.Join(filepath.Dir(p), t)
 		}
 	}
-	return p
+	return "", errors.New("zu viele Verknüpfungen")
 }
 
 type certSite struct {
@@ -419,7 +425,10 @@ func (a *updateAgent) certSitesWithName(sitesDir, name string) ([]certSite, erro
 		if e.Name() == certPDHSite || strings.HasPrefix(e.Name(), ".") {
 			continue
 		}
-		p := a.certResolve(a.certPath(sitesDir + "/" + e.Name()))
+		p, err := a.certResolve(a.certPath(sitesDir + "/" + e.Name()))
+		if err != nil {
+			continue
+		}
 		if st, err := os.Stat(p); err != nil || st.IsDir() {
 			continue
 		}
@@ -458,14 +467,24 @@ func (a *updateAgent) certFindNextcloudSite(sitesDir, name string) (string, erro
 	return "", errors.New("Mehrere nginx-Seiten tragen diesen Namen – nicht geändert")
 }
 
-// certOwnSite: gibt es die PDH-Seite nicht oder hat der Agent sie geschrieben?
-// Eine von Hand angelegte pdh.conf darf nie überschrieben oder gelöscht werden.
-func (a *updateAgent) certOwnSite(path string) (exists, own bool) {
-	data, err := os.ReadFile(path)
+// certOwnSite prüft die PDH-Seite: target ist die Datei, in die geschrieben wird
+// (hinter Verknüpfungen), exists/own sagen, ob es sie gibt und ob der Agent sie
+// geschrieben hat. Nur wenn am Pfad wirklich nichts liegt, gilt sie als frei; jeder
+// andere Lesefehler (Verknüpfung ins Leere, keine Rechte) ist ein Fehler, und die
+// Seite darf dann nicht angefasst werden.
+func (a *updateAgent) certOwnSite(path string) (target string, exists, own bool, err error) {
+	target, err = a.certResolve(path)
 	if err != nil {
-		return false, true
+		return "", false, false, err
 	}
-	return true, strings.HasPrefix(string(data), certSiteHeader)
+	data, err := os.ReadFile(target)
+	if errors.Is(err, os.ErrNotExist) {
+		return target, false, true, nil
+	}
+	if err != nil {
+		return "", false, false, err
+	}
+	return target, true, strings.HasPrefix(string(data), certSiteHeader), nil
 }
 
 // certRestoreAll stellt alle Sicherungen wieder her und nennt die Dateien, bei
@@ -573,11 +592,12 @@ func (a *updateAgent) certInstallHandler(w http.ResponseWriter, r *http.Request)
 	var sitePath, siteData, prevCert, prevKey string
 	switch req.Role {
 	case "pdh":
-		sitePath = a.certPath(sitesDir + "/" + certPDHSite)
-		if _, own := a.certOwnSite(sitePath); !own {
-			certFail(w, http.StatusOK, "Die nginx-Seite "+certPDHSite+" stammt nicht vom Update-Agent – nicht geändert")
+		target, _, own, err := a.certOwnSite(a.certPath(sitesDir + "/" + certPDHSite))
+		if err != nil || !own {
+			certFail(w, http.StatusOK, "Die nginx-Seite "+certPDHSite+" stammt nicht vom Update-Agent oder ist nicht lesbar – nicht geändert")
 			return
 		}
+		sitePath = target // hinter einer Verknüpfung: die Zieldatei, die Verknüpfung bleibt
 		others, err := a.certSitesWithName(sitesDir, req.Name)
 		if err != nil {
 			certFail(w, http.StatusOK, err.Error())
@@ -712,7 +732,8 @@ func (a *updateAgent) certRemoveHandler(w http.ResponseWriter, r *http.Request) 
 		case "pdh":
 			p := a.certPath(sitesDir + "/" + certPDHSite)
 			// Nur eine vom Agenten geschriebene Seite wird entfernt; eine eigene bleibt.
-			if exists, own := a.certOwnSite(p); exists && own {
+			// Eine Verknüpfung (target != p) bleibt ebenso unberührt wie ein Lesefehler.
+			if target, exists, own, err := a.certOwnSite(p); err == nil && exists && own && target == p {
 				b, err := certTake(p)
 				if err != nil {
 					certFail(w, http.StatusOK, "nginx-Seite ist nicht lesbar")

@@ -250,6 +250,14 @@ func (f *certFixture) snapshot(t *testing.T) map[string]string {
 			out[filepath.ToSlash(rel)+"/"] = ""
 			return nil
 		}
+		if info.Mode()&os.ModeSymlink != 0 { // Verknüpfungen nicht verfolgen (können ins Leere zeigen)
+			dest, rerr := os.Readlink(p)
+			if rerr != nil {
+				return rerr
+			}
+			out[filepath.ToSlash(rel)] = "-> " + dest
+			return nil
+		}
 		b, rerr := os.ReadFile(p)
 		if rerr != nil {
 			return rerr
@@ -788,5 +796,93 @@ func TestCertInstallRoleEmpty(t *testing.T) {
 	_, resp = f3.call(t, f3.agent.certInstallHandler, http.MethodPost, certInstallBody("wiki.firma.de", chain, key, ""))
 	if resp["ok"] != true || !f3.exists("/etc/ssl/pdh/wiki.firma.de/privkey.pem") || len(f3.commands()) != 0 {
 		t.Errorf("ohne nginx: %v %v", resp, f3.commands())
+	}
+}
+
+// pdh.conf als Verknüpfung auf eine vom Agenten geschriebene Seite: geschrieben wird das Ziel,
+// die Verknüpfung bleibt; ein fehlgeschlagenes nginx -t setzt das Ziel byte-gleich zurück.
+func TestCertInstallPDHThroughSymlink(t *testing.T) {
+	chain, key := certTestPEM(t, "pdh.firma.de")
+	f := newCertFixture(t)
+	alt := certSiteHeader + " (alt)\n"
+	f.write(t, "/etc/nginx/eigene/pdh-seite.conf", alt)
+	link := f.real("/etc/nginx/conf.d/pdh.conf")
+	if err := os.Symlink("/etc/nginx/eigene/pdh-seite.conf", link); err != nil {
+		t.Skipf("Verknüpfungen nicht möglich: %v", err)
+	}
+	isLink := func() bool {
+		st, err := os.Lstat(link)
+		return err == nil && st.Mode()&os.ModeSymlink != 0
+	}
+	f.nginxTest = func() (string, error) { return "kaputt", errors.New("exit status 1") }
+	_, resp := f.call(t, f.agent.certInstallHandler, http.MethodPost, certInstallBody("pdh.firma.de", chain, key, "pdh"))
+	if resp["ok"] != false || f.read(t, "/etc/nginx/eigene/pdh-seite.conf") != alt || !isLink() {
+		t.Errorf("Rückweg: %v", resp)
+	}
+	f.nginxTest = nil
+	_, resp = f.call(t, f.agent.certInstallHandler, http.MethodPost, certInstallBody("pdh.firma.de", chain, key, "pdh"))
+	if resp["ok"] != true || !isLink() || !strings.Contains(f.read(t, "/etc/nginx/eigene/pdh-seite.conf"), "proxy_pass http://127.0.0.1:8090;") {
+		t.Errorf("Zieldatei nicht aktualisiert: %v", resp)
+	}
+}
+
+// pdh.conf als Verknüpfung auf eine fremde Seite, ins Leere oder im Kreis: abgelehnt, nichts geschrieben, kein Befehl.
+func TestCertInstallPDHSymlinkRefused(t *testing.T) {
+	chain, key := certTestPEM(t, "pdh.firma.de")
+	for name, setup := range map[string]func(f *certFixture, link string) error{
+		"fremdes Ziel": func(f *certFixture, link string) error {
+			f.write(t, "/etc/nginx/eigene/mein.conf", "server {\n    listen 80;\n}\n")
+			return os.Symlink("/etc/nginx/eigene/mein.conf", link)
+		},
+		"ins Leere": func(f *certFixture, link string) error {
+			return os.Symlink("/etc/nginx/eigene/gibt-es-nicht.conf", link)
+		},
+		"Kreis": func(f *certFixture, link string) error {
+			return os.Symlink("pdh.conf", link)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newCertFixture(t)
+			link := f.real("/etc/nginx/conf.d/pdh.conf")
+			if err := setup(f, link); err != nil {
+				t.Skipf("Verknüpfungen nicht möglich: %v", err)
+			}
+			before := f.snapshot(t)
+			_, resp := f.call(t, f.agent.certInstallHandler, http.MethodPost, certInstallBody("pdh.firma.de", chain, key, "pdh"))
+			msg, _ := resp["error"].(string)
+			if resp["ok"] != false || !strings.HasSuffix(msg, "– nicht geändert") || !strings.Contains(msg, "pdh.conf") {
+				t.Errorf("Antwort: %v", resp)
+			}
+			if st, err := os.Lstat(link); err != nil || st.Mode()&os.ModeSymlink == 0 {
+				t.Error("Verknüpfung wurde ersetzt")
+			}
+			after := f.snapshot(t)
+			if len(after) != len(before) || len(f.commands()) != 0 {
+				t.Errorf("es wurde etwas angefasst: %v", f.commands())
+			}
+			for p, d := range before {
+				if after[p] != d {
+					t.Errorf("%s verändert", p)
+				}
+			}
+			// Entfernen lässt es ebenfalls in Ruhe
+			_, resp = f.call(t, f.agent.certRemoveHandler, http.MethodPost, map[string]any{"name": "pdh.firma.de", "role": "pdh"})
+			if st, err := os.Lstat(link); err != nil || st.Mode()&os.ModeSymlink == 0 || len(f.commands()) != 0 {
+				t.Errorf("Entfernen griff ein: %v %v", resp, f.commands())
+			}
+		})
+	}
+}
+
+// pdh.conf nicht lesbar (hier: ein Ordner an der Stelle): abgelehnt.
+func TestCertInstallPDHUnreadableRefused(t *testing.T) {
+	chain, key := certTestPEM(t, "pdh.firma.de")
+	f := newCertFixture(t)
+	if err := os.Mkdir(f.real("/etc/nginx/conf.d/pdh.conf"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	_, resp := f.call(t, f.agent.certInstallHandler, http.MethodPost, certInstallBody("pdh.firma.de", chain, key, "pdh"))
+	if resp["ok"] != false || !strings.HasSuffix(resp["error"].(string), "– nicht geändert") || len(f.commands()) != 0 || f.exists("/etc/ssl/pdh") {
+		t.Errorf("Antwort: %v", resp)
 	}
 }
