@@ -85,7 +85,7 @@
     var msgEl = document.querySelector('[data-card-msg]');
     var logoutBtn = document.querySelector('[data-card-logout]');
     if (bar && nameEl && msgEl && logoutBtn) {
-      var loggedIn = false, lastPing = 0, msgTimer = null;
+      var loggedIn = false, lastPing = 0, msgTimer = null, gen = 0;
       var post = function (url, data) {
         return fetch(url, {
           method: 'POST', credentials: 'same-origin', cache: 'no-store',
@@ -106,27 +106,31 @@
       };
       var ping = function () {
         lastPing = Date.now();
+        var g = gen; // Antworten aus älterer Generation (vor Abmelden/neuer Karte) verwerfen
         post('/terminal/card/ping').then(function (r) { return r.ok ? r.json() : null; })
-          .then(function (d) { if (d) showBar(d.active ? d.name : ''); })
+          .then(function (d) { if (d && g === gen) showBar(d.active ? d.name : ''); })
           .catch(function () { /* offline: Stand bleibt */ });
       };
       var onCard = function (uid) {
+        var g = ++gen;
         post('/terminal/card', { uid: uid })
           .then(function (r) { return r.json().catch(function () { return null; }); })
           .then(function (d) {
             if (!d) return;
+            if (g !== gen) return;
             if (d.ok) { msgEl.hidden = true; showBar(d.name); lastPing = Date.now(); }
             else if (d.message) showMsg(d.message);
           })
           .catch(function () { /* offline: ignorieren */ });
       };
       logoutBtn.addEventListener('click', function () {
+        gen++;
         showBar('');
         post('/terminal/card/abmelden').catch(function () {});
       });
       // Berührung bei laufender Kartensitzung: höchstens alle 20 s nachfragen, ob sie noch läuft
-      document.addEventListener('pointerdown', function () {
-        if (loggedIn && Date.now() - lastPing > 20000) ping();
+      document.addEventListener('pointerdown', function (ev) {
+        if (loggedIn && Date.now() - lastPing > 20000 && !logoutBtn.contains(ev.target)) ping();
       }, true);
       ping();
       try {
