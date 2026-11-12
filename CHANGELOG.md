@@ -10,6 +10,12 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.77.10] – 2026-11-12
+
+### Geändert
+
+- Cloudflare: Meldungen, die die Karte „DNS, Proxy und Tunnel-Ziele“ anzeigt, stehen jetzt auch im Protokoll (Bereich cloudflare) – so lässt sich später nachsehen, was Cloudflare abgelehnt hat.
+
 ## [0.77.9] – 2026-11-09
 
 ### Neu

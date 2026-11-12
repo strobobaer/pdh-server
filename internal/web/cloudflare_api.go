@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/rs/zerolog"
 	"net"
 	"net/http"
 	"net/url"
@@ -221,6 +222,32 @@ func (h *Handler) cfWantedTargets(ctx context.Context, zone string, ingress []cl
 // cfBuildPanel lädt den Stand von Cloudflare. Teile, die der Token nicht darf,
 // melden sich einzeln – der Rest bleibt benutzbar.
 func (h *Handler) cfBuildPanel(ctx context.Context, msg string, perr error) cfPanel {
+	p := h.cfLoadPanel(ctx, msg, perr)
+	p.logNotes(componentLog("cloudflare"), perr != nil)
+	return p
+}
+
+// cfNoTunnelToken: Hinweis ohne Fehler – steht nicht im Protokoll.
+const cfNoTunnelToken = "Kein Tunnel-Token eingetragen – die Ziele im Tunnel lassen sich erst damit pflegen."
+
+// logNotes schreibt die Meldungen der Karte ins Protokoll: Sonst sieht sie nur, wer gerade
+// davor sitzt. ownErr: die rote Meldung stammt aus einer Änderung und ist schon protokolliert.
+func (p cfPanel) logNotes(l *zerolog.Logger, ownErr bool) {
+	note := func(teil, text string) {
+		if text != "" {
+			l.Warn().Str("teil", teil).Str("domain", p.Zone).Str("meldung", text).Msg("cloudflare-karte zeigt eine meldung")
+		}
+	}
+	if !ownErr {
+		note("zugang", p.Error)
+	}
+	note("verschluesselung", p.SettingsErr)
+	if p.TunnelErr != cfNoTunnelToken {
+		note("tunnel", p.TunnelErr)
+	}
+}
+
+func (h *Handler) cfLoadPanel(ctx context.Context, msg string, perr error) cfPanel {
 	p := cfPanel{Message: msg, Types: cfRecordTypes}
 	if perr != nil {
 		p.Error = perr.Error()
@@ -262,7 +289,7 @@ func (h *Handler) cfBuildPanel(ctx context.Context, msg string, perr error) cfPa
 	}
 	switch {
 	case a.tunnel == "":
-		p.TunnelErr = "Kein Tunnel-Token eingetragen – die Ziele im Tunnel lassen sich erst damit pflegen."
+		p.TunnelErr = cfNoTunnelToken
 	default:
 		cfg, err := a.client.TunnelConfig(ctx, a.account, a.tunnel)
 		if err != nil {

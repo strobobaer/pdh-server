@@ -12,6 +12,8 @@ import (
 	"testing"
 
 	"pdh/internal/integrations/cloudflare"
+
+	"github.com/rs/zerolog"
 )
 
 // fakeCF: die Teile der Cloudflare-Schnittstelle, die das PDH benutzt.
@@ -316,5 +318,34 @@ func TestCloudflareVerifyAccountToken(t *testing.T) {
 	zonesOK = false
 	if err := c.Verify(context.Background()); err == nil || !strings.Contains(err.Error(), "Invalid API Token (1000)") {
 		t.Fatalf("falscher Token: %v", err)
+	}
+}
+
+// Meldungen der Karte stehen im Protokoll – mit Teil und Wortlaut, der reine Hinweis
+// „Kein Tunnel-Token“ und eine schon protokollierte Meldung einer Änderung nicht.
+func TestCloudflarePanelNotesLogged(t *testing.T) {
+	var buf bytes.Buffer
+	l := zerolog.New(&buf)
+	p := cfPanel{Zone: "firma.de", Error: "DNS-Einträge: kaputt", SettingsErr: "Cloudflare lehnt den API-Token ab: Authentication error (10000)", TunnelErr: cfNoTunnelToken}
+	p.logNotes(&l, false)
+	out := buf.String()
+	for _, want := range []string{`"teil":"zugang"`, `"teil":"verschluesselung"`, "Authentication error (10000)", `"domain":"firma.de"`, `"level":"warn"`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("Protokoll enthält %q nicht:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, `"teil":"tunnel"`) {
+		t.Errorf("Hinweis ohne Fehler protokolliert:\n%s", out)
+	}
+	buf.Reset()
+	p.TunnelErr = "Cloudflare: Tunnel not found (1003)"
+	p.logNotes(&l, true)
+	if out := buf.String(); strings.Contains(out, `"teil":"zugang"`) || !strings.Contains(out, "Tunnel not found (1003)") {
+		t.Errorf("nach einer Änderung:\n%s", out)
+	}
+	buf.Reset()
+	cfPanel{Zone: "firma.de"}.logNotes(&l, false)
+	if buf.Len() != 0 {
+		t.Errorf("ohne Meldung protokolliert: %s", buf.String())
 	}
 }
