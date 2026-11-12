@@ -177,6 +177,7 @@
         var render = function () {
           var view = loginView(reader, settings);
           if (loggedIn || view === 'card') { dialogOpen = false; dismissed = false; }
+          if (loggedIn) clearInputs(); // Karte hat angemeldet: halb getippte Eingaben verwerfen
           var open = !loggedIn && (dialogOpen || (view === 'password' && !dismissed));
           var noReader = !loggedIn && view === 'none';
           var fields = !loggedIn && (view === 'card_pin' || view === 'card_only');
@@ -193,6 +194,8 @@
         onLoginChange = render;
         var clearInputs = function () {
           cardIn.value = ''; pinIn.value = ''; userIn.value = ''; passIn.value = '';
+          var ae = document.activeElement;
+          if (ae && (ae === pinIn || ae === userIn || ae === passIn)) ae.blur(); // activeIn passt zum Fokus
           activeIn = cardIn;
         };
         var submit = function (data) {
@@ -209,7 +212,7 @@
               else if (x.s === 429) showMsg((d && d.message) || 'Bitte kurz warten');
               else showMsg((d && d.message) || 'Anmeldung fehlgeschlagen');
             })
-            .catch(function () { /* offline: ignorieren */ })
+            .catch(function () { if (g === gen) showMsg('Anmeldung fehlgeschlagen'); }) // Netzfehler
             .then(function () { clearInputs(); render(); }); // Eingaben nach jedem Versuch leeren
         };
 
