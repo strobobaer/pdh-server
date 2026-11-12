@@ -16,7 +16,7 @@
 - Nur im Verbund und nur mit eingeschalteter mitwandernder IPv4-Adresse (`vip_on`).
 - Die Adresse liegt immer als `/128` mit `preferred_lft 0` auf der Karte.
 - Kein neues Recht, keine Migration. Kennung des IPv6-Eintrags je Name in `app_settings` unter `unifi.id6.<name>`.
-- Fremde Einträge an der UDM Pro werden nie ohne Rückfrage geändert und nie als eigene übernommen.
+- IPv6-Einträge an der UDM Pro: Es zählt, wohin ein Eintrag zeigt, nicht wer ihn angelegt hat. Jeder Name mit IPv4-Eintrag auf die mitwandernde IPv4-Adresse bekommt den IPv6-Eintrag. Ein vorhandener IPv6-Eintrag mit dem eingestellten Ende wird nachgezogen, einer mit anderem Ziel nie ohne Rückfrage geändert. Gelöscht werden nur IPv6-Einträge, die das PDH selbst angelegt hat. Für IPv4-Einträge gelten die Regeln aus 0.80.0 unverändert.
 - Texte für Anwender auf Deutsch, kurze Sätze. Farben nur über CSS-Variablen; Oberfläche in Fiori und Fluent, hell und dunkel prüfen.
 - Version 0.80.1 (`VERSION`, `CHANGELOG.md`), Handbuch im selben Schritt.
 - Tests laufen in Git Bash: `go test ./...`. `gofmt -l` meldet wegen CRLF fast alles – stattdessen `go vet`.
@@ -310,20 +310,31 @@ func TestNAPacket(t *testing.T) {
 - Produces:
   - `const keyUnifiID6Prefix = "unifi.id6."`, `keyUnifiHint6Prefix = "unifi.hint6."`
   - `func certLANMatchType(recs []unifi.Record, typ, name, ip, ownID string) (string, unifi.Record)` – `certLANMatch` ruft es mit `"A"`
-  - `func certLAN6Sync(ctx context.Context, d certDeps, rows []certRow, target string, wanted bool) (changed int)` – `target` ist die IPv6-Adresse aus dem Status (`""` = unbekannt), `wanted` = Ende gesetzt
-  - `func (h *Handler) certLAN6Target(ctx context.Context) (target string, wanted bool)`
+  - `type lan6Target struct { V4, V6 string; Suffix netip.Addr; Wanted bool }` – mitwandernde IPv4- und IPv6-Adresse aus dem Status (`V6 == ""` = unbekannt), eingestelltes Ende, `Wanted` = Ende gesetzt
+  - `func certLAN6Sync(ctx context.Context, d certDeps, t lan6Target) (changed int)` – arbeitet auf allen Einträgen der UDM Pro, nicht nur auf den Namen der Zertifikate
+  - `func certLAN6Names(recs []unifi.Record, v4 string) []string` – normalisierte Namen mit einem Eintrag Typ A auf `v4`, sortiert, ohne Dopplungen
+  - `func lan6HasSuffix(value string, suffix netip.Addr) bool` – untere 64 Bit der Adresse gleich dem Ende
+  - `func (h *Handler) certLAN6Target(ctx context.Context) lan6Target`
   - `certPanel.LAN6 string` (Adresse für die Liste von Hand, `""` = kein IPv6)
 
 - [ ] **Step 1: Tests schreiben** (UniFi im Speicher wie in `certs_lan_test.go`):
 
 ```go
-// TestLAN6SyncCreates: Name mit LANRecordID "a1", target "2a02:f90:e198:1700::15", wanted → Create(name, target) einmal, unifi.id6.<name> gesetzt, changed == 1.
-// TestLAN6SyncOnlyNamesWithOwnA: Name ohne LANRecordID → nichts angelegt.
-// TestLAN6SyncUpdatesAfterPrefixChange: eigener AAAA-Eintrag auf 2a02:aaaa:0:1::15 → Update auf target, Protokollzeile "ipv6-eintrag im haus geändert".
-// TestLAN6SyncForeignUntouched: AAAA gleichen Namens mit anderer Kennung und anderer Adresse → kein Update, unifi.hint6.<name> = "An der UDM Pro steht für <name> schon ein IPv6-Eintrag auf <adresse>, den nicht das PDH angelegt hat."
-// TestLAN6SyncRemovesWhenOff: wanted=false, unifi.id6.<name> gesetzt → Delete(id), Schlüssel geleert.
+// Ziel in allen Tests: V4 "10.10.0.15", V6 "2a02:f90:e198:1700::15", Ende 15.
+// TestLAN6SyncCreatesForPDHName: A-Eintrag des PDH (Kennung "a1") auf V4 → Create(name, V6) einmal, unifi.id6.<name> gesetzt, changed == 1.
+// TestLAN6SyncCreatesForManualName: von Hand angelegter A-Eintrag "wiki.firma.de" → V4, Name steht in keiner Zertifikatszeile → Create("wiki.firma.de", V6), unifi.id6.wiki.firma.de gesetzt.
+// TestLAN6SyncSkipsOtherTargets: A-Eintrag auf 10.10.0.99 → kein IPv6-Eintrag.
+// TestLAN6SyncNameNormalised: A-Eintrag "Wiki.Firma.DE." → genau ein Create mit "wiki.firma.de"; zweiter Lauf ohne Create.
+// TestLAN6SyncUpdatesOwnAfterPrefixChange: eigener AAAA-Eintrag auf 2a02:aaaa:0:1::15 → Update auf V6, Protokollzeile "ipv6-eintrag im haus geändert".
+// TestLAN6SyncUpdatesManualWithSuffix: von Hand angelegter AAAA-Eintrag (keine gemerkte Kennung) auf 2a02:aaaa:0:1::15 → Update auf V6; unifi.id6.<name> bleibt leer (nicht übernommen).
+// TestLAN6SyncForeignOtherTargetUntouched: AAAA gleichen Namens auf 2a02:f90:e198:1700::99 → kein Update, kein Create, unifi.hint6.<name> = "An der UDM Pro steht für <name> schon ein IPv6-Eintrag auf <adresse>. Nichts geändert."
+// TestLAN6SyncTwoAAAASameName: ein AAAA mit dem Ende und einer ohne → der mit dem Ende wird nachgezogen, der andere bleibt, kein Create.
+// TestLAN6SyncRemovesWhenOff: Wanted=false, unifi.id6.<name> gesetzt → Delete(id), Schlüssel geleert; ein von Hand angelegter AAAA-Eintrag bleibt stehen.
+// TestLAN6SyncRemovesWhenANoLongerPoints: gemerkter AAAA-Eintrag, der A-Eintrag des Namens zeigt nicht mehr auf V4 bzw. ist weg → Delete(id), Schlüssel geleert.
 // TestLAN6SyncRemoveKeptOnError: Delete scheitert → Schlüssel bleibt, nächster Lauf versucht es wieder (Review Focus 4).
-// TestLAN6SyncUnknownTarget: wanted=true, target "" → nichts angelegt, nichts gelöscht.
+// TestLAN6SyncUnknownTarget: Wanted=true, V6 "" → nichts angelegt, nichts geändert, nichts gelöscht.
+// TestLAN6SyncNoV4: V4 "" (keine mitwandernde IPv4-Adresse bekannt) → nichts angelegt, nichts gelöscht.
+// TestLAN6SyncManyNames: 40 Namen auf V4 → 40 Create in einem Lauf, Reihenfolge nach Name; scheitert einer, laufen die übrigen weiter und der Fehler steht als Hinweis beim Namen.
 // TestLAN6SyncNoUnifi: d.lan == nil bzw. errUnifiOff → keine Anfrage, changed == 0, kein Hinweis.
 // TestLANRemoveAlsoRemovesAAAA: certLANRemove löscht auch den Eintrag aus unifi.id6.<name>.
 // TestOverwriteAlsoOverwritesAAAA: certDoLAN mit overwrite=true ändert einen fremden AAAA-Eintrag auf target, übernimmt ihn nicht als eigenen.
@@ -333,7 +344,10 @@ func TestNAPacket(t *testing.T) {
 - [ ] **Step 2: Fehlschlag prüfen** – `go test ./internal/web/ -run 'LAN6|LANRemoveAlso|OverwriteAlso|LANList'` → FAIL.
 
 - [ ] **Step 3: Umsetzen.**
-  - `certLAN6Target`: `haStatusFetch` mit 2 s Frist; `wanted = Configured && Access.VIP6Suffix != ""`, `target = Access.VIP6` (nur wenn `net.ParseIP` eine IPv6-Adresse ergibt).
+  - `certLAN6Target`: `haStatusFetch` mit 2 s Frist; `Wanted = Configured && Access.VIPOn && Access.VIP6Suffix != ""`, `V4 = vipAddr(Access.VIP)`, `V6 = Access.VIP6` (nur wenn `net.ParseIP` eine IPv6-Adresse ergibt), `Suffix` aus `Access.VIP6Suffix` (gleiche Regel wie `parseVIP6Suffix`; in `internal/web` als kleine eigene Funktion `lan6Suffix`, kein Import aus `cmd/pdh-ha`).
+  - Je Name in `certLAN6Names(recs, V4)`: eigener Eintrag (Kennung aus `unifi.id6.<name>`) stimmt → nichts; weicht ab → `Update`. Sonst ein AAAA-Eintrag mit dem Ende (`lan6HasSuffix`) → `Update`, nicht merken. Sonst ein AAAA-Eintrag mit anderem Ziel → Hinweis. Sonst `Create` und Kennung merken.
+  - Aufräumen: für jeden Schlüssel `unifi.id6.*`, dessen Name nicht (mehr) in `certLAN6Names` steht oder wenn `Wanted` falsch ist → `Delete`, Schlüssel leeren. Dafür braucht `certDeps` eine Funktion, die Einstellungen nach Präfix auflistet (`settingsPrefix(ctx, prefix) map[string]string`); gibt es sie noch nicht, in `certs_store.go` ergänzen.
+  - Hinweise zu Namen, die das PDH nicht als Zertifikat führt, stehen im Block „Namen im Haus“ in einer eigenen kurzen Liste „Weitere Namen an der UDM Pro“ (Name, Hinweistext); ohne Hinweis erscheinen sie dort nicht.
   - Takt: in `StartCertRenewal` ein zweiter `certSchedule` mit `first: 3 * time.Minute, every: 5 * time.Minute, afterRole: time.Minute, poll: 30 * time.Second`; läuft nicht am Spiegel und nicht in der Wartung (`h.maintSkip("zertifikate")`); Frist je Lauf 2 Minuten; `recover` wie `certStep`.
   - Der Lauf liest `Records` nur, wenn `wanted` oder mindestens ein Schlüssel `unifi.id6.*` gesetzt ist – sonst keine Anfrage an die UDM Pro.
   - Protokoll `componentLog("zertifikate")`: `ipv6-eintrag im haus angelegt`, `… geändert`, `… entfernt`, je mit Name, Adresse, Kennung.
@@ -409,7 +423,7 @@ func TestNAPacket(t *testing.T) {
 - Modify: `web/templates/widgets/help_figures.gohtml` (Skizze des Formulars der mitwandernden Adresse, falls sie die Felder zeigt)
 - Modify: `CHANGELOG.md`, `VERSION`
 
-- [ ] **Step 1: Handbuch.** Im Kapitel Ausfallschutz ein `.hb-howto` „IPv6-Adresse mitwandern lassen“ mit Schritten: Feld „IPv6-Ende“ füllen (z. B. `15`), speichern, in der Zeile der Adresse die IPv6-Adresse ablesen. Dazu drei Sätze: gilt nur mit eingeschalteter mitwandernder Adresse; ohne IPv6 im Netz passiert nichts; die Adresse ist öffentlich, ob sie von außen erreichbar ist, entscheidet die Firewall des Routers. Bei den Namen im Haus: mit UniFi trägt das PDH den IPv6-Eintrag selbst ein und zieht ihn binnen 5 Minuten nach, wenn der Anbieter das Präfix wechselt; ohne UniFi steht der Eintrag in der Liste und muss nach einem Präfixwechsel von Hand geändert werden. Den am 12.11. ergänzten Satz zum Zertifikatsfehler beim Aufruf über die Adresse behalten.
+- [ ] **Step 1: Handbuch.** Im Kapitel Ausfallschutz ein `.hb-howto` „IPv6-Adresse mitwandern lassen“ mit Schritten: Feld „IPv6-Ende“ füllen (z. B. `15`), speichern, in der Zeile der Adresse die IPv6-Adresse ablesen. Dazu drei Sätze: gilt nur mit eingeschalteter mitwandernder Adresse; ohne IPv6 im Netz passiert nichts; die Adresse ist öffentlich, ob sie von außen erreichbar ist, entscheidet die Firewall des Routers. Bei den Namen im Haus: mit UniFi trägt das PDH für jeden Namen, der an der UDM Pro auf die mitwandernde Adresse zeigt (auch von Hand eingetragene), den IPv6-Eintrag selbst ein und zieht ihn binnen 5 Minuten nach, wenn der Anbieter das Präfix wechselt; ohne UniFi steht der Eintrag in der Liste und muss nach einem Präfixwechsel von Hand geändert werden. Den am 12.11. ergänzten Satz zum Zertifikatsfehler beim Aufruf über die Adresse behalten.
 
 - [ ] **Step 2: Änderungsprotokoll und Version.** `VERSION` → `0.80.1`. Neuer Eintrag ganz oben:
 
@@ -419,7 +433,7 @@ func TestNAPacket(t *testing.T) {
 ### Neu
 
 - Ausfallschutz: Der aktive Server kann zusätzlich eine IPv6-Adresse tragen, die beim Rollentausch mitwandert – Feld „IPv6-Ende“ bei der mitwandernden Adresse, ein Zusatz, ohne den alles unverändert läuft.
-- Namen im Haus: Mit einer UniFi UDM Pro trägt das PDH je Name auch den IPv6-Eintrag ein und hält ihn aktuell, wenn der Anbieter das Präfix wechselt. Geräte mit IPv6 gehen damit im Haus direkt zum Server.
+- Namen im Haus: Mit einer UniFi UDM Pro trägt das PDH für jeden Namen, der dort auf die mitwandernde Adresse zeigt, auch den IPv6-Eintrag ein – auch für von Hand eingetragene Namen – und hält ihn aktuell, wenn der Anbieter das Präfix wechselt. Geräte mit IPv6 gehen damit im Haus direkt zum Server.
 
 ### Geändert
 

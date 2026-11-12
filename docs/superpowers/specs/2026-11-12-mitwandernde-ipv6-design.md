@@ -25,7 +25,8 @@ durch; Geräte mit IPv6 nehmen deshalb den Weg über das Internet (gemessen am
   (z. B. `2a02:f90:e198:1700::15`). Keine private Adresse (ULA).
 - Eingeschaltet wird über ein Feld „IPv6-Ende“ neben der mitwandernden
   IPv4-Adresse. Leer heißt aus. Kein Schalter je Name.
-- Ist das Feld gesetzt, bekommt jeder Name im Haus den IPv6-Eintrag automatisch.
+- Ist das Feld gesetzt, bekommt jeder Name im Haus den IPv6-Eintrag automatisch
+  – auch Namen, die von Hand in UniFi eingetragen wurden.
 
 ## 3. Rahmen
 
@@ -87,15 +88,24 @@ Netzwerkkarte wie die IPv4-Adresse.
 - `internal/integrations/unifi`: `Create`/`Update` nehmen neben IPv4 auch IPv6
   an (`AAAA_RECORD` mit `ipv6Address`; ältere Schnittstelle `record_type: AAAA`).
   `Record` trägt den Typ schon.
-- `internal/web/certs_lan.go`: Je Name gibt es höchstens einen IPv4- und einen
-  IPv6-Eintrag des PDH. Das Ziel für IPv6 ist die Adresse aus dem Status des
-  Verbund-Dienstes. Die vorhandenen Regeln gelten für beide Typen: fremde
-  Einträge nicht überschreiben, Hinweis je Name, Überschreiben nur auf
-  Rückfrage.
-- **Nachziehen:** Ein Lauf alle 5 Minuten am aktiven Server vergleicht die
-  IPv6-Einträge mit der Adresse im Status und ändert, was abweicht. Ist das
-  Feld leer, entfernt er die IPv6-Einträge des PDH. Der Lauf macht nichts,
-  solange keine UniFi-Anbindung bestätigt ist.
+- **Welche Namen:** Es zählt, wohin ein Eintrag zeigt, nicht wer ihn angelegt
+  hat (Vorgabe des Anwenders vom 12.11.2026: auch von Hand in UniFi
+  eingetragene Namen werden nachgezogen). Jeder Name, der an der UDM Pro einen
+  IPv4-Eintrag auf die mitwandernde IPv4-Adresse hat, bekommt den IPv6-Eintrag
+  auf die mitwandernde IPv6-Adresse – auch Namen, die das PDH sonst nicht
+  führt.
+- **Vorhandene IPv6-Einträge:** Zeigt ein IPv6-Eintrag eines solchen Namens auf
+  eine Adresse mit dem eingestellten Ende (also auf die mitwandernde Adresse
+  unter einem früheren Präfix), ändert das PDH ihn auf die aktuelle – egal, wer
+  ihn angelegt hat. Zeigt er woandershin, bleibt er unberührt; die Karte nennt
+  ihn als Hinweis, „Überschreiben“ ändert ihn auf Rückfrage.
+- **Nachziehen:** Ein Lauf alle 5 Minuten am aktiven Server liest die Einträge,
+  legt fehlende IPv6-Einträge an und ändert abweichende nach den Regeln oben.
+  Der Lauf macht nichts, solange keine UniFi-Anbindung bestätigt ist.
+- **Aufräumen:** Das PDH merkt sich, welche IPv6-Einträge es selbst angelegt
+  hat. Nur diese löscht es wieder: wenn das Feld geleert wird oder der Name
+  keinen IPv4-Eintrag auf die mitwandernde Adresse mehr hat. Von Hand
+  angelegte IPv6-Einträge löscht es nie.
 - **Ohne UniFi:** Die Liste „Namen im Haus“ zeigt je Name zusätzlich den
   IPv6-Eintrag zum Eintragen von Hand, mit dem Satz, dass er sich ändert, wenn
   der Anbieter das Präfix wechselt.
