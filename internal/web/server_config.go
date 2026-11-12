@@ -274,6 +274,7 @@ func (h *Handler) ServerConfigPage(w http.ResponseWriter, r *http.Request) {
 	}
 	d.CF = h.cloudflareView(r.Context())
 	d.CF.CanAPI = h.canCloudflare(r)
+	d.CF.CanCerts = h.certCanManage(r) // nur der Knopf – die Karte lädt erst auf Klick
 	d.Unifi = h.unifiTabFor(r.Context(), r) // liest nur Einstellungen, fragt das Gerät nicht
 	if h.db != nil {
 		show := ""

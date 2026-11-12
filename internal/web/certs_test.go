@@ -280,6 +280,10 @@ type certTestEnv struct {
 	installErr error
 	statusErr  error
 	status     map[string]string
+	sites      map[string]bool      // Seite verweist (fehlt der Name: ja)
+	fileUntil  map[string]time.Time // Ablauf der Datei beim Agenten
+	roles      map[string]string    // Rolle je Name (fehlt: "")
+	notes      map[string]string    // Hinweis des Agenten je Name
 	blocked    bool
 	caErr      error
 	dnsErr     error
@@ -319,21 +323,31 @@ func (e *certTestEnv) deps() certDeps {
 			}
 			return e.dns, nil
 		},
-		install: func(_ context.Context, name string, chain, key []byte) (string, error) {
+		install: func(_ context.Context, name string, chain, key []byte) (string, string, error) {
 			e.mu.Lock()
 			e.installs = append(e.installs, name)
+			note := e.notes[name]
 			e.mu.Unlock()
 			if e.installErr != nil {
-				return "", e.installErr
+				return "", "", e.installErr
 			}
-			return certTestFP(chain), nil
+			return certTestFP(chain), note, nil
 		},
-		status: func(context.Context) (map[string]string, error) {
+		status: func(context.Context) (map[string]certFile, error) {
 			e.mu.Lock()
+			defer e.mu.Unlock()
 			e.statuses++
-			e.mu.Unlock()
-			return e.status, e.statusErr
+			if e.status == nil {
+				return nil, e.statusErr
+			}
+			m := map[string]certFile{}
+			for n, fp := range e.status {
+				site, ok := e.sites[n]
+				m[n] = certFile{Fingerprint: fp, NotAfter: e.fileUntil[n], Site: site || !ok}
+			}
+			return m, e.statusErr
 		},
+		role: func(_ context.Context, name string) string { return e.roles[name] },
 		blocked: func() bool { return e.blocked },
 		alarm: func(text string) {
 			e.mu.Lock()
@@ -632,10 +646,10 @@ func TestCertDailyReinstallsOnMismatch(t *testing.T) {
 	e.status = map[string]string{"nc.firma.de": "00ff"}
 	var gotChain, gotKey []byte
 	d := e.deps()
-	d.install = func(_ context.Context, name string, chain, key []byte) (string, error) {
+	d.install = func(_ context.Context, name string, chain, key []byte) (string, string, error) {
 		e.installs = append(e.installs, name)
 		gotChain, gotKey = chain, key
-		return certTestFP(chain), nil
+		return certTestFP(chain), "", nil
 	}
 	certDaily(context.Background(), d)
 	if len(e.installs) != 1 || e.installs[0] != "nc.firma.de" {
@@ -702,8 +716,8 @@ func TestCertDailyMissingCloudflareIsLastError(t *testing.T) {
 func TestCertDailyResetsStuckJob(t *testing.T) {
 	e := newCertTestEnv(t, certRow{Name: "nc.firma.de", State: certStateLaeuft, Step: "warten"})
 	d := e.deps()
-	d.install = func(context.Context, string, []byte, []byte) (string, error) {
-		return "", errors.New("Agent fehlt")
+	d.install = func(context.Context, string, []byte, []byte) (string, string, error) {
+		return "", "", errors.New("Agent fehlt")
 	}
 	certDaily(context.Background(), d)
 	r := e.store.get("nc.firma.de")
@@ -798,7 +812,7 @@ func TestCertStartRenewalWithoutAnything(t *testing.T) {
 	if _, err := d.status(ctx); err == nil {
 		t.Fatal("Status ohne Agent")
 	}
-	if _, err := d.install(ctx, "nc.firma.de", nil, nil); err == nil {
+	if _, _, err := d.install(ctx, "nc.firma.de", nil, nil); err == nil {
 		t.Fatal("Installieren ohne Agent")
 	}
 	d.alarm("ohne Datenbank") // kein Absturz
@@ -863,18 +877,67 @@ func TestCertKeepPrevious(t *testing.T) {
 // Anfrage an den Agenten: Rolle aus PDH-Name bzw. Nextcloud-Adresse, Upstream nur für das PDH
 // und nur lokal.
 func TestCertInstallBody(t *testing.T) {
-	b := certInstallBody("pdh.firma.de", []byte("KETTE"), []byte("SCHLUESSEL"), "pdh.firma.de", "http://localhost:8090/", "https://nc.firma.de")
-	if b["role"] != "pdh" || b["upstream"] != "http://localhost:8090" || b["chain_pem"] != "KETTE" || b["key_pem"] != "SCHLUESSEL" || b["name"] != "pdh.firma.de" {
+	b := certInstallBody("pdh.firma.de", []byte("KETTE"), []byte("SCHLUESSEL"), "pdh.firma.de", "http://localhost:8090/", "", "https://nc.firma.de")
+	if b["role"] != "pdh" || b["upstream"] != "http://localhost:8090" || b["chain_pem"] != "KETTE" || b["key_pem"] != "SCHLUESSEL" || b["name"] != "pdh.firma.de" || b["redirect"] != true {
 		t.Errorf("PDH: %v", b)
 	}
-	if b := certInstallBody("pdh.firma.de", nil, nil, "pdh.firma.de", "https://pdh.intern:8443", ""); b["upstream"] != "http://127.0.0.1:8090" {
+	if b := certInstallBody("pdh.firma.de", nil, nil, "pdh.firma.de", "https://pdh.intern:8443", "", ""); b["upstream"] != "http://127.0.0.1:8090" || b["redirect"] != true {
 		t.Errorf("fremdes Ziel nicht ersetzt: %v", b)
 	}
-	if b := certInstallBody("nc.firma.de", nil, nil, "pdh.firma.de", "", "https://nc.firma.de"); b["role"] != "nextcloud" || b["upstream"] != "" {
+	if b := certInstallBody("nc.firma.de", nil, nil, "pdh.firma.de", "", "", "https://nc.firma.de"); b["role"] != "nextcloud" || b["upstream"] != nil || b["redirect"] != nil {
 		t.Errorf("Nextcloud: %v", b)
 	}
-	if b := certInstallBody("mail.firma.de", nil, nil, "pdh.firma.de", "", "https://nc.firma.de"); b["role"] != "" {
+	if b := certInstallBody("mail.firma.de", nil, nil, "pdh.firma.de", "", "", "https://nc.firma.de"); b["role"] != "" {
 		t.Errorf("sonstiger Name: %v", b)
+	}
+}
+
+// I6: Erreicht der Tunnel das PDH über nginx Port 80 dieses Servers, keine Port-80-Weiterleitung
+// (sonst Schleife) und als Ziel der Seite der Port des PDH statt nginx selbst.
+func TestCertInstallBodyRedirectAndUpstream(t *testing.T) {
+	for origin, want := range map[string]bool{
+		"http://localhost":       false,
+		"http://localhost:80":    false,
+		"http://127.0.0.1:80/":   false,
+		"http://[::1]:80":        false,
+		"http://localhost:8090":  true,
+		"https://localhost:443":  true,
+		"http://nginx.intern:80": true,
+		"":                       true,
+	} {
+		if got := certRedirect(origin); got != want {
+			t.Errorf("certRedirect(%q) = %v, erwartet %v", origin, got, want)
+		}
+	}
+	b := certInstallBody("pdh.firma.de", nil, nil, "pdh.firma.de", "http://localhost:80", "8091", "")
+	if b["redirect"] != false || b["upstream"] != "http://127.0.0.1:8091" {
+		t.Errorf("Tunnel über nginx Port 80: %v", b)
+	}
+	for _, c := range []struct{ origin, port, want string }{
+		{"http://127.0.0.1:443", "", "http://127.0.0.1:8090"},
+		{"http://localhost:80", "80", "http://127.0.0.1:8090"},
+		{"http://localhost:80", "kaputt", "http://127.0.0.1:8090"},
+		{"http://localhost:9000", "8091", "http://localhost:9000"},
+	} {
+		if got := certUpstream(c.origin, c.port); got != c.want {
+			t.Errorf("certUpstream(%q, %q) = %q, erwartet %q", c.origin, c.port, got, c.want)
+		}
+	}
+}
+
+// I1: Nextcloud-Name ohne gemerkte Zertifikatszeilen (Seite nie umgestellt) → Rolle "", damit der
+// Agent ihn entfernen kann; mit gemerkten Zeilen Rolle nextcloud und die Pfade.
+func TestCertRemoveBody(t *testing.T) {
+	b := certRemoveBody("nc.firma.de", "pdh.firma.de", "https://nc.firma.de", "", "", false)
+	if b["role"] != "" || b["restore_cert"] != "" || b["name"] != "nc.firma.de" {
+		t.Errorf("ohne gemerkte Zeilen: %v", b)
+	}
+	b = certRemoveBody("nc.firma.de", "pdh.firma.de", "https://nc.firma.de", "/a.crt", "/a.key", true)
+	if b["role"] != "nextcloud" || b["restore_cert"] != "/a.crt" || b["restore_key"] != "/a.key" {
+		t.Errorf("mit gemerkten Zeilen: %v", b)
+	}
+	if b := certRemoveBody("pdh.firma.de", "pdh.firma.de", "", "", "", false); b["role"] != "pdh" {
+		t.Errorf("PDH: %v", b)
 	}
 }
 
@@ -899,14 +962,14 @@ func TestCertDepsLiveInstallRequest(t *testing.T) {
 	}))
 	defer srv.Close()
 	d := (&Handler{updateAgentURL: srv.URL, updateAgentToken: "tok"}).certDepsLive()
-	fp, err := d.install(context.Background(), "mail.example.org", []byte("KETTE"), []byte("SCHLUESSEL"))
+	fp, _, err := d.install(context.Background(), "mail.example.org", []byte("KETTE"), []byte("SCHLUESSEL"))
 	if err != nil || fp != "AB12" {
 		t.Fatalf("fp=%q err=%v", fp, err)
 	}
 	if len(got) != 1 || got[0]["name"] != "mail.example.org" || got[0]["chain_pem"] != "KETTE" || got[0]["key_pem"] != "SCHLUESSEL" {
 		t.Fatalf("Anfrage: %v", got)
 	}
-	if _, err := d.install(context.Background(), "kaputt.example.org", nil, nil); err == nil || !strings.Contains(err.Error(), "nicht geändert") {
+	if _, _, err := d.install(context.Background(), "kaputt.example.org", nil, nil); err == nil || !strings.Contains(err.Error(), "nicht geändert") {
 		t.Fatalf("Absage: %v", err)
 	}
 }

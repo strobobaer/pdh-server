@@ -31,9 +31,12 @@ type certDeps struct {
 	store   certStore
 	ca      func(staging bool) (acme.CA, error)
 	dns     func() (acme.DNS, error)
-	install func(ctx context.Context, name string, chain, key []byte) (fp string, err error)
-	status  func(ctx context.Context) (map[string]string, error) // Name → Fingerabdruck der Datei
-	blocked func() bool                                          // Spiegel oder Wartung: nichts starten
+	// install gibt Zertifikat und Schlüssel dem Agenten; note ist sein Hinweis, wenn er nur die
+	// Dateien ablegen konnte und an der nginx-Seite etwas von Hand zu tun ist.
+	install func(ctx context.Context, name string, chain, key []byte) (fp, note string, err error)
+	status  func(ctx context.Context) (map[string]certFile, error) // Name → Datei beim Agenten
+	role    func(ctx context.Context, name string) string          // "pdh", "nextcloud" oder ""; nil = ""
+	blocked func() bool                                            // Spiegel oder Wartung: nichts starten
 	alarm   func(text string)
 	now     func() time.Time
 
@@ -45,6 +48,13 @@ type certDeps struct {
 	lanCheck func(ctx context.Context) (certLANClient, string, error)
 }
 
+// certFile: Stand einer Zertifikatsdatei beim Update-Agenten (GET /v1/certs/status).
+type certFile struct {
+	Fingerprint string
+	NotAfter    time.Time
+	Site        bool // eine nginx-Seite verweist auf /etc/ssl/pdh/<name>/
+}
+
 var errCertBusy = errors.New("Für diesen Namen läuft schon ein Auftrag")
 
 const (
@@ -52,6 +62,10 @@ const (
 	keyCertAlarmPrefix = "certs.alarm."
 	// keyCertPrevPrefix + Name: Zertifikatszeilen der Nextcloud-Seite vor der ersten Umstellung.
 	keyCertPrevPrefix = "certs.prev."
+	// keyCertNotePrefix + Name: Hinweis des Agenten (Dateien abgelegt, Seite von Hand), kein Fehler.
+	keyCertNotePrefix = "certs.note."
+	// keyCertPendingPrefix + Name: zuletzt gemeldet „erneuert, aber noch nicht eingerichtet“ (Fingerabdruck|Tag).
+	keyCertPendingPrefix = "certs.pending."
 
 	certNotInstalled = "noch nicht eingerichtet"
 	certUpstreamDef  = "http://127.0.0.1:8090"
@@ -72,6 +86,9 @@ func (d certDeps) withDefaults() certDeps {
 	}
 	if d.setSetting == nil {
 		d.setSetting = func(context.Context, string, string) error { return nil }
+	}
+	if d.role == nil {
+		d.role = func(context.Context, string) string { return "" }
 	}
 	return d
 }
@@ -279,10 +296,12 @@ func certIssue(ctx context.Context, d certDeps, name string) (err error) {
 
 // certInstall gibt Zertifikat und Schlüssel dem Agenten und hält das Ergebnis fest; der
 // Zustand bleibt state, last_error wird bei Erfolg keepErr. Bei einem Fehler bleibt das
-// Zertifikat gespeichert und last_error beginnt mit „noch nicht eingerichtet“.
+// Zertifikat gespeichert und last_error beginnt mit „noch nicht eingerichtet“. Einen Hinweis
+// des Agenten (Dateien abgelegt, nginx-Seite von Hand) merkt sich die Zeile als Hinweis –
+// eingerichtet ist das Zertifikat trotzdem; ohne Hinweis verschwindet ein alter.
 func certInstall(ctx context.Context, d certDeps, name string, chain, key []byte, wantFP, state, keepErr string) error {
 	lg := componentLog("zertifikate")
-	fp, err := d.install(ctx, name, chain, key)
+	fp, note, err := d.install(ctx, name, chain, key)
 	if err == nil && !strings.EqualFold(strings.TrimSpace(fp), wantFP) {
 		err = errors.New("der Update-Agent meldet einen anderen Fingerabdruck")
 	}
@@ -294,6 +313,14 @@ func certInstall(ctx context.Context, d certDeps, name string, chain, key []byte
 	}
 	_ = d.store.certSetInstalled(ctx, name, strings.ToLower(wantFP))
 	_ = d.store.certSetStep(ctx, name, state, "", keepErr)
+	note = certSafeText(strings.TrimSpace(note))
+	if d.getSetting(ctx, keyCertNotePrefix+name) != note {
+		_ = d.setSetting(ctx, keyCertNotePrefix+name, note)
+	}
+	if note != "" {
+		lg.Info().Str("name", name).Str("fingerabdruck", wantFP).Str("hinweis", note).Msg("zertifikat abgelegt, nginx-seite von hand")
+		return nil
+	}
 	lg.Info().Str("name", name).Str("fingerabdruck", wantFP).Msg("zertifikat eingerichtet")
 	return nil
 }
@@ -325,17 +352,27 @@ func certDue(rows []certRow, now time.Time) []string {
 // certAlarm: Text an die Administratoren, wenn ein Zertifikat in höchstens 14 Tagen abläuft
 // oder abgelaufen ist. Wie oft gemeldet wird, entscheidet certDaily.
 func certAlarm(row certRow, now time.Time) (text string, ok bool) {
-	if !certHasCert(row) {
+	return certAlarmAt(row, row.NotAfter, false, now)
+}
+
+// certAlarmAt: wie certAlarm, aber für den Ablauf at. served: at stammt von der Datei, die nginx
+// noch ausliefert, weil das erneuerte Zertifikat (noch) nicht eingerichtet ist.
+func certAlarmAt(row certRow, at time.Time, served bool, now time.Time) (text string, ok bool) {
+	if !certHasCert(row) || at.IsZero() {
 		return "", false
 	}
-	until := row.NotAfter.In(now.Location()).Format("02.01.2006 15:04")
+	until := at.In(now.Location()).Format("02.01.2006 15:04")
 	where := " Server-Einstellungen → Cloudflare-Tunnel → Zertifikate."
 	if row.LastError != "" {
 		where = " Letzter Fehler: " + certSafeText(row.LastError) + "." + where
 	}
-	left := row.NotAfter.Sub(now)
+	what, failed := "Das Zertifikat", "Die Erneuerung hat nicht geklappt."
+	if served {
+		what, failed = "Das eingerichtete Zertifikat", "Das erneuerte Zertifikat ist auf dem Server noch nicht eingerichtet."
+	}
+	left := at.Sub(now)
 	if left <= 0 {
-		return fmt.Sprintf("Das Zertifikat für %s ist abgelaufen (seit %s). Die Erneuerung hat nicht geklappt.%s", row.Name, until, where), true
+		return fmt.Sprintf("%s für %s ist abgelaufen (seit %s). %s%s", what, row.Name, until, failed, where), true
 	}
 	days := int(left / (24 * time.Hour)) // volle Tage
 	if days > 14 {
@@ -350,7 +387,36 @@ func certAlarm(row certRow, now time.Time) (text string, ok bool) {
 	default:
 		when = fmt.Sprintf("läuft in %d Tagen ab", days)
 	}
+	if served {
+		return fmt.Sprintf("%s für %s %s (gültig bis %s). %s%s", what, row.Name, when, until, failed, where), true
+	}
 	return fmt.Sprintf("Das Zertifikat für %s %s (gültig bis %s). Die automatische Erneuerung hat bisher nicht geklappt.%s", row.Name, when, until, where), true
+}
+
+// certPendingAfter: So lange darf ein erneuertes Zertifikat ohne Rückmeldung des Agenten
+// uneingerichtet bleiben, bevor die Administratoren eine Nachricht bekommen. Gemessen ab
+// not_before; Let's Encrypt setzt den Beginn eine Stunde vor die Ausstellung.
+const certPendingAfter = 25 * time.Hour
+
+// certPendingNote: Text, wenn der Stand beim Agenten nicht abrufbar ist und ein erneuertes
+// Zertifikat seit mehr als 24 Stunden nicht eingerichtet ist (das bisher eingerichtete läuft
+// sonst still ab). Nur für Namen, die schon einmal eingerichtet waren.
+func certPendingNote(row certRow, statusErr string, now time.Time) (string, bool) {
+	if !certHasCert(row) || row.Fingerprint == "" || row.InstalledFP == "" || strings.EqualFold(row.InstalledFP, row.Fingerprint) {
+		return "", false
+	}
+	if row.NotBefore.IsZero() || now.Sub(row.NotBefore) <= certPendingAfter {
+		return "", false
+	}
+	why := strings.TrimSpace(strings.TrimPrefix(row.LastError, certNotInstalled+":"))
+	if why == "" {
+		why = statusErr
+	}
+	if why == "" {
+		why = "der Update-Agent antwortet nicht"
+	}
+	return fmt.Sprintf("Das Zertifikat für %s ist erneuert, aber noch nicht eingerichtet: %s. Das bisher eingerichtete läuft ab, wenn das so bleibt. Server-Einstellungen → Cloudflare-Tunnel → Zertifikate.",
+		row.Name, certSafeText(why)), true
 }
 
 // certAlarmDue: soll der Alarm heute (noch) gemeldet werden? Einmal ab 14 Tagen, ab 7 Tagen
@@ -407,11 +473,29 @@ func (d *certDNS) challengeRecords(ctx context.Context) ([]cloudflare.Record, er
 	return d.api.Records(ctx, d.zoneID)
 }
 
+// certStep führt einen Teil des täglichen Laufs aus; eine Panik darin landet im Protokoll
+// und beendet weder den Lauf noch das PDH.
+func certStep(what string, fn func()) {
+	defer func() {
+		if p := recover(); p != nil {
+			componentLog("zertifikate").Error().Str("teil", what).Str("panik", certSafeText(fmt.Sprint(p))).
+				Msg("tägliche prüfung: teil mit internem fehler abgebrochen")
+		}
+	}()
+	fn()
+}
+
 // certDaily: hängende Aufträge lösen, übrige Prüf-Einträge löschen, fällige Namen holen,
 // Datenbank und Dateien abgleichen, Alarme melden. Am Spiegel und in der Wartung nichts.
+// Eine Panik in einem Teil wird protokolliert; die übrigen Teile laufen weiter.
 func certDaily(ctx context.Context, d certDeps) {
 	d = d.withDefaults()
 	lg := componentLog("zertifikate")
+	defer func() {
+		if p := recover(); p != nil {
+			lg.Error().Str("panik", certSafeText(fmt.Sprint(p))).Msg("tägliche prüfung mit internem fehler abgebrochen")
+		}
+	}()
 	if d.blocked() {
 		lg.Debug().Msg("tägliche prüfung ausgelassen (spiegel oder wartung)")
 		return
@@ -441,14 +525,14 @@ func certDaily(ctx context.Context, d certDeps) {
 		lg.Warn().Err(err).Msg("zertifikate lesen")
 		return
 	}
-	certCleanLeftovers(ctx, d, rows)
+	certStep("prüf-einträge", func() { certCleanLeftovers(ctx, d, rows) })
 
 	// 3. Fällige Namen holen.
 	for _, name := range certDue(rows, d.now()) {
 		if d.blocked() {
 			return
 		}
-		_ = certIssue(ctx, d, name) // Fehler stehen in last_error und im Protokoll
+		certStep("holen", func() { _ = certIssue(ctx, d, name) }) // Fehler stehen in last_error und im Protokoll
 	}
 
 	// 4. Datenbank und Dateien abgleichen.
@@ -456,27 +540,56 @@ func certDaily(ctx context.Context, d certDeps) {
 		lg.Warn().Err(err).Msg("zertifikate lesen")
 		return
 	}
-	certReconcile(ctx, d, rows)
+	var rec certReconciled
+	certStep("abgleich", func() { rec = certReconcile(ctx, d, rows) })
+	if again, err := d.store.certList(ctx); err == nil {
+		rows = again // last_error und installed_fp nach dem Abgleich
+	}
 
 	// 5. Alarme.
+	certStep("alarme", func() { certDailyAlarms(ctx, d, rows, rec) })
+
+	// 6. Namen im Haus (UniFi): nur lesen, Abweichungen als Hinweis in die Zeile, kein Alarm.
+	certStep("namen im haus", func() { certLANDaily(ctx, d, rows) })
+}
+
+// certDailyAlarms: Ablauf-Alarme nach dem früheren Ablauf aus Datenbank und eingerichteter
+// Datei; ist der Stand beim Agenten nicht abrufbar, einmal am Tag „erneuert, aber noch nicht
+// eingerichtet“, wenn das länger als 24 Stunden so ist.
+func certDailyAlarms(ctx context.Context, d certDeps, rows []certRow, rec certReconciled) {
+	lg := componentLog("zertifikate")
 	now := d.now()
 	for _, r := range rows {
-		text, ok := certAlarm(r, now)
+		at, served := r.NotAfter, false
+		if f, ok := rec.served[r.Name]; ok && !f.IsZero() && f.Before(r.NotAfter) {
+			at, served = f, true
+		}
+		if text, ok := certAlarmAt(r, at, served, now); ok {
+			key := keyCertAlarmPrefix + r.Name
+			eff := r
+			eff.NotAfter = at
+			if mark, send := certAlarmDue(eff, now, d.getSetting(ctx, key)); send {
+				d.alarm(text)
+				_ = d.setSetting(ctx, key, mark)
+				lg.Warn().Str("name", r.Name).Time("gueltig_bis", at).Bool("datei", served).Msg("alarm: zertifikat läuft ab")
+			}
+		}
+		if rec.statusOK {
+			continue
+		}
+		text, ok := certPendingNote(r, rec.statusErr, now)
 		if !ok {
 			continue
 		}
-		key := keyCertAlarmPrefix + r.Name
-		mark, send := certAlarmDue(r, now, d.getSetting(ctx, key))
-		if !send {
+		key := keyCertPendingPrefix + r.Name
+		mark := strings.ToLower(r.Fingerprint) + "|" + now.Format("2006-01-02")
+		if d.getSetting(ctx, key) == mark {
 			continue
 		}
 		d.alarm(text)
 		_ = d.setSetting(ctx, key, mark)
-		lg.Warn().Str("name", r.Name).Time("gueltig_bis", r.NotAfter).Msg("alarm: zertifikat läuft ab")
+		lg.Warn().Str("name", r.Name).Str("fingerabdruck", r.Fingerprint).Msg("alarm: erneuertes zertifikat nicht eingerichtet")
 	}
-
-	// 6. Namen im Haus (UniFi): nur lesen, Abweichungen als Hinweis in die Zeile, kein Alarm.
-	certLANDaily(ctx, d, rows)
 }
 
 // certCleanLeftovers löscht Prüf-Einträge, die das PDH angelegt und sich gemerkt hat, deren
@@ -537,10 +650,22 @@ func certCleanLeftovers(ctx context.Context, d certDeps, rows []certRow) {
 	}
 }
 
+// certReconciled: Ergebnis des Abgleichs für die Alarme.
+type certReconciled struct {
+	statusOK  bool
+	statusErr string
+	// served: Name → Ablauf der Datei, die beim Agenten liegt, solange sie nicht die aus der
+	// Datenbank ist (Einrichten gescheitert). nginx liefert dann diese aus.
+	served map[string]time.Time
+}
+
 // certReconcile vergleicht den Fingerabdruck in der Datenbank mit der Datei beim Agenten
-// und installiert bei Abweichung neu aus der Datenbank.
-func certReconcile(ctx context.Context, d certDeps, rows []certRow) {
+// und installiert bei Abweichung neu aus der Datenbank. Für den Namen des PDH und der
+// Nextcloud gilt auch „Datei stimmt, aber keine nginx-Seite verweist darauf“ (nach einem
+// Rollentausch oder Rückspielen) als Abweichung – der Agent richtet die Seite dann ein.
+func certReconcile(ctx context.Context, d certDeps, rows []certRow) certReconciled {
 	lg := componentLog("zertifikate")
+	out := certReconciled{served: map[string]time.Time{}}
 	var have []certRow
 	for _, r := range rows {
 		if certHasCert(r) && r.Fingerprint != "" && r.State != certStateLaeuft {
@@ -548,25 +673,35 @@ func certReconcile(ctx context.Context, d certDeps, rows []certRow) {
 		}
 	}
 	if len(have) == 0 {
-		return
+		out.statusOK = true
+		return out
 	}
 	files, err := d.status(ctx)
-	statusOK := err == nil
+	out.statusOK = err == nil
 	if err != nil {
-		lg.Warn().Str("fehler", certSafeText(err.Error())).Msg("stand der zertifikatsdateien nicht abrufbar")
+		out.statusErr = certSafeText(err.Error())
+		lg.Warn().Str("fehler", out.statusErr).Msg("stand der zertifikatsdateien nicht abrufbar")
 	}
 	for _, r := range have {
-		var match bool
-		if statusOK {
-			match = strings.EqualFold(files[r.Name], r.Fingerprint)
+		f, present := files[r.Name]
+		var match, noSite bool
+		if out.statusOK {
+			match = present && strings.EqualFold(f.Fingerprint, r.Fingerprint)
+			if match && !f.Site {
+				role := d.role(ctx, r.Name)
+				noSite = role == "pdh" || role == "nextcloud"
+			}
 		} else {
 			match = strings.EqualFold(r.InstalledFP, r.Fingerprint)
 		}
-		if match {
-			if statusOK && !strings.EqualFold(r.InstalledFP, r.Fingerprint) {
+		if match && !noSite {
+			if out.statusOK && !strings.EqualFold(r.InstalledFP, r.Fingerprint) {
 				_ = d.store.certSetInstalled(ctx, r.Name, strings.ToLower(r.Fingerprint))
 			}
 			continue
+		}
+		if !match && present && !f.NotAfter.IsZero() {
+			out.served[r.Name] = f.NotAfter
 		}
 		if !certTryLock(r.Name) {
 			continue
@@ -578,14 +713,21 @@ func certReconcile(ctx context.Context, d certDeps, rows []certRow) {
 				lg.Warn().Str("name", r.Name).Str("fehler", certSafeText(err.Error())).Msg("zertifikat nicht lesbar")
 				return
 			}
-			lg.Info().Str("name", r.Name).Str("fingerabdruck", r.Fingerprint).Str("datei", files[r.Name]).Msg("datei weicht ab – neu einrichten")
+			if noSite {
+				lg.Info().Str("name", r.Name).Msg("keine nginx-seite verweist auf das zertifikat – neu einrichten")
+			} else {
+				lg.Info().Str("name", r.Name).Str("fingerabdruck", r.Fingerprint).Str("datei", f.Fingerprint).Msg("datei weicht ab – neu einrichten")
+			}
 			keep := r.LastError // z. B. eine gescheiterte Erneuerung bleibt sichtbar
 			if strings.HasPrefix(keep, certNotInstalled) {
 				keep = ""
 			}
-			_ = certInstall(ctx, d, r.Name, chain, key, r.Fingerprint, r.State, keep)
+			if certInstall(ctx, d, r.Name, chain, key, r.Fingerprint, r.State, keep) == nil {
+				delete(out.served, r.Name)
+			}
 		}()
 	}
+	return out
 }
 
 // ── Betrieb ──────────────────────────────────────────────────
@@ -613,24 +755,66 @@ func certRole(name, pdhHost, nextcloudURL string) string {
 	return ""
 }
 
-var certUpstreamRe = regexp.MustCompile(`^http://(127\.0\.0\.1|localhost):[0-9]{1,5}$`)
+var certUpstreamRe = regexp.MustCompile(`^http://(127\.0\.0\.1|localhost):([0-9]{1,5})$`)
 
-// certUpstream: Adresse, an die die nginx-Seite des PDH weiterreicht (nur lokal).
-func certUpstream(origin string) string {
+// certUpstreamPort: Port für die nginx-Seite des PDH – nie 80 oder 443 (die gehören nginx
+// selbst, die Seite zeigte sonst auf sich selbst).
+func certUpstreamPort(p string) bool {
+	n, err := strconv.Atoi(p)
+	return err == nil && n >= 1 && n <= 65535 && n != 80 && n != 443
+}
+
+// certUpstream: Adresse, an die die nginx-Seite des PDH weiterreicht (nur lokal). Zeigt das
+// Tunnel-Ziel auf nginx (Port 80/443) oder woandershin, gilt der Port des PDH (PDH_SERVER_PORT).
+func certUpstream(origin, serverPort string) string {
 	o := strings.TrimRight(strings.TrimSpace(origin), "/")
-	if certUpstreamRe.MatchString(o) {
+	if m := certUpstreamRe.FindStringSubmatch(o); m != nil && certUpstreamPort(m[2]) {
 		return o
+	}
+	if p := strings.TrimSpace(serverPort); certUpstreamPort(p) {
+		return "http://127.0.0.1:" + p
 	}
 	return certUpstreamDef
 }
 
+// certRedirect: Soll die nginx-Seite des PDH Port 80 auf https umleiten? Nicht, wenn der Tunnel
+// das PDH über nginx Port 80 dieses Servers erreicht – das gäbe eine Weiterleitungsschleife.
+func certRedirect(origin string) bool {
+	u, err := url.Parse(strings.TrimSpace(origin))
+	if err != nil || !strings.EqualFold(u.Scheme, "http") {
+		return true
+	}
+	switch strings.ToLower(u.Hostname()) {
+	case "localhost", "127.0.0.1", "::1":
+	default:
+		return true
+	}
+	return !(u.Port() == "" || u.Port() == "80")
+}
+
 // certInstallBody: Anfrage an POST /v1/certs/install – Rolle aus PDH-Name bzw.
-// Nextcloud-Adresse, Weiterleitung nur für die Seite des PDH.
-func certInstallBody(name string, chain, key []byte, pdhHost, origin, nextcloudURL string) map[string]string {
+// Nextcloud-Adresse, Weiterleitung und Ziel nur für die Seite des PDH.
+func certInstallBody(name string, chain, key []byte, pdhHost, origin, serverPort, nextcloudURL string) map[string]any {
 	role := certRole(name, pdhHost, nextcloudURL)
-	body := map[string]string{"name": name, "chain_pem": string(chain), "key_pem": string(key), "role": role}
+	body := map[string]any{"name": name, "chain_pem": string(chain), "key_pem": string(key), "role": role}
 	if role == "pdh" {
-		body["upstream"] = certUpstream(origin)
+		body["upstream"] = certUpstream(origin, serverPort)
+		body["redirect"] = certRedirect(origin)
+	}
+	return body
+}
+
+// certRemoveBody: Anfrage an POST /v1/certs/remove. Für einen Nextcloud-Namen ohne gemerkte
+// Zertifikatszeilen (die Seite wurde nie umgestellt) geht Rolle "" – der Agent entfernt dann
+// die Dateien, wenn keine Seite mehr darauf verweist.
+func certRemoveBody(name, pdhHost, nextcloudURL, prevCert, prevKey string, havePrev bool) map[string]string {
+	role := certRole(name, pdhHost, nextcloudURL)
+	body := map[string]string{"name": name, "role": role}
+	if role == "nextcloud" && !havePrev {
+		body["role"] = ""
+	}
+	if havePrev {
+		body["restore_cert"], body["restore_key"] = prevCert, prevKey
 	}
 	return body
 }
@@ -707,42 +891,54 @@ func (h *Handler) certDepsLive() certDeps {
 			}
 			return &certDNS{api: a.client, zoneID: zone.ID, lookupTXT: authoritativeTXT(a.zone)}, nil
 		},
-		install: func(ctx context.Context, name string, chain, key []byte) (string, error) {
+		install: func(ctx context.Context, name string, chain, key []byte) (string, string, error) {
 			ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 			defer cancel()
 			host, _ := h.nextStartValue(ctx, cfHostKey)
 			origin, _ := h.nextStartValue(ctx, cfOriginKey)
-			body := certInstallBody(name, chain, key, host, origin, os.Getenv("PDH_NEXTCLOUD_BASEURL"))
+			port, _ := h.nextStartValue(ctx, "PDH_SERVER_PORT")
+			body := certInstallBody(name, chain, key, host, origin, port, os.Getenv("PDH_NEXTCLOUD_BASEURL"))
 			var out struct {
 				Fingerprint  string `json:"fingerprint"`
+				Note         string `json:"note"`
 				PreviousCert string `json:"previous_cert"`
 				PreviousKey  string `json:"previous_key"`
 			}
 			if err := h.agentJSON(ctx, "POST", "/v1/certs/install", body, &out); err != nil {
-				return "", err
+				return "", "", err
 			}
 			if err := certKeepPrevious(context.WithoutCancel(ctx), h.certPutSetting, name, out.PreviousCert, out.PreviousKey); err != nil {
 				componentLog("zertifikate").Warn().Str("name", name).Err(err).Msg("vorige zertifikatszeilen nicht gemerkt")
 			}
-			return out.Fingerprint, nil
+			return out.Fingerprint, out.Note, nil
 		},
-		status: func(ctx context.Context) (map[string]string, error) {
+		status: func(ctx context.Context) (map[string]certFile, error) {
 			ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 			defer cancel()
 			var out struct {
 				Certs []struct {
 					Name        string `json:"name"`
 					Fingerprint string `json:"fingerprint"`
+					NotAfter    string `json:"not_after"`
+					Site        bool   `json:"site"`
 				} `json:"certs"`
 			}
 			if err := h.agentJSON(ctx, "GET", "/v1/certs/status", nil, &out); err != nil {
 				return nil, err
 			}
-			m := make(map[string]string, len(out.Certs))
+			m := make(map[string]certFile, len(out.Certs))
 			for _, c := range out.Certs {
-				m[c.Name] = strings.ToLower(c.Fingerprint)
+				f := certFile{Fingerprint: strings.ToLower(c.Fingerprint), Site: c.Site}
+				if t, err := time.Parse(time.RFC3339, c.NotAfter); err == nil {
+					f.NotAfter = t
+				}
+				m[c.Name] = f
 			}
 			return m, nil
+		},
+		role: func(ctx context.Context, name string) string {
+			host, _ := h.nextStartValue(ctx, cfHostKey)
+			return certRole(name, host, os.Getenv("PDH_NEXTCLOUD_BASEURL"))
 		},
 		blocked: func() bool { return h.Mirror().On || h.MaintLocked() },
 		alarm: func(text string) {

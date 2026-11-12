@@ -465,6 +465,13 @@
   {{else if not .APITokenSet}}<p class="sc-sub" style="color:var(--amber)"><i class="ti ti-alert-triangle"></i> Zuerst oben den API-Token eintragen und speichern.</p>
   {{else}}<div id="cf-panel"><button type="button" class="btn btn-primary btn-small" hx-get="/admin/server-config/cloudflare/panel" hx-target="#cf-panel" hx-disabled-elt="this"><i class="ti ti-cloud-download"></i> Stand von Cloudflare laden</button></div>{{end}}
 </div>
+{{if .CanCerts}}<div class="card" style="margin-top:12px">
+  <div id="cert-panel">
+    <div class="card-title"><span><i class="ti ti-certificate"></i> Zertifikate (Let's Encrypt)</span><span class="sc-sub">optional</span></div>
+    <p class="sc-sub" style="margin:0 0 10px">Eigene Zertifikate für die Namen des PDH und der Nextcloud – geholt und erneuert vom PDH. Die Karte geht auch ohne API-Token auf, z. B. um einen Namen zu entfernen.</p>
+    <button type="button" class="btn btn-primary btn-small" hx-get="/admin/server-config/certs/panel" hx-target="#cert-panel" hx-swap="outerHTML" hx-disabled-elt="this"><i class="ti ti-certificate"></i> Zertifikate laden</button>
+  </div>
+</div>{{end}}
 <div class="card" style="margin-top:12px">
   <div class="card-title"><span><i class="ti ti-list-numbers"></i> Anleitung: Tunnel einrichten</span><span class="sc-sub">einmalig, ca. 10 Minuten</span></div>
   <ol class="sc-steps">

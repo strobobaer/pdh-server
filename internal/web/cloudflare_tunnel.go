@@ -107,6 +107,7 @@ type CloudflareView struct {
 	PublicURLDifferent bool   // Öffentliche Adresse passt nicht zum Hostnamen
 	APITokenSet        bool   // API-Token gespeichert – DNS, Proxy und Tunnel-Ziele im PDH (cloudflare_api.go)
 	CanAPI             bool   // Recht „Cloudflare verwalten“
+	CanCerts           bool   // Knopf „Zertifikate laden“ (system.certs oder system.certs_admin, certs_web.go)
 }
 
 func (h *Handler) cloudflareView(ctx context.Context) *CloudflareView {

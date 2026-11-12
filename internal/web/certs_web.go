@@ -25,8 +25,9 @@ import (
 //	POST /admin/server-config/certs/lan            Namen im Haus über die UniFi UDM Pro (system.unifi, certs_lan.go;
 //	                                               die Anbindung selbst steht im Reiter „UniFi“: …/unifi, …/unifi/confirm)
 //
-// Die Karte lädt nur, wenn ein Administrator die Cloudflare-Karte öffnet. Ohne Cloudflare,
-// Update-Agent oder nginx zeigt sie einen Hinweis; die Cloudflare-Karte bleibt davon unberührt.
+// Die Karte lädt nur auf den Knopf „Zertifikate laden“ im Reiter Cloudflare-Tunnel – unabhängig
+// vom API-Token und vom Recht system.cloudflare. Ohne Cloudflare, Update-Agent oder nginx zeigt
+// sie einen Hinweis; eingetragene Namen lassen sich auch ohne API-Token entfernen.
 
 type certLine struct {
 	Name, State, Step, Error, ValidUntil, LAN string
@@ -35,6 +36,7 @@ type certLine struct {
 	LANRecord string // Kennung des Eintrags, den das PDH an der UDM Pro angelegt hat
 	LANOther  string // Adresse eines fremden Eintrags gleichen Namens an der UDM Pro
 	LANHint   string // Abweichung aus der täglichen Prüfung
+	Note      string // Hinweis des Update-Agenten: Dateien abgelegt, nginx-Seite von Hand
 }
 
 type certPanel struct {
@@ -138,6 +140,7 @@ func (h *Handler) certPanelFor(ctx context.Context, r *http.Request, msg string,
 	for i := range p.Lines {
 		p.Lines[i].LANHint = h.certSetting(ctx, keyUnifiHintPrefix+p.Lines[i].Name)
 		p.Lines[i].LANOther = h.certSetting(ctx, keyUnifiOtherPrefix+p.Lines[i].Name)
+		p.Lines[i].Note = h.certSetting(ctx, keyCertNotePrefix+p.Lines[i].Name)
 	}
 	if p.Zone != "" {
 		host, _ := h.nextStartValue(ctx, cfHostKey)
@@ -240,6 +243,25 @@ func certCheckName(ctx context.Context, d certActDeps, raw string) (certRow, err
 	return certRow{}, fmt.Errorf("%s ist nicht eingetragen", name)
 }
 
+// certFindRow: eingetragener Name, ohne Prüfung der Domain – Entfernen geht auch ohne
+// Cloudflare-Zugang (Token gelöscht oder abgelaufen).
+func certFindRow(ctx context.Context, d certActDeps, raw string) (certRow, error) {
+	name := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(raw)), ".")
+	if name == "" {
+		return certRow{}, errors.New("Kein Name angegeben")
+	}
+	rows, err := d.store.certList(ctx)
+	if err != nil {
+		return certRow{}, err
+	}
+	for _, r := range rows {
+		if r.Name == name {
+			return r, nil
+		}
+	}
+	return certRow{}, fmt.Errorf("%s ist nicht eingetragen", name)
+}
+
 func certDoSettings(ctx context.Context, d certActDeps, email string, staging bool) (string, error) {
 	if d.blocked() {
 		return "", errCertBlocked
@@ -323,12 +345,13 @@ func certDoIssue(ctx context.Context, d certActDeps, raw string) (string, error)
 }
 
 // certDoRemove: erst der Agent (Seite bzw. Zeilen zurück, Dateien weg), dann Widerruf bei
-// Let's Encrypt, dann der Eintrag. Lehnt der Agent ab, bleibt alles, wie es ist.
+// Let's Encrypt, dann der Eintrag. Lehnt der Agent ab, bleibt alles, wie es ist. Braucht
+// keinen Cloudflare-Zugang; scheitert der Widerruf, wird trotzdem entfernt.
 func certDoRemove(ctx context.Context, d certActDeps, raw string) (string, error) {
 	if d.blocked() {
 		return "", errCertBlocked
 	}
-	row, err := certCheckName(ctx, d, raw)
+	row, err := certFindRow(ctx, d, raw)
 	if err != nil {
 		return "", err
 	}
@@ -358,6 +381,8 @@ func certDoRemove(ctx context.Context, d certActDeps, raw string) (string, error
 	}
 	_ = d.putSetting(ctx, keyCertPrevPrefix+row.Name, "")
 	_ = d.putSetting(ctx, keyCertAlarmPrefix+row.Name, "")
+	_ = d.putSetting(ctx, keyCertNotePrefix+row.Name, "")
+	_ = d.putSetting(ctx, keyCertPendingPrefix+row.Name, "")
 	// Eintrag im Haus: nur den eigenen löschen; scheitert das, bleibt das Zertifikat entfernt.
 	lanNote := certLANRemove(ctx, d, row)
 	return row.Name + " entfernt." + revokeNote + lanNote, nil
@@ -402,10 +427,8 @@ func (h *Handler) certActLive() certActDeps {
 			ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 			defer cancel()
 			host, _ := h.nextStartValue(ctx, cfHostKey)
-			body := map[string]string{"name": row.Name, "role": certRole(row.Name, host, os.Getenv("PDH_NEXTCLOUD_BASEURL"))}
-			if c, k, ok := h.certPrevious(ctx, row.Name); ok {
-				body["restore_cert"], body["restore_key"] = c, k
-			}
+			c, k, ok := h.certPrevious(ctx, row.Name)
+			body := certRemoveBody(row.Name, host, os.Getenv("PDH_NEXTCLOUD_BASEURL"), c, k, ok)
 			return h.agentJSON(ctx, http.MethodPost, "/v1/certs/remove", body, nil)
 		},
 		revoke: func(ctx context.Context, row certRow) error {

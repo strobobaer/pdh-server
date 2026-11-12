@@ -125,29 +125,85 @@ func TestCertPanelWithoutCloudflare(t *testing.T) {
 	}
 }
 
-// Ein Fehler bei Cloudflare lässt die Zeilen der Zertifikate stehen.
-func TestCloudflarePanelKeepsCertLines(t *testing.T) {
+// Die Karte der Zertifikate hängt nicht mehr an der Cloudflare-Karte (eigener Ladeweg, I4).
+func TestCloudflarePanelWithoutCerts(t *testing.T) {
 	tmpl := loadTestTemplates(t)
-	p := cfPanel{Error: "Cloudflare lehnt den API-Token ab",
-		Certs: certPanel{CanManage: true, Lines: []certLine{{Name: "nc.firma.de", State: certStateGueltig, ValidUntil: "09.02.2027"}}}}
 	var buf bytes.Buffer
-	if err := tmpl.ExecuteTemplate(&buf, "cf-panel", p); err != nil {
+	if err := tmpl.ExecuteTemplate(&buf, "cf-panel", cfPanel{Error: "Cloudflare lehnt den API-Token ab"}); err != nil {
 		t.Fatal(err)
 	}
-	out := buf.String()
-	if !strings.Contains(out, "lehnt den API-Token ab") || !strings.Contains(out, "gültig bis 09.02.2027") || !strings.Contains(out, `id="cert-panel"`) {
-		t.Errorf("Zertifikate fehlen bei Cloudflare-Fehler:\n%s", out)
+	if out := buf.String(); !strings.Contains(out, "lehnt den API-Token ab") || strings.Contains(out, `id="cert-panel"`) {
+		t.Errorf("Cloudflare-Karte:\n%s", out)
 	}
 }
 
-// Die Seite der Server-Einstellungen lädt die Karte nicht selbst (kein Agent, keine CA).
+// Die Seite der Server-Einstellungen lädt die Karte nicht selbst (kein Agent, keine CA); mit
+// system.certs gibt es den Knopf „Zertifikate laden“ – auch ohne API-Token und ohne system.cloudflare.
 func TestServerConfigDoesNotLoadCerts(t *testing.T) {
 	tmpl := loadTestTemplates(t)
 	d := ServerConfigData{Groups: []envGroupView{{Key: "cloudflare"}}, CF: &CloudflareView{CanAPI: true, APITokenSet: true}}
 	d.Tab = "cloudflare"
 	out := renderPage(t, tmpl, "server_config", d)
 	if strings.Contains(out, "certs/panel") || strings.Contains(out, `id="cert-panel"`) {
-		t.Error("Server-Einstellungen dürfen die Zertifikate nicht von selbst laden")
+		t.Error("ohne Recht kein Knopf für die Zertifikate")
+	}
+	d.CF = &CloudflareView{CanCerts: true} // kein API-Token, kein system.cloudflare
+	out = renderPage(t, tmpl, "server_config", d)
+	btn := regexp.MustCompile(`<button[^>]*certs/panel[^>]*>`).FindString(out)
+	if btn == "" || !strings.Contains(out, "Zertifikate laden") || !strings.Contains(out, `id="cert-panel"`) {
+		t.Fatalf("Knopf „Zertifikate laden“ fehlt:\n%s", out)
+	}
+	if strings.Count(out, "certs/panel") != 1 || strings.Contains(btn, "hx-trigger") {
+		t.Error("die Karte darf nur auf Klick laden")
+	}
+}
+
+// Ohne API-Token: Hinweis, keine Formulare zum Holen – aber vorhandene Namen mit „Entfernen“ (I4).
+func TestCertPanelWithoutTokenShowsRemove(t *testing.T) {
+	p := certPanel{CanManage: true, Hint: "Zuerst oben den API-Token eintragen und speichern.",
+		Lines: []certLine{{Name: "nc.firma.de", State: certStateGueltig, ValidUntil: "09.02.2027", CanRemove: true,
+			Note: "Zertifikat liegt unter /etc/ssl/pdh/nc.firma.de/. Bitte von Hand eintragen."}}}
+	out := renderCertPanel(t, p)
+	if !strings.Contains(out, "nc.firma.de") || strings.Count(out, `value="remove"`) != 1 || strings.Contains(out, `value="issue"`) {
+		t.Errorf("Zeile mit Entfernen erwartet:\n%s", out)
+	}
+	if strings.Contains(out, "certs/add") || strings.Contains(out, "certs/settings") || strings.Contains(out, "certs/strict") {
+		t.Errorf("ohne Token keine Formulare zum Eintragen:\n%s", out)
+	}
+	if !strings.Contains(out, "Bitte von Hand eintragen.") || !strings.Contains(out, "cert-note") {
+		t.Errorf("Hinweis des Agenten fehlt:\n%s", out)
+	}
+	p.Lines[0].CanRemove = false
+	if out := renderCertPanel(t, p); strings.Contains(out, "<form") {
+		t.Errorf("ohne Bereichsadministrator keine Formulare:\n%s", out)
+	}
+}
+
+// I8: Die Rückfrage zu Full (strict) sagt, dass die Verschlüsselung für alle Namen der Domain gilt.
+func TestCertStrictConfirmMentionsWholeZone(t *testing.T) {
+	out := renderCertPanel(t, certPanel{CanManage: true, CanStrict: true, Zone: "firma.de", AgentOK: true, NginxOK: true,
+		Lines: []certLine{{Name: "nc.firma.de", State: certStateGueltig}}})
+	if !strings.Contains(out, "ALLE Namen der Domain firma.de") || !strings.Contains(out, "nicht über den Tunnel") {
+		t.Errorf("Hinweis auf die ganze Domain fehlt:\n%s", out)
+	}
+}
+
+// I4: Entfernen braucht keinen Cloudflare-Zugang – nur einen eingetragenen Namen.
+func TestCertRemoveWithoutCloudflare(t *testing.T) {
+	ctx := context.Background()
+	store := newMemCertStore(certRow{Name: "nc.firma.de", State: certStateGueltig, ChainPEM: "-----BEGIN CERTIFICATE-----", InstalledFP: "ab"})
+	l := &certActLog{revokeErr: errors.New("kein Zugang"), settings: map[string]string{keyCertNotePrefix + "nc.firma.de": "x", keyCertPendingPrefix + "nc.firma.de": "y"}}
+	d := testCertAct(store, l)
+	d.zone = func(context.Context) (string, error) { return "", errors.New("Zuerst oben den API-Token eintragen und speichern") }
+	if _, err := certDoRemove(ctx, d, "unbekannt.firma.de"); err == nil || !strings.Contains(err.Error(), "nicht eingetragen") {
+		t.Fatalf("nicht eingetragen: %v", err)
+	}
+	msg, err := certDoRemove(ctx, d, " NC.firma.de ")
+	if err != nil || store.get("nc.firma.de").Name != "" || !strings.Contains(msg, "Widerruf") || len(l.agent) != 1 {
+		t.Fatalf("ohne Cloudflare: %q %v", msg, err)
+	}
+	if l.settings[keyCertNotePrefix+"nc.firma.de"] != "" || l.settings[keyCertPendingPrefix+"nc.firma.de"] != "" {
+		t.Error("Hinweis und Merker bleiben nach dem Entfernen stehen")
 	}
 }
 
