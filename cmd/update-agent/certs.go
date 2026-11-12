@@ -31,10 +31,11 @@ import (
 // startet unverändert, nur GET /v1/certs/status antwortet (ohne nginx leer).
 
 const (
-	certRootDir   = "/etc/ssl/pdh"
-	nginxEtcDir   = "/etc/nginx"
-	certPDHSite   = "pdh.conf"
-	certSwapError = "Nextcloud-Seite hat nicht genau ein Zertifikat – nicht geändert"
+	certRootDir    = "/etc/ssl/pdh"
+	nginxEtcDir    = "/etc/nginx"
+	certPDHSite    = "pdh.conf"
+	certSiteHeader = "# Vom PDH-Update-Agent geschrieben"
+	certSwapError  = "Nextcloud-Seite hat nicht genau ein Zertifikat – nicht geändert"
 )
 
 // certRuntime hält die Haken des Agenten für Zertifikate. Leer = Betrieb auf dem
@@ -154,7 +155,7 @@ func certKeyPath(name string) string   { return certDir(name) + "/privkey.pem" }
 // Weiterreichen an das PDH, 80 leitet um.
 func certSiteConf(name, upstream string) string {
 	var b strings.Builder
-	b.WriteString("# Vom PDH-Update-Agent geschrieben (Zertifikate). Änderungen gehen beim nächsten Zertifikatslauf verloren.\n")
+	b.WriteString(certSiteHeader + " (Zertifikate). Änderungen gehen beim nächsten Zertifikatslauf verloren.\n")
 	b.WriteString("server {\n")
 	b.WriteString("    listen 80;\n")
 	b.WriteString("    server_name " + name + ";\n")
@@ -379,19 +380,46 @@ func certFail(w http.ResponseWriter, status int, msg string) {
 	writeMountJSON(w, status, map[string]any{"ok": false, "error": msg})
 }
 
-// certFindNextcloudSite sucht im Seiten-Ordner die eine Datei, deren
+// certResolve folgt Verknüpfungen einer nginx-Seite. Absolute Ziele gelten im
+// Host (nicht im Namensraum des Agenten, sonst landet ein Schreibzugriff auf
+// dessen schreibgeschütztem /etc); relative Ziele gelten ab dem Ordner der Verknüpfung.
+func (a *updateAgent) certResolve(p string) string {
+	for i := 0; i < 8; i++ {
+		st, err := os.Lstat(p)
+		if err != nil || st.Mode()&os.ModeSymlink == 0 {
+			return p
+		}
+		t, err := os.Readlink(p)
+		if err != nil {
+			return p
+		}
+		if strings.HasPrefix(t, "/") || filepath.IsAbs(t) {
+			p = a.certPath(filepath.ToSlash(t))
+		} else {
+			p = filepath.Join(filepath.Dir(p), t)
+		}
+	}
+	return p
+}
+
+type certSite struct {
+	entry string // Dateiname im Seiten-Ordner
+	path  string // aufgelöste Datei, in die geschrieben wird
+}
+
+// certSitesWithName nennt alle Seiten im Seiten-Ordner (außer pdh.conf), deren
 // server_name den Namen enthält.
-func (a *updateAgent) certFindNextcloudSite(sitesDir, name string) (string, error) {
+func (a *updateAgent) certSitesWithName(sitesDir, name string) ([]certSite, error) {
 	entries, err := os.ReadDir(a.certPath(sitesDir))
 	if err != nil {
-		return "", errors.New("nginx-Seiten sind nicht lesbar")
+		return nil, errors.New("nginx-Seiten sind nicht lesbar")
 	}
-	var found []string
+	var found []certSite
 	for _, e := range entries {
 		if e.Name() == certPDHSite || strings.HasPrefix(e.Name(), ".") {
 			continue
 		}
-		p := a.certPath(sitesDir + "/" + e.Name())
+		p := a.certResolve(a.certPath(sitesDir + "/" + e.Name()))
 		if st, err := os.Stat(p); err != nil || st.IsDir() {
 			continue
 		}
@@ -407,39 +435,86 @@ func (a *updateAgent) certFindNextcloudSite(sitesDir, name string) (string, erro
 				}
 			}
 			if hit {
-				found = append(found, p)
+				found = append(found, certSite{entry: e.Name(), path: p})
 				break
 			}
 		}
+	}
+	return found, nil
+}
+
+// certFindNextcloudSite sucht die eine Nextcloud-Seite (aufgelöster Pfad).
+func (a *updateAgent) certFindNextcloudSite(sitesDir, name string) (string, error) {
+	found, err := a.certSitesWithName(sitesDir, name)
+	if err != nil {
+		return "", err
 	}
 	switch len(found) {
 	case 0:
 		return "", errors.New("Keine Nextcloud-Seite mit diesem Namen gefunden – nicht geändert")
 	case 1:
-		return found[0], nil
+		return found[0].path, nil
 	}
 	return "", errors.New("Mehrere nginx-Seiten tragen diesen Namen – nicht geändert")
 }
 
+// certOwnSite: gibt es die PDH-Seite nicht oder hat der Agent sie geschrieben?
+// Eine von Hand angelegte pdh.conf darf nie überschrieben oder gelöscht werden.
+func (a *updateAgent) certOwnSite(path string) (exists, own bool) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return false, true
+	}
+	return true, strings.HasPrefix(string(data), certSiteHeader)
+}
+
+// certRestoreAll stellt alle Sicherungen wieder her und nennt die Dateien, bei
+// denen das nicht gelang (nur Dateinamen).
+func certRestoreAll(backups []certBackup) []string {
+	var failed []string
+	for _, b := range backups {
+		if err := b.restore(); err != nil {
+			failed = append(failed, filepath.Base(b.path))
+		}
+	}
+	return failed
+}
+
+// certRollbackText: Satz für die Antwort, ehrlich auch bei unvollständigem Rückweg.
+func certRollbackText(failed []string) string {
+	if len(failed) == 0 {
+		return "alles zurückgenommen"
+	}
+	return "Zurücknehmen aber unvollständig, bitte prüfen: " + strings.Join(failed, ", ")
+}
+
+// certRollbackNote: Zusatz für Fehlertexte, wenn das Zurücknehmen nicht vollständig war.
+func certRollbackNote(failed []string) string {
+	if len(failed) == 0 {
+		return ""
+	}
+	return " (Zurücknehmen unvollständig, bitte prüfen: " + strings.Join(failed, ", ") + ")"
+}
+
 // certApplyNginx prüft die Konfiguration und lädt nginx neu. Bei einem Fehler
 // stellt rollback den vorigen Stand her; nginx läuft dann mit der alten Konfiguration weiter.
-func (a *updateAgent) certApplyNginx(ctx context.Context, rollback func()) error {
+func (a *updateAgent) certApplyNginx(ctx context.Context, rollback func() []string) error {
 	if out, err := a.certRun(ctx, "nginx", "-t"); err != nil {
-		rollback()
+		failed := rollback()
 		text := certScrub(out)
 		if text == "" {
 			text = err.Error()
 		}
-		return fmt.Errorf("nginx -t meldet einen Fehler, alles zurückgenommen: %s", text)
+		return fmt.Errorf("nginx -t meldet einen Fehler, %s: %s", certRollbackText(failed), text)
 	}
 	if out, err := a.certRun(ctx, "systemctl", "reload", "nginx"); err != nil {
-		rollback()
+		failed := rollback()
 		_, _ = a.certRun(ctx, "systemctl", "reload", "nginx")
 		text := certScrub(out)
 		if text == "" {
 			text = err.Error()
 		}
-		return fmt.Errorf("nginx lässt sich nicht neu laden, alles zurückgenommen: %s", text)
+		return fmt.Errorf("nginx lässt sich nicht neu laden, %s: %s", certRollbackText(failed), text)
 	}
 	return nil
 }
@@ -485,8 +560,11 @@ func (a *updateAgent) certInstallHandler(w http.ResponseWriter, r *http.Request)
 	ctx, cancel := context.WithTimeout(r.Context(), 45*time.Second)
 	defer cancel()
 
-	withNginx := req.Role != ""
-	if withNginx && !a.certNginxPresent() {
+	// Rolle pdh/nextcloud braucht nginx. Rolle "" schreibt nur die Dateien; ist nginx
+	// da, wird trotzdem geprüft und neu geladen (eine von Hand geschriebene Seite
+	// übernimmt so das erneuerte Zertifikat), ohne nginx genügt das Ablegen.
+	withNginx := a.certNginxPresent()
+	if req.Role != "" && !withNginx {
 		certFail(w, http.StatusOK, "nginx ist nicht eingerichtet")
 		return
 	}
@@ -496,6 +574,19 @@ func (a *updateAgent) certInstallHandler(w http.ResponseWriter, r *http.Request)
 	switch req.Role {
 	case "pdh":
 		sitePath = a.certPath(sitesDir + "/" + certPDHSite)
+		if _, own := a.certOwnSite(sitePath); !own {
+			certFail(w, http.StatusOK, "Die nginx-Seite "+certPDHSite+" stammt nicht vom Update-Agent – nicht geändert")
+			return
+		}
+		others, err := a.certSitesWithName(sitesDir, req.Name)
+		if err != nil {
+			certFail(w, http.StatusOK, err.Error())
+			return
+		}
+		if len(others) > 0 {
+			certFail(w, http.StatusOK, "Der Name wird schon von der nginx-Seite "+others[0].entry+" bedient – nicht geändert")
+			return
+		}
 		siteData = certSiteConf(req.Name, req.Upstream)
 	case "nextcloud":
 		// Seite zuerst prüfen: Weicht sie ab, wird nichts angefasst.
@@ -546,44 +637,40 @@ func (a *updateAgent) certInstallHandler(w http.ResponseWriter, r *http.Request)
 		}
 		backups = append(backups, b)
 	}
-	rollback := func() {
-		for _, b := range backups {
-			_ = b.restore()
-		}
+	rollback := func() []string {
+		failed := certRestoreAll(backups)
 		if !dirExisted {
 			_ = os.Remove(dir) // nur der selbst angelegte, nun leere Ordner
 			if !rootExisted {
 				_ = os.Remove(a.certPath(certRootDir))
 			}
 		}
+		return failed
 	}
 
 	if err := os.MkdirAll(dir, 0o750); err != nil {
-		rollback()
-		certFail(w, http.StatusOK, "Ordner für das Zertifikat lässt sich nicht anlegen")
+		certFail(w, http.StatusOK, "Ordner für das Zertifikat lässt sich nicht anlegen"+certRollbackNote(rollback()))
 		return
 	}
 	_ = os.Chmod(dir, 0o750)
 	_ = a.certChgrp(dir, group)
 	if err := a.certWriteAtomic(chainFile, []byte(req.ChainPEM), 0o644, group); err != nil {
-		rollback()
-		certFail(w, http.StatusOK, "Zertifikat lässt sich nicht schreiben")
+		certFail(w, http.StatusOK, "Zertifikat lässt sich nicht schreiben"+certRollbackNote(rollback()))
 		return
 	}
 	if err := a.certWriteAtomic(keyFile, []byte(req.KeyPEM), 0o640, group); err != nil {
-		rollback()
-		certFail(w, http.StatusOK, "Schlüssel lässt sich nicht schreiben")
+		certFail(w, http.StatusOK, "Schlüssel lässt sich nicht schreiben"+certRollbackNote(rollback()))
 		return
 	}
 	if sitePath != "" {
 		if req.Role == "pdh" {
 			err = a.certWriteAtomic(sitePath, []byte(siteData), 0o644, "")
 		} else {
-			err = os.WriteFile(sitePath, []byte(siteData), backups[2].mode) // an Ort und Stelle (Verknüpfung bleibt)
+			// sitePath ist die aufgelöste Zieldatei; die Verknüpfung selbst bleibt.
+			err = a.certWriteAtomic(sitePath, []byte(siteData), backups[2].mode, "")
 		}
 		if err != nil {
-			rollback()
-			certFail(w, http.StatusOK, "nginx-Seite lässt sich nicht schreiben")
+			certFail(w, http.StatusOK, "nginx-Seite lässt sich nicht schreiben"+certRollbackNote(rollback()))
 			return
 		}
 	}
@@ -624,7 +711,8 @@ func (a *updateAgent) certRemoveHandler(w http.ResponseWriter, r *http.Request) 
 		switch req.Role {
 		case "pdh":
 			p := a.certPath(sitesDir + "/" + certPDHSite)
-			if data, err := os.ReadFile(p); err == nil && strings.Contains(string(data), "server_name "+req.Name+";") {
+			// Nur eine vom Agenten geschriebene Seite wird entfernt; eine eigene bleibt.
+			if exists, own := a.certOwnSite(p); exists && own {
 				b, err := certTake(p)
 				if err != nil {
 					certFail(w, http.StatusOK, "nginx-Seite ist nicht lesbar")
@@ -660,20 +748,15 @@ func (a *updateAgent) certRemoveHandler(w http.ResponseWriter, r *http.Request) 
 			}
 			backups = append(backups, b)
 			if sw != string(old) {
-				if err := os.WriteFile(p, []byte(sw), b.mode); err != nil {
-					_ = b.restore()
-					certFail(w, http.StatusOK, "Nextcloud-Seite lässt sich nicht schreiben")
+				if err := a.certWriteAtomic(p, []byte(sw), b.mode, ""); err != nil {
+					certFail(w, http.StatusOK, "Nextcloud-Seite lässt sich nicht schreiben"+certRollbackNote(certRestoreAll(backups)))
 					return
 				}
 				changed = true
 			}
 		}
 		if changed {
-			rollback := func() {
-				for _, b := range backups {
-					_ = b.restore()
-				}
-			}
+			rollback := func() []string { return certRestoreAll(backups) }
 			if err := a.certApplyNginx(ctx, rollback); err != nil {
 				certFail(w, http.StatusOK, err.Error())
 				return

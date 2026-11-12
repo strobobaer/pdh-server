@@ -289,17 +289,21 @@ func TestCertInstallRestoresOnFailedCheck(t *testing.T) {
 	for _, role := range []string{"nextcloud", "pdh"} {
 		t.Run(role, func(t *testing.T) {
 			f := newCertFixture(t)
+			name := "nc.firma.de" // der Name der Nextcloud-Seite; die PDH-Seite bekommt einen eigenen
+			if role == "pdh" {
+				name = "pdh.firma.de"
+			}
 			// Ausgangsstand: vorhandenes Zertifikat, Schlüssel und Seiten
-			f.write(t, "/etc/ssl/pdh/nc.firma.de/fullchain.pem", "ALTE KETTE\n")
-			f.write(t, "/etc/ssl/pdh/nc.firma.de/privkey.pem", "ALTER SCHLUESSEL\n")
+			f.write(t, "/etc/ssl/pdh/"+name+"/fullchain.pem", "ALTE KETTE\n")
+			f.write(t, "/etc/ssl/pdh/"+name+"/privkey.pem", "ALTER SCHLUESSEL\n")
 			f.write(t, "/etc/nginx/conf.d/nextcloud.conf", certNextcloudSite)
-			f.write(t, "/etc/nginx/conf.d/pdh.conf", "# alte pdh-Seite\n")
+			f.write(t, "/etc/nginx/conf.d/pdh.conf", certSiteHeader+" (alte Fassung)\n")
 			before := f.snapshot(t)
 			f.nginxTest = func() (string, error) {
 				return "nginx: [emerg] unknown directive \"foo\" in /etc/nginx/conf.d/pdh.conf:3", errors.New("exit status 1")
 			}
 			_, resp := f.call(t, f.agent.certInstallHandler, http.MethodPost, map[string]any{
-				"name": "nc.firma.de", "chain_pem": chain, "key_pem": key, "role": role, "upstream": "http://127.0.0.1:8090",
+				"name": name, "chain_pem": chain, "key_pem": key, "role": role, "upstream": "http://127.0.0.1:8090",
 			})
 			if resp["ok"] != false {
 				t.Fatalf("ok muss false sein: %v", resp)
@@ -351,7 +355,7 @@ func TestCertInstallFailedCheckRemovesNewFiles(t *testing.T) {
 func TestCertInstallReloadFailureRestores(t *testing.T) {
 	chain, key := certTestPEM(t, "pdh.firma.de")
 	f := newCertFixture(t)
-	f.write(t, "/etc/nginx/conf.d/pdh.conf", "# alt\n")
+	f.write(t, "/etc/nginx/conf.d/pdh.conf", certSiteHeader+" (alt)\n")
 	f.reloadErr = errors.New("exit status 1")
 	_, resp := f.call(t, f.agent.certInstallHandler, http.MethodPost, map[string]any{
 		"name": "pdh.firma.de", "chain_pem": chain, "key_pem": key, "role": "pdh", "upstream": "http://127.0.0.1:8090",
@@ -359,7 +363,7 @@ func TestCertInstallReloadFailureRestores(t *testing.T) {
 	if resp["ok"] != false {
 		t.Fatalf("ok muss false sein: %v", resp)
 	}
-	if got := f.read(t, "/etc/nginx/conf.d/pdh.conf"); got != "# alt\n" {
+	if got := f.read(t, "/etc/nginx/conf.d/pdh.conf"); got != certSiteHeader+" (alt)\n" {
 		t.Errorf("Seite nicht zurückgesetzt: %q", got)
 	}
 	if f.exists("/etc/ssl/pdh/pdh.firma.de/privkey.pem") {
@@ -607,5 +611,182 @@ func TestCertStatusWithoutNginxOrDirectory(t *testing.T) {
 	list, isList := resp["certs"].([]any)
 	if code != http.StatusOK || resp["ok"] != true || resp["nginx"] != false || !isList || len(list) != 0 {
 		t.Errorf("Status: %d %v", code, resp)
+	}
+}
+
+func certInstallBody(name, chain, key, role string) map[string]any {
+	return map[string]any{"name": name, "chain_pem": chain, "key_pem": key, "role": role, "upstream": "http://127.0.0.1:8090"}
+}
+
+// Die Nextcloud-Seite in sites-enabled ist eine absolute Verknüpfung (Installationsskript):
+// geschrieben wird die Zieldatei im Host, die Verknüpfung bleibt.
+func TestCertInstallNextcloudThroughAbsoluteSymlink(t *testing.T) {
+	chain, key := certTestPEM(t, "nc.firma.de")
+	f := newCertFixture(t)
+	f.write(t, "/etc/nginx/nginx.conf", "user www-data;\n")
+	f.write(t, "/etc/nginx/sites-available/nextcloud.conf", certNextcloudSite)
+	if err := os.MkdirAll(f.real("/etc/nginx/sites-enabled"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	link := f.real("/etc/nginx/sites-enabled/nextcloud.conf")
+	// Ziel absolut im (nachgebildeten) Host: ein Zugriff am Host-Pfad vorbei findet nichts.
+	if err := os.Symlink("/etc/nginx/sites-available/nextcloud.conf", link); err != nil {
+		t.Skipf("Verknüpfungen nicht möglich: %v", err)
+	}
+	isLink := func() bool {
+		st, err := os.Lstat(link)
+		return err == nil && st.Mode()&os.ModeSymlink != 0
+	}
+	_, resp := f.call(t, f.agent.certInstallHandler, http.MethodPost, certInstallBody("nc.firma.de", chain, key, "nextcloud"))
+	if resp["ok"] != true {
+		t.Fatalf("Antwort: %v", resp)
+	}
+	if !isLink() {
+		t.Error("die Verknüpfung wurde ersetzt")
+	}
+	if got := f.read(t, "/etc/nginx/sites-available/nextcloud.conf"); !strings.Contains(got, "ssl_certificate /etc/ssl/pdh/nc.firma.de/fullchain.pem;") {
+		t.Errorf("Zieldatei nicht geändert:\n%s", got)
+	}
+
+	// Entfernen schreibt ebenfalls ins Ziel
+	_, resp = f.call(t, f.agent.certRemoveHandler, http.MethodPost, map[string]any{"name": "nc.firma.de", "role": "nextcloud",
+		"restore_cert": "/etc/ssl/pdh-nextcloud/selbst.crt", "restore_key": "/etc/ssl/pdh-nextcloud/selbst.key"})
+	if resp["ok"] != true || f.read(t, "/etc/nginx/sites-available/nextcloud.conf") != certNextcloudSite {
+		t.Errorf("Entfernen: %v", resp)
+	}
+	if !isLink() {
+		t.Error("die Verknüpfung wurde beim Entfernen ersetzt")
+	}
+
+	// Fehlgeschlagenes nginx -t: Zieldatei byte-gleich zurück, Verknüpfung bleibt
+	f.nginxTest = func() (string, error) { return "kaputt", errors.New("exit status 1") }
+	_, resp = f.call(t, f.agent.certInstallHandler, http.MethodPost, certInstallBody("nc.firma.de", chain, key, "nextcloud"))
+	if resp["ok"] != false {
+		t.Fatalf("ok muss false sein: %v", resp)
+	}
+	if f.read(t, "/etc/nginx/sites-available/nextcloud.conf") != certNextcloudSite {
+		t.Error("Zieldatei nicht byte-gleich zurückgesetzt")
+	}
+	if !isLink() {
+		t.Error("die Verknüpfung wurde beim Zurücknehmen ersetzt")
+	}
+}
+
+// Relative Verknüpfung: gilt ab dem Ordner der Verknüpfung.
+func TestCertInstallNextcloudThroughRelativeSymlink(t *testing.T) {
+	chain, key := certTestPEM(t, "nc.firma.de")
+	f := newCertFixture(t)
+	f.write(t, "/etc/nginx/sites-available/nextcloud.conf", certNextcloudSite)
+	if err := os.MkdirAll(f.real("/etc/nginx/sites-enabled"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("../sites-available/nextcloud.conf", f.real("/etc/nginx/sites-enabled/nextcloud.conf")); err != nil {
+		t.Skipf("Verknüpfungen nicht möglich: %v", err)
+	}
+	_, resp := f.call(t, f.agent.certInstallHandler, http.MethodPost, certInstallBody("nc.firma.de", chain, key, "nextcloud"))
+	if resp["ok"] != true || !strings.Contains(f.read(t, "/etc/nginx/sites-available/nextcloud.conf"), "/etc/ssl/pdh/nc.firma.de/fullchain.pem") {
+		t.Errorf("Antwort: %v", resp)
+	}
+}
+
+// Eine von Hand geschriebene pdh.conf wird nie überschrieben oder gelöscht.
+func TestCertForeignPDHSiteUntouched(t *testing.T) {
+	chain, key := certTestPEM(t, "pdh.firma.de")
+	f := newCertFixture(t)
+	f.write(t, "/etc/nginx/conf.d/pdh.conf", "server { server_name pdh.firma.de; }\n")
+	before := f.snapshot(t)
+	_, resp := f.call(t, f.agent.certInstallHandler, http.MethodPost, certInstallBody("pdh.firma.de", chain, key, "pdh"))
+	if resp["ok"] != false || !strings.HasSuffix(resp["error"].(string), "– nicht geändert") || !strings.Contains(resp["error"].(string), "pdh.conf") {
+		t.Errorf("Antwort: %v", resp)
+	}
+	after := f.snapshot(t)
+	if len(after) != len(before) || len(f.commands()) != 0 {
+		t.Error("es wurde etwas angefasst")
+	}
+	for p, d := range before {
+		if after[p] != d {
+			t.Errorf("%s verändert", p)
+		}
+	}
+	// Entfernen lässt die fremde Datei in Ruhe
+	_, resp = f.call(t, f.agent.certRemoveHandler, http.MethodPost, map[string]any{"name": "pdh.firma.de", "role": "pdh"})
+	if resp["ok"] != true || f.read(t, "/etc/nginx/conf.d/pdh.conf") != "server { server_name pdh.firma.de; }\n" {
+		t.Errorf("Entfernen: %v", resp)
+	}
+}
+
+// Bedient schon eine andere Seite den Namen, wird nichts geschrieben.
+func TestCertInstallRefusedWhenNameServedElsewhere(t *testing.T) {
+	chain, key := certTestPEM(t, "pdh.firma.de")
+	f := newCertFixture(t)
+	f.write(t, "/etc/nginx/conf.d/meine-seite.conf", "server {\n    listen 443 ssl;\n    server_name pdh.firma.de www.firma.de;\n}\n")
+	before := f.snapshot(t)
+	_, resp := f.call(t, f.agent.certInstallHandler, http.MethodPost, certInstallBody("pdh.firma.de", chain, key, "pdh"))
+	msg, _ := resp["error"].(string)
+	if resp["ok"] != false || !strings.Contains(msg, "meine-seite.conf") || !strings.HasSuffix(msg, "– nicht geändert") {
+		t.Errorf("Antwort: %v", resp)
+	}
+	if len(f.snapshot(t)) != len(before) || len(f.commands()) != 0 {
+		t.Error("es wurde etwas angefasst")
+	}
+}
+
+// Scheitert das Zurücknehmen, sagt die Antwort das und nennt die Datei.
+func TestCertRollbackFailureIsReported(t *testing.T) {
+	chain, key := certTestPEM(t, "nc.firma.de")
+	f := newCertFixture(t)
+	f.write(t, "/etc/nginx/conf.d/nextcloud.conf", certNextcloudSite)
+	f.nginxTest = func() (string, error) {
+		// Die Seite wird durch einen Ordner ersetzt: Wiederherstellen ist dann nicht möglich.
+		p := f.real("/etc/nginx/conf.d/nextcloud.conf")
+		if err := os.Remove(p); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Mkdir(p, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		return "kaputt", errors.New("exit status 1")
+	}
+	_, resp := f.call(t, f.agent.certInstallHandler, http.MethodPost, certInstallBody("nc.firma.de", chain, key, "nextcloud"))
+	msg, _ := resp["error"].(string)
+	if resp["ok"] != false || !strings.Contains(msg, "unvollständig") || !strings.Contains(msg, "nextcloud.conf") {
+		t.Errorf("Antwort: %v", resp)
+	}
+	if strings.Contains(msg, "alles zurückgenommen") {
+		t.Errorf("darf nicht behaupten, alles sei zurückgenommen: %s", msg)
+	}
+}
+
+// Rolle "": nur Dateien; mit nginx trotzdem prüfen und neu laden, ohne nginx genügt das Ablegen.
+func TestCertInstallRoleEmpty(t *testing.T) {
+	chain, key := certTestPEM(t, "wiki.firma.de")
+	f := newCertFixture(t)
+	f.write(t, "/etc/nginx/conf.d/eigene.conf", "server {\n    server_name wiki.firma.de;\n}\n")
+	before := f.read(t, "/etc/nginx/conf.d/eigene.conf")
+	_, resp := f.call(t, f.agent.certInstallHandler, http.MethodPost, certInstallBody("wiki.firma.de", chain, key, ""))
+	if resp["ok"] != true {
+		t.Fatalf("Antwort: %v", resp)
+	}
+	if f.read(t, "/etc/ssl/pdh/wiki.firma.de/fullchain.pem") != chain || f.exists("/etc/nginx/conf.d/pdh.conf") || f.read(t, "/etc/nginx/conf.d/eigene.conf") != before {
+		t.Error("Rolle leer darf nur die Dateien schreiben")
+	}
+	if got := strings.Join(f.commands(), "|"); got != "nginx -t|systemctl reload nginx" {
+		t.Errorf("Befehle: %s", got)
+	}
+
+	// nginx -t scheitert: Dateien zurück
+	f2 := newCertFixture(t)
+	f2.nginxTest = func() (string, error) { return "kaputt", errors.New("exit status 1") }
+	_, resp = f2.call(t, f2.agent.certInstallHandler, http.MethodPost, certInstallBody("wiki.firma.de", chain, key, ""))
+	if resp["ok"] != false || f2.exists("/etc/ssl/pdh/wiki.firma.de") {
+		t.Errorf("Fehlschlag: %v", resp)
+	}
+
+	// ohne nginx: nur Dateien, kein Fehler, keine Befehle
+	f3 := newCertFixture(t)
+	f3.agent.certs.hasNginx = func() bool { return false }
+	_, resp = f3.call(t, f3.agent.certInstallHandler, http.MethodPost, certInstallBody("wiki.firma.de", chain, key, ""))
+	if resp["ok"] != true || !f3.exists("/etc/ssl/pdh/wiki.firma.de/privkey.pem") || len(f3.commands()) != 0 {
+		t.Errorf("ohne nginx: %v %v", resp, f3.commands())
 	}
 }
