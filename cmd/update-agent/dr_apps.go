@@ -36,6 +36,8 @@ func drFileSources(repoDir string, exists func(string) bool) []drSource {
 		{Label: "etc-pdh", Path: "/etc/pdh", Filter: []string{"--exclude=/ha/"}},
 		{Label: "systemd", Path: "/etc/systemd/system", Filter: []string{"--exclude=pdh-ha.service", "--include=pdh*.service", "--exclude=*"}},
 		{Label: "wireguard-bin", Path: "/usr/local/bin/pdh-wireguard", File: true},
+		// Zertifikate des PDH (Let's Encrypt): nur, wenn es welche gibt – unabhängig von Nextcloud
+		{Label: "ssl-pdh", Path: "/etc/ssl/pdh"},
 	}
 	var out []drSource
 	for _, s := range all {

@@ -347,6 +347,40 @@ func TestDRFileSources(t *testing.T) {
 	}
 }
 
+// Zertifikate unter /etc/ssl/pdh gehören in die Sicherung, sobald der Ordner da ist – auch ohne
+// Nextcloud. Ohne den Ordner (der Normalfall) steht keine solche Quelle in der Liste.
+func TestDRFileSourcesSslPdh(t *testing.T) {
+	base := []string{"/opt/pdh/uploads", "/etc/pdh", "/etc/systemd/system"}
+	got := drFileSources("/opt/pdh", drFakeExists(append(base, "/etc/ssl/pdh")...))
+	if l := drLabels(got); l != "uploads,etc-pdh,systemd,ssl-pdh" {
+		t.Fatalf("mit Zertifikaten: %s", l)
+	}
+	for _, s := range got {
+		if s.Label == "ssl-pdh" && (s.Path != "/etc/ssl/pdh" || s.File) {
+			t.Errorf("ssl-pdh: %+v", s)
+		}
+	}
+	if l := drLabels(drFileSources("/opt/pdh", drFakeExists(base...))); strings.Contains(l, "ssl-pdh") {
+		t.Fatalf("ohne /etc/ssl/pdh darf keine Quelle erscheinen: %s", l)
+	}
+	// unabhängig von Nextcloud: die Nextcloud-Quellen kennen ssl-pdh nicht
+	ex := drFakeExists("/var/www/nextcloud/config/config.php", "/etc/nginx", "/etc/ssl/pdh")
+	if l := drLabels(drNextcloudSources("/var/www/nextcloud", "/var/ncdata", ex)); strings.Contains(l, "ssl-pdh,") || strings.HasSuffix(l, "ssl-pdh") {
+		t.Fatalf("Nextcloud-Quellen: %s", l)
+	}
+	// Rechte und Besitzer kommen beim Zurückspielen aus pdh-restore.sh, die Sicherung kopiert sie nicht
+	args := strings.Join(drRsyncArgs(drSource{Label: "ssl-pdh", Path: "/etc/ssl/pdh"}, "/t", "2026-11-12"), " ")
+	if !strings.Contains(args, "--backup-dir=/t/papierkorb/2026-11-12/ssl-pdh") || !strings.HasSuffix(args, "/etc/ssl/pdh/ /t/files/ssl-pdh/") {
+		t.Fatalf("rsync-Argumente: %s", args)
+	}
+	// Zurückspielen: Besitzer root, Gruppe des nginx-Benutzers, Schlüssel 0640
+	for _, want := range []string{"restore_dir ssl-pdh /etc/ssl/pdh", "privkey.pem"} {
+		if !strings.Contains(pdh.RestoreScript, want) {
+			t.Errorf("pdh-restore.sh ohne %q", want)
+		}
+	}
+}
+
 // Schlüssel von pdh-ha (/etc/pdh/ha) und sein Dienst dürfen nie aufs Netzlaufwerk.
 func TestDRSourcesExcludeHA(t *testing.T) {
 	got := drFileSources("/opt/pdh", drFakeExists("/opt/pdh/uploads", "/etc/pdh", "/etc/systemd/system"))

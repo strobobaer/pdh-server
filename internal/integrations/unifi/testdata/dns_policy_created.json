@@ -1,0 +1,9 @@
+{
+  "type": "A_RECORD",
+  "id": "5e0d1f7a-2b44-4e0e-8f3d-6a1c9b2e7d10",
+  "enabled": true,
+  "domain": "pdh.firma.de",
+  "ipv4Address": "192.168.1.50",
+  "ttlSeconds": 300,
+  "metadata": {"origin": "USER_DEFINED"}
+}

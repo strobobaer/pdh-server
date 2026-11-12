@@ -94,6 +94,7 @@ var areaAdminPerm = map[string]string{
 	"ticket": "tickets.admin", "fault": "faults.admin", "maintenance_task": "maintenance.admin", "maintenance": "maintenance.admin",
 	"task": "tasks.admin", "project": "projects.admin", "kvp": "kvp.admin", "infrastructure": "infrastructure.admin",
 	"part": "inventory.admin", "storage": "inventory.admin", "purchase_order": "procurement.admin", "business_partner": "directory.admin", "it_asset": "it.admin",
+	"certs": permCertsAdmin, // Zertifikate (Let's Encrypt): nur dieses Recht, nicht alle system.*
 }
 
 // isAreaAdmin: Bereichsadministrator für diesen Datensatz?
@@ -144,6 +145,11 @@ var gateRules = []gateRule{
 	gr(wPost, "maintenance.admin", "maintenance_task", false, `^/maintenance/tasks`+gID+`/delete-web$`),
 	gr(wPost, "kvp.admin", "kvp", false, `^/kvp`+gID+`/delete$`),
 	gr("DELETE", "maintenance.admin", "", false, apiV1+`/maintenance/checklists`+gID+gEnd),
+	// ── Zertifikate (Let's Encrypt): Entfernen nur Bereichsadministrator, Full (strict) braucht Cloudflare ──
+	gr(wPost, permCertsAdmin, "", false, `^/admin/server-config/certs/remove$`),
+	gr(wPost, permCloudflare, "", false, `^/admin/server-config/certs/strict$`),
+	gr(wPost, permCerts, "", false, `^/admin/server-config/certs/(?:settings|add|issue)$`),
+	gr(wPost, permUnifi, "", false, `^/admin/server-config/(?:unifi|unifi/confirm|certs/lan)$`), // Reiter „UniFi“ und Namen im Haus
 	// ── Löschvormerkung von Stammdaten über die Schnittstelle ──
 	gr("DELETE", "inventory.edit", "part", false, `^(?:/api/v1)?/inventory`+gID+gEnd),
 	gr("DELETE", "inventory.edit", "storage", false, `^(?:/api/v1)?/storage`+gID+gEnd),
@@ -203,7 +209,7 @@ func (h *Handler) PermissionGateMiddleware(next http.Handler) http.Handler {
 		if hit {
 			if uid := h.requestActor(r); uid != "" && h.users != nil {
 				if u, err := h.users.GetByID(r.Context(), uid); err == nil && u != nil {
-					ok := h.rbac.HasPermissionForUser(u.ID, string(u.Role), perm)
+					ok := gatePermOK(perm, func(p string) bool { return h.rbac.HasPermissionForUser(u.ID, string(u.Role), p) })
 					if ok && id != "" {
 						ok = h.rbac.HasPermissionInDepartment(u.ID, string(u.Role), perm, h.recordDepartments(r.Context(), refType, id))
 					}
@@ -227,6 +233,25 @@ func (h *Handler) PermissionGateMiddleware(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// gateAltPerms: Rechte, die ein Gate-Recht ersetzen (eines von beiden genügt). Nur für
+// Regeln ohne Datensatz-ID – die Abteilungsprüfung danach gilt dem Gate-Recht.
+var gateAltPerms = map[string][]string{
+	permCerts: {permCertsAdmin}, // Bereichsadministrator der Zertifikate darf auch alles andere der Karte
+}
+
+// gatePermOK: hat jemand das Gate-Recht oder eines seiner Ersatzrechte?
+func gatePermOK(perm string, has func(string) bool) bool {
+	if has(perm) {
+		return true
+	}
+	for _, alt := range gateAltPerms[perm] {
+		if has(alt) {
+			return true
+		}
+	}
+	return false
 }
 
 // matchGate: Regel, nötiges Recht, Datensatz-Typ und -ID für eine Schreib-Route.

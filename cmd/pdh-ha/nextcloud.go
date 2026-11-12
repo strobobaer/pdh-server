@@ -428,6 +428,9 @@ func parseTrusted(out []byte) (map[int]string, error) {
 
 var ncSSLCertRe = regexp.MustCompile(`(?m)^\s*ssl_certificate\s+([^;\s]+)\s*;`)
 
+// ncManagedCertDir: Ablage der vom PDH geholten Zertifikate (ha.MirrorCertLabel). Variable für Tests.
+var ncManagedCertDir = "/etc/ssl/pdh/"
+
 // ncCertCovers: ob das Zertifikat in den nginx-Konfigurationen von Nextcloud
 // (sitesDir/*nextcloud*) die Adresse addr enthält (Name oder IP). hasTLS ist
 // false, wenn dort kein ssl_certificate steht. Gelesen werden nur reguläre,
@@ -443,15 +446,23 @@ func ncCertCovers(sitesDir, addr string) (covered, hasTLS bool, err error) {
 			continue
 		}
 		for _, m := range ncSSLCertRe.FindAllSubmatch(b, -1) {
-			hasTLS = true
 			cert, cerr := readFirstCert(string(m[1]))
 			if cerr != nil {
+				hasTLS = true
 				errs = append(errs, cerr)
 				continue
 			}
 			if cert.VerifyHostname(addr) == nil {
-				covered = true
+				hasTLS, covered = true, true
+				continue
 			}
+			// Ein vom PDH geholtes Zertifikat (Let's Encrypt) gilt für einen Namen und kann eine
+			// Adresse im Haus nie enthalten: kein Urteil, kein Hinweis. Im Haus führt der Name
+			// zum Server („Namen im Haus“).
+			if strings.HasPrefix(filepath.ToSlash(string(m[1])), ncManagedCertDir) {
+				continue
+			}
+			hasTLS = true
 		}
 	}
 	if !covered {

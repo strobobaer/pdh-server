@@ -14,7 +14,14 @@ type MirrorSource struct {
 	Label, Path string
 	Instant     bool
 	Exclude     []string
+	// Optional: Der Ordner fehlt auf den meisten Servern (Zertifikate des PDH). Fehlt er, ist das
+	// der Normalfall: kein Lauf, keine Meldung, keine Zeile im Status, kein Einfluss auf den
+	// Erstabgleich.
+	Optional bool
 }
+
+// MirrorCertLabel ist die Quelle der Zertifikate des PDH (/etc/ssl/pdh), unabhängig von Nextcloud.
+const MirrorCertLabel = "ssl-pdh"
 
 // MirrorIDName ist die Kennungsdatei eines gespiegelten Ordners (R57): ein Zufallswert, den
 // Absender und Empfänger je Ordner im Zustand speichern. Fehlt sie oder weicht sie ab, ist es
@@ -116,8 +123,10 @@ func MirrorSources(repo string, s Settings) []MirrorSource {
 		{Label: "chat_files", Path: path.Join(repo, "chat_files"), Instant: true},
 		{Label: "etc-pdh", Path: "/etc/pdh", Exclude: []string{"--exclude=/ha/"}},
 	}
+	// Zertifikate des PDH (Let's Encrypt): unabhängig von „Nextcloud mitnehmen“, zuletzt
+	certs := MirrorSource{Label: MirrorCertLabel, Path: "/etc/ssl/pdh", Optional: true}
 	if !s.MirrorNextcloud {
-		return withIDExclude(src)
+		return withIDExclude(append(src, certs))
 	}
 	// Der Papierkorb des Datenordners liegt im Elternordner des Ziels, also hier.
 	appEx := []string{"--exclude=/.pdh-papierkorb/"}
@@ -132,6 +141,7 @@ func MirrorSources(repo string, s Settings) []MirrorSource {
 		MirrorSource{Label: "nginx", Path: "/etc/nginx"},
 		MirrorSource{Label: "ssl-pdh-nextcloud", Path: "/etc/ssl/pdh-nextcloud"},
 		MirrorSource{Label: "letsencrypt", Path: "/etc/letsencrypt"},
+		certs,
 	))
 }
 

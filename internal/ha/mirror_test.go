@@ -135,14 +135,29 @@ func labels(src []MirrorSource) []string {
 func TestMirrorSources(t *testing.T) {
 	s := DefaultSettings()
 	got := labels(MirrorSources("/opt/pdh", s))
-	if strings.Join(got, ",") != "uploads,chat_files,etc-pdh" {
+	// Zertifikate unter /etc/ssl/pdh gehören dazu, auch ohne „Nextcloud mitnehmen“
+	if strings.Join(got, ",") != "uploads,chat_files,etc-pdh,ssl-pdh" {
 		t.Fatalf("ohne Nextcloud: %v", got)
 	}
 	s.MirrorNextcloud, s.NCDataDir = true, "/srv/nc-data"
 	src := MirrorSources("/opt/pdh", s)
 	got = labels(src)
-	if strings.Join(got, ",") != "uploads,chat_files,etc-pdh,nextcloud-data,nextcloud-app,nginx,ssl-pdh-nextcloud,letsencrypt" {
+	if strings.Join(got, ",") != "uploads,chat_files,etc-pdh,nextcloud-data,nextcloud-app,nginx,ssl-pdh-nextcloud,letsencrypt,ssl-pdh" {
 		t.Fatalf("mit Nextcloud: %v", got)
+	}
+	// ssl-pdh: eigener Pfad, nicht sofort, und ein fehlender Ordner ist der Normalfall (Optional)
+	for _, nc := range []bool{false, true} {
+		s2 := s
+		s2.MirrorNextcloud = nc
+		x, ok := MirrorSourceByLabel("/opt/pdh", s2, "ssl-pdh")
+		if !ok || x.Path != "/etc/ssl/pdh" || x.Instant || !x.Optional {
+			t.Errorf("ssl-pdh (Nextcloud %v): %+v ok=%v", nc, x, ok)
+		}
+		for _, o := range MirrorSources("/opt/pdh", s2) {
+			if o.Optional != (o.Label == "ssl-pdh") {
+				t.Errorf("%s: Optional=%v", o.Label, o.Optional)
+			}
+		}
 	}
 	instant := map[string]bool{"uploads": true, "chat_files": true, "nextcloud-data": true}
 	for _, x := range src {

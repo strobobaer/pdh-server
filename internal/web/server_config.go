@@ -182,6 +182,7 @@ type ServerConfigData struct {
 	Msg, Err       string
 	CF             *CloudflareView // Reiter „Cloudflare-Tunnel“ (cloudflare_tunnel.go)
 	VPN            vpnView         // Reiter „VPN“: WireGuard auf dem Host (vpn.go)
+	Unifi          unifiTab        // Reiter „UniFi“: Anbindung an die UDM Pro (certs_lan.go), nur mit system.unifi
 	DR             drView          // Reiter „Ausfallschutz“ (dr.go), nur geladen wenn geöffnet
 	AgentReady     bool            // Update-Agent kann .env.docker bereinigen
 	NCTheme        ncTheme         // Reiter Nextcloud: Erscheinungsbild übernehmen (nextcloud_theming.go)
@@ -273,6 +274,8 @@ func (h *Handler) ServerConfigPage(w http.ResponseWriter, r *http.Request) {
 	}
 	d.CF = h.cloudflareView(r.Context())
 	d.CF.CanAPI = h.canCloudflare(r)
+	d.CF.CanCerts = h.certCanManage(r) // nur der Knopf – die Karte lädt erst auf Klick
+	d.Unifi = h.unifiTabFor(r.Context(), r) // liest nur Einstellungen, fragt das Gerät nicht
 	if h.db != nil {
 		show := ""
 		if d.Tab == "vpn" {

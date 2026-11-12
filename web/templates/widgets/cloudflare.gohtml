@@ -90,3 +90,123 @@
 .cf-table td{padding:5px 8px;border-bottom:1px solid var(--border);vertical-align:middle}
 </style>
 {{end}}
+
+{{/* Zertifikate (Let's Encrypt) im Reiter Cloudflare-Tunnel (internal/web/certs_web.go). Eigener
+     Ladeweg: Knopf „Zertifikate laden“ (sc-cloudflare) holt /admin/server-config/certs/panel –
+     unabhängig vom API-Token und vom Recht system.cloudflare; danach alle 5 Sekunden, solange
+     ein Auftrag läuft. Daten: certPanel. */}}
+{{define "cert-panel"}}
+<div id="cert-panel" class="cert-card"{{if and .CanManage .Running}} hx-get="/admin/server-config/certs/panel" hx-trigger="every 5s" hx-swap="outerHTML"{{end}}>
+<div class="form-label cert-head"><i class="ti ti-certificate"></i> Zertifikate (Let's Encrypt)</div>
+{{if not .CanManage}}
+<p class="sc-sub">Zertifikate verwaltet, wer das Recht „Zertifikate verwalten (Let's Encrypt)“ (<code>system.certs</code>) hat.</p>
+{{else}}
+{{if .Msg}}<div class="sc-sub" style="margin-bottom:8px;color:var(--green)"><i class="ti ti-check"></i> {{.Msg}}</div>{{end}}
+{{if .Err}}<div class="sc-sub" style="margin-bottom:8px;color:var(--red)"><i class="ti ti-alert-circle"></i> {{.Err}}</div>{{end}}
+{{if .Hint}}<p class="sc-sub"><i class="ti ti-info-circle"></i> Zertifikate holt das PDH über die Cloudflare-Anbindung. {{.Hint}}{{if .Lines}} Eingetragene Namen lassen sich trotzdem entfernen.{{end}}</p>
+{{else}}
+<p class="sc-sub" style="margin:0 0 8px">Für jeden Namen holt das PDH ein Zertifikat bei Let's Encrypt (Prüfung über einen DNS-Eintrag bei Cloudflare) und erneuert es 30 Tage vor Ablauf von selbst.</p>
+{{if not .AgentOK}}<p class="sc-sub" style="color:var(--amber)"><i class="ti ti-alert-triangle"></i> Der Update-Agent antwortet nicht. Zertifikate lassen sich trotzdem holen und werden gespeichert. Eingerichtet werden sie erst, wenn der Agent läuft (nur im systemd-Betrieb).</p>
+{{else if not .NginxOK}}<p class="sc-sub" style="color:var(--amber)"><i class="ti ti-alert-triangle"></i> Auf dem Server fehlt nginx (oder das PDH läuft in Docker). Zertifikate werden gespeichert und eingerichtet, sobald nginx installiert ist.</p>{{end}}
+{{end}}
+{{if .Staging}}<p class="sc-sub" style="color:var(--amber)"><i class="ti ti-flask"></i> Testumgebung: Zertifikate sind nicht vertrauenswürdig, Browser zeigen eine Warnung. Für echte Zertifikate den Haken „Testumgebung“ entfernen, speichern, den Namen entfernen und neu eintragen.</p>{{end}}
+
+{{if not .Hint}}
+<form hx-post="/admin/server-config/certs/settings" hx-target="#cert-panel" hx-swap="outerHTML" hx-disabled-elt="find button" class="cert-form">
+  <div class="form-group" style="margin:0"><label class="form-label">E-Mail für Let's Encrypt</label><input class="form-input" type="email" name="email" value="{{.Email}}" placeholder="it@{{.Zone}}"></div>
+  <label class="sc-sub"><input type="checkbox" name="staging" {{if .Staging}}checked{{end}}> Testumgebung (zum Ausprobieren)</label>
+  <button class="btn btn-small" type="submit"><i class="ti ti-device-floppy"></i> Speichern</button>
+</form>
+{{end}}
+
+<div class="cert-list">
+{{range .Lines}}<div class="cert-line">
+  <div class="cert-name"><b>{{.Name}}</b>{{if .Staging}} <span class="badge b-amber" title="Testumgebung – nicht vertrauenswürdig">Testumgebung</span>{{end}}</div>
+  <div class="cert-state">
+    {{if eq .State "laeuft"}}<span class="badge b-blue"><i class="ti ti-loader-2"></i> wird geholt{{if .Step}}: {{.Step}}{{end}}</span>
+    {{else if eq .State "fehler"}}<span class="badge b-red">Fehler</span>{{if .ValidUntil}} <span class="sc-sub">bisheriges gültig bis {{.ValidUntil}}</span>{{end}}
+    {{else if .ValidUntil}}<span class="badge b-green">gültig bis {{.ValidUntil}}</span>
+    {{else}}<span class="badge">noch kein Zertifikat</span>{{end}}
+    <span class="sc-sub" title="Wohin der Name im Firmennetz zeigt">{{if eq .LAN "direkt"}}im Haus direkt{{else if eq .LAN "cloudflare"}}über Cloudflare{{else}}im Haus unbekannt{{end}}</span>
+  </div>
+  {{if or (not $.Hint) .CanRemove}}<div class="cert-actions">
+    {{if not $.Hint}}<form hx-post="/admin/server-config/certs/issue" hx-target="#cert-panel" hx-swap="outerHTML" hx-disabled-elt="find button">
+      <input type="hidden" name="name" value="{{.Name}}">
+      <button class="btn btn-small" type="submit" name="action" value="issue" {{if eq .State "laeuft"}}disabled{{end}} aria-label="Zertifikat für {{.Name}} holen"><i class="ti ti-refresh"></i> {{if .ValidUntil}}Erneuern{{else}}Jetzt holen{{end}}</button></form>{{end}}
+    {{if .CanRemove}}<form hx-post="/admin/server-config/certs/remove" hx-target="#cert-panel" hx-swap="outerHTML" hx-disabled-elt="find button"
+      hx-confirm="{{.Name}} entfernen? Die nginx-Seite bzw. die Zertifikatszeilen gehen auf den Stand davor zurück, die Dateien werden gelöscht und das Zertifikat wird bei Let's Encrypt widerrufen.">
+      <input type="hidden" name="name" value="{{.Name}}">
+      <button class="btn btn-small" type="submit" name="action" value="remove" title="Entfernen" aria-label="{{.Name}} entfernen"><i class="ti ti-trash"></i></button></form>{{end}}
+    {{if and (not $.Hint) $.LANReady}}{{if .LANOther}}<form hx-post="/admin/server-config/certs/lan" hx-target="#cert-panel" hx-swap="outerHTML" hx-disabled-elt="find button"
+      hx-confirm="An der UDM Pro steht für {{.Name}} schon ein Eintrag auf {{.LANOther}}, den nicht das PDH angelegt hat. Auf {{$.LANTarget}} ändern? Er bleibt beim Entfernen des Namens stehen.">
+      <input type="hidden" name="name" value="{{.Name}}"><input type="hidden" name="overwrite" value="1">
+      <button class="btn btn-small" type="submit" name="action" value="lan" title="Eintrag im Haus überschreiben" aria-label="Eintrag für {{.Name}} im Haus überschreiben"><i class="ti ti-replace"></i></button></form>
+    {{else}}<form hx-post="/admin/server-config/certs/lan" hx-target="#cert-panel" hx-swap="outerHTML" hx-disabled-elt="find button">
+      <input type="hidden" name="name" value="{{.Name}}">
+      <button class="btn btn-small" type="submit" name="action" value="lan" title="Im Haus eintragen (UniFi)" aria-label="{{.Name}} im Haus eintragen"><i class="ti ti-home-plus"></i></button></form>{{end}}{{end}}
+  </div>{{end}}
+  {{if .Error}}<div class="sc-sub cert-err" style="color:{{if eq .State "fehler"}}var(--red){{else}}var(--amber){{end}}"><i class="ti ti-alert-triangle"></i> {{.Error}}</div>{{end}}
+  {{if .Note}}<div class="sc-sub cert-err cert-note"><i class="ti ti-info-circle"></i> {{.Note}}</div>{{end}}
+  {{if and $.Unifi.URL $.Unifi.HasKey}}{{if .LANOther}}<div class="sc-sub cert-err" style="color:var(--amber)"><i class="ti ti-home-question"></i> An der UDM Pro steht für diesen Namen ein Eintrag auf {{.LANOther}}, den nicht das PDH angelegt hat.</div>{{end}}
+  {{if .LANHint}}<div class="sc-sub cert-err" style="color:var(--amber)"><i class="ti ti-home-question"></i> {{.LANHint}}</div>{{end}}{{end}}
+</div>{{else}}<p class="sc-sub">Noch kein Name eingetragen.</p>{{end}}
+</div>
+
+{{if not .Hint}}
+<form hx-post="/admin/server-config/certs/add" hx-target="#cert-panel" hx-swap="outerHTML" hx-disabled-elt="find button" class="cert-form">
+  <div class="form-group" style="margin:0"><label class="form-label">Weiterer Name</label><input class="form-input" name="name" required placeholder="nc.{{.Zone}}"></div>
+  <button class="btn btn-small" type="submit"><i class="ti ti-plus"></i> Eintragen</button>
+</form>
+{{if .Suggested}}<div class="cert-form"><span class="sc-sub">Vorschlag:</span>
+  {{range .Suggested}}<form hx-post="/admin/server-config/certs/add" hx-target="#cert-panel" hx-swap="outerHTML" hx-disabled-elt="find button">
+    <input type="hidden" name="name" value="{{.}}"><button class="btn btn-small" type="submit"><i class="ti ti-plus"></i> {{.}}</button></form>{{end}}
+</div>{{end}}
+
+{{if .CanStrict}}<div class="cert-form">
+{{if .StrictOn}}
+  <form hx-post="/admin/server-config/certs/strict" hx-target="#cert-panel" hx-swap="outerHTML" hx-disabled-elt="find button"
+    hx-confirm="Tunnel und Domain auf den Stand vor Full (strict) zurückstellen? Die gemerkte Liste der Tunnel-Ziele wird als Ganzes zurückgeschrieben: Ziele, die nach dem Einschalten hinzugekommen oder geändert worden sind, gehen verloren.">
+    <input type="hidden" name="action" value="off">
+    <button class="btn btn-small" type="submit" data-cert-strict><i class="ti ti-arrow-back-up"></i> Zurückstellen</button></form>
+  <span class="sc-sub">Full (strict) ist eingeschaltet.</span>
+{{else}}
+  <form hx-post="/admin/server-config/certs/strict" hx-target="#cert-panel" hx-swap="outerHTML" hx-disabled-elt="find button"
+    hx-confirm="Tunnel-Ziele der eingetragenen Namen auf https://localhost:443 mit Zertifikatsprüfung und die Verschlüsselung der Domain auf Full (strict) umstellen? Die Verschlüsselung gilt für ALLE Namen der Domain {{.Zone}}, die über Cloudflare laufen – auch für solche, die nicht über den Tunnel gehen (z. B. eine Firmenseite bei einem Hoster). Die brauchen dann selbst ein gültiges Zertifikat. Vorher prüft das PDH jeden eingetragenen Namen auf dem Server. Alle Administratoren bekommen eine Nachricht.">
+    <input type="hidden" name="action" value="on">
+    <button class="btn btn-primary btn-small" type="submit" data-cert-strict{{if not .StrictReady}} disabled{{end}}><i class="ti ti-lock"></i> Tunnel und Domain auf Full (strict) umstellen</button></form>
+  {{if not .StrictReady}}<span class="sc-sub">Geht erst, wenn alle Namen ein gültiges, eingerichtetes Zertifikat der echten Umgebung haben.</span>{{end}}
+{{end}}
+</div>{{end}}
+{{end}}
+
+{{if not .Hint}}
+<div class="cert-unifi">
+<div class="form-label cert-head"><i class="ti ti-home"></i> Namen im Haus</div>
+<p class="sc-sub" style="margin:4px 0 8px">Im Firmennetz sollen die Namen direkt auf den Server zeigen (lokaler DNS-Eintrag Typ A auf {{if .LANTarget}}<code>{{.LANTarget}}</code>{{else}}die Adresse des Servers{{end}}), von außen weiter über Cloudflare.</p>
+{{if .Lines}}<div class="sc-sub">So geht's von Hand – am DNS-Server im Haus je Name einen Eintrag anlegen:</div>
+<ul class="sc-sub cert-hand">{{range .Lines}}<li><code>{{.Name}}</code> → Typ A → <code>{{if $.LANTarget}}{{$.LANTarget}}{{else}}Adresse des Servers{{end}}</code></li>{{end}}</ul>{{end}}
+{{if .LANReady}}<p class="sc-sub"><i class="ti ti-router"></i> Die UniFi UDM Pro ist angebunden: Je Name trägt der Knopf <i class="ti ti-home-plus"></i> den Namen im Haus ein. Adresse und API-Schlüssel stehen im Reiter <a href="?tab=unifi">UniFi</a>.</p>
+{{else if .CanUnifi}}<p class="sc-sub"><i class="ti ti-router"></i> Mit einer UniFi UDM Pro trägt das PDH die Namen selbst ein. {{if .Unifi.URL}}Die Anbindung ist noch nicht fertig – im{{else}}Adresse und API-Schlüssel trägst du im{{end}} Reiter <a href="?tab=unifi">UniFi</a> {{if .Unifi.URL}}den Fingerabdruck bestätigen{{else}}ein{{end}}. Ohne UniFi funktioniert alles andere wie bisher.</p>
+{{else}}<p class="sc-sub">Einträge an einer UniFi UDM Pro setzt das PDH für alle mit dem Recht „Namen im Haus eintragen (UniFi)“ (<code>system.unifi</code>).</p>{{end}}
+</div>
+{{end}}
+{{end}}
+<style>
+.cert-card{margin-top:16px;padding-top:12px;border-top:1px solid var(--border)}
+.cert-head{display:flex;gap:6px;align-items:center}
+.cert-form{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin:8px 0}
+.cert-form form{display:inline}
+.cert-list{display:flex;flex-direction:column;margin:8px 0}
+.cert-line{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px}
+.cert-name{flex:1 1 180px;min-width:0;overflow-wrap:anywhere}
+.cert-state{display:flex;flex-wrap:wrap;gap:6px;align-items:center;min-width:0}
+.cert-actions{display:flex;gap:6px;margin-left:auto}
+.cert-actions form{display:inline}
+.cert-err{flex-basis:100%;min-width:0;overflow-wrap:anywhere}
+.cert-note{color:var(--muted)}
+.cert-unifi{margin-top:12px;padding-top:8px;border-top:1px solid var(--border)}
+.cert-hand{margin:4px 0 8px;padding-left:18px;overflow-wrap:anywhere}
+.cert-fp{overflow-wrap:anywhere;word-break:break-all}
+</style>
+</div>
+{{end}}
