@@ -461,6 +461,7 @@ func (h *Handler) UserMasterSaveWeb(w http.ResponseWriter, r *http.Request) {
 			userRedirect(w, r, id, "master", "", err)
 			return
 		}
+		h.notifyTerminalSettings(id)
 	}
 	// Leitstand des Terminals: direkt gewählt geht vor Gruppe/Abteilung
 	if _, sent := r.Form["leitstand_id"]; sent && h.canManageUsers(r) {

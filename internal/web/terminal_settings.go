@@ -124,6 +124,7 @@ func (h *Handler) TerminalSettingsWeb(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Einstellung konnte nicht gespeichert werden", http.StatusInternalServerError)
 		return
 	}
+	h.eventHub().publish("", "settings") // alle offenen Terminals
 	http.Redirect(w, r, "/core/settings?notice="+url.QueryEscape("Rückkehrzeit des Terminals gespeichert"), http.StatusSeeOther)
 }
 

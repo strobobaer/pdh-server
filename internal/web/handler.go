@@ -306,6 +306,8 @@ type Handler struct {
 	closeStreams     context.CancelFunc // beendet streams
 	streamsMu        sync.Mutex         // schützt streams/closeStreams (cutStreams ersetzt sie)
 	streamsDone      bool               // CloseStreams gerufen: kein neuer Kontext mehr
+	termEvents       *terminalEventHub  // Verteiler der Terminal-Ereignisse (terminal_events.go)
+	termEventsOnce   sync.Once
 	mlock            maintLock          // Wartungssperre während eines Updates (maint_lock.go)
 	sessionNotBefore atomic.Int64       // Sitzungen mit iat davor sind ungültig (app_settings session.not_before)
 
@@ -350,6 +352,7 @@ func NewHandler(
 	}
 	h.mirrorActiveURL = func(r *http.Request) string { return mirrorActiveLink(r, h.mirrorPeerState(r.Context())) }
 	h.streams, h.closeStreams = context.WithCancel(context.Background())
+	h.termEvents = newTerminalEventHub()
 	// Wartungssperre: geplante Exporte, Bestellvorschlag, Sicherungen und
 	// Abrufe setzen aus (maint_lock.go)
 	h.exportCron.SetGate(h.MaintLocked)

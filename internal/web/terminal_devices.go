@@ -364,6 +364,7 @@ func (h *Handler) TerminalDeviceRevokeWeb(w http.ResponseWriter, r *http.Request
 		return
 	}
 	terminalDevices.forget(dev)
+	h.eventHub().closeUser(id) // offene Ereigniskanäle des Terminal-Benutzers beenden (Gerät verbindet sich neu und erhält 403)
 	h.addHistory(ctx, "user", id, "terminal_revoked", "", name, "", "", getUser(r).ID)
 	componentLog("terminal").Info().Str("user", id).Str("device", dev).Str("von", getUser(r).ID).Msg("gerät gesperrt")
 	userRedirect(w, r, id, "", "Gerät gesperrt", nil)

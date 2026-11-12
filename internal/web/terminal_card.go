@@ -37,6 +37,7 @@ func (h *Handler) cardRoutes(r chi.Router) {
 	r.Post("/terminal/card/ping", h.TerminalCardPing)
 	r.Post("/terminal/card/abmelden", h.TerminalCardLogout)
 	r.Post("/terminal/login", h.TerminalLogin)
+	r.Get("/terminal/events", h.TerminalEvents)
 }
 
 // cardTerminal: Terminal-Benutzer des Geräts; sonst 403 (wie terminalGate).
