@@ -1220,6 +1220,66 @@ func TestCertSiteForeignFileUntouched(t *testing.T) {
 	}
 }
 
+// F5: nginx -t lehnt die IPv6-Zeilen ab → einmal ohne sie, mit Vermerk; Status nicht veraltet.
+func TestCertSiteV6FallbackWithoutV6Lines(t *testing.T) {
+	certSetIPv6(t, true)
+	old := certSiteConf("pdh.firma.de", certTestUpstream, true, false)
+	f, chain, key := certV6Fixture(t, old)
+	f.nginxTest = func() (string, error) {
+		site, _ := os.ReadFile(f.real("/etc/nginx/conf.d/pdh.conf"))
+		if strings.Contains(string(site), "[::]") {
+			return "nginx: [emerg] socket() [::]:443 failed (97: Address family not supported by protocol)", errors.New("exit status 1")
+		}
+		return "", nil
+	}
+	_, resp := f.call(t, f.agent.certInstallHandler, http.MethodPost, certInstallBody("pdh.firma.de", chain, key, "pdh"))
+	if resp["ok"] != true {
+		t.Fatalf("Antwort: %v", resp)
+	}
+	want := "nginx nimmt die IPv6-Zeilen nicht an – die Seite hört nur auf IPv4 (Datei pdh.conf)"
+	if resp["note"] != want {
+		t.Errorf("Hinweis: %v", resp["note"])
+	}
+	got := f.read(t, "/etc/nginx/conf.d/pdh.conf")
+	if strings.Contains(got, "[::]") {
+		t.Errorf("Seite hat noch IPv6-Zeilen:\n%s", got)
+	}
+	if lines := strings.SplitN(got, "\n", 3); len(lines) < 3 || !strings.HasPrefix(lines[0], certSiteHeader) || lines[1] != "# ipv6: aus (nginx)" {
+		t.Errorf("Vermerk fehlt direkt nach der Kopfzeile:\n%s", got)
+	}
+	if !strings.Contains(got, "ssl_certificate /etc/ssl/pdh/pdh.firma.de/fullchain.pem;") {
+		t.Errorf("Zertifikat nicht eingerichtet:\n%s", got)
+	}
+	if certCountCmds(f, "nginx -t") != 2 || certCountCmds(f, "reload") != 1 {
+		t.Errorf("Befehle: %v", f.commands())
+	}
+	if !certStatusSite(t, f) {
+		t.Error("Seite mit Vermerk darf nicht als veraltet gelten (site=true)")
+	}
+}
+
+// F5: scheitert nginx -t auch ohne IPv6-Zeilen → alles zurück wie bisher.
+func TestCertSiteV6FallbackBothFail(t *testing.T) {
+	certSetIPv6(t, true)
+	old := certSiteConf("pdh.firma.de", certTestUpstream, true, false)
+	f, chain, key := certV6Fixture(t, old)
+	before := f.snapshot(t)
+	f.nginxTest = func() (string, error) { return "kaputt", errors.New("exit status 1") }
+	_, resp := f.call(t, f.agent.certInstallHandler, http.MethodPost, certInstallBody("pdh.firma.de", chain, key, "pdh"))
+	if resp["ok"] != false {
+		t.Fatalf("ok muss false sein: %v", resp)
+	}
+	after := f.snapshot(t)
+	for p, data := range before {
+		if after[p] != data {
+			t.Errorf("%s nicht byte-gleich zurück", p)
+		}
+	}
+	if len(after) != len(before) || certCountCmds(f, "reload") != 0 || certCountCmds(f, "nginx -t") != 2 {
+		t.Errorf("Stand/Befehle: %d/%d %v", len(before), len(after), f.commands())
+	}
+}
+
 func TestCertSiteRewriteRestoresOnFailedCheck(t *testing.T) {
 	certSetIPv6(t, true)
 	old := certSiteConf("pdh.firma.de", certTestUpstream, true, false)
