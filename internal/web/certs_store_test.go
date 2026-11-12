@@ -40,7 +40,8 @@ func TestMigration157Grants(t *testing.T) {
 	}
 	s := string(b)
 	for _, want := range []string{
-		"'system.certs'", "'system.unifi'", "System & Sicherheit",
+		"'system.certs'", "'system.unifi'", "'system.certs_admin'", "System & Sicherheit",
+		"Zertifikate: entfernen und widerrufen (Bereichsadministrator)",
 		"o.key = 'system.cloudflare'", "rp.department_id IS NULL",
 		"CREATE TABLE IF NOT EXISTS le_certs", "lan_record_id", "ON CONFLICT",
 	} {

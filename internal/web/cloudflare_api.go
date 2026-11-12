@@ -66,6 +66,7 @@ type cfPanel struct {
 	TunnelErr      string
 	Ingress        []cloudflare.Ingress
 	Targets        []cfTarget
+	Certs          certPanel // Zertifikate (Let's Encrypt) – auch bei einem Fehler von Cloudflare
 }
 
 func (h *Handler) canCloudflare(r *http.Request) bool { return h.hasPerm(r, permCloudflare) }
@@ -325,14 +326,22 @@ func (h *Handler) cfDone(w http.ResponseWriter, r *http.Request, what string, er
 	defer cancel()
 	if err != nil {
 		componentLog("cloudflare").Warn().Err(err).Str("von", getUser(r).ID).Msg(what)
-		h.cfRender(w, h.cfBuildPanel(ctx, "", err))
+		h.cfRender(w, h.cfPanelWithCerts(ctx, r, "", err))
 		return
 	}
 	componentLog("cloudflare").Info().Str("von", getUser(r).ID).Msg(what)
 	if h.db != nil {
 		h.notifyAdmins(ctx, "☁️ **Cloudflare geändert** von "+h.chatUserName(ctx, getUser(r).ID)+": "+what)
 	}
-	h.cfRender(w, h.cfBuildPanel(ctx, what, nil))
+	h.cfRender(w, h.cfPanelWithCerts(ctx, r, what, nil))
+}
+
+// cfPanelWithCerts: Stand von Cloudflare und die Karte der Zertifikate. Die Zertifikate
+// kommen aus der Datenbank und erscheinen auch, wenn Cloudflare einen Fehler meldet.
+func (h *Handler) cfPanelWithCerts(ctx context.Context, r *http.Request, msg string, perr error) cfPanel {
+	p := h.cfBuildPanel(ctx, msg, perr)
+	p.Certs = h.certPanelFor(ctx, r, "", nil)
+	return p
 }
 
 // CloudflarePanelWeb: GET /admin/server-config/cloudflare/panel (htmx)
@@ -343,7 +352,7 @@ func (h *Handler) CloudflarePanelWeb(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 40*time.Second)
 	defer cancel()
-	h.cfRender(w, h.cfBuildPanel(ctx, "", nil))
+	h.cfRender(w, h.cfPanelWithCerts(ctx, r, "", nil))
 }
 
 // CloudflareDNSWeb: POST /admin/server-config/cloudflare/dns (action=save|proxy|delete)

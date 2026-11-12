@@ -15,8 +15,9 @@ import (
 // verschlüsselte Speicher. Ohne Einrichtung bleibt die Tabelle le_certs leer.
 
 const (
-	permCerts = "system.certs"
-	permUnifi = "system.unifi"
+	permCerts      = "system.certs"
+	permCertsAdmin = "system.certs_admin" // Bereichsadministrator: entfernen und widerrufen
+	permUnifi      = "system.unifi"
 )
 
 // Einstellungen (app_settings). Das Konto und der UniFi-Schlüssel liegen verschlüsselt.

@@ -25,15 +25,17 @@ CREATE TABLE IF NOT EXISTS le_certs (
 
 INSERT INTO permissions (key, label, category) VALUES
     ('system.certs', 'Zertifikate verwalten (Let''s Encrypt)', 'System & Sicherheit'),
-    ('system.unifi', 'Namen im Haus eintragen (UniFi)', 'System & Sicherheit')
+    ('system.unifi', 'Namen im Haus eintragen (UniFi)', 'System & Sicherheit'),
+    ('system.certs_admin', 'Zertifikate: entfernen und widerrufen (Bereichsadministrator)', 'System & Sicherheit')
 ON CONFLICT (key) DO NOTHING;
 
 -- Die Rechte gelten systemweit. Sie gehen an alle Rollen, die bisher Cloudflare
--- verwalten dürfen – niemand wird durch das Update ausgesperrt.
+-- verwalten dürfen – niemand wird durch das Update ausgesperrt (wie Migration 155
+-- mit system.file_mirror_admin).
 INSERT INTO role_permissions (role_id, permission_id)
 SELECT DISTINCT r.id, p.id FROM roles r
 CROSS JOIN permissions p
-WHERE p.key IN ('system.certs', 'system.unifi')
+WHERE p.key IN ('system.certs', 'system.unifi', 'system.certs_admin')
   AND EXISTS (
         SELECT 1 FROM role_permissions rp JOIN permissions o ON o.id = rp.permission_id
         WHERE rp.role_id = r.id AND rp.department_id IS NULL AND o.key = 'system.cloudflare')

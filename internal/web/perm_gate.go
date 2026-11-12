@@ -94,6 +94,7 @@ var areaAdminPerm = map[string]string{
 	"ticket": "tickets.admin", "fault": "faults.admin", "maintenance_task": "maintenance.admin", "maintenance": "maintenance.admin",
 	"task": "tasks.admin", "project": "projects.admin", "kvp": "kvp.admin", "infrastructure": "infrastructure.admin",
 	"part": "inventory.admin", "storage": "inventory.admin", "purchase_order": "procurement.admin", "business_partner": "directory.admin", "it_asset": "it.admin",
+	"certs": permCertsAdmin, // Zertifikate (Let's Encrypt): nur dieses Recht, nicht alle system.*
 }
 
 // isAreaAdmin: Bereichsadministrator für diesen Datensatz?
@@ -144,6 +145,10 @@ var gateRules = []gateRule{
 	gr(wPost, "maintenance.admin", "maintenance_task", false, `^/maintenance/tasks`+gID+`/delete-web$`),
 	gr(wPost, "kvp.admin", "kvp", false, `^/kvp`+gID+`/delete$`),
 	gr("DELETE", "maintenance.admin", "", false, apiV1+`/maintenance/checklists`+gID+gEnd),
+	// ── Zertifikate (Let's Encrypt): Entfernen nur Bereichsadministrator, Full (strict) braucht Cloudflare ──
+	gr(wPost, permCertsAdmin, "", false, `^/admin/server-config/certs/remove$`),
+	gr(wPost, permCloudflare, "", false, `^/admin/server-config/certs/strict$`),
+	gr(wPost, permCerts, "", false, `^/admin/server-config/certs/(?:settings|add|issue)$`),
 	// ── Löschvormerkung von Stammdaten über die Schnittstelle ──
 	gr("DELETE", "inventory.edit", "part", false, `^(?:/api/v1)?/inventory`+gID+gEnd),
 	gr("DELETE", "inventory.edit", "storage", false, `^(?:/api/v1)?/storage`+gID+gEnd),
