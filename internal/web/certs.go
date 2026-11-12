@@ -40,6 +40,9 @@ type certDeps struct {
 	// Merkzettel für die Alarme (app_settings); fehlen sie, merkt sich nichts den Tag.
 	getSetting func(ctx context.Context, key string) string
 	setSetting func(ctx context.Context, key, value string) error
+
+	// Namen im Haus (UniFi, optional): nur lesen. nil oder errUnifiOff = nicht eingerichtet, keine Anfrage.
+	lanCheck func(ctx context.Context) (certLANClient, string, error)
 }
 
 var errCertBusy = errors.New("Für diesen Namen läuft schon ein Auftrag")
@@ -471,6 +474,9 @@ func certDaily(ctx context.Context, d certDeps) {
 		_ = d.setSetting(ctx, key, mark)
 		lg.Warn().Str("name", r.Name).Time("gueltig_bis", r.NotAfter).Msg("alarm: zertifikat läuft ab")
 	}
+
+	// 6. Namen im Haus (UniFi): nur lesen, Abweichungen als Hinweis in die Zeile, kein Alarm.
+	certLANDaily(ctx, d, rows)
 }
 
 // certCleanLeftovers löscht Prüf-Einträge, die das PDH angelegt und sich gemerkt hat, deren
@@ -747,6 +753,7 @@ func (h *Handler) certDepsLive() certDeps {
 		now:        time.Now,
 		getSetting: h.certSetting,
 		setSetting: h.certPutSetting,
+		lanCheck:   h.certLANCheckLive,
 	}
 }
 

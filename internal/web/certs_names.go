@@ -6,7 +6,6 @@ import (
 	"net"
 	"net/url"
 	"strings"
-	"time"
 
 	"pdh/internal/integrations/acme"
 )
@@ -81,27 +80,14 @@ func certLANState(addrs []string, own []string) string {
 // ein Verbund eine mitwandernde Adresse führt, diese. Läuft nie in einen Fehler;
 // ohne Verbund oder bei Störung kommt zurück, was bekannt ist.
 func (h *Handler) certOwnAddrs(ctx context.Context) []string {
-	var out []string
-	seen := map[string]bool{}
-	add := func(ip net.IP) {
-		if ip == nil || ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsUnspecified() || seen[ip.String()] {
-			return
-		}
-		seen[ip.String()] = true
-		out = append(out, ip.String())
+	own, vip := h.certAddrs(ctx)
+	if vip == "" {
+		return own
 	}
-	if addrs, err := net.InterfaceAddrs(); err == nil {
-		for _, a := range addrs {
-			if n, ok := a.(*net.IPNet); ok {
-				add(n.IP)
-			}
+	for _, o := range own {
+		if o == vip {
+			return own
 		}
 	}
-	// Verbund (pdh-ha) ist optional; nicht erreichbar heißt einfach: keine Zusatzadresse
-	cctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
-	defer cancel()
-	if st, err := h.haStatusFetch(cctx); err == nil && st.Configured && st.Access.VIPOn && st.Access.VIP != "" {
-		add(net.ParseIP(vipAddr(st.Access.VIP)))
-	}
-	return out
+	return append(own, vip)
 }

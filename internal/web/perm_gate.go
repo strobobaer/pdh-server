@@ -149,6 +149,7 @@ var gateRules = []gateRule{
 	gr(wPost, permCertsAdmin, "", false, `^/admin/server-config/certs/remove$`),
 	gr(wPost, permCloudflare, "", false, `^/admin/server-config/certs/strict$`),
 	gr(wPost, permCerts, "", false, `^/admin/server-config/certs/(?:settings|add|issue)$`),
+	gr(wPost, permUnifi, "", false, `^/admin/server-config/certs/(?:unifi|unifi/confirm|lan)$`), // Namen im Haus (UniFi)
 	// ── Löschvormerkung von Stammdaten über die Schnittstelle ──
 	gr("DELETE", "inventory.edit", "part", false, `^(?:/api/v1)?/inventory`+gID+gEnd),
 	gr("DELETE", "inventory.edit", "storage", false, `^(?:/api/v1)?/storage`+gID+gEnd),

@@ -10,6 +10,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"pdh/internal/integrations/unifi"
 )
 
 // Karte „Zertifikate (Let's Encrypt)“ unter der Cloudflare-Karte (optional).
@@ -20,6 +22,7 @@ import (
 //	POST /admin/server-config/certs/issue     Zertifikat jetzt holen bzw. erneuern (im Hintergrund)
 //	POST /admin/server-config/certs/remove    Namen entfernen und Zertifikat widerrufen (Bereichsadministrator)
 //	POST /admin/server-config/certs/strict    Tunnel und Domain auf Full (strict) bzw. zurück (dazu system.cloudflare)
+//	POST /admin/server-config/certs/unifi…, …/lan  Namen im Haus über die UniFi UDM Pro (system.unifi, certs_lan.go)
 //
 // Die Karte lädt nur, wenn ein Administrator die Cloudflare-Karte öffnet. Ohne Cloudflare,
 // Update-Agent oder nginx zeigt sie einen Hinweis; die Cloudflare-Karte bleibt davon unberührt.
@@ -27,6 +30,10 @@ import (
 type certLine struct {
 	Name, State, Step, Error, ValidUntil, LAN string
 	Staging, CanRemove                        bool
+
+	LANRecord string // Kennung des Eintrags, den das PDH an der UDM Pro angelegt hat
+	LANOther  string // Adresse eines fremden Eintrags gleichen Namens an der UDM Pro
+	LANHint   string // Abweichung aus der täglichen Prüfung
 }
 
 type certPanel struct {
@@ -38,6 +45,11 @@ type certPanel struct {
 	CanStrict bool   // system.cloudflare: Knopf „Full (strict)“
 	Zone      string // Domain des API-Tokens
 	Hint      string // Cloudflare nicht eingerichtet – keine Formulare
+
+	CanUnifi  bool       // system.unifi: Abschnitt „Namen im Haus (UniFi)“ bearbeiten
+	UnifiOpen bool       // Abschnitt aufgeklappt zeigen
+	Unifi     unifiPanel // nur Einstellungen, nie der Schlüssel
+	LANTarget string     // Zieladresse im Haus (mitwandernd bzw. erste eigene)
 }
 
 // Running: läuft ein Auftrag? Dann fragt die Karte alle 5 Sekunden nach.
@@ -55,7 +67,7 @@ func certLines(rows []certRow, lan map[string]string, canRemove bool) []certLine
 	out := make([]certLine, 0, len(rows))
 	for _, r := range rows {
 		l := certLine{Name: r.Name, State: r.State, Step: r.Step, Error: certSafeText(r.LastError),
-			LAN: lan[r.Name], Staging: r.Staging, CanRemove: canRemove}
+			LAN: lan[r.Name], Staging: r.Staging, CanRemove: canRemove, LANRecord: r.LANRecordID}
 		if l.LAN == "" {
 			l.LAN = "unbekannt"
 		}
@@ -118,7 +130,16 @@ func (h *Handler) certPanelFor(ctx context.Context, r *http.Request, msg string,
 	p.StrictOn = h.certSetting(ctx, keyCertStrictBefore) != ""
 	p.StrictReady = certStrictReady(rows, time.Now())
 	p.AgentOK, p.NginxOK = h.certAgentState(ctx)
-	p.Lines = certLines(rows, h.certLAN(ctx, rows), h.certMayRemove(r))
+	lan, target := h.certLAN(ctx, rows)
+	p.Lines = certLines(rows, lan, h.certMayRemove(r))
+	p.LANTarget = target
+	p.CanUnifi = h.hasPerm(r, permUnifi)
+	p.UnifiOpen = r.FormValue("lanopen") == "1"
+	p.Unifi = unifiPanelFrom(func(k string) string { return h.certSetting(ctx, k) }, "", "")
+	for i := range p.Lines {
+		p.Lines[i].LANHint = h.certSetting(ctx, keyUnifiHintPrefix+p.Lines[i].Name)
+		p.Lines[i].LANOther = h.certSetting(ctx, keyUnifiOtherPrefix+p.Lines[i].Name)
+	}
 	if p.Zone != "" {
 		host, _ := h.nextStartValue(ctx, cfHostKey)
 		have := map[string]bool{}
@@ -150,20 +171,25 @@ func (h *Handler) certAgentState(ctx context.Context) (agentOK, nginxOK bool) {
 	return true, out.Nginx
 }
 
-// certLAN: Wohin zeigt jeder Name im Firmennetz (DNS des Servers)?
-func (h *Handler) certLAN(ctx context.Context, rows []certRow) map[string]string {
+// certLAN: Wohin zeigt jeder Name im Firmennetz (DNS des Servers)? Dazu die Zieladresse im
+// Haus (mitwandernde bzw. erste eigene) für die Anleitung von Hand.
+func (h *Handler) certLAN(ctx context.Context, rows []certRow) (map[string]string, string) {
 	out := map[string]string{}
 	if len(rows) == 0 {
-		return out
+		return out, ""
 	}
-	own := h.certOwnAddrs(ctx)
+	iface, vip := h.certAddrs(ctx)
+	own := append([]string(nil), iface...)
+	if vip != "" {
+		own = append(own, vip)
+	}
 	for _, r := range rows {
 		lctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 		addrs, _ := net.DefaultResolver.LookupHost(lctx, r.Name)
 		cancel()
 		out[r.Name] = certLANState(addrs, own)
 	}
-	return out
+	return out, certLANTargetFrom(iface, vip)
 }
 
 // ── Aktionen (ohne HTTP, testbar) ────────────────────────────
@@ -180,6 +206,12 @@ type certActDeps struct {
 	revoke      func(ctx context.Context, row certRow) error
 	strictOn    func(ctx context.Context) error
 	strictOff   func(ctx context.Context) error
+
+	// Namen im Haus (UniFi, optional): nil oder errUnifiOff = nicht eingerichtet, keine Anfrage.
+	lan         func(ctx context.Context) (certLANClient, error)
+	lanTarget   func(ctx context.Context) (string, error)
+	fingerprint func(ctx context.Context, base string) (string, error) // nur TLS, ohne Schlüssel
+	seal        func(plain string) (string, error)                     // Schlüssel verschlüsseln
 }
 
 var (
@@ -327,7 +359,9 @@ func certDoRemove(ctx context.Context, d certActDeps, raw string) (string, error
 	}
 	_ = d.putSetting(ctx, keyCertPrevPrefix+row.Name, "")
 	_ = d.putSetting(ctx, keyCertAlarmPrefix+row.Name, "")
-	return row.Name + " entfernt." + revokeNote, nil
+	// Eintrag im Haus: nur den eigenen löschen; scheitert das, bleibt das Zertifikat entfernt.
+	lanNote := certLANRemove(ctx, d, row)
+	return row.Name + " entfernt." + revokeNote + lanNote, nil
 }
 
 func certDoStrict(ctx context.Context, d certActDeps, on bool) (string, error) {
@@ -386,6 +420,12 @@ func (h *Handler) certActLive() certActDeps {
 		},
 		strictOn:  h.certStrictOn,
 		strictOff: h.certStrictOff,
+		lan:       h.unifiClient,
+		lanTarget: h.certLANTarget,
+		fingerprint: func(ctx context.Context, base string) (string, error) {
+			return unifi.Fingerprint(ctx, base)
+		},
+		seal: func(plain string) (string, error) { return encryptSecret(h.pkiKey(), plain) },
 	}
 }
 
@@ -438,6 +478,12 @@ func (h *Handler) certRender(w http.ResponseWriter, p certPanel) {
 // melden, Karte neu zeichnen.
 func (h *Handler) certAct(w http.ResponseWriter, r *http.Request, may bool, what string, notify bool,
 	do func(ctx context.Context, d certActDeps) (string, error)) {
+	h.certActWith(w, r, may, what, notify, do, nil)
+}
+
+// certActWith: wie certAct; after ergänzt die Karte vor dem Zeichnen (z. B. Fingerabdruck).
+func (h *Handler) certActWith(w http.ResponseWriter, r *http.Request, may bool, what string, notify bool,
+	do func(ctx context.Context, d certActDeps) (string, error), after func(p *certPanel)) {
 	if !may {
 		http.Error(w, "keine berechtigung", http.StatusForbidden)
 		return
@@ -458,7 +504,11 @@ func (h *Handler) certAct(w http.ResponseWriter, r *http.Request, may bool, what
 			h.notifyAdmins(ctx, "🔒 **Zertifikate geändert** von "+h.chatUserName(ctx, uid)+": "+msg)
 		}
 	}
-	h.certRender(w, h.certPanelFor(ctx, r, msg, err))
+	p := h.certPanelFor(ctx, r, msg, err)
+	if after != nil {
+		after(&p)
+	}
+	h.certRender(w, p)
 }
 
 // CertPanelWeb: GET /admin/server-config/certs/panel
