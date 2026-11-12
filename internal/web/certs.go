@@ -1,0 +1,773 @@
+package web
+
+import (
+	"context"
+	"crypto/sha256"
+	"crypto/x509"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net"
+	"net/url"
+	"os"
+	"regexp"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
+	"pdh/internal/integrations/acme"
+	"pdh/internal/integrations/cloudflare"
+)
+
+// Let's-Encrypt-Zertifikate (optional): ein Auftrag je Name, die tägliche Prüfung mit
+// Erneuerung, Abgleich mit den Dateien des Update-Agenten und die Alarme. Ohne
+// eingetragene Namen tut der tägliche Lauf nichts – kein Cloudflare, kein Agent, keine CA.
+
+// certDeps sind die Teile, die ein Auftrag braucht; im Betrieb aus certDepsLive, in den
+// Tests im Speicher.
+type certDeps struct {
+	store   certStore
+	ca      func(staging bool) (acme.CA, error)
+	dns     func() (acme.DNS, error)
+	install func(ctx context.Context, name string, chain, key []byte) (fp string, err error)
+	status  func(ctx context.Context) (map[string]string, error) // Name → Fingerabdruck der Datei
+	blocked func() bool                                          // Spiegel oder Wartung: nichts starten
+	alarm   func(text string)
+	now     func() time.Time
+
+	// Merkzettel für die Alarme (app_settings); fehlen sie, merkt sich nichts den Tag.
+	getSetting func(ctx context.Context, key string) string
+	setSetting func(ctx context.Context, key, value string) error
+}
+
+var errCertBusy = errors.New("Für diesen Namen läuft schon ein Auftrag")
+
+const (
+	// keyCertAlarmPrefix + Name: zuletzt gemeldeter Alarm, damit ein Neustart nicht doppelt meldet.
+	keyCertAlarmPrefix = "certs.alarm."
+	// keyCertPrevPrefix + Name: Zertifikatszeilen der Nextcloud-Seite vor der ersten Umstellung.
+	keyCertPrevPrefix = "certs.prev."
+
+	certNotInstalled = "noch nicht eingerichtet"
+	certUpstreamDef  = "http://127.0.0.1:8090"
+)
+
+func (d certDeps) withDefaults() certDeps {
+	if d.now == nil {
+		d.now = time.Now
+	}
+	if d.blocked == nil {
+		d.blocked = func() bool { return false }
+	}
+	if d.alarm == nil {
+		d.alarm = func(string) {}
+	}
+	if d.getSetting == nil {
+		d.getSetting = func(context.Context, string) string { return "" }
+	}
+	if d.setSetting == nil {
+		d.setSetting = func(context.Context, string, string) error { return nil }
+	}
+	return d
+}
+
+// ── Sperre je Name ───────────────────────────────────────────
+
+var certJobs = struct {
+	sync.Mutex
+	m map[string]struct{}
+}{m: map[string]struct{}{}}
+
+// certTryLock belegt den Namen; false, wenn schon ein Auftrag läuft.
+func certTryLock(name string) bool {
+	certJobs.Lock()
+	defer certJobs.Unlock()
+	if _, ok := certJobs.m[name]; ok {
+		return false
+	}
+	certJobs.m[name] = struct{}{}
+	return true
+}
+
+func certUnlock(name string) {
+	certJobs.Lock()
+	defer certJobs.Unlock()
+	delete(certJobs.m, name)
+}
+
+// ── Ein Auftrag ──────────────────────────────────────────────
+
+// certFingerprint: SHA-256 des Blatt-Zertifikats, hex klein – wie acme.Issue und der Agent.
+func certFingerprint(c *x509.Certificate) string {
+	sum := sha256.Sum256(c.Raw)
+	return hex.EncodeToString(sum[:])
+}
+
+// certSafeText kürzt eine Fehlermeldung für last_error und Protokoll: nie ein PEM-Block,
+// höchstens 500 Zeichen.
+func certSafeText(s string) string {
+	if i := strings.Index(s, "-----BEGIN"); i >= 0 {
+		s = strings.TrimSpace(s[:i]) + " …"
+	}
+	if r := []rune(s); len(r) > 500 {
+		s = string(r[:500]) + " …"
+	}
+	return s
+}
+
+// certRememberDNS merkt sich die Kennung des Prüf-Eintrags in der Datenbank, solange er
+// steht. Stürzt das PDH zwischen Anlegen und Löschen ab, räumt der tägliche Lauf ihn weg.
+type certRememberDNS struct {
+	acme.DNS
+	ctx   context.Context
+	store certStore
+	name  string
+}
+
+func (r *certRememberDNS) Present(ctx context.Context, fqdn, value string) (string, error) {
+	id, err := r.DNS.Present(ctx, fqdn, value)
+	if err == nil && id != "" {
+		_ = r.store.certSetChallenge(r.ctx, r.name, id)
+	}
+	return id, err
+}
+
+func (r *certRememberDNS) CleanUp(ctx context.Context, id string) error {
+	err := r.DNS.CleanUp(ctx, id)
+	if err == nil {
+		_ = r.store.certSetChallenge(r.ctx, r.name, "")
+	} else {
+		componentLog("zertifikate").Warn().Str("name", r.name).Str("fehler", certSafeText(err.Error())).
+			Msg("prüf-eintrag nicht gelöscht – der tägliche lauf räumt ihn auf")
+	}
+	return err
+}
+
+// certWait wartet die Zeit oder bis ctx endet.
+func certWait(ctx context.Context, d time.Duration) error {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-t.C:
+		return nil
+	}
+}
+
+// certIssue holt (oder erneuert) das Zertifikat für einen eingetragenen Namen, speichert es
+// und gibt es dem Agenten. Scheitert etwas, bleibt das bisherige Zertifikat in Betrieb.
+func certIssue(ctx context.Context, d certDeps, name string) (err error) {
+	d = d.withDefaults()
+	if !certTryLock(name) {
+		return errCertBusy
+	}
+	defer certUnlock(name)
+
+	lg := componentLog("zertifikate")
+	sctx := context.WithoutCancel(ctx) // Zustand auch nach Abbruch noch festhalten
+	step := ""
+	started := false
+	fail := func(e error) error {
+		msg := certSafeText(e.Error())
+		var rl *acme.RateLimited
+		if errors.As(e, &rl) {
+			until := rl.Until
+			if until.IsZero() {
+				until = d.now().Add(time.Hour)
+			}
+			_ = d.store.certSetRetry(sctx, name, until)
+		}
+		_ = d.store.certSetStep(sctx, name, certStateFehler, "", msg)
+		lg.Warn().Str("name", name).Str("schritt", step).Str("fehler", msg).Msg("zertifikat holen fehlgeschlagen")
+		return e
+	}
+	defer func() {
+		if p := recover(); p != nil {
+			lg.Error().Str("name", name).Str("schritt", step).Str("panik", certSafeText(fmt.Sprint(p))).Msg("auftrag abgebrochen")
+			e := errors.New("Auftrag mit internem Fehler abgebrochen")
+			if started {
+				err = fail(e)
+			} else {
+				err = e
+			}
+		}
+	}()
+
+	if d.blocked() {
+		return errors.New("Am Spiegel und während der Wartung werden keine Zertifikate geholt")
+	}
+	rows, err := d.store.certList(ctx)
+	if err != nil {
+		return err
+	}
+	var row *certRow
+	for i := range rows {
+		if rows[i].Name == name {
+			row = &rows[i]
+			break
+		}
+	}
+	if row == nil {
+		return fmt.Errorf("%s ist nicht eingetragen", name)
+	}
+	if !row.RetryAfter.IsZero() && d.now().Before(row.RetryAfter) {
+		return fmt.Errorf("Let's Encrypt nimmt für %s erst ab %s wieder Aufträge an", name,
+			row.RetryAfter.In(time.Local).Format("02.01.2006 15:04"))
+	}
+
+	started = true
+	step = "start"
+	if err := d.store.certSetStep(sctx, name, certStateLaeuft, step, ""); err != nil {
+		return err
+	}
+	lg.Info().Str("name", name).Bool("testumgebung", row.Staging).Msg("zertifikat wird geholt")
+
+	dns, err := d.dns()
+	if err != nil {
+		return fail(err)
+	}
+	ca, err := d.ca(row.Staging)
+	if err != nil {
+		return fail(err)
+	}
+	onStep := func(s string) {
+		step = s
+		_ = d.store.certSetStep(sctx, name, certStateLaeuft, s, "")
+		lg.Debug().Str("name", name).Str("schritt", s).Msg("zertifikat")
+	}
+	is, err := acme.Issue(ctx, ca, &certRememberDNS{DNS: dns, ctx: sctx, store: d.store, name: name}, name, onStep, certWait)
+	if err != nil {
+		return fail(err)
+	}
+	step = "speichern"
+	if err := d.store.certSaveIssued(sctx, name, is); err != nil {
+		return fail(fmt.Errorf("Zertifikat speichern: %w", err))
+	}
+	lg.Info().Str("name", name).Str("fingerabdruck", is.Fingerprint).Time("gueltig_bis", is.NotAfter).Msg("zertifikat geholt")
+
+	step = "einrichten"
+	return certInstall(sctx, d, name, is.ChainPEM, is.KeyPEM, is.Fingerprint, certStateGueltig, "")
+}
+
+// certInstall gibt Zertifikat und Schlüssel dem Agenten und hält das Ergebnis fest; der
+// Zustand bleibt state, last_error wird bei Erfolg keepErr. Bei einem Fehler bleibt das
+// Zertifikat gespeichert und last_error beginnt mit „noch nicht eingerichtet“.
+func certInstall(ctx context.Context, d certDeps, name string, chain, key []byte, wantFP, state, keepErr string) error {
+	lg := componentLog("zertifikate")
+	fp, err := d.install(ctx, name, chain, key)
+	if err == nil && !strings.EqualFold(strings.TrimSpace(fp), wantFP) {
+		err = errors.New("der Update-Agent meldet einen anderen Fingerabdruck")
+	}
+	if err != nil {
+		msg := certNotInstalled + ": " + certSafeText(err.Error())
+		_ = d.store.certSetStep(ctx, name, state, "", msg)
+		lg.Warn().Str("name", name).Str("fingerabdruck", wantFP).Str("fehler", msg).Msg("zertifikat nicht eingerichtet")
+		return errors.New(msg)
+	}
+	_ = d.store.certSetInstalled(ctx, name, strings.ToLower(wantFP))
+	_ = d.store.certSetStep(ctx, name, state, "", keepErr)
+	lg.Info().Str("name", name).Str("fingerabdruck", wantFP).Msg("zertifikat eingerichtet")
+	return nil
+}
+
+// ── Fälligkeit und Alarme ────────────────────────────────────
+
+func certHasCert(r certRow) bool {
+	return !r.NotAfter.IsZero() && (r.ChainPEM != "" || r.Fingerprint != "")
+}
+
+// certDue: Namen, die jetzt geholt werden – nie geholt oder ab 30 Tagen vor Ablauf (bei
+// kurzer Laufzeit ein Drittel davor); nicht während eines Auftrags und nicht vor Ende einer Sperrzeit.
+func certDue(rows []certRow, now time.Time) []string {
+	var out []string
+	for _, r := range rows {
+		if r.State == certStateLaeuft {
+			continue
+		}
+		if !r.RetryAfter.IsZero() && now.Before(r.RetryAfter) {
+			continue
+		}
+		if !certHasCert(r) || !now.Before(acme.RenewAt(r.NotBefore, r.NotAfter)) {
+			out = append(out, r.Name)
+		}
+	}
+	return out
+}
+
+// certAlarm: Text an die Administratoren, wenn ein Zertifikat in höchstens 14 Tagen abläuft
+// oder abgelaufen ist. Wie oft gemeldet wird, entscheidet certDaily.
+func certAlarm(row certRow, now time.Time) (text string, ok bool) {
+	if !certHasCert(row) {
+		return "", false
+	}
+	until := row.NotAfter.In(now.Location()).Format("02.01.2006 15:04")
+	where := " Server-Einstellungen → Cloudflare-Tunnel → Zertifikate."
+	if row.LastError != "" {
+		where = " Letzter Fehler: " + certSafeText(row.LastError) + "." + where
+	}
+	left := row.NotAfter.Sub(now)
+	if left <= 0 {
+		return fmt.Sprintf("Das Zertifikat für %s ist abgelaufen (seit %s). Die Erneuerung hat nicht geklappt.%s", row.Name, until, where), true
+	}
+	days := int(left / (24 * time.Hour)) // volle Tage
+	if days > 14 {
+		return "", false
+	}
+	var when string
+	switch days {
+	case 0:
+		when = "läuft in weniger als einem Tag ab"
+	case 1:
+		when = "läuft in 1 Tag ab"
+	default:
+		when = fmt.Sprintf("läuft in %d Tagen ab", days)
+	}
+	return fmt.Sprintf("Das Zertifikat für %s %s (gültig bis %s). Die automatische Erneuerung hat bisher nicht geklappt.%s", row.Name, when, until, where), true
+}
+
+// certAlarmDue: soll der Alarm heute (noch) gemeldet werden? Einmal ab 14 Tagen, ab 7 Tagen
+// täglich, abgelaufen sofort und danach täglich. Gemerkt: Ablaufdatum|Tag|Stufe.
+func certAlarmDue(row certRow, now time.Time, stored string) (mark string, send bool) {
+	today := now.Format("2006-01-02")
+	left := row.NotAfter.Sub(now)
+	stage := "14"
+	switch {
+	case left <= 0:
+		stage = "ab"
+	case left < 8*24*time.Hour:
+		stage = "7"
+	}
+	mark = strconv.FormatInt(row.NotAfter.Unix(), 10) + "|" + today + "|" + stage
+	p := strings.Split(stored, "|")
+	if len(p) != 3 || p[0] != strconv.FormatInt(row.NotAfter.Unix(), 10) {
+		return mark, true // für dieses Zertifikat noch nichts gemeldet
+	}
+	switch stage {
+	case "14":
+		return mark, false
+	case "7":
+		return mark, p[1] != today
+	default:
+		return mark, p[1] != today || p[2] != "ab"
+	}
+}
+
+// ── Täglicher Lauf ───────────────────────────────────────────
+
+// certChallengeLister: ein DNS-Zugang, der die Einträge der Zone nennen kann (Cloudflare).
+type certChallengeLister interface {
+	challengeRecords(ctx context.Context) ([]cloudflare.Record, error)
+}
+
+func (d *certDNS) challengeRecords(ctx context.Context) ([]cloudflare.Record, error) {
+	return d.api.Records(ctx, d.zoneID)
+}
+
+// certDaily: hängende Aufträge lösen, übrige Prüf-Einträge löschen, fällige Namen holen,
+// Datenbank und Dateien abgleichen, Alarme melden. Am Spiegel und in der Wartung nichts.
+func certDaily(ctx context.Context, d certDeps) {
+	d = d.withDefaults()
+	lg := componentLog("zertifikate")
+	if d.blocked() {
+		lg.Debug().Msg("tägliche prüfung ausgelassen (spiegel oder wartung)")
+		return
+	}
+	rows, err := d.store.certList(ctx)
+	if err != nil {
+		lg.Warn().Err(err).Msg("zertifikate lesen")
+		return
+	}
+	if len(rows) == 0 {
+		lg.Debug().Msg("keine zertifikate eingetragen")
+		return
+	}
+
+	// 1. Ein Eintrag in „laeuft“, den kein Auftrag hält, stammt aus einem Absturz oder Neustart.
+	for _, r := range rows {
+		if r.State != certStateLaeuft || !certTryLock(r.Name) {
+			continue
+		}
+		_ = d.store.certSetStep(ctx, r.Name, certStateFehler, "", "Auftrag wurde unterbrochen (Neustart oder Rollentausch) – wird erneut versucht")
+		certUnlock(r.Name)
+		lg.Warn().Str("name", r.Name).Str("schritt", r.Step).Msg("unterbrochener auftrag zurückgesetzt")
+	}
+
+	// 2. Gemerkte Prüf-Einträge löschen.
+	if rows, err = d.store.certList(ctx); err != nil {
+		lg.Warn().Err(err).Msg("zertifikate lesen")
+		return
+	}
+	certCleanLeftovers(ctx, d, rows)
+
+	// 3. Fällige Namen holen.
+	for _, name := range certDue(rows, d.now()) {
+		if d.blocked() {
+			return
+		}
+		_ = certIssue(ctx, d, name) // Fehler stehen in last_error und im Protokoll
+	}
+
+	// 4. Datenbank und Dateien abgleichen.
+	if rows, err = d.store.certList(ctx); err != nil {
+		lg.Warn().Err(err).Msg("zertifikate lesen")
+		return
+	}
+	certReconcile(ctx, d, rows)
+
+	// 5. Alarme.
+	now := d.now()
+	for _, r := range rows {
+		text, ok := certAlarm(r, now)
+		if !ok {
+			continue
+		}
+		key := keyCertAlarmPrefix + r.Name
+		mark, send := certAlarmDue(r, now, d.getSetting(ctx, key))
+		if !send {
+			continue
+		}
+		d.alarm(text)
+		_ = d.setSetting(ctx, key, mark)
+		lg.Warn().Str("name", r.Name).Time("gueltig_bis", r.NotAfter).Msg("alarm: zertifikat läuft ab")
+	}
+}
+
+// certCleanLeftovers löscht Prüf-Einträge, die das PDH angelegt und sich gemerkt hat, deren
+// Auftrag aber nicht mehr läuft. Fremde Einträge bleiben unberührt.
+func certCleanLeftovers(ctx context.Context, d certDeps, rows []certRow) {
+	lg := componentLog("zertifikate")
+	remembered := map[string]string{} // Kennung → _acme-challenge.<name>
+	owner := map[string]string{}      // Kennung → Name
+	for _, r := range rows {
+		if r.ChallengeID == "" || !certTryLock(r.Name) {
+			continue
+		}
+		defer certUnlock(r.Name)
+		remembered[r.ChallengeID] = "_acme-challenge." + r.Name
+		owner[r.ChallengeID] = r.Name
+	}
+	if len(owner) == 0 {
+		return
+	}
+	dns, err := d.dns()
+	if err != nil {
+		lg.Warn().Str("fehler", certSafeText(err.Error())).Msg("prüf-einträge nicht aufgeräumt")
+		return
+	}
+	ids := make([]string, 0, len(owner))
+	gone := map[string]bool{}
+	if l, ok := dns.(certChallengeLister); ok {
+		recs, err := l.challengeRecords(ctx)
+		if err != nil {
+			lg.Warn().Str("fehler", certSafeText(err.Error())).Msg("prüf-einträge nicht aufgeräumt")
+			return
+		}
+		ids = certLeftovers(recs, remembered)
+		present := map[string]bool{}
+		for _, id := range ids {
+			present[id] = true
+		}
+		for id := range owner {
+			if !present[id] {
+				gone[id] = true // steht nicht mehr in der Zone
+			}
+		}
+	} else {
+		for id := range owner {
+			ids = append(ids, id)
+		}
+	}
+	for _, id := range ids {
+		if err := dns.CleanUp(ctx, id); err != nil {
+			lg.Warn().Str("name", owner[id]).Str("fehler", certSafeText(err.Error())).Msg("prüf-eintrag nicht gelöscht")
+			continue
+		}
+		gone[id] = true
+		lg.Info().Str("name", owner[id]).Msg("übrig gebliebenen prüf-eintrag gelöscht")
+	}
+	for id := range gone {
+		_ = d.store.certSetChallenge(ctx, owner[id], "")
+	}
+}
+
+// certReconcile vergleicht den Fingerabdruck in der Datenbank mit der Datei beim Agenten
+// und installiert bei Abweichung neu aus der Datenbank.
+func certReconcile(ctx context.Context, d certDeps, rows []certRow) {
+	lg := componentLog("zertifikate")
+	var have []certRow
+	for _, r := range rows {
+		if certHasCert(r) && r.Fingerprint != "" && r.State != certStateLaeuft {
+			have = append(have, r)
+		}
+	}
+	if len(have) == 0 {
+		return
+	}
+	files, err := d.status(ctx)
+	statusOK := err == nil
+	if err != nil {
+		lg.Warn().Str("fehler", certSafeText(err.Error())).Msg("stand der zertifikatsdateien nicht abrufbar")
+	}
+	for _, r := range have {
+		var match bool
+		if statusOK {
+			match = strings.EqualFold(files[r.Name], r.Fingerprint)
+		} else {
+			match = strings.EqualFold(r.InstalledFP, r.Fingerprint)
+		}
+		if match {
+			if statusOK && !strings.EqualFold(r.InstalledFP, r.Fingerprint) {
+				_ = d.store.certSetInstalled(ctx, r.Name, strings.ToLower(r.Fingerprint))
+			}
+			continue
+		}
+		if !certTryLock(r.Name) {
+			continue
+		}
+		func() {
+			defer certUnlock(r.Name)
+			chain, key, err := d.store.certKey(ctx, r.Name)
+			if err != nil {
+				lg.Warn().Str("name", r.Name).Str("fehler", certSafeText(err.Error())).Msg("zertifikat nicht lesbar")
+				return
+			}
+			lg.Info().Str("name", r.Name).Str("fingerabdruck", r.Fingerprint).Str("datei", files[r.Name]).Msg("datei weicht ab – neu einrichten")
+			keep := r.LastError // z. B. eine gescheiterte Erneuerung bleibt sichtbar
+			if strings.HasPrefix(keep, certNotInstalled) {
+				keep = ""
+			}
+			_ = certInstall(ctx, d, r.Name, chain, key, r.Fingerprint, r.State, keep)
+		}()
+	}
+}
+
+// ── Betrieb ──────────────────────────────────────────────────
+
+// certRole: welche Seite der Agent für den Namen schreibt – "pdh" (eigene Seite für den
+// PDH-Namen), "nextcloud" (Zertifikatszeilen der Nextcloud-Seite) oder "" (nur Dateien).
+func certRole(name, pdhHost, nextcloudURL string) string {
+	norm := func(s string) string {
+		s = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(s)), ".")
+		if h, _, err := net.SplitHostPort(s); err == nil {
+			s = h
+		}
+		return s
+	}
+	n := norm(name)
+	if n == "" {
+		return ""
+	}
+	if n == norm(pdhHost) {
+		return "pdh"
+	}
+	if u, err := url.Parse(strings.TrimSpace(nextcloudURL)); err == nil && u.Hostname() != "" && n == norm(u.Hostname()) {
+		return "nextcloud"
+	}
+	return ""
+}
+
+var certUpstreamRe = regexp.MustCompile(`^http://(127\.0\.0\.1|localhost):[0-9]{1,5}$`)
+
+// certUpstream: Adresse, an die die nginx-Seite des PDH weiterreicht (nur lokal).
+func certUpstream(origin string) string {
+	o := strings.TrimRight(strings.TrimSpace(origin), "/")
+	if certUpstreamRe.MatchString(o) {
+		return o
+	}
+	return certUpstreamDef
+}
+
+// certInstallBody: Anfrage an POST /v1/certs/install – Rolle aus PDH-Name bzw.
+// Nextcloud-Adresse, Weiterleitung nur für die Seite des PDH.
+func certInstallBody(name string, chain, key []byte, pdhHost, origin, nextcloudURL string) map[string]string {
+	role := certRole(name, pdhHost, nextcloudURL)
+	body := map[string]string{"name": name, "chain_pem": string(chain), "key_pem": string(key), "role": role}
+	if role == "pdh" {
+		body["upstream"] = certUpstream(origin)
+	}
+	return body
+}
+
+func (h *Handler) certSetting(ctx context.Context, key string) string {
+	if h.db == nil {
+		return ""
+	}
+	return h.getUpdateSetting(ctx, key, "")
+}
+
+func (h *Handler) certPutSetting(ctx context.Context, key, value string) error {
+	if h.db == nil {
+		return errors.New("keine Datenbank")
+	}
+	return h.setUpdateSetting(ctx, key, value)
+}
+
+// certPrevious: Pfade der Zertifikatszeilen, die in der Nextcloud-Seite vor der ersten
+// Umstellung standen (für „Entfernen“). ok=false, wenn nichts gemerkt ist.
+func (h *Handler) certPrevious(ctx context.Context, name string) (cert, key string, ok bool) {
+	return certPrevDecode(h.certSetting(ctx, keyCertPrevPrefix+name))
+}
+
+type certPrev struct {
+	Cert string `json:"cert"`
+	Key  string `json:"key"`
+}
+
+func certPrevDecode(raw string) (cert, key string, ok bool) {
+	var p certPrev
+	if raw == "" || json.Unmarshal([]byte(raw), &p) != nil || p.Cert == "" {
+		return "", "", false
+	}
+	return p.Cert, p.Key, true
+}
+
+// certKeepPrevious merkt sich die vorigen Zertifikatszeilen, wenn der Agent sie meldet (nur
+// beim ersten Umstellen). Eine leere Meldung (Erneuerung) überschreibt nie den gemerkten Stand.
+func certKeepPrevious(ctx context.Context, put func(ctx context.Context, key, value string) error, name, cert, key string) error {
+	if strings.TrimSpace(cert) == "" {
+		return nil
+	}
+	raw, err := json.Marshal(certPrev{Cert: cert, Key: key})
+	if err != nil {
+		return err
+	}
+	return put(ctx, keyCertPrevPrefix+name, string(raw))
+}
+
+// certDepsLive: die echten Teile – Let's Encrypt, Cloudflare, Update-Agent, Chat.
+func (h *Handler) certDepsLive() certDeps {
+	return certDeps{
+		store: h,
+		ca: func(staging bool) (acme.CA, error) {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			key, err := h.certAccountKey(ctx, staging)
+			if err != nil {
+				return nil, err
+			}
+			return acme.NewLetsEncrypt(key, h.certSetting(ctx, keyCertEmail), staging)
+		},
+		dns: func() (acme.DNS, error) {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			a, err := h.cfAccess(ctx)
+			if err != nil {
+				return nil, err
+			}
+			zone, err := a.client.ZoneByName(ctx, a.zone)
+			if err != nil {
+				return nil, err
+			}
+			return &certDNS{api: a.client, zoneID: zone.ID, lookupTXT: authoritativeTXT(a.zone)}, nil
+		},
+		install: func(ctx context.Context, name string, chain, key []byte) (string, error) {
+			ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+			defer cancel()
+			host, _ := h.nextStartValue(ctx, cfHostKey)
+			origin, _ := h.nextStartValue(ctx, cfOriginKey)
+			body := certInstallBody(name, chain, key, host, origin, os.Getenv("PDH_NEXTCLOUD_BASEURL"))
+			var out struct {
+				Fingerprint  string `json:"fingerprint"`
+				PreviousCert string `json:"previous_cert"`
+				PreviousKey  string `json:"previous_key"`
+			}
+			if err := h.agentJSON(ctx, "POST", "/v1/certs/install", body, &out); err != nil {
+				return "", err
+			}
+			if err := certKeepPrevious(context.WithoutCancel(ctx), h.certPutSetting, name, out.PreviousCert, out.PreviousKey); err != nil {
+				componentLog("zertifikate").Warn().Str("name", name).Err(err).Msg("vorige zertifikatszeilen nicht gemerkt")
+			}
+			return out.Fingerprint, nil
+		},
+		status: func(ctx context.Context) (map[string]string, error) {
+			ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+			defer cancel()
+			var out struct {
+				Certs []struct {
+					Name        string `json:"name"`
+					Fingerprint string `json:"fingerprint"`
+				} `json:"certs"`
+			}
+			if err := h.agentJSON(ctx, "GET", "/v1/certs/status", nil, &out); err != nil {
+				return nil, err
+			}
+			m := make(map[string]string, len(out.Certs))
+			for _, c := range out.Certs {
+				m[c.Name] = strings.ToLower(c.Fingerprint)
+			}
+			return m, nil
+		},
+		blocked: func() bool { return h.Mirror().On || h.MaintLocked() },
+		alarm: func(text string) {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			h.notifyAdmins(ctx, text)
+		},
+		now:        time.Now,
+		getSetting: h.certSetting,
+		setSetting: h.certPutSetting,
+	}
+}
+
+// certTimes: Zeitplan des Hintergrundlaufs.
+type certTimes struct {
+	first     time.Duration // erster Lauf nach dem Start
+	every     time.Duration // danach
+	afterRole time.Duration // nach einem Wechsel vom Spiegel zu aktiv
+	poll      time.Duration // wie oft die Rolle angesehen wird
+	retry     time.Duration // nach einem ausgelassenen Lauf (Wartung)
+}
+
+// certSchedule ruft run im Takt auf; run meldet false, wenn der Lauf ausgelassen wurde
+// (dann bald erneut). Am Spiegel läuft nichts; nach einem Wechsel zu aktiv bald ein Lauf.
+func certSchedule(ctx context.Context, t certTimes, mirror func() bool, run func() bool) {
+	if t.retry <= 0 {
+		t.retry = 10 * time.Minute
+	}
+	timer := time.NewTimer(t.first)
+	defer timer.Stop()
+	poll := time.NewTicker(t.poll)
+	defer poll.Stop()
+	wasMirror := mirror()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-poll.C:
+			m := mirror()
+			if wasMirror && !m {
+				timer.Reset(t.afterRole)
+			}
+			wasMirror = m
+		case <-timer.C:
+			if mirror() || !run() {
+				timer.Reset(t.retry)
+				continue
+			}
+			timer.Reset(t.every)
+		}
+	}
+}
+
+// StartCertRenewal: tägliche Prüfung der Zertifikate – erster Lauf 2 Minuten nach dem
+// Start, dann alle 24 Stunden, nach einem Wechsel vom Spiegel zu aktiv nach 1 Minute.
+// Ohne Datenbank startet nichts; ohne eingetragene Namen tut der Lauf nichts.
+func (h *Handler) StartCertRenewal(ctx context.Context) {
+	if h.db == nil {
+		return
+	}
+	go certSchedule(ctx, certTimes{first: 2 * time.Minute, every: 24 * time.Hour, afterRole: time.Minute, poll: 30 * time.Second},
+		func() bool { return h.Mirror().On },
+		func() bool {
+			if h.maintSkip("zertifikate") {
+				return false
+			}
+			runCtx, cancel := context.WithTimeout(ctx, 30*time.Minute)
+			defer cancel()
+			certDaily(runCtx, h.certDepsLive())
+			return true
+		})
+}

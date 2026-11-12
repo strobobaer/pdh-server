@@ -335,6 +335,7 @@ func main() {
 	webHandler.LoadMaintLock(context.Background())
 	if !mirrorOn { // Spiegel: keine Hintergrunddienste, die schreiben oder nach außen wirken
 		webHandler.StartUpdateChecker(context.Background())
+		webHandler.StartCertRenewal(context.Background()) // Let's-Encrypt-Zertifikate (optional): täglich prüfen und erneuern
 		webHandler.StartEnabledMqttBrokers(context.Background())
 		webHandler.StartEnabledMqttConsumers(context.Background())
 		webHandler.StartEnabledExportSchedules(context.Background())
