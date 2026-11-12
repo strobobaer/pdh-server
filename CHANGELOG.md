@@ -32,6 +32,7 @@ im Kapitel „Versionen & Updates“ an.
 - Anlagenterminal: Störungen und Tickets zeigt das Terminal nur, wenn der Terminal-Benutzer „Störungen ansehen“ bzw. „Tickets ansehen“ für die Abteilung der Anlage hat; sonst erscheint an der Stelle ein Hinweis, ohne beide Rechte „Keine Berechtigung“.
 - Anlagenterminal: Ist der Easy-Mode ausgeschaltet, sind „Störung“ und „Ticket“ unter „Neu“ abgeblendet und das Terminal erklärt es, statt zur Anmeldeseite zu führen.
 - Die Karte „Anlagenterminal: Rückkehrzeit“ in den Core-Einstellungen sehen nur Personen, die sie auch speichern dürfen (Benutzer verwalten).
+- Kartennummern (RFID) werden ohne Rücksicht auf Groß- und Kleinschreibung und Leerzeichen am Rand verglichen: Ein gespeichertes `deadbeef` passt zu einer gelesenen `DEADBEEF`.
 
 ### Behoben
 - HMI speichern: Fehlen „Ansehen/Bedienen am Terminal“ in einer Anfrage (z. B. älteres Formular), bleiben die gespeicherten Werte erhalten, statt auf die Standardwerte zurückzufallen.
