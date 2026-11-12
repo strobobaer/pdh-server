@@ -26,9 +26,9 @@ Neu:
    `https://<name>` mit Prüfung um und setzt die Domain auf „Full (strict)“.
 
 Anwender-Entscheidungen (2026-11-11): Zweck C (Haus und Strecke Cloudflare →
-Server), Weg 1 (nginx als gemeinsame Tür), lokale DNS-Einträge legt der
-Anwender selbst an (UniFi UDM Pro, lokale DNS-Einträge in UniFi Network;
-Angabe vom 2026-11-12).
+Server), Weg 1 (nginx als gemeinsame Tür). DNS im Haus ist die UniFi UDM Pro;
+der Anwender gibt dem PDH dafür einen API-Schlüssel, das PDH trägt die Namen
+dort selbst ein (Angaben vom 2026-11-12, siehe Abschnitt 7).
 
 Nicht in diesem Teil:
 
@@ -152,12 +152,34 @@ haben, ist der Knopf „Tunnel und Domain auf Full (strict) umstellen“ aktiv:
 
 ## 7. Namen im Haus
 
-- Die lokalen DNS-Einträge legt der Anwender an: beide Namen zeigen im
-  Firmennetz auf die mitwandernde Adresse (ohne Verbund: auf die Adresse des
-  Servers). Öffentlich zeigen sie weiter auf Cloudflare.
+- Beide Namen zeigen im Firmennetz auf die mitwandernde Adresse (ohne Verbund:
+  auf die Adresse des Servers). Öffentlich zeigen sie weiter auf Cloudflare.
 - Das PDH fragt jeden Namen beim DNS des Servers ab und zeigt in der Karte
   „im Haus direkt“ (Antwort ist eine eigene Adresse des Verbunds) oder
-  „über Cloudflare“. Es ändert am DNS im Haus nichts.
+  „über Cloudflare“.
+- **Mit UniFi-Schlüssel** trägt das PDH die Namen selbst ein:
+  - Einstellungen in der Karte: Adresse der UDM Pro, API-Schlüssel (in UniFi
+    Network angelegt), Standort (Vorgabe: der einzige bzw. „default“). Der
+    Schlüssel liegt verschlüsselt in der Datenbank und wird nie angezeigt.
+  - Die UDM Pro hat ein selbst ausgestelltes Zertifikat. Beim Speichern zeigt
+    das PDH dessen Fingerabdruck; der Anwender bestätigt ihn einmal. Danach
+    spricht das PDH nur mit einem Gerät, das diesen Fingerabdruck zeigt.
+    Ändert er sich, ruht alles, bis der Anwender neu bestätigt.
+  - Je Name ein Knopf „Im Haus eintragen“: lokaler DNS-Eintrag Typ A auf die
+    mitwandernde Adresse. Steht dort schon ein Eintrag mit anderer Adresse,
+    zeigt die Karte ihn und fragt vor dem Überschreiben.
+  - Das PDH merkt sich die Kennung des Eintrags und entfernt beim Entfernen
+    eines Namens nur Einträge, die es selbst angelegt hat. Andere Einträge der
+    UDM Pro liest und ändert es nicht.
+  - Die tägliche Prüfung meldet einen fehlenden oder abweichenden Eintrag in
+    der Karte; sie ändert ihn nicht von selbst.
+  - Schnittstelle: die amtliche von UniFi Network
+    (`/proxy/network/integration/v1/sites/<id>/dns/policies`, Kopfzeile
+    `X-API-KEY`); kennt das Gerät sie nicht (ältere Version), die bisherige
+    (`/proxy/network/v2/api/site/<name>/static-dns`). Diese Angaben stammen aus
+    Quellen Dritter und werden vor der Umsetzung am Gerät des Anwenders geprüft.
+- **Ohne UniFi-Schlüssel** (oder mit anderem DNS-Server) legt der Anwender die
+  Einträge von Hand an; das PDH zeigt nur den Stand.
 - `PDH_PUBLIC_URL` und die vertrauenswürdigen Adressen von Nextcloud bleiben,
   wie sie sind: Es sind schon die Namen.
 
@@ -173,6 +195,8 @@ haben, ist der Knopf „Tunnel und Domain auf Full (strict) umstellen“ aktiv:
 | Agent nicht erreichbar | Zertifikat bleibt in der Datenbank, Karte zeigt „noch nicht eingerichtet“, nächster Lauf holt es nach. |
 | Rollentausch mitten im Ablauf | Neuer aktiver Server räumt Prüf-Einträge auf und beginnt bei Bedarf neu. |
 | Datei und Datenbank weichen ab | Neu installieren aus der Datenbank. |
+| UDM Pro nicht erreichbar oder Schlüssel ohne Recht | Die Karte nennt den Grund; Zertifikate und nginx sind davon unberührt. |
+| Fingerabdruck der UDM Pro geändert | Keine Verbindung, Karte verlangt neue Bestätigung. |
 | Name entfernt | Seite bzw. Zertifikatszeilen zurück auf den Stand davor, Dateien gelöscht, Zertifikat bei Let's Encrypt widerrufen. |
 
 ## 9. Oberfläche
@@ -184,7 +208,10 @@ Server-Einstellungen → Cloudflare-Tunnel, neue Karte „Zertifikate
   Domain auf Full (strict) umstellen“ bzw. „Zurückstellen“.
 - Je Name eine Zeile: Name, Zustand (gültig bis, wird geholt mit Schritt,
   Fehler mit Grund), „im Haus direkt“ oder „über Cloudflare“, Knöpfe
-  „Jetzt holen/erneuern“ und „Entfernen“.
+  „Jetzt holen/erneuern“, „Im Haus eintragen“ (nur mit UniFi-Schlüssel) und
+  „Entfernen“.
+- Aufklappbar „Namen im Haus (UniFi)“: Adresse, API-Schlüssel, Standort,
+  Fingerabdruck mit „Bestätigen“.
 - Ein laufender Auftrag zeigt seinen Schritt; die Seite muss dafür nicht offen
   bleiben.
 - Farben, Ecken und Schatten über die Variablen; geprüft in Fiori und Fluent,
@@ -195,6 +222,9 @@ Server-Einstellungen → Cloudflare-Tunnel, neue Karte „Zertifikate
 - Neues Recht `system.certs` „Zertifikate verwalten (Let's Encrypt)“, Kategorie
   „System & Sicherheit“, Migration 157. Es geht an die Rollen, die
   `system.cloudflare` überall haben.
+- Neues Recht `system.unifi` „Namen im Haus eintragen (UniFi)“, gleiche
+  Kategorie, Migration und Vergabe. Es deckt die UniFi-Einstellungen und
+  „Im Haus eintragen“.
 - „Entfernen“ prüft den Bereichsadministrator; die Route steht in `gateRules`.
 - „Full (strict) umstellen“ braucht zusätzlich `system.cloudflare`.
 - Private Schlüssel und der Konto-Schlüssel liegen verschlüsselt in der
@@ -235,9 +265,9 @@ Browser, Desktop-Client und Handy-App ohne Warnung prüfen.
 ## 12. Handbuch, Änderungsprotokoll, Version
 
 - Handbuch-Kapitel zu Cloudflare: „So holst du ein Zertifikat“, „So zeigen die
-  Namen im Haus auf den Server“ (Schritte für die UniFi UDM Pro: in UniFi
-  Network je Name ein lokaler DNS-Eintrag vom Typ A auf die mitwandernde
-  Adresse; für andere DNS-Server ein allgemeiner Satz),
+  Namen im Haus auf den Server“ (UniFi UDM Pro: API-Schlüssel anlegen, im PDH
+  eintragen, Fingerabdruck bestätigen, „Im Haus eintragen“; für andere
+  DNS-Server ein allgemeiner Satz zum Eintrag von Hand),
   „Full (strict) einschalten“, Fehlerbilder. Der Satz „Zertifikate über
   Cloudflare stellt das PDH noch nicht aus“ entfällt. Skizze in
   `help_figures.gohtml` anpassen.
@@ -246,9 +276,10 @@ Browser, Desktop-Client und Handy-App ohne Warnung prüfen.
 
 ## 13. Offene Punkte für den Plan
 
-- DNS-Server im Haus: geklärt, UniFi UDM Pro. Offen ist nur der genaue
-  Menüpfad der lokalen DNS-Einträge; er hängt von der Version von UniFi
-  Network ab und wird bei der Abnahme am Gerät des Anwenders abgelesen.
+- DNS-Server im Haus: geklärt, UniFi UDM Pro mit API-Schlüssel. Offen: Version
+  von UniFi Network am Gerät (bestimmt die Schnittstelle), genaue Felder der
+  Anfrage und der Menüpfad für den API-Schlüssel – alles wird vor der
+  Umsetzung am Gerät des Anwenders abgelesen.
 - Wie der Agent den nginx-Benutzer und den Ort der Seiten je Distribution
   findet (heute Ubuntu: `www-data`, `/etc/nginx/sites-enabled`).
 - Ob der Tunnel den Namen auf dem Server über `/etc/hosts` oder über die

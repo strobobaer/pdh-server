@@ -30,6 +30,7 @@
 2. **Zertifikat mit kurzer Laufzeit** (unter 90 Tagen): Erneuerung beginnt bei einem Drittel Restlaufzeit, höchstens 30 Tage vorher – sonst erneuert ein 6-Tage-Zertifikat täglich oder nie. → Test in Task 1.
 3. **Nextcloud-Seite anders als erwartet** (keine oder mehrere `ssl_certificate`-Zeilen, mehrere `server`-Blöcke): Der Agent ändert nichts und meldet es, statt die Seite zu zerstören. → Test in Task 5.
 4. **Zwei Aufträge für denselben Namen gleichzeitig** (Doppelklick, Knopf während der täglichen Prüfung): Der zweite meldet „läuft schon“. → Test in Task 6.
+6. **Vorhandener DNS-Eintrag an der UDM Pro** unter einem geführten Namen, den jemand von Hand angelegt hat: Das PDH überschreibt ihn nur nach Rückfrage und löscht nie einen Eintrag, den es nicht selbst angelegt hat. → Test in Task 8a.
 5. **Fremder `_acme-challenge`-Eintrag** eines anderen Programms unter einem geführten Namen: Das Aufräumen löscht nur Einträge, deren Kennung das PDH selbst angelegt und sich gemerkt hat. → Test in Task 2.
 
 ---
@@ -119,7 +120,9 @@ func TestCertLeftovers(t *testing.T)         // zwei _acme-challenge-Einträge u
   - `state`-Werte: `"neu"`, `"laeuft"`, `"gueltig"`, `"fehler"`.
   - Recht `system.certs` „Zertifikate verwalten (Let's Encrypt)“, Kategorie „System & Sicherheit“, an alle Rollen mit `system.cloudflare` ohne Abteilung (Muster: `156_nextcloud_sync.up.sql`).
   - `const permCerts = "system.certs"`; Einstellungen `keyCertEmail = "certs.email"`, `keyCertStaging = "certs.staging"`, `keyCertAccount = "certs.account"` (verschlüsselt, je Umgebung: Anhang `.staging`), `keyCertStrictBefore = "certs.strict_before"`.
-  - `type certRow struct { Name string; Staging bool; ChainPEM string; NotBefore, NotAfter time.Time; Fingerprint, State, Step, LastError, ChallengeID, InstalledFP string; RetryAfter time.Time }`
+  - Recht `system.unifi` „Namen im Haus eintragen (UniFi)“, gleiche Kategorie und Vergabe; `const permUnifi = "system.unifi"`. Einstellungen `keyUnifiURL = "unifi.url"`, `keyUnifiKey = "unifi.key"` (verschlüsselt), `keyUnifiSite = "unifi.site"`, `keyUnifiPin = "unifi.pin"`.
+  - `type certRow struct { Name string; Staging bool; ChainPEM string; NotBefore, NotAfter time.Time; Fingerprint, State, Step, LastError, ChallengeID, InstalledFP, LANRecordID string; RetryAfter time.Time }`
+  - `certSetLANRecord(ctx context.Context, name, id string) error` (Teil von `certStore`)
   - `type certStore interface` mit den folgenden Methoden (Datenbank-Variante am `Handler`, Speicher-Variante in den Tests von Task 6):
   - `certList(ctx context.Context) ([]certRow, error)`
   - `certAdd(ctx context.Context, name string, staging bool) error`
@@ -136,7 +139,7 @@ func TestCertLeftovers(t *testing.T)         // zwei _acme-challenge-Einträge u
 
 ```go
 func TestCertKeyRoundTrip(t *testing.T)   // certSealKey(key, pem) → certOpenKey ergibt dasselbe PEM; mit anderem Schlüssel Fehler
-func TestMigration157Grants(t *testing.T) // Datei enthält 'system.certs', 'System & Sicherheit' und die Vergabe über o.key = 'system.cloudflare' mit rp.department_id IS NULL
+func TestMigration157Grants(t *testing.T) // Datei enthält 'system.certs', 'system.unifi', 'System & Sicherheit' und die Vergabe über o.key = 'system.cloudflare' mit rp.department_id IS NULL
 ```
 
 - [ ] **Step 2: Fehlschlag prüfen**, **Step 3: Migration und `certs_store.go` schreiben** (`certSealKey/certOpenKey` sind dünne Hüllen um `encryptSecret/decryptSecret` mit `h.pkiKey()`).
@@ -313,6 +316,49 @@ func TestCertStrictOnStopsWhenLocalCheckFails(t *testing.T) // nichts bei Cloudf
 
 ---
 
+### Task 8a: Namen im Haus über die UniFi UDM Pro
+
+**Files:**
+- Create: `internal/integrations/unifi/unifi.go`, `internal/web/certs_lan.go`
+- Modify: `web/templates/widgets/cloudflare.gohtml` (`cert-panel`: Abschnitt „Namen im Haus (UniFi)“, Knopf je Zeile), `internal/web/certs_web.go` (`certPanel` bekommt `Unifi unifiPanel`, `certLine` bekommt `LANRecord, LANOther string`), `internal/web/handler.go`, `internal/web/perm_gate.go`
+- Test: `internal/integrations/unifi/unifi_test.go`, `internal/web/certs_lan_test.go`
+
+**Interfaces:**
+- Consumes: Task 3 (`permUnifi`, `keyUnifi*`, `certSetLANRecord`), Task 4 (`certOwnAddrs`), Task 7 (Karte), `encryptSecret/decryptSecret`, `h.pkiKey()`.
+- Produces:
+  - `type Client struct { Base, Key, Site, Pin string; HTTP *http.Client }`; `func New(base, key, site, pin string) *Client` – TLS prüft allein den SHA-256-Fingerabdruck des Gerätezertifikats gegen `Pin`; leerer `Pin` → jede Anfrage scheitert mit `ErrNoPin`
+  - `func Fingerprint(ctx context.Context, base string) (string, error)` – liest nur das Zertifikat, sendet keinen Schlüssel
+  - `type Record struct { ID, Name, Value, Type string }`
+  - `func (c *Client) Records(ctx context.Context) ([]Record, error)`, `func (c *Client) Create(ctx context.Context, name, ip string) (id string, err error)`, `func (c *Client) Update(ctx context.Context, id, name, ip string) error`, `func (c *Client) Delete(ctx context.Context, id string) error`
+  - `var ErrNoPin`, `var ErrPinChanged`, `var ErrForbidden` (401/403)
+  - `type unifiPanel struct { URL, Site, Pin, SeenPin, Err string; HasKey, Confirmed bool }`
+  - `func certLANPlan(recs []unifi.Record, name, ip, ownID string) (action string, other string)` – `"anlegen"`, `"stimmt"`, `"eigenen-aendern"` (Kennung == ownID), `"fremd"` (anderer Eintrag gleichen Namens mit anderer Adresse; `other` = dessen Adresse)
+  - Routen: `POST /admin/server-config/certs/unifi` (Einstellungen; antwortet mit dem gesehenen Fingerabdruck), `POST /admin/server-config/certs/unifi/confirm`, `POST /admin/server-config/certs/lan` (Felder `name`, `overwrite`) – alle `system.unifi`; nur am aktiven Server, nicht in der Wartung.
+
+- [ ] **Step 0: Am Gerät des Anwenders ablesen (mit dem Anwender, vor dem Code).** Version von UniFi Network; mit dem Schlüssel `GET /proxy/network/integration/v1/sites` und `GET …/sites/<id>/dns/policies`; antwortet das zweite mit 404, `GET /proxy/network/v2/api/site/<name>/static-dns`. Eine Antwort je Variante (ohne Schlüssel) als `testdata/*.json` ablegen und die Feldnamen für Anlegen/Ändern aus der Beschreibung der Schnittstelle am Gerät übernehmen. Die Pfade hier stammen aus Quellen Dritter – bei Abweichung gilt das Gerät; den Plan dann an dieser Stelle berichtigen.
+- [ ] **Step 1: Tests schreiben**
+
+```go
+// unifi_test.go, mit httptest.NewTLSServer und den Antworten aus testdata
+func TestPinAccepted(t *testing.T)        // Pin == Fingerabdruck des Testservers → Records liefert die Einträge; Kopfzeile X-API-KEY gesetzt
+func TestPinChanged(t *testing.T)         // anderer Pin → ErrPinChanged, der Server sah keine Anfrage (Schlüssel nicht gesendet)
+func TestNoPin(t *testing.T)              // leerer Pin → ErrNoPin
+func TestFallbackToStaticDNS(t *testing.T) // dns/policies antwortet 404 → dieselben Aufrufe gehen an static-dns
+func TestForbidden(t *testing.T)          // 403 → ErrForbidden
+func TestCreateSendsARecord(t *testing.T) // Rumpf enthält Name, Adresse, Typ A, eingeschaltet
+// certs_lan_test.go
+func TestCertLANPlan(t *testing.T) // kein Eintrag → "anlegen"; gleicher Name+Adresse → "stimmt"; eigener mit alter Adresse → "eigenen-aendern"; fremder mit anderer Adresse → "fremd", other gesetzt; Vergleich ohne Groß/Klein und ohne Punkt am Ende
+func TestCertLANNeedsOverwrite(t *testing.T) // "fremd" ohne overwrite=1 → nichts geändert, Meldung nennt die vorhandene Adresse
+func TestCertLANRemoveOnlyOwn(t *testing.T)  // Entfernen eines Namens: Delete nur mit gemerkter LANRecordID; ohne Kennung kein Aufruf
+func TestUnifiPanelHidesKey(t *testing.T)    // gerenderte Karte enthält den Schlüssel nicht, nur "hinterlegt"
+```
+
+- [ ] **Step 2: Fehlschlag prüfen**, **Step 3: Umsetzen.** Zieladresse ist die mitwandernde Adresse, ohne Verbund die erste eigene Adresse. Die tägliche Prüfung (`certDaily`) ruft `Records` nur lesend und schreibt Abweichungen als Hinweis in die Zeile. Protokoll: Name, Adresse, Kennung – nie der Schlüssel.
+- [ ] **Step 4: Tests grün** – `go test ./internal/integrations/unifi/ ./internal/web/ -run 'TestPin|TestNoPin|TestFallback|TestForbidden|TestCreate|TestCertLAN|TestUnifi'`.
+- [ ] **Step 5: Commit** – `git commit -m "Zertifikate: Namen im Haus über die UniFi UDM Pro eintragen (Recht system.unifi)"`
+
+---
+
 ### Task 9: Verbund, Sicherung, nginx-Einrichtung, Labor
 
 **Files:**
@@ -341,8 +387,8 @@ func TestCertStrictOnStopsWhenLocalCheckFails(t *testing.T) // nichts bei Cloudf
 **Files:**
 - Modify: `web/templates/help.gohtml` (Abschnitt nach `id="hb-cloudflare-api"`, Kapitel „Administration“), `web/templates/widgets/help_figures.gohtml` (Skizze der Cloudflare-Seite um die Karte ergänzen), `CHANGELOG.md`, `VERSION`
 
-- [ ] **Step 1: Handbuch.** Drei `hb-howto`-Blöcke: „So holst du ein Zertifikat“ (E-Mail, erst Testumgebung, Name, „Jetzt holen“), „So zeigen die Namen im Haus auf den Server“ (zwei lokale Einträge auf die mitwandernde Adresse; Schritte für die UniFi UDM Pro: in UniFi Network je Name ein lokaler DNS-Eintrag Typ A – den genauen Menüpfad bei Abnahme Fall 2 am Gerät des Anwenders ablesen und erst dann eintragen, nicht raten; dazu ein allgemeiner Satz für andere DNS-Server; Kontrolle über die Spalte „im Haus direkt“), „Full (strict) einschalten und zurückstellen“. Fehlerbilder aus Spec Abschnitt 8 als Liste. Den Satz „Zertifikate über Cloudflare stellt das PDH noch nicht aus.“ streichen. Im Kapitel „Administration“ das Recht nennen.
-- [ ] **Step 2: `VERSION` = `0.77.10`, `CHANGELOG.md`** – neuer Eintrag `## [0.77.10] – <Datum>` mit `### Neu` (Zertifikate, Namen im Haus, Full (strict)) und `### Sicherheit` (Recht, Schlüssel verschlüsselt, Entfernen nur Bereichsadministrator).
+- [ ] **Step 1: Handbuch.** Drei `hb-howto`-Blöcke: „So holst du ein Zertifikat“ (E-Mail, erst Testumgebung, Name, „Jetzt holen“), „So zeigen die Namen im Haus auf den Server“ (UniFi UDM Pro: API-Schlüssel anlegen – Menüpfad aus Task 8a Step 0, nicht raten –, Adresse und Schlüssel im PDH eintragen, Fingerabdruck bestätigen, je Name „Im Haus eintragen“; dazu ein allgemeiner Satz für andere DNS-Server: Eintrag Typ A von Hand auf die mitwandernde Adresse; Kontrolle über die Spalte „im Haus direkt“), „Full (strict) einschalten und zurückstellen“. Fehlerbilder aus Spec Abschnitt 8 als Liste. Den Satz „Zertifikate über Cloudflare stellt das PDH noch nicht aus.“ streichen. Im Kapitel „Administration“ das Recht nennen.
+- [ ] **Step 2: `VERSION` = `0.77.10`, `CHANGELOG.md`** – neuer Eintrag `## [0.77.10] – <Datum>` mit `### Neu` (Zertifikate, Namen im Haus, Full (strict)) und `### Sicherheit` (Rechte `system.certs` und `system.unifi`, Schlüssel verschlüsselt, UDM Pro nur mit bestätigtem Fingerabdruck, Entfernen nur Bereichsadministrator).
 - [ ] **Step 3: Prüfen** – `go test ./internal/web/ -run 'TestHelp|TestChangelog'` → `ok`; danach `go vet ./...` und `go test ./...` vollständig.
 - [ ] **Step 4: Commit** – `git commit -m "Handbuch und Änderungsprotokoll 0.77.10: Zertifikate von Let's Encrypt"`
 
@@ -353,7 +399,7 @@ func TestCertStrictOnStopsWhenLocalCheckFails(t *testing.T) // nichts bei Cloudf
 Voraussetzungen: Cloudflare-API-Token mit „DNS bearbeiten“ im PDH der Testserver; Zweig gepusht und per Verbund-Update eingespielt (`sudo pdh-ha update start <Commit> --version 0.77.10` am aktiven Server) – beides nur mit Freigabe des Anwenders.
 
 - [ ] **Fall 1:** Schalter „Testumgebung“ an, Zertifikate für den Test-PDH-Namen und `nc.strobl-home.net` holen. Erwartet: beide „gültig bis …“, `sudo nginx -t` ohne Fehler, `openssl s_client -connect 127.0.0.1:443 -servername nc.strobl-home.net` zeigt einen Aussteller mit „STAGING“.
-- [ ] **Fall 2:** Lokale DNS-Einträge beider Namen auf 10.10.0.15. Erwartet: Karte zeigt „im Haus direkt“; Browser im Haus erreicht beide Namen (Warnung wegen Testumgebung erwartet).
+- [ ] **Fall 2:** UniFi-Adresse und API-Schlüssel eintragen, Fingerabdruck bestätigen, bei beiden Namen „Im Haus eintragen“. Erwartet: in UniFi Network stehen zwei Einträge Typ A auf 10.10.0.15, andere Einträge unverändert; Karte zeigt „im Haus direkt“; Browser im Haus erreicht beide Namen (Warnung wegen Testumgebung erwartet).
 - [ ] **Fall 3:** Rollentausch. Erwartet: Dateien unter `/etc/ssl/pdh` auf beiden Servern gleich, beide Namen im Haus und von außen erreichbar.
 - [ ] **Fall 4:** „Jetzt holen/erneuern“ bei gültigem Zertifikat. Erwartet: neuer Fingerabdruck, nginx neu geladen, voriges Zertifikat in der Datenbank als Vorgänger.
 - [ ] **Fall 5:** Token ohne „DNS bearbeiten“. Erwartet: Karte nennt das fehlende Recht, kein Auftrag beginnt.
