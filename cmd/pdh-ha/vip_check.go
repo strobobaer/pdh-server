@@ -655,6 +655,8 @@ type accessUpdate struct {
 	VIP     *string `json:"vip"`
 	VIPOn   *bool   `json:"vip_on"`
 	HooksOn *bool   `json:"hooks_on"`
+	// VIP6Suffix: Ende der IPv6-Adresse; "" löscht
+	VIP6Suffix *string `json:"vip6_suffix"`
 }
 
 func onOff(b bool) string {
@@ -688,6 +690,9 @@ func (d *daemon) updateAccess(u accessUpdate) error {
 	if u.HooksOn != nil {
 		a.HooksOn = *u.HooksOn
 	}
+	if u.VIP6Suffix != nil {
+		a.VIP6Suffix = strings.TrimSpace(*u.VIP6Suffix)
+	}
 	if err := validateAccess(d.cl, a); err != nil {
 		d.unlock()
 		return err
@@ -711,7 +716,7 @@ func (d *daemon) updateAccess(u accessUpdate) error {
 			}
 		}
 	}
-	if a.VIP == old.VIP && a.VIPOn == old.VIPOn && a.HooksOn == old.HooksOn {
+	if a.VIP == old.VIP && a.VIPOn == old.VIPOn && a.HooksOn == old.HooksOn && a.VIP6Suffix == old.VIP6Suffix {
 		d.unlock()
 		return nil
 	}

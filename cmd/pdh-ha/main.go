@@ -38,7 +38,7 @@ const usage = `Aufruf: pdh-ha <Befehl>
   update confirm                      Nachfrage des Wartungsfensters bestätigen
   update abort                        offenen Update-Auftrag abbrechen und zurücksetzen
   window '<json>'                     Wartungsfenster setzen (siehe status --json, Feld window)
-  access [--vip ip/präfix] [--vip-on|--vip-off] [--hooks-on|--hooks-off]
+  access [--vip ip/präfix] [--vip6-ende ende] [--vip-on|--vip-off] [--hooks-on|--hooks-off]
                                       Zugangsweg: mitwandernde Adresse und Skripte
                                       (--vip-on erst nach erfolgreichem vip test)
   hook run                            Skripte beim Rollenwechsel jetzt mit der aktuellen
@@ -217,6 +217,7 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 		return 0
 	case "access":
 		vip := fs.String("vip", "", "mitwandernde Adresse mit Präfix, z. B. 10.10.0.202/24 (leer = entfernen)")
+		vip6 := fs.String("vip6-ende", "", "Ende der mitwandernden IPv6-Adresse, z. B. 15 (leer = entfernen)")
 		vipOn := fs.Bool("vip-on", false, "mitwandernde Adresse einschalten")
 		vipOff := fs.Bool("vip-off", false, "mitwandernde Adresse ausschalten")
 		hooksOn := fs.Bool("hooks-on", false, "Skripte beim Rollenwechsel einschalten")
@@ -226,6 +227,9 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 		}
 		body := map[string]any{}
 		fs.Visit(func(f *flag.Flag) {
+			if f.Name == "vip6-ende" {
+				body["vip6_suffix"] = *vip6
+			}
 			if f.Name == "vip" {
 				body["vip"] = *vip
 			}

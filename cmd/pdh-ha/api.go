@@ -68,7 +68,8 @@ type apiAccess struct {
 	VIP      string     `json:"vip"`
 	VIPOn    bool       `json:"vip_on"`
 	HooksOn  bool       `json:"hooks_on"`
-	Iface    string     `json:"iface"`     // gewählte Netzwerkkarte dieses Servers
+	VIP6Suffix string   `json:"vip6_suffix"` // Ende der mitwandernden IPv6-Adresse ("" = keine)
+	Iface   string     `json:"iface"`     // gewählte Netzwerkkarte dieses Servers
 	IfaceErr string     `json:"iface_err"` // Kartenwahl gescheitert
 	Holder   string     `json:"holder"`    // Kennung des Servers mit der Adresse ("" = niemand)
 	Tested   *vipTested `json:"tested"`

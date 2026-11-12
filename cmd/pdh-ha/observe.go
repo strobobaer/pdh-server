@@ -206,7 +206,7 @@ func (d *daemon) statusLocked() apiStatus {
 		st.Self.VIPHeld = d.access != nil && d.access.held()
 	}
 	a := d.cl.Access
-	st.Access = apiAccess{VIP: a.VIP, VIPOn: a.VIPOn, HooksOn: a.HooksOn, Tested: a.Tested,
+	st.Access = apiAccess{VIP: a.VIP, VIPOn: a.VIPOn, HooksOn: a.HooksOn, VIP6Suffix: a.VIP6Suffix, Tested: a.Tested,
 		Iface: d.accessIface, IfaceErr: d.accessErr}
 	if d.node.Kind == "node" {
 		st.Access.Tunnel.Sum = d.tunnel.Sum()
