@@ -3,7 +3,8 @@
 # Die Server melden nur lan- und vpn-Adressen als Wege zueinander; node1
 # zusätzlich seine wit-Adresse, damit der Zeuge beitreten kann. Der Zeuge
 # meldet nur seine wit-Adresse; über lan prüft er beim Adresstest die
-# mitwandernde Adresse (10.77.1.50).
+# mitwandernde Adresse (10.77.1.50). lan hat zusätzlich IPv6
+# (2001:db8:77:1::/64) für die mitwandernde IPv6-Adresse.
 name: pdh-ha-lab
 
 x-pdh-ha: &pdh-ha
@@ -33,6 +34,8 @@ x-pdh-ha-pg: &pdh-ha-pg
   cap_add: [NET_ADMIN, NET_RAW]
   sysctls:
     net.ipv4.conf.all.promote_secondaries: 1
+    # mitwandernde IPv6-Adresse (Szenario vip6-tausch): IPv6 auf allen Karten an
+    net.ipv6.conf.all.disable_ipv6: 0
 
 services:
   node1:
@@ -54,6 +57,7 @@ services:
     networks:
       lan:
         ipv4_address: 10.77.1.11
+        ipv6_address: 2001:db8:77:1::11
       vpn:
         ipv4_address: 10.77.2.11
       wit:
@@ -78,6 +82,7 @@ services:
     networks:
       lan:
         ipv4_address: 10.77.1.12
+        ipv6_address: 2001:db8:77:1::12
       vpn:
         ipv4_address: 10.77.2.12
       wit:
@@ -95,6 +100,7 @@ services:
         ipv4_address: 10.77.3.20
       lan:
         ipv4_address: 10.77.1.20
+        ipv6_address: 2001:db8:77:1::20
 
   # Gateway-Ziel der Server: antwortet nur auf Ping; belegt in vip-duplikat
   # die mitwandernde Adresse selbst
@@ -108,14 +114,20 @@ services:
     networks:
       lan:
         ipv4_address: 10.77.1.254
+        ipv6_address: 2001:db8:77:1::254
 
 networks:
+  # lan mit IPv6: das Präfix 2001:db8:77:1::/64 liegt in 2000::/3 und zählt für
+  # die mitwandernde IPv6-Adresse als öffentliches Präfix. Ohne eingestelltes
+  # IPv6-Ende (alle Szenarien außer vip6-tausch) bleibt es unbenutzt.
   lan:
     name: pdh-ha-lab-lan
     internal: true
+    enable_ipv6: true
     ipam:
       config:
         - subnet: 10.77.1.0/24
+        - subnet: 2001:db8:77:1::/64
   vpn:
     name: pdh-ha-lab-vpn
     internal: true
