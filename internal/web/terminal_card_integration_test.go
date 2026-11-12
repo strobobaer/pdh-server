@@ -5,7 +5,15 @@
 package web
 
 import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
+
+	"github.com/go-chi/chi/v5"
 
 	"pdh/internal/core/users"
 )
@@ -114,5 +122,112 @@ func TestTerminalCardPersonCan(t *testing.T) {
 	}
 	if (&Handler{}).cardPersonCan(e.ctx, pu, "faults.view", "infrastructure", ax) {
 		t.Fatal("ohne rbac: erwartet false")
+	}
+}
+
+// cardHTTP: Router mit Karten- und Schoner-Routen; Nutzer im Kontext wie die Middleware.
+func cardHTTP(e *atEnv, h *Handler, termID, path, body string) *httptest.ResponseRecorder {
+	r := chi.NewRouter()
+	h.terminalRoutes(r)
+	method := "POST"
+	if path == "/terminal" {
+		method = "GET"
+	}
+	req := httptest.NewRequest(method, path, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	u, err := h.userByID(e.ctx, termID)
+	e.must(err)
+	req = req.WithContext(context.WithValue(req.Context(), "user", u))
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	return rec
+}
+
+func TestTerminalCardHandler(t *testing.T) {
+	e := newATEnv(t)
+	h := newCardHandler(e)
+	h.jwtSecret = "test-geheim"
+	h.tmpl = loadTestTemplates(t)
+	terminalTemplatePath = "../../web/templates/terminal.gohtml"
+	cardFailLimit = newFailLimiter(10, time.Minute)
+	term := e.user("khterm", "user", true)
+	p1 := e.user("khp1", "user", false)
+	p2 := e.user("khp2", "user", false)
+	inactive := e.user("khinact", "user", false)
+	sys := e.user("khsys", "user", true)
+	t.Cleanup(func() { e.exec(`DELETE FROM terminal_card_sessions WHERE terminal_user_id = $1::uuid`, term) })
+	uidOf := func(id, uid string) { e.exec(`UPDATE users SET rfid_uid = $2 WHERE id = $1::uuid`, id, uid+e.sfx) }
+	uidOf(p1, "CARD-P1")
+	uidOf(p2, "CARD-P2")
+	uidOf(inactive, "CARD-INACT")
+	uidOf(sys, "CARD-SYS")
+	e.exec(`UPDATE users SET active = false WHERE id = $1::uuid`, inactive)
+	t.Cleanup(func() { cardFailLimit = newFailLimiter(10, time.Minute) })
+
+	post := func(uid string) (*httptest.ResponseRecorder, map[string]any) {
+		rec := cardHTTP(e, h, term, "/terminal/card", `{"uid":" `+uid+` "}`)
+		var m map[string]any
+		_ = json.Unmarshal(rec.Body.Bytes(), &m)
+		return rec, m
+	}
+	sessionPerson := func() string {
+		p, err := h.cardSessionPerson(e.ctx, term)
+		e.must(err)
+		if p == nil {
+			return ""
+		}
+		return p.ID
+	}
+
+	rec, m := post("CARD-P1" + e.sfx)
+	if rec.Code != 200 || m["ok"] != true || m["name"] != "T U" || sessionPerson() != p1 {
+		t.Fatalf("bekannte Karte: %d %v", rec.Code, m)
+	}
+	if !strings.HasPrefix(rec.Header().Get("Content-Type"), "application/json") {
+		t.Fatalf("Content-Type %q", rec.Header().Get("Content-Type"))
+	}
+	rec, m = post("CARD-P2" + e.sfx)
+	if m["ok"] != true || sessionPerson() != p2 {
+		t.Fatalf("zweite Karte ersetzt nicht: %v", m)
+	}
+
+	// Ping verlängert; Abmelden beendet.
+	rec = cardHTTP(e, h, term, "/terminal/card/ping", ``)
+	if !strings.Contains(rec.Body.String(), `"active":true`) {
+		t.Fatalf("ping: %q", rec.Body.String())
+	}
+
+	// Unbekannt, inaktiv, Systembenutzer: identische Antwort.
+	for _, uid := range []string{"CARD-NOPE" + e.sfx, "CARD-INACT" + e.sfx, "CARD-SYS" + e.sfx} {
+		rec, m = post(uid)
+		if rec.Code != 200 || m["ok"] != false || m["message"] != "Karte nicht registriert" {
+			t.Fatalf("%s: %d %v", uid, rec.Code, m)
+		}
+	}
+	if sessionPerson() != p2 {
+		t.Fatal("fehlgeschlagene Karte darf bestehende Sitzung nicht ändern")
+	}
+
+	// Schoner beendet die Sitzung.
+	cardHTTP(e, h, term, "/terminal", "")
+	rec = cardHTTP(e, h, term, "/terminal/card/ping", ``)
+	if !strings.Contains(rec.Body.String(), `"active":false`) {
+		t.Fatalf("ping nach Schoner: %q", rec.Body.String())
+	}
+
+	// Abmelden: 204.
+	post("CARD-P1" + e.sfx)
+	rec = cardHTTP(e, h, term, "/terminal/card/abmelden", ``)
+	if rec.Code != http.StatusNoContent || sessionPerson() != "" {
+		t.Fatalf("abmelden: %d", rec.Code)
+	}
+
+	// 3 Fehlversuche waren schon; bis 10 auffüllen, dann 429.
+	for i := 0; i < 7; i++ {
+		post("CARD-NOPE" + e.sfx)
+	}
+	rec, m = post("CARD-NOPE" + e.sfx)
+	if rec.Code != http.StatusTooManyRequests || m["message"] != "Zu viele unbekannte Karten. Bitte kurz warten." {
+		t.Fatalf("429 erwartet: %d %v", rec.Code, m)
 	}
 }

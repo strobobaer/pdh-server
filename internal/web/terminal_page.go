@@ -79,6 +79,7 @@ func (h *Handler) terminalRoutes(r chi.Router) {
 	r.Get("/terminal/neu", h.TerminalNeuPage)
 	r.Get("/terminal/info.json", h.TerminalInfoJSON)
 	r.Get("/terminal/terminal.js", h.TerminalScript)
+	h.cardRoutes(r)
 }
 
 // terminalAge: kurzes deutsches Alter („vor 12 min“, „vor 3 h“, „vor 2 Tagen“).
@@ -305,6 +306,12 @@ func (h *Handler) renderTerminal(w http.ResponseWriter, d terminalPage) {
 // TerminalSchoner: GET /terminal
 func (h *Handler) TerminalSchoner(w http.ResponseWriter, r *http.Request) {
 	if p, ok := h.terminalGate(w, r, "schoner"); ok {
+		// Schoner = Ruhezustand: laufende Kartensitzung beenden.
+		if uid := h.terminalUserID(r); uid != "" && h.db != nil {
+			if err := h.cardSessionEnd(r.Context(), uid); err != nil {
+				componentLog("terminal").Error().Err(err).Msg("kartensitzung beenden")
+			}
+		}
 		h.renderTerminal(w, p)
 	}
 }
