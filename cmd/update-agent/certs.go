@@ -155,18 +155,25 @@ func certKeyPath(name string) string   { return certDir(name) + "/privkey.pem" }
 // certSiteConf: nginx-Seite für den PDH-Namen – 443 mit dem Zertifikat und
 // Weiterreichen an das PDH; mit redirect leitet 80 auf https um. Ohne
 // (Tunnel erreicht das PDH über nginx Port 80) gäbe die Weiterleitung eine Schleife.
-func certSiteConf(name, upstream string, redirect bool) string {
+// Mit v6 hört die Seite zusätzlich auf IPv6 (listen [::]:…).
+func certSiteConf(name, upstream string, redirect, v6 bool) string {
 	var b strings.Builder
 	b.WriteString(certSiteHeader + " (Zertifikate). Änderungen gehen beim nächsten Zertifikatslauf verloren.\n")
 	if redirect {
 		b.WriteString("server {\n")
 		b.WriteString("    listen 80;\n")
+		if v6 {
+			b.WriteString("    listen [::]:80;\n")
+		}
 		b.WriteString("    server_name " + name + ";\n")
 		b.WriteString("    return 301 https://$host$request_uri;\n")
 		b.WriteString("}\n\n")
 	}
 	b.WriteString("server {\n")
 	b.WriteString("    listen 443 ssl;\n")
+	if v6 {
+		b.WriteString("    listen [::]:443 ssl;\n")
+	}
 	b.WriteString("    server_name " + name + ";\n\n")
 	b.WriteString("    ssl_certificate " + certChainPath(name) + ";\n")
 	b.WriteString("    ssl_certificate_key " + certKeyPath(name) + ";\n")
@@ -188,8 +195,15 @@ func certSiteConf(name, upstream string, redirect bool) string {
 	return b.String()
 }
 
+// certHasIPv6: hat der Server IPv6? (/proc/net/if_inet6 vorhanden und nicht leer).
+// Variable, damit Tests sie ersetzen können.
+var certHasIPv6 = func() bool {
+	b, err := os.ReadFile("/proc/net/if_inet6")
+	return err == nil && len(strings.TrimSpace(string(b))) > 0
+}
+
 var (
-	certLineRe      = regexp.MustCompile(`(?m)^([ \t]*ssl_certificate[ \t]+)([^;\s]+)([ \t]*;)`)
+	certLineRe      =regexp.MustCompile(`(?m)^([ \t]*ssl_certificate[ \t]+)([^;\s]+)([ \t]*;)`)
 	certKeyLineRe   = regexp.MustCompile(`(?m)^([ \t]*ssl_certificate_key[ \t]+)([^;\s]+)([ \t]*;)`)
 	certServerNameR = regexp.MustCompile(`(?m)^[ \t]*server_name[ \t]+([^;]+);`)
 )
@@ -622,6 +636,7 @@ func (a *updateAgent) certInstallHandler(w http.ResponseWriter, r *http.Request)
 	withNginx := a.certNginxPresent()
 	sitesDir, group := a.certLayout()
 	var sitePath, siteData, prevCert, prevKey, note string
+	siteSame := false // PDH-Seite liegt schon genau so da
 	where := "Zertifikat liegt unter " + certDir(req.Name) + "/. "
 	byHand := func(refusal string) {
 		note = where + refusal + ". Bitte das Zertifikat dort von Hand eintragen."
@@ -649,7 +664,8 @@ func (a *updateAgent) certInstallHandler(w http.ResponseWriter, r *http.Request)
 			}
 			redirect := req.Redirect == nil || *req.Redirect
 			sitePath = target // hinter einer Verknüpfung: die Zieldatei, die Verknüpfung bleibt
-			siteData = certSiteConf(req.Name, req.Upstream, redirect)
+			siteData = certSiteConf(req.Name, req.Upstream, redirect, certHasIPv6())
+				siteSame = certSameFile(sitePath, siteData)
 		case "nextcloud":
 			// Seite zuerst prüfen: Weicht sie ab, wird sie nicht angefasst.
 			p, err := a.certFindNextcloudSite(sitesDir, req.Name)
@@ -683,7 +699,7 @@ func (a *updateAgent) certInstallHandler(w http.ResponseWriter, r *http.Request)
 
 	chainFile := a.certPath(certChainPath(req.Name))
 	keyFile := a.certPath(certKeyPath(req.Name))
-	if note != "" && certSameFile(chainFile, req.ChainPEM) && certSameFile(keyFile, req.KeyPEM) {
+	if (note != "" || siteSame) && certSameFile(chainFile, req.ChainPEM) && certSameFile(keyFile, req.KeyPEM) {
 		// Gleicher Stand schon abgelegt (täglicher Abgleich), keine Seite zu schreiben:
 		// nichts ändern, nginx nicht neu laden.
 		writeMountJSON(w, http.StatusOK, map[string]any{"ok": true, "fingerprint": fingerprint, "note": note})

@@ -24,7 +24,7 @@ import (
 )
 
 func TestCertSiteConf(t *testing.T) {
-	conf := certSiteConf("pdh.firma.de", "http://127.0.0.1:8090", true)
+	conf := certSiteConf("pdh.firma.de", "http://127.0.0.1:8090", true, false)
 	for _, want := range []string{
 		"listen 443 ssl;",
 		"server_name pdh.firma.de;",
@@ -928,7 +928,7 @@ func certRemoveBody(name, role string) map[string]any {
 func TestCertRemoveLinkedPDHSite(t *testing.T) {
 	f := newCertFixture(t)
 	f.writeCertFiles(t, "pdh.firma.de")
-	site := certSiteConf("pdh.firma.de", "http://127.0.0.1:8090", true)
+	site := certSiteConf("pdh.firma.de", "http://127.0.0.1:8090", true, false)
 	f.write(t, "/etc/nginx/eigene/pdh-seite.conf", site)
 	link := f.real("/etc/nginx/conf.d/pdh.conf")
 	if err := os.Symlink("/etc/nginx/eigene/pdh-seite.conf", link); err != nil {
@@ -1061,5 +1061,124 @@ func TestCertRemoveRoleEmptyAndWithoutNginx(t *testing.T) {
 	_, resp = f3.call(t, f3.agent.certRemoveHandler, http.MethodPost, certRemoveBody("wiki.firma.de", ""))
 	if resp["ok"] != true || f3.exists("/etc/ssl/pdh/wiki.firma.de") || len(f3.commands()) != 0 {
 		t.Errorf("ohne nginx: %v %v", resp, f3.commands())
+	}
+}
+
+// ---- IPv6 in der PDH-Seite ----
+
+func TestCertSiteConfV6(t *testing.T) {
+	conf := certSiteConf("pdh.firma.de", "http://127.0.0.1:8090", true, true)
+	for _, want := range []string{
+		"    listen 80;\n    listen [::]:80;\n",
+		"    listen 443 ssl;\n    listen [::]:443 ssl;\n",
+	} {
+		if !strings.Contains(conf, want) {
+			t.Errorf("Seite enthält %q nicht:\n%s", want, conf)
+		}
+	}
+	// ohne Weiterleitung nur der 443-Block
+	if c := certSiteConf("pdh.firma.de", "http://127.0.0.1:8090", false, true); strings.Contains(c, "[::]:80") || !strings.Contains(c, "[::]:443 ssl;") {
+		t.Errorf("ohne Weiterleitung falsch:\n%s", c)
+	}
+}
+
+func TestCertSiteConfNoV6(t *testing.T) {
+	got := certSiteConf("pdh.firma.de", "http://127.0.0.1:8090", true, false)
+	if strings.Contains(got, "[::]") {
+		t.Fatalf("ohne IPv6 darf kein [::] vorkommen:\n%s", got)
+	}
+	want := certSiteHeader + " (Zertifikate). Änderungen gehen beim nächsten Zertifikatslauf verloren.\n" +
+		"server {\n    listen 80;\n    server_name pdh.firma.de;\n    return 301 https://$host$request_uri;\n}\n\n" +
+		"server {\n    listen 443 ssl;\n    server_name pdh.firma.de;\n\n" +
+		"    ssl_certificate /etc/ssl/pdh/pdh.firma.de/fullchain.pem;\n" +
+		"    ssl_certificate_key /etc/ssl/pdh/pdh.firma.de/privkey.pem;\n" +
+		"    ssl_protocols TLSv1.2 TLSv1.3;\n\n    client_max_body_size 0;\n\n" +
+		"    location / {\n        proxy_pass http://127.0.0.1:8090;\n        proxy_http_version 1.1;\n" +
+		"        proxy_set_header Host $host;\n        proxy_set_header X-Real-IP $remote_addr;\n" +
+		"        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n" +
+		"        proxy_set_header X-Forwarded-Proto https;\n        proxy_set_header Upgrade $http_upgrade;\n" +
+		"        proxy_set_header Connection \"upgrade\";\n        proxy_buffering off;\n" +
+		"        proxy_read_timeout 3600s;\n    }\n}\n"
+	if got != want {
+		t.Errorf("Ausgabe weicht vom bisherigen Text ab:\n%s", got)
+	}
+}
+
+func certSetIPv6(t *testing.T, v bool) {
+	old := certHasIPv6
+	certHasIPv6 = func() bool { return v }
+	t.Cleanup(func() { certHasIPv6 = old })
+}
+
+func certCountCmds(f *certFixture, sub string) int {
+	n := 0
+	for _, c := range f.commands() {
+		if strings.Contains(c, sub) {
+			n++
+		}
+	}
+	return n
+}
+
+func TestCertSiteRewrittenForV6(t *testing.T) {
+	certSetIPv6(t, true)
+	chain, key := certTestPEM(t, "pdh.firma.de")
+	f := newCertFixture(t)
+	f.write(t, "/etc/ssl/pdh/pdh.firma.de/fullchain.pem", chain)
+	f.write(t, "/etc/ssl/pdh/pdh.firma.de/privkey.pem", key)
+	f.write(t, "/etc/nginx/conf.d/pdh.conf", certSiteConf("pdh.firma.de", "http://127.0.0.1:8090", true, false))
+	body := map[string]any{"name": "pdh.firma.de", "chain_pem": chain, "key_pem": key, "role": "pdh", "upstream": "http://127.0.0.1:8090"}
+	_, resp := f.call(t, f.agent.certInstallHandler, http.MethodPost, body)
+	if resp["ok"] != true {
+		t.Fatalf("Antwort: %v", resp)
+	}
+	if got := f.read(t, "/etc/nginx/conf.d/pdh.conf"); got != certSiteConf("pdh.firma.de", "http://127.0.0.1:8090", true, true) {
+		t.Errorf("Seite nicht neu geschrieben:\n%s", got)
+	}
+	if certCountCmds(f, "nginx -t") != 1 || certCountCmds(f, "reload") != 1 {
+		t.Errorf("erwartet je einmal nginx -t und reload: %v", f.commands())
+	}
+	_, resp = f.call(t, f.agent.certInstallHandler, http.MethodPost, body)
+	if resp["ok"] != true {
+		t.Fatalf("Antwort: %v", resp)
+	}
+	if certCountCmds(f, "nginx -t") != 1 || certCountCmds(f, "reload") != 1 {
+		t.Errorf("zweiter Lauf darf nichts schreiben und nicht neu laden: %v", f.commands())
+	}
+}
+
+func TestCertSiteNotRewrittenWithoutV6(t *testing.T) {
+	certSetIPv6(t, false)
+	chain, key := certTestPEM(t, "pdh.firma.de")
+	f := newCertFixture(t)
+	f.write(t, "/etc/ssl/pdh/pdh.firma.de/fullchain.pem", chain)
+	f.write(t, "/etc/ssl/pdh/pdh.firma.de/privkey.pem", key)
+	old := certSiteConf("pdh.firma.de", "http://127.0.0.1:8090", true, false)
+	f.write(t, "/etc/nginx/conf.d/pdh.conf", old)
+	_, resp := f.call(t, f.agent.certInstallHandler, http.MethodPost, map[string]any{
+		"name": "pdh.firma.de", "chain_pem": chain, "key_pem": key, "role": "pdh", "upstream": "http://127.0.0.1:8090",
+	})
+	if resp["ok"] != true {
+		t.Fatalf("Antwort: %v", resp)
+	}
+	if got := f.read(t, "/etc/nginx/conf.d/pdh.conf"); got != old {
+		t.Errorf("Seite hat sich geändert:\n%s", got)
+	}
+	if certCountCmds(f, "reload") != 0 {
+		t.Errorf("kein reload erwartet: %v", f.commands())
+	}
+}
+
+func TestCertSiteForeignFileUntouched(t *testing.T) {
+	certSetIPv6(t, true)
+	chain, key := certTestPEM(t, "pdh.firma.de")
+	f := newCertFixture(t)
+	foreign := "# von Hand geschrieben\nserver { listen 443 ssl; server_name pdh.firma.de; }\n"
+	f.write(t, "/etc/nginx/conf.d/pdh.conf", foreign)
+	_, _ = f.call(t, f.agent.certInstallHandler, http.MethodPost, map[string]any{
+		"name": "pdh.firma.de", "chain_pem": chain, "key_pem": key, "role": "pdh", "upstream": "http://127.0.0.1:8090",
+	})
+	if got := f.read(t, "/etc/nginx/conf.d/pdh.conf"); got != foreign {
+		t.Errorf("fremde Datei wurde verändert:\n%s", got)
 	}
 }
