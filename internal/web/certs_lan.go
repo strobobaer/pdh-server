@@ -262,7 +262,8 @@ func certUnifiSite(s string) (string, error) {
 }
 
 // certDoUnifiSettings speichert Adresse, Standort und – nur wenn neu eingegeben – den
-// Schlüssel (verschlüsselt). Eine geänderte Adresse löscht den bestätigten Fingerabdruck.
+// Schlüssel (verschlüsselt). Eine geänderte Adresse verlangt einen neu eingegebenen Schlüssel
+// und löscht den bestätigten Fingerabdruck.
 // Danach liest es den Fingerabdruck des Geräts (nur TLS, ohne Schlüssel) zur Bestätigung.
 // Eine leere Adresse entfernt die Anbindung.
 func certDoUnifiSettings(ctx context.Context, d certActDeps, rawURL, key, site string) (unifiResult, string, error) {
@@ -274,6 +275,12 @@ func certDoUnifiSettings(ctx context.Context, d certActDeps, rawURL, key, site s
 		for _, k := range []string{keyUnifiURL, keyUnifiKey, keyUnifiSite, keyUnifiPin} {
 			if err := d.putSetting(ctx, k, ""); err != nil {
 				return res, "", err
+			}
+		}
+		// Hinweise der täglichen Prüfung gehören zur Anbindung – ohne UniFi keine gelben Zeilen.
+		if rows, err := d.store.certList(ctx); err == nil {
+			for _, r := range rows {
+				certLANClearMarks(ctx, d.putSetting, r.Name)
 			}
 		}
 		return res, "UniFi-Anbindung entfernt. Vorhandene Einträge an der UDM Pro bleiben, wie sie sind.", nil
@@ -290,7 +297,14 @@ func certDoUnifiSettings(ctx context.Context, d certActDeps, rawURL, key, site s
 	if len(key) > 1024 || strings.IndexFunc(key, unicode.IsControl) >= 0 {
 		return res, "", errors.New("API-Schlüssel: bitte den Schlüssel aus UniFi Network unverändert einfügen")
 	}
-	if key == "" && d.setting(ctx, keyUnifiKey) == "" {
+	// Der gespeicherte Schlüssel gilt nur für die Adresse, unter der er eingetragen wurde: Bei
+	// neuer Adresse muss er neu eingegeben werden, sonst wird nichts gespeichert. So kann
+	// niemand den hinterlegten Schlüssel an ein anderes Gerät schicken lassen.
+	urlChanged := d.setting(ctx, keyUnifiURL) != base
+	if key == "" && urlChanged && d.setting(ctx, keyUnifiURL) != "" {
+		return res, "", errors.New("Bei neuer Adresse den API-Schlüssel neu eintragen. Nichts gespeichert")
+	}
+	if key == "" && (urlChanged || d.setting(ctx, keyUnifiKey) == "") {
 		return res, "", errors.New("Bitte den API-Schlüssel aus UniFi Network eintragen")
 	}
 	if key != "" {
@@ -305,7 +319,6 @@ func certDoUnifiSettings(ctx context.Context, d certActDeps, rawURL, key, site s
 			return res, "", err
 		}
 	}
-	urlChanged := d.setting(ctx, keyUnifiURL) != base
 	if err := d.putSetting(ctx, keyUnifiURL, base); err != nil {
 		return res, "", err
 	}

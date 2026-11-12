@@ -146,8 +146,8 @@
       <button class="btn btn-small" type="submit" name="action" value="lan" title="Im Haus eintragen (UniFi)" aria-label="{{.Name}} im Haus eintragen"><i class="ti ti-home-plus"></i></button></form>{{end}}{{end}}
   </div>{{end}}
   {{if .Error}}<div class="sc-sub cert-err" style="color:{{if eq .State "fehler"}}var(--red){{else}}var(--amber){{end}}"><i class="ti ti-alert-triangle"></i> {{.Error}}</div>{{end}}
-  {{if .LANOther}}<div class="sc-sub cert-err" style="color:var(--amber)"><i class="ti ti-home-question"></i> An der UDM Pro steht für diesen Namen ein Eintrag auf {{.LANOther}}, den nicht das PDH angelegt hat.</div>{{end}}
-  {{if .LANHint}}<div class="sc-sub cert-err" style="color:var(--amber)"><i class="ti ti-home-question"></i> {{.LANHint}}</div>{{end}}
+  {{if and $.Unifi.URL $.Unifi.HasKey}}{{if .LANOther}}<div class="sc-sub cert-err" style="color:var(--amber)"><i class="ti ti-home-question"></i> An der UDM Pro steht für diesen Namen ein Eintrag auf {{.LANOther}}, den nicht das PDH angelegt hat.</div>{{end}}
+  {{if .LANHint}}<div class="sc-sub cert-err" style="color:var(--amber)"><i class="ti ti-home-question"></i> {{.LANHint}}</div>{{end}}{{end}}
 </div>{{else}}<p class="sc-sub">Noch kein Name eingetragen.</p>{{end}}
 </div>
 

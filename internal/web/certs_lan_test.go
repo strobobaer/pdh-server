@@ -188,7 +188,7 @@ func TestCertLANRemoveOnlyOwn(t *testing.T) {
 		certRow{Name: "pdh.firma.de", State: certStateFehler})
 	f := &fakeLAN{recs: []unifi.Record{{ID: "fremd", Name: "pdh.firma.de", Value: lanTarget, Type: "A"}}}
 	lanOpened := 0
-	l := &certActLog{}
+	l := &certActLog{settings: map[string]string{keyUnifiHintPrefix + "pdh.firma.de": "fehlt", keyUnifiOtherPrefix + "pdh.firma.de": "192.168.1.20"}}
 	d := testLANAct(store, l, f)
 	d.lan = func(context.Context) (certLANClient, error) { lanOpened++; return f, nil }
 
@@ -197,6 +197,9 @@ func TestCertLANRemoveOnlyOwn(t *testing.T) {
 	}
 	if len(f.calls) != 0 || lanOpened != 0 {
 		t.Fatalf("ohne Kennung kein Aufruf: %v (geöffnet %d)", f.calls, lanOpened)
+	}
+	if l.settings[keyUnifiHintPrefix+"pdh.firma.de"] != "" || l.settings[keyUnifiOtherPrefix+"pdh.firma.de"] != "" {
+		t.Errorf("Merker des entfernten Namens bleiben stehen: %v", l.settings)
 	}
 	msg, err := certDoRemove(ctx, d, "nc.firma.de")
 	if err != nil || store.get("nc.firma.de").Name != "" {
@@ -255,7 +258,7 @@ func TestUnifiPanelHidesKey(t *testing.T) {
 	}
 }
 
-// Ohne UniFi: aufgeklappter Abschnitt mit Einrichtungs-Hinweis und Anleitung von Hand, kein
+// Ohne UniFi: zugeklappter Abschnitt mit Einrichtungs-Hinweis und Anleitung von Hand, kein
 // Knopf „Im Haus eintragen“; ohne Recht der Satz mit dem Recht.
 func TestUnifiPanelWithoutUnifi(t *testing.T) {
 	p := certPanel{CanManage: true, CanUnifi: true, Zone: "firma.de", AgentOK: true, NginxOK: true, LANTarget: lanTarget,
@@ -390,14 +393,6 @@ func TestUnifiSettingsFlow(t *testing.T) {
 	if _, _, err := certDoUnifiSettings(ctx, d, "https://192.168.1.1/", "", "default"); err != nil || l.settings[keyUnifiPin] != fp || l.settings[keyUnifiKey] != "v1:versiegelt" {
 		t.Fatalf("erneut speichern: %v %v", err, l.settings)
 	}
-	// neue Adresse → Pin weg
-	if _, _, err := certDoUnifiSettings(ctx, d, "https://192.168.1.2", "", ""); err != nil || l.settings[keyUnifiPin] != "" {
-		t.Fatalf("neue Adresse: %v %v", err, l.settings)
-	}
-	// leere Adresse → Anbindung entfernt
-	if _, _, err := certDoUnifiSettings(ctx, d, "", "", ""); err != nil || l.settings[keyUnifiURL] != "" || l.settings[keyUnifiKey] != "" {
-		t.Fatalf("entfernen: %v %v", err, l.settings)
-	}
 	// Spiegel oder Wartung
 	d.blocked = func() bool { return true }
 	if _, _, err := certDoUnifiSettings(ctx, d, "https://192.168.1.1", "k", ""); !errors.Is(err, errCertBlocked) {
@@ -405,6 +400,77 @@ func TestUnifiSettingsFlow(t *testing.T) {
 	}
 	if _, _, err := certDoUnifiConfirm(ctx, d, fp); !errors.Is(err, errCertBlocked) {
 		t.Fatalf("Spiegel/Wartung: %v", err)
+	}
+}
+
+// Neue Adresse ohne neu eingegebenen Schlüssel: abgelehnt, nichts gespeichert – Adresse,
+// Schlüssel und Pin bleiben unverändert beim alten Gerät, keine Verbindung zu irgendeinem Gerät.
+func TestUnifiNewURLWithoutKeyRejectedNothingStored(t *testing.T) {
+	ctx := context.Background()
+	fp := strings.Repeat("cd", 32)
+	l := &certActLog{settings: map[string]string{keyUnifiURL: "https://192.168.1.1", keyUnifiKey: "v1:alt", keyUnifiPin: fp}}
+	d := testCertAct(newMemCertStore(), l)
+	fpCalls := 0
+	d.fingerprint = func(context.Context, string) (string, error) { fpCalls++; return fp, nil }
+	d.seal = func(string) (string, error) { t.Fatal("nichts versiegeln"); return "", nil }
+	for _, u := range []string{"https://192.168.1.2", "https://udm.anderswo.lan", "https://192.168.1.1:8443"} {
+		_, _, err := certDoUnifiSettings(ctx, d, u, "", "")
+		if err == nil || !strings.Contains(err.Error(), "Bei neuer Adresse den API-Schlüssel neu eintragen") {
+			t.Fatalf("%s: %v", u, err)
+		}
+	}
+	if l.settings[keyUnifiURL] != "https://192.168.1.1" || l.settings[keyUnifiKey] != "v1:alt" || l.settings[keyUnifiPin] != fp || fpCalls != 0 {
+		t.Fatalf("nichts darf sich ändern, nichts gesendet: %v (Fingerabdruck-Abrufe %d)", l.settings, fpCalls)
+	}
+	// ohne gespeicherten Schlüssel und ohne neuen: nur Hinweis, nichts gesendet
+	l2 := &certActLog{settings: map[string]string{keyUnifiURL: "https://192.168.1.1"}}
+	d2 := testCertAct(newMemCertStore(), l2)
+	d2.fingerprint = d.fingerprint
+	if _, _, err := certDoUnifiSettings(ctx, d2, "https://192.168.1.1", "", ""); err == nil || fpCalls != 0 || l2.settings[keyUnifiKey] != "" {
+		t.Fatalf("ohne Schlüssel: %v %v", err, l2.settings)
+	}
+}
+
+// Neue Adresse mit neuem Schlüssel: gespeichert, Pin gelöscht, neuer Fingerabdruck zur Bestätigung.
+func TestUnifiNewURLWithNewKeyStoredPinCleared(t *testing.T) {
+	ctx := context.Background()
+	old, neu := strings.Repeat("cd", 32), strings.Repeat("ef", 32)
+	l := &certActLog{settings: map[string]string{keyUnifiURL: "https://192.168.1.1", keyUnifiKey: "v1:alt", keyUnifiPin: old}}
+	d := testCertAct(newMemCertStore(), l)
+	d.fingerprint = func(context.Context, string) (string, error) { return neu, nil }
+	d.seal = func(string) (string, error) { return "v1:neu", nil }
+	res, _, err := certDoUnifiSettings(ctx, d, "https://192.168.1.2", "neuer-schluessel", "")
+	if err != nil || l.settings[keyUnifiURL] != "https://192.168.1.2" || l.settings[keyUnifiKey] != "v1:neu" || l.settings[keyUnifiPin] != "" || res.Seen != unifi.FormatPin(neu) {
+		t.Fatalf("%+v %v %v", res, err, l.settings)
+	}
+}
+
+// Trennen (leere Adresse) entfernt Anbindung und alle Hinweise; die Karte zeigt alte Hinweise
+// ohne Anbindung nie.
+func TestUnifiDisconnectClearsMarkers(t *testing.T) {
+	ctx := context.Background()
+	store := newMemCertStore(certRow{Name: "nc.firma.de", State: certStateGueltig}, certRow{Name: "pdh.firma.de", State: certStateGueltig})
+	l := &certActLog{settings: map[string]string{keyUnifiURL: "https://192.168.1.1", keyUnifiKey: "v1:alt", keyUnifiPin: "ab",
+		keyUnifiHintPrefix + "nc.firma.de": "An der UDM Pro fehlt der Eintrag", keyUnifiOtherPrefix + "pdh.firma.de": "192.168.1.20"}}
+	d := testCertAct(store, l)
+	if _, _, err := certDoUnifiSettings(ctx, d, "", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	for k, v := range l.settings {
+		if strings.HasPrefix(k, "unifi.") && v != "" {
+			t.Errorf("nach dem Trennen noch gesetzt: %s=%q", k, v)
+		}
+	}
+	// alte Merker ohne Anbindung: keine gelbe Zeile
+	p := certPanel{CanManage: true, CanUnifi: true, Zone: "firma.de", AgentOK: true, NginxOK: true, LANTarget: lanTarget,
+		Lines: []certLine{{Name: "nc.firma.de", State: certStateGueltig, ValidUntil: "09.02.2027", LANHint: "An der UDM Pro fehlt der Eintrag", LANOther: "192.168.1.20"}}}
+	out := renderCertPanel(t, p)
+	if strings.Contains(out, "fehlt der Eintrag") || strings.Contains(out, "192.168.1.20") || strings.Contains(out, "var(--amber)") {
+		t.Errorf("ohne UniFi keine Hinweise:\n%s", out)
+	}
+	p.Unifi = unifiPanel{URL: "https://192.168.1.1", HasKey: true}
+	if out := renderCertPanel(t, p); !strings.Contains(out, "fehlt der Eintrag") || !strings.Contains(out, "192.168.1.20") {
+		t.Error("mit Anbindung müssen die Hinweise erscheinen")
 	}
 }
 

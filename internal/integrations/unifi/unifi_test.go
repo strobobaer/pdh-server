@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -338,3 +339,59 @@ func TestClientStringHidesKey(t *testing.T) {
 }
 
 func fmtV(c *Client) string { return fmt.Sprintf("%v %+v %s", c, c, c) }
+
+// fakeLookup ersetzt die Namensauflösung, damit kein echtes Netz nötig ist.
+func fakeLookup(t *testing.T, answers map[string][]string) {
+	t.Helper()
+	old := lookupIP
+	t.Cleanup(func() { lookupIP = old })
+	lookupIP = func(_ context.Context, host string) ([]net.IP, error) {
+		var out []net.IP
+		for _, a := range answers[host] {
+			out = append(out, net.ParseIP(a))
+		}
+		return out, nil
+	}
+}
+
+// Ein Name, der auf eine öffentliche Adresse zeigt (oder auch nur eine von mehreren Antworten),
+// wird vor jeder Verbindung abgelehnt – kein Handshake, kein Schlüssel. Ein Name im Haus geht.
+func TestPublicHostRefusedBeforeHandshake(t *testing.T) {
+	f := newFakeUDM(t)
+	_, port, _ := net.SplitHostPort(strings.TrimPrefix(f.srv.URL, "https://"))
+	fakeLookup(t, map[string][]string{
+		"udm.oeffentlich.example": {"8.8.8.8"},
+		"udm.gemischt.example":    {"127.0.0.1", "203.0.113.5"},
+		"udm.firma.lan":           {"127.0.0.1"},
+	})
+	for _, host := range []string{"udm.oeffentlich.example", "udm.gemischt.example"} {
+		base := "https://" + host + ":" + port
+		if _, err := New(base, testKey, "", f.pin()).Records(context.Background()); !errors.Is(err, ErrNotHouse) {
+			t.Errorf("%s: Records %v, erwartet ErrNotHouse", host, err)
+		}
+		if _, err := Fingerprint(context.Background(), base); !errors.Is(err, ErrNotHouse) {
+			t.Errorf("%s: Fingerprint %v, erwartet ErrNotHouse", host, err)
+		}
+	}
+	if f.hits != 0 {
+		t.Fatalf("der Server sah %d Anfragen", f.hits)
+	}
+	if !strings.HasPrefix(ErrNotHouse.Error(), "Die Adresse liegt nicht im eigenen Netz.") {
+		t.Errorf("Text: %q", ErrNotHouse)
+	}
+	// Name im Haus: Fingerabdruck und Einträge wie gewohnt
+	base := "https://udm.firma.lan:" + port
+	if fp, err := Fingerprint(context.Background(), base); err != nil || fp != f.pin() {
+		t.Fatalf("Name im Haus: %q %v", fp, err)
+	}
+	if _, err := New(base, testKey, "", f.pin()).Records(context.Background()); err != nil {
+		t.Fatalf("Name im Haus: %v", err)
+	}
+	// öffentliche IP-Adresse schon beim Prüfen der Adresse abgelehnt
+	if _, err := ValidateBase("https://8.8.8.8"); !errors.Is(err, ErrNotHouse) {
+		t.Errorf("öffentliche IP: %v", err)
+	}
+	if _, err := ValidateBase("https://169.254.1.1"); err != nil {
+		t.Errorf("Link-Local: %v", err)
+	}
+}

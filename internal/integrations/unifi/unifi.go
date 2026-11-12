@@ -28,6 +28,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -142,8 +143,79 @@ var (
 	ErrForbidden  = errors.New("Die UDM Pro lehnt den API-Schlüssel ab. In UniFi Network einen neuen Schlüssel anlegen und hier eintragen")
 	ErrNoKey      = errors.New("Kein API-Schlüssel für die UDM Pro hinterlegt")
 
+	ErrNotHouse = errors.New("Die Adresse liegt nicht im eigenen Netz. Die UDM Pro muss unter einer privaten Adresse im Haus erreichbar sein")
+
 	errNotFound = errors.New("nicht gefunden")
 )
+
+// houseIP: private (RFC 1918, RFC 4193), Loopback oder Link-Local – nur dorthin geht der Schlüssel.
+func houseIP(ip net.IP) bool {
+	if ip == nil || ip.IsUnspecified() || ip.IsMulticast() {
+		return false
+	}
+	return ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast()
+}
+
+// lookupIP löst einen Namen auf (in Tests austauschbar).
+var lookupIP = func(ctx context.Context, host string) ([]net.IP, error) {
+	addrs, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]net.IP, 0, len(addrs))
+	for _, a := range addrs {
+		out = append(out, a.IP)
+	}
+	return out, nil
+}
+
+// houseDial löst den Namen selbst auf, lehnt ab, sobald eine Antwort nicht im eigenen Netz
+// liegt, und verbindet sich mit genau der geprüften Adresse (kein zweites Auflösen, also auch
+// kein DNS-Rebinding). Control prüft die Zieladresse unmittelbar vor dem Verbinden noch einmal.
+func houseDial(ctx context.Context, network, addr string) (net.Conn, error) {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return nil, err
+	}
+	var ips []net.IP
+	if ip := net.ParseIP(host); ip != nil {
+		ips = []net.IP{ip}
+	} else {
+		lctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		ips, err = lookupIP(lctx, host)
+		cancel()
+		if err != nil {
+			return nil, fmt.Errorf("Name %s nicht auflösbar: %v", host, err)
+		}
+	}
+	if len(ips) == 0 {
+		return nil, fmt.Errorf("Name %s nicht auflösbar", host)
+	}
+	for _, ip := range ips {
+		if !houseIP(ip) {
+			return nil, ErrNotHouse
+		}
+	}
+	d := &net.Dialer{Timeout: 5 * time.Second, Control: func(_, address string, _ syscall.RawConn) error {
+		h, _, err := net.SplitHostPort(address)
+		if err != nil || !houseIP(net.ParseIP(h)) {
+			return ErrNotHouse
+		}
+		return nil
+	}}
+	var last error
+	for _, ip := range ips {
+		c, err := d.DialContext(ctx, network, net.JoinHostPort(ip.String(), port))
+		if err == nil {
+			return c, nil
+		}
+		if errors.Is(err, ErrNotHouse) {
+			return nil, ErrNotHouse
+		}
+		last = err
+	}
+	return nil, last
+}
 
 // Client spricht mit einer UDM Pro. Base ist "https://<adresse>[:port]", Site der Standort
 // (leer: der einzige bzw. „default“), Pin der bestätigte SHA-256-Fingerabdruck (hex).
@@ -203,8 +275,8 @@ func leafPin(cs tls.ConnectionState) string {
 func pinnedClient(pin string) *http.Client {
 	want := NormalizePin(pin)
 	tr := &http.Transport{
-		Proxy:       nil, // UDM Pro im Haus: nie über einen Proxy
-		DialContext: (&net.Dialer{Timeout: 5 * time.Second}).DialContext,
+		Proxy:       nil,       // UDM Pro im Haus: nie über einen Proxy
+		DialContext: houseDial, // nur Adressen im eigenen Netz, geprüft nach der Namensauflösung
 		TLSClientConfig: &tls.Config{
 			InsecureSkipVerify: true, // nur Kette/Name aus; die Prüfung macht VerifyConnection
 			MinVersion:         tls.VersionTLS12,
@@ -227,8 +299,8 @@ func pinnedClient(pin string) *http.Client {
 	}
 }
 
-// ValidateBase prüft die Adresse der UDM Pro: nur https, Rechner ist eine private oder
-// Loopback-IP-Adresse oder ein Hostname, kein Benutzer, kein Pfad außer "/", Port optional.
+// ValidateBase prüft die Adresse der UDM Pro: nur https, Rechner ist eine private, Loopback-
+// oder Link-Local-IP-Adresse oder ein Hostname (dessen Auflösung prüft houseDial bei jeder Verbindung), kein Benutzer, kein Pfad außer "/", Port optional.
 func ValidateBase(raw string) (string, error) {
 	bad := errors.New("Adresse der UDM Pro: bitte in der Form https://192.168.1.1 eingeben (nur https, private Adresse oder Name im Haus, ohne Pfad)")
 	raw = strings.TrimSpace(raw)
@@ -247,8 +319,8 @@ func ValidateBase(raw string) (string, error) {
 		return "", bad
 	}
 	if ip := net.ParseIP(host); ip != nil {
-		if !ip.IsPrivate() && !ip.IsLoopback() {
-			return "", errors.New("Adresse der UDM Pro: nur eine Adresse im Haus (privat), keine öffentliche IP-Adresse")
+		if !houseIP(ip) {
+			return "", ErrNotHouse
 		}
 	} else if !validHostname(host) {
 		return "", bad
@@ -288,16 +360,21 @@ func Fingerprint(ctx context.Context, base string) (string, error) {
 	}
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	d := &tls.Dialer{NetDialer: &net.Dialer{Timeout: 5 * time.Second},
-		Config: &tls.Config{InsecureSkipVerify: true, MinVersion: tls.VersionTLS12}} // nur lesen, nichts senden
-	conn, err := d.DialContext(ctx, "tcp", addr)
+	raw, err := houseDial(ctx, "tcp", addr)
+	if errors.Is(err, ErrNotHouse) {
+		return "", ErrNotHouse
+	}
 	if err != nil {
 		return "", fmt.Errorf("UDM Pro unter %s nicht erreichbar: %v", b, err)
 	}
-	defer conn.Close()
-	tc, ok := conn.(*tls.Conn)
-	if !ok {
-		return "", errors.New("keine TLS-Verbindung")
+	defer raw.Close()
+	// nur lesen, nichts senden; Kette und Name zählen nicht, nur der Fingerabdruck
+	tc := tls.Client(raw, &tls.Config{InsecureSkipVerify: true, MinVersion: tls.VersionTLS12, ServerName: u.Hostname()})
+	if dl, ok := ctx.Deadline(); ok {
+		_ = tc.SetDeadline(dl)
+	}
+	if err := tc.HandshakeContext(ctx); err != nil {
+		return "", fmt.Errorf("UDM Pro unter %s nicht erreichbar: %v", b, err)
 	}
 	fp := leafPin(tc.ConnectionState())
 	if fp == "" {
@@ -348,6 +425,9 @@ func (c *Client) do(ctx context.Context, method, path string, in, out any) error
 	if err != nil {
 		if errors.Is(err, ErrPinChanged) {
 			return ErrPinChanged
+		}
+		if errors.Is(err, ErrNotHouse) {
+			return ErrNotHouse
 		}
 		return fmt.Errorf("UDM Pro nicht erreichbar (%s %s): %v", method, path, errors.Unwrap(err))
 	}
