@@ -37,6 +37,7 @@ type certLine struct {
 	LANOther  string // Adresse eines fremden Eintrags gleichen Namens an der UDM Pro
 	LANHint   string // Abweichung aus der täglichen Prüfung
 	LAN6Hint  string // Hinweis des IPv6-Laufs (fremder AAAA-Eintrag, Fehler)
+	LAN6Other string // Adresse eines fremden AAAA-Eintrags (Knopf „IPv6 überschreiben“)
 	Note      string // Hinweis des Update-Agenten: Dateien abgelegt, nginx-Seite von Hand
 }
 
@@ -153,13 +154,14 @@ func (h *Handler) certPanelFor(ctx context.Context, r *http.Request, msg string,
 		p.Lines[i].LANOther = h.certSetting(ctx, keyUnifiOtherPrefix+p.Lines[i].Name)
 		p.Lines[i].Note = h.certSetting(ctx, keyCertNotePrefix+p.Lines[i].Name)
 		p.Lines[i].LAN6Hint = h.certSetting(ctx, keyUnifiHint6Prefix+certLANNorm(p.Lines[i].Name))
+		p.Lines[i].LAN6Other = h.certSetting(ctx, keyUnifiOther6Prefix+certLANNorm(p.Lines[i].Name))
 	}
 	if len(rows) > 0 {
 		if t := lan6TargetFetched(st, stErr); t.Wanted {
 			p.LAN6 = t.V6
 		}
 	}
-	p.Extra6 = certLAN6Extra(h.certSettingsPrefix(ctx, keyUnifiHint6Prefix), rows)
+	p.Extra6 = certLAN6Extra(h.certSettingsPrefix(ctx, keyUnifiHint6Prefix), h.certSettingsPrefix(ctx, keyUnifiOther6Prefix), rows)
 	if p.Zone != "" {
 		host, _ := h.nextStartValue(ctx, cfHostKey)
 		have := map[string]bool{}

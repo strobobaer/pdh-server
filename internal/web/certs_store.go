@@ -36,6 +36,10 @@ const (
 	// Eintrags, den das PDH selbst angelegt hat, und Hinweis des Nachzieh-Laufs.
 	keyUnifiID6Prefix   = "unifi.id6."
 	keyUnifiHint6Prefix = "unifi.hint6."
+	// Adresse eines fremden AAAA-Eintrags mit anderem Ziel (Knopf „IPv6 überschreiben“) und
+	// Zähler „zweimal in Folge beobachtet“ vor Vergessen bzw. Löschen (z. B. "fehlt:1", "weg:1").
+	keyUnifiOther6Prefix = "unifi.other6."
+	keyUnifiWait6Prefix  = "unifi.wait6."
 )
 
 // certSettingsPrefix: alle Einstellungen, deren Schlüssel mit prefix beginnt und deren Wert

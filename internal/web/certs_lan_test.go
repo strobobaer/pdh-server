@@ -539,7 +539,7 @@ func TestUnifiDisconnectClearsMarkers(t *testing.T) {
 
 // Alle drei Routen brauchen system.unifi – im Gate und im Handler.
 func TestUnifiGateRules(t *testing.T) {
-	for _, path := range []string{"/admin/server-config/unifi", "/admin/server-config/unifi/confirm", "/admin/server-config/certs/lan"} {
+	for _, path := range []string{"/admin/server-config/unifi", "/admin/server-config/unifi/confirm", "/admin/server-config/certs/lan", "/admin/server-config/certs/lan6"} {
 		if _, perm, _, _, ok := matchGate("POST", path); !ok || perm != permUnifi {
 			t.Errorf("%s: Recht %q, erwartet %q", path, perm, permUnifi)
 		}
@@ -552,6 +552,7 @@ func TestUnifiGateRules(t *testing.T) {
 		"/admin/server-config/unifi":         noUnifi.CertUnifiWeb,
 		"/admin/server-config/unifi/confirm": noUnifi.CertUnifiConfirmWeb,
 		"/admin/server-config/certs/lan":     noUnifi.CertLANWeb,
+		"/admin/server-config/certs/lan6":    noUnifi.CertLAN6Web,
 	} {
 		req := httptest.NewRequest("POST", path, strings.NewReader("name=nc.firma.de&url=https://192.168.1.1"))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")

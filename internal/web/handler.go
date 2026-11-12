@@ -616,6 +616,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/admin/server-config/unifi", h.CertUnifiWeb) // Reiter „UniFi“ (certs_lan.go)
 	r.Post("/admin/server-config/unifi/confirm", h.CertUnifiConfirmWeb)
 	r.Post("/admin/server-config/certs/lan", h.CertLANWeb)
+	r.Post("/admin/server-config/certs/lan6", h.CertLAN6Web) // IPv6 getrennt überschreiben (certs_lan6.go)
 	// Reiter „Ausfallschutz“: Sicherung aufs Netzlaufwerk über den Update-Agenten (dr.go)
 	r.Post("/admin/server-config/dr/settings", h.DRSettingsWeb)
 	r.Post("/admin/server-config/dr/run", h.DRRunWeb)

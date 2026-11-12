@@ -17,7 +17,8 @@ import (
 //
 //	POST /admin/server-config/unifi                Adresse, API-Schlüssel, Standort speichern; zeigt den Fingerabdruck
 //	POST /admin/server-config/unifi/confirm        genau diesen Fingerabdruck bestätigen
-//	POST /admin/server-config/certs/lan            Name im Haus eintragen (name, overwrite=1)
+//	POST /admin/server-config/certs/lan            Name im Haus eintragen (name, overwrite=1; nur Typ A)
+//	POST /admin/server-config/certs/lan6           fremden IPv6-Eintrag eines Namens überschreiben (name; certs_lan6.go)
 //
 // Ohne gespeicherte Adresse und Schlüssel geht keine Anfrage an eine UniFi-Adresse – weder beim
 // Start noch in der täglichen Prüfung noch beim Zeichnen der Karte. Zertifikate holen, erneuern
@@ -147,12 +148,9 @@ func certDoLAN(ctx context.Context, d certActDeps, raw string, overwrite bool) (
 	if err != nil {
 		return "", err
 	}
-	msg, err := certDoLANv4(ctx, d, c, recs, row, ip, overwrite)
-	if err != nil || !overwrite {
-		// ohne „Überschreiben“ ändert sich hier an IPv6 nichts – das macht der 5-Minuten-Lauf
-		return msg, err
-	}
-	return msg + certLAN6Overwrite(ctx, d, c, recs, row.Name), nil
+	// Nur Typ A. IPv6 hält der 5-Minuten-Lauf aktuell; einen fremden AAAA-Eintrag ändert
+	// allein der eigene Knopf „IPv6 überschreiben“ (certDoLAN6).
+	return certDoLANv4(ctx, d, c, recs, row, ip, overwrite)
 }
 
 // certDoLANv4: der Eintrag Typ A eines geführten Namens (siehe certDoLAN).
@@ -204,13 +202,14 @@ func certLANRemove(ctx context.Context, d certActDeps, row certRow) string {
 	_ = d.putSetting(ctx, keyUnifiHintPrefix+row.Name, "")
 	_ = d.putSetting(ctx, keyUnifiOtherPrefix+row.Name, "")
 	_ = d.putSetting(ctx, keyUnifiHint6Prefix+certLANNorm(row.Name), "")
+	_ = d.putSetting(ctx, keyUnifiOther6Prefix+certLANNorm(row.Name), "")
 	return certLANRemoveOne(ctx, d, row.Name, row.LANRecordID) + certLANRemove6(ctx, d, row)
 }
 
 // certLANRemove6: den eigenen IPv6-Eintrag des Namens entfernen – nur wenn die UDM Pro die
-// gemerkte Kennung als AAAA-Eintrag dieses Namens zeigt. Zeigt noch ein weiterer Eintrag Typ A
-// des Namens auf die mitwandernde Adresse, bleibt der IPv6-Eintrag samt Kennung (der Lauf
-// würde ihn sonst gleich wieder anlegen).
+// gemerkte Kennung als AAAA-Eintrag dieses Namens zeigt, die mitwandernde IPv4-Adresse bekannt
+// ist und kein Eintrag Typ A des Namens mehr auf sie zeigt. In jedem unklaren Fall bleibt die
+// Kennung; der 5-Minuten-Lauf räumt dann auf (zwei gleiche Beobachtungen).
 func certLANRemove6(ctx context.Context, d certActDeps, row certRow) string {
 	if d.setting == nil {
 		return ""
@@ -223,7 +222,8 @@ func certLANRemove6(ctx context.Context, d certActDeps, row certRow) string {
 	lg := componentLog("zertifikate")
 	keep := func(why string) string { // Kennung bleibt; der 5-Minuten-Lauf räumt später auf
 		lg.Warn().Str("name", n).Str("kennung", id).Str("fehler", why).Msg("ipv6-eintrag im haus nicht entfernt")
-		return " Der IPv6-Eintrag im Haus an der UDM Pro (Kennung " + id + ") ist nicht gelöscht: " + why + ". Bitte dort von Hand löschen."
+		return " Der IPv6-Eintrag im Haus an der UDM Pro (Kennung " + id + ") ist noch nicht gelöscht: " + why +
+			". Das PDH räumt ihn später selbst auf, sobald der Name nicht mehr auf die mitwandernde Adresse zeigt."
 	}
 	if d.lan == nil {
 		return keep(errUnifiOff.Error())
@@ -238,9 +238,6 @@ func certLANRemove6(ctx context.Context, d certActDeps, row certRow) string {
 	if err != nil {
 		return keep(certSafeText(err.Error()))
 	}
-	if len(recs) == 0 {
-		return keep("die UDM Pro meldet keine Einträge")
-	}
 	var rec unifi.Record
 	found := false
 	for _, r := range recs {
@@ -251,9 +248,8 @@ func certLANRemove6(ctx context.Context, d certActDeps, row certRow) string {
 	}
 	forget := func() { _ = d.putSetting(lctx, keyUnifiID6Prefix+n, "") }
 	if !found {
-		forget()
-		lg.Info().Str("name", n).Str("kennung", id).Msg("ipv6-eintrag im haus fehlt an der udm pro – kennung vergessen")
-		return ""
+		// unklar (Teilantwort, leere Antwort): Kennung bleibt, der 5-Minuten-Lauf räumt auf
+		return keep("der Eintrag steht nicht in der Antwort der UDM Pro")
 	}
 	if !strings.EqualFold(rec.Type, "AAAA") || certLANNorm(rec.Name) != n {
 		forget()
@@ -265,15 +261,13 @@ func certLANRemove6(ctx context.Context, d certActDeps, row certRow) string {
 	if d.lan6 != nil {
 		v4 = d.lan6(lctx).V4
 	}
-	if v4 == "" && d.lanTarget != nil {
-		v4, _ = d.lanTarget(lctx)
+	if v4 == "" {
+		return keep("die mitwandernde Adresse ist gerade nicht bekannt")
 	}
-	if v4 != "" {
-		for _, r := range recs {
-			if strings.EqualFold(r.Type, "A") && certLANNorm(r.Name) == n && r.ID != row.LANRecordID && lan6Same(r.Value, v4) {
-				lg.Info().Str("name", n).Str("kennung", id).Str("a-eintrag", r.ID).Msg("ipv6-eintrag im haus bleibt (weiterer a-eintrag auf die mitwandernde adresse)")
-				return " Der IPv6-Eintrag im Haus bleibt, weil an der UDM Pro noch ein weiterer Eintrag Typ A für " + n + " auf " + v4 + " zeigt."
-			}
+	for _, r := range recs {
+		if strings.EqualFold(r.Type, "A") && certLANNorm(r.Name) == n && lan6Same(r.Value, v4) {
+			lg.Info().Str("name", n).Str("kennung", id).Str("a-eintrag", r.ID).Msg("ipv6-eintrag im haus bleibt (a-eintrag zeigt noch auf die mitwandernde adresse)")
+			return " Der IPv6-Eintrag im Haus bleibt, weil an der UDM Pro noch ein Eintrag Typ A für " + n + " auf " + v4 + " zeigt."
 		}
 	}
 	if err := c.Delete(lctx, id); err != nil {
@@ -668,6 +662,13 @@ func (h *Handler) CertUnifiWeb(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) CertUnifiConfirmWeb(w http.ResponseWriter, r *http.Request) {
 	h.unifiAct(w, r, "unifi-fingerabdruck", func(ctx context.Context, d certActDeps) (unifiResult, string, error) {
 		return certDoUnifiConfirm(ctx, d, r.FormValue("fingerprint"))
+	})
+}
+
+// CertLAN6Web: POST /admin/server-config/certs/lan6 (name) – fremden IPv6-Eintrag überschreiben
+func (h *Handler) CertLAN6Web(w http.ResponseWriter, r *http.Request) {
+	h.certAct(w, r, h.hasPerm(r, permUnifi), "ipv6-im-haus-ueberschreiben", true, func(ctx context.Context, d certActDeps) (string, error) {
+		return certDoLAN6(ctx, d, r.FormValue("name"))
 	})
 }
 

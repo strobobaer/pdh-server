@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/netip"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 
+	"pdh/internal/integrations/acme"
 	"pdh/internal/integrations/unifi"
 )
 
@@ -123,9 +125,52 @@ func lan6SortedKeys(m map[string]string) []string {
 	return out
 }
 
+// lan6Marks: Merker je Name unter einem Präfix – alter Stand aus den Einstellungen, neuer Stand
+// aus diesem Lauf. flush schreibt nur, was sich geändert hat; was im neuen Stand fehlt, wird geleert.
+type lan6Marks struct {
+	prefix   string
+	old, cur map[string]string
+}
+
+func lan6MarksFrom(prefix string, kv map[string]string) *lan6Marks {
+	m := &lan6Marks{prefix: prefix, old: map[string]string{}, cur: map[string]string{}}
+	for k, v := range kv {
+		m.old[strings.TrimPrefix(k, prefix)] = v
+	}
+	return m
+}
+
+// keepAll: nichts geprüft – alle Merker bleiben, wie sie sind.
+func (m *lan6Marks) keepAll() {
+	m.cur = map[string]string{}
+	for k, v := range m.old {
+		m.cur[k] = v
+	}
+}
+
+func (m *lan6Marks) flush(put func(key, value string) error) {
+	all := map[string]string{}
+	for n := range m.old {
+		all[n] = ""
+	}
+	for n := range m.cur {
+		all[n] = ""
+	}
+	for _, n := range lan6SortedKeys(all) {
+		if m.cur[n] != m.old[n] {
+			_ = put(m.prefix+n, m.cur[n])
+		}
+	}
+}
+
 // certLAN6Sync gleicht die AAAA-Einträge an der UDM Pro ab (siehe oben) und meldet, wie viele
 // Einträge angelegt, geändert oder entfernt wurden. Fehler stehen als Hinweis beim Namen und im
 // Protokoll; der Lauf macht mit dem nächsten Namen weiter.
+//
+// Verloren geht nichts nach einer einzelnen Beobachtung: Eine gemerkte Kennung wird erst
+// vergessen, wenn sie in zwei Läufen nacheinander in der Antwort fehlt, und ein eigener Eintrag
+// erst gelöscht, wenn der Name in zwei Läufen nacheinander nicht mehr auf die mitwandernde
+// Adresse zeigt (Zähler unifi.wait6.<name>). Ein sauber gemeldetes „aus“ löscht sofort.
 func certLAN6Sync(ctx context.Context, d certDeps, t lan6Target) (changed int) {
 	d = d.withDefaults()
 	if d.blocked() || d.lanCheck == nil || d.settingsPrefix == nil {
@@ -143,30 +188,28 @@ func certLAN6Sync(ctx context.Context, d certDeps, t lan6Target) (changed int) {
 	}
 	ownKeys := d.settingsPrefix(ctx, keyUnifiID6Prefix)
 	hintKeys := d.settingsPrefix(ctx, keyUnifiHint6Prefix)
-	if ownKeys == nil || hintKeys == nil {
+	otherKeys := d.settingsPrefix(ctx, keyUnifiOther6Prefix)
+	waitKeys := d.settingsPrefix(ctx, keyUnifiWait6Prefix)
+	if ownKeys == nil || hintKeys == nil || otherKeys == nil || waitKeys == nil {
 		return 0 // Einstellungen nicht lesbar – nichts entscheiden
 	}
 	own := map[string]string{}
 	for k, v := range ownKeys {
 		own[strings.TrimPrefix(k, keyUnifiID6Prefix)] = v
 	}
-	oldHints := map[string]string{}
-	for k, v := range hintKeys {
-		oldHints[strings.TrimPrefix(k, keyUnifiHint6Prefix)] = v
-	}
-	hints := map[string]string{} // neuer Stand; was fehlt, wird geleert
+	hints := lan6MarksFrom(keyUnifiHint6Prefix, hintKeys)
+	other := lan6MarksFrom(keyUnifiOther6Prefix, otherKeys)
+	wait := lan6MarksFrom(keyUnifiWait6Prefix, waitKeys)
 	defer func() {
-		for n, old := range oldHints {
-			if hints[n] != old {
-				_ = persist(keyUnifiHint6Prefix+n, hints[n])
-			}
-		}
-		for _, n := range lan6SortedKeys(hints) {
-			if _, had := oldHints[n]; !had && hints[n] != "" {
-				_ = persist(keyUnifiHint6Prefix+n, hints[n])
-			}
-		}
+		hints.flush(persist)
+		other.flush(persist)
+		wait.flush(persist)
 	}()
+	keepAll := func() {
+		hints.keepAll()
+		other.keepAll()
+		wait.keepAll()
+	}
 	if !t.Wanted && len(own) == 0 {
 		return 0 // nichts gewünscht, nichts eigenes: keine Anfrage an die UDM Pro
 	}
@@ -177,20 +220,20 @@ func certLAN6Sync(ctx context.Context, d certDeps, t lan6Target) (changed int) {
 		if err != nil && !errors.Is(err, errUnifiOff) {
 			lg.Warn().Str("fehler", certSafeText(err.Error())).Msg("ipv6-einträge im haus nicht abgeglichen")
 		}
-		hints = oldHints // nichts geprüft – Hinweise bleiben, wie sie sind
+		keepAll() // nichts geprüft – Merker bleiben, wie sie sind
 		return 0
 	}
 	recs, err := c.Records(ctx)
 	if err != nil {
 		lg.Warn().Str("fehler", certSafeText(err.Error())).Msg("ipv6-einträge im haus nicht abgeglichen")
-		hints = oldHints
+		keepAll()
 		return 0
 	}
 	if len(recs) == 0 {
 		// Eine leere Antwort ist kein Beweis, dass alles fehlt (falscher Standort, Gerät startet):
 		// unbekannt – nichts anlegen, nichts vergessen, nichts löschen.
 		lg.Info().Msg("ipv6-einträge im haus: udm pro meldet keine einträge – nichts geändert")
-		hints = oldHints
+		keepAll()
 		return 0
 	}
 	byID := map[string]unifi.Record{}
@@ -215,6 +258,15 @@ func certLAN6Sync(ctx context.Context, d certDeps, t lan6Target) (changed int) {
 	forget := func(n, id, why string) {
 		_ = persist(keyUnifiID6Prefix+n, "")
 		lg.Info().Str("name", n).Str("kennung", id).Msg(why)
+	}
+	// observe: true bei der zweiten gleichen Beobachtung in Folge (dann wird gehandelt und der
+	// Zähler geleert); sonst Zähler setzen. Was nicht beobachtet wird, setzt den Zähler zurück.
+	observe := func(n, what string) bool {
+		if wait.old[n] == what+":1" {
+			return true
+		}
+		wait.cur[n] = what + ":1"
+		return false
 	}
 
 	var names []string
@@ -247,18 +299,22 @@ func certLAN6Sync(ctx context.Context, d certDeps, t lan6Target) (changed int) {
 			case "ok":
 				mine = &r
 			case "weg":
-				// Dieselbe Antwort zeigt den Namen mit Typ A auf V4, aber nicht die Kennung:
-				// von Hand gelöscht – vergessen und wie üblich weiter.
+				// Der Name zeigt mit Typ A auf V4, die Kennung fehlt. Erst beim zweiten Mal in
+				// Folge vergessen (und dann wie üblich weiter); vorher nichts anlegen.
+				if !observe(n, "fehlt") {
+					lg.Info().Str("name", n).Str("kennung", id).Msg("ipv6-eintrag im haus fehlt in der antwort – erst beim nächsten lauf vergessen")
+					continue
+				}
 				forget(n, id, "ipv6-eintrag im haus fehlt an der udm pro – kennung vergessen")
 			default:
 				forget(n, id, "ipv6-eintrag im haus an der udm pro verändert – kennung vergessen")
-				hints[n] = lan6ChangedHint(n)
+				hints.cur[n] = lan6ChangedHint(n)
 				continue // erst im nächsten Lauf wie jeder andere Name behandeln
 			}
 		}
 		update := func(r unifi.Record, ownRec bool) {
 			if err := c.Update(ctx, r.ID, n, t.V6); err != nil {
-				hints[n] = "IPv6-Eintrag nicht geändert: " + certSafeText(err.Error())
+				hints.cur[n] = "IPv6-Eintrag nicht geändert: " + certSafeText(err.Error())
 				lg.Warn().Str("name", n).Str("kennung", r.ID).Str("fehler", certSafeText(err.Error())).Msg("ipv6-eintrag im haus nicht geändert")
 				return
 			}
@@ -293,25 +349,27 @@ func certLAN6Sync(ctx context.Context, d certDeps, t lan6Target) (changed int) {
 			continue
 		}
 		if len(aaaa) > 0 {
-			hints[n] = "An der UDM Pro steht für " + n + " schon ein IPv6-Eintrag auf " + strings.TrimSpace(aaaa[0].Value) + ". Nichts geändert."
+			addr := strings.TrimSpace(aaaa[0].Value)
+			hints.cur[n] = "An der UDM Pro steht für " + n + " schon ein IPv6-Eintrag auf " + addr + ". Nichts geändert."
+			other.cur[n] = addr // Knopf „IPv6 überschreiben“
 			continue
 		}
 		nid, err := c.Create(ctx, n, t.V6)
 		if err != nil {
-			hints[n] = "IPv6-Eintrag nicht angelegt: " + certSafeText(err.Error())
+			hints.cur[n] = "IPv6-Eintrag nicht angelegt: " + certSafeText(err.Error())
 			lg.Warn().Str("name", n).Str("adresse", t.V6).Str("fehler", certSafeText(err.Error())).Msg("ipv6-eintrag im haus nicht angelegt")
 			continue
 		}
 		changed++
 		lg.Info().Str("name", n).Str("adresse", t.V6).Str("kennung", nid).Msg("ipv6-eintrag im haus angelegt")
 		if err := persist(keyUnifiID6Prefix+n, nid); err != nil {
-			hints[n] = fmt.Sprintf("IPv6-Eintrag angelegt (Kennung %s), aber nicht gemerkt: %s", nid, certSafeText(err.Error()))
+			hints.cur[n] = fmt.Sprintf("IPv6-Eintrag angelegt (Kennung %s), aber nicht gemerkt: %s", nid, certSafeText(err.Error()))
 			lg.Warn().Str("name", n).Str("kennung", nid).Str("fehler", certSafeText(err.Error())).Msg("kennung des ipv6-eintrags im haus nicht gemerkt")
 		}
 	}
 
 	// Aufräumen: eigene Einträge von Namen, die nicht (mehr) auf die mitwandernde Adresse
-	// zeigen, oder alle eigenen, wenn IPv6 aus ist.
+	// zeigen (zweimal in Folge beobachtet), oder alle eigenen, wenn IPv6 sauber aus ist.
 	for _, n := range lan6SortedKeys(own) {
 		if pointing[n] {
 			continue
@@ -319,16 +377,25 @@ func certLAN6Sync(ctx context.Context, d certDeps, t lan6Target) (changed int) {
 		id := own[n]
 		switch _, st := ownState(n, id); st {
 		case "weg":
-			// nicht in der (nicht leeren) Antwort: nichts zu löschen, Kennung vergessen
-			forget(n, id, "ipv6-eintrag im haus fehlt an der udm pro – kennung vergessen")
+			// nicht in der (nicht leeren) Antwort: nichts zu löschen; erst beim zweiten Mal vergessen
+			if observe(n, "fehlt") {
+				forget(n, id, "ipv6-eintrag im haus fehlt an der udm pro – kennung vergessen")
+			}
 			continue
 		case "veraendert":
 			forget(n, id, "ipv6-eintrag im haus an der udm pro verändert – kennung vergessen")
-			hints[n] = lan6ChangedHint(n)
+			hints.cur[n] = lan6ChangedHint(n)
+			continue
+		}
+		if t.Wanted && !observe(n, "weg") {
+			lg.Info().Str("name", n).Str("kennung", id).Msg("name zeigt nicht mehr auf die mitwandernde adresse – ipv6-eintrag erst beim nächsten lauf entfernt")
 			continue
 		}
 		if err := c.Delete(ctx, id); err != nil {
-			hints[n] = "IPv6-Eintrag (Kennung " + id + ") nicht entfernt: " + certSafeText(err.Error())
+			hints.cur[n] = "IPv6-Eintrag (Kennung " + id + ") nicht entfernt: " + certSafeText(err.Error())
+			if t.Wanted {
+				wait.cur[n] = "weg:1" // im nächsten Lauf gleich wieder versuchen
+			}
 			lg.Warn().Str("name", n).Str("kennung", id).Str("fehler", certSafeText(err.Error())).Msg("ipv6-eintrag im haus nicht entfernt")
 			continue
 		}
@@ -361,29 +428,90 @@ func lan6CapWarnDue(now time.Time) bool {
 	return true
 }
 
-// certLAN6Overwrite: „Überschreiben“ für einen geführten Namen – einen fremden AAAA-Eintrag
-// mit anderem Ziel auf die mitwandernde IPv6-Adresse ändern, ohne ihn zu übernehmen.
-func certLAN6Overwrite(ctx context.Context, d certActDeps, c certLANClient, recs []unifi.Record, name string) string {
-	if d.lan6 == nil || d.setting == nil {
-		return ""
+var errLAN6Unknown = errors.New("Die mitwandernde IPv6-Adresse ist gerade nicht bekannt. Bitte später erneut versuchen.")
+
+// certDoLAN6: „IPv6 überschreiben“ (eigener Knopf, getrennt von IPv4). Ändert genau einen
+// fremden AAAA-Eintrag eines Namens, der mit Typ A auf die mitwandernde Adresse zeigt, auf die
+// mitwandernde IPv6-Adresse – ohne ihn zu übernehmen. Der Name muss kein Zertifikat haben.
+// Legt nie etwas an, löscht nie, ändert nie einen Eintrag Typ A oder einen anderen Namen.
+func certDoLAN6(ctx context.Context, d certActDeps, raw string) (string, error) {
+	if d.blocked() {
+		return "", errCertBlocked
 	}
-	t := d.lan6(ctx)
-	if !t.Wanted || t.V6 == "" {
-		return ""
+	if d.lan == nil {
+		return "", errUnifiOff
 	}
-	n := certLANNorm(name)
-	action, rec := certLANMatchType(recs, "AAAA", n, t.V6, d.setting(ctx, keyUnifiID6Prefix+n))
-	if action != "fremd" {
-		return ""
+	if strings.HasPrefix(strings.TrimSpace(raw), "*") {
+		return "", errors.New("Sammelnamen (*.…) werden nicht unterstützt")
 	}
-	lg := componentLog("zertifikate")
+	n, err := acme.NormalizeName(raw)
+	if err != nil {
+		return "", err
+	}
+	if net.ParseIP(n) != nil {
+		return "", fmt.Errorf("%q ist ein Name, keine IP-Adresse", raw)
+	}
+	n = certLANNorm(n)
+	var t lan6Target
+	if d.lan6 != nil {
+		t = d.lan6(ctx)
+	}
+	if !t.Wanted || t.V4 == "" || t.V6 == "" {
+		return "", errLAN6Unknown
+	}
+	c, err := d.lan(ctx)
+	if err != nil {
+		return "", err
+	}
+	recs, err := c.Records(ctx)
+	if err != nil {
+		return "", err
+	}
+	pointing := false
+	for _, x := range certLAN6Names(recs, t.V4) {
+		pointing = pointing || x == n
+	}
+	if !pointing {
+		return "", errors.New(n + " zeigt an der UDM Pro nicht auf die mitwandernde Adresse. Nichts geändert.")
+	}
+	ownID := ""
+	if d.setting != nil {
+		ownID = d.setting(ctx, keyUnifiID6Prefix+n)
+	}
+	clear := func() {
+		_ = d.putSetting(ctx, keyUnifiHint6Prefix+n, "")
+		_ = d.putSetting(ctx, keyUnifiOther6Prefix+n, "")
+	}
+	var foreign []unifi.Record
+	for _, r := range recs {
+		if !strings.EqualFold(r.Type, "AAAA") || certLANNorm(r.Name) != n {
+			continue
+		}
+		if lan6Same(r.Value, t.V6) {
+			clear()
+			return n + " zeigt für IPv6 schon auf " + t.V6 + ".", nil
+		}
+		if r.ID != ownID {
+			foreign = append(foreign, r)
+		}
+	}
+	switch len(foreign) {
+	case 0:
+		clear()
+		return "Am IPv6-Eintrag von " + n + " war nichts zu ändern.", nil
+	case 1:
+	default:
+		return "", errors.New("Für " + n + " gibt es mehrere IPv6-Einträge an der UDM Pro. Bitte dort von Hand aufräumen.")
+	}
+	rec := foreign[0]
 	if err := c.Update(ctx, rec.ID, n, t.V6); err != nil {
-		lg.Warn().Str("name", n).Str("kennung", rec.ID).Str("fehler", certSafeText(err.Error())).Msg("fremden ipv6-eintrag im haus nicht überschrieben")
-		return " Der IPv6-Eintrag ist nicht geändert: " + certSafeText(err.Error()) + "."
+		return "", err
 	}
-	lg.Info().Str("name", n).Str("adresse", t.V6).Str("alt", rec.Value).Str("kennung", rec.ID).Msg("fremden ipv6-eintrag im haus überschrieben (nicht übernommen)")
-	_ = d.putSetting(ctx, keyUnifiHint6Prefix+n, "")
-	return " Der IPv6-Eintrag zeigt jetzt auf " + t.V6 + " (vorher " + strings.TrimSpace(rec.Value) + ")."
+	componentLog("zertifikate").Info().Str("name", n).Str("adresse", t.V6).Str("alt", rec.Value).Str("kennung", rec.ID).
+		Msg("fremden ipv6-eintrag im haus überschrieben (nicht übernommen)")
+	clear()
+	return n + " zeigt für IPv6 jetzt auf " + t.V6 + " (vorhandener Eintrag geändert, vorher " + strings.TrimSpace(rec.Value) +
+		"). Der Eintrag bleibt an der UDM Pro stehen, wenn das PDH aufräumt, weil das PDH ihn nicht angelegt hat.", nil
 }
 
 // lan6Unknown: Ziel unbekannt – der Lauf legt nichts an, ändert nichts und löscht nichts.
@@ -438,20 +566,38 @@ func (h *Handler) certLAN6Run(ctx context.Context) {
 
 // certLAN6Extra: Hinweise zu Namen an der UDM Pro, die das PDH nicht als Zertifikat führt –
 // nur aus den Einstellungen, nie eine Anfrage an die UDM Pro.
-type lan6Extra struct{ Name, Hint string }
+// Other: Adresse eines fremden AAAA-Eintrags (unifi.other6.<name>) – dann Knopf „IPv6 überschreiben“.
+type lan6Extra struct{ Name, Hint, Other string }
 
-func certLAN6Extra(hints map[string]string, rows []certRow) []lan6Extra {
+func certLAN6Extra(hints, others map[string]string, rows []certRow) []lan6Extra {
 	have := map[string]bool{}
 	for _, r := range rows {
 		have[certLANNorm(r.Name)] = true
 	}
-	var out []lan6Extra
-	for _, k := range lan6SortedKeys(hints) {
-		n := strings.TrimPrefix(k, keyUnifiHint6Prefix)
-		if hints[k] == "" || n == "" || have[n] {
-			continue
+	byName := map[string]*lan6Extra{}
+	add := func(kv map[string]string, prefix string, set func(e *lan6Extra, v string)) {
+		for k, v := range kv {
+			n := strings.TrimPrefix(k, prefix)
+			if v == "" || n == "" || have[n] {
+				continue
+			}
+			e := byName[n]
+			if e == nil {
+				e = &lan6Extra{Name: n}
+				byName[n] = e
+			}
+			set(e, v)
 		}
-		out = append(out, lan6Extra{Name: n, Hint: hints[k]})
+	}
+	add(hints, keyUnifiHint6Prefix, func(e *lan6Extra, v string) { e.Hint = v })
+	add(others, keyUnifiOther6Prefix, func(e *lan6Extra, v string) { e.Other = v })
+	names := map[string]string{}
+	for n := range byName {
+		names[n] = ""
+	}
+	var out []lan6Extra
+	for _, n := range lan6SortedKeys(names) {
+		out = append(out, *byName[n])
 	}
 	return out
 }
