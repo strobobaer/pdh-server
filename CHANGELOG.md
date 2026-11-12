@@ -10,7 +10,7 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
-## [0.77.11] – 2026-11-12
+## [0.80.0] – 2026-11-12
 
 ### Neu
 
@@ -19,6 +19,10 @@ im Kapitel „Versionen & Updates“ an.
 - Full (strict): Ein Knopf stellt Tunnel und Domain auf geprüfte Verschlüsselung um, „Zurückstellen“ nimmt es wieder zurück.
 - Im Ausfallschutz-Verbund werden die Zertifikate auf den zweiten Server gespiegelt und in die Sicherung aufgenommen; sobald Zertifikate vorhanden sind, richtet das Update nginx auf beiden Servern ein.
 - Das Handbuch erklärt Zertifikate, Namen im Haus, Full (strict) und die möglichen Fehlerbilder.
+
+### Geändert
+
+- Ausfallschutz: Der Hinweis „Das Zertifikat von Nextcloud enthält die mitwandernde Adresse nicht“ erscheint nicht mehr, wenn Nextcloud ein vom PDH geholtes Zertifikat nutzt – dort zählt der Name, im Haus führt er über „Namen im Haus“ zum Server.
 
 ### Sicherheit
 

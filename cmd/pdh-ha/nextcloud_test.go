@@ -440,6 +440,19 @@ func TestNcCertCovers(t *testing.T) {
 	if _, tls, err := ncCertCovers(t.TempDir(), "10.0.0.9"); tls || err != nil {
 		t.Fatalf("leer: %v %v", tls, err)
 	}
+	// vom PDH geholtes Zertifikat (nur der Name): kein Urteil über die Adresse, der Name zählt weiter
+	managed := t.TempDir()
+	old := ncManagedCertDir
+	ncManagedCertDir = filepath.ToSlash(filepath.Dir(cert)) + "/"
+	defer func() { ncManagedCertDir = old }()
+	writeFile(t, filepath.Join(managed, "nextcloud.conf"), "server {\n  ssl_certificate "+cert+";\n}\n")
+	if covered, tls, err := ncCertCovers(managed, "10.0.0.10"); covered || tls || err != nil {
+		t.Fatalf("geholtes Zertifikat: %v %v %v", covered, tls, err)
+	}
+	if covered, tls, err := ncCertCovers(managed, "cloud.example.org"); !covered || !tls || err != nil {
+		t.Fatalf("geholtes Zertifikat, Name: %v %v %v", covered, tls, err)
+	}
+	ncManagedCertDir = old
 	// Zertifikat nicht lesbar: Fehler
 	bad := t.TempDir()
 	writeFile(t, filepath.Join(bad, "nextcloud"), "ssl_certificate /gibt/es/nicht.pem;")

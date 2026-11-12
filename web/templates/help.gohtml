@@ -1533,6 +1533,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>In den Reiter <b>Cloudflare-Tunnel</b> wechseln und in der Karte <b>Zertifikate (Let's Encrypt)</b> je Name den Knopf <b>Im Haus eintragen</b> (Haus-Symbol) drücken. Kontrolle: Die Zeile zeigt <i>im Haus direkt</i> statt <i>über Cloudflare</i>. Die Anzeige kann einen Moment nachhängen, weil das PDH den DNS selbst fragt.</li>
     </ol>
     Mit einem anderen DNS-Server trägst du den Eintrag Typ A von Hand ein; die Liste steht in der Zertifikate-Karte unter <b>Namen im Haus</b>.
+    Ein geholtes Zertifikat gilt nur für den Namen. Rufst du PDH oder Nextcloud im Haus über die Adresse auf (<code>https://10.…</code>), meldet der Browser deshalb einen Zertifikatsfehler – nimm den Namen.
     <ul>
       <li>Die Anbindung ist nach der Schnittstellenbeschreibung des Herstellers für UniFi Network 10.3 gebaut und <b>noch nicht an einem echten Gerät ausprobiert</b>. Ältere UniFi-Network-Versionen bieten diese Schnittstelle womöglich nicht – dann trägst du die Namen von Hand ein.</li>
       <li>Das PDH verbindet sich nur mit Adressen im eigenen Netz.</li>
