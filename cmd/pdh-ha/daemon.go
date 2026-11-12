@@ -1097,8 +1097,9 @@ func (d *daemon) syncAccess6Locked() {
 }
 
 // accessExitWait: so lange wartet das Dienstende höchstens auf die Abgabe
-// eines vorigen Arbeiters (dessen Abgabe hat selbst 10 s Frist).
-const accessExitWait = 15 * time.Second
+// eines vorigen Arbeiters (dessen Abgabe hat selbst bis zu 10 s Frist für
+// IPv4 und danach 5 s für die IPv6-Adresse, release6Max).
+const accessExitWait = 20 * time.Second
 
 // stopAccessOnExit läuft beim Ende des Dienstes (SIGTERM), nachdem runCtx
 // beendet ist. Bei Automatik „echt“ wird eine gehaltene Adresse abgegeben:
