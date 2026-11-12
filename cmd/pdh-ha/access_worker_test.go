@@ -644,6 +644,355 @@ func TestAccessWorkerAlarmNotResetBySuccess(t *testing.T) {
 	}
 }
 
+// --- mitwandernde IPv6-Adresse im Abgleich ---
+
+// dualFake bedient IPv4 (vipState) und IPv6 (vip6Fake) und liest Dateien
+// (cat) aus files; alle Aufrufe in einer Liste, um die Reihenfolge zu prüfen.
+type dualFake struct {
+	v4       *vipState
+	v6       *vip6Fake
+	mu       sync.Mutex
+	calls    []string
+	failAdd6 bool
+	files    map[string]string
+}
+
+func newDualFake(card string, extra ...string) *dualFake {
+	return &dualFake{v4: &vipState{}, v6: newVIP6Fake(card, extra...), files: map[string]string{}}
+}
+
+func (f *dualFake) Run(ctx context.Context, argv []string, env []string, in []byte) ([]byte, error) {
+	cmd := strings.Join(argv, " ")
+	f.mu.Lock()
+	f.calls = append(f.calls, cmd)
+	fail := f.failAdd6
+	content, hasFile := f.files[argv[len(argv)-1]]
+	f.mu.Unlock()
+	switch {
+	case fail && strings.HasPrefix(cmd, "ip -6 addr add "):
+		return nil, errors.New("ip: exit status 2: RTNETLINK answers: Permission denied")
+	case strings.HasPrefix(cmd, "ip -6"):
+		return f.v6.Run(ctx, argv, env, in)
+	case argv[0] == "cat" && strings.HasPrefix(argv[len(argv)-1], "/etc/"):
+		if !hasFile {
+			return nil, errors.New("cat: " + argv[len(argv)-1] + ": No such file or directory")
+		}
+		return []byte(content), nil
+	}
+	return f.v4.Run(ctx, argv, env, in)
+}
+
+func (f *dualFake) count(prefix string) int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	n := 0
+	for _, c := range f.calls {
+		if strings.HasPrefix(c, prefix) {
+			n++
+		}
+	}
+	return n
+}
+
+func (f *dualFake) index(cmd string) int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for i, c := range f.calls {
+		if c == cmd {
+			return i
+		}
+	}
+	return -1
+}
+
+func (f *dualFake) setFile(path, content string) {
+	f.mu.Lock()
+	f.files[path] = content
+	f.mu.Unlock()
+}
+
+// testCtl6 baut einen vip6Ctl ohne Ankündigung und ohne Pausen.
+func testCtl6(t *testing.T, r runner, suffix string) *vip6Ctl {
+	t.Helper()
+	s, err := parseVIP6Suffix(suffix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	v := newVIP6Ctl(r, "eth0", s, nil)
+	v.sleep = func(time.Duration) {}
+	return v
+}
+
+// testWorker6: Arbeiter für 10.77.1.50 mit IPv6-Ende 15 auf eth0.
+func testWorker6(t *testing.T, card string, extra ...string) (*accessWorker, *dualFake) {
+	t.Helper()
+	f := newDualFake(card, extra...)
+	w := testWorker(t, f).withVIP6(testCtl6(t, f, "15"), nil)
+	return w, f
+}
+
+const (
+	vip6Del      = "ip -6 addr del 2a02:f90:e198:1700::15/128 dev eth0"
+	vip6HeldLine = `2: eth0    inet6 2a02:f90:e198:1700::15/128 scope global \       valid_lft forever preferred_lft 0sec`
+)
+
+func TestAccessVIP6FollowsV4(t *testing.T) {
+	w, f := testWorker6(t, card6)
+	ctx := context.Background()
+	w.set(true, ha.Active, 3)
+	w.step(ctx)
+	i4, i6 := f.index(vipAdd), f.index(vip6Add)
+	if i4 < 0 || i6 < 0 || i4 > i6 {
+		t.Fatalf("Reihenfolge IPv4 %d, IPv6 %d: %q", i4, i6, f.calls)
+	}
+	if n := workerEvents(w, "info", "Adresse "+vip6Want+" übernommen"); n != 1 {
+		t.Fatalf("Ereignis übernommen %d-mal", n)
+	}
+	if a, note := w.held6(); a != vip6Want || note != "" {
+		t.Fatalf("held6 = %q, %q", a, note)
+	}
+	w.step(ctx)
+	if n := f.count("ip -6 addr add"); n != 1 {
+		t.Fatalf("ip -6 addr add %d-mal", n)
+	}
+	if n := workerEvents(w, "info", "Adresse "+vip6Want+" übernommen"); n != 1 {
+		t.Fatalf("Ereignis übernommen %d-mal", n)
+	}
+}
+
+func TestAccessVIP6ReleaseWithV4(t *testing.T) {
+	w, f := testWorker6(t, card6)
+	ctx := context.Background()
+	w.set(true, ha.Active, 3)
+	w.step(ctx)
+	w.set(false, ha.Passive, 4)
+	w.step(ctx)
+	if f.count(vipDel) != 1 || f.count(vip6Del) != 1 {
+		t.Fatalf("Befehle: %q", f.calls)
+	}
+	if strings.Contains(f.v6.card(), vip6Want) {
+		t.Fatalf("IPv6-Adresse liegt noch:\n%s", f.v6.card())
+	}
+	if n := workerEvents(w, "info", "Adresse "+vip6Want+" abgegeben"); n != 1 {
+		t.Fatalf("Ereignis abgegeben %d-mal", n)
+	}
+	if a, _ := w.held6(); a != "" || w.held() {
+		t.Fatalf("held6 %q, held %v", a, w.held())
+	}
+}
+
+func TestAccessVIP6ErrorDoesNotBlock(t *testing.T) {
+	w, f := testWorker6(t, card6)
+	f.failAdd6 = true
+	now := time.Date(2026, 11, 12, 10, 0, 0, 0, time.UTC)
+	w.now = func() time.Time { return now }
+	ctx := context.Background()
+	w.mu.Lock()
+	ch := w.changed
+	w.mu.Unlock()
+	w.set(true, ha.Active, 3)
+	w.step(ctx)
+	if !w.held() {
+		t.Fatal("IPv4 nicht gehalten")
+	}
+	select {
+	case <-ch:
+	default:
+		t.Fatal("changedTo(true) für IPv4 nicht gefeuert")
+	}
+	if n := workerEvents(w, "info", "Adresse 10.77.1.50 übernommen"); n != 1 {
+		t.Fatalf("IPv4 übernommen %d-mal", n)
+	}
+	const txt = "IPv6-Adresse " + vip6Want + " nicht übernommen: "
+	if n := workerEvents(w, "alarm", txt); n != 1 {
+		t.Fatalf("IPv6-Alarm %d-mal: %+v", n, w.ev.since(0, 0))
+	}
+	for i := 0; i < 10; i++ {
+		now = now.Add(time.Second)
+		w.step(ctx)
+	}
+	if n := workerEvents(w, "alarm", txt); n != 1 {
+		t.Fatalf("IPv6-Alarm nach 10 Takten %d-mal", n)
+	}
+	if n := workerEvents(w, "alarm", ""); n != 1 {
+		t.Fatalf("Alarme: %+v", w.ev.since(0, 0))
+	}
+	if !w.held() || f.count(vipAdd) != 1 || f.count(vipDel) != 0 {
+		t.Fatalf("IPv4 verändert: held %v, %q", w.held(), f.calls)
+	}
+}
+
+func TestAccessVIP6PassiveClearsStale(t *testing.T) {
+	w, f := testWorker6(t, card6, vip6OldLine)
+	w.set(false, ha.Passive, 2)
+	w.step(context.Background())
+	if n := f.count("ip -6 addr del 2a02:aaaa:0:1::15/128 dev eth0"); n != 1 {
+		t.Fatalf("alte Adresse nicht entfernt: %q", f.calls)
+	}
+	if strings.Contains(f.v6.card(), "2a02:aaaa:0:1::15") || f.count("ip -6 addr add") != 0 || f.count("ip addr add") != 0 {
+		t.Fatalf("Karte:\n%s\nBefehle %q", f.v6.card(), f.calls)
+	}
+}
+
+func TestAccessVIP6PrefixChange(t *testing.T) {
+	w, f := testWorker6(t, card6)
+	ctx := context.Background()
+	w.set(true, ha.Active, 3)
+	w.step(ctx)
+	f.v6.mu.Lock()
+	var lines []string
+	for _, l := range f.v6.lines {
+		if strings.Contains(l, "2a02:f90:e198:1700:") && strings.Contains(l, "/64") {
+			continue
+		}
+		lines = append(lines, l)
+	}
+	f.v6.lines = append(lines, `2: eth0    inet6 2a02:aaaa:0:1:215:5dff:fe00:b202/64 scope global dynamic mngtmpaddr noprefixroute \       valid_lft 86000sec preferred_lft 14000sec`)
+	f.v6.mu.Unlock()
+	w.step(ctx)
+	if f.count("ip -6 addr add 2a02:aaaa:0:1::15/128 dev eth0") != 1 || f.count(vip6Del) != 1 {
+		t.Fatalf("Befehle: %q", f.calls)
+	}
+	if n := workerEvents(w, "info", "IPv6-Präfix hat gewechselt: 2a02:f90:e198:1700::/64 → 2a02:aaaa:0:1::/64"); n != 1 {
+		t.Fatalf("Präfixwechsel %d-mal: %+v", n, w.ev.since(0, 0))
+	}
+	if a, _ := w.held6(); a != "2a02:aaaa:0:1::15" {
+		t.Fatalf("held6 = %q", a)
+	}
+	if !w.held() {
+		t.Fatal("IPv4 nicht gehalten")
+	}
+}
+
+func TestAccessVIP6NoPrefix(t *testing.T) {
+	w, f := testWorker6(t, `2: eth0    inet6 fe80::215:5dff:fe00:b202/64 scope link \       valid_lft forever preferred_lft forever`)
+	ctx := context.Background()
+	w.set(true, ha.Active, 3)
+	w.step(ctx)
+	w.step(ctx)
+	if n := f.count("ip -6 addr add"); n != 0 {
+		t.Fatalf("ip -6 addr add %d-mal", n)
+	}
+	const note = "Kein IPv6-Präfix an eth0 – die IPv6-Adresse ist nicht gesetzt"
+	if a, n := w.held6(); a != "" || n != note {
+		t.Fatalf("held6 = %q, %q", a, n)
+	}
+	if n := workerEvents(w, "warn", ""); n != 1 || workerEvents(w, "warn", note) != 1 {
+		t.Fatalf("Warnungen: %+v", w.ev.since(0, 0))
+	}
+	if !w.held() || workerEvents(w, "alarm", "") != 0 {
+		t.Fatalf("IPv4 held %v, Ereignisse %+v", w.held(), w.ev.since(0, 0))
+	}
+}
+
+func TestAccessVIP6Off(t *testing.T) {
+	f := newDualFake(card6, vip6HeldLine)
+	w := testWorker(t, f).withVIP6(nil, nil)
+	ctx := context.Background()
+	w.step(ctx)
+	w.set(true, ha.Active, 3)
+	w.step(ctx)
+	w.set(false, ha.Passive, 4)
+	w.step(ctx)
+	if n := f.count("ip -6"); n != 0 {
+		t.Fatalf("ip -6 %d-mal: %q", n, f.calls)
+	}
+	if n := f.count("cat /etc/"); n != 0 {
+		t.Fatalf("cat %d-mal", n)
+	}
+	if a, note := w.held6(); a != "" || note != "" {
+		t.Fatalf("held6 = %q, %q", a, note)
+	}
+	if f.count(vipAdd) != 1 || f.count(vipDel) != 1 {
+		t.Fatalf("IPv4: %q", f.calls)
+	}
+}
+
+func TestAccessVIP6SuffixCleared(t *testing.T) {
+	f := newDualFake(card6, vip6HeldLine)
+	w := testWorker(t, f).withVIP6(nil, testCtl6(t, f, "15"))
+	ctx := context.Background()
+	w.set(true, ha.Active, 3)
+	w.step(ctx)
+	if n := f.count(vip6Del); n != 1 {
+		t.Fatalf("ip -6 addr del %d-mal: %q", n, f.calls)
+	}
+	if strings.Contains(f.v6.card(), vip6Want) {
+		t.Fatalf("Adresse liegt noch:\n%s", f.v6.card())
+	}
+	n := f.count("ip -6")
+	w.step(ctx)
+	w.step(ctx)
+	if m := f.count("ip -6"); m != n {
+		t.Fatalf("nach dem Aufräumen noch ip -6 (%d → %d)", n, m)
+	}
+	if !w.held() {
+		t.Fatal("IPv4 nicht gehalten")
+	}
+}
+
+func TestAccessVIP6UfwHint(t *testing.T) {
+	w, f := testWorker6(t, card6)
+	now := time.Date(2026, 11, 12, 10, 0, 0, 0, time.UTC)
+	w.now = func() time.Time { return now }
+	ctx := context.Background()
+	const hint = "Die Firewall dieses Servers (ufw) hat IPv6 abgeschaltet – Port 443 ist über IPv6 nicht erreichbar"
+	// Datei fehlt → kein Hinweis
+	w.step(ctx)
+	if _, n := w.held6(); n != "" {
+		t.Fatalf("Hinweis ohne Datei: %q", n)
+	}
+	f.setFile("/etc/default/ufw", "# Kommentar\nIPV6=no\n")
+	f.setFile("/etc/ufw/ufw.conf", "ENABLED=yes\n")
+	w.step(ctx) // innerhalb der Minute: nicht neu gelesen
+	if _, n := w.held6(); n != "" {
+		t.Fatalf("vor Ablauf der Minute neu gelesen: %q", n)
+	}
+	reads := f.count("cat /etc/default/ufw")
+	now = now.Add(61 * time.Second)
+	w.step(ctx)
+	if _, n := w.held6(); n != hint {
+		t.Fatalf("Hinweis %q", n)
+	}
+	if f.count("cat /etc/default/ufw") != reads+1 {
+		t.Fatalf("cat: %q", f.calls)
+	}
+	// ufw nicht aktiv → kein Hinweis
+	f.setFile("/etc/ufw/ufw.conf", "ENABLED=no\n")
+	now = now.Add(61 * time.Second)
+	w.step(ctx)
+	if _, n := w.held6(); n != "" {
+		t.Fatalf("Hinweis trotz ausgeschaltetem ufw: %q", n)
+	}
+	// beide Hinweise: mit „; “ verbunden
+	f.setFile("/etc/ufw/ufw.conf", `ENABLED="yes"`+"\n")
+	f.v6.mu.Lock()
+	f.v6.lines = []string{`2: eth0    inet6 fe80::1/64 scope link \       valid_lft forever preferred_lft forever`}
+	f.v6.mu.Unlock()
+	now = now.Add(61 * time.Second)
+	w.step(ctx)
+	if _, n := w.held6(); n != "Kein IPv6-Präfix an eth0 – die IPv6-Adresse ist nicht gesetzt; "+hint {
+		t.Fatalf("Hinweise %q", n)
+	}
+}
+
+// Ende des Arbeiters (Einstellung gewechselt, Dienstende): auch die IPv6-Adresse geht.
+func TestAccessVIP6Released(t *testing.T) {
+	w, f := testWorker6(t, card6)
+	ctx, cancel := context.WithCancel(context.Background())
+	w.set(true, ha.Active, 3)
+	go w.run(ctx)
+	waitFor(t, 2*time.Second, "IPv6 übernommen", func() bool { a, _ := w.held6(); return a == vip6Want })
+	cancel()
+	w.release()
+	if f.count(vipDel) != 1 || f.count(vip6Del) != 1 {
+		t.Fatalf("Befehle: %q", f.calls)
+	}
+	if a, _ := w.held6(); a != "" {
+		t.Fatalf("held6 = %q", a)
+	}
+}
+
 // blockDemote blockiert nur die Abgabe; alle anderen Aktionen gelingen sofort.
 type blockDemote struct{ release chan struct{} }
 

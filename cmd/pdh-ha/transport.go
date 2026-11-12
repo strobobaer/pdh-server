@@ -83,9 +83,11 @@ type message struct {
 	Diverged []divergedInfo `json:"diverged,omitempty"`
 
 	// Zugangsweg (Teil 5)
-	VIP   bool   `json:"vip,omitempty"`   // hält die mitwandernde Adresse
-	Hooks string `json:"hooks,omitempty"` // Kurzstand der Skripte beim Rollenwechsel
-	Tun   string `json:"tun,omitempty"`   // Kurzstand des Cloudflare-Tunnels
+	VIP bool `json:"vip,omitempty"` // hält die mitwandernde Adresse
+	// VIP6Held: mitwandernde IPv6-Adresse, die hier liegt ("" = keine; ältere Server senden nichts)
+	VIP6Held string `json:"vip6_held,omitempty"`
+	Hooks    string `json:"hooks,omitempty"` // Kurzstand der Skripte beim Rollenwechsel
+	Tun      string `json:"tun,omitempty"`   // Kurzstand des Cloudflare-Tunnels
 	// cluster: dieser Knoten darf PostgreSQL für neue Adressen neu starten (addrs set --neustart)
 	RestartPG string `json:"restart_pg,omitempty"`
 	// cluster: Zugang (pg_hba, primary_conninfo) auch ohne Änderung neu schreiben (addrs set, Wiederholung)

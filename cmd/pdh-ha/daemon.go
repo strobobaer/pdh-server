@@ -177,7 +177,9 @@ type daemon struct {
 	accessStop  context.CancelFunc
 	accessPrev  <-chan struct{} // Abgabe des vorigen Arbeiters (neuer startet danach)
 	accessIface string
-	accessErr   string // Kartenwahl gescheitert
+	accessErr   string   // Kartenwahl gescheitert
+	accessV6    string   // IPv6-Ende, für das access gilt ("" = keins)
+	na6         naSender // Ankündigung der IPv6-Adresse (nil = keine; Tests)
 
 	// Adresstest (vip_check.go); Tests ersetzen die Wege.
 	tlsFn       func() (*tls.Certificate, *x509.CertPool, error)
@@ -223,6 +225,7 @@ func newDaemon(st store, ev *eventLog) *daemon {
 		actQ:      make(chan queuedAction, 16),
 		sys:       execRunner{},
 		ifAddrsFn: listIfAddrs,
+		na6:       icmpNA{},
 		up:        newUpState(),
 	}
 	d.act = observeActor{ev: ev}
@@ -1011,6 +1014,7 @@ func (d *daemon) syncAccessLocked(ctx context.Context) {
 		}
 	}
 	if key == d.accessKey && (d.access != nil || key == "") {
+		d.syncAccess6Locked()
 		return
 	}
 	if key != d.accessKey {
@@ -1049,9 +1053,47 @@ func (d *daemon) syncAccessLocked(ctx context.Context) {
 	}
 	wctx, cancel := context.WithCancel(base)
 	w := newAccessWorker(newVIPCtl(d.sys, iface, vip), d.ev)
+	// IPv6: der vorige Arbeiter gibt seine IPv6-Adresse mit ab (release)
+	sfx, v6 := d.vip6Locked(iface)
+	w.withVIP6(v6, nil)
+	d.accessV6 = sfx
 	w.after = d.accessPrev
 	d.access, d.accessStop = w, cancel
 	go w.run(wctx)
+}
+
+// vip6Locked: Steuerung der IPv6-Adresse für das eingestellte Ende (nil = keins).
+func (d *daemon) vip6Locked(iface string) (string, *vip6Ctl) {
+	if d.cl.Access.VIP6Suffix == "" {
+		return "", nil
+	}
+	s, err := parseVIP6Suffix(d.cl.Access.VIP6Suffix)
+	if err != nil {
+		return "", nil
+	}
+	return s.String(), newVIP6Ctl(d.sys, iface, s, d.na6)
+}
+
+// syncAccess6Locked: nur das IPv6-Ende hat sich geändert. Der laufende
+// Arbeiter bekommt das neue Ende, die Adresse des alten Endes räumt er im
+// nächsten Schritt weg – die IPv4-Adresse bleibt dabei unberührt.
+func (d *daemon) syncAccess6Locked() {
+	w := d.access
+	if w == nil {
+		return
+	}
+	sfx, v6 := d.vip6Locked(d.accessIface)
+	if sfx == d.accessV6 {
+		return
+	}
+	var old *vip6Ctl
+	if d.accessV6 != "" {
+		if s, err := netip.ParseAddr(d.accessV6); err == nil {
+			old = newVIP6Ctl(d.sys, d.accessIface, s, nil)
+		}
+	}
+	w.withVIP6(v6, old)
+	d.accessV6 = sfx
 }
 
 // accessExitWait: so lange wartet das Dienstende höchstens auf die Abgabe

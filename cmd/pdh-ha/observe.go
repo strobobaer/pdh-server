@@ -194,6 +194,7 @@ func (d *daemon) statusLocked() apiStatus {
 	}
 	st.AutoMode, st.Busy = st.Settings.AutoMode, d.busy.Load()
 	st.Observe, st.SwapTested = !st.Settings.Real(), d.cl.SwapTested
+	note6 := "" // Hinweis zur IPv6-Adresse dieses Servers
 	if d.node.Kind == "node" {
 		var hb message
 		d.hbPGLocked(&hb)
@@ -204,10 +205,13 @@ func (d *daemon) statusLocked() apiStatus {
 			st.Self.PG = "unknown"
 		}
 		st.Self.VIPHeld = d.access != nil && d.access.held()
+		if d.access != nil {
+			st.Self.VIP6Held, note6 = d.access.held6()
+		}
 	}
 	a := d.cl.Access
 	st.Access = apiAccess{VIP: a.VIP, VIPOn: a.VIPOn, HooksOn: a.HooksOn, VIP6Suffix: a.VIP6Suffix, Tested: a.Tested,
-		Iface: d.accessIface, IfaceErr: d.accessErr}
+		Iface: d.accessIface, IfaceErr: d.accessErr, VIP6Note: note6}
 	if d.node.Kind == "node" {
 		st.Access.Tunnel.Sum = d.tunnel.Sum()
 		st.Self.TunnelSum = st.Access.Tunnel.Sum
@@ -215,7 +219,7 @@ func (d *daemon) statusLocked() apiStatus {
 		st.Self.HooksSum = st.Access.Hooks.Sum
 	}
 	if st.Self.VIPHeld {
-		st.Access.Holder = d.node.ID
+		st.Access.Holder, st.Access.VIP6 = d.node.ID, st.Self.VIP6Held
 	}
 	// Vor dem ersten Takt (Neustart-Regel noch nicht angewandt) und nach einem
 	// Speicherfehler nie „aktiv“ melden – sonst sichert z. B. der Agent zu früh.
@@ -253,14 +257,14 @@ func (d *daemon) statusLocked() apiStatus {
 			an.Role, an.Term, an.Version, an.Commit, an.Gateway = ha.Role(m.Role), m.Term, m.Ver, m.Commit, m.Gateway
 			an.PG, an.LSN, an.LagBytes, an.Sync, an.Stale, an.Timeline, an.DataCurrent, an.Diverged =
 				m.PG, m.LSN, m.Lag, m.Sync, m.Stale, m.TL, m.DataCurrent, m.Diverged
-			an.VIPHeld, an.HooksSum, an.TunnelSum = m.VIP, m.Hooks, m.Tun
+			an.VIPHeld, an.VIP6Held, an.HooksSum, an.TunnelSum = m.VIP, m.VIP6Held, m.Hooks, m.Tun
 			hosts[n.ID] = m.HostID
 			if d.node.Kind == "witness" && an.Seen && m.UpJob {
 				st.Update.Active = true // Zeuge: ein Server meldet einen laufenden Auftrag
 			}
 		}
 		if st.Access.Holder == "" && an.Seen && an.VIPHeld {
-			st.Access.Holder = n.ID
+			st.Access.Holder, st.Access.VIP6 = n.ID, an.VIP6Held
 		}
 		for _, p := range v.Paths {
 			an.Paths = append(an.Paths, apiPath{Addr: p.Addr, Alive: p.Alive, LastRecvAgo: ago(p.LastRecv), Err: p.Err})
@@ -361,6 +365,7 @@ func (d *daemon) heartbeatLocked(gw bool, views map[string]peerView, wall time.T
 		d.hbPGLocked(&m)
 		if d.access != nil {
 			m.VIP = d.access.held()
+			m.VIP6Held, _ = d.access.held6()
 		}
 		_, m.Hooks, _ = d.hooks.info()
 		m.Tun = d.tunnel.Sum()

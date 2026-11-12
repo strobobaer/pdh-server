@@ -532,6 +532,17 @@ func printStatus(w io.Writer, st apiStatus) {
 			where += " (aus)"
 		}
 		fmt.Fprintf(w, "Adresse %s: %s\n", addr, where)
+		if a.VIP6Suffix != "" {
+			if a.VIP6 != "" {
+				fmt.Fprintf(w, "Adresse %s: %s\n", a.VIP6, where)
+			} else {
+				off := ""
+				if !a.VIPOn {
+					off = " (aus)"
+				}
+				fmt.Fprintf(w, "IPv6-Adresse (Ende %s): niemand%s\n", a.VIP6Suffix, off)
+			}
+		}
 		if a.IfaceErr != "" {
 			fmt.Fprintf(w, "  Netzwerkkarte: %s\n", a.IfaceErr)
 		}
@@ -568,6 +579,9 @@ func printStatus(w io.Writer, st apiStatus) {
 	}
 	for _, x := range st.Warnings {
 		fmt.Fprintf(w, "Hinweis: %s\n", x)
+	}
+	if st.Access.VIP6Note != "" {
+		fmt.Fprintf(w, "Hinweis: %s\n", st.Access.VIP6Note)
 	}
 }
 
