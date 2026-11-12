@@ -58,6 +58,18 @@ type mirrorInboxDeps struct {
 	statePath string                              // mirror-inbox.json
 	now       func() time.Time                    // nil = time.Now
 	sources   func(ha.Settings) []ha.MirrorSource // nil = ha.MirrorSources (Test-Einhängepunkt)
+	nginxConf string                              // Hauptdatei von nginx; "" = /etc/nginx/nginx.conf
+}
+
+// nginxPresent: Ist nginx auf diesem Server eingerichtet? Ohne nginx lädt ein Lauf der
+// Zertifikate nichts neu und meldet nichts.
+func (m *mirrorInbox) nginxPresent() bool {
+	p := m.d.nginxConf
+	if p == "" {
+		p = "/etc/nginx/nginx.conf"
+	}
+	st, err := os.Stat(p)
+	return err == nil && !st.IsDir()
 }
 
 type mirrorInboxState struct {
@@ -638,7 +650,7 @@ func (m *mirrorInbox) Accept(ctx context.Context, peerID, peerKind string, req m
 		before = countFiles(trash) // ohne Schloss: der Papierkorb kann groß sein
 	}
 	var sigBefore map[string]string
-	if label == "nginx" {
+	if label == "nginx" || label == ha.MirrorCertLabel {
 		sigBefore = treeSig(target)
 	}
 
@@ -700,7 +712,10 @@ func (m *mirrorInbox) Accept(ctx context.Context, peerID, peerKind string, req m
 			// nginx: Änderung merken (auch bei Abbruch); geladen wird nach jedem
 			// erfolgreichen Lauf von nginx und der Zertifikatsquellen, solange
 			// der Merker steht.
-			if label == "nginx" && !sameSig(sigBefore, treeSig(target)) {
+			// Zertifikate des PDH: Ein geändertes Zertifikat übernimmt nginx erst beim Neuladen –
+			// also ebenso merken, aber nur, wenn nginx hier eingerichtet ist (sonst still).
+			changed := (label == "nginx" || label == ha.MirrorCertLabel) && !sameSig(sigBefore, treeSig(target))
+			if changed && (label == "nginx" || m.nginxPresent()) {
 				m.mu.Lock()
 				m.st.NginxDirty = true
 				m.mu.Unlock()

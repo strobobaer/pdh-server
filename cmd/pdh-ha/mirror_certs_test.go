@@ -295,6 +295,54 @@ func TestInboxSslPdhLeavesNginxAloneWhenClean(t *testing.T) {
 	}
 }
 
+// Ändert ein Lauf von ssl-pdh die Zertifikate (Erneuerung am aktiven Server), lädt der Empfänger nginx
+// neu – nur wenn nginx hier eingerichtet ist; unverändert kein Neuladen, ohne nginx still.
+func TestInboxSslPdhReloadsNginxWhenCertsChange(t *testing.T) {
+	run := func(t *testing.T, withNginx bool) *inboxFix {
+		f := newInboxFix(t)
+		f.srcs = append(f.srcs, ha.MirrorSource{Label: "ssl-pdh", Path: f.root + "/etc/ssl/pdh"})
+		f.rebuild()
+		f.in.d.nginxConf = f.root + "/etc/nginx/nginx.conf"
+		if withNginx {
+			os.MkdirAll(f.root+"/etc/nginx", 0o755)
+			os.WriteFile(f.root+"/etc/nginx/nginx.conf", []byte("x"), 0o644)
+		}
+		os.MkdirAll(f.root+"/etc/ssl/pdh/pdh.firma.de", 0o755)
+		os.WriteFile(f.root+"/etc/ssl/pdh/pdh.firma.de/fullchain.pem", []byte("alt"), 0o644)
+		// unverändert: kein Neuladen
+		_, done, refuse := f.accept("ssl-pdh", 3)
+		if refuse != "" {
+			t.Fatal(refuse)
+		}
+		done(nil)
+		if got := f.calls(); len(got) != 0 {
+			t.Fatalf("unverändert: %v", got)
+		}
+		// geändert
+		_, done, _ = f.accept("ssl-pdh", 3)
+		os.WriteFile(f.root+"/etc/ssl/pdh/pdh.firma.de/fullchain.pem", []byte("erneuert"), 0o644)
+		done(nil)
+		return f
+	}
+	f := run(t, true)
+	if got := strings.Join(f.calls(), ";"); got != "nginx -t;systemctl reload nginx" {
+		t.Fatalf("geändert mit nginx: %q", got)
+	}
+	_, done, _ := f.accept("ssl-pdh", 3)
+	done(nil)
+	if len(f.calls()) != 2 {
+		t.Fatalf("danach ohne Änderung kein weiteres Neuladen: %v", f.calls())
+	}
+
+	f = run(t, false)
+	if got := f.calls(); len(got) != 0 {
+		t.Fatalf("ohne nginx: %v", got)
+	}
+	if ev := f.events(); strings.Contains(ev, "alarm") || strings.Contains(ev, "nginx") {
+		t.Fatalf("ohne nginx Meldungen: %s", ev)
+	}
+}
+
 const sslR63Alarm = "Quelle ssl-pdh: Der Ordner ist neu dazugekommen, seit dieser Server aktiv wurde – einen eigenen Beleg gibt es dafür noch nicht. Auf dem Partner wird nichts gelöscht. Ist dieser Server vollständig: sudo pdh-ha mirror confirm"
 
 // Das erste Zertifikat nach einem Tausch (Ordner fehlte bei der Übernahme, kein eigener Beleg): R63 gilt für die
