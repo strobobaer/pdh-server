@@ -64,7 +64,12 @@ type haStatus struct {
 type haAccess struct {
 	VIP      string       `json:"vip"` // mit Präfixlänge, z. B. 10.77.1.50/24
 	VIPOn    bool         `json:"vip_on"`
-	HooksOn  bool         `json:"hooks_on"`
+	// IPv6-Zusatz der mitwandernden Adresse: eingestelltes Ende, aktuelle
+	// Adresse beim Halter ("" = keine) und Hinweistext ("" = keiner).
+	VIP6Suffix string `json:"vip6_suffix"`
+	VIP6       string `json:"vip6"`
+	VIP6Note   string `json:"vip6_note"`
+	HooksOn bool         `json:"hooks_on"`
 	Iface    string       `json:"iface"` // eigene Netzwerkkarte
 	IfaceErr string       `json:"iface_err"`
 	Holder   string       `json:"holder"` // Server, der die Adresse hält ("" = keiner)

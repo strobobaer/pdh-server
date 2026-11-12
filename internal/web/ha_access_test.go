@@ -320,3 +320,74 @@ func TestHAAccessCardRenders(t *testing.T) {
 		}
 	}
 }
+
+func TestHADoAccessSendsVIP6Suffix(t *testing.T) {
+	f := &fakeHA{status: haTrioStatus, events: `[]`}
+	startFakeHA(t, f)
+	h := &Handler{}
+	form := url.Values{"vip": {"10.77.1.50/24"}, "vip_on": {"0", "1"}, "vip6_suffix": {" 15 "}}
+	if _, err := h.haDoAccess(context.Background(), form); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(f.bodies[0], `"vip6_suffix":"15"`) {
+		t.Errorf("Körper: %s", f.bodies[0])
+	}
+	form = url.Values{"vip": {"10.77.1.50/24"}, "vip_on": {"0", "1"}, "vip6_suffix": {""}}
+	if _, err := h.haDoAccess(context.Background(), form); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(f.bodies[1], `"vip6_suffix":""`) {
+		t.Errorf("leeres Feld muss \"\" senden: %s", f.bodies[1])
+	}
+}
+
+func TestHADoAccessClearsVIP6WhenVIPOff(t *testing.T) {
+	f := &fakeHA{status: haTrioStatus, events: `[]`}
+	startFakeHA(t, f)
+	form := url.Values{"vip": {"10.77.1.50/24"}, "vip_on": {"0"}, "vip6_suffix": {"15"}}
+	if _, err := (&Handler{}).haDoAccess(context.Background(), form); err != nil {
+		t.Fatal(err)
+	}
+	if b := f.bodies[0]; !strings.Contains(b, `"vip6_suffix":""`) || !strings.Contains(b, `"vip_on":false`) {
+		t.Errorf("Körper: %s", b)
+	}
+}
+
+func TestVIPRowShowsVIP6(t *testing.T) {
+	v := accessView(func(v *haView) {
+		a := &v.Status.Access
+		a.VIP, a.VIPOn, a.Holder, a.VIP6, a.VIP6Suffix = "10.77.1.50/24", true, "pdh", "2a02:f90:e198:1700::15", "15"
+	})
+	r := rowOf(t, v, "Mitwandernde Adresse")
+	if !strings.Contains(r.State, "2a02:f90:e198:1700::15") || r.Level != "ok" {
+		t.Errorf("Zeile: %+v", r)
+	}
+	v.Status.Access.VIP6 = ""
+	if r := rowOf(t, v, "Mitwandernde Adresse"); !strings.Contains(r.State, "IPv6 noch nicht gesetzt") {
+		t.Errorf("Zeile: %+v", r)
+	}
+}
+
+func TestVIPRowVIP6Note(t *testing.T) {
+	v := accessView(func(v *haView) {
+		a := &v.Status.Access
+		a.VIP, a.VIPOn, a.Holder, a.VIP6Suffix, a.VIP6Note = "10.77.1.50/24", true, "pdh", "15", "Kein IPv6-Präfix im Netz"
+	})
+	r := rowOf(t, v, "Mitwandernde Adresse")
+	if r.Level != "warn" || !strings.Contains(r.State+r.Detail, "Kein IPv6-Präfix im Netz") {
+		t.Errorf("Zeile: %+v", r)
+	}
+}
+
+func TestHAAccessFormRendersVIP6Field(t *testing.T) {
+	v := accessView(func(v *haView) {
+		v.Status.CAHolder = true
+		v.Status.Access.VIP, v.Status.Access.VIPOn, v.Status.Access.VIP6Suffix = "10.77.1.50/24", true, "15"
+	})
+	out := renderDR(t, drView{HA: v})
+	for _, want := range []string{`name="vip6_suffix"`, `value="15"`, "IPv6-Ende (Zusatz)", "leer = aus, z. B. 15", "Ohne IPv6 im Netz passiert nichts."} {
+		if !strings.Contains(out, want) {
+			t.Errorf("Karte ohne %q", want)
+		}
+	}
+}

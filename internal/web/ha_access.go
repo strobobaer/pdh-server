@@ -150,6 +150,16 @@ func (v haView) vipRow() haAccessRow {
 	default:
 		r.State, r.Level = a.VIP+" liegt auf "+a.Holder, "ok"
 	}
+	switch {
+	case a.VIP6 != "":
+		r.State += " · IPv6 " + a.VIP6
+	case a.VIP6Suffix != "" && a.VIP6Note == "":
+		r.State += " · IPv6 noch nicht gesetzt"
+	}
+	if a.VIP6Note != "" {
+		detail = append(detail, a.VIP6Note)
+		r.Level = accessLevelMax(r.Level, "warn")
+	}
 	if a.Tested != nil {
 		d := "Letzter Test " + a.Tested.At.Local().Format("02.01. 15:04") + " bestanden"
 		var cards []string
@@ -250,6 +260,15 @@ func (h *Handler) haDoAccess(ctx context.Context, f url.Values) (string, error) 
 	}
 	flag("vip_on", "Mitwandernde Adresse")
 	flag("hooks_on", "Skripte")
+	if _, ok := f["vip6_suffix"]; ok {
+		suffix := strings.TrimSpace(f.Get("vip6_suffix"))
+		// Wird die Adresse ausgeschaltet, gilt kein IPv6-Ende mehr (pdh-ha
+		// lehnt ein Ende ohne eingeschaltete Adresse ab).
+		if on, set := body["vip_on"].(bool); set && !on {
+			suffix = ""
+		}
+		body["vip6_suffix"] = suffix
+	}
 	if len(body) == 0 {
 		return "", errAccessEmpty
 	}

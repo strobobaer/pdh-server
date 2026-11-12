@@ -200,6 +200,7 @@
   {{if .CanEditSettings}}
   <form method="post" action="/admin/server-config/ha/access" class="vp-form">
     <div><label class="form-label">Mitwandernde Adresse (z. B. 10.77.1.50/24)</label><input class="form-input" name="vip" value="{{.Status.Access.VIP}}" placeholder="10.77.1.50/24"></div>
+    <div><label class="form-label">IPv6-Ende (Zusatz)</label><input class="form-input" name="vip6_suffix" value="{{.Status.Access.VIP6Suffix}}" placeholder="leer = aus, z. B. 15" autocomplete="off"><p class="vp-hint">Der aktive Server bekommt zusätzlich die IPv6-Adresse aus dem Präfix des Netzes mit diesem Ende. Ohne IPv6 im Netz passiert nichts.</p></div>
     <div><label class="form-label"><input type="hidden" name="vip_on" value="0"><input type="checkbox" name="vip_on" value="1"{{if .Status.Access.VIPOn}} checked{{end}}> Adresse mitwandern lassen</label></div>
     <div><button class="btn btn-small" type="submit"><i class="ti ti-device-floppy"></i> Speichern</button></div>
   </form>
