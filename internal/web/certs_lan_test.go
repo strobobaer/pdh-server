@@ -1,6 +1,7 @@
 package web
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"net/http"
@@ -241,42 +242,75 @@ func TestUnifiPanelHidesKey(t *testing.T) {
 	if !up.HasKey || !up.Confirmed || up.URL != "https://192.168.1.1" {
 		t.Fatalf("Panel: %+v", up)
 	}
-	p := certPanel{CanManage: true, CanUnifi: true, Zone: "firma.de", AgentOK: true, NginxOK: true, Unifi: up, UnifiOpen: true,
-		LANTarget: lanTarget, Lines: []certLine{{Name: "nc.firma.de", State: certStateGueltig, LAN: "cloudflare"}}}
-	out := renderCertPanel(t, p)
+	// Reiter „UniFi“: Formular, Fingerabdruck, nie der Schlüssel
+	out := renderUnifiPanel(t, unifiTab{Can: true, Unifi: up})
 	if strings.Contains(out, plain) || strings.Contains(out, enc) {
-		t.Fatal("die Karte zeigt den Schlüssel")
+		t.Fatal("der Reiter zeigt den Schlüssel")
 	}
-	for _, want := range []string{"hinterlegt", "Namen im Haus (UniFi)", `hx-post="/admin/server-config/certs/unifi"`,
-		unifi.FormatPin(strings.Repeat("ab", 32)), `hx-post="/admin/server-config/certs/lan"`, `aria-label="nc.firma.de im Haus eintragen"`} {
+	for _, want := range []string{"hinterlegt", "UniFi UDM Pro", `hx-post="/admin/server-config/unifi"`, `hx-target="#unifi-panel"`,
+		unifi.FormatPin(strings.Repeat("ab", 32)), `value="https://192.168.1.1"`, `href="?tab=cloudflare"`} {
 		if !strings.Contains(out, want) {
-			t.Errorf("Karte enthält %q nicht", want)
+			t.Errorf("Reiter enthält %q nicht", want)
 		}
 	}
 	if strings.Contains(out, `name="key" value=`) {
 		t.Error("Schlüsselfeld darf keinen Wert tragen")
 	}
+	// gesehener Fingerabdruck: Knopf „Bestätigen“ mit Rückfrage
+	out = renderUnifiPanel(t, unifiTab{Can: true, Unifi: unifiPanel{URL: "https://192.168.1.1", HasKey: true, SeenPin: "AB:CD"}})
+	if !strings.Contains(out, `hx-post="/admin/server-config/unifi/confirm"`) || !strings.Contains(out, `name="fingerprint" value="AB:CD"`) || !strings.Contains(out, "hx-confirm") {
+		t.Errorf("Bestätigen fehlt:\n%s", out)
+	}
+	// ohne Recht: nur der Satz mit dem Recht, kein Formular
+	out = renderUnifiPanel(t, unifiTab{})
+	if !strings.Contains(out, "system.unifi") || strings.Contains(out, "<form") {
+		t.Errorf("ohne Recht kein Formular:\n%s", out)
+	}
+	// Zertifikatskarte: Knopf je Name und Verweis auf den Reiter, keine Einstellungen mehr
+	p := certPanel{CanManage: true, CanUnifi: true, Zone: "firma.de", AgentOK: true, NginxOK: true, Unifi: up,
+		LANTarget: lanTarget, Lines: []certLine{{Name: "nc.firma.de", State: certStateGueltig, LAN: "cloudflare"}}}
+	out = renderCertPanel(t, p)
+	if strings.Contains(out, plain) || strings.Contains(out, enc) {
+		t.Fatal("die Karte zeigt den Schlüssel")
+	}
+	for _, want := range []string{"Namen im Haus", `href="?tab=unifi"`, `hx-post="/admin/server-config/certs/lan"`, `aria-label="nc.firma.de im Haus eintragen"`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("Karte enthält %q nicht", want)
+		}
+	}
+	if strings.Contains(out, `name="key"`) || strings.Contains(out, "server-config/unifi") || strings.Contains(out, "<details") {
+		t.Error("die Zertifikatskarte darf die UniFi-Einstellungen nicht mehr enthalten")
+	}
 }
 
-// Ohne UniFi: zugeklappter Abschnitt mit Einrichtungs-Hinweis und Anleitung von Hand, kein
-// Knopf „Im Haus eintragen“; ohne Recht der Satz mit dem Recht.
+func renderUnifiPanel(t *testing.T, v unifiTab) string {
+	t.Helper()
+	var buf bytes.Buffer
+	if err := loadTestTemplates(t).ExecuteTemplate(&buf, "unifi-panel", v); err != nil {
+		t.Fatal(err)
+	}
+	return buf.String()
+}
+
+// Ohne UniFi: Anleitung von Hand und Verweis auf den Reiter „UniFi“, kein Knopf „Im Haus
+// eintragen“; ohne Recht der Satz mit dem Recht.
 func TestUnifiPanelWithoutUnifi(t *testing.T) {
 	p := certPanel{CanManage: true, CanUnifi: true, Zone: "firma.de", AgentOK: true, NginxOK: true, LANTarget: lanTarget,
 		Unifi: unifiPanelFrom(func(string) string { return "" }, "", ""),
 		Lines: []certLine{{Name: "nc.firma.de", State: certStateGueltig}, {Name: "pdh.firma.de", State: certStateNeu}}}
 	out := renderCertPanel(t, p)
-	for _, want := range []string{"Namen im Haus (UniFi)", "API-Schlüssel", "nc.firma.de</code> → Typ A → <code>" + lanTarget, "pdh.firma.de</code> → Typ A"} {
+	for _, want := range []string{"Namen im Haus", "API-Schlüssel", `href="?tab=unifi"`, "nc.firma.de</code> → Typ A → <code>" + lanTarget, "pdh.firma.de</code> → Typ A"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("ohne UniFi fehlt %q", want)
 		}
 	}
-	if strings.Contains(out, "certs/lan") || strings.Contains(out, "var(--red)") || strings.Contains(out, "<details id=\"cert-unifi\" class=\"cert-unifi\" open") {
-		t.Errorf("ohne UniFi kein Knopf, kein Fehler, zugeklappt:\n%s", out)
+	if strings.Contains(out, "certs/lan") || strings.Contains(out, "var(--red)") || strings.Contains(out, "server-config/unifi") {
+		t.Errorf("ohne UniFi kein Knopf, kein Fehler, keine Einstellungen:\n%s", out)
 	}
 	p.CanUnifi = false
 	out = renderCertPanel(t, p)
-	if !strings.Contains(out, "system.unifi") || strings.Contains(out, "certs/unifi") {
-		t.Errorf("ohne Recht: Satz mit dem Recht, keine Einstellungen:\n%s", out)
+	if !strings.Contains(out, "system.unifi") || strings.Contains(out, "tab=unifi") {
+		t.Errorf("ohne Recht: Satz mit dem Recht, kein Verweis auf den Reiter:\n%s", out)
 	}
 	// fremder Eintrag: Knopf zum Überschreiben mit Rückfrage
 	p = certPanel{CanManage: true, CanUnifi: true, Zone: "firma.de", AgentOK: true, NginxOK: true, LANTarget: lanTarget,
@@ -476,7 +510,7 @@ func TestUnifiDisconnectClearsMarkers(t *testing.T) {
 
 // Alle drei Routen brauchen system.unifi – im Gate und im Handler.
 func TestUnifiGateRules(t *testing.T) {
-	for _, path := range []string{"/admin/server-config/certs/unifi", "/admin/server-config/certs/unifi/confirm", "/admin/server-config/certs/lan"} {
+	for _, path := range []string{"/admin/server-config/unifi", "/admin/server-config/unifi/confirm", "/admin/server-config/certs/lan"} {
 		if _, perm, _, _, ok := matchGate("POST", path); !ok || perm != permUnifi {
 			t.Errorf("%s: Recht %q, erwartet %q", path, perm, permUnifi)
 		}
@@ -486,9 +520,9 @@ func TestUnifiGateRules(t *testing.T) {
 	}
 	noUnifi := &Handler{hasPermHook: func(_ *http.Request, p string) bool { return p != permUnifi }}
 	for path, fn := range map[string]http.HandlerFunc{
-		"/admin/server-config/certs/unifi":         noUnifi.CertUnifiWeb,
-		"/admin/server-config/certs/unifi/confirm": noUnifi.CertUnifiConfirmWeb,
-		"/admin/server-config/certs/lan":           noUnifi.CertLANWeb,
+		"/admin/server-config/unifi":         noUnifi.CertUnifiWeb,
+		"/admin/server-config/unifi/confirm": noUnifi.CertUnifiConfirmWeb,
+		"/admin/server-config/certs/lan":     noUnifi.CertLANWeb,
 	} {
 		req := httptest.NewRequest("POST", path, strings.NewReader("name=nc.firma.de&url=https://192.168.1.1"))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")

@@ -96,7 +96,7 @@
      cf-panel geladen und danach einzeln über /admin/server-config/certs/panel erneuert – alle
      5 Sekunden, solange ein Auftrag läuft. Daten: certPanel. */}}
 {{define "cert-panel"}}
-<div id="cert-panel" class="cert-card"{{if and .CanManage .Running}} hx-get="/admin/server-config/certs/panel" hx-trigger="every 5s" hx-swap="outerHTML" hx-include="#cert-unifi-open"{{end}}>
+<div id="cert-panel" class="cert-card"{{if and .CanManage .Running}} hx-get="/admin/server-config/certs/panel" hx-trigger="every 5s" hx-swap="outerHTML"{{end}}>
 <div class="form-label cert-head"><i class="ti ti-certificate"></i> Zertifikate (Let's Encrypt)</div>
 {{if not .CanManage}}
 <p class="sc-sub">Zertifikate verwaltet, wer das Recht „Zertifikate verwalten (Let's Encrypt)“ (<code>system.certs</code>) hat.</p>
@@ -179,35 +179,15 @@
 {{end}}
 
 {{if not .Hint}}
-<input type="hidden" id="cert-unifi-open" name="lanopen" value="{{if .UnifiOpen}}1{{end}}">
-<details id="cert-unifi" class="cert-unifi"{{if .UnifiOpen}} open{{end}} ontoggle="var i=document.getElementById('cert-unifi-open');if(i)i.value=this.open?'1':''">
-<summary class="form-label cert-head"><i class="ti ti-router"></i> Namen im Haus (UniFi)</summary>
+<div class="cert-unifi">
+<div class="form-label cert-head"><i class="ti ti-home"></i> Namen im Haus</div>
 <p class="sc-sub" style="margin:4px 0 8px">Im Firmennetz sollen die Namen direkt auf den Server zeigen (lokaler DNS-Eintrag Typ A auf {{if .LANTarget}}<code>{{.LANTarget}}</code>{{else}}die Adresse des Servers{{end}}), von außen weiter über Cloudflare.</p>
 {{if .Lines}}<div class="sc-sub">So geht's von Hand – am DNS-Server im Haus je Name einen Eintrag anlegen:</div>
 <ul class="sc-sub cert-hand">{{range .Lines}}<li><code>{{.Name}}</code> → Typ A → <code>{{if $.LANTarget}}{{$.LANTarget}}{{else}}Adresse des Servers{{end}}</code></li>{{end}}</ul>{{end}}
-{{if not .CanUnifi}}
-<p class="sc-sub">Einträge an einer UniFi UDM Pro setzt das PDH für alle mit dem Recht „Namen im Haus eintragen (UniFi)“ (<code>system.unifi</code>).</p>
-{{else}}
-{{if not (and .Unifi.URL .Unifi.HasKey)}}<p class="sc-sub"><i class="ti ti-info-circle"></i> Mit einer UniFi UDM Pro trägt das PDH die Namen selbst ein: In UniFi Network einen API-Schlüssel für die Netzwerk-Anwendung anlegen (wo, hängt von der Version ab), hier Adresse und Schlüssel speichern und den Fingerabdruck bestätigen. Ohne UniFi funktioniert alles andere wie bisher.</p>{{end}}
-{{if .Unifi.Err}}<div class="sc-sub" style="color:var(--amber)"><i class="ti ti-alert-triangle"></i> {{.Unifi.Err}}</div>{{end}}
-<form hx-post="/admin/server-config/certs/unifi" hx-target="#cert-panel" hx-swap="outerHTML" hx-disabled-elt="find button" class="cert-form">
-  <div class="form-group" style="margin:0"><label class="form-label">Adresse der UDM Pro</label><input class="form-input" name="url" value="{{.Unifi.URL}}" placeholder="https://192.168.1.1" autocomplete="off"></div>
-  <div class="form-group" style="margin:0"><label class="form-label">API-Schlüssel</label><input class="form-input" type="password" name="key" autocomplete="new-password" placeholder="{{if .Unifi.HasKey}}hinterlegt – nur zum Ändern eingeben{{else}}aus UniFi Network{{end}}"></div>
-  <div class="form-group" style="margin:0"><label class="form-label">Standort</label><input class="form-input" name="site" value="{{.Unifi.Site}}" placeholder="leer = einziger bzw. default" style="width:160px"></div>
-  <button class="btn btn-small" type="submit"><i class="ti ti-device-floppy"></i> Speichern</button>
-</form>
-{{if .Unifi.HasKey}}<p class="sc-sub" style="margin:0 0 6px"><i class="ti ti-key"></i> API-Schlüssel hinterlegt (verschlüsselt). Adresse leer speichern entfernt die Anbindung.</p>{{end}}
-{{if .Unifi.SeenPin}}<div class="cert-form">
-  <span class="sc-sub">Fingerabdruck der UDM Pro: <code class="cert-fp">{{.Unifi.SeenPin}}</code><br>Stimmt er mit dem Zertifikat überein, das der Browser auf der UDM Pro zeigt (SHA-256)?</span>
-  <form hx-post="/admin/server-config/certs/unifi/confirm" hx-target="#cert-panel" hx-swap="outerHTML" hx-disabled-elt="find button"
-    hx-confirm="Diesen Fingerabdruck bestätigen? Danach spricht das PDH nur noch mit einem Gerät, das genau diesen zeigt.">
-    <input type="hidden" name="fingerprint" value="{{.Unifi.SeenPin}}">
-    <button class="btn btn-primary btn-small" type="submit"><i class="ti ti-fingerprint"></i> Bestätigen</button></form>
+{{if .LANReady}}<p class="sc-sub"><i class="ti ti-router"></i> Die UniFi UDM Pro ist angebunden: Je Name trägt der Knopf <i class="ti ti-home-plus"></i> den Namen im Haus ein. Adresse und API-Schlüssel stehen im Reiter <a href="?tab=unifi">UniFi</a>.</p>
+{{else if .CanUnifi}}<p class="sc-sub"><i class="ti ti-router"></i> Mit einer UniFi UDM Pro trägt das PDH die Namen selbst ein. {{if .Unifi.URL}}Die Anbindung ist noch nicht fertig – im{{else}}Adresse und API-Schlüssel trägst du im{{end}} Reiter <a href="?tab=unifi">UniFi</a> {{if .Unifi.URL}}den Fingerabdruck bestätigen{{else}}ein{{end}}. Ohne UniFi funktioniert alles andere wie bisher.</p>
+{{else}}<p class="sc-sub">Einträge an einer UniFi UDM Pro setzt das PDH für alle mit dem Recht „Namen im Haus eintragen (UniFi)“ (<code>system.unifi</code>).</p>{{end}}
 </div>
-{{else if .Unifi.Confirmed}}<p class="sc-sub"><i class="ti ti-fingerprint"></i> Fingerabdruck bestätigt: <code class="cert-fp">{{.Unifi.Pin}}</code>. Je Name trägt der Knopf <i class="ti ti-home-plus"></i> den Namen im Haus ein.</p>
-{{else if .Unifi.URL}}<p class="sc-sub" style="color:var(--amber)"><i class="ti ti-alert-triangle"></i> Fingerabdruck noch nicht bestätigt. „Speichern“ drücken und den angezeigten Fingerabdruck bestätigen.</p>{{end}}
-{{end}}
-</details>
 {{end}}
 {{end}}
 <style>
@@ -223,10 +203,8 @@
 .cert-actions form{display:inline}
 .cert-err{flex-basis:100%;min-width:0;overflow-wrap:anywhere}
 .cert-unifi{margin-top:12px;padding-top:8px;border-top:1px solid var(--border)}
-.cert-unifi summary{cursor:pointer}
 .cert-hand{margin:4px 0 8px;padding-left:18px;overflow-wrap:anywhere}
 .cert-fp{overflow-wrap:anywhere;word-break:break-all}
-.cert-unifi .form-input{max-width:100%}
 </style>
 </div>
 {{end}}

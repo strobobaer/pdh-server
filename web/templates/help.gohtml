@@ -1394,7 +1394,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     </ol></div>
   <p>Startet die Datenbank nur etwas später (z. B. nach einem Neustart des Servers), wartet der Assistent und macht von selbst weiter.</p>
   <h3><i class="ti ti-adjustments-cog"></i> Server-Einstellungen im Betrieb</h3>
-  <p>Unter <b>Navigation → Server-Einstellungen</b> (nur Administratoren) stehen alle Werte, die früher von Hand in der <code>.env</code> gepflegt wurden – in Reitern: Server, Datenbank, Sicherheit, E-Mail, Copilot, Übersetzung, Microsoft 365, Nextcloud, Störungen, Cloudflare-Tunnel, Protokoll, Updates &amp; Sicherung.</p>
+  <p>Unter <b>Navigation → Server-Einstellungen</b> (nur Administratoren) stehen alle Werte, die früher von Hand in der <code>.env</code> gepflegt wurden – in Reitern: Server, Datenbank, Sicherheit, E-Mail, Copilot, Übersetzung, Microsoft 365, Nextcloud, Störungen, Cloudflare-Tunnel, Protokoll, Updates &amp; Sicherung. Dazu kommen eigene Reiter wie Erscheinungsbild, Passwörter, VPN, <b>UniFi</b> (nur mit dem Recht „Namen im Haus eintragen (UniFi)“) und Ausfallschutz.</p>
   <p><b>Gespeichert wird in der Datenbank</b> – Passwörter, Schlüssel und Tokens verschlüsselt. In der <code>.env</code> bleiben nur der <b>Datenbank-Zugang</b> und der Schlüssel <code>PDH_SETTINGS_KEY</code>, ohne die das PDH die Datenbank nicht erreichen bzw. die Geheimnisse nicht entschlüsseln kann. <b>Diese Datei deshalb unbedingt mitsichern</b> – eine Datenbank-Sicherung allein genügt für die verschlüsselten Werte nicht.</p>
   <div class="hb-howto"><b><i class="ti ti-database-import"></i> Übernahme einer bestehenden .env</b>
     Beim Start überträgt das PDH alle Werte der <code>.env</code>, die noch nicht in der Datenbank stehen, automatisch dorthin und kommentiert sie in der Datei aus (daneben liegt eine Sicherungskopie <code>.env.bak-…</code>, die die alten Werte im Klartext enthält – nach Prüfung löschen). Trägt jemand später wieder einen Wert in die <code>.env</code> ein, zeigt die Seite einen Hinweis mit <b>jetzt übernehmen</b>. Werte, die Docker (<code>.env.docker</code>) oder systemd von außen setzen, haben Vorrang, bis du sie übernimmst (siehe unten).</div>
@@ -1522,14 +1522,14 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     </ul>
     <b>Entfernen:</b> Solange <b>Full (strict)</b> eingeschaltet ist, geht es nicht. Die Karte meldet: „Full (strict) ist eingeschaltet. Zuerst „Zurückstellen“, dann den Namen entfernen“. Nutzt noch eine nginx-Seite das Zertifikat, lehnt der Agent ab („– nicht geändert“, mit Dateiname). Beim Entfernen gehen Seite bzw. Zertifikatszeilen auf den Stand davor zurück, die Dateien werden gelöscht und das Zertifikat wird bei Let's Encrypt widerrufen. Scheitert der Widerruf, wird der Name trotzdem entfernt und das Zertifikat läuft einfach ab.</div>
   <div class="hb-howto"><b><i class="ti ti-router"></i> So zeigen die Namen im Haus auf den Server</b>
-    Im Firmennetz sollen die Namen direkt auf den Server zeigen, von außen weiter über Cloudflare. Dafür braucht jeder Name am DNS-Server des Hauses einen Eintrag Typ A auf die mitwandernde Adresse. Mit einer UniFi UDM Pro übernimmt das PDH das (Aufklappbereich <b>Namen im Haus (UniFi)</b> in der Zertifikate-Karte, Recht „Namen im Haus eintragen (UniFi)“).
+    Im Firmennetz sollen die Namen direkt auf den Server zeigen, von außen weiter über Cloudflare. Dafür braucht jeder Name am DNS-Server des Hauses einen Eintrag Typ A auf die mitwandernde Adresse. Mit einer UniFi UDM Pro übernimmt das PDH das. Adresse und API-Schlüssel der UDM Pro trägst du in den Server-Einstellungen im eigenen Reiter <b>UniFi</b> ein. Den Reiter sieht, wer das Recht „Namen im Haus eintragen (UniFi)“ hat.
     <ol class="hb-steps">
       <li>In UniFi Network einen <b>API-Schlüssel</b> für die Netzwerk-Anwendung anlegen. Wo das geht, hängt von der Version ab – siehe die Hilfe von UniFi.</li>
-      <li>Im PDH <b>Adresse der UDM Pro</b> (z. B. <code>https://192.168.1.1</code>) und <b>API-Schlüssel</b> eintragen, bei Bedarf den <b>Standort</b>, und <b>Speichern</b>.</li>
+      <li><b>Server-Einstellungen → Reiter UniFi</b> öffnen. <b>Adresse der UDM Pro</b> (z. B. <code>https://192.168.1.1</code>) und <b>API-Schlüssel</b> eintragen, bei Bedarf den <b>Standort</b>, und <b>Speichern</b>. Der Schlüssel wird verschlüsselt gespeichert und nie wieder angezeigt.</li>
       <li>Den angezeigten <b>Fingerabdruck</b> mit dem Zertifikat vergleichen, das der Browser auf der UDM Pro zeigt (SHA-256), und <b>Bestätigen</b>.</li>
-      <li>Je Name den Knopf <b>Im Haus eintragen</b> (Haus-Symbol) drücken. Kontrolle: Die Zeile zeigt <i>im Haus direkt</i> statt <i>über Cloudflare</i>. Die Anzeige kann einen Moment nachhängen, weil das PDH den DNS selbst fragt.</li>
+      <li>In den Reiter <b>Cloudflare-Tunnel</b> wechseln und in der Karte <b>Zertifikate (Let's Encrypt)</b> je Name den Knopf <b>Im Haus eintragen</b> (Haus-Symbol) drücken. Kontrolle: Die Zeile zeigt <i>im Haus direkt</i> statt <i>über Cloudflare</i>. Die Anzeige kann einen Moment nachhängen, weil das PDH den DNS selbst fragt.</li>
     </ol>
-    Mit einem anderen DNS-Server trägst du den Eintrag Typ A von Hand ein; die Liste steht im selben Aufklappbereich.
+    Mit einem anderen DNS-Server trägst du den Eintrag Typ A von Hand ein; die Liste steht in der Zertifikate-Karte unter <b>Namen im Haus</b>.
     <ul>
       <li>Die Anbindung ist nach der Schnittstellenbeschreibung des Herstellers für UniFi Network 10.3 gebaut und <b>noch nicht an einem echten Gerät ausprobiert</b>. Ältere UniFi-Network-Versionen bieten diese Schnittstelle womöglich nicht – dann trägst du die Namen von Hand ein.</li>
       <li>Das PDH verbindet sich nur mit Adressen im eigenen Netz.</li>
@@ -1759,7 +1759,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <ul>
       <li><b>„Zertifikate verwalten (Let's Encrypt)“</b> (<code>system.certs</code>): Namen eintragen, Zertifikate holen und erneuern, Full (strict) ein- und ausschalten (dafür zusätzlich „Cloudflare verwalten (DNS, Proxy, Tunnel)“) (<a href="#hb-zertifikate">mehr</a>).</li>
       <li><b>„Zertifikate: entfernen und widerrufen (Bereichsadministrator)“</b> (<code>system.certs_admin</code>): von den Zertifikat-Rechten allein genug, um die Karte zu sehen und zu bedienen, und als Einziges berechtigt, Namen zu entfernen. Die Karte steckt in der Cloudflare-Karte; das Cloudflare-Recht braucht man trotzdem.</li>
-      <li><b>„Namen im Haus eintragen (UniFi)“</b> (<code>system.unifi</code>): die UniFi-Anbindung einrichten und Namen im Haus eintragen.</li>
+      <li><b>„Namen im Haus eintragen (UniFi)“</b> (<code>system.unifi</code>): die UniFi-Anbindung im Reiter <b>UniFi</b> der Server-Einstellungen einrichten und Namen im Haus eintragen.</li>
     </ul>
     Alle drei stehen in der Kategorie „System &amp; Sicherheit“. Mit dem Update bekommen sie alle Rollen, die „Cloudflare verwalten (DNS, Proxy, Tunnel)“ überall haben – niemand wird ausgesperrt. Die Karte steckt in der Cloudflare-Karte, deshalb braucht man dazu auch das Cloudflare-Recht.</div>
   <div class="hb-howto"><b><i class="ti ti-copy"></i> Rechte für die Datei-Spiegelung</b>

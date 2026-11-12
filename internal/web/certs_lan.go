@@ -15,8 +15,8 @@ import (
 
 // Namen im Haus über die UniFi UDM Pro (optional, Recht system.unifi).
 //
-//	POST /admin/server-config/certs/unifi          Adresse, API-Schlüssel, Standort speichern; zeigt den Fingerabdruck
-//	POST /admin/server-config/certs/unifi/confirm  genau diesen Fingerabdruck bestätigen
+//	POST /admin/server-config/unifi                Adresse, API-Schlüssel, Standort speichern; zeigt den Fingerabdruck
+//	POST /admin/server-config/unifi/confirm        genau diesen Fingerabdruck bestätigen
 //	POST /admin/server-config/certs/lan            Name im Haus eintragen (name, overwrite=1)
 //
 // Ohne gespeicherte Adresse und Schlüssel geht keine Anfrage an eine UniFi-Adresse – weder beim
@@ -39,7 +39,7 @@ type certLANClient interface {
 	Delete(ctx context.Context, id string) error
 }
 
-// unifiPanel: Abschnitt „Namen im Haus (UniFi)“. Der Schlüssel selbst ist nie darin.
+// unifiPanel: Einstellungen der UniFi-Anbindung (Reiter „UniFi“). Der Schlüssel selbst ist nie darin.
 type unifiPanel struct {
 	URL, Site, Pin, SeenPin, Err string
 	HasKey, Confirmed            bool
@@ -382,7 +382,7 @@ func certDoUnifiConfirm(ctx context.Context, d certActDeps, posted string) (unif
 		return res, "", err
 	}
 	componentLog("zertifikate").Info().Str("udm", base).Str("fingerabdruck", fp).Msg("fingerabdruck der udm pro bestätigt")
-	return res, "Fingerabdruck der UDM Pro bestätigt (" + unifi.FormatPin(fp) + "). Jetzt je Name „Im Haus eintragen“ drücken.", nil
+	return res, "Fingerabdruck der UDM Pro bestätigt (" + unifi.FormatPin(fp) + "). Jetzt im Reiter Cloudflare-Tunnel in der Karte „Zertifikate (Let's Encrypt)“ je Name „Im Haus eintragen“ drücken.", nil
 }
 
 // ── Betrieb ──────────────────────────────────────────────────
@@ -395,7 +395,7 @@ func (h *Handler) unifiClient(ctx context.Context) (certLANClient, error) {
 	}
 	key, err := decryptSecret(h.pkiKey(), enc)
 	if err != nil || key == "" {
-		return nil, errors.New("Der UniFi-Schlüssel ist nicht lesbar – bitte unter „Namen im Haus (UniFi)“ neu eintragen")
+		return nil, errors.New("Der UniFi-Schlüssel ist nicht lesbar – bitte in den Server-Einstellungen im Reiter „UniFi“ neu eintragen")
 	}
 	pin := h.certSetting(ctx, keyUnifiPin)
 	if pin == "" {
@@ -475,31 +475,76 @@ func (h *Handler) certLANCheckLive(ctx context.Context) (certLANClient, string, 
 
 // ── HTTP ─────────────────────────────────────────────────────
 
-func (h *Handler) unifiAct(w http.ResponseWriter, r *http.Request, what string,
-	do func(ctx context.Context, d certActDeps) (unifiResult, string, error)) {
-	var res unifiResult
-	h.certActWith(w, r, h.hasPerm(r, permUnifi), what, true, func(ctx context.Context, d certActDeps) (string, error) {
-		var msg string
-		var err error
-		res, msg, err = do(ctx, d)
-		return msg, err
-	}, func(p *certPanel) {
-		p.UnifiOpen = true
-		p.Unifi.SeenPin = res.Seen
-		if res.Warn != "" {
-			p.Unifi.Err = res.Warn
-		}
-	})
+// unifiTab: Reiter „UniFi“ der Server-Einstellungen (widgets/unifi.gohtml). Nur Einstellungen –
+// nie der Schlüssel; beim Zeichnen geht keine Anfrage an die UDM Pro.
+type unifiTab struct {
+	Can      bool // system.unifi
+	Msg, Err string
+	Unifi    unifiPanel
 }
 
-// CertUnifiWeb: POST /admin/server-config/certs/unifi (url, key, site)
+func (h *Handler) unifiTabFor(ctx context.Context, r *http.Request) unifiTab {
+	t := unifiTab{Can: h.hasPerm(r, permUnifi)}
+	if t.Can {
+		t.Unifi = unifiPanelFrom(func(k string) string { return h.certSetting(ctx, k) }, "", "")
+	}
+	return t
+}
+
+func (h *Handler) unifiRender(w http.ResponseWriter, t unifiTab) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	tm, err := h.tmpl.Clone()
+	if err == nil {
+		err = tm.ExecuteTemplate(w, "unifi-panel", t)
+	}
+	if err != nil {
+		fmt.Fprintf(w, `<div id="unifi-panel" class="sc-sub" style="color:var(--red)">UniFi: %s</div>`, esc(err.Error()))
+	}
+}
+
+// unifiAct: Recht prüfen, Aktion ausführen, protokollieren, melden, Reiter-Karte neu zeichnen.
+func (h *Handler) unifiAct(w http.ResponseWriter, r *http.Request, what string,
+	do func(ctx context.Context, d certActDeps) (unifiResult, string, error)) {
+	if !h.hasPerm(r, permUnifi) {
+		http.Error(w, "keine berechtigung", http.StatusForbidden)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
+	defer cancel()
+	res, msg, err := do(ctx, h.certActLive())
+	uid := ""
+	if u := getUser(r); u != nil {
+		uid = u.ID
+	}
+	lg := componentLog("zertifikate")
+	if err != nil {
+		lg.Warn().Str("von", uid).Str("aktion", what).Str("fehler", certSafeText(err.Error())).Msg("unifi")
+	} else {
+		lg.Info().Str("von", uid).Str("aktion", what).Str("meldung", msg).Msg("unifi")
+		if h.db != nil {
+			h.notifyAdmins(ctx, "🏠 **UniFi-Anbindung geändert** von "+h.chatUserName(ctx, uid)+": "+msg)
+		}
+	}
+	t := h.unifiTabFor(ctx, r)
+	t.Msg = msg
+	if err != nil {
+		t.Err = certSafeText(err.Error())
+	}
+	t.Unifi.SeenPin = res.Seen
+	if res.Warn != "" {
+		t.Unifi.Err = res.Warn
+	}
+	h.unifiRender(w, t)
+}
+
+// CertUnifiWeb: POST /admin/server-config/unifi (url, key, site)
 func (h *Handler) CertUnifiWeb(w http.ResponseWriter, r *http.Request) {
 	h.unifiAct(w, r, "unifi-einstellungen", func(ctx context.Context, d certActDeps) (unifiResult, string, error) {
 		return certDoUnifiSettings(ctx, d, r.FormValue("url"), r.FormValue("key"), r.FormValue("site"))
 	})
 }
 
-// CertUnifiConfirmWeb: POST /admin/server-config/certs/unifi/confirm (fingerprint)
+// CertUnifiConfirmWeb: POST /admin/server-config/unifi/confirm (fingerprint)
 func (h *Handler) CertUnifiConfirmWeb(w http.ResponseWriter, r *http.Request) {
 	h.unifiAct(w, r, "unifi-fingerabdruck", func(ctx context.Context, d certActDeps) (unifiResult, string, error) {
 		return certDoUnifiConfirm(ctx, d, r.FormValue("fingerprint"))

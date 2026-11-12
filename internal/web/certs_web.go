@@ -22,7 +22,8 @@ import (
 //	POST /admin/server-config/certs/issue     Zertifikat jetzt holen bzw. erneuern (im Hintergrund)
 //	POST /admin/server-config/certs/remove    Namen entfernen und Zertifikat widerrufen (Bereichsadministrator)
 //	POST /admin/server-config/certs/strict    Tunnel und Domain auf Full (strict) bzw. zurück (dazu system.cloudflare)
-//	POST /admin/server-config/certs/unifi…, …/lan  Namen im Haus über die UniFi UDM Pro (system.unifi, certs_lan.go)
+//	POST /admin/server-config/certs/lan            Namen im Haus über die UniFi UDM Pro (system.unifi, certs_lan.go;
+//	                                               die Anbindung selbst steht im Reiter „UniFi“: …/unifi, …/unifi/confirm)
 //
 // Die Karte lädt nur, wenn ein Administrator die Cloudflare-Karte öffnet. Ohne Cloudflare,
 // Update-Agent oder nginx zeigt sie einen Hinweis; die Cloudflare-Karte bleibt davon unberührt.
@@ -46,8 +47,7 @@ type certPanel struct {
 	Zone      string // Domain des API-Tokens
 	Hint      string // Cloudflare nicht eingerichtet – keine Formulare
 
-	CanUnifi  bool       // system.unifi: Abschnitt „Namen im Haus (UniFi)“ bearbeiten
-	UnifiOpen bool       // Abschnitt aufgeklappt zeigen
+	CanUnifi  bool       // system.unifi: Knopf „Im Haus eintragen“, Verweis auf den Reiter „UniFi“
 	Unifi     unifiPanel // nur Einstellungen, nie der Schlüssel
 	LANTarget string     // Zieladresse im Haus (mitwandernd bzw. erste eigene)
 }
@@ -134,7 +134,6 @@ func (h *Handler) certPanelFor(ctx context.Context, r *http.Request, msg string,
 	p.Lines = certLines(rows, lan, h.certMayRemove(r))
 	p.LANTarget = target
 	p.CanUnifi = h.hasPerm(r, permUnifi)
-	p.UnifiOpen = r.FormValue("lanopen") == "1"
 	p.Unifi = unifiPanelFrom(func(k string) string { return h.certSetting(ctx, k) }, "", "")
 	for i := range p.Lines {
 		p.Lines[i].LANHint = h.certSetting(ctx, keyUnifiHintPrefix+p.Lines[i].Name)
