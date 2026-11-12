@@ -291,7 +291,19 @@ func (h *Handler) haDoAccess(ctx context.Context, f url.Values) (string, error) 
 			msgs = append(msgs, "IPv6-Ende entfernt")
 		}
 		if now6, ok := h.haVIP6Suffix(ctx); ok && now6 != suffix {
-			return "", errors.New("Der Verbund-Dienst hat das IPv6-Ende nicht übernommen – erst beide Server aktualisieren.")
+			// Der Rest ist gespeichert: dessen Meldungen behalten (ohne die zum Ende,
+			// das nicht übernommen wurde) und den Satz anhängen – kein Fehler.
+			var saved []string
+			for _, m := range msgs {
+				if !strings.HasPrefix(m, "IPv6-Ende") {
+					saved = append(saved, m)
+				}
+			}
+			const notTaken = "Der Verbund-Dienst hat das IPv6-Ende nicht übernommen – erst beide Server aktualisieren."
+			if len(saved) == 0 {
+				return notTaken, nil
+			}
+			return strings.Join(saved, ", ") + ". " + notTaken, nil
 		}
 	}
 	return strings.Join(msgs, ", "), nil

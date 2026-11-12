@@ -821,7 +821,8 @@ func TestLAN6DoGuards(t *testing.T) {
 		t.Fatalf("unbekannt: %v", err)
 	}
 	d.lan6 = func(context.Context) lan6Target { return l6Target() }
-	for _, bad := range []string{"", "*.firma.de", "10.0.0.1", "nur-ein-label", "a b.firma.de"} {
+	// nur Namen, die schon an der Namensregel scheitern (Kurznamen: TestLAN6DoShortName)
+	for _, bad := range []string{"", "*.firma.de", "10.0.0.1", "a b.firma.de", "-nas", "nc..firma.de"} {
 		if _, err := certDoLAN6(context.Background(), d, bad, "2a02::99"); err == nil {
 			t.Errorf("Name %q angenommen", bad)
 		}

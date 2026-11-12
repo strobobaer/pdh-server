@@ -218,10 +218,44 @@ func TestVIP6StateTwoPrefixes(t *testing.T) {
 	}
 }
 
-// F4: gehaltene Adresse im Präfix mit kürzerer Restlaufzeit bleibt, solange es
+// Task 12: das gehaltene Präfix bleibt nur, solange kein anderes mehr als 30 Minuten
+// (vip6PrefixHold) länger gilt; forever ist länger als jede Zahl.
+func TestVIP6StatePrefixHoldLimit(t *testing.T) {
+	line := func(pfx, lft string) string {
+		return `2: eth0    inet6 ` + pfx + `:215:5dff:fe00:b202/64 scope global dynamic mngtmpaddr noprefixroute \       valid_lft ` +
+			lft + ` preferred_lft ` + lft
+	}
+	cases := []struct {
+		held, other string
+		stay        bool
+	}{
+		{"86000sec", "86400sec", true},  // 400 s Vorsprung: bleibt
+		{"80000sec", "86400sec", false}, // 6400 s Vorsprung: wechselt
+		{"forever", "86400sec", true},
+		{"86400sec", "forever", false},
+		{"forever", "forever", true},
+	}
+	for _, c := range cases {
+		f := newVIP6Fake(line("2a02:aaaa:0:1", c.held)+"\n"+line("2a02:f90:e198:1700", c.other), vip6OldLine)
+		v, _ := testVIP6(t, f, nil, "")
+		st, err := v.State(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := vip6Want
+		if c.stay {
+			want = "2a02:aaaa:0:1::15"
+		}
+		if st.Want != mustAddr(t, want) {
+			t.Errorf("gehalten %s, anderes %s: Want = %s, erwartet %s", c.held, c.other, st.Want, want)
+		}
+	}
+}
+
+// F4: gehaltene Adresse bleibt bei ähnlicher Restlaufzeit, solange ihr Präfix
 // wählbar ist; wird es deprecated, wechselt die Adresse ins andere Präfix.
 func TestVIP6StateKeepsHeldPrefix(t *testing.T) {
-	short := `2: eth0    inet6 2a02:aaaa:0:1:215:5dff:fe00:b202/64 scope global dynamic mngtmpaddr noprefixroute \       valid_lft 100sec preferred_lft 100sec`
+	short := `2: eth0    inet6 2a02:aaaa:0:1:215:5dff:fe00:b202/64 scope global dynamic mngtmpaddr noprefixroute \       valid_lft 85000sec preferred_lft 14000sec`
 	f := newVIP6Fake(short+"\n"+card6, vip6OldLine) // gehalten: 2a02:aaaa:0:1::15
 	v, _ := testVIP6(t, f, &fakeNA{}, "")
 	st, err := v.State(context.Background())

@@ -414,9 +414,18 @@ func TestHADoAccessVIP6NotTakenByOldService(t *testing.T) {
 	f := &access6HA{old: true}
 	startAccess6HA(t, f)
 	form := url.Values{"vip": {"10.77.1.50/24"}, "vip_on": {"0", "1"}, "vip6_suffix": {"15"}}
-	_, err := (&Handler{}).haDoAccess(context.Background(), form)
-	if err == nil || err.Error() != "Der Verbund-Dienst hat das IPv6-Ende nicht übernommen – erst beide Server aktualisieren." {
-		t.Fatalf("Meldung: %v", err)
+	msg, err := (&Handler{}).haDoAccess(context.Background(), form)
+	if err != nil {
+		t.Fatalf("kein Fehler erwartet: %v", err)
+	}
+	for _, want := range []string{"Adresse gespeichert", "Mitwandernde Adresse eingeschaltet",
+		"Der Verbund-Dienst hat das IPv6-Ende nicht übernommen – erst beide Server aktualisieren."} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("Meldung ohne %q: %q", want, msg)
+		}
+	}
+	if strings.Contains(msg, "IPv6-Ende 15 gespeichert") {
+		t.Errorf("Ende wurde nicht gespeichert: %q", msg)
 	}
 }
 

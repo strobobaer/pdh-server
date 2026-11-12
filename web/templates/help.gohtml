@@ -2324,9 +2324,9 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <ul>
       <li>Schaltest du die mitwandernde Adresse aus (auch mit <code>sudo pdh-ha access --vip-off</code>), löscht das PDH das IPv6-Ende mit.</li>
       <li>Hat euer Netz kein IPv6, passiert nichts. Die Zeile zeigt den Hinweis „Kein IPv6-Präfix …“, solange das Netz kein IPv6-Präfix hat.</li>
-      <li>Hat die Netzwerkkarte mehrere Präfixe, bleibt die Adresse im bisherigen, solange es gilt. Erst wenn es ausläuft, wechselt sie.</li>
+      <li>Hat die Netzwerkkarte mehrere Präfixe mit ähnlicher Laufzeit, bleibt die Adresse im bisherigen und springt nicht hin und her.</li>
       <li>Bei einem Rollentausch folgt die IPv6-Adresse der IPv4-Adresse etwa 5 Sekunden später. Vorher prüft der Server, ob die Adresse frei ist. In dieser Lücke nehmen die Geräte IPv4.</li>
-      <li>Wechselt der Anbieter das Präfix, setzt der Server die Adresse binnen weniger Sekunden selbst neu.</li>
+      <li>Wechselt der Anbieter das Präfix, setzt der Server die Adresse selbst neu: sofort, wenn der Router das alte Präfix als abgelaufen meldet, sonst nach etwa 30 Minuten.</li>
       <li>Benutzt schon ein anderes Gerät die Adresse, meldet der Server einen Alarm und versucht es danach einmal pro Minute erneut.</li>
       <li>Änderst du das Ende, während der Dienst <code>pdh-ha</code> gestoppt ist, bleibt die alte Adresse bis zum nächsten Start des Servers.</li>
       <li>Ein Problem mit IPv6 hält nie einen Rollentausch auf.</li>

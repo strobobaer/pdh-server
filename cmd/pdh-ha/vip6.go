@@ -146,15 +146,48 @@ func usable6(a card6Addr) bool {
 	return !a.has("temporary") && !a.has("deprecated") && !a.has("tentative") && !a.has("dadfailed")
 }
 
-// prefixUsable6: liegt eine wählbare /64 im Präfix von addr auf der Karte?
-func prefixUsable6(addrs []card6Addr, addr netip.Addr) bool {
+// vip6PrefixHold: Vorsprung an Restlaufzeit (valid_lft), ab dem ein anderes Präfix das
+// bisherige ablöst. Wechselt der Anbieter das Präfix und kündigt der Router das alte nur
+// nicht mehr an, bleibt die alte /64 noch Stunden „preferred“, während ihre Laufzeit
+// abläuft und das neue Präfix aufgefrischt wird: nach etwa 30 Minuten zieht die Adresse
+// um. Zwei Router mit ähnlichen Laufzeiten lassen sie dagegen nicht hin und her springen.
+const vip6PrefixHold = 30 * time.Minute
+
+// prefixValid6: größte valid_lft einer wählbaren /64 im Präfix von addr; false = keine.
+func prefixValid6(addrs []card6Addr, addr netip.Addr) (uint64, bool) {
 	p := netip.PrefixFrom(addr, 64).Masked()
+	var best uint64
+	found := false
 	for _, a := range addrs {
 		if usable6(a) && a.cidr.Masked() == p {
-			return true
+			best, found = max(best, a.valid), true
 		}
 	}
-	return false
+	return best, found
+}
+
+// keepPrefix6: bleibt die gehaltene Adresse h? Nur solange ihr Präfix wählbar ist und kein
+// anderes wählbares Präfix mehr als vip6PrefixHold länger gilt (forever ist länger als jede
+// Zahl; beide forever → bleibt).
+func keepPrefix6(addrs []card6Addr, h netip.Addr) bool {
+	held, ok := prefixValid6(addrs, h)
+	if !ok {
+		return false
+	}
+	if held == math.MaxUint64 {
+		return true
+	}
+	limit := held + uint64(vip6PrefixHold/time.Second)
+	if limit < held { // Überlauf
+		limit = math.MaxUint64 - 1
+	}
+	own := netip.PrefixFrom(h, 64).Masked()
+	for _, a := range addrs {
+		if usable6(a) && a.cidr.Masked() != own && a.valid > limit {
+			return false
+		}
+	}
+	return true
 }
 
 // isHeld: nur /128 in 2000::/3 mit dem eingestellten Ende und ohne „dynamic“
@@ -178,10 +211,11 @@ func (v *vip6Ctl) state(addrs []card6Addr) vip6State {
 	if p, ok := prefix6(addrs); ok {
 		st.Want = vip6Addr(p, v.suffix)
 		// Ruhig halten: liegt schon eine eigene Adresse in einem weiter wählbaren
-		// Präfix, bleibt es dabei – auch wenn ein anderes Präfix länger gilt.
+		// Präfix, bleibt es dabei – solange kein anderes deutlich länger gilt
+		// (vip6PrefixHold).
 		if !slices.Contains(st.Held, st.Want) {
 			for _, h := range st.Held {
-				if prefixUsable6(addrs, h) {
+				if keepPrefix6(addrs, h) {
 					st.Want = h
 					break
 				}
