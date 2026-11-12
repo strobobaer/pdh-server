@@ -216,18 +216,39 @@ func (h *Handler) cfWantedTargets(ctx context.Context, zone string, ingress []cl
 		}
 		out = append(out, t)
 	}
-	if h.certSetting(ctx, keyCertStrictBefore) == "" || h.db == nil {
-		return out
+	return cfStrictWanted(out, h.cfStrictNames(ctx))
+}
+
+// cfStrictNames: die geführten Namen, solange Full (strict) eingeschaltet ist; sonst nichts.
+func (h *Handler) cfStrictNames(ctx context.Context) []string {
+	if h.db == nil || h.certSetting(ctx, keyCertStrictBefore) == "" {
+		return nil
 	}
 	rows, err := h.certList(ctx)
 	if err != nil {
-		return out
+		return nil
 	}
 	names := make([]string, 0, len(rows))
 	for _, r := range rows {
 		names = append(names, r.Name)
 	}
-	return cfStrictWanted(out, names)
+	return names
+}
+
+// cfKeepStrict: Wird bei eingeschaltetem Full (strict) das Ziel eines geführten Namens auf
+// https://localhost:443 gespeichert (Knopf „Einrichten“), gehören die Angaben für die
+// Zertifikatsprüfung dazu – sonst prüfte der Tunnel gegen „localhost“ und der Name wäre von
+// außen weg. Andere Ziele und andere Namen bleiben, wie sie gespeichert wurden.
+func cfKeepStrict(list []cloudflare.Ingress, host string, strictNames []string) []cloudflare.Ingress {
+	if !certNameIn(strictNames, host) {
+		return list
+	}
+	for _, in := range list {
+		if cfSameHost(in.Hostname, host) && in.Service == certStrictService {
+			return certStrictIngress(list, []string{in.Hostname})
+		}
+	}
+	return list
 }
 
 // cfStrictWanted: Solange Full (strict) eingeschaltet ist, ist für die geführten Namen
@@ -582,7 +603,7 @@ func (h *Handler) CloudflareTunnelWeb(w http.ResponseWriter, r *http.Request) {
 		h.cfDone(w, r, "Tunnel-Ziel", fmt.Errorf("Für %s gibt es schon einen DNS-Eintrag (%s → %s). Mit dem Haken „vorhandenen DNS-Eintrag ersetzen“ noch einmal speichern", host, dns.Type, dns.Content))
 		return
 	}
-	cfg.Ingress = cfSetIngress(cfg.Ingress, old, in)
+	cfg.Ingress = cfKeepStrict(cfSetIngress(cfg.Ingress, old, in), host, h.cfStrictNames(ctx))
 	if err = a.client.PutTunnelConfig(ctx, a.account, a.tunnel, cfg); err != nil {
 		h.cfDone(w, r, "Tunnel-Ziel", err)
 		return

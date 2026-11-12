@@ -234,3 +234,31 @@ func TestCertDepsLiveStatusReadsSite(t *testing.T) {
 		t.Fatalf("nc: %+v", f)
 	}
 }
+
+// Nachprüfung zu I5: „Einrichten“ bei eingeschaltetem Full (strict) behält die Angaben für
+// die Zertifikatsprüfung; ohne strict, bei anderem Ziel oder fremdem Namen bleibt alles, wie
+// es gespeichert wurde.
+func TestCfKeepStrict(t *testing.T) {
+	list := []cloudflare.Ingress{
+		{Hostname: "pdh.firma.de", Service: certStrictService},
+		{Hostname: "alt.firma.de", Service: certStrictService},
+		{Service: "http_status:404"},
+	}
+	got := cfKeepStrict(list, "pdh.firma.de", []string{"pdh.firma.de"})
+	o := string(got[0].OriginRequest)
+	for _, want := range []string{`"originServerName":"pdh.firma.de"`, `"httpHostHeader":"pdh.firma.de"`, `"noTLSVerify":false`} {
+		if !strings.Contains(o, want) {
+			t.Errorf("strict: %s fehlt in %s", want, o)
+		}
+	}
+	if len(got[1].OriginRequest) != 0 || len(got[2].OriginRequest) != 0 {
+		t.Error("andere Ziele dürfen sich nicht ändern")
+	}
+	if got := cfKeepStrict(list, "pdh.firma.de", nil); len(got[0].OriginRequest) != 0 {
+		t.Error("ohne Full (strict) keine Angaben")
+	}
+	other := []cloudflare.Ingress{{Hostname: "pdh.firma.de", Service: "http://localhost:8090"}}
+	if got := cfKeepStrict(other, "pdh.firma.de", []string{"pdh.firma.de"}); len(got[0].OriginRequest) != 0 || got[0].Service != "http://localhost:8090" {
+		t.Error("ein von Hand gewähltes anderes Ziel bleibt unverändert")
+	}
+}

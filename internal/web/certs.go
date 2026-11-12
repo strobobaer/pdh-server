@@ -540,7 +540,9 @@ func certDaily(ctx context.Context, d certDeps) {
 		lg.Warn().Err(err).Msg("zertifikate lesen")
 		return
 	}
-	var rec certReconciled
+	// Bricht der Abgleich ab, ist der Stand beim Agenten unbekannt, nicht „nicht abrufbar“:
+	// dann keine Meldung „erneuert, aber noch nicht eingerichtet“.
+	rec := certReconciled{statusOK: true}
 	certStep("abgleich", func() { rec = certReconcile(ctx, d, rows) })
 	if again, err := d.store.certList(ctx); err == nil {
 		rows = again // last_error und installed_fp nach dem Abgleich
@@ -896,7 +898,11 @@ func (h *Handler) certDepsLive() certDeps {
 			defer cancel()
 			host, _ := h.nextStartValue(ctx, cfHostKey)
 			origin, _ := h.nextStartValue(ctx, cfOriginKey)
-			port, _ := h.nextStartValue(ctx, "PDH_SERVER_PORT")
+			// der Port, auf dem das PDH gerade läuft – ein geänderter gilt erst nach dem Neustart
+			port := os.Getenv("PDH_SERVER_PORT")
+			if port == "" {
+				port, _ = h.nextStartValue(ctx, "PDH_SERVER_PORT")
+			}
 			body := certInstallBody(name, chain, key, host, origin, port, os.Getenv("PDH_NEXTCLOUD_BASEURL"))
 			var out struct {
 				Fingerprint  string `json:"fingerprint"`

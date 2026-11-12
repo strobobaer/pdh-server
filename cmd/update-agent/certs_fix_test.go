@@ -276,3 +276,48 @@ func TestCertRemoveNextcloudOnlySwapsOwnLines(t *testing.T) {
 		t.Error("Seiten verändert")
 	}
 }
+
+// Nachprüfung: Trägt die Datei auch einen server-Block für einen anderen Namen, gehört das
+// eine Zertifikatspaar womöglich zu dem – die Seite bleibt byte-gleich, das Zertifikat wird
+// abgelegt und der Hinweis nennt die Datei.
+func TestCertInstallNextcloudLeavesForeignBlockAlone(t *testing.T) {
+	chain, key := certTestPEM(t, "nc.firma.de")
+	site := `server {
+    listen 80;
+    server_name nc.firma.de;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    server_name intranet.firma.de;
+    ssl_certificate /etc/ssl/intranet.pem;
+    ssl_certificate_key /etc/ssl/intranet.key;
+}
+`
+	f := newCertFixture(t)
+	f.write(t, "/etc/nginx/conf.d/gemischt.conf", site)
+	_, resp := f.call(t, f.agent.certInstallHandler, http.MethodPost, certInstallBody("nc.firma.de", chain, key, "nextcloud"))
+	note, _ := resp["note"].(string)
+	if resp["ok"] != true || !strings.Contains(note, "andere Namen") || !strings.Contains(note, "gemischt.conf") {
+		t.Fatalf("Antwort: %v", resp)
+	}
+	if got := f.read(t, "/etc/nginx/conf.d/gemischt.conf"); got != site {
+		t.Errorf("fremde Seite wurde geändert:\n%s", got)
+	}
+	if !f.exists("/etc/ssl/pdh/nc.firma.de/fullchain.pem") {
+		t.Error("Zertifikat wurde nicht abgelegt")
+	}
+}
+
+func TestCertOnlyName(t *testing.T) {
+	for conf, want := range map[string]bool{
+		"server { }": false,
+		"server {\n server_name nc.firma.de www.nc.firma.de;\n}\nserver {\n server_name nc.firma.de;\n}": true,
+		"server {\n server_name nc.firma.de;\n}\nserver {\n server_name intranet.firma.de;\n}":         false,
+	} {
+		if got := certOnlyName(conf, "nc.firma.de"); got != want {
+			t.Errorf("%q: %v", conf, got)
+		}
+	}
+}

@@ -206,6 +206,28 @@ func certCurrentPaths(conf string) (cert, key string, err error) {
 	return c[0][2], k[0][2], nil
 }
 
+// certOnlyName: Trägt jeder server-Block der Datei den Namen? Nur dann gehört das eine
+// Zertifikatspaar sicher zu diesem Namen. Bedient die Datei auch andere Namen, könnte das
+// Paar zu einer fremden Seite gehören – die wird nie angefasst.
+func certOnlyName(conf, name string) bool {
+	lines := certServerNameR.FindAllStringSubmatch(conf, -1)
+	if len(lines) == 0 {
+		return false
+	}
+	for _, m := range lines {
+		hit := false
+		for _, f := range strings.Fields(m[1]) {
+			if f == name {
+				hit = true
+			}
+		}
+		if !hit {
+			return false
+		}
+	}
+	return true
+}
+
 // certSwapLines ersetzt in einer Nextcloud-Seite nur die beiden Pfade der
 // Zertifikatszeilen; alles andere bleibt byte-gleich. Gibt es nicht genau ein
 // Paar, kommt der Fehler und die Seite unverändert zurück.
@@ -604,7 +626,9 @@ func (a *updateAgent) certInstallHandler(w http.ResponseWriter, r *http.Request)
 	byHand := func(refusal string) {
 		note = where + refusal + ". Bitte das Zertifikat dort von Hand eintragen."
 	}
-	if req.Role != "" && !withNginx {
+	if req.Role == "nextcloud" && !withNginx {
+		note = where + "nginx ist nicht eingerichtet. Die Nextcloud-Seite legt das PDH nicht selbst an – bitte nginx für Nextcloud einrichten und das Zertifikat dort eintragen."
+	} else if req.Role != "" && !withNginx {
 		note = where + "nginx ist nicht eingerichtet – das nächste Update installiert es, danach richtet das PDH die Seite ein."
 	} else {
 		switch req.Role {
@@ -633,19 +657,24 @@ func (a *updateAgent) certInstallHandler(w http.ResponseWriter, r *http.Request)
 				byHand(err.Error())
 				break
 			}
+			file := " (Datei " + filepath.Base(p) + ")"
 			old, err := os.ReadFile(p)
 			if err != nil {
-				byHand("Nextcloud-Seite ist nicht lesbar – nicht geändert")
+				byHand("Nextcloud-Seite ist nicht lesbar – nicht geändert" + file)
+				break
+			}
+			if !certOnlyName(string(old), req.Name) {
+				byHand("Die nginx-Seite bedient auch andere Namen – nicht geändert" + file)
 				break
 			}
 			pc, pk, err := certCurrentPaths(string(old))
 			if err != nil {
-				byHand(err.Error())
+				byHand(err.Error() + file)
 				break
 			}
 			sw, err := certSwapLines(string(old), certChainPath(req.Name), certKeyPath(req.Name))
 			if err != nil {
-				byHand(err.Error())
+				byHand(err.Error() + file)
 				break
 			}
 			sitePath, siteData, prevCert, prevKey = p, sw, pc, pk
