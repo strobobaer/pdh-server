@@ -365,3 +365,76 @@ func TestInboxSslPdhLeavesNginxAloneWhenClean(t *testing.T) {
 		t.Fatalf("Aufrufe: %v", got)
 	}
 }
+
+const sslR63Alarm = "Quelle ssl-pdh: Der Ordner ist neu dazugekommen, seit dieser Server aktiv wurde – einen eigenen Beleg gibt es dafür noch nicht. Auf dem Partner wird nichts gelöscht. Ist dieser Server vollständig: sudo pdh-ha mirror confirm"
+
+// (a)/(b) Der Partner hat schon einen Beleg für ssl-pdh (aus einer früheren Rolle, etwa über noteSource) und
+// meldet nie „wartet“ (mit Beleg maskiert). Dieser Server wurde ohne Ordner und ohne Zustand wiederhergestellt,
+// übernimmt, stellt ein Zertifikat aus: Der Beleg des Partners allein erlaubt kein --delete – R63 unverändert.
+func TestMirrorSslPdhFirstCertPartnerAlreadyProvenKeepsR63(t *testing.T) {
+	r := newPartnerRig(t)
+	f := r.f
+	r.proven["ssl-pdh"] = true // alter Beleg, nicht von einem Lauf nach dem Erscheinen
+	f.files["/etc/ssl/pdh"], f.full["/etc/ssl/pdh"] = true, true
+	for i := 0; i < 3; i++ {
+		if err := runAgain(f.w); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if n, del := sslPdhCalls(f.rs); n != 3 || del {
+		t.Fatalf("%d Aufrufe, mit --delete %v (erwartet 3, nie)", n, del)
+	}
+	if got := f.texts("alarm"); len(got) != 1 || got[0] != sslR63Alarm {
+		t.Fatalf("Alarm: %q", got)
+	}
+	if ls := f.w.snapshot().PerLabel["ssl-pdh"]; !ls.Unproven || ls.Probe != 0 {
+		t.Fatalf("Stand: %+v", ls)
+	}
+	f.w.observeDataID("X")
+	if labels, err := f.w.confirm(nil); err != nil || strings.Join(labels, ",") != "ssl-pdh" {
+		t.Fatalf("confirm: %v %v", labels, err)
+	}
+	if err := runAgain(f.w); err != nil {
+		t.Fatal(err)
+	}
+	if _, del := sslPdhCalls(f.rs); !del {
+		t.Fatal("nach der Bestätigung weiter ohne --delete")
+	}
+}
+
+// (c) Ein alter Befund „Probe 2“ aus früherer Übernahme darf bei einer neuen Übernahme keine Abkürzung geben.
+func TestMirrorSslPdhStaleProbeDoesNotShortcut(t *testing.T) {
+	f := newMirrorFix(t)
+	f.w.d.proof = func(l string) (bool, bool) { return l != "ssl-pdh", true }
+	f.w.d.partnerProof = func(string) bool { return true }
+	f.w.d.partnerWait = func(string) bool { return false }
+	f.files["/etc/ssl/pdh"], f.full["/etc/ssl/pdh"] = true, true
+	f.w.mu.Lock()
+	f.w.st.PerLabel["ssl-pdh"] = mirrorLabelState{AbsentAtPromote: true, Probe: 2}
+	f.w.mu.Unlock()
+	f.w.set(true, ha.Passive, 1, mirrorSettings)
+	f.w.set(true, ha.Active, 2, mirrorSettings) // neue Übernahme, Ordner da, Partner mit Beleg
+	for i := 0; i < 2; i++ {
+		if err := runAgain(f.w); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if n, del := sslPdhCalls(f.rs); n != 2 || del {
+		t.Fatalf("%d Aufrufe, mit --delete %v (erwartet 2, nie)", n, del)
+	}
+	if ls := f.w.snapshot().PerLabel["ssl-pdh"]; !ls.Unproven {
+		t.Fatalf("Stand: %+v", ls)
+	}
+}
+
+// Mirror aus/ein: ein halber Befund fällt mit.
+func TestMirrorSslPdhDropOffResetsProbe(t *testing.T) {
+	f := newMirrorFix(t)
+	f.w.mu.Lock()
+	f.w.st.PerLabel["ssl-pdh"] = mirrorLabelState{AbsentAtPromote: true, Probe: 2}
+	f.w.mu.Unlock()
+	f.w.dropOff()
+	if p := f.w.snapshot().PerLabel["ssl-pdh"].Probe; p != 0 {
+		t.Fatalf("Probe = %d", p)
+	}
+}
