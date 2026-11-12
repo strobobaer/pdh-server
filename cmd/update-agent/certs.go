@@ -203,7 +203,7 @@ var certHasIPv6 = func() bool {
 }
 
 var (
-	certLineRe      =regexp.MustCompile(`(?m)^([ \t]*ssl_certificate[ \t]+)([^;\s]+)([ \t]*;)`)
+	certLineRe      = regexp.MustCompile(`(?m)^([ \t]*ssl_certificate[ \t]+)([^;\s]+)([ \t]*;)`)
 	certKeyLineRe   = regexp.MustCompile(`(?m)^([ \t]*ssl_certificate_key[ \t]+)([^;\s]+)([ \t]*;)`)
 	certServerNameR = regexp.MustCompile(`(?m)^[ \t]*server_name[ \t]+([^;]+);`)
 )
@@ -636,7 +636,6 @@ func (a *updateAgent) certInstallHandler(w http.ResponseWriter, r *http.Request)
 	withNginx := a.certNginxPresent()
 	sitesDir, group := a.certLayout()
 	var sitePath, siteData, prevCert, prevKey, note string
-	siteSame := false // PDH-Seite liegt schon genau so da
 	where := "Zertifikat liegt unter " + certDir(req.Name) + "/. "
 	byHand := func(refusal string) {
 		note = where + refusal + ". Bitte das Zertifikat dort von Hand eintragen."
@@ -665,7 +664,6 @@ func (a *updateAgent) certInstallHandler(w http.ResponseWriter, r *http.Request)
 			redirect := req.Redirect == nil || *req.Redirect
 			sitePath = target // hinter einer Verknüpfung: die Zieldatei, die Verknüpfung bleibt
 			siteData = certSiteConf(req.Name, req.Upstream, redirect, certHasIPv6())
-				siteSame = certSameFile(sitePath, siteData)
 		case "nextcloud":
 			// Seite zuerst prüfen: Weicht sie ab, wird sie nicht angefasst.
 			p, err := a.certFindNextcloudSite(sitesDir, req.Name)
@@ -699,7 +697,7 @@ func (a *updateAgent) certInstallHandler(w http.ResponseWriter, r *http.Request)
 
 	chainFile := a.certPath(certChainPath(req.Name))
 	keyFile := a.certPath(certKeyPath(req.Name))
-	if (note != "" || siteSame) && certSameFile(chainFile, req.ChainPEM) && certSameFile(keyFile, req.KeyPEM) {
+	if note != "" && certSameFile(chainFile, req.ChainPEM) && certSameFile(keyFile, req.KeyPEM) {
 		// Gleicher Stand schon abgelegt (täglicher Abgleich), keine Seite zu schreiben:
 		// nichts ändern, nginx nicht neu laden.
 		writeMountJSON(w, http.StatusOK, map[string]any{"ok": true, "fingerprint": fingerprint, "note": note})
@@ -1065,10 +1063,11 @@ func (a *updateAgent) certStatusHandler(w http.ResponseWriter, _ *http.Request) 
 		if len(entries) > 0 {
 			sites = a.certSiteTexts()
 		}
+		v6 := certHasIPv6()
 		uses := func(name string) bool {
 			needle := certDir(name) + "/"
 			for _, s := range sites {
-				if strings.Contains(s, needle) {
+				if strings.Contains(s, needle) && !certSiteStale(s, v6) {
 					return true
 				}
 			}
@@ -1101,4 +1100,11 @@ func (a *updateAgent) certStatusHandler(w http.ResponseWriter, _ *http.Request) 
 	}
 	sort.Slice(certs, func(i, j int) bool { return certs[i].Name < certs[j].Name })
 	writeMountJSON(w, http.StatusOK, map[string]any{"ok": true, "nginx": a.mode == "systemd" && a.certNginxPresent(), "certs": certs})
+}
+
+// certSiteStale: eine vom Update-Agent geschriebene PDH-Seite, der bei vorhandenem
+// IPv6 die IPv6-Zeile fehlt. Der Status meldet sie als "ohne Seite", damit das PDH sie
+// einmal neu einrichtet. Fremde Dateien (ohne Kopfzeile) bleiben unberührt.
+func certSiteStale(text string, v6 bool) bool {
+	return v6 && strings.HasPrefix(text, certSiteHeader) && !strings.Contains(text, "listen [::]:443 ssl;")
 }
