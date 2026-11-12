@@ -1,6 +1,7 @@
 package web
 
 import (
+	"errors"
 	"os"
 	"strings"
 	"testing"
@@ -46,5 +47,47 @@ func TestMigration157Grants(t *testing.T) {
 		if !strings.Contains(s, want) {
 			t.Errorf("Migration 157 enthält %q nicht", want)
 		}
+	}
+}
+
+// Kontoschlüssel: nie überschreiben bei Lesefehler oder unlesbarem Wert, einmal anlegen.
+func TestCertAccountKeyFrom(t *testing.T) {
+	key := make([]byte, 32)
+	writes := 0
+	failRead := func() (string, bool, error) { return "", false, errors.New("verbindung weg") }
+	ins := func(string) error { writes++; return nil }
+
+	if _, err := certAccountKeyFrom(key, failRead, ins); err == nil || writes != 0 {
+		t.Fatalf("Lesefehler: err=%v writes=%d", err, writes)
+	}
+
+	enc, _ := certSealKey(key, []byte("vorhanden"))
+	got, err := certAccountKeyFrom(key, func() (string, bool, error) { return enc, true, nil }, ins)
+	if err != nil || string(got) != "vorhanden" || writes != 0 {
+		t.Fatalf("vorhanden: %q %v writes=%d", got, err, writes)
+	}
+
+	other := make([]byte, 32)
+	other[0] = 9
+	if _, err := certAccountKeyFrom(other, func() (string, bool, error) { return enc, true, nil }, ins); err == nil || writes != 0 {
+		t.Fatalf("unlesbar: err=%v writes=%d", err, writes)
+	}
+
+	stored, has := "", false
+	read := func() (string, bool, error) { return stored, has, nil }
+	insert := func(e string) error {
+		writes++
+		if !has {
+			stored, has = e, true
+		}
+		return nil
+	}
+	a, err := certAccountKeyFrom(key, read, insert)
+	if err != nil || len(a) == 0 || writes != 1 {
+		t.Fatalf("anlegen: %v writes=%d", err, writes)
+	}
+	b, err := certAccountKeyFrom(key, read, insert)
+	if err != nil || string(a) != string(b) || writes != 1 {
+		t.Fatalf("zweiter Aufruf: %v writes=%d", err, writes)
 	}
 }

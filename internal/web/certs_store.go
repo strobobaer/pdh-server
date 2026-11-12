@@ -3,7 +3,10 @@ package web
 import (
 	"context"
 	"errors"
+	"sync"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 
 	"pdh/internal/integrations/acme"
 )
@@ -227,26 +230,78 @@ func (h *Handler) certDelete(ctx context.Context, name string) error {
 	return err
 }
 
+var certAccountMu sync.Mutex
+
 // certAccountKey liefert den Konto-Schlüssel für Let's Encrypt (je Umgebung). Er wird
-// erst beim ersten Ausstellen angelegt, nie beim Start.
+// erst beim ersten Ausstellen angelegt, nie beim Start. Ein Lesefehler oder ein nicht
+// entschlüsselbarer Wert führt nie zu einem neuen Schlüssel.
 func (h *Handler) certAccountKey(ctx context.Context, staging bool) ([]byte, error) {
+	if err := h.certDB(); err != nil {
+		return nil, err
+	}
 	k := keyCertAccount
 	if staging {
 		k += ".staging"
 	}
-	if enc := h.getUpdateSetting(ctx, k, ""); enc != "" {
-		return certOpenKey(h.pkiKey(), enc)
+	read := func() (string, bool, error) {
+		var v string
+		err := h.db.QueryRow(ctx, `SELECT value FROM app_settings WHERE key=$1`, k).Scan(&v)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", false, nil
+		}
+		if err != nil {
+			return "", false, err
+		}
+		return v, v != "", nil
+	}
+	insert := func(enc string) error {
+		_, err := h.db.Exec(ctx, `
+			INSERT INTO app_settings (key, value, updated_at) VALUES ($1, $2, NOW())
+			ON CONFLICT (key) DO NOTHING`, k, enc)
+		return err
+	}
+	return certAccountKeyFrom(h.pkiKey(), read, insert)
+}
+
+// certAccountKeyFrom: lesen, bei Bedarf einmal anlegen und danach erneut lesen, damit
+// auch zwei Server-Prozesse bei demselben Schlüssel landen.
+func certAccountKeyFrom(key []byte, read func() (string, bool, error), insert func(enc string) error) ([]byte, error) {
+	certAccountMu.Lock()
+	defer certAccountMu.Unlock()
+	open := func() ([]byte, bool, error) {
+		enc, ok, err := read()
+		if err != nil {
+			return nil, false, err
+		}
+		if !ok {
+			return nil, false, nil
+		}
+		pem, err := certOpenKey(key, enc)
+		if err != nil {
+			return nil, false, errors.New("Konto-Schlüssel nicht lesbar – wurde PDH_AUTH_JWTSECRET bzw. PDH_CREDENTIALS_KEY geändert?")
+		}
+		return pem, true, nil
+	}
+	if pem, ok, err := open(); err != nil || ok {
+		return pem, err
 	}
 	pem, err := acme.NewAccountKey()
 	if err != nil {
 		return nil, err
 	}
-	enc, err := certSealKey(h.pkiKey(), pem)
+	enc, err := certSealKey(key, pem)
 	if err != nil {
 		return nil, err
 	}
-	if err := h.setUpdateSetting(ctx, k, enc); err != nil {
+	if err := insert(enc); err != nil {
 		return nil, err
 	}
-	return pem, nil
+	got, ok, err := open()
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, errors.New("Konto-Schlüssel konnte nicht gespeichert werden")
+	}
+	return got, nil
 }
