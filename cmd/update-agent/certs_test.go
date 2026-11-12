@@ -24,7 +24,7 @@ import (
 )
 
 func TestCertSiteConf(t *testing.T) {
-	conf := certSiteConf("pdh.firma.de", "http://127.0.0.1:8090")
+	conf := certSiteConf("pdh.firma.de", "http://127.0.0.1:8090", true)
 	for _, want := range []string{
 		"listen 443 ssl;",
 		"server_name pdh.firma.de;",
@@ -64,12 +64,18 @@ func TestCertSwapLines(t *testing.T) {
 		t.Errorf("CRLF/Tab: %q, %v", got, err)
 	}
 
-	// kein Paar, zwei Paare oder zwei server-Blöcke → Fehler, Rückgabe unverändert
+	// zwei server-Blöcke mit genau einem Paar (Port-80-Weiterleitung + 443) → getauscht
+	two := "server {\n    ssl_certificate /a.crt;\n    ssl_certificate_key /a.key;\n}\nserver {\n    listen 80;\n}\n"
+	if got, err := certSwapLines(two, "/x.crt", "/x.key"); err != nil || got != "server {\n    ssl_certificate /x.crt;\n    ssl_certificate_key /x.key;\n}\nserver {\n    listen 80;\n}\n" {
+		t.Errorf("zwei Blöcke: %q, %v", got, err)
+	}
+
+	// kein Paar oder zwei Paare → Fehler, Rückgabe unverändert
 	for name, conf := range map[string]string{
 		"kein Paar":      "server {\n    listen 80;\n}\n",
 		"nur Zertifikat": "server {\n    ssl_certificate /a.crt;\n}\n",
 		"zwei Paare":     "server {\n    ssl_certificate /a.crt;\n    ssl_certificate_key /a.key;\n    ssl_certificate /b.crt;\n    ssl_certificate_key /b.key;\n}\n",
-		"zwei Blöcke":    "server {\n    ssl_certificate /a.crt;\n    ssl_certificate_key /a.key;\n}\nserver {\n    listen 80;\n}\n",
+		"zwei Paare in zwei Blöcken": "server {\n    ssl_certificate /a.crt;\n    ssl_certificate_key /a.key;\n}\nserver {\n    ssl_certificate /b.crt;\n    ssl_certificate_key /b.key;\n}\n",
 	} {
 		got, err := certSwapLines(conf, "/x.crt", "/x.key")
 		if err == nil || err.Error() != "Nextcloud-Seite hat nicht genau ein Zertifikat – nicht geändert" {
@@ -104,12 +110,13 @@ func TestCertValidName(t *testing.T) {
 }
 
 func TestCertValidUpstream(t *testing.T) {
-	for _, ok := range []string{"http://127.0.0.1:8090", "http://localhost:80"} {
+	for _, ok := range []string{"http://127.0.0.1:8090", "http://localhost:8080"} {
 		if !certValidUpstream(ok) {
 			t.Errorf("%q muss gelten", ok)
 		}
 	}
-	for _, bad := range []string{"", "http://127.0.0.1", "http://127.0.0.1:0", "http://127.0.0.1:70000", "https://127.0.0.1:8090", "http://evil.de:80", "http://127.0.0.1:80;}", "http://127.0.0.1:80/x", "http://127.0.0.1.evil.de:80", "http://127.0.0.1:8090\n"} {
+	// Port 80 und 443 gehören nginx selbst
+	for _, bad := range []string{"http://localhost:80", "http://127.0.0.1:443", "", "http://127.0.0.1", "http://127.0.0.1:0", "http://127.0.0.1:70000", "https://127.0.0.1:8090", "http://evil.de:80", "http://127.0.0.1:80;}", "http://127.0.0.1:80/x", "http://127.0.0.1.evil.de:80", "http://127.0.0.1:8090\n"} {
 		if certValidUpstream(bad) {
 			t.Errorf("%q darf nicht gelten", bad)
 		}
@@ -501,44 +508,46 @@ func TestCertRemovePDHAndFailedCheck(t *testing.T) {
 	}
 }
 
+// Abweichende Nextcloud-Seite: bleibt byte-gleich; die Dateien liegen trotzdem ab (wie Rolle ""),
+// die Antwort ist ok mit Hinweis (I2 der Schlussprüfung).
 func TestCertInstallNextcloudOddSiteUntouched(t *testing.T) {
 	chain, key := certTestPEM(t, "nc.firma.de")
 	odd := map[string]string{
-		"zwei Paare":  "server {\n    server_name nc.firma.de;\n    ssl_certificate /a.crt;\n    ssl_certificate_key /a.key;\n    ssl_certificate /b.crt;\n    ssl_certificate_key /b.key;\n}\n",
-		"kein Paar":   "server {\n    server_name nc.firma.de;\n    listen 80;\n}\n",
-		"zwei Blöcke": "server {\n    server_name nc.firma.de;\n    ssl_certificate /a.crt;\n    ssl_certificate_key /a.key;\n}\nserver {\n    server_name nc.firma.de;\n    listen 80;\n}\n",
+		"zwei Paare": "server {\n    server_name nc.firma.de;\n    ssl_certificate /a.crt;\n    ssl_certificate_key /a.key;\n    ssl_certificate /b.crt;\n    ssl_certificate_key /b.key;\n}\n",
+		"kein Paar":  "server {\n    server_name nc.firma.de;\n    listen 80;\n}\n",
 	}
 	for name, conf := range odd {
 		t.Run(name, func(t *testing.T) {
 			f := newCertFixture(t)
 			f.write(t, "/etc/nginx/conf.d/nextcloud.conf", conf)
-			before := f.snapshot(t)
 			_, resp := f.call(t, f.agent.certInstallHandler, http.MethodPost, map[string]any{
 				"name": "nc.firma.de", "chain_pem": chain, "key_pem": key, "role": "nextcloud",
 			})
-			if resp["ok"] != false || !strings.Contains(resp["error"].(string), "nicht geändert") {
+			if note, _ := resp["note"].(string); resp["ok"] != true || !strings.Contains(note, "nicht geändert") {
 				t.Errorf("Antwort: %v", resp)
 			}
-			after := f.snapshot(t)
-			if len(after) != len(before) || after["etc/nginx/conf.d/nextcloud.conf"] != conf {
-				t.Error("es wurde etwas verändert")
+			if f.read(t, "/etc/nginx/conf.d/nextcloud.conf") != conf {
+				t.Error("Seite wurde verändert")
 			}
-			if len(f.commands()) != 0 {
-				t.Errorf("nginx darf nicht angefasst werden: %v", f.commands())
+			if f.read(t, "/etc/ssl/pdh/nc.firma.de/fullchain.pem") != chain {
+				t.Error("Zertifikatsdatei fehlt")
 			}
 		})
 	}
 	// keine passende Seite / mehrere passende Seiten
 	f := newCertFixture(t)
 	_, resp := f.call(t, f.agent.certInstallHandler, http.MethodPost, map[string]any{"name": "nc.firma.de", "chain_pem": chain, "key_pem": key, "role": "nextcloud"})
-	if resp["ok"] != false {
+	if note, _ := resp["note"].(string); resp["ok"] != true || !strings.Contains(note, "Keine Nextcloud-Seite") {
 		t.Errorf("ohne Seite: %v", resp)
 	}
 	f.write(t, "/etc/nginx/conf.d/a.conf", odd["kein Paar"])
 	f.write(t, "/etc/nginx/conf.d/b.conf", odd["kein Paar"])
 	_, resp = f.call(t, f.agent.certInstallHandler, http.MethodPost, map[string]any{"name": "nc.firma.de", "chain_pem": chain, "key_pem": key, "role": "nextcloud"})
-	if resp["ok"] != false || !strings.Contains(resp["error"].(string), "Mehrere") {
+	if note, _ := resp["note"].(string); resp["ok"] != true || !strings.Contains(note, "Mehrere") {
 		t.Errorf("mehrere Seiten: %v", resp)
+	}
+	if f.read(t, "/etc/nginx/conf.d/a.conf") != odd["kein Paar"] || f.read(t, "/etc/nginx/conf.d/b.conf") != odd["kein Paar"] {
+		t.Error("Seiten verändert")
 	}
 }
 
@@ -585,11 +594,12 @@ func TestCertInstallWithoutNginx(t *testing.T) {
 	_, resp := f.call(t, f.agent.certInstallHandler, http.MethodPost, map[string]any{
 		"name": "pdh.firma.de", "chain_pem": chain, "key_pem": key, "role": "pdh", "upstream": "http://127.0.0.1:8090",
 	})
-	if resp["ok"] != false || resp["error"] != "nginx ist nicht eingerichtet" {
+	// Dateien liegen ab, keine Seite, kein Befehl; der Hinweis sagt, dass das Update nginx einrichtet.
+	if note, _ := resp["note"].(string); resp["ok"] != true || !strings.Contains(note, "nginx ist nicht eingerichtet") {
 		t.Errorf("Antwort: %v", resp)
 	}
-	if f.exists("/etc/ssl/pdh") {
-		t.Error("ohne nginx darf nichts angelegt werden")
+	if !f.exists("/etc/ssl/pdh/pdh.firma.de/fullchain.pem") || f.exists("/etc/nginx/conf.d/pdh.conf") || len(f.commands()) != 0 {
+		t.Errorf("ohne nginx nur die Dateien: %v", f.commands())
 	}
 }
 
@@ -702,19 +712,12 @@ func TestCertForeignPDHSiteUntouched(t *testing.T) {
 	chain, key := certTestPEM(t, "pdh.firma.de")
 	f := newCertFixture(t)
 	f.write(t, "/etc/nginx/conf.d/pdh.conf", "server { server_name pdh.firma.de; }\n")
-	before := f.snapshot(t)
 	_, resp := f.call(t, f.agent.certInstallHandler, http.MethodPost, certInstallBody("pdh.firma.de", chain, key, "pdh"))
-	if resp["ok"] != false || !strings.HasSuffix(resp["error"].(string), "– nicht geändert") || !strings.Contains(resp["error"].(string), "pdh.conf") {
+	if note, _ := resp["note"].(string); resp["ok"] != true || !strings.Contains(note, "– nicht geändert") || !strings.Contains(note, "pdh.conf") {
 		t.Errorf("Antwort: %v", resp)
 	}
-	after := f.snapshot(t)
-	if len(after) != len(before) || len(f.commands()) != 0 {
-		t.Error("es wurde etwas angefasst")
-	}
-	for p, d := range before {
-		if after[p] != d {
-			t.Errorf("%s verändert", p)
-		}
+	if f.read(t, "/etc/nginx/conf.d/pdh.conf") != "server { server_name pdh.firma.de; }\n" {
+		t.Error("fremde pdh.conf verändert")
 	}
 	// Entfernen lässt die fremde Datei in Ruhe
 	_, resp = f.call(t, f.agent.certRemoveHandler, http.MethodPost, map[string]any{"name": "pdh.firma.de", "role": "pdh"})
@@ -723,19 +726,19 @@ func TestCertForeignPDHSiteUntouched(t *testing.T) {
 	}
 }
 
-// Bedient schon eine andere Seite den Namen, wird nichts geschrieben.
+// Bedient schon eine andere Seite den Namen, wird keine Seite geschrieben (nur die Dateien, mit Hinweis).
 func TestCertInstallRefusedWhenNameServedElsewhere(t *testing.T) {
 	chain, key := certTestPEM(t, "pdh.firma.de")
 	f := newCertFixture(t)
-	f.write(t, "/etc/nginx/conf.d/meine-seite.conf", "server {\n    listen 443 ssl;\n    server_name pdh.firma.de www.firma.de;\n}\n")
-	before := f.snapshot(t)
+	mine := "server {\n    listen 443 ssl;\n    server_name pdh.firma.de www.firma.de;\n}\n"
+	f.write(t, "/etc/nginx/conf.d/meine-seite.conf", mine)
 	_, resp := f.call(t, f.agent.certInstallHandler, http.MethodPost, certInstallBody("pdh.firma.de", chain, key, "pdh"))
-	msg, _ := resp["error"].(string)
-	if resp["ok"] != false || !strings.Contains(msg, "meine-seite.conf") || !strings.HasSuffix(msg, "– nicht geändert") {
+	msg, _ := resp["note"].(string)
+	if resp["ok"] != true || !strings.Contains(msg, "meine-seite.conf") || !strings.Contains(msg, "– nicht geändert") {
 		t.Errorf("Antwort: %v", resp)
 	}
-	if len(f.snapshot(t)) != len(before) || len(f.commands()) != 0 {
-		t.Error("es wurde etwas angefasst")
+	if f.exists("/etc/nginx/conf.d/pdh.conf") || f.read(t, "/etc/nginx/conf.d/meine-seite.conf") != mine {
+		t.Error("eine Seite wurde angefasst")
 	}
 }
 
@@ -850,22 +853,33 @@ func TestCertInstallPDHSymlinkRefused(t *testing.T) {
 			}
 			before := f.snapshot(t)
 			_, resp := f.call(t, f.agent.certInstallHandler, http.MethodPost, certInstallBody("pdh.firma.de", chain, key, "pdh"))
-			msg, _ := resp["error"].(string)
-			if resp["ok"] != false || !strings.HasSuffix(msg, "– nicht geändert") || !strings.Contains(msg, "pdh.conf") {
+			msg, _ := resp["note"].(string)
+			if resp["ok"] != true || !strings.Contains(msg, "– nicht geändert") || !strings.Contains(msg, "pdh.conf") {
 				t.Errorf("Antwort: %v", resp)
 			}
 			if st, err := os.Lstat(link); err != nil || st.Mode()&os.ModeSymlink == 0 {
 				t.Error("Verknüpfung wurde ersetzt")
 			}
+			// Nur die Zertifikatsdateien sind neu; alles andere (Seiten, Verknüpfung) byte-gleich.
 			after := f.snapshot(t)
-			if len(after) != len(before) || len(f.commands()) != 0 {
-				t.Errorf("es wurde etwas angefasst: %v", f.commands())
+			if len(after) != len(before) {
+				t.Errorf("Dateistand: %d statt %d", len(after), len(before))
 			}
 			for p, d := range before {
+				if strings.HasPrefix(p, "etc/ssl/pdh/") {
+					continue
+				}
 				if after[p] != d {
 					t.Errorf("%s verändert", p)
 				}
 			}
+			if f.read(t, "/etc/ssl/pdh/pdh.firma.de/privkey.pem") != key {
+				t.Fatal("Zertifikatsdateien nicht abgelegt")
+			}
+			f.writeCertFiles(t, "pdh.firma.de")
+			f.mu.Lock()
+			f.cmds = nil
+			f.mu.Unlock()
 			// Entfernen lässt es ebenfalls in Ruhe
 			_, resp = f.call(t, f.agent.certRemoveHandler, http.MethodPost, map[string]any{"name": "pdh.firma.de", "role": "pdh"})
 			if st, err := os.Lstat(link); err != nil || st.Mode()&os.ModeSymlink == 0 || len(f.commands()) != 0 {
@@ -881,7 +895,7 @@ func TestCertInstallPDHSymlinkRefused(t *testing.T) {
 	}
 }
 
-// pdh.conf nicht lesbar (hier: ein Ordner an der Stelle): abgelehnt.
+// pdh.conf nicht lesbar (hier: ein Ordner an der Stelle): Seite unberührt, nur die Dateien mit Hinweis.
 func TestCertInstallPDHUnreadableRefused(t *testing.T) {
 	chain, key := certTestPEM(t, "pdh.firma.de")
 	f := newCertFixture(t)
@@ -889,8 +903,11 @@ func TestCertInstallPDHUnreadableRefused(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, resp := f.call(t, f.agent.certInstallHandler, http.MethodPost, certInstallBody("pdh.firma.de", chain, key, "pdh"))
-	if resp["ok"] != false || !strings.HasSuffix(resp["error"].(string), "– nicht geändert") || len(f.commands()) != 0 || f.exists("/etc/ssl/pdh") {
+	if note, _ := resp["note"].(string); resp["ok"] != true || !strings.Contains(note, "– nicht geändert") {
 		t.Errorf("Antwort: %v", resp)
+	}
+	if st, err := os.Stat(f.real("/etc/nginx/conf.d/pdh.conf")); err != nil || !st.IsDir() {
+		t.Error("pdh.conf wurde angefasst")
 	}
 }
 
@@ -911,7 +928,7 @@ func certRemoveBody(name, role string) map[string]any {
 func TestCertRemoveLinkedPDHSite(t *testing.T) {
 	f := newCertFixture(t)
 	f.writeCertFiles(t, "pdh.firma.de")
-	site := certSiteConf("pdh.firma.de", "http://127.0.0.1:8090")
+	site := certSiteConf("pdh.firma.de", "http://127.0.0.1:8090", true)
 	f.write(t, "/etc/nginx/eigene/pdh-seite.conf", site)
 	link := f.real("/etc/nginx/conf.d/pdh.conf")
 	if err := os.Symlink("/etc/nginx/eigene/pdh-seite.conf", link); err != nil {

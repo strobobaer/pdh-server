@@ -121,14 +121,15 @@ func certValidName(s string) bool {
 var certUpstreamRe = regexp.MustCompile(`^http://(127\.0\.0\.1|localhost):([0-9]{1,5})$`)
 
 // certValidUpstream: das PDH läuft immer auf demselben Rechner; nur diese
-// Form darf in die nginx-Seite geschrieben werden.
+// Form darf in die nginx-Seite geschrieben werden. Port 80 und 443 gehören
+// nginx selbst – die Seite zeigte sonst auf sich selbst.
 func certValidUpstream(s string) bool {
 	m := certUpstreamRe.FindStringSubmatch(s)
 	if m == nil {
 		return false
 	}
 	port, err := strconv.Atoi(m[2])
-	return err == nil && port >= 1 && port <= 65535
+	return err == nil && port >= 1 && port <= 65535 && port != 80 && port != 443
 }
 
 var certAbsPathRe = regexp.MustCompile(`^/[A-Za-z0-9._/-]+$`)
@@ -152,15 +153,18 @@ func certChainPath(name string) string { return certDir(name) + "/fullchain.pem"
 func certKeyPath(name string) string   { return certDir(name) + "/privkey.pem" }
 
 // certSiteConf: nginx-Seite für den PDH-Namen – 443 mit dem Zertifikat und
-// Weiterreichen an das PDH, 80 leitet um.
-func certSiteConf(name, upstream string) string {
+// Weiterreichen an das PDH; mit redirect leitet 80 auf https um. Ohne
+// (Tunnel erreicht das PDH über nginx Port 80) gäbe die Weiterleitung eine Schleife.
+func certSiteConf(name, upstream string, redirect bool) string {
 	var b strings.Builder
 	b.WriteString(certSiteHeader + " (Zertifikate). Änderungen gehen beim nächsten Zertifikatslauf verloren.\n")
-	b.WriteString("server {\n")
-	b.WriteString("    listen 80;\n")
-	b.WriteString("    server_name " + name + ";\n")
-	b.WriteString("    return 301 https://$host$request_uri;\n")
-	b.WriteString("}\n\n")
+	if redirect {
+		b.WriteString("server {\n")
+		b.WriteString("    listen 80;\n")
+		b.WriteString("    server_name " + name + ";\n")
+		b.WriteString("    return 301 https://$host$request_uri;\n")
+		b.WriteString("}\n\n")
+	}
 	b.WriteString("server {\n")
 	b.WriteString("    listen 443 ssl;\n")
 	b.WriteString("    server_name " + name + ";\n\n")
@@ -187,16 +191,16 @@ func certSiteConf(name, upstream string) string {
 var (
 	certLineRe      = regexp.MustCompile(`(?m)^([ \t]*ssl_certificate[ \t]+)([^;\s]+)([ \t]*;)`)
 	certKeyLineRe   = regexp.MustCompile(`(?m)^([ \t]*ssl_certificate_key[ \t]+)([^;\s]+)([ \t]*;)`)
-	certServerRe    = regexp.MustCompile(`(?m)^[ \t]*server[ \t]*\{`)
 	certServerNameR = regexp.MustCompile(`(?m)^[ \t]*server_name[ \t]+([^;]+);`)
 )
 
 // certCurrentPaths nennt die Zertifikatspfade einer Nextcloud-Seite mit genau
-// einem Paar; sonst den Fehler von certSwapLines.
+// einem Paar; sonst den Fehler von certSwapLines. Mehrere server-Blöcke (typisch:
+// Port-80-Weiterleitung und ein 443-Block) sind in Ordnung, solange es nur ein Paar gibt.
 func certCurrentPaths(conf string) (cert, key string, err error) {
 	c := certLineRe.FindAllStringSubmatch(conf, -1)
 	k := certKeyLineRe.FindAllStringSubmatch(conf, -1)
-	if len(c) != 1 || len(k) != 1 || len(certServerRe.FindAllString(conf, -1)) > 1 {
+	if len(c) != 1 || len(k) != 1 {
 		return "", "", errors.New(certSwapError)
 	}
 	return c[0][2], k[0][2], nil
@@ -204,7 +208,7 @@ func certCurrentPaths(conf string) (cert, key string, err error) {
 
 // certSwapLines ersetzt in einer Nextcloud-Seite nur die beiden Pfade der
 // Zertifikatszeilen; alles andere bleibt byte-gleich. Gibt es nicht genau ein
-// Paar (oder mehrere server-Blöcke), kommt der Fehler und die Seite unverändert zurück.
+// Paar, kommt der Fehler und die Seite unverändert zurück.
 func certSwapLines(conf, certPath, keyPath string) (string, error) {
 	if _, _, err := certCurrentPaths(conf); err != nil {
 		return conf, err
@@ -381,6 +385,7 @@ type certRequest struct {
 	Upstream    string `json:"upstream"`
 	RestoreCert string `json:"restore_cert"`
 	RestoreKey  string `json:"restore_key"`
+	Redirect    *bool  `json:"redirect"` // Port 80 leitet um; fehlt (älterer Aufrufer) = ja
 }
 
 func certFail(w http.ResponseWriter, status int, msg string) {
@@ -586,62 +591,75 @@ func (a *updateAgent) certInstallHandler(w http.ResponseWriter, r *http.Request)
 	ctx, cancel := context.WithTimeout(r.Context(), 45*time.Second)
 	defer cancel()
 
-	// Rolle pdh/nextcloud braucht nginx. Rolle "" schreibt nur die Dateien; ist nginx
-	// da, wird trotzdem geprüft und neu geladen (eine von Hand geschriebene Seite
+	// Rolle pdh/nextcloud schreibt bzw. ändert eine nginx-Seite. Geht der Seiten-Schritt
+	// nicht (nginx fehlt, fremde Seite, Nextcloud-Seite ohne genau ein Zertifikat …), legt
+	// der Agent die Dateien trotzdem ab wie bei Rolle "" und sagt im Hinweis (note), was von
+	// Hand zu tun ist; die Seite bleibt dann unberührt. Rolle "" schreibt nur die Dateien;
+	// ist nginx da, wird trotzdem geprüft und neu geladen (eine von Hand geschriebene Seite
 	// übernimmt so das erneuerte Zertifikat), ohne nginx genügt das Ablegen.
 	withNginx := a.certNginxPresent()
-	if req.Role != "" && !withNginx {
-		certFail(w, http.StatusOK, "nginx ist nicht eingerichtet")
-		return
-	}
-
 	sitesDir, group := a.certLayout()
-	var sitePath, siteData, prevCert, prevKey string
-	switch req.Role {
-	case "pdh":
-		target, _, own, err := a.certOwnSite(a.certPath(sitesDir + "/" + certPDHSite))
-		if err != nil || !own {
-			certFail(w, http.StatusOK, "Die nginx-Seite "+certPDHSite+" stammt nicht vom Update-Agent oder ist nicht lesbar – nicht geändert")
-			return
+	var sitePath, siteData, prevCert, prevKey, note string
+	where := "Zertifikat liegt unter " + certDir(req.Name) + "/. "
+	byHand := func(refusal string) {
+		note = where + refusal + ". Bitte das Zertifikat dort von Hand eintragen."
+	}
+	if req.Role != "" && !withNginx {
+		note = where + "nginx ist nicht eingerichtet – das nächste Update installiert es, danach richtet das PDH die Seite ein."
+	} else {
+		switch req.Role {
+		case "pdh":
+			target, _, own, err := a.certOwnSite(a.certPath(sitesDir + "/" + certPDHSite))
+			if err != nil || !own {
+				byHand("Die nginx-Seite " + certPDHSite + " stammt nicht vom Update-Agent oder ist nicht lesbar – nicht geändert")
+				break
+			}
+			others, err := a.certSitesWithName(sitesDir, req.Name)
+			if err != nil {
+				byHand(err.Error() + " – nicht geändert")
+				break
+			}
+			if len(others) > 0 {
+				byHand("Der Name wird schon von der nginx-Seite " + others[0].entry + " bedient – nicht geändert")
+				break
+			}
+			redirect := req.Redirect == nil || *req.Redirect
+			sitePath = target // hinter einer Verknüpfung: die Zieldatei, die Verknüpfung bleibt
+			siteData = certSiteConf(req.Name, req.Upstream, redirect)
+		case "nextcloud":
+			// Seite zuerst prüfen: Weicht sie ab, wird sie nicht angefasst.
+			p, err := a.certFindNextcloudSite(sitesDir, req.Name)
+			if err != nil {
+				byHand(err.Error())
+				break
+			}
+			old, err := os.ReadFile(p)
+			if err != nil {
+				byHand("Nextcloud-Seite ist nicht lesbar – nicht geändert")
+				break
+			}
+			pc, pk, err := certCurrentPaths(string(old))
+			if err != nil {
+				byHand(err.Error())
+				break
+			}
+			sw, err := certSwapLines(string(old), certChainPath(req.Name), certKeyPath(req.Name))
+			if err != nil {
+				byHand(err.Error())
+				break
+			}
+			sitePath, siteData, prevCert, prevKey = p, sw, pc, pk
 		}
-		sitePath = target // hinter einer Verknüpfung: die Zieldatei, die Verknüpfung bleibt
-		others, err := a.certSitesWithName(sitesDir, req.Name)
-		if err != nil {
-			certFail(w, http.StatusOK, err.Error())
-			return
-		}
-		if len(others) > 0 {
-			certFail(w, http.StatusOK, "Der Name wird schon von der nginx-Seite "+others[0].entry+" bedient – nicht geändert")
-			return
-		}
-		siteData = certSiteConf(req.Name, req.Upstream)
-	case "nextcloud":
-		// Seite zuerst prüfen: Weicht sie ab, wird nichts angefasst.
-		p, err := a.certFindNextcloudSite(sitesDir, req.Name)
-		if err != nil {
-			certFail(w, http.StatusOK, err.Error())
-			return
-		}
-		old, err := os.ReadFile(p)
-		if err != nil {
-			certFail(w, http.StatusOK, "Nextcloud-Seite ist nicht lesbar")
-			return
-		}
-		prevCert, prevKey, err = certCurrentPaths(string(old))
-		if err != nil {
-			certFail(w, http.StatusOK, err.Error())
-			return
-		}
-		sw, err := certSwapLines(string(old), certChainPath(req.Name), certKeyPath(req.Name))
-		if err != nil {
-			certFail(w, http.StatusOK, err.Error())
-			return
-		}
-		sitePath, siteData = p, sw
 	}
 
 	chainFile := a.certPath(certChainPath(req.Name))
 	keyFile := a.certPath(certKeyPath(req.Name))
+	if note != "" && certSameFile(chainFile, req.ChainPEM) && certSameFile(keyFile, req.KeyPEM) {
+		// Gleicher Stand schon abgelegt (täglicher Abgleich), keine Seite zu schreiben:
+		// nichts ändern, nginx nicht neu laden.
+		writeMountJSON(w, http.StatusOK, map[string]any{"ok": true, "fingerprint": fingerprint, "note": note})
+		return
+	}
 	dir := a.certPath(certDir(req.Name))
 	dirExisted := false
 	if st, err := os.Stat(dir); err == nil && st.IsDir() {
@@ -708,11 +726,20 @@ func (a *updateAgent) certInstallHandler(w http.ResponseWriter, r *http.Request)
 		}
 	}
 	resp := map[string]any{"ok": true, "fingerprint": fingerprint}
-	// Vorige Pfade nur melden, wenn die Seite noch nicht auf unser Zertifikat zeigte.
-	if req.Role == "nextcloud" && prevCert != certChainPath(req.Name) {
+	// Vorige Pfade nur melden, wenn die Seite umgestellt wurde und noch nicht auf unser Zertifikat zeigte.
+	if req.Role == "nextcloud" && sitePath != "" && prevCert != certChainPath(req.Name) {
 		resp["previous_cert"], resp["previous_key"] = prevCert, prevKey
 	}
+	if note != "" {
+		resp["note"] = note
+	}
 	writeMountJSON(w, http.StatusOK, resp)
+}
+
+// certSameFile: liegt am Pfad genau dieser Inhalt?
+func certSameFile(path, data string) bool {
+	b, err := os.ReadFile(path)
+	return err == nil && string(b) == data
 }
 
 // certFolderBackup hält den Inhalt des Zertifikatsordners im Speicher.
@@ -815,7 +842,10 @@ func (a *updateAgent) certRemoveHandler(w http.ResponseWriter, r *http.Request) 
 	if !ok {
 		return
 	}
-	if req.Role == "nextcloud" && (!certValidConfPath(req.RestoreCert) || !certValidConfPath(req.RestoreKey)) {
+	// Ohne gemerkte Pfade wurde die Nextcloud-Seite nie umgestellt (Einrichten hat nur die
+	// Dateien abgelegt): Dann gilt dasselbe wie bei Rolle "" – die Verweisprüfung entscheidet.
+	restore := req.RestoreCert != "" || req.RestoreKey != ""
+	if req.Role == "nextcloud" && restore && (!certValidConfPath(req.RestoreCert) || !certValidConfPath(req.RestoreKey)) {
 		certFail(w, http.StatusBadRequest, "Vorige Zertifikatspfade der Nextcloud-Seite fehlen oder sind ungültig")
 		return
 	}
@@ -876,15 +906,23 @@ func (a *updateAgent) certRemoveHandler(w http.ResponseWriter, r *http.Request) 
 		}
 		// fremde, unlesbare oder fehlende Seite: bleibt; die Prüfung unten entscheidet.
 	case "nextcloud":
+		if !restore {
+			break // nie umgestellt: wie Rolle ""
+		}
+		// Keine, mehrere oder eine unlesbare Seite: nichts zurückzutauschen, keine Seite wird
+		// angefasst – die Verweisprüfung unten entscheidet (eine unlesbare Seite hält den Ordner).
 		p, err := a.certFindNextcloudSite(sitesDir, req.Name)
 		if err != nil {
-			certFail(w, http.StatusOK, err.Error())
-			return
+			break
 		}
 		old, err := os.ReadFile(p)
 		if err != nil {
-			certFail(w, http.StatusOK, "Nextcloud-Seite ist nicht lesbar")
-			return
+			break
+		}
+		// Nur zurücktauschen, wenn die Seite noch auf den eigenen Ordner zeigt; sonst bleibt
+		// sie unberührt, und die Verweisprüfung unten entscheidet über den Ordner.
+		if cur, curKey, cerr := certCurrentPaths(string(old)); cerr != nil || cur != certChainPath(req.Name) || curKey != certKeyPath(req.Name) {
+			break
 		}
 		sw, err := certSwapLines(string(old), req.RestoreCert, req.RestoreKey)
 		if err != nil {
@@ -938,6 +976,38 @@ type certStatusEntry struct {
 	Name        string `json:"name"`
 	NotAfter    string `json:"not_after"`
 	Fingerprint string `json:"fingerprint"`
+	Site        bool   `json:"site"` // eine nginx-Seite verweist auf /etc/ssl/pdh/<name>/
+}
+
+// certSiteTexts liest alle lesbaren nginx-Seiten (hinter Verknüpfungen). Ohne nginx oder
+// ohne lesbaren Seiten-Ordner: nichts. Nicht lesbare Seiten zählen hier nicht – der Status
+// sagt nur, ob eine Seite sicher verweist.
+func (a *updateAgent) certSiteTexts() []string {
+	if !a.certNginxPresent() {
+		return nil
+	}
+	sitesDir, _ := a.certLayout()
+	entries, err := os.ReadDir(a.certPath(sitesDir))
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), ".") {
+			continue
+		}
+		p, err := a.certResolve(a.certPath(sitesDir + "/" + e.Name()))
+		if err != nil {
+			continue
+		}
+		if st, err := os.Stat(p); err != nil || st.IsDir() {
+			continue
+		}
+		if data, err := os.ReadFile(p); err == nil {
+			out = append(out, string(data))
+		}
+	}
+	return out
 }
 
 // certStatusHandler: GET /v1/certs/status – ohne nginx oder ohne Ordner eine
@@ -946,6 +1016,19 @@ func (a *updateAgent) certStatusHandler(w http.ResponseWriter, _ *http.Request) 
 	certs := []certStatusEntry{}
 	entries, err := os.ReadDir(a.certPath(certRootDir))
 	if err == nil {
+		var sites []string
+		if len(entries) > 0 {
+			sites = a.certSiteTexts()
+		}
+		uses := func(name string) bool {
+			needle := certDir(name) + "/"
+			for _, s := range sites {
+				if strings.Contains(s, needle) {
+					return true
+				}
+			}
+			return false
+		}
 		for _, e := range entries {
 			if !e.IsDir() || !certValidName(e.Name()) {
 				continue
@@ -967,6 +1050,7 @@ func (a *updateAgent) certStatusHandler(w http.ResponseWriter, _ *http.Request) 
 				Name:        e.Name(),
 				NotAfter:    c.NotAfter.UTC().Format(time.RFC3339),
 				Fingerprint: hex.EncodeToString(sum[:]),
+				Site:        uses(e.Name()),
 			})
 		}
 	}
