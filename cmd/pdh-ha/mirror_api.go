@@ -1034,6 +1034,9 @@ func (d *daemon) mirrorStatusLocked(st *apiStatus) {
 		sort.Strings(labels)
 		for _, l := range labels {
 			ls := own.PerLabel[l]
+			if mirrorQuietLabel(l, ls) {
+				continue // Zertifikate des PDH: keine leere Zeile, solange es keine gibt
+			}
 			am.Sources = append(am.Sources, apiMirrorSource{Label: l, LastOKAgo: ago(ls.LastOK), Skipped: ls.Skipped, Unproven: ls.Unproven, Err: ls.Err,
 				Waiting: slices.Contains(am.WaitConfirm, l)})
 			if ls.Unproven {

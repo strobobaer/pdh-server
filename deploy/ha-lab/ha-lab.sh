@@ -19,7 +19,7 @@
 #            spiegel-uebernahme-im-abgleich spiegel-rejoin-abbruch
 #            spiegel-rolling-update spiegel-ruecknahme-uebernahme
 #            spiegel-ruecknahme-zweiter-takt spiegel-netz-weg-im-abgleich
-#            spiegel-bestaetigung spiegel-update-aus
+#            spiegel-bestaetigung spiegel-update-aus spiegel-zertifikat
 # Jedes Szenario läuft mit Datenbank-Spiegel und Schreib-Generator; danach muss
 # jede bestätigte Zeile auf dem aktiven Server liegen. Wächter: nie zwei
 # schreibbare Datenbanken länger als RW_GRACE Sekunden.
@@ -63,7 +63,8 @@ SCENARIOS=(aktiv-weg leitung-weg zeuge-weg hin-und-her rueckkehr neustart-aktiv 
     spiegel-datei spiegel-loeschen spiegel-tausch spiegel-tausch-frist spiegel-tausch-wiederholung
     spiegel-ausfall spiegel-rueckkehr spiegel-heartbeat spiegel-nextcloud spiegel-aus
     spiegel-uebernahme-im-abgleich spiegel-rejoin-abbruch spiegel-rolling-update
-    spiegel-ruecknahme-uebernahme spiegel-ruecknahme-zweiter-takt spiegel-netz-weg-im-abgleich spiegel-bestaetigung spiegel-update-aus)
+    spiegel-ruecknahme-uebernahme spiegel-ruecknahme-zweiter-takt spiegel-netz-weg-im-abgleich spiegel-bestaetigung spiegel-update-aus
+    spiegel-zertifikat)
 # Automatik je Szenario: observe (Standard nach der Einrichtung) oder real
 # (erst nach Pflicht-Tausch erlaubt; lab_up tauscht dann hin und zurück).
 # Die Szenarien aus Teil 2 prüfen echte Übernahmen und laufen mit real.
@@ -71,7 +72,7 @@ SCENARIOS=(aktiv-weg leitung-weg zeuge-weg hin-und-her rueckkehr neustart-aktiv 
 # Daten auf einer höheren Zeitleiste (pg_waldump -t).
 declare -A SC_MODE=([beobachtung]=observe [tausch]=observe [erzwingen-abgezweigt]=observe
     [slot-grenze]=observe [vip-tausch]=observe [umstellung]=observe
-    [spiegel-datei]=observe [spiegel-loeschen]=observe [spiegel-tausch]=observe [spiegel-aus]=observe [spiegel-bestaetigung]=observe)
+    [spiegel-datei]=observe [spiegel-loeschen]=observe [spiegel-tausch]=observe [spiegel-aus]=observe [spiegel-bestaetigung]=observe [spiegel-zertifikat]=observe)
 PG_LAB=0                        # 1 = Datenbank-Spiegel eingerichtet, Wächter aktiv
 BOTH_RW=-1                      # seit wann zwei schreibbare Datenbanken (SECONDS)
 BOTH_ACT=-1                     # seit wann zwei aktive Server verschiedener Amtszeit
@@ -2494,6 +2495,51 @@ sc_spiegel_update_aus() {
     wait_for 15 eval '[[ " $(mirror_waits) " == *" uploads "* ]]' || fail "Status nennt uploads nicht (wartet: $(mirror_waits))"
     [[ "$(alarm_count node1 "Quelle uploads: Der Partner hat dort schon Dateien")" == 1 ]] || fail "kein oder mehr als ein Alarm"
     up_clean
+}
+
+# Zertifikate des PDH (/etc/ssl/pdh, Quelle ssl-pdh): Ohne den Ordner ändert sich nichts (kein
+# Ordner am Partner, kein Alarm, keine Zeile im Status). Entsteht auf dem aktiven Server ein
+# Zertifikat, kommt es mit Besitzer und Rechten (Schlüssel 0640) auf den Partner; nach dem Tausch
+# sind Zertifikat und Schlüssel auf dem neuen aktiven Server byte-gleich, ohne Alarm.
+# mirror_lists_certs <Container>: die Statusliste der Spiegelung (Schnittstelle, nicht die Textausgabe) nennt ssl-pdh
+mirror_lists_certs() {
+    docker exec "$1" curl -fsS --unix-socket /run/pdh-ha/api.sock http://pdh-ha/v1/mirror 2>/dev/null | grep -q '"label":"ssl-pdh"'
+}
+
+cert_sums() { # <Container>: Prüfsummen, Rechte und Besitzer beider Dateien
+    docker exec "$1" sh -c 'cd /etc/ssl/pdh/lab.test 2>/dev/null && sha256sum fullchain.pem privkey.pem && stat -c "%n %a %u:%g" fullchain.pem privkey.pem' 2>/dev/null || true
+}
+
+sc_spiegel_zertifikat() {
+    local d=/etc/ssl/pdh/lab.test a b
+    mirror_enable
+    log "Ohne /etc/ssl/pdh: nichts am Partner, kein Alarm, keine Zeile im Status"
+    docker exec node2 test ! -e /etc/ssl/pdh || fail "node2 hat /etc/ssl/pdh schon vor dem ersten Zertifikat"
+    [[ "$(alarm_count node1 ssl-pdh)" == 0 && "$(alarm_count node2 ssl-pdh)" == 0 ]] || fail "Alarm zu ssl-pdh ohne Zertifikate"
+    docker exec node1 curl -fsS --unix-socket /run/pdh-ha/api.sock http://pdh-ha/v1/mirror | grep -q '"label":"uploads"' || fail "Statusliste von node1 nicht lesbar"
+    ! mirror_lists_certs node1 || fail "Statusliste nennt ssl-pdh ohne Zertifikate"
+    log "Zertifikat und Schlüssel auf node1 anlegen (root, Gruppe www-data, Schlüssel 0640)"
+    docker exec node1 sh -c 'install -d -m 0750 -o root -g www-data /etc/ssl/pdh "$1" &&
+        head -c 3000 /dev/urandom >"$1/fullchain.pem" && head -c 1700 /dev/urandom >"$1/privkey.pem" &&
+        chown root:www-data "$1/fullchain.pem" "$1/privkey.pem" && chmod 0644 "$1/fullchain.pem" && chmod 0640 "$1/privkey.pem"' _ "$d" ||
+        fail "Zertifikat auf node1 anlegen"
+    a="$(cert_sums node1)"
+    [[ -n "$a" ]] || fail "Prüfsumme auf node1 leer"
+    docker exec node1 pdh-ha mirror run >/dev/null || fail "Abgleich auf node1"
+    wait_for 90 eval '[[ "$(cert_sums node2)" == "$a" ]]' || fail "Zertifikat kommt nicht gleich auf node2 an ($(cert_sums node2 | tr '
+' ' '), erwartet $(tr '
+' ' ' <<<"$a"))"
+    log "auf node2 angekommen: gleiche Prüfsumme, Rechte und Besitzer"
+    wait_for 15 eval 'mirror_lists_certs node1' || fail "Statusliste nennt ssl-pdh nicht, obwohl es gespiegelt wird"
+    log "Tausch: node2 wird aktiv"
+    swap_on node1 || fail "Rollentausch auf node1"
+    wait_for 180 mirror_ok_rev || fail "Tausch nicht abgeschlossen (node1=$R1, node2=$R2, Fehler $(jget merr <<<"$J1"))"
+    b="$(cert_sums node2)"
+    [[ "$b" == "$a" ]] || fail "auf dem neuen aktiven node2 weichen die Zertifikate ab: $b"
+    [[ "$b" == *"privkey.pem 640 0:"* ]] || fail "Schlüssel auf node2 nicht 0640 (root): $b"
+    [[ "$(cert_sums node1)" == "$a" ]] || fail "auf node1 haben sich die Zertifikate geändert"
+    [[ "$(alarm_count node1 ssl-pdh)" == 0 && "$(alarm_count node2 ssl-pdh)" == 0 ]] || fail "Alarm zu ssl-pdh nach dem Tausch"
+    log "nach dem Tausch auf beiden byte-gleich, Schlüssel 0640, kein Alarm"
 }
 
 run_scenario() {

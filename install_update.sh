@@ -223,6 +223,40 @@ else
     else
         echo "pdh bleibt aus (passiver Server, Datenbank-Spiegel läuft nicht)."
     fi
+    # nginx für die Zertifikate (Let's Encrypt, Karte "Zertifikate"): nur wenn unter /etc/ssl/pdh
+    # schon ein Zertifikat liegt und nginx fehlt. Ohne Zertifikate (der Normalfall) bleibt nginx
+    # unberührt. Ein Fehler (z. B. kein apt) bricht das Update nicht ab. Im Verbund wird nginx nur
+    # am aktiven Server gestartet; am passiven wird es eingerichtet und nur eingeschaltet
+    # (läuft nach dem Tausch über den Abgleich der Zertifikate mit).
+    ssl_dir="${PDH_SSL_DIR:-/etc/ssl/pdh}"
+    nginx_bin="${PDH_NGINX_BIN:-nginx}"
+    if [[ -d "$ssl_dir" && -n "$(find "$ssl_dir" -mindepth 1 -maxdepth 1 -type d -print -quit 2>/dev/null)" ]] \
+        && ! command -v "$nginx_bin" >/dev/null 2>&1; then
+        echo "Zertifikate unter $ssl_dir vorhanden, aber nginx fehlt - nginx wird eingerichtet."
+        nginx_rc=0
+        if command -v systemd-run >/dev/null 2>&1; then
+            # außerhalb von Agent-cgroup und -Sandbox (apt schreibt nach /usr und /var)
+            systemd-run --wait --pipe --collect --quiet --unit=pdh-nginx-install-$(date +%s) env DEBIAN_FRONTEND=noninteractive apt-get install -y nginx || nginx_rc=$?
+        else
+            DEBIAN_FRONTEND=noninteractive apt-get install -y nginx || nginx_rc=$?
+        fi
+        if (( nginx_rc != 0 )); then
+            echo "WARNING: nginx konnte nicht eingerichtet werden (apt) - Update trotzdem fertig. Von Hand: sudo apt-get install -y nginx" >&2
+        else
+            nginx_now=1
+            if [[ -x "$pdh_ha_bin" ]]; then
+                ha_status="$("$pdh_ha_bin" status --json 2>/dev/null || true)"
+                ha_active_re='"self":\{[^{}]*"role":"aktiv"'
+                [[ "$ha_status" =~ $ha_active_re ]] || nginx_now=0
+            fi
+            if (( nginx_now )); then
+                systemctl enable --now nginx || echo "WARNING: nginx konnte nicht gestartet werden - siehe 'systemctl status nginx'" >&2
+            else
+                systemctl enable nginx || echo "WARNING: nginx konnte nicht eingeschaltet werden" >&2
+                echo "nginx wird nicht gestartet (passiver Server im Verbund)."
+            fi
+        fi
+    fi
     # Ausfallschutz (pdh-ha): nur wenn eingerichtet. Vor dem Agent-Neustart und
     # per systemd-run außerhalb von Agent-cgroup und -Sandbox (/etc beschreibbar);
     # ein Fehler bricht das normale Update nicht ab, den Abschluss (--finish) schon.

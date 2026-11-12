@@ -706,7 +706,7 @@ func (m *mirrorInbox) Accept(ctx context.Context, peerID, peerKind string, req m
 				m.mu.Unlock()
 				m.save()
 			}
-			if derr == nil && (label == "nginx" || label == "ssl-pdh-nextcloud" || label == "letsencrypt") {
+			if derr == nil && (label == "nginx" || label == "ssl-pdh-nextcloud" || label == ha.MirrorCertLabel || label == "letsencrypt") {
 				m.mu.Lock()
 				dirty := m.st.NginxDirty
 				m.mu.Unlock()

@@ -241,6 +241,7 @@ func findBash(t *testing.T) string {
 
 type finishEnv struct {
 	bash, dir string
+	env       string // weitere Zuweisungen vor dem Aufruf (spätere gelten), z. B. PDH_SSL_DIR=…
 }
 
 func newFinishEnv(t *testing.T) *finishEnv {
@@ -266,9 +267,11 @@ func newFinishEnv(t *testing.T) *finishEnv {
 	w(filepath.Join(repo, ".gitignore"), "bin/\n")
 	stub := func(name, body string) { w(filepath.Join(dir, "stubs", name), "#!/usr/bin/env bash\n"+body+"\n") }
 	stub("systemctl", `echo "systemctl $*" >> "$PDH_TEST_LOG"`)
-	stub("systemd-run", `echo "systemd-run $*" >> "$PDH_TEST_LOG"; exit "${PDH_TEST_SD_RC:-0}"`)
+	// apt-get läuft über systemd-run: PDH_TEST_APT_RC steuert nur dessen Ausgang
+	stub("systemd-run", `echo "systemd-run $*" >> "$PDH_TEST_LOG"; case "$*" in *apt-get*) exit "${PDH_TEST_APT_RC:-0}";; esac; exit "${PDH_TEST_SD_RC:-0}"`)
 	stub("go", `echo "go $*" >> "$PDH_TEST_LOG"; exit 1`)
-	w(filepath.Join(dir, "pdh-ha"), "#!/usr/bin/env bash\nexit 0\n")
+	stub("nginx", `exit 0`) // nur gefunden, wenn ein Test PDH_NGINX_BIN=nginx setzt
+	w(filepath.Join(dir, "pdh-ha"), "#!/usr/bin/env bash\nif [ \"$1\" = status ]; then echo \"$PDH_TEST_HA_STATUS\"; fi\nexit 0\n")
 	git := func(args ...string) {
 		c := exec.Command("git", append([]string{"-C", repo, "-c", "user.name=t", "-c", "user.email=t@t", "-c", "core.autocrlf=false"}, args...)...)
 		if out, err := c.CombinedOutput(); err != nil {
@@ -302,6 +305,7 @@ func (e *finishEnv) put(t *testing.T, name, content string) {
 func (e *finishEnv) run(t *testing.T, sdRC string, args ...string) (log, out string, code int) {
 	t.Helper()
 	script := `PATH="$PWD/stubs:$PATH" PDH_TEST_LOG="$PWD/log" PDH_HA_BIN="$PWD/pdh-ha" PDH_AGENT_BIN="$PWD/agent-bin" ` +
+		`PDH_SSL_DIR="$PWD/ssl-nicht-da" PDH_NGINX_BIN=pdh-test-kein-nginx ` + e.env + ` ` +
 		`PDH_UPDATE_MODE=systemd PDH_TEST_SD_RC=` + sdRC + ` bash ./repo/install_update.sh "$@"`
 	c := exec.Command(e.bash, append([]string{"-c", script, "x"}, args...)...)
 	c.Dir = e.dir
@@ -365,6 +369,108 @@ func TestFinishInstallsBuiltPdhHa(t *testing.T) {
 	_, out, code = e.run(t, "1", "--finish")
 	if code == 0 || !strings.Contains(out, "Abschluss fehlgeschlagen") {
 		t.Fatalf("Fehler beim pdh-ha-Einsetzen nicht gemeldet: code %d, %s", code, out)
+	}
+}
+
+// ready legt alles an, was --finish braucht.
+func (e *finishEnv) ready(t *testing.T) {
+	t.Helper()
+	e.put(t, "pdh", "#!/bin/sh\n")
+	e.put(t, "update-agent", "#!/bin/sh\n")
+	e.put(t, "pdh-ha.neu", "#!/bin/sh\n")
+	e.put(t, ".built-commit", e.head(t)+"\n")
+}
+
+// cert legt ein Zertifikat (Namensordner) unter dem Zertifikatsordner des Tests an.
+func (e *finishEnv) cert(t *testing.T, name string) {
+	t.Helper()
+	d := filepath.Join(e.dir, "ssl", name)
+	if err := os.MkdirAll(d, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(d, "fullchain.pem"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+const sslEnv = `PDH_SSL_DIR="$PWD/ssl" `
+
+// Ohne Zertifikate (der Normalfall) fasst das Update nginx nie an: kein apt, kein systemctl für nginx.
+func TestFinishWithoutCertsLeavesNginxAlone(t *testing.T) {
+	e := newFinishEnv(t)
+	e.ready(t)
+	for name, env := range map[string]string{
+		"Ordner fehlt":     "",
+		"Ordner leer":      sslEnv,
+		"nur eine Datei":   sslEnv,
+		"Verbund aktiv":    `PDH_TEST_HA_STATUS='{"self":{"role":"aktiv"}}'`,
+		"einzelner Server": `PDH_HA_BIN="$PWD/gibt-es-nicht"`,
+	} {
+		e.env = env
+		if name == "Ordner leer" || name == "nur eine Datei" {
+			if err := os.MkdirAll(filepath.Join(e.dir, "ssl"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if name == "nur eine Datei" {
+			if err := os.WriteFile(filepath.Join(e.dir, "ssl", "readme.txt"), []byte("x"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		_ = os.Remove(filepath.Join(e.dir, "log"))
+		log, out, code := e.run(t, "0", "--finish")
+		if code != 0 {
+			t.Fatalf("%s: code %d: %s\n%s", name, code, out, log)
+		}
+		if strings.Contains(log, "apt-get") || strings.Contains(log, "nginx") || strings.Contains(out, "nginx") {
+			t.Errorf("%s: nginx angefasst:\n%s\n%s", name, log, out)
+		}
+	}
+}
+
+// Zertifikat da, nginx fehlt: einrichten – am aktiven Server (und am einzelnen) mit Start, am
+// passiven nur einschalten. Zweiter Lauf, wenn nginx da ist: nichts mehr. apt kaputt: Update läuft weiter.
+func TestFinishWithCertsInstallsNginx(t *testing.T) {
+	e := newFinishEnv(t)
+	e.ready(t)
+	e.cert(t, "lab.test")
+	active := `PDH_TEST_HA_STATUS='{"self":{"id":"a","kind":"node","role":"aktiv","term":3},"peers":[{"role":"passiv"}]}' `
+	passive := `PDH_TEST_HA_STATUS='{"self":{"id":"b","kind":"node","role":"passiv","term":3},"peers":[{"role":"aktiv"}]}' `
+
+	e.env = sslEnv + active
+	log, out, code := e.run(t, "0", "--finish")
+	if code != 0 || !strings.Contains(log, "apt-get install -y nginx") || !strings.Contains(log, "systemctl enable --now nginx\n") {
+		t.Fatalf("aktiv: code %d: %s\n%s", code, out, log)
+	}
+
+	_ = os.Remove(filepath.Join(e.dir, "log"))
+	e.env = sslEnv + passive
+	log, out, code = e.run(t, "0", "--finish")
+	if code != 0 || !strings.Contains(log, "apt-get install -y nginx") || !strings.Contains(log, "systemctl enable nginx\n") || strings.Contains(log, "--now nginx") {
+		t.Fatalf("passiv: code %d: %s\n%s", code, out, log)
+	}
+
+	_ = os.Remove(filepath.Join(e.dir, "log"))
+	e.env = sslEnv + `PDH_HA_BIN="$PWD/gibt-es-nicht" `
+	log, out, code = e.run(t, "0", "--finish")
+	if code != 0 || !strings.Contains(log, "systemctl enable --now nginx\n") {
+		t.Fatalf("einzelner Server: code %d: %s\n%s", code, out, log)
+	}
+
+	// nginx ist da: idempotent, nichts mehr zu tun
+	_ = os.Remove(filepath.Join(e.dir, "log"))
+	e.env = sslEnv + active + `PDH_NGINX_BIN=nginx `
+	log, out, code = e.run(t, "0", "--finish")
+	if code != 0 || strings.Contains(log, "apt-get") || strings.Contains(log, "enable") {
+		t.Fatalf("nginx vorhanden: code %d: %s\n%s", code, out, log)
+	}
+
+	// apt scheitert: Warnung, kein Start, das Update ist trotzdem fertig
+	_ = os.Remove(filepath.Join(e.dir, "log"))
+	e.env = sslEnv + active + `PDH_TEST_APT_RC=100 `
+	log, out, code = e.run(t, "0", "--finish")
+	if code != 0 || !strings.Contains(out, "WARNING: nginx konnte nicht eingerichtet werden") || strings.Contains(log, "enable") || !strings.Contains(out, "Updated to") {
+		t.Fatalf("apt kaputt: code %d: %s\n%s", code, out, log)
 	}
 }
 

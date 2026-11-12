@@ -196,6 +196,19 @@ if [[ -d "$FROM/files/etc-pdh" ]]; then
   restore_dir etc-pdh /etc/pdh --exclude=/ha/
   find /etc/pdh -path /etc/pdh/ha -prune -o -exec chown root:pdh {} + -exec chmod u=rwX,g=rX,o= {} +
 fi
+if [[ -d "$FROM/files/ssl-pdh" ]]; then
+  # Zertifikate des PDH (Let's Encrypt): Besitzer root, Gruppe des nginx-Benutzers (Rechte kommen
+  # nicht aus der Sicherung), Schlüssel 0640, Ordner 0750 – wie sie der Update-Agent anlegt
+  restore_dir ssl-pdh /etc/ssl/pdh
+  ssl_group=root
+  for g in nginx www-data; do
+    if getent group "$g" >/dev/null 2>&1; then ssl_group="$g"; break; fi
+  done
+  chown -R "root:$ssl_group" /etc/ssl/pdh
+  find /etc/ssl/pdh -type d -exec chmod 0750 {} +
+  find /etc/ssl/pdh -type f -name 'privkey.pem' -exec chmod 0640 {} +
+  find /etc/ssl/pdh -type f ! -name 'privkey.pem' -exec chmod 0644 {} +
+fi
 if compgen -G "$FROM/files/systemd/pdh*.service" >/dev/null; then
   for f in "$FROM"/files/systemd/pdh*.service; do
     [[ "$(basename "$f")" == pdh-ha.service ]] || cp "$f" /etc/systemd/system/

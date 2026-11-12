@@ -762,8 +762,29 @@ func (w *mirrorWorker) presence(srcs []ha.MirrorSource) map[string]bool {
 	return p
 }
 
+// mirrorRelevant: die Quellen, die für „Erstabgleich fertig“ zählen. Eine optionale Quelle, deren
+// Ordner fehlt (Zertifikate des PDH, der Normalfall), zählt nicht mit – weder als fertig noch als offen.
+func mirrorRelevant(srcs []ha.MirrorSource, present map[string]bool) []ha.MirrorSource {
+	out := make([]ha.MirrorSource, 0, len(srcs))
+	for _, m := range srcs {
+		if m.Optional && !present[m.Label] {
+			continue
+		}
+		out = append(out, m)
+	}
+	return out
+}
+
+// mirrorQuietLabel: Zeile der Statusliste ohne Inhalt. Die Zertifikate des PDH (ssl-pdh) stehen dort
+// erst, wenn es etwas zu sagen gibt (Lauf, Fehler, unbelegt, übersprungen) – nie als leere Zeile auf
+// einem Server ohne Zertifikate.
+func mirrorQuietLabel(label string, ls mirrorLabelState) bool {
+	return label == ha.MirrorCertLabel && ls.LastOK.IsZero() && !ls.Unproven && !ls.Skipped && ls.Err == ""
+}
+
 // mirrorFirstDone: wahr, wenn jede aktuelle Quelle durch ist.
 func mirrorFirstDone(srcs []ha.MirrorSource, per map[string]mirrorLabelState, present map[string]bool) bool {
+	srcs = mirrorRelevant(srcs, present)
 	for _, m := range srcs {
 		if !mirrorLabelDone(per[m.Label], present[m.Label]) {
 			return false
@@ -780,6 +801,7 @@ func (w *mirrorWorker) refreshFirstLocked(srcs []ha.MirrorSource, present map[st
 		w.present, w.st.Checked = present, true
 	}
 	w.st.FirstDone = mirrorFirstDone(srcs, w.st.PerLabel, present)
+	srcs = mirrorRelevant(srcs, present)
 	n := 0
 	for _, m := range srcs {
 		if mirrorLabelDone(w.st.PerLabel[m.Label], present[m.Label]) {
@@ -847,7 +869,7 @@ func (w *mirrorWorker) runAll(ctx context.Context) error {
 
 // finalSync: letzter Abgleich vor der Übergabe, höchstens max lang: erst die
 // vorgemerkten Pfade der beobachteten Quellen, dann die übrigen Quellen voll
-// (nextcloud-app, etc-pdh, nginx, ssl-pdh-nextcloud, letsencrypt); Instant-
+// (nextcloud-app, etc-pdh, nginx, ssl-pdh-nextcloud, ssl-pdh, letsencrypt); Instant-
 // Quellen laufen nur voll, wenn der Watch fehlt, begrenzt oder noch nicht
 // bereit ist. Ein
 // Überschreiten der Frist ist ein Fehler. nil heißt nur: der Partner ist
@@ -985,6 +1007,9 @@ func (w *mirrorWorker) runOnce(ctx context.Context, wait, final bool) error {
 		if covered[m.Label] {
 			continue
 		}
+		if m.Optional && !present[m.Label] {
+			continue // Normalfall (keine Zertifikate): kein Lauf, keine Meldung, kein Eintrag
+		}
 		hold := w.uidHold(m.Label) // I3: je Quelle vor ihrem Lauf frisch geprüft
 		o := mirrorOutcome{label: m.Label}
 		switch {
@@ -999,6 +1024,10 @@ func (w *mirrorWorker) runOnce(ctx context.Context, wait, final bool) error {
 		case m.Label == "nextcloud-data" && !ncHasDataMarker(m.Path, path.Join, w.d.exists):
 			o.err = fmt.Errorf("Quelle %s ist leer – nicht gespiegelt", m.Label)
 			w.alarm(o.err.Error())
+		case m.Optional && w.refusedEmpty(m):
+			// alle Zertifikate gelöscht: kein Fehler; der Partner behält seinen Stand (nichts wird
+			// gelöscht), bis wieder ein Zertifikat da ist
+			o.skipped = true
 		case w.refusedEmpty(m):
 			o.err = fmt.Errorf("Quelle %s ist leer – nicht gespiegelt", m.Label)
 			w.alarm(o.err.Error())
@@ -1226,9 +1255,9 @@ func (w *mirrorWorker) coveredLocked(label string) bool {
 
 // finalOrder: für den letzten Abgleich zuerst Quellen, die voll laufen müssen
 // (Instant-Quellen ohne Watch), dann nextcloud-app, etc-pdh, nginx,
-// ssl-pdh-nextcloud, letsencrypt.
+// ssl-pdh-nextcloud, ssl-pdh, letsencrypt.
 func finalOrder(srcs []ha.MirrorSource) []ha.MirrorSource {
-	rank := map[string]int{"nextcloud-app": 1, "etc-pdh": 2, "nginx": 3, "ssl-pdh-nextcloud": 4, "letsencrypt": 5}
+	rank := map[string]int{"nextcloud-app": 1, "etc-pdh": 2, "nginx": 3, "ssl-pdh-nextcloud": 4, ha.MirrorCertLabel: 5, "letsencrypt": 6}
 	out := append([]ha.MirrorSource(nil), srcs...)
 	sort.SliceStable(out, func(i, j int) bool { return rank[out[i].Label] < rank[out[j].Label] })
 	return out
