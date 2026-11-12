@@ -44,8 +44,12 @@ func TestPromotedAbsentStaysUnproven(t *testing.T) {
 	if !w.unproven("uploads") {
 		t.Fatal("Quelle nicht unbelegt")
 	}
-	if n := f.alarms("Quelle uploads: Dieser Server wurde aktiv, bevor der Erstabgleich fertig war"); n != 1 {
+	// T14 B7: eigener Text – der Ordner kam neu dazu, der Erstabgleich war nicht „unfertig“
+	if n := f.alarms("Quelle uploads: Der Ordner ist neu dazugekommen, seit dieser Server aktiv wurde"); n != 1 {
 		t.Fatalf("Alarme: %d %v", n, f.ev.readAll())
+	}
+	if n := f.alarms("bevor der Erstabgleich fertig war"); n != 0 {
+		t.Fatalf("falscher Alarmtext für eine neu dazugekommene Quelle: %v", f.ev.readAll())
 	}
 	// Neustart des Arbeiters: der Stand bleibt
 	w2 := newMirrorWorker(w.d)

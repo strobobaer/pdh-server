@@ -259,6 +259,13 @@ func TestStatusMirrorLine(t *testing.T) {
 	if got := line(nil); got != "" {
 		t.Errorf("Zeuge: %q", got)
 	}
+	// T14 B4: Fehlt der Partner, steht das da – nicht „läuft“ und kein „Fehler:“
+	var away bytes.Buffer
+	printMirrorStatus(&away, &apiMirror{On: true, Active: true, FirstDone: true, LastOKAgo: 90, PartnerAway: true, Err: "uploads: rsync 12"})
+	if s := away.String(); !strings.HasPrefix(s, "Spiegelung: wartet – Partner nicht erreichbar, letzter Abgleich vor 90 s\n") ||
+		strings.Contains(s, "läuft") || strings.Contains(s, "  Fehler:") || !strings.Contains(s, "Letzte Meldung (Folge des fehlenden Partners): uploads: rsync 12") {
+		t.Errorf("Partner fehlt: %q", s)
+	}
 	// Fehler und Papierkorb stehen eingerückt darunter
 	var b bytes.Buffer
 	printMirrorStatus(&b, &apiMirror{On: true, Active: true, FirstDone: true, LastOKAgo: 400, Err: "uploads: rsync 23", WatchErr: "chat_files: weg", TrashBytes: 2048, Orphans: 3})

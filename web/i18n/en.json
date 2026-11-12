@@ -886,6 +886,8 @@
  "Erstabgleich läuft": "Initial sync running",
  "Bis er fertig ist, sind noch nicht alle Dateien auf dem zweiten Server.": "Until it is finished, not all files are on the second server yet.",
  "Der Erstabgleich ist noch nicht fertig.": "The initial sync is not finished yet.",
+ "Der zweite Server ist nicht erreichbar. Sobald er zurück ist, läuft der Abgleich von selbst weiter.": "The second server cannot be reached. As soon as it is back, the sync continues by itself.",
+ "wartet auf den zweiten Server": "waiting for the second server",
  "Letzter Abgleich": "Last sync",
  "Dauer": "Duration",
  "übersprungen": "skipped",

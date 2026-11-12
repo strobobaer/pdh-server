@@ -10,6 +10,12 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.77.10] – 2026-11-12
+
+### Geändert
+
+- Cloudflare: Meldungen, die die Karte „DNS, Proxy und Tunnel-Ziele“ anzeigt, stehen jetzt auch im Protokoll (Bereich cloudflare) – so lässt sich später nachsehen, was Cloudflare abgelehnt hat.
+
 ## [0.77.9] – 2026-11-09
 
 ### Neu
@@ -53,6 +59,12 @@ im Kapitel „Versionen & Updates“ an.
 - Der Eintrag „Nextcloud“ in der Navigation öffnet jetzt die Nextcloud-Adresse aus den Server-Einstellungen statt einer fest eingebauten Adresse; ohne eingetragene Adresse erscheint er nicht.
 - Das Nextcloud-Installationsskript bricht nach der Installation nicht mehr mit „Memcache … not available“ ab; der Zwischenspeicher wird richtig eingetragen.
 - Die Datei-Spiegelung erkennt den Datenordner neuerer Nextcloud-Fassungen (ab 30, Kennungsdatei `.ncdata`) und meldet ihn nicht mehr als leer.
+- Die Karte „Datei-Spiegelung“ frischt sich während Erstabgleich und Abgleich selbst auf; neu laden ist nicht mehr nötig.
+- Ist der zweite Server nicht erreichbar, zeigen Karte und `pdh-ha status` „wartet auf den zweiten Server“ statt „läuft“ mit einer rohen Fehlermeldung.
+- Bei einem Rollentausch erscheint nicht mehr jedes Mal die Warnung „Dateien … abgelehnt: Dieser Server ist nicht passiv“; der kurze Moment der Übergabe ist nur noch ein Hinweis.
+- Das Ereignisprotokoll des Verbunds verliert bei einem Stromausfall die letzten Zeilen nicht mehr, und Zeilen nach einem früheren Ausfall werden wieder gelesen.
+- Kommt ein Ordner erst nach einer Übernahme neu dazu, nennt der Alarm das jetzt so („Der Ordner ist neu dazugekommen …“) statt „bevor der Erstabgleich fertig war“.
+- Cloudflare: Ein API-Token, der in Cloudflare unter dem Konto angelegt ist, wird nicht mehr als „Invalid API Token (1000)“ abgelehnt.
 
 ### Sicherheit
 - Vier neue Rechte (Kategorie „System & Sicherheit“): „Nextcloud-Abgleich einstellen und starten“, „Netzlaufwerke in Nextcloud nutzen“, „Netzlaufwerke in Nextcloud: auch PDH-Daten bearbeiten“ und „Cloudflare verwalten (DNS, Proxy, Tunnel)“. Mit dem Update bekommen sie die Rollen, die überall die Server-Einstellungen pflegen dürfen.

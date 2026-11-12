@@ -400,6 +400,7 @@ func (w *mirrorWorker) settlePromotion(srcs []ha.MirrorSource, present map[strin
 	promoted := w.st.Promoted
 	changed := promoted
 	var marked []string
+	appeared := map[string]bool{} // fehlte bei der Übernahme, ist jetzt da (T14 B7: eigener Alarmtext)
 	for _, m := range srcs {
 		ls := w.st.PerLabel[m.Label]
 		if !promoted && !ls.AbsentAtPromote {
@@ -420,6 +421,7 @@ func (w *mirrorWorker) settlePromotion(srcs []ha.MirrorSource, present map[strin
 			if !ls.Unproven {
 				ls.Unproven, ls.WaitAlarmed = true, true
 				marked = append(marked, m.Label)
+				appeared[m.Label] = old.AbsentAtPromote
 			}
 		}
 		if ls != old {
@@ -436,6 +438,10 @@ func (w *mirrorWorker) settlePromotion(srcs []ha.MirrorSource, present map[strin
 	w.mu.Unlock()
 	w.save(snap)
 	for _, l := range marked {
+		if appeared[l] {
+			w.alarmOnce("unproven:"+l, "Quelle "+l+": Der Ordner ist neu dazugekommen, seit dieser Server aktiv wurde – einen eigenen Beleg gibt es dafür noch nicht. Auf dem Partner wird nichts gelöscht. Ist dieser Server vollständig: sudo pdh-ha mirror confirm")
+			continue
+		}
 		w.alarmOnce("unproven:"+l, "Quelle "+l+": Dieser Server wurde aktiv, bevor der Erstabgleich fertig war. Auf dem Partner wird nichts gelöscht. Ist dieser Server vollständig: sudo pdh-ha mirror confirm")
 	}
 }

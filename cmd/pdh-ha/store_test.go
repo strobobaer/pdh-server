@@ -103,6 +103,26 @@ func TestClusterMode(t *testing.T) {
 	}
 }
 
+// T14 B3: Nach einem Stromausfall stehen Nullbytes statt der letzten Zeile in der
+// Datei. Die nächste Zeile hängt direkt dahinter und darf nicht mit verloren gehen.
+func TestEventLogSkipsNulBytes(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "events.jsonl")
+	l := openEventLog(p, 5<<20, 3)
+	l.add(ha.Event{Kind: "info", Text: "eins"})
+	f, err := os.OpenFile(p, os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.Write(make([]byte, 102))
+	f.Close()
+	l = openEventLog(p, 5<<20, 3)
+	l.add(ha.Event{Kind: "info", Text: "drei"})
+	got := openEventLog(p, 5<<20, 3).since(0, 10)
+	if len(got) != 2 || got[0].Text != "eins" || got[1].Text != "drei" || got[1].Seq != 2 {
+		t.Fatalf("nach Nullbytes gelesen: %+v", got)
+	}
+}
+
 func TestEventLogRotate(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "events.jsonl")

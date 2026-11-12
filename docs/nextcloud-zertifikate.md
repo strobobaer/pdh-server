@@ -100,15 +100,17 @@ Gedacht für den Fall, dass Nextcloud unter einem Namen erreichbar ist, für den
 1. Core-Einstellungen → Zertifikate → **Server (Nextcloud)** → alle Namen und IPs eintragen, unter denen Nextcloud erreichbar ist, z. B. `nextcloud.local, 192.168.1.10` → **Ausstellen**. Gültigkeit: 825 Tage, mehr akzeptieren Apple-Geräte nicht.
 2. **Kette** (`…-fullchain.pem`) und **Schlüssel** (`….key`) herunterladen und auf den nginx-Server kopieren:
    ```bash
-   sudo install -m 644 nextcloud.local-fullchain.pem /etc/nginx/pdh-pki/server.crt
-   sudo install -m 600 nextcloud.local.key          /etc/nginx/pdh-pki/server.key
+   sudo install -d -m 755 /etc/ssl/pdh-nextcloud
+   sudo install -m 644 nextcloud.local-fullchain.pem /etc/ssl/pdh-nextcloud/server.crt
+   sudo install -m 600 nextcloud.local.key          /etc/ssl/pdh-nextcloud/server.key
    ```
 3. Im server-Block von Nextcloud:
    ```nginx
-   ssl_certificate     /etc/nginx/pdh-pki/server.crt;
-   ssl_certificate_key /etc/nginx/pdh-pki/server.key;
+   ssl_certificate     /etc/ssl/pdh-nextcloud/server.crt;
+   ssl_certificate_key /etc/ssl/pdh-nextcloud/server.key;
    ```
    dann `sudo nginx -t && sudo systemctl reload nginx`.
+   Der Ordner `/etc/ssl/pdh-nextcloud` ist derselbe wie im Handbuch; im Verbund spiegelt ihn die Datei-Spiegelung mit „Nextcloud mitnehmen“ auf den zweiten Server. (`/etc/nginx/pdh-pki` enthält nur CA und Sperrliste für die Client-Zertifikate.)
 4. In Nextcloud die Adresse erlauben: `sudo -u www-data php occ config:system:set trusted_domains 2 --value=nextcloud.local`.
 5. **Auf den Geräten der CA vertrauen** (einmalig je Gerät, CA-Datei von `…/pki/ca.crt`, für Windows/iOS `…/pki/ca.crt?format=der`):
    - **Android:** Einstellungen → Sicherheit → Verschlüsselung & Anmeldedaten → Zertifikat installieren → **CA-Zertifikat**. Die Nextcloud-App zeigt beim ersten Verbinden das Server-Zertifikat. Fingerabdruck mit dem PDH vergleichen und **vertrauen**.

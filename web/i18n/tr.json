@@ -886,6 +886,8 @@
  "Erstabgleich läuft": "İlk eşitleme sürüyor",
  "Bis er fertig ist, sind noch nicht alle Dateien auf dem zweiten Server.": "Bitene kadar tüm dosyalar henüz ikinci sunucuda değildir.",
  "Der Erstabgleich ist noch nicht fertig.": "İlk eşitleme henüz bitmedi.",
+ "Der zweite Server ist nicht erreichbar. Sobald er zurück ist, läuft der Abgleich von selbst weiter.": "İkinci sunucuya ulaşılamıyor. Geri geldiğinde eşitleme kendiliğinden devam eder.",
+ "wartet auf den zweiten Server": "ikinci sunucu bekleniyor",
  "Letzter Abgleich": "Son eşitleme",
  "Dauer": "Süre",
  "übersprungen": "atlandı",
