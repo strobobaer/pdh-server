@@ -140,9 +140,11 @@ func prefix6(addrs []card6Addr) (netip.Prefix, bool) {
 	return best.cidr.Masked(), true
 }
 
-// isHeld: /128 mit dem eingestellten Ende – nur solche Einträge gehören uns.
+// isHeld: nur /128 in 2000::/3 mit dem eingestellten Ende und ohne „dynamic“
+// gehören uns. Mit „dynamic“ ist es eine Adresse aus DHCPv6 – die gehört dem
+// Server selbst und wird nie angefasst; ULA (fd00::/8) ebenso nicht.
 func (v *vip6Ctl) isHeld(a card6Addr) bool {
-	if a.cidr.Bits() != 128 {
+	if a.cidr.Bits() != 128 || !global6.Contains(a.cidr.Addr()) || a.has("dynamic") {
 		return false
 	}
 	b, s := a.cidr.Addr().As16(), v.suffix.As16()
@@ -194,12 +196,19 @@ func (v *vip6Ctl) Take(ctx context.Context) (netip.Addr, error) {
 		return netip.Addr{}, errNoPrefix6
 	}
 	want := st.Want
-	for _, a := range addrs {
-		if a.cidr.Addr() == want && a.cidr.Bits() != 128 {
+	var cur *card6Addr // die gewollte Adresse, falls sie schon als unsere liegt
+	for i := range addrs {
+		a := &addrs[i]
+		if a.cidr.Addr() != want {
+			continue
+		}
+		if !v.isHeld(*a) {
 			return netip.Addr{}, fmt.Errorf("Adresse %s gehört fest zu diesem Server (%s) – anderes IPv6-Ende einstellen", want, a.cidr)
 		}
+		cur = a
 	}
-	if !slices.Contains(st.Held, want) {
+	switch {
+	case cur == nil:
 		cidr := want.String() + "/128"
 		if _, err := v.r.Run(ctx, []string{"ip", "-6", "addr", "add", cidr, "dev", v.iface, "preferred_lft", "0"}, nil, nil); err != nil {
 			if m := toolMissing("ip", err); m != nil {
@@ -210,7 +219,13 @@ func (v *vip6Ctl) Take(ctx context.Context) (netip.Addr, error) {
 		if err := v.waitDAD(ctx, want); err != nil {
 			return netip.Addr{}, err
 		}
-	} else if len(st.Held) == 1 {
+	case cur.has("dadfailed"):
+		return netip.Addr{}, v.dadFailed(ctx, want)
+	case cur.has("tentative"):
+		if err := v.waitDAD(ctx, want); err != nil {
+			return netip.Addr{}, err
+		}
+	case len(st.Held) == 1:
 		return want, nil
 	}
 	var old []netip.Addr
@@ -219,23 +234,29 @@ func (v *vip6Ctl) Take(ctx context.Context) (netip.Addr, error) {
 			old = append(old, h)
 		}
 	}
-	if err := v.deleteAddrs(ctx, old); err != nil {
-		return want, err
+	// erst ankündigen, dann alte Einträge entfernen: ein Fehler beim Entfernen
+	// darf die Ankündigung nicht verhindern; beide Fehler kommen zurück.
+	var annErr error
+	if v.na != nil {
+		if err := v.na.Announce(ctx, v.iface, want); err != nil {
+			annErr = fmt.Errorf("Adresse %s ankündigen: %w", want, err)
+		} else {
+			// zweite Runde unabhängig vom Aufrufer (dessen Kontext endet mit Take)
+			go func() {
+				v.sleep(5 * time.Second)
+				bg, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				defer cancel()
+				_ = v.na.Announce(bg, v.iface, want)
+			}()
+		}
 	}
-	if v.na == nil {
-		return want, nil
-	}
-	if err := v.na.Announce(ctx, v.iface, want); err != nil {
-		return want, fmt.Errorf("Adresse %s ankündigen: %w", want, err)
-	}
-	// zweite Runde unabhängig vom Aufrufer (dessen Kontext endet mit Take)
-	go func() {
-		v.sleep(5 * time.Second)
-		bg, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		_ = v.na.Announce(bg, v.iface, want)
-	}()
-	return want, nil
+	return want, errors.Join(annErr, v.deleteAddrs(ctx, old))
+}
+
+// dadFailed nimmt die Adresse nach gescheiterter Doppelprüfung wieder weg.
+// errors.As findet *errDAD6 auch dann, wenn das Entfernen scheitert.
+func (v *vip6Ctl) dadFailed(ctx context.Context, want netip.Addr) error {
+	return errors.Join(&errDAD6{Addr: want}, v.deleteAddrs(ctx, []netip.Addr{want}))
 }
 
 // waitDAD liest bis zu 3 s im Abstand von 250 ms, bis die Adresse weder
@@ -261,10 +282,7 @@ func (v *vip6Ctl) waitDAD(ctx context.Context, want netip.Addr) error {
 			return fmt.Errorf("Adresse %s/128 fehlt nach dem Setzen", want)
 		}
 		if e.has("dadfailed") {
-			if err := v.deleteAddrs(ctx, []netip.Addr{want}); err != nil {
-				return err
-			}
-			return &errDAD6{Addr: want}
+			return v.dadFailed(ctx, want)
 		}
 		if !e.has("tentative") {
 			return nil

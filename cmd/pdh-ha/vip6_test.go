@@ -27,8 +27,13 @@ type vip6Fake struct {
 	lines  []string
 	noIPv6 bool            // Kernel ohne IPv6
 	dad    bool            // neu gesetzte Adresse scheitert an der DAD
-	gone   map[string]bool // del meldet „Cannot assign requested address“
-	calls  []string
+	gone   map[string]bool  // del meldet „Cannot assign requested address“
+	delErr map[string]error // del scheitert mit diesem Fehler
+	// tentReads > 0: neu gesetzte Adresse ist „tentative“, bis show so oft
+	// gelesen wurde; tent zählt dabei herunter (auch von Hand setzbar).
+	tentReads int
+	tent      int
+	calls     []string
 }
 
 func newVIP6Fake(card string, extra ...string) *vip6Fake {
@@ -52,16 +57,31 @@ func (f *vip6Fake) Run(_ context.Context, argv []string, _ []string, _ []byte) (
 	}
 	switch {
 	case strings.HasPrefix(cmd, "ip -6 -o addr show dev eth0"):
+		if f.tent > 0 {
+			f.tent--
+			if f.tent == 0 {
+				for i, l := range f.lines {
+					f.lines[i] = strings.Replace(l, " tentative", "", 1)
+				}
+			}
+		}
 		return []byte(strings.Join(f.lines, "\n") + "\n"), nil
 	case strings.HasPrefix(cmd, "ip -6 addr add "):
 		cidr := argv[4]
 		flags := "scope global"
-		if f.dad {
+		switch {
+		case f.dad:
 			flags = "scope global dadfailed tentative"
+		case f.tentReads > 0:
+			flags = "scope global tentative"
+			f.tent = f.tentReads
 		}
 		f.lines = append(f.lines, "2: eth0    inet6 "+cidr+" "+flags+` \       valid_lft forever preferred_lft 0sec`)
 	case strings.HasPrefix(cmd, "ip -6 addr del "):
 		cidr := argv[4]
+		if err := f.delErr[cidr]; err != nil {
+			return nil, err
+		}
 		if f.gone[cidr] {
 			return nil, errors.New("ip: exit status 2: RTNETLINK answers: Cannot assign requested address")
 		}
@@ -408,5 +428,183 @@ func TestVIP6ReleaseNeverTouchesNon128(t *testing.T) {
 	}
 	if f.count("ip -6 addr del") != 0 {
 		t.Fatalf("kein del erwartet: %v", f.calls)
+	}
+}
+
+// Adresse aus DHCPv6 (dynamic) gleich Want: gehört dem Server, nicht uns.
+func TestVIP6TakeDHCPv6Address(t *testing.T) {
+	f := newVIP6Fake(card6,
+		`2: eth0    inet6 2a02:f90:e198:1700::15/128 scope global dynamic noprefixroute \       valid_lft 3600sec preferred_lft 3600sec`)
+	v, _ := testVIP6(t, f, &fakeNA{}, "")
+	st, err := v.State(context.Background())
+	if err != nil || len(st.Held) != 0 {
+		t.Fatalf("State = %+v, %v – DHCPv6-Adresse darf nicht in Held", st, err)
+	}
+	_, err = v.Take(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "gehört fest zu diesem Server") {
+		t.Fatalf("Take = %v", err)
+	}
+	if f.count("ip -6 addr add") != 0 || f.count("ip -6 addr del") != 0 {
+		t.Fatalf("weder add noch del erwartet: %v", f.calls)
+	}
+	if err := v.Release(context.Background()); err != nil || f.count("ip -6 addr del") != 0 {
+		t.Fatalf("Release darf die DHCPv6-Adresse nicht löschen: %v %v", err, f.calls)
+	}
+}
+
+// DHCPv6-Adresse mit altem Präfix und ULA mit dem Ende: nie Held, nie gelöscht.
+func TestVIP6ForeignAddressesUntouched(t *testing.T) {
+	dhcp := `2: eth0    inet6 2a02:aaaa:0:1::15/128 scope global dynamic noprefixroute \       valid_lft 3600sec preferred_lft 3600sec`
+	ula := `2: eth0    inet6 fd00::15/128 scope global \       valid_lft forever preferred_lft forever`
+	f := newVIP6Fake(card6, dhcp, ula)
+	v, _ := testVIP6(t, f, &fakeNA{}, "")
+	st, err := v.State(context.Background())
+	if err != nil || len(st.Held) != 0 {
+		t.Fatalf("State = %+v, %v – fremde /128 dürfen nicht in Held", st, err)
+	}
+	if _, err := v.Take(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if f.count("ip -6 addr del") != 0 {
+		t.Fatalf("Take darf nichts löschen: %v", f.calls)
+	}
+	if err := v.Release(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if n := f.count("ip -6 addr del"); n != 1 || f.index("ip -6 addr del 2a02:f90:e198:1700::15/128 dev eth0") < 0 {
+		t.Fatalf("Release: nur die eigene Adresse löschen: %v", f.calls)
+	}
+	card := f.card()
+	if !strings.Contains(card, "2a02:aaaa:0:1::15/128") || !strings.Contains(card, "fd00::15/128") {
+		t.Fatal("fremde Adressen wurden entfernt")
+	}
+}
+
+// Entfernen des alten Eintrags scheitert: trotzdem angekündigt, Fehler kommt zurück.
+func TestVIP6TakeOldDeleteFails(t *testing.T) {
+	f := newVIP6Fake(card6, vip6OldLine)
+	f.delErr = map[string]error{"2a02:aaaa:0:1::15/128": errors.New("ip: exit status 2: RTNETLINK answers: Operation not permitted")}
+	na := &fakeNA{}
+	v, _ := testVIP6(t, f, na, "")
+	got, err := v.Take(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "Operation not permitted") {
+		t.Fatalf("Take = %v, Fehler beim Entfernen erwartet", err)
+	}
+	if got != mustAddr(t, vip6Want) || na.count() != 1 {
+		t.Fatalf("Adresse %s, Ankündigungen %d – erwartet Want und 1", got, na.count())
+	}
+}
+
+// Ankündigung und Entfernen scheitern: beide Fehler kommen zurück.
+func TestVIP6TakeAnnounceAndDeleteFail(t *testing.T) {
+	f := newVIP6Fake(card6, vip6OldLine)
+	f.delErr = map[string]error{"2a02:aaaa:0:1::15/128": errors.New("del kaputt")}
+	v, _ := testVIP6(t, f, &fakeNA{err: errors.New("na kaputt")}, "")
+	_, err := v.Take(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "del kaputt") || !strings.Contains(err.Error(), "na kaputt") {
+		t.Fatalf("Take = %v, beide Fehler erwartet", err)
+	}
+}
+
+// dadfailed und das Entfernen danach scheitert: *errDAD6 bleibt erkennbar.
+func TestVIP6TakeDADFailedDeleteFails(t *testing.T) {
+	f := newVIP6Fake(card6)
+	f.dad = true
+	f.delErr = map[string]error{vip6Want + "/128": errors.New("del kaputt")}
+	v, _ := testVIP6(t, f, &fakeNA{}, "")
+	_, err := v.Take(context.Background())
+	var dad *errDAD6
+	if !errors.As(err, &dad) || !strings.Contains(err.Error(), "del kaputt") {
+		t.Fatalf("Take = %v, erwartet *errDAD6 und Fehler beim Entfernen", err)
+	}
+}
+
+// Want liegt schon, ist aber noch tentative: DAD abwarten, kein neues add.
+func TestVIP6TakeHeldTentative(t *testing.T) {
+	f := newVIP6Fake(card6,
+		`2: eth0    inet6 2a02:f90:e198:1700::15/128 scope global tentative \       valid_lft forever preferred_lft 0sec`)
+	f.tent = 3 // erster Lesevorgang in Take, dann zwei im DAD-Warten
+	na := &fakeNA{}
+	v, _ := testVIP6(t, f, na, "")
+	if _, err := v.Take(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if f.count("ip -6 addr add") != 0 {
+		t.Fatal("kein add erwartet")
+	}
+	if n := f.count("ip -6 -o addr show"); n != 3 {
+		t.Fatalf("show %d×, erwartet 3 (DAD abgewartet)", n)
+	}
+	if na.count() != 1 {
+		t.Fatalf("Ankündigungen %d, erwartet 1", na.count())
+	}
+}
+
+// Want liegt schon mit dadfailed: entfernen, *errDAD6.
+func TestVIP6TakeHeldDADFailed(t *testing.T) {
+	f := newVIP6Fake(card6,
+		`2: eth0    inet6 2a02:f90:e198:1700::15/128 scope global dadfailed tentative \       valid_lft forever preferred_lft 0sec`)
+	na := &fakeNA{}
+	v, _ := testVIP6(t, f, na, "")
+	_, err := v.Take(context.Background())
+	var dad *errDAD6
+	if !errors.As(err, &dad) {
+		t.Fatalf("Take = %v, erwartet *errDAD6", err)
+	}
+	if f.count("ip -6 addr add") != 0 || f.index("ip -6 addr del 2a02:f90:e198:1700::15/128 dev eth0") < 0 {
+		t.Fatalf("kein add, aber del erwartet: %v", f.calls)
+	}
+	if na.count() != 0 {
+		t.Fatal("keine Ankündigung nach dadfailed")
+	}
+}
+
+// DAD-Warten: tentative verschwindet beim dritten Lesen nach dem add.
+func TestVIP6TakeDADWait(t *testing.T) {
+	f := newVIP6Fake(card6)
+	f.tentReads = 3
+	v, _ := testVIP6(t, f, nil, "")
+	var waits []time.Duration
+	v.sleep = func(d time.Duration) { waits = append(waits, d) }
+	if _, err := v.Take(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	// 1× Lesen vor dem add, 3× im DAD-Warten mit 2 Pausen zu 250 ms
+	if n := f.count("ip -6 -o addr show"); n != 4 {
+		t.Fatalf("show %d×, erwartet 4", n)
+	}
+	if len(waits) != 2 || waits[0] != 250*time.Millisecond || waits[1] != 250*time.Millisecond {
+		t.Fatalf("Pausen %v, erwartet 2× 250ms", waits)
+	}
+}
+
+// DAD-Warten läuft ab (nach 3 s noch tentative): Take macht weiter und kündigt an.
+func TestVIP6TakeDADTimeout(t *testing.T) {
+	f := newVIP6Fake(card6)
+	f.tentReads = 1000
+	na := &fakeNA{}
+	v, _ := testVIP6(t, f, na, "")
+	var total time.Duration
+	v.sleep = func(d time.Duration) {
+		if d < 5*time.Second {
+			total += d
+		}
+	}
+	got, err := v.Take(context.Background())
+	if err != nil || got != mustAddr(t, vip6Want) {
+		t.Fatalf("Take = %s, %v – nach Ablauf weitermachen", got, err)
+	}
+	if total != 3*time.Second {
+		t.Fatalf("gewartet %v, erwartet 3s", total)
+	}
+	if n := f.count("ip -6 -o addr show"); n != 14 {
+		t.Fatalf("show %d×, erwartet 14 (1 + 13)", n)
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for na.count() < 1 && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if na.count() < 1 {
+		t.Fatal("Ankündigung nach Ablauf fehlt")
 	}
 }
