@@ -218,6 +218,44 @@ func TestVIP6StateTwoPrefixes(t *testing.T) {
 	}
 }
 
+// F4: gehaltene Adresse im Präfix mit kürzerer Restlaufzeit bleibt, solange es
+// wählbar ist; wird es deprecated, wechselt die Adresse ins andere Präfix.
+func TestVIP6StateKeepsHeldPrefix(t *testing.T) {
+	short := `2: eth0    inet6 2a02:aaaa:0:1:215:5dff:fe00:b202/64 scope global dynamic mngtmpaddr noprefixroute \       valid_lft 100sec preferred_lft 100sec`
+	f := newVIP6Fake(short+"\n"+card6, vip6OldLine) // gehalten: 2a02:aaaa:0:1::15
+	v, _ := testVIP6(t, f, &fakeNA{}, "")
+	st, err := v.State(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Want != mustAddr(t, "2a02:aaaa:0:1::15") {
+		t.Fatalf("Want = %s, erwartet die gehaltene Adresse", st.Want)
+	}
+	if _, err := v.Take(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if f.count("ip -6 addr add") != 0 || f.count("ip -6 addr del") != 0 {
+		t.Fatalf("kein Wechsel erwartet: %v", f.calls)
+	}
+	// bisheriges Präfix wird deprecated → Wechsel ins andere
+	f.mu.Lock()
+	f.lines[0] = strings.Replace(f.lines[0], "dynamic mngtmpaddr", "dynamic deprecated mngtmpaddr", 1)
+	f.mu.Unlock()
+	st, err = v.State(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Want != mustAddr(t, vip6Want) {
+		t.Fatalf("Want = %s, erwartet %s nach deprecated", st.Want, vip6Want)
+	}
+	if _, err := v.Take(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if f.index(vip6Add) < 0 || f.index("ip -6 addr del 2a02:aaaa:0:1::15/128 dev eth0") < 0 {
+		t.Fatalf("Wechsel erwartet: %v", f.calls)
+	}
+}
+
 func TestVIP6StateOnlyTemporaryOrDeprecated(t *testing.T) {
 	for _, flag := range []string{"temporary dynamic", "dynamic deprecated", "tentative", "dadfailed tentative"} {
 		line := `2: eth0    inet6 2a02:f90:e198:1700:215:5dff:fe00:b202/64 scope global ` + flag + ` \       valid_lft 86000sec preferred_lft 0sec`

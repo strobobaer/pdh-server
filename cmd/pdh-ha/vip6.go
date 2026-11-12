@@ -124,10 +124,7 @@ func prefix6(addrs []card6Addr) (netip.Prefix, bool) {
 	var best *card6Addr
 	for i := range addrs {
 		a := &addrs[i]
-		if a.cidr.Bits() != 64 || !global6.Contains(a.cidr.Addr()) {
-			continue
-		}
-		if a.has("temporary") || a.has("deprecated") || a.has("tentative") || a.has("dadfailed") {
+		if !usable6(*a) {
 			continue
 		}
 		if best == nil || a.valid > best.valid || (a.valid == best.valid && a.cidr.Addr().Less(best.cidr.Addr())) {
@@ -138,6 +135,26 @@ func prefix6(addrs []card6Addr) (netip.Prefix, bool) {
 		return netip.Prefix{}, false
 	}
 	return best.cidr.Masked(), true
+}
+
+// usable6: eine /64 in 2000::/3, die als Präfix wählbar ist (nicht temporary/
+// deprecated/tentative/dadfailed).
+func usable6(a card6Addr) bool {
+	if a.cidr.Bits() != 64 || !global6.Contains(a.cidr.Addr()) {
+		return false
+	}
+	return !a.has("temporary") && !a.has("deprecated") && !a.has("tentative") && !a.has("dadfailed")
+}
+
+// prefixUsable6: liegt eine wählbare /64 im Präfix von addr auf der Karte?
+func prefixUsable6(addrs []card6Addr, addr netip.Addr) bool {
+	p := netip.PrefixFrom(addr, 64).Masked()
+	for _, a := range addrs {
+		if usable6(a) && a.cidr.Masked() == p {
+			return true
+		}
+	}
+	return false
 }
 
 // isHeld: nur /128 in 2000::/3 mit dem eingestellten Ende und ohne „dynamic“
@@ -160,6 +177,16 @@ func (v *vip6Ctl) state(addrs []card6Addr) vip6State {
 	}
 	if p, ok := prefix6(addrs); ok {
 		st.Want = vip6Addr(p, v.suffix)
+		// Ruhig halten: liegt schon eine eigene Adresse in einem weiter wählbaren
+		// Präfix, bleibt es dabei – auch wenn ein anderes Präfix länger gilt.
+		if !slices.Contains(st.Held, st.Want) {
+			for _, h := range st.Held {
+				if prefixUsable6(addrs, h) {
+					st.Want = h
+					break
+				}
+			}
+		}
 	} else {
 		st.NoPrefix = true
 	}
