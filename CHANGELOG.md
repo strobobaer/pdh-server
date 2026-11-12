@@ -20,7 +20,7 @@ im Kapitel „Versionen & Updates“ an.
 
 ### Geändert
 
-- Die nginx-Seite des PDH hört auch auf IPv6.
+- Die nginx-Seite des PDH hört auch auf IPv6; nimmt nginx die IPv6-Zeilen nicht an, bleibt sie bei IPv4 und die Zertifikate-Karte sagt es.
 
 ## [0.80.0] – 2026-11-12
 
