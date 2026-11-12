@@ -886,6 +886,8 @@
  "Erstabgleich läuft": "Prima sincronizare este în curs",
  "Bis er fertig ist, sind noch nicht alle Dateien auf dem zweiten Server.": "Până se termină, nu toate fișierele sunt încă pe al doilea server.",
  "Der Erstabgleich ist noch nicht fertig.": "Prima sincronizare nu s-a terminat încă.",
+ "Der zweite Server ist nicht erreichbar. Sobald er zurück ist, läuft der Abgleich von selbst weiter.": "Al doilea server nu este accesibil. Imediat ce revine, sincronizarea continuă de la sine.",
+ "wartet auf den zweiten Server": "așteaptă al doilea server",
  "Letzter Abgleich": "Ultima sincronizare",
  "Dauer": "Durată",
  "übersprungen": "omis",

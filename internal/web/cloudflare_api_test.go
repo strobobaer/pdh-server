@@ -294,3 +294,27 @@ func TestServerConfigCloudflareAPICard(t *testing.T) {
 		t.Error("ohne Recht darf der Knopf nicht erscheinen")
 	}
 }
+
+// Ein Konto-Token ist unter /user/tokens/verify unbekannt (401, Code 1000), darf aber
+// die Domains lesen: Die Prüfung nimmt ihn an. Ein wirklich falscher Token bleibt abgelehnt.
+func TestCloudflareVerifyAccountToken(t *testing.T) {
+	zonesOK := true
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/zones" && zonesOK {
+			_, _ = io.WriteString(w, `{"success":true,"errors":[],"result":[{"id":"z1","name":"firma.de"}]}`)
+			return
+		}
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = io.WriteString(w, `{"success":false,"errors":[{"code":1000,"message":"Invalid API Token"}]}`)
+	}))
+	defer srv.Close()
+	c := cloudflare.New("konto-token")
+	c.Base = srv.URL
+	if err := c.Verify(context.Background()); err != nil {
+		t.Fatalf("Konto-Token abgelehnt: %v", err)
+	}
+	zonesOK = false
+	if err := c.Verify(context.Background()); err == nil || !strings.Contains(err.Error(), "Invalid API Token (1000)") {
+		t.Fatalf("falscher Token: %v", err)
+	}
+}

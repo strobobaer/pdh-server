@@ -1,7 +1,10 @@
 {{/* Server-Einstellungen → Ausfallschutz → Datei-Spiegelung (internal/web/ha_mirror.go). Daten: haView (Methode MirrorView). Stil: vp-* (in dr-admin geladen). Texte aus der Anwendung (Fehler, fehlende Dateien) stehen nur als Text, nie in Adresse oder Skript. */}}
 {{define "ha-mirror"}}{{with .MirrorView}}{{$m := .M}}
+{{/* Zustand lädt sich selbst nach, solange etwas läuft (T14 B1); Knöpfe und Formular stehen außerhalb, damit Eingaben bleiben. */}}
+<div id="ha-mirror-live"{{if and $m.On (or (not $m.FirstDone) $m.Running)}} hx-get="/admin/server-config?tab=dr" hx-trigger="every 5s" hx-select="#ha-mirror-live" hx-target="this" hx-swap="outerHTML"{{end}}>
 <div class="card-title" style="margin-top:14px" id="ha-mirror"><span><i class="ti ti-copy"></i> {{t "Datei-Spiegelung"}}</span>
   {{if not $m.On}}<span class="vp-state off"><span class="vp-dot"></span> {{t "aus"}}</span>
+  {{else if $m.PartnerAway}}<span class="vp-state off"><span class="vp-dot wait"></span> {{t "wartet auf den zweiten Server"}}</span>
   {{else if $m.Running}}<span class="vp-state ok"><span class="vp-dot on"></span> {{t "Abgleich läuft"}}</span>
   {{else if not $m.FirstDone}}<span class="vp-state off"><span class="vp-dot wait"></span> {{t "Erstabgleich"}}</span>
   {{else if $m.WaitConfirm}}<span class="vp-state off"><span class="vp-dot wait"></span> {{t "wartet auf Bestätigung"}}</span>
@@ -36,7 +39,8 @@
 {{end}}
 
 {{if $m.On}}
-{{if $m.Err}}<div class="vp-msg err ha-mirror-err"><i class="ti ti-alert-triangle"></i> {{t "Der letzte Abgleich ist fehlgeschlagen"}}: {{$m.Err}}</div>{{end}}
+{{if $m.PartnerAway}}<div class="vp-msg ha-mirror-away" role="status"><i class="ti ti-plug-connected-x"></i> {{t "Der zweite Server ist nicht erreichbar. Sobald er zurück ist, läuft der Abgleich von selbst weiter."}}</div>
+{{else if $m.Err}}<div class="vp-msg err ha-mirror-err"><i class="ti ti-alert-triangle"></i> {{t "Der letzte Abgleich ist fehlgeschlagen"}}: {{$m.Err}}</div>{{end}}
 {{if $m.RecvErr}}<div class="vp-msg err ha-mirror-err"><i class="ti ti-alert-triangle"></i> {{t "Der Empfang wird abgelehnt"}}: {{$m.RecvErr}}</div>{{end}}
 {{if $m.UIDWarn}}<div class="vp-msg err ha-mirror-err"><i class="ti ti-users"></i> {{t "Spiegelung angehalten, die Benutzerkennungen weichen ab"}}: {{$m.UIDWarn}}</div>{{end}}
 {{if $m.WatchErr}}<div class="vp-msg err ha-mirror-err"><i class="ti ti-alert-triangle"></i> {{t "Die Sofort-Übertragung ist gestört"}}: {{$m.WatchErr}}</div>{{end}}
@@ -60,6 +64,7 @@
 
 <p class="vp-hint"><i class="ti ti-trash"></i> {{t "Papierkorb"}}: <b>{{.TrashText}}</b> – {{t "Gelöschtes bleibt dort %d Tage." .Form.TrashDays}}</p>
 {{end}}
+</div>
 
 {{if or .CanRun .CanTrash .CanConfirm}}
 <div class="ha-mirror-acts" style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0">

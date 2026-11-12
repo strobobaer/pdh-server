@@ -76,6 +76,7 @@ type haMirror struct {
 	WaitConfirm    []string         `json:"wait_confirm"` // wartet auf Bestätigung (R47)
 	RecvErr        string           `json:"recv_err"`     // passiver Server: abgelehnter Empfang (R66)
 	UIDWarn        string           `json:"uid_warn"`     // Benutzerkennungen weichen ab, Quellen angehalten (I3)
+	PartnerAway    bool             `json:"partner_away"` // Partner nicht erreichbar, Abgleich wartet (T14 B4)
 }
 
 type haMirrorSource struct {

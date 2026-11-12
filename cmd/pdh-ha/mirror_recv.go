@@ -458,6 +458,22 @@ func (m *mirrorInbox) refuse(peerID, text string) string {
 	return text
 }
 
+// mirrorHandingOver: Der Absender hat schon die höhere Amtszeit, dieser Server
+// hat seine Rolle noch nicht abgegeben – das ist der Rollenwechsel selbst (der
+// neue aktive Server sendet Millisekunden nach der Übernahme), kein Fehler.
+func mirrorHandingOver(v mirrorInboxView, senderTerm uint64) bool {
+	return v.Role != ha.Passive && senderTerm > v.Term
+}
+
+// refuseFor lehnt ab wie refuse; im Rollenwechsel nur als Hinweis, nicht als Warnung.
+func (m *mirrorInbox) refuseFor(peerID string, v mirrorInboxView, senderTerm uint64, text string) string {
+	if mirrorHandingOver(v, senderTerm) {
+		m.logOnce("handover:"+peerID, "info", "Dateien von "+peerID+" noch nicht angenommen: Rollenwechsel läuft, der nächste Abgleich holt es nach", mirrorErrLogEvery)
+		return text
+	}
+	return m.refuse(peerID, text)
+}
+
 // Accept siehe mirrorReceiver.
 func (m *mirrorInbox) Accept(ctx context.Context, peerID, peerKind string, req mirrorRequest) ([]string, func(error), string) {
 	label := req.Label
@@ -471,7 +487,7 @@ func (m *mirrorInbox) Accept(ctx context.Context, peerID, peerKind string, req m
 	}
 	v, _, r := check()
 	if r != "" {
-		return nil, nil, m.refuse(peerID, r)
+		return nil, nil, m.refuseFor(peerID, v, req.Term, r)
 	}
 	if m.arm(v) {
 		m.save()
@@ -504,10 +520,10 @@ func (m *mirrorInbox) Accept(ctx context.Context, peerID, peerKind string, req m
 	}
 	// Die Wartezeit kann einen Wechsel von Rolle, Amtszeit oder Einstellungen überdauert haben:
 	// mit dem Stand von jetzt neu prüfen (hängt so nicht an der Reihenfolge im Takt)
-	_, src, r := check()
+	v2, src, r := check()
 	if r != "" {
 		free()
-		return nil, nil, m.refuse(peerID, r)
+		return nil, nil, m.refuseFor(peerID, v2, req.Term, r)
 	}
 	fail := func(text string) ([]string, func(error), string) {
 		free()

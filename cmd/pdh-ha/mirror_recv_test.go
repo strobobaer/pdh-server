@@ -129,6 +129,28 @@ func TestInboxOneStreamPerLabel(t *testing.T) {
 	}
 }
 
+// T14 B8: Im Rollenwechsel sendet der neue aktive Server schon mit der höheren
+// Amtszeit, während dieser Server noch nicht abgegeben hat – Hinweis statt Warnung.
+// Ein Absender mit gleicher oder alter Amtszeit bleibt eine Warnung.
+func TestInboxRefuseDuringHandoverIsInfo(t *testing.T) {
+	f := newInboxFix(t)
+	os.Mkdir(f.root+"/repo/uploads", 0o755)
+	f.setView(func(v *mirrorInboxView) { v.Role = ha.Active })
+	if _, _, r := f.accept("uploads", 4); r != "Dieser Server ist nicht passiv" {
+		t.Fatalf("Ablehnung: %q", r)
+	}
+	ev := f.events()
+	if strings.Contains(ev, "warn:") || !strings.Contains(ev, "info: Dateien von a noch nicht angenommen: Rollenwechsel läuft") {
+		t.Fatalf("im Rollenwechsel nur ein Hinweis erwartet:\n%s", ev)
+	}
+	if _, _, r := f.accept("uploads", 3); r != "Dieser Server ist nicht passiv" {
+		t.Fatalf("Ablehnung: %q", r)
+	}
+	if ev := f.events(); !strings.Contains(ev, "warn: Dateien von a abgelehnt: Dieser Server ist nicht passiv") {
+		t.Fatalf("gleiche Amtszeit muss eine Warnung bleiben:\n%s", ev)
+	}
+}
+
 func TestInboxRefuseOldTerm(t *testing.T) {
 	f := newInboxFix(t)
 	os.Mkdir(f.root+"/repo/uploads", 0o755)

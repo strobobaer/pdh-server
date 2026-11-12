@@ -959,6 +959,8 @@ type apiMirror struct {
 	RecvErr string `json:"recv_err,omitempty"`
 	// Benutzerkennungen weichen ab: betroffene Quellen angehalten (I3)
 	UIDWarn string `json:"uid_warn,omitempty"`
+	// Partner nicht erreichbar: Der Abgleich wartet, Fehler sind die Folge davon (T14 B4)
+	PartnerAway bool `json:"partner_away,omitempty"`
 }
 
 // sameOrEmpty: gleich, oder eine Seite weiß es nicht (kein Hinweis).
@@ -989,6 +991,7 @@ func (d *daemon) mirrorStatusLocked(st *apiStatus) {
 			pm, partnerSeen = pv.Last, true
 		}
 	}
+	am.PartnerAway = !partnerSeen
 	rt := d.mir
 	var own mirrorState
 	if rt != nil {
@@ -1223,6 +1226,9 @@ func printMirrorStatus(w io.Writer, m *apiMirror) {
 		last = "letzter Abgleich vor " + mirrorAgo(m.LastOKAgo)
 	}
 	switch {
+	case m.PartnerAway:
+		// T14 B4: nicht „läuft“ melden, wenn der Partner fehlt
+		fmt.Fprintf(w, "Spiegelung: wartet – Partner nicht erreichbar, %s\n", last)
 	case !m.FirstDone && m.Active:
 		fmt.Fprintf(w, "Spiegelung: Erstabgleich %d %%\n", m.FirstPercent)
 	case !m.FirstDone:
@@ -1230,7 +1236,9 @@ func printMirrorStatus(w io.Writer, m *apiMirror) {
 	default:
 		fmt.Fprintf(w, "Spiegelung: %s, %s\n", verb, last)
 	}
-	if m.Err != "" {
+	if m.Err != "" && m.PartnerAway {
+		fmt.Fprintf(w, "  Letzte Meldung (Folge des fehlenden Partners): %s\n", m.Err)
+	} else if m.Err != "" {
 		fmt.Fprintf(w, "  Fehler: %s\n", m.Err)
 	}
 	if m.WatchErr != "" {

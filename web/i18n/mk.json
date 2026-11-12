@@ -886,6 +886,8 @@
  "Erstabgleich läuft": "Првото усогласување работи",
  "Bis er fertig ist, sind noch nicht alle Dateien auf dem zweiten Server.": "Додека не заврши, сите датотеки сè уште не се на вториот сервер.",
  "Der Erstabgleich ist noch nicht fertig.": "Првото усогласување сè уште не е завршено.",
+ "Der zweite Server ist nicht erreichbar. Sobald er zurück ist, läuft der Abgleich von selbst weiter.": "Вториот сервер не е достапен. Штом се врати, усогласувањето продолжува само.",
+ "wartet auf den zweiten Server": "го чека вториот сервер",
  "Letzter Abgleich": "Последно усогласување",
  "Dauer": "Траење",
  "übersprungen": "прескокнато",

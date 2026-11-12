@@ -99,6 +99,14 @@ func (c *Client) Verify(ctx context.Context) error {
 		Status string `json:"status"`
 	}
 	if _, err := c.do(ctx, http.MethodGet, "/user/tokens/verify", nil, &r); err != nil {
+		// Ein Token, der in Cloudflare unter dem Konto angelegt ist (nicht unter dem
+		// Benutzer), ist an dieser Adresse unbekannt („Invalid API Token“), aber gültig:
+		// dann zählt, ob er die Domains lesen darf.
+		if errors.Is(err, ErrAuth) {
+			if _, zerr := c.do(ctx, http.MethodGet, "/zones?per_page=1", nil, nil); zerr == nil {
+				return nil
+			}
+		}
 		return err
 	}
 	if r.Status != "active" {

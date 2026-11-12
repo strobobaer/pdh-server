@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -357,6 +358,12 @@ func (l *eventLog) add(e ha.Event) {
 	l.size += int64(n)
 	if err != nil {
 		l.warn(err)
+		return
+	}
+	// T14 B3: ohne Sync geht die Zeile bei einem Stromausfall verloren und
+	// hinterlässt Nullbytes – gerade die letzten Ereignisse vor dem Ausfall zählen.
+	if err := f.Sync(); err != nil {
+		l.warn(err)
 	}
 }
 
@@ -387,7 +394,8 @@ func (l *eventLog) readAll() []loggedEvent {
 		sc.Buffer(make([]byte, 0, 64*1024), 4<<20)
 		for sc.Scan() {
 			var e loggedEvent
-			if json.Unmarshal(sc.Bytes(), &e) == nil && e.Seq > 0 {
+			// Nullbytes eines Stromausfalls stehen vor der nächsten Zeile: überspringen
+			if json.Unmarshal(bytes.TrimLeft(sc.Bytes(), "\x00"), &e) == nil && e.Seq > 0 {
 				out = append(out, e)
 			}
 		}

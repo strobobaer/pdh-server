@@ -477,6 +477,53 @@ func TestHAMirrorConfirm(t *testing.T) {
 }
 
 // R56: Beim Warten zeigt die Karte nicht grün „bereit“, und die Quellenzeile sagt es auch.
+// T14 B1: Im Erstabgleich und während eines Abgleichs lädt sich der Zustand selbst
+// nach; in Ruhe und bei ausgeschalteter Spiegelung nicht. Knöpfe und Formular
+// liegen außerhalb des nachgeladenen Teils.
+func TestHAMirrorCardRefreshesWhileBusy(t *testing.T) {
+	const poll = `id="ha-mirror-live" hx-get="/admin/server-config?tab=dr" hx-trigger="every 5s" hx-select="#ha-mirror-live"`
+	for _, c := range []struct {
+		name string
+		mir  map[string]any
+		want bool
+	}{
+		{"Erstabgleich", map[string]any{"first_done": false, "first_percent": 0}, true},
+		{"Abgleich läuft", map[string]any{"running": true}, true},
+		{"bereit", map[string]any{}, false},
+		{"aus", map[string]any{"on": false, "first_done": false}, false},
+	} {
+		out := mirrorCard(t, mirrorStatusJSON(t, "aktiv", nil, c.mir), true, true, "")
+		if got := strings.Contains(out, poll); got != c.want {
+			t.Errorf("%s: lädt nach = %v, erwartet %v", c.name, got, c.want)
+		}
+		if !strings.Contains(out, `id="ha-mirror-live"`) {
+			t.Errorf("%s: Zustandsteil fehlt", c.name)
+		}
+	}
+	out := mirrorCard(t, mirrorStatusJSON(t, "aktiv", nil, map[string]any{"first_done": false}), true, true, "")
+	live := strings.Index(out, `id="ha-mirror-live"`)
+	end := strings.Index(out[live:], "Papierkorb")
+	form := strings.Index(out, `action="/admin/server-config/ha/mirror"`)
+	if live < 0 || end < 0 || form < live+end {
+		t.Fatalf("Formular muss hinter dem nachgeladenen Teil stehen (live=%d ende=%d form=%d)", live, end, form)
+	}
+	if strings.Contains(out[live:live+end], "<form") {
+		t.Error("im nachgeladenen Teil steht ein Formular")
+	}
+}
+
+// T14 B4: Fehlt der zweite Server, sagt die Karte genau das – ohne rohe Fehlermeldung
+// des Abgleichs und ohne „bereit“.
+func TestHAMirrorPartnerAway(t *testing.T) {
+	out := mirrorCard(t, mirrorStatusJSON(t, "aktiv", nil, map[string]any{"partner_away": true, "err": "uploads: rsync 12"}), true, true, "")
+	if !strings.Contains(out, "wartet auf den zweiten Server") || !strings.Contains(out, "ha-mirror-away") {
+		t.Errorf("Hinweis fehlt: %s", out)
+	}
+	if strings.Contains(out, "rsync 12") || strings.Contains(out, "</span> bereit</span>") || strings.Contains(out, "Der letzte Abgleich ist fehlgeschlagen") {
+		t.Errorf("Karte zeigt Folgefehler oder bereit: %s", out)
+	}
+}
+
 func TestHAMirrorWaitingNotReady(t *testing.T) {
 	wait := map[string]any{"wait_confirm": []string{"uploads"}, "sources": []map[string]any{
 		{"label": "uploads", "last_ok_ago": 5.0, "waiting": true}, {"label": "etc-pdh", "last_ok_ago": 5.0}}}
