@@ -62,6 +62,7 @@ type terminalPage struct {
 	CanFaults  bool
 	CanTickets bool
 	EasyMode   bool // Easy-Mode an: „Neu“ darf zur Meldeseite /e/{id} führen
+	CardEvents bool // Gerätesitzung (gekoppelter Pi): Kartenleser-Ereignisse abonnieren
 	InfraID    string
 	Name       string
 	Path       string
@@ -284,6 +285,7 @@ func (h *Handler) terminalGate(w http.ResponseWriter, r *http.Request, mode stri
 	}
 	if mode != "schoner" {
 		p.Idle = h.terminalIdleSeconds(r.Context(), uid)
+		p.CardEvents = h.terminalDeviceSession(r) // im Schoner wird nichts abonniert
 	}
 	return p, true
 }
@@ -376,4 +378,11 @@ func (h *Handler) TerminalScript(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")
 	_, _ = w.Write(b)
+}
+
+// terminalDeviceSession: trägt die Sitzung ein Geräte-Token (Claim device, gekoppelter
+// Pi)? Nur dort läuft der lokale Kartendienst; im Browser eines Menschen nicht.
+func (h *Handler) terminalDeviceSession(r *http.Request) bool {
+	_, _, dev := h.sessionToken(r)
+	return dev != ""
 }

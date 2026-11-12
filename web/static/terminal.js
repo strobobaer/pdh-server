@@ -76,4 +76,68 @@
     };
     setInterval(refresh, 30000);
   }
+
+  // Kartenleser: der Kartendienst auf dem Pi (nur Gerätesitzung, data-card-events) meldet
+  // gelesene Karten per Server-Sent Events; die Seite reicht sie an PDH weiter.
+  if (body.dataset.cardEvents === '1' && mode !== 'schoner') {
+    var bar = document.querySelector('[data-card-bar]');
+    var nameEl = document.querySelector('[data-card-name]');
+    var msgEl = document.querySelector('[data-card-msg]');
+    var logoutBtn = document.querySelector('[data-card-logout]');
+    if (bar && nameEl && msgEl && logoutBtn) {
+      var loggedIn = false, lastPing = 0, msgTimer = null;
+      var post = function (url, data) {
+        return fetch(url, {
+          method: 'POST', credentials: 'same-origin', cache: 'no-store',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data || {})
+        });
+      };
+      var showBar = function (name) {
+        loggedIn = !!name;
+        nameEl.textContent = name || '';
+        bar.hidden = !loggedIn;
+      };
+      var showMsg = function (text) {
+        msgEl.textContent = text;
+        msgEl.hidden = false;
+        if (msgTimer) clearTimeout(msgTimer);
+        msgTimer = setTimeout(function () { msgEl.hidden = true; }, 4000);
+      };
+      var ping = function () {
+        lastPing = Date.now();
+        post('/terminal/card/ping').then(function (r) { return r.ok ? r.json() : null; })
+          .then(function (d) { if (d) showBar(d.active ? d.name : ''); })
+          .catch(function () { /* offline: Stand bleibt */ });
+      };
+      var onCard = function (uid) {
+        post('/terminal/card', { uid: uid })
+          .then(function (r) { return r.json().catch(function () { return null; }); })
+          .then(function (d) {
+            if (!d) return;
+            if (d.ok) { msgEl.hidden = true; showBar(d.name); lastPing = Date.now(); }
+            else if (d.message) showMsg(d.message);
+          })
+          .catch(function () { /* offline: ignorieren */ });
+      };
+      logoutBtn.addEventListener('click', function () {
+        showBar('');
+        post('/terminal/card/abmelden').catch(function () {});
+      });
+      // Berührung bei laufender Kartensitzung: höchstens alle 20 s nachfragen, ob sie noch läuft
+      document.addEventListener('pointerdown', function () {
+        if (loggedIn && Date.now() - lastPing > 20000) ping();
+      }, true);
+      ping();
+      try {
+        var es = new EventSource('http://127.0.0.1:8080/api/card/events');
+        es.addEventListener('card', function (ev) {
+          var d = null;
+          try { d = JSON.parse(ev.data); } catch (e) { /* ungültig */ }
+          if (d && typeof d.uid === 'string' && d.uid) onCard(d.uid);
+        });
+        es.onerror = function () { /* stumm: der EventSource verbindet selbst neu */ };
+      } catch (e) { /* kein Kartendienst */ }
+    }
+  }
 })();

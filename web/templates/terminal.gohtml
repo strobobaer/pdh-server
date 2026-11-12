@@ -65,10 +65,15 @@ a{color:inherit;text-decoration:none}
 .t-none i{font-size:4em;color:var(--amber)}
 .t-none p{font-size:1.6em;font-weight:700;max-width:30em}
 .t-none small{color:var(--muted);font-size:.9em}
+/* Kartensitzung: Leiste unten, Hinweis bei unbekannter Karte */
+.t-card{position:fixed;left:max(2vw,16px);right:max(2vw,16px);bottom:max(2vh,12px);display:flex;align-items:center;gap:1.6vw;padding:1vh 1.4vw;background:var(--bg2);border:2px solid var(--green);border-radius:22px;z-index:5}
+.t-card .who{flex:1;min-width:0;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.t-card .t-btn{min-height:64px}
+.t-cardmsg{position:fixed;left:50%;transform:translateX(-50%);bottom:max(2vh,12px);max-width:90vw;padding:1.2vh 2vw;background:var(--bg3);border:2px solid var(--amber);border-radius:22px;font-weight:700;text-align:center;z-index:6}
 @media (max-width:820px){.t-cols,.t-new{grid-template-columns:1fr}.t-new{grid-template-rows:auto}}
 </style>
 </head>
-<body data-mode="{{.Mode}}" data-idle="{{.Idle}}">
+<body data-mode="{{.Mode}}" data-idle="{{.Idle}}"{{if and .CardEvents (ne .Mode "schoner")}} data-card-events="1"{{end}}>
 {{if .NoInfra}}
 <div class="t-none">
   <i class="ti ti-plug-off" aria-hidden="true"></i>
@@ -130,6 +135,8 @@ a{color:inherit;text-decoration:none}
 </div>
 {{end}}
 {{end}}
+{{if and .CardEvents (ne .Mode "schoner")}}<div class="t-card" data-card-bar hidden><span class="who"><i class="ti ti-id-badge-2" aria-hidden="true"></i> Angemeldet: <span data-card-name></span></span><button type="button" class="t-btn" data-card-logout>Abmelden</button></div>
+<div class="t-cardmsg" data-card-msg role="status" hidden></div>{{end}}
 <script src="/terminal/terminal.js?v={{appVersion}}"></script>
 </body>
 </html>

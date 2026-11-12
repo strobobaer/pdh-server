@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/golang-jwt/jwt/v5"
 
 	"pdh/internal/core/users"
 )
@@ -107,5 +108,71 @@ func TestTerminalRelPath(t *testing.T) {
 	}
 	if got := terminalRelPath(nodes, "c", "a"); got != "Linie › Presse" {
 		t.Errorf("tief: %q", got)
+	}
+}
+
+func TestTerminalTemplateCardEvents(t *testing.T) {
+	h, _ := terminalTestHandler(t)
+	render := func(d terminalPage) string {
+		rec := httptest.NewRecorder()
+		h.renderTerminal(rec, d)
+		return rec.Body.String()
+	}
+	base := terminalPage{Mode: "info", Idle: 45, CanFaults: true, CanTickets: true, InfraID: "33333333-3333-3333-3333-333333333333", Name: "Presse"}
+	if strings.Contains(render(base), "data-card-events") {
+		t.Error("ohne Geräte-Token darf data-card-events nicht gesetzt sein")
+	}
+	base.CardEvents = true
+	if !strings.Contains(render(base), `data-card-events="1"`) {
+		t.Error("data-card-events fehlt im Modus info")
+	}
+	base.Mode = "neu"
+	if !strings.Contains(render(base), `data-card-events="1"`) {
+		t.Error("data-card-events fehlt im Modus neu")
+	}
+	// Schoner: nichts abonnieren, auch wenn das Feld gesetzt wäre
+	base.Mode, base.Idle = "schoner", 0
+	if strings.Contains(render(base), "data-card-events") {
+		t.Error("Schoner darf nichts abonnieren")
+	}
+}
+
+func TestTerminalDeviceSession(t *testing.T) {
+	h := &Handler{jwtSecret: "test-geheim"}
+	mk := func(claims jwt.MapClaims) *http.Request {
+		claims["sub"], claims["iat"], claims["exp"] = "u1", time.Now().Unix(), time.Now().Add(time.Hour).Unix()
+		s, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte("test-geheim"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req := httptest.NewRequest("GET", "/terminal/info", nil)
+		req.AddCookie(&http.Cookie{Name: "pdh_token", Value: s})
+		return req
+	}
+	if !h.terminalDeviceSession(mk(jwt.MapClaims{"device": "dev-1"})) {
+		t.Error("Geräte-Token nicht erkannt")
+	}
+	if h.terminalDeviceSession(mk(jwt.MapClaims{})) {
+		t.Error("normale Sitzung gilt als Gerät")
+	}
+	if h.terminalDeviceSession(httptest.NewRequest("GET", "/terminal/info", nil)) {
+		t.Error("ohne Cookie gilt als Gerät")
+	}
+}
+
+func TestTerminalScriptCardReader(t *testing.T) {
+	_, r := terminalTestHandler(t)
+	rec := terminalGet(r, "/terminal/terminal.js", &users.User{ID: "x", IsSystemUser: true})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d", rec.Code)
+	}
+	b := rec.Body.String()
+	for _, s := range []string{"127.0.0.1:8080/api/card/events", "/terminal/card/ping", "/terminal/card/abmelden", "/terminal/card"} {
+		if !strings.Contains(b, s) {
+			t.Errorf("Skript enthält %q nicht", s)
+		}
+	}
+	if strings.Contains(b, "innerHTML") {
+		t.Error("innerHTML im Skript")
 	}
 }
