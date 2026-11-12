@@ -46,9 +46,6 @@ type mirrorLabelState struct {
 	WaitAlarmed  bool   `json:"wait_alarmed,omitempty"`  // „wartet auf Bestätigung“ ist gemeldet (einmalig, auch über einen Neustart)
 
 	AbsentAtPromote bool `json:"absent_at_promote,omitempty"` // fehlte bei der Übernahme ohne eigenen Beleg: wird beim Erscheinen unbelegt (R63)
-	// Probe (nur optionale Quellen, mit AbsentAtPromote): 1 = Ordner ist erschienen, der Lauf ohne --delete
-	// läuft; 2 = dieser Lauf ist fertig, jetzt entscheidet der Bericht des Partners (leer: belegt, sonst R63).
-	Probe int `json:"probe,omitempty"`
 }
 
 type mirrorState struct {
@@ -398,12 +395,6 @@ func (w *mirrorWorker) markPromoted() error {
 // Partner behält seine Dateien. Alarm einmal je Quelle. Gespeichert wird vor dem Lauf.
 // R63 (U3): Eine Quelle, die bei der Übernahme fehlt und keinen eigenen Beleg hat, wird vorgemerkt
 // (AbsentAtPromote) und beim Erscheinen unbelegt: Der Beleg des Partners allein gibt nie --delete.
-// Ausnahme nur für optionale Quellen (Zertifikate): Hatte der Partner beim Erscheinen noch KEINEN Beleg
-// für die Quelle (Probe 0), läuft ein Lauf ohne --delete (Probe 1); ein leeres oder fehlendes Ziel
-// belegt der Empfänger dabei selbst (R47). Erst der Beleg, der danach (Probe 2) erscheint, stammt von
-// diesem Lauf und beweist ein leeres Ziel; dann fällt AbsentAtPromote. Hatte der Partner schon einen
-// Beleg (alt, aus einer früheren Rolle) oder meldet er Dateien ohne Beleg, gilt R63 unverändert
-// (unbelegt, Alarm, kein --delete bis mirror confirm). Jede neue Übernahme beginnt mit Probe 0.
 func (w *mirrorWorker) settlePromotion(srcs []ha.MirrorSource, present map[string]bool) {
 	w.mu.Lock()
 	promoted := w.st.Promoted
@@ -416,34 +407,17 @@ func (w *mirrorWorker) settlePromotion(srcs []ha.MirrorSource, present map[strin
 			continue
 		}
 		old := ls
-		if promoted {
-			ls.Probe = 0 // jede neue Übernahme beginnt neu: kein alter Befund zählt
-		}
 		own := false
 		if w.d.proof != nil {
 			own, _ = w.d.proof(m.Label)
 		}
 		switch {
 		case own:
-			ls.AbsentAtPromote, ls.Probe = false, 0
+			ls.AbsentAtPromote = false
 		case !present[m.Label]:
-			ls.AbsentAtPromote, ls.Probe = !ls.Unproven, 0
-		case m.Optional && ls.AbsentAtPromote && !ls.Unproven && ls.Probe == 0 && w.d.partnerProof != nil && !w.d.partnerProof(m.Label):
-			// Optionale Quelle (Zertifikate) erscheint nach der Übernahme, der Partner hat noch keinen
-			// Beleg dafür: erst ein Lauf ohne --delete (mayDelete sperrt, solange AbsentAtPromote steht).
-			// Ist das Ziel leer oder fehlt es, belegt der Empfänger es von selbst (R47).
-			ls.Probe = 1
-		case m.Optional && ls.AbsentAtPromote && !ls.Unproven && ls.Probe == 1:
-			// der Lauf ist noch nicht fertig (oder gescheitert): weiter ohne --delete, kein Alarm
-		case m.Optional && ls.AbsentAtPromote && !ls.Unproven && ls.Probe == 2 && !(w.d.partnerWait != nil && w.d.partnerWait(m.Label)):
-			// Lauf fertig, der Partner meldet keine Dateien ohne Beleg: Der Beleg gehört zu diesem Lauf
-			// (vorher gab es keinen) und beweist ein leeres Ziel. Bis er da ist, bleibt alles gesperrt.
-			if w.d.partnerProof != nil && w.d.partnerProof(m.Label) {
-				ls.AbsentAtPromote, ls.Probe = false, 0
-			}
+			ls.AbsentAtPromote = !ls.Unproven
 		default:
-			// bei Probe 2 meldet der Partner Dateien ohne Beleg: R63 unverändert (Alarm, Bestätigung)
-			ls.AbsentAtPromote, ls.Probe = false, 0
+			ls.AbsentAtPromote = false
 			if !ls.Unproven {
 				ls.Unproven, ls.WaitAlarmed = true, true
 				marked = append(marked, m.Label)
@@ -691,8 +665,8 @@ func (w *mirrorWorker) dropOff() {
 	w.mu.Lock()
 	changed := false
 	for l, ls := range w.st.PerLabel {
-		if ls.ConfirmedFor != "" || ls.WaitAlarmed || !ls.LastOK.IsZero() || ls.Adopted || ls.Probe != 0 {
-			ls.ConfirmedFor, ls.WaitAlarmed, ls.LastOK, ls.Adopted, ls.Probe = "", false, time.Time{}, false, 0
+		if ls.ConfirmedFor != "" || ls.WaitAlarmed || !ls.LastOK.IsZero() || ls.Adopted {
+			ls.ConfirmedFor, ls.WaitAlarmed, ls.LastOK, ls.Adopted = "", false, time.Time{}, false
 			w.st.PerLabel[l] = ls
 			changed = true
 		}
@@ -719,7 +693,7 @@ func (w *mirrorWorker) liftUnproven(proof func(label string) (done, files bool))
 			continue
 		}
 		if done, _ := proof(l); done {
-			ls.Unproven, ls.WaitAlarmed, ls.AbsentAtPromote, ls.Probe = false, false, false, 0
+			ls.Unproven, ls.WaitAlarmed, ls.AbsentAtPromote = false, false, false
 			w.st.PerLabel[l] = ls
 			changed = true
 		}
@@ -1162,9 +1136,6 @@ func (w *mirrorWorker) finish(rctx, ctx context.Context, start time.Time, s ha.S
 			ls.Err, ls.Skipped = "", true
 		default:
 			ls.Err, ls.LastOK, ls.Skipped = "", end, false
-			if ls.Probe == 1 {
-				ls.Probe = 2 // erster Lauf nach dem Erscheinen der optionalen Quelle ist durch
-			}
 			if v, ok := saw[o.label]; ok && v {
 				ls.SawFiles = true
 			}
