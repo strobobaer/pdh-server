@@ -715,6 +715,15 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   </ul>
   <h3>Kartenleser und Kartensitzung</h3>
   <p>Ist am Terminal ein Kartenleser angeschlossen, meldet sich eine Person mit ihrer registrierten Karte an: Karte auflegen, dann zeigt das Terminal unten <b>Angemeldet: Name</b>. Die Kartensitzung endet nach <b>2 Minuten</b> ohne Berührung, mit dem Knopf <b>Abmelden</b> oder sobald das Terminal zum Bildschirmschoner zurückkehrt. Eine nicht registrierte Karte meldet niemanden an: das Terminal zeigt kurz <b>Karte nicht registriert</b>. Nach 10 unbekannten Karten innerhalb einer Minute bittet das Terminal, kurz zu warten. Der Kartenleser gehört zum gekoppelten Terminal; in einem normalen Browser gibt es ihn nicht.</p>
+  <h3>Anmeldung ohne Kartenleser</h3>
+  <p>Mit Kartenleser bleibt die Karte der normale Weg; dazu zeigt das Terminal den Knopf <b>Mit Benutzer und Passwort</b> (je Terminal abschaltbar). Meldet das Terminal <b>keinen Kartenleser</b> oder einen gestörten Leser, gilt die <b>Anmeldeart</b> des Terminals. Sie wird am Systembenutzer des Terminals eingestellt:</p>
+  <ul>
+    <li><b>Kartennummer + PIN</b> (Standard) – Felder <b>Kartennummer</b> und <b>PIN</b> mit Ziffernfeld (0–9, A–F).</li>
+    <li><b>Benutzer + Passwort</b> – der Dialog mit Benutzername und Passwort ist sofort offen.</li>
+    <li><b>Nur Kartennummer</b> – nur das Feld <b>Kartennummer</b>. Wer eine Kartennummer kennt, kann sich als diese Person anmelden; diese Art nur an gut einsehbaren Terminals verwenden.</li>
+    <li><b>Keine</b> – das Terminal zeigt <b>Kein Kartenleser – Anmeldung nicht möglich</b>; auch der Knopf entfällt.</li>
+  </ul>
+  <p>Die <b>Terminal-PIN</b> (4 bis 8 Ziffern, nicht lauter gleiche und keine Zahlenfolge wie 1234) setzt jede Person unter <b>Mein Konto</b>; Benutzerverwalter können sie auch am Benutzer setzen oder entfernen. Nach <b>5</b> falschen PINs ist die PIN <b>15 Minuten</b> gesperrt (an allen Terminals); das Terminal zeigt <b>PIN gesperrt bis HH:MM</b>. Ändert sich die Anmeldeart oder der Knopf, übernimmt das Terminal das <b>sofort</b>, ohne Neuladen. Bei Fehlern erscheint kurz <b>Anmeldung fehlgeschlagen</b>, bei zu vielen Versuchen <b>Bitte kurz warten</b>.</p>
   <p>Rührt niemand das Terminal an, kehrt es nach der <b>Rückkehrzeit</b> von Störungsinfo und „Neu“ zum Bildschirmschoner zurück.</p>
   <div class="hb-howto"><b><i class="ti ti-clock"></i> So stellst du die Rückkehrzeit ein</b>
     <ol class="hb-steps">

@@ -63,6 +63,8 @@ type terminalPage struct {
 	CanTickets bool
 	EasyMode   bool // Easy-Mode an: „Neu“ darf zur Meldeseite /e/{id} führen
 	CardEvents bool // Gerätesitzung (gekoppelter Pi): Kartenleser-Ereignisse abonnieren
+	ManualLogin    string // Anfangswert: card_pin | password | card_only | none
+	PasswordButton bool   // Anfangswert: Knopf „Mit Benutzer und Passwort“
 	InfraID    string
 	Name       string
 	Path       string
@@ -286,6 +288,13 @@ func (h *Handler) terminalGate(w http.ResponseWriter, r *http.Request, mode stri
 	if mode != "schoner" {
 		p.Idle = h.terminalIdleSeconds(r.Context(), uid)
 		p.CardEvents = h.terminalDeviceSession(r) // im Schoner wird nichts abonniert
+		// Anfangswerte der Anmeldung ohne Leser; Änderungen kommen per /terminal/events nach.
+		p.ManualLogin, p.PasswordButton = loginCardPIN, true
+		if p.CardEvents {
+			if ls, err := h.terminalLoginSettings(r.Context(), uid); err == nil {
+				p.ManualLogin, p.PasswordButton = ls.ManualLogin, ls.PasswordButton
+			}
+		}
 	}
 	return p, true
 }

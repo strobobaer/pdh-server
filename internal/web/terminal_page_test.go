@@ -176,3 +176,36 @@ func TestTerminalScriptCardReader(t *testing.T) {
 		t.Error("innerHTML im Skript")
 	}
 }
+
+func TestTerminalTemplateManualLogin(t *testing.T) {
+	h, _ := terminalTestHandler(t)
+	render := func(d terminalPage) string {
+		rec := httptest.NewRecorder()
+		h.renderTerminal(rec, d)
+		return rec.Body.String()
+	}
+	base := terminalPage{Mode: "info", Idle: 45, CardEvents: true, CanFaults: true, CanTickets: true,
+		InfraID: "33333333-3333-3333-3333-333333333333", Name: "Presse", ManualLogin: "card_pin", PasswordButton: true}
+	body := render(base)
+	for _, want := range []string{`id="login-panel"`, `id="login-keypad"`, `id="login-password-btn"`, `id="login-dialog"`,
+		"Mit Benutzer und Passwort", `data-manual-login="card_pin"`, `data-password-button="1"`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("%s fehlt", want)
+		}
+	}
+	base.ManualLogin, base.PasswordButton = "none", false
+	body = render(base)
+	if !strings.Contains(body, `data-manual-login="none"`) || !strings.Contains(body, `data-password-button="0"`) {
+		t.Error("Werte des Terminals fehlen")
+	}
+	// ohne Gerätesitzung und im Schoner: kein Anmeldeteil
+	base.CardEvents = false
+	if strings.Contains(render(base), "login-panel") {
+		t.Error("ohne Gerätesitzung kein Anmeldeteil")
+	}
+	base.CardEvents, base.Mode, base.Idle = true, "schoner", 0
+	body = render(base)
+	if strings.Contains(body, "login-panel") || strings.Contains(body, "data-manual-login") {
+		t.Error("Schoner darf keinen Anmeldeteil haben")
+	}
+}
