@@ -1548,10 +1548,17 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <ul>
       <li>Die Zertifikate werden auf den zweiten Server gespiegelt und stehen in der Sicherung.</li>
       <li>Ein entferntes Zertifikat samt Schlüssel bleibt bis zu 14 Tage im Papierkorb der Spiegelung am Partner (nur für root lesbar).</li>
-      <li>Wird das erste Zertifikat angelegt und der Partner hat schon Zertifikatsdateien ohne Beleg, schlägt die Spiegelung Alarm. Der Alarm endet mit <code>sudo pdh-ha mirror confirm</code>; es können zwei Alarme erscheinen, dieser Befehl löst beide.</li>
+      <li>Wurden die Rollen seit dem Start mindestens einmal getauscht (jedes Update tauscht sie), schlägt die Spiegelung beim <b>ersten</b> Zertifikat einmal Alarm: <i>„Quelle ssl-pdh: Der Ordner ist neu dazugekommen, seit dieser Server aktiv wurde – einen eigenen Beleg gibt es dafür noch nicht. Auf dem Partner wird nichts gelöscht. Ist dieser Server vollständig: sudo pdh-ha mirror confirm“</i>. Das ist erwartet und kein Fehler. Bis zur Bestätigung werden die Zertifikate auf den zweiten Server kopiert, Löschungen (ein entferntes Zertifikat) aber nicht.</li>
+      <li>Hat der Partner dort außerdem schon Zertifikatsdateien, kann ein zweiter Alarm erscheinen: <i>„Der Partner hat dort schon Dateien ohne Beleg“</i>. Derselbe Befehl löst beide.</li>
       <li>Beim Update eines Verbunds, der schon Zertifikate hat, meldet die Spiegelung für diese Quelle einen Fehler, bis beide Server die neue Version haben.</li>
       <li>Sobald es Zertifikate gibt, installiert und startet das Update nginx auf beiden Servern.</li>
     </ul></div>
+  <div class="hb-howto"><b><i class="ti ti-check"></i> So bestätigst du den Alarm der Spiegelung beim ersten Zertifikat</b>
+    <ol class="hb-steps">
+      <li>Auf dem <b>aktiven</b> Server (der, den du gerade benutzt) in einer Konsole ausführen: <code>sudo pdh-ha mirror confirm</code>.</li>
+      <li>Erwartet: Der Alarm endet, und <code>sudo pdh-ha mirror status</code> zeigt die Quelle ohne Warnung.</li>
+    </ol>
+    Bestätige nur, wenn dieser Server vollständig ist. Danach werden auch Löschungen auf den zweiten Server übertragen.</div>
   <div class="hb-howto"><b><i class="ti ti-alert-triangle"></i> Wenn etwas nicht klappt</b>
     <ul>
       <li><b>API-Token fehlt oder darf die Domain nicht ändern:</b> Die Karte nennt das fehlende Recht; es beginnt kein Auftrag.</li>
@@ -1562,6 +1569,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li><b>Update-Agent nicht erreichbar:</b> Das Zertifikat bleibt gespeichert, die Karte zeigt „noch nicht eingerichtet“, der nächste Lauf holt es nach.</li>
       <li><b>Rollentausch mitten im Ablauf:</b> Der neue aktive Server räumt Prüf-Einträge auf und beginnt bei Bedarf neu.</li>
       <li><b>Datei und Datenbank weichen ab:</b> Das PDH richtet das Zertifikat neu aus der Datenbank ein.</li>
+      <li><b>Alarm „Quelle ssl-pdh: Der Ordner ist neu dazugekommen, seit dieser Server aktiv wurde …“ oder „Der Partner hat dort schon Dateien ohne Beleg“:</b> Das ist beim ersten Zertifikat im Verbund erwartet und kein Fehler. Auf dem aktiven Server <code>sudo pdh-ha mirror confirm</code> ausführen; der Befehl löst beide Alarme. Bis dahin werden Zertifikate kopiert, Löschungen aber nicht.</li>
       <li><b>Fingerabdruck der UDM Pro geändert:</b> Es gibt keine Verbindung, bis du den neuen Fingerabdruck bestätigst.</li>
     </ul></div>
   <div class="hb-howto"><b><i class="ti ti-cloud-lock"></i> So machst du das PDH über einen Cloudflare-Tunnel erreichbar</b>
