@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -150,12 +151,112 @@ func (fakeDialect) SelectOne(t *TableInfo, cols, keyCols, keyVals []string) (Stm
 	return Stmt{SQL: "one", Args: []any{fakeOne{keyCols: keyCols, keyVals: keyVals}}}, nil
 }
 
-func (fakeDialect) UpdateRow(*TableInfo, []string, []string, map[string]any) (Stmt, error) {
-	return Stmt{}, errors.New("attrappe: UpdateRow nicht vorgesehen")
+// fakeUpdate ist der Befehl von UpdateRow, fakeInsert der von InsertChild. Wie
+// beim echten Dialekt prüfen beide Schlüssel, Spalten und Zieltabelle.
+type fakeUpdate struct {
+	table            string
+	keyCols, keyVals []string
+	set              map[string]any
 }
 
-func (fakeDialect) InsertChild(*TableInfo, *TableInfo, map[string]any) (Stmt, error) {
-	return Stmt{}, errors.New("attrappe: InsertChild nicht vorgesehen")
+type fakeInsert struct {
+	table  string
+	values map[string]any
+}
+
+func fakeTableName(t *TableInfo) string { return strings.ToLower(t.Schema + "." + t.Name) }
+
+func (fakeDialect) UpdateRow(t *TableInfo, keyCols, keyVals []string, set map[string]any) (Stmt, error) {
+	if t == nil {
+		return Stmt{}, errors.New("Tabelle fehlt")
+	}
+	if len(set) == 0 {
+		return Stmt{}, errors.New("nichts zu ändern")
+	}
+	if !KeyIsUnique(t, keyCols) {
+		return Stmt{}, errors.New("Schlüssel ist nicht eindeutig (Primärschlüssel oder eindeutiger Index nötig)")
+	}
+	if len(keyVals) != len(keyCols) {
+		return Stmt{}, errors.New("zu jeder Schlüsselspalte wird genau ein Wert gebraucht")
+	}
+	cp := map[string]any{}
+	for n, v := range set {
+		c, ok := fakeCol(t, n)
+		if !ok {
+			return Stmt{}, fmt.Errorf("Spalte %q gibt es nicht", n)
+		}
+		if c.IsKey || c.IsRowVersion || c.IsIdentity || c.IsComputed || containsStr(keyCols, n) {
+			return Stmt{}, fmt.Errorf("Spalte %q darf nicht geändert werden", n)
+		}
+		cp[n] = v
+	}
+	return Stmt{SQL: "update", Args: []any{fakeUpdate{table: fakeTableName(t), keyCols: append([]string{}, keyCols...),
+		keyVals: append([]string{}, keyVals...), set: cp}}}, nil
+}
+
+func (fakeDialect) InsertChild(source, child *TableInfo, values map[string]any) (Stmt, error) {
+	if source == nil || child == nil {
+		return Stmt{}, errors.New("Meldungstabelle und Nebentabelle müssen bekannt sein")
+	}
+	if fakeTableName(source) == fakeTableName(child) {
+		return Stmt{}, ErrInsertIntoSource
+	}
+	if len(values) == 0 {
+		return Stmt{}, errors.New("nichts einzufügen")
+	}
+	cp := map[string]any{}
+	for n, v := range values {
+		c, ok := fakeCol(child, n)
+		if !ok {
+			return Stmt{}, fmt.Errorf("Spalte %q gibt es nicht", n)
+		}
+		if c.IsRowVersion || c.IsIdentity || c.IsComputed {
+			return Stmt{}, fmt.Errorf("Spalte %q kann nicht befüllt werden", n)
+		}
+		cp[n] = v
+	}
+	return Stmt{SQL: "insert", Args: []any{fakeInsert{table: fakeTableName(child), values: cp}}}, nil
+}
+
+// recDialect merkt sich jeden Befehl, den UpdateRow und InsertChild des
+// umhüllten Dialekts erzeugt haben. Damit lässt sich prüfen, dass Exec nur
+// solche Befehle bekommt.
+type recDialect struct {
+	Dialect
+	mu       sync.Mutex
+	produced []Stmt
+}
+
+func (r *recDialect) UpdateRow(t *TableInfo, keyCols, keyVals []string, set map[string]any) (Stmt, error) {
+	st, err := r.Dialect.UpdateRow(t, keyCols, keyVals, set)
+	if err == nil {
+		r.mu.Lock()
+		r.produced = append(r.produced, st)
+		r.mu.Unlock()
+	}
+	return st, err
+}
+
+func (r *recDialect) InsertChild(source, child *TableInfo, values map[string]any) (Stmt, error) {
+	st, err := r.Dialect.InsertChild(source, child, values)
+	if err == nil {
+		r.mu.Lock()
+		r.produced = append(r.produced, st)
+		r.mu.Unlock()
+	}
+	return st, err
+}
+
+// wasProduced: st ist genau ein von UpdateRow/InsertChild erzeugter Befehl.
+func (r *recDialect) wasProduced(st Stmt) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, p := range r.produced {
+		if p.SQL == st.SQL && reflect.DeepEqual(p.Args, st.Args) {
+			return true
+		}
+	}
+	return false
 }
 
 func (fakeDialect) Quote(name string) string { return "[" + name + "]" }
@@ -195,10 +296,65 @@ type fakeForeign struct {
 	// gate hält die nächste Abfrage an: entered meldet das Warten, Schließen von gate gibt frei.
 	gate    chan struct{}
 	entered chan struct{}
+	// Schreiben (nur die Befehle von fakeDialect.UpdateRow/InsertChild):
+	// children sind Nebentabellen samt Zeilen, execLog jeder Exec-Aufruf in
+	// Reihenfolge (auch abgelehnte). failExec liefert einen Fehler statt
+	// auszuführen; beforeExec läuft vor dem Ausführen ohne Sperre.
+	children   map[string]*fakeChild
+	execLog    []Stmt
+	failExec   func(st Stmt) error
+	beforeExec func(st Stmt)
+}
+
+type fakeChild struct {
+	info *TableInfo
+	rows []map[string]any
 }
 
 func newFakeForeign(info *TableInfo) *fakeForeign {
-	return &fakeForeign{info: info, failQuery: map[int]error{}}
+	return &fakeForeign{info: info, failQuery: map[int]error{}, children: map[string]*fakeChild{}}
+}
+
+// addChild legt eine Nebentabelle an.
+func (f *fakeForeign) addChild(info *TableInfo) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.children[fakeTableName(info)] = &fakeChild{info: info}
+}
+
+// childRows liefert eine Kopie der Zeilen einer Nebentabelle.
+func (f *fakeForeign) childRows(schema, table string) []map[string]any {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	c := f.children[strings.ToLower(schema+"."+table)]
+	if c == nil {
+		return nil
+	}
+	return append([]map[string]any{}, c.rows...)
+}
+
+// execs liefert eine Kopie des Exec-Protokolls.
+func (f *fakeForeign) execStmts() []Stmt {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]Stmt{}, f.execLog...)
+}
+
+// get liefert eine Kopie der Zeile mit dem (ersten) Schlüsselwert key oder nil.
+func (f *fakeForeign) get(key any) map[string]any {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	k0 := f.keyCols()[0]
+	for _, r := range f.rows {
+		if fmt.Sprint(r[k0]) == fmt.Sprint(key) {
+			cp := map[string]any{}
+			for k, v := range r {
+				cp[k] = v
+			}
+			return cp
+		}
+	}
+	return nil
 }
 
 func (f *fakeForeign) rvCol() string {
@@ -301,17 +457,84 @@ func (f *fakeForeign) queryCount() int {
 }
 
 func (f *fakeForeign) Describe(_ context.Context, schema, table string) (*TableInfo, error) {
-	if !strings.EqualFold(f.info.Schema, schema) || !strings.EqualFold(f.info.Name, table) {
-		return nil, fmt.Errorf("tabelle %s.%s: %w", schema, table, ErrNotFound)
+	if strings.EqualFold(f.info.Schema, schema) && strings.EqualFold(f.info.Name, table) {
+		return f.info, nil
 	}
-	return f.info, nil
-}
-
-func (f *fakeForeign) Exec(context.Context, Stmt) (int64, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if c := f.children[strings.ToLower(schema+"."+table)]; c != nil {
+		return c.info, nil
+	}
+	return nil, fmt.Errorf("tabelle %s.%s: %w", schema, table, ErrNotFound)
+}
+
+// Exec führt nur die Befehle "update" (eine Zeile der Meldungstabelle über
+// ihren Schlüssel, rowversion steigt) und "insert" (Nebentabelle) aus. Alles
+// andere wird abgelehnt – aber protokolliert, damit Tests es sehen.
+func (f *fakeForeign) Exec(_ context.Context, st Stmt) (int64, error) {
+	f.mu.Lock()
 	f.execs++
-	return 0, errors.New("attrappe: schreiben nicht erlaubt")
+	f.execLog = append(f.execLog, st)
+	before, fail := f.beforeExec, f.failExec
+	f.mu.Unlock()
+	if before != nil {
+		before(st)
+	}
+	if fail != nil {
+		if err := fail(st); err != nil {
+			return 0, err
+		}
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	switch {
+	case st.SQL == "update" && len(st.Args) == 1:
+		u, ok := st.Args[0].(fakeUpdate)
+		if !ok || u.table != fakeTableName(f.info) {
+			return 0, errors.New("attrappe: update nur in der Meldungstabelle")
+		}
+		for i, r := range f.rows {
+			kv, err := fakeDialect{}.KeyValues(f.info, u.keyCols, r)
+			if err != nil {
+				return 0, err
+			}
+			if !sameKeys(kv, u.keyVals) {
+				continue
+			}
+			cp := map[string]any{}
+			for k, v := range r {
+				cp[k] = v
+			}
+			for k, v := range u.set {
+				cp[k] = v
+			}
+			if rc := f.rvCol(); rc != "" {
+				f.rv++
+				b := make([]byte, 8)
+				binary.BigEndian.PutUint64(b, f.rv)
+				cp[rc] = b
+			}
+			f.rows[i] = cp
+			return 1, nil
+		}
+		return 0, nil
+	case st.SQL == "insert" && len(st.Args) == 1:
+		in, ok := st.Args[0].(fakeInsert)
+		if !ok || in.table == fakeTableName(f.info) {
+			return 0, errors.New("attrappe: insert nie in die Meldungstabelle")
+		}
+		c := f.children[in.table]
+		if c == nil {
+			return 0, fmt.Errorf("attrappe: Nebentabelle %s fehlt", in.table)
+		}
+		cp := map[string]any{}
+		for k, v := range in.values {
+			cp[k] = v
+		}
+		c.rows = append(c.rows, cp)
+		return 1, nil
+	}
+	return 0, errors.New("attrappe: unbekannter Schreibbefehl")
 }
 
 // sameKeys: gleiche Schlüsseltexte.

@@ -86,7 +86,11 @@ CREATE TABLE IF NOT EXISTS sync_outbox (
     last_error  TEXT NOT NULL DEFAULT '',
     next_try_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    done_at     TIMESTAMPTZ
+    done_at     TIMESTAMPTZ,
+    -- Kommentar: gesetzt unmittelbar VOR dem Einfügen ins Fremdsystem. Steht der
+    -- Wert bei einem neuen Versuch noch, wurde vielleicht schon eingefügt: der
+    -- Eintrag wird mit Hinweis erledigt statt doppelt einzufügen (höchstens einmal).
+    sending_at  TIMESTAMPTZ
 );
 CREATE INDEX IF NOT EXISTS idx_sync_outbox_open ON sync_outbox (link_id, id) WHERE done_at IS NULL;
 

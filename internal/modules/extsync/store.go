@@ -430,10 +430,69 @@ func (s *Store) UpdateLinkSeen(ctx context.Context, linkID, seenMark string, see
 		seen_values = $3::jsonb, updated_at = now() WHERE id = $1`, linkID, seenMark, encodeMap(seen))
 }
 
-// UpdateLinkWritten speichert die zuletzt ins Fremdsystem geschriebenen Werte.
+// UpdateLinkWritten setzt Ausgangswerte FELDWEISE (R23): written[k] = v für
+// jedes Feld in written, auf dem aktuellen Stand der Zeile unter Zeilensperre.
+// Andere Felder bleiben unverändert – auch solche, die ein gleichzeitiger
+// hereinkommender Lauf eben gesetzt hat. seen_values, seen_mark und last_error
+// bleiben unberührt (Vertrag Ausgang, siehe outbound.go).
 func (s *Store) UpdateLinkWritten(ctx context.Context, linkID string, written map[string]string) error {
-	return s.execLink(ctx, "verknüpfung aktualisieren", `UPDATE sync_links SET written_values = $2::jsonb,
-		updated_at = now() WHERE id = $1`, linkID, encodeMap(written))
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("abgleich: verknüpfung aktualisieren: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	var cur []byte
+	if err := tx.QueryRow(ctx, `SELECT written_values FROM sync_links WHERE id = $1 FOR UPDATE`, linkID).Scan(&cur); err != nil {
+		return notFound(err, "verknüpfung aktualisieren")
+	}
+	m, err := decodeMap(cur)
+	if err != nil {
+		return fmt.Errorf("abgleich: verknüpfung aktualisieren: %w", err)
+	}
+	for k, v := range written {
+		m[k] = v
+	}
+	if _, err := tx.Exec(ctx, `UPDATE sync_links SET written_values = $2::jsonb, updated_at = now() WHERE id = $1`,
+		linkID, encodeMap(m)); err != nil {
+		return fmt.Errorf("abgleich: verknüpfung aktualisieren: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("abgleich: verknüpfung aktualisieren: %w", err)
+	}
+	return nil
+}
+
+// MarkLinkForeignGone setzt den Endzustand LinkErrForeignGone, wenn das
+// Hinausschreiben keine Zeile mehr trifft – die EINZIGE Stelle, an der der
+// Ausgang last_error schreibt (Vertrag Ausgang, outbound.go). In EINER
+// Transaktion: nur wenn die Marke noch nicht steht, wird sie gesetzt und note
+// (falls nicht nil) in den Verlauf geschrieben; first sagt, ob das geschah. So
+// steht die Meldung genau einmal im Verlauf. Der hereinkommende Lauf löscht die
+// Marke, sobald er die Zeile wieder liest (wie bei seiner eigenen Marke).
+func (s *Store) MarkLinkForeignGone(ctx context.Context, linkID string, note *HistoryNote) (first bool, err error) {
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return false, fmt.Errorf("abgleich: verknüpfung markieren: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	tag, err := tx.Exec(ctx, `UPDATE sync_links SET last_error = $2, updated_at = now() WHERE id = $1 AND last_error <> $2`,
+		linkID, LinkErrForeignGone)
+	if err != nil {
+		return false, fmt.Errorf("abgleich: verknüpfung markieren: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return false, nil // schon markiert (oder Verknüpfung gelöscht)
+	}
+	if note != nil {
+		if _, err := tx.Exec(ctx, noteSQL, note.RefType, note.RefID, note.Action, nilIfEmpty(note.Field),
+			note.OldValue, note.NewValue, note.Message, nilIfEmpty(note.CreatedBy)); err != nil {
+			return false, fmt.Errorf("abgleich: verlauf schreiben: %w", err)
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return false, fmt.Errorf("abgleich: verknüpfung markieren: %w", err)
+	}
+	return true, nil
 }
 
 // SetLinkError speichert (oder löscht mit leerem Text) die letzte Fehlermeldung.
@@ -478,6 +537,15 @@ func (s *Store) LinksByRef(ctx context.Context, refType, refID string) ([]Link, 
 func (s *Store) LinkByKey(ctx context.Context, profileID, foreignKey string) (*Link, error) {
 	l, err := scanLink(s.db.QueryRow(ctx, `SELECT `+linkCols+` FROM sync_links l
 		WHERE l.profile_id = $1 AND l.foreign_key = $2`, profileID, foreignKey))
+	if err != nil {
+		return nil, notFound(err, "verknüpfung laden")
+	}
+	return l, nil
+}
+
+// LinkByID lädt eine Verknüpfung über ihre ID; fehlt sie, kommt ErrNotFound.
+func (s *Store) LinkByID(ctx context.Context, id string) (*Link, error) {
+	l, err := scanLink(s.db.QueryRow(ctx, `SELECT `+linkCols+` FROM sync_links l WHERE l.id = $1`, id))
 	if err != nil {
 		return nil, notFound(err, "verknüpfung laden")
 	}
@@ -543,7 +611,9 @@ type HistoryNote struct {
 // written_values wird FELDWEISE geändert (R23), auf dem aktuellen Stand der
 // Zeile unter Zeilensperre: andere Schreiber (Hinausschreiben) gehen nicht
 // verloren. seen_values schreibt allein der hereinkommende Lauf (unter der
-// Profilsperre), deshalb wird es ganz ersetzt.
+// Profilsperre), deshalb wird es ganz ersetzt. last_error setzt das
+// Hinausschreiben nur für den Endzustand LinkErrForeignGone (MarkLinkForeignGone);
+// ein späteres LastError hier ("" nach erfolgreichem Lesen der Zeile) löst ihn.
 type InboundUpdate struct {
 	RefID      *string           // Datensatz anbinden
 	SeenMark   *string           // Änderungsmarke
@@ -678,13 +748,52 @@ func (s *Store) execOutbox(ctx context.Context, what, sql string, args ...any) e
 
 // OutboxDone markiert einen Eintrag als erledigt.
 func (s *Store) OutboxDone(ctx context.Context, id int64) error {
-	return s.execOutbox(ctx, "eintrag erledigen", `UPDATE sync_outbox SET done_at = now(), last_error = '' WHERE id = $1`, id)
+	return s.OutboxDoneNote(ctx, id, "")
+}
+
+// OutboxDoneNote markiert einen Eintrag als erledigt und behält note als Spur
+// in last_error (z. B. "Meldung im Fremdsystem nicht mehr vorhanden" oder ein
+// unlesbarer Eintrag); leer = erledigt ohne Besonderheit.
+func (s *Store) OutboxDoneNote(ctx context.Context, id int64, note string) error {
+	return s.execOutbox(ctx, "eintrag erledigen", `UPDATE sync_outbox SET done_at = now(), last_error = $2 WHERE id = $1`, id, note)
 }
 
 // OutboxFailed zählt einen Fehlversuch, merkt die Meldung und verschiebt den nächsten Versuch.
 func (s *Store) OutboxFailed(ctx context.Context, id int64, msg string, retryIn time.Duration) error {
 	return s.execOutbox(ctx, "fehlversuch speichern", `UPDATE sync_outbox SET attempts = attempts + 1, last_error = $2,
 		next_try_at = NOW() + make_interval(secs => $3::double precision) WHERE id = $1`, id, msg, retryIn.Seconds())
+}
+
+// OutboxBeginSend merkt dauerhaft, dass ein Kommentar JETZT ins Fremdsystem
+// eingefügt wird (sending_at), bevor der Befehl abgeht. Stand die Marke schon
+// (ein früherer Versuch brach vielleicht nach dem Einfügen ab), bleibt sie und
+// already = true: der Aufrufer fügt dann NICHT erneut ein (höchstens einmal).
+func (s *Store) OutboxBeginSend(ctx context.Context, id int64) (already bool, err error) {
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return false, fmt.Errorf("abgleich: senden merken: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	var at *time.Time
+	if err := tx.QueryRow(ctx, `SELECT sending_at FROM sync_outbox WHERE id = $1 AND done_at IS NULL FOR UPDATE`, id).Scan(&at); err != nil {
+		return false, notFound(err, "senden merken")
+	}
+	if at != nil {
+		return true, nil
+	}
+	if _, err := tx.Exec(ctx, `UPDATE sync_outbox SET sending_at = now() WHERE id = $1`, id); err != nil {
+		return false, fmt.Errorf("abgleich: senden merken: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return false, fmt.Errorf("abgleich: senden merken: %w", err)
+	}
+	return false, nil
+}
+
+// OutboxClearSend löscht die Marke von OutboxBeginSend, wenn sicher ist, dass
+// nichts eingefügt wurde (der Server hat den Befehl abgelehnt).
+func (s *Store) OutboxClearSend(ctx context.Context, id int64) error {
+	return s.execOutbox(ctx, "senden zurücksetzen", `UPDATE sync_outbox SET sending_at = NULL WHERE id = $1`, id)
 }
 
 // OutboxRetryNow macht einen Eintrag sofort wieder fällig.
