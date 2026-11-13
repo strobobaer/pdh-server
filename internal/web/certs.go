@@ -46,6 +46,8 @@ type certDeps struct {
 
 	// Namen im Haus (UniFi, optional): nur lesen. nil oder errUnifiOff = nicht eingerichtet, keine Anfrage.
 	lanCheck func(ctx context.Context) (certLANClient, string, error)
+	// Einstellungen nach Präfix (Schlüssel → Wert, nur nicht leere); nil-Ergebnis = nicht lesbar.
+	settingsPrefix func(ctx context.Context, prefix string) map[string]string
 }
 
 // certFile: Stand einer Zertifikatsdatei beim Update-Agenten (GET /v1/certs/status).
@@ -955,7 +957,8 @@ func (h *Handler) certDepsLive() certDeps {
 		now:        time.Now,
 		getSetting: h.certSetting,
 		setSetting: h.certPutSetting,
-		lanCheck:   h.certLANCheckLive,
+		lanCheck:       h.certLANCheckLive,
+		settingsPrefix: h.certSettingsPrefix,
 	}
 }
 
@@ -1015,6 +1018,17 @@ func (h *Handler) StartCertRenewal(ctx context.Context) {
 			runCtx, cancel := context.WithTimeout(ctx, 30*time.Minute)
 			defer cancel()
 			certDaily(runCtx, h.certDepsLive())
+			return true
+		})
+	// IPv6-Einträge der Namen im Haus nach einem Präfixwechsel nachziehen (certs_lan6.go):
+	// erster Lauf 3 Minuten nach dem Start, dann alle 5 Minuten.
+	go certSchedule(ctx, certTimes{first: 3 * time.Minute, every: 5 * time.Minute, afterRole: time.Minute, poll: 30 * time.Second},
+		func() bool { return h.Mirror().On },
+		func() bool {
+			if h.maintSkip("zertifikate") {
+				return false
+			}
+			h.certLAN6Run(ctx)
 			return true
 		})
 }

@@ -93,6 +93,18 @@ gleichzeitig, ist das Szenario sofort nicht bestanden.
 | `hooks` | Skript `/etc/pdh/ha-hooks/10-log` auf beiden, Skripte ein, Rollen tauschen, Skript nur auf node2 ändern | Protokoll: node2 `aktiv`, node1 `passiv`, gleiche Amtszeit, Adresse; vor der Änderung Status „gleich“ auf beiden, danach „anders als beim Partner“ |
 | `umstellung` | Automatik `observe`; node1 bekommt 10.77.1.13, `addrs set … --neustart`, Test mit 10.77.1.60, 10.77.1.11 wird mitwandernde Adresse, Rollen tauschen | Spiegel wieder synchron; erst node1, dann node2 hält 10.77.1.11 |
 
+| `vip6-tausch` | Automatik `observe`; Adresse einschalten, IPv6-Ende `50`, Zeuge pingt, Tausch und Rücktausch, Präfixwechsel auf node1, Ende leeren; dann belegt der Zeuge `2001:db8:77:1::50` selbst, Ende wieder setzen, Tausch, Zeuge gibt die Adresse frei | `2001:db8:77:1::50/128` nur beim aktiven Server, Status „Adresse …: hier“/„bei …“; Nachbartabelle des Zeugen zeigt nach dem Tausch binnen 5 s die MAC von node2 (ohne Löschen, Dauer im Protokoll); nach dem Präfixwechsel binnen 10 s `2001:db8:99:1::50/128`; geleert keine `::50/128` mehr, IPv4 unverändert; beim Konflikt genau ein Alarm je Server, höchstens ein Setzversuch je Minute, IPv4-Tausch so schnell wie ohne Konflikt; nach der Freigabe binnen 70 s bei node2 |
+
+Das `lan` hat zusätzlich IPv6 (`2001:db8:77:1::/64`, feste Adressen `::11`,
+`::12`, `::20`, `::254`); das Präfix liegt in `2000::/3` und zählt damit als
+öffentliches Präfix. Alle anderen Szenarien laufen ohne IPv6-Ende – das Präfix
+ist da, bleibt aber unbenutzt. Dem Zeugen-Image fehlen `ip` und `NET_ADMIN`;
+`vip6-tausch` liest seine Nachbartabelle und setzt dort Adressen über einen
+kurzlebigen `alpine:3.20`-Container im Netz des Zeugen
+(`docker run --network container:witness`). Zeiten misst das Szenario über
+`/proc/uptime` (gleicher Kernel für alle Container). Am Ende steht im
+Protokoll, ob eine Adresse länger als 3 s „tentative“ war.
+
 In `vip-abschaltung` bleibt die Karte im Container (abgeschaltet statt
 getrennt) – nur so ist zu sehen, dass pdh-ha die Adresse selbst abgibt.
 In `umstellung` setzt das Szenario die Absenderadresse mit

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -20,6 +21,9 @@ type fakeLAN struct {
 	calls     []string
 	nextID    string
 	deleteErr error
+	createErr map[string]error // Name → Fehler beim Anlegen
+	seq       int              // für mehrere Create ohne nextID
+	onCreate  func()           // wird bei jedem Create aufgerufen (z. B. Frist ablaufen lassen)
 }
 
 func (f *fakeLAN) Records(context.Context) ([]unifi.Record, error) {
@@ -33,11 +37,22 @@ func (f *fakeLAN) Create(_ context.Context, name, ip string) (string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls = append(f.calls, "create "+name+" "+ip)
+	if f.onCreate != nil {
+		f.onCreate()
+	}
+	if err := f.createErr[name]; err != nil {
+		return "", err
+	}
 	id := f.nextID
 	if id == "" {
-		id = "neu1"
+		f.seq++
+		id = "neu" + strconv.Itoa(f.seq)
 	}
-	f.recs = append(f.recs, unifi.Record{ID: id, Name: name, Value: ip, Type: "A"})
+	typ := "A"
+	if strings.Contains(ip, ":") {
+		typ = "AAAA"
+	}
+	f.recs = append(f.recs, unifi.Record{ID: id, Name: name, Value: ip, Type: typ, Enabled: true})
 	return id, nil
 }
 
@@ -45,6 +60,11 @@ func (f *fakeLAN) Update(_ context.Context, id, name, ip string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls = append(f.calls, "update "+id+" "+name+" "+ip)
+	for i := range f.recs {
+		if f.recs[i].ID == id {
+			f.recs[i].Value, f.recs[i].Enabled = ip, true // die UDM Pro schaltet ihn dabei ein
+		}
+	}
 	return nil
 }
 
@@ -52,7 +72,16 @@ func (f *fakeLAN) Delete(_ context.Context, id string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls = append(f.calls, "delete "+id)
-	return f.deleteErr
+	if f.deleteErr != nil {
+		return f.deleteErr
+	}
+	for i := range f.recs {
+		if f.recs[i].ID == id {
+			f.recs = append(f.recs[:i], f.recs[i+1:]...)
+			break
+		}
+	}
+	return nil
 }
 
 func (f *fakeLAN) writes() []string {
@@ -510,7 +539,7 @@ func TestUnifiDisconnectClearsMarkers(t *testing.T) {
 
 // Alle drei Routen brauchen system.unifi – im Gate und im Handler.
 func TestUnifiGateRules(t *testing.T) {
-	for _, path := range []string{"/admin/server-config/unifi", "/admin/server-config/unifi/confirm", "/admin/server-config/certs/lan"} {
+	for _, path := range []string{"/admin/server-config/unifi", "/admin/server-config/unifi/confirm", "/admin/server-config/certs/lan", "/admin/server-config/certs/lan6"} {
 		if _, perm, _, _, ok := matchGate("POST", path); !ok || perm != permUnifi {
 			t.Errorf("%s: Recht %q, erwartet %q", path, perm, permUnifi)
 		}
@@ -523,6 +552,7 @@ func TestUnifiGateRules(t *testing.T) {
 		"/admin/server-config/unifi":         noUnifi.CertUnifiWeb,
 		"/admin/server-config/unifi/confirm": noUnifi.CertUnifiConfirmWeb,
 		"/admin/server-config/certs/lan":     noUnifi.CertLANWeb,
+		"/admin/server-config/certs/lan6":    noUnifi.CertLAN6Web,
 	} {
 		req := httptest.NewRequest("POST", path, strings.NewReader("name=nc.firma.de&url=https://192.168.1.1"))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")

@@ -10,6 +10,18 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.80.1] – 2026-11-12
+
+### Neu
+
+- Ausfallschutz: Der aktive Server kann zusätzlich eine IPv6-Adresse tragen, die beim Rollentausch mitwandert – Feld „IPv6-Ende“ bei der mitwandernden Adresse, ein Zusatz, ohne den alles unverändert läuft.
+- Namen im Haus: Mit einer UniFi UDM Pro trägt das PDH für jeden Namen, der dort auf die mitwandernde Adresse zeigt, auch den IPv6-Eintrag ein – auch für von Hand eingetragene Namen – und hält ihn aktuell, wenn der Anbieter das Präfix wechselt. Geräte mit IPv6 gehen damit im Haus direkt zum Server.
+- Namen im Haus: Ein IPv6-Eintrag, der woandershin zeigt, wird nie von selbst geändert – dafür gibt es einen eigenen Knopf „Überschreiben“ mit Rückfrage, auch für von Hand eingetragene Namen.
+
+### Geändert
+
+- Die nginx-Seite des PDH hört auch auf IPv6; nimmt nginx die IPv6-Zeilen nicht an, bleibt sie bei IPv4 und die Zertifikate-Karte sagt es.
+
 ## [0.80.0] – 2026-11-12
 
 ### Neu

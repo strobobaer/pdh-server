@@ -65,15 +65,18 @@ type apiStatus struct {
 
 // apiAccess: Zugangsweg – mitwandernde Adresse, Skripte, Tunnel.
 type apiAccess struct {
-	VIP      string     `json:"vip"`
-	VIPOn    bool       `json:"vip_on"`
-	HooksOn  bool       `json:"hooks_on"`
-	Iface    string     `json:"iface"`     // gewählte Netzwerkkarte dieses Servers
-	IfaceErr string     `json:"iface_err"` // Kartenwahl gescheitert
-	Holder   string     `json:"holder"`    // Kennung des Servers mit der Adresse ("" = niemand)
-	Tested   *vipTested `json:"tested"`
-	Hooks    apiHooks   `json:"hooks"`
-	Tunnel   apiTunnel  `json:"tunnel"`
+	VIP        string     `json:"vip"`
+	VIPOn      bool       `json:"vip_on"`
+	HooksOn    bool       `json:"hooks_on"`
+	VIP6Suffix string     `json:"vip6_suffix"` // Ende der mitwandernden IPv6-Adresse ("" = keine)
+	Iface      string     `json:"iface"`       // gewählte Netzwerkkarte dieses Servers
+	IfaceErr   string     `json:"iface_err"`   // Kartenwahl gescheitert
+	Holder     string     `json:"holder"`      // Kennung des Servers mit der Adresse ("" = niemand)
+	VIP6       string     `json:"vip6"`        // IPv6-Adresse beim Halter ("" = keine)
+	VIP6Note   string     `json:"vip6_note"`   // Hinweis zur IPv6-Adresse dieses Servers ("" = keiner)
+	Tested     *vipTested `json:"tested"`
+	Hooks      apiHooks   `json:"hooks"`
+	Tunnel     apiTunnel  `json:"tunnel"`
 }
 
 // apiHooks: Skripte beim Rollenwechsel.
@@ -116,6 +119,7 @@ type apiNode struct {
 
 	// Zugangsweg (Teil 5)
 	VIPHeld   bool   `json:"vip_held"`
+	VIP6Held  string `json:"vip6_held"` // mitwandernde IPv6-Adresse auf diesem Server ("" = keine)
 	HooksSum  string `json:"hooks_sum"`
 	TunnelSum string `json:"tunnel_sum"`
 }

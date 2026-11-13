@@ -7,7 +7,7 @@
 #            asynchron-zeuge asynchron-ohne-zeuge erzwingen-abgezweigt
 #            rewind-fehler slot-grenze
 #   Zugangsweg (Teil 5): vip-tausch vip-ausfall vip-abschaltung vip-duplikat
-#            vip-entfernt vip-absender vip-neustart hooks umstellung
+#            vip-entfernt vip-absender vip-neustart hooks umstellung vip6-tausch
 #   Update im Verbund: update-ok update-b-vorher update-b-nachher update-abbruch
 #            update-neustart update-nicht-gruen update-nacheinander
 #            update-nacheinander-fehler update-tausch-frist
@@ -53,10 +53,13 @@ declare -A IP=(
     [node1:lan]=10.77.1.11 [node1:vpn]=10.77.2.11 [node1:wit]=10.77.3.11
     [node2:lan]=10.77.1.12 [node2:vpn]=10.77.2.12 [node2:wit]=10.77.3.12
 )
+# IPv6 im lan (feste Adressen wie in compose.yaml)
+declare -A IP6=([node1:lan]=2001:db8:77:1::11 [node2:lan]=2001:db8:77:1::12)
 SCENARIOS=(aktiv-weg leitung-weg zeuge-weg hin-und-her rueckkehr neustart-aktiv version-anders
     beobachtung tausch aktiv-weg-echt asynchron-zeuge asynchron-ohne-zeuge erzwingen-abgezweigt
     rewind-fehler slot-grenze
     vip-tausch vip-ausfall vip-abschaltung vip-duplikat vip-entfernt vip-absender vip-neustart hooks umstellung
+    vip6-tausch
     update-ok update-b-vorher update-b-nachher update-abbruch update-neustart update-nicht-gruen
     update-nacheinander update-nacheinander-fehler update-tausch-frist update-nacheinander-gleichstand
     update-abbruch-vorher update-verweigert
@@ -71,7 +74,7 @@ SCENARIOS=(aktiv-weg leitung-weg zeuge-weg hin-und-her rueckkehr neustart-aktiv 
 # rewind-fehler läuft mit real: nach dem Pflicht-Tausch liegen die abgezweigten
 # Daten auf einer höheren Zeitleiste (pg_waldump -t).
 declare -A SC_MODE=([beobachtung]=observe [tausch]=observe [erzwingen-abgezweigt]=observe
-    [slot-grenze]=observe [vip-tausch]=observe [umstellung]=observe
+    [slot-grenze]=observe [vip-tausch]=observe [umstellung]=observe [vip6-tausch]=observe
     [spiegel-datei]=observe [spiegel-loeschen]=observe [spiegel-tausch]=observe [spiegel-aus]=observe [spiegel-bestaetigung]=observe [spiegel-zertifikat]=observe)
 PG_LAB=0                        # 1 = Datenbank-Spiegel eingerichtet, Wächter aktiv
 BOTH_RW=-1                      # seit wann zwei schreibbare Datenbanken (SECONDS)
@@ -86,7 +89,14 @@ VIP=10.77.1.50/24
 VIP_IP=${VIP%/*}
 VIP_BAD="$(mktemp -t ha-lab-vip.XXXXXX)"
 VIP_WATCH_PID=""
-trap 'rm -f "$ACKED" "$VIP_BAD"' EXIT
+# Mitwandernde IPv6-Adresse (vip6-tausch): Ende 50 im lan-Präfix; das
+# Labor-Präfix liegt in 2000::/3 und zählt damit als öffentliches Präfix
+VIP6_SFX=50
+VIP6_IP=2001:db8:77:1::$VIP6_SFX
+VIP6_PFX2=2001:db8:99:1          # nachgestellter Präfixwechsel
+V6BG_FILE="$(mktemp -t ha-lab-v6.XXXXXX)"
+V6BG_PID=""
+trap 'rm -f "$ACKED" "$VIP_BAD" "$V6BG_FILE"' EXIT
 WRITER_PID=""
 
 export PDH_HA_COMMIT="${PDH_HA_COMMIT:-$(git -C "$repo" rev-parse --short HEAD 2>/dev/null || echo lab)}"
@@ -113,8 +123,9 @@ diag() {
         echo "--- $c: state.json"
         timeout 10 docker exec "$c" cat /var/lib/pdh-ha/state.json 2>&1 | tr -d '\n' | cut -c1-600 | sed 's/^/    /' || true
         if [[ "$c" != witness ]]; then
-            echo "--- $c: IPv4-Adressen, Skript-Protokoll"
+            echo "--- $c: IPv4-/IPv6-Adressen, Skript-Protokoll"
             timeout 10 docker exec "$c" ip -o -4 addr show 2>&1 | cut -c1-120 | sed 's/^/    /' || true
+            timeout 10 docker exec "$c" ip -o -6 addr show scope global 2>&1 | cut -c1-160 | sed 's/^/    /' || true
             timeout 10 docker exec "$c" tail -n 5 /var/lib/pdh-ha/hook.log 2>/dev/null | sed 's/^/    /' || true
             echo "--- $c: Update-Auftrag, Datenbank, Labor-Agent, /health"
             timeout 10 docker exec "$c" pdh-ha update status 2>&1 | sed 's/^/    /' || true
@@ -415,7 +426,7 @@ net_on() {
     local c=$1
     shift
     for n in "$@"; do
-        docker network connect --ip "${IP[$c:$n]}" "pdh-ha-lab-$n" "$c" || return 1
+        docker network connect --ip "${IP[$c:$n]}" ${IP6[$c:$n]:+--ip6 "${IP6[$c:$n]}"} "pdh-ha-lab-$n" "$c" || return 1
     done
 }
 
@@ -1072,6 +1083,313 @@ sc_umstellung() {
     local src
     src="$(psql_on node2 "SELECT client_addr FROM pg_stat_replication" postgres)"
     [[ "$src" == "$new" ]] || fail "node1 spiegelt von $src statt von $new"
+}
+
+# --- Mitwandernde IPv6-Adresse ---
+
+# cs_now: Zeit seit Systemstart in Hundertstelsekunden. Alle Container und der
+# Hilfscontainer teilen sich den Kernel – die Werte sind direkt vergleichbar.
+cs_now() {
+    local u
+    read -r u _ </proc/uptime
+    echo $((10#${u/./}))
+}
+
+# v6_line <Container> [<IP>]: Zeile aus ip -6 -o addr für <IP>/128 (leer = keine)
+v6_line() {
+    timeout 5 docker exec "$1" ip -6 -o addr show 2>/dev/null | grep -F " inet6 ${2:-$VIP6_IP}/128 " || true
+}
+
+# vip6_here <Container> [<IP>]: die /128 liegt dort fertig (nicht tentative)
+vip6_here() {
+    local l
+    l="$(v6_line "$1" "${2:-}")"
+    [[ -n "$l" && "$l" != *tentative* ]]
+}
+
+# vip6_only <Container> [<IP>]: nur dieser Server trägt die /128 (fertig)
+vip6_only() {
+    local other=node1
+    [[ "$1" == node1 ]] && other=node2
+    vip6_here "$1" "${2:-}" && [[ -z "$(v6_line "$other" "${2:-}")" ]]
+}
+
+# vip6_gone [<IP>]: keiner der Server trägt die /128
+vip6_gone() { [[ -z "$(v6_line node1 "${1:-}")" && -z "$(v6_line node2 "${1:-}")" ]]; }
+
+# vip6_where: Kurzbefund (alle /128 mit dem Ende) für Fehlermeldungen
+vip6_where() {
+    local c out=""
+    for c in node1 node2; do
+        out+="$c: [$(timeout 5 docker exec "$c" ip -6 -o addr show 2>/dev/null | grep -F "::$VIP6_SFX/128 " | awk '{ $1 = ""; print }' | tr -s ' ' | tr '\n' ';')] "
+    done
+    echo "IPv6 $out"
+}
+
+# status_has <Container> <Zeile>: pdh-ha status enthält genau diese Zeile
+status_has() { timeout 10 docker exec "$1" pdh-ha status 2>/dev/null | grep -qxF -- "$2"; }
+
+# mac_of <Container> <Karte>
+mac_of() { docker exec "$1" cat "/sys/class/net/$2/address"; }
+
+# wnet <Befehl …>: Befehl im Netz des Zeugen. Dem Zeugen-Image fehlt iproute2
+# (und NET_ADMIN) – ein kurzlebiger Alpine-Container im selben Netz-Namensraum
+# liest die Nachbartabelle und setzt Adressen „auf dem Zeugen“.
+wnet() { docker run --rm --network container:witness --cap-add NET_ADMIN alpine:3.20 "$@"; }
+
+# w_lan_if: Karte des Zeugen im lan
+w_lan_if() {
+    wnet ip -o -4 addr show 2>/dev/null | awk '$4 ~ /^10\.77\.1\.20\// { sub(/@.*/, "", $2); print $2; exit }'
+}
+
+# w_neigh <Karte>: Eintrag der Nachbartabelle des Zeugen für die IPv6-Adresse
+w_neigh() { wnet ip -6 neigh show dev "$1" 2>/dev/null | awk -v a="$VIP6_IP" '$1 == a'; }
+
+# Läuft im Netz des Zeugen (Alpine-sh): liest alle 50 ms die Nachbartabelle,
+# bis der Eintrag die MAC trägt. Ausgabe: „start <cs>“, dann „mac <cs> <Eintrag>“
+# bzw. „ende <cs> <Eintrag>“. Der Eintrag wird nie gelöscht.
+NEIGH_SH='
+ifc=$1 ip=$2 mac=$3 max=$4
+cs() { u=$(cut -d" " -f1 /proc/uptime); echo "${u%.*}${u#*.}"; }
+end=$(($(cs) + max * 100))
+echo "start $(cs)"
+while :; do
+    n=$(ip -6 neigh show dev "$ifc" | awk -v a="$ip" "\$1 == a")
+    case "$n" in *"$mac"*) echo "mac $(cs) $n"; exit 0 ;; esac
+    [ "$(cs)" -lt "$end" ] || { echo "ende $(cs) $n"; exit 1; }
+    sleep 0.05
+done'
+
+# Läuft auf dem Server: wartet (alle 50 ms), bis die /128 auf der Karte liegt
+# und fertig ist. Ausgabe: „<cs da> <cs fertig>“ (-1 = nicht erreicht).
+A6_SH='
+ifc=$1 ip=$2 max=$3
+cs() { local u; read -r u _ </proc/uptime; echo $((10#${u/./})); }
+end=$(($(cs) + max * 100)) ta=-1
+while :; do
+    l=$(ip -6 -o addr show dev "$ifc" | grep -F " inet6 $ip/128 ")
+    if [[ -n "$l" ]]; then
+        ((ta >= 0)) || ta=$(cs)
+        if [[ "$l" != *tentative* ]]; then echo "$ta $(cs)"; exit 0; fi
+    fi
+    (($(cs) < end)) || { echo "$ta -1"; exit 1; }
+    sleep 0.05
+done'
+
+# v6bg_start: alle 0,5 s die /128 mit dem Ende auf beiden Servern lesen.
+# Stichproben nach V6BG_FILE: <ms> <Container> <Zustand>; Zustand t = tentative
+# (ohne dadfailed), d = dadfailed, h = liegt fertig, - = keine.
+v6bg_start() {
+    v6bg_stop
+    : >"$V6BG_FILE"
+    (
+        set +e
+        trap - EXIT
+        while :; do
+            for c in node1 node2; do
+                l="$(timeout 5 docker exec "$c" ip -6 -o addr show 2>/dev/null | grep -F "::$VIP6_SFX/128 ")"
+                s=-
+                case "$l" in
+                    *dadfailed*) s=d ;;
+                    *tentative*) s=t ;;
+                    ?*) s=h ;;
+                esac
+                echo "$(date +%s%3N) $c $s"
+            done >>"$V6BG_FILE"
+            sleep 0.5
+        done
+    ) &
+    V6BG_PID=$!
+}
+
+v6bg_stop() {
+    [[ -n "$V6BG_PID" ]] || return 0
+    kill "$V6BG_PID" 2>/dev/null || true
+    wait "$V6BG_PID" 2>/dev/null || true
+    V6BG_PID=""
+}
+
+# v6bg_report: längste ununterbrochene Folge „tentative“ je Server
+v6bg_report() {
+    awk '{ if ($3 == "t") { if (!($2 in st)) st[$2] = $1; d = $1 - st[$2]; if (d > mx[$2]) mx[$2] = d; n[$2]++ } else delete st[$2]; all++ }
+        END {
+            k = 0
+            for (c in n) { printf "  %s: %d Stichproben „tentative“, längste Folge %d ms%s\n", c, n[c], mx[c], (mx[c] > 3000 ? " – LÄNGER ALS 3 s" : ""); k++ }
+            if (k == 0) printf "  keine Stichprobe „tentative“ (von %d)\n", all
+        }' "$V6BG_FILE"
+}
+
+# mon6_start <Container> <Karte> <Datei> <Sekunden>: ip monitor address auf dem
+# Server, jede Zeile mit cs_now des Hilfscontainers versehen (Hintergrund);
+# MON6_PID = Prozess
+MON6_PID=""
+mon6_start() {
+    (
+        trap - EXIT
+        timeout "$(($4 + 5))" docker exec "$1" timeout "$4" ip monitor address dev "$2" 2>&1 |
+            while IFS= read -r l; do echo "$(cs_now) $l"; done
+    ) >"$3" &
+    MON6_PID=$!
+}
+
+# mon6_attempts <Datei> [<IP>]: Zeitpunkte (cs) der Setzversuche – jeder
+# Versuch beginnt mit einem neuen Eintrag „tentative“ (ohne dadfailed)
+mon6_attempts() {
+    grep -F " ${2:-$VIP6_IP}/128 " "$1" | grep -vF Deleted | grep -vF dadfailed | grep -F tentative | awk '{ print $1 }' || true
+}
+
+# mon6_check <Datei> <Wer>: höchstens ein Setzversuch je Minute (Abstand
+# zwischen zwei Versuchen mindestens 55 s); mindestens ein Versuch scheiterte
+# an der Doppelprüfung
+mon6_check() {
+    local -a at
+    local i n failed
+    mapfile -t at < <(mon6_attempts "$1")
+    n=${#at[@]}
+    failed="$(grep -F " $VIP6_IP/128 " "$1" | grep -F Deleted | grep -cF dadfailed || true)"
+    log "  $2: $n Setzversuche, davon $failed an der Doppelprüfung gescheitert und entfernt"
+    for ((i = 0; i < n; i++)); do
+        log "    Versuch $((i + 1)) bei +$(((at[i] - at[0]) * 10)) ms"
+    done
+    for ((i = 1; i < n; i++)); do
+        (((at[i] - at[i - 1]) * 10 >= 55000)) || fail "$2: zwei Setzversuche nur $(((at[i] - at[i - 1]) * 10)) ms auseinander (erwartet höchstens einer je Minute)"
+    done
+    ((failed >= 1)) || fail "$2: kein gescheiterter Setzversuch beobachtet – $(vip6_where)"
+}
+
+DUP6_TEXT="IPv6-Adresse $VIP6_IP wird schon von einem anderen Gerät benutzt"
+
+sc_vip6_tausch() {
+    vip_setup
+    v6bg_start
+    local ifc1 ifc2 wif mac1 mac2 nfile afile mfile npid apid line ta tr tm ipv4_ms conf_ms t0 n ms c
+    ifc1="$(lan_if node1 "${IP[node1:lan]}")"
+    ifc2="$(lan_if node2 "${IP[node2:lan]}")"
+    wif="$(w_lan_if)"
+    [[ -n "$ifc1" && -n "$ifc2" && -n "$wif" ]] || fail "Karten im lan nicht gefunden (node1 '$ifc1', node2 '$ifc2', Zeuge '$wif')"
+    mac1="$(mac_of node1 "$ifc1")" mac2="$(mac_of node2 "$ifc2")"
+    log "Karten: node1 $ifc1 ($mac1), node2 $ifc2 ($mac2), Zeuge $wif"
+    log "  node1 IPv6: $(docker exec node1 ip -6 -o addr show dev "$ifc1" scope global | awk '{ $1 = ""; print }' | tr -s ' ')"
+
+    log "Schritt 1: IPv6-Ende $VIP6_SFX setzen – node1 trägt $VIP6_IP/128, node2 nicht"
+    docker exec node1 pdh-ha access --vip6-ende "$VIP6_SFX" || fail "IPv6-Ende setzen"
+    wait_for 15 eval 'vip6_only node1' || fail "node1 trägt $VIP6_IP/128 nicht allein – $(vip6_where)"
+    line="$(v6_line node1)"
+    log "  echte Zeile: $line"
+    wait_for 10 eval 'status_has node1 "Adresse $VIP6_IP: hier" && status_has node2 "Adresse $VIP6_IP: bei node1"' ||
+        fail "Status nennt die Adresse nicht (node1: $(docker exec node1 pdh-ha status | grep -F IPv6 || true); node2: $(docker exec node2 pdh-ha status | grep -F "$VIP6_IP" || true))"
+    holder_is node1 || fail "IPv4-Adresse nicht mehr bei node1 – $(vip_where)"
+
+    log "Schritt 2: Zeuge pingt $VIP6_IP – Nachbartabelle zeigt node1"
+    docker exec witness ping -6 -c 2 -W 2 "$VIP6_IP" >/dev/null || fail "Zeuge erreicht $VIP6_IP nicht"
+    n="$(w_neigh "$wif")"
+    log "  Zeuge: $n"
+    [[ "$n" == *"$mac1"* ]] || fail "Nachbartabelle des Zeugen zeigt nicht node1 ($mac1): $n"
+
+    log "Schritt 3: Rollen tauschen – Adresse wandert zu node2, Zeuge lernt binnen 5 s um (Eintrag nicht gelöscht)"
+    nfile="$(mktemp)" afile="$(mktemp)"
+    wnet sh -c "$NEIGH_SH" _ "$wif" "$VIP6_IP" "$mac2" 60 >"$nfile" 2>&1 &
+    npid=$!
+    docker exec node2 bash -c "$A6_SH" _ "$ifc2" "$VIP6_IP" 60 >"$afile" 2>&1 &
+    apid=$!
+    wait_for 20 eval 'grep -q "^start " "$nfile"' || fail "Beobachtung der Nachbartabelle startet nicht: $(cat "$nfile")"
+    t0=$(cs_now)
+    swap_on node1 || fail "Rollentausch auf node1"
+    vip_wait node2 10 || fail "node2 trägt die IPv4-Adresse nach 10 s nicht – $(vip_where)"
+    ipv4_ms=$WAITED
+    log "  IPv4-Adresse auf node2 nach $ipv4_ms ms"
+    wait "$apid" || fail "IPv6-Adresse auf node2 nicht fertig: $(cat "$afile") – $(vip6_where)"
+    read -r ta tr <"$afile"
+    log "  IPv6-Adresse auf node2 nach $(((ta - t0) * 10)) ms gesetzt, nach $(((tr - t0) * 10)) ms fertig (nicht mehr tentative)"
+    wait "$npid" || fail "Zeuge lernt die MAC von node2 nicht binnen 60 s: $(tail -1 "$nfile")"
+    tm="$(awk '$1 == "mac" { print $2 }' "$nfile")"
+    log "  Zeuge: $(grep '^mac ' "$nfile" | cut -d' ' -f3-)"
+    log "MESSUNG Nachbartabelle: Zeuge zeigt node2 $(((tm - ta) * 10)) ms nach dem Setzen, $(((tm - tr) * 10)) ms nach „fertig“, $(((tm - t0) * 10)) ms nach dem Tauschbefehl"
+    rm -f "$nfile" "$afile"
+    (((tm - ta) * 10 <= 5000)) || fail "Zeuge lernt erst $(((tm - ta) * 10)) ms nach dem Setzen um (erwartet höchstens 5 s)"
+    wait_for 10 eval 'holder_is node2 && gw_ping && vip6_only node2' || fail "nach dem Tausch – $(vip_where) – $(vip6_where)"
+    wait_for 120 mirror_ok_rev || fail "Tausch zu node2 nicht abgeschlossen (node1=$R1 pg=$(jget pg <<<"$J1"), node2=$R2 pg=$(jget pg <<<"$J2"))"
+    wait_for 10 eval 'status_has node2 "Adresse $VIP6_IP: hier" && status_has node1 "Adresse $VIP6_IP: bei node2"' || fail "Status nennt node2 nicht als Halter der IPv6-Adresse"
+
+    log "Schritt 4: Rücktausch – Adresse wieder bei node1"
+    swap_on node2 || fail "Rollentausch auf node2"
+    wait_for 120 eval 'mirror_ok && holder_is node1 && vip6_only node1' ||
+        fail "Rücktausch nicht abgeschlossen (node1=$R1, node2=$R2) – $(vip_where) – $(vip6_where)"
+    docker exec witness ping -6 -c 2 -W 2 "$VIP6_IP" >/dev/null || fail "Zeuge erreicht $VIP6_IP nach dem Rücktausch nicht"
+
+    log "Schritt 5: Präfixwechsel auf node1 – $VIP6_PFX2::/64 neu, altes Präfix läuft aus"
+    docker exec node1 ip -6 addr add "$VIP6_PFX2::2/64" dev "$ifc1" valid_lft 999999 preferred_lft 999999 || fail "neues Präfix auf node1 setzen"
+    docker exec node1 ip -6 addr change "${IP6[node1:lan]}/64" dev "$ifc1" valid_lft 60 preferred_lft 0 || fail "altes Präfix auf node1 auslaufen lassen"
+    wait_for 10 eval 'vip6_here node1 "$VIP6_PFX2::$VIP6_SFX" && [[ -z "$(v6_line node1)" ]]' ||
+        fail "binnen 10 s nicht auf $VIP6_PFX2::$VIP6_SFX umgestellt – $(vip6_where)"
+    log "  echte Zeile: $(v6_line node1 "$VIP6_PFX2::$VIP6_SFX")"
+    log "  altes Präfix: $(docker exec node1 ip -6 -o addr show dev "$ifc1" | grep -F " ${IP6[node1:lan]}/64 " | awk '{ $1 = ""; print }' | tr -s ' ')"
+    wait_for 5 eval 'event_on node1 "IPv6-Präfix hat gewechselt: 2001:db8:77:1::/64 → $VIP6_PFX2::/64"' || fail "kein Ereignis zum Präfixwechsel"
+    log "  Präfix zurückstellen (die alte /64 liefe sonst nach 60 s ab)"
+    docker exec node1 ip -6 addr change "${IP6[node1:lan]}/64" dev "$ifc1" valid_lft forever preferred_lft forever || fail "altes Präfix auf node1 zurückstellen"
+    docker exec node1 ip -6 addr del "$VIP6_PFX2::2/64" dev "$ifc1" || fail "neues Präfix auf node1 entfernen"
+    wait_for 15 eval 'vip6_only node1 && [[ -z "$(v6_line node1 "$VIP6_PFX2::$VIP6_SFX")" ]]' ||
+        fail "nach dem Zurückstellen nicht wieder $VIP6_IP – $(vip6_where)"
+
+    log "Schritt 6: IPv6-Ende leeren – keine ::$VIP6_SFX/128 mehr, IPv4-Adresse unverändert"
+    docker exec node1 pdh-ha access --vip6-ende "" || fail "IPv6-Ende leeren"
+    wait_for 10 eval 'vip6_gone && vip6_gone "$VIP6_PFX2::$VIP6_SFX"' || fail "IPv6-Adresse nicht entfernt – $(vip6_where)"
+    watch_for 3 eval 'holder_is node1 && vip6_gone' || fail "nach dem Leeren – $(vip_where) – $(vip6_where)"
+    gw_ping || fail "gw erreicht $VIP_IP nach dem Leeren nicht"
+
+    log "Konflikt: der Zeuge belegt $VIP6_IP selbst (fremdes Gerät), dann IPv6-Ende $VIP6_SFX setzen"
+    wnet ip -6 addr add "$VIP6_IP/64" dev "$wif" || fail "Adresse auf dem Zeugen setzen"
+    wait_for 10 eval 'wnet ip -6 -o addr show dev "$wif" | grep -F " $VIP6_IP/64 " | grep -vq tentative' || fail "Adresse auf dem Zeugen nicht fertig"
+    mfile="$(mktemp)"
+    mon6_start node1 "$ifc1" "$mfile" 90
+    sleep 1
+    t0=$(cs_now)
+    docker exec node1 pdh-ha access --vip6-ende "$VIP6_SFX" || fail "IPv6-Ende setzen (Konflikt)"
+    wait_for 20 eval 'event_on node1 "$DUP6_TEXT"' || fail "kein Alarm „$DUP6_TEXT“ auf node1 – $(vip6_where)"
+    log "  Alarm auf node1 nach $((($(cs_now) - t0) * 10)) ms; 75 s beobachten (Pause 1 min, dann neuer Versuch)"
+    watch_for $((75 - ($(cs_now) - t0) / 100)) eval 'holder_is node1 && ! vip6_here node1 && ! vip6_here node2' ||
+        fail "während des Konflikts – $(vip_where) – $(vip6_where)"
+    kill "$MON6_PID" 2>/dev/null || true
+    wait "$MON6_PID" 2>/dev/null || true
+    sed 's/^/    /' "$mfile" | grep -F "$VIP6_IP/" | cut -c1-200 || true
+    mon6_check "$mfile" node1
+    rm -f "$mfile"
+    n="$(alarm_count node1 "$DUP6_TEXT")"
+    ((n == 1)) || fail "node1: $n Alarme „$DUP6_TEXT“ (erwartet genau einen)"
+
+    log "Konflikt: Rollen tauschen – IPv4 wandert in normaler Zeit, node2 meldet den Konflikt einmal"
+    mfile="$(mktemp)"
+    mon6_start node2 "$ifc2" "$mfile" 150
+    sleep 1
+    swap_on node1 || fail "Rollentausch auf node1 (Konflikt)"
+    vip_wait node2 10 || fail "node2 trägt die IPv4-Adresse nach 10 s nicht (Konflikt) – $(vip_where)"
+    conf_ms=$WAITED
+    log "MESSUNG Tausch IPv4: ohne Konflikt $ipv4_ms ms, mit IPv6-Konflikt $conf_ms ms"
+    ((conf_ms <= ipv4_ms * 2 || conf_ms <= ipv4_ms + 3000)) || fail "Tausch mit IPv6-Konflikt dauert $conf_ms ms statt rund $ipv4_ms ms"
+    wait_for 20 eval 'event_on node2 "$DUP6_TEXT"' || fail "kein Alarm „$DUP6_TEXT“ auf node2 – $(vip6_where)"
+    wait_for 120 eval 'mirror_ok_rev && holder_is node2' || fail "Tausch zu node2 nicht abgeschlossen (node1=$R1, node2=$R2) – $(vip_where)"
+
+    log "Konflikt: Zeuge gibt $VIP6_IP ab – node2 übernimmt binnen rund 70 s (Rest der Pause + Doppelprüfung)"
+    wnet ip -6 addr del "$VIP6_IP/64" dev "$wif" || fail "Adresse auf dem Zeugen entfernen"
+    t0=$(cs_now)
+    wait_for 70 eval 'vip6_only node2' || fail "node2 trägt $VIP6_IP/128 nicht binnen 70 s nach dem Freigeben – $(vip6_where)"
+    ms=$((($(cs_now) - t0) * 10))
+    log "MESSUNG Freigabe: node2 trägt $VIP6_IP/128 $ms ms nach dem Entfernen auf dem Zeugen"
+    kill "$MON6_PID" 2>/dev/null || true
+    wait "$MON6_PID" 2>/dev/null || true
+    sed 's/^/    /' "$mfile" | grep -F "$VIP6_IP/" | cut -c1-200 || true
+    mon6_check "$mfile" node2
+    rm -f "$mfile"
+    for c in node1 node2; do
+        n="$(alarm_count "$c" "$DUP6_TEXT")"
+        ((n == 1)) || fail "$c: $n Alarme „$DUP6_TEXT“ (erwartet genau einen)"
+    done
+    wait_for 10 eval 'holder_is node2 && gw_ping && status_has node2 "Adresse $VIP6_IP: hier"' || fail "am Ende – $(vip_where) – $(vip6_where)"
+    docker exec witness ping -6 -c 2 -W 2 "$VIP6_IP" >/dev/null || fail "Zeuge erreicht $VIP6_IP bei node2 nicht"
+
+    v6bg_stop
+    log "Beobachtung „tentative“ (Stichproben alle 0,5 s, ohne dadfailed):"
+    v6bg_report
 }
 
 # slot_status: Checkpoint auf node1, dann wal_status des Slots von node2
@@ -2564,7 +2882,7 @@ run_scenario() {
     LAST_LINE="" T0=$SECONDS
     : >"$ACKED"
     : >"$VIP_BAD"
-    trap 'writer_stop; vip_watch_stop' EXIT
+    trap 'writer_stop; vip_watch_stop; v6bg_stop' EXIT
     lab_up "${SC_MODE[$name]:-real}"
     writer_start
     wait_acks 3 30 || fail "Schreib-Generator bestätigt nichts"

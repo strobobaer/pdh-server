@@ -603,6 +603,103 @@ func TestAccessPutNeedsTest(t *testing.T) {
 	}
 }
 
+// vip6AccessDaemon: aktiver Server a mit eingeschalteter Adresse (getestet);
+// Partner b meldet die Version ver ("" = noch nicht gesehen).
+func vip6AccessDaemon(t *testing.T, ver string) *daemon {
+	t.Helper()
+	d := accessCheckDaemon(t, nodeConfig{ID: "a", Kind: "node", CAHolder: true}, ha.Active)
+	d.lock()
+	d.cl.Access = accessConfig{VIP: "10.77.1.202/24", VIPOn: true,
+		Tested: &vipTested{Net: "10.77.1.0/24", Ifaces: map[string]string{"a": "eth0", "b": "ens18"}, At: time.Now()}}
+	if ver != "" {
+		d.views["b"] = seenView(message{Role: string(ha.Passive), Term: 1, Ver: ver})
+	}
+	d.unlock()
+	return d
+}
+
+// F1a: ein neues IPv6-Ende nur, wenn beide Server dieselbe Version melden.
+func TestAccessVIP6NeedsSameVersion(t *testing.T) {
+	for _, ver := range []string{"", "0.80.0"} {
+		d := vip6AccessDaemon(t, ver)
+		d.lock()
+		cv := d.cl.Version
+		d.unlock()
+		err := d.updateAccess(accessUpdate{VIP6Suffix: strp("15")})
+		if err == nil || err.Error() != "Das IPv6-Ende lässt sich erst setzen, wenn beide Server dieselbe Version haben." {
+			t.Fatalf("Partner %q: %v", ver, err)
+		}
+		if d.cl.Access.VIP6Suffix != "" || d.cl.Version != cv {
+			t.Fatalf("Partner %q: gespeichert %+v (Version %d)", ver, d.cl.Access, d.cl.Version)
+		}
+	}
+	d := vip6AccessDaemon(t, "test") // gleiche Version wie d.version
+	if err := d.updateAccess(accessUpdate{VIP6Suffix: strp("15")}); err != nil {
+		t.Fatal(err)
+	}
+	if d.cl.Access.VIP6Suffix != "15" {
+		t.Fatalf("Ende nicht gespeichert: %+v", d.cl.Access)
+	}
+	// Leeren geht auch bei anderer Version
+	d.lock()
+	d.views["b"] = seenView(message{Role: string(ha.Passive), Term: 1, Ver: "0.80.0"})
+	d.unlock()
+	if err := d.updateAccess(accessUpdate{VIP6Suffix: strp("")}); err != nil {
+		t.Fatalf("Leeren: %v", err)
+	}
+	if d.cl.Access.VIP6Suffix != "" {
+		t.Fatalf("Ende nicht geleert: %+v", d.cl.Access)
+	}
+}
+
+// F2: Ende setzen, unverändert lassen, leeren; Adresse aus leert das Ende mit.
+func TestAccessVIP6Update(t *testing.T) {
+	d := vip6AccessDaemon(t, "test")
+	if err := d.updateAccess(accessUpdate{VIP6Suffix: strp(" 15 ")}); err != nil || d.cl.Access.VIP6Suffix != "15" {
+		t.Fatalf("setzen: %v %+v", err, d.cl.Access)
+	}
+	if err := d.updateAccess(accessUpdate{HooksOn: boolp(true)}); err != nil || d.cl.Access.VIP6Suffix != "15" {
+		t.Fatalf("unverändert: %v %+v", err, d.cl.Access)
+	}
+	if err := d.updateAccess(accessUpdate{VIP6Suffix: strp("")}); err != nil || d.cl.Access.VIP6Suffix != "" {
+		t.Fatalf("leeren: %v %+v", err, d.cl.Access)
+	}
+	if err := d.updateAccess(accessUpdate{VIP6Suffix: strp("16")}); err != nil || d.cl.Access.VIP6Suffix != "16" {
+		t.Fatalf("wieder setzen: %v %+v", err, d.cl.Access)
+	}
+	// pdh-ha access --vip-off: kein Ende mitgegeben → Ende wird mit geleert
+	if err := d.updateAccess(accessUpdate{VIPOn: boolp(false)}); err != nil {
+		t.Fatalf("Adresse aus mit gesetztem Ende: %v", err)
+	}
+	if a := d.cl.Access; a.VIPOn || a.VIP6Suffix != "" {
+		t.Fatalf("Adresse aus: %+v", a)
+	}
+}
+
+// F2: die CLI-Option --vip6-ende setzt und leert das Ende.
+func TestAccessCLIVIP6(t *testing.T) {
+	d, _, sock := apiDaemon(t)
+	t.Setenv("PDH_HA_SOCKET", sock)
+	d.lock()
+	d.p.Role = ha.Active
+	d.cl.Access = accessConfig{VIP: "127.0.0.50/8", VIPOn: true}
+	d.views["b"] = seenView(message{Role: string(ha.Passive), Term: 5, Ver: d.version})
+	d.unlock()
+	var out, errb strings.Builder
+	if rc := runCLI([]string{"access", "--vip6-ende", "15"}, &out, &errb); rc != 0 {
+		t.Fatalf("rc %d: %s", rc, errb.String())
+	}
+	if got := d.statusNow().Access.VIP6Suffix; got != "15" {
+		t.Fatalf("Ende = %q", got)
+	}
+	if rc := runCLI([]string{"access", "--vip6-ende", ""}, &out, &errb); rc != 0 {
+		t.Fatalf("leeren: rc %d: %s", rc, errb.String())
+	}
+	if got := d.statusNow().Access.VIP6Suffix; got != "" {
+		t.Fatalf("Ende nach dem Leeren = %q", got)
+	}
+}
+
 func TestAccessPutWitnessRefused(t *testing.T) {
 	w := fakeDaemon(t, nodeConfig{ID: "w", Kind: "witness"}, vipCheckCluster(), ha.Persisted{Role: ha.Witness, Term: 1}, newFakeNet())
 	err := w.updateAccess(accessUpdate{HooksOn: boolp(true)})

@@ -36,6 +36,8 @@ type certLine struct {
 	LANRecord string // Kennung des Eintrags, den das PDH an der UDM Pro angelegt hat
 	LANOther  string // Adresse eines fremden Eintrags gleichen Namens an der UDM Pro
 	LANHint   string // Abweichung aus der täglichen Prüfung
+	LAN6Hint  string // Hinweis des IPv6-Laufs (fremder AAAA-Eintrag, Fehler)
+	LAN6Other string // Adresse eines fremden AAAA-Eintrags (Knopf „IPv6 überschreiben“)
 	Note      string // Hinweis des Update-Agenten: Dateien abgelegt, nginx-Seite von Hand
 }
 
@@ -52,6 +54,10 @@ type certPanel struct {
 	CanUnifi  bool       // system.unifi: Knopf „Im Haus eintragen“, Verweis auf den Reiter „UniFi“
 	Unifi     unifiPanel // nur Einstellungen, nie der Schlüssel
 	LANTarget string     // Zieladresse im Haus (mitwandernd bzw. erste eigene)
+	LAN6      string     // mitwandernde IPv6-Adresse für die Liste von Hand ("" = kein IPv6)
+	// Hinweise des IPv6-Laufs zu Namen an der UDM Pro, die kein Zertifikat haben (nur aus den
+	// Einstellungen – das Zeichnen fragt nie die UDM Pro).
+	Extra6 []lan6Extra
 }
 
 // Running: läuft ein Auftrag? Dann fragt die Karte alle 5 Sekunden nach.
@@ -132,7 +138,13 @@ func (h *Handler) certPanelFor(ctx context.Context, r *http.Request, msg string,
 	p.StrictOn = h.certSetting(ctx, keyCertStrictBefore) != ""
 	p.StrictReady = certStrictReady(rows, time.Now())
 	p.AgentOK, p.NginxOK = h.certAgentState(ctx)
-	lan, target := h.certLAN(ctx, rows)
+	// Status des Verbunds nur einmal je Zeichnen abrufen – und nur mit eingetragenen Namen.
+	var st haStatus
+	stErr := errors.New("keine Namen")
+	if len(rows) > 0 {
+		st, stErr = h.certHAStatus(ctx)
+	}
+	lan, target := h.certLAN(ctx, rows, st, stErr)
 	p.Lines = certLines(rows, lan, h.certMayRemove(r))
 	p.LANTarget = target
 	p.CanUnifi = h.hasPerm(r, permUnifi)
@@ -141,7 +153,15 @@ func (h *Handler) certPanelFor(ctx context.Context, r *http.Request, msg string,
 		p.Lines[i].LANHint = h.certSetting(ctx, keyUnifiHintPrefix+p.Lines[i].Name)
 		p.Lines[i].LANOther = h.certSetting(ctx, keyUnifiOtherPrefix+p.Lines[i].Name)
 		p.Lines[i].Note = h.certSetting(ctx, keyCertNotePrefix+p.Lines[i].Name)
+		p.Lines[i].LAN6Hint = h.certSetting(ctx, keyUnifiHint6Prefix+certLANNorm(p.Lines[i].Name))
+		p.Lines[i].LAN6Other = h.certSetting(ctx, keyUnifiOther6Prefix+certLANNorm(p.Lines[i].Name))
 	}
+	if len(rows) > 0 {
+		if t := lan6TargetFetched(st, stErr); t.Wanted {
+			p.LAN6 = t.V6
+		}
+	}
+	p.Extra6 = certLAN6Extra(h.certSettingsPrefix(ctx, keyUnifiHint6Prefix), h.certSettingsPrefix(ctx, keyUnifiOther6Prefix), rows)
 	if p.Zone != "" {
 		host, _ := h.nextStartValue(ctx, cfHostKey)
 		have := map[string]bool{}
@@ -175,12 +195,13 @@ func (h *Handler) certAgentState(ctx context.Context) (agentOK, nginxOK bool) {
 
 // certLAN: Wohin zeigt jeder Name im Firmennetz (DNS des Servers)? Dazu die Zieladresse im
 // Haus (mitwandernde bzw. erste eigene) für die Anleitung von Hand.
-func (h *Handler) certLAN(ctx context.Context, rows []certRow) (map[string]string, string) {
+// st/stErr: Status des Verbunds, einmal je Zeichnen abgerufen (certHAStatus).
+func (h *Handler) certLAN(ctx context.Context, rows []certRow, st haStatus, stErr error) (map[string]string, string) {
 	out := map[string]string{}
 	if len(rows) == 0 {
 		return out, ""
 	}
-	iface, vip := h.certAddrs(ctx)
+	iface, vip := certOwnAddrs(), certVIPFrom(st, stErr)
 	own := append([]string(nil), iface...)
 	if vip != "" {
 		own = append(own, vip)
@@ -212,6 +233,7 @@ type certActDeps struct {
 	// Namen im Haus (UniFi, optional): nil oder errUnifiOff = nicht eingerichtet, keine Anfrage.
 	lan         func(ctx context.Context) (certLANClient, error)
 	lanTarget   func(ctx context.Context) (string, error)
+	lan6        func(ctx context.Context) lan6Target // IPv6 für „Überschreiben“; nil = ohne IPv6
 	fingerprint func(ctx context.Context, base string) (string, error) // nur TLS, ohne Schlüssel
 	seal        func(plain string) (string, error)                     // Schlüssel verschlüsseln
 }
@@ -444,6 +466,7 @@ func (h *Handler) certActLive() certActDeps {
 		strictOff: h.certStrictOff,
 		lan:       h.unifiClient,
 		lanTarget: h.certLANTarget,
+		lan6:      h.certLAN6Target,
 		fingerprint: func(ctx context.Context, base string) (string, error) {
 			return unifi.Fingerprint(ctx, base)
 		},

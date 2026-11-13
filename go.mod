@@ -22,6 +22,7 @@ require (
 	github.com/xuri/excelize/v2 v2.8.0
 	golang.org/x/crypto v0.40.0
 	golang.org/x/image v0.12.0
+	golang.org/x/net v0.41.0
 	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.34.1
 	rsc.io/qr v0.2.0
@@ -73,7 +74,6 @@ require (
 	go.uber.org/multierr v1.9.0 // indirect
 	go.yaml.in/yaml/v4 v4.0.0-rc.2 // indirect
 	golang.org/x/exp v0.0.0-20231108232855-2478ac86f678 // indirect
-	golang.org/x/net v0.41.0 // indirect
 	golang.org/x/sync v0.16.0 // indirect
 	golang.org/x/sys v0.35.0 // indirect
 	golang.org/x/text v0.27.0 // indirect

@@ -155,18 +155,25 @@ func certKeyPath(name string) string   { return certDir(name) + "/privkey.pem" }
 // certSiteConf: nginx-Seite für den PDH-Namen – 443 mit dem Zertifikat und
 // Weiterreichen an das PDH; mit redirect leitet 80 auf https um. Ohne
 // (Tunnel erreicht das PDH über nginx Port 80) gäbe die Weiterleitung eine Schleife.
-func certSiteConf(name, upstream string, redirect bool) string {
+// Mit v6 hört die Seite zusätzlich auf IPv6 (listen [::]:…).
+func certSiteConf(name, upstream string, redirect, v6 bool) string {
 	var b strings.Builder
 	b.WriteString(certSiteHeader + " (Zertifikate). Änderungen gehen beim nächsten Zertifikatslauf verloren.\n")
 	if redirect {
 		b.WriteString("server {\n")
 		b.WriteString("    listen 80;\n")
+		if v6 {
+			b.WriteString("    listen [::]:80;\n")
+		}
 		b.WriteString("    server_name " + name + ";\n")
 		b.WriteString("    return 301 https://$host$request_uri;\n")
 		b.WriteString("}\n\n")
 	}
 	b.WriteString("server {\n")
 	b.WriteString("    listen 443 ssl;\n")
+	if v6 {
+		b.WriteString("    listen [::]:443 ssl;\n")
+	}
 	b.WriteString("    server_name " + name + ";\n\n")
 	b.WriteString("    ssl_certificate " + certChainPath(name) + ";\n")
 	b.WriteString("    ssl_certificate_key " + certKeyPath(name) + ";\n")
@@ -186,6 +193,24 @@ func certSiteConf(name, upstream string, redirect bool) string {
 	b.WriteString("    }\n")
 	b.WriteString("}\n")
 	return b.String()
+}
+
+// certSiteV6Off: Vermerk direkt nach der Kopfzeile, wenn nginx die IPv6-Zeilen nicht
+// angenommen hat und die Seite deshalb nur auf IPv4 hört (certSiteStale gilt dann nicht).
+const certSiteV6Off = "# ipv6: aus (nginx)"
+
+// certSiteConfV4Only: Seite ohne IPv6-Zeilen, mit dem Vermerk certSiteV6Off.
+func certSiteConfV4Only(name, upstream string, redirect bool) string {
+	s := certSiteConf(name, upstream, redirect, false)
+	i := strings.IndexByte(s, '\n')
+	return s[:i+1] + certSiteV6Off + "\n" + s[i+1:]
+}
+
+// certHasIPv6: hat der Server IPv6? (/proc/net/if_inet6 vorhanden und nicht leer).
+// Variable, damit Tests sie ersetzen können.
+var certHasIPv6 = func() bool {
+	b, err := os.ReadFile("/proc/net/if_inet6")
+	return err == nil && len(strings.TrimSpace(string(b))) > 0
 }
 
 var (
@@ -552,7 +577,17 @@ func certRollbackNote(failed []string) string {
 // certApplyNginx prüft die Konfiguration und lädt nginx neu. Bei einem Fehler
 // stellt rollback den vorigen Stand her; nginx läuft dann mit der alten Konfiguration weiter.
 func (a *updateAgent) certApplyNginx(ctx context.Context, rollback func() []string) error {
-	if out, err := a.certRun(ctx, "nginx", "-t"); err != nil {
+	return a.certApplyNginxFallback(ctx, rollback, nil)
+}
+
+// certApplyNginxFallback: wie certApplyNginx; scheitert „nginx -t“ und gibt es fallback,
+// schreibt fallback einen Ersatzstand (true = geschrieben) und nginx wird einmal neu geprüft.
+func (a *updateAgent) certApplyNginxFallback(ctx context.Context, rollback func() []string, fallback func() bool) error {
+	out, err := a.certRun(ctx, "nginx", "-t")
+	if err != nil && fallback != nil && fallback() {
+		out, err = a.certRun(ctx, "nginx", "-t")
+	}
+	if err != nil {
 		failed := rollback()
 		text := certScrub(out)
 		if text == "" {
@@ -622,6 +657,7 @@ func (a *updateAgent) certInstallHandler(w http.ResponseWriter, r *http.Request)
 	withNginx := a.certNginxPresent()
 	sitesDir, group := a.certLayout()
 	var sitePath, siteData, prevCert, prevKey, note string
+	siteV4 := "" // PDH-Seite mit IPv6-Zeilen: Ersatz ohne IPv6, falls nginx sie nicht annimmt
 	where := "Zertifikat liegt unter " + certDir(req.Name) + "/. "
 	byHand := func(refusal string) {
 		note = where + refusal + ". Bitte das Zertifikat dort von Hand eintragen."
@@ -649,7 +685,11 @@ func (a *updateAgent) certInstallHandler(w http.ResponseWriter, r *http.Request)
 			}
 			redirect := req.Redirect == nil || *req.Redirect
 			sitePath = target // hinter einer Verknüpfung: die Zieldatei, die Verknüpfung bleibt
-			siteData = certSiteConf(req.Name, req.Upstream, redirect)
+			v6 := certHasIPv6()
+			siteData = certSiteConf(req.Name, req.Upstream, redirect, v6)
+			if v6 {
+				siteV4 = certSiteConfV4Only(req.Name, req.Upstream, redirect)
+			}
 		case "nextcloud":
 			// Seite zuerst prüfen: Weicht sie ab, wird sie nicht angefasst.
 			p, err := a.certFindNextcloudSite(sitesDir, req.Name)
@@ -749,9 +789,24 @@ func (a *updateAgent) certInstallHandler(w http.ResponseWriter, r *http.Request)
 		}
 	}
 	if withNginx {
-		if err := a.certApplyNginx(ctx, rollback); err != nil {
+		// Nimmt nginx die IPv6-Zeilen der PDH-Seite nicht an, einmal ohne sie versuchen.
+		var fallback func() bool
+		usedV4 := false
+		if siteV4 != "" && sitePath != "" {
+			fallback = func() bool {
+				if a.certWriteAtomic(sitePath, []byte(siteV4), 0o644, "") != nil {
+					return false
+				}
+				usedV4 = true
+				return true
+			}
+		}
+		if err := a.certApplyNginxFallback(ctx, rollback, fallback); err != nil {
 			certFail(w, http.StatusOK, err.Error())
 			return
+		}
+		if usedV4 {
+			note = "nginx nimmt die IPv6-Zeilen nicht an – die Seite hört nur auf IPv4 (Datei " + filepath.Base(sitePath) + ")"
 		}
 	}
 	resp := map[string]any{"ok": true, "fingerprint": fingerprint}
@@ -1049,10 +1104,11 @@ func (a *updateAgent) certStatusHandler(w http.ResponseWriter, _ *http.Request) 
 		if len(entries) > 0 {
 			sites = a.certSiteTexts()
 		}
+		v6 := certHasIPv6()
 		uses := func(name string) bool {
 			needle := certDir(name) + "/"
 			for _, s := range sites {
-				if strings.Contains(s, needle) {
+				if strings.Contains(s, needle) && !certSiteStale(s, v6) {
 					return true
 				}
 			}
@@ -1085,4 +1141,13 @@ func (a *updateAgent) certStatusHandler(w http.ResponseWriter, _ *http.Request) 
 	}
 	sort.Slice(certs, func(i, j int) bool { return certs[i].Name < certs[j].Name })
 	writeMountJSON(w, http.StatusOK, map[string]any{"ok": true, "nginx": a.mode == "systemd" && a.certNginxPresent(), "certs": certs})
+}
+
+// certSiteStale: eine vom Update-Agent geschriebene PDH-Seite, der bei vorhandenem
+// IPv6 die IPv6-Zeile fehlt. Der Status meldet sie als "ohne Seite", damit das PDH sie
+// einmal neu einrichtet. Fremde Dateien (ohne Kopfzeile) bleiben unberührt; eine Seite mit dem
+// Vermerk certSiteV6Off (nginx hat die IPv6-Zeilen abgelehnt) gilt nicht als veraltet.
+func certSiteStale(text string, v6 bool) bool {
+	return v6 && strings.HasPrefix(text, certSiteHeader) && !strings.Contains(text, "listen [::]:443 ssl;") &&
+		!strings.Contains(text, "\n"+certSiteV6Off+"\n")
 }

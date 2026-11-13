@@ -655,16 +655,17 @@
 
 {{define "hb-fig-zugangsweg"}}
 <figure class="hb-fig">
-<svg viewBox="0 0 640 200" role="img" aria-label="Karte Zugangsweg im Reiter Ausfallschutz: Zeilen Tunnel, Mitwandernde Adresse und Skripte, darunter Eingabefeld für die Adresse, Haken Adresse mitwandern lassen, Knöpfe Speichern und Testen">
+<svg viewBox="0 0 640 200" role="img" aria-label="Karte Zugangsweg im Reiter Ausfallschutz: Zeilen Tunnel, Mitwandernde Adresse und Skripte, darunter Eingabefeld für die Adresse, Haken Adresse mitwandern lassen, Feld IPv6-Ende, Knöpfe Speichern und Testen">
   <rect class="bg" x="1" y="1" width="638" height="198" rx="8"/>
   <text x="20" y="26" class="t-b">Zugangsweg</text><text x="100" y="26" class="t-m">Wie Anwender nach einer Umschaltung den neuen aktiven Server erreichen.</text>
   <circle class="ac" cx="28" cy="48" r="5"/><text x="40" y="52"><tspan class="t-b">Tunnel</tspan>: läuft auf pdh-a</text>
   <circle class="ac" cx="28" cy="70" r="5"/><text x="40" y="74"><tspan class="t-b">Mitwandernde Adresse</tspan>: 10.10.0.202/24 liegt auf pdh-a</text><text x="40" y="88" class="t-m">Letzter Test 28.10. 14:05 bestanden (pdh-a: ens18, pdh-b: ens18)</text>
   <circle class="ac" cx="28" cy="106" r="5"/><text x="40" y="110"><tspan class="t-b">Skripte</tspan>: 10-dns – gleich auf beiden Servern</text><text x="40" y="124" class="t-m">Letzter Lauf 28.10. 14:06 als aktiv: 1 von 1 ohne Fehler</text>
-  <rect class="win" x="20" y="138" width="200" height="22" rx="4"/><text x="28" y="153" class="t-m">10.10.0.202/24</text>
-  <rect class="ctl" x="232" y="143" width="12" height="12" rx="2"/><text x="250" y="153">Adresse mitwandern lassen</text>
-  <rect class="acl" x="410" y="138" width="80" height="22" rx="4"/><text x="450" y="153" class="t-c">Speichern</text>
-  <rect class="acl" x="500" y="138" width="80" height="22" rx="4"/><text x="540" y="153" class="t-c">Testen</text>
+  <rect class="win" x="20" y="138" width="180" height="22" rx="4"/><text x="28" y="153" class="t-m">10.10.0.202/24</text>
+  <rect class="ctl" x="212" y="143" width="12" height="12" rx="2"/><text x="230" y="153">Adresse mitwandern lassen</text>
+  <rect class="win" x="400" y="138" width="40" height="22" rx="4"/><text x="408" y="153" class="t-m">15</text><text x="400" y="132" class="t-m">IPv6-Ende (Zusatz)</text>
+  <rect class="acl" x="450" y="138" width="60" height="22" rx="4"/><text x="480" y="153" class="t-c">Speichern</text>
+  <rect class="acl" x="520" y="138" width="60" height="22" rx="4"/><text x="550" y="153" class="t-c">Testen</text>
   <text x="20" y="184" class="t-m">Darunter: Haken „Skripte bei Umschaltung ausführen“ und „Jetzt ausführen“.</text>
 </svg>
 <figcaption>Die Karte „Zugangsweg“ im Reiter Ausfallschutz: oben der Zustand von Tunnel, mitwandernder Adresse und Skripten, darunter die Einstellungen (am aktiven oder am ersten Server).</figcaption>

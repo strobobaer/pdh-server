@@ -17,6 +17,8 @@ type accessConfig struct {
 	VIP     string     `json:"vip,omitempty"`      // Adresse mit Präfix, z. B. 10.10.0.202/24
 	VIPOn   bool       `json:"vip_on,omitempty"`   // Schalter mitwandernde Adresse
 	HooksOn bool       `json:"hooks_on,omitempty"` // Schalter Skripte beim Rollenwechsel
+	// VIP6Suffix: Ende (untere 64 Bit) der mitwandernden IPv6-Adresse, z. B. "15"; leer = keine
+	VIP6Suffix string `json:"vip6_suffix,omitempty"`
 	Tested  *vipTested `json:"vip_tested,omitempty"`
 }
 
@@ -71,8 +73,54 @@ func parseVIP(s string) (netip.Prefix, error) {
 	return p, nil
 }
 
+// parseVIP6Suffix liest das IPv6-Ende (untere 64 Bit), z. B. "15" → ::15.
+// Leerer Text ist ein Fehler; der Aufrufer prüft vorher auf leer.
+func parseVIP6Suffix(s string) (netip.Addr, error) {
+	bad := fmt.Errorf("IPv6-Ende %q ungültig – erwartet z. B. 15", s)
+	t := strings.TrimSpace(s)
+	if t == "" || strings.ContainsAny(t, ".%/") {
+		return netip.Addr{}, bad
+	}
+	ip, err := netip.ParseAddr("::" + t)
+	if err != nil || ip.Zone() != "" || !ip.Is6() {
+		return netip.Addr{}, bad
+	}
+	b := ip.As16()
+	for _, x := range b[:8] {
+		if x != 0 {
+			return netip.Addr{}, bad
+		}
+	}
+	zero := true
+	for _, x := range b[8:] {
+		if x != 0 {
+			zero = false
+		}
+	}
+	if zero {
+		return netip.Addr{}, bad
+	}
+	return ip, nil
+}
+
+// vip6Addr setzt die Adresse zusammen: obere 64 Bit aus prefix, untere aus suffix.
+func vip6Addr(prefix netip.Prefix, suffix netip.Addr) netip.Addr {
+	p := prefix.Addr().As16()
+	s := suffix.As16()
+	copy(p[8:], s[8:])
+	return netip.AddrFrom16(p)
+}
+
 // validateAccess prüft die Einstellung gegen die Knotenliste des Verbunds.
 func validateAccess(cl clusterConfig, a accessConfig) error {
+	if a.VIP6Suffix != "" {
+		if !a.VIPOn {
+			return fmt.Errorf("Das IPv6-Ende gilt nur zusammen mit eingeschalteter mitwandernder Adresse")
+		}
+		if _, err := parseVIP6Suffix(a.VIP6Suffix); err != nil {
+			return err
+		}
+	}
 	if a.VIP == "" {
 		if a.VIPOn {
 			return fmt.Errorf("Mitwandernde Adresse einschalten geht nur mit eingetragener Adresse")

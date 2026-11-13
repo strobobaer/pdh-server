@@ -48,6 +48,22 @@ type accessWorker struct {
 	have    bool          // letzter bekannter Ist-Zustand
 	changed chan struct{} // geschlossen bei jeder Änderung von have
 	alarmAt map[string]time.Time
+
+	// Mitwandernde IPv6-Adresse (access_worker6.go). vip6 nil = aus;
+	// cleanup6: Steuerungen für frühere Enden, deren Adressen noch weg müssen.
+	vip6     *vip6Ctl
+	cleanup6 []*vip6Ctl
+	have6    netip.Addr   // Adresse mit dem Ende auf der Karte (ungültig = keine)
+	pfx6     netip.Prefix // zuletzt gesehenes Präfix (Wechsel melden)
+	note6    string       // Hinweis: kein Präfix
+	ufw6     string       // Hinweis: ufw hat IPv6 abgeschaltet
+	ufwAt    time.Time    // letztes Lesen der ufw-Einstellung
+	noPfx6   bool         // zuletzt ohne Präfix (Hinweis nur beim Wechsel)
+	// Pause nach Konflikt: Take für pause6Addr erst ab pause6Until wieder.
+	// pause6Held: Pause gilt nur, solange die Adresse liegt (Aufräumen gescheitert).
+	pause6Addr  netip.Addr
+	pause6Until time.Time
+	pause6Held  bool
 }
 
 func newAccessWorker(v *vipCtl, ev *eventLog) *accessWorker {
@@ -133,8 +149,19 @@ func (w *accessWorker) run(ctx context.Context) {
 	}
 }
 
-// step: ein Abgleich – Ist lesen, bei Abweichung übernehmen oder abgeben.
+// step: ein Abgleich – erst IPv4 (unverändert), danach die IPv6-Adresse.
+// Die IPv6-Adresse folgt dem IPv4-Stand nach dem Schritt; ihr Teil hat eine
+// eigene Frist und meldet nie etwas an den IPv4-Teil zurück.
 func (w *accessWorker) step(ctx context.Context) {
+	w.step4(ctx)
+	w.mu.Lock()
+	want, has4 := w.want, w.have
+	w.mu.Unlock()
+	w.step6(ctx, want && has4)
+}
+
+// step4: Abgleich der IPv4-Adresse – Ist lesen, bei Abweichung übernehmen oder abgeben.
+func (w *accessWorker) step4(ctx context.Context) {
 	if ctx.Err() != nil {
 		return
 	}
@@ -247,6 +274,7 @@ func (w *accessWorker) once(kind, text string) {
 // Einstellung). Geprüft wird der echte Zustand, nicht nur das letzte Wissen.
 func (w *accessWorker) release() {
 	<-w.done
+	defer w.release6() // danach die IPv6-Adresse, mit eigener Frist
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	has, err := w.vip.Has(ctx)

@@ -143,12 +143,17 @@
       <button class="btn btn-small" type="submit" name="action" value="lan" title="Eintrag im Haus überschreiben" aria-label="Eintrag für {{.Name}} im Haus überschreiben"><i class="ti ti-replace"></i></button></form>
     {{else}}<form hx-post="/admin/server-config/certs/lan" hx-target="#cert-panel" hx-swap="outerHTML" hx-disabled-elt="find button">
       <input type="hidden" name="name" value="{{.Name}}">
-      <button class="btn btn-small" type="submit" name="action" value="lan" title="Im Haus eintragen (UniFi)" aria-label="{{.Name}} im Haus eintragen"><i class="ti ti-home-plus"></i></button></form>{{end}}{{end}}
+      <button class="btn btn-small" type="submit" name="action" value="lan" title="Im Haus eintragen (UniFi)" aria-label="{{.Name}} im Haus eintragen"><i class="ti ti-home-plus"></i></button></form>{{end}}
+    {{if .LAN6Other}}<form hx-post="/admin/server-config/certs/lan6" hx-target="#cert-panel" hx-swap="outerHTML" hx-disabled-elt="find button"
+      hx-confirm="IPv6-Eintrag von {{.Name}} von {{.LAN6Other}} auf {{if $.LAN6}}{{$.LAN6}}{{else}}die mitwandernde IPv6-Adresse{{end}} ändern?">
+      <input type="hidden" name="name" value="{{.Name}}"><input type="hidden" name="from" value="{{.LAN6Other}}">
+      <button class="btn btn-small" type="submit" title="IPv6-Eintrag im Haus überschreiben" aria-label="IPv6-Eintrag für {{.Name}} im Haus überschreiben"><i class="ti ti-replace"></i> IPv6</button></form>{{end}}{{end}}
   </div>{{end}}
   {{if .Error}}<div class="sc-sub cert-err" style="color:{{if eq .State "fehler"}}var(--red){{else}}var(--amber){{end}}"><i class="ti ti-alert-triangle"></i> {{.Error}}</div>{{end}}
   {{if .Note}}<div class="sc-sub cert-err cert-note"><i class="ti ti-info-circle"></i> {{.Note}}</div>{{end}}
   {{if and $.Unifi.URL $.Unifi.HasKey}}{{if .LANOther}}<div class="sc-sub cert-err" style="color:var(--amber)"><i class="ti ti-home-question"></i> An der UDM Pro steht für diesen Namen ein Eintrag auf {{.LANOther}}, den nicht das PDH angelegt hat.</div>{{end}}
-  {{if .LANHint}}<div class="sc-sub cert-err" style="color:var(--amber)"><i class="ti ti-home-question"></i> {{.LANHint}}</div>{{end}}{{end}}
+  {{if .LANHint}}<div class="sc-sub cert-err" style="color:var(--amber)"><i class="ti ti-home-question"></i> {{.LANHint}}</div>{{end}}
+  {{if .LAN6Hint}}<div class="sc-sub cert-err" style="color:var(--amber)"><i class="ti ti-home-question"></i> {{.LAN6Hint}}</div>{{end}}{{end}}
 </div>{{else}}<p class="sc-sub">Noch kein Name eingetragen.</p>{{end}}
 </div>
 
@@ -184,7 +189,14 @@
 <div class="form-label cert-head"><i class="ti ti-home"></i> Namen im Haus</div>
 <p class="sc-sub" style="margin:4px 0 8px">Im Firmennetz sollen die Namen direkt auf den Server zeigen (lokaler DNS-Eintrag Typ A auf {{if .LANTarget}}<code>{{.LANTarget}}</code>{{else}}die Adresse des Servers{{end}}), von außen weiter über Cloudflare.</p>
 {{if .Lines}}<div class="sc-sub">So geht's von Hand – am DNS-Server im Haus je Name einen Eintrag anlegen:</div>
-<ul class="sc-sub cert-hand">{{range .Lines}}<li><code>{{.Name}}</code> → Typ A → <code>{{if $.LANTarget}}{{$.LANTarget}}{{else}}Adresse des Servers{{end}}</code></li>{{end}}</ul>{{end}}
+<ul class="sc-sub cert-hand">{{range .Lines}}<li><code>{{.Name}}</code> → Typ A → <code>{{if $.LANTarget}}{{$.LANTarget}}{{else}}Adresse des Servers{{end}}</code>{{if $.LAN6}}
+  <div class="cert-hand6"><code>{{.Name}}</code> → Typ AAAA → <code>{{$.LAN6}}</code> {{if and $.Unifi.URL $.Unifi.HasKey $.Unifi.Confirmed}}IPv6 trägt das PDH selbst ein und hält es aktuell.{{else}}Dieser Eintrag ändert sich, wenn der Anbieter das Präfix wechselt.{{end}}</div>{{end}}</li>{{end}}</ul>{{end}}
+{{if and .Unifi.URL .Unifi.HasKey .Extra6}}<div class="sc-sub">Weitere Namen an der UDM Pro:</div>
+<ul class="sc-sub cert-hand">{{range .Extra6}}<li><code>{{.Name}}</code>{{if .Hint}} <span style="color:var(--amber)"><i class="ti ti-home-question"></i> {{.Hint}}</span>{{end}}
+  {{if and .Other $.LANReady}}<form class="cert-inline" hx-post="/admin/server-config/certs/lan6" hx-target="#cert-panel" hx-swap="outerHTML" hx-disabled-elt="find button"
+    hx-confirm="IPv6-Eintrag von {{.Name}} von {{.Other}} auf {{if $.LAN6}}{{$.LAN6}}{{else}}die mitwandernde IPv6-Adresse{{end}} ändern?">
+    <input type="hidden" name="name" value="{{.Name}}"><input type="hidden" name="from" value="{{.Other}}">
+    <button class="btn btn-small" type="submit" title="IPv6-Eintrag im Haus überschreiben" aria-label="IPv6-Eintrag für {{.Name}} im Haus überschreiben"><i class="ti ti-replace"></i> IPv6</button></form>{{end}}</li>{{end}}</ul>{{end}}
 {{if .LANReady}}<p class="sc-sub"><i class="ti ti-router"></i> Die UniFi UDM Pro ist angebunden: Je Name trägt der Knopf <i class="ti ti-home-plus"></i> den Namen im Haus ein. Adresse und API-Schlüssel stehen im Reiter <a href="?tab=unifi">UniFi</a>.</p>
 {{else if .CanUnifi}}<p class="sc-sub"><i class="ti ti-router"></i> Mit einer UniFi UDM Pro trägt das PDH die Namen selbst ein. {{if .Unifi.URL}}Die Anbindung ist noch nicht fertig – im{{else}}Adresse und API-Schlüssel trägst du im{{end}} Reiter <a href="?tab=unifi">UniFi</a> {{if .Unifi.URL}}den Fingerabdruck bestätigen{{else}}ein{{end}}. Ohne UniFi funktioniert alles andere wie bisher.</p>
 {{else}}<p class="sc-sub">Einträge an einer UniFi UDM Pro setzt das PDH für alle mit dem Recht „Namen im Haus eintragen (UniFi)“ (<code>system.unifi</code>).</p>{{end}}
@@ -206,6 +218,8 @@
 .cert-note{color:var(--muted)}
 .cert-unifi{margin-top:12px;padding-top:8px;border-top:1px solid var(--border)}
 .cert-hand{margin:4px 0 8px;padding-left:18px;overflow-wrap:anywhere}
+.cert-hand6{margin-top:2px;color:var(--muted)}
+.cert-inline{display:inline;margin-left:6px}
 .cert-fp{overflow-wrap:anywhere;word-break:break-all}
 </style>
 </div>

@@ -24,6 +24,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"strconv"
 	"strings"
@@ -105,7 +106,7 @@ type apiError struct {
 }
 
 func (p policy) record() Record {
-	r := Record{ID: p.ID, Name: p.Domain, Type: strings.TrimSuffix(p.Type, "_RECORD")}
+	r := Record{ID: p.ID, Name: p.Domain, Type: strings.TrimSuffix(p.Type, "_RECORD"), Enabled: p.Enabled}
 	switch p.Type {
 	case "A_RECORD":
 		r.Value = p.IPv4Address
@@ -117,24 +118,33 @@ func (p policy) record() Record {
 	return r
 }
 
-func policyA(name, ip string) policy {
+func policyFor(name, ip string, v6 bool) policy {
 	ttl := ttlSeconds
+	if v6 {
+		return policy{Type: "AAAA_RECORD", Enabled: true, Domain: name, IPv6Address: ip, TTLSeconds: &ttl}
+	}
 	return policy{Type: "A_RECORD", Enabled: true, Domain: name, IPv4Address: ip, TTLSeconds: &ttl}
 }
 
 func (l legacyRecord) record() Record {
-	return Record{ID: l.ID, Name: l.Key, Value: l.Value, Type: strings.ToUpper(l.RecordType)}
+	return Record{ID: l.ID, Name: l.Key, Value: l.Value, Type: strings.ToUpper(l.RecordType), Enabled: l.Enabled}
 }
 
-func legacyA(name, ip string) legacyRecord {
-	return legacyRecord{Key: name, RecordType: "A", Value: ip, Enabled: true}
+func legacyFor(name, ip string, v6 bool) legacyRecord {
+	t := "A"
+	if v6 {
+		t = "AAAA"
+	}
+	return legacyRecord{Key: name, RecordType: t, Value: ip, Enabled: true}
 }
 
 // ── Typen und Fehler ─────────────────────────────────────────
 
 // Record: ein DNS-Eintrag der UDM Pro. Type ist "A", "AAAA", "CNAME", … ; Value bei A die IPv4-Adresse.
+// Enabled: an der UDM Pro eingeschaltet (Feld enabled beider Schnittstellen).
 type Record struct {
 	ID, Name, Value, Type string
+	Enabled               bool
 }
 
 var (
@@ -326,6 +336,12 @@ func ValidateBase(raw string) (string, error) {
 		return "", bad
 	}
 	return "https://" + strings.ToLower(u.Host), nil
+}
+
+// ValidName: ein Name, den die UniFi-Anbindung als DNS-Eintrag annimmt (Groß/Klein und ein
+// Punkt am Ende egal). Auch ein Name ohne Punkt wie „nas“ ist gültig.
+func ValidName(name string) bool {
+	return validHostname(strings.ToLower(strings.TrimSpace(name)))
 }
 
 func validHostname(h string) bool {
@@ -543,14 +559,36 @@ func legacyName(s string) string {
 	return s
 }
 
-func checkA(name, ip string) error {
+// v6Global: globale Unicast-Adressen 2000::/3.
+var v6Global = netip.MustParsePrefix("2000::/3")
+
+// checkRecord prüft Name und Adresse; v6 sagt, ob ein AAAA-Eintrag nötig ist. IPv6 nur als
+// schlichte, globale Adresse (kein Zonenname, keine Präfixlänge, nicht IPv4-abgebildet).
+func checkRecord(name, ip string) (v6 bool, err error) {
 	if !validHostname(strings.ToLower(name)) || name != strings.ToLower(name) {
-		return fmt.Errorf("%q ist kein gültiger Name", name)
+		return false, fmt.Errorf("%q ist kein gültiger Name", name)
 	}
-	if p := net.ParseIP(ip); p == nil || p.To4() == nil || strings.Contains(ip, ":") {
-		return fmt.Errorf("%q ist keine IPv4-Adresse", ip)
+	if strings.Contains(ip, ":") {
+		a, perr := netip.ParseAddr(ip)
+		if perr != nil || !a.Is6() || a.Is4In6() || a.Zone() != "" || !v6Global.Contains(a) {
+			return false, fmt.Errorf("%q ist keine nutzbare IPv6-Adresse", ip)
+		}
+		return true, nil
 	}
-	return nil
+	if p := net.ParseIP(ip); p == nil || p.To4() == nil {
+		return false, fmt.Errorf("%q ist keine IPv4-Adresse", ip)
+	}
+	return false, nil
+}
+
+// canonical: IPv6 in kanonischer Schreibweise, IPv4 unverändert.
+func canonical(ip string, v6 bool) string {
+	if v6 {
+		if a, err := netip.ParseAddr(ip); err == nil {
+			return a.String()
+		}
+	}
+	return ip
 }
 
 func (c *Client) policiesPath() string { return fmt.Sprintf(pathPolicies, url.PathEscape(c.siteID)) }
@@ -589,17 +627,19 @@ func (c *Client) Records(ctx context.Context) ([]Record, error) {
 	return out, nil
 }
 
-// Create legt einen eingeschalteten Eintrag Typ A an und liefert seine Kennung.
+// Create legt einen eingeschalteten Eintrag Typ A (IPv4) bzw. AAAA (IPv6) an und liefert seine Kennung.
 func (c *Client) Create(ctx context.Context, name, ip string) (string, error) {
-	if err := checkA(name, ip); err != nil {
+	v6, err := checkRecord(name, ip)
+	if err != nil {
 		return "", err
 	}
+	ip = canonical(ip, v6)
 	if err := c.resolve(ctx); err != nil {
 		return "", err
 	}
 	if c.legacy {
 		var r legacyRecord
-		if err := c.do(ctx, http.MethodPost, c.legacyPath(), legacyA(name, ip), &r); err != nil {
+		if err := c.do(ctx, http.MethodPost, c.legacyPath(), legacyFor(name, ip, v6), &r); err != nil {
 			return "", err
 		}
 		if r.ID == "" {
@@ -608,7 +648,7 @@ func (c *Client) Create(ctx context.Context, name, ip string) (string, error) {
 		return r.ID, nil
 	}
 	var p policy
-	if err := c.do(ctx, http.MethodPost, c.policiesPath(), policyA(name, ip), &p); err != nil {
+	if err := c.do(ctx, http.MethodPost, c.policiesPath(), policyFor(name, ip, v6), &p); err != nil {
 		return "", err
 	}
 	if p.ID == "" {
@@ -617,11 +657,13 @@ func (c *Client) Create(ctx context.Context, name, ip string) (string, error) {
 	return p.ID, nil
 }
 
-// Update setzt Name und Adresse des Eintrags id (Typ A, eingeschaltet).
+// Update setzt Name und Adresse des Eintrags id (Typ A bzw. AAAA, eingeschaltet).
 func (c *Client) Update(ctx context.Context, id, name, ip string) error {
-	if err := checkA(name, ip); err != nil {
+	v6, err := checkRecord(name, ip)
+	if err != nil {
 		return err
 	}
+	ip = canonical(ip, v6)
 	if strings.TrimSpace(id) == "" {
 		return errors.New("keine Kennung")
 	}
@@ -629,11 +671,11 @@ func (c *Client) Update(ctx context.Context, id, name, ip string) error {
 		return err
 	}
 	if c.legacy {
-		r := legacyA(name, ip)
+		r := legacyFor(name, ip, v6)
 		r.ID = id
 		return c.do(ctx, http.MethodPut, c.legacyPath()+"/"+url.PathEscape(id), r, nil)
 	}
-	return c.do(ctx, http.MethodPut, c.policiesPath()+"/"+url.PathEscape(id), policyA(name, ip), nil)
+	return c.do(ctx, http.MethodPut, c.policiesPath()+"/"+url.PathEscape(id), policyFor(name, ip, v6), nil)
 }
 
 // Delete löscht den Eintrag id. Gibt es ihn nicht mehr, ist das kein Fehler.
