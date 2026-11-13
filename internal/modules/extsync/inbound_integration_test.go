@@ -549,8 +549,14 @@ func TestInboundFaultTarget(t *testing.T) {
 	if _, _, _, _, st2 = f.rec(k(2)); st2 != "resolved" {
 		t.Fatalf("Status %q", st2)
 	}
+	// Verlauf: der vom Abgleich festgelegte Lösungstext (R22) und der Status.
 	h := f.history(id2, "sync")
-	if len(h) != 1 || h[0].field != "status" || h[0].oldV != "detected" || h[0].newV != "resolved" {
+	byField := map[string]histRow{}
+	for _, x := range h {
+		byField[x.field] = x
+	}
+	if len(h) != 2 || byField["status"].oldV != "detected" || byField["status"].newV != "resolved" ||
+		byField["resolution"].newV != resolvedText {
 		t.Fatalf("Verlauf: %+v", h)
 	}
 	// QuickResolve nutzt eine eigene Verbindung: der Auslöser stellt einen Eintrag
@@ -568,7 +574,7 @@ func TestInboundFaultTarget(t *testing.T) {
 	// Nächster Lauf (alles neu gelesen) schreibt nichts erneut.
 	f.p.Cursor = ""
 	r = f.run(RunOptions{})
-	if r.Changed != 0 || len(f.history(id2, "sync")) != 1 {
+	if r.Changed != 0 || len(f.history(id2, "sync")) != 2 {
 		t.Fatalf("erneut geschrieben: %+v", r)
 	}
 }

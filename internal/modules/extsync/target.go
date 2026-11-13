@@ -43,6 +43,8 @@ const (
 	noteFirstSync = "Wert aus dem Fremdsystem übernommen (erster Abgleich)"
 	// resolvedText ist die Lösung, wenn das Fremdsystem erledigt meldet, aber keine Lösung liefert.
 	resolvedText = "Im Fremdsystem erledigt"
+	// noteResolvedText steht im Verlauf, wenn der Abgleich den Lösungstext beim Abschließen setzt.
+	noteResolvedText = "Lösungstext beim Abschließen gesetzt (Fremdsystem meldet erledigt ohne Lösung)"
 )
 
 // Aktionen im Verlauf.
@@ -87,10 +89,13 @@ func NewTicketTarget(db *pgxpool.Pool, svc *tickets.Service) Target {
 		db: db, refType: RefTicket, table: "tickets", levelField: "priority", levelType: "ticket_priority",
 		statusType: "ticket_status", defaultStatus: "open", dueOnCreate: true,
 		create: func(ctx context.Context, tx pgx.Tx, v map[string]string, user string) (string, func(), error) {
+			if v["priority"] == "" {
+				return "", nil, errors.New("Priorität fehlt")
+			}
 			in := &tickets.CreateInput{
 				Title:       v["title"],
 				Description: v["description"],
-				Priority:    tickets.Priority(orDefault(v["priority"], "medium")),
+				Priority:    tickets.Priority(v["priority"]),
 				Tags:        []string{},
 			}
 			if due, ok := parseTime(v["due_date"]); ok {
@@ -112,11 +117,14 @@ func NewFaultTarget(db *pgxpool.Pool, svc *faults.Service) Target {
 		db: db, refType: RefFault, table: "faults", levelField: "severity", levelType: "fault_severity",
 		statusType: "fault_status", defaultStatus: "detected",
 		create: func(ctx context.Context, tx pgx.Tx, v map[string]string, user string) (string, func(), error) {
+			if v["severity"] == "" {
+				return "", nil, errors.New("Schweregrad fehlt")
+			}
 			f, err := svc.CreateInTx(ctx, tx, &faults.CreateFaultInput{
 				Title:       v["title"],
 				Description: v["description"],
 				Symptoms:    []string{},
-				Severity:    faults.Severity(orDefault(v["severity"], "medium")),
+				Severity:    faults.Severity(v["severity"]),
 			}, user)
 			if err != nil {
 				return "", nil, err
@@ -125,13 +133,6 @@ func NewFaultTarget(db *pgxpool.Pool, svc *faults.Service) Target {
 		},
 		quickResolve: svc.QuickResolve,
 	}
-}
-
-func orDefault(v, def string) string {
-	if strings.TrimSpace(v) == "" {
-		return def
-	}
-	return v
 }
 
 func (t *recordTarget) Create(ctx context.Context, values map[string]string, systemUser, origin string) (string, error) {
@@ -345,7 +346,11 @@ func (t *recordTarget) finishResolve(ctx context.Context, id string, res applyRe
 		return nil
 	}
 	// QuickResolve überschreibt Lösung und Ursache: die aktuellen Werte mitgeben.
-	resolution := orDefault(res.cur["resolution"], resolvedText)
+	// Das Ziel erfindet keine Werte: die Lösung legt der Aufrufer fest (R22).
+	resolution := res.cur["resolution"]
+	if strings.TrimSpace(resolution) == "" {
+		return fmt.Errorf("abgleich: %s abschließen: Lösung fehlt", t.refType)
+	}
 	if err := t.quickResolve(ctx, id, resolution, res.cur["root_cause"], user); err != nil {
 		return fmt.Errorf("abgleich: %s abschließen: %w", t.refType, err)
 	}

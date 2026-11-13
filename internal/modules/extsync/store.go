@@ -475,14 +475,20 @@ type HistoryNote struct {
 
 // InboundUpdate hält fest, was ein hereinkommender Abgleich an einer
 // Verknüpfung speichert. nil bzw. leer = unverändert.
+//
+// written_values wird FELDWEISE geändert (R23), auf dem aktuellen Stand der
+// Zeile unter Zeilensperre: andere Schreiber (Hinausschreiben) gehen nicht
+// verloren. seen_values schreibt allein der hereinkommende Lauf (unter der
+// Profilsperre), deshalb wird es ganz ersetzt.
 type InboundUpdate struct {
-	RefID     *string           // Datensatz anbinden
-	SeenMark  *string           // Änderungsmarke
-	Seen      map[string]string // zuletzt gesehene Fremdwerte (ganz ersetzt)
-	Written   map[string]string // Ausgangswerte im PDH (ganz ersetzt, siehe Link.WrittenValues)
-	LastError *string           // Fehlertext ("" löscht)
-	Notes     []HistoryNote     // Verlaufseinträge
-	Outbox    map[string]string // Felder für einen Wartelisteneintrag "update"
+	RefID      *string           // Datensatz anbinden
+	SeenMark   *string           // Änderungsmarke
+	Seen       map[string]string // zuletzt gesehene Fremdwerte (ganz ersetzt)
+	WrittenSet map[string]string // Ausgangswert je Feld setzen
+	WrittenDel map[string]string // Feld -> erwarteter Wert: nur löschen, wenn noch gleich
+	LastError  *string           // Fehlertext ("" löscht)
+	Notes      []HistoryNote     // Verlaufseinträge
+	Outbox     map[string]string // Felder für einen Wartelisteneintrag "update"
 }
 
 // SaveInbound schreibt Verknüpfung, Verlauf und Wartelisteneintrag in EINER
@@ -494,21 +500,34 @@ func (s *Store) SaveInbound(ctx context.Context, linkID string, u InboundUpdate)
 		return fmt.Errorf("abgleich: verknüpfung speichern: %w", err)
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
-	var seen, written any
+	var seen any
 	if u.Seen != nil {
 		seen = encodeMap(u.Seen)
 	}
-	if u.Written != nil {
-		written = encodeMap(u.Written)
+	var curWritten []byte
+	if err := tx.QueryRow(ctx, `SELECT written_values FROM sync_links WHERE id = $1 FOR UPDATE`, linkID).Scan(&curWritten); err != nil {
+		return notFound(err, "verknüpfung speichern")
+	}
+	written, err := decodeMap(curWritten)
+	if err != nil {
+		return fmt.Errorf("abgleich: verknüpfung speichern: %w", err)
+	}
+	for k, want := range u.WrittenDel {
+		if v, ok := written[k]; ok && v == want {
+			delete(written, k)
+		}
+	}
+	for k, v := range u.WrittenSet {
+		written[k] = v
 	}
 	tag, err := tx.Exec(ctx, `UPDATE sync_links SET
 			ref_id = COALESCE($2::uuid, ref_id),
 			seen_mark = COALESCE($3::text, seen_mark),
 			seen_values = COALESCE($4::jsonb, seen_values),
-			written_values = COALESCE($5::jsonb, written_values),
+			written_values = $5::jsonb,
 			last_error = COALESCE($6::text, last_error),
 			updated_at = now()
-		WHERE id = $1`, linkID, u.RefID, u.SeenMark, seen, written, u.LastError)
+		WHERE id = $1`, linkID, u.RefID, u.SeenMark, seen, encodeMap(written), u.LastError)
 	if err != nil {
 		return fmt.Errorf("abgleich: verknüpfung speichern: %w", err)
 	}

@@ -49,6 +49,9 @@ const (
 	LinkErrForeignGone = "Meldung im Fremdsystem nicht mehr vorhanden"
 	// LinkErrBadKey: der gespeicherte Schlüssel der Verknüpfung ist nicht lesbar.
 	LinkErrBadKey = "Schlüssel der Verknüpfung ist ungültig"
+	// LinkErrInterrupted: Ausgangswerte sind vorab gespeichert, das Schreiben ins
+	// PDH ist noch nicht bestätigt. KEIN Endzustand: wird wiederholt.
+	LinkErrInterrupted = "Übernahme unterbrochen"
 )
 
 // ErrNotFound meldet, dass ein Datensatz nicht existiert.

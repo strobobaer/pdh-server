@@ -678,26 +678,144 @@ func (r *inboundRun) complete(mapped map[string]string) (map[string]string, []Ru
 	return values, errs
 }
 
-// baseline führt die Ausgangswerte nach einer Bearbeitung nach (Regel oben).
-// touched nil = alle Felder (Anlegen); keep = Felder, bei denen PDH gewann.
-func (r *inboundRun) baseline(old, seen, actual map[string]string, touched map[string]bool, keep map[string]string) map[string]string {
-	w := make(map[string]string, len(old))
-	for k, v := range old {
-		w[k] = v
+// ── Ausgangswerte (R17, R22, R23) ────────────────────────────────────────
+//
+// Werte, die der Abgleich abweichend vom Fremdwert ins PDH setzt, werden VOR
+// dem Schreiben festgelegt (planApply/planCreate) und vorab als Ausgangswert
+// gespeichert (Vorabeintrag mit LinkErrInterrupted). So stimmt die Einordnung
+// durch Decide (p == w) auch nach einem Teilfehler. Ein Vorabeintrag, dessen
+// Schreiben nie geschah, schadet nicht: der nächste Fremdwert gewinnt über
+// p == s. Nie wird ein Unterschied zweier Lesevorgänge als Ausgangswert
+// genommen (sonst würde eine Benutzeränderung geschluckt) – außer beim Anlegen,
+// wo es vorher keinen Datensatz gab (Vorgaben des Dienstes wie die Fälligkeit).
+
+// keepsWhenEmpty: Felder, die das Ziel bei leerem Wert unverändert lässt.
+func keepsWhenEmpty(k string) bool {
+	return k == "title" || k == "status" || k == "priority" || k == "severity"
+}
+
+func (r *inboundRun) levelKey() string {
+	for _, f := range r.fields {
+		if f.Key == "priority" || f.Key == "severity" {
+			return f.Key
+		}
 	}
+	return "priority"
+}
+
+func defaultStatusOf(targetType string) string {
+	if targetType == RefFault {
+		return "detected"
+	}
+	return "open"
+}
+
+// planApply: was ans Ziel geht (vals) und welcher PDH-Wert je Feld danach
+// beabsichtigt ist (intended). Beim Abschließen ohne Lösung legt der Abgleich
+// den Lösungstext selbst fest (das Ziel erfindet keine Werte).
+func (r *inboundRun) planApply(apply, current map[string]string) (vals, intended, notes map[string]string) {
+	vals = make(map[string]string, len(apply)+1)
+	for k, v := range apply {
+		vals[k] = v
+	}
+	notes = map[string]string{}
+	newStatus := current["status"]
+	if v := strings.TrimSpace(vals["status"]); v != "" {
+		newStatus = v
+	}
+	if isFinalStatus(newStatus) && !isFinalStatus(current["status"]) {
+		res := current["resolution"]
+		if v, ok := vals["resolution"]; ok {
+			res = v
+		}
+		if strings.TrimSpace(res) == "" {
+			vals["resolution"] = resolvedText
+			notes["resolution"] = noteResolvedText
+		}
+	}
+	intended = make(map[string]string, len(vals))
+	for k, v := range vals {
+		v = strings.TrimSpace(v)
+		switch {
+		case v == "" && keepsWhenEmpty(k):
+			intended[k] = current[k] // leer: PDH-Wert bleibt
+		case k == "status" && isFinalStatus(v) && isFinalStatus(current[k]):
+			intended[k] = current[k]
+		default:
+			intended[k] = v
+		}
+	}
+	return vals, intended, notes
+}
+
+// planCreate: Werte für das Anlegen samt den Vorgaben, die der Abgleich selbst setzt.
+func (r *inboundRun) planCreate(values map[string]string) (vals, intended map[string]string) {
+	vals = make(map[string]string, len(values)+2)
+	for k, v := range values {
+		vals[k] = v
+	}
+	lk := r.levelKey()
+	if strings.TrimSpace(vals[lk]) == "" {
+		vals[lk] = "medium"
+	}
+	if isFinalStatus(vals["status"]) && strings.TrimSpace(vals["resolution"]) == "" {
+		vals["resolution"] = resolvedText
+	}
+	intended = make(map[string]string, len(vals)+1)
+	for k, v := range vals {
+		intended[k] = v
+	}
+	if strings.TrimSpace(vals["status"]) == "" {
+		intended["status"] = defaultStatusOf(r.p.TargetType)
+	}
+	return vals, intended
+}
+
+// deviations: hereinkommende Felder, deren beabsichtigter PDH-Wert vom Fremdwert abweicht.
+func (r *inboundRun) deviations(intended, foreign map[string]string) map[string]string {
+	dev := map[string]string{}
+	for _, k := range r.inboundFields() {
+		if iv, ok := intended[k]; ok && strings.TrimSpace(iv) != strings.TrimSpace(foreign[k]) {
+			dev[k] = iv
+		}
+	}
+	return dev
+}
+
+// finalWritten: feldweise Änderung der Ausgangswerte nach dem Schreiben. set
+// sind die vorab festgelegten Abweichungen; gelöscht wird nur, wo der PDH-Wert
+// jetzt gleich dem Fremdwert ist und ein bekannter Eintrag (aus dem geladenen
+// Stand oder dem Vorabeintrag) besteht – nur wenn er noch unverändert ist.
+func (r *inboundRun) finalWritten(snapshot, ahead, set, foreign, actual, keep map[string]string) (map[string]string, map[string]string) {
+	outSet := map[string]string{}
+	for k, v := range set {
+		outSet[k] = v
+	}
+	del := map[string]string{}
 	for _, k := range r.inboundFields() {
 		if _, ok := keep[k]; ok {
 			continue
 		}
-		a, f := strings.TrimSpace(actual[k]), strings.TrimSpace(seen[k])
-		switch {
-		case a == f:
-			delete(w, k)
-		case touched == nil || touched[k]:
-			w[k] = a
+		if strings.TrimSpace(actual[k]) != strings.TrimSpace(foreign[k]) {
+			continue
+		}
+		delete(outSet, k)
+		if v, ok := ahead[k]; ok {
+			del[k] = v
+		} else if v, ok := snapshot[k]; ok {
+			del[k] = v
 		}
 	}
-	return w
+	return outSet, del
+}
+
+// writeAhead speichert Abweichungen vor dem Schreiben samt Wiederholungsmarke.
+func (r *inboundRun) writeAhead(ctx context.Context, linkID string, dev map[string]string) error {
+	if len(dev) == 0 {
+		return nil
+	}
+	msg := LinkErrInterrupted
+	return r.in.Store.SaveInbound(ctx, linkID, InboundUpdate{WrittenSet: dev, LastError: &msg})
 }
 
 func (r *inboundRun) originNote(c candidate) string {
@@ -745,7 +863,12 @@ func (r *inboundRun) processNew(ctx context.Context, c candidate) error {
 	if len(errs) > 0 {
 		return r.rowFailed(ctx, link.ID, c.fk, errs...)
 	}
-	id, err := r.target.Create(ctx, values, r.in.SystemUser, r.originNote(c))
+	vals, intended := r.planCreate(values)
+	ahead := r.deviations(intended, c.mapped)
+	if err := r.writeAhead(ctx, link.ID, ahead); err != nil {
+		return r.rowFailed(ctx, link.ID, c.fk, RunError{Message: err.Error()})
+	}
+	id, err := r.target.Create(ctx, vals, r.in.SystemUser, r.originNote(c))
 	if err != nil {
 		if id != "" {
 			// Datensatz samt Herkunft existiert, eine Nacharbeit fehlte: anbinden ohne
@@ -755,16 +878,19 @@ func (r *inboundRun) processNew(ctx context.Context, c candidate) error {
 		}
 		return r.rowFailed(ctx, link.ID, c.fk, RunError{Message: err.Error()})
 	}
-	// Tatsächliche Werte samt Vorgaben des Dienstes (z. B. Fälligkeit) für den Ausgangswert.
+	// Tatsächliche Werte samt Vorgaben des Dienstes (z. B. Fälligkeit): der
+	// Datensatz ist neu, kein Benutzer kann ihn schon geändert haben.
 	actual, err := r.target.Read(ctx, id)
 	if err != nil {
 		return r.rowFailed(ctx, link.ID, c.fk, RunError{Message: err.Error()})
 	}
+	set := r.deviations(actual, c.mapped)
+	set, del := r.finalWritten(link.WrittenValues, ahead, set, c.mapped, actual, nil)
 	noErr := ""
 	err = r.hook("commit", c.fk)
 	if err == nil {
 		err = st.SaveInbound(ctx, link.ID, InboundUpdate{RefID: &id, SeenMark: &c.mark, Seen: c.mapped,
-			Written: r.baseline(link.WrittenValues, c.mapped, actual, nil, nil), LastError: &noErr})
+			WrittenSet: set, WrittenDel: del, LastError: &noErr})
 	}
 	if err != nil {
 		// Der Datensatz hat seinen Herkunftseintrag: die Wiederholung bindet ihn an.
@@ -793,33 +919,35 @@ func (r *inboundRun) processChanged(ctx context.Context, c candidate, link *Link
 	}
 	dec := Decide(r.maps, link.SeenValues, link.WrittenValues, c.mapped, pdhNow)
 	actual := pdhNow
-	touched := map[string]bool{}
+	var ahead map[string]string
 	if len(dec.Apply) > 0 {
-		notes := map[string]string{}
+		vals, intended, notes := r.planApply(dec.Apply, pdhNow)
 		for k, v := range dec.Apply {
-			touched[k] = true
 			if _, seen := link.SeenValues[k]; !seen && pdhNow[k] != "" && pdhNow[k] != v {
 				notes[k] = noteFirstSync // überschriebener PDH-Wert steht so im Verlauf
 			}
 		}
+		ahead = r.deviations(intended, c.mapped)
+		if err := r.writeAhead(ctx, link.ID, ahead); err != nil {
+			return r.rowFailed(ctx, link.ID, c.fk, RunError{Message: err.Error()})
+		}
 		// Eine Wiederholung nach Teilfehler übernimmt dieselben Werte erneut:
 		// Apply schreibt gleiche Werte nicht noch einmal (kein doppelter Verlauf).
-		if err := r.target.Apply(ctx, id, dec.Apply, notes, user); err != nil {
+		if err := r.target.Apply(ctx, id, vals, notes, user); err != nil {
 			return r.rowFailed(ctx, link.ID, c.fk, RunError{Message: err.Error()})
 		}
-		if actual, err = r.target.Read(ctx, id); err != nil {
-			return r.rowFailed(ctx, link.ID, c.fk, RunError{Message: err.Error()})
+		err := r.hook("postread", c.fk)
+		if err == nil {
+			// Nur für das Aufräumen (PDH gleich Fremdwert), nie als Ausgangswert.
+			actual, err = r.target.Read(ctx, id)
 		}
-		for k, v := range actual {
-			if v != pdhNow[k] {
-				touched[k] = true // z. B. Lösungstext von QuickResolve
-			}
+		if err != nil {
+			return r.rowFailed(ctx, link.ID, c.fk, RunError{Message: err.Error()})
 		}
 	}
-	u := InboundUpdate{SeenMark: &c.mark, Seen: c.mapped,
-		Written: r.baseline(link.WrittenValues, c.mapped, actual, touched, dec.KeepPDH)}
+	set, del := r.finalWritten(link.WrittenValues, ahead, ahead, c.mapped, actual, dec.KeepPDH)
 	noErr := ""
-	u.LastError = &noErr
+	u := InboundUpdate{SeenMark: &c.mark, Seen: c.mapped, WrittenSet: set, WrittenDel: del, LastError: &noErr}
 	if len(dec.KeepPDH) > 0 {
 		keys := make([]string, 0, len(dec.KeepPDH))
 		for k := range dec.KeepPDH {
