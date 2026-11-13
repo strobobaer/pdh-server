@@ -49,6 +49,7 @@ Ohne diese Variablen werden die Integrationstests übersprungen.
 - `dbo.MeldungKommentare`
 - `dbo.MeldungenGuid` (2 Zeilen, Schlüssel `Id` + `Werk`)
 - `dbo.MeldungenAlt` (10 Zeilen, Spalte `Geaendert` vom Typ `DATETIME`, alle NULL; Testtabelle für Zeitstempel-Cursor mit Gleichstand, `pdh_sync` darf lesen und ändern)
+- `dbo.MeldungenText` (9 Zeilen, Schlüssel `Kennung` vom Typ `VARCHAR(40)`, Testtabelle für Schlüsselvergleich unter der SQL-Kollation; `pdh_sync` darf lesen und ändern)
 
 Die Anmeldung `pdh_sync` darf lesen (alle drei Tabellen), ändern (`Meldungen`,
 `MeldungenGuid`) und Kommentare anfügen. Löschen darf sie nichts. Die

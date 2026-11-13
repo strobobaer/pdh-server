@@ -2,6 +2,7 @@ package extsync
 
 import (
 	"errors"
+	"fmt"
 	"math/rand"
 	"reflect"
 	"regexp"
@@ -110,7 +111,7 @@ func TestUpdateRowCompositeKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "UPDATE TOP (1) [dbo].[MeldungenGuid] SET [Zustand]=@p1 WHERE [Id]=@p2 AND [Werk]=@p3"
+	want := "UPDATE TOP (1) [dbo].[MeldungenGuid] SET [Zustand]=@p1 WHERE [Id]=@p2 AND [Werk]=CAST(@p3 AS nvarchar(4000))"
 	if st.SQL != want {
 		t.Fatalf("SQL = %q", st.SQL)
 	}
@@ -479,7 +480,7 @@ func TestSelectRowsShapes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want = "SELECT TOP (5) LOWER(CONVERT(nvarchar(36), [Id])) AS [Id], [Werk], [Titel], CONVERT(datetime2(7), [Geaendert]) AS [Geaendert] FROM [dbo].[MeldungenGuid] AS [t] WHERE [Geaendert] IS NOT NULL AND ([Geaendert] > CAST(@p1 AS datetime2(7)) OR ([Geaendert] = CAST(@p1 AS datetime2(7)) AND ([Id] > @p2 OR ([Id] = @p2 AND [Werk] > @p3)))) ORDER BY [t].[Geaendert], [t].[Id], [t].[Werk]"
+	want = "SELECT TOP (5) LOWER(CONVERT(nvarchar(36), [Id])) AS [Id], [Werk], [Titel], CONVERT(datetime2(7), [Geaendert]) AS [Geaendert] FROM [dbo].[MeldungenGuid] AS [t] WHERE [Geaendert] IS NOT NULL AND ([Geaendert] > CAST(@p1 AS datetime2(7)) OR ([Geaendert] = CAST(@p1 AS datetime2(7)) AND ([Id] > @p2 OR ([Id] = @p2 AND [Werk] > CAST(@p3 AS nvarchar(4000)))))) ORDER BY [t].[Geaendert], [t].[Id], [t].[Werk]"
 	if st.SQL != want {
 		t.Fatalf("SQL = %q\nerwartet %q", st.SQL, want)
 	}
@@ -528,7 +529,7 @@ func TestSelectRowsShapes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if st.SQL != "SELECT TOP (5) LOWER(CONVERT(nvarchar(36), [Id])) AS [Id], [Werk], [Titel] FROM [dbo].[MeldungenGuid] AS [t] WHERE ([Id] > @p1 OR ([Id] = @p1 AND [Werk] > @p2)) ORDER BY [t].[Id], [t].[Werk]" {
+	if st.SQL != "SELECT TOP (5) LOWER(CONVERT(nvarchar(36), [Id])) AS [Id], [Werk], [Titel] FROM [dbo].[MeldungenGuid] AS [t] WHERE ([Id] > @p1 OR ([Id] = @p1 AND [Werk] > CAST(@p2 AS nvarchar(4000)))) ORDER BY [t].[Id], [t].[Werk]" {
 		t.Fatalf("SQL = %q", st.SQL)
 	}
 }
@@ -588,7 +589,7 @@ func TestSelectOneShape(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "SELECT TOP (1) LOWER(CONVERT(nvarchar(36), [Id])) AS [Id], [Werk], [Titel] FROM [dbo].[MeldungenGuid] WHERE [Id]=@p1 AND [Werk]=@p2"
+	want := "SELECT TOP (1) LOWER(CONVERT(nvarchar(36), [Id])) AS [Id], [Werk], [Titel] FROM [dbo].[MeldungenGuid] WHERE [Id]=@p1 AND [Werk]=CAST(@p2 AS nvarchar(4000))"
 	if st.SQL != want || !reflect.DeepEqual(st.Args, []any{"abc", "W1"}) {
 		t.Fatalf("SQL = %q Args = %#v", st.SQL, st.Args)
 	}
@@ -1003,4 +1004,47 @@ func TestNoDestructiveStatementPossible(t *testing.T) {
 func isTimeType(typ string) bool {
 	_, ok := tsCast(typ)
 	return ok
+}
+
+// Schlüsselwerte werden im Typbereich der Spalte verglichen (Reihenfolge wie ORDER BY, Index nutzbar).
+func TestKeyPlaceholderByType(t *testing.T) {
+	d := mustDialect(t)
+	mk := func(typ string) *TableInfo {
+		return &TableInfo{Schema: "dbo", Name: "T", Columns: []Column{
+			{Name: "K", Type: typ, IsKey: true}, {Name: "X", Type: "nvarchar"},
+		}}
+	}
+	cases := map[string]string{
+		"varchar":          "CAST(@p%d AS varchar(8000))",
+		"char":             "CAST(@p%d AS varchar(8000))",
+		"nvarchar":         "CAST(@p%d AS nvarchar(4000))",
+		"nchar":            "CAST(@p%d AS nvarchar(4000))",
+		"int":              "@p%d",
+		"bigint":           "@p%d",
+		"uniqueidentifier": "@p%d",
+	}
+	for typ, tmpl := range cases {
+		ti := mk(typ)
+		st, err := d.SelectRows(ti, []string{"X"}, []string{"K"}, "", "none", `{"k":["a-b"]}`, "", 0, 1)
+		if err != nil {
+			t.Fatalf("%s: %v", typ, err)
+		}
+		if want := "[K] > " + fmt.Sprintf(tmpl, 1); !strings.Contains(st.SQL, want) {
+			t.Errorf("%s: SQL = %q, erwartet %q", typ, st.SQL, want)
+		}
+		st, err = d.SelectOne(ti, []string{"X"}, []string{"K"}, []string{"a-b"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want := "WHERE [K]=" + fmt.Sprintf(tmpl, 1); !strings.HasSuffix(st.SQL, want) {
+			t.Errorf("%s: SQL = %q, erwartet Ende %q", typ, st.SQL, want)
+		}
+		st, err = d.UpdateRow(ti, []string{"K"}, []string{"a-b"}, map[string]any{"X": "v"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want := "WHERE [K]=" + fmt.Sprintf(tmpl, 2); !strings.HasSuffix(st.SQL, want) {
+			t.Errorf("%s: SQL = %q, erwartet Ende %q", typ, st.SQL, want)
+		}
+	}
 }

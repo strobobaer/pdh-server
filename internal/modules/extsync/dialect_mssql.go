@@ -105,6 +105,25 @@ func placeholder(n int, v any) string {
 	return "@p" + strconv.Itoa(n)
 }
 
+// keyPlaceholder liefert den Parameter für einen Schlüsselwert, im Typbereich der
+// Schlüsselspalte: Zeichenspalten (char/varchar) vergleichen als varchar, Unicode-
+// Spalten als nvarchar. Sonst würde der Server die Spalte nach nvarchar umwandeln:
+// andere Reihenfolge als ORDER BY (Schlüsselfolge verliert Zeilen) und kein
+// Index-Zugriff. Die Kollation der Spalte bleibt maßgeblich (Spalte schlägt den
+// Parameter mit Standardkollation). Ganzzahlen und GUID: der Parameter wird in den
+// Typ der Spalte umgewandelt, Vergleich und Sortierung laufen im selben Bereich.
+// Nur Festtexte per switch, nie aus dem Katalogtext zusammengesetzt.
+func keyPlaceholder(n int, c *Column) string {
+	p := "@p" + strconv.Itoa(n)
+	switch strings.ToLower(c.Type) {
+	case "char", "varchar":
+		return "CAST(" + p + " AS varchar(8000))"
+	case "nchar", "nvarchar":
+		return "CAST(" + p + " AS nvarchar(4000))"
+	}
+	return p
+}
+
 // keyTypeOK: erlaubte Typen für Schlüsselspalten.
 func keyTypeOK(c *Column) bool {
 	switch strings.ToLower(c.Type) {
@@ -450,11 +469,12 @@ func (d *mssqlDialect) KeyValues(t *TableInfo, keyCols []string, row map[string]
 
 // keysetCondition: Schlüsselfolge über alle Schlüsselspalten. first ist die
 // Nummer des ersten Schlüsselparameters.
-func (d *mssqlDialect) keysetCondition(keys []string, first int) string {
+func (d *mssqlDialect) keysetCondition(t *TableInfo, keys []string, first int) string {
 	var rec func(i int) string
 	rec = func(i int) string {
 		q := d.Quote(keys[i])
-		p := "@p" + strconv.Itoa(first+i)
+		c, _ := findColumn(t, keys[i])
+		p := keyPlaceholder(first+i, c)
 		if i == len(keys)-1 {
 			return q + " > " + p
 		}
@@ -505,7 +525,7 @@ func (d *mssqlDialect) SelectRows(t *TableInfo, cols, keyCols []string, changeCo
 			for _, kv := range cur.K {
 				args = append(args, kv)
 			}
-			conds = append(conds, d.keysetCondition(keyCols, first))
+			conds = append(conds, d.keysetCondition(t, keyCols, first))
 		}
 		orderBy = strings.Join(ordKeys, ", ")
 	case changeKindRowVersion, changeKindTimestamp:
@@ -556,7 +576,7 @@ func (d *mssqlDialect) SelectRows(t *TableInfo, cols, keyCols []string, changeCo
 				for _, kv := range cur.K {
 					args = append(args, kv)
 				}
-				conds = append(conds, "("+q+" > "+tp+" OR ("+q+" = "+tp+" AND "+d.keysetCondition(keyCols, first)+"))")
+				conds = append(conds, "("+q+" > "+tp+" OR ("+q+" = "+tp+" AND "+d.keysetCondition(t, keyCols, first)+"))")
 			}
 			if windowDays > 0 {
 				conds = append(conds, q+" >= DATEADD(day, -"+strconv.Itoa(windowDays)+", SYSUTCDATETIME())")
@@ -582,11 +602,12 @@ func (d *mssqlDialect) SelectRows(t *TableInfo, cols, keyCols []string, changeCo
 }
 
 // whereKey bildet "[k1]=@pN AND [k2]=@pN+1"; Schlüsselwerte hängen sich an args.
-func (d *mssqlDialect) whereKey(keys, vals []string, args []any) (string, []any) {
+func (d *mssqlDialect) whereKey(t *TableInfo, keys, vals []string, args []any) (string, []any) {
 	var parts []string
 	for i, k := range keys {
 		args = append(args, vals[i])
-		parts = append(parts, d.Quote(k)+"=@p"+strconv.Itoa(len(args)))
+		c, _ := findColumn(t, k)
+		parts = append(parts, d.Quote(k)+"="+keyPlaceholder(len(args), c))
 	}
 	return strings.Join(parts, " AND "), args
 }
@@ -606,7 +627,7 @@ func (d *mssqlDialect) SelectOne(t *TableInfo, cols, keyCols, keyVals []string) 
 	if err != nil {
 		return Stmt{}, err
 	}
-	where, args := d.whereKey(keyCols, keyVals, nil)
+	where, args := d.whereKey(t, keyCols, keyVals, nil)
 	return Stmt{SQL: "SELECT TOP (1) " + list + " FROM " + d.qualified(t) + " WHERE " + where, Args: args}, nil
 }
 
@@ -663,7 +684,7 @@ func (d *mssqlDialect) UpdateRow(t *TableInfo, keyCols, keyVals []string, set ma
 		args = append(args, v)
 		parts = append(parts, d.Quote(n)+"="+placeholder(len(args), v))
 	}
-	where, args := d.whereKey(keyCols, keyVals, args)
+	where, args := d.whereKey(t, keyCols, keyVals, args)
 	return Stmt{
 		SQL:  "UPDATE TOP (1) " + d.qualified(t) + " SET " + strings.Join(parts, ", ") + " WHERE " + where,
 		Args: args,

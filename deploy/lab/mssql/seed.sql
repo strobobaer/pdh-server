@@ -71,6 +71,19 @@ INSERT INTO dbo.MeldungenAlt (Nr, Titel, Geaendert) VALUES
  (1, N'Alt 1', NULL), (2, N'Alt 2', NULL), (3, N'Alt 3', NULL), (4, N'Alt 4', NULL), (5, N'Alt 5', NULL),
  (6, N'Alt 6', NULL), (7, N'Alt 7', NULL), (8, N'Alt 8', NULL), (9, N'Alt 9', NULL), (10, N'Alt 10', NULL);
 GO
+IF OBJECT_ID('dbo.MeldungenText') IS NULL
+CREATE TABLE dbo.MeldungenText (
+  Kennung VARCHAR(40) NOT NULL PRIMARY KEY,
+  Titel NVARCHAR(200) NOT NULL,
+  Geaendert DATETIME2 NULL
+);
+GO
+IF NOT EXISTS (SELECT 1 FROM dbo.MeldungenText)
+INSERT INTO dbo.MeldungenText (Kennung, Titel, Geaendert) VALUES
+ ('a-b', N'Bindestrich', NULL), ('aa', N'doppelt a', NULL), ('ab', N'a b', NULL),
+ ('a''b', N'Apostroph', NULL), ('a b', N'Leerzeichen', NULL), ('A-c', N'Gross', NULL),
+ ('b', N'nur b', NULL), ('a-', N'Bindestrich am Ende', NULL), ('M-1', N'M eins', NULL);
+GO
 IF SUSER_ID('pdh_sync') IS NULL
   CREATE LOGIN pdh_sync WITH PASSWORD = 'Lab-Sync-Kennwort-2026!', CHECK_POLICY = OFF;
 GO
@@ -83,5 +96,7 @@ GRANT UPDATE ON dbo.Meldungen TO pdh_sync;
 GRANT UPDATE ON dbo.MeldungenGuid TO pdh_sync;
 GRANT SELECT ON dbo.MeldungenAlt TO pdh_sync;
 GRANT UPDATE ON dbo.MeldungenAlt TO pdh_sync;
+GRANT SELECT ON dbo.MeldungenText TO pdh_sync;
+GRANT UPDATE ON dbo.MeldungenText TO pdh_sync;
 GRANT INSERT ON dbo.MeldungKommentare TO pdh_sync;
 GO

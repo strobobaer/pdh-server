@@ -378,3 +378,109 @@ func TestNoneKeyPagingLab(t *testing.T) {
 		}
 	}
 }
+
+// varchar-Schlüssel unter der SQL-Kollation des Labors: Schlüsselfolge, Gleichstand, Aktualisieren.
+func TestVarcharKeyLab(t *testing.T) {
+	db := openLab(t)
+	d := mustDialect(t)
+	ctx := context.Background()
+	ti, err := d.Describe(ctx, db, "dbo", "MeldungenText")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c, _ := findColumn(ti, "Kennung"); c == nil || c.Type != "varchar" || !c.IsKey {
+		t.Fatalf("Kennung: %+v", c)
+	}
+	keys := []string{"Kennung"}
+	order := func(q interface {
+		QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+	}, sqlText string) []string {
+		rs, err := q.QueryContext(ctx, sqlText)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out []string
+		for _, r := range scanRows(t, rs) {
+			out = append(out, fmt.Sprint(r["Kennung"]))
+		}
+		return out
+	}
+	want := order(db, "SELECT Kennung FROM dbo.MeldungenText ORDER BY Kennung")
+	if len(want) != 9 {
+		t.Fatalf("Seed unvollständig: %v", want)
+	}
+
+	// Schlüsselcursor ohne Änderungsspalte.
+	for _, limit := range []int{1, 2, 3} {
+		got := pageAll(t, db, d, ti, keys, "", "none", limit)
+		if strings.Join(got, "\x1f") != strings.Join(want, "\x1f") {
+			t.Fatalf("none, limit %d: %v, erwartet %v", limit, got, want)
+		}
+	}
+
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	// Alle Zeilen mit gleichem Zeitstempel: der Gleichstand läuft über den varchar-Schlüssel.
+	at := time.Date(2026, 11, 13, 7, 0, 0, 0, time.UTC)
+	for _, k := range want {
+		up, err := d.UpdateRow(ti, keys, []string{k}, map[string]any{"Geaendert": at})
+		if err != nil {
+			t.Fatal(err)
+		}
+		res, err := tx.ExecContext(ctx, up.SQL, up.Args...)
+		if err != nil {
+			t.Fatalf("%s: %v", up.SQL, err)
+		}
+		if n, _ := res.RowsAffected(); n != 1 {
+			t.Fatalf("Schlüssel %q: RowsAffected = %d", k, n)
+		}
+	}
+	for _, limit := range []int{1, 2, 4} {
+		got := pageAll(t, tx, d, ti, keys, "Geaendert", "timestamp", limit)
+		if strings.Join(got, "\x1f") != strings.Join(want, "\x1f") {
+			t.Fatalf("timestamp, limit %d: %v, erwartet %v", limit, got, want)
+		}
+	}
+
+	// SelectRows -> KeyValues -> UpdateRow / SelectOne trifft genau die Zeile.
+	sel, err := d.SelectRows(ti, []string{"Titel"}, keys, "", "none", "", "", 0, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rs, err := tx.QueryContext(ctx, sel.SQL, sel.Args...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range scanRows(t, rs) {
+		kv, err := d.KeyValues(ti, keys, row)
+		if err != nil {
+			t.Fatal(err)
+		}
+		up, err := d.UpdateRow(ti, keys, kv, map[string]any{"Titel": "geprüft " + kv[0]})
+		if err != nil {
+			t.Fatal(err)
+		}
+		res, err := tx.ExecContext(ctx, up.SQL, up.Args...)
+		if err != nil {
+			t.Fatalf("%s: %v", up.SQL, err)
+		}
+		if n, _ := res.RowsAffected(); n != 1 {
+			t.Fatalf("%v: RowsAffected = %d", kv, n)
+		}
+		one, err := d.SelectOne(ti, []string{"Titel"}, keys, kv)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r1, err := tx.QueryContext(ctx, one.SQL, one.Args...)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := scanRows(t, r1)
+		if len(got) != 1 || got[0]["Titel"] != "geprüft "+kv[0] || got[0]["Kennung"] != kv[0] {
+			t.Fatalf("%v: SelectOne = %v", kv, got)
+		}
+	}
+}
