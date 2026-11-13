@@ -315,7 +315,14 @@ Die Schwellen sind Vorgaben im Code und werden nach der Lastprüfung
 - **Rückwirkende Meldungen:** Das Fremdsystem kann auch Meldungen von früher
   liefern. Sie werden angelegt, bleiben aber still und dienen als Historie.
   Rückwirkend ist eine Meldung, deren Anlagedatum im Fremdsystem **vor dem
-  heutigen Tag** liegt (Tagesbeginn nach der Zeit des Servers).
+  Tag liegt, an dem das Profil zum ersten Mal scharf geschaltet wurde**
+  (Stichtag, Tagesbeginn nach der Zeit des Servers). Am Tag des
+  Scharfschaltens ist das „vor dem heutigen Tag“, wie vom Anwender vorgegeben.
+  Der Stichtag bleibt danach fest: Würde stattdessen bei jedem Lauf neu „vor
+  heute“ gelten, blieben echte neue Meldungen still, sobald ein Lauf erst
+  nach Mitternacht, nach einem Ausfall oder nach einer Pause des Profils
+  drankommt – das widerspräche der ersten Regel. Vor dem ersten
+  Scharfschalten rechnet der Probelauf mit dem heutigen Tag.
   - Dafür bekommt das Profil eine optionale **Anlagedatum-Spalte** der fremden
     Tabelle (Datum oder Zeit). Ohne diese Spalte gilt jede neue Meldung als
     neu und benachrichtigt.
