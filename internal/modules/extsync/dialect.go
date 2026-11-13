@@ -140,7 +140,9 @@ type Dialect interface {
 	// gelesen als time.Time mit der gespeicherten Wanduhr in den UTC-Feldern
 	// ankommt (isTime), und ob sie nur ein Datum ohne Uhrzeit ist (dateOnly; kommt
 	// als Mitternacht UTC an). Regel für die Zeitzone des Profils: isTime &&
-	// !dateOnly → umgerechnet; dateOnly → Kalendertag; isTime == false (u. a.
+	// !dateOnly → Wanduhr am Ort des Profils; dateOnly → Mitternacht am Ort des
+	// Profils, zurück als Kalendertag am selben Ort (R28; als Anlagedatum
+	// entscheidet der Kalendertag über "rückwirkend"); isTime == false (u. a.
 	// datetimeoffset, time, Text) → nie umgerechnet und nicht als
 	// Anlagedatum-Spalte erlaubt.
 	TimeColumn(c Column) (isTime, dateOnly bool)

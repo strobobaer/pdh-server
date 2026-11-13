@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // Hereinkommender Abgleich – Regeln (verbindlich, siehe Entwurf und Entscheidungen R12–R18):
@@ -50,13 +51,23 @@ import (
 //   - Ausgangswert, Vorabeintrag, Wiederholung und Endzustände gelten für
 //     rückwirkende Zeilen unverändert.
 //
-// Zeitzone des Fremdsystems (Spec 4.11, R26): Datums-/Zeitwerte des Anlagedatums
-// und der Spalten zugeordneter Zeitfelder werden beim Lesen mit
+// Zeitzone des Fremdsystems (Spec 4.11, R26, R28): Datums-/Zeitwerte des
+// Anlagedatums und der Spalten zugeordneter Zeitfelder werden beim Lesen mit
 // ForeignWallToInstant in den wirklichen Zeitpunkt umgerechnet, BEVOR ToPDH und
 // die Entscheidung "rückwirkend" sie sehen; seen_values halten damit den
-// wirklichen Zeitpunkt. Reine Datumsspalten bleiben Kalendertage. Werte, die als
-// Text ankommen, liest ToPDH unverändert (als UTC). Schlüssel, Cursor,
+// wirklichen Zeitpunkt. Eine reine Datumsspalte eines Zeitfelds gilt als
+// Mitternacht am Ort des Fremdsystems (R28; das Hinausschreiben schreibt den
+// Kalendertag am selben Ort, hin und zurück ändert also nichts). Für die
+// Entscheidung "rückwirkend" bleibt eine Anlagedatum-Spalte vom Typ date ein
+// Kalendertag; ihre Anlagezeit ist Mitternacht am Ort des Fremdsystems. Werte,
+// die als Text ankommen, liest ToPDH unverändert (als UTC). Schlüssel, Cursor,
 // Änderungsspalte und Änderungsmarke nutzen immer die rohe Zeile.
+//
+// Gekürzte Werte (R29): Das Hinausschreiben kürzt Texte auf die Länge der
+// Fremdspalte. Hält das Fremdsystem bei einem Feld "beides" (Text, ohne
+// Übersetzung, Spalte mit Höchstlänge) genau die gekürzte Form des aktuellen
+// PDH-Werts, gilt das als derselbe Wert (foldTruncated) – sonst würde der
+// gekürzte Text den langen PDH-Wert überschreiben.
 
 // ── Zugriff auf die Fremddatenbank ───────────────────────────────────────
 
@@ -212,7 +223,8 @@ func IsBackfill(created time.Time, isDate bool, cutoff time.Time, loc *time.Loca
 
 // createdTime liest das Anlagedatum einer Fremdzeile. Zeitspalten kommen als
 // Zeitpunkt (UTC); eine reine Datumsspalte kommt als Mitternacht UTC und meint
-// den Kalendertag am Ort loc – sie wird als dessen Tagesbeginn in loc gelesen.
+// den Kalendertag am Ort loc – sie wird als dessen Tagesbeginn in loc gelesen
+// (der Lauf gibt den Ort des Fremdsystems, R28).
 // NULL und andere Typen: ok = false (die Zeile gilt als neu).
 func createdTime(v any, dateOnly bool, loc *time.Location) (time.Time, bool) {
 	tm, ok := v.(time.Time)
@@ -292,11 +304,14 @@ type inboundRun struct {
 	cutoff      time.Time
 	createdDate bool // Anlagedatum-Spalte ist reines Datum
 	fLoc        *time.Location
-	// wallCols: umzurechnende Spalten zugeordneter Zeitfelder – nur zonenlose
-	// Datums-/Zeitspalten; date, datetimeoffset, time, Text und fehlende Spalten
-	// nie (siehe wallColumns).
+	// wallCols: umzurechnende Spalten zugeordneter Zeitfelder – zonenlose
+	// Datums-/Zeitspalten und date (Mitternacht am Ort des Fremdsystems);
+	// datetimeoffset, time, Text und fehlende Spalten nie (siehe wallColumns).
 	wallCols      []string
 	backfillCount int
+	// truncLen: Feld -> Höchstlänge der Fremdspalte für Felder, die das
+	// Hinausschreiben kürzen kann (siehe truncatableFields, foldTruncated).
+	truncLen map[string]int
 }
 
 // lockKey bildet aus der Profil-ID die Nummer der Postgres-Beratungssperre.
@@ -463,6 +478,7 @@ func (r *inboundRun) exec(ctx context.Context, f Foreign) error {
 		return err
 	}
 	r.wallCols = wallColumns(t, r.d, r.maps, r.fields)
+	r.truncLen = truncatableFields(t, r.maps, r.fields)
 	cols := inboundColumns(r.maps)
 	if p.CreatedColumn != "" {
 		col, ok := findColumn(t, p.CreatedColumn)
@@ -808,7 +824,8 @@ func (r *inboundRun) handleRow(ctx context.Context, row map[string]any, pos int,
 			}
 			if IsBackfill(tm, r.createdDate, r.cutoff, r.loc) {
 				c.backfill = true
-				c.created, _ = createdTime(tm, r.createdDate, r.loc)
+				// Datumsspalte: Mitternacht am Ort des Fremdsystems (R28; vorher am Ort des Servers).
+				c.created, _ = createdTime(tm, r.createdDate, r.fLoc)
 			}
 		}
 	}
@@ -883,8 +900,9 @@ func (r *inboundRun) park(ctx context.Context, c candidate, link *Link) error {
 
 // wallColumns: Spalten zugeordneter Zeitfelder (herein/beides, ohne festen
 // Wert), deren Werte mit der Zeitzone des Profils umgerechnet werden. Regel:
-// NUR zonenlose Datums-/Zeitspalten (TimeColumn: isTime && !dateOnly) werden
-// umgerechnet; date bleibt Kalendertag; alles andere bleibt unberührt –
+// zonenlose Datums-/Zeitspalten und reine Datumsspalten (TimeColumn: isTime)
+// werden umgerechnet – date kommt als Mitternacht UTC und wird so Mitternacht
+// am Ort des Fremdsystems (R28); alles andere bleibt unberührt –
 // datetimeoffset (trägt die Zone selbst, der Treiber liefert den richtigen
 // Zeitpunkt), time, Text und Spalten, die im Aufbau fehlen (ob das ein Fehler
 // ist, entscheidet die Spaltenprüfung des Dialekts).
@@ -900,8 +918,52 @@ func wallColumns(t *TableInfo, d Dialect, maps []FieldMap, fields []PDHField) []
 		if !ok {
 			continue
 		}
-		if isTime, dateOnly := d.TimeColumn(*col); isTime && !dateOnly {
+		if isTime, _ := d.TimeColumn(*col); isTime {
 			out = append(out, m.ForeignColumn)
+		}
+	}
+	return out
+}
+
+// truncatableFields: Felder "beides" (Text, ohne festen Wert und Übersetzung),
+// deren Fremdspalte eine Höchstlänge hat – dort kürzt das Hinausschreiben.
+func truncatableFields(t *TableInfo, maps []FieldMap, fields []PDHField) map[string]int {
+	idx := fieldIndex(fields)
+	out := map[string]int{}
+	for _, m := range maps {
+		if m.Direction != DirBoth || m.FixedValue != nil || m.ForeignColumn == "" || len(m.Translate) > 0 {
+			continue
+		}
+		if f, ok := idx[m.PDHField]; !ok || f.Kind == fieldKindEnum || f.Kind == fieldKindTime {
+			continue
+		}
+		if n := columnMaxLen(t, m.ForeignColumn); n > 0 {
+			out[m.PDHField] = n
+		}
+	}
+	return out
+}
+
+// foldTruncated: Hält das Fremdsystem genau die auf die Spaltenlänge gekürzte
+// Form des aktuellen PDH-Werts, gilt der Fremdwert als der PDH-Wert (R29). So
+// ist das Zurücklesen eines gekürzten Werts ein Echo, gesehen wird der volle
+// Wert, und eine echte Änderung im Fremdsystem entscheidet Decide wie sonst.
+func (r *inboundRun) foldTruncated(mapped, pdhNow map[string]string) map[string]string {
+	if len(r.truncLen) == 0 {
+		return mapped
+	}
+	out := make(map[string]string, len(mapped))
+	for k, v := range mapped {
+		out[k] = v
+	}
+	for k, n := range r.truncLen {
+		f, ok := mapped[k]
+		p := pdhNow[k]
+		if !ok || utf8.RuneCountInString(p) <= n {
+			continue
+		}
+		if tf := strings.TrimSpace(f); tf != strings.TrimSpace(p) && tf == strings.TrimSpace(truncateRunes(p, n)) {
+			out[k] = p
 		}
 	}
 	return out
@@ -1224,6 +1286,7 @@ func (r *inboundRun) processChanged(ctx context.Context, c candidate, link *Link
 	if err != nil {
 		return r.rowFailed(ctx, link.ID, c.fk, RunError{Message: err.Error()})
 	}
+	c.mapped = r.foldTruncated(c.mapped, pdhNow) // Marke bleibt die der rohen Werte
 	dec := Decide(r.maps, link.SeenValues, link.WrittenValues, c.mapped, pdhNow)
 	actual := pdhNow
 	var ahead map[string]string
@@ -1332,7 +1395,7 @@ func (r *inboundRun) previewChanged(ctx context.Context, c candidate, link *Link
 		case err != nil:
 			return err
 		default:
-			dec := Decide(r.maps, link.SeenValues, link.WrittenValues, c.mapped, pdhNow)
+			dec := Decide(r.maps, link.SeenValues, link.WrittenValues, r.foldTruncated(c.mapped, pdhNow), pdhNow)
 			if len(dec.Apply) == 0 && len(dec.KeepPDH) == 0 {
 				return nil
 			}

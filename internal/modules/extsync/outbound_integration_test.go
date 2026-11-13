@@ -245,6 +245,57 @@ func TestOutboundCrashAfterWriteRewrites(t *testing.T) {
 	}
 }
 
+// R29: Zu lange Texte werden auf die Spaltenlänge gekürzt, einmal vermerkt, nie
+// erneut geschrieben; der nächste Lauf ist ein Echo (PDH behält den langen Wert),
+// eine echte Änderung im Fremdsystem wird danach normal übernommen.
+func TestOutboundTruncatesLongValue(t *testing.T) {
+	info := fakeMeldungenInfo(true)
+	info.Columns[1].MaxLen = 30 // Titel
+	f := newOutFix(t, fixOpt{info: info})
+	id := f.synced(1, "Alt", "hoch", "offen")
+	long := f.title(strings.Repeat("Größe", 10)) // 60 Zeichen
+	short := string([]rune(long)[:30])
+	f.userUpdate(id, "title = $2", long)
+	f.processAll(true)
+	ups := f.updates()
+	if len(ups) != 1 || ups[0].set["Titel"] != short || f.ff.get(1)["Titel"] != short {
+		t.Fatalf("Befehle %+v", ups)
+	}
+	notes := func() []histRow {
+		var out []histRow
+		for _, h := range f.history(id, "sync") {
+			if strings.Contains(h.msg, "gekürzt") {
+				out = append(out, h)
+			}
+		}
+		return out
+	}
+	want := "Wert für ‚Titel‘ wurde beim Schreiben ins Fremdsystem auf 30 Zeichen gekürzt"
+	if n := notes(); len(n) != 1 || n[0].msg != want || n[0].field != "title" {
+		t.Fatalf("Vermerk %+v", n)
+	}
+	// Zweiter Eintrag für denselben langen Titel: kein Befehl, kein zweiter Vermerk.
+	f.enqueue(f.link(k(1)).ID, KindUpdate, map[string]any{"fields": map[string]any{"title": long}})
+	f.processAll(true)
+	if len(f.updates()) != 1 || len(notes()) != 1 {
+		t.Fatalf("erneut geschrieben: %d Befehle, %d Vermerke", len(f.updates()), len(notes()))
+	}
+	// Hereinkommend: Echo – PDH behält den langen Titel, kein Verlauf, keine Warteliste.
+	before, hist := f.outbox(), len(f.history(id, "sync"))
+	r := f.run(RunOptions{})
+	_, title, _, _, _ := f.rec(k(1))
+	if r.Changed != 0 || r.Failed != 0 || title != long || f.outbox() != before || len(f.history(id, "sync")) != hist {
+		t.Fatalf("kein Echo: %+v, Titel %q, Warteliste %d -> %d", r, title, before, f.outbox())
+	}
+	// Echte Änderung im Fremdsystem (PDH unverändert): normal übernommen.
+	f.ff.set(1, "Titel", f.title("Fremd neu"))
+	r = f.run(RunOptions{})
+	_, title, _, _, _ = f.rec(k(1))
+	if r.Changed != 1 || title != f.title("Fremd neu") || f.outbox() != before {
+		t.Fatalf("Fremdänderung: %+v, Titel %q, Warteliste %d -> %d", r, title, before, f.outbox())
+	}
+}
+
 func TestOutboundOnlyMappedOutFields(t *testing.T) {
 	f := newOutFix(t, fixOpt{})
 	id := f.synced(1, "Alt", "hoch", "offen")

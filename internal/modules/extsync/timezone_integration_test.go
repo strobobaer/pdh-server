@@ -86,7 +86,10 @@ func TestTimeZoneDueDate(t *testing.T) {
 	}
 }
 
-func TestTimeZoneDateColumnUnaffected(t *testing.T) {
+// R28: Eine Anlagedatum-Spalte vom Typ date entscheidet "rückwirkend" weiter als
+// Kalendertag (unabhängig von der Zone); die Anlagezeit ist Mitternacht dieses
+// Tages am Ort des Fremdsystems (vorher: am Ort des Servers).
+func TestTimeZoneDateCreatedColumnMidnightInZone(t *testing.T) {
 	for _, zone := range []string{"UTC", "America/New_York", "Asia/Tokyo"} {
 		t.Run(zone, func(t *testing.T) {
 			f := newBackfillFix(t, fixOpt{info: backfillInfo("date"), timeZone: zone})
@@ -99,10 +102,91 @@ func TestTimeZoneDateColumnUnaffected(t *testing.T) {
 				t.Fatalf("Lauf: %+v", r)
 			}
 			id2, _, _, _, _ := f.rec(k(2))
-			if c := f.createdAt(id2); !c.Equal(bt(2026, 11, 12, 0, 0)) {
-				t.Fatalf("created_at %v", c)
+			want := time.Date(2026, 11, 12, 0, 0, 0, 0, mustLoc(t, zone))
+			if c := f.createdAt(id2); !c.Equal(want) {
+				t.Fatalf("created_at %v, erwartet %v", c.UTC(), want.UTC())
 			}
 		})
+	}
+}
+
+// dateDueFix: Profil mit Datumsspalte "FaelligTag" (date) für due_date, beides.
+func dateDueFix(t *testing.T, zone string) *outFix {
+	info := fakeMeldungenInfo(true)
+	info.Columns = append(info.Columns, Column{Name: "FaelligTag", Type: "date", Nullable: true})
+	maps := append(stdMaps(RefTicket), FieldMap{ForeignColumn: "FaelligTag", PDHField: "due_date", Direction: DirBoth, Position: 4})
+	return newOutFix(t, fixOpt{info: info, maps: maps, timeZone: zone})
+}
+
+// R28: date-Spalte eines Zeitfelds = Mitternacht am Ort des Fremdsystems; das
+// Zurückschreiben liefert denselben Kalendertag; hin und zurück ist ein Echo.
+func TestTimeZoneDateColumnMidnightInZone(t *testing.T) {
+	for _, zone := range []string{"Europe/Berlin", "America/New_York"} {
+		t.Run(zone, func(t *testing.T) {
+			loc := mustLoc(t, zone)
+			f := dateDueFix(t, zone)
+			f.ff.put(map[string]any{"Nr": int64(1), "Titel": f.title("Tag"), "Prio": "hoch", "Zustand": "offen",
+				"FaelligTag": wallUTC(2026, 11, 20, 0, 0)})
+			f.run(RunOptions{})
+			id, _, _, _, _ := f.rec(k(1))
+			if d := f.due("tickets", id); d == nil || !d.Equal(time.Date(2026, 11, 20, 0, 0, 0, 0, loc)) {
+				t.Fatalf("Fälligkeit %v, erwartet Mitternacht in %s", d, zone)
+			}
+			// PDH ändert auf den 25.11. (Mitternacht am Ort): hinaus geht der 25.11.
+			f.userUpdate(id, "due_date = $2", time.Date(2026, 11, 25, 0, 0, 0, 0, loc))
+			f.processAll(true)
+			ups := f.updates()
+			if len(ups) != 1 || !ups[0].set["FaelligTag"].(time.Time).Equal(wallUTC(2026, 11, 25, 0, 0)) {
+				t.Fatalf("Befehle %+v", ups)
+			}
+			before := f.outbox()
+			r := f.run(RunOptions{})
+			if r.Changed != 0 || r.Failed != 0 || len(f.history(id, "sync")) != 0 || f.outbox() != before {
+				t.Fatalf("kein Echo: %+v, Verlauf %+v", r, f.history(id, "sync"))
+			}
+			if d := f.due("tickets", id); !d.Equal(time.Date(2026, 11, 25, 0, 0, 0, 0, loc)) {
+				t.Fatalf("Fälligkeit nach Echo %v", d)
+			}
+			if l := f.link(k(1)); len(l.WrittenValues) != 0 {
+				t.Fatalf("written nicht aufgeräumt: %+v", l.WrittenValues)
+			}
+		})
+	}
+}
+
+// R28: Verknüpfungen aus der Zeit vor der Regel haben Mitternacht UTC gesehen.
+// Ohne Benutzeränderung wird einmal übernommen (richtiger Zeitpunkt), ohne
+// Widerspruch und ohne Wartelisteneintrag; danach ist Ruhe.
+func TestTimeZoneDateColumnOldSeenAppliedOnce(t *testing.T) {
+	f := dateDueFix(t, "Europe/Berlin")
+	f.ff.put(map[string]any{"Nr": int64(1), "Titel": f.title("Alt"), "Prio": "hoch", "Zustand": "offen",
+		"FaelligTag": wallUTC(2026, 11, 20, 0, 0)})
+	f.run(RunOptions{})
+	id, _, _, _, _ := f.rec(k(1))
+	// Stand wie nach der alten Regel: PDH und gesehen = Mitternacht UTC, Marke leer.
+	f.pdhUpdate(id, "due_date = $2", wallUTC(2026, 11, 20, 0, 0))
+	l := f.link(k(1))
+	l.SeenValues["due_date"] = "2026-11-20T00:00:00Z"
+	empty := ""
+	must(t, f.s.SaveInbound(context.Background(), l.ID, InboundUpdate{SeenMark: &empty, Seen: l.SeenValues}))
+	f.p.Cursor = ""
+	r := f.run(RunOptions{})
+	if r.Changed != 1 || r.Failed != 0 {
+		t.Fatalf("Lauf %+v", r)
+	}
+	if d := f.due("tickets", id); !d.Equal(time.Date(2026, 11, 20, 0, 0, 0, 0, mustLoc(t, "Europe/Berlin"))) {
+		t.Fatalf("Fälligkeit %v", d)
+	}
+	h := f.history(id, "sync")
+	if len(h) != 1 || h[0].field != "due_date" || strings.Contains(h[0].msg, "nicht übernommen") {
+		t.Fatalf("Verlauf %+v", h)
+	}
+	if n := f.outbox(); n != 0 {
+		t.Fatalf("%d Wartelisteneinträge", n)
+	}
+	f.p.Cursor = ""
+	if r := f.run(RunOptions{}); r.Changed != 0 {
+		t.Fatalf("zweiter Lauf %+v", r)
 	}
 }
 

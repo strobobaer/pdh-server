@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // Hinausgehender Abgleich – Regeln (verbindlich, Entwurf 4.3, 4.4, 4.11, R17, R23):
@@ -243,6 +244,8 @@ func (o *Outbound) update(ctx context.Context, item OutboxItem, link *Link, p *P
 		if w, ok := link.WrittenValues[k]; ok && strings.TrimSpace(w) == v {
 			continue // schon geschrieben oder Ausgangswert des Abgleichs (R17)
 		}
+		// R30: Bei Feldern nur "hinaus" ist PDH die Quelle; auch Vorgaben, die der
+		// Abgleich beim Anlegen gesetzt hat, gehen dann rechtmäßig ins Fremdsystem.
 		vals[k] = cur[k]
 	}
 	if len(vals) == 0 {
@@ -268,6 +271,7 @@ func (o *Outbound) update(ctx context.Context, item OutboxItem, link *Link, p *P
 			set[col] = foreignTime(t, col, d, tm, fLoc)
 		}
 	}
+	cut := truncateForColumns(t, maps, vals, set)
 	kv, err := DecodeKey(link.ForeignKey)
 	if err != nil {
 		return done(LinkErrBadKey)
@@ -283,6 +287,9 @@ func (o *Outbound) update(ctx context.Context, item OutboxItem, link *Link, p *P
 	if n == 0 {
 		return o.rowGone(ctx, link, p)
 	}
+	if err := o.noteTruncated(ctx, link, p, fields, vals, cut); err != nil {
+		return OutResult{}, err
+	}
 	if err := o.hook("written"); err != nil {
 		return OutResult{}, err
 	}
@@ -291,6 +298,63 @@ func (o *Outbound) update(ctx context.Context, item OutboxItem, link *Link, p *P
 		return OutResult{}, err
 	}
 	return OutResult{Done: true, Written: len(vals)}, nil
+}
+
+// truncateForColumns kürzt Texte in set auf die Höchstlänge der Fremdspalte (in
+// Zeichen, R29) und liefert je gekürztem PDH-Feld die Länge. Andere Werte, die
+// nicht passen (z. B. Zahl außerhalb des Bereichs), lehnt der Server ab.
+//
+// Regel für Echo und Wiederholung: written[f] hält den VOLLEN PDH-Wert (die
+// Auslassregel "aktueller Wert == written" greift weiter); der hereinkommende
+// Lauf wertet die gekürzte Form des aktuellen PDH-Werts als denselben Wert
+// (foldTruncated). Ein written mit dem gekürzten Wert ginge nicht: eine spätere
+// echte Änderung im Fremdsystem wäre dann ein Widerspruch statt einer Übernahme.
+func truncateForColumns(t *TableInfo, maps []FieldMap, vals map[string]string, set map[string]any) map[string]int {
+	cut := map[string]int{}
+	for _, m := range maps {
+		if (m.Direction != DirOut && m.Direction != DirBoth) || m.FixedValue != nil || m.ForeignColumn == "" {
+			continue
+		}
+		if _, ok := vals[m.PDHField]; !ok {
+			continue
+		}
+		s, ok := set[m.ForeignColumn].(string)
+		n := columnMaxLen(t, m.ForeignColumn)
+		if !ok || n <= 0 || utf8.RuneCountInString(s) <= n {
+			continue
+		}
+		set[m.ForeignColumn] = truncateRunes(s, n)
+		cut[m.PDHField] = n
+	}
+	return cut
+}
+
+// noteTruncated vermerkt eine Kürzung am Datensatz – einmal je Verknüpfung und
+// Feld und gekürztem Inhalt: nur wenn die gekürzte Form vom zuletzt
+// geschriebenen Wert (written) abweicht.
+func (o *Outbound) noteTruncated(ctx context.Context, link *Link, p *Profile, fields []PDHField, vals map[string]string, cut map[string]int) error {
+	t := o.Targets[p.TargetType]
+	if len(cut) == 0 || t == nil || link.RefID == nil {
+		return nil
+	}
+	idx := fieldIndex(fields)
+	keys := make([]string, 0, len(cut))
+	for k := range cut {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		n := cut[k]
+		short := truncateRunes(vals[k], n)
+		if prev, ok := link.WrittenValues[k]; ok && truncateRunes(prev, n) == short {
+			continue
+		}
+		msg := fmt.Sprintf("Wert für ‚%s‘ wurde beim Schreiben ins Fremdsystem auf %d Zeichen gekürzt", idx[k].Label, n)
+		if err := t.Note(ctx, *link.RefID, actionSync, k, vals[k], short, msg, o.SystemUser); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // commentPayload ist der Eintrag "comment" des Auslösers pdh_sync_enqueue.

@@ -452,7 +452,9 @@ func TestMaxNewCountsOnlyToday(t *testing.T) {
 func TestBackfillDateColumnUsesCalendarDate(t *testing.T) {
 	ny, err := time.LoadLocation("America/New_York")
 	must(t, err)
-	f := newBackfillFix(t, fixOpt{info: backfillInfo("date")})
+	// Zeiten im Fremdsystem = Ortszeit des Servers (R28: die Anlagezeit einer
+	// Datumsspalte ist Mitternacht am Ort des Fremdsystems).
+	f := newBackfillFix(t, fixOpt{info: backfillInfo("date"), timeZone: "server"})
 	// 13.11. 09:00 in New York: Tagesbeginn ist 13.11. 05:00 UTC.
 	f.in.Now = func() time.Time { return time.Date(2026, 11, 13, 9, 0, 0, 0, ny) }
 	f.in.Location = ny
@@ -468,7 +470,7 @@ func TestBackfillDateColumnUsesCalendarDate(t *testing.T) {
 	if f.queue(id1, "created") != 1 || f.queue(id2, "") != 0 {
 		t.Fatalf("Benachrichtigungen: heute %d, gestern %d", f.queue(id1, "created"), f.queue(id2, ""))
 	}
-	// Anlagezeit einer Datumsspalte: Tagesbeginn des Kalendertags am Ort des Servers.
+	// Anlagezeit einer Datumsspalte: Tagesbeginn des Kalendertags am Ort des Fremdsystems (hier des Servers).
 	if tm := f.times(id2); tm.created == nil || !tm.created.Equal(time.Date(2026, 11, 12, 0, 0, 0, 0, ny)) {
 		t.Fatalf("created_at %v", tm.created)
 	}

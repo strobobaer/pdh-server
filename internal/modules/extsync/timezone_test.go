@@ -56,8 +56,9 @@ func TestForeignWallToInstant(t *testing.T) {
 	}
 }
 
-// Nur zonenlose Datums-/Zeitspalten werden umgerechnet; date bleibt Kalendertag,
-// alles andere (datetimeoffset, time, Text, unbekannte Spalte) bleibt unberührt.
+// Zonenlose Datums-/Zeitspalten und date-Spalten (R28: Mitternacht am Ort des
+// Fremdsystems) werden umgerechnet; alles andere (datetimeoffset, time, Text,
+// unbekannte Spalte) bleibt unberührt.
 func TestWallColumns(t *testing.T) {
 	info := &TableInfo{Schema: "dbo", Name: "T", Columns: []Column{
 		{Name: "Nr", Type: "int", IsKey: true},
@@ -80,7 +81,7 @@ func TestWallColumns(t *testing.T) {
 	fields := Fields(RefTicket)
 	for _, d := range []Dialect{&mssqlDialect{}, fakeDialect{}} {
 		got := wallColumns(info, d, maps, fields)
-		want := []string{"DT", "DT2", "SDT"}
+		want := []string{"DT", "DT2", "SDT", "D"}
 		if len(got) != len(want) {
 			t.Fatalf("%T: %v, erwartet %v", d, got, want)
 		}
