@@ -230,6 +230,40 @@ Funktionen füllen kann wie die Oberfläche.
    Die Prüfung der Verbindung nennt die Absenderadresse, damit die Freigabe
    im Fremdnetz für beide Server eingetragen werden kann.
 
+**Messergebnisse (Task 1)**
+
+Gemessen am 2026-11-13, nur lesend, am Testverbund (10.10.0.14 = `pdh`,
+passiv; 10.10.0.17 = `pdh-server`, aktiv, Amtszeit 72, Version 0.80.1).
+
+- **A – Tunnel:** Auf keinem der beiden Server gibt es einen ausgehenden Tunnel.
+  `ip -br addr` zeigt nur `lo` und `eth0` (keine `pdhout*`), `ip route` nur
+  Standardroute und das LAN, `/etc/wireguard` fehlt, `pdh-wireguard` ist
+  `inactive`. (Die Zeile „Tunnel: läuft hier“ in `pdh-ha status` ist der
+  Tunnel des Ausfallschutzes, kein WireGuard.) Punkt 1 bleibt damit am
+  Testverbund ungemessen; Code-Lage: `vpnApply` schreibt je aktivem
+  ausgehendem Tunnel eine `pdhoutN.conf`, der Dienst baut sie auf und setzt
+  NAT (`MASQUERADE` auf `pdhout+`); die Routen kommen aus `AllowedIPs`
+  (= Feld `routes`). Die Abnahme über VPN muss der Anwender einrichten
+  (Rückfrage, nichts angelegt).
+- **B – Rollentausch (aus dem Code):** `pdh-wireguard` ist ein
+  rollenunabhängiger systemd-Dienst je Host (`scripts/pdh-wireguard-daemon.sh`,
+  keine Rollenprüfung); er setzt nur um, was das PDH in den Austauschordner
+  (`/srv/pdh-wireguard`) schreibt. Die Tunnel-Daten (`vpn_peers`) liegen in
+  der Datenbank und sind am Spiegel vorhanden, die `.conf`-Dateien aber nicht
+  zwingend: `VPNStartup` läuft nur auf einem Server ohne Spiegelbetrieb
+  (`cmd/server/main.go`, `!mirrorOn`) und nur bei eingeschaltetem Hub, sonst
+  schreibt erst die nächste Änderung im VPN-Reiter die Dateien. Folge: Nach
+  einem Tausch steht ein ausgehender Tunnel am neuen aktiven Server nicht
+  sicher. Passt zur Festlegung oben: Lauf überspringen und melden. Kein
+  Rollentausch für die Messung.
+- **C – Absenderadresse:** `ip route get 10.10.0.1` liefert auf beiden Servern
+  die **eigene** Adresse als Absender: `10.10.0.17` auf dem aktiven Server,
+  `10.10.0.14` auf dem passiven. Die mitwandernde Adresse `10.10.0.15/32` (am
+  aktiven Server als Zweitadresse auf `eth0`) wird nicht verwendet. Folge: Im
+  Fremdnetz müssen **beide** Serveradressen (.14 und .17, nicht nur .15) für
+  die Datenbank freigegeben werden; die Prüfung der Verbindung nennt die
+  Absenderadresse.
+
 ### 4.8 Verbund
 
 Abgleich und Warteliste arbeiten nur am aktiven Server. Verknüpfungen,
