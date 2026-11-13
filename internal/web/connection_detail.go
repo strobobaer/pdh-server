@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/url"
 	"sort"
@@ -171,6 +172,12 @@ func (h *Handler) connectionDetailPage(w http.ResponseWriter, r *http.Request, d
 		return
 	}
 	name, kind, enabled, config, err := h.connectionRow(ctx, id, direction)
+	var secretErr *connSecretError
+	if errors.As(err, &secretErr) {
+		err = nil // Seite trotzdem zeigen, Hinweis unten
+	} else {
+		secretErr = nil
+	}
 	if err != nil {
 		http.Error(w, "Verbindung nicht gefunden", http.StatusNotFound)
 		return
@@ -185,6 +192,9 @@ func (h *Handler) connectionDetailPage(w http.ResponseWriter, r *http.Request, d
 	}
 	if d.Tab == "" {
 		d.Tab = "overview"
+	}
+	if secretErr != nil {
+		d.Err = secretErr.Error()
 	}
 	fields, _ := connectionKindFields(direction, kind)
 	for _, f := range fields {
@@ -378,8 +388,12 @@ func (h *Handler) ConnectionQuerySaveWeb(w http.ResponseWriter, r *http.Request)
 	// gleich ausprobieren, damit Ergebnis und Spalten zum Zuordnen da sind
 	if r.FormValue("run") == "1" && h.canRunConnection(r, "import") {
 		qs, _ := h.loadConnQueries(ctx, id)
-		_, _, _, config, _ := h.connectionRow(ctx, id, "import")
+		_, _, _, config, cerr := h.connectionRow(ctx, id, "import")
 		for _, q := range qs {
+			if cerr != nil {
+				back("Abfrage gespeichert", "Ausführen fehlgeschlagen: "+cerr.Error(), qid)
+				return
+			}
 			if q.ID == qid {
 				if _, _, err := h.executeConnQuery(ctx, kind, config, q); err != nil {
 					back("Abfrage gespeichert", "Ausführen fehlgeschlagen: "+err.Error(), qid)
@@ -429,6 +443,11 @@ func (h *Handler) ConnectionQueryRunWeb(w http.ResponseWriter, r *http.Request) 
 	ctx := r.Context()
 	_, kind, _, config, err := h.connectionRow(ctx, id, "import")
 	if err != nil {
+		var secretErr *connSecretError
+		if errors.As(err, &secretErr) {
+			http.Error(w, secretErr.Error(), http.StatusConflict)
+			return
+		}
 		http.Error(w, "Verbindung nicht gefunden", http.StatusNotFound)
 		return
 	}

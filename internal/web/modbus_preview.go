@@ -2,7 +2,6 @@ package web
 
 import (
 	"encoding/binary"
-	"encoding/json"
 	"fmt"
 	"math"
 	"net/http"
@@ -189,8 +188,11 @@ func (h *Handler) ModbusReadPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Verbindung nicht gefunden", http.StatusNotFound)
 		return
 	}
-	config := map[string]string{}
-	_ = json.Unmarshal(configBytes, &config)
+	config, err := h.openConnJSON(configBytes)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 
 	data := ModbusPageData{
 		BaseData:       h.baseData(r, "import", "Modbus-Test", name),
@@ -263,8 +265,11 @@ func (h *Handler) ModbusRefreshValuesWeb(w http.ResponseWriter, r *http.Request)
 		http.Error(w, "Verbindung nicht gefunden", http.StatusNotFound)
 		return
 	}
-	config := map[string]string{}
-	_ = json.Unmarshal(configBytes, &config)
+	config, err := h.openConnJSON(configBytes)
+	if err != nil {
+		http.Redirect(w, r, base+"?notice="+url.QueryEscape("Aktualisierung fehlgeschlagen: "+err.Error()), http.StatusSeeOther)
+		return
+	}
 
 	handler, client, err := openModbusClient(config)
 	if err != nil {

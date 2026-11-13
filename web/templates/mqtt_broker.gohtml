@@ -27,7 +27,7 @@
     {{else}}
     <dd style="margin:0">
       Benutzername <code id="cs-user">{{.BrokerUsername}}</code> {{template "copy-btn" "cs-user"}}
-      · Passwort <code id="cs-pass">{{.BrokerPassword}}</code> {{template "copy-btn" "cs-pass"}}
+      · Passwort: in der Verbindung hinterlegt (wird aus Sicherheitsgründen nicht angezeigt)
     </dd>
     {{end}}
     {{if .TopicFilter}}<dt style="color:var(--muted)">Empfohlenes Topic</dt><dd style="margin:0"><code id="cs-topic">{{.TopicFilter}}</code> {{template "copy-btn" "cs-topic"}}</dd>{{end}}

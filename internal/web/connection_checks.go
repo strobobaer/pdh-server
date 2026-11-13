@@ -228,6 +228,10 @@ func checkWritableDir(rep *checkReport, path string) {
 func (h *Handler) runConnectionChecks(ctx context.Context, id, direction string) (*checkReport, error) {
 	_, kind, enabled, config, err := h.connectionRow(ctx, id, direction)
 	if err != nil {
+		var secretErr *connSecretError
+		if errors.As(err, &secretErr) {
+			return nil, err
+		}
 		return nil, errors.New("Verbindung nicht gefunden")
 	}
 	rep := &checkReport{At: time.Now().Format("02.01.2006 15:04:05")}

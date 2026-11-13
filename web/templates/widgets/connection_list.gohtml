@@ -67,9 +67,17 @@ function connSync(){
   if(typeof connFormSync === 'function') connFormSync(); else opcuaAuthModeChanged();
 }
 
+function connSecretHint(on){
+  // Kennwörter werden nie zurück in den Browser gegeben: beim Bearbeiten leer lassen = unverändert
+  document.querySelectorAll('#conn-form input[type="password"]').forEach(function(el){
+    el.placeholder = on ? 'unverändert lassen' : '';
+  });
+}
+
 function resetConnForm(){
   const form = document.getElementById('conn-form');
   form.reset();
+  connSecretHint(false);
   form.action = '/' + CONN_DIRECTION + '/connections';
   document.getElementById('conn-id').value = '';
   document.getElementById('conn-kind').disabled = false;
@@ -94,6 +102,7 @@ function editConnFromRow(row){
   try{ config = JSON.parse(row.dataset.connConfig || '{}'); }catch(e){}
 
   form.reset();
+  connSecretHint(true);
   document.getElementById('conn-kind').value = kind;
   document.getElementById('conn-kind').disabled = true;
   connSync();

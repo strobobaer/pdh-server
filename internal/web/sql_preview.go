@@ -3,7 +3,6 @@ package web
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -397,8 +396,11 @@ func (h *Handler) SQLBrowsePage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Verbindung nicht gefunden", http.StatusNotFound)
 		return
 	}
-	config := map[string]string{}
-	_ = json.Unmarshal(configBytes, &config)
+	config, err := h.openConnJSON(configBytes)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 
 	data := SQLPreviewPageData{
 		BaseData:       h.baseData(r, "import", "Datenbank-Vorschau", name),
@@ -469,8 +471,11 @@ func (h *Handler) SQLRefreshValuesWeb(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Verbindung nicht gefunden", http.StatusNotFound)
 		return
 	}
-	config := map[string]string{}
-	_ = json.Unmarshal(configBytes, &config)
+	config, err := h.openConnJSON(configBytes)
+	if err != nil {
+		http.Redirect(w, r, base+"?notice="+url.QueryEscape("Aktualisierung fehlgeschlagen: "+err.Error()), http.StatusSeeOther)
+		return
+	}
 
 	db, _, err := openSQLConnection(kind, config)
 	if err != nil {

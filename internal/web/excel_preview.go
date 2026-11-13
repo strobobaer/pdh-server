@@ -2,7 +2,6 @@ package web
 
 import (
 	"encoding/csv"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -235,8 +234,11 @@ func (h *Handler) ExcelPreviewPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Verbindung nicht gefunden", http.StatusNotFound)
 		return
 	}
-	config := map[string]string{}
-	_ = json.Unmarshal(configBytes, &config)
+	config, err := h.openConnJSON(configBytes)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 
 	data := ExcelPreviewPageData{
 		BaseData:       h.baseData(r, "import", tabularKindLabel(kind)+"-Vorschau", name),
@@ -288,8 +290,11 @@ func (h *Handler) ExcelRefreshValuesWeb(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, "Verbindung nicht gefunden", http.StatusNotFound)
 		return
 	}
-	config := map[string]string{}
-	_ = json.Unmarshal(configBytes, &config)
+	config, err := h.openConnJSON(configBytes)
+	if err != nil {
+		http.Redirect(w, r, base+"?notice="+url.QueryEscape("Aktualisierung fehlgeschlagen: "+err.Error()), http.StatusSeeOther)
+		return
+	}
 
 	columns, rows, err := readTabularPreview(kind, strings.TrimSpace(config["source_path"]), strings.TrimSpace(config["sheet_name"]), strings.TrimSpace(config["delimiter"]), config["has_header"] == "true")
 	if err != nil {

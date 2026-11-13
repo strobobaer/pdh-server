@@ -664,8 +664,17 @@ func (h *Handler) connectionRow(ctx context.Context, id, direction string) (name
 	var cfg []byte
 	err = h.db.QueryRow(ctx, `SELECT name, kind, enabled, config FROM import_export_connections WHERE id = $1 AND direction = $2`, id, direction).
 		Scan(&name, &kind, &enabled, &cfg)
-	config = map[string]string{}
-	_ = json.Unmarshal(cfg, &config)
+	if err != nil {
+		return
+	}
+	// Kennwörter entschlüsseln; bei Fehler nur die öffentlichen Felder und der Fehler
+	config, serr := h.openConnJSON(cfg)
+	if serr != nil {
+		var pub map[string]string
+		_ = json.Unmarshal(cfg, &pub)
+		config = publicConnConfig(pub)
+		err = serr
+	}
 	return
 }
 

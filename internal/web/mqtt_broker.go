@@ -97,8 +97,11 @@ func (h *Handler) reconcileMqttConsumer(connectionID string) {
 	if err != nil || kind != "mqtt" {
 		return
 	}
-	config := map[string]string{}
-	_ = json.Unmarshal(configBytes, &config)
+	config, err := h.openConnJSON(configBytes)
+	if err != nil {
+		log.Error().Err(err).Str("connection_id", connectionID).Msg("mqtt-verbindung: kennwort nicht lesbar")
+		return
+	}
 
 	h.mqttBrokers.UnsubscribeAllTopics(connectionID)
 	h.mqttImport.Stop(connectionID)
@@ -226,8 +229,11 @@ func (h *Handler) StartEnabledMqttBrokers(ctx context.Context) {
 			log.Error().Err(err).Msg("integrierte mqtt-broker: zeile konnte nicht gelesen werden")
 			continue
 		}
-		config := map[string]string{}
-		_ = json.Unmarshal(configBytes, &config)
+		config, err := h.openConnJSON(configBytes)
+		if err != nil {
+			log.Error().Err(err).Str("connection_id", id).Msg("verbindung übersprungen: kennwort nicht lesbar")
+			continue
+		}
 		if config["broker_mode"] != "integrated" {
 			continue
 		}
@@ -280,7 +286,6 @@ type MqttBrokerPageData struct {
 	TLSEnabled     bool
 	AllowAnonymous bool
 	BrokerUsername string
-	BrokerPassword string
 	TopicFilter    string
 	QoS            string
 	RetainEnabled  bool
@@ -301,8 +306,11 @@ func (h *Handler) MqttBrokerPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Verbindung nicht gefunden", http.StatusNotFound)
 		return
 	}
-	config := map[string]string{}
-	_ = json.Unmarshal(configBytes, &config)
+	config, err := h.openConnJSON(configBytes)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 
 	data := MqttBrokerPageData{
 		BaseData:       h.baseData(r, "import", "Broker-Status", name),
@@ -324,7 +332,6 @@ func (h *Handler) MqttBrokerPage(w http.ResponseWriter, r *http.Request) {
 		data.TLSEnabled = strings.TrimSpace(config["int_tls_cert_path"]) != "" && strings.TrimSpace(config["int_tls_key_path"]) != ""
 		data.AllowAnonymous = config["int_allow_anonymous"] == "true"
 		data.BrokerUsername = config["int_broker_username"]
-		data.BrokerPassword = config["int_broker_password"]
 		data.TopicFilter = config["int_topic_filter"]
 		data.QoS = config["int_qos"]
 		data.RetainEnabled = config["int_retain_enabled"] == "true"

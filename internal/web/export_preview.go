@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/binary"
 	"encoding/csv"
-	"encoding/json"
 	"fmt"
 	"math"
 	"net/http"
@@ -138,8 +137,11 @@ func (h *Handler) ExportPreviewPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Verbindung nicht gefunden", http.StatusNotFound)
 		return
 	}
-	config := map[string]string{}
-	_ = json.Unmarshal(configBytes, &config)
+	config, err := h.openConnJSON(configBytes)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 
 	data := ExportPreviewPageData{
 		BaseData:         h.baseData(r, "export", "Export-Vorschau", name),
@@ -200,8 +202,10 @@ func (h *Handler) runExport(ctx context.Context, id string) (int, string, error)
 		Scan(&kind, &configBytes); err != nil || !exportableKind(kind) {
 		return 0, "", fmt.Errorf("Verbindung nicht gefunden")
 	}
-	config := map[string]string{}
-	_ = json.Unmarshal(configBytes, &config)
+	config, err := h.openConnJSON(configBytes)
+	if err != nil {
+		return 0, "", err
+	}
 
 	mappings, err := h.exportMappings(ctx, id)
 	if err != nil {
@@ -299,8 +303,11 @@ func (h *Handler) StartEnabledExportSchedules(ctx context.Context) {
 		if err := rows.Scan(&id, &configBytes); err != nil {
 			continue
 		}
-		config := map[string]string{}
-		_ = json.Unmarshal(configBytes, &config)
+		config, err := h.openConnJSON(configBytes)
+		if err != nil {
+			log.Error().Err(err).Str("connection_id", id).Msg("verbindung übersprungen: kennwort nicht lesbar")
+			continue
+		}
 		items = append(items, pending{id: id, config: config})
 	}
 	rows.Close()

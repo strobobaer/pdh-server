@@ -57,8 +57,10 @@ func (h *Handler) mqttConnectionConfig(ctx context.Context, id string) (string, 
 	if kind != "mqtt" {
 		return "", nil, fmt.Errorf("keine MQTT-Verbindung")
 	}
-	config := map[string]string{}
-	_ = json.Unmarshal(configBytes, &config)
+	config, err := h.openConnJSON(configBytes)
+	if err != nil {
+		return "", nil, err
+	}
 	return name, config, nil
 }
 

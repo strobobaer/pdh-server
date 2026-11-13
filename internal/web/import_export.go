@@ -27,6 +27,9 @@ func (h *Handler) canConnectionRead(r *http.Request, direction string) bool {
 }
 
 func (h *Handler) canConnectionWrite(r *http.Request, direction string) bool {
+	if h.rbac == nil { // nur in Tests mit hasPermHook
+		return h.hasPermHook != nil && h.hasPerm(r, direction+".write")
+	}
 	u := getUser(r)
 	return h.rbac.HasPermissionForUser(u.ID, string(u.Role), direction+".write")
 }
@@ -174,12 +177,16 @@ func (h *Handler) importExportConnections(ctx context.Context, direction string)
 			return nil, err
 		}
 		v.KindLabel = connectionKindLabel(direction, v.Kind)
-		v.ConfigJSON = string(configBytes)
-		if v.Kind == "mqtt" {
-			var config map[string]string
-			if json.Unmarshal(configBytes, &config) == nil {
+		// Kennwörter und verschlüsselte Felder gehen nie in den Browser
+		var config map[string]string
+		if json.Unmarshal(configBytes, &config) == nil {
+			pub, _ := json.Marshal(publicConnConfig(config))
+			v.ConfigJSON = string(pub)
+			if v.Kind == "mqtt" {
 				v.IsIntegratedBroker = config["broker_mode"] == "integrated"
 			}
+		} else {
+			v.ConfigJSON = "{}"
 		}
 		list = append(list, v)
 	}
@@ -306,7 +313,12 @@ func (h *Handler) createConnection(w http.ResponseWriter, r *http.Request, direc
 		http.Redirect(w, r, base+"?notice="+url.QueryEscape(err.Error()), http.StatusSeeOther)
 		return
 	}
-	configJSON, err := json.Marshal(config)
+	sealed, err := sealConnConfig(h.connKey(), config)
+	if err != nil {
+		http.Error(w, "Kennwort konnte nicht verschlüsselt werden", http.StatusInternalServerError)
+		return
+	}
+	configJSON, err := json.Marshal(sealed)
 	if err != nil {
 		http.Error(w, "Konfiguration ungültig", http.StatusInternalServerError)
 		return
@@ -340,8 +352,9 @@ func (h *Handler) editConnection(w http.ResponseWriter, r *http.Request, directi
 	id := chi.URLParam(r, "id")
 	var kind string
 	var enabled bool
+	var storedBytes []byte
 	if err := h.db.QueryRow(r.Context(),
-		`SELECT kind, enabled FROM import_export_connections WHERE id=$1 AND direction=$2`, id, direction).Scan(&kind, &enabled); err != nil {
+		`SELECT kind, enabled, config FROM import_export_connections WHERE id=$1 AND direction=$2`, id, direction).Scan(&kind, &enabled, &storedBytes); err != nil {
 		http.Error(w, "Verbindung nicht gefunden", http.StatusNotFound)
 		return
 	}
@@ -364,7 +377,16 @@ func (h *Handler) editConnection(w http.ResponseWriter, r *http.Request, directi
 		http.Redirect(w, r, base+"?notice="+url.QueryEscape(err.Error()), http.StatusSeeOther)
 		return
 	}
-	configJSON, err := json.Marshal(config)
+	// Leeres Geheimfeld im Formular = gespeicherten Wert behalten
+	stored := map[string]string{}
+	_ = json.Unmarshal(storedBytes, &stored)
+	config = keepStoredSecrets(config, stored, fields)
+	sealed, err := sealConnConfig(h.connKey(), config)
+	if err != nil {
+		http.Error(w, "Kennwort konnte nicht verschlüsselt werden", http.StatusInternalServerError)
+		return
+	}
+	configJSON, err := json.Marshal(sealed)
 	if err != nil {
 		http.Error(w, "Konfiguration ungültig", http.StatusInternalServerError)
 		return
@@ -376,9 +398,15 @@ func (h *Handler) editConnection(w http.ResponseWriter, r *http.Request, directi
 		http.Error(w, "Verbindung konnte nicht gespeichert werden", http.StatusInternalServerError)
 		return
 	}
-	h.reconcileMqttBroker(id, direction, kind, enabled, config)
-	h.reconcileExportSchedule(id, direction, enabled, config)
-	h.reconcileImportPoll(id, direction, kind, enabled, config)
+	// Dienste brauchen die Zugangsdaten im Klartext (nur im Speicher)
+	plain, perr := openConnConfig(h.connKey(), sealed)
+	if perr != nil {
+		http.Redirect(w, r, base+"?notice="+url.QueryEscape(perr.Error()), http.StatusSeeOther)
+		return
+	}
+	h.reconcileMqttBroker(id, direction, kind, enabled, plain)
+	h.reconcileExportSchedule(id, direction, enabled, plain)
+	h.reconcileImportPoll(id, direction, kind, enabled, plain)
 	if direction == "import" {
 		h.reconcileQueryPolls(r.Context(), id)
 	}
@@ -429,8 +457,11 @@ func (h *Handler) toggleConnection(w http.ResponseWriter, r *http.Request, direc
 		http.Error(w, "Verbindung konnte nicht geändert werden", http.StatusInternalServerError)
 		return
 	}
-	config := map[string]string{}
-	_ = json.Unmarshal(configBytes, &config)
+	config, err := h.openConnJSON(configBytes)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusConflict)
+		return
+	}
 	h.reconcileMqttBroker(id, direction, kind, enabled, config)
 	h.reconcileExportSchedule(id, direction, enabled, config)
 	h.reconcileImportPoll(id, direction, kind, enabled, config)

@@ -198,8 +198,11 @@ func (h *Handler) ImportResponsePage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Verbindung nicht gefunden", http.StatusNotFound)
 		return
 	}
-	config := map[string]string{}
-	_ = json.Unmarshal(configBytes, &config)
+	config, err := h.openConnJSON(configBytes)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 
 	data := ImportResponsePageData{
 		BaseData:       h.baseData(r, "import", "API-Vorschau", name),
@@ -277,8 +280,10 @@ func (h *Handler) runImportPoll(ctx context.Context, id string) (updated, total 
 		Scan(&kind, &configBytes); err != nil || !webBrowsableKind(kind) {
 		return 0, 0, fmt.Errorf("Verbindung nicht gefunden")
 	}
-	config := map[string]string{}
-	_ = json.Unmarshal(configBytes, &config)
+	config, err := h.openConnJSON(configBytes)
+	if err != nil {
+		return 0, 0, err
+	}
 
 	body, _, err := fetchImportResponse(kind, config)
 	if err != nil {
@@ -363,8 +368,11 @@ func (h *Handler) StartEnabledImportPolls(ctx context.Context) {
 		if err := rows.Scan(&id, &kind, &configBytes); err != nil {
 			continue
 		}
-		config := map[string]string{}
-		_ = json.Unmarshal(configBytes, &config)
+		config, err := h.openConnJSON(configBytes)
+		if err != nil {
+			log.Error().Err(err).Str("connection_id", id).Msg("verbindung übersprungen: kennwort nicht lesbar")
+			continue
+		}
 		items = append(items, pending{id: id, kind: kind, config: config})
 	}
 	rows.Close()
