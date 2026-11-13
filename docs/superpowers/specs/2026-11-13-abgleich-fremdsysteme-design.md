@@ -364,8 +364,10 @@ ist das **je Profil einstellbar**:
 - Reine Datumsspalten ohne Uhrzeit sind Kalendertage und werden nicht
   umgerechnet.
 - Bei der Umstellung auf Sommer- oder Winterzeit gibt es Uhrzeiten doppelt
-  oder gar nicht; der Abgleich nimmt dann die frühere bzw. die nächste
-  gültige Zeit. Das steht im Handbuch.
+  oder gar nicht. Eine doppelte Uhrzeit (Herbst) gilt als die spätere der
+  beiden; eine Uhrzeit, die es nicht gibt (Frühjahr), rückt um die
+  ausgefallene Stunde nach hinten (02:30 wird 03:30). Das ist durch Tests
+  festgeschrieben und steht im Handbuch.
 - Eine Änderung der Einstellung setzt das Profil auf `entwurf`, weil sich
   damit Zeitwerte verschieben. Das Cockpit zeigt beim Auswählen eine
   Beispielzeile mit der gelesenen und der umgerechneten Zeit.
