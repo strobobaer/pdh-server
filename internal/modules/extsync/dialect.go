@@ -108,7 +108,13 @@ var ErrInsertIntoSource = errors.New("in die Meldungstabelle wird nichts eingef�
 //   - Der Schlüssel muss eindeutig sein (Primärschlüssel oder eindeutiger
 //     Index, siehe KeyIsUnique); sonst lehnen UpdateRow und SelectOne ab.
 //   - Cursor sind undurchsichtiger Text. Ihn erzeugt allein NextCursor aus der
-//     letzten Zeile einer Seite; Aufrufer lesen oder bauen ihn nie selbst.
+//     letzten Zeile einer Seite; Aufrufer lesen oder bauen ihn nie selbst. Auch
+//     ohne Änderungsspalte (none) gibt es einen Cursor: er hält die Schlüssel der
+//     letzten Zeile, damit sich die ganze Tabelle in Schlüsselfolge durchlesen lässt.
+//   - Zeitstempel-Spalten (Art timestamp) dürfen datetime, datetime2,
+//     smalldatetime oder date sein. Sie werden als genauer datetime2-Wert gelesen
+//     und mit einem Parameter des eigenen Spaltentyps verglichen. Zeilen ohne
+//     Änderungszeit (NULL) werden nicht gelesen.
 //   - Zeiten sind UTC: Parameter werden in UTC umgerechnet, gelesene Zeiten
 //     gelten als UTC.
 type Dialect interface {

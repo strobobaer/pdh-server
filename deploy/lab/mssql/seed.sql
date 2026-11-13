@@ -59,6 +59,18 @@ INSERT INTO dbo.MeldungenGuid (Id, Werk, Titel, Zustand) VALUES
  (NEWID(), N'W1', N'Sensor defekt', N'offen'),
  (NEWID(), N'W2', N'Filter wechseln', N'offen');
 GO
+IF OBJECT_ID('dbo.MeldungenAlt') IS NULL
+CREATE TABLE dbo.MeldungenAlt (
+  Nr INT NOT NULL PRIMARY KEY,
+  Titel NVARCHAR(200) NOT NULL,
+  Geaendert DATETIME NULL
+);
+GO
+IF NOT EXISTS (SELECT 1 FROM dbo.MeldungenAlt)
+INSERT INTO dbo.MeldungenAlt (Nr, Titel, Geaendert) VALUES
+ (1, N'Alt 1', NULL), (2, N'Alt 2', NULL), (3, N'Alt 3', NULL), (4, N'Alt 4', NULL), (5, N'Alt 5', NULL),
+ (6, N'Alt 6', NULL), (7, N'Alt 7', NULL), (8, N'Alt 8', NULL), (9, N'Alt 9', NULL), (10, N'Alt 10', NULL);
+GO
 IF SUSER_ID('pdh_sync') IS NULL
   CREATE LOGIN pdh_sync WITH PASSWORD = 'Lab-Sync-Kennwort-2026!', CHECK_POLICY = OFF;
 GO
@@ -69,5 +81,7 @@ GRANT SELECT ON dbo.MeldungKommentare TO pdh_sync;
 GRANT SELECT ON dbo.MeldungenGuid TO pdh_sync;
 GRANT UPDATE ON dbo.Meldungen TO pdh_sync;
 GRANT UPDATE ON dbo.MeldungenGuid TO pdh_sync;
+GRANT SELECT ON dbo.MeldungenAlt TO pdh_sync;
+GRANT UPDATE ON dbo.MeldungenAlt TO pdh_sync;
 GRANT INSERT ON dbo.MeldungKommentare TO pdh_sync;
 GO

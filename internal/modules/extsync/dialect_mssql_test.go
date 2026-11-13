@@ -265,8 +265,20 @@ func TestNextCursor(t *testing.T) {
 	if c != `{"t":"2026-11-13T11:00:00.1234567Z","k":["5"]}` {
 		t.Fatalf("c = %q", c)
 	}
-	if c, err := d.NextCursor(meldungenInfo(), []string{"MeldungNr"}, "", "none", nil); err != nil || c != "" {
+	if c, err := d.NextCursor(meldungenInfo(), []string{"MeldungNr"}, "", "none", map[string]any{"MeldungNr": int64(9)}); err != nil || c != `{"k":["9"]}` {
 		t.Fatalf("none: %q %v", c, err)
+	}
+	if _, err := d.NextCursor(meldungenInfo(), []string{"MeldungNr"}, "", "none", nil); err == nil {
+		t.Error("none ohne Schlüsselwert muss scheitern")
+	}
+	// Nicht unterstützte Typen als Zeitstempel (auch hier, nicht erst beim Lesen).
+	ti := meldungenInfo()
+	ti.Columns = append(ti.Columns, Column{Name: "Off", Type: "datetimeoffset"}, Column{Name: "Txt", Type: "nvarchar"})
+	for _, col := range []string{"Off", "Txt", "RV"} {
+		_, err := d.NextCursor(ti, []string{"MeldungNr"}, col, "timestamp", map[string]any{col: tm, "MeldungNr": int64(1)})
+		if err == nil {
+			t.Errorf("Spalte %s darf kein Zeitstempel sein", col)
+		}
 	}
 	for _, row := range []map[string]any{{}, {"RV": []byte{1}}, {"RV": "x"}} {
 		if _, err := d.NextCursor(meldungenInfo(), []string{"MeldungNr"}, "RV", "rowversion", row); err == nil {
@@ -448,7 +460,7 @@ func TestSelectRowsShapes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want = "SELECT TOP (50) [MeldungNr], [Titel], [Geaendert] FROM [dbo].[Meldungen] AS [t] WHERE ([Geaendert] > CAST(@p1 AS datetime2(7)) OR ([Geaendert] = CAST(@p1 AS datetime2(7)) AND [MeldungNr] > @p2)) AND [Geaendert] >= DATEADD(day, -30, SYSUTCDATETIME()) ORDER BY [t].[Geaendert], [t].[MeldungNr]"
+	want = "SELECT TOP (50) [MeldungNr], [Titel], CONVERT(datetime2(7), [Geaendert]) AS [Geaendert] FROM [dbo].[Meldungen] AS [t] WHERE [Geaendert] IS NOT NULL AND ([Geaendert] > CAST(@p1 AS datetime2(7)) OR ([Geaendert] = CAST(@p1 AS datetime2(7)) AND [MeldungNr] > @p2)) AND [Geaendert] >= DATEADD(day, -30, SYSUTCDATETIME()) ORDER BY [t].[Geaendert], [t].[MeldungNr]"
 	if st.SQL != want {
 		t.Fatalf("SQL = %q\nerwartet %q", st.SQL, want)
 	}
@@ -467,7 +479,7 @@ func TestSelectRowsShapes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want = "SELECT TOP (5) LOWER(CONVERT(nvarchar(36), [Id])) AS [Id], [Werk], [Titel], [Geaendert] FROM [dbo].[MeldungenGuid] AS [t] WHERE ([Geaendert] > CAST(@p1 AS datetime2(7)) OR ([Geaendert] = CAST(@p1 AS datetime2(7)) AND ([Id] > @p2 OR ([Id] = @p2 AND [Werk] > @p3)))) ORDER BY [t].[Geaendert], [t].[Id], [t].[Werk]"
+	want = "SELECT TOP (5) LOWER(CONVERT(nvarchar(36), [Id])) AS [Id], [Werk], [Titel], CONVERT(datetime2(7), [Geaendert]) AS [Geaendert] FROM [dbo].[MeldungenGuid] AS [t] WHERE [Geaendert] IS NOT NULL AND ([Geaendert] > CAST(@p1 AS datetime2(7)) OR ([Geaendert] = CAST(@p1 AS datetime2(7)) AND ([Id] > @p2 OR ([Id] = @p2 AND [Werk] > @p3)))) ORDER BY [t].[Geaendert], [t].[Id], [t].[Werk]"
 	if st.SQL != want {
 		t.Fatalf("SQL = %q\nerwartet %q", st.SQL, want)
 	}
@@ -477,8 +489,22 @@ func TestSelectRowsShapes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if st.SQL != "SELECT TOP (5) [MeldungNr], [Titel], [Geaendert] FROM [dbo].[Meldungen] AS [t] ORDER BY [t].[Geaendert], [t].[MeldungNr]" {
+	if st.SQL != "SELECT TOP (5) [MeldungNr], [Titel], CONVERT(datetime2(7), [Geaendert]) AS [Geaendert] FROM [dbo].[Meldungen] AS [t] WHERE [Geaendert] IS NOT NULL ORDER BY [t].[Geaendert], [t].[MeldungNr]" {
 		t.Fatalf("SQL = %q", st.SQL)
+	}
+
+	// timestamp auf datetime / smalldatetime / date: Parameter im EIGENEN Typ der Spalte
+	for typ, cast := range map[string]string{"datetime": "datetime", "smalldatetime": "smalldatetime", "date": "date", "datetime2": "datetime2(7)"} {
+		ti2 := meldungenInfo()
+		ti2.Columns[6].Type = typ
+		st, err = d.SelectRows(ti2, []string{"Titel"}, []string{"MeldungNr"}, "Geaendert", "timestamp", cur, "", 0, 5)
+		if err != nil {
+			t.Fatalf("%s: %v", typ, err)
+		}
+		if !strings.Contains(st.SQL, "[Geaendert] > CAST(@p1 AS "+cast+") OR ([Geaendert] = CAST(@p1 AS "+cast+")") ||
+			!strings.Contains(st.SQL, "CONVERT(datetime2(7), [Geaendert]) AS [Geaendert]") {
+			t.Fatalf("%s: SQL = %q", typ, st.SQL)
+		}
 	}
 
 	// none
@@ -489,6 +515,22 @@ func TestSelectRowsShapes(t *testing.T) {
 	if st.SQL != "SELECT TOP (5) [MeldungNr], [Titel], [Zustand] FROM [dbo].[Meldungen] AS [t] ORDER BY [t].[MeldungNr]" {
 		t.Fatalf("SQL = %q", st.SQL)
 	}
+
+	// none mit Schlüsselcursor
+	st, err = d.SelectRows(ti, []string{"Titel"}, []string{"MeldungNr"}, "", "none", `{"k":["4"]}`, "", 0, 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.SQL != "SELECT TOP (5) [MeldungNr], [Titel] FROM [dbo].[Meldungen] AS [t] WHERE [MeldungNr] > @p1 ORDER BY [t].[MeldungNr]" || !reflect.DeepEqual(st.Args, []any{"4"}) {
+		t.Fatalf("SQL = %q Args = %#v", st.SQL, st.Args)
+	}
+	st, err = d.SelectRows(guidInfo(), []string{"Titel"}, []string{"Id", "Werk"}, "", "none", `{"k":["abc","W1"]}`, "", 0, 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.SQL != "SELECT TOP (5) LOWER(CONVERT(nvarchar(36), [Id])) AS [Id], [Werk], [Titel] FROM [dbo].[MeldungenGuid] AS [t] WHERE ([Id] > @p1 OR ([Id] = @p1 AND [Werk] > @p2)) ORDER BY [t].[Id], [t].[Werk]" {
+		t.Fatalf("SQL = %q", st.SQL)
+	}
 }
 
 func TestSelectRowsRejects(t *testing.T) {
@@ -496,6 +538,7 @@ func TestSelectRowsRejects(t *testing.T) {
 	ti := meldungenInfo()
 	k := []string{"MeldungNr"}
 	c := []string{"Titel"}
+	ti.Columns = append(ti.Columns, Column{Name: "Off", Type: "datetimeoffset"})
 	goodTS := `{"t":"2026-11-13T10:00:00Z","k":["1"]}`
 	type tc struct {
 		name                   string
@@ -517,6 +560,10 @@ func TestSelectRowsRejects(t *testing.T) {
 		{"rowversion auf normaler Spalte", c, k, "Titel", "rowversion", "", "", 0, 10},
 		{"unbekannte Art", c, k, "Geaendert", "magic", "", "", 0, 10},
 		{"Cursor bei none", c, k, "", "none", "irgendwas", "", 0, 10},
+		{"Cursor bei none, falsche Schlüsselzahl", c, k, "", "none", `{"k":["1","2"]}`, "", 0, 10},
+		{"Cursor bei none, fremdes Feld", c, k, "", "none", `{"k":["1"],"t":"x"}`, "", 0, 10},
+		{"Zeitstempel auf Text", c, k, "Titel", "timestamp", "", "", 0, 10},
+		{"Zeitstempel auf datetimeoffset", c, k, "Off", "timestamp", "", "", 0, 10},
 		{"Cursor kein Hex", c, k, "RV", "rowversion", "zz'; DROP", "", 0, 10},
 		{"Cursor keine Zeit", c, k, "Geaendert", "timestamp", "gestern", "", 0, 10},
 		{"Cursor alter Aufbau (nur Zeit)", c, k, "Geaendert", "timestamp", "2026-11-13T10:00:00Z", "", 0, 10},
@@ -663,6 +710,9 @@ func TestNoDestructiveStatementPossible(t *testing.T) {
 			{Name: "RV]; DROP", Type: "timestamp", IsRowVersion: true},
 			{Name: "Zeit]; DELETE FROM q; --", Type: "datetime2", Nullable: true},
 			{Name: "Guid]; EXEC", Type: "uniqueidentifier", Nullable: true},
+			{Name: "DT]; DROP", Type: "datetime", Nullable: true},
+			{Name: "SD]; DELETE", Type: "smalldatetime", Nullable: true},
+			{Name: "D]; EXEC", Type: "date", Nullable: true},
 		},
 	}
 	child := &TableInfo{
@@ -752,7 +802,7 @@ func TestNoDestructiveStatementPossible(t *testing.T) {
 			switch {
 			case c.IsRowVersion:
 				row[c.Name] = []byte{0, 0, 0, 0, 0, 0, byte(rng.Intn(256)), byte(rng.Intn(256))}
-			case strings.HasPrefix(c.Type, "datetime"):
+			case isTimeType(c.Type):
 				row[c.Name] = time.Unix(int64(rng.Intn(1e9)), int64(rng.Intn(1e9))).In(time.FixedZone("q", 3600))
 			case c.Type == "uniqueidentifier":
 				row[c.Name] = "ABCDEF01-0000-0000-0000-000000000001"
@@ -775,7 +825,7 @@ func TestNoDestructiveStatementPossible(t *testing.T) {
 			if c.IsRowVersion && rng.Intn(2) == 0 {
 				chCol, chKind = c.Name, "rowversion"
 			}
-			if strings.HasPrefix(c.Type, "datetime") && rng.Intn(2) == 0 {
+			if isTimeType(c.Type) && rng.Intn(2) == 0 {
 				chCol, chKind = c.Name, "timestamp"
 			}
 		}
@@ -797,8 +847,34 @@ func TestNoDestructiveStatementPossible(t *testing.T) {
 				t.Fatalf("gültige Abfrage scheitert: %v (%s, %s)", err, chCol, chKind)
 			}
 			run("select-cursor-"+chKind, st, err, ti, nil, names)
-			if err == nil && chKind == "timestamp" && cur != "" && len(st.Args) < 2 {
-				t.Fatalf("Cursor fehlt in Args: %#v", st.Args)
+			if err == nil && chKind == "timestamp" {
+				col, _ := findColumn(ti, chCol)
+				cast, _ := tsCast(col.Type)
+				if !strings.Contains(st.SQL, "] IS NOT NULL") || !strings.Contains(st.SQL, "CONVERT(datetime2(7), ") {
+					t.Fatalf("IS NOT NULL oder genaues Lesen fehlt: %q", st.SQL)
+				}
+				if cur != "" {
+					if len(st.Args) < 2 || !strings.Contains(st.SQL, " AS "+cast+")") {
+						t.Fatalf("Cursor oder Parametertyp %s fehlt: %q %#v", cast, st.SQL, st.Args)
+					}
+				}
+			}
+		}
+
+		// Schlüsselcursor ohne Änderungsspalte (none).
+		if curN, cerr := d.NextCursor(ti, keys, "", "none", row); cerr != nil {
+			t.Fatalf("NextCursor none: %v", cerr)
+		} else {
+			if rng.Intn(4) == 0 {
+				curN = ""
+			}
+			st, err = d.SelectRows(ti, realCols(), keys, "", "none", curN, "", 0, 1+rng.Intn(50))
+			if err != nil {
+				t.Fatalf("gültige none-Abfrage scheitert: %v", err)
+			}
+			run("select-cursor-none", st, err, ti, nil, names)
+			if curN != "" && len(st.Args) != len(keys) {
+				t.Fatalf("Schlüsselcursor fehlt in Args: %#v", st.Args)
 			}
 		}
 
@@ -887,7 +963,7 @@ func TestNoDestructiveStatementPossible(t *testing.T) {
 	if total < 200 {
 		t.Fatalf("nur %d Kombinationen", total)
 	}
-	for _, k := range []string{"select-cursor-rowversion", "select-cursor-timestamp", "selectone", "update", "insert", "selectone-hostile"} {
+	for _, k := range []string{"select-cursor-rowversion", "select-cursor-timestamp", "select-cursor-none", "selectone", "update", "insert", "selectone-hostile"} {
 		if byKind[k] < 20 {
 			t.Fatalf("Pfad %s nur %d-mal erzeugt, Test ist zu schwach (%v)", k, byKind[k], byKind)
 		}
@@ -921,4 +997,10 @@ func TestNoDestructiveStatementPossible(t *testing.T) {
 	if err := ValidateFilter("1=1; DELETE FROM x"); err == nil {
 		t.Fatal("Filter mit DELETE muss scheitern")
 	}
+}
+
+// isTimeType: Typen, die als Zeitstempel-Änderungsspalte erlaubt sind.
+func isTimeType(typ string) bool {
+	_, ok := tsCast(typ)
+	return ok
 }

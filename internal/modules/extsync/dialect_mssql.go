@@ -282,7 +282,7 @@ func (*mssqlDialect) Describe(ctx context.Context, db *sql.DB, schema, table str
 // selectList bildet die Spaltenliste: Schlüssel zuerst, dann die übrigen
 // sortiert, zuletzt die Änderungsspalte. GUID-Spalten gehen als kleingeschriebener
 // Text hinaus, damit der Treiber sie nicht in gemischter Byte-Reihenfolge liefert.
-func (d *mssqlDialect) selectList(t *TableInfo, cols, keyCols []string, changeCol string) (string, error) {
+func (d *mssqlDialect) selectList(t *TableInfo, cols, keyCols []string, changeCol string, tsChange bool) (string, error) {
 	keys, err := requireColumns(t, keyCols, "Schlüssel")
 	if err != nil {
 		return "", err
@@ -301,6 +301,9 @@ func (d *mssqlDialect) selectList(t *TableInfo, cols, keyCols []string, changeCo
 		c, _ := findColumn(t, n)
 		if isGUID(c) {
 			list = append(list, "LOWER(CONVERT(nvarchar(36), "+d.Quote(n)+")) AS "+d.Quote(n))
+		} else if tsChange && n == changeCol {
+			// Den genauen gespeicherten Wert lesen (datetime ist sonst auf Millisekunden gerundet).
+			list = append(list, "CONVERT(datetime2(7), "+d.Quote(n)+") AS "+d.Quote(n))
 		} else {
 			list = append(list, d.Quote(n))
 		}
@@ -326,6 +329,40 @@ type tsCursor struct {
 	K []string `json:"k"`
 }
 
+// keyCursor ist der Cursor ohne Änderungsspalte (Art none): nur die Schlüsselwerte.
+type keyCursor struct {
+	K []string `json:"k"`
+}
+
+// tsCast liefert den festen CAST-Text für den Vergleich einer Zeitstempel-Spalte
+// mit dem Cursor-Parameter: immer der EIGENE Typ der Spalte, damit der Vergleich
+// genau ist und der Index nutzbar bleibt. Nur diese Festtexte, nie aus dem Katalog.
+func tsCast(colType string) (string, bool) {
+	switch strings.ToLower(colType) {
+	case "datetime":
+		return "datetime", true
+	case "datetime2":
+		return "datetime2(7)", true
+	case "smalldatetime":
+		return "smalldatetime", true
+	case "date":
+		return "date", true
+	}
+	return "", false
+}
+
+// requireTimestampColumn: Typ der Änderungsspalte im Zeitstempel-Modus.
+func requireTimestampColumn(c *Column) (string, error) {
+	if c.IsRowVersion {
+		return "", fmt.Errorf("Spalte %q ist eine rowversion, kein Zeitstempel", c.Name)
+	}
+	cast, ok := tsCast(c.Type)
+	if !ok {
+		return "", fmt.Errorf("Änderungsspalte vom Typ %s wird als Zeitstempel nicht unterstützt", c.Type)
+	}
+	return cast, nil
+}
+
 // NextCursor bildet den Cursor für die letzte Zeile einer Seite.
 func (d *mssqlDialect) NextCursor(t *TableInfo, keyCols []string, changeCol, changeKind string, lastRow map[string]any) (string, error) {
 	if t == nil {
@@ -333,7 +370,12 @@ func (d *mssqlDialect) NextCursor(t *TableInfo, keyCols []string, changeCol, cha
 	}
 	switch changeKind {
 	case changeKindNone, "":
-		return "", nil
+		kv, err := d.KeyValues(t, keyCols, lastRow)
+		if err != nil {
+			return "", err
+		}
+		b, err := json.Marshal(keyCursor{K: kv})
+		return string(b), err
 	case changeKindRowVersion:
 		c, ok := findColumn(t, changeCol)
 		if !ok || !c.IsRowVersion {
@@ -346,8 +388,11 @@ func (d *mssqlDialect) NextCursor(t *TableInfo, keyCols []string, changeCol, cha
 		return hex.EncodeToString(b), nil
 	case changeKindTimestamp:
 		c, ok := findColumn(t, changeCol)
-		if !ok || c.IsRowVersion {
-			return "", fmt.Errorf("Änderungsspalte %q ist keine Zeitstempel-Spalte", changeCol)
+		if !ok {
+			return "", fmt.Errorf("Änderungsspalte %q gibt es nicht", changeCol)
+		}
+		if _, err := requireTimestampColumn(c); err != nil {
+			return "", err
 		}
 		tm, ok := lastRow[changeCol].(time.Time)
 		if !ok {
@@ -450,7 +495,17 @@ func (d *mssqlDialect) SelectRows(t *TableInfo, cols, keyCols []string, changeCo
 	switch changeKind {
 	case changeKindNone, "":
 		if cursor != "" {
-			return Stmt{}, errors.New("ohne Änderungsspalte gibt es keinen Stand")
+			var cur keyCursor
+			dec := json.NewDecoder(strings.NewReader(cursor))
+			dec.DisallowUnknownFields()
+			if err := dec.Decode(&cur); err != nil || len(cur.K) != len(keyCols) {
+				return Stmt{}, errors.New("Stand der Schlüsselfolge ist ungültig")
+			}
+			first := len(args) + 1
+			for _, kv := range cur.K {
+				args = append(args, kv)
+			}
+			conds = append(conds, d.keysetCondition(keyCols, first))
 		}
 		orderBy = strings.Join(ordKeys, ", ")
 	case changeKindRowVersion, changeKindTimestamp:
@@ -477,9 +532,12 @@ func (d *mssqlDialect) SelectRows(t *TableInfo, cols, keyCols []string, changeCo
 			conds = append(conds, q+" < MIN_ACTIVE_ROWVERSION()")
 			orderBy = qt
 		} else {
-			if c.IsRowVersion {
-				return Stmt{}, fmt.Errorf("Spalte %q ist eine rowversion, kein Zeitstempel", changeCol)
+			cast, err := requireTimestampColumn(c)
+			if err != nil {
+				return Stmt{}, err
 			}
+			// Zeilen ohne Änderungszeit werden nicht abgeglichen (und blockieren den Cursor nicht).
+			conds = append(conds, q+" IS NOT NULL")
 			if cursor != "" {
 				var cur tsCursor
 				dec := json.NewDecoder(strings.NewReader(cursor))
@@ -493,7 +551,7 @@ func (d *mssqlDialect) SelectRows(t *TableInfo, cols, keyCols []string, changeCo
 				}
 				tm = tm.UTC()
 				args = append(args, tm)
-				tp := placeholder(len(args), tm)
+				tp := "CAST(@p" + strconv.Itoa(len(args)) + " AS " + cast + ")"
 				first := len(args) + 1
 				for _, kv := range cur.K {
 					args = append(args, kv)
@@ -508,7 +566,7 @@ func (d *mssqlDialect) SelectRows(t *TableInfo, cols, keyCols []string, changeCo
 	default:
 		return Stmt{}, fmt.Errorf("unbekannte Art der Änderungserkennung %q", changeKind)
 	}
-	list, err := d.selectList(t, cols, keyCols, chg)
+	list, err := d.selectList(t, cols, keyCols, chg, changeKind == changeKindTimestamp)
 	if err != nil {
 		return Stmt{}, err
 	}
@@ -544,7 +602,7 @@ func (d *mssqlDialect) SelectOne(t *TableInfo, cols, keyCols, keyVals []string) 
 	if len(keyVals) != len(keyCols) {
 		return Stmt{}, errors.New("zu jeder Schlüsselspalte wird genau ein Wert gebraucht")
 	}
-	list, err := d.selectList(t, cols, keyCols, "")
+	list, err := d.selectList(t, cols, keyCols, "", false)
 	if err != nil {
 		return Stmt{}, err
 	}

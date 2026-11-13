@@ -48,6 +48,7 @@ Ohne diese Variablen werden die Integrationstests übersprungen.
 - `dbo.Meldungen` (5 Beispielzeilen, Auslöser `trg_Meldungen_Geaendert` setzt `Geaendert`)
 - `dbo.MeldungKommentare`
 - `dbo.MeldungenGuid` (2 Zeilen, Schlüssel `Id` + `Werk`)
+- `dbo.MeldungenAlt` (10 Zeilen, Spalte `Geaendert` vom Typ `DATETIME`, alle NULL; Testtabelle für Zeitstempel-Cursor mit Gleichstand, `pdh_sync` darf lesen und ändern)
 
 Die Anmeldung `pdh_sync` darf lesen (alle drei Tabellen), ändern (`Meldungen`,
 `MeldungenGuid`) und Kommentare anfügen. Löschen darf sie nichts. Die

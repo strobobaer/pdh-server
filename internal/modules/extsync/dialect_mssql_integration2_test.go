@@ -239,3 +239,142 @@ func TestTimeRoundTripLab(t *testing.T) {
 		}
 	}
 }
+
+// pageAll liest eine Tabelle seitenweise mit dem Cursor des Dialekts und liefert die Schlüssel in Lesereihenfolge.
+func pageAll(t *testing.T, q interface {
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+}, d Dialect, ti *TableInfo, keys []string, changeCol, kind string, limit int) []string {
+	t.Helper()
+	var out []string
+	cursor := ""
+	for pages := 0; ; pages++ {
+		if pages > 50 {
+			t.Fatal("Schleife ohne Ende")
+		}
+		st, err := d.SelectRows(ti, nil, keys, changeCol, kind, cursor, "", 0, limit)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rs, err := q.QueryContext(context.Background(), st.SQL, st.Args...)
+		if err != nil {
+			t.Fatalf("%s: %v", st.SQL, err)
+		}
+		rows := scanRows(t, rs)
+		if len(rows) == 0 {
+			return out
+		}
+		for _, r := range rows {
+			kv, err := d.KeyValues(ti, keys, r)
+			if err != nil {
+				t.Fatal(err)
+			}
+			out = append(out, strings.Join(kv, "|"))
+		}
+		cursor, err = d.NextCursor(ti, keys, changeCol, kind, rows[len(rows)-1])
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// datetime-Spalte mit Gleichstand auf .003/.007/.010 ms und NULL-Zeilen: jede Zeile genau einmal.
+func TestDatetimeTiesAndNullsLab(t *testing.T) {
+	db := openLab(t)
+	d := mustDialect(t)
+	ctx := context.Background()
+	ti, err := d.Describe(ctx, db, "dbo", "MeldungenAlt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c, _ := findColumn(ti, "Geaendert"); c == nil || c.Type != "datetime" || !c.Nullable {
+		t.Fatalf("Geaendert: %+v", c)
+	}
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	keys := []string{"Nr"}
+
+	// Nur NULL: nichts wird gelesen, nichts blockiert.
+	if got := pageAll(t, tx, d, ti, keys, "Geaendert", "timestamp", 2); len(got) != 0 {
+		t.Fatalf("NULL-Zeilen dürfen nicht gelesen werden: %v", got)
+	}
+
+	base := time.Date(2026, 11, 13, 8, 15, 30, 0, time.UTC)
+	set := func(nr string, ms int) {
+		up, err := d.UpdateRow(ti, keys, []string{nr}, map[string]any{"Geaendert": base.Add(time.Duration(ms) * time.Millisecond)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		res, err := tx.ExecContext(ctx, up.SQL, up.Args...)
+		if err != nil {
+			t.Fatalf("%s: %v", up.SQL, err)
+		}
+		if n, _ := res.RowsAffected(); n != 1 {
+			t.Fatalf("RowsAffected = %d", n)
+		}
+	}
+	for _, nr := range []string{"1", "2", "3", "4", "5"} { // fünf Zeilen mit .007
+		set(nr, 7)
+	}
+	set("6", 3)  // .003
+	set("7", 3)  // .003 (Gleichstand)
+	set("8", 10) // .010
+	// 9 und 10 bleiben NULL.
+
+	for _, limit := range []int{1, 2, 3, 4} {
+		got := pageAll(t, tx, d, ti, keys, "Geaendert", "timestamp", limit)
+		seen := map[string]bool{}
+		for _, k := range got {
+			if seen[k] {
+				t.Fatalf("limit %d: Zeile %s doppelt in %v", limit, k, got)
+			}
+			seen[k] = true
+		}
+		if len(got) != 8 || seen["9"] || seen["10"] {
+			t.Fatalf("limit %d: gelesen %v, erwartet die Zeilen 1 bis 8", limit, got)
+		}
+		// Reihenfolge: .003 (6,7), .007 (1..5), .010 (8)
+		if strings.Join(got, ",") != "6,7,1,2,3,4,5,8" {
+			t.Fatalf("limit %d: Reihenfolge %v", limit, got)
+		}
+	}
+}
+
+// Ohne Änderungsspalte: Schlüsselcursor liest die ganze Tabelle in Schlüsselfolge.
+func TestNoneKeyPagingLab(t *testing.T) {
+	db := openLab(t)
+	d := mustDialect(t)
+	ctx := context.Background()
+	for _, tc := range []struct {
+		table string
+		keys  []string
+	}{
+		{"Meldungen", []string{"MeldungNr"}},
+		{"MeldungenGuid", []string{"Id", "Werk"}},
+		{"MeldungenAlt", []string{"Nr"}},
+	} {
+		ti, err := d.Describe(ctx, db, "dbo", tc.table)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var want int
+		if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM dbo."+d.Quote(tc.table)).Scan(&want); err != nil {
+			t.Fatal(err)
+		}
+		for _, limit := range []int{1, 2, 3} {
+			got := pageAll(t, db, d, ti, tc.keys, "", "none", limit)
+			seen := map[string]bool{}
+			for _, k := range got {
+				if seen[k] {
+					t.Fatalf("%s limit %d: %s doppelt", tc.table, limit, k)
+				}
+				seen[k] = true
+			}
+			if len(got) != want {
+				t.Fatalf("%s limit %d: %d gelesen, erwartet %d", tc.table, limit, len(got), want)
+			}
+		}
+	}
+}
