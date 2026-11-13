@@ -32,7 +32,11 @@ import (
 //
 // Rückwirkende Meldungen (Spec 4.10):
 //   - Neu und rückwirkend ist eine Zeile, deren Anlagedatum (Profile.CreatedColumn)
-//     vor dem Beginn des heutigen Tages in Inbound.Location liegt (IsBackfill).
+//     vor dem festen Stichtag des Profils liegt (Profile.NotifyFrom, Tagesbeginn
+//     des ersten Scharfschaltens, R24; IsBackfill). Nie "vor heute": sonst würden
+//     echte neue Meldungen nach Mitternacht, nach einem Ausfall oder nach einem
+//     Anhalten still angelegt. Ohne Stichtag (Probelauf vor dem ersten
+//     Scharfschalten) gilt der heutige Tagesbeginn; gespeichert wird dabei nichts.
 //     Ohne Anlagedatum-Spalte, bei NULL oder unlesbarem Wert gilt sie als neu.
 //     Eine Datumsspalte ohne Uhrzeit gilt als Kalendertag am Ort des Servers.
 //   - Neue Zeilen benachrichtigen wie gewohnt und zählen für die Obergrenze
@@ -45,6 +49,14 @@ import (
 //     über BackfillLinks angelegt.
 //   - Ausgangswert, Vorabeintrag, Wiederholung und Endzustände gelten für
 //     rückwirkende Zeilen unverändert.
+//
+// Zeitzone des Fremdsystems (Spec 4.11, R26): Datums-/Zeitwerte des Anlagedatums
+// und der Spalten zugeordneter Zeitfelder werden beim Lesen mit
+// ForeignWallToInstant in den wirklichen Zeitpunkt umgerechnet, BEVOR ToPDH und
+// die Entscheidung "rückwirkend" sie sehen; seen_values halten damit den
+// wirklichen Zeitpunkt. Reine Datumsspalten bleiben Kalendertage. Werte, die als
+// Text ankommen, liest ToPDH unverändert (als UTC). Schlüssel, Cursor,
+// Änderungsspalte und Änderungsmarke nutzen immer die rohe Zeile.
 
 // ── Zugriff auf die Fremddatenbank ───────────────────────────────────────
 
@@ -135,6 +147,8 @@ type Inbound struct {
 	// Location ist der Ort des Servers für den Tagesbeginn (nil = time.Local).
 	Location *time.Location
 	pageSize int // 0 = defaultPageSize; Tests setzen kleinere Seiten
+	// dryCountCap ist nur für Tests: Zeilengrenze des Probelaufs (0 = dryCountLimit).
+	dryCountCap int
 	// afterLock ist nur für Tests: läuft, sobald die Sperre gehalten wird.
 	afterLock func()
 	// testFail ist nur für Tests: Fehler an benannten Schritten einschleusen
@@ -165,17 +179,35 @@ type Preview struct {
 	Archive  bool
 }
 
-// IsBackfill sagt, ob created vor dem Beginn des heutigen Tages (Tag von now in
-// loc) liegt. Die Nullzeit ist nie rückwirkend; loc nil = time.Local.
-func IsBackfill(created time.Time, now time.Time, loc *time.Location) bool {
+// DayStart liefert den Beginn des Tages von now am Ort loc (nil = time.Local),
+// auch an den Tagen der Zeitumstellung.
+func DayStart(now time.Time, loc *time.Location) time.Time {
+	if loc == nil {
+		loc = time.Local
+	}
+	n := now.In(loc)
+	return time.Date(n.Year(), n.Month(), n.Day(), 0, 0, 0, 0, loc)
+}
+
+// IsBackfill sagt, ob eine Meldung mit Anlagedatum created rückwirkend ist, d. h.
+// vor dem Stichtag cutoff liegt (Profile.NotifyFrom bzw. DayStart). isDate: die
+// Spalte ist ein reines Datum (kommt als Mitternacht UTC); dann wird ihr
+// Kalendertag mit dem Kalendertag des Stichtags in loc verglichen, sonst die
+// Zeitpunkte. Die Nullzeit ist nie rückwirkend; loc nil = time.Local.
+func IsBackfill(created time.Time, isDate bool, cutoff time.Time, loc *time.Location) bool {
 	if created.IsZero() {
 		return false
 	}
 	if loc == nil {
 		loc = time.Local
 	}
-	n := now.In(loc)
-	return created.Before(time.Date(n.Year(), n.Month(), n.Day(), 0, 0, 0, 0, loc))
+	if isDate {
+		u := created.UTC()
+		c := cutoff.In(loc)
+		return time.Date(u.Year(), u.Month(), u.Day(), 0, 0, 0, 0, time.UTC).
+			Before(time.Date(c.Year(), c.Month(), c.Day(), 0, 0, 0, 0, time.UTC))
+	}
+	return created.Before(cutoff)
 }
 
 // createdTime liest das Anlagedatum einer Fremdzeile. Zeitspalten kommen als
@@ -197,14 +229,11 @@ func createdTime(v any, dateOnly bool, loc *time.Location) (time.Time, bool) {
 	return tm, true
 }
 
-// backfillValue: ist der gelesene Wert der Anlagedatum-Spalte rückwirkend?
-func backfillValue(v any, dateOnly bool, now time.Time, loc *time.Location) bool {
-	tm, ok := createdTime(v, dateOnly, loc)
-	return ok && IsBackfill(tm, now, loc)
-}
-
 const (
 	defaultPageSize = 200
+	// dryCountLimit: so viele Zeilen liest ein Probelauf höchstens zum Zählen
+	// (danach Run.CountTruncated).
+	dryCountLimit = 100000
 	// retryLimit: so viele fehlerhafte oder reservierte Verknüpfungen versucht ein Lauf erneut
 	// (wartende rückwirkende Meldungen nicht mitgezählt, siehe backfillCap).
 	retryLimit = 50
@@ -256,11 +285,14 @@ type inboundRun struct {
 	done      map[string]bool // in der Wiederholung schon bearbeitete Schlüssel
 	newCount  int
 	paused    bool
-	// Rückwirkende Meldungen: Uhr und Ort des Laufs (einmal festgelegt), Art der
-	// Anlagedatum-Spalte und Zahl der in diesem Lauf zum Anlegen vorgemerkten.
+	// Rückwirkende Meldungen: Uhr, Ort und Stichtag des Laufs (einmal festgelegt),
+	// Art der Anlagedatum-Spalte und Zahl der in diesem Lauf zum Anlegen vorgemerkten.
 	now           time.Time
 	loc           *time.Location
+	cutoff        time.Time
 	createdDate   bool // Anlagedatum-Spalte ist reines Datum
+	fLoc          *time.Location
+	wallCols      []string // Spalten zugeordneter Zeitfelder (ohne reine Datumsspalten)
 	backfillCount int
 }
 
@@ -344,6 +376,13 @@ func (in *Inbound) Run(ctx context.Context, p *Profile, maps []FieldMap, f Forei
 	if r.loc == nil {
 		r.loc = time.Local
 	}
+	// Stichtag: fest je Profil (R24). Fehlt er (nie scharf, z. B. Probelauf vor dem
+	// ersten Scharfschalten oder Altbestand), gilt der heutige Tagesbeginn – nur
+	// für diesen Lauf; gesetzt wird notify_from allein über Store.Arm.
+	r.cutoff = DayStart(r.now, r.loc)
+	if p.NotifyFrom != nil {
+		r.cutoff = *p.NotifyFrom
+	}
 	defer func() {
 		if rec := recover(); rec != nil {
 			err = fmt.Errorf("abgleich: interner Fehler im Lauf: %v", rec)
@@ -417,6 +456,22 @@ func (r *inboundRun) exec(ctx context.Context, f Foreign) error {
 		return fmt.Errorf("Aufbau der Tabelle %s.%s lesen: %w", p.SourceSchema, p.SourceTable, err)
 	}
 	r.t = t
+	if r.fLoc, err = p.ForeignLocation(r.loc); err != nil {
+		return err
+	}
+	kinds := fieldIndex(r.fields)
+	for _, m := range r.maps {
+		if m.FixedValue != nil || m.ForeignColumn == "" || (m.Direction != DirIn && m.Direction != DirBoth) ||
+			kinds[m.PDHField].Kind != fieldKindTime || containsStr(r.wallCols, m.ForeignColumn) {
+			continue
+		}
+		if col, ok := findColumn(t, m.ForeignColumn); ok {
+			if _, dateOnly := r.d.TimeColumn(*col); dateOnly {
+				continue // Kalendertag: nicht umrechnen
+			}
+		}
+		r.wallCols = append(r.wallCols, m.ForeignColumn)
+	}
 	cols := inboundColumns(r.maps)
 	if p.CreatedColumn != "" {
 		col, ok := findColumn(t, p.CreatedColumn)
@@ -449,19 +504,43 @@ func (r *inboundRun) exec(ctx context.Context, f Foreign) error {
 	if r.opt.Limit > 0 {
 		pageSize = r.opt.Limit
 	}
-	onePage := r.opt.Limit > 0 && !r.opt.Dry
+	onePage := r.opt.Limit > 0
+	// Probelauf: liest und zählt bis zum Ende (Vorschau höchstens previewLimit
+	// Zeilen), begrenzt durch dryCountLimit und den Kontext; bei Überlastung genau
+	// eine Seite. Ist das Ende nicht erreicht, steht Run.CountTruncated.
+	countCap := dryCountLimit
+	if r.in.dryCountCap > 0 {
+		countCap = r.in.dryCountCap
+	}
+	read := 0
 	cursor := r.run.Cursor
 	for !r.paused {
-		st, err := r.d.SelectRows(t, cols, p.KeyColumns, p.ChangeColumn, p.ChangeKind, cursor, p.FilterSQL, p.WindowDays, pageSize)
+		limit := pageSize
+		if r.opt.Dry && onePage {
+			limit = pageSize + 1 // eine Zeile mehr: gibt es noch weitere?
+		}
+		st, err := r.d.SelectRows(t, cols, p.KeyColumns, p.ChangeColumn, p.ChangeKind, cursor, p.FilterSQL, p.WindowDays, limit)
 		if err != nil {
 			return err
 		}
 		rows, err := f.Query(ctx, st)
 		if err != nil {
+			if r.opt.Dry && ctx.Err() != nil {
+				r.run.CountTruncated = true
+				return nil
+			}
 			return fmt.Errorf("Fremddatenbank lesen: %w", err)
+		}
+		if len(rows) > pageSize {
+			rows = rows[:pageSize]
+			r.run.CountTruncated = true
 		}
 		for _, row := range rows {
 			if err := stopped(ctx); err != nil {
+				if r.opt.Dry {
+					r.run.CountTruncated = true
+					return nil
+				}
 				return err
 			}
 			if err := r.readRow(ctx, row); err != nil {
@@ -471,7 +550,12 @@ func (r *inboundRun) exec(ctx context.Context, f Foreign) error {
 				break
 			}
 		}
-		if r.paused || len(rows) < pageSize || onePage || (r.opt.Dry && len(r.previews) >= r.previewLimit()) {
+		read += len(rows)
+		if r.paused || len(rows) < pageSize || onePage {
+			break
+		}
+		if r.opt.Dry && read >= countCap {
+			r.run.CountTruncated = true
 			break
 		}
 		if cursor, err = r.d.NextCursor(t, p.KeyColumns, p.ChangeColumn, p.ChangeKind, rows[len(rows)-1]); err != nil {
@@ -717,7 +801,7 @@ func (r *inboundRun) handleRow(ctx context.Context, row map[string]any, pos int,
 		r.setState(pos, rowOK) // schon in der Wiederholung bearbeitet
 		return nil
 	}
-	c.mapped, c.errs = ToPDH(r.maps, r.fields, row, p.Defaults)
+	c.mapped, c.errs = ToPDH(r.maps, r.fields, r.toInstants(row), p.Defaults)
 	if v, ok := c.mapped["status"]; ok {
 		c.mapped["status"] = normalizeStatus(v)
 	}
@@ -727,8 +811,14 @@ func (r *inboundRun) handleRow(ctx context.Context, row map[string]any, pos int,
 	}
 	c.mark = RowMark(p.ChangeKind, changeVal, c.mapped)
 	if p.CreatedColumn != "" {
-		if tm, ok := createdTime(row[p.CreatedColumn], r.createdDate, r.loc); ok && IsBackfill(tm, r.now, r.loc) {
-			c.backfill, c.created = true, tm
+		if tm, ok := row[p.CreatedColumn].(time.Time); ok {
+			if !r.createdDate {
+				tm = ForeignWallToInstant(tm, r.fLoc)
+			}
+			if IsBackfill(tm, r.createdDate, r.cutoff, r.loc) {
+				c.backfill = true
+				c.created, _ = createdTime(tm, r.createdDate, r.loc)
+			}
 		}
 	}
 
@@ -798,6 +888,25 @@ func (r *inboundRun) park(ctx context.Context, c candidate, link *Link) error {
 	}
 	r.setState(c.pos, rowOK)
 	return nil
+}
+
+// toInstants liefert die Zeile für ToPDH: Zeitwerte der Spalten zugeordneter
+// Zeitfelder als wirklicher Zeitpunkt (Zeitzone des Profils). Die rohe Zeile
+// bleibt unverändert (Schlüssel, Cursor, Änderungsmarke).
+func (r *inboundRun) toInstants(row map[string]any) map[string]any {
+	if len(r.wallCols) == 0 {
+		return row
+	}
+	out := make(map[string]any, len(row))
+	for k, v := range row {
+		out[k] = v
+	}
+	for _, c := range r.wallCols {
+		if tm, ok := out[c].(time.Time); ok {
+			out[c] = ForeignWallToInstant(tm, r.fLoc)
+		}
+	}
+	return out
 }
 
 // seenComplete: Für jedes hereinkommende Feld gibt es einen gesehenen Wert.

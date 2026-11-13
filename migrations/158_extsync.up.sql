@@ -19,6 +19,12 @@ CREATE TABLE IF NOT EXISTS sync_profiles (
     -- Anlagedatum-Spalte der Fremdtabelle (leer = keine): neue Zeilen mit einem
     -- Anlagedatum vor dem heutigen Tag werden still als Historie übernommen.
     created_column TEXT NOT NULL DEFAULT '',
+    -- Stichtag: Tagesbeginn (Ort des Servers) des ERSTEN Scharfschaltens. Meldungen
+    -- mit Anlagedatum davor sind rückwirkend; einmal gesetzt, bleibt er.
+    notify_from    TIMESTAMPTZ,
+    -- Zeitzone der Datums-/Zeitwerte im Fremdsystem: '' = Ortszeit des PDH-Servers,
+    -- 'UTC' oder ein IANA-Name wie 'Europe/Berlin'.
+    time_zone      TEXT NOT NULL DEFAULT '',
     filter_sql     TEXT NOT NULL DEFAULT '',
     window_days    INT NOT NULL DEFAULT 0,
     defaults       JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -96,6 +102,7 @@ CREATE TABLE IF NOT EXISTS sync_runs (
     n_written      INT NOT NULL DEFAULT 0,
     n_failed       INT NOT NULL DEFAULT 0,
     n_backfill     INT NOT NULL DEFAULT 0,  -- still angelegte rückwirkende Meldungen
+    n_archived     INT NOT NULL DEFAULT 0,  -- davon gleich erledigt und archiviert
     skipped_reason TEXT NOT NULL DEFAULT '',
     errors         JSONB NOT NULL DEFAULT '[]'::jsonb
 );

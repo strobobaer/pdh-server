@@ -56,6 +56,9 @@ type fixOpt struct {
 	maxNew     int
 	changeCol  string // Zeitstempel-Spalte bei kind timestamp
 	createdCol string // Anlagedatum-Spalte (leer = keine)
+	// timeZone: Zeitzone des Fremdsystems. Leer = "UTC" (Tests unabhängig vom
+	// Rechner); "server" = '' (Ortszeit des PDH-Servers, Inbound.Location).
+	timeZone string
 }
 
 func newInFix(t *testing.T, o fixOpt) *inFix {
@@ -81,6 +84,13 @@ func newInFix(t *testing.T, o fixOpt) *inFix {
 		Name: fmt.Sprintf("extsync-in-%d", time.Now().UnixNano()), ConnectionID: sf.connID, TargetType: o.target,
 		SourceSchema: o.info.Schema, SourceTable: o.info.Name, KeyColumns: o.keyCols,
 		ChangeKind: o.kind, Defaults: o.defaults, MaxNew: o.maxNew, CreatedColumn: o.createdCol,
+		TimeZone: o.timeZone,
+	}
+	switch o.timeZone {
+	case "":
+		p.TimeZone = "UTC"
+	case "server":
+		p.TimeZone = ""
 	}
 	if o.kind == changeKindRowVersion {
 		p.ChangeColumn = "RV"
@@ -93,7 +103,7 @@ func newInFix(t *testing.T, o fixOpt) *inFix {
 	f := &inFix{t: t, sf: sf, s: sf.s, ff: newFakeForeign(o.info), d: fakeDialect{},
 		tag: fmt.Sprintf("%d", time.Now().UnixNano()%1_000_000_000), target: o.target, p: p}
 	f.reload()
-	f.in = &Inbound{Store: sf.s, SystemUser: systemUser, Targets: map[string]Target{
+	f.in = &Inbound{Store: sf.s, SystemUser: systemUser, Location: time.UTC, Targets: map[string]Target{
 		RefTicket: NewTicketTarget(sf.pool, tickets.NewService(tickets.NewRepository(sf.pool))),
 		RefFault:  NewFaultTarget(sf.pool, faults.NewService(faults.NewRepository(sf.pool), nil)),
 	}}

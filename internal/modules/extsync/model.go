@@ -72,8 +72,8 @@ type Profile struct {
 	ChangeColumn           string
 	ChangeKind             string // none | timestamp | rowversion
 	// CreatedColumn: Anlagedatum-Spalte der Fremdtabelle (Datum oder Zeit, leer =
-	// keine). Neue Zeilen mit Anlagedatum vor dem heutigen Tag sind rückwirkend
-	// (Spec 4.10). Kein zugeordnetes Feld, nie Teil von seen_values.
+	// keine). Neue Zeilen mit Anlagedatum vor NotifyFrom sind rückwirkend (Spec
+	// 4.10, R24). Kein zugeordnetes Feld, nie Teil von seen_values.
 	CreatedColumn          string
 	FilterSQL              string
 	WindowDays             int
@@ -83,9 +83,23 @@ type Profile struct {
 	MaxNew                 int
 	State, StateNote       string
 	TestDryAt, TestWriteAt *time.Time
-	NextRunAt              *time.Time
-	Cursor                 string
-	FailCount              int
+	// NotifyFrom ist der feste Stichtag für "rückwirkend" (R24): Tagesbeginn am
+	// Ort des Servers des Tages, an dem das Profil ZUM ERSTEN MAL scharf wurde.
+	// Gesetzt allein durch Store.Arm, genau einmal (nil -> Tagesbeginn). Weder
+	// ein späteres Zurücksetzen auf Entwurf noch erneutes Scharfschalten noch
+	// eine andere Anlagedatum-Spalte verschiebt ihn: alles seit dem ersten
+	// Scharfschalten bleibt "neu" und benachrichtigt. nil = nie scharf gewesen.
+	NotifyFrom *time.Time
+	// TimeZone: Zeitzone der Datums-/Zeitwerte im Fremdsystem (Spec 4.11): '' =
+	// Ortszeit des PDH-Servers, 'UTC' oder ein IANA-Name. Gilt für das
+	// Anlagedatum und zugeordnete Zeitfelder, nicht für reine Datumsspalten und
+	// nie für Änderungsspalte, Cursor oder Änderungsmarke (siehe ForeignLocation).
+	// Eine Änderung setzt das Profil auf Entwurf und lässt jede Zeile einmal neu
+	// vergleichen (seen_mark der Verknüpfungen wird geleert).
+	TimeZone  string
+	NextRunAt *time.Time
+	Cursor    string
+	FailCount int
 }
 
 // CommentTable beschreibt die Kommentartabelle im Fremdsystem.
@@ -133,12 +147,16 @@ type Run struct {
 	ID, ProfileID, Direction string
 	StartedAt                time.Time
 	FinishedAt               *time.Time
-	// New: neu angelegte Datensätze mit Benachrichtigung (Anlagedatum heute oder
-	// unbekannt). Backfilled: still angelegte rückwirkende Datensätze (nicht in
-	// New). Archived: davon gleich erledigt und archiviert (nur im Speicher, für
-	// Vorschau und Protokoll des Aufrufers; sync_runs kennt es nicht).
+	// New: neu angelegte Datensätze mit Benachrichtigung (Anlagedatum ab dem
+	// Stichtag oder unbekannt). Backfilled: still angelegte rückwirkende
+	// Datensätze (nicht in New). Archived: davon gleich erledigt und archiviert.
+	// Alle drei stehen in sync_runs (n_new, n_backfill, n_archived).
+	// CountTruncated (nur Probelauf, nur im Speicher): die Zähler sind nicht
+	// vollständig (Zeilengrenze dryCountCap, Kontext beendet oder Überlastung mit
+	// RunOptions.Limit) – die Oberfläche zeigt "mindestens".
 	New, Changed, Written int
 	Backfilled, Archived  int
+	CountTruncated        bool
 	Failed                int
 	SkippedReason         string
 	Errors                []RunError

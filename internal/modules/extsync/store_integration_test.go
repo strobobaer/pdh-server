@@ -186,6 +186,7 @@ func TestSaveProfileResetsState(t *testing.T) {
 		},
 		"Änderungsspalte": func(p *Profile) { p.ChangeColumn = "Andere" },
 		"Anlagedatum":     func(p *Profile) { p.CreatedColumn = "Angelegt" },
+		"Zeitzone":        func(p *Profile) { p.TimeZone = "Europe/Berlin" },
 	}
 	for name, fn := range mut {
 		g, err := f.s.GetProfile(ctx, p.ID)
@@ -204,7 +205,7 @@ func TestSaveProfileResetsState(t *testing.T) {
 		// zurück auf Ausgangswerte für den nächsten Fall
 		h.SourceTable, h.KeyColumns, h.FilterSQL, h.WindowDays = "Tickets", []string{"Id"}, "", 0
 		h.Defaults, h.TargetType, h.CommentTable, h.ChangeColumn = map[string]string{"priority": "medium"}, "ticket", nil, "Geaendert"
-		h.CreatedColumn = ""
+		h.CreatedColumn, h.TimeZone = "", ""
 		must(t, f.s.SaveProfile(ctx, h, systemUser))
 	}
 }

@@ -61,7 +61,7 @@ func notFound(err error, what string) error {
 const profileCols = `id::text, name, connection_id::text, department_id::text, target_type,
 	source_schema, source_table, key_columns, COALESCE(change_column, ''), change_kind, created_column,
 	filter_sql, window_days, defaults, comment_table, interval_minutes, max_new,
-	state, state_note, test_dry_at, test_write_at, next_run_at, cursor, fail_count`
+	state, state_note, test_dry_at, test_write_at, next_run_at, cursor, fail_count, notify_from, time_zone`
 
 func scanProfile(row pgx.Row) (*Profile, error) {
 	var p Profile
@@ -69,7 +69,7 @@ func scanProfile(row pgx.Row) (*Profile, error) {
 	if err := row.Scan(&p.ID, &p.Name, &p.ConnectionID, &p.DepartmentID, &p.TargetType,
 		&p.SourceSchema, &p.SourceTable, &p.KeyColumns, &p.ChangeColumn, &p.ChangeKind, &p.CreatedColumn,
 		&p.FilterSQL, &p.WindowDays, &defaults, &comment, &p.IntervalMinutes, &p.MaxNew,
-		&p.State, &p.StateNote, &p.TestDryAt, &p.TestWriteAt, &p.NextRunAt, &p.Cursor, &p.FailCount); err != nil {
+		&p.State, &p.StateNote, &p.TestDryAt, &p.TestWriteAt, &p.NextRunAt, &p.Cursor, &p.FailCount, &p.NotifyFrom, &p.TimeZone); err != nil {
 		return nil, err
 	}
 	var err error
@@ -122,10 +122,13 @@ func (s *Store) GetProfile(ctx context.Context, id string) (*Profile, error) {
 
 // SaveProfile legt ein Profil an (p.ID leer, die ID wird gesetzt) oder ändert es.
 // Ändert sich Verbindung, Ziel, Abteilung, Quelle, Schlüssel, Änderungsspalte,
-// Anlagedatum-Spalte (sie entscheidet, was still angelegt wird), Filter,
-// Zeitfenster, Vorgaben oder Kommentartabelle, wird das Profil wieder
+// Anlagedatum-Spalte (sie entscheidet, was still angelegt wird), Zeitzone,
+// Filter, Zeitfenster, Vorgaben oder Kommentartabelle, wird das Profil wieder
 // Entwurf; Testzeiten und Fortschrittsmarke werden geleert. Name, Takt und
-// Höchstzahl ändern den Zustand nicht. Der Zustand selbst wird nur über SetState gesetzt.
+// Höchstzahl ändern den Zustand nicht. Der Zustand selbst wird nur über SetState
+// bzw. Arm gesetzt. Ändert sich die Zeitzone, wird zusätzlich seen_mark aller
+// Verknüpfungen geleert: Die Änderungsmarke (Rohwert) bliebe sonst gleich und
+// die mit der alten Zone gelesenen Zeitwerte würden nie berichtigt.
 func (s *Store) SaveProfile(ctx context.Context, p *Profile, userID string) error {
 	if p.IntervalMinutes <= 0 {
 		p.IntervalMinutes = DefaultIntervalMinutes
@@ -151,12 +154,12 @@ func (s *Store) SaveProfile(ctx context.Context, p *Profile, userID string) erro
 		err := s.db.QueryRow(ctx, `INSERT INTO sync_profiles
 			(name, connection_id, department_id, target_type, source_schema, source_table, key_columns,
 			 change_column, change_kind, filter_sql, window_days, defaults, comment_table,
-			 interval_minutes, max_new, created_by, created_column)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13::jsonb,$14,$15,$16,$17)
+			 interval_minutes, max_new, created_by, created_column, time_zone)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13::jsonb,$14,$15,$16,$17,$18)
 			RETURNING id::text`,
 			p.Name, p.ConnectionID, p.DepartmentID, p.TargetType, p.SourceSchema, p.SourceTable, keys,
 			nilIfEmpty(p.ChangeColumn), p.ChangeKind, p.FilterSQL, p.WindowDays, defaults, comment,
-			p.IntervalMinutes, p.MaxNew, nilIfEmpty(userID), p.CreatedColumn).Scan(&p.ID)
+			p.IntervalMinutes, p.MaxNew, nilIfEmpty(userID), p.CreatedColumn, p.TimeZone).Scan(&p.ID)
 		if err != nil {
 			return fmt.Errorf("abgleich: profil anlegen: %w", err)
 		}
@@ -166,11 +169,20 @@ func (s *Store) SaveProfile(ctx context.Context, p *Profile, userID string) erro
 	// Rechte Seite eines UPDATE sieht immer die alten Werte: der Vergleich
 	// "alt IS DISTINCT FROM neu" erkennt Änderungen an Quelle/Ziel.
 	const changed = `(connection_id, department_id, target_type, source_schema, source_table, key_columns,
-			COALESCE(change_column, ''), change_kind, filter_sql, window_days, defaults, comment_table, created_column)
+			COALESCE(change_column, ''), change_kind, filter_sql, window_days, defaults, comment_table, created_column, time_zone)
 		IS DISTINCT FROM
 		($2::uuid, $3::uuid, $4::text, $5::text, $6::text, $7::text[], $8::text, $9::text, $10::text, $11::int,
-			$12::jsonb, $13::jsonb, $17::text)`
-	tag, err := s.db.Exec(ctx, `UPDATE sync_profiles SET
+			$12::jsonb, $13::jsonb, $17::text, $18::text)`
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("abgleich: profil speichern: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	var oldZone string
+	if err := tx.QueryRow(ctx, `SELECT time_zone FROM sync_profiles WHERE id = $1 FOR UPDATE`, p.ID).Scan(&oldZone); err != nil {
+		return notFound(err, "profil speichern")
+	}
+	tag, err := tx.Exec(ctx, `UPDATE sync_profiles SET
 			state         = CASE WHEN `+changed+` THEN 'entwurf' ELSE state END,
 			state_note    = CASE WHEN `+changed+` THEN '' ELSE state_note END,
 			test_dry_at   = CASE WHEN `+changed+` THEN NULL ELSE test_dry_at END,
@@ -181,16 +193,41 @@ func (s *Store) SaveProfile(ctx context.Context, p *Profile, userID string) erro
 			connection_id = $2, department_id = $3, target_type = $4, source_schema = $5,
 			source_table = $6, key_columns = $7, change_column = NULLIF($8, ''), change_kind = $9,
 			filter_sql = $10, window_days = $11, defaults = $12::jsonb, comment_table = $13::jsonb,
-			name = $14, interval_minutes = $15, max_new = $16, created_column = $17, updated_at = now()
+			name = $14, interval_minutes = $15, max_new = $16, created_column = $17, time_zone = $18,
+			updated_at = now()
 		WHERE id = $1`,
 		p.ID, p.ConnectionID, p.DepartmentID, p.TargetType, p.SourceSchema, p.SourceTable, keys,
 		p.ChangeColumn, p.ChangeKind, p.FilterSQL, p.WindowDays, defaults, comment,
-		p.Name, p.IntervalMinutes, p.MaxNew, p.CreatedColumn)
+		p.Name, p.IntervalMinutes, p.MaxNew, p.CreatedColumn, p.TimeZone)
 	if err != nil {
 		return fmt.Errorf("abgleich: profil speichern: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
 		return fmt.Errorf("abgleich: profil speichern: %w", ErrNotFound)
+	}
+	if oldZone != p.TimeZone {
+		if _, err := tx.Exec(ctx, `UPDATE sync_links SET seen_mark = '', updated_at = now() WHERE profile_id = $1`, p.ID); err != nil {
+			return fmt.Errorf("abgleich: profil speichern: %w", err)
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("abgleich: profil speichern: %w", err)
+	}
+	return nil
+}
+
+// Arm schaltet ein Profil scharf und setzt dabei den Stichtag notify_from auf
+// dayStart, falls er noch fehlt (ein Befehl; siehe Profile.NotifyFrom). dayStart
+// ist DayStart(jetzt, Ort des Servers). Jeder Weg zum Zustand "scharf" geht hier
+// entlang; SetState bleibt für die übrigen Zustände.
+func (s *Store) Arm(ctx context.Context, id string, dayStart time.Time) error {
+	tag, err := s.db.Exec(ctx, `UPDATE sync_profiles SET state = 'scharf', state_note = '',
+			notify_from = COALESCE(notify_from, $2), updated_at = now() WHERE id = $1`, id, dayStart)
+	if err != nil {
+		return fmt.Errorf("abgleich: scharf schalten: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("abgleich: scharf schalten: %w", ErrNotFound)
 	}
 	return nil
 }
@@ -688,8 +725,8 @@ func (s *Store) FinishRun(ctx context.Context, r *Run) error {
 		return fmt.Errorf("abgleich: lauf abschließen: %w", err)
 	}
 	tag, err := s.db.Exec(ctx, `UPDATE sync_runs SET finished_at = now(), n_new = $2, n_changed = $3, n_written = $4,
-		n_failed = $5, skipped_reason = $6, errors = $7::jsonb, n_backfill = $8 WHERE id = $1`,
-		r.ID, r.New, r.Changed, r.Written, r.Failed, r.SkippedReason, b, r.Backfilled)
+		n_failed = $5, skipped_reason = $6, errors = $7::jsonb, n_backfill = $8, n_archived = $9 WHERE id = $1`,
+		r.ID, r.New, r.Changed, r.Written, r.Failed, r.SkippedReason, b, r.Backfilled, r.Archived)
 	if err != nil {
 		return fmt.Errorf("abgleich: lauf abschließen: %w", err)
 	}
@@ -705,7 +742,7 @@ func (s *Store) ListRuns(ctx context.Context, profileID string, limit int) ([]Ru
 		limit = 50
 	}
 	rows, err := s.db.Query(ctx, `SELECT id::text, profile_id::text, direction, started_at, finished_at,
-			n_new, n_changed, n_written, n_failed, n_backfill, skipped_reason, errors
+			n_new, n_changed, n_written, n_failed, n_backfill, n_archived, skipped_reason, errors
 		FROM sync_runs WHERE profile_id = $1 ORDER BY started_at DESC, id LIMIT $2`, profileID, limit)
 	if err != nil {
 		return nil, fmt.Errorf("abgleich: läufe laden: %w", err)
@@ -716,7 +753,7 @@ func (s *Store) ListRuns(ctx context.Context, profileID string, limit int) ([]Ru
 		var r Run
 		var errs []byte
 		if err := rows.Scan(&r.ID, &r.ProfileID, &r.Direction, &r.StartedAt, &r.FinishedAt,
-			&r.New, &r.Changed, &r.Written, &r.Failed, &r.Backfilled, &r.SkippedReason, &errs); err != nil {
+			&r.New, &r.Changed, &r.Written, &r.Failed, &r.Backfilled, &r.Archived, &r.SkippedReason, &errs); err != nil {
 			return nil, fmt.Errorf("abgleich: läufe laden: %w", err)
 		}
 		if len(errs) > 0 {

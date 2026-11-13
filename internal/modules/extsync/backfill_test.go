@@ -15,70 +15,89 @@ func mustLoc(t *testing.T, name string) *time.Location {
 	return loc
 }
 
+func TestDayStart(t *testing.T) {
+	berlin := mustLoc(t, "Europe/Berlin")
+	cases := []struct {
+		name string
+		now  time.Time
+		want time.Time
+	}{
+		{"Winter", time.Date(2026, 1, 15, 0, 30, 0, 0, berlin), time.Date(2026, 1, 14, 23, 0, 0, 0, time.UTC)},
+		{"Sommer", time.Date(2026, 7, 15, 10, 0, 0, 0, berlin), time.Date(2026, 7, 14, 22, 0, 0, 0, time.UTC)},
+		// Umstellungstage: Tagesbeginn liegt noch in der alten Zeit.
+		{"29.03. (MEZ→MESZ)", time.Date(2026, 3, 29, 12, 0, 0, 0, berlin), time.Date(2026, 3, 28, 23, 0, 0, 0, time.UTC)},
+		{"25.10. (MESZ→MEZ)", time.Date(2026, 10, 25, 12, 0, 0, 0, berlin), time.Date(2026, 10, 24, 22, 0, 0, 0, time.UTC)},
+		{"now in UTC", time.Date(2026, 7, 14, 22, 30, 0, 0, time.UTC), time.Date(2026, 7, 14, 22, 0, 0, 0, time.UTC)},
+	}
+	for _, c := range cases {
+		if got := DayStart(c.now, berlin); !got.Equal(c.want) {
+			t.Errorf("%s: DayStart = %v, erwartet %v", c.name, got.UTC(), c.want)
+		}
+	}
+	_ = DayStart(time.Now(), nil) // nil = time.Local, keine Panik
+}
+
 func TestIsBackfill(t *testing.T) {
 	berlin := mustLoc(t, "Europe/Berlin")
-	now := time.Date(2026, 11, 13, 12, 0, 0, 0, berlin)
+	day := func(y int, m time.Month, d int) time.Time {
+		return DayStart(time.Date(y, m, d, 12, 0, 0, 0, berlin), berlin)
+	}
 	cases := []struct {
 		name    string
 		created time.Time
-		now     time.Time
+		cutoff  time.Time
 		want    bool
 	}{
-		{"gestern 23:59", time.Date(2026, 11, 12, 23, 59, 0, 0, berlin), now, true},
-		{"heute 00:00", time.Date(2026, 11, 13, 0, 0, 0, 0, berlin), now, false},
-		{"heute später", time.Date(2026, 11, 13, 18, 0, 0, 0, berlin), now, false},
-		{"Nullzeit", time.Time{}, now, false},
-		// Winterzeit (MEZ, UTC+1): Tagesbeginn 15.01. ist 14.01. 23:00 UTC.
-		{"Winter kurz vor Mitternacht", time.Date(2026, 1, 14, 22, 59, 59, 0, time.UTC),
-			time.Date(2026, 1, 15, 0, 30, 0, 0, berlin), true},
-		{"Winter Mitternacht", time.Date(2026, 1, 14, 23, 0, 0, 0, time.UTC),
-			time.Date(2026, 1, 15, 0, 30, 0, 0, berlin), false},
-		// Sommerzeit (MESZ, UTC+2): Tagesbeginn 15.07. ist 14.07. 22:00 UTC.
-		{"Sommer kurz vor Mitternacht", time.Date(2026, 7, 14, 21, 59, 59, 0, time.UTC),
-			time.Date(2026, 7, 15, 10, 0, 0, 0, berlin), true},
-		{"Sommer Mitternacht", time.Date(2026, 7, 14, 22, 0, 0, 0, time.UTC),
-			time.Date(2026, 7, 15, 10, 0, 0, 0, berlin), false},
-		// Mitternacht UTC ist in Berlin schon 02:00 desselben Tags: nicht rückwirkend.
-		{"Mitternacht UTC", time.Date(2026, 7, 15, 0, 0, 0, 0, time.UTC),
-			time.Date(2026, 7, 15, 10, 0, 0, 0, berlin), false},
-		// "now" in UTC angegeben: maßgeblich ist der Tag in loc.
-		{"now in UTC", time.Date(2026, 7, 14, 21, 59, 59, 0, time.UTC),
-			time.Date(2026, 7, 14, 22, 30, 0, 0, time.UTC), true},
+		{"Vortag 23:59", time.Date(2026, 11, 12, 23, 59, 0, 0, berlin), day(2026, 11, 13), true},
+		{"Stichtag 00:00", time.Date(2026, 11, 13, 0, 0, 0, 0, berlin), day(2026, 11, 13), false},
+		{"nach dem Stichtag", time.Date(2026, 11, 20, 8, 0, 0, 0, berlin), day(2026, 11, 13), false},
+		{"Nullzeit", time.Time{}, day(2026, 11, 13), false},
+		{"Winter kurz vor Mitternacht", time.Date(2026, 1, 14, 22, 59, 59, 0, time.UTC), day(2026, 1, 15), true},
+		{"Winter Mitternacht", time.Date(2026, 1, 14, 23, 0, 0, 0, time.UTC), day(2026, 1, 15), false},
+		{"Sommer kurz vor Mitternacht", time.Date(2026, 7, 14, 21, 59, 59, 0, time.UTC), day(2026, 7, 15), true},
+		{"Sommer Mitternacht", time.Date(2026, 7, 14, 22, 0, 0, 0, time.UTC), day(2026, 7, 15), false},
+		{"Mitternacht UTC (02:00 Berlin)", time.Date(2026, 7, 15, 0, 0, 0, 0, time.UTC), day(2026, 7, 15), false},
+		{"29.03. kurz davor", time.Date(2026, 3, 28, 22, 59, 59, 0, time.UTC), day(2026, 3, 29), true},
+		{"29.03. Tagesbeginn", time.Date(2026, 3, 28, 23, 0, 0, 0, time.UTC), day(2026, 3, 29), false},
+		{"25.10. kurz davor", time.Date(2026, 10, 24, 21, 59, 59, 0, time.UTC), day(2026, 10, 25), true},
+		{"25.10. Tagesbeginn", time.Date(2026, 10, 24, 22, 0, 0, 0, time.UTC), day(2026, 10, 25), false},
 	}
 	for _, c := range cases {
-		if got := IsBackfill(c.created, c.now, berlin); got != c.want {
+		if got := IsBackfill(c.created, false, c.cutoff, berlin); got != c.want {
 			t.Errorf("%s: IsBackfill = %v, erwartet %v", c.name, got, c.want)
 		}
 	}
-	// Ohne Ort gilt time.Local (keine Panik).
-	_ = IsBackfill(time.Now().Add(-48*time.Hour), time.Now(), nil)
 }
 
 // Eine reine Datumsspalte (ohne Zeit und Zone) kommt als Mitternacht UTC an und
-// wird als Kalendertag am Ort des Servers verstanden.
+// wird als Kalendertag mit dem Kalendertag des Stichtags am Ort verglichen.
 func TestBackfillDateValueIsCalendarDate(t *testing.T) {
 	ny := mustLoc(t, "America/New_York")
-	now := time.Date(2026, 11, 13, 9, 0, 0, 0, ny)
+	cutoff := DayStart(time.Date(2026, 11, 13, 9, 0, 0, 0, ny), ny)
 	today := time.Date(2026, 11, 13, 0, 0, 0, 0, time.UTC)
 	yesterday := time.Date(2026, 11, 12, 0, 0, 0, 0, time.UTC)
-	// Als Zeitpunkt läge "heute 00:00 UTC" in New York noch am Vortag.
-	if !IsBackfill(today, now, ny) {
-		t.Fatal("Voraussetzung: als Zeitpunkt wäre heute rückwirkend")
+	// Als Zeitpunkt läge "13.11. 00:00 UTC" in New York noch am Vortag.
+	if !IsBackfill(today, false, cutoff, ny) {
+		t.Fatal("Voraussetzung: als Zeitpunkt wäre der Stichtag rückwirkend")
 	}
-	if backfillValue(today, true, now, ny) {
-		t.Fatal("Datum von heute gilt als rückwirkend")
+	if IsBackfill(today, true, cutoff, ny) {
+		t.Fatal("Datum des Stichtags gilt als rückwirkend")
 	}
-	if !backfillValue(yesterday, true, now, ny) {
-		t.Fatal("Datum von gestern gilt nicht als rückwirkend")
+	if !IsBackfill(yesterday, true, cutoff, ny) {
+		t.Fatal("Datum vor dem Stichtag gilt nicht als rückwirkend")
 	}
-	if !backfillValue(today, false, now, ny) {
-		t.Fatal("Zeitspalte: Zeitpunkt vor Tagesbeginn muss rückwirkend sein")
+	if IsBackfill(time.Time{}, true, cutoff, ny) {
+		t.Fatal("Nullzeit gilt als rückwirkend")
 	}
-	if backfillValue(nil, false, now, ny) || backfillValue(nil, true, now, ny) {
-		t.Fatal("NULL gilt als neu")
+	// Anlagezeit einer Datumsspalte: Tagesbeginn des Kalendertags am Ort.
+	if tm, ok := createdTime(yesterday, true, ny); !ok || !tm.Equal(time.Date(2026, 11, 12, 0, 0, 0, 0, ny)) {
+		t.Fatalf("Anlagezeit %v", tm)
 	}
-	if backfillValue("2026-01-01", false, now, ny) {
-		t.Fatal("unbekannter Typ gilt als neu")
+	if _, ok := createdTime(nil, false, ny); ok {
+		t.Fatal("NULL liefert eine Anlagezeit")
+	}
+	if _, ok := createdTime("2026-01-01", false, ny); ok {
+		t.Fatal("unbekannter Typ liefert eine Anlagezeit")
 	}
 }
 
