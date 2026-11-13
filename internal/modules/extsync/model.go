@@ -52,6 +52,10 @@ const (
 	// LinkErrInterrupted: Ausgangswerte sind vorab gespeichert, das Schreiben ins
 	// PDH ist noch nicht bestätigt. KEIN Endzustand: wird wiederholt.
 	LinkErrInterrupted = "Übernahme unterbrochen"
+	// LinkErrBackfillWaiting: rückwirkende Meldung, die über der Obergrenze je
+	// Lauf lag; reserviert ohne Datensatz, ein späterer Lauf legt sie an. KEIN
+	// Fehler und kein Endzustand: zählt nicht als fehlgeschlagen.
+	LinkErrBackfillWaiting = "Rückwirkend, wartet auf Übernahme"
 )
 
 // ErrNotFound meldet, dass ein Datensatz nicht existiert.
@@ -67,6 +71,10 @@ type Profile struct {
 	KeyColumns             []string
 	ChangeColumn           string
 	ChangeKind             string // none | timestamp | rowversion
+	// CreatedColumn: Anlagedatum-Spalte der Fremdtabelle (Datum oder Zeit, leer =
+	// keine). Neue Zeilen mit Anlagedatum vor dem heutigen Tag sind rückwirkend
+	// (Spec 4.10). Kein zugeordnetes Feld, nie Teil von seen_values.
+	CreatedColumn          string
 	FilterSQL              string
 	WindowDays             int
 	Defaults               map[string]string
@@ -125,10 +133,15 @@ type Run struct {
 	ID, ProfileID, Direction string
 	StartedAt                time.Time
 	FinishedAt               *time.Time
-	New, Changed, Written    int
-	Failed                   int
-	SkippedReason            string
-	Errors                   []RunError
+	// New: neu angelegte Datensätze mit Benachrichtigung (Anlagedatum heute oder
+	// unbekannt). Backfilled: still angelegte rückwirkende Datensätze (nicht in
+	// New). Archived: davon gleich erledigt und archiviert (nur im Speicher, für
+	// Vorschau und Protokoll des Aufrufers; sync_runs kennt es nicht).
+	New, Changed, Written int
+	Backfilled, Archived  int
+	Failed                int
+	SkippedReason         string
+	Errors                []RunError
 	// Cursor ist die Fortschrittsmarke nach einem hereinkommenden Lauf; der
 	// Aufrufer speichert sie (SetSchedule), sync_runs kennt sie nicht. Bei
 	// Änderungserkennung "none" immer leer.

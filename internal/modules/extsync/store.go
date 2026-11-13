@@ -59,7 +59,7 @@ func notFound(err error, what string) error {
 // ── Profile ──────────────────────────────────────────────────────────────
 
 const profileCols = `id::text, name, connection_id::text, department_id::text, target_type,
-	source_schema, source_table, key_columns, COALESCE(change_column, ''), change_kind,
+	source_schema, source_table, key_columns, COALESCE(change_column, ''), change_kind, created_column,
 	filter_sql, window_days, defaults, comment_table, interval_minutes, max_new,
 	state, state_note, test_dry_at, test_write_at, next_run_at, cursor, fail_count`
 
@@ -67,7 +67,7 @@ func scanProfile(row pgx.Row) (*Profile, error) {
 	var p Profile
 	var defaults, comment []byte
 	if err := row.Scan(&p.ID, &p.Name, &p.ConnectionID, &p.DepartmentID, &p.TargetType,
-		&p.SourceSchema, &p.SourceTable, &p.KeyColumns, &p.ChangeColumn, &p.ChangeKind,
+		&p.SourceSchema, &p.SourceTable, &p.KeyColumns, &p.ChangeColumn, &p.ChangeKind, &p.CreatedColumn,
 		&p.FilterSQL, &p.WindowDays, &defaults, &comment, &p.IntervalMinutes, &p.MaxNew,
 		&p.State, &p.StateNote, &p.TestDryAt, &p.TestWriteAt, &p.NextRunAt, &p.Cursor, &p.FailCount); err != nil {
 		return nil, err
@@ -122,7 +122,8 @@ func (s *Store) GetProfile(ctx context.Context, id string) (*Profile, error) {
 
 // SaveProfile legt ein Profil an (p.ID leer, die ID wird gesetzt) oder ändert es.
 // Ändert sich Verbindung, Ziel, Abteilung, Quelle, Schlüssel, Änderungsspalte,
-// Filter, Zeitfenster, Vorgaben oder Kommentartabelle, wird das Profil wieder
+// Anlagedatum-Spalte (sie entscheidet, was still angelegt wird), Filter,
+// Zeitfenster, Vorgaben oder Kommentartabelle, wird das Profil wieder
 // Entwurf; Testzeiten und Fortschrittsmarke werden geleert. Name, Takt und
 // Höchstzahl ändern den Zustand nicht. Der Zustand selbst wird nur über SetState gesetzt.
 func (s *Store) SaveProfile(ctx context.Context, p *Profile, userID string) error {
@@ -150,12 +151,12 @@ func (s *Store) SaveProfile(ctx context.Context, p *Profile, userID string) erro
 		err := s.db.QueryRow(ctx, `INSERT INTO sync_profiles
 			(name, connection_id, department_id, target_type, source_schema, source_table, key_columns,
 			 change_column, change_kind, filter_sql, window_days, defaults, comment_table,
-			 interval_minutes, max_new, created_by)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13::jsonb,$14,$15,$16)
+			 interval_minutes, max_new, created_by, created_column)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13::jsonb,$14,$15,$16,$17)
 			RETURNING id::text`,
 			p.Name, p.ConnectionID, p.DepartmentID, p.TargetType, p.SourceSchema, p.SourceTable, keys,
 			nilIfEmpty(p.ChangeColumn), p.ChangeKind, p.FilterSQL, p.WindowDays, defaults, comment,
-			p.IntervalMinutes, p.MaxNew, nilIfEmpty(userID)).Scan(&p.ID)
+			p.IntervalMinutes, p.MaxNew, nilIfEmpty(userID), p.CreatedColumn).Scan(&p.ID)
 		if err != nil {
 			return fmt.Errorf("abgleich: profil anlegen: %w", err)
 		}
@@ -165,10 +166,10 @@ func (s *Store) SaveProfile(ctx context.Context, p *Profile, userID string) erro
 	// Rechte Seite eines UPDATE sieht immer die alten Werte: der Vergleich
 	// "alt IS DISTINCT FROM neu" erkennt Änderungen an Quelle/Ziel.
 	const changed = `(connection_id, department_id, target_type, source_schema, source_table, key_columns,
-			COALESCE(change_column, ''), change_kind, filter_sql, window_days, defaults, comment_table)
+			COALESCE(change_column, ''), change_kind, filter_sql, window_days, defaults, comment_table, created_column)
 		IS DISTINCT FROM
 		($2::uuid, $3::uuid, $4::text, $5::text, $6::text, $7::text[], $8::text, $9::text, $10::text, $11::int,
-			$12::jsonb, $13::jsonb)`
+			$12::jsonb, $13::jsonb, $17::text)`
 	tag, err := s.db.Exec(ctx, `UPDATE sync_profiles SET
 			state         = CASE WHEN `+changed+` THEN 'entwurf' ELSE state END,
 			state_note    = CASE WHEN `+changed+` THEN '' ELSE state_note END,
@@ -180,11 +181,11 @@ func (s *Store) SaveProfile(ctx context.Context, p *Profile, userID string) erro
 			connection_id = $2, department_id = $3, target_type = $4, source_schema = $5,
 			source_table = $6, key_columns = $7, change_column = NULLIF($8, ''), change_kind = $9,
 			filter_sql = $10, window_days = $11, defaults = $12::jsonb, comment_table = $13::jsonb,
-			name = $14, interval_minutes = $15, max_new = $16, updated_at = now()
+			name = $14, interval_minutes = $15, max_new = $16, created_column = $17, updated_at = now()
 		WHERE id = $1`,
 		p.ID, p.ConnectionID, p.DepartmentID, p.TargetType, p.SourceSchema, p.SourceTable, keys,
 		p.ChangeColumn, p.ChangeKind, p.FilterSQL, p.WindowDays, defaults, comment,
-		p.Name, p.IntervalMinutes, p.MaxNew)
+		p.Name, p.IntervalMinutes, p.MaxNew, p.CreatedColumn)
 	if err != nil {
 		return fmt.Errorf("abgleich: profil speichern: %w", err)
 	}
@@ -453,16 +454,42 @@ func (s *Store) OrphanLinks(ctx context.Context, profileID string) ([]Link, erro
 }
 
 // RetryLinks liefert Verknüpfungen eines Profils, die erneut zu versuchen sind:
-// reserviert ohne Datensatz oder mit Fehler, außer gelöschtem PDH-Datensatz
-// (LinkErrRecordGone). Am längsten nicht angefasste zuerst; jeder Versuch setzt
-// updated_at, so kommen alle reihum dran.
+// reserviert ohne Datensatz oder mit Fehler, außer Endzuständen (z. B. gelöschter
+// PDH-Datensatz, LinkErrRecordGone) und wartenden rückwirkenden Meldungen
+// (LinkErrBackfillWaiting, siehe BackfillLinks). Am längsten nicht angefasste
+// zuerst; jeder Versuch setzt updated_at, so kommen alle reihum dran.
 func (s *Store) RetryLinks(ctx context.Context, profileID string, limit int) ([]Link, error) {
 	if limit <= 0 {
 		limit = 50
 	}
 	return s.queryLinks(ctx, "zu wiederholende verknüpfungen laden", `SELECT `+linkCols+` FROM sync_links l
 		WHERE l.profile_id = $1 AND (l.ref_id IS NULL OR l.last_error <> '') AND NOT (l.last_error = ANY($2))
-		ORDER BY l.updated_at, l.id LIMIT $3`, profileID, terminalLinkErrors, limit)
+		  AND l.last_error <> $4
+		ORDER BY l.updated_at, l.id LIMIT $3`, profileID, terminalLinkErrors, limit, LinkErrBackfillWaiting)
+}
+
+// BackfillLinks liefert reservierte rückwirkende Meldungen, die auf ihre
+// Übernahme warten (LinkErrBackfillWaiting), älteste Reservierung zuerst.
+func (s *Store) BackfillLinks(ctx context.Context, profileID string, limit int) ([]Link, error) {
+	if limit <= 0 {
+		return []Link{}, nil
+	}
+	return s.queryLinks(ctx, "wartende rückwirkende verknüpfungen laden", `SELECT `+linkCols+` FROM sync_links l
+		WHERE l.profile_id = $1 AND l.ref_id IS NULL AND l.last_error = $2
+		ORDER BY l.created_at, l.id LIMIT $3`, profileID, LinkErrBackfillWaiting, limit)
+}
+
+// ParkLink reserviert die Verknüpfung einer rückwirkenden Meldung, die erst ein
+// späterer Lauf anlegt – in einem Befehl, reserviert samt Vormerkung oder gar
+// nicht. Gibt es die Verknüpfung schon, bleibt sie unverändert (created = false).
+func (s *Store) ParkLink(ctx context.Context, profileID, foreignKey, refType string) (bool, error) {
+	tag, err := s.db.Exec(ctx, `INSERT INTO sync_links (profile_id, foreign_key, ref_type, last_error)
+		VALUES ($1, $2, $3, $4) ON CONFLICT (profile_id, foreign_key) DO NOTHING`,
+		profileID, foreignKey, refType, LinkErrBackfillWaiting)
+	if err != nil {
+		return false, fmt.Errorf("abgleich: verknüpfung vormerken: %w", err)
+	}
+	return tag.RowsAffected() == 1, nil
 }
 
 // terminalLinkErrors sind Endzustände: einmal gemeldet, nicht wiederholt.
@@ -661,8 +688,8 @@ func (s *Store) FinishRun(ctx context.Context, r *Run) error {
 		return fmt.Errorf("abgleich: lauf abschließen: %w", err)
 	}
 	tag, err := s.db.Exec(ctx, `UPDATE sync_runs SET finished_at = now(), n_new = $2, n_changed = $3, n_written = $4,
-		n_failed = $5, skipped_reason = $6, errors = $7::jsonb WHERE id = $1`,
-		r.ID, r.New, r.Changed, r.Written, r.Failed, r.SkippedReason, b)
+		n_failed = $5, skipped_reason = $6, errors = $7::jsonb, n_backfill = $8 WHERE id = $1`,
+		r.ID, r.New, r.Changed, r.Written, r.Failed, r.SkippedReason, b, r.Backfilled)
 	if err != nil {
 		return fmt.Errorf("abgleich: lauf abschließen: %w", err)
 	}
@@ -678,7 +705,7 @@ func (s *Store) ListRuns(ctx context.Context, profileID string, limit int) ([]Ru
 		limit = 50
 	}
 	rows, err := s.db.Query(ctx, `SELECT id::text, profile_id::text, direction, started_at, finished_at,
-			n_new, n_changed, n_written, n_failed, skipped_reason, errors
+			n_new, n_changed, n_written, n_failed, n_backfill, skipped_reason, errors
 		FROM sync_runs WHERE profile_id = $1 ORDER BY started_at DESC, id LIMIT $2`, profileID, limit)
 	if err != nil {
 		return nil, fmt.Errorf("abgleich: läufe laden: %w", err)
@@ -689,7 +716,7 @@ func (s *Store) ListRuns(ctx context.Context, profileID string, limit int) ([]Ru
 		var r Run
 		var errs []byte
 		if err := rows.Scan(&r.ID, &r.ProfileID, &r.Direction, &r.StartedAt, &r.FinishedAt,
-			&r.New, &r.Changed, &r.Written, &r.Failed, &r.SkippedReason, &errs); err != nil {
+			&r.New, &r.Changed, &r.Written, &r.Failed, &r.Backfilled, &r.SkippedReason, &errs); err != nil {
 			return nil, fmt.Errorf("abgleich: läufe laden: %w", err)
 		}
 		if len(errs) > 0 {

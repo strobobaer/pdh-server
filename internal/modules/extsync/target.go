@@ -22,8 +22,9 @@ type Target interface {
 	// Schritt den Herkunftseintrag (action "sync_origin", Text origin). Danach
 	// werden Status, Fälligkeit, Lösung und Ursache gesetzt, soweit vom Standard
 	// abweichend. id ist gefüllt, sobald der Datensatz existiert – auch wenn ein
-	// späterer Schritt scheitert (dann mit Fehler).
-	Create(ctx context.Context, values map[string]string, systemUser, origin string) (id string, err error)
+	// späterer Schritt scheitert (dann mit Fehler). opt steuert stilles Anlegen,
+	// Anlagezeitpunkt und Archivieren (siehe CreateOptions).
+	Create(ctx context.Context, values map[string]string, systemUser, origin string, opt CreateOptions) (id string, err error)
 	// Read liefert die Katalogfelder; fehlt der Datensatz, kommt ErrNotFound.
 	// Status "closed" wird als "resolved" gemeldet (siehe normalizeStatus).
 	Read(ctx context.Context, id string) (map[string]string, error)
@@ -45,6 +46,8 @@ const (
 	resolvedText = "Im Fremdsystem erledigt"
 	// noteResolvedText steht im Verlauf, wenn der Abgleich den Lösungstext beim Abschließen setzt.
 	noteResolvedText = "Lösungstext beim Abschließen gesetzt (Fremdsystem meldet erledigt ohne Lösung)"
+	// noteBackfillResolved steht im Verlauf, wenn eine rückwirkende Meldung gleich erledigt und archiviert wird.
+	noteBackfillResolved = "Im Fremdsystem erledigt, rückwirkend übernommen"
 )
 
 // Aktionen im Verlauf.
@@ -81,6 +84,25 @@ type recordTarget struct {
 	quickResolve func(ctx context.Context, id, resolution, rootCause, user string) error
 	// afterInsert ist nur für Tests: Fehler nach dem Einfügen, vor dem Commit.
 	afterInsert func(id string) error
+	// onAfter ist nur für Tests: meldet, dass die Folgeschritte des Anlegens liefen.
+	onAfter func(id string)
+}
+
+// CreateOptions steuert das Anlegen (Spec 4.10). Ohne Optionen verhält sich
+// Create wie bisher (Benachrichtigung, Folgeschritte, Abschließen über QuickResolve).
+type CreateOptions struct {
+	// Silent: Die Anlegetransaktion setzt pdh.sync_silent = '1' (SET LOCAL):
+	// Einfügen, Anlagezeit, Status, Lösung, Archiv und Herkunft erzeugen keinen
+	// Eintrag in record_change_queue. Gilt nur für diese Transaktion.
+	Silent bool
+	// CreatedAt setzt created_at (Störmeldungen auch detected_at) in der
+	// Anlegetransaktion; nil = jetzt.
+	CreatedAt *time.Time
+	// Archive (nur mit abgeschlossenem Status): erledigt und archiviert in
+	// DERSELBEN Transaktion (wie Resolve des Dienstes, ohne dessen eigene
+	// Verbindung und ohne Ereignis); die Folgeschritte des Anlegens (Ereignis,
+	// Aufgabenbrett) entfallen.
+	Archive bool
 }
 
 // NewTicketTarget liefert das Ziel Ticket.
@@ -135,7 +157,10 @@ func NewFaultTarget(db *pgxpool.Pool, svc *faults.Service) Target {
 	}
 }
 
-func (t *recordTarget) Create(ctx context.Context, values map[string]string, systemUser, origin string) (string, error) {
+func (t *recordTarget) Create(ctx context.Context, values map[string]string, systemUser, origin string, opt CreateOptions) (string, error) {
+	if opt.Archive && !isFinalStatus(normalizeStatus(strings.TrimSpace(values["status"]))) {
+		return "", errors.New("anlegen: archivieren nur mit abgeschlossenem Status")
+	}
 	// Datensatz, Herkunftseintrag und Nacharbeit in EINER Transaktion: entweder
 	// gibt es danach beides (FindOrigin findet ihn) oder nichts.
 	tx, err := t.db.Begin(ctx)
@@ -146,6 +171,12 @@ func (t *recordTarget) Create(ctx context.Context, values map[string]string, sys
 	if _, err := tx.Exec(ctx, `SET LOCAL pdh.sync_origin = '1'`); err != nil {
 		return "", fmt.Errorf("anlegen: %w", err)
 	}
+	if opt.Silent {
+		// Nur diese Transaktion: SET LOCAL endet mit Commit oder Rollback.
+		if _, err := tx.Exec(ctx, `SET LOCAL pdh.sync_silent = '1'`); err != nil {
+			return "", fmt.Errorf("anlegen: %w", err)
+		}
+	}
 	id, after, err := t.create(ctx, tx, values, systemUser)
 	if err != nil {
 		return "", fmt.Errorf("anlegen: %w", err)
@@ -153,6 +184,15 @@ func (t *recordTarget) Create(ctx context.Context, values map[string]string, sys
 	if t.afterInsert != nil {
 		if err := t.afterInsert(id); err != nil {
 			return "", fmt.Errorf("anlegen: %w", err)
+		}
+	}
+	if opt.CreatedAt != nil {
+		set := "created_at = $2"
+		if t.refType == RefFault {
+			set += ", detected_at = $2" // Störmeldung: erkannt = angelegt (wie insertFault)
+		}
+		if _, err := tx.Exec(ctx, `UPDATE `+t.table+` SET `+set+` WHERE id = $1`, id, *opt.CreatedAt); err != nil {
+			return "", fmt.Errorf("anlegen (Anlagezeit): %w", err)
 		}
 	}
 	if err := t.note(ctx, tx, id, actionOrigin, "", "", "", origin, systemUser); err != nil {
@@ -175,10 +215,21 @@ func (t *recordTarget) Create(ctx context.Context, values map[string]string, sys
 	if err != nil {
 		return "", err
 	}
+	if opt.Archive {
+		if err := t.archiveTx(ctx, tx, id, res.cur, opt.CreatedAt, systemUser); err != nil {
+			return "", err
+		}
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return "", fmt.Errorf("anlegen: %w", err)
 	}
+	if opt.Archive {
+		return id, nil // erledigt und archiviert: keine Folgeschritte des Anlegens
+	}
 	after() // Ereignis und Deck-Abgleich wie bei Service.Create
+	if t.onAfter != nil {
+		t.onAfter(id)
+	}
 	// Abschließen braucht den Dienst (eigene Verbindung): erst nach dem Commit.
 	if err := t.finishResolve(ctx, id, res, nil, systemUser, false); err != nil {
 		return id, err
@@ -360,6 +411,31 @@ func (t *recordTarget) finishResolve(ctx context.Context, id string, res applyRe
 		}
 	}
 	return nil
+}
+
+// archiveTx erledigt und archiviert den Datensatz in tx. Der Zeilenstand
+// entspricht Repository.Resolve der Dienste (tickets/resolve.go,
+// faults/repository.go) mit no_parts_needed = true wie QuickResolve: Status
+// resolved, Lösung und Ursache wie übergeben, resolved_at, archived_at
+// (COALESCE wie dort), archived_by, updated_at. Abweichend: resolved_at ist der
+// Anlagezeitpunkt aus dem Fremdsystem (sonst jetzt), damit Auswertungen keine
+// Bearbeitungszeit vom Anlegen bis heute zählen; der Verlaufseintrag ist "sync"
+// statt "resolved" (Text noteBackfillResolved).
+func (t *recordTarget) archiveTx(ctx context.Context, tx pgx.Tx, id string, cur map[string]string, resolvedAt *time.Time, user string) error {
+	resolution := cur["resolution"]
+	if strings.TrimSpace(resolution) == "" {
+		return fmt.Errorf("abgleich: %s archivieren: Lösung fehlt", t.refType)
+	}
+	var at any
+	if resolvedAt != nil {
+		at = *resolvedAt
+	}
+	if _, err := tx.Exec(ctx, `UPDATE `+t.table+` SET status = 'resolved', resolution = $2, root_cause = $3,
+		no_parts_needed = true, resolved_at = COALESCE($4::timestamptz, NOW()), archived_at = COALESCE(archived_at, NOW()),
+		archived_by = $5, updated_at = NOW() WHERE id = $1`, id, resolution, cur["root_cause"], at, nilIfEmpty(user)); err != nil {
+		return fmt.Errorf("abgleich: %s archivieren: %w", t.refType, err)
+	}
+	return t.note(ctx, tx, id, actionSync, "status", cur["status"], "resolved", noteBackfillResolved, user)
 }
 
 func (t *recordTarget) note(ctx context.Context, tx pgx.Tx, id, action, field, oldV, newV, message, user string) error {

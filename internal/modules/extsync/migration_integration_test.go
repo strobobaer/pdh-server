@@ -213,3 +213,62 @@ func TestSyncPermissionsGranted(t *testing.T) {
 		t.Error("Rolle admin hat sync.admin nicht")
 	}
 }
+
+// Die Benachrichtigungs-Auslöser (record_change_queue) schweigen nur mit
+// pdh.sync_silent = '1' in der Transaktion; sonst arbeiten sie wie bisher.
+func TestNotifyTriggersHonourSilentGuc(t *testing.T) {
+	pool := testPool(t)
+	ctx := context.Background()
+	queued := func(id string) int {
+		var n int
+		must(t, pool.QueryRow(ctx, `SELECT count(*) FROM record_change_queue WHERE record_id = $1`, id).Scan(&n))
+		return n
+	}
+	var ids []string
+	t.Cleanup(func() {
+		for _, id := range ids {
+			_, _ = pool.Exec(ctx, `DELETE FROM record_change_queue WHERE record_id = $1`, id)
+			_, _ = pool.Exec(ctx, `DELETE FROM tickets WHERE id = $1`, id)
+			_, _ = pool.Exec(ctx, `DELETE FROM faults WHERE id = $1`, id)
+		}
+	})
+	for _, tbl := range []string{"tickets", "faults"} {
+		// Still: Anlegen und Ändern in derselben Transaktion ohne Eintrag.
+		tx, err := pool.Begin(ctx)
+		must(t, err)
+		_, err = tx.Exec(ctx, `SET LOCAL pdh.sync_silent = '1'`)
+		must(t, err)
+		var id string
+		must(t, tx.QueryRow(ctx, `INSERT INTO `+tbl+` (title, created_by) VALUES ('Still', $1) RETURNING id`, systemUser).Scan(&id))
+		ids = append(ids, id)
+		_, err = tx.Exec(ctx, `UPDATE `+tbl+` SET title = 'Still 2' WHERE id = $1`, id)
+		must(t, err)
+		must(t, tx.Commit(ctx))
+		if n := queued(id); n != 0 {
+			t.Fatalf("%s still: %d Einträge", tbl, n)
+		}
+		// Ohne Kennzeichen: Änderung wird wie bisher eingereiht.
+		_, err = pool.Exec(ctx, `UPDATE `+tbl+` SET title = 'Laut' WHERE id = $1`, id)
+		must(t, err)
+		if n := queued(id); n != 1 {
+			t.Fatalf("%s Änderung: %d Einträge, erwartet 1", tbl, n)
+		}
+		// Anlegen ohne Kennzeichen: 'created' wie bisher.
+		var id2 string
+		must(t, pool.QueryRow(ctx, `INSERT INTO `+tbl+` (title, created_by) VALUES ('Laut', $1) RETURNING id`, systemUser).Scan(&id2))
+		ids = append(ids, id2)
+		var kind string
+		must(t, pool.QueryRow(ctx, `SELECT kind FROM record_change_queue WHERE record_id = $1`, id2).Scan(&kind))
+		if kind != "created" {
+			t.Fatalf("%s Anlegen: %q", tbl, kind)
+		}
+	}
+	// Die neuen Spalten der Migration.
+	var n int
+	must(t, pool.QueryRow(ctx, `SELECT count(*) FROM information_schema.columns
+		WHERE (table_name = 'sync_profiles' AND column_name = 'created_column')
+		   OR (table_name = 'sync_runs' AND column_name = 'n_backfill')`).Scan(&n))
+	if n != 2 {
+		t.Fatalf("%d von 2 neuen Spalten vorhanden", n)
+	}
+}

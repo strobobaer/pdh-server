@@ -370,6 +370,18 @@ func tsCast(colType string) (string, bool) {
 	return "", false
 }
 
+// TimeColumn: Zeitspalten sind genau die Typen, die auch als Zeitstempel-Spalte
+// erlaubt sind (tsCast); date ist reines Datum.
+func (*mssqlDialect) TimeColumn(c Column) (isTime, dateOnly bool) {
+	if c.IsRowVersion {
+		return false, false
+	}
+	if _, ok := tsCast(c.Type); !ok {
+		return false, false
+	}
+	return true, strings.EqualFold(c.Type, "date")
+}
+
 // requireTimestampColumn: Typ der Änderungsspalte im Zeitstempel-Modus.
 func requireTimestampColumn(c *Column) (string, error) {
 	if c.IsRowVersion {

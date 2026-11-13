@@ -136,6 +136,10 @@ type Dialect interface {
 	InsertChild(source, child *TableInfo, values map[string]any) (Stmt, error)
 	// Quote setzt einen Bezeichner in die Anführung der Datenbankart.
 	Quote(name string) string
+	// TimeColumn sagt, ob die Spalte ein Datum oder eine Zeit hält, die gelesen
+	// als time.Time (UTC) ankommt (isTime), und ob sie nur ein Datum ohne Uhrzeit
+	// und Zone ist (dateOnly; kommt als Mitternacht UTC an).
+	TimeColumn(c Column) (isTime, dateOnly bool)
 }
 
 // DialectFor liefert den Dialekt zur Datenbankart.

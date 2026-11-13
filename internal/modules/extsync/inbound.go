@@ -29,6 +29,22 @@ import (
 //     nichts doppelt.
 //   - Endzustände (LinkErrRecordGone, LinkErrForeignGone, LinkErrBadKey) werden
 //     einmal gemeldet und nicht wiederholt.
+//
+// Rückwirkende Meldungen (Spec 4.10):
+//   - Neu und rückwirkend ist eine Zeile, deren Anlagedatum (Profile.CreatedColumn)
+//     vor dem Beginn des heutigen Tages in Inbound.Location liegt (IsBackfill).
+//     Ohne Anlagedatum-Spalte, bei NULL oder unlesbarem Wert gilt sie als neu.
+//     Eine Datumsspalte ohne Uhrzeit gilt als Kalendertag am Ort des Servers.
+//   - Neue Zeilen benachrichtigen wie gewohnt und zählen für die Obergrenze
+//     (Anhalten bei zu vielen). Rückwirkende werden still angelegt (CreateOptions.
+//     Silent), mit dem fremden Anlagedatum als Anlagezeit; abgeschlossene werden
+//     gleich erledigt und archiviert (CreateOptions.Archive). Sie halten das
+//     Profil nie an: je Lauf werden höchstens backfillCap() angelegt, die übrigen
+//     als Verknüpfung ohne Datensatz mit LinkErrBackfillWaiting vorgemerkt (zählt
+//     als bearbeitet für den Cursor, nicht als Fehler) und von späteren Läufen
+//     über BackfillLinks angelegt.
+//   - Ausgangswert, Vorabeintrag, Wiederholung und Endzustände gelten für
+//     rückwirkende Zeilen unverändert.
 
 // ── Zugriff auf die Fremddatenbank ───────────────────────────────────────
 
@@ -114,7 +130,11 @@ type Inbound struct {
 	Store      *Store
 	Targets    map[string]Target // nach Profile.TargetType
 	SystemUser string            // Akteur aller Änderungen
-	pageSize   int               // 0 = defaultPageSize; Tests setzen kleinere Seiten
+	// Now liefert die Uhrzeit für die Entscheidung "rückwirkend" (nil = time.Now).
+	Now func() time.Time
+	// Location ist der Ort des Servers für den Tagesbeginn (nil = time.Local).
+	Location *time.Location
+	pageSize int // 0 = defaultPageSize; Tests setzen kleinere Seiten
 	// afterLock ist nur für Tests: läuft, sobald die Sperre gehalten wird.
 	afterLock func()
 	// testFail ist nur für Tests: Fehler an benannten Schritten einschleusen
@@ -139,11 +159,54 @@ type Preview struct {
 	Values     map[string]string
 	Errors     []RunError
 	IsNew      bool
+	// Backfill: neue Zeile, die still als rückwirkende Meldung angelegt würde.
+	// Archive: davon gleich erledigt und archiviert (Status abgeschlossen).
+	Backfill bool
+	Archive  bool
+}
+
+// IsBackfill sagt, ob created vor dem Beginn des heutigen Tages (Tag von now in
+// loc) liegt. Die Nullzeit ist nie rückwirkend; loc nil = time.Local.
+func IsBackfill(created time.Time, now time.Time, loc *time.Location) bool {
+	if created.IsZero() {
+		return false
+	}
+	if loc == nil {
+		loc = time.Local
+	}
+	n := now.In(loc)
+	return created.Before(time.Date(n.Year(), n.Month(), n.Day(), 0, 0, 0, 0, loc))
+}
+
+// createdTime liest das Anlagedatum einer Fremdzeile. Zeitspalten kommen als
+// Zeitpunkt (UTC); eine reine Datumsspalte kommt als Mitternacht UTC und meint
+// den Kalendertag am Ort loc – sie wird als dessen Tagesbeginn in loc gelesen.
+// NULL und andere Typen: ok = false (die Zeile gilt als neu).
+func createdTime(v any, dateOnly bool, loc *time.Location) (time.Time, bool) {
+	tm, ok := v.(time.Time)
+	if !ok || tm.IsZero() {
+		return time.Time{}, false
+	}
+	if dateOnly {
+		if loc == nil {
+			loc = time.Local
+		}
+		u := tm.UTC()
+		return time.Date(u.Year(), u.Month(), u.Day(), 0, 0, 0, 0, loc), true
+	}
+	return tm, true
+}
+
+// backfillValue: ist der gelesene Wert der Anlagedatum-Spalte rückwirkend?
+func backfillValue(v any, dateOnly bool, now time.Time, loc *time.Location) bool {
+	tm, ok := createdTime(v, dateOnly, loc)
+	return ok && IsBackfill(tm, now, loc)
 }
 
 const (
 	defaultPageSize = 200
-	// retryLimit: so viele fehlerhafte oder reservierte Verknüpfungen versucht ein Lauf erneut.
+	// retryLimit: so viele fehlerhafte oder reservierte Verknüpfungen versucht ein Lauf erneut
+	// (wartende rückwirkende Meldungen nicht mitgezählt, siehe backfillCap).
 	retryLimit = 50
 	// lockAcquireTimeout: so lange wartet ein Lauf höchstens auf eine freie Datenbankverbindung.
 	lockAcquireTimeout = 5 * time.Second
@@ -172,6 +235,9 @@ type candidate struct {
 	mapped  map[string]string
 	errs    []RunError
 	mark    string
+	// backfill: rückwirkende Meldung (still anlegen); created ist dann ihr Anlagezeitpunkt.
+	backfill bool
+	created  time.Time
 }
 
 type inboundRun struct {
@@ -190,6 +256,12 @@ type inboundRun struct {
 	done      map[string]bool // in der Wiederholung schon bearbeitete Schlüssel
 	newCount  int
 	paused    bool
+	// Rückwirkende Meldungen: Uhr und Ort des Laufs (einmal festgelegt), Art der
+	// Anlagedatum-Spalte und Zahl der in diesem Lauf zum Anlegen vorgemerkten.
+	now           time.Time
+	loc           *time.Location
+	createdDate   bool // Anlagedatum-Spalte ist reines Datum
+	backfillCount int
 }
 
 // lockKey bildet aus der Profil-ID die Nummer der Postgres-Beratungssperre.
@@ -264,7 +336,14 @@ func (in *Inbound) Run(ctx context.Context, p *Profile, maps []FieldMap, f Forei
 		}
 		run.ID = id
 	}
-	r := &inboundRun{in: in, p: p, maps: maps, d: d, opt: opt, run: run, done: map[string]bool{}}
+	r := &inboundRun{in: in, p: p, maps: maps, d: d, opt: opt, run: run, done: map[string]bool{},
+		now: time.Now(), loc: in.Location}
+	if in.Now != nil {
+		r.now = in.Now()
+	}
+	if r.loc == nil {
+		r.loc = time.Local
+	}
 	defer func() {
 		if rec := recover(); rec != nil {
 			err = fmt.Errorf("abgleich: interner Fehler im Lauf: %v", rec)
@@ -339,8 +418,26 @@ func (r *inboundRun) exec(ctx context.Context, f Foreign) error {
 	}
 	r.t = t
 	cols := inboundColumns(r.maps)
+	if p.CreatedColumn != "" {
+		col, ok := findColumn(t, p.CreatedColumn)
+		if !ok {
+			return fmt.Errorf("Anlagedatum-Spalte ‚%s‘ gibt es in der Tabelle nicht", p.CreatedColumn)
+		}
+		isTime, dateOnly := r.d.TimeColumn(*col)
+		if !isTime {
+			return errors.New("Anlagedatum-Spalte ist keine Datumsspalte")
+		}
+		r.createdDate = dateOnly
+		// Mitgelesen, aber kein zugeordnetes Feld: nie in seen_values oder RowMark.
+		if !containsStr(cols, p.CreatedColumn) {
+			cols = append(cols, p.CreatedColumn)
+		}
+	}
 	if !r.opt.Dry {
 		if err := r.retry(ctx, f, cols); err != nil {
+			return err
+		}
+		if err := r.retryBackfill(ctx, f, cols); err != nil {
 			return err
 		}
 	}
@@ -406,11 +503,31 @@ func (r *inboundRun) exec(ctx context.Context, f Foreign) error {
 // nach einem Abbruch) oder mit Fehler stehen: die Zeile wird einzeln gelesen
 // und wie eine Zeile einer Seite behandelt. Reservierte zählen als neu.
 func (r *inboundRun) retry(ctx context.Context, f Foreign, cols []string) error {
-	p := r.p
-	links, err := r.in.Store.RetryLinks(ctx, p.ID, retryLimit)
+	links, err := r.in.Store.RetryLinks(ctx, r.p.ID, retryLimit)
 	if err != nil {
 		return err
 	}
+	return r.retryLinks(ctx, f, cols, links)
+}
+
+// retryBackfill legt wartende rückwirkende Meldungen an (LinkErrBackfillWaiting),
+// höchstens so viele, wie in diesem Lauf noch unter backfillCap passen. Eigener
+// Durchgang neben retry: die Grenze 50 der Fehler-Wiederholung gilt hier nicht.
+func (r *inboundRun) retryBackfill(ctx context.Context, f Foreign, cols []string) error {
+	room := r.backfillCap() - r.backfillCount
+	if room <= 0 || r.paused {
+		return nil
+	}
+	links, err := r.in.Store.BackfillLinks(ctx, r.p.ID, room)
+	if err != nil {
+		return err
+	}
+	return r.retryLinks(ctx, f, cols, links)
+}
+
+// retryLinks liest jede Verknüpfung einzeln und behandelt sie wie eine Zeile.
+func (r *inboundRun) retryLinks(ctx context.Context, f Foreign, cols []string, links []Link) error {
+	p := r.p
 	if len(links) == 0 {
 		return nil
 	}
@@ -460,6 +577,25 @@ func (r *inboundRun) maxNew() int {
 		return DefaultMaxNew
 	}
 	return r.p.MaxNew
+}
+
+// backfillCap: so viele rückwirkende Meldungen legt ein Lauf höchstens an –
+// die Obergrenze des Profils, bei Überlastung (RunOptions.Limit) höchstens Limit.
+func (r *inboundRun) backfillCap() int {
+	c := r.maxNew()
+	if r.opt.Limit > 0 && r.opt.Limit < c {
+		c = r.opt.Limit
+	}
+	return c
+}
+
+func containsStr(list []string, v string) bool {
+	for _, x := range list {
+		if x == v {
+			return true
+		}
+	}
+	return false
 }
 
 func (r *inboundRun) previewLimit() int {
@@ -590,6 +726,11 @@ func (r *inboundRun) handleRow(ctx context.Context, row map[string]any, pos int,
 		changeVal = row[p.ChangeColumn]
 	}
 	c.mark = RowMark(p.ChangeKind, changeVal, c.mapped)
+	if p.CreatedColumn != "" {
+		if tm, ok := createdTime(row[p.CreatedColumn], r.createdDate, r.loc); ok && IsBackfill(tm, r.now, r.loc) {
+			c.backfill, c.created = true, tm
+		}
+	}
 
 	if link == nil {
 		link, err = r.in.Store.LinkByKey(ctx, p.ID, c.fk)
@@ -620,15 +761,42 @@ func (r *inboundRun) handleRow(ctx context.Context, row map[string]any, pos int,
 		return nil
 	}
 	// Neu (oder reserviert ohne Datensatz).
-	r.newCount++
 	if r.opt.Dry {
 		r.previewNew(c)
 		return nil
 	}
+	if c.backfill {
+		// Rückwirkend: zählt nicht für das Anhalten; über der Grenze je Lauf vormerken.
+		r.backfillCount++
+		if r.backfillCount > r.backfillCap() {
+			return r.park(ctx, c, link)
+		}
+		r.pending = append(r.pending, c) // Zustand bleibt rowPending bis zum Anlegen
+		return nil
+	}
+	r.newCount++
 	if r.newCount > r.maxNew() {
 		r.paused = true
 	}
 	r.pending = append(r.pending, c) // Zustand bleibt rowPending bis zum Anlegen
+	return nil
+}
+
+// park merkt eine rückwirkende Meldung über der Grenze je Lauf für einen
+// späteren Lauf vor (Verknüpfung ohne Datensatz, LinkErrBackfillWaiting). Die
+// Zeile gilt damit als bearbeitet (Cursor) und nicht als fehlgeschlagen. Gibt es
+// schon eine Verknüpfung ohne Datensatz, bleibt sie (sie wird ohnehin wiederholt).
+func (r *inboundRun) park(ctx context.Context, c candidate, link *Link) error {
+	if link == nil {
+		err := r.hook("park", c.fk)
+		if err == nil {
+			_, err = r.in.Store.ParkLink(ctx, r.p.ID, c.fk, r.p.TargetType)
+		}
+		if err != nil {
+			return fmt.Errorf("Rückwirkende Meldung %s nicht vorgemerkt: %w", c.fk, err)
+		}
+	}
+	r.setState(c.pos, rowOK)
 	return nil
 }
 
@@ -868,7 +1036,12 @@ func (r *inboundRun) processNew(ctx context.Context, c candidate) error {
 	if err := r.writeAhead(ctx, link.ID, ahead); err != nil {
 		return r.rowFailed(ctx, link.ID, c.fk, RunError{Message: err.Error()})
 	}
-	id, err := r.target.Create(ctx, vals, r.in.SystemUser, r.originNote(c))
+	var opt CreateOptions
+	if c.backfill {
+		created := c.created
+		opt = CreateOptions{Silent: true, CreatedAt: &created, Archive: isFinalStatus(vals["status"])}
+	}
+	id, err := r.target.Create(ctx, vals, r.in.SystemUser, r.originNote(c), opt)
 	if err != nil {
 		if id != "" {
 			// Datensatz samt Herkunft existiert, eine Nacharbeit fehlte: anbinden ohne
@@ -896,7 +1069,15 @@ func (r *inboundRun) processNew(ctx context.Context, c candidate) error {
 		// Der Datensatz hat seinen Herkunftseintrag: die Wiederholung bindet ihn an.
 		return r.rowFailed(ctx, link.ID, c.fk, RunError{Message: err.Error()})
 	}
-	r.run.New++
+	switch {
+	case !c.backfill:
+		r.run.New++
+	case opt.Archive:
+		r.run.Backfilled++
+		r.run.Archived++
+	default:
+		r.run.Backfilled++
+	}
 	return nil
 }
 
@@ -997,13 +1178,21 @@ func (r *inboundRun) previewNew(c candidate) {
 	if len(errs) == 0 {
 		values, errs = r.complete(c.mapped)
 	}
-	if len(errs) > 0 {
+	archive := c.backfill && len(errs) == 0 && isFinalStatus(values["status"])
+	switch {
+	case len(errs) > 0:
 		r.run.Failed++
 		r.run.Errors = append(r.run.Errors, withKey(c.fk, errs)...)
-	} else {
+	case !c.backfill:
 		r.run.New++
+	default:
+		r.run.Backfilled++
+		if archive {
+			r.run.Archived++
+		}
 	}
-	r.addPreview(Preview{ForeignKey: c.fk, Values: values, Errors: withKey(c.fk, errs), IsNew: true})
+	r.addPreview(Preview{ForeignKey: c.fk, Values: values, Errors: withKey(c.fk, errs), IsNew: true,
+		Backfill: c.backfill, Archive: archive})
 }
 
 func (r *inboundRun) previewChanged(ctx context.Context, c candidate, link *Link) error {

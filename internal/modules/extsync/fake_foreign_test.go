@@ -160,6 +160,19 @@ func (fakeDialect) InsertChild(*TableInfo, *TableInfo, map[string]any) (Stmt, er
 
 func (fakeDialect) Quote(name string) string { return "[" + name + "]" }
 
+func (fakeDialect) TimeColumn(c Column) (isTime, dateOnly bool) {
+	if c.IsRowVersion {
+		return false, false
+	}
+	switch strings.ToLower(c.Type) {
+	case "datetime", "datetime2", "smalldatetime":
+		return true, false
+	case "date":
+		return true, true
+	}
+	return false, false
+}
+
 func fakeCol(t *TableInfo, name string) (Column, bool) {
 	for _, c := range t.Columns {
 		if c.Name == name {

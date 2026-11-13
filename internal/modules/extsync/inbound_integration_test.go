@@ -47,14 +47,15 @@ func stdMaps(target string) []FieldMap {
 }
 
 type fixOpt struct {
-	target    string
-	kind      string // rowversion (Standard) | none
-	maps      []FieldMap
-	keyCols   []string
-	info      *TableInfo
-	defaults  map[string]string
-	maxNew    int
-	changeCol string // Zeitstempel-Spalte bei kind timestamp
+	target     string
+	kind       string // rowversion (Standard) | none
+	maps       []FieldMap
+	keyCols    []string
+	info       *TableInfo
+	defaults   map[string]string
+	maxNew     int
+	changeCol  string // Zeitstempel-Spalte bei kind timestamp
+	createdCol string // Anlagedatum-Spalte (leer = keine)
 }
 
 func newInFix(t *testing.T, o fixOpt) *inFix {
@@ -79,7 +80,7 @@ func newInFix(t *testing.T, o fixOpt) *inFix {
 	p := &Profile{
 		Name: fmt.Sprintf("extsync-in-%d", time.Now().UnixNano()), ConnectionID: sf.connID, TargetType: o.target,
 		SourceSchema: o.info.Schema, SourceTable: o.info.Name, KeyColumns: o.keyCols,
-		ChangeKind: o.kind, Defaults: o.defaults, MaxNew: o.maxNew,
+		ChangeKind: o.kind, Defaults: o.defaults, MaxNew: o.maxNew, CreatedColumn: o.createdCol,
 	}
 	if o.kind == changeKindRowVersion {
 		p.ChangeColumn = "RV"
@@ -439,7 +440,7 @@ func TestInboundCrashBetweenCreateAndAttach(t *testing.T) {
 	}
 	tg := f.in.Targets[RefTicket]
 	id, err := tg.Create(ctx, map[string]string{"title": f.title("Absturz"), "priority": "high"}, systemUser,
-		f.p.ID+"|"+k(1)+"|Aus "+f.p.Name+", Nummer 1")
+		f.p.ID+"|"+k(1)+"|Aus "+f.p.Name+", Nummer 1", CreateOptions{})
 	must(t, err)
 	r := f.run(RunOptions{})
 	if r.New != 0 || r.Failed != 0 {
@@ -666,11 +667,11 @@ type failingTarget struct {
 	failTitle string
 }
 
-func (ft *failingTarget) Create(ctx context.Context, values map[string]string, user, origin string) (string, error) {
+func (ft *failingTarget) Create(ctx context.Context, values map[string]string, user, origin string, opt CreateOptions) (string, error) {
 	if values["title"] == ft.failTitle {
 		return "", errors.New("Datenbank meldet Fehler")
 	}
-	return ft.Target.Create(ctx, values, user, origin)
+	return ft.Target.Create(ctx, values, user, origin, opt)
 }
 
 func TestInboundFailedRowIsRetriedNextRun(t *testing.T) {

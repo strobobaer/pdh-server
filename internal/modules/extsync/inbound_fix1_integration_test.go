@@ -199,8 +199,8 @@ type cancelTarget struct {
 	cancel context.CancelFunc
 }
 
-func (c *cancelTarget) Create(ctx context.Context, values map[string]string, user, origin string) (string, error) {
-	id, err := c.Target.Create(ctx, values, user, origin)
+func (c *cancelTarget) Create(ctx context.Context, values map[string]string, user, origin string, opt CreateOptions) (string, error) {
+	id, err := c.Target.Create(ctx, values, user, origin, opt)
 	if values["title"] == c.title {
 		c.cancel()
 	}

@@ -16,6 +16,9 @@ CREATE TABLE IF NOT EXISTS sync_profiles (
     key_columns    TEXT[] NOT NULL,
     change_column  TEXT,
     change_kind    TEXT NOT NULL DEFAULT 'none' CHECK (change_kind IN ('none', 'timestamp', 'rowversion')),
+    -- Anlagedatum-Spalte der Fremdtabelle (leer = keine): neue Zeilen mit einem
+    -- Anlagedatum vor dem heutigen Tag werden still als Historie übernommen.
+    created_column TEXT NOT NULL DEFAULT '',
     filter_sql     TEXT NOT NULL DEFAULT '',
     window_days    INT NOT NULL DEFAULT 0,
     defaults       JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -92,6 +95,7 @@ CREATE TABLE IF NOT EXISTS sync_runs (
     n_changed      INT NOT NULL DEFAULT 0,
     n_written      INT NOT NULL DEFAULT 0,
     n_failed       INT NOT NULL DEFAULT 0,
+    n_backfill     INT NOT NULL DEFAULT 0,  -- still angelegte rückwirkende Meldungen
     skipped_reason TEXT NOT NULL DEFAULT '',
     errors         JSONB NOT NULL DEFAULT '[]'::jsonb
 );
@@ -193,6 +197,54 @@ CREATE TRIGGER trg_pdh_sync_ticket_comments AFTER INSERT ON ticket_comments
 DROP TRIGGER IF EXISTS trg_pdh_sync_infra_comments ON infrastructure_comments;
 CREATE TRIGGER trg_pdh_sync_infra_comments AFTER INSERT ON infrastructure_comments
     FOR EACH ROW EXECUTE FUNCTION pdh_sync_enqueue('infra_comment');
+
+-- ── Stille Übernahme rückwirkender Meldungen ──────────────────────────────
+-- Die Auslöser der Benachrichtigungen (record_change_queue) bekommen vorn EINE
+-- Prüfung: Setzt die Transaktion pdh.sync_silent = '1' (nur der Abgleich beim
+-- stillen Anlegen rückwirkender Meldungen, per SET LOCAL), entsteht kein
+-- Eintrag. Überall sonst ist die Einstellung nicht gesetzt und die Funktionen
+-- arbeiten unverändert. Rümpfe sonst wörtlich übernommen:
+--   pdh_queue_record_created  aus 106_record_created_notify.up.sql
+--   pdh_queue_record_update   aus 072_backup_cleanup_notify_categories.up.sql
+-- (Kommentar-Auslöser bleiben unverändert: das stille Anlegen schreibt keine Kommentare.)
+CREATE OR REPLACE FUNCTION pdh_queue_record_created() RETURNS trigger AS $$
+BEGIN
+    IF current_setting('pdh.sync_silent', true) = '1' THEN
+        RETURN NULL;
+    END IF;
+    INSERT INTO record_change_queue (module, record_id, kind)
+    VALUES (TG_ARGV[0], NEW.id, 'created');
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION pdh_queue_record_update() RETURNS trigger AS $$
+DECLARE
+    cols TEXT[];
+    o JSONB;
+    n JSONB;
+BEGIN
+    IF current_setting('pdh.sync_silent', true) = '1' THEN
+        RETURN NEW;
+    END IF;
+    SELECT array_agg(nv.key ORDER BY nv.key),
+           jsonb_object_agg(nv.key, ov.value),
+           jsonb_object_agg(nv.key, nv.value)
+      INTO cols, o, n
+      FROM jsonb_each(to_jsonb(NEW)) nv
+      JOIN jsonb_each(to_jsonb(OLD)) ov ON ov.key = nv.key
+     WHERE nv.value IS DISTINCT FROM ov.value
+       AND nv.key NOT IN ('updated_at', 'search_vector', 'embedding', 'record_image_attachment_id')
+       AND nv.key NOT LIKE 'ai\_%'
+       AND nv.key NOT LIKE 'analysis%';
+    IF cols IS NULL THEN
+        RETURN NEW;
+    END IF;
+    INSERT INTO record_change_queue (module, record_id, kind, fields, old_values, new_values)
+    VALUES (TG_ARGV[0], NEW.id, 'update', cols, o, n);
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
 
 -- ── Rechte ────────────────────────────────────────────────────────────────
 INSERT INTO permissions (key, label, category) VALUES
