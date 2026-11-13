@@ -363,7 +363,7 @@ func TestDecideConflict(t *testing.T) {
 	if len(d.Apply) != 0 {
 		t.Fatalf("Apply %v", d.Apply)
 	}
-	if d.KeepPDH["title"] != "pdh" || d.ForeignLost["title"] != " fremd " && d.ForeignLost["title"] != "fremd" {
+	if d.KeepPDH["title"] != "pdh" || d.ForeignLost["title"] != "fremd" {
 		t.Fatalf("%+v", d)
 	}
 	// PDH hat zuletzt zurückgeschriebenes geändert, Fremd danach geändert: auch Widerspruch.
@@ -413,5 +413,69 @@ func TestDecideKeysAlwaysAligned(t *testing.T) {
 	d = Decide(nil, nil, nil, nil, nil)
 	if d.Apply == nil || d.KeepPDH == nil || d.ForeignLost == nil {
 		t.Fatalf("nil-Maps: %+v", d)
+	}
+}
+
+// TestDecideTable deckt jeden Zweig von Decide ab. Ein fehlender Schlüssel
+// (nil-Map bzw. fehlender Eintrag) ist hier bewusst etwas anderes als ein
+// leerer Wert.
+func TestDecideTable(t *testing.T) {
+	maps := []FieldMap{
+		{ForeignColumn: "T", PDHField: "title", Direction: DirBoth},
+		{ForeignColumn: "D", PDHField: "description", Direction: DirIn},
+	}
+	type m = map[string]string
+	cases := []struct {
+		name                        string
+		seen, written, foreign, pdh m
+		apply, keepPDH, foreignLost m
+	}{
+		{name: "Fremd gleich gesehen", seen: m{"title": "a"}, foreign: m{"title": "a"}, pdh: m{"title": "b"}},
+		{name: "Echo des eigenen Zurueckschreibens", seen: m{"title": "a"}, written: m{"title": "x"}, foreign: m{"title": "x"}, pdh: m{"title": "x"}},
+		{name: "Nur Fremd geaendert", seen: m{"title": "a"}, foreign: m{"title": "b"}, pdh: m{"title": "a"}, apply: m{"title": "b"}},
+		{name: "Fremd geaendert nach Zurueckschreiben, PDH noch auf Zurueckgeschriebenem", seen: m{"title": "a"}, written: m{"title": "x"}, foreign: m{"title": "b"}, pdh: m{"title": "x"}, apply: m{"title": "b"}},
+		{name: "Nur PDH geaendert", seen: m{"title": "a"}, foreign: m{"title": "a"}, pdh: m{"title": "c"}},
+		{name: "PDH geleert, Fremd unveraendert", seen: m{"title": "a"}, foreign: m{"title": "a"}, pdh: m{"title": ""}},
+		{name: "PDH geleert, Fremd geaendert: Widerspruch", seen: m{"title": "a"}, foreign: m{"title": "b"}, pdh: m{"title": ""}, keepPDH: m{"title": ""}, foreignLost: m{"title": "b"}},
+		{name: "Beide verschieden geaendert", seen: m{"title": "a"}, foreign: m{"title": "b"}, pdh: m{"title": "c"}, keepPDH: m{"title": "c"}, foreignLost: m{"title": "b"}},
+		{name: "Beide gleich geaendert", seen: m{"title": "a"}, foreign: m{"title": "b"}, pdh: m{"title": "b"}, apply: m{"title": "b"}},
+		{name: "Widerspruch nach Zurueckschreiben", seen: m{"title": "a"}, written: m{"title": "x"}, foreign: m{"title": "b"}, pdh: m{"title": "c"}, keepPDH: m{"title": "c"}, foreignLost: m{"title": "b"}},
+		{name: "seen leer vorhanden, Fremd weiter leer", seen: m{"title": ""}, foreign: m{"title": ""}, pdh: m{"title": "x"}},
+		{name: "seen leer vorhanden, Fremd gefuellt", seen: m{"title": ""}, foreign: m{"title": "b"}, pdh: m{"title": ""}, apply: m{"title": "b"}},
+		{name: "written ohne seen, Fremd geaendert, PDH auf written", written: m{"title": "x"}, foreign: m{"title": "b"}, pdh: m{"title": "x"}, apply: m{"title": "b"}},
+		{name: "written ohne seen, Fremd gleich written", written: m{"title": "x"}, foreign: m{"title": "x"}, pdh: m{"title": "x"}},
+		{name: "written ohne seen, beide geaendert", written: m{"title": "x"}, foreign: m{"title": "b"}, pdh: m{"title": "c"}, keepPDH: m{"title": "c"}, foreignLost: m{"title": "b"}},
+		{name: "written ohne seen: fehlendes seen trifft nicht auf leeres PDH", written: m{"title": "x"}, foreign: m{"title": "b"}, pdh: m{"title": ""}, keepPDH: m{"title": ""}, foreignLost: m{"title": "b"}},
+		{name: "written ohne seen: fehlendes seen trifft nicht auf leeren Fremdwert", written: m{"title": "x"}, foreign: m{}, pdh: m{"title": "c"}, keepPDH: m{"title": "c"}, foreignLost: m{"title": ""}},
+		{name: "Fremd geleert nach Zurueckschreiben", seen: m{"title": "a"}, written: m{"title": "x"}, foreign: m{}, pdh: m{"title": "x"}, apply: m{"title": ""}},
+		{name: "Fremd geleert, nie zurueckgeschrieben", seen: m{"title": "a"}, foreign: m{}, pdh: m{"title": "a"}, apply: m{"title": ""}},
+		{name: "Fremd geleert, PDH geleert", seen: m{"title": "a"}, foreign: m{"title": ""}, pdh: m{}, apply: m{"title": ""}},
+		{name: "fehlendes written trifft nicht auf PDH leer", seen: m{"title": "a"}, foreign: m{"title": "b"}, pdh: m{}, keepPDH: m{"title": ""}, foreignLost: m{"title": "b"}},
+		{name: "Erster Abgleich, gleich", foreign: m{"title": "a"}, pdh: m{"title": "a"}},
+		{name: "Erster Abgleich, verschieden", foreign: m{"title": "b"}, pdh: m{"title": "c"}, apply: m{"title": "b"}},
+		{name: "Erster Abgleich, Fremd leer", foreign: m{}, pdh: m{"title": "c"}, apply: m{"title": ""}},
+		{name: "Leerraum ist keine Aenderung", seen: m{"title": "a"}, foreign: m{"title": " a "}, pdh: m{"title": "a"}},
+		{name: "Feld mit seen neben Feld ohne seen", seen: m{"title": "a"}, foreign: m{"title": "b", "description": "d"}, pdh: m{"title": "a", "description": "e"}, apply: m{"title": "b", "description": "d"}},
+		{name: "Feld mit seen neben Feld ohne seen, Widerspruch nur am ersten", seen: m{"title": "a"}, foreign: m{"title": "b", "description": "d"}, pdh: m{"title": "c", "description": "d"}, keepPDH: m{"title": "c"}, foreignLost: m{"title": "b"}},
+	}
+	norm := func(x m) m {
+		if x == nil {
+			return m{}
+		}
+		return x
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			d := Decide(maps, c.seen, c.written, c.foreign, c.pdh)
+			if !reflect.DeepEqual(d.Apply, norm(c.apply)) {
+				t.Errorf("Apply %v, erwartet %v", d.Apply, norm(c.apply))
+			}
+			if !reflect.DeepEqual(d.KeepPDH, norm(c.keepPDH)) {
+				t.Errorf("KeepPDH %v, erwartet %v", d.KeepPDH, norm(c.keepPDH))
+			}
+			if !reflect.DeepEqual(d.ForeignLost, norm(c.foreignLost)) {
+				t.Errorf("ForeignLost %v, erwartet %v", d.ForeignLost, norm(c.foreignLost))
+			}
+		})
 	}
 }
