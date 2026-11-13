@@ -336,7 +336,7 @@ func (h *Handler) ConnectionQuerySaveWeb(w http.ResponseWriter, r *http.Request)
 	}
 	ctx := r.Context()
 	_, kind, _, _, err := h.connectionRow(ctx, id, "import")
-	if err != nil {
+	if err != nil && !isConnSecretErr(err) { // nur Metadaten nötig: Kennwortfehler egal
 		http.Error(w, "Verbindung nicht gefunden", http.StatusNotFound)
 		return
 	}

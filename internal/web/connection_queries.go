@@ -682,6 +682,9 @@ func (h *Handler) connectionRow(ctx context.Context, id, direction string) (name
 func (h *Handler) runAllConnQueries(ctx context.Context, connectionID string) (ok, failed, updated int) {
 	_, kind, _, config, err := h.connectionRow(ctx, connectionID, "import")
 	if err != nil {
+		if isConnSecretErr(err) {
+			log.Error().Err(err).Str("connection_id", connectionID).Msg("abfragen nicht ausgeführt: kennwort der verbindung nicht lesbar")
+		}
 		return
 	}
 	qs, _ := h.loadConnQueries(ctx, connectionID)
@@ -711,6 +714,9 @@ func (h *Handler) reconcileQueryPolls(ctx context.Context, connectionID string) 
 		return
 	}
 	_, kind, enabled, config, err := h.connectionRow(ctx, connectionID, "import")
+	if isConnSecretErr(err) {
+		log.Error().Err(err).Str("connection_id", connectionID).Msg("abfrage-intervalle nicht gestartet: kennwort der verbindung nicht lesbar")
+	}
 	qs, _ := h.loadConnQueries(ctx, connectionID)
 	want := map[string]bool{}
 	if err == nil && enabled {

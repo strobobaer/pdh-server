@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"errors"
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
@@ -114,7 +115,19 @@ func (h *Handler) openConnJSON(raw []byte) (map[string]string, error) {
 // EncryptConnectionSecrets verschlüsselt beim Start alle Verbindungen, die noch
 // ein Kennwort im Klartext haben. Idempotent; liefert die Zahl der Zeilen.
 func (h *Handler) EncryptConnectionSecrets(ctx context.Context) (int, error) {
-	rows, err := h.db.Query(ctx, `SELECT id::text, config FROM import_export_connections`)
+	return h.encryptConnectionSecretsIn(ctx, nil)
+}
+
+// encryptConnectionSecretsIn: wie EncryptConnectionSecrets, bei ids != nil nur
+// für diese Verbindungen (Tests dürfen fremde Zeilen nicht anfassen).
+func (h *Handler) encryptConnectionSecretsIn(ctx context.Context, ids []string) (int, error) {
+	q := `SELECT id::text, config FROM import_export_connections`
+	args := []any{}
+	if ids != nil {
+		q += ` WHERE id::text = ANY($1)`
+		args = append(args, ids)
+	}
+	rows, err := h.db.Query(ctx, q, args...)
 	if err != nil {
 		return 0, err
 	}
@@ -181,4 +194,11 @@ func keepStoredSecrets(cfg, stored map[string]string, fields []string) map[strin
 		}
 	}
 	return cfg
+}
+
+// isConnSecretErr: der Fehler stammt vom nicht entschlüsselbaren Kennwort.
+// Aufrufer, die nur Metadaten (Typ, Status) brauchen, dürfen ihn ignorieren.
+func isConnSecretErr(err error) bool {
+	var se *connSecretError
+	return errors.As(err, &se)
 }

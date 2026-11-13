@@ -156,7 +156,7 @@ func (h *Handler) ownTemplates(ctx context.Context, direction, kind string) ([]o
 // saveConnectionTemplate speichert Abfragen und Zuordnungen als Vorlage.
 func (h *Handler) saveConnectionTemplate(ctx context.Context, id, direction, name, desc, userID string) error {
 	_, kind, _, _, err := h.connectionRow(ctx, id, direction)
-	if err != nil {
+	if err != nil && !isConnSecretErr(err) { // nur Metadaten nötig
 		return errors.New("Verbindung nicht gefunden")
 	}
 	var p templatePayload
@@ -210,7 +210,7 @@ func (h *Handler) saveConnectionTemplate(ctx context.Context, id, direction, nam
 // Zuordnungen (gleicher Quellwert und Name) werden nicht doppelt angelegt.
 func (h *Handler) applyConnectionTemplate(ctx context.Context, id, direction, templateID, userID string) (string, error) {
 	_, kind, _, _, err := h.connectionRow(ctx, id, direction)
-	if err != nil {
+	if err != nil && !isConnSecretErr(err) { // nur Metadaten nötig
 		return "", errors.New("Verbindung nicht gefunden")
 	}
 	var tkind string

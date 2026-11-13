@@ -99,25 +99,29 @@ func TestEncryptConnectionSecretsIdempotent(t *testing.T) {
 	pool := connTestPool(t)
 	h := &Handler{db: pool, jwtSecret: "t"}
 	ctx := context.Background()
-	// vorhandene Klartextzeilen der Datenbank vorab verschlüsseln, damit die Zählung stimmt
-	if _, err := h.EncryptConnectionSecrets(ctx); err != nil {
-		t.Fatal(err)
-	}
+	// nur die eigene Zeile anfassen (gemeinsame Test-Datenbank)
 	id := insertConnRow(t, pool, map[string]string{"host": "h", "password": "Geheim-Klartext-42"})
-	n, err := h.EncryptConnectionSecrets(ctx)
+	n, err := h.encryptConnectionSecretsIn(ctx, []string{id})
 	if err != nil || n != 1 {
 		t.Fatalf("erster Lauf: n=%d err=%v", n, err)
 	}
-	n, err = h.EncryptConnectionSecrets(ctx)
+	rawOf := func() string {
+		var raw string
+		if err := pool.QueryRow(ctx, `SELECT config::text FROM import_export_connections WHERE id=$1`, id).Scan(&raw); err != nil {
+			t.Fatal(err)
+		}
+		return raw
+	}
+	raw := rawOf()
+	if strings.Contains(raw, "Geheim-Klartext-42") || !strings.Contains(raw, "password_enc") {
+		t.Errorf("Rohtext: %s", raw)
+	}
+	n, err = h.encryptConnectionSecretsIn(ctx, []string{id})
 	if err != nil || n != 0 {
 		t.Fatalf("zweiter Lauf: n=%d err=%v", n, err)
 	}
-	var raw string
-	if err := pool.QueryRow(ctx, `SELECT config::text FROM import_export_connections WHERE id=$1`, id).Scan(&raw); err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(raw, "Geheim-Klartext-42") || !strings.Contains(raw, "password_enc") {
-		t.Errorf("Rohtext: %s", raw)
+	if rawOf() != raw {
+		t.Error("zweiter Lauf hat die Zeile verändert")
 	}
 	_, _, _, cfg, err := h.connectionRow(ctx, id, "import")
 	if err != nil || cfg["password"] != "Geheim-Klartext-42" {
@@ -198,5 +202,37 @@ func TestConnectionListHasNoSecret(t *testing.T) {
 	}
 	if !strings.Contains(out, "zz-test-secrets") {
 		t.Error("Verbindung fehlt in der Ausgabe")
+	}
+}
+
+// Schlüsselwechsel: Metadaten-Aufrufer arbeiten weiter, Pfade mit Kennwort
+// melden die deutsche Entschlüsselungsmeldung.
+func TestUndecryptableRowMetadataVsSecretPaths(t *testing.T) {
+	pool := connTestPool(t)
+	old := &Handler{db: pool, jwtSecret: "alter-schluessel"}
+	sealed, _ := sealConnConfig(old.connKey(), map[string]string{"host": "h", "password": "x"})
+	id := insertConnRow(t, pool, sealed)
+	h := &Handler{db: pool, jwtSecret: "neuer-schluessel"}
+	ctx := context.Background()
+
+	_, kind, _, cfg, err := h.connectionRow(ctx, id, "import")
+	if !isConnSecretErr(err) || kind != "mssql" {
+		t.Fatalf("connectionRow: kind=%q err=%v", kind, err)
+	}
+	if _, ok := cfg["password"]; ok || cfg["host"] != "h" {
+		t.Errorf("Fehlerfall liefert nur öffentliche Felder: %v", cfg)
+	}
+	// Metadaten-Aufrufer (Vorlage anwenden): kommt bis zur Vorlagen-Suche
+	_, err = h.applyConnectionTemplate(ctx, id, "import", "00000000-0000-0000-0000-000000000000", "")
+	if err == nil || err.Error() != "Vorlage nicht gefunden" {
+		t.Errorf("applyConnectionTemplate: %v", err)
+	}
+	// Pfad mit Kennwort: deutsche Meldung statt „nicht gefunden“
+	_, err = h.runConnectionChecks(ctx, id, "import")
+	if err == nil || !strings.Contains(err.Error(), "nicht entschlüsselt werden") {
+		t.Errorf("runConnectionChecks: %v", err)
+	}
+	if ok, failed, _ := h.runAllConnQueries(ctx, id); ok != 0 || failed != 0 {
+		t.Errorf("runAllConnQueries: %d/%d", ok, failed)
 	}
 }
