@@ -186,6 +186,32 @@ func TestTimeZoneChangeShiftsOnce(t *testing.T) {
 	}
 }
 
+// datetimeoffset trägt seine Zone selbst: der Treiber liefert den richtigen
+// Zeitpunkt, die Zeitzone des Profils darf ihn nicht verschieben.
+func TestTimeZoneDatetimeOffsetUntouched(t *testing.T) {
+	berlin := mustLoc(t, "Europe/Berlin")
+	info := fakeMeldungenInfo(true)
+	info.Columns = append(info.Columns, Column{Name: "FaelligDTO", Type: "datetimeoffset", Nullable: true})
+	maps := append(stdMaps(RefTicket), FieldMap{ForeignColumn: "FaelligDTO", PDHField: "due_date", Direction: DirIn, Position: 4})
+	// 10:00 bei +01:00 = 09:00 UTC.
+	inst := time.Date(2027, 3, 4, 10, 0, 0, 0, time.FixedZone("", 3600))
+	for _, c := range []struct{ name, zone string }{{"Berlin", "Europe/Berlin"}, {"Server", "server"}} {
+		t.Run(c.name, func(t *testing.T) {
+			f := newInFix(t, fixOpt{info: info, maps: maps, timeZone: c.zone})
+			f.in.Location = berlin // Ortszeit des Servers nicht UTC
+			f.ff.put(map[string]any{"Nr": int64(1), "Titel": f.title("Offset"), "Prio": "hoch", "Zustand": "offen", "FaelligDTO": inst})
+			f.run(RunOptions{})
+			id, _, _, _, _ := f.rec(k(1))
+			if d := f.due("tickets", id); d == nil || !d.Equal(inst) {
+				t.Fatalf("Fälligkeit %v, erwartet %v", d, inst.UTC())
+			}
+			if l := f.link(k(1)); l.SeenValues["due_date"] != "2027-03-04T09:00:00Z" {
+				t.Fatalf("gesehen: %+v", l.SeenValues)
+			}
+		})
+	}
+}
+
 func TestTimeZoneUnknownFailsRun(t *testing.T) {
 	f := newBackfillFix(t, fixOpt{})
 	f.rowAt(1, "Eins", "hoch", "offen", bfYesterday)

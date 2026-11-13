@@ -287,12 +287,15 @@ type inboundRun struct {
 	paused    bool
 	// Rückwirkende Meldungen: Uhr, Ort und Stichtag des Laufs (einmal festgelegt),
 	// Art der Anlagedatum-Spalte und Zahl der in diesem Lauf zum Anlegen vorgemerkten.
-	now           time.Time
-	loc           *time.Location
-	cutoff        time.Time
-	createdDate   bool // Anlagedatum-Spalte ist reines Datum
-	fLoc          *time.Location
-	wallCols      []string // Spalten zugeordneter Zeitfelder (ohne reine Datumsspalten)
+	now         time.Time
+	loc         *time.Location
+	cutoff      time.Time
+	createdDate bool // Anlagedatum-Spalte ist reines Datum
+	fLoc        *time.Location
+	// wallCols: umzurechnende Spalten zugeordneter Zeitfelder – nur zonenlose
+	// Datums-/Zeitspalten; date, datetimeoffset, time, Text und fehlende Spalten
+	// nie (siehe wallColumns).
+	wallCols      []string
 	backfillCount int
 }
 
@@ -459,19 +462,7 @@ func (r *inboundRun) exec(ctx context.Context, f Foreign) error {
 	if r.fLoc, err = p.ForeignLocation(r.loc); err != nil {
 		return err
 	}
-	kinds := fieldIndex(r.fields)
-	for _, m := range r.maps {
-		if m.FixedValue != nil || m.ForeignColumn == "" || (m.Direction != DirIn && m.Direction != DirBoth) ||
-			kinds[m.PDHField].Kind != fieldKindTime || containsStr(r.wallCols, m.ForeignColumn) {
-			continue
-		}
-		if col, ok := findColumn(t, m.ForeignColumn); ok {
-			if _, dateOnly := r.d.TimeColumn(*col); dateOnly {
-				continue // Kalendertag: nicht umrechnen
-			}
-		}
-		r.wallCols = append(r.wallCols, m.ForeignColumn)
-	}
+	r.wallCols = wallColumns(t, r.d, r.maps, r.fields)
 	cols := inboundColumns(r.maps)
 	if p.CreatedColumn != "" {
 		col, ok := findColumn(t, p.CreatedColumn)
@@ -888,6 +879,32 @@ func (r *inboundRun) park(ctx context.Context, c candidate, link *Link) error {
 	}
 	r.setState(c.pos, rowOK)
 	return nil
+}
+
+// wallColumns: Spalten zugeordneter Zeitfelder (herein/beides, ohne festen
+// Wert), deren Werte mit der Zeitzone des Profils umgerechnet werden. Regel:
+// NUR zonenlose Datums-/Zeitspalten (TimeColumn: isTime && !dateOnly) werden
+// umgerechnet; date bleibt Kalendertag; alles andere bleibt unberührt –
+// datetimeoffset (trägt die Zone selbst, der Treiber liefert den richtigen
+// Zeitpunkt), time, Text und Spalten, die im Aufbau fehlen (ob das ein Fehler
+// ist, entscheidet die Spaltenprüfung des Dialekts).
+func wallColumns(t *TableInfo, d Dialect, maps []FieldMap, fields []PDHField) []string {
+	kinds := fieldIndex(fields)
+	var out []string
+	for _, m := range maps {
+		if m.FixedValue != nil || m.ForeignColumn == "" || (m.Direction != DirIn && m.Direction != DirBoth) ||
+			kinds[m.PDHField].Kind != fieldKindTime || containsStr(out, m.ForeignColumn) {
+			continue
+		}
+		col, ok := findColumn(t, m.ForeignColumn)
+		if !ok {
+			continue
+		}
+		if isTime, dateOnly := d.TimeColumn(*col); isTime && !dateOnly {
+			out = append(out, m.ForeignColumn)
+		}
+	}
+	return out
 }
 
 // toInstants liefert die Zeile für ToPDH: Zeitwerte der Spalten zugeordneter

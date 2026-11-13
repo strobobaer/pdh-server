@@ -136,9 +136,13 @@ type Dialect interface {
 	InsertChild(source, child *TableInfo, values map[string]any) (Stmt, error)
 	// Quote setzt einen Bezeichner in die Anführung der Datenbankart.
 	Quote(name string) string
-	// TimeColumn sagt, ob die Spalte ein Datum oder eine Zeit hält, die gelesen
-	// als time.Time (UTC) ankommt (isTime), und ob sie nur ein Datum ohne Uhrzeit
-	// und Zone ist (dateOnly; kommt als Mitternacht UTC an).
+	// TimeColumn sagt, ob die Spalte ein Datum oder eine Zeit OHNE Zone hält, die
+	// gelesen als time.Time mit der gespeicherten Wanduhr in den UTC-Feldern
+	// ankommt (isTime), und ob sie nur ein Datum ohne Uhrzeit ist (dateOnly; kommt
+	// als Mitternacht UTC an). Regel für die Zeitzone des Profils: isTime &&
+	// !dateOnly → umgerechnet; dateOnly → Kalendertag; isTime == false (u. a.
+	// datetimeoffset, time, Text) → nie umgerechnet und nicht als
+	// Anlagedatum-Spalte erlaubt.
 	TimeColumn(c Column) (isTime, dateOnly bool)
 }
 

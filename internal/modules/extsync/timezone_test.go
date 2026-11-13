@@ -56,6 +56,42 @@ func TestForeignWallToInstant(t *testing.T) {
 	}
 }
 
+// Nur zonenlose Datums-/Zeitspalten werden umgerechnet; date bleibt Kalendertag,
+// alles andere (datetimeoffset, time, Text, unbekannte Spalte) bleibt unberührt.
+func TestWallColumns(t *testing.T) {
+	info := &TableInfo{Schema: "dbo", Name: "T", Columns: []Column{
+		{Name: "Nr", Type: "int", IsKey: true},
+		{Name: "DT", Type: "datetime"},
+		{Name: "DT2", Type: "datetime2"},
+		{Name: "SDT", Type: "smalldatetime"},
+		{Name: "D", Type: "date"},
+		{Name: "DTO", Type: "datetimeoffset"},
+		{Name: "Zeit", Type: "time"},
+		{Name: "Text", Type: "nvarchar"},
+	}}
+	var maps []FieldMap
+	for i, c := range []string{"DT", "DT2", "SDT", "D", "DTO", "Zeit", "Text", "Fehlt"} {
+		maps = append(maps, FieldMap{ForeignColumn: c, PDHField: "due_date", Direction: DirIn, Position: i})
+	}
+	// Nicht hereinkommend, fester Wert und Nicht-Zeitfeld zählen nie.
+	maps = append(maps,
+		FieldMap{ForeignColumn: "DT", PDHField: "title", Direction: DirIn},
+		FieldMap{ForeignColumn: "DT2", PDHField: "due_date", Direction: DirOut})
+	fields := Fields(RefTicket)
+	for _, d := range []Dialect{&mssqlDialect{}, fakeDialect{}} {
+		got := wallColumns(info, d, maps, fields)
+		want := []string{"DT", "DT2", "SDT"}
+		if len(got) != len(want) {
+			t.Fatalf("%T: %v, erwartet %v", d, got, want)
+		}
+		for i := range want {
+			if got[i] != want[i] {
+				t.Fatalf("%T: %v, erwartet %v", d, got, want)
+			}
+		}
+	}
+}
+
 func TestForeignLocation(t *testing.T) {
 	server := mustLoc(t, "America/New_York")
 	for _, c := range []struct {
