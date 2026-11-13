@@ -40,6 +40,15 @@ const (
 	DefaultMaxNew          = 200
 )
 
+// Fehlertexte an Verknüpfungen (sync_links.last_error), nach denen gesucht wird.
+const (
+	// LinkErrRecordGone: der verknüpfte PDH-Datensatz wurde gelöscht. Solche
+	// Verknüpfungen werden nicht wiederholt (RetryLinks), nichts wird neu angelegt.
+	LinkErrRecordGone = "Datensatz im PDH nicht mehr vorhanden"
+	// LinkErrForeignGone: die Fremdzeile ist beim erneuten Versuch verschwunden.
+	LinkErrForeignGone = "Meldung im Fremdsystem nicht mehr vorhanden"
+)
+
 // ErrNotFound meldet, dass ein Datensatz nicht existiert.
 var ErrNotFound = errors.New("abgleich: nicht gefunden")
 

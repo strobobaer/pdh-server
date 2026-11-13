@@ -130,8 +130,24 @@ func (fakeDialect) KeyValues(t *TableInfo, keyCols []string, row map[string]any)
 	return out, nil
 }
 
-func (fakeDialect) SelectOne(*TableInfo, []string, []string, []string) (Stmt, error) {
-	return Stmt{}, errors.New("attrappe: SelectOne nicht vorgesehen")
+// fakeOne ist der Befehl von SelectOne.
+type fakeOne struct {
+	keyCols, keyVals []string
+}
+
+func (fakeDialect) SelectOne(t *TableInfo, cols, keyCols, keyVals []string) (Stmt, error) {
+	if !KeyIsUnique(t, keyCols) {
+		return Stmt{}, errors.New("Schlüssel ist nicht eindeutig (Primärschlüssel oder eindeutiger Index nötig)")
+	}
+	if len(keyVals) != len(keyCols) {
+		return Stmt{}, errors.New("zu jeder Schlüsselspalte wird genau ein Wert gebraucht")
+	}
+	for _, c := range cols {
+		if _, ok := fakeCol(t, c); !ok {
+			return Stmt{}, fmt.Errorf("Spalte %q gibt es nicht", c)
+		}
+	}
+	return Stmt{SQL: "one", Args: []any{fakeOne{keyCols: keyCols, keyVals: keyVals}}}, nil
 }
 
 func (fakeDialect) UpdateRow(*TableInfo, []string, []string, map[string]any) (Stmt, error) {
@@ -161,7 +177,11 @@ type fakeForeign struct {
 	rv        uint64
 	queries   int
 	execs     int
+	ones      int           // Abfragen über SelectOne
 	failQuery map[int]error // Nummer der Abfrage (ab 1) -> Fehler
+	// gate hält die nächste Abfrage an: entered meldet das Warten, Schließen von gate gibt frei.
+	gate    chan struct{}
+	entered chan struct{}
 }
 
 func newFakeForeign(info *TableInfo) *fakeForeign {
@@ -241,6 +261,26 @@ func (f *fakeForeign) set(key any, col string, val any) {
 	f.put(row)
 }
 
+// del löscht die Zeile mit dem (ersten) Schlüsselwert key.
+func (f *fakeForeign) del(key any) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	k0 := f.keyCols()[0]
+	out := f.rows[:0]
+	for _, r := range f.rows {
+		if fmt.Sprint(r[k0]) != fmt.Sprint(key) {
+			out = append(out, r)
+		}
+	}
+	f.rows = out
+}
+
+func (f *fakeForeign) oneCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.ones
+}
+
 func (f *fakeForeign) queryCount() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -259,6 +299,19 @@ func (f *fakeForeign) Exec(context.Context, Stmt) (int64, error) {
 	defer f.mu.Unlock()
 	f.execs++
 	return 0, errors.New("attrappe: schreiben nicht erlaubt")
+}
+
+// sameKeys: gleiche Schlüsseltexte.
+func sameKeys(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // cmpKey vergleicht Schlüsseltexte; Ganzzahlen nach Zahlenwert.
@@ -284,10 +337,36 @@ func cmpKey(a, b []string) int {
 
 func (f *fakeForeign) Query(_ context.Context, st Stmt) ([]map[string]any, error) {
 	f.mu.Lock()
+	g := f.gate
+	f.gate = nil
+	f.mu.Unlock()
+	if g != nil {
+		f.entered <- struct{}{}
+		<-g
+	}
+	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.queries++
 	if err := f.failQuery[f.queries]; err != nil {
 		return nil, err
+	}
+	if st.SQL == "one" && len(st.Args) == 1 {
+		f.ones++
+		one := st.Args[0].(fakeOne)
+		for _, r := range f.rows {
+			kv, err := fakeDialect{}.KeyValues(f.info, one.keyCols, r)
+			if err != nil {
+				return nil, err
+			}
+			if sameKeys(kv, one.keyVals) {
+				cp := map[string]any{}
+				for k, v := range r {
+					cp[k] = v
+				}
+				return []map[string]any{cp}, nil
+			}
+		}
+		return nil, nil
 	}
 	if st.SQL != "page" || len(st.Args) != 1 {
 		return nil, errors.New("attrappe: unbekannter Befehl")

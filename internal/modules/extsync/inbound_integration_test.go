@@ -674,32 +674,187 @@ func TestInboundFailedRowIsRetriedNextRun(t *testing.T) {
 	if r.New != 2 || r.Failed != 1 || r.Errors[0].ForeignKey != k(2) || !strings.Contains(r.Errors[0].Message, "Datenbank meldet Fehler") {
 		t.Fatalf("Lauf: %+v", r)
 	}
-	// Cursor steht hinter Zeile 1 (vor der fehlerhaften Zeile 2).
-	var row1 map[string]any
-	for _, x := range f.ff.rows {
-		if x["Nr"] == int64(1) {
-			row1 = x
-		}
-	}
-	want, err := f.d.NextCursor(f.ff.info, f.p.KeyColumns, f.p.ChangeColumn, f.p.ChangeKind, row1)
-	must(t, err)
-	if r.Cursor != want {
-		t.Fatalf("Cursor %q, erwartet %q", r.Cursor, want)
+	// Der Cursor steht hinter der letzten gelesenen Zeile 3: die fehlerhafte
+	// Zeile hält ihn nicht auf.
+	if r.Cursor != f.cursorAfter(3) {
+		t.Fatalf("Cursor %q, erwartet hinter Zeile 3", r.Cursor)
 	}
 	// Die reservierte Verknüpfung trägt den Fehler.
 	if l := f.link(k(2)); l.RefID != nil || !strings.Contains(l.LastError, "Datenbank meldet Fehler") {
 		t.Fatalf("Verknüpfung: %+v", l)
 	}
+	if n := f.count(`SELECT count(*) FROM tickets WHERE title = $1`, f.title("Zwei")); n != 0 {
+		t.Fatalf("%d Tickets für die fehlerhafte Zeile", n)
+	}
+	// Nächster Lauf: Zeile 2 wird einzeln über SelectOne wiederholt.
 	f.in.Targets[RefTicket] = real
+	ones := f.ff.oneCount()
 	r = f.run(RunOptions{})
-	if r.New != 1 || r.Failed != 0 {
-		t.Fatalf("Wiederholung: %+v", r)
+	if r.New != 1 || r.Failed != 0 || f.ff.oneCount()-ones != 1 {
+		t.Fatalf("Wiederholung: %+v, %d Einzelabfragen", r, f.ff.oneCount()-ones)
 	}
 	if n := f.records(); n != 3 {
 		t.Fatalf("%d Tickets", n)
 	}
-	if l := f.link(k(2)); l.LastError != "" {
-		t.Fatalf("Fehler bleibt: %q", l.LastError)
+	if l := f.link(k(2)); l.LastError != "" || l.RefID == nil {
+		t.Fatalf("Verknüpfung nach Wiederholung: %+v", l)
+	}
+	// Danach nichts mehr zu wiederholen, nichts doppelt.
+	ones = f.ff.oneCount()
+	r = f.run(RunOptions{})
+	if r.New != 0 || f.ff.oneCount() != ones || f.records() != 3 {
+		t.Fatalf("dritter Lauf: %+v", r)
+	}
+}
+
+// cursorAfter liefert den Cursor des Dialekts für die Zeile mit Nr = nr.
+func (f *inFix) cursorAfter(nr int64) string {
+	f.t.Helper()
+	for _, x := range f.ff.rows {
+		if x["Nr"] == nr {
+			c, err := f.d.NextCursor(f.ff.info, f.p.KeyColumns, f.p.ChangeColumn, f.p.ChangeKind, x)
+			must(f.t, err)
+			return c
+		}
+	}
+	f.t.Fatalf("Zeile %d fehlt", nr)
+	return ""
+}
+
+func TestInboundBadRowDoesNotBlockOverloadPaging(t *testing.T) {
+	f := newInFix(t, fixOpt{})
+	for i := int64(1); i <= 60; i++ {
+		prio := "mittel"
+		if i == 3 {
+			prio = "dringend" // dauerhaft nicht übersetzbar
+		}
+		f.row(i, fmt.Sprintf("Seite %d", i), prio, "offen")
+	}
+	r := f.run(RunOptions{Limit: 50})
+	if r.New != 49 || r.Failed != 1 || r.Cursor != f.cursorAfter(50) {
+		t.Fatalf("erster Lauf: %+v", r)
+	}
+	r = f.run(RunOptions{Limit: 50})
+	// Zeile 3 wird wiederholt (scheitert wieder), die nächste Seite wird gelesen.
+	if r.New != 10 || r.Failed != 1 || r.Errors[0].ForeignKey != k(3) || r.Cursor != f.cursorAfter(60) {
+		t.Fatalf("zweiter Lauf: %+v", r)
+	}
+	if n := f.records(); n != 59 {
+		t.Fatalf("%d Tickets", n)
+	}
+	if l := f.link(k(3)); l.RefID != nil || !strings.Contains(l.LastError, "dringend") {
+		t.Fatalf("Verknüpfung: %+v", l)
+	}
+}
+
+func TestInboundRetryRowGoneInForeign(t *testing.T) {
+	f := newInFix(t, fixOpt{})
+	f.row(1, "Eins", "hoch", "offen")
+	f.row(2, "Zwei", "dringend", "offen")
+	r := f.run(RunOptions{})
+	if r.New != 1 || r.Failed != 1 {
+		t.Fatalf("erster Lauf: %+v", r)
+	}
+	f.ff.del(2)
+	r = f.run(RunOptions{})
+	if r.New != 0 || r.Failed != 1 || r.Errors[0].Message != LinkErrForeignGone || r.Errors[0].ForeignKey != k(2) {
+		t.Fatalf("zweiter Lauf: %+v", r)
+	}
+	l := f.link(k(2))
+	if l.RefID != nil || l.LastError != LinkErrForeignGone {
+		t.Fatalf("Verknüpfung: %+v", l)
+	}
+	if n := f.records(); n != 1 {
+		t.Fatalf("%d Tickets", n)
+	}
+	// Reihum: jeder Versuch setzt updated_at, die Verknüpfung rückt nach hinten.
+	var before, after time.Time
+	must(t, f.sf.pool.QueryRow(context.Background(), `SELECT updated_at FROM sync_links WHERE id = $1`, l.ID).Scan(&before))
+	f.run(RunOptions{})
+	must(t, f.sf.pool.QueryRow(context.Background(), `SELECT updated_at FROM sync_links WHERE id = $1`, l.ID).Scan(&after))
+	if !after.After(before) {
+		t.Fatal("Versuch setzt updated_at nicht")
+	}
+}
+
+func TestInboundCreateRollsBackWithoutOrigin(t *testing.T) {
+	f := newInFix(t, fixOpt{})
+	f.row(1, "Abbruch", "hoch", "offen")
+	rt := f.in.Targets[RefTicket].(*recordTarget)
+	var insertedID string
+	rt.afterInsert = func(id string) error {
+		insertedID = id
+		return errors.New("Absturz nach dem Einfügen")
+	}
+	r := f.run(RunOptions{})
+	if r.New != 0 || r.Failed != 1 || insertedID == "" {
+		t.Fatalf("Lauf: %+v (eingefügt %q)", r, insertedID)
+	}
+	// Das eingefügte Ticket ist mit der Transaktion verschwunden, ohne Herkunft.
+	if n := f.count(`SELECT count(*) FROM tickets WHERE id = $1 OR title = $2`, insertedID, f.title("Abbruch")); n != 0 {
+		t.Fatalf("%d Tickets nach Abbruch vor dem Commit", n)
+	}
+	if n := f.count(`SELECT count(*) FROM record_history WHERE ref_id = $1`, insertedID); n != 0 {
+		t.Fatalf("%d Verlaufseinträge nach Abbruch", n)
+	}
+	if l := f.link(k(1)); l.RefID != nil || !strings.Contains(l.LastError, "Absturz nach dem Einfügen") {
+		t.Fatalf("Verknüpfung: %+v", l)
+	}
+	// Nächster Lauf legt genau eins an.
+	rt.afterInsert = nil
+	r = f.run(RunOptions{})
+	if r.New != 1 || r.Failed != 0 {
+		t.Fatalf("Wiederholung: %+v", r)
+	}
+	f.p.Cursor = ""
+	f.run(RunOptions{})
+	if n := f.records(); n != 1 {
+		t.Fatalf("%d Tickets, erwartet 1", n)
+	}
+}
+
+func TestInboundConcurrentRunsSameProfile(t *testing.T) {
+	f := newInFix(t, fixOpt{})
+	f.row(1, "Eins", "hoch", "offen")
+	f.row(2, "Zwei", "hoch", "offen")
+	f.row(3, "Drei", "hoch", "offen")
+	gate := make(chan struct{})
+	f.ff.gate = gate
+	f.ff.entered = make(chan struct{}, 1)
+	ctx := context.Background()
+	type res struct {
+		r   *Run
+		err error
+	}
+	first := make(chan res, 1)
+	p1 := *f.p
+	go func() {
+		r, _, err := f.in.Run(ctx, &p1, f.maps, f.ff, f.d, RunOptions{})
+		first <- res{r, err}
+	}()
+	<-f.ff.entered // erster Lauf hält die Sperre und wartet in der Abfrage
+	p2 := *f.p
+	r2, _, err := f.in.Run(ctx, &p2, f.maps, f.ff, f.d, RunOptions{})
+	must(t, err)
+	if r2.SkippedReason != SkippedBusy || r2.New != 0 || r2.ID != "" {
+		t.Fatalf("zweiter Lauf: %+v", r2)
+	}
+	close(gate)
+	r1 := <-first
+	must(t, r1.err)
+	if r1.r.New != 3 {
+		t.Fatalf("erster Lauf: %+v", r1.r)
+	}
+	if n := f.records(); n != 3 {
+		t.Fatalf("%d Tickets, erwartet 3", n)
+	}
+	if n := f.runsCount(); n != 1 {
+		t.Fatalf("%d Läufe gespeichert, erwartet 1", n)
+	}
+	// Sperre wieder frei: ein weiterer Lauf arbeitet normal.
+	f.p.Cursor = r1.r.Cursor
+	if r := f.run(RunOptions{}); r.SkippedReason != "" {
+		t.Fatalf("Sperre nicht freigegeben: %+v", r)
 	}
 }
 
@@ -734,8 +889,13 @@ func TestInboundRequiredUnmappedFieldFailsRow(t *testing.T) {
 	if r.Errors[0].Message != "Pflichtfeld ‚Titel‘ ist leer" || r.Errors[0].Field != "title" || r.Errors[0].ForeignKey != k(1) {
 		t.Fatalf("Fehler: %+v", r.Errors[0])
 	}
-	if f.links() != 0 {
-		t.Fatal("Verknüpfung trotz Fehler")
+	// Kein Datensatz; die Zeilen stehen als reservierte Verknüpfung mit Fehler
+	// zur Wiederholung bereit.
+	if f.links() != 2 || f.records() != 0 {
+		t.Fatalf("%d Verknüpfungen, %d Tickets", f.links(), f.records())
+	}
+	if l := f.link(k(1)); l.RefID != nil || l.LastError != "Pflichtfeld ‚Titel‘ ist leer" {
+		t.Fatalf("Verknüpfung: %+v", l)
 	}
 }
 

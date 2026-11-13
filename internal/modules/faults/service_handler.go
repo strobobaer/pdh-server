@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5"
 	"pdh/internal/core/addins"
 	"pdh/internal/core/synclink"
 	"pdh/internal/modules/inventory"
@@ -66,6 +67,39 @@ func SetLinker(l *synclink.Linker) {
 }
 
 func (s *Service) Create(ctx context.Context, in *CreateFaultInput, userID string) (*Fault, error) {
+	f := s.newFault(ctx, in, userID)
+	if err := s.repo.Create(ctx, f); err != nil {
+		return f, err
+	}
+	s.AfterCreate(f)
+	return f, nil
+}
+
+// CreateInTx legt die Störung wie Create an, aber in der Transaktion tx des
+// Aufrufers (z. B. Abgleich: Störung und Herkunftseintrag gemeinsam). Deck-
+// Abgleich und Ereignis laufen hier NICHT: der Aufrufer ruft nach dem Commit
+// AfterCreate auf.
+func (s *Service) CreateInTx(ctx context.Context, tx pgx.Tx, in *CreateFaultInput, userID string) (*Fault, error) {
+	f := s.newFault(ctx, in, userID)
+	if err := s.repo.CreateTx(ctx, tx, f); err != nil {
+		return f, err
+	}
+	return f, nil
+}
+
+// AfterCreate erledigt, was nach dem Anlegen einer Störung folgt (Deck-Abgleich,
+// Ereignis "fault.created"). Create ruft es selbst auf.
+func (s *Service) AfterCreate(f *Fault) {
+	s.syncFaultAsync(f)
+	if eventBus != nil {
+		eventBus.Publish("fault.created", map[string]interface{}{
+			"id": f.ID, "title": f.Title, "severity": string(f.Severity), "created_by": f.CreatedBy,
+		})
+	}
+}
+
+// newFault baut die Störung aus der Eingabe samt Vorgabe-Fälligkeit.
+func (s *Service) newFault(ctx context.Context, in *CreateFaultInput, userID string) *Fault {
 	f := &Fault{
 		Title:            in.Title,
 		Description:      in.Description,
@@ -80,16 +114,7 @@ func (s *Service) Create(ctx context.Context, in *CreateFaultInput, userID strin
 	days := appsettings.GetInt(ctx, s.repo.db, appsettings.KeyDefaultDueDaysFault, appsettings.DefaultDueDaysFallback)
 	due := time.Now().AddDate(0, 0, days)
 	f.DueDate = &due
-	if err := s.repo.Create(ctx, f); err != nil {
-		return f, err
-	}
-	s.syncFaultAsync(f)
-	if eventBus != nil {
-		eventBus.Publish("fault.created", map[string]interface{}{
-			"id": f.ID, "title": f.Title, "severity": string(f.Severity), "created_by": f.CreatedBy,
-		})
-	}
-	return f, nil
+	return f
 }
 
 func (s *Service) GetByID(ctx context.Context, id string) (*Fault, error) {

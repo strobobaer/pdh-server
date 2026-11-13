@@ -73,8 +73,12 @@ type recordTarget struct {
 	statusType    string // ticket_status | fault_status
 	defaultStatus string // open | detected
 	dueOnCreate   bool   // Fälligkeit geht schon beim Anlegen mit
-	create        func(ctx context.Context, values map[string]string, user string) (string, error)
-	quickResolve  func(ctx context.Context, id, resolution, rootCause, user string) error
+	// create legt den Datensatz in tx an; after erledigt nach dem Commit, was der
+	// Dienst nach dem Anlegen tut (Ereignis, Deck-Abgleich).
+	create       func(ctx context.Context, tx pgx.Tx, values map[string]string, user string) (id string, after func(), err error)
+	quickResolve func(ctx context.Context, id, resolution, rootCause, user string) error
+	// afterInsert ist nur für Tests: Fehler nach dem Einfügen, vor dem Commit.
+	afterInsert func(id string) error
 }
 
 // NewTicketTarget liefert das Ziel Ticket.
@@ -82,7 +86,7 @@ func NewTicketTarget(db *pgxpool.Pool, svc *tickets.Service) Target {
 	return &recordTarget{
 		db: db, refType: RefTicket, table: "tickets", levelField: "priority", levelType: "ticket_priority",
 		statusType: "ticket_status", defaultStatus: "open", dueOnCreate: true,
-		create: func(ctx context.Context, v map[string]string, user string) (string, error) {
+		create: func(ctx context.Context, tx pgx.Tx, v map[string]string, user string) (string, func(), error) {
 			in := &tickets.CreateInput{
 				Title:       v["title"],
 				Description: v["description"],
@@ -92,11 +96,11 @@ func NewTicketTarget(db *pgxpool.Pool, svc *tickets.Service) Target {
 			if due, ok := parseTime(v["due_date"]); ok {
 				in.DueDate = &due
 			}
-			t, err := svc.Create(ctx, in, user)
+			t, err := svc.CreateInTx(ctx, tx, in, user)
 			if err != nil {
-				return "", err
+				return "", nil, err
 			}
-			return t.ID, nil
+			return t.ID, func() { svc.AfterCreate(t) }, nil
 		},
 		quickResolve: svc.QuickResolve,
 	}
@@ -107,17 +111,17 @@ func NewFaultTarget(db *pgxpool.Pool, svc *faults.Service) Target {
 	return &recordTarget{
 		db: db, refType: RefFault, table: "faults", levelField: "severity", levelType: "fault_severity",
 		statusType: "fault_status", defaultStatus: "detected",
-		create: func(ctx context.Context, v map[string]string, user string) (string, error) {
-			f, err := svc.Create(ctx, &faults.CreateFaultInput{
+		create: func(ctx context.Context, tx pgx.Tx, v map[string]string, user string) (string, func(), error) {
+			f, err := svc.CreateInTx(ctx, tx, &faults.CreateFaultInput{
 				Title:       v["title"],
 				Description: v["description"],
 				Symptoms:    []string{},
 				Severity:    faults.Severity(orDefault(v["severity"], "medium")),
 			}, user)
 			if err != nil {
-				return "", err
+				return "", nil, err
 			}
-			return f.ID, nil
+			return f.ID, func() { svc.AfterCreate(f) }, nil
 		},
 		quickResolve: svc.QuickResolve,
 	}
@@ -131,13 +135,27 @@ func orDefault(v, def string) string {
 }
 
 func (t *recordTarget) Create(ctx context.Context, values map[string]string, systemUser, origin string) (string, error) {
-	id, err := t.create(ctx, values, systemUser)
+	// Datensatz, Herkunftseintrag und Nacharbeit in EINER Transaktion: entweder
+	// gibt es danach beides (FindOrigin findet ihn) oder nichts.
+	tx, err := t.db.Begin(ctx)
 	if err != nil {
 		return "", fmt.Errorf("anlegen: %w", err)
 	}
-	// Herkunft sofort danach: nur so findet FindOrigin den Datensatz nach einem Abbruch.
-	if err := t.Note(ctx, id, actionOrigin, "", "", "", origin, systemUser); err != nil {
-		return id, err
+	defer tx.Rollback(ctx) //nolint:errcheck
+	if _, err := tx.Exec(ctx, `SET LOCAL pdh.sync_origin = '1'`); err != nil {
+		return "", fmt.Errorf("anlegen: %w", err)
+	}
+	id, after, err := t.create(ctx, tx, values, systemUser)
+	if err != nil {
+		return "", fmt.Errorf("anlegen: %w", err)
+	}
+	if t.afterInsert != nil {
+		if err := t.afterInsert(id); err != nil {
+			return "", fmt.Errorf("anlegen: %w", err)
+		}
+	}
+	if err := t.note(ctx, tx, id, actionOrigin, "", "", "", origin, systemUser); err != nil {
+		return "", err
 	}
 	// Was der Dienst beim Anlegen nicht setzt, ohne eigene Verlaufseinträge.
 	rest := map[string]string{}
@@ -152,10 +170,17 @@ func (t *recordTarget) Create(ctx context.Context, values map[string]string, sys
 	if v := normalizeStatus(values["status"]); v != "" && v != t.defaultStatus {
 		rest["status"] = v
 	}
-	if len(rest) > 0 {
-		if err := t.apply(ctx, id, rest, nil, systemUser, false); err != nil {
-			return id, err
-		}
+	res, err := t.applyTx(ctx, tx, id, rest, nil, systemUser, false)
+	if err != nil {
+		return "", err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return "", fmt.Errorf("anlegen: %w", err)
+	}
+	after() // Ereignis und Deck-Abgleich wie bei Service.Create
+	// Abschließen braucht den Dienst (eigene Verbindung): erst nach dem Commit.
+	if err := t.finishResolve(ctx, id, res, nil, systemUser, false); err != nil {
+		return id, err
 	}
 	return id, nil
 }
@@ -211,21 +236,41 @@ func (t *recordTarget) apply(ctx context.Context, id string, values, notes map[s
 	if _, err := tx.Exec(ctx, `SET LOCAL pdh.sync_origin = '1'`); err != nil {
 		return fmt.Errorf("abgleich: %s ändern: %w", t.refType, err)
 	}
+	res, err := t.applyTx(ctx, tx, id, values, notes, user, history)
+	if err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("abgleich: %s ändern: %w", t.refType, err)
+	}
+	return t.finishResolve(ctx, id, res, notes, user, history)
+}
+
+// applyResult: Stand nach applyTx und ob noch abgeschlossen werden muss.
+type applyResult struct {
+	cur     map[string]string
+	resolve bool
+}
+
+func noteFor(notes map[string]string, k string) string {
+	if m := notes[k]; m != "" {
+		return m
+	}
+	return noteApplied
+}
+
+// applyTx setzt die Felder in tx (pdh.sync_origin muss gesetzt sein). Abschließen
+// steht danach in applyResult.resolve und läuft über finishResolve.
+func (t *recordTarget) applyTx(ctx context.Context, tx pgx.Tx, id string, values, notes map[string]string, user string, history bool) (applyResult, error) {
 	cur, err := t.scan(tx.QueryRow(ctx, t.selectSQL(true), id))
 	if err != nil {
-		return fmt.Errorf("abgleich: %s ändern: %w", t.refType, err)
+		return applyResult{}, fmt.Errorf("abgleich: %s ändern: %w", t.refType, err)
 	}
 	keys := make([]string, 0, len(values))
 	for k := range values {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-	msg := func(k string) string {
-		if m := notes[k]; m != "" {
-			return m
-		}
-		return noteApplied
-	}
 	resolve := false
 	for _, k := range keys {
 		nv := strings.TrimSpace(values[k])
@@ -258,7 +303,7 @@ func (t *recordTarget) apply(ctx context.Context, id string, values, notes map[s
 			} else {
 				tm, ok := parseTime(nv)
 				if !ok {
-					return fmt.Errorf("Wert ‚%s‘ für Feld ‚Fällig am‘ ist kein gültiges Datum", nv)
+					return applyResult{}, fmt.Errorf("Wert ‚%s‘ für Feld ‚Fällig am‘ ist kein gültiges Datum", nv)
 				}
 				arg = tm
 			}
@@ -277,31 +322,35 @@ func (t *recordTarget) apply(ctx context.Context, id string, values, notes map[s
 			// Wiedereröffnen: pdh_reopen_unarchive leert Archiv- und Lösungszeit.
 			set = "status = $2::" + t.statusType
 		default:
-			return fmt.Errorf("Feld ‚%s‘ ist unbekannt", k)
+			return applyResult{}, fmt.Errorf("Feld ‚%s‘ ist unbekannt", k)
 		}
 		if _, err := tx.Exec(ctx, `UPDATE `+t.table+` SET `+set+`, updated_at = now() WHERE id = $1`, id, arg); err != nil {
-			return fmt.Errorf("abgleich: %s ändern (%s): %w", t.refType, k, err)
+			return applyResult{}, fmt.Errorf("abgleich: %s ändern (%s): %w", t.refType, k, err)
 		}
 		if history {
-			if err := t.note(ctx, tx, id, actionSync, k, ov, nv, msg(k), user); err != nil {
-				return err
+			if err := t.note(ctx, tx, id, actionSync, k, ov, nv, noteFor(notes, k), user); err != nil {
+				return applyResult{}, err
 			}
 		}
 		cur[k] = nv
 	}
-	if err := tx.Commit(ctx); err != nil {
-		return fmt.Errorf("abgleich: %s ändern: %w", t.refType, err)
-	}
-	if !resolve {
+	return applyResult{cur: cur, resolve: resolve}, nil
+}
+
+// finishResolve schließt nach dem Commit über QuickResolve ab (eigene
+// Verbindung des Dienstes: hier feuert der Wartelisten-Auslöser, sobald die
+// Verknüpfung angebunden ist).
+func (t *recordTarget) finishResolve(ctx context.Context, id string, res applyResult, notes map[string]string, user string, history bool) error {
+	if !res.resolve {
 		return nil
 	}
 	// QuickResolve überschreibt Lösung und Ursache: die aktuellen Werte mitgeben.
-	resolution := orDefault(cur["resolution"], resolvedText)
-	if err := t.quickResolve(ctx, id, resolution, cur["root_cause"], user); err != nil {
+	resolution := orDefault(res.cur["resolution"], resolvedText)
+	if err := t.quickResolve(ctx, id, resolution, res.cur["root_cause"], user); err != nil {
 		return fmt.Errorf("abgleich: %s abschließen: %w", t.refType, err)
 	}
 	if history {
-		if err := t.Note(ctx, id, actionSync, "status", cur["status"], "resolved", msg("status"), user); err != nil {
+		if err := t.Note(ctx, id, actionSync, "status", res.cur["status"], "resolved", noteFor(notes, "status"), user); err != nil {
 			return err
 		}
 	}

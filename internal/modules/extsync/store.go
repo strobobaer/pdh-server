@@ -452,6 +452,19 @@ func (s *Store) OrphanLinks(ctx context.Context, profileID string) ([]Link, erro
 		WHERE l.profile_id = $1 AND l.ref_id IS NULL ORDER BY l.created_at, l.id`, profileID)
 }
 
+// RetryLinks liefert Verknüpfungen eines Profils, die erneut zu versuchen sind:
+// reserviert ohne Datensatz oder mit Fehler, außer gelöschtem PDH-Datensatz
+// (LinkErrRecordGone). Am längsten nicht angefasste zuerst; jeder Versuch setzt
+// updated_at, so kommen alle reihum dran.
+func (s *Store) RetryLinks(ctx context.Context, profileID string, limit int) ([]Link, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	return s.queryLinks(ctx, "zu wiederholende verknüpfungen laden", `SELECT `+linkCols+` FROM sync_links l
+		WHERE l.profile_id = $1 AND (l.ref_id IS NULL OR l.last_error <> '') AND l.last_error <> $2
+		ORDER BY l.updated_at, l.id LIMIT $3`, profileID, LinkErrRecordGone, limit)
+}
+
 // ── Warteliste ───────────────────────────────────────────────────────────
 
 // Enqueue stellt einen Eintrag (update | comment) in die Warteliste.
