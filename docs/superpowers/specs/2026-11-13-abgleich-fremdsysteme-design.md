@@ -348,6 +348,28 @@ Die Schwellen sind Vorgaben im Code und werden nach der Lastprüfung
 - Das Zeitfenster des Profils begrenzt weiterhin, wie weit zurück gelesen
   wird.
 
+### 4.11 Zeitzone des Fremdsystems (Vorgabe des Anwenders, 13.11.2026)
+
+Datenbanken speichern Datum und Uhrzeit meist ohne Zeitzone. Ob damit
+Ortszeit oder Weltzeit (UTC) gemeint ist, weiß nur das Fremdsystem. Deshalb
+ist das **je Profil einstellbar**:
+
+- Einstellung „Zeiten im Fremdsystem“: **Ortszeit des PDH-Servers** (Vorgabe),
+  **Weltzeit (UTC)** oder eine **benannte Zeitzone** (z. B. `Europe/Berlin`).
+- Sie gilt für alle Zeitwerte des Profils: das Anlagedatum (Stichtag für
+  „rückwirkend“), zugeordnete Zeitfelder wie „Fällig am“ beim Lesen, und
+  dieselben Felder sowie die Zeit von Kommentaren beim Zurückschreiben.
+- Sie ändert nichts daran, wie der Abgleich Änderungen erkennt und wo er
+  weiterliest; dort zählt der gespeicherte Wert unverändert.
+- Reine Datumsspalten ohne Uhrzeit sind Kalendertage und werden nicht
+  umgerechnet.
+- Bei der Umstellung auf Sommer- oder Winterzeit gibt es Uhrzeiten doppelt
+  oder gar nicht; der Abgleich nimmt dann die frühere bzw. die nächste
+  gültige Zeit. Das steht im Handbuch.
+- Eine Änderung der Einstellung setzt das Profil auf `entwurf`, weil sich
+  damit Zeitwerte verschieben. Das Cockpit zeigt beim Auswählen eine
+  Beispielzeile mit der gelesenen und der umgerechneten Zeit.
+
 ## 5. Rechte
 
 Neue Rechte in der Kategorie „Daten & Schnittstellen“:
