@@ -246,23 +246,137 @@ func (s *Store) SaveProfile(ctx context.Context, p *Profile, userID string) erro
 }
 
 // Arm schaltet ein Profil scharf und setzt dabei den Stichtag notify_from auf
-// dayStart, falls er noch fehlt (ein Befehl; siehe Profile.NotifyFrom). dayStart
-// ist DayStart(jetzt, Ort des Servers). Jeder Weg zum Zustand "scharf" geht hier
-// entlang; SetState bleibt für die übrigen Zustände.
+// dayStart, falls er noch fehlt (siehe Profile.NotifyFrom). dayStart ist
+// DayStart(jetzt, Ort des Servers). Jeder Weg zum Zustand "scharf" geht hier
+// entlang; SetState setzt nur die übrigen Zustände.
+//
+// Scharf schalten geht nur nach bestandenen Teststufen (Entwurf 4.6): aus
+// "getestet" oder "angehalten" (fortsetzen), wenn der Trockenlauf und – falls
+// das Profil ins Fremdsystem schreibt (NeedsWriteTest) – der Schreibversuch
+// bestanden sind (test_dry_at/test_write_at gesetzt). Sonst *NotTestedError
+// (errors.Is(err, ErrNotTested)) mit der fehlenden Stufe. Ein schon scharfes
+// Profil bleibt scharf (nichts ändert sich außer einem fehlenden Stichtag).
+// Prüfen und Schalten in einer Transaktion unter Zeilensperre.
 func (s *Store) Arm(ctx context.Context, id string, dayStart time.Time) error {
-	tag, err := s.db.Exec(ctx, `UPDATE sync_profiles SET state = 'scharf', state_note = '',
-			notify_from = COALESCE(notify_from, $2), updated_at = now() WHERE id = $1`, id, dayStart)
+	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("abgleich: scharf schalten: %w", err)
 	}
-	if tag.RowsAffected() == 0 {
-		return fmt.Errorf("abgleich: scharf schalten: %w", ErrNotFound)
+	defer tx.Rollback(ctx) //nolint:errcheck
+	ts, err := loadTestState(ctx, tx, id)
+	if err != nil {
+		return notFound(err, "scharf schalten")
+	}
+	if ts.state != StateArmed {
+		switch {
+		case !ts.dry:
+			return &NotTestedError{Stage: TestStageDry}
+		case ts.needsWrite && !ts.write:
+			return &NotTestedError{Stage: TestStageWrite}
+		case ts.state != StateTested && ts.state != StateHalted:
+			// Entwurf trotz Testzeiten (kommt über MarkTest nicht vor): neu testen.
+			return &NotTestedError{Stage: TestStageDry}
+		}
+	}
+	if _, err := tx.Exec(ctx, `UPDATE sync_profiles SET state = 'scharf', state_note = '',
+			notify_from = COALESCE(notify_from, $2), updated_at = now() WHERE id = $1`, id, dayStart); err != nil {
+		return fmt.Errorf("abgleich: scharf schalten: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("abgleich: scharf schalten: %w", err)
 	}
 	return nil
 }
 
-// SetState setzt Zustand und Hinweis eines Profils.
+// testState ist der Stand der Teststufen eines Profils (unter Zeilensperre gelesen).
+type testState struct {
+	state      string
+	dry, write bool
+	needsWrite bool
+}
+
+// loadTestState liest Zustand und Testzeiten FOR UPDATE und bestimmt mit der
+// Feldzuordnung, ob ein Schreibversuch nötig ist (NeedsWriteTest).
+func loadTestState(ctx context.Context, tx pgx.Tx, id string) (*testState, error) {
+	var ts testState
+	var p Profile
+	var comment []byte
+	if err := tx.QueryRow(ctx, `SELECT state, test_dry_at IS NOT NULL, test_write_at IS NOT NULL,
+			target_type, key_columns, comment_table
+		FROM sync_profiles WHERE id = $1 FOR UPDATE`, id).Scan(&ts.state, &ts.dry, &ts.write,
+		&p.TargetType, &p.KeyColumns, &comment); err != nil {
+		return nil, err
+	}
+	if len(comment) > 0 && string(comment) != "null" {
+		var ct CommentTable
+		if err := json.Unmarshal(comment, &ct); err != nil {
+			return nil, fmt.Errorf("kommentartabelle: %w", err)
+		}
+		p.CommentTable = &ct
+	}
+	maps, err := listMaps(ctx, tx, id)
+	if err != nil {
+		return nil, err
+	}
+	ts.needsWrite = NeedsWriteTest(maps, &p)
+	return &ts, nil
+}
+
+// MarkTest hält das Ergebnis einer Teststufe fest (stage TestStageDry oder
+// TestStageWrite): bestanden setzt test_dry_at bzw. test_write_at auf jetzt,
+// nicht bestanden leert es. Zustand: ein Entwurf wird "getestet", sobald der
+// Trockenlauf und – falls das Profil schreibt (NeedsWriteTest) – der
+// Schreibversuch bestanden sind; eine gescheiterte Stufe setzt ein getestetes
+// Profil auf Entwurf zurück. Scharfe und angehaltene Profile behalten ihren
+// Zustand (Testen schaltet nicht ab), nur die Zeiten werden gesetzt. Alles in
+// einer Transaktion unter Zeilensperre.
+func (s *Store) MarkTest(ctx context.Context, profileID, stage string, ok bool) error {
+	col := map[string]string{TestStageDry: "test_dry_at", TestStageWrite: "test_write_at"}[stage]
+	if col == "" {
+		return fmt.Errorf("abgleich: teststufe %q ist unbekannt", stage)
+	}
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("abgleich: test festhalten: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	ts, err := loadTestState(ctx, tx, profileID)
+	if err != nil {
+		return notFound(err, "test festhalten")
+	}
+	if stage == TestStageDry {
+		ts.dry = ok
+	} else {
+		ts.write = ok
+	}
+	state := ts.state
+	switch {
+	case state == StateDraft && ts.dry && (!ts.needsWrite || ts.write):
+		state = StateTested
+	case state == StateTested && !ok:
+		state = StateDraft
+	}
+	note := "state_note"
+	if state != ts.state {
+		note = "''"
+	}
+	// col und note sind Festtexte (siehe oben), nie Eingaben.
+	if _, err := tx.Exec(ctx, `UPDATE sync_profiles SET `+col+` = CASE WHEN $2 THEN now() END,
+			state = $3, state_note = `+note+`, updated_at = now() WHERE id = $1`, profileID, ok, state); err != nil {
+		return fmt.Errorf("abgleich: test festhalten: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("abgleich: test festhalten: %w", err)
+	}
+	return nil
+}
+
+// SetState setzt Zustand und Hinweis eines Profils. "scharf" setzt allein Arm
+// (mit der Prüfung der Teststufen); SetState lehnt es ab.
 func (s *Store) SetState(ctx context.Context, id, state, note string) error {
+	if state == StateArmed {
+		return errors.New("abgleich: zustand setzen: scharf schalten nur über Arm")
+	}
 	tag, err := s.db.Exec(ctx, `UPDATE sync_profiles SET state = $2, state_note = $3, updated_at = now() WHERE id = $1`,
 		id, state, note)
 	if err != nil {
@@ -322,7 +436,16 @@ func (s *Store) DemoteConnection(ctx context.Context, connectionID string) (int,
 
 // ListMaps liefert die Feldzuordnung eines Profils nach Position.
 func (s *Store) ListMaps(ctx context.Context, profileID string) ([]FieldMap, error) {
-	rows, err := s.db.Query(ctx, `SELECT id::text, profile_id::text, foreign_column, pdh_field, direction,
+	return listMaps(ctx, s.db, profileID)
+}
+
+// mapQuerier: Pool oder Transaktion.
+type mapQuerier interface {
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+}
+
+func listMaps(ctx context.Context, q mapQuerier, profileID string) ([]FieldMap, error) {
+	rows, err := q.Query(ctx, `SELECT id::text, profile_id::text, foreign_column, pdh_field, direction,
 			translate, fixed_value, position
 		FROM sync_field_maps WHERE profile_id = $1 ORDER BY position, pdh_field`, profileID)
 	if err != nil {

@@ -320,16 +320,7 @@ func (o *Outbound) update(ctx context.Context, item OutboxItem, link *Link, p *P
 		return OutResult{}, fmt.Errorf("Aufbau der Tabelle %s.%s lesen: %w", p.SourceSchema, p.SourceTable, err)
 	}
 	// (a) Fremdzeile lesen und wie herein in PDH-Form bringen (R32).
-	var readMaps []FieldMap
-	var cols []string
-	for _, k := range rest {
-		m := out[k]
-		m.Direction = DirIn // nur zum Lesen: ToPDH und wallColumns nehmen sie dann mit
-		readMaps = append(readMaps, m)
-		if !containsStr(cols, m.ForeignColumn) {
-			cols = append(cols, m.ForeignColumn)
-		}
-	}
+	readMaps, cols := outReadMaps(out, rest)
 	sel, err := d.SelectOne(t, cols, p.KeyColumns, kv)
 	if err != nil {
 		return OutResult{}, err
@@ -362,17 +353,10 @@ func (o *Outbound) update(ctx context.Context, item OutboxItem, link *Link, p *P
 	if !allowWrite {
 		return OutResult{}, ErrWriteNotAllowed
 	}
-	set, errs := ToForeign(maps, fields, vals)
+	st, cut, errs, err := buildOutUpdate(t, d, p.KeyColumns, kv, maps, fields, vals, fLoc)
 	if len(errs) > 0 {
 		return OutResult{}, errors.New(joinErrs(errs))
 	}
-	for col, v := range set {
-		if tm, ok := v.(time.Time); ok {
-			set[col] = foreignTime(t, col, d, tm, fLoc)
-		}
-	}
-	cut := truncateForColumns(t, d, maps, vals, set)
-	st, err := d.UpdateRow(t, p.KeyColumns, kv, set)
 	if err != nil {
 		return OutResult{}, err
 	}
@@ -396,6 +380,51 @@ func (o *Outbound) update(ctx context.Context, item OutboxItem, link *Link, p *P
 		return OutResult{}, err
 	}
 	return OutResult{Done: true, Written: len(vals)}, nil
+}
+
+// outReadMaps: die Zuordnungen der Felder keys (aus outMaps) zum Lesen der
+// Fremdzeile in PDH-Form (Richtung herein, damit ToPDH und wallColumns sie
+// nehmen) und die zu lesenden Spalten. Ausgang und Schreibversuch lesen so.
+func outReadMaps(out map[string]FieldMap, keys []string) ([]FieldMap, []string) {
+	var readMaps []FieldMap
+	var cols []string
+	for _, k := range keys {
+		m, ok := out[k]
+		if !ok {
+			continue
+		}
+		m.Direction = DirIn // nur zum Lesen
+		readMaps = append(readMaps, m)
+		if !containsStr(cols, m.ForeignColumn) {
+			cols = append(cols, m.ForeignColumn)
+		}
+	}
+	return readMaps, cols
+}
+
+// buildOutUpdate baut den Änderungsbefehl für die PDH-Werte vals (PDH-Form)
+// genau so, wie der Ausgang schreibt: ToForeign (Übersetzung), Zeitwerte nach
+// der Zeitzone des Profils (foreignTime), Texte nach dem Maß des Dialekts
+// gekürzt (truncateForColumns), der Befehl allein von Dialect.UpdateRow. cut
+// nennt je gekürztem PDH-Feld die Spalte. Fehler der Werte kommen als errs
+// (dann kein Befehl). Einzige Stelle, an der ein Änderungsbefehl entsteht: der
+// Ausgang und der Schreibversuch im Cockpit rufen beide sie auf.
+func buildOutUpdate(t *TableInfo, d Dialect, keyCols, kv []string, maps []FieldMap, fields []PDHField, vals map[string]string, fLoc *time.Location) (st Stmt, cut map[string]Column, errs []RunError, err error) {
+	set, errs := ToForeign(maps, fields, vals)
+	if len(errs) > 0 {
+		return Stmt{}, nil, errs, nil
+	}
+	for col, v := range set {
+		if tm, ok := v.(time.Time); ok {
+			set[col] = foreignTime(t, col, d, tm, fLoc)
+		}
+	}
+	cut = truncateForColumns(t, d, maps, vals, set)
+	st, err = d.UpdateRow(t, keyCols, kv, set)
+	if err != nil {
+		return Stmt{}, nil, nil, err
+	}
+	return st, cut, nil, nil
 }
 
 // truncateForColumns kürzt Texte in set nach dem Maß des Dialekts auf die
@@ -523,30 +552,17 @@ func (o *Outbound) comment(ctx context.Context, item OutboxItem, link *Link, p *
 	if len(rows) == 0 {
 		return o.rowGone(ctx, link, p)
 	}
-	values := map[string]any{
-		ct.FKColumn:   kv[0],
-		ct.TextColumn: truncateFor(d, child, ct.TextColumn, *pl.Text),
+	name := ""
+	if ct.AuthorColumn != "" && o.UserName != nil && pl.UserID != nil {
+		name = strings.TrimSpace(o.UserName(ctx, *pl.UserID))
 	}
-	if ct.AuthorColumn != "" {
-		name := ""
-		if o.UserName != nil && pl.UserID != nil {
-			name = strings.TrimSpace(o.UserName(ctx, *pl.UserID))
+	at := o.now()
+	if pl.CreatedAt != nil {
+		if tm, err := time.Parse(time.RFC3339Nano, *pl.CreatedAt); err == nil {
+			at = tm
 		}
-		if name == "" {
-			name = "PDH"
-		}
-		values[ct.AuthorColumn] = truncateFor(d, child, ct.AuthorColumn, name)
 	}
-	if ct.TimeColumn != "" {
-		at := o.now()
-		if pl.CreatedAt != nil {
-			if tm, err := time.Parse(time.RFC3339Nano, *pl.CreatedAt); err == nil {
-				at = tm
-			}
-		}
-		values[ct.TimeColumn] = foreignTime(child, ct.TimeColumn, d, at, fLoc)
-	}
-	st, err := d.InsertChild(src, child, values)
+	st, err := d.InsertChild(src, child, commentValues(d, child, ct, kv[0], *pl.Text, name, at, fLoc))
 	if err != nil {
 		return OutResult{}, err
 	}
@@ -582,6 +598,28 @@ func (o *Outbound) comment(ctx context.Context, item OutboxItem, link *Link, p *
 		return OutResult{}, err
 	}
 	return OutResult{Done: true, Written: 1}, nil
+}
+
+// commentValues: die Werte einer Kommentarzeile, wie der Ausgang sie einfügt –
+// Fremdschlüssel fk, Text und Verfasser (leer = "PDH") nach dem Maß des
+// Dialekts gekürzt, Zeit at nach der Zeitzone des Profils (foreignTime).
+// Verfasser- und Zeitspalte nur, wenn die Kommentartabelle sie nennt. Der
+// Befehl entsteht allein über Dialect.InsertChild (Ausgang und Schreibversuch).
+func commentValues(d Dialect, child *TableInfo, ct *CommentTable, fk, text, author string, at time.Time, fLoc *time.Location) map[string]any {
+	values := map[string]any{
+		ct.FKColumn:   fk,
+		ct.TextColumn: truncateFor(d, child, ct.TextColumn, text),
+	}
+	if ct.AuthorColumn != "" {
+		if author == "" {
+			author = "PDH"
+		}
+		values[ct.AuthorColumn] = truncateFor(d, child, ct.AuthorColumn, author)
+	}
+	if ct.TimeColumn != "" {
+		values[ct.TimeColumn] = foreignTime(child, ct.TimeColumn, d, at, fLoc)
+	}
+	return values
 }
 
 func (o *Outbound) now() time.Time {

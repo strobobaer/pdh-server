@@ -25,6 +25,7 @@ type fakeDialect struct{}
 
 // fakePage ist der Befehl, den SelectRows in Stmt.Args[0] ablegt.
 type fakePage struct {
+	table      string // Tabelle (fakeTableName): Meldungstabelle oder eine Nebentabelle
 	keyCols    []string
 	changeCol  string
 	changeKind string
@@ -70,7 +71,7 @@ func (fakeDialect) SelectRows(t *TableInfo, cols, keyCols []string, changeCol, c
 	default:
 		return Stmt{}, fmt.Errorf("unbekannte Art der Änderungserkennung %q", changeKind)
 	}
-	return Stmt{SQL: "page", Args: []any{fakePage{keyCols: keyCols, changeCol: changeCol,
+	return Stmt{SQL: "page", Args: []any{fakePage{table: fakeTableName(t), keyCols: keyCols, changeCol: changeCol,
 		changeKind: changeKind, cursor: cursor, limit: limit}}}, nil
 }
 
@@ -622,9 +623,14 @@ func (f *fakeForeign) Query(_ context.Context, st Stmt) ([]map[string]any, error
 		row map[string]any
 		kv  []string
 	}
+	// Seite der Meldungstabelle oder (Nachzählen beim Schreibversuch) einer Nebentabelle.
+	info, src := f.info, f.rows
+	if c := f.children[pg.table]; c != nil && pg.table != fakeTableName(f.info) {
+		info, src = c.info, c.rows
+	}
 	var items []item
-	for _, r := range f.rows {
-		kv, err := d.KeyValues(f.info, pg.keyCols, r)
+	for _, r := range src {
+		kv, err := d.KeyValues(info, pg.keyCols, r)
 		if err != nil {
 			return nil, err
 		}

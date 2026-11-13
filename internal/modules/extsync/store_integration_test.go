@@ -110,9 +110,12 @@ func (f *storeFixture) profile(t *testing.T, name string) *Profile {
 	return p
 }
 
+// arm setzt die Ausgangslage "scharf" direkt (ohne die Prüfung von Store.Arm,
+// die eigene Tests hat; SetState schaltet nie scharf).
 func (f *storeFixture) arm(t *testing.T, id string) {
 	t.Helper()
-	must(t, f.s.SetState(context.Background(), id, "scharf", ""))
+	_, err := f.pool.Exec(context.Background(), `UPDATE sync_profiles SET state = 'scharf', state_note = '' WHERE id = $1`, id)
+	must(t, err)
 }
 
 func TestSaveProfileDefaultsAndRoundTrip(t *testing.T) {
@@ -156,7 +159,7 @@ func TestSaveProfileResetsState(t *testing.T) {
 	f := newStoreFixture(t)
 	ctx := context.Background()
 	p := f.profile(t, "reset")
-	must(t, f.s.SetState(ctx, p.ID, "scharf", ""))
+	f.arm(t, p.ID)
 	_, err := f.pool.Exec(ctx, `UPDATE sync_profiles SET test_dry_at = now(), test_write_at = now() WHERE id = $1`, p.ID)
 	must(t, err)
 
@@ -191,7 +194,7 @@ func TestSaveProfileResetsState(t *testing.T) {
 	for name, fn := range mut {
 		g, err := f.s.GetProfile(ctx, p.ID)
 		must(t, err)
-		must(t, f.s.SetState(ctx, p.ID, "scharf", ""))
+		f.arm(t, p.ID)
 		_, err = f.pool.Exec(ctx, `UPDATE sync_profiles SET test_dry_at = now(), test_write_at = now() WHERE id = $1`, p.ID)
 		must(t, err)
 		g.State = "scharf"

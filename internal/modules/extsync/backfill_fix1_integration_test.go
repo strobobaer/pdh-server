@@ -19,10 +19,14 @@ func bt(y int, m time.Month, d, h, mi int) time.Time {
 // at stellt die Uhr des Laufs.
 func (f *inFix) at(now time.Time) { f.in.Now = func() time.Time { return now } }
 
-// armAt schaltet das Profil am Tag von now scharf (Stichtag nur beim ersten Mal).
+// armAt schaltet das Profil am Tag von now scharf (Stichtag nur beim ersten
+// Mal); vorher gelten beide Teststufen als bestanden (Store.Arm verlangt sie).
 func (f *inFix) armAt(now time.Time) {
 	f.t.Helper()
-	must(f.t, f.s.Arm(context.Background(), f.p.ID, DayStart(now, bfBerlin)))
+	ctx := context.Background()
+	must(f.t, f.s.MarkTest(ctx, f.p.ID, TestStageDry, true))
+	must(f.t, f.s.MarkTest(ctx, f.p.ID, TestStageWrite, true))
+	must(f.t, f.s.Arm(ctx, f.p.ID, DayStart(now, bfBerlin)))
 	f.reload()
 }
 

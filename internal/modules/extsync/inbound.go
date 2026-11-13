@@ -111,6 +111,11 @@ func (f *sqlForeign) Query(ctx context.Context, st Stmt) ([]map[string]any, erro
 	if err != nil {
 		return nil, err
 	}
+	return scanRowMaps(rows)
+}
+
+// scanRowMaps liest alle Zeilen als Map Spaltenname -> Wert und schließt rows.
+func scanRowMaps(rows *sql.Rows) ([]map[string]any, error) {
 	defer rows.Close()
 	cols, err := rows.Columns()
 	if err != nil {
