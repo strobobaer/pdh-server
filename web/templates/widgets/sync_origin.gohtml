@@ -1,0 +1,12 @@
+{{/* Abgleich – Herkunft am Ticket bzw. an der Störmeldung (nur mit sync.view; . ist *SyncOriginView oder nil). */}}
+{{define "sync-origin"}}
+{{with .}}
+<div class="card" style="margin-bottom:12px;display:flex;gap:8px;align-items:flex-start;font-size:12.5px">
+  <i class="ti ti-arrows-exchange" style="color:var(--accent);font-size:16px" aria-hidden="true"></i>
+  <div>
+    <div>Aus dem Fremdsystem: <a href="/sync/{{.ProfileID}}?tab=ops" style="color:var(--accent);font-weight:600">{{.Profile}}</a>, Nummer <b>{{.Key}}</b></div>
+    <div style="font-size:11.5px;{{if .Bad}}color:var(--red){{else}}color:var(--muted){{end}}">Abgleich: {{.Status}}</div>
+  </div>
+</div>
+{{end}}
+{{end}}

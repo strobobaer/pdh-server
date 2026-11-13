@@ -22,7 +22,14 @@
 .sy-warn{border-color:var(--amber)}
 .sy-warn > i{color:var(--amber)}
 .sy-info > i{color:var(--accent)}
+.rec-tabs.sy-steps{flex-wrap:wrap;overflow-x:visible}
 .sy-steps .rec-tab .sy-step-no{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;border:1px solid currentColor;font-size:10.5px;font-weight:600}
+.sy-pass{color:var(--green);font-size:12px;font-weight:600;display:inline-flex;gap:5px;align-items:center}
+.sy-result{border:1px solid var(--border);border-left-width:3px;border-radius:8px;padding:10px 12px;margin-top:12px;font-size:12.5px;background:var(--bg2)}
+.sy-result-ok{border-left-color:var(--green)}.sy-result-ok > b{color:var(--green)}
+.sy-result-bad{border-left-color:var(--red)}.sy-result-bad > b{color:var(--red)}
+.sy-counts{display:flex;gap:6px 18px;flex-wrap:wrap;margin-top:6px;font-size:12.5px}
+.sy-sql{font-family:monospace;font-size:11.5px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:8px;white-space:pre-wrap;word-break:break-word;margin:0 0 6px}
 .sy-maps{display:flex;flex-direction:column;gap:10px}
 .sy-map{display:grid;grid-template-columns:minmax(120px,.8fr) repeat(3,minmax(160px,1.2fr));gap:8px 12px;align-items:start;border:1px solid var(--border);border-radius:10px;padding:10px 12px;background:var(--bg2)}
 .sy-map .form-group{margin-bottom:0}
@@ -56,15 +63,19 @@
 
 {{if .Notice}}<div class="card" role="status" style="margin-bottom:14px;border-color:var(--green)"><i class="ti ti-circle-check" style="color:var(--green)"></i> {{.Notice}}</div>{{end}}
 {{if .Err}}<div class="card" role="alert" style="margin-bottom:14px;border-color:var(--red);color:var(--red)"><i class="ti ti-alert-circle"></i> {{.Err}}</div>{{end}}
-{{if and .ReadErr (ne .Tab "target")}}<div class="sy-warn" role="alert"><i class="ti ti-plug-connected-x"></i> <span>Die Fremddatenbank ist gerade nicht lesbar: {{.ReadErr}}. Gespeichertes wird angezeigt, ändern geht erst wieder mit Verbindung.</span></div>{{end}}
+{{if and .ReadErr (or (eq .Tab "source") (eq .Tab "maps"))}}<div class="sy-warn" role="alert"><i class="ti ti-plug-connected-x"></i> <span>Die Fremddatenbank ist gerade nicht lesbar: {{.ReadErr}}. Gespeichertes wird angezeigt, ändern geht erst wieder mit Verbindung.</span></div>{{end}}
 
 <div class="rec-tabs sy-steps" role="tablist" aria-label="Schritte der Einrichtung">
   <a class="rec-tab{{if eq .Tab "source"}} active{{end}}" href="?tab=source" role="tab" aria-selected="{{if eq .Tab "source"}}true{{else}}false{{end}}"><span class="sy-step-no">1</span> Quelle</a>
   <a class="rec-tab{{if eq .Tab "target"}} active{{end}}" href="?tab=target" role="tab" aria-selected="{{if eq .Tab "target"}}true{{else}}false{{end}}"><span class="sy-step-no">2</span> Ziel</a>
-  <a class="rec-tab{{if eq .Tab "maps"}} active{{end}}" href="?tab=maps" role="tab" aria-selected="{{if eq .Tab "maps"}}true{{else}}false{{end}}"><span class="sy-step-no">3</span> Zuordnungen{{if .Maps}}{{if .Maps.Missing}} <b style="background:var(--amber);color:#fff">!</b>{{end}}{{end}}</a>
+  <a class="rec-tab{{if eq .Tab "maps"}} active{{end}}" href="?tab=maps" role="tab" aria-selected="{{if eq .Tab "maps"}}true{{else}}false{{end}}"><span class="sy-step-no">3</span> Zuordnungen{{if .MissingRequired}} <b style="background:var(--amber);color:#fff">!</b>{{end}}</a>
+  <a class="rec-tab{{if eq .Tab "test"}} active{{end}}" href="?tab=test" role="tab" aria-selected="{{if eq .Tab "test"}}true{{else}}false{{end}}"><span class="sy-step-no">4</span> Test</a>
+  <a class="rec-tab{{if eq .Tab "ops"}} active{{end}}" href="?tab=ops" role="tab" aria-selected="{{if eq .Tab "ops"}}true{{else}}false{{end}}"><span class="sy-step-no">5</span> Betrieb</a>
 </div>
 
 {{if eq .Tab "source"}}{{template "sync-source" .}}{{end}}
 {{if eq .Tab "target"}}{{template "sync-target" .}}{{end}}
 {{if eq .Tab "maps"}}{{template "sync-maps" .}}{{end}}
+{{if eq .Tab "test"}}{{template "sync-test" .}}{{end}}
+{{if eq .Tab "ops"}}{{template "sync-ops" .}}{{end}}
 {{end}}

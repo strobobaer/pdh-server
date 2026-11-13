@@ -1134,3 +1134,61 @@ func (s *Store) AddOutboundRun(ctx context.Context, profileID string, written, f
 	}
 	return nil
 }
+
+// ── Warteliste im Cockpit ────────────────────────────────────────────────
+
+// OutboxEntry ist ein offener Eintrag der Warteliste zur Anzeige im Cockpit.
+type OutboxEntry struct {
+	ID         int64
+	Kind       string
+	Attempts   int
+	LastError  string
+	NextTryAt  time.Time
+	CreatedAt  time.Time
+	ForeignKey string
+	RefID      *string
+}
+
+// OpenOutbox liefert die offenen Einträge eines Profils: zuerst die mit
+// Fehlversuchen, dann nach Reihenfolge; höchstens limit (0 = 50).
+func (s *Store) OpenOutbox(ctx context.Context, profileID string, limit int) ([]OutboxEntry, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	rows, err := s.db.Query(ctx, `SELECT o.id, o.kind, o.attempts, o.last_error, o.next_try_at, o.created_at, l.foreign_key, l.ref_id::text
+		FROM sync_outbox o JOIN sync_links l ON l.id = o.link_id
+		WHERE l.profile_id = $1 AND o.done_at IS NULL
+		ORDER BY (o.attempts > 0) DESC, o.id LIMIT $2`, profileID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("abgleich: warteliste laden: %w", err)
+	}
+	defer rows.Close()
+	out := []OutboxEntry{}
+	for rows.Next() {
+		var e OutboxEntry
+		if err := rows.Scan(&e.ID, &e.Kind, &e.Attempts, &e.LastError, &e.NextTryAt, &e.CreatedAt, &e.ForeignKey, &e.RefID); err != nil {
+			return nil, fmt.Errorf("abgleich: warteliste laden: %w", err)
+		}
+		out = append(out, e)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("abgleich: warteliste laden: %w", err)
+	}
+	return out, nil
+}
+
+// OutboxRetryNowIn macht einen offenen Eintrag sofort wieder fällig – nur, wenn
+// er zum Profil gehört (sonst ErrNotFound).
+func (s *Store) OutboxRetryNowIn(ctx context.Context, profileID string, id int64) error {
+	return s.execOutbox(ctx, "erneut versuchen", `UPDATE sync_outbox o SET next_try_at = NOW()
+		FROM sync_links l WHERE l.id = o.link_id AND l.profile_id = $1 AND o.id = $2 AND o.done_at IS NULL`, profileID, id)
+}
+
+// LinkOpenCount zählt die offenen Einträge einer Verknüpfung.
+func (s *Store) LinkOpenCount(ctx context.Context, linkID string) (int, error) {
+	var n int
+	if err := s.db.QueryRow(ctx, `SELECT count(*) FROM sync_outbox WHERE link_id = $1 AND done_at IS NULL`, linkID).Scan(&n); err != nil {
+		return 0, fmt.Errorf("abgleich: offene einträge zählen: %w", err)
+	}
+	return n, nil
+}

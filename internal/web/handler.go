@@ -305,7 +305,9 @@ type Handler struct {
 	importPoll       *scheduler.IntervalManager
 	syncRunner       *extsync.Runner // Abgleich mit Fremdsystemen; nil am Spiegel und in Tests (sync_wire.go)
 	// syncReaderHook ersetzt in Tests das Lesen des Aufbaus der Fremddatenbank (sync_pages.go); nil = echt.
-	syncReaderHook   func(ctx context.Context, connectionID string) (syncReader, extsync.Dialect, map[string]string, error)
+	syncReaderHook func(ctx context.Context, connectionID string) (syncReader, extsync.Dialect, map[string]string, error)
+	// syncForeignHook ersetzt in Tests die Fremddatenbank für Test und Lauf (sync_ops.go); nil = echt.
+	syncForeignHook  func(ctx context.Context, connectionID string) (extsync.Foreign, extsync.Dialect, map[string]string, error)
 	toolAct          toolActivity       // offene Admin-Werkzeuge je Sitzung (admin_tool_activity.go)
 	streams          context.Context    // endet beim Beenden: Dauerverbindungen (streams.go)
 	closeStreams     context.CancelFunc // beendet streams
@@ -918,6 +920,14 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/sync/{id}/target-web", h.SyncTargetWeb)
 	r.Post("/sync/{id}/maps-web", h.SyncMapsWeb)
 	r.Post("/sync/{id}/delete-web", h.SyncDeleteWeb)
+	r.Post("/sync/{id}/test-dry-web", h.SyncTestDryWeb)
+	r.Post("/sync/{id}/test-write-web", h.SyncTestWriteWeb)
+	r.Post("/sync/{id}/arm-web", h.SyncArmWeb)
+	r.Post("/sync/{id}/pause-web", h.SyncPauseWeb)
+	r.Post("/sync/{id}/run-web", h.SyncRunWeb)
+	r.Post("/sync/{id}/interval-web", h.SyncIntervalWeb)
+	r.Post("/sync/{id}/outbox/{n}/retry-web", h.SyncRetryWeb)
+	r.Get("/sync/{id}/runs", h.SyncRunsFragment)
 	r.Get("/import", h.ImportPage)
 	r.Post("/import/connections", h.ImportConnectionCreateWeb)
 	r.Post("/import/connections/fingerprint", h.MssqlFingerprintWeb("import"))
@@ -2299,6 +2309,7 @@ func (h *Handler) userByID(ctx context.Context, id string) (*users.User, error) 
 
 type FaultDetailData struct {
 	BaseData
+	SyncOrigin    *SyncOriginView // Herkunft aus einem Fremdsystem (sync_ops.go); nil = keine oder kein Recht
 	Fault         FaultDetailView
 	Analysis      *faults.CopilotAnalysis
 	TimeEntries   []*timetracking.TimeEntry
@@ -2427,6 +2438,7 @@ func (h *Handler) FaultDetail(w http.ResponseWriter, r *http.Request) {
 	}
 
 	_ = h.db.QueryRow(ctx, `SELECT ticket_pending FROM faults WHERE id = $1::uuid`, id).Scan(&data.Fault.TicketPending)
+	data.SyncOrigin = h.syncOrigin(r, extsync.RefFault, id)
 	h.render(w, "fault_detail", data)
 }
 
@@ -2480,6 +2492,7 @@ func (h *Handler) Shifts(w http.ResponseWriter, r *http.Request) {
 
 type TicketDetailData struct {
 	BaseData
+	SyncOrigin     *SyncOriginView // Herkunft aus einem Fremdsystem (sync_ops.go); nil = keine oder kein Recht
 	Ticket         TicketView
 	Comments       []CommentView
 	CommentCount   int
@@ -2585,6 +2598,7 @@ func (h *Handler) TicketDetail(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	data.SyncOrigin = h.syncOrigin(r, extsync.RefTicket, id)
 	h.render(w, "ticket_detail", data)
 }
 

@@ -164,7 +164,9 @@ var gateRules = []gateRule{
 	gr(wPost, "export.write", "", false, `^/export/connections/fingerprint$`),
 	// ── Abgleich mit Fremdsystemen: löschen nur Bereichsadministrator, einrichten mit sync.edit ──
 	gr(wPost, permSyncAdmin, syncRef, false, `^/sync`+gID+`/delete-web$`),
-	gr(wPost, permSyncEdit, syncRef, false, `^/sync`+gID+`/(?:source|target|maps)-web$`),
+	gr(wPost, permSyncEdit, syncRef, false, `^/sync`+gID+`/(?:source|target|maps|test-dry|test-write|interval)-web$`),
+	gr(wPost, permSyncRun, syncRef, false, `^/sync`+gID+`/(?:arm|pause|run)-web$`),
+	gr(wPost, permSyncRun, syncRef, false, `^/sync`+gID+`/outbox/[0-9]+/retry-web$`),
 	gr(wPost, permSyncEdit, "", false, `^/sync/new-web$`),
 	// ── Störungen (Melden bleibt für alle offen) ──
 	gr(wPost, "faults.resolve", "fault", true, `^(?:/api/v1)?/faults`+gID+`/resolve$`),

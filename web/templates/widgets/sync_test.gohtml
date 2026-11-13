@@ -1,0 +1,153 @@
+{{/* Abgleich – Schritt 4 „Test“: Stufe 1 Trockenlauf (schreibt nirgends), Stufe 2 Schreibversuch mit Rücknahme. */}}
+{{define "sync-test"}}
+{{$p := .P}}
+{{$t := .Test}}
+{{if not $p.SourceTable}}
+<div class="card"><div class="rec-sub"><i class="ti ti-info-circle"></i> Wähle zuerst im Schritt <a href="?tab=source" style="color:var(--accent)">Quelle</a> eine Tabelle und ordne im Schritt <a href="?tab=maps" style="color:var(--accent)">Zuordnungen</a> die Felder zu.</div></div>
+{{else}}
+{{if $t.Missing}}<div class="sy-warn" role="alert"><i class="ti ti-alert-triangle"></i> <span>Es fehlt noch eine <a href="?tab=maps" style="color:var(--accent)">Zuordnung für ein Pflichtfeld</a>. Der Trockenlauf wird deshalb Fehler zeigen.</span></div>{{end}}
+
+<div class="card" style="margin-bottom:14px">
+  <div class="card-title"><span><i class="ti ti-flask"></i> Stufe 1 – Trockenlauf</span>
+    {{if $t.DryAt}}<span class="sy-pass"><i class="ti ti-circle-check"></i> bestanden am {{$t.DryAt}}</span>{{else}}<span class="sy-note">noch nicht bestanden</span>{{end}}</div>
+  <div class="sy-note" style="margin-bottom:10px">Liest die Meldungen und zeigt, was im PDH entstünde. Es wird <b>nirgends geschrieben</b> – weder im PDH noch im Fremdsystem.</div>
+  {{if .CanEdit}}
+  <form method="POST" action="/sync/{{$p.ID}}/test-dry-web" onsubmit="this.querySelector('button[type=submit]').disabled=true">
+    {{if $t.NeedsWrite}}
+    <div class="sy-grid">
+      <div class="form-group"><label class="form-label" for="sy-test-key">Meldung für den Test hinaus</label>
+        {{if $t.RowsErr}}<div class="sy-warn" role="alert"><i class="ti ti-alert-triangle"></i> {{$t.RowsErr}}</div>{{end}}
+        <select id="sy-test-key" name="key" class="form-input" required>
+          <option value="">– Meldung wählen –</option>
+          {{range $t.Rows}}<option value="{{.Key}}" {{if eq .Key $t.Key}}selected{{end}}>{{.Label}}</option>{{end}}
+        </select>
+        <div class="sy-note">An dieser Meldung zeigt der Test den genauen Befehl, der zurückgeschrieben würde.</div></div>
+      {{range $t.OutFields}}
+      <div class="form-group"><label class="form-label" for="sy-sample-{{.Key}}">Probewert {{.Label}}</label>
+        {{if .Options}}
+        {{$v := .Value}}
+        <select id="sy-sample-{{.Key}}" name="sample_{{.Key}}" class="form-input">
+          <option value="">– aktueller Wert der Meldung –</option>
+          {{range .Options}}<option value="{{.Value}}" {{if eq .Value $v}}selected{{end}}>{{.Label}}</option>{{end}}
+        </select>
+        {{else}}
+        <input id="sy-sample-{{.Key}}" name="sample_{{.Key}}" class="form-input" value="{{.Value}}" maxlength="255" placeholder="leer = aktueller Wert der Meldung">
+        {{end}}</div>
+      {{end}}
+    </div>
+    {{end}}
+    <button class="btn btn-primary" type="submit"><i class="ti ti-player-play"></i> Trockenlauf starten</button>
+  </form>
+  {{end}}
+
+  {{with $t.Dry}}
+  <div class="sy-result {{if .Passed}}sy-result-ok{{else}}sy-result-bad{{end}}" role="status">
+    <b>{{if .Passed}}<i class="ti ti-circle-check"></i> Trockenlauf bestanden{{else}}<i class="ti ti-alert-circle"></i> Trockenlauf nicht bestanden{{end}}</b>
+    {{if .Error}}<div>{{.Error}}</div>{{end}}
+    <div class="sy-counts">
+      <span><b>{{if .Truncated}}mindestens {{end}}{{.New}}</b> neu</span>
+      <span><b>{{.Backfilled}}</b> rückwirkend (still){{if .Archived}}, davon {{.Archived}} gleich archiviert{{end}}</span>
+      <span><b>{{.Changed}}</b> geändert</span>
+      <span {{if .Failed}}style="color:var(--red)"{{end}}><b>{{.Failed}}</b> mit Fehler</span>
+    </div>
+  </div>
+  {{if .Previews}}
+  <div class="sy-note" style="margin:10px 0 4px">Das würde der erste Lauf tun (Auszug):</div>
+  <div class="sy-wrap">
+    <table class="sy-tbl">
+      <thead><tr><th>Meldung</th><th>Art</th><th>Werte im PDH</th></tr></thead>
+      <tbody>
+      {{range .Previews}}
+        <tr><td class="sy-mono">{{.Key}}</td><td>{{.Kind}}</td>
+          <td>{{.Values}}{{range .Errors}}<div style="color:var(--red)"><i class="ti ti-alert-circle"></i> {{.}}</div>{{end}}</td></tr>
+      {{end}}
+      </tbody>
+    </table>
+  </div>
+  {{end}}
+  {{if .NeedsOut}}
+  <div class="sy-note" style="margin:12px 0 4px">Hinaus – dieser Befehl ginge an das Fremdsystem (hier nur gezeigt, nicht gesendet):</div>
+  {{range .OutErrors}}<div class="sy-warn" role="alert"><i class="ti ti-alert-triangle"></i> {{.}}</div>{{end}}
+  {{if .OutSQL}}<pre class="sy-sql">{{.OutSQL}}</pre>
+    {{if .OutParams}}<div class="sy-note">Werte: {{range $i, $v := .OutParams}}{{if $i}} · {{end}}<span class="sy-mono">{{$v}}</span>{{end}}</div>{{end}}
+    {{if .OutValues}}<div class="sy-note">Im PDH: {{.OutValues}}</div>{{end}}
+    {{if .OutTruncated}}<div class="sy-note" style="color:var(--amber)">Gekürzt auf die Länge der Spalte: {{range $i, $v := .OutTruncated}}{{if $i}}, {{end}}{{$v}}{{end}}</div>{{end}}
+  {{end}}
+  {{if .OutCommentSQL}}<div class="sy-note" style="margin-top:8px">Kommentar:</div><pre class="sy-sql">{{.OutCommentSQL}}</pre>
+    {{if .OutCommentParams}}<div class="sy-note">Werte: {{range $i, $v := .OutCommentParams}}{{if $i}} · {{end}}<span class="sy-mono">{{$v}}</span>{{end}}</div>{{end}}
+  {{end}}
+  {{end}}
+  {{end}}
+</div>
+
+<div class="card" style="margin-bottom:14px">
+  <div class="card-title"><span><i class="ti ti-pencil-check"></i> Stufe 2 – Schreibversuch mit Rücknahme</span>
+    {{if not $t.NeedsWrite}}<span class="sy-note">entfällt</span>
+    {{else if $t.WriteAt}}<span class="sy-pass"><i class="ti ti-circle-check"></i> bestanden am {{$t.WriteAt}}</span>
+    {{else}}<span class="sy-note">noch nicht bestanden</span>{{end}}</div>
+  {{if not $t.NeedsWrite}}
+  <div class="rec-sub">Dieses Profil schreibt nichts ins Fremdsystem (keine Richtung „hinaus“ oder „beides“, keine Kommentare). Stufe 2 ist nicht nötig.</div>
+  {{else}}
+  <div class="sy-note" style="margin-bottom:10px">Schreibt die Probeänderung in <b>einer Transaktion</b>, liest die Meldung zur Kontrolle und <b>nimmt alles zurück</b>. Danach prüft das PDH, dass die Meldung wie vorher ist.</div>
+  {{if not $t.AllowWrite}}<div class="sy-info"><i class="ti ti-lock"></i> Schreiben ist an der Verbindung nicht erlaubt. Schalte „Schreiben erlaubt“ an der Verbindung unter Import ein.</div>{{end}}
+
+  {{if $t.AskTriggers}}
+  <div class="sy-warn" role="alert"><i class="ti ti-alert-triangle"></i>
+    <div><b>Die Tabelle hat Auslöser (Trigger):</b> {{range $i, $n := $t.Triggers}}{{if $i}}, {{end}}<span class="sy-mono">{{$n}}</span>{{end}}.
+      <div style="margin-top:4px">Auslöser können Wirkungen haben, die eine Rücknahme nicht aufhebt – z. B. Nachrichten oder Aufrufe anderer Systeme. Kläre das im Zweifel mit dem Betreuer des Fremdsystems.</div></div></div>
+  {{if .CanEdit}}
+  <form method="POST" action="/sync/{{$p.ID}}/test-write-web" onsubmit="this.querySelector('button[type=submit]').disabled=true">
+    <input type="hidden" name="key" value="{{$t.Key}}"><input type="hidden" name="confirm" value="1">
+    {{range $t.OutFields}}<input type="hidden" name="sample_{{.Key}}" value="{{.Value}}">{{end}}
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn btn-warning" type="submit"><i class="ti ti-alert-triangle"></i> Trotzdem versuchen</button>
+      <a class="btn" href="?tab=test">Abbrechen</a>
+    </div>
+  </form>
+  {{end}}
+  {{else if and .CanEdit $t.AllowWrite}}
+  <form method="POST" action="/sync/{{$p.ID}}/test-write-web" onsubmit="this.querySelector('button[type=submit]').disabled=true">
+    <div class="sy-grid">
+      <div class="form-group"><label class="form-label" for="sy-write-key">Meldung für den Schreibversuch</label>
+        <select id="sy-write-key" name="key" class="form-input" required>
+          <option value="">– Meldung wählen –</option>
+          {{range $t.Rows}}<option value="{{.Key}}" {{if eq .Key $t.Key}}selected{{end}}>{{.Label}}</option>{{end}}
+        </select></div>
+      {{range $t.OutFields}}
+      <div class="form-group"><label class="form-label" for="sy-wsample-{{.Key}}">Probewert {{.Label}}</label>
+        {{if .Options}}
+        {{$v := .Value}}
+        <select id="sy-wsample-{{.Key}}" name="sample_{{.Key}}" class="form-input">
+          <option value="">– aktueller Wert der Meldung –</option>
+          {{range .Options}}<option value="{{.Value}}" {{if eq .Value $v}}selected{{end}}>{{.Label}}</option>{{end}}
+        </select>
+        {{else}}
+        <input id="sy-wsample-{{.Key}}" name="sample_{{.Key}}" class="form-input" value="{{.Value}}" maxlength="255" placeholder="leer = aktueller Wert der Meldung">
+        {{end}}</div>
+      {{end}}
+    </div>
+    <button class="btn btn-primary" type="submit"><i class="ti ti-player-play"></i> Schreibversuch starten</button>
+  </form>
+  {{end}}
+
+  {{with $t.Write}}
+  <div class="sy-result {{if .OK}}sy-result-ok{{else}}sy-result-bad{{end}}" role="status">
+    <b>{{if .OK}}<i class="ti ti-circle-check"></i> Schreibversuch bestanden – alles zurückgenommen{{else}}<i class="ti ti-alert-circle"></i> Schreibversuch nicht bestanden{{end}}</b>
+    {{if .Error}}<div>{{.Error}}</div>{{end}}
+    {{range .Errors}}<div>{{.}}</div>{{end}}
+    {{if and (not .RolledBack) .Statement}}<div style="font-weight:600">Bitte die Meldung im Fremdsystem prüfen.</div>{{end}}
+  </div>
+  {{range .Warnings}}<div class="sy-note"><i class="ti ti-info-circle"></i> {{.}}</div>{{end}}
+  {{if .Statement}}<div class="sy-note" style="margin:10px 0 4px">Gesendet und zurückgenommen:</div><pre class="sy-sql">{{.Statement}}</pre>
+    {{if .Params}}<div class="sy-note">Werte: {{range $i, $v := .Params}}{{if $i}} · {{end}}<span class="sy-mono">{{$v}}</span>{{end}}</div>{{end}}
+    {{if .ReadBack}}<div class="sy-note">In der Transaktion zurückgelesen: {{.ReadBack}}</div>{{end}}
+    {{if .Truncated}}<div class="sy-note" style="color:var(--amber)">Gekürzt auf die Länge der Spalte: {{range $i, $v := .Truncated}}{{if $i}}, {{end}}{{$v}}{{end}}</div>{{end}}
+  {{end}}
+  {{if .CommentStatement}}<div class="sy-note" style="margin-top:8px">Probekommentar (zurückgenommen):</div><pre class="sy-sql">{{.CommentStatement}}</pre>{{end}}
+  {{end}}
+  {{end}}
+</div>
+
+<div class="sy-note">Sind die nötigen Stufen bestanden, steht das Profil auf „Getestet“. Scharf geschaltet wird im Schritt <a href="?tab=ops" style="color:var(--accent)">Betrieb</a>.</div>
+{{end}}
+{{end}}

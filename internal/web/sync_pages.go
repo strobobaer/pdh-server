@@ -435,6 +435,8 @@ type SyncProfileData struct {
 	ConnName, TargetLabel  string
 	Tab, Notice, Err       string
 	CanEdit, CanDelete     bool
+	CanRun                 bool   // scharf schalten, anhalten, erneut versuchen (sync.run)
+	MissingRequired        int    // Pflichtfelder ohne Zuordnung (Markierung am Schritt 3)
 	Locked                 bool   // Verknüpfungen vorhanden: Quelle und Zielart sind fest
 	ReadErr                string // Fremddatenbank nicht lesbar
 	AllowWrite             bool
@@ -442,6 +444,8 @@ type SyncProfileData struct {
 	Source                 *SyncSourceView
 	Target                 *SyncTargetView
 	Maps                   *SyncMapsView
+	Test                   *SyncTestView
+	Ops                    *SyncOpsView
 }
 
 func syncColumnNote(c extsync.Column) string {
@@ -557,27 +561,49 @@ func (h *Handler) SyncProfilePage(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	d := h.syncProfileData(r, p, r.URL.Query().Get("tab"))
+	d.Notice, d.Err = r.URL.Query().Get("notice"), r.URL.Query().Get("err")
+	h.render(w, "sync_profile", d)
+}
+
+// syncBase: Seitenrahmen des Abgleichs (ohne Rechtedienst – nur in Tests – leer).
+func (h *Handler) syncBase(r *http.Request, title string) BaseData {
+	if h.rbac == nil {
+		var none BaseData // nur in Tests: ohne Rechtedienst gibt es keinen Seitenkopf
+		return none
+	}
+	return h.baseData(r, "sync", title, "Abgleich")
+}
+
+// syncTabs: Schritte des Cockpits; unbekannt = Quelle.
+var syncTabs = map[string]bool{"source": true, "target": true, "maps": true, "test": true, "ops": true}
+
+// syncProfileData baut die Daten des Cockpits für einen Schritt. Die
+// Aktionen der Schritte Test und Betrieb ergänzen ihr Ergebnis und rendern
+// dieselbe Seite.
+func (h *Handler) syncProfileData(r *http.Request, p *extsync.Profile, tab string) SyncProfileData {
 	ctx := r.Context()
 	d := SyncProfileData{
-		BaseData: h.baseData(r, "sync", p.Name, "Abgleich"),
-		P:        p, TargetLabel: syncTargetLabels[p.TargetType],
-		Tab: r.URL.Query().Get("tab"), Notice: r.URL.Query().Get("notice"), Err: r.URL.Query().Get("err"),
+		BaseData: h.syncBase(r, p.Name),
+		P:        p, TargetLabel: syncTargetLabels[p.TargetType], Tab: tab,
 		CanEdit: h.syncCan(r, permSyncEdit, p.ID), CanDelete: h.syncCan(r, permSyncAdmin, p.ID),
+		CanRun:      h.syncCan(r, permSyncRun, p.ID),
 		Locked:      h.syncLocked(ctx, p.ID),
 		Connections: h.syncConnOptions(ctx),
 	}
 	d.StateLabel, d.StateColor = syncStateLabel(p.State)
 	d.ConnName = syncOptionLabel(d.Connections, p.ConnectionID)
-	if d.Tab != "target" && d.Tab != "maps" {
+	if !syncTabs[d.Tab] {
 		d.Tab = "source"
 	}
 	maps, _ := h.syncStore().ListMaps(ctx, p.ID)
+	d.MissingRequired = len(extsync.MissingRequired(p, maps))
 
 	// Aufbau der Fremddatenbank nur lesen, wo er gebraucht wird, und nur für Bearbeiter.
 	var table *extsync.TableInfo
 	var tables []extsync.TableInfo
 	var dialect extsync.Dialect
-	if d.CanEdit && d.Tab != "target" {
+	if d.CanEdit && (d.Tab == "source" || d.Tab == "maps") {
 		rd, dl, cfg, closeFn, err := h.syncOpenReader(ctx, p.ConnectionID)
 		d.AllowWrite = cfg["allow_write"] == "true"
 		if err != nil {
@@ -594,8 +620,8 @@ func (h *Handler) SyncProfilePage(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		closeFn()
-	} else if _, cfg, err := h.syncConn(ctx, p.ConnectionID); err == nil {
-		d.AllowWrite = cfg["allow_write"] == "true"
+	} else {
+		d.AllowWrite = syncAllowWrite(h.syncConnConfig(ctx, p.ConnectionID))
 	}
 
 	switch d.Tab {
@@ -613,8 +639,12 @@ func (h *Handler) SyncProfilePage(w http.ResponseWriter, r *http.Request) {
 		d.Target = h.syncTargetView(r, p)
 	case "maps":
 		d.Maps = syncMapsView(p, maps, table, tables, d.AllowWrite)
+	case "test":
+		d.Test = h.syncTestView(ctx, p, maps, d.AllowWrite, d.CanEdit)
+	case "ops":
+		d.Ops = h.syncOpsView(ctx, p, maps, d.AllowWrite)
 	}
-	h.render(w, "sync_profile", d)
+	return d
 }
 
 func (h *Handler) syncTargetView(r *http.Request, p *extsync.Profile) *SyncTargetView {
