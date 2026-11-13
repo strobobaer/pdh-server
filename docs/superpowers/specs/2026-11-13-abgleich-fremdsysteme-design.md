@@ -197,7 +197,8 @@ Funktionen füllen kann wie die Oberfläche.
   Sonst Lauf überspringen und melden; die Warteliste bleibt.
 - **Abfragezeit über VPN:** An der Verbindung stehen zwei eigene Werte, die
   nur gelten, solange der Weg ein Tunnel ist: der Takt für hereinkommende
-  Abfragen (ersetzt den Takt der Profile dieser Verbindung, Vorgabe 5 Minuten)
+  Abfragen (ersetzt den Takt der Profile dieser Verbindung, Vorgabe 5 Minuten,
+  einstellbar 5 bis 30 Minuten)
   und die Zeitgrenze je Abfrage (Vorgabe 60 Sekunden statt 15 Sekunden
   direkt). Bei Weg `direkt` sind die Felder ausgeblendet und wirkungslos. Das
   Hinausgehende bleibt auch über VPN „binnen Sekunden“.
@@ -271,6 +272,42 @@ Warteliste und Läufe liegen in der PDH-Datenbank und sind damit nach einem
 Rollentausch am neuen aktiven Server vorhanden. Während der Wartungssperre
 ruht der Abgleich wie die vorhandenen Zeitsteuerungen.
 
+### 4.9 Last und Überlastung (Vorgabe des Anwenders, 13.11.2026)
+
+**Ziel:** 25 bis 40 gleichzeitige Benutzer arbeiten flüssig, auch während der
+Abgleich läuft. Die Benutzer tun dabei Verschiedenes. Der Abgleich hat immer
+Nachrang vor den Benutzern.
+
+- **Takt hereinkommend:** einstellbar von 5 bis 30 Minuten, je Profil und für
+  den Weg über VPN. Kürzer als 5 und länger als 30 Minuten gibt es nicht.
+- **Warteposition bei Überlastung:** Der Abgleich prüft vor jedem Lauf und vor
+  jedem Durchgang der Warteliste die Last des Servers. Als überlastet gilt der
+  Server, wenn eines zutrifft:
+  - Prozessor: Last der letzten Minute je Kern über 0,85,
+  - Arbeitsspeicher: weniger als 10 % verfügbar,
+  - Datenbank: mehr als 80 % der Verbindungen des PDH belegt.
+- **Verhalten in Warteposition:**
+  - Hereinkommende Läufe werden verschoben und nach 1 Minute erneut geprüft.
+    Spätestens 30 Minuten nach dem letzten Lauf läuft das Profil trotzdem, mit
+    kleiner Zeilenzahl (höchstens 50), damit das Fremdsystem nie länger als
+    30 Minuten unbeachtet bleibt.
+  - Die Warteliste wird langsamer abgearbeitet: alle 30 Sekunden statt alle
+    3 Sekunden, je Durchgang höchstens 5 Einträge. Es geht nichts verloren,
+    die Reihenfolge bleibt.
+  - Tests im Cockpit laufen weiter; sie startet ein Benutzer bewusst.
+- **Sichtbar:** Das Cockpit zeigt „Warteposition wegen hoher Serverlast“ mit
+  dem Grund (Prozessor, Arbeitsspeicher oder Datenbank) und dem Zeitpunkt des
+  nächsten Versuchs. Im Lauf steht der Grund als übersprungen.
+- **Grenzen im Normalbetrieb:** höchstens ein Lauf je Verbindung, höchstens
+  zwei Verbindungen gleichzeitig, höchstens zwei Datenbankverbindungen des PDH
+  für den Abgleich. Ein Lauf holt Zeilen in Blöcken und gibt zwischen den
+  Blöcken ab.
+- **Ohne Messwert** (z. B. Betriebssystem liefert keine Lastwerte) gilt der
+  Server als nicht überlastet; die Grenzen im Normalbetrieb gelten weiter.
+
+Die Schwellen sind Vorgaben im Code und werden nach der Lastprüfung
+(Abschnitt 7) mit den gemessenen Werten bestätigt oder angepasst.
+
 ## 5. Rechte
 
 Neue Rechte in der Kategorie „Daten & Schnittstellen“:
@@ -315,6 +352,13 @@ Neue Rechte in der Kategorie „Daten & Schnittstellen“:
   und Kommentartabelle: Import, Zurückschreiben, Trockenlauf, Schreibversuch
   mit Rücknahme, auch mit Auslöser an der Tabelle.
 - **Verbund:** Rollentausch mit gefüllter Warteliste.
+- **Last:** 40 gleichzeitige Benutzer mit gemischten Tätigkeiten (Listen und
+  Detailseiten lesen, Tickets ändern, kommentieren, Leitstand) gegen einen
+  Server mit laufendem Abgleich. Gemessen werden Antwortzeiten (Mittel und
+  95 %-Wert) ohne und mit Abgleich, Prozessor, Arbeitsspeicher und belegte
+  Datenbankverbindungen. Flüssig heißt: 95 %-Wert der Seitenaufrufe unter
+  1 Sekunde und durch den Abgleich höchstens 10 % schlechter. Dazu künstliche
+  Überlastung: Der Abgleich geht in Warteposition und holt danach auf.
 - **Abnahme auf .14/.17:** dieselbe Beispieldatenbank, direkt und über einen
   VPN-Tunnel (dort mit eigenem Takt und eigener Zeitgrenze), Wechsel des Wegs
   ohne Verlust der Verknüpfungen; Oberfläche in Fiori und Fluent, hell und dunkel, schmal und breit.
