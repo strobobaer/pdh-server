@@ -25,7 +25,8 @@ Einrichtung (Paket 2) füllt später dasselbe Cockpit aus.
   fremden Zeile.
 - Ein Kommentar im PDH steht als neue Zeile in der Nebentabelle des
   Fremdsystems.
-- Der Abgleich läuft direkt und über einen ausgehenden VPN-Tunnel.
+- Der Abgleich läuft direkt (Regelfall, anderes VLAN) und zu Testzwecken über
+  einen ausgehenden VPN-Tunnel, dort mit eigener Abfragezeit.
 - In der fremden Datenbank wird nie gelöscht und nie eine Meldung angelegt.
 
 ## 2. Entscheidungen des Anwenders (13.11.2026)
@@ -40,6 +41,9 @@ Einrichtung (Paket 2) füllt später dasselbe Cockpit aus.
 - Das PDH ändert nur vorhandene Zeilen und hängt Zeilen in Nebentabellen an.
   **Löschungen auf keinen Fall.** Keine neuen Meldungen im Fremdsystem.
 - Takt: hereinkommend einstellbar je Profil, hinausgehend binnen Sekunden.
+- Weg zur Datenbank: im Betrieb direkt (anderes VLAN, geroutet). Der
+  VPN-Tunnel dient nur zu Testzwecken. Für den Weg über VPN ist die
+  Abfragezeit getrennt einstellbar.
 - Test: Trockenlauf, danach ein echter Schreibversuch, der zurückgenommen wird.
 - Datenbanken: zuerst Microsoft SQL Server; der Aufbau muss weitere
   Datenbanken und MQTT aufnehmen können (Paket 3).
@@ -59,8 +63,9 @@ Einrichtung (Paket 2) füllt später dasselbe Cockpit aus.
 ### 4.1 Begriffe und Daten
 
 - **Verbindung:** vorhandener Eintrag in `import_export_connections`
-  (Art `mssql`). Neu: Weg (direkt oder ausgehender VPN-Tunnel), Verschlüsselung
-  zur Datenbank, „Schreiben erlaubt“.
+  (Art `mssql`). Neu: Weg (direkt oder ausgehender VPN-Tunnel), Abfragezeit
+  über VPN (eigener Takt und eigene Zeitgrenze), Verschlüsselung zur
+  Datenbank, „Schreiben erlaubt“.
 - **Profil** (`sync_profiles`): Verbindung, Quelltabelle, Schlüsselspalte(n),
   optionale Änderungsspalte, Ziel (Ticket oder Störmeldung), Abteilung,
   Vorgabewerte, Filter, Zeitfenster, Takt, Obergrenze je Lauf (Vorgabe 200),
@@ -184,10 +189,22 @@ Funktionen füllen kann wie die Oberfläche.
 
 ### 4.7 Verbindung, VPN, Zugangsdaten
 
-- **Weg:** `direkt` oder ein Tunnel der Art `outbound` aus `vpn_peers`. Der
-  Abgleich baut keine Tunnel. Vor jedem Lauf: Tunnel steht, Adresse der
-  Datenbank liegt in den Netzen des Tunnels. Sonst Lauf überspringen und
-  melden; die Warteliste bleibt.
+- **Weg:** `direkt` oder ein Tunnel der Art `outbound` aus `vpn_peers`.
+  `direkt` ist der Regelfall: Die Datenbank steht in einem anderen VLAN und
+  ist über das Netz erreichbar; das PDH richtet dafür nichts ein. Der Tunnel
+  ist für Tests gedacht. Der Abgleich baut keine Tunnel. Vor jedem Lauf über
+  VPN: Tunnel steht, Adresse der Datenbank liegt in den Netzen des Tunnels.
+  Sonst Lauf überspringen und melden; die Warteliste bleibt.
+- **Abfragezeit über VPN:** An der Verbindung stehen zwei eigene Werte, die
+  nur gelten, solange der Weg ein Tunnel ist: der Takt für hereinkommende
+  Abfragen (ersetzt den Takt der Profile dieser Verbindung, Vorgabe 5 Minuten)
+  und die Zeitgrenze je Abfrage (Vorgabe 60 Sekunden statt 15 Sekunden
+  direkt). Bei Weg `direkt` sind die Felder ausgeblendet und wirkungslos. Das
+  Hinausgehende bleibt auch über VPN „binnen Sekunden“.
+- **Wechsel des Wegs** (Test über VPN, danach direkt) ist eine Änderung an der
+  Verbindung, keine neue Verbindung: Profile, Zuordnungen und Verknüpfungen
+  bleiben. Nach dem Wechsel fällt ein scharfes Profil auf `getestet` zurück
+  und wird über den neuen Weg neu geprüft und scharf geschaltet.
 - **Prüfung der Verbindung** zeigt die Kette einzeln: Tunnel, Adresse, Port,
   Anmeldung, Leserecht, Schreibrecht.
 - **Verschlüsselung zur Datenbank:** an (Vorgabe) oder aus; Zertifikat prüfen
@@ -205,7 +222,13 @@ Funktionen füllen kann wie die Oberfläche.
 1. Läuft eine Datenbankverbindung aus dem PDH über einen ausgehenden Tunnel
    (`pdhoutN`) ohne Änderung am VPN-Teil? Laut Code ja, ungetestet.
 2. Stehen ausgehende Tunnel nach einem Rollentausch am neuen aktiven Server?
-   Wenn nicht, gehört das Mitwandern in dieses Paket.
+   Nur messen und im Handbuch festhalten. Weil der Tunnel nur dem Test dient,
+   gehört das Mitwandern nicht in dieses Paket; steht er nach dem Tausch
+   nicht, wird der Lauf übersprungen und gemeldet.
+3. Erreicht der neue aktive Server die Datenbank im anderen VLAN nach einem
+   Rollentausch (Absenderadresse, Freigabe in der Firewall für beide Server)?
+   Die Prüfung der Verbindung nennt die Absenderadresse, damit die Freigabe
+   im Fremdnetz für beide Server eingetragen werden kann.
 
 ### 4.8 Verbund
 
@@ -259,7 +282,8 @@ Neue Rechte in der Kategorie „Daten & Schnittstellen“:
   mit Rücknahme, auch mit Auslöser an der Tabelle.
 - **Verbund:** Rollentausch mit gefüllter Warteliste.
 - **Abnahme auf .14/.17:** dieselbe Beispieldatenbank, direkt und über einen
-  VPN-Tunnel; Oberfläche in Fiori und Fluent, hell und dunkel, schmal und breit.
+  VPN-Tunnel (dort mit eigenem Takt und eigener Zeitgrenze), Wechsel des Wegs
+  ohne Verlust der Verknüpfungen; Oberfläche in Fiori und Fluent, hell und dunkel, schmal und breit.
 
 ## 8. Handbuch und Version
 
