@@ -336,3 +336,53 @@ func TestConnectionFormRouteFields(t *testing.T) {
 		checkScripts(t, dir, out)
 	}
 }
+
+func TestKeepStoredRoute(t *testing.T) {
+	stored := map[string]string{"route": "vpn:weg-1"}
+	// Feld fehlt (Tunnel wird nicht mehr angeboten): gespeicherter Weg bleibt
+	cfg := map[string]string{"route": "direct"}
+	keepStoredRoute(cfg, stored, "mssql", url.Values{"name": {"x"}})
+	if cfg["route"] != "vpn:weg-1" {
+		t.Errorf("Weg ging verloren: %q", cfg["route"])
+	}
+	// ausdrücklich direkt: Wechsel gilt
+	cfg = map[string]string{"route": "direct"}
+	keepStoredRoute(cfg, stored, "mssql", url.Values{"f_mssql_route": {"direct"}})
+	if cfg["route"] != "direct" {
+		t.Errorf("ausdrückliche Wahl direkt wurde überschrieben: %q", cfg["route"])
+	}
+	// anderer Tunnel gewählt
+	cfg = map[string]string{"route": "vpn:neu"}
+	keepStoredRoute(cfg, stored, "mssql", url.Values{"f_mssql_route": {"vpn:neu"}})
+	if cfg["route"] != "vpn:neu" {
+		t.Errorf("neue Wahl überschrieben: %q", cfg["route"])
+	}
+	// gespeichert war direkt, Feld fehlt: bleibt direkt
+	cfg = map[string]string{"route": "direct"}
+	keepStoredRoute(cfg, map[string]string{}, "mssql", url.Values{})
+	if cfg["route"] != "direct" {
+		t.Errorf("direct erwartet: %q", cfg["route"])
+	}
+	// andere Typen unberührt
+	cfg = map[string]string{}
+	keepStoredRoute(cfg, stored, "mysql", url.Values{})
+	if _, ok := cfg["route"]; ok {
+		t.Error("mysql darf keinen Weg bekommen")
+	}
+}
+
+func TestMssqlRightsOnlyForImport(t *testing.T) {
+	if !mssqlRightsApply("import") || mssqlRightsApply("export") {
+		t.Error("Rechteprüfung gilt nur für Import-Verbindungen")
+	}
+}
+
+func TestConnectionFormKeepsMissingRouteScript(t *testing.T) {
+	tmpl := loadTestTemplates(t)
+	out := renderPage(t, tmpl, "import", ConnectionsPageData{Direction: "import", CanWrite: true})
+	for _, w := range []string{"function mssqlEnsureRoute(", "Tunnel nicht mehr vorhanden", "mssqlEnsureRoute(config.route)"} {
+		if !strings.Contains(out, w) {
+			t.Errorf("%q fehlt", w)
+		}
+	}
+}

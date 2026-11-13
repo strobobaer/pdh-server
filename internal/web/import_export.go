@@ -405,6 +405,7 @@ func (h *Handler) editConnection(w http.ResponseWriter, r *http.Request, directi
 	stored := map[string]string{}
 	_ = json.Unmarshal(storedBytes, &stored)
 	config = keepStoredSecrets(config, stored, fields)
+	keepStoredRoute(config, stored, kind, r.Form)
 	sealed, err := sealConnConfig(h.connKey(), config)
 	if err != nil {
 		http.Error(w, "Kennwort konnte nicht verschlüsselt werden", http.StatusInternalServerError)
@@ -493,4 +494,19 @@ func (h *Handler) toggleConnection(w http.ResponseWriter, r *http.Request, direc
 		h.reconcileQueryPolls(r.Context(), id)
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// keepStoredRoute: Fehlt das Feld „Weg“ im Formular beim Bearbeiten (z. B. weil der
+// gespeicherte Tunnel nicht mehr angeboten wird), bleibt der gespeicherte Weg.
+// Nur eine ausdrückliche Wahl („direct“ oder anderer Tunnel) ändert ihn.
+func keepStoredRoute(config, stored map[string]string, kind string, form url.Values) {
+	if kind != "mssql" {
+		return
+	}
+	if _, sent := form["f_mssql_route"]; sent {
+		return
+	}
+	if r := parseConnRoute(stored); r.ViaVPN {
+		config["route"] = "vpn:" + r.PeerID
+	}
 }

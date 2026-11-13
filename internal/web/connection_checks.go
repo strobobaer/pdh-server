@@ -357,7 +357,7 @@ func (h *Handler) checkProtocol(ctx context.Context, rep *checkReport, direction
 			return
 		}
 		rep.add("Anmeldung", "Anmeldung an "+label, "ok", "angemeldet", ms())
-		if kind == "mssql" {
+		if kind == "mssql" && mssqlRightsApply(direction) {
 			checkMssqlRights(pctx, rep, db, config["allow_write"] == "true")
 		}
 		tables, err := listSQLTables(db, kind)
@@ -709,3 +709,8 @@ func checkMssqlRights(ctx context.Context, rep *checkReport, db *sql.DB, allowWr
 		rep.add("Anmeldung", "Rechte", "warn", "Der Datenbankbenutzer darf mehr als nötig.", 0)
 	}
 }
+
+// mssqlRightsApply: Lese-/Schreibrecht und „mehr als nötig“ prüft nur, was der
+// Abgleich braucht (Richtung import). Bestehende Export-Verbindungen legen ihre
+// Zieltabelle selbst an oder dürfen nur anfügen; für sie gäbe es sonst neue rote Punkte.
+func mssqlRightsApply(direction string) bool { return direction == "import" }
