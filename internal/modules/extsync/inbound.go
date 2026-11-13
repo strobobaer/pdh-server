@@ -11,6 +11,25 @@ import (
 	"time"
 )
 
+// Hereinkommender Abgleich – Regeln (verbindlich, siehe Entwurf und Entscheidungen R12–R18):
+//
+//   - Fortschrittsmarke: Eine gelesene Zeile zählt für den Cursor erst, wenn sie
+//     bearbeitet ist ODER ihre Verknüpfung dauerhaft einen Fehler trägt (wird über
+//     RetryLinks wiederholt). Geht beides nicht (PDH-Datenbank weg, Kontext
+//     abgebrochen), endet der Lauf und der Cursor bleibt vor dieser Zeile.
+//   - Ausgangswert (Link.WrittenValues), nach JEDER Bearbeitung eines
+//     hereinkommenden Felds: seen[f] = Fremdwert; ist der tatsächliche PDH-Wert
+//     danach gleich dem Fremdwert, wird written[f] entfernt; hat der Abgleich den
+//     PDH-Wert in dieser Bearbeitung gesetzt oder bewusst behalten (Vorgabe, leerer
+//     Fremdwert übergangen, closed→resolved, Lösungstext), gilt written[f] = der
+//     tatsächliche PDH-Wert; bei einem Widerspruch (PDH gewinnt) bleibt written[f]
+//     unverändert. Nie "" nur um einen Eintrag zu haben.
+//   - Verknüpfung, Widerspruchsvermerke und Wartelisteneintrag werden in EINER
+//     Transaktion gespeichert (Store.SaveInbound); eine Wiederholung schreibt
+//     nichts doppelt.
+//   - Endzustände (LinkErrRecordGone, LinkErrForeignGone, LinkErrBadKey) werden
+//     einmal gemeldet und nicht wiederholt.
+
 // ── Zugriff auf die Fremddatenbank ───────────────────────────────────────
 
 // Foreign führt die Befehle des Dialekts aus: im Betrieb *sql.DB, im Test eine
@@ -98,6 +117,9 @@ type Inbound struct {
 	pageSize   int               // 0 = defaultPageSize; Tests setzen kleinere Seiten
 	// afterLock ist nur für Tests: läuft, sobald die Sperre gehalten wird.
 	afterLock func()
+	// testFail ist nur für Tests: Fehler an benannten Schritten einschleusen
+	// ("reserve", "linkerror", "commit").
+	testFail func(step, fk string) error
 }
 
 // RunOptions steuert einen Lauf.
@@ -123,16 +145,18 @@ const (
 	defaultPageSize = 200
 	// retryLimit: so viele fehlerhafte oder reservierte Verknüpfungen versucht ein Lauf erneut.
 	retryLimit = 50
+	// lockAcquireTimeout: so lange wartet ein Lauf höchstens auf eine freie Datenbankverbindung.
+	lockAcquireTimeout = 5 * time.Second
 	// SkippedBusy steht im Lauf, wenn das Profil schon von einem anderen Lauf bearbeitet wird.
 	SkippedBusy = "Profil läuft bereits"
+	// SkippedNoConn steht im Lauf, wenn keine Datenbankverbindung für die Sperre frei war.
+	SkippedNoConn = "Keine freie Datenbankverbindung"
 )
 
-// Zustand einer gelesenen Zeile für die Fortschrittsmarke. Fehlerhafte Zeilen
-// halten die Marke nie auf (sie bekommen eine Verknüpfung mit Fehler und werden
-// über RetryLinks erneut versucht); nur nicht angelegte neue Zeilen tun es.
+// Zustand einer gelesenen Zeile für die Fortschrittsmarke.
 const (
-	rowOK      = iota
-	rowPending // neue Zeile, noch nicht angelegt
+	rowOK      = iota // bearbeitet oder mit Fehler an der Verknüpfung festgehalten
+	rowPending        // noch nicht (dauerhaft) bearbeitet: hält die Marke auf
 )
 
 type rowPos struct {
@@ -176,12 +200,18 @@ func lockKey(profileID string) int64 {
 }
 
 // Run fährt einen hereinkommenden Lauf für das Profil p. Ergebnis ist der Lauf
-// mit Zählern und neuer Fortschrittsmarke (Run.Cursor, vom Aufrufer zu
-// speichern). Ein Fehler einer Zeile betrifft nur sie; ein Fehler des ganzen
-// Laufs (Fremddatenbank nicht erreichbar, Einstellung falsch) schließt den Lauf
-// mit dem Grund ab und kommt als err zurück. Läuft das Profil schon (anderer
-// Lauf hält die Sperre), geschieht nichts: SkippedReason = SkippedBusy, kein
-// Eintrag in sync_runs, err == nil. Kein Absturz verlässt Run.
+// mit Zählern und neuer Fortschrittsmarke (Run.Cursor, vom Aufrufer auch nach
+// einem Fehler zu speichern). Ein Fehler einer Zeile betrifft nur sie; ein Fehler
+// des ganzen Laufs (Fremddatenbank nicht erreichbar, Einstellung falsch, PDH-
+// Datenbank weg, Kontext abgebrochen) schließt den Lauf mit dem Grund ab und
+// kommt als err zurück. Läuft das Profil schon (SkippedBusy) oder ist binnen
+// lockAcquireTimeout keine Datenbankverbindung frei (SkippedNoConn), geschieht
+// nichts: kein Eintrag in sync_runs, err == nil. Kein Absturz verlässt Run.
+//
+// Voraussetzung: Ein Lauf (nicht Probelauf) hält für seine ganze Dauer eine
+// eigene Verbindung des Pools (Sperre) und braucht weitere für Store, Ziel und
+// QuickResolve. Der Aufrufer startet höchstens zwei Läufe gleichzeitig (R19),
+// sonst können die Läufe den Pool erschöpfen.
 func (in *Inbound) Run(ctx context.Context, p *Profile, maps []FieldMap, f Foreign, d Dialect, opt RunOptions) (run *Run, previews []Preview, err error) {
 	if p == nil {
 		return nil, nil, errors.New("abgleich: profil fehlt")
@@ -191,10 +221,22 @@ func (in *Inbound) Run(ctx context.Context, p *Profile, maps []FieldMap, f Forei
 		start = ""
 	}
 	run = &Run{ProfileID: p.ID, Direction: DirIn, StartedAt: time.Now(), Cursor: start}
+	skip := func(reason string) (*Run, []Preview, error) {
+		run.SkippedReason = reason
+		now := time.Now()
+		run.FinishedAt = &now
+		return run, nil, nil
+	}
 	if !opt.Dry {
 		// Sitzungssperre je Profil für den ganzen Lauf (eigene Verbindung des Pools).
-		conn, lerr := in.Store.db.Acquire(ctx)
+		actx, cancel := context.WithTimeout(ctx, lockAcquireTimeout)
+		conn, lerr := in.Store.db.Acquire(actx)
+		timedOut := errors.Is(actx.Err(), context.DeadlineExceeded) && ctx.Err() == nil
+		cancel()
 		if lerr != nil {
+			if timedOut {
+				return skip(SkippedNoConn)
+			}
 			return run, nil, fmt.Errorf("abgleich: sperre holen: %w", lerr)
 		}
 		defer conn.Release()
@@ -204,10 +246,7 @@ func (in *Inbound) Run(ctx context.Context, p *Profile, maps []FieldMap, f Forei
 			return run, nil, fmt.Errorf("abgleich: sperre holen: %w", lerr)
 		}
 		if !got {
-			run.SkippedReason = SkippedBusy
-			now := time.Now()
-			run.FinishedAt = &now
-			return run, nil, nil
+			return skip(SkippedBusy)
 		}
 		defer func() {
 			// Auch nach Absturz und abgebrochenem Kontext freigeben.
@@ -251,20 +290,34 @@ func (in *Inbound) Run(ctx context.Context, p *Profile, maps []FieldMap, f Forei
 	return run, r.previews, err
 }
 
-// cursor: Marke der letzten gelesenen Zeile, aber nie hinter eine neue Zeile,
-// die nicht angelegt wurde (Obergrenze, Abbruch); ohne Änderungsspalte leer.
+// cursor: Marke der letzten Zeile vor der ersten nicht (dauerhaft) bearbeiteten
+// Zeile; ohne Änderungsspalte leer.
 func (r *inboundRun) cursor(start string) string {
 	if r.p.ChangeKind == changeKindNone || r.p.ChangeKind == "" {
 		return ""
 	}
 	cur := start
 	for _, ps := range r.positions {
-		if ps.state == rowPending {
+		if ps.state != rowOK {
 			break
 		}
 		cur = ps.cursor
 	}
 	return cur
+}
+
+func (r *inboundRun) hook(step, fk string) error {
+	if r.in.testFail != nil {
+		return r.in.testFail(step, fk)
+	}
+	return nil
+}
+
+func stopped(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("Lauf abgebrochen: %w", err)
+	}
+	return nil
 }
 
 func (r *inboundRun) exec(ctx context.Context, f Foreign) error {
@@ -311,6 +364,9 @@ func (r *inboundRun) exec(ctx context.Context, f Foreign) error {
 			return fmt.Errorf("Fremddatenbank lesen: %w", err)
 		}
 		for _, row := range rows {
+			if err := stopped(ctx); err != nil {
+				return err
+			}
 			if err := r.readRow(ctx, row); err != nil {
 				return err
 			}
@@ -335,7 +391,12 @@ func (r *inboundRun) exec(ctx context.Context, f Foreign) error {
 	}
 	// Erst jetzt steht fest, dass die Obergrenze hält: neue Zeilen anlegen.
 	for _, c := range r.pending {
-		r.processNew(ctx, c)
+		if err := stopped(ctx); err != nil {
+			return err
+		}
+		if err := r.processNew(ctx, c); err != nil {
+			return err
+		}
 		r.setState(c.pos, rowOK)
 	}
 	return nil
@@ -362,10 +423,14 @@ func (r *inboundRun) retry(ctx context.Context, f Foreign, cols []string) error 
 		if r.paused {
 			return nil
 		}
+		if err := stopped(ctx); err != nil {
+			return err
+		}
 		kv, err := DecodeKey(l.ForeignKey)
 		if err != nil {
-			_ = r.in.Store.SetLinkError(ctx, l.ID, "Schlüssel der Verknüpfung ist ungültig")
-			r.fail(l.ForeignKey, RunError{Message: "Schlüssel der Verknüpfung ist ungültig"})
+			if err := r.terminal(ctx, l.ID, l.ForeignKey, nil, LinkErrBadKey); err != nil {
+				return err
+			}
 			continue
 		}
 		st, err := r.d.SelectOne(r.t, one, p.KeyColumns, kv)
@@ -378,8 +443,9 @@ func (r *inboundRun) retry(ctx context.Context, f Foreign, cols []string) error 
 		}
 		r.done[l.ForeignKey] = true
 		if len(rows) == 0 {
-			_ = r.in.Store.SetLinkError(ctx, l.ID, LinkErrForeignGone)
-			r.fail(l.ForeignKey, RunError{Message: LinkErrForeignGone})
+			if err := r.terminal(ctx, l.ID, l.ForeignKey, nil, LinkErrForeignGone); err != nil {
+				return err
+			}
 			continue
 		}
 		if err := r.handleRow(ctx, rows[0], -1, l, true); err != nil {
@@ -420,6 +486,17 @@ func inboundColumns(maps []FieldMap) []string {
 	return cols
 }
 
+// inboundFields: PDH-Felder, die Decide abgleicht (herein/beides, kein fester Wert).
+func (r *inboundRun) inboundFields() []string {
+	var out []string
+	for _, m := range r.maps {
+		if m.FixedValue == nil && m.PDHField != "" && (m.Direction == DirIn || m.Direction == DirBoth) {
+			out = append(out, m.PDHField)
+		}
+	}
+	return out
+}
+
 func (r *inboundRun) setState(pos, state int) {
 	if pos >= 0 {
 		r.positions[pos].state = state
@@ -443,7 +520,36 @@ func joinErrs(errs []RunError) string {
 	return strings.Join(parts, "; ")
 }
 
-// readRow ordnet eine Zeile einer Seite ein. Fehler hier betreffen den ganzen Lauf.
+// rowFailed hält den Fehler dauerhaft an der Verknüpfung fest (wird wiederholt)
+// und zählt die Zeile. Lässt sich der Fehler nicht speichern, endet der Lauf
+// (der Cursor bleibt dann vor der Zeile).
+func (r *inboundRun) rowFailed(ctx context.Context, linkID, fk string, errs ...RunError) error {
+	err := r.hook("linkerror", fk)
+	if err == nil {
+		err = r.in.Store.SetLinkError(ctx, linkID, joinErrs(errs))
+	}
+	if err != nil {
+		return fmt.Errorf("Fehler der Zeile %s nicht gespeichert (%s): %w", fk, joinErrs(errs), err)
+	}
+	r.fail(fk, errs...)
+	return nil
+}
+
+// terminal setzt einen Endzustand (einmal gemeldet, nicht wiederholt). mark wird
+// mitgespeichert, damit Lesen ohne Änderungsspalte die Zeile überspringt.
+func (r *inboundRun) terminal(ctx context.Context, linkID, fk string, mark *string, msg string) error {
+	err := r.hook("linkerror", fk)
+	if err == nil {
+		err = r.in.Store.SaveInbound(ctx, linkID, InboundUpdate{SeenMark: mark, LastError: &msg})
+	}
+	if err != nil {
+		return fmt.Errorf("Fehler der Zeile %s nicht gespeichert (%s): %w", fk, msg, err)
+	}
+	r.fail(fk, RunError{Message: msg})
+	return nil
+}
+
+// readRow ordnet eine Zeile einer Seite ein. Fehler hier beenden den Lauf.
 func (r *inboundRun) readRow(ctx context.Context, row map[string]any) error {
 	p := r.p
 	pos := -1
@@ -452,7 +558,8 @@ func (r *inboundRun) readRow(ctx context.Context, row map[string]any) error {
 		if err != nil {
 			return err
 		}
-		r.positions = append(r.positions, rowPos{cursor: cur, state: rowOK})
+		// Zählt erst, wenn die Zeile dauerhaft bearbeitet ist (handleRow).
+		r.positions = append(r.positions, rowPos{cursor: cur, state: rowPending})
 		pos = len(r.positions) - 1
 	}
 	return r.handleRow(ctx, row, pos, nil, false)
@@ -460,7 +567,9 @@ func (r *inboundRun) readRow(ctx context.Context, row map[string]any) error {
 
 // handleRow bearbeitet eine Zeile (aus einer Seite oder aus der Wiederholung).
 // link ist bei der Wiederholung schon bekannt; retried erzwingt den Abgleich
-// auch bei unveränderter Marke (damit ein Fehler am Link verschwindet).
+// auch bei unveränderter Marke (damit ein Fehler am Link verschwindet). Ein
+// Fehler beendet den Lauf; sonst ist die Zeile bearbeitet, festgehalten oder
+// (neu) zum Anlegen vorgemerkt.
 func (r *inboundRun) handleRow(ctx context.Context, row map[string]any, pos int, link *Link, retried bool) error {
 	p := r.p
 	kv, err := r.d.KeyValues(r.t, p.KeyColumns, row)
@@ -469,7 +578,8 @@ func (r *inboundRun) handleRow(ctx context.Context, row map[string]any, pos int,
 	}
 	c := candidate{pos: pos, keyVals: kv, fk: EncodeKey(kv)}
 	if !retried && r.done[c.fk] {
-		return nil // schon in der Wiederholung bearbeitet
+		r.setState(pos, rowOK) // schon in der Wiederholung bearbeitet
+		return nil
 	}
 	c.mapped, c.errs = ToPDH(r.maps, r.fields, row, p.Defaults)
 	if v, ok := c.mapped["status"]; ok {
@@ -490,13 +600,23 @@ func (r *inboundRun) handleRow(ctx context.Context, row map[string]any, pos int,
 		}
 	}
 	if link != nil && link.RefID != nil {
-		if !retried && link.SeenMark == c.mark && r.seenComplete(link) {
-			return nil // unverändert
+		unchanged := link.SeenMark == c.mark
+		switch {
+		case !retried && unchanged && link.LastError == LinkErrRecordGone:
+			// Endzustand, schon gemeldet: erst eine neue Änderung meldet erneut.
+			r.setState(pos, rowOK)
+			return nil
+		case !retried && unchanged && r.seenComplete(link) && link.LastError != LinkErrForeignGone:
+			r.setState(pos, rowOK) // unverändert
+			return nil
 		}
 		if r.opt.Dry {
 			return r.previewChanged(ctx, c, link)
 		}
-		r.processChanged(ctx, c, link)
+		if err := r.processChanged(ctx, c, link); err != nil {
+			return err
+		}
+		r.setState(pos, rowOK)
 		return nil
 	}
 	// Neu (oder reserviert ohne Datensatz).
@@ -508,8 +628,7 @@ func (r *inboundRun) handleRow(ctx context.Context, row map[string]any, pos int,
 	if r.newCount > r.maxNew() {
 		r.paused = true
 	}
-	r.setState(c.pos, rowPending)
-	r.pending = append(r.pending, c)
+	r.pending = append(r.pending, c) // Zustand bleibt rowPending bis zum Anlegen
 	return nil
 }
 
@@ -517,11 +636,8 @@ func (r *inboundRun) handleRow(ctx context.Context, row map[string]any, pos int,
 // Fehlt einer (Feld später zugeordnet), wird die Zeile abgeglichen, auch wenn
 // sich ihre Marke nicht geändert hat.
 func (r *inboundRun) seenComplete(l *Link) bool {
-	for _, m := range r.maps {
-		if m.FixedValue != nil || (m.Direction != DirIn && m.Direction != DirBoth) {
-			continue
-		}
-		if _, ok := l.SeenValues[m.PDHField]; !ok {
+	for _, k := range r.inboundFields() {
+		if _, ok := l.SeenValues[k]; !ok {
 			return false
 		}
 	}
@@ -562,19 +678,46 @@ func (r *inboundRun) complete(mapped map[string]string) (map[string]string, []Ru
 	return values, errs
 }
 
+// baseline führt die Ausgangswerte nach einer Bearbeitung nach (Regel oben).
+// touched nil = alle Felder (Anlegen); keep = Felder, bei denen PDH gewann.
+func (r *inboundRun) baseline(old, seen, actual map[string]string, touched map[string]bool, keep map[string]string) map[string]string {
+	w := make(map[string]string, len(old))
+	for k, v := range old {
+		w[k] = v
+	}
+	for _, k := range r.inboundFields() {
+		if _, ok := keep[k]; ok {
+			continue
+		}
+		a, f := strings.TrimSpace(actual[k]), strings.TrimSpace(seen[k])
+		switch {
+		case a == f:
+			delete(w, k)
+		case touched == nil || touched[k]:
+			w[k] = a
+		}
+	}
+	return w
+}
+
 func (r *inboundRun) originNote(c candidate) string {
 	return fmt.Sprintf("%s|%s|Aus %s, Nummer %s", r.p.ID, c.fk, r.p.Name, strings.Join(c.keyVals, ", "))
 }
 
 // processNew legt den Datensatz genau einmal an: reservieren, anlegen samt
 // Herkunft (eine Transaktion), anbinden. Scheitert die Zeile, bleibt die
-// reservierte Verknüpfung mit Fehler stehen und wird später wiederholt.
-func (r *inboundRun) processNew(ctx context.Context, c candidate) bool {
+// reservierte Verknüpfung mit Fehler stehen und wird später wiederholt. Ein
+// Fehler als Rückgabe beendet den Lauf.
+func (r *inboundRun) processNew(ctx context.Context, c candidate) error {
 	st := r.in.Store
-	link, created, err := st.ReserveLink(ctx, r.p.ID, c.fk, r.p.TargetType)
+	err := r.hook("reserve", c.fk)
+	var link *Link
+	var created bool
+	if err == nil {
+		link, created, err = st.ReserveLink(ctx, r.p.ID, c.fk, r.p.TargetType)
+	}
 	if err != nil {
-		r.fail(c.fk, RunError{Message: err.Error()})
-		return false
+		return fmt.Errorf("Verknüpfung für %s nicht reserviert: %w", c.fk, err)
 	}
 	if !created {
 		if link.RefID != nil {
@@ -583,14 +726,12 @@ func (r *inboundRun) processNew(ctx context.Context, c candidate) bool {
 		// Reserviert, aber nicht angebunden (Abbruch nach dem Commit des Anlegens?).
 		id, found, err := r.target.FindOrigin(ctx, r.p.ID, c.fk)
 		if err != nil {
-			_ = st.SetLinkError(ctx, link.ID, err.Error())
-			r.fail(c.fk, RunError{Message: err.Error()})
-			return false
+			return r.rowFailed(ctx, link.ID, c.fk, RunError{Message: err.Error()})
 		}
 		if found {
-			if err := st.AttachLink(ctx, link.ID, id, "", map[string]string{}); err != nil {
-				r.fail(c.fk, RunError{Message: err.Error()})
-				return false
+			empty := ""
+			if err := st.SaveInbound(ctx, link.ID, InboundUpdate{RefID: &id, SeenMark: &empty, Seen: map[string]string{}}); err != nil {
+				return r.rowFailed(ctx, link.ID, c.fk, RunError{Message: err.Error()})
 			}
 			link.RefID, link.SeenMark, link.SeenValues = &id, "", map[string]string{}
 			return r.processChanged(ctx, c, link)
@@ -602,101 +743,110 @@ func (r *inboundRun) processNew(ctx context.Context, c candidate) bool {
 		values, errs = r.complete(c.mapped)
 	}
 	if len(errs) > 0 {
-		_ = st.SetLinkError(ctx, link.ID, joinErrs(errs))
-		r.fail(c.fk, errs...)
-		return false
+		return r.rowFailed(ctx, link.ID, c.fk, errs...)
 	}
 	id, err := r.target.Create(ctx, values, r.in.SystemUser, r.originNote(c))
 	if err != nil {
-		msg := err.Error()
 		if id != "" {
 			// Datensatz samt Herkunft existiert, eine Nacharbeit fehlte: anbinden ohne
 			// gesehenen Stand, damit der nächste Versuch die Felder abgleicht.
-			_ = st.AttachLink(ctx, link.ID, id, "", map[string]string{})
+			empty := ""
+			_ = st.SaveInbound(ctx, link.ID, InboundUpdate{RefID: &id, SeenMark: &empty, Seen: map[string]string{}})
 		}
-		_ = st.SetLinkError(ctx, link.ID, msg)
-		r.fail(c.fk, RunError{Message: msg})
-		return false
+		return r.rowFailed(ctx, link.ID, c.fk, RunError{Message: err.Error()})
 	}
-	if err := st.AttachLink(ctx, link.ID, id, c.mark, c.mapped); err != nil {
-		// Der Datensatz hat seinen Herkunftseintrag: der nächste Lauf bindet ihn an.
-		r.fail(c.fk, RunError{Message: err.Error()})
-		return false
+	// Tatsächliche Werte samt Vorgaben des Dienstes (z. B. Fälligkeit) für den Ausgangswert.
+	actual, err := r.target.Read(ctx, id)
+	if err != nil {
+		return r.rowFailed(ctx, link.ID, c.fk, RunError{Message: err.Error()})
+	}
+	noErr := ""
+	err = r.hook("commit", c.fk)
+	if err == nil {
+		err = st.SaveInbound(ctx, link.ID, InboundUpdate{RefID: &id, SeenMark: &c.mark, Seen: c.mapped,
+			Written: r.baseline(link.WrittenValues, c.mapped, actual, nil, nil), LastError: &noErr})
+	}
+	if err != nil {
+		// Der Datensatz hat seinen Herkunftseintrag: die Wiederholung bindet ihn an.
+		return r.rowFailed(ctx, link.ID, c.fk, RunError{Message: err.Error()})
 	}
 	r.run.New++
-	return true
+	return nil
 }
 
-// processChanged gleicht eine verknüpfte Zeile ab. Liefert true bei Erfolg.
-func (r *inboundRun) processChanged(ctx context.Context, c candidate, link *Link) bool {
+// processChanged gleicht eine verknüpfte Zeile ab. Ein Fehler als Rückgabe
+// beendet den Lauf; Zeilenfehler stehen danach an der Verknüpfung.
+func (r *inboundRun) processChanged(ctx context.Context, c candidate, link *Link) error {
 	st := r.in.Store
 	user := r.in.SystemUser
 	if len(c.errs) > 0 {
-		_ = st.SetLinkError(ctx, link.ID, joinErrs(c.errs))
-		r.fail(c.fk, c.errs...)
-		return false
+		return r.rowFailed(ctx, link.ID, c.fk, c.errs...)
 	}
 	id := *link.RefID
 	pdhNow, err := r.target.Read(ctx, id)
 	if errors.Is(err, ErrNotFound) {
-		// Nicht neu anlegen; RetryLinks lässt diese Verknüpfung aus.
-		_ = st.SetLinkError(ctx, link.ID, LinkErrRecordGone)
-		r.fail(c.fk, RunError{Message: LinkErrRecordGone})
-		return false
+		// Nicht neu anlegen; Endzustand bis zur nächsten Änderung der Fremdzeile.
+		return r.terminal(ctx, link.ID, c.fk, &c.mark, LinkErrRecordGone)
 	}
 	if err != nil {
-		_ = st.SetLinkError(ctx, link.ID, err.Error())
-		r.fail(c.fk, RunError{Message: err.Error()})
-		return false
+		return r.rowFailed(ctx, link.ID, c.fk, RunError{Message: err.Error()})
 	}
 	dec := Decide(r.maps, link.SeenValues, link.WrittenValues, c.mapped, pdhNow)
+	actual := pdhNow
+	touched := map[string]bool{}
 	if len(dec.Apply) > 0 {
 		notes := map[string]string{}
 		for k, v := range dec.Apply {
+			touched[k] = true
 			if _, seen := link.SeenValues[k]; !seen && pdhNow[k] != "" && pdhNow[k] != v {
 				notes[k] = noteFirstSync // überschriebener PDH-Wert steht so im Verlauf
 			}
 		}
+		// Eine Wiederholung nach Teilfehler übernimmt dieselben Werte erneut:
+		// Apply schreibt gleiche Werte nicht noch einmal (kein doppelter Verlauf).
 		if err := r.target.Apply(ctx, id, dec.Apply, notes, user); err != nil {
-			_ = st.SetLinkError(ctx, link.ID, err.Error())
-			r.fail(c.fk, RunError{Message: err.Error()})
-			return false
+			return r.rowFailed(ctx, link.ID, c.fk, RunError{Message: err.Error()})
+		}
+		if actual, err = r.target.Read(ctx, id); err != nil {
+			return r.rowFailed(ctx, link.ID, c.fk, RunError{Message: err.Error()})
+		}
+		for k, v := range actual {
+			if v != pdhNow[k] {
+				touched[k] = true // z. B. Lösungstext von QuickResolve
+			}
 		}
 	}
+	u := InboundUpdate{SeenMark: &c.mark, Seen: c.mapped,
+		Written: r.baseline(link.WrittenValues, c.mapped, actual, touched, dec.KeepPDH)}
+	noErr := ""
+	u.LastError = &noErr
 	if len(dec.KeepPDH) > 0 {
 		keys := make([]string, 0, len(dec.KeepPDH))
 		for k := range dec.KeepPDH {
 			keys = append(keys, k)
 		}
 		sort.Strings(keys)
-		fields := map[string]string{}
+		u.Outbox = map[string]string{}
 		for _, k := range keys {
 			lost := dec.ForeignLost[k]
-			msg := fmt.Sprintf("Wert im Fremdsystem ‚%s‘ nicht übernommen, PDH-Wert bleibt", lost)
-			if err := r.target.Note(ctx, id, actionSync, k, dec.KeepPDH[k], lost, msg, user); err != nil {
-				_ = st.SetLinkError(ctx, link.ID, err.Error())
-				r.fail(c.fk, RunError{Field: k, Message: err.Error()})
-				return false
-			}
-			fields[k] = dec.KeepPDH[k]
-		}
-		if err := st.Enqueue(ctx, link.ID, KindUpdate, map[string]any{"fields": fields}); err != nil {
-			_ = st.SetLinkError(ctx, link.ID, err.Error())
-			r.fail(c.fk, RunError{Message: err.Error()})
-			return false
+			u.Notes = append(u.Notes, HistoryNote{RefType: r.p.TargetType, RefID: id, Action: actionSync, Field: k,
+				OldValue: dec.KeepPDH[k], NewValue: lost, CreatedBy: user,
+				Message: fmt.Sprintf("Wert im Fremdsystem ‚%s‘ nicht übernommen, PDH-Wert bleibt", lost)})
+			u.Outbox[k] = dec.KeepPDH[k]
 		}
 	}
-	if err := st.UpdateLinkSeen(ctx, link.ID, c.mark, c.mapped); err != nil {
-		r.fail(c.fk, RunError{Message: err.Error()})
-		return false
+	// Verknüpfung, Vermerke und Wartelisteneintrag gemeinsam (eine Transaktion).
+	err = r.hook("commit", c.fk)
+	if err == nil {
+		err = st.SaveInbound(ctx, link.ID, u)
 	}
-	if link.LastError != "" {
-		_ = st.SetLinkError(ctx, link.ID, "")
+	if err != nil {
+		return r.rowFailed(ctx, link.ID, c.fk, RunError{Message: err.Error()})
 	}
 	if len(dec.Apply) > 0 || len(dec.KeepPDH) > 0 {
 		r.run.Changed++
 	}
-	return true
+	return nil
 }
 
 func (r *inboundRun) addPreview(pv Preview) {

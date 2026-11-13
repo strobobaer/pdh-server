@@ -461,8 +461,78 @@ func (s *Store) RetryLinks(ctx context.Context, profileID string, limit int) ([]
 		limit = 50
 	}
 	return s.queryLinks(ctx, "zu wiederholende verknüpfungen laden", `SELECT `+linkCols+` FROM sync_links l
-		WHERE l.profile_id = $1 AND (l.ref_id IS NULL OR l.last_error <> '') AND l.last_error <> $2
-		ORDER BY l.updated_at, l.id LIMIT $3`, profileID, LinkErrRecordGone, limit)
+		WHERE l.profile_id = $1 AND (l.ref_id IS NULL OR l.last_error <> '') AND NOT (l.last_error = ANY($2))
+		ORDER BY l.updated_at, l.id LIMIT $3`, profileID, terminalLinkErrors, limit)
+}
+
+// terminalLinkErrors sind Endzustände: einmal gemeldet, nicht wiederholt.
+var terminalLinkErrors = []string{LinkErrRecordGone, LinkErrForeignGone, LinkErrBadKey}
+
+// HistoryNote ist ein Verlaufseintrag (record_history).
+type HistoryNote struct {
+	RefType, RefID, Action, Field, OldValue, NewValue, Message, CreatedBy string
+}
+
+// InboundUpdate hält fest, was ein hereinkommender Abgleich an einer
+// Verknüpfung speichert. nil bzw. leer = unverändert.
+type InboundUpdate struct {
+	RefID     *string           // Datensatz anbinden
+	SeenMark  *string           // Änderungsmarke
+	Seen      map[string]string // zuletzt gesehene Fremdwerte (ganz ersetzt)
+	Written   map[string]string // Ausgangswerte im PDH (ganz ersetzt, siehe Link.WrittenValues)
+	LastError *string           // Fehlertext ("" löscht)
+	Notes     []HistoryNote     // Verlaufseinträge
+	Outbox    map[string]string // Felder für einen Wartelisteneintrag "update"
+}
+
+// SaveInbound schreibt Verknüpfung, Verlauf und Wartelisteneintrag in EINER
+// Transaktion: scheitert etwas, bleibt alles beim alten und eine Wiederholung
+// schreibt nichts doppelt.
+func (s *Store) SaveInbound(ctx context.Context, linkID string, u InboundUpdate) error {
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("abgleich: verknüpfung speichern: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	var seen, written any
+	if u.Seen != nil {
+		seen = encodeMap(u.Seen)
+	}
+	if u.Written != nil {
+		written = encodeMap(u.Written)
+	}
+	tag, err := tx.Exec(ctx, `UPDATE sync_links SET
+			ref_id = COALESCE($2::uuid, ref_id),
+			seen_mark = COALESCE($3::text, seen_mark),
+			seen_values = COALESCE($4::jsonb, seen_values),
+			written_values = COALESCE($5::jsonb, written_values),
+			last_error = COALESCE($6::text, last_error),
+			updated_at = now()
+		WHERE id = $1`, linkID, u.RefID, u.SeenMark, seen, written, u.LastError)
+	if err != nil {
+		return fmt.Errorf("abgleich: verknüpfung speichern: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("abgleich: verknüpfung speichern: %w", ErrNotFound)
+	}
+	for _, n := range u.Notes {
+		if _, err := tx.Exec(ctx, `INSERT INTO record_history (ref_type, ref_id, action, field_name, old_value, new_value, message, created_by)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`, n.RefType, n.RefID, n.Action, nilIfEmpty(n.Field),
+			n.OldValue, n.NewValue, n.Message, nilIfEmpty(n.CreatedBy)); err != nil {
+			return fmt.Errorf("abgleich: verlauf schreiben: %w", err)
+		}
+	}
+	if len(u.Outbox) > 0 {
+		b, _ := json.Marshal(map[string]any{"fields": u.Outbox})
+		if _, err := tx.Exec(ctx, `INSERT INTO sync_outbox (link_id, kind, payload) VALUES ($1, $2, $3::jsonb)`,
+			linkID, KindUpdate, b); err != nil {
+			return fmt.Errorf("abgleich: eintrag einreihen: %w", err)
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("abgleich: verknüpfung speichern: %w", err)
+	}
+	return nil
 }
 
 // ── Warteliste ───────────────────────────────────────────────────────────

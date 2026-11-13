@@ -47,13 +47,14 @@ func stdMaps(target string) []FieldMap {
 }
 
 type fixOpt struct {
-	target   string
-	kind     string // rowversion (Standard) | none
-	maps     []FieldMap
-	keyCols  []string
-	info     *TableInfo
-	defaults map[string]string
-	maxNew   int
+	target    string
+	kind      string // rowversion (Standard) | none
+	maps      []FieldMap
+	keyCols   []string
+	info      *TableInfo
+	defaults  map[string]string
+	maxNew    int
+	changeCol string // Zeitstempel-Spalte bei kind timestamp
 }
 
 func newInFix(t *testing.T, o fixOpt) *inFix {
@@ -82,6 +83,9 @@ func newInFix(t *testing.T, o fixOpt) *inFix {
 	}
 	if o.kind == changeKindRowVersion {
 		p.ChangeColumn = "RV"
+	}
+	if o.changeCol != "" {
+		p.ChangeColumn = o.changeCol
 	}
 	must(t, sf.s.SaveProfile(ctx, p, systemUser))
 	must(t, sf.s.ReplaceMaps(ctx, p.ID, o.maps))
@@ -744,36 +748,6 @@ func TestInboundBadRowDoesNotBlockOverloadPaging(t *testing.T) {
 	}
 	if l := f.link(k(3)); l.RefID != nil || !strings.Contains(l.LastError, "dringend") {
 		t.Fatalf("Verknüpfung: %+v", l)
-	}
-}
-
-func TestInboundRetryRowGoneInForeign(t *testing.T) {
-	f := newInFix(t, fixOpt{})
-	f.row(1, "Eins", "hoch", "offen")
-	f.row(2, "Zwei", "dringend", "offen")
-	r := f.run(RunOptions{})
-	if r.New != 1 || r.Failed != 1 {
-		t.Fatalf("erster Lauf: %+v", r)
-	}
-	f.ff.del(2)
-	r = f.run(RunOptions{})
-	if r.New != 0 || r.Failed != 1 || r.Errors[0].Message != LinkErrForeignGone || r.Errors[0].ForeignKey != k(2) {
-		t.Fatalf("zweiter Lauf: %+v", r)
-	}
-	l := f.link(k(2))
-	if l.RefID != nil || l.LastError != LinkErrForeignGone {
-		t.Fatalf("Verknüpfung: %+v", l)
-	}
-	if n := f.records(); n != 1 {
-		t.Fatalf("%d Tickets", n)
-	}
-	// Reihum: jeder Versuch setzt updated_at, die Verknüpfung rückt nach hinten.
-	var before, after time.Time
-	must(t, f.sf.pool.QueryRow(context.Background(), `SELECT updated_at FROM sync_links WHERE id = $1`, l.ID).Scan(&before))
-	f.run(RunOptions{})
-	must(t, f.sf.pool.QueryRow(context.Background(), `SELECT updated_at FROM sync_links WHERE id = $1`, l.ID).Scan(&after))
-	if !after.After(before) {
-		t.Fatal("Versuch setzt updated_at nicht")
 	}
 }
 

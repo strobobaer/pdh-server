@@ -47,6 +47,8 @@ const (
 	LinkErrRecordGone = "Datensatz im PDH nicht mehr vorhanden"
 	// LinkErrForeignGone: die Fremdzeile ist beim erneuten Versuch verschwunden.
 	LinkErrForeignGone = "Meldung im Fremdsystem nicht mehr vorhanden"
+	// LinkErrBadKey: der gespeicherte Schlüssel der Verknüpfung ist nicht lesbar.
+	LinkErrBadKey = "Schlüssel der Verknüpfung ist ungültig"
 )
 
 // ErrNotFound meldet, dass ein Datensatz nicht existiert.
@@ -93,8 +95,16 @@ type Link struct {
 	ID, ProfileID, ForeignKey, RefType string
 	RefID                              *string
 	SeenMark                           string
-	SeenValues, WrittenValues          map[string]string
-	LastError                          string
+	// SeenValues: zuletzt gesehene Fremdwerte (PDH-Form) aller hereinkommenden Felder.
+	// WrittenValues: Ausgangswert im PDH je Feld – der PDH-Wert, den der Abgleich
+	// selbst festgelegt hat, wo er vom Fremdwert abweicht (Vorgabe ergänzt, leerer
+	// Fremdwert übergangen, Umsetzung wie closed→resolved, Lösungstext von
+	// QuickResolve) bzw. den das Hinausschreiben zuletzt geschrieben hat. Ein
+	// fehlender Schlüssel heißt "kein Ausgangswert"; ist der PDH-Wert gleich dem
+	// Fremdwert, wird der Eintrag entfernt. Decide prüft damit "p == w": PDH ist
+	// seitdem nicht von einem Benutzer geändert worden.
+	SeenValues, WrittenValues map[string]string
+	LastError                 string
 }
 
 // OutboxItem ist ein Eintrag der Warteliste (PDH -> Fremdsystem).
