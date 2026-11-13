@@ -99,6 +99,7 @@
         <div class="form-group"><label class="form-label">Zeitplan (Cron, optional)</label><input name="f_mssql_schedule_cron" class="form-input" placeholder="z.B. 0 6 * * 1"></div>
       </div>
       <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin:6px 0 10px"><input type="checkbox" name="f_mssql_use_tls"> TLS-Verschlüsselung</label>
+      {{template "mssql-route-fields" (dict "Tunnels" .Tunnels)}}
       <p style="font-size:11px;color:var(--muted);margin:-4px 0 10px">Die Tabelle wird bei Bedarf automatisch angelegt (field_name, value, source, exported_at) - jeder Export hängt neue Zeilen an.</p>
     </div>
 
@@ -144,7 +145,7 @@
 {{define "scripts"}}
 <script>
 // Export-spezifisch; Tabelle, Bearbeiten & Co. kommen aus widgets/connection_list.gohtml
-const CONN_BOOL_FIELDS = ['use_tls'];
+const CONN_BOOL_FIELDS = ['use_tls','allow_write'];
 function connPageItems(row){
   const exportableKinds = ['excel', 'csv', 'pdf', 'sqlite', 'mysql', 'mssql', 'opcua', 'modbus'];
   if(exportableKinds.indexOf(row.dataset.connKind) === -1) return [];

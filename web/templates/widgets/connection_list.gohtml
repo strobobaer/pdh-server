@@ -47,6 +47,41 @@ Die Seite liefert davor im eigenen <script>:
 </div>
 {{end}}
 
+{{/* Weg, Abfragezeit über VPN, Schreiben erlaubt und Fingerabdruck – Felder für Typ MSSQL (Import und Export). Dict: Tunnels. */}}
+{{define "mssql-route-fields"}}
+<div class="grid2" style="gap:10px">
+  <div class="form-group">
+    <label class="form-label" for="f_mssql_route">Weg</label>
+    <select id="f_mssql_route" name="f_mssql_route" class="form-input" onchange="mssqlRouteChanged()">
+      <option value="direct">Direkt</option>
+      {{range .Tunnels}}<option value="vpn:{{.ID}}">{{.Name}}</option>{{end}}
+    </select>
+  </div>
+</div>
+<div id="mssql-vpn-fields" class="grid2" style="gap:10px" hidden>
+  <div class="form-group"><label class="form-label">Abfragetakt über VPN (Minuten)</label><input type="number" min="1" max="1440" name="f_mssql_vpn_poll_minutes" class="form-input" value="5"></div>
+  <div class="form-group"><label class="form-label">Zeitgrenze je Abfrage über VPN (Sekunden)</label><input type="number" min="5" max="600" name="f_mssql_vpn_timeout_seconds" class="form-input" value="60"></div>
+</div>
+<p id="mssql-vpn-hint" style="font-size:11px;color:var(--muted);margin:-4px 0 10px" hidden>Der Tunnel dient nur zum Testen. Das PDH baut ihn nicht auf; steht er nicht, wird der Lauf übersprungen.</p>
+<label style="display:flex;align-items:center;gap:8px;font-size:13px;margin:6px 0 10px"><input type="checkbox" name="f_mssql_allow_write"> Schreiben erlaubt</label>
+<div class="form-group">
+  <label class="form-label">Fingerabdruck des Zertifikats</label>
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+    <input name="f_mssql_tls_fingerprint" id="f_mssql_tls_fingerprint" class="form-input" style="flex:1;min-width:200px;font-family:monospace;font-size:11px" readonly placeholder="nicht bestätigt – Zertifikat wird über die Kette geprüft">
+    <button type="button" class="btn btn-small" id="mssql-fp-read" onclick="mssqlReadFingerprint()"><i class="ti ti-fingerprint"></i> Fingerabdruck lesen und bestätigen</button>
+    <button type="button" class="btn btn-small" id="mssql-fp-clear" onclick="mssqlClearFingerprint()" hidden>Entfernen</button>
+  </div>
+  <div id="mssql-fp-confirm" hidden style="margin-top:8px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg2);font-size:12px">
+    <div>Der Server zeigt dieses Zertifikat (SHA-256):</div>
+    <div id="mssql-fp-value" style="font-family:monospace;font-size:11px;word-break:break-all;margin:4px 0;color:var(--text)"></div>
+    <div style="color:var(--muted);margin-bottom:6px">Nur bestätigen, wenn Sie das Zertifikat kennen. Danach verbindet das PDH nur noch mit genau diesem Zertifikat.</div>
+    <button type="button" class="btn btn-primary btn-small" onclick="mssqlConfirmFingerprint()">Bestätigen</button>
+    <button type="button" class="btn btn-small" onclick="mssqlDiscardFingerprint()">Verwerfen</button>
+  </div>
+  <div id="mssql-fp-msg" style="font-size:12px;margin-top:6px;color:var(--muted)" role="status"></div>
+</div>
+{{end}}
+
 {{define "connection-list-js"}}
 <script>
 // Verbindungen bearbeiten/aktivieren/loeschen (widgets/connection_list.gohtml)
@@ -65,6 +100,58 @@ function opcuaAuthModeChanged(){
 function connSync(){
   connFormKindChanged();
   if(typeof connFormSync === 'function') connFormSync(); else opcuaAuthModeChanged();
+  mssqlRouteChanged();
+  mssqlFpState();
+}
+
+// MSSQL: Weg, Abfragezeit über VPN, Fingerabdruck (mssql-route-fields)
+function mssqlRouteChanged(){
+  const sel = document.getElementById('f_mssql_route');
+  if(!sel) return;
+  const vpn = sel.value.indexOf('vpn:') === 0;
+  document.getElementById('mssql-vpn-fields').hidden = !vpn;
+  document.getElementById('mssql-vpn-hint').hidden = !vpn;
+}
+function mssqlFpState(){
+  const el = document.getElementById('f_mssql_tls_fingerprint');
+  if(!el) return;
+  document.getElementById('mssql-fp-clear').hidden = !el.value;
+}
+let mssqlFpPending = '';
+async function mssqlReadFingerprint(){
+  const msg = document.getElementById('mssql-fp-msg');
+  const q = function(n){ const e = document.querySelector('[name="f_mssql_' + n + '"]'); return e ? e.value : ''; };
+  const body = new URLSearchParams({host: q('host'), port: q('port'), instance_name: q('instance_name'), route: q('route')});
+  msg.textContent = 'Zertifikat wird gelesen …';
+  document.getElementById('mssql-fp-confirm').hidden = true;
+  try{
+    const res = await fetch('/' + CONN_DIRECTION + '/connections/fingerprint', {method:'POST', credentials:'same-origin', body: body});
+    if(!res.ok) throw new Error('HTTP ' + res.status);
+    const out = await res.json();
+    if(out.error){ msg.textContent = out.error; return; }
+    mssqlFpPending = out.fingerprint;
+    const cur = document.getElementById('f_mssql_tls_fingerprint').value;
+    document.getElementById('mssql-fp-value').textContent = out.fingerprint;
+    msg.textContent = cur && cur !== out.fingerprint ? 'Achtung: weicht vom bisher bestätigten Fingerabdruck ab.' : '';
+    document.getElementById('mssql-fp-confirm').hidden = false;
+  }catch(e){
+    msg.textContent = 'Zertifikat konnte nicht gelesen werden: ' + e.message;
+  }
+}
+function mssqlConfirmFingerprint(){
+  document.getElementById('f_mssql_tls_fingerprint').value = mssqlFpPending;
+  document.getElementById('mssql-fp-confirm').hidden = true;
+  document.getElementById('mssql-fp-msg').textContent = 'Bestätigt – wird mit „Speichern“ übernommen. Die TLS-Verschlüsselung bleibt dabei aktiv.';
+  mssqlFpState();
+}
+function mssqlDiscardFingerprint(){
+  mssqlFpPending = '';
+  document.getElementById('mssql-fp-confirm').hidden = true;
+  document.getElementById('mssql-fp-msg').textContent = '';
+}
+function mssqlClearFingerprint(){
+  document.getElementById('f_mssql_tls_fingerprint').value = '';
+  mssqlFpState();
 }
 
 function connSecretHint(on){

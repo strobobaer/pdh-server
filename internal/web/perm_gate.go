@@ -156,6 +156,9 @@ var gateRules = []gateRule{
 	gr("DELETE", "directory.edit", "business_partner", false, `^(?:/api/v1)?/directory`+gID+gEnd),
 	gr("DELETE", "infrastructure.edit", "infrastructure", false, `^(?:/api/v1)?/infrastructure`+gID+gEnd),
 
+	// ── Verbindungen: Zertifikat der Fremddatenbank lesen (wie Verbindung bearbeiten) ──
+	gr(wPost, "import.write", "", false, `^/import/connections/fingerprint$`),
+	gr(wPost, "export.write", "", false, `^/export/connections/fingerprint$`),
 	// ── Störungen (Melden bleibt für alle offen) ──
 	gr(wPost, "faults.resolve", "fault", true, `^(?:/api/v1)?/faults`+gID+`/resolve$`),
 	gr(wPost, "faults.edit", "fault", true, `^/faults`+gID+`/(?:analyze|infrastructure-web)$`),

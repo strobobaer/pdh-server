@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -74,7 +76,7 @@ var importKindFields = map[string][]string{
 	"csv":    {"source_path", "delimiter", "has_header"},
 	"sqlite": {"file_path"},
 	"mysql":  {"host", "port", "database", "username", "password", "use_tls"},
-	"mssql":  {"host", "port", "database", "instance_name", "username", "password", "use_tls"},
+	"mssql":  {"host", "port", "database", "instance_name", "username", "password", "use_tls", "route", "vpn_poll_minutes", "vpn_timeout_seconds", "allow_write", "tls_fingerprint"},
 	"mqtt": {
 		"broker_mode",
 		// externer Broker
@@ -96,7 +98,7 @@ var exportKindFields = map[string][]string{
 	"csv":    {"destination_path", "delimiter", "schedule_cron"},
 	"sqlite": {"file_path", "table_name", "schedule_cron"},
 	"mysql":  {"host", "port", "database", "username", "password", "use_tls", "table_name", "schedule_cron"},
-	"mssql":  {"host", "port", "database", "instance_name", "username", "password", "use_tls", "table_name", "schedule_cron"},
+	"mssql":  {"host", "port", "database", "instance_name", "username", "password", "use_tls", "route", "vpn_poll_minutes", "vpn_timeout_seconds", "allow_write", "tls_fingerprint", "table_name", "schedule_cron"},
 	"opcua":  {"endpoint_url", "auth_mode", "username", "password", "schedule_cron"},
 	"modbus": {"host", "port", "unit_id", "schedule_cron"},
 }
@@ -104,6 +106,7 @@ var exportKindFields = map[string][]string{
 var booleanConfigFields = map[string]bool{
 	"has_header": true, "use_tls": true, "ext_use_tls": true,
 	"int_allow_anonymous": true, "int_persistence_enabled": true, "int_retain_enabled": true,
+	"allow_write": true,
 }
 
 func connectionKindOptions(direction string) []KindOption {
@@ -154,6 +157,7 @@ type ConnectionsPageData struct {
 	CanExecute     bool
 	PDFTemplates   []ExportTemplateView
 	ExcelTemplates []ExportTemplateView
+	Tunnels        []connTunnelOption // ausgehende VPN-Tunnel für „Weg“ (leer ohne VPN)
 	Notice         string
 }
 
@@ -225,6 +229,9 @@ func (h *Handler) connectionsPage(w http.ResponseWriter, r *http.Request, direct
 		CanExecute:  h.canConnectionExecute(r, direction),
 		Notice:      r.URL.Query().Get("notice"),
 	}
+	if data.CanWrite {
+		data.Tunnels = h.connTunnelOptions(r.Context())
+	}
 	if direction == "export" {
 		if tpls, err := h.exportTemplates(r.Context(), "pdf"); err == nil {
 			data.PDFTemplates = tpls
@@ -284,7 +291,24 @@ func buildConnectionConfig(r *http.Request, kind string, fields []string) map[st
 		}
 		config[f] = strings.TrimSpace(r.FormValue(formKey))
 	}
+	if kind == "mssql" {
+		normalizeMssqlRouteFields(config)
+	}
 	return config
+}
+
+// normalizeMssqlRouteFields: Weg, Zeiten und Fingerabdruck in feste Form bringen.
+// Fehlt das Feld oder ist es ungültig, gilt die Vorgabe (direkt, 5 Min., 60 s,
+// kein Fingerabdruck).
+func normalizeMssqlRouteFields(config map[string]string) {
+	if r := parseConnRoute(config); r.ViaVPN {
+		config["route"] = "vpn:" + r.PeerID
+	} else {
+		config["route"] = "direct"
+	}
+	config["vpn_poll_minutes"] = strconv.Itoa(clampConnInt(config["vpn_poll_minutes"], connPollVPNDefault, connPollVPNMin, connPollVPNMax))
+	config["vpn_timeout_seconds"] = strconv.Itoa(clampConnInt(config["vpn_timeout_seconds"], int(connTimeoutVPN/time.Second), connTimeoutMin, connTimeoutMax))
+	config["tls_fingerprint"] = normalizeFingerprint(config["tls_fingerprint"])
 }
 
 func (h *Handler) createConnection(w http.ResponseWriter, r *http.Request, direction string) {

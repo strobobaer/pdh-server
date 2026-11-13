@@ -904,6 +904,7 @@ func (h *Handler) Routes() chi.Router {
 	// Import & Export
 	r.Get("/import", h.ImportPage)
 	r.Post("/import/connections", h.ImportConnectionCreateWeb)
+	r.Post("/import/connections/fingerprint", h.MssqlFingerprintWeb("import"))
 	r.Post("/import/connections/{id}/edit-web", h.ImportConnectionEditWeb)
 	r.Post("/import/connections/{id}/delete-web", h.ImportConnectionDeleteWeb)
 	r.Post("/import/connections/{id}/toggle-web", h.ImportConnectionToggleWeb)
@@ -941,6 +942,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/export/connections/{id}/templates/{tid}/delete", h.ExportConnectionTemplateDeleteWeb)
 	r.Get("/export", h.ExportPage)
 	r.Post("/export/connections", h.ExportConnectionCreateWeb)
+	r.Post("/export/connections/fingerprint", h.MssqlFingerprintWeb("export"))
 	r.Post("/export/connections/{id}/edit-web", h.ExportConnectionEditWeb)
 	r.Post("/export/connections/{id}/delete-web", h.ExportConnectionDeleteWeb)
 	r.Post("/export/connections/{id}/toggle-web", h.ExportConnectionToggleWeb)

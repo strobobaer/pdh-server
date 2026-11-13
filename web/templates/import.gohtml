@@ -69,6 +69,7 @@
         <div class="form-group"><label class="form-label">Passwort</label><input type="password" name="f_mssql_password" class="form-input" autocomplete="new-password"></div>
       </div>
       <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin:6px 0 10px"><input type="checkbox" name="f_mssql_use_tls"> TLS-Verschlüsselung</label>
+      {{template "mssql-route-fields" (dict "Tunnels" .Tunnels)}}
     </div>
 
     <div class="kind-fields" id="fields-mqtt" hidden>
@@ -190,7 +191,7 @@
 {{define "scripts"}}
 <script>
 // Import-spezifisch; Tabelle, Bearbeiten & Co. kommen aus widgets/connection_list.gohtml
-const CONN_BOOL_FIELDS = ['has_header','use_tls','ext_use_tls','int_allow_anonymous','int_persistence_enabled','int_retain_enabled'];
+const CONN_BOOL_FIELDS = ['has_header','use_tls','ext_use_tls','int_allow_anonymous','int_persistence_enabled','int_retain_enabled','allow_write'];
 function mqttModeChanged(){
   const mode = document.getElementById('f_mqtt_broker_mode').value;
   document.getElementById('mqtt-mode-external').hidden = mode !== 'external';
