@@ -308,6 +308,39 @@ Nachrang vor den Benutzern.
 Die Schwellen sind Vorgaben im Code und werden nach der Lastprüfung
 (Abschnitt 7) mit den gemessenen Werten bestätigt oder angepasst.
 
+### 4.10 Benachrichtigungen und rückwirkende Meldungen (Vorgabe des Anwenders, 13.11.2026)
+
+- **Neue Tickets und Störmeldungen erzeugen immer eine Benachrichtigung**,
+  wie von Hand angelegte. Der Abgleich unterdrückt sie nicht.
+- **Rückwirkende Meldungen:** Das Fremdsystem kann auch Meldungen von früher
+  liefern. Sie werden angelegt, bleiben aber still und dienen als Historie.
+  Rückwirkend ist eine Meldung, deren Anlagedatum im Fremdsystem **vor dem
+  heutigen Tag** liegt (Tagesbeginn nach der Zeit des Servers).
+  - Dafür bekommt das Profil eine optionale **Anlagedatum-Spalte** der fremden
+    Tabelle (Datum oder Zeit). Ohne diese Spalte gilt jede neue Meldung als
+    neu und benachrichtigt.
+  - Eine rückwirkende Meldung erzeugt **keine Benachrichtigung** an Benutzer,
+    weder beim Anlegen noch durch die Werte, die der Abgleich dabei setzt.
+  - Ihr Anlagezeitpunkt im PDH ist das Anlagedatum aus dem Fremdsystem, damit
+    Listen und Auswertungen die Meldung zeitlich richtig einordnen.
+  - Hat sie im Fremdsystem den Zustand **abgeschlossen** (zugeordnet auf
+    „erledigt“ oder „geschlossen“), wird sie im PDH erledigt **und
+    archiviert**. Lösungstext ist der zugeordnete Wert, sonst „Im Fremdsystem
+    erledigt“. Für archivierte rückwirkende Meldungen laufen auch die
+    Folgeschritte des Anlegens nicht (Ereignis an Zusatzmodule, Karte im
+    Aufgabenbrett).
+  - Ist sie im Fremdsystem noch offen, bleibt sie im PDH offen und wird ab
+    dann normal abgeglichen; spätere Änderungen benachrichtigen wie üblich.
+- **Obergrenze je Lauf:** Die Sperre „zu viele neue Meldungen“ zählt nur
+  Meldungen von heute. Rückwirkende Meldungen halten das Profil nie an; je
+  Lauf werden höchstens so viele angelegt, wie die Obergrenze vorgibt, der
+  Rest folgt in den nächsten Läufen.
+- **Vor dem ersten Scharfschalten** zeigt das Cockpit getrennt, wie viele
+  Meldungen neu (mit Benachrichtigung) und wie viele rückwirkend (still)
+  angelegt würden, davon wie viele gleich archiviert.
+- Das Zeitfenster des Profils begrenzt weiterhin, wie weit zurück gelesen
+  wird.
+
 ## 5. Rechte
 
 Neue Rechte in der Kategorie „Daten & Schnittstellen“:

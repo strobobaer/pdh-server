@@ -304,6 +304,22 @@
 - [ ] **Step 2:** → FAIL. **Step 3:** Umsetzen. **Step 4:** → PASS.
 - [ ] **Step 5:** Commit: `Abgleich: neue und geänderte Meldungen aus dem Fremdsystem übernehmen`.
 
+### Task 8b: Benachrichtigungen und rückwirkende Meldungen (Spec 4.10)
+
+**Files:**
+- Modify: `migrations/158_extsync.up.sql` (noch nicht veröffentlicht: Spalte `sync_profiles.created_column TEXT NOT NULL DEFAULT ''`; Auslöserfunktionen der Benachrichtigung aus `migrations/106_record_created_notify.up.sql` und `072_…` per `CREATE OR REPLACE` um die Prüfung `current_setting('pdh.sync_silent', true) = '1'` → kein Eintrag in `record_change_queue` ergänzen, Rumpf sonst unverändert übernehmen), `internal/modules/extsync/model.go` (`Profile.CreatedColumn`), `store.go` (Spalte lesen/schreiben, Änderung setzt auf `entwurf`), `inbound.go`, `target.go`, `internal/modules/tickets`, `internal/modules/faults` (nur additiv: Anlagezeitpunkt und Archivieren in der Transaktion)
+- Test: `internal/modules/extsync/backfill_integration_test.go`, `migration_integration_test.go`
+
+**Interfaces:**
+- Produces: `func IsBackfill(created time.Time, now time.Time, loc *time.Location) bool` (wahr, wenn `created` vor dem Beginn des heutigen Tages in `loc` liegt; Nullzeit → falsch); `Inbound.Now func() time.Time`, `Inbound.Location *time.Location` (Vorgabe `time.Local`); `Target.Create` bekommt `CreateOptions{ Silent bool; CreatedAt *time.Time; Archive bool }`; `Preview.Backfill bool`, `Preview.Archive bool`; `Run.Backfilled int` (in `sync_runs` als weiterer Zähler `n_backfill INT NOT NULL DEFAULT 0`).
+- Regeln: wie Spec 4.10. `Silent` → in der Anlegetransaktion `SET LOCAL pdh.sync_silent = '1'`; `Archive` → erledigen und `archived_at` setzen in derselben Transaktion (ohne `QuickResolve`, weil das eine eigene Verbindung nutzt und benachrichtigen würde; Verlaufseintrag „Im Fremdsystem erledigt, rückwirkend übernommen“), `AfterCreate` entfällt; `CreatedAt` setzt `created_at` (bei Störmeldungen auch `detected_at`). Obergrenze: nur Nicht-Rückwirkende zählen für die Sperre; je Lauf höchstens `MaxNew` Rückwirkende anlegen, übrige bleiben als reservierte Verknüpfung ohne Fehler für den nächsten Lauf (zählen nicht als fehlgeschlagen). Die Anlagedatum-Spalte muss eine Datums-/Zeitspalte der Quelltabelle sein (Prüfung über `TableInfo`), sonst Fehler „Anlagedatum-Spalte ist keine Datumsspalte“.
+
+- [ ] **Step 1: Tests** – `TestIsBackfill` (gestern 23:59 → wahr; heute 00:00 → falsch; Nullzeit → falsch; Zeitzone Europe/Berlin um Mitternacht UTC), `TestBackfillSilentNoNotification` (kein Eintrag in `record_change_queue` für den Datensatz), `TestNewRowNotifies` (Eintrag vorhanden), `TestBackfillClosedIsArchived` (Status erledigt, `archived_at` gesetzt, kein Wartelisteneintrag, keine Benachrichtigung), `TestBackfillOpenStaysOpenAndSyncsLater` (spätere fremde Änderung wird übernommen und benachrichtigt wie üblich), `TestBackfillCreatedAtFromForeign`, `TestBackfillDoesNotPauseProfile` (300 rückwirkende, `MaxNew=200` → 200 angelegt, Zustand bleibt, nächster Lauf 100), `TestMaxNewCountsOnlyToday`, `TestNoCreatedColumnMeansNew`, `TestSilentGucDoesNotLeak` (nach dem Lauf benachrichtigt ein von Hand geändertes Ticket wieder), `TestPreviewSeparatesBackfill`.
+- [ ] **Step 2:** → FAIL. **Step 3:** Umsetzen. **Step 4:** → PASS; `go test ./internal/modules/tickets/ ./internal/modules/faults/ ./pkg/database/`; Migration 158 auf einer Datenbank mit Stand 1–157 frisch anwenden.
+- [ ] **Step 5:** Commit: `Abgleich: rückwirkende Meldungen werden still übernommen und abgeschlossene archiviert; neue Meldungen benachrichtigen wie gewohnt`.
+
+Folgen für spätere Tasks: Task 12 (Cockpit Quelle: Auswahl „Anlagedatum-Spalte“), Task 13 (Bestätigung vor dem Scharfschalten zeigt neu / rückwirkend / davon archiviert), Task 14 (Handbuch).
+
 ### Task 9: Hinausgehend – Warteliste abarbeiten
 
 **Files:**
