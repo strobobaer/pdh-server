@@ -435,11 +435,16 @@ func (h *Handler) editConnection(w http.ResponseWriter, r *http.Request, directi
 	if direction == "import" {
 		h.reconcileQueryPolls(r.Context(), id)
 	}
+	// Abgleich: geänderter Weg (direkt ↔ VPN) verlangt einen neuen Test der Profile
+	demoted := ""
+	if n := h.syncDemoteOnRouteChange(r.Context(), id, stored, config); n > 0 {
+		demoted = " – Weg geändert: " + strconv.Itoa(n) + " Abgleich-Profil(e) stehen wieder auf „getestet“ und müssen neu getestet und scharf geschaltet werden"
+	}
 	if r.FormValue("return_to") == "detail" {
-		http.Redirect(w, r, connectionBackPath(direction, id, "overview", "Einstellungen gespeichert", ""), http.StatusSeeOther)
+		http.Redirect(w, r, connectionBackPath(direction, id, "overview", "Einstellungen gespeichert"+demoted, ""), http.StatusSeeOther)
 		return
 	}
-	http.Redirect(w, r, base+"?notice="+url.QueryEscape("Verbindung gespeichert"), http.StatusSeeOther)
+	http.Redirect(w, r, base+"?notice="+url.QueryEscape("Verbindung gespeichert"+demoted), http.StatusSeeOther)
 }
 
 func (h *Handler) deleteConnection(w http.ResponseWriter, r *http.Request, direction string) {

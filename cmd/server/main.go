@@ -348,6 +348,7 @@ func main() {
 		webHandler.StartPurchaseReportSchedule(context.Background())
 		webHandler.StartBackupSystem(context.Background())
 		webHandler.StartChangeNotifier(context.Background())
+		webHandler.StartSync(context.Background()) // Abgleich mit Fremdsystemen (optional): ohne scharfes Profil geschieht nichts
 		maintSvc.StartScheduler(context.Background(), webHandler.MaintLocked) // je Wartungsplan genau ein offener Auftrag (stuendlich)
 		webHandler.StartTrainingScheduler(context.Background())
 		webHandler.StartObligationReminders(context.Background())

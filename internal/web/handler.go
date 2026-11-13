@@ -28,6 +28,7 @@ import (
 	"pdh/internal/core/storage"
 	"pdh/internal/core/users"
 	"pdh/internal/modules/checklists"
+	"pdh/internal/modules/extsync"
 	"pdh/internal/modules/faults"
 	"pdh/internal/modules/inventory"
 	"pdh/internal/modules/it"
@@ -301,6 +302,7 @@ type Handler struct {
 	mqttImport       *mqttimport.Manager
 	exportCron       *scheduler.CronManager
 	importPoll       *scheduler.IntervalManager
+	syncRunner       *extsync.Runner    // Abgleich mit Fremdsystemen; nil am Spiegel und in Tests (sync_wire.go)
 	toolAct          toolActivity       // offene Admin-Werkzeuge je Sitzung (admin_tool_activity.go)
 	streams          context.Context    // endet beim Beenden: Dauerverbindungen (streams.go)
 	closeStreams     context.CancelFunc // beendet streams

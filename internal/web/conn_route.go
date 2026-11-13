@@ -16,6 +16,8 @@ import (
 	"strings"
 	"time"
 
+	"pdh/internal/modules/extsync"
+
 	mssql "github.com/microsoft/go-mssqldb"
 	"github.com/microsoft/go-mssqldb/msdsn"
 )
@@ -32,8 +34,10 @@ const (
 	connTimeoutMin     = 5
 	connTimeoutMax     = 600
 	connPollVPNDefault = 5
-	connPollVPNMin     = 1
-	connPollVPNMax     = 1440
+	// Takt hereinkommender Abfragen: 5 bis 30 Minuten, für Profil und VPN
+	// (Vorgabe zur Serverlast, Entwurf Abgleich 4.9).
+	connPollVPNMin = extsync.MinIntervalMinutes
+	connPollVPNMax = extsync.MaxIntervalMinutes
 )
 
 type connRoute struct {
@@ -69,11 +73,12 @@ func connQueryTimeout(cfg map[string]string) time.Duration {
 	return time.Duration(clampConnInt(cfg["vpn_timeout_seconds"], int(connTimeoutVPN/time.Second), connTimeoutMin, connTimeoutMax)) * time.Second
 }
 
-// connPollInterval: Takt hereinkommender Abfragen. Direkt zählt der Wert des
-// Profils; über VPN ersetzt der Wert der Verbindung den der Profile.
+// connPollInterval: Takt hereinkommender Abfragen, immer 5 bis 30 Minuten.
+// Direkt zählt der Wert des Profils; über VPN ersetzt der Wert der Verbindung
+// den der Profile.
 func connPollInterval(cfg map[string]string, profileMinutes int) time.Duration {
 	if !parseConnRoute(cfg).ViaVPN {
-		return time.Duration(profileMinutes) * time.Minute
+		return time.Duration(min(max(profileMinutes, connPollVPNMin), connPollVPNMax)) * time.Minute
 	}
 	return time.Duration(clampConnInt(cfg["vpn_poll_minutes"], connPollVPNDefault, connPollVPNMin, connPollVPNMax)) * time.Minute
 }

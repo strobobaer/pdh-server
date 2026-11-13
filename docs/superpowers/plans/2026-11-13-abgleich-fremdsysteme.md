@@ -372,16 +372,17 @@ Folgen für spätere Tasks: Task 12 (Cockpit Quelle: Auswahl „Anlagedatum-Spal
 **Interfaces:**
 - Produces:
   ```go
-  type ConnOpener func(ctx context.Context, connectionID string) (db *sql.DB, kind string, cfg map[string]string, err error)
+  type ConnLoader func(ctx context.Context, connectionID string) (kind string, cfg map[string]string, err error) // erst lesen, dann Weg prüfen
+  type ConnOpener func(ctx context.Context, kind string, cfg map[string]string) (*sql.DB, error)
   type RouteCheck func(ctx context.Context, cfg map[string]string) (ok bool, reason string)
-  type RunnerConfig struct { Store *Store; In *Inbound; Out *Outbound; Open ConnOpener; Route RouteCheck; Skip func() bool
+  type RunnerConfig struct { Store *Store; In *Inbound; Out *Outbound; Conn ConnLoader; Open ConnOpener; Route RouteCheck; Skip func() bool
       Interval func(cfg map[string]string, profileMinutes int) time.Duration; Timeout func(cfg map[string]string) time.Duration }
   func NewRunner(c RunnerConfig) *Runner
   func (r *Runner) Start(ctx context.Context)          // zwei Schleifen: hereinkommend alle 30 s fällige Profile, hinausgehend alle 3 s
   func (r *Runner) RunNow(ctx context.Context, profileID string) (*Run, error)
   func (r *Runner) Kick()                               // Warteliste sofort prüfen
   ```
-- `sync_wire.go`: `func (h *Handler) StartSync(ctx context.Context)` baut den `Runner` mit `connectionRow` + `openConnConfig` + `openSQLConnection`, `h.connRouteReady`, `h.MaintLocked`, `connPollInterval`, `connQueryTimeout`, `pdhSystemUserID`.
+- `sync_wire.go`: `func (h *Handler) StartSync(ctx context.Context)` baut den `Runner` mit `h.syncConn` (Verbindung lesen, Kennwörter öffnen) + `openSQLConnection`, `h.connRouteReady`, `h.MaintLocked`, `connPollInterval`, `connQueryTimeout`, `pdhSystemUserID`.
 - Regeln: nur Profile mit `state='scharf'`; je Verbindung ein Schloss (höchstens ein Lauf gleichzeitig, hereinkommend und hinausgehend teilen es); jeder Aufruf an die fremde Datenbank mit `context.WithTimeout(Timeout(cfg))`; Weg nicht bereit oder Verbindung scheitert → Lauf mit `SkippedReason` (Grund aus `Route` bzw. `"Datenbank nicht erreichbar: …"`), `fail_count+1`, `next_run_at = jetzt + min(Takt·2^fail, 15 min)`; Erfolg → `fail_count=0`, `next_run_at = jetzt + Takt`. Gleiche übersprungene Gründe hintereinander ergeben **einen** Lauf-Eintrag (letzten aktualisieren), damit die Liste nicht vollläuft. `Skip()` wahr → nichts tun. Eine Panik in einem Lauf wird abgefangen und als Fehler des Laufs gespeichert. Fehlgeschlagene Wartelisteneinträge: `OutboxFailed(…, Backoff(attempts))`.
 
 - **Last (Spec 4.9):** neue Datei `internal/modules/extsync/load.go` mit

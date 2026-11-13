@@ -82,7 +82,12 @@ Einrichtung (Paket 2) füllt später dasselbe Cockpit aus.
 - **Warteliste** (`sync_outbox`): dauerhafte Liste hinausgehender Änderungen
   je Verknüpfung, in Reihenfolge, mit Versuchszähler und letztem Fehler.
 - **Läufe** (`sync_runs`): je Lauf Zeit, Zahlen (neu, geändert,
-  zurückgeschrieben, fehlgeschlagen), Fehlertexte.
+  zurückgeschrieben, fehlgeschlagen), Fehlertexte. Damit die Liste lesbar
+  bleibt: Wird ein Lauf mehrmals hintereinander aus demselben Grund
+  übersprungen (Weg nicht bereit, Datenbank nicht erreichbar, Warteposition),
+  steht dafür **ein** Eintrag mit erstem und letztem Zeitpunkt. Die Durchgänge
+  der Warteliste eines Profils werden je 5 Minuten zu einem Eintrag
+  „hinaus“ zusammengezählt.
 
 Die vorhandene `record_change_queue` wird nach den Benachrichtigungen
 gelöscht und taugt nicht als Warteliste. Die Warteliste wird eigenständig
@@ -128,6 +133,14 @@ Ein Dienst am aktiven Server arbeitet die Warteliste ab, ausgelöst durch die
   weiter.
 - Nach wiederholten Fehlern wächst die Pause (höchstens 15 Minuten), nach dem
   ersten Erfolg gilt wieder der normale Takt.
+- Ist die fremde Datenbank gar nicht erreichbar (Weg nicht bereit, Verbindung
+  deaktiviert, Anmeldung scheitert), bleiben die Einträge **unverändert**
+  liegen – das zählt nicht als Fehlversuch eines Eintrags. Die Verbindung
+  pausiert für die Warteliste mit wachsendem Abstand (5 Sekunden bis
+  15 Minuten); der Grund steht einmal im Lauf. Danach wird in Reihenfolge
+  nachgeholt.
+- Ein Eintrag, der fünfmal gescheitert ist, wird einmal am Datensatz gemeldet
+  und weiter versucht.
 - Trifft der Befehl null Zeilen (Meldung im Fremdsystem verschwunden), wird
   das im Lauf und am Datensatz gemeldet; die Verknüpfung bleibt, nichts wird
   angelegt.
@@ -279,7 +292,10 @@ Abgleich läuft. Die Benutzer tun dabei Verschiedenes. Der Abgleich hat immer
 Nachrang vor den Benutzern.
 
 - **Takt hereinkommend:** einstellbar von 5 bis 30 Minuten, je Profil und für
-  den Weg über VPN. Kürzer als 5 und länger als 30 Minuten gibt es nicht.
+  den Weg über VPN. Kürzer als 5 und länger als 30 Minuten gibt es nicht;
+  andere Werte werden beim Speichern auf diese Grenzen gesetzt. Nach einem
+  Fehler kommt der nächste Versuch nach dem doppelten Takt, höchstens nach
+  15 Minuten.
 - **Warteposition bei Überlastung:** Der Abgleich prüft vor jedem Lauf und vor
   jedem Durchgang der Warteliste die Last des Servers. Als überlastet gilt der
   Server, wenn eines zutrifft:
@@ -294,7 +310,11 @@ Nachrang vor den Benutzern.
   - Die Warteliste wird langsamer abgearbeitet: alle 30 Sekunden statt alle
     3 Sekunden, je Durchgang höchstens 5 Einträge. Es geht nichts verloren,
     die Reihenfolge bleibt.
-  - Tests im Cockpit laufen weiter; sie startet ein Benutzer bewusst.
+  - Tests im Cockpit und von Hand gestartete Läufe („Jetzt abgleichen“)
+    laufen weiter; sie startet ein Benutzer bewusst.
+  - Als „letzter Lauf“ zählt jeder Lauf oder Versuch, nicht die Warteposition
+    selbst. Ein Profil, das noch nie lief, läuft spätestens 30 Minuten nach
+    der ersten Verschiebung.
 - **Sichtbar:** Das Cockpit zeigt „Warteposition wegen hoher Serverlast“ mit
   dem Grund (Prozessor, Arbeitsspeicher oder Datenbank) und dem Zeitpunkt des
   nächsten Versuchs. Im Lauf steht der Grund als übersprungen.

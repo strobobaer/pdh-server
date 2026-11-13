@@ -59,7 +59,7 @@ Die Seite liefert davor im eigenen <script>:
   </div>
 </div>
 <div id="mssql-vpn-fields" class="grid2" style="gap:10px" hidden>
-  <div class="form-group"><label class="form-label">Abfragetakt über VPN (Minuten)</label><input type="number" min="1" max="1440" name="f_mssql_vpn_poll_minutes" class="form-input" value="5"></div>
+  <div class="form-group"><label class="form-label">Abfragetakt über VPN (Minuten)</label><input type="number" min="5" max="30" name="f_mssql_vpn_poll_minutes" class="form-input" value="5"></div>
   <div class="form-group"><label class="form-label">Zeitgrenze je Abfrage über VPN (Sekunden)</label><input type="number" min="5" max="600" name="f_mssql_vpn_timeout_seconds" class="form-input" value="60"></div>
 </div>
 <p id="mssql-vpn-hint" style="font-size:11px;color:var(--muted);margin:-4px 0 10px" hidden>Der Tunnel dient nur zum Testen. Das PDH baut ihn nicht auf; steht er nicht, wird der Lauf übersprungen.</p>

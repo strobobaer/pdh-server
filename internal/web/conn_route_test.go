@@ -75,14 +75,45 @@ func TestConnPollInterval(t *testing.T) {
 	}{
 		{"direkt zählt Profil", nil, 10, 10 * time.Minute},
 		{"VPN ohne Wert: 5, Profil zählt nicht", vpn(""), 10, 5 * time.Minute},
-		{"VPN 0 -> 1", vpn("0"), 10, 1 * time.Minute},
-		{"VPN 99999 -> 1440", vpn("99999"), 10, 1440 * time.Minute},
 		{"VPN 15", vpn("15"), 10, 15 * time.Minute},
 	}
 	for _, c := range cases {
 		if got := connPollInterval(c.cfg, c.profile); got != c.want {
 			t.Errorf("%s: %v, erwartet %v", c.name, got, c.want)
 		}
+	}
+}
+
+// Vorgabe zur Serverlast: Takt nur 5 bis 30 Minuten, für Profil und VPN.
+func TestConnPollIntervalBounds5to30(t *testing.T) {
+	vpn := func(v string) map[string]string { return map[string]string{"route": "vpn:abc", "vpn_poll_minutes": v} }
+	cases := []struct {
+		name    string
+		cfg     map[string]string
+		profile int
+		want    time.Duration
+	}{
+		{"Profil 0 -> 5", nil, 0, 5 * time.Minute},
+		{"Profil 1 -> 5", nil, 1, 5 * time.Minute},
+		{"Profil 5", nil, 5, 5 * time.Minute},
+		{"Profil 30", nil, 30, 30 * time.Minute},
+		{"Profil 31 -> 30", nil, 31, 30 * time.Minute},
+		{"Profil 1440 -> 30", nil, 1440, 30 * time.Minute},
+		{"VPN 0 -> 5", vpn("0"), 10, 5 * time.Minute},
+		{"VPN 4 -> 5", vpn("4"), 10, 5 * time.Minute},
+		{"VPN 30", vpn("30"), 10, 30 * time.Minute},
+		{"VPN 31 -> 30", vpn("31"), 10, 30 * time.Minute},
+		{"VPN 99999 -> 30", vpn("99999"), 10, 30 * time.Minute},
+	}
+	for _, c := range cases {
+		if got := connPollInterval(c.cfg, c.profile); got != c.want {
+			t.Errorf("%s: %v, erwartet %v", c.name, got, c.want)
+		}
+	}
+	cfg := map[string]string{"route": "vpn:abc", "vpn_poll_minutes": "1440"}
+	normalizeMssqlRouteFields(cfg)
+	if cfg["vpn_poll_minutes"] != "30" {
+		t.Errorf("gespeicherter Takt über VPN: %s, erwartet 30", cfg["vpn_poll_minutes"])
 	}
 }
 

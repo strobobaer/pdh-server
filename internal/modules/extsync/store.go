@@ -148,6 +148,8 @@ func (s *Store) SaveProfile(ctx context.Context, p *Profile, userID string) erro
 	if p.IntervalMinutes <= 0 {
 		p.IntervalMinutes = DefaultIntervalMinutes
 	}
+	// Takt nur 5 bis 30 Minuten (Entwurf 4.9).
+	p.IntervalMinutes = min(max(p.IntervalMinutes, MinIntervalMinutes), MaxIntervalMinutes)
 	if p.MaxNew <= 0 {
 		p.MaxNew = DefaultMaxNew
 	}
@@ -1056,4 +1058,79 @@ func (s *Store) ListRuns(ctx context.Context, profileID string, limit int) ([]Ru
 		return nil, fmt.Errorf("abgleich: läufe laden: %w", err)
 	}
 	return out, nil
+}
+
+// ── Läufe des Taktgebers ─────────────────────────────────────────────────
+
+// NoteSkip hält einen übersprungenen Lauf fest (Weg nicht bereit, Datenbank
+// nicht erreichbar, Warteposition). Steht derselbe Grund schon im letzten Lauf
+// dieser Richtung, wird nur dessen Ende aktualisiert: gleiche Gründe
+// hintereinander ergeben EINEN Eintrag (Beginn = erstes, Ende = letztes Mal).
+func (s *Store) NoteSkip(ctx context.Context, profileID, direction, reason string) error {
+	_, err := s.db.Exec(ctx, `WITH last AS (
+			SELECT id, skipped_reason, n_new + n_changed + n_written + n_failed + n_backfill + n_archived AS n
+			FROM sync_runs WHERE profile_id = $1::uuid AND direction = $2::text
+			ORDER BY started_at DESC, id DESC LIMIT 1),
+		upd AS (
+			UPDATE sync_runs r SET finished_at = now() FROM last
+			WHERE r.id = last.id AND last.skipped_reason = $3::text AND last.n = 0 RETURNING r.id)
+		INSERT INTO sync_runs (profile_id, direction, finished_at, skipped_reason)
+		SELECT $1::uuid, $2::text, now(), $3::text WHERE NOT EXISTS (SELECT 1 FROM upd)`,
+		profileID, direction, reason)
+	if err != nil {
+		return fmt.Errorf("abgleich: übersprungenen lauf speichern: %w", err)
+	}
+	return nil
+}
+
+// LastInboundAttempt liefert, wann für das Profil zuletzt ein hereinkommender
+// Lauf lief oder versucht wurde. Einträge der Warteposition (skipPrefix) zählen
+// nicht. ok = false: noch nie.
+func (s *Store) LastInboundAttempt(ctx context.Context, profileID, skipPrefix string) (at time.Time, ok bool, err error) {
+	var t *time.Time
+	if err := s.db.QueryRow(ctx, `SELECT max(COALESCE(finished_at, started_at)) FROM sync_runs
+		WHERE profile_id = $1 AND direction = 'herein' AND left(skipped_reason, length($2::text)) <> $2::text`,
+		profileID, skipPrefix).Scan(&t); err != nil {
+		return time.Time{}, false, fmt.Errorf("abgleich: letzten lauf lesen: %w", err)
+	}
+	if t == nil {
+		return time.Time{}, false, nil
+	}
+	return *t, true, nil
+}
+
+// outRunWindow: so lange sammelt ein Eintrag "hinaus" die Durchgänge der
+// Warteliste eines Profils, damit die Liste der Läufe nicht vollläuft.
+const outRunWindow = 5 * time.Minute
+
+// outRunMaxErrors: so viele Fehler behält ein gesammelter Eintrag höchstens.
+const outRunMaxErrors = 50
+
+// AddOutboundRun zählt einen Durchgang der Warteliste (geschriebene und
+// fehlgeschlagene Einträge) zum laufenden Eintrag "hinaus" des Profils; ist der
+// älter als outRunWindow, entsteht ein neuer.
+func (s *Store) AddOutboundRun(ctx context.Context, profileID string, written, failed int, errs []RunError) error {
+	if errs == nil {
+		errs = []RunError{}
+	}
+	b, err := json.Marshal(errs)
+	if err != nil {
+		return fmt.Errorf("abgleich: durchgang speichern: %w", err)
+	}
+	_, err = s.db.Exec(ctx, `WITH last AS (
+			SELECT id FROM sync_runs
+			WHERE profile_id = $1::uuid AND direction = 'hinaus' AND skipped_reason = ''
+			  AND started_at > now() - make_interval(secs => $5::double precision)
+			ORDER BY started_at DESC, id DESC LIMIT 1),
+		upd AS (
+			UPDATE sync_runs r SET finished_at = now(), n_written = r.n_written + $2::int, n_failed = r.n_failed + $3::int,
+				errors = CASE WHEN jsonb_array_length(r.errors) >= $6::int THEN r.errors ELSE r.errors || $4::jsonb END
+			FROM last WHERE r.id = last.id RETURNING r.id)
+		INSERT INTO sync_runs (profile_id, direction, finished_at, n_written, n_failed, errors)
+		SELECT $1::uuid, 'hinaus', now(), $2::int, $3::int, $4::jsonb WHERE NOT EXISTS (SELECT 1 FROM upd)`,
+		profileID, written, failed, b, outRunWindow.Seconds(), outRunMaxErrors)
+	if err != nil {
+		return fmt.Errorf("abgleich: durchgang speichern: %w", err)
+	}
+	return nil
 }
