@@ -37,6 +37,8 @@ func (h *Handler) recordDepartments(ctx context.Context, refType, id string) []s
 	q := ""
 	if refType == "purchase_order" {
 		q = `SELECT department_id::text FROM purchase_orders WHERE id = $1::uuid AND department_id IS NOT NULL`
+	} else if refType == syncRef {
+		q = `SELECT department_id::text FROM sync_profiles WHERE id = $1::uuid AND department_id IS NOT NULL`
 	} else if refType == "infrastructure" {
 		q = `SELECT department_id::text FROM infrastructure_department WHERE infrastructure_id = $1::uuid`
 	} else if src, ok := recordDeptSource[refType]; ok {
@@ -95,6 +97,7 @@ var areaAdminPerm = map[string]string{
 	"task": "tasks.admin", "project": "projects.admin", "kvp": "kvp.admin", "infrastructure": "infrastructure.admin",
 	"part": "inventory.admin", "storage": "inventory.admin", "purchase_order": "procurement.admin", "business_partner": "directory.admin", "it_asset": "it.admin",
 	"certs": permCertsAdmin, // Zertifikate (Let's Encrypt): nur dieses Recht, nicht alle system.*
+	syncRef: permSyncAdmin,  // Abgleich mit Fremdsystemen: Profile löschen
 }
 
 // isAreaAdmin: Bereichsadministrator für diesen Datensatz?
@@ -159,6 +162,10 @@ var gateRules = []gateRule{
 	// ── Verbindungen: Zertifikat der Fremddatenbank lesen (wie Verbindung bearbeiten) ──
 	gr(wPost, "import.write", "", false, `^/import/connections/fingerprint$`),
 	gr(wPost, "export.write", "", false, `^/export/connections/fingerprint$`),
+	// ── Abgleich mit Fremdsystemen: löschen nur Bereichsadministrator, einrichten mit sync.edit ──
+	gr(wPost, permSyncAdmin, syncRef, false, `^/sync`+gID+`/delete-web$`),
+	gr(wPost, permSyncEdit, syncRef, false, `^/sync`+gID+`/(?:source|target|maps)-web$`),
+	gr(wPost, permSyncEdit, "", false, `^/sync/new-web$`),
 	// ── Störungen (Melden bleibt für alle offen) ──
 	gr(wPost, "faults.resolve", "fault", true, `^(?:/api/v1)?/faults`+gID+`/resolve$`),
 	gr(wPost, "faults.edit", "fault", true, `^/faults`+gID+`/(?:analyze|infrastructure-web)$`),

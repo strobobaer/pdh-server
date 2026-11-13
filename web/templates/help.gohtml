@@ -1875,6 +1875,44 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   {{template "hb-shots" (dict "Ref" (index $s "connections") "Can" $can)}}
 </section>
 
+<section class="hb-ch" id="abgleich" data-title="Abgleich mit Fremdsystemen" data-pages="sync">
+  <h2><i class="ti ti-arrows-exchange"></i> Abgleich mit Fremdsystemen</h2>
+  <p>Unter <b>Abgleich</b> (Navigation → Daten) holt das PDH Meldungen aus einer fremden SQL-Server-Datenbank und macht daraus <b>Tickets</b> oder <b>Störmeldungen</b>. Was du im PDH an einer solchen Meldung änderst, kann zurück in die fremde Zeile geschrieben werden. Der Abgleich ist ein Zusatz: Ohne Profil ändert sich am PDH nichts.</p>
+  <p><b>Was der Abgleich nie tut:</b> Er löscht nichts im Fremdsystem und legt dort keine Meldungen an. Geschrieben wird nur eine vorhandene Zeile über ihren Schlüssel und – wenn eingerichtet – ein neuer Kommentar in eine Nebentabelle.</p>
+  <p>Ein <b>Profil</b> verbindet genau eine Tabelle des Fremdsystems mit Tickets oder Störmeldungen. Jedes Profil hat einen Zustand: <b>Entwurf</b> (wird eingerichtet), <b>Getestet</b>, <b>Scharf</b> (läuft im Takt) oder <b>Angehalten</b>. Jede Änderung an Quelle, Ziel oder Zuordnungen setzt das Profil zurück auf Entwurf.</p>
+  <div class="hb-howto"><b><i class="ti ti-plus"></i> So legst du ein Profil an</b>
+    <ol class="hb-steps">
+      <li>Unter <b>Import</b> eine Verbindung vom Typ <b>MSSQL</b> anlegen und dort <b>Jetzt prüfen</b>. Sollen Änderungen zurückgehen, an der Verbindung <b>Schreiben erlaubt</b> einschalten.</li>
+      <li><b>Abgleich</b> öffnen, unten Namen, Verbindung und Ziel (Ticket oder Störmeldung) wählen, <b>Profil anlegen</b>.</li>
+      <li>Im Cockpit die Schritte der Reihe nach durchgehen: <b>1 Quelle</b>, <b>2 Ziel</b>, <b>3 Zuordnungen</b>.</li>
+    </ol></div>
+  <div class="hb-howto"><b><i class="ti ti-database"></i> Schritt 1 – Quelle</b>
+    <ol class="hb-steps">
+      <li><b>Tabelle</b> mit den Meldungen wählen. Die Liste kommt direkt aus der Datenbank; <b>Erste Zeilen ansehen</b> zeigt bis zu 20 Zeilen zur Kontrolle.</li>
+      <li><b>Schlüsselspalte(n)</b> ankreuzen – daran erkennt das PDH eine Meldung wieder. Vorgeschlagen wird der Primärschlüssel. Der Schlüssel muss eindeutig sein.</li>
+      <li><b>Änderungen erkennen über</b>: am besten eine <code>rowversion</code>-Spalte, sonst eine Spalte mit der Änderungszeit. Ohne solche Spalte vergleicht das PDH jede Zeile.</li>
+      <li>Auf Wunsch das <b>Anlagedatum</b> wählen: Meldungen von früher werden dann still als Historie angelegt, ohne Benachrichtigung.</li>
+      <li><b>Quelle speichern</b>. Sobald Meldungen verknüpft sind, sind Verbindung, Tabelle und Schlüssel fest.</li>
+    </ol></div>
+  <div class="hb-howto"><b><i class="ti ti-target-arrow"></i> Schritt 2 – Ziel</b>
+    <ol class="hb-steps">
+      <li>Wählen, ob aus einer Meldung ein <b>Ticket</b> oder eine <b>Störmeldung</b> wird, und zu welcher <b>Abteilung</b> das Profil gehört.</li>
+      <li><b>Vorgabewerte</b> eintragen – sie gelten, wenn das Fremdsystem für ein Feld nichts liefert.</li>
+      <li>Mit <b>Filter</b> und <b>Zeitfenster</b> eingrenzen, welche Meldungen kommen. <b>Höchstens neue Meldungen je Lauf</b> schützt vor einer Flut: Kommen mehr, hält das Profil an und meldet es.</li>
+    </ol></div>
+  <div class="hb-howto"><b><i class="ti ti-arrows-left-right"></i> Schritt 3 – Zuordnungen</b>
+    <ol class="hb-steps">
+      <li>Je Feld im PDH die <b>Spalte im Fremdsystem</b> wählen und die <b>Richtung</b>: herein, hinaus oder beides. Ändern beide Seiten dasselbe Feld, gewinnt das PDH.</li>
+      <li>Unter <b>Werte übersetzen</b> eintragen, was die Werte des Fremdsystems im PDH bedeuten, z. B. „hoch“ → Hoch.</li>
+      <li>Ein <b>fester Wert</b> gilt statt einer Spalte, z. B. immer Status „Offen“.</li>
+      <li>Sollen Kommentare zurück ins Fremdsystem, die <b>Kommentartabelle</b> und ihre Spalten eintragen.</li>
+      <li><b>Zuordnungen speichern</b>. Ein Pflichtfeld ohne Zuordnung ist gelb markiert.</li>
+    </ol></div>
+  <p>Die Richtungen „hinaus“ und „beides“ sind gesperrt, solange an der Verbindung <b>Schreiben erlaubt</b> aus ist. Schlüsselspalten und Spalten, die die Datenbank selbst füllt, werden nie geändert.</p>
+  <p>Sehen darf den Bereich, wer das Recht <b>Abgleich: Profile, Läufe und Herkunft sehen</b> hat; einrichten, wer <b>Profile einrichten und testen</b> hat. Löschen darf nur der Bereichsadministrator des Abgleichs. Die Rechte gelten überall oder nur in einer Abteilung.</p>
+  {{template "hb-shots" (dict "Ref" (index $s "abgleich") "Can" $can)}}
+</section>
+
 <section class="hb-ch" id="vpn" data-title="VPN ins Maschinennetz" data-pages="vpn">
   <h2><i class="ti ti-shield-lock"></i> VPN ins Maschinennetz</h2>
   <p>Über <b>VPN Maschinennetz</b> (Navigation → Material &amp; Anlagen) kommst du mit Laptop oder Handy von unterwegs ins Maschinennetz – z. B. um mit dem TIA-Portal auf eine Steuerung zu schauen. PDH nutzt dafür <b>WireGuard</b>, das direkt auf dem Server läuft. PDH kann dabei beides sein:</p>

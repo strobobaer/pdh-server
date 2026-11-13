@@ -1,0 +1,70 @@
+{{template "base" .}}
+{{define "content"}}
+{{$p := .P}}
+<style>
+.sy-head{display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap;margin-bottom:14px}
+.sy-head h1{font-size:19px;font-weight:600;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.sy-actions{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap}
+.sy-state{display:inline-flex;align-items:center;gap:6px;font-weight:600;font-size:12px;white-space:nowrap}
+.sy-state::before{content:"";width:8px;height:8px;border-radius:50%;background:currentColor}
+.sy-wrap{overflow-x:auto}
+.sy-tbl{border-collapse:collapse;width:100%;font-size:12.5px}
+.sy-tbl th{text-align:left;padding:6px 10px;border-bottom:1px solid var(--border);white-space:nowrap;color:var(--muted);font-weight:500}
+.sy-tbl td{padding:6px 10px;border-bottom:1px solid var(--border);vertical-align:top}
+.sy-tbl tr:last-child td{border-bottom:0}
+.sy-mono{font-family:monospace;font-size:12px;word-break:break-word}
+.sy-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px}
+.sy-note{font-size:11.5px;color:var(--muted);margin-top:3px}
+.sy-kv{display:grid;grid-template-columns:minmax(150px,auto) 1fr;gap:6px 14px;font-size:12.5px}
+.sy-kv dt{color:var(--muted)}
+.sy-kv dd{word-break:break-word}
+.sy-warn,.sy-info{display:flex;gap:8px;align-items:flex-start;border:1px solid var(--border);border-radius:8px;padding:9px 12px;font-size:12.5px;margin-bottom:10px;background:var(--bg2)}
+.sy-warn{border-color:var(--amber)}
+.sy-warn > i{color:var(--amber)}
+.sy-info > i{color:var(--accent)}
+.sy-steps .rec-tab .sy-step-no{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;border:1px solid currentColor;font-size:10.5px;font-weight:600}
+.sy-maps{display:flex;flex-direction:column;gap:10px}
+.sy-map{display:grid;grid-template-columns:minmax(120px,.8fr) repeat(3,minmax(160px,1.2fr));gap:8px 12px;align-items:start;border:1px solid var(--border);border-radius:10px;padding:10px 12px;background:var(--bg2)}
+.sy-map .form-group{margin-bottom:0}
+.sy-map-field{font-size:13px;padding-top:4px}
+.sy-map-missing{border-left:3px solid var(--amber)}
+.sy-map-flag{color:var(--amber);font-size:12px;font-weight:600;margin-top:4px}
+.sy-map-tr{grid-column:1/-1;font-size:12.5px}
+.sy-map-tr summary{cursor:pointer;color:var(--accent);padding:2px 0}
+.sy-pairs{display:flex;flex-direction:column;gap:6px;margin:8px 0 4px;max-width:640px}
+.sy-pair{display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:center}
+@media(max-width:980px){.sy-map{grid-template-columns:1fr 1fr}.sy-map-field{grid-column:1/-1}}
+@media(max-width:560px){.sy-map{grid-template-columns:1fr}.sy-kv{grid-template-columns:1fr}.sy-kv dt{margin-top:6px}.sy-pair{grid-template-columns:1fr}.sy-pair > i{display:none}}
+</style>
+
+<div class="sy-head">
+  <div>
+    <div class="rec-sub" style="font-size:12px"><a href="/sync" style="color:var(--accent)"><i class="ti ti-arrow-left"></i> Abgleich</a> · Profil</div>
+    <h1><i class="ti ti-arrows-exchange"></i> {{$p.Name}}
+      <span class="sy-state" style="color:{{.StateColor}}">{{.StateLabel}}</span>
+    </h1>
+    <div class="rec-sub" style="font-size:12px">{{if .ConnName}}{{.ConnName}}{{else}}<span style="color:var(--red)">Verbindung fehlt</span>{{end}}{{if $p.SourceTable}} · {{$p.SourceSchema}}.{{$p.SourceTable}}{{end}} → {{.TargetLabel}}{{if $p.StateNote}} · {{$p.StateNote}}{{end}}</div>
+  </div>
+  {{if .CanDelete}}
+  <div class="sy-actions">
+    <form method="POST" action="/sync/{{$p.ID}}/delete-web" onsubmit="return confirm('Profil „{{$p.Name}}“ löschen? Zuordnungen, Verknüpfungen, Warteliste und Läufe werden entfernt. Tickets und Störmeldungen im PDH und alle Daten im Fremdsystem bleiben.')">
+      <button class="btn btn-small" type="submit" style="color:var(--red)" title="Profil löschen" aria-label="Profil löschen"><i class="ti ti-trash"></i> Löschen</button>
+    </form>
+  </div>
+  {{end}}
+</div>
+
+{{if .Notice}}<div class="card" role="status" style="margin-bottom:14px;border-color:var(--green)"><i class="ti ti-circle-check" style="color:var(--green)"></i> {{.Notice}}</div>{{end}}
+{{if .Err}}<div class="card" role="alert" style="margin-bottom:14px;border-color:var(--red);color:var(--red)"><i class="ti ti-alert-circle"></i> {{.Err}}</div>{{end}}
+{{if and .ReadErr (ne .Tab "target")}}<div class="sy-warn" role="alert"><i class="ti ti-plug-connected-x"></i> <span>Die Fremddatenbank ist gerade nicht lesbar: {{.ReadErr}}. Gespeichertes wird angezeigt, ändern geht erst wieder mit Verbindung.</span></div>{{end}}
+
+<div class="rec-tabs sy-steps" role="tablist" aria-label="Schritte der Einrichtung">
+  <a class="rec-tab{{if eq .Tab "source"}} active{{end}}" href="?tab=source" role="tab" aria-selected="{{if eq .Tab "source"}}true{{else}}false{{end}}"><span class="sy-step-no">1</span> Quelle</a>
+  <a class="rec-tab{{if eq .Tab "target"}} active{{end}}" href="?tab=target" role="tab" aria-selected="{{if eq .Tab "target"}}true{{else}}false{{end}}"><span class="sy-step-no">2</span> Ziel</a>
+  <a class="rec-tab{{if eq .Tab "maps"}} active{{end}}" href="?tab=maps" role="tab" aria-selected="{{if eq .Tab "maps"}}true{{else}}false{{end}}"><span class="sy-step-no">3</span> Zuordnungen{{if .Maps}}{{if .Maps.Missing}} <b style="background:var(--amber);color:#fff">!</b>{{end}}{{end}}</a>
+</div>
+
+{{if eq .Tab "source"}}{{template "sync-source" .}}{{end}}
+{{if eq .Tab "target"}}{{template "sync-target" .}}{{end}}
+{{if eq .Tab "maps"}}{{template "sync-maps" .}}{{end}}
+{{end}}
