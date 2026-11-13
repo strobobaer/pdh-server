@@ -107,6 +107,10 @@ type Run struct {
 	Failed                   int
 	SkippedReason            string
 	Errors                   []RunError
+	// Cursor ist die Fortschrittsmarke nach einem hereinkommenden Lauf; der
+	// Aufrufer speichert sie (SetSchedule), sync_runs kennt sie nicht. Bei
+	// Änderungserkennung "none" immer leer.
+	Cursor string
 }
 
 // RunError beschreibt einen einzelnen Fehler in einem Lauf.
