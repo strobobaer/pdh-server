@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -81,13 +82,67 @@ func requireColumns(t *TableInfo, names []string, what string) ([]string, error)
 	return out, nil
 }
 
-// checkValue lässt nur die Go-Typen zu, die der Treiber sicher als Parameter überträgt.
-func checkValue(col string, v any) error {
-	switch v.(type) {
-	case nil, string, time.Time, int64, float64, bool, []byte:
-		return nil
+// prepValue lässt nur die Go-Typen zu, die der Treiber sicher als Parameter
+// überträgt, und rechnet Zeiten auf UTC um.
+func prepValue(col string, v any) (any, error) {
+	switch x := v.(type) {
+	case nil, string, int64, float64, bool, []byte:
+		return v, nil
+	case time.Time:
+		return x.UTC(), nil
 	}
-	return fmt.Errorf("Spalte %q: Werttyp %T wird nicht unterstützt", col, v)
+	return nil, fmt.Errorf("Spalte %q: Werttyp %T wird nicht unterstützt", col, v)
+}
+
+// placeholder liefert den Parameter @pN. Zeiten gehen als datetime2(7) in den
+// Vergleich bzw. in die Spalte (nicht als datetimeoffset), damit Vergleiche mit
+// datetime/datetime2-Spalten ohne Umrechnung der Spalte auskommen und der
+// gespeicherte Wert nicht von der Zeitzone des Aufrufers abhängt. Festtext.
+func placeholder(n int, v any) string {
+	if _, ok := v.(time.Time); ok {
+		return "CAST(@p" + strconv.Itoa(n) + " AS datetime2(7))"
+	}
+	return "@p" + strconv.Itoa(n)
+}
+
+// keyTypeOK: erlaubte Typen für Schlüsselspalten.
+func keyTypeOK(c *Column) bool {
+	switch strings.ToLower(c.Type) {
+	case "tinyint", "smallint", "int", "bigint", "char", "varchar", "nchar", "nvarchar", "uniqueidentifier":
+		return true
+	}
+	return false
+}
+
+func isGUID(c *Column) bool { return strings.EqualFold(c.Type, "uniqueidentifier") }
+
+// requireKey prüft Schlüsselspalten: vorhanden, ohne Doppelte, erlaubter Typ.
+func requireKey(t *TableInfo, keyCols []string) error {
+	keys, err := requireColumns(t, keyCols, "Schlüssel")
+	if err != nil {
+		return err
+	}
+	if len(keys) == 0 || len(keys) != len(keyCols) {
+		return errors.New("Schlüsselspalten fehlen oder sind doppelt")
+	}
+	for _, k := range keys {
+		c, _ := findColumn(t, k)
+		if !keyTypeOK(c) {
+			return fmt.Errorf("Schlüsselspalte vom Typ %s wird nicht unterstützt", c.Type)
+		}
+	}
+	return nil
+}
+
+// requireUniqueKey: zusätzlich muss der Schlüssel eindeutig sein.
+func requireUniqueKey(t *TableInfo, keyCols []string) error {
+	if err := requireKey(t, keyCols); err != nil {
+		return err
+	}
+	if !KeyIsUnique(t, keyCols) {
+		return errors.New("Schlüssel ist nicht eindeutig: die Spalten bilden weder den Primärschlüssel noch einen eindeutigen Index")
+	}
+	return nil
 }
 
 // ---------- Aufbau lesen ----------
@@ -173,13 +228,60 @@ func (*mssqlDialect) Describe(ctx context.Context, db *sql.DB, schema, table str
 		}
 		ti.Triggers = append(ti.Triggers, n)
 	}
-	return ti, trows.Err()
+	if err := trows.Err(); err != nil {
+		return nil, err
+	}
+	// Eindeutige Schlüssel: Primärschlüssel zuerst, dann eindeutige Indizes/Constraints
+	// ohne Filter und ohne Spalten, die NULL sein dürfen.
+	urows, err := db.QueryContext(ctx,
+		`SELECT i.index_id, c.name, c.is_nullable
+		 FROM sys.indexes i
+		 JOIN sys.index_columns ic ON ic.object_id = i.object_id AND ic.index_id = i.index_id
+		 JOIN sys.columns c ON c.object_id = ic.object_id AND c.column_id = ic.column_id
+		 JOIN sys.tables t ON t.object_id = i.object_id
+		 JOIN sys.schemas s ON s.schema_id = t.schema_id
+		 WHERE s.name = @p1 AND t.name = @p2
+		   AND i.is_unique = 1 AND i.has_filter = 0 AND i.is_disabled = 0 AND i.is_hypothetical = 0
+		   AND ic.is_included_column = 0 AND ic.key_ordinal > 0
+		 ORDER BY i.is_primary_key DESC, i.index_id, ic.key_ordinal`, schema, table)
+	if err != nil {
+		return nil, err
+	}
+	defer urows.Close()
+	var cur []string
+	curID, curNullable := -1, false
+	flush := func() {
+		if len(cur) > 0 && !curNullable {
+			ti.UniqueKeys = append(ti.UniqueKeys, cur)
+		}
+		cur, curNullable = nil, false
+	}
+	for urows.Next() {
+		var id int
+		var name string
+		var nullable bool
+		if err := urows.Scan(&id, &name, &nullable); err != nil {
+			return nil, err
+		}
+		if id != curID {
+			flush()
+			curID = id
+		}
+		cur = append(cur, name)
+		curNullable = curNullable || nullable
+	}
+	if err := urows.Err(); err != nil {
+		return nil, err
+	}
+	flush()
+	return ti, nil
 }
 
 // ---------- Lesen ----------
 
 // selectList bildet die Spaltenliste: Schlüssel zuerst, dann die übrigen
-// sortiert, zuletzt die Änderungsspalte.
+// sortiert, zuletzt die Änderungsspalte. GUID-Spalten gehen als kleingeschriebener
+// Text hinaus, damit der Treiber sie nicht in gemischter Byte-Reihenfolge liefert.
 func (d *mssqlDialect) selectList(t *TableInfo, cols, keyCols []string, changeCol string) (string, error) {
 	keys, err := requireColumns(t, keyCols, "Schlüssel")
 	if err != nil {
@@ -194,21 +296,126 @@ func (d *mssqlDialect) selectList(t *TableInfo, cols, keyCols []string, changeCo
 	}
 	used := map[string]bool{}
 	var list []string
+	add := func(n string) {
+		used[n] = true
+		c, _ := findColumn(t, n)
+		if isGUID(c) {
+			list = append(list, "LOWER(CONVERT(nvarchar(36), "+d.Quote(n)+")) AS "+d.Quote(n))
+		} else {
+			list = append(list, d.Quote(n))
+		}
+	}
 	for _, k := range keys {
-		used[k] = true
-		list = append(list, d.Quote(k))
+		add(k)
 	}
 	sort.Strings(cs)
 	for _, c := range cs {
 		if !used[c] && c != changeCol {
-			used[c] = true
-			list = append(list, d.Quote(c))
+			add(c)
 		}
 	}
 	if changeCol != "" && !used[changeCol] {
-		list = append(list, d.Quote(changeCol))
+		add(changeCol)
 	}
 	return strings.Join(list, ", "), nil
+}
+
+// tsCursor ist der Aufbau des Zeitstempel-Cursors (Schlüsselfolge-Cursor).
+type tsCursor struct {
+	T string   `json:"t"`
+	K []string `json:"k"`
+}
+
+// NextCursor bildet den Cursor für die letzte Zeile einer Seite.
+func (d *mssqlDialect) NextCursor(t *TableInfo, keyCols []string, changeCol, changeKind string, lastRow map[string]any) (string, error) {
+	if t == nil {
+		return "", errors.New("Tabelle fehlt")
+	}
+	switch changeKind {
+	case changeKindNone, "":
+		return "", nil
+	case changeKindRowVersion:
+		c, ok := findColumn(t, changeCol)
+		if !ok || !c.IsRowVersion {
+			return "", fmt.Errorf("Änderungsspalte %q ist keine rowversion-Spalte", changeCol)
+		}
+		b, ok := lastRow[changeCol].([]byte)
+		if !ok || len(b) != 8 {
+			return "", errors.New("Zeile enthält keine gültige rowversion")
+		}
+		return hex.EncodeToString(b), nil
+	case changeKindTimestamp:
+		c, ok := findColumn(t, changeCol)
+		if !ok || c.IsRowVersion {
+			return "", fmt.Errorf("Änderungsspalte %q ist keine Zeitstempel-Spalte", changeCol)
+		}
+		tm, ok := lastRow[changeCol].(time.Time)
+		if !ok {
+			return "", errors.New("Zeile enthält keinen gültigen Zeitstempel")
+		}
+		kv, err := d.KeyValues(t, keyCols, lastRow)
+		if err != nil {
+			return "", err
+		}
+		b, err := json.Marshal(tsCursor{T: tm.UTC().Format(time.RFC3339Nano), K: kv})
+		return string(b), err
+	}
+	return "", fmt.Errorf("unbekannte Art der Änderungserkennung %q", changeKind)
+}
+
+// KeyValues macht aus einer gelesenen Zeile die Schlüsselwerte als Text.
+func (d *mssqlDialect) KeyValues(t *TableInfo, keyCols []string, row map[string]any) ([]string, error) {
+	if t == nil {
+		return nil, errors.New("Tabelle fehlt")
+	}
+	if err := requireKey(t, keyCols); err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(keyCols))
+	for _, k := range keyCols {
+		c, _ := findColumn(t, k)
+		v, ok := row[k]
+		if !ok || v == nil {
+			return nil, fmt.Errorf("Schlüsselwert %q fehlt in der Zeile", k)
+		}
+		var s string
+		switch x := v.(type) {
+		case int64:
+			s = strconv.FormatInt(x, 10)
+		case int:
+			s = strconv.Itoa(x)
+		case int32:
+			s = strconv.FormatInt(int64(x), 10)
+		case int16:
+			s = strconv.FormatInt(int64(x), 10)
+		case uint8:
+			s = strconv.FormatInt(int64(x), 10)
+		case string:
+			s = x
+		default:
+			return nil, fmt.Errorf("Schlüsselwert %q hat den Typ %T", k, v)
+		}
+		if isGUID(c) {
+			s = strings.ToLower(s)
+		}
+		out = append(out, s)
+	}
+	return out, nil
+}
+
+// keysetCondition: Schlüsselfolge über alle Schlüsselspalten. first ist die
+// Nummer des ersten Schlüsselparameters.
+func (d *mssqlDialect) keysetCondition(keys []string, first int) string {
+	var rec func(i int) string
+	rec = func(i int) string {
+		q := d.Quote(keys[i])
+		p := "@p" + strconv.Itoa(first+i)
+		if i == len(keys)-1 {
+			return q + " > " + p
+		}
+		return "(" + q + " > " + p + " OR (" + q + " = " + p + " AND " + rec(i+1) + "))"
+	}
+	return rec(0)
 }
 
 // SelectRows liest Zeilen ab dem Stand des Cursors.
@@ -228,19 +435,16 @@ func (d *mssqlDialect) SelectRows(t *TableInfo, cols, keyCols []string, changeCo
 	if err := ValidateFilter(filter); err != nil {
 		return Stmt{}, err
 	}
+	// Eindeutig auch beim Lesen: Verknüpfungen und der Schlüsselfolge-Cursor brauchen es.
+	if err := requireUniqueKey(t, keyCols); err != nil {
+		return Stmt{}, err
+	}
 	var args []any
 	var conds []string
 	orderBy := ""
-	keys, err := requireColumns(t, keyCols, "Schlüssel")
-	if err != nil {
-		return Stmt{}, err
-	}
-	if len(keys) == 0 {
-		return Stmt{}, errors.New("Schlüsselspalten fehlen")
-	}
-	var quotedKeys []string
-	for _, k := range keys {
-		quotedKeys = append(quotedKeys, d.Quote(k))
+	var ordKeys []string
+	for _, k := range keyCols {
+		ordKeys = append(ordKeys, "[t]."+d.Quote(k))
 	}
 	chg := ""
 	switch changeKind {
@@ -248,17 +452,15 @@ func (d *mssqlDialect) SelectRows(t *TableInfo, cols, keyCols []string, changeCo
 		if cursor != "" {
 			return Stmt{}, errors.New("ohne Änderungsspalte gibt es keinen Stand")
 		}
-		orderBy = strings.Join(quotedKeys, ", ")
+		orderBy = strings.Join(ordKeys, ", ")
 	case changeKindRowVersion, changeKindTimestamp:
 		c, ok := findColumn(t, changeCol)
 		if !ok {
 			return Stmt{}, fmt.Errorf("Änderungsspalte %q gibt es nicht", changeCol)
 		}
-		if err := checkIdent("Spaltenname", changeCol); err != nil {
-			return Stmt{}, err
-		}
 		chg = changeCol
 		q := d.Quote(changeCol)
+		qt := "[t]." + q
 		if changeKind == changeKindRowVersion {
 			if !c.IsRowVersion {
 				return Stmt{}, fmt.Errorf("Spalte %q ist keine rowversion-Spalte", changeCol)
@@ -271,23 +473,37 @@ func (d *mssqlDialect) SelectRows(t *TableInfo, cols, keyCols []string, changeCo
 				args = append(args, b)
 				conds = append(conds, q+" > @p"+strconv.Itoa(len(args)))
 			}
-			orderBy = q
+			// Zeilen noch offener Transaktionen nicht überspringen.
+			conds = append(conds, q+" < MIN_ACTIVE_ROWVERSION()")
+			orderBy = qt
 		} else {
 			if c.IsRowVersion {
 				return Stmt{}, fmt.Errorf("Spalte %q ist eine rowversion, kein Zeitstempel", changeCol)
 			}
 			if cursor != "" {
-				tm, err := time.Parse(time.RFC3339Nano, cursor)
+				var cur tsCursor
+				dec := json.NewDecoder(strings.NewReader(cursor))
+				dec.DisallowUnknownFields()
+				if err := dec.Decode(&cur); err != nil || len(cur.K) != len(keyCols) {
+					return Stmt{}, errors.New("Stand des Zeitstempels ist ungültig")
+				}
+				tm, err := time.Parse(time.RFC3339Nano, cur.T)
 				if err != nil {
 					return Stmt{}, errors.New("Stand des Zeitstempels ist keine gültige Zeit")
 				}
+				tm = tm.UTC()
 				args = append(args, tm)
-				conds = append(conds, q+" >= @p"+strconv.Itoa(len(args)))
+				tp := placeholder(len(args), tm)
+				first := len(args) + 1
+				for _, kv := range cur.K {
+					args = append(args, kv)
+				}
+				conds = append(conds, "("+q+" > "+tp+" OR ("+q+" = "+tp+" AND "+d.keysetCondition(keyCols, first)+"))")
 			}
 			if windowDays > 0 {
 				conds = append(conds, q+" >= DATEADD(day, -"+strconv.Itoa(windowDays)+", SYSUTCDATETIME())")
 			}
-			orderBy = q + ", " + strings.Join(quotedKeys, ", ")
+			orderBy = qt + ", " + strings.Join(ordKeys, ", ")
 		}
 	default:
 		return Stmt{}, fmt.Errorf("unbekannte Art der Änderungserkennung %q", changeKind)
@@ -299,7 +515,7 @@ func (d *mssqlDialect) SelectRows(t *TableInfo, cols, keyCols []string, changeCo
 	if filter != "" {
 		conds = append(conds, "("+filter+")")
 	}
-	sqlText := "SELECT TOP (" + strconv.Itoa(limit) + ") " + list + " FROM " + d.qualified(t)
+	sqlText := "SELECT TOP (" + strconv.Itoa(limit) + ") " + list + " FROM " + d.qualified(t) + " AS [t]"
 	if len(conds) > 0 {
 		sqlText += " WHERE " + strings.Join(conds, " AND ")
 	}
@@ -322,15 +538,11 @@ func (d *mssqlDialect) SelectOne(t *TableInfo, cols, keyCols, keyVals []string) 
 	if err := checkTable(t); err != nil {
 		return Stmt{}, err
 	}
-	keys, err := requireColumns(t, keyCols, "Schlüssel")
-	if err != nil {
+	if err := requireUniqueKey(t, keyCols); err != nil {
 		return Stmt{}, err
 	}
-	if len(keys) == 0 || len(keys) != len(keyCols) || len(keyVals) != len(keyCols) {
+	if len(keyVals) != len(keyCols) {
 		return Stmt{}, errors.New("zu jeder Schlüsselspalte wird genau ein Wert gebraucht")
-	}
-	if err := checkPrimaryKey(t, keyCols); err != nil {
-		return Stmt{}, err
 	}
 	list, err := d.selectList(t, cols, keyCols, "")
 	if err != nil {
@@ -342,32 +554,12 @@ func (d *mssqlDialect) SelectOne(t *TableInfo, cols, keyCols, keyVals []string) 
 
 // ---------- Schreiben: genau zwei Befehlsformen ----------
 
-// checkPrimaryKey: Hat die Tabelle einen Primärschlüssel, müssen keyCols genau
-// diese Spalten sein; sonst gelten die genannten (bereits geprüften) Spalten.
-func checkPrimaryKey(t *TableInfo, keyCols []string) error {
-	var pk []string
-	for _, c := range t.Columns {
-		if c.IsKey {
-			pk = append(pk, c.Name)
-		}
-	}
-	if len(pk) == 0 {
-		return nil
-	}
-	a := append([]string(nil), keyCols...)
-	sort.Strings(a)
-	sort.Strings(pk)
-	if !equalStrings(a, pk) {
-		return errors.New("die Schlüsselspalten sind nicht der Primärschlüssel der Tabelle")
-	}
-	return nil
-}
-
 // UpdateRow erzeugt "UPDATE TOP (1) … SET … WHERE <Schlüssel>".
 //
-// Schlüsselregel: Hat die Tabelle einen Primärschlüssel (IsKey), müssen keyCols
-// genau diese Spalten sein. Hat sie keinen deklarierten Primärschlüssel, gelten
-// die vom Aufrufer genannten Spalten, sofern sie existieren und nicht im SET stehen.
+// Schlüsselregel: keyCols müssen als Menge der Primärschlüssel oder ein
+// eindeutiger Schlüssel der Tabelle sein (KeyIsUnique), sonst könnte "TOP (1)"
+// eine beliebige von mehreren gleichen Zeilen treffen. Schlüsselspalten dürfen
+// nicht im SET stehen.
 func (d *mssqlDialect) UpdateRow(t *TableInfo, keyCols, keyVals []string, set map[string]any) (Stmt, error) {
 	if err := checkTable(t); err != nil {
 		return Stmt{}, err
@@ -375,18 +567,11 @@ func (d *mssqlDialect) UpdateRow(t *TableInfo, keyCols, keyVals []string, set ma
 	if len(set) == 0 {
 		return Stmt{}, errors.New("nichts zu ändern")
 	}
-	keys, err := requireColumns(t, keyCols, "Schlüssel")
-	if err != nil {
+	if err := requireUniqueKey(t, keyCols); err != nil {
 		return Stmt{}, err
-	}
-	if len(keys) == 0 || len(keys) != len(keyCols) {
-		return Stmt{}, errors.New("Schlüsselspalten fehlen oder sind doppelt")
 	}
 	if len(keyVals) != len(keyCols) {
 		return Stmt{}, errors.New("zu jeder Schlüsselspalte wird genau ein Wert gebraucht")
-	}
-	if err := checkPrimaryKey(t, keyCols); err != nil {
-		return Stmt{}, err
 	}
 	isKey := map[string]bool{}
 	for _, k := range keyCols {
@@ -413,11 +598,12 @@ func (d *mssqlDialect) UpdateRow(t *TableInfo, keyCols, keyVals []string, set ma
 		if c.IsIdentity || c.IsComputed || c.IsRowVersion {
 			return Stmt{}, fmt.Errorf("Spalte %q (Identität, berechnet oder rowversion) darf nicht geändert werden", n)
 		}
-		if err := checkValue(n, set[n]); err != nil {
+		v, err := prepValue(n, set[n])
+		if err != nil {
 			return Stmt{}, err
 		}
-		args = append(args, set[n])
-		parts = append(parts, d.Quote(n)+"=@p"+strconv.Itoa(len(args)))
+		args = append(args, v)
+		parts = append(parts, d.Quote(n)+"="+placeholder(len(args), v))
 	}
 	where, args := d.whereKey(keyCols, keyVals, args)
 	return Stmt{
@@ -427,12 +613,15 @@ func (d *mssqlDialect) UpdateRow(t *TableInfo, keyCols, keyVals []string, set ma
 }
 
 // InsertChild erzeugt "INSERT INTO <Nebentabelle> (…) VALUES (…)". In die
-// Quelltabelle wird nie eingefügt.
+// Quelltabelle wird nie eingefügt; ohne bekannte Quelle (nil) wird gar nicht eingefügt.
 func (d *mssqlDialect) InsertChild(source, child *TableInfo, values map[string]any) (Stmt, error) {
+	if source == nil || child == nil {
+		return Stmt{}, errors.New("Meldungstabelle und Nebentabelle müssen bekannt sein")
+	}
 	if err := checkTable(child); err != nil {
 		return Stmt{}, err
 	}
-	if source != nil && strings.EqualFold(source.Schema, child.Schema) && strings.EqualFold(source.Name, child.Name) {
+	if strings.EqualFold(source.Schema, child.Schema) && strings.EqualFold(source.Name, child.Name) {
 		return Stmt{}, ErrInsertIntoSource
 	}
 	if len(values) == 0 {
@@ -456,27 +645,16 @@ func (d *mssqlDialect) InsertChild(source, child *TableInfo, values map[string]a
 		if c.IsIdentity || c.IsComputed || c.IsRowVersion {
 			return Stmt{}, fmt.Errorf("Spalte %q (Identität, berechnet oder rowversion) kann nicht befüllt werden", n)
 		}
-		if err := checkValue(n, values[n]); err != nil {
+		v, err := prepValue(n, values[n])
+		if err != nil {
 			return Stmt{}, err
 		}
-		args = append(args, values[n])
+		args = append(args, v)
 		cols = append(cols, d.Quote(n))
-		ph = append(ph, "@p"+strconv.Itoa(len(args)))
+		ph = append(ph, placeholder(len(args), v))
 	}
 	return Stmt{
 		SQL:  "INSERT INTO " + d.qualified(child) + " (" + strings.Join(cols, ", ") + ") VALUES (" + strings.Join(ph, ", ") + ")",
 		Args: args,
 	}, nil
-}
-
-func equalStrings(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
 }

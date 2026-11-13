@@ -123,7 +123,14 @@ func TestSelectRowsCursor(t *testing.T) {
 		t.Fatalf("nach dem höchsten Stand dürfen keine Zeilen kommen: %v", got)
 	}
 
-	// In einer Transaktion eine Zeile ändern: nur sie kommt nach dem Cursor.
+	// Nach dem vorletzten Stand kommt genau die letzte Zeile.
+	prev := all[len(all)-2]["rv"].(string)
+	if got := read(db, prev); len(got) != 1 || got[0]["nr"] != all[len(all)-1]["nr"] {
+		t.Fatalf("erwartet nur die letzte Zeile, bekam %v", got)
+	}
+
+	// Eine noch nicht bestätigte Änderung (offene Transaktion) wird nicht gelesen:
+	// ihre rowversion liegt nicht unter MIN_ACTIVE_ROWVERSION().
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -136,9 +143,8 @@ func TestSelectRowsCursor(t *testing.T) {
 	if _, err := tx.ExecContext(ctx, up.SQL, up.Args...); err != nil {
 		t.Fatal(err)
 	}
-	got := read(tx, maxRV)
-	if len(got) != 1 || got[0]["nr"].(int64) != 3 {
-		t.Fatalf("erwartet nur Zeile 3, bekam %v", got)
+	if got := read(tx, maxRV); len(got) != 0 {
+		t.Fatalf("Zeile einer offenen Transaktion darf nicht gelesen werden: %v", got)
 	}
 }
 

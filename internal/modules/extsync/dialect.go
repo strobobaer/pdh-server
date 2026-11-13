@@ -39,6 +39,53 @@ type TableInfo struct {
 	Schema, Name string
 	Columns      []Column
 	Triggers     []string
+	// UniqueKeys sind die eindeutigen Schlüssel (Primärschlüssel zuerst, dann
+	// eindeutige Indizes ohne Filter und ohne Spalten, die NULL sein dürfen).
+	UniqueKeys [][]string
+}
+
+// KeyIsUnique sagt, ob keyCols (als Menge) den Primärschlüssel oder einen
+// eindeutigen Schlüssel der Tabelle bilden. Nur dann ist eine Zeile über
+// diese Spalten eindeutig zu finden.
+func KeyIsUnique(t *TableInfo, keyCols []string) bool {
+	if t == nil || len(keyCols) == 0 {
+		return false
+	}
+	want := map[string]bool{}
+	for _, k := range keyCols {
+		if want[k] {
+			return false
+		}
+		want[k] = true
+	}
+	same := func(cols []string) bool {
+		if len(cols) != len(want) {
+			return false
+		}
+		seen := map[string]bool{}
+		for _, c := range cols {
+			if !want[c] || seen[c] {
+				return false
+			}
+			seen[c] = true
+		}
+		return true
+	}
+	var pk []string
+	for _, c := range t.Columns {
+		if c.IsKey {
+			pk = append(pk, c.Name)
+		}
+	}
+	if len(pk) > 0 && same(pk) {
+		return true
+	}
+	for _, u := range t.UniqueKeys {
+		if len(u) > 0 && same(u) {
+			return true
+		}
+	}
+	return false
 }
 
 // Stmt ist ein fertiger Befehl: SQL-Text und die Parameter dazu. Reine Daten.
@@ -52,17 +99,32 @@ var ErrInsertIntoSource = errors.New("in die Meldungstabelle wird nichts eingef�
 
 // Dialect erzeugt die Befehle für eine Datenbankart und liest deren Aufbau.
 // Die Schnittstelle enthält keine datenbankspezifischen Typen.
+//
+// Vertrag:
+//   - Schlüssel sind Text: Schlüsselspalten dürfen ganzzahlig, Zeichenkette oder
+//     GUID sein; SelectRows/SelectOne liefern sie als Text (GUID klein
+//     geschrieben), KeyValues macht daraus die Schlüsselwerte für
+//     UpdateRow/SelectOne.
+//   - Der Schlüssel muss eindeutig sein (Primärschlüssel oder eindeutiger
+//     Index, siehe KeyIsUnique); sonst lehnen UpdateRow und SelectOne ab.
+//   - Cursor sind undurchsichtiger Text. Ihn erzeugt allein NextCursor aus der
+//     letzten Zeile einer Seite; Aufrufer lesen oder bauen ihn nie selbst.
+//   - Zeiten sind UTC: Parameter werden in UTC umgerechnet, gelesene Zeiten
+//     gelten als UTC.
 type Dialect interface {
 	// Tables liefert die Benutzertabellen (nur Schema und Name).
 	Tables(ctx context.Context, db *sql.DB) ([]TableInfo, error)
 	// Describe liefert Spalten, Schlüssel und Auslöser; ErrNotFound bei unbekannter Tabelle.
 	Describe(ctx context.Context, db *sql.DB, schema, table string) (*TableInfo, error)
-	// SelectRows liest geänderte Zeilen. cursor ist der Stand der Änderungsspalte
-	// (rowversion: Hex-Text, timestamp: RFC 3339, leer = von Anfang an).
+	// SelectRows liest geänderte Zeilen nach dem Cursor (leer = von Anfang an).
 	SelectRows(t *TableInfo, cols, keyCols []string, changeCol, changeKind, cursor, filter string, windowDays, limit int) (Stmt, error)
+	// NextCursor bildet den Cursor für die LETZTE Zeile einer Seite von SelectRows.
+	NextCursor(t *TableInfo, keyCols []string, changeCol, changeKind string, lastRow map[string]any) (string, error)
+	// KeyValues macht aus einer von SelectRows gelieferten Zeile die Schlüsselwerte als Text.
+	KeyValues(t *TableInfo, keyCols []string, row map[string]any) ([]string, error)
 	// SelectOne liest genau die Zeile mit diesem Schlüssel.
 	SelectOne(t *TableInfo, cols, keyCols, keyVals []string) (Stmt, error)
-	// UpdateRow ändert genau eine Zeile über ihren Schlüssel.
+	// UpdateRow ändert genau eine Zeile über ihren (eindeutigen) Schlüssel.
 	UpdateRow(t *TableInfo, keyCols, keyVals []string, set map[string]any) (Stmt, error)
 	// InsertChild hängt eine Zeile an die Nebentabelle (nie an die Quelltabelle).
 	InsertChild(source, child *TableInfo, values map[string]any) (Stmt, error)

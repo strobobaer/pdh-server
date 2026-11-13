@@ -2,7 +2,6 @@ package extsync
 
 import (
 	"errors"
-	"fmt"
 	"math/rand"
 	"reflect"
 	"regexp"
@@ -156,6 +155,16 @@ func TestUpdateRowTableWithoutPrimaryKey(t *testing.T) {
 	ti := &TableInfo{Schema: "dbo", Name: "Lose", Columns: []Column{
 		{Name: "Nr", Type: "int"}, {Name: "Text", Type: "nvarchar"},
 	}}
+	// Ohne Primärschlüssel und ohne eindeutigen Index ist kein Schlüssel eindeutig.
+	_, err := d.UpdateRow(ti, []string{"Nr"}, []string{"3"}, map[string]any{"Text": "a"})
+	if err == nil || !strings.Contains(err.Error(), "Schlüssel ist nicht eindeutig") {
+		t.Fatalf("erwartet Fehler zur Eindeutigkeit, bekam %v", err)
+	}
+	if _, err := d.SelectOne(ti, []string{"Text"}, []string{"Nr"}, []string{"3"}); err == nil {
+		t.Fatal("SelectOne mit nicht eindeutigem Schlüssel muss scheitern")
+	}
+	// Mit eindeutigem Index (UniqueKeys) geht es.
+	ti.UniqueKeys = [][]string{{"Nr"}}
 	st, err := d.UpdateRow(ti, []string{"Nr"}, []string{"3"}, map[string]any{"Text": "a"})
 	if err != nil {
 		t.Fatal(err)
@@ -174,16 +183,135 @@ func TestUpdateRowTableWithoutPrimaryKey(t *testing.T) {
 	}
 }
 
+func TestKeyIsUnique(t *testing.T) {
+	ti := guidInfo() // Primärschlüssel (Id, Werk)
+	ti.UniqueKeys = [][]string{{"Titel"}}
+	cases := []struct {
+		cols []string
+		want bool
+	}{
+		{[]string{"Id", "Werk"}, true},
+		{[]string{"Werk", "Id"}, true}, // als Menge
+		{[]string{"Id"}, false},
+		{[]string{"Titel"}, true},
+		{[]string{"Titel", "Id"}, false},
+		{[]string{"Id", "Id"}, false},
+		{nil, false},
+	}
+	for _, c := range cases {
+		if got := KeyIsUnique(ti, c.cols); got != c.want {
+			t.Errorf("KeyIsUnique(%v) = %v", c.cols, got)
+		}
+	}
+	if KeyIsUnique(nil, []string{"Id"}) {
+		t.Error("nil-Tabelle darf nicht eindeutig sein")
+	}
+}
+
+func TestKeyTypesRestricted(t *testing.T) {
+	d := mustDialect(t)
+	ti := &TableInfo{Schema: "dbo", Name: "T", Columns: []Column{
+		{Name: "F", Type: "float", IsKey: true}, {Name: "X", Type: "nvarchar"},
+	}}
+	_, err := d.UpdateRow(ti, []string{"F"}, []string{"1"}, map[string]any{"X": "a"})
+	if err == nil || !strings.Contains(err.Error(), "Schlüsselspalte vom Typ float wird nicht unterstützt") {
+		t.Fatalf("Fehler = %v", err)
+	}
+	if _, err := d.SelectRows(ti, []string{"X"}, []string{"F"}, "", "none", "", "", 0, 5); err == nil {
+		t.Fatal("SelectRows mit float-Schlüssel muss scheitern")
+	}
+	if _, err := d.SelectOne(ti, []string{"X"}, []string{"F"}, []string{"1"}); err == nil {
+		t.Fatal("SelectOne mit float-Schlüssel muss scheitern")
+	}
+	if _, err := d.KeyValues(ti, []string{"F"}, map[string]any{"F": 1.5}); err == nil {
+		t.Fatal("KeyValues mit float-Schlüssel muss scheitern")
+	}
+}
+
+func TestKeyValues(t *testing.T) {
+	d := mustDialect(t)
+	kv, err := d.KeyValues(guidInfo(), []string{"Id", "Werk"}, map[string]any{"Id": "ABCDEF01-0000-0000-0000-000000000001", "Werk": "W1"})
+	if err != nil || !reflect.DeepEqual(kv, []string{"abcdef01-0000-0000-0000-000000000001", "W1"}) {
+		t.Fatalf("kv = %v, err = %v", kv, err)
+	}
+	kv, err = d.KeyValues(meldungenInfo(), []string{"MeldungNr"}, map[string]any{"MeldungNr": int64(42)})
+	if err != nil || !reflect.DeepEqual(kv, []string{"42"}) {
+		t.Fatalf("kv = %v, err = %v", kv, err)
+	}
+	if _, err := d.KeyValues(meldungenInfo(), []string{"MeldungNr"}, map[string]any{}); err == nil {
+		t.Fatal("fehlender Wert muss scheitern")
+	}
+	if _, err := d.KeyValues(meldungenInfo(), []string{"MeldungNr"}, map[string]any{"MeldungNr": nil}); err == nil {
+		t.Fatal("NULL-Schlüssel muss scheitern")
+	}
+	if _, err := d.KeyValues(meldungenInfo(), []string{"Titel2"}, map[string]any{}); err == nil {
+		t.Fatal("unbekannte Spalte muss scheitern")
+	}
+}
+
+func TestNextCursor(t *testing.T) {
+	d := mustDialect(t)
+	rv := []byte{0, 0, 0, 0, 0, 0, 7, 0xd1}
+	c, err := d.NextCursor(meldungenInfo(), []string{"MeldungNr"}, "RV", "rowversion", map[string]any{"RV": rv})
+	if err != nil || c != "00000000000007d1" {
+		t.Fatalf("c = %q err = %v", c, err)
+	}
+	tm := time.Date(2026, 11, 13, 12, 0, 0, 123456700, time.FixedZone("x", 3600))
+	c, err = d.NextCursor(meldungenInfo(), []string{"MeldungNr"}, "Geaendert", "timestamp",
+		map[string]any{"Geaendert": tm, "MeldungNr": int64(5)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c != `{"t":"2026-11-13T11:00:00.1234567Z","k":["5"]}` {
+		t.Fatalf("c = %q", c)
+	}
+	if c, err := d.NextCursor(meldungenInfo(), []string{"MeldungNr"}, "", "none", nil); err != nil || c != "" {
+		t.Fatalf("none: %q %v", c, err)
+	}
+	for _, row := range []map[string]any{{}, {"RV": []byte{1}}, {"RV": "x"}} {
+		if _, err := d.NextCursor(meldungenInfo(), []string{"MeldungNr"}, "RV", "rowversion", row); err == nil {
+			t.Errorf("Zeile %v muss scheitern", row)
+		}
+	}
+	if _, err := d.NextCursor(meldungenInfo(), []string{"MeldungNr"}, "Geaendert", "timestamp", map[string]any{"Geaendert": tm}); err == nil {
+		t.Error("ohne Schlüsselwert muss scheitern")
+	}
+}
+
+func TestTimeParametersAreUTCDatetime2(t *testing.T) {
+	d := mustDialect(t)
+	loc := time.FixedZone("plus5", 5*3600)
+	tm := time.Date(2026, 11, 13, 15, 0, 0, 0, loc)
+	st, err := d.UpdateRow(meldungenInfo(), []string{"MeldungNr"}, []string{"1"}, map[string]any{"Faellig": tm, "Titel": "x"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.SQL != "UPDATE TOP (1) [dbo].[Meldungen] SET [Faellig]=CAST(@p1 AS datetime2(7)), [Titel]=@p2 WHERE [MeldungNr]=@p3" {
+		t.Fatalf("SQL = %q", st.SQL)
+	}
+	got := st.Args[0].(time.Time)
+	if got.Location() != time.UTC || !got.Equal(tm) || got.Hour() != 10 {
+		t.Fatalf("Zeit nicht auf UTC normalisiert: %v", got)
+	}
+	st, err = d.InsertChild(meldungenInfo(), kommentareInfo(), map[string]any{"Zeit": tm})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.SQL != "INSERT INTO [dbo].[MeldungKommentare] ([Zeit]) VALUES (CAST(@p1 AS datetime2(7)))" || st.Args[0].(time.Time).Hour() != 10 {
+		t.Fatalf("SQL = %q Args = %v", st.SQL, st.Args)
+	}
+}
+
 func TestInsertChildShape(t *testing.T) {
 	d := mustDialect(t)
-	now := time.Now()
+	now := time.Date(2026, 11, 13, 9, 0, 0, 0, time.UTC)
 	st, err := d.InsertChild(meldungenInfo(), kommentareInfo(), map[string]any{
 		"Text": "hallo", "MeldungNr": int64(4), "Zeit": now, "Verfasser": nil,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "INSERT INTO [dbo].[MeldungKommentare] ([MeldungNr], [Text], [Verfasser], [Zeit]) VALUES (@p1, @p2, @p3, @p4)"
+	want := "INSERT INTO [dbo].[MeldungKommentare] ([MeldungNr], [Text], [Verfasser], [Zeit]) VALUES (@p1, @p2, @p3, CAST(@p4 AS datetime2(7)))"
 	if st.SQL != want {
 		t.Fatalf("SQL = %q", st.SQL)
 	}
@@ -210,6 +338,13 @@ func TestInsertChildRejectsSource(t *testing.T) {
 		if !errors.Is(err, ErrInsertIntoSource) {
 			t.Fatalf("erwartet ErrInsertIntoSource, bekam %v", err)
 		}
+	}
+	// Ohne bekannte Quelle (nil) oder Kind wird nie eingefügt (kein Einfügen in die Meldungstabelle).
+	if st, err := d.InsertChild(nil, src, map[string]any{"Titel": "x"}); err == nil {
+		t.Fatalf("InsertChild(nil, Meldungen) darf nicht gelingen: %q", st.SQL)
+	}
+	if _, err := d.InsertChild(src, nil, map[string]any{"Titel": "x"}); err == nil {
+		t.Fatal("InsertChild(…, nil) darf nicht gelingen")
 	}
 	// Auch ein RowVersion-Wert im Kind wird abgelehnt.
 	k := kommentareInfo()
@@ -290,7 +425,7 @@ func TestSelectRowsShapes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "SELECT TOP (100) [MeldungNr], [Titel], [Zustand], [RV] FROM [dbo].[Meldungen] WHERE [RV] > @p1 AND ([Zustand] <> 'erledigt') ORDER BY [RV]"
+	want := "SELECT TOP (100) [MeldungNr], [Titel], [Zustand], [RV] FROM [dbo].[Meldungen] AS [t] WHERE [RV] > @p1 AND [RV] < MIN_ACTIVE_ROWVERSION() AND ([Zustand] <> 'erledigt') ORDER BY [t].[RV]"
 	if st.SQL != want {
 		t.Fatalf("SQL = %q\nerwartet %q", st.SQL, want)
 	}
@@ -298,27 +433,52 @@ func TestSelectRowsShapes(t *testing.T) {
 		t.Fatalf("Args = %#v", st.Args)
 	}
 
-	// rowversion ohne Cursor
+	// rowversion ohne Cursor: die Obergrenze gilt trotzdem
 	st, err = d.SelectRows(ti, []string{"Titel"}, []string{"MeldungNr"}, "RV", "rowversion", "", "", 0, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if st.SQL != "SELECT TOP (10) [MeldungNr], [Titel], [RV] FROM [dbo].[Meldungen] ORDER BY [RV]" || len(st.Args) != 0 {
+	if st.SQL != "SELECT TOP (10) [MeldungNr], [Titel], [RV] FROM [dbo].[Meldungen] AS [t] WHERE [RV] < MIN_ACTIVE_ROWVERSION() ORDER BY [t].[RV]" || len(st.Args) != 0 {
 		t.Fatalf("SQL = %q, Args = %#v", st.SQL, st.Args)
 	}
 
-	// timestamp mit Fenster
-	ts := "2026-11-13T10:00:00Z"
-	st, err = d.SelectRows(ti, []string{"Titel"}, []string{"MeldungNr"}, "Geaendert", "timestamp", ts, "", 30, 50)
+	// timestamp mit Schlüsselfolge-Cursor und Fenster
+	cur := `{"t":"2026-11-13T10:00:00.1234567Z","k":["7"]}`
+	st, err = d.SelectRows(ti, []string{"Titel"}, []string{"MeldungNr"}, "Geaendert", "timestamp", cur, "", 30, 50)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want = "SELECT TOP (50) [MeldungNr], [Titel], [Geaendert] FROM [dbo].[Meldungen] WHERE [Geaendert] >= @p1 AND [Geaendert] >= DATEADD(day, -30, SYSUTCDATETIME()) ORDER BY [Geaendert], [MeldungNr]"
+	want = "SELECT TOP (50) [MeldungNr], [Titel], [Geaendert] FROM [dbo].[Meldungen] AS [t] WHERE ([Geaendert] > CAST(@p1 AS datetime2(7)) OR ([Geaendert] = CAST(@p1 AS datetime2(7)) AND [MeldungNr] > @p2)) AND [Geaendert] >= DATEADD(day, -30, SYSUTCDATETIME()) ORDER BY [t].[Geaendert], [t].[MeldungNr]"
 	if st.SQL != want {
-		t.Fatalf("SQL = %q", st.SQL)
+		t.Fatalf("SQL = %q\nerwartet %q", st.SQL, want)
 	}
-	if tm, ok := st.Args[0].(time.Time); !ok || !tm.Equal(time.Date(2026, 11, 13, 10, 0, 0, 0, time.UTC)) {
+	if tm, ok := st.Args[0].(time.Time); !ok || !tm.Equal(time.Date(2026, 11, 13, 10, 0, 0, 123456700, time.UTC)) || tm.Location() != time.UTC {
 		t.Fatalf("Args = %#v", st.Args)
+	}
+	if st.Args[1] != "7" {
+		t.Fatalf("Args = %#v", st.Args)
+	}
+
+	// timestamp mit zusammengesetztem Schlüssel: lexikographischer Vergleich
+	gi := guidInfo()
+	gi.Columns = append(gi.Columns, Column{Name: "Geaendert", Type: "datetime2"})
+	st, err = d.SelectRows(gi, []string{"Titel"}, []string{"Id", "Werk"}, "Geaendert", "timestamp",
+		`{"t":"2026-11-13T10:00:00Z","k":["abc","W1"]}`, "", 0, 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want = "SELECT TOP (5) LOWER(CONVERT(nvarchar(36), [Id])) AS [Id], [Werk], [Titel], [Geaendert] FROM [dbo].[MeldungenGuid] AS [t] WHERE ([Geaendert] > CAST(@p1 AS datetime2(7)) OR ([Geaendert] = CAST(@p1 AS datetime2(7)) AND ([Id] > @p2 OR ([Id] = @p2 AND [Werk] > @p3)))) ORDER BY [t].[Geaendert], [t].[Id], [t].[Werk]"
+	if st.SQL != want {
+		t.Fatalf("SQL = %q\nerwartet %q", st.SQL, want)
+	}
+
+	// timestamp ohne Cursor
+	st, err = d.SelectRows(ti, []string{"Titel"}, []string{"MeldungNr"}, "Geaendert", "timestamp", "", "", 0, 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.SQL != "SELECT TOP (5) [MeldungNr], [Titel], [Geaendert] FROM [dbo].[Meldungen] AS [t] ORDER BY [t].[Geaendert], [t].[MeldungNr]" {
+		t.Fatalf("SQL = %q", st.SQL)
 	}
 
 	// none
@@ -326,7 +486,7 @@ func TestSelectRowsShapes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if st.SQL != "SELECT TOP (5) [MeldungNr], [Titel], [Zustand] FROM [dbo].[Meldungen] ORDER BY [MeldungNr]" {
+	if st.SQL != "SELECT TOP (5) [MeldungNr], [Titel], [Zustand] FROM [dbo].[Meldungen] AS [t] ORDER BY [t].[MeldungNr]" {
 		t.Fatalf("SQL = %q", st.SQL)
 	}
 }
@@ -336,6 +496,7 @@ func TestSelectRowsRejects(t *testing.T) {
 	ti := meldungenInfo()
 	k := []string{"MeldungNr"}
 	c := []string{"Titel"}
+	goodTS := `{"t":"2026-11-13T10:00:00Z","k":["1"]}`
 	type tc struct {
 		name                   string
 		cols, keys             []string
@@ -351,18 +512,26 @@ func TestSelectRowsRejects(t *testing.T) {
 		{"unbekannte Spalte", []string{"x]; DROP TABLE y--"}, k, "", "none", "", "", 0, 10},
 		{"unbekannter Schlüssel", c, []string{"Nope"}, "", "none", "", "", 0, 10},
 		{"kein Schlüssel", c, nil, "", "none", "", "", 0, 10},
+		{"nicht eindeutiger Schlüssel", c, []string{"Titel"}, "", "none", "", "", 0, 10},
 		{"unbekannte Änderungsspalte", c, k, "Nope", "timestamp", "", "", 0, 10},
 		{"rowversion auf normaler Spalte", c, k, "Titel", "rowversion", "", "", 0, 10},
 		{"unbekannte Art", c, k, "Geaendert", "magic", "", "", 0, 10},
 		{"Cursor bei none", c, k, "", "none", "irgendwas", "", 0, 10},
 		{"Cursor kein Hex", c, k, "RV", "rowversion", "zz'; DROP", "", 0, 10},
 		{"Cursor keine Zeit", c, k, "Geaendert", "timestamp", "gestern", "", 0, 10},
+		{"Cursor alter Aufbau (nur Zeit)", c, k, "Geaendert", "timestamp", "2026-11-13T10:00:00Z", "", 0, 10},
+		{"Cursor falsche Schlüsselzahl", c, k, "Geaendert", "timestamp", `{"t":"2026-11-13T10:00:00Z","k":["1","2"]}`, "", 0, 10},
+		{"Cursor fremdes Feld", c, k, "Geaendert", "timestamp", `{"t":"2026-11-13T10:00:00Z","k":["1"],"x":1}`, "", 0, 10},
+		{"Cursor schlechte Zeit", c, k, "Geaendert", "timestamp", `{"t":"x","k":["1"]}`, "", 0, 10},
 		{"Filter böse", c, k, "", "none", "", "1=1; DELETE FROM x", 0, 10},
 	}
 	for _, x := range cases {
 		if _, err := d.SelectRows(ti, x.cols, x.keys, x.chCol, x.kind, x.cur, x.filt, x.win, x.lim); err == nil {
 			t.Errorf("%s: Fehler erwartet", x.name)
 		}
+	}
+	if _, err := d.SelectRows(ti, c, k, "Geaendert", "timestamp", goodTS, "", 0, 10); err != nil {
+		t.Errorf("gültiger Cursor: %v", err)
 	}
 }
 
@@ -372,7 +541,7 @@ func TestSelectOneShape(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "SELECT TOP (1) [Id], [Werk], [Titel] FROM [dbo].[MeldungenGuid] WHERE [Id]=@p1 AND [Werk]=@p2"
+	want := "SELECT TOP (1) LOWER(CONVERT(nvarchar(36), [Id])) AS [Id], [Werk], [Titel] FROM [dbo].[MeldungenGuid] WHERE [Id]=@p1 AND [Werk]=@p2"
 	if st.SQL != want || !reflect.DeepEqual(st.Args, []any{"abc", "W1"}) {
 		t.Fatalf("SQL = %q Args = %#v", st.SQL, st.Args)
 	}
@@ -389,37 +558,22 @@ func TestSelectOneShape(t *testing.T) {
 
 // ---------- Eigenschaftstest: nichts Zerstörerisches erzeugbar ----------
 
-var (
-	reBracket = regexp.MustCompile(`\[(?:[^\]]|\]\])*\]`)
-	reLiteral = regexp.MustCompile(`'(?:[^']|'')*'`)
-	reBad     = regexp.MustCompile(`(?i)\b(DELETE|TRUNCATE|DROP|MERGE|EXEC|EXECUTE)\b`)
-)
+var reBad = regexp.MustCompile(`(?i)\b(DELETE|TRUNCATE|DROP|MERGE|EXEC|EXECUTE)\b`)
 
 // stripQuoted entfernt Bezeichner in [...] und Zeichenketten in '...'.
 func stripQuoted(s string) string {
-	// Reihenfolge je nach erstem Auftreten, damit ein ' in [..] nicht stört.
 	var b strings.Builder
 	for i := 0; i < len(s); {
 		switch s[i] {
-		case '[':
-			j := i + 1
-			for j < len(s) {
-				if s[j] == ']' {
-					if j+1 < len(s) && s[j+1] == ']' {
-						j += 2
-						continue
-					}
-					break
-				}
-				j++
+		case '[', '\'':
+			closer := byte(']')
+			if s[i] == '\'' {
+				closer = '\''
 			}
-			i = j + 1
-			b.WriteByte(' ')
-		case '\'':
 			j := i + 1
 			for j < len(s) {
-				if s[j] == '\'' {
-					if j+1 < len(s) && s[j+1] == '\'' {
+				if s[j] == closer {
+					if j+1 < len(s) && s[j+1] == closer {
 						j += 2
 						continue
 					}
@@ -437,36 +591,49 @@ func stripQuoted(s string) string {
 	return b.String()
 }
 
-// legalNames sind Werte, die auch als Spaltenname vorkommen dürfen.
-var legalNames = map[string]bool{"Delete": true, "Drop": true, "Merge": true, "Drop]Table": true}
+// valuesInArgs: jeder Wert muss unverändert (Zeiten in UTC) in den Args stehen.
+func argsContain(args []any, v any) bool {
+	if tm, ok := v.(time.Time); ok {
+		v = tm.UTC()
+	}
+	for _, a := range args {
+		if reflect.DeepEqual(a, v) {
+			return true
+		}
+	}
+	return false
+}
 
-func checkStmt(t *testing.T, st Stmt, source *TableInfo, hostile []string) {
+// checkStmt prüft die Unveränderlichen eines erzeugten Befehls. values sind die
+// Werte (Parameter), die der Aufrufer übergeben hat; names alle Bezeichner, die
+// legal im SQL stehen dürfen.
+func checkStmt(t *testing.T, st Stmt, source *TableInfo, values []any, names map[string]bool) {
 	t.Helper()
-	sql := st.SQL
-	if !(strings.HasPrefix(sql, "SELECT") || strings.HasPrefix(sql, "UPDATE TOP (1) ") || strings.HasPrefix(sql, "INSERT INTO ")) {
-		t.Fatalf("unzulässiger Anfang: %q", sql)
+	sqlText := st.SQL
+	if !(strings.HasPrefix(sqlText, "SELECT") || strings.HasPrefix(sqlText, "UPDATE TOP (1) ") || strings.HasPrefix(sqlText, "INSERT INTO ")) {
+		t.Fatalf("unzulässiger Anfang: %q", sqlText)
 	}
-	rest := stripQuoted(sql)
+	rest := stripQuoted(sqlText)
 	if m := reBad.FindString(rest); m != "" {
-		t.Fatalf("verbotenes Wort %q außerhalb von Anführung: %q", m, sql)
+		t.Fatalf("verbotenes Wort %q außerhalb von Anführung: %q", m, sqlText)
 	}
-	for _, bad := range []string{";", "--", "/*", "*/", "\x00"} {
+	for _, bad := range []string{";", "--", "/*", "*/", "\x00", "]", "'"} {
 		if strings.Contains(rest, bad) {
-			t.Fatalf("verbotenes Zeichen %q außerhalb von Anführung: %q", bad, sql)
+			t.Fatalf("verbotenes Zeichen %q außerhalb von Anführung: %q", bad, sqlText)
 		}
 	}
-	if strings.HasPrefix(sql, "INSERT INTO ") {
-		target := "INSERT INTO " + (&mssqlDialect{}).Quote(source.Schema) + "." + (&mssqlDialect{}).Quote(source.Name) + " "
-		if strings.HasPrefix(sql, target) {
-			t.Fatalf("INSERT in die Quelltabelle: %q", sql)
+	if strings.HasPrefix(sqlText, "INSERT INTO ") {
+		d := &mssqlDialect{}
+		if source == nil || strings.HasPrefix(sqlText, "INSERT INTO "+d.Quote(source.Schema)+"."+d.Quote(source.Name)+" ") {
+			t.Fatalf("INSERT in die Quelltabelle: %q", sqlText)
 		}
 	}
-	for _, h := range hostile {
-		if _, legal := legalNames[h]; legal {
-			continue // ein Wert, der zufällig auch ein Spaltenname ist
+	for _, v := range values {
+		if !argsContain(st.Args, v) {
+			t.Fatalf("Wert %#v fehlt in Args %#v (SQL %q)", v, st.Args, sqlText)
 		}
-		if len(h) > 3 && strings.Contains(sql, h) {
-			t.Fatalf("Wert %q steht im SQL statt in Args: %q", h, sql)
+		if s, ok := v.(string); ok && len(s) > 3 && !names[s] && strings.Contains(sqlText, s) {
+			t.Fatalf("Wert %q steht im SQL statt nur in Args: %q", s, sqlText)
 		}
 	}
 }
@@ -482,16 +649,20 @@ func TestNoDestructiveStatementPossible(t *testing.T) {
 	}
 	pick := func() string { return hostile[rng.Intn(len(hostile))] }
 
-	// Fremder Aufbau mit gefährlichen, aber legalen Namen.
+	// Fremder Aufbau mit gefährlichen, aber legalen Namen – an jeder Stelle, an der
+	// ein Bezeichner im SQL landet (Schema, Tabelle, Schlüssel, Spalten,
+	// Änderungsspalten).
 	crafted := &TableInfo{
 		Schema: "sch]ema; DROP", Name: "Delete Table]--",
 		Columns: []Column{
 			{Name: "Delete", Type: "int", IsKey: true},
+			{Name: "Key]; DELETE", Type: "nvarchar", IsKey: true},
 			{Name: "Drop]Table", Type: "nvarchar", Nullable: true},
 			{Name: "x] = 1; TRUNCATE TABLE z; --", Type: "nvarchar", Nullable: true},
 			{Name: "Merge", Type: "nvarchar", Nullable: true},
-			{Name: "RV", Type: "timestamp", IsRowVersion: true},
-			{Name: "Zeit", Type: "datetime2", Nullable: true},
+			{Name: "RV]; DROP", Type: "timestamp", IsRowVersion: true},
+			{Name: "Zeit]; DELETE FROM q; --", Type: "datetime2", Nullable: true},
+			{Name: "Guid]; EXEC", Type: "uniqueidentifier", Nullable: true},
 		},
 	}
 	child := &TableInfo{
@@ -500,99 +671,254 @@ func TestNoDestructiveStatementPossible(t *testing.T) {
 			{Name: "Id", Type: "int", IsKey: true, IsIdentity: true},
 			{Name: "Text", Type: "nvarchar", Nullable: true},
 			{Name: "Drop", Type: "nvarchar", Nullable: true},
+			{Name: "Zeit]; DELETE", Type: "datetime2", Nullable: true},
 		},
 	}
-	tables := []*TableInfo{crafted, meldungenInfo()}
-	// Spaltennamen, die der Erzeuger probiert (echte und böse).
-	colPool := []string{"Delete", "Drop]Table", "x] = 1; TRUNCATE TABLE z; --", "Merge", "RV", "Zeit",
-		"Titel", "Zustand", "MeldungNr", "Geaendert"}
-	colPool = append(colPool, hostile...)
-	pickCols := func() []string {
-		n := rng.Intn(3) + 1
-		out := make([]string, n)
-		for i := range out {
-			out[i] = colPool[rng.Intn(len(colPool))]
-		}
-		return out
+	// Zweite Quelle mit eindeutigem Einzelschlüssel, hostil benannt.
+	single := &TableInfo{
+		Schema: "s]; --", Name: "T]; TRUNCATE",
+		Columns: []Column{
+			{Name: "k]; DROP", Type: "bigint", IsKey: true},
+			{Name: "Geändert]; --", Type: "datetime2"},
+			{Name: "RV2]; MERGE", Type: "timestamp", IsRowVersion: true},
+			{Name: "Wert]; EXEC", Type: "nvarchar", Nullable: true},
+		},
 	}
-	kinds := []string{"none", "timestamp", "rowversion", pick()}
-	valuePool := []any{nil, "s", int64(1), 2.5, true, []byte{1, 2}, time.Unix(0, 0), struct{}{}, 7, pick(), pick()}
+	tables := []*TableInfo{crafted, single, meldungenInfo(), guidInfo()}
+	keysOf := func(ti *TableInfo) []string {
+		var k []string
+		for _, c := range ti.Columns {
+			if c.IsKey {
+				k = append(k, c.Name)
+			}
+		}
+		return k
+	}
+	namesOf := func(tis ...*TableInfo) map[string]bool {
+		m := map[string]bool{}
+		for _, ti := range tis {
+			m[ti.Schema], m[ti.Name] = true, true
+			for _, c := range ti.Columns {
+				m[c.Name] = true
+			}
+		}
+		return m
+	}
+	valuePool := []any{nil, "s", int64(1), 2.5, true, []byte{1, 2}, time.Unix(0, 0), time.Date(2026, 1, 2, 3, 4, 5, 6, time.FixedZone("z", 7200)), "'; DROP TABLE x--", "]; DELETE FROM y; --", "Ｄｒｏｐ", "line1\nDELETE FROM q\n", "nul\x00byte", strings.Repeat("A", 5000), "Delete", "Drop", "Merge", "EXEC('x')"}
+	badValuePool := []any{struct{}{}, 7, int32(3), []string{"x"}}
 
 	produced, total := 0, 0
-	run := func(st Stmt, err error, src *TableInfo) {
+	byKind := map[string]int{}
+	run := func(kind string, st Stmt, err error, src *TableInfo, values []any, names map[string]bool) {
 		total++
 		if err != nil {
 			return
 		}
 		produced++
-		checkStmt(t, st, src, hostile)
+		byKind[kind]++
+		checkStmt(t, st, src, values, names)
 	}
 	for i := 0; i < 600; i++ {
 		ti := tables[rng.Intn(len(tables))]
-		keyCols := pickCols()[:1]
-		if rng.Intn(3) == 0 {
-			keyCols = []string{ti.Columns[0].Name}
+		names := namesOf(ti, child)
+		keys := keysOf(ti)
+		allCols := make([]string, 0, len(ti.Columns))
+		for _, c := range ti.Columns {
+			allCols = append(allCols, c.Name)
 		}
-		keyVals := make([]string, len(keyCols))
-		for j := range keyVals {
-			keyVals[j] = pick()
+		pickCol := func() string {
+			if rng.Intn(4) == 0 {
+				return pick()
+			}
+			return allCols[rng.Intn(len(allCols))]
 		}
-		// SelectRows
-		st, err := d.SelectRows(ti, pickCols(), keyCols, colPool[rng.Intn(len(colPool))], kinds[rng.Intn(len(kinds))],
-			pick(), pick(), rng.Intn(5)-1, rng.Intn(20)-2)
-		run(st, err, ti)
-		// SelectRows mit gültigeren Eingaben, damit auch Erfolge entstehen.
-		st, err = d.SelectRows(ti, pickCols(), []string{ti.Columns[0].Name}, "", "none", "", []string{"", "[Merge] = 'DROP'"}[rng.Intn(2)], 0, 1+rng.Intn(50))
-		run(st, err, ti)
-		// SelectOne
-		st, err = d.SelectOne(ti, pickCols(), keyCols, keyVals)
-		run(st, err, ti)
-		st, err = d.SelectOne(ti, pickCols(), []string{ti.Columns[0].Name}, []string{pick()})
-		run(st, err, ti)
-		// UpdateRow
+		pickCols := func() []string {
+			out := make([]string, rng.Intn(3)+1)
+			for i := range out {
+				out[i] = pickCol()
+			}
+			return out
+		}
+		realCols := func() []string {
+			out := make([]string, rng.Intn(3)+1)
+			for i := range out {
+				out[i] = allCols[rng.Intn(len(allCols))]
+			}
+			return out
+		}
+		// Zeile mit gültigen Werten für NextCursor.
+		row := map[string]any{}
+		for _, c := range ti.Columns {
+			switch {
+			case c.IsRowVersion:
+				row[c.Name] = []byte{0, 0, 0, 0, 0, 0, byte(rng.Intn(256)), byte(rng.Intn(256))}
+			case strings.HasPrefix(c.Type, "datetime"):
+				row[c.Name] = time.Unix(int64(rng.Intn(1e9)), int64(rng.Intn(1e9))).In(time.FixedZone("q", 3600))
+			case c.Type == "uniqueidentifier":
+				row[c.Name] = "ABCDEF01-0000-0000-0000-000000000001"
+			case c.Type == "bigint" || c.Type == "int":
+				row[c.Name] = int64(rng.Intn(1000))
+			default:
+				row[c.Name] = pick()
+			}
+		}
+
+		// SelectRows mit zufälligen Eingaben (viele Ablehnungen sind erwartet).
+		kinds := []string{"none", "timestamp", "rowversion", pick()}
+		kind := kinds[rng.Intn(len(kinds))]
+		st, err := d.SelectRows(ti, pickCols(), pickCols(), pickCol(), kind, pick(), pick(), rng.Intn(5)-1, rng.Intn(20)-2)
+		run("select-random", st, err, ti, nil, names)
+
+		// SelectRows mit gültigen Cursorn aus NextCursor – Änderungsspalte hostil benannt.
+		var chCol, chKind string
+		for _, c := range ti.Columns {
+			if c.IsRowVersion && rng.Intn(2) == 0 {
+				chCol, chKind = c.Name, "rowversion"
+			}
+			if strings.HasPrefix(c.Type, "datetime") && rng.Intn(2) == 0 {
+				chCol, chKind = c.Name, "timestamp"
+			}
+		}
+		if chCol != "" {
+			cur, cerr := d.NextCursor(ti, keys, chCol, chKind, row)
+			if cerr != nil {
+				t.Fatalf("NextCursor für gültige Zeile: %v", cerr)
+			}
+			if rng.Intn(3) == 0 {
+				cur = ""
+			}
+			win := 0
+			if chKind == "timestamp" {
+				win = rng.Intn(3)
+			}
+			st, err = d.SelectRows(ti, realCols(), keys, chCol, chKind, cur, []string{"", "[Merge] = 'DROP'"}[rng.Intn(2)], win, 1+rng.Intn(50))
+			if err != nil {
+				// Filter [Merge] gibt es nicht in jeder Tabelle; sonst muss es gelingen.
+				t.Fatalf("gültige Abfrage scheitert: %v (%s, %s)", err, chCol, chKind)
+			}
+			run("select-cursor-"+chKind, st, err, ti, nil, names)
+			if err == nil && chKind == "timestamp" && cur != "" && len(st.Args) < 2 {
+				t.Fatalf("Cursor fehlt in Args: %#v", st.Args)
+			}
+		}
+
+		// SelectOne mit gültigem Schlüssel.
+		kv, kerr := d.KeyValues(ti, keys, row)
+		if kerr != nil {
+			t.Fatalf("KeyValues: %v", kerr)
+		}
+		kvAny := make([]any, len(kv))
+		for j := range kv {
+			kvAny[j] = kv[j]
+		}
+		st, err = d.SelectOne(ti, realCols(), keys, kv)
+		if err != nil {
+			t.Fatalf("gültiges SelectOne scheitert: %v", err)
+		}
+		run("selectone", st, err, ti, kvAny, names)
+		hv := make([]string, len(keys))
+		for j := range hv {
+			hv[j] = pick()
+		}
+		st, err = d.SelectOne(ti, realCols(), keys, hv)
+		hvAny := make([]any, len(hv))
+		for j := range hv {
+			hvAny[j] = hv[j]
+		}
+		run("selectone-hostile", st, err, ti, hvAny, names)
+
+		// UpdateRow: gültige Spalten mit bösartigen Werten.
 		set := map[string]any{}
-		for j := 0; j < 1+rng.Intn(3); j++ {
-			set[colPool[rng.Intn(len(colPool))]] = valuePool[rng.Intn(len(valuePool))]
+		var setVals []any
+		for _, c := range ti.Columns {
+			if c.IsKey || c.IsRowVersion || c.IsComputed || c.IsIdentity || rng.Intn(2) == 0 {
+				continue
+			}
+			v := valuePool[rng.Intn(len(valuePool))]
+			set[c.Name] = v
+			setVals = append(setVals, v)
 		}
-		st, err = d.UpdateRow(ti, keyCols, keyVals, set)
-		run(st, err, ti)
-		set2 := map[string]any{[]string{"Drop]Table", "Merge", "Titel", "Zustand"}[rng.Intn(4)]: pick()}
-		st, err = d.UpdateRow(ti, []string{ti.Columns[0].Name}, []string{pick()}, set2)
-		run(st, err, ti)
-		// InsertChild
+		if len(set) > 0 {
+			st, err = d.UpdateRow(ti, keys, hv, set)
+			if err != nil {
+				t.Fatalf("gültiges UpdateRow scheitert: %v", err)
+			}
+			run("update", st, err, ti, append(setVals, hvAny...), names)
+		}
+		// UpdateRow mit zufälligen (oft ungültigen) Eingaben.
+		rset := map[string]any{pickCol(): valuePool[rng.Intn(len(valuePool))], pick(): badValuePool[rng.Intn(len(badValuePool))]}
+		st, err = d.UpdateRow(ti, pickCols(), hv, rset)
+		run("update-random", st, err, ti, nil, names)
+
+		// InsertChild: gültige und zufällige Eingaben, auch nil-Quelle.
 		vals := map[string]any{}
-		for j := 0; j < 1+rng.Intn(3); j++ {
-			name := []string{"Text", "Drop", "Id", pick()}[rng.Intn(4)]
-			vals[name] = valuePool[rng.Intn(len(valuePool))]
+		var insVals []any
+		for _, n := range []string{"Text", "Drop", "Zeit]; DELETE"} {
+			if rng.Intn(3) > 0 {
+				v := valuePool[rng.Intn(len(valuePool))]
+				vals[n] = v
+				insVals = append(insVals, v)
+			}
 		}
-		st, err = d.InsertChild(ti, child, vals)
-		run(st, err, ti)
+		if len(vals) > 0 {
+			st, err = d.InsertChild(ti, child, vals)
+			if err != nil {
+				t.Fatalf("gültiges InsertChild scheitert: %v", err)
+			}
+			run("insert", st, err, ti, insVals, namesOf(ti, child))
+		}
+		rvals := map[string]any{[]string{"Text", "Drop", "Id", pick()}[rng.Intn(4)]: valuePool[rng.Intn(len(valuePool))]}
+		st, err = d.InsertChild(ti, child, rvals)
+		run("insert-random", st, err, ti, nil, namesOf(ti, child))
+		// Kind und Quelle vertauscht: die Quelle ist dann `child`.
 		st, err = d.InsertChild(child, ti, vals)
-		run(st, err, child)
-		st, err = d.InsertChild(ti, ti, vals)
-		if err == nil {
+		run("insert-swapped", st, err, child, nil, namesOf(ti, child))
+		// Quelle gleich Kind und nil-Quelle dürfen nie gelingen.
+		if _, err = d.InsertChild(ti, ti, vals); err == nil {
 			t.Fatal("InsertChild(source, source) darf nie gelingen")
 		}
-		run(st, err, ti)
+		if _, err = d.InsertChild(nil, ti, vals); err == nil {
+			t.Fatal("InsertChild(nil, …) darf nie gelingen")
+		}
+		if _, err = d.InsertChild(ti, nil, vals); err == nil {
+			t.Fatal("InsertChild(…, nil) darf nie gelingen")
+		}
 	}
 	if total < 200 {
 		t.Fatalf("nur %d Kombinationen", total)
 	}
-	if produced < 50 {
-		t.Fatalf("nur %d erzeugte Befehle, Test ist zu schwach", produced)
+	for _, k := range []string{"select-cursor-rowversion", "select-cursor-timestamp", "selectone", "update", "insert", "selectone-hostile"} {
+		if byKind[k] < 20 {
+			t.Fatalf("Pfad %s nur %d-mal erzeugt, Test ist zu schwach (%v)", k, byKind[k], byKind)
+		}
 	}
-	t.Logf("%d Kombinationen, %d erzeugte Befehle geprüft", total, produced)
+	t.Logf("%d Kombinationen, %d erzeugte Befehle geprüft: %v", total, produced, byKind)
 
-	// Spaltenname mit ] wird verdoppelt.
-	st, err := d.SelectOne(crafted, []string{"Drop]Table"}, []string{"Delete"}, []string{"1"})
+	// Spaltenname mit ] wird verdoppelt; die hostile Änderungsspalte ebenfalls.
+	st, err := d.SelectOne(crafted, []string{"Drop]Table"}, []string{"Delete", "Key]; DELETE"}, []string{"1", "a"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(st.SQL, "[Drop]]Table]") {
 		t.Fatalf("Quoting fehlt: %q", st.SQL)
 	}
+	cur, _ := d.NextCursor(crafted, []string{"Delete", "Key]; DELETE"}, "Zeit]; DELETE FROM q; --", "timestamp",
+		map[string]any{"Zeit]; DELETE FROM q; --": time.Unix(1, 0), "Delete": int64(1), "Key]; DELETE": "a"})
+	st, err = d.SelectRows(crafted, []string{"Merge"}, []string{"Delete", "Key]; DELETE"}, "Zeit]; DELETE FROM q; --", "timestamp", cur, "", 0, 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(st.SQL, "[Zeit]]; DELETE FROM q; --] >") || !strings.Contains(st.SQL, "ORDER BY [t].[Zeit]]; DELETE FROM q; --], ") {
+		t.Fatalf("Änderungsspalte nicht gequotet: %q", st.SQL)
+	}
+	st, err = d.SelectRows(crafted, []string{"Merge"}, []string{"Delete", "Key]; DELETE"}, "RV]; DROP", "rowversion", "00000000000007d1", "", 0, 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(st.SQL, "[RV]]; DROP] > @p1 AND [RV]]; DROP] < MIN_ACTIVE_ROWVERSION()") {
+		t.Fatalf("rowversion-Spalte nicht gequotet: %q", st.SQL)
+	}
 	if err := ValidateFilter("1=1; DELETE FROM x"); err == nil {
 		t.Fatal("Filter mit DELETE muss scheitern")
 	}
-	_ = fmt.Sprint
 }
