@@ -9,7 +9,6 @@ import (
 	"sort"
 	"strings"
 	"time"
-	"unicode/utf8"
 )
 
 // Hereinkommender Abgleich – Regeln (verbindlich, siehe Entwurf und Entscheidungen R12–R18):
@@ -39,7 +38,9 @@ import (
 //     Anhalten still angelegt. Ohne Stichtag (Probelauf vor dem ersten
 //     Scharfschalten) gilt der heutige Tagesbeginn; gespeichert wird dabei nichts.
 //     Ohne Anlagedatum-Spalte, bei NULL oder unlesbarem Wert gilt sie als neu.
-//     Eine Datumsspalte ohne Uhrzeit gilt als Kalendertag am Ort des Servers.
+//     Eine Anlagedatum-Spalte ohne Uhrzeit wird als Kalendertag mit dem Tag des
+//     Stichtags am Ort des Servers verglichen; ihre Anlagezeit ist Mitternacht
+//     am Ort des Fremdsystems (R28).
 //   - Neue Zeilen benachrichtigen wie gewohnt und zählen für die Obergrenze
 //     (Anhalten bei zu vielen). Rückwirkende werden still angelegt (CreateOptions.
 //     Silent), mit dem fremden Anlagedatum als Anlagezeit; abgeschlossene werden
@@ -309,9 +310,9 @@ type inboundRun struct {
 	// datetimeoffset, time, Text und fehlende Spalten nie (siehe wallColumns).
 	wallCols      []string
 	backfillCount int
-	// truncLen: Feld -> Höchstlänge der Fremdspalte für Felder, die das
+	// truncCols: Feld -> Fremdspalte (mit Höchstlänge) für Felder, die das
 	// Hinausschreiben kürzen kann (siehe truncatableFields, foldTruncated).
-	truncLen map[string]int
+	truncCols map[string]Column
 }
 
 // lockKey bildet aus der Profil-ID die Nummer der Postgres-Beratungssperre.
@@ -478,7 +479,7 @@ func (r *inboundRun) exec(ctx context.Context, f Foreign) error {
 		return err
 	}
 	r.wallCols = wallColumns(t, r.d, r.maps, r.fields)
-	r.truncLen = truncatableFields(t, r.maps, r.fields)
+	r.truncCols = truncatableFields(t, r.maps, r.fields)
 	cols := inboundColumns(r.maps)
 	if p.CreatedColumn != "" {
 		col, ok := findColumn(t, p.CreatedColumn)
@@ -808,10 +809,7 @@ func (r *inboundRun) handleRow(ctx context.Context, row map[string]any, pos int,
 		r.setState(pos, rowOK) // schon in der Wiederholung bearbeitet
 		return nil
 	}
-	c.mapped, c.errs = ToPDH(r.maps, r.fields, r.toInstants(row), p.Defaults)
-	if v, ok := c.mapped["status"]; ok {
-		c.mapped["status"] = normalizeStatus(v)
-	}
+	c.mapped, c.errs = foreignPDH(r.maps, r.fields, row, r.wallCols, r.fLoc, p.Defaults)
 	var changeVal any
 	if p.ChangeColumn != "" {
 		changeVal = row[p.ChangeColumn]
@@ -927,9 +925,9 @@ func wallColumns(t *TableInfo, d Dialect, maps []FieldMap, fields []PDHField) []
 
 // truncatableFields: Felder "beides" (Text, ohne festen Wert und Übersetzung),
 // deren Fremdspalte eine Höchstlänge hat – dort kürzt das Hinausschreiben.
-func truncatableFields(t *TableInfo, maps []FieldMap, fields []PDHField) map[string]int {
+func truncatableFields(t *TableInfo, maps []FieldMap, fields []PDHField) map[string]Column {
 	idx := fieldIndex(fields)
-	out := map[string]int{}
+	out := map[string]Column{}
 	for _, m := range maps {
 		if m.Direction != DirBoth || m.FixedValue != nil || m.ForeignColumn == "" || len(m.Translate) > 0 {
 			continue
@@ -937,55 +935,79 @@ func truncatableFields(t *TableInfo, maps []FieldMap, fields []PDHField) map[str
 		if f, ok := idx[m.PDHField]; !ok || f.Kind == fieldKindEnum || f.Kind == fieldKindTime {
 			continue
 		}
-		if n := columnMaxLen(t, m.ForeignColumn); n > 0 {
-			out[m.PDHField] = n
+		if c, ok := findColumn(t, m.ForeignColumn); ok && c.MaxLen > 0 {
+			out[m.PDHField] = *c
 		}
 	}
 	return out
 }
 
-// foldTruncated: Hält das Fremdsystem genau die auf die Spaltenlänge gekürzte
-// Form des aktuellen PDH-Werts, gilt der Fremdwert als der PDH-Wert (R29). So
+// truncatedForm ist die EINE Normalform für gekürzte Werte (R29, I2, R33): der
+// Text, den die Fremdspalte c hält, nachdem der PDH-Wert pdh hinausging –
+// getrimmt wie ToForeign, gekürzt nach dem Maß des Dialekts, gelesen wieder
+// getrimmt wie ToPDH. Hinaus (truncateForColumns), herein (foldTruncated) und
+// beim Lesen vor dem Ändern (R32) wird damit verglichen.
+func truncatedForm(d Dialect, c Column, pdh string) string {
+	return strings.TrimSpace(d.TruncateText(c, strings.TrimSpace(pdh)))
+}
+
+// foldTruncated: Hält das Fremdsystem genau die gekürzte Form des aktuellen
+// PDH-Werts, gilt der Fremdwert als der PDH-Wert; sonst, hält es die gekürzte
+// Form des zuletzt gesehenen Werts, gilt er als der gesehene Wert (R29, I2). So
 // ist das Zurücklesen eines gekürzten Werts ein Echo, gesehen wird der volle
-// Wert, und eine echte Änderung im Fremdsystem entscheidet Decide wie sonst.
-func (r *inboundRun) foldTruncated(mapped, pdhNow map[string]string) map[string]string {
-	if len(r.truncLen) == 0 {
+// Wert, ein später geänderter PDH-Wert erzeugt keinen erfundenen Widerspruch,
+// und eine echte Änderung im Fremdsystem entscheidet Decide wie sonst.
+func (r *inboundRun) foldTruncated(mapped, pdhNow, seen map[string]string) map[string]string {
+	if len(r.truncCols) == 0 {
 		return mapped
 	}
 	out := make(map[string]string, len(mapped))
 	for k, v := range mapped {
 		out[k] = v
 	}
-	for k, n := range r.truncLen {
+	for k, c := range r.truncCols {
 		f, ok := mapped[k]
-		p := pdhNow[k]
-		if !ok || utf8.RuneCountInString(p) <= n {
+		if !ok {
 			continue
 		}
-		if tf := strings.TrimSpace(f); tf != strings.TrimSpace(p) && tf == strings.TrimSpace(truncateRunes(p, n)) {
-			out[k] = p
+		tf := strings.TrimSpace(f)
+		for _, full := range []string{pdhNow[k], seen[k]} {
+			tfull := strings.TrimSpace(full)
+			if full == "" || tf == tfull {
+				continue
+			}
+			if cut := truncatedForm(r.d, c, full); cut != tfull && cut == tf {
+				out[k] = full
+				break
+			}
 		}
 	}
 	return out
 }
 
-// toInstants liefert die Zeile für ToPDH: Zeitwerte der Spalten zugeordneter
-// Zeitfelder als wirklicher Zeitpunkt (Zeitzone des Profils). Die rohe Zeile
-// bleibt unverändert (Schlüssel, Cursor, Änderungsmarke).
-func (r *inboundRun) toInstants(row map[string]any) map[string]any {
-	if len(r.wallCols) == 0 {
-		return row
-	}
-	out := make(map[string]any, len(row))
-	for k, v := range row {
-		out[k] = v
-	}
-	for _, c := range r.wallCols {
-		if tm, ok := out[c].(time.Time); ok {
-			out[c] = ForeignWallToInstant(tm, r.fLoc)
+// foreignPDH wandelt eine Fremdzeile in PDH-Form – genau so, wie der
+// hereinkommende Lauf liest: Zeitwerte der Spalten wallCols (siehe
+// wallColumns) als wirklicher Zeitpunkt am Ort loc, ToPDH mit den Vorgaben,
+// Status normalisiert. Die rohe Zeile bleibt unverändert (Schlüssel, Cursor,
+// Änderungsmarke). Auch das Hinausschreiben liest damit (R32).
+func foreignPDH(maps []FieldMap, fields []PDHField, row map[string]any, wallCols []string, loc *time.Location, defaults map[string]string) (map[string]string, []RunError) {
+	if len(wallCols) > 0 {
+		cp := make(map[string]any, len(row))
+		for k, v := range row {
+			cp[k] = v
 		}
+		for _, c := range wallCols {
+			if tm, ok := cp[c].(time.Time); ok {
+				cp[c] = ForeignWallToInstant(tm, loc)
+			}
+		}
+		row = cp
 	}
-	return out
+	mapped, errs := ToPDH(maps, fields, row, defaults)
+	if v, ok := mapped["status"]; ok {
+		mapped["status"] = normalizeStatus(v)
+	}
+	return mapped, errs
 }
 
 // seenComplete: Für jedes hereinkommende Feld gibt es einen gesehenen Wert.
@@ -1286,7 +1308,7 @@ func (r *inboundRun) processChanged(ctx context.Context, c candidate, link *Link
 	if err != nil {
 		return r.rowFailed(ctx, link.ID, c.fk, RunError{Message: err.Error()})
 	}
-	c.mapped = r.foldTruncated(c.mapped, pdhNow) // Marke bleibt die der rohen Werte
+	c.mapped = r.foldTruncated(c.mapped, pdhNow, link.SeenValues) // Marke bleibt die der rohen Werte
 	dec := Decide(r.maps, link.SeenValues, link.WrittenValues, c.mapped, pdhNow)
 	actual := pdhNow
 	var ahead map[string]string
@@ -1395,7 +1417,7 @@ func (r *inboundRun) previewChanged(ctx context.Context, c candidate, link *Link
 		case err != nil:
 			return err
 		default:
-			dec := Decide(r.maps, link.SeenValues, link.WrittenValues, r.foldTruncated(c.mapped, pdhNow), pdhNow)
+			dec := Decide(r.maps, link.SeenValues, link.WrittenValues, r.foldTruncated(c.mapped, pdhNow, link.SeenValues), pdhNow)
 			if len(dec.Apply) == 0 && len(dec.KeepPDH) == 0 {
 				return nil
 			}

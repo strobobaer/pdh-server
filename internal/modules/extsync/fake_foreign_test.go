@@ -261,6 +261,11 @@ func (r *recDialect) wasProduced(st Stmt) bool {
 
 func (fakeDialect) Quote(name string) string { return "[" + name + "]" }
 
+// TruncateText kürzt wie der echte Dialekt (Maß der Datenbankart).
+func (fakeDialect) TruncateText(c Column, s string) string {
+	return (&mssqlDialect{}).TruncateText(c, s)
+}
+
 func (fakeDialect) TimeColumn(c Column) (isTime, dateOnly bool) {
 	if c.IsRowVersion {
 		return false, false
@@ -300,10 +305,11 @@ type fakeForeign struct {
 	// children sind Nebentabellen samt Zeilen, execLog jeder Exec-Aufruf in
 	// Reihenfolge (auch abgelehnte). failExec liefert einen Fehler statt
 	// auszuführen; beforeExec läuft vor dem Ausführen ohne Sperre.
-	children   map[string]*fakeChild
-	execLog    []Stmt
-	failExec   func(st Stmt) error
-	beforeExec func(st Stmt)
+	children    map[string]*fakeChild
+	execLog     []Stmt
+	failExec    func(st Stmt) error
+	beforeExec  func(st Stmt)
+	execCtxErrs []error // ctx.Err() je Exec, nach beforeExec
 }
 
 type fakeChild struct {
@@ -471,7 +477,7 @@ func (f *fakeForeign) Describe(_ context.Context, schema, table string) (*TableI
 // Exec führt nur die Befehle "update" (eine Zeile der Meldungstabelle über
 // ihren Schlüssel, rowversion steigt) und "insert" (Nebentabelle) aus. Alles
 // andere wird abgelehnt – aber protokolliert, damit Tests es sehen.
-func (f *fakeForeign) Exec(_ context.Context, st Stmt) (int64, error) {
+func (f *fakeForeign) Exec(ctx context.Context, st Stmt) (int64, error) {
 	f.mu.Lock()
 	f.execs++
 	f.execLog = append(f.execLog, st)
@@ -480,6 +486,9 @@ func (f *fakeForeign) Exec(_ context.Context, st Stmt) (int64, error) {
 	if before != nil {
 		before(st)
 	}
+	f.mu.Lock()
+	f.execCtxErrs = append(f.execCtxErrs, ctx.Err()) // Zustand des Kontexts beim Ausführen
+	f.mu.Unlock()
 	if fail != nil {
 		if err := fail(st); err != nil {
 			return 0, err

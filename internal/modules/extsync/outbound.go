@@ -11,37 +11,41 @@ import (
 	"sort"
 	"strings"
 	"time"
-	"unicode/utf8"
 )
 
-// Hinausgehender Abgleich – Regeln (verbindlich, Entwurf 4.3, 4.4, 4.11, R17, R23):
+// Hinausgehender Abgleich – Regeln (verbindlich, Entwurf 4.3, 4.4, 4.11, R17, R23, R29–R34):
 //
 //   - Geschrieben wird AUSSCHLIESSLICH über Dialect.UpdateRow (eine Zeile der
 //     Meldungstabelle über den Schlüssel der Verknüpfung) und Dialect.InsertChild
 //     (Kommentar in die Nebentabelle). Foreign.Exec bekommt nie einen anderen
 //     Befehl. Schlüsselwerte kommen nur aus der Verknüpfung (gelesene Zeile).
+//     Abwehr in der Tiefe zu R31: passt die Zahl der Schlüsselwerte nicht zu den
+//     Schlüsselspalten des Profils, wird nichts geschrieben.
 //   - Ein Eintrag "update" schreibt die Felder aus payload.fields, die eine
 //     Zuordnung hinaus/beides haben (ohne festen Wert, mit Fremdspalte), mit dem
 //     AKTUELLEN PDH-Wert (Target.Read), nie dem Wert im Eintrag. Ausgelassen wird
-//     ein Feld, dessen aktueller Wert gleich seen[f] ist (das Fremdsystem hat ihn)
-//     oder gleich written[f] (schon geschrieben bzw. vom Abgleich selbst gesetzter
-//     Ausgangswert, R17: Vorgaben und Umsetzungen des Abgleichs gehen nie hinaus).
+//     ein Feld (R32), wenn (b) es written[f] gibt und der aktuelle Wert gleich ist
+//     (schon geschrieben bzw. vom Abgleich gesetzter Ausgangswert, R17), oder (a)
+//     die Fremdzeile – vorher gelesen und wie herein in PDH-Form gebracht
+//     (foreignPDH) – den Wert schon hat, auch in gekürzter Form (truncatedForm).
 //     Bleibt nichts, ist der Eintrag ohne Befehl erledigt.
 //   - Reihenfolge je Eintrag: Fremdbefehl → written[f] feldweise (Zeilensperre,
-//     Store.UpdateLinkWritten) → erledigt (Aufrufer). Jeder Fehler lässt den
-//     Eintrag wiederholbar; ein UPDATE mit aktuellen Werten ist wiederholbar.
+//     Store.UpdateLinkWritten) → Kürzungsvermerk → erledigt (Aufrufer). Jeder
+//     Fehler lässt den Eintrag wiederholbar; ein UPDATE ist wiederholbar.
 //   - seen_values und seen_mark schreibt nur der hereinkommende Lauf. last_error
 //     der Verknüpfung (Wiederholungsmarke des hereinkommenden Laufs) setzt der
 //     Ausgang allein für den Endzustand LinkErrForeignGone (Store.MarkLinkForeignGone);
-//     eigene Fehler stehen am Eintrag (sync_outbox.last_error/attempts).
-//   - Zeitwerte (Entwurf 4.11): zonenlose Datums-/Zeitspalte → Wanduhr am Ort
-//     des Profils (InstantToForeignWall); reine Datumsspalte → Kalendertag am Ort
-//     des Profils; alles andere (datetimeoffset, Text) → kanonischer Text (UTC).
-//   - Im PDH-Verlauf stehen nur Endzustände und übergangene Einträge, keine
-//     Routinemeldungen.
+//     eigene Fehler stehen am Eintrag (sync_outbox.last_error/attempts), hängende
+//     werden einmal am Datensatz gemeldet (ReportStuck).
+//   - Zeitwerte (Entwurf 4.11, R28): zonenlose Datums-/Zeitspalte → Wanduhr am
+//     Ort des Profils (InstantToForeignWall); reine Datumsspalte → Kalendertag am
+//     Ort des Profils; alles andere (datetimeoffset, Text) → kanonischer Text (UTC).
+//   - Texte werden nach dem Maß des Dialekts gekürzt (Dialect.TruncateText, R33).
+//   - Im PDH-Verlauf stehen nur Endzustände, Kürzungen, hängende und übergangene
+//     Einträge, keine Routinemeldungen.
 
-// ErrRowGone: der Änderungsbefehl traf keine Zeile – die Meldung ist im
-// Fremdsystem verschwunden. Der Eintrag ist erledigt (nicht wiederholt).
+// ErrRowGone: die Meldung ist im Fremdsystem verschwunden. Der Eintrag ist
+// erledigt (nicht wiederholt).
 var ErrRowGone = errors.New("Meldung im Fremdsystem nicht mehr vorhanden")
 
 // ErrWriteNotAllowed: an der Verbindung ist "Schreiben erlaubt" aus. Der Eintrag
@@ -57,7 +61,20 @@ const (
 	noteOutCompositeKey = "Kommentare werden bei zusammengesetztem Schlüssel nicht übertragen"
 	noteOutMaybeLost    = "Kommentar wurde möglicherweise nicht übertragen (Abbruch während des Schreibens)"
 	noteOutBadItem      = "Eintrag der Warteliste ist unlesbar und wurde übergangen"
+	noteOutKeyMismatch  = "Schlüssel der Verknüpfung passt nicht zu den Schlüsselspalten des Profils – nichts geschrieben"
+	noteOutStuckPrefix  = "Änderung konnte bisher nicht ins Fremdsystem geschrieben werden: "
 )
+
+// StuckAfterAttempts: nach so vielen Fehlversuchen gilt ein Eintrag als hängend
+// und wird einmal am Datensatz gemeldet (R34).
+const StuckAfterAttempts = 5
+
+// stuckDetailMax: so viele Zeichen des Fehlertexts stehen im Vermerk.
+const stuckDetailMax = 300
+
+// commentInsertTimeout: Zeitgrenze des Einfügens eines Kommentars; es läuft ohne
+// den Abbruch des Aufrufers, damit ein Halt es nicht mitten im Senden trifft.
+const commentInsertTimeout = 30 * time.Second
 
 // Outbound schreibt Einträge der Warteliste ins Fremdsystem.
 type Outbound struct {
@@ -103,6 +120,36 @@ func Backoff(attempts int) time.Duration {
 	return 15 * time.Minute
 }
 
+// ShouldReportStuck: Der Aufrufer meldet einen hängenden Eintrag (ReportStuck)
+// genau dann, wenn die Zahl der Fehlversuche NACH diesem Fehlschlag
+// StuckAfterAttempts erreicht (nur bei genau diesem Wert).
+func ShouldReportStuck(attemptsAfterThisFailure int) bool {
+	return attemptsAfterThisFailure == StuckAfterAttempts
+}
+
+// ReportStuck meldet einen hängenden Eintrag einmal am PDH-Datensatz (R34):
+// Verlaufseintrag (Aktion "sync") "Änderung konnte bisher nicht ins
+// Fremdsystem geschrieben werden: <Fehler, höchstens 300 Zeichen>". Ein zweiter
+// Aufruf für denselben Eintrag schreibt nichts (sync_outbox.stuck_reported_at;
+// Marke und Verlaufseintrag in einer Transaktion). last_error der Verknüpfung
+// bleibt unberührt; der Eintrag bleibt offen und wird weiter versucht.
+func (o *Outbound) ReportStuck(ctx context.Context, item OutboxItem, link *Link, p *Profile, cause error) error {
+	if o == nil || o.Store == nil || link == nil || p == nil || item.LinkID != link.ID {
+		return errors.New("abgleich: eintrag, verknüpfung oder profil fehlt")
+	}
+	detail := "unbekannter Fehler"
+	if cause != nil {
+		detail = truncateRunes(cause.Error(), stuckDetailMax)
+	}
+	var n *HistoryNote
+	if link.RefID != nil {
+		n = &HistoryNote{RefType: p.TargetType, RefID: *link.RefID, Action: actionSync,
+			Message: noteOutStuckPrefix + detail, CreatedBy: o.SystemUser}
+	}
+	_, err := o.Store.MarkOutboxStuck(ctx, item.ID, n)
+	return err
+}
+
 func (o *Outbound) loc() *time.Location {
 	if o.Location == nil {
 		return time.Local
@@ -143,17 +190,31 @@ func (o *Outbound) Process(ctx context.Context, item OutboxItem, link *Link, p *
 		// hereinkommende Lauf löst die Marke, wenn die Zeile wieder auftaucht.
 		return done(LinkErrForeignGone)
 	}
-	switch item.Kind {
-	case KindUpdate:
-		return o.update(ctx, item, link, p, maps, f, d, allowWrite)
-	case KindComment:
-		return o.comment(ctx, item, link, p, f, d, allowWrite)
+	if item.Kind != KindUpdate && item.Kind != KindComment {
+		return o.badItem(ctx, link, p, fmt.Sprintf("Art ‚%s‘ ist unbekannt", item.Kind))
 	}
-	return o.badItem(ctx, link, p, fmt.Sprintf("Art ‚%s‘ ist unbekannt", item.Kind))
+	kv, err := DecodeKey(link.ForeignKey)
+	if err != nil {
+		return done(LinkErrBadKey)
+	}
+	// Abwehr in der Tiefe (R31): Die Quelle eines Profils mit Verknüpfungen ist
+	// fest (SaveProfile). Passt der Schlüssel trotzdem nicht zu den
+	// Schlüsselspalten, könnte er eine fremde Zeile treffen: nichts schreiben.
+	if len(kv) != len(p.KeyColumns) {
+		if err := o.note(ctx, link, p, noteOutKeyMismatch); err != nil {
+			return OutResult{}, err
+		}
+		return done(noteOutKeyMismatch)
+	}
+	if item.Kind == KindUpdate {
+		return o.update(ctx, item, link, p, maps, f, d, kv, allowWrite)
+	}
+	return o.comment(ctx, item, link, p, f, d, kv, allowWrite)
 }
 
-// rowGone: der Befehl traf keine Zeile. Erledigt, Verknüpfung bleibt, nichts
-// wird angelegt; Marke und Verlaufseintrag genau einmal (eine Transaktion).
+// rowGone: die Meldung ist im Fremdsystem verschwunden. Erledigt, Verknüpfung
+// bleibt, nichts wird angelegt; Marke und Verlaufseintrag genau einmal (eine
+// Transaktion).
 func (o *Outbound) rowGone(ctx context.Context, link *Link, p *Profile) (OutResult, error) {
 	var n *HistoryNote
 	if link.RefID != nil {
@@ -185,28 +246,26 @@ func (o *Outbound) note(ctx context.Context, link *Link, p *Profile, msg string)
 	return t.Note(ctx, *link.RefID, actionSyncOut, "", "", "", msg, o.SystemUser)
 }
 
-// outFields: PDH-Felder aus dem Eintrag, die hinausgehen dürfen (Zuordnung
-// hinaus/beides, kein fester Wert, mit Fremdspalte, im Feldkatalog).
-func outFields(maps []FieldMap, fields []PDHField, payload map[string]json.RawMessage) []string {
+// outMaps: Zuordnungen, die hinausgehen dürfen (hinaus/beides, kein fester
+// Wert, mit Fremdspalte, im Feldkatalog), je PDH-Feld höchstens eine.
+func outMaps(maps []FieldMap, fields []PDHField) map[string]FieldMap {
 	idx := fieldIndex(fields)
-	var out []string
+	out := map[string]FieldMap{}
 	for _, m := range maps {
 		if (m.Direction != DirOut && m.Direction != DirBoth) || m.FixedValue != nil || m.ForeignColumn == "" {
 			continue
 		}
-		if _, ok := payload[m.PDHField]; !ok {
+		if _, ok := idx[m.PDHField]; !ok {
 			continue
 		}
-		if _, ok := idx[m.PDHField]; !ok || containsStr(out, m.PDHField) {
-			continue
+		if _, dup := out[m.PDHField]; !dup {
+			out[m.PDHField] = m
 		}
-		out = append(out, m.PDHField)
 	}
-	sort.Strings(out)
 	return out
 }
 
-func (o *Outbound) update(ctx context.Context, item OutboxItem, link *Link, p *Profile, maps []FieldMap, f Foreign, d Dialect, allowWrite bool) (OutResult, error) {
+func (o *Outbound) update(ctx context.Context, item OutboxItem, link *Link, p *Profile, maps []FieldMap, f Foreign, d Dialect, kv []string, allowWrite bool) (OutResult, error) {
 	var pl struct {
 		Fields map[string]json.RawMessage `json:"fields"`
 	}
@@ -217,11 +276,15 @@ func (o *Outbound) update(ctx context.Context, item OutboxItem, link *Link, p *P
 	if fields == nil {
 		return OutResult{}, fmt.Errorf("Ziel %q ist unbekannt", p.TargetType)
 	}
-	cand := outFields(maps, fields, pl.Fields)
-	if len(cand) == 0 {
-		return done("")
+	out := outMaps(maps, fields)
+	var cand []string
+	for k := range pl.Fields {
+		if _, ok := out[k]; ok {
+			cand = append(cand, k)
+		}
 	}
-	if link.RefID == nil {
+	sort.Strings(cand)
+	if len(cand) == 0 || link.RefID == nil {
 		return done("")
 	}
 	target := o.Targets[p.TargetType]
@@ -235,24 +298,18 @@ func (o *Outbound) update(ctx context.Context, item OutboxItem, link *Link, p *P
 	if err != nil {
 		return OutResult{}, err
 	}
-	vals := map[string]string{}
+	// (b) Ausgangswert: schon geschrieben oder vom Abgleich selbst gesetzt (R17).
+	// Bei Feldern nur "hinaus" ist PDH die Quelle (R30): auch Vorgaben, die der
+	// Abgleich beim Anlegen gesetzt hat, gehen dann rechtmäßig ins Fremdsystem.
+	var rest []string
 	for _, k := range cand {
-		v := strings.TrimSpace(cur[k])
-		if s, ok := link.SeenValues[k]; ok && strings.TrimSpace(s) == v {
-			continue // das Fremdsystem hat den Wert
+		if w, ok := link.WrittenValues[k]; ok && strings.TrimSpace(w) == strings.TrimSpace(cur[k]) {
+			continue
 		}
-		if w, ok := link.WrittenValues[k]; ok && strings.TrimSpace(w) == v {
-			continue // schon geschrieben oder Ausgangswert des Abgleichs (R17)
-		}
-		// R30: Bei Feldern nur "hinaus" ist PDH die Quelle; auch Vorgaben, die der
-		// Abgleich beim Anlegen gesetzt hat, gehen dann rechtmäßig ins Fremdsystem.
-		vals[k] = cur[k]
+		rest = append(rest, k)
 	}
-	if len(vals) == 0 {
+	if len(rest) == 0 {
 		return done("")
-	}
-	if !allowWrite {
-		return OutResult{}, ErrWriteNotAllowed
 	}
 	fLoc, err := p.ForeignLocation(o.loc())
 	if err != nil {
@@ -261,6 +318,49 @@ func (o *Outbound) update(ctx context.Context, item OutboxItem, link *Link, p *P
 	t, err := f.Describe(ctx, p.SourceSchema, p.SourceTable)
 	if err != nil {
 		return OutResult{}, fmt.Errorf("Aufbau der Tabelle %s.%s lesen: %w", p.SourceSchema, p.SourceTable, err)
+	}
+	// (a) Fremdzeile lesen und wie herein in PDH-Form bringen (R32).
+	var readMaps []FieldMap
+	var cols []string
+	for _, k := range rest {
+		m := out[k]
+		m.Direction = DirIn // nur zum Lesen: ToPDH und wallColumns nehmen sie dann mit
+		readMaps = append(readMaps, m)
+		if !containsStr(cols, m.ForeignColumn) {
+			cols = append(cols, m.ForeignColumn)
+		}
+	}
+	sel, err := d.SelectOne(t, cols, p.KeyColumns, kv)
+	if err != nil {
+		return OutResult{}, err
+	}
+	rows, err := f.Query(ctx, sel)
+	if err != nil {
+		return OutResult{}, fmt.Errorf("Fremddatenbank lesen: %w", err)
+	}
+	if len(rows) == 0 {
+		return o.rowGone(ctx, link, p)
+	}
+	// Nicht umsetzbare Fremdwerte (Fehler) fehlen in fv und gelten als verschieden.
+	fv, _ := foreignPDH(readMaps, fields, rows[0], wallColumns(t, d, readMaps, fields), fLoc, p.Defaults)
+	vals := map[string]string{}
+	for _, k := range rest {
+		if x, ok := fv[k]; ok {
+			tx := strings.TrimSpace(x)
+			if tx == strings.TrimSpace(cur[k]) {
+				continue
+			}
+			if c, ok := findColumn(t, out[k].ForeignColumn); ok && len(out[k].Translate) == 0 && truncatedForm(d, *c, cur[k]) == tx {
+				continue // das Fremdsystem hält die gekürzte Form
+			}
+		}
+		vals[k] = cur[k]
+	}
+	if len(vals) == 0 {
+		return done("")
+	}
+	if !allowWrite {
+		return OutResult{}, ErrWriteNotAllowed
 	}
 	set, errs := ToForeign(maps, fields, vals)
 	if len(errs) > 0 {
@@ -271,11 +371,7 @@ func (o *Outbound) update(ctx context.Context, item OutboxItem, link *Link, p *P
 			set[col] = foreignTime(t, col, d, tm, fLoc)
 		}
 	}
-	cut := truncateForColumns(t, maps, vals, set)
-	kv, err := DecodeKey(link.ForeignKey)
-	if err != nil {
-		return done(LinkErrBadKey)
-	}
+	cut := truncateForColumns(t, d, maps, vals, set)
 	st, err := d.UpdateRow(t, p.KeyColumns, kv, set)
 	if err != nil {
 		return OutResult{}, err
@@ -285,10 +381,7 @@ func (o *Outbound) update(ctx context.Context, item OutboxItem, link *Link, p *P
 		return OutResult{}, fmt.Errorf("Fremddatenbank schreiben: %w", err)
 	}
 	if n == 0 {
-		return o.rowGone(ctx, link, p)
-	}
-	if err := o.noteTruncated(ctx, link, p, fields, vals, cut); err != nil {
-		return OutResult{}, err
+		return o.rowGone(ctx, link, p) // zwischen Lesen und Schreiben verschwunden
 	}
 	if err := o.hook("written"); err != nil {
 		return OutResult{}, err
@@ -297,20 +390,25 @@ func (o *Outbound) update(ctx context.Context, item OutboxItem, link *Link, p *P
 	if err := o.Store.UpdateLinkWritten(ctx, link.ID, vals); err != nil {
 		return OutResult{}, err
 	}
+	// Erst nach dem Speichern: eine Wiederholung lässt das Feld dann über (b)
+	// aus und vermerkt nichts doppelt.
+	if err := o.noteTruncated(ctx, link, p, fields, d, vals, cut); err != nil {
+		return OutResult{}, err
+	}
 	return OutResult{Done: true, Written: len(vals)}, nil
 }
 
-// truncateForColumns kürzt Texte in set auf die Höchstlänge der Fremdspalte (in
-// Zeichen, R29) und liefert je gekürztem PDH-Feld die Länge. Andere Werte, die
-// nicht passen (z. B. Zahl außerhalb des Bereichs), lehnt der Server ab.
+// truncateForColumns kürzt Texte in set nach dem Maß des Dialekts auf die
+// Fremdspalte (R29, R33) und liefert je gekürztem PDH-Feld die Spalte. Andere
+// Werte, die nicht passen (z. B. Zahl außerhalb des Bereichs), lehnt der Server ab.
 //
 // Regel für Echo und Wiederholung: written[f] hält den VOLLEN PDH-Wert (die
-// Auslassregel "aktueller Wert == written" greift weiter); der hereinkommende
-// Lauf wertet die gekürzte Form des aktuellen PDH-Werts als denselben Wert
-// (foldTruncated). Ein written mit dem gekürzten Wert ginge nicht: eine spätere
-// echte Änderung im Fremdsystem wäre dann ein Widerspruch statt einer Übernahme.
-func truncateForColumns(t *TableInfo, maps []FieldMap, vals map[string]string, set map[string]any) map[string]int {
-	cut := map[string]int{}
+// Auslassregel (b) greift weiter); der hereinkommende Lauf und das Lesen vor
+// dem Ändern werten die gekürzte Form (truncatedForm) als denselben Wert. Ein
+// written mit dem gekürzten Wert ginge nicht: eine spätere echte Änderung im
+// Fremdsystem wäre dann ein Widerspruch statt einer Übernahme.
+func truncateForColumns(t *TableInfo, d Dialect, maps []FieldMap, vals map[string]string, set map[string]any) map[string]Column {
+	cut := map[string]Column{}
 	for _, m := range maps {
 		if (m.Direction != DirOut && m.Direction != DirBoth) || m.FixedValue != nil || m.ForeignColumn == "" {
 			continue
@@ -319,20 +417,22 @@ func truncateForColumns(t *TableInfo, maps []FieldMap, vals map[string]string, s
 			continue
 		}
 		s, ok := set[m.ForeignColumn].(string)
-		n := columnMaxLen(t, m.ForeignColumn)
-		if !ok || n <= 0 || utf8.RuneCountInString(s) <= n {
+		c, found := findColumn(t, m.ForeignColumn)
+		if !ok || !found {
 			continue
 		}
-		set[m.ForeignColumn] = truncateRunes(s, n)
-		cut[m.PDHField] = n
+		if short := d.TruncateText(*c, s); short != s {
+			set[m.ForeignColumn] = short
+			cut[m.PDHField] = *c
+		}
 	}
 	return cut
 }
 
-// noteTruncated vermerkt eine Kürzung am Datensatz – einmal je Verknüpfung und
-// Feld und gekürztem Inhalt: nur wenn die gekürzte Form vom zuletzt
-// geschriebenen Wert (written) abweicht.
-func (o *Outbound) noteTruncated(ctx context.Context, link *Link, p *Profile, fields []PDHField, vals map[string]string, cut map[string]int) error {
+// noteTruncated vermerkt eine Kürzung am Datensatz – einmal je Verknüpfung,
+// Feld und gekürztem Inhalt: nur wenn die gekürzte Form von der des zuvor
+// geschriebenen Werts (written) abweicht.
+func (o *Outbound) noteTruncated(ctx context.Context, link *Link, p *Profile, fields []PDHField, d Dialect, vals map[string]string, cut map[string]Column) error {
 	t := o.Targets[p.TargetType]
 	if len(cut) == 0 || t == nil || link.RefID == nil {
 		return nil
@@ -344,12 +444,12 @@ func (o *Outbound) noteTruncated(ctx context.Context, link *Link, p *Profile, fi
 	}
 	sort.Strings(keys)
 	for _, k := range keys {
-		n := cut[k]
-		short := truncateRunes(vals[k], n)
-		if prev, ok := link.WrittenValues[k]; ok && truncateRunes(prev, n) == short {
+		c := cut[k]
+		short := truncatedForm(d, c, vals[k])
+		if prev, ok := link.WrittenValues[k]; ok && truncatedForm(d, c, prev) == short {
 			continue
 		}
-		msg := fmt.Sprintf("Wert für ‚%s‘ wurde beim Schreiben ins Fremdsystem auf %d Zeichen gekürzt", idx[k].Label, n)
+		msg := fmt.Sprintf("Wert für ‚%s‘ wurde beim Schreiben ins Fremdsystem auf %d Zeichen gekürzt", idx[k].Label, c.MaxLen)
 		if err := t.Note(ctx, *link.RefID, actionSync, k, vals[k], short, msg, o.SystemUser); err != nil {
 			return err
 		}
@@ -371,12 +471,14 @@ type commentPayload struct {
 //
 // Höchstens einmal: Ein INSERT ist im Fremdsystem nicht wiederholbar. Deshalb
 // wird VOR dem Befehl dauerhaft gemerkt, dass gesendet wird (OutboxBeginSend).
-// Findet ein späterer Versuch die Marke, ist der Ausgang offen (Absturz oder
-// Abbruch während des Schreibens): der Eintrag wird mit Hinweis erledigt –
-// lieber ein Kommentar sichtbar verloren als doppelt im Fremdsystem. Nur wenn
-// der Server den Befehl eindeutig abgelehnt hat, wird die Marke gelöscht und
-// später erneut versucht.
-func (o *Outbound) comment(ctx context.Context, item OutboxItem, link *Link, p *Profile, f Foreign, d Dialect, allowWrite bool) (OutResult, error) {
+// Ist der Aufrufer schon abgebrochen, wird gar nicht erst gemerkt. Das
+// Einfügen selbst läuft ohne den Abbruch des Aufrufers (eigene Zeitgrenze), ein
+// Halt trifft es also nicht mitten im Senden. Findet ein späterer Versuch die
+// Marke, ist der Ausgang offen: der Eintrag wird mit Hinweis erledigt – lieber
+// ein Kommentar sichtbar verloren als doppelt im Fremdsystem. Nur wenn sicher
+// nichts ausgeführt wurde (Server lehnt ab, Verbindung vor dem Senden
+// unbrauchbar), wird die Marke gelöscht und später erneut versucht.
+func (o *Outbound) comment(ctx context.Context, item OutboxItem, link *Link, p *Profile, f Foreign, d Dialect, kv []string, allowWrite bool) (OutResult, error) {
 	var pl commentPayload
 	if err := json.Unmarshal(item.Payload, &pl); err != nil || pl.Text == nil {
 		return o.badItem(ctx, link, p, "Kommentartext fehlt")
@@ -393,10 +495,6 @@ func (o *Outbound) comment(ctx context.Context, item OutboxItem, link *Link, p *
 			return OutResult{}, err
 		}
 		return done(noteOutCompositeKey)
-	}
-	kv, err := DecodeKey(link.ForeignKey)
-	if err != nil || len(kv) != 1 {
-		return done(LinkErrBadKey)
 	}
 	if !allowWrite {
 		return OutResult{}, ErrWriteNotAllowed
@@ -427,7 +525,7 @@ func (o *Outbound) comment(ctx context.Context, item OutboxItem, link *Link, p *
 	}
 	values := map[string]any{
 		ct.FKColumn:   kv[0],
-		ct.TextColumn: truncateRunes(*pl.Text, columnMaxLen(child, ct.TextColumn)),
+		ct.TextColumn: truncateFor(d, child, ct.TextColumn, *pl.Text),
 	}
 	if ct.AuthorColumn != "" {
 		name := ""
@@ -437,7 +535,7 @@ func (o *Outbound) comment(ctx context.Context, item OutboxItem, link *Link, p *
 		if name == "" {
 			name = "PDH"
 		}
-		values[ct.AuthorColumn] = truncateRunes(name, columnMaxLen(child, ct.AuthorColumn))
+		values[ct.AuthorColumn] = truncateFor(d, child, ct.AuthorColumn, name)
 	}
 	if ct.TimeColumn != "" {
 		at := o.now()
@@ -452,6 +550,9 @@ func (o *Outbound) comment(ctx context.Context, item OutboxItem, link *Link, p *
 	if err != nil {
 		return OutResult{}, err
 	}
+	if err := ctx.Err(); err != nil {
+		return OutResult{}, err // abgebrochen: nichts gemerkt, nichts gesendet
+	}
 	already, err := o.Store.OutboxBeginSend(ctx, item.ID)
 	if err != nil {
 		return OutResult{}, err
@@ -462,13 +563,15 @@ func (o *Outbound) comment(ctx context.Context, item OutboxItem, link *Link, p *
 		}
 		return done(noteOutMaybeLost)
 	}
-	n, err := f.Exec(ctx, st)
+	ectx, cancel := context.WithTimeout(context.WithoutCancel(ctx), commentInsertTimeout)
+	n, err := f.Exec(ectx, st)
+	cancel()
 	if err == nil && n == 0 {
 		err = errors.New("Kommentar wurde nicht eingefügt")
 	}
 	if err != nil {
-		if !uncertainExec(ctx, err) {
-			// Eindeutig abgelehnt: nichts eingefügt, später erneut versuchen.
+		if !uncertainExec(err) {
+			// Sicher nicht ausgeführt: Marke löschen, später erneut versuchen.
 			if cerr := o.Store.OutboxClearSend(context.WithoutCancel(ctx), item.ID); cerr != nil {
 				return OutResult{}, fmt.Errorf("Fremddatenbank schreiben: %w (Marke nicht gelöscht: %v)", err, cerr)
 			}
@@ -488,20 +591,25 @@ func (o *Outbound) now() time.Time {
 	return time.Now()
 }
 
-// columnMaxLen: Höchstlänge der Spalte in Zeichen (0 = unbegrenzt/unbekannt).
-func columnMaxLen(t *TableInfo, col string) int {
-	if c, ok := findColumn(t, col); ok && c.MaxLen > 0 {
-		return c.MaxLen
+// truncateFor kürzt s nach dem Maß des Dialekts auf die Spalte col von t.
+func truncateFor(d Dialect, t *TableInfo, col, s string) string {
+	if c, ok := findColumn(t, col); ok {
+		return d.TruncateText(*c, s)
 	}
-	return 0
+	return s
 }
 
 // uncertainExec: Ist nach diesem Fehler offen, ob der Befehl ausgeführt wurde?
-// Abbruch, Zeitgrenze und abgerissene Verbindung: ja (der Server kann den
-// Befehl schon ausgeführt haben). Sonst hat der Server ihn abgelehnt.
-func uncertainExec(ctx context.Context, err error) bool {
-	if ctx.Err() != nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) ||
-		errors.Is(err, driver.ErrBadConn) || errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+// driver.ErrBadConn liefert database/sql nur, wenn der Befehl nicht gesendet
+// werden konnte: sicher nicht ausgeführt. Zeitgrenze, Abbruch und eine
+// abgerissene Verbindung (EOF, Netzfehler): offen. Sonst hat der Server den
+// Befehl abgelehnt (sicher nicht ausgeführt).
+func uncertainExec(err error) bool {
+	if errors.Is(err, driver.ErrBadConn) {
+		return false
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) ||
+		errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
 		return true
 	}
 	var ne net.Error

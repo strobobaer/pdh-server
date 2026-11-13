@@ -146,6 +146,9 @@ type Dialect interface {
 	// datetimeoffset, time, Text) → nie umgerechnet und nicht als
 	// Anlagedatum-Spalte erlaubt.
 	TimeColumn(c Column) (isTime, dateOnly bool)
+	// TruncateText kürzt s so, dass es in die Textspalte c passt (Maß der
+	// Datenbankart); ohne Höchstlänge oder bei Nicht-Textspalten unverändert.
+	TruncateText(c Column, s string) string
 }
 
 // DialectFor liefert den Dialekt zur Datenbankart.

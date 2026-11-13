@@ -90,7 +90,9 @@ CREATE TABLE IF NOT EXISTS sync_outbox (
     -- Kommentar: gesetzt unmittelbar VOR dem Einfügen ins Fremdsystem. Steht der
     -- Wert bei einem neuen Versuch noch, wurde vielleicht schon eingefügt: der
     -- Eintrag wird mit Hinweis erledigt statt doppelt einzufügen (höchstens einmal).
-    sending_at  TIMESTAMPTZ
+    sending_at  TIMESTAMPTZ,
+    -- Gesetzt, sobald ein hängender Eintrag einmal am Datensatz gemeldet wurde.
+    stuck_reported_at TIMESTAMPTZ
 );
 CREATE INDEX IF NOT EXISTS idx_sync_outbox_open ON sync_outbox (link_id, id) WHERE done_at IS NULL;
 

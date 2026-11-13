@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"pdh/internal/modules/tickets"
 )
@@ -236,12 +237,17 @@ func TestOutboundCrashAfterWriteRewrites(t *testing.T) {
 	}
 	must(t, f.s.OutboxRetryNow(context.Background(), it[0].ID))
 	f.processAll(true)
+	// R32: Die Wiederholung liest die Fremdzeile, findet den Wert schon dort und
+	// ist ohne zweiten Befehl erledigt.
 	ups := f.updates()
-	if len(ups) != 2 || ups[1].set["Titel"] != f.title("Neu") || len(f.openItems()) != 0 {
+	if len(ups) != 1 || len(f.openItems()) != 0 {
 		t.Fatalf("Wiederholung: %+v, offen %d", ups, len(f.openItems()))
 	}
-	if w := f.link(k(1)).WrittenValues["title"]; w != f.title("Neu") {
-		t.Fatalf("written[title] = %q", w)
+	// Der nächste Lauf herein ändert nichts am PDH (Fremdwert = PDH-Wert).
+	f.run(RunOptions{})
+	_, title, _, _, _ := f.rec(k(1))
+	if title != f.title("Neu") || len(f.history(id, "sync")) != 0 || f.outbox() != 1 {
+		t.Fatalf("Titel %q, Verlauf %+v, Warteliste %d", title, f.history(id, "sync"), f.outbox())
 	}
 }
 
@@ -318,14 +324,20 @@ func TestOutboundOnlyMappedOutFields(t *testing.T) {
 	}
 }
 
-func TestOutboundSkipsUnchangedAgainstSeen(t *testing.T) {
+// R32: Ausgelassen wird, was das Fremdsystem (gelesen) schon hat – nicht mehr
+// über den gesehenen Wert.
+func TestOutboundSkipsWhenForeignHasValue(t *testing.T) {
 	f := newOutFix(t, fixOpt{})
 	id := f.synced(1, "Alt", "hoch", "offen")
 	f.userUpdate(id, "title = $2", f.title("Zwischen"))
 	f.userUpdate(id, "title = $2", f.title("Alt")) // zurück: Fremdsystem hat den Wert schon
+	ones := f.ff.oneCount()
 	f.processAll(true)
 	if n := len(f.ff.execStmts()); n != 0 {
 		t.Fatalf("%d Befehle, erwartet keiner", n)
+	}
+	if f.ff.oneCount() == ones {
+		t.Fatal("Fremdzeile nicht gelesen")
 	}
 	if n := len(f.openItems()); n != 0 {
 		t.Fatalf("%d offene Einträge", n)
@@ -523,8 +535,8 @@ func TestOutboundRowGone(t *testing.T) {
 	if !res.Done || res.Written != 0 || res.Note != ErrRowGone.Error() {
 		t.Fatalf("Ergebnis %+v", res)
 	}
-	stmts := f.ff.execStmts()
-	if len(stmts) != 1 || stmts[0].SQL != "update" {
+	// R32: das Lesen vor dem Ändern entdeckt die Lücke – kein Schreibbefehl.
+	if stmts := f.ff.execStmts(); len(stmts) != 0 {
 		t.Fatalf("Befehle %+v", stmts)
 	}
 	if f.ff.get(1) != nil || len(f.ff.rows) != 0 {
@@ -551,8 +563,8 @@ func TestOutboundRowGoneLaterItemsSkip(t *testing.T) {
 	f.enqueue(l.ID, KindComment, map[string]any{"text": "Hallo", "user_id": nil, "created_at": time.Now()})
 	f.ff.del(1)
 	f.processAll(true)
-	if n := len(f.ff.execStmts()); n != 1 {
-		t.Fatalf("%d Befehle, erwartet genau einen (der die Lücke entdeckt)", n)
+	if n := len(f.ff.execStmts()); n != 0 {
+		t.Fatalf("%d Befehle, erwartet keinen (das Lesen entdeckt die Lücke)", n)
 	}
 	if n := len(f.openItems()); n != 0 {
 		t.Fatalf("%d offene Einträge", n)
@@ -1190,7 +1202,10 @@ func TestOutboundAgainstLab(t *testing.T) {
 	of := &outFix{inFix: &inFix{t: t, sf: sf, s: sf.s, p: p, maps: maps, d: d, target: RefTicket,
 		tag: fmt.Sprintf("%d", time.Now().UnixNano()%1_000_000_000)}}
 	user := of.testUser()
-	newTitle := "Labortest Hinaus " + of.tag
+	// Zu lang für nvarchar(200), ein Emoji (2 UTF-16-Einheiten) an der Schnittstelle (R33).
+	prefix := "Labortest Hinaus " + of.tag + " "
+	prefix += strings.Repeat("ä", 199-utf8.RuneCountInString(prefix))
+	newTitle := prefix + "😀zz"
 	_, err = sf.pool.Exec(ctx, `UPDATE tickets SET title = $2 WHERE id = $1`, *l.RefID, newTitle)
 	must(t, err)
 	at := time.Date(2026, 11, 13, 8, 15, 0, 0, time.UTC)
@@ -1233,7 +1248,7 @@ func TestOutboundAgainstLab(t *testing.T) {
 	must(t, tx.QueryRowContext(ctx, `SELECT TOP (1) Text, Verfasser, Zeit FROM dbo.MeldungKommentare
 		WHERE MeldungNr = @p1 ORDER BY Id DESC`, nr).Scan(&ktext, &kverf, &kzeit))
 	t.Logf("im Labor (Transaktion): Titel %q, Meldungen %d, Kommentare %d, neuer Kommentar %q von %q um %v", title, m, k, ktext, kverf, kzeit)
-	if title != newTitle || m != nMeld || k != nKomm+1 || ktext != "Kommentar aus PDH "+of.tag || kverf != "Erika Muster" ||
+	if title != prefix || m != nMeld || k != nKomm+1 || ktext != "Kommentar aus PDH "+of.tag || kverf != "Erika Muster" ||
 		!kzeit.Equal(at) {
 		t.Fatalf("Labor: Titel %q, Meldungen %d/%d, Kommentare %d/%d, %q %q %v", title, m, nMeld, k, nKomm, ktext, kverf, kzeit)
 	}

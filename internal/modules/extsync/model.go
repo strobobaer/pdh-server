@@ -61,6 +61,10 @@ const (
 // ErrNotFound meldet, dass ein Datensatz nicht existiert.
 var ErrNotFound = errors.New("abgleich: nicht gefunden")
 
+// ErrSourceLocked: Verbindung, Schema, Tabelle und Schlüsselspalten eines
+// Profils sind fest, sobald es eine Verknüpfung gibt (R31).
+var ErrSourceLocked = errors.New("Quelle kann nicht mehr geändert werden, weil bereits Meldungen verknüpft sind – bitte ein neues Profil anlegen")
+
 // Profile ordnet eine Fremdtabelle einem Ticket- oder Störmeldungsbestand zu.
 type Profile struct {
 	ID, Name, ConnectionID string

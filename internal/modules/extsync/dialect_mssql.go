@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 )
 
 // mssqlDialect erzeugt T-SQL für Microsoft SQL Server (Treiber go-mssqldb,
@@ -368,6 +369,55 @@ func tsCast(colType string) (string, bool) {
 		return "date", true
 	}
 	return "", false
+}
+
+// TruncateText kürzt nach dem Maß von SQL Server (R33): nchar/nvarchar zählen
+// UTF-16-Einheiten (ein Emoji = 2), char/varchar Zeichen. Letzteres stimmt für
+// die üblichen Einzelbyte-Kollationen; bei UTF-8-Kollationen (_UTF8) zählt der
+// Server Bytes, dann kann ein gekürzter Wert mit Umlauten noch zu lang sein und
+// wird abgelehnt. Nie mitten in einem Ersatzpaar; endet der Platz innerhalb
+// eines Zeichens mit kombinierenden Zeichen (z. B. e + Akut), fällt das ganze
+// Zeichen weg. Ohne Höchstlänge und bei Nicht-Textspalten unverändert.
+func (*mssqlDialect) TruncateText(c Column, s string) string {
+	if c.MaxLen <= 0 {
+		return s
+	}
+	switch strings.ToLower(c.Type) {
+	case "nchar", "nvarchar":
+		return cutText(s, c.MaxLen, func(r rune) int {
+			if r >= 0x10000 {
+				return 2
+			}
+			return 1
+		})
+	case "char", "varchar":
+		return cutText(s, c.MaxLen, func(rune) int { return 1 })
+	}
+	return s
+}
+
+// cutText behält höchstens max Einheiten (size je Zeichen).
+func cutText(s string, max int, size func(rune) int) string {
+	used := 0
+	for i, r := range s {
+		if used+size(r) <= max {
+			used += size(r)
+			continue
+		}
+		cut := i
+		if unicode.In(r, unicode.Mn, unicode.Me) {
+			// Grundzeichen samt schon behaltener Zeichen der Folge mit entfernen.
+			for cut > 0 {
+				prev, n := utf8.DecodeLastRuneInString(s[:cut])
+				cut -= n
+				if !unicode.In(prev, unicode.Mn, unicode.Me) {
+					break
+				}
+			}
+		}
+		return s[:cut]
+	}
+	return s
 }
 
 // TimeColumn: Zeitspalten sind genau die Typen, die auch als Zeitstempel-Spalte

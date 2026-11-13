@@ -120,7 +120,22 @@ func (s *Store) GetProfile(ctx context.Context, id string) (*Profile, error) {
 	return p, nil
 }
 
+func sameStrings(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
 // SaveProfile legt ein Profil an (p.ID leer, die ID wird gesetzt) oder ändert es.
+// Die Quelle (Verbindung, Schema, Tabelle, Schlüsselspalten) ist fest, sobald
+// das Profil eine Verknüpfung hat (R31): eine Änderung daran wird ganz
+// abgelehnt (ErrSourceLocked), sonst träfen alte Schlüssel fremde Zeilen.
 // Ändert sich Verbindung, Ziel, Abteilung, Quelle, Schlüssel, Änderungsspalte,
 // Anlagedatum-Spalte (sie entscheidet, was still angelegt wird), Zeitzone,
 // Filter, Zeitfenster, Vorgaben oder Kommentartabelle, wird das Profil wieder
@@ -178,9 +193,23 @@ func (s *Store) SaveProfile(ctx context.Context, p *Profile, userID string) erro
 		return fmt.Errorf("abgleich: profil speichern: %w", err)
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
-	var oldZone string
-	if err := tx.QueryRow(ctx, `SELECT time_zone FROM sync_profiles WHERE id = $1 FOR UPDATE`, p.ID).Scan(&oldZone); err != nil {
+	var oldZone, oldConn, oldSchema, oldTable string
+	var oldKeys []string
+	// FOR UPDATE wartet auf Transaktionen, die gerade eine Verknüpfung des Profils
+	// anlegen (deren Fremdschlüsselprüfung hält FOR KEY SHARE), und hält neue auf,
+	// bis hier entschieden ist: Prüfen und Ändern sind damit eins (R31).
+	if err := tx.QueryRow(ctx, `SELECT time_zone, connection_id::text, source_schema, source_table, key_columns
+		FROM sync_profiles WHERE id = $1 FOR UPDATE`, p.ID).Scan(&oldZone, &oldConn, &oldSchema, &oldTable, &oldKeys); err != nil {
 		return notFound(err, "profil speichern")
+	}
+	if oldConn != p.ConnectionID || oldSchema != p.SourceSchema || oldTable != p.SourceTable || !sameStrings(oldKeys, keys) {
+		var linked bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM sync_links WHERE profile_id = $1)`, p.ID).Scan(&linked); err != nil {
+			return fmt.Errorf("abgleich: profil speichern: %w", err)
+		}
+		if linked {
+			return ErrSourceLocked
+		}
 	}
 	tag, err := tx.Exec(ctx, `UPDATE sync_profiles SET
 			state         = CASE WHEN `+changed+` THEN 'entwurf' ELSE state END,
@@ -788,6 +817,34 @@ func (s *Store) OutboxBeginSend(ctx context.Context, id int64) (already bool, er
 		return false, fmt.Errorf("abgleich: senden merken: %w", err)
 	}
 	return false, nil
+}
+
+// MarkOutboxStuck merkt, dass ein hängender Eintrag gemeldet ist, und schreibt
+// note (falls nicht nil) in den Verlauf – in EINER Transaktion und nur beim
+// ersten Mal (stuck_reported_at). first sagt, ob das geschah.
+func (s *Store) MarkOutboxStuck(ctx context.Context, id int64, note *HistoryNote) (first bool, err error) {
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return false, fmt.Errorf("abgleich: hängenden eintrag melden: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	tag, err := tx.Exec(ctx, `UPDATE sync_outbox SET stuck_reported_at = now() WHERE id = $1 AND stuck_reported_at IS NULL`, id)
+	if err != nil {
+		return false, fmt.Errorf("abgleich: hängenden eintrag melden: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return false, nil
+	}
+	if note != nil {
+		if _, err := tx.Exec(ctx, noteSQL, note.RefType, note.RefID, note.Action, nilIfEmpty(note.Field),
+			note.OldValue, note.NewValue, note.Message, nilIfEmpty(note.CreatedBy)); err != nil {
+			return false, fmt.Errorf("abgleich: verlauf schreiben: %w", err)
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return false, fmt.Errorf("abgleich: hängenden eintrag melden: %w", err)
+	}
+	return true, nil
 }
 
 // OutboxClearSend löscht die Marke von OutboxBeginSend, wenn sicher ist, dass
