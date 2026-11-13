@@ -200,10 +200,11 @@
   {{if .CanEditSettings}}
   <form method="post" action="/admin/server-config/ha/access" class="vp-form">
     <div><label class="form-label">Mitwandernde Adresse (z. B. 10.77.1.50/24)</label><input class="form-input" name="vip" value="{{.Status.Access.VIP}}" placeholder="10.77.1.50/24"></div>
-    <div><label class="form-label">IPv6-Ende (Zusatz)</label><input class="form-input" name="vip6_suffix" value="{{.Status.Access.VIP6Suffix}}" placeholder="leer = aus, z. B. 15" autocomplete="off"><p class="vp-hint">Der aktive Server bekommt zusätzlich die IPv6-Adresse aus dem Präfix des Netzes mit diesem Ende. Ohne IPv6 im Netz passiert nichts.</p></div>
+    <div><label class="form-label">IPv6-Ende (Zusatz)</label><input class="form-input" name="vip6_suffix" value="{{.Status.Access.VIP6Suffix}}" placeholder="leer = aus, z. B. 15" autocomplete="off"></div>
     <div><label class="form-label"><input type="hidden" name="vip_on" value="0"><input type="checkbox" name="vip_on" value="1"{{if .Status.Access.VIPOn}} checked{{end}}> Adresse mitwandern lassen</label></div>
     <div><button class="btn btn-small" type="submit"><i class="ti ti-device-floppy"></i> Speichern</button></div>
   </form>
+  <p class="vp-hint">IPv6-Ende: Der aktive Server bekommt zusätzlich die IPv6-Adresse aus dem Präfix des Netzes mit diesem Ende. Ohne IPv6 im Netz passiert nichts.</p>
   <form method="post" action="/admin/server-config/ha/vip-test" class="vp-form" hx-post="/admin/server-config/ha/vip-test" hx-target="#ha-vip-result" hx-indicator="#ha-vip-wait">
     <div><label class="form-label">Testadresse (leer = gespeicherte Adresse)</label><input class="form-input" name="addr" placeholder="{{if .Status.Access.VIP}}{{.Status.Access.VIP}}{{else}}10.77.1.50/24{{end}}"></div>
     <div><button class="btn btn-small" type="submit"><i class="ti ti-plug-connected"></i> Testen</button> <span id="ha-vip-wait" class="htmx-indicator vp-meta">Test läuft, das dauert bis zu 45 s …</span></div>
