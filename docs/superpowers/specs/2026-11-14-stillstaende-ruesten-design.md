@@ -18,6 +18,13 @@ sie später in **Verfügbarkeitsanalysen** getrennt von Störungen eingehen.
 - Die **Höchstdauer** wird **je Anlage im Stamm** festgelegt. Wird sie
   überschritten, erzeugt das PDH eine **Störmeldung an die Instandhaltung**.
 
+**Als nächstes Paket (Vorschlag des Entwurfs, vom Anwender angefragt):** Das
+PDH ermittelt den **Zustand einer Anlage selbst aus den MQTT-Werten** über je
+Anlage einstellbare Parameter und Schwellwerte (z. B. Signal „läuft“,
+Stückzahl steigt, Strom über Schwelle, Entprellung). Heute speichert das PDH
+nur den letzten MQTT-Wert; Regeln, laufende Auswertung und Zustandsverlauf
+sind neu. Eigener Entwurf nach Abnahme dieses Pakets.
+
 **Zurückgestellt (eigene spätere Vorhaben):** Übernahme aus dem
 Fremdsystem, Auswertung der Verfügbarkeit, die Analyse aus MQTT-Zuständen,
 Produktionsplan, Schicht- und Pausenzeiten mit Toleranzen und Karenzzeiten
@@ -33,9 +40,16 @@ aufsetzen.
    freiwillig.
 3. Im PDH Eingabe **wie Tickets**; Rüstzeit als **Vorgang**, vorhandene
    Vorgänge dafür anpassen.
-4. **Höchstdauer je Anlage im Stamm**; Überschreitung → **Störmeldung an die
-   Instandhaltung**.
-5. Das Wie überlässt der Anwender („so, wie ein Analyst es bauen würde“).
+4. **Höchstdauer je Anlage im Stamm**, begrenzt durch eine **maximale
+   Rüstzeit im globalen Stamm** (z. B. 2 h); Überschreitung um eine
+   **Karenzzeit** (z. B. 15 min) → **Störmeldung**; die Rüstzeit gilt bis zur
+   Erzeugung der Störmeldung, Status danach **„Störung durch Rüsten“**; ab da
+   gilt die Richtlinie für Störungen.
+5. **Verantwortlich** für eine Rüstzeit: primär der Anlagenverantwortliche,
+   sekundär der Schichtführer.
+6. Status der Anlage während des Rüstens **„Rüsten“**, nach der Störmeldung
+   **„Störung durch Rüsten“**.
+7. Das Wie überlässt der Anwender („so, wie ein Analyst es bauen würde“).
    Festlegungen ohne Vermerk sind Entscheidungen des Entwurfs.
 
 ## 3. Ziele, Nicht-Ziele, Fehlschläge
@@ -112,17 +126,29 @@ Easy-Modus übersetzt in der Sprache des Handys.
 Begründung (Entwurf): Der Grund steht fest an der Taste, damit eine spätere
 Auswertung sauber nach Grund trennt, egal wie die Tasten heißen.
 
-### 6.3 Höchstdauer je Anlage (Stamm)
+### 6.3 Höchstdauer und Karenzzeit (Stamm)
 
-- Neues Feld an der Anlage: **„Höchstdauer Rüsten (Minuten)“**, im Stamm der
-  Anlage bearbeitbar. **Vererbung** wie bei den Rüsttasten: Ist es an der
-  Anlage leer, gilt der Wert der nächsten übergeordneten Anlage, an der er
-  steht. Die Seite der Anlage zeigt den wirksamen Wert und woher er kommt
-  („über Linie 2“).
-- Ist an der Anlage und darüber **nichts** eingetragen, wird nicht überwacht
-  (Entscheidung des Entwurfs: kein erfundener Vorgabewert). Die Rüstzeiten-
-  Liste hebt laufende Rüstzeiten über 24 Stunden trotzdem hervor.
+**Globaler Stamm** (Vorgabe des Anwenders, 14.11.2026), z. B. in den
+Core-Einstellungen bei den übrigen Standards:
+- **Maximale Rüstzeit** (Minuten, Beispiel 120): obere Grenze für alle
+  Anlagen. Keine Anlage darf einen höheren Wert haben.
+- **Karenzzeit** (Minuten, Beispiel 15): so lange darf die Höchstdauer
+  überschritten werden, bevor eine Störmeldung entsteht.
+
+**Je Anlage** (Stamm der Anlage):
+- Feld **„Höchstdauer Rüsten (Minuten)“**. **Vererbung** wie bei den
+  Rüsttasten: leer an der Anlage → Wert der nächsten übergeordneten Anlage,
+  an der einer steht; ist auch dort nichts eingetragen, gilt die **maximale
+  Rüstzeit** aus dem globalen Stamm. So ist **jede** Anlage überwacht.
+- Ein Wert über der maximalen Rüstzeit wird beim Speichern abgelehnt. Wird
+  die maximale Rüstzeit später gesenkt, gilt für Anlagen mit höherem Wert die
+  maximale Rüstzeit (der kleinere Wert gewinnt), und die Seite der Anlage
+  weist darauf hin.
+- Die Seite der Anlage zeigt den wirksamen Wert und woher er kommt („über
+  Linie 2“, „globaler Stamm“).
 - Gilt für alle Rüsttasten der Anlage gleich (Vorgabe „je Anlage“).
+- Die Karenzzeit gilt global für alle Anlagen (Entscheidung des Entwurfs; je
+  Anlage ist später ergänzbar).
 
 ### 6.4 Rüstzeit (Vorgang)
 
@@ -137,9 +163,10 @@ Eigene Tabelle. Felder:
 | Grund | Pflicht (daraus die Gruppe) |
 | Rüsttaste | mit welcher gestartet; Name wird mitgespeichert |
 | Herkunft | `easy` (an der Anlage), `manual` (im PDH); später `foreign`, `analysis` |
-| Status | `running` „Läuft“, `overrun` „Überschritten“, `done` „Beendet“ |
-| Höchstdauer | wirksamer Wert beim Start (fest am Vorgang, damit eine spätere Änderung im Stamm laufende nicht verändert) |
-| Störmeldung | Verweis auf die erzeugte Störmeldung bei Überschreitung |
+| Status | `running` „Rüsten“, `done` „Beendet“, `fault` „Störung durch Rüsten“ (in eine Störmeldung übergegangen, 6.5) |
+| Höchstdauer, Karenzzeit | wirksame Werte beim Start (fest am Vorgang, damit eine spätere Änderung im Stamm laufende nicht verändert) |
+| Störmeldung | Verweis auf die erzeugte Störmeldung |
+| Verantwortlich | **primär der Anlagenverantwortliche** (verantwortliche Person der Anlage, vererbt über die Anlagenhierarchie wie heute), **sekundär der Schichtführer**, der beim Start laut veröffentlichtem Schichtplan Schicht hat (Person mit Kennzeichen „Schichtführer“). Fehlt einer, bleibt das Feld leer. (Vorgabe des Anwenders) |
 | Notiz | freiwillig, bis 1000 Zeichen |
 | angelegt / geändert von, Zeitpunkte | wie bei den übrigen Vorgängen; „Service“ im Easy-Modus |
 | archiviert am/von | wie bei den übrigen Vorgängen |
@@ -148,38 +175,40 @@ Eigene Tabelle. Felder:
 „RZ-0001 · Formatwechsel · Abfüllanlage 3“.
 
 Regeln:
-- **Höchstens eine laufende Rüstzeit je Anlage** (Status `running` oder
-  `overrun`; die Datenbank erzwingt es). Eine andere Rüsttaste beendet die
+- **Höchstens eine laufende Rüstzeit je Anlage** (Status `running`; die
+  Datenbank erzwingt es). Eine andere Rüsttaste beendet die
   laufende in diesem Moment und beginnt die neue im selben Moment.
 - Ende nach Beginn; Beginn nicht in der Zukunft (5 Minuten Spielraum).
 - Gilt nur für **diese Anlage** (Entscheidung des Entwurfs).
 
-### 6.5 Überschreitung → Störmeldung
+### 6.5 Überschreitung → Störmeldung (Vorgaben des Anwenders)
 
 - Ein Hintergrunddienst (nur am aktiven Server, ruht in der Wartungssperre,
-  etwa jede Minute) prüft laufende Rüstzeiten mit Höchstdauer. Ist sie
-  überschritten:
-  - Status wird **`overrun`** „Überschritten“; die Rüstzeit **läuft weiter**,
-    bis jemand „Fertig“ drückt oder sie im PDH beendet.
-  - Es entsteht **genau eine Störmeldung** an derselben Anlage – über den
-    normalen Dienst für Störungen, also mit den üblichen Benachrichtigungen
-    an die Instandhaltung:
-    - Titel „Rüstzeit überschritten: Formatwechsel“,
-    - Beschreibung: Beginn, Höchstdauer, wer gestartet hat, Verweis auf die
-      Rüstzeit,
-    - Schweregrad **hoch**, **„Anlage steht“** gesetzt (Push-Alarm an die
-      Bereitschaft wie bei anderen Stillständen),
-    - Ersteller „PDH-System“, Verlauf „aus Rüstzeit RZ-0001 (Höchstdauer
-      60 min überschritten)“.
+  etwa jede Minute) prüft laufende Rüstzeiten.
+- Ist die **Höchstdauer überschritten**, aber die Karenzzeit noch nicht
+  vorbei: Die Rüstzeit läuft weiter; Liste und Easy-Modus zeigen „Höchstdauer
+  überschritten“. Noch keine Störmeldung, keine Benachrichtigung.
+- Ist **Höchstdauer + Karenzzeit** überschritten (Beispiel 60 + 15 min), in
+  einer Transaktion:
+  - Die Rüstzeit **endet in diesem Moment** – sie gilt **bis zur Erzeugung
+    der Störmeldung** – und bekommt den Status **„Störung durch Rüsten“**.
+  - Es entsteht **genau eine Störmeldung** an derselben Anlage über den
+    normalen Dienst für Störungen. Ab da gilt die **Richtlinie für
+    Störungen** (Benachrichtigung, Zuweisung über die Broker, Abschluss wie
+    jede Störung):
+    - Titel „Störung durch Rüsten: Formatwechsel“,
+    - Beschreibung: Beginn, Höchstdauer, Karenzzeit, wer gestartet hat,
+      Verweis auf die Rüstzeit,
+    - Schweregrad **hoch**, **„Anlage steht“** gesetzt,
+    - Ersteller „PDH-System“, Kategorie „Störung durch Rüsten“ (wird mit der
+      Migration angelegt, damit Störungen aus Rüsten auswertbar sind).
   - Rüstzeit und Störmeldung sind gegenseitig verknüpft und im Verlauf
     vermerkt.
-- „Fertig“ nach der Überschreitung beendet die Rüstzeit (`done`); die
-  Störmeldung bleibt und wird von der Instandhaltung wie jede andere
-  bearbeitet.
-- Entscheidung des Entwurfs: Die Zeit nach der Höchstdauer bleibt Teil der
-  Rüstzeit; dass sie zu lang war, zeigt der Status und die verknüpfte
-  Störmeldung. Die spätere Analyse kann den Teil über der Höchstdauer gesondert
-  werten.
+- Stillstand danach ist **Störungszeit**, nicht mehr Rüstzeit. Die Anlage
+  zeigt **„Störung durch Rüsten“**, bis die Störmeldung erledigt ist.
+- Eine Rüstzeit im Status „Störung durch Rüsten“ lässt sich nicht mehr
+  fortsetzen; ein neuer Rüstvorgang an der Anlage ist trotzdem möglich (z. B.
+  nach der Instandsetzung).
 
 ### 6.6 An der Anlage (Easy-Modus und Anlagenseite)
 
@@ -199,9 +228,10 @@ Regeln:
   ```
 
 - **Ein Tipp startet** sofort (Herkunft `easy`, Ersteller „Service“).
-- Läuft eine, steht oben **„Formatwechsel läuft seit 10:42“** mit **„Fertig“**
-  und einem freiwilligen Notizfeld; bei Überschreitung zusätzlich
-  „Höchstdauer überschritten – Instandhaltung ist informiert“.
+- Läuft eine, steht oben **„Rüsten: Formatwechsel seit 10:42“** mit
+  **„Fertig“** und einem freiwilligen Notizfeld; nach der Höchstdauer
+  zusätzlich „Höchstdauer überschritten“. Nach der Störmeldung steht dort
+  **„Störung durch Rüsten – Instandhaltung ist informiert“**, ohne „Fertig“.
 - Missbrauchsschutz (Entscheidung des Entwurfs): eigene Grenze je Anlage,
   nicht je Adresse, unabhängig von den Meldungen – höchstens 30 Rüst-Vorgänge
   in 10 Minuten; doppeltes Antippen derselben Taste innerhalb 10 Sekunden
@@ -215,10 +245,11 @@ Regeln:
 
 **Arbeitsbereich „Rüstzeiten“** (Navigation in der Gruppe der Vorgänge) aus
 derselben Beschreibung wie Tickets (`workKinds`), mit den Reitern:
-- **Vorgänge:** laufende und überschrittene oben, Filter nach Anlage (mit
-  Unteranlagen), Grund, Status, Zeitraum; Spalten Nummer, Anlage, Grund,
-  Taste, Beginn, Ende, Dauer, Status; Summe der Dauer.
-- **Board:** Spalten „Läuft“, „Überschritten“ (Status-Ablauf der Rüstzeit).
+- **Vorgänge:** laufende oben (überschrittene hervorgehoben), Filter nach
+  Anlage (mit Unteranlagen), Grund, Status, Verantwortlich, Zeitraum; Spalten
+  Nummer, Anlage, Grund, Taste, Verantwortlich, Beginn, Ende, Dauer, Status;
+  Summe der Dauer.
+- **Board:** Spalte „Rüsten“ (laufende), überschrittene hervorgehoben.
 - **Regeln:** kurze Regeln zum Rüsten (Fertig drücken, Grund richtig wählen,
   Überschreitung heißt Instandhaltung prüft).
 - **Archiv:** beendete Rüstzeiten.
@@ -250,14 +281,20 @@ Chat, Symbole.
   (Beginn → Zeitpunkt, Ende → abgeschlossen).
 - „Offene Vorgänge an der Anlage“ zeigt die laufende Rüstzeit.
 - Reiter **„Rüsttasten“** (Zuordnung) und Stammfeld **Höchstdauer** (6.3).
-- Die Anlagenüberwachung zeigt ein Kennzeichen „rüstet“, solange eine
-  Rüstzeit läuft (Entscheidung des Entwurfs).
+- **Status der Anlage:** Anlagenseite und Anlagenüberwachung zeigen
+  **„Rüsten“**, solange eine Rüstzeit läuft, und **„Störung durch Rüsten“**,
+  solange die daraus erzeugte Störmeldung offen ist (Vorgabe des Anwenders).
 
 **Dashboard:** Schnellaktion „Rüstzeit erfassen“.
 
-**Bewusst nicht eingebunden** (setzen Zuständige, Priorität oder Fälligkeit
-voraus): „Mir zugewiesen“, Zuweisung über die Broker, Leitstand, Kalender,
-Abschluss-Assistent, Ersatzteile, Push-Annahme, Zeiterfassung, Abgleich.
+**„Mir zugewiesen“:** Laufende Rüstzeiten erscheinen beim
+Anlagenverantwortlichen und beim Schichtführer (Entscheidung des Entwurfs,
+folgt aus der Zuständigkeit); beendete nicht.
+
+**Bewusst nicht eingebunden** (setzen Priorität, Fälligkeit oder Zuweisung
+voraus; nach der Störmeldung gilt ohnehin die Richtlinie für Störungen):
+Zuweisung über die Broker, Leitstand, Kalender, Abschluss-Assistent,
+Ersatzteile, Push-Annahme, Zeiterfassung, Abgleich.
 
 ### 6.8 Rechte
 
@@ -266,7 +303,7 @@ Kategorie „Infrastruktur & Anlagen“.
 | Schlüssel | Erlaubt |
 |---|---|
 | `setup.view` | Rüstzeiten sehen |
-| `setup.edit` | anlegen, bearbeiten, beenden; Gründe und Rüsttasten pflegen und zuordnen |
+| `setup.edit` | anlegen, bearbeiten, beenden; Gründe und Rüsttasten pflegen und zuordnen; maximale Rüstzeit und Karenzzeit im globalen Stamm |
 | `setup.admin` | Bereichsadministrator; löscht als Einziger Rüstzeiten, Gründe und Tasten |
 
 Die Höchstdauer an der Anlage pflegt, wer die Anlage bearbeiten darf
@@ -285,9 +322,11 @@ erzeugt auch nach einem Tausch nur eine Störmeldung (Vermerk am Vorgang).
 
 | Lage | Verhalten |
 |---|---|
-| Höchstdauer überschritten | Status „Überschritten“, genau eine Störmeldung an die Instandhaltung, Rüstzeit läuft weiter |
-| „Fertig“ vergessen, Anlage mit Höchstdauer | wie oben |
-| „Fertig“ vergessen, Anlage ohne Höchstdauer | läuft weiter, in der Liste ab 24 h hervorgehoben |
+| Höchstdauer überschritten, Karenz läuft | Rüstzeit läuft weiter, Hinweis „Höchstdauer überschritten“, keine Störmeldung |
+| Höchstdauer + Karenzzeit überschritten | Rüstzeit endet jetzt mit „Störung durch Rüsten“, genau eine Störmeldung, ab da Richtlinie für Störungen |
+| „Fertig“ vergessen | wie oben – jede Anlage ist über die maximale Rüstzeit überwacht |
+| Anlagenwert über der maximalen Rüstzeit | beim Speichern abgelehnt; nach Senken der maximalen Rüstzeit gilt der kleinere Wert |
+| Kein Schichtführer in Schicht | sekundär verantwortlich bleibt leer |
 | Zwei Tasten kurz nacheinander | nahtloser Wechsel |
 | Gleichzeitige Tipps an derselben Anlage | genau eine Rüstzeit läuft |
 | Rollentausch während einer Überschreitung | keine zweite Störmeldung |
