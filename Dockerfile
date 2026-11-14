@@ -10,8 +10,8 @@ ARG PDH_BUILD_COMMIT=unknown
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.buildCommit=${PDH_BUILD_COMMIT}" -o /out/pdh ./cmd/server \
     && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/update-agent ./cmd/update-agent \
     && mkdir -p /out/clients \
-    && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w -X main.version=$(cat VERSION)" -o /out/clients/pdh-data-client-linux-amd64 ./cmd/pdh-data-client \
-    && CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-s -w -X main.version=$(cat VERSION)" -o /out/clients/pdh-data-client-windows-amd64.exe ./cmd/pdh-data-client
+    && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w -X main.version=$(tr -d '[:space:]' < VERSION)" -o /out/clients/pdh-data-client-linux-amd64 ./cmd/pdh-data-client \
+    && CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-s -w -X main.version=$(tr -d '[:space:]' < VERSION)" -o /out/clients/pdh-data-client-windows-amd64.exe ./cmd/pdh-data-client
 
 FROM ubuntu:24.04 AS app
 

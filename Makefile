@@ -14,8 +14,8 @@ build-update-agent:
 
 build-data-client:
 	mkdir -p bin
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w -X main.version=$(shell cat VERSION)" -o bin/pdh-data-client-linux-amd64 ./cmd/pdh-data-client
-	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-s -w -X main.version=$(shell cat VERSION)" -o bin/pdh-data-client-windows-amd64.exe ./cmd/pdh-data-client
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w -X main.version=$(shell tr -d '[:space:]' < VERSION)" -o bin/pdh-data-client-linux-amd64 ./cmd/pdh-data-client
+	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-s -w -X main.version=$(shell tr -d '[:space:]' < VERSION)" -o bin/pdh-data-client-windows-amd64.exe ./cmd/pdh-data-client
 
 tidy:
 	go mod tidy

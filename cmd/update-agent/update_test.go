@@ -538,6 +538,11 @@ func TestInstallScriptBuildsDataClient(t *testing.T) {
 		}
 	}
 	build := strings.Index(s, "./cmd/pdh-data-client")
+	for _, want := range []string{"WARNUNG: Der Daten-Client", "clients_ok", `|| { clients_ok=0;`} {
+		if !strings.Contains(s, want) {
+			t.Errorf("Fehler beim Client-Bau darf das Update nicht stoppen: %q fehlt", want)
+		}
+	}
 	mv := strings.Index(s, `mv -f "$bin_dir/pdh.neu"`)
 	if build < 0 || mv < 0 || build > mv {
 		t.Errorf("Bau des Daten-Clients (%d) muss vor mv pdh.neu (%d) stehen", build, mv)

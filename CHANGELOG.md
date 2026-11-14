@@ -14,7 +14,7 @@ im Kapitel „Versionen & Updates“ an.
 
 ### Geändert
 
-- Das PDH baut jetzt mit Go 1.27 und aktuellen Bibliotheken.
+- Das PDH baut jetzt mit Go 1.27 und aktuellen Bibliotheken. Beim nächsten Update lädt der Server dafür einmalig die neue Go-Version (Download unter 100 MB, entpackt etwa 250 MB) aus dem Internet nach; ohne Internetzugang bricht das Update ab und die bisherige Version bleibt in Betrieb.
 
 ## [0.80.6] – 2026-11-14
 
