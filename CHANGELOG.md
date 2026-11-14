@@ -10,11 +10,32 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
-## [0.80.7] – 2026-11-14
+## [0.80.8] – 2026-11-14
+
+### Neu
+
+- Datennetz: Mitarbeiter-Rechner (Daten-Clients) verbinden sich über ein privates Netz (Tailscale) mit den Datenbanken der Server, ohne dass dafür ein Port ins Internet geöffnet wird. Server und Rechner finden sich über das Netz von tailscale.com, die Daten selbst laufen direkt zwischen beiden.
+- Neues Programm „Daten-Client“ für Windows und Linux: Es wird auf dem Arbeitsrechner mit einem Befehl eingerichtet und läuft danach im Hintergrund.
+- Neuer Verbindungsweg „Datennetz“: Eine Verbindung kann statt über einen Instanznamen über einen festen Port des Datennetzes laufen.
+- Neue Seite „Datennetz“ mit den Clients, der Freigabe-Zeile für das Tailnet, dem Sperren und Entfernen von Clients und den Downloads des Daten-Clients.
+- Das Handbuch erklärt im Kapitel „Datennetz“ Einschalten, Einrichten eines Clients, Umstellen einer Verbindung und Sperren.
 
 ### Geändert
 
 - Das PDH baut jetzt mit Go 1.27 und aktuellen Bibliotheken. Beim nächsten Update lädt der Server dafür einmalig die neue Go-Version (Download unter 100 MB, entpackt etwa 250 MB) aus dem Internet nach; ohne Internetzugang bricht das Update ab und die bisherige Version bleibt in Betrieb.
+
+### Sicherheit
+
+- Das Datennetz hat eigene Rechte; wer es bisher stillschweigend verwalten durfte (Administratoren), bekommt sie, alle anderen nicht.
+- Der Zugangsschlüssel (Token) eines Clients wird nur einmal angezeigt und nur als Prüfwert (Hash) gespeichert.
+- Über das Datennetz sind nur feste, freigegebene Ports erreichbar, keine beliebigen Ziele.
+- Beim Sperren eines Clients wird seine Verbindung sofort getrennt.
+
+## [0.80.7] – 2026-11-14
+
+### Behoben
+
+- Im Chat lassen sich Nachrichten jetzt auch am Handy (Nachricht antippen) und im Chat-Reiter der rechten Seitenleiste löschen, jeweils mit Rückfrage.
 
 ## [0.80.6] – 2026-11-14
 
