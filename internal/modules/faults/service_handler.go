@@ -111,6 +111,10 @@ func (s *Service) newFault(ctx context.Context, in *CreateFaultInput, userID str
 		CreatedBy:        userID,
 		CostCenterID:     in.CostCenterID,
 	}
+	if in.DueDate != nil {
+		f.DueDate = in.DueDate
+		return f
+	}
 	days := appsettings.GetInt(ctx, s.repo.db, appsettings.KeyDefaultDueDaysFault, appsettings.DefaultDueDaysFallback)
 	due := time.Now().AddDate(0, 0, days)
 	f.DueDate = &due

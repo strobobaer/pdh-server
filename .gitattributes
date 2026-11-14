@@ -1,2 +1,4 @@
 # Shell-Skripte laufen unter Linux und in Containern: immer LF
 *.sh text eol=lf
+# Golden-Dateien der Tests enthalten SQL/HTML mit LF; unter Windows (autocrlf) nicht umwandeln
+internal/web/testdata/** text eol=lf

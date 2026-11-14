@@ -534,6 +534,16 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/infrastructure/easy-texts/{tid}/delete", h.EasyTextDeleteWeb)
 	r.Post("/infrastructure/easy-texts/{tid}/move", h.EasyTextMoveWeb)
 	r.Post("/infrastructure/{id}/easy-texts", h.InfraEasyTextsWeb)
+	// Rüstzeiten: Katalog der Gründe und Rüsttasten, Zuordnung und Höchstdauer (setup_catalog.go)
+	r.Post("/setup/reasons-web", h.SetupReasonsWeb)
+	r.Post("/setup/buttons-web", h.SetupButtonsWeb)
+	r.Post("/setup/buttons/{id}/move-web", h.SetupButtonMoveWeb)
+	r.Post("/setup/buttons/{id}/delete-web", h.SetupButtonDeleteWeb)
+	r.Post("/infrastructure/{id}/setup/start", h.InfraSetupStartWeb) // Rüsten an der Anlage: Recht „Anlage sehen“
+	r.Post("/infrastructure/{id}/setup/finish", h.InfraSetupFinishWeb)
+	r.Post("/infrastructure/{id}/setup-buttons-web", h.InfraSetupButtonsWeb)
+	r.Post("/infrastructure/{id}/setup-max-web", h.InfraSetupMaxWeb)
+	r.Post("/core/settings/setup-web", h.SetupSettingsWeb)
 	// Trockenkammer: Bauteile je Gruppe (chamber.go)
 	r.Post("/infrastructure/{id}/components/{kind}", h.ChamberSaveWeb)
 	r.Post("/infrastructure/{id}/components/{kind}/count", h.ChamberCountWeb)
@@ -551,6 +561,8 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/a/{id}", h.AssetInfoPage)
 	r.Get("/e/{id}", h.EasyPage) // Easy-Mode: öffentlich (authMiddleware)
 	r.Post("/e/{id}/report", h.EasyReportWeb)
+	r.Post("/e/{id}/setup/start", h.EasySetupStartWeb)   // Rüsten per Easy-Modus (setup_easy.go)
+	r.Post("/e/{id}/setup/finish", h.EasySetupFinishWeb) // öffentlich wie die Meldungen
 	r.Post("/records/{refType}/{id}/it-asset", h.RecordITAssetWeb)
 	r.Post("/it/{id}/edit-web", h.ITEditWeb)
 	r.Post("/it/{id}/status-web", h.ITStatusWeb) // FIX: war PUT, wird von Cloudflare/Nginx blockiert
@@ -800,6 +812,14 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/kvp/{id}/actions/{aid}/delete", h.KVPActionDeleteWeb)
 	r.Post("/kvp/{id}/comment", h.KVPCommentWeb)
 	r.Post("/kvp/{id}/delete", h.KVPDeleteWeb)
+	// Rüstzeiten (setup_pages.go, setup_actions.go): Arbeitsbereich, Anlegen, Detailseite
+	r.Get("/setup", h.SetupPage)
+	r.Post("/setup", h.SetupCreateWeb)
+	r.Get("/setup/new", h.SetupNewPage)
+	r.Get("/setup/{id}", h.SetupDetailPage)
+	r.Post("/setup/{id}/edit-web", h.SetupEditWeb)
+	r.Post("/setup/{id}/finish-web", h.SetupFinishWeb)
+	r.Post("/setup/{id}/delete-web", h.SetupDeleteWeb)
 	r.Post("/admin/departments", h.DepartmentSaveWeb)
 	r.Post("/admin/departments/{id}/delete", h.DepartmentDeleteWeb)
 	r.Post("/admin/groups", h.GroupSaveWeb)
@@ -865,6 +885,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/core/settings/pki/issue", h.PKIIssueWeb)
 	r.Post("/core/settings/pki/self-service", h.PKISelfServiceWeb)
 	r.Post("/account/certificates", h.AccountCertificateWeb)
+	r.Get("/account/certificates/enforcement", h.PKIEnforcementWeb) // Anzeige Zertifikatspflicht (nur lesend)
 	r.Get("/certificates/{id}/password", h.CertificatePasswordWeb)
 	r.Post("/certificates/{id}/revoke", h.CertificateRevokeWeb)
 	r.Get("/certificates/{id}/{file}", h.CertificateFileWeb)
@@ -1104,10 +1125,12 @@ func statusClass(s string) string {
 	switch s {
 	case "resolved", "closed", "done", "completed":
 		return "b-green"
-	case "in_progress", "active":
+	case "in_progress", "active", "running":
 		return "b-blue"
 	case "open", "detected", "pending":
 		return "b-amber"
+	case "fault": // Rüstzeit mit Störmeldung
+		return "b-red"
 	default:
 		return "b-gray"
 	}

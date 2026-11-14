@@ -55,6 +55,7 @@ type EasyPageData struct {
 	LoginURL                                string
 	Test                                    bool // Testansicht für Admins (Knopf an der Anlage)
 	CanTranslate                            bool
+	Setup                                   setupBarView // Abschnitt „Rüsten“ (setup_easy.go)
 }
 
 // easyAsset: Name und Pfad einer aktiven Anlage ("" = unbekannt).
@@ -94,6 +95,7 @@ func (h *Handler) EasyPage(w http.ResponseWriter, r *http.Request) {
 	d.Look = h.appearance(r, d.Brand)
 	d.Recent = h.easyRecent(ctx, lang, h.infraSubtreeIDs(ctx, id))
 	d.Texts = h.easyTextOptions(ctx, lang, h.easyTextsFor(ctx, id))
+	d.Setup = h.setupBarFor(ctx, lang, id, "/e/"+id+"/setup", "", test, r.URL.Query().Get("setup"))
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	t, err := h.tmpl.Clone()

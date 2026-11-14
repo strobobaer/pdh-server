@@ -69,6 +69,7 @@ var navDefs = []navDef{
 	{navItem{"tasks", "/tasks", "ti-list-check", "Aufgaben", "tasks", false}, "work", needs("tasks.view", "tasks.edit")},
 	{navItem{"projects", "/projects", "ti-timeline", "Projekte", "projects", false}, "work", always},
 	{navItem{"kvp", "/kvp", "ti-bulb", "KVP", "kvp", false}, "work", always},
+	{navItem{"setup", "/setup", "ti-arrows-exchange-2", "Rüstzeiten", "setup", false}, "work", needs(permSetupView, permSetupEdit)},
 	{navItem{"time", "/time", "ti-clock", "Zeiterfassung", "time", false}, "work", always},
 	{navItem{"shifts", "/planner", "ti-calendar-time", "Planer", "planner", false}, "work", func(b *BaseData) bool { return b.CanPlanner }},
 	{navItem{"calendar", "/calendar", "ti-calendar-event", "Kalender", "calendar", false}, "work", needs("calendar.view")},

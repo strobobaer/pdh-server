@@ -72,6 +72,9 @@ type CoreSettingsPageData struct {
 	DefaultDueDaysTask        int
 	DefaultDueDaysMaintenance int
 
+	CanSetupEdit          bool         // Rüstzeiten: maximale Rüstzeit und Karenzzeit ändern (setup.edit)
+	SetupMaxMinutes       int          // maximale Rüstzeit (Minuten)
+	SetupGraceMinutes     int          // Karenzzeit (Minuten)
 	EasyMode              bool         // QR-Meldung ohne Anmeldung (easy_mode.go)
 	Defaults              DefaultsView // Standards für alle (user_defaults.go)
 	IdleTimeoutMinutes    int          // Auto-Logout (früher unter Rollen & Rechte)
@@ -171,6 +174,11 @@ func (h *Handler) CoreSettingsPage(w http.ResponseWriter, r *http.Request) {
 		OverrideTimeout:           h.rbac.OverrideTimeoutMinutes(),
 		Push:                      h.pushSettingsView(ctx),
 		BoardPickTerminalOnly:     h.boardPickTerminalOnly(ctx),
+	}
+	if data.CanSetupEdit = h.setupCan(r, permSetupEdit, ""); data.CanSetupEdit {
+		if st := h.setupStore(); st != nil {
+			data.SetupMaxMinutes, data.SetupGraceMinutes = st.GlobalMax(ctx), st.Grace(ctx)
+		}
 	}
 	data.CompletionDepartments = strings.Join(h.completionDepartments(ctx), ", ")
 	if rows, err := h.db.Query(ctx, `SELECT DISTINCT TRIM(department) FROM users WHERE active AND TRIM(COALESCE(department, '')) <> '' ORDER BY 1`); err == nil {

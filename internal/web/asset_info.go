@@ -62,6 +62,8 @@ type AssetInfoData struct {
 	QR       template.HTML
 	URL      string
 	CanLabel bool
+	Setup    setupBarView // Abschnitt „Rüsten“ (setup_easy.go)
+	Plant    string       // Kennzeichen "running" / "fault" / ""
 }
 
 const assetOpenLimit = 50
@@ -169,6 +171,10 @@ func (h *Handler) AssetInfoPage(w http.ResponseWriter, r *http.Request) {
 		d.Groups = append(d.Groups, g)
 	}
 	if kind == "infra" {
+		d.Plant = h.setupPlantState(ctx, id)
+		if h.setupCanPlant(r, id) {
+			d.Setup = h.setupBarFor(ctx, h.requestLang(r), id, "/infrastructure/"+id+"/setup", back, false, r.URL.Query().Get("setup"))
+		}
 		if rows, err := h.db.Query(ctx, `SELECT id::text, name, type::text FROM infrastructure WHERE parent_id = $1::uuid AND hidden_at IS NULL ORDER BY name LIMIT 200`, id); err == nil {
 			for rows.Next() {
 				var c assetChild

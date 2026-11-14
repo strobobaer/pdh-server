@@ -54,6 +54,7 @@
     <div class="sub">
       <a href="/infrastructure" style="color:var(--accent)">Infrastruktur</a>{{if .Parent}} › <a href="/infrastructure/{{.Parent.ID}}" style="color:var(--accent)">{{.Parent.Name}}</a>{{end}}
       · {{$n.TypeLabel}}{{if $n.Location}} · {{$n.Location}}{{end}}
+      {{if .SetupState}}· <span class="badge {{if eq .SetupState "running"}}b-amber{{else}}b-red{{end}}" title="Rüstzeit der Anlage"><i class="ti ti-arrows-exchange-2"></i> {{if eq .SetupState "running"}}{{t "Rüsten"}}{{else}}{{t "Störung durch Rüsten"}}{{end}}</span>{{end}}
     </div>
   </div>
   <a class="btn btn-small" href="/a/{{$n.ID}}" title="Infoseite mit offenen Vorgängen – Ziel des QR-Codes"><i class="ti ti-qrcode"></i> QR &amp; Vorgänge</a>
@@ -79,6 +80,7 @@
   <a class="rec-tab" data-tab="checks" href="?tab=checks"><i class="ti ti-clipboard-check"></i> Prüfungen &amp; GBU{{if .ObligationDue}} <b style="background:var(--amber);color:#000">{{.ObligationDue}}</b>{{else if .Obligations}} <b>{{len .Obligations}}</b>{{end}}</a>
   {{if eq .Node.Type "drying_chamber"}}<a class="rec-tab" data-tab="chamber" href="?tab=chamber"><i class="ti ti-temperature"></i> Bauteile{{if .ChamberNOK}} <b style="background:var(--red);color:#fff">{{.ChamberNOK}} NOK</b>{{end}}</a>{{end}}
   <a class="rec-tab" data-tab="easy" href="?tab=easy"><i class="ti ti-hand-finger"></i> Meldetexte{{if .EasyTextCount}} <b>{{.EasyTextCount}}</b>{{end}}</a>
+  <a class="rec-tab" data-tab="setup" href="?tab=setup"><i class="ti ti-player-play"></i> Rüsttasten{{if .SetupTab.Count}} <b>{{.SetupTab.Count}}</b>{{end}}</a>
   <a class="rec-tab" data-tab="events" href="?tab=events"><i class="ti ti-timeline"></i> Anlagen-Historie</a>
   <a class="rec-tab" data-tab="fields" href="?tab=fields"><i class="ti ti-forms"></i> Feldsätze</a>
   <a class="rec-tab" data-tab="docs" href="?tab=docs"><i class="ti ti-paperclip"></i> Dokumente</a>
@@ -197,6 +199,7 @@
       <button class="btn btn-primary" type="submit"><i class="ti ti-device-floppy"></i> Speichern</button>
     </div>
   </form>
+  {{template "setup-infra-max" (dict "T" .SetupTab "ID" $n.ID)}}
 </div>
 {{end}}
 
@@ -304,6 +307,11 @@
     {{if .CanEditInfra}}<div class="ih-section" style="margin-top:16px">Neuer Meldetext – kommt in den Katalog und gilt gleich hier</div>
     {{template "easy-text-form" (dict "T" nil "Action" "/infrastructure/easy-texts" "Back" (printf "/infrastructure/%s?tab=easy" .Node.ID) "Assign" .Node.ID "Label" "Anlegen und zuordnen")}}{{end}}
   </div>
+</div>
+
+<!-- ── Rüsttasten: Zuordnung aus dem Katalog (setup_catalog.go) ── -->
+<div class="rec-pane" data-pane="setup">
+  {{template "setup-infra-tab" (dict "T" .SetupTab "ID" .Node.ID "CanEdit" .CanEditInfra)}}
 </div>
 
 <!-- ── Anlagen-Historie (Vorgänge, Kommentare, Ersatzteile) ── -->

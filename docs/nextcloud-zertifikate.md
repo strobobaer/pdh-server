@@ -141,6 +141,7 @@ Vor Ablauf ein neues Server-Zertifikat ausstellen, Dateien austauschen, nginx ne
 | Nextcloud: **403 Forbidden** | kein oder kein gültiges Zertifikat gesendet | Zertifikat auf dem Gerät installiert? Gesperrt oder abgelaufen? (Core-Einstellungen → Zertifikate) |
 | **Alle** Zugriffe mit Zertifikat plötzlich 403 | Sperrliste abgelaufen (nginx prüft ihr Ablaufdatum) | `sudo systemctl start pdh-pki-crl`, Timer prüfen: `systemctl list-timers pdh-pki-crl` |
 | PDH-Dateiablage/Deck melden Fehler | PDH greift nicht von 127.0.0.1 auf Nextcloud zu | `PDH_NEXTCLOUD_BASEURL` auf die lokale Adresse stellen oder die Adresse des PDH bei `--exempt` ergänzen |
+| App fragt nie nach dem Zertifikat (auf keinem Gerät) | nginx fordert gar keine Zertifikate an, `configure-nextcloud-client-certs.sh` lief nicht oder nicht auf allen Servern | **Statusanzeige „Zertifikatspflicht“** prüfen (Core-Einstellungen → Zertifikate, oben; auch in Mein Konto). „Nicht eingerichtet“: den dort genannten Befehl ausführen, im Verbund auf beiden Servern, eigene Serveradressen mit `--exempt` |
 | Android-App fragt nie nach dem Zertifikat | Zertifikat als „WLAN“ oder „CA“ statt als „VPN- und App-Nutzerzertifikat“ installiert | neu installieren, richtige Art wählen |
 | .p12-Import: „Passwort falsch“ | Tippfehler (Bindestriche gehören dazu) | Passwort im PDH erneut anzeigen und kopieren |
 | Server-Zertifikat: „nicht vertrauenswürdig“ | CA auf dem Gerät nicht installiert bzw. (iOS) Vertrauen nicht eingeschaltet | Abschnitt 4, Schritt 5 |

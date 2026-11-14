@@ -351,6 +351,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <h2><i class="ti ti-alert-triangle"></i> Störungen</h2>
   <p>Eine Störung ist ein technisches Problem an einer Anlage. Die Seite <b>Störungen</b> ist aufgebaut wie der KVP – mit <b>Dashboard</b>, <b>Störungen</b>, <b>Board</b> und <b>Regeln &amp; Einstellungen</b> (siehe <a href="#work-views">Tickets</a>); frisch gemeldete Störungen sind gelb markiert. Sie durchläuft fünf Schritte:</p>
   {{template "hb-fig-fault"}}
+  <p>Eine Störung mit der Kategorie <b>Störung durch Rüsten</b> entsteht von selbst, wenn eine Rüstzeit zu lange dauert (<a href="#ruestzeiten">mehr</a>). Sie hat hohen Schweregrad, die Anlage gilt als stehend.</p>
   <div class="hb-howto"><b><i class="ti ti-check"></i> So löst du eine Störung</b>
     <ol class="hb-steps">
       <li>Störung öffnen, im Reiter <b>Copilot</b> bei Bedarf eine Analyse starten oder Fragen stellen.</li>
@@ -457,6 +458,58 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     Wie im Abschluss-Assistenten: <b>Fertig</b> schaltet weiter, <b>Nur speichern – geht noch weiter</b> sichert nur die Angaben. Fehlt für einen Schritt noch etwas, nennt PDH es bei der Auswahl und schaltet nicht weiter; das bereits Eingegebene bleibt gespeichert. Einzelne Angaben lassen sich auch direkt in den Reitern <b>Bewertung</b> und <b>PDCA &amp; Maßnahmen</b> ändern. <b>A3-Report</b> druckt den ganzen Vorschlag auf einer Seite zum Aushängen.</div>
   <p>Das <b>Dashboard</b> zeigt Kennzahlen des Jahres (Vorschläge je Mitarbeitende/n, Annahmequote, Ø Zeit bis zur Entscheidung, Beteiligung, Einsparungen und Prämien), den Ablauf, die letzten 12 Monate, die Themen, die Nutzen-Aufwand-Matrix und alles Überfällige. Das <b>PDCA-Board</b> zeigt die Vorschläge in Umsetzung als Karten. Unter <b>Regeln &amp; Vorlagen</b> stehen die KVP-Regeln; dort stellt die KVP-Steuerung die Rückmeldefrist ein.</p>
   {{template "hb-shots" (dict "Ref" (index $s "kvp") "Can" $can)}}
+</section>
+
+<section class="hb-ch" id="ruestzeiten" data-title="Rüstzeiten" data-pages="setup">
+  <h2><i class="ti ti-arrows-exchange-2"></i> Rüstzeiten</h2>
+  <p>Eine <b>Rüstzeit</b> ist die Zeit, in der eine Anlage umgerüstet, gereinigt oder mit neuen Hilfsmitteln bestückt wird. Sie ist ein Vorgang wie ein Ticket: mit Nummer (<b>RZ-0001</b>), Anlage, Grund, Beginn und Ende. Sie hat die Status <b>Rüsten</b> (läuft), <b>Beendet</b> und <b>Störung durch Rüsten</b>. Läuft sie zu lange, meldet PDH von selbst eine Störung. Alles hier ist ein Zusatz: Ohne Rüsttasten an einer Anlage bleibt alles wie bisher.</p>
+  {{template "hb-fig-ruesten"}}
+  <div class="hb-howto"><b><i class="ti ti-player-play"></i> So richtest du Rüsttasten ein</b> (Recht „Rüstzeiten: erfassen, korrigieren, Katalog und Höchstdauer pflegen“)
+    <ol class="hb-steps">
+      <li><b>Infrastruktur</b> öffnen → Karte <b>Rüstzeiten: Rüsttasten</b>. Zuerst gibt es die <b>Rüstgründe</b>, z. B. „Formatwechsel“ oder „Reinigung“. Der Grund bestimmt, wie eine Rüstzeit in der Auswertung eingeordnet wird.</li>
+      <li>Bei <b>Neue Rüsttaste</b> einen Namen (höchstens 60 Zeichen) eintragen und den Grund wählen → anlegen.</li>
+      <li>Anlage öffnen → Reiter <b>Rüsttasten</b> → passende Tasten anhaken → speichern. An einer Halle oder Linie zugeordnet, gilt die Taste für alle Anlagen darunter (dort steht „über …“).</li>
+    </ol>
+    Ein Grund oder eine Taste, die schon verwendet wird, lässt sich nur ausblenden. Endgültig löschen darf nur der Bereichsadministrator der Rüstzeiten.</div>
+  <div class="hb-howto"><b><i class="ti ti-clock-cog"></i> So stellst du die Höchstdauer ein</b>
+    <ol class="hb-steps">
+      <li><b>Core-Einstellungen</b> → Karte <b>Rüstzeiten: Höchstdauer und Karenzzeit</b>. Die <b>maximale Rüstzeit</b> (Standard 120 Minuten) gilt für alle Anlagen als Obergrenze. Die <b>Karenzzeit</b> (Standard 15 Minuten) ist die Schonfrist danach, bevor eine Störung entsteht.</li>
+      <li>Soll eine Anlage kürzer rüsten, trägst du an der Anlage im Reiter <b>Rüsttasten</b> bei <b>Höchstdauer Rüsten (Minuten)</b> einen eigenen Wert ein. Darunter steht, welcher Wert gerade <b>wirksam</b> ist und woher er kommt.</li>
+      <li>Ein eigener Wert über der maximalen Rüstzeit gilt nicht. Dann erscheint der Hinweis, dass die maximale Rüstzeit gilt – trage einen kleineren Wert ein.</li>
+      <li>Maximale Rüstzeit und Karenzzeit sind jeweils höchstens 10080 Minuten (7 Tage). Beide Werte und der Katalog (Rüstgründe und Rüsttasten) gelten für den <b>ganzen Betrieb</b>, nicht je Abteilung. Wer „Rüstzeiten: erfassen, korrigieren, Katalog und Höchstdauer pflegen“ auch nur in einer Abteilung hat, kann sie ändern.</li>
+    </ol></div>
+  <div class="hb-howto"><b><i class="ti ti-hand-finger"></i> So rüstest du an der Anlage</b> (ohne Anmeldung im Easy-Modus oder angemeldet auf der Anlagenseite)
+    <ol class="hb-steps">
+      <li>QR-Code der Anlage scannen. Unter <b>Rüsten</b> stehen die Rüsttasten der Anlage.</li>
+      <li>Passende Rüsttaste <b>einmal antippen</b> – die Rüstzeit läuft. Die Seite zeigt, was gerade gerüstet wird.</li>
+      <li>Ist die Anlage fertig, auf <b>Fertig</b> tippen. Eine Notiz ist freiwillig.</li>
+    </ol>
+    Die Taste der laufenden Rüstzeit ist hervorgehoben und lässt sich nicht noch einmal antippen. Eine andere Taste beendet die laufende Rüstzeit und beginnt sofort die neue. Soll mit derselben Taste neu begonnen werden, zuerst auf <b>Fertig</b> tippen und dann die Taste erneut antippen.
+    Zu viele Antippen hintereinander bremst PDH: je Anlage sind 30 Vorgänge in 10 Minuten möglich. Je Anlage läuft höchstens eine Rüstzeit.</div>
+  <div class="hb-howto"><b><i class="ti ti-plus"></i> So erfasst und korrigierst du eine Rüstzeit im PDH</b> (Recht „Rüstzeiten: erfassen …“)
+    <ol class="hb-steps">
+      <li><b>Rüstzeiten</b> → <b>Neu</b> – oder die Schnellaktion „Rüstzeit erfassen“ im Dashboard.</li>
+      <li><b>Anlage</b> und <b>Grund</b> wählen, <b>Beginn</b> eintragen. Ohne Ende läuft die Rüstzeit weiter; mit <b>Ende</b> oder <b>Dauer</b> wird sie nachgetragen.</li>
+      <li><b>Rüstzeit anlegen</b> öffnet die Detailseite. Dort beendest du eine laufende Rüstzeit mit <b>Beenden</b>.</li>
+      <li>Beginn, Ende, Grund und Notiz korrigierst du im Reiter <b>Bearbeiten</b>. Bei einer beendeten Rüstzeit ist das <b>Ende</b> Pflicht – sie wird nie wieder geöffnet; fehlt das Ende, erscheint eine Meldung und nichts wird geändert. Hat die Rüstzeit schon eine Störmeldung ausgelöst, bleiben Beginn und Ende gesperrt.</li>
+    </ol></div>
+  <div class="hb-howto"><b><i class="ti ti-alert-triangle"></i> Was passiert bei Überschreitung</b>
+    <ol class="hb-steps">
+      <li>Läuft die Rüstzeit länger als die Höchstdauer, zeigt die Seite „Höchstdauer überschritten“. Noch ist alles ruhig.</li>
+      <li>Nach Höchstdauer <b>plus Karenzzeit</b> legt PDH <b>genau eine</b> Störmeldung „Störung durch Rüsten: …“ mit hohem Schweregrad an. Die Rüstzeit bekommt den Status <b>Störung durch Rüsten</b>, die Anlage gilt als stehend.</li>
+      <li>Für die Rüstzeit verantwortlich ist der <b>Anlagenverantwortliche</b>, zugeordnet ist der <b>Schichtführer</b>, der gerade Dienst hat. Für die Störmeldung gilt die Störungsrichtlinie wie bei jeder Störung.</li>
+      <li>Die Rüstzeit zählt <b>bis zur Störmeldung</b>; die Zeit danach läuft als Störung. Den Status der Anlage bestimmt immer die neueste Rüstzeit.</li>
+    </ol>
+    Auf einem Spiegelserver läuft diese Überwachung nicht.</div>
+  <div class="hb-howto"><b><i class="ti ti-shield-lock"></i> Wer darf was bei Rüstzeiten?</b>
+    <ul>
+      <li><b>Rüstzeiten: ansehen</b> – Liste, Detailseite und Historie.</li>
+      <li><b>Rüstzeiten: erfassen, korrigieren, Katalog und Höchstdauer pflegen</b> – Rüstzeiten anlegen und ändern, Rüsttasten und Gründe pflegen, Höchstdauer an der Anlage setzen.</li>
+      <li><b>Rüstzeiten: Bereichsadministrator</b> – alle Rechte des Bereichs und als Einziger endgültig löschen.</li>
+    </ul>
+    Wer bisher Anlagen sehen oder bearbeiten durfte, hat die passenden Rechte automatisch bekommen.</div>
+  <p>Wie bei Tickets gibt es Feldsätze, Kategorien, Verknüpfungen, Anhänge und eine Historie. Die Rüstzeiten einer Anlage stehen auch in deren Historie (Filter „Rüstzeiten“).</p>
+  {{template "hb-shots" (dict "Ref" (index $s "ruestzeiten") "Can" $can)}}
 </section>
 
 <section class="hb-ch" id="maintenance" data-title="Wartung" data-pages="maintenance checklists">
@@ -698,6 +751,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li><b>Anlage läuft</b> oder <b>Anlage steht</b> antippen – fertig, die Meldung ist da.</li>
     </ol>
     Die Meldung wird automatisch ins Deutsche übersetzt (Copilot). In der Störung bzw. im Ticket steht der <b>deutsche Text immer oben</b>, darunter das Original, dann die Art und ob die Anlage steht. „Anlage steht“ bekommt hohe Priorität. Ersteller ist „Service“, in der Historie steht „QR-Code (Easy-Mode)“. Nach dem Namen fragt der Easy-Mode nicht. Mit Meldetext ist dieser der Titel der Meldung, ein eigener Text steht als Ergänzung darunter. Ohne eingerichteten Copilot bleibt der Text in der Originalsprache mit Hinweis.</div>
+  <p><b>Rüsten im Easy-Mode:</b> Sind der Anlage Rüsttasten zugeordnet, stehen sie zusätzlich unter <b>Rüsten</b>. Eine Taste antippen startet die Rüstzeit, <b>Fertig</b> beendet sie (<a href="#ruestzeiten">mehr</a>).</p>
   <div class="hb-howto" id="hb-easy-texts"><b><i class="ti ti-message-2"></i> So hinterlegst du Meldetexte für den Easy-Mode</b>
     <ol class="hb-steps">
       <li><b>Infrastruktur</b> öffnen → unten <b>Easy-Mode: Meldetexte</b> → bei <b>Neuer Meldetext</b> den Text auf Deutsch eintragen, z. B. „Band steht“ oder „Öl tritt aus“.</li>
@@ -1201,7 +1255,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li><b>.p12</b> herunterladen, am besten gleich auf dem Gerät.</li>
       <li><b>Android:</b> Datei antippen bzw. Einstellungen → Sicherheit → Verschlüsselung &amp; Anmeldedaten → Zertifikat installieren → <b>VPN- und App-Nutzerzertifikat</b>, Passwort eingeben. Beim Anmelden in der Nextcloud-App das Zertifikat auswählen.<br><b>iPhone:</b> in der Nextcloud-App beim Anmelden das Client-Zertifikat aus „Dateien“ importieren. Über die iOS-Einstellungen installierte Zertifikate nutzt die App nicht.<br><b>Windows/Mac:</b> der Nextcloud-Desktop-Client fragt beim Einrichten nach dem Zertifikat → Datei und Passwort angeben.</li>
     </ol>
-    Für jedes Gerät ein eigenes Zertifikat. Geht ein Gerät verloren: dort <b>Sperren</b>. Das Passwort zeigt <b>Passwort</b> jederzeit wieder an. Fehlt die Karte, hat die Administration die Selbstbedienung ausgeschaltet; dann stellt sie das Zertifikat aus.</div>
+    Oben in der Karte steht, ob Nextcloud überhaupt nach Zertifikaten fragt („Zertifikatspflicht aktiv“). Steht dort „nicht eingerichtet“, hat die .p12 noch keine Wirkung – dann bitte die Administration den dort genannten Befehl ausführen lassen. Für jedes Gerät ein eigenes Zertifikat. Geht ein Gerät verloren: dort <b>Sperren</b>. Das Passwort zeigt <b>Passwort</b> jederzeit wieder an. Fehlt die Karte, hat die Administration die Selbstbedienung ausgeschaltet; dann stellt sie das Zertifikat aus.</div>
   <div class="hb-howto"><b><i class="ti ti-language"></i> Sprache</b>PDH gibt es auf Deutsch, Englisch, Rumänisch, Türkisch und Mazedonisch. Jede Person wählt ihre Sprache über die <b>Flagge</b> oben rechts (auf der Anmeldeseite oben in der Karte); die Wahl wird im Benutzerstamm gespeichert und gilt bei der nächsten Anmeldung auf jedem Gerät. Die <b>Vorwahl</b> trägt die Benutzerverwaltung im Benutzerstamm unter <b>Stammdaten → Sprache</b> ein. Ohne Eintrag nimmt PDH die Sprache des Browsers. Die Umstellung erfolgt schrittweise. Übersetzt sind bisher: Navigation, Kopfzeile, Menüs, Seitenleiste, Anmeldung, das <b>Dashboard</b> mit allen Widgets sowie der <b>Erstellungs-Assistent</b> (auch im Leitstand) und der <b>Abschluss-Assistent</b> samt ihren Meldungen. Der Leitstand folgt der Sprache des Browsers bzw. der zuletzt gewählten Flagge. Noch nicht übersetzte Seiten und dieses Handbuch erscheinen vorerst auf Deutsch; was du selbst eingibst (Titel, Kommentare) und der Verlauf bleiben in der Sprache, in der sie geschrieben wurden.</div>
   <div class="hb-howto"><b><i class="ti ti-language"></i> So schaltest du die Live-Übersetzung ein</b>Die Live-Übersetzung übersetzt <b>alles auf der Seite</b> in deine Sprache – auch Seiten, die noch nicht übersetzt sind, und Inhalte wie Titel, Beschreibungen, Maßnahmen, Kommentare und Chat. Auch was später nachgeladen wird, wird übersetzt.
     <ol class="hb-steps">
@@ -1761,6 +1815,13 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>Alle anderen können Stammdaten weiter <b>zum Löschen vormerken</b>; der Bereinigungslauf erledigt den Rest.</li>
     </ol>
     Anfangs hat nur die Rolle Administrator alle Bereichsadministrator-Rechte. Ein ausdrückliches Verbot eines Einzelrechts gilt auch gegen den Bereichsadministrator.</div>
+  <div class="hb-howto"><b><i class="ti ti-arrows-exchange-2"></i> Rechte für Rüstzeiten</b> (Gruppe „Infrastruktur &amp; Anlagen“)
+    <ul>
+      <li><b>„Rüstzeiten: ansehen“</b> (<code>setup.view</code>): Liste, Detailseite und Historie.</li>
+      <li><b>„Rüstzeiten: erfassen, korrigieren, Katalog und Höchstdauer pflegen“</b> (<code>setup.edit</code>): Rüstzeiten und Rüsttasten anlegen und ändern, Höchstdauer an der Anlage setzen.</li>
+      <li><b>„Rüstzeiten: Bereichsadministrator“</b> (<code>setup.admin</code>): alle Rechte der Rüstzeiten und als Einziger endgültig löschen.</li>
+    </ul>
+    Sie gelten überall oder nur in einer Abteilung. Wer Anlagen sehen darf, darf Rüstzeiten sehen; wer Anlagen bearbeiten darf, auch erfassen. Die Werte für maximale Rüstzeit und Karenzzeit stehen in den Core-Einstellungen (<a href="#ruestzeiten">mehr</a>).</div>
   <div class="hb-howto"><b><i class="ti ti-tool"></i> Rechte für Update und Wartung</b>
     <ul>
       <li><b>„Wartungsfenster einstellen“</b> (Kategorie „System &amp; Sicherheit“): Wartungsfenster einrichten und fehlerhafte Versionen wieder zulassen (<a href="#ausfallschutz">mehr</a>). Beim Update bekamen es alle Rollen, die „Server-Einstellungen (.env) bearbeiten &amp; Server neu starten“ hatten.</li>
@@ -1826,10 +1887,17 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li><b>Server (Nextcloud)</b> – für Nextcloud unter eigenem Namen oder eigener IP im Firmennetz. <b>Kette</b> und <b>Schlüssel</b> in nginx eintragen; auf den Geräten einmal die CA installieren (<code>…/pki/ca.crt</code>).</li>
     </ul>
     <ol class="hb-steps">
-      <li>Damit nginx nur Geräte mit Zertifikat hereinlässt, auf dem Nextcloud-Server einmalig <code>sudo bash scripts/configure-nextcloud-client-certs.sh --site /etc/nginx/sites-available/nextcloud</code> ausführen. Zugriffe über den Cloudflare-Tunnel und vom PDH selbst sind ausgenommen.</li>
+      <li>Damit nginx nur Geräte mit Zertifikat hereinlässt, auf dem Nextcloud-Server einmalig <code>sudo bash scripts/configure-nextcloud-client-certs.sh --site /etc/nginx/sites-available/nextcloud.conf</code> ausführen. Zugriffe über den Cloudflare-Tunnel und vom PDH selbst sind ausgenommen. Im Verbund läuft der Befehl auf <b>beiden</b> Servern, und die eigenen Serveradressen nimmst du mit <code>--exempt</code> aus. Ob es geklappt hat, zeigt oben auf der Zertifikatsseite die Zeile <b>Zertifikatspflicht</b> (siehe unten).</li>
       <li>Zertifikate ausstellen bzw. ausstellen lassen, auf den Geräten einrichten (siehe „So richtest du die Nextcloud-App mit Zertifikat ein“ im Kapitel <a href="#users">Benutzer</a>).</li>
       <li>Verlorene Geräte: Zertifikat <b>sperren</b>. nginx holt die Sperrliste alle 6 Stunden, sofort mit <code>sudo systemctl start pdh-pki-crl</code>.</li>
     </ol>
+    <p><b>Zertifikatspflicht – steht nginx richtig?</b> Oben auf der Zertifikatsseite (und in der Karte „Zertifikat für die Nextcloud-App“ unter Mein Konto) prüft das PDH, ob Nextcloud überhaupt nach einem Zertifikat fragt. Dazu verbindet es sich kurz mit der Nextcloud-Adresse und sendet kein Zertifikat; gespeichert oder geändert wird nichts. Das Ergebnis bleibt einige Minuten gemerkt.</p>
+    <ul>
+      <li><b>Aktiv</b> – nginx fragt nach PDH-Zertifikaten. Alles in Ordnung.</li>
+      <li><b>Nicht eingerichtet</b> – Nextcloud fragt kein Zertifikat ab, die .p12 hat so keine Wirkung. Der Befehl steht gleich darunter; einmal auf dem Nextcloud-Server ausführen.</li>
+      <li><b>Nicht prüfbar</b> – Nextcloud ist nicht eingerichtet oder vom PDH aus nicht erreichbar. Der Grund steht dabei.</li>
+    </ul>
+    <p><b>Server-Zertifikat oder Let's Encrypt?</b> Für die öffentliche Nextcloud-Adresse gilt das Let's-Encrypt-Zertifikat aus Server-Einstellungen → Reiter <b>Cloudflare-Tunnel</b>. Ein Server-Zertifikat aus dem PDH brauchst du nur für interne Namen ohne öffentliches Zertifikat, etwa <code>nextcloud.local</code> oder eine IP. Bei „Server (Nextcloud)“ steht dazu ein Hinweis; gibt es das Let's-Encrypt-Zertifikat schon, nennt er dessen Namen.</p>
     Die ausführliche Anleitung mit Cloudflare, Server-Zertifikat und Fehlersuche steht in <code>docs/nextcloud-zertifikate.md</code>. Achtung: Die Zertifizierungsstelle hängt am Geheimnis <code>PDH_AUTH_JWTSECRET</code>; wird es geändert, müssen alle Zertifikate neu ausgestellt werden.</div>
   {{template "hb-shots" (dict "Ref" (index $s "admin") "Can" $can)}}
 </section>

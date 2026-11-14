@@ -100,6 +100,10 @@ type CreateFaultInput struct {
 	AssignedTo       *string  `json:"assigned_to,omitempty"`
 	ResponsibleTo    *string  `json:"responsible_to,omitempty"`
 	CostCenterID     *string  `json:"cost_center_id,omitempty"`
+	// DueDate: vorab ermittelte Fälligkeit (nur intern, nicht aus der Schnittstelle).
+	// Gesetzt spart sie newFault die Abfrage der Vorgabe – wichtig für Aufrufer, die
+	// in CreateInTx keine weitere Pool-Verbindung brauchen dürfen.
+	DueDate *time.Time `json:"-"`
 }
 
 type ResolveInput struct {
