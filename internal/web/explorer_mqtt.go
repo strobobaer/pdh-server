@@ -8,7 +8,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
+	"reflect"
 	"strconv"
 	"strings"
 	"sync"
@@ -28,7 +30,8 @@ const (
 	mqttExplorerMaxPayload = 4000
 	mqttExplorerMaxPublish = 64 << 10
 	mqttExplorerMaxFields  = 200
-	mqttExplorerMaxJSON    = 64 << 10 // größere Inhalte werden nicht in Felder zerlegt
+	mqttExplorerMaxJSON    = 16 << 10 // größere Inhalte werden nicht in Felder zerlegt
+	mqttExplorerMaxValue   = 200      // Zeichen je Feldwert
 	mqttExplorerConnect    = 6 * time.Second
 	mqttExplorerTick       = 500 * time.Millisecond
 )
@@ -140,7 +143,9 @@ type MqttTopicStat struct {
 	Numeric   bool        `json:"numeric"`
 	History   []float64   `json:"history"`
 	Fields    []JSONField `json:"fields"`
-	Ref       string      `json:"ref"`
+	// FieldsKept: Die Felder sind seit dem letzten Senden unverändert und werden nicht erneut mitgeschickt.
+	FieldsKept bool   `json:"fields_kept,omitempty"`
+	Ref        string `json:"ref"`
 }
 
 // mqttTopicTable hält die Themen einer Sitzung, begrenzt auf maxTopics (weitere werden gezählt).
@@ -150,13 +155,14 @@ type mqttTopicTable struct {
 	maxHistory int
 	topics     map[string]*MqttTopicStat
 	dirty      map[string]struct{}
+	sent       map[string][]JSONField // zuletzt gesendete Felder je Thema
 	dropped    int
 }
 
 func newMqttTopicTable(maxTopics, maxHistory int) *mqttTopicTable {
 	return &mqttTopicTable{
 		maxTopics: maxTopics, maxHistory: maxHistory,
-		topics: map[string]*MqttTopicStat{}, dirty: map[string]struct{}{},
+		topics: map[string]*MqttTopicStat{}, dirty: map[string]struct{}{}, sent: map[string][]JSONField{},
 	}
 }
 
@@ -183,7 +189,7 @@ func (t *mqttTopicTable) add(topic string, payload []byte, retained bool, qos by
 	st.Retained, st.QoS = retained, qos
 	st.At = at.Format("15:04:05")
 	st.Numeric = false
-	if v, err := strconv.ParseFloat(explorerDecimal(string(payload)), 64); err == nil && len(payload) <= 64 {
+	if v, err := strconv.ParseFloat(explorerDecimal(string(payload)), 64); err == nil && len(payload) <= 64 && !math.IsNaN(v) && !math.IsInf(v, 0) {
 		st.Numeric = true
 		st.History = append(st.History, v)
 		if len(st.History) > t.maxHistory {
@@ -198,6 +204,11 @@ func (t *mqttTopicTable) add(topic string, payload []byte, retained bool, qos by
 			flattenJSON(data, "", &fields)
 			if len(fields) > mqttExplorerMaxFields {
 				fields = fields[:mqttExplorerMaxFields]
+			}
+			for i := range fields {
+				if rs := []rune(fields[i].Value); len(rs) > mqttExplorerMaxValue {
+					fields[i].Value = string(rs[:mqttExplorerMaxValue]) + "…"
+				}
 			}
 			st.Fields = fields
 		}
@@ -229,22 +240,52 @@ func (t *mqttTopicTable) takeChanged() []MqttTopicStat {
 	}
 	out := make([]MqttTopicStat, 0, len(t.dirty))
 	for topic := range t.dirty {
-		out = append(out, copyMqttStat(t.topics[topic]))
+		st := copyMqttStat(t.topics[topic])
+		if len(st.Fields) > 0 && reflect.DeepEqual(st.Fields, t.sent[topic]) {
+			st.Fields, st.FieldsKept = nil, true
+		} else {
+			t.sent[topic] = st.Fields
+		}
+		out = append(out, st)
 	}
 	t.dirty = map[string]struct{}{}
 	return out
 }
 
-// mqttExplorerDial verbindet mit Zeitgrenze und liefert eine verständliche Meldung.
-func mqttExplorerDial(client mqtt.Client) error {
-	tok := client.Connect()
-	if !tok.WaitTimeout(mqttExplorerConnect) {
-		return errors.New("Verbindung zum Broker fehlgeschlagen (Zeitüberschreitung)")
-	}
-	if err := tok.Error(); err != nil {
+// mqttExplorerDial verbindet mit Zeitgrenze; bei Abbruch des Kontexts oder Zeitüberschreitung wird der Client getrennt.
+func mqttExplorerDial(ctx context.Context, client mqtt.Client) error {
+	if err := mqttWait(ctx, client.Connect()); err != nil {
+		client.Disconnect(0)
 		return fmt.Errorf("Verbindung zum Broker fehlgeschlagen: %w", err)
 	}
 	return nil
+}
+
+// mqttWait wartet auf ein Token, höchstens mqttExplorerConnect und nur solange ctx lebt.
+func mqttWait(ctx context.Context, tok mqtt.Token) error {
+	timer := time.NewTimer(mqttExplorerConnect)
+	defer timer.Stop()
+	select {
+	case <-tok.Done():
+		return tok.Error()
+	case <-timer.C:
+		return errors.New("Zeitüberschreitung")
+	case <-ctx.Done():
+		return errors.New("abgebrochen")
+	}
+}
+
+// mqttSafeStats lässt Themen weg, die sich nicht als JSON ausgeben lassen, und protokolliert sie.
+func mqttSafeStats(in []MqttTopicStat) []MqttTopicStat {
+	out := in[:0:0]
+	for _, st := range in {
+		if _, err := json.Marshal(st); err != nil {
+			componentLog("explorer").Warn().Str("thema", st.Topic).Err(err).Msg("MQTT-Explorer: Thema übersprungen")
+			continue
+		}
+		out = append(out, st)
+	}
+	return out
 }
 
 // MqttExplorerStream: GET …/explorer/mqtt/stream?filter= – verbindet, abonniert und sendet
@@ -285,15 +326,14 @@ func (h *Handler) MqttExplorerStream(w http.ResponseWriter, r *http.Request) {
 			table.add(m.Topic(), m.Payload(), m.Retained(), m.Qos(), time.Now())
 		})
 		client := mqtt.NewClient(opts)
-		if err := mqttExplorerDial(client); err != nil {
+		if err := mqttExplorerDial(ctx, client); err != nil {
 			return err
 		}
 		defer client.Disconnect(250)
-		sub := client.Subscribe(filter, 0, nil)
-		if !sub.WaitTimeout(mqttExplorerConnect) {
-			return errors.New("Abonnieren fehlgeschlagen (Zeitüberschreitung)")
-		}
-		if err := sub.Error(); err != nil {
+		if err := mqttWait(ctx, client.Subscribe(filter, 0, nil)); err != nil {
+			if ctx.Err() != nil {
+				return nil
+			}
 			return fmt.Errorf("Abonnieren fehlgeschlagen: %w", err)
 		}
 		send("connected", map[string]string{"broker": broker, "filter": filter})
@@ -306,7 +346,7 @@ func (h *Handler) MqttExplorerStream(w http.ResponseWriter, r *http.Request) {
 			case err := <-lost:
 				return fmt.Errorf("Verbindung zum Broker verloren: %w", err)
 			case <-tick.C:
-				if changed := table.takeChanged(); len(changed) > 0 {
+				if changed := mqttSafeStats(table.takeChanged()); len(changed) > 0 {
 					send("topics", map[string]any{"topics": changed, "dropped": table.Dropped()})
 				}
 			}
@@ -321,6 +361,8 @@ func mqttValidPublishTopic(topic string) error {
 		return errors.New("Bitte ein Thema angeben")
 	case len(topic) > 1000:
 		return errors.New("Das Thema ist zu lang")
+	case strings.HasPrefix(topic, "$"):
+		return errors.New("Themen mit „$“ am Anfang sind Systemthemen und gesperrt")
 	case strings.ContainsAny(topic, "+#\x00") || !utf8.ValidString(topic):
 		return errors.New("Das Thema darf keine Platzhalter (+, #) enthalten")
 	}
@@ -331,7 +373,12 @@ func mqttValidPublishTopic(topic string) error {
 func (h *Handler) MqttExplorerPublish(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 2*mqttExplorerMaxPublish)
 	if err := r.ParseForm(); err != nil {
-		writeGlobalBoardError(w, http.StatusRequestEntityTooLarge, "Die Nachricht ist zu groß")
+		var tooBig *http.MaxBytesError
+		if errors.As(err, &tooBig) {
+			writeGlobalBoardError(w, http.StatusRequestEntityTooLarge, "Die Nachricht ist zu groß")
+		} else {
+			writeGlobalBoardError(w, http.StatusBadRequest, "Ungültige Eingabe")
+		}
 		return
 	}
 	c, ok := h.explorerWriteGuard(w, r, "import")
@@ -366,24 +413,31 @@ func (h *Handler) MqttExplorerPublish(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Gesendet wird – auch bei Fehlschlag – mit Eintrag im Verlauf, das Ergebnis steht darin.
+	retain := r.FormValue("retain") == "on"
 	sendErr := func() error {
 		client := mqtt.NewClient(opts)
-		if err := mqttExplorerDial(client); err != nil {
+		if err := mqttExplorerDial(r.Context(), client); err != nil {
 			return err
 		}
 		defer client.Disconnect(250)
-		tok := client.Publish(topic, byte(qos), r.FormValue("retain") == "on", []byte(payload))
-		if !tok.WaitTimeout(mqttExplorerConnect) {
-			return errors.New("Senden fehlgeschlagen (Zeitüberschreitung)")
-		}
-		if err := tok.Error(); err != nil {
+		if err := mqttWait(r.Context(), client.Publish(topic, byte(qos), retain, []byte(payload))); err != nil {
 			return fmt.Errorf("Senden fehlgeschlagen: %w", err)
 		}
 		return nil
 	}()
-	logged := payload
+	logged := fmt.Sprintf("QoS %d, ohne Retain: %s", qos, payload)
+	if retain {
+		logged = fmt.Sprintf("QoS %d, Retain: %s", qos, payload)
+		if payload == "" {
+			logged = fmt.Sprintf("QoS %d, Retain: leerer Inhalt – gespeicherte Nachricht gelöscht", qos)
+		}
+	}
 	if sendErr != nil {
-		logged = "Fehlgeschlagen (" + sendErr.Error() + "): " + payload
+		reason := []rune(sendErr.Error())
+		if len(reason) > 80 {
+			reason = append(reason[:80], '…')
+		}
+		logged = "Fehlgeschlagen (" + string(reason) + ") – " + logged
 	}
 	h.explorerLogWrite(r, c, "mqtt:"+topic, logged)
 	if sendErr != nil {

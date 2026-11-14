@@ -61,7 +61,9 @@
   const $ = function(id){ return document.getElementById(id); };
   const topics = new Map();   // Thema → Stand
   const open = new Set();     // geöffnete Ebenen des Baums
-  let sel = '', conn = null, dirty = false, timer = null;
+  const rows = new Map();     // Thema → Zeile im Baum
+  const changed = new Set();  // seit dem letzten Aktualisieren geänderte Themen
+  let sel = '', conn = null, structural = false, timer = null;
 
   function status(text, err){ const s = $('xm-status'); s.textContent = text; s.classList.toggle('ex-err', !!err); }
   function el(tag, cls, text){ const e = document.createElement(tag); if(cls) e.className = cls; if(text != null) e.textContent = text; return e; }
@@ -75,15 +77,20 @@
 
   function start(){
     stop();
-    topics.clear(); open.clear(); sel = '';
+    topics.clear(); open.clear(); rows.clear(); changed.clear(); sel = ''; structural = true;
     renderTree(); renderDetail();
     status('Verbinde …');
     setRunning(true);
     conn = pdhExplorer.stream(base + 'stream?filter=' + encodeURIComponent($('xm-filter').value.trim()), {
       connected: function(d){ status('Verbunden mit ' + d.broker + ' – Filter ' + d.filter); },
       topics: function(d){
-        (d.topics || []).forEach(function(t){ topics.set(t.topic, t); });
-        dirty = true;
+        (d.topics || []).forEach(function(t){
+          const old = topics.get(t.topic);
+          if(!old) structural = true;
+          if(t.fields_kept && old) t.fields = old.fields;
+          topics.set(t.topic, t);
+          changed.add(t.topic);
+        });
         const n = topics.size;
         status('Verbunden – ' + n + ' Themen' + (d.dropped ? ' (' + d.dropped + ' Nachrichten zu weiteren Themen verworfen – Filter enger fassen)' : ''));
       },
@@ -91,7 +98,28 @@
       end: function(d){ stop(d.message || 'Sitzung beendet', true); },
       disconnect: function(){ stop('Verbindung zum Server unterbrochen.', true); }
     });
-    if(!timer) timer = setInterval(function(){ if(dirty){ dirty = false; renderTree(); renderDetail(); } }, 1000);
+    if(!timer) timer = setInterval(refresh, 1000);
+  }
+
+  // Aktualisiert nur, was sich geändert hat: neue Themen bauen den Baum neu (Fokus und Scrollstand bleiben),
+  // sonst werden nur die Zeilen der geänderten Themen überschrieben.
+  function refresh(){
+    if(!changed.size && !structural) return;
+    if(structural){ structural = false; renderTree(); }
+    else changed.forEach(function(t){ const r = rows.get(t); if(r) updateRow(r, topics.get(t)); });
+    if(changed.has(sel)) renderDetail();
+    changed.clear();
+  }
+  function updateRow(row, t){
+    row.querySelector('.xm-val').textContent = t.last;
+    row.querySelector('.xm-ret').hidden = !t.retained;
+    row.querySelector('.xm-meta').textContent = t.count + '× · ' + t.at;
+  }
+  function select(topic){
+    const prev = rows.get(sel); if(prev) prev.classList.remove('xm-sel');
+    sel = topic;
+    const cur = rows.get(sel); if(cur) cur.classList.add('xm-sel');
+    renderDetail();
   }
 
   // Baum aus den Themen: je „/“ eine Ebene.
@@ -112,11 +140,14 @@
     if(node.leaf){
       const row = el('div', 'xm-leaf' + (node.leaf.topic === sel ? ' xm-sel' : ''));
       row.tabIndex = 0;
+      row.dataset.topic = node.leaf.topic;
       row.appendChild(el('span', 'xm-name', name));
-      row.appendChild(el('span', 'xm-val', node.leaf.last));
-      if(node.leaf.retained) row.appendChild(el('span', 'xm-ret', 'Retained'));
-      row.appendChild(el('span', 'xm-meta', node.leaf.count + '× · ' + node.leaf.at));
-      const pick = function(){ sel = node.leaf.topic; renderTree(); renderDetail(); };
+      row.appendChild(el('span', 'xm-val'));
+      row.appendChild(el('span', 'xm-ret', 'Retained'));
+      row.appendChild(el('span', 'xm-meta'));
+      updateRow(row, node.leaf);
+      rows.set(node.leaf.topic, row);
+      const pick = function(){ select(node.leaf.topic); };
       row.addEventListener('click', pick);
       row.addEventListener('keydown', function(e){ if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); pick(); } });
       parent.appendChild(row);
@@ -134,10 +165,15 @@
   }
   function renderTree(){
     const box = $('xm-tree');
+    const ae = document.activeElement, focusTopic = ae && ae.dataset && box.contains(ae) ? ae.dataset.topic : null;
+    const top = box.scrollTop;
     box.textContent = '';
+    rows.clear();
     if(!topics.size){ box.appendChild(el('div', 'rec-sub', conn ? 'Warte auf Nachrichten …' : 'Noch keine Themen – mit „Starten“ abonnieren.')); return; }
     const tree = buildTree();
     Array.from(tree.kids.entries()).forEach(function(k){ renderNode(box, k[0], k[1], k[0]); });
+    box.scrollTop = top;
+    if(focusTopic && rows.has(focusTopic)) rows.get(focusTopic).focus({preventScroll: true});
   }
 
   function spark(hist){

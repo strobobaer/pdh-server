@@ -2,15 +2,19 @@ package web
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"math"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"regexp"
 	"strings"
+	"sync"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/go-chi/chi/v5"
@@ -305,9 +309,9 @@ func TestMqttExplorerPublishLogsResult(t *testing.T) {
 	for _, e := range hist {
 		switch e.FieldName {
 		case "mqtt:halle/log":
-			okSeen = e.NewValue == "42"
+			okSeen = e.NewValue == "QoS 0, ohne Retain: 42"
 		case "mqtt:halle/fehler":
-			failSeen = strings.HasPrefix(e.NewValue, "Fehlgeschlagen (") && strings.HasSuffix(e.NewValue, "42")
+			failSeen = strings.HasPrefix(e.NewValue, "Fehlgeschlagen (") && strings.HasSuffix(e.NewValue, "QoS 0, ohne Retain: 42")
 		}
 	}
 	if !okSeen || !failSeen {
@@ -373,4 +377,173 @@ func TestConnectionDetailMqttExplorer(t *testing.T) {
 		t.Error("Senden-Formular ohne Schreibrecht sichtbar")
 	}
 	checkScripts(t, "verbindung-explorer-mqtt-lesen", page)
+}
+
+func TestMqttTopicTableNonFinite(t *testing.T) {
+	tb := newMqttTopicTable(10, 5)
+	now := time.Now()
+	for _, v := range []string{"nan", "NaN", "inf", "+Inf", "-Infinity"} {
+		st, _ := tb.add("a/x", []byte(v), false, 0, now)
+		if st.Numeric || len(st.History) != 0 {
+			t.Errorf("%q gilt als Zahl: %+v", v, st)
+		}
+		if _, err := json.Marshal(st); err != nil {
+			t.Errorf("%q nicht ausgebbar: %v", v, err)
+		}
+	}
+	if st, _ := tb.add("a/x", []byte("1,5"), false, 0, now); !st.Numeric || st.History[0] != 1.5 {
+		t.Errorf("normale Zahl: %+v", st)
+	}
+}
+
+func TestMqttSafeStatsSkipsBroken(t *testing.T) {
+	in := []MqttTopicStat{{Topic: "ok"}, {Topic: "kaputt", History: []float64{math.NaN()}}, {Topic: "ok2"}}
+	out := mqttSafeStats(in)
+	if len(out) != 2 || out[0].Topic != "ok" || out[1].Topic != "ok2" {
+		t.Errorf("%+v", out)
+	}
+}
+
+func TestMqttTopicTableFieldLimits(t *testing.T) {
+	tb := newMqttTopicTable(10, 5)
+	now := time.Now()
+	var sb strings.Builder
+	sb.WriteString("{")
+	for i := 0; i < 300; i++ {
+		if i > 0 {
+			sb.WriteString(",")
+		}
+		fmt.Fprintf(&sb, `"k%03d":"v"`, i)
+	}
+	sb.WriteString("}")
+	st, _ := tb.add("a/many", []byte(sb.String()), false, 0, now)
+	if len(st.Fields) != 200 {
+		t.Errorf("Felder: %d", len(st.Fields))
+	}
+	long, _ := tb.add("a/long", []byte(`{"v":"`+strings.Repeat("ä", 500)+`"}`), false, 0, now)
+	if len(long.Fields) != 1 || len([]rune(long.Fields[0].Value)) > 201 {
+		t.Errorf("Feldwert nicht gekürzt: %d", len([]rune(long.Fields[0].Value)))
+	}
+	// über 16 KiB: keine Zerlegung
+	big, _ := tb.add("a/big", []byte(`{"v":"`+strings.Repeat("x", 17<<10)+`"}`), false, 0, now)
+	if len(big.Fields) != 0 {
+		t.Errorf("zu großes JSON zerlegt: %d", len(big.Fields))
+	}
+	// unveränderte Felder werden nicht erneut gesendet
+	tb.takeChanged()
+	tb.add("a/many", []byte(sb.String()), false, 0, now)
+	ch := tb.takeChanged()
+	if len(ch) != 1 || !ch[0].FieldsKept || ch[0].Fields != nil {
+		t.Errorf("FieldsKept: %+v", ch)
+	}
+	tb.add("a/many", []byte(`{"neu":1}`), false, 0, now)
+	if ch = tb.takeChanged(); len(ch) != 1 || ch[0].FieldsKept || len(ch[0].Fields) != 1 {
+		t.Errorf("geänderte Felder: %+v", ch)
+	}
+}
+
+func TestMqttTopicTableInvalidUTF8(t *testing.T) {
+	tb := newMqttTopicTable(10, 5)
+	st, _ := tb.add("a/bin", []byte{0xff, 0xfe, 'o', 'k'}, false, 0, time.Now())
+	if !utf8.ValidString(st.Last) {
+		t.Errorf("Last kein gültiges UTF-8: %q", st.Last)
+	}
+	if _, err := json.Marshal(st); err != nil {
+		t.Error(err)
+	}
+}
+
+func TestMqttExplorerPublishRejects(t *testing.T) {
+	allow := map[string]bool{"import.execute": true, "import.write": true}
+	h := mqttTestHandler("127.0.0.1", "1", allow)
+	for _, topic := range []string{"halle/+/x", "$SYS/broker", "halle/#", ""} {
+		w := httptest.NewRecorder()
+		h.MqttExplorerPublish(w, publishReq(topic, nil))
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("Thema %q: %d", topic, w.Code)
+		}
+	}
+	// Spiegel: 409
+	h.mirror = MirrorInfo{On: true}
+	w := httptest.NewRecorder()
+	h.MqttExplorerPublish(w, publishReq("halle/test", nil))
+	if w.Code != http.StatusConflict {
+		t.Errorf("Spiegel: %d", w.Code)
+	}
+	h.mirror = MirrorInfo{}
+	// kaputter Formular-Körper: 400, nicht 413
+	r := httptest.NewRequest("POST", "/x", strings.NewReader("a=%zz"))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w = httptest.NewRecorder()
+	h.MqttExplorerPublish(w, r.WithContext(explorerReq("POST", "/x").Context()))
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("kaputtes Formular: %d", w.Code)
+	}
+	// wirklich zu groß: 413
+	r = httptest.NewRequest("POST", "/x", strings.NewReader("payload="+strings.Repeat("x", 3*mqttExplorerMaxPublish)))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w = httptest.NewRecorder()
+	h.MqttExplorerPublish(w, r.WithContext(explorerReq("POST", "/x").Context()))
+	if w.Code != http.StatusRequestEntityTooLarge {
+		t.Errorf("zu groß: %d", w.Code)
+	}
+}
+
+func TestMqttDialHonoursContext(t *testing.T) {
+	// 192.0.2.1 (TEST-NET) antwortet nie: der Abbruch des Kontexts muss die Wartezeit beenden.
+	opts, _, _ := mqttClientOptions(map[string]string{"ext_broker_host": "192.0.2.1"}, "explorer")
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	err := mqttExplorerDial(ctx, mqtt.NewClient(opts))
+	if err == nil || time.Since(start) > 3*time.Second {
+		t.Errorf("Dial: %v nach %v", err, time.Since(start))
+	}
+}
+
+// Der Strom endet beim Abbruch der Anfrage und gibt den Sitzungsplatz frei.
+func TestMqttExplorerStreamCancelReleasesSlot(t *testing.T) {
+	_, host, port := startTestBroker(t)
+	old := explorerLimiter
+	explorerLimiter = newExplorerSessions(1, 1)
+	t.Cleanup(func() { explorerLimiter = old })
+	h := mqttTestHandler(host, port, map[string]bool{"import.execute": true})
+	ctx, cancel := context.WithCancel(explorerReq("GET", "/x").Context())
+	r := explorerReq("GET", "/x").WithContext(ctx)
+	w := &syncRecorder{ResponseRecorder: httptest.NewRecorder()}
+	done := make(chan struct{})
+	go func() { defer close(done); h.MqttExplorerStream(w, r) }()
+	deadline := time.Now().Add(3 * time.Second)
+	for !strings.Contains(w.String(), "event: connected") && time.Now().Before(deadline) {
+		time.Sleep(20 * time.Millisecond)
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("Strom endet nicht nach Abbruch")
+	}
+	rel, err := explorerLimiter.acquire("u1")
+	if err != nil {
+		t.Fatalf("Sitzungsplatz nicht frei: %v", err)
+	}
+	rel()
+}
+
+// syncRecorder: ResponseRecorder, dessen Inhalt während des Schreibens sicher gelesen werden kann.
+type syncRecorder struct {
+	*httptest.ResponseRecorder
+	mu sync.Mutex
+}
+
+func (s *syncRecorder) Write(b []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.ResponseRecorder.Write(b)
+}
+
+func (s *syncRecorder) String() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.Body.String()
 }
