@@ -58,7 +58,7 @@ func main() {
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "Fehler:", err)
-		os.Exit(1)
+		os.Exit(exitCode(err))
 	}
 }
 
@@ -68,6 +68,26 @@ func (m *multiFlag) String() string     { return strings.Join(*m, ",") }
 func (m *multiFlag) Set(v string) error { *m = append(*m, v); return nil }
 
 func cmdInstall(args []string) error {
+	c, err := parseInstallArgs(args)
+	if err != nil {
+		return err
+	}
+	return installService(c)
+}
+
+// resetState löscht einen alten Datennetz-Zustand, wenn mit einem neuen
+// Einmal-Schlüssel neu installiert wird (der alte Zustand würde den neuen
+// Schlüssel ignorieren). Der Dienst muss vorher angehalten sein.
+func resetState(c Config) error {
+	if c.AuthKey == "" || !datanet.HasState(c.StateDir) {
+		return nil
+	}
+	fmt.Println("Hinweis: Der alte Datennetz-Zustand wird gelöscht, der Client meldet sich mit dem neuen Schlüssel neu an.")
+	return os.RemoveAll(c.StateDir)
+}
+
+// parseInstallArgs baut die Konfiguration aus den Schaltern von "install".
+func parseInstallArgs(args []string) (Config, error) {
 	fs := flag.NewFlagSet("install", flag.ContinueOnError)
 	var c Config
 	var pdh string
@@ -79,7 +99,7 @@ func cmdInstall(args []string) error {
 	fs.StringVar(&c.AuthKey, "authkey", "", "Einmal-Schlüssel (tskey-…)")
 	fs.StringVar(&c.Hostname, "hostname", "", "Name im Datennetz")
 	if err := fs.Parse(args); err != nil {
-		return err
+		return c, err
 	}
 	if c.Hostname == "" {
 		c.Hostname, _ = os.Hostname()
@@ -88,15 +108,12 @@ func cmdInstall(args []string) error {
 	for _, s := range targets {
 		t, err := datanet.ParseTarget(s)
 		if err != nil {
-			return err
+			return c, err
 		}
 		c.Targets = append(c.Targets, t)
 	}
 	c.StateDir = stateDir()
-	if err := c.Validate(); err != nil {
-		return err
-	}
-	return installService(c)
+	return c, c.Validate()
 }
 
 func cmdRun(args []string) error {
@@ -117,10 +134,10 @@ func cmdRun(args []string) error {
 func runFromConfig(ctx context.Context, path string) error {
 	c, err := LoadConfig(path)
 	if err != nil {
-		return err
+		return configError{err}
 	}
 	if err := c.Validate(); err != nil {
-		return fmt.Errorf("Konfiguration %s: %w", path, err)
+		return configError{fmt.Errorf("Konfiguration %s: %w", path, err)}
 	}
 	node, err := datanet.NewTSNode(datanet.NodeConfig{Dir: c.StateDir, Hostname: c.Hostname, AuthKey: c.AuthKey})
 	if err != nil {

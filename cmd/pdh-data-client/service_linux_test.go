@@ -14,6 +14,8 @@ func TestSystemdUnit(t *testing.T) {
 		"Restart=always",
 		"NoNewPrivileges=yes",
 		"ProtectSystem=strict",
+		"RestartPreventExitStatus=3",
+		"StartLimitBurst=",
 		"ReadWritePaths=/var/lib/pdh-data-client /etc/pdh-data-client",
 	} {
 		if !strings.Contains(u, want) {

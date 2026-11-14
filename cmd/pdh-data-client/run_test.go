@@ -227,3 +227,122 @@ func TestRunNeedsKey(t *testing.T) {
 		t.Fatal("Up wurde aufgerufen")
 	}
 }
+
+func TestRunSkipsBusyPortAndReportsIt(t *testing.T) {
+	old := listenRetry
+	listenRetry = 50 * time.Millisecond
+	t.Cleanup(func() { listenRetry = old })
+
+	echo := echoServer(t)
+	busy, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer busy.Close()
+	busyPort := busy.Addr().(*net.TCPAddr).Port
+	okPort := freePort(t)
+
+	ch := make(chan seen, 8)
+	pdh := pdhServer(t, 200, ch)
+	f := &nodetest.Fake{Routes: map[string]string{"100.64.0.1:8443": pdh}, Tags: map[string][]string{"127.0.0.1": {datanet.TagPDH}}}
+	c := runCfg(t, []datanet.Target{{Port: busyPort, Addr: echo}, {Port: okPort, Addr: echo}}, "100.64.0.1:8443")
+	_, done := startRun(t, c, f, func(Config) error { return nil })
+
+	select {
+	case s := <-ch:
+		if len(s.rep.Targets) != 2 {
+			t.Fatalf("Ziele = %+v", s.rep.Targets)
+		}
+		if s.rep.Targets[0].OK || !strings.Contains(s.rep.Targets[0].Error, "nicht verfügbar") {
+			t.Errorf("belegter Port: %+v", s.rep.Targets[0])
+		}
+		if !s.rep.Targets[1].OK {
+			t.Errorf("freier Port: %+v", s.rep.Targets[1])
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("keine Meldung")
+	}
+	waitPort(t, f, okPort)
+	select {
+	case err := <-done:
+		t.Fatalf("Run ist beendet: %v", err)
+	default:
+	}
+	// Port wird frei: der Versuch gelingt später.
+	busy.Close()
+	waitPort(t, f, busyPort)
+}
+
+func TestExitCodeForConfigErrors(t *testing.T) {
+	c := runCfg(t, []datanet.Target{{Port: 7001, Addr: "127.0.0.1:1"}}, "100.64.0.1:8443")
+	c.AuthKey = ""
+	err := Run(context.Background(), c, &nodetest.Fake{}, func(Config) error { return nil })
+	if exitCode(err) != exitConfig {
+		t.Fatalf("Exitcode = %d, erwartet %d", exitCode(err), exitConfig)
+	}
+	if exitCode(io.EOF) != 1 {
+		t.Fatal("anderer Fehler muss Exitcode 1 haben")
+	}
+}
+
+func TestRunRetriesSaveThenSucceeds(t *testing.T) {
+	oldP, oldN := savePause, saveRetries
+	savePause, saveRetries = time.Millisecond, 3
+	t.Cleanup(func() { savePause, saveRetries = oldP, oldN })
+
+	ch := make(chan seen, 4)
+	pdh := pdhServer(t, 200, ch)
+	f := &nodetest.Fake{Routes: map[string]string{"100.64.0.1:8443": pdh}}
+	c := runCfg(t, []datanet.Target{{Port: freePort(t), Addr: echoServer(t)}}, "100.64.0.1:8443")
+	var calls int
+	var mu sync.Mutex
+	startRun(t, c, f, func(Config) error {
+		mu.Lock()
+		defer mu.Unlock()
+		calls++
+		if calls < 3 {
+			return io.ErrClosedPipe
+		}
+		return nil
+	})
+	s := <-ch
+	if !s.rep.Targets[0].OK {
+		t.Errorf("Ziel nach erfolgreichem Speichern: %+v", s.rep.Targets[0])
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if calls != 3 {
+		t.Fatalf("save-Aufrufe = %d, erwartet 3", calls)
+	}
+}
+
+func TestRunReportsSaveFailure(t *testing.T) {
+	oldP := savePause
+	savePause = time.Millisecond
+	t.Cleanup(func() { savePause = oldP })
+
+	ch := make(chan seen, 4)
+	pdh := pdhServer(t, 200, ch)
+	f := &nodetest.Fake{Routes: map[string]string{"100.64.0.1:8443": pdh}}
+	c := runCfg(t, []datanet.Target{{Port: freePort(t), Addr: echoServer(t)}}, "100.64.0.1:8443")
+	startRun(t, c, f, func(Config) error { return io.ErrClosedPipe })
+	s := <-ch
+	if s.rep.Targets[0].OK || !strings.Contains(s.rep.Targets[0].Error, "Einmal-Schlüssel") {
+		t.Fatalf("Zielstatus = %+v", s.rep.Targets[0])
+	}
+}
+
+func TestPostReportLimitsResponse(t *testing.T) {
+	big := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Gültiges JSON, aber der Wert steht hinter der 4-KB-Grenze.
+		io.WriteString(w, `{"pad":"`+strings.Repeat("x", 10000)+`","interval_seconds":300}`)
+	}))
+	defer big.Close()
+	resp, err := postReport(context.Background(), big.Client(), strings.TrimPrefix(big.URL, "http://"), "t", []byte("{}"))
+	if err != nil {
+		t.Fatalf("zu große Antwort darf die Meldung nicht scheitern lassen: %v", err)
+	}
+	if resp.IntervalSeconds != 0 {
+		t.Fatalf("Antwort jenseits von 4 KB wurde gelesen: %+v", resp)
+	}
+}

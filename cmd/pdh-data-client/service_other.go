@@ -14,5 +14,5 @@ func configPath() string { return "pdh-data-client.json" }
 func stateDir() string   { return filepath.Join(".", "pdh-data-client-state") }
 
 func runAsService(func(context.Context) error) (bool, error) { return false, nil }
-func installService(Config) error                             { return errUnsupported }
-func uninstallService() error                                 { return errUnsupported }
+func installService(Config) error                            { return errUnsupported }
+func uninstallService() error                                { return errUnsupported }

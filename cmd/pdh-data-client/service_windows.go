@@ -48,12 +48,35 @@ func lockDownDir(dir string) error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
-	out, err := exec.Command("icacls", dir, "/inheritance:r",
-		"/grant:r", "*S-1-5-18:(OI)(CI)F", "*S-1-5-32-544:(OI)(CI)F").CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("Ordnerrechte setzen: %w: %s", err, out)
+	for _, args := range lockDownCommands(dir) {
+		if out, err := exec.Command("icacls", args...).CombinedOutput(); err != nil {
+			return fmt.Errorf("Ordnerrechte setzen (icacls %s): %w: %s", args[1], err, out)
+		}
 	}
 	return nil
+}
+
+// lockDownCommands liefert die icacls-Aufrufe zum Sperren des Datenordners:
+// Rechte auf Standard zurücksetzen (entfernt fremde Einträge, auch wenn der
+// Ordner vorab von jemand anderem angelegt wurde), Eigentümer Administratoren,
+// Vererbung entfernen, dann Vollzugriff nur für SYSTEM und Administratoren
+// (feste SIDs, sprachunabhängig), jeweils auf alle vorhandenen Dateien (/T).
+func lockDownCommands(dir string) [][]string {
+	return [][]string{
+		{dir, "/reset", "/T", "/C", "/Q"},
+		{dir, "/setowner", "*S-1-5-32-544", "/T", "/C", "/Q"},
+		{dir, "/inheritance:r"},
+		{dir, "/grant:r", "*S-1-5-18:(OI)(CI)F", "*S-1-5-32-544:(OI)(CI)F", "/T", "/C", "/Q"},
+	}
+}
+
+// recoveryActions: Neustart mit wachsendem Abstand.
+func recoveryActions() []mgr.RecoveryAction {
+	return []mgr.RecoveryAction{
+		{Type: mgr.ServiceRestart, Delay: 10 * time.Second},
+		{Type: mgr.ServiceRestart, Delay: 60 * time.Second},
+		{Type: mgr.ServiceRestart, Delay: 5 * time.Minute},
+	}
 }
 
 // runAsService startet run als Windows-Dienst, wenn der Dienstmanager das
@@ -85,7 +108,13 @@ func (h *handler) Execute(_ []string, req <-chan svc.ChangeRequest, st chan<- sv
 		select {
 		case err := <-done:
 			if err != nil {
-				log.Printf("Dienst beendet: %v", err)
+				log.Printf("FEHLER, Dienst beendet: %v", err)
+				var ce configError
+				if errors.As(err, &ce) {
+					// Ein Neustart behebt das nicht: ohne Fehlercode beenden, damit die
+					// Wiederherstellung nicht greift. Die Ursache steht in client.log.
+					return false, 0
+				}
 				return false, 1
 			}
 			return false, 0
@@ -127,6 +156,9 @@ func installService(c Config) error {
 	if err := lockDownDir(dataDir()); err != nil {
 		return err
 	}
+	if err := resetState(c); err != nil {
+		return err
+	}
 	if err := os.MkdirAll(c.StateDir, 0o700); err != nil {
 		return err
 	}
@@ -142,12 +174,11 @@ func installService(c Config) error {
 		return err
 	}
 	defer s.Close()
-	rec := []mgr.RecoveryAction{
-		{Type: mgr.ServiceRestart, Delay: 10 * time.Second},
-		{Type: mgr.ServiceRestart, Delay: 10 * time.Second},
-		{Type: mgr.ServiceRestart, Delay: 10 * time.Second},
+	if err := s.SetRecoveryActions(recoveryActions(), 24*3600); err != nil {
+		return err
 	}
-	if err := s.SetRecoveryActions(rec, 24*3600); err != nil {
+	// Auch ein Ende mit Fehlercode (nicht nur ein Absturz) löst die Wiederherstellung aus.
+	if err := s.SetRecoveryActionsOnNonCrashFailures(true); err != nil {
 		return err
 	}
 	if err := s.Start(); err != nil {

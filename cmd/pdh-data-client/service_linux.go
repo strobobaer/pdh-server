@@ -31,12 +31,15 @@ func systemdUnit(binPath string) string {
 Description=` + serviceDisplayName + `
 After=network-online.target
 Wants=network-online.target
+StartLimitIntervalSec=600
+StartLimitBurst=10
 
 [Service]
 Type=simple
 ExecStart=` + binPath + ` run
 Restart=always
 RestartSec=5
+RestartPreventExitStatus=3
 NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=yes
@@ -61,6 +64,10 @@ func installService(c Config) error {
 		return errors.New("Installation braucht Administratorrechte (als root oder mit sudo starten)")
 	}
 	if err := copyProgram(linuxBinPath); err != nil {
+		return err
+	}
+	_ = systemctl("stop", "pdh-data-client") // alter Zustand darf nicht in Benutzung sein
+	if err := resetState(c); err != nil {
 		return err
 	}
 	if err := os.MkdirAll(linuxStateDir, 0o700); err != nil {
