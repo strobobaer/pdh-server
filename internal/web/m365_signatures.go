@@ -112,7 +112,7 @@ func (h *Handler) signatureValues(ctx context.Context, userID string) (map[strin
 		       COALESCE(d.business_phone,''), COALESCE(d.mobile_phone,''), COALESCE(d.office_location,''), COALESCE(d.company_name,'')
 		FROM users u
 		LEFT JOIN microsoft_directory_users d ON d.pdh_user_id = u.id AND d.tenant_id = $2
-		WHERE u.id = $1::uuid`, userID, h.microsoft.TenantID).Scan(
+		WHERE u.id = $1::uuid`, userID, h.microsoftCfg().TenantID).Scan(
 		&p[0], &p[1], &p[2], &p[3], &p[4], &p[5], &p[6], &p[7], &p[8],
 		&m[0], &m[1], &m[2], &m[3], &m[4], &m[5], &m[6], &m[7], &m[8])
 	if err != nil {
@@ -391,7 +391,7 @@ func (h *Handler) M365PushEntraWeb(w http.ResponseWriter, r *http.Request) {
 		       COALESCE(u.phone,''), COALESCE(u.phone_mobile,''), COALESCE(u.work_location,''),
 		       d.given_name, d.surname, d.job_title, d.department, d.business_phone, d.mobile_phone, d.office_location, d.company_name
 		FROM microsoft_directory_users d JOIN users u ON u.id = d.pdh_user_id
-		WHERE d.tenant_id = $1 AND d.account_enabled AND u.active`, h.microsoft.TenantID)
+		WHERE d.tenant_id = $1 AND d.account_enabled AND u.active`, h.microsoftCfg().TenantID)
 	if err != nil {
 		m365Back(w, r, "signatures", "", "", err)
 		return
@@ -434,7 +434,7 @@ func (h *Handler) M365PushEntraWeb(w http.ResponseWriter, r *http.Request) {
 			business_phone=CASE WHEN $7<>'' THEN $7 ELSE business_phone END, mobile_phone=CASE WHEN $8<>'' THEN $8 ELSE mobile_phone END,
 			office_location=CASE WHEN $9<>'' THEN $9 ELSE office_location END, company_name=CASE WHEN $10<>'' THEN $10 ELSE company_name END
 			WHERE tenant_id=$1 AND microsoft_user_id=$2`,
-			h.microsoft.TenantID, j.msID, strings.TrimSpace(j.p[0]), strings.TrimSpace(j.p[1]), strings.TrimSpace(j.p[3]), strings.TrimSpace(j.p[4]),
+			h.microsoftCfg().TenantID, j.msID, strings.TrimSpace(j.p[0]), strings.TrimSpace(j.p[1]), strings.TrimSpace(j.p[3]), strings.TrimSpace(j.p[4]),
 			strings.TrimSpace(j.p[5]), strings.TrimSpace(j.p[6]), strings.TrimSpace(j.p[7]), strings.TrimSpace(j.p[8]))
 	}
 	msg := fmt.Sprintf("Nach Microsoft 365 übertragen: %d Personen aktualisiert", updated)

@@ -353,6 +353,7 @@ func main() {
 		webHandler.StartTrainingScheduler(context.Background())
 		webHandler.StartObligationReminders(context.Background())
 		webHandler.StartNextcloudAdminSync(context.Background())                         // Dienstkonto pdhNCadmin: PDH-Passwort hat Vorrang
+		webHandler.StartMailBridge(context.Background())                                 // lokales SMTP-Relais: Nextcloud versendet über den Mailweg des PDH
 		webHandler.StartNextcloudSync(context.Background())                              // Benutzer, Rollen, Gruppen, Laufwerke: PDH → Nextcloud
 		webHandler.StartPushNotifier(context.Background())                               // Push aufs Handy bei neuen Störungen/Tickets
 		faultSvc.StartPendingTicketWatcher(context.Background(), webHandler.MaintLocked) // Ticket aus Störung erst nach Zuweisung

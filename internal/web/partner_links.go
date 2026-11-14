@@ -48,7 +48,7 @@ func (h *Handler) canPartnerCredentials(r *http.Request) bool {
 // dem JWT-Secret abgeleitet. Achtung: Wechsel des Schluessels macht
 // gespeicherte Passwoerter unlesbar (sie muessen neu erfasst werden).
 func (h *Handler) credentialKey() []byte {
-	secret := h.mailCfg.CredentialsKey
+	secret := h.mailConfig().CredentialsKey
 	if secret == "" {
 		secret = h.jwtSecret
 	}

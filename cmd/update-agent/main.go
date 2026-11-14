@@ -115,6 +115,7 @@ func main() {
 	mux.Handle("GET /v1/nextcloud/status", agent.authorized(http.HandlerFunc(agent.ncStatusHandler)))
 	mux.Handle("POST /v1/nextcloud/oidc", agent.authorized(http.HandlerFunc(agent.ncOIDCHandler)))
 	mux.Handle("POST /v1/nextcloud/service-account", agent.authorized(http.HandlerFunc(agent.ncServiceHandler)))
+	mux.Handle("POST /v1/nextcloud/mail", agent.authorized(http.HandlerFunc(agent.ncMailHandler)))
 	mux.Handle("POST /v1/nextcloud/drives", agent.authorized(http.HandlerFunc(agent.ncDrivesHandler)))
 	mux.Handle("POST /v1/nextcloud/apps", agent.authorized(http.HandlerFunc(agent.ncAppsHandler)))
 	// Zertifikate (Let's Encrypt) ablegen und in nginx einbinden (certs.go)

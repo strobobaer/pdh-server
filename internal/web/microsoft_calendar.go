@@ -159,8 +159,8 @@ func (h *Handler) microsoftAccessToken(ctx context.Context, userID, kind string)
 		grantedScopes = microsoftScopes("calendar")
 	}
 	form := url.Values{
-		"client_id":     {h.microsoft.ClientID},
-		"client_secret": {h.microsoft.ClientSecret},
+		"client_id":     {h.microsoftCfg().ClientID},
+		"client_secret": {h.microsoftCfg().ClientSecret},
 		"grant_type":    {"refresh_token"},
 		"refresh_token": {refreshToken},
 		"scope":         {grantedScopes},

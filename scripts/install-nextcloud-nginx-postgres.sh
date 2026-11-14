@@ -37,6 +37,21 @@ INSTALL_LATEST_URL="https://download.nextcloud.com/server/releases/latest.tar.bz
 
 log() { printf '\n\033[1;34m==> %s\033[0m\n' "$*"; }
 warn() { printf '\n\033[1;33mWARN: %s\033[0m\n' "$*"; }
+
+# Nextcloud 35 laedt Apps als ES-Module (.mjs). Kennt nginx die Endung nicht,
+# kommt application/octet-stream und die Oberflaeche kann keine App installieren.
+# Vorhandene Typen bleiben: nur ergaenzen, wenn "mjs" fehlt.
+ensure_mjs_mime_type() {
+  local mt="/etc/nginx/mime.types"
+  [[ -f "${mt}" ]] || return 0
+  grep -Eq '(^|[[:space:]])mjs[[:space:];]' "${mt}" && return 0
+  if grep -Eq '^[[:space:]]*(application|text)/javascript[[:space:]]+js;' "${mt}"; then
+    sed -i -E 's#^([[:space:]]*(application|text)/javascript[[:space:]]+js);#\1 mjs;#' "${mt}"
+  else
+    sed -i -E '0,/^[[:space:]]*types[[:space:]]*\{/s##&\n    application/javascript js mjs;#' "${mt}"
+  fi
+  log ".mjs added to ${mt} (application/javascript)"
+}
 err() { printf '\n\033[1;31mERROR: %s\033[0m\n' "$*" >&2; }
 
 usage() {
@@ -346,6 +361,7 @@ verbund_passiv() {
     log "Nginx site present: adapting the PHP-FPM socket"
     sed -i -E "s#unix:/run/php/php[0-9.]*-fpm\.sock#unix:${PHP_SOCKET}#" "${site}"
     ln -sfn "${site}" /etc/nginx/sites-enabled/nextcloud.conf
+    ensure_mjs_mime_type
     nginx -t
   else
     log "No Nginx site file – nginx stays as it is"
@@ -538,6 +554,9 @@ server {
     add_header X-Permitted-Cross-Domain-Policies    "none"              always;
     add_header X-Robots-Tag                         "noindex, nofollow" always;
     add_header X-XSS-Protection                     "1; mode=block"     always;
+    # HSTS wirkt nur ueber den TLS-Endpunkt (Port 443, z. B. nach "certbot --nginx"); ueber
+    # Port 80 ignorieren Browser den Header.
+    add_header Strict-Transport-Security            "max-age=15552000; includeSubDomains" always;
 
     fastcgi_hide_header X-Powered-By;
 
@@ -580,6 +599,7 @@ server {
         expires 6M;
         access_log off;
         location ~ \.wasm\$ { default_type application/wasm; }
+        location ~ \.mjs\$ { default_type application/javascript; }
     }
 
     location ~ \.woff2?\$ {
@@ -597,6 +617,7 @@ fi
 
 ln -sfn "${NGINX_SITE}" /etc/nginx/sites-enabled/nextcloud.conf
 rm -f /etc/nginx/sites-enabled/default
+ensure_mjs_mime_type
 nginx -t
 systemctl enable nginx
 systemctl reload nginx

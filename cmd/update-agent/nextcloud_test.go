@@ -204,3 +204,72 @@ func TestNCAppsScript(t *testing.T) {
 		}
 	}
 }
+
+// Mail-Brücke: Nextcloud versendet über das lokale Relais des PDH.
+func TestNCMailScript(t *testing.T) {
+	ok := ncMailRequest{Dir: "/var/www/nextcloud", Host: "127.0.0.1", Port: 2525, User: "nextcloud", Password: "abcdefghijklmnop0123456789", From: "pdh@firma.de"}
+	for name, bad := range map[string]func(r *ncMailRequest){
+		"dir":      func(r *ncMailRequest) { r.Dir = "/var/www/nc; rm -rf /" },
+		"host":     func(r *ncMailRequest) { r.Host = "evil.example.com" },
+		"port":     func(r *ncMailRequest) { r.Port = 0 },
+		"port2":    func(r *ncMailRequest) { r.Port = 70000 },
+		"user":     func(r *ncMailRequest) { r.User = `x"y` },
+		"password": func(r *ncMailRequest) { r.Password = `abc"def"ghijklmnopq` },
+		"kurz":     func(r *ncMailRequest) { r.Password = "kurz" },
+		"from":     func(r *ncMailRequest) { r.From = `a"b@firma.de` },
+		"ohne@":    func(r *ncMailRequest) { r.From = "pdh" },
+		"prozent":  func(r *ncMailRequest) { r.From = "pd%sh@firma.de" },
+	} {
+		r := ok
+		bad(&r)
+		if _, err := ncMailScript(r); err == nil {
+			t.Errorf("%s: ungültige Eingabe akzeptiert", name)
+		}
+	}
+	s, err := ncMailScript(ok)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Das Passwort steht weder im Skripttext noch in Argumenten von occ: es kommt aus $PDH_MAIL_PASS
+	// und läuft per Standardeingabe in „occ config:import“.
+	if strings.Contains(s, ok.Password) || !strings.Contains(s, `"$PDH_MAIL_PASS"`) || !strings.Contains(s, "occ config:import") {
+		t.Errorf("Skript:\n%s", s)
+	}
+	if strings.Contains(s, "mail_smtppassword --value") {
+		t.Error("Passwort darf nicht als occ-Argument stehen")
+	}
+	// Das Passwort steht nie im Formatstring von printf: der fertige JSON-Text geht als Argument zu '%s'
+	if !strings.Contains(s, `printf '%s' "$MAIL_JSON"`) || strings.Contains(s, "printf '{") {
+		t.Errorf("printf muss mit '%%s' und fertigem JSON arbeiten:\n%s", s)
+	}
+	// Die Ausgabe von occ wird durchgereicht (der Handler maskiert das Passwort), nicht verschluckt
+	if strings.Contains(s, "config:import >/dev/null") || !strings.Contains(s, "config:import 2>&1") {
+		t.Error("Ausgabe von occ config:import darf nicht verschluckt werden")
+	}
+	for _, want := range []string{`"mail_smtpmode":"smtp"`, `"mail_smtphost":"127.0.0.1"`, `"mail_smtpport":2525`, `"mail_smtpsecure":""`,
+		`"mail_smtpauth":1`, `"mail_smtpauthtype":"LOGIN"`, `"mail_smtpname":"nextcloud"`, `"mail_from_address":"pdh"`, `"mail_domain":"firma.de"`, `"mail_smtptimeout":120`, `"mail_smtppassword":"'"$PDH_MAIL_PASS"'"`} {
+		if !strings.Contains(s, want) {
+			t.Errorf("Skript enthält %q nicht", want)
+		}
+	}
+	if bash, err := exec.LookPath("bash"); err == nil {
+		f := filepath.Join(t.TempDir(), "mail.sh")
+		_ = os.WriteFile(f, []byte(s), 0o644)
+		if out, err := exec.Command(bash, "-n", f).CombinedOutput(); err != nil {
+			t.Errorf("Syntaxfehler %v %s", err, out)
+		}
+	}
+}
+
+// Ein Skriptende mit Exitcode 3 heißt: Nextcloud liegt nicht auf diesem Server.
+func TestNCMissingExit(t *testing.T) {
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("bash fehlt")
+	}
+	err3 := exec.Command(bash, "-c", "exit 3").Run()
+	err4 := exec.Command(bash, "-c", "exit 4").Run()
+	if !ncMissing(err3) || ncMissing(err4) || ncMissing(nil) {
+		t.Errorf("ncMissing: 3=%v 4=%v", ncMissing(err3), ncMissing(err4))
+	}
+}

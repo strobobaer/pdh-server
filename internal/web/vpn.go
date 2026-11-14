@@ -54,7 +54,7 @@ func (h *Handler) canVPNUse(r *http.Request) bool {
 }
 
 func (h *Handler) vpnKey() []byte {
-	secret := h.mailCfg.CredentialsKey
+	secret := h.mailConfig().CredentialsKey
 	if secret == "" {
 		secret = h.jwtSecret
 	}

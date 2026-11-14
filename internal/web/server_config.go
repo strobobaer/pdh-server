@@ -60,11 +60,12 @@ var envGroups = []envGroup{
 	{"mail", "E-Mail", "ti-mail", "E-Mail-Versand, z. B. für den täglichen Bestellvorschlag – über einen SMTP-Server oder Microsoft 365.", []envField{
 		{Key: "PDH_MAIL_TRANSPORT", Label: "Versandweg", Help: "smtp = SMTP-Server (Felder unten); graph = Microsoft 365 über die App aus dem Reiter Microsoft 365 (Anwendungsberechtigung Mail.Send) – SMTP-Server, Benutzer und Passwort bleiben dann leer.", Type: "select", Options: []string{"smtp", "graph"}, Default: "smtp"},
 		{Key: "PDH_SMTP_HOST", Label: "SMTP-Server", Type: "text"},
-		{Key: "PDH_SMTP_PORT", Label: "Port", Type: "number", Default: "587"},
+		{Key: "PDH_SMTP_PORT", Label: "Port", Help: "Leer = der übliche Port zur Verschlüsselung (starttls 587, tls 465, none 25).", Type: "number"},
 		{Key: "PDH_SMTP_TLS", Label: "Verschlüsselung", Help: "starttls = Port 587, tls = Port 465.", Type: "select", Options: []string{"starttls", "tls", "none"}, Default: "starttls"},
 		{Key: "PDH_SMTP_USER", Label: "Benutzer", Type: "text"},
 		{Key: "PDH_SMTP_PASSWORD", Label: "Passwort", Type: "text", Secret: true},
 		{Key: "PDH_SMTP_FROM", Label: "Absender", Help: "Bei Microsoft 365 (graph) die Adresse des Postfachs, aus dem gesendet wird.", Type: "email"},
+		{Key: "PDH_MAIL_BRIDGE_ADDR", Label: "Mail-Brücke für Nextcloud", Help: "Lokale Adresse, auf der das PDH Mails von Nextcloud annimmt und über den Versandweg oben weitergibt. Nur 127.0.0.1 oder ::1 ist erlaubt. „aus“ schaltet die Brücke ab.", Type: "text", Default: "127.0.0.1:2525", Restart: true},
 	}},
 	{"copilot", "Copilot (KI)", "ti-brain", "KI-Analyse von Störungen – lokal (Ollama) oder in der Cloud (Anthropic).", []envField{
 		{Key: "PDH_COPILOT_BACKEND", Label: "Anbieter", Type: "select", Options: []string{"ollama", "anthropic"}, Default: "ollama", Restart: true},
@@ -187,6 +188,7 @@ type ServerConfigData struct {
 	AgentReady     bool            // Update-Agent kann .env.docker bereinigen
 	NCTheme        ncTheme         // Reiter Nextcloud: Erscheinungsbild übernehmen (nextcloud_theming.go)
 	NCAdmin        ncAdminView     // Reiter Nextcloud: Dienstkonto des PDH (nextcloud_admin.go)
+	NCMail         ncMailView      // Reiter Nextcloud: Mail-Brücke (mail_bridge.go)
 	NCSync         ncSyncView      // Reiter Nextcloud: Abgleich Benutzer, Gruppen, Laufwerke (nextcloud_sync.go)
 	TakeOverTotal  int             // Werte aus .env.docker, die noch nicht in der Datenbank sind
 	// Reiter „Passwörter“ (password_policy.go)
@@ -299,6 +301,7 @@ func (h *Handler) ServerConfigPage(w http.ResponseWriter, r *http.Request) {
 	h.fillEnvTakeover(r.Context(), &d)
 	d.NCTheme = h.nextcloudTheme()
 	d.NCAdmin = h.ncAdminViewFor(r.Context())
+	d.NCMail = h.ncMailViewFor(r.Context())
 	d.NCSync = h.ncSyncViewFor(r.Context(), h.hasPerm(r, permNCSync))
 	if h.db != nil {
 		p := h.users.Policy(r.Context())

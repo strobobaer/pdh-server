@@ -164,6 +164,23 @@
   </form>
   <p class="sc-sub" style="margin:8px 0 0">Gilt in Nextcloud Zwei-Faktor-Pflicht für Admins, das Konto davon ausnehmen – das PDH meldet sich mit Benutzername und Passwort an.</p>
 </div>
+{{end}}{{with $.NCMail}}
+<div class="card">
+  <div class="card-title"><span><i class="ti ti-mail-forward"></i> Mailversand über das PDH</span><span class="sc-sub">{{if .On}}Mail-Brücke läuft auf {{.Addr}}{{else}}Mail-Brücke ist aus{{end}}</span></div>
+  <p class="sc-sub" style="margin:0 0 10px">Nextcloud verschickt seine Mails (neues Konto, Freigaben, „Passwort vergessen“, Benachrichtigungen) immer auf demselben Weg wie das PDH – auch über Microsoft 365, was Nextcloud selbst nicht kann. Dazu nimmt das PDH sie auf dem eigenen Rechner an ({{.Addr}}, nur lokal, mit Anmeldung) und gibt sie mit dem Versandweg weiter, der im Reiter E-Mail gerade gilt: <b>{{.Via}}</b>. Ändert sich dort etwas, gilt es sofort auch für Nextcloud.</p>
+  {{if .NoMail}}<p class="sc-sub" style="color:var(--amber)"><i class="ti ti-alert-triangle"></i> Erst Mailversand im PDH einrichten (Reiter E-Mail). Bis dahin nimmt die Brücke keine Mails an.</p>{{end}}
+  {{if .ListenError}}<p class="sc-sub" style="color:var(--red)"><i class="ti ti-alert-circle"></i> {{.ListenError}}</p>{{end}}
+  {{if and (not .On) (not .ListenError)}}<p class="sc-sub" style="color:var(--amber)"><i class="ti ti-alert-triangle"></i> Die Brücke ist aus. Im Reiter E-Mail muss bei „Mail-Brücke für Nextcloud“ eine lokale Adresse stehen (Standard 127.0.0.1:2525); danach das PDH neu starten.</p>{{end}}
+  {{if .AttachedAt}}<div class="sc-sub" style="margin-bottom:6px"><i class="ti ti-plug-connected"></i> Nextcloud ist angeschlossen – zuletzt angeschlossen: {{.AttachedAt}}</div>{{else}}<div class="sc-sub" style="margin-bottom:6px"><i class="ti ti-plug-x"></i> Noch nicht an Nextcloud angeschlossen. Das PDH macht das nach dem Start selbst, wenn Nextcloud auf diesem Server liegt.</div>{{end}}
+  {{if .LastOK}}<div class="sc-sub" style="margin-bottom:6px"><i class="ti ti-send"></i> Letzte weitergeleitete Mail: {{.LastOK}}</div>{{end}}
+  {{if .LastError}}<div class="sc-sub" style="margin-bottom:6px;color:var(--red)"><i class="ti ti-alert-circle"></i> Letzter Fehler bei der Weiterleitung: {{.LastError}}</div>{{end}}
+  {{if .AttachError}}<div class="sc-sub" style="margin-bottom:6px;color:var(--red)"><i class="ti ti-alert-circle"></i> Letzter Anschluss: {{.AttachError}}</div>{{end}}
+  {{if not .AgentReady}}<p class="sc-sub" style="color:var(--amber)"><i class="ti ti-alert-triangle"></i> Der Anschluss braucht den Update-Agenten und Nextcloud auf demselben Server.</p>{{end}}
+  <form method="post" action="/admin/server-config/nextcloud/mail" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+    <button class="btn btn-primary btn-small" type="submit" {{if or (not .On) .NoMail (not .AgentReady)}}disabled{{end}} onclick="return confirm('Nextcloud jetzt auf den Mailversand über das PDH einstellen? Bisherige Mail-Einstellungen in Nextcloud werden ersetzt.')"><i class="ti ti-plug"></i> Mailversand über das PDH einrichten</button>
+    <span class="sc-sub">Grenzen: 25 MB je Mail, 50 Empfänger, 300 Mails je Stunde.</span>
+  </form>
+</div>
 {{end}}{{with $.NCTheme}}
 <div class="card">
   <div class="card-title"><span><i class="ti ti-palette"></i> Nextcloud im PDH-Look</span><span class="sc-sub">Theming-App von Nextcloud</span></div>

@@ -284,6 +284,99 @@ func (a *updateAgent) ncOIDCHandler(w http.ResponseWriter, r *http.Request) {
 	writeMountJSON(w, http.StatusOK, map[string]any{"ok": true, "output": text})
 }
 
+// ── Mail-Brücke: Nextcloud versendet über das lokale Relais des PDH ───────
+// Das PDH lauscht auf 127.0.0.1 (Mail-Brücke) und leitet mit seinem eigenen
+// Mailweg weiter. Der Agent trägt das Relais per occ in Nextcloud ein. Das
+// Passwort kommt über $PDH_MAIL_PASS und läuft per Standardeingabe in
+// „occ config:import“ – so steht es weder im Skripttext noch in den
+// Argumenten eines Prozesses.
+
+var (
+	ncMailPassRe = regexp.MustCompile(`^[A-Za-z0-9]{16,128}$`)
+	ncMailFromRe = regexp.MustCompile(`^[A-Za-z0-9._+-]{1,64}@[A-Za-z0-9.-]{1,190}$`)
+)
+
+type ncMailRequest struct {
+	Dir      string `json:"dir"`
+	Host     string `json:"host"`
+	Port     int    `json:"port"`
+	User     string `json:"user"`
+	Password string `json:"password"`
+	From     string `json:"from"`
+}
+
+func ncMailScript(req ncMailRequest) (string, error) {
+	if !ncDirRe.MatchString(req.Dir) || strings.Contains(req.Dir, "..") {
+		return "", errors.New("ungültiges Nextcloud-Verzeichnis")
+	}
+	if req.Host != "127.0.0.1" && req.Host != "::1" {
+		return "", errors.New("die Mail-Brücke gibt es nur auf dem eigenen Rechner (127.0.0.1)")
+	}
+	if req.Port < 1 || req.Port > 65535 {
+		return "", errors.New("ungültiger Port")
+	}
+	if !ncUserRe.MatchString(req.User) {
+		return "", errors.New("ungültiger Benutzername für die Mail-Brücke")
+	}
+	if !ncMailPassRe.MatchString(req.Password) {
+		return "", errors.New("ungültiges Passwort für die Mail-Brücke")
+	}
+	if !ncMailFromRe.MatchString(req.From) {
+		return "", errors.New("ungültige Absenderadresse")
+	}
+	local, domain, _ := strings.Cut(req.From, "@")
+	doc := fmt.Sprintf(`{"system":{"mail_smtpmode":"smtp","mail_smtphost":"%s","mail_smtpport":%d,"mail_smtpsecure":"",`+
+		`"mail_smtpauth":1,"mail_smtpauthtype":"LOGIN","mail_smtpname":"%s","mail_from_address":"%s","mail_domain":"%s","mail_smtptimeout":120,"mail_smtppassword":"'"$PDH_MAIL_PASS"'"}}`,
+		req.Host, req.Port, req.User, local, domain)
+	return `set -e
+cd '` + req.Dir + `' 2>/dev/null || { echo "Nextcloud-Verzeichnis ` + req.Dir + ` nicht gefunden"; exit 3; }
+[ -f occ ] || { echo "occ nicht gefunden in ` + req.Dir + `"; exit 3; }
+[ -n "$PDH_MAIL_PASS" ] || { echo "Passwort fehlt"; exit 4; }
+U="$(stat -c %U occ)"
+occ() { runuser -u "$U" -- php occ "$@"; }
+echo "### Mail-Einstellungen (Mail-Brücke)"
+MAIL_JSON='` + doc + `'
+printf '%s' "$MAIL_JSON" | occ config:import 2>&1
+echo "### fertig"
+`, nil
+}
+
+// ncMailHandler: POST /v1/nextcloud/mail → Nextcloud an die Mail-Brücke des PDH anschließen.
+func (a *updateAgent) ncMailHandler(w http.ResponseWriter, r *http.Request) {
+	var req ncMailRequest
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8<<10)).Decode(&req); err != nil {
+		writeMountJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "ungültige Anfrage"})
+		return
+	}
+	if req.Dir == "" {
+		req.Dir = "/var/www/nextcloud"
+	}
+	script, err := ncMailScript(req)
+	if err != nil {
+		writeMountJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": err.Error()})
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Minute)
+	defer cancel()
+	out, err := a.hostCommandEnv(ctx, false, script, map[string]string{"PDH_MAIL_PASS": req.Password}).CombinedOutput()
+	text := strings.ReplaceAll(strings.TrimSpace(string(out)), req.Password, "***")
+	if err != nil {
+		if text == "" {
+			text = err.Error()
+		}
+		// missing: Nextcloud liegt nicht auf diesem Server (Skript endet mit Exitcode 3)
+		writeMountJSON(w, http.StatusOK, map[string]any{"ok": false, "error": lastLine(text), "output": text, "missing": ncMissing(err)})
+		return
+	}
+	writeMountJSON(w, http.StatusOK, map[string]any{"ok": true, "output": text})
+}
+
+// ncMissing: das Skript endete mit Exitcode 3 (Verzeichnis oder occ nicht gefunden).
+func ncMissing(err error) bool {
+	var ee *exec.ExitError
+	return errors.As(err, &ee) && ee.ExitCode() == 3
+}
+
 var (
 	ncMu     sync.Mutex
 	ncStatus jobStatus // systemd-Modus (Docker: Status aus dem Job-Container)

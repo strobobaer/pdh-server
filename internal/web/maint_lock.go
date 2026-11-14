@@ -698,7 +698,7 @@ func (h *Handler) refuseForeignSite(w http.ResponseWriter, r *http.Request) bool
 
 // refuseForeignOrigin lehnt eine endgültige Spiegel-Aktion von fremder Seite mit 403 ab.
 func (h *Handler) refuseForeignOrigin(w http.ResponseWriter, r *http.Request) bool {
-	if !foreignOrigin(r, h.mailCfg.PublicURL) {
+	if !foreignOrigin(r, h.mailConfig().PublicURL) {
 		return false
 	}
 	http.Error(w, tr(h.requestLang(r), "Anfrage von fremder Seite abgewiesen"), http.StatusForbidden)

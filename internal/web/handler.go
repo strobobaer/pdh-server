@@ -260,50 +260,56 @@ type PartView struct {
 // ── Handler ──────────────────────────────────────────────────
 
 type Handler struct {
-	mirror           MirrorInfo                              // Spiegelmodus; einmal beim Start gesetzt (SetMirror)
-	tunnelTokenFn    func(context.Context) (string, bool)    // Tunnel-Token für den Abgleich mit pdh-ha; nil → Server-Einstellungen (Tests tauschen aus)
-	mirrorActiveURL  func(*http.Request) string              // Adresse des aktiven Servers für die Sperrseite; nil → kein Link
-	mirrorPeerFetch  func(context.Context) (haStatus, error) // pdh-ha-Status; nil → Socket (Tests tauschen aus)
-	mirrorPeerC      mirrorCache[mirrorPeer]
-	mirrorLagFetch   func(context.Context) (time.Duration, time.Time, error) // Rückstand; nil → mirror.ReplayLag (Tests tauschen aus)
-	mirrorLagC       mirrorCache[mirrorLag]
-	mirrorCurFetch   func(context.Context) (bool, error) // Spiegel auf Stand; nil → mirror.Current (Tests tauschen aus)
-	loginFn          func(ctx context.Context, email, password string) (string, *users.User, error)
-	loginRFIDFn      func(ctx context.Context, uid string) (string, *users.User, error)
-	mirrorAdminFn    func(*http.Request) bool                           // nil → canServerConfig (Tests)
-	userByIDFn       func(context.Context, string) (*users.User, error) // nil → users.GetByID (Tests)
-	db               *pgxpool.Pool
-	tmpl             *template.Template
-	users            *users.Service
-	shifts           *shifts.Service
-	storage          *storage.Service
-	infra            *infrastructure.Service
-	tickets          *tickets.Service
-	faults           *faults.Service
-	maint            *maintenance.Service
-	inv              *inventory.Service
-	it               *it.Service
-	time             *timetracking.Service
-	checks           *checklists.Service
-	tasks            *tasks.Service
-	projects         *projects.Service
-	rbac             *rbac.Service
-	jwtSecret        string
-	mailCfg          config.MailConfig
-	chatOnce         sync.Once
-	chatHubRef       *chatHub
-	updateAgentURL   string
-	updateAgentToken string
-	buildCommit      string
-	restartFn        func() // Neustart nach Aenderung der Server-Einstellungen (main.go)
-	restartPending   []string
-	microsoft        MicrosoftOAuthConfig
-	microsoftSyncMu  sync.Mutex
-	mqttBrokers      *mqttbroker.Manager
-	mqttImport       *mqttimport.Manager
-	exportCron       *scheduler.CronManager
-	importPoll       *scheduler.IntervalManager
-	syncRunner       *extsync.Runner // Abgleich mit Fremdsystemen; nil am Spiegel und in Tests (sync_wire.go)
+	mirror             MirrorInfo                              // Spiegelmodus; einmal beim Start gesetzt (SetMirror)
+	tunnelTokenFn      func(context.Context) (string, bool)    // Tunnel-Token für den Abgleich mit pdh-ha; nil → Server-Einstellungen (Tests tauschen aus)
+	mirrorActiveURL    func(*http.Request) string              // Adresse des aktiven Servers für die Sperrseite; nil → kein Link
+	mirrorPeerFetch    func(context.Context) (haStatus, error) // pdh-ha-Status; nil → Socket (Tests tauschen aus)
+	mirrorPeerC        mirrorCache[mirrorPeer]
+	mirrorLagFetch     func(context.Context) (time.Duration, time.Time, error) // Rückstand; nil → mirror.ReplayLag (Tests tauschen aus)
+	mirrorLagC         mirrorCache[mirrorLag]
+	mirrorCurFetch     func(context.Context) (bool, error) // Spiegel auf Stand; nil → mirror.Current (Tests tauschen aus)
+	loginFn            func(ctx context.Context, email, password string) (string, *users.User, error)
+	loginRFIDFn        func(ctx context.Context, uid string) (string, *users.User, error)
+	mirrorAdminFn      func(*http.Request) bool                           // nil → canServerConfig (Tests)
+	userByIDFn         func(context.Context, string) (*users.User, error) // nil → users.GetByID (Tests)
+	db                 *pgxpool.Pool
+	tmpl               *template.Template
+	users              *users.Service
+	shifts             *shifts.Service
+	storage            *storage.Service
+	infra              *infrastructure.Service
+	tickets            *tickets.Service
+	faults             *faults.Service
+	maint              *maintenance.Service
+	inv                *inventory.Service
+	it                 *it.Service
+	time               *timetracking.Service
+	checks             *checklists.Service
+	tasks              *tasks.Service
+	projects           *projects.Service
+	rbac               *rbac.Service
+	jwtSecret          string
+	mailCfg            config.MailConfig
+	mailMu             sync.RWMutex                                     // schützt mailCfg: Einstellungen ändern sich im Betrieb (mail_bridge.go liest je Mail frisch)
+	mailBridge         *mailBridge                                      // lokales SMTP-Relais für Nextcloud (mail_bridge.go)
+	mailBridgeStartErr string                                           // warum die Brücke nicht läuft (fester Text für die Karte)
+	mailRawSMTPFn      func(from string, to []string, raw []byte) error // nur Tests
+	mailRawGraphFn     func(ctx context.Context, raw []byte) error      // nur Tests
+	chatOnce           sync.Once
+	chatHubRef         *chatHub
+	updateAgentURL     string
+	updateAgentToken   string
+	buildCommit        string
+	restartFn          func() // Neustart nach Aenderung der Server-Einstellungen (main.go)
+	restartPending     []string
+	microsoft          MicrosoftOAuthConfig
+	msMu               sync.RWMutex // schützt microsoft (Einstellungen ändern sich im Betrieb)
+	microsoftSyncMu    sync.Mutex
+	mqttBrokers        *mqttbroker.Manager
+	mqttImport         *mqttimport.Manager
+	exportCron         *scheduler.CronManager
+	importPoll         *scheduler.IntervalManager
+	syncRunner         *extsync.Runner // Abgleich mit Fremdsystemen; nil am Spiegel und in Tests (sync_wire.go)
 	// syncReaderHook ersetzt in Tests das Lesen des Aufbaus der Fremddatenbank (sync_pages.go); nil = echt.
 	syncReaderHook func(ctx context.Context, connectionID string) (syncReader, extsync.Dialect, map[string]string, error)
 	// syncForeignHook ersetzt in Tests die Fremddatenbank für Test und Lauf (sync_ops.go); nil = echt.
@@ -675,6 +681,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/admin/server-config/vpn/zip", h.VPNZipWeb)
 	r.Post("/admin/server-config/restart", h.ServerRestartWeb)
 	r.Post("/admin/server-config/nextcloud/admin", h.NextcloudAdminWeb) // Dienstkonto pdhNCadmin (nextcloud_admin.go)
+	r.Post("/admin/server-config/nextcloud/mail", h.NextcloudMailWeb)   // Mail-Brücke: Nextcloud versendet über das PDH (mail_bridge.go)
 	r.Post("/admin/server-config/nextcloud/sync", h.NextcloudSyncWeb)   // Abgleich PDH → Nextcloud (nextcloud_sync.go)
 	r.Post("/admin/server-config/import", h.ServerConfigImportWeb)
 	r.Post("/admin/server-config/takeover", h.ServerConfigTakeOverWeb)
