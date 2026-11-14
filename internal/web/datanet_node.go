@@ -106,6 +106,7 @@ func dataNetStateDir() string {
 // im Protokoll). Auf beiden Servern; den Rückkanal für Meldungen bedient nur
 // der aktive Server (active).
 func (h *Handler) StartDataNet(ctx context.Context, active bool) {
+	h.StopDataNet() // ein Knoten je Server: einen früheren Lauf zuerst beenden
 	newNode := h.dataNetNewNode
 	if newNode == nil {
 		newNode = datanet.NewTSNode
@@ -113,7 +114,7 @@ func (h *Handler) StartDataNet(ctx context.Context, active bool) {
 	m := datanet.NewManager(newNode, dataNetUpTimeout)
 	ctx, cancel := context.WithCancel(ctx)
 	h.dataNetMu.Lock()
-	h.dataNet, h.dataNetCancel = m, cancel
+	h.dataNet, h.dataNetCancel, h.dataNetSrv = m, cancel, nil
 	h.dataNetMu.Unlock()
 	if h.db == nil {
 		return
@@ -140,6 +141,10 @@ func (h *Handler) StartDataNet(ctx context.Context, active bool) {
 // dataNetUp läuft, sobald der Knoten verbunden ist.
 func (h *Handler) dataNetUp(ctx context.Context, n datanet.Node, server string, active bool) {
 	h.dataNetMu.Lock()
+	if ctx.Err() != nil { // schon gestoppt
+		h.dataNetMu.Unlock()
+		return
+	}
 	h.dataNetBridges = datanet.NewBridges(n)
 	h.dataNetMu.Unlock()
 	if !active {
@@ -160,12 +165,25 @@ func (h *Handler) dataNetUp(ctx context.Context, n datanet.Node, server string, 
 	if err := h.dataNetSetAuthKey(wctx, server, ""); err != nil {
 		log.Warn().Err(err).Msg("Datennetz: Zugangsschlüssel nicht gelöscht")
 	}
-	ln, err := n.Listen("tcp", ":8443")
+	addr := h.dataNetListenAddr
+	if addr == "" {
+		addr = ":8443"
+	}
+	ln, err := n.Listen("tcp", addr)
 	if err != nil {
 		log.Warn().Err(err).Msg("Datennetz: Rückkanal nicht gestartet")
 		return
 	}
-	srv := &http.Server{Handler: h.dataNetReportHandler(), ReadHeaderTimeout: 10 * time.Second}
+	srv := &http.Server{Handler: h.dataNetReportHandler(), ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout: 30 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second}
+	h.dataNetMu.Lock()
+	if ctx.Err() != nil {
+		h.dataNetMu.Unlock()
+		ln.Close()
+		return
+	}
+	h.dataNetSrv = srv
+	h.dataNetMu.Unlock()
 	go func() {
 		if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Debug().Err(err).Msg("Datennetz: Rückkanal beendet")
@@ -186,11 +204,16 @@ func (h *Handler) dataNetStatus() datanet.Status {
 // StopDataNet beendet Knoten und Brücken.
 func (h *Handler) StopDataNet() {
 	h.dataNetMu.Lock()
-	m, b, cancel := h.dataNet, h.dataNetBridges, h.dataNetCancel
-	h.dataNetBridges = nil
-	h.dataNetMu.Unlock()
+	m, b, cancel, srv := h.dataNet, h.dataNetBridges, h.dataNetCancel, h.dataNetSrv
+	h.dataNetBridges, h.dataNetSrv = nil, nil
 	if cancel != nil {
-		cancel()
+		cancel() // unter dem Lock: dataNetUp legt danach nichts mehr an
+	}
+	h.dataNetMu.Unlock()
+	if srv != nil {
+		sctx, scancel := context.WithTimeout(context.Background(), 3*time.Second)
+		_ = srv.Shutdown(sctx)
+		scancel()
 	}
 	if b != nil {
 		b.Close()

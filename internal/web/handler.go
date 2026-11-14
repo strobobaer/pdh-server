@@ -265,6 +265,8 @@ type Handler struct {
 	dataNet         *datanet.Manager
 	dataNetBridges  *datanet.Bridges
 	dataNetCancel   context.CancelFunc
+	dataNetSrv      *http.Server // Rückkanal
+	dataNetListenAddr string      // Rückkanal-Adresse; leer → :8443 (Tests: :0)
 	dataNetNewNode  func(datanet.NodeConfig) (datanet.Node, error) // nil → datanet.NewTSNode (Tests tauschen aus)
 	mirror             MirrorInfo                              // Spiegelmodus; einmal beim Start gesetzt (SetMirror)
 	tunnelTokenFn      func(context.Context) (string, bool)    // Tunnel-Token für den Abgleich mit pdh-ha; nil → Server-Einstellungen (Tests tauschen aus)

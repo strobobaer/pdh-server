@@ -96,6 +96,11 @@ func (m *Manager) run(ctx context.Context, cfg NodeConfig, onUp func(Node)) {
 		}
 		if err == nil {
 			m.mu.Lock()
+			if ctx.Err() != nil { // Stop kam dazwischen
+				m.mu.Unlock()
+				node.Close()
+				return
+			}
 			m.node = node
 			m.st = Status{State: StateRunning, Addrs: addrs, Since: time.Now()}
 			m.mu.Unlock()
@@ -168,8 +173,8 @@ func (m *Manager) attempt(ctx context.Context, cfg NodeConfig) (Node, []netip.Ad
 // Stop beendet Aufbau und Knoten und wartet auf den Hintergrundlauf.
 func (m *Manager) Stop() {
 	m.mu.Lock()
-	cancel, done, node := m.cancel, m.done, m.node
-	m.cancel, m.done, m.node = nil, nil, nil
+	cancel, done := m.cancel, m.done
+	m.cancel, m.done = nil, nil
 	m.mu.Unlock()
 	if cancel != nil {
 		cancel()
@@ -177,6 +182,10 @@ func (m *Manager) Stop() {
 	if done != nil {
 		<-done
 	}
+	m.mu.Lock()
+	node := m.node
+	m.node = nil
+	m.mu.Unlock()
 	if node != nil {
 		node.Close()
 	}

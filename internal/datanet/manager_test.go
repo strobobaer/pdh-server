@@ -103,3 +103,37 @@ func TestManagerRunning(t *testing.T) {
 		t.Fatalf("onUp %d-mal", ups.Load())
 	}
 }
+
+func TestManagerStopDuringStart(t *testing.T) {
+	for i := 0; i < 20; i++ {
+		release := make(chan struct{})
+		closed := make(chan struct{}, 1)
+		m := datanet.NewManager(func(datanet.NodeConfig) (datanet.Node, error) {
+			<-release
+			return &closeSpy{closed: closed}, nil
+		}, time.Second)
+		m.Start(datanet.NodeConfig{Dir: t.TempDir(), AuthKey: "k"}, func(datanet.Node) {})
+		go close(release)
+		m.Stop()
+		time.Sleep(20 * time.Millisecond)
+		if _, ok := m.Node(); ok {
+			t.Fatal("Node() nach Stop")
+		}
+		if st := m.Status().State; st != datanet.StateOff {
+			t.Fatalf("Zustand %q", st)
+		}
+	}
+}
+
+type closeSpy struct {
+	nodetest.Fake
+	closed chan struct{}
+}
+
+func (c *closeSpy) Close() error {
+	select {
+	case c.closed <- struct{}{}:
+	default:
+	}
+	return nil
+}

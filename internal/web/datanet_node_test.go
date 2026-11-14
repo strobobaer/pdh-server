@@ -75,11 +75,13 @@ func TestDataNetAuthKeyCleared(t *testing.T) {
 	}
 	var cfgMu sync.Mutex
 	var gotCfg datanet.NodeConfig
+	fake := &nodetest.Fake{Addrs: []netip.Addr{netip.MustParseAddr("100.64.0.1")}}
+	h.dataNetListenAddr = ":0"
 	h.dataNetNewNode = func(c datanet.NodeConfig) (datanet.Node, error) {
 		cfgMu.Lock()
 		gotCfg = c
 		cfgMu.Unlock()
-		return &nodetest.Fake{Addrs: []netip.Addr{netip.MustParseAddr("100.64.0.1")}}, nil
+		return fake, nil
 	}
 	h.StartDataNet(ctx, true)
 	defer h.StopDataNet()
@@ -108,5 +110,11 @@ func TestDataNetAuthKeyCleared(t *testing.T) {
 	h.dataNetMu.RUnlock()
 	if b == nil {
 		t.Fatal("Brücken fehlen")
+	}
+	if _, ok := fake.Listening(8443); ok {
+		t.Fatal("fester Port 8443 belegt")
+	}
+	if _, ok := fake.Listening(0); !ok {
+		t.Fatal("Rückkanal lauscht nicht")
 	}
 }
