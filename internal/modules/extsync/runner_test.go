@@ -48,7 +48,7 @@ func newRunFix(t *testing.T, out *Outbound, fixes ...*inFix) *runFix {
 		Conn: func(context.Context, string) (string, map[string]string, error) {
 			return "attrappe", map[string]string{"allow_write": "true"}, nil
 		},
-		Route: func(context.Context, map[string]string) (bool, string) {
+		Route: func(context.Context, string, map[string]string) (bool, string) {
 			rf.mu.Lock()
 			defer rf.mu.Unlock()
 			if rf.route != nil {

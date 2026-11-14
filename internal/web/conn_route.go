@@ -120,11 +120,11 @@ func routeDecision(p *vpnPeer, host net.IP) (bool, string) {
 }
 
 // connRouteReady: darf die Verbindung jetzt benutzt werden? Direkt: immer.
-func (h *Handler) connRouteReady(ctx context.Context, cfg map[string]string) (bool, string) {
+func (h *Handler) connRouteReady(ctx context.Context, kind string, cfg map[string]string) (bool, string) {
 	rt := parseConnRoute(cfg)
 	if rt.ViaNet {
 		// Das Ziel liegt am Client fest: keine Adressprüfung wie beim VPN-Weg.
-		return h.dataNetRouteReady(ctx, rt.ClientID, firstNonEmpty(strings.TrimSpace(cfg["port"]), connDefaultPort(cfg)))
+		return h.dataNetRouteReady(ctx, rt.ClientID, firstNonEmpty(strings.TrimSpace(cfg["port"]), connDefaultPort(kind)))
 	}
 	if !rt.ViaVPN {
 		return true, ""
@@ -350,7 +350,7 @@ func (h *Handler) MssqlFingerprintWeb(direction string) http.HandlerFunc {
 		out := map[string]string{}
 		if cfg["host"] == "" {
 			out["error"] = "Bitte zuerst den Host eintragen."
-		} else if ok, why := h.connRouteReady(r.Context(), cfg); !ok {
+		} else if ok, why := h.connRouteReady(r.Context(), "mssql", cfg); !ok {
 			out["error"] = "Weg nicht bereit: " + why
 		} else if fp, err := mssqlServerFingerprint(r.Context(), cfg); err != nil {
 			out["error"] = err.Error()

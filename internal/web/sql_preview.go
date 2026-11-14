@@ -133,6 +133,9 @@ func mysqlConfig(config map[string]string) (*mysqldriver.Config, error) {
 	}
 	cfg := mysqldriver.NewConfig()
 	cfg.Net = "tcp"
+	// „[::1]“ schon in Klammern eingetragen: JoinHostPort setzt sie selbst
+	host = strings.TrimSuffix(strings.TrimPrefix(host, "["), "]")
+	tlsName = strings.TrimSuffix(strings.TrimPrefix(tlsName, "["), "]")
 	cfg.Addr = net.JoinHostPort(host, port)
 	cfg.DBName = strings.TrimSpace(config["database"])
 	cfg.User = config["username"]

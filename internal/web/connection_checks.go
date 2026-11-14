@@ -304,7 +304,7 @@ func (h *Handler) runConnectionChecks(ctx context.Context, id, direction string)
 		reachable = h.checkMssqlNetwork(ctx, rep, config)
 	} else if host, port, useTLS, ok := netTarget(kind, config); ok {
 		if kind == "mysql" && parseConnRoute(config).ViaNet {
-			reachable = h.checkNetRoute(ctx, rep, config, port, useTLS)
+			reachable = h.checkNetRoute(ctx, rep, kind, config, port, useTLS)
 		} else {
 			reachable = checkNetwork(ctx, rep, host, port, useTLS)
 		}
@@ -619,9 +619,9 @@ func (h *Handler) checkBackground(ctx context.Context, rep *checkReport, id, dir
 // checkNetRoute: Weg Datennetz – Client und Ziel bereit, dann die Brücke. DNS-Lookup
 // und Absenderadresse entfallen (das Ziel liegt am Client fest); die Portprüfung
 // läuft gegen die lokale Brücke. Das Zertifikat prüft der Treiber bei der Anmeldung.
-func (h *Handler) checkNetRoute(ctx context.Context, rep *checkReport, config map[string]string, port string, useTLS bool) bool {
+func (h *Handler) checkNetRoute(ctx context.Context, rep *checkReport, kind string, config map[string]string, port string, useTLS bool) bool {
 	start := time.Now()
-	if ok, why := h.connRouteReady(ctx, config); !ok {
+	if ok, why := h.connRouteReady(ctx, kind, config); !ok {
 		rep.add("Erreichbarkeit", "Datennetz", "fail", why+" – unter Datennetz Client und Netz prüfen.", time.Since(start).Milliseconds())
 		return false
 	}
@@ -654,11 +654,11 @@ func (h *Handler) checkNetRoute(ctx context.Context, rep *checkReport, config ma
 func (h *Handler) checkMssqlNetwork(ctx context.Context, rep *checkReport, config map[string]string) bool {
 	host, port, useTLS, _ := netTarget("mssql", config)
 	if parseConnRoute(config).ViaNet {
-		return h.checkNetRoute(ctx, rep, config, port, useTLS)
+		return h.checkNetRoute(ctx, rep, "mssql", config, port, useTLS)
 	}
 	if parseConnRoute(config).ViaVPN {
 		start := time.Now()
-		if ok, why := h.connRouteReady(ctx, config); !ok {
+		if ok, why := h.connRouteReady(ctx, "mssql", config); !ok {
 			rep.add("Erreichbarkeit", "Tunnel", "fail", why+" – unter VPN den ausgehenden Tunnel prüfen; der Abgleich baut keine Tunnel.", time.Since(start).Milliseconds())
 			return false
 		}

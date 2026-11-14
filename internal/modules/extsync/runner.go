@@ -85,7 +85,7 @@ type ConnLoader func(ctx context.Context, connectionID string) (kind string, cfg
 type ConnOpener func(ctx context.Context, kind string, cfg map[string]string) (*sql.DB, error)
 
 // RouteCheck sagt, ob der Weg der Verbindung (direkt oder VPN) jetzt bereit ist.
-type RouteCheck func(ctx context.Context, cfg map[string]string) (ok bool, reason string)
+type RouteCheck func(ctx context.Context, kind string, cfg map[string]string) (ok bool, reason string)
 
 // RunnerConfig verdrahtet den Taktgeber.
 type RunnerConfig struct {
@@ -274,7 +274,7 @@ func (r *Runner) connect(ctx context.Context, connectionID string) (f Foreign, d
 		return nil, nil, nil, cfg, nil, skipConnBroken + err.Error()
 	}
 	if r.c.Route != nil {
-		if ok, why := r.c.Route(ctx, cfg); !ok {
+		if ok, why := r.c.Route(ctx, kind, cfg); !ok {
 			return nil, nil, nil, cfg, nil, skipRouteDown + why
 		}
 	}

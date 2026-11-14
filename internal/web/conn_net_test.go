@@ -18,9 +18,9 @@ import (
 // connNetFake setzt die Auflösung des Weges Datennetz für einen Test.
 func connNetFake(t *testing.T, addr string, err error) {
 	t.Helper()
-	old := connNetResolve
-	connNetResolve = func(_ context.Context, _, _ string) (string, error) { return addr, err }
-	t.Cleanup(func() { connNetResolve = old })
+	old := getConnNetResolve()
+	setConnNetResolve(func(_ context.Context, _, _ string) (string, error) { return addr, err })
+	t.Cleanup(func() { setConnNetResolve(old) })
 }
 
 func TestConnDialTargetNet(t *testing.T) {
@@ -45,7 +45,7 @@ func TestConnDialTargetNet(t *testing.T) {
 		t.Errorf("Fehler: %v", err)
 	}
 	// ohne gesetzte Auflösung (Datennetz nie gestartet)
-	connNetResolve = nil
+	setConnNetResolve(nil)
 	_, _, _, err = connDialTarget(map[string]string{"route": "net:c1", "host": "sql01"}, "1433")
 	if err == nil || !strings.Contains(err.Error(), "Datennetz ist ausgeschaltet") {
 		t.Errorf("Fehler ohne Auflösung: %v", err)
@@ -290,14 +290,14 @@ func TestDataNetRouteReady(t *testing.T) {
 	}
 
 	// connRouteReady nimmt den Weg ohne Adressprüfung des VPN-Wegs
-	if ok, why := h.connRouteReady(ctx, map[string]string{"route": "net:" + good.ID, "host": "gibt-es-nicht.invalid", "port": "3306", "instance_name": ""}); !ok {
+	if ok, why := h.connRouteReady(ctx, "mssql", map[string]string{"route": "net:" + good.ID, "host": "gibt-es-nicht.invalid", "port": "3306", "instance_name": ""}); !ok {
 		t.Errorf("connRouteReady Datennetz: %q", why)
 	}
 	// ohne Port gilt je Treiber die Vorgabe: MySQL 3306
-	if ok, why := h.connRouteReady(ctx, map[string]string{"route": "net:" + good.ID, "host": "x"}); !ok {
+	if ok, why := h.connRouteReady(ctx, "mysql", map[string]string{"route": "net:" + good.ID, "host": "x"}); !ok {
 		t.Errorf("connRouteReady MySQL-Vorgabe: %q", why)
 	}
-	if ok, why := h.connRouteReady(ctx, map[string]string{"route": "net:" + good.ID, "host": "x", "instance_name": ""}); ok || !strings.Contains(why, "Port 1433") {
+	if ok, why := h.connRouteReady(ctx, "mssql", map[string]string{"route": "net:" + good.ID, "host": "x", "instance_name": ""}); ok || !strings.Contains(why, "Port 1433") {
 		t.Errorf("connRouteReady SQL-Server-Vorgabe: %v %q", ok, why)
 	}
 
@@ -445,5 +445,61 @@ func TestConnectionFormNetRoute(t *testing.T) {
 			t.Errorf("%s: ohne Datennetz keine Auswahl", dir)
 		}
 		checkScripts(t, dir, out)
+	}
+}
+
+func TestMysqlConfigBracketHost(t *testing.T) {
+	cfg, err := mysqlConfig(map[string]string{"host": "[::1]", "port": "3306", "use_tls": "true"})
+	if err != nil || cfg.Addr != "[::1]:3306" || cfg.TLS == nil || cfg.TLS.ServerName != "::1" {
+		t.Fatalf("Addr %q, TLS %+v, %v", cfg.Addr, cfg.TLS, err)
+	}
+	cfg, err = mysqlConfig(map[string]string{"host": "::1"})
+	if err != nil || cfg.Addr != "[::1]:3306" {
+		t.Errorf("ohne Klammern: %q %v", cfg.Addr, err)
+	}
+}
+
+func TestConnDefaultPortByKind(t *testing.T) {
+	if connDefaultPort("mssql") != "1433" || connDefaultPort("mysql") != "3306" {
+		t.Error("Standard-Ports")
+	}
+	if _, err := netPortNumber("0"); err == nil {
+		t.Error("0 muss scheitern")
+	}
+	if _, err := netPortNumber("70000"); err == nil {
+		t.Error("70000 muss scheitern")
+	}
+	if n, err := netPortNumber("01433"); err != nil || n != 1433 {
+		t.Errorf("01433: %d %v", n, err)
+	}
+}
+
+// Schreibweisen desselben Ports ergeben dieselbe Brücke; SQL Server ohne
+// instance_name-Feld und ohne Port gilt als 1433.
+func TestDataNetResolvePortNormalized(t *testing.T) {
+	pool := dataNetTestPool(t)
+	ctx := context.Background()
+	h := &Handler{db: pool}
+	suffix := strings.ReplaceAll(time.Now().Format("150405.000000"), ".", "")
+	c := dataNetTestClient(t, h, "port-"+suffix, "100.64.0.30",
+		datanet.TargetStatus{Port: 1433, OK: true, CheckedAt: time.Now()})
+	dataNetTestRunning(t, h, &nodetest.Fake{Addrs: []netip.Addr{netip.MustParseAddr("100.64.0.1")}})
+	a1, err := h.dataNetResolve(ctx, c.ID, "1433")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range []string{"01433", "+1433", " 1433 "} {
+		if a, err := h.dataNetResolve(ctx, c.ID, p); err != nil || a != a1 {
+			t.Errorf("%q: %q %v, erwartet %q", p, a, err, a1)
+		}
+	}
+	if ok, why := h.dataNetRouteReady(ctx, c.ID, "0"); ok || !strings.Contains(why, "ungültig") {
+		t.Errorf("Port 0: %v %q", ok, why)
+	}
+	if ok, why := h.connRouteReady(ctx, "mssql", map[string]string{"route": "net:" + c.ID, "host": "x"}); !ok {
+		t.Errorf("SQL Server ohne instance_name: %q", why)
+	}
+	if ok, _ := h.connRouteReady(ctx, "mysql", map[string]string{"route": "net:" + c.ID, "host": "x"}); ok {
+		t.Error("MySQL-Vorgabe 3306 wird nicht angeboten")
 	}
 }

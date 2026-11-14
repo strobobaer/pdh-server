@@ -147,7 +147,7 @@ func TestRouteDecisionReasons(t *testing.T) {
 
 func TestConnRouteReadyDirect(t *testing.T) {
 	h := &Handler{}
-	ok, reason := h.connRouteReady(context.Background(), map[string]string{"host": "db.example"})
+	ok, reason := h.connRouteReady(context.Background(), "mssql", map[string]string{"host": "db.example"})
 	if !ok || reason != "" {
 		t.Fatalf("direkt muss immer bereit sein, bekam (%v, %q)", ok, reason)
 	}

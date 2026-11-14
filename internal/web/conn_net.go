@@ -7,6 +7,7 @@ import (
 	"net"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -19,21 +20,48 @@ import (
 // lokalen Brücke (127.0.0.1:<Port>); das Ziel liegt am Client fest. Der
 // Zertifikatsname wird weiter gegen den eingetragenen Host geprüft.
 
-// connNetResolve liefert die lokale Brückenadresse (host:port) zu einem
-// Daten-Client und Port der Datenbank. StartDataNet setzt sie; Tests setzen
-// sie direkt.
-var connNetResolve func(ctx context.Context, clientID, port string) (bridgeAddr string, err error)
+// connNetResolver liefert die lokale Brückenadresse (host:port) zu einem
+// Daten-Client und Port der Datenbank. StartDataNet setzt sie (setConnNetResolve),
+// Tests ebenso.
+type connNetResolver func(ctx context.Context, clientID, port string) (bridgeAddr string, err error)
+
+var connNetResolvePtr atomic.Pointer[connNetResolver]
+
+// setConnNetResolve setzt die Auflösung (nil = keine); ohne Datenrennen.
+func setConnNetResolve(f connNetResolver) {
+	if f == nil {
+		connNetResolvePtr.Store(nil)
+		return
+	}
+	connNetResolvePtr.Store(&f)
+}
+
+func getConnNetResolve() connNetResolver {
+	if p := connNetResolvePtr.Load(); p != nil {
+		return *p
+	}
+	return nil
+}
 
 // connNetResolveTimeout begrenzt die Auflösung beim Verbindungsaufbau.
 const connNetResolveTimeout = 10 * time.Second
 
-// connDefaultPort: Standard-Port je Treiber. Die Konfiguration kennt ihren Typ
-// nicht; nur SQL-Server-Konfigurationen haben das Feld „instance_name“.
-func connDefaultPort(cfg map[string]string) string {
-	if _, ok := cfg["instance_name"]; ok {
+// connDefaultPort: Standard-Port je Verbindungstyp.
+func connDefaultPort(kind string) string {
+	if kind == "mssql" {
 		return "1433"
 	}
 	return "3306"
+}
+
+// netPortNumber liest einen Port einmal als Zahl (1–65535); „01433“ und „+1433“
+// ergeben 1433, damit je Ziel nur eine Brücke entsteht.
+func netPortNumber(port string) (int, error) {
+	n, err := strconv.Atoi(strings.TrimSpace(port))
+	if err != nil || n <= 0 || n > 65535 {
+		return 0, fmt.Errorf("Port %q ist ungültig", strings.TrimSpace(port))
+	}
+	return n, nil
 }
 
 // connDialTarget liefert, wohin der Treiber verbindet, und den Namen, gegen den
@@ -47,7 +75,7 @@ func connDialTarget(cfg map[string]string, defPort string) (host, port, tlsName 
 	if !rt.ViaNet {
 		return host, port, host, nil
 	}
-	resolve := connNetResolve
+	resolve := getConnNetResolve()
 	if resolve == nil {
 		return "", "", "", errors.New("Weg Datennetz nicht bereit: Datennetz ist ausgeschaltet")
 	}
@@ -109,7 +137,10 @@ func (h *Handler) dataNetRouteCheck(ctx context.Context, clientID, port string) 
 	case "offline":
 		return c, false, "Client offline (letzter Kontakt " + c.LastSeen.Local().Format("02.01. 15:04") + ")"
 	}
-	n, _ := strconv.Atoi(strings.TrimSpace(port))
+	n, err := netPortNumber(port)
+	if err != nil {
+		return c, false, "Port " + strings.TrimSpace(port) + " ist ungültig"
+	}
 	for _, t := range c.Targets {
 		if t.Port == n {
 			if !t.OK {
@@ -118,7 +149,7 @@ func (h *Handler) dataNetRouteCheck(ctx context.Context, clientID, port string) 
 			return c, true, ""
 		}
 	}
-	return c, false, "Port " + strings.TrimSpace(port) + " bietet der Client nicht an"
+	return c, false, "Port " + strconv.Itoa(n) + " bietet der Client nicht an"
 }
 
 // dataNetRouteReady: darf die Verbindung über diesen Client und Port jetzt
@@ -142,7 +173,8 @@ func (h *Handler) dataNetResolve(ctx context.Context, clientID, port string) (st
 	if b == nil {
 		return "", errors.New("Datennetz nicht verbunden")
 	}
-	remote := net.JoinHostPort(c.Addr, strings.TrimSpace(port))
+	n, _ := netPortNumber(port) // dataNetRouteCheck hat ihn geprüft
+	remote := net.JoinHostPort(c.Addr, strconv.Itoa(n))
 	var addr string
 	for try := 0; try < 2; try++ {
 		var err error

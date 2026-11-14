@@ -34,7 +34,7 @@ func (h *Handler) syncOpenForeign(ctx context.Context, connectionID string) (f e
 	if err != nil {
 		return nil, nil, nil, cfg, closeFn, err
 	}
-	if ok, why := h.connRouteReady(ctx, cfg); !ok {
+	if ok, why := h.connRouteReady(ctx, kind, cfg); !ok {
 		return nil, nil, nil, cfg, closeFn, errors.New("Weg nicht bereit: " + why)
 	}
 	if d, err = extsync.DialectFor(kind); err != nil {
