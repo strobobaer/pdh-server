@@ -236,8 +236,8 @@ func TestModbusRangeHandler(t *testing.T) {
 	if w.Code != http.StatusOK || json.Unmarshal(w.Body.Bytes(), &res) != nil || len(res.Rows) != 2 || res.Rows[0].Address != 100 {
 		t.Fatalf("Bereich: %d %s", w.Code, w.Body.String())
 	}
-	if !strings.Contains(w.Body.String(), `"ref":"holding:100:float32"`) {
-		t.Errorf("Quellwert fehlt: %s", w.Body.String())
+	if strings.Contains(w.Body.String(), `"ref"`) || strings.Contains(w.Body.String(), `"order":"cdab"`) {
+		t.Errorf("Quellwert bzw. fremde Reihenfolge in der Antwort: %s", w.Body.String())
 	}
 	s.Set(func(s *testModbusServer) {
 		if s.LastUnit != 5 {
@@ -370,6 +370,7 @@ func modbusWriteReq(fields map[string]string) *http.Request {
 }
 
 func TestModbusWriteHandlerGuards(t *testing.T) {
+	pool := dataNetTestPool(t)
 	s := startTestModbusServer(t)
 	fields := map[string]string{"area": "holding", "address": "10", "type": "uint16", "order": "abcd", "value": "7"}
 	// nur Leserecht: 403
@@ -380,6 +381,15 @@ func TestModbusWriteHandlerGuards(t *testing.T) {
 		t.Errorf("ohne Schreibrecht: %d", w.Code)
 	}
 	h = modbusTestHandler(s.Addr, map[string]bool{"import.execute": true, "import.write": true})
+	h.db = pool
+	id := uuid.NewString()
+	t.Cleanup(func() { pool.Exec(context.Background(), `DELETE FROM record_history WHERE ref_id = $1`, id) })
+	base := h.explorerLoadHook
+	h.explorerLoadHook = func(r *http.Request, dir string) (explorerConn, error) {
+		c, err := base(r, dir)
+		c.ID = id
+		return c, err
+	}
 	// ohne confirm: 400
 	w = httptest.NewRecorder()
 	noConfirm := map[string]string{"confirm": ""}
@@ -398,7 +408,8 @@ func TestModbusWriteHandlerGuards(t *testing.T) {
 		t.Errorf("Spiegel: %d", w.Code)
 	}
 	h.mirror = MirrorInfo{}
-	// Eingabefehler: 400, ohne dass das Gerät etwas sieht
+	// Eingabefehler: 400 und „Abgelehnt“ im Verlauf, ohne dass das Gerät etwas sieht
+	cases := 0
 	for name, f := range map[string]map[string]string{
 		"Bereich input":    {"area": "input"},
 		"Bereich discrete": {"area": "discrete"},
@@ -408,6 +419,10 @@ func TestModbusWriteHandlerGuards(t *testing.T) {
 		"Reihenfolge":      {"order": "xyzw"},
 		"Einheit":          {"unit": "300"},
 		"Wert zu lang":     {"value": strings.Repeat("1", modbusExplorerMaxWrite+1)},
+		"Wert ungültig":    {"value": "abc"},
+		"Wert zu groß":     {"value": "70000"},
+		"NaN":              {"type": "float32", "value": "NaN"},
+		"Coil-Wert":        {"area": "coil", "value": "vielleicht"},
 	} {
 		f2 := map[string]string{}
 		for k, v := range fields {
@@ -417,10 +432,30 @@ func TestModbusWriteHandlerGuards(t *testing.T) {
 			f2[k] = v
 		}
 		w = httptest.NewRecorder()
-		h.ModbusExplorerWrite("import")(w, modbusWriteReq(f2))
+		h.ModbusExplorerWrite("import")(w, noUserReq(modbusWriteReq(f2)))
+		cases++
 		if w.Code != http.StatusBadRequest {
 			t.Errorf("%s: %d %s", name, w.Code, w.Body.String())
 		}
+	}
+	hist := h.recordHistory(context.Background(), "connection", id)
+	if len(hist) != cases {
+		t.Errorf("Verlauf: %d Einträge für %d Ablehnungen", len(hist), cases)
+	}
+	for _, e := range hist {
+		if !strings.HasPrefix(e.NewValue, "Abgelehnt (") {
+			t.Errorf("kein „Abgelehnt“: %+v", e)
+		}
+	}
+	// Gerät beschäftigt: 429, nicht im Verlauf
+	r1, _ := opcuaConnGate.acquire(id)
+	r2, _ := opcuaConnGate.acquire(id)
+	w = httptest.NewRecorder()
+	h.ModbusExplorerWrite("import")(w, noUserReq(modbusWriteReq(fields)))
+	r1()
+	r2()
+	if w.Code != http.StatusTooManyRequests || len(h.recordHistory(context.Background(), "connection", id)) != cases {
+		t.Errorf("429: %d, Verlauf %d", w.Code, len(h.recordHistory(context.Background(), "connection", id)))
 	}
 	s.Set(func(s *testModbusServer) {
 		if s.Requests != 0 {
@@ -490,7 +525,7 @@ func TestModbusWriteHandlerLogsResult(t *testing.T) {
 			okSeen = e.NewValue == "21,5 (float32, CDAB)"
 		case e.FieldName == "coil:4:bool (Einheit 5)":
 			coilSeen = e.NewValue == "true"
-		case strings.HasPrefix(e.NewValue, "Abgelehnt (") && strings.Contains(e.NewValue, "70000") && strings.Contains(e.NewValue, "(uint16, ABCD)"):
+		case strings.HasPrefix(e.NewValue, "Abgelehnt (") && strings.Contains(e.NewValue, "70000") && strings.Contains(e.NewValue, "(uint16)"):
 			rejSeen = true
 		case e.FieldName == "holding:5000:uint16 (Einheit 5)":
 			failSeen = strings.HasPrefix(e.NewValue, "Fehlgeschlagen (Das Gerät kennt diese Adresse nicht") && strings.Contains(e.NewValue, "– 1 (uint16, ABCD)")

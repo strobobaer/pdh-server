@@ -174,7 +174,7 @@ type ModbusInterp struct {
 	Type  string `json:"type"`
 	Order string `json:"order"`
 	Value string `json:"value"`
-	Ref   string `json:"ref"`
+	Ref   string `json:"ref,omitempty"`
 }
 
 // ModbusRegisterRow ist ein Register mit allen Deutungen, die ab dort noch passen.

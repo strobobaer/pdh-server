@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 	"unicode/utf8"
 
@@ -83,6 +84,10 @@ func modbusDeviceError(err error) string {
 	case errors.Is(err, modbus.ErrServerDeviceFailure):
 		return "Das Gerät meldet einen Fehler (Server Device Failure)"
 	case errors.Is(err, modbus.ErrRequestTimedOut):
+		return "Das Gerät antwortet nicht (Zeitüberschreitung)"
+	case errors.Is(err, io.EOF), errors.Is(err, io.ErrUnexpectedEOF), errors.Is(err, net.ErrClosed), errors.Is(err, syscall.ECONNRESET):
+		return "Das Gerät hat die Verbindung beendet"
+	case isTimeout(err):
 		return "Das Gerät antwortet nicht (Zeitüberschreitung)"
 	}
 	return opcuaCleanText(err.Error(), 200)
@@ -161,7 +166,7 @@ func parseModbusRange(q url.Values, defaultUnit byte) (modbusRange, error) {
 type ModbusBit struct {
 	Address uint16 `json:"address"`
 	On      bool   `json:"on"`
-	Ref     string `json:"ref"`
+	Ref     string `json:"ref,omitempty"`
 }
 
 // ModbusRangeResult ist das Ergebnis eines Bereichslesens.
@@ -245,7 +250,7 @@ func parseModbusBool(s string) (bool, error) {
 	return false, errors.New("Ein Coil nimmt nur true, false, 1 oder 0 an")
 }
 
-// writeModbusExplorer schreibt einen Coil oder ein Holding-Register (bzw. mehrere Register).
+// writeModbusExplorer schreibt (auf der Einheit, mit der c geöffnet wurde) einen Coil oder ein Holding-Register (bzw. mehrere Register).
 // Werte, die vor dem Senden abgelehnt werden, kommen als *opcuaRejected zurück.
 func writeModbusExplorer(c *modbus.ModbusClient, in modbusWriteInput) error {
 	switch in.Area {
@@ -253,9 +258,6 @@ func writeModbusExplorer(c *modbus.ModbusClient, in modbusWriteInput) error {
 		b, err := parseModbusBool(in.Value)
 		if err != nil {
 			return &opcuaRejected{err.Error()}
-		}
-		if err := c.SetUnitId(in.Unit); err != nil {
-			return err
 		}
 		return c.WriteCoil(in.Address, b)
 	case "holding":
@@ -265,9 +267,6 @@ func writeModbusExplorer(c *modbus.ModbusClient, in modbusWriteInput) error {
 		}
 		if uint32(in.Address)+uint32(len(regs)) > 65536 {
 			return &opcuaRejected{"Der Wert reicht über die Adresse 65535 hinaus"}
-		}
-		if err := c.SetUnitId(in.Unit); err != nil {
-			return err
 		}
 		if len(regs) == 1 {
 			return c.WriteRegister(in.Address, regs[0])
@@ -309,7 +308,77 @@ func (h *Handler) modbusReadGuard(w http.ResponseWriter, r *http.Request, direct
 	return c, true
 }
 
-// ModbusExplorerRange: GET …/explorer/modbus/range?area&start&count&unit – ein Bereich einmal lesen.
+// modbusEffOrder: bei einem Register sind CDAB und DCBA gleich ABCD bzw. BADC.
+func modbusEffOrder(typ, order string) string {
+	if modbusRegisterCount(typ) == 1 {
+		switch order {
+		case "cdab":
+			return "abcd"
+		case "dcba":
+			return "badc"
+		}
+	}
+	return order
+}
+
+// modbusOrderParam liest „order“: leer = abcd, „all“ = alle Reihenfolgen (nur für Einzelzeilen).
+func modbusOrderParam(q url.Values) (string, error) {
+	o := strings.TrimSpace(q.Get("order"))
+	switch {
+	case o == "":
+		return "abcd", nil
+	case o == "all" || modbusKnownOrder(o):
+		return o, nil
+	}
+	return "", errors.New("Ungültige Reihenfolge")
+}
+
+// modbusCompact verkleinert das Ergebnis für die Übertragung: je Zeile nur die Deutungen
+// der Reihenfolge (order „all“: alle) und ohne Quellwert – den baut der Browser selbst
+// (Bereich:Adresse:Typ[:Reihenfolge], wie modbusSourceRef).
+func modbusCompact(res ModbusRangeResult, order string) ModbusRangeResult {
+	if res.Rows != nil {
+		rows := make([]ModbusRegisterRow, len(res.Rows))
+		for i, r := range res.Rows {
+			nr := ModbusRegisterRow{Address: r.Address, Hex: r.Hex}
+			for _, in := range r.Interps {
+				if order == "all" || in.Order == modbusEffOrder(in.Type, order) {
+					in.Ref = ""
+					nr.Interps = append(nr.Interps, in)
+				}
+			}
+			rows[i] = nr
+		}
+		res.Rows = rows
+	}
+	for i := range res.Bits {
+		res.Bits[i].Ref = ""
+	}
+	return res
+}
+
+// modbusRangeKey: Fingerabdruck der gelesenen Rohwerte (zum Erkennen von Änderungen).
+func modbusRangeKey(res ModbusRangeResult) string {
+	var b strings.Builder
+	for _, r := range res.Rows {
+		b.WriteString(r.Hex)
+		b.WriteByte(' ')
+	}
+	for _, bit := range res.Bits {
+		if bit.On {
+			b.WriteByte('1')
+		} else {
+			b.WriteByte('0')
+		}
+	}
+	return b.String()
+}
+
+// modbusAliveEvery: so oft kommt beim Verfolgen ohne Änderung ein Lebenszeichen (Variable für Tests).
+var modbusAliveEvery = 10 * time.Second
+
+// ModbusExplorerRange: GET …/explorer/modbus/range?area&start&count&unit&order – ein Bereich einmal lesen.
+// order: Reihenfolge der Deutungen (Vorgabe abcd); „all“ liefert alle (für die Matrix einer Zeile).
 func (h *Handler) ModbusExplorerRange(direction string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		c, ok := h.modbusReadGuard(w, r, direction)
@@ -317,6 +386,11 @@ func (h *Handler) ModbusExplorerRange(direction string) http.HandlerFunc {
 			return
 		}
 		rg, err := parseModbusRange(r.URL.Query(), modbusConfigUnit(c.Config))
+		if err != nil {
+			writeGlobalBoardError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		order, err := modbusOrderParam(r.URL.Query())
 		if err != nil {
 			writeGlobalBoardError(w, http.StatusBadRequest, err.Error())
 			return
@@ -337,13 +411,13 @@ func (h *Handler) ModbusExplorerRange(direction string) http.HandlerFunc {
 			writeGlobalBoardError(w, http.StatusBadGateway, opcuaCleanText(err.Error(), 300))
 			return
 		}
-		writeOPCUAJSON(w, res)
+		writeOPCUAJSON(w, modbusCompact(res, order))
 	}
 }
 
-// ModbusExplorerWatch: GET …/explorer/modbus/watch?area&start&count&unit&interval= – den Bereich
-// im Takt (Sekunden, 1 bis 60, Vorgabe 2) lesen; SSE „range“. Lesefehler kommen als „warn“,
-// die Sitzung läuft weiter.
+// ModbusExplorerWatch: GET …/explorer/modbus/watch?area&start&count&unit&order&interval= – den Bereich
+// im Takt (Sekunden, 1 bis 60, Vorgabe 2) lesen; SSE „range“ nur bei geänderten Werten, sonst
+// alle 10 s „alive“. Lesefehler kommen als „warn“, die Sitzung läuft weiter.
 func (h *Handler) ModbusExplorerWatch(direction string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		c, ok := h.modbusReadGuard(w, r, direction)
@@ -353,6 +427,11 @@ func (h *Handler) ModbusExplorerWatch(direction string) http.HandlerFunc {
 		rg, err := parseModbusRange(r.URL.Query(), modbusConfigUnit(c.Config))
 		if err != nil {
 			writeGlobalBoardError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		order, err := modbusOrderParam(r.URL.Query())
+		if err != nil || order == "all" {
+			writeGlobalBoardError(w, http.StatusBadRequest, "Ungültige Reihenfolge")
 			return
 		}
 		tick := modbusExplorerDefTick
@@ -376,9 +455,10 @@ func (h *Handler) ModbusExplorerWatch(direction string) http.HandlerFunc {
 					cl.Close()
 				}
 			}()
-			send("connected", map[string]any{"interval": tick, "area": rg.Area, "start": rg.Start, "count": rg.Count, "unit": rg.Unit})
+			send("connected", map[string]any{"interval": tick, "area": rg.Area, "start": rg.Start, "count": rg.Count, "unit": rg.Unit, "order": order})
 			t := time.NewTicker(time.Duration(tick) * time.Second)
 			defer t.Stop()
+			lastKey, lastSent, havePrev := "", time.Now(), false
 			for {
 				if cl == nil {
 					var err error
@@ -387,6 +467,7 @@ func (h *Handler) ModbusExplorerWatch(direction string) http.HandlerFunc {
 						if ctx.Err() != nil {
 							return nil
 						}
+						havePrev = false
 						send("warn", map[string]string{"message": opcuaCleanText(err.Error(), 300)})
 					}
 				}
@@ -396,13 +477,20 @@ func (h *Handler) ModbusExplorerWatch(direction string) http.HandlerFunc {
 					case ctx.Err() != nil:
 						return nil
 					case err != nil:
+						havePrev = false
 						send("warn", map[string]string{"message": opcuaCleanText(err.Error(), 300)})
 						if !modbusIsException(err) { // Verbindung gestört: beim nächsten Takt neu aufbauen
 							cl.Close()
 							cl = nil
 						}
 					default:
-						send("range", res)
+						if key := modbusRangeKey(res); !havePrev || key != lastKey {
+							send("range", modbusCompact(res, order))
+							lastKey, lastSent, havePrev = key, time.Now(), true
+						} else if time.Since(lastSent) >= modbusAliveEvery {
+							send("alive", map[string]any{})
+							lastSent = time.Now()
+						}
 					}
 				}
 				select {
@@ -415,8 +503,61 @@ func (h *Handler) ModbusExplorerWatch(direction string) http.HandlerFunc {
 	}
 }
 
+// parseModbusWrite prüft die Felder eines Schreibwunsches; Fehler sind Ablehnungen.
+func parseModbusWrite(r *http.Request, defaultUnit byte) (modbusWriteInput, error) {
+	in := modbusWriteInput{
+		Area:  strings.TrimSpace(r.FormValue("area")),
+		Type:  strings.TrimSpace(r.FormValue("type")),
+		Order: strings.TrimSpace(r.FormValue("order")),
+		Value: r.FormValue("value"),
+		Unit:  defaultUnit,
+	}
+	if in.Area != "coil" && in.Area != "holding" {
+		return in, errors.New("Nur Coils und Holding Register sind beschreibbar")
+	}
+	addr, err := strconv.Atoi(strings.TrimSpace(r.FormValue("address")))
+	if err != nil || addr < 0 || addr > 65535 {
+		return in, errors.New("Ungültige Adresse (0 bis 65535)")
+	}
+	in.Address = uint16(addr)
+	if s := strings.TrimSpace(r.FormValue("unit")); s != "" {
+		n, err := strconv.Atoi(s)
+		if err != nil || n < 0 || n > 255 {
+			return in, errors.New("Ungültige Einheit-ID (0 bis 255)")
+		}
+		in.Unit = byte(n)
+	}
+	if utf8.RuneCountInString(in.Value) > modbusExplorerMaxWrite {
+		return in, errors.New("Der Wert ist zu lang")
+	}
+	if in.Area == "coil" {
+		in.Type, in.Order = "bool", ""
+		if _, err := parseModbusBool(in.Value); err != nil {
+			return in, err
+		}
+		return in, nil
+	}
+	if in.Order == "" {
+		in.Order = "abcd"
+	}
+	if !modbusKnownType(in.Type) {
+		return in, errors.New("Ungültiger Datentyp")
+	}
+	if !modbusKnownOrder(in.Order) {
+		return in, errors.New("Ungültige Reihenfolge")
+	}
+	if regs, err := encodeModbusValue(in.Value, in.Type, in.Order); err != nil {
+		return in, err
+	} else if uint32(in.Address)+uint32(len(regs)) > 65536 {
+		return in, errors.New("Der Wert reicht über die Adresse 65535 hinaus")
+	}
+	return in, nil
+}
+
 // ModbusExplorerWrite: POST …/explorer/modbus/write (area, address, type, order, value, unit, confirm)
-// – testweise schreiben. Jeder Versuch steht im Verlauf der Verbindung, auch ein Fehlschlag.
+// – testweise schreiben. Hat der Guard die Rechte bejaht, steht jeder Versuch im Verlauf der
+// Verbindung: Ablehnung („Abgelehnt (…)“), Fehlschlag und Erfolg. Nur „Gerät beschäftigt“ (429)
+// nicht, denn dann wurde nichts versucht.
 func (h *Handler) ModbusExplorerWrite(direction string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		r.Body = http.MaxBytesReader(w, r.Body, 8<<10)
@@ -428,48 +569,28 @@ func (h *Handler) ModbusExplorerWrite(direction string) http.HandlerFunc {
 			writeGlobalBoardError(w, http.StatusNotFound, "Keine Modbus-Verbindung")
 			return
 		}
-		in := modbusWriteInput{
-			Area:  strings.TrimSpace(r.FormValue("area")),
-			Type:  strings.TrimSpace(r.FormValue("type")),
-			Order: strings.TrimSpace(r.FormValue("order")),
-			Value: r.FormValue("value"),
-			Unit:  modbusConfigUnit(c.Config),
-		}
-		if in.Area != "coil" && in.Area != "holding" {
-			writeGlobalBoardError(w, http.StatusBadRequest, "Nur Coils und Holding Register sind beschreibbar")
-			return
-		}
-		addr, err := strconv.Atoi(strings.TrimSpace(r.FormValue("address")))
-		if err != nil || addr < 0 || addr > 65535 {
-			writeGlobalBoardError(w, http.StatusBadRequest, "Ungültige Adresse (0 bis 65535)")
-			return
-		}
-		in.Address = uint16(addr)
-		if s := strings.TrimSpace(r.FormValue("unit")); s != "" {
-			n, err := strconv.Atoi(s)
-			if err != nil || n < 0 || n > 255 {
-				writeGlobalBoardError(w, http.StatusBadRequest, "Ungültige Einheit-ID (0 bis 255)")
-				return
+		in, perr := parseModbusWrite(r, modbusConfigUnit(c.Config))
+		// Ziel und Wert für den Verlauf, auch wenn die Eingabe unbrauchbar ist.
+		target := fmt.Sprintf("%s (Einheit %d)", modbusSourceRef(in.Area, in.Address, in.Type, in.Order), in.Unit)
+		logged := opcuaCleanText(in.Value, opcuaExplorerMaxValue)
+		if perr != nil { // unbrauchbare Eingabe: so festhalten, wie sie ankam
+			target = strings.TrimRight(strings.Join([]string{r.FormValue("area"), r.FormValue("address"), r.FormValue("type"), r.FormValue("order")}, ":"), ":")
+			target = opcuaCleanText(target, 120)
+			if u := strings.TrimSpace(r.FormValue("unit")); u != "" {
+				target += " (Einheit " + opcuaCleanText(u, 10) + ")"
 			}
-			in.Unit = byte(n)
+			if t := opcuaCleanText(strings.TrimSpace(r.FormValue("type")), 20); t != "" {
+				logged += " (" + t + ")"
+			}
+		} else if in.Area == "holding" {
+			logged += " (" + in.Type + ", " + strings.ToUpper(in.Order) + ")"
 		}
-		if in.Area == "coil" {
-			in.Type, in.Order = "bool", ""
-		} else {
-			if in.Order == "" {
-				in.Order = "abcd"
-			}
-			if !modbusKnownType(in.Type) {
-				writeGlobalBoardError(w, http.StatusBadRequest, "Ungültiger Datentyp")
-				return
-			}
-			if !modbusKnownOrder(in.Order) {
-				writeGlobalBoardError(w, http.StatusBadRequest, "Ungültige Reihenfolge")
-				return
-			}
+		reject := func(err error) {
+			h.explorerLogWrite(r, c, target, "Abgelehnt ("+opcuaCleanText(err.Error(), 80)+") – "+logged)
+			writeGlobalBoardError(w, http.StatusBadRequest, opcuaCleanText(err.Error(), 300))
 		}
-		if utf8.RuneCountInString(in.Value) > modbusExplorerMaxWrite {
-			writeGlobalBoardError(w, http.StatusBadRequest, "Der Wert ist zu lang")
+		if perr != nil {
+			reject(perr)
 			return
 		}
 		release, ok := opcuaAcquire(w, c)
@@ -479,14 +600,6 @@ func (h *Handler) ModbusExplorerWrite(direction string) http.HandlerFunc {
 		defer release()
 		readBack := ""
 		writeErr := func() error {
-			// Vor dem Verbinden prüfen: Wert und Bereich sind ohne Gerät beurteilbar.
-			if in.Area == "holding" {
-				if _, err := encodeModbusValue(in.Value, in.Type, in.Order); err != nil {
-					return &opcuaRejected{err.Error()}
-				}
-			} else if _, err := parseModbusBool(in.Value); err != nil {
-				return &opcuaRejected{err.Error()}
-			}
 			cl, err := openModbusClientUnit(c.Config, in.Unit)
 			if err != nil {
 				return err
@@ -498,30 +611,17 @@ func (h *Handler) ModbusExplorerWrite(direction string) http.HandlerFunc {
 			readBack = modbusReadBack(cl, in)
 			return nil
 		}()
-		target := fmt.Sprintf("%s (Einheit %d)", modbusSourceRef(in.Area, in.Address, in.Type, in.Order), in.Unit)
-		logged := opcuaCleanText(in.Value, opcuaExplorerMaxValue)
-		if in.Area == "holding" {
-			logged += " (" + in.Type + ", " + strings.ToUpper(in.Order) + ")"
-		}
 		var rejected *opcuaRejected
-		isRejected := errors.As(writeErr, &rejected)
-		if writeErr != nil {
-			reason := opcuaCleanText(modbusDeviceError(writeErr), 80)
-			if isRejected {
-				logged = "Abgelehnt (" + reason + ") – " + logged
-			} else {
-				logged = "Fehlgeschlagen (" + reason + ") – " + logged
-			}
-		}
-		h.explorerLogWrite(r, c, target, logged)
-		if writeErr != nil {
-			status := http.StatusBadGateway
-			if isRejected {
-				status = http.StatusBadRequest
-			}
-			writeGlobalBoardError(w, status, opcuaCleanText(modbusDeviceError(writeErr), 300))
+		if errors.As(writeErr, &rejected) {
+			reject(writeErr)
 			return
 		}
+		if writeErr != nil {
+			h.explorerLogWrite(r, c, target, "Fehlgeschlagen ("+opcuaCleanText(modbusDeviceError(writeErr), 80)+") – "+logged)
+			writeGlobalBoardError(w, http.StatusBadGateway, opcuaCleanText(modbusDeviceError(writeErr), 300))
+			return
+		}
+		h.explorerLogWrite(r, c, target, logged)
 		writeOPCUAJSON(w, map[string]any{"ok": true, "value": readBack, "target": target})
 	}
 }

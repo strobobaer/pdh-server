@@ -96,15 +96,18 @@
   function el(tag, cls, text){ const e = document.createElement(tag); if(cls) e.className = cls; if(text != null) e.textContent = text; return e; }
   function status(text, kind){ const s = $('xm-status'); s.textContent = text; s.classList.toggle('ex-err', kind === 'err'); s.classList.toggle('ex-warn', kind === 'warn'); }
   function isBits(){ const a = $('xm-area').value; return a === 'coil' || a === 'discrete'; }
-  function query(){
+  function query(order){
     return 'area=' + encodeURIComponent($('xm-area').value) + '&start=' + encodeURIComponent($('xm-start').value) +
-      '&count=' + encodeURIComponent($('xm-count').value) + '&unit=' + encodeURIComponent($('xm-unit').value);
+      '&count=' + encodeURIComponent($('xm-count').value) + '&unit=' + encodeURIComponent($('xm-unit').value) +
+      '&order=' + encodeURIComponent(order || $('xm-order').value);
   }
   // 16 Bit kennt nur ABCD/BADC (bei einem Register sind CDAB/DCBA gleich).
   function interp(row, type, order){
     if(type === 'uint16' || type === 'int16'){ order = (order === 'cdab') ? 'abcd' : (order === 'dcba') ? 'badc' : order; }
     return (row.interps || []).find(function(i){ return i.type === type && i.order === order; });
   }
+  // Quellwert einer Zuordnung wie SourceRef auf dem Server: Bereich:Adresse:Typ[:Reihenfolge außer ABCD].
+  function refOf(area, addr, type, order){ return area + ':' + addr + ':' + type + (order && order !== 'abcd' ? ':' + order : ''); }
   function hex(n){ return '0x' + n.toString(16).toUpperCase().padStart(4, '0'); }
 
   function render(res){
@@ -132,19 +135,32 @@
         tr.appendChild(el('td', 'mono', String(row.address)));
         tr.appendChild(el('td', 'mono', row.hex));
         COLS.forEach(function(c){ const i = interp(row, c[0], order); tr.appendChild(el('td', 'mono', i ? i.value : '')); });
-        const pick = function(){ selAddr = row.address; render(last); fillWrite(row.address); };
+        const pick = function(){ selAddr = row.address; render(last); fillWrite(row.address); loadMatrix(row.address); };
         tr.addEventListener('click', pick);
         tr.addEventListener('keydown', function(e){ if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); pick(); } });
         body.appendChild(tr);
       });
     }
     $('xm-table').hidden = false;
-    const cur = !res.bits && selAddr != null ? (res.rows || []).find(function(r){ return r.address === selAddr; }) : null;
-    if(cur) showMatrix(cur); else $('xm-matrix').hidden = true;
+    if(res.bits) $('xm-matrix').hidden = true;
+  }
+
+  // Die Matrix aller Reihenfolgen holt der Browser erst beim Klick, mit einem eigenen kurzen Lesen.
+  async function loadMatrix(addr){
+    const box = $('xm-matrix'); box.hidden = false; box.textContent = 'Lade …';
+    const n = Math.min(4, 65536 - addr);
+    const q = 'area=' + encodeURIComponent($('xm-area').value) + '&start=' + addr + '&count=' + n +
+      '&unit=' + encodeURIComponent($('xm-unit').value) + '&order=all';
+    try{
+      const res = await fetch(base + 'range?' + q, {credentials: 'same-origin'});
+      const j = await res.json().catch(function(){ return {}; });
+      if(!res.ok) throw new Error(j.error || ('HTTP ' + res.status));
+      if(selAddr === addr && j.rows && j.rows.length) showMatrix(j.rows[0], j.area);
+    }catch(err){ box.textContent = err.message; }
   }
 
   // Volle Matrix: alle Datentypen × alle Reihenfolgen für das gewählte Register.
-  function showMatrix(row){
+  function showMatrix(row, area){
     const box = $('xm-matrix'); box.textContent = ''; box.hidden = false;
     box.appendChild(el('h4', null, 'Register ' + row.address + ' (' + hex(parseInt(row.hex, 16)) + ') in allen Deutungen'));
     const wrap = el('div', 'xm-wrap'); const t = el('table'); const th = el('thead'); const hr = document.createElement('tr');
@@ -160,7 +176,7 @@
       if(any) tb.appendChild(tr);
     });
     t.appendChild(tb); wrap.appendChild(t); box.appendChild(wrap);
-    box.appendChild(el('div', 'rec-sub', 'Quellwert-Schreibweise für Zuordnungen: Bereich:Adresse:Datentyp[:Reihenfolge], z. B. ' + (((row.interps || [])[0] || {}).ref || '')));
+    box.appendChild(el('div', 'rec-sub', 'Quellwert-Schreibweise für Zuordnungen: Bereich:Adresse:Datentyp[:Reihenfolge], z. B. ' + refOf(area, row.address, 'float32', 'cdab')));
   }
 
   function fillWrite(addr){ if(canWrite && $('xm-w-addr')) $('xm-w-addr').value = addr; }
@@ -189,7 +205,8 @@
     const b = $('xm-live'); b.textContent = ''; b.appendChild(el('i', 'ti ti-player-stop')); b.appendChild(document.createTextNode(' Verfolgen beenden'));
     stream = pdhExplorer.stream(base + 'watch?' + query() + '&interval=' + encodeURIComponent($('xm-interval').value), {
       connected: function(d){ status('Live – alle ' + d.interval + ' s.'); },
-      range: function(res){ render(res); status('Live – zuletzt ' + new Date().toLocaleTimeString('de-DE') + '.'); },
+      range: function(res){ render(res); status('Live – zuletzt geändert ' + new Date().toLocaleTimeString('de-DE') + '.'); },
+      alive: function(){ status('Live – keine Änderung, geprüft ' + new Date().toLocaleTimeString('de-DE') + '.'); },
       warn: function(d){ status(d.message || 'Lesefehler', 'warn'); },
       error: function(d){ stopLive(d.message || 'Fehler', 'err'); },
       end: function(d){ stopLive(d.message || 'Sitzung beendet', 'err'); },
@@ -207,7 +224,8 @@
   $('xm-read').addEventListener('click', readOnce);
   $('xm-live').addEventListener('click', function(){ if(stream) stopLive('Verfolgen beendet.'); else startLive(); });
   $('xm-area').addEventListener('change', areaChanged);
-  $('xm-order').addEventListener('change', function(){ if(last && !last.bits) render(last); });
+  // Der Server schickt nur die Deutungen der gewählten Reihenfolge: bei Wechsel neu lesen.
+  $('xm-order').addEventListener('change', function(){ if(stream) startLive(); else if(last && !last.bits) readOnce(); });
   window.addEventListener('pagehide', function(){ if(stream) stream.close(); });
 
   if(canWrite){

@@ -20,6 +20,8 @@ type testModbusServer struct {
 	Coils    [1000]bool
 	Discrete [1000]bool
 	LastUnit byte
+	DropNext int  // die nächsten Anfragen: Verbindung ohne Antwort schließen
+	Stall    bool // Anfragen annehmen, aber nie antworten
 	Requests int
 }
 
@@ -71,6 +73,19 @@ func (s *testModbusServer) serve(c net.Conn) {
 		}
 		pdu := make([]byte, n-1)
 		if _, err := io.ReadFull(c, pdu); err != nil {
+			return
+		}
+		s.mu.Lock()
+		drop, stall := s.DropNext > 0, s.Stall
+		if drop {
+			s.DropNext--
+		}
+		s.mu.Unlock()
+		if drop {
+			return
+		}
+		if stall {
+			io.Copy(io.Discard, c)
 			return
 		}
 		resp := s.handle(head[6], pdu)

@@ -16,7 +16,7 @@ im Kapitel „Versionen & Updates“ an.
 
 - Verbindungen: Neuer Reiter „Explorer“ für MQTT-, OPC-UA- und Modbus-Verbindungen. Er zeigt Werte der Maschine live (höchstens 15 Minuten je Sitzung, drei Sitzungen je Benutzer, 20 am Server) und lässt einzelne Werte testweise schreiben – nach Rückfrage und mit Eintrag im Verlauf der Verbindung. Auf dem Spiegelserver ist er nur lesend.
 
-- Explorer, Modbus TCP: Er liest Coils, Discrete Inputs, Holding und Input Register (bis 125 Register bzw. 2000 Bits je Lesen), deutet jedes Register als 16-, 32- und 64-Bit-Ganzzahl oder Gleitkommazahl in den vier gängigen Byte- und Wortreihenfolgen (ABCD, CDAB, BADC, DCBA), verfolgt den Bereich live im Takt von 1 bis 60 Sekunden und schreibt Coils und Holding Register testweise; je Verbindung sind höchstens zwei Zugriffe gleichzeitig möglich.
+- Explorer, Modbus TCP: Er liest Coils, Discrete Inputs, Holding und Input Register (bis 125 Register bzw. 2000 Bits je Lesen), deutet jedes Register als 16-, 32- und 64-Bit-Ganzzahl oder Gleitkommazahl in den vier gängigen Byte- und Wortreihenfolgen (ABCD, CDAB, BADC, DCBA), verfolgt den Bereich live im Takt von 1 bis 60 Sekunden und schreibt Coils und Holding Register testweise; je Verbindung sind höchstens zwei Zugriffe gleichzeitig möglich. Beim Verfolgen kommen nur geänderte Werte der gewählten Reihenfolge; die Matrix aller Reihenfolgen lädt erst der Klick auf eine Zeile. Auch abgelehnte Schreibversuche stehen im Verlauf.
 
 ### Geändert
 
