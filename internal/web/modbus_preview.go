@@ -12,13 +12,12 @@ import (
 	"github.com/simonvetter/modbus"
 )
 
-// Modbus-TCP-Vorschau: anders als die bisherigen Konnektoren gibt es hier
-// nichts zu "browsen" - ein Modbus-Geraet liefert keine Feldnamen, nur
-// nummerierte Register ohne Metadaten. Stattdessen ein manueller
-// Test-Lese-Dialog (Registertyp + Adresse + Datentyp -> sofort live
-// lesen), dessen Ergebnis direkt markiert werden kann. Der Quellwert
-// einer Zuordnung wird als "registertyp:adresse:datentyp" gespeichert
-// (z.B. "holding:100:float32").
+// Modbus-TCP: ein Modbus-Geraet liefert keine Feldnamen, nur nummerierte
+// Register ohne Metadaten. Erkundet wird im Explorer (explorer_modbus.go);
+// hier steht der Quellwert einer Zuordnung und das Lesen/Schreiben davon.
+// Der Quellwert wird als "registertyp:adresse:datentyp" gespeichert
+// (z.B. "holding:100:float32"), bei Reihenfolge ungleich abcd mit
+// ":reihenfolge" (z.B. "holding:100:float32:cdab").
 
 var modbusRegisterTypes = []KindOption{
 	{"coil", "Coil (1 Bit, lesen/schreiben)"},
@@ -30,9 +29,12 @@ var modbusRegisterTypes = []KindOption{
 var modbusDataTypes = []KindOption{
 	{"uint16", "UInt16"},
 	{"int16", "Int16"},
-	{"uint32", "UInt32 (2 Register, big-endian)"},
-	{"int32", "Int32 (2 Register, big-endian)"},
-	{"float32", "Float32 (2 Register, big-endian)"},
+	{"uint32", "UInt32 (2 Register)"},
+	{"int32", "Int32 (2 Register)"},
+	{"float32", "Float32 (2 Register)"},
+	{"uint64", "UInt64 (4 Register)"},
+	{"int64", "Int64 (4 Register)"},
+	{"float64", "Float64 (4 Register)"},
 }
 
 // modbusWritableRegisterTypes: nur Coils und Holding Register lassen
@@ -43,22 +45,52 @@ var modbusWritableRegisterTypes = []KindOption{
 	{"holding", "Holding Register (16 Bit)"},
 }
 
+// modbusReading ist ein Quellwert „Registertyp:Adresse:Datentyp[:Reihenfolge]“.
+// Eine leere Reihenfolge gilt als abcd.
 type modbusReading struct {
 	RegisterType string
 	Address      uint16
 	DataType     string
+	Order        string
 }
 
+// parseModbusReading liest einen Quellwert mit drei Teilen (bisherige Schreibweise,
+// Reihenfolge abcd) oder vier Teilen (mit Reihenfolge, Groß-/Kleinschreibung egal).
 func parseModbusReading(sourceRef string) (modbusReading, error) {
-	parts := strings.SplitN(sourceRef, ":", 3)
-	if len(parts) != 3 {
+	parts := strings.Split(sourceRef, ":")
+	if len(parts) != 3 && len(parts) != 4 {
 		return modbusReading{}, fmt.Errorf("ungültiger Quellwert")
 	}
 	addr, err := strconv.ParseUint(parts[1], 10, 16)
 	if err != nil {
 		return modbusReading{}, fmt.Errorf("ungültige Adresse")
 	}
-	return modbusReading{RegisterType: parts[0], Address: uint16(addr), DataType: parts[2]}, nil
+	order := "abcd"
+	if len(parts) == 4 {
+		order = strings.ToLower(parts[3])
+		if !modbusKnownOrder(order) {
+			return modbusReading{}, fmt.Errorf("unbekannte Reihenfolge")
+		}
+	}
+	return modbusReading{RegisterType: parts[0], Address: uint16(addr), DataType: parts[2], Order: order}, nil
+}
+
+// SourceRef ist die Umkehrung. abcd wird nicht ausgeschrieben, damit bestehende
+// Zuordnungen unverändert bleiben.
+func (m modbusReading) SourceRef() string {
+	s := fmt.Sprintf("%s:%d:%s", m.RegisterType, m.Address, m.DataType)
+	if o := m.order(); o != "abcd" {
+		s += ":" + o
+	}
+	return s
+}
+
+// order: die Reihenfolge, leer gilt als abcd.
+func (m modbusReading) order() string {
+	if m.Order == "" {
+		return "abcd"
+	}
+	return m.Order
 }
 
 func openModbusClient(config map[string]string) (*modbus.ModbusClient, error) {
@@ -88,7 +120,7 @@ func readModbusValue(client *modbus.ModbusClient, reading modbusReading) (string
 		if err != nil {
 			return "", err
 		}
-		return decodeModbusValue(regs, reading.DataType, "abcd")
+		return decodeModbusValue(regs, reading.DataType, reading.order())
 	default:
 		return "", fmt.Errorf("unbekannter Registertyp")
 	}
@@ -109,96 +141,8 @@ func formatModbusRegisters(data []byte, dataType string) (string, error) {
 	return decodeModbusValue(regs, dataType, "abcd")
 }
 
-type ModbusPageData struct {
-	BaseData
-	ConnectionID     string
-	ConnectionName   string
-	Applicable       bool
-	CanWrite         bool
-	Host             string
-	RegisterTypes    []KindOption
-	DataTypes        []KindOption
-	TestRegisterType string
-	TestAddress      string
-	TestDataType     string
-	TestResult       string
-	TestError        string
-	Mappings         []ImportMappingView
-	Notice           string
-}
-
-func (h *Handler) ModbusReadPage(w http.ResponseWriter, r *http.Request) {
-	if !h.canConnectionRead(r, "import") {
-		http.Redirect(w, r, "/", http.StatusFound)
-		return
-	}
-	id := chi.URLParam(r, "id")
-	var name, kind string
-	var configBytes []byte
-	if err := h.db.QueryRow(r.Context(),
-		`SELECT name, kind, config FROM import_export_connections WHERE id=$1 AND direction='import'`, id).
-		Scan(&name, &kind, &configBytes); err != nil {
-		http.Error(w, "Verbindung nicht gefunden", http.StatusNotFound)
-		return
-	}
-	config, err := h.openConnJSON(configBytes)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	data := ModbusPageData{
-		BaseData:       h.baseData(r, "import", "Modbus-Test", name),
-		ConnectionID:   id,
-		ConnectionName: name,
-		Applicable:     kind == "modbus",
-		CanWrite:       h.canConnectionWrite(r, "import"),
-		Host:           strings.TrimSpace(config["host"]) + ":" + firstNonEmpty(strings.TrimSpace(config["port"]), "502"),
-		RegisterTypes:  modbusRegisterTypes,
-		DataTypes:      modbusDataTypes,
-		Notice:         r.URL.Query().Get("notice"),
-	}
-	if !data.Applicable {
-		h.render(w, "modbus_read", data)
-		return
-	}
-
-	data.TestRegisterType = r.URL.Query().Get("register_type")
-	data.TestAddress = r.URL.Query().Get("address")
-	data.TestDataType = r.URL.Query().Get("data_type")
-	if data.TestRegisterType != "" && data.TestAddress != "" {
-		addr, err := strconv.ParseUint(data.TestAddress, 10, 16)
-		if err != nil {
-			data.TestError = "Ungültige Adresse"
-		} else {
-			dataType := data.TestDataType
-			if data.TestRegisterType == "coil" || data.TestRegisterType == "discrete" {
-				dataType = "bool"
-			}
-			reading := modbusReading{RegisterType: data.TestRegisterType, Address: uint16(addr), DataType: dataType}
-			client, err := openModbusClient(config)
-			if err != nil {
-				data.TestError = err.Error()
-			} else {
-				value, readErr := readModbusValue(client, reading)
-				client.Close()
-				if readErr != nil {
-					data.TestError = "Lesen fehlgeschlagen: " + readErr.Error()
-				} else {
-					data.TestResult = value
-				}
-			}
-		}
-	}
-
-	if mappings, err := h.importMappings(r.Context(), id); err == nil {
-		data.Mappings = mappings
-	}
-	h.render(w, "modbus_read", data)
-}
-
 // ModbusRefreshValuesWeb liest fuer jede bestehende Zuordnung ihren
-// Quellwert (Registertyp/Adresse/Datentyp) erneut live vom Geraet -
+// Quellwert (Registertyp/Adresse/Datentyp/Reihenfolge) erneut live vom Geraet -
 // scheitert eine einzelne Zuordnung (z.B. Register nicht mehr
 // vorhanden), wird sie uebersprungen statt die ganze Aktualisierung
 // abzubrechen.
@@ -208,7 +152,7 @@ func (h *Handler) ModbusRefreshValuesWeb(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	id := chi.URLParam(r, "id")
-	base := "/import/connections/" + id + "/read"
+	base := "/import/connections/" + id + "?tab=mappings&notice="
 
 	var kind string
 	var configBytes []byte
@@ -220,20 +164,20 @@ func (h *Handler) ModbusRefreshValuesWeb(w http.ResponseWriter, r *http.Request)
 	}
 	config, err := h.openConnJSON(configBytes)
 	if err != nil {
-		http.Redirect(w, r, base+"?notice="+url.QueryEscape("Aktualisierung fehlgeschlagen: "+err.Error()), http.StatusSeeOther)
+		http.Redirect(w, r, base+url.QueryEscape("Aktualisierung fehlgeschlagen: "+err.Error()), http.StatusSeeOther)
 		return
 	}
 
 	client, err := openModbusClient(config)
 	if err != nil {
-		http.Redirect(w, r, base+"?notice="+url.QueryEscape("Aktualisierung fehlgeschlagen: "+err.Error()), http.StatusSeeOther)
+		http.Redirect(w, r, base+url.QueryEscape("Aktualisierung fehlgeschlagen: "+err.Error()), http.StatusSeeOther)
 		return
 	}
 	defer client.Close()
 
 	mappings, err := h.importMappings(r.Context(), id)
 	if err != nil {
-		http.Redirect(w, r, base+"?notice="+url.QueryEscape("Zuordnungen konnten nicht geladen werden"), http.StatusSeeOther)
+		http.Redirect(w, r, base+url.QueryEscape("Zuordnungen konnten nicht geladen werden"), http.StatusSeeOther)
 		return
 	}
 	updated := 0
@@ -257,5 +201,5 @@ func (h *Handler) ModbusRefreshValuesWeb(w http.ResponseWriter, r *http.Request)
 		}
 		updated++
 	}
-	http.Redirect(w, r, base+"?notice="+url.QueryEscape(fmt.Sprintf("%d von %d Wert(en) aktualisiert", updated, len(mappings))), http.StatusSeeOther)
+	http.Redirect(w, r, base+url.QueryEscape(fmt.Sprintf("%d von %d Wert(en) aktualisiert", updated, len(mappings))), http.StatusSeeOther)
 }

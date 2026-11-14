@@ -81,6 +81,7 @@
 <!-- Explorer -->
 <div class="rec-pane" data-pane="explorer">
   {{template "conn-explorer" .}}
+  {{if and .ExplorerWrite (eq .Direction "import")}}{{template "import-mark-panel" (dict "Title" "Als Zuordnung übernehmen" "SourceLabel" "Quellwert" "Style" "margin-top:14px")}}{{end}}
 </div>
 {{end}}
 
@@ -138,7 +139,7 @@
 <!-- Abfragen -->
 <div class="rec-pane" data-pane="queries">
   {{if not .QueriesSupported}}
-  <div class="card"><div class="rec-sub"><i class="ti ti-info-circle"></i> MQTT liefert Werte von selbst (Push) – hier gibt es keine Abfragen. Werte ordnest du im <a href="/import/connections/{{.ID}}/sniffer" style="color:var(--accent)">Sniffer</a> zu, je Topic eine Zuordnung.</div></div>
+  <div class="card"><div class="rec-sub"><i class="ti ti-info-circle"></i> MQTT liefert Werte von selbst (Push) – hier gibt es keine Abfragen. Werte ordnest du im <a href="?tab=explorer" style="color:var(--accent)">Explorer</a> zu, je Thema oder JSON-Feld eine Zuordnung.</div></div>
   {{else}}
   {{range .Queries}}{{$q := .}}
   <div class="cd-q" id="q-{{.ID}}">
@@ -286,6 +287,7 @@
 
 {{define "scripts"}}
 {{if .Explorer}}{{template "conn-explorer-js" .}}{{end}}
+{{if and .Explorer .ExplorerWrite (eq .Direction "import")}}{{template "import-mapping-js" (dict "ConnectionID" .ID "NoReload" true)}}{{end}}
 <script>
 (function(){
   const DIR = '{{.Direction}}', ID = '{{.ID}}';

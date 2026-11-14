@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/csv"
 	"fmt"
-	"math"
 	"net/http"
 	"net/url"
 	"os"
@@ -631,7 +630,7 @@ func coerceOPCUAVariant(current *ua.Variant, value string) (*ua.Variant, error) 
 }
 
 // writeModbusExport schreibt fuer jede Zuordnung den Quellwert auf das
-// als Zielfeldname hinterlegte Register ("registertyp:adresse:datentyp",
+// als Zielfeldname hinterlegte Register ("registertyp:adresse:datentyp[:reihenfolge]",
 // gleiche Notation wie auf der Import-Seite). Nur Coils und Holding
 // Register sind beschreibbar.
 func writeModbusExport(config map[string]string, mappings []ExportMappingView) error {
@@ -662,42 +661,14 @@ func writeModbusValue(client *modbus.ModbusClient, reading modbusReading, value 
 		}
 		return client.WriteCoil(reading.Address, b)
 	case "holding":
-		switch reading.DataType {
-		case "uint16":
-			n, err := strconv.ParseUint(value, 10, 16)
-			if err != nil {
-				return fmt.Errorf("ungültiger Wert: %w", err)
-			}
-			return client.WriteRegister(reading.Address, uint16(n))
-		case "int16":
-			n, err := strconv.ParseInt(value, 10, 16)
-			if err != nil {
-				return fmt.Errorf("ungültiger Wert: %w", err)
-			}
-			return client.WriteRegister(reading.Address, uint16(int16(n)))
-		case "uint32":
-			n, err := strconv.ParseUint(value, 10, 32)
-			if err != nil {
-				return fmt.Errorf("ungültiger Wert: %w", err)
-			}
-			return client.WriteRegisters(reading.Address, []uint16{uint16(n >> 16), uint16(n)})
-		case "int32":
-			n, err := strconv.ParseInt(value, 10, 32)
-			if err != nil {
-				return fmt.Errorf("ungültiger Wert: %w", err)
-			}
-			u := uint32(int32(n))
-			return client.WriteRegisters(reading.Address, []uint16{uint16(u >> 16), uint16(u)})
-		case "float32":
-			f, err := strconv.ParseFloat(value, 32)
-			if err != nil {
-				return fmt.Errorf("ungültiger Wert: %w", err)
-			}
-			u := math.Float32bits(float32(f))
-			return client.WriteRegisters(reading.Address, []uint16{uint16(u >> 16), uint16(u)})
-		default:
-			return fmt.Errorf("unbekannter Datentyp")
+		regs, err := encodeModbusValue(value, reading.DataType, reading.order())
+		if err != nil {
+			return fmt.Errorf("ungültiger Wert: %w", err)
 		}
+		if len(regs) == 1 {
+			return client.WriteRegister(reading.Address, regs[0])
+		}
+		return client.WriteRegisters(reading.Address, regs)
 	default:
 		return fmt.Errorf("registertyp '%s' ist nicht beschreibbar (nur coil/holding)", reading.RegisterType)
 	}

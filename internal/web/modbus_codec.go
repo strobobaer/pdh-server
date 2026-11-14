@@ -184,15 +184,6 @@ type ModbusRegisterRow struct {
 	Interps []ModbusInterp `json:"interps"`
 }
 
-// modbusSourceRef: Quellwert einer Zuordnung („Bereich:Adresse:Typ“, ab Reihenfolge ≠ abcd mit „:Reihenfolge“).
-func modbusSourceRef(area string, addr uint16, dataType, order string) string {
-	s := fmt.Sprintf("%s:%d:%s", area, addr, dataType)
-	if order != "" && order != "abcd" {
-		s += ":" + order
-	}
-	return s
-}
-
 // modbusRegisterRows deutet jedes Register mit allen passenden Typen und Reihenfolgen.
 // Bei 16 Bit gibt es nur abcd und badc (cdab/dcba wären gleich).
 func modbusRegisterRows(area string, regs []uint16, start uint16) []ModbusRegisterRow {
@@ -213,7 +204,7 @@ func modbusRegisterRows(area string, regs []uint16, start uint16) []ModbusRegist
 				if err != nil {
 					continue
 				}
-				row.Interps = append(row.Interps, ModbusInterp{Type: typ, Order: o.Value, Value: v, Ref: modbusSourceRef(area, addr, typ, o.Value)})
+				row.Interps = append(row.Interps, ModbusInterp{Type: typ, Order: o.Value, Value: v, Ref: modbusReading{area, addr, typ, o.Value}.SourceRef()})
 			}
 		}
 		rows = append(rows, row)

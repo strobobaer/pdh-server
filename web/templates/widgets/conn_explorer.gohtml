@@ -15,7 +15,7 @@
 .ex-msg.ex-ok{color:var(--green)}
 .ex-box{border:1px solid var(--border);border-radius:var(--radius,8px);background:var(--bg2);padding:12px}
 </style>
-<div class="card" id="ex-root" data-direction="{{.Direction}}" data-conn="{{.ID}}">
+<div class="card" id="ex-root" data-direction="{{.Direction}}" data-conn="{{.ID}}"{{if .ExplorerWrite}} data-explorer-write{{end}}>
   <div class="card-title"><span><i class="ti ti-telescope"></i> Explorer</span></div>
   <div class="ex-bar" role="note">
     <span><i class="ti ti-clock"></i> Sitzung höchstens 15 Minuten</span>
@@ -26,6 +26,29 @@
   {{else if eq .Kind "opcua"}}{{template "explorer-opcua" .}}
   {{else if eq .Kind "modbus"}}{{template "explorer-modbus" .}}{{end}}
   {{if .ExplorerWrite}}
+  {{if eq .Direction "export"}}
+  <div class="ex-box" id="ex-target-panel" hidden style="margin-top:14px" data-explorer-write>
+    <div class="rec-sub" style="margin-bottom:8px"><i class="ti ti-target-arrow"></i> Als Zielfeld übernehmen</div>
+    {{if .ExportSources}}
+    <div class="form-group"><label class="form-label" for="ex-target-source">Importierter Wert, der hierher geschrieben wird</label>
+      <select id="ex-target-source" class="form-input">
+        {{range .ExportSources}}<option value="{{.ID}}">{{.Name}}{{if .InfrastructureName}} – {{.InfrastructureName}}{{end}}</option>{{end}}
+      </select></div>
+    <div class="form-group"><label class="form-label" for="ex-target-field">Zielfeld</label>
+      <input id="ex-target-field" class="form-input" readonly></div>
+    <div class="form-group"><label class="form-label" for="ex-target-note">Notiz <span style="color:var(--muted);font-weight:400">(optional)</span></label>
+      <input id="ex-target-note" class="form-input" maxlength="500"></div>
+    <div style="display:flex;gap:8px">
+      <button type="button" class="btn" id="ex-target-cancel">Abbrechen</button>
+      <button type="button" class="btn btn-primary" id="ex-target-save"><i class="ti ti-check"></i> Zielfeld anlegen</button>
+    </div>
+    {{else}}
+    <div class="rec-sub">Es gibt noch keine importierten Werte. Lege zuerst unter Import eine Zuordnung an – sie kann dann als Quelle für dieses Zielfeld dienen.</div>
+    <div style="margin-top:8px"><button type="button" class="btn" id="ex-target-cancel">Schließen</button></div>
+    {{end}}
+    <p id="ex-target-msg" role="alert" class="ex-msg" style="margin:8px 0 0"></p>
+  </div>
+  {{end}}
   <div class="ex-log" data-explorer-write>
     <div class="rec-sub" style="margin-bottom:6px"><i class="ti ti-history"></i> Zuletzt testweise geschrieben</div>
     {{if .ExplorerLog}}
@@ -76,7 +99,66 @@ window.pdhExplorer = (function(){
     if(!res.ok) throw new Error(j.error || ('HTTP ' + res.status));
     return j;
   }
-  return {stream: stream, post: post};
+  // ── Als Zuordnung übernehmen ──
+  // Import: öffnet den Zuordnungs-Dialog der Seite (importMarkOpen) mit dem Quellwert.
+  // Export: öffnet das Panel „Als Zielfeld übernehmen“ (Quelle wählen, Zielfeld = Quellwert).
+  function root(){ return document.getElementById('ex-root'); }
+  // canMap: nur mit Schreibrecht gibt es Knöpfe zum Übernehmen (Merkmal am Explorer-Rahmen).
+  function canMap(){ const r = root(); return !!r && r.dataset.explorerWrite !== undefined; }
+  function mapLabel(){ const r = root(); return r && r.dataset.direction === 'export' ? 'Als Zielfeld übernehmen' : 'Als Zuordnung übernehmen'; }
+  // mapButton(ref, vorschlag, klein): Knopf für einen Quellwert; null ohne Schreibrecht.
+  function mapButton(ref, suggestion, compact){
+    if(!canMap()) return null;
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'btn btn-small ex-map';
+    const i = document.createElement('i'); i.className = 'ti ti-map-pin'; b.appendChild(i);
+    if(!compact) b.appendChild(document.createTextNode(' ' + mapLabel()));
+    b.title = mapLabel() + ': ' + ref; b.setAttribute('aria-label', mapLabel() + ': ' + ref);
+    b.addEventListener('click', function(e){ e.stopPropagation(); map(ref, suggestion); });
+    return b;
+  }
+  function map(ref, suggestion){
+    if(!canMap()) return;
+    if(root().dataset.direction === 'export'){ openTarget(ref); return; }
+    if(typeof importMarkOpen !== 'function') return;
+    importMarkOpen(ref);
+    const n = document.getElementById('mark-name');
+    if(n && suggestion) n.value = suggestion;
+  }
+  function openTarget(ref){
+    const p = document.getElementById('ex-target-panel');
+    if(!p) return;
+    const f = document.getElementById('ex-target-field'); if(f) f.value = ref;
+    const n = document.getElementById('ex-target-note'); if(n) n.value = '';
+    const m = document.getElementById('ex-target-msg'); m.className = 'ex-msg'; m.textContent = '';
+    p.hidden = false;
+    p.scrollIntoView({behavior: 'smooth', block: 'nearest'});
+  }
+  document.addEventListener('DOMContentLoaded', function(){
+    const p = document.getElementById('ex-target-panel');
+    if(!p) return;
+    const m = document.getElementById('ex-target-msg');
+    document.getElementById('ex-target-cancel').addEventListener('click', function(){ p.hidden = true; });
+    const save = document.getElementById('ex-target-save');
+    if(!save) return;
+    save.addEventListener('click', async function(){
+      m.className = 'ex-msg'; m.textContent = '';
+      const payload = {import_mapping_id: document.getElementById('ex-target-source').value,
+        field_name: document.getElementById('ex-target-field').value, note: document.getElementById('ex-target-note').value.trim()};
+      save.disabled = true;
+      try{
+        const res = await fetch('/export/connections/' + encodeURIComponent(root().dataset.conn) + '/mappings', {
+          method: 'POST', credentials: 'same-origin', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)});
+        const j = await res.json().catch(function(){ return {}; });
+        if(!res.ok) throw new Error(j.error || ('HTTP ' + res.status));
+        m.className = 'ex-msg ex-ok'; m.textContent = 'Zielfeld angelegt';
+        document.dispatchEvent(new CustomEvent('pdh:mapping-created', {detail: {field_name: payload.field_name, id: j.id}}));
+        setTimeout(function(){ p.hidden = true; }, 1500);
+      }catch(e){ m.className = 'ex-msg ex-err'; m.textContent = e.message; }
+      save.disabled = false;
+    });
+  });
+  return {stream: stream, post: post, map: map, mapButton: mapButton, canMap: canMap};
 })();
 </script>
 {{end}}

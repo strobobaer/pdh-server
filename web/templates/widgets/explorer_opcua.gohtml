@@ -169,6 +169,9 @@
     follow.disabled = watch.has(n.nodeid);
     follow.addEventListener('click', function(){ addWatch(n); follow.disabled = true; follow.textContent = 'Wird verfolgt'; });
     act.appendChild(refresh); act.appendChild(follow);
+    // Als Zuordnung (Import) bzw. Zielfeld (Export, nur beschreibbare Knoten); der Quellwert ist die NodeID.
+    const mb = (root.dataset.direction === 'export' && !n.writable) ? null : pdhExplorer.mapButton(n.nodeid, n.name, false);
+    if(mb) act.appendChild(mb);
     box.appendChild(act);
     if(canWrite && n.writable){
       const form = el('form', 'xo-write'); form.setAttribute('data-explorer-write', '');

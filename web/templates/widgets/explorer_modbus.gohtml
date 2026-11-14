@@ -109,6 +109,8 @@
   // Quellwert einer Zuordnung wie SourceRef auf dem Server: Bereich:Adresse:Typ[:Reihenfolge außer ABCD].
   function refOf(area, addr, type, order){ return area + ':' + addr + ':' + type + (order && order !== 'abcd' ? ':' + order : ''); }
   function hex(n){ return '0x' + n.toString(16).toUpperCase().padStart(4, '0'); }
+  // Zuordnen: Import jeder Bereich; Export nur Coil und Holding Register (nur die sind beschreibbar).
+  function mapOk(area){ return canWrite && (root.dataset.direction !== 'export' || area === 'coil' || area === 'holding'); }
 
   function render(res){
     last = res;
@@ -117,11 +119,18 @@
     const hr = document.createElement('tr');
     if(res.bits){
       ['Adresse', 'Wert'].forEach(function(t){ hr.appendChild(el('th', null, t)); });
+      const bitsArea = res.area || $('xm-area').value, bitsMap = mapOk(bitsArea);
+      if(bitsMap) hr.appendChild(el('th', null, ''));
       head.appendChild(hr);
       res.bits.forEach(function(b){
         const tr = document.createElement('tr');
         tr.appendChild(el('td', 'mono', String(b.address)));
         tr.appendChild(el('td', b.on ? 'xm-on' : 'xm-off', b.on ? 'an (1)' : 'aus (0)'));
+        if(bitsMap){
+          const td = el('td'); const mb = pdhExplorer.mapButton(refOf(bitsArea, b.address, 'bool'), (bitsArea === 'coil' ? 'Coil ' : 'Eingang ') + b.address, true);
+          if(mb) td.appendChild(mb);
+          tr.appendChild(td);
+        }
         body.appendChild(tr);
       });
     }else{
@@ -172,7 +181,15 @@
       const tr = document.createElement('tr'); tr.style.cursor = 'default';
       tr.appendChild(el('td', null, type.toUpperCase()));
       let any = false;
-      ORDERS.forEach(function(o){ const i = interp(row, type, o); if(i) any = true; tr.appendChild(el('td', 'mono', i ? i.value : '–')); });
+      ORDERS.forEach(function(o){
+        const i = interp(row, type, o); if(i) any = true;
+        const td = el('td', 'mono', i ? i.value : '–');
+        if(i && mapOk(area)){
+          const mb = pdhExplorer.mapButton(refOf(area, row.address, type, i.order), 'Register ' + row.address + ' ' + type.toUpperCase(), true);
+          if(mb){ td.appendChild(document.createTextNode(' ')); td.appendChild(mb); }
+        }
+        tr.appendChild(td);
+      });
       if(any) tb.appendChild(tr);
     });
     t.appendChild(tb); wrap.appendChild(t); box.appendChild(wrap);

@@ -68,11 +68,11 @@ func queryFormFields(kind string) []queryFormField {
 			{Key: "area", Label: "Bereich", Type: "select", Options: modbusRegisterTypes},
 			{Key: "start", Label: "Startadresse", Type: "number", Placeholder: "0", Help: "Adresse ab 0 (nicht 40001)."},
 			{Key: "count", Label: "Anzahl Werte", Type: "number", Placeholder: "10"},
-			{Key: "type", Label: "Datentyp", Type: "select", Options: modbusDataTypes, Help: "32-Bit-Typen belegen je 2 Register."},
+			{Key: "type", Label: "Datentyp", Type: "select", Options: modbusDataTypes, Help: "32-Bit-Typen belegen je 2, 64-Bit-Typen je 4 Register."},
 		}
 	case kind == "opcua":
 		return []queryFormField{
-			{Key: "nodes", Label: "Knoten (je Zeile einer)", Type: "textarea", Placeholder: "ns=2;s=Linie1.Temperatur", Help: "Knoten-IDs findest du unter Werkzeuge → Namespace durchsuchen."},
+			{Key: "nodes", Label: "Knoten (je Zeile einer)", Type: "textarea", Placeholder: "ns=2;s=Linie1.Temperatur", Help: "Knoten-IDs findest du im Reiter Explorer."},
 		}
 	case kind == "excel":
 		return []queryFormField{
@@ -116,21 +116,30 @@ type ConnectionDetailData struct {
 	ExplorerLog                             []HistoryView
 	ExplorerTopic                           string
 	ExplorerUnit                            int
+	// ExportSources: übernommene Import-Werte, aus denen im Export-Explorer ein Zielfeld wird
+	// (nur Export mit Explorer und Schreibrecht).
+	ExportSources []ImportMappingView
 }
 
 func connectionTools(direction, kind, id string, config map[string]string) []connTool {
 	base := "/" + direction + "/connections/" + id + "/"
 	var t []connTool
+	explorer := connTool{"/" + direction + "/connections/" + id + "?tab=explorer", "ti-telescope", "Explorer", "Werte live erkunden, testweise schreiben und als Zuordnung übernehmen"}
 	if direction == "export" {
+		if explorerKindSupported(direction, kind) {
+			t = append(t, explorer)
+		}
 		t = append(t, connTool{base + "preview", "ti-table-export", "Vorschau & jetzt exportieren", "Felder auswählen, Werte prüfen, Export starten"})
 		if kind == "pdf" || kind == "excel" {
 			t = append(t, connTool{"/export/templates", "ti-template", "Exportvorlagen", "Kopf, Logo und Layout für PDF/Excel"})
 		}
 		return append(t, connTool{"/export/mappings", "ti-list-details", "Alle Export-Felder", "Übersicht über alle Verbindungen"})
 	}
+	if explorerKindSupported(direction, kind) {
+		t = append(t, explorer)
+	}
 	switch {
 	case kind == "mqtt":
-		t = append(t, connTool{base + "sniffer", "ti-antenna", "Sniffer", "Live-Nachrichten ansehen und Topics zuordnen"})
 		if config["broker_mode"] == "integrated" {
 			t = append(t, connTool{base + "broker", "ti-server-2", "Broker-Status", "Clients und Aktivität des integrierten Brokers"})
 		}
@@ -140,10 +149,6 @@ func connectionTools(direction, kind, id string, config map[string]string) []con
 		t = append(t, connTool{base + "browse", "ti-database-search", "Datenbank durchsuchen", "Tabellen und Spalten ansehen"})
 	case webBrowsableKind(kind):
 		t = append(t, connTool{base + "response", "ti-api", "Antwort ansehen", "Rohantwort der Adresse, Felder direkt zuordnen"})
-	case kind == "modbus":
-		t = append(t, connTool{base + "read", "ti-plug", "Register lesen", "Einzelne Register testen"})
-	case kind == "opcua":
-		t = append(t, connTool{base + "nodes", "ti-sitemap", "Namespace durchsuchen", "Knoten-IDs finden"})
 	}
 	return append(t, connTool{"/import/mappings", "ti-list-details", "Alle Zuordnungen", "Übersicht über alle Verbindungen"})
 }
@@ -316,6 +321,11 @@ func (h *Handler) fillExplorer(r *http.Request, d *ConnectionDetailData, config 
 		return
 	}
 	d.ExplorerWrite = h.explorerCanWrite(r, d.Direction)
+	if d.Direction == "export" && d.ExplorerWrite {
+		if sources, err := h.availableExportSources(r.Context()); err == nil {
+			d.ExportSources = sources
+		}
+	}
 	for _, k := range []string{"ext_topic_filter", "int_topic_filter"} {
 		if v := strings.TrimSpace(config[k]); v != "" {
 			d.ExplorerTopic = v

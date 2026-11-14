@@ -210,7 +210,7 @@ func readModbusRange(c *modbus.ModbusClient, rg modbusRange) (ModbusRangeResult,
 			}
 			for i, v := range vals {
 				a := uint16(uint32(addr) + uint32(i))
-				res.Bits = append(res.Bits, ModbusBit{Address: a, On: v, Ref: fmt.Sprintf("%s:%d:bool", rg.Area, a)})
+				res.Bits = append(res.Bits, ModbusBit{Address: a, On: v, Ref: modbusReading{RegisterType: rg.Area, Address: a, DataType: "bool"}.SourceRef()})
 			}
 		default:
 			rt := modbus.INPUT_REGISTER
@@ -335,7 +335,7 @@ func modbusOrderParam(q url.Values) (string, error) {
 
 // modbusCompact verkleinert das Ergebnis für die Übertragung: je Zeile nur die Deutungen
 // der Reihenfolge (order „all“: alle) und ohne Quellwert – den baut der Browser selbst
-// (Bereich:Adresse:Typ[:Reihenfolge], wie modbusSourceRef).
+// (Bereich:Adresse:Typ[:Reihenfolge], wie modbusReading.SourceRef).
 func modbusCompact(res ModbusRangeResult, order string) ModbusRangeResult {
 	if res.Rows != nil {
 		rows := make([]ModbusRegisterRow, len(res.Rows))
@@ -571,7 +571,7 @@ func (h *Handler) ModbusExplorerWrite(direction string) http.HandlerFunc {
 		}
 		in, perr := parseModbusWrite(r, modbusConfigUnit(c.Config))
 		// Ziel und Wert für den Verlauf, auch wenn die Eingabe unbrauchbar ist.
-		target := fmt.Sprintf("%s (Einheit %d)", modbusSourceRef(in.Area, in.Address, in.Type, in.Order), in.Unit)
+		target := fmt.Sprintf("%s (Einheit %d)", modbusReading{in.Area, in.Address, in.Type, in.Order}.SourceRef(), in.Unit)
 		logged := opcuaCleanText(in.Value, opcuaExplorerMaxValue)
 		if perr != nil { // unbrauchbare Eingabe: so festhalten, wie sie ankam
 			target = strings.TrimRight(strings.Join([]string{r.FormValue("area"), r.FormValue("address"), r.FormValue("type"), r.FormValue("order")}, ":"), ":")

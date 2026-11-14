@@ -58,7 +58,7 @@ function overviewMappingContextItems(row, direction){
   const canWrite = row.dataset.canWrite === 'true';
   const items = [{heading: row.dataset.mappingName}];
   items.push({label: 'Zur Verbindung öffnen', icon: 'ti-external-link', onClick: function(){
-    window.location = '/' + direction + '/connections/' + row.dataset.connId + '/' + row.dataset.connPath;
+    window.location = '/' + direction + '/connections/' + row.dataset.connId + row.dataset.connPath;
   }});
   if(canWrite){
     items.push({separator: true});

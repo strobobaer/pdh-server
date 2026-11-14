@@ -25,25 +25,21 @@ type ImportMappingOverviewView struct {
 	CreatedAt           string
 }
 
-// importConnectionDetailPath liefert das Detailseiten-Segment der
-// jeweiligen Konnektor-Art - dasselbe Muster wie der returnPath-Switch in
-// ImportMappingDeleteWeb (import_mappings.go).
+// importConnectionDetailPath liefert das Ziel hinter der Verbindungsadresse
+// ("/connections/{id}" + Ergebnis) je Konnektor-Art: ein Seitenpfad mit "/" oder
+// "?tab=explorer" für Verbindungen mit Explorer.
 func importConnectionDetailPath(kind string) string {
 	switch {
-	case kind == "mqtt":
-		return "sniffer"
+	case explorerKindSupported("import", kind):
+		return "?tab=explorer"
 	case kind == "excel", kind == "csv":
-		return "preview"
+		return "/preview"
 	case sqlBrowsableKind(kind):
-		return "browse"
+		return "/browse"
 	case webBrowsableKind(kind):
-		return "response"
-	case kind == "modbus":
-		return "read"
-	case kind == "opcua":
-		return "nodes"
+		return "/response"
 	default:
-		return "sniffer"
+		return "?tab=mappings"
 	}
 }
 

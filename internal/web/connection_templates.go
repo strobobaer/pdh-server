@@ -82,7 +82,7 @@ func builtinQueryTemplates(kind string) []builtinQueryTemplate {
 	case kind == "opcua":
 		return []builtinQueryTemplate{
 			{Name: "Serverstatus", Desc: "Zustand und aktuelle Uhrzeit des OPC-UA-Servers – gut zum Prüfen.", Spec: map[string]string{"nodes": "i=2259\ni=2258"}, Interval: 5},
-			{Name: "Maschinenwerte", Desc: "Eigene Knoten, je Zeile einer – IDs aus „Namespace durchsuchen“.", Spec: map[string]string{"nodes": "ns=2;s=<Maschine>.<Temperatur>\nns=2;s=<Maschine>.<Drehzahl>\nns=2;s=<Maschine>.<Stoerung>"}, Interval: 1},
+			{Name: "Maschinenwerte", Desc: "Eigene Knoten, je Zeile einer – IDs aus dem Explorer.", Spec: map[string]string{"nodes": "ns=2;s=<Maschine>.<Temperatur>\nns=2;s=<Maschine>.<Drehzahl>\nns=2;s=<Maschine>.<Stoerung>"}, Interval: 1},
 		}
 	case kind == "excel":
 		return []builtinQueryTemplate{

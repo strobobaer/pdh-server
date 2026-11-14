@@ -214,14 +214,14 @@ function connPageItems(row){
   const id = row.dataset.connId, kind = row.dataset.connKind, items = [];
   const go = function(label, icon, path){ items.push({label: label, icon: icon, onClick: function(){ window.location = '/import/connections/' + id + path; }}); };
   if(kind === 'mqtt'){
-    go('Sniffer öffnen', 'ti-antenna', '/sniffer');
+    go('Explorer öffnen', 'ti-telescope', '?tab=explorer');
     if(row.dataset.connBrokerIntegrated === 'true') go('Broker-Status öffnen', 'ti-server-2', '/broker');
   }
   if(kind === 'excel' || kind === 'csv') go('Vorschau öffnen', 'ti-table', '/preview');
   if(kind === 'sqlite' || kind === 'mysql' || kind === 'mssql') go('Datenbank durchsuchen', 'ti-table', '/browse');
   if(kind === 'web' || kind === 'rest_api') go('Antwort öffnen', 'ti-api', '/response');
-  if(kind === 'modbus') go('Register lesen', 'ti-plug', '/read');
-  if(kind === 'opcua') go('Namespace durchsuchen', 'ti-sitemap', '/nodes');
+  if(kind === 'modbus') go('Explorer öffnen', 'ti-telescope', '?tab=explorer');
+  if(kind === 'opcua') go('Explorer öffnen', 'ti-telescope', '?tab=explorer');
   return items;
 }
 </script>

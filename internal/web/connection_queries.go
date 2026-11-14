@@ -33,7 +33,7 @@ const (
 )
 
 // queryKindSupported: Verbindungstypen mit Abfragen (MQTT ist Push – dort
-// entstehen Werte ueber Topics im Sniffer).
+// entstehen Werte ueber Topics im Explorer).
 func queryKindSupported(kind string) bool {
 	switch kind {
 	case "sqlite", "mysql", "mssql", "web", "rest_api", "modbus", "opcua", "excel", "csv":

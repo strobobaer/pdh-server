@@ -200,6 +200,8 @@
     if(!t){ box.appendChild(el('div', 'rec-sub', 'Thema im Baum wählen.')); return; }
     box.appendChild(el('h4', null, t.topic));
     box.appendChild(el('div', 'xm-meta', t.count + ' Nachrichten · zuletzt ' + t.at + ' · QoS ' + t.qos + (t.retained ? ' · Retained' : '')));
+    const mb = pdhExplorer.mapButton(t.ref, t.topic.split('/').pop(), false);
+    if(mb){ const w = el('div'); w.style.margin = '6px 0'; w.appendChild(mb); box.appendChild(w); }
     if(t.numeric && t.history && t.history.length > 1){
       box.appendChild(spark(t.history));
       box.appendChild(el('div', 'xm-meta', 'Letzte ' + t.history.length + ' Werte: ' + Math.min.apply(null, t.history) + ' bis ' + Math.max.apply(null, t.history)));
@@ -211,6 +213,9 @@
       t.fields.forEach(function(f){
         const tr = document.createElement('tr');
         tr.appendChild(el('td', 'mono', f.Path)); tr.appendChild(el('td', 'mono', f.Value));
+        // Quellwert eines JSON-Felds: Thema, „#“, Pfad (wie mqttSourceRef auf dem Server)
+        const fb = pdhExplorer.mapButton(t.topic + '#' + f.Path, f.Path.split('.').pop(), true);
+        const fc = el('td'); if(fb) fc.appendChild(fb); tr.appendChild(fc);
         body.appendChild(tr);
       });
       tb.appendChild(body); d.appendChild(tb); box.appendChild(d);

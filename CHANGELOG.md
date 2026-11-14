@@ -20,6 +20,10 @@ im Kapitel „Versionen & Updates“ an.
 
 ### Geändert
 
+- Zuordnungen: Im Explorer wird ein Wert mit „Als Zuordnung übernehmen“ (im Export „Als Zielfeld übernehmen“) direkt zur Zuordnung, ohne die Seite neu zu laden. Bei MQTT kann eine Zuordnung ein einzelnes JSON-Feld eines Themas sein, bei Modbus enthält sie zusätzlich die Byte- und Wortreihenfolge (z. B. CDAB bei WAGO); der Export schreibt Modbus-Werte in dieser Reihenfolge, auch als 64-Bit-Wert. Bestehende Zuordnungen bleiben unverändert gültig.
+
+- Der MQTT-Sniffer, „Namespace durchsuchen“ und „Register lesen“ sind im Explorer aufgegangen; die Werkzeuge der Verbindung führen jetzt zum Reiter „Explorer“, alte Lesezeichen leiten dorthin um.
+
 - Modbus TCP: Die Verbindung zum Gerät nutzt jetzt eine laufend gepflegte Modbus-Bibliothek; Vorschau, Export, Abfragen und Verbindungsprüfung verhalten sich unverändert.
 
 ### Sicherheit
