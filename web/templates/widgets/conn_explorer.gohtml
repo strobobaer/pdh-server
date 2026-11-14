@@ -1,0 +1,82 @@
+{{/* Explorer einer Verbindung (Reiter „Explorer“): conn-explorer (Fläche), conn-explorer-js (Hilfsfunktionen).
+     Protokolle: explorer-mqtt, explorer-opcua, explorer-modbus (eigene Widgets). */}}
+{{define "conn-explorer"}}
+<style>
+.ex-bar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;font-size:12px;color:var(--muted);margin-bottom:12px}
+.ex-bar span{display:inline-flex;gap:5px;align-items:center;padding:3px 9px;border:1px solid var(--border);border-radius:999px;background:var(--bg2)}
+.ex-bar .ex-warn{color:var(--amber)}
+.ex-bar .ex-mirror{color:var(--red)}
+.ex-log{margin-top:14px}
+.ex-log table{width:100%;border-collapse:collapse;font-size:12.5px}
+.ex-log th,.ex-log td{text-align:left;padding:5px 8px;border-bottom:1px solid var(--border)}
+.ex-log th{color:var(--muted);font-weight:500}
+.ex-msg{font-size:12.5px;margin-top:8px}
+.ex-msg.ex-err{color:var(--red)}
+.ex-msg.ex-ok{color:var(--green)}
+.ex-box{border:1px solid var(--border);border-radius:var(--radius,8px);background:var(--bg2);padding:12px}
+</style>
+<div class="card" id="ex-root" data-direction="{{.Direction}}" data-conn="{{.ID}}">
+  <div class="card-title"><span><i class="ti ti-telescope"></i> Explorer</span></div>
+  <div class="ex-bar" role="note">
+    <span><i class="ti ti-clock"></i> Sitzung höchstens 15 Minuten</span>
+    {{if .ExplorerMirror}}<span class="ex-mirror"><i class="ti ti-lock"></i> Spiegel – nur lesen</span>
+    {{else if not .ExplorerWrite}}<span class="ex-warn"><i class="ti ti-eye"></i> Nur lesen – zum Testschreiben brauchst du das Recht ‚{{if eq .Direction "import"}}Import{{else}}Export{{end}} verwalten‘</span>{{end}}
+  </div>
+  {{if eq .Kind "mqtt"}}{{template "explorer-mqtt" .}}
+  {{else if eq .Kind "opcua"}}{{template "explorer-opcua" .}}
+  {{else if eq .Kind "modbus"}}{{template "explorer-modbus" .}}{{end}}
+  {{if .ExplorerWrite}}
+  <div class="ex-log" data-explorer-write>
+    <div class="rec-sub" style="margin-bottom:6px"><i class="ti ti-history"></i> Zuletzt testweise geschrieben</div>
+    {{if .ExplorerLog}}
+    <table>
+      <thead><tr><th>Wann</th><th>Wer</th><th>Ziel</th><th>Wert</th></tr></thead>
+      <tbody>{{range .ExplorerLog}}<tr><td style="white-space:nowrap">{{.CreatedAt}}</td><td>{{.UserName}}</td><td class="mono">{{.FieldName}}</td><td class="mono">{{.NewValue}}</td></tr>{{end}}</tbody>
+    </table>
+    {{else}}<div class="rec-sub">Noch nichts geschrieben.</div>{{end}}
+  </div>
+  {{end}}
+</div>
+{{end}}
+
+{{define "conn-explorer-js"}}
+<script>
+window.pdhExplorer = (function(){
+  // stream(url, handlers): Server-Ereignisse (EventSource); handlers = {Ereignisname: fn(daten)}.
+  // „error“ und „end“ schließen die Sitzung. Rückgabe: {close()}.
+  function stream(url, handlers){
+    handlers = handlers || {};
+    const es = new EventSource(url, {withCredentials: true});
+    let closed = false;
+    function close(){ closed = true; es.close(); }
+    function parse(e){ try{ return JSON.parse(e.data); }catch(_){ return {}; } }
+    Object.keys(handlers).forEach(function(name){
+      if(name === 'error' || name === 'end' || name === 'disconnect') return;
+      es.addEventListener(name, function(e){ handlers[name](parse(e)); });
+    });
+    // „error“ mit Daten kommt vom Server (Meldung), ohne Daten ist die Verbindung abgebrochen.
+    es.addEventListener('error', function(e){
+      if(e.data){ if(handlers.error) handlers.error(parse(e)); }
+      else if(!closed && handlers.disconnect) handlers.disconnect();
+      close();
+    });
+    es.addEventListener('end', function(e){ if(handlers.end) handlers.end(parse(e)); close(); });
+    return {close: close};
+  }
+  // post(url, data, frage): zeigt die Rückfrage, hängt confirm=1 an und liefert die Antwort als JSON.
+  // Bei Abbruch der Rückfrage: null. Bei Fehler wird eine Error mit der Meldung des Servers geworfen.
+  async function post(url, data, frage){
+    if(frage && !window.confirm(frage)) return null;
+    const body = new URLSearchParams();
+    Object.keys(data || {}).forEach(function(k){ if(data[k] != null) body.append(k, data[k]); });
+    body.set('confirm', '1');
+    const res = await fetch(url, {method: 'POST', credentials: 'same-origin',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'}, body: body.toString()});
+    const j = await res.json().catch(function(){ return {}; });
+    if(!res.ok) throw new Error(j.error || ('HTTP ' + res.status));
+    return j;
+  }
+  return {stream: stream, post: post};
+})();
+</script>
+{{end}}

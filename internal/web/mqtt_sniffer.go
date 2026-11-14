@@ -30,6 +30,9 @@ const (
 )
 
 func (h *Handler) canConnectionExecute(r *http.Request, direction string) bool {
+	if h.rbac == nil { // nur in Tests mit hasPermHook
+		return h.hasPermHook != nil && h.hasPerm(r, direction+".execute")
+	}
 	u := getUser(r)
 	return h.rbac.HasPermissionForUser(u.ID, string(u.Role), direction+".execute")
 }

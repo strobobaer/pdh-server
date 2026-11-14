@@ -166,6 +166,9 @@ var gateRules = []gateRule{
 	// ── Verbindungen: Zertifikat der Fremddatenbank lesen (wie Verbindung bearbeiten) ──
 	gr(wPost, "import.write", "", false, `^/import/connections/fingerprint$`),
 	gr(wPost, "export.write", "", false, `^/export/connections/fingerprint$`),
+	// ── Explorer: Testschreiben/Senden wie Verbindung bearbeiten (Erkunden selbst: import/export.execute im Handler) ──
+	gr(wPost, "import.write", "", false, `^/import/connections`+gID+`/explorer/(?:mqtt/publish|opcua/write|modbus/write)$`),
+	gr(wPost, "export.write", "", false, `^/export/connections`+gID+`/explorer/(?:mqtt/publish|opcua/write|modbus/write)$`),
 	// ── Abgleich mit Fremdsystemen: löschen nur Bereichsadministrator, einrichten mit sync.edit ──
 	gr(wPost, permSyncAdmin, syncRef, false, `^/sync`+gID+`/delete-web$`),
 	gr(wPost, permSyncEdit, syncRef, false, `^/sync`+gID+`/(?:source|target|maps|test-dry|test-write|interval)-web$`),

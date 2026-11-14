@@ -339,6 +339,9 @@ type Handler struct {
 	// Austauschbare Quellen (nur Tests; nil = echt): Rechteprüfung und gespeicherter Commit-Vergleich.
 	hasPermHook     func(*http.Request, string) bool
 	updateCheckHook func(context.Context) storedUpdateCheck
+
+	// Explorer (explorer.go): lädt die Verbindung für den Explorer; nil = echt (connectionRow)
+	explorerLoadHook func(r *http.Request, direction string) (explorerConn, error)
 }
 
 func NewHandler(

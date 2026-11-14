@@ -10,6 +10,16 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.80.11] – 2026-11-14
+
+### Neu
+
+- Verbindungen: Neuer Reiter „Explorer“ für MQTT-, OPC-UA- und Modbus-Verbindungen. Er zeigt Werte der Maschine live (höchstens 15 Minuten je Sitzung, drei Sitzungen je Benutzer, 20 am Server) und lässt einzelne Werte testweise schreiben – nach Rückfrage und mit Eintrag im Verlauf der Verbindung. Auf dem Spiegelserver ist er nur lesend.
+
+### Sicherheit
+
+- Der Explorer belastet echte Geräte und verlangt deshalb das Recht „Import ausführen“ bzw. „Export ausführen“; Schreiben zusätzlich „Import verwalten“ bzw. „Export verwalten“.
+
 ## [0.80.10] – 2026-11-14
 
 ### Neu

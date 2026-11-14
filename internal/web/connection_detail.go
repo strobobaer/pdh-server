@@ -95,23 +95,27 @@ type connMappingRow struct {
 
 type ConnectionDetailData struct {
 	BaseData
-	Direction, ID, Name, Kind, KindLabel string
-	Enabled                              bool
-	CanWrite, CanExecute                 bool
-	Tab, Notice, Err                     string
-	Config                               []connConfigRow
-	Check                                *checkReport
-	CheckAt                              string
-	QueriesSupported                     bool
-	Queries                              []connQuery
-	QueryFields                          []queryFormField
-	OpenQuery                            string
-	Builtins                             []builtinQueryTemplate
-	OwnTemplates                         []ownTemplateView
-	Mappings                             []connMappingRow
-	ExportMappings                       []ExportMappingView
-	Tools                                []connTool
-	Background                           []connConfigRow
+	Direction, ID, Name, Kind, KindLabel    string
+	Enabled                                 bool
+	CanWrite, CanExecute                    bool
+	Tab, Notice, Err                        string
+	Config                                  []connConfigRow
+	Check                                   *checkReport
+	CheckAt                                 string
+	QueriesSupported                        bool
+	Queries                                 []connQuery
+	QueryFields                             []queryFormField
+	OpenQuery                               string
+	Builtins                                []builtinQueryTemplate
+	OwnTemplates                            []ownTemplateView
+	Mappings                                []connMappingRow
+	ExportMappings                          []ExportMappingView
+	Tools                                   []connTool
+	Background                              []connConfigRow
+	Explorer, ExplorerWrite, ExplorerMirror bool
+	ExplorerLog                             []HistoryView
+	ExplorerTopic                           string
+	ExplorerUnit                            int
 }
 
 func connectionTools(direction, kind, id string, config map[string]string) []connTool {
@@ -299,7 +303,41 @@ func (h *Handler) connectionDetailPage(w http.ResponseWriter, r *http.Request, d
 		}
 	}
 	d.OwnTemplates, _ = h.ownTemplates(ctx, direction, kind)
+	h.fillExplorer(r, &d, config)
 	h.render(w, "connection_detail", d)
+}
+
+// fillExplorer setzt die Felder des Explorer-Reiters: sichtbar nur mit Ausführen-Recht
+// und unterstütztem Typ; Schreiben nur mit Bearbeiten-Recht und nicht im Spiegel.
+func (h *Handler) fillExplorer(r *http.Request, d *ConnectionDetailData, config map[string]string) {
+	d.ExplorerMirror = h.Mirror().On
+	d.Explorer = explorerKindSupported(d.Direction, d.Kind) && d.CanExecute
+	if !d.Explorer {
+		return
+	}
+	d.ExplorerWrite = h.explorerCanWrite(r, d.Direction)
+	for _, k := range []string{"ext_topic_filter", "int_topic_filter"} {
+		if v := strings.TrimSpace(config[k]); v != "" {
+			d.ExplorerTopic = v
+			break
+		}
+	}
+	if d.ExplorerTopic == "" {
+		d.ExplorerTopic = "#"
+	}
+	if u, _ := strconv.Atoi(strings.TrimSpace(config["unit_id"])); u > 0 {
+		d.ExplorerUnit = u
+	} else {
+		d.ExplorerUnit = 1
+	}
+	for _, e := range h.recordHistory(r.Context(), "connection", d.ID) {
+		if e.Action == "explorer_write" {
+			d.ExplorerLog = append(d.ExplorerLog, e)
+			if len(d.ExplorerLog) == 10 {
+				break
+			}
+		}
+	}
 }
 
 func (h *Handler) canRunConnection(r *http.Request, direction string) bool {

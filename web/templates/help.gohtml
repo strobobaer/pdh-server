@@ -1981,6 +1981,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <li><b>Abfragen</b> (nur Import) – beliebig viele benannte Abfragen je Verbindung: ein SQL-SELECT, ein Web-Endpunkt, ein Modbus-Registerblock, eine OPC-UA-Knotenliste oder eine Excel-/CSV-Zeile. Jede kann <b>automatisch alle … Minuten</b> laufen. MQTT liefert Werte von selbst und braucht keine Abfragen.</li>
     <li><b>Zuordnungen</b> bzw. <b>Felder</b> – welcher Wert zu welcher Anlage gehört, mit letztem Wert und Zeitpunkt.</li>
     <li><b>Vorlagen</b> – Abfragen und Zuordnungen einer Verbindung als Vorlage speichern und auf eine andere Verbindung desselben Typs anwenden.</li>
+    <li><b>Explorer</b> (MQTT, OPC UA, Modbus TCP) – die Werte der Maschine live ansehen und einzelne Werte testweise schreiben. Eine Sitzung dauert höchstens 15 Minuten, pro Benutzer sind drei und auf dem Server 20 Sitzungen offen. Ansehen darf, wer die Verbindung ausführen darf (<b>Import ausführen</b> bzw. <b>Export ausführen</b>), denn der Explorer belastet das echte Gerät. Schreiben braucht zusätzlich <b>Import verwalten</b> bzw. <b>Export verwalten</b>, fragt vorher nach und steht danach im Verlauf der Verbindung. Auf dem Spiegelserver ist der Explorer nur lesend.</li>
     <li><b>Werkzeuge</b> – Vorschau, Sniffer, Knoten-Browser usw. der Verbindung.</li>
   </ul>
   <div class="hb-howto"><b><i class="ti ti-database-search"></i> So holst du einen Wert per Abfrage</b>

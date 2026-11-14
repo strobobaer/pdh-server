@@ -73,8 +73,16 @@
   {{if eq .Direction "import"}}<a class="rec-tab" data-tab="queries" href="?tab=queries"><i class="ti ti-database-search"></i> Abfragen <b>{{len .Queries}}</b></a>{{end}}
   <a class="rec-tab" data-tab="mappings" href="?tab=mappings"><i class="ti ti-map-pin"></i> {{if eq .Direction "import"}}Zuordnungen <b>{{len .Mappings}}</b>{{else}}Felder <b>{{len .ExportMappings}}</b>{{end}}</a>
   <a class="rec-tab" data-tab="templates" href="?tab=templates"><i class="ti ti-template"></i> Vorlagen</a>
+  {{if .Explorer}}<a class="rec-tab" data-tab="explorer" href="?tab=explorer"><i class="ti ti-telescope"></i> Explorer</a>{{end}}
   <a class="rec-tab" data-tab="tools" href="?tab=tools"><i class="ti ti-tool"></i> Werkzeuge</a>
 </div>
+
+{{if .Explorer}}
+<!-- Explorer -->
+<div class="rec-pane" data-pane="explorer">
+  {{template "conn-explorer" .}}
+</div>
+{{end}}
 
 <!-- Uebersicht -->
 <div class="rec-pane" data-pane="overview">
@@ -277,6 +285,7 @@
 {{end}}
 
 {{define "scripts"}}
+{{if .Explorer}}{{template "conn-explorer-js" .}}{{end}}
 <script>
 (function(){
   const DIR = '{{.Direction}}', ID = '{{.ID}}';
