@@ -432,3 +432,23 @@ func TestReconcileMqttConsumerOldAndNew(t *testing.T) {
 		t.Errorf("anderes Thema bekam %q", got)
 	}
 }
+
+func TestExplorerModbusUnitLock(t *testing.T) {
+	tmpl := loadTestTemplates(t)
+	d := ConnectionDetailData{
+		Direction: "import", ID: "11111111-1111-1111-1111-111111111111", Name: "SPS", Kind: "modbus", KindLabel: "Modbus TCP",
+		Enabled: true, CanWrite: true, CanExecute: true, Tab: "explorer", ExplorerUnit: 7,
+		Explorer: true, ExplorerWrite: true,
+	}
+	page := renderPage(t, tmpl, "connection_detail", d)
+	for _, want := range []string{`data-unit="7"`, "Zuordnungen lesen mit Einheit", "zum Übernehmen Einheit"} {
+		if !strings.Contains(page, want) {
+			t.Errorf("Modbus-Explorer enthält %q nicht", want)
+		}
+	}
+	checkScripts(t, "explorer-modbus-unit", page)
+	d.Kind, d.KindLabel = "opcua", "OPC UA"
+	if strings.Contains(renderPage(t, tmpl, "connection_detail", d), "data-unit=") {
+		t.Error("data-unit außerhalb von Modbus gesetzt")
+	}
+}

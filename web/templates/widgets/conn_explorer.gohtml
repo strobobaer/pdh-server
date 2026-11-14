@@ -15,7 +15,7 @@
 .ex-msg.ex-ok{color:var(--green)}
 .ex-box{border:1px solid var(--border);border-radius:var(--radius,8px);background:var(--bg2);padding:12px}
 </style>
-<div class="card" id="ex-root" data-direction="{{.Direction}}" data-conn="{{.ID}}"{{if .ExplorerWrite}} data-explorer-write{{end}}>
+<div class="card" id="ex-root" data-direction="{{.Direction}}" data-conn="{{.ID}}"{{if eq .Kind "modbus"}} data-unit="{{.ExplorerUnit}}"{{end}}{{if .ExplorerWrite}} data-explorer-write{{end}}>
   <div class="card-title"><span><i class="ti ti-telescope"></i> Explorer</span></div>
   <div class="ex-bar" role="note">
     <span><i class="ti ti-clock"></i> Sitzung höchstens 15 Minuten</span>
@@ -106,6 +106,24 @@ window.pdhExplorer = (function(){
   // canMap: nur mit Schreibrecht gibt es Knöpfe zum Übernehmen (Merkmal am Explorer-Rahmen).
   function canMap(){ const r = root(); return !!r && r.dataset.explorerWrite !== undefined; }
   function mapLabel(){ const r = root(); return r && r.dataset.direction === 'export' ? 'Als Zielfeld übernehmen' : 'Als Zuordnung übernehmen'; }
+  // Modbus: Eine Zuordnung liest mit der Einheit der Verbindung (data-unit). Weicht die im Explorer
+  // gewählte Einheit ab, ist die Übernahme gesperrt, sonst würde sie still ein anderes Gerät lesen.
+  function unitBlock(){
+    const r = root(), u = document.getElementById('xm-unit');
+    if(!r || r.dataset.unit === undefined || !u) return '';
+    const want = String(r.dataset.unit);
+    if(String(parseInt(u.value, 10)) === want) return '';
+    return 'Zuordnungen lesen mit Einheit ' + want + ' der Verbindung – zum Übernehmen Einheit ' + want + ' wählen oder die Einheit der Verbindung ändern';
+  }
+  function syncMapButtons(){
+    const why = unitBlock();
+    document.querySelectorAll('#ex-root .ex-map').forEach(function(b){
+      b.disabled = !!why;
+      b.title = why || b.dataset.label;
+    });
+  }
+  document.addEventListener('input', function(e){ if(e.target && e.target.id === 'xm-unit') syncMapButtons(); });
+  document.addEventListener('change', function(e){ if(e.target && e.target.id === 'xm-unit') syncMapButtons(); });
   // mapButton(ref, vorschlag, klein): Knopf für einen Quellwert; null ohne Schreibrecht.
   function mapButton(ref, suggestion, compact){
     if(!canMap()) return null;
@@ -113,12 +131,13 @@ window.pdhExplorer = (function(){
     b.type = 'button'; b.className = 'btn btn-small ex-map';
     const i = document.createElement('i'); i.className = 'ti ti-map-pin'; b.appendChild(i);
     if(!compact) b.appendChild(document.createTextNode(' ' + mapLabel()));
-    b.title = mapLabel() + ': ' + ref; b.setAttribute('aria-label', mapLabel() + ': ' + ref);
+    b.dataset.label = mapLabel() + ': ' + ref; b.setAttribute('aria-label', mapLabel() + ': ' + ref);
+    const why = unitBlock(); b.disabled = !!why; b.title = why || b.dataset.label;
     b.addEventListener('click', function(e){ e.stopPropagation(); map(ref, suggestion); });
     return b;
   }
   function map(ref, suggestion){
-    if(!canMap()) return;
+    if(!canMap() || unitBlock()) return;
     if(root().dataset.direction === 'export'){ openTarget(ref); return; }
     if(typeof importMarkOpen !== 'function') return;
     importMarkOpen(ref);
