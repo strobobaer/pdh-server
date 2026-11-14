@@ -15,6 +15,7 @@ import (
 
 	"pdh/internal/modules/faults"
 	"pdh/internal/modules/ruesten"
+	"pdh/pkg/appsettings"
 )
 
 // Rüsten an der Anlage: Easy-Modus (öffentlich, /e/{id}/setup/…) und Seite der
@@ -436,7 +437,8 @@ func (h *Handler) setupFaultText(ctx context.Context, e ruesten.Entry) (title, d
 // Der Monitor hält beim Aufruf eine Zeile von setup_times gesperrt und eine
 // Pool-Verbindung; hier wird deshalb nie in setup_times geschrieben. Das Anlegen
 // braucht selbst eine Transaktion und für die Vorgabe-Fälligkeit eine weitere
-// Verbindung – der Ablauf kommt mit drei gleichzeitigen Verbindungen aus.
+// Verbindung (vorab ermittelt) – der Ablauf kommt mit zwei gleichzeitigen
+// Verbindungen aus: Transaktion des Monitors und Anlege-Transaktion.
 func (h *Handler) createSetupFault(ctx context.Context, e ruesten.Entry) (string, error) {
 	if h.faults == nil || h.db == nil {
 		return "", errors.New("kein Dienst für Störmeldungen")
@@ -451,12 +453,14 @@ func (h *Handler) createSetupFault(ctx context.Context, e ruesten.Entry) (string
 		// einer Transaktion: gibt es die Störmeldung, gibt es auch den Schlüssel.
 		title, desc := h.setupFaultText(ctx, e)
 		infra := e.InfraID
+		// Fälligkeit vorab: in der Transaktion braucht das Anlegen keine weitere Verbindung.
+		due := time.Now().AddDate(0, 0, appsettings.GetInt(ctx, h.db, appsettings.KeyDefaultDueDaysFault, appsettings.DefaultDueDaysFallback))
 		tx, err := h.db.Begin(ctx)
 		if err != nil {
 			return "", err
 		}
 		defer tx.Rollback(ctx)
-		f, err := h.faults.CreateInTx(ctx, tx, &faults.CreateFaultInput{Title: title, Description: desc, Severity: "high", InfrastructureID: &infra}, pdhSystemUserID)
+		f, err := h.faults.CreateInTx(ctx, tx, &faults.CreateFaultInput{Title: title, Description: desc, Severity: "high", InfrastructureID: &infra, DueDate: &due}, pdhSystemUserID)
 		if err != nil {
 			return "", err
 		}

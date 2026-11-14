@@ -13,6 +13,9 @@ import (
 // monitorInterval ist der Takt der Überwachung.
 const monitorInterval = 60 * time.Second
 
+// faultTimeout: längste Zeit für das Anlegen einer Störmeldung je Rüstzeit.
+var faultTimeout = 30 * time.Second
+
 // FaultCreator legt zu einer überfälligen Rüstzeit die Störmeldung
 // „Störung durch Rüsten“ an und liefert deren Kennung. Der Web-Teil
 // liefert die Umsetzung.
@@ -59,6 +62,10 @@ func (m *Monitor) Pass(ctx context.Context) (created int, err error) {
 // der Status erneut geprüft, damit parallele Durchläufe nur eine Störmeldung
 // erzeugen. Scheitert CreateFault, wird zurückgerollt; die Rüstzeit läuft weiter.
 func (m *Monitor) fault(ctx context.Context, id string) (bool, error) {
+	// Frist je Rüstzeit: hängt etwas (Sperre, Verbindung), rollt die Transaktion
+	// zurück und der nächste Durchlauf versucht es erneut.
+	ctx, cancel := context.WithTimeout(ctx, faultTimeout)
+	defer cancel()
 	tx, err := m.Store.DB.Begin(ctx)
 	if err != nil {
 		return false, err

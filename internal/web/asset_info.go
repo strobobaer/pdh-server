@@ -63,7 +63,7 @@ type AssetInfoData struct {
 	URL      string
 	CanLabel bool
 	Setup    setupBarView // Abschnitt „Rüsten“ (setup_easy.go)
-	Plant    string       // „Rüsten“ / „Störung durch Rüsten“ / ""
+	Plant    string       // Kennzeichen "running" / "fault" / ""
 }
 
 const assetOpenLimit = 50

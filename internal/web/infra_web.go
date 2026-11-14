@@ -292,7 +292,7 @@ type InfraDetailData struct {
 	EasyTexts       []easyText          // Reiter „Meldetexte“ (easy_texts.go)
 	EasyTextCount   int                 // davon an dieser Anlage wirksam
 	SetupTab        setupInfraTab       // Reiter „Rüsttasten“ und Höchstdauer (setup_catalog.go)
-	SetupState      string              // „Rüsten“ / „Störung durch Rüsten“ / "" (setup_easy.go)
+	SetupState      string              // Kennzeichen "running" / "fault" / "" (setup_easy.go)
 	Chamber         []chamberGroup      // Trockenkammer: Reiter „Bauteile“ (chamber.go)
 	ChamberNOK      int                 // davon NOK
 	ChamberParts    []chamberPartOption // Vorschlagsliste „Typ (Ersatzteil)“

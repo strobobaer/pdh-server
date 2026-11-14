@@ -426,13 +426,13 @@ func (f *setupFx) overdueSetup(infra, buttonID, uid string) *ruesten.Entry {
 	return f.entry(e.ID)
 }
 
-// smallPoolHandler: Handler und Speicher auf einem Pool mit nur drei Verbindungen –
+// smallPoolHandler: Handler und Speicher auf einem Pool mit nur zwei Verbindungen –
 // Überwachung (Transaktion) und Störmeldung brauchen je eine; das darf sich nicht blockieren.
 func (f *setupFx) smallPoolHandler() (*Handler, *ruesten.Store) {
 	f.t.Helper()
 	cfg, err := pgxpool.ParseConfig(os.Getenv("PDH_TEST_DSN"))
 	f.must(err)
-	cfg.MaxConns = 3
+	cfg.MaxConns = 2
 	p, err := pgxpool.NewWithConfig(f.ctx, cfg)
 	f.must(err)
 	f.t.Cleanup(p.Close)

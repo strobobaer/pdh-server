@@ -62,7 +62,7 @@ type watchEnergy struct {
 
 type watchCard struct {
 	ID, Name, Path, Type, TypeLabel, TypeIcon, Location string
-	SetupState                                          string // Kennzeichen „Rüsten“ / „Störung durch Rüsten“ (setup_easy.go)
+	SetupState                                          string // Kennzeichen "running" / "fault" (setup_easy.go)
 	watchStats
 	Energy       []watchEnergy
 	Chamber      []chamberGroup

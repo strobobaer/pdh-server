@@ -147,3 +147,35 @@ func TestMonitorSkip(t *testing.T) {
 		t.Fatalf("n=%d calls=%d status=%s", n, calls, g.Status)
 	}
 }
+
+// Hängt das Anlegen der Störmeldung, endet es mit der Frist je Rüstzeit: Die
+// Transaktion rollt zurück, die Rüstzeit läuft weiter, die Sperre ist frei und
+// der nächste Durchlauf versucht es erneut.
+func TestMonitorFaultTimeout(t *testing.T) {
+	old := faultTimeout
+	faultTimeout = 300 * time.Millisecond
+	t.Cleanup(func() { faultTimeout = old })
+	f := newFx(t)
+	e, usr := f.overdueEntry(16 * time.Minute)
+	hang := func(ctx context.Context, _ Entry) (string, error) { <-ctx.Done(); return "", ctx.Err() }
+	m := &Monitor{Store: f.s, CreateFault: hang, SystemUser: usr}
+	done := make(chan error, 1)
+	go func() { _, err := m.Pass(f.ctx); done <- err }()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("Fehler wegen abgelaufener Frist erwartet")
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("Pass kehrt trotz Frist nicht zurück")
+	}
+	if g, _ := f.s.Get(f.ctx, e.ID); g.Status != StatusRunning || g.FaultID != nil {
+		t.Fatalf("Rüstzeit nach Frist: %+v", g)
+	}
+	// Sperre frei: der nächste Durchlauf mit funktionierendem Dienst gelingt
+	var calls int32
+	m.CreateFault = f.creator(usr, &calls, false)
+	if n, err := m.Pass(f.ctx); err != nil || n != 1 {
+		t.Fatalf("Wiederholung: %d %v", n, err)
+	}
+}
