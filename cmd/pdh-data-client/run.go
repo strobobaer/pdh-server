@@ -13,6 +13,7 @@ import (
 	"runtime"
 	"slices"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -121,12 +122,7 @@ func Run(ctx context.Context, c Config, node datanet.Node, save func(Config) err
 	fctx, stop := context.WithCancel(ctx)
 	defer stop()
 
-	allow := func(remote net.Addr) bool {
-		tctx, cancel := context.WithTimeout(fctx, peerTagTimeout)
-		defer cancel()
-		tags, err := node.PeerTags(tctx, remote.String())
-		return err == nil && slices.Contains(tags, datanet.TagPDH)
-	}
+	allow := newAllow(fctx, node, time.Now)
 	var first sync.WaitGroup // erster Listen-Versuch je Ziel, damit die erste Meldung stimmt
 	for _, t := range c.Targets {
 		wg.Add(1)
@@ -140,6 +136,47 @@ func Run(ctx context.Context, c Config, node datanet.Node, save func(Config) err
 
 	reportLoop(ctx, c, node, &st, save)
 	return nil
+}
+
+// rejectLogEvery: Abweisungen derselben Adresse stehen höchstens einmal je Minute im Protokoll.
+const rejectLogEvery = time.Minute
+
+// newAllow liefert die Prüfung für Gegenstellen: nur Geräte mit tag:pdh dürfen
+// herein. Jede Abweisung wird protokolliert (je Adresse höchstens einmal je
+// Minute), damit falsche Tags im Tailnet nicht unbemerkt bleiben.
+func newAllow(ctx context.Context, node datanet.Node, now func() time.Time) func(net.Addr) bool {
+	var mu sync.Mutex
+	last := map[string]time.Time{}
+	return func(remote net.Addr) bool {
+		tctx, cancel := context.WithTimeout(ctx, peerTagTimeout)
+		defer cancel()
+		tags, err := node.PeerTags(tctx, remote.String())
+		if err == nil && slices.Contains(tags, datanet.TagPDH) {
+			return true
+		}
+		host, _, splitErr := net.SplitHostPort(remote.String())
+		if splitErr != nil {
+			host = remote.String()
+		}
+		mu.Lock()
+		t := now()
+		quiet := !last[host].IsZero() && t.Sub(last[host]) < rejectLogEvery
+		if !quiet {
+			last[host] = t
+		}
+		mu.Unlock()
+		if !quiet {
+			shown := "keine"
+			if len(tags) > 0 {
+				shown = strings.Join(tags, ", ")
+			}
+			if err != nil {
+				shown = "nicht ermittelbar (" + err.Error() + ")"
+			}
+			log.Printf("Verbindung von %s abgewiesen: Tags %s, erwartet %s", host, shown, datanet.TagPDH)
+		}
+		return false
+	}
 }
 
 // saveWithRetry versucht save mehrfach.

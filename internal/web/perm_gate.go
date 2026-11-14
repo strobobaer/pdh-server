@@ -177,6 +177,7 @@ var gateRules = []gateRule{
 	gr(wPost, permDataNetEdit, dataNetRef, false, `^/datanet/clients`+gID+`/revoke$`),
 	gr(wPost, permDataNetEdit, "", false, `^/datanet/clients$`),
 	gr(wPost, permDataNetAdmin, "", false, `^/datanet/settings$`),
+	gr(wPost, permDataNetAdmin, "", false, `^/datanet/check/fix$`),
 	// ── Störungen (Melden bleibt für alle offen) ──
 	gr(wPost, "faults.resolve", "fault", true, `^(?:/api/v1)?/faults`+gID+`/resolve$`),
 	gr(wPost, "faults.edit", "fault", true, `^/faults`+gID+`/(?:analyze|infrastructure-web)$`),

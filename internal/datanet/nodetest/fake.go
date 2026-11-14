@@ -16,6 +16,7 @@ type Fake struct {
 	BlockUp bool              // Up blockiert bis zum Ende des Kontexts
 	Routes  map[string]string // Datennetz-Adresse -> Loopback-Adresse
 	Tags    map[string][]string
+	PeerErr map[string]error // Adresse -> Fehler von PeerTags (Gerät nicht sichtbar)
 
 	mu    sync.Mutex
 	Ports map[int]string // angefragter Port -> tatsächliche Loopback-Adresse
@@ -62,6 +63,9 @@ func (f *Fake) PeerTags(_ context.Context, remoteAddr string) ([]string, error) 
 	host, _, err := net.SplitHostPort(remoteAddr)
 	if err != nil {
 		host = remoteAddr
+	}
+	if err := f.PeerErr[host]; err != nil {
+		return nil, err
 	}
 	return f.Tags[host], nil
 }

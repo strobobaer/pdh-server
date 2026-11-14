@@ -1,0 +1,55 @@
+{{/* Prüfung des Datennetzes (Teilseiten für htmx auf /datanet): datanet-check, datanet-fix */}}
+{{define "datanet-check"}}
+<div class="dn-chk" role="region" aria-label="Ergebnis der Prüfung">
+  <p class="dn-chk-sum" style="color:{{if .Bad}}var(--red){{else if .Warn}}var(--amber){{else}}var(--green){{end}}">
+    {{if .Bad}}<i class="ti ti-circle-x"></i> {{.Bad}} Fehler{{if .Warn}}, {{.Warn}} Warnung{{if ne .Warn 1}}en{{end}}{{end}}
+    {{else if .Warn}}<i class="ti ti-alert-triangle"></i> {{.Warn}} Warnung{{if ne .Warn 1}}en{{end}}
+    {{else}}<i class="ti ti-circle-check"></i> Alles in Ordnung{{end}}
+  </p>
+  {{range .Groups}}
+  <div class="dn-h">{{.Title}}</div>
+  <ul class="dn-chk-list">
+    {{range .Lines}}
+    <li class="dn-l dn-l-{{.Level}}">
+      <span class="dn-l-ic" aria-label="{{if eq .Level "ok"}}in Ordnung{{else if eq .Level "warn"}}Warnung{{else if eq .Level "bad"}}Fehler{{else}}Hinweis{{end}}">{{if eq .Level "ok"}}✓{{else if eq .Level "warn"}}⚠{{else if eq .Level "bad"}}✗{{else}}ℹ{{end}}</span>
+      <span class="dn-l-tx"><b>{{.Title}}</b>{{if .Text}} – {{.Text}}{{end}}{{if .Hint}}<span class="dn-l-hint">So geht es weiter: {{.Hint}}</span>{{end}}</span>
+    </li>
+    {{end}}
+  </ul>
+  {{end}}
+
+  {{if .Missing}}
+  <div class="dn-h">Diese Zeilen fehlen in den Access controls</div>
+  <p class="dn-note">Trage sie im Tailscale-Admin unter <i>Access controls</i> ein (zu vorhandenen Abschnitten hinzufügen). Das PDH ändert die Access controls nie selbst.</p>
+  <div class="dn-pre" id="dn-missing">{{.Missing}}<button type="button" class="btn btn-small dn-copy" data-src="dn-missing" onclick="dnCopy(this)"><i class="ti ti-copy"></i> Kopieren</button></div>
+  {{end}}
+
+  {{if .HaveAPI}}
+  {{if .Plan}}
+  <div class="dn-h">Tags korrigieren</div>
+  <ul class="dn-chk-list">
+    {{range .Plan}}<li class="dn-l dn-l-info"><span class="dn-l-ic">→</span><span class="dn-l-tx"><b>{{.Name}}</b>: {{if .Old}}{{range $i, $t := .Old}}{{if $i}}, {{end}}{{$t}}{{end}}{{else}}kein Tag{{end}} wird zu {{range $i, $t := .New}}{{if $i}}, {{end}}{{$t}}{{end}}</span></li>{{end}}
+  </ul>
+  {{end}}
+  {{range .PlanNotes}}<p class="dn-note" style="color:var(--amber)"><i class="ti ti-alert-triangle"></i> {{.}}</p>{{end}}
+  {{if .CanFix}}
+  <button type="button" class="btn btn-primary" hx-post="/datanet/check/fix" hx-target="#dn-fix" hx-swap="innerHTML"
+    hx-confirm="Tags der oben aufgeführten Geräte bei Tailscale ändern? Tags, die mit tag:pdh beginnen, werden durch den richtigen ersetzt."><i class="ti ti-tag"></i> Tags korrigieren</button>
+  {{else if .Mirror}}
+  <p class="dn-note"><i class="ti ti-lock"></i> Auf dem Spiegelserver ist „Tags korrigieren“ gesperrt. Bitte auf dem aktiven Server ausführen.</p>
+  {{end}}
+  <div id="dn-fix" aria-live="polite"></div>
+  {{end}}
+</div>
+{{end}}
+
+{{define "datanet-fix"}}
+{{if .Err}}<p class="dn-note" role="alert" style="color:var(--red);margin-top:8px"><i class="ti ti-alert-circle"></i> {{.Err}}</p>{{else}}
+<ul class="dn-chk-list" style="margin-top:8px">
+  {{range .Results}}
+  <li class="dn-l dn-l-{{if .OK}}ok{{else}}bad{{end}}"><span class="dn-l-ic">{{if .OK}}✓{{else}}✗{{end}}</span><span class="dn-l-tx"><b>{{.Name}}</b> – {{if .OK}}{{.Want}} gesetzt{{else}}nicht geändert: {{.Err}}{{end}}</span></li>
+  {{end}}
+</ul>
+<p class="dn-note">Starte die Prüfung danach erneut. Es kann einen Moment dauern, bis die neuen Tags im Datennetz ankommen.</p>
+{{end}}
+{{end}}
