@@ -1725,6 +1725,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <li><b>Rollen &amp; Rechte</b> – was welche Rolle darf; Ausnahmen je Person unter Einzelrechte im Benutzerstamm (siehe unten).</li>
     <li><b>Core-Einstellungen</b> – Standards für alle (siehe unten), Fristen, Updates (<a href="#versions">mehr</a>), Microsoft-365-Abgleich samt Nextcloud-Konten (<a href="#users">mehr</a>), Hersteller &amp; Lieferanten, Feldsätze.</li>
     <li><b>Import / Export</b> – Daten aus Maschinen und Systemen (MQTT, OPC UA, Modbus, SQL, Excel, Web) übernehmen und Exporte planen (<a href="#connections">mehr</a>).</li>
+    <li><b>Abgleich</b> – Meldungen aus einer fremden Datenbank als Tickets oder Störmeldungen übernehmen und Änderungen zurückschreiben; Profile löscht nur der Bereichsadministrator des Abgleichs (<a href="#abgleich">mehr</a>).</li>
     <li><b>Drucker</b> – Etiketten- und Netzwerkdrucker einrichten, prüfen und testen (<a href="#printers">mehr</a>).</li>
     <li><b>Datensicherung</b> – Sicherungen, Zeitpläne und Wiederherstellung (<a href="#backup">mehr</a>).</li>
     <li><b>Bereinigung</b> – Löschvormerkungen prüfen und den Bereinigungslauf starten (<a href="#cleanup">mehr</a>).</li>
@@ -1872,7 +1873,93 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     </ol></div>
   <div class="hb-howto"><b><i class="ti ti-copy"></i> Mehrere gleiche Maschinen</b>Eine Maschine fertig einrichten, im Reiter <b>Vorlagen</b> als Vorlage speichern und auf der Verbindungsseite der nächsten Maschine <b>anwenden</b>. Abfragen und Zuordnungen entstehen dort genauso; schon Vorhandenes wird nicht doppelt angelegt.</div>
   <p>Ansehen darf, wer Import bzw. Export sehen darf; prüfen und ausführen, wer ausführen darf; ändern, wer bearbeiten darf.</p>
+  <p><b>Kennwörter</b> von Verbindungen werden verschlüsselt gespeichert und nie wieder angezeigt. Beim Bearbeiten das Kennwortfeld <b>leer lassen</b> – dann bleibt das gespeicherte Kennwort.</p>
+  <p>Bei <b>MSSQL</b>-Verbindungen gibt es zusätzlich: den <b>Weg</b> (Direkt oder ein ausgehender VPN-Tunnel, über VPN mit eigenem Abfragetakt von 5 bis 30 Minuten und eigener Zeitgrenze), den <b>Fingerabdruck</b> des Serverzertifikats (einmal lesen und bestätigen) und den Schalter <b>Schreiben erlaubt</b>. Ohne diesen Schalter schreibt das PDH nie in die Datenbank. Wird der Weg geändert, stehen scharfe Profile des <a href="#abgleich">Abgleichs</a> wieder auf „Getestet“.</p>
   {{template "hb-shots" (dict "Ref" (index $s "connections") "Can" $can)}}
+</section>
+
+<section class="hb-ch" id="abgleich" data-title="Abgleich mit Fremdsystemen" data-pages="sync">
+  <h2><i class="ti ti-arrows-exchange"></i> Abgleich mit Fremdsystemen</h2>
+  <p>Unter <b>Abgleich</b> (Navigation → Daten) holt das PDH Meldungen aus einer fremden SQL-Server-Datenbank und macht daraus <b>Tickets</b> oder <b>Störmeldungen</b>. Was du im PDH an einer solchen Meldung änderst, kann zurück in die fremde Zeile geschrieben werden. Der Abgleich ist ein Zusatz: Ohne Profil ändert sich am PDH nichts.</p>
+  {{template "hb-fig-abgleich"}}
+  <p><b>Was der Abgleich nie tut:</b> Er löscht nichts im Fremdsystem und legt dort keine Meldungen an. Geschrieben wird nur eine vorhandene Zeile über ihren Schlüssel und – wenn eingerichtet – ein neuer Kommentar in eine Nebentabelle.</p>
+  <p>Ein <b>Profil</b> verbindet genau eine Tabelle des Fremdsystems mit Tickets oder Störmeldungen. Jedes Profil hat einen Zustand: <b>Entwurf</b> (wird eingerichtet), <b>Getestet</b>, <b>Scharf</b> (läuft im Takt) oder <b>Angehalten</b>. Jede Änderung an Quelle, Ziel oder Zuordnungen setzt das Profil zurück auf Entwurf.</p>
+  <div class="hb-howto"><b><i class="ti ti-user-shield"></i> Vorbereitung im Fremdsystem</b>
+    <ol class="hb-steps">
+      <li>Im SQL Server einen <b>eigenen Datenbankbenutzer</b> für das PDH anlegen – nicht <code>sa</code>, nicht <code>db_owner</code>.</li>
+      <li>Ihm nur geben, was nötig ist: <b>Lesen</b> auf der Meldungstabelle. Sollen Änderungen zurückgehen, zusätzlich <b>Ändern</b> auf der Meldungstabelle; für Kommentare <b>Lesen und Anfügen</b> auf der Kommentartabelle. <b>Löschen</b> braucht er nie.</li>
+      <li>In der Firewall des fremden Netzes den Datenbank-Port für das PDH freigeben. Beim Ausfallschutz mit zwei Servern für <b>beide Serveradressen</b> – der aktive Server sendet mit seiner eigenen Adresse, nicht mit der mitwandernden. Die Prüfung der Verbindung nennt die Absenderadresse.</li>
+    </ol></div>
+  <div class="hb-howto"><b><i class="ti ti-plug-connected"></i> Verbindung einrichten</b>
+    <ol class="hb-steps">
+      <li>Unter <b>Import</b> eine Verbindung vom Typ <b>MSSQL</b> anlegen: Host, Port, Datenbank, Benutzer, Kennwort.</li>
+      <li><b>Weg</b>: im Regelfall <b>Direkt</b> (die Datenbank ist über das Netz erreichbar). Ein VPN-Tunnel ist nur zum Testen gedacht; über VPN gelten ein eigener Abfragetakt (5 bis 30 Minuten) und eine eigene Zeitgrenze je Abfrage.</li>
+      <li><b>Fingerabdruck lesen und bestätigen</b>, damit das PDH nur mit diesem Server spricht.</li>
+      <li>Sollen Änderungen zurückgehen: <b>Schreiben erlaubt</b> einschalten. Ohne den Schalter schreibt das PDH nie in diese Datenbank.</li>
+      <li>Auf der Verbindungsseite <b>Jetzt prüfen</b>. Die Prüfung zeigt Tunnel, Adresse, Port, Anmeldung, Lese- und Schreibrecht einzeln und warnt, wenn der Benutzer mehr darf als nötig.</li>
+    </ol></div>
+  <div class="hb-howto"><b><i class="ti ti-plus"></i> So legst du ein Profil an</b>
+    <ol class="hb-steps">
+      <li><b>Abgleich</b> öffnen, unten Namen, Verbindung und Ziel (Ticket oder Störmeldung) wählen, <b>Profil anlegen</b>.</li>
+      <li>Im Cockpit die fünf Schritte der Reihe nach durchgehen: <b>1 Quelle</b>, <b>2 Ziel</b>, <b>3 Zuordnungen</b>, <b>4 Test</b>, <b>5 Betrieb</b>.</li>
+    </ol></div>
+  <div class="hb-howto"><b><i class="ti ti-database"></i> Schritt 1 – Quelle</b>
+    <ol class="hb-steps">
+      <li><b>Tabelle</b> mit den Meldungen wählen. Die Liste kommt direkt aus der Datenbank; <b>Erste Zeilen ansehen</b> zeigt bis zu 20 Zeilen zur Kontrolle.</li>
+      <li><b>Schlüsselspalte(n)</b> ankreuzen – daran erkennt das PDH eine Meldung wieder. Vorgeschlagen wird der Primärschlüssel. Der Schlüssel muss eindeutig sein.</li>
+      <li><b>Änderungen erkennen über</b>: am besten eine <code>rowversion</code>-Spalte, sonst eine Spalte mit der Änderungszeit. Ohne solche Spalte vergleicht das PDH jede Zeile.</li>
+      <li>Auf Wunsch das <b>Anlagedatum</b> wählen: Meldungen von früher werden dann still als Historie angelegt, ohne Benachrichtigung; abgeschlossene davon gleich erledigt und archiviert.</li>
+      <li>Die <b>Zeitzone</b> der Zeitangaben im Fremdsystem wählen, wenn sie von der des PDH-Servers abweicht.</li>
+      <li><b>Quelle speichern</b>. Sobald Meldungen verknüpft sind, sind Verbindung, Tabelle und Schlüssel fest.</li>
+    </ol></div>
+  <div class="hb-howto"><b><i class="ti ti-target-arrow"></i> Schritt 2 – Ziel</b>
+    <ol class="hb-steps">
+      <li>Wählen, ob aus einer Meldung ein <b>Ticket</b> oder eine <b>Störmeldung</b> wird, und zu welcher <b>Abteilung</b> das Profil gehört.</li>
+      <li><b>Vorgabewerte</b> eintragen – sie gelten, wenn das Fremdsystem für ein Feld nichts liefert.</li>
+      <li>Mit <b>Filter</b> und <b>Zeitfenster</b> eingrenzen, welche Meldungen kommen. <b>Höchstens neue Meldungen je Lauf</b> schützt vor einer Flut: Kommen mehr, hält das Profil an und meldet es.</li>
+    </ol></div>
+  <div class="hb-howto"><b><i class="ti ti-arrows-left-right"></i> Schritt 3 – Zuordnungen</b>
+    <ol class="hb-steps">
+      <li>Je Feld im PDH die <b>Spalte im Fremdsystem</b> wählen und die <b>Richtung</b>: herein, hinaus oder beides. Ändern beide Seiten dasselbe Feld, gewinnt das PDH; der fremde Wert steht im Verlauf.</li>
+      <li>Unter <b>Werte übersetzen</b> eintragen, was die Werte des Fremdsystems im PDH bedeuten, z. B. „hoch“ → Hoch.</li>
+      <li>Ein <b>fester Wert</b> gilt statt einer Spalte, z. B. immer Status „Offen“.</li>
+      <li>Sollen Kommentare zurück ins Fremdsystem, die <b>Kommentartabelle</b> und ihre Spalten eintragen.</li>
+      <li><b>Zuordnungen speichern</b>. Ein Pflichtfeld ohne Zuordnung ist gelb markiert.</li>
+    </ol></div>
+  <p>Die Richtungen „hinaus“ und „beides“ sind gesperrt, solange an der Verbindung <b>Schreiben erlaubt</b> aus ist. Schlüsselspalten und Spalten, die die Datenbank selbst füllt, werden nie geändert.</p>
+  <div class="hb-howto"><b><i class="ti ti-flask"></i> Schritt 4 – Test</b>
+    <ol class="hb-steps">
+      <li><b>Stufe 1 – Trockenlauf starten.</b> Das PDH liest die Meldungen und zeigt, was entstünde: wie viele neu, rückwirkend, geändert – und welche Zeilen Fehler haben (z. B. ein Wert ohne Übersetzung). Geschrieben wird nirgends.</li>
+      <li>Schreibt das Profil zurück, vorher eine <b>Meldung für den Test hinaus</b> wählen. Der Trockenlauf zeigt dann den genauen Befehl, der an das Fremdsystem ginge.</li>
+      <li><b>Stufe 2 – Schreibversuch starten</b> (nur wenn das Profil zurückschreibt). Das PDH ändert die gewählte Meldung in einer Transaktion, liest sie zur Kontrolle und <b>nimmt alles zurück</b>. Danach prüft es, dass die Meldung wie vorher ist.</li>
+      <li>Hat die Tabelle <b>Auslöser (Trigger)</b>, zeigt das PDH erst ihre Namen und fragt nach. Auslöser können Wirkungen haben, die eine Rücknahme nicht aufhebt – im Zweifel mit dem Betreuer des Fremdsystems klären.</li>
+      <li>Sind die nötigen Stufen bestanden, steht das Profil auf <b>Getestet</b>.</li>
+    </ol></div>
+  <div class="hb-howto"><b><i class="ti ti-bolt"></i> Schritt 5 – Betrieb</b>
+    <ol class="hb-steps">
+      <li><b>Scharf schalten.</b> Beim ersten Mal zeigt das PDH vorher, wie viele Meldungen der erste Lauf anlegen würde. Mit <b>Ja, scharf schalten</b> läuft der Abgleich im Takt.</li>
+      <li>Den <b>Takt</b> hereinkommend auf 5 bis 30 Minuten stellen. Änderungen aus dem PDH gehen innerhalb weniger Sekunden zurück.</li>
+      <li><b>Jetzt abgleichen</b> holt sofort, ohne auf den Takt zu warten. <b>Anhalten</b> stoppt das Profil; nichts geht verloren, nach <b>Fortsetzen</b> wird nachgeholt.</li>
+      <li>Die <b>Warteliste</b> zeigt, was noch ins Fremdsystem geschrieben werden muss. Bei einem Fehler steht der Grund dabei; <b>Erneut versuchen</b> stößt den Eintrag sofort an.</li>
+      <li><b>Letzte Läufe</b> zeigt je Lauf, was übernommen oder zurückgeschrieben wurde, und Fehler mit Meldung und Feld.</li>
+    </ol></div>
+  <p>An einem übernommenen Ticket bzw. einer Störmeldung steht oben die <b>Herkunft</b>: Profil, Nummer im Fremdsystem und der Stand des Abgleichs (aktuell, Änderungen warten oder der Fehler).</p>
+  <p><b>Vorrang für die Benutzer:</b> Ist der Server stark ausgelastet (Prozessor, Arbeitsspeicher oder Datenbank), geht der Abgleich in <b>Warteposition</b>. Er läuft dann spätestens nach 30 Minuten mit kleiner Menge und holt auf, sobald die Last sinkt. Im Lauf steht der Grund.</p>
+  <p><b>Wenn etwas nicht klappt:</b></p>
+  <table>
+    <tr><th>Anzeige</th><th>Was passiert</th><th>Was du tust</th></tr>
+    <tr><td>Datenbank nicht erreichbar</td><td>Der Lauf wird übersprungen, die Warteliste bleibt. Die Pause wächst bis 15 Minuten.</td><td>Netz, Firewall und Fremdsystem prüfen; an der Verbindung <b>Jetzt prüfen</b>. Danach holt der Abgleich von selbst auf.</td></tr>
+    <tr><td>Weg nicht bereit (Tunnel steht nicht)</td><td>Wie oben.</td><td>Den Tunnel unter <a href="#vpn">VPN</a> prüfen oder den Weg auf Direkt stellen.</td></tr>
+    <tr><td>Wert ist nicht zugeordnet, Pflichtfeld leer</td><td>Nur diese Meldung scheitert; die anderen laufen weiter.</td><td>In Schritt 3 die Übersetzung oder einen Vorgabewert ergänzen.</td></tr>
+    <tr><td>Fehlversuch in der Warteliste</td><td>Der Eintrag bleibt und wird wieder versucht. Nach fünf Versuchen steht ein Vermerk am Datensatz.</td><td>Grund lesen (Recht, Sperre, Pflichtfeld im Fremdsystem), beheben, <b>Erneut versuchen</b>.</td></tr>
+    <tr><td>Schreiben ist an der Verbindung nicht erlaubt</td><td>Die Warteliste wartet unverändert.</td><td>An der Verbindung <b>Schreiben erlaubt</b> einschalten.</td></tr>
+    <tr><td>Meldung im Fremdsystem nicht mehr vorhanden</td><td>Vermerk am Datensatz. Die Verknüpfung bleibt, im Fremdsystem wird nichts angelegt.</td><td>Nichts – das Ticket bleibt im PDH.</td></tr>
+    <tr><td>Zu viele neue Meldungen</td><td>Das Profil hält an.</td><td>Filter oder Zeitfenster enger setzen oder die Obergrenze erhöhen, neu testen und scharf schalten.</td></tr>
+    <tr><td>Weg der Verbindung geändert</td><td>Scharfe Profile der Verbindung stehen wieder auf Getestet.</td><td>Über den neuen Weg neu testen und scharf schalten. Verknüpfungen und Warteliste bleiben.</td></tr>
+  </table>
+  <p><b>Ausfallschutz:</b> Der Abgleich läuft nur am aktiven Server. Verknüpfungen, Warteliste und Läufe liegen in der Datenbank des PDH. Nach einem Rollentausch arbeitet der neue aktive Server dort weiter – nichts wird doppelt angelegt. Ein VPN-Tunnel steht nach einem Tausch nicht sicher; dann wird der Lauf übersprungen und gemeldet. Während eines Updates (Wartungssperre) ruht der Abgleich.</p>
+  <p><b>Rechte:</b> sehen – <b>Abgleich: Profile, Läufe und Herkunft sehen</b>; einrichten und testen – <b>Profile einrichten und testen</b>; scharf schalten, anhalten, erneut versuchen – das gleichnamige Recht. Löschen darf nur der Bereichsadministrator des Abgleichs; dabei bleiben die Tickets im PDH und alle Daten im Fremdsystem. Die Rechte gelten überall oder nur in einer Abteilung.</p>
+  {{template "hb-shots" (dict "Ref" (index $s "abgleich") "Can" $can)}}
 </section>
 
 <section class="hb-ch" id="vpn" data-title="VPN ins Maschinennetz" data-pages="vpn">
@@ -1946,6 +2033,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li><b>Gerät verbindet sich nie:</b> UDP-Port im Internet-Router prüfen und ob der öffentliche Name auf die richtige Adresse zeigt.</li>
       <li><b>Verbunden, aber Steuerung nicht erreichbar:</b> Am Gateway die Weiterleitung ins LAN erlauben; die Geräte im Maschinennetz brauchen den Router als Gateway.</li>
     </ul></div>
+  <p>Ein <b>ausgehender Tunnel</b> kann auch der <b>Weg einer MSSQL-Verbindung</b> sein (Import → Verbindung → Weg), z. B. um den <a href="#abgleich">Abgleich mit einem Fremdsystem</a> zu testen. Der Abgleich baut und ändert keine Tunnel; steht der Tunnel nicht oder liegt die Adresse der Datenbank nicht in seinen Netzen, wird der Lauf übersprungen und gemeldet.</p>
   {{template "hb-shots" (dict "Ref" (index $s "vpn") "Can" $can)}}
 </section>
 

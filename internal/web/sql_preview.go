@@ -3,7 +3,6 @@ package web
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -13,6 +12,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	mysqldriver "github.com/go-sql-driver/mysql"
 	_ "github.com/microsoft/go-mssqldb"
+	"github.com/microsoft/go-mssqldb/msdsn"
 	"github.com/rs/zerolog/log"
 	_ "modernc.org/sqlite"
 )
@@ -150,9 +150,15 @@ func openMysqlDB(config map[string]string) (*sql.DB, error) {
 }
 
 func openMssqlDB(config map[string]string) (*sql.DB, error) {
+	return mssqlOpen(config)
+}
+
+// mssqlParse baut aus der Verbindungskonfiguration die Treiber-Konfiguration.
+// forceTLS: Verschlüsselung erzwingen (zum Lesen des Zertifikats).
+func mssqlParse(config map[string]string, forceTLS bool) (msdsn.Config, error) {
 	host := strings.TrimSpace(config["host"])
 	if host == "" {
-		return nil, fmt.Errorf("kein Host konfiguriert")
+		return msdsn.Config{}, fmt.Errorf("kein Host konfiguriert")
 	}
 	dsn := url.URL{
 		Scheme: "sqlserver",
@@ -171,23 +177,20 @@ func openMssqlDB(config map[string]string) (*sql.DB, error) {
 	if db := strings.TrimSpace(config["database"]); db != "" {
 		query.Set("database", db)
 	}
-	if config["use_tls"] == "true" {
+	if config["use_tls"] == "true" || forceTLS {
 		query.Set("encrypt", "true")
 	} else {
 		query.Set("encrypt", "disable")
 	}
 	dsn.RawQuery = query.Encode()
 
-	db, err := sql.Open("sqlserver", dsn.String())
+	p, err := msdsn.Parse(dsn.String())
 	if err != nil {
-		return nil, fmt.Errorf("Verbindung fehlgeschlagen: %w", err)
+		return p, fmt.Errorf("Verbindung fehlgeschlagen: %w", err)
 	}
-	db.SetConnMaxLifetime(5 * time.Minute)
-	if err := db.PingContext(context.Background()); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("Verbindung fehlgeschlagen: %w", err)
-	}
-	return db, nil
+	// Verbinden und Anmelden sind zeitlich begrenzt (Weg direkt 15 s, über VPN einstellbar)
+	p.DialTimeout = connQueryTimeout(config)
+	return p, nil
 }
 
 func quoteIdent(kind, name string) string {
@@ -397,8 +400,11 @@ func (h *Handler) SQLBrowsePage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Verbindung nicht gefunden", http.StatusNotFound)
 		return
 	}
-	config := map[string]string{}
-	_ = json.Unmarshal(configBytes, &config)
+	config, err := h.openConnJSON(configBytes)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 
 	data := SQLPreviewPageData{
 		BaseData:       h.baseData(r, "import", "Datenbank-Vorschau", name),
@@ -469,8 +475,11 @@ func (h *Handler) SQLRefreshValuesWeb(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Verbindung nicht gefunden", http.StatusNotFound)
 		return
 	}
-	config := map[string]string{}
-	_ = json.Unmarshal(configBytes, &config)
+	config, err := h.openConnJSON(configBytes)
+	if err != nil {
+		http.Redirect(w, r, base+"?notice="+url.QueryEscape("Aktualisierung fehlgeschlagen: "+err.Error()), http.StatusSeeOther)
+		return
+	}
 
 	db, _, err := openSQLConnection(kind, config)
 	if err != nil {

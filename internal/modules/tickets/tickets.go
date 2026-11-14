@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog/log"
 	"pdh/internal/core/addins"
@@ -99,12 +100,26 @@ func NewRepository(db *pgxpool.Pool) *Repository {
 }
 
 func (r *Repository) Create(ctx context.Context, t *Ticket) error {
+	return insertTicket(ctx, r.db, t)
+}
+
+// CreateTx legt das Ticket in einer laufenden Transaktion an (gleicher Befehl wie Create).
+func (r *Repository) CreateTx(ctx context.Context, tx pgx.Tx, t *Ticket) error {
+	return insertTicket(ctx, tx, t)
+}
+
+// rowQuerier ist Pool oder Transaktion.
+type rowQuerier interface {
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+}
+
+func insertTicket(ctx context.Context, q rowQuerier, t *Ticket) error {
 	tags, _ := json.Marshal(t.Tags)
 	query := `
 		INSERT INTO tickets (id, title, description, priority, status, assigned_to, responsible_to, created_by, infrastructure_id, due_date, tags, cost_center_id)
 		VALUES (pdh_uuid_v7(), $1, $2, $3, 'open', $4, $5, $6, $7, $8, $9, $10)
 		RETURNING id, created_at, updated_at`
-	return r.db.QueryRow(ctx, query,
+	return q.QueryRow(ctx, query,
 		t.Title, t.Description, t.Priority,
 		t.AssignedTo, t.ResponsibleTo, t.CreatedBy, t.InfrastructureID, t.DueDate, tags, t.CostCenterID,
 	).Scan(&t.ID, &t.CreatedAt, &t.UpdatedAt)
@@ -335,13 +350,46 @@ func notifyTicketLinkerStatus(ctx context.Context, ticketID, status, userID stri
 }
 
 func (s *Service) Create(ctx context.Context, in *CreateInput, createdBy string) (*Ticket, error) {
+	t := s.newTicket(ctx, in, createdBy)
+	if err := s.repo.Create(ctx, t); err != nil {
+		return t, err
+	}
+	s.AfterCreate(t)
+	return t, nil
+}
+
+// CreateInTx legt das Ticket wie Create an, aber in der Transaktion tx des
+// Aufrufers (z. B. Abgleich: Ticket und Herkunftseintrag gemeinsam). Ereignis
+// und Deck-Abgleich laufen hier NICHT: der Aufrufer ruft nach dem Commit
+// AfterCreate auf.
+func (s *Service) CreateInTx(ctx context.Context, tx pgx.Tx, in *CreateInput, createdBy string) (*Ticket, error) {
+	t := s.newTicket(ctx, in, createdBy)
+	if err := s.repo.CreateTx(ctx, tx, t); err != nil {
+		return t, err
+	}
+	return t, nil
+}
+
+// AfterCreate erledigt, was nach dem Anlegen eines Tickets folgt (Ereignis
+// "ticket.created", Deck-Abgleich). Create ruft es selbst auf.
+func (s *Service) AfterCreate(t *Ticket) {
+	if eventBus != nil {
+		eventBus.Publish("ticket.created", map[string]interface{}{
+			"id": t.ID, "title": t.Title, "priority": string(t.Priority), "created_by": t.CreatedBy,
+		})
+	}
+	s.syncTicketToDeckAsync(t)
+}
+
+// newTicket baut das Ticket aus der Eingabe samt Vorgabe-Fälligkeit.
+func (s *Service) newTicket(ctx context.Context, in *CreateInput, createdBy string) *Ticket {
 	dueDate := in.DueDate
 	if dueDate == nil {
 		days := appsettings.GetInt(ctx, s.repo.db, appsettings.KeyDefaultDueDaysTicket, appsettings.DefaultDueDaysFallback)
 		due := time.Now().AddDate(0, 0, days)
 		dueDate = &due
 	}
-	t := &Ticket{
+	return &Ticket{
 		Title:            in.Title,
 		Description:      in.Description,
 		Priority:         in.Priority,
@@ -353,17 +401,6 @@ func (s *Service) Create(ctx context.Context, in *CreateInput, createdBy string)
 		DueDate:          dueDate,
 		CostCenterID:     in.CostCenterID,
 	}
-	if err := s.repo.Create(ctx, t); err != nil {
-		return t, err
-	}
-	if eventBus != nil {
-		eventBus.Publish("ticket.created", map[string]interface{}{
-			"id": t.ID, "title": t.Title, "priority": string(t.Priority), "created_by": t.CreatedBy,
-		})
-	}
-
-	s.syncTicketToDeckAsync(t)
-	return t, nil
 }
 
 func (s *Service) syncTicketToDeckAsync(t *Ticket) {

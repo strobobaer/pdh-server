@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"crypto/tls"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -228,6 +229,10 @@ func checkWritableDir(rep *checkReport, path string) {
 func (h *Handler) runConnectionChecks(ctx context.Context, id, direction string) (*checkReport, error) {
 	_, kind, enabled, config, err := h.connectionRow(ctx, id, direction)
 	if err != nil {
+		var secretErr *connSecretError
+		if errors.As(err, &secretErr) {
+			return nil, err
+		}
 		return nil, errors.New("Verbindung nicht gefunden")
 	}
 	rep := &checkReport{At: time.Now().Format("02.01.2006 15:04:05")}
@@ -295,10 +300,10 @@ func (h *Handler) runConnectionChecks(ctx context.Context, id, direction string)
 
 	// 2 Erreichbarkeit
 	reachable := true
-	if host, port, useTLS, ok := netTarget(kind, config); ok {
+	if kind == "mssql" {
+		reachable = h.checkMssqlNetwork(ctx, rep, config)
+	} else if host, port, useTLS, ok := netTarget(kind, config); ok {
 		reachable = checkNetwork(ctx, rep, host, port, useTLS)
-	} else if kind == "mssql" && config["instance_name"] != "" {
-		rep.add("Erreichbarkeit", "Benannte Instanz", "info", "Port wird über den SQL-Server-Browser (UDP 1434) ermittelt – keine Portprüfung möglich.", 0)
 	}
 	switch {
 	case direction == "import" && (kind == "excel" || kind == "csv"):
@@ -352,6 +357,9 @@ func (h *Handler) checkProtocol(ctx context.Context, rep *checkReport, direction
 			return
 		}
 		rep.add("Anmeldung", "Anmeldung an "+label, "ok", "angemeldet", ms())
+		if kind == "mssql" && mssqlRightsApply(direction) {
+			checkMssqlRights(pctx, rep, db, config["allow_write"] == "true")
+		}
 		tables, err := listSQLTables(db, kind)
 		if err != nil {
 			rep.add("Anmeldung", "Tabellen lesen", "warn", err.Error(), ms())
@@ -603,3 +611,106 @@ func (h *Handler) checkBackground(ctx context.Context, rep *checkReport, id, dir
 		rep.add("Hintergrund", "Abfrage-Intervalle", status, fmt.Sprintf("%d von %d laufen", run, want), 0)
 	}
 }
+
+// checkMssqlNetwork: Kette Tunnel (nur VPN), Adresse (mit eigener Absenderadresse),
+// Port und Zertifikat. false = die Anmeldung wird gar nicht erst versucht.
+func (h *Handler) checkMssqlNetwork(ctx context.Context, rep *checkReport, config map[string]string) bool {
+	host, port, useTLS, _ := netTarget("mssql", config)
+	if parseConnRoute(config).ViaVPN {
+		start := time.Now()
+		if ok, why := h.connRouteReady(ctx, config); !ok {
+			rep.add("Erreichbarkeit", "Tunnel", "fail", why+" – unter VPN den ausgehenden Tunnel prüfen; der Abgleich baut keine Tunnel.", time.Since(start).Milliseconds())
+			return false
+		}
+		rep.add("Erreichbarkeit", "Tunnel", "ok", "Tunnel steht, die Adresse liegt in seinen Netzen", time.Since(start).Milliseconds())
+	}
+
+	start := time.Now()
+	dctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	addrs, err := net.DefaultResolver.LookupHost(dctx, host)
+	cancel()
+	if err != nil {
+		rep.add("Erreichbarkeit", "Adresse ("+host+")", "fail", "DNS: "+err.Error()+" – Schreibweise prüfen oder IP-Adresse eintragen.", time.Since(start).Milliseconds())
+		return false
+	}
+	detail := strings.Join(addrs, ", ")
+	if src := connSourceAddr(host, port); src != "" {
+		detail += " – eigene Absenderadresse: " + src + " (diese Adresse muss die Datenbank bzw. die Firewall zulassen)"
+	}
+	rep.add("Erreichbarkeit", "Adresse ("+host+")", "ok", detail, time.Since(start).Milliseconds())
+
+	if port == "" { // benannte Instanz: Port über den SQL-Server-Browser
+		rep.add("Erreichbarkeit", "Benannte Instanz", "info", "Port wird über den SQL-Server-Browser (UDP 1434) ermittelt – keine Portprüfung möglich.", 0)
+		return true
+	}
+	start = time.Now()
+	conn, err := (&net.Dialer{Timeout: 5 * time.Second}).DialContext(ctx, "tcp", net.JoinHostPort(host, port))
+	if err != nil {
+		rep.add("Erreichbarkeit", "Port "+port+" erreichbar", "fail", err.Error()+" – läuft der Dienst, ist der Port richtig, lässt die Firewall die Verbindung vom PDH-Server zu?", time.Since(start).Milliseconds())
+		return false
+	}
+	conn.Close()
+	rep.add("Erreichbarkeit", "Port "+port+" erreichbar", "ok", "TCP-Verbindung in "+strconv.FormatInt(time.Since(start).Milliseconds(), 10)+" ms", time.Since(start).Milliseconds())
+
+	if useTLS {
+		start = time.Now()
+		if want := normalizeFingerprint(config["tls_fingerprint"]); want != "" {
+			got, err := mssqlServerFingerprint(ctx, config)
+			switch {
+			case err != nil:
+				rep.add("Erreichbarkeit", "Zertifikat", "fail", err.Error(), time.Since(start).Milliseconds())
+				return false
+			case got != want:
+				rep.add("Erreichbarkeit", "Zertifikat", "fail", "Fingerabdruck des Servers ("+got+") weicht vom bestätigten ab – wurde das Zertifikat erneuert? Dann in der Verbindung neu lesen und bestätigen.", time.Since(start).Milliseconds())
+				return false
+			}
+			rep.add("Erreichbarkeit", "Zertifikat", "ok", "Fingerabdruck stimmt mit dem bestätigten überein", time.Since(start).Milliseconds())
+		} else {
+			rep.add("Erreichbarkeit", "Zertifikat", "info", "Kein Fingerabdruck bestätigt – das Zertifikat wird über die Zertifikatskette geprüft. Bei selbst signiertem Zertifikat „Fingerabdruck lesen und bestätigen“ nutzen.", 0)
+		}
+	}
+	return true
+}
+
+// checkMssqlRights: Leserecht, Schreibrecht (nur bei „Schreiben erlaubt“) und der
+// Hinweis auf zu weitgehende Rechte. Nur lesende Abfragen (HAS_PERMS_BY_NAME u. ä.).
+func checkMssqlRights(ctx context.Context, rep *checkReport, db *sql.DB, allowWrite bool) {
+	const countPerm = `SELECT COUNT(*), COALESCE(SUM(CASE WHEN HAS_PERMS_BY_NAME(QUOTENAME(SCHEMA_NAME(schema_id)) + '.' + QUOTENAME(name), 'OBJECT', @p1) = 1 THEN 1 ELSE 0 END), 0) FROM sys.tables`
+	count := func(perm string) (total, allowed int, err error) {
+		err = db.QueryRowContext(ctx, countPerm, perm).Scan(&total, &allowed)
+		return
+	}
+	start := time.Now()
+	total, allowed, err := count("SELECT")
+	switch {
+	case err != nil:
+		rep.add("Anmeldung", "Leserecht", "warn", "nicht prüfbar: "+err.Error(), time.Since(start).Milliseconds())
+	case allowed == 0:
+		rep.add("Anmeldung", "Leserecht", "fail", "Der Datenbankbenutzer darf keine Tabelle lesen (SELECT) – Rechte in der Datenbank vergeben.", time.Since(start).Milliseconds())
+	default:
+		rep.add("Anmeldung", "Leserecht", "ok", fmt.Sprintf("%d von %d Tabelle(n) lesbar", allowed, total), time.Since(start).Milliseconds())
+	}
+	if allowWrite {
+		start = time.Now()
+		_, ins, e1 := count("INSERT")
+		_, upd, e2 := count("UPDATE")
+		switch {
+		case e1 != nil || e2 != nil:
+			rep.add("Anmeldung", "Schreibrecht", "warn", "nicht prüfbar", time.Since(start).Milliseconds())
+		case ins == 0 && upd == 0:
+			rep.add("Anmeldung", "Schreibrecht", "fail", "Schreiben ist erlaubt, aber der Datenbankbenutzer darf keine Tabelle ändern (INSERT/UPDATE).", time.Since(start).Milliseconds())
+		default:
+			rep.add("Anmeldung", "Schreibrecht", "ok", fmt.Sprintf("ändern: %d, anfügen: %d Tabelle(n)", upd, ins), time.Since(start).Milliseconds())
+		}
+	}
+	var sysadmin, dbowner sql.NullInt64
+	if err := db.QueryRowContext(ctx, `SELECT IS_SRVROLEMEMBER('sysadmin'), IS_MEMBER('db_owner')`).Scan(&sysadmin, &dbowner); err == nil &&
+		(sysadmin.Int64 == 1 || dbowner.Int64 == 1) {
+		rep.add("Anmeldung", "Rechte", "warn", "Der Datenbankbenutzer darf mehr als nötig.", 0)
+	}
+}
+
+// mssqlRightsApply: Lese-/Schreibrecht und „mehr als nötig“ prüft nur, was der
+// Abgleich braucht (Richtung import). Bestehende Export-Verbindungen legen ihre
+// Zieltabelle selbst an oder dürfen nur anfügen; für sie gäbe es sonst neue rote Punkte.
+func mssqlRightsApply(direction string) bool { return direction == "import" }

@@ -758,3 +758,20 @@
 <figcaption>Zertifikate sind ein Zusatz: Ohne sie, ohne UniFi und ohne Cloudflare läuft das PDH unverändert. Ohne UniFi trägst du die Namen im Haus von Hand am DNS-Server ein.</figcaption>
 </figure>
 {{end}}
+
+{{define "hb-fig-abgleich"}}
+<figure class="hb-fig">
+<svg viewBox="0 0 640 210" role="img" aria-label="Abgleich: Meldungen kommen im Takt aus der fremden Datenbank ins PDH und werden zu Tickets oder Störmeldungen; Änderungen und Kommentare gehen über die Warteliste zurück. Im Fremdsystem wird nie gelöscht.">
+  <rect class="bg" x="1" y="1" width="638" height="208" rx="8"/>
+  <rect class="bg3" x="16" y="20" width="170" height="104" rx="8"/><text x="101" y="42" class="t-c t-b">Fremdsystem (SQL Server)</text><text x="101" y="62" class="t-c t-m">Tabelle mit Meldungen</text><text x="101" y="78" class="t-c t-m">Schlüssel · Änderungsspalte</text><text x="101" y="100" class="t-c t-m">Kommentartabelle (optional)</text>
+  <rect class="acl" x="262" y="20" width="150" height="104" rx="8"/><text x="337" y="42" class="t-c t-b">Profil im PDH</text><text x="337" y="62" class="t-c t-m">Quelle · Ziel · Zuordnungen</text><text x="337" y="78" class="t-c t-m">Test · Betrieb</text><text x="337" y="100" class="t-c t-m">Entwurf → Getestet → Scharf</text>
+  <rect class="bg3" x="488" y="20" width="136" height="104" rx="8"/><text x="556" y="42" class="t-c t-b">Ticket oder</text><text x="556" y="58" class="t-c t-b">Störmeldung</text><text x="556" y="80" class="t-c t-m">mit Herkunft</text><text x="556" y="96" class="t-c t-m">und Verlauf</text>
+  <path class="ar" d="M188 48 H260"/><text x="224" y="42" class="t-c t-m">herein (Takt)</text>
+  <path class="ar" d="M260 98 H188"/><text x="224" y="116" class="t-c t-m">hinaus (Sekunden)</text>
+  <path class="ar" d="M414 48 H486"/><text x="450" y="42" class="t-c t-m">anlegen</text>
+  <path class="ar" d="M486 98 H414"/><text x="450" y="116" class="t-c t-m">Änderung</text>
+  <rect class="gr" x="16" y="148" width="608" height="44" rx="8"/><text x="320" y="166" class="t-c t-b">Im Fremdsystem: nur eine vorhandene Zeile ändern und Kommentare anhängen</text><text x="320" y="182" class="t-c t-m">nie löschen, nie Meldungen anlegen · Schreiben nur mit dem Schalter „Schreiben erlaubt“</text>
+</svg>
+<figcaption>Der Abgleich ist ein Zusatz: Ohne Profil läuft das PDH unverändert. Ändern beide Seiten dasselbe Feld, gewinnt das PDH.</figcaption>
+</figure>
+{{end}}

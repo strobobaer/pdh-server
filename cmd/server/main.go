@@ -334,6 +334,12 @@ func main() {
 	// Sperre, startet das PDH gesperrt; danach hält ein Takt (2 s) den Zustand aktuell.
 	webHandler.LoadMaintLock(context.Background())
 	if !mirrorOn { // Spiegel: keine Hintergrunddienste, die schreiben oder nach außen wirken
+		// Kennwörter der Verbindungen einmalig verschlüsseln (vor den Diensten, die sie lesen)
+		if n, err := webHandler.EncryptConnectionSecrets(context.Background()); err != nil {
+			log.Error().Err(err).Msg("verbindungen: kennwörter konnten nicht verschlüsselt werden")
+		} else if n > 0 {
+			log.Info().Int("anzahl", n).Msg("verbindungen: kennwörter im klartext verschlüsselt")
+		}
 		webHandler.StartUpdateChecker(context.Background())
 		webHandler.StartCertRenewal(context.Background()) // Let's-Encrypt-Zertifikate (optional): täglich prüfen und erneuern
 		webHandler.StartEnabledMqttBrokers(context.Background())
@@ -342,6 +348,7 @@ func main() {
 		webHandler.StartPurchaseReportSchedule(context.Background())
 		webHandler.StartBackupSystem(context.Background())
 		webHandler.StartChangeNotifier(context.Background())
+		webHandler.StartSync(context.Background()) // Abgleich mit Fremdsystemen (optional): ohne scharfes Profil geschieht nichts
 		maintSvc.StartScheduler(context.Background(), webHandler.MaintLocked) // je Wartungsplan genau ein offener Auftrag (stuendlich)
 		webHandler.StartTrainingScheduler(context.Background())
 		webHandler.StartObligationReminders(context.Background())

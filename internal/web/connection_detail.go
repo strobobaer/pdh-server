@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/url"
 	"sort"
@@ -20,6 +21,8 @@ var connFieldLabels = map[string]string{
 	"source_path": "Quellpfad", "sheet_name": "Tabellenblatt", "has_header": "Erste Zeile ist Überschrift", "delimiter": "Trennzeichen",
 	"file_path": "Datenbankdatei", "host": "Host", "port": "Port", "database": "Datenbank", "instance_name": "Instanz",
 	"username": "Benutzer", "password": "Passwort", "use_tls": "TLS",
+	"route": "Weg", "vpn_poll_minutes": "Abfragetakt über VPN (Min.)", "vpn_timeout_seconds": "Zeitgrenze je Abfrage über VPN (Sek.)",
+	"allow_write": "Schreiben erlaubt", "tls_fingerprint": "Fingerabdruck des Zertifikats",
 	"broker_mode": "Broker", "ext_broker_host": "Broker-Host", "ext_broker_port": "Broker-Port", "ext_username": "Benutzer",
 	"ext_password": "Passwort", "ext_use_tls": "TLS", "ext_client_id": "Client-ID", "ext_topic_filter": "Topic-Filter", "ext_qos": "QoS",
 	"int_listen_port": "Port (integriert)", "int_websocket_port": "WebSocket-Port", "int_allow_anonymous": "Anonym erlaubt",
@@ -171,6 +174,12 @@ func (h *Handler) connectionDetailPage(w http.ResponseWriter, r *http.Request, d
 		return
 	}
 	name, kind, enabled, config, err := h.connectionRow(ctx, id, direction)
+	var secretErr *connSecretError
+	if errors.As(err, &secretErr) {
+		err = nil // Seite trotzdem zeigen, Hinweis unten
+	} else {
+		secretErr = nil
+	}
 	if err != nil {
 		http.Error(w, "Verbindung nicht gefunden", http.StatusNotFound)
 		return
@@ -186,6 +195,9 @@ func (h *Handler) connectionDetailPage(w http.ResponseWriter, r *http.Request, d
 	if d.Tab == "" {
 		d.Tab = "overview"
 	}
+	if secretErr != nil {
+		d.Err = secretErr.Error()
+	}
 	fields, _ := connectionKindFields(direction, kind)
 	for _, f := range fields {
 		v := strings.TrimSpace(config[f])
@@ -195,7 +207,16 @@ func (h *Handler) connectionDetailPage(w http.ResponseWriter, r *http.Request, d
 		if kind == "mqtt" && ((config["broker_mode"] == "integrated" && strings.HasPrefix(f, "ext_")) || (config["broker_mode"] != "integrated" && strings.HasPrefix(f, "int_"))) {
 			continue
 		}
+		if (f == "vpn_poll_minutes" || f == "vpn_timeout_seconds") && !parseConnRoute(config).ViaVPN {
+			continue // gilt nur über VPN
+		}
 		switch {
+		case f == "route":
+			if parseConnRoute(config).ViaVPN {
+				v = "über VPN-Tunnel"
+			} else {
+				v = "Direkt"
+			}
 		case connSecretFields[f]:
 			v = "•••••• (gesetzt)"
 		case booleanConfigFields[f]:
@@ -326,7 +347,7 @@ func (h *Handler) ConnectionQuerySaveWeb(w http.ResponseWriter, r *http.Request)
 	}
 	ctx := r.Context()
 	_, kind, _, _, err := h.connectionRow(ctx, id, "import")
-	if err != nil {
+	if err != nil && !isConnSecretErr(err) { // nur Metadaten nötig: Kennwortfehler egal
 		http.Error(w, "Verbindung nicht gefunden", http.StatusNotFound)
 		return
 	}
@@ -378,8 +399,12 @@ func (h *Handler) ConnectionQuerySaveWeb(w http.ResponseWriter, r *http.Request)
 	// gleich ausprobieren, damit Ergebnis und Spalten zum Zuordnen da sind
 	if r.FormValue("run") == "1" && h.canRunConnection(r, "import") {
 		qs, _ := h.loadConnQueries(ctx, id)
-		_, _, _, config, _ := h.connectionRow(ctx, id, "import")
+		_, _, _, config, cerr := h.connectionRow(ctx, id, "import")
 		for _, q := range qs {
+			if cerr != nil {
+				back("Abfrage gespeichert", "Ausführen fehlgeschlagen: "+cerr.Error(), qid)
+				return
+			}
 			if q.ID == qid {
 				if _, _, err := h.executeConnQuery(ctx, kind, config, q); err != nil {
 					back("Abfrage gespeichert", "Ausführen fehlgeschlagen: "+err.Error(), qid)
@@ -429,6 +454,11 @@ func (h *Handler) ConnectionQueryRunWeb(w http.ResponseWriter, r *http.Request) 
 	ctx := r.Context()
 	_, kind, _, config, err := h.connectionRow(ctx, id, "import")
 	if err != nil {
+		var secretErr *connSecretError
+		if errors.As(err, &secretErr) {
+			http.Error(w, secretErr.Error(), http.StatusConflict)
+			return
+		}
 		http.Error(w, "Verbindung nicht gefunden", http.StatusNotFound)
 		return
 	}

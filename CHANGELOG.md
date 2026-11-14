@@ -10,6 +10,29 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.80.2] – 2026-11-13
+
+### Neu
+
+- Abgleich mit Fremdsystemen: Meldungen aus einer fremden SQL-Server-Datenbank werden im PDH zu Tickets oder Störmeldungen, Änderungen und Kommentare gehen zurück – ein Zusatz, ohne den alles unverändert läuft. Im Fremdsystem wird nie gelöscht und keine Meldung angelegt.
+- Abgleich: Neuer Bereich „Abgleich“ in der Navigation mit einem Cockpit je Profil in fünf Schritten – Quelle, Ziel, Zuordnungen, Test, Betrieb.
+- Abgleich: Vor dem Scharfschalten zeigt ein Trockenlauf, was entstünde, und ein Schreibversuch prüft das Zurückschreiben und nimmt es wieder zurück; hat die Tabelle Auslöser, fragt das PDH vorher nach.
+- Abgleich: Meldungen von früher werden still als Historie übernommen, abgeschlossene gleich archiviert; neue Meldungen benachrichtigen wie von Hand angelegte.
+- Abgleich: An übernommenen Tickets und Störmeldungen steht die Herkunft mit der Nummer im Fremdsystem und dem Stand des Abgleichs.
+- Abgleich: Bei hoher Serverlast wartet der Abgleich und holt danach auf – die Benutzer haben Vorrang. Der Takt ist von 5 bis 30 Minuten einstellbar.
+- Verbindungen (MSSQL): Der Weg ist „Direkt“ oder ein VPN-Tunnel mit eigenem Abfragetakt und eigener Zeitgrenze; das Serverzertifikat wird über einen einmal bestätigten Fingerabdruck geprüft.
+
+### Geändert
+
+- Verbindungen: Beim Bearbeiten bleibt das gespeicherte Kennwort erhalten, wenn das Kennwortfeld leer bleibt.
+- Verbindungen: Die Prüfung nennt die Absenderadresse des Servers und zeigt Tunnel, Adresse, Port, Anmeldung, Lese- und Schreibrecht einzeln.
+
+### Sicherheit
+
+- Kennwörter und Schlüssel von Verbindungen werden verschlüsselt gespeichert und nicht mehr an den Browser gegeben; vorhandene werden beim Start einmalig verschlüsselt.
+- In eine fremde Datenbank schreibt das PDH nur, wenn an der Verbindung „Schreiben erlaubt“ eingeschaltet ist.
+- Neue Rechte für den Abgleich (sehen, einrichten und testen, scharf schalten, Bereichsadministrator); sie gelten überall oder nur in einer Abteilung. Rollen, die Import bearbeiten dürfen, bekommen sie automatisch; Profile löscht nur der Bereichsadministrator.
+
 ## [0.80.1] – 2026-11-12
 
 ### Neu

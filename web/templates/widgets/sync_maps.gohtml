@@ -1,0 +1,97 @@
+{{/* Abgleich – Schritt 3 „Zuordnungen“: je PDH-Feld fremde Spalte, Richtung, fester Wert, Übersetzung; Kommentartabelle. */}}
+{{define "sync-maps"}}
+{{$p := .P}}
+{{$m := .Maps}}
+{{$edit := and .CanEdit (not .ReadErr)}}
+{{if not $p.SourceTable}}
+<div class="card"><div class="rec-sub"><i class="ti ti-info-circle"></i> Wähle zuerst im Schritt <a href="?tab=source" style="color:var(--accent)">Quelle</a> eine Tabelle. Danach ordnest du hier ihre Spalten den Feldern im PDH zu.</div></div>
+{{else}}
+{{if $m.Missing}}<div class="sy-warn" role="alert" style="margin-bottom:14px"><i class="ti ti-alert-triangle"></i> Es fehlt noch eine Zuordnung für ein Pflichtfeld. Ohne sie besteht das Profil den Test nicht.</div>{{end}}
+<form method="POST" action="/sync/{{$p.ID}}/maps-web">
+  <div class="card" style="margin-bottom:14px">
+    <div class="card-title"><span><i class="ti ti-arrows-left-right"></i> Felder zuordnen</span><span class="sy-note">{{$p.SourceSchema}}.{{$p.SourceTable}} → {{.TargetLabel}}</span></div>
+    {{if not .AllowWrite}}<div class="sy-info"><i class="ti ti-lock"></i> Schreiben ist an der Verbindung nicht erlaubt. Deshalb geht hier nur die Richtung „herein“. Den Schalter „Schreiben erlaubt“ findest du an der Verbindung unter Import.</div>{{end}}
+    <div class="sy-maps">
+    {{range $m.Rows}}
+      {{$row := .}}
+      <div class="sy-map{{if .Missing}} sy-map-missing{{end}}">
+        <div class="sy-map-field"><b>{{.Label}}</b>{{if .Required}} <span class="sy-note">Pflichtfeld</span>{{end}}
+          {{if .Missing}}<div class="sy-map-flag"><i class="ti ti-alert-triangle"></i> Pflichtfeld ohne Zuordnung</div>{{end}}</div>
+        <div class="form-group"><label class="form-label" for="sy-col-{{.Key}}">Spalte im Fremdsystem</label>
+          <select id="sy-col-{{.Key}}" name="col_{{.Key}}" class="form-input" {{if not $edit}}disabled{{end}}>
+            <option value="">– nicht zugeordnet –</option>
+            {{if not .ColumnExists}}<option value="{{.Column}}" selected>{{.Column}} (nicht mehr vorhanden)</option>{{end}}
+            {{range $m.Columns}}<option value="{{.}}" {{if eq . $row.Column}}selected{{end}}>{{.}}</option>{{end}}
+          </select></div>
+        <div class="form-group"><label class="form-label" for="sy-dir-{{.Key}}">Richtung</label>
+          <select id="sy-dir-{{.Key}}" name="dir_{{.Key}}" class="form-input" {{if not $edit}}disabled{{end}}>
+            {{range $m.Dirs}}<option value="{{.Value}}" {{if eq .Value $row.Direction}}selected{{end}} {{if and $row.OutLocked (ne .Value "herein")}}disabled{{end}}>{{.Label}}</option>{{end}}
+          </select>
+          {{if and .OutLocked .Column}}<div class="sy-note"><i class="ti ti-lock"></i> Zurückschreiben gesperrt: {{.OutLocked}}</div>{{end}}</div>
+        <div class="form-group"><label class="form-label" for="sy-fixed-{{.Key}}">Fester Wert (statt Spalte)</label>
+          {{if .Values}}
+          <select id="sy-fixed-{{.Key}}" name="fixed_{{.Key}}" class="form-input" {{if not $edit}}disabled{{end}}>
+            <option value="">– kein fester Wert –</option>
+            {{range .Values}}<option value="{{.Value}}" {{if eq .Value $row.Fixed}}selected{{end}}>{{.Label}}</option>{{end}}
+          </select>
+          {{else}}
+          <input id="sy-fixed-{{.Key}}" name="fixed_{{.Key}}" class="form-input" value="{{.Fixed}}" maxlength="255" {{if not $edit}}disabled{{end}}>
+          {{end}}</div>
+        <details class="sy-map-tr">
+          <summary>Werte übersetzen{{if .Values}} <span class="sy-note">– z. B. „hoch“ im Fremdsystem ist „Hoch“ im PDH</span>{{end}}</summary>
+          <div class="sy-pairs">
+            {{range $i, $pair := .Pairs}}
+            <div class="sy-pair">
+              <input name="trf_{{$row.Key}}" class="form-input" value="{{$pair.Foreign}}" placeholder="Wert im Fremdsystem" aria-label="Wert im Fremdsystem für {{$row.Label}}" {{if not $edit}}disabled{{end}}>
+              <i class="ti ti-arrow-right" aria-hidden="true"></i>
+              {{if $row.Values}}
+              <select name="trp_{{$row.Key}}" class="form-input" aria-label="Wert im PDH für {{$row.Label}}" {{if not $edit}}disabled{{end}}>
+                <option value="">– Wert im PDH –</option>
+                {{range $row.Values}}<option value="{{.Value}}" {{if eq .Value $pair.PDH}}selected{{end}}>{{.Label}}</option>{{end}}
+              </select>
+              {{else}}
+              <input name="trp_{{$row.Key}}" class="form-input" value="{{$pair.PDH}}" placeholder="Wert im PDH" aria-label="Wert im PDH für {{$row.Label}}" {{if not $edit}}disabled{{end}}>
+              {{end}}
+            </div>
+            {{end}}
+          </div>
+          <div class="sy-note">Leere Zeilen werden nicht gespeichert. Nach dem Speichern erscheinen wieder freie Zeilen.</div>
+        </details>
+      </div>
+    {{end}}
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:14px">
+    <div class="card-title"><span><i class="ti ti-message-2"></i> Kommentare zurückschreiben</span></div>
+    {{if $m.CommentsOff}}<div class="sy-info"><i class="ti ti-lock"></i> {{$m.CommentsOff}}</div>{{end}}
+    <div class="sy-note" style="margin-bottom:8px">Neue Kommentare am Ticket oder an der Störmeldung werden als neue Zeile in eine Nebentabelle des Fremdsystems angehängt. In die Meldungstabelle selbst wird nie eingefügt.</div>
+    {{$ct := $m.Comments}}
+    {{$coff := or (not $edit) $m.CommentsOff}}
+    {{$cur := ""}}{{if $m.HasComments}}{{$cur = printf "%s.%s" $ct.Schema $ct.Table}}{{end}}
+    <div class="sy-grid">
+      <div class="form-group"><label class="form-label" for="sy-ct-table">Kommentartabelle</label>
+        <select id="sy-ct-table" name="ct_table" class="form-input" {{if $coff}}disabled{{end}}>
+          <option value="">– keine Kommentare übertragen –</option>
+          {{range $m.Tables}}<option value="{{.}}" {{if eq . $cur}}selected{{end}}>{{.}}</option>{{end}}
+        </select></div>
+      <div class="form-group"><label class="form-label" for="sy-ct-fk">Spalte mit der Nummer der Meldung</label>
+        <input id="sy-ct-fk" name="ct_fk" class="form-input" value="{{$ct.FKColumn}}" maxlength="128" {{if $coff}}disabled{{end}}></div>
+      <div class="form-group"><label class="form-label" for="sy-ct-text">Spalte für den Text</label>
+        <input id="sy-ct-text" name="ct_text" class="form-input" value="{{$ct.TextColumn}}" maxlength="128" {{if $coff}}disabled{{end}}></div>
+      <div class="form-group"><label class="form-label" for="sy-ct-author">Spalte für den Verfasser (freiwillig)</label>
+        <input id="sy-ct-author" name="ct_author" class="form-input" value="{{$ct.AuthorColumn}}" maxlength="128" {{if $coff}}disabled{{end}}></div>
+      <div class="form-group"><label class="form-label" for="sy-ct-time">Spalte für die Zeit (freiwillig)</label>
+        <input id="sy-ct-time" name="ct_time" class="form-input" value="{{$ct.TimeColumn}}" maxlength="128" {{if $coff}}disabled{{end}}></div>
+    </div>
+  </div>
+
+  {{if .CanEdit}}
+  <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+    <button class="btn btn-primary" type="submit" {{if not $edit}}disabled{{end}}><i class="ti ti-device-floppy"></i> Zuordnungen speichern</button>
+    <span class="sy-note">Geänderte Zuordnungen setzen das Profil auf „Entwurf“; es muss danach neu getestet werden.</span>
+  </div>
+  {{end}}
+</form>
+{{end}}
+{{end}}

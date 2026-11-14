@@ -664,8 +664,17 @@ func (h *Handler) connectionRow(ctx context.Context, id, direction string) (name
 	var cfg []byte
 	err = h.db.QueryRow(ctx, `SELECT name, kind, enabled, config FROM import_export_connections WHERE id = $1 AND direction = $2`, id, direction).
 		Scan(&name, &kind, &enabled, &cfg)
-	config = map[string]string{}
-	_ = json.Unmarshal(cfg, &config)
+	if err != nil {
+		return
+	}
+	// Kennwörter entschlüsseln; bei Fehler nur die öffentlichen Felder und der Fehler
+	config, serr := h.openConnJSON(cfg)
+	if serr != nil {
+		var pub map[string]string
+		_ = json.Unmarshal(cfg, &pub)
+		config = publicConnConfig(pub)
+		err = serr
+	}
 	return
 }
 
@@ -673,6 +682,9 @@ func (h *Handler) connectionRow(ctx context.Context, id, direction string) (name
 func (h *Handler) runAllConnQueries(ctx context.Context, connectionID string) (ok, failed, updated int) {
 	_, kind, _, config, err := h.connectionRow(ctx, connectionID, "import")
 	if err != nil {
+		if isConnSecretErr(err) {
+			log.Error().Err(err).Str("connection_id", connectionID).Msg("abfragen nicht ausgeführt: kennwort der verbindung nicht lesbar")
+		}
 		return
 	}
 	qs, _ := h.loadConnQueries(ctx, connectionID)
@@ -702,6 +714,9 @@ func (h *Handler) reconcileQueryPolls(ctx context.Context, connectionID string) 
 		return
 	}
 	_, kind, enabled, config, err := h.connectionRow(ctx, connectionID, "import")
+	if isConnSecretErr(err) {
+		log.Error().Err(err).Str("connection_id", connectionID).Msg("abfrage-intervalle nicht gestartet: kennwort der verbindung nicht lesbar")
+	}
 	qs, _ := h.loadConnQueries(ctx, connectionID)
 	want := map[string]bool{}
 	if err == nil && enabled {

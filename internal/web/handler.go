@@ -28,6 +28,7 @@ import (
 	"pdh/internal/core/storage"
 	"pdh/internal/core/users"
 	"pdh/internal/modules/checklists"
+	"pdh/internal/modules/extsync"
 	"pdh/internal/modules/faults"
 	"pdh/internal/modules/inventory"
 	"pdh/internal/modules/it"
@@ -64,6 +65,7 @@ type BaseData struct {
 	CanManageRoles         bool       // Nav-Link "Rollen & Berechtigungen" anzeigen
 	CanManageLeitstand     bool       // Nav-Link "Leitstände" (leitstand_boards.go)
 	CanImport              bool       // Nav-Link "Import" anzeigen
+	CanSync                bool       // Nav-Link "Abgleich" anzeigen (sync.view)
 	CanExport              bool       // Nav-Link "Export" anzeigen
 	CanChat                bool       // Chat-Navigation, Ungelesen-Zaehler und "Im Chat teilen"
 	CanBackup              bool       // Nav-Link "Datensicherung"
@@ -301,6 +303,11 @@ type Handler struct {
 	mqttImport       *mqttimport.Manager
 	exportCron       *scheduler.CronManager
 	importPoll       *scheduler.IntervalManager
+	syncRunner       *extsync.Runner // Abgleich mit Fremdsystemen; nil am Spiegel und in Tests (sync_wire.go)
+	// syncReaderHook ersetzt in Tests das Lesen des Aufbaus der Fremddatenbank (sync_pages.go); nil = echt.
+	syncReaderHook func(ctx context.Context, connectionID string) (syncReader, extsync.Dialect, map[string]string, error)
+	// syncForeignHook ersetzt in Tests die Fremddatenbank für Test und Lauf (sync_ops.go); nil = echt.
+	syncForeignHook  func(ctx context.Context, connectionID string) (extsync.Foreign, extsync.Dialect, map[string]string, error)
 	toolAct          toolActivity       // offene Admin-Werkzeuge je Sitzung (admin_tool_activity.go)
 	streams          context.Context    // endet beim Beenden: Dauerverbindungen (streams.go)
 	closeStreams     context.CancelFunc // beendet streams
@@ -902,8 +909,28 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/admin/settings", h.SettingsWeb)
 
 	// Import & Export
+	// Abgleich mit Fremdsystemen (sync_pages.go, sync_actions.go)
+	r.Get("/sync", h.SyncPage)
+	r.Post("/sync/new-web", h.SyncNewWeb)
+	r.Get("/sync/{id}", h.SyncProfilePage)
+	r.Get("/sync/{id}/tables", h.SyncTablesFragment)
+	r.Get("/sync/{id}/columns", h.SyncColumnsFragment)
+	r.Get("/sync/{id}/sample", h.SyncSampleFragment)
+	r.Post("/sync/{id}/source-web", h.SyncSourceWeb)
+	r.Post("/sync/{id}/target-web", h.SyncTargetWeb)
+	r.Post("/sync/{id}/maps-web", h.SyncMapsWeb)
+	r.Post("/sync/{id}/delete-web", h.SyncDeleteWeb)
+	r.Post("/sync/{id}/test-dry-web", h.SyncTestDryWeb)
+	r.Post("/sync/{id}/test-write-web", h.SyncTestWriteWeb)
+	r.Post("/sync/{id}/arm-web", h.SyncArmWeb)
+	r.Post("/sync/{id}/pause-web", h.SyncPauseWeb)
+	r.Post("/sync/{id}/run-web", h.SyncRunWeb)
+	r.Post("/sync/{id}/interval-web", h.SyncIntervalWeb)
+	r.Post("/sync/{id}/outbox/{n}/retry-web", h.SyncRetryWeb)
+	r.Get("/sync/{id}/runs", h.SyncRunsFragment)
 	r.Get("/import", h.ImportPage)
 	r.Post("/import/connections", h.ImportConnectionCreateWeb)
+	r.Post("/import/connections/fingerprint", h.MssqlFingerprintWeb("import"))
 	r.Post("/import/connections/{id}/edit-web", h.ImportConnectionEditWeb)
 	r.Post("/import/connections/{id}/delete-web", h.ImportConnectionDeleteWeb)
 	r.Post("/import/connections/{id}/toggle-web", h.ImportConnectionToggleWeb)
@@ -941,6 +968,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/export/connections/{id}/templates/{tid}/delete", h.ExportConnectionTemplateDeleteWeb)
 	r.Get("/export", h.ExportPage)
 	r.Post("/export/connections", h.ExportConnectionCreateWeb)
+	r.Post("/export/connections/fingerprint", h.MssqlFingerprintWeb("export"))
 	r.Post("/export/connections/{id}/edit-web", h.ExportConnectionEditWeb)
 	r.Post("/export/connections/{id}/delete-web", h.ExportConnectionDeleteWeb)
 	r.Post("/export/connections/{id}/toggle-web", h.ExportConnectionToggleWeb)
@@ -1166,6 +1194,7 @@ func (h *Handler) baseData(r *http.Request, page, title, ctxTitle string) BaseDa
 		CanManageRoles:         h.rbac.HasPermissionForUser(u.ID, string(u.Role), "system.manage_roles"),
 		CanManageLeitstand:     h.rbac.HasPermissionForUser(u.ID, string(u.Role), permLeitstand),
 		CanImport:              h.rbac.HasPermissionForUser(u.ID, string(u.Role), "import.read"),
+		CanSync:                h.rbac.HasPermissionForUser(u.ID, string(u.Role), permSyncView),
 		CanExport:              h.rbac.HasPermissionForUser(u.ID, string(u.Role), "export.read"),
 		CanChat:                u.ID != "" && h.rbac.HasPermissionForUser(u.ID, string(u.Role), "chat.use"),
 		Brand:                  brand,
@@ -2280,6 +2309,7 @@ func (h *Handler) userByID(ctx context.Context, id string) (*users.User, error) 
 
 type FaultDetailData struct {
 	BaseData
+	SyncOrigin    *SyncOriginView // Herkunft aus einem Fremdsystem (sync_ops.go); nil = keine oder kein Recht
 	Fault         FaultDetailView
 	Analysis      *faults.CopilotAnalysis
 	TimeEntries   []*timetracking.TimeEntry
@@ -2408,6 +2438,7 @@ func (h *Handler) FaultDetail(w http.ResponseWriter, r *http.Request) {
 	}
 
 	_ = h.db.QueryRow(ctx, `SELECT ticket_pending FROM faults WHERE id = $1::uuid`, id).Scan(&data.Fault.TicketPending)
+	data.SyncOrigin = h.syncOrigin(r, extsync.RefFault, id)
 	h.render(w, "fault_detail", data)
 }
 
@@ -2461,6 +2492,7 @@ func (h *Handler) Shifts(w http.ResponseWriter, r *http.Request) {
 
 type TicketDetailData struct {
 	BaseData
+	SyncOrigin     *SyncOriginView // Herkunft aus einem Fremdsystem (sync_ops.go); nil = keine oder kein Recht
 	Ticket         TicketView
 	Comments       []CommentView
 	CommentCount   int
@@ -2566,6 +2598,7 @@ func (h *Handler) TicketDetail(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	data.SyncOrigin = h.syncOrigin(r, extsync.RefTicket, id)
 	h.render(w, "ticket_detail", data)
 }
 

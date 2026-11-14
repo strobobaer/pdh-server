@@ -929,5 +929,7 @@
  "Nextcloud-Datenordner": "Nextcloud data folder",
  "Nextcloud-Programmordner": "Nextcloud program folder",
  "Mit „Nextcloud mitnehmen“ braucht es den Datenordner. Die Frist des letzten Abgleichs sollte 150 s nicht übersteigen.": "“Include Nextcloud” needs the data folder. The deadline of the last sync should not exceed 150 s.",
- "Die Spiegelung ändern darf nur, wer das Recht „Datei-Spiegelung einstellen“ hat – am aktiven oder am ersten Server.": "Only those with the right “Set up file mirroring” may change the mirroring – on the active or the first server."
+ "Die Spiegelung ändern darf nur, wer das Recht „Datei-Spiegelung einstellen“ hat – am aktiven oder am ersten Server.": "Only those with the right “Set up file mirroring” may change the mirroring – on the active or the first server.",
+ "Abgleich": "Sync",
+ "Abgleich mit Fremdsystemen": "Sync with external systems"
 }
