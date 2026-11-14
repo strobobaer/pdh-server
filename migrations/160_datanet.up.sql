@@ -42,7 +42,8 @@ INSERT INTO permissions (key, label, category) VALUES
 ON CONFLICT (key) DO NOTHING;
 
 -- Sehen und Einrichten bekommen nur Rollen, die schon die Server-Verbindungen
--- verwalten: system.server_config ohne Abteilung oder sync.admin. Rollen, die
+-- verwalten: system.server_config oder sync.admin, jeweils ohne Abteilung (ein nur
+-- abteilungsweites Recht ergibt kein globales datanet.*). Rollen, die
 -- nur vpn.use haben, bekommen nichts – vpn.use erlaubt lediglich die Nutzung
 -- eigener VPN-Geräte. Niemand wird ausgesperrt, niemand bekommt mehr als nötig.
 INSERT INTO role_permissions (role_id, permission_id)
@@ -54,7 +55,7 @@ WHERE p.key IN ('datanet.view', 'datanet.edit')
         WHERE rp.role_id = r.id AND rp.department_id IS NULL AND o.key = 'system.server_config')
     OR EXISTS (
         SELECT 1 FROM role_permissions rp JOIN permissions o ON o.id = rp.permission_id
-        WHERE rp.role_id = r.id AND o.key = 'sync.admin'))
+        WHERE rp.role_id = r.id AND rp.department_id IS NULL AND o.key = 'sync.admin'))
 ON CONFLICT DO NOTHING;
 
 -- Bereichsadministrator (einziges Löschrecht): Rolle admin, Rollen mit
@@ -68,7 +69,7 @@ WHERE p.key = 'datanet.admin'
   AND (r.key = 'admin'
        OR EXISTS (
             SELECT 1 FROM role_permissions rp JOIN permissions o ON o.id = rp.permission_id
-            WHERE rp.role_id = r.id AND o.key = 'sync.admin')
+            WHERE rp.role_id = r.id AND rp.department_id IS NULL AND o.key = 'sync.admin')
        OR (EXISTS (
                SELECT 1 FROM role_permissions rp JOIN permissions o ON o.id = rp.permission_id
                WHERE rp.role_id = r.id AND rp.department_id IS NULL AND o.key = 'system.server_config')

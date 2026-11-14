@@ -168,10 +168,16 @@ func (h *Handler) dataNetSaveReport(ctx context.Context, id, addr string, rep da
 	if err != nil {
 		return err
 	}
-	_, err = h.db.Exec(ctx, `UPDATE datanet_clients SET addr = left($2, 64), hostname = left($3, 120),
+	tag, err := h.db.Exec(ctx, `UPDATE datanet_clients SET addr = left($2, 64), hostname = left($3, 120),
 		version = left($4, 40), os = left($5, 40), targets = $6, last_seen_at = NOW()
 		WHERE id::text = $1 AND revoked_at IS NULL`, id, addr, rep.Hostname, rep.Version, rep.OS, tj)
-	return err
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return errDataNetRevoked
+	}
+	return nil
 }
 
 // dataNetRevoke sperrt einen Client; sein Token wird sofort abgewiesen.
