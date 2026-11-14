@@ -28,6 +28,7 @@ import (
 	"pdh/internal/core/storage"
 	"pdh/internal/core/users"
 	"pdh/internal/modules/checklists"
+	"pdh/internal/datanet"
 	"pdh/internal/modules/extsync"
 	"pdh/internal/modules/faults"
 	"pdh/internal/modules/inventory"
@@ -260,6 +261,11 @@ type PartView struct {
 // ── Handler ──────────────────────────────────────────────────
 
 type Handler struct {
+	dataNetMu       sync.RWMutex // schützt dataNet und dataNetBridges
+	dataNet         *datanet.Manager
+	dataNetBridges  *datanet.Bridges
+	dataNetCancel   context.CancelFunc
+	dataNetNewNode  func(datanet.NodeConfig) (datanet.Node, error) // nil → datanet.NewTSNode (Tests tauschen aus)
 	mirror             MirrorInfo                              // Spiegelmodus; einmal beim Start gesetzt (SetMirror)
 	tunnelTokenFn      func(context.Context) (string, bool)    // Tunnel-Token für den Abgleich mit pdh-ha; nil → Server-Einstellungen (Tests tauschen aus)
 	mirrorActiveURL    func(*http.Request) string              // Adresse des aktiven Servers für die Sperrseite; nil → kein Link

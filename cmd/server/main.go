@@ -364,6 +364,9 @@ func main() {
 		webHandler.StartEnabledQueryPolls(context.Background())
 		webHandler.VPNStartup(context.Background()) // WireGuard: Konfiguration für den Dienst „wireguard“ schreiben
 	}
+	// Datennetz (optional, standardmäßig aus): Knoten im Hintergrund, blockiert nie.
+	// Auf beiden Servern; den Rückkanal für Meldungen bedient nur der aktive.
+	webHandler.StartDataNet(context.Background(), !mirrorOn)
 	// Ausfallschutz: Tunnel-Token an den lokalen pdh-ha weiterreichen – auf beiden
 	// Servern (aktiv und Spiegel); liest nur aus der Datenbank.
 	if haConfigured() {
@@ -523,6 +526,7 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	srv.Shutdown(ctx)
+	webHandler.StopDataNet()
 	webHandler.StopMqttBrokers()
 	webHandler.StopExportSchedules()
 	webHandler.StopImportPolls()
