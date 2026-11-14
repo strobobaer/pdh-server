@@ -529,3 +529,17 @@ func TestUpdateOpOfRequest(t *testing.T) {
 		t.Errorf("opOfArgs: %q %q", op, c)
 	}
 }
+
+func TestInstallScriptBuildsDataClient(t *testing.T) {
+	s := readRepoFile(t, "../../install_update.sh")
+	for _, want := range []string{"./cmd/pdh-data-client", "GOOS=windows", "GOOS=linux", "CGO_ENABLED=0", "pdh-data-client-windows-amd64.exe.neu"} {
+		if !strings.Contains(s, want) {
+			t.Errorf("install_update.sh enthält %q nicht", want)
+		}
+	}
+	build := strings.Index(s, "./cmd/pdh-data-client")
+	mv := strings.Index(s, `mv -f "$bin_dir/pdh.neu"`)
+	if build < 0 || mv < 0 || build > mv {
+		t.Errorf("Bau des Daten-Clients (%d) muss vor mv pdh.neu (%d) stehen", build, mv)
+	}
+}

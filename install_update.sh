@@ -190,15 +190,22 @@ else
         fi
         # Alles unter .neu-Namen bauen und erst nach dem letzten erfolgreichen Bau
         # umbenennen: scheitert ein Bau, bleibt die laufende Version unberuehrt.
-        rm -f "$bin_dir/.built-commit" "$bin_dir/pdh-ha.neu" "$bin_dir/pdh.neu" "$bin_dir/update-agent.neu"
+        rm -f "$bin_dir/.built-commit" "$bin_dir/pdh-ha.neu" "$bin_dir/pdh.neu" "$bin_dir/update-agent.neu" \
+            "$bin_dir/pdh-data-client-linux-amd64.neu" "$bin_dir/pdh-data-client-windows-amd64.exe.neu"
         (cd "$repo_dir" && go build -buildvcs=false -trimpath -ldflags="-s -w -X main.buildCommit=$target" -o bin/pdh.neu ./cmd/server)
         (cd "$repo_dir" && go build -buildvcs=false -trimpath -ldflags="-s -w" -o bin/update-agent.neu ./cmd/update-agent)
+        # Daten-Client fuer Kunden (Linux und Windows), mit Versionsnummer aus VERSION
+        ver="$(cat "$repo_dir/VERSION")"
+        (cd "$repo_dir" && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -buildvcs=false -trimpath -ldflags="-s -w -X main.version=$ver" -o bin/pdh-data-client-linux-amd64.neu ./cmd/pdh-data-client)
+        (cd "$repo_dir" && CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -buildvcs=false -trimpath -ldflags="-s -w -X main.version=$ver" -o bin/pdh-data-client-windows-amd64.exe.neu ./cmd/pdh-data-client)
         # pdh-ha mit bauen (nach bin/pdh-ha.neu), solange noch nichts neu gestartet wird
         if (( no_restart )) && [[ -x "$pdh_ha_bin" ]]; then
             bash "$repo_dir/scripts/install-pdh-ha.sh" "$repo_dir" --build-only
         fi
         mv -f "$bin_dir/pdh.neu" "$bin_dir/pdh"
         mv -f "$bin_dir/update-agent.neu" "$bin_dir/update-agent"
+        mv -f "$bin_dir/pdh-data-client-linux-amd64.neu" "$bin_dir/pdh-data-client-linux-amd64"
+        mv -f "$bin_dir/pdh-data-client-windows-amd64.exe.neu" "$bin_dir/pdh-data-client-windows-amd64.exe"
         printf '%s\n' "$target" > "$bin_dir/.built-commit"
     fi
     if (( no_restart )); then
