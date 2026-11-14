@@ -114,7 +114,7 @@ func (h *Handler) StartDataNet(ctx context.Context, active bool) {
 	m := datanet.NewManager(newNode, dataNetUpTimeout)
 	ctx, cancel := context.WithCancel(ctx)
 	h.dataNetMu.Lock()
-	h.dataNet, h.dataNetCancel, h.dataNetSrv = m, cancel, nil
+	h.dataNet, h.dataNetCancel, h.dataNetSrv, h.dataNetActive = m, cancel, nil, active
 	h.dataNetMu.Unlock()
 	setConnNetResolve(h.dataNetResolve) // Weg „Datennetz“ der Verbindungen (conn_net.go)
 	if h.db == nil {

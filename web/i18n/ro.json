@@ -931,6 +931,7 @@
  "Mit „Nextcloud mitnehmen“ braucht es den Datenordner. Die Frist des letzten Abgleichs sollte 150 s nicht übersteigen.": "„Include Nextcloud” necesită folderul de date. Termenul ultimei sincronizări nu ar trebui să depășească 150 s.",
  "Die Spiegelung ändern darf nur, wer das Recht „Datei-Spiegelung einstellen“ hat – am aktiven oder am ersten Server.": "Oglindirea o poate modifica doar cine are dreptul „Setare oglindire fișiere” – pe serverul activ sau pe primul server.",
  "Abgleich": "Sincronizare",
+ "Datennetz": "Rețea de date",
  "Abgleich mit Fremdsystemen": "Sincronizare cu sisteme externe",
  "An dieser Anlage läuft bereits eine Rüstzeit.": "La această instalație rulează deja un timp de pregătire.",
  "Beginn und Ende einer Rüstzeit mit Störmeldung sind nicht änderbar.": "Începutul și sfârșitul unui timp de pregătire cu raport de defecțiune nu pot fi modificate.",

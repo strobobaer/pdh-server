@@ -27,8 +27,8 @@ import (
 	"pdh/internal/core/shifts"
 	"pdh/internal/core/storage"
 	"pdh/internal/core/users"
-	"pdh/internal/modules/checklists"
 	"pdh/internal/datanet"
+	"pdh/internal/modules/checklists"
 	"pdh/internal/modules/extsync"
 	"pdh/internal/modules/faults"
 	"pdh/internal/modules/inventory"
@@ -67,6 +67,7 @@ type BaseData struct {
 	CanManageLeitstand     bool       // Nav-Link "Leitstände" (leitstand_boards.go)
 	CanImport              bool       // Nav-Link "Import" anzeigen
 	CanSync                bool       // Nav-Link "Abgleich" anzeigen (sync.view)
+	CanDataNet             bool       // Nav-Link "Datennetz" anzeigen (datanet.view)
 	CanExport              bool       // Nav-Link "Export" anzeigen
 	CanChat                bool       // Chat-Navigation, Ungelesen-Zaehler und "Im Chat teilen"
 	CanBackup              bool       // Nav-Link "Datensicherung"
@@ -261,17 +262,18 @@ type PartView struct {
 // ── Handler ──────────────────────────────────────────────────
 
 type Handler struct {
-	dataNetMu       sync.RWMutex // schützt dataNet und dataNetBridges
-	dataNet         *datanet.Manager
-	dataNetBridges  *datanet.Bridges
-	dataNetCancel   context.CancelFunc
-	dataNetSrv      *http.Server // Rückkanal
-	dataNetListenAddr string      // Rückkanal-Adresse; leer → :8443 (Tests: :0)
-	dataNetNewNode  func(datanet.NodeConfig) (datanet.Node, error) // nil → datanet.NewTSNode (Tests tauschen aus)
-	mirror             MirrorInfo                              // Spiegelmodus; einmal beim Start gesetzt (SetMirror)
-	tunnelTokenFn      func(context.Context) (string, bool)    // Tunnel-Token für den Abgleich mit pdh-ha; nil → Server-Einstellungen (Tests tauschen aus)
-	mirrorActiveURL    func(*http.Request) string              // Adresse des aktiven Servers für die Sperrseite; nil → kein Link
-	mirrorPeerFetch    func(context.Context) (haStatus, error) // pdh-ha-Status; nil → Socket (Tests tauschen aus)
+	dataNetMu          sync.RWMutex // schützt dataNet und dataNetBridges
+	dataNet            *datanet.Manager
+	dataNetBridges     *datanet.Bridges
+	dataNetCancel      context.CancelFunc
+	dataNetSrv         *http.Server                                   // Rückkanal
+	dataNetActive      bool                                           // Server ist der aktive (nicht der Spiegel); gesetzt von StartDataNet
+	dataNetListenAddr  string                                         // Rückkanal-Adresse; leer → :8443 (Tests: :0)
+	dataNetNewNode     func(datanet.NodeConfig) (datanet.Node, error) // nil → datanet.NewTSNode (Tests tauschen aus)
+	mirror             MirrorInfo                                     // Spiegelmodus; einmal beim Start gesetzt (SetMirror)
+	tunnelTokenFn      func(context.Context) (string, bool)           // Tunnel-Token für den Abgleich mit pdh-ha; nil → Server-Einstellungen (Tests tauschen aus)
+	mirrorActiveURL    func(*http.Request) string                     // Adresse des aktiven Servers für die Sperrseite; nil → kein Link
+	mirrorPeerFetch    func(context.Context) (haStatus, error)        // pdh-ha-Status; nil → Socket (Tests tauschen aus)
 	mirrorPeerC        mirrorCache[mirrorPeer]
 	mirrorLagFetch     func(context.Context) (time.Duration, time.Time, error) // Rückstand; nil → mirror.ReplayLag (Tests tauschen aus)
 	mirrorLagC         mirrorCache[mirrorLag]
@@ -948,6 +950,13 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/admin/settings", h.SettingsWeb)
 
 	// Import & Export
+	// Datennetz: PDH-Daten-Clients im Werk (datanet_pages.go)
+	r.Get("/datanet", h.DataNetPage)
+	r.Post("/datanet/clients", h.DataNetCreate)
+	r.Post("/datanet/clients/{id}/revoke", h.DataNetRevoke)
+	r.Post("/datanet/clients/{id}/delete", h.DataNetDelete)
+	r.Post("/datanet/settings", h.DataNetSettings)
+	r.Get("/datanet/download/{file}", h.DataNetDownload)
 	// Abgleich mit Fremdsystemen (sync_pages.go, sync_actions.go)
 	r.Get("/sync", h.SyncPage)
 	r.Post("/sync/new-web", h.SyncNewWeb)
@@ -1236,6 +1245,7 @@ func (h *Handler) baseData(r *http.Request, page, title, ctxTitle string) BaseDa
 		CanManageLeitstand:     h.rbac.HasPermissionForUser(u.ID, string(u.Role), permLeitstand),
 		CanImport:              h.rbac.HasPermissionForUser(u.ID, string(u.Role), "import.read"),
 		CanSync:                h.rbac.HasPermissionForUser(u.ID, string(u.Role), permSyncView),
+		CanDataNet:             h.rbac.HasPermissionForUser(u.ID, string(u.Role), permDataNetView),
 		CanExport:              h.rbac.HasPermissionForUser(u.ID, string(u.Role), "export.read"),
 		CanChat:                u.ID != "" && h.rbac.HasPermissionForUser(u.ID, string(u.Role), "chat.use"),
 		Brand:                  brand,

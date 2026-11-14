@@ -1,6 +1,12 @@
 package main
 
-import "testing"
+import (
+	"io"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
 
 func TestParseInstallArgs(t *testing.T) {
 	c, err := parseInstallArgs([]string{
@@ -31,6 +37,51 @@ func TestParseInstallArgsErrors(t *testing.T) {
 	} {
 		if _, err := parseInstallArgs(args); err == nil {
 			t.Errorf("%s: Fehler erwartet", name)
+		}
+	}
+}
+
+// Das Token kann statt über --token aus Standardeingabe, Datei oder Umgebung
+// kommen, damit es nicht in der Shell-Historie landet.
+func TestParseInstallArgsTokenSources(t *testing.T) {
+	base := []string{"--id", testID, "--pdh", "100.64.0.1", "--target", "1433"}
+	dir := t.TempDir()
+	file := filepath.Join(dir, "token.txt")
+	if err := os.WriteFile(file, []byte("  aus-datei\r\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	defer func(old io.Reader) { installStdin = old }(installStdin)
+
+	cases := []struct {
+		name  string
+		args  []string
+		env   string
+		stdin string
+		want  string
+		fail  bool
+	}{
+		{"Datei", append([]string{"--token-file", file}, base...), "", "", "aus-datei", false},
+		{"Standardeingabe", append([]string{"--token-file", "-"}, base...), "", "aus-stdin\n", "aus-stdin", false},
+		{"Umgebung", base, "aus-env", "", "aus-env", false},
+		{"Schalter vor Umgebung", append([]string{"--token", "direkt"}, base...), "aus-env", "", "direkt", false},
+		{"Datei vor Umgebung", append([]string{"--token-file", file}, base...), "aus-env", "", "aus-datei", false},
+		{"beide Schalter", append([]string{"--token", "x", "--token-file", file}, base...), "", "", "", true},
+		{"Datei fehlt", append([]string{"--token-file", filepath.Join(dir, "gibt-es-nicht")}, base...), "", "", "", true},
+		{"leere Datei", append([]string{"--token-file", "-"}, base...), "", "  \n", "", true},
+		{"kein Token", base, "", "", "", true},
+	}
+	for _, tc := range cases {
+		t.Setenv(tokenEnv, tc.env)
+		installStdin = strings.NewReader(tc.stdin)
+		c, err := parseInstallArgs(tc.args)
+		if tc.fail {
+			if err == nil {
+				t.Errorf("%s: Fehler erwartet", tc.name)
+			}
+			continue
+		}
+		if err != nil || c.Token != tc.want {
+			t.Errorf("%s: Token %q, Fehler %v; erwartet %q", tc.name, c.Token, err, tc.want)
 		}
 	}
 }

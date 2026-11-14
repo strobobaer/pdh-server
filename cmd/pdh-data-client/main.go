@@ -7,6 +7,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/signal"
@@ -32,7 +33,8 @@ func versionLine() string {
 }
 
 const usage = `Aufruf:
-  pdh-data-client install --id <uuid> --token <token> --pdh <ip>[,<ip>] --target <port[=host:port]> [--target …] [--authkey tskey-…] [--hostname <name>]
+  pdh-data-client install --id <uuid> (--token <token> | --token-file <datei|->) --pdh <ip>[,<ip>] --target <port[=host:port]> [--target …] [--authkey tskey-…] [--hostname <name>]
+    (Das Token kann auch in der Umgebungsvariable PDH_DATANET_TOKEN stehen, dann bleibt es nicht in der Shell-Historie.)
   pdh-data-client uninstall
   pdh-data-client run [--config <datei>]
   pdh-data-client version`
@@ -67,6 +69,32 @@ type multiFlag []string
 func (m *multiFlag) String() string     { return strings.Join(*m, ",") }
 func (m *multiFlag) Set(v string) error { *m = append(*m, v); return nil }
 
+// tokenEnv ist die Umgebungsvariable, aus der "install" das Token liest, wenn
+// weder --token noch --token-file gegeben sind.
+const tokenEnv = "PDH_DATANET_TOKEN"
+
+// installStdin ist die Standardeingabe für --token-file - (Tests tauschen sie aus).
+var installStdin io.Reader = os.Stdin
+
+// readToken liest das Token aus einer Datei oder ("-") der Standardeingabe.
+func readToken(path string) (string, error) {
+	var raw []byte
+	var err error
+	if path == "-" {
+		raw, err = io.ReadAll(io.LimitReader(installStdin, 4096))
+	} else {
+		raw, err = os.ReadFile(path)
+	}
+	if err != nil {
+		return "", fmt.Errorf("Token nicht lesbar: %w", err)
+	}
+	t := strings.TrimSpace(string(raw))
+	if t == "" {
+		return "", errors.New("Token-Datei ist leer")
+	}
+	return t, nil
+}
+
 func cmdInstall(args []string) error {
 	c, err := parseInstallArgs(args)
 	if err != nil {
@@ -90,16 +118,28 @@ func resetState(c Config) error {
 func parseInstallArgs(args []string) (Config, error) {
 	fs := flag.NewFlagSet("install", flag.ContinueOnError)
 	var c Config
-	var pdh string
+	var pdh, tokenFile string
 	var targets multiFlag
 	fs.StringVar(&c.ClientID, "id", "", "Client-ID (UUID)")
 	fs.StringVar(&c.Token, "token", "", "Client-Token")
+	fs.StringVar(&tokenFile, "token-file", "", "Datei mit dem Client-Token (- = Standardeingabe)")
 	fs.StringVar(&pdh, "pdh", "", "Datennetz-Adresse(n) des PDH-Servers, durch Komma getrennt")
 	fs.Var(&targets, "target", "freizugebender Port, optional =host:port (mehrfach möglich)")
 	fs.StringVar(&c.AuthKey, "authkey", "", "Einmal-Schlüssel (tskey-…)")
 	fs.StringVar(&c.Hostname, "hostname", "", "Name im Datennetz")
 	if err := fs.Parse(args); err != nil {
 		return c, err
+	}
+	var err error
+	switch {
+	case c.Token != "" && tokenFile != "":
+		return c, errors.New("--token und --token-file nicht zusammen angeben")
+	case tokenFile != "":
+		if c.Token, err = readToken(tokenFile); err != nil {
+			return c, err
+		}
+	case c.Token == "":
+		c.Token = strings.TrimSpace(os.Getenv(tokenEnv))
 	}
 	if c.Hostname == "" {
 		c.Hostname, _ = os.Hostname()

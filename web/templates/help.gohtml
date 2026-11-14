@@ -2134,6 +2134,12 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   {{template "hb-shots" (dict "Ref" (index $s "vpn") "Can" $can)}}
 </section>
 
+<section class="hb-ch" id="datennetz" data-title="Datennetz" data-pages="datanet">
+  <h2><i class="ti ti-topology-star-3"></i> Datennetz</h2>
+  <p>Unter <b>Datennetz</b> (Navigation → Daten) richtest du Daten-Clients ein, über die das PDH Fremddatenbanken im Werk erreicht. Die ausführliche Anleitung folgt.</p>
+  {{template "hb-shots" (dict "Ref" (index $s "datennetz") "Can" $can)}}
+</section>
+
 <section class="hb-ch" id="ausfallschutz" data-title="Ausfallschutz &amp; Wiederaufbau" data-pages="server-config">
   <h2><i class="ti ti-shield-check"></i> Ausfallschutz &amp; Wiederaufbau</h2>
   <p>Fällt der Server aus, brennt ab oder wird versehentlich etwas gelöscht, lässt sich alles wiederherstellen. Der Server sichert dafür laufend auf ein <b>Netzlaufwerk</b>: die <b>Datenbank</b> (PDH und Nextcloud), alle <b>Dateien und Einstellungen</b> von PDH, Nextcloud und n8n. Das läuft im Hintergrund über den Update-Agenten – auch wenn das PDH selbst gerade nicht läuft.</p>
