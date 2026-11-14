@@ -38,6 +38,11 @@ type workKind struct {
 	OpenStatuses, DoneStatuses                             []string
 	Flow                                                   []workStatus // offene Status = Board-Spalten
 	Rules                                                  []template.HTML
+	// Optionale Bestandteile: Standard (false/leer) = wie Tickets, Störungen, Aufgaben und Wartung.
+	NoPrio, NoDue, NoBroker, NoCompletion bool   // keine Priorität / Fälligkeit / Broker / Abschluss-Assistent
+	DoPath                                string // statt des Assistenten: POST auf DoPath+ID (Knopf DoLabel)
+	// SQL-Ausdrücke je Spalte; leer = r.title, r.description, r.due_date, r.resolution, r.root_cause, r.assigned_group_id
+	TitleExpr, DescExpr, DueExpr, ResolutionExpr, RootCauseExpr, GroupExpr string
 }
 
 var workKinds = map[string]workKind{
@@ -100,7 +105,49 @@ var workKinds = map[string]workKind{
 			"<b>Überspringen nur mit Grund</b> – er steht im Archiv.",
 			"<b>Das Protokoll (PDF) ist der Nachweis</b> – es entsteht beim Abschluss automatisch.",
 		}},
+	// Rüstzeiten (internal/modules/ruesten): ohne Priorität, Termin, Broker und Abschluss-Assistent;
+	// beendet wird mit einem Knopf (DoPath), der Titel entsteht aus Nummer und Tastenname.
+	"setup": {Key: "setup", Module: "setup", Table: "setup_times", Base: "/setup", Detail: "/setup/", Page: "setup",
+		Title: "Rüstzeiten", Context: "Laufende Rüstzeiten", Label: "Rüstzeit", Plural: "Rüstzeiten", Items: "Rüstzeiten", Icon: "ti-arrows-exchange-2",
+		DoLabel: "Beenden", DoIcon: "ti-player-stop", DoPath: "/setup/finish/", PrioExpr: `''`,
+		NoPrio: true, NoDue: true, NoBroker: true, NoCompletion: true,
+		TitleExpr: `'RZ-' || lpad(r.number::text, 4, '0') || ' · ' || r.button_name`, DescExpr: `r.note`, DueExpr: `NULL::timestamptz`,
+		GroupExpr: `NULL::uuid`, ResolutionExpr: `''`, RootCauseExpr: `''`,
+		ClosedExpr:   "r.ended_at",
+		OpenStatuses: []string{"running"}, DoneStatuses: []string{"done", "fault"},
+		Flow: []workStatus{{"running", "Rüsten", "ti-arrows-exchange-2", "läuft"}},
+		Rules: []template.HTML{
+			"Fertig drücken, sobald die Anlage wieder produziert.",
+			"Den richtigen Grund wählen – er zählt für die Auswertung.",
+			"Nach Höchstdauer und Karenzzeit geht eine Störmeldung an die Instandhaltung.",
+		}},
 }
+
+// exprOr: Ausdruck der Art, sonst der Standard.
+func exprOr(expr, def string) string {
+	if expr != "" {
+		return expr
+	}
+	return def
+}
+
+// statusText: Beschriftung eines Status; Rüstzeiten haben eigene Wörter.
+func (k workKind) statusText(s string) string {
+	if k.Key == "setup" {
+		switch s {
+		case "running":
+			return "Rüsten"
+		case "done":
+			return "Fertig"
+		case "fault":
+			return "Störung"
+		}
+	}
+	return statusLabel(s)
+}
+
+// quotedList: 'a','b' für IN (…) aus festen Statuswerten der Art.
+func quotedList(vals []string) string { return "'" + strings.Join(vals, "','") + "'" }
 
 type workCard struct {
 	ID, Title, Description, InfraID, InfraName, ProjectID, ProjectName string
@@ -289,8 +336,12 @@ func (h *Handler) buildWorkArea(r *http.Request, k workKind, tab string) workAre
 		a.buildBoard(open)
 		a.RecentDone = h.workRecentDone(ctx, r, k)
 	case "rules":
-		a.DueDays = appsettings.GetInt(ctx, h.db, k.DueKey, appsettings.DefaultDueDaysFallback)
-		a.Brokers = strings.Join(h.chatNames(ctx, h.brokerIDsByColumn(ctx, k.BrokerColumn)), ", ")
+		if !k.NoDue {
+			a.DueDays = appsettings.GetInt(ctx, h.db, k.DueKey, appsettings.DefaultDueDaysFallback)
+		}
+		if !k.NoBroker {
+			a.Brokers = strings.Join(h.chatNames(ctx, h.brokerIDsByColumn(ctx, k.BrokerColumn)), ", ")
+		}
 		a.CanSettings = h.canManageRoles(r)
 	}
 	return a
@@ -308,9 +359,10 @@ func (h *Handler) brokerIDsByColumn(ctx context.Context, column string) []string
 // workBaseSQL: offene Vorgaenge einer Art mit Zustaendigen, „meine“, „frei“,
 // Projekt und (Wartung) „noch nicht im Vorlauf“.
 func (h *Handler) workBaseSQL(k workKind) string {
+	group := exprOr(k.GroupExpr, `r.assigned_group_id`)
 	who := `COALESCE(NULLIF(TRIM(u.first_name || ' ' || u.last_name), ''), g.name, '')`
-	unassigned := `r.assigned_to IS NULL AND r.assigned_group_id IS NULL`
-	mine := `(r.assigned_to = $1::uuid OR r.responsible_to = $1::uuid OR r.assigned_group_id IN ` + myGroupIDs
+	unassigned := `r.assigned_to IS NULL AND ` + group + ` IS NULL`
+	mine := `(r.assigned_to = $1::uuid OR r.responsible_to = $1::uuid OR ` + group + ` IN ` + myGroupIDs
 	project := `'', ''`
 	joins := ``
 	userJoin := `r.assigned_to`
@@ -319,13 +371,17 @@ func (h *Handler) workBaseSQL(k workKind) string {
 	case "task":
 		// Aufgaben haben keine Spalte assigned_to (migrations/062), sondern task_assignees
 		userJoin = `NULL::uuid`
-		unassigned = `r.assigned_group_id IS NULL AND NOT EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id = r.id)`
-		mine = `(r.responsible_to = $1::uuid OR r.assigned_group_id IN ` + myGroupIDs +
+		unassigned = group + ` IS NULL AND NOT EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id = r.id)`
+		mine = `(r.responsible_to = $1::uuid OR ` + group + ` IN ` + myGroupIDs +
 			` OR EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id = r.id AND ta.user_id = $1::uuid)`
 		who = `COALESCE(NULLIF((SELECT string_agg(TRIM(au.first_name || ' ' || au.last_name), ', ' ORDER BY au.last_name)
 		          FROM task_assignees ta JOIN users au ON au.id = ta.user_id WHERE ta.task_id = r.id), ''), g.name, '')`
 		project = `COALESCE(r.project_id::text, ''), COALESCE(p.name, '')`
 		joins = ` LEFT JOIN projects p ON p.id = r.project_id`
+	case "setup":
+		// gestartet von der Person, die gedrückt hat; ohne Broker gibt es kein „ohne Zuweisung“
+		userJoin = `COALESCE(r.assigned_to, r.created_by)`
+		unassigned = `false`
 	case "maintenance":
 		// wie „Anstehend“ frueher: noch nicht begonnen, Termin nach 7 Tagen und Vorlauf noch nicht erreicht
 		upcoming = `(r.status = 'open' AND r.due_date::date > CURRENT_DATE + 7
@@ -336,13 +392,14 @@ func (h *Handler) workBaseSQL(k workKind) string {
 	// (z. B. ohne Verantwortlichen oder Termin) ergibt der Vergleich NULL, die
 	// Zeile liesse sich nicht lesen und der Vorgang fehlte in der Liste
 	return fmt.Sprintf(`
-		SELECT r.id::text, r.title, COALESCE(r.description, ''), r.status::text, %s, r.due_date,
+		SELECT r.id::text, %s, COALESCE(%s, ''), r.status::text, %s, %s,
 		       COALESCE(r.infrastructure_id::text, ''), COALESCE(i.name, ''), %s, COALESCE(%s, false), (%s), %s, r.created_at, COALESCE(%s, false)
 		  FROM %s r
 		  LEFT JOIN infrastructure i ON i.id = r.infrastructure_id
 		  LEFT JOIN users u ON u.id = %s
-		  LEFT JOIN user_groups g ON g.id = r.assigned_group_id%s`,
-		k.PrioExpr, who, mine, unassigned, project, upcoming, k.Table, userJoin, joins)
+		  LEFT JOIN user_groups g ON g.id = %s%s`,
+		exprOr(k.TitleExpr, `r.title`), exprOr(k.DescExpr, `r.description`), k.PrioExpr, exprOr(k.DueExpr, `r.due_date`),
+		who, mine, unassigned, project, upcoming, k.Table, userJoin, group, joins)
 }
 
 // workOpenCards: alle offenen Vorgaenge (Abteilungs-Sichtbarkeit und Kategorien beachtet).
@@ -351,10 +408,10 @@ func (h *Handler) workOpenCards(r *http.Request, k workKind) []workCard {
 		return nil
 	}
 	ctx := r.Context()
-	statuses := "'" + strings.Join(k.OpenStatuses, "','") + "'"
+	statuses := quotedList(k.OpenStatuses)
 	rows, err := h.db.Query(ctx, h.workBaseSQL(k)+`
 		 WHERE r.archived_at IS NULL AND r.status::text IN (`+statuses+`)
-		 ORDER BY r.due_date NULLS LAST, r.created_at`, nullID(getUser(r).ID))
+		 ORDER BY `+exprOr(k.DueExpr, `r.due_date`)+` NULLS LAST, r.created_at`, nullID(getUser(r).ID))
 	if err != nil {
 		componentLog("arbeitsbereich").Error().Err(err).Str("art", k.Key).Msg("vorgaenge laden")
 		return nil
@@ -384,15 +441,17 @@ func (h *Handler) workOpenCards(r *http.Request, k workKind) []workCard {
 			c.DueNow = !dl.After(today)
 		}
 		c.New = c.Status == "detected" || (c.Status == "open" && c.Unassigned)
-		c.StatusLabel, c.StatusClass = statusLabel(c.Status), statusClass(c.Status)
+		c.StatusLabel, c.StatusClass = k.statusText(c.Status), statusClass(c.Status)
 		if k.Key == "maintenance" && c.Status == "open" {
 			c.StatusLabel = "Anstehend"
 		}
-		c.PriorityLabel, c.PriorityDot = severityWord(c.Priority), priorityDot(c.Priority)
-		if k.Key == "fault" {
-			c.PriorityClass = severityClass(c.Priority)
-		} else {
-			c.PriorityClass = priorityClass(c.Priority)
+		if !k.NoPrio {
+			c.PriorityLabel, c.PriorityDot = severityWord(c.Priority), priorityDot(c.Priority)
+			if k.Key == "fault" {
+				c.PriorityClass = severityClass(c.Priority)
+			} else {
+				c.PriorityClass = priorityClass(c.Priority)
+			}
 		}
 		c.CreatedAgo = timeAgo(created)
 		out = append(out, c)
@@ -472,11 +531,15 @@ func (a *workArea) buildChips(open []workCard) {
 	}
 	add("open", "Alle offenen", "ti-list", count("open"))
 	add("mine", "Meine", "ti-user", count("mine"))
-	add("free", "Ohne Zuweisung", "ti-inbox", count("free"))
+	if !a.Kind.NoBroker {
+		add("free", "Ohne Zuweisung", "ti-inbox", count("free"))
+	}
 	for _, s := range a.Kind.Flow {
 		add("s:"+s.Key, s.Label, s.Icon, count("s:"+s.Key))
 	}
-	add("overdue", "Überfällig", "ti-alarm", count("overdue"))
+	if !a.Kind.NoDue {
+		add("overdue", "Überfällig", "ti-alarm", count("overdue"))
+	}
 	if a.Kind.Key == "task" {
 		add("noproject", "Ohne Projekt", "ti-folder-off", count("noproject"))
 	}
@@ -566,7 +629,7 @@ func workScopeCond(scope map[string]bool, args *[]any) string {
 func (h *Handler) workRecentDone(ctx context.Context, r *http.Request, k workKind) []workCard {
 	var args []any
 	cond := workScopeCond(h.scopeAllowedIDs(r, k.Module), &args)
-	rows, err := h.db.Query(ctx, `SELECT r.id::text, r.title, COALESCE(i.name, ''), r.status::text, to_char(`+k.ClosedExpr+`, 'DD.MM.')
+	rows, err := h.db.Query(ctx, `SELECT r.id::text, `+exprOr(k.TitleExpr, `r.title`)+`, COALESCE(i.name, ''), r.status::text, to_char(`+k.ClosedExpr+`, 'DD.MM.')
 		FROM `+k.Table+` r LEFT JOIN infrastructure i ON i.id = r.infrastructure_id
 		WHERE r.status::text IN ('`+strings.Join(k.DoneStatuses, "','")+`') AND `+k.ClosedExpr+` >= NOW() - INTERVAL '7 days'`+cond+`
 		ORDER BY `+k.ClosedExpr+` DESC LIMIT 15`, args...)
@@ -579,7 +642,7 @@ func (h *Handler) workRecentDone(ctx context.Context, r *http.Request, k workKin
 	for rows.Next() {
 		var c workCard
 		if rows.Scan(&c.ID, &c.Title, &c.InfraName, &c.Status, &c.Due) == nil {
-			c.StatusLabel, c.StatusClass = statusLabel(c.Status), statusClass(c.Status)
+			c.StatusLabel, c.StatusClass = k.statusText(c.Status), statusClass(c.Status)
 			out = append(out, c)
 		}
 	}
@@ -597,7 +660,9 @@ func (h *Handler) workDashboard(ctx context.Context, r *http.Request, k workKind
 	d.PrevYear, d.NextYear = d.Year-1, d.Year+1
 	from := time.Date(d.Year, 1, 1, 0, 0, 0, 0, time.Local)
 	to := from.AddDate(1, 0, 0)
-	done := "r.status::text IN ('" + strings.Join(k.DoneStatuses, "','") + "')"
+	done := "r.status::text IN (" + quotedList(k.DoneStatuses) + ")"
+	due := exprOr(k.DueExpr, "r.due_date")
+	group := exprOr(k.GroupExpr, "r.assigned_group_id")
 	inYear := k.ClosedExpr + " >= $1 AND " + k.ClosedExpr + " < $2"
 	scope := h.scopeAllowedIDs(r, k.Module)
 	args := []any{from, to}
@@ -608,8 +673,8 @@ func (h *Handler) workDashboard(ctx context.Context, r *http.Request, k workKind
 	if err := h.db.QueryRow(ctx, `SELECT
 		COUNT(*) FILTER (WHERE r.created_at >= $1 AND r.created_at < $2),
 		COUNT(*) FILTER (WHERE `+done+` AND `+inYear+`),
-		COUNT(*) FILTER (WHERE `+done+` AND `+inYear+` AND r.due_date IS NOT NULL),
-		COUNT(*) FILTER (WHERE `+done+` AND `+inYear+` AND r.due_date IS NOT NULL AND (`+k.ClosedExpr+`)::date <= r.due_date::date),
+		COUNT(*) FILTER (WHERE `+done+` AND `+inYear+` AND `+due+` IS NOT NULL),
+		COUNT(*) FILTER (WHERE `+done+` AND `+inYear+` AND `+due+` IS NOT NULL AND (`+k.ClosedExpr+`)::date <= (`+due+`)::date),
 		COALESCE(AVG(EXTRACT(EPOCH FROM `+k.ClosedExpr+` - r.created_at) / 86400) FILTER (WHERE `+done+` AND `+inYear+`), 0)::float8
 		FROM `+k.Table+` r WHERE true`+cond, args...).Scan(&created, &finished, &withDue, &onTime, &avgDays); err != nil {
 		componentLog("arbeitsbereich").Warn().Err(err).Str("art", k.Key).Msg("kennzahlen")
@@ -631,14 +696,21 @@ func (h *Handler) workDashboard(ctx context.Context, r *http.Request, k workKind
 		freeClass = "amber"
 	}
 	year := strconv.Itoa(d.Year)
-	d.KPIs = []workKPI{
-		{"Offen", strconv.Itoa(a.OpenCount), "jetzt", "", a.chipURL("open")},
-		{"Überfällig", strconv.Itoa(a.OverdueCount), "Termin überschritten", overdueClass, a.chipURL("overdue")},
-		{"Ohne Zuweisung", strconv.Itoa(a.UnassignedCount), "weder Person noch Gruppe", freeClass, a.chipURL("free")},
-		{"Angelegt " + year, strconv.Itoa(created), k.Plural, "", ""},
-		{"Erledigt " + year, strconv.Itoa(finished), quote + " termingerecht", "green", a.chipURL("archive")},
-		{"Ø Durchlaufzeit", lead, "Anlage bis Abschluss " + year, "", ""},
+	d.KPIs = []workKPI{{"Offen", strconv.Itoa(a.OpenCount), "jetzt", "", a.chipURL("open")}}
+	if !k.NoDue {
+		d.KPIs = append(d.KPIs, workKPI{"Überfällig", strconv.Itoa(a.OverdueCount), "Termin überschritten", overdueClass, a.chipURL("overdue")})
 	}
+	if !k.NoBroker {
+		d.KPIs = append(d.KPIs, workKPI{"Ohne Zuweisung", strconv.Itoa(a.UnassignedCount), "weder Person noch Gruppe", freeClass, a.chipURL("free")})
+	}
+	finishedSub := quote + " termingerecht"
+	if k.NoDue {
+		finishedSub = "abgeschlossen"
+	}
+	d.KPIs = append(d.KPIs,
+		workKPI{"Angelegt " + year, strconv.Itoa(created), k.Plural, "", ""},
+		workKPI{"Erledigt " + year, strconv.Itoa(finished), finishedSub, "green", a.chipURL("archive")},
+		workKPI{"Ø Durchlaufzeit", lead, "Anlage bis Abschluss " + year, "", ""})
 
 	// Ablauf: offene je Status + erledigt im Jahr
 	counts := map[string]int{}
@@ -712,8 +784,8 @@ func (h *Handler) workDashboard(ctx context.Context, r *http.Request, k workKind
 	}
 	// wer hat im Jahr am meisten erledigt (Person oder Gruppe)
 	pq := `SELECT COALESCE(NULLIF(TRIM(u.first_name || ' ' || u.last_name), ''), g.name), COUNT(*)::int FROM ` + k.Table + ` r
-		LEFT JOIN users u ON u.id = r.assigned_to LEFT JOIN user_groups g ON g.id = r.assigned_group_id
-		WHERE ` + done + ` AND ` + inYear + ` AND (r.assigned_to IS NOT NULL OR r.assigned_group_id IS NOT NULL)` + cond + `
+		LEFT JOIN users u ON u.id = r.assigned_to LEFT JOIN user_groups g ON g.id = ` + group + `
+		WHERE ` + done + ` AND ` + inYear + ` AND (r.assigned_to IS NOT NULL OR ` + group + ` IS NOT NULL)` + cond + `
 		GROUP BY 1 ORDER BY 2 DESC, 1 LIMIT 6`
 	if k.Key == "task" {
 		pq = `SELECT TRIM(u.first_name || ' ' || u.last_name), COUNT(*)::int FROM tasks r
@@ -762,7 +834,7 @@ func (h *Handler) workDashboard(ctx context.Context, r *http.Request, k workKind
 // WorkSettingsWeb: POST /work/{kind}/settings – Standard-Frist des Moduls.
 func (h *Handler) WorkSettingsWeb(w http.ResponseWriter, r *http.Request) {
 	k, ok := workKinds[chi.URLParam(r, "kind")]
-	if !ok {
+	if !ok || k.NoDue {
 		http.NotFound(w, r)
 		return
 	}
@@ -799,6 +871,9 @@ func (h *Handler) workArchiveRows(r *http.Request, area *workArea) {
 	ctx := r.Context()
 	k := area.Kind
 	q := r.URL.Query()
+	title, desc := exprOr(k.TitleExpr, "r.title"), exprOr(k.DescExpr, "r.description")
+	resolution, rootCause := exprOr(k.ResolutionExpr, "r.resolution"), exprOr(k.RootCauseExpr, "r.root_cause")
+	group := exprOr(k.GroupExpr, "r.assigned_group_id")
 	a := &area.Archive
 	a.Q, a.Infra, a.From, a.To = strings.TrimSpace(q.Get("q")), q.Get("infra"), q.Get("from"), q.Get("to")
 	a.Filtered = a.Q != "" || a.Infra != "" || a.From != "" || a.To != "" || area.Project != ""
@@ -806,12 +881,13 @@ func (h *Handler) workArchiveRows(r *http.Request, area *workArea) {
 	if a.Page < 1 {
 		a.Page = 1
 	}
-	where := []string{"(r.archived_at IS NOT NULL OR r.status::text IN ('resolved','closed'))"}
+	doneIn := quotedList(k.DoneStatuses)
+	where := []string{"(r.archived_at IS NOT NULL OR r.status::text IN (" + doneIn + "))"}
 	var args []any
 	arg := func(v any) string { args = append(args, v); return fmt.Sprintf("$%d", len(args)) }
 	if a.Q != "" {
 		p := arg("%" + a.Q + "%")
-		where = append(where, "(r.title ILIKE "+p+" OR COALESCE(r.description,'') ILIKE "+p+" OR COALESCE(i.name,'') ILIKE "+p+" OR COALESCE(r.resolution,'') ILIKE "+p+")")
+		where = append(where, "("+title+" ILIKE "+p+" OR COALESCE("+desc+",'') ILIKE "+p+" OR COALESCE(i.name,'') ILIKE "+p+" OR COALESCE("+resolution+",'') ILIKE "+p+")")
 	}
 	if a.Infra != "" {
 		where = append(where, "r.infrastructure_id::text = "+arg(a.Infra))
@@ -840,11 +916,11 @@ func (h *Handler) workArchiveRows(r *http.Request, area *workArea) {
 	from := ` FROM ` + k.Table + ` r LEFT JOIN infrastructure i ON i.id = r.infrastructure_id` + joins
 	_ = h.db.QueryRow(ctx, `SELECT COUNT(*)`+from+cond, args...).Scan(&a.Total)
 	rows, err := h.db.Query(ctx, `
-		SELECT r.id::text, r.title, COALESCE(i.name, ''), `+project+`, r.status::text, `+k.PrioExpr+`,
-		       to_char(`+closed+`, 'DD.MM.YYYY'), COALESCE(r.resolution, ''), COALESCE(r.root_cause, ''),
+		SELECT r.id::text, `+title+`, COALESCE(i.name, ''), `+project+`, r.status::text, `+k.PrioExpr+`,
+		       to_char(`+closed+`, 'DD.MM.YYYY'), COALESCE(`+resolution+`, ''), COALESCE(`+rootCause+`, ''),
 		       `+who+from+`
 		  LEFT JOIN users u ON u.id = `+userJoin+`
-		  LEFT JOIN user_groups g ON g.id = r.assigned_group_id`+cond+`
+		  LEFT JOIN user_groups g ON g.id = `+group+cond+`
 		 ORDER BY `+closed+` DESC LIMIT `+strconv.Itoa(workArchivePageSize)+` OFFSET `+strconv.Itoa((a.Page-1)*workArchivePageSize), args...)
 	if err != nil {
 		componentLog("arbeitsbereich").Error().Err(err).Str("art", k.Key).Msg("archiv laden")
@@ -860,13 +936,17 @@ func (h *Handler) workArchiveRows(r *http.Request, area *workArea) {
 		if scopeIDs != nil && !scopeIDs[x.ID] {
 			continue
 		}
-		x.StatusLabel, x.StatusClass = statusLabel(x.Status), statusClass(x.Status)
-		if k.Key == "fault" {
-			x.PriorityClass = severityClass(x.Priority)
+		x.StatusLabel, x.StatusClass = k.statusText(x.Status), statusClass(x.Status)
+		if k.NoPrio {
+			x.Priority = ""
 		} else {
-			x.PriorityClass = priorityClass(x.Priority)
+			if k.Key == "fault" {
+				x.PriorityClass = severityClass(x.Priority)
+			} else {
+				x.PriorityClass = priorityClass(x.Priority)
+			}
+			x.Priority = severityWord(x.Priority)
 		}
-		x.Priority = severityWord(x.Priority)
 		a.Rows = append(a.Rows, x)
 	}
 	a.Pages = (a.Total + workArchivePageSize - 1) / workArchivePageSize
@@ -891,7 +971,7 @@ func (h *Handler) workArchiveRows(r *http.Request, area *workArea) {
 	// Anlagen fuer den Filter
 	opts := map[string]string{}
 	if rs, err := h.db.Query(ctx, `SELECT DISTINCT i.id::text, i.name FROM `+k.Table+` r JOIN infrastructure i ON i.id = r.infrastructure_id
-		WHERE r.archived_at IS NOT NULL OR r.status::text IN ('resolved','closed')`); err == nil {
+		WHERE r.archived_at IS NOT NULL OR r.status::text IN (`+doneIn+`)`); err == nil {
 		for rs.Next() {
 			var id, n string
 			if rs.Scan(&id, &n) == nil {

@@ -1104,7 +1104,7 @@ func statusClass(s string) string {
 	switch s {
 	case "resolved", "closed", "done", "completed":
 		return "b-green"
-	case "in_progress", "active":
+	case "in_progress", "active", "running":
 		return "b-blue"
 	case "open", "detected", "pending":
 		return "b-amber"
