@@ -482,6 +482,14 @@
   {{else if not .APITokenSet}}<p class="sc-sub" style="color:var(--amber)"><i class="ti ti-alert-triangle"></i> Zuerst oben den API-Token eintragen und speichern.</p>
   {{else}}<div id="cf-panel"><button type="button" class="btn btn-primary btn-small" hx-get="/admin/server-config/cloudflare/panel" hx-target="#cf-panel" hx-disabled-elt="this"><i class="ti ti-cloud-download"></i> Stand von Cloudflare laden</button></div>{{end}}
 </div>
+<div class="card" style="margin-top:12px" id="cf-mtls">
+  <div class="card-title"><span><i class="ti ti-shield-lock"></i> Client-Zertifikate bei Cloudflare (mTLS)</span><span class="sc-sub">optional</span></div>
+  <p class="sc-sub" style="margin:0 0 6px">Ist mTLS bei Cloudflare für einen Namen an, verlangt Cloudflare von jedem Gerät ein Zertifikat, das Cloudflare selbst ausgestellt hat (seine „Managed CA“). Die Zertifikate des PDH kennt Cloudflare nicht – die Nextcloud-App auf dem Handy fragt dann über das Internet nach einem Zertifikat, das es nicht gibt.</p>
+  <p class="sc-sub" style="margin:0 0 10px">Ohne mTLS schützt von außen die Anmeldung; im Firmennetz gilt weiter die Zertifikatspflicht von nginx. Hier lässt sich mTLS je Name abschalten (und wieder einschalten). Das PDH ändert nur diese Namensliste, keine WAF-Regeln.</p>
+  {{if not .CanAPI}}<p class="sc-sub">Das darf, wer das Recht „Cloudflare verwalten (DNS, Proxy, Tunnel)“ hat.</p>
+  {{else if not .APITokenSet}}<p class="sc-sub" style="color:var(--amber)"><i class="ti ti-alert-triangle"></i> Zuerst oben den API-Token eintragen und speichern.</p>
+  {{else}}<div id="mtls-panel"><button type="button" class="btn btn-primary btn-small" hx-get="/admin/server-config/cloudflare/mtls" hx-target="#mtls-panel" hx-swap="outerHTML" hx-disabled-elt="this"><i class="ti ti-shield-lock"></i> mTLS-Stand laden</button></div>{{end}}
+</div>
 {{if .CanCerts}}<div class="card" style="margin-top:12px">
   <div id="cert-panel">
     <div class="card-title"><span><i class="ti ti-certificate"></i> Zertifikate (Let's Encrypt)</span><span class="sc-sub">optional</span></div>

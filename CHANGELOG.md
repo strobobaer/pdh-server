@@ -10,6 +10,19 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.80.6] – 2026-11-14
+
+### Neu
+
+- Server-Einstellungen, Reiter Cloudflare-Tunnel: Die neue Karte „Client-Zertifikate bei Cloudflare (mTLS)“ zeigt je Name, ob Cloudflare dafür ein Client-Zertifikat verlangt, und kennzeichnet die Namen von PDH und Nextcloud.
+- Mit „Abschalten“ nimmt das PDH nur diesen einen Namen aus der mTLS-Liste von Cloudflare; „Einschalten“ macht es rückgängig. Damit hört die Nextcloud-App auf dem Handy auf, über das Internet nach einem Zertifikat zu fragen.
+- Die Karte zeigt auch die WAF-Regeln mit Zertifikatsprüfung und weist nach dem Abschalten auf aktive Regeln hin, die im Cloudflare-Dashboard zu prüfen sind; Regeln ändert das PDH nie.
+- Das Handbuch erklärt unter „So behebst du: Nextcloud-App fragt über das Internet nach einem Zertifikat“ Ursache und Abhilfe.
+
+### Sicherheit
+
+- Das Abschalten von mTLS bei Cloudflare braucht das Recht „Cloudflare verwalten“ und geht als Nachricht an alle Administratoren; ohne mTLS schützt von außen die Anmeldung, im Firmennetz weiter die Zertifikatspflicht von nginx.
+
 ## [0.80.5] – 2026-11-14
 
 ### Sicherheit

@@ -1568,6 +1568,18 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li><b>DNS-Einträge:</b> Einträge der Arten A, AAAA, CNAME und TXT anlegen und löschen. Ein Klick auf <b>an</b>/<b>aus</b> in der Spalte Proxy schaltet um, ob der Name über Cloudflare läuft oder direkt auf den Server zeigt. Namen, die auf den Tunnel zeigen, laufen immer über den Proxy.</li>
     </ol>
     Das PDH ändert bei Cloudflare nichts von selbst. Jede Änderung geht als Nachricht an alle Administratoren und steht im Protokoll. Auch die Meldungen der Karte selbst (z. B. ein fehlendes Recht am Token) stehen im Protokoll, Bereich <b>cloudflare</b>. Die Karte sieht, wer das Recht <b>Cloudflare verwalten (DNS, Proxy, Tunnel)</b> hat. Meldet die Karte „lehnt den API-Token ab“, fehlt dem Token ein Recht oder die Domain. Die Ziele im Tunnel brauchen zusätzlich den Tunnel-Token. Zertifikate von Let's Encrypt holt das PDH ebenfalls über diese Anbindung – siehe <a href="#hb-zertifikate">Zertifikate, Namen im Haus und Full (strict)</a>.</div>
+  <div class="hb-howto" id="hb-cloudflare-mtls"><b><i class="ti ti-shield-lock"></i> So behebst du: Nextcloud-App fragt über das Internet nach einem Zertifikat</b>
+    <b>Ursache:</b> Bei Cloudflare ist für den Namen der Nextcloud „mTLS“ (Client-Zertifikate) eingeschaltet. Dann verlangt Cloudflare von jedem Gerät ein Zertifikat, das Cloudflare selbst ausgestellt hat. Die Zertifikate des PDH kennt Cloudflare nicht – die App fragt nach einem Zertifikat, das es nicht gibt. Ohne mTLS schützt von außen die Anmeldung; im Firmennetz gilt weiter die Zertifikatspflicht von nginx.
+    <ol class="hb-steps">
+      <li><b>Server-Einstellungen → Reiter Cloudflare-Tunnel</b> öffnen. Das Cloudflare-Token muss eingetragen sein.</li>
+      <li>In der Karte <b>Client-Zertifikate bei Cloudflare (mTLS)</b> auf <b>mTLS-Stand laden</b> drücken.</li>
+      <li>Die Liste zeigt je Name, ob mTLS an ist. Die Namen des PDH sind mit <i>PDH-Adresse</i> bzw. <i>Nextcloud-Adresse</i> gekennzeichnet.</li>
+      <li>Beim Namen der Nextcloud auf <b>Abschalten</b> drücken und bestätigen. Nur dieser eine Name wird aus der Liste genommen. Alle Administratoren bekommen eine Nachricht.</li>
+      <li>Steht danach ein Hinweis zu einer WAF-Regel, sperrt diese Regel weiter. Das PDH ändert keine Regeln – im Cloudflare-Dashboard unter <b>Sicherheit → WAF → Benutzerdefinierte Regeln</b> die Regel prüfen und abschalten.</li>
+      <li>Die App auf dem Handy neu öffnen. Mit <b>Einschalten</b> lässt sich mTLS für einen Namen wieder zurückholen.</li>
+    </ol>
+    Fehlen dem Token Rechte, sagt die Karte das: Es braucht „SSL and Certificates: Edit“ (Zone) zum Ändern und „Zone WAF: Read“ zum Anzeigen der Regeln.
+  </div>
   {{template "hb-fig-zertifikate"}}
   <div class="hb-howto" id="hb-zertifikate"><b><i class="ti ti-certificate"></i> Zertifikate, Namen im Haus und Full (strict) – nur ein Zusatz</b>
     Das ist ein <b>Zusatz wie Cloudflare auch</b>. Das PDH läuft ohne ihn unverändert weiter – nichts davon ist nötig.
