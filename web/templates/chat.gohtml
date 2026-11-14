@@ -72,7 +72,9 @@
 .msg-sys{align-self:center;font-size:11.5px;color:var(--muted);margin:8px 0;display:flex;gap:6px;align-items:center}
 .msg-actions{position:absolute;top:-10px;right:0;display:none;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:2px;box-shadow:0 4px 14px rgba(0,0,0,.2);z-index:5}
 .msg.mine .msg-actions{right:auto;left:0}
-.msg:hover .msg-actions{display:flex}
+.msg.act .msg-actions{display:flex}
+@media (hover:hover){.msg:hover .msg-actions{display:flex}}
+@media (hover:none){.msg-actions button{padding:7px 9px;font-size:16px}}
 .msg-actions button{background:none;border:0;cursor:pointer;padding:3px 5px;border-radius:6px;font-size:14px;color:var(--text)}
 .msg-actions button:hover{background:var(--bg3)}
 .reacts{display:flex;flex-wrap:wrap;gap:4px;margin-top:3px}
@@ -460,7 +462,7 @@ function msgHtml(m, prev, inPost){
       + (m.user_id === ME ? `<button title="Bearbeiten" onclick="Chat.edit('${m.id}')"><i class="ti ti-pencil"></i></button>` : '')
       + (m.user_id === ME || S.isAdmin ? `<button title="Löschen" onclick="Chat.del('${m.id}')"><i class="ti ti-trash"></i></button>` : '');
   }
-  return `<div class="msg ${mine ? 'mine' : ''} ${cont ? 'cont' : ''} ${mentioned ? 'mentioned' : ''} ${m.deleted ? 'deleted' : ''}" id="m-${m.id}">
+  return `<div class="msg ${mine ? 'mine' : ''} ${S.actId === m.id ? 'act' : ''} ${cont ? 'cont' : ''} ${mentioned ? 'mentioned' : ''} ${m.deleted ? 'deleted' : ''}" id="m-${m.id}">
     ${inPost || !mine ? avatar(m.user_id, inPost && m.parent_id ? 'sm' : '') : ''}
     <div class="b">
       <div class="who"><b>${esc(userName(m.user_id))}</b><span>${fmtTime(m.created_at)}</span>${m.edited_at && !m.deleted ? '<span>(bearbeitet)</span>' : ''}</div>
@@ -543,6 +545,15 @@ composer.addEventListener('paste', e => {
   if(files.length){ e.preventDefault(); addFiles(files); }
 });
 $('file-input').addEventListener('change', e => { addFiles([...e.target.files]); e.target.value = ''; });
+// Touch: Antippen einer Nachricht blendet ihre Aktionsleiste ein/aus, Antippen woanders schließt sie
+$('chat-msgs').addEventListener('click', e => {
+  if(e.target.closest('a, button, img, input, textarea, .msg-actions')) return;
+  const el = e.target.closest('.msg[id^="m-"]');
+  const prev = document.querySelector('.msg.act');
+  const id = el && !el.classList.contains('deleted') ? el.id.slice(2) : null;
+  if(prev) prev.classList.remove('act');
+  if(id && S.actId !== id){ S.actId = id; el.classList.add('act'); } else S.actId = null;
+});
 $('chat-msgs').addEventListener('dragover', e => e.preventDefault());
 $('chat-msgs').addEventListener('drop', e => { e.preventDefault(); addFiles([...e.dataTransfer.files]); });
 
