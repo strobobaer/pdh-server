@@ -1,5 +1,5 @@
 {{/* Rüstzeiten: Katalog der Gründe und Rüsttasten (setup_catalog.go), Karte auf /infrastructure.
-     dict: C (setupCatalogView), Admin (darf ändern: setup.admin), Back */}}
+     dict: C (setupCatalogView), Edit (pflegen: setup.edit), Admin (löschen: setup.admin), Back */}}
 {{define "setup-reason-form"}}
 <form class="rec-form et-form" method="post" action="/setup/reasons-web">
   <input type="hidden" name="back" value="{{.Back}}">
@@ -44,7 +44,7 @@
 {{end}}
 
 {{define "setup-catalog"}}
-{{$back := .Back}}{{$admin := .Admin}}{{$reasons := .C.Reasons}}
+{{$back := .Back}}{{$edit := .Edit}}{{$admin := .Admin}}{{$reasons := .C.Reasons}}
 <details class="card" id="setup-catalog"{{if not .C.Buttons}} open{{end}}>
   <summary class="card-title" style="cursor:pointer;list-style:none"><span><i class="ti ti-adjustments-alt"></i> Rüstzeiten: Rüsttasten <b>{{len .C.Buttons}}</b></span><span class="card-action">auf-/zuklappen</span></summary>
   <p class="rec-sub" style="margin-bottom:10px">Rüsttasten starten im Easy-Modus die Rüstzeit einer Anlage. Jede Taste gehört zu einem Grund. An der Anlage im Reiter <b>Rüsttasten</b> zuordnen – eine Taste an einer Halle oder Linie gilt auch für alle Anlagen darunter. Mit <i class="ti ti-chevron-up"></i>/<i class="ti ti-chevron-down"></i> legst du die Reihenfolge fest.</p>
@@ -52,7 +52,7 @@
   <div class="ih-section">Rüsttasten</div>
   {{range $i, $b := .C.Buttons}}
   <div class="rec-row" data-rx data-rx-title="{{.Name}}">
-    {{if $admin}}<span class="et-move">
+    {{if $edit}}<span class="et-move">
       <form method="post" action="/setup/buttons/{{.ID}}/move-web"><input type="hidden" name="dir" value="up"><input type="hidden" name="back" value="{{$back}}">
         <button class="ih-act" title="Nach oben"{{if eq $i 0}} disabled{{end}} aria-label="Nach oben"><i class="ti ti-chevron-up"></i></button></form>
       <form method="post" action="/setup/buttons/{{.ID}}/move-web"><input type="hidden" name="dir" value="down"><input type="hidden" name="back" value="{{$back}}">
@@ -61,13 +61,13 @@
     <div class="grow"><b>{{.Name}}</b><div class="rec-sub">Grund: {{.ReasonName}}</div></div>
     {{if not .Active}}<span class="badge b-gray">deaktiviert</span>{{end}}
     <span class="badge {{if .Uses}}b-blue{{else}}b-gray{{end}}" title="An so vielen Anlagen zugeordnet (Unteranlagen nicht mitgezählt)">{{if .Uses}}{{.Uses}} Anlage{{if ne .Uses 1}}n{{end}}{{else}}nicht zugeordnet{{end}}</span>
-    {{if $admin}}<template class="rx-more">
+    {{if $edit}}<template class="rx-more">
       <div style="flex-basis:100%">{{template "setup-button-form" (dict "B" . "Reasons" $reasons "Back" $back "Label" "Speichern")}}</div>
-      <form method="post" action="/setup/buttons/{{.ID}}/delete-web" onsubmit="return confirm('Rüsttaste „{{.Name}}“ löschen? Sie verschwindet auch von allen Anlagen; bestehende Rüstzeiten behalten den Namen.')"><input type="hidden" name="back" value="{{$back}}"><button class="btn btn-small" style="color:var(--red)"><i class="ti ti-trash"></i> Löschen</button></form>
+      {{if $admin}}<form method="post" action="/setup/buttons/{{.ID}}/delete-web" onsubmit="return confirm('Rüsttaste „{{.Name}}“ löschen? Sie verschwindet auch von allen Anlagen; bestehende Rüstzeiten behalten den Namen.')"><input type="hidden" name="back" value="{{$back}}"><button class="btn btn-small" style="color:var(--red)"><i class="ti ti-trash"></i> Löschen</button></form>{{end}}
     </template>{{end}}
   </div>
   {{else}}<div class="rec-sub" style="padding:6px 0 10px">Noch keine Rüsttasten – z. B. „Formatwechsel“, „Werkzeugwechsel“, „Reinigung“.</div>{{end}}
-  {{if $admin}}<div class="ih-section" style="margin-top:14px">Neue Rüsttaste</div>
+  {{if $edit}}<div class="ih-section" style="margin-top:14px">Neue Rüsttaste</div>
   {{template "setup-button-form" (dict "B" nil "Reasons" $reasons "Back" $back "Label" "Anlegen")}}{{end}}
 
   <div class="ih-section" style="margin-top:18px">Gründe</div>
@@ -77,13 +77,13 @@
     <i class="ti ti-tag" style="font-size:18px;color:var(--accent)"></i>
     <div class="grow"><b>{{.Name}}</b></div>
     {{if not .Active}}<span class="badge b-gray">ausgeblendet</span>{{end}}
-    {{if $admin}}<template class="rx-more">
+    {{if $edit}}<template class="rx-more">
       <div style="flex-basis:100%">{{template "setup-reason-form" (dict "R" . "Back" $back "Label" "Speichern")}}</div>
-      <form method="post" action="/setup/reasons-web" onsubmit="return confirm('Grund „{{.Name}}“ löschen?')"><input type="hidden" name="back" value="{{$back}}"><input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="{{.ID}}"><button class="btn btn-small" style="color:var(--red)"><i class="ti ti-trash"></i> Löschen</button></form>
+      {{if $admin}}<form method="post" action="/setup/reasons-web" onsubmit="return confirm('Grund „{{.Name}}“ löschen?')"><input type="hidden" name="back" value="{{$back}}"><input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="{{.ID}}"><button class="btn btn-small" style="color:var(--red)"><i class="ti ti-trash"></i> Löschen</button></form>{{end}}
     </template>{{end}}
   </div>
   {{end}}
-  {{if $admin}}<div class="ih-section" style="margin-top:14px">Neuer Grund</div>
+  {{if $edit}}<div class="ih-section" style="margin-top:14px">Neuer Grund</div>
   {{template "setup-reason-form" (dict "R" nil "Back" $back "Label" "Anlegen")}}{{end}}
 </details>
 {{end}}

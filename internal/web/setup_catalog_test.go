@@ -20,9 +20,9 @@ func TestSetupCatalogRoutesPermissions(t *testing.T) {
 		path string
 		want string
 	}{
-		{"Gründe", h.SetupReasonsWeb, "/setup/reasons-web", permSetupAdmin},
-		{"Rüsttasten", h.SetupButtonsWeb, "/setup/buttons-web", permSetupAdmin},
-		{"verschieben", h.SetupButtonMoveWeb, "/setup/buttons/" + setupTestID + "/move-web", permSetupAdmin},
+		{"Gründe", h.SetupReasonsWeb, "/setup/reasons-web", permSetupEdit},
+		{"Rüsttasten", h.SetupButtonsWeb, "/setup/buttons-web", permSetupEdit},
+		{"verschieben", h.SetupButtonMoveWeb, "/setup/buttons/" + setupTestID + "/move-web", permSetupEdit},
 		{"löschen", h.SetupButtonDeleteWeb, "/setup/buttons/" + setupTestID + "/delete-web", permSetupAdmin},
 		{"Zuordnung", h.InfraSetupButtonsWeb, "/infrastructure/" + setupTestID + "/setup-buttons-web", permInfraEdit},
 		{"Höchstdauer", h.InfraSetupMaxWeb, "/infrastructure/" + setupTestID + "/setup-max-web", permInfraEdit},
@@ -37,10 +37,18 @@ func TestSetupCatalogRoutesPermissions(t *testing.T) {
 			t.Errorf("%s: geprüft %v, erwartet %s", c.name, asked, c.want)
 		}
 	}
-	// Katalog: setup.edit genügt nicht
+	// setup.edit pflegt (kein 403, ungültige Eingabe führt zurück), Löschen braucht setup.admin
 	h.hasPermHook = func(_ *http.Request, p string) bool { return p != permSetupAdmin }
 	if w := setupDo(h.SetupButtonDeleteWeb, "POST", "/x", setupTestID, "", url.Values{}); w.Code != http.StatusForbidden {
-		t.Errorf("Löschen ohne setup.admin: Status %d", w.Code)
+		t.Errorf("Taste löschen ohne setup.admin: Status %d", w.Code)
+	}
+	if w := setupDo(h.SetupReasonsWeb, "POST", "/x", "", "", url.Values{"action": {"delete"}, "id": {setupTestID}}); w.Code != http.StatusForbidden {
+		t.Errorf("Grund löschen ohne setup.admin: Status %d", w.Code)
+	}
+	for name, fn := range map[string]http.HandlerFunc{"Gründe": h.SetupReasonsWeb, "Rüsttasten": h.SetupButtonsWeb} {
+		if w := setupDo(fn, "POST", "/x", "", "", url.Values{}); w.Code == http.StatusForbidden {
+			t.Errorf("%s mit setup.edit: 403", name)
+		}
 	}
 }
 
@@ -50,9 +58,9 @@ func TestSetupCatalogGateRules(t *testing.T) {
 		path, perm, ref string
 		hit             bool
 	}{
-		{"/setup/reasons-web", permSetupAdmin, "", true},
-		{"/setup/buttons-web", permSetupAdmin, "", true},
-		{"/setup/buttons/" + id + "/move-web", permSetupAdmin, "", true},
+		{"/setup/reasons-web", permSetupEdit, "", true},
+		{"/setup/buttons-web", permSetupEdit, "", true},
+		{"/setup/buttons/" + id + "/move-web", permSetupEdit, "", true},
 		{"/setup/buttons/" + id + "/delete-web", permSetupAdmin, "", true},
 		{"/core/settings/setup-web", permSetupEdit, "", true},
 		{"/infrastructure/" + id + "/setup-buttons-web", "infrastructure.edit", "infrastructure", true},
@@ -377,7 +385,7 @@ func TestSetupCatalogRender(t *testing.T) {
 		Reasons: []ruesten.Reason{{ID: "r1", Name: "Produktumstellung", Active: true}},
 		Buttons: []setupButtonRow{{Button: ruesten.Button{ID: "b1", Name: "Formatwechsel", ReasonID: "r1", ReasonName: "Produktumstellung", Active: true}, Uses: 2, Last: true}},
 	}
-	d := InfraPageData{Types: infraTypes, SetupView: true, SetupAdmin: true, SetupCatalog: cat}
+	d := InfraPageData{Types: infraTypes, SetupView: true, SetupEdit: true, SetupAdmin: true, SetupCatalog: cat}
 	out := renderPage(t, tmpl, "infrastructure", d)
 	for _, want := range []string{`id="setup-catalog"`, "Formatwechsel", "2 Anlagen", `action="/setup/buttons-web"`, `action="/setup/reasons-web"`,
 		`action="/setup/buttons/b1/move-web"`, `action="/setup/buttons/b1/delete-web"`, `name="reason_id"`, "Produktumstellung"} {
@@ -385,7 +393,12 @@ func TestSetupCatalogRender(t *testing.T) {
 			t.Errorf("Katalog ohne %q", want)
 		}
 	}
-	d.SetupAdmin = false
+	d.SetupAdmin = false // setup.edit: pflegen ja, löschen nein
+	ed := renderPage(t, tmpl, "infrastructure", d)
+	if !strings.Contains(ed, "/setup/buttons-web") || !strings.Contains(ed, "move-web") || strings.Contains(ed, "delete-web") || strings.Contains(ed, `value="delete"`) {
+		t.Error("mit setup.edit: pflegen sichtbar, Löschen nicht")
+	}
+	d.SetupEdit = false
 	ro := renderPage(t, tmpl, "infrastructure", d)
 	if !strings.Contains(ro, "Formatwechsel") || strings.Contains(ro, "/setup/buttons-web") || strings.Contains(ro, "delete-web") {
 		t.Error("ohne setup.admin: Katalog nur lesen")
@@ -402,6 +415,14 @@ func TestSetupInfraDetailRender(t *testing.T) {
 		SetupTab: setupInfraTab{Count: 1, MaxMinutes: 60, MaxSource: "Linie 2", GlobalMax: 120,
 			Buttons: []setupButtonRow{{Button: ruesten.Button{ID: "b1", Name: "Formatwechsel", ReasonName: "Produktumstellung", Active: true}, Assigned: true}}}}
 	d.CanEditInfra = true
+	if strings.Contains(renderPage(t, tmpl, "infra_detail", d), "es gilt die maximale Rüstzeit") {
+		t.Error("Hinweis ohne zu hohen Wert")
+	}
+	d.SetupTab.OwnMax, d.SetupTab.OverMax, d.SetupTab.MaxMinutes, d.SetupTab.MaxSource = "200", true, 120, "globaler Stamm"
+	if out := renderPage(t, tmpl, "infra_detail", d); !strings.Contains(out, "Eingetragen sind 200 Minuten – es gilt die maximale Rüstzeit von 120 Minuten.") {
+		t.Error("Hinweis bei zu hohem eigenen Wert fehlt")
+	}
+	d.SetupTab.OwnMax, d.SetupTab.OverMax, d.SetupTab.MaxMinutes, d.SetupTab.MaxSource = "", false, 60, "Linie 2"
 	out := renderPage(t, tmpl, "infra_detail", d)
 	for _, want := range []string{`data-tab="setup"`, `data-pane="setup"`, "Formatwechsel", `action="/infrastructure/n1/setup-max-web"`, "Höchstdauer Rüsten", "über Linie 2"} {
 		if !strings.Contains(out, want) {
@@ -426,5 +447,55 @@ func TestCoreSettingsSetupCard(t *testing.T) {
 	d.CanSetupEdit = false
 	if strings.Contains(renderPage(t, tmpl, "core_settings", d), "setup-web") {
 		t.Error("ohne setup.edit sichtbar")
+	}
+}
+
+// Spec 6.3: Wurde die maximale Rüstzeit unter den Wert der Anlage gesenkt, zeigt die Anlage einen Hinweis.
+func TestInfraSetupMaxOverGlobalHint(t *testing.T) {
+	f := newSetupFx(t)
+	oldMax, oldGrace := f.store.GlobalMax(f.ctx), f.store.Grace(f.ctx)
+	t.Cleanup(func() { _ = f.store.SetGlobal(f.ctx, oldMax, oldGrace) })
+	f.must(f.store.SetGlobal(f.ctx, 120, oldGrace))
+	infra := f.infra("hint")
+	f.must(f.store.SetInfraMax(f.ctx, infra, ptr(100)))
+	if tab := f.h.infraSetupTab(f.ctx, infra); tab.OverMax || !tab.MaxOwn || tab.MaxMinutes != 100 {
+		t.Errorf("vor dem Senken: %+v", tab)
+	}
+	f.must(f.store.SetGlobal(f.ctx, 60, oldGrace))
+	tab := f.h.infraSetupTab(f.ctx, infra)
+	if !tab.OverMax || tab.MaxOwn || tab.MaxMinutes != 60 || tab.OwnMax != "100" {
+		t.Errorf("nach dem Senken: %+v", tab)
+	}
+}
+
+// setup.edit pflegt den Katalog, Löschen nur mit setup.admin (Entscheidung 6.8).
+func TestSetupCatalogEditWithoutAdmin(t *testing.T) {
+	f := newSetupFx(t)
+	f.h.hasPermHook = func(_ *http.Request, p string) bool { return p != permSetupAdmin }
+	reason := f.reason()
+	name := "Rzk" + f.sfx
+	t.Cleanup(func() { f.pool.Exec(f.ctx, `DELETE FROM setup_buttons WHERE name = $1`, name) })
+	if loc := catalogForm(t, f, f.h.SetupButtonsWeb, "/setup/buttons-web", "", url.Values{"name": {name}, "reason_id": {reason}}); !strings.Contains(loc, "msg=") {
+		t.Errorf("anlegen mit setup.edit: %s", loc)
+	}
+	bs, _ := f.store.Buttons(f.ctx)
+	var id string
+	for _, b := range bs {
+		if b.Name == name {
+			id = b.ID
+		}
+	}
+	if id == "" {
+		t.Fatal("Taste nicht angelegt")
+	}
+	catalogForm(t, f, f.h.SetupButtonMoveWeb, "/setup/buttons/"+id+"/move-web", id, url.Values{"dir": {"up"}})
+	if w := setupDo(f.h.SetupButtonDeleteWeb, "POST", "/x", id, f.user(), url.Values{}); w.Code != http.StatusForbidden {
+		t.Errorf("löschen: Status %d", w.Code)
+	}
+	if bs, _ := f.store.Buttons(f.ctx); len(bs) == 0 {
+		t.Error("Taste verschwunden")
+	}
+	if w := setupDo(f.h.SetupReasonsWeb, "POST", "/x", "", f.user(), url.Values{"action": {"delete"}, "id": {reason}}); w.Code != http.StatusForbidden {
+		t.Errorf("Grund löschen: Status %d", w.Code)
 	}
 }

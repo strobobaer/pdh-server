@@ -24,7 +24,8 @@
   <div class="rec-sec" style="margin-top:0">Rüsten</div>
   <div class="form-group"><label class="form-label">Höchstdauer Rüsten (Minuten)</label>
     <input type="number" name="minutes" class="form-input" min="1" max="{{.T.GlobalMax}}" value="{{.T.OwnMax}}" placeholder="von oben erben">
-    <div class="rec-sub" style="margin-top:3px">Wirksam: <b>{{.T.MaxMinutes}} Minuten</b> – {{if eq .T.MaxSource "globaler Stamm"}}globaler Stamm{{else if .T.MaxOwn}}eigener Wert{{else}}über {{.T.MaxSource}}{{end}}. Höchstens {{.T.GlobalMax}} Minuten (maximale Rüstzeit in den Core-Einstellungen). Leer lassen, dann gilt der Wert der übergeordneten Anlage bzw. der globale Stamm. Gilt auch für alle Unteranlagen ohne eigenen Wert.</div></div>
+    <div class="rec-sub" style="margin-top:3px">Wirksam: <b>{{.T.MaxMinutes}} Minuten</b> – {{if eq .T.MaxSource "globaler Stamm"}}globaler Stamm{{else if .T.MaxOwn}}eigener Wert{{else}}über {{.T.MaxSource}}{{end}}. Höchstens {{.T.GlobalMax}} Minuten (maximale Rüstzeit in den Core-Einstellungen). Leer lassen, dann gilt der Wert der übergeordneten Anlage bzw. der globale Stamm. Gilt auch für alle Unteranlagen ohne eigenen Wert.</div>
+    {{if .T.OverMax}}<div class="rec-msg err" style="margin-top:6px"><i class="ti ti-alert-circle"></i> Eingetragen sind {{.T.OwnMax}} Minuten – es gilt die maximale Rüstzeit von {{.T.GlobalMax}} Minuten.</div>{{end}}</div>
   <div style="display:flex;justify-content:flex-end;margin-top:8px">
     <button class="btn btn-primary btn-small" type="submit"><i class="ti ti-device-floppy"></i> Höchstdauer speichern</button>
   </div>

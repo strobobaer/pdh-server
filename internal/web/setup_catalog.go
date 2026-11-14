@@ -80,6 +80,7 @@ type setupInfraTab struct {
 	MaxSource  string           // „globaler Stamm“ oder Name der Anlage
 	OwnMax     string           // eigener Wert dieser Anlage ("" = geerbt)
 	MaxOwn     bool             // die wirksame Höchstdauer ist der eigene Wert
+	OverMax    bool             // der eigene Wert liegt über der (gesenkten) maximalen Rüstzeit
 	GlobalMax  int
 }
 
@@ -134,16 +135,18 @@ func (h *Handler) infraSetupTab(ctx context.Context, infraID string) setupInfraT
 	var own2 *int
 	if h.db.QueryRow(ctx, `SELECT setup_max_minutes FROM infrastructure WHERE id = $1::uuid`, infraID).Scan(&own2) == nil && own2 != nil {
 		t.OwnMax = strconv.Itoa(*own2)
-		t.MaxOwn = *own2 == t.MaxMinutes && t.MaxSource != "globaler Stamm"
+		t.MaxOwn = *own2 <= t.GlobalMax
+		t.OverMax = *own2 > t.GlobalMax
 	}
 	return t
 }
 
 // ── Aktionen im Katalog (setup.admin) ────────────────────────────────────
 
-// setupCatalogGuard prüft das Recht (setup.admin) und liest das Formular.
-func (h *Handler) setupCatalogGuard(w http.ResponseWriter, r *http.Request) bool {
-	if !h.setupCan(r, permSetupAdmin, "") {
+// setupCatalogGuard prüft das Recht und liest das Formular. Pflegen
+// (anlegen, ändern, verschieben) darf setup.edit, löschen nur setup.admin.
+func (h *Handler) setupCatalogGuard(w http.ResponseWriter, r *http.Request, perm string) bool {
+	if !h.setupCan(r, perm, "") {
 		setupDenied(w, r)
 		return false
 	}
@@ -182,7 +185,11 @@ func setupReasonKey(name string) string {
 // SetupReasonsWeb: POST /setup/reasons-web (action=save|delete, id, name,
 // active=1|0) – Grund anlegen, umbenennen, (de)aktivieren oder löschen.
 func (h *Handler) SetupReasonsWeb(w http.ResponseWriter, r *http.Request) {
-	if !h.setupCatalogGuard(w, r) {
+	if !h.setupCatalogGuard(w, r, permSetupEdit) {
+		return
+	}
+	if r.FormValue("action") == "delete" && !h.setupCan(r, permSetupAdmin, "") { // Löschen nur Bereichsadministrator
+		setupDenied(w, r)
 		return
 	}
 	st, ctx, id := h.setupStore(), r.Context(), strings.TrimSpace(r.FormValue("id"))
@@ -266,7 +273,7 @@ func readSetupButtonForm(r *http.Request) (name, reasonID string, err error) {
 // SetupButtonsWeb: POST /setup/buttons-web (id leer = neu; name, reason_id,
 // active=1|0) – Rüsttaste anlegen (ans Ende) oder ändern.
 func (h *Handler) SetupButtonsWeb(w http.ResponseWriter, r *http.Request) {
-	if !h.setupCatalogGuard(w, r) {
+	if !h.setupCatalogGuard(w, r, permSetupEdit) {
 		return
 	}
 	id := strings.TrimSpace(r.FormValue("id"))
@@ -293,7 +300,7 @@ func (h *Handler) SetupButtonsWeb(w http.ResponseWriter, r *http.Request) {
 
 // SetupButtonMoveWeb: POST /setup/buttons/{id}/move-web (dir=up|down).
 func (h *Handler) SetupButtonMoveWeb(w http.ResponseWriter, r *http.Request) {
-	if !h.setupCatalogGuard(w, r) {
+	if !h.setupCatalogGuard(w, r, permSetupEdit) {
 		return
 	}
 	id := chi.URLParam(r, "id")
@@ -315,7 +322,7 @@ func (h *Handler) SetupButtonMoveWeb(w http.ResponseWriter, r *http.Request) {
 // SetupButtonDeleteWeb: POST /setup/buttons/{id}/delete-web – samt Zuordnungen;
 // bestehende Rüstzeiten behalten den Tastennamen.
 func (h *Handler) SetupButtonDeleteWeb(w http.ResponseWriter, r *http.Request) {
-	if !h.setupCatalogGuard(w, r) {
+	if !h.setupCatalogGuard(w, r, permSetupAdmin) {
 		return
 	}
 	id := chi.URLParam(r, "id")
@@ -367,7 +374,7 @@ func (h *Handler) InfraSetupButtonsWeb(w http.ResponseWriter, r *http.Request) {
 	back := "/infrastructure/" + id + "?tab=setup"
 	if err := h.setupStore().SetInfraButtons(r.Context(), id, ids); err != nil {
 		componentLog("rüstzeiten").Error().Err(err).Str("anlage", id).Msg("rüsttasten zuordnen")
-		infraRedirect(w, r, back, "", err)
+		infraRedirect(w, r, back, "", errors.New("Die Rüsttasten konnten nicht gespeichert werden."))
 		return
 	}
 	h.addHistory(r.Context(), "infrastructure", id, "update", "Rüsttasten", "", "", "Rüsttasten zugeordnet", getUser(r).ID)

@@ -30,7 +30,8 @@ type InfraPageData struct {
 	EasyTexts      []easyText       // Easy-Mode-Meldetexte (Katalog, easy_texts.go)
 	SetupCatalog   setupCatalogView // Rüstzeiten: Gründe und Rüsttasten (setup_catalog.go)
 	SetupView      bool             // Katalog der Rüstzeiten sichtbar (setup.view)
-	SetupAdmin     bool             // … und änderbar (setup.admin)
+	SetupEdit      bool             // … pflegbar (setup.edit)
+	SetupAdmin     bool             // … und löschbar (setup.admin)
 }
 
 type InfraNodeView struct {
@@ -188,6 +189,7 @@ func (h *Handler) Infrastructure(w http.ResponseWriter, r *http.Request) {
 	data.DueObligations = h.dueObligations(ctx)
 	data.EasyTexts = h.easyTextCatalog(ctx)
 	if data.SetupView = h.setupCan(r, permSetupView, "") || h.setupCan(r, permSetupEdit, ""); data.SetupView {
+		data.SetupEdit = h.setupCan(r, permSetupEdit, "")
 		data.SetupAdmin = h.setupCan(r, permSetupAdmin, "")
 		data.SetupCatalog = h.setupCatalog(ctx)
 	}
