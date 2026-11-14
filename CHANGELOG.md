@@ -10,6 +10,24 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.80.4] – 2026-11-14
+
+### Neu
+
+- Mail-Brücke: Nextcloud verschickt seine Mails (neues Konto, Freigaben, „Passwort vergessen“, Benachrichtigungen) jetzt immer über das PDH – auch wenn das PDH über Microsoft 365 sendet, was Nextcloud selbst nicht kann.
+- Ändert sich der Versandweg im PDH (SMTP oder Microsoft 365), gilt das sofort auch für Nextcloud, ohne Neustart.
+- In den Server-Einstellungen unter Nextcloud zeigt die neue Karte „Mailversand über das PDH“, ob die Brücke läuft, wann Nextcloud angeschlossen wurde, wann die letzte Mail wegging und was zuletzt schiefging; ein Knopf schließt Nextcloud an, das PDH tut es nach dem Start auch von selbst.
+- Der SMTP-Versand des PDH funktioniert jetzt mit jedem Anbieter: Verschlüsselung per STARTTLS, SSL/TLS oder gar nicht, mit und ohne Anmeldung, und der übliche Port richtet sich nach der Verschlüsselung (587, 465, 25).
+
+### Behoben
+
+- Apps lassen sich in Nextcloud 35 über die Oberfläche installieren: Das Installationsskript liefert `.mjs`-Dateien als JavaScript aus und setzt den Sicherheitskopf `Strict-Transport-Security`.
+
+### Sicherheit
+
+- Die Mail-Brücke nimmt nur Verbindungen von diesem Server an (127.0.0.1), verlangt eine Anmeldung mit zufälligem, verschlüsselt gespeichertem Passwort und begrenzt Mails auf 25 MB, 50 Empfänger und 300 je Stunde.
+- Das Passwort für Nextcloud geht nicht über Prozess-Argumente oder Protokolle an den Update-Agenten; Fehlertexte von Microsoft stehen nur im Server-Protokoll.
+
 ## [0.80.3] – 2026-11-14
 
 ### Neu

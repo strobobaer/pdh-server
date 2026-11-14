@@ -290,6 +290,10 @@ type Handler struct {
 	rbac             *rbac.Service
 	jwtSecret        string
 	mailCfg          config.MailConfig
+	mailMu           sync.RWMutex // schützt mailCfg: Einstellungen ändern sich im Betrieb (mail_bridge.go liest je Mail frisch)
+	mailBridge       *mailBridge  // lokales SMTP-Relais für Nextcloud (mail_bridge.go)
+	mailRawSMTPFn    func(from string, to []string, raw []byte) error // nur Tests
+	mailRawGraphFn   func(ctx context.Context, raw []byte) error      // nur Tests
 	chatOnce         sync.Once
 	chatHubRef       *chatHub
 	updateAgentURL   string
@@ -675,6 +679,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/admin/server-config/vpn/zip", h.VPNZipWeb)
 	r.Post("/admin/server-config/restart", h.ServerRestartWeb)
 	r.Post("/admin/server-config/nextcloud/admin", h.NextcloudAdminWeb) // Dienstkonto pdhNCadmin (nextcloud_admin.go)
+	r.Post("/admin/server-config/nextcloud/mail", h.NextcloudMailWeb)   // Mail-Brücke: Nextcloud versendet über das PDH (mail_bridge.go)
 	r.Post("/admin/server-config/nextcloud/sync", h.NextcloudSyncWeb)   // Abgleich PDH → Nextcloud (nextcloud_sync.go)
 	r.Post("/admin/server-config/import", h.ServerConfigImportWeb)
 	r.Post("/admin/server-config/takeover", h.ServerConfigTakeOverWeb)

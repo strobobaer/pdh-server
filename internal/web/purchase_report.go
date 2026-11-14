@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"mime"
 	"net"
 	"net/http"
+	"net/mail"
 	"net/smtp"
 	"net/url"
 	"strconv"
@@ -39,7 +41,17 @@ const (
 
 // ConfigureMail setzt SMTP-/Public-URL-Konfiguration (siehe config.MailConfig).
 func (h *Handler) ConfigureMail(cfg config.MailConfig) {
+	h.mailMu.Lock()
 	h.mailCfg = cfg
+	h.mailMu.Unlock()
+}
+
+// mailConfig: aktuelle Mailkonfiguration (Momentaufnahme). Wer sendet, liest sie je
+// Mail frisch – so gilt ein geänderter Versandweg ohne Neustart.
+func (h *Handler) mailConfig() config.MailConfig {
+	h.mailMu.RLock()
+	defer h.mailMu.RUnlock()
+	return h.mailCfg
 }
 
 // PurchaseLine ist eine Position des Bestellvorschlags.
@@ -275,10 +287,11 @@ func (h *Handler) buildPurchaseSuggestions(ctx context.Context) ([]*PurchaseBuye
 // ── Mailversand ──────────────────────────────────────────────
 
 func (h *Handler) mailConfigured() bool {
+	c := h.mailConfig()
 	if h.mailViaGraph() {
-		return h.mailCfg.From != "" && h.microsoftAppConfigured()
+		return c.From != "" && h.microsoftAppConfigured()
 	}
-	return h.mailCfg.Host != "" && h.mailCfg.From != ""
+	return c.Host != "" && c.From != ""
 }
 
 // smtpAuthFor waehlt das Anmeldeverfahren nach dem AUTH-Angebot des
@@ -296,7 +309,23 @@ func smtpAuthFor(client *smtp.Client, c config.MailConfig) smtp.Auth {
 			return &loginAuth{user: c.User, password: c.Password}
 		}
 	}
-	return smtp.PlainAuth("", c.User, c.Password, c.Host)
+	return &plainAuth{user: c.User, password: c.Password}
+}
+
+// plainAuth: SMTP AUTH PLAIN. Anders als smtp.PlainAuth verweigert es die
+// Anmeldung ohne TLS nicht: ob verschlüsselt wird, bestimmt der Betreiber mit
+// dem Verschlüsselungsmodus (starttls, tls oder none für einen Relais im Haus).
+type plainAuth struct{ user, password string }
+
+func (a *plainAuth) Start(_ *smtp.ServerInfo) (string, []byte, error) {
+	return "PLAIN", []byte("\x00" + a.user + "\x00" + a.password), nil
+}
+
+func (a *plainAuth) Next(_ []byte, more bool) ([]byte, error) {
+	if more {
+		return nil, errors.New("unerwartete SMTP-PLAIN-Rückfrage")
+	}
+	return nil, nil
 }
 
 // loginAuth: SMTP AUTH LOGIN (Benutzer und Passwort nacheinander, Base64
@@ -322,51 +351,77 @@ func (a *loginAuth) Next(fromServer []byte, more bool) ([]byte, error) {
 	return nil, fmt.Errorf("unerwartete SMTP-LOGIN-Rückfrage: %q", fromServer)
 }
 
-// sendMail verschickt eine HTML-Mail per SMTP (STARTTLS, implizites TLS
-// oder unverschluesselt je nach PDH_SMTP_TLS).
-func (h *Handler) sendMail(to []string, subject, html string) error {
-	c := h.mailCfg
-	if h.mailViaGraph() {
-		return h.sendMailGraph(context.Background(), to, subject, html)
+// smtpRootCAs: zusätzliche Vertrauensanker für die TLS-Prüfung (nur Tests; sonst nil = System).
+var smtpRootCAs *x509.CertPool
+
+// smtpPortFor: eingetragener Port, sonst der übliche je Verschlüsselung
+// (starttls 587, tls 465, none 25).
+func smtpPortFor(c config.MailConfig) int {
+	if c.Port != 0 {
+		return c.Port
 	}
-	if !h.mailConfigured() {
+	switch strings.ToLower(strings.TrimSpace(c.TLSMode)) {
+	case "tls":
+		return 465
+	case "none":
+		return 25
+	}
+	return 587
+}
+
+// mailAddrOnly: reine Adresse aus „Name <adresse>“ bzw. „adresse“ (Umschlag-Absender).
+func mailAddrOnly(s string) string {
+	s = strings.TrimSpace(s)
+	if a, err := mail.ParseAddress(s); err == nil {
+		return a.Address
+	}
+	return s
+}
+
+// sendRawSMTP liefert eine fertige Nachricht (Rohtext mit Kopfzeilen) über den
+// SMTP-Weg des PDH aus – STARTTLS, implizites TLS (465) oder unverschlüsselt,
+// mit und ohne Anmeldung. PDH-Mails (sendMail) und die Mail-Brücke für
+// Nextcloud nutzen genau diese Funktion, damit sie sich gleich verhalten.
+func (h *Handler) sendRawSMTP(from string, to []string, raw []byte) error {
+	if h.mailRawSMTPFn != nil {
+		return h.mailRawSMTPFn(from, to, raw)
+	}
+	c := h.mailConfig()
+	if c.Host == "" || c.From == "" {
 		return errors.New("SMTP ist nicht konfiguriert (PDH_SMTP_HOST / PDH_SMTP_FROM)")
 	}
-	port := c.Port
-	if port == 0 {
-		port = 587
-	}
-	addr := net.JoinHostPort(c.Host, strconv.Itoa(port))
-	tlsCfg := &tls.Config{ServerName: c.Host, MinVersion: tls.VersionTLS12}
+	addr := net.JoinHostPort(c.Host, strconv.Itoa(smtpPortFor(c)))
+	tlsCfg := &tls.Config{ServerName: c.Host, MinVersion: tls.VersionTLS12, RootCAs: smtpRootCAs}
+	mode := strings.ToLower(strings.TrimSpace(c.TLSMode))
 
-	var client *smtp.Client
+	var conn net.Conn
 	var err error
-	if strings.EqualFold(c.TLSMode, "tls") {
-		conn, derr := tls.DialWithDialer(&net.Dialer{Timeout: 20 * time.Second}, "tcp", addr, tlsCfg)
-		if derr != nil {
-			return derr
-		}
-		client, err = smtp.NewClient(conn, c.Host)
+	if mode == "tls" {
+		conn, err = tls.DialWithDialer(&net.Dialer{Timeout: 20 * time.Second}, "tcp", addr, tlsCfg)
 	} else {
-		conn, derr := net.DialTimeout("tcp", addr, 20*time.Second)
-		if derr != nil {
-			return derr
-		}
-		client, err = smtp.NewClient(conn, c.Host)
-		if err == nil && !strings.EqualFold(c.TLSMode, "none") {
-			err = client.StartTLS(tlsCfg)
-		}
+		conn, err = net.DialTimeout("tcp", addr, 20*time.Second)
 	}
 	if err != nil {
 		return err
 	}
+	_ = conn.SetDeadline(time.Now().Add(3 * time.Minute))
+	client, err := smtp.NewClient(conn, c.Host)
+	if err != nil {
+		_ = conn.Close()
+		return err
+	}
 	defer client.Close()
-	if c.User != "" && !strings.EqualFold(c.TLSMode, "none") {
+	if mode != "tls" && mode != "none" {
+		if err := client.StartTLS(tlsCfg); err != nil {
+			return err
+		}
+	}
+	if c.User != "" {
 		if err := client.Auth(smtpAuthFor(client, c)); err != nil {
 			return err
 		}
 	}
-	if err := client.Mail(c.From); err != nil {
+	if err := client.Mail(from); err != nil {
 		return err
 	}
 	for _, rcpt := range to {
@@ -378,6 +433,25 @@ func (h *Handler) sendMail(to []string, subject, html string) error {
 	if err != nil {
 		return err
 	}
+	if _, err := wc.Write(raw); err != nil {
+		return err
+	}
+	if err := wc.Close(); err != nil {
+		return err
+	}
+	return client.Quit()
+}
+
+// sendMail verschickt eine HTML-Mail: über Microsoft Graph oder per SMTP
+// (STARTTLS, implizites TLS oder unverschluesselt je nach PDH_SMTP_TLS).
+func (h *Handler) sendMail(to []string, subject, html string) error {
+	c := h.mailConfig()
+	if h.mailViaGraph() {
+		return h.sendMailGraph(context.Background(), to, subject, html)
+	}
+	if !h.mailConfigured() {
+		return errors.New("SMTP ist nicht konfiguriert (PDH_SMTP_HOST / PDH_SMTP_FROM)")
+	}
 	var msg bytes.Buffer
 	fmt.Fprintf(&msg, "From: %s\r\nTo: %s\r\nSubject: %s\r\nDate: %s\r\nMIME-Version: 1.0\r\n",
 		c.From, strings.Join(to, ", "), mime.QEncoding.Encode("utf-8", subject), time.Now().Format(time.RFC1123Z))
@@ -388,13 +462,7 @@ func (h *Handler) sendMail(to []string, subject, html string) error {
 		enc = enc[76:]
 	}
 	msg.WriteString(enc + "\r\n")
-	if _, err := wc.Write(msg.Bytes()); err != nil {
-		return err
-	}
-	if err := wc.Close(); err != nil {
-		return err
-	}
-	return client.Quit()
+	return h.sendRawSMTP(mailAddrOnly(c.From), to, msg.Bytes())
 }
 
 // sendPurchaseReports verschickt je Einkaeufer eine Mail. Gruppen ohne
@@ -420,7 +488,7 @@ func (h *Handler) sendPurchaseReports(ctx context.Context) (int, []string, error
 			return sent, problems, err
 		}
 		if err := t.ExecuteTemplate(&body, "purchase-report-mail", map[string]interface{}{
-			"Group": g, "BaseURL": strings.TrimRight(h.mailCfg.PublicURL, "/"), "Date": time.Now().Format("02.01.2006"),
+			"Group": g, "BaseURL": strings.TrimRight(h.mailConfig().PublicURL, "/"), "Date": time.Now().Format("02.01.2006"),
 			"Logo": h.branding().PrintLogo, "BrandName": h.branding().AppName,
 		}); err != nil {
 			return sent, problems, err

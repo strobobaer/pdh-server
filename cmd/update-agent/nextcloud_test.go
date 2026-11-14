@@ -204,3 +204,50 @@ func TestNCAppsScript(t *testing.T) {
 		}
 	}
 }
+
+// Mail-Brücke: Nextcloud versendet über das lokale Relais des PDH.
+func TestNCMailScript(t *testing.T) {
+	ok := ncMailRequest{Dir: "/var/www/nextcloud", Host: "127.0.0.1", Port: 2525, User: "nextcloud", Password: "abcdefghijklmnop0123456789", From: "pdh@firma.de"}
+	for name, bad := range map[string]func(r *ncMailRequest){
+		"dir":      func(r *ncMailRequest) { r.Dir = "/var/www/nc; rm -rf /" },
+		"host":     func(r *ncMailRequest) { r.Host = "evil.example.com" },
+		"port":     func(r *ncMailRequest) { r.Port = 0 },
+		"port2":    func(r *ncMailRequest) { r.Port = 70000 },
+		"user":     func(r *ncMailRequest) { r.User = `x"y` },
+		"password": func(r *ncMailRequest) { r.Password = `abc"def"ghijklmnopq` },
+		"kurz":     func(r *ncMailRequest) { r.Password = "kurz" },
+		"from":     func(r *ncMailRequest) { r.From = `a"b@firma.de` },
+		"ohne@":    func(r *ncMailRequest) { r.From = "pdh" },
+	} {
+		r := ok
+		bad(&r)
+		if _, err := ncMailScript(r); err == nil {
+			t.Errorf("%s: ungültige Eingabe akzeptiert", name)
+		}
+	}
+	s, err := ncMailScript(ok)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Das Passwort steht weder im Skripttext noch in Argumenten von occ: es kommt aus $PDH_MAIL_PASS
+	// und läuft per Standardeingabe in „occ config:import“.
+	if strings.Contains(s, ok.Password) || !strings.Contains(s, `"$PDH_MAIL_PASS"`) || !strings.Contains(s, "occ config:import") {
+		t.Errorf("Skript:\n%s", s)
+	}
+	if strings.Contains(s, "mail_smtppassword --value") {
+		t.Error("Passwort darf nicht als occ-Argument stehen")
+	}
+	for _, want := range []string{`"mail_smtpmode":"smtp"`, `"mail_smtphost":"127.0.0.1"`, `"mail_smtpport":2525`, `"mail_smtpsecure":""`,
+		`"mail_smtpauth":1`, `"mail_smtpauthtype":"LOGIN"`, `"mail_smtpname":"nextcloud"`, `"mail_from_address":"pdh"`, `"mail_domain":"firma.de"`, `"mail_smtppassword":"%s"`} {
+		if !strings.Contains(s, want) {
+			t.Errorf("Skript enthält %q nicht", want)
+		}
+	}
+	if bash, err := exec.LookPath("bash"); err == nil {
+		f := filepath.Join(t.TempDir(), "mail.sh")
+		_ = os.WriteFile(f, []byte(s), 0o644)
+		if out, err := exec.Command(bash, "-n", f).CombinedOutput(); err != nil {
+			t.Errorf("Syntaxfehler %v %s", err, out)
+		}
+	}
+}
