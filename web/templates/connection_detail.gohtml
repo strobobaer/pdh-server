@@ -212,7 +212,7 @@
 <div class="rec-pane" data-pane="mappings">
   <div class="card" style="overflow-x:auto">
   {{if eq .Direction "import"}}
-    <div class="card-title"><span><i class="ti ti-map-pin"></i> Zuordnungen</span>{{if .QueriesSupported}}<a class="btn btn-small" href="?tab=queries"><i class="ti ti-plus"></i> Aus einer Abfrage zuordnen</a>{{end}}</div>
+    <div class="card-title"><span><i class="ti ti-map-pin"></i> Zuordnungen</span>{{if and .CanWrite .Mappings (or (eq .Kind "modbus") (eq .Kind "opcua"))}}<form method="POST" action="/import/connections/{{.ID}}/{{if eq .Kind "modbus"}}read{{else}}nodes{{end}}/refresh" style="margin:0"><button class="btn btn-small" type="submit"><i class="ti ti-refresh"></i> Werte jetzt aktualisieren</button></form>{{end}}{{if .QueriesSupported}}<a class="btn btn-small" href="?tab=queries"><i class="ti ti-plus"></i> Aus einer Abfrage zuordnen</a>{{end}}</div>
     {{if .Mappings}}
     <table class="cd-tbl"><thead><tr><th>Quelle</th><th>Bezeichnung</th><th>Anlage</th><th>Notiz</th><th>Letzter Wert</th><th>Aktualisiert</th><th></th></tr></thead>
     <tbody>{{range .Mappings}}<tr>

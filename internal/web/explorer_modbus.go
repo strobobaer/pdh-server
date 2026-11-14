@@ -527,6 +527,13 @@ func parseModbusWrite(r *http.Request, defaultUnit byte) (modbusWriteInput, erro
 		}
 		in.Unit = byte(n)
 	}
+	// Geschrieben wird nur mit der Einheit der Verbindung (wie beim Übernehmen); Rundruf nie.
+	if in.Unit == 0 {
+		return in, errors.New("Einheit 0 (Rundruf) ist beim Schreiben gesperrt")
+	}
+	if in.Unit != defaultUnit {
+		return in, fmt.Errorf("Einheit %d statt der Einheit %d der Verbindung", in.Unit, defaultUnit)
+	}
 	if utf8.RuneCountInString(in.Value) > modbusExplorerMaxWrite {
 		return in, errors.New("Der Wert ist zu lang")
 	}

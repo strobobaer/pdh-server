@@ -484,7 +484,7 @@ func TestModbusWriteHandlerLogsResult(t *testing.T) {
 		h.ModbusExplorerWrite("import")(w, noUserReq(modbusWriteReq(f)))
 		return w
 	}
-	w := post(map[string]string{"area": "holding", "address": "10", "type": "float32", "order": "cdab", "value": "21,5", "unit": "3"})
+	w := post(map[string]string{"area": "holding", "address": "10", "type": "float32", "order": "cdab", "value": "21,5", "unit": "5"})
 	var out struct {
 		OK    bool   `json:"ok"`
 		Value string `json:"value"`
@@ -494,7 +494,7 @@ func TestModbusWriteHandlerLogsResult(t *testing.T) {
 	}
 	want, _ := encodeModbusValue("21.5", "float32", "cdab")
 	s.Set(func(s *testModbusServer) {
-		if got := []uint16{s.Holding[10], s.Holding[11]}; !reflect.DeepEqual(got, want) || s.LastUnit != 3 {
+		if got := []uint16{s.Holding[10], s.Holding[11]}; !reflect.DeepEqual(got, want) || s.LastUnit != 5 {
 			t.Errorf("Register %v Einheit %d", got, s.LastUnit)
 		}
 	})
@@ -514,24 +514,41 @@ func TestModbusWriteHandlerLogsResult(t *testing.T) {
 	if w = post(map[string]string{"area": "holding", "address": "5000", "type": "uint16", "value": "1"}); w.Code != http.StatusBadGateway {
 		t.Fatalf("Adresse 5000: %d %s", w.Code, w.Body.String())
 	}
+	// Andere Einheit als die der Verbindung (5) und Rundruf (0): 400, ohne dass das Gerät etwas sieht
+	s.Set(func(s *testModbusServer) { s.Requests = 0 })
+	w = post(map[string]string{"area": "holding", "address": "10", "type": "uint16", "value": "1", "unit": "3"})
+	if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "Einheit 3 statt der Einheit 5 der Verbindung") {
+		t.Fatalf("andere Einheit: %d %s", w.Code, w.Body.String())
+	}
+	w = post(map[string]string{"area": "coil", "address": "4", "value": "true", "unit": "0"})
+	if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "Rundruf") {
+		t.Fatalf("Einheit 0: %d %s", w.Code, w.Body.String())
+	}
+	s.Set(func(s *testModbusServer) {
+		if s.Requests != 0 {
+			t.Errorf("Gerät wurde %d-mal angesprochen", s.Requests)
+		}
+	})
 	hist := h.recordHistory(context.Background(), "connection", id)
-	if len(hist) != 6 {
+	if len(hist) != 8 {
 		t.Fatalf("Verlauf: %+v", hist)
 	}
-	var okSeen, coilSeen, rejSeen, failSeen bool
+	var okSeen, coilSeen, rejSeen, failSeen, unitSeen bool
 	for _, e := range hist {
 		switch {
-		case e.FieldName == "holding:10:float32:cdab (Einheit 3)":
+		case e.FieldName == "holding:10:float32:cdab (Einheit 5)":
 			okSeen = e.NewValue == "21,5 (float32, CDAB)"
 		case e.FieldName == "coil:4:bool (Einheit 5)":
 			coilSeen = e.NewValue == "true"
 		case strings.HasPrefix(e.NewValue, "Abgelehnt (") && strings.Contains(e.NewValue, "70000") && strings.Contains(e.NewValue, "(uint16)"):
 			rejSeen = true
+		case strings.HasPrefix(e.NewValue, "Abgelehnt (Einheit 3 statt der Einheit 5 der Verbindung)"):
+			unitSeen = true
 		case e.FieldName == "holding:5000:uint16 (Einheit 5)":
 			failSeen = strings.HasPrefix(e.NewValue, "Fehlgeschlagen (Das Gerät kennt diese Adresse nicht") && strings.Contains(e.NewValue, "– 1 (uint16, ABCD)")
 		}
 	}
-	if !okSeen || !coilSeen || !rejSeen || !failSeen {
+	if !okSeen || !coilSeen || !rejSeen || !failSeen || !unitSeen {
 		t.Errorf("Einträge ok=%v coil=%v abgelehnt=%v fehlgeschlagen=%v: %+v", okSeen, coilSeen, rejSeen, failSeen, hist)
 	}
 }
@@ -555,6 +572,62 @@ func TestConnectionDetailModbusExplorer(t *testing.T) {
 		page = renderPage(t, tmpl, "connection_detail", d)
 		if strings.Contains(page, `id="xm-write"`) || !strings.Contains(page, `const canWrite = false`) {
 			t.Errorf("%s: Schreibformular ohne Recht", dir)
+		}
+	}
+}
+
+// Reiter „Zuordnungen“: „Werte jetzt aktualisieren“ nur mit Bearbeiten-Recht, nur bei Modbus/OPC UA
+// im Import und nur, wenn es Zuordnungen gibt; jeder Typ ruft seine eigene Route.
+func TestConnectionDetailRefreshButton(t *testing.T) {
+	tmpl := loadTestTemplates(t)
+	const id = "11111111-1111-1111-1111-111111111111"
+	mk := func(dir, kind string, write bool, maps int) string {
+		d := ConnectionDetailData{
+			Direction: dir, ID: id, Name: "Presse", Kind: kind, KindLabel: kind, Enabled: true,
+			CanWrite: write, CanExecute: true, Tab: "mappings", Tools: connectionTools(dir, kind, "x", nil),
+		}
+		for i := 0; i < maps; i++ {
+			d.Mappings = append(d.Mappings, connMappingRow{})
+		}
+		return renderPage(t, tmpl, "connection_detail", d)
+	}
+	const label = "Werte jetzt aktualisieren"
+	if p := mk("import", "modbus", true, 1); !strings.Contains(p, label) || !strings.Contains(p, `/import/connections/`+id+`/read/refresh`) {
+		t.Error("Modbus: Knopf oder Route fehlt")
+	}
+	if p := mk("import", "opcua", true, 1); !strings.Contains(p, label) || !strings.Contains(p, `/import/connections/`+id+`/nodes/refresh`) {
+		t.Error("OPC UA: Knopf oder Route fehlt")
+	}
+	for name, p := range map[string]string{
+		"ohne Recht": mk("import", "modbus", false, 1), "MQTT": mk("import", "mqtt", true, 1), "ohne Zuordnung": mk("import", "opcua", true, 0),
+	} {
+		if strings.Contains(p, label) {
+			t.Errorf("%s: Knopf darf nicht erscheinen", name)
+		}
+	}
+}
+
+// OPC UA mit Benutzer/Passwort: sichtbarer Hinweis auf fehlende Verschlüsselung; Modbus sperrt das Schreibformular bei abweichender Einheit.
+func TestExplorerPlainAuthAndWriteLockMarkup(t *testing.T) {
+	tmpl := loadTestTemplates(t)
+	d := ConnectionDetailData{
+		Direction: "import", ID: "11111111-1111-1111-1111-111111111111", Name: "SPS", Kind: "opcua", KindLabel: "OPC UA",
+		Enabled: true, CanWrite: true, CanExecute: true, Tab: "explorer", Explorer: true, ExplorerWrite: true,
+		Tools: connectionTools("import", "opcua", "x", nil),
+	}
+	if p := renderPage(t, tmpl, "connection_detail", d); strings.Contains(p, "Sicherheitsrichtlinie None") && !strings.Contains(p, "id=\"xo-plain\"") {
+		t.Error("Hinweis ohne Passwortanmeldung")
+	}
+	d.ExplorerPlainAuth = true
+	if p := renderPage(t, tmpl, "connection_detail", d); !strings.Contains(p, "ohne Verschlüsselung (Sicherheitsrichtlinie None)") || !strings.Contains(p, "im Klartext übers Netz") {
+		t.Error("OPC UA: Hinweis zur Verschlüsselung fehlt")
+	}
+	d.Kind, d.KindLabel, d.ExplorerUnit = "modbus", "Modbus TCP", 7
+	d.Tools = connectionTools("import", "modbus", "x", nil)
+	p := renderPage(t, tmpl, "connection_detail", d)
+	for _, want := range []string{`id="xm-w-hint"`, "lockWrite", "auf Einheit ' + wantUnit"} {
+		if !strings.Contains(p, want) {
+			t.Errorf("Modbus: %q fehlt", want)
 		}
 	}
 }

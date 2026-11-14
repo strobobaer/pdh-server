@@ -426,6 +426,28 @@ func labPool(t *testing.T) *pgxpool.Pool {
 	return pool
 }
 
+// idList liefert die ersten Spalten (Text) aller Zeilen der Abfrage.
+func idList(t *testing.T, pool *pgxpool.Pool, q string) []string {
+	t.Helper()
+	rows, err := pool.Query(context.Background(), q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	out := []string{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			t.Fatal(err)
+		}
+		out = append(out, id)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
 func countOf(t *testing.T, pool *pgxpool.Pool, q string) int {
 	t.Helper()
 	var n int
@@ -447,12 +469,14 @@ func TestSetupAndCleanupLab(t *testing.T) {
 			t.Skipf("in der Datenbank liegen schon Lastprüfungs-Daten (%s: %d) – erst -cleanup", r.Label, r.N)
 		}
 	}
-	baseline := map[string]int{
-		"users":   countOf(t, pool, `SELECT count(*) FROM users`),
-		"tickets": countOf(t, pool, `SELECT count(*) FROM tickets`),
-		"faults":  countOf(t, pool, `SELECT count(*) FROM faults`),
-		"infra":   countOf(t, pool, `SELECT count(*) FROM infrastructure`),
-		"queue":   countOf(t, pool, `SELECT count(*) FROM record_change_queue`),
+	// Vorhandene Datensätze vor dem Test merken: am Ende müssen genau diese noch da sein.
+	// Anzahlen zählen wir nicht, und nur Zeilen älter als 10 Minuten zählen: parallel laufende Pakete legen kurzlebige eigene Zeilen an und löschen sie wieder.
+	baseline := map[string][]string{}
+	for k, q := range map[string]string{
+		"users": `SELECT id::text FROM users WHERE created_at < now() - interval '10 minutes'`, "tickets": `SELECT id::text FROM tickets WHERE created_at < now() - interval '10 minutes'`,
+		"faults": `SELECT id::text FROM faults WHERE created_at < now() - interval '10 minutes'`, "infra": `SELECT id::text FROM infrastructure WHERE created_at < now() - interval '10 minutes'`,
+	} {
+		baseline[k] = idList(t, pool, q)
 	}
 	t.Cleanup(func() { _ = doCleanup(context.Background(), pool, &bytes.Buffer{}) })
 
@@ -531,9 +555,24 @@ func TestSetupAndCleanupLab(t *testing.T) {
 	_, err = pool.Exec(ctx, `INSERT INTO tickets (title, created_by, infrastructure_id) VALUES ('Lastprüfung Meldetext', '00000000-0000-4000-8000-00000000d0d1', $1::uuid)`, plant)
 	must(err)
 
+	// Änderungswarteschlange: eigene Einträge (Ticket, Störung) vor dem Aufräumen merken
+	_, err = pool.Exec(ctx, `INSERT INTO record_change_queue (module, record_id, kind) VALUES ('fault', $1::uuid, 'update')`, fault)
+	must(err)
+	ownQueue := idList(t, pool, `SELECT DISTINCT record_id::text FROM record_change_queue WHERE
+		(module = 'fault' AND record_id IN (SELECT id FROM faults WHERE title LIKE 'Lastprüfung %'))
+		OR (module = 'ticket' AND record_id IN (SELECT id FROM tickets WHERE title LIKE 'Lastprüfung %'))`)
+	if len(ownQueue) == 0 {
+		t.Fatal("keine eigenen Einträge in record_change_queue")
+	}
+
 	buf.Reset()
 	if err := doCleanup(ctx, pool, &buf); err != nil {
 		t.Fatalf("cleanup: %v\n%s", err, buf.String())
+	}
+	var leftQueue int
+	must(pool.QueryRow(ctx, `SELECT count(*) FROM record_change_queue WHERE record_id::text = ANY($1)`, ownQueue).Scan(&leftQueue))
+	if leftQueue != 0 {
+		t.Errorf("record_change_queue: %d eigene Einträge übrig", leftQueue)
 	}
 	if !strings.Contains(buf.String(), "übrig: 0") {
 		t.Errorf("Ausgabe ohne „übrig: 0“:\n%s", buf.String())
@@ -547,13 +586,12 @@ func TestSetupAndCleanupLab(t *testing.T) {
 			t.Errorf("übrig %s: %d", r.Label, r.N)
 		}
 	}
-	// vorhandene Daten sind unberührt (Ticketschlange darf nicht gewachsen sein)
-	for k, q := range map[string]string{
-		"users": `SELECT count(*) FROM users`, "tickets": `SELECT count(*) FROM tickets`, "faults": `SELECT count(*) FROM faults`,
-		"infra": `SELECT count(*) FROM infrastructure`, "queue": `SELECT count(*) FROM record_change_queue`,
-	} {
-		if got := countOf(t, pool, q); got != baseline[k] {
-			t.Errorf("%s: %d statt %d vor dem Test", k, got, baseline[k])
+	// vorhandene Daten sind unberührt: alle vorher gemerkten Datensätze sind noch da
+	for k, tbl := range map[string]string{"users": "users", "tickets": "tickets", "faults": "faults", "infra": "infrastructure"} {
+		var n int
+		must(pool.QueryRow(ctx, `SELECT count(*) FROM `+tbl+` WHERE id::text = ANY($1)`, baseline[k]).Scan(&n))
+		if n != len(baseline[k]) {
+			t.Errorf("%s: %d von %d vorhandenen Datensätzen noch da", k, n, len(baseline[k]))
 		}
 	}
 	// zweites Aufräumen ist harmlos

@@ -79,6 +79,7 @@
       </select></label>
     <label>Wert <input type="text" id="xm-w-value" maxlength="100" required aria-label="Wert"></label>
     <button type="submit" class="btn btn-primary"><i class="ti ti-pencil"></i> Testschreiben</button>
+    <div class="ex-msg ex-err" id="xm-w-hint" style="flex-basis:100%"></div>
     <div class="ex-msg" id="xm-w-msg" role="status" style="flex-basis:100%"></div>
   </form>
   {{end}}
@@ -249,6 +250,17 @@
     const form = $('xm-write');
     const sync = function(){ const coil = $('xm-w-area').value === 'coil'; $('xm-w-type').disabled = coil; $('xm-w-order').disabled = coil; };
     $('xm-w-area').addEventListener('change', sync); sync();
+    // Geschrieben wird nur mit der Einheit der Verbindung (wie beim Übernehmen); Einheit 0 (Rundruf) nie.
+    const wantUnit = String(root.dataset.unit);
+    const lockWrite = function(){
+      const same = String(parseInt($('xm-unit').value, 10)) === wantUnit;
+      const hint = same ? '' : 'Geschrieben wird mit Einheit ' + wantUnit + ' der Verbindung – zum Schreiben Einheit ' + wantUnit + ' wählen oder die Einheit der Verbindung ändern';
+      form.querySelectorAll('input,select,button').forEach(function(f){ f.disabled = !same || (f.id === 'xm-w-type' || f.id === 'xm-w-order' ? $('xm-w-area').value === 'coil' : false); });
+      form.title = hint;
+      $('xm-w-hint').textContent = hint;
+    };
+    $('xm-w-area').addEventListener('change', lockWrite);
+    $('xm-unit').addEventListener('input', lockWrite); $('xm-unit').addEventListener('change', lockWrite); lockWrite();
     form.addEventListener('submit', async function(e){
       e.preventDefault();
       const msg = $('xm-w-msg'); msg.className = 'ex-msg'; msg.textContent = '';
@@ -258,7 +270,7 @@
       const wo = coil ? 'Coil' : 'Holding Register';
       try{
         const r = await pdhExplorer.post(base + 'write', {area: area, address: addr, type: coil ? '' : type, order: coil ? '' : order, value: v, unit: $('xm-unit').value},
-          'Wert ‚' + v + '‘ als ' + was + ' in ' + wo + ' ' + addr + ' schreiben? Das ändert die Maschine.');
+          'Wert ‚' + v + '‘ als ' + was + ' auf Einheit ' + wantUnit + ', ' + wo + ' ' + addr + ' schreiben? Das ändert die Maschine.');
         if(r){ msg.className = 'ex-msg ex-ok'; msg.textContent = 'Geschrieben.' + (r.value ? ' Das Gerät meldet jetzt: ' + r.value : ''); }
       }catch(err){ msg.className = 'ex-msg ex-err'; msg.textContent = err.message; }
     });

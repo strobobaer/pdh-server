@@ -18,13 +18,17 @@ im Kapitel „Versionen & Updates“ an.
 
 - Explorer, MQTT: Er zeigt die Themen als Baum mit letztem Wert, Anzahl, Zeit und Retained-Kennzeichen, stellt JSON-Werte aufbereitet dar, zeichnet bei Zahlen eine kleine Kurve, filtert mit Platzhaltern und sendet Werte testweise. Der gesendete Inhalt steht im Verlauf der Verbindung.
 
-- Explorer, OPC UA: Knoten lassen sich schrittweise aufklappen; der Explorer zeigt Wert, Datentyp, Zeitstempel, Qualität und Zugriffsrechte, verfolgt mehrere Knoten live und schreibt testweise (nur beschreibbare Knoten). Bei Anmeldung mit Benutzer und Kennwort ohne Sicherheitsrichtlinie weist er darauf hin, dass das Kennwort unverschlüsselt übertragen wird.
+- Explorer, OPC UA: Knoten lassen sich schrittweise aufklappen; der Explorer zeigt Wert, Datentyp, Zeitstempel, Qualität und Zugriffsrechte, verfolgt mehrere Knoten live und schreibt testweise (nur beschreibbare Knoten). Meldet sich die Verbindung mit Benutzer und Passwort an, weist der Explorer darauf hin, dass die Verbindung ohne Verschlüsselung (Sicherheitsrichtlinie None) läuft und das Passwort im Klartext übers Netz geht.
 
 - Explorer, Modbus TCP: Er liest Coils, Discrete Inputs, Holding und Input Register (bis 125 Register bzw. 2000 Bits je Lesen), deutet jedes Register als 16-, 32- und 64-Bit-Ganzzahl oder Gleitkommazahl in den vier gängigen Byte- und Wortreihenfolgen (ABCD, CDAB, BADC, DCBA), verfolgt den Bereich live im Takt von 1 bis 60 Sekunden und schreibt Coils und Holding Register testweise; je Verbindung sind höchstens zwei Zugriffe gleichzeitig möglich. Beim Verfolgen kommen nur geänderte Werte der gewählten Reihenfolge; die Matrix aller Reihenfolgen lädt erst der Klick auf eine Zeile. Auch abgelehnte Schreibversuche stehen im Verlauf.
 
 ### Geändert
 
-- Zuordnungen: Im Explorer wird ein Wert mit „Als Zuordnung übernehmen“ (im Export „Als Zielfeld übernehmen“) direkt zur Zuordnung, ohne die Seite neu zu laden. Bei MQTT kann eine Zuordnung ein einzelnes JSON-Feld eines Themas sein, bei Modbus enthält sie zusätzlich die Byte- und Wortreihenfolge (z. B. CDAB bei WAGO); der Export schreibt Modbus-Werte in dieser Reihenfolge, auch als 64-Bit-Wert. Bestehende Zuordnungen bleiben unverändert gültig.
+- Zuordnungen: Im Explorer wird ein Wert mit „Als Zuordnung übernehmen“ (im Export „Als Zielfeld übernehmen“) direkt zur Zuordnung, ohne die Seite neu zu laden. Bei MQTT kann eine Zuordnung ein einzelnes JSON-Feld eines Themas sein, bei Modbus enthält sie zusätzlich die Byte- und Wortreihenfolge (z. B. CDAB bei WAGO); der Export schreibt Modbus-Werte in dieser Reihenfolge, auch als 64-Bit-Wert. Bestehende Zuordnungen bleiben unverändert gültig. Zuordnungen mit Reihenfolge (Modbus) oder JSON-Pfad (MQTT, `thema#pfad`) versteht erst Version 0.80.11 und neuer – im Verbund beide Server gleich aktualisieren.
+
+- Zuordnungen: Bei Modbus- und OPC-UA-Verbindungen holt der Knopf „Werte jetzt aktualisieren“ im Reiter „Zuordnungen“ alle Werte sofort.
+
+- Explorer, Modbus: Testweise geschrieben wird nur noch mit der Einheit der Verbindung; Einheit 0 (Rundruf) ist gesperrt, das Schreibformular sperrt sich bei abweichender Einheit und die Rückfrage nennt die Einheit.
 
 - Der MQTT-Sniffer, „Namespace durchsuchen“ und „Register lesen“ sind im Explorer aufgegangen; die Werkzeuge der Verbindung führen jetzt zum Reiter „Explorer“, alte Lesezeichen leiten dorthin um.
 

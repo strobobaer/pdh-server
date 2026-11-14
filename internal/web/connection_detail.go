@@ -116,6 +116,7 @@ type ConnectionDetailData struct {
 	ExplorerLog                             []HistoryView
 	ExplorerTopic                           string
 	ExplorerUnit                            int
+	ExplorerPlainAuth bool // OPC UA mit Benutzer/Kennwort: Übertragung ohne Verschlüsselung
 	// ExportSources: übernommene Import-Werte, aus denen im Export-Explorer ein Zielfeld wird
 	// (nur Export mit Explorer und Schreibrecht).
 	ExportSources []ImportMappingView
@@ -335,6 +336,7 @@ func (h *Handler) fillExplorer(r *http.Request, d *ConnectionDetailData, config 
 	if d.ExplorerTopic == "" {
 		d.ExplorerTopic = "#"
 	}
+	d.ExplorerPlainAuth = d.Kind == "opcua" && config["auth_mode"] == "username"
 	if u, _ := strconv.Atoi(strings.TrimSpace(config["unit_id"])); u > 0 {
 		d.ExplorerUnit = u
 	} else {

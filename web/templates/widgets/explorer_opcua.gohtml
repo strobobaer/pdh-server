@@ -1,6 +1,6 @@
 {{/* Explorer für OPC UA: Knotenbaum (Aufklappen lädt eine Ebene), Details mit Wert, Datentyp, Zeit, Qualität und Zugriff,
      Merkliste „Verfolgen“ mit Live-Werten (bis 20 Knoten), Testschreiben bei beschreibbaren Knoten.
-     Daten: .ID, .Direction, .ExplorerWrite. Hilfsfunktionen: window.pdhExplorer (conn-explorer-js).
+     Daten: .ID, .Direction, .ExplorerWrite, .ExplorerPlainAuth. Hilfsfunktionen: window.pdhExplorer (conn-explorer-js).
      Werte stammen aus einem fremden Server: nur per textContent ausgeben. */}}
 {{define "explorer-opcua"}}
 <style>
@@ -34,6 +34,7 @@
 .xo-write input[type=text]{flex:1 1 160px;min-width:0}
 </style>
 <div id="xo-root">
+  {{if .ExplorerPlainAuth}}<div class="ex-msg ex-err" id="xo-plain" role="alert"><i class="ti ti-alert-triangle"></i> Die Verbindung ist ohne Verschlüsselung (Sicherheitsrichtlinie None) – Benutzer und Passwort gehen im Klartext übers Netz. Nur in getrennten Anlagennetzen verwenden.</div>{{end}}
   <div class="xo-bar">
     <button type="button" class="btn btn-primary" id="xo-load"><i class="ti ti-plug-connected"></i> Knoten laden</button>
     <span class="rec-sub">Ordner anklicken zum Aufklappen, Variable anklicken für Details.</span>
