@@ -10,14 +10,35 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.80.8] – 2026-11-14
+
+### Neu
+
+- Datennetz: Der Daten-Client läuft am Standort neben der Fremddatenbank (z. B. SQL Server oder MySQL) und verbindet sie über ein privates Netz (Tailscale) mit den PDH-Servern, ohne dass dafür ein Port ins Internet geöffnet wird. Server und Client finden sich über das Netz von tailscale.com, die Daten selbst laufen direkt zwischen beiden; Betriebsprotokolle werden nicht an Tailscale gesendet.
+- Neues Programm „Daten-Client“ für Windows und Linux: Es wird auf dem Rechner am Standort der Fremddatenbank mit einem Befehl eingerichtet und läuft danach im Hintergrund. Es kennt alle PDH-Server und meldet sich nach einem Rollentausch von selbst beim neuen aktiven Server.
+- Neuer Verbindungsweg „Datennetz“: Eine Verbindung (SQL Server oder MySQL) läuft statt über einen Instanznamen über einen festen Port eines Daten-Clients im Datennetz; MySQL-Verbindungen haben jetzt auch die Wege VPN und Datennetz.
+- Neue Seite „Datennetz“ mit den Clients, der Freigabe-Zeile für das Tailnet, dem Sperren und Entfernen von Clients und den Downloads des Daten-Clients.
+- Das Handbuch erklärt im Kapitel „Datennetz“ Einschalten, Einrichten eines Clients, Umstellen einer Verbindung und Sperren.
+
+### Geändert
+
+- Das PDH baut jetzt mit Go 1.27 und aktuellen Bibliotheken. Beim nächsten Update lädt der Server dafür einmalig die neue Go-Version (Download unter 100 MB, entpackt etwa 250 MB) aus dem Internet nach; ohne Internetzugang bricht das Update ab und die bisherige Version bleibt in Betrieb.
+- Die Programme des Daten-Clients stehen erst nach dem zweiten Update zum Download bereit: Das erste Update bringt den Bau mit, danach liegen die Dateien auf dem Server.
+
+### Sicherheit
+
+- Das Datennetz hat eigene Rechte; wer es bisher stillschweigend verwalten durfte (Administratoren), bekommt sie, alle anderen nicht.
+- Der Zugangsschlüssel (Token) eines Clients wird nur einmal angezeigt und nur als Prüfwert (Hash) gespeichert.
+- Über das Datennetz sind nur feste, freigegebene Ports erreichbar, keine beliebigen Ziele.
+- Beim Sperren eines Clients wird seine Verbindung sofort getrennt.
+
 ## [0.80.7] – 2026-11-14
 
 ### Behoben
 
 - Im Chat lassen sich Nachrichten jetzt auch am Handy (Nachricht antippen) und im Chat-Reiter der rechten Seitenleiste löschen, jeweils mit Rückfrage.
 
-## [0.80.6]
- – 2026-11-14
+## [0.80.6] – 2026-11-14
 
 ### Neu
 

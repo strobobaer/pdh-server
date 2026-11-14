@@ -1858,6 +1858,14 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li><b>„Rüstzeiten: Bereichsadministrator“</b> (<code>setup.admin</code>): alle Rechte der Rüstzeiten und als Einziger endgültig löschen.</li>
     </ul>
     Sie gelten überall oder nur in einer Abteilung. Wer Anlagen sehen darf, darf Rüstzeiten sehen; wer Anlagen bearbeiten darf, auch erfassen. Die Werte für maximale Rüstzeit und Karenzzeit stehen in den Core-Einstellungen (<a href="#ruestzeiten">mehr</a>).</div>
+  <div class="hb-howto"><b><i class="ti ti-topology-star-3"></i> Rechte für das Datennetz</b> (Gruppe „Datennetz“)
+    <ul>
+      <li><b>„Datennetz: Clients und Ziele sehen“</b> (<code>datanet.view</code>): die Seite Datennetz mit Clients und Zuständen.</li>
+      <li><b>„Datennetz: Clients anlegen und sperren“</b> (<code>datanet.edit</code>): Clients anlegen, sperren und die Programme laden.</li>
+      <li><b>„Datennetz: Clients löschen (Bereichsadministrator)“</b> (<code>datanet.admin</code>): alle Rechte des Datennetzes, Datennetz ein- und ausschalten, Schlüssel eintragen und als Einziger Clients endgültig entfernen.</li>
+      <li><b>Datennetz-Rechte gelten immer für alle Clients.</b> Clients gehören keiner Abteilung; eine Abteilungsbeschränkung bei <code>datanet.*</code> hat deshalb keine Wirkung.</li>
+    </ul>
+    Beim Update bekamen „sehen“ und „anlegen und sperren“ alle Rollen, die überall „Server-Einstellungen (.env) bearbeiten &amp; Server neu starten“ oder den Abgleich-Bereichsadministrator haben. Den Bereichsadministrator bekamen die Rolle Administrator, die Abgleich-Bereichsadministratoren und die Rollen, die überall Server-Einstellungen bearbeiten dürfen und schon in einem anderen Bereich Bereichsadministrator sind. Alle anderen Rollen, auch solche nur mit „VPN nutzen“, bekamen nichts. Die Rechte gelten überall oder nur in einer Abteilung; das Ein- und Ausschalten braucht das Recht überall (<a href="#datennetz">mehr</a>).</div>
   <div class="hb-howto"><b><i class="ti ti-tool"></i> Rechte für Update und Wartung</b>
     <ul>
       <li><b>„Wartungsfenster einstellen“</b> (Kategorie „System &amp; Sicherheit“): Wartungsfenster einrichten und fehlerhafte Versionen wieder zulassen (<a href="#ausfallschutz">mehr</a>). Beim Update bekamen es alle Rollen, die „Server-Einstellungen (.env) bearbeiten &amp; Server neu starten“ hatten.</li>
@@ -1978,7 +1986,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <div class="hb-howto"><b><i class="ti ti-copy"></i> Mehrere gleiche Maschinen</b>Eine Maschine fertig einrichten, im Reiter <b>Vorlagen</b> als Vorlage speichern und auf der Verbindungsseite der nächsten Maschine <b>anwenden</b>. Abfragen und Zuordnungen entstehen dort genauso; schon Vorhandenes wird nicht doppelt angelegt.</div>
   <p>Ansehen darf, wer Import bzw. Export sehen darf; prüfen und ausführen, wer ausführen darf; ändern, wer bearbeiten darf.</p>
   <p><b>Kennwörter</b> von Verbindungen werden verschlüsselt gespeichert und nie wieder angezeigt. Beim Bearbeiten das Kennwortfeld <b>leer lassen</b> – dann bleibt das gespeicherte Kennwort.</p>
-  <p>Bei <b>MSSQL</b>-Verbindungen gibt es zusätzlich: den <b>Weg</b> (Direkt oder ein ausgehender VPN-Tunnel, über VPN mit eigenem Abfragetakt von 5 bis 30 Minuten und eigener Zeitgrenze), den <b>Fingerabdruck</b> des Serverzertifikats (einmal lesen und bestätigen) und den Schalter <b>Schreiben erlaubt</b>. Ohne diesen Schalter schreibt das PDH nie in die Datenbank. Wird der Weg geändert, stehen scharfe Profile des <a href="#abgleich">Abgleichs</a> wieder auf „Getestet“.</p>
+  <p>Bei <b>MSSQL</b>-Verbindungen gibt es zusätzlich: den <b>Weg</b> (Direkt, ein ausgehender VPN-Tunnel oder ein Client des <a href="#datennetz">Datennetzes</a>; über VPN und Datennetz mit eigenem Abfragetakt von 5 bis 30 Minuten und eigener Zeitgrenze – beim Datennetz bitte den Port eintragen, eine benannte Instanz geht dort nicht), den <b>Fingerabdruck</b> des Serverzertifikats (einmal lesen und bestätigen) und den Schalter <b>Schreiben erlaubt</b>. Ohne diesen Schalter schreibt das PDH nie in die Datenbank. Wird der Weg geändert, stehen scharfe Profile des <a href="#abgleich">Abgleichs</a> wieder auf „Getestet“.</p>
   {{template "hb-shots" (dict "Ref" (index $s "connections") "Can" $can)}}
 </section>
 
@@ -2139,6 +2147,66 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     </ul></div>
   <p>Ein <b>ausgehender Tunnel</b> kann auch der <b>Weg einer MSSQL-Verbindung</b> sein (Import → Verbindung → Weg), z. B. um den <a href="#abgleich">Abgleich mit einem Fremdsystem</a> zu testen. Der Abgleich baut und ändert keine Tunnel; steht der Tunnel nicht oder liegt die Adresse der Datenbank nicht in seinen Netzen, wird der Lauf übersprungen und gemeldet.</p>
   {{template "hb-shots" (dict "Ref" (index $s "vpn") "Can" $can)}}
+</section>
+
+<section class="hb-ch" id="datennetz" data-title="Datennetz" data-pages="datanet">
+  <h2><i class="ti ti-topology-star-3"></i> Datennetz</h2>
+  <p>Unter <b>Datennetz</b> (Navigation → Daten) erreicht das PDH Fremddatenbanken im Werk, ohne dass dort ein Port ins Internet offen sein muss. Ein kleines Programm, der <b>Daten-Client</b>, läuft neben der Datenbank und verbindet sie über ein privates Netz (Tailscale) mit dem PDH. Das Datennetz ist ein Zusatz: Ohne Client ändert sich am PDH nichts.</p>
+  {{template "hb-fig-datennetz"}}
+  <div class="hb-howto"><b><i class="ti ti-plug-connected"></i> So schaltest du das Datennetz ein</b>
+    <ol class="hb-steps">
+      <li>Auf tailscale.com im Admin unter <b>Settings → Keys</b> einen Schlüssel für <b>jeden PDH-Server</b> erzeugen: <i>Reusable</i> aus, <i>Pre-approved</i> an, Tag <code>tag:pdh</code>. Bei zwei Servern also zwei Schlüssel.</li>
+      <li>Im PDH <b>Datennetz</b> öffnen, bei <b>Datennetz des PDH</b> den Haken <b>Datennetz einschalten</b> setzen, je Server den Schlüssel eintragen und <b>Speichern</b>. Der Schlüssel wird verschlüsselt abgelegt und nach der ersten Verbindung gelöscht.</li>
+      <li>Nach kurzer Zeit steht der Zustand auf <b>Läuft</b> und jeder Server zeigt seine Adresse im Datennetz.</li>
+      <li>Unter <b>Freigabe im Tailnet</b> die gezeigten Zeilen kopieren und im Tailscale-Admin unter <b>Access controls</b> in die Richtlinie eintragen. Sie erlauben dem PDH den Weg zu den Clients (nur die Ports der freigegebenen Datenbanken) und den Clients den Rückweg für ihre Meldungen. Die Ports ergeben sich aus den Clients; solange noch keiner Ports meldet, steht <code>&lt;PORT&gt;</code> als Platzhalter dort – danach die Zeilen noch einmal kopieren.</li>
+    </ol></div>
+  <div class="hb-howto"><b><i class="ti ti-device-desktop-plus"></i> So richtest du einen Daten-Client ein</b>
+    <ol class="hb-steps">
+      <li>Unter <b>Daten-Clients</b> einen Namen eintragen (z. B. „Werk Süd“) und <b>Client anlegen</b> wählen.</li>
+      <li>Die Seite zeigt jetzt <b>einmal</b> das <b>Token</b> und die fertigen Befehle. <b>Das Token wird nur jetzt gezeigt</b> und steht danach nirgends mehr im PDH (gespeichert ist nur eine Prüfsumme).</li>
+      <li>Unter <b>Programme für den Kunden</b> die Datei für Windows oder Linux laden und die angezeigte <b>SHA-256-Summe</b> mit der Datei vergleichen, bevor sie im Werk gestartet wird.</li>
+      <li>Im Tailscale-Admin einen weiteren Einmal-Schlüssel erzeugen: <i>Reusable</i> aus, <i>Pre-approved</i> an, Tag <code>tag:pdh-data</code>. Er ersetzt im Befehl den Platzhalter <code>&lt;EINMAL-SCHLÜSSEL&gt;</code>.</li>
+      <li><b>Windows:</b> Eingabeaufforderung <b>als Administrator</b> öffnen. Erst die Zeile mit <code>set /p PDH_DATANET_TOKEN=…</code> ausführen und das Token einfügen, dann die zweite Zeile mit <code>pdh-data-client-windows-amd64.exe install …</code> (der Name der geladenen Datei).</li>
+      <li><b>Linux:</b> Erst die Zeile mit <code>read -rs …</code> ausführen und das Token einfügen, dann die zweite Zeile mit <code>sudo ./pdh-data-client-linux-amd64 install …</code>.</li>
+      <li>Nach wenigen Minuten steht der Client in der Liste auf <b>Läuft</b>; die Ziele zeigen ihre Ports grün. Rot heißt: Die Datenbank ist vom Client aus nicht erreichbar.</li>
+    </ol>
+    Mit diesen zwei Zeilen bleibt das Token <b>nicht in der Shell-Historie</b>. Der einfache Befehl mit <code>--token</code> steht unter „Einfacher Befehl mit Token“, sollte aber die Ausnahme sein. Wer das Token als Datei übergeben will, nutzt <code>--token-file &lt;Datei&gt;</code>.</div>
+  <div class="hb-howto"><b><i class="ti ti-alert-triangle"></i> Windows meldet „Der Computer wurde durch Windows geschützt“</b>
+    Das Programm ist nicht codesigniert, deshalb kann <b>SmartScreen</b> beim ersten Start warnen. Nach dem Vergleich der SHA-256-Summe auf <b>Weitere Informationen → Trotzdem ausführen</b> klicken.</div>
+  <p><b>Wenn die Seite nach dem Anlegen neu geladen wird:</b> Der Browser fragt, ob er das Formular noch einmal senden soll. Das legt <b>keinen zweiten Client</b> an: Der Name ist bei aktiven Clients nur einmal erlaubt, es erscheint „Der Name ist schon vergeben“ und das Token wird nicht noch einmal gezeigt. Ein einfaches Neuladen der Seite (ohne erneutes Senden) zeigt nur die Liste.</p>
+  <p><b>Token verpasst oder verloren?</b> Das Token lässt sich nicht erneut anzeigen. Den Client <b>sperren</b> und unter demselben oder einem neuen Namen <b>neu anlegen</b>. Danach den Client im Werk mit dem neuen Token noch einmal installieren (siehe unten).</p>
+  <div class="hb-howto"><b><i class="ti ti-route"></i> So stellst du eine Verbindung auf den Weg „Datennetz“ um</b>
+    <ol class="hb-steps">
+      <li>Unter <b>Import</b> bzw. <b>Export</b> die Verbindung (SQL Server oder MySQL) öffnen.</li>
+      <li>Beim <b>Weg</b> unter <b>Datennetz</b> den Client wählen. Der Eintrag erscheint nur, wenn das Datennetz läuft und der Client nicht gesperrt ist.</li>
+      <li>Als <b>Port</b> die Portnummer der Datenbank eintragen, wie sie der Client freigibt (SQL Server meist 1433). Eine <b>benannte Instanz</b> ohne Port geht über das Datennetz nicht.</li>
+      <li>Verbindung testen und speichern. Abfragetakt und Zeitgrenze gelten wie beim VPN.</li>
+    </ol></div>
+  <div class="hb-howto"><b><i class="ti ti-lock"></i> So sperrst oder entfernst du einen Client</b>
+    <ol class="hb-steps">
+      <li><b>Sperren</b> in der Zeile des Clients wählen und bestätigen. Offene Verbindungen werden <b>sofort getrennt</b>, das Token ist ungültig. Der Name wird wieder frei.</li>
+      <li>Das Gerät auch im Tailscale-Admin unter <b>Machines</b> entfernen, sonst bleibt es im Tailnet. Auf dem Werksrechner den Client mit <code>pdh-data-client uninstall</code> entfernen.</li>
+      <li><b>Entfernen</b> löscht den Eintrag endgültig und ist dem Bereichsadministrator des Datennetzes vorbehalten.</li>
+    </ol>
+    Updates des Clients folgen in einer späteren Version. Bis dahin: neue Datei laden, auf dem Werksrechner <code>uninstall</code> und danach <code>install</code> ausführen.</div>
+  <p><b>Datenschutz:</b> Bei tailscale.com liegen nur die Gerätenamen und Adressen der Teilnehmer. Die Inhalte der Datenbank laufen verschlüsselt direkt zwischen PDH und Client und liegen nie bei Tailscale. Der PDH und der Client senden zudem <b>keine Betriebsprotokolle</b> an Tailscale (log.tailscale.com); nur der Verbindungsaufbau selbst läuft über Tailscale.</p>
+  <p><b>Rollentausch und Spiegelserver:</b> Jeder Server hat einen eigenen Knoten im Tailnet. Die Clients kennen mit jeder Meldung alle PDH-Server (Name <code>pdh-&lt;Servername&gt;</code> und Adresse) und versuchen sie der Reihe nach, bis einer antwortet. Nach einem Rollentausch meldet sich jeder Client also von selbst beim neuen aktiven Server; es muss nichts nachgearbeitet werden. Der Installationsbefehl nennt alle bekannten Server.</p>
+  <p><b>Rechte:</b> sehen – <b>Datennetz: Clients und Ziele sehen</b>; anlegen und sperren – <b>Datennetz: Clients anlegen und sperren</b>; Datennetz ein- und ausschalten, Schlüssel eintragen und Entfernen – nur der Bereichsadministrator (siehe <a href="#admin">Administration</a>).</p>
+  <p><b>Wenn etwas nicht klappt:</b></p>
+  <table>
+    <tr><th>Anzeige</th><th>Was es heißt</th><th>Was du tust</th></tr>
+    <tr><td>Datennetz ist ausgeschaltet</td><td>Weg „Datennetz“ ist gewählt, das Datennetz aber aus.</td><td>Unter Datennetz einschalten oder den Weg ändern.</td></tr>
+    <tr><td>Datennetz nicht verbunden</td><td>Der PDH-Server hat noch keine Verbindung zum Tailnet.</td><td>Schlüssel für den Server prüfen (neu erzeugen und eintragen) und warten, bis der Zustand <b>Läuft</b> zeigt.</td></tr>
+    <tr><td>Client nicht gefunden</td><td>Der Client wurde entfernt.</td><td>Einen anderen Client als Weg wählen.</td></tr>
+    <tr><td>Client gesperrt</td><td>Der Client ist gesperrt.</td><td>Neuen Client anlegen und im Werk installieren.</td></tr>
+    <tr><td>Client offline (noch nie gemeldet)</td><td>Der Client wurde angelegt, im Werk aber noch nicht gestartet.</td><td>Installation im Werk durchführen, Token und Einmal-Schlüssel prüfen.</td></tr>
+    <tr><td>Client offline (letzter Kontakt …)</td><td>Der Client meldet sich nicht mehr.</td><td>Läuft der Rechner im Werk? Dienst und Internetzugang prüfen; Freigabe-Zeile im Tailnet prüfen.</td></tr>
+    <tr><td>Port … bietet der Client nicht an</td><td>Der Port der Verbindung gehört nicht zu den Zielen des Clients.</td><td>Port der Verbindung prüfen oder den Client mit dem passenden <code>--target</code> neu installieren.</td></tr>
+    <tr><td>Datenbank am Client nicht erreichbar</td><td>Der Client läuft, erreicht aber seine Datenbank nicht (Ziel rot).</td><td>Im Werk Datenbankdienst, Adresse und lokale Firewall prüfen.</td></tr>
+    <tr><td>Beim Weg Datennetz bitte den Port eintragen</td><td>Eine benannte Instanz ohne Port ist über das Datennetz nicht möglich.</td><td>Den Port der Instanz eintragen.</td></tr>
+    <tr><td>Andere Version als das PDH</td><td>Der Client ist älter oder neuer als der Server.</td><td>Die Datei von der Seite laden und den Client neu installieren (<code>uninstall</code>, dann <code>install</code>).</td></tr>
+  </table>
+  {{template "hb-shots" (dict "Ref" (index $s "datennetz") "Can" $can)}}
 </section>
 
 <section class="hb-ch" id="ausfallschutz" data-title="Ausfallschutz &amp; Wiederaufbau" data-pages="server-config">

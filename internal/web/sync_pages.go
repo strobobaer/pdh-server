@@ -86,7 +86,7 @@ func (h *Handler) syncOpenReader(ctx context.Context, connectionID string) (rd s
 	if err != nil {
 		return nil, nil, cfg, closeFn, err
 	}
-	if ok, why := h.connRouteReady(ctx, cfg); !ok {
+	if ok, why := h.connRouteReady(ctx, kind, cfg); !ok {
 		return nil, nil, cfg, closeFn, errors.New("Weg nicht bereit: " + why)
 	}
 	if d, err = extsync.DialectFor(kind); err != nil {

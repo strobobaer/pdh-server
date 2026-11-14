@@ -57,6 +57,7 @@
         <div class="form-group"><label class="form-label">Passwort</label><input type="password" name="f_mysql_password" class="form-input" autocomplete="new-password"></div>
       </div>
       <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin:6px 0 10px"><input type="checkbox" name="f_mysql_use_tls"> TLS-Verschlüsselung</label>
+      {{template "route-select" (dict "Kind" "mysql" "Tunnels" .Tunnels "NetClients" .NetClients)}}
     </div>
 
     <div class="kind-fields" id="fields-mssql" hidden>
@@ -69,7 +70,7 @@
         <div class="form-group"><label class="form-label">Passwort</label><input type="password" name="f_mssql_password" class="form-input" autocomplete="new-password"></div>
       </div>
       <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin:6px 0 10px"><input type="checkbox" name="f_mssql_use_tls"> TLS-Verschlüsselung</label>
-      {{template "mssql-route-fields" (dict "Tunnels" .Tunnels)}}
+      {{template "mssql-route-fields" (dict "Tunnels" .Tunnels "NetClients" .NetClients)}}
     </div>
 
     <div class="kind-fields" id="fields-mqtt" hidden>

@@ -97,8 +97,9 @@ var areaAdminPerm = map[string]string{
 	"ticket": "tickets.admin", "fault": "faults.admin", "maintenance_task": "maintenance.admin", "maintenance": "maintenance.admin",
 	"task": "tasks.admin", "project": "projects.admin", "kvp": "kvp.admin", "infrastructure": "infrastructure.admin", setupRef: permSetupAdmin,
 	"part": "inventory.admin", "storage": "inventory.admin", "purchase_order": "procurement.admin", "business_partner": "directory.admin", "it_asset": "it.admin",
-	"certs": permCertsAdmin, // Zertifikate (Let's Encrypt): nur dieses Recht, nicht alle system.*
-	syncRef: permSyncAdmin,  // Abgleich mit Fremdsystemen: Profile löschen
+	"certs":    permCertsAdmin,   // Zertifikate (Let's Encrypt): nur dieses Recht, nicht alle system.*
+	syncRef:    permSyncAdmin,    // Abgleich mit Fremdsystemen: Profile löschen
+	dataNetRef: permDataNetAdmin, // Datennetz: Clients endgültig entfernen
 }
 
 // isAreaAdmin: Bereichsadministrator für diesen Datensatz?
@@ -171,6 +172,11 @@ var gateRules = []gateRule{
 	gr(wPost, permSyncRun, syncRef, false, `^/sync`+gID+`/(?:arm|pause|run)-web$`),
 	gr(wPost, permSyncRun, syncRef, false, `^/sync`+gID+`/outbox/[0-9]+/retry-web$`),
 	gr(wPost, permSyncEdit, "", false, `^/sync/new-web$`),
+	// ── Datennetz: entfernen nur Bereichsadministrator, anlegen und sperren mit datanet.edit ──
+	gr(wPost, permDataNetAdmin, dataNetRef, false, `^/datanet/clients`+gID+`/delete$`),
+	gr(wPost, permDataNetEdit, dataNetRef, false, `^/datanet/clients`+gID+`/revoke$`),
+	gr(wPost, permDataNetEdit, "", false, `^/datanet/clients$`),
+	gr(wPost, permDataNetAdmin, "", false, `^/datanet/settings$`),
 	// ── Störungen (Melden bleibt für alle offen) ──
 	gr(wPost, "faults.resolve", "fault", true, `^(?:/api/v1)?/faults`+gID+`/resolve$`),
 	gr(wPost, "faults.edit", "fault", true, `^/faults`+gID+`/(?:analyze|infrastructure-web)$`),

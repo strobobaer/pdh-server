@@ -931,6 +931,7 @@
  "Mit „Nextcloud mitnehmen“ braucht es den Datenordner. Die Frist des letzten Abgleichs sollte 150 s nicht übersteigen.": "“Nextcloud’u da al” için veri klasörü gerekir. Son eşitleme süresi 150 sn’yi aşmamalıdır.",
  "Die Spiegelung ändern darf nur, wer das Recht „Datei-Spiegelung einstellen“ hat – am aktiven oder am ersten Server.": "Yansıtmayı yalnızca “Dosya yansıtmayı ayarla” yetkisine sahip olanlar değiştirebilir – etkin veya ilk sunucuda.",
  "Abgleich": "Eşitleme",
+ "Datennetz": "Veri ağı",
  "Abgleich mit Fremdsystemen": "Harici sistemlerle eşitleme",
  "An dieser Anlage läuft bereits eine Rüstzeit.": "Bu tesiste zaten bir hazırlık süresi çalışıyor.",
  "Beginn und Ende einer Rüstzeit mit Störmeldung sind nicht änderbar.": "Arıza bildirimi olan bir hazırlık süresinin başlangıcı ve bitişi değiştirilemez.",

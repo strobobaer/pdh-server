@@ -931,6 +931,7 @@
  "Mit „Nextcloud mitnehmen“ braucht es den Datenordner. Die Frist des letzten Abgleichs sollte 150 s nicht übersteigen.": "“Include Nextcloud” needs the data folder. The deadline of the last sync should not exceed 150 s.",
  "Die Spiegelung ändern darf nur, wer das Recht „Datei-Spiegelung einstellen“ hat – am aktiven oder am ersten Server.": "Only those with the right “Set up file mirroring” may change the mirroring – on the active or the first server.",
  "Abgleich": "Sync",
+ "Datennetz": "Data network",
  "Abgleich mit Fremdsystemen": "Sync with external systems",
  "An dieser Anlage läuft bereits eine Rüstzeit.": "A set-up time is already running on this machine.",
  "Beginn und Ende einer Rüstzeit mit Störmeldung sind nicht änderbar.": "Start and end of a set-up time with a fault report cannot be changed.",

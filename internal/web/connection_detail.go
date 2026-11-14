@@ -21,7 +21,7 @@ var connFieldLabels = map[string]string{
 	"source_path": "Quellpfad", "sheet_name": "Tabellenblatt", "has_header": "Erste Zeile ist Überschrift", "delimiter": "Trennzeichen",
 	"file_path": "Datenbankdatei", "host": "Host", "port": "Port", "database": "Datenbank", "instance_name": "Instanz",
 	"username": "Benutzer", "password": "Passwort", "use_tls": "TLS",
-	"route": "Weg", "vpn_poll_minutes": "Abfragetakt über VPN (Min.)", "vpn_timeout_seconds": "Zeitgrenze je Abfrage über VPN (Sek.)",
+	"route": "Weg", "vpn_poll_minutes": "Abfragetakt über VPN/Datennetz (Min.)", "vpn_timeout_seconds": "Zeitgrenze je Abfrage über VPN/Datennetz (Sek.)",
 	"allow_write": "Schreiben erlaubt", "tls_fingerprint": "Fingerabdruck des Zertifikats",
 	"broker_mode": "Broker", "ext_broker_host": "Broker-Host", "ext_broker_port": "Broker-Port", "ext_username": "Benutzer",
 	"ext_password": "Passwort", "ext_use_tls": "TLS", "ext_client_id": "Client-ID", "ext_topic_filter": "Topic-Filter", "ext_qos": "QoS",
@@ -207,14 +207,17 @@ func (h *Handler) connectionDetailPage(w http.ResponseWriter, r *http.Request, d
 		if kind == "mqtt" && ((config["broker_mode"] == "integrated" && strings.HasPrefix(f, "ext_")) || (config["broker_mode"] != "integrated" && strings.HasPrefix(f, "int_"))) {
 			continue
 		}
-		if (f == "vpn_poll_minutes" || f == "vpn_timeout_seconds") && !parseConnRoute(config).ViaVPN {
-			continue // gilt nur über VPN
+		if (f == "vpn_poll_minutes" || f == "vpn_timeout_seconds") && !parseConnRoute(config).Remote() {
+			continue // gilt nur über VPN oder Datennetz
 		}
 		switch {
 		case f == "route":
-			if parseConnRoute(config).ViaVPN {
+			switch rt := parseConnRoute(config); {
+			case rt.ViaVPN:
 				v = "über VPN-Tunnel"
-			} else {
+			case rt.ViaNet:
+				v = h.dataNetRouteLabel(ctx, rt.ClientID)
+			default:
 				v = "Direkt"
 			}
 		case connSecretFields[f]:

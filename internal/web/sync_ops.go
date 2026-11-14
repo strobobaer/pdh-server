@@ -34,7 +34,7 @@ func (h *Handler) syncOpenForeign(ctx context.Context, connectionID string) (f e
 	if err != nil {
 		return nil, nil, nil, cfg, closeFn, err
 	}
-	if ok, why := h.connRouteReady(ctx, cfg); !ok {
+	if ok, why := h.connRouteReady(ctx, kind, cfg); !ok {
 		return nil, nil, nil, cfg, closeFn, errors.New("Weg nicht bereit: " + why)
 	}
 	if d, err = extsync.DialectFor(kind); err != nil {
@@ -503,8 +503,10 @@ func (h *Handler) syncOpsView(ctx context.Context, p *extsync.Profile, maps []ex
 		FirstArm: p.NotifyFrom == nil, RunnerOn: h.syncRunner != nil, ArmBlock: syncArmBlock(p, maps, allowWrite)}
 	minutes := int(connPollInterval(cfg, p.IntervalMinutes) / time.Minute)
 	ov.Effective = fmt.Sprintf("alle %d Minuten", minutes)
-	if parseConnRoute(cfg).ViaVPN {
+	if rt := parseConnRoute(cfg); rt.ViaVPN {
 		ov.Effective = fmt.Sprintf("über VPN: alle %d Minuten (Einstellung der Verbindung)", minutes)
+	} else if rt.ViaNet {
+		ov.Effective = fmt.Sprintf("über das Datennetz: alle %d Minuten (Einstellung der Verbindung)", minutes)
 	}
 	ov.Open, _ = store.OpenOutboxCount(ctx, p.ID)
 	if entries, err := store.OpenOutbox(ctx, p.ID, 50); err == nil {

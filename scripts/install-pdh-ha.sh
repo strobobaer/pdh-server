@@ -48,13 +48,13 @@ build_pdh_ha() {
     export HOME="${HOME:-/root}"
     export GOCACHE="${GOCACHE:-/var/cache/pdh-ha/go-build}"
     export GOMODCACHE="${GOMODCACHE:-/var/cache/pdh-ha/go-mod}"
-    # Go: Das Projekt braucht die Go-Version aus go.mod (derzeit 1.24). Ab Go 1.21
+    # Go: Das Projekt braucht die Go-Version aus go.mod (derzeit 1.27). Ab Go 1.21
     # lädt go die passende Version beim Bauen selbst nach (GOTOOLCHAIN=auto).
     export GOTOOLCHAIN=auto
     local go_minor
     go_minor="$(go env GOVERSION 2>/dev/null | sed -nE 's/^go1\.([0-9]+).*/\1/p')"
     if [[ -z "$go_minor" || "$go_minor" -lt 21 ]]; then
-        echo "Go $(go env GOVERSION 2>/dev/null || echo '?') ist zu alt: nötig ist mindestens Go 1.21 (lädt dann Go 1.24 selbst nach). Bitte Go aktualisieren." >&2
+        echo "Go $(go env GOVERSION 2>/dev/null || echo '?') ist zu alt: nötig ist mindestens Go 1.21 (lädt dann Go 1.27 selbst nach). Bitte Go aktualisieren." >&2
         exit 1
     fi
     # root liest ggf. das Repo des PDH-Benutzers – git verlangt dafür safe.directory

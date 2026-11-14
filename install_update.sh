@@ -179,26 +179,39 @@ else
             exit 1
         fi
     else
-        # Go: Das Projekt braucht die Go-Version aus go.mod (derzeit 1.24, wegen des
+        # Go: Das Projekt braucht die Go-Version aus go.mod (derzeit 1.27, wegen tailscale.com und des
         # Anthropic-SDK). Aeltere Installationen ab Go 1.21 (z. B. Ubuntu 24.04 mit 1.22)
         # laden die passende Version beim Bauen selbst nach (GOTOOLCHAIN=auto).
         export GOTOOLCHAIN=auto
         go_minor="$(go env GOVERSION 2>/dev/null | sed -nE 's/^go1\.([0-9]+).*/\1/p')"
         if [[ -z "$go_minor" || "$go_minor" -lt 21 ]]; then
-            echo "Go $(go env GOVERSION 2>/dev/null || echo '?') ist zu alt: noetig ist mindestens Go 1.21 (laedt dann Go 1.24 selbst nach). Bitte Go aktualisieren." >&2
+            echo "Go $(go env GOVERSION 2>/dev/null || echo '?') ist zu alt: noetig ist mindestens Go 1.21 (laedt dann Go 1.27 selbst nach). Bitte Go aktualisieren." >&2
             exit 1
         fi
         # Alles unter .neu-Namen bauen und erst nach dem letzten erfolgreichen Bau
         # umbenennen: scheitert ein Bau, bleibt die laufende Version unberuehrt.
-        rm -f "$bin_dir/.built-commit" "$bin_dir/pdh-ha.neu" "$bin_dir/pdh.neu" "$bin_dir/update-agent.neu"
+        rm -f "$bin_dir/.built-commit" "$bin_dir/pdh-ha.neu" "$bin_dir/pdh.neu" "$bin_dir/update-agent.neu" \
+            "$bin_dir/pdh-data-client-linux-amd64.neu" "$bin_dir/pdh-data-client-windows-amd64.exe.neu"
         (cd "$repo_dir" && go build -buildvcs=false -trimpath -ldflags="-s -w -X main.buildCommit=$target" -o bin/pdh.neu ./cmd/server)
         (cd "$repo_dir" && go build -buildvcs=false -trimpath -ldflags="-s -w" -o bin/update-agent.neu ./cmd/update-agent)
+        # Daten-Client fuer Kunden (Linux und Windows), mit Versionsnummer aus VERSION
+        ver="$(tr -d '[:space:]' < "$repo_dir/VERSION")"
+        # Ein Fehler hier darf das PDH-Update nicht stoppen: dann gibt es nur keinen neuen Daten-Client.
+        clients_ok=1
+        {
+            (cd "$repo_dir" && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -buildvcs=false -trimpath -ldflags="-s -w -X main.version=$ver" -o bin/pdh-data-client-linux-amd64.neu ./cmd/pdh-data-client) &&
+            (cd "$repo_dir" && CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -buildvcs=false -trimpath -ldflags="-s -w -X main.version=$ver" -o bin/pdh-data-client-windows-amd64.exe.neu ./cmd/pdh-data-client)
+        } || { clients_ok=0; echo "WARNUNG: Der Daten-Client konnte nicht gebaut werden (Go-Bau fehlgeschlagen) - das PDH wird trotzdem aktualisiert, der Daten-Client bleibt auf dem bisherigen Stand." >&2; }
         # pdh-ha mit bauen (nach bin/pdh-ha.neu), solange noch nichts neu gestartet wird
         if (( no_restart )) && [[ -x "$pdh_ha_bin" ]]; then
             bash "$repo_dir/scripts/install-pdh-ha.sh" "$repo_dir" --build-only
         fi
         mv -f "$bin_dir/pdh.neu" "$bin_dir/pdh"
         mv -f "$bin_dir/update-agent.neu" "$bin_dir/update-agent"
+        if (( clients_ok )); then
+            mv -f "$bin_dir/pdh-data-client-linux-amd64.neu" "$bin_dir/pdh-data-client-linux-amd64"
+            mv -f "$bin_dir/pdh-data-client-windows-amd64.exe.neu" "$bin_dir/pdh-data-client-windows-amd64.exe"
+        fi
         printf '%s\n' "$target" > "$bin_dir/.built-commit"
     fi
     if (( no_restart )); then

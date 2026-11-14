@@ -1,7 +1,7 @@
 # pdh-ha als Container: Zeuge (Standardziel) und Knoten im Testlabor (Ziel lab).
 # Build-Kontext ist die Repo-Wurzel:
 #   docker build -f deploy/ha-witness/Dockerfile --build-arg COMMIT=$(git rev-parse HEAD) .
-FROM golang:1.24 AS build
+FROM golang:1.27 AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 COPY internal/ha ./internal/ha
