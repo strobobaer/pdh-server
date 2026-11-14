@@ -115,7 +115,7 @@ func TestWorkBoardSetupRender(t *testing.T) {
 	}
 
 	items := render(workArea{Kind: k, Tab: "items", Chip: "open", OpenCount: 1, Items: []workCard{card}, Chips: chips})
-	for _, want := range []string{"RZ-0001 · Formatwechsel", "Rüsten", "Beenden", `action="/setup/finish/s1"`} {
+	for _, want := range []string{"RZ-0001 · Formatwechsel", "Rüsten", "Beenden", `action="/setup/s1/finish-web"`} {
 		if !strings.Contains(items, want) {
 			t.Errorf("Vorgänge enthalten %q nicht", want)
 		}

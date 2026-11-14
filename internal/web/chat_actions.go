@@ -39,9 +39,10 @@ var chatLinkTypes = []chatLinkType{
 	{"inventory", "spare_part", "spare_parts", "part_number || ' · ' || name", "Ersatzteil", "ti-package"},
 	{"it", "it_asset", "it_assets", "name", "IT-Asset", "ti-server-2"},
 	{"directory", "business_partner", "business_partners", "name", "Partner", "ti-building-factory-2"},
+	{"setup", setupRef, "setup_times", "'RZ-' || lpad(number::text, 4, '0')", "Rüstzeit", "ti-arrows-exchange-2"},
 }
 
-var chatLinkRe = regexp.MustCompile(`(?:https?://[^\s/]+)?/(tickets|faults|tasks|projects|maintenance/tasks|infrastructure|inventory|it|directory)/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})`)
+var chatLinkRe = regexp.MustCompile(`(?:https?://[^\s/]+)?/(tickets|faults|tasks|projects|maintenance/tasks|infrastructure|inventory|it|directory|setup)/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})`)
 
 func chatLinkTypeByPath(p string) (chatLinkType, bool) {
 	for _, t := range chatLinkTypes {

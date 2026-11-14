@@ -459,6 +459,25 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   {{template "hb-shots" (dict "Ref" (index $s "kvp") "Can" $can)}}
 </section>
 
+<section class="hb-ch" id="ruestzeiten" data-title="Rüstzeiten" data-pages="setup">
+  <h2><i class="ti ti-arrows-exchange-2"></i> Rüstzeiten</h2>
+  <p>Eine <b>Rüstzeit</b> ist die Zeit, in der eine Anlage umgerüstet, gereinigt oder mit neuen Hilfsmitteln bestückt wird. Sie ist ein Vorgang wie ein Ticket: mit Nummer (<b>RZ-0001</b>), Anlage, Grund, Beginn und Ende. Läuft sie länger als die erlaubte Höchstdauer, meldet PDH eine Störung.</p>
+  <div class="hb-howto"><b><i class="ti ti-plus"></i> So legst du eine Rüstzeit an</b> (Recht „Rüstzeiten: erfassen“)
+    <ol class="hb-steps">
+      <li><b>Rüstzeiten</b> → <b>Neu</b> – oder die Schnellaktion „Rüstzeit erfassen“ im Dashboard.</li>
+      <li><b>Anlage</b> und <b>Grund</b> wählen, <b>Beginn</b> eintragen. Ohne Ende läuft die Rüstzeit weiter; mit <b>Ende</b> oder <b>Dauer</b> wird sie nachgetragen.</li>
+      <li><b>Rüstzeit anlegen</b> öffnet die Detailseite.</li>
+    </ol></div>
+  <div class="hb-howto"><b><i class="ti ti-player-stop"></i> So beendest du sie</b>
+    <ol class="hb-steps">
+      <li>In der Liste oder auf der Detailseite auf <b>Beenden</b> tippen, sobald die Anlage wieder produziert. Ein Vermerk ist freiwillig.</li>
+      <li>Beginn, Ende, Grund und Notiz korrigierst du im Reiter <b>Bearbeiten</b>. Hat die Rüstzeit schon eine Störmeldung ausgelöst, bleiben Beginn und Ende gesperrt.</li>
+    </ol>
+    Endgültig löschen darf nur, wer Bereichsadministrator der Rüstzeiten ist.</div>
+  <p>Wie bei Tickets gibt es Feldsätze, Kategorien, Verknüpfungen, Anhänge und eine Historie. Die Rüstzeiten einer Anlage stehen auch in deren Historie (Filter „Rüstzeiten“).</p>
+  {{template "hb-shots" (dict "Ref" (index $s "ruestzeiten") "Can" $can)}}
+</section>
+
 <section class="hb-ch" id="maintenance" data-title="Wartung" data-pages="maintenance checklists">
   <h2><i class="ti ti-tool"></i> Wartung</h2>
   <p>Ein <b>Wartungsplan</b> sagt, was wie oft an welcher Anlage gemacht wird – z. B. „alle 2 Wochen“ oder „alle 6 Monate“. Zu jedem aktiven Plan gibt es immer <b>genau einen offenen Auftrag</b>: den nächsten Termin. PDH legt ihn selbst an – beim Anlegen des Plans, nach jedem Abschluss oder Überspringen und stündlich für Pläne, denen einer fehlt. Doppelte Aufträge entstehen nicht.</p>

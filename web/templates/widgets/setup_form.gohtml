@@ -1,0 +1,60 @@
+{{/*
+  Formular einer Rüstzeit (Daten: SetupDetailData) – zum Anlegen (.IsNew, POST /setup)
+  und zum Korrigieren (POST /setup/{id}/edit-web) auf der Detailseite.
+    {{template "setup-form" .}}
+  Zeiten sind Ortszeit des Servers. Bei einer Rüstzeit mit Störmeldung (.TimesLocked)
+  sind Beginn und Ende gesperrt.
+*/}}
+{{define "setup-form"}}
+<style>
+.setup-form{display:grid;gap:12px;max-width:720px}
+.setup-form .form-group{margin:0}
+.setup-times{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+.setup-hint{font-size:12px;color:var(--muted);font-weight:400}
+.setup-fixed{padding:8px 0;font-size:13px}
+.setup-fixed a{color:var(--accent)}
+.setup-actions{display:flex;gap:8px;flex-wrap:wrap}
+</style>
+<form method="post" action="{{if .IsNew}}/setup{{else}}/setup/{{.ID}}/edit-web{{end}}" class="setup-form" autocomplete="off">
+  {{if .IsNew}}
+  {{template "infra-tree-picker" (dict "TargetID" "setup-infra-id" "SelectedLabelID" "setup-infra-selected" "Label" "Anlage" "Value" .InfraID "SelectedLabel" .InfraName "Required" true)}}
+  {{else}}
+  <div class="form-group">
+    <label class="form-label">Anlage</label>
+    <div class="setup-fixed"><a href="/infrastructure/{{.InfraID}}">{{.InfraName}}</a></div>
+  </div>
+  {{end}}
+  <div class="form-group">
+    <label class="form-label" for="setup-reason">Grund</label>
+    <select class="form-input" id="setup-reason" name="reason_id" required>
+      {{if .IsNew}}{{if not .ReasonID}}<option value="" selected disabled>Grund wählen …</option>{{end}}{{end}}
+      {{range .Reasons}}<option value="{{.ID}}"{{if eq .ID $.ReasonID}} selected{{end}}>{{.Name}}</option>{{end}}
+    </select>
+  </div>
+  <div class="setup-times">
+    <div class="form-group">
+      <label class="form-label" for="setup-start">Beginn</label>
+      <input class="form-input" id="setup-start" type="datetime-local" name="started_at" value="{{.StartValue}}" required{{if .TimesLocked}} disabled{{end}}>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="setup-end">Ende <span class="setup-hint">(leer = läuft noch)</span></label>
+      <input class="form-input" id="setup-end" type="datetime-local" name="ended_at" value="{{.EndValue}}"{{if .TimesLocked}} disabled{{end}}>
+    </div>
+    {{if .IsNew}}
+    <div class="form-group">
+      <label class="form-label" for="setup-dur">oder Dauer in Minuten</label>
+      <input class="form-input" id="setup-dur" type="number" name="duration_min" min="1" max="10080" step="1" value="{{.DurationM}}" inputmode="numeric">
+    </div>
+    {{end}}
+  </div>
+  {{if .TimesLocked}}<p class="setup-hint"><i class="ti ti-lock"></i> Beginn und Ende sind gesperrt, weil aus dieser Rüstzeit eine Störmeldung entstanden ist.</p>{{end}}
+  <div class="form-group">
+    <label class="form-label" for="setup-note">Notiz</label>
+    <textarea class="form-input" id="setup-note" name="note" rows="3" maxlength="1000">{{.Note}}</textarea>
+  </div>
+  <div class="setup-actions">
+    <button type="submit" class="btn btn-primary"><i class="ti ti-device-floppy"></i> {{if .IsNew}}Rüstzeit anlegen{{else}}Speichern{{end}}</button>
+    {{if .IsNew}}<a class="btn" href="/setup">Abbrechen</a>{{end}}
+  </div>
+</form>
+{{end}}

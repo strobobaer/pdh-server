@@ -800,6 +800,14 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/kvp/{id}/actions/{aid}/delete", h.KVPActionDeleteWeb)
 	r.Post("/kvp/{id}/comment", h.KVPCommentWeb)
 	r.Post("/kvp/{id}/delete", h.KVPDeleteWeb)
+	// Rüstzeiten (setup_pages.go, setup_actions.go): Arbeitsbereich, Anlegen, Detailseite
+	r.Get("/setup", h.SetupPage)
+	r.Post("/setup", h.SetupCreateWeb)
+	r.Get("/setup/new", h.SetupNewPage)
+	r.Get("/setup/{id}", h.SetupDetailPage)
+	r.Post("/setup/{id}/edit-web", h.SetupEditWeb)
+	r.Post("/setup/{id}/finish-web", h.SetupFinishWeb)
+	r.Post("/setup/{id}/delete-web", h.SetupDeleteWeb)
 	r.Post("/admin/departments", h.DepartmentSaveWeb)
 	r.Post("/admin/departments/{id}/delete", h.DepartmentDeleteWeb)
 	r.Post("/admin/groups", h.GroupSaveWeb)
@@ -1108,6 +1116,8 @@ func statusClass(s string) string {
 		return "b-blue"
 	case "open", "detected", "pending":
 		return "b-amber"
+	case "fault": // Rüstzeit mit Störmeldung
+		return "b-red"
 	default:
 		return "b-gray"
 	}

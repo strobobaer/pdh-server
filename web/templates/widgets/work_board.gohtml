@@ -129,7 +129,7 @@
       <td><span class="badge {{.StatusClass}}">{{.StatusLabel}}</span></td>
       {{if not $k.NoPrio}}<td><span class="badge {{.PriorityClass}}">{{.PriorityLabel}}</span></td>{{end}}
       {{if not $k.NoDue}}<td style="font-size:12px;white-space:nowrap">{{if .Due}}<span class="{{if .Overdue}}mt-red{{end}}">{{.Due}}</span>{{else}}<span class="mt-muted">–</span>{{end}}</td>{{end}}
-      {{if $k.DoPath}}<template class="rx-more"><form method="post" action="{{$k.DoPath}}{{.ID}}"><button type="submit" class="btn btn-small cw-finish"><i class="ti {{$k.DoIcon}}"></i> {{$k.DoLabel}}</button></form></template>{{end}}
+      {{if $k.DoPath}}<template class="rx-more"><form method="post" action="{{$k.DoURL .ID}}"><button type="submit" class="btn btn-small cw-finish"><i class="ti {{$k.DoIcon}}"></i> {{$k.DoLabel}}</button></form></template>{{end}}
     </tr>
     {{else}}
     <tr><td colspan="{{if and $k.NoPrio $k.NoDue}}3{{else if or $k.NoPrio $k.NoDue}}4{{else}}5{{end}}" style="text-align:center;color:var(--muted);padding:24px">Keine {{$k.Plural}} für diesen Filter.</td></tr>
@@ -200,7 +200,7 @@
         <div class="t">{{.Title}}</div>
         <div class="rec-sub"><i class="ti ti-user"></i> {{if .Who}}{{.Who}}{{else}}<span style="color:var(--amber)">niemand</span>{{end}}{{if .Due}} · <span {{if .Overdue}}style="color:var(--red)"{{end}}>bis {{.Due}}</span>{{end}}</div>
       </a>
-      {{if $k.DoPath}}<form method="post" action="{{$k.DoPath}}{{.ID}}"><button type="submit" class="btn btn-small cw-finish"><i class="ti {{$k.DoIcon}}"></i> {{$k.DoLabel}}</button></form>{{else}}<button type="button" class="btn btn-small cw-finish" onclick="pdhComplete('{{$k.Key}}','{{.ID}}')"><i class="ti {{$k.DoIcon}}"></i> {{$k.DoLabel}}</button>{{end}}
+      {{if $k.DoPath}}<form method="post" action="{{$k.DoURL .ID}}"><button type="submit" class="btn btn-small cw-finish"><i class="ti {{$k.DoIcon}}"></i> {{$k.DoLabel}}</button></form>{{else}}<button type="button" class="btn btn-small cw-finish" onclick="pdhComplete('{{$k.Key}}','{{.ID}}')"><i class="ti {{$k.DoIcon}}"></i> {{$k.DoLabel}}</button>{{end}}
     </div>
     {{else}}<div class="rec-sub" style="padding:8px">–</div>{{end}}
     {{if .More}}<a class="rec-sub" style="padding:6px 8px;display:block;color:var(--accent)" href="{{$k.Base}}?tab=items&amp;chip=s:{{.Key}}">… {{.More}} weitere in der Liste</a>{{end}}

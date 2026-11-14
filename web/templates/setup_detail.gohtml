@@ -1,0 +1,134 @@
+{{template "base" .}}
+{{define "content"}}
+{{/* Rüstzeit (setup_pages.go): Seite zum Anlegen (.IsNew) und Detailseite wie bei Tickets –
+     Kopf mit Nummer und Status, Reiter Übersicht · Bearbeiten · Feldsätze · Dokumente ·
+     Verknüpfungen · Historie. Farben nur über die Variablen des Farbschemas. */}}
+{{if .IsNew}}
+<div class="setup-head">
+  {{template "icon-button" (dict "Action" "back" "Href" "/setup")}}
+  <div class="setup-head-main">
+    <h1>Rüstzeit anlegen</h1>
+    <p>Eine Rüstzeit nachtragen oder starten – ohne Ende läuft sie weiter.</p>
+  </div>
+</div>
+{{if .Err}}<div class="w11-infobar error" role="alert">{{t .Err}}</div>{{end}}
+<div class="card">{{template "setup-form" .}}</div>
+{{else}}
+{{$id := .ID}}
+<div class="setup-head">
+  {{template "icon-button" (dict "Action" "back" "Href" "/setup")}}
+  <div class="setup-head-main">
+    <h1>{{.Code}} · {{if .E.ButtonName}}{{.E.ButtonName}}{{else}}{{.E.ReasonName}}{{end}}</h1>
+    <p>{{.InfraName}} · {{.E.ReasonName}}</p>
+  </div>
+  <span class="badge {{.StatusClass}}" style="font-size:12px;padding:4px 12px">{{.StatusText}}</span>
+  {{if .Overdue}}<span class="badge b-red" style="font-size:12px;padding:4px 12px"><i class="ti ti-alarm"></i> Höchstdauer überschritten</span>{{end}}
+  {{if .FaultURL}}<a class="btn" href="{{.FaultURL}}"><i class="ti ti-alert-triangle"></i> Störmeldung ansehen</a>{{end}}
+</div>
+{{if .Notice}}<div class="w11-infobar success" role="status">{{t .Notice}}</div>{{end}}
+{{if .Err}}<div class="w11-infobar error" role="alert">{{t .Err}}</div>{{end}}
+{{template "record-meta-slot" (dict "Module" "setup" "ID" $id)}}
+<div class="rec-tabs" role="tablist">
+  <a class="rec-tab" data-tab="overview" href="?tab=overview"><i class="ti ti-layout-dashboard"></i> Übersicht</a>
+  {{if .CanEdit}}<a class="rec-tab" data-tab="edit" href="?tab=edit"><i class="ti ti-edit"></i> Bearbeiten</a>{{end}}
+  <a class="rec-tab" data-tab="fields" href="?tab=fields"><i class="ti ti-forms"></i> Feldsätze</a>
+  <a class="rec-tab" data-tab="docs" href="?tab=docs"><i class="ti ti-paperclip"></i> Dokumente</a>
+  <a class="rec-tab" data-tab="links" href="?tab=links"><i class="ti ti-link"></i> Verknüpfungen</a>
+  <a class="rec-tab" data-tab="history" href="?tab=history"><i class="ti ti-history"></i> Historie</a>
+</div>
+
+<!-- ── Übersicht ── -->
+<div class="rec-pane" data-pane="overview">
+<div class="grid2" style="grid-template-columns:1fr 320px;gap:14px;align-items:start">
+  <div>
+    <div class="card">
+      <div class="card-title">Notiz</div>
+      <p style="font-size:13px;line-height:1.6;color:var(--muted)">{{if .Note}}{{.Note}}{{else}}Keine Notiz{{end}}</p>
+    </div>
+    {{if and .CanEdit (eq .E.Status "running")}}
+    <div class="card">
+      <div class="card-title">Rüstzeit beenden</div>
+      <form method="post" action="/setup/{{$id}}/finish-web" class="setup-finish">
+        <input class="form-input" type="text" name="note" maxlength="1000" placeholder="Vermerk (freiwillig)" aria-label="Vermerk">
+        <button type="submit" class="btn btn-primary"><i class="ti ti-player-stop"></i> Beenden</button>
+      </form>
+      <p class="setup-sub">Die Anlage produziert wieder – das Ende ist der jetzige Zeitpunkt.</p>
+    </div>
+    {{end}}
+    {{if .CanDelete}}
+    <div class="card">
+      <div class="card-title">Löschen</div>
+      <form method="post" action="/setup/{{$id}}/delete-web" onsubmit="return confirm('Rüstzeit endgültig löschen? Verlauf und Feldwerte gehen mit.')">
+        <button type="submit" class="btn"><i class="ti ti-trash"></i> Endgültig löschen</button>
+      </form>
+    </div>
+    {{end}}
+  </div>
+  <div>
+    <div class="card">
+      <div class="card-title"><span>Details</span>{{if .CanEdit}}<a class="card-action rec-tab" data-tab="edit" href="?tab=edit" style="padding:0"><i class="ti ti-edit"></i> Bearbeiten</a>{{end}}</div>
+      <dl class="w11-props">
+        <dt>Status</dt><dd><span class="badge {{.StatusClass}}">{{.StatusText}}</span></dd>
+        <dt>Anlage</dt><dd><a href="/infrastructure/{{.InfraID}}" style="color:var(--accent)">{{.InfraName}}</a></dd>
+        <dt>Grund</dt><dd>{{.E.ReasonName}}</dd>
+        <dt>Rüsttaste</dt><dd>{{if .E.ButtonName}}{{.E.ButtonName}}{{else}}–{{end}}</dd>
+        <dt>Beginn</dt><dd>{{.E.StartedAt.Local.Format "02.01.2006 15:04"}}</dd>
+        <dt>Ende</dt><dd>{{if .E.EndedAt}}{{.E.EndedAt.Local.Format "02.01.2006 15:04"}}{{else}}läuft{{end}}</dd>
+        <dt>Dauer</dt><dd>{{.Duration}}</dd>
+        <dt>Höchstdauer</dt><dd>{{.E.MaxMinutes}} Min. + {{.E.GraceMinutes}} Min. Karenzzeit</dd>
+        <dt>Verantwortlich</dt><dd>{{if .E.ResponsibleName}}{{.E.ResponsibleName}}{{else}}–{{end}}</dd>
+        <dt>Schichtführer</dt><dd>{{if .E.ShiftLeaderName}}{{.E.ShiftLeaderName}}{{else}}–{{end}}</dd>
+        <dt>Erfasst</dt><dd>{{if eq .E.Origin "easy"}}an der Anlage{{else}}von Hand{{end}}</dd>
+      </dl>
+    </div>
+  </div>
+</div>
+</div>
+
+{{if .CanEdit}}
+<!-- ── Bearbeiten ── -->
+<div class="rec-pane" data-pane="edit">
+  <div class="card">
+    <div class="card-title">Rüstzeit korrigieren</div>
+    {{template "setup-form" .}}
+  </div>
+</div>
+{{end}}
+
+<!-- ── Feldsätze ── -->
+<div class="rec-pane" data-pane="fields">
+  <div class="card">{{template "record-fields-slot" (dict "Module" "setup" "ID" $id)}}</div>
+</div>
+
+<!-- ── Dokumente ── -->
+<div class="rec-pane" data-pane="docs">
+  <div class="card">
+    <div class="card-title"><i class="ti ti-paperclip"></i> Fotos & Dokumente</div>
+    <div id="attachments-{{$id}}" data-attach-ref="setup:{{$id}}" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;min-height:20px"></div>
+    {{if .CanEdit}}{{template "work-upload-buttons" (dict "Module" "setup" "ID" $id)}}{{end}}
+  </div>
+</div>
+
+<!-- ── Verknüpfungen ── -->
+<div class="rec-pane" data-pane="links">{{template "record-links-slot" (dict "Module" "setup" "ID" $id)}}</div>
+
+<!-- ── Historie ── -->
+<div class="rec-pane" data-pane="history">{{template "record-history-slot" (dict "Module" "setup" "ID" $id)}}</div>
+{{end}}
+{{end}}
+
+{{define "context-list"}}{{end}}
+
+{{block "scripts" .}}
+{{template "work-style"}}
+{{template "work-edit-script"}}
+<style>
+.setup-head{display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap}
+.setup-head-main{flex:1;min-width:200px}
+.setup-head h1{font-size:18px;font-weight:600}
+.setup-head p{font-size:12px;color:var(--muted);margin-top:2px}
+.setup-finish{display:flex;gap:8px;flex-wrap:wrap}
+.setup-finish .form-input{flex:1;min-width:200px}
+.setup-sub{font-size:12px;color:var(--muted);margin-top:8px}
+</style>
+{{end}}

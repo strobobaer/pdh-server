@@ -40,7 +40,7 @@ type workKind struct {
 	Rules                                                  []template.HTML
 	// Optionale Bestandteile: Standard (false/leer) = wie Tickets, Störungen, Aufgaben und Wartung.
 	NoPrio, NoDue, NoBroker, NoCompletion bool   // keine Priorität / Fälligkeit / Broker / Abschluss-Assistent
-	DoPath                                string // statt des Assistenten: POST auf DoPath+ID (Knopf DoLabel)
+	DoPath                                string // statt des Assistenten: POST auf DoPath, {id} = ID des Vorgangs (Knopf DoLabel)
 	// SQL-Ausdrücke je Spalte; leer = r.title, r.description, r.due_date, r.resolution, r.root_cause, r.assigned_group_id
 	TitleExpr, DescExpr, DueExpr, ResolutionExpr, RootCauseExpr, GroupExpr string
 }
@@ -109,9 +109,9 @@ var workKinds = map[string]workKind{
 	// beendet wird mit einem Knopf (DoPath), der Titel entsteht aus Nummer und Tastenname.
 	"setup": {Key: "setup", Module: "setup", Table: "setup_times", Base: "/setup", Detail: "/setup/", Page: "setup",
 		Title: "Rüstzeiten", Context: "Laufende Rüstzeiten", Label: "Rüstzeit", Plural: "Rüstzeiten", Items: "Rüstzeiten", Icon: "ti-arrows-exchange-2",
-		DoLabel: "Beenden", DoIcon: "ti-player-stop", DoPath: "/setup/finish/", PrioExpr: `''`,
+		DoLabel: "Beenden", DoIcon: "ti-player-stop", DoPath: "/setup/{id}/finish-web", PrioExpr: `''`,
 		NoPrio: true, NoDue: true, NoBroker: true, NoCompletion: true,
-		TitleExpr: `'RZ-' || lpad(r.number::text, 4, '0') || ' · ' || r.button_name`, DescExpr: `r.note`, DueExpr: `NULL::timestamptz`,
+		TitleExpr: `'RZ-' || lpad(r.number::text, 4, '0') || ' · ' || COALESCE(NULLIF(r.button_name, ''), (SELECT sr.name FROM setup_reasons sr WHERE sr.id = r.reason_id), '')`, DescExpr: `r.note`, DueExpr: `NULL::timestamptz`,
 		GroupExpr: `NULL::uuid`, ResolutionExpr: `''`, RootCauseExpr: `''`,
 		ClosedExpr:   "r.ended_at",
 		OpenStatuses: []string{"running"}, DoneStatuses: []string{"done", "fault"},
@@ -133,18 +133,14 @@ func exprOr(expr, def string) string {
 
 // statusText: Beschriftung eines Status; Rüstzeiten haben eigene Wörter.
 func (k workKind) statusText(s string) string {
-	if k.Key == "setup" {
-		switch s {
-		case "running":
-			return "Rüsten"
-		case "done":
-			return "Fertig"
-		case "fault":
-			return "Störung"
-		}
+	if k.Key == setupRef {
+		return setupStatusText(s)
 	}
 	return statusLabel(s)
 }
+
+// DoURL: Adresse des Knopfes DoLabel für den Vorgang id (in DoPath steht {id}).
+func (k workKind) DoURL(id string) string { return strings.ReplaceAll(k.DoPath, "{id}", id) }
 
 // quotedList: 'a','b' für IN (…) aus festen Statuswerten der Art.
 func quotedList(vals []string) string { return "'" + strings.Join(vals, "','") + "'" }
@@ -233,6 +229,8 @@ type workArea struct {
 type WorkBoardData struct {
 	BaseData
 	Area workArea
+	// NoNew: der Knopf „Neu“ fehlt (Rüstzeiten ohne setup.edit)
+	NoNew bool
 }
 
 // workRoute: Reiter und Chip aus der Adresse; alte Adressen (?view=, ?status=,
@@ -296,6 +294,7 @@ func (h *Handler) WorkBoardPage(w http.ResponseWriter, r *http.Request, kindKey 
 	k := workKinds[kindKey]
 	d := WorkBoardData{BaseData: h.baseData(r, k.Page, k.Title, k.Context)}
 	d.Area = h.buildWorkArea(r, k, "")
+	d.NoNew = k.Key == setupRef && !h.setupCan(r, permSetupEdit, "")
 	if k.Key == "task" {
 		d.Area.Extra = []workLink{{"projects", "/projects", "ti-timeline", "Projekte"}}
 	}

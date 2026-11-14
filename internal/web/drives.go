@@ -391,6 +391,7 @@ var driveModuleFolders = map[string]string{
 	"ticket": "Tickets", "fault": "Störungen", "task": "Aufgaben", "project": "Projekte",
 	"maintenance_task": "Wartungen", "infrastructure": "Anlagen", "part": "Ersatzteile",
 	"storage": "Lagerplätze", "business_partner": "Hersteller & Lieferanten", "kvp": "KVP",
+	setupRef: "Rüstzeiten",
 }
 
 var driveUnsafeChars = regexp.MustCompile(`[\\/:*?"<>|\x00-\x1f]+`)

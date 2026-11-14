@@ -577,6 +577,10 @@ func loadListMine(h *Handler, ctx context.Context, uid string, _ WidgetInstance,
 			UNION ALL
 			SELECT 'maintenance', id::text, title::text, priority::text, due_date::date, status::text FROM maintenance_tasks
 			 WHERE (assigned_to = $1::uuid OR responsible_to = $1::uuid OR assigned_group_id IN `+myGroupIDs+`) AND status::text IN ('open','in_progress','pending') AND archived_at IS NULL
+			UNION ALL
+			-- laufende Rüstzeiten beim Anlagenverantwortlichen und beim Schichtführer (beendete nicht)
+			SELECT 'setup', s.id::text, (`+setupTitleSQL+`)::text, ''::text, NULL::date, s.status::text FROM setup_times s
+			 WHERE (s.responsible_to = $1::uuid OR s.assigned_to = $1::uuid) AND s.status = 'running' AND s.archived_at IS NULL
 		) x ORDER BY (due_date IS NULL), due_date, (priority = 'critical') DESC LIMIT 8`, uid)
 	if err != nil {
 		return nil, err
@@ -585,8 +589,9 @@ func loadListMine(h *Handler, ctx context.Context, uid string, _ WidgetInstance,
 	meta := map[string][3]string{
 		"ticket": {recordIcon("ticket"), "Ticket", "/tickets/"}, "fault": {recordIcon("fault"), "Störung", "/faults/"},
 		"task": {recordIcon("task"), "Aufgabe", "/tasks/"}, "maintenance": {recordIcon("maintenance"), "Wartung", "/maintenance/tasks/"},
+		setupRef: {recordIcon(setupRef), "Rüstzeit", "/setup/"},
 	}
-	perm := map[string]string{"ticket": "tickets.view", "fault": "faults.view", "task": "", "maintenance": "maintenance.view"}
+	perm := map[string]string{"ticket": "tickets.view", "fault": "faults.view", "task": "", "maintenance": "maintenance.view", setupRef: permSetupView}
 	var out []listItem
 	today := time.Now().Truncate(24 * time.Hour)
 	for rows.Next() {
@@ -600,7 +605,11 @@ func loadListMine(h *Handler, ctx context.Context, uid string, _ WidgetInstance,
 		}
 		m := meta[k]
 		lang := ctxLang(ctx)
-		it := listItem{Icon: m[0], Kind: tr(lang, m[1]), Title: title, URL: m[2] + id, Sub: tr(lang, m[1]) + " · " + tr(lang, statusLabel(status))}
+		stat := statusLabel(status)
+		if k == setupRef {
+			stat = setupStatusText(status)
+		}
+		it := listItem{Icon: m[0], Kind: tr(lang, m[1]), Title: title, URL: m[2] + id, Sub: tr(lang, m[1]) + " · " + tr(lang, stat)}
 		if due != nil {
 			it.Badge = due.Format("02.01.")
 			it.BadgeClass = "b-gray"
@@ -766,6 +775,7 @@ func loadQuickActions(_ *Handler, ctx context.Context, _ string, _ WidgetInstanc
 		{quickAction{"Störung melden", "ti-alert-triangle", "/faults?create=fault", "red", "fault"}, "faults.view"},
 		{quickAction{"Ticket anlegen", "ti-ticket", "/tickets?create=ticket", "blue", "ticket"}, "tickets.view"},
 		{quickAction{"Idee einreichen", "ti-bulb", "/kvp?tab=ideas&create=1", "green", ""}, ""},
+		{quickAction{"Rüstzeit erfassen", "ti-arrows-exchange-2", "/setup/new", "amber", ""}, permSetupEdit},
 		{quickAction{"Zeit erfassen", "ti-clock-play", "/time", "green", ""}, ""},
 		{quickAction{"Ersatzteil suchen", "ti-package", "/inventory", "amber", ""}, "inventory.view"},
 		{quickAction{"Wartung", "ti-tool", "/maintenance", "amber", ""}, "maintenance.view"},

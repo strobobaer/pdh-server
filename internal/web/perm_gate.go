@@ -25,6 +25,7 @@ var recordDeptSource = map[string]struct {
 	"ticket": {"tickets", true}, "fault": {"faults", true}, "maintenance_task": {"maintenance_tasks", true},
 	"maintenance_plan": {"maintenance_plans", true}, "task": {"tasks", true}, "project": {"projects", true},
 	"it_asset": {"it_assets", false}, "kvp": {"kvp_ideas", false}, "part": {"spare_parts", false},
+	setupRef: {"setup_times", false},
 }
 
 // recordDepartments: Abteilungen eines Datensatzes (leer = keiner Abteilung
@@ -94,7 +95,7 @@ func (h *Handler) hasPermRec(r *http.Request, perm, refType, id string) bool {
 // areaAdminPerm: Bereichsadministrator-Recht je Modul (Feldsätze/Stammdaten).
 var areaAdminPerm = map[string]string{
 	"ticket": "tickets.admin", "fault": "faults.admin", "maintenance_task": "maintenance.admin", "maintenance": "maintenance.admin",
-	"task": "tasks.admin", "project": "projects.admin", "kvp": "kvp.admin", "infrastructure": "infrastructure.admin",
+	"task": "tasks.admin", "project": "projects.admin", "kvp": "kvp.admin", "infrastructure": "infrastructure.admin", setupRef: permSetupAdmin,
 	"part": "inventory.admin", "storage": "inventory.admin", "purchase_order": "procurement.admin", "business_partner": "directory.admin", "it_asset": "it.admin",
 	"certs": permCertsAdmin, // Zertifikate (Let's Encrypt): nur dieses Recht, nicht alle system.*
 	syncRef: permSyncAdmin,  // Abgleich mit Fremdsystemen: Profile löschen
@@ -147,6 +148,7 @@ var gateRules = []gateRule{
 	gr("DELETE", "projects.admin", "project", false, apiV1+`/projects`+gID+gEnd),
 	gr(wPost, "maintenance.admin", "maintenance_task", false, `^/maintenance/tasks`+gID+`/delete-web$`),
 	gr(wPost, "kvp.admin", "kvp", false, `^/kvp`+gID+`/delete$`),
+	gr(wPost, permSetupAdmin, setupRef, false, `^/setup`+gID+`/delete-web$`),
 	gr("DELETE", "maintenance.admin", "", false, apiV1+`/maintenance/checklists`+gID+gEnd),
 	// ── Zertifikate (Let's Encrypt): Entfernen nur Bereichsadministrator, Full (strict) braucht Cloudflare ──
 	gr(wPost, permCertsAdmin, "", false, `^/admin/server-config/certs/remove$`),
@@ -203,6 +205,9 @@ var gateRules = []gateRule{
 	// ── Hersteller & Lieferanten über die Schnittstelle ──
 	gr(wPost, "directory.edit", "", false, apiV1+`/directory/?$`),
 	gr(wPost, "directory.edit", "business_partner", false, apiV1+`/directory`+gID+gEnd),
+	// ── Rüstzeiten: anlegen, bearbeiten und beenden mit setup.edit (für den Datensatz in seiner Abteilung) ──
+	gr(wPost, permSetupEdit, "", false, `^/setup/?$`),
+	gr(wPost, permSetupEdit, setupRef, false, `^/setup`+gID+`/(?:edit|finish)-web$`),
 	// ── Beteiligte, Gruppe, Archiv an beliebigen Vorgängen ──
 	gr(wPost, "edit", "*", true, `^/records/([a-z_]+)`+gID+`/(?:people|group|parties)(?:/.*)?$`),
 	gr(wPost, "done", "*", true, `^/records/([a-z_]+)`+gID+`/archive$`),

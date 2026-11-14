@@ -35,6 +35,7 @@ var fieldModules = []fieldModule{
 	{"task", "Aufgaben", "tasks", "''", "", "tasks.edit", "tasks.view"},
 	{"project", "Projekte", "projects", "''", "", "projects.edit", ""},
 	{"kvp", "KVP-Vorschläge", "kvp_ideas", "category", "Kategorie", "kvp.manage", ""},
+	{"setup", "Rüstzeiten", "setup_times", "''", "", permSetupEdit, permSetupView},
 	{"maintenance_task", "Wartungen", "maintenance_tasks", "type::text", "Wartungsart", "maintenance.edit", "maintenance.view"},
 	{"infrastructure", "Infrastruktur", "infrastructure", "type::text", "Typ", "", ""},
 	{"storage", "Lagerplätze", "storage_nodes", "type::text", "Lagertyp", "inventory.edit", ""},
