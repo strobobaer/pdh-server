@@ -885,6 +885,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/core/settings/pki/issue", h.PKIIssueWeb)
 	r.Post("/core/settings/pki/self-service", h.PKISelfServiceWeb)
 	r.Post("/account/certificates", h.AccountCertificateWeb)
+	r.Get("/account/certificates/enforcement", h.PKIEnforcementWeb) // Anzeige Zertifikatspflicht (nur lesend)
 	r.Get("/certificates/{id}/password", h.CertificatePasswordWeb)
 	r.Post("/certificates/{id}/revoke", h.CertificateRevokeWeb)
 	r.Get("/certificates/{id}/{file}", h.CertificateFileWeb)

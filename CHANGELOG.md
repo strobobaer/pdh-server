@@ -19,6 +19,7 @@ im Kapitel „Versionen & Updates“ an.
 - Rüstzeiten: Rüstgründe und Rüsttasten werden im Katalog unter Infrastruktur gepflegt und den Anlagen zugeordnet.
 - Rüstzeiten: In den Core-Einstellungen gelten die maximale Rüstzeit (Standard 120 Minuten) und die Karenzzeit (Standard 15 Minuten); jede Anlage darf eine kürzere Höchstdauer haben, bei einem zu hohen Wert erscheint ein Hinweis.
 - Rüstzeiten: Läuft das Rüsten länger als Höchstdauer plus Karenzzeit, entsteht genau eine Störmeldung „Störung durch Rüsten“, die Anlage gilt als stehend und die Störungsrichtlinie greift.
+- Zertifikate: Die Zertifikatsseite und die Karte „Zertifikat für die Nextcloud-App“ zeigen jetzt, ob Nextcloud überhaupt Zertifikate abfragt („Zertifikatspflicht aktiv“, „nicht eingerichtet“ mit dem fertigen Befehl, „nicht prüfbar“); bei „Server (Nextcloud)“ erklärt ein Hinweis, wann das Let's-Encrypt-Zertifikat reicht.
 
 ### Sicherheit
 

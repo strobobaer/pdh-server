@@ -9,6 +9,7 @@ import (
 	"html"
 	"net/http"
 	"net/url"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -53,6 +54,7 @@ type PKIPageData struct {
 	SelfService              bool
 	NewID                    string
 	PublicBase               string // für die nginx-Anleitung
+	ServerHint               string // Hinweis bei „Server (Nextcloud)“ (Let's Encrypt)
 }
 
 func (h *Handler) canPKI(r *http.Request) bool {
@@ -155,6 +157,8 @@ func (h *Handler) PKIPage(w http.ResponseWriter, r *http.Request) {
 	}
 	d.Certs = h.pkiList(ctx, "")
 	h.pkiRevealNew(ctx, d.Certs, d.NewID)
+	leRows, _ := h.certList(ctx)
+	d.ServerHint = pkiServerHint(os.Getenv("PDH_NEXTCLOUD_BASEURL"), leRows)
 	h.render(w, "pki", d)
 }
 
