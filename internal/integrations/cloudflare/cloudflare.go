@@ -45,6 +45,9 @@ type envelope struct {
 // ErrAuth: Cloudflare nimmt den Token nicht an oder er darf das nicht.
 var ErrAuth = errors.New("Cloudflare lehnt den API-Token ab oder ihm fehlt die Berechtigung")
 
+// ErrNotFound: Cloudflare kennt die angefragte Sache nicht (HTTP 404).
+var ErrNotFound = errors.New("Cloudflare kennt das nicht")
+
 func (c *Client) do(ctx context.Context, method, path string, body, out any) (*envelope, error) {
 	if c == nil || c.Token == "" {
 		return nil, errors.New("kein Cloudflare-API-Token eingetragen")
@@ -82,6 +85,9 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any) (*e
 		}
 		if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
 			return nil, fmt.Errorf("%w: %s", ErrAuth, msg)
+		}
+		if resp.StatusCode == http.StatusNotFound {
+			return nil, fmt.Errorf("%w: %s", ErrNotFound, msg)
 		}
 		return nil, errors.New("Cloudflare: " + msg)
 	}
@@ -196,6 +202,64 @@ func (c *Client) Setting(ctx context.Context, zoneID, id string) (string, error)
 func (c *Client) SetSetting(ctx context.Context, zoneID, id, value string) error {
 	_, err := c.do(ctx, http.MethodPatch, "/zones/"+url.PathEscape(zoneID)+"/settings/"+url.PathEscape(id), map[string]string{"value": value}, nil)
 	return err
+}
+
+// MTLSHostnames liest, für welche Namen der Zone Cloudflare Client-Zertifikate (mTLS) verlangt.
+// Gemeint ist die Zuordnung zur Managed CA von Cloudflare (ohne mtls_certificate_id); eine
+// eigene CA (Enterprise) führt das PDH nicht.
+func (c *Client) MTLSHostnames(ctx context.Context, zoneID string) ([]string, error) {
+	var r struct {
+		Hostnames []string `json:"hostnames"`
+	}
+	if _, err := c.do(ctx, http.MethodGet, "/zones/"+url.PathEscape(zoneID)+"/certificate_authorities/hostname_associations", nil, &r); err != nil {
+		return nil, err
+	}
+	return r.Hostnames, nil
+}
+
+// SetMTLSHostnames ersetzt die ganze Liste. Wer einen Namen ändern will, liest zuerst die
+// aktuelle Liste und schreibt sie mit dem einen Unterschied zurück.
+func (c *Client) SetMTLSHostnames(ctx context.Context, zoneID string, hostnames []string) error {
+	if hostnames == nil {
+		hostnames = []string{}
+	}
+	_, err := c.do(ctx, http.MethodPut, "/zones/"+url.PathEscape(zoneID)+"/certificate_authorities/hostname_associations", map[string]any{"hostnames": hostnames}, nil)
+	return err
+}
+
+// MTLSRule: eine WAF-Regel der Zone, die das Client-Zertifikat prüft (cf.tls_client_auth).
+type MTLSRule struct {
+	Description string
+	Action      string
+	Expression  string
+	Enabled     bool
+}
+
+// MTLSRules liest die Custom-WAF-Regeln der Zone, deren Ausdruck cf.tls_client_auth enthält.
+// Ohne Regelsatz (404) ist die Liste leer. Nur lesen.
+func (c *Client) MTLSRules(ctx context.Context, zoneID string) ([]MTLSRule, error) {
+	var r struct {
+		Rules []struct {
+			Description string `json:"description"`
+			Action      string `json:"action"`
+			Expression  string `json:"expression"`
+			Enabled     *bool  `json:"enabled"`
+		} `json:"rules"`
+	}
+	if _, err := c.do(ctx, http.MethodGet, "/zones/"+url.PathEscape(zoneID)+"/rulesets/phases/http_request_firewall_custom/entrypoint", nil, &r); err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var out []MTLSRule
+	for _, x := range r.Rules {
+		if !strings.Contains(x.Expression, "cf.tls_client_auth") {
+			continue
+		}
+		out = append(out, MTLSRule{Description: x.Description, Action: x.Action, Expression: x.Expression, Enabled: x.Enabled == nil || *x.Enabled})
+	}
+	return out, nil
 }
 
 // Ingress: ein Ziel im Tunnel (öffentlicher Hostname → Dienst am Server).

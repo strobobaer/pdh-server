@@ -224,3 +224,47 @@
 </style>
 </div>
 {{end}}
+
+{{/* Client-Zertifikate bei Cloudflare (mTLS) im Reiter Cloudflare-Tunnel (internal/web/cloudflare_mtls.go).
+     Lädt nur auf Knopfdruck; alles dazu braucht system.cloudflare. Daten: mtlsPanel. */}}
+{{define "mtls-panel"}}
+<div id="mtls-panel">
+{{if .Msg}}<div class="sc-sub" style="margin-bottom:8px;color:var(--green)"><i class="ti ti-check"></i> {{.Msg}}</div>{{end}}
+{{if .Warn}}<div class="sc-sub" style="margin-bottom:8px;color:var(--amber)"><i class="ti ti-alert-triangle"></i> {{.Warn}}</div>{{end}}
+{{if .Err}}<div class="sc-sub" style="margin-bottom:8px;color:var(--red)"><i class="ti ti-alert-circle"></i> {{.Err}}</div>{{end}}
+{{if .Hint}}<p class="sc-sub"><i class="ti ti-info-circle"></i> {{.Hint}}</p>
+{{else}}
+<div class="sc-sub" style="margin-bottom:8px"><i class="ti ti-world"></i> Domain <b>{{.Zone}}</b>
+  <button type="button" class="btn btn-small" style="margin-left:8px" hx-get="/admin/server-config/cloudflare/mtls" hx-target="#mtls-panel" hx-swap="outerHTML" hx-disabled-elt="this"><i class="ti ti-refresh"></i> Neu laden</button></div>
+<div class="mtls-list">
+{{range .Hosts}}<div class="mtls-line">
+  <div class="mtls-name"><b>{{.Name}}</b>{{if .Role}} <span class="badge b-blue">{{.Role}}</span>{{end}}</div>
+  <div class="mtls-state">{{if .On}}<span class="badge b-amber">mTLS an – Cloudflare verlangt ein Zertifikat</span>{{else}}<span class="badge b-green">mTLS aus</span>{{end}}</div>
+  <div class="mtls-actions">{{if .On}}<form hx-post="/admin/server-config/cloudflare/mtls-off" hx-target="#mtls-panel" hx-swap="outerHTML" hx-disabled-elt="find button"
+      hx-confirm="mTLS für {{.Name}} abschalten? Cloudflare verlangt dann dort kein Client-Zertifikat mehr. Andere Namen und alle Regeln bleiben, wie sie sind. Alle Administratoren bekommen eine Nachricht.">
+      <input type="hidden" name="host" value="{{.Name}}">
+      <button class="btn btn-small btn-primary" type="submit" aria-label="mTLS für {{.Name}} abschalten"><i class="ti ti-shield-off"></i> Abschalten</button></form>
+    {{else}}<form hx-post="/admin/server-config/cloudflare/mtls-on" hx-target="#mtls-panel" hx-swap="outerHTML" hx-disabled-elt="find button"
+      hx-confirm="mTLS für {{.Name}} wieder einschalten? Cloudflare verlangt dann dort wieder ein Cloudflare-Zertifikat – Geräte mit PDH-Zertifikaten kommen dann nicht mehr über Cloudflare herein.">
+      <input type="hidden" name="host" value="{{.Name}}">
+      <button class="btn btn-small" type="submit" aria-label="mTLS für {{.Name}} einschalten"><i class="ti ti-shield-check"></i> Einschalten</button></form>{{end}}</div>
+</div>{{else}}<p class="sc-sub">Für keinen Namen ist mTLS an.</p>{{end}}
+</div>
+
+<div class="form-label" style="margin-top:12px">WAF-Regeln mit Zertifikatsprüfung</div>
+{{if .RulesErr}}<p class="sc-sub" style="color:var(--amber)"><i class="ti ti-alert-triangle"></i> {{.RulesErr}}</p>
+{{else if .Rules}}<ul class="sc-sub mtls-rules">{{range .Rules}}<li>{{if .Description}}{{.Description}}{{else}}(ohne Beschreibung){{end}} – Aktion <code>{{.Action}}</code> – {{if .Enabled}}<span class="badge b-amber">aktiv</span>{{else}}<span class="badge">aus</span>{{end}}</li>{{end}}</ul>
+<p class="sc-sub"><i class="ti ti-info-circle"></i> Sperrt diese Regel, brauchen Geräte ein Cloudflare-Zertifikat – PDH-Zertifikate kennt Cloudflare nicht. Das PDH ändert keine Regeln; bei Bedarf im Cloudflare-Dashboard unter Sicherheit → WAF → Benutzerdefinierte Regeln anpassen.</p>
+{{else}}<p class="sc-sub">Keine Regel mit Zertifikatsprüfung gefunden. Ohne solche Regel lässt Cloudflare auch Geräte ohne Zertifikat durch.</p>{{end}}
+{{end}}
+<style>
+.mtls-list{display:flex;flex-direction:column;margin:6px 0}
+.mtls-line{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px}
+.mtls-name{flex:1 1 200px;min-width:0;overflow-wrap:anywhere}
+.mtls-state{display:flex;flex-wrap:wrap;gap:6px;align-items:center;min-width:0}
+.mtls-actions{margin-left:auto}
+.mtls-actions form{display:inline}
+.mtls-rules{margin:4px 0 8px;padding-left:18px;overflow-wrap:anywhere}
+</style>
+</div>
+{{end}}
