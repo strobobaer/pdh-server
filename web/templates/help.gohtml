@@ -462,7 +462,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
 
 <section class="hb-ch" id="ruestzeiten" data-title="Rüstzeiten" data-pages="setup">
   <h2><i class="ti ti-arrows-exchange-2"></i> Rüstzeiten</h2>
-  <p>Eine <b>Rüstzeit</b> ist die Zeit, in der eine Anlage umgerüstet, gereinigt oder mit neuen Hilfsmitteln bestückt wird. Sie ist ein Vorgang wie ein Ticket: mit Nummer (<b>RZ-0001</b>), Anlage, Grund, Beginn und Ende. Sie hat die Status <b>Rüsten</b> (läuft), <b>Fertig</b> und <b>Störung durch Rüsten</b>. Läuft sie zu lange, meldet PDH von selbst eine Störung. Alles hier ist ein Zusatz: Ohne Rüsttasten an einer Anlage bleibt alles wie bisher.</p>
+  <p>Eine <b>Rüstzeit</b> ist die Zeit, in der eine Anlage umgerüstet, gereinigt oder mit neuen Hilfsmitteln bestückt wird. Sie ist ein Vorgang wie ein Ticket: mit Nummer (<b>RZ-0001</b>), Anlage, Grund, Beginn und Ende. Sie hat die Status <b>Rüsten</b> (läuft), <b>Beendet</b> und <b>Störung durch Rüsten</b>. Läuft sie zu lange, meldet PDH von selbst eine Störung. Alles hier ist ein Zusatz: Ohne Rüsttasten an einer Anlage bleibt alles wie bisher.</p>
   {{template "hb-fig-ruesten"}}
   <div class="hb-howto"><b><i class="ti ti-player-play"></i> So richtest du Rüsttasten ein</b> (Recht „Rüstzeiten: erfassen, korrigieren, Katalog und Höchstdauer pflegen“)
     <ol class="hb-steps">
@@ -495,7 +495,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <ol class="hb-steps">
       <li>Läuft die Rüstzeit länger als die Höchstdauer, zeigt die Seite „Höchstdauer überschritten“. Noch ist alles ruhig.</li>
       <li>Nach Höchstdauer <b>plus Karenzzeit</b> legt PDH <b>genau eine</b> Störmeldung „Störung durch Rüsten: …“ mit hohem Schweregrad an. Die Rüstzeit bekommt den Status <b>Störung durch Rüsten</b>, die Anlage gilt als stehend.</li>
-      <li>Zuständig ist zuerst der <b>Anlagenverantwortliche</b>, gibt es keinen, der <b>Schichtführer</b>. Von da an gilt die Störungsrichtlinie wie bei jeder Störung.</li>
+      <li>Für die Rüstzeit verantwortlich ist der <b>Anlagenverantwortliche</b>, zugeordnet ist der <b>Schichtführer</b>, der gerade Dienst hat. Für die Störmeldung gilt die Störungsrichtlinie wie bei jeder Störung.</li>
       <li>Die Rüstzeit zählt <b>bis zur Störmeldung</b>; die Zeit danach läuft als Störung. Den Status der Anlage bestimmt immer die neueste Rüstzeit.</li>
     </ol>
     Auf einem Spiegelserver läuft diese Überwachung nicht.</div>

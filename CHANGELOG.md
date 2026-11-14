@@ -14,7 +14,7 @@ im Kapitel „Versionen & Updates“ an.
 
 ### Neu
 
-- Rüstzeiten: Umrüsten, Reinigen und Formatwechsel sind jetzt ein eigener Vorgang (RZ-0001, …) mit Liste und Detailseite unter „Rüstzeiten“ und den Status Rüsten, Fertig und Störung durch Rüsten.
+- Rüstzeiten: Umrüsten, Reinigen und Formatwechsel sind jetzt ein eigener Vorgang (RZ-0001, …) mit Liste und Detailseite unter „Rüstzeiten“ und den Status Rüsten, Beendet und Störung durch Rüsten.
 - Rüstzeiten: An der Anlage und im Easy-Modus starten Rüsttasten mit einem Tippen die Rüstzeit, „Fertig“ beendet sie.
 - Rüstzeiten: Rüstgründe und Rüsttasten werden im Katalog unter Infrastruktur gepflegt und den Anlagen zugeordnet.
 - Rüstzeiten: In den Core-Einstellungen gelten die maximale Rüstzeit (Standard 120 Minuten) und die Karenzzeit (Standard 15 Minuten); jede Anlage darf eine kürzere Höchstdauer haben, bei einem zu hohen Wert erscheint ein Hinweis.
