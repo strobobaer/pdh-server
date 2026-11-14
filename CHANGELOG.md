@@ -10,6 +10,23 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.80.10] – 2026-11-14
+
+### Neu
+
+- Datennetz: Der neue Abschnitt „Datennetz prüfen“ zeigt mit ✓, ⚠ und ✗, ob dieser Server, die anderen PDH-Server und jeder Client im Datennetz sind, die richtigen Tags tragen und ihre Ports erreichbar sind – mit Klartext und Hinweis zur Abhilfe, z. B. „Gerät trägt tag:pdh-test1 statt tag:pdh – der Client lässt es nicht herein.“
+- Datennetz: Optional lässt sich ein Tailscale-API-Token hinterlegen. Dann liest die Prüfung zusätzlich die Geräteliste und die Access controls, meldet fehlende tagOwners und Freigaben und zeigt die fehlenden Zeilen zum Kopieren. Die Access controls ändert das PDH nie selbst. Das Ergebnis bleibt 30 Sekunden gespeichert.
+- Datennetz: Der Knopf „Tags korrigieren“ ergänzt bei PDH-Servern tag:pdh und bei Clients tag:pdh-data, ohne andere Tags zu entfernen, und ordnet Geräte nur über ihre Adresse im Datennetz zu (nach Rückfrage, nur für den Bereichsadministrator und nicht auf dem Spiegelserver); jede Änderung steht im Ereignisprotokoll.
+- Das Handbuch erklärt im Kapitel „Datennetz“, wie man das Datennetz prüft und einen API-Token anlegt, und nennt „Anmeldung EOF“ als Zeichen für falsche Tags.
+
+### Geändert
+
+- Der Daten-Client schreibt ins Protokoll, wenn er eine Gegenstelle ohne tag:pdh abweist („Verbindung von … abgewiesen: Tags …, erwartet tag:pdh“), höchstens einmal je Minute und Adresse.
+
+### Sicherheit
+
+- Der Tailscale-API-Token wird verschlüsselt gespeichert, nie angezeigt und nie im Protokoll genannt; der Zugriff auf Tailscale geschieht nur auf Knopfdruck und mit Zeitgrenzen. Tags korrigieren braucht das Recht „Datennetz: Clients löschen (Bereichsadministrator)“.
+
 ## [0.80.9] – 2026-11-14
 
 ### Behoben

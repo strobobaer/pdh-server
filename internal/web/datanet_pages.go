@@ -8,13 +8,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/netip"
 	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
-	"net"
 	"sort"
 	"strconv"
 	"strings"
@@ -428,6 +428,7 @@ type DataNetPageData struct {
 	Clients                 []dataNetRow
 	Created                 *dataNetCreated
 	Downloads               []dataNetDownload
+	HasAPIToken             bool
 	Version                 string
 }
 
@@ -492,6 +493,7 @@ var dataNetErrors = map[string]string{
 	"failed":   "Das ging nicht. Details stehen im Server-Protokoll.",
 	"key":      "Der Einmal-Schlüssel muss mit tskey- beginnen.",
 	"server":   "Unbekannter Servername.",
+	"apitoken": "Der API-Token muss mit tskey- beginnen.",
 }
 
 func (h *Handler) dataNetPageData(r *http.Request, created *dataNetCreated, notice, errMsg string) DataNetPageData {
@@ -504,6 +506,7 @@ func (h *Handler) dataNetPageData(r *http.Request, created *dataNetCreated, noti
 		Downloads: dataNetDownloads(),
 	}
 	d.Enabled = h.dataNetSetting(ctx, dataNetKeyEnabled) == "true"
+	d.HasAPIToken = h.dataNetSetting(ctx, dataNetKeyAPIToken) != ""
 	st := h.dataNetStatus()
 	d.NetState, d.NetStateLabel, d.NetErr = string(st.State), dataNetNetLabels[st.State], st.Err
 
@@ -706,6 +709,12 @@ func (h *Handler) DataNetSettings(w http.ResponseWriter, r *http.Request) {
 		}
 		keys[server] = key
 	}
+	apiToken := strings.TrimSpace(r.PostForm.Get("apitoken"))
+	if apiToken != "" && (!strings.HasPrefix(apiToken, "tskey-") || len(apiToken) > 300) {
+		http.Redirect(w, r, dataNetBack("", "apitoken"), http.StatusSeeOther)
+		return
+	}
+	apiDelete := r.PostForm.Get("apitoken_delete") == "on" && apiToken == ""
 	enabled := r.PostForm.Get("enabled") == "on"
 	was := h.dataNetSetting(ctx, dataNetKeyEnabled) == "true"
 	if err := h.dataNetPut(ctx, dataNetKeyEnabled, strconv.FormatBool(enabled)); err != nil {
@@ -720,6 +729,13 @@ func (h *Handler) DataNetSettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if apiToken != "" || apiDelete {
+		if err := h.dataNetSetAPIToken(ctx, apiToken); err != nil { // leer löscht
+			log.Warn().Err(err).Msg("Datennetz: API-Token nicht gespeichert")
+			http.Redirect(w, r, dataNetBack("", "failed"), http.StatusSeeOther)
+			return
+		}
+	}
 	note := "unverändert"
 	switch {
 	case enabled && !was:
@@ -729,6 +745,12 @@ func (h *Handler) DataNetSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(keys) > 0 { // nur die Zahl, nie der Schlüssel
 		note += ", Einmal-Schlüssel für " + fmt.Sprint(len(keys)) + " Server hinterlegt"
+	}
+	switch { // nie der Token selbst
+	case apiToken != "":
+		note += ", API-Token hinterlegt"
+	case apiDelete:
+		note += ", API-Token gelöscht"
 	}
 	h.dataNetLog(ctx, getUser(r).ID, "settings", note)
 	// Diesen Server sofort neu starten; der andere liest die Einstellungen bei seinem Start.

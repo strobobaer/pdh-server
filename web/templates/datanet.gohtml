@@ -19,6 +19,16 @@
 .dn-secret{border-color:var(--amber)}
 .dn-actions{display:flex;gap:6px;flex-wrap:wrap}
 .dn-h{font-size:13px;font-weight:600;margin:12px 0 2px}
+.dn-chk-sum{font-weight:600;font-size:13.5px;margin:4px 0 6px}
+.dn-chk-list{list-style:none;margin:2px 0 6px;padding:0}
+.dn-l{display:flex;gap:8px;align-items:flex-start;padding:5px 0;font-size:12.5px;border-bottom:1px solid var(--border)}
+.dn-l:last-child{border-bottom:0}
+.dn-l-ic{flex:0 0 18px;text-align:center;font-weight:700}
+.dn-l-ok .dn-l-ic{color:var(--green)}
+.dn-l-warn .dn-l-ic{color:var(--amber)}
+.dn-l-bad .dn-l-ic{color:var(--red)}
+.dn-l-info .dn-l-ic{color:var(--muted)}
+.dn-l-hint{display:block;margin-top:2px;font-size:11.5px;color:var(--muted)}
 .dn-dl{display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap;margin-bottom:8px}
 .dn-sha{font-family:ui-monospace,Consolas,monospace;font-size:11px;color:var(--muted);word-break:break-all}
 @media (max-width:640px){
@@ -111,6 +121,12 @@
         <input id="dn-key-{{.Name}}" name="authkey.{{.Name}}" type="password" class="form-input" autocomplete="off" spellcheck="false" maxlength="300" placeholder="{{if .HasKey}}hinterlegt – leer lassen zum Behalten{{else}}tskey-auth-…{{end}}"></div>
       {{end}}
     </div>
+    <div class="dn-grid" style="margin-top:10px">
+      <div class="form-group"><label class="form-label" for="dn-api-token">Tailscale-API-Token (optional)</label>
+        <input id="dn-api-token" name="apitoken" type="password" class="form-input" autocomplete="off" spellcheck="false" maxlength="300" placeholder="{{if .HasAPIToken}}hinterlegt – leer lassen zum Behalten{{else}}tskey-api-…{{end}}">
+        {{if .HasAPIToken}}<label style="display:flex;gap:6px;align-items:center;font-size:12px;margin-top:4px"><input type="checkbox" name="apitoken_delete"> Token löschen</label>{{end}}
+        <span class="dn-note">Nur für die Prüfung unten: liest Geräte und Access controls und kann Tags korrigieren. Wird verschlüsselt gespeichert und nie angezeigt.</span></div>
+    </div>
     <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px">
       <button class="btn btn-primary" type="submit"><i class="ti ti-device-floppy"></i> Speichern</button>
       <span class="dn-note">Den Schlüssel erzeugst du auf tailscale.com unter <i>Settings → Keys</i> (Reusable aus, Pre-approved an, Tag <code>tag:pdh</code>). Er wird verschlüsselt abgelegt und nach der ersten Verbindung gelöscht.</span>
@@ -118,6 +134,14 @@
   </form>
   {{end}}
   <p class="dn-note" style="margin-top:10px">Bei tailscale.com liegen nur die Gerätenamen und Adressen. Die Daten selbst laufen verschlüsselt direkt zwischen PDH und Client und liegen nie bei Tailscale.</p>
+</div>
+
+<div class="card" style="margin-bottom:14px" id="dn-check-card">
+  <div class="card-title"><span><i class="ti ti-stethoscope"></i> Datennetz prüfen</span></div>
+  <p style="font-size:12.5px;margin-bottom:8px">Prüft, ob dieser Server und jeder Client im Datennetz sind, die richtigen Tags tragen und ihre Ports erreichbar sind. Jede Zeile zeigt ✓ (in Ordnung), ⚠ (Warnung) oder ✗ (Fehler) und sagt, was zu tun ist.{{if .HasAPIToken}} Mit dem hinterlegten API-Token liest die Prüfung auch die Geräteliste und die Access controls von Tailscale.{{end}}</p>
+  <button type="button" class="btn btn-primary" hx-get="/datanet/check" hx-target="#dn-check" hx-swap="innerHTML" hx-indicator="#dn-check-busy"><i class="ti ti-stethoscope"></i> Datennetz prüfen</button>
+  <span id="dn-check-busy" class="htmx-indicator dn-note" style="margin-left:8px">Prüfe … das kann bis zu einer Minute dauern.</span>
+  <div id="dn-check" aria-live="polite" style="margin-top:8px"></div>
 </div>
 
 <div class="card" style="margin-bottom:14px">

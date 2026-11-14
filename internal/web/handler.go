@@ -270,6 +270,10 @@ type Handler struct {
 	dataNetActive      bool                                           // Server ist der aktive (nicht der Spiegel); gesetzt von StartDataNet
 	dataNetListenAddr  string                                         // Rückkanal-Adresse; leer → :8443 (Tests: :0)
 	dataNetNewNode     func(datanet.NodeConfig) (datanet.Node, error) // nil → datanet.NewTSNode (Tests tauschen aus)
+	dataNetAPIBase     string                                         // Tailscale-API; leer → api.tailscale.com (Tests tauschen aus)
+	dataNetCheckMu     sync.Mutex // schützt das zwischengespeicherte Prüfergebnis des Datennetzes
+	dataNetCheckAt     time.Time
+	dataNetCheckRes    *dnCheck
 	mirror             MirrorInfo                                     // Spiegelmodus; einmal beim Start gesetzt (SetMirror)
 	tunnelTokenFn      func(context.Context) (string, bool)           // Tunnel-Token für den Abgleich mit pdh-ha; nil → Server-Einstellungen (Tests tauschen aus)
 	mirrorActiveURL    func(*http.Request) string                     // Adresse des aktiven Servers für die Sperrseite; nil → kein Link
@@ -956,6 +960,8 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/datanet/clients/{id}/revoke", h.DataNetRevoke)
 	r.Post("/datanet/clients/{id}/delete", h.DataNetDelete)
 	r.Post("/datanet/settings", h.DataNetSettings)
+	r.Get("/datanet/check", h.DataNetCheck)
+	r.Post("/datanet/check/fix", h.DataNetFixTags)
 	r.Get("/datanet/download/{file}", h.DataNetDownload)
 	// Abgleich mit Fremdsystemen (sync_pages.go, sync_actions.go)
 	r.Get("/sync", h.SyncPage)
