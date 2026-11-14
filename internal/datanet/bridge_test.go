@@ -1,9 +1,11 @@
 package datanet
 
 import (
+	"errors"
 	"io"
 	"net"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -50,6 +52,64 @@ func TestBridgeCloseHost(t *testing.T) {
 	a2, err := b.Addr("100.64.0.7:1433")
 	if err != nil {
 		t.Fatal(err)
+	}
+	echoRoundTrip(t, a2)
+}
+
+func TestBridgeClose(t *testing.T) {
+	echo, _ := startEcho(t)
+	b := NewBridges(&nodetest.Fake{Routes: map[string]string{"100.64.0.7:1433": echo}})
+	a1, _ := b.Addr("100.64.0.7:1433")
+	b.Close()
+	waitFor(t, "Brücke schließt", func() bool {
+		c, err := net.DialTimeout("tcp", a1, 200*time.Millisecond)
+		if err == nil {
+			c.Close()
+		}
+		return err != nil
+	})
+	if _, err := b.Addr("100.64.0.7:1433"); !errors.Is(err, net.ErrClosed) {
+		t.Errorf("Addr nach Close: %v, want net.ErrClosed", err)
+	}
+}
+
+func TestBridgeConcurrentAddr(t *testing.T) {
+	echo, _ := startEcho(t)
+	b := NewBridges(&nodetest.Fake{Routes: map[string]string{"100.64.0.7:1433": echo}})
+	defer b.Close()
+	var wg sync.WaitGroup
+	addrs := make([]string, 20)
+	for i := range addrs {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			addrs[i], _ = b.Addr("100.64.0.7:1433")
+		}()
+	}
+	wg.Wait()
+	for _, a := range addrs {
+		if a == "" || a != addrs[0] {
+			t.Fatalf("uneinheitliche Adressen: %v", addrs)
+		}
+	}
+}
+
+func TestBridgeReopensAfterListenerDied(t *testing.T) {
+	echo, _ := startEcho(t)
+	b := NewBridges(&nodetest.Fake{Routes: map[string]string{"100.64.0.7:1433": echo}})
+	defer b.Close()
+	a1, _ := b.Addr("100.64.0.7:1433")
+	b.mu.Lock()
+	b.m["100.64.0.7:1433"].ln.Close() // Listener fällt aus
+	b.mu.Unlock()
+	waitFor(t, "Eintrag entfernt", func() bool {
+		b.mu.Lock()
+		defer b.mu.Unlock()
+		return len(b.m) == 0
+	})
+	a2, err := b.Addr("100.64.0.7:1433")
+	if err != nil || a2 == a1 {
+		t.Fatalf("neue Adresse erwartet: %q, %v", a2, err)
 	}
 	echoRoundTrip(t, a2)
 }

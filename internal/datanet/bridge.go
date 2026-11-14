@@ -56,7 +56,7 @@ func (b *Bridges) Addr(remote string) (string, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	br := &bridge{remote: remote, host: host, ln: ln, ctx: ctx, cancel: cancel, conns: map[net.Conn]struct{}{}}
 	b.m[remote] = br
-	go br.serve(b.d)
+	go br.serve(b)
 	return ln.Addr().String(), nil
 }
 
@@ -89,17 +89,24 @@ func (b *Bridges) Close() {
 	}
 }
 
-func (br *bridge) serve(d Dialer) {
+func (br *bridge) serve(b *Bridges) {
 	for {
-		c, err := br.ln.Accept()
+		c, err := acceptRetry(br.ln)
 		if err != nil {
+			// Listener tot: Eintrag entfernen, damit Addr neu öffnet.
+			b.mu.Lock()
+			if b.m[br.remote] == br {
+				delete(b.m, br.remote)
+			}
+			b.mu.Unlock()
+			br.close()
 			return
 		}
 		if !br.track(c) {
 			c.Close()
 			return
 		}
-		go br.handle(d, c)
+		go br.handle(b.d, c)
 	}
 }
 

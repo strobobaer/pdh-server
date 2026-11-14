@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/netip"
 	"strconv"
 	"strings"
 )
@@ -29,14 +30,24 @@ func ParseTarget(s string) (Target, error) {
 		return Target{Port: port, Addr: net.JoinHostPort("127.0.0.1", strconv.Itoa(port))}, nil
 	}
 	addr = strings.TrimSpace(addr)
-	host, p, err := net.SplitHostPort(addr)
-	if err != nil || host == "" {
-		return Target{}, fmt.Errorf("ungültiges Ziel %q: erwartet Host:Port", addr)
-	}
-	if _, err := parsePort(p); err != nil {
+	if err := validateAddr(addr); err != nil {
 		return Target{}, err
 	}
 	return Target{Port: port, Addr: addr}, nil
+}
+
+// validateAddr prüft ein lokales Ziel host:port: Host nicht leer, ohne "=" und
+// keine Platzhalteradresse (0.0.0.0, ::), Port 1–65535.
+func validateAddr(addr string) error {
+	host, p, err := net.SplitHostPort(addr)
+	if err != nil || host == "" || strings.Contains(host, "=") {
+		return fmt.Errorf("ungültiges Ziel %q: erwartet Host:Port", addr)
+	}
+	if ip, err := netip.ParseAddr(host); err == nil && ip.IsUnspecified() {
+		return fmt.Errorf("ungültiges Ziel %q: Platzhalteradresse nicht erlaubt", addr)
+	}
+	_, err = parsePort(p)
+	return err
 }
 
 func parsePort(s string) (int, error) {
@@ -62,6 +73,9 @@ func ValidateTargets(ts []Target) error {
 		}
 		if t.Port == ReportPort {
 			return fmt.Errorf("Port %d ist für Meldungen reserviert", ReportPort)
+		}
+		if err := validateAddr(t.Addr); err != nil {
+			return fmt.Errorf("Port %d: %w", t.Port, err)
 		}
 		if seen[t.Port] {
 			return fmt.Errorf("Port %d doppelt", t.Port)

@@ -13,7 +13,13 @@ func TestParseTarget(t *testing.T) {
 			t.Errorf("ParseTarget(%q) = %v, %v; want %v", in, got, err, want)
 		}
 	}
-	for _, in := range []string{"", "0", "70000", "1433=nohostport", "abc"} {
+	if got, err := ParseTarget(" 1433 "); err != nil || got.Port != 1433 {
+		t.Errorf("ParseTarget(\" 1433 \") = %v, %v", got, err)
+	}
+	if got, err := ParseTarget(" 1433 = db:1433 "); err != nil || got.Addr != "db:1433" {
+		t.Errorf("Leerzeichen um Ziel: %v, %v", got, err)
+	}
+	for _, in := range []string{"", "0", "70000", "1433=nohostport", "abc", "1433=:80", "1433=h:0", "1433=a=b:1", "1433=0.0.0.0:1", "1433=[::]:1"} {
 		if _, err := ParseTarget(in); err == nil {
 			t.Errorf("ParseTarget(%q): Fehler erwartet", in)
 		}
@@ -39,5 +45,22 @@ func TestValidateTargets(t *testing.T) {
 	}
 	if err := ValidateTargets([]Target{{ReportPort, "a:1"}}); err == nil {
 		t.Error("Meldeport: Fehler erwartet")
+	}
+}
+
+func TestValidateTargetsAddr(t *testing.T) {
+	for _, tg := range []Target{
+		{0, "127.0.0.1:1"}, {70000, "127.0.0.1:1"},
+		{1433, ""}, {1433, "nohostport"}, {1433, ":80"}, {1433, "h:0"},
+		{1433, "a=b:1"}, {1433, "0.0.0.0:1433"}, {1433, "[::]:1433"},
+	} {
+		if err := ValidateTargets([]Target{tg}); err == nil {
+			t.Errorf("%+v: Fehler erwartet", tg)
+		}
+	}
+	for _, a := range []string{"127.0.0.1:1433", "[::1]:1433", "localhost:1433", "10.0.0.5:1433"} {
+		if err := ValidateTargets([]Target{{1433, a}}); err != nil {
+			t.Errorf("%s: %v", a, err)
+		}
 	}
 }

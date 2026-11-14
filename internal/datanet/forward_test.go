@@ -67,7 +67,7 @@ func TestForwardPipesAndFilters(t *testing.T) {
 	defer c.Close()
 	c.SetDeadline(time.Now().Add(2 * time.Second))
 	c.Write([]byte("x"))
-	if _, err := c.Read(make([]byte, 1)); err != io.EOF && err == nil {
+	if _, err := c.Read(make([]byte, 1)); err != io.EOF {
 		t.Fatalf("EOF erwartet, %v", err)
 	}
 	if accepted.Load() != before {
@@ -75,9 +75,80 @@ func TestForwardPipesAndFilters(t *testing.T) {
 	}
 
 	cancel()
-	time.Sleep(100 * time.Millisecond)
-	if _, err := net.DialTimeout("tcp", ln.Addr().String(), 500*time.Millisecond); err == nil {
-		t.Error("Listener nach ctx-Ende noch offen")
+	waitFor(t, "Listener schließt", func() bool {
+		c, err := net.DialTimeout("tcp", ln.Addr().String(), 200*time.Millisecond)
+		if err == nil {
+			c.Close()
+		}
+		return err != nil
+	})
+}
+
+// waitFor wartet mit Frist, bis cond wahr ist.
+func waitFor(t *testing.T, what string, cond func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if cond() {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("Frist abgelaufen: %s", what)
+}
+
+func TestForwardCancelEndsSessions(t *testing.T) {
+	echo, _ := startEcho(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	ln, _ := net.Listen("tcp", "127.0.0.1:0")
+	go Forward(ctx, ln, echo, nil)
+	c, err := net.Dial("tcp", ln.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	c.SetDeadline(time.Now().Add(3 * time.Second))
+	c.Write([]byte("a"))
+	buf := make([]byte, 1)
+	if _, err := io.ReadFull(c, buf); err != nil {
+		t.Fatal(err)
+	}
+	cancel()
+	if _, err := c.Read(buf); err == nil {
+		t.Fatal("Sitzung sollte nach cancel enden")
+	} else if ne, ok := err.(net.Error); ok && ne.Timeout() {
+		t.Fatal("Sitzung nach cancel nicht beendet")
+	}
+}
+
+func TestForwardHalfClose(t *testing.T) {
+	srv, _ := net.Listen("tcp", "127.0.0.1:0")
+	defer srv.Close()
+	go func() {
+		c, err := srv.Accept()
+		if err != nil {
+			return
+		}
+		defer c.Close()
+		io.ReadAll(c) // bis zum Halbschließen des Clients
+		c.Write([]byte("bye"))
+	}()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	ln, _ := net.Listen("tcp", "127.0.0.1:0")
+	go Forward(ctx, ln, srv.Addr().String(), nil)
+	c, err := net.Dial("tcp", ln.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	c.SetDeadline(time.Now().Add(3 * time.Second))
+	c.Write([]byte("req"))
+	c.(*net.TCPConn).CloseWrite()
+	got, err := io.ReadAll(c)
+	if err != nil || string(got) != "bye" {
+		t.Fatalf("Antwort nach Halbschließen: %q, %v", got, err)
 	}
 }
 
