@@ -10,6 +10,12 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.80.5] – 2026-11-14
+
+### Sicherheit
+
+- Easy-Modus: Die Bremse gegen zu viele Meldungen von derselben Adresse lässt sich nicht mehr mit einer erfundenen Absenderangabe (X-Forwarded-For) umgehen; weitergereichte Adressen zählen nur noch, wenn die Anfrage über den eigenen Server (Cloudflare-Tunnel) kommt.
+
 ## [0.80.4] – 2026-11-14
 
 ### Neu
