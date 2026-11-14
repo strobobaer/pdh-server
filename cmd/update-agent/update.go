@@ -187,7 +187,7 @@ func (a *updateAgent) runUpdate(args []string) {
 	script := filepath.Join(a.repoDir, "install_update.sh")
 	command := exec.Command("bash", append([]string{script}, args...)...)
 	command.Dir = a.repoDir
-	command.Env = append(os.Environ(), "PDH_UPDATE_MODE="+a.mode)
+	command.Env = updateEnv(os.Environ(), a.mode)
 	command.Stdout = output
 	command.Stderr = output
 	err := command.Run()
@@ -202,4 +202,30 @@ func (a *updateAgent) runUpdate(args []string) {
 	a.status.FinishedAt = time.Now().UTC()
 	a.saveUpdateStatus()
 	a.mu.Unlock()
+}
+
+// updateEnv: Umgebung für install_update.sh. Der systemd-Dienst läuft ohne HOME
+// und GOPATH; ohne sie kann go die neue Toolchain nicht nachladen.
+func updateEnv(base []string, mode string) []string {
+	has := func(key string) bool {
+		for _, e := range base {
+			if strings.HasPrefix(e, key+"=") && len(e) > len(key)+1 {
+				return true
+			}
+		}
+		return false
+	}
+	env := append([]string{}, base...)
+	env = append(env, "PDH_UPDATE_MODE="+mode)
+	if !has("HOME") {
+		home := "/root"
+		if h, err := os.UserHomeDir(); err == nil && h != "" {
+			home = h
+		}
+		env = append(env, "HOME="+home)
+	}
+	if !has("GOPATH") {
+		env = append(env, "GOPATH=/var/cache/pdh-updater/go")
+	}
+	return env
 }

@@ -48,6 +48,8 @@ build_pdh_ha() {
     export HOME="${HOME:-/root}"
     export GOCACHE="${GOCACHE:-/var/cache/pdh-ha/go-build}"
     export GOMODCACHE="${GOMODCACHE:-/var/cache/pdh-ha/go-mod}"
+    export GOPATH="${GOPATH:-/var/cache/pdh-ha/go}"
+    mkdir -p "$GOPATH" 2>/dev/null || true
     # Go: Das Projekt braucht die Go-Version aus go.mod (derzeit 1.27). Ab Go 1.21
     # lädt go die passende Version beim Bauen selbst nach (GOTOOLCHAIN=auto).
     export GOTOOLCHAIN=auto

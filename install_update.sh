@@ -183,9 +183,32 @@ else
         # Anthropic-SDK). Aeltere Installationen ab Go 1.21 (z. B. Ubuntu 24.04 mit 1.22)
         # laden die passende Version beim Bauen selbst nach (GOTOOLCHAIN=auto).
         export GOTOOLCHAIN=auto
-        go_minor="$(go env GOVERSION 2>/dev/null | sed -nE 's/^go1\.([0-9]+).*/\1/p')"
+        # Der Update-Agent (systemd) laeuft ohne HOME und GOPATH; ohne sie scheitert das
+        # Nachladen der Toolchain ("missing $GOPATH: HOME is not set").
+        if [[ -z "${HOME:-}" ]]; then
+            HOME="$(getent passwd "$(id -un)" 2>/dev/null | cut -d: -f6 || true)"
+            [[ -n "$HOME" ]] || HOME=/root
+            export HOME
+        fi
+        if [[ -z "${GOPATH:-}" ]]; then
+            export GOPATH=/var/cache/pdh-updater/go
+        fi
+        mkdir -p "$GOPATH" 2>/dev/null || true
+        # Auch fuer den Update-Agenten selbst (wirkt nach dessen naechstem Neustart).
+        if [[ -f "$repo_dir/.env" ]] && ! grep -qE '^[[:space:]]*GOPATH=' "$repo_dir/.env"; then
+            { [[ -z "$(tail -c1 "$repo_dir/.env")" ]] || echo; echo "GOPATH=/var/cache/pdh-updater/go"; } >> "$repo_dir/.env" 2>/dev/null || true
+        fi
+        go_err=""
+        if ! go_ver="$(go env GOVERSION 2>&1)"; then
+            go_err="$go_ver"; go_ver=""
+        fi
+        go_minor="$(printf '%s\n' "$go_ver" | sed -nE 's/^go1\.([0-9]+).*/\1/p')"
         if [[ -z "$go_minor" || "$go_minor" -lt 21 ]]; then
-            echo "Go $(go env GOVERSION 2>/dev/null || echo '?') ist zu alt: noetig ist mindestens Go 1.21 (laedt dann Go 1.27 selbst nach). Bitte Go aktualisieren." >&2
+            if [[ -n "$go_err" ]]; then
+                echo "Go-Pruefung fehlgeschlagen (go env GOVERSION), Meldung von Go:" >&2
+                printf '%s\n' "$go_err" | tail -n 5 >&2
+            fi
+            echo "Go ${go_ver:-?} ist zu alt oder nicht nutzbar: noetig ist mindestens Go 1.21 (laedt dann Go 1.27 selbst nach). Bitte Go pruefen bzw. aktualisieren." >&2
             exit 1
         fi
         # Alles unter .neu-Namen bauen und erst nach dem letzten erfolgreichen Bau

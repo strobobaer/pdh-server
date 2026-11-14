@@ -548,3 +548,66 @@ func TestInstallScriptBuildsDataClient(t *testing.T) {
 		t.Errorf("Bau des Daten-Clients (%d) muss vor mv pdh.neu (%d) stehen", build, mv)
 	}
 }
+
+func TestInstallScriptSetsGoEnv(t *testing.T) {
+	s := readRepoFile(t, "../../install_update.sh")
+	drBashSyntax(t, "install_update", s)
+	for _, want := range []string{
+		"export GOPATH=/var/cache/pdh-updater/go",
+		`HOME=/root`,
+		`echo "GOPATH=/var/cache/pdh-updater/go"`,
+		`grep -qE '^[[:space:]]*GOPATH='`,
+		"Go-Pruefung fehlgeschlagen",
+		"go env GOVERSION 2>&1",
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("install_update.sh: %q fehlt", want)
+		}
+	}
+	if gp, build := strings.Index(s, "export GOPATH="), strings.Index(s, "go env GOVERSION"); gp < 0 || build < 0 || gp > build {
+		t.Error("GOPATH muss vor dem ersten Go-Aufruf gesetzt werden")
+	}
+	u := readRepoFile(t, "../../install-update-agent.sh")
+	if !strings.Contains(u, "Environment=GOPATH=/var/cache/pdh-updater/go") || !strings.Contains(u, "/var/cache/pdh-updater/go\n") && !strings.Contains(u, "/var/cache/pdh-updater /var/cache/pdh-updater/go") {
+		t.Error("install-update-agent.sh: GOPATH in der Unit bzw. Ordner fehlt")
+	}
+}
+
+func TestUpdateEnvAddsGoPathAndHome(t *testing.T) {
+	env := updateEnv([]string{"PATH=/usr/bin"}, "systemd")
+	joined := "\n" + strings.Join(env, "\n") + "\n"
+	for _, want := range []string{"\nPDH_UPDATE_MODE=systemd\n", "\nGOPATH=/var/cache/pdh-updater/go\n"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("%q fehlt in %v", want, env)
+		}
+	}
+	if !strings.Contains(joined, "\nHOME=") {
+		t.Errorf("HOME fehlt in %v", env)
+	}
+	env = updateEnv([]string{"HOME=/home/x", "GOPATH=/g"}, "docker")
+	joined = "\n" + strings.Join(env, "\n") + "\n"
+	if strings.Count(joined, "\nHOME=") != 1 || strings.Count(joined, "\nGOPATH=") != 1 || !strings.Contains(joined, "\nGOPATH=/g\n") {
+		t.Errorf("vorhandene Werte dürfen nicht ergänzt werden: %v", env)
+	}
+}
+
+// Ausgabe von stderr des Skripts landet in der Statusausgabe.
+func TestRunUpdateCapturesStderr(t *testing.T) {
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash fehlt")
+	}
+	dir := t.TempDir()
+	script := "#!/usr/bin/env bash\necho \"Meldung auf stderr\" >&2\necho \"GOPATH=$GOPATH\"\nexit 1\n"
+	if err := os.WriteFile(filepath.Join(dir, "install_update.sh"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GOPATH", "")
+	a := &updateAgent{repoDir: dir, mode: "systemd"}
+	a.runUpdate(nil)
+	if !strings.Contains(a.status.Output, "Meldung auf stderr") {
+		t.Errorf("stderr fehlt: %q", a.status.Output)
+	}
+	if !strings.Contains(a.status.Output, "GOPATH=/var/cache/pdh-updater/go") {
+		t.Errorf("GOPATH nicht weitergereicht: %q", a.status.Output)
+	}
+}

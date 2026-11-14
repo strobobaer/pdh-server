@@ -56,7 +56,7 @@ fi
 
 # root liest das Repo des PDH-Benutzers – git verlangt dafür safe.directory
 build_commit="$(git -c safe.directory="$repo_dir" -C "$repo_dir" rev-parse HEAD)"
-install -d -m 0750 /var/cache/pdh-updater
+install -d -m 0750 /var/cache/pdh-updater /var/cache/pdh-updater/go
 mkdir -p "$repo_dir/bin"
 (cd "$repo_dir" && go build -buildvcs=false -trimpath -ldflags="-s -w -X main.buildCommit=$build_commit" -o bin/pdh ./cmd/server)
 (cd "$repo_dir" && go build -buildvcs=false -trimpath -ldflags="-s -w" -o bin/update-agent ./cmd/update-agent)
@@ -76,6 +76,7 @@ Environment=PDH_UPDATE_MODE=systemd
 Environment=PDH_UPDATE_REPO_DIR=$repo_dir
 Environment=GOCACHE=/var/cache/pdh-updater/go-build
 Environment=GOMODCACHE=/var/cache/pdh-updater/go-mod
+Environment=GOPATH=/var/cache/pdh-updater/go
 ExecStart=/usr/local/bin/pdh-update-agent
 Restart=on-failure
 RestartSec=5
