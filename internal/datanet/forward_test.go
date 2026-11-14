@@ -2,6 +2,7 @@ package datanet
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net"
 	"sync/atomic"
@@ -67,8 +68,13 @@ func TestForwardPipesAndFilters(t *testing.T) {
 	defer c.Close()
 	c.SetDeadline(time.Now().Add(2 * time.Second))
 	c.Write([]byte("x"))
-	if _, err := c.Read(make([]byte, 1)); err != io.EOF {
-		t.Fatalf("EOF erwartet, %v", err)
+	// Abgewiesen = Gegenseite schließt: EOF, oder RST (Linux schickt Reset, wenn
+	// beim Schließen noch ungelesene Daten anliegen). Eine Zeitüberschreitung hieße,
+	// die Verbindung blieb offen.
+	_, err = c.Read(make([]byte, 1))
+	var ne net.Error
+	if err == nil || (err != io.EOF && errors.As(err, &ne) && ne.Timeout()) {
+		t.Fatalf("EOF oder Reset erwartet, %v", err)
 	}
 	if accepted.Load() != before {
 		t.Error("abgelehnte Verbindung hat das Ziel erreicht")
