@@ -461,11 +461,11 @@ func runModbusQuery(config, spec map[string]string) (queryResult, error) {
 	if area == "holding" || area == "input" {
 		step = int(modbusRegisterCount(typ))
 	}
-	handler, client, err := openModbusClient(config)
+	client, err := openModbusClient(config)
 	if err != nil {
 		return queryResult{}, err
 	}
-	defer handler.Close()
+	defer client.Close()
 	res := queryResult{Rows: [][]string{{}}}
 	failed := 0
 	var firstErr error

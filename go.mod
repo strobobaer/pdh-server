@@ -11,7 +11,6 @@ require (
 	github.com/go-chi/chi/v5 v5.1.0
 	github.com/go-pdf/fpdf v0.9.0
 	github.com/go-sql-driver/mysql v1.8.1
-	github.com/goburrow/modbus v0.1.0
 	github.com/golang-jwt/jwt/v5 v5.2.1
 	github.com/google/uuid v1.6.0
 	github.com/gopcua/opcua v0.9.1
@@ -21,6 +20,7 @@ require (
 	github.com/mochi-mqtt/server/v2 v2.7.9
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/rs/zerolog v1.34.0
+	github.com/simonvetter/modbus v1.6.4
 	github.com/spf13/viper v1.21.0
 	github.com/tailscale/hujson v0.0.0-20260727124030-b80ff77dac4f
 	github.com/xuri/excelize/v2 v2.8.0

@@ -3,7 +3,6 @@ package web
 import (
 	"context"
 	"database/sql"
-	"encoding/binary"
 	"encoding/csv"
 	"fmt"
 	"math"
@@ -17,9 +16,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-pdf/fpdf"
-	"github.com/goburrow/modbus"
 	"github.com/gopcua/opcua/ua"
 	"github.com/rs/zerolog/log"
+	"github.com/simonvetter/modbus"
 	"github.com/xuri/excelize/v2"
 )
 
@@ -636,11 +635,11 @@ func coerceOPCUAVariant(current *ua.Variant, value string) (*ua.Variant, error) 
 // gleiche Notation wie auf der Import-Seite). Nur Coils und Holding
 // Register sind beschreibbar.
 func writeModbusExport(config map[string]string, mappings []ExportMappingView) error {
-	handler, client, err := openModbusClient(config)
+	client, err := openModbusClient(config)
 	if err != nil {
 		return err
 	}
-	defer handler.Close()
+	defer client.Close()
 
 	for _, m := range mappings {
 		reading, err := parseModbusReading(m.FieldName)
@@ -654,19 +653,14 @@ func writeModbusExport(config map[string]string, mappings []ExportMappingView) e
 	return nil
 }
 
-func writeModbusValue(client modbus.Client, reading modbusReading, value string) error {
+func writeModbusValue(client *modbus.ModbusClient, reading modbusReading, value string) error {
 	switch reading.RegisterType {
 	case "coil":
 		b, err := strconv.ParseBool(value)
 		if err != nil {
 			return fmt.Errorf("ungültiger Bool-Wert: %w", err)
 		}
-		v := uint16(0)
-		if b {
-			v = 0xFF00
-		}
-		_, err = client.WriteSingleCoil(reading.Address, v)
-		return err
+		return client.WriteCoil(reading.Address, b)
 	case "holding":
 		switch reading.DataType {
 		case "uint16":
@@ -674,42 +668,33 @@ func writeModbusValue(client modbus.Client, reading modbusReading, value string)
 			if err != nil {
 				return fmt.Errorf("ungültiger Wert: %w", err)
 			}
-			_, err = client.WriteSingleRegister(reading.Address, uint16(n))
-			return err
+			return client.WriteRegister(reading.Address, uint16(n))
 		case "int16":
 			n, err := strconv.ParseInt(value, 10, 16)
 			if err != nil {
 				return fmt.Errorf("ungültiger Wert: %w", err)
 			}
-			_, err = client.WriteSingleRegister(reading.Address, uint16(int16(n)))
-			return err
+			return client.WriteRegister(reading.Address, uint16(int16(n)))
 		case "uint32":
 			n, err := strconv.ParseUint(value, 10, 32)
 			if err != nil {
 				return fmt.Errorf("ungültiger Wert: %w", err)
 			}
-			data := make([]byte, 4)
-			binary.BigEndian.PutUint32(data, uint32(n))
-			_, err = client.WriteMultipleRegisters(reading.Address, 2, data)
-			return err
+			return client.WriteRegisters(reading.Address, []uint16{uint16(n >> 16), uint16(n)})
 		case "int32":
 			n, err := strconv.ParseInt(value, 10, 32)
 			if err != nil {
 				return fmt.Errorf("ungültiger Wert: %w", err)
 			}
-			data := make([]byte, 4)
-			binary.BigEndian.PutUint32(data, uint32(int32(n)))
-			_, err = client.WriteMultipleRegisters(reading.Address, 2, data)
-			return err
+			u := uint32(int32(n))
+			return client.WriteRegisters(reading.Address, []uint16{uint16(u >> 16), uint16(u)})
 		case "float32":
 			f, err := strconv.ParseFloat(value, 32)
 			if err != nil {
 				return fmt.Errorf("ungültiger Wert: %w", err)
 			}
-			data := make([]byte, 4)
-			binary.BigEndian.PutUint32(data, math.Float32bits(float32(f)))
-			_, err = client.WriteMultipleRegisters(reading.Address, 2, data)
-			return err
+			u := math.Float32bits(float32(f))
+			return client.WriteRegisters(reading.Address, []uint16{uint16(u >> 16), uint16(u)})
 		default:
 			return fmt.Errorf("unbekannter Datentyp")
 		}

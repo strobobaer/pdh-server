@@ -1003,6 +1003,11 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/export/connections/{id}/explorer/opcua/node", h.OPCUAExplorerNode("export"))
 	r.Get("/export/connections/{id}/explorer/opcua/watch", h.OPCUAExplorerWatch("export"))
 	r.Post("/export/connections/{id}/explorer/opcua/write", h.OPCUAExplorerWrite("export"))
+	for _, dir := range []string{"import", "export"} {
+		r.Get("/"+dir+"/connections/{id}/explorer/modbus/range", h.ModbusExplorerRange(dir))
+		r.Get("/"+dir+"/connections/{id}/explorer/modbus/watch", h.ModbusExplorerWatch(dir))
+		r.Post("/"+dir+"/connections/{id}/explorer/modbus/write", h.ModbusExplorerWrite(dir))
+	}
 	r.Get("/import/connections/{id}/broker", h.MqttBrokerPage)
 	r.Get("/import/connections/{id}/broker/stream", h.MqttBrokerStream)
 	r.Post("/import/connections/{id}/mappings", h.ImportMappingCreateWeb)

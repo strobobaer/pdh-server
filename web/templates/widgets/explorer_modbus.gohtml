@@ -1,2 +1,233 @@
-{{/* Explorer für Modbus – wird in einer späteren Aufgabe ausgebaut */}}
-{{define "explorer-modbus"}}<div class="rec-sub">Der Modbus-Explorer wird gerade eingerichtet.</div>{{end}}
+{{/* Explorer für Modbus TCP: Registerbereich lesen (Coil, Discrete Input, Holding, Input Register), jedes Register in
+     allen Datentypen mit wählbarer Byte-/Wortreihenfolge, Live-Verfolgen im Takt, Testschreiben von Coils und Holding-Registern.
+     Daten: .ID, .Direction, .ExplorerWrite, .ExplorerUnit. Hilfsfunktionen: window.pdhExplorer (conn-explorer-js).
+     Werte stammen vom Gerät: nur per textContent ausgeben. */}}
+{{define "explorer-modbus"}}
+<style>
+.xm-bar{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:10px}
+.xm-bar label{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted)}
+.xm-bar input,.xm-bar select{min-width:0}
+.xm-bar input[type=number]{width:90px}
+.xm-status{font-size:12.5px;color:var(--muted);margin-bottom:8px}
+.xm-status.ex-err{color:var(--red)}
+.xm-status.ex-warn{color:var(--amber)}
+.xm-wrap{overflow:auto;max-height:520px}
+.xm-wrap table{width:100%;border-collapse:collapse;font-size:12.5px}
+.xm-wrap th,.xm-wrap td{text-align:left;padding:4px 8px;border-bottom:1px solid var(--border);white-space:nowrap}
+.xm-wrap th{color:var(--muted);font-weight:500;position:sticky;top:0;background:var(--bg2)}
+.xm-wrap tbody tr{cursor:pointer}
+.xm-wrap tbody tr:hover{background:var(--bg)}
+.xm-wrap tbody tr.xm-sel{outline:1px solid var(--accent);outline-offset:-1px}
+.xm-on{color:var(--green)}
+.xm-off{color:var(--muted)}
+.xm-matrix{margin-top:12px}
+.xm-matrix h4{margin:0 0 6px;font-size:13px}
+.xm-write{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-top:12px;padding-top:10px;border-top:1px solid var(--border)}
+.xm-write label{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted)}
+.xm-write input[type=number]{width:90px}
+.xm-write input[type=text]{width:150px;min-width:0}
+</style>
+<div id="xm-root">
+  <div class="xm-bar">
+    <label>Bereich
+      <select id="xm-area" aria-label="Bereich">
+        <option value="holding">Holding Register</option>
+        <option value="input">Input Register</option>
+        <option value="coil">Coil</option>
+        <option value="discrete">Discrete Input</option>
+      </select></label>
+    <label>Start <input type="number" id="xm-start" min="0" max="65535" value="0" aria-label="Startadresse"></label>
+    <label>Anzahl <input type="number" id="xm-count" min="1" max="125" value="10" aria-label="Anzahl"></label>
+    <label>Einheit-ID <input type="number" id="xm-unit" min="0" max="255" value="{{.ExplorerUnit}}" aria-label="Einheit-ID"></label>
+    <label>Deutung
+      <select id="xm-order" aria-label="Byte- und Wortreihenfolge">
+        <option value="abcd" selected>ABCD – Standard</option>
+        <option value="cdab">CDAB – Wörter getauscht (z. B. WAGO)</option>
+        <option value="badc">BADC – Bytes getauscht</option>
+        <option value="dcba">DCBA – little-endian</option>
+      </select></label>
+    <label>Takt
+      <select id="xm-interval" aria-label="Takt beim Verfolgen">
+        <option value="1">1 s</option><option value="2" selected>2 s</option><option value="5">5 s</option>
+        <option value="10">10 s</option><option value="30">30 s</option><option value="60">60 s</option>
+      </select></label>
+    <button type="button" class="btn btn-primary" id="xm-read"><i class="ti ti-download"></i> Lesen</button>
+    <button type="button" class="btn" id="xm-live"><i class="ti ti-player-play"></i> Live verfolgen</button>
+  </div>
+  <div class="xm-status" id="xm-status" role="status">Noch nichts gelesen. Bereich wählen und „Lesen“ drücken (höchstens 125 Register oder 2000 Bits je Lesen).</div>
+  <div class="ex-box xm-wrap">
+    <table id="xm-table" hidden>
+      <thead id="xm-head"></thead>
+      <tbody id="xm-body"></tbody>
+    </table>
+  </div>
+  <div class="ex-box xm-matrix" id="xm-matrix" hidden></div>
+  {{if .ExplorerWrite}}
+  <form class="xm-write" id="xm-write" data-explorer-write>
+    <label>Bereich
+      <select id="xm-w-area" aria-label="Bereich zum Schreiben"><option value="holding">Holding Register</option><option value="coil">Coil</option></select></label>
+    <label>Adresse <input type="number" id="xm-w-addr" min="0" max="65535" value="0" required aria-label="Adresse"></label>
+    <label>Datentyp
+      <select id="xm-w-type" aria-label="Datentyp">
+        <option value="uint16">UINT16</option><option value="int16">INT16</option>
+        <option value="uint32">UINT32</option><option value="int32">INT32</option><option value="float32" selected>FLOAT32</option>
+        <option value="uint64">UINT64</option><option value="int64">INT64</option><option value="float64">FLOAT64</option>
+      </select></label>
+    <label>Reihenfolge
+      <select id="xm-w-order" aria-label="Reihenfolge zum Schreiben">
+        <option value="abcd">ABCD</option><option value="cdab">CDAB</option><option value="badc">BADC</option><option value="dcba">DCBA</option>
+      </select></label>
+    <label>Wert <input type="text" id="xm-w-value" maxlength="100" required aria-label="Wert"></label>
+    <button type="submit" class="btn btn-primary"><i class="ti ti-pencil"></i> Testschreiben</button>
+    <div class="ex-msg" id="xm-w-msg" role="status" style="flex-basis:100%"></div>
+  </form>
+  {{end}}
+</div>
+<script>
+(function(){
+  const root = document.getElementById('ex-root');
+  const base = '/' + root.dataset.direction + '/connections/' + encodeURIComponent(root.dataset.conn) + '/explorer/modbus/';
+  const canWrite = {{if .ExplorerWrite}}true{{else}}false{{end}};
+  const $ = function(id){ return document.getElementById(id); };
+  const COLS = [['uint16','UINT16'],['int16','INT16'],['int32','INT32'],['uint32','UINT32'],['float32','FLOAT32'],['int64','INT64'],['uint64','UINT64'],['float64','FLOAT64']];
+  const ORDERS = ['abcd','cdab','badc','dcba'];
+  let stream = null, last = null, selAddr = null;
+
+  function el(tag, cls, text){ const e = document.createElement(tag); if(cls) e.className = cls; if(text != null) e.textContent = text; return e; }
+  function status(text, kind){ const s = $('xm-status'); s.textContent = text; s.classList.toggle('ex-err', kind === 'err'); s.classList.toggle('ex-warn', kind === 'warn'); }
+  function isBits(){ const a = $('xm-area').value; return a === 'coil' || a === 'discrete'; }
+  function query(){
+    return 'area=' + encodeURIComponent($('xm-area').value) + '&start=' + encodeURIComponent($('xm-start').value) +
+      '&count=' + encodeURIComponent($('xm-count').value) + '&unit=' + encodeURIComponent($('xm-unit').value);
+  }
+  // 16 Bit kennt nur ABCD/BADC (bei einem Register sind CDAB/DCBA gleich).
+  function interp(row, type, order){
+    if(type === 'uint16' || type === 'int16'){ order = (order === 'cdab') ? 'abcd' : (order === 'dcba') ? 'badc' : order; }
+    return (row.interps || []).find(function(i){ return i.type === type && i.order === order; });
+  }
+  function hex(n){ return '0x' + n.toString(16).toUpperCase().padStart(4, '0'); }
+
+  function render(res){
+    last = res;
+    const head = $('xm-head'), body = $('xm-body');
+    head.textContent = ''; body.textContent = '';
+    const hr = document.createElement('tr');
+    if(res.bits){
+      ['Adresse', 'Wert'].forEach(function(t){ hr.appendChild(el('th', null, t)); });
+      head.appendChild(hr);
+      res.bits.forEach(function(b){
+        const tr = document.createElement('tr');
+        tr.appendChild(el('td', 'mono', String(b.address)));
+        tr.appendChild(el('td', b.on ? 'xm-on' : 'xm-off', b.on ? 'an (1)' : 'aus (0)'));
+        body.appendChild(tr);
+      });
+    }else{
+      hr.appendChild(el('th', null, 'Adresse')); hr.appendChild(el('th', null, 'Roh (hex)'));
+      COLS.forEach(function(c){ hr.appendChild(el('th', null, c[1])); });
+      head.appendChild(hr);
+      const order = $('xm-order').value;
+      (res.rows || []).forEach(function(row){
+        const tr = document.createElement('tr'); tr.tabIndex = 0; tr.dataset.addr = row.address;
+        if(selAddr === row.address) tr.classList.add('xm-sel');
+        tr.appendChild(el('td', 'mono', String(row.address)));
+        tr.appendChild(el('td', 'mono', row.hex));
+        COLS.forEach(function(c){ const i = interp(row, c[0], order); tr.appendChild(el('td', 'mono', i ? i.value : '')); });
+        const pick = function(){ selAddr = row.address; render(last); fillWrite(row.address); };
+        tr.addEventListener('click', pick);
+        tr.addEventListener('keydown', function(e){ if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); pick(); } });
+        body.appendChild(tr);
+      });
+    }
+    $('xm-table').hidden = false;
+    const cur = !res.bits && selAddr != null ? (res.rows || []).find(function(r){ return r.address === selAddr; }) : null;
+    if(cur) showMatrix(cur); else $('xm-matrix').hidden = true;
+  }
+
+  // Volle Matrix: alle Datentypen × alle Reihenfolgen für das gewählte Register.
+  function showMatrix(row){
+    const box = $('xm-matrix'); box.textContent = ''; box.hidden = false;
+    box.appendChild(el('h4', null, 'Register ' + row.address + ' (' + hex(parseInt(row.hex, 16)) + ') in allen Deutungen'));
+    const wrap = el('div', 'xm-wrap'); const t = el('table'); const th = el('thead'); const hr = document.createElement('tr');
+    hr.appendChild(el('th', null, 'Datentyp'));
+    ORDERS.forEach(function(o){ hr.appendChild(el('th', null, o.toUpperCase())); });
+    th.appendChild(hr); t.appendChild(th);
+    const tb = el('tbody');
+    ['uint16','int16','uint32','int32','float32','uint64','int64','float64'].forEach(function(type){
+      const tr = document.createElement('tr'); tr.style.cursor = 'default';
+      tr.appendChild(el('td', null, type.toUpperCase()));
+      let any = false;
+      ORDERS.forEach(function(o){ const i = interp(row, type, o); if(i) any = true; tr.appendChild(el('td', 'mono', i ? i.value : '–')); });
+      if(any) tb.appendChild(tr);
+    });
+    t.appendChild(tb); wrap.appendChild(t); box.appendChild(wrap);
+    box.appendChild(el('div', 'rec-sub', 'Quellwert-Schreibweise für Zuordnungen: Bereich:Adresse:Datentyp[:Reihenfolge], z. B. ' + (((row.interps || [])[0] || {}).ref || '')));
+  }
+
+  function fillWrite(addr){ if(canWrite && $('xm-w-addr')) $('xm-w-addr').value = addr; }
+
+  async function readOnce(){
+    stopLive();
+    status('Lese …');
+    try{
+      const res = await fetch(base + 'range?' + query(), {credentials: 'same-origin'});
+      const j = await res.json().catch(function(){ return {}; });
+      if(!res.ok) throw new Error(j.error || ('HTTP ' + res.status));
+      selAddr = null; $('xm-matrix').hidden = true;
+      render(j);
+      status('Gelesen: ' + (j.bits ? j.bits.length + ' Bits' : (j.rows || []).length + ' Register') + ' ab ' + j.start + '. Zeile anklicken für alle Deutungen.');
+    }catch(err){ status(err.message, 'err'); }
+  }
+
+  function stopLive(msg, kind){
+    if(stream){ stream.close(); stream = null; }
+    const b = $('xm-live'); b.textContent = ''; b.appendChild(el('i', 'ti ti-player-play')); b.appendChild(document.createTextNode(' Live verfolgen'));
+    if(msg) status(msg, kind);
+  }
+  function startLive(){
+    stopLive();
+    status('Verbinde …');
+    const b = $('xm-live'); b.textContent = ''; b.appendChild(el('i', 'ti ti-player-stop')); b.appendChild(document.createTextNode(' Verfolgen beenden'));
+    stream = pdhExplorer.stream(base + 'watch?' + query() + '&interval=' + encodeURIComponent($('xm-interval').value), {
+      connected: function(d){ status('Live – alle ' + d.interval + ' s.'); },
+      range: function(res){ render(res); status('Live – zuletzt ' + new Date().toLocaleTimeString('de-DE') + '.'); },
+      warn: function(d){ status(d.message || 'Lesefehler', 'warn'); },
+      error: function(d){ stopLive(d.message || 'Fehler', 'err'); },
+      end: function(d){ stopLive(d.message || 'Sitzung beendet', 'err'); },
+      disconnect: function(){ stopLive('Verbindung zum Server unterbrochen.', 'err'); }
+    });
+  }
+
+  function areaChanged(){
+    const bits = isBits(); const c = $('xm-count');
+    c.max = bits ? 2000 : 125;
+    if(Number(c.value) > Number(c.max)) c.value = c.max;
+    if(last && !!last.bits !== bits){ $('xm-table').hidden = true; $('xm-matrix').hidden = true; last = null; }
+  }
+
+  $('xm-read').addEventListener('click', readOnce);
+  $('xm-live').addEventListener('click', function(){ if(stream) stopLive('Verfolgen beendet.'); else startLive(); });
+  $('xm-area').addEventListener('change', areaChanged);
+  $('xm-order').addEventListener('change', function(){ if(last && !last.bits) render(last); });
+  window.addEventListener('pagehide', function(){ if(stream) stream.close(); });
+
+  if(canWrite){
+    const form = $('xm-write');
+    const sync = function(){ const coil = $('xm-w-area').value === 'coil'; $('xm-w-type').disabled = coil; $('xm-w-order').disabled = coil; };
+    $('xm-w-area').addEventListener('change', sync); sync();
+    form.addEventListener('submit', async function(e){
+      e.preventDefault();
+      const msg = $('xm-w-msg'); msg.className = 'ex-msg'; msg.textContent = '';
+      const area = $('xm-w-area').value, coil = area === 'coil';
+      const type = $('xm-w-type').value, order = $('xm-w-order').value, addr = $('xm-w-addr').value, v = $('xm-w-value').value;
+      const was = coil ? 'Coil' : type.toUpperCase() + ' (' + order.toUpperCase() + ')';
+      const wo = coil ? 'Coil' : 'Holding Register';
+      try{
+        const r = await pdhExplorer.post(base + 'write', {area: area, address: addr, type: coil ? '' : type, order: coil ? '' : order, value: v, unit: $('xm-unit').value},
+          'Wert ‚' + v + '‘ als ' + was + ' in ' + wo + ' ' + addr + ' schreiben? Das ändert die Maschine.');
+        if(r){ msg.className = 'ex-msg ex-ok'; msg.textContent = 'Geschrieben.' + (r.value ? ' Das Gerät meldet jetzt: ' + r.value : ''); }
+      }catch(err){ msg.className = 'ex-msg ex-err'; msg.textContent = err.message; }
+    });
+  }
+})();
+</script>
+{{end}}

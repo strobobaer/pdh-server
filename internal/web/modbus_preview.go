@@ -1,18 +1,15 @@
 package web
 
 import (
-	"encoding/binary"
 	"fmt"
-	"math"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/goburrow/modbus"
 	"github.com/rs/zerolog/log"
+	"github.com/simonvetter/modbus"
 )
 
 // Modbus-TCP-Vorschau: anders als die bisherigen Konnektoren gibt es hier
@@ -64,96 +61,52 @@ func parseModbusReading(sourceRef string) (modbusReading, error) {
 	return modbusReading{RegisterType: parts[0], Address: uint16(addr), DataType: parts[2]}, nil
 }
 
-func modbusRegisterCount(dataType string) uint16 {
-	switch dataType {
-	case "uint32", "int32", "float32":
-		return 2
-	default:
-		return 1
-	}
+func openModbusClient(config map[string]string) (*modbus.ModbusClient, error) {
+	return openModbusClientUnit(config, modbusConfigUnit(config))
 }
 
-func openModbusClient(config map[string]string) (*modbus.TCPClientHandler, modbus.Client, error) {
-	host := strings.TrimSpace(config["host"])
-	if host == "" {
-		return nil, nil, fmt.Errorf("kein Host konfiguriert")
-	}
-	port := firstNonEmpty(strings.TrimSpace(config["port"]), "502")
-	unitID, _ := strconv.Atoi(strings.TrimSpace(config["unit_id"]))
-	if unitID <= 0 || unitID > 255 {
-		unitID = 1
-	}
-	handler := modbus.NewTCPClientHandler(host + ":" + port)
-	handler.Timeout = 5 * time.Second
-	handler.SlaveId = byte(unitID)
-	if err := handler.Connect(); err != nil {
-		return nil, nil, fmt.Errorf("Verbindung fehlgeschlagen: %w", err)
-	}
-	return handler, modbus.NewClient(handler), nil
-}
-
-func readModbusValue(client modbus.Client, reading modbusReading) (string, error) {
+func readModbusValue(client *modbus.ModbusClient, reading modbusReading) (string, error) {
 	switch reading.RegisterType {
 	case "coil":
 		results, err := client.ReadCoils(reading.Address, 1)
 		if err != nil {
 			return "", err
 		}
-		return strconv.FormatBool(len(results) > 0 && results[0]&0x01 == 1), nil
+		return strconv.FormatBool(len(results) > 0 && results[0]), nil
 	case "discrete":
 		results, err := client.ReadDiscreteInputs(reading.Address, 1)
 		if err != nil {
 			return "", err
 		}
-		return strconv.FormatBool(len(results) > 0 && results[0]&0x01 == 1), nil
+		return strconv.FormatBool(len(results) > 0 && results[0]), nil
 	case "holding", "input":
-		count := modbusRegisterCount(reading.DataType)
-		var results []byte
-		var err error
+		regType := modbus.INPUT_REGISTER
 		if reading.RegisterType == "holding" {
-			results, err = client.ReadHoldingRegisters(reading.Address, count)
-		} else {
-			results, err = client.ReadInputRegisters(reading.Address, count)
+			regType = modbus.HOLDING_REGISTER
 		}
+		regs, err := client.ReadRegisters(reading.Address, modbusRegisterCount(reading.DataType), regType)
 		if err != nil {
 			return "", err
 		}
-		return formatModbusRegisters(results, reading.DataType)
+		return decodeModbusValue(regs, reading.DataType, "abcd")
 	default:
 		return "", fmt.Errorf("unbekannter Registertyp")
 	}
 }
 
+// formatModbusRegisters deutet Registerbytes (big-endian) in Standardreihenfolge (ABCD).
 func formatModbusRegisters(data []byte, dataType string) (string, error) {
-	switch dataType {
-	case "uint16":
-		if len(data) < 2 {
-			return "", fmt.Errorf("zu wenig Daten")
-		}
-		return strconv.FormatUint(uint64(binary.BigEndian.Uint16(data)), 10), nil
-	case "int16":
-		if len(data) < 2 {
-			return "", fmt.Errorf("zu wenig Daten")
-		}
-		return strconv.FormatInt(int64(int16(binary.BigEndian.Uint16(data))), 10), nil
-	case "uint32":
-		if len(data) < 4 {
-			return "", fmt.Errorf("zu wenig Daten")
-		}
-		return strconv.FormatUint(uint64(binary.BigEndian.Uint32(data)), 10), nil
-	case "int32":
-		if len(data) < 4 {
-			return "", fmt.Errorf("zu wenig Daten")
-		}
-		return strconv.FormatInt(int64(int32(binary.BigEndian.Uint32(data))), 10), nil
-	case "float32":
-		if len(data) < 4 {
-			return "", fmt.Errorf("zu wenig Daten")
-		}
-		return strconv.FormatFloat(float64(math.Float32frombits(binary.BigEndian.Uint32(data))), 'f', -1, 32), nil
-	default:
+	if !modbusKnownType(dataType) {
 		return "", fmt.Errorf("unbekannter Datentyp")
 	}
+	regs := make([]uint16, len(data)/2)
+	for i := range regs {
+		regs[i] = uint16(data[2*i])<<8 | uint16(data[2*i+1])
+	}
+	if len(regs) < int(modbusRegisterCount(dataType)) {
+		return "", fmt.Errorf("zu wenig Daten")
+	}
+	return decodeModbusValue(regs, dataType, "abcd")
 }
 
 type ModbusPageData struct {
@@ -223,12 +176,12 @@ func (h *Handler) ModbusReadPage(w http.ResponseWriter, r *http.Request) {
 				dataType = "bool"
 			}
 			reading := modbusReading{RegisterType: data.TestRegisterType, Address: uint16(addr), DataType: dataType}
-			handler, client, err := openModbusClient(config)
+			client, err := openModbusClient(config)
 			if err != nil {
 				data.TestError = err.Error()
 			} else {
 				value, readErr := readModbusValue(client, reading)
-				handler.Close()
+				client.Close()
 				if readErr != nil {
 					data.TestError = "Lesen fehlgeschlagen: " + readErr.Error()
 				} else {
@@ -271,12 +224,12 @@ func (h *Handler) ModbusRefreshValuesWeb(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	handler, client, err := openModbusClient(config)
+	client, err := openModbusClient(config)
 	if err != nil {
 		http.Redirect(w, r, base+"?notice="+url.QueryEscape("Aktualisierung fehlgeschlagen: "+err.Error()), http.StatusSeeOther)
 		return
 	}
-	defer handler.Close()
+	defer client.Close()
 
 	mappings, err := h.importMappings(r.Context(), id)
 	if err != nil {
