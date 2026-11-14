@@ -16,6 +16,10 @@ im Kapitel „Versionen & Updates“ an.
 
 - Verbindungen: Neuer Reiter „Explorer“ für MQTT-, OPC-UA- und Modbus-Verbindungen. Er zeigt Werte der Maschine live (höchstens 15 Minuten je Sitzung, drei Sitzungen je Benutzer, 20 am Server) und lässt einzelne Werte testweise schreiben – nach Rückfrage und mit Eintrag im Verlauf der Verbindung. Auf dem Spiegelserver ist er nur lesend.
 
+- Explorer, MQTT: Er zeigt die Themen als Baum mit letztem Wert, Anzahl, Zeit und Retained-Kennzeichen, stellt JSON-Werte aufbereitet dar, zeichnet bei Zahlen eine kleine Kurve, filtert mit Platzhaltern und sendet Werte testweise. Der gesendete Inhalt steht im Verlauf der Verbindung.
+
+- Explorer, OPC UA: Knoten lassen sich schrittweise aufklappen; der Explorer zeigt Wert, Datentyp, Zeitstempel, Qualität und Zugriffsrechte, verfolgt mehrere Knoten live und schreibt testweise (nur beschreibbare Knoten). Bei Anmeldung mit Benutzer und Kennwort ohne Sicherheitsrichtlinie weist er darauf hin, dass das Kennwort unverschlüsselt übertragen wird.
+
 - Explorer, Modbus TCP: Er liest Coils, Discrete Inputs, Holding und Input Register (bis 125 Register bzw. 2000 Bits je Lesen), deutet jedes Register als 16-, 32- und 64-Bit-Ganzzahl oder Gleitkommazahl in den vier gängigen Byte- und Wortreihenfolgen (ABCD, CDAB, BADC, DCBA), verfolgt den Bereich live im Takt von 1 bis 60 Sekunden und schreibt Coils und Holding Register testweise; je Verbindung sind höchstens zwei Zugriffe gleichzeitig möglich. Beim Verfolgen kommen nur geänderte Werte der gewählten Reihenfolge; die Matrix aller Reihenfolgen lädt erst der Klick auf eine Zeile. Auch abgelehnte Schreibversuche stehen im Verlauf.
 
 ### Geändert
@@ -24,11 +28,11 @@ im Kapitel „Versionen & Updates“ an.
 
 - Der MQTT-Sniffer, „Namespace durchsuchen“ und „Register lesen“ sind im Explorer aufgegangen; die Werkzeuge der Verbindung führen jetzt zum Reiter „Explorer“, alte Lesezeichen leiten dorthin um.
 
-- Modbus TCP: Die Verbindung zum Gerät nutzt jetzt eine laufend gepflegte Modbus-Bibliothek; Vorschau, Export, Abfragen und Verbindungsprüfung verhalten sich unverändert.
+- Bibliotheken angehoben (MQTT paho 1.5.1, OPC UA gopcua 0.9.1). Die Modbus-Bibliothek wurde gewechselt (simonvetter/modbus 1.6.4 statt goburrow); Vorschau, Export, Abfragen und Verbindungsprüfung verhalten sich unverändert, Fehlermeldungen von Geräten können aber anders lauten.
 
 ### Sicherheit
 
-- Der Explorer belastet echte Geräte und verlangt deshalb das Recht „Import ausführen“ bzw. „Export ausführen“; Schreiben zusätzlich „Import verwalten“ bzw. „Export verwalten“.
+- Der Explorer belastet echte Geräte und verlangt deshalb das Recht „Import ausführen“ bzw. „Export ausführen“; Schreiben zusätzlich „Import verwalten“ bzw. „Export verwalten“. Schreiben und Senden fragen vorher nach, stehen im Verlauf der Verbindung (auch abgelehnte Versuche) und sind auf dem Spiegelserver gesperrt; Sitzungen sind auf 15 Minuten, drei je Benutzer und 20 je Server begrenzt.
 
 ## [0.80.10] – 2026-11-14
 
