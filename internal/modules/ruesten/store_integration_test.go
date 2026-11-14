@@ -158,22 +158,36 @@ func TestStartSwitchesSeamlessly(t *testing.T) {
 	}
 }
 
-func TestStartTooSoon(t *testing.T) {
+func TestStartSameButtonNeverRestarts(t *testing.T) {
 	f := newFx(t)
 	infra, b1, b2, usr := f.infra("ts", nil), f.button("A"), f.button("B"), f.user(false)
-	_, err := f.s.Start(f.ctx, infra, b1.ID, usr, OriginEasy)
+	first, err := f.s.Start(f.ctx, infra, b1.ID, usr, OriginEasy)
 	must(t, err)
-	if _, err := f.s.Start(f.ctx, infra, b1.ID, usr, OriginEasy); !errors.Is(err, ErrTooSoon) {
+	if _, err := f.s.Start(f.ctx, infra, b1.ID, usr, OriginEasy); !errors.Is(err, ErrSameButton) {
 		t.Fatalf("gleiche Taste: %v", err)
 	}
+	// Auch nach Stunden startet dieselbe Taste nicht neu: Sie hat keine Wirkung.
+	now := time.Now()
+	f.s.Now = func() time.Time { return now.Add(3 * time.Hour) }
+	if _, err := f.s.Start(f.ctx, infra, b1.ID, usr, OriginEasy); !errors.Is(err, ErrSameButton) {
+		t.Fatalf("gleiche Taste nach 3 h: %v", err)
+	}
+	run, err := f.s.Running(f.ctx, infra)
+	must(t, err)
+	if run == nil || run.ID != first.ID || run.Status != StatusRunning {
+		t.Fatalf("die erste Rüstzeit muss unverändert laufen: %+v", run)
+	}
+	// Eine andere Taste wechselt weiterhin.
+	f.s.Now = nil
 	if _, err := f.s.Start(f.ctx, infra, b2.ID, usr, OriginEasy); err != nil {
 		t.Fatalf("andere Taste: %v", err)
 	}
-	// Mit Uhr: nach 10 s ist dieselbe Taste wieder erlaubt.
-	now := time.Now()
-	f.s.Now = func() time.Time { return now.Add(11 * time.Second) }
+	// Nach „Fertig“ beginnt dieselbe Taste wieder eine neue Rüstzeit.
+	run, err = f.s.Running(f.ctx, infra)
+	must(t, err)
+	must(t, f.s.Finish(f.ctx, run.ID, usr, ""))
 	if _, err := f.s.Start(f.ctx, infra, b2.ID, usr, OriginEasy); err != nil {
-		t.Fatalf("gleiche Taste nach 11 s: %v", err)
+		t.Fatalf("nach Fertig: %v", err)
 	}
 }
 
@@ -189,7 +203,7 @@ func TestConcurrentStartsOneRunning(t *testing.T) {
 			if i%2 == 1 {
 				b = b2
 			}
-			if _, err := f.s.Start(f.ctx, infra, b.ID, usr, OriginEasy); err != nil && !errors.Is(err, ErrTooSoon) {
+			if _, err := f.s.Start(f.ctx, infra, b.ID, usr, OriginEasy); err != nil && !errors.Is(err, ErrSameButton) {
 				t.Errorf("Start: %v", err)
 			}
 		}(i)
@@ -491,11 +505,6 @@ func TestUpdateWritesHistory(t *testing.T) {
 	if fields["started_at"] {
 		t.Fatal("unveränderter Beginn darf nicht im Verlauf stehen")
 	}
-	// Ende leeren: Rüstzeit läuft wieder.
-	must(t, f.s.Update(f.ctx, e.ID, ManualInput{InfraID: infra, ReasonID: f.reasonKey("aids"), StartedAt: start, Note: "korrigiert"}, usr))
-	if g, _ = f.s.Get(f.ctx, e.ID); g.Status != StatusRunning || g.EndedAt != nil {
-		t.Fatalf("wieder laufend: %+v", g)
-	}
 }
 
 func TestUpdateFaultReadOnly(t *testing.T) {
@@ -520,6 +529,28 @@ func TestUpdateFaultReadOnly(t *testing.T) {
 	if g.Status != StatusFault || g.Note != "ok" || g.ReasonName != "Reinigung" {
 		t.Fatalf("fault nach Update: %+v", g)
 	}
+}
+
+func TestUpdateDoneNeedsEnd(t *testing.T) {
+	f := newFx(t)
+	infra, usr := f.infra("ne", nil), f.user(false)
+	start := time.Now().Add(-3 * time.Hour).Truncate(time.Second)
+	end := start.Add(time.Hour)
+	e, err := f.s.Create(f.ctx, ManualInput{InfraID: infra, ReasonID: f.reasonKey("changeover"), StartedAt: start, EndedAt: &end}, usr)
+	must(t, err)
+	err = f.s.Update(f.ctx, e.ID, ManualInput{InfraID: infra, ReasonID: f.reasonKey("aids"), StartedAt: start, Note: "ohne Ende"}, usr)
+	if !errors.Is(err, ErrEndRequired) {
+		t.Fatalf("beendete Rüstzeit ohne Ende: %v", err)
+	}
+	g, err := f.s.Get(f.ctx, e.ID)
+	must(t, err)
+	if g.Status != StatusDone || g.EndedAt == nil || !g.EndedAt.Equal(end) || g.Note != "" || g.ReasonName != "Produktumstellung" {
+		t.Fatalf("nichts darf sich ändern: %+v", g)
+	}
+	// Eine laufende Rüstzeit darf weiterhin ohne Ende gespeichert werden.
+	run, err := f.s.Create(f.ctx, ManualInput{InfraID: f.infra("ne2", nil), ReasonID: f.reasonKey("changeover"), StartedAt: start}, usr)
+	must(t, err)
+	must(t, f.s.Update(f.ctx, run.ID, ManualInput{InfraID: run.InfraID, ReasonID: run.ReasonID, StartedAt: start, Note: "läuft"}, usr))
 }
 
 func TestListFilterAndSum(t *testing.T) {

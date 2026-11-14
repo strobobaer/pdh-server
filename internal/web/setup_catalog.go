@@ -419,6 +419,10 @@ func (h *Handler) InfraSetupMaxWeb(w http.ResponseWriter, r *http.Request) {
 
 // ── Core-Einstellungen (setup.edit) ──────────────────────────────────────
 
+// setupMaxMinutesLimit: Obergrenze für maximale Rüstzeit und Karenzzeit (7 Tage),
+// wie bei setupMinutes.
+const setupMaxMinutesLimit = 7 * 24 * 60
+
 // SetupSettingsWeb: POST /core/settings/setup-web (max_minutes, grace_minutes)
 // – maximale Rüstzeit (mindestens 1) und Karenzzeit (mindestens 0).
 func (h *Handler) SetupSettingsWeb(w http.ResponseWriter, r *http.Request) {
@@ -429,8 +433,10 @@ func (h *Handler) SetupSettingsWeb(w http.ResponseWriter, r *http.Request) {
 	_ = r.ParseForm()
 	maxMin, err1 := strconv.Atoi(strings.TrimSpace(r.FormValue("max_minutes")))
 	grace, err2 := strconv.Atoi(strings.TrimSpace(r.FormValue("grace_minutes")))
-	if err1 != nil || err2 != nil || maxMin < 1 || grace < 0 {
-		http.Redirect(w, r, "/core/settings?notice="+url.QueryEscape("Maximale Rüstzeit: mindestens 1 Minute, Karenzzeit: mindestens 0 Minuten.")+"#setup", http.StatusSeeOther)
+	if err1 != nil || err2 != nil || maxMin < 1 || grace < 0 || maxMin > setupMaxMinutesLimit || grace > setupMaxMinutesLimit {
+		http.Redirect(w, r, "/core/settings?notice="+url.QueryEscape(fmt.Sprintf(
+			"Maximale Rüstzeit: mindestens 1 Minute, höchstens %d Minuten (7 Tage). Karenzzeit: mindestens 0, höchstens %d Minuten.",
+			setupMaxMinutesLimit, setupMaxMinutesLimit))+"#setup", http.StatusSeeOther)
 		return
 	}
 	if err := h.setupStore().SetGlobal(r.Context(), maxMin, grace); err != nil {

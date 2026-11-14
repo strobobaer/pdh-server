@@ -476,6 +476,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li><b>Core-Einstellungen</b> → Karte <b>Rüstzeiten: Höchstdauer und Karenzzeit</b>. Die <b>maximale Rüstzeit</b> (Standard 120 Minuten) gilt für alle Anlagen als Obergrenze. Die <b>Karenzzeit</b> (Standard 15 Minuten) ist die Schonfrist danach, bevor eine Störung entsteht.</li>
       <li>Soll eine Anlage kürzer rüsten, trägst du an der Anlage im Reiter <b>Rüsttasten</b> bei <b>Höchstdauer Rüsten (Minuten)</b> einen eigenen Wert ein. Darunter steht, welcher Wert gerade <b>wirksam</b> ist und woher er kommt.</li>
       <li>Ein eigener Wert über der maximalen Rüstzeit gilt nicht. Dann erscheint der Hinweis, dass die maximale Rüstzeit gilt – trage einen kleineren Wert ein.</li>
+      <li>Maximale Rüstzeit und Karenzzeit sind jeweils höchstens 10080 Minuten (7 Tage). Beide Werte und der Katalog (Rüstgründe und Rüsttasten) gelten für den <b>ganzen Betrieb</b>, nicht je Abteilung. Wer „Rüstzeiten: erfassen, korrigieren, Katalog und Höchstdauer pflegen“ auch nur in einer Abteilung hat, kann sie ändern.</li>
     </ol></div>
   <div class="hb-howto"><b><i class="ti ti-hand-finger"></i> So rüstest du an der Anlage</b> (ohne Anmeldung im Easy-Modus oder angemeldet auf der Anlagenseite)
     <ol class="hb-steps">
@@ -483,13 +484,14 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>Passende Rüsttaste <b>einmal antippen</b> – die Rüstzeit läuft. Die Seite zeigt, was gerade gerüstet wird.</li>
       <li>Ist die Anlage fertig, auf <b>Fertig</b> tippen. Eine Notiz ist freiwillig.</li>
     </ol>
+    Die Taste der laufenden Rüstzeit ist hervorgehoben und lässt sich nicht noch einmal antippen. Eine andere Taste beendet die laufende Rüstzeit und beginnt sofort die neue. Soll mit derselben Taste neu begonnen werden, zuerst auf <b>Fertig</b> tippen und dann die Taste erneut antippen.
     Zu viele Antippen hintereinander bremst PDH: je Anlage sind 30 Vorgänge in 10 Minuten möglich. Je Anlage läuft höchstens eine Rüstzeit.</div>
   <div class="hb-howto"><b><i class="ti ti-plus"></i> So erfasst und korrigierst du eine Rüstzeit im PDH</b> (Recht „Rüstzeiten: erfassen …“)
     <ol class="hb-steps">
       <li><b>Rüstzeiten</b> → <b>Neu</b> – oder die Schnellaktion „Rüstzeit erfassen“ im Dashboard.</li>
       <li><b>Anlage</b> und <b>Grund</b> wählen, <b>Beginn</b> eintragen. Ohne Ende läuft die Rüstzeit weiter; mit <b>Ende</b> oder <b>Dauer</b> wird sie nachgetragen.</li>
       <li><b>Rüstzeit anlegen</b> öffnet die Detailseite. Dort beendest du eine laufende Rüstzeit mit <b>Beenden</b>.</li>
-      <li>Beginn, Ende, Grund und Notiz korrigierst du im Reiter <b>Bearbeiten</b>. Hat die Rüstzeit schon eine Störmeldung ausgelöst, bleiben Beginn und Ende gesperrt.</li>
+      <li>Beginn, Ende, Grund und Notiz korrigierst du im Reiter <b>Bearbeiten</b>. Bei einer beendeten Rüstzeit ist das <b>Ende</b> Pflicht – sie wird nie wieder geöffnet; fehlt das Ende, erscheint eine Meldung und nichts wird geändert. Hat die Rüstzeit schon eine Störmeldung ausgelöst, bleiben Beginn und Ende gesperrt.</li>
     </ol></div>
   <div class="hb-howto"><b><i class="ti ti-alert-triangle"></i> Was passiert bei Überschreitung</b>
     <ol class="hb-steps">

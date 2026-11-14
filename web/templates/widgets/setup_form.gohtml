@@ -37,8 +37,8 @@
       <input class="form-input" id="setup-start" type="datetime-local" name="started_at" value="{{.StartValue}}" required{{if .TimesLocked}} disabled{{end}}>
     </div>
     <div class="form-group">
-      <label class="form-label" for="setup-end">Ende <span class="setup-hint">(leer = läuft noch)</span></label>
-      <input class="form-input" id="setup-end" type="datetime-local" name="ended_at" value="{{.EndValue}}"{{if .TimesLocked}} disabled{{end}}>
+      <label class="form-label" for="setup-end">Ende <span class="setup-hint">{{if and .E (eq .E.Status "done")}}(Pflicht – eine beendete Rüstzeit wird nicht wieder geöffnet){{else}}(leer = läuft noch){{end}}</span></label>
+      <input class="form-input" id="setup-end" type="datetime-local" name="ended_at" value="{{.EndValue}}"{{if .TimesLocked}} disabled{{end}}{{if and .E (eq .E.Status "done")}} required{{end}}>
     </div>
     {{if .IsNew}}
     <div class="form-group">

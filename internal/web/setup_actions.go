@@ -27,6 +27,7 @@ var (
 	errSetupDuration    = uiError("Die Dauer muss eine ganze Zahl von Minuten über 0 sein.")
 	errSetupRunning     = uiError("An dieser Anlage läuft bereits eine Rüstzeit.")
 	errSetupReadOnly    = uiError("Beginn und Ende einer Rüstzeit mit Störmeldung sind nicht änderbar.")
+	errSetupNeedEnd     = uiError("Bei einer beendeten Rüstzeit muss ein Ende angegeben werden.")
 	errSetupNotRunning  = uiError("Die Rüstzeit läuft nicht (mehr).")
 	errSetupNotFound    = uiError("Rüstzeit nicht gefunden.")
 	errSetupSave        = uiError("Die Rüstzeit konnte nicht gespeichert werden.")
@@ -74,6 +75,8 @@ func setupStoreError(r *http.Request, what string, err error) error {
 		return errSetupRunning
 	case errors.Is(err, ruesten.ErrReadOnly):
 		return errSetupReadOnly
+	case errors.Is(err, ruesten.ErrEndRequired):
+		return errSetupNeedEnd
 	case errors.Is(err, ruesten.ErrNotRunning):
 		return errSetupNotRunning
 	case errors.Is(err, ruesten.ErrNotFound):

@@ -179,3 +179,32 @@ func TestMonitorFaultTimeout(t *testing.T) {
 		t.Fatalf("Wiederholung: %d %v", n, err)
 	}
 }
+
+// Der Beginn wurde zwischen Auswahl und Zeilensperre verschoben (z. B. durch
+// eine Korrektur): unter der Sperre ist die Rüstzeit nicht mehr überfällig,
+// es entsteht keine Störmeldung.
+func TestMonitorRechecksOverdueUnderLock(t *testing.T) {
+	f := newFx(t)
+	e, usr := f.overdueEntry(16 * time.Minute)
+	var calls int32
+	m := &Monitor{Store: f.s, CreateFault: f.creator(usr, &calls, false), SystemUser: usr}
+	_, err := f.s.DB.Exec(f.ctx, `UPDATE setup_times SET started_at = now() - interval '1 minute' WHERE id = $1`, e.ID)
+	must(t, err)
+	ok, err := m.fault(f.ctx, e.ID)
+	must(t, err)
+	g, _ := f.s.Get(f.ctx, e.ID)
+	if ok || calls != 0 || g.Status != StatusRunning || g.FaultID != nil {
+		t.Fatalf("ok=%v calls=%d status=%s", ok, calls, g.Status)
+	}
+}
+
+func TestEntryOverdueAt(t *testing.T) {
+	start := time.Date(2026, 1, 5, 8, 0, 0, 0, time.UTC)
+	e := Entry{StartedAt: start, MaxMinutes: 10, GraceMinutes: 5}
+	if e.overdueAt(start.Add(15*time.Minute - time.Second)) {
+		t.Error("vor Ablauf von Höchstdauer plus Karenz")
+	}
+	if !e.overdueAt(start.Add(15 * time.Minute)) {
+		t.Error("genau bei Ablauf ist sie überfällig")
+	}
+}

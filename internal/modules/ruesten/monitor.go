@@ -88,6 +88,9 @@ func (m *Monitor) fault(ctx context.Context, id string) (bool, error) {
 		return false, err
 	}
 	now := m.Store.now()
+	if !e.overdueAt(now) { // Beginn oder Frist wurde seit der Auswahl geändert
+		return false, nil
+	}
 	if !now.After(e.StartedAt) {
 		now = e.StartedAt.Add(time.Millisecond)
 	}

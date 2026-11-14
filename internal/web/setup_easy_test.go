@@ -156,6 +156,16 @@ func TestEasyStartFinish(t *testing.T) {
 	if !strings.Contains(html, `class="rz-btn cur" name="button_id" value="`+a.ID+`"`) {
 		t.Error("laufende Rüsttaste nicht hervorgehoben")
 	}
+	if !strings.Contains(html, `value="`+a.ID+`" aria-current="true" disabled>`) || strings.Contains(html, `value="`+b.ID+`" aria-current`) {
+		t.Error("nur die laufende Rüsttaste darf nicht antippbar sein")
+	}
+	// Dieselbe Taste noch einmal (auch ohne Schaltfläche, z. B. alte Seite): ohne Wirkung.
+	if w := f.startEasy(infra, a.ID); !strings.Contains(w.Header().Get("Location"), "setup=same") {
+		t.Errorf("gleiche Taste: %s", w.Header().Get("Location"))
+	}
+	if run1, _ := f.store.Running(f.ctx, infra); run1 == nil || run1.ID != run.ID {
+		t.Fatalf("gleiche Taste darf nichts ändern: %+v", run1)
+	}
 
 	// Wechsel auf eine andere Taste beendet die laufende
 	if w := f.startEasy(infra, b.ID); w.Code != http.StatusSeeOther {

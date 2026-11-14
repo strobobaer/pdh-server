@@ -95,13 +95,16 @@ ON CONFLICT (key) DO NOTHING;
 -- Wer Anlagen sehen darf, darf Rüstzeiten sehen; wer Anlagen bearbeiten darf,
 -- darf sie auch erfassen. Die Abteilung der Quellrolle wird übernommen –
 -- niemand wird durch das Update ausgesperrt, niemand bekommt mehr als bisher.
+-- Gilt ein Quellrecht überall (NULL) und ein anderes nur in einer Abteilung,
+-- gewinnt „überall“ (je Rolle und Recht gibt es nur eine Zeile).
 INSERT INTO role_permissions (role_id, permission_id, department_id)
 SELECT rp.role_id, p.id, rp.department_id
   FROM role_permissions rp
   JOIN permissions o ON o.id = rp.permission_id AND o.key = 'infrastructure.view'
   CROSS JOIN permissions p
  WHERE p.key = 'setup.view'
-ON CONFLICT DO NOTHING;
+ON CONFLICT (role_id, permission_id) DO UPDATE SET department_id = NULL
+  WHERE EXCLUDED.department_id IS NULL;
 
 INSERT INTO role_permissions (role_id, permission_id, department_id)
 SELECT rp.role_id, p.id, rp.department_id
@@ -109,7 +112,8 @@ SELECT rp.role_id, p.id, rp.department_id
   JOIN permissions o ON o.id = rp.permission_id AND o.key = 'infrastructure.edit'
   CROSS JOIN permissions p
  WHERE p.key IN ('setup.view', 'setup.edit')
-ON CONFLICT DO NOTHING;
+ON CONFLICT (role_id, permission_id) DO UPDATE SET department_id = NULL
+  WHERE EXCLUDED.department_id IS NULL;
 
 -- Bereichsadministrator: gleiche Regel wie sync.admin in Migration 158
 -- (Rolle admin und Rollen, die Import verwalten dürfen und schon in einem

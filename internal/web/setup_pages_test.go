@@ -475,6 +475,16 @@ func TestSetupCreateFinishEdit(t *testing.T) {
 		t.Errorf("Ende vor Beginn: %q", loc)
 	}
 
+	// Leeres Ende bei einer beendeten Rüstzeit: Fehlermeldung, nichts ändert sich, nie wieder geöffnet.
+	w = setupDo(h.SetupEditWeb, "POST", "/setup/"+id+"/edit-web", id, uid, url.Values{
+		"reason_id": {reason}, "started_at": {localForm(start)}, "ended_at": {""}, "note": {"anders"}})
+	if loc := setupLocation(t, w); !strings.Contains(loc, "err=") || !strings.Contains(loc, "Ende") {
+		t.Errorf("leeres Ende: %q", loc)
+	}
+	if e := f.entry(id); e.Status != ruesten.StatusDone || e.EndedAt == nil || e.Note != "Düse und Filter" {
+		t.Errorf("leeres Ende darf nichts ändern: %+v", e)
+	}
+
 	// Beenden einer laufenden Rüstzeit (mit Vermerk); zweites Beenden wird abgewiesen.
 	w = setupDo(h.SetupCreateWeb, "POST", "/setup", "", uid, url.Values{
 		"infrastructure_id": {other}, "reason_id": {reason}, "started_at": {localForm(time.Now().Add(-20 * time.Minute))}})

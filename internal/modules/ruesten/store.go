@@ -416,8 +416,9 @@ func (s *Store) Running(ctx context.Context, infraID string) (*Entry, error) {
 }
 
 // Start beginnt eine Rüstzeit mit der Rüsttaste. Läuft an der Anlage schon
-// eine, endet sie nahtlos im selben Augenblick (Wechsel). Dieselbe Taste
-// binnen 10 Sekunden gilt als Doppelklick (ErrTooSoon). Höchstdauer,
+// eine, endet sie nahtlos im selben Augenblick (Wechsel). Läuft sie schon mit
+// derselben Taste, hat das Antippen keine Wirkung (ErrSameButton): Neu
+// beginnen geht nur über Finish und erneutes Starten. Höchstdauer,
 // Karenzzeit, Verantwortliche und Tastenname werden festgehalten.
 func (s *Store) Start(ctx context.Context, infraID, buttonID, userID, origin string) (*Entry, error) {
 	maxMin, _, err := s.EffectiveMax(ctx, infraID)
@@ -436,8 +437,10 @@ func (s *Store) Start(ctx context.Context, infraID, buttonID, userID, origin str
 	}
 	defer tx.Rollback(ctx)
 	// Sperre auf die Anlagenzeile: Starts an derselben Anlage laufen nacheinander.
+	// NO KEY UPDATE, damit die Fremdschlüsselprüfung beim Einfügen einer
+	// Störmeldung (KEY SHARE auf die Anlage) nicht blockiert.
 	var lock string
-	if err := tx.QueryRow(ctx, `SELECT id::text FROM infrastructure WHERE id = $1::uuid FOR UPDATE`, infraID).Scan(&lock); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT id::text FROM infrastructure WHERE id = $1::uuid FOR NO KEY UPDATE`, infraID).Scan(&lock); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrNotFound
 		}
@@ -462,8 +465,8 @@ func (s *Store) Start(ctx context.Context, infraID, buttonID, userID, origin str
 		WHERE infrastructure_id = $1::uuid AND status = 'running'`, infraID).Scan(&oldID, &oldBtn, &oldName, &oldStart)
 	switch {
 	case err == nil:
-		if oldBtn == buttonID && now.Sub(oldStart) < tooSoon {
-			return nil, ErrTooSoon
+		if oldBtn == buttonID {
+			return nil, ErrSameButton
 		}
 		if !now.After(oldStart) { // Uhr zurückgesprungen: Ende muss nach dem Beginn liegen
 			now = oldStart.Add(time.Millisecond)
@@ -619,7 +622,8 @@ func (s *Store) Create(ctx context.Context, in ManualInput, userID string) (*Ent
 
 // Update korrigiert Anlage, Grund, Beginn, Ende und Vermerk. Jedes geänderte
 // Feld steht im Verlauf. Beginn und Ende einer Rüstzeit mit Störmeldung
-// bleiben gesperrt (ErrReadOnly). Ohne Ende läuft die Rüstzeit (wieder).
+// bleiben gesperrt (ErrReadOnly). Bei einer beendeten Rüstzeit ist das Ende
+// Pflicht (ErrEndRequired); sie wird nie wieder geöffnet.
 func (s *Store) Update(ctx context.Context, id string, in ManualInput, userID string) error {
 	if err := in.validate(); err != nil {
 		return err
@@ -639,6 +643,9 @@ func (s *Store) Update(ctx context.Context, id string, in ManualInput, userID st
 	old, err := getEntry(ctx, tx, id)
 	if err != nil {
 		return err
+	}
+	if old.Status == StatusDone && in.EndedAt == nil {
+		return ErrEndRequired // eine beendete Rüstzeit wird nie wieder geöffnet
 	}
 	timesChanged := !sameTime(old.StartedAt, in.StartedAt) || !sameEnd(old.EndedAt, in.EndedAt)
 	if old.Status == StatusFault && timesChanged {

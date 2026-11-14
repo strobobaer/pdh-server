@@ -66,8 +66,8 @@ func setupNotice(lang, code string) string {
 	switch code {
 	case "rate":
 		return tr(lang, "Zu viele Vorgänge an dieser Anlage – bitte kurz warten.")
-	case "soon":
-		return tr(lang, "Diese Taste wurde eben erst gedrückt.")
+	case "same":
+		return tr(lang, "Diese Rüstzeit läuft bereits.")
 	case "none":
 		return tr(lang, "Hier läuft gerade kein Rüsten.")
 	case "gone":
@@ -248,8 +248,8 @@ func (h *Handler) setupStartFor(ctx context.Context, infraID, buttonID, userID, 
 	}
 	e, err := st.Start(ctx, infraID, buttonID, userID, origin)
 	switch {
-	case errors.Is(err, ruesten.ErrTooSoon):
-		return "soon"
+	case errors.Is(err, ruesten.ErrSameButton):
+		return "same"
 	case errors.Is(err, ruesten.ErrNotFound):
 		return "gone"
 	case err != nil:

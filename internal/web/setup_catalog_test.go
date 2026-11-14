@@ -92,6 +92,9 @@ func TestCoreSetupSettings(t *testing.T) {
 		{"max_minutes": {"0"}, "grace_minutes": {"5"}},
 		{"max_minutes": {"60"}, "grace_minutes": {"-1"}},
 		{"max_minutes": {"abc"}, "grace_minutes": {"5"}},
+		{"max_minutes": {"10081"}, "grace_minutes": {"5"}},
+		{"max_minutes": {"60"}, "grace_minutes": {"10081"}},
+		{"max_minutes": {"99999999999"}, "grace_minutes": {"5"}},
 	} {
 		loc := setupLocation(t, setupDo(f.h.SetupSettingsWeb, "POST", "/core/settings/setup-web", "", f.user(), bad))
 		if !strings.Contains(loc, "mindestens 1 Minute") {
@@ -101,7 +104,19 @@ func TestCoreSetupSettings(t *testing.T) {
 			t.Fatalf("%v: Werte geändert", bad)
 		}
 	}
+	// Obergrenze: höchstens 7 Tage; der Hinweis nennt sie.
 	loc := setupLocation(t, setupDo(f.h.SetupSettingsWeb, "POST", "/core/settings/setup-web", "", f.user(),
+		url.Values{"max_minutes": {"10081"}, "grace_minutes": {"5"}}))
+	if !strings.Contains(loc, "höchstens 10080 Minuten") {
+		t.Errorf("Obergrenze ohne Hinweis: %s", loc)
+	}
+	// Genau die Obergrenze ist erlaubt.
+	setupLocation(t, setupDo(f.h.SetupSettingsWeb, "POST", "/core/settings/setup-web", "", f.user(),
+		url.Values{"max_minutes": {"10080"}, "grace_minutes": {"10080"}}))
+	if f.store.GlobalMax(f.ctx) != 10080 || f.store.Grace(f.ctx) != 10080 {
+		t.Errorf("Obergrenze speichern: %d/%d", f.store.GlobalMax(f.ctx), f.store.Grace(f.ctx))
+	}
+	loc = setupLocation(t, setupDo(f.h.SetupSettingsWeb, "POST", "/core/settings/setup-web", "", f.user(),
 		url.Values{"max_minutes": {"95"}, "grace_minutes": {"0"}}))
 	if !strings.Contains(loc, "gespeichert") || f.store.GlobalMax(f.ctx) != 95 || f.store.Grace(f.ctx) != 0 {
 		t.Errorf("speichern: %s, %d/%d", loc, f.store.GlobalMax(f.ctx), f.store.Grace(f.ctx))

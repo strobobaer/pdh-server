@@ -32,12 +32,10 @@ const (
 // globalSource: Quelle der Höchstdauer, wenn kein Anlagenwert gilt.
 const globalSource = "globaler Stamm"
 
-// tooSoon: dieselbe Taste zweimal innerhalb dieser Zeit zählt als Doppelklick.
-const tooSoon = 10 * time.Second
-
 var (
 	ErrNotFound       = errors.New("rüstzeit nicht gefunden")
-	ErrTooSoon        = errors.New("dieselbe Rüsttaste wurde eben erst gedrückt")
+	ErrSameButton     = errors.New("diese Rüstzeit läuft bereits mit derselben Rüsttaste")
+	ErrEndRequired    = errors.New("eine beendete Rüstzeit braucht ein Ende")
 	ErrOverGlobalMax  = errors.New("die Höchstdauer der Anlage darf die globale Höchstdauer nicht überschreiten")
 	ErrNotRunning     = errors.New("die Rüstzeit läuft nicht (mehr)")
 	ErrAlreadyRunning = errors.New("an dieser Anlage läuft bereits eine Rüstzeit")
@@ -78,6 +76,11 @@ type Entry struct {
 	ResponsibleName, ShiftLeaderName           string
 	CreatedBy                                  string
 	CreatedAt                                  time.Time
+}
+
+// overdueAt: Beginn plus Höchstdauer plus Karenzzeit ist erreicht.
+func (e Entry) overdueAt(now time.Time) bool {
+	return !e.StartedAt.Add(time.Duration(e.MaxMinutes+e.GraceMinutes) * time.Minute).After(now)
 }
 
 // ManualInput ist die Eingabe beim manuellen Anlegen und Korrigieren.
