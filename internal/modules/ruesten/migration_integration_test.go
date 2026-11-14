@@ -66,28 +66,19 @@ func TestSetupMigration(t *testing.T) {
 		t.Fatalf("setup_max_minutes = 60: %v", err)
 	}
 
-	// Rolle mit infrastructure.edit bekommt setup.view und setup.edit. Die
-	// Migration läuft nur einmal; deshalb wird dieselbe Anweisung für die
-	// frisch angelegte Testrolle wiederholt.
-	var role string
-	if err := pool.QueryRow(ctx, `INSERT INTO roles (key, label) VALUES ('rz-test-'||substr(md5(random()::text),1,8), 'RZ-Test') RETURNING id`).Scan(&role); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { pool.Exec(context.Background(), `DELETE FROM roles WHERE id = $1`, role) })
-	if _, err := pool.Exec(ctx, `INSERT INTO role_permissions (role_id, permission_id)
-		SELECT $1, id FROM permissions WHERE key = 'infrastructure.edit'`, role); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := pool.Exec(ctx, `INSERT INTO role_permissions (role_id, permission_id, department_id)
-		SELECT rp.role_id, p.id, rp.department_id FROM role_permissions rp
-		JOIN permissions o ON o.id = rp.permission_id AND o.key = 'infrastructure.edit'
-		CROSS JOIN permissions p WHERE p.key IN ('setup.view','setup.edit') AND rp.role_id = $1
-		ON CONFLICT DO NOTHING`, role); err != nil {
-		t.Fatal(err)
-	}
-	if err := pool.QueryRow(ctx, `SELECT count(*) FROM role_permissions rp JOIN permissions p ON p.id = rp.permission_id
-		WHERE rp.role_id = $1 AND p.key IN ('setup.view','setup.edit')`, role).Scan(&n); err != nil || n != 2 {
-		t.Fatalf("Rechte der Rolle: %d, %v", n, err)
+	// Invarianten auf dem migrierten Bestand: niemand, der Anlagen sehen bzw.
+	// bearbeiten durfte, wird ausgesperrt (Rechte kommen aus der Migration).
+	for _, c := range []struct{ from, to string }{
+		{"infrastructure.view", "setup.view"},
+		{"infrastructure.edit", "setup.view"},
+		{"infrastructure.edit", "setup.edit"},
+	} {
+		if err := pool.QueryRow(ctx, `SELECT count(*) FROM role_permissions rp
+			JOIN permissions o ON o.id = rp.permission_id AND o.key = $1
+			WHERE NOT EXISTS (SELECT 1 FROM role_permissions x JOIN permissions p ON p.id = x.permission_id
+				WHERE x.role_id = rp.role_id AND p.key = $2)`, c.from, c.to).Scan(&n); err != nil || n != 0 {
+			t.Fatalf("%d Rollen mit %s ohne %s: %v", n, c.from, c.to, err)
+		}
 	}
 	// Die Administratorrolle hat setup.admin.
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM role_permissions rp JOIN permissions p ON p.id = rp.permission_id
