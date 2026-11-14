@@ -10,6 +10,20 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.80.3] – 2026-11-14
+
+### Neu
+
+- Rüstzeiten: Umrüsten, Reinigen und Formatwechsel sind jetzt ein eigener Vorgang (RZ-0001, …) mit Liste und Detailseite unter „Rüstzeiten“ und den Status Rüsten, Fertig und Störung durch Rüsten.
+- Rüstzeiten: An der Anlage und im Easy-Modus starten Rüsttasten mit einem Tippen die Rüstzeit, „Fertig“ beendet sie.
+- Rüstzeiten: Rüstgründe und Rüsttasten werden im Katalog unter Infrastruktur gepflegt und den Anlagen zugeordnet.
+- Rüstzeiten: In den Core-Einstellungen gelten die maximale Rüstzeit (Standard 120 Minuten) und die Karenzzeit (Standard 15 Minuten); jede Anlage darf eine kürzere Höchstdauer haben, bei einem zu hohen Wert erscheint ein Hinweis.
+- Rüstzeiten: Läuft das Rüsten länger als Höchstdauer plus Karenzzeit, entsteht genau eine Störmeldung „Störung durch Rüsten“, die Anlage gilt als stehend und die Störungsrichtlinie greift.
+
+### Sicherheit
+
+- Neue Rechte „Rüstzeiten: ansehen“, „Rüstzeiten: erfassen, korrigieren, Katalog und Höchstdauer pflegen“ und „Rüstzeiten: Bereichsadministrator“; endgültig löschen darf nur der Bereichsadministrator, bisherige Rollen mit Anlagenrechten haben die passenden Rechte automatisch bekommen.
+
 ## [0.80.2] – 2026-11-13
 
 ### Neu

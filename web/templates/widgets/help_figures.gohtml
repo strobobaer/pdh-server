@@ -775,3 +775,20 @@
 <figcaption>Der Abgleich ist ein Zusatz: Ohne Profil läuft das PDH unverändert. Ändern beide Seiten dasselbe Feld, gewinnt das PDH.</figcaption>
 </figure>
 {{end}}
+
+{{/* Rüstzeit: Rüsten, Karenzzeit, Störung */}}
+{{define "hb-fig-ruesten"}}
+<figure class="hb-fig">
+<svg viewBox="0 0 640 130" role="img" aria-label="Ablauf einer Rüstzeit">
+  <g font-size="10.5">
+    <rect class="am" x="6" y="30" width="270" height="50" rx="8"/><text x="141" y="52" class="t-c t-b">Rüsten</text><text x="141" y="67" class="t-c t-m">bis zur Höchstdauer, „Fertig“ beendet</text>
+    <rect class="acl" x="286" y="30" width="170" height="50" rx="8"/><text x="371" y="52" class="t-c t-b">Karenzzeit</text><text x="371" y="67" class="t-c t-m">noch kein Alarm</text>
+    <rect class="rd" x="466" y="30" width="168" height="50" rx="8"/><text x="550" y="52" class="t-c t-b">Störung durch Rüsten</text><text x="550" y="67" class="t-c t-m">Anlage steht, Störungsrichtlinie</text>
+  </g>
+  <path class="ar" d="M276 55 H284"/><path class="ar" d="M456 55 H464"/>
+  <path class="ln" d="M6 98 H276"/><text x="141" y="116" class="t-c t-m">Höchstdauer (an der Anlage, höchstens maximale Rüstzeit)</text>
+  <path class="ln" d="M286 98 H456"/><text x="371" y="116" class="t-c t-m">Karenzzeit (global)</text>
+</svg>
+<figcaption>Ablauf einer Rüstzeit – die Rüstzeit zählt bis zur Störmeldung, danach gilt die Störungsrichtlinie.</figcaption>
+</figure>
+{{end}}
