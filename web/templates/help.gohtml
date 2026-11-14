@@ -1797,6 +1797,13 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>Den Fortschritt zeigt die Kachel nach dem Neuladen der Seite; danach erneut <b>Updates prüfen</b>.</li>
     </ol>
     Das klappt, wenn Nextcloud auf demselben Server wie das PDH läuft und der Update-Agent eingerichtet ist. Liegt Nextcloud woanders als in <code>/var/www/nextcloud</code>, das Verzeichnis in der Kachel eintragen.</div>
+  <div class="hb-howto"><b><i class="ti ti-tool"></i> Update hängt bei „Go … laden“ oder meldet „missing $GOPATH“</b>
+    <ol class="hb-steps">
+      <li>Am Server prüfen, ob in <code>/opt/pdh-server/.env</code> die Zeile <code>GOPATH=/var/cache/pdh-updater/go</code> steht. Wenn nicht, die Zeile eintragen.</li>
+      <li>Den Update-Agenten neu starten: <code>sudo systemctl restart pdh-update-agent</code>.</li>
+      <li>Das Update in den Core-Einstellungen erneut starten. Fehlermeldungen von Go erscheinen jetzt in der Ausgabe des Updates.</li>
+    </ol>
+    Ab Version 0.80.9 setzt das Update diese Angabe selbst.</div>
   <p><b>Ohne Versionsnummer auf GitHub:</b> Zeigt <b>Version auf GitHub</b> „nicht angegeben“, stammt der Stand auf GitHub aus der Zeit vor der Versionierung. Ob ein Update da ist, entscheidet dann weiter der Commit-Vergleich.</p>
   <h3>Änderungsprotokoll <i class="ti ti-refresh" title="automatisch aus dem System"></i></h3>
   <p class="rec-sub">Was sich in welcher Version geändert hat – neueste zuerst. {{if .CurrentVersion}}Installiert ist Version {{.CurrentVersion}}.{{end}}</p>

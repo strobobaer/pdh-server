@@ -10,6 +10,12 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.80.9] – 2026-11-14
+
+### Behoben
+
+- Updates auf Servern scheiterten beim Nachladen der neuen Go-Version (fehlendes GOPATH); das Update setzt es jetzt selbst und zeigt Fehler verständlich an. Wer 0.80.8 einspielen will und hängen bleibt: einmalig `GOPATH=/var/cache/pdh-updater/go` in /opt/pdh-server/.env eintragen und den Update-Agenten neu starten.
+
 ## [0.80.8] – 2026-11-14
 
 ### Neu
