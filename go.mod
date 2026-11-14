@@ -14,7 +14,7 @@ require (
 	github.com/goburrow/modbus v0.1.0
 	github.com/golang-jwt/jwt/v5 v5.2.1
 	github.com/google/uuid v1.6.0
-	github.com/gopcua/opcua v0.6.0
+	github.com/gopcua/opcua v0.9.1
 	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674
 	github.com/jackc/pgx/v5 v5.6.0
 	github.com/microsoft/go-mssqldb v1.7.2
