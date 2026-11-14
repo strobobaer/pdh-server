@@ -199,6 +199,7 @@ func parseTSPolicy(raw []byte) (*tsPolicy, error) {
 		TagOwners map[string]json.RawMessage `json:"tagOwners"`
 		ACLs      []struct {
 			Action string   `json:"action"`
+			Proto  string   `json:"proto"`
 			Src    []string `json:"src"`
 			Dst    []string `json:"dst"`
 		} `json:"acls"`
@@ -213,7 +214,7 @@ func parseTSPolicy(raw []byte) (*tsPolicy, error) {
 	}
 	p := &tsPolicy{TagOwners: in.TagOwners}
 	for _, a := range in.ACLs {
-		if a.Action == "" || a.Action == "accept" {
+		if (a.Action == "" || a.Action == "accept") && tsTCP(a.Proto) {
 			p.Rules = append(p.Rules, tsRule{Src: a.Src, Dst: a.Dst})
 		}
 	}
@@ -247,10 +248,6 @@ func (p *tsPolicy) hasOwner(tag string) bool {
 	return ok
 }
 
-func tsMatches(entry, tag string) bool {
-	return entry == "*" || entry == tag || entry == "autogroup:tagged"
-}
-
 func tsPortMatch(ports string, port int) bool {
 	for _, part := range strings.Split(ports, ",") {
 		part = strings.TrimSpace(part)
@@ -275,43 +272,78 @@ func tsPortMatch(ports string, port int) bool {
 	return false
 }
 
-// allows prüft, ob eine Freigabe srcTag → dstTag:port erlaubt. wide: erlaubt
-// nur, weil Quelle und Ziel „*“ sind (alles erlaubt).
-func (p *tsPolicy) allows(srcTag, dstTag string, port int) (ok, wide bool) {
+// tsVerdict ist das Ergebnis der Prüfung einer Freigabe.
+type tsVerdict int
+
+const (
+	tsNo     tsVerdict = iota // keine Freigabe gefunden
+	tsYes                     // sicher erlaubt (TCP)
+	tsUnsure                  // lässt sich nicht sicher bewerten (Hosts, Gruppen, ipsets, IP-Adressen)
+)
+
+// tsClassify: passt ein Eintrag für Quelle oder Ziel auf das Gerät mit diesem Tag?
+func tsClassify(entry, tag string) tsVerdict {
+	switch {
+	case entry == "*" || entry == tag || entry == "autogroup:tagged":
+		return tsYes
+	case strings.HasPrefix(entry, "tag:"), strings.HasPrefix(entry, "autogroup:"), strings.Contains(entry, "@"):
+		return tsNo // anderer Tag, Nutzergeräte, Internet u. ä. – trifft ein getaggtes Gerät nie
+	}
+	return tsUnsure // group:, ipset:, Host-Alias, IP, CIDR
+}
+
+// allows prüft, ob eine Freigabe srcTag → dstTag:port (TCP) erlaubt. wide: erlaubt
+// nur, weil Quelle und Ziel „*“ sind (alles erlaubt). Regeln für andere Protokolle
+// als TCP sind beim Einlesen schon ausgeschieden. Kann eine Regel wegen Gruppen,
+// Hosts oder ipsets nicht sicher bewertet werden und gibt es keinen sicheren
+// Treffer, ist das Ergebnis tsUnsure.
+func (p *tsPolicy) allows(srcTag, dstTag string, port int) (v tsVerdict, wide bool) {
+	unsure := false
 	for _, r := range p.Rules {
-		srcWild, srcOK := false, false
+		srcYes, srcUnsure, srcWild := false, false, false
 		for _, s := range r.Src {
-			if tsMatches(s, srcTag) {
-				srcOK = true
+			switch tsClassify(s, srcTag) {
+			case tsYes:
+				srcYes = true
 				srcWild = srcWild || s == "*"
+			case tsUnsure:
+				srcUnsure = true
 			}
 		}
-		if !srcOK {
+		if !srcYes && !srcUnsure {
 			continue
 		}
 		for _, d := range r.Dst {
 			i := strings.LastIndex(d, ":")
-			if i < 0 {
+			if i < 0 || !tsPortMatch(d[i+1:], port) {
 				continue
 			}
-			host, ports := d[:i], d[i+1:]
-			if !tsMatches(host, dstTag) || !tsPortMatch(ports, port) {
-				continue
+			host := d[:i]
+			switch c := tsClassify(host, dstTag); {
+			case c == tsYes && srcYes:
+				if !(srcWild && host == "*") {
+					return tsYes, false
+				}
+				v, wide = tsYes, true
+			case c != tsNo:
+				unsure = true
 			}
-			if !(srcWild && host == "*") {
-				return true, false
-			}
-			ok, wide = true, true
 		}
 	}
-	return ok, wide
+	if v == tsYes {
+		return v, wide
+	}
+	if unsure {
+		return tsUnsure, false
+	}
+	return tsNo, false
 }
 
 // ── Zuordnung Geräte ↔ PDH ───────────────────────────────────────────────
 
-// matchDevice sucht das Gerät zu einem Knoten: zuerst über die Adresse, dann
-// über den Rechnernamen (ohne Beachtung der Schreibweise).
-func matchDevice(devs []tsDevice, addrs, hosts []string) *tsDevice {
+// matchDevice sucht das Gerät zu einem Knoten – nur über die Adresse im
+// Datennetz. Nur so sicher zugeordnete Geräte dürfen geändert werden.
+func matchDevice(devs []tsDevice, addrs []string) *tsDevice {
 	for i := range devs {
 		for _, a := range addrs {
 			if a != "" && slices.Contains(devs[i].Addresses, a) {
@@ -319,12 +351,15 @@ func matchDevice(devs []tsDevice, addrs, hosts []string) *tsDevice {
 			}
 		}
 	}
+	return nil
+}
+
+// guessDevice rät ein Gerät über den Rechnernamen. Nur für die Anzeige
+// („vermutlich Gerät X“); führt nie zu einer Änderung.
+func guessDevice(devs []tsDevice, hosts []string) *tsDevice {
 	for i := range devs {
 		for _, h := range hosts {
-			if h == "" {
-				continue
-			}
-			if strings.EqualFold(devs[i].Hostname, h) || strings.EqualFold(devs[i].short(), h) {
+			if h != "" && (strings.EqualFold(devs[i].Hostname, h) || strings.EqualFold(devs[i].short(), h)) {
 				return &devs[i]
 			}
 		}
@@ -379,4 +414,9 @@ func newTSAPI(base, token string) *tsAPI {
 		Transport:     &http.Transport{Proxy: http.ProxyFromEnvironment, DialContext: (&net.Dialer{Timeout: 5 * time.Second}).DialContext, TLSHandshakeTimeout: 5 * time.Second, DisableKeepAlives: true},
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }, // der Token geht nie an einen anderen Host
 	}}
+}
+
+// tsTCP: gilt eine Regel mit diesem proto für TCP? Ohne Angabe gilt sie für alle Protokolle.
+func tsTCP(proto string) bool {
+	return proto == "" || proto == "tcp" || proto == "6"
 }

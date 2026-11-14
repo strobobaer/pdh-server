@@ -271,6 +271,9 @@ type Handler struct {
 	dataNetListenAddr  string                                         // Rückkanal-Adresse; leer → :8443 (Tests: :0)
 	dataNetNewNode     func(datanet.NodeConfig) (datanet.Node, error) // nil → datanet.NewTSNode (Tests tauschen aus)
 	dataNetAPIBase     string                                         // Tailscale-API; leer → api.tailscale.com (Tests tauschen aus)
+	dataNetCheckMu     sync.Mutex // schützt das zwischengespeicherte Prüfergebnis des Datennetzes
+	dataNetCheckAt     time.Time
+	dataNetCheckRes    *dnCheck
 	mirror             MirrorInfo                                     // Spiegelmodus; einmal beim Start gesetzt (SetMirror)
 	tunnelTokenFn      func(context.Context) (string, bool)           // Tunnel-Token für den Abgleich mit pdh-ha; nil → Server-Einstellungen (Tests tauschen aus)
 	mirrorActiveURL    func(*http.Request) string                     // Adresse des aktiven Servers für die Sperrseite; nil → kein Link

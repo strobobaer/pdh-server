@@ -8,13 +8,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/netip"
 	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
-	"net"
 	"sort"
 	"strconv"
 	"strings"
@@ -715,7 +715,7 @@ func (h *Handler) DataNetSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	apiDelete := r.PostForm.Get("apitoken_delete") == "on" && apiToken == ""
-	enabled :=r.PostForm.Get("enabled") == "on"
+	enabled := r.PostForm.Get("enabled") == "on"
 	was := h.dataNetSetting(ctx, dataNetKeyEnabled) == "true"
 	if err := h.dataNetPut(ctx, dataNetKeyEnabled, strconv.FormatBool(enabled)); err != nil {
 		log.Warn().Err(err).Msg("Datennetz: Schalter nicht gespeichert")

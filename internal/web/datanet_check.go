@@ -36,7 +36,11 @@ var (
 	dnProbeSettle  = 600 * time.Millisecond // so lange darf eine angenommene Verbindung offen bleiben
 	dnWhoIsTimeout = 5 * time.Second
 	dnCheckTimeout = 45 * time.Second
+	dnCacheTTL     = 30 * time.Second // so lange gilt ein Prüfergebnis für alle Benutzer
 )
+
+// dnParallel: höchstens so viele Abfragen (WhoIs, Port-Prüfungen) gleichzeitig.
+const dnParallel = 16
 
 type dnLine struct{ Level, Title, Text, Hint string }
 
@@ -79,6 +83,7 @@ type dnInput struct {
 	Devices   []tsDevice
 	Policy    *tsPolicy
 	PolicyErr string
+	who       map[string]dnWho
 }
 
 func dnAgo(d time.Duration) string {
@@ -131,7 +136,9 @@ func dnProbePort(ctx context.Context, node datanet.Node, addr string, port int) 
 	conn, err := node.DialContext(dctx, "tcp", net.JoinHostPort(addr, strconv.Itoa(port)))
 	if err != nil {
 		p.State = "err"
-		if errors.Is(err, context.DeadlineExceeded) || isTimeout(err) {
+		if ctx.Err() != nil {
+			p.Err = "Zeitgrenze erreicht."
+		} else if errors.Is(err, context.DeadlineExceeded) || isTimeout(err) {
 			p.Err = fmt.Sprintf("Keine Antwort innerhalb von %d Sekunden.", int(dnProbeTimeout.Seconds()))
 		} else {
 			p.Err = "Die Verbindung wurde abgelehnt oder blockiert."
@@ -163,6 +170,7 @@ func (in dnInput) probeAll(ctx context.Context) [][]dnProbe {
 		return out
 	}
 	var wg sync.WaitGroup
+	sem := make(chan struct{}, dnParallel)
 	for i, c := range in.Clients {
 		if c.Revoked || c.Addr == "" {
 			continue
@@ -172,9 +180,51 @@ func (in dnInput) probeAll(ctx context.Context) [][]dnProbe {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
+				sem <- struct{}{}
+				defer func() { <-sem }()
 				out[i][j] = dnProbePort(ctx, in.Node, c.Addr, t.Port)
 			}()
 		}
+	}
+	wg.Wait()
+	return out
+}
+
+// dnWho ist die Antwort auf die Frage nach den Tags eines Geräts im Datennetz.
+type dnWho struct {
+	Tags    []string
+	Err     error
+	Timeout bool // die Gesamtfrist war abgelaufen
+}
+
+// whoisAll fragt die Tags aller PDH-Geräte gleichzeitig (höchstens dnParallel auf einmal).
+func (in dnInput) whoisAll(ctx context.Context) map[string]dnWho {
+	out := map[string]dnWho{}
+	if in.Node == nil {
+		return out
+	}
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, dnParallel)
+	seen := map[string]bool{}
+	for _, t := range in.targets() {
+		addr := dataNetPickAddr(t.Addrs)
+		if addr == "" || seen[addr] {
+			continue
+		}
+		seen[addr] = true
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			wctx, cancel := context.WithTimeout(ctx, dnWhoIsTimeout)
+			defer cancel()
+			tags, err := in.Node.PeerTags(wctx, addr)
+			mu.Lock()
+			out[addr] = dnWho{Tags: tags, Err: err, Timeout: err != nil && ctx.Err() != nil}
+			mu.Unlock()
+		}()
 	}
 	wg.Wait()
 	return out
@@ -206,8 +256,28 @@ func (in dnInput) targets() []dnTarget {
 	return out
 }
 
-// plan berechnet, welche Tags „Tags korrigieren“ setzen würde. Tags, die nicht
-// mit tag:pdh beginnen, bleiben erhalten.
+// dnNewTags: die Tags nach der Korrektur. Der richtige Tag wird ergänzt, alle
+// anderen bleiben stehen; entfernt wird nur der Tag der jeweils anderen Rolle
+// (tag:pdh-data an einem PDH-Knoten, tag:pdh an einem Client).
+func dnNewTags(old []string, want string) []string {
+	other := datanet.TagClient
+	if want == datanet.TagClient {
+		other = datanet.TagPDH
+	}
+	var out []string
+	for _, t := range old {
+		if t != other {
+			out = append(out, t)
+		}
+	}
+	if !slices.Contains(out, want) {
+		out = append(out, want)
+	}
+	return out
+}
+
+// plan berechnet, welche Tags „Tags korrigieren“ ergänzen würde. Geändert werden
+// nur Geräte, die sich sicher über ihre Adresse im Datennetz zuordnen lassen.
 func (in dnInput) plan() ([]dnFixItem, []string) {
 	if !in.HaveAPI || in.APIErr != "" {
 		return nil, nil
@@ -223,8 +293,14 @@ func (in dnInput) plan() ([]dnFixItem, []string) {
 	}
 	done := map[string]bool{}
 	for _, t := range in.targets() {
-		dev := matchDevice(in.Devices, t.Addrs, t.Hosts)
-		if dev == nil || slices.Contains(dev.Tags, t.Want) || done[dev.ident()] || dev.ident() == "" {
+		dev := matchDevice(in.Devices, t.Addrs)
+		if dev == nil {
+			if g := guessDevice(in.Devices, t.Hosts); g != nil {
+				note("guess:"+t.Label, t.Label+": Kein Gerät mit dieser Adresse; vermutlich Gerät „"+g.short()+"“. Das PDH ändert nur Geräte, die es über die Adresse sicher zuordnen kann – bitte den Tag dort von Hand setzen.")
+			}
+			continue
+		}
+		if slices.Contains(dev.Tags, t.Want) || done[dev.ident()] || dev.ident() == "" {
 			continue
 		}
 		switch {
@@ -236,13 +312,7 @@ func (in dnInput) plan() ([]dnFixItem, []string) {
 			continue
 		}
 		done[dev.ident()] = true
-		nt := []string{t.Want}
-		for _, old := range dev.Tags {
-			if !strings.HasPrefix(old, "tag:pdh") && !slices.Contains(nt, old) {
-				nt = append(nt, old)
-			}
-		}
-		items = append(items, dnFixItem{ID: dev.ident(), Name: dev.short(), Want: t.Want, Old: dev.Tags, New: nt})
+		items = append(items, dnFixItem{ID: dev.ident(), Name: dev.short(), Want: t.Want, Old: dev.Tags, New: dnNewTags(dev.Tags, t.Want)})
 	}
 	return items, notes
 }
@@ -272,18 +342,15 @@ func (b *dnBuilder) add(l dnLine) {
 // peer prüft ein Gerät im Netz: Sichtbarkeit, Tags und – mit API – den Eintrag in Tailscale.
 // whoisAddrs: Adressen, über die WhoIs gefragt wird (erste, die klappt).
 func (in dnInput) peer(ctx context.Context, b *dnBuilder, t dnTarget, own bool) {
-	dev := matchDevice(in.Devices, t.Addrs, t.Hosts)
+	dev := matchDevice(in.Devices, t.Addrs)
 	var tags []string
-	known, visible := false, false
+	known, visible, timedOut := false, false, false
 	if in.Node != nil {
-		addr := dataNetPickAddr(t.Addrs)
-		if addr != "" {
-			wctx, cancel := context.WithTimeout(ctx, dnWhoIsTimeout)
-			got, err := in.Node.PeerTags(wctx, addr)
-			cancel()
-			if err == nil {
-				tags, known, visible = got, true, true
+		if w, ok := in.who[dataNetPickAddr(t.Addrs)]; ok {
+			if w.Err == nil {
+				tags, known, visible = w.Tags, true, true
 			}
+			timedOut = w.Timeout
 		}
 	}
 	switch {
@@ -291,7 +358,9 @@ func (in dnInput) peer(ctx context.Context, b *dnBuilder, t dnTarget, own bool) 
 	case dev != nil:
 		tags, known = dev.Tags, true
 	}
-	if in.Node != nil && !visible && !own {
+	if timedOut && !visible && !own {
+		b.add(dnLine{Level: dnWarn, Title: "Zeitgrenze erreicht", Text: "Die Prüfung hat für dieses Gerät nicht rechtzeitig eine Antwort bekommen.", Hint: "Die Prüfung später wiederholen."})
+	} else if in.Node != nil && !visible && !own {
 		lvl := dnWarn
 		if strings.HasPrefix(t.Label, "Client") {
 			lvl = dnBad
@@ -308,9 +377,13 @@ func (in dnInput) peer(ctx context.Context, b *dnBuilder, t dnTarget, own bool) 
 	if in.HaveAPI && in.APIErr == "" {
 		switch {
 		case dev == nil:
-			b.add(dnLine{Level: dnWarn, Title: "Nicht in der Geräteliste von Tailscale",
-				Text: "Zu diesem Gerät gibt es in Tailscale keinen passenden Eintrag (Adresse oder Name).",
-				Hint: "Im Tailscale-Admin unter Machines nachsehen, ob das Gerät dort unter anderem Namen steht."})
+			l := dnLine{Level: dnWarn, Title: "Nicht in der Geräteliste von Tailscale",
+				Text: "Kein Gerät mit dieser Adresse im Datennetz gefunden.",
+				Hint: "Im Tailscale-Admin unter Machines nachsehen, ob das Gerät dort unter anderer Adresse steht."}
+			if g := guessDevice(in.Devices, t.Hosts); g != nil {
+				l.Text += " Vermutlich Gerät „" + g.short() + "“ – das PDH ändert es nicht, weil die Zuordnung nur über den Namen unsicher ist."
+			}
+			b.add(l)
 		case !dev.Online:
 			b.add(dnLine{Level: dnBad, Title: "Laut Tailscale offline", Text: "Gerät „" + dev.short() + "“ ist nicht mit Tailscale verbunden.",
 				Hint: "Rechner und Tailscale-Dienst bzw. Daten-Client dort prüfen."})
@@ -323,6 +396,7 @@ func (in dnInput) peer(ctx context.Context, b *dnBuilder, t dnTarget, own bool) 
 func (in dnInput) run(ctx context.Context) dnCheck {
 	c := dnCheck{HaveAPI: in.HaveAPI}
 	b := &dnBuilder{c: &c}
+	in.who = in.whoisAll(ctx)
 	probes := in.probeAll(ctx)
 
 	// Dieser Server
@@ -360,7 +434,7 @@ func (in dnInput) run(ctx context.Context) dnCheck {
 	if st.State == datanet.StateRunning && in.Node != nil && len(self.Addrs) > 0 {
 		in.peer(ctx, b, dnTarget{Label: "Server " + self.Name, Want: datanet.TagPDH, Addrs: self.Addrs, Hosts: []string{"pdh-" + self.Name}}, true)
 	} else if in.HaveAPI && in.APIErr == "" {
-		if dev := matchDevice(in.Devices, self.Addrs, []string{"pdh-" + self.Name}); dev != nil {
+		if dev := matchDevice(in.Devices, self.Addrs); dev != nil {
 			b.add(dnTagLine(datanet.TagPDH, dev.Tags))
 		}
 	}
@@ -487,40 +561,53 @@ func (in dnInput) policyLines(b *dnBuilder, c *dnCheck) {
 		}
 	}
 	ports = dataNetCleanPorts(ports)
-	var missing []int
+	var missing, unsure []int
 	wide := false
 	for _, port := range ports {
-		ok, w := p.allows(datanet.TagPDH, datanet.TagClient, port)
-		if !ok {
+		v, w := p.allows(datanet.TagPDH, datanet.TagClient, port)
+		switch v {
+		case tsNo:
 			missing = append(missing, port)
+		case tsUnsure:
+			unsure = append(unsure, port)
 		}
 		wide = wide || w
 	}
 	switch {
 	case len(ports) == 0:
 		b.add(dnLine{Level: dnWarn, Title: "Freigabe tag:pdh → tag:pdh-data nicht geprüft", Text: "Noch kein Client meldet einen Port; die Freigabe lässt sich erst mit dem ersten Client prüfen."})
-	case len(missing) == 0:
+	case len(missing) == 0 && len(unsure) == 0:
 		l := dnLine{Level: dnOK, Title: "Freigabe tag:pdh → tag:pdh-data erlaubt", Text: "Ports " + dataNetPortList(ports)}
 		if wide {
 			l.Text += " – alles erlaubt (Quelle und Ziel *)"
 		}
 		b.add(l)
-	default:
+	}
+	if len(missing) > 0 {
 		b.add(dnLine{Level: dnBad, Title: "Freigabe tag:pdh → tag:pdh-data fehlt", Text: "Nicht erlaubt: Ports " + dataNetPortList(missing),
 			Hint: "Zeilen unten in die Access controls eintragen."})
 	}
-	backOK, backWide := p.allows(datanet.TagClient, datanet.TagPDH, datanet.ReportPort)
-	if backOK {
-		l := dnLine{Level: dnOK, Title: "Freigabe tag:pdh-data → tag:pdh:" + strconv.Itoa(datanet.ReportPort) + " erlaubt", Text: "Die Clients dürfen sich beim PDH melden."}
+	if len(unsure) > 0 {
+		b.add(dnLine{Level: dnWarn, Title: "Freigabe tag:pdh → tag:pdh-data nicht sicher prüfbar", Text: "Ports " + dataNetPortList(unsure) + ": Die Regeln nutzen Gruppen, Hosts oder ipsets.",
+			Hint: "Bitte von Hand prüfen, ob tag:pdh diese Ports von tag:pdh-data erreichen darf."})
+	}
+	back, backWide := p.allows(datanet.TagClient, datanet.TagPDH, datanet.ReportPort)
+	port := strconv.Itoa(datanet.ReportPort)
+	switch back {
+	case tsYes:
+		l := dnLine{Level: dnOK, Title: "Freigabe tag:pdh-data → tag:pdh:" + port + " erlaubt", Text: "Die Clients dürfen sich beim PDH melden."}
 		if backWide {
 			l.Text += " Alles erlaubt (Quelle und Ziel *)."
 		}
 		b.add(l)
-	} else {
-		b.add(dnLine{Level: dnBad, Title: "Freigabe tag:pdh-data → tag:pdh:" + strconv.Itoa(datanet.ReportPort) + " fehlt", Text: "Ohne sie können sich die Clients nicht beim PDH melden.",
+	case tsUnsure:
+		b.add(dnLine{Level: dnWarn, Title: "Freigabe tag:pdh-data → tag:pdh:" + port + " nicht sicher prüfbar", Text: "Die Regeln nutzen Gruppen, Hosts oder ipsets.",
+			Hint: "Bitte von Hand prüfen, ob die Clients den Port " + port + " des PDH erreichen dürfen."})
+	default:
+		b.add(dnLine{Level: dnBad, Title: "Freigabe tag:pdh-data → tag:pdh:" + port + " fehlt", Text: "Ohne sie können sich die Clients nicht beim PDH melden.",
 			Hint: "Zeilen unten in die Access controls eintragen."})
 	}
-	c.Missing = dnMissingACL(owners, missing, !backOK)
+	c.Missing = dnMissingACL(owners, missing, back == tsNo)
 }
 
 // dnMissingACL liefert die fehlenden Zeilen für die Access controls.
@@ -618,23 +705,46 @@ func (h *Handler) dataNetCollect(ctx context.Context) dnInput {
 
 type dnCheckView struct {
 	dnCheck
-	CanFix bool
-	Mirror bool
+	CanFix     bool
+	CanRefresh bool
+	Mirror     bool
+	Stand      string
+}
+
+// dataNetCheckCached liefert das Prüfergebnis; es gilt dnCacheTTL für alle
+// Benutzer, damit Ansehende nicht beliebig oft Tailscale und das Netz abfragen.
+// refresh erzwingt eine neue Prüfung (nur Administratoren).
+func (h *Handler) dataNetCheckCached(ctx context.Context, refresh bool) (dnCheck, time.Time) {
+	h.dataNetCheckMu.Lock()
+	defer h.dataNetCheckMu.Unlock()
+	if !refresh && h.dataNetCheckRes != nil && time.Since(h.dataNetCheckAt) < dnCacheTTL {
+		return *h.dataNetCheckRes, h.dataNetCheckAt
+	}
+	cctx, cancel := context.WithTimeout(ctx, dnCheckTimeout)
+	defer cancel()
+	res := h.dataNetCollect(cctx).run(cctx)
+	h.dataNetCheckRes, h.dataNetCheckAt = &res, time.Now()
+	return res, h.dataNetCheckAt
+}
+
+func (h *Handler) dataNetCheckForget() {
+	h.dataNetCheckMu.Lock()
+	h.dataNetCheckRes = nil
+	h.dataNetCheckMu.Unlock()
 }
 
 // DataNetCheck: GET /datanet/check – die Prüfung als Teilseite (htmx).
+// ?refresh=1 (nur datanet.admin) erzwingt eine neue Prüfung.
 func (h *Handler) DataNetCheck(w http.ResponseWriter, r *http.Request) {
 	if !h.dataNetCan(r, permDataNetView, "") {
 		dataNetForbidden(w)
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), dnCheckTimeout)
-	defer cancel()
-	in := h.dataNetCollect(ctx)
-	res := in.run(ctx)
+	admin := h.dataNetCan(r, permDataNetAdmin, "")
+	res, at := h.dataNetCheckCached(r.Context(), admin && r.URL.Query().Get("refresh") == "1")
 	mirror := h.Mirror().On
-	h.syncFragment(w, "datanet-check", dnCheckView{dnCheck: res, Mirror: mirror,
-		CanFix: h.dataNetCan(r, permDataNetAdmin, "") && !mirror && len(res.Plan) > 0})
+	h.syncFragment(w, "datanet-check", dnCheckView{dnCheck: res, Mirror: mirror, CanRefresh: admin,
+		Stand: at.Local().Format("15:04:05"), CanFix: admin && !mirror && len(res.Plan) > 0})
 }
 
 type dnFixResult struct {
@@ -699,5 +809,6 @@ func (h *Handler) DataNetFixTags(w http.ResponseWriter, r *http.Request) {
 		note = string(rn[:500])
 	}
 	h.dataNetLog(ctx, getUser(r).ID, "fix_tags", note)
+	h.dataNetCheckForget()
 	h.syncFragment(w, "datanet-fix", v)
 }

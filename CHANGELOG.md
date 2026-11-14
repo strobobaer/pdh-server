@@ -15,8 +15,8 @@ im Kapitel „Versionen & Updates“ an.
 ### Neu
 
 - Datennetz: Der neue Abschnitt „Datennetz prüfen“ zeigt mit ✓, ⚠ und ✗, ob dieser Server, die anderen PDH-Server und jeder Client im Datennetz sind, die richtigen Tags tragen und ihre Ports erreichbar sind – mit Klartext und Hinweis zur Abhilfe, z. B. „Gerät trägt tag:pdh-test1 statt tag:pdh – der Client lässt es nicht herein.“
-- Datennetz: Optional lässt sich ein Tailscale-API-Token hinterlegen. Dann liest die Prüfung zusätzlich die Geräteliste und die Access controls, meldet fehlende tagOwners und Freigaben und zeigt die fehlenden Zeilen zum Kopieren. Die Access controls ändert das PDH nie selbst.
-- Datennetz: Der Knopf „Tags korrigieren“ setzt bei PDH-Servern tag:pdh und bei Clients tag:pdh-data (nach Rückfrage, nur für den Bereichsadministrator und nicht auf dem Spiegelserver); jede Änderung steht im Ereignisprotokoll.
+- Datennetz: Optional lässt sich ein Tailscale-API-Token hinterlegen. Dann liest die Prüfung zusätzlich die Geräteliste und die Access controls, meldet fehlende tagOwners und Freigaben und zeigt die fehlenden Zeilen zum Kopieren. Die Access controls ändert das PDH nie selbst. Das Ergebnis bleibt 30 Sekunden gespeichert.
+- Datennetz: Der Knopf „Tags korrigieren“ ergänzt bei PDH-Servern tag:pdh und bei Clients tag:pdh-data, ohne andere Tags zu entfernen, und ordnet Geräte nur über ihre Adresse im Datennetz zu (nach Rückfrage, nur für den Bereichsadministrator und nicht auf dem Spiegelserver); jede Änderung steht im Ereignisprotokoll.
 - Das Handbuch erklärt im Kapitel „Datennetz“, wie man das Datennetz prüft und einen API-Token anlegt, und nennt „Anmeldung EOF“ als Zeichen für falsche Tags.
 
 ### Geändert

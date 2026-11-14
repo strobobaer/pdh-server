@@ -51,8 +51,8 @@ func TestTSPolicyAllows(t *testing.T) {
 		{"tag:pdh-data", "tag:pdh", 8444, false},
 		{"tag:pdh-data", "tag:pdh-data", 1433, false},
 	} {
-		if ok, wide := p.allows(c.src, c.dst, c.port); ok != c.want || wide {
-			t.Errorf("%s → %s:%d: ok=%v wide=%v, erwartet %v", c.src, c.dst, c.port, ok, wide, c.want)
+		if v, wide := p.allows(c.src, c.dst, c.port); (v == tsYes) != c.want || wide {
+			t.Errorf("%s → %s:%d: verdict=%v wide=%v, erwartet %v", c.src, c.dst, c.port, v, wide, c.want)
 		}
 	}
 }
@@ -62,8 +62,8 @@ func TestTSPolicyWildcardAndGrants(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ok, wide := p.allows("tag:pdh", "tag:pdh-data", 1433); !ok || !wide {
-		t.Errorf("alles erlaubt: ok=%v wide=%v", ok, wide)
+	if v, wide := p.allows("tag:pdh", "tag:pdh-data", 1433); v != tsYes || !wide {
+		t.Errorf("alles erlaubt: %v wide=%v", v, wide)
 	}
 	g, err := parseTSPolicy([]byte(`{"grants":[
 		{"src":["tag:pdh"],"dst":["tag:pdh-data"],"ip":["tcp:1433","icmp:*"]},
@@ -71,13 +71,13 @@ func TestTSPolicyWildcardAndGrants(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ok, _ := g.allows("tag:pdh", "tag:pdh-data", 1433); !ok {
+	if v, _ := g.allows("tag:pdh", "tag:pdh-data", 1433); v != tsYes {
 		t.Error("Grant tcp:1433 nicht erkannt")
 	}
-	if ok, _ := g.allows("tag:pdh", "tag:pdh-data", 3306); ok {
+	if v, _ := g.allows("tag:pdh", "tag:pdh-data", 3306); v == tsYes {
 		t.Error("Grant erlaubt 3306 zu Unrecht")
 	}
-	if ok, _ := g.allows("tag:pdh-data", "tag:pdh", 8443); !ok {
+	if v, _ := g.allows("tag:pdh-data", "tag:pdh", 8443); v != tsYes {
 		t.Error("Portbereich nicht erkannt")
 	}
 	if _, err := parseTSPolicy([]byte(`{kaputt`)); err == nil {
@@ -200,13 +200,16 @@ func TestMatchDevice(t *testing.T) {
 		{ID: "1", Hostname: "pdh-a", Addresses: []string{"100.64.0.1"}},
 		{ID: "2", Hostname: "Werk-Sued", Name: "werk-sued.x.ts.net", Addresses: []string{"100.64.0.9"}},
 	}
-	if d := matchDevice(devs, []string{"100.64.0.9"}, nil); d == nil || d.ID != "2" {
+	if d := matchDevice(devs, []string{"100.64.0.9"}); d == nil || d.ID != "2" {
 		t.Errorf("über Adresse: %v", d)
 	}
-	if d := matchDevice(devs, []string{"100.64.9.9"}, []string{"PDH-A"}); d == nil || d.ID != "1" {
-		t.Errorf("über Name: %v", d)
+	if d := matchDevice(devs, []string{"100.64.9.9"}); d != nil {
+		t.Errorf("über Name zugeordnet: %v", d)
 	}
-	if d := matchDevice(devs, []string{""}, []string{""}); d != nil {
+	if d := guessDevice(devs, []string{"PDH-A"}); d == nil || d.ID != "1" {
+		t.Errorf("Name raten: %v", d)
+	}
+	if d := matchDevice(devs, []string{""}); d != nil {
 		t.Errorf("leere Angaben passen: %v", d)
 	}
 }
@@ -375,11 +378,11 @@ func TestCheckWithAPIPlansTagFix(t *testing.T) {
 	for _, it := range c.Plan {
 		switch it.ID {
 		case "d1":
-			if it.Want != datanet.TagPDH || strings.Join(it.New, ",") != "tag:pdh,tag:keep" {
+			if it.Want != datanet.TagPDH || strings.Join(it.New, ",") != "tag:pdh-test1,tag:keep,tag:pdh" {
 				t.Errorf("Server: %+v", it)
 			}
 		case "d2":
-			if it.Want != datanet.TagClient || strings.Join(it.New, ",") != "tag:pdh-data" {
+			if it.Want != datanet.TagClient || strings.Join(it.New, ",") != "tag:pdh-test1,tag:pdh-data" {
 				t.Errorf("Client: %+v", it)
 			}
 		}
@@ -570,13 +573,13 @@ func TestDataNetCheckPageAndFixTags(t *testing.T) {
 
 	// Admin: die Tags werden gesetzt, nichts aus der Anfrage zählt.
 	w = dnDo(h.DataNetFixTags, "POST", "/datanet/check/fix", nil, url.Values{"id": {"fremd"}, "tag": {"tag:evil"}})
-	if w.Code != 200 || !strings.Contains(w.Body.String(), "pdh-checktest") || !strings.Contains(w.Body.String(), "tag:pdh gesetzt") {
+	if w.Code != 200 || !strings.Contains(w.Body.String(), "pdh-checktest") || !strings.Contains(w.Body.String(), "tag:pdh ergänzt") {
 		t.Fatalf("Korrigieren: %d %s", w.Code, w.Body.String())
 	}
 	mu.Lock()
 	got := posted["dev-1"]
 	mu.Unlock()
-	if got != `{"tags":["tag:pdh"]}` {
+	if got != `{"tags":["tag:pdh-test1","tag:pdh"]}` {
 		t.Errorf("an Tailscale gesendet: %s", got)
 	}
 	var n int
