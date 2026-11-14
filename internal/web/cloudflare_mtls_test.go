@@ -104,7 +104,7 @@ func TestMTLSOffRemovesOnlyOneName(t *testing.T) {
 
 func TestMTLSOffLastNameSendsEmptyList(t *testing.T) {
 	f := &fakeMTLS{hosts: []string{"nc.firma.de"}, rules: `[]`}
-	if _, _, err := mtlsSwitch(context.Background(), f.deps(t), "nc", false); err != nil || f.hosts == nil || len(f.hosts) != 0 {
+	if _, _, err := mtlsSwitch(context.Background(), f.deps(t), "nc.firma.de", false); err != nil || f.hosts == nil || len(f.hosts) != 0 {
 		t.Errorf("leere Liste: %v %v", f.hosts, err)
 	}
 }
@@ -207,5 +207,22 @@ func TestMTLSGateAndPermission(t *testing.T) {
 		if rec.Code != http.StatusForbidden {
 			t.Errorf("%s ohne system.cloudflare: %d", name, rec.Code)
 		}
+	}
+}
+
+// Fremde Namen werden nicht an die Domain angehängt, sondern abgewiesen; PDH-Namen gehen.
+func TestMTLSRejectsForeignNames(t *testing.T) {
+	f := &fakeMTLS{hosts: []string{"andere.firma.de"}}
+	d := f.deps(t)
+	for _, n := range []string{"fremd.firma.de", "fremd.de", "nc", ""} {
+		if _, _, err := mtlsSwitch(context.Background(), d, n, true); err == nil || !strings.Contains(err.Error(), "aus der Liste") {
+			t.Errorf("%q: %v", n, err)
+		}
+	}
+	if f.puts != 0 {
+		t.Errorf("Schreibzugriffe: %d", f.puts)
+	}
+	if _, _, err := mtlsSwitch(context.Background(), d, "pdh.firma.de", true); err != nil || f.puts != 1 {
+		t.Errorf("PDH-Name: %v puts=%d", err, f.puts)
 	}
 }

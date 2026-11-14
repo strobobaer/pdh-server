@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"pdh/internal/integrations/cloudflare"
@@ -25,6 +26,9 @@ const (
 	mtlsErrAuth  = "Das Cloudflare-Token darf das nicht – Recht ‚SSL and Certificates: Edit‘ bzw. ‚Zone WAF: Read‘ ergänzen"
 	mtlsErrOther = "Cloudflare hat die Anfrage nicht angenommen – Einzelheiten stehen im Server-Protokoll"
 )
+
+// mtlsMu: Lesen und Schreiben der Namensliste gehören zusammen (PUT ersetzt alles).
+var mtlsMu sync.Mutex
 
 type mtlsHost struct {
 	Name string
@@ -197,10 +201,9 @@ func mtlsSwitch(ctx context.Context, d mtlsDeps, host string, on bool) (msg, war
 	if err != nil {
 		return "", "", mtlsUserErr{err.Error()}
 	}
-	name, err := cfFullName(host, a.zone)
-	if err != nil || strings.TrimSpace(host) == "" {
-		return "", "", mtlsUserErr{"Name: bitte einen Namen aus der Liste wählen"}
-	}
+	mtlsMu.Lock()
+	defer mtlsMu.Unlock()
+	name := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(host)), ".")
 	zone, err := a.client.ZoneByName(ctx, a.zone)
 	if err != nil {
 		return "", "", err
@@ -208,6 +211,10 @@ func mtlsSwitch(ctx context.Context, d mtlsDeps, host string, on bool) (msg, war
 	list, err := a.client.MTLSHostnames(ctx, zone.ID)
 	if err != nil {
 		return "", "", err
+	}
+	// Nur Namen der angezeigten Liste oder des PDH (PDH- und Nextcloud-Adresse); nichts Fremdes.
+	if name == "" || !(mtlsHas(list, name) || mtlsHas(certSuggested(d.pdhHost(ctx), d.ncURL), name)) {
+		return "", "", mtlsUserErr{"Name: bitte einen Namen aus der Liste wählen"}
 	}
 	var next []string
 	switch {
@@ -303,7 +310,9 @@ func (h *Handler) mtlsAct(w http.ResponseWriter, r *http.Request, on bool) {
 }
 
 // CloudflareMTLSOffWeb: POST /admin/server-config/cloudflare/mtls-off (host)
-func (h *Handler) CloudflareMTLSOffWeb(w http.ResponseWriter, r *http.Request) { h.mtlsAct(w, r, false) }
+func (h *Handler) CloudflareMTLSOffWeb(w http.ResponseWriter, r *http.Request) {
+	h.mtlsAct(w, r, false)
+}
 
 // CloudflareMTLSOnWeb: POST /admin/server-config/cloudflare/mtls-on (host)
 func (h *Handler) CloudflareMTLSOnWeb(w http.ResponseWriter, r *http.Request) { h.mtlsAct(w, r, true) }

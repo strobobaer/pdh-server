@@ -209,12 +209,17 @@ func (c *Client) SetSetting(ctx context.Context, zoneID, id, value string) error
 // eigene CA (Enterprise) führt das PDH nicht.
 func (c *Client) MTLSHostnames(ctx context.Context, zoneID string) ([]string, error) {
 	var r struct {
-		Hostnames []string `json:"hostnames"`
+		Hostnames *[]string `json:"hostnames"`
 	}
 	if _, err := c.do(ctx, http.MethodGet, "/zones/"+url.PathEscape(zoneID)+"/certificate_authorities/hostname_associations", nil, &r); err != nil {
 		return nil, err
 	}
-	return r.Hostnames, nil
+	// Fehlt result oder hostnames, ist das keine leere Liste, sondern eine unbrauchbare Antwort –
+	// sonst schriebe „Einschalten“ eine Liste, die nur aus dem neuen Namen besteht.
+	if r.Hostnames == nil {
+		return nil, errors.New("Cloudflare: unerwartete Antwort (keine Namensliste)")
+	}
+	return *r.Hostnames, nil
 }
 
 // SetMTLSHostnames ersetzt die ganze Liste. Wer einen Namen ändern will, liest zuerst die

@@ -87,3 +87,29 @@ func TestMTLSForbidden(t *testing.T) {
 		t.Errorf("403: %v", err)
 	}
 }
+
+func TestMTLSHostnamesBadAnswers(t *testing.T) {
+	for name, body := range map[string]string{
+		"result null":     `{"success":true,"result":null}`,
+		"result fehlt":    `{"success":true}`,
+		"hostnames fehlt": `{"success":true,"result":{}}`,
+		"hostnames null":  `{"success":true,"result":{"hostnames":null}}`,
+	} {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = io.WriteString(w, body) }))
+		c := New("tok")
+		c.Base = srv.URL
+		if got, err := c.MTLSHostnames(context.Background(), "z1"); err == nil {
+			t.Errorf("%s: kein Fehler, Liste %v", name, got)
+		}
+		srv.Close()
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, `{"success":true,"result":{"hostnames":[]}}`)
+	}))
+	defer srv.Close()
+	c := New("tok")
+	c.Base = srv.URL
+	if got, err := c.MTLSHostnames(context.Background(), "z1"); err != nil || len(got) != 0 {
+		t.Errorf("leere Liste ist gültig: %v %v", got, err)
+	}
+}
