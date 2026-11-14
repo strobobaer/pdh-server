@@ -157,7 +157,10 @@ func (h *Handler) PKIPage(w http.ResponseWriter, r *http.Request) {
 	}
 	d.Certs = h.pkiList(ctx, "")
 	h.pkiRevealNew(ctx, d.Certs, d.NewID)
-	leRows, _ := h.certList(ctx)
+	leRows, lerr := h.certList(ctx)
+	if lerr != nil {
+		componentLog("zertifikate").Warn().Err(lerr).Msg("let's-encrypt-zertifikate lesen")
+	}
 	d.ServerHint = pkiServerHint(os.Getenv("PDH_NEXTCLOUD_BASEURL"), leRows)
 	h.render(w, "pki", d)
 }

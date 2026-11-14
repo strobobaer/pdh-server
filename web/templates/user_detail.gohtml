@@ -375,7 +375,7 @@
   {{if or .CanSelfCert .MyCerts}}
   <div class="card">
     <div class="card-title"><span><i class="ti ti-certificate"></i> Zertifikat für die Nextcloud-App</span></div>
-    <div hx-get="/account/certificates/enforcement" hx-trigger="load" hx-swap="outerHTML"></div>
+    {{if .CanSelfCert}}<div hx-get="/account/certificates/enforcement" hx-trigger="load" hx-swap="outerHTML"></div>{{end}}
     <p class="rec-sub" style="margin-bottom:8px">Mit diesem Zertifikat weist sich dein Handy oder Laptop bei Nextcloud aus. Je Gerät ein eigenes Zertifikat ausstellen – geht ein Gerät verloren, sperrst du nur dieses.</p>
     {{range .MyCerts}}
     <div class="rec-row" style="flex-wrap:wrap;gap:8px{{if not .Active}};opacity:.55{{end}}">

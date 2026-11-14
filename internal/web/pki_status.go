@@ -29,6 +29,7 @@ const (
 
 	pkiProbeTimeout = 3 * time.Second
 	pkiProbeTTL     = 5 * time.Minute
+	pkiProbeBadTTL  = 20 * time.Second
 
 	pkiEnforceCmd = "sudo bash scripts/configure-nextcloud-client-certs.sh --site /etc/nginx/sites-available/nextcloud.conf"
 )
@@ -142,45 +143,53 @@ func pkiEnforcementFor(ctx context.Context, baseURL string, caSubject func() ([]
 	}
 	addr := net.JoinHostPort(host, port)
 	key := addr + "|" + string(subj)
+	// Die Sperre bündelt gleichzeitige Prüfungen: Wer wartet, findet danach das Ergebnis im Speicher.
 	pkiProbeCache.Lock()
-	if pkiProbeCache.key == key && time.Since(pkiProbeCache.at) < pkiProbeTTL {
-		st := pkiProbeCache.stat
-		pkiProbeCache.Unlock()
-		return st
+	defer pkiProbeCache.Unlock()
+	if pkiProbeCache.key == key && time.Since(pkiProbeCache.at) < pkiCacheTTL(pkiProbeCache.stat.State) {
+		return pkiProbeCache.stat
 	}
-	pkiProbeCache.Unlock()
 	st := pkiProbe(ctx, addr, subj)
 	st.Host = host
-	pkiProbeCache.Lock()
-	pkiProbeCache.key, pkiProbeCache.at, pkiProbeCache.stat = key, time.Now(), st
-	pkiProbeCache.Unlock()
+	// Bei abgebrochener Anfrage ist das Ergebnis wertlos – nichts merken.
+	if ctx.Err() == nil {
+		pkiProbeCache.key, pkiProbeCache.at, pkiProbeCache.stat = key, time.Now(), st
+	}
 	return st
+}
+
+// pkiCacheTTL: Nur „aktiv“ bleibt lange gemerkt; Fehlzustände werden bald neu geprüft,
+// damit eine Korrektur schnell sichtbar wird.
+func pkiCacheTTL(state string) time.Duration {
+	if state == pkiEnforceActive {
+		return pkiProbeTTL
+	}
+	return pkiProbeBadTTL
 }
 
 // pkiEnforceHTML: Anzeige der Zertifikatspflicht (Farben nur über Variablen).
 func pkiEnforceHTML(st pkiEnforceStatus) string {
-	box := func(color, icon, title, body string) string {
-		return `<div class="pki-enforce" style="border:1px solid var(--border);border-left:4px solid ` + color + `;background:var(--bg2);border-radius:8px;padding:9px 12px;font-size:12px;margin:0 0 12px">` +
-			`<b style="color:` + color + `"><i class="ti ` + icon + `"></i> ` + title + `</b>` + body + `</div>`
+	box := func(class, icon, title, body string) string {
+		return `<div class="pki-enforce ` + class + `"><b><i class="ti ` + icon + `"></i> ` + title + `</b>` + body + `</div>`
 	}
 	switch st.State {
 	case pkiEnforceActive:
-		return box("var(--green)", "ti-shield-check", "Zertifikatspflicht aktiv – nginx fragt nach PDH-Zertifikaten", "")
+		return box("ok", "ti-shield-check", "Zertifikatspflicht aktiv – nginx fragt nach PDH-Zertifikaten", "")
 	case pkiEnforceOff:
 		body := ""
 		if st.Reason != "" {
 			body += `<div class="rec-sub" style="margin-top:4px">` + html.EscapeString(st.Reason) + `</div>`
 		}
 		body += `<div style="margin-top:6px">Auf dem Nextcloud-Server einmalig ausführen:</div>` +
-			`<code style="display:block;user-select:all;margin-top:4px;padding:6px 8px;background:var(--bg3);border-radius:6px;word-break:break-all">` + html.EscapeString(pkiEnforceCmd) + `</code>` +
+			`<pre>` + html.EscapeString(pkiEnforceCmd) + `</pre>` +
 			`<div class="rec-sub" style="margin-top:6px">Im Verbund muss der Befehl auf beiden Servern laufen, und die eigenen Serveradressen sind mit <code>--exempt</code> auszunehmen.</div>`
-		return box("var(--amber)", "ti-shield-off", "Zertifikatspflicht nicht eingerichtet – Nextcloud fragt kein Zertifikat ab; die .p12 hat so keine Wirkung", body)
+		return box("warn", "ti-shield-off", "Zertifikatspflicht nicht eingerichtet – Nextcloud fragt kein Zertifikat ab; die .p12 hat so keine Wirkung", body)
 	}
 	reason := st.Reason
 	if reason == "" {
 		reason = "Die Prüfung war nicht möglich."
 	}
-	return box("var(--muted)", "ti-shield-question", "Zertifikatspflicht nicht prüfbar", `<div class="rec-sub" style="margin-top:4px">`+html.EscapeString(reason)+`</div>`)
+	return box("", "ti-shield-question", "Zertifikatspflicht nicht prüfbar", `<div class="rec-sub" style="margin-top:4px">`+html.EscapeString(reason)+`</div>`)
 }
 
 // PKIEnforcementWeb: GET /account/certificates/enforcement – Anzeige als Fragment (htmx, lädt nach).
@@ -209,7 +218,7 @@ func pkiServerHint(nextcloudURL string, rows []certRow) string {
 		}
 	}
 	if host == "" {
-		host = "der Nextcloud"
+		return "Für die öffentliche Nextcloud-Adresse gilt das Let's-Encrypt-Zertifikat aus dem Reiter Cloudflare-Tunnel. Ein Server-Zertifikat aus dem PDH brauchst du nur für interne Namen ohne öffentliches Zertifikat (z. B. nextcloud.local oder eine IP)."
 	}
 	return "Für die Adresse " + host + " gilt das Let's-Encrypt-Zertifikat aus dem Reiter Cloudflare-Tunnel. Ein Server-Zertifikat aus dem PDH brauchst du nur für interne Namen ohne öffentliches Zertifikat (z. B. nextcloud.local oder eine IP)."
 }
