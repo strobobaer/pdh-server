@@ -11,6 +11,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 	"unicode/utf8"
@@ -34,7 +35,7 @@ const (
 	opcuaExplorerMaxNodeID   = 500  // Zeichen einer NodeID
 	opcuaExplorerMaxWrite    = 4000 // Zeichen eines zu schreibenden Werts
 	opcuaExplorerMaxBytes    = 32   // angezeigte Bytes einer ByteString
-	opcuaExplorerReadChunk   = 1000 // Leseaufträge je Read-Aufruf
+	opcuaExplorerReadChunk   = 100  // Leseaufträge je Read-Aufruf (bei BadTooManyOperations halbiert)
 	opcuaExplorerOpTimeout   = 20 * time.Second
 	opcuaExplorerMinTick     = 250
 	opcuaExplorerMaxTick     = 10000
@@ -246,28 +247,51 @@ func opcuaParseNodeID(s string) (*ua.NodeID, error) {
 	return n, nil
 }
 
+// opcuaReadChunked schickt die Leseaufträge in Stücken zu höchstens size. Lehnt der Server
+// ein Stück mit BadTooManyOperations ab, wird die Stückgröße halbiert (bis 1) und neu versucht.
+func opcuaReadChunked(rvs []*ua.ReadValueID, size int, read func([]*ua.ReadValueID) ([]*ua.DataValue, error)) ([]*ua.DataValue, error) {
+	if size < 1 {
+		size = 1
+	}
+	out := make([]*ua.DataValue, 0, len(rvs))
+	for start := 0; start < len(rvs); {
+		n := size
+		if start+n > len(rvs) {
+			n = len(rvs) - start
+		}
+		res, err := read(rvs[start : start+n])
+		if err != nil {
+			if errors.Is(err, ua.StatusBadTooManyOperations) && n > 1 {
+				size = n / 2
+				continue
+			}
+			return nil, err
+		}
+		if len(res) != n {
+			return nil, errors.New("Unerwartete Antwort des Servers")
+		}
+		out = append(out, res...)
+		start += n
+	}
+	return out, nil
+}
+
 // opcuaReadAttrs liest die Attribute in Stücken; Ergebnis je Auftrag, Reihenfolge wie rvs.
 func opcuaReadAttrs(ctx context.Context, c *opcua.Client, rvs []*ua.ReadValueID) ([]*ua.DataValue, error) {
-	out := make([]*ua.DataValue, 0, len(rvs))
-	for start := 0; start < len(rvs); start += opcuaExplorerReadChunk {
-		end := start + opcuaExplorerReadChunk
-		if end > len(rvs) {
-			end = len(rvs)
-		}
+	return opcuaReadChunked(rvs, opcuaExplorerReadChunk, func(part []*ua.ReadValueID) ([]*ua.DataValue, error) {
 		resp, err := c.Read(ctx, &ua.ReadRequest{
 			MaxAge:             0,
 			TimestampsToReturn: ua.TimestampsToReturnBoth,
-			NodesToRead:        rvs[start:end],
+			NodesToRead:        part,
 		})
 		if err != nil {
 			return nil, err
 		}
-		if len(resp.Results) != end-start {
-			return nil, errors.New("Unerwartete Antwort des Servers")
+		if resp.ResponseHeader != nil && resp.ResponseHeader.ServiceResult != ua.StatusOK {
+			return nil, resp.ResponseHeader.ServiceResult
 		}
-		out = append(out, resp.Results...)
-	}
-	return out, nil
+		return resp.Results, nil
+	})
 }
 
 func opcuaRV(n *ua.NodeID, a ua.AttributeID) *ua.ReadValueID {
@@ -438,6 +462,9 @@ func opcuaWriteValue(ctx context.Context, c *opcua.Client, nodeID, value string)
 	switch cur.Value.Value().(type) {
 	case float32, float64:
 		value = explorerDecimal(value)
+		if f, perr := strconv.ParseFloat(value, 64); perr == nil && (math.IsNaN(f) || math.IsInf(f, 0)) {
+			return &opcuaRejected{"Nicht endliche Zahlen (NaN, Inf) werden nicht geschrieben"}
+		}
 	case int16, int32, int64, uint16, uint32, bool:
 		value = strings.TrimSpace(value)
 	case string: // Text bleibt unverändert
@@ -518,7 +545,13 @@ func opcuaWatch(ctx context.Context, c *opcua.Client, nodeIDs []string, interval
 		select {
 		case <-ctx.Done():
 			return nil
-		case msg := <-notify:
+		case msg, open := <-notify:
+			if !open {
+				if ctx.Err() != nil {
+					return nil
+				}
+				return errors.New("Die Verbindung zum OPC-UA-Server wurde beendet")
+			}
 			if msg == nil {
 				continue
 			}
@@ -579,6 +612,51 @@ func opcuaWatchPolling(ctx context.Context, c *opcua.Client, ids []*ua.NodeID, i
 
 // ── Handler ──────────────────────────────────────────────────
 
+// opcuaRejected: Schreibwunsch, der vor dem Senden abgelehnt wird (400, Verlauf „Abgelehnt“).
+type opcuaRejected struct{ msg string }
+
+func (e *opcuaRejected) Error() string { return e.msg }
+
+// opcuaGate begrenzt gleichzeitige Sitzungen (Kurzabfragen und Live-Verfolgen) je Verbindung,
+// damit Explorer-Anfragen ein Gerät nicht überlasten.
+type opcuaGate struct {
+	mu  sync.Mutex
+	n   map[string]int
+	max int
+}
+
+var opcuaConnGate = &opcuaGate{n: map[string]int{}, max: 2}
+
+const opcuaBusyMsg = "Gerät ist gerade beschäftigt – kurz warten"
+
+func (g *opcuaGate) acquire(connID string) (release func(), ok bool) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.n[connID] >= g.max {
+		return nil, false
+	}
+	g.n[connID]++
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			g.mu.Lock()
+			defer g.mu.Unlock()
+			if g.n[connID]--; g.n[connID] <= 0 {
+				delete(g.n, connID)
+			}
+		})
+	}, true
+}
+
+// opcuaAcquire belegt einen Platz an der Verbindung; sonst 429.
+func opcuaAcquire(w http.ResponseWriter, c explorerConn) (func(), bool) {
+	release, ok := opcuaConnGate.acquire(c.ID)
+	if !ok {
+		writeGlobalBoardError(w, http.StatusTooManyRequests, opcuaBusyMsg)
+	}
+	return release, ok
+}
+
 // opcuaConnect öffnet die Verbindung; Fehler enthalten die Meldung für den Anwender.
 func opcuaConnect(ctx context.Context, c explorerConn) (*opcua.Client, error) {
 	return openOPCUAClient(ctx, c.Config)
@@ -622,6 +700,11 @@ func (h *Handler) OPCUAExplorerChildren(direction string) http.HandlerFunc {
 				return
 			}
 		}
+		release, ok := opcuaAcquire(w, c)
+		if !ok {
+			return
+		}
+		defer release()
 		ctx, cancel := context.WithTimeout(r.Context(), opcuaExplorerOpTimeout)
 		defer cancel()
 		cl, err := opcuaConnect(ctx, c)
@@ -651,6 +734,11 @@ func (h *Handler) OPCUAExplorerNode(direction string) http.HandlerFunc {
 			writeGlobalBoardError(w, http.StatusBadRequest, err.Error())
 			return
 		}
+		release, ok := opcuaAcquire(w, c)
+		if !ok {
+			return
+		}
+		defer release()
 		ctx, cancel := context.WithTimeout(r.Context(), opcuaExplorerOpTimeout)
 		defer cancel()
 		cl, err := opcuaConnect(ctx, c)
@@ -706,6 +794,11 @@ func (h *Handler) OPCUAExplorerWatch(direction string) http.HandlerFunc {
 			}
 			tick = int(math.Min(math.Max(float64(n), opcuaExplorerMinTick), opcuaExplorerMaxTick))
 		}
+		release, ok := opcuaAcquire(w, c)
+		if !ok {
+			return
+		}
+		defer release()
 		h.runExplorerStream(w, r, func(ctx context.Context, send func(string, any)) error {
 			cl, err := opcuaConnect(ctx, c)
 			if err != nil {
@@ -726,16 +819,8 @@ func (h *Handler) OPCUAExplorerWatch(direction string) http.HandlerFunc {
 // OPCUAExplorerWrite: POST …/explorer/opcua/write (node, value, confirm) – testweise schreiben.
 func (h *Handler) OPCUAExplorerWrite(direction string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		// Das Formular liest erst der Schreib-Guard (nach der Rechteprüfung); vorher wird die Größe begrenzt.
 		r.Body = http.MaxBytesReader(w, r.Body, 4*opcuaExplorerMaxWrite)
-		if err := r.ParseForm(); err != nil {
-			var tooBig *http.MaxBytesError
-			if errors.As(err, &tooBig) {
-				writeGlobalBoardError(w, http.StatusRequestEntityTooLarge, "Der Wert ist zu groß")
-			} else {
-				writeGlobalBoardError(w, http.StatusBadRequest, "Ungültige Eingabe")
-			}
-			return
-		}
 		c, ok := h.explorerWriteGuard(w, r, direction)
 		if !ok {
 			return
@@ -754,6 +839,11 @@ func (h *Handler) OPCUAExplorerWrite(direction string) http.HandlerFunc {
 			writeGlobalBoardError(w, http.StatusBadRequest, "Der Wert ist zu lang")
 			return
 		}
+		release, ok := opcuaAcquire(w, c)
+		if !ok {
+			return
+		}
+		defer release()
 		ctx, cancel := context.WithTimeout(r.Context(), opcuaExplorerOpTimeout)
 		defer cancel()
 		// Geschrieben wird – auch bei Fehlschlag – mit Eintrag im Verlauf, mit Ergebnis und Datentyp.
@@ -767,6 +857,9 @@ func (h *Handler) OPCUAExplorerWrite(direction string) http.HandlerFunc {
 			defer opcuaClose(cl)
 			if before, err := opcuaReadNode(ctx, cl, node); err == nil {
 				dataType = before.DataType
+				if before.Class == "Variable" && before.Access != "" && !before.Writable {
+					return &opcuaRejected{"Knoten ist nur lesbar"}
+				}
 			}
 			if err := opcuaWriteValue(ctx, cl, node, value); err != nil {
 				return err
@@ -779,13 +872,23 @@ func (h *Handler) OPCUAExplorerWrite(direction string) http.HandlerFunc {
 		if dataType != "" {
 			logged += " (Datentyp " + dataType + ")"
 		}
+		var rejected *opcuaRejected
+		isRejected := errors.As(writeErr, &rejected)
 		if writeErr != nil {
-			reason := []rune(opcuaCleanText(writeErr.Error(), 80))
-			logged = "Fehlgeschlagen (" + string(reason) + ") – " + logged
+			reason := string([]rune(opcuaCleanText(writeErr.Error(), 80)))
+			if isRejected {
+				logged = "Abgelehnt (" + reason + ") – " + logged
+			} else {
+				logged = "Fehlgeschlagen (" + reason + ") – " + logged
+			}
 		}
 		h.explorerLogWrite(r, c, node, logged)
 		if writeErr != nil {
-			writeGlobalBoardError(w, http.StatusBadGateway, opcuaCleanText(writeErr.Error(), 300))
+			status := http.StatusBadGateway
+			if isRejected {
+				status = http.StatusBadRequest
+			}
+			writeGlobalBoardError(w, status, opcuaCleanText(writeErr.Error(), 300))
 			return
 		}
 		if after.NodeID == "" {

@@ -26,6 +26,12 @@ import (
 // (Int32, nur lesbar). Liefert Endpunkt, Server und Namensraumindex.
 func startTestOPCUAServer(t *testing.T) (endpoint string, srv *server.Server, ns int) {
 	t.Helper()
+	return startTestOPCUAServerN(t, 0)
+}
+
+// startTestOPCUAServerN legt zusätzlich extra Variablen „Viele0000“ … im Ordner an.
+func startTestOPCUAServerN(t *testing.T, extra int) (endpoint string, srv *server.Server, ns int) {
+	t.Helper()
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -52,6 +58,9 @@ func startTestOPCUAServer(t *testing.T) (endpoint string, srv *server.Server, ns
 	}
 	add("Temperatur", float64(21.5), id.Double, ua.AccessLevelTypeCurrentRead|ua.AccessLevelTypeCurrentWrite)
 	add("Zaehler", int32(7), id.Int32, ua.AccessLevelTypeCurrentRead)
+	for i := 0; i < extra; i++ {
+		add(fmt.Sprintf("Viele%04d", i), int32(i), id.Int32, ua.AccessLevelTypeCurrentRead)
+	}
 	if err := srv.Start(context.Background()); err != nil {
 		t.Fatalf("OPC-UA-Testserver startet nicht: %v", err)
 	}
@@ -389,11 +398,24 @@ func TestOPCUAExplorerWriteLogsResult(t *testing.T) {
 	zaehler := fmt.Sprintf("ns=%d;s=Zaehler", ns)
 	w = httptest.NewRecorder()
 	h.OPCUAExplorerWrite("import")(w, noUserReq(opcuaWriteReq(zaehler, "9", nil)))
+	if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "Knoten ist nur lesbar") {
+		t.Fatalf("nur lesbar: %d %s", w.Code, w.Body.String())
+	}
+	for _, bad := range []string{"NaN", "-Inf"} {
+		w = httptest.NewRecorder()
+		h.OPCUAExplorerWrite("import")(w, noUserReq(opcuaWriteReq(temp, bad, nil)))
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("%s: %d %s", bad, w.Code, w.Body.String())
+		}
+	}
+	// nicht umwandelbarer Wert: Fehlschlag (502), ebenfalls im Verlauf
+	w = httptest.NewRecorder()
+	h.OPCUAExplorerWrite("import")(w, noUserReq(opcuaWriteReq(temp, "abc", nil)))
 	if w.Code != http.StatusBadGateway {
-		t.Fatalf("Fehlschlag: %d %s", w.Code, w.Body.String())
+		t.Fatalf("abc: %d %s", w.Code, w.Body.String())
 	}
 	hist := h.recordHistory(context.Background(), "connection", id)
-	if len(hist) != 2 {
+	if len(hist) != 5 {
 		t.Fatalf("Verlauf: %+v", hist)
 	}
 	var okSeen, failSeen bool
@@ -402,7 +424,7 @@ func TestOPCUAExplorerWriteLogsResult(t *testing.T) {
 		case temp:
 			okSeen = strings.Contains(e.NewValue, "19,5") && strings.Contains(e.NewValue, "Double") && !strings.HasPrefix(e.NewValue, "Fehlgeschlagen")
 		case zaehler:
-			failSeen = strings.HasPrefix(e.NewValue, "Fehlgeschlagen (") && strings.Contains(e.NewValue, "Int32")
+			failSeen = strings.HasPrefix(e.NewValue, "Abgelehnt (Knoten ist nur lesbar)") && strings.Contains(e.NewValue, "Int32")
 		}
 	}
 	if !okSeen || !failSeen {
