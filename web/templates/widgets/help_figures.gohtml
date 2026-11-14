@@ -792,3 +792,21 @@
 <figcaption>Ablauf einer Rüstzeit – die Rüstzeit zählt bis zur Störmeldung, danach gilt die Störungsrichtlinie.</figcaption>
 </figure>
 {{end}}
+
+{{/* Datennetz: PDH <-> Tailnet <-> Daten-Client <-> Datenbank */}}
+{{define "hb-fig-datennetz"}}
+<figure class="hb-fig">
+<svg viewBox="0 0 640 190" role="img" aria-label="Datennetz: Das PDH verbindet sich über das private Netz (Tailnet) mit dem Daten-Client im Werk; der Client reicht die Verbindung an die Fremddatenbank weiter. Der Client meldet dem PDH regelmäßig seinen Zustand.">
+  <rect class="bg" x="1" y="1" width="638" height="188" rx="8"/>
+  <rect class="acl" x="16" y="20" width="150" height="86" rx="8"/><text x="91" y="42" class="t-c t-b">PDH-Server</text><text x="91" y="62" class="t-c t-m">Verbindung mit Weg</text><text x="91" y="78" class="t-c t-m">„Datennetz“</text><text x="91" y="94" class="t-c t-m">Schlüssel tag:pdh</text>
+  <rect class="bg3" x="245" y="20" width="150" height="86" rx="8"/><text x="320" y="42" class="t-c t-b">Tailnet</text><text x="320" y="62" class="t-c t-m">privates Netz</text><text x="320" y="78" class="t-c t-m">Freigabe-Zeile</text><text x="320" y="94" class="t-c t-m">nur feste Ports</text>
+  <rect class="acl" x="474" y="20" width="150" height="86" rx="8"/><text x="549" y="42" class="t-c t-b">Daten-Client</text><text x="549" y="62" class="t-c t-m">im Werk</text><text x="549" y="78" class="t-c t-m">Token + Schlüssel</text><text x="549" y="94" class="t-c t-m">tag:pdh-data</text>
+  <path class="ar" d="M168 56 H243"/><path class="ar" d="M397 56 H472"/>
+  <path class="ar" d="M472 84 H397"/><text x="435" y="102" class="t-c t-m">Meldung</text>
+  <rect class="gr" x="474" y="128" width="150" height="40" rx="8"/><text x="549" y="146" class="t-c t-b">Fremddatenbank</text><text x="549" y="160" class="t-c t-m">z. B. Port 1433</text>
+  <path class="ar" d="M549 108 V126"/>
+  <text x="170" y="150" class="t-m">Bei tailscale.com liegen nur Gerätenamen und Adressen,</text><text x="170" y="166" class="t-m">die Daten laufen verschlüsselt direkt zwischen PDH und Client.</text>
+</svg>
+<figcaption>Im Werk muss kein Port nach außen offen sein: Der Daten-Client baut die Verbindung von innen auf.</figcaption>
+</figure>
+{{end}}
