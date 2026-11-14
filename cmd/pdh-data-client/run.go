@@ -26,6 +26,7 @@ const (
 	reportTimeout  = 15 * time.Second
 	reportRetry    = 30 * time.Second
 	peerTagTimeout = 5 * time.Second
+	maxPDHTargets  = 16
 )
 
 // configError kennzeichnet Fehler, die ein Neustart nicht behebt (fehlender
@@ -137,7 +138,7 @@ func Run(ctx context.Context, c Config, node datanet.Node, save func(Config) err
 	}
 	first.Wait()
 
-	reportLoop(ctx, c, node, &st)
+	reportLoop(ctx, c, node, &st, save)
 	return nil
 }
 
@@ -212,7 +213,7 @@ func upWithRetry(ctx context.Context, node datanet.Node) error {
 	}
 }
 
-func reportLoop(ctx context.Context, c Config, node datanet.Node, st *state) {
+func reportLoop(ctx context.Context, c Config, node datanet.Node, st *state, save func(Config) error) {
 	hc := &http.Client{
 		Transport: &http.Transport{DialContext: node.DialContext},
 		Timeout:   reportTimeout,
@@ -227,6 +228,7 @@ func reportLoop(ctx context.Context, c Config, node datanet.Node, st *state) {
 			log.Printf("Meldung an den PDH-Server fehlgeschlagen: %v", err)
 		} else {
 			wait = datanet.ClampInterval(resp.IntervalSeconds)
+			c = adoptPDH(c, resp.PDH, save)
 		}
 		select {
 		case <-ctx.Done():
@@ -234,6 +236,31 @@ func reportLoop(ctx context.Context, c Config, node datanet.Node, st *state) {
 		case <-time.After(wait):
 		}
 	}
+}
+
+// adoptPDH übernimmt die Liste der PDH-Ziele aus der Antwort (zuerst der
+// antwortende Server) und speichert die Konfiguration, wenn sie sich ändert.
+// Eine leere oder ungültige Liste lässt die bisherige unverändert.
+func adoptPDH(c Config, list []string, save func(Config) error) Config {
+	if len(list) > maxPDHTargets {
+		list = list[:maxPDHTargets]
+	}
+	n := c
+	n.PDH = normalizePDH(list)
+	if len(n.PDH) == 0 || slices.Equal(n.PDH, c.PDH) {
+		return c
+	}
+	for _, a := range n.PDH {
+		if !validPDHAddr(a) {
+			return c
+		}
+	}
+	if save != nil {
+		if err := save(n); err != nil {
+			log.Printf("Liste der PDH-Ziele nicht gespeichert: %v", err)
+		}
+	}
+	return n
 }
 
 func reportOnce(ctx context.Context, hc *http.Client, c Config, st *state) (datanet.ReportResponse, error) {

@@ -7,6 +7,7 @@ import (
 	"net/netip"
 
 	"github.com/rs/zerolog/log"
+	"tailscale.com/envknob"
 	"tailscale.com/tsnet"
 )
 
@@ -18,6 +19,9 @@ func NewTSNode(cfg NodeConfig) (Node, error) {
 	if cfg.Dir == "" {
 		return nil, errors.New("datanet: Zustandsverzeichnis fehlt")
 	}
+	// Keine Protokolle an log.tailscale.com senden (gilt für PDH und Client);
+	// vor dem ersten Start des Knotens setzen.
+	envknob.SetNoLogsNoSupport()
 	s := &tsnet.Server{
 		Hostname:   cfg.Hostname,
 		Dir:        cfg.Dir,

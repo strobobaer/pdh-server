@@ -33,7 +33,7 @@ func versionLine() string {
 }
 
 const usage = `Aufruf:
-  pdh-data-client install --id <uuid> (--token <token> | --token-file <datei|->) --pdh <ip>[,<ip>] --target <port[=host:port]> [--target …] [--authkey tskey-…] [--hostname <name>]
+  pdh-data-client install --id <uuid> (--token <token> | --token-file <datei|->) --pdh <name|ip>[,<name|ip>] [--pdh …] --target <port[=host:port]> [--target …] [--authkey tskey-…] [--hostname <name>]
     (Das Token kann auch in der Umgebungsvariable PDH_DATANET_TOKEN stehen, dann bleibt es nicht in der Shell-Historie.)
   pdh-data-client uninstall
   pdh-data-client run [--config <datei>]
@@ -118,12 +118,12 @@ func resetState(c Config) error {
 func parseInstallArgs(args []string) (Config, error) {
 	fs := flag.NewFlagSet("install", flag.ContinueOnError)
 	var c Config
-	var pdh, tokenFile string
-	var targets multiFlag
+	var tokenFile string
+	var pdh, targets multiFlag
 	fs.StringVar(&c.ClientID, "id", "", "Client-ID (UUID)")
 	fs.StringVar(&c.Token, "token", "", "Client-Token")
 	fs.StringVar(&tokenFile, "token-file", "", "Datei mit dem Client-Token (- = Standardeingabe)")
-	fs.StringVar(&pdh, "pdh", "", "Datennetz-Adresse(n) des PDH-Servers, durch Komma getrennt")
+	fs.Var(&pdh, "pdh", "Datennetz-Adresse(n) der PDH-Server (Name oder IP), mehrfach oder durch Komma getrennt")
 	fs.Var(&targets, "target", "freizugebender Port, optional =host:port (mehrfach möglich)")
 	fs.StringVar(&c.AuthKey, "authkey", "", "Einmal-Schlüssel (tskey-…)")
 	fs.StringVar(&c.Hostname, "hostname", "", "Name im Datennetz")
@@ -144,7 +144,7 @@ func parseInstallArgs(args []string) (Config, error) {
 	if c.Hostname == "" {
 		c.Hostname, _ = os.Hostname()
 	}
-	c.PDH = normalizePDH(strings.Split(pdh, ","))
+	c.PDH = normalizePDH(strings.Split(strings.Join(pdh, ","), ","))
 	for _, s := range targets {
 		t, err := datanet.ParseTarget(s)
 		if err != nil {

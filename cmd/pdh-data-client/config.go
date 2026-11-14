@@ -45,6 +45,16 @@ func normalizePDH(list []string) []string {
 	return out
 }
 
+// validPDHAddr prüft eine PDH-Adresse der Form Host:Port.
+func validPDHAddr(a string) bool {
+	host, port, err := net.SplitHostPort(a)
+	if err != nil || host == "" {
+		return false
+	}
+	n, err := strconv.Atoi(port)
+	return err == nil && n >= 1 && n <= 65535
+}
+
 // Validate prüft die Konfiguration auf Vollständigkeit.
 func (c Config) Validate() error {
 	if !uuidRe.MatchString(c.ClientID) {
@@ -58,11 +68,7 @@ func (c Config) Validate() error {
 		return errors.New("mindestens eine PDH-Adresse nötig")
 	}
 	for _, a := range pdh {
-		host, port, err := net.SplitHostPort(a)
-		if err != nil || host == "" {
-			return fmt.Errorf("ungültige PDH-Adresse %q", a)
-		}
-		if n, err := strconv.Atoi(port); err != nil || n < 1 || n > 65535 {
+		if !validPDHAddr(a) {
 			return fmt.Errorf("ungültige PDH-Adresse %q", a)
 		}
 	}

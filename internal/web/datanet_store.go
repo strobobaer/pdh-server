@@ -168,16 +168,31 @@ func (h *Handler) dataNetSaveReport(ctx context.Context, id, addr string, rep da
 	if err != nil {
 		return err
 	}
-	tag, err := h.db.Exec(ctx, `UPDATE datanet_clients SET addr = left($2, 64), hostname = left($3, 120),
+	var oldAddr string
+	err = h.db.QueryRow(ctx, `WITH old AS (SELECT addr FROM datanet_clients WHERE id::text = $1)
+		UPDATE datanet_clients SET addr = left($2, 64), hostname = left($3, 120),
 		version = left($4, 40), os = left($5, 40), targets = $6, last_seen_at = NOW()
-		WHERE id::text = $1 AND revoked_at IS NULL`, id, addr, rep.Hostname, rep.Version, rep.OS, tj)
+		WHERE id::text = $1 AND revoked_at IS NULL RETURNING (SELECT addr FROM old)`,
+		id, addr, rep.Hostname, rep.Version, rep.OS, tj).Scan(&oldAddr)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return errDataNetRevoked
+	}
 	if err != nil {
 		return err
 	}
-	if tag.RowsAffected() == 0 {
-		return errDataNetRevoked
+	// Wechselt der Client seine Adresse, gehören die Brücken zur alten Adresse
+	// niemandem mehr; sonst würde ein späteres Sperren sie nicht erreichen.
+	if old := oldAddr; old != "" && old != addr && !h.dataNetAddrInUse(ctx, old) {
+		h.dataNetCutHost(old)
 	}
 	return nil
+}
+
+// dataNetAddrInUse: hat ein nicht gesperrter Client diese Adresse?
+func (h *Handler) dataNetAddrInUse(ctx context.Context, addr string) bool {
+	var n int
+	err := h.db.QueryRow(ctx, `SELECT count(*) FROM datanet_clients WHERE addr = $1 AND revoked_at IS NULL`, addr).Scan(&n)
+	return err != nil || n > 0 // im Zweifel nichts trennen
 }
 
 // dataNetRevoke sperrt einen Client; sein Token wird sofort abgewiesen.

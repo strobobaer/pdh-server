@@ -503,3 +503,59 @@ func TestDataNetResolvePortNormalized(t *testing.T) {
 		t.Error("MySQL-Vorgabe 3306 wird nicht angeboten")
 	}
 }
+
+// Wechselt ein Client seine Adresse, werden die Brücken zur alten Adresse
+// geschlossen (sonst erreicht ein späteres Sperren sie nicht mehr).
+func TestDataNetAddrChangeClosesOldBridge(t *testing.T) {
+	pool := dataNetTestPool(t)
+	ctx := context.Background()
+	h := &Handler{db: pool}
+	suffix := strings.ReplaceAll(time.Now().Format("150405.000000"), ".", "")
+	echo, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { echo.Close() })
+	go func() {
+		for {
+			c, err := echo.Accept()
+			if err != nil {
+				return
+			}
+			go func() { defer c.Close(); io.Copy(c, c) }()
+		}
+	}()
+	okT := datanet.TargetStatus{Port: 1433, OK: true, CheckedAt: time.Now()}
+	c := dataNetTestClient(t, h, "chg-"+suffix, "100.64.2.5", okT)
+	b := datanet.NewBridges(&nodetest.Fake{Routes: map[string]string{"100.64.2.5:1433": echo.Addr().String()}})
+	t.Cleanup(b.Close)
+	h.dataNetMu.Lock()
+	h.dataNetBridges = b
+	h.dataNetMu.Unlock()
+
+	local, err := b.Addr("100.64.2.5:1433")
+	if err != nil {
+		t.Fatal(err)
+	}
+	conn, err := net.Dial("tcp", local)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	buf := make([]byte, 4)
+	conn.SetDeadline(time.Now().Add(3 * time.Second))
+	conn.Write([]byte("ping"))
+	if _, err := io.ReadFull(conn, buf); err != nil {
+		t.Fatalf("Echo: %v", err)
+	}
+	// neue Adresse gemeldet
+	if err := h.dataNetSaveReport(ctx, c.ID, "100.64.2.6", datanet.Report{Hostname: "h", Targets: []datanet.TargetStatus{okT}}); err != nil {
+		t.Fatal(err)
+	}
+	conn.SetDeadline(time.Now().Add(3 * time.Second))
+	if _, err := conn.Read(buf); err == nil {
+		t.Error("Brücke zur alten Adresse steht noch")
+	} else if ne, ok := err.(net.Error); ok && ne.Timeout() {
+		t.Error("Brücke zur alten Adresse nicht getrennt (Zeitüberschreitung)")
+	}
+}

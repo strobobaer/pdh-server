@@ -88,6 +88,10 @@ func TestDataNetReportAPI(t *testing.T) {
 	if resp.IntervalSeconds != 60 || resp.PDHVersion != pdh.Version() {
 		t.Fatalf("Antwort %+v", resp)
 	}
+	// Die Antwort nennt die PDH-Ziele (mindestens den eigenen Server) mit Meldeport.
+	if len(resp.PDH) == 0 || !strings.HasPrefix(resp.PDH[0], "pdh-"+h.dataNetServerName()+":8443") {
+		t.Fatalf("PDH-Ziele %v", resp.PDH)
+	}
 	got, err := h.dataNetGet(ctx, c.ID)
 	if err != nil {
 		t.Fatal(err)

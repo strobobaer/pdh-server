@@ -1863,6 +1863,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li><b>„Datennetz: Clients und Ziele sehen“</b> (<code>datanet.view</code>): die Seite Datennetz mit Clients und Zuständen.</li>
       <li><b>„Datennetz: Clients anlegen und sperren“</b> (<code>datanet.edit</code>): Clients anlegen, sperren und die Programme laden.</li>
       <li><b>„Datennetz: Clients löschen (Bereichsadministrator)“</b> (<code>datanet.admin</code>): alle Rechte des Datennetzes, Datennetz ein- und ausschalten, Schlüssel eintragen und als Einziger Clients endgültig entfernen.</li>
+      <li><b>Datennetz-Rechte gelten immer für alle Clients.</b> Clients gehören keiner Abteilung; eine Abteilungsbeschränkung bei <code>datanet.*</code> hat deshalb keine Wirkung.</li>
     </ul>
     Beim Update bekamen „sehen“ und „anlegen und sperren“ alle Rollen, die überall „Server-Einstellungen (.env) bearbeiten &amp; Server neu starten“ oder den Abgleich-Bereichsadministrator haben. Den Bereichsadministrator bekamen die Rolle Administrator, die Abgleich-Bereichsadministratoren und die Rollen, die überall Server-Einstellungen bearbeiten dürfen und schon in einem anderen Bereich Bereichsadministrator sind. Alle anderen Rollen, auch solche nur mit „VPN nutzen“, bekamen nichts. Die Rechte gelten überall oder nur in einer Abteilung; das Ein- und Ausschalten braucht das Recht überall (<a href="#datennetz">mehr</a>).</div>
   <div class="hb-howto"><b><i class="ti ti-tool"></i> Rechte für Update und Wartung</b>
@@ -2165,7 +2166,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>Die Seite zeigt jetzt <b>einmal</b> das <b>Token</b> und die fertigen Befehle. <b>Das Token wird nur jetzt gezeigt</b> und steht danach nirgends mehr im PDH (gespeichert ist nur eine Prüfsumme).</li>
       <li>Unter <b>Programme für den Kunden</b> die Datei für Windows oder Linux laden und die angezeigte <b>SHA-256-Summe</b> mit der Datei vergleichen, bevor sie im Werk gestartet wird.</li>
       <li>Im Tailscale-Admin einen weiteren Einmal-Schlüssel erzeugen: <i>Reusable</i> aus, <i>Pre-approved</i> an, Tag <code>tag:pdh-data</code>. Er ersetzt im Befehl den Platzhalter <code>&lt;EINMAL-SCHLÜSSEL&gt;</code>.</li>
-      <li><b>Windows:</b> Eingabeaufforderung <b>als Administrator</b> öffnen. Erst die Zeile mit <code>set /p PDH_DATANET_TOKEN=…</code> ausführen und das Token einfügen, dann die zweite Zeile mit <code>pdh-data-client.exe install …</code>.</li>
+      <li><b>Windows:</b> Eingabeaufforderung <b>als Administrator</b> öffnen. Erst die Zeile mit <code>set /p PDH_DATANET_TOKEN=…</code> ausführen und das Token einfügen, dann die zweite Zeile mit <code>pdh-data-client-windows-amd64.exe install …</code> (der Name der geladenen Datei).</li>
       <li><b>Linux:</b> Erst die Zeile mit <code>read -rs …</code> ausführen und das Token einfügen, dann die zweite Zeile mit <code>sudo ./pdh-data-client-linux-amd64 install …</code>.</li>
       <li>Nach wenigen Minuten steht der Client in der Liste auf <b>Läuft</b>; die Ziele zeigen ihre Ports grün. Rot heißt: Die Datenbank ist vom Client aus nicht erreichbar.</li>
     </ol>
@@ -2188,7 +2189,8 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li><b>Entfernen</b> löscht den Eintrag endgültig und ist dem Bereichsadministrator des Datennetzes vorbehalten.</li>
     </ol>
     Updates des Clients folgen in einer späteren Version. Bis dahin: neue Datei laden, auf dem Werksrechner <code>uninstall</code> und danach <code>install</code> ausführen.</div>
-  <p><b>Datenschutz:</b> Bei tailscale.com liegen nur die Gerätenamen und Adressen der Teilnehmer. Die Inhalte der Datenbank laufen verschlüsselt direkt zwischen PDH und Client und liegen nie bei Tailscale.</p>
+  <p><b>Datenschutz:</b> Bei tailscale.com liegen nur die Gerätenamen und Adressen der Teilnehmer. Die Inhalte der Datenbank laufen verschlüsselt direkt zwischen PDH und Client und liegen nie bei Tailscale. Der PDH und der Client senden zudem <b>keine Betriebsprotokolle</b> an Tailscale (log.tailscale.com); nur der Verbindungsaufbau selbst läuft über Tailscale.</p>
+  <p><b>Rollentausch und Spiegelserver:</b> Jeder Server hat einen eigenen Knoten im Tailnet. Die Clients kennen mit jeder Meldung alle PDH-Server (Name <code>pdh-&lt;Servername&gt;</code> und Adresse) und versuchen sie der Reihe nach, bis einer antwortet. Nach einem Rollentausch meldet sich jeder Client also von selbst beim neuen aktiven Server; es muss nichts nachgearbeitet werden. Der Installationsbefehl nennt alle bekannten Server.</p>
   <p><b>Rechte:</b> sehen – <b>Datennetz: Clients und Ziele sehen</b>; anlegen und sperren – <b>Datennetz: Clients anlegen und sperren</b>; Datennetz ein- und ausschalten, Schlüssel eintragen und Entfernen – nur der Bereichsadministrator (siehe <a href="#admin">Administration</a>).</p>
   <p><b>Wenn etwas nicht klappt:</b></p>
   <table>

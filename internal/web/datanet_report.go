@@ -72,6 +72,7 @@ func (h *Handler) dataNetReportHandler() http.Handler {
 		_ = json.NewEncoder(w).Encode(datanet.ReportResponse{
 			IntervalSeconds: int(datanet.DefaultInterval.Seconds()),
 			PDHVersion:      pdh.Version(),
+			PDH:             h.dataNetPDHList(r.Context()),
 		})
 	})
 	return mux

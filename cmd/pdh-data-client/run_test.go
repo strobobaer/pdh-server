@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"slices"
 	"net/http/httptest"
 	"net/netip"
 	"strconv"
@@ -344,5 +345,68 @@ func TestPostReportLimitsResponse(t *testing.T) {
 	}
 	if resp.IntervalSeconds != 0 {
 		t.Fatalf("Antwort jenseits von 4 KB wurde gelesen: %+v", resp)
+	}
+}
+
+func TestRunAdoptsPDHListAndFallsOver(t *testing.T) {
+	echo := echoServer(t)
+	chBad, chNew := make(chan seen, 4), make(chan seen, 4)
+	bad := pdhServer(t, 503, chBad)
+	// Der zweite Server antwortet mit der aktuellen Liste: er selbst zuerst, dann ein dritter Name.
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var rep datanet.Report
+		json.NewDecoder(r.Body).Decode(&rep)
+		select {
+		case chNew <- seen{r.Header.Get("Authorization"), rep}:
+		default:
+		}
+		json.NewEncoder(w).Encode(datanet.ReportResponse{IntervalSeconds: 60,
+			PDH: []string{"pdh-zwei:8443", "pdh-drei:8443"}})
+	}))
+	t.Cleanup(s.Close)
+	good := strings.TrimPrefix(s.URL, "http://")
+	f := &nodetest.Fake{Routes: map[string]string{"pdh-eins:8443": bad, "pdh-zwei:8443": good}}
+	c := runCfg(t, []datanet.Target{{Port: freePort(t), Addr: echo}}, "pdh-eins:8443", "pdh-zwei:8443")
+	var mu sync.Mutex
+	var saved []Config
+	startRun(t, c, f, func(c Config) error {
+		mu.Lock()
+		defer mu.Unlock()
+		saved = append(saved, c)
+		return nil
+	})
+	select {
+	case <-chNew:
+	case <-time.After(2 * time.Second):
+		t.Fatal("zweites Ziel nicht erreicht")
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		mu.Lock()
+		n := len(saved)
+		var last Config
+		if n > 0 {
+			last = saved[n-1]
+		}
+		mu.Unlock()
+		if n > 0 && len(last.PDH) == 2 && last.PDH[0] == "pdh-zwei:8443" && last.PDH[1] == "pdh-drei:8443" {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatalf("Liste nicht übernommen: %+v", saved)
+}
+
+func TestAdoptPDHKeepsOldOnEmptyOrInvalid(t *testing.T) {
+	c := runCfg(t, nil, "a:8443")
+	calls := 0
+	save := func(Config) error { calls++; return nil }
+	for _, l := range [][]string{nil, {""}, {"a:8443"}} {
+		if got := adoptPDH(c, l, save); !slices.Equal(got.PDH, c.PDH) {
+			t.Errorf("Liste %v änderte %v", l, got.PDH)
+		}
+	}
+	if calls != 0 {
+		t.Errorf("save %d-mal aufgerufen", calls)
 	}
 }

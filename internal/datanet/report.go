@@ -32,6 +32,10 @@ type Report struct {
 type ReportResponse struct {
 	IntervalSeconds int    `json:"interval_seconds"`
 	PDHVersion      string `json:"pdh_version"`
+	// PDH sind alle bekannten PDH-Ziele (Host:Port, zuerst der antwortende
+	// Server). Der Client merkt sie sich, damit er nach einem Rollentausch den
+	// anderen Server findet.
+	PDH []string `json:"pdh,omitempty"`
 }
 
 // ClampInterval begrenzt ein Meldeintervall auf 15–600 s; 0 ergibt DefaultInterval.

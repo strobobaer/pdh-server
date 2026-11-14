@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"net"
 	"sort"
 	"strconv"
 	"strings"
@@ -96,7 +97,7 @@ func dataNetACL(ports []int) string {
 const (
 	dataNetNoNode     = "Erst das Datennetz des PDH einschalten"
 	dataNetAuthHolder = "<EINMAL-SCHLÜSSEL>"
-	dataNetWinExe     = "pdh-data-client.exe"
+	dataNetWinExe     = "pdh-data-client-windows-amd64.exe"
 	dataNetLinuxExe   = "pdh-data-client-linux-amd64"
 )
 
@@ -309,15 +310,62 @@ func dataNetPickAddr(addrs []string) string {
 	return first
 }
 
-// dataNetPDHAddrs: Datennetz-Adressen der Server für den Installationsbefehl.
-func dataNetPDHAddrs(nodes []dataNetNode) []string {
-	var out []string
+// dataNetPDHAddrs: die Ziele der PDH-Server im Datennetz, ohne Doppelte. Je
+// Server der Tailnet-Name (MagicDNS, pdh-<Server>) und die bekannte Adresse;
+// der eigene Server (self) steht vorn. So findet ein Client nach einem
+// Rollentausch den anderen Server, auch wenn dessen Adresse noch unbekannt ist.
+func dataNetPDHAddrs(self string, servers []string, nodes []dataNetNode) []string {
+	names := map[string]bool{}
+	var order []string
+	add := func(s string) {
+		if s != "" && !names[s] {
+			names[s] = true
+			order = append(order, s)
+		}
+	}
+	add(self)
+	for _, s := range servers {
+		add(s)
+	}
 	for _, n := range nodes {
-		if a := dataNetPickAddr(n.Addrs); a != "" {
+		add(n.Server)
+	}
+	rest := order[1:]
+	sort.Strings(rest)
+	var out []string
+	seen := map[string]bool{}
+	put := func(a string) {
+		if a != "" && !seen[a] {
+			seen[a] = true
 			out = append(out, a)
 		}
 	}
+	for _, s := range order {
+		if s == "" {
+			continue
+		}
+		put("pdh-" + s)
+		for _, n := range nodes {
+			if n.Server == s {
+				put(dataNetPickAddr(n.Addrs))
+			}
+		}
+	}
 	return out
+}
+
+// dataNetPDHList: alle PDH-Ziele für die Meldeantwort (Host:Port).
+func (h *Handler) dataNetPDHList(ctx context.Context) []string {
+	var servers []string
+	for s := range h.dataNetAuthKeyServers(ctx) {
+		servers = append(servers, s)
+	}
+	sort.Strings(servers)
+	list := dataNetPDHAddrs(h.dataNetServerName(), servers, h.dataNetNodes(ctx))
+	for i, a := range list {
+		list[i] = net.JoinHostPort(a, strconv.Itoa(datanet.ReportPort))
+	}
+	return list
 }
 
 // dataNetAuthKeyServers: Server, für die ein Einmal-Schlüssel hinterlegt ist.
@@ -516,7 +564,7 @@ func (h *Handler) dataNetPageData(r *http.Request, created *dataNetCreated, noti
 	d.Clients = dataNetRows(clients, time.Now(), d.Version)
 
 	if created != nil {
-		addrs := dataNetPDHAddrs(nodes)
+		addrs := dataNetPDHAddrs(self, sorted, nodes)
 		created.NoNode = len(addrs) == 0
 		created.Windows = dataNetInstallCmd("windows", created.ID, created.Token, addrs, ports)
 		created.Linux = dataNetInstallCmd("linux", created.ID, created.Token, addrs, ports)

@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"tailscale.com/envknob"
+
 	"pdh/internal/datanet/nodetest"
 )
 
@@ -22,3 +24,12 @@ func TestHasState(t *testing.T) {
 }
 
 func TestFakeIsNode(t *testing.T) { var _ Node = &nodetest.Fake{} }
+
+func TestNewTSNodeDisablesLogUpload(t *testing.T) {
+	if _, err := NewTSNode(NodeConfig{Dir: t.TempDir(), Hostname: "pdh-test"}); err != nil {
+		t.Fatal(err)
+	}
+	if !envknob.NoLogsNoSupport() {
+		t.Fatal("Protokollübertragung an log.tailscale.com ist nicht abgeschaltet")
+	}
+}

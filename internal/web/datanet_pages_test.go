@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -151,7 +152,7 @@ func TestDataNetInstallCmd(t *testing.T) {
 	addrs := []string{"100.64.0.1", "100.64.0.2"}
 	win := dataNetInstallCmd("windows", id, "TOK", addrs, []int{1433})
 	lin := dataNetInstallCmd("linux", id, "TOK", addrs, []int{1433, 3306})
-	if !strings.HasPrefix(win, "pdh-data-client.exe install") || !strings.HasPrefix(lin, "sudo ./pdh-data-client-linux-amd64 install") {
+	if !strings.HasPrefix(win, "pdh-data-client-windows-amd64.exe install") || !strings.HasPrefix(lin, "sudo ./pdh-data-client-linux-amd64 install") {
 		t.Errorf("Anfang: %q / %q", win, lin)
 	}
 	for _, c := range []string{win, lin} {
@@ -181,7 +182,7 @@ func TestDataNetInstallCmdSafe(t *testing.T) {
 	addrs := []string{"100.64.0.1"}
 	prepW, cmdW := dataNetInstallCmdSafe("windows", id, addrs, []int{1433})
 	prepL, cmdL := dataNetInstallCmdSafe("linux", id, addrs, []int{1433})
-	if !strings.HasPrefix(prepW, "set /p PDH_DATANET_TOKEN=") || !strings.HasPrefix(cmdW, "pdh-data-client.exe install") {
+	if !strings.HasPrefix(prepW, "set /p PDH_DATANET_TOKEN=") || !strings.HasPrefix(cmdW, "pdh-data-client-windows-amd64.exe install") {
 		t.Errorf("Windows: %q / %q", prepW, cmdW)
 	}
 	if !strings.HasPrefix(prepL, "read -rs") || !strings.Contains(cmdL, "sudo ./pdh-data-client-linux-amd64 install") || !strings.Contains(cmdL, "--token-file -") {
@@ -281,8 +282,8 @@ func TestDataNetCreateShowsTokenOnce(t *testing.T) {
 	if err := h.db.QueryRow(ctx, `SELECT id::text, token_hash FROM datanet_clients WHERE name = $1`, name).Scan(&id, &hash); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"pdh-data-client.exe install", "sudo ./pdh-data-client-linux-amd64 install", "--id " + id,
-		"100.64.0.1,100.64.0.2", "&lt;EINMAL-SCHLÜSSEL&gt;", "Settings", "tag:pdh-data", "PDH_DATANET_TOKEN", "--token-file -"} {
+	for _, want := range []string{"pdh-data-client-windows-amd64.exe install", "sudo ./pdh-data-client-linux-amd64 install", "--id " + id,
+		"pdh-pagetest-a,100.64.0.1,pdh-pagetest-b,100.64.0.2", "&lt;EINMAL-SCHLÜSSEL&gt;", "Settings", "tag:pdh-data", "PDH_DATANET_TOKEN", "--token-file -"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("Antwort enthält %q nicht", want)
 		}
@@ -438,4 +439,21 @@ func TestDataNetPageRenders(t *testing.T) {
 func json_(v any) (string, error) {
 	b, err := json.Marshal(v)
 	return string(b), err
+}
+
+func TestDataNetPDHAddrs(t *testing.T) {
+	nodes := []dataNetNode{
+		{Server: "b", Addrs: []string{"fd7a::2", "100.64.0.2"}},
+		{Server: "a", Addrs: []string{"100.64.0.1"}},
+	}
+	// Der eigene Server steht vorn; ein Server ohne Knotendaten (nur Schlüssel) hat nur den Namen.
+	got := dataNetPDHAddrs("a", []string{"c", "a", "b"}, nodes)
+	want := []string{"pdh-a", "100.64.0.1", "pdh-b", "100.64.0.2", "pdh-c"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("Ziele = %v, erwartet %v", got, want)
+	}
+	// Ohne weitere Server genügt der eigene Name.
+	if got := dataNetPDHAddrs("x", nil, nil); !reflect.DeepEqual(got, []string{"pdh-x"}) {
+		t.Fatalf("allein: %v", got)
+	}
 }

@@ -85,3 +85,17 @@ func TestParseInstallArgsTokenSources(t *testing.T) {
 		}
 	}
 }
+
+func TestParseInstallArgsPDHMehrfach(t *testing.T) {
+	c, err := parseInstallArgs([]string{
+		"--id", testID, "--token", "tok", "--pdh", "pdh-a,100.64.0.1", "--pdh", "pdh-b",
+		"--target", "1433",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"pdh-a:8443", "100.64.0.1:8443", "pdh-b:8443"}
+	if len(c.PDH) != 3 || c.PDH[0] != want[0] || c.PDH[1] != want[1] || c.PDH[2] != want[2] {
+		t.Errorf("PDH = %v, erwartet %v", c.PDH, want)
+	}
+}
