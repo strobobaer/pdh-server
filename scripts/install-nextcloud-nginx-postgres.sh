@@ -554,6 +554,8 @@ server {
     add_header X-Permitted-Cross-Domain-Policies    "none"              always;
     add_header X-Robots-Tag                         "noindex, nofollow" always;
     add_header X-XSS-Protection                     "1; mode=block"     always;
+    # HSTS wirkt nur ueber den TLS-Endpunkt (Port 443, z. B. nach "certbot --nginx"); ueber
+    # Port 80 ignorieren Browser den Header.
     add_header Strict-Transport-Security            "max-age=15552000; includeSubDomains" always;
 
     fastcgi_hide_header X-Powered-By;

@@ -60,7 +60,7 @@ var envGroups = []envGroup{
 	{"mail", "E-Mail", "ti-mail", "E-Mail-Versand, z. B. für den täglichen Bestellvorschlag – über einen SMTP-Server oder Microsoft 365.", []envField{
 		{Key: "PDH_MAIL_TRANSPORT", Label: "Versandweg", Help: "smtp = SMTP-Server (Felder unten); graph = Microsoft 365 über die App aus dem Reiter Microsoft 365 (Anwendungsberechtigung Mail.Send) – SMTP-Server, Benutzer und Passwort bleiben dann leer.", Type: "select", Options: []string{"smtp", "graph"}, Default: "smtp"},
 		{Key: "PDH_SMTP_HOST", Label: "SMTP-Server", Type: "text"},
-		{Key: "PDH_SMTP_PORT", Label: "Port", Type: "number", Default: "587"},
+		{Key: "PDH_SMTP_PORT", Label: "Port", Help: "Leer = der übliche Port zur Verschlüsselung (starttls 587, tls 465, none 25).", Type: "number"},
 		{Key: "PDH_SMTP_TLS", Label: "Verschlüsselung", Help: "starttls = Port 587, tls = Port 465.", Type: "select", Options: []string{"starttls", "tls", "none"}, Default: "starttls"},
 		{Key: "PDH_SMTP_USER", Label: "Benutzer", Type: "text"},
 		{Key: "PDH_SMTP_PASSWORD", Label: "Passwort", Type: "text", Secret: true},

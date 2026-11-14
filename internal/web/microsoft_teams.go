@@ -12,7 +12,7 @@ import (
 )
 
 func (h *Handler) notifyMicrosoftTeamsBoardAction(in GlobalBoardActionInput, assignedTo *string) {
-	if h.microsoft.TeamsSenderUserID == "" {
+	if h.microsoftCfg().TeamsSenderUserID == "" {
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
@@ -29,8 +29,8 @@ func (h *Handler) notifyMicrosoftTeamsBoardAction(in GlobalBoardActionInput, ass
 	}
 	message := fmt.Sprintf("PDH: %s · %s", microsoftActionLabel(in.Action), title)
 
-	if h.microsoft.TeamsID != "" && h.microsoft.TeamsChannelID != "" && hasMicrosoftScope(grantedScopes, "ChannelMessage.Send") {
-		endpoint := "https://graph.microsoft.com/v1.0/teams/" + url.PathEscape(h.microsoft.TeamsID) + "/channels/" + url.PathEscape(h.microsoft.TeamsChannelID) + "/messages"
+	if h.microsoftCfg().TeamsID != "" && h.microsoftCfg().TeamsChannelID != "" && hasMicrosoftScope(grantedScopes, "ChannelMessage.Send") {
+		endpoint := "https://graph.microsoft.com/v1.0/teams/" + url.PathEscape(h.microsoftCfg().TeamsID) + "/channels/" + url.PathEscape(h.microsoftCfg().TeamsChannelID) + "/messages"
 		payload := map[string]interface{}{"body": map[string]string{"contentType": "text", "content": message}}
 		if err := h.microsoftGraphRequest(ctx, token, http.MethodPost, endpoint, payload, nil); err != nil {
 			log.Warn().Err(err).Msg("Microsoft Teams channel notification failed")
@@ -63,7 +63,7 @@ func (h *Handler) sendMicrosoftTeamsDirectMessage(ctx context.Context, token, se
 	if err := h.db.QueryRow(ctx, `
 		SELECT microsoft_user_id FROM microsoft_directory_users
 		WHERE tenant_id=$1 AND pdh_user_id=$2::uuid AND account_enabled=true`,
-		h.microsoft.TenantID, recipientID).Scan(&graphUserID); err != nil || graphUserID == "" {
+		h.microsoftCfg().TenantID, recipientID).Scan(&graphUserID); err != nil || graphUserID == "" {
 		return
 	}
 	if graphUserID == senderObjectID {
@@ -97,20 +97,20 @@ func (h *Handler) microsoftTeamsSenderToken(ctx context.Context) (string, string
 	var email, displayName, microsoftUserID, grantedScopes string
 	if err := h.db.QueryRow(ctx, `
 		SELECT microsoft_email, display_name, microsoft_user_id, granted_scopes
-		FROM microsoft_user_connections WHERE user_id=$1::uuid AND account_kind='work'`, h.microsoft.TeamsSenderUserID,
+		FROM microsoft_user_connections WHERE user_id=$1::uuid AND account_kind='work'`, h.microsoftCfg().TeamsSenderUserID,
 	).Scan(&email, &displayName, &microsoftUserID, &grantedScopes); err != nil {
 		return "", "", err
 	}
 	if !hasMicrosoftScope(grantedScopes, "Chat.ReadWrite") && !hasMicrosoftScope(grantedScopes, "ChannelMessage.Send") {
 		return "", grantedScopes, fmt.Errorf("Teams permissions have not been granted by the sender account")
 	}
-	token, err := h.microsoftAccessToken(ctx, h.microsoft.TeamsSenderUserID, microsoftAccountWork)
+	token, err := h.microsoftAccessToken(ctx, h.microsoftCfg().TeamsSenderUserID, microsoftAccountWork)
 	return token, grantedScopes, err
 }
 
 func (h *Handler) microsoftSenderObjectID(ctx context.Context) string {
 	var id string
-	_ = h.db.QueryRow(ctx, `SELECT microsoft_user_id FROM microsoft_user_connections WHERE user_id=$1::uuid AND account_kind='work'`, h.microsoft.TeamsSenderUserID).Scan(&id)
+	_ = h.db.QueryRow(ctx, `SELECT microsoft_user_id FROM microsoft_user_connections WHERE user_id=$1::uuid AND account_kind='work'`, h.microsoftCfg().TeamsSenderUserID).Scan(&id)
 	return id
 }
 

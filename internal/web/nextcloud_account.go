@@ -44,7 +44,7 @@ func (h *Handler) nextcloudIDForUser(ctx context.Context, userID, username strin
 	if h.getUpdateSetting(ctx, microsoftNextcloudSetting, "") == "1" || h.getUpdateSetting(ctx, keyNCLoginAt, "") != "" {
 		var email string
 		_ = h.db.QueryRow(ctx, `SELECT email FROM microsoft_directory_users WHERE tenant_id=$1 AND pdh_user_id=$2::uuid LIMIT 1`,
-			h.microsoft.TenantID, userID).Scan(&email)
+			h.microsoftCfg().TenantID, userID).Scan(&email)
 		if id, ok := nextcloudIDFromMicrosoftEmail(email); ok {
 			return id
 		}

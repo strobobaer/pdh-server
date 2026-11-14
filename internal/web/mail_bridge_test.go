@@ -516,10 +516,14 @@ type upstreamMsg struct {
 }
 
 type upstreamBackend struct {
-	mu   sync.Mutex
-	msgs []upstreamMsg
-	pass string
+	mu     sync.Mutex
+	msgs   []upstreamMsg
+	pass   string
+	noAuth bool // Relais ohne AUTH-Angebot
 }
+
+// noAuthSession verbirgt die AUTH-Methoden: der Server bietet AUTH dann nicht an.
+type noAuthSession struct{ gosmtp.Session }
 type upstreamSession struct {
 	b          *upstreamBackend
 	c          *gosmtp.Conn
@@ -529,7 +533,11 @@ type upstreamSession struct {
 }
 
 func (b *upstreamBackend) NewSession(c *gosmtp.Conn) (gosmtp.Session, error) {
-	return &upstreamSession{b: b, c: c}, nil
+	us := &upstreamSession{b: b, c: c}
+	if b.noAuth {
+		return noAuthSession{us}, nil
+	}
+	return us, nil
 }
 func (s *upstreamSession) AuthMechanisms() []string { return []string{"PLAIN", "LOGIN"} }
 func (s *upstreamSession) Auth(mech string) (gosasl.Server, error) {
@@ -554,7 +562,10 @@ func (s *upstreamSession) Mail(from string, _ *gosmtp.MailOptions) error {
 	s.from = from
 	return nil
 }
-func (s *upstreamSession) Rcpt(to string, _ *gosmtp.RcptOptions) error { s.to = append(s.to, to); return nil }
+func (s *upstreamSession) Rcpt(to string, _ *gosmtp.RcptOptions) error {
+	s.to = append(s.to, to)
+	return nil
+}
 func (s *upstreamSession) Data(r io.Reader) error {
 	data, _ := io.ReadAll(r)
 	_, isTLS := s.c.TLSConnectionState()
@@ -582,7 +593,12 @@ func selfSignedFor127(t *testing.T) (tls.Certificate, *x509.CertPool) {
 
 func startUpstream(t *testing.T, pass string, implicitTLS, startTLS bool) (*upstreamBackend, int) {
 	t.Helper()
-	be := &upstreamBackend{pass: pass}
+	return startUpstreamOpts(t, pass, implicitTLS, startTLS, false)
+}
+
+func startUpstreamOpts(t *testing.T, pass string, implicitTLS, startTLS, noAuth bool) (*upstreamBackend, int) {
+	t.Helper()
+	be := &upstreamBackend{pass: pass, noAuth: noAuth}
 	srv := gosmtp.NewServer(be)
 	srv.Domain = "127.0.0.1"
 	srv.AllowInsecureAuth = true

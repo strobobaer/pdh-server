@@ -329,7 +329,8 @@ func (a *plainAuth) Next(_ []byte, more bool) ([]byte, error) {
 }
 
 // loginAuth: SMTP AUTH LOGIN (Benutzer und Passwort nacheinander, Base64
-// erledigt net/smtp). Nur ueber TLS - sendMail authentifiziert nie ohne.
+// erledigt net/smtp). Einen TLS-Zwang gibt es hier nicht: sendRawSMTP
+// verschluesselt, sobald der Server STARTTLS anbietet oder der Modus tls ist.
 type loginAuth struct {
 	user, password string
 }
@@ -411,12 +412,26 @@ func (h *Handler) sendRawSMTP(from string, to []string, raw []byte) error {
 		return err
 	}
 	defer client.Close()
-	if mode != "tls" && mode != "none" {
+	switch mode {
+	case "tls":
+		// schon verschlüsselt (implizites TLS)
+	case "none":
+		// Ohne Pflicht zu TLS trotzdem verschlüsseln, wenn der Server STARTTLS anbietet – so
+		// geht kein Passwort im Klartext über die Leitung, wo TLS möglich ist. Das Zertifikat
+		// wird dabei nicht geprüft (Relais im Haus tragen oft selbst ausgestellte).
+		if ok, _ := client.Extension("STARTTLS"); ok {
+			opportunistic := &tls.Config{ServerName: c.Host, MinVersion: tls.VersionTLS12, InsecureSkipVerify: true} //nolint:gosec // bewusst: nur Mitlesen verhindern
+			if err := client.StartTLS(opportunistic); err != nil {
+				return err
+			}
+		}
+	default:
 		if err := client.StartTLS(tlsCfg); err != nil {
 			return err
 		}
 	}
-	if c.User != "" {
+	// Anmelden nur, wenn der Server AUTH anbietet (viele Relais im Haus tun das nicht).
+	if ok, _ := client.Extension("AUTH"); ok && c.User != "" {
 		if err := client.Auth(smtpAuthFor(client, c)); err != nil {
 			return err
 		}

@@ -293,7 +293,7 @@ func (a *updateAgent) ncOIDCHandler(w http.ResponseWriter, r *http.Request) {
 
 var (
 	ncMailPassRe = regexp.MustCompile(`^[A-Za-z0-9]{16,128}$`)
-	ncMailFromRe = regexp.MustCompile(`^[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9.-]{1,190}$`)
+	ncMailFromRe = regexp.MustCompile(`^[A-Za-z0-9._+-]{1,64}@[A-Za-z0-9.-]{1,190}$`)
 )
 
 type ncMailRequest struct {
@@ -326,7 +326,7 @@ func ncMailScript(req ncMailRequest) (string, error) {
 	}
 	local, domain, _ := strings.Cut(req.From, "@")
 	doc := fmt.Sprintf(`{"system":{"mail_smtpmode":"smtp","mail_smtphost":"%s","mail_smtpport":%d,"mail_smtpsecure":"",`+
-		`"mail_smtpauth":1,"mail_smtpauthtype":"LOGIN","mail_smtpname":"%s","mail_from_address":"%s","mail_domain":"%s","mail_smtppassword":"%%s"}}`,
+		`"mail_smtpauth":1,"mail_smtpauthtype":"LOGIN","mail_smtpname":"%s","mail_from_address":"%s","mail_domain":"%s","mail_smtptimeout":120,"mail_smtppassword":"'"$PDH_MAIL_PASS"'"}}`,
 		req.Host, req.Port, req.User, local, domain)
 	return `set -e
 cd '` + req.Dir + `' 2>/dev/null || { echo "Nextcloud-Verzeichnis ` + req.Dir + ` nicht gefunden"; exit 3; }
@@ -335,7 +335,8 @@ cd '` + req.Dir + `' 2>/dev/null || { echo "Nextcloud-Verzeichnis ` + req.Dir + 
 U="$(stat -c %U occ)"
 occ() { runuser -u "$U" -- php occ "$@"; }
 echo "### Mail-Einstellungen (Mail-Brücke)"
-printf '` + doc + `' "$PDH_MAIL_PASS" | occ config:import >/dev/null
+MAIL_JSON='` + doc + `'
+printf '%s' "$MAIL_JSON" | occ config:import 2>&1
 echo "### fertig"
 `, nil
 }
@@ -363,10 +364,17 @@ func (a *updateAgent) ncMailHandler(w http.ResponseWriter, r *http.Request) {
 		if text == "" {
 			text = err.Error()
 		}
-		writeMountJSON(w, http.StatusOK, map[string]any{"ok": false, "error": lastLine(text), "output": text})
+		// missing: Nextcloud liegt nicht auf diesem Server (Skript endet mit Exitcode 3)
+		writeMountJSON(w, http.StatusOK, map[string]any{"ok": false, "error": lastLine(text), "output": text, "missing": ncMissing(err)})
 		return
 	}
 	writeMountJSON(w, http.StatusOK, map[string]any{"ok": true, "output": text})
+}
+
+// ncMissing: das Skript endete mit Exitcode 3 (Verzeichnis oder occ nicht gefunden).
+func ncMissing(err error) bool {
+	var ee *exec.ExitError
+	return errors.As(err, &ee) && ee.ExitCode() == 3
 }
 
 var (

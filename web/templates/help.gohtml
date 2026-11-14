@@ -1514,6 +1514,8 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li><b>Absender:</b> Die Mails kommen von der Absenderadresse des PDH. Der Name („Nextcloud“) bleibt; die ursprüngliche Nextcloud-Adresse steht als Antwortadresse darin. Anhänge bleiben unverändert.</li>
       <li><b>Sicher:</b> Die Brücke hört nur auf diesem Server (127.0.0.1) zu und verlangt eine Anmeldung mit einem zufälligen Passwort, das verschlüsselt im PDH liegt. Sie nimmt höchstens 25 MB je Mail, 50 Empfänger je Mail und 300 Mails je Stunde an. Eine andere als eine lokale Adresse lehnt das PDH ab.</li>
       <li><b>Pausen:</b> Am Spiegelserver und während der Wartung nimmt die Brücke nichts an; Nextcloud versucht es später erneut.</li>
+      <li><b>Microsoft 365:</b> Geht der Versand über Microsoft 365, landen die Mails von Nextcloud unter „Gesendete Elemente“ des PDH-Postfachs. Mails über 4 MB (Anhänge eingerechnet) nimmt Microsoft nicht an.</li>
+      <li><b>Port belegt:</b> Belegt auf dem Server ein anderes Programm den Port der Brücke, meldet die Karte „Port belegt – Nextcloud-Mails gehen nicht über das PDH“; ein fremdes lokales Programm auf diesem Port könnte sonst Nextcloud-Mails mitlesen, darum den Port frei halten oder in den Server-Einstellungen eine andere lokale Adresse eintragen.</li>
       <li><b>Adresse ändern oder abschalten:</b> Reiter <b>E-Mail</b> → <b>Mail-Brücke für Nextcloud</b> (Standard <code>127.0.0.1:2525</code>, „aus“ schaltet ab), speichern und das PDH neu starten; danach den Knopf in der Karte erneut drücken.</li>
     </ul>
     Den Knopf und die Anzeige sieht und bedient, wer die Server-Einstellungen öffnen darf.</div>

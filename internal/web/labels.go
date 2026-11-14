@@ -77,7 +77,7 @@ func qrSVG(text string) (template.HTML, error) {
 
 // publicBaseURL: PDH_PUBLIC_URL, sonst aus der Anfrage (Proxy-Header beachten).
 func (h *Handler) publicBaseURL(r *http.Request) string {
-	if u := strings.TrimRight(strings.TrimSpace(h.mailCfg.PublicURL), "/"); u != "" {
+	if u := strings.TrimRight(strings.TrimSpace(h.mailConfig().PublicURL), "/"); u != "" {
 		return u
 	}
 	scheme := "http"

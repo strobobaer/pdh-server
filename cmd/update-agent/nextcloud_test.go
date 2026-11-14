@@ -218,6 +218,7 @@ func TestNCMailScript(t *testing.T) {
 		"kurz":     func(r *ncMailRequest) { r.Password = "kurz" },
 		"from":     func(r *ncMailRequest) { r.From = `a"b@firma.de` },
 		"ohne@":    func(r *ncMailRequest) { r.From = "pdh" },
+		"prozent":  func(r *ncMailRequest) { r.From = "pd%sh@firma.de" },
 	} {
 		r := ok
 		bad(&r)
@@ -237,8 +238,16 @@ func TestNCMailScript(t *testing.T) {
 	if strings.Contains(s, "mail_smtppassword --value") {
 		t.Error("Passwort darf nicht als occ-Argument stehen")
 	}
+	// Das Passwort steht nie im Formatstring von printf: der fertige JSON-Text geht als Argument zu '%s'
+	if !strings.Contains(s, `printf '%s' "$MAIL_JSON"`) || strings.Contains(s, "printf '{") {
+		t.Errorf("printf muss mit '%%s' und fertigem JSON arbeiten:\n%s", s)
+	}
+	// Die Ausgabe von occ wird durchgereicht (der Handler maskiert das Passwort), nicht verschluckt
+	if strings.Contains(s, "config:import >/dev/null") || !strings.Contains(s, "config:import 2>&1") {
+		t.Error("Ausgabe von occ config:import darf nicht verschluckt werden")
+	}
 	for _, want := range []string{`"mail_smtpmode":"smtp"`, `"mail_smtphost":"127.0.0.1"`, `"mail_smtpport":2525`, `"mail_smtpsecure":""`,
-		`"mail_smtpauth":1`, `"mail_smtpauthtype":"LOGIN"`, `"mail_smtpname":"nextcloud"`, `"mail_from_address":"pdh"`, `"mail_domain":"firma.de"`, `"mail_smtppassword":"%s"`} {
+		`"mail_smtpauth":1`, `"mail_smtpauthtype":"LOGIN"`, `"mail_smtpname":"nextcloud"`, `"mail_from_address":"pdh"`, `"mail_domain":"firma.de"`, `"mail_smtptimeout":120`, `"mail_smtppassword":"'"$PDH_MAIL_PASS"'"`} {
 		if !strings.Contains(s, want) {
 			t.Errorf("Skript enthält %q nicht", want)
 		}
@@ -249,5 +258,18 @@ func TestNCMailScript(t *testing.T) {
 		if out, err := exec.Command(bash, "-n", f).CombinedOutput(); err != nil {
 			t.Errorf("Syntaxfehler %v %s", err, out)
 		}
+	}
+}
+
+// Ein Skriptende mit Exitcode 3 heißt: Nextcloud liegt nicht auf diesem Server.
+func TestNCMissingExit(t *testing.T) {
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("bash fehlt")
+	}
+	err3 := exec.Command(bash, "-c", "exit 3").Run()
+	err4 := exec.Command(bash, "-c", "exit 4").Run()
+	if !ncMissing(err3) || ncMissing(err4) || ncMissing(nil) {
+		t.Errorf("ncMissing: 3=%v 4=%v", ncMissing(err3), ncMissing(err4))
 	}
 }

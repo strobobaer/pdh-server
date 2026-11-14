@@ -19,6 +19,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/emersion/go-sasl"
@@ -60,6 +61,21 @@ const (
 	mailBridgeTxtSendErr = "Das PDH konnte die Mail nicht weitergeben (Einzelheiten im Server-Protokoll)."
 	mailBridgeTxtLimit   = "Die Stundengrenze von 300 Mails ist erreicht."
 	mailBridgeTxtAttach  = "Der Anschluss an Nextcloud hat nicht geklappt (Einzelheiten im Server-Protokoll)."
+	mailBridgeTxtTooBig  = "Eine Mail war für Microsoft 365 zu groß (höchstens 4 MB als Base64)."
+	mailBridgeTxtReject  = "Microsoft 365 hat eine Mail abgelehnt (Einzelheiten im Server-Protokoll)."
+	mailBridgeTxtRcpt    = "Eine Mail nannte in den Kopfzeilen Empfänger, die nicht im Umschlag standen, und wurde abgewiesen."
+	mailBridgeTxtPort    = "Port belegt – Nextcloud-Mails gehen nicht über das PDH"
+	mailBridgeTxtStart   = "Die Mail-Brücke konnte nicht gestartet werden – Nextcloud-Mails gehen nicht über das PDH (Einzelheiten im Server-Protokoll)."
+
+	mailBridgeAuthDelay    = time.Second // Wartezeit nach einer Fehlanmeldung
+	mailBridgeAuthMaxFails = 3           // danach wird die Verbindung getrennt
+)
+
+var (
+	// errMailBridgePortBusy: ein anderes Programm hört schon auf der Adresse der Brücke.
+	errMailBridgePortBusy = errors.New("Port belegt")
+	// errNCNotOnServer: der Update-Agent meldet, dass Nextcloud nicht auf diesem Server liegt.
+	errNCNotOnServer = errors.New("Nextcloud liegt nicht auf diesem Server")
 )
 
 var agentPasswordRe = regexp.MustCompile(`^[A-Za-z0-9]{16,128}$`)
@@ -74,14 +90,28 @@ type mailBridge struct {
 	ln       net.Listener
 	// send liefert die fertig umgeschriebene Nachricht aus; nil = Mailweg des PDH
 	// (Graph oder SMTP, je Mail frisch gewählt). Tests setzen es.
-	send  func(ctx context.Context, from string, to []string, raw []byte) error
-	limit int
-	now   func() time.Time
+	send      func(ctx context.Context, from string, to []string, raw []byte) error
+	limit     int
+	now       func() time.Time
+	authDelay time.Duration
 
-	mu      sync.Mutex
-	stamps  []time.Time
-	lastOK  time.Time
-	lastErr string
+	mu       sync.Mutex
+	stamps   []time.Time
+	lastOK   time.Time
+	lastErr  string
+	lastWarn time.Time
+}
+
+// warnAllowed: höchstens eine Warnung je Minute ins Protokoll (gegen Flut durch Fehlanmeldungen).
+func (b *mailBridge) warnAllowed() bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	now := b.now()
+	if !b.lastWarn.IsZero() && now.Sub(b.lastWarn) < time.Minute {
+		return false
+	}
+	b.lastWarn = now
+	return true
 }
 
 func (b *mailBridge) Addr() net.Addr { return b.ln.Addr() }
@@ -135,9 +165,12 @@ func (h *Handler) listenMailBridge(ctx context.Context, addr, password string) (
 	}
 	ln, err := net.Listen("tcp", net.JoinHostPort(ip.String(), port))
 	if err != nil {
+		if isAddrInUse(err) {
+			return nil, fmt.Errorf("%w: %s wird schon von einem anderen Programm benutzt (%v)", errMailBridgePortBusy, net.JoinHostPort(ip.String(), port), err)
+		}
 		return nil, err
 	}
-	b := &mailBridge{h: h, password: password, ln: ln, limit: mailBridgeDefaultLimit, now: time.Now}
+	b := &mailBridge{h: h, password: password, ln: ln, limit: mailBridgeDefaultLimit, now: time.Now, authDelay: mailBridgeAuthDelay}
 	srv := smtp.NewServer(b)
 	srv.Domain = "pdh.localhost"
 	srv.AllowInsecureAuth = true // nur Loopback
@@ -159,6 +192,15 @@ func (h *Handler) listenMailBridge(ctx context.Context, addr, password string) (
 	return b, nil
 }
 
+// isAddrInUse: Listen scheitert, weil die Adresse belegt ist (Linux, Windows).
+func isAddrInUse(err error) bool {
+	if errors.Is(err, syscall.EADDRINUSE) {
+		return true
+	}
+	low := strings.ToLower(err.Error())
+	return strings.Contains(low, "address already in use") || strings.Contains(low, "only one usage of each socket address")
+}
+
 type smtpLogger struct{}
 
 func (smtpLogger) Printf(f string, a ...interface{}) {
@@ -174,11 +216,13 @@ func (b *mailBridge) NewSession(c *smtp.Conn) (smtp.Session, error) {
 	if ta, ok := c.Conn().RemoteAddr().(*net.TCPAddr); !ok || !ta.IP.IsLoopback() {
 		return nil, &smtp.SMTPError{Code: 421, EnhancedCode: smtp.EnhancedCode{4, 7, 0}, Message: "nur lokale Verbindungen"}
 	}
-	return &bridgeSession{b: b}, nil
+	return &bridgeSession{b: b, conn: c}, nil
 }
 
 type bridgeSession struct {
 	b      *mailBridge
+	conn   *smtp.Conn
+	fails  int // Fehlanmeldungen dieser Verbindung
 	authed bool
 	from   string
 	rcpt   []string
@@ -196,7 +240,14 @@ func (s *bridgeSession) Auth(mech string) (sasl.Server, error) {
 		okU := subtle.ConstantTimeCompare([]byte(user), []byte(mailBridgeUser))
 		okP := subtle.ConstantTimeCompare([]byte(pass), []byte(s.b.password))
 		if okU&okP != 1 {
-			componentLog("mail").Warn().Msg("mail-brücke: anmeldung abgelehnt")
+			if s.b.warnAllowed() {
+				componentLog("mail").Warn().Msg("mail-brücke: anmeldung abgelehnt (weitere Fehlanmeldungen innerhalb einer Minute werden nicht einzeln protokolliert)")
+			}
+			time.Sleep(s.b.authDelay)
+			s.fails++
+			if s.fails >= mailBridgeAuthMaxFails {
+				_ = s.conn.Close() // zu viele Fehlversuche: Verbindung trennen
+			}
 			return smtp.ErrAuthFailed
 		}
 		s.authed = true
@@ -277,6 +328,15 @@ func (s *bridgeSession) Data(r io.Reader) error {
 		componentLog("mail").Warn().Err(err).Msg("mail-brücke: nachricht abgewiesen")
 		return &smtp.SMTPError{Code: 554, EnhancedCode: smtp.EnhancedCode{5, 6, 0}, Message: "Nachricht ohne gültigen Kopf"}
 	}
+	if h.mailViaGraph() {
+		// Graph bedient die Empfänger der Kopfzeilen. Steht dort jemand, der nicht im Umschlag
+		// steht, ließe sich die Grenze von 50 Empfängern umgehen: abweisen.
+		if bad := headerOnlyRecipients(out, s.rcpt); len(bad) > 0 {
+			componentLog("mail").Warn().Int("anzahl", len(bad)).Msg("mail-brücke: mail abgewiesen – empfänger in den kopfzeilen fehlen im umschlag")
+			h.mailBridgeNote(false, mailBridgeTxtRcpt)
+			return &smtp.SMTPError{Code: 550, EnhancedCode: smtp.EnhancedCode{5, 7, 1}, Message: "Empfänger in den Kopfzeilen fehlen im Umschlag"}
+		}
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 	send := s.b.send
@@ -285,16 +345,35 @@ func (s *bridgeSession) Data(r io.Reader) error {
 	}
 	if err := send(ctx, from, append([]string(nil), s.rcpt...), out); err != nil {
 		componentLog("mail").Error().Err(err).Str("absender", orig).Int("empfaenger", len(s.rcpt)).Msg("mail-brücke: weitergabe fehlgeschlagen")
-		h.mailBridgeNote(false, mailBridgeTxtSendErr)
-		return smtpTemp("Weitergabe im PDH fehlgeschlagen, bitte später erneut versuchen")
+		serr, note := bridgeSendError(err)
+		h.mailBridgeNote(false, note)
+		return serr
 	}
 	componentLog("mail").Info().Str("absender", orig).Int("empfaenger", len(s.rcpt)).Int("bytes", len(out)).Bool("graph", h.mailViaGraph()).Msg("mail-brücke: weitergeleitet")
 	h.mailBridgeNote(true, "")
 	return nil
 }
 
+// bridgeSendError ordnet einen Sendefehler ein: zu große Graph-Mail 552, dauerhafte
+// Graph-Ablehnung (4xx außer 429) 554, alles andere (429, 5xx, Netz, SMTP) 451 =
+// später erneut. Nach außen gehen nur feste Texte; die Einzelheiten stehen im Protokoll.
+func bridgeSendError(err error) (*smtp.SMTPError, string) {
+	var ge *graphHTTPError
+	switch {
+	case errors.Is(err, errGraphTooLarge):
+		return &smtp.SMTPError{Code: 552, EnhancedCode: smtp.EnhancedCode{5, 3, 4}, Message: "Nachricht für Microsoft 365 zu groß (höchstens 4 MB)"}, mailBridgeTxtTooBig
+	case errors.As(err, &ge) && ge.Status >= 400 && ge.Status < 500 && ge.Status != http.StatusTooManyRequests:
+		return &smtp.SMTPError{Code: 554, EnhancedCode: smtp.EnhancedCode{5, 3, 0}, Message: "Microsoft 365 hat die Mail abgelehnt"}, mailBridgeTxtReject
+	}
+	return smtpTemp("Weitergabe im PDH fehlgeschlagen, bitte später erneut versuchen"), mailBridgeTxtSendErr
+}
+
 // bridgeDeliver: Mailweg des PDH, je Mail frisch gewählt.
 func (h *Handler) bridgeDeliver(ctx context.Context, from string, to []string, raw []byte) error {
+	if !h.mailViaGraph() {
+		// Bcc darf nie zu den anderen Empfängern gelangen: SMTP stellt nach dem Umschlag zu
+		raw = removeHeaderFields(raw, func(name string) bool { return name == "bcc" })
+	}
 	if h.mailViaGraph() {
 		// Graph liest die Empfänger aus der Nachricht: nur im Umschlag genannte kommen in Bcc
 		if extra := envelopeOnlyRecipients(raw, to); len(extra) > 0 {
@@ -307,27 +386,23 @@ func (h *Handler) bridgeDeliver(ctx context.Context, from string, to []string, r
 
 // ── Kopfzeilen umschreiben ────────────────────────────────────────────────
 
-// rewriteBridgeHeaders setzt From auf die PDH-Adresse (Anzeigename bleibt) und
-// Reply-To auf die ursprüngliche Adresse, falls es keins gibt. Alles übrige –
-// auch Anhänge – bleibt Byte für Byte unverändert. Rückgabe: Nachricht und
-// ursprüngliche Absenderadresse.
-func rewriteBridgeHeaders(raw []byte, pdhFrom, envFrom string) ([]byte, string, error) {
-	eol := "\n"
+// splitHeaderBlock zerlegt eine Nachricht in Kopfzeilen (eine Zeile je Feld samt
+// Folgezeilen), Rest (ab der Leerzeile) und Zeilenende.
+func splitHeaderBlock(raw []byte) (eol string, fields []string, rest string, err error) {
+	eol = "\n"
 	if i := bytes.IndexByte(raw, '\n'); i > 0 && raw[i-1] == '\r' {
 		eol = "\r\n"
 	}
-	var head, rest string
-	switch {
-	case bytes.HasPrefix(raw, []byte(eol)):
+	var head string
+	if bytes.HasPrefix(raw, []byte(eol)) {
 		head, rest = "", string(raw)
-	default:
+	} else {
 		i := bytes.Index(raw, []byte(eol+eol))
 		if i < 0 {
-			return nil, "", errors.New("Nachricht hat kein Ende der Kopfzeilen")
+			return eol, nil, "", errors.New("Nachricht hat kein Ende der Kopfzeilen")
 		}
 		head, rest = string(raw[:i]), string(raw[i:])
 	}
-	var fields []string
 	if head != "" {
 		for _, line := range strings.Split(head, eol) {
 			if (strings.HasPrefix(line, " ") || strings.HasPrefix(line, "\t")) && len(fields) > 0 {
@@ -337,20 +412,59 @@ func rewriteBridgeHeaders(raw []byte, pdhFrom, envFrom string) ([]byte, string, 
 			fields = append(fields, line)
 		}
 	}
-	fromIdx, hasReplyTo := -1, false
-	for i, f := range fields {
-		name, _, ok := strings.Cut(f, ":")
-		if !ok {
+	return eol, fields, rest, nil
+}
+
+// headerFieldName: kleingeschriebener Name eines Kopffeldes ("" ohne Doppelpunkt).
+func headerFieldName(f string) string {
+	name, _, ok := strings.Cut(f, ":")
+	if !ok {
+		return ""
+	}
+	return strings.ToLower(strings.TrimSpace(name))
+}
+
+// removeHeaderFields entfernt Kopffelder (samt Folgezeilen), auf deren kleingeschriebenen Namen drop zutrifft.
+func removeHeaderFields(raw []byte, drop func(name string) bool) []byte {
+	eol, fields, rest, err := splitHeaderBlock(raw)
+	if err != nil {
+		return raw
+	}
+	kept := make([]string, 0, len(fields))
+	for _, f := range fields {
+		if n := headerFieldName(f); n != "" && drop(n) {
 			continue
 		}
-		switch strings.ToLower(strings.TrimSpace(name)) {
-		case "from":
-			if fromIdx < 0 {
-				fromIdx = i
+		kept = append(kept, f)
+	}
+	return []byte(strings.Join(kept, eol) + rest)
+}
+
+// rewriteBridgeHeaders setzt From auf die PDH-Adresse (Anzeigename bleibt) und
+// Reply-To auf die ursprüngliche Adresse, falls es keins gibt. Genau ein From
+// bleibt: weitere From-Zeilen sowie Sender und Resent-* fallen weg, damit niemand
+// einen anderen Absender vortäuscht. Alles übrige – auch Anhänge – bleibt Byte
+// für Byte unverändert. Rückgabe: Nachricht und ursprüngliche Absenderadresse.
+func rewriteBridgeHeaders(raw []byte, pdhFrom, envFrom string) ([]byte, string, error) {
+	eol, all, rest, err := splitHeaderBlock(raw)
+	if err != nil {
+		return nil, "", err
+	}
+	var fields []string
+	fromIdx, hasReplyTo := -1, false
+	for _, f := range all {
+		switch n := headerFieldName(f); {
+		case n == "sender" || strings.HasPrefix(n, "resent-"):
+			continue
+		case n == "from":
+			if fromIdx >= 0 {
+				continue
 			}
-		case "reply-to":
+			fromIdx = len(fields)
+		case n == "reply-to":
 			hasReplyTo = true
 		}
+		fields = append(fields, f)
 	}
 	origName, origAddr := "", mailAddrOnly(envFrom)
 	if fromIdx >= 0 {
@@ -373,6 +487,35 @@ func rewriteBridgeHeaders(raw []byte, pdhFrom, envFrom string) ([]byte, string, 
 		fields = append(fields, extra...)
 	}
 	return []byte(strings.Join(fields, eol) + rest), origAddr, nil
+}
+
+// headerOnlyRecipients: Empfänger aus To, Cc und Bcc der Kopfzeilen, die im Umschlag fehlen.
+// Lassen sich die Kopfzeilen nicht lesen, zählt die Mail als fehlerhaft (ein Platzhalter-Eintrag).
+func headerOnlyRecipients(raw []byte, rcpt []string) []string {
+	env := map[string]bool{}
+	for _, r := range rcpt {
+		env[strings.ToLower(mailAddrOnly(r))] = true
+	}
+	msg, err := mail.ReadMessage(bytes.NewReader(raw))
+	if err != nil {
+		return []string{"(Kopfzeilen nicht lesbar)"}
+	}
+	var bad []string
+	for _, k := range []string{"To", "Cc", "Bcc"} {
+		list, err := msg.Header.AddressList(k)
+		if err != nil {
+			if errors.Is(err, mail.ErrHeaderNotPresent) {
+				continue
+			}
+			return []string{"(" + k + " nicht lesbar)"}
+		}
+		for _, a := range list {
+			if !env[strings.ToLower(a.Address)] {
+				bad = append(bad, a.Address)
+			}
+		}
+	}
+	return bad
 }
 
 // envelopeOnlyRecipients: Empfänger aus dem Umschlag, die in To, Cc und Bcc der Nachricht fehlen.
@@ -524,6 +667,21 @@ type ncMailView struct {
 	NoMail      bool   // im PDH selbst ist kein Mailversand eingerichtet
 	AgentReady  bool
 	Via         string // „Microsoft 365 (Graph)“ oder „SMTP-Server“
+	ListenError string // Brücke ließ sich nicht starten, z. B. Port belegt
+}
+
+// setMailBridgeStartErr merkt, warum die Brücke nicht läuft (feste Texte für die Karte).
+func (h *Handler) setMailBridgeStartErr(err error) {
+	h.mailMu.Lock()
+	defer h.mailMu.Unlock()
+	switch {
+	case err == nil:
+		h.mailBridgeStartErr = ""
+	case errors.Is(err, errMailBridgePortBusy):
+		h.mailBridgeStartErr = mailBridgeTxtPort
+	default:
+		h.mailBridgeStartErr = mailBridgeTxtStart
+	}
 }
 
 func (h *Handler) mailBridgeAddr() string {
@@ -546,6 +704,7 @@ func (h *Handler) ncMailViewFor(ctx context.Context) ncMailView {
 	}
 	h.mailMu.RLock()
 	b := h.mailBridge
+	v.ListenError = h.mailBridgeStartErr
 	h.mailMu.RUnlock()
 	if b != nil {
 		v.On, v.Addr = true, b.Addr().String()
@@ -576,10 +735,17 @@ func (h *Handler) applyNCMailBridge(ctx context.Context, dir, addr, password str
 	if err != nil {
 		return err
 	}
-	return h.agentJSON(ctx, http.MethodPost, "/v1/nextcloud/mail", map[string]any{
+	var res struct {
+		Missing bool `json:"missing"` // Nextcloud liegt nicht auf diesem Server
+	}
+	err = h.agentJSON(ctx, http.MethodPost, "/v1/nextcloud/mail", map[string]any{
 		"dir": dir, "host": strings.Trim(host, "[]"), "port": n, "user": mailBridgeUser,
 		"password": password, "from": mailAddrOnly(h.mailConfig().From),
-	}, nil)
+	}, &res)
+	if err != nil && res.Missing {
+		return fmt.Errorf("%w: %v", errNCNotOnServer, err)
+	}
+	return err
 }
 
 // attachNCMailBridge: anschließen und den Stand merken. Fehler nur ins Protokoll
@@ -587,7 +753,9 @@ func (h *Handler) applyNCMailBridge(ctx context.Context, dir, addr, password str
 func (h *Handler) attachNCMailBridge(ctx context.Context, addr, password string) error {
 	err := h.applyNCMailBridge(ctx, h.ncDir(ctx), addr, password)
 	if err != nil {
-		if !strings.Contains(err.Error(), "nicht gefunden") {
+		if errors.Is(err, errNCNotOnServer) {
+			componentLog("mail").Debug().Err(err).Msg("mail-brücke: keine nextcloud auf diesem server")
+		} else {
 			componentLog("mail").Warn().Err(err).Msg("mail-brücke: nextcloud nicht angeschlossen")
 			_ = h.setUpdateSetting(ctx, keyMailBridgeAttachErr, time.Now().Local().Format("02.01.2006 15:04")+" – "+mailBridgeTxtAttach)
 		}
@@ -624,9 +792,12 @@ func (h *Handler) StartMailBridge(ctx context.Context) {
 	}
 	b, err := h.listenMailBridge(ctx, addr, pw)
 	if err != nil {
-		componentLog("mail").Error().Err(err).Msg("mail-brücke nicht gestartet")
+		// laut melden: Protokoll (Fehler) und Karte in den Server-Einstellungen
+		h.setMailBridgeStartErr(err)
+		componentLog("mail").Error().Err(err).Str("adresse", addr).Msg("mail-brücke nicht gestartet – nextcloud-mails gehen nicht über das pdh")
 		return
 	}
+	h.setMailBridgeStartErr(nil)
 	bound := b.Addr().String()
 	go func() {
 		timer := time.NewTimer(90 * time.Second)
@@ -651,10 +822,8 @@ func (h *Handler) StartMailBridge(ctx context.Context) {
 						next = 6 * time.Hour // angeschlossen; Stand bleibt gleich
 					} else if err := h.attachNCMailBridge(runCtx, bound, pw); err == nil {
 						next = 6 * time.Hour
-					} else if strings.Contains(err.Error(), "nicht gefunden") {
-						cancel()
-						return // keine Nextcloud auf diesem Server
 					}
+					// sonst (auch „Nextcloud nicht auf diesem Server“): in 30 Minuten erneut versuchen
 				}
 				cancel()
 			}
@@ -691,7 +860,7 @@ func (h *Handler) NextcloudMailWeb(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	if err := h.attachNCMailBridge(ctx, b.Addr().String(), b.password); err != nil {
 		short := "Anschluss an Nextcloud nicht möglich – Einzelheiten im Server-Protokoll"
-		if strings.Contains(err.Error(), "nicht gefunden") {
+		if errors.Is(err, errNCNotOnServer) {
 			short = "Nextcloud liegt nicht auf diesem Server"
 		}
 		componentLog("mail").Warn().Err(err).Str("von", getUser(r).ID).Msg("mail-brücke: anschluss auf knopfdruck fehlgeschlagen")

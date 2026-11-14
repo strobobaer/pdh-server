@@ -67,7 +67,7 @@ type hmiSessionView struct {
 
 // hmiKey: eigener Schluessel fuer VNC-Passwoerter (wie Partner-Zugangsdaten).
 func (h *Handler) hmiKey() []byte {
-	secret := h.mailCfg.CredentialsKey
+	secret := h.mailConfig().CredentialsKey
 	if secret == "" {
 		secret = h.jwtSecret
 	}

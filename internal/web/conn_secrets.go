@@ -29,7 +29,7 @@ func (e *connSecretError) Error() string {
 // JWT-Secret abgeleitet. Ein Schlüsselwechsel macht gespeicherte Kennwörter
 // unlesbar (sie müssen neu erfasst werden).
 func (h *Handler) connKey() []byte {
-	secret := h.mailCfg.CredentialsKey
+	secret := h.mailConfig().CredentialsKey
 	if secret == "" {
 		secret = h.jwtSecret
 	}

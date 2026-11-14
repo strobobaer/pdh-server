@@ -19,6 +19,11 @@ im Kapitel „Versionen & Updates“ an.
 - In den Server-Einstellungen unter Nextcloud zeigt die neue Karte „Mailversand über das PDH“, ob die Brücke läuft, wann Nextcloud angeschlossen wurde, wann die letzte Mail wegging und was zuletzt schiefging; ein Knopf schließt Nextcloud an, das PDH tut es nach dem Start auch von selbst.
 - Der SMTP-Versand des PDH funktioniert jetzt mit jedem Anbieter: Verschlüsselung per STARTTLS, SSL/TLS oder gar nicht, mit und ohne Anmeldung, und der übliche Port richtet sich nach der Verschlüsselung (587, 465, 25).
 
+### Geändert
+
+- Der SMTP-Port hat keinen festen Standard mehr: Ist keiner eingetragen, gilt der übliche zur Verschlüsselung (STARTTLS 587, SSL/TLS 465, ohne 25); ein eingetragener Port bleibt, wie er ist.
+- Beim SMTP-Versand ohne Verschlüsselungspflicht nutzt das PDH STARTTLS trotzdem, wenn der Server es anbietet, und meldet sich nur an, wenn der Server eine Anmeldung anbietet.
+
 ### Behoben
 
 - Apps lassen sich in Nextcloud 35 über die Oberfläche installieren: Das Installationsskript liefert `.mjs`-Dateien als JavaScript aus und setzt den Sicherheitskopf `Strict-Transport-Security`.
@@ -27,6 +32,8 @@ im Kapitel „Versionen & Updates“ an.
 
 - Die Mail-Brücke nimmt nur Verbindungen von diesem Server an (127.0.0.1), verlangt eine Anmeldung mit zufälligem, verschlüsselt gespeichertem Passwort und begrenzt Mails auf 25 MB, 50 Empfänger und 300 je Stunde.
 - Das Passwort für Nextcloud geht nicht über Prozess-Argumente oder Protokolle an den Update-Agenten; Fehlertexte von Microsoft stehen nur im Server-Protokoll.
+- Mail-Brücke: Verdeckte Empfänger (Bcc) gehen nie an die anderen Empfänger; es bleibt genau ein Absender (PDH), weitere From-, Sender- und Resent-Zeilen entfallen; über Microsoft 365 müssen alle Empfänger der Kopfzeilen auch im Umschlag stehen (Grenze von 50 Empfängern).
+- Mail-Brücke: Nach einer falschen Anmeldung wartet das PDH eine Sekunde und trennt nach drei Fehlversuchen; das Protokoll warnt höchstens einmal je Minute. Ist der Port der Brücke von einem anderen Programm belegt, steht das im Fehlerprotokoll und auf der Karte.
 
 ## [0.80.3] – 2026-11-14
 

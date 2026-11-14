@@ -84,8 +84,8 @@ func (h *Handler) MicrosoftNextcloudLoginWeb(w http.ResponseWriter, r *http.Requ
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Minute)
 	defer cancel()
 	err := h.agentJSON(ctx, http.MethodPost, "/v1/nextcloud/oidc", map[string]any{
-		"dir": h.ncDir(ctx), "tenant_id": strings.TrimSpace(h.microsoft.TenantID), "client_id": strings.TrimSpace(h.microsoft.ClientID),
-		"client_secret": h.microsoft.ClientSecret, "provider": "Microsoft", "only_microsoft": only, "auto_provision": auto,
+		"dir": h.ncDir(ctx), "tenant_id": strings.TrimSpace(h.microsoftCfg().TenantID), "client_id": strings.TrimSpace(h.microsoftCfg().ClientID),
+		"client_secret": h.microsoftCfg().ClientSecret, "provider": "Microsoft", "only_microsoft": only, "auto_provision": auto,
 	}, &res)
 	if err != nil {
 		componentLog("nextcloud").Warn().Err(err).Msg("anmeldung mit microsoft einrichten")
@@ -168,8 +168,8 @@ func (h *Handler) MicrosoftAdminPage(w http.ResponseWriter, r *http.Request) {
 	}
 	data := MicrosoftAdminPageData{
 		BaseData:   h.baseData(r, "core-settings", "Microsoft 365", "Verzeichnisverknüpfung"),
-		TenantID:   h.microsoft.TenantID,
-		Configured: h.microsoft.ClientID != "" && h.microsoft.ClientSecret != "" && h.microsoft.TenantID != "",
+		TenantID:   h.microsoftCfg().TenantID,
+		Configured: h.microsoftCfg().ClientID != "" && h.microsoftCfg().ClientSecret != "" && h.microsoftCfg().TenantID != "",
 		LastSync:   h.getUpdateSetting(r.Context(), "microsoft_directory_last_sync", "Noch nicht synchronisiert"),
 		Matched:    h.getUpdateSetting(r.Context(), "microsoft_directory_last_matched", "0"),
 		Unmatched:  h.getUpdateSetting(r.Context(), "microsoft_directory_last_unmatched", "0"),
@@ -193,7 +193,7 @@ func (h *Handler) MicrosoftAdminPage(w http.ResponseWriter, r *http.Request) {
 		FROM users u
 		LEFT JOIN microsoft_directory_users m ON m.pdh_user_id = u.id AND m.tenant_id = $1
 		WHERE u.active = true
-		ORDER BY u.last_name, u.first_name`, h.microsoft.TenantID)
+		ORDER BY u.last_name, u.first_name`, h.microsoftCfg().TenantID)
 	if err == nil {
 		defer rows.Close()
 		for rows.Next() {
@@ -220,7 +220,7 @@ func (h *Handler) MicrosoftDirectoryAssignWeb(w http.ResponseWriter, r *http.Req
 		http.Error(w, "keine berechtigung", http.StatusForbidden)
 		return
 	}
-	if strings.TrimSpace(h.microsoft.TenantID) == "" {
+	if strings.TrimSpace(h.microsoftCfg().TenantID) == "" {
 		http.Redirect(w, r, "/core/settings/microsoft?notice="+url.QueryEscape("PDH_MICROSOFT_TENANT_ID ist nicht konfiguriert"), http.StatusSeeOther)
 		return
 	}
@@ -247,7 +247,7 @@ func (h *Handler) MicrosoftDirectoryAssignWeb(w http.ResponseWriter, r *http.Req
 			department=EXCLUDED.department,
 			account_enabled=true,
 			synced_at=NOW()`,
-		h.microsoft.TenantID, microsoftUserID, pdhUserID, email, displayName, department)
+		h.microsoftCfg().TenantID, microsoftUserID, pdhUserID, email, displayName, department)
 	if err != nil {
 		http.Redirect(w, r, "/core/settings/microsoft?notice="+url.QueryEscape("Zuordnung fehlgeschlagen: "+err.Error()), http.StatusSeeOther)
 		return
@@ -261,7 +261,7 @@ func (h *Handler) MicrosoftDirectoryUnassignWeb(w http.ResponseWriter, r *http.R
 		return
 	}
 	pdhUserID := chi.URLParam(r, "id")
-	_, err := h.db.Exec(r.Context(), `DELETE FROM microsoft_directory_users WHERE tenant_id=$1 AND pdh_user_id=$2::uuid`, h.microsoft.TenantID, pdhUserID)
+	_, err := h.db.Exec(r.Context(), `DELETE FROM microsoft_directory_users WHERE tenant_id=$1 AND pdh_user_id=$2::uuid`, h.microsoftCfg().TenantID, pdhUserID)
 	if err != nil {
 		http.Redirect(w, r, "/core/settings/microsoft?notice="+url.QueryEscape("Zuordnung konnte nicht entfernt werden: "+err.Error()), http.StatusSeeOther)
 		return
@@ -291,7 +291,7 @@ func (h *Handler) MicrosoftDirectorySyncWeb(w http.ResponseWriter, r *http.Reque
 		http.Error(w, "keine berechtigung", http.StatusForbidden)
 		return
 	}
-	if h.microsoft.ClientID == "" || h.microsoft.ClientSecret == "" || h.microsoft.TenantID == "" {
+	if h.microsoftCfg().ClientID == "" || h.microsoftCfg().ClientSecret == "" || h.microsoftCfg().TenantID == "" {
 		http.Redirect(w, r, "/core/settings/microsoft?notice=Microsoft-Verzeichnis+nicht+konfiguriert", http.StatusSeeOther)
 		return
 	}
@@ -373,7 +373,7 @@ func (h *Handler) syncMicrosoftDirectory(ctx context.Context, actorID string) (m
 					given_name=EXCLUDED.given_name, surname=EXCLUDED.surname, job_title=EXCLUDED.job_title,
 					business_phone=EXCLUDED.business_phone, mobile_phone=EXCLUDED.mobile_phone,
 					office_location=EXCLUDED.office_location, company_name=EXCLUDED.company_name`,
-				h.microsoft.TenantID, directoryUser.ID, pdhUserID, email, directoryUser.DisplayName, directoryUser.Department, directoryUser.AccountEnabled,
+				h.microsoftCfg().TenantID, directoryUser.ID, pdhUserID, email, directoryUser.DisplayName, directoryUser.Department, directoryUser.AccountEnabled,
 				directoryUser.GivenName, directoryUser.Surname, directoryUser.JobTitle, directoryUser.businessPhone(),
 				directoryUser.MobilePhone, directoryUser.OfficeLocation, directoryUser.CompanyName)
 			if err != nil {
@@ -422,12 +422,12 @@ func (h *Handler) provisionNextcloudFromMicrosoft(ctx context.Context, pdhUserID
 
 func (h *Handler) microsoftDirectoryToken(ctx context.Context) (string, error) {
 	form := url.Values{
-		"client_id":     {h.microsoft.ClientID},
-		"client_secret": {h.microsoft.ClientSecret},
+		"client_id":     {h.microsoftCfg().ClientID},
+		"client_secret": {h.microsoftCfg().ClientSecret},
 		"grant_type":    {"client_credentials"},
 		"scope":         {"https://graph.microsoft.com/.default"},
 	}
-	endpoint := microsoftLoginBase + "/" + url.PathEscape(h.microsoft.TenantID) + "/oauth2/v2.0/token"
+	endpoint := microsoftLoginBase + "/" + url.PathEscape(h.microsoftCfg().TenantID) + "/oauth2/v2.0/token"
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(form.Encode()))
 	if err != nil {
 		return "", err
