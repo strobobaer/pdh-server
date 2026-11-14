@@ -87,6 +87,7 @@ type dnInput struct {
 }
 
 func dnAgo(d time.Duration) string {
+	d = d.Round(time.Minute) // auf volle Minuten runden: 2 Std. 59 Min. 59 s sind „3 Std.“
 	switch {
 	case d < time.Minute:
 		return "weniger als einer Minute"
