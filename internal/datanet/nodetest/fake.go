@@ -67,3 +67,11 @@ func (f *Fake) PeerTags(_ context.Context, remoteAddr string) ([]string, error) 
 }
 
 func (f *Fake) Close() error { return nil }
+
+// Listening liefert die tatsächliche Loopback-Adresse eines belauschten Ports.
+func (f *Fake) Listening(port int) (string, bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	a, ok := f.Ports[port]
+	return a, ok
+}
