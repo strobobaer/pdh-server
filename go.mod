@@ -4,7 +4,7 @@ go 1.27.4
 
 require (
 	github.com/anthropics/anthropic-sdk-go v1.78.0
-	github.com/eclipse/paho.mqtt.golang v1.4.3
+	github.com/eclipse/paho.mqtt.golang v1.5.1
 	github.com/emersion/go-sasl v0.0.0-20200509203442-7bfe0ed36a21
 	github.com/emersion/go-smtp v0.21.3
 	github.com/fsnotify/fsnotify v1.10.1

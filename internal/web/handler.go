@@ -993,6 +993,8 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/import/connections/{id}/toggle-web", h.ImportConnectionToggleWeb)
 	r.Get("/import/connections/{id}/sniffer", h.MqttSnifferPage)
 	r.Get("/import/connections/{id}/sniffer/stream", h.MqttSnifferStream)
+	r.Get("/import/connections/{id}/explorer/mqtt/stream", h.MqttExplorerStream)
+	r.Post("/import/connections/{id}/explorer/mqtt/publish", h.MqttExplorerPublish)
 	r.Get("/import/connections/{id}/broker", h.MqttBrokerPage)
 	r.Get("/import/connections/{id}/broker/stream", h.MqttBrokerStream)
 	r.Post("/import/connections/{id}/mappings", h.ImportMappingCreateWeb)
