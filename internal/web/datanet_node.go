@@ -116,6 +116,7 @@ func (h *Handler) StartDataNet(ctx context.Context, active bool) {
 	h.dataNetMu.Lock()
 	h.dataNet, h.dataNetCancel, h.dataNetSrv = m, cancel, nil
 	h.dataNetMu.Unlock()
+	connNetResolve = h.dataNetResolve // Weg „Datennetz“ der Verbindungen (conn_net.go)
 	if h.db == nil {
 		return
 	}

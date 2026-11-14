@@ -219,7 +219,7 @@ func TestConnectionKindFieldsRoute(t *testing.T) {
 		}
 		other, _ := connectionKindFields(dir, "mysql")
 		for _, f := range other {
-			for _, w := range want {
+			for _, w := range []string{"allow_write", "tls_fingerprint"} { // Weg-Felder gelten auch für MySQL
 				if f == w {
 					t.Errorf("%s/mysql darf %s nicht bekommen", dir, w)
 				}
@@ -350,7 +350,7 @@ func TestConnectionFormRouteFields(t *testing.T) {
 		out := renderPage(t, tmpl, dir, ConnectionsPageData{Direction: dir, CanWrite: true,
 			Tunnels: []connTunnelOption{{ID: "t-1", Name: "Werk Nord"}}})
 		for _, w := range []string{"Weg</label>", `<option value="direct">Direkt</option>`, `<option value="vpn:t-1">Werk Nord</option>`,
-			"Abfragetakt über VPN (Minuten)", "Zeitgrenze je Abfrage über VPN (Sekunden)", "Schreiben erlaubt",
+			"Abfragetakt über VPN/Datennetz (Minuten)", "Zeitgrenze je Abfrage über VPN/Datennetz (Sekunden)", "Schreiben erlaubt",
 			"Fingerabdruck lesen und bestätigen", "f_mssql_tls_fingerprint", "'allow_write'", "/connections/fingerprint"} {
 			if !strings.Contains(out, w) {
 				t.Errorf("%s: %q fehlt", dir, w)
@@ -396,9 +396,9 @@ func TestKeepStoredRoute(t *testing.T) {
 	}
 	// andere Typen unberührt
 	cfg = map[string]string{}
-	keepStoredRoute(cfg, stored, "mysql", url.Values{})
+	keepStoredRoute(cfg, stored, "modbus", url.Values{})
 	if _, ok := cfg["route"]; ok {
-		t.Error("mysql darf keinen Weg bekommen")
+		t.Error("modbus darf keinen Weg bekommen")
 	}
 }
 
@@ -411,9 +411,23 @@ func TestMssqlRightsOnlyForImport(t *testing.T) {
 func TestConnectionFormKeepsMissingRouteScript(t *testing.T) {
 	tmpl := loadTestTemplates(t)
 	out := renderPage(t, tmpl, "import", ConnectionsPageData{Direction: "import", CanWrite: true})
-	for _, w := range []string{"function mssqlEnsureRoute(", "Tunnel nicht mehr vorhanden", "mssqlEnsureRoute(config.route)"} {
+	for _, w := range []string{"function connEnsureRoute(", "Tunnel nicht mehr vorhanden", "connEnsureRoute(config.route)"} {
 		if !strings.Contains(out, w) {
 			t.Errorf("%q fehlt", w)
 		}
+	}
+}
+
+// MySQL kennt den Weg wie SQL Server; ein fehlendes Feld lässt Tunnel und Datennetz stehen.
+func TestKeepStoredRouteMysqlNet(t *testing.T) {
+	cfg := map[string]string{"route": "direct"}
+	keepStoredRoute(cfg, map[string]string{"route": "net:c-9"}, "mysql", url.Values{"name": {"x"}})
+	if cfg["route"] != "net:c-9" {
+		t.Errorf("Datennetz ging verloren: %q", cfg["route"])
+	}
+	cfg = map[string]string{"route": "direct"}
+	keepStoredRoute(cfg, map[string]string{"route": "net:c-9"}, "mysql", url.Values{"f_mysql_route": {"direct"}})
+	if cfg["route"] != "direct" {
+		t.Errorf("ausdrückliche Wahl überschrieben: %q", cfg["route"])
 	}
 }

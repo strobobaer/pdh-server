@@ -84,6 +84,7 @@
         <div class="form-group"><label class="form-label">Zeitplan (Cron, optional)</label><input name="f_mysql_schedule_cron" class="form-input" placeholder="z.B. 0 6 * * 1"></div>
       </div>
       <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin:6px 0 10px"><input type="checkbox" name="f_mysql_use_tls"> TLS-Verschlüsselung</label>
+      {{template "route-select" (dict "Kind" "mysql" "Tunnels" .Tunnels "NetClients" .NetClients)}}
       <p style="font-size:11px;color:var(--muted);margin:-4px 0 10px">Die Tabelle wird bei Bedarf automatisch angelegt (field_name, value, source, exported_at) - jeder Export hängt neue Zeilen an.</p>
     </div>
 
@@ -99,7 +100,7 @@
         <div class="form-group"><label class="form-label">Zeitplan (Cron, optional)</label><input name="f_mssql_schedule_cron" class="form-input" placeholder="z.B. 0 6 * * 1"></div>
       </div>
       <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin:6px 0 10px"><input type="checkbox" name="f_mssql_use_tls"> TLS-Verschlüsselung</label>
-      {{template "mssql-route-fields" (dict "Tunnels" .Tunnels)}}
+      {{template "mssql-route-fields" (dict "Tunnels" .Tunnels "NetClients" .NetClients)}}
       <p style="font-size:11px;color:var(--muted);margin:-4px 0 10px">Die Tabelle wird bei Bedarf automatisch angelegt (field_name, value, source, exported_at) - jeder Export hängt neue Zeilen an.</p>
     </div>
 

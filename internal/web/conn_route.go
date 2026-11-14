@@ -41,17 +41,28 @@ const (
 )
 
 type connRoute struct {
-	ViaVPN bool
-	PeerID string
+	ViaVPN   bool
+	PeerID   string
+	ViaNet   bool   // Datennetz: über einen PDH-Daten-Client (conn_net.go)
+	ClientID string // Daten-Client bei ViaNet
 }
 
+// Remote: Weg über VPN oder Datennetz. Zeitgrenze und Takt kommen dann aus den
+// Feldern der Verbindung (vpn_*), nicht aus den Vorgaben für direkt.
+func (r connRoute) Remote() bool { return r.ViaVPN || r.ViaNet }
+
 // parseConnRoute liest „route“ aus der Konfiguration: fehlend, leer oder
-// unbekannt heißt direkt; „vpn:<id>“ ist ein Tunnel.
+// unbekannt heißt direkt; „vpn:<id>“ ist ein Tunnel, „net:<id>“ ein Daten-Client.
 func parseConnRoute(cfg map[string]string) connRoute {
 	v := strings.TrimSpace(cfg["route"])
 	if id, ok := strings.CutPrefix(v, "vpn:"); ok {
 		if id = strings.TrimSpace(id); id != "" {
 			return connRoute{ViaVPN: true, PeerID: id}
+		}
+	}
+	if id, ok := strings.CutPrefix(v, "net:"); ok {
+		if id = strings.TrimSpace(id); id != "" {
+			return connRoute{ViaNet: true, ClientID: id}
 		}
 	}
 	return connRoute{}
@@ -67,7 +78,7 @@ func clampConnInt(s string, def, lo, hi int) int {
 
 // connQueryTimeout: Zeitgrenze für Verbinden, Anmelden und Abfragen.
 func connQueryTimeout(cfg map[string]string) time.Duration {
-	if !parseConnRoute(cfg).ViaVPN {
+	if !parseConnRoute(cfg).Remote() {
 		return connTimeoutDirect
 	}
 	return time.Duration(clampConnInt(cfg["vpn_timeout_seconds"], int(connTimeoutVPN/time.Second), connTimeoutMin, connTimeoutMax)) * time.Second
@@ -77,7 +88,7 @@ func connQueryTimeout(cfg map[string]string) time.Duration {
 // Direkt zählt der Wert des Profils; über VPN ersetzt der Wert der Verbindung
 // den der Profile.
 func connPollInterval(cfg map[string]string, profileMinutes int) time.Duration {
-	if !parseConnRoute(cfg).ViaVPN {
+	if !parseConnRoute(cfg).Remote() {
 		return time.Duration(min(max(profileMinutes, connPollVPNMin), connPollVPNMax)) * time.Minute
 	}
 	return time.Duration(clampConnInt(cfg["vpn_poll_minutes"], connPollVPNDefault, connPollVPNMin, connPollVPNMax)) * time.Minute
@@ -111,6 +122,10 @@ func routeDecision(p *vpnPeer, host net.IP) (bool, string) {
 // connRouteReady: darf die Verbindung jetzt benutzt werden? Direkt: immer.
 func (h *Handler) connRouteReady(ctx context.Context, cfg map[string]string) (bool, string) {
 	rt := parseConnRoute(cfg)
+	if rt.ViaNet {
+		// Das Ziel liegt am Client fest: keine Adressprüfung wie beim VPN-Weg.
+		return h.dataNetRouteReady(ctx, rt.ClientID, firstNonEmpty(strings.TrimSpace(cfg["port"]), connDefaultPort(cfg)))
+	}
 	if !rt.ViaVPN {
 		return true, ""
 	}
@@ -240,6 +255,15 @@ func mssqlTLSConfig(host string, verify func(fp string) error) (*tls.Config, err
 	return cfg, nil
 }
 
+// mssqlTLSHost: Name für die TLS-Verhandlung. Über das Datennetz ist p.Host die
+// lokale Brücke; der Server kennt sich unter dem eingetragenen Host.
+func mssqlTLSHost(p msdsn.Config, cfg map[string]string) string {
+	if parseConnRoute(cfg).ViaNet {
+		return strings.TrimSpace(cfg["host"])
+	}
+	return p.Host
+}
+
 // mssqlServerFingerprint liest den Fingerabdruck des Serverzertifikats, ohne
 // sich anzumelden: Der TLS-Handshake im Prelogin wird nach dem Lesen des
 // Zertifikats absichtlich abgebrochen, es werden keine Zugangsdaten gesendet.
@@ -249,7 +273,7 @@ func mssqlServerFingerprint(ctx context.Context, cfg map[string]string) (string,
 		return "", err
 	}
 	got := ""
-	p.TLSConfig, err = mssqlTLSConfig(p.Host, func(fp string) error {
+	p.TLSConfig, err = mssqlTLSConfig(mssqlTLSHost(p, cfg), func(fp string) error {
 		got = fp
 		return errFingerprintCaptured
 	})
@@ -284,7 +308,7 @@ func mssqlOpen(config map[string]string) (*sql.DB, error) {
 			return nil, errors.New("Fingerabdruck des Zertifikats ist ungültig – bitte neu lesen und bestätigen")
 		}
 		p.Encryption = msdsn.EncryptionRequired
-		p.TLSConfig, err = mssqlTLSConfig(p.Host, func(fp string) error {
+		p.TLSConfig, err = mssqlTLSConfig(mssqlTLSHost(p, config), func(fp string) error {
 			if fp != want {
 				return fmt.Errorf("Fingerabdruck des Serverzertifikats stimmt nicht (Server: %s, bestätigt: %s)", fp, want)
 			}

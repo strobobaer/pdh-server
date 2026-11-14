@@ -75,7 +75,7 @@ var importKindFields = map[string][]string{
 	"excel":  {"source_path", "sheet_name", "has_header"},
 	"csv":    {"source_path", "delimiter", "has_header"},
 	"sqlite": {"file_path"},
-	"mysql":  {"host", "port", "database", "username", "password", "use_tls"},
+	"mysql":  {"host", "port", "database", "username", "password", "use_tls", "route", "vpn_poll_minutes", "vpn_timeout_seconds"},
 	"mssql":  {"host", "port", "database", "instance_name", "username", "password", "use_tls", "route", "vpn_poll_minutes", "vpn_timeout_seconds", "allow_write", "tls_fingerprint"},
 	"mqtt": {
 		"broker_mode",
@@ -97,7 +97,7 @@ var exportKindFields = map[string][]string{
 	"excel":  {"template_id", "destination_path", "schedule_cron"},
 	"csv":    {"destination_path", "delimiter", "schedule_cron"},
 	"sqlite": {"file_path", "table_name", "schedule_cron"},
-	"mysql":  {"host", "port", "database", "username", "password", "use_tls", "table_name", "schedule_cron"},
+	"mysql":  {"host", "port", "database", "username", "password", "use_tls", "route", "vpn_poll_minutes", "vpn_timeout_seconds", "table_name", "schedule_cron"},
 	"mssql":  {"host", "port", "database", "instance_name", "username", "password", "use_tls", "route", "vpn_poll_minutes", "vpn_timeout_seconds", "allow_write", "tls_fingerprint", "table_name", "schedule_cron"},
 	"opcua":  {"endpoint_url", "auth_mode", "username", "password", "schedule_cron"},
 	"modbus": {"host", "port", "unit_id", "schedule_cron"},
@@ -158,6 +158,7 @@ type ConnectionsPageData struct {
 	PDFTemplates   []ExportTemplateView
 	ExcelTemplates []ExportTemplateView
 	Tunnels        []connTunnelOption // ausgehende VPN-Tunnel für „Weg“ (leer ohne VPN)
+	NetClients     []connTunnelOption // Daten-Clients für „Weg“ (leer, wenn das Datennetz aus ist)
 	Notice         string
 }
 
@@ -231,6 +232,7 @@ func (h *Handler) connectionsPage(w http.ResponseWriter, r *http.Request, direct
 	}
 	if data.CanWrite {
 		data.Tunnels = h.connTunnelOptions(r.Context())
+		data.NetClients = h.connNetOptions(r.Context())
 	}
 	if direction == "export" {
 		if tpls, err := h.exportTemplates(r.Context(), "pdf"); err == nil {
@@ -291,23 +293,34 @@ func buildConnectionConfig(r *http.Request, kind string, fields []string) map[st
 		}
 		config[f] = strings.TrimSpace(r.FormValue(formKey))
 	}
-	if kind == "mssql" {
+	switch kind {
+	case "mssql":
 		normalizeMssqlRouteFields(config)
+	case "mysql":
+		normalizeRouteFields(config)
 	}
 	return config
 }
 
-// normalizeMssqlRouteFields: Weg, Zeiten und Fingerabdruck in feste Form bringen.
-// Fehlt das Feld oder ist es ungültig, gilt die Vorgabe (direkt, 5 Min., 60 s,
-// kein Fingerabdruck).
-func normalizeMssqlRouteFields(config map[string]string) {
-	if r := parseConnRoute(config); r.ViaVPN {
+// normalizeRouteFields: Weg und Zeiten in feste Form bringen (SQL Server und
+// MySQL). Fehlt das Feld oder ist es ungültig, gilt die Vorgabe (direkt, 5 Min., 60 s).
+func normalizeRouteFields(config map[string]string) {
+	switch r := parseConnRoute(config); {
+	case r.ViaVPN:
 		config["route"] = "vpn:" + r.PeerID
-	} else {
+	case r.ViaNet:
+		config["route"] = "net:" + r.ClientID
+	default:
 		config["route"] = "direct"
 	}
 	config["vpn_poll_minutes"] = strconv.Itoa(clampConnInt(config["vpn_poll_minutes"], connPollVPNDefault, connPollVPNMin, connPollVPNMax))
 	config["vpn_timeout_seconds"] = strconv.Itoa(clampConnInt(config["vpn_timeout_seconds"], int(connTimeoutVPN/time.Second), connTimeoutMin, connTimeoutMax))
+}
+
+// normalizeMssqlRouteFields: Weg, Zeiten und Fingerabdruck in feste Form bringen
+// (kein Fingerabdruck, wenn keiner bestätigt ist).
+func normalizeMssqlRouteFields(config map[string]string) {
+	normalizeRouteFields(config)
 	config["tls_fingerprint"] = normalizeFingerprint(config["tls_fingerprint"])
 }
 
@@ -345,6 +358,10 @@ func (h *Handler) createConnection(w http.ResponseWriter, r *http.Request, direc
 	configJSON, err := json.Marshal(sealed)
 	if err != nil {
 		http.Error(w, "Konfiguration ungültig", http.StatusInternalServerError)
+		return
+	}
+	if err := validateConnRoute(kind, config); err != nil {
+		http.Redirect(w, r, base+"?notice="+url.QueryEscape(err.Error()), http.StatusSeeOther)
 		return
 	}
 	u := getUser(r)
@@ -406,6 +423,14 @@ func (h *Handler) editConnection(w http.ResponseWriter, r *http.Request, directi
 	_ = json.Unmarshal(storedBytes, &stored)
 	config = keepStoredSecrets(config, stored, fields)
 	keepStoredRoute(config, stored, kind, r.Form)
+	if err := validateConnRoute(kind, config); err != nil {
+		if r.FormValue("return_to") == "detail" {
+			http.Redirect(w, r, connectionBackPath(direction, id, "overview", "", err.Error()), http.StatusSeeOther)
+		} else {
+			http.Redirect(w, r, base+"?notice="+url.QueryEscape(err.Error()), http.StatusSeeOther)
+		}
+		return
+	}
 	sealed, err := sealConnConfig(h.connKey(), config)
 	if err != nil {
 		http.Error(w, "Kennwort konnte nicht verschlüsselt werden", http.StatusInternalServerError)
@@ -505,13 +530,16 @@ func (h *Handler) toggleConnection(w http.ResponseWriter, r *http.Request, direc
 // gespeicherte Tunnel nicht mehr angeboten wird), bleibt der gespeicherte Weg.
 // Nur eine ausdrückliche Wahl („direct“ oder anderer Tunnel) ändert ihn.
 func keepStoredRoute(config, stored map[string]string, kind string, form url.Values) {
-	if kind != "mssql" {
+	if kind != "mssql" && kind != "mysql" {
 		return
 	}
-	if _, sent := form["f_mssql_route"]; sent {
+	if _, sent := form["f_"+kind+"_route"]; sent {
 		return
 	}
-	if r := parseConnRoute(stored); r.ViaVPN {
+	switch r := parseConnRoute(stored); {
+	case r.ViaVPN:
 		config["route"] = "vpn:" + r.PeerID
+	case r.ViaNet:
+		config["route"] = "net:" + r.ClientID
 	}
 }

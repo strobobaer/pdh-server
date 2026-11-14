@@ -303,7 +303,11 @@ func (h *Handler) runConnectionChecks(ctx context.Context, id, direction string)
 	if kind == "mssql" {
 		reachable = h.checkMssqlNetwork(ctx, rep, config)
 	} else if host, port, useTLS, ok := netTarget(kind, config); ok {
-		reachable = checkNetwork(ctx, rep, host, port, useTLS)
+		if kind == "mysql" && parseConnRoute(config).ViaNet {
+			reachable = h.checkNetRoute(ctx, rep, config, port, useTLS)
+		} else {
+			reachable = checkNetwork(ctx, rep, host, port, useTLS)
+		}
 	}
 	switch {
 	case direction == "import" && (kind == "excel" || kind == "csv"):
@@ -612,10 +616,46 @@ func (h *Handler) checkBackground(ctx context.Context, rep *checkReport, id, dir
 	}
 }
 
+// checkNetRoute: Weg Datennetz – Client und Ziel bereit, dann die Brücke. DNS-Lookup
+// und Absenderadresse entfallen (das Ziel liegt am Client fest); die Portprüfung
+// läuft gegen die lokale Brücke. Das Zertifikat prüft der Treiber bei der Anmeldung.
+func (h *Handler) checkNetRoute(ctx context.Context, rep *checkReport, config map[string]string, port string, useTLS bool) bool {
+	start := time.Now()
+	if ok, why := h.connRouteReady(ctx, config); !ok {
+		rep.add("Erreichbarkeit", "Datennetz", "fail", why+" – unter Datennetz Client und Netz prüfen.", time.Since(start).Milliseconds())
+		return false
+	}
+	rep.add("Erreichbarkeit", "Datennetz", "ok", "Client meldet sich und erreicht seine Datenbank", time.Since(start).Milliseconds())
+	if port == "" {
+		rep.add("Erreichbarkeit", "Benannte Instanz", "fail", errNetNamedInstance.Error(), 0)
+		return false
+	}
+	start = time.Now()
+	bh, bp, _, err := connDialTarget(config, port)
+	if err != nil {
+		rep.add("Erreichbarkeit", "Brücke", "fail", err.Error(), time.Since(start).Milliseconds())
+		return false
+	}
+	conn, err := (&net.Dialer{Timeout: 5 * time.Second}).DialContext(ctx, "tcp", net.JoinHostPort(bh, bp))
+	if err != nil {
+		rep.add("Erreichbarkeit", "Port "+port+" erreichbar", "fail", err.Error()+" – läuft der Dienst am Client-Rechner, ist der Port freigegeben?", time.Since(start).Milliseconds())
+		return false
+	}
+	conn.Close()
+	rep.add("Erreichbarkeit", "Port "+port+" erreichbar", "ok", "TCP-Verbindung über das Datennetz in "+strconv.FormatInt(time.Since(start).Milliseconds(), 10)+" ms", time.Since(start).Milliseconds())
+	if useTLS {
+		rep.add("Erreichbarkeit", "Zertifikat", "info", "Das Zertifikat wird bei der Anmeldung gegen den eingetragenen Host ("+strings.TrimSpace(config["host"])+") geprüft.", 0)
+	}
+	return true
+}
+
 // checkMssqlNetwork: Kette Tunnel (nur VPN), Adresse (mit eigener Absenderadresse),
 // Port und Zertifikat. false = die Anmeldung wird gar nicht erst versucht.
 func (h *Handler) checkMssqlNetwork(ctx context.Context, rep *checkReport, config map[string]string) bool {
 	host, port, useTLS, _ := netTarget("mssql", config)
+	if parseConnRoute(config).ViaNet {
+		return h.checkNetRoute(ctx, rep, config, port, useTLS)
+	}
 	if parseConnRoute(config).ViaVPN {
 		start := time.Now()
 		if ok, why := h.connRouteReady(ctx, config); !ok {
