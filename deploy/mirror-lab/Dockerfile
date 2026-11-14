@@ -4,7 +4,7 @@
 #        Crawler (go test -tags mirrorlab).
 #   app: PDH wie in der Produktion (migrations/ und web/ neben dem Programm),
 #        unter einer Neustart-Schleife statt systemd.
-FROM golang:1.24-bookworm AS src
+FROM golang:1.27-bookworm AS src
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download

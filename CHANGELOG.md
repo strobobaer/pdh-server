@@ -10,6 +10,12 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.80.7] – 2026-11-14
+
+### Geändert
+
+- Das PDH baut jetzt mit Go 1.27 und aktuellen Bibliotheken.
+
 ## [0.80.6] – 2026-11-14
 
 ### Neu

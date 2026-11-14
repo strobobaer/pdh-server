@@ -1,4 +1,4 @@
-FROM golang:1.24-bookworm AS build
+FROM golang:1.27-bookworm AS build
 
 WORKDIR /src
 
@@ -52,7 +52,7 @@ ENTRYPOINT ["/usr/local/bin/update-agent"]
 # sich das PDH direkt im Browser bauen und testen lässt (compose.yaml: codeserver).
 FROM codercom/code-server:4.96.4 AS codeserver
 USER root
-COPY --from=golang:1.24-bookworm /usr/local/go /usr/local/go
+COPY --from=golang:1.27-bookworm /usr/local/go /usr/local/go
 RUN apt-get update \
     && apt-get install -y --no-install-recommends make postgresql-client \
     && rm -rf /var/lib/apt/lists/* \

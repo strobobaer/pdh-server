@@ -20,7 +20,7 @@ bash deploy/ha-lab/ha-lab.sh status      # pdh-ha status aller drei
 bash deploy/ha-lab/ha-lab.sh <Szenario>  # ein Szenario (jeweils frisch aufgebaut)
 bash deploy/ha-lab/ha-lab.sh alle        # alle Szenarien nacheinander
 bash deploy/ha-lab/ha-lab.sh down        # Labor samt Volumes entfernen
-bash deploy/ha-lab/ha-lab.sh race        # go test -race in golang:1.24, mit echtem rsync
+bash deploy/ha-lab/ha-lab.sh race        # go test -race in golang:1.27, mit echtem rsync
 ```
 
 `up` richtet node1 ein, lässt node2 und den Zeugen mit Beitrittscode
