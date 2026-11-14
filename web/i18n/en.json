@@ -950,5 +950,15 @@
  "Rüstzeit erfassen": "Record set-up time",
  "Rüstzeit gelöscht.": "Set-up time deleted.",
  "Rüstzeit nicht gefunden.": "Set-up time not found.",
- "Rüstzeiten": "Set-up times"
+ "Rüstzeiten": "Set-up times",
+ "Rüsten": "Setting up",
+ "Höchstdauer überschritten": "Maximum duration exceeded",
+ "Notiz (freiwillig)": "Note (optional)",
+ "Zu viele Vorgänge an dieser Anlage – bitte kurz warten.": "Too many actions on this machine – please wait a moment.",
+ "Diese Taste wurde eben erst gedrückt.": "This button was just pressed.",
+ "Hier läuft gerade kein Rüsten.": "Nothing is being set up here right now.",
+ "Diese Rüsttaste gibt es hier nicht (mehr).": "This set-up button does not exist here (any more).",
+ "Das hat nicht geklappt – bitte nochmal versuchen.": "That did not work – please try again.",
+ "Rüsten: %s seit %s": "Setting up: %s since %s",
+ "Störung durch Rüsten – Instandhaltung ist informiert": "Fault caused by set-up – maintenance has been informed"
 }

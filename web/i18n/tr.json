@@ -950,5 +950,15 @@
  "Rüstzeit erfassen": "Hazırlık süresi kaydet",
  "Rüstzeit gelöscht.": "Hazırlık süresi silindi.",
  "Rüstzeit nicht gefunden.": "Hazırlık süresi bulunamadı.",
- "Rüstzeiten": "Hazırlık süreleri"
+ "Rüstzeiten": "Hazırlık süreleri",
+ "Rüsten": "Hazırlık",
+ "Höchstdauer überschritten": "En uzun süre aşıldı",
+ "Notiz (freiwillig)": "Not (isteğe bağlı)",
+ "Zu viele Vorgänge an dieser Anlage – bitte kurz warten.": "Bu tesiste çok fazla işlem yapıldı – lütfen biraz bekle.",
+ "Diese Taste wurde eben erst gedrückt.": "Bu tuşa az önce basıldı.",
+ "Hier läuft gerade kein Rüsten.": "Burada şu anda hazırlık yapılmıyor.",
+ "Diese Rüsttaste gibt es hier nicht (mehr).": "Bu hazırlık tuşu burada yok (artık yok).",
+ "Das hat nicht geklappt – bitte nochmal versuchen.": "Olmadı – lütfen tekrar dene.",
+ "Rüsten: %s seit %s": "Hazırlık: %s, saat %s itibarıyla",
+ "Störung durch Rüsten – Instandhaltung ist informiert": "Hazırlıktan kaynaklanan arıza – bakım bilgilendirildi"
 }

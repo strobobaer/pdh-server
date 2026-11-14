@@ -54,6 +54,7 @@
     <div class="sub">
       <a href="/infrastructure" style="color:var(--accent)">Infrastruktur</a>{{if .Parent}} › <a href="/infrastructure/{{.Parent.ID}}" style="color:var(--accent)">{{.Parent.Name}}</a>{{end}}
       · {{$n.TypeLabel}}{{if $n.Location}} · {{$n.Location}}{{end}}
+      {{if .SetupState}}· <span class="badge {{if eq .SetupState "Rüsten"}}b-amber{{else}}b-red{{end}}" title="Rüstzeit der Anlage"><i class="ti ti-arrows-exchange-2"></i> {{.SetupState}}</span>{{end}}
     </div>
   </div>
   <a class="btn btn-small" href="/a/{{$n.ID}}" title="Infoseite mit offenen Vorgängen – Ziel des QR-Codes"><i class="ti ti-qrcode"></i> QR &amp; Vorgänge</a>

@@ -292,6 +292,7 @@ type InfraDetailData struct {
 	EasyTexts       []easyText          // Reiter „Meldetexte“ (easy_texts.go)
 	EasyTextCount   int                 // davon an dieser Anlage wirksam
 	SetupTab        setupInfraTab       // Reiter „Rüsttasten“ und Höchstdauer (setup_catalog.go)
+	SetupState      string              // „Rüsten“ / „Störung durch Rüsten“ / "" (setup_easy.go)
 	Chamber         []chamberGroup      // Trockenkammer: Reiter „Bauteile“ (chamber.go)
 	ChamberNOK      int                 // davon NOK
 	ChamberParts    []chamberPartOption // Vorschlagsliste „Typ (Ersatzteil)“
@@ -334,6 +335,7 @@ func (h *Handler) InfraDetail(w http.ResponseWriter, r *http.Request) {
 	data.Today = time.Now().Format("2006-01-02")
 	data.EasyTexts = h.infraEasyTexts(ctx, id)
 	data.SetupTab = h.infraSetupTab(ctx, id)
+	data.SetupState = h.setupPlantState(ctx, id)
 	if string(node.Type) == chamberType {
 		data.Chamber, data.ChamberNOK = h.chamberGroups(ctx, id)
 		if data.CanEditInfra {

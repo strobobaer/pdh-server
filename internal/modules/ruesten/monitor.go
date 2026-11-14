@@ -31,6 +31,9 @@ type Monitor struct {
 // neu angelegten Störmeldungen. Fehler einzelner Einträge stoppen den
 // Durchlauf nicht; sie werden gesammelt zurückgegeben.
 func (m *Monitor) Pass(ctx context.Context) (created int, err error) {
+	if m.CreateFault == nil { // ohne Dienst für Störmeldungen nichts anfassen, statt abzustürzen
+		return 0, ErrNoFaultCreator
+	}
 	if m.Skip != nil && m.Skip() {
 		return 0, nil
 	}

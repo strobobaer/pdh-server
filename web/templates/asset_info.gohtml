@@ -43,7 +43,7 @@
   <div class="ai-head">
     <div class="ai-ico"><i class="ti {{.Asset.TypeIcon}}"></i></div>
     <div style="min-width:0;flex:1">
-      <div class="rec-sub" style="font-size:11.5px">{{if eq .Asset.Kind "it"}}IT-Asset{{else}}Infrastruktur{{end}} · {{.Asset.TypeLabel}}{{if .Asset.StatusLabel}} · <span class="badge {{.Asset.StatusClass}}">{{.Asset.StatusLabel}}</span>{{end}}</div>
+      <div class="rec-sub" style="font-size:11.5px">{{if eq .Asset.Kind "it"}}IT-Asset{{else}}Infrastruktur{{end}} · {{.Asset.TypeLabel}}{{if .Asset.StatusLabel}} · <span class="badge {{.Asset.StatusClass}}">{{.Asset.StatusLabel}}</span>{{end}}{{if .Plant}} · <span class="badge {{if eq .Plant "Rüsten"}}b-amber{{else}}b-red{{end}}"><i class="ti ti-arrows-exchange-2"></i> {{.Plant}}</span>{{end}}</div>
       <h1>{{.Asset.Name}}</h1>
       {{if eq .Asset.Kind "infra"}}
         {{if .Asset.ParentID}}<div class="ai-path"><a href="/a/{{.Asset.ParentID}}"><i class="ti ti-arrow-up"></i> {{.Asset.ParentName}}</a> · {{.Asset.Path}}</div>{{end}}
@@ -60,6 +60,8 @@
       {{else if .NewHint}}<span title="{{.NewHint}}"><i class="ti ti-info-circle"></i> {{.NewHint}}</span>{{end}}
     {{end}}
   </div>
+
+  {{template "setup-bar" .Setup}}
 
   {{if eq .Total 0}}
   <div class="card" style="margin-bottom:12px"><div class="ai-empty"><i class="ti ti-circle-check" style="color:var(--green)"></i> Keine offenen Vorgänge{{if eq .Asset.Kind "infra"}}{{if .Sub}} an dieser Anlage und ihren Unteranlagen{{else}} an dieser Anlage{{end}}{{else}} an diesem Gerät{{end}}.</div></div>

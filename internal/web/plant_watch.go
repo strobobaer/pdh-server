@@ -62,6 +62,7 @@ type watchEnergy struct {
 
 type watchCard struct {
 	ID, Name, Path, Type, TypeLabel, TypeIcon, Location string
+	SetupState                                          string // Kennzeichen „Rüsten“ / „Störung durch Rüsten“ (setup_easy.go)
 	watchStats
 	Energy       []watchEnergy
 	Chamber      []chamberGroup
@@ -274,9 +275,11 @@ func (h *Handler) watchBody(ctx context.Context, b *watchBoard, only bool, lang 
 		cardIDs = append(cardIDs, c.ID)
 	}
 	energy := h.watchEnergyFor(ctx, cardIDs)
+	setupStates := h.setupPlantStates(ctx, cardIDs)
 	for _, c := range cards {
 		c.watchStats = stats[c.ID]
 		c.Energy = energy[c.ID]
+		c.SetupState = setupStates[c.ID]
 		for i := range c.Children {
 			c.Children[i].watchStats = stats[c.Children[i].ID]
 		}

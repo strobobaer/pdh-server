@@ -539,6 +539,8 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/setup/buttons-web", h.SetupButtonsWeb)
 	r.Post("/setup/buttons/{id}/move-web", h.SetupButtonMoveWeb)
 	r.Post("/setup/buttons/{id}/delete-web", h.SetupButtonDeleteWeb)
+	r.Post("/infrastructure/{id}/setup/start", h.InfraSetupStartWeb) // Rüsten an der Anlage: Recht „Anlage sehen“
+	r.Post("/infrastructure/{id}/setup/finish", h.InfraSetupFinishWeb)
 	r.Post("/infrastructure/{id}/setup-buttons-web", h.InfraSetupButtonsWeb)
 	r.Post("/infrastructure/{id}/setup-max-web", h.InfraSetupMaxWeb)
 	r.Post("/core/settings/setup-web", h.SetupSettingsWeb)
@@ -559,6 +561,8 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/a/{id}", h.AssetInfoPage)
 	r.Get("/e/{id}", h.EasyPage) // Easy-Mode: öffentlich (authMiddleware)
 	r.Post("/e/{id}/report", h.EasyReportWeb)
+	r.Post("/e/{id}/setup/start", h.EasySetupStartWeb)   // Rüsten per Easy-Modus (setup_easy.go)
+	r.Post("/e/{id}/setup/finish", h.EasySetupFinishWeb) // öffentlich wie die Meldungen
 	r.Post("/records/{refType}/{id}/it-asset", h.RecordITAssetWeb)
 	r.Post("/it/{id}/edit-web", h.ITEditWeb)
 	r.Post("/it/{id}/status-web", h.ITStatusWeb) // FIX: war PUT, wird von Cloudflare/Nginx blockiert

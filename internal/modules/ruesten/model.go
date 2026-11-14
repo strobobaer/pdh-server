@@ -43,6 +43,9 @@ var (
 	ErrAlreadyRunning = errors.New("an dieser Anlage läuft bereits eine Rüstzeit")
 	ErrReadOnly       = errors.New("Beginn und Ende einer Rüstzeit mit Störmeldung sind nicht änderbar")
 	ErrReasonInUse    = errors.New("der Grund wird noch verwendet")
+
+	// ErrNoFaultCreator: der Überwachung fehlt der Dienst, der Störmeldungen anlegt.
+	ErrNoFaultCreator = errors.New("kein Dienst für Störmeldungen angeschlossen")
 )
 
 // Reason ist ein Grund aus dem Katalog (z. B. Produktumstellung).

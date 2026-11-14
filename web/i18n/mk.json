@@ -950,5 +950,15 @@
  "Rüstzeit erfassen": "Евидентирај време за подготовка",
  "Rüstzeit gelöscht.": "Времето за подготовка е избришано.",
  "Rüstzeit nicht gefunden.": "Времето за подготовка не е пронајдено.",
- "Rüstzeiten": "Времиња за подготовка"
+ "Rüstzeiten": "Времиња за подготовка",
+ "Rüsten": "Подготовка",
+ "Höchstdauer überschritten": "Надминато е максималното траење",
+ "Notiz (freiwillig)": "Белешка (по желба)",
+ "Zu viele Vorgänge an dieser Anlage – bitte kurz warten.": "Премногу дејства на оваа постројка – почекај малку.",
+ "Diese Taste wurde eben erst gedrückt.": "Ова копче штотуку беше притиснато.",
+ "Hier läuft gerade kein Rüsten.": "Овде моментално не се врши подготовка.",
+ "Diese Rüsttaste gibt es hier nicht (mehr).": "Ова копче за подготовка не постои овде (повеќе).",
+ "Das hat nicht geklappt – bitte nochmal versuchen.": "Не успеа – обиди се повторно.",
+ "Rüsten: %s seit %s": "Подготовка: %s од %s",
+ "Störung durch Rüsten – Instandhaltung ist informiert": "Дефект поради подготовка – одржувањето е известено"
 }
