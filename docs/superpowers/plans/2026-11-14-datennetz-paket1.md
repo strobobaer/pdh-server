@@ -256,13 +256,13 @@ Risiko zuerst: Ist `tailscale.com` nicht baubar, endet die Ausführung hier mit 
   ```
 
 - [ ] **Step 1: Failing tests**
-  - `TestDataNetMigration` (DB): Tabellen vorhanden; Rechte `datanet.view/edit/admin` in Kategorie `Datennetz`; Invarianten wie in `ruesten/migration_integration_test.go`: jede Rolle mit `vpn.use` oder (global) `system.server_config` hat `datanet.view` und `datanet.edit`; Rolle `admin` hat `datanet.admin`; jede Rolle mit `sync.admin` hat `datanet.admin`; keine `datanet.*`-Zuordnung hat eine `department_id`.
+  - `TestDataNetMigration` (DB): Tabellen vorhanden; Rechte `datanet.view/edit/admin` in Kategorie `Datennetz`; Invarianten wie in `ruesten/migration_integration_test.go`: jede Rolle mit (global) `system.server_config` oder `sync.admin` hat `datanet.view` und `datanet.edit`; Rollen nur mit `vpn.use` bekommen nichts; Rolle `admin` hat `datanet.admin`; jede Rolle mit `sync.admin` hat `datanet.admin`; keine `datanet.*`-Zuordnung hat eine `department_id`.
   - `TestDataNetStore` (DB): `dataNetCreate` liefert Token ≥ 43 Zeichen, in der Tabelle steht nur `sha256(token)` als Hex; `dataNetAuth` mit falschem Token → `errDataNetToken`; nach `dataNetRevoke` → `errDataNetRevoked`; `dataNetSaveReport` setzt `addr`, `version`, `last_seen_at`; je Aktion ein `datanet_events`-Eintrag (`create`, `revoke`, `delete`).
   - `TestDataNetState` (ohne DB, Tabelle): nie gemeldet → `new`; zuletzt vor 179 s → `ok`; vor 181 s → `offline`; ein Ziel `OK=false` → `db_down`; gesperrt → `revoked` (Vorrang).
 
 - [ ] **Step 2:** `PDH_TEST_DSN=… go test ./internal/web/ -run 'DataNet(Migration|Store|State)'` → FAIL.
 - [ ] **Step 3: Umsetzen.** Migration nach Muster `158_extsync.up.sql`:
-  - `datanet.view`, `datanet.edit` an Rollen, die `vpn.use` oder `system.server_config` **ohne Abteilung** haben (heutige VPN-Rechte: `vpn.use` für eigene Zugänge, VPN-Verwaltung über `system.server_config`, siehe `internal/web/vpn.go` und Migration 137).
+  - `datanet.view`, `datanet.edit` an Rollen, die `system.server_config` **ohne Abteilung** oder `sync.admin` haben (nicht an Rollen, die nur `vpn.use` haben – Leiter-Entscheidung) (heutige VPN-Rechte: `vpn.use` für eigene Zugänge, VPN-Verwaltung über `system.server_config`, siehe `internal/web/vpn.go` und Migration 137).
   - `datanet.admin` an Rolle `admin`, an Rollen mit `sync.admin` (Bereichsadministrator der Verbindungen/Abgleich) und an Rollen mit globalem `system.server_config`, die schon ein anderes `%.admin` haben.
   - Kommentar im Kopf der Migration, warum genau diese Rollen.
   Token-Vergleich mit `subtle.ConstantTimeCompare` auf den Hashes.
