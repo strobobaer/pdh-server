@@ -960,5 +960,6 @@
  "Diese Rüsttaste gibt es hier nicht (mehr).": "Bu hazırlık tuşu burada yok (artık yok).",
  "Das hat nicht geklappt – bitte nochmal versuchen.": "Olmadı – lütfen tekrar dene.",
  "Rüsten: %s seit %s": "Hazırlık: %s, saat %s itibarıyla",
- "Störung durch Rüsten – Instandhaltung ist informiert": "Hazırlıktan kaynaklanan arıza – bakım bilgilendirildi"
+ "Störung durch Rüsten – Instandhaltung ist informiert": "Hazırlıktan kaynaklanan arıza – bakım bilgilendirildi",
+ "Störung durch Rüsten": "Hazırlıktan kaynaklanan arıza"
 }

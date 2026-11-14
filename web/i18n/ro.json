@@ -960,5 +960,6 @@
  "Diese Rüsttaste gibt es hier nicht (mehr).": "Acest buton de pregătire nu există aici (sau nu mai există).",
  "Das hat nicht geklappt – bitte nochmal versuchen.": "Nu a mers – te rog încearcă din nou.",
  "Rüsten: %s seit %s": "Pregătire: %s din %s",
- "Störung durch Rüsten – Instandhaltung ist informiert": "Defecțiune din pregătire – mentenanța a fost informată"
+ "Störung durch Rüsten – Instandhaltung ist informiert": "Defecțiune din pregătire – mentenanța a fost informată",
+ "Störung durch Rüsten": "Defecțiune din pregătire"
 }

@@ -960,5 +960,6 @@
  "Diese Rüsttaste gibt es hier nicht (mehr).": "This set-up button does not exist here (any more).",
  "Das hat nicht geklappt – bitte nochmal versuchen.": "That did not work – please try again.",
  "Rüsten: %s seit %s": "Setting up: %s since %s",
- "Störung durch Rüsten – Instandhaltung ist informiert": "Fault caused by set-up – maintenance has been informed"
+ "Störung durch Rüsten – Instandhaltung ist informiert": "Fault caused by set-up – maintenance has been informed",
+ "Störung durch Rüsten": "Fault caused by set-up"
 }

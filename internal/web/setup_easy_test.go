@@ -224,7 +224,7 @@ func TestEasyFaultState(t *testing.T) {
 	a := f.button(infra, "Umstellung")
 	f.startEasy(infra, a.ID)
 	run, _ := f.store.Running(f.ctx, infra)
-	if got := f.h.setupPlantState(f.ctx, infra); got != "Rüsten" {
+	if got := f.h.setupPlantState(f.ctx, infra); got != "running" {
 		t.Fatalf("Zustand beim Rüsten: %q", got)
 	}
 	var faultID string
@@ -232,7 +232,7 @@ func TestEasyFaultState(t *testing.T) {
 		infra, pdhSystemUserID).Scan(&faultID))
 	f.must2(f.pool.Exec(f.ctx, `UPDATE setup_times SET status = 'fault', ended_at = now() + interval '1 millisecond', fault_id = $2 WHERE id = $1`, run.ID, faultID))
 
-	if got := f.h.setupPlantState(f.ctx, infra); got != "Störung durch Rüsten" {
+	if got := f.h.setupPlantState(f.ctx, infra); got != "fault" {
 		t.Fatalf("Zustand mit offener Störmeldung: %q", got)
 	}
 	html := rzSection(f.easyHTML(infra, "de", ""))
@@ -348,7 +348,7 @@ func TestInfraPageButtonsForLoggedIn(t *testing.T) {
 	}
 	bar := f.h.setupBarFor(f.ctx, "de", infra, "/infrastructure/"+infra+"/setup", "/a/"+infra, false, "")
 	tmpl := loadTestTemplates(t)
-	html := renderPage(t, tmpl, "asset_info", AssetInfoData{Asset: assetInfoView{Kind: "infra", ID: infra, Name: "Presse", TypeLabel: "Gerät"}, Setup: bar, Plant: "Rüsten"})
+	html := renderPage(t, tmpl, "asset_info", AssetInfoData{Asset: assetInfoView{Kind: "infra", ID: infra, Name: "Presse", TypeLabel: "Gerät"}, Setup: bar, Plant: "running"})
 	for _, want := range []string{`action="/infrastructure/` + infra + `/setup/finish"`, `action="/infrastructure/` + infra + `/setup/start"`,
 		`name="back" value="/a/` + infra + `"`, "Rüsten: " + a.Name + " seit ", "Fertig"} {
 		if !strings.Contains(html, want) {
@@ -381,7 +381,7 @@ func TestInfraPageButtonsForLoggedIn(t *testing.T) {
 
 func TestInfraDetailShowsSetupState(t *testing.T) {
 	tmpl := loadTestTemplates(t)
-	d := InfraDetailData{Node: InfraNodeView{ID: "n1", Name: "Presse 3"}, Types: infraTypes, SetupState: "Störung durch Rüsten"}
+	d := InfraDetailData{Node: InfraNodeView{ID: "n1", Name: "Presse 3"}, Types: infraTypes, SetupState: "fault"}
 	html := renderPage(t, tmpl, "infra_detail", d)
 	if !strings.Contains(html, `b-red" title="Rüstzeit der Anlage"><i class="ti ti-arrows-exchange-2"></i> Störung durch Rüsten`) {
 		t.Error("Detailseite zeigt „Störung durch Rüsten“ nicht")
@@ -400,7 +400,7 @@ func TestPlantWatchSetupState(t *testing.T) {
 	a := f.button(infra, "Umstellung")
 	f.startEasy(infra, a.ID)
 	states := f.h.setupPlantStates(f.ctx, []string{infra, quiet})
-	if states[infra] != "Rüsten" || states[quiet] != "" {
+	if states[infra] != "running" || states[quiet] != "" {
 		t.Fatalf("Zustände: %v", states)
 	}
 	c, err := f.h.tmpl.Clone()
@@ -426,13 +426,13 @@ func (f *setupFx) overdueSetup(infra, buttonID, uid string) *ruesten.Entry {
 	return f.entry(e.ID)
 }
 
-// smallPoolHandler: Handler und Speicher auf einem Pool mit nur zwei Verbindungen –
+// smallPoolHandler: Handler und Speicher auf einem Pool mit nur drei Verbindungen –
 // Überwachung (Transaktion) und Störmeldung brauchen je eine; das darf sich nicht blockieren.
 func (f *setupFx) smallPoolHandler() (*Handler, *ruesten.Store) {
 	f.t.Helper()
 	cfg, err := pgxpool.ParseConfig(os.Getenv("PDH_TEST_DSN"))
 	f.must(err)
-	cfg.MaxConns = 2
+	cfg.MaxConns = 3
 	p, err := pgxpool.NewWithConfig(f.ctx, cfg)
 	f.must(err)
 	f.t.Cleanup(p.Close)
@@ -548,5 +548,61 @@ func TestSetupBackPath(t *testing.T) {
 		if got := setupBackPath(in, "/a/fb"); got != want {
 			t.Errorf("%q -> %q, erwartet %q", in, got, want)
 		}
+	}
+}
+
+// Die Störmeldung wird auch dann wiedergefunden, wenn jemand die Markerzeile aus
+// der Beschreibung entfernt hat (Schlüssel im Verlauf, nicht editierbar).
+func TestSetupFaultFoundWithoutMarker(t *testing.T) {
+	f := newSetupFx(t)
+	infra, uid := f.infra("key"), f.user()
+	f.cleanupFaultFor(infra)
+	a := f.button(infra, "Umstellung")
+	e := f.overdueSetup(infra, a.ID, uid)
+	h, st := f.smallPoolHandler()
+
+	first, err := h.createSetupFault(f.ctx, *e)
+	f.must(err)
+	f.must2(f.pool.Exec(f.ctx, `UPDATE faults SET description = 'ohne Marker' WHERE id = $1`, first))
+	again, err := h.createSetupFault(f.ctx, *e)
+	f.must(err)
+	if again != first {
+		t.Fatalf("zweite Störmeldung trotz Schlüssel: %q statt %q", again, first)
+	}
+	m := &ruesten.Monitor{Store: st, CreateFault: h.createSetupFault, SystemUser: pdhSystemUserID}
+	if n, err := m.Pass(f.ctx); err != nil || n != 1 {
+		t.Fatalf("Durchlauf: %d %v", n, err)
+	}
+	var faultsN int
+	f.must(f.pool.QueryRow(f.ctx, `SELECT count(*) FROM faults WHERE infrastructure_id = $1`, infra).Scan(&faultsN))
+	if got := f.entry(e.ID); faultsN != 1 || got.FaultID == nil || *got.FaultID != first {
+		t.Errorf("Störmeldungen %d, Verknüpfung %v", faultsN, got.FaultID)
+	}
+}
+
+// Läuft während einer offenen Störung eine neue Rüstzeit, entscheidet die neueste:
+// Kopfzeile, Schnellübersicht und Baustein sagen alle „Rüsten“.
+func TestSetupNewestDecidesState(t *testing.T) {
+	f := newSetupFx(t)
+	infra := f.infra("neu")
+	f.limiterReset(infra)
+	f.cleanupFaultFor(infra)
+	a, b := f.button(infra, "Erste"), f.button(infra, "Zweite")
+	f.startEasy(infra, a.ID)
+	old, _ := f.store.Running(f.ctx, infra)
+	var faultID string
+	f.must(f.pool.QueryRow(f.ctx, `INSERT INTO faults (title, infrastructure_id, created_by) VALUES ('Störung durch Rüsten: x', $1, $2) RETURNING id::text`,
+		infra, pdhSystemUserID).Scan(&faultID))
+	f.must2(f.pool.Exec(f.ctx, `UPDATE setup_times SET status = 'fault', ended_at = now(), fault_id = $2, started_at = now() - interval '2 hours' WHERE id = $1`, old.ID, faultID))
+	if got := f.h.setupPlantState(f.ctx, infra); got != "fault" {
+		t.Fatalf("nur die Störung: %q", got)
+	}
+	f.startEasy(infra, b.ID) // neue Rüstzeit bei offener Störmeldung
+	if got := f.h.setupPlantState(f.ctx, infra); got != "running" {
+		t.Fatalf("neueste Rüstzeit läuft, Zustand: %q", got)
+	}
+	bar := f.h.setupBarFor(f.ctx, "de", infra, "/e/"+infra+"/setup", "", false, "")
+	if !bar.Running || bar.Fault {
+		t.Errorf("Baustein widerspricht der Kopfzeile: %+v", bar)
 	}
 }

@@ -960,5 +960,6 @@
  "Diese Rüsttaste gibt es hier nicht (mehr).": "Ова копче за подготовка не постои овде (повеќе).",
  "Das hat nicht geklappt – bitte nochmal versuchen.": "Не успеа – обиди се повторно.",
  "Rüsten: %s seit %s": "Подготовка: %s од %s",
- "Störung durch Rüsten – Instandhaltung ist informiert": "Дефект поради подготовка – одржувањето е известено"
+ "Störung durch Rüsten – Instandhaltung ist informiert": "Дефект поради подготовка – одржувањето е известено",
+ "Störung durch Rüsten": "Дефект поради подготовка"
 }

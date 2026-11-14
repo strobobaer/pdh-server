@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5"
 	"github.com/rs/zerolog/log"
 
 	"pdh/internal/modules/faults"
@@ -31,10 +32,12 @@ const (
 
 var setupLimiter = &easyLimiter{hits: map[string][]time.Time{}}
 
-// Zustände einer Anlage, wie sie Kopfzeile und Übersichten zeigen.
+// Zustand einer Anlage (Kennzeichen; angezeigt wird er über {{t}}): es gilt die
+// neueste Rüstzeit der Anlage – läuft sie, ist es "running"; ist sie in eine noch
+// offene Störmeldung übergegangen, "fault".
 const (
-	setupStateRunning = "Rüsten"
-	setupStateFault   = "Störung durch Rüsten"
+	setupKindRunning = ruesten.StatusRunning
+	setupKindFault   = ruesten.StatusFault
 )
 
 type setupBarButton struct {
@@ -97,11 +100,12 @@ func (h *Handler) setupBarFor(ctx context.Context, lang, infraID, action, back s
 	for _, b := range buttons {
 		v.Buttons = append(v.Buttons, setupBarButton{ID: b.ID, Name: labels[b.Name], Current: run != nil && run.ButtonID == b.ID})
 	}
-	if run != nil {
+	kind := h.setupPlantState(ctx, infraID) // dieselbe Bestimmung wie Kopfzeile und Schnellübersicht
+	if run != nil && kind == setupKindRunning {
 		v.Running = true
-		v.Text = tr(lang, "Rüsten: %s seit %s", labels2(labels, run.ButtonName, run.ReasonName), setupSince(run.StartedAt))
+		v.Text = tr(lang, "Rüsten: %s seit %s", setupLabel(labels, run.ButtonName, run.ReasonName), setupSince(run.StartedAt))
 		v.Overrun = time.Now().After(run.StartedAt.Add(time.Duration(run.MaxMinutes) * time.Minute))
-	} else if h.setupPlantState(ctx, infraID) == setupStateFault {
+	} else if kind == setupKindFault {
 		v.Fault = true
 		v.Text = tr(lang, "Störung durch Rüsten – Instandhaltung ist informiert")
 	}
@@ -109,8 +113,8 @@ func (h *Handler) setupBarFor(ctx context.Context, lang, infraID, action, back s
 	return v
 }
 
-// labels2: Anzeigename einer laufenden Rüstzeit (übersetzt, sonst der gespeicherte Name).
-func labels2(labels map[string]string, name, reason string) string {
+// setupLabel: Anzeigename einer laufenden Rüstzeit (übersetzt, sonst der gespeicherte Name).
+func setupLabel(labels map[string]string, name, reason string) string {
 	if name == "" {
 		name = reason
 	}
@@ -154,35 +158,38 @@ func setupSince(t time.Time) string {
 	return t.Format("02.01. 15:04")
 }
 
-// setupPlantStates: Zustand der Anlagen – „Rüsten“ (läuft), „Störung durch
-// Rüsten“ (Störmeldung aus einer Rüstzeit ist noch offen) oder fehlend.
+// setupPlantStates: Zustand der Anlagen als Kennzeichen (setupKindRunning,
+// setupKindFault oder fehlend). Die neueste Rüstzeit der Anlage (nach Beginn)
+// entscheidet: läuft sie, gilt "running"; ist sie "fault" und die Störmeldung noch
+// offen, gilt "fault"; sonst nichts.
 func (h *Handler) setupPlantStates(ctx context.Context, ids []string) map[string]string {
 	out := map[string]string{}
 	if h.db == nil || len(ids) == 0 {
 		return out
 	}
-	rows, err := h.db.Query(ctx, `SELECT DISTINCT ON (s.infrastructure_id) s.infrastructure_id::text, s.status
+	rows, err := h.db.Query(ctx, `SELECT DISTINCT ON (s.infrastructure_id) s.infrastructure_id::text,
+			CASE WHEN s.status = 'running' THEN 'running'
+			     WHEN s.status = 'fault' AND f.id IS NOT NULL AND f.archived_at IS NULL
+			          AND f.status::text IN ('detected','analyzing','in_progress','pending') THEN 'fault'
+			     ELSE '' END
 		FROM setup_times s LEFT JOIN faults f ON f.id = s.fault_id
 		WHERE s.infrastructure_id = ANY($1::uuid[]) AND s.archived_at IS NULL
-		  AND (s.status = 'running'
-		       OR (s.status = 'fault' AND f.id IS NOT NULL AND f.archived_at IS NULL
-		           AND f.status::text IN ('detected','analyzing','in_progress','pending')))
-		ORDER BY s.infrastructure_id, (s.status = 'fault') DESC, s.started_at DESC`, ids)
+		ORDER BY s.infrastructure_id, s.started_at DESC, s.number DESC`, ids)
 	if err != nil {
 		componentLog("ruesten").Warn().Err(err).Msg("anlagenstatus")
 		return out
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var id, status string
-		if rows.Scan(&id, &status) == nil {
-			out[id] = map[string]string{ruesten.StatusRunning: setupStateRunning, ruesten.StatusFault: setupStateFault}[status]
+		var id, kind string
+		if rows.Scan(&id, &kind) == nil && kind != "" {
+			out[id] = kind
 		}
 	}
 	return out
 }
 
-// setupPlantState: „Rüsten“, „Störung durch Rüsten“ oder "".
+// setupPlantState: Kennzeichen der Anlage ("running", "fault" oder "").
 func (h *Handler) setupPlantState(ctx context.Context, infraID string) string {
 	return h.setupPlantStates(ctx, []string{infraID})[infraID]
 }
@@ -371,6 +378,31 @@ const setupFaultCategory = "Störung durch Rüsten"
 // zweite anzulegen.
 func setupFaultMarker(id string) string { return "/setup/" + id }
 
+// setupFaultKeyField: Feldname des Verlaufseintrags, der die Störmeldung fest mit der
+// Rüstzeit verbindet (new_value = Kennung der Rüstzeit). Anders als die Beschreibung
+// lässt er sich in der Oberfläche nicht ändern.
+const setupFaultKeyField = "setup_time"
+
+// findSetupFault liefert die Störmeldung zur Rüstzeit ("" = gibt es noch nicht):
+// zuerst über den Schlüssel im Verlauf, als Rückfall über die Markerzeile der Beschreibung.
+func (h *Handler) findSetupFault(ctx context.Context, e ruesten.Entry) (string, error) {
+	var id string
+	err := h.db.QueryRow(ctx, `SELECT h.ref_id::text FROM record_history h JOIN faults f ON f.id = h.ref_id
+		WHERE h.ref_type = 'fault' AND h.field_name = $1 AND h.new_value = $2 ORDER BY h.created_at LIMIT 1`, setupFaultKeyField, e.ID).Scan(&id)
+	if err == nil {
+		return id, nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return "", err
+	}
+	err = h.db.QueryRow(ctx, `SELECT id::text FROM faults WHERE infrastructure_id = $1::uuid
+		AND position($2 in description) > 0 ORDER BY created_at LIMIT 1`, e.InfraID, setupFaultMarker(e.ID)).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", nil
+	}
+	return id, err
+}
+
 // setupFaultText: Titel und Beschreibung der Störmeldung.
 func (h *Handler) setupFaultText(ctx context.Context, e ruesten.Entry) (title, desc string) {
 	name := e.ButtonName
@@ -402,24 +434,41 @@ func (h *Handler) setupFaultText(ctx context.Context, e ruesten.Entry) (title, d
 // wiederverwendet und nur ergänzt, was noch fehlt.
 //
 // Der Monitor hält beim Aufruf eine Zeile von setup_times gesperrt und eine
-// Pool-Verbindung; hier wird deshalb nie in setup_times geschrieben und jede
-// Abfrage gibt ihre Verbindung sofort wieder frei.
+// Pool-Verbindung; hier wird deshalb nie in setup_times geschrieben. Das Anlegen
+// braucht selbst eine Transaktion und für die Vorgabe-Fälligkeit eine weitere
+// Verbindung – der Ablauf kommt mit drei gleichzeitigen Verbindungen aus.
 func (h *Handler) createSetupFault(ctx context.Context, e ruesten.Entry) (string, error) {
 	if h.faults == nil || h.db == nil {
 		return "", errors.New("kein Dienst für Störmeldungen")
 	}
-	var id string
-	err := h.db.QueryRow(ctx, `SELECT id::text FROM faults WHERE infrastructure_id = $1::uuid
-		AND position($2 in description) > 0 ORDER BY created_at LIMIT 1`, e.InfraID, setupFaultMarker(e.ID)).Scan(&id)
-	created := false
+	msg := fmt.Sprintf("Angelegt, weil die Rüstzeit %s die Höchstdauer (%d min) plus Karenzzeit (%d min) überschritten hat", ruesten.Number(e.Number), e.MaxMinutes, e.GraceMinutes)
+	id, err := h.findSetupFault(ctx, e)
 	if err != nil {
+		return "", err
+	}
+	if id == "" {
+		// Störmeldung und Schlüssel (Verlaufseintrag mit der Kennung der Rüstzeit) in
+		// einer Transaktion: gibt es die Störmeldung, gibt es auch den Schlüssel.
 		title, desc := h.setupFaultText(ctx, e)
 		infra := e.InfraID
-		f, cerr := h.faults.Create(ctx, &faults.CreateFaultInput{Title: title, Description: desc, Severity: "high", InfrastructureID: &infra}, pdhSystemUserID)
-		if cerr != nil {
-			return "", cerr
+		tx, err := h.db.Begin(ctx)
+		if err != nil {
+			return "", err
 		}
-		id, created = f.ID, true
+		defer tx.Rollback(ctx)
+		f, err := h.faults.CreateInTx(ctx, tx, &faults.CreateFaultInput{Title: title, Description: desc, Severity: "high", InfrastructureID: &infra}, pdhSystemUserID)
+		if err != nil {
+			return "", err
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO record_history (ref_type, ref_id, action, field_name, old_value, new_value, message, created_by)
+			VALUES ('fault', $1::uuid, 'create', $2, '', $3, $4, $5::uuid)`, f.ID, setupFaultKeyField, e.ID, msg, pdhSystemUserID); err != nil {
+			return "", err
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return "", err
+		}
+		h.faults.AfterCreate(f)
+		id = f.ID
 	}
 	var stopped bool
 	if err := h.db.QueryRow(ctx, `SELECT plant_stopped FROM faults WHERE id = $1::uuid`, id).Scan(&stopped); err == nil && !stopped {
@@ -430,14 +479,11 @@ func (h *Handler) createSetupFault(ctx context.Context, e ruesten.Entry) (string
 		ON CONFLICT DO NOTHING`, id, pdhSystemUserID, setupFaultCategory); err != nil {
 		return "", fmt.Errorf("kategorie: %w", err)
 	}
-	msg := fmt.Sprintf("Angelegt, weil die Rüstzeit %s die Höchstdauer (%d min) plus Karenzzeit (%d min) überschritten hat", ruesten.Number(e.Number), e.MaxMinutes, e.GraceMinutes)
-	if created {
-		h.addHistory(ctx, "fault", id, "create", "", "", "", msg, pdhSystemUserID)
-	} else {
-		_, _ = h.db.Exec(ctx, `INSERT INTO record_history (ref_type, ref_id, action, field_name, old_value, new_value, message, created_by)
-			SELECT 'fault', $1::uuid, 'create', '', '', '', $2, $3::uuid
-			WHERE NOT EXISTS (SELECT 1 FROM record_history WHERE ref_type = 'fault' AND ref_id = $1::uuid AND message = $2)`, id, msg, pdhSystemUserID)
-	}
+	// Nach einem früheren Fehler: Verlaufseintrag nachholen, falls er fehlt.
+	_, _ = h.db.Exec(ctx, `INSERT INTO record_history (ref_type, ref_id, action, field_name, old_value, new_value, message, created_by)
+		SELECT 'fault', $1::uuid, 'create', $2, '', $3, $4, $5::uuid
+		WHERE NOT EXISTS (SELECT 1 FROM record_history WHERE ref_type = 'fault' AND ref_id = $1::uuid AND message = $4)`,
+		id, setupFaultKeyField, e.ID, msg, pdhSystemUserID)
 	return id, nil
 }
 
