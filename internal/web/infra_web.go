@@ -28,6 +28,9 @@ type InfraPageData struct {
 	Message, Error string
 	DueObligations []obligationView // fällige Prüfungen & GBU über alle Anlagen
 	EasyTexts      []easyText       // Easy-Mode-Meldetexte (Katalog, easy_texts.go)
+	SetupCatalog   setupCatalogView // Rüstzeiten: Gründe und Rüsttasten (setup_catalog.go)
+	SetupView      bool             // Katalog der Rüstzeiten sichtbar (setup.view)
+	SetupAdmin     bool             // … und änderbar (setup.admin)
 }
 
 type InfraNodeView struct {
@@ -184,6 +187,10 @@ func (h *Handler) Infrastructure(w http.ResponseWriter, r *http.Request) {
 	}
 	data.DueObligations = h.dueObligations(ctx)
 	data.EasyTexts = h.easyTextCatalog(ctx)
+	if data.SetupView = h.setupCan(r, permSetupView, "") || h.setupCan(r, permSetupEdit, ""); data.SetupView {
+		data.SetupAdmin = h.setupCan(r, permSetupAdmin, "")
+		data.SetupCatalog = h.setupCatalog(ctx)
+	}
 	h.render(w, "infrastructure", data)
 }
 
@@ -282,6 +289,7 @@ type InfraDetailData struct {
 	Today           string              // JJJJ-MM-TT (Formular „erledigt am“)
 	EasyTexts       []easyText          // Reiter „Meldetexte“ (easy_texts.go)
 	EasyTextCount   int                 // davon an dieser Anlage wirksam
+	SetupTab        setupInfraTab       // Reiter „Rüsttasten“ und Höchstdauer (setup_catalog.go)
 	Chamber         []chamberGroup      // Trockenkammer: Reiter „Bauteile“ (chamber.go)
 	ChamberNOK      int                 // davon NOK
 	ChamberParts    []chamberPartOption // Vorschlagsliste „Typ (Ersatzteil)“
@@ -323,6 +331,7 @@ func (h *Handler) InfraDetail(w http.ResponseWriter, r *http.Request) {
 	}
 	data.Today = time.Now().Format("2006-01-02")
 	data.EasyTexts = h.infraEasyTexts(ctx, id)
+	data.SetupTab = h.infraSetupTab(ctx, id)
 	if string(node.Type) == chamberType {
 		data.Chamber, data.ChamberNOK = h.chamberGroups(ctx, id)
 		if data.CanEditInfra {

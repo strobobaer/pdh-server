@@ -208,6 +208,11 @@ var gateRules = []gateRule{
 	// ── Rüstzeiten: anlegen, bearbeiten und beenden mit setup.edit (für den Datensatz in seiner Abteilung) ──
 	gr(wPost, permSetupEdit, "", false, `^/setup/?$`),
 	gr(wPost, permSetupEdit, setupRef, false, `^/setup`+gID+`/(?:edit|finish)-web$`),
+	gr(wPost, permSetupEdit, "", false, `^/core/settings/setup-web$`), // maximale Rüstzeit und Karenzzeit
+	// Katalog der Gründe und Rüsttasten (Stamm): Bereichsadministrator
+	gr(wPost, permSetupAdmin, "", false, `^/setup/(?:reasons-web|buttons-web|buttons`+gID+`/(?:move|delete)-web)$`),
+	// Zuordnung der Rüsttasten und Höchstdauer an der Anlage: Infrastruktur bearbeiten (in der Abteilung der Anlage)
+	gr(wPost, "infrastructure.edit", "infrastructure", false, `^/infrastructure`+gID+`/setup-(?:buttons|max)-web$`),
 	// ── Beteiligte, Gruppe, Archiv an beliebigen Vorgängen ──
 	gr(wPost, "edit", "*", true, `^/records/([a-z_]+)`+gID+`/(?:people|group|parties)(?:/.*)?$`),
 	gr(wPost, "done", "*", true, `^/records/([a-z_]+)`+gID+`/archive$`),

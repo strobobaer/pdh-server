@@ -1,0 +1,32 @@
+{{/* Rüstzeiten an der Anlage (setup_catalog.go): Reiter „Rüsttasten“ und Feld „Höchstdauer Rüsten“.
+     dict: T (setupInfraTab), ID (Anlage), CanEdit (infrastructure.edit) */}}
+{{define "setup-infra-tab"}}
+<div class="card">
+  <div class="card-title"><span><i class="ti ti-player-play"></i> Rüsttasten für den Easy-Modus</span><a class="card-action" href="/infrastructure#setup-catalog">Katalog →</a></div>
+  <p class="rec-sub" style="margin-bottom:10px">Angehakte Rüsttasten erscheinen nach dem QR-Scan. Sie gelten auch für alle Unteranlagen. Tasten mit <span class="badge b-blue">über …</span> gelten hier schon, weil sie an einer übergeordneten Anlage hängen.</p>
+  {{if .T.Buttons}}
+  <form method="post" action="/infrastructure/{{.ID}}/setup-buttons-web">
+    {{range .T.Buttons}}
+    <label class="rec-row" style="cursor:{{if $.CanEdit}}pointer{{else}}default{{end}}">
+      <input type="checkbox" name="button_id" value="{{.ID}}"{{if .Assigned}} checked{{end}}{{if not $.CanEdit}} disabled{{end}} style="width:20px;height:20px;flex-shrink:0">
+      <div class="grow"><b>{{.Name}}</b><div class="rec-sub">Grund: {{.ReasonName}}{{if not .Active}} · deaktiviert{{end}}</div></div>
+      {{if .InheritedFrom}}<span class="badge b-blue" title="Gilt hier schon, weil sie an „{{.InheritedFrom}}“ zugeordnet ist">über {{.InheritedFrom}}</span>{{end}}
+    </label>
+    {{end}}
+    {{if .CanEdit}}<button class="btn btn-primary btn-small" type="submit" style="margin-top:10px"><i class="ti ti-device-floppy"></i> Zuordnung speichern</button>{{end}}
+  </form>
+  {{else}}<div class="rec-sub" style="padding:6px 0 10px">Im Katalog gibt es noch keine Rüsttasten.</div>{{end}}
+</div>
+{{end}}
+
+{{define "setup-infra-max"}}
+<form class="card rec-form" method="post" action="/infrastructure/{{.ID}}/setup-max-web" style="margin-top:12px">
+  <div class="rec-sec" style="margin-top:0">Rüsten</div>
+  <div class="form-group"><label class="form-label">Höchstdauer Rüsten (Minuten)</label>
+    <input type="number" name="minutes" class="form-input" min="1" max="{{.T.GlobalMax}}" value="{{.T.OwnMax}}" placeholder="von oben erben">
+    <div class="rec-sub" style="margin-top:3px">Wirksam: <b>{{.T.MaxMinutes}} Minuten</b> – {{if eq .T.MaxSource "globaler Stamm"}}globaler Stamm{{else if .T.MaxOwn}}eigener Wert{{else}}über {{.T.MaxSource}}{{end}}. Höchstens {{.T.GlobalMax}} Minuten (maximale Rüstzeit in den Core-Einstellungen). Leer lassen, dann gilt der Wert der übergeordneten Anlage bzw. der globale Stamm. Gilt auch für alle Unteranlagen ohne eigenen Wert.</div></div>
+  <div style="display:flex;justify-content:flex-end;margin-top:8px">
+    <button class="btn btn-primary btn-small" type="submit"><i class="ti ti-device-floppy"></i> Höchstdauer speichern</button>
+  </div>
+</form>
+{{end}}

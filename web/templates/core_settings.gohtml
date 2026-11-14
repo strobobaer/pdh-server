@@ -177,6 +177,26 @@
     <p style="font-size:12px;color:var(--muted);margin:8px 0 0">Wer beim Anlegen ausdrücklich eingetragen wird – auch aus dem Wartungsplan –, bleibt. Bestehende Vorgänge ändern sich nicht.</p>
   </div>
 
+  {{if .CanSetupEdit}}
+  <div class="card" id="setup">
+    <div class="card-title">Rüstzeiten: Höchstdauer und Karenzzeit</div>
+    <p style="font-size:12px;color:var(--muted);margin:0 0 12px">Läuft eine Rüstzeit länger als die Höchstdauer und noch die Karenzzeit darüber hinaus, entsteht eine Störmeldung „Störung durch Rüsten“. Einzelne Anlagen dürfen eine kürzere Höchstdauer haben (Stammdaten der Anlage), keine längere.</p>
+    <form method="POST" action="/core/settings/setup-web">
+      <div class="grid2" style="gap:10px">
+        <div class="form-group">
+          <label class="form-label">Maximale Rüstzeit (Minuten)</label>
+          <input type="number" min="1" name="max_minutes" class="form-input" value="{{.SetupMaxMinutes}}" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Karenzzeit (Minuten)</label>
+          <input type="number" min="0" name="grace_minutes" class="form-input" value="{{.SetupGraceMinutes}}" required>
+        </div>
+      </div>
+      {{template "icon-button" (dict "Action" "save" "ShowLabel" true "Type" "submit" "Label" "Speichern")}}
+    </form>
+  </div>
+  {{end}}
+
   <div class="card">
     <div class="card-title">Easy-Mode: Melden per QR-Code ohne Anmeldung</div>
     <p style="font-size:12px;color:var(--muted);margin:0 0 12px">Wer den QR-Code einer Anlage scannt und nicht angemeldet ist, kommt auf eine einfache Meldeseite in der Sprache seines Handys: die letzten 5 Meldungen der Anlage und „Störung +“ / „Ticket +“. Die Meldung wird automatisch ins Deutsche übersetzt (Copilot). Ausgeschaltet führen QR-Codes zur Anmeldung.</p>
