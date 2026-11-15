@@ -193,7 +193,10 @@ func (s *Store) Units(ctx context.Context) ([]string, error) {
 	return out, rows.Err()
 }
 
-type meterRow struct{ id, key, infra, kind, formula string }
+type meterRow struct {
+	id, key, infra, kind, formula, mapping string
+	factor                                 float64
+}
 
 // lockAndLoad sperrt die Tabelle (Formeln dürfen nicht gleichzeitig einen
 // Zirkel bilden) und liest alle Messstellen.
@@ -201,7 +204,8 @@ func lockAndLoad(ctx context.Context, tx pgx.Tx) ([]meterRow, error) {
 	if _, err := tx.Exec(ctx, `LOCK TABLE energy_meters IN SHARE ROW EXCLUSIVE MODE`); err != nil {
 		return nil, err
 	}
-	rows, err := tx.Query(ctx, `SELECT id::text, meter_key, infrastructure_id::text, kind, formula FROM energy_meters`)
+	rows, err := tx.Query(ctx, `SELECT id::text, meter_key, infrastructure_id::text, kind, formula,
+		COALESCE(import_mapping_id::text, ''), factor FROM energy_meters`)
 	if err != nil {
 		return nil, err
 	}
@@ -209,12 +213,42 @@ func lockAndLoad(ctx context.Context, tx pgx.Tx) ([]meterRow, error) {
 	var out []meterRow
 	for rows.Next() {
 		var r meterRow
-		if err := rows.Scan(&r.id, &r.key, &r.infra, &r.kind, &r.formula); err != nil {
+		if err := rows.Scan(&r.id, &r.key, &r.infra, &r.kind, &r.formula, &r.mapping, &r.factor); err != nil {
 			return nil, err
 		}
 		out = append(out, r)
 	}
 	return out, rows.Err()
+}
+
+// dependents nennt die IDs aller berechneten Messstellen, die key direkt oder
+// über andere berechnete Messstellen verwenden.
+func dependents(rows []meterRow, key string) []string {
+	seen := map[string]bool{}
+	var out []string
+	queue := []string{key}
+	for len(queue) > 0 {
+		k := queue[0]
+		queue = queue[1:]
+		for _, r := range rows {
+			if r.formula == "" || seen[r.id] {
+				continue
+			}
+			f, err := ParseFormula(r.formula)
+			if err != nil {
+				continue
+			}
+			for _, ref := range f.Refs() {
+				if ref == k {
+					seen[r.id] = true
+					out = append(out, r.id)
+					queue = append(queue, r.key)
+					break
+				}
+			}
+		}
+	}
+	return out
 }
 
 // usersOf nennt die Messstellen (außer id), in deren Formel key vorkommt.
@@ -352,6 +386,9 @@ func (s *Store) Save(ctx context.Context, m *Meter, userID string) (created bool
 				export = $10, active = $11, updated_by = NULLIF($12, '')::uuid, updated_at = now()
 			WHERE id = $1::uuid`,
 			cur.id, key, m.Name, m.InfraID, m.SourceID, m.Formula, m.Unit, m.Kind, m.Factor, m.Export, m.Active, userID)
+		if err == nil {
+			err = rebaseDependents(ctx, tx, rows, cur, m, s.now())
+		}
 		m.ID = cur.id
 	} else {
 		created = true
@@ -366,6 +403,30 @@ func (s *Store) Save(ctx context.Context, m *Meter, userID string) (created bool
 	}
 	m.Key = key
 	return created, tx.Commit(ctx)
+}
+
+// rebaseDependents setzt die Basis der berechneten Messstellen auf die
+// laufende Minute, wenn sich bei cur Quelle, Faktor, Art oder Formel ändert:
+// bei allen, die cur direkt oder indirekt verwenden, und bei einer
+// geänderten Formel auch bei cur selbst. Sonst rechneten sie den Sprung
+// zwischen altem und neuem Wert als Verbrauch. Die Minute der Änderung hat
+// dann keinen Wert, danach geht es normal weiter.
+func rebaseDependents(ctx context.Context, tx pgx.Tx, rows []meterRow, cur *meterRow, m *Meter, now time.Time) error {
+	formulaChanged := cur.formula != m.Formula
+	sourceChanged := !strings.EqualFold(cur.mapping, m.SourceID) || cur.factor != m.Factor || cur.kind != m.Kind
+	if !formulaChanged && !sourceChanged {
+		return nil
+	}
+	ids := dependents(rows, cur.key)
+	if formulaChanged && m.Formula != "" {
+		ids = append(ids, cur.id)
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	_, err := tx.Exec(ctx, `UPDATE energy_meters SET base_at = $2 WHERE id = ANY($1::uuid[]) AND formula <> ''`,
+		ids, now.Truncate(time.Minute))
+	return err
 }
 
 // Delete löscht eine Messstelle samt Minutenwerten. Steht sie in einer

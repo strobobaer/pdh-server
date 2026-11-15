@@ -29,14 +29,56 @@ CREATE TABLE IF NOT EXISTS energy_meters (
     CHECK (formula = '' OR import_mapping_id IS NULL)
 );
 CREATE INDEX IF NOT EXISTS idx_energy_meters_infra ON energy_meters (infrastructure_id);
+-- Für die Lesungs-Erfassung (Trigger unten) und das Löschen einer Zuordnung.
+CREATE INDEX IF NOT EXISTS idx_energy_meters_mapping ON energy_meters (import_mapping_id) WHERE import_mapping_id IS NOT NULL;
 
 -- ── Minutenwerte ──────────────────────────────────────────────────────────
+-- ts ist der Minutenanfang: der Wert gilt für die Minute [ts, ts + 1 min).
 CREATE TABLE IF NOT EXISTS energy_values (
     meter_id UUID NOT NULL REFERENCES energy_meters(id) ON DELETE CASCADE,
     ts       TIMESTAMPTZ NOT NULL,
     value    DOUBLE PRECISION NOT NULL,
     PRIMARY KEY (meter_id, ts)
 );
+-- Für das tägliche Aufräumen (DELETE … WHERE ts < …). Die Werte kommen
+-- zeitlich geordnet herein, ein BRIN-Index bleibt dafür sehr klein.
+CREATE INDEX IF NOT EXISTS idx_energy_values_ts ON energy_values USING brin (ts);
+
+-- ── Lesungen der Quellen ──────────────────────────────────────────────────
+-- Jede Lesung einer Import-Zuordnung, die eine aktive Messstelle speist, wird
+-- hier festgehalten (Trigger auf import_mappings). Eine Zuordnung hält selbst
+-- nur die letzte Lesung; so geht keine verloren, auch wenn die Quelle öfter
+-- als einmal je Minute liefert. counted: bei Verbrauch schon gezählt.
+-- Der Minutentakt löscht Lesungen, die nicht mehr gebraucht werden.
+CREATE TABLE IF NOT EXISTS energy_readings (
+    id          BIGSERIAL PRIMARY KEY,
+    mapping_id  UUID NOT NULL REFERENCES import_mappings(id) ON DELETE CASCADE,
+    received_at TIMESTAMPTZ NOT NULL,
+    raw         TEXT NOT NULL,
+    counted     BOOLEAN NOT NULL DEFAULT false
+);
+CREATE INDEX IF NOT EXISTS idx_energy_readings_mapping ON energy_readings (mapping_id, received_at);
+CREATE INDEX IF NOT EXISTS idx_energy_readings_received ON energy_readings (received_at);
+
+CREATE OR REPLACE FUNCTION energy_capture_reading() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+    IF NEW.last_received_at IS NOT NULL AND NEW.last_value IS NOT NULL
+       AND (NEW.last_received_at IS DISTINCT FROM OLD.last_received_at
+            OR NEW.last_value IS DISTINCT FROM OLD.last_value)
+       AND EXISTS (SELECT 1 FROM energy_meters
+                    WHERE import_mapping_id = NEW.id AND active) THEN
+        INSERT INTO energy_readings (mapping_id, received_at, raw)
+        VALUES (NEW.id, NEW.last_received_at, NEW.last_value);
+    END IF;
+    RETURN NEW;
+END
+$$;
+
+DROP TRIGGER IF EXISTS trg_energy_capture_reading ON import_mappings;
+CREATE TRIGGER trg_energy_capture_reading
+    AFTER UPDATE OF last_value, last_received_at ON import_mappings
+    FOR EACH ROW EXECUTE FUNCTION energy_capture_reading();
 
 -- ── Efficio-Export ────────────────────────────────────────────────────────
 -- Bis wohin je Verbindung schon exportiert wurde.

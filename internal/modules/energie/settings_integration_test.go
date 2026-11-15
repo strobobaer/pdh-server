@@ -104,6 +104,9 @@ func TestSettingsUsedBySamplerListAndPurge(t *testing.T) {
 	if stale() != 0 {
 		t.Error("Liste nutzt die gespeicherte Frist nicht")
 	}
+	// last_at zurücksetzen, sonst holt der Lauf die Minuten seit dem gesetzten Wert nach.
+	_, err = pool.Exec(ctx, `UPDATE energy_meters SET last_at = NULL WHERE id = $1::uuid`, id)
+	must(t, err)
 	if stored, _, err := sm.Pass(ctx, minute); err != nil || stored != 1 {
 		t.Errorf("Sampler nutzt die gespeicherte Frist nicht: abgelegt %d, %v", stored, err)
 	}
