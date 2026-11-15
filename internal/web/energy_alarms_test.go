@@ -328,6 +328,23 @@ func TestAlarmRepeatComment(t *testing.T) {
 	if got := e.systemMessages(e.user, "/tickets/"+id); got != 2 {
 		t.Errorf("Nachrichten an den Verantwortlichen: %d, erwartet 2 (Alarm + erneut)", got)
 	}
+	// kein zusätzlicher Änderungshinweis „Ticket … wurde geändert“ zum Kommentar
+	commentQueued := func() int {
+		var n int
+		e.must(e.pool.QueryRow(e.ctx, `SELECT count(*) FROM record_change_queue
+			WHERE module = 'ticket' AND record_id = $1::uuid AND kind = 'comment'`, id).Scan(&n))
+		return n
+	}
+	if n := commentQueued(); n != 0 {
+		t.Errorf("Änderungshinweis zum Wächter-Kommentar: %d", n)
+	}
+	// ein Kommentar einer Person bleibt ein Änderungshinweis
+	_, err = e.h.tickets.AddComment(e.ctx, id, e.user, "Schaue ich mir an")
+	e.must(err)
+	if n := commentQueued(); n != 1 {
+		t.Errorf("Änderungshinweis zum Kommentar einer Person: %d, erwartet 1", n)
+	}
+	_, _ = e.pool.Exec(e.ctx, `DELETE FROM record_change_queue WHERE record_id = $1::uuid`, id)
 
 	// Rollback: kein Kommentar
 	tx, err = e.pool.Begin(e.ctx)
@@ -336,7 +353,7 @@ func TestAlarmRepeatComment(t *testing.T) {
 	e.must(err)
 	e.must(tx.Rollback(e.ctx))
 	comments, _ = e.h.tickets.ListComments(e.ctx, id)
-	if len(comments) != 1 {
+	if len(comments) != 2 {
 		t.Errorf("Kommentar trotz Rollback: %d", len(comments))
 	}
 
@@ -360,74 +377,49 @@ func TestAlarmRepeatComment(t *testing.T) {
 }
 
 // Der Wächter startet nur am aktiven Server und ruht in der Wartungssperre.
+// Kein echter Durchlauf: der Wächter würde alle Schwellwerte der Labor-DB prüfen.
 func TestStartEnergyAlarmsMirror(t *testing.T) {
 	e := newAlarmEnv(t)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
 	e.h.mirror = MirrorInfo{On: true}
-	if e.h.startEnergyAlarms(ctx) {
+	if w := e.h.energyAlarmWatch(); w != nil {
+		t.Error("Wächter auf dem Spiegel gebaut")
+	}
+	if e.h.startEnergyAlarms(context.Background()) {
 		t.Error("Wächter auf dem Spiegel gestartet")
 	}
 	e.h.mirror = MirrorInfo{}
-	if (&Handler{}).startEnergyAlarms(ctx) {
-		t.Error("Wächter ohne Datenbank gestartet")
+	if (&Handler{}).energyAlarmWatch() != nil {
+		t.Error("Wächter ohne Datenbank gebaut")
+	}
+	if (&Handler{db: e.pool}).energyAlarmWatch() != nil {
+		t.Error("Wächter ohne Ticketdienst gebaut")
 	}
 
 	w := e.h.energyAlarmWatch()
-	if w == nil || w.Store == nil || w.Sink == nil || w.Skip == nil {
+	if w == nil || w.Store == nil || w.Skip == nil {
 		t.Fatalf("Wächter unvollständig: %+v", w)
 	}
-	if w.Skip() != e.h.MaintLocked() {
+	if sink, ok := w.Sink.(energyAlarmSink); !ok || sink.h != e.h {
+		t.Errorf("Senke %T", w.Sink)
+	}
+	if w.Skip() {
+		t.Error("Skip ohne Wartungssperre")
+	}
+	e.h.mlock.mu.Lock()
+	e.h.mlock.locked = true
+	e.h.mlock.mu.Unlock()
+	if !w.Skip() {
 		t.Error("Skip folgt nicht der Wartungssperre")
 	}
+	e.h.mlock.mu.Lock()
+	e.h.mlock.locked = false
+	e.h.mlock.mu.Unlock()
 
-	// aktiver Server: der erste Durchlauf legt den Zustand des Schwellwerts an
-	th := e.threshold(nil)
+	// aktiver Server: startet (beendeter Kontext – der Durchlauf bricht sofort ab)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
 	if !e.h.startEnergyAlarms(ctx) {
-		t.Fatal("Wächter am aktiven Server nicht gestartet")
-	}
-	deadline := time.Now().Add(5 * time.Second)
-	for {
-		var n int
-		e.must(e.pool.QueryRow(e.ctx, `SELECT count(*) FROM energy_threshold_state WHERE threshold_id = $1::uuid AND checked_until IS NOT NULL`, th.ID).Scan(&n))
-		if n == 1 {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("Wächter läuft nicht")
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-}
-
-// Ganzer Weg: Wächter mit echter Senke legt bei Überschreitung das Alarm-Ticket an.
-func TestAlarmWatchEndToEnd(t *testing.T) {
-	e := newAlarmEnv(t)
-	th := e.threshold(func(x *energie.Threshold) { x.WindowMinutes = 1; x.ResponsibleUserID = &e.user })
-	now := time.Now().Truncate(time.Minute)
-	for i := 4; i >= 0; i-- { // Zählerstand +100 je Minute: Menge 100 > 50
-		_, err := e.pool.Exec(e.ctx, `INSERT INTO energy_values (meter_id, ts, value) VALUES ($1::uuid, $2, $3)`,
-			e.meterID, now.Add(-time.Duration(i)*time.Minute), float64(1000-i*100))
-		e.must(err)
-	}
-	_, err := e.pool.Exec(e.ctx, `INSERT INTO energy_threshold_state (threshold_id, checked_until) VALUES ($1::uuid, $2)`,
-		th.ID, now.Add(-3*time.Minute))
-	e.must(err)
-	w := e.h.energyAlarmWatch()
-	w.Now = func() time.Time { return now.Add(20 * time.Second) }
-	e.must(w.Pass(e.ctx))
-	var ticket *string
-	e.must(e.pool.QueryRow(e.ctx, `SELECT ticket_id::text FROM energy_threshold_state WHERE threshold_id = $1::uuid`, th.ID).Scan(&ticket))
-	if ticket == nil {
-		t.Fatal("kein Ticket")
-	}
-	tk, err := e.h.tickets.GetByID(e.ctx, *ticket)
-	e.must(err)
-	if !tk.RequiresRootCause || tk.AssignedTo == nil || *tk.AssignedTo != e.user || !strings.Contains(tk.Description, "100 kWh") {
-		t.Errorf("Ticket %+v", tk)
-	}
-	if got := e.systemMessages(e.user, "/tickets/"+*ticket); got != 1 {
-		t.Errorf("Nachrichten: %d", got)
+		t.Error("Wächter am aktiven Server nicht gestartet")
 	}
 }

@@ -24,8 +24,12 @@ import (
 // energyAlarmSink setzt Alarme in Tickets und Nachrichten um (energie.AlarmSink).
 type energyAlarmSink struct{ h *Handler }
 
-// energyAlarmWatch baut den Wächter; ohne Datenbank oder Ticketdienst nil.
+// energyAlarmWatch baut den Wächter; nil auf dem Spiegel sowie ohne Datenbank
+// oder Ticketdienst. In der Wartungssperre setzt er aus (Skip).
 func (h *Handler) energyAlarmWatch() *energie.AlarmWatch {
+	if h.Mirror().On {
+		return nil
+	}
 	st := h.energyStore()
 	if st == nil || h.tickets == nil {
 		return nil
@@ -40,13 +44,9 @@ func (h *Handler) StartEnergyAlarms(ctx context.Context) {
 }
 
 func (h *Handler) startEnergyAlarms(ctx context.Context) bool {
-	if h.Mirror().On {
-		log.Info().Msg("energiedaten: schwellwerte nicht gestartet (spiegelserver)")
-		return false
-	}
 	w := h.energyAlarmWatch()
 	if w == nil {
-		log.Warn().Msg("energiedaten: schwellwerte nicht gestartet (keine datenbank oder kein ticketdienst)")
+		log.Info().Bool("spiegel", h.Mirror().On).Msg("energiedaten: schwellwerte nicht gestartet (spiegelserver, keine datenbank oder kein ticketdienst)")
 		return false
 	}
 	go w.Start(ctx)
@@ -233,6 +233,14 @@ func (s energyAlarmSink) Repeat(ctx context.Context, tx pgx.Tx, ev energie.Alarm
 	text := fmt.Sprintf("Erneut %s am %s – Wert %s, Grenze %s", alarmVerb(t), alarmTime(ev.At),
 		alarmAmount(t, ev.Value), alarmAmount(t, t.Limit))
 	if _, err := h.tickets.AddCommentTx(ctx, tx, ev.TicketID, pdhSystemUserID, text); err != nil {
+		return nil, err
+	}
+	// Der Kommentar erzeugt per Trigger einen Änderungshinweis („Ticket … wurde
+	// geändert“). Die Nachricht kommt hier vom Wächter: genau diesen Eintrag
+	// (in dieser Transaktion angelegt) wieder herausnehmen.
+	if _, err := tx.Exec(ctx, `DELETE FROM record_change_queue
+		WHERE module = 'ticket' AND record_id = $1::uuid AND kind = 'comment'
+		  AND xmin = pg_current_xact_id()::xid AND note = left($2, 200)`, ev.TicketID, text); err != nil {
 		return nil, err
 	}
 	body := fmt.Sprintf("🔁 Schwellwert **%s** an %s: %s.\n/tickets/%s", t.Name, alarmMeterName(t), text, ev.TicketID)

@@ -26,11 +26,21 @@ type fakeSink struct {
 	at      map[string][]time.Time
 	repTkt  map[string][]string
 	fail    map[string]bool
+	tickets []string // angelegte Tickets, nach dem Test gelöscht
 }
 
-func newFakeSink() *fakeSink {
-	return &fakeSink{opens: map[string]int{}, repeats: map[string]int{}, afters: map[string]int{},
+func newFakeSink(t *testing.T, s *Store) *fakeSink {
+	f := &fakeSink{opens: map[string]int{}, repeats: map[string]int{}, afters: map[string]int{},
 		at: map[string][]time.Time{}, repTkt: map[string][]string{}, fail: map[string]bool{}}
+	t.Cleanup(func() {
+		f.mu.Lock()
+		ids := f.tickets
+		f.mu.Unlock()
+		if len(ids) > 0 {
+			_, _ = s.DB.Exec(context.Background(), `DELETE FROM tickets WHERE id = ANY($1::uuid[])`, ids)
+		}
+	})
+	return f
 }
 
 func (f *fakeSink) after(id string) func() {
@@ -44,10 +54,11 @@ func (f *fakeSink) OpenTicket(ctx context.Context, tx pgx.Tx, ev AlarmEvent) (st
 		return "", nil, errors.New("Ticket kaputt")
 	}
 	var id string
-	if err := tx.QueryRow(ctx, `INSERT INTO tickets (title, created_by) VALUES ('Alarm-Test', $1) RETURNING id::text`,
+	if err := tx.QueryRow(ctx, `INSERT INTO tickets (title, description, created_by) VALUES ('Alarm-Test', '', $1) RETURNING id::text`,
 		alarmUser).Scan(&id); err != nil {
 		return "", nil, err
 	}
+	f.tickets = append(f.tickets, id)
 	f.opens[ev.Threshold.ID]++
 	f.at[ev.Threshold.ID] = append(f.at[ev.Threshold.ID], ev.At)
 	return id, f.after(ev.Threshold.ID), nil
@@ -81,7 +92,7 @@ func watchEnv(t *testing.T) (*Store, *Threshold, *fakeSink, *AlarmWatch) {
 	th := okThreshold(meter)
 	th.WindowMinutes = 1
 	must(t, s.SaveThreshold(context.Background(), th))
-	sink := newFakeSink()
+	sink := newFakeSink(t, s)
 	return s, th, sink, &AlarmWatch{Store: s, Sink: sink, Now: func() time.Time { return wNow }}
 }
 
@@ -384,7 +395,7 @@ func TestWatchInactiveResetsAlarm(t *testing.T) {
 		t.Fatalf("Alarm erwartet: %+v", st)
 	}
 	ticket := *st.ticket
-	sink = newFakeSink()
+	sink = newFakeSink(t, s)
 	w.Sink = sink
 
 	_, err := s.DB.Exec(ctx, `UPDATE energy_meters SET active = false WHERE id = $1::uuid`, th.MeterID)

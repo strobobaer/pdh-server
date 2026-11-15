@@ -144,7 +144,7 @@ func insertTicket(ctx context.Context, q rowQuerier, t *Ticket) error {
 func (r *Repository) GetByID(ctx context.Context, id string) (*Ticket, error) {
 	t := &Ticket{}
 	var tags []byte
-	query := `SELECT t.id, t.title, t.description, t.priority, t.status, t.assigned_to, t.responsible_to,
+	query := `SELECT t.id, t.title, COALESCE(t.description, ''), t.priority, t.status, t.assigned_to, t.responsible_to,
 		t.created_by, t.infrastructure_id, t.record_image_attachment_id, t.due_date, t.resolved_at, t.archived_at, t.created_at, t.updated_at, t.tags,
 		t.cost_center_id, COALESCE(cc.number,''), COALESCE(cc.name,''), t.assigned_group_id::text, t.requires_root_cause
 		FROM tickets t
@@ -164,7 +164,7 @@ func (r *Repository) GetByID(ctx context.Context, id string) (*Ticket, error) {
 }
 
 func (r *Repository) List(ctx context.Context, status Status) ([]*Ticket, error) {
-	query := `SELECT t.id, t.title, t.description, t.priority, t.status, t.assigned_to, t.responsible_to,
+	query := `SELECT t.id, t.title, COALESCE(t.description, ''), t.priority, t.status, t.assigned_to, t.responsible_to,
 		t.created_by, t.infrastructure_id, t.due_date, t.archived_at, t.created_at, t.updated_at, t.tags,
 		t.cost_center_id, COALESCE(cc.number,''), COALESCE(cc.name,''), t.assigned_group_id::text, t.requires_root_cause
 		FROM tickets t
