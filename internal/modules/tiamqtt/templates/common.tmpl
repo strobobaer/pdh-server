@@ -172,6 +172,7 @@ VERSION : 0.1
 //[-]d.ddd…E±XX, Exponent mit mindestens zwei Ziffern. NaN, ±unendlich und Beträge über maxAbs als null.
 //Gerundet wird zur nächsten Zahl, bei genau der Mitte zur geraden. Für Beträge von 1E-8 bis 1E36
 //wird der Rundungsfehler exakt mitgerechnet (Dekker); außerhalb kann die letzte Stelle selten abweichen.
+//Gleich halten mit sclNum in generate_test.go (Go-Nachbau dieses Ablaufs).
    VAR_INPUT
       x : LReal;
       digits : Int;   // 7 für Real, 15 für LReal

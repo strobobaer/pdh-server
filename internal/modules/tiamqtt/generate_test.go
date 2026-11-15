@@ -145,7 +145,7 @@ func TestGenerateStandaloneGolden(t *testing.T) {
 
 func TestZipContents(t *testing.T) {
 	files := generateDaten(t, goldenOptions())
-	want := []string{"1_PDH_Daten_Typ.udt", "2_PDH_MQTT_Daten.scl", "3_PDH_Daten_Konfig.db", "4_Daten_aus_Typ.db", "LIESMICH.txt"}
+	want := []string{"1_PDH_Daten_Typ.udt", "2_PDH_Daten_Konfig.db", "3_PDH_MQTT_Daten.scl", "4_Daten_aus_Typ.db", "LIESMICH.txt"}
 	b, err := Zip(files)
 	if err != nil {
 		t.Fatal(err)
@@ -233,7 +233,7 @@ func TestGenerateNoRawUserText(t *testing.T) {
 			t.Errorf("%s fehlt", masked)
 		}
 	}
-	scl := fileByName(t, files, "2_PDH_MQTT_Daten.scl")
+	scl := fileByName(t, files, "3_PDH_MQTT_Daten.scl")
 	if n := countLines(scl, "END_FUNCTION_BLOCK"); n != 1 {
 		t.Errorf("%d Zeilen END_FUNCTION_BLOCK, erwartet 1", n)
 	}
@@ -242,7 +242,7 @@ func TestGenerateNoRawUserText(t *testing.T) {
 	}
 	for _, f := range files {
 		for _, l := range sclLines(string(f.Content)) {
-			if l == "END_FUNCTION_BLOCK" && f.Name != "2_PDH_MQTT_Daten.scl" {
+			if l == "END_FUNCTION_BLOCK" && f.Name != "3_PDH_MQTT_Daten.scl" {
 				t.Errorf("%s: END_FUNCTION_BLOCK als eigene Zeile", f.Name)
 			}
 		}
@@ -273,14 +273,14 @@ func TestGeneratePasswordPlaceholder(t *testing.T) {
 		t.Error("Platzhalter fehlt")
 	}
 	o.IncludePassword = true
-	db := fileByName(t, generateDaten(t, o), "3_PDH_Daten_Konfig.db")
+	db := fileByName(t, generateDaten(t, o), "2_PDH_Daten_Konfig.db")
 	if !strings.Contains(db, "'Sehr-Geheim-42'") {
 		t.Error("Kennwort fehlt trotz IncludePassword")
 	}
 }
 
 func TestStandalonePacketConstants(t *testing.T) {
-	scl := fileByName(t, generateDaten(t, goldenOptions()), "2_PDH_MQTT_Daten.scl")
+	scl := fileByName(t, generateDaten(t, goldenOptions()), "3_PDH_MQTT_Daten.scl")
 	for _, want := range []string{
 		":= 16#10;", "'MQTT'", "16#04", "16#02", "OR 16#80", "OR 16#40",
 		":= 16#30;", "OR 16#01", "16#C0", "16#E0", "MOD 128", "TCON_IP_v4",
@@ -309,7 +309,7 @@ func TestStandalonePacketConstants(t *testing.T) {
 }
 
 func TestStandaloneHeartbeatNoRetain(t *testing.T) {
-	scl := fileByName(t, generateDaten(t, goldenOptions()), "2_PDH_MQTT_Daten.scl")
+	scl := fileByName(t, generateDaten(t, goldenOptions()), "3_PDH_MQTT_Daten.scl")
 	m := regexp.MustCompile(`(?s)// --- Heartbeat ---(.*?)// --- Ende Heartbeat ---`).FindStringSubmatch(scl)
 	if m == nil {
 		t.Fatal("Heartbeat-Abschnitt nicht gefunden")
@@ -363,20 +363,20 @@ func TestGenerateDefaults(t *testing.T) {
 	o := goldenOptions()
 	o.BrokerPort, o.KeepAliveSeconds, o.HwID, o.ConnID = 0, 0, 0, 0
 	files := generateDaten(t, o)
-	db := fileByName(t, files, "3_PDH_Daten_Konfig.db")
+	db := fileByName(t, files, "2_PDH_Daten_Konfig.db")
 	for _, want := range []string{"brokerPort : UInt := 1883;", "keepAlive : UInt := 60;", "retain : Bool := FALSE;", "heartbeatTopic : String[254] := 'sps/linie1/Daten/heartbeat';"} {
 		if !strings.Contains(db, want) {
 			t.Errorf("Konfig-DB ohne %q", want)
 		}
 	}
-	scl := fileByName(t, files, "2_PDH_MQTT_Daten.scl")
+	scl := fileByName(t, files, "3_PDH_MQTT_Daten.scl")
 	for _, want := range []string{"hwId : HW_ANY := 64;", "connId : CONN_OUC := 1;", "heartbeatInterval : Time := T#60s;"} {
 		if !strings.Contains(scl, want) {
 			t.Errorf("FB ohne %q", want)
 		}
 	}
 	o.HeartbeatSeconds = 0
-	if scl := fileByName(t, generateDaten(t, o), "2_PDH_MQTT_Daten.scl"); !strings.Contains(scl, "heartbeatInterval : Time := T#0s;") {
+	if scl := fileByName(t, generateDaten(t, o), "3_PDH_MQTT_Daten.scl"); !strings.Contains(scl, "heartbeatInterval : Time := T#0s;") {
 		t.Error("Heartbeat 0 nicht als T#0s")
 	}
 }
@@ -454,9 +454,9 @@ func TestGenerateReadme(t *testing.T) {
 
 // ---------------------------------------------------------------- Zahlen
 
-// sclNum bildet den Ablauf von "PDH_J_Num" in Go nach (nur LReal-Rechnung
-// ohne fused multiply-add) und zeigt, dass er wie strconv.FormatFloat
-// rundet.
+// sclNum bildet den Ablauf von "PDH_J_Num" in Go nach – gleich halten mit
+// PDH_J_Num in templates/common.tmpl. Nur LReal-Rechnung ohne fused
+// multiply-add; zeigt, dass der Ablauf wie strconv.FormatFloat rundet.
 func sclNum(x float64, digits int, maxAbs float64) string {
 	if !(math.Abs(x) <= maxAbs) {
 		return "null"
@@ -671,4 +671,38 @@ func TestSCLNumberMatchesRender(t *testing.T) {
 		t.Errorf("LReal: %d Abweichungen im Bereich 1E-8 … 1E36", exactMisses)
 	}
 	t.Logf("LReal: %d von %d Werten außerhalb 1E-8 … 1E36 in der letzten Stelle anders", misses, len(edgeL))
+}
+
+func TestStandalonePingOutSetWhenQueued(t *testing.T) {
+	scl := fileByName(t, generateDaten(t, goldenOptions()), "3_PDH_MQTT_Daten.scl")
+	// beim Einreihen in "bereit" gesetzt …
+	if !regexp.MustCompile(`ELSIF #tmrPing\.Q THEN\s*(//[^\r\n]*\s*)*#buildKind := 4;\s*#pingOut := TRUE;`).MatchString(scl) {
+		t.Error("pingOut wird nicht beim Einreihen des PINGREQ gesetzt")
+	}
+	// … und nur dort; im DONE-Zweig nicht
+	if n := strings.Count(scl, "#pingOut := TRUE;"); n != 1 {
+		t.Errorf("%d Stellen setzen pingOut, erwartet 1", n)
+	}
+	done := regexp.MustCompile(`(?s)ELSIF #instTSEND\.DONE THEN(.*?)END_CASE;`).FindStringSubmatch(scl)
+	if done == nil || strings.Contains(done[1], "#pingOut") {
+		t.Error("DONE-Zweig setzt pingOut")
+	}
+}
+
+func TestGenerateClientIDTooLong(t *testing.T) {
+	db := loadDaten(t)
+	l, err := Plan(db, FamilyS71500, DefaultLimit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	o := goldenOptions()
+	o.ClientID = ""
+	db.Name = strings.Repeat("Ä", 128) + strings.Repeat("x", 128)
+	if _, err := Generate(db, l, o); err == nil || err.Error() != msgClientIDLong {
+		t.Errorf("Fehler %v", err)
+	}
+	o.ClientID = strings.Repeat("c", 255)
+	if _, err := Generate(loadDaten(t), l, o); err == nil || err.Error() != msgClientIDLong {
+		t.Errorf("Fehler %v", err)
+	}
 }

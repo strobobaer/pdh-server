@@ -343,7 +343,10 @@ BEGIN
 	                    #buildKind := 3;
 	                END_IF;
 	            ELSIF #tmrPing.Q THEN
-	                #buildKind := 4;   // PINGREQ
+	                // PINGREQ: pingOut schon hier setzen – die PINGRESP kann im selben Zyklus
+	                // wie das DONE von TSEND ankommen und darf das Kennzeichen dann nicht verpassen
+	                #buildKind := 4;
+	                #pingOut := TRUE;
 	            END_IF;
 
 	        4:  // senden, je Zyklus höchstens ein TSEND-Auftrag
@@ -377,8 +380,7 @@ BEGIN
 	                        #heartbeatCount := #heartbeatCount + 1;
 	                        #hbDue := FALSE;
 	                        #state := 3;
-	                    4:  // PINGREQ
-	                        #pingOut := TRUE;
+	                    4:  // PINGREQ (pingOut ist schon beim Einreihen gesetzt)
 	                        #state := 3;
 	                    ELSE  // DISCONNECT
 	                        #state := 5;
@@ -647,8 +649,8 @@ Erzeugt vom PDH{{with .O.GeneratedBy}} ({{text .}}){{end}} am {{.At}}
 
 DATEIEN
   1_PDH_{{.Base}}_Typ.udt       PLC-Datentyp {{.TypeName}} mit den gesendeten Variablen
-  2_PDH_MQTT_{{.Base}}.scl      Hilfsbausteine "PDH_J_…" und Funktionsbaustein {{.FBName}}
-  3_PDH_{{.Base}}_Konfig.db     Einstellungen {{.KonfigName}} und Puffer {{.PufferName}}
+  2_PDH_{{.Base}}_Konfig.db     Einstellungen {{.KonfigName}} und Puffer {{.PufferName}}
+  3_PDH_MQTT_{{.Base}}.scl      Hilfsbausteine "PDH_J_…" und Funktionsbaustein {{.FBName}}
   4_{{.Base}}_aus_Typ.db        Ersatz für den eigenen Datenbaustein "{{text .DB}}" auf Basis des Datentyps
 
 SO GEHT'S
@@ -656,8 +658,7 @@ SO GEHT'S
      hinzufügen.
   2. Den bisherigen Datenbaustein "{{text .DB}}" umbenennen oder löschen – Datei 4 legt ihn
      mit denselben Variablen neu an.
-  3. „Bausteine aus Quelle generieren“ in dieser Reihenfolge: 1, dann 3, dann 2, dann 4.
-     (Der Funktionsbaustein braucht den Datentyp und die Datenbausteine aus Datei 3.)
+  3. „Bausteine aus Quelle generieren“ in dieser Reihenfolge: 1, 2, 3, 4.
   4. In {{.KonfigName}} Broker, Benutzer und Kennwort prüfen.
      Steht dort {{.Placeholder}}, das Kennwort des Brokers eintragen.
   5. Den Baustein in OB1 aufrufen, z. B.:
@@ -667,7 +668,11 @@ SO GEHT'S
   6. hwId: Hardware-Kennung der PROFINET-Schnittstelle (Gerätekonfiguration → Schnittstelle →
      Eigenschaften → Hardware-Kennung; meist 64). connId muss in der Steuerung eindeutig sein.
   7. Übersetzen, laden. Im PDH an der MQTT-Verbindung prüfen, ob Werte ankommen.
-  Der Baustein nutzt Array[*] in den Hilfsbausteinen: S7-1200 ab Firmware 4.2.
+  S7-1200: erst ab Firmware 4.2 (die Hilfsbausteine nutzen Array[*]).
+  Client-ID: MQTT 3.1.1 sichert nur 23 Zeichen zu; der PDH-Broker und Mosquitto nehmen
+  auch längere.
+  LReal-Werte: außerhalb von etwa 1E-8 bis 1E36 kann die 15. Stelle vom genauen Wert
+  abweichen (der Wert bleibt bis auf etwa 1E-15 gleich).
   Je Steuerung nur einmal aufrufen (der Puffer {{.PufferName}} gehört zu diesem Aufruf).
 
 ABLAUF

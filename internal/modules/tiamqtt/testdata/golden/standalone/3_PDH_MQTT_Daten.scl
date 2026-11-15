@@ -151,6 +151,7 @@ VERSION : 0.1
 //[-]d.ddd…E±XX, Exponent mit mindestens zwei Ziffern. NaN, ±unendlich und Beträge über maxAbs als null.
 //Gerundet wird zur nächsten Zahl, bei genau der Mitte zur geraden. Für Beträge von 1E-8 bis 1E36
 //wird der Rundungsfehler exakt mitgerechnet (Dekker); außerhalb kann die letzte Stelle selten abweichen.
+//Gleich halten mit sclNum in generate_test.go (Go-Nachbau dieses Ablaufs).
    VAR_INPUT
       x : LReal;
       digits : Int;   // 7 für Real, 15 für LReal
@@ -888,7 +889,10 @@ BEGIN
 	                    #buildKind := 3;
 	                END_IF;
 	            ELSIF #tmrPing.Q THEN
-	                #buildKind := 4;   // PINGREQ
+	                // PINGREQ: pingOut schon hier setzen – die PINGRESP kann im selben Zyklus
+	                // wie das DONE von TSEND ankommen und darf das Kennzeichen dann nicht verpassen
+	                #buildKind := 4;
+	                #pingOut := TRUE;
 	            END_IF;
 
 	        4:  // senden, je Zyklus höchstens ein TSEND-Auftrag
@@ -922,8 +926,7 @@ BEGIN
 	                        #heartbeatCount := #heartbeatCount + 1;
 	                        #hbDue := FALSE;
 	                        #state := 3;
-	                    4:  // PINGREQ
-	                        #pingOut := TRUE;
+	                    4:  // PINGREQ (pingOut ist schon beim Einreihen gesetzt)
 	                        #state := 3;
 	                    ELSE  // DISCONNECT
 	                        #state := 5;

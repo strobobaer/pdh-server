@@ -7,8 +7,8 @@ Erzeugt vom PDH (PDH-Test) am 2026-11-15 10:00 UTC
 
 DATEIEN
   1_PDH_Daten_Typ.udt       PLC-Datentyp "PDH_Daten_Typ" mit den gesendeten Variablen
-  2_PDH_MQTT_Daten.scl      Hilfsbausteine "PDH_J_…" und Funktionsbaustein "PDH_MQTT_Daten"
-  3_PDH_Daten_Konfig.db     Einstellungen "PDH_Daten_Konfig" und Puffer "PDH_Daten_Puffer"
+  2_PDH_Daten_Konfig.db     Einstellungen "PDH_Daten_Konfig" und Puffer "PDH_Daten_Puffer"
+  3_PDH_MQTT_Daten.scl      Hilfsbausteine "PDH_J_…" und Funktionsbaustein "PDH_MQTT_Daten"
   4_Daten_aus_Typ.db        Ersatz für den eigenen Datenbaustein "Daten" auf Basis des Datentyps
 
 SO GEHT'S
@@ -16,8 +16,7 @@ SO GEHT'S
      hinzufügen.
   2. Den bisherigen Datenbaustein "Daten" umbenennen oder löschen – Datei 4 legt ihn
      mit denselben Variablen neu an.
-  3. „Bausteine aus Quelle generieren“ in dieser Reihenfolge: 1, dann 3, dann 2, dann 4.
-     (Der Funktionsbaustein braucht den Datentyp und die Datenbausteine aus Datei 3.)
+  3. „Bausteine aus Quelle generieren“ in dieser Reihenfolge: 1, 2, 3, 4.
   4. In "PDH_Daten_Konfig" Broker, Benutzer und Kennwort prüfen.
      Steht dort PASSWORT_EINTRAGEN, das Kennwort des Brokers eintragen.
   5. Den Baustein in OB1 aufrufen, z. B.:
@@ -27,7 +26,11 @@ SO GEHT'S
   6. hwId: Hardware-Kennung der PROFINET-Schnittstelle (Gerätekonfiguration → Schnittstelle →
      Eigenschaften → Hardware-Kennung; meist 64). connId muss in der Steuerung eindeutig sein.
   7. Übersetzen, laden. Im PDH an der MQTT-Verbindung prüfen, ob Werte ankommen.
-  Der Baustein nutzt Array[*] in den Hilfsbausteinen: S7-1200 ab Firmware 4.2.
+  S7-1200: erst ab Firmware 4.2 (die Hilfsbausteine nutzen Array[*]).
+  Client-ID: MQTT 3.1.1 sichert nur 23 Zeichen zu; der PDH-Broker und Mosquitto nehmen
+  auch längere.
+  LReal-Werte: außerhalb von etwa 1E-8 bis 1E36 kann die 15. Stelle vom genauen Wert
+  abweichen (der Wert bleibt bis auf etwa 1E-15 gleich).
   Je Steuerung nur einmal aufrufen (der Puffer "PDH_Daten_Puffer" gehört zu diesem Aufruf).
 
 ABLAUF

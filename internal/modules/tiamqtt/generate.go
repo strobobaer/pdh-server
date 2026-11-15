@@ -60,18 +60,19 @@ const (
 	rxSize         = 64
 	txExtra        = 1 + 3 + 2 + maxConfigBytes + 1 // Kopf, Restlänge, Topic-Länge, Topic, Reserve
 
-	msgNoTLS      = "Die eigenständige Variante kann kein TLS – bitte LMQTT wählen"
-	msgNeedIPv4   = "Die eigenständige Variante braucht die IPv4-Adresse des Brokers"
-	msgVariant    = "Unbekannte Variante – eigenständig oder LMQTT wählen"
-	msgTopicEmpty = "Bitte ein Topic angeben"
-	msgTopicLong  = "Das Topic darf höchstens 244 Byte lang sein"
-	msgTopicWild  = "Das Topic darf keine Platzhalter + oder # enthalten"
-	msgPort       = "Der Port muss zwischen 1 und 65535 liegen"
-	msgHeartbeat  = "Der Heartbeat muss zwischen 0 und 3600 Sekunden liegen"
-	msgKeepAlive  = "Die Keep-Alive-Zeit muss zwischen 10 und 600 Sekunden liegen"
-	msgHwID       = "Die Hardware-Kennung muss zwischen 1 und 65535 liegen"
-	msgConnID     = "Die Verbindungsnummer muss zwischen 1 und 4095 liegen"
-	msgLayout     = "Die Aufteilung passt nicht zum Datenbaustein"
+	msgNoTLS        = "Die eigenständige Variante kann kein TLS – bitte LMQTT wählen"
+	msgNeedIPv4     = "Die eigenständige Variante braucht die IPv4-Adresse des Brokers"
+	msgVariant      = "Unbekannte Variante – eigenständig oder LMQTT wählen"
+	msgTopicEmpty   = "Bitte ein Topic angeben"
+	msgTopicLong    = "Das Topic darf höchstens 244 Byte lang sein"
+	msgTopicWild    = "Das Topic darf keine Platzhalter + oder # enthalten"
+	msgPort         = "Der Port muss zwischen 1 und 65535 liegen"
+	msgHeartbeat    = "Der Heartbeat muss zwischen 0 und 3600 Sekunden liegen"
+	msgKeepAlive    = "Die Keep-Alive-Zeit muss zwischen 10 und 600 Sekunden liegen"
+	msgHwID         = "Die Hardware-Kennung muss zwischen 1 und 65535 liegen"
+	msgConnID       = "Die Verbindungsnummer muss zwischen 1 und 4095 liegen"
+	msgLayout       = "Die Aufteilung passt nicht zum Datenbaustein"
+	msgClientIDLong = "Client-ID ist zu lang (höchstens 254 Zeichen)"
 )
 
 //go:embed templates/*.tmpl
@@ -171,7 +172,10 @@ func (o Options) normalize() (Options, error) {
 	if o.ConnID < 1 || o.ConnID > 4095 {
 		return o, errors.New(msgConnID)
 	}
-	for name, s := range map[string]string{"Client-ID": o.ClientID, "Benutzer": o.Username, "Kennwort": o.Password} {
+	if len(o.ClientID) > maxConfigBytes {
+		return o, errors.New(msgClientIDLong)
+	}
+	for name, s := range map[string]string{"Benutzer": o.Username, "Kennwort": o.Password} {
 		if len(s) > maxConfigBytes {
 			return o, fmt.Errorf("%s ist länger als 254 Byte", name)
 		}
@@ -236,6 +240,9 @@ func Generate(db *DBSource, l *Layout, o Options) ([]File, error) {
 	}
 	if o.ClientID == "" {
 		o.ClientID = "pdh-sps-" + plainName(db.Name)
+	}
+	if len(o.ClientID) > maxConfigBytes {
+		return nil, errors.New(msgClientIDLong)
 	}
 	base := plainName(db.Name)
 	d := &genData{
@@ -312,8 +319,8 @@ func Generate(db *DBSource, l *Layout, o Options) ([]File, error) {
 		parts []string
 	}{
 		{"1_PDH_" + base + "_Typ.udt", []string{"udt"}},
-		{"2_PDH_MQTT_" + base + ".scl", []string{"fcs", "fb"}},
-		{"3_PDH_" + base + "_Konfig.db", []string{"konfig", "extra_db"}},
+		{"2_PDH_" + base + "_Konfig.db", []string{"konfig", "extra_db"}},
+		{"3_PDH_MQTT_" + base + ".scl", []string{"fcs", "fb"}},
 		{"4_" + base + "_aus_Typ.db", []string{"ersatz"}},
 		{"LIESMICH.txt", []string{"liesmich"}},
 	}
