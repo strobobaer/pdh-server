@@ -261,7 +261,7 @@ func tiaMappingRows(l *tiamqtt.Layout, dbName, topic string, heartbeat int) []im
 		out = append(out, importMappingCreateInput{
 			SourceRef: mqttSourceRef(topic, lf.JSONPath),
 			Name:      tiaTruncate(dbName+"."+lf.Path, tiaNameMax),
-			Note:      tiaTruncate("Aus dem TIA-Baustein, Typ "+tiaTypeName(lf.Kind, lf.StrLen), 500),
+			Note:      tiaTruncate("Aus dem TIA-Baustein, Typ "+tiamqtt.TypeName(lf.Kind, lf.StrLen), 500),
 		})
 	}
 	if heartbeat > 0 {
@@ -273,37 +273,6 @@ func tiaMappingRows(l *tiamqtt.Layout, dbName, topic string, heartbeat int) []im
 		})
 	}
 	return out
-}
-
-// tiaTypeName: Datentyp in SCL-Schreibweise für Anzeige und Notiz.
-func tiaTypeName(k tiamqtt.Kind, strLen int) string {
-	switch k {
-	case tiamqtt.KindBool:
-		return "Bool"
-	case tiamqtt.KindInt:
-		return "Int"
-	case tiamqtt.KindDInt:
-		return "DInt"
-	case tiamqtt.KindUInt:
-		return "UInt"
-	case tiamqtt.KindUDInt:
-		return "UDInt"
-	case tiamqtt.KindWord:
-		return "Word"
-	case tiamqtt.KindDWord:
-		return "DWord"
-	case tiamqtt.KindReal:
-		return "Real"
-	case tiamqtt.KindLReal:
-		return "LReal"
-	case tiamqtt.KindString:
-		return "String[" + strconv.Itoa(strLen) + "]"
-	case tiamqtt.KindDTL:
-		return "DTL"
-	case tiamqtt.KindDT:
-		return "Date_And_Time"
-	}
-	return "?"
 }
 
 // ── Prüfergebnis (htmx-Fragment) ────────────────────────────
@@ -336,7 +305,7 @@ func tiaCheck(f tiaForm, src []byte, errs []string) tiaCheckView {
 	for _, p := range res.Layout.Parts {
 		cp := tiaCheckPart{No: p.No, MaxBytes: p.MaxBytes}
 		for _, lf := range p.Leaves {
-			cp.Values = append(cp.Values, tiaCheckValue{lf.Path, lf.JSONPath, tiaTypeName(lf.Kind, lf.StrLen)})
+			cp.Values = append(cp.Values, tiaCheckValue{lf.Path, lf.JSONPath, tiamqtt.TypeName(lf.Kind, lf.StrLen)})
 		}
 		v.Parts = append(v.Parts, cp)
 	}
@@ -507,6 +476,11 @@ func (h *Handler) TIABlockDownload(w http.ResponseWriter, r *http.Request) {
 		fail(err.Error())
 		return
 	}
+	zipped, err := tiamqtt.Zip(res.Files)
+	if err != nil {
+		fail("Die ZIP-Datei konnte nicht erstellt werden")
+		return
+	}
 	created := 0
 	if f.CreateMappings {
 		rows := tiaMappingRows(res.Layout, res.DB.Name, res.Topic, f.HeartbeatSeconds)
@@ -520,11 +494,6 @@ func (h *Handler) TIABlockDownload(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		h.reconcileMqttConsumer(id)
-	}
-	zipped, err := tiamqtt.Zip(res.Files)
-	if err != nil {
-		fail("Die ZIP-Datei konnte nicht erstellt werden")
-		return
 	}
 	if f.IncludePassword || f.CreateMappings {
 		msg := "TIA-Baustein heruntergeladen"
@@ -547,14 +516,22 @@ var errTIARefTooLong = errors.New("Ein Pfad im Datenbaustein ist zu lang für ei
 
 // tiaInsertMappingSQL legt eine Zuordnung nur an, wenn es für diese
 // Verbindung noch keine mit demselben Quellverweis gibt (vorhandene bleiben
-// unverändert, auch mit anderem Namen).
+// unverändert, auch mit anderem Namen). Nur bei der Heartbeat-Zuordnung
+// wird ein geändertes Intervall nachgezogen (tiaUpdateHeartbeatSQL).
 const tiaInsertMappingSQL = `
 	INSERT INTO import_mappings (connection_id, source_ref, infrastructure_id, name, note, created_by, heartbeat_seconds)
 	SELECT $1::uuid, $2::text, $3::uuid, $4::text, $5::text, $6::uuid, NULLIF($7::int, 0)
 	WHERE NOT EXISTS (SELECT 1 FROM import_mappings WHERE connection_id = $1::uuid AND source_ref = $2::text)`
 
+// tiaUpdateHeartbeatSQL: vorhandene Heartbeat-Zuordnung bekommt das neue
+// Intervall – nur diese Spalte, Name, Anlage und Notiz bleiben.
+const tiaUpdateHeartbeatSQL = `
+	UPDATE import_mappings SET heartbeat_seconds = $3::int
+	WHERE connection_id = $1::uuid AND source_ref = $2::text AND heartbeat_seconds IS DISTINCT FROM $3::int`
+
 // tiaCreateMappings legt die Zuordnungen in einer Transaktion an und liefert,
-// wie viele neu sind.
+// wie viele neu sind. Heartbeat 0 erzeugt keine Heartbeat-Zeile, eine
+// vorhandene Heartbeat-Zuordnung bleibt dann unberührt.
 func (h *Handler) tiaCreateMappings(ctx context.Context, connID, infraID, userID string, rows []importMappingCreateInput) (int, error) {
 	for _, m := range rows {
 		if len([]rune(m.SourceRef)) > tiaRefMax {
@@ -577,6 +554,11 @@ func (h *Handler) tiaCreateMappings(ctx context.Context, connID, infraID, userID
 			return 0, err
 		}
 		n += int(tag.RowsAffected())
+		if tag.RowsAffected() == 0 && m.HeartbeatSeconds > 0 {
+			if _, err := tx.Exec(ctx, tiaUpdateHeartbeatSQL, connID, m.SourceRef, m.HeartbeatSeconds); err != nil {
+				return 0, err
+			}
+		}
 	}
 	return n, tx.Commit(ctx)
 }

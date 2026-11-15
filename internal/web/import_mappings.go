@@ -106,7 +106,7 @@ func (h *Handler) ImportMappingCreateWeb(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	if in.HeartbeatSeconds < 0 || in.HeartbeatSeconds > 86400 {
-		writeGlobalBoardError(w, http.StatusBadRequest, "Heartbeat: 1 bis 86400 Sekunden")
+		writeGlobalBoardError(w, http.StatusBadRequest, "Heartbeat: 0 bis 86400 Sekunden (0 = aus)")
 		return
 	}
 

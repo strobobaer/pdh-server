@@ -323,7 +323,7 @@ func Generate(db *DBSource, l *Layout, o Options) ([]File, error) {
 		fmt.Fprintf(&pc, "\t%s%d:\n%s", strings.Repeat(" ", 16), p.No, code)
 		rp := readmePart{No: p.No, MaxBytes: p.MaxBytes}
 		for _, lf := range p.Leaves {
-			rp.Values = append(rp.Values, readmeValue{Path: lf.Path, JSONPath: lf.JSONPath, Type: typeName(lf.Kind, lf.StrLen)})
+			rp.Values = append(rp.Values, readmeValue{Path: lf.Path, JSONPath: lf.JSONPath, Type: TypeName(lf.Kind, lf.StrLen)})
 		}
 		d.ReadmeParts = append(d.ReadmeParts, rp)
 	}
@@ -424,12 +424,12 @@ func (tb *typeBuilder) vars(vs []*Var, prefix, indent string) {
 			if !tb.has(path + "[" + strconv.Itoa(v.Lo) + "]") {
 				continue
 			}
-			decl = fmt.Sprintf("Array[%d..%d] of %s", v.Lo, v.Hi, typeName(v.Elem.Kind, v.Elem.StrLen))
+			decl = fmt.Sprintf("Array[%d..%d] of %s", v.Lo, v.Hi, TypeName(v.Elem.Kind, v.Elem.StrLen))
 		default:
 			if !tb.has(path) {
 				continue
 			}
-			decl = typeName(v.Kind, v.StrLen)
+			decl = TypeName(v.Kind, v.StrLen)
 		}
 		line := indent + sclIdent(v.Name) + " : " + decl
 		if v.Init != "" {
@@ -443,7 +443,8 @@ func (tb *typeBuilder) vars(vs []*Var, prefix, indent string) {
 	}
 }
 
-func typeName(k Kind, strLen int) string {
+// TypeName ist der Datentyp in SCL-Schreibweise (String[n] mit Länge).
+func TypeName(k Kind, strLen int) string {
 	switch k {
 	case KindBool:
 		return "Bool"

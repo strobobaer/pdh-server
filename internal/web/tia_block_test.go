@@ -605,7 +605,13 @@ func TestTIADownloadMappingsNoDuplicates(t *testing.T) {
 		t.Fatalf("erster Download: %d", w.Code)
 	}
 	first := len(tiaMappingsOf(t, env))
-	if w := env.download(t, mod); w.Code != http.StatusOK {
+	const hbRef = "sps/x/Daten/heartbeat#count"
+	// Heartbeat-Zuordnung umbenennen: Name und Anlage müssen beim Nachziehen bleiben
+	if _, err := env.pool.Exec(ctx, `UPDATE import_mappings SET name = 'Mein Heartbeat' WHERE connection_id = $1::uuid AND source_ref = $2`, env.id, hbRef); err != nil {
+		t.Fatal(err)
+	}
+	// zweiter Download mit anderem Heartbeat-Intervall
+	if w := env.download(t, func(v url.Values) { mod(v); v.Set("heartbeat_seconds", "300") }); w.Code != http.StatusOK {
 		t.Fatalf("zweiter Download: %d", w.Code)
 	}
 	m := tiaMappingsOf(t, env)
@@ -614,6 +620,21 @@ func TestTIADownloadMappingsNoDuplicates(t *testing.T) {
 	}
 	if m["sps/x/Daten#values.Takt"].Name != "Meine Taktzeit" {
 		t.Errorf("vorhandene Zuordnung geändert: %+v", m["sps/x/Daten#values.Takt"])
+	}
+	if hb := m[hbRef]; hb.HB == nil || *hb.HB != 300 || hb.Name != "Mein Heartbeat" {
+		t.Errorf("Heartbeat nach Intervallwechsel: %+v", hb)
+	}
+	var infra string
+	_ = env.pool.QueryRow(ctx, `SELECT infrastructure_id::text FROM import_mappings WHERE connection_id = $1::uuid AND source_ref = $2`, env.id, hbRef).Scan(&infra)
+	if infra != env.infra {
+		t.Errorf("Anlage der Heartbeat-Zuordnung geändert: %s", infra)
+	}
+	// dritter Download mit Heartbeat 0: vorhandene Heartbeat-Zuordnung bleibt unberührt
+	if w := env.download(t, func(v url.Values) { mod(v); v.Set("heartbeat_seconds", "0") }); w.Code != http.StatusOK {
+		t.Fatalf("dritter Download: %d", w.Code)
+	}
+	if hb := tiaMappingsOf(t, env)[hbRef]; hb.HB == nil || *hb.HB != 300 {
+		t.Errorf("Heartbeat 0 hat die Zuordnung geändert: %+v", hb)
 	}
 }
 
