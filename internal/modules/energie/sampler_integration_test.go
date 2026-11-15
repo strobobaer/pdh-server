@@ -84,16 +84,20 @@ func countValues(t *testing.T, pool *pgxpool.Pool, id string) int {
 	return n
 }
 
-func wantValue(t *testing.T, pool *pgxpool.Pool, id string, ts time.Time, want float64) {
+// wantValue prüft den Wert der Minute, die bei minute beginnt; abgelegt ist
+// er unter ihrem Ende (minute + 1 min).
+func wantValue(t *testing.T, pool *pgxpool.Pool, id string, minute time.Time, want float64) {
 	t.Helper()
+	ts := minute.Add(time.Minute)
 	got, ok := valueAt(t, pool, id, ts)
 	if !ok || math.Abs(got-want) > 1e-9 {
 		t.Errorf("Wert %s: %v (vorhanden %v), erwartet %v", ts.Format("15:04"), got, ok, want)
 	}
 }
 
-func wantNoValue(t *testing.T, pool *pgxpool.Pool, id string, ts time.Time) {
+func wantNoValue(t *testing.T, pool *pgxpool.Pool, id string, minute time.Time) {
 	t.Helper()
+	ts := minute.Add(time.Minute)
 	if v, ok := valueAt(t, pool, id, ts); ok {
 		t.Errorf("Wert %s: %v, erwartet kein Wert (auch keine 0)", ts.Format("15:04"), v)
 	}
@@ -131,7 +135,7 @@ func TestSamplerRealValues(t *testing.T) {
 	wantNoValue(t, pool, bad, m0)
 	got, err := s.Get(ctx, c)
 	must(t, err)
-	if got.LastValue == nil || math.Abs(*got.LastValue-12.345) > 1e-9 || got.LastAt == nil || !got.LastAt.Equal(m0) {
+	if got.LastValue == nil || math.Abs(*got.LastValue-12.345) > 1e-9 || got.LastAt == nil || !got.LastAt.Equal(end) {
 		t.Errorf("letzter Wert: %+v", got)
 	}
 }
@@ -505,7 +509,7 @@ func TestSamplerSourceChangeRebases(t *testing.T) {
 	setReading(t, pool, newMap, "50020", m3.Add(30*time.Second))
 	run(t, sm, m3)
 	wantValue(t, pool, vID, m3, 20)
-	if w, ok := valueAt(t, pool, wID, m3); !ok || w > 20 {
+	if w, ok := valueAt(t, pool, wID, m3.Add(time.Minute)); !ok || w > 20 {
 		t.Errorf("indirekt: W %v (vorhanden %v), erwartet höchstens 20 ohne Sprung", w, ok)
 	}
 }
@@ -557,4 +561,55 @@ func gMap(t *testing.T, pool *pgxpool.Pool, meterID string) string {
 	var id string
 	must(t, pool.QueryRow(context.Background(), `SELECT import_mapping_id::text FROM energy_meters WHERE id = $1::uuid`, meterID).Scan(&id))
 	return id
+}
+
+// Sampler und Export passen zusammen: Lesungen um 12:00:30 und 12:14:30
+// gehören zum 15-Minuten-Intervall bis 12:15, eine um 12:15:10 nicht.
+func TestSamplerValuesMatchIntervals(t *testing.T) {
+	pool, s, sm, infra := samplerEnv(t)
+	ctx := context.Background()
+	at := func(h, mi, sec int) time.Time { return time.Date(2026, 11, 15, h, mi, sec, 0, time.UTC) }
+	c, cMap := consumer(t, pool, s, infra)
+	_, zMap := newMapping(t, pool, infra)
+	z := &Meter{Key: uniq("Z"), InfraID: infra, Kind: KindCounter, SourceID: zMap}
+	save(t, s, z)
+	step := func(mapID, raw string, when time.Time) {
+		setReading(t, pool, mapID, raw, when)
+	}
+	step(cMap, "2", at(12, 0, 30))
+	step(zMap, "100", at(12, 0, 30))
+	_, _, err := sm.Pass(ctx, at(12, 1, 5))
+	must(t, err)
+	for mi := 1; mi < 14; mi++ {
+		_, _, err := sm.Pass(ctx, at(12, mi+1, 5))
+		must(t, err)
+	}
+	step(cMap, "3", at(12, 14, 30))
+	step(zMap, "114", at(12, 14, 30))
+	_, _, err = sm.Pass(ctx, at(12, 15, 5))
+	must(t, err)
+	step(cMap, "7", at(12, 15, 10))
+	step(zMap, "200", at(12, 15, 10))
+	_, _, err = sm.Pass(ctx, at(12, 16, 5))
+	must(t, err)
+
+	meters, err := s.List(ctx, Filter{InfraID: infra})
+	must(t, err)
+	pts, missing, err := s.IntervalValues(ctx, meters, at(12, 15, 0), 15*time.Minute, ModeEnd)
+	must(t, err)
+	got := map[string]float64{}
+	for _, p := range pts {
+		got[p.Key] = p.Value
+	}
+	if len(missing) != 0 || got[keyOf(t, s, c)] != 5 || got[z.Key] != 114 {
+		t.Errorf("Intervall bis 12:15: %v, fehlend %v (erwartet Verbrauch 5, Zählerstand 114)", got, missing)
+	}
+	pts, _, err = s.IntervalValues(ctx, meters, at(12, 30, 0), 15*time.Minute, ModeEnd)
+	must(t, err)
+	for _, p := range pts {
+		got[p.Key] = p.Value
+	}
+	if got[keyOf(t, s, c)] != 7 || got[z.Key] != 200 {
+		t.Errorf("Intervall bis 12:30: %v (erwartet Verbrauch 7, Zählerstand 200)", got)
+	}
 }

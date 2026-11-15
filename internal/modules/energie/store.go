@@ -424,8 +424,10 @@ func rebaseDependents(ctx context.Context, tx pgx.Tx, rows []meterRow, cur *mete
 	if len(ids) == 0 {
 		return nil
 	}
+	// Basis ist der erste Minutenwert, der schon mit der neuen Einstellung
+	// entsteht: das Ende der laufenden Minute (Werte liegen unter dem Minutenende).
 	_, err := tx.Exec(ctx, `UPDATE energy_meters SET base_at = $2 WHERE id = ANY($1::uuid[]) AND formula <> ''`,
-		ids, now.Truncate(time.Minute))
+		ids, now.Truncate(time.Minute).Add(time.Minute))
 	return err
 }
 

@@ -23,7 +23,9 @@ const (
 //
 // Eine Lesung gehört zu der Minute, in der sie eintraf (Eingang auf die
 // Minute abgeschnitten). Ein Lauf legt die zuletzt abgeschlossene Minute ab
-// und holt dabei verpasste Minuten nach. Die Lesungen selbst hält die Tabelle
+// und holt dabei verpasste Minuten nach. Abgelegt wird unter dem Minutenende:
+// ts = 12:16 enthält die Lesungen von 12:15:00 bis 12:15:59 – passend zu den
+// Intervallen (Ende − I, Ende] beim Export. Die Lesungen selbst hält die Tabelle
 // energy_readings fest (Trigger auf import_mappings), so geht auch bei
 // Quellen, die öfter als einmal je Minute liefern, keine verloren.
 type Sampler struct {
@@ -99,8 +101,8 @@ func (sm *Sampler) Pass(ctx context.Context, now time.Time) (stored, missing int
 			last = *x.lastAt
 		}
 	}
-	if !last.IsZero() && last.Before(target) {
-		from = last.Truncate(time.Minute).Add(time.Minute)
+	if !last.IsZero() && !last.After(target) { // last_at ist ein Minutenende
+		from = last.Truncate(time.Minute)
 		if earliest := target.Add(-samplerCatchUp); from.Before(earliest) {
 			from = earliest
 		}
@@ -128,8 +130,8 @@ func (sm *Sampler) Pass(ctx context.Context, now time.Time) (stored, missing int
 	return stored, missing, orderErr
 }
 
-// sampleMinute legt die Werte der Minute [minute, minute + 1 min) ab, in
-// einer eigenen Transaktion. orderErr meldet einen Zirkel in den Formeln; die
+// sampleMinute legt die Werte der Minute [minute, minute + 1 min) unter ihrem
+// Ende ab, in einer eigenen Transaktion. orderErr meldet einen Zirkel in den Formeln; die
 // echten Werte werden trotzdem abgelegt.
 func (sm *Sampler) sampleMinute(ctx context.Context, meters []*sampleMeter, minute time.Time, stale time.Duration) (stored, missing int, orderErr, err error) {
 	db := sm.Store.DB
@@ -146,7 +148,7 @@ func (sm *Sampler) sampleMinute(ctx context.Context, meters []*sampleMeter, minu
 		SELECT u.id::text, v.ts, v.value
 		  FROM unnest($1::uuid[]) u(id)
 		  JOIN LATERAL (SELECT ts, value FROM energy_values
-		                 WHERE meter_id = u.id AND ts < $2 ORDER BY ts DESC LIMIT 1) v ON true`, ids, minute)
+		                 WHERE meter_id = u.id AND ts < $2 ORDER BY ts DESC LIMIT 1) v ON true`, ids, end)
 	if err != nil {
 		return 0, 0, nil, err
 	}
@@ -164,7 +166,7 @@ func (sm *Sampler) sampleMinute(ctx context.Context, meters []*sampleMeter, minu
 		return 0, 0, nil, err
 	}
 	er, err := db.Query(ctx, `SELECT meter_id::text, value FROM energy_values
-		WHERE meter_id = ANY($1::uuid[]) AND ts = $2`, ids, minute)
+		WHERE meter_id = ANY($1::uuid[]) AND ts = $2`, ids, end)
 	if err != nil {
 		return 0, 0, nil, err
 	}
@@ -341,7 +343,7 @@ func (sm *Sampler) sampleMinute(ctx context.Context, meters []*sampleMeter, minu
 	countedMap := map[string]bool{}
 	for _, r := range fresh {
 		tag, err := tx.Exec(ctx, `INSERT INTO energy_values (meter_id, ts, value) VALUES ($1::uuid, $2, $3)
-			ON CONFLICT DO NOTHING`, r.m.id, minute, r.v)
+			ON CONFLICT DO NOTHING`, r.m.id, end, r.v)
 		if err != nil {
 			return 0, 0, nil, err
 		}
@@ -350,7 +352,7 @@ func (sm *Sampler) sampleMinute(ctx context.Context, meters []*sampleMeter, minu
 		}
 		stored++
 		if _, err := tx.Exec(ctx, `UPDATE energy_meters SET last_value = $2, last_at = $3, base_at = $3 WHERE id = $1::uuid`,
-			r.m.id, r.v, minute); err != nil {
+			r.m.id, r.v, end); err != nil {
 			return 0, 0, nil, err
 		}
 		if r.m.kind == KindConsumption && r.m.formula == "" && !countedMap[r.m.mappingID] {
@@ -366,7 +368,7 @@ func (sm *Sampler) sampleMinute(ctx context.Context, meters []*sampleMeter, minu
 		}
 	}
 	for _, id := range rebases {
-		if _, err := tx.Exec(ctx, `UPDATE energy_meters SET base_at = $2 WHERE id = $1::uuid`, id, minute); err != nil {
+		if _, err := tx.Exec(ctx, `UPDATE energy_meters SET base_at = $2 WHERE id = $1::uuid`, id, end); err != nil {
 			return 0, 0, nil, err
 		}
 	}
@@ -377,7 +379,7 @@ func (sm *Sampler) sampleMinute(ctx context.Context, meters []*sampleMeter, minu
 }
 
 // evalVirtual berechnet den Wert einer berechneten Messstelle für die Minute,
-// die bei end endet.
+// die bei end endet (abgelegt unter end).
 //
 // Bezüge der Art Zähler tragen ihren Zuwachs seit dem Basiszeitpunkt der
 // Messstelle bei (base_at, sonst Zeitpunkt ihres letzten Werts). Bezüge der
@@ -391,7 +393,7 @@ func (sm *Sampler) sampleMinute(ctx context.Context, meters []*sampleMeter, minu
 // (neu aufgenommen, Quelle oder Faktor geändert), gibt es für diese Minute
 // ebenfalls keinen Wert, aber die Basis rückt auf jetzt (rebase): der
 // Verbrauch dieser einen Minute ist nicht bekannt und wird nicht erfunden, ab
-// der nächsten wird wieder gerechnet. Liegt die Basis erst nach dieser Minute
+// der nächsten wird wieder gerechnet. Liegt die Basis erst nach end
 // (Änderung beim Speichern), gibt es keinen Wert und die Basis bleibt.
 func (sm *Sampler) evalVirtual(ctx context.Context, x *sampleMeter, byKey map[string]*sampleMeter,
 	cur map[string]float64, last stamped, end time.Time) (v float64, ok, rebase bool) {
@@ -399,7 +401,7 @@ func (sm *Sampler) evalVirtual(ctx context.Context, x *sampleMeter, byKey map[st
 	if err != nil {
 		return 0, false, false
 	}
-	if x.baseAt != nil && !x.baseAt.Before(end) {
+	if x.baseAt != nil && x.baseAt.After(end) {
 		return 0, false, false
 	}
 	baseTS := last.ts

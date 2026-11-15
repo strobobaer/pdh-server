@@ -33,7 +33,8 @@ CREATE INDEX IF NOT EXISTS idx_energy_meters_infra ON energy_meters (infrastruct
 CREATE INDEX IF NOT EXISTS idx_energy_meters_mapping ON energy_meters (import_mapping_id) WHERE import_mapping_id IS NOT NULL;
 
 -- ── Minutenwerte ──────────────────────────────────────────────────────────
--- ts ist der Minutenanfang: der Wert gilt für die Minute [ts, ts + 1 min).
+-- ts ist das Minutenende: der Wert gilt für die Minute [ts − 1 min, ts),
+-- passend zu den Exportintervallen (Ende − I, Ende].
 CREATE TABLE IF NOT EXISTS energy_values (
     meter_id UUID NOT NULL REFERENCES energy_meters(id) ON DELETE CASCADE,
     ts       TIMESTAMPTZ NOT NULL,
@@ -100,10 +101,14 @@ CREATE TABLE IF NOT EXISTS energy_export_files (
     delivered_version INT NOT NULL DEFAULT 0,
     delivered_at      TIMESTAMPTZ,
     last_error        TEXT NOT NULL DEFAULT '',
+    -- Zeitbezug der Zeitstempel (local | utc | offset); ein Wechsel beginnt eine neue Datei.
+    time_base         TEXT NOT NULL DEFAULT 'local',
     created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (connection_id, name)
 );
+
+ALTER TABLE energy_export_files ADD COLUMN IF NOT EXISTS time_base TEXT NOT NULL DEFAULT 'local';
 
 -- Protokoll der Exportläufe.
 CREATE TABLE IF NOT EXISTS energy_export_runs (
