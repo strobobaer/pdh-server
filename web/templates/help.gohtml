@@ -410,7 +410,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <div class="hb-howto"><b><i class="ti ti-bell-ringing"></i> Alarm-Tickets (Schwellwerte)</b>
     <p>Überschreitet eine Messstelle einen <a href="#energiedaten-schwellwerte">Schwellwert</a>, legt das PDH ein Ticket an. Oben auf der Ticketseite steht ein Hinweis, dass es ein Alarm-Ticket ist. Ein Alarm-Ticket lässt sich nur <b>lösen, schließen, archivieren oder verwerfen</b>, wenn das Feld <b>Ursache</b> ausgefüllt ist. Sonst erscheint die Meldung „Bitte beschreiben, warum der Alarm kam (Feld Ursache).“</p>
     <ol class="hb-steps">
-      <li>Ticket öffnen und im <a href="#completion">Abschluss-Assistenten</a> die <b>Ursache</b> eintragen.</li>
+      <li>Ticket öffnen und im <a href="#completion">Abschluss-Assistenten</a> das Feld <b>Ursache (Pflicht bei Alarm-Tickets)</b> ausfüllen.</li>
       <li>Wie gewohnt abschließen. Die Regel gilt auch beim Archivieren, beim Verwerfen im Leitstand und beim Status-Wechsel.</li>
     </ol></div>
   <div class="hb-howto"><b><i class="ti ti-inbox"></i> Tipp für Broker</b>
@@ -2173,15 +2173,16 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     Das <b>Kennwort</b> für FTP/SFTP wird verschlüsselt gespeichert und nie angezeigt; beim Bearbeiten das Feld leer lassen, dann bleibt es. Ist ein Wert nicht da (Gerät offline), fehlt die Zeile und das Protokoll nennt die Lücke – es wird nichts erfunden. <b>Ohne Messwerte entsteht keine Datei</b>, auch keine nur mit Kopfzeile. Kommt eine Datei nicht beim Ziel an, bricht das PDH die Zustellung für diesen Lauf ab und legt sie beim nächsten Lauf nach. Andere Exporte laufen dabei ungestört weiter. Auf dem Spiegelserver wird nichts exportiert.</div>
   <div class="hb-howto" id="energiedaten-schwellwerte"><b><i class="ti ti-bell-ringing"></i> So legst du einen Schwellwert an</b> (Recht „Schwellwerte pflegen“)
     <ol class="hb-steps">
-      <li>Unter <b>Messstellen</b> die Zeile der Messstelle aufklappen und den Bereich <b>Schwellwerte</b> öffnen.</li>
-      <li><b>Bezeichnung</b> eintragen und wählen, ob der Alarm bei <b>über</b> oder <b>unter</b> dem Grenzwert kommen soll.</li>
+      <li>Unter <b>Messstellen</b> in der Spalte <b>Schwellwerte</b> den Knopf mit der Zahl anklicken (z. B. „0“ oder „2 · 1 Alarm“). Darunter öffnet sich die Liste der Schwellwerte dieser Messstelle.</li>
+      <li>Auf <b>Neuer Schwellwert</b> klicken.</li>
+      <li><b>Bezeichnung</b> eintragen. Bei <b>Bedingung</b> wählen, ob der Alarm bei <b>über dem Grenzwert</b> oder <b>unter dem Grenzwert</b> kommen soll.</li>
       <li><b>Grenzwert</b> eintragen – in der Einheit der Messstelle, z. B. 45 bei kW.</li>
-      <li><b>Zeitraum (min)</b> festlegen: So lange wird der Wert zusammengefasst und geprüft. <b>Rückschaltung (min)</b> bestimmt, wie lange der Wert danach am Stück in Ordnung sein muss, bis der Alarm endet (Vorgabe 15).</li>
-      <li><b>Tag</b> und <b>Priorität</b> des Alarm-Tickets wählen.</li>
+      <li><b>Zeitraum (Minuten)</b> festlegen: So lange wird der Wert zusammengefasst und geprüft. <b>Rückschaltzeit (Minuten)</b> bestimmt, wie lange der Wert danach am Stück in Ordnung sein muss, bis der Alarm endet (Vorgabe 15).</li>
+      <li><b>Tag am Ticket</b> und <b>Priorität des Tickets</b> wählen.</li>
       <li><b>Verantwortlich</b> (Person oder Gruppe) wählen. Bleibt das Feld leer, bekommt der Verantwortliche der Anlage die Nachricht.</li>
       <li><b>Aktiv</b> anhaken und speichern. Mit dem Haken lässt sich ein Schwellwert jederzeit ausschalten.</li>
     </ol>
-    <p>In der Tabelle zeigt die Spalte <b>Schwellwerte</b> die Anzahl und die Alarme (z. B. „2 · 1 Alarm“). Der Filter <b>mit offenem Alarm</b> zeigt nur Messstellen mit laufendem Alarm.</p></div>
+    <p>In der Tabelle zeigt die Spalte <b>Schwellwerte</b> die Anzahl und die Alarme (z. B. „2 · 1 Alarm“). Der Filter <b>Nur mit offenem Alarm</b> zeigt nur Messstellen mit laufendem Alarm. Ändern geht mit dem Stift in der Liste; löschen (Papierkorb) darf nur der Bereichsadministrator.</p></div>
   <div class="hb-howto"><b><i class="ti ti-alert-triangle"></i> So läuft ein Alarm ab</b>
     <p>Beispiel: Die Stromspitze einer Anlage soll nicht über <b>45 kW</b> liegen, Zeitraum <b>1 min</b>, Rückschaltung <b>15 min</b>.</p>
     <ol class="hb-steps">
