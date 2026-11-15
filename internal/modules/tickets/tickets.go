@@ -102,7 +102,7 @@ type CreateInput struct {
 
 // ErrRootCauseRequired: Ein Alarm-Ticket ohne Ursache soll erledigt,
 // geschlossen, archiviert oder verworfen werden.
-var ErrRootCauseRequired = errors.New("Bitte beschreiben, warum der Alarm kam (Feld Ursache).")
+var ErrRootCauseRequired = synclink.ErrRootCauseRequired
 
 // Repository
 type Repository struct {

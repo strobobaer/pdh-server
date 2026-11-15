@@ -2,7 +2,7 @@ package synclink
 
 import (
 	"context"
-	"strings"
+	"errors"
 
 	"github.com/rs/zerolog/log"
 )
@@ -213,12 +213,17 @@ func (l *Linker) OnTaskActionAdded(ctx context.Context, taskID, description, use
 	}
 }
 
+// ErrRootCauseRequired: Das Ticket verweigert das Erledigen, weil bei einem
+// Alarm-Ticket die Ursache fehlt. tickets.ErrRootCauseRequired ist derselbe Wert
+// (synclink darf tickets nicht importieren).
+var ErrRootCauseRequired = errors.New("Bitte beschreiben, warum der Alarm kam (Feld Ursache).")
+
 // setTicketStatus gibt den Status an das verknüpfte Ticket weiter. Verweigert das
 // Ticket den Wechsel, weil bei einem Alarm-Ticket die Ursache fehlt, wird das
 // protokolliert, statt es stillschweigend zu verwerfen.
 func (l *Linker) setTicketStatus(ctx context.Context, ticketID, status, userID string) {
 	err := l.ticketSetStatusDirect(ctx, ticketID, status, userID)
-	if err != nil && strings.Contains(err.Error(), "Feld Ursache") {
+	if err != nil && errors.Is(err, ErrRootCauseRequired) {
 		log.Info().Err(err).Str("ticket", ticketID).Str("status", status).Msg("synclink: Ticket-Status nicht übernommen, Ursache fehlt")
 	}
 }

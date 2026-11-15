@@ -97,6 +97,39 @@ func TestWidgetBodies(t *testing.T) {
 	}
 }
 
+// Die Widgets dürfen beim Seitenaufbau nicht vor htmx selbst verarbeitet
+// werden: sonst lädt htmx sie bei DOMContentLoaded ein zweites Mal, und die
+// zweite Antwort ersetzt die erste, bevor deren <script> lief
+// (Konsole: „Cannot read properties of null (reading 'insertBefore')“).
+func TestDashboardWidgetsLoadOnce(t *testing.T) {
+	tmpl := loadTestTemplates(t)
+	d, _ := widgetDef("stat_tickets")
+	out := renderPage(t, tmpl, "dashboard", DashboardData{Widgets: []DashboardWidgetView{{WidgetInstance: WidgetInstance{ID: "d1", Type: "stat_tickets", Size: 1}, Def: d, Title: d.Name}}})
+	start := strings.Index(out, `id="dw-tpl"`)
+	if start < 0 {
+		t.Fatal("Widget-Skript nicht gefunden")
+	}
+	script := out[start:]
+	if end := strings.Index(script, "window.dwReset"); end >= 0 {
+		if c := strings.Index(script[end:], "</script>"); c >= 0 {
+			script = script[:end+c] // nur das Widget-Skript, nicht base.gohtml
+		}
+	}
+	n := 0
+	for _, line := range strings.Split(script, "\n") {
+		if !strings.Contains(line, "htmx.process(") {
+			continue
+		}
+		n++
+		if !strings.Contains(line, "document.readyState !== 'loading'") {
+			t.Errorf("htmx.process ohne Schutz vor dem Seitenaufbau: %s", strings.TrimSpace(line))
+		}
+	}
+	if n == 0 {
+		t.Error("Widget-Skript ruft htmx.process nicht mehr auf – Test anpassen")
+	}
+}
+
 func TestDashboardWithWidgets(t *testing.T) {
 	tmpl := loadTestTemplates(t)
 	var views []DashboardWidgetView

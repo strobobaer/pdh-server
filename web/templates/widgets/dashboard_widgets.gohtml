@@ -174,7 +174,12 @@ html[data-theme="light"] .dw-stat.c-blue .v{color:#2563eb}
     const url = el.dataset.saved === '1' ? '/dashboard/w/' + encodeURIComponent(id) : '/dashboard/w/new?type=' + encodeURIComponent(type);
     b.setAttribute('hx-get', url);
     b.setAttribute('hx-trigger', 'load' + (+el.dataset.refresh > 0 ? ', every ' + el.dataset.refresh + 's' : ''));
-    if(window.htmx) htmx.process(b);
+    // Beim Seitenaufbau übernimmt htmx die Widgets selbst (DOMContentLoaded).
+    // Ein eigenes htmx.process vorher lädt sie doppelt: Kommt die erste Antwort
+    // vor DOMContentLoaded, ändert htmx-request/-settling die Klasse, htmx hält
+    // das Element für neu und feuert „load“ erneut – die zweite Antwort ersetzt
+    // dann die erste, bevor deren <script> lief (Konsole: „reading 'insertBefore'“).
+    if(window.htmx && document.readyState !== 'loading') htmx.process(b);
   }
   function newId(){ return 'w' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
   function makeCard(item){

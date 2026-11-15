@@ -91,6 +91,21 @@ func (w *AlarmWatch) Pass(ctx context.Context) error {
 	return nil
 }
 
+// PassOne prüft nur den einen Schwellwert id (wie Pass je Schwellwert, ohne das
+// Zurücksetzen inaktiver Schwellwerte). Gedacht für Tests mit eigener
+// Messstelle gegen eine geteilte Datenbank, in der ein voller Durchlauf
+// fremde Schwellwerte auslösen würde; der Betrieb nutzt Pass.
+func (w *AlarmWatch) PassOne(ctx context.Context, id string) error {
+	if w.Skip != nil && w.Skip() {
+		return nil
+	}
+	th, err := w.Store.Threshold(ctx, id)
+	if err != nil {
+		return err
+	}
+	return w.safeOne(ctx, *th, w.now())
+}
+
 func (w *AlarmWatch) safeOne(ctx context.Context, th Threshold, now time.Time) (err error) {
 	defer func() {
 		if r := recover(); r != nil {

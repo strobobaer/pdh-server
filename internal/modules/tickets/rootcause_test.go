@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"pdh/internal/core/synclink"
 	"pdh/pkg/database"
 	"pdh/pkg/middleware"
 )
@@ -238,5 +240,17 @@ func TestRootCauseNormalTicketUnchanged(t *testing.T) {
 		if st, archived, _ := e.state(id); st != "resolved" || !archived {
 			t.Fatalf("normales Ticket %s: %s archiviert %v", id, st, archived)
 		}
+	}
+}
+
+// Beide Namen müssen derselbe Fehler sein, sonst erkennt synclink die
+// Verweigerung nicht (Importzyklus verhindert den direkten Bezug).
+func TestErrRootCauseRequiredSharedWithSynclink(t *testing.T) {
+	if !errors.Is(ErrRootCauseRequired, synclink.ErrRootCauseRequired) {
+		t.Fatal("tickets.ErrRootCauseRequired ist nicht synclink.ErrRootCauseRequired")
+	}
+	wrapped := fmt.Errorf("status: %w", ErrRootCauseRequired)
+	if !errors.Is(wrapped, synclink.ErrRootCauseRequired) {
+		t.Fatal("errors.Is über Umhüllung schlägt fehl")
 	}
 }
