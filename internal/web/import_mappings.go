@@ -141,5 +141,9 @@ func (h *Handler) ImportMappingDeleteWeb(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	returnPath := importConnectionDetailPath(kind)
-	http.Redirect(w, r, "/import/connections/"+connectionID+"/"+returnPath+"?notice="+"Zuordnung+gelöscht", http.StatusSeeOther)
+	sep := "?"
+	if strings.Contains(returnPath, "?") {
+		sep = "&"
+	}
+	http.Redirect(w, r, "/import/connections/"+connectionID+returnPath+sep+"notice=Zuordnung+gelöscht", http.StatusSeeOther)
 }

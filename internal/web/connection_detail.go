@@ -68,11 +68,11 @@ func queryFormFields(kind string) []queryFormField {
 			{Key: "area", Label: "Bereich", Type: "select", Options: modbusRegisterTypes},
 			{Key: "start", Label: "Startadresse", Type: "number", Placeholder: "0", Help: "Adresse ab 0 (nicht 40001)."},
 			{Key: "count", Label: "Anzahl Werte", Type: "number", Placeholder: "10"},
-			{Key: "type", Label: "Datentyp", Type: "select", Options: modbusDataTypes, Help: "32-Bit-Typen belegen je 2 Register."},
+			{Key: "type", Label: "Datentyp", Type: "select", Options: modbusDataTypes, Help: "32-Bit-Typen belegen je 2, 64-Bit-Typen je 4 Register."},
 		}
 	case kind == "opcua":
 		return []queryFormField{
-			{Key: "nodes", Label: "Knoten (je Zeile einer)", Type: "textarea", Placeholder: "ns=2;s=Linie1.Temperatur", Help: "Knoten-IDs findest du unter Werkzeuge → Namespace durchsuchen."},
+			{Key: "nodes", Label: "Knoten (je Zeile einer)", Type: "textarea", Placeholder: "ns=2;s=Linie1.Temperatur", Help: "Knoten-IDs findest du im Reiter Explorer."},
 		}
 	case kind == "excel":
 		return []queryFormField{
@@ -95,38 +95,52 @@ type connMappingRow struct {
 
 type ConnectionDetailData struct {
 	BaseData
-	Direction, ID, Name, Kind, KindLabel string
-	Enabled                              bool
-	CanWrite, CanExecute                 bool
-	Tab, Notice, Err                     string
-	Config                               []connConfigRow
-	Check                                *checkReport
-	CheckAt                              string
-	QueriesSupported                     bool
-	Queries                              []connQuery
-	QueryFields                          []queryFormField
-	OpenQuery                            string
-	Builtins                             []builtinQueryTemplate
-	OwnTemplates                         []ownTemplateView
-	Mappings                             []connMappingRow
-	ExportMappings                       []ExportMappingView
-	Tools                                []connTool
-	Background                           []connConfigRow
+	Direction, ID, Name, Kind, KindLabel    string
+	Enabled                                 bool
+	CanWrite, CanExecute                    bool
+	Tab, Notice, Err                        string
+	Config                                  []connConfigRow
+	Check                                   *checkReport
+	CheckAt                                 string
+	QueriesSupported                        bool
+	Queries                                 []connQuery
+	QueryFields                             []queryFormField
+	OpenQuery                               string
+	Builtins                                []builtinQueryTemplate
+	OwnTemplates                            []ownTemplateView
+	Mappings                                []connMappingRow
+	ExportMappings                          []ExportMappingView
+	Tools                                   []connTool
+	Background                              []connConfigRow
+	Explorer, ExplorerWrite, ExplorerMirror bool
+	ExplorerLog                             []HistoryView
+	ExplorerTopic                           string
+	ExplorerUnit                            int
+	ExplorerPlainAuth bool // OPC UA mit Benutzer/Kennwort: Übertragung ohne Verschlüsselung
+	// ExportSources: übernommene Import-Werte, aus denen im Export-Explorer ein Zielfeld wird
+	// (nur Export mit Explorer und Schreibrecht).
+	ExportSources []ImportMappingView
 }
 
 func connectionTools(direction, kind, id string, config map[string]string) []connTool {
 	base := "/" + direction + "/connections/" + id + "/"
 	var t []connTool
+	explorer := connTool{"/" + direction + "/connections/" + id + "?tab=explorer", "ti-telescope", "Explorer", "Werte live erkunden, testweise schreiben und als Zuordnung übernehmen"}
 	if direction == "export" {
+		if explorerKindSupported(direction, kind) {
+			t = append(t, explorer)
+		}
 		t = append(t, connTool{base + "preview", "ti-table-export", "Vorschau & jetzt exportieren", "Felder auswählen, Werte prüfen, Export starten"})
 		if kind == "pdf" || kind == "excel" {
 			t = append(t, connTool{"/export/templates", "ti-template", "Exportvorlagen", "Kopf, Logo und Layout für PDF/Excel"})
 		}
 		return append(t, connTool{"/export/mappings", "ti-list-details", "Alle Export-Felder", "Übersicht über alle Verbindungen"})
 	}
+	if explorerKindSupported(direction, kind) {
+		t = append(t, explorer)
+	}
 	switch {
 	case kind == "mqtt":
-		t = append(t, connTool{base + "sniffer", "ti-antenna", "Sniffer", "Live-Nachrichten ansehen und Topics zuordnen"})
 		if config["broker_mode"] == "integrated" {
 			t = append(t, connTool{base + "broker", "ti-server-2", "Broker-Status", "Clients und Aktivität des integrierten Brokers"})
 		}
@@ -136,10 +150,6 @@ func connectionTools(direction, kind, id string, config map[string]string) []con
 		t = append(t, connTool{base + "browse", "ti-database-search", "Datenbank durchsuchen", "Tabellen und Spalten ansehen"})
 	case webBrowsableKind(kind):
 		t = append(t, connTool{base + "response", "ti-api", "Antwort ansehen", "Rohantwort der Adresse, Felder direkt zuordnen"})
-	case kind == "modbus":
-		t = append(t, connTool{base + "read", "ti-plug", "Register lesen", "Einzelne Register testen"})
-	case kind == "opcua":
-		t = append(t, connTool{base + "nodes", "ti-sitemap", "Namespace durchsuchen", "Knoten-IDs finden"})
 	}
 	return append(t, connTool{"/import/mappings", "ti-list-details", "Alle Zuordnungen", "Übersicht über alle Verbindungen"})
 }
@@ -299,7 +309,47 @@ func (h *Handler) connectionDetailPage(w http.ResponseWriter, r *http.Request, d
 		}
 	}
 	d.OwnTemplates, _ = h.ownTemplates(ctx, direction, kind)
+	h.fillExplorer(r, &d, config)
 	h.render(w, "connection_detail", d)
+}
+
+// fillExplorer setzt die Felder des Explorer-Reiters: sichtbar nur mit Ausführen-Recht
+// und unterstütztem Typ; Schreiben nur mit Bearbeiten-Recht und nicht im Spiegel.
+func (h *Handler) fillExplorer(r *http.Request, d *ConnectionDetailData, config map[string]string) {
+	d.ExplorerMirror = h.Mirror().On
+	d.Explorer = explorerKindSupported(d.Direction, d.Kind) && d.CanExecute
+	if !d.Explorer {
+		return
+	}
+	d.ExplorerWrite = h.explorerCanWrite(r, d.Direction)
+	if d.Direction == "export" && d.ExplorerWrite {
+		if sources, err := h.availableExportSources(r.Context()); err == nil {
+			d.ExportSources = sources
+		}
+	}
+	for _, k := range []string{"ext_topic_filter", "int_topic_filter"} {
+		if v := strings.TrimSpace(config[k]); v != "" {
+			d.ExplorerTopic = v
+			break
+		}
+	}
+	if d.ExplorerTopic == "" {
+		d.ExplorerTopic = "#"
+	}
+	d.ExplorerPlainAuth = d.Kind == "opcua" && config["auth_mode"] == "username"
+	if u, _ := strconv.Atoi(strings.TrimSpace(config["unit_id"])); u > 0 {
+		d.ExplorerUnit = u
+	} else {
+		d.ExplorerUnit = 1
+	}
+	for _, e := range h.recordHistory(r.Context(), "connection", d.ID) {
+		if e.Action == "explorer_write" {
+			d.ExplorerLog = append(d.ExplorerLog, e)
+			if len(d.ExplorerLog) == 10 {
+				break
+			}
+		}
+	}
 }
 
 func (h *Handler) canRunConnection(r *http.Request, direction string) bool {

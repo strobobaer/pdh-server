@@ -1,6 +1,6 @@
 {{/*
-Gemeinsame Bausteine der Import-Vorschauen (Excel/CSV, Web/REST, Modbus,
-MQTT-Sniffer, OPC UA, SQL): Wert einer Anlage zuordnen, Liste der
+Gemeinsame Bausteine der Import-Vorschauen (Excel/CSV, Web/REST,
+SQL, Explorer): Wert einer Anlage zuordnen, Liste der
 Zuordnungen und das Skript dazu. Vorher stand derselbe Code sechsmal da.
 
   {{template "import-mark-panel" (dict "Title" "Spalte markieren" "SourceLabel" "Spalte")}}
@@ -11,6 +11,9 @@ Zuordnungen und das Skript dazu. Vorher stand derselbe Code sechsmal da.
 Die Seite oeffnet den Dialog mit importMarkOpen(quellwert).
 Optionen der Tabelle: "Intro" (Hinweis oben), "ReceivedLabel" (Standard
 "Aktualisiert"), "ShowCreated" (Spalte "Angelegt").
+Option des Skripts: "NoReload" (nach dem Speichern Dialog schliessen, Meldung
+zeigen und das Ereignis "pdh:mapping-created" senden, statt die Seite neu zu
+laden - der Explorer behaelt so seine laufende Sitzung).
 */}}
 
 {{define "import-mark-panel"}}
@@ -117,7 +120,21 @@ document.addEventListener('DOMContentLoaded', function(){
       });
       const result = await response.json().catch(function(){ return {}; });
       if(!response.ok) throw new Error(result.error || 'Zuordnung konnte nicht gespeichert werden');
+{{- if .NoReload}}
+      // Ohne Neuladen, damit eine laufende Sitzung (Explorer) bestehen bleibt.
+      const panel = document.getElementById('mark-panel');
+      panel.hidden = true;
+      const ok = document.createElement('div');
+      ok.setAttribute('role', 'status');
+      ok.style.cssText = 'margin-bottom:14px;color:var(--green);font-size:13px';
+      ok.textContent = 'Zuordnung angelegt';
+      panel.parentNode.insertBefore(ok, panel);
+      setTimeout(function(){ ok.remove(); }, 8000);
+      submitBtn.disabled = false;
+      document.dispatchEvent(new CustomEvent('pdh:mapping-created', {detail: {source_ref: payload.source_ref, id: result.id}}));
+{{- else}}
       location.reload();
+{{- end}}
     }catch(e){
       errorEl.textContent = e.message;
       submitBtn.disabled = false;

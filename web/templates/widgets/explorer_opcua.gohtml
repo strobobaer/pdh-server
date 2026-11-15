@@ -1,0 +1,258 @@
+{{/* Explorer für OPC UA: Knotenbaum (Aufklappen lädt eine Ebene), Details mit Wert, Datentyp, Zeit, Qualität und Zugriff,
+     Merkliste „Verfolgen“ mit Live-Werten (bis 20 Knoten), Testschreiben bei beschreibbaren Knoten.
+     Daten: .ID, .Direction, .ExplorerWrite, .ExplorerPlainAuth. Hilfsfunktionen: window.pdhExplorer (conn-explorer-js).
+     Werte stammen aus einem fremden Server: nur per textContent ausgeben. */}}
+{{define "explorer-opcua"}}
+<style>
+.xo-bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
+.xo-status{font-size:12.5px;color:var(--muted);margin-bottom:8px}
+.xo-status.ex-err{color:var(--red)}
+.xo-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}
+@media (max-width:900px){.xo-grid{grid-template-columns:minmax(0,1fr)}}
+.xo-tree{max-height:460px;overflow:auto;font-size:13px}
+.xo-tree ul{list-style:none;margin:0;padding-left:16px}
+.xo-tree > ul{padding-left:0}
+.xo-row{display:flex;gap:6px;align-items:baseline;padding:2px 4px;border-radius:4px;cursor:pointer;flex-wrap:wrap}
+.xo-row:hover{background:var(--bg)}
+.xo-row.xo-sel{outline:1px solid var(--accent)}
+.xo-ico{color:var(--muted);width:14px;text-align:center;flex:none}
+.xo-name{font-weight:500}
+.xo-val{font-family:var(--mono,monospace);color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:200px}
+.xo-more{font-size:12px;color:var(--amber);padding:2px 4px}
+.xo-detail h4{margin:0 0 6px;font-size:13px;word-break:break-all}
+.xo-kv{display:grid;grid-template-columns:auto minmax(0,1fr);gap:3px 12px;font-size:12.5px;margin:0}
+.xo-kv dt{color:var(--muted)}
+.xo-kv dd{margin:0;word-break:break-all}
+.xo-good{color:var(--green)}
+.xo-bad{color:var(--red)}
+.xo-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.xo-watch{margin-top:12px}
+.xo-watch table{width:100%;border-collapse:collapse;font-size:12.5px}
+.xo-watch th,.xo-watch td{text-align:left;padding:4px 6px;border-bottom:1px solid var(--border);word-break:break-all}
+.xo-watch th{color:var(--muted);font-weight:500}
+.xo-write{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:12px;padding-top:10px;border-top:1px solid var(--border)}
+.xo-write input[type=text]{flex:1 1 160px;min-width:0}
+</style>
+<div id="xo-root">
+  {{if .ExplorerPlainAuth}}<div class="ex-msg ex-err" id="xo-plain" role="alert"><i class="ti ti-alert-triangle"></i> Die Verbindung ist ohne Verschlüsselung (Sicherheitsrichtlinie None) – Benutzer und Passwort gehen im Klartext übers Netz. Nur in getrennten Anlagennetzen verwenden.</div>{{end}}
+  <div class="xo-bar">
+    <button type="button" class="btn btn-primary" id="xo-load"><i class="ti ti-plug-connected"></i> Knoten laden</button>
+    <span class="rec-sub">Ordner anklicken zum Aufklappen, Variable anklicken für Details.</span>
+  </div>
+  <div class="xo-status" id="xo-status" role="status">Noch nicht verbunden.</div>
+  <div class="xo-grid">
+    <div class="ex-box xo-tree" id="xo-tree"><div class="rec-sub">Mit „Knoten laden“ den Baum des Servers öffnen.</div></div>
+    <div class="ex-box xo-detail" id="xo-detail"><div class="rec-sub">Variable im Baum wählen.</div></div>
+  </div>
+  <div class="ex-box xo-watch" id="xo-watch-box">
+    <div class="xo-bar">
+      <strong style="font-size:13px"><i class="ti ti-eye"></i> Verfolgen</strong>
+      <label style="font-size:12.5px">Takt
+        <select id="xo-interval" aria-label="Takt der Live-Werte">
+          <option value="250">0,25 s</option><option value="500">0,5 s</option><option value="1000" selected>1 s</option>
+          <option value="2000">2 s</option><option value="5000">5 s</option><option value="10000">10 s</option>
+        </select></label>
+      <button type="button" class="btn" id="xo-clear">Liste leeren</button>
+    </div>
+    <div class="xo-status" id="xo-wstatus" role="status">Noch keine Knoten gemerkt (höchstens 20).</div>
+    <table id="xo-wtable" hidden>
+      <thead><tr><th>Knoten</th><th>Wert</th><th>Zeit</th><th>Qualität</th><th></th></tr></thead>
+      <tbody id="xo-wbody"></tbody>
+    </table>
+  </div>
+</div>
+<script>
+(function(){
+  const root = document.getElementById('ex-root');
+  const base = '/' + root.dataset.direction + '/connections/' + encodeURIComponent(root.dataset.conn) + '/explorer/opcua/';
+  const canWrite = {{if .ExplorerWrite}}true{{else}}false{{end}};
+  const MAX_WATCH = 20;
+  const $ = function(id){ return document.getElementById(id); };
+  const rows = new Map();     // NodeID → Zeile im Baum
+  const watch = new Map();    // NodeID → {name, value, ts, status}
+  let sel = '', stream = null;
+
+  function el(tag, cls, text){ const e = document.createElement(tag); if(cls) e.className = cls; if(text != null) e.textContent = text; return e; }
+  function status(text, err){ const s = $('xo-status'); s.textContent = text; s.classList.toggle('ex-err', !!err); }
+  async function getJSON(url){
+    const res = await fetch(url, {credentials: 'same-origin'});
+    const j = await res.json().catch(function(){ return {}; });
+    if(!res.ok) throw new Error(j.error || ('HTTP ' + res.status));
+    return j;
+  }
+  function qual(status){ return el('span', status === 'Good' ? 'xo-good' : 'xo-bad', status || ''); }
+
+  // ── Baum ──
+  function nodeRow(n){
+    const li = document.createElement('li');
+    const row = el('div', 'xo-row');
+    row.tabIndex = 0; row.dataset.nodeid = n.nodeid;
+    row.appendChild(el('i', 'xo-ico ti ' + (n.has_children ? 'ti-folder' : 'ti-variable')));
+    row.appendChild(el('span', 'xo-name', n.name));
+    if(!n.has_children && n.value !== ''){ row.appendChild(el('span', 'xo-val', n.value)); }
+    li.appendChild(row);
+    rows.set(n.nodeid, row);
+    let kids = null, opened = false;
+    const act = function(){
+      if(n.has_children){ toggle(); } else { select(n.nodeid); }
+    };
+    async function toggle(){
+      if(kids){ opened = !opened; kids.hidden = !opened; row.firstChild.className = 'xo-ico ti ' + (opened ? 'ti-folder-open' : 'ti-folder'); return; }
+      kids = el('ul'); li.appendChild(kids); opened = true;
+      row.firstChild.className = 'xo-ico ti ti-folder-open';
+      await loadChildren(n.nodeid, kids);
+    }
+    row.addEventListener('click', act);
+    row.addEventListener('keydown', function(e){ if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); act(); } });
+    return li;
+  }
+  async function loadChildren(nodeid, ul){
+    ul.appendChild(el('li', 'rec-sub', 'Lade …'));
+    try{
+      const d = await getJSON(base + 'children?node=' + encodeURIComponent(nodeid));
+      ul.textContent = '';
+      (d.nodes || []).forEach(function(n){ ul.appendChild(nodeRow(n)); });
+      if(!(d.nodes || []).length) ul.appendChild(el('li', 'rec-sub', 'Keine Unterknoten.'));
+      if(d.truncated) ul.appendChild(el('li', 'xo-more', 'Nur die ersten ' + (d.nodes || []).length + ' Knoten werden angezeigt.'));
+      status('Verbunden.');
+    }catch(err){
+      ul.textContent = '';
+      ul.appendChild(el('li', 'xo-bad', err.message));
+      status(err.message, true);
+    }
+  }
+  async function loadRoot(){
+    const box = $('xo-tree');
+    box.textContent = ''; rows.clear(); sel = '';
+    renderDetail(null);
+    const ul = el('ul'); box.appendChild(ul);
+    status('Verbinde …');
+    await loadChildren('', ul);
+  }
+
+  // ── Details ──
+  async function select(nodeid){
+    const prev = rows.get(sel); if(prev) prev.classList.remove('xo-sel');
+    sel = nodeid;
+    const cur = rows.get(nodeid); if(cur) cur.classList.add('xo-sel');
+    const box = $('xo-detail');
+    box.textContent = '';
+    box.appendChild(el('div', 'rec-sub', 'Lade …'));
+    try{
+      renderDetail(await getJSON(base + 'node?node=' + encodeURIComponent(nodeid)));
+    }catch(err){
+      box.textContent = '';
+      box.appendChild(el('div', 'xo-bad', err.message));
+    }
+  }
+  function kv(dl, k, v){ dl.appendChild(el('dt', null, k)); const dd = el('dd'); if(v instanceof Node) dd.appendChild(v); else dd.textContent = v; dl.appendChild(dd); }
+  function renderDetail(n){
+    const box = $('xo-detail');
+    box.textContent = '';
+    if(!n){ box.appendChild(el('div', 'rec-sub', 'Variable im Baum wählen.')); return; }
+    box.appendChild(el('h4', null, n.name));
+    const dl = el('dl', 'xo-kv');
+    kv(dl, 'NodeID', n.nodeid);
+    kv(dl, 'Art', n.class === 'Variable' ? 'Variable' : n.class === 'Object' ? 'Objekt' : 'Sonstiges');
+    if(n.class === 'Variable'){
+      kv(dl, 'Wert', n.value);
+      kv(dl, 'Datentyp', n.datatype);
+      kv(dl, 'Zeitstempel', n.timestamp);
+      kv(dl, 'Qualität', qual(n.status));
+      kv(dl, 'Zugriff', n.access);
+    }
+    box.appendChild(dl);
+    if(n.class !== 'Variable') return;
+    const act = el('div', 'xo-actions');
+    const refresh = el('button', 'btn btn-small', 'Aktualisieren'); refresh.type = 'button';
+    refresh.addEventListener('click', function(){ select(n.nodeid); });
+    const follow = el('button', 'btn btn-small', watch.has(n.nodeid) ? 'Wird verfolgt' : 'Verfolgen'); follow.type = 'button';
+    follow.disabled = watch.has(n.nodeid);
+    follow.addEventListener('click', function(){ addWatch(n); follow.disabled = true; follow.textContent = 'Wird verfolgt'; });
+    act.appendChild(refresh); act.appendChild(follow);
+    // Als Zuordnung (Import) bzw. Zielfeld (Export, nur beschreibbare Knoten); der Quellwert ist die NodeID.
+    const mb = (root.dataset.direction === 'export' && !n.writable) ? null : pdhExplorer.mapButton(n.nodeid, n.name, false);
+    if(mb) act.appendChild(mb);
+    box.appendChild(act);
+    if(canWrite && n.writable){
+      const form = el('form', 'xo-write'); form.setAttribute('data-explorer-write', '');
+      const inp = el('input'); inp.type = 'text'; inp.maxLength = 4000; inp.placeholder = 'Neuer Wert (' + (n.datatype || 'Datentyp') + ')'; inp.setAttribute('aria-label', 'Neuer Wert');
+      const btn = el('button', 'btn btn-primary'); btn.type = 'submit'; btn.appendChild(el('i', 'ti ti-pencil')); btn.appendChild(document.createTextNode(' Testschreiben'));
+      const msg = el('div', 'ex-msg'); msg.setAttribute('role', 'status'); msg.style.flexBasis = '100%';
+      form.appendChild(inp); form.appendChild(btn); form.appendChild(msg);
+      form.addEventListener('submit', async function(e){
+        e.preventDefault();
+        msg.className = 'ex-msg'; msg.textContent = '';
+        const v = inp.value;
+        try{
+          const r = await pdhExplorer.post(base + 'write', {node: n.nodeid, value: v},
+            'Wert ‚' + v + '‘ in Knoten ‚' + n.nodeid + '‘ schreiben? Das ändert die Maschine.');
+          if(r){ msg.className = 'ex-msg ex-ok'; msg.textContent = 'Geschrieben. Neuer Wert: ' + (r.value != null ? r.value : ''); inp.value = ''; }
+        }catch(err){ msg.className = 'ex-msg ex-err'; msg.textContent = err.message; }
+      });
+      box.appendChild(form);
+    }
+  }
+
+  // ── Verfolgen ──
+  function addWatch(n){
+    if(watch.has(n.nodeid)) return;
+    if(watch.size >= MAX_WATCH){ $('xo-wstatus').textContent = 'Höchstens ' + MAX_WATCH + ' Knoten gleichzeitig.'; return; }
+    watch.set(n.nodeid, {name: n.name, value: n.value, ts: n.timestamp, status: n.status});
+    renderWatch(); startWatch();
+  }
+  function removeWatch(nodeid){ watch.delete(nodeid); renderWatch(); startWatch(); }
+  function renderWatch(){
+    const body = $('xo-wbody'); body.textContent = '';
+    $('xo-wtable').hidden = !watch.size;
+    watch.forEach(function(w, nodeid){
+      const tr = document.createElement('tr'); tr.dataset.nodeid = nodeid;
+      tr.appendChild(el('td', null, w.name + ' (' + nodeid + ')'));
+      tr.appendChild(el('td', 'mono', w.value));
+      tr.appendChild(el('td', null, w.ts));
+      const q = document.createElement('td'); q.appendChild(qual(w.status)); tr.appendChild(q);
+      const x = document.createElement('td');
+      const b = el('button', 'btn btn-small', 'Entfernen'); b.type = 'button';
+      b.addEventListener('click', function(){ removeWatch(nodeid); });
+      x.appendChild(b); tr.appendChild(x);
+      body.appendChild(tr);
+    });
+  }
+  function updateWatchRow(nodeid){
+    const w = watch.get(nodeid); if(!w) return;
+    const tr = Array.from($('xo-wbody').children).find(function(r){ return r.dataset.nodeid === nodeid; });
+    if(!tr) return;
+    tr.children[1].textContent = w.value; tr.children[2].textContent = w.ts;
+    tr.children[3].textContent = ''; tr.children[3].appendChild(qual(w.status));
+  }
+  function stopWatch(msg, err){
+    if(stream){ stream.close(); stream = null; }
+    const s = $('xo-wstatus'); s.textContent = msg || ''; s.classList.toggle('ex-err', !!err);
+  }
+  function startWatch(){
+    stopWatch();
+    if(!watch.size){ $('xo-wstatus').textContent = 'Noch keine Knoten gemerkt (höchstens ' + MAX_WATCH + ').'; return; }
+    const q = Array.from(watch.keys()).map(function(k){ return 'node=' + encodeURIComponent(k); });
+    q.push('interval=' + encodeURIComponent($('xo-interval').value));
+    $('xo-wstatus').textContent = 'Verbinde …';
+    // Server-Ereignisse kommen als Text; Werte werden nur per textContent angezeigt.
+    stream = pdhExplorer.stream(base + 'watch?' + q.join('&'), {
+      connected: function(){ $('xo-wstatus').textContent = 'Live – ' + watch.size + ' Knoten.'; $('xo-wstatus').classList.remove('ex-err'); },
+      value: function(d){
+        const w = watch.get(d.nodeid); if(!w) return;
+        w.value = d.value; w.ts = d.timestamp; w.status = d.status;
+        updateWatchRow(d.nodeid);
+      },
+      error: function(d){ stopWatch(d.message || 'Fehler', true); },
+      end: function(d){ stopWatch(d.message || 'Sitzung beendet', true); },
+      disconnect: function(){ stopWatch('Verbindung zum Server unterbrochen.', true); }
+    });
+  }
+
+  $('xo-load').addEventListener('click', loadRoot);
+  $('xo-interval').addEventListener('change', function(){ if(watch.size) startWatch(); });
+  $('xo-clear').addEventListener('click', function(){ watch.clear(); renderWatch(); startWatch(); });
+  window.addEventListener('pagehide', function(){ if(stream) stream.close(); });
+})();
+</script>
+{{end}}

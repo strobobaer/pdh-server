@@ -339,6 +339,9 @@ type Handler struct {
 	// Austauschbare Quellen (nur Tests; nil = echt): Rechteprüfung und gespeicherter Commit-Vergleich.
 	hasPermHook     func(*http.Request, string) bool
 	updateCheckHook func(context.Context) storedUpdateCheck
+
+	// Explorer (explorer.go): lädt die Verbindung für den Explorer; nil = echt (connectionRow)
+	explorerLoadHook func(r *http.Request, direction string) (explorerConn, error)
 }
 
 func NewHandler(
@@ -988,8 +991,22 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/import/connections/{id}/edit-web", h.ImportConnectionEditWeb)
 	r.Post("/import/connections/{id}/delete-web", h.ImportConnectionDeleteWeb)
 	r.Post("/import/connections/{id}/toggle-web", h.ImportConnectionToggleWeb)
-	r.Get("/import/connections/{id}/sniffer", h.MqttSnifferPage)
-	r.Get("/import/connections/{id}/sniffer/stream", h.MqttSnifferStream)
+	h.registerLegacyExplorerRedirects(r)
+	r.Get("/import/connections/{id}/explorer/mqtt/stream", h.MqttExplorerStream)
+	r.Post("/import/connections/{id}/explorer/mqtt/publish", h.MqttExplorerPublish)
+	r.Get("/import/connections/{id}/explorer/opcua/children", h.OPCUAExplorerChildren("import"))
+	r.Get("/import/connections/{id}/explorer/opcua/node", h.OPCUAExplorerNode("import"))
+	r.Get("/import/connections/{id}/explorer/opcua/watch", h.OPCUAExplorerWatch("import"))
+	r.Post("/import/connections/{id}/explorer/opcua/write", h.OPCUAExplorerWrite("import"))
+	r.Get("/export/connections/{id}/explorer/opcua/children", h.OPCUAExplorerChildren("export"))
+	r.Get("/export/connections/{id}/explorer/opcua/node", h.OPCUAExplorerNode("export"))
+	r.Get("/export/connections/{id}/explorer/opcua/watch", h.OPCUAExplorerWatch("export"))
+	r.Post("/export/connections/{id}/explorer/opcua/write", h.OPCUAExplorerWrite("export"))
+	for _, dir := range []string{"import", "export"} {
+		r.Get("/"+dir+"/connections/{id}/explorer/modbus/range", h.ModbusExplorerRange(dir))
+		r.Get("/"+dir+"/connections/{id}/explorer/modbus/watch", h.ModbusExplorerWatch(dir))
+		r.Post("/"+dir+"/connections/{id}/explorer/modbus/write", h.ModbusExplorerWrite(dir))
+	}
 	r.Get("/import/connections/{id}/broker", h.MqttBrokerPage)
 	r.Get("/import/connections/{id}/broker/stream", h.MqttBrokerStream)
 	r.Post("/import/connections/{id}/mappings", h.ImportMappingCreateWeb)
@@ -1000,9 +1017,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/import/connections/{id}/browse/refresh", h.SQLRefreshValuesWeb)
 	r.Get("/import/connections/{id}/response", h.ImportResponsePage)
 	r.Post("/import/connections/{id}/response/refresh", h.ImportResponseRefreshWeb)
-	r.Get("/import/connections/{id}/read", h.ModbusReadPage)
 	r.Post("/import/connections/{id}/read/refresh", h.ModbusRefreshValuesWeb)
-	r.Get("/import/connections/{id}/nodes", h.OPCUABrowsePage)
 	r.Post("/import/connections/{id}/nodes/refresh", h.OPCUARefreshValuesWeb)
 	r.Get("/import/mappings", h.ImportMappingsOverviewPage)
 	// Verbindungsseiten (connection_detail.go)

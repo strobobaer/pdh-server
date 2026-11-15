@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-// Die sechs Import-Vorschauen nutzen denselben Zuordnungs-Baustein
+// Die Import-Vorschauen nutzen denselben Zuordnungs-Baustein
 // (widgets/import_mapping.gohtml) – Dialog, Tabelle und Skript.
 func TestImportPreviewsShareMappingWidget(t *testing.T) {
 	tmpl := loadTestTemplates(t)
@@ -21,9 +21,6 @@ func TestImportPreviewsShareMappingWidget(t *testing.T) {
 	}{
 		{"excel_preview", ExcelPreviewPageData{ConnectionID: cid, Applicable: true, CanWrite: true, Columns: []ExcelColumn{{Index: 0, Label: "Temp"}}, Rows: [][]string{{"1"}}, Mappings: maps}, "Spalte markieren", ">Spalte<", nil},
 		{"import_response", ImportResponsePageData{ConnectionID: cid, Applicable: true, CanWrite: true, Fields: []JSONField{{Path: "a.b", Value: "1"}}, Mappings: maps}, "Wert markieren", ">Pfad<", nil},
-		{"modbus_read", ModbusPageData{ConnectionID: cid, Applicable: true, CanWrite: true, TestResult: "42", Mappings: maps}, "Wert markieren", ">Quellwert<", []string{"testRegisterTypeChanged);", "importMarkOpen(type + ':'"}},
-		{"mqtt_sniffer", MqttSnifferPageData{ConnectionID: cid, CanWrite: true, CanExecute: true, Mappings: maps}, "Wert markieren", ">Topic<", []string{">Angelegt<", ">Empfangen<", "01.10.2026", "im Hintergrund abonniert"}},
-		{"opcua_browse", OPCUAPageData{ConnectionID: cid, Applicable: true, CanWrite: true, Fields: []OPCUANodeField{{NodeID: "ns=2;s=Temp"}}, Mappings: maps}, "Wert markieren", ">NodeID<", []string{"font-family:monospace\">ns=2;s=Temp"}},
 		{"sql_browse", SQLPreviewPageData{ConnectionID: cid, Applicable: true, CanWrite: true, Tables: []string{"t"}, SelectedTable: "t", Columns: []string{"c"}, Rows: [][]string{{"1"}}, Mappings: maps}, "Spalte markieren", ">Tabelle.Spalte<", []string{"importMarkOpen(table + '.' + column)"}},
 	}
 	for _, c := range cases {

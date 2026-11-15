@@ -810,3 +810,24 @@
 <figcaption>Im Werk muss kein Port nach außen offen sein: Der Daten-Client baut die Verbindung von innen auf.</figcaption>
 </figure>
 {{end}}
+
+{{/* Explorer-Reiter einer Verbindung */}}
+{{define "hb-fig-explorer"}}
+<figure class="hb-fig">
+<svg viewBox="0 0 640 190" role="img" aria-label="Reiter Explorer einer Verbindung">
+  <rect class="win" x="10" y="10" width="620" height="170" rx="8"/>
+  <rect class="bg3" x="20" y="20" width="60" height="20" rx="4"/><text x="50" y="34" class="t-c t-m">Übersicht</text>
+  <rect class="acl" x="90" y="20" width="60" height="20" rx="4"/><text x="120" y="34" class="t-c t-b">Explorer</text>
+  <rect class="bg" x="20" y="52" width="200" height="118" rx="6"/><text x="30" y="70" class="t-b">1 Themen / Knoten / Register</text>
+  <text x="30" y="92" class="t-m">▸ anlage/</text><text x="42" y="108" class="t-m">▸ temperatur</text><text x="42" y="124" class="t-m">▸ druck</text>
+  <rect class="sel" x="30" y="132" width="180" height="16"/>
+  <rect class="bg" x="232" y="52" width="250" height="118" rx="6"/><text x="242" y="70" class="t-b">2 Wert, Typ, Zeit, Reihenfolge</text>
+  <text x="242" y="92" class="t-m">Wert 21,4 · FLOAT32 · CDAB</text>
+  <rect class="acl" x="242" y="108" width="100" height="22" rx="4"/><text x="292" y="123" class="t-c">Als Zuordnung übernehmen</text>
+  <rect class="am" x="494" y="52" width="126" height="118" rx="6"/><text x="557" y="70" class="t-c t-b">3 Testweise schreiben</text>
+  <text x="557" y="92" class="t-c t-m">mit Rückfrage,</text><text x="557" y="106" class="t-c t-m">im Verlauf notiert</text>
+  <rect class="ac" x="509" y="130" width="96" height="22" rx="4"/><text x="557" y="145" class="t-w t-c">Schreiben</text>
+</svg>
+<figcaption>Im Explorer suchst du links den Wert, prüfst ihn in der Mitte und übernimmst ihn als Zuordnung; schreiben (rechts) geht nur mit Recht und nie auf dem Spiegelserver.</figcaption>
+</figure>
+{{end}}

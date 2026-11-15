@@ -73,8 +73,17 @@
   {{if eq .Direction "import"}}<a class="rec-tab" data-tab="queries" href="?tab=queries"><i class="ti ti-database-search"></i> Abfragen <b>{{len .Queries}}</b></a>{{end}}
   <a class="rec-tab" data-tab="mappings" href="?tab=mappings"><i class="ti ti-map-pin"></i> {{if eq .Direction "import"}}Zuordnungen <b>{{len .Mappings}}</b>{{else}}Felder <b>{{len .ExportMappings}}</b>{{end}}</a>
   <a class="rec-tab" data-tab="templates" href="?tab=templates"><i class="ti ti-template"></i> Vorlagen</a>
+  {{if .Explorer}}<a class="rec-tab" data-tab="explorer" href="?tab=explorer"><i class="ti ti-telescope"></i> Explorer</a>{{end}}
   <a class="rec-tab" data-tab="tools" href="?tab=tools"><i class="ti ti-tool"></i> Werkzeuge</a>
 </div>
+
+{{if .Explorer}}
+<!-- Explorer -->
+<div class="rec-pane" data-pane="explorer">
+  {{template "conn-explorer" .}}
+  {{if and .ExplorerWrite (eq .Direction "import")}}{{template "import-mark-panel" (dict "Title" "Als Zuordnung übernehmen" "SourceLabel" "Quellwert" "Style" "margin-top:14px")}}{{end}}
+</div>
+{{end}}
 
 <!-- Uebersicht -->
 <div class="rec-pane" data-pane="overview">
@@ -130,7 +139,7 @@
 <!-- Abfragen -->
 <div class="rec-pane" data-pane="queries">
   {{if not .QueriesSupported}}
-  <div class="card"><div class="rec-sub"><i class="ti ti-info-circle"></i> MQTT liefert Werte von selbst (Push) – hier gibt es keine Abfragen. Werte ordnest du im <a href="/import/connections/{{.ID}}/sniffer" style="color:var(--accent)">Sniffer</a> zu, je Topic eine Zuordnung.</div></div>
+  <div class="card"><div class="rec-sub"><i class="ti ti-info-circle"></i> MQTT liefert Werte von selbst (Push) – hier gibt es keine Abfragen. Werte ordnest du im <a href="?tab=explorer" style="color:var(--accent)">Explorer</a> zu, je Thema oder JSON-Feld eine Zuordnung.</div></div>
   {{else}}
   {{range .Queries}}{{$q := .}}
   <div class="cd-q" id="q-{{.ID}}">
@@ -203,7 +212,7 @@
 <div class="rec-pane" data-pane="mappings">
   <div class="card" style="overflow-x:auto">
   {{if eq .Direction "import"}}
-    <div class="card-title"><span><i class="ti ti-map-pin"></i> Zuordnungen</span>{{if .QueriesSupported}}<a class="btn btn-small" href="?tab=queries"><i class="ti ti-plus"></i> Aus einer Abfrage zuordnen</a>{{end}}</div>
+    <div class="card-title"><span><i class="ti ti-map-pin"></i> Zuordnungen</span>{{if and .CanWrite .Mappings (or (eq .Kind "modbus") (eq .Kind "opcua"))}}<form method="POST" action="/import/connections/{{.ID}}/{{if eq .Kind "modbus"}}read{{else}}nodes{{end}}/refresh" style="margin:0"><button class="btn btn-small" type="submit"><i class="ti ti-refresh"></i> Werte jetzt aktualisieren</button></form>{{end}}{{if .QueriesSupported}}<a class="btn btn-small" href="?tab=queries"><i class="ti ti-plus"></i> Aus einer Abfrage zuordnen</a>{{end}}</div>
     {{if .Mappings}}
     <table class="cd-tbl"><thead><tr><th>Quelle</th><th>Bezeichnung</th><th>Anlage</th><th>Notiz</th><th>Letzter Wert</th><th>Aktualisiert</th><th></th></tr></thead>
     <tbody>{{range .Mappings}}<tr>
@@ -277,6 +286,8 @@
 {{end}}
 
 {{define "scripts"}}
+{{if .Explorer}}{{template "conn-explorer-js" .}}{{end}}
+{{if and .Explorer .ExplorerWrite (eq .Direction "import")}}{{template "import-mapping-js" (dict "ConnectionID" .ID "NoReload" true)}}{{end}}
 <script>
 (function(){
   const DIR = '{{.Direction}}', ID = '{{.ID}}';

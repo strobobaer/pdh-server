@@ -1877,6 +1877,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <ul>
       <li><b>„Wartungsfenster einstellen“</b> (Kategorie „System &amp; Sicherheit“): Wartungsfenster einrichten und fehlerhafte Versionen wieder zulassen (<a href="#ausfallschutz">mehr</a>). Beim Update bekamen es alle Rollen, die „Server-Einstellungen (.env) bearbeiten &amp; Server neu starten“ hatten.</li>
       <li><b>„Automatische Wartung abbrechen“</b>: Wer es hat, bleibt während der Sperre angemeldet und darf auf dem Wartungsbildschirm abbrechen und zurücksetzen. Das Recht umfasst auch das <b>Absagen</b> der Wartungsfenster-Nachfrage und das <b>Abbrechen</b> eines Updates vor der Sperre. <b>Durchführen</b> braucht dasselbe Recht wie „Update installieren“ (Rollen &amp; Berechtigungen verwalten). Beim Update bekamen es alle Rollen mit „Rollen &amp; Berechtigungen verwalten“ und alle Bereichsadministratoren.</li>
+      <li><b>Explorer (Import/Export)</b>: Werte der Maschine ansehen braucht „Import ausführen“ bzw. „Export ausführen“, testweise schreiben oder senden zusätzlich „Import verwalten“ bzw. „Export verwalten“.</li>
     </ul>
     Als Ausgangspunkt zählt nur ein Recht, das überall gilt – eines, das auf eine Abteilung begrenzt ist, reicht nicht. Beide Rechte lassen sich wie alle anderen vergeben, aber nur an Personen, die sie selbst haben.</div>
   <div class="hb-howto"><b><i class="ti ti-cloud"></i> Rechte für Nextcloud</b>
@@ -1981,7 +1982,8 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <li><b>Abfragen</b> (nur Import) – beliebig viele benannte Abfragen je Verbindung: ein SQL-SELECT, ein Web-Endpunkt, ein Modbus-Registerblock, eine OPC-UA-Knotenliste oder eine Excel-/CSV-Zeile. Jede kann <b>automatisch alle … Minuten</b> laufen. MQTT liefert Werte von selbst und braucht keine Abfragen.</li>
     <li><b>Zuordnungen</b> bzw. <b>Felder</b> – welcher Wert zu welcher Anlage gehört, mit letztem Wert und Zeitpunkt.</li>
     <li><b>Vorlagen</b> – Abfragen und Zuordnungen einer Verbindung als Vorlage speichern und auf eine andere Verbindung desselben Typs anwenden.</li>
-    <li><b>Werkzeuge</b> – Vorschau, Sniffer, Knoten-Browser usw. der Verbindung.</li>
+    <li><b>Explorer</b> (MQTT, OPC UA, Modbus TCP) – die Werte der Maschine live ansehen und einzelne Werte testweise schreiben. Eine Sitzung dauert höchstens 15 Minuten, pro Benutzer sind drei und auf dem Server 20 Sitzungen offen. Ansehen darf, wer die Verbindung ausführen darf (<b>Import ausführen</b> bzw. <b>Export ausführen</b>), denn der Explorer belastet das echte Gerät. Schreiben braucht zusätzlich <b>Import verwalten</b> bzw. <b>Export verwalten</b>, fragt vorher nach und steht danach im Verlauf der Verbindung. Auf dem Spiegelserver ist der Explorer nur lesend. Bei Modbus wählst du Bereich, Start und Anzahl, siehst jedes Register in allen Datentypen und stellst die Byte- und Wortreihenfolge um (z. B. CDAB bei WAGO); mit „Live verfolgen“ liest der Explorer im gewählten Takt (mindestens 1 Sekunde) und je Verbindung sind höchstens zwei Zugriffe gleichzeitig möglich. Mit <b>Als Zuordnung übernehmen</b> (im Export: <b>Als Zielfeld übernehmen</b>) machst du aus einem Wert direkt eine Zuordnung, ohne die Seite zu verlassen: bei MQTT ein ganzes Thema oder ein einzelnes JSON-Feld, bei OPC UA einen Knoten, bei Modbus ein Register mit Datentyp und Reihenfolge. Der Knopf erscheint nur mit dem Recht <b>Import verwalten</b> bzw. <b>Export verwalten</b>. Bestehende Zuordnungen bleiben unverändert gültig. Zuordnungen mit Reihenfolge (Modbus) oder JSON-Pfad (MQTT, <code>thema#pfad</code>) versteht erst Version 0.80.11 und neuer – im Verbund beide Server gleich aktualisieren. Im Reiter <b>Zuordnungen</b> einer Modbus- oder OPC-UA-Verbindung holt <b>Werte jetzt aktualisieren</b> alle Werte sofort (braucht <b>Import verwalten</b>). Der alte Sniffer, „Namespace durchsuchen“ und „Register lesen“ sind im Explorer aufgegangen, alte Lesezeichen führen dorthin.</li>
+    <li><b>Werkzeuge</b> – Vorschau, Broker-Status usw. der Verbindung.</li>
   </ul>
   <div class="hb-howto"><b><i class="ti ti-database-search"></i> So holst du einen Wert per Abfrage</b>
     <ol class="hb-steps">
@@ -1991,6 +1993,42 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>Neben der gewünschten Spalte auf <i class="ti ti-map-pin"></i> klicken und die Anlage wählen. Zugeordnet wird die erste bzw. letzte Zeile des Ergebnisses.</li>
     </ol></div>
   <div class="hb-howto"><b><i class="ti ti-copy"></i> Mehrere gleiche Maschinen</b>Eine Maschine fertig einrichten, im Reiter <b>Vorlagen</b> als Vorlage speichern und auf der Verbindungsseite der nächsten Maschine <b>anwenden</b>. Abfragen und Zuordnungen entstehen dort genauso; schon Vorhandenes wird nicht doppelt angelegt.</div>
+  {{template "hb-fig-explorer"}}
+  <div class="hb-howto"><b><i class="ti ti-radar"></i> So findest du einen MQTT-Wert</b>
+    <ol class="hb-steps">
+      <li>Verbindung öffnen, Reiter <b>Explorer</b>, bei Bedarf einen <b>Filter</b> eintragen (<code>+</code> und <code>#</code> sind Platzhalter) und <b>Start</b> drücken.</li>
+      <li>Im Themenbaum das Thema anklicken: rechts stehen letzter Wert, Anzahl, Zeit und ob der Wert gehalten (retained) ist.</li>
+      <li>Ist der Wert JSON, auf das gewünschte Feld klicken und <b>Als Zuordnung übernehmen</b> drücken. Dann die Anlage wählen.</li>
+      <li><b>Testsenden</b>: Thema und Inhalt eintragen und senden. <b>Der gesendete Inhalt steht danach im Verlauf der Verbindung – bitte keine Geheimnisse oder Kennwörter senden.</b></li>
+    </ol></div>
+  <div class="hb-howto"><b><i class="ti ti-sitemap"></i> So erkundest du einen OPC-UA-Server</b>
+    <ol class="hb-steps">
+      <li>Im Reiter <b>Explorer</b> die Knoten Schritt für Schritt <b>aufklappen</b>. Ein Klick zeigt Wert, Datentyp, Zeitstempel, Qualität und Zugriffsrechte.</li>
+      <li><b>Verfolgen</b> nimmt einen Knoten in die Live-Liste auf; so siehst du mehrere Werte gleichzeitig.</li>
+      <li><b>Als Zuordnung übernehmen</b> macht den Knoten zur Zuordnung.</li>
+      <li><b>Testweise schreiben</b>: Wert eintragen und bestätigen. Knoten, die nur lesbar sind, lehnt der Explorer ab.</li>
+    </ol>
+    <p><b>Achtung:</b> Das PDH verbindet sich mit OPC UA immer ohne Verschlüsselung (Sicherheitsrichtlinie None). Meldet sich die Verbindung mit Benutzer und Passwort an, gehen beide im Klartext übers Netz; der Explorer zeigt dazu einen Hinweis. Solche Verbindungen nur in getrennten Anlagennetzen verwenden.</p></div>
+  <div class="hb-howto"><b><i class="ti ti-binary"></i> So deutest du Modbus-Register</b>
+    <ol class="hb-steps">
+      <li>Im Reiter <b>Explorer</b> Einheit (Unit-ID), Bereich (Holding, Input, Coils, Discrete), Start und Anzahl eintragen und <b>Lesen</b>.</li>
+      <li>Auf eine Zeile klicken: Das Register erscheint in allen Datentypen (INT16 bis FLOAT64) und in allen vier Reihenfolgen.</li>
+      <li>Die <b>Reihenfolge</b> so lange umschalten, bis der Wert stimmt. Bei WAGO ist es meist <b>CDAB</b>.</li>
+      <li><b>Als Zuordnung übernehmen</b>. Das geht nur mit der Einheit (Unit-ID) der Verbindung; für eine andere Einheit die Verbindung anpassen.</li>
+      <li><b>Testweise schreiben</b> geht für Coils und Holding Register, aber nur mit der Einheit (Unit-ID) der Verbindung – bei einer anderen Einheit ist das Formular gesperrt, Einheit 0 (Rundruf) nie erlaubt. Die Rückfrage nennt die Einheit.</li>
+    </ol>
+    <table><thead><tr><th>Reihenfolge</th><th>Bedeutung</th></tr></thead><tbody>
+      <tr><td>ABCD</td><td>Bytes und Wörter in Lese-Reihenfolge (Big Endian)</td></tr>
+      <tr><td>CDAB</td><td>Wörter vertauscht, Bytes normal (häufig bei WAGO)</td></tr>
+      <tr><td>BADC</td><td>Bytes je Wort vertauscht</td></tr>
+      <tr><td>DCBA</td><td>alles umgekehrt (Little Endian)</td></tr>
+    </tbody></table></div>
+  <div class="hb-howto"><b><i class="ti ti-shield-lock"></i> Rechte und Grenzen im Explorer</b>
+    <ul>
+      <li>Ansehen: <b>Import ausführen</b> bzw. <b>Export ausführen</b>. Testweise schreiben oder senden: zusätzlich das Bearbeiten-Recht (<b>Import verwalten</b> bzw. <b>Export verwalten</b>), mit Rückfrage und Eintrag im Verlauf der Verbindung.</li>
+      <li>Auf dem Spiegelserver ist Schreiben gesperrt.</li>
+      <li>Eine Sitzung endet nach 15 Minuten; höchstens 3 je Benutzer, 20 je Server und 2 gleichzeitige Zugriffe je Gerät (gilt für OPC UA und Modbus). Für MQTT gelten nur die Sitzungsgrenzen.</li>
+    </ul></div>
   <p>Ansehen darf, wer Import bzw. Export sehen darf; prüfen und ausführen, wer ausführen darf; ändern, wer bearbeiten darf.</p>
   <p><b>Kennwörter</b> von Verbindungen werden verschlüsselt gespeichert und nie wieder angezeigt. Beim Bearbeiten das Kennwortfeld <b>leer lassen</b> – dann bleibt das gespeicherte Kennwort.</p>
   <p>Bei <b>MSSQL</b>-Verbindungen gibt es zusätzlich: den <b>Weg</b> (Direkt, ein ausgehender VPN-Tunnel oder ein Client des <a href="#datennetz">Datennetzes</a>; über VPN und Datennetz mit eigenem Abfragetakt von 5 bis 30 Minuten und eigener Zeitgrenze – beim Datennetz bitte den Port eintragen, eine benannte Instanz geht dort nicht), den <b>Fingerabdruck</b> des Serverzertifikats (einmal lesen und bestätigen) und den Schalter <b>Schreiben erlaubt</b>. Ohne diesen Schalter schreibt das PDH nie in die Datenbank. Wird der Weg geändert, stehen scharfe Profile des <a href="#abgleich">Abgleichs</a> wieder auf „Getestet“.</p>

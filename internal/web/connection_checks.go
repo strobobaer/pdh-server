@@ -404,12 +404,12 @@ func (h *Handler) checkProtocol(ctx context.Context, rep *checkReport, direction
 			}
 		}
 	case kind == "modbus":
-		handler, _, err := openModbusClient(config)
+		client, err := openModbusClient(config)
 		if err != nil {
 			rep.add("Anmeldung", "Modbus-Verbindung", "fail", err.Error(), ms())
 			return
 		}
-		handler.Close()
+		client.Close()
 		rep.add("Anmeldung", "Modbus-Verbindung", "ok", "Unit-ID "+firstNonEmpty(config["unit_id"], "1"), ms())
 	case kind == "opcua":
 		client, err := openOPCUAClient(ctx, config)
