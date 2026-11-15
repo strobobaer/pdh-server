@@ -1,0 +1,676 @@
+{{- /*
+Gemeinsame Teile beider Varianten: Kopfkommentar, PLC-Datentyp, JSON-
+Hilfsbausteine, Konfigurations-DB, Ersatz für den eigenen DB und Abschnitte
+der LIESMICH. Anwendertexte nur über sclstr/sclname bzw. vorbereitet in Go
+(sclIdent, SCLString). Die Datei wird beim Erzeugen in CRLF umgewandelt.
+*/ -}}
+
+{{define "kopf" -}}
+//Erzeugt vom PDH{{with .O.GeneratedBy}} ({{comment .}}){{end}} am {{.At}} – bei Änderungen im PDH neu herunterladen.
+//Datenbaustein "{{comment .DB}}", Variante {{.VariantLabel}}, {{.FamilyLabel}}, höchstens {{.Limit}} Byte je Nachricht.
+{{- end}}
+
+{{define "udt" -}}
+TYPE {{.TypeName}}
+VERSION : 0.1
+{{template "kopf" .}}
+//Variablen, die der Baustein {{.FBName}} sendet.
+   STRUCT
+{{.TypeBody}}   END_STRUCT;
+
+END_TYPE
+
+{{end}}
+
+{{define "fcs" -}}
+FUNCTION "PDH_J_Raw" : Void
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+{{template "kopf" .}}
+//Schreibt feste Zeichen (UTF-8) ab buf[pos]. Passt es nicht, wird ovf gesetzt und nichts geschrieben.
+   VAR_INPUT
+      s : String;
+   END_VAR
+
+   VAR_IN_OUT
+      buf : Array[*] of Byte;
+      pos : DInt;
+      ovf : Bool;
+   END_VAR
+
+   VAR_TEMP
+      i : Int;
+      n : Int;
+   END_VAR
+
+
+BEGIN
+	IF #ovf THEN
+	    RETURN;
+	END_IF;
+	#n := LEN(#s);
+	IF #pos < LOWER_BOUND(ARR := #buf, DIM := 1) OR #pos + INT_TO_DINT(#n) - 1 > UPPER_BOUND(ARR := #buf, DIM := 1) THEN
+	    #ovf := TRUE;
+	    RETURN;
+	END_IF;
+	FOR #i := 1 TO #n DO
+	    #buf[#pos] := CHAR_TO_BYTE(#s[#i]);
+	    #pos := #pos + 1;
+	END_FOR;
+END_FUNCTION
+
+FUNCTION "PDH_J_DInt" : Void
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+{{template "kopf" .}}
+//Schreibt v als Dezimalzahl (auch -2147483648).
+   VAR_INPUT
+      v : DInt;
+   END_VAR
+
+   VAR_IN_OUT
+      buf : Array[*] of Byte;
+      pos : DInt;
+      ovf : Bool;
+   END_VAR
+
+   VAR_TEMP
+      x : DInt;
+      d : DInt;
+      k : Int;
+      i : Int;
+      need : DInt;
+      dig : Array[0..9] of Byte;
+   END_VAR
+
+
+BEGIN
+	IF #ovf THEN
+	    RETURN;
+	END_IF;
+	// Ziffern rückwärts sammeln, ohne das Vorzeichen umzudrehen (sonst Überlauf bei -2147483648)
+	#x := #v;
+	#k := 0;
+	REPEAT
+	    #d := #x MOD 10;
+	    IF #d < 0 THEN
+	        #d := -#d;
+	    END_IF;
+	    #dig[#k] := DINT_TO_BYTE(#d + 48);
+	    #k := #k + 1;
+	    #x := #x / 10;
+	UNTIL #x = 0
+	END_REPEAT;
+	#need := INT_TO_DINT(#k);
+	IF #v < 0 THEN
+	    #need := #need + 1;
+	END_IF;
+	IF #pos < LOWER_BOUND(ARR := #buf, DIM := 1) OR #pos + #need - 1 > UPPER_BOUND(ARR := #buf, DIM := 1) THEN
+	    #ovf := TRUE;
+	    RETURN;
+	END_IF;
+	IF #v < 0 THEN
+	    #buf[#pos] := 16#2D;   // -
+	    #pos := #pos + 1;
+	END_IF;
+	FOR #i := #k - 1 TO 0 BY -1 DO
+	    #buf[#pos] := #dig[#i];
+	    #pos := #pos + 1;
+	END_FOR;
+END_FUNCTION
+
+FUNCTION "PDH_J_UDInt" : Void
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+{{template "kopf" .}}
+//Schreibt v als Dezimalzahl ohne Vorzeichen.
+   VAR_INPUT
+      v : UDInt;
+   END_VAR
+
+   VAR_IN_OUT
+      buf : Array[*] of Byte;
+      pos : DInt;
+      ovf : Bool;
+   END_VAR
+
+   VAR_TEMP
+      x : UDInt;
+      k : Int;
+      i : Int;
+      dig : Array[0..9] of Byte;
+   END_VAR
+
+
+BEGIN
+	IF #ovf THEN
+	    RETURN;
+	END_IF;
+	#x := #v;
+	#k := 0;
+	REPEAT
+	    #dig[#k] := UDINT_TO_BYTE(#x MOD 10 + 48);
+	    #k := #k + 1;
+	    #x := #x / 10;
+	UNTIL #x = 0
+	END_REPEAT;
+	IF #pos < LOWER_BOUND(ARR := #buf, DIM := 1) OR #pos + INT_TO_DINT(#k) - 1 > UPPER_BOUND(ARR := #buf, DIM := 1) THEN
+	    #ovf := TRUE;
+	    RETURN;
+	END_IF;
+	FOR #i := #k - 1 TO 0 BY -1 DO
+	    #buf[#pos] := #dig[#i];
+	    #pos := #pos + 1;
+	END_FOR;
+END_FUNCTION
+
+FUNCTION "PDH_J_Num" : Void
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+{{template "kopf" .}}
+//Schreibt x mit digits gültigen Stellen wie Go strconv.FormatFloat(x, 'E', digits - 1, …):
+//[-]d.ddd…E±XX, Exponent mit mindestens zwei Ziffern. NaN, ±unendlich und Beträge über maxAbs als null.
+//Gerundet wird zur nächsten Zahl, bei genau der Mitte zur geraden. Für Beträge von 1E-8 bis 1E36
+//wird der Rundungsfehler exakt mitgerechnet (Dekker); außerhalb kann die letzte Stelle selten abweichen.
+   VAR_INPUT
+      x : LReal;
+      digits : Int;   // 7 für Real, 15 für LReal
+      maxAbs : LReal;   // größter Betrag, der als Zahl geschrieben wird
+   END_VAR
+
+   VAR_IN_OUT
+      buf : Array[*] of Byte;
+      pos : DInt;
+      ovf : Bool;
+   END_VAR
+
+   VAR_TEMP
+      a : LReal;
+      t : LReal;
+      s : LReal;
+      p : LReal;
+      y : LReal;
+      lo : LReal;
+      n : LReal;
+      f : LReal;
+      top : LReal;
+      c : LReal;
+      ah : LReal;
+      al : LReal;
+      bh : LReal;
+      bl : LReal;
+      ph : LReal;
+      e : Int;
+      k : Int;
+      j : Int;
+      i : Int;
+      pass : Int;
+      hiD : DInt;
+      loD : DInt;
+      neg : Bool;
+      exact : Bool;
+      odd : Bool;
+      dig : Array[1..15] of Byte;
+   END_VAR
+
+
+BEGIN
+	IF #ovf THEN
+	    RETURN;
+	END_IF;
+	IF #digits < 1 OR #digits > 15 OR #pos < LOWER_BOUND(ARR := #buf, DIM := 1) OR #pos + INT_TO_DINT(#digits) + 6 > UPPER_BOUND(ARR := #buf, DIM := 1) THEN
+	    #ovf := TRUE;
+	    RETURN;
+	END_IF;
+	// NaN, ±unendlich und zu große Beträge: null (jeder Vergleich mit NaN ist falsch)
+	IF NOT (ABS(#x) <= #maxAbs) THEN
+	    #buf[#pos] := 16#6E;   // n
+	    #buf[#pos + 1] := 16#75;   // u
+	    #buf[#pos + 2] := 16#6C;   // l
+	    #buf[#pos + 3] := 16#6C;   // l
+	    #pos := #pos + 4;
+	    RETURN;
+	END_IF;
+	#neg := #x < 0.0;
+	#a := ABS(#x);
+	#top := 1.0;
+	FOR #i := 1 TO #digits DO
+	    #top := #top * 10.0;
+	END_FOR;
+	#n := 0.0;
+	#e := 0;
+	IF #a > 0.0 THEN
+	    // Zehnerexponent schätzen (1 <= a / 10^e < 10), wird unten nachgebessert
+	    #t := #a;
+	    IF #t >= 1.0 THEN
+	        IF #t >= LREAL#1.0E256 THEN #t := #t / LREAL#1.0E256; #e := #e + 256; END_IF;
+	        IF #t >= LREAL#1.0E128 THEN #t := #t / LREAL#1.0E128; #e := #e + 128; END_IF;
+	        IF #t >= LREAL#1.0E64 THEN #t := #t / LREAL#1.0E64; #e := #e + 64; END_IF;
+	        IF #t >= LREAL#1.0E32 THEN #t := #t / LREAL#1.0E32; #e := #e + 32; END_IF;
+	        IF #t >= LREAL#1.0E16 THEN #t := #t / LREAL#1.0E16; #e := #e + 16; END_IF;
+	        IF #t >= LREAL#1.0E8 THEN #t := #t / LREAL#1.0E8; #e := #e + 8; END_IF;
+	        IF #t >= LREAL#1.0E4 THEN #t := #t / LREAL#1.0E4; #e := #e + 4; END_IF;
+	        IF #t >= LREAL#1.0E2 THEN #t := #t / LREAL#1.0E2; #e := #e + 2; END_IF;
+	        IF #t >= LREAL#1.0E1 THEN #t := #t / LREAL#1.0E1; #e := #e + 1; END_IF;
+	    ELSE
+	        IF #t < LREAL#1.0E-255 THEN #t := #t * LREAL#1.0E256; #e := #e - 256; END_IF;
+	        IF #t < LREAL#1.0E-127 THEN #t := #t * LREAL#1.0E128; #e := #e - 128; END_IF;
+	        IF #t < LREAL#1.0E-63 THEN #t := #t * LREAL#1.0E64; #e := #e - 64; END_IF;
+	        IF #t < LREAL#1.0E-31 THEN #t := #t * LREAL#1.0E32; #e := #e - 32; END_IF;
+	        IF #t < LREAL#1.0E-15 THEN #t := #t * LREAL#1.0E16; #e := #e - 16; END_IF;
+	        IF #t < LREAL#1.0E-7 THEN #t := #t * LREAL#1.0E8; #e := #e - 8; END_IF;
+	        IF #t < LREAL#1.0E-3 THEN #t := #t * LREAL#1.0E4; #e := #e - 4; END_IF;
+	        IF #t < LREAL#1.0E-1 THEN #t := #t * LREAL#1.0E2; #e := #e - 2; END_IF;
+	        IF #t < LREAL#1.0 THEN #t := #t * LREAL#1.0E1; #e := #e - 1; END_IF;
+	    END_IF;
+	    // Mantisse n = a * 10^k als ganze Zahl mit digits Stellen
+	    FOR #pass := 1 TO 3 DO
+	        #k := #digits - 1 - #e;
+	        IF #k > 300 THEN
+	            // sehr kleine Zahlen: 10^k läge über dem LReal-Bereich
+	            #s := #a * LREAL#1.0E100;
+	            #j := #k - 100;
+	        ELSE
+	            #s := #a;
+	            #j := ABS(#k);
+	        END_IF;
+	        #p := 1.0;
+	        IF #j >= 256 THEN #p := #p * LREAL#1.0E256; #j := #j - 256; END_IF;
+	        IF #j >= 128 THEN #p := #p * LREAL#1.0E128; #j := #j - 128; END_IF;
+	        IF #j >= 64 THEN #p := #p * LREAL#1.0E64; #j := #j - 64; END_IF;
+	        IF #j >= 32 THEN #p := #p * LREAL#1.0E32; #j := #j - 32; END_IF;
+	        IF #j >= 16 THEN #p := #p * LREAL#1.0E16; #j := #j - 16; END_IF;
+	        IF #j >= 8 THEN #p := #p * LREAL#1.0E8; #j := #j - 8; END_IF;
+	        IF #j >= 4 THEN #p := #p * LREAL#1.0E4; #j := #j - 4; END_IF;
+	        IF #j >= 2 THEN #p := #p * LREAL#1.0E2; #j := #j - 2; END_IF;
+	        IF #j >= 1 THEN #p := #p * LREAL#1.0E1; #j := #j - 1; END_IF;
+	        // bis 10^22 ist p exakt, dann lässt sich der Rundungsfehler lo exakt bestimmen
+	        #exact := #k >= -22 AND #k <= 22;
+	        #lo := 0.0;
+	        IF #k >= 0 THEN
+	            #y := #s * #p;
+	            IF #exact THEN
+	                // Fehler der Multiplikation (Dekker, Teilung mit 2^27 + 1)
+	                #c := LREAL#134217729.0 * #s;
+	                #ah := #c - (#c - #s);
+	                #al := #s - #ah;
+	                #c := LREAL#134217729.0 * #p;
+	                #bh := #c - (#c - #p);
+	                #bl := #p - #bh;
+	                #lo := (((#ah * #bh - #y) + #ah * #bl) + #al * #bh) + #al * #bl;
+	            END_IF;
+	        ELSE
+	            #y := #s / #p;
+	            IF #exact THEN
+	                // Rest der Division s - y * p exakt, dann durch p
+	                #ph := #y * #p;
+	                #c := LREAL#134217729.0 * #y;
+	                #ah := #c - (#c - #y);
+	                #al := #y - #ah;
+	                #c := LREAL#134217729.0 * #p;
+	                #bh := #c - (#c - #p);
+	                #bl := #p - #bh;
+	                #lo := (((#ah * #bh - #ph) + #ah * #bl) + #al * #bh) + #al * #bl;
+	                #lo := ((#s - #ph) - #lo) / #p;
+	            END_IF;
+	        END_IF;
+	        // zur nächsten ganzen Zahl runden: (y + 2^52) - 2^52, bei genau .5 zur geraden
+	        #t := #y + LREAL#4503599627370496.0;
+	        #n := #t - LREAL#4503599627370496.0;
+	        #f := #y - #n;
+	        #t := #n / 2.0 + LREAL#4503599627370496.0;
+	        #odd := (#t - LREAL#4503599627370496.0) <> #n / 2.0;
+	        IF #f = 0.5 AND (#lo > 0.0 OR (#lo = 0.0 AND #odd)) THEN
+	            #n := #n + 1.0;
+	        ELSIF #f = -0.5 AND (#lo < 0.0 OR (#lo = 0.0 AND #odd)) THEN
+	            #n := #n - 1.0;
+	        END_IF;
+	        IF #n >= #top THEN
+	            #e := #e + 1;
+	        ELSIF #n < #top / 10.0 THEN
+	            #e := #e - 1;
+	        ELSE
+	            EXIT;
+	        END_IF;
+	    END_FOR;
+	    // über der größten LReal-Zahl, die PDH noch liest: null
+	    IF #e = 308 AND #n > LREAL#179769313486231.0 THEN
+	        #buf[#pos] := 16#6E;   // n
+	        #buf[#pos + 1] := 16#75;   // u
+	        #buf[#pos + 2] := 16#6C;   // l
+	        #buf[#pos + 3] := 16#6C;   // l
+	        #pos := #pos + 4;
+	        RETURN;
+	    END_IF;
+	END_IF;
+	// Ziffern: n = hiD * 10^8 + loD
+	#hiD := TRUNC(#n / LREAL#1.0E8);
+	#loD := LREAL_TO_DINT(#n - DINT_TO_LREAL(#hiD) * LREAL#1.0E8);
+	IF #loD < 0 THEN
+	    #hiD := #hiD - 1;
+	    #loD := #loD + 100000000;
+	ELSIF #loD >= 100000000 THEN
+	    #hiD := #hiD + 1;
+	    #loD := #loD - 100000000;
+	END_IF;
+	FOR #i := #digits TO 1 BY -1 DO
+	    IF #digits - #i < 8 THEN
+	        #dig[#i] := DINT_TO_BYTE(#loD MOD 10 + 48);
+	        #loD := #loD / 10;
+	    ELSE
+	        #dig[#i] := DINT_TO_BYTE(#hiD MOD 10 + 48);
+	        #hiD := #hiD / 10;
+	    END_IF;
+	END_FOR;
+	IF #neg THEN
+	    #buf[#pos] := 16#2D;   // -
+	    #pos := #pos + 1;
+	END_IF;
+	#buf[#pos] := #dig[1];
+	#buf[#pos + 1] := 16#2E;   // .
+	#pos := #pos + 2;
+	FOR #i := 2 TO #digits DO
+	    #buf[#pos] := #dig[#i];
+	    #pos := #pos + 1;
+	END_FOR;
+	#buf[#pos] := 16#45;   // E
+	IF #e < 0 THEN
+	    #buf[#pos + 1] := 16#2D;   // -
+	    #e := -#e;
+	ELSE
+	    #buf[#pos + 1] := 16#2B;   // +
+	END_IF;
+	#pos := #pos + 2;
+	IF #e >= 100 THEN
+	    #buf[#pos] := INT_TO_BYTE(#e / 100 + 48);
+	    #pos := #pos + 1;
+	END_IF;
+	#buf[#pos] := INT_TO_BYTE((#e / 10) MOD 10 + 48);
+	#buf[#pos + 1] := INT_TO_BYTE(#e MOD 10 + 48);
+	#pos := #pos + 2;
+END_FUNCTION
+
+FUNCTION "PDH_J_Real" : Void
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+{{template "kopf" .}}
+//Schreibt v wie Go strconv.FormatFloat(v, 'E', 6, 32), z. B. 1.450000E+03; NaN und ±unendlich als null.
+   VAR_INPUT
+      v : Real;
+   END_VAR
+
+   VAR_IN_OUT
+      buf : Array[*] of Byte;
+      pos : DInt;
+      ovf : Bool;
+   END_VAR
+
+
+BEGIN
+	"PDH_J_Num"(x := REAL_TO_LREAL(#v), digits := 7, maxAbs := LREAL#3.4028234663852886E+38, buf := #buf, pos := #pos, ovf := #ovf);
+END_FUNCTION
+
+FUNCTION "PDH_J_LReal" : Void
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+{{template "kopf" .}}
+//Schreibt v wie Go strconv.FormatFloat(v, 'E', 14, 64); NaN, ±unendlich und Beträge über 1.79769313486231E+308 als null.
+   VAR_INPUT
+      v : LReal;
+   END_VAR
+
+   VAR_IN_OUT
+      buf : Array[*] of Byte;
+      pos : DInt;
+      ovf : Bool;
+   END_VAR
+
+
+BEGIN
+	"PDH_J_Num"(x := #v, digits := 15, maxAbs := LREAL#1.79769313486231E+308, buf := #buf, pos := #pos, ovf := #ovf);
+END_FUNCTION
+
+FUNCTION "PDH_J_Str" : Void
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+{{template "kopf" .}}
+//Schreibt s als JSON-Zeichenkette: " und \ mit \ davor, Steuerzeichen als Leerzeichen,
+//Zeichen ab 16#80 (Latin-1) als zwei Byte UTF-8.
+   VAR_INPUT
+      s : String;
+   END_VAR
+
+   VAR_IN_OUT
+      buf : Array[*] of Byte;
+      pos : DInt;
+      ovf : Bool;
+   END_VAR
+
+   VAR_TEMP
+      i : Int;
+      n : Int;
+      b : Byte;
+      c : Int;
+   END_VAR
+
+
+BEGIN
+	IF #ovf THEN
+	    RETURN;
+	END_IF;
+	#n := LEN(#s);
+	// je Zeichen höchstens zwei Byte, dazu die Anführungszeichen
+	IF #pos < LOWER_BOUND(ARR := #buf, DIM := 1) OR #pos + 2 * INT_TO_DINT(#n) + 1 > UPPER_BOUND(ARR := #buf, DIM := 1) THEN
+	    #ovf := TRUE;
+	    RETURN;
+	END_IF;
+	#buf[#pos] := 16#22;   // "
+	#pos := #pos + 1;
+	FOR #i := 1 TO #n DO
+	    #b := CHAR_TO_BYTE(#s[#i]);
+	    #c := BYTE_TO_INT(#b);
+	    IF #c = 34 OR #c = 92 THEN
+	        #buf[#pos] := 16#5C;   // \
+	        #buf[#pos + 1] := #b;
+	        #pos := #pos + 2;
+	    ELSIF #c < 32 THEN
+	        #buf[#pos] := 16#20;
+	        #pos := #pos + 1;
+	    ELSIF #c < 128 THEN
+	        #buf[#pos] := #b;
+	        #pos := #pos + 1;
+	    ELSE
+	        #buf[#pos] := INT_TO_BYTE(192 + #c / 64);
+	        #buf[#pos + 1] := INT_TO_BYTE(128 + #c MOD 64);
+	        #pos := #pos + 2;
+	    END_IF;
+	END_FOR;
+	#buf[#pos] := 16#22;   // "
+	#pos := #pos + 1;
+END_FUNCTION
+
+FUNCTION "PDH_J_DTL" : Void
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+{{template "kopf" .}}
+//Schreibt v als "JJJJ-MM-TTThh:mm:ss", mit zone = TRUE als "JJJJ-MM-TTThh:mm:ssZ" (UTC).
+   VAR_INPUT
+      v : DTL;
+      zone : Bool;
+   END_VAR
+
+   VAR_IN_OUT
+      buf : Array[*] of Byte;
+      pos : DInt;
+      ovf : Bool;
+   END_VAR
+
+   VAR_TEMP
+      f : Int;
+      i : Int;
+      w : Int;
+      x : DInt;
+      sep : Byte;
+   END_VAR
+
+
+BEGIN
+	IF #ovf THEN
+	    RETURN;
+	END_IF;
+	IF #pos < LOWER_BOUND(ARR := #buf, DIM := 1) OR #pos + 21 > UPPER_BOUND(ARR := #buf, DIM := 1) THEN
+	    #ovf := TRUE;
+	    RETURN;
+	END_IF;
+	#buf[#pos] := 16#22;   // "
+	#pos := #pos + 1;
+	FOR #f := 1 TO 6 DO
+	    CASE #f OF
+	        1:
+	            #x := UINT_TO_DINT(#v.YEAR);
+	            #w := 4;
+	            #sep := 16#2D;   // -
+	        2:
+	            #x := USINT_TO_DINT(#v.MONTH);
+	            #w := 2;
+	            #sep := 16#2D;   // -
+	        3:
+	            #x := USINT_TO_DINT(#v.DAY);
+	            #w := 2;
+	            #sep := 16#54;   // T
+	        4:
+	            #x := USINT_TO_DINT(#v.HOUR);
+	            #w := 2;
+	            #sep := 16#3A;   // :
+	        5:
+	            #x := USINT_TO_DINT(#v.MINUTE);
+	            #w := 2;
+	            #sep := 16#3A;   // :
+	        ELSE
+	            #x := USINT_TO_DINT(#v.SECOND);
+	            #w := 2;
+	            #sep := 16#22;   // "
+	    END_CASE;
+	    FOR #i := #w - 1 TO 0 BY -1 DO
+	        #buf[#pos + #i] := DINT_TO_BYTE(#x MOD 10 + 48);
+	        #x := #x / 10;
+	    END_FOR;
+	    #pos := #pos + #w;
+	    IF #f < 6 THEN
+	        #buf[#pos] := #sep;
+	        #pos := #pos + 1;
+	    END_IF;
+	END_FOR;
+	IF #zone THEN
+	    #buf[#pos] := 16#5A;   // Z
+	    #pos := #pos + 1;
+	END_IF;
+	#buf[#pos] := 16#22;   // "
+	#pos := #pos + 1;
+END_FUNCTION
+
+{{end}}
+
+{{define "konfig" -}}
+DATA_BLOCK {{.KonfigName}}
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+NON_RETAIN
+{{template "kopf" .}}
+//Einstellungen für {{.FBName}}. Werte hier ändern, nicht im Baustein.
+   VAR
+      brokerHost : String[254] := {{sclstr .O.BrokerHost 254}};   // Adresse des Brokers{{if eq .O.Variant "standalone"}} (IPv4){{end}}
+      brokerPort : UInt := {{.O.BrokerPort}};
+      clientId : String[254] := {{sclstr .O.ClientID 254}};
+      username : String[254] := {{sclstr .O.Username 254}};   // leer = ohne Anmeldung
+      password : String[254] := {{sclstr .O.Password 254}};
+      topic : String[254] := {{sclstr .O.Topic 244}};
+      heartbeatTopic : String[254] := {{sclstr .HeartbeatTopic 254}};
+      keepAlive : UInt := {{.O.KeepAliveSeconds}};   // Sekunden
+      retain : Bool := {{if .O.Retain}}TRUE{{else}}FALSE{{end}};   // Werte auf dem Broker halten (Heartbeat nie)
+{{- template "konfig_extra" .}}
+   END_VAR
+
+
+BEGIN
+
+END_DATA_BLOCK
+
+{{end}}
+
+{{define "ersatz" -}}
+DATA_BLOCK {{.DBIdent}}
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+NON_RETAIN
+{{template "kopf" .}}
+//Ersatz für den eigenen Datenbaustein, jetzt auf Basis von {{.TypeName}}. Startwerte aus der hochgeladenen Quelle.
+{{.TypeName}}
+
+BEGIN
+{{- range .BeginLines}}
+   {{.}}
+{{- end}}
+
+END_DATA_BLOCK
+
+{{end}}
+
+{{define "liesmich_teile" -}}
+NACHRICHTEN
+Topic: {{text .O.Topic}}
+Jede Nachricht: {"ts":"2026-11-15T10:01:00Z","part":1,"parts":{{.Parts}},"values":{…}}
+ts ist die Uhrzeit der Steuerung (UTC) beim Trigger, für alle Teile gleich. Im PDH lesen
+die Zuordnungen die Werte über den JSON-Pfad, egal in welchem Teil sie stehen.
+{{range .ReadmeParts}}
+Teil {{.No}} von {{$.Parts}} (höchstens {{.MaxBytes}} Byte)
+{{- range .Values}}
+  {{text .Path}}  ->  {{text .JSONPath}}  ({{.Type}})
+{{- end}}
+{{end}}
+HEARTBEAT
+Topic: {{text .HeartbeatTopic}}
+Inhalt: {"ts":"2026-11-15T10:01:00Z","count":N}, N zählt hoch. Immer ohne Retain.
+Intervall: Eingang heartbeatInterval ({{if .O.HeartbeatSeconds}}Vorgabe T#{{.O.HeartbeatSeconds}}s{{else}}T#0s = aus{{end}}).
+Bleibt der Heartbeat länger als drei Intervalle aus, zeigt das PDH „Steuerung meldet sich nicht“.
+{{- if .Skipped}}
+
+NICHT GESENDET
+{{- range .Skipped}}
+  Zeile {{.Line}}: {{text .Path}} – {{text .Reason}}
+{{- end}}
+{{- end}}
+{{- if .Dropped}}
+
+STARTWERTE NICHT ÜBERNOMMEN (bitte im Ersatz-DB von Hand nachtragen)
+{{- range .Dropped}}
+  {{text .}}
+{{- end}}
+{{- end}}
+{{- if .HasRetain}}
+
+ACHTUNG RETAIN
+Im eigenen Datenbaustein sind remanente Variablen (Retain) eingestellt. Der Ersatz-DB
+übernimmt das nicht. Nach dem Import im Datenbaustein "{{text .DB}}" die Remanenz wieder
+einstellen.
+{{- end}}
+{{end}}
+
+{{define "liesmich_status" -}}
+STATUS (Ausgang status, Klartext in statusText)
+  16#7000  aus (enable = FALSE)
+  16#7001  verbinde
+  16#7002  warte auf Broker
+  16#7003  bereit
+  16#7004  sende
+  16#8001  TCON-Fehler (Adresse, Hardware-Kennung, Verbindungsnummer prüfen)
+  16#8002  Sendefehler
+  16#8003  Empfangsfehler
+  16#81xx  Broker lehnt ab, xx = Rückgabecode (05 = Benutzer/Kennwort falsch)
+  16#8005  keine Antwort vom Broker
+  16#8006  Verbindung eingeschlafen (keine PINGRESP)
+  16#8007  nicht verbunden beim Trigger (es wird nichts gepuffert)
+  16#8008  Nachricht zu lang
+  16#8009  Uhrzeit nicht lesbar
+Nach einem Verbindungsfehler trennt der Baustein, wartet 5 s und verbindet neu.
+{{end}}

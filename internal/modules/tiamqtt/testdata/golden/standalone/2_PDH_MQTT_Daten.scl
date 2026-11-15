@@ -1,0 +1,1228 @@
+﻿FUNCTION "PDH_J_Raw" : Void
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+//Erzeugt vom PDH (PDH-Test) am 2026-11-15 10:00 UTC – bei Änderungen im PDH neu herunterladen.
+//Datenbaustein "Daten", Variante eigenständig (TCON/TSEND/TRCV, ohne TLS), S7-1500, höchstens 1024 Byte je Nachricht.
+//Schreibt feste Zeichen (UTF-8) ab buf[pos]. Passt es nicht, wird ovf gesetzt und nichts geschrieben.
+   VAR_INPUT
+      s : String;
+   END_VAR
+
+   VAR_IN_OUT
+      buf : Array[*] of Byte;
+      pos : DInt;
+      ovf : Bool;
+   END_VAR
+
+   VAR_TEMP
+      i : Int;
+      n : Int;
+   END_VAR
+
+
+BEGIN
+	IF #ovf THEN
+	    RETURN;
+	END_IF;
+	#n := LEN(#s);
+	IF #pos < LOWER_BOUND(ARR := #buf, DIM := 1) OR #pos + INT_TO_DINT(#n) - 1 > UPPER_BOUND(ARR := #buf, DIM := 1) THEN
+	    #ovf := TRUE;
+	    RETURN;
+	END_IF;
+	FOR #i := 1 TO #n DO
+	    #buf[#pos] := CHAR_TO_BYTE(#s[#i]);
+	    #pos := #pos + 1;
+	END_FOR;
+END_FUNCTION
+
+FUNCTION "PDH_J_DInt" : Void
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+//Erzeugt vom PDH (PDH-Test) am 2026-11-15 10:00 UTC – bei Änderungen im PDH neu herunterladen.
+//Datenbaustein "Daten", Variante eigenständig (TCON/TSEND/TRCV, ohne TLS), S7-1500, höchstens 1024 Byte je Nachricht.
+//Schreibt v als Dezimalzahl (auch -2147483648).
+   VAR_INPUT
+      v : DInt;
+   END_VAR
+
+   VAR_IN_OUT
+      buf : Array[*] of Byte;
+      pos : DInt;
+      ovf : Bool;
+   END_VAR
+
+   VAR_TEMP
+      x : DInt;
+      d : DInt;
+      k : Int;
+      i : Int;
+      need : DInt;
+      dig : Array[0..9] of Byte;
+   END_VAR
+
+
+BEGIN
+	IF #ovf THEN
+	    RETURN;
+	END_IF;
+	// Ziffern rückwärts sammeln, ohne das Vorzeichen umzudrehen (sonst Überlauf bei -2147483648)
+	#x := #v;
+	#k := 0;
+	REPEAT
+	    #d := #x MOD 10;
+	    IF #d < 0 THEN
+	        #d := -#d;
+	    END_IF;
+	    #dig[#k] := DINT_TO_BYTE(#d + 48);
+	    #k := #k + 1;
+	    #x := #x / 10;
+	UNTIL #x = 0
+	END_REPEAT;
+	#need := INT_TO_DINT(#k);
+	IF #v < 0 THEN
+	    #need := #need + 1;
+	END_IF;
+	IF #pos < LOWER_BOUND(ARR := #buf, DIM := 1) OR #pos + #need - 1 > UPPER_BOUND(ARR := #buf, DIM := 1) THEN
+	    #ovf := TRUE;
+	    RETURN;
+	END_IF;
+	IF #v < 0 THEN
+	    #buf[#pos] := 16#2D;   // -
+	    #pos := #pos + 1;
+	END_IF;
+	FOR #i := #k - 1 TO 0 BY -1 DO
+	    #buf[#pos] := #dig[#i];
+	    #pos := #pos + 1;
+	END_FOR;
+END_FUNCTION
+
+FUNCTION "PDH_J_UDInt" : Void
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+//Erzeugt vom PDH (PDH-Test) am 2026-11-15 10:00 UTC – bei Änderungen im PDH neu herunterladen.
+//Datenbaustein "Daten", Variante eigenständig (TCON/TSEND/TRCV, ohne TLS), S7-1500, höchstens 1024 Byte je Nachricht.
+//Schreibt v als Dezimalzahl ohne Vorzeichen.
+   VAR_INPUT
+      v : UDInt;
+   END_VAR
+
+   VAR_IN_OUT
+      buf : Array[*] of Byte;
+      pos : DInt;
+      ovf : Bool;
+   END_VAR
+
+   VAR_TEMP
+      x : UDInt;
+      k : Int;
+      i : Int;
+      dig : Array[0..9] of Byte;
+   END_VAR
+
+
+BEGIN
+	IF #ovf THEN
+	    RETURN;
+	END_IF;
+	#x := #v;
+	#k := 0;
+	REPEAT
+	    #dig[#k] := UDINT_TO_BYTE(#x MOD 10 + 48);
+	    #k := #k + 1;
+	    #x := #x / 10;
+	UNTIL #x = 0
+	END_REPEAT;
+	IF #pos < LOWER_BOUND(ARR := #buf, DIM := 1) OR #pos + INT_TO_DINT(#k) - 1 > UPPER_BOUND(ARR := #buf, DIM := 1) THEN
+	    #ovf := TRUE;
+	    RETURN;
+	END_IF;
+	FOR #i := #k - 1 TO 0 BY -1 DO
+	    #buf[#pos] := #dig[#i];
+	    #pos := #pos + 1;
+	END_FOR;
+END_FUNCTION
+
+FUNCTION "PDH_J_Num" : Void
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+//Erzeugt vom PDH (PDH-Test) am 2026-11-15 10:00 UTC – bei Änderungen im PDH neu herunterladen.
+//Datenbaustein "Daten", Variante eigenständig (TCON/TSEND/TRCV, ohne TLS), S7-1500, höchstens 1024 Byte je Nachricht.
+//Schreibt x mit digits gültigen Stellen wie Go strconv.FormatFloat(x, 'E', digits - 1, …):
+//[-]d.ddd…E±XX, Exponent mit mindestens zwei Ziffern. NaN, ±unendlich und Beträge über maxAbs als null.
+//Gerundet wird zur nächsten Zahl, bei genau der Mitte zur geraden. Für Beträge von 1E-8 bis 1E36
+//wird der Rundungsfehler exakt mitgerechnet (Dekker); außerhalb kann die letzte Stelle selten abweichen.
+   VAR_INPUT
+      x : LReal;
+      digits : Int;   // 7 für Real, 15 für LReal
+      maxAbs : LReal;   // größter Betrag, der als Zahl geschrieben wird
+   END_VAR
+
+   VAR_IN_OUT
+      buf : Array[*] of Byte;
+      pos : DInt;
+      ovf : Bool;
+   END_VAR
+
+   VAR_TEMP
+      a : LReal;
+      t : LReal;
+      s : LReal;
+      p : LReal;
+      y : LReal;
+      lo : LReal;
+      n : LReal;
+      f : LReal;
+      top : LReal;
+      c : LReal;
+      ah : LReal;
+      al : LReal;
+      bh : LReal;
+      bl : LReal;
+      ph : LReal;
+      e : Int;
+      k : Int;
+      j : Int;
+      i : Int;
+      pass : Int;
+      hiD : DInt;
+      loD : DInt;
+      neg : Bool;
+      exact : Bool;
+      odd : Bool;
+      dig : Array[1..15] of Byte;
+   END_VAR
+
+
+BEGIN
+	IF #ovf THEN
+	    RETURN;
+	END_IF;
+	IF #digits < 1 OR #digits > 15 OR #pos < LOWER_BOUND(ARR := #buf, DIM := 1) OR #pos + INT_TO_DINT(#digits) + 6 > UPPER_BOUND(ARR := #buf, DIM := 1) THEN
+	    #ovf := TRUE;
+	    RETURN;
+	END_IF;
+	// NaN, ±unendlich und zu große Beträge: null (jeder Vergleich mit NaN ist falsch)
+	IF NOT (ABS(#x) <= #maxAbs) THEN
+	    #buf[#pos] := 16#6E;   // n
+	    #buf[#pos + 1] := 16#75;   // u
+	    #buf[#pos + 2] := 16#6C;   // l
+	    #buf[#pos + 3] := 16#6C;   // l
+	    #pos := #pos + 4;
+	    RETURN;
+	END_IF;
+	#neg := #x < 0.0;
+	#a := ABS(#x);
+	#top := 1.0;
+	FOR #i := 1 TO #digits DO
+	    #top := #top * 10.0;
+	END_FOR;
+	#n := 0.0;
+	#e := 0;
+	IF #a > 0.0 THEN
+	    // Zehnerexponent schätzen (1 <= a / 10^e < 10), wird unten nachgebessert
+	    #t := #a;
+	    IF #t >= 1.0 THEN
+	        IF #t >= LREAL#1.0E256 THEN #t := #t / LREAL#1.0E256; #e := #e + 256; END_IF;
+	        IF #t >= LREAL#1.0E128 THEN #t := #t / LREAL#1.0E128; #e := #e + 128; END_IF;
+	        IF #t >= LREAL#1.0E64 THEN #t := #t / LREAL#1.0E64; #e := #e + 64; END_IF;
+	        IF #t >= LREAL#1.0E32 THEN #t := #t / LREAL#1.0E32; #e := #e + 32; END_IF;
+	        IF #t >= LREAL#1.0E16 THEN #t := #t / LREAL#1.0E16; #e := #e + 16; END_IF;
+	        IF #t >= LREAL#1.0E8 THEN #t := #t / LREAL#1.0E8; #e := #e + 8; END_IF;
+	        IF #t >= LREAL#1.0E4 THEN #t := #t / LREAL#1.0E4; #e := #e + 4; END_IF;
+	        IF #t >= LREAL#1.0E2 THEN #t := #t / LREAL#1.0E2; #e := #e + 2; END_IF;
+	        IF #t >= LREAL#1.0E1 THEN #t := #t / LREAL#1.0E1; #e := #e + 1; END_IF;
+	    ELSE
+	        IF #t < LREAL#1.0E-255 THEN #t := #t * LREAL#1.0E256; #e := #e - 256; END_IF;
+	        IF #t < LREAL#1.0E-127 THEN #t := #t * LREAL#1.0E128; #e := #e - 128; END_IF;
+	        IF #t < LREAL#1.0E-63 THEN #t := #t * LREAL#1.0E64; #e := #e - 64; END_IF;
+	        IF #t < LREAL#1.0E-31 THEN #t := #t * LREAL#1.0E32; #e := #e - 32; END_IF;
+	        IF #t < LREAL#1.0E-15 THEN #t := #t * LREAL#1.0E16; #e := #e - 16; END_IF;
+	        IF #t < LREAL#1.0E-7 THEN #t := #t * LREAL#1.0E8; #e := #e - 8; END_IF;
+	        IF #t < LREAL#1.0E-3 THEN #t := #t * LREAL#1.0E4; #e := #e - 4; END_IF;
+	        IF #t < LREAL#1.0E-1 THEN #t := #t * LREAL#1.0E2; #e := #e - 2; END_IF;
+	        IF #t < LREAL#1.0 THEN #t := #t * LREAL#1.0E1; #e := #e - 1; END_IF;
+	    END_IF;
+	    // Mantisse n = a * 10^k als ganze Zahl mit digits Stellen
+	    FOR #pass := 1 TO 3 DO
+	        #k := #digits - 1 - #e;
+	        IF #k > 300 THEN
+	            // sehr kleine Zahlen: 10^k läge über dem LReal-Bereich
+	            #s := #a * LREAL#1.0E100;
+	            #j := #k - 100;
+	        ELSE
+	            #s := #a;
+	            #j := ABS(#k);
+	        END_IF;
+	        #p := 1.0;
+	        IF #j >= 256 THEN #p := #p * LREAL#1.0E256; #j := #j - 256; END_IF;
+	        IF #j >= 128 THEN #p := #p * LREAL#1.0E128; #j := #j - 128; END_IF;
+	        IF #j >= 64 THEN #p := #p * LREAL#1.0E64; #j := #j - 64; END_IF;
+	        IF #j >= 32 THEN #p := #p * LREAL#1.0E32; #j := #j - 32; END_IF;
+	        IF #j >= 16 THEN #p := #p * LREAL#1.0E16; #j := #j - 16; END_IF;
+	        IF #j >= 8 THEN #p := #p * LREAL#1.0E8; #j := #j - 8; END_IF;
+	        IF #j >= 4 THEN #p := #p * LREAL#1.0E4; #j := #j - 4; END_IF;
+	        IF #j >= 2 THEN #p := #p * LREAL#1.0E2; #j := #j - 2; END_IF;
+	        IF #j >= 1 THEN #p := #p * LREAL#1.0E1; #j := #j - 1; END_IF;
+	        // bis 10^22 ist p exakt, dann lässt sich der Rundungsfehler lo exakt bestimmen
+	        #exact := #k >= -22 AND #k <= 22;
+	        #lo := 0.0;
+	        IF #k >= 0 THEN
+	            #y := #s * #p;
+	            IF #exact THEN
+	                // Fehler der Multiplikation (Dekker, Teilung mit 2^27 + 1)
+	                #c := LREAL#134217729.0 * #s;
+	                #ah := #c - (#c - #s);
+	                #al := #s - #ah;
+	                #c := LREAL#134217729.0 * #p;
+	                #bh := #c - (#c - #p);
+	                #bl := #p - #bh;
+	                #lo := (((#ah * #bh - #y) + #ah * #bl) + #al * #bh) + #al * #bl;
+	            END_IF;
+	        ELSE
+	            #y := #s / #p;
+	            IF #exact THEN
+	                // Rest der Division s - y * p exakt, dann durch p
+	                #ph := #y * #p;
+	                #c := LREAL#134217729.0 * #y;
+	                #ah := #c - (#c - #y);
+	                #al := #y - #ah;
+	                #c := LREAL#134217729.0 * #p;
+	                #bh := #c - (#c - #p);
+	                #bl := #p - #bh;
+	                #lo := (((#ah * #bh - #ph) + #ah * #bl) + #al * #bh) + #al * #bl;
+	                #lo := ((#s - #ph) - #lo) / #p;
+	            END_IF;
+	        END_IF;
+	        // zur nächsten ganzen Zahl runden: (y + 2^52) - 2^52, bei genau .5 zur geraden
+	        #t := #y + LREAL#4503599627370496.0;
+	        #n := #t - LREAL#4503599627370496.0;
+	        #f := #y - #n;
+	        #t := #n / 2.0 + LREAL#4503599627370496.0;
+	        #odd := (#t - LREAL#4503599627370496.0) <> #n / 2.0;
+	        IF #f = 0.5 AND (#lo > 0.0 OR (#lo = 0.0 AND #odd)) THEN
+	            #n := #n + 1.0;
+	        ELSIF #f = -0.5 AND (#lo < 0.0 OR (#lo = 0.0 AND #odd)) THEN
+	            #n := #n - 1.0;
+	        END_IF;
+	        IF #n >= #top THEN
+	            #e := #e + 1;
+	        ELSIF #n < #top / 10.0 THEN
+	            #e := #e - 1;
+	        ELSE
+	            EXIT;
+	        END_IF;
+	    END_FOR;
+	    // über der größten LReal-Zahl, die PDH noch liest: null
+	    IF #e = 308 AND #n > LREAL#179769313486231.0 THEN
+	        #buf[#pos] := 16#6E;   // n
+	        #buf[#pos + 1] := 16#75;   // u
+	        #buf[#pos + 2] := 16#6C;   // l
+	        #buf[#pos + 3] := 16#6C;   // l
+	        #pos := #pos + 4;
+	        RETURN;
+	    END_IF;
+	END_IF;
+	// Ziffern: n = hiD * 10^8 + loD
+	#hiD := TRUNC(#n / LREAL#1.0E8);
+	#loD := LREAL_TO_DINT(#n - DINT_TO_LREAL(#hiD) * LREAL#1.0E8);
+	IF #loD < 0 THEN
+	    #hiD := #hiD - 1;
+	    #loD := #loD + 100000000;
+	ELSIF #loD >= 100000000 THEN
+	    #hiD := #hiD + 1;
+	    #loD := #loD - 100000000;
+	END_IF;
+	FOR #i := #digits TO 1 BY -1 DO
+	    IF #digits - #i < 8 THEN
+	        #dig[#i] := DINT_TO_BYTE(#loD MOD 10 + 48);
+	        #loD := #loD / 10;
+	    ELSE
+	        #dig[#i] := DINT_TO_BYTE(#hiD MOD 10 + 48);
+	        #hiD := #hiD / 10;
+	    END_IF;
+	END_FOR;
+	IF #neg THEN
+	    #buf[#pos] := 16#2D;   // -
+	    #pos := #pos + 1;
+	END_IF;
+	#buf[#pos] := #dig[1];
+	#buf[#pos + 1] := 16#2E;   // .
+	#pos := #pos + 2;
+	FOR #i := 2 TO #digits DO
+	    #buf[#pos] := #dig[#i];
+	    #pos := #pos + 1;
+	END_FOR;
+	#buf[#pos] := 16#45;   // E
+	IF #e < 0 THEN
+	    #buf[#pos + 1] := 16#2D;   // -
+	    #e := -#e;
+	ELSE
+	    #buf[#pos + 1] := 16#2B;   // +
+	END_IF;
+	#pos := #pos + 2;
+	IF #e >= 100 THEN
+	    #buf[#pos] := INT_TO_BYTE(#e / 100 + 48);
+	    #pos := #pos + 1;
+	END_IF;
+	#buf[#pos] := INT_TO_BYTE((#e / 10) MOD 10 + 48);
+	#buf[#pos + 1] := INT_TO_BYTE(#e MOD 10 + 48);
+	#pos := #pos + 2;
+END_FUNCTION
+
+FUNCTION "PDH_J_Real" : Void
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+//Erzeugt vom PDH (PDH-Test) am 2026-11-15 10:00 UTC – bei Änderungen im PDH neu herunterladen.
+//Datenbaustein "Daten", Variante eigenständig (TCON/TSEND/TRCV, ohne TLS), S7-1500, höchstens 1024 Byte je Nachricht.
+//Schreibt v wie Go strconv.FormatFloat(v, 'E', 6, 32), z. B. 1.450000E+03; NaN und ±unendlich als null.
+   VAR_INPUT
+      v : Real;
+   END_VAR
+
+   VAR_IN_OUT
+      buf : Array[*] of Byte;
+      pos : DInt;
+      ovf : Bool;
+   END_VAR
+
+
+BEGIN
+	"PDH_J_Num"(x := REAL_TO_LREAL(#v), digits := 7, maxAbs := LREAL#3.4028234663852886E+38, buf := #buf, pos := #pos, ovf := #ovf);
+END_FUNCTION
+
+FUNCTION "PDH_J_LReal" : Void
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+//Erzeugt vom PDH (PDH-Test) am 2026-11-15 10:00 UTC – bei Änderungen im PDH neu herunterladen.
+//Datenbaustein "Daten", Variante eigenständig (TCON/TSEND/TRCV, ohne TLS), S7-1500, höchstens 1024 Byte je Nachricht.
+//Schreibt v wie Go strconv.FormatFloat(v, 'E', 14, 64); NaN, ±unendlich und Beträge über 1.79769313486231E+308 als null.
+   VAR_INPUT
+      v : LReal;
+   END_VAR
+
+   VAR_IN_OUT
+      buf : Array[*] of Byte;
+      pos : DInt;
+      ovf : Bool;
+   END_VAR
+
+
+BEGIN
+	"PDH_J_Num"(x := #v, digits := 15, maxAbs := LREAL#1.79769313486231E+308, buf := #buf, pos := #pos, ovf := #ovf);
+END_FUNCTION
+
+FUNCTION "PDH_J_Str" : Void
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+//Erzeugt vom PDH (PDH-Test) am 2026-11-15 10:00 UTC – bei Änderungen im PDH neu herunterladen.
+//Datenbaustein "Daten", Variante eigenständig (TCON/TSEND/TRCV, ohne TLS), S7-1500, höchstens 1024 Byte je Nachricht.
+//Schreibt s als JSON-Zeichenkette: " und \ mit \ davor, Steuerzeichen als Leerzeichen,
+//Zeichen ab 16#80 (Latin-1) als zwei Byte UTF-8.
+   VAR_INPUT
+      s : String;
+   END_VAR
+
+   VAR_IN_OUT
+      buf : Array[*] of Byte;
+      pos : DInt;
+      ovf : Bool;
+   END_VAR
+
+   VAR_TEMP
+      i : Int;
+      n : Int;
+      b : Byte;
+      c : Int;
+   END_VAR
+
+
+BEGIN
+	IF #ovf THEN
+	    RETURN;
+	END_IF;
+	#n := LEN(#s);
+	// je Zeichen höchstens zwei Byte, dazu die Anführungszeichen
+	IF #pos < LOWER_BOUND(ARR := #buf, DIM := 1) OR #pos + 2 * INT_TO_DINT(#n) + 1 > UPPER_BOUND(ARR := #buf, DIM := 1) THEN
+	    #ovf := TRUE;
+	    RETURN;
+	END_IF;
+	#buf[#pos] := 16#22;   // "
+	#pos := #pos + 1;
+	FOR #i := 1 TO #n DO
+	    #b := CHAR_TO_BYTE(#s[#i]);
+	    #c := BYTE_TO_INT(#b);
+	    IF #c = 34 OR #c = 92 THEN
+	        #buf[#pos] := 16#5C;   // \
+	        #buf[#pos + 1] := #b;
+	        #pos := #pos + 2;
+	    ELSIF #c < 32 THEN
+	        #buf[#pos] := 16#20;
+	        #pos := #pos + 1;
+	    ELSIF #c < 128 THEN
+	        #buf[#pos] := #b;
+	        #pos := #pos + 1;
+	    ELSE
+	        #buf[#pos] := INT_TO_BYTE(192 + #c / 64);
+	        #buf[#pos + 1] := INT_TO_BYTE(128 + #c MOD 64);
+	        #pos := #pos + 2;
+	    END_IF;
+	END_FOR;
+	#buf[#pos] := 16#22;   // "
+	#pos := #pos + 1;
+END_FUNCTION
+
+FUNCTION "PDH_J_DTL" : Void
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+//Erzeugt vom PDH (PDH-Test) am 2026-11-15 10:00 UTC – bei Änderungen im PDH neu herunterladen.
+//Datenbaustein "Daten", Variante eigenständig (TCON/TSEND/TRCV, ohne TLS), S7-1500, höchstens 1024 Byte je Nachricht.
+//Schreibt v als "JJJJ-MM-TTThh:mm:ss", mit zone = TRUE als "JJJJ-MM-TTThh:mm:ssZ" (UTC).
+   VAR_INPUT
+      v : DTL;
+      zone : Bool;
+   END_VAR
+
+   VAR_IN_OUT
+      buf : Array[*] of Byte;
+      pos : DInt;
+      ovf : Bool;
+   END_VAR
+
+   VAR_TEMP
+      f : Int;
+      i : Int;
+      w : Int;
+      x : DInt;
+      sep : Byte;
+   END_VAR
+
+
+BEGIN
+	IF #ovf THEN
+	    RETURN;
+	END_IF;
+	IF #pos < LOWER_BOUND(ARR := #buf, DIM := 1) OR #pos + 21 > UPPER_BOUND(ARR := #buf, DIM := 1) THEN
+	    #ovf := TRUE;
+	    RETURN;
+	END_IF;
+	#buf[#pos] := 16#22;   // "
+	#pos := #pos + 1;
+	FOR #f := 1 TO 6 DO
+	    CASE #f OF
+	        1:
+	            #x := UINT_TO_DINT(#v.YEAR);
+	            #w := 4;
+	            #sep := 16#2D;   // -
+	        2:
+	            #x := USINT_TO_DINT(#v.MONTH);
+	            #w := 2;
+	            #sep := 16#2D;   // -
+	        3:
+	            #x := USINT_TO_DINT(#v.DAY);
+	            #w := 2;
+	            #sep := 16#54;   // T
+	        4:
+	            #x := USINT_TO_DINT(#v.HOUR);
+	            #w := 2;
+	            #sep := 16#3A;   // :
+	        5:
+	            #x := USINT_TO_DINT(#v.MINUTE);
+	            #w := 2;
+	            #sep := 16#3A;   // :
+	        ELSE
+	            #x := USINT_TO_DINT(#v.SECOND);
+	            #w := 2;
+	            #sep := 16#22;   // "
+	    END_CASE;
+	    FOR #i := #w - 1 TO 0 BY -1 DO
+	        #buf[#pos + #i] := DINT_TO_BYTE(#x MOD 10 + 48);
+	        #x := #x / 10;
+	    END_FOR;
+	    #pos := #pos + #w;
+	    IF #f < 6 THEN
+	        #buf[#pos] := #sep;
+	        #pos := #pos + 1;
+	    END_IF;
+	END_FOR;
+	IF #zone THEN
+	    #buf[#pos] := 16#5A;   // Z
+	    #pos := #pos + 1;
+	END_IF;
+	#buf[#pos] := 16#22;   // "
+	#pos := #pos + 1;
+END_FUNCTION
+
+FUNCTION_BLOCK "PDH_MQTT_Daten"
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+//Erzeugt vom PDH (PDH-Test) am 2026-11-15 10:00 UTC – bei Änderungen im PDH neu herunterladen.
+//Datenbaustein "Daten", Variante eigenständig (TCON/TSEND/TRCV, ohne TLS), S7-1500, höchstens 1024 Byte je Nachricht.
+//Sendet die Werte aus "daten" per MQTT 3.1.1 (QoS 0) an den Broker aus "PDH_Daten_Konfig":
+//bei steigender Flanke an trigger als 2 Nachricht(en), dazu regelmäßig einen Heartbeat.
+//Eigenständig über TCON/TSEND/TRCV, ohne TLS. Je Steuerung nur einmal aufrufen.
+   VAR_INPUT
+      enable : Bool;   // TRUE = verbinden und bereit halten
+      trigger : Bool;   // steigende Flanke = Werte senden
+      heartbeatInterval : Time := T#60s;   // T#0s = kein Heartbeat
+      hwId : HW_ANY := 64;   // Hardware-Kennung der PROFINET-Schnittstelle
+      connId : CONN_OUC := 1;   // Verbindungsnummer, in der Steuerung eindeutig
+   END_VAR
+
+   VAR_OUTPUT
+      connected : Bool;
+      busy : Bool;
+      done : Bool;   // einen Zyklus nach dem letzten Teil
+      error : Bool;
+      status : Word;
+      statusText : String[60];
+      sentCount : UDInt;
+      heartbeatCount : UDInt;
+   END_VAR
+
+   VAR_IN_OUT
+      daten : "PDH_Daten_Typ";
+   END_VAR
+
+   VAR
+      snap : "PDH_Daten_Typ";   // Abbild der Werte beim Trigger
+      ts : DTL;   // Zeitstempel (UTC) aller Teile eines Triggers
+      hbTs : DTL;
+      pl : Array[0..1023] of Byte;   // JSON-Inhalt einer Nachricht
+      conParam : TCON_IP_v4;
+      instTCON : TCON;
+      instTSEND : TSEND;
+      instTRCV : TRCV;
+      instTDISCON : TDISCON;
+      trigEdge : R_TRIG;
+      tmrTcon : TON;
+      tmrConnack : TON;
+      tmrSend : TON;
+      tmrDiscon : TON;
+      tmrRetry : TON;
+      tmrPing : TON;
+      tmrPong : TON;
+      tmrHb : TON;
+      state : Int;
+      buildKind : Int;
+      sendKind : Int;
+      part : Int;
+      pos : DInt;
+      ovf : Bool;
+      txLen : UDInt;
+      tconStart : Bool;
+      sendStart : Bool;
+      discStart : Bool;
+      tcpUp : Bool;
+      failed : Bool;
+      failCode : Word;
+      failText : String[60];
+      lastErr : Word;
+      lastText : String[60];
+      evStatus : Word;
+      evText : String[60];
+      trigPending : Bool;
+      hbDue : Bool;
+      pingOut : Bool;
+      connackSeen : Bool;
+      connackRc : Byte;
+      rxState : Int;
+      rxType : Byte;
+      rxLen : DInt;
+      rxMul : DInt;
+      rxCnt : DInt;
+      rxData : Array[0..1] of Byte;
+      tPing : Time;
+      tPong : Time;
+   END_VAR
+
+   VAR_TEMP
+      i : DInt;
+      j : Int;
+      k : Int;
+      n : Int;
+      p : DInt;
+      rl : DInt;
+      x : DInt;
+      b : Byte;
+      c : Int;
+      oct : Int;
+      val : Int;
+      nDig : Int;
+      ipOk : Bool;
+      rc : Int;
+      hdr : Byte;
+      pubHdr : Byte;
+      cFlags : Byte;
+      useUser : Bool;
+      usePass : Bool;
+      useStr : Bool;
+      tmpStr : String[254];
+   END_VAR
+
+
+BEGIN
+	// ---------------------------------------------------------------- Zyklusanfang
+	#done := FALSE;
+	#error := FALSE;
+	#evStatus := 16#0000;
+	#failCode := 16#0000;
+	#buildKind := 0;
+
+	// Zeitglieder jeden Zyklus aufrufen, dann laufen sie beim Zustandswechsel neu an.
+	// PINGREQ nach keepAlive/2 ohne Senden, ohne PINGRESP binnen keepAlive neu verbinden.
+	#tPing := DINT_TO_TIME(UINT_TO_DINT("PDH_Daten_Konfig".keepAlive) * 500);
+	#tPong := DINT_TO_TIME(UINT_TO_DINT("PDH_Daten_Konfig".keepAlive) * 1000);
+	#tmrTcon(IN := (#state = 1), PT := T#10s);
+	#tmrConnack(IN := (#state = 2 OR (#state = 4 AND #sendKind = 1)), PT := T#10s);
+	#tmrSend(IN := (#state = 4 AND NOT #sendStart), PT := T#10s);
+	#tmrDiscon(IN := (#state = 5), PT := T#5s);
+	#tmrRetry(IN := (#state = 6), PT := T#5s);
+	#tmrPing(IN := (#state = 3 AND NOT #pingOut AND "PDH_Daten_Konfig".keepAlive > 0), PT := #tPing);
+	#tmrPong(IN := (#pingOut AND #tcpUp), PT := #tPong);
+	#tmrHb(IN := (#connected AND #heartbeatInterval > T#0s AND NOT #hbDue), PT := #heartbeatInterval);
+	IF #tmrHb.Q THEN
+	    #hbDue := TRUE;
+	END_IF;
+
+	// ---------------------------------------------------------------- Trigger
+	#trigEdge(CLK := #trigger);
+	IF #trigEdge.Q THEN
+	    IF #connected AND #enable THEN
+	        // wird in "bereit" gestartet; während busy bleibt genau eine Wiederholung gemerkt
+	        #trigPending := TRUE;
+	    ELSE
+	        // nicht verbunden: nichts puffern
+	        #evStatus := 16#8007;
+	        #evText := 'nicht verbunden beim Trigger';
+	    END_IF;
+	END_IF;
+
+	// ---------------------------------------------------------------- Empfangen (CONNACK, PINGRESP)
+	IF #state = 0 OR #state = 5 OR #state = 6 THEN
+	    // ohne Verbindung: Kommunikationsbausteine zu Ende laufen lassen
+	    #instTCON(REQ := FALSE, ID := #connId, CONNECT := #conParam);
+	    #instTSEND(REQ := FALSE, ID := #connId, LEN := 0, DATA := "PDH_Daten_Puffer".tx);
+	    #instTRCV(EN_R := FALSE, ID := #connId, LEN := 0, ADHOC := TRUE, DATA := "PDH_Daten_Puffer".rx);
+	ELSIF #tcpUp THEN
+	    #instTRCV(EN_R := TRUE, ID := #connId, LEN := 0, ADHOC := TRUE, DATA := "PDH_Daten_Puffer".rx);
+	    IF #instTRCV.ERROR THEN
+	        #failCode := 16#8003;
+	        #failText := 'Empfangsfehler';
+	    ELSIF #instTRCV.NDR THEN
+	        FOR #i := 0 TO UDINT_TO_DINT(#instTRCV.RCVD_LEN) - 1 DO
+	            IF #i > 63 THEN
+	                EXIT;
+	            END_IF;
+	            #b := "PDH_Daten_Puffer".rx[#i];
+	            CASE #rxState OF
+	                0:  // Kopfbyte
+	                    #rxType := #b;
+	                    #rxLen := 0;
+	                    #rxMul := 1;
+	                    #rxCnt := 0;
+	                    #rxState := 1;
+	                1:  // Restlänge
+	                    #rxLen := #rxLen + BYTE_TO_DINT(#b AND 16#7F) * #rxMul;
+	                    #rxMul := #rxMul * 128;
+	                    IF (#b AND 16#80) = 16#00 THEN
+	                        #rxState := 2;
+	                    ELSIF #rxMul > 2097152 THEN
+	                        #failCode := 16#8003;
+	                        #failText := 'Empfangsfehler (Paket ungueltig)';
+	                        #rxState := 0;
+	                    END_IF;
+	                ELSE  // Inhalt
+	                    IF #rxCnt < 2 THEN
+	                        #rxData[#rxCnt] := #b;
+	                    END_IF;
+	                    #rxCnt := #rxCnt + 1;
+	            END_CASE;
+	            IF #rxState = 2 AND #rxCnt >= #rxLen THEN
+	                // Paket vollständig
+	                #rxState := 0;
+	                IF (#rxType AND 16#F0) = 16#20 AND #rxLen >= 2 THEN
+	                    // CONNACK: 20 02 xx rc
+	                    #connackSeen := TRUE;
+	                    #connackRc := #rxData[1];
+	                ELSIF (#rxType AND 16#F0) = 16#D0 THEN
+	                    // PINGRESP: D0 00
+	                    #pingOut := FALSE;
+	                END_IF;
+	            END_IF;
+	        END_FOR;
+	    END_IF;
+	    IF #tmrPong.Q THEN
+	        #failCode := 16#8006;
+	        #failText := 'Verbindung eingeschlafen (keine PINGRESP)';
+	    END_IF;
+	END_IF;
+
+	// ---------------------------------------------------------------- Ablauf
+	IF #failCode = 16#0000 THEN
+	    CASE #state OF
+	        0:  // aus
+	            #connected := FALSE;
+	            #busy := FALSE;
+	            #failed := FALSE;
+	            #tcpUp := FALSE;
+	            #trigPending := FALSE;
+	            #hbDue := FALSE;
+	            IF #enable THEN
+	                #state := 1;
+	                #tconStart := TRUE;
+	            END_IF;
+
+	        1:  // TCP-Verbindung aufbauen
+	            IF NOT #enable THEN
+	                #state := 5;
+	                #discStart := TRUE;
+	            ELSE
+	                IF #tconStart THEN
+	                    // IPv4-Adresse aus brokerHost lesen, z. B. 192.168.0.10
+	                    #tmpStr := "PDH_Daten_Konfig".brokerHost;
+	                    #ipOk := TRUE;
+	                    #oct := 1;
+	                    #val := 0;
+	                    #nDig := 0;
+	                    FOR #j := 1 TO LEN(#tmpStr) DO
+	                        #c := BYTE_TO_INT(CHAR_TO_BYTE(#tmpStr[#j]));
+	                        IF #c >= 48 AND #c <= 57 THEN
+	                            IF #nDig >= 3 THEN
+	                                #ipOk := FALSE;
+	                            ELSE
+	                                #val := #val * 10 + #c - 48;
+	                                #nDig := #nDig + 1;
+	                            END_IF;
+	                        ELSIF #c = 46 AND #nDig > 0 AND #oct < 4 AND #val <= 255 THEN
+	                            #conParam.RemoteAddress.ADDR[#oct] := INT_TO_BYTE(#val);
+	                            #oct := #oct + 1;
+	                            #val := 0;
+	                            #nDig := 0;
+	                        ELSE
+	                            #ipOk := FALSE;
+	                        END_IF;
+	                    END_FOR;
+	                    IF #ipOk AND #oct = 4 AND #nDig > 0 AND #val <= 255 THEN
+	                        #conParam.RemoteAddress.ADDR[4] := INT_TO_BYTE(#val);
+	                    ELSE
+	                        #failCode := 16#8001;
+	                        #failText := 'brokerHost ist keine IPv4-Adresse';
+	                    END_IF;
+	                    #conParam.InterfaceId := #hwId;
+	                    #conParam.ID := #connId;
+	                    #conParam.ConnectionType := 11;   // TCP
+	                    #conParam.ActiveEstablished := TRUE;
+	                    #conParam.RemotePort := "PDH_Daten_Konfig".brokerPort;
+	                    #conParam.LocalPort := 0;
+	                END_IF;
+	                IF #failCode = 16#0000 THEN
+	                    #instTCON(REQ := #tconStart, ID := #connId, CONNECT := #conParam);
+	                    #tconStart := FALSE;
+	                    IF #instTCON.ERROR THEN
+	                        #failCode := 16#8001;
+	                        #failText := 'TCON-Fehler';
+	                    ELSIF #instTCON.DONE THEN
+	                        #tcpUp := TRUE;
+	                        #rxState := 0;
+	                        #connackSeen := FALSE;
+	                        #pingOut := FALSE;
+	                        #buildKind := 1;   // CONNECT
+	                    ELSIF #tmrTcon.Q THEN
+	                        #failCode := 16#8005;
+	                        #failText := 'keine Antwort vom Broker';
+	                    END_IF;
+	                END_IF;
+	            END_IF;
+
+	        2:  // auf CONNACK warten (binnen 10 s)
+	            IF NOT #enable THEN
+	                #state := 5;
+	                #discStart := TRUE;
+	            ELSIF #connackSeen THEN
+	                IF #connackRc = 16#00 THEN
+	                    #connected := TRUE;
+	                    #failed := FALSE;
+	                    #state := 3;
+	                ELSE
+	                    #failCode := 16#8100 OR BYTE_TO_WORD(#connackRc);
+	                    CASE BYTE_TO_INT(#connackRc) OF
+	                        1:
+	                            #failText := 'Broker lehnt ab: Protokollversion';
+	                        2:
+	                            #failText := 'Broker lehnt ab: Client-ID';
+	                        3:
+	                            #failText := 'Broker lehnt ab: nicht verfuegbar';
+	                        4, 5:
+	                            #failText := 'Broker lehnt ab: Benutzer/Kennwort falsch';
+	                        ELSE
+	                            #failText := 'Broker lehnt ab';
+	                    END_CASE;
+	                END_IF;
+	            ELSIF #tmrConnack.Q THEN
+	                #failCode := 16#8005;
+	                #failText := 'keine Antwort vom Broker';
+	            END_IF;
+
+	        3:  // bereit
+	            IF NOT #enable THEN
+	                #buildKind := 5;   // DISCONNECT
+	            ELSIF #trigPending THEN
+	                #trigPending := FALSE;
+	                #rc := RD_SYS_T(OUT => #ts);
+	                IF #rc <> 0 THEN
+	                    #evStatus := 16#8009;
+	                    #evText := 'Uhrzeit nicht lesbar';
+	                ELSE
+	                    #snap := #daten;   // alle Teile aus demselben Abbild
+	                    #part := 1;
+	                    #busy := TRUE;
+	                    #buildKind := 2;
+	                END_IF;
+	            ELSIF #hbDue THEN
+	                #rc := RD_SYS_T(OUT => #hbTs);
+	                IF #rc <> 0 THEN
+	                    #hbDue := FALSE;
+	                    #evStatus := 16#8009;
+	                    #evText := 'Uhrzeit nicht lesbar';
+	                ELSE
+	                    #buildKind := 3;
+	                END_IF;
+	            ELSIF #tmrPing.Q THEN
+	                #buildKind := 4;   // PINGREQ
+	            END_IF;
+
+	        4:  // senden, je Zyklus höchstens ein TSEND-Auftrag
+	            #instTSEND(REQ := #sendStart, ID := #connId, LEN := #txLen, DATA := "PDH_Daten_Puffer".tx);
+	            #sendStart := FALSE;
+	            IF #instTSEND.ERROR OR #tmrSend.Q THEN
+	                IF #sendKind = 5 THEN
+	                    #state := 5;
+	                    #discStart := TRUE;
+	                ELSE
+	                    #failCode := 16#8002;
+	                    #failText := 'Sendefehler';
+	                END_IF;
+	            ELSIF #instTSEND.DONE THEN
+	                CASE #sendKind OF
+	                    1:  // CONNECT
+	                        #state := 2;
+	                    2:  // Teil
+	                        IF #part < 2 AND #enable THEN
+	                            #part := #part + 1;
+	                            #buildKind := 2;
+	                        ELSE
+	                            IF #part >= 2 THEN
+	                                #done := TRUE;
+	                                #sentCount := #sentCount + 1;
+	                            END_IF;
+	                            #busy := FALSE;
+	                            #state := 3;
+	                        END_IF;
+	                    3:  // Heartbeat
+	                        #heartbeatCount := #heartbeatCount + 1;
+	                        #hbDue := FALSE;
+	                        #state := 3;
+	                    4:  // PINGREQ
+	                        #pingOut := TRUE;
+	                        #state := 3;
+	                    ELSE  // DISCONNECT
+	                        #state := 5;
+	                        #discStart := TRUE;
+	                END_CASE;
+	            END_IF;
+
+	        5:  // trennen
+	            #connected := FALSE;
+	            #tcpUp := FALSE;
+	            #busy := FALSE;
+	            #instTDISCON(REQ := #discStart, ID := #connId);
+	            #discStart := FALSE;
+	            IF #instTDISCON.DONE OR #instTDISCON.ERROR OR #tmrDiscon.Q THEN
+	                IF #failed AND #enable THEN
+	                    #state := 6;
+	                ELSE
+	                    #state := 0;
+	                END_IF;
+	            END_IF;
+
+	        6:  // 5 s warten, dann neu verbinden
+	            IF NOT #enable THEN
+	                #state := 0;
+	            ELSIF #tmrRetry.Q THEN
+	                #state := 1;
+	                #tconStart := TRUE;
+	            END_IF;
+
+	        ELSE
+	            #state := 0;
+	    END_CASE;
+	END_IF;
+
+	// ---------------------------------------------------------------- Pakete bauen
+	IF #buildKind <> 0 AND #failCode = 16#0000 THEN
+	    #ovf := FALSE;
+	    #pos := 0;
+	    #rl := 0;
+	    CASE #buildKind OF
+	        1:  // CONNECT mit Clean Session, Benutzer/Kennwort nur wenn gesetzt
+	            #useUser := LEN("PDH_Daten_Konfig".username) > 0;
+	            #usePass := #useUser AND LEN("PDH_Daten_Konfig".password) > 0;
+	            #cFlags := 16#02;   // Clean Session
+	            IF #useUser THEN
+	                #cFlags := #cFlags OR 16#80;
+	            END_IF;
+	            IF #usePass THEN
+	                #cFlags := #cFlags OR 16#40;
+	            END_IF;
+	            #rl := 12 + INT_TO_DINT(LEN("PDH_Daten_Konfig".clientId));
+	            IF #useUser THEN
+	                #rl := #rl + 2 + INT_TO_DINT(LEN("PDH_Daten_Konfig".username));
+	            END_IF;
+	            IF #usePass THEN
+	                #rl := #rl + 2 + INT_TO_DINT(LEN("PDH_Daten_Konfig".password));
+	            END_IF;
+	            #hdr := 16#10;
+
+	        2:  // Teil #part: JSON in #pl
+	            "PDH_J_Raw"(s := '{"ts":', buf := #pl, pos := #pos, ovf := #ovf);
+	            "PDH_J_DTL"(v := #ts, zone := TRUE, buf := #pl, pos := #pos, ovf := #ovf);
+	            "PDH_J_Raw"(s := ',"part":', buf := #pl, pos := #pos, ovf := #ovf);
+	            "PDH_J_DInt"(v := INT_TO_DINT(#part), buf := #pl, pos := #pos, ovf := #ovf);
+	            "PDH_J_Raw"(s := ',"parts":2,"values":{', buf := #pl, pos := #pos, ovf := #ovf);
+	            CASE #part OF
+	                1:
+	                    "PDH_J_Raw"(s := '"Zaehler":', buf := #pl, pos := #pos, ovf := #ovf);
+	                    "PDH_J_Real"(v := #snap."Zaehler", buf := #pl, pos := #pos, ovf := #ovf);
+	                    "PDH_J_Raw"(s := ',"Takt":', buf := #pl, pos := #pos, ovf := #ovf);
+	                    "PDH_J_DInt"(v := INT_TO_DINT(#snap."Takt"), buf := #pl, pos := #pos, ovf := #ovf);
+	                    "PDH_J_Raw"(s := ',"Motor":{"Drehzahl":', buf := #pl, pos := #pos, ovf := #ovf);
+	                    "PDH_J_Real"(v := #snap."Motor"."Drehzahl", buf := #pl, pos := #pos, ovf := #ovf);
+	                    "PDH_J_Raw"(s := ',"Ein":', buf := #pl, pos := #pos, ovf := #ovf);
+	                    IF #snap."Motor"."Ein" THEN
+	                        "PDH_J_Raw"(s := 'true', buf := #pl, pos := #pos, ovf := #ovf);
+	                    ELSE
+	                        "PDH_J_Raw"(s := 'false', buf := #pl, pos := #pos, ovf := #ovf);
+	                    END_IF;
+	                    "PDH_J_Raw"(s := '},"Feld":[', buf := #pl, pos := #pos, ovf := #ovf);
+	                    "PDH_J_DInt"(v := INT_TO_DINT(#snap."Feld"[1]), buf := #pl, pos := #pos, ovf := #ovf);
+	                    "PDH_J_Raw"(s := ',', buf := #pl, pos := #pos, ovf := #ovf);
+	                    "PDH_J_DInt"(v := INT_TO_DINT(#snap."Feld"[2]), buf := #pl, pos := #pos, ovf := #ovf);
+	                    "PDH_J_Raw"(s := ',', buf := #pl, pos := #pos, ovf := #ovf);
+	                    "PDH_J_DInt"(v := INT_TO_DINT(#snap."Feld"[3]), buf := #pl, pos := #pos, ovf := #ovf);
+	                    "PDH_J_Raw"(s := ',', buf := #pl, pos := #pos, ovf := #ovf);
+	                    "PDH_J_DInt"(v := INT_TO_DINT(#snap."Feld"[4]), buf := #pl, pos := #pos, ovf := #ovf);
+	                    "PDH_J_Raw"(s := ',', buf := #pl, pos := #pos, ovf := #ovf);
+	                    "PDH_J_DInt"(v := INT_TO_DINT(#snap."Feld"[5]), buf := #pl, pos := #pos, ovf := #ovf);
+	                    "PDH_J_Raw"(s := ',', buf := #pl, pos := #pos, ovf := #ovf);
+	                    "PDH_J_DInt"(v := INT_TO_DINT(#snap."Feld"[6]), buf := #pl, pos := #pos, ovf := #ovf);
+	                    "PDH_J_Raw"(s := ',', buf := #pl, pos := #pos, ovf := #ovf);
+	                    "PDH_J_DInt"(v := INT_TO_DINT(#snap."Feld"[7]), buf := #pl, pos := #pos, ovf := #ovf);
+	                    "PDH_J_Raw"(s := ',', buf := #pl, pos := #pos, ovf := #ovf);
+	                    "PDH_J_DInt"(v := INT_TO_DINT(#snap."Feld"[8]), buf := #pl, pos := #pos, ovf := #ovf);
+	                    "PDH_J_Raw"(s := ',', buf := #pl, pos := #pos, ovf := #ovf);
+	                    "PDH_J_DInt"(v := INT_TO_DINT(#snap."Feld"[9]), buf := #pl, pos := #pos, ovf := #ovf);
+	                    "PDH_J_Raw"(s := ',', buf := #pl, pos := #pos, ovf := #ovf);
+	                    "PDH_J_DInt"(v := INT_TO_DINT(#snap."Feld"[10]), buf := #pl, pos := #pos, ovf := #ovf);
+	                    "PDH_J_Raw"(s := '],"Text":', buf := #pl, pos := #pos, ovf := #ovf);
+	                    "PDH_J_Str"(s := #snap."Text", buf := #pl, pos := #pos, ovf := #ovf);
+	                    "PDH_J_Raw"(s := ',"Name":', buf := #pl, pos := #pos, ovf := #ovf);
+	                    "PDH_J_Str"(s := #snap."Name", buf := #pl, pos := #pos, ovf := #ovf);
+	                    "PDH_J_Raw"(s := ',"Zeit":', buf := #pl, pos := #pos, ovf := #ovf);
+	                    "PDH_J_DTL"(v := #snap."Zeit", zone := FALSE, buf := #pl, pos := #pos, ovf := #ovf);
+	                    "PDH_J_Raw"(s := ',"Wort":', buf := #pl, pos := #pos, ovf := #ovf);
+	                    "PDH_J_UDInt"(v := WORD_TO_UDINT(#snap."Wort"), buf := #pl, pos := #pos, ovf := #ovf);
+	                    "PDH_J_Raw"(s := ',"Doppelwort":', buf := #pl, pos := #pos, ovf := #ovf);
+	                    "PDH_J_UDInt"(v := DWORD_TO_UDINT(#snap."Doppelwort"), buf := #pl, pos := #pos, ovf := #ovf);
+	                    "PDH_J_Raw"(s := ',"Ganz":', buf := #pl, pos := #pos, ovf := #ovf);
+	                    "PDH_J_DInt"(v := #snap."Ganz", buf := #pl, pos := #pos, ovf := #ovf);
+	                    "PDH_J_Raw"(s := ',"Vorzeichenlos":', buf := #pl, pos := #pos, ovf := #ovf);
+	                    "PDH_J_UDInt"(v := UINT_TO_UDINT(#snap."Vorzeichenlos"), buf := #pl, pos := #pos, ovf := #ovf);
+	                    "PDH_J_Raw"(s := ',"Gross":', buf := #pl, pos := #pos, ovf := #ovf);
+	                    "PDH_J_UDInt"(v := #snap."Gross", buf := #pl, pos := #pos, ovf := #ovf);
+	                    "PDH_J_Raw"(s := ',"Genau":', buf := #pl, pos := #pos, ovf := #ovf);
+	                    "PDH_J_LReal"(v := #snap."Genau", buf := #pl, pos := #pos, ovf := #ovf);
+	                    "PDH_J_Raw"(s := ',"Zeitstempel":', buf := #pl, pos := #pos, ovf := #ovf);
+	                    "PDH_J_DTL"(v := DT_TO_DTL(#snap."Zeitstempel"), zone := FALSE, buf := #pl, pos := #pos, ovf := #ovf);
+	                2:
+	                    "PDH_J_Raw"(s := '"Bemerkung":', buf := #pl, pos := #pos, ovf := #ovf);
+	                    "PDH_J_Str"(s := #snap."Bemerkung", buf := #pl, pos := #pos, ovf := #ovf);
+	                    "PDH_J_Raw"(s := ',"Z$C3$A4hler":{"St$C3$BCck":', buf := #pl, pos := #pos, ovf := #ovf);
+	                    "PDH_J_UDInt"(v := #snap."Zähler"."Stück", buf := #pl, pos := #pos, ovf := #ovf);
+	                    "PDH_J_Raw"(s := ',"it$'s":', buf := #pl, pos := #pos, ovf := #ovf);
+	                    IF #snap."Zähler"."it's" THEN
+	                        "PDH_J_Raw"(s := 'true', buf := #pl, pos := #pos, ovf := #ovf);
+	                    ELSE
+	                        "PDH_J_Raw"(s := 'false', buf := #pl, pos := #pos, ovf := #ovf);
+	                    END_IF;
+	                    "PDH_J_Raw"(s := '}', buf := #pl, pos := #pos, ovf := #ovf);
+	            END_CASE;
+	            "PDH_J_Raw"(s := '}}', buf := #pl, pos := #pos, ovf := #ovf);
+	            #pubHdr := 16#30;   // PUBLISH, QoS 0
+	            IF "PDH_Daten_Konfig".retain THEN
+	                #pubHdr := #pubHdr OR 16#01;   // Retain nur für die Werte
+	            END_IF;
+	            #tmpStr := "PDH_Daten_Konfig".topic;
+
+	        3:  // --- Heartbeat ---
+	            "PDH_J_Raw"(s := '{"ts":', buf := #pl, pos := #pos, ovf := #ovf);
+	            "PDH_J_DTL"(v := #hbTs, zone := TRUE, buf := #pl, pos := #pos, ovf := #ovf);
+	            "PDH_J_Raw"(s := ',"count":', buf := #pl, pos := #pos, ovf := #ovf);
+	            "PDH_J_UDInt"(v := #heartbeatCount + 1, buf := #pl, pos := #pos, ovf := #ovf);
+	            "PDH_J_Raw"(s := '}', buf := #pl, pos := #pos, ovf := #ovf);
+	            #pubHdr := 16#30;   // fest: PUBLISH, QoS 0 – ein alter Heartbeat darf nicht auf dem Broker liegen bleiben
+	            #tmpStr := "PDH_Daten_Konfig".heartbeatTopic;
+	            // --- Ende Heartbeat ---
+
+	        4:  // PINGREQ: C0 00
+	            #hdr := 16#C0;
+
+	        ELSE  // DISCONNECT: E0 00
+	            #hdr := 16#E0;
+	    END_CASE;
+	    IF #buildKind = 2 OR #buildKind = 3 THEN
+	        #hdr := #pubHdr;
+	        #rl := 2 + INT_TO_DINT(LEN(#tmpStr)) + #pos;
+	    END_IF;
+	    IF NOT #ovf AND #rl + 5 > 1285 THEN
+	        #ovf := TRUE;
+	    END_IF;
+	    IF NOT #ovf THEN
+	        // Kopf und Restlänge: 7 Bit je Byte, oberstes Bit = es folgt ein weiteres Byte
+	        "PDH_Daten_Puffer".tx[0] := #hdr;
+	        #p := 1;
+	        #x := #rl;
+	        REPEAT
+	            #b := DINT_TO_BYTE(#x MOD 128);
+	            #x := #x / 128;
+	            IF #x > 0 THEN
+	                #b := #b OR 16#80;
+	            END_IF;
+	            "PDH_Daten_Puffer".tx[#p] := #b;
+	            #p := #p + 1;
+	        UNTIL #x = 0
+	        END_REPEAT;
+	        IF #buildKind = 1 THEN
+	            // Protokollname 'MQTT' mit Länge, Stufe 16#04 (MQTT 3.1.1), Flags, Keep-Alive
+	            "PDH_Daten_Puffer".tx[#p] := 16#00;
+	            "PDH_Daten_Puffer".tx[#p + 1] := 16#04;
+	            #p := #p + 2;
+	            #tmpStr := 'MQTT';
+	            FOR #j := 1 TO 4 DO
+	                "PDH_Daten_Puffer".tx[#p] := CHAR_TO_BYTE(#tmpStr[#j]);
+	                #p := #p + 1;
+	            END_FOR;
+	            "PDH_Daten_Puffer".tx[#p] := 16#04;
+	            "PDH_Daten_Puffer".tx[#p + 1] := #cFlags;
+	            "PDH_Daten_Puffer".tx[#p + 2] := UINT_TO_BYTE("PDH_Daten_Konfig".keepAlive / 256);
+	            "PDH_Daten_Puffer".tx[#p + 3] := UINT_TO_BYTE("PDH_Daten_Konfig".keepAlive MOD 256);
+	            #p := #p + 4;
+	            // Client-ID, Benutzer, Kennwort mit je zwei Byte Länge davor
+	            FOR #k := 1 TO 3 DO
+	                CASE #k OF
+	                    1:
+	                        #tmpStr := "PDH_Daten_Konfig".clientId;
+	                        #useStr := TRUE;
+	                    2:
+	                        #tmpStr := "PDH_Daten_Konfig".username;
+	                        #useStr := #useUser;
+	                    ELSE
+	                        #tmpStr := "PDH_Daten_Konfig".password;
+	                        #useStr := #usePass;
+	                END_CASE;
+	                IF #useStr THEN
+	                    #n := LEN(#tmpStr);
+	                    "PDH_Daten_Puffer".tx[#p] := INT_TO_BYTE(#n / 256);
+	                    "PDH_Daten_Puffer".tx[#p + 1] := INT_TO_BYTE(#n MOD 256);
+	                    #p := #p + 2;
+	                    FOR #j := 1 TO #n DO
+	                        "PDH_Daten_Puffer".tx[#p] := CHAR_TO_BYTE(#tmpStr[#j]);
+	                        #p := #p + 1;
+	                    END_FOR;
+	                END_IF;
+	            END_FOR;
+	        ELSIF #buildKind = 2 OR #buildKind = 3 THEN
+	            // Topic mit zwei Byte Länge, dann der JSON-Inhalt
+	            #n := LEN(#tmpStr);
+	            "PDH_Daten_Puffer".tx[#p] := INT_TO_BYTE(#n / 256);
+	            "PDH_Daten_Puffer".tx[#p + 1] := INT_TO_BYTE(#n MOD 256);
+	            #p := #p + 2;
+	            FOR #j := 1 TO #n DO
+	                "PDH_Daten_Puffer".tx[#p] := CHAR_TO_BYTE(#tmpStr[#j]);
+	                #p := #p + 1;
+	            END_FOR;
+	            FOR #i := 0 TO #pos - 1 DO
+	                "PDH_Daten_Puffer".tx[#p] := #pl[#i];
+	                #p := #p + 1;
+	            END_FOR;
+	        END_IF;
+	        #txLen := DINT_TO_UDINT(#p);
+	        #sendKind := #buildKind;
+	        #sendStart := TRUE;
+	        #state := 4;
+	    ELSIF #buildKind = 1 THEN
+	        #failCode := 16#8008;
+	        #failText := 'Nachricht zu lang';
+	    ELSE
+	        // Teil oder Heartbeat passt nicht: diesen Trigger verwerfen
+	        #evStatus := 16#8008;
+	        #evText := 'Nachricht zu lang';
+	        IF #buildKind = 3 THEN
+	            #hbDue := FALSE;
+	        END_IF;
+	        #busy := FALSE;
+	        #state := 3;
+	    END_IF;
+	END_IF;
+
+	// ---------------------------------------------------------------- Fehler: trennen, 5 s warten, neu verbinden
+	IF #failCode <> 16#0000 THEN
+	    #failed := TRUE;
+	    #lastErr := #failCode;
+	    #lastText := #failText;
+	    #connected := FALSE;
+	    #busy := FALSE;
+	    #trigPending := FALSE;
+	    #hbDue := FALSE;
+	    #pingOut := FALSE;
+	    #state := 5;
+	    #discStart := TRUE;
+	END_IF;
+
+	// ---------------------------------------------------------------- Ausgänge
+	IF #evStatus <> 16#0000 THEN
+	    #error := TRUE;
+	    #status := #evStatus;
+	    #statusText := #evText;
+	ELSIF #failed THEN
+	    #error := TRUE;
+	    #status := #lastErr;
+	    #statusText := #lastText;
+	ELSE
+	    CASE #state OF
+	        1, 6:
+	            #status := 16#7001;
+	            #statusText := 'verbinde';
+	        2:
+	            #status := 16#7002;
+	            #statusText := 'warte auf Broker';
+	        3:
+	            #status := 16#7003;
+	            #statusText := 'bereit';
+	        4:
+	            IF #sendKind = 1 THEN
+	                #status := 16#7002;
+	                #statusText := 'warte auf Broker';
+	            ELSIF #busy THEN
+	                #status := 16#7004;
+	                #statusText := 'sende';
+	            ELSE
+	                #status := 16#7003;
+	                #statusText := 'bereit';
+	            END_IF;
+	        ELSE
+	            #status := 16#7000;
+	            #statusText := 'aus';
+	    END_CASE;
+	END_IF;
+END_FUNCTION_BLOCK
+

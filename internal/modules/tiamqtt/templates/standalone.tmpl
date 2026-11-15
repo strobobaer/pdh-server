@@ -1,0 +1,684 @@
+{{- /*
+Variante „eigenständig“: MQTT 3.1.1 in SCL über TCON/TSEND/TRCV, ohne TLS.
+Zustände (#state): 0 aus, 1 TCON, 2 warte auf CONNACK, 3 bereit, 4 senden,
+5 trennen (TDISCON), 6 warten vor dem Neuverbinden.
+Pakete (#buildKind/#sendKind): 1 CONNECT, 2 Teil, 3 Heartbeat, 4 PINGREQ, 5 DISCONNECT.
+*/ -}}
+
+{{define "konfig_extra"}}{{end}}
+
+{{define "fb" -}}
+FUNCTION_BLOCK {{.FBName}}
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+{{template "kopf" .}}
+//Sendet die Werte aus "daten" per MQTT 3.1.1 (QoS 0) an den Broker aus {{.KonfigName}}:
+//bei steigender Flanke an trigger als {{.Parts}} Nachricht(en), dazu regelmäßig einen Heartbeat.
+//Eigenständig über TCON/TSEND/TRCV, ohne TLS. Je Steuerung nur einmal aufrufen.
+   VAR_INPUT
+      enable : Bool;   // TRUE = verbinden und bereit halten
+      trigger : Bool;   // steigende Flanke = Werte senden
+      heartbeatInterval : Time := T#{{.O.HeartbeatSeconds}}s;   // T#0s = kein Heartbeat
+      hwId : HW_ANY := {{.O.HwID}};   // Hardware-Kennung der PROFINET-Schnittstelle
+      connId : CONN_OUC := {{.O.ConnID}};   // Verbindungsnummer, in der Steuerung eindeutig
+   END_VAR
+
+   VAR_OUTPUT
+      connected : Bool;
+      busy : Bool;
+      done : Bool;   // einen Zyklus nach dem letzten Teil
+      error : Bool;
+      status : Word;
+      statusText : String[60];
+      sentCount : UDInt;
+      heartbeatCount : UDInt;
+   END_VAR
+
+   VAR_IN_OUT
+      daten : {{.TypeName}};
+   END_VAR
+
+   VAR
+      snap : {{.TypeName}};   // Abbild der Werte beim Trigger
+      ts : DTL;   // Zeitstempel (UTC) aller Teile eines Triggers
+      hbTs : DTL;
+      pl : Array[0..{{.PLMax}}] of Byte;   // JSON-Inhalt einer Nachricht
+      conParam : TCON_IP_v4;
+      instTCON : TCON;
+      instTSEND : TSEND;
+      instTRCV : TRCV;
+      instTDISCON : TDISCON;
+      trigEdge : R_TRIG;
+      tmrTcon : TON;
+      tmrConnack : TON;
+      tmrSend : TON;
+      tmrDiscon : TON;
+      tmrRetry : TON;
+      tmrPing : TON;
+      tmrPong : TON;
+      tmrHb : TON;
+      state : Int;
+      buildKind : Int;
+      sendKind : Int;
+      part : Int;
+      pos : DInt;
+      ovf : Bool;
+      txLen : UDInt;
+      tconStart : Bool;
+      sendStart : Bool;
+      discStart : Bool;
+      tcpUp : Bool;
+      failed : Bool;
+      failCode : Word;
+      failText : String[60];
+      lastErr : Word;
+      lastText : String[60];
+      evStatus : Word;
+      evText : String[60];
+      trigPending : Bool;
+      hbDue : Bool;
+      pingOut : Bool;
+      connackSeen : Bool;
+      connackRc : Byte;
+      rxState : Int;
+      rxType : Byte;
+      rxLen : DInt;
+      rxMul : DInt;
+      rxCnt : DInt;
+      rxData : Array[0..1] of Byte;
+      tPing : Time;
+      tPong : Time;
+   END_VAR
+
+   VAR_TEMP
+      i : DInt;
+      j : Int;
+      k : Int;
+      n : Int;
+      p : DInt;
+      rl : DInt;
+      x : DInt;
+      b : Byte;
+      c : Int;
+      oct : Int;
+      val : Int;
+      nDig : Int;
+      ipOk : Bool;
+      rc : Int;
+      hdr : Byte;
+      pubHdr : Byte;
+      cFlags : Byte;
+      useUser : Bool;
+      usePass : Bool;
+      useStr : Bool;
+      tmpStr : String[254];
+   END_VAR
+
+
+BEGIN
+	// ---------------------------------------------------------------- Zyklusanfang
+	#done := FALSE;
+	#error := FALSE;
+	#evStatus := 16#0000;
+	#failCode := 16#0000;
+	#buildKind := 0;
+
+	// Zeitglieder jeden Zyklus aufrufen, dann laufen sie beim Zustandswechsel neu an.
+	// PINGREQ nach keepAlive/2 ohne Senden, ohne PINGRESP binnen keepAlive neu verbinden.
+	#tPing := DINT_TO_TIME(UINT_TO_DINT({{.KonfigName}}.keepAlive) * 500);
+	#tPong := DINT_TO_TIME(UINT_TO_DINT({{.KonfigName}}.keepAlive) * 1000);
+	#tmrTcon(IN := (#state = 1), PT := T#10s);
+	#tmrConnack(IN := (#state = 2 OR (#state = 4 AND #sendKind = 1)), PT := T#10s);
+	#tmrSend(IN := (#state = 4 AND NOT #sendStart), PT := T#10s);
+	#tmrDiscon(IN := (#state = 5), PT := T#5s);
+	#tmrRetry(IN := (#state = 6), PT := T#5s);
+	#tmrPing(IN := (#state = 3 AND NOT #pingOut AND {{.KonfigName}}.keepAlive > 0), PT := #tPing);
+	#tmrPong(IN := (#pingOut AND #tcpUp), PT := #tPong);
+	#tmrHb(IN := (#connected AND #heartbeatInterval > T#0s AND NOT #hbDue), PT := #heartbeatInterval);
+	IF #tmrHb.Q THEN
+	    #hbDue := TRUE;
+	END_IF;
+
+	// ---------------------------------------------------------------- Trigger
+	#trigEdge(CLK := #trigger);
+	IF #trigEdge.Q THEN
+	    IF #connected AND #enable THEN
+	        // wird in "bereit" gestartet; während busy bleibt genau eine Wiederholung gemerkt
+	        #trigPending := TRUE;
+	    ELSE
+	        // nicht verbunden: nichts puffern
+	        #evStatus := 16#8007;
+	        #evText := 'nicht verbunden beim Trigger';
+	    END_IF;
+	END_IF;
+
+	// ---------------------------------------------------------------- Empfangen (CONNACK, PINGRESP)
+	IF #state = 0 OR #state = 5 OR #state = 6 THEN
+	    // ohne Verbindung: Kommunikationsbausteine zu Ende laufen lassen
+	    #instTCON(REQ := FALSE, ID := #connId, CONNECT := #conParam);
+	    #instTSEND(REQ := FALSE, ID := #connId, LEN := 0, DATA := {{.PufferName}}.tx);
+	    #instTRCV(EN_R := FALSE, ID := #connId, LEN := 0, ADHOC := TRUE, DATA := {{.PufferName}}.rx);
+	ELSIF #tcpUp THEN
+	    #instTRCV(EN_R := TRUE, ID := #connId, LEN := 0, ADHOC := TRUE, DATA := {{.PufferName}}.rx);
+	    IF #instTRCV.ERROR THEN
+	        #failCode := 16#8003;
+	        #failText := 'Empfangsfehler';
+	    ELSIF #instTRCV.NDR THEN
+	        FOR #i := 0 TO UDINT_TO_DINT(#instTRCV.RCVD_LEN) - 1 DO
+	            IF #i > {{.RXMax}} THEN
+	                EXIT;
+	            END_IF;
+	            #b := {{.PufferName}}.rx[#i];
+	            CASE #rxState OF
+	                0:  // Kopfbyte
+	                    #rxType := #b;
+	                    #rxLen := 0;
+	                    #rxMul := 1;
+	                    #rxCnt := 0;
+	                    #rxState := 1;
+	                1:  // Restlänge
+	                    #rxLen := #rxLen + BYTE_TO_DINT(#b AND 16#7F) * #rxMul;
+	                    #rxMul := #rxMul * 128;
+	                    IF (#b AND 16#80) = 16#00 THEN
+	                        #rxState := 2;
+	                    ELSIF #rxMul > 2097152 THEN
+	                        #failCode := 16#8003;
+	                        #failText := 'Empfangsfehler (Paket ungueltig)';
+	                        #rxState := 0;
+	                    END_IF;
+	                ELSE  // Inhalt
+	                    IF #rxCnt < 2 THEN
+	                        #rxData[#rxCnt] := #b;
+	                    END_IF;
+	                    #rxCnt := #rxCnt + 1;
+	            END_CASE;
+	            IF #rxState = 2 AND #rxCnt >= #rxLen THEN
+	                // Paket vollständig
+	                #rxState := 0;
+	                IF (#rxType AND 16#F0) = 16#20 AND #rxLen >= 2 THEN
+	                    // CONNACK: 20 02 xx rc
+	                    #connackSeen := TRUE;
+	                    #connackRc := #rxData[1];
+	                ELSIF (#rxType AND 16#F0) = 16#D0 THEN
+	                    // PINGRESP: D0 00
+	                    #pingOut := FALSE;
+	                END_IF;
+	            END_IF;
+	        END_FOR;
+	    END_IF;
+	    IF #tmrPong.Q THEN
+	        #failCode := 16#8006;
+	        #failText := 'Verbindung eingeschlafen (keine PINGRESP)';
+	    END_IF;
+	END_IF;
+
+	// ---------------------------------------------------------------- Ablauf
+	IF #failCode = 16#0000 THEN
+	    CASE #state OF
+	        0:  // aus
+	            #connected := FALSE;
+	            #busy := FALSE;
+	            #failed := FALSE;
+	            #tcpUp := FALSE;
+	            #trigPending := FALSE;
+	            #hbDue := FALSE;
+	            IF #enable THEN
+	                #state := 1;
+	                #tconStart := TRUE;
+	            END_IF;
+
+	        1:  // TCP-Verbindung aufbauen
+	            IF NOT #enable THEN
+	                #state := 5;
+	                #discStart := TRUE;
+	            ELSE
+	                IF #tconStart THEN
+	                    // IPv4-Adresse aus brokerHost lesen, z. B. 192.168.0.10
+	                    #tmpStr := {{.KonfigName}}.brokerHost;
+	                    #ipOk := TRUE;
+	                    #oct := 1;
+	                    #val := 0;
+	                    #nDig := 0;
+	                    FOR #j := 1 TO LEN(#tmpStr) DO
+	                        #c := BYTE_TO_INT(CHAR_TO_BYTE(#tmpStr[#j]));
+	                        IF #c >= 48 AND #c <= 57 THEN
+	                            IF #nDig >= 3 THEN
+	                                #ipOk := FALSE;
+	                            ELSE
+	                                #val := #val * 10 + #c - 48;
+	                                #nDig := #nDig + 1;
+	                            END_IF;
+	                        ELSIF #c = 46 AND #nDig > 0 AND #oct < 4 AND #val <= 255 THEN
+	                            #conParam.RemoteAddress.ADDR[#oct] := INT_TO_BYTE(#val);
+	                            #oct := #oct + 1;
+	                            #val := 0;
+	                            #nDig := 0;
+	                        ELSE
+	                            #ipOk := FALSE;
+	                        END_IF;
+	                    END_FOR;
+	                    IF #ipOk AND #oct = 4 AND #nDig > 0 AND #val <= 255 THEN
+	                        #conParam.RemoteAddress.ADDR[4] := INT_TO_BYTE(#val);
+	                    ELSE
+	                        #failCode := 16#8001;
+	                        #failText := 'brokerHost ist keine IPv4-Adresse';
+	                    END_IF;
+	                    #conParam.InterfaceId := #hwId;
+	                    #conParam.ID := #connId;
+	                    #conParam.ConnectionType := 11;   // TCP
+	                    #conParam.ActiveEstablished := TRUE;
+	                    #conParam.RemotePort := {{.KonfigName}}.brokerPort;
+	                    #conParam.LocalPort := 0;
+	                END_IF;
+	                IF #failCode = 16#0000 THEN
+	                    #instTCON(REQ := #tconStart, ID := #connId, CONNECT := #conParam);
+	                    #tconStart := FALSE;
+	                    IF #instTCON.ERROR THEN
+	                        #failCode := 16#8001;
+	                        #failText := 'TCON-Fehler';
+	                    ELSIF #instTCON.DONE THEN
+	                        #tcpUp := TRUE;
+	                        #rxState := 0;
+	                        #connackSeen := FALSE;
+	                        #pingOut := FALSE;
+	                        #buildKind := 1;   // CONNECT
+	                    ELSIF #tmrTcon.Q THEN
+	                        #failCode := 16#8005;
+	                        #failText := 'keine Antwort vom Broker';
+	                    END_IF;
+	                END_IF;
+	            END_IF;
+
+	        2:  // auf CONNACK warten (binnen 10 s)
+	            IF NOT #enable THEN
+	                #state := 5;
+	                #discStart := TRUE;
+	            ELSIF #connackSeen THEN
+	                IF #connackRc = 16#00 THEN
+	                    #connected := TRUE;
+	                    #failed := FALSE;
+	                    #state := 3;
+	                ELSE
+	                    #failCode := 16#8100 OR BYTE_TO_WORD(#connackRc);
+	                    CASE BYTE_TO_INT(#connackRc) OF
+	                        1:
+	                            #failText := 'Broker lehnt ab: Protokollversion';
+	                        2:
+	                            #failText := 'Broker lehnt ab: Client-ID';
+	                        3:
+	                            #failText := 'Broker lehnt ab: nicht verfuegbar';
+	                        4, 5:
+	                            #failText := 'Broker lehnt ab: Benutzer/Kennwort falsch';
+	                        ELSE
+	                            #failText := 'Broker lehnt ab';
+	                    END_CASE;
+	                END_IF;
+	            ELSIF #tmrConnack.Q THEN
+	                #failCode := 16#8005;
+	                #failText := 'keine Antwort vom Broker';
+	            END_IF;
+
+	        3:  // bereit
+	            IF NOT #enable THEN
+	                #buildKind := 5;   // DISCONNECT
+	            ELSIF #trigPending THEN
+	                #trigPending := FALSE;
+	                #rc := RD_SYS_T(OUT => #ts);
+	                IF #rc <> 0 THEN
+	                    #evStatus := 16#8009;
+	                    #evText := 'Uhrzeit nicht lesbar';
+	                ELSE
+	                    #snap := #daten;   // alle Teile aus demselben Abbild
+	                    #part := 1;
+	                    #busy := TRUE;
+	                    #buildKind := 2;
+	                END_IF;
+	            ELSIF #hbDue THEN
+	                #rc := RD_SYS_T(OUT => #hbTs);
+	                IF #rc <> 0 THEN
+	                    #hbDue := FALSE;
+	                    #evStatus := 16#8009;
+	                    #evText := 'Uhrzeit nicht lesbar';
+	                ELSE
+	                    #buildKind := 3;
+	                END_IF;
+	            ELSIF #tmrPing.Q THEN
+	                #buildKind := 4;   // PINGREQ
+	            END_IF;
+
+	        4:  // senden, je Zyklus höchstens ein TSEND-Auftrag
+	            #instTSEND(REQ := #sendStart, ID := #connId, LEN := #txLen, DATA := {{.PufferName}}.tx);
+	            #sendStart := FALSE;
+	            IF #instTSEND.ERROR OR #tmrSend.Q THEN
+	                IF #sendKind = 5 THEN
+	                    #state := 5;
+	                    #discStart := TRUE;
+	                ELSE
+	                    #failCode := 16#8002;
+	                    #failText := 'Sendefehler';
+	                END_IF;
+	            ELSIF #instTSEND.DONE THEN
+	                CASE #sendKind OF
+	                    1:  // CONNECT
+	                        #state := 2;
+	                    2:  // Teil
+	                        IF #part < {{.Parts}} AND #enable THEN
+	                            #part := #part + 1;
+	                            #buildKind := 2;
+	                        ELSE
+	                            IF #part >= {{.Parts}} THEN
+	                                #done := TRUE;
+	                                #sentCount := #sentCount + 1;
+	                            END_IF;
+	                            #busy := FALSE;
+	                            #state := 3;
+	                        END_IF;
+	                    3:  // Heartbeat
+	                        #heartbeatCount := #heartbeatCount + 1;
+	                        #hbDue := FALSE;
+	                        #state := 3;
+	                    4:  // PINGREQ
+	                        #pingOut := TRUE;
+	                        #state := 3;
+	                    ELSE  // DISCONNECT
+	                        #state := 5;
+	                        #discStart := TRUE;
+	                END_CASE;
+	            END_IF;
+
+	        5:  // trennen
+	            #connected := FALSE;
+	            #tcpUp := FALSE;
+	            #busy := FALSE;
+	            #instTDISCON(REQ := #discStart, ID := #connId);
+	            #discStart := FALSE;
+	            IF #instTDISCON.DONE OR #instTDISCON.ERROR OR #tmrDiscon.Q THEN
+	                IF #failed AND #enable THEN
+	                    #state := 6;
+	                ELSE
+	                    #state := 0;
+	                END_IF;
+	            END_IF;
+
+	        6:  // 5 s warten, dann neu verbinden
+	            IF NOT #enable THEN
+	                #state := 0;
+	            ELSIF #tmrRetry.Q THEN
+	                #state := 1;
+	                #tconStart := TRUE;
+	            END_IF;
+
+	        ELSE
+	            #state := 0;
+	    END_CASE;
+	END_IF;
+
+	// ---------------------------------------------------------------- Pakete bauen
+	IF #buildKind <> 0 AND #failCode = 16#0000 THEN
+	    #ovf := FALSE;
+	    #pos := 0;
+	    #rl := 0;
+	    CASE #buildKind OF
+	        1:  // CONNECT mit Clean Session, Benutzer/Kennwort nur wenn gesetzt
+	            #useUser := LEN({{.KonfigName}}.username) > 0;
+	            #usePass := #useUser AND LEN({{.KonfigName}}.password) > 0;
+	            #cFlags := 16#02;   // Clean Session
+	            IF #useUser THEN
+	                #cFlags := #cFlags OR 16#80;
+	            END_IF;
+	            IF #usePass THEN
+	                #cFlags := #cFlags OR 16#40;
+	            END_IF;
+	            #rl := 12 + INT_TO_DINT(LEN({{.KonfigName}}.clientId));
+	            IF #useUser THEN
+	                #rl := #rl + 2 + INT_TO_DINT(LEN({{.KonfigName}}.username));
+	            END_IF;
+	            IF #usePass THEN
+	                #rl := #rl + 2 + INT_TO_DINT(LEN({{.KonfigName}}.password));
+	            END_IF;
+	            #hdr := 16#10;
+
+	        2:  // Teil #part: JSON in #pl
+	            "PDH_J_Raw"(s := '{"ts":', buf := #pl, pos := #pos, ovf := #ovf);
+	            "PDH_J_DTL"(v := #ts, zone := TRUE, buf := #pl, pos := #pos, ovf := #ovf);
+	            "PDH_J_Raw"(s := ',"part":', buf := #pl, pos := #pos, ovf := #ovf);
+	            "PDH_J_DInt"(v := INT_TO_DINT(#part), buf := #pl, pos := #pos, ovf := #ovf);
+	            "PDH_J_Raw"(s := ',"parts":{{.Parts}},"values":{', buf := #pl, pos := #pos, ovf := #ovf);
+	            CASE #part OF
+{{.PartsCode}}	            END_CASE;
+	            "PDH_J_Raw"(s := '}}', buf := #pl, pos := #pos, ovf := #ovf);
+	            #pubHdr := 16#30;   // PUBLISH, QoS 0
+	            IF {{.KonfigName}}.retain THEN
+	                #pubHdr := #pubHdr OR 16#01;   // Retain nur für die Werte
+	            END_IF;
+	            #tmpStr := {{.KonfigName}}.topic;
+
+	        3:  // --- Heartbeat ---
+	            "PDH_J_Raw"(s := '{"ts":', buf := #pl, pos := #pos, ovf := #ovf);
+	            "PDH_J_DTL"(v := #hbTs, zone := TRUE, buf := #pl, pos := #pos, ovf := #ovf);
+	            "PDH_J_Raw"(s := ',"count":', buf := #pl, pos := #pos, ovf := #ovf);
+	            "PDH_J_UDInt"(v := #heartbeatCount + 1, buf := #pl, pos := #pos, ovf := #ovf);
+	            "PDH_J_Raw"(s := '}', buf := #pl, pos := #pos, ovf := #ovf);
+	            #pubHdr := 16#30;   // fest: PUBLISH, QoS 0 – ein alter Heartbeat darf nicht auf dem Broker liegen bleiben
+	            #tmpStr := {{.KonfigName}}.heartbeatTopic;
+	            // --- Ende Heartbeat ---
+
+	        4:  // PINGREQ: C0 00
+	            #hdr := 16#C0;
+
+	        ELSE  // DISCONNECT: E0 00
+	            #hdr := 16#E0;
+	    END_CASE;
+	    IF #buildKind = 2 OR #buildKind = 3 THEN
+	        #hdr := #pubHdr;
+	        #rl := 2 + INT_TO_DINT(LEN(#tmpStr)) + #pos;
+	    END_IF;
+	    IF NOT #ovf AND #rl + 5 > {{.TXSize}} THEN
+	        #ovf := TRUE;
+	    END_IF;
+	    IF NOT #ovf THEN
+	        // Kopf und Restlänge: 7 Bit je Byte, oberstes Bit = es folgt ein weiteres Byte
+	        {{.PufferName}}.tx[0] := #hdr;
+	        #p := 1;
+	        #x := #rl;
+	        REPEAT
+	            #b := DINT_TO_BYTE(#x MOD 128);
+	            #x := #x / 128;
+	            IF #x > 0 THEN
+	                #b := #b OR 16#80;
+	            END_IF;
+	            {{.PufferName}}.tx[#p] := #b;
+	            #p := #p + 1;
+	        UNTIL #x = 0
+	        END_REPEAT;
+	        IF #buildKind = 1 THEN
+	            // Protokollname 'MQTT' mit Länge, Stufe 16#04 (MQTT 3.1.1), Flags, Keep-Alive
+	            {{.PufferName}}.tx[#p] := 16#00;
+	            {{.PufferName}}.tx[#p + 1] := 16#04;
+	            #p := #p + 2;
+	            #tmpStr := 'MQTT';
+	            FOR #j := 1 TO 4 DO
+	                {{.PufferName}}.tx[#p] := CHAR_TO_BYTE(#tmpStr[#j]);
+	                #p := #p + 1;
+	            END_FOR;
+	            {{.PufferName}}.tx[#p] := 16#04;
+	            {{.PufferName}}.tx[#p + 1] := #cFlags;
+	            {{.PufferName}}.tx[#p + 2] := UINT_TO_BYTE({{.KonfigName}}.keepAlive / 256);
+	            {{.PufferName}}.tx[#p + 3] := UINT_TO_BYTE({{.KonfigName}}.keepAlive MOD 256);
+	            #p := #p + 4;
+	            // Client-ID, Benutzer, Kennwort mit je zwei Byte Länge davor
+	            FOR #k := 1 TO 3 DO
+	                CASE #k OF
+	                    1:
+	                        #tmpStr := {{.KonfigName}}.clientId;
+	                        #useStr := TRUE;
+	                    2:
+	                        #tmpStr := {{.KonfigName}}.username;
+	                        #useStr := #useUser;
+	                    ELSE
+	                        #tmpStr := {{.KonfigName}}.password;
+	                        #useStr := #usePass;
+	                END_CASE;
+	                IF #useStr THEN
+	                    #n := LEN(#tmpStr);
+	                    {{.PufferName}}.tx[#p] := INT_TO_BYTE(#n / 256);
+	                    {{.PufferName}}.tx[#p + 1] := INT_TO_BYTE(#n MOD 256);
+	                    #p := #p + 2;
+	                    FOR #j := 1 TO #n DO
+	                        {{.PufferName}}.tx[#p] := CHAR_TO_BYTE(#tmpStr[#j]);
+	                        #p := #p + 1;
+	                    END_FOR;
+	                END_IF;
+	            END_FOR;
+	        ELSIF #buildKind = 2 OR #buildKind = 3 THEN
+	            // Topic mit zwei Byte Länge, dann der JSON-Inhalt
+	            #n := LEN(#tmpStr);
+	            {{.PufferName}}.tx[#p] := INT_TO_BYTE(#n / 256);
+	            {{.PufferName}}.tx[#p + 1] := INT_TO_BYTE(#n MOD 256);
+	            #p := #p + 2;
+	            FOR #j := 1 TO #n DO
+	                {{.PufferName}}.tx[#p] := CHAR_TO_BYTE(#tmpStr[#j]);
+	                #p := #p + 1;
+	            END_FOR;
+	            FOR #i := 0 TO #pos - 1 DO
+	                {{.PufferName}}.tx[#p] := #pl[#i];
+	                #p := #p + 1;
+	            END_FOR;
+	        END_IF;
+	        #txLen := DINT_TO_UDINT(#p);
+	        #sendKind := #buildKind;
+	        #sendStart := TRUE;
+	        #state := 4;
+	    ELSIF #buildKind = 1 THEN
+	        #failCode := 16#8008;
+	        #failText := 'Nachricht zu lang';
+	    ELSE
+	        // Teil oder Heartbeat passt nicht: diesen Trigger verwerfen
+	        #evStatus := 16#8008;
+	        #evText := 'Nachricht zu lang';
+	        IF #buildKind = 3 THEN
+	            #hbDue := FALSE;
+	        END_IF;
+	        #busy := FALSE;
+	        #state := 3;
+	    END_IF;
+	END_IF;
+
+	// ---------------------------------------------------------------- Fehler: trennen, 5 s warten, neu verbinden
+	IF #failCode <> 16#0000 THEN
+	    #failed := TRUE;
+	    #lastErr := #failCode;
+	    #lastText := #failText;
+	    #connected := FALSE;
+	    #busy := FALSE;
+	    #trigPending := FALSE;
+	    #hbDue := FALSE;
+	    #pingOut := FALSE;
+	    #state := 5;
+	    #discStart := TRUE;
+	END_IF;
+
+	// ---------------------------------------------------------------- Ausgänge
+	IF #evStatus <> 16#0000 THEN
+	    #error := TRUE;
+	    #status := #evStatus;
+	    #statusText := #evText;
+	ELSIF #failed THEN
+	    #error := TRUE;
+	    #status := #lastErr;
+	    #statusText := #lastText;
+	ELSE
+	    CASE #state OF
+	        1, 6:
+	            #status := 16#7001;
+	            #statusText := 'verbinde';
+	        2:
+	            #status := 16#7002;
+	            #statusText := 'warte auf Broker';
+	        3:
+	            #status := 16#7003;
+	            #statusText := 'bereit';
+	        4:
+	            IF #sendKind = 1 THEN
+	                #status := 16#7002;
+	                #statusText := 'warte auf Broker';
+	            ELSIF #busy THEN
+	                #status := 16#7004;
+	                #statusText := 'sende';
+	            ELSE
+	                #status := 16#7003;
+	                #statusText := 'bereit';
+	            END_IF;
+	        ELSE
+	            #status := 16#7000;
+	            #statusText := 'aus';
+	    END_CASE;
+	END_IF;
+END_FUNCTION_BLOCK
+
+{{end}}
+
+{{define "extra_db" -}}
+DATA_BLOCK {{.PufferName}}
+{ S7_Optimized_Access := 'FALSE' }
+VERSION : 0.1
+NON_RETAIN
+{{template "kopf" .}}
+//Sende- und Empfangspuffer für {{.FBName}} mit Standardzugriff, damit TSEND/TRCV die Länge LEN sicher übernehmen.
+   VAR
+      tx : Array[0..{{.TXMax}}] of Byte;
+      rx : Array[0..{{.RXMax}}] of Byte;
+   END_VAR
+
+
+BEGIN
+
+END_DATA_BLOCK
+
+{{end}}
+
+{{define "liesmich" -}}
+PDH – STEUERUNGSBAUSTEIN „MQTT SENDEN“
+Datenbaustein: "{{text .DB}}"
+Variante: {{.VariantLabel}}
+Steuerung: {{.FamilyLabel}}, TIA Portal ab V17, SCL mit optimiertem Zugriff
+Broker: {{text .O.BrokerHost}}:{{.O.BrokerPort}} (ohne TLS – nur im geschützten Netz einsetzen)
+Erzeugt vom PDH{{with .O.GeneratedBy}} ({{text .}}){{end}} am {{.At}}
+
+DATEIEN
+  1_PDH_{{.Base}}_Typ.udt       PLC-Datentyp {{.TypeName}} mit den gesendeten Variablen
+  2_PDH_MQTT_{{.Base}}.scl      Hilfsbausteine "PDH_J_…" und Funktionsbaustein {{.FBName}}
+  3_PDH_{{.Base}}_Konfig.db     Einstellungen {{.KonfigName}} und Puffer {{.PufferName}}
+  4_{{.Base}}_aus_Typ.db        Ersatz für den eigenen Datenbaustein "{{text .DB}}" auf Basis des Datentyps
+
+SO GEHT'S
+  1. Im TIA Portal in der Projektnavigation unter „Externe Quellen“ alle vier Dateien
+     hinzufügen.
+  2. Den bisherigen Datenbaustein "{{text .DB}}" umbenennen oder löschen – Datei 4 legt ihn
+     mit denselben Variablen neu an.
+  3. „Bausteine aus Quelle generieren“ in dieser Reihenfolge: 1, dann 3, dann 2, dann 4.
+     (Der Funktionsbaustein braucht den Datentyp und die Datenbausteine aus Datei 3.)
+  4. In {{.KonfigName}} Broker, Benutzer und Kennwort prüfen.
+     Steht dort {{.Placeholder}}, das Kennwort des Brokers eintragen.
+  5. Den Baustein in OB1 aufrufen, z. B.:
+       "PDH_MQTT_{{.Base}}_DB"(enable := TRUE,
+                        trigger := "Senden",
+                        daten := {{.DBIdent}});
+  6. hwId: Hardware-Kennung der PROFINET-Schnittstelle (Gerätekonfiguration → Schnittstelle →
+     Eigenschaften → Hardware-Kennung; meist 64). connId muss in der Steuerung eindeutig sein.
+  7. Übersetzen, laden. Im PDH an der MQTT-Verbindung prüfen, ob Werte ankommen.
+  Der Baustein nutzt Array[*] in den Hilfsbausteinen: S7-1200 ab Firmware 4.2.
+  Je Steuerung nur einmal aufrufen (der Puffer {{.PufferName}} gehört zu diesem Aufruf).
+
+ABLAUF
+  enable = TRUE: Verbindung aufbauen (TCON), anmelden (CONNECT), auf Antwort warten (10 s).
+  Steigende Flanke an trigger: Werte als Abbild übernehmen, Uhrzeit lesen, alle Teile
+  nacheinander senden; danach done für einen Zyklus und sentCount + 1.
+  Kommt der Trigger während busy, wird er einmal gemerkt und danach gesendet.
+  Kommt er ohne Verbindung, meldet der Baustein 16#8007 für einen Zyklus und sendet nichts.
+  Ohne Senden nach keepAlive/2 ein PINGREQ; ohne Antwort binnen keepAlive wird neu verbunden.
+  enable = FALSE: DISCONNECT senden und die Verbindung trennen.
+
+{{template "liesmich_status" .}}
+{{template "liesmich_teile" .}}
+{{- end}}
