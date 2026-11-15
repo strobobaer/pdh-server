@@ -539,8 +539,11 @@ DATEIEN
 SO GEHT'S
   1. Im TIA Portal in der Projektnavigation unter „Externe Quellen“ alle vier Dateien
      hinzufügen.
-  2. Den bisherigen Datenbaustein "{{text .DB}}" umbenennen oder löschen – Datei 4 legt ihn
-     mit denselben Variablen neu an.
+  2. Vorher eine Kopie des bisherigen Datenbausteins "{{text .DB}}" sichern (z. B. Projekt
+     archivieren): „Bausteine aus Quelle generieren“ überschreibt den Datenbaustein gleichen
+     Namens. Oder ihn vorher löschen. Datei 4 legt ihn nur mit den gesendeten Variablen neu
+     an: Was unter „NICHT GESENDET“ (weiter unten) steht, fehlt darin. Trage es dort von
+     Hand wieder ein (oder halte es anderswo), bevor du übersetzt.
   3. „Bausteine aus Quelle generieren“ in dieser Reihenfolge: 1, 2, 3, 4.
   4. In {{.KonfigName}} Broker, Benutzer und Kennwort prüfen.
      Steht dort {{.Placeholder}}, das Kennwort des Brokers eintragen.

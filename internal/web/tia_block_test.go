@@ -634,12 +634,12 @@ func TestTIADownloadMappingsNoDuplicates(t *testing.T) {
 	if infra != env.infra {
 		t.Errorf("Anlage der Heartbeat-Zuordnung geändert: %s", infra)
 	}
-	// dritter Download mit Heartbeat 0: vorhandene Heartbeat-Zuordnung bleibt unberührt
+	// dritter Download mit Heartbeat 0: Überwachung der vorhandenen Heartbeat-Zuordnung aus (NULL), sonst unberührt
 	if w := env.download(t, func(v url.Values) { mod(v); v.Set("heartbeat_seconds", "0") }); w.Code != http.StatusOK {
 		t.Fatalf("dritter Download: %d", w.Code)
 	}
-	if hb := tiaMappingsOf(t, env)[hbRef]; hb.HB == nil || *hb.HB != 300 {
-		t.Errorf("Heartbeat 0 hat die Zuordnung geändert: %+v", hb)
+	if hb := tiaMappingsOf(t, env)[hbRef]; hb.HB != nil || hb.Name != "Mein Heartbeat" {
+		t.Errorf("Heartbeat 0 soll die Überwachung ausschalten (NULL), Name bleibt: %+v", hb)
 	}
 }
 

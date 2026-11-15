@@ -2045,7 +2045,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <ul>
     <li><b>Steuerung:</b> S7-1500; S7-1200 ab Firmware 4.2. Das TIA Portal muss V17 oder neuer sein.</li>
     <li><b>Eigenständig</b> (TCON/TSEND/TRCV): braucht nichts weiter, sendet aber <b>ohne TLS</b>. Nur im geschützten Werksnetz einsetzen.</li>
-    <li><b>Mit Siemens-Bibliothek LMQTT:</b> sendet auch <b>mit TLS</b> (Port 8883). Die Bibliothek holst du bei Siemens: <a href="https://support.industry.siemens.com/cs/ww/de/view/109748872" target="_blank" rel="noopener">Beitrag 109748872</a>. Die Namen der Bibliothek im Baustein sind für die dort beschriebene Version geschrieben; bei einer anderen Version prüfst du sie anhand der Liste „Vor dem Einsatz prüfen“ in der Datei <code>LIESMICH.txt</code>.</li>
+    <li><b>Mit Siemens-Bibliothek LMQTT:</b> sendet auch <b>mit TLS</b> (Port 8883). Die Bibliothek holst du bei Siemens: <a href="https://support.industry.siemens.com/cs/ww/de/view/109748872" target="_blank" rel="noopener">Beitrag 109748872</a>. Das Bibliotheks-Paket „Bibliotheken für Kommunikation für SIMATIC Controller“ (Beitrag 109780503) enthält den Baustein <code>LMQTT_Client</code>. Die Namen der Bibliothek im Baustein sind für die dort beschriebene Version geschrieben; bei einer anderen Version prüfst du sie anhand der Liste „Vor dem Einsatz prüfen“ in der Datei <code>LIESMICH.txt</code>.</li>
     <li>Beide Bausteine haben dieselben Ein- und Ausgänge. Du kannst die Variante später wechseln.</li>
   </ul>
   <div class="hb-howto"><b><i class="ti ti-download"></i> So bekommst du den Baustein</b> (Recht „Steuerungsbaustein (TIA Portal) herunterladen“)
@@ -2062,7 +2062,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>ZIP entpacken. Lies zuerst <code>LIESMICH.txt</code> – dort stehen deine Werte (Broker, Topic, Teile).</li>
       <li>Mit der LMQTT-Variante: Bibliothek LMQTT öffnen und den Baustein <code>LMQTT_Client</code> samt Datentypen in die Steuerung kopieren.</li>
       <li>Im TIA Portal unter <b>Externe Quellen</b> die Dateien hinzufügen: <code>1_PDH_…_Typ.udt</code>, <code>2_PDH_…_Konfig.db</code>, <code>3_PDH_MQTT_….scl</code>, <code>4_…_aus_Typ.db</code>.</li>
-      <li>Deinen bisherigen Datenbaustein <b>umbenennen oder löschen</b> – Datei 4 legt ihn mit denselben Variablen neu an. Hattest du Variablen als <b>remanent</b> (Retain) eingestellt, stellst du das danach neu ein; das steht dann auch in der <code>LIESMICH.txt</code>.</li>
+      <li>Von deinem bisherigen Datenbaustein <b>vorher eine Kopie sichern</b> (z. B. das Projekt archivieren) oder ihn löschen: „Bausteine aus Quelle generieren“ überschreibt den Datenbaustein gleichen Namens. Datei 4 legt ihn <b>nur mit den gesendeten Variablen</b> neu an. Was in der <code>LIESMICH.txt</code> unter „NICHT GESENDET“ steht, fehlt darin – trage es dort von Hand wieder ein oder halte es anderswo, bevor du übersetzt. Hattest du Variablen als <b>remanent</b> (Retain) eingestellt, stellst du das danach neu ein; das steht dann auch in der <code>LIESMICH.txt</code>.</li>
       <li>Jede Quelle mit <b>Bausteine aus Quelle generieren</b> übersetzen, <b>in dieser Reihenfolge 1 bis 4</b>.</li>
       <li>Im Konfigurations-Baustein (<code>PDH_…_Konfig</code>) Broker, Benutzer und Kennwort prüfen. Steht dort <code>PASSWORT_EINTRAGEN</code>, trägst du das Kennwort des Brokers ein.</li>
       <li>Den Funktionsbaustein in <b>OB1</b> aufrufen: <code>enable := TRUE</code>, <code>trigger</code> mit deiner Bedingung zum Senden (steigende Flanke), <code>daten := "&lt;dein DB&gt;"</code>.</li>
@@ -2073,7 +2073,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <h3>Kennwort</h3>
   <p>Das Kennwort der Verbindung steht <b>nur</b> in der Datei, wenn du <b>Kennwort der Verbindung mitliefern</b> ankreuzt. Das geht nur mit dem Recht „Import verwalten“ und wird im Verlauf der Verbindung festgehalten. Sonst steht <code>PASSWORT_EINTRAGEN</code> in der Datei. Gib die ZIP-Datei mit Kennwort nicht weiter.</p>
   <h3>Große Datenmengen: mehrere Nachrichten</h3>
-  <p>Passen die Werte nicht in eine Nachricht, teilt der Baustein sie auf. Jede Nachricht trägt <code>part</code> und <code>parts</code> (auch bei nur einer: 1 von 1) und denselben Zeitstempel <code>ts</code> aus der Steuerungsuhr. Alle Teile kommen aus demselben Abbild der Werte. Die Zuordnungen im PDH lesen den Wert über den JSON-Pfad, egal in welchem Teil er steht. Grenzen: höchstens 50 Teile, 2000 Einzelwerte, Quelldatei höchstens 1 MiB. Text zählt mit seiner Höchstlänge (Vorgabe 254 Zeichen).</p>
+  <p>Passen die Werte nicht in eine Nachricht, teilt der Baustein sie auf. Jede Nachricht trägt <code>part</code> und <code>parts</code> (auch bei nur einer: 1 von 1) und denselben Zeitstempel <code>ts</code> aus der Steuerungsuhr. Alle Teile kommen aus demselben Abbild der Werte. Die Zuordnungen im PDH lesen den Wert über den JSON-Pfad, egal in welchem Teil er steht. Grenzen: höchstens 50 Teile, 2000 Einzelwerte, Quelldatei höchstens 1 MiB. Text zählt mit seiner Höchstlänge (Vorgabe 254 Zeichen). Mit Retain behält der Broker nur den <b>letzten Teil</b>, weil alle Teile an dasselbe Topic gehen – bei mehreren Teilen Retain besser auslassen.</p>
   <h3>Zuordnungen und erneut herunterladen</h3>
   <p>Lädst du mit <b>Zuordnungen anlegen</b> erneut herunter, entstehen <b>keine Doppelten</b>. Vorhandene Zuordnungen bleiben unverändert – nur der Heartbeat übernimmt ein geändertes Intervall.</p>
   <h3>Statuscodes</h3>
@@ -2090,7 +2090,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <tr><td><code>16#8003</code></td><td>Empfangsfehler (nur eigenständig)</td></tr>
       <tr><td><code>16#81xx</code></td><td>Broker lehnt ab; xx ist der Rückgabecode (05 = Benutzer oder Kennwort falsch)</td></tr>
       <tr><td><code>16#8005</code></td><td>keine Antwort vom Broker</td></tr>
-      <tr><td><code>16#8006</code></td><td>Verbindung eingeschlafen (keine Antwort auf PING)</td></tr>
+      <tr><td><code>16#8006</code></td><td>Verbindung eingeschlafen (keine Antwort auf PING; nur eigenständig)</td></tr>
       <tr><td><code>16#8007</code></td><td>beim Trigger nicht verbunden – es wird nichts zwischengespeichert</td></tr>
       <tr><td><code>16#8008</code></td><td>Nachricht zu lang</td></tr>
       <tr><td><code>16#8009</code></td><td>Uhrzeit nicht lesbar</td></tr>
@@ -2099,7 +2099,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   </table>
   <p>Nach einem Fehler trennt der Baustein, wartet 5 Sekunden und verbindet neu.</p>
   <h3>„Steuerung meldet sich nicht“</h3>
-  <p>Der Baustein sendet in festem Abstand einen <b>Heartbeat</b> (Vorgabe 60 Sekunden, nie mit Retain). Kommt der letzte Heartbeat vor länger als <b>drei Intervallen</b>, zeigt das PDH „Steuerung meldet sich nicht“: als Hinweis oben auf der Verbindungsseite, als Marke in der Zeile der Zuordnung und in der Übersicht der Zuordnungen. Vor dem ersten Heartbeat zählt der Zeitpunkt, an dem die Zuordnung angelegt wurde. Prüfe dann: Läuft die Steuerung? Ist der Broker erreichbar? Ist <code>enable</code> gesetzt? Was sagt <code>statusText</code>?</p>
+  <p>Der Baustein sendet in festem Abstand einen <b>Heartbeat</b> (Vorgabe 60 Sekunden, nie mit Retain). Mit <code>heartbeatInterval := T#0s</code> am Baustein schaltest du den Heartbeat aus; dann darf es die Heartbeat-Zuordnung nicht geben, sonst meldet sie „meldet sich nicht“. Beim Herunterladen mit Heartbeat 0 und „Zuordnungen anlegen“ schaltet das PDH die Überwachung einer vorhandenen Heartbeat-Zuordnung ab. Änderst du das Topic, bleibt die alte Heartbeat-Zuordnung bestehen – lösche sie, sonst meldet sie „meldet sich nicht“. Kommt der letzte Heartbeat vor länger als <b>drei Intervallen</b>, zeigt das PDH „Steuerung meldet sich nicht“: als Hinweis oben auf der Verbindungsseite, als Marke in der Zeile der Zuordnung und in der Übersicht der Zuordnungen. Vor dem ersten Heartbeat zählt der Zeitpunkt, an dem die Zuordnung angelegt wurde. Prüfe dann: Läuft die Steuerung? Ist der Broker erreichbar? Ist <code>enable</code> gesetzt? Was sagt <code>statusText</code>?</p>
   <div class="hb-howto"><b><i class="ti ti-test-pipe"></i> Tipp: Ausprobieren mit PLCSIM</b>Übersetzen, Aufruf und Aufbau der Nachricht kannst du in PLCSIM prüfen. Ob das einfache PLCSIM eine echte TCP-Verbindung ins Netz aufbaut, hängt von der Version ab. Teste das vorher mit einem einfachen <code>TCON</code>. Klappt es nicht, nimm für die Netzprüfung PLCSIM Advanced oder eine echte Steuerung.</div>
   {{template "hb-shots" (dict "Ref" (index $s "tiabaustein") "Can" $can)}}
 </section>

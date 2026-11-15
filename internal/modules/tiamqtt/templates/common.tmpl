@@ -767,6 +767,8 @@ Topic: {{text .O.Topic}}
 Jede Nachricht: {"ts":"2026-11-15T10:01:00Z","part":1,"parts":{{.Parts}},"values":{…}}
 ts ist die Uhrzeit der Steuerung (UTC) beim Trigger, für alle Teile gleich. Im PDH lesen
 die Zuordnungen die Werte über den JSON-Pfad, egal in welchem Teil sie stehen.
+Text (String) wird als Latin-1 (ISO 8859-1) nach UTF-8 umgesetzt: „€“ und andere Zeichen
+aus 0x80 bis 0x9F (Windows-1252) kommen nicht richtig an.
 {{range .ReadmeParts}}
 Teil {{.No}} von {{$.Parts}} (höchstens {{.MaxBytes}} Byte)
 {{- range .Values}}

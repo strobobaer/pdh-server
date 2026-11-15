@@ -6,7 +6,7 @@
 <div class="tia-head">
   <div class="rec-sub" style="font-size:12px"><a href="/import" style="color:var(--accent)"><i class="ti ti-arrow-left" aria-hidden="true"></i> Import</a> · <a href="/import/connections/{{.ID}}?tab=tools" style="color:var(--accent)">Verbindung</a></div>
   <h1><i class="ti ti-cpu" aria-hidden="true"></i> TIA-Baustein herunterladen <span class="badge" style="background:var(--bg3);color:var(--text);border:1px solid var(--border)">{{.Name}}</span></h1>
-  <p class="tia-intro">PDH baut aus deinem Datenbaustein einen Baustein für S7-1500 oder S7-1200 (ab Firmware 4, TIA Portal ab V17). Er schickt die Werte bei steigender Flanke an <code>trigger</code> als JSON an diese Verbindung und meldet sich regelmäßig per Heartbeat.</p>
+  <p class="tia-intro">PDH baut aus deinem Datenbaustein einen Baustein für S7-1500 oder S7-1200 (ab Firmware 4.2, TIA Portal ab V17). Er schickt die Werte bei steigender Flanke an <code>trigger</code> als JSON an diese Verbindung und meldet sich regelmäßig per Heartbeat.</p>
 </div>
 
 {{if .Errors}}<div class="card tia-bad" role="alert"><b><i class="ti ti-alert-circle" aria-hidden="true"></i> Bitte prüfen:</b><ul>{{range .Errors}}<li>{{.}}</li>{{end}}</ul><div class="rec-sub">Die Datei bitte noch einmal auswählen.</div></div>{{end}}
@@ -14,7 +14,7 @@
 <div class="card">
   <div class="card-title"><span><i class="ti ti-list-numbers" aria-hidden="true"></i> So geht's</span></div>
   <ol class="tia-steps">
-    <li>Im TIA Portal den Datenbaustein mit den Werten wählen, Rechtsklick → <b>Quelle aus Bausteinen generieren</b> → nur diesen Baustein. Die <code>.db</code>-Datei hier auswählen.</li>
+    <li>Im TIA Portal den Datenbaustein mit den Werten wählen, Rechtsklick → <b>Quelle aus Baustein generieren</b>. Nutzt der Baustein PLC-Datentypen, die abhängigen Bausteine mit auswählen. Die <code>.db</code>-Datei hier auswählen.</li>
     <li><b>Prüfen</b> zeigt, welche Werte in welcher Nachricht stehen und was übersprungen wird.</li>
     <li><b>Herunterladen</b> liefert eine ZIP-Datei. Die Dateien in der Reihenfolge ihrer Nummer als externe Quellen ins TIA Portal holen und übersetzen – Einzelheiten stehen in <code>LIESMICH.txt</code>.</li>
   </ol>
@@ -38,7 +38,7 @@
       <div class="form-group"><label class="form-label" for="tia-family">Steuerung</label>
         <select class="form-input" id="tia-family" name="family">
           <option value="s7-1500" {{if eq .Form.Family "s7-1500"}}selected{{end}}>S7-1500</option>
-          <option value="s7-1200" {{if eq .Form.Family "s7-1200"}}selected{{end}}>S7-1200 (ab Firmware 4)</option>
+          <option value="s7-1200" {{if eq .Form.Family "s7-1200"}}selected{{end}}>S7-1200 (ab Firmware 4.2)</option>
         </select></div>
       <div class="tia-pair">
         <div class="form-group"><label class="form-label" for="tia-hw">Hardware-Kennung (hwId)</label><input class="form-input" id="tia-hw" type="number" name="hw_id" min="1" max="65535" value="{{.Form.HwID}}" required></div>
@@ -73,7 +73,7 @@
       </div>
       <div class="form-group"><label class="form-label" for="tia-limit">Größengrenze je Nachricht (Byte)</label><input class="form-input" id="tia-limit" type="number" name="limit" min="{{.MinLimit}}" max="{{.MaxLimit}}" value="{{.Form.Limit}}" required>
         <div class="rec-sub">Mehr Werte werden auf mehrere Nachrichten verteilt ({{.MinLimit}}–{{.MaxLimit}}).</div></div>
-      <label class="tia-check"><input type="checkbox" name="retain" {{if .Form.Retain}}checked{{end}}> Retain (der Broker behält die letzte Nachricht)</label>
+      <label class="tia-check"><input type="checkbox" name="retain" {{if .Form.Retain}}checked{{end}}> Retain (der Broker behält die letzte Nachricht)<span class="rec-sub" style="display:block;margin-left:22px">Bei mehreren Nachrichten (Teilen) gehen alle an dasselbe Topic – der Broker behält nur den letzten Teil.</span></label>
     </fieldset>
 
     {{if .CanWrite}}

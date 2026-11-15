@@ -124,4 +124,7 @@ func TestMappingsOverviewSilent(t *testing.T) {
 	if strings.Count(page, "data-silent-mark") != 1 {
 		t.Errorf("Kennzeichen soll genau einmal vorkommen")
 	}
+	if !strings.Contains(page, "b-amber") || !strings.Contains(page, "> meldet sich nicht</span>") {
+		t.Errorf("Kennzeichen soll kurz und lesbar (b-amber) sein")
+	}
 }

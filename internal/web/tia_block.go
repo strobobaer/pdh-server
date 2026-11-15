@@ -484,7 +484,11 @@ func (h *Handler) TIABlockDownload(w http.ResponseWriter, r *http.Request) {
 	created := 0
 	if f.CreateMappings {
 		rows := tiaMappingRows(res.Layout, res.DB.Name, res.Topic, f.HeartbeatSeconds)
-		if created, err = h.tiaCreateMappings(ctx, id, f.InfraID, u.ID, rows); err != nil {
+		hbOffRef := ""
+		if f.HeartbeatSeconds == 0 {
+			hbOffRef = mqttSourceRef(res.Topic+"/heartbeat", "count")
+		}
+		if created, err = h.tiaCreateMappings(ctx, id, f.InfraID, u.ID, rows, hbOffRef); err != nil {
 			componentLog("import").Warn().Err(err).Str("verbindung", id).Msg("tia-baustein: zuordnungen anlegen")
 			msg := "Die Zuordnungen konnten nicht angelegt werden – existiert die gewählte Anlage noch?"
 			if errors.Is(err, errTIARefTooLong) {
@@ -524,15 +528,16 @@ const tiaInsertMappingSQL = `
 	WHERE NOT EXISTS (SELECT 1 FROM import_mappings WHERE connection_id = $1::uuid AND source_ref = $2::text)`
 
 // tiaUpdateHeartbeatSQL: vorhandene Heartbeat-Zuordnung bekommt das neue
-// Intervall – nur diese Spalte, Name, Anlage und Notiz bleiben.
+// Intervall (0 = aus, NULL) – nur diese Spalte, Name, Anlage und Notiz bleiben.
 const tiaUpdateHeartbeatSQL = `
-	UPDATE import_mappings SET heartbeat_seconds = $3::int
-	WHERE connection_id = $1::uuid AND source_ref = $2::text AND heartbeat_seconds IS DISTINCT FROM $3::int`
+	UPDATE import_mappings SET heartbeat_seconds = NULLIF($3::int, 0)
+	WHERE connection_id = $1::uuid AND source_ref = $2::text AND heartbeat_seconds IS DISTINCT FROM NULLIF($3::int, 0)`
 
 // tiaCreateMappings legt die Zuordnungen in einer Transaktion an und liefert,
-// wie viele neu sind. Heartbeat 0 erzeugt keine Heartbeat-Zeile, eine
-// vorhandene Heartbeat-Zuordnung bleibt dann unberührt.
-func (h *Handler) tiaCreateMappings(ctx context.Context, connID, infraID, userID string, rows []importMappingCreateInput) (int, error) {
+// wie viele neu sind. Heartbeat 0 erzeugt keine Heartbeat-Zeile; eine vorhandene
+// Heartbeat-Zuordnung (hbOffRef) verliert ihr Intervall, wird also nicht mehr
+// überwacht.
+func (h *Handler) tiaCreateMappings(ctx context.Context, connID, infraID, userID string, rows []importMappingCreateInput, hbOffRef string) (int, error) {
 	for _, m := range rows {
 		if len([]rune(m.SourceRef)) > tiaRefMax {
 			return 0, errTIARefTooLong
@@ -558,6 +563,11 @@ func (h *Handler) tiaCreateMappings(ctx context.Context, connID, infraID, userID
 			if _, err := tx.Exec(ctx, tiaUpdateHeartbeatSQL, connID, m.SourceRef, m.HeartbeatSeconds); err != nil {
 				return 0, err
 			}
+		}
+	}
+	if hbOffRef != "" {
+		if _, err := tx.Exec(ctx, tiaUpdateHeartbeatSQL, connID, hbOffRef, 0); err != nil {
+			return 0, err
 		}
 	}
 	return n, tx.Commit(ctx)

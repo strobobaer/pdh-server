@@ -218,7 +218,7 @@
     <table class="cd-tbl"><thead><tr><th>Quelle</th><th>Bezeichnung</th><th>Anlage</th><th>Notiz</th><th>Letzter Wert</th><th>Aktualisiert</th><th></th></tr></thead>
     <tbody>{{range .Mappings}}<tr>
       <td>{{if .QueryName}}<b>{{.QueryName}}</b> › {{.Column}}{{else}}<span class="mono" style="font-family:monospace">{{.SourceRef}}</span>{{end}}</td>
-      <td>{{.Name}}{{if .Silent}} <span class="badge" data-silent-mark style="background:var(--amber)" title="Heartbeat bleibt aus"><i class="ti ti-heart-off"></i> Steuerung meldet sich nicht – {{.SilentSince}}</span>{{end}}</td><td>{{.InfrastructureName}}</td><td>{{.Note}}</td>
+      <td>{{.Name}}{{if .Silent}} <span class="badge b-amber" data-silent-mark title="Steuerung meldet sich nicht – {{.SilentSince}}" aria-label="Steuerung meldet sich nicht – {{.SilentSince}}"><i class="ti ti-heart-off" aria-hidden="true"></i> meldet sich nicht</span>{{end}}</td><td>{{.InfrastructureName}}</td><td>{{.Note}}</td>
       <td class="mono">{{if .LastValue}}{{.LastValue}}{{else}}<span style="color:var(--muted)">–</span>{{end}}</td>
       <td style="white-space:nowrap">{{if .LastReceivedAt}}{{.LastReceivedAt}}{{else}}<span style="color:var(--amber)">noch kein Wert</span>{{end}}</td>
       <td>{{if $d.CanWrite}}<form method="POST" action="/import/connections/{{$d.ID}}/mappings/{{.ID}}/delete-web" onsubmit="return confirm('Zuordnung „{{.Name}}“ löschen?')"><input type="hidden" name="back" value="page"><button class="btn btn-icon" type="submit" title="Löschen" style="width:30px;height:30px;color:var(--red)"><i class="ti ti-trash"></i></button></form>{{end}}</td>

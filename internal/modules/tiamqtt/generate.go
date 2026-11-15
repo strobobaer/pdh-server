@@ -73,7 +73,7 @@ const (
 	msgHwID         = "Die Hardware-Kennung muss zwischen 1 und 65535 liegen"
 	msgConnID       = "Die Verbindungsnummer muss zwischen 1 und 4095 liegen"
 	msgLayout       = "Die Aufteilung passt nicht zum Datenbaustein"
-	msgClientIDLong = "Client-ID ist zu lang (höchstens 254 Zeichen)"
+	msgClientIDLong = "Client-ID ist zu lang (höchstens 254 Byte)"
 	msgBrokerHost   = "Broker-Adresse ist ungültig"
 )
 
@@ -138,7 +138,7 @@ func (o Options) normalize() (Options, error) {
 		}
 	}
 	if o.BrokerHost == "" || len(o.BrokerHost) > maxConfigBytes {
-		return o, errors.New("Bitte die Adresse des Brokers angeben (höchstens 254 Zeichen)")
+		return o, errors.New("Bitte die Adresse des Brokers angeben (höchstens 254 Byte)")
 	}
 	if o.Variant == VariantLMQTT && !validBrokerHost(o.BrokerHost) {
 		return o, errors.New(msgBrokerHost)

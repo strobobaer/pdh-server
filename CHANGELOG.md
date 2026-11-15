@@ -18,7 +18,7 @@ im Kapitel „Versionen & Updates“ an.
 
 - Die Werte kommen aus einem eigenen Datenbaustein der Steuerung. Große Datenmengen gehen automatisch in mehreren Nachrichten mit gleichem Zeitstempel. Vor dem Herunterladen zeigt „Prüfen“, was gesendet wird und was nicht (das geht auch auf dem Spiegelserver).
 
-- Auf Wunsch legt das PDH beim Herunterladen die Zuordnungen gleich an, dazu eine für den Heartbeat. Ein erneutes Herunterladen erzeugt keine Doppelten; nur das Heartbeat-Intervall wird übernommen.
+- Auf Wunsch legt das PDH beim Herunterladen die Zuordnungen gleich an, dazu eine für den Heartbeat. Ein erneutes Herunterladen erzeugt keine Doppelten; nur das Heartbeat-Intervall wird übernommen (Heartbeat 0 schaltet die Überwachung ab).
 
 - Neue Anzeige „Steuerung meldet sich nicht“, wenn der Heartbeat länger als drei Intervalle ausbleibt: als Hinweis auf der Verbindungsseite, als Marke in der Zuordnung und in der Übersicht der Zuordnungen.
 

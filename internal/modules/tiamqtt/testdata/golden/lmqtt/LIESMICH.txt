@@ -22,8 +22,11 @@ SO GEHT'S
      "LMQTT_Client" samt Datentypen in die Steuerung kopieren.
   2. Im TIA Portal in der Projektnavigation unter „Externe Quellen“ alle vier Dateien
      hinzufügen.
-  3. Den bisherigen Datenbaustein "Daten" umbenennen oder löschen – Datei 4 legt ihn
-     mit denselben Variablen neu an.
+  3. Vorher eine Kopie des bisherigen Datenbausteins "Daten" sichern (z. B. Projekt
+     archivieren): „Bausteine aus Quelle generieren“ überschreibt den Datenbaustein gleichen
+     Namens. Oder ihn vorher löschen. Datei 4 legt ihn nur mit den gesendeten Variablen neu
+     an: Was unter „NICHT GESENDET“ (weiter unten) steht, fehlt darin. Trage es dort von
+     Hand wieder ein (oder halte es anderswo), bevor du übersetzt.
   4. „Bausteine aus Quelle generieren“ in dieser Reihenfolge: 1, 2, 3, 4.
   5. In "PDH_Daten_Konfig" Broker, Benutzer und Kennwort prüfen.
      Steht dort PASSWORT_EINTRAGEN, das Kennwort des Brokers eintragen.
@@ -95,6 +98,8 @@ Topic: sps/linie1/Daten
 Jede Nachricht: {"ts":"2026-11-15T10:01:00Z","part":1,"parts":2,"values":{…}}
 ts ist die Uhrzeit der Steuerung (UTC) beim Trigger, für alle Teile gleich. Im PDH lesen
 die Zuordnungen die Werte über den JSON-Pfad, egal in welchem Teil sie stehen.
+Text (String) wird als Latin-1 (ISO 8859-1) nach UTF-8 umgesetzt: „€“ und andere Zeichen
+aus 0x80 bis 0x9F (Windows-1252) kommen nicht richtig an.
 
 Teil 1 von 2 (höchstens 991 Byte)
   Zaehler  ->  values.Zaehler  (Real)
