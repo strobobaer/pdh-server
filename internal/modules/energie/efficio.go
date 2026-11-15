@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"golang.org/x/text/encoding"
 	"golang.org/x/text/encoding/charmap"
 )
 
@@ -44,10 +43,22 @@ func (o CSVOptions) layout() string {
 // encode wandelt UTF-8 in die gewählte Zeichenkodierung. Zeichen, die es dort
 // nicht gibt, werden zu „?“, damit ein einzelnes Zeichen nie den Export stoppt.
 func (o CSVOptions) encode(s string) ([]byte, error) {
-	if o.Encoding == "windows-1252" {
-		return encoding.ReplaceUnsupported(charmap.Windows1252.NewEncoder()).Bytes([]byte(s))
+	if o.Encoding != "windows-1252" {
+		return []byte(s), nil
 	}
-	return []byte(s), nil
+	if b, err := charmap.Windows1252.NewEncoder().Bytes([]byte(s)); err == nil {
+		return b, nil
+	}
+	enc := charmap.Windows1252.NewEncoder()
+	var out []byte
+	for _, r := range s {
+		b, err := enc.Bytes([]byte(string(r)))
+		if err != nil {
+			b = []byte{'?'}
+		}
+		out = append(out, b...)
+	}
+	return out, nil
 }
 
 // HeaderLine ist die Kopfzeile der Datei.

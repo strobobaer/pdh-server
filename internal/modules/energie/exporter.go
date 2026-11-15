@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
+	"sort"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -19,6 +21,9 @@ const (
 	defaultRetention   = 30
 	maxRunMessageRunes = 4000
 )
+
+// ErrStandby: auf einem Server im Bereitschaftsbetrieb (Spiegel) wird nicht exportiert.
+var ErrStandby = errors.New("dieser Server ist nicht der aktive Server – hier kann nicht exportiert werden")
 
 // Target ist ein Ziel für fertige Dateien.
 type Target interface {
@@ -108,6 +113,9 @@ func (c ExportConfig) normalized() ExportConfig {
 // Run exportiert alle fälligen Intervalle einer Verbindung und stellt die
 // Dateien zu. Das Ergebnis steht im Protokoll (auch „nichts zu tun“).
 func (e *Exporter) Run(ctx context.Context, c ExportConfig) (RunResult, error) {
+	if e.Skip != nil && e.Skip() {
+		return RunResult{}, ErrStandby
+	}
 	return e.run(ctx, c, true)
 }
 
@@ -118,7 +126,7 @@ func (e *Exporter) run(ctx context.Context, c ExportConfig, logNothing bool) (re
 		if err != nil {
 			res.Result = "error"
 		}
-		if res.Result == "nothing" && !logNothing {
+		if res.Result == "nothing" && !logNothing && len(res.Notes) == 0 {
 			return
 		}
 		if lerr := e.logRun(ctx, c, started, res, err); lerr != nil && err == nil {
@@ -177,43 +185,117 @@ func (e *Exporter) meters(ctx context.Context, c ExportConfig) ([]Meter, error) 
 	return out, nil
 }
 
-type fileAcc struct {
-	name       string
-	start, end time.Time
-	existing   bool
-	buf        []byte
-	rows       int
+// maxGapNotes begrenzt die Zahl der Notizen zu Lücken je Lauf.
+const maxGapNotes = 50
+
+type gap struct {
+	key         string
+	start, last time.Time
+	n           int
 }
 
-// generate legt alle fälligen Intervalle unter Sperre des Zustands in die
-// Dateien. Zwei gleichzeitige Läufe warten aufeinander; jedes Intervall
-// kommt genau einmal in eine Datei.
+// gapNotes fasst fehlende Werte je Messstelle zu zusammenhängenden Lücken zusammen.
+type gapNotes struct {
+	interval time.Duration
+	loc      *time.Location
+	open     map[string]*gap
+	done     []*gap
+}
+
+func newGapNotes(interval time.Duration, loc *time.Location) *gapNotes {
+	return &gapNotes{interval: interval, loc: loc, open: map[string]*gap{}}
+}
+
+func (g *gapNotes) add(s Step) {
+	for _, k := range s.Missing {
+		o := g.open[k]
+		if o != nil && o.last.Equal(s.End.Add(-g.interval)) {
+			o.last = s.End
+			o.n++
+			continue
+		}
+		if o != nil {
+			g.done = append(g.done, o)
+		}
+		g.open[k] = &gap{key: k, start: s.End, last: s.End, n: 1}
+	}
+}
+
+func (g *gapNotes) flush() []string {
+	for k, o := range g.open {
+		g.done = append(g.done, o)
+		delete(g.open, k)
+	}
+	sort.Slice(g.done, func(i, j int) bool {
+		if !g.done[i].start.Equal(g.done[j].start) {
+			return g.done[i].start.Before(g.done[j].start)
+		}
+		return g.done[i].key < g.done[j].key
+	})
+	var out []string
+	for i, o := range g.done {
+		if i == maxGapNotes {
+			out = append(out, fmt.Sprintf("… und %d weitere", len(g.done)-maxGapNotes))
+			break
+		}
+		out = append(out, g.format(o))
+	}
+	g.done = nil
+	return out
+}
+
+func (g *gapNotes) format(o *gap) string {
+	s, l := o.start.In(g.loc), o.last.In(g.loc)
+	if o.n == 1 {
+		return fmt.Sprintf("[%s] ohne Wert %s", o.key, s.Format(timeLayoutDMY))
+	}
+	mins := int(time.Duration(o.n) * g.interval / time.Minute)
+	if s.YearDay() == l.YearDay() && s.Year() == l.Year() {
+		return fmt.Sprintf("[%s] ohne Wert %s–%s (%d Minuten)", o.key, s.Format(timeLayoutDMY), l.Format("15:04"), mins)
+	}
+	return fmt.Sprintf("[%s] ohne Wert %s – %s (%d Minuten)", o.key, s.Format(timeLayoutDMY), l.Format(timeLayoutDMY), mins)
+}
+
+// generate legt alle fälligen Intervalle in die Dateien, in Blöcken von
+// höchstens einem Ortstag. Jeder Block ist eine eigene Transaktion unter
+// Sperre des Zustands und schreibt seinen Fortschritt fest. Zwei gleichzeitige
+// Läufe wechseln sich blockweise ab; jedes Intervall kommt genau einmal in
+// eine Datei.
 func (e *Exporter) generate(ctx context.Context, c ExportConfig, res *RunResult) error {
 	meters, err := e.meters(ctx, c)
 	if err != nil {
 		return err
 	}
-	now := e.Store.now()
-	tmax := now.Add(-e.delay()).Truncate(c.RunEvery)
-	loc := c.CSV.Loc
+	tmax := e.Store.now().Add(-e.delay()).Truncate(c.RunEvery)
+	gaps := newGapNotes(c.Interval, c.CSV.Loc)
+	defer func() { res.Notes = append(res.Notes, gaps.flush()...) }()
+	for {
+		more, err := e.block(ctx, c, meters, tmax, res, gaps)
+		if err != nil || !more {
+			return err
+		}
+	}
+}
 
+// block verarbeitet den nächsten Block; false: es ist nichts mehr fällig.
+func (e *Exporter) block(ctx context.Context, c ExportConfig, meters []Meter, tmax time.Time, res *RunResult, gaps *gapNotes) (bool, error) {
+	loc := c.CSV.Loc
 	tx, err := e.Store.DB.Begin(ctx)
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer tx.Rollback(ctx)
 
-	// Fehlt der Zustand, beginnt der Export mit dem letzten abgeschlossenen Intervall.
+	// Fehlt der Zustand, beginnt der Export mit dem letzten abgeschlossenen Lauf-Takt.
 	if _, err := tx.Exec(ctx, `INSERT INTO energy_export_state (connection_id, last_interval_end)
 		VALUES ($1::uuid, $2) ON CONFLICT (connection_id) DO NOTHING`, c.ConnectionID, tmax.Add(-c.RunEvery)); err != nil {
-		return err
+		return false, err
 	}
 	var last time.Time
 	if err := tx.QueryRow(ctx, `SELECT last_interval_end FROM energy_export_state
 		WHERE connection_id = $1::uuid FOR UPDATE`, c.ConnectionID).Scan(&last); err != nil {
-		return err
+		return false, err
 	}
-
 	first := last.Truncate(c.Interval).Add(c.Interval) // last liegt auf dem Lauf-Takt
 	if earliest := tmax.Add(-e.maxCatchUp()); first.Before(earliest) {
 		skipped := first
@@ -221,112 +303,115 @@ func (e *Exporter) generate(ctx context.Context, c ExportConfig, res *RunResult)
 		if first.Before(earliest) {
 			first = first.Add(c.Interval)
 		}
-		res.Notes = append(res.Notes, fmt.Sprintf("Zu lange her: Intervalle bis %s wurden nicht mehr nachgeholt (ab %s)",
-			first.In(loc).Format(timeLayoutDMY), skipped.In(loc).Format(timeLayoutDMY)))
+		res.Notes = append(res.Notes, fmt.Sprintf("Zu lange her: Intervalle von %s bis %s wurden nicht mehr nachgeholt",
+			skipped.In(loc).Format(timeLayoutDMY), first.Add(-c.Interval).In(loc).Format(timeLayoutDMY)))
 	}
 	if first.After(tmax) {
-		return nil
+		return false, nil
 	}
 
-	var accs []*fileAcc
-	byName := map[string]*fileAcc{}
-	acc := func(T time.Time) (*fileAcc, error) {
-		if c.FileDays <= 0 {
-			// eine Datei je Lauf, Name aus dem letzten Intervallende
-			name := FileName(c.Prefix, tmax, loc)
-			a := byName[name]
-			if a == nil {
-				a = &fileAcc{name: name, start: tmax, end: tmax}
-				byName[name], accs = a, append(accs, a)
-			}
-			return a, nil
-		}
-		// Eine schon begonnene Datei, die T abdeckt (auch mehrtägig), wird weitergeführt.
-		var name string
-		var ps, pe time.Time
-		err := tx.QueryRow(ctx, `SELECT name, period_start, period_end FROM energy_export_files
-			WHERE connection_id = $1::uuid AND period_start <= $2 AND period_end > $2
-			ORDER BY period_start DESC LIMIT 1`, c.ConnectionID, T).Scan(&name, &ps, &pe)
-		existing := err == nil
-		if errors.Is(err, pgx.ErrNoRows) {
-			ps, pe = FilePeriod(T, c.FileDays, loc)
-			name = FileName(c.Prefix, ps, loc)
-		} else if err != nil {
-			return nil, err
-		}
-		a := byName[name]
-		if a == nil {
-			a = &fileAcc{name: name, start: ps, end: pe, existing: existing}
-			byName[name], accs = a, append(accs, a)
-		}
-		return a, nil
+	// Ein Block reicht bis Ortsmitternacht (die Zeile um 00:00 gehört schon zum Folgetag).
+	_, dayEnd := FilePeriod(first, 1, loc)
+	n := int((dayEnd.Sub(first)-1)/c.Interval) + 1
+	if m := int(tmax.Sub(first)/c.Interval) + 1; m < n {
+		n = m
 	}
-
-	for T := first; !T.After(tmax); T = T.Add(c.Interval) {
-		pts, missing, err := e.Store.IntervalValues(ctx, meters, T, c.Interval, c.Mode)
-		if err != nil {
-			return err
-		}
+	steps, err := e.Store.RangeValues(ctx, meters, first, n, c.Interval, c.Mode)
+	if err != nil {
+		return false, err
+	}
+	var buf []byte
+	rows := 0
+	for _, s := range steps {
 		res.Intervals++
-		res.Rows += len(pts)
-		res.Missing += len(missing)
-		if len(missing) > 0 {
-			ids := make([]string, len(missing))
-			for i, k := range missing {
-				ids[i] = "[" + k + "]"
-			}
-			res.Notes = append(res.Notes, fmt.Sprintf("%s: kein Wert für %s",
-				T.In(loc).Format(timeLayoutDMY), strings.Join(ids, ", ")))
-		}
-		if len(pts) == 0 {
+		res.Rows += len(s.Points)
+		res.Missing += len(s.Missing)
+		gaps.add(s)
+		if len(s.Points) == 0 {
 			continue
 		}
-		data, err := FormatRows(pts, c.CSV)
+		data, err := FormatRows(s.Points, c.CSV)
 		if err != nil {
-			return err
+			return false, err
 		}
-		a, err := acc(T)
-		if err != nil {
-			return err
-		}
-		a.buf = append(a.buf, data...)
-		a.rows += len(pts)
+		buf = append(buf, data...)
+		rows += len(s.Points)
 	}
 
-	for _, a := range accs {
-		if a.existing {
+	if rows > 0 {
+		// Die Datei für den ganzen Block: eine schon begonnene (auch mehrtägig)
+		// wird weitergeführt, sonst entsteht eine neue.
+		var name string
+		var ps, pe time.Time
+		var qerr error
+		if c.FileDays <= 0 {
+			ps, pe = tmax, tmax // eine Datei je Lauf, Name aus dem letzten Lauf-Takt
+			name = FileName(c.Prefix, tmax, loc)
+			qerr = tx.QueryRow(ctx, `SELECT name FROM energy_export_files WHERE connection_id = $1::uuid AND name = $2`,
+				c.ConnectionID, name).Scan(&name)
+		} else {
+			qerr = tx.QueryRow(ctx, `SELECT name, period_start, period_end FROM energy_export_files
+				WHERE connection_id = $1::uuid AND period_start <= $2 AND period_end > $2
+				ORDER BY period_start DESC LIMIT 1`, c.ConnectionID, first).Scan(&name, &ps, &pe)
+		}
+		existing := qerr == nil
+		if errors.Is(qerr, pgx.ErrNoRows) {
+			if c.FileDays > 0 {
+				ps, pe = FilePeriod(first, c.FileDays, loc)
+				name = FileName(c.Prefix, ps, loc)
+			}
+		} else if qerr != nil {
+			return false, qerr
+		}
+		if existing {
 			_, err = tx.Exec(ctx, `UPDATE energy_export_files
 				SET content = content || $3, rows = rows + $4, version = version + 1, updated_at = now()
-				WHERE connection_id = $1::uuid AND name = $2`, c.ConnectionID, a.name, a.buf, a.rows)
+				WHERE connection_id = $1::uuid AND name = $2`, c.ConnectionID, name, buf, rows)
 		} else {
-			content := a.buf
+			content := buf
 			if c.CSV.Header {
-				content = joinCSV(HeaderLine(c.CSV), a.buf)
+				content = joinCSV(HeaderLine(c.CSV), buf)
 			}
 			_, err = tx.Exec(ctx, `INSERT INTO energy_export_files (connection_id, name, period_start, period_end, content, rows)
-				VALUES ($1::uuid, $2, $3, $4, $5, $6)`, c.ConnectionID, a.name, a.start, a.end, content, a.rows)
+				VALUES ($1::uuid, $2, $3, $4, $5, $6)`, c.ConnectionID, name, ps, pe, content, rows)
 		}
 		if err != nil {
-			return err
+			return false, err
 		}
-		res.Files = append(res.Files, a.name)
+		if !slices.Contains(res.Files, name) {
+			res.Files = append(res.Files, name)
+		}
 	}
 	if _, err := tx.Exec(ctx, `UPDATE energy_export_state SET last_interval_end = $2 WHERE connection_id = $1::uuid`,
-		c.ConnectionID, tmax); err != nil {
-		return err
+		c.ConnectionID, steps[n-1].End); err != nil {
+		return false, err
 	}
-	return tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
-// deliver stellt alle Dateien zu, deren Stand noch nicht zugestellt ist.
-// Scheitert eine, bleibt der Fehler an der Datei; der nächste Lauf legt nach.
+// deliver stellt alle Dateien zu, deren Stand noch nicht zugestellt ist. Die
+// Zustellung ist je Verbindung durch eine Advisory-Sperre serialisiert: ein
+// zweiter Lauf wartet und sieht danach den neuen Zustellstand, so überschreibt
+// nie eine ältere Version eine neuere. Scheitert eine Datei, bleibt der Fehler
+// an ihr; der nächste Lauf legt nach.
 func (e *Exporter) deliver(ctx context.Context, c ExportConfig, res *RunResult) error {
 	type pending struct {
 		id, name string
 		content  []byte
 		version  int
 	}
-	rows, err := e.Store.DB.Query(ctx, `SELECT id::text, name, content, version FROM energy_export_files
+	tx, err := e.Store.DB.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext($1))`, "energy_export_deliver:"+c.ConnectionID); err != nil {
+		return err
+	}
+	rows, err := tx.Query(ctx, `SELECT id::text, name, content, version FROM energy_export_files
 		WHERE connection_id = $1::uuid AND version > delivered_version ORDER BY created_at, name`, c.ConnectionID)
 	if err != nil {
 		return err
@@ -349,19 +434,21 @@ func (e *Exporter) deliver(ctx context.Context, c ExportConfig, res *RunResult) 
 		if perr := c.Target.Put(ctx, p.name, p.content); perr != nil {
 			errs = append(errs, fmt.Errorf("%s: %w", p.name, perr))
 			res.Notes = append(res.Notes, fmt.Sprintf("Zustellung von %s fehlgeschlagen: %v", p.name, perr))
-			if _, err := e.Store.DB.Exec(context.WithoutCancel(ctx), `UPDATE energy_export_files SET last_error = $2 WHERE id = $1::uuid`,
+			if _, err := tx.Exec(ctx, `UPDATE energy_export_files SET last_error = $2 WHERE id = $1::uuid`,
 				p.id, perr.Error()); err != nil {
-				errs = append(errs, err)
+				return err
 			}
 			continue
 		}
-		if _, err := e.Store.DB.Exec(ctx, `UPDATE energy_export_files
+		if _, err := tx.Exec(ctx, `UPDATE energy_export_files
 			SET delivered_version = GREATEST(delivered_version, $2), delivered_at = now(), last_error = ''
 			WHERE id = $1::uuid`, p.id, p.version); err != nil {
-			errs = append(errs, err)
-			continue
+			return err
 		}
 		res.Delivered++
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return err
 	}
 	return errors.Join(errs...)
 }

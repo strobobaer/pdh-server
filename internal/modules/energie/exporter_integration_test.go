@@ -217,7 +217,7 @@ func TestExporterMissingRowAndNote(t *testing.T) {
 	if r.Result != "partial" || r.Rows != 1 || r.Missing != 1 {
 		t.Fatalf("%+v", r)
 	}
-	if len(r.Notes) != 1 || r.Notes[0] != "15.11.2026 10:15: kein Wert für ["+keyOf(t, env.s, b)+"]" {
+	if len(r.Notes) != 1 || r.Notes[0] != "["+keyOf(t, env.s, b)+"] ohne Wert 15.11.2026 10:15" {
 		t.Errorf("Notizen: %q", r.Notes)
 	}
 	fs := env.files(t)
