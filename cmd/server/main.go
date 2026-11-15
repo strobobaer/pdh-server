@@ -359,6 +359,7 @@ func main() {
 		faultSvc.StartPendingTicketWatcher(context.Background(), webHandler.MaintLocked) // Ticket aus Störung erst nach Zuweisung
 		webHandler.StartKVPScheduler(context.Background())
 		webHandler.StartSetupMonitor(context.Background()) // Rüstzeiten: nach Höchstdauer plus Karenz eine Störmeldung
+		webHandler.StartEnergySampler(context.Background()) // Energiedaten: Minutenwerte der Messstellen
 		webHandler.StartDriveMonitor(context.Background())
 		webHandler.StartEnabledImportPolls(context.Background())
 		webHandler.StartEnabledQueryPolls(context.Background())

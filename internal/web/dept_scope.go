@@ -48,6 +48,8 @@ var scopeTables = map[string]scopeTable{
 	"it_asset": {"it_assets", `r.created_by = $1::uuid OR r.responsible_to = $1::uuid OR r.assigned_to = $1::uuid`},
 	// Rüstzeiten: keine Gruppe; beteiligt sind Ersteller, Anlagenverantwortlicher und Schichtführer
 	setupRef: {"setup_times", `r.created_by = $1::uuid OR r.responsible_to = $1::uuid OR r.assigned_to = $1::uuid`},
+	// Messstellen: beteiligt ist, wer sie angelegt hat
+	meterRef: {"energy_meters", `r.created_by = $1::uuid`},
 }
 
 // scopeWhere: Bedingung "Vorgang r sichtbar" ($1 = Benutzer, $2 = erlaubte Abteilungen).
@@ -178,6 +180,7 @@ var scopePaths = []struct {
 	{regexp.MustCompile(`^/projects/` + uuidRe), "project"},
 	{regexp.MustCompile(`^/it/` + uuidRe), "it_asset"},
 	{regexp.MustCompile(`^/setup/` + uuidRe), setupRef},
+	{regexp.MustCompile(`^/energy/meters/` + uuidRe), meterRef},
 	{regexp.MustCompile(`^/records/(?:fields|links|history|meta|state|categories)/([a-z_]+)/` + uuidRe), ""},
 	{regexp.MustCompile(`^/records/([a-z_]+)/` + uuidRe), ""},
 	{regexp.MustCompile(`^/complete/([a-z_]+)/` + uuidRe), ""},

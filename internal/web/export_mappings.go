@@ -44,9 +44,10 @@ func (h *Handler) availableExportSources(ctx context.Context) ([]ImportMappingVi
 		)
 		SELECT m.id::text, m.source_ref, m.infrastructure_id::text, COALESCE(t.path, ''), m.name, m.note,
 		       COALESCE(m.last_value, ''), COALESCE(to_char(m.last_received_at, 'DD.MM.YYYY HH24:MI:SS'), ''),
-		       to_char(m.created_at, 'DD.MM.YYYY HH24:MI')
+		       to_char(m.created_at, 'DD.MM.YYYY HH24:MI'), COALESCE(m.connection_id::text, ''), COALESCE(c.name, '')
 		FROM import_mappings m
 		LEFT JOIN tree t ON t.id = m.infrastructure_id
+		LEFT JOIN import_export_connections c ON c.id = m.connection_id
 		ORDER BY t.path, m.name`)
 	if err != nil {
 		return nil, err
@@ -56,7 +57,7 @@ func (h *Handler) availableExportSources(ctx context.Context) ([]ImportMappingVi
 	for rows.Next() {
 		var v ImportMappingView
 		if err := rows.Scan(&v.ID, &v.SourceRef, &v.InfrastructureID, &v.InfrastructureName, &v.Name, &v.Note,
-			&v.LastValue, &v.LastReceivedAt, &v.CreatedAt); err != nil {
+			&v.LastValue, &v.LastReceivedAt, &v.CreatedAt, &v.ConnectionID, &v.ConnectionName); err != nil {
 			return nil, err
 		}
 		list = append(list, v)

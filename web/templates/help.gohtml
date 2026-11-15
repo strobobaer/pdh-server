@@ -2035,6 +2035,44 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   {{template "hb-shots" (dict "Ref" (index $s "connections") "Can" $can)}}
 </section>
 
+<section class="hb-ch" id="energiedaten" data-title="Energiedaten &amp; Messstellen" data-pages="energy">
+  <h2><i class="ti ti-gauge"></i> Energiedaten &amp; Messstellen</h2>
+  <p>Unter <b>Messstellen</b> (Navigation → Daten) legst du fest, welcher importierte Wert zu welcher Anlage gehört und wie er weiterverwendet wird – zum Beispiel ein Zählerstand für Strom, Gas, Wasser oder Druckluft. Die Seite ist zugleich <b>Zuweisungstabelle</b> und <b>Übersicht</b> über alle Messstellen aller Anlagen. Sie ist ein Zusatz: Ohne Messstellen ändert sich am PDH nichts.</p>
+  {{template "hb-fig-energie"}}
+  <p>Eine <b>Messstelle</b> hat eine <b>Messstellen-ID</b> (frei wählbar, so wie das empfangende System sie kennt), eine Bezeichnung, eine Anlage, eine Einheit und eine <b>Art</b>:</p>
+  <table><thead><tr><th>Art</th><th>Bedeutung</th></tr></thead><tbody>
+    <tr><td>Zählerstand</td><td>Der Wert wächst, z. B. Kilowattstunden seit Inbetriebnahme.</td></tr>
+    <tr><td>Verbrauch</td><td>Der Wert ist der Verbrauch je Lesung.</td></tr>
+    <tr><td>Momentanwert</td><td>Der Wert gilt nur jetzt, z. B. Leistung oder Temperatur.</td></tr>
+  </tbody></table>
+  <p>Der <b>Faktor</b> (Vorgabe 1) rechnet den Quellwert um, z. B. von Wh in kWh. <b>Exportieren</b> bestimmt, ob die Messstelle in den Export geht; <b>Aktiv</b> schaltet sie ganz ab. Das PDH legt jede Minute den zuletzt importierten Wert ab. Ist er älter als 15 Minuten oder keine Zahl, gibt es für diese Minute <b>keinen Wert</b> – nie eine 0. Minutenwerte bleiben 400 Tage erhalten.</p>
+  <div class="hb-howto"><b><i class="ti ti-plus"></i> So legst du eine Messstelle an</b>
+    <ol class="hb-steps">
+      <li>Unter <b>Messstellen</b> ganz unten auf <b>Neue Messstelle</b> klicken.</li>
+      <li><b>Messstellen-ID</b>, Bezeichnung, Einheit, Art und bei Bedarf den Faktor eintragen.</li>
+      <li>Die <b>Anlage</b> im Baum wählen – wie überall im PDH.</li>
+      <li>Als <b>Quelle</b> den Import-Wert wählen: Die Liste enthält jeden importierten Wert jeder Verbindung (Verbindung · Datenpunkt). Eine Quelle darf mehreren Messstellen zugewiesen werden.</li>
+      <li><b>Speichern</b>. Ändern geht mit dem Stift in der Zeile, direkt in der Tabelle.</li>
+    </ol></div>
+  <div class="hb-howto"><b><i class="ti ti-math-function"></i> So rechnest du eine Messstelle aus anderen</b>
+    <ol class="hb-steps">
+      <li>Neue Messstelle anlegen und bei <b>Quelle</b> auf <b>Formel aus anderen Messstellen</b> umschalten.</li>
+      <li>Die Formel mit den Messstellen-IDs in eckigen Klammern schreiben, z. B. <code>[GESAMT] - [LINIE-A] - [LINIE-B]</code>. Erlaubt sind <code>+</code>, <code>-</code>, <code>*</code>, <code>/</code> (auch <code>−</code> <code>×</code> <code>÷</code>), Klammern und Zahlen.</li>
+      <li>Speichern. Unbekannte IDs und Zirkelbezüge (A rechnet mit B, B mit A) weist das PDH mit einer Meldung ab, z. B. „Zirkelbezug: [A] → [B] → [A]“. Zählerstände und Verbräuche lassen sich nur untereinander verrechnen, Momentanwerte nur mit Momentanwerten.</li>
+    </ol>
+    <p>Berechnete Messstellen sind in der Tabelle mit <b>berechnet</b> gekennzeichnet, ihre Formel steht in der Spalte <b>Quelle</b>. Sie werden jede Minute mitberechnet und wie echte Messwerte abgelegt. Fehlt ein Bezugswert, gibt es für diese Minute keinen Wert. Eine Messstelle, die in der Formel einer anderen steht, lässt sich weder löschen noch umbenennen – die Meldung nennt die Messstellen, in denen sie verwendet wird.</p></div>
+  <div class="hb-howto"><b><i class="ti ti-filter"></i> So findest du Messstellen</b>
+    <p>Über der Tabelle filterst du nach <b>Anlage</b> (mit Unteranlagen), echt oder berechnet, exportieren, aktiv, Einheit, Art, Verbindung und Suchtext. <b>Nur ohne aktuellen Wert</b> zeigt Messstellen, deren letzter Wert älter als 15 Minuten ist oder fehlt – der schnelle Weg zu Messstellen, deren Quelle nicht mehr liefert. Ein Klick auf eine Spaltenüberschrift sortiert, ein zweiter dreht die Reihenfolge um. Filter und Sortierung stehen in der Adresse; du kannst die Seite so als Lesezeichen speichern oder weitergeben.</p></div>
+  <div class="hb-howto"><b><i class="ti ti-shield-lock"></i> Rechte</b>
+    <ul>
+      <li><b>Messstellen sehen</b> (<code>energy.view</code>): Seite und Tabelle ansehen.</li>
+      <li><b>Messstellen pflegen</b> (<code>energy.edit</code>): anlegen und ändern. Das Recht gilt für die Anlagen der eigenen Abteilung; an einer fremden Anlage lässt sich keine Messstelle anlegen oder ändern.</li>
+      <li><b>Messstellen löschen</b> (<code>energy.admin</code>, Bereichsadministrator): endgültig löschen, samt Minutenwerten.</li>
+    </ul>
+    <p>Wer nur ansehen darf, sieht keine Bearbeiten-Knöpfe. Auf dem Spiegelserver ist die Seite nur lesend.</p></div>
+  {{template "hb-shots" (dict "Ref" (index $s "energiedaten") "Can" $can)}}
+</section>
+
 <section class="hb-ch" id="abgleich" data-title="Abgleich mit Fremdsystemen" data-pages="sync">
   <h2><i class="ti ti-arrows-exchange"></i> Abgleich mit Fremdsystemen</h2>
   <p>Unter <b>Abgleich</b> (Navigation → Daten) holt das PDH Meldungen aus einer fremden SQL-Server-Datenbank und macht daraus <b>Tickets</b> oder <b>Störmeldungen</b>. Was du im PDH an einer solchen Meldung änderst, kann zurück in die fremde Zeile geschrieben werden. Der Abgleich ist ein Zusatz: Ohne Profil ändert sich am PDH nichts.</p>
