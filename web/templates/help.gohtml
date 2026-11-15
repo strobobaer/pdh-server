@@ -407,6 +407,12 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     Den Status <b>Gelöst</b> oder <b>Geschlossen</b> setzt du nicht hier, sondern mit dem Abschluss-Assistenten.</div>
   <div class="hb-howto"><b><i class="ti ti-circle-check"></i> So schließt du ein Ticket ab</b>
     <b>Bearbeiten &amp; abschließen</b> antippen – in der Karte oben in der Übersicht oder in der Liste (Zeile aufklappen → <b>Abschließen</b>). Der <a href="#completion">Abschluss-Assistent</a> fragt nacheinander Material, Zeit, wer dabei war und den Kommentar ab. Am Ende <b>Fertig</b> oder <b>Geht noch weiter</b>.</div>
+  <div class="hb-howto"><b><i class="ti ti-bell-ringing"></i> Alarm-Tickets (Schwellwerte)</b>
+    <p>Überschreitet eine Messstelle einen <a href="#energiedaten-schwellwerte">Schwellwert</a>, legt das PDH ein Ticket an. Oben auf der Ticketseite steht ein Hinweis, dass es ein Alarm-Ticket ist. Ein Alarm-Ticket lässt sich nur <b>lösen, schließen, archivieren oder verwerfen</b>, wenn das Feld <b>Ursache</b> ausgefüllt ist. Sonst erscheint die Meldung „Bitte beschreiben, warum der Alarm kam (Feld Ursache).“</p>
+    <ol class="hb-steps">
+      <li>Ticket öffnen und im <a href="#completion">Abschluss-Assistenten</a> die <b>Ursache</b> eintragen.</li>
+      <li>Wie gewohnt abschließen. Die Regel gilt auch beim Archivieren, beim Verwerfen im Leitstand und beim Status-Wechsel.</li>
+    </ol></div>
   <div class="hb-howto"><b><i class="ti ti-inbox"></i> Tipp für Broker</b>
     Dein Eingang ist die Seite <b>Zuweisung</b> (Navigation oben). Dort weist du direkt zu (<a href="#dashboard">mehr</a>). In der Ticketliste zeigt der Filter <b>Ohne Zuweisung</b> dieselben Tickets.</div>
   {{template "hb-shots" (dict "Ref" (index $s "tickets") "Can" $can)}}
@@ -1823,7 +1829,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <li><b>Core-Einstellungen</b> – Standards für alle (siehe unten), Fristen, Updates (<a href="#versions">mehr</a>), Microsoft-365-Abgleich samt Nextcloud-Konten (<a href="#users">mehr</a>), Hersteller &amp; Lieferanten, Feldsätze.</li>
     <li><b>Import / Export</b> – Daten aus Maschinen und Systemen (MQTT, OPC UA, Modbus, SQL, Excel, Web) übernehmen und Exporte planen (<a href="#connections">mehr</a>).</li>
     <li><b>Steuerungsbaustein (TIA Portal)</b> – das Recht <code>import.tia</code> „Steuerungsbaustein (TIA Portal) herunterladen“ steht in der Gruppe „Daten &amp; Schnittstellen“ und liegt bei allen Rollen mit „Import ansehen“. Mit Kennwort oder angelegten Zuordnungen braucht es zusätzlich „Import verwalten“ (<a href="#tiabaustein">mehr</a>).</li>
-    <li><b>Energiedaten</b> – Messstellen, Minutenwerte und der Efficio-Export; die Rechte <code>energy.view</code>, <code>energy.edit</code> und <code>energy.admin</code> stehen in der Gruppe „Daten &amp; Schnittstellen“, die Einstellungen ändert nur der Bereichsadministrator (<a href="#energiedaten">mehr</a>).</li>
+    <li><b>Energiedaten</b> – Messstellen, Minutenwerte, Schwellwerte und der Efficio-Export; die Rechte <code>energy.view</code>, <code>energy.edit</code>, <code>energy.thresholds</code> und <code>energy.admin</code> stehen in der Gruppe „Daten &amp; Schnittstellen“, die Einstellungen ändert nur der Bereichsadministrator (<a href="#energiedaten">mehr</a>).</li>
     <li><b>Abgleich</b> – Meldungen aus einer fremden Datenbank als Tickets oder Störmeldungen übernehmen und Änderungen zurückschreiben; Profile löscht nur der Bereichsadministrator des Abgleichs (<a href="#abgleich">mehr</a>).</li>
     <li><b>Drucker</b> – Etiketten- und Netzwerkdrucker einrichten, prüfen und testen (<a href="#printers">mehr</a>).</li>
     <li><b>Datensicherung</b> – Sicherungen, Zeitpläne und Wiederherstellung (<a href="#backup">mehr</a>).</li>
@@ -2137,6 +2143,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <ul>
       <li><b>Messstellen sehen</b> (<code>energy.view</code>): Seite und Tabelle ansehen.</li>
       <li><b>Messstellen pflegen</b> (<code>energy.edit</code>): anlegen und ändern. Das Recht gilt für die Anlagen der eigenen Abteilung; an einer fremden Anlage lässt sich keine Messstelle anlegen oder ändern.</li>
+      <li><b>Schwellwerte pflegen</b> (<code>energy.thresholds</code>): Schwellwerte an Messstellen anlegen und ändern. Das Recht haben alle Rollen, die Messstellen pflegen dürfen. Schwellwerte löschen darf nur der Bereichsadministrator.</li>
       <li><b>Messstellen löschen</b> (<code>energy.admin</code>, Bereichsadministrator): endgültig löschen, samt Minutenwerten – und die Einstellungen der Energiedaten ändern.</li>
     </ul>
     <p>Wer nur ansehen darf, sieht keine Bearbeiten-Knöpfe. Auf dem Spiegelserver ist die Seite nur lesend.</p>
@@ -2164,6 +2171,26 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li><b>Jetzt exportieren</b> startet einen Lauf von Hand. Die erzeugten Dateien lädst du dort herunter; darunter steht das Protokoll der letzten 30 Läufe mit Zeilen, fehlenden Werten und Hinweisen.</li>
     </ol>
     Das <b>Kennwort</b> für FTP/SFTP wird verschlüsselt gespeichert und nie angezeigt; beim Bearbeiten das Feld leer lassen, dann bleibt es. Ist ein Wert nicht da (Gerät offline), fehlt die Zeile und das Protokoll nennt die Lücke – es wird nichts erfunden. <b>Ohne Messwerte entsteht keine Datei</b>, auch keine nur mit Kopfzeile. Kommt eine Datei nicht beim Ziel an, bricht das PDH die Zustellung für diesen Lauf ab und legt sie beim nächsten Lauf nach. Andere Exporte laufen dabei ungestört weiter. Auf dem Spiegelserver wird nichts exportiert.</div>
+  <div class="hb-howto" id="energiedaten-schwellwerte"><b><i class="ti ti-bell-ringing"></i> So legst du einen Schwellwert an</b> (Recht „Schwellwerte pflegen“)
+    <ol class="hb-steps">
+      <li>Unter <b>Messstellen</b> die Zeile der Messstelle aufklappen und den Bereich <b>Schwellwerte</b> öffnen.</li>
+      <li><b>Bezeichnung</b> eintragen und wählen, ob der Alarm bei <b>über</b> oder <b>unter</b> dem Grenzwert kommen soll.</li>
+      <li><b>Grenzwert</b> eintragen – in der Einheit der Messstelle, z. B. 45 bei kW.</li>
+      <li><b>Zeitraum (min)</b> festlegen: So lange wird der Wert zusammengefasst und geprüft. <b>Rückschaltung (min)</b> bestimmt, wie lange der Wert danach am Stück in Ordnung sein muss, bis der Alarm endet (Vorgabe 15).</li>
+      <li><b>Tag</b> und <b>Priorität</b> des Alarm-Tickets wählen.</li>
+      <li><b>Verantwortlich</b> (Person oder Gruppe) wählen. Bleibt das Feld leer, bekommt der Verantwortliche der Anlage die Nachricht.</li>
+      <li><b>Aktiv</b> anhaken und speichern. Mit dem Haken lässt sich ein Schwellwert jederzeit ausschalten.</li>
+    </ol>
+    <p>In der Tabelle zeigt die Spalte <b>Schwellwerte</b> die Anzahl und die Alarme (z. B. „2 · 1 Alarm“). Der Filter <b>mit offenem Alarm</b> zeigt nur Messstellen mit laufendem Alarm.</p></div>
+  <div class="hb-howto"><b><i class="ti ti-alert-triangle"></i> So läuft ein Alarm ab</b>
+    <p>Beispiel: Die Stromspitze einer Anlage soll nicht über <b>45 kW</b> liegen, Zeitraum <b>1 min</b>, Rückschaltung <b>15 min</b>.</p>
+    <ol class="hb-steps">
+      <li>Liegt der Wert eine Minute lang über 45 kW, legt das PDH <b>ein Ticket</b> an – mit dem Tag, der Anlage und der Priorität des Schwellwerts. Die Verantwortlichen bekommen eine Nachricht im Chat und per Mail.</li>
+      <li>Solange der Alarm läuft, entsteht kein zweites Ticket.</li>
+      <li>Der Alarm endet erst, wenn der Wert <b>15 Minuten am Stück</b> nicht mehr über 45 kW lag. Springt der Wert zwischendurch wieder darüber, beginnt die Zählung neu.</li>
+      <li>Liegt der Wert wieder über der Grenze, während das Ticket noch offen ist, legt das PDH <b>kein neues Ticket</b> an. Es schreibt einen Eintrag „Erneut überschritten …“ ans Ticket und benachrichtigt die Verantwortlichen.</li>
+    </ol></div>
+  <p><b>So wertet das PDH aus:</b> Bei einem <b>Momentanwert</b> zählt der Mittelwert im Zeitraum, bei einem <b>Zählerstand</b> die Menge (Ende minus Anfang), bei einem <b>Verbrauch</b> die Summe. Geprüft wird ein Zeitraum nur, wenn <b>jede Minute</b> darin einen Wert hat. Fehlen Werte (Gerät offline), gibt es weder Alarm noch Rückschaltung; die Zählung der 15 Minuten beginnt nach der Lücke neu. Ein Zählerstand, der zurückgeht, wird nicht bewertet. Messstellen und Schwellwerte, die nicht aktiv sind, werden nicht überwacht; ein offener Alarm wird dann zurückgesetzt. Überwacht wird nur auf dem aktiven Server. Nach einer Pause holt das PDH die verpassten Minuten nach – höchstens 24 Stunden.</p>
   {{template "hb-shots" (dict "Ref" (index $s "energiedaten") "Can" $can)}}
 </section>
 
