@@ -14,7 +14,8 @@ import (
 
 const (
 	exporterInterval   = 60 * time.Second
-	defaultInterval    = 15 * time.Minute
+	defaultInterval    = time.Minute
+	defaultRunEvery    = 15 * time.Minute
 	defaultRetention   = 30
 	maxRunMessageRunes = 4000
 )
@@ -38,7 +39,8 @@ func (PickupTarget) Test(context.Context) (string, error) {
 // ExportConfig ist die Einrichtung eines Efficio-Exports.
 type ExportConfig struct {
 	ConnectionID, Prefix, Mode string
-	Interval                   time.Duration
+	Interval                   time.Duration // Werteraster: Abstand der Zeilen (Vorgabe 1 min)
+	RunEvery                   time.Duration // Lauf-Takt: wie oft die Datei ergänzt wird (Vorgabe 15 min)
 	FileDays, RetentionDays    int
 	CSV                        CSVOptions
 	InfraIDs, MeterKeys        []string // leer: alle Messstellen mit „exportieren“
@@ -78,6 +80,12 @@ func (e *Exporter) maxCatchUp() time.Duration {
 func (c ExportConfig) normalized() ExportConfig {
 	if c.Interval <= 0 {
 		c.Interval = defaultInterval
+	}
+	if c.RunEvery <= 0 {
+		c.RunEvery = defaultRunEvery
+	}
+	if c.Interval > c.RunEvery { // das Raster ist nie gröber als der Lauf-Takt
+		c.Interval = c.RunEvery
 	}
 	if c.Mode != ModeDelta {
 		c.Mode = ModeEnd
@@ -186,7 +194,7 @@ func (e *Exporter) generate(ctx context.Context, c ExportConfig, res *RunResult)
 		return err
 	}
 	now := e.Store.now()
-	tmax := now.Add(-e.delay()).Truncate(c.Interval)
+	tmax := now.Add(-e.delay()).Truncate(c.RunEvery)
 	loc := c.CSV.Loc
 
 	tx, err := e.Store.DB.Begin(ctx)
@@ -197,7 +205,7 @@ func (e *Exporter) generate(ctx context.Context, c ExportConfig, res *RunResult)
 
 	// Fehlt der Zustand, beginnt der Export mit dem letzten abgeschlossenen Intervall.
 	if _, err := tx.Exec(ctx, `INSERT INTO energy_export_state (connection_id, last_interval_end)
-		VALUES ($1::uuid, $2) ON CONFLICT (connection_id) DO NOTHING`, c.ConnectionID, tmax.Add(-c.Interval)); err != nil {
+		VALUES ($1::uuid, $2) ON CONFLICT (connection_id) DO NOTHING`, c.ConnectionID, tmax.Add(-c.RunEvery)); err != nil {
 		return err
 	}
 	var last time.Time
@@ -206,7 +214,7 @@ func (e *Exporter) generate(ctx context.Context, c ExportConfig, res *RunResult)
 		return err
 	}
 
-	first := last.Truncate(c.Interval).Add(c.Interval)
+	first := last.Truncate(c.Interval).Add(c.Interval) // last liegt auf dem Lauf-Takt
 	if earliest := tmax.Add(-e.maxCatchUp()); first.Before(earliest) {
 		skipped := first
 		first = earliest.Truncate(c.Interval)

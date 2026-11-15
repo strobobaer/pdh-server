@@ -157,3 +157,14 @@ func TestFilePeriodDST(t *testing.T) {
 		t.Errorf("letzte Zeile %q", lines[len(lines)-1])
 	}
 }
+
+func TestFilePeriodDSTMinuteGrid(t *testing.T) {
+	berlin, err := time.LoadLocation("Europe/Berlin")
+	if err != nil {
+		t.Skip(err)
+	}
+	start, end := FilePeriod(time.Date(2026, 10, 25, 12, 0, 0, 0, berlin), 1, berlin)
+	if n := int(end.Sub(start) / time.Minute); n != 1500 {
+		t.Errorf("%d Zeitpunkte, erwartet 1500", n)
+	}
+}

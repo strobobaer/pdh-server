@@ -345,3 +345,36 @@ func TestExporterSkip(t *testing.T) {
 		t.Errorf("Protokoll wuchs von %d auf %d", before, after)
 	}
 }
+
+func TestExporterMinuteGridPerRun(t *testing.T) {
+	env := exportEnv(t)
+	env.cfg.Interval, env.cfg.RunEvery = time.Minute, 15*time.Minute
+	m := env.instant(t)
+	for k := 1; k <= 30; k++ {
+		putValue(t, env.pool, m, e0.Add(time.Duration(k-15)*time.Minute), float64(k))
+	}
+	// Vor dem Lauf-Takt (10:16) passiert nichts über das Vorintervall hinaus.
+	r, err := env.e.Run(context.Background(), env.cfg)
+	must(t, err)
+	if r.Intervals != 15 || r.Rows != 15 {
+		t.Fatalf("erster Lauf: %+v", r)
+	}
+	r, err = env.e.Run(context.Background(), env.cfg) // gleiche Zeit: nichts mehr
+	must(t, err)
+	if r.Intervals != 0 || r.Result != "nothing" {
+		t.Fatalf("zweiter Lauf: %+v", r)
+	}
+	env.now = env.now.Add(15 * time.Minute)
+	r, err = env.e.Run(context.Background(), env.cfg)
+	must(t, err)
+	if r.Intervals != 15 || r.Rows != 15 {
+		t.Fatalf("dritter Lauf: %+v", r)
+	}
+	fs := env.files(t)
+	if len(fs) != 1 || fs[0].rows != 30 || strings.Count(fs[0].content, "\r\n") != 31 {
+		t.Errorf("Datei: %+v", fs)
+	}
+	if !strings.Contains(fs[0].content, "15.11.2026 10:01;") || !strings.Contains(fs[0].content, "15.11.2026 10:30;") {
+		t.Error("Zeitstempel 10:01 und 10:30 erwartet")
+	}
+}
