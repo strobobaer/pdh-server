@@ -190,7 +190,7 @@ func (p *parser) primary() (*node, error) {
 		p.pos++
 		var id []rune
 		for p.pos < len(p.src) && p.src[p.pos] != ']' {
-			if p.src[p.pos] == '[' || p.src[p.pos] == '\n' || p.src[p.pos] == '\r' {
+			if c := p.src[p.pos]; c == '[' || c == ';' || c == '"' || c == '\n' || c == '\r' {
 				return nil, p.errf("Messstellen-ID nicht erlaubt")
 			}
 			id = append(id, p.src[p.pos])
