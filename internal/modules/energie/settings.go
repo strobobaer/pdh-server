@@ -50,13 +50,62 @@ func ChoicesText() string {
 	return strings.Join(s[:len(s)-1], ", ") + " oder " + s[len(s)-1]
 }
 
-func validMinutes(n int) bool {
+// Gemeinsame Prüfungen: Settings.Validate und die Einrichtung eines Efficio-Exports
+// (internal/web/export_efficio.go) nutzen dieselben Grenzen und Meldungen.
+
+// CheckMinutes prüft einen Wert aus MinuteChoices; label ist die Feldbezeichnung.
+func CheckMinutes(label string, n int) error {
 	for _, c := range MinuteChoices {
 		if c == n {
-			return true
+			return nil
 		}
 	}
-	return false
+	return fmt.Errorf("„%s“ kann nur %s Minuten sein.", label, ChoicesText())
+}
+
+// CheckRaster prüft, dass das Werteraster den Lauf-Takt teilt.
+func CheckRaster(run, step int) error {
+	if step <= 0 || run%step == 0 {
+		return nil
+	}
+	var ok []string
+	for _, m := range MinuteChoices {
+		if m <= run && run%m == 0 {
+			ok = append(ok, strconv.Itoa(m))
+		}
+	}
+	return fmt.Errorf("Der Zeilenabstand von %d Minuten passt nicht zum Lauf alle %d Minuten: Er muss den Lauf-Takt teilen. Möglich sind %s Minuten.",
+		step, run, strings.Join(ok, ", "))
+}
+
+// CheckFileDays prüft „Max. Länge der Datei in Tagen“ (0 = eine Datei je Lauf).
+func CheckFileDays(n int) error {
+	if n < 0 || n > 366 {
+		return errors.New("„Max. Länge der Datei in Tagen“ muss zwischen 0 und 366 liegen (0 = eine Datei je Lauf).")
+	}
+	return nil
+}
+
+// CheckRetentionDays prüft die Aufbewahrung der Exportdateien in Tagen.
+func CheckRetentionDays(n int) error {
+	if n < 1 || n > 3650 {
+		return errors.New("„Aufbewahrung in Tagen“ muss zwischen 1 und 3650 liegen.")
+	}
+	return nil
+}
+
+// CheckPrefix prüft den Anfang des Dateinamens.
+func CheckPrefix(p string) error {
+	ok := p != "" && len(p) <= 40
+	for _, r := range p {
+		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' || r == '_') {
+			ok = false
+		}
+	}
+	if !ok {
+		return errors.New("Der Dateiname darf nur Buchstaben, Ziffern, „-“ und „_“ enthalten (höchstens 40 Zeichen).")
+	}
+	return nil
 }
 
 // Validate prüft die Einstellungen; Meldungen in Anwendersprache.
@@ -66,36 +115,21 @@ func (s Settings) Validate() error {
 		return errors.New("„Quellwert gilt als veraltet nach“ muss zwischen 1 und 1440 Minuten liegen.")
 	case s.ValueRetentionDays < 1 || s.ValueRetentionDays > 3650:
 		return errors.New("„Minutenwerte aufbewahren“ muss zwischen 1 und 3650 Tagen liegen.")
-	case !validMinutes(s.RunMinutes):
-		return fmt.Errorf("„Datei ergänzen alle“ kann nur %s Minuten sein.", ChoicesText())
-	case !validMinutes(s.IntervalMinutes):
-		return fmt.Errorf("„Zeilen im Abstand von“ kann nur %s Minuten sein.", ChoicesText())
-	case s.RunMinutes%s.IntervalMinutes != 0:
-		return fmt.Errorf("Der Zeilenabstand von %d Minuten passt nicht zum Lauf alle %d Minuten: Er muss den Lauf-Takt teilen.", s.IntervalMinutes, s.RunMinutes)
-	case s.FileDays < 0 || s.FileDays > 366:
-		return errors.New("„Dateilänge in Tagen“ muss zwischen 0 und 366 liegen (0 = eine Datei je Lauf).")
-	case s.RetentionDays < 1 || s.RetentionDays > 3650:
-		return errors.New("„Aufbewahrung in Tagen“ muss zwischen 1 und 3650 liegen.")
 	case s.TimeFormat != "dmy" && s.TimeFormat != "iso":
 		return errors.New("Ungültiges Zeitformat.")
 	case s.Encoding != "utf-8" && s.Encoding != "windows-1252":
 		return errors.New("Ungültiger Zeichensatz.")
-	case !validPrefix(s.Prefix):
-		return errors.New("Der Dateiname darf nur Buchstaben, Ziffern, „-“ und „_“ enthalten (höchstens 40 Zeichen).")
 	}
-	return nil
-}
-
-func validPrefix(p string) bool {
-	if p == "" || len(p) > 40 {
-		return false
-	}
-	for _, r := range p {
-		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' || r == '_') {
-			return false
+	for _, err := range []error{
+		CheckMinutes("Datei ergänzen alle", s.RunMinutes), CheckMinutes("Zeilen im Abstand von", s.IntervalMinutes),
+		CheckRaster(s.RunMinutes, s.IntervalMinutes), CheckFileDays(s.FileDays),
+		CheckRetentionDays(s.RetentionDays), CheckPrefix(s.Prefix),
+	} {
+		if err != nil {
+			return err
 		}
 	}
-	return true
+	return nil
 }
 
 func (s Settings) pairs() [][2]string {

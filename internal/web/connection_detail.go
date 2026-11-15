@@ -38,7 +38,7 @@ var connFieldLabels = map[string]string{
 	"time_format": "Zeitformat", "decimal_comma": "Dezimalkomma", "encoding": "Zeichensatz", "target": "Ablage",
 	"drive_id": "Netzlaufwerk", "drive_folder": "Ordner auf dem Laufwerk", "ftp_host": "Server", "ftp_port": "Port",
 	"ftp_username": "Benutzer", "ftp_password": "Kennwort", "ftp_folder": "Zielordner", "ftp_tls": "TLS",
-	"sftp_host_key": "Fingerabdruck des Servers", "filter_infra_ids": "Nur Anlagen (IDs)", "filter_meter_keys": "Nur Messstellen",
+	"sftp_host_key": "Fingerabdruck des Servers", "filter_infra_ids": "Nur Anlagen", "filter_meter_keys": "Nur Messstellen",
 }
 
 var connSecretFields = map[string]bool{

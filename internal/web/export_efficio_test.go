@@ -343,6 +343,49 @@ func TestEfficioNotOnMirror(t *testing.T) {
 	}
 }
 
+// Der Anlagenfilter zeigt Namen statt IDs (Verbindungsseite, Seite „Dateien & Protokoll“, Formular).
+func TestEfficioInfraFilterShowsNames(t *testing.T) {
+	env := newEfficioEnv(t, map[string]string{})
+	ctx := context.Background()
+	var parent, child string
+	sfx := time.Now().Format("150405.000000")
+	if err := env.pool.QueryRow(ctx, `INSERT INTO infrastructure (name, type) VALUES ($1, 'building') RETURNING id::text`, "EfHalle "+sfx).Scan(&parent); err != nil {
+		t.Fatal(err)
+	}
+	if err := env.pool.QueryRow(ctx, `INSERT INTO infrastructure (name, type, parent_id) VALUES ($1, 'line', $2::uuid) RETURNING id::text`, "EfLinie "+sfx, parent).Scan(&child); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = env.pool.Exec(ctx, `DELETE FROM infrastructure WHERE id = $1::uuid`, child)
+		_, _ = env.pool.Exec(ctx, `DELETE FROM infrastructure WHERE id = $1::uuid`, parent)
+	})
+	want := "EfHalle " + sfx + " / EfLinie " + sfx
+
+	if got := env.h.efficioDisplay(ctx, "filter_infra_ids", child+","+parent); !strings.Contains(got, want) || strings.Contains(got, child) {
+		t.Errorf("Verbindungsseite: %q", got)
+	}
+	ec := energie.ExportConfig{RunEvery: 15 * time.Minute, Interval: time.Minute, RetentionDays: 30, Prefix: "efficio",
+		Target: energie.PickupTarget{}, InfraIDs: []string{child}}
+	found := false
+	for _, r := range env.h.efficioSettings(ctx, ec) {
+		found = found || (r.Label == "Nur Anlagen" && r.Value == want)
+	}
+	if !found {
+		t.Error("Seite Dateien & Protokoll zeigt keine Anlagennamen")
+	}
+	conns := []ConnectionView{{Kind: efficioKind, ConfigJSON: `{"filter_infra_ids":"` + child + `"}`}}
+	var labels map[string]string
+	if err := json.Unmarshal([]byte(env.h.efficioInfraJSON(ctx, conns)), &labels); err != nil || labels[child] != want {
+		t.Errorf("Formular-Vorbelegung: %v %v", labels, err)
+	}
+	// Das Formular bindet den Anlagenbaum ein und kennt keine rohe ID-Eingabe mehr
+	out := renderPage(t, loadTestTemplates(t), "export", ConnectionsPageData{Direction: "export", CanWrite: true,
+		EfficioDefault: energie.DefaultSettings(), EfficioChoices: energie.MinuteChoices, EfficioInfra: "{}"})
+	if !strings.Contains(out, "efficio-infra-pick") || !strings.Contains(out, "efficioInfraAdd") || strings.Contains(out, "Anlagen-IDs") {
+		t.Error("Formular zeigt den Anlagenbaum nicht")
+	}
+}
+
 func TestEnergySettingsWeb(t *testing.T) {
 	env := newEfficioEnv(t, map[string]string{})
 	ctx := context.Background()

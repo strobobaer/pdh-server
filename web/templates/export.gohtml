@@ -202,8 +202,14 @@
       <div class="grid2" style="gap:10px">
         <div class="form-group"><label class="form-label" for="f_efficio_filter_meter_keys">Nur diese Messstellen <span style="color:var(--muted);font-weight:400">(IDs, je Zeile eine; leer = alle)</span></label>
           <textarea id="f_efficio_filter_meter_keys" name="f_efficio_filter_meter_keys" class="form-input" rows="2"></textarea></div>
-        <div class="form-group"><label class="form-label" for="f_efficio_filter_infra_ids">Nur diese Anlagen <span style="color:var(--muted);font-weight:400">(Anlagen-IDs, mit Komma getrennt; leer = alle)</span></label>
-          <textarea id="f_efficio_filter_infra_ids" name="f_efficio_filter_infra_ids" class="form-input" rows="2"></textarea></div>
+        <div class="form-group" id="efficio-infra-box">
+          <span class="form-label">Nur diese Anlagen <span style="color:var(--muted);font-weight:400">(mit Unteranlagen; leer = alle)</span></span>
+          <input type="hidden" id="f_efficio_filter_infra_ids" name="f_efficio_filter_infra_ids" value="">
+          <div id="efficio-infra-chips" style="display:flex;gap:6px;flex-wrap:wrap;margin:4px 0"></div>
+          {{template "infra-tree-picker" (dict "TargetID" "efficio-infra-pick" "SelectedLabelID" "efficio-infra-pick-label" "Label" "Anlage wählen" "Name" "efficio_infra_pick")}}
+          <button type="button" class="btn btn-small" onclick="efficioInfraAdd()"><i class="ti ti-plus" aria-hidden="true"></i> Anlage hinzufügen</button>
+          <div id="efficio-infra-labels" data-labels="{{.EfficioInfra}}" hidden></div>
+        </div>
       </div>
     </div>
 
@@ -230,7 +236,46 @@ function efficioTargetChanged(){
     el.hidden = el.dataset.target.split(' ').indexOf(sel.value) === -1;
   });
 }
-function connFormSync(){ opcuaAuthModeChanged(); efficioTargetChanged(); }
+// Anlagenfilter: IDs im versteckten Feld (kommagetrennt), Anzeige als Namen
+const efficioInfraNames = {};
+function efficioInfraIds(){
+  const v = document.getElementById('f_efficio_filter_infra_ids').value;
+  return v.split(/[\s,;]+/).filter(Boolean);
+}
+function efficioInfraRender(){
+  const box = document.getElementById('efficio-infra-chips');
+  if(!box) return;
+  try{ Object.assign(efficioInfraNames, JSON.parse(document.getElementById('efficio-infra-labels').dataset.labels || '{}')); }catch(e){}
+  box.textContent = '';
+  efficioInfraIds().forEach(function(id){
+    const chip = document.createElement('span');
+    chip.className = 'badge';
+    chip.style.cssText = 'background:var(--bg3);color:var(--text);border:1px solid var(--border);display:inline-flex;gap:6px;align-items:center';
+    chip.appendChild(document.createTextNode(efficioInfraNames[id] || id));
+    const x = document.createElement('button');
+    x.type = 'button'; x.title = 'Entfernen'; x.setAttribute('aria-label', 'Anlage entfernen');
+    x.style.cssText = 'border:0;background:none;color:var(--muted);cursor:pointer';
+    x.innerHTML = '<i class="ti ti-x" aria-hidden="true"></i>';
+    x.onclick = function(){
+      document.getElementById('f_efficio_filter_infra_ids').value = efficioInfraIds().filter(function(i){ return i !== id; }).join(',');
+      efficioInfraRender();
+    };
+    chip.appendChild(x);
+    box.appendChild(chip);
+  });
+}
+function efficioInfraAdd(){
+  const id = document.getElementById('efficio-infra-pick').value;
+  if(!id) return;
+  efficioInfraNames[id] = document.getElementById('efficio-infra-pick-label').textContent.trim();
+  const ids = efficioInfraIds();
+  if(ids.indexOf(id) === -1) ids.push(id);
+  document.getElementById('f_efficio_filter_infra_ids').value = ids.join(',');
+  const picker = document.querySelector('#efficio-infra-box [data-infra-picker]');
+  if(picker && typeof clearInfraPicker === 'function') clearInfraPicker(picker);
+  efficioInfraRender();
+}
+function connFormSync(){ opcuaAuthModeChanged(); efficioTargetChanged(); efficioInfraRender(); }
 function connPageItems(row){
   if(row.dataset.connKind === 'efficio') return [{label: 'Dateien & Protokoll', icon: 'ti-files', onClick: function(){
     window.location = '/export/connections/' + row.dataset.connId + '/efficio';

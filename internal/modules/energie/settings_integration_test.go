@@ -71,3 +71,54 @@ func TestSettingsRejectInvalid(t *testing.T) {
 		t.Errorf("abgewiesene Werte wurden gespeichert: %+v", got)
 	}
 }
+
+// Sampler und Store.List nutzen die gespeicherte Frist, das Aufräumen die gespeicherte Aufbewahrung.
+func TestSettingsUsedBySamplerListAndPurge(t *testing.T) {
+	pool, s, sm, infra := samplerEnv(t)
+	ctx := context.Background()
+	clean := func() { _, _ = pool.Exec(ctx, `DELETE FROM app_settings WHERE key LIKE 'energy.%'`) }
+	clean()
+	t.Cleanup(clean)
+
+	minute := time.Now().Truncate(time.Minute)
+	id, _ := source(t, pool, s, infra, KindInstant, 1, "5", minute.Add(-20*time.Minute)) // Lesung vor 20 min
+
+	// Vorgabe 15 min: Lesung ist veraltet, nichts wird abgelegt
+	if stored, _, err := sm.Pass(ctx, minute); err != nil || stored != 0 {
+		t.Fatalf("Vorgabe: abgelegt %d, %v", stored, err)
+	}
+	// Liste: letzter Wert vor 20 min gilt bei 15 min als veraltet, bei 30 min nicht
+	_, err := pool.Exec(ctx, `UPDATE energy_meters SET last_at = $2 WHERE id = $1::uuid`, id, minute.Add(-20*time.Minute))
+	must(t, err)
+	stale := func() int {
+		l, err := s.List(ctx, Filter{Stale: true, InfraID: infra})
+		must(t, err)
+		return len(l)
+	}
+	if stale() != 1 {
+		t.Fatal("bei 15 min muss die Messstelle veraltet sein")
+	}
+	in := DefaultSettings()
+	in.StaleMinutes = 30
+	must(t, s.SaveSettings(ctx, in))
+	if stale() != 0 {
+		t.Error("Liste nutzt die gespeicherte Frist nicht")
+	}
+	if stored, _, err := sm.Pass(ctx, minute); err != nil || stored != 1 {
+		t.Errorf("Sampler nutzt die gespeicherte Frist nicht: abgelegt %d, %v", stored, err)
+	}
+
+	// Aufräumen: ein 100 Tage alter Wert bleibt bei 400 Tagen und verschwindet bei 50
+	old := minute.AddDate(0, 0, -100)
+	putValue(t, pool, id, old, 1)
+	must(t, sm.purge(ctx))
+	if _, ok := valueAt(t, pool, id, old); !ok {
+		t.Fatal("bei 400 Tagen darf nichts gelöscht werden")
+	}
+	in.ValueRetentionDays = 50
+	must(t, s.SaveSettings(ctx, in))
+	must(t, sm.purge(ctx))
+	if _, ok := valueAt(t, pool, id, old); ok {
+		t.Error("Aufräumen nutzt die gespeicherte Aufbewahrung nicht")
+	}
+}

@@ -167,6 +167,7 @@ type ConnectionsPageData struct {
 	EfficioDrives  []KindOption       // Netzlaufwerke für „Import & Export“ (Ablage des Efficio-Exports)
 	EfficioDefault energie.Settings   // Vorgaben für neue Efficio-Exporte (Energiedaten → Einstellungen)
 	EfficioChoices []int
+	EfficioInfra   string // Anlagen-ID → Pfad als JSON (Anlagenfilter im Formular)
 	Notice         string
 }
 
@@ -244,6 +245,7 @@ func (h *Handler) connectionsPage(w http.ResponseWriter, r *http.Request, direct
 		if direction == "export" {
 			data.EfficioDrives = h.efficioDriveOptions(r.Context())
 			data.EfficioDefault, data.EfficioChoices = energie.DefaultSettings(), energie.MinuteChoices
+			data.EfficioInfra = h.efficioInfraJSON(r.Context(), conns)
 			if st := h.energyStore(); st != nil {
 				data.EfficioDefault, _ = st.Settings(r.Context())
 			}

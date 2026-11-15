@@ -31,47 +31,19 @@ import (
 
 const efficioKind = "efficio"
 
-// Erlaubte Minutenwerte für Lauf-Takt und Zeilenabstand.
-var efficioMinuteChoices = []int{1, 5, 10, 15, 30, 60}
-
 var (
-	efficioPrefixRe = regexp.MustCompile(`^[A-Za-z0-9_-]{1,40}$`)
 	efficioFPRe     = regexp.MustCompile(`^SHA256:[A-Za-z0-9+/]{43}$`)
 	efficioFPFindRe = regexp.MustCompile(`SHA256:[A-Za-z0-9+/]{43}`)
 )
 
-func efficioChoicesText() string {
-	s := make([]string, len(efficioMinuteChoices))
-	for i, m := range efficioMinuteChoices {
-		s[i] = strconv.Itoa(m)
-	}
-	return strings.Join(s[:len(s)-1], ", ") + " oder " + s[len(s)-1]
-}
-
-func efficioMinutes(cfg map[string]string, key string, def int, label string) (int, error) {
+func efficioNumber(cfg map[string]string, key string, def int, label string) (int, error) {
 	v := strings.TrimSpace(cfg[key])
 	if v == "" {
 		return def, nil
 	}
 	n, err := strconv.Atoi(v)
-	if err == nil {
-		for _, c := range efficioMinuteChoices {
-			if c == n {
-				return n, nil
-			}
-		}
-	}
-	return 0, fmt.Errorf("„%s“ kann nur %s Minuten sein.", label, efficioChoicesText())
-}
-
-func efficioInt(cfg map[string]string, key string, def, lo, hi int, msg string) (int, error) {
-	v := strings.TrimSpace(cfg[key])
-	if v == "" {
-		return def, nil
-	}
-	n, err := strconv.Atoi(v)
-	if err != nil || n < lo || n > hi {
-		return 0, errors.New(msg)
+	if err != nil {
+		return 0, fmt.Errorf("„%s“ muss eine ganze Zahl sein.", label)
 	}
 	return n, nil
 }
@@ -140,40 +112,41 @@ func efficioList(s string, seps string) []string {
 func efficioConfig(id string, cfg map[string]string, drive func(id string) (*networkDrive, error)) (energie.ExportConfig, error) {
 	var c energie.ExportConfig
 	c.ConnectionID = id
-	run, err := efficioMinutes(cfg, "run_minutes", 15, "Datei ergänzen alle")
+	run, err := efficioNumber(cfg, "run_minutes", 15, "Datei ergänzen alle")
 	if err != nil {
 		return c, err
 	}
-	step, err := efficioMinutes(cfg, "interval_minutes", 1, "Zeilen im Abstand von")
+	step, err := efficioNumber(cfg, "interval_minutes", 1, "Zeilen im Abstand von")
 	if err != nil {
 		return c, err
 	}
-	if run%step != 0 {
-		var ok []string
-		for _, m := range efficioMinuteChoices {
-			if m <= run && run%m == 0 {
-				ok = append(ok, strconv.Itoa(m))
-			}
+	for _, e := range []error{energie.CheckMinutes("Datei ergänzen alle", run), energie.CheckMinutes("Zeilen im Abstand von", step), energie.CheckRaster(run, step)} {
+		if e != nil {
+			return c, e
 		}
-		return c, fmt.Errorf("Der Zeilenabstand von %d Minuten passt nicht zum Lauf alle %d Minuten: Er muss den Lauf-Takt teilen. Möglich sind %s Minuten.",
-			step, run, strings.Join(ok, ", "))
 	}
 	c.RunEvery, c.Interval = time.Duration(run)*time.Minute, time.Duration(step)*time.Minute
 
 	if c.Mode, err = efficioChoice(cfg, "value_mode", energie.ModeEnd, energie.ModeEnd, energie.ModeDelta); err != nil {
 		return c, err
 	}
-	if c.FileDays, err = efficioInt(cfg, "file_days", 1, 0, 366, "„Max. Länge der Datei in Tagen“ muss zwischen 0 und 366 liegen (0 = eine Datei je Lauf)."); err != nil {
+	if c.FileDays, err = efficioNumber(cfg, "file_days", 1, "Max. Länge der Datei in Tagen"); err != nil {
 		return c, err
 	}
-	if c.RetentionDays, err = efficioInt(cfg, "retention_days", 30, 1, 3650, "„Aufbewahrung in Tagen“ muss zwischen 1 und 3650 liegen."); err != nil {
+	if err = energie.CheckFileDays(c.FileDays); err != nil {
+		return c, err
+	}
+	if c.RetentionDays, err = efficioNumber(cfg, "retention_days", 30, "Aufbewahrung in Tagen"); err != nil {
+		return c, err
+	}
+	if err = energie.CheckRetentionDays(c.RetentionDays); err != nil {
 		return c, err
 	}
 	if c.Prefix = strings.TrimSpace(cfg["file_prefix"]); c.Prefix == "" {
 		c.Prefix = "efficio"
 	}
-	if !efficioPrefixRe.MatchString(c.Prefix) {
-		return c, errors.New("Der Dateiname darf nur Buchstaben, Ziffern, „-“ und „_“ enthalten (höchstens 40 Zeichen).")
+	if err = energie.CheckPrefix(c.Prefix); err != nil {
+		return c, err
 	}
 	tf, err := efficioChoice(cfg, "time_format", "dmy", "dmy", "iso")
 	if err != nil {
@@ -231,9 +204,12 @@ func efficioConfig(id string, cfg map[string]string, drive func(id string) (*net
 		if target == "sftp" {
 			def = 22
 		}
-		port, err := efficioInt(cfg, "ftp_port", def, 1, 65535, "Der Port muss zwischen 1 und 65535 liegen.")
+		port, err := efficioNumber(cfg, "ftp_port", def, "Port")
 		if err != nil {
 			return c, err
+		}
+		if port < 1 || port > 65535 {
+			return c, errors.New("Der Port muss zwischen 1 und 65535 liegen.")
 		}
 		folder, err := efficioSubfolder(cfg["ftp_folder"], "Der Zielordner", false)
 		if err != nil {
@@ -410,15 +386,13 @@ func efficioSummary(res energie.RunResult) string {
 	return fmt.Sprintf("Lauf beendet: %d Zeilen, %d Datei(en) zugestellt.", res.Rows, res.Delivered)
 }
 
-// efficioCan: export.read bzw. export.write (für Tests mit hasPermHook).
-func (h *Handler) efficioCan(r *http.Request, perm string) bool {
+// efficioCan: export.read bzw. export.write für diese Verbindung (mit Abteilungsebene;
+// Verbindungen haben keine eigene Abteilung, dann zählt das Recht überall).
+func (h *Handler) efficioCan(r *http.Request, perm, id string) bool {
 	if h.hasPermHook != nil {
 		return h.hasPermHook(r, perm)
 	}
-	if h.rbac == nil {
-		return false
-	}
-	return h.hasPerm(r, perm)
+	return h.hasPermRec(r, perm, "export_connection", id)
 }
 
 // ── Seite „Dateien & Protokoll“ ─────────────────────────────
@@ -461,7 +435,7 @@ var efficioResultLabels = map[string]string{"ok": "in Ordnung", "partial": "mit 
 
 // EfficioPage: GET /export/connections/{id}/efficio.
 func (h *Handler) EfficioPage(w http.ResponseWriter, r *http.Request) {
-	if !h.efficioCan(r, "export.read") {
+	if !h.efficioCan(r, "export.read", chi.URLParam(r, "id")) {
 		http.Redirect(w, r, "/", http.StatusFound)
 		return
 	}
@@ -470,16 +444,8 @@ func (h *Handler) EfficioPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Verbindung nicht gefunden", status)
 		return
 	}
+	d.BaseData = h.baseData(r, "export", "Dateien & Protokoll", "Energiedaten")
 	h.render(w, "export_efficio", d)
-}
-
-// efficioBase: Seitenkopf; nur in Tests ohne Rechtedienst leer.
-func (h *Handler) efficioBase(r *http.Request) BaseData {
-	if h.rbac == nil {
-		var none BaseData
-		return none
-	}
-	return h.baseData(r, "export", "Dateien & Protokoll", "Energiedaten")
 }
 
 // efficioPageData stellt die Seite zusammen; status != 0: Fehlerstatus statt Seite.
@@ -497,9 +463,8 @@ func (h *Handler) efficioPageData(r *http.Request, id string) (EfficioPageData, 
 	}
 	q := r.URL.Query()
 	d := EfficioPageData{
-		BaseData: h.efficioBase(r),
-		ID:       id, Name: name, Enabled: enabled, Mirror: h.Mirror().On,
-		CanWrite: h.efficioCan(r, "export.write"),
+		ID: id, Name: name, Enabled: enabled, Mirror: h.Mirror().On,
+		CanWrite: h.efficioCan(r, "export.write", chi.URLParam(r, "id")),
 		Notice:   q.Get("notice"), Err: q.Get("err"), IsSFTP: cfg["target"] == "sftp",
 	}
 	if secretErr != nil {
@@ -512,7 +477,7 @@ func (h *Handler) efficioPageData(r *http.Request, id string) (EfficioPageData, 
 	if cerr != nil {
 		d.ConfigErr = cerr.Error()
 	} else {
-		d.Settings = efficioSettings(ec, cfg)
+		d.Settings = h.efficioSettings(ctx, ec)
 	}
 	pickup := cfg["target"] == "" || cfg["target"] == "pickup"
 
@@ -576,14 +541,60 @@ func (h *Handler) efficioPageData(r *http.Request, id string) (EfficioPageData, 
 	return d, 0
 }
 
+// infraPaths liefert zu Anlagen-IDs den Pfad („Halle / Linie 1 / Presse“).
+func (h *Handler) infraPaths(ctx context.Context, ids []string) map[string]string {
+	out := map[string]string{}
+	if h.db == nil || len(ids) == 0 {
+		return out
+	}
+	rows, err := h.db.Query(ctx, `WITH RECURSIVE p(id, path) AS (
+			SELECT id, name::text FROM infrastructure WHERE parent_id IS NULL
+			UNION ALL
+			SELECT i.id, p.path || ' / ' || i.name FROM infrastructure i JOIN p ON i.parent_id = p.id)
+		SELECT id::text, path FROM p WHERE id = ANY($1::uuid[])`, ids)
+	if err != nil {
+		return out
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id, path string
+		if rows.Scan(&id, &path) == nil {
+			out[id] = path
+		}
+	}
+	return out
+}
+
+// efficioInfraJSON: Anlagen-ID → Pfad für alle Efficio-Verbindungen (Vorbelegung des Anlagenfilters im Formular).
+func (h *Handler) efficioInfraJSON(ctx context.Context, conns []ConnectionView) string {
+	var ids []string
+	for _, c := range conns {
+		if c.Kind != efficioKind {
+			continue
+		}
+		var cfg map[string]string
+		if json.Unmarshal([]byte(c.ConfigJSON), &cfg) == nil {
+			ids = append(ids, efficioList(cfg["filter_infra_ids"], ",;\r\n\t ")...)
+		}
+	}
+	valid := ids[:0]
+	for _, id := range ids {
+		if meterUUIDRe.MatchString(id) {
+			valid = append(valid, id)
+		}
+	}
+	b, _ := json.Marshal(h.infraPaths(ctx, valid))
+	return string(b)
+}
+
 // efficioSettings: die wichtigsten Einstellungen in Worten.
-func efficioSettings(ec energie.ExportConfig, cfg map[string]string) []connConfigRow {
+func (h *Handler) efficioSettings(ctx context.Context, ec energie.ExportConfig) []connConfigRow {
 	mins := func(d time.Duration) string { return strconv.Itoa(int(d/time.Minute)) + " Min." }
 	days := "eine Datei je Lauf"
 	if ec.FileDays > 0 {
 		days = strconv.Itoa(ec.FileDays) + " Tag(e) je Datei"
 	}
-	return []connConfigRow{
+	rows := []connConfigRow{
 		{"Datei ergänzen alle", mins(ec.RunEvery)},
 		{"Zeilen im Abstand von", mins(ec.Interval)},
 		{"Dateilänge", days},
@@ -591,11 +602,27 @@ func efficioSettings(ec energie.ExportConfig, cfg map[string]string) []connConfi
 		{"Dateiname", ec.Prefix + "_JJJJMMTT_hhmm.csv"},
 		{"Ablage", ec.Target.Label()},
 	}
+	if len(ec.InfraIDs) > 0 {
+		paths := h.infraPaths(ctx, ec.InfraIDs)
+		var names []string
+		for _, id := range ec.InfraIDs {
+			if p := paths[id]; p != "" {
+				names = append(names, p)
+			} else {
+				names = append(names, "(Anlage nicht gefunden)")
+			}
+		}
+		rows = append(rows, connConfigRow{"Nur Anlagen", strings.Join(names, "; ")})
+	}
+	if len(ec.MeterKeys) > 0 {
+		rows = append(rows, connConfigRow{"Nur Messstellen", strings.Join(ec.MeterKeys, ", ")})
+	}
+	return rows
 }
 
 // EfficioRunWeb: POST /export/connections/{id}/efficio/run-web – Jetzt exportieren.
 func (h *Handler) EfficioRunWeb(w http.ResponseWriter, r *http.Request) {
-	if !h.efficioCan(r, "export.write") {
+	if !h.efficioCan(r, "export.write", chi.URLParam(r, "id")) {
 		http.Error(w, "keine berechtigung", http.StatusForbidden)
 		return
 	}
@@ -624,7 +651,7 @@ func (h *Handler) EfficioRunWeb(w http.ResponseWriter, r *http.Request) {
 // confirm_host_key (zweiter Aufruf, nach Bestätigung) gespeichert – aber nur,
 // wenn der Server ihn auch jetzt zeigt.
 func (h *Handler) EfficioTestWeb(w http.ResponseWriter, r *http.Request) {
-	if !h.efficioCan(r, "export.write") {
+	if !h.efficioCan(r, "export.write", chi.URLParam(r, "id")) {
 		http.Error(w, "keine berechtigung", http.StatusForbidden)
 		return
 	}
@@ -702,7 +729,7 @@ func (h *Handler) efficioSaveHostKey(ctx context.Context, id, fp string) error {
 
 // EfficioDownload: GET /export/connections/{id}/efficio/files/{fileId} – eine erzeugte Datei herunterladen.
 func (h *Handler) EfficioDownload(w http.ResponseWriter, r *http.Request) {
-	if !h.efficioCan(r, "export.read") {
+	if !h.efficioCan(r, "export.read", chi.URLParam(r, "id")) {
 		http.Error(w, "keine berechtigung", http.StatusForbidden)
 		return
 	}
@@ -752,6 +779,18 @@ func (h *Handler) efficioDisplay(ctx context.Context, field, v string) string {
 		return "UTF-8"
 	case "target":
 		return map[string]string{"pickup": "Zum Abholen im PDH", "drive": "Netzlaufwerk", "ftp": "FTP", "sftp": "SFTP"}[v]
+	case "filter_infra_ids":
+		ids := efficioList(v, ",;\r\n\t ")
+		paths := h.infraPaths(ctx, ids)
+		var names []string
+		for _, id := range ids {
+			if p := paths[id]; p != "" {
+				names = append(names, p)
+			} else {
+				names = append(names, "(Anlage nicht gefunden)")
+			}
+		}
+		return strings.Join(names, "; ")
 	case "drive_id":
 		if d, err := h.loadDrive(ctx, v); err == nil {
 			return d.Name
