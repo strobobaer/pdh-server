@@ -398,6 +398,8 @@
  "Unter Mindestbestand": "Sub stocul minim",
  "Ursache": "Cauză",
  "Ursache (optional)": "Cauză (opțional)",
+ "Ursache (Pflicht bei Alarm-Tickets)": "Cauză (obligatorie la tichetele de alarmă)",
+ "Bitte beschreiben, warum der Alarm kam (Feld Ursache).": "Vă rugăm să descrieți de ce a apărut alarma (câmpul Cauză).",
  "Verantwortlich": "Responsabil",
  "Verantwortlich (optional)": "Responsabil (opțional)",
  "Verbesserungsvorschläge, die auf eine Entscheidung warten, davon über der Rückmeldefrist": "Propuneri de îmbunătățire care așteaptă o decizie, dintre care după termenul de răspuns",

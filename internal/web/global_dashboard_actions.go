@@ -20,6 +20,9 @@ type GlobalBoardActionInput struct {
 	AssignedTo    string `json:"assigned_to"`
 	FollowUpDate  string `json:"follow_up_date"`
 	NoPartsNeeded bool   `json:"no_parts_needed"`
+	// autoComment: Kommentar war leer und ist durch „Am Leitstand (…)“
+	// ersetzt – das gilt nicht als Ursache eines Alarm-Tickets.
+	autoComment bool
 }
 
 func (h *Handler) GlobalDashboardAction(w http.ResponseWriter, r *http.Request) {
@@ -49,6 +52,7 @@ func (h *Handler) GlobalDashboardAction(w http.ResponseWriter, r *http.Request) 
 	}
 	if in.Comment == "" {
 		in.Comment = "Am Leitstand (" + how + ")"
+		in.autoComment = true
 	}
 	if !h.globalBoardRecordActive(r, in.Type, in.ID) {
 		writeGlobalBoardError(w, http.StatusConflict, "Der Vorgang ist nicht mehr offen")
@@ -191,6 +195,14 @@ func (h *Handler) applyGlobalBoardAction(r *http.Request, in GlobalBoardActionIn
 			}
 			return h.faults.Resolve(ctx, in.ID, in.Comment, in.Comment, actorID, in.NoPartsNeeded)
 		case "ticket":
+			cause := in.Comment
+			if in.autoComment {
+				cause = ""
+			}
+			// Alarm-Ticket ohne Ursache: abweisen, bevor die Maßnahme gespeichert wird
+			if err := h.tickets.RequireRootCause(ctx, in.ID, cause); err != nil {
+				return err
+			}
 			parts, err := h.tickets.GetPendingParts(ctx, in.ID)
 			if err != nil {
 				return err

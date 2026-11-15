@@ -173,9 +173,12 @@ func (r *Repository) GetPartsUsage(ctx context.Context, ticketID string) ([]*Par
 
 // ── Resolve (Ticket lösen) ───────────────────────────────────
 
+// Resolve setzt das Ticket auf gelöst. Eine leere Ursache überschreibt eine
+// schon gespeicherte nicht (die zählt für die Ursachen-Pflicht mit).
 func (r *Repository) Resolve(ctx context.Context, id, resolution, rootCause, userID string, noPartsNeeded bool) error {
 	_, err := r.db.Exec(ctx,
-		`UPDATE tickets SET status='resolved', resolution=$1, root_cause=$2, no_parts_needed=$3,
+		`UPDATE tickets SET status='resolved', resolution=$1,
+		root_cause=CASE WHEN btrim($2::text) = '' THEN root_cause ELSE $2::text END, no_parts_needed=$3,
 		resolved_at=NOW(), archived_at=COALESCE(archived_at,NOW()), archived_by=$5, updated_at=NOW() WHERE id=$4`,
 		resolution, rootCause, noPartsNeeded, id, userID)
 	if err == nil {
@@ -195,8 +198,12 @@ func SetInventoryService(inv *inventory.Service) { invService = inv }
 // Resolve schließt ein Ticket ab: mindestens eine Maßnahme ist Pflicht,
 // Ersatzteile ODER die "keine Teile benötigt"-Bestätigung ebenso. Beim
 // Abschluss werden alle vorgemerkten Ersatzteile tatsächlich gebucht
-// (Warenausgang, verknüpft mit dem Ticket).
+// (Warenausgang, verknüpft mit dem Ticket). Alarm-Tickets brauchen eine
+// Ursache (ErrRootCauseRequired) – geprüft, bevor etwas gebucht wird.
 func (s *Service) Resolve(ctx context.Context, ticketID, resolution, rootCause, userID string, noPartsNeeded bool) error {
+	if err := s.repo.RequireRootCause(ctx, ticketID, rootCause); err != nil {
+		return err
+	}
 	actionCount, err := s.repo.CountActions(ctx, ticketID)
 	if err != nil {
 		return err
@@ -249,8 +256,12 @@ func (s *Service) Resolve(ctx context.Context, ticketID, resolution, rootCause, 
 
 // QuickResolve schließt ein Ticket OHNE die Pflichtprüfung (Maßnahmen/
 // Ersatzteile) ab - für den generischen Archivieren-Weg (RecordArchiveWeb),
-// z.B. bei versehentlich angelegten Datensätzen.
+// z.B. bei versehentlich angelegten Datensätzen. Die Ursachen-Pflicht der
+// Alarm-Tickets gilt auch hier.
 func (s *Service) QuickResolve(ctx context.Context, ticketID, resolution, rootCause, userID string) error {
+	if err := s.repo.RequireRootCause(ctx, ticketID, rootCause); err != nil {
+		return err
+	}
 	err := s.repo.Resolve(ctx, ticketID, resolution, rootCause, userID, true)
 	if err == nil && eventBus != nil {
 		eventBus.Publish("ticket.resolved", map[string]interface{}{
@@ -320,7 +331,7 @@ func (h *Handler) Resolve(w http.ResponseWriter, r *http.Request) {
 	}
 	userID, _ := r.Context().Value(middleware.UserIDKey).(string)
 	if err := h.svc.Resolve(r.Context(), id, in.Resolution, in.RootCause, userID, in.NoPartsNeeded); err != nil {
-		response.Error(w, http.StatusInternalServerError, err.Error())
+		response.Error(w, errStatus(err), err.Error())
 		return
 	}
 	response.JSON(w, http.StatusOK, map[string]string{"status": "resolved"})

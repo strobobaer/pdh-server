@@ -3,6 +3,7 @@ package tickets
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -65,6 +66,11 @@ type Ticket struct {
 	Resolution    *string `json:"resolution,omitempty"`
 	RootCause     *string `json:"root_cause,omitempty"`
 	NoPartsNeeded bool    `json:"no_parts_needed,omitempty"`
+
+	// Zugewiesene Gruppe und Alarm-Kennzeichen: Alarm-Tickets (Schwellwerte
+	// der Energiedaten) lassen sich nur mit beschriebener Ursache erledigen.
+	AssignedGroupID   *string `json:"assigned_group_id,omitempty"`
+	RequiresRootCause bool    `json:"requires_root_cause,omitempty"`
 }
 
 // Kommentar zu einem Ticket
@@ -88,7 +94,15 @@ type CreateInput struct {
 	Tags             []string   `json:"tags"`
 	DueDate          *time.Time `json:"due_date,omitempty"`
 	CostCenterID     *string    `json:"cost_center_id,omitempty"`
+	AssignedGroupID  *string    `json:"assigned_group_id,omitempty"`
+	// RequiresRootCause: Alarm-Ticket, Erledigen nur mit Ursache. Nur intern
+	// (Schwellwert-Wächter), nicht über die JSON-Schnittstelle setzbar.
+	RequiresRootCause bool `json:"-"`
 }
+
+// ErrRootCauseRequired: Ein Alarm-Ticket ohne Ursache soll erledigt,
+// geschlossen, archiviert oder verworfen werden.
+var ErrRootCauseRequired = errors.New("Bitte beschreiben, warum der Alarm kam (Feld Ursache).")
 
 // Repository
 type Repository struct {
@@ -116,12 +130,14 @@ type rowQuerier interface {
 func insertTicket(ctx context.Context, q rowQuerier, t *Ticket) error {
 	tags, _ := json.Marshal(t.Tags)
 	query := `
-		INSERT INTO tickets (id, title, description, priority, status, assigned_to, responsible_to, created_by, infrastructure_id, due_date, tags, cost_center_id)
-		VALUES (pdh_uuid_v7(), $1, $2, $3, 'open', $4, $5, $6, $7, $8, $9, $10)
+		INSERT INTO tickets (id, title, description, priority, status, assigned_to, responsible_to, created_by, infrastructure_id, due_date, tags, cost_center_id,
+			assigned_group_id, requires_root_cause)
+		VALUES (pdh_uuid_v7(), $1, $2, $3, 'open', $4, $5, $6, $7, $8, $9, $10, $11, $12)
 		RETURNING id, created_at, updated_at`
 	return q.QueryRow(ctx, query,
 		t.Title, t.Description, t.Priority,
 		t.AssignedTo, t.ResponsibleTo, t.CreatedBy, t.InfrastructureID, t.DueDate, tags, t.CostCenterID,
+		t.AssignedGroupID, t.RequiresRootCause,
 	).Scan(&t.ID, &t.CreatedAt, &t.UpdatedAt)
 }
 
@@ -130,7 +146,7 @@ func (r *Repository) GetByID(ctx context.Context, id string) (*Ticket, error) {
 	var tags []byte
 	query := `SELECT t.id, t.title, t.description, t.priority, t.status, t.assigned_to, t.responsible_to,
 		t.created_by, t.infrastructure_id, t.record_image_attachment_id, t.due_date, t.resolved_at, t.archived_at, t.created_at, t.updated_at, t.tags,
-		t.cost_center_id, COALESCE(cc.number,''), COALESCE(cc.name,'')
+		t.cost_center_id, COALESCE(cc.number,''), COALESCE(cc.name,''), t.assigned_group_id::text, t.requires_root_cause
 		FROM tickets t
 		LEFT JOIN cost_centers cc ON t.cost_center_id = cc.id
 		WHERE t.id = $1`
@@ -138,7 +154,7 @@ func (r *Repository) GetByID(ctx context.Context, id string) (*Ticket, error) {
 		&t.ID, &t.Title, &t.Description, &t.Priority, &t.Status,
 		&t.AssignedTo, &t.ResponsibleTo, &t.CreatedBy, &t.InfrastructureID,
 		&t.RecordImageID, &t.DueDate, &t.ResolvedAt, &t.ArchivedAt, &t.CreatedAt, &t.UpdatedAt, &tags,
-		&t.CostCenterID, &t.CostCenterNumber, &t.CostCenterName,
+		&t.CostCenterID, &t.CostCenterNumber, &t.CostCenterName, &t.AssignedGroupID, &t.RequiresRootCause,
 	)
 	if err != nil {
 		return nil, err
@@ -150,7 +166,7 @@ func (r *Repository) GetByID(ctx context.Context, id string) (*Ticket, error) {
 func (r *Repository) List(ctx context.Context, status Status) ([]*Ticket, error) {
 	query := `SELECT t.id, t.title, t.description, t.priority, t.status, t.assigned_to, t.responsible_to,
 		t.created_by, t.infrastructure_id, t.due_date, t.archived_at, t.created_at, t.updated_at, t.tags,
-		t.cost_center_id, COALESCE(cc.number,''), COALESCE(cc.name,'')
+		t.cost_center_id, COALESCE(cc.number,''), COALESCE(cc.name,''), t.assigned_group_id::text, t.requires_root_cause
 		FROM tickets t
 		LEFT JOIN cost_centers cc ON t.cost_center_id = cc.id`
 	args := []interface{}{}
@@ -178,7 +194,7 @@ func (r *Repository) List(ctx context.Context, status Status) ([]*Ticket, error)
 			&t.ID, &t.Title, &t.Description, &t.Priority, &t.Status,
 			&t.AssignedTo, &t.ResponsibleTo, &t.CreatedBy, &t.InfrastructureID, &t.DueDate, &t.ArchivedAt,
 			&t.CreatedAt, &t.UpdatedAt, &tags,
-			&t.CostCenterID, &t.CostCenterNumber, &t.CostCenterName,
+			&t.CostCenterID, &t.CostCenterNumber, &t.CostCenterName, &t.AssignedGroupID, &t.RequiresRootCause,
 		)
 		if err != nil {
 			return nil, err
@@ -239,11 +255,38 @@ func (r *Repository) GetLinkedTaskID(ctx context.Context, ticketID string) (stri
 func (r *Repository) SetStatusDirect(ctx context.Context, ticketID, status, userID string) error {
 	query := `UPDATE tickets SET status=$1, updated_at=NOW()`
 	if status == "resolved" || status == "closed" {
+		// auch über eine verknüpfte Störung/Aufgabe kein Alarm-Ticket ohne Ursache
+		if err := r.RequireRootCause(ctx, ticketID, ""); err != nil {
+			return err
+		}
 		query += `, resolved_at=COALESCE(resolved_at,NOW()), archived_at=COALESCE(archived_at,NOW())`
 	}
 	query += ` WHERE id=$2`
 	_, err := r.db.Exec(ctx, query, status, ticketID)
 	return err
+}
+
+// RequireRootCause ist die eine Prüfung der Ursachen-Pflicht vor dem
+// Erledigen, Schließen, Archivieren oder Verwerfen: Bei einem Alarm-Ticket
+// (requires_root_cause) muss die übergebene oder die schon gespeicherte
+// Ursache Text enthalten, sonst ErrRootCauseRequired.
+func (r *Repository) RequireRootCause(ctx context.Context, ticketID, rootCause string) error {
+	if strings.TrimSpace(rootCause) != "" {
+		return nil
+	}
+	var missing bool
+	err := r.db.QueryRow(ctx, `SELECT requires_root_cause AND btrim(COALESCE(root_cause, '')) = ''
+		FROM tickets WHERE id = $1`, ticketID).Scan(&missing)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil // unbekanntes Ticket: das Ändern selbst trifft dann nichts
+	}
+	if err != nil {
+		return err
+	}
+	if missing {
+		return ErrRootCauseRequired
+	}
+	return nil
 }
 
 // AddActionDirect erfasst eine Massnahme (wird vom synclink-Paket
@@ -400,6 +443,9 @@ func (s *Service) newTicket(ctx context.Context, in *CreateInput, createdBy stri
 		Tags:             in.Tags,
 		DueDate:          dueDate,
 		CostCenterID:     in.CostCenterID,
+
+		AssignedGroupID:   in.AssignedGroupID,
+		RequiresRootCause: in.RequiresRootCause,
 	}
 }
 
@@ -449,9 +495,18 @@ func (s *Service) List(ctx context.Context, status Status) ([]*Ticket, error) {
 
 func (s *Service) UpdateStatus(ctx context.Context, id string, status Status, userID string) error {
 	if status == StatusResolved || status == StatusClosed {
+		if err := s.repo.RequireRootCause(ctx, id, ""); err != nil {
+			return err
+		}
 		return fmt.Errorf(`bitte das Ticket über "Ticket lösen" abschließen, nicht über die Status-Auswahl`)
 	}
 	return s.repo.UpdateStatus(ctx, id, status, userID)
+}
+
+// RequireRootCause prüft die Ursachen-Pflicht eines Alarm-Tickets (siehe
+// Repository.RequireRootCause), z. B. bevor Zeit oder Maßnahmen gespeichert werden.
+func (s *Service) RequireRootCause(ctx context.Context, id, rootCause string) error {
+	return s.repo.RequireRootCause(ctx, id, rootCause)
 }
 
 func (s *Service) UpdateCostCenter(ctx context.Context, id string, costCenterID *string) error {
@@ -551,10 +606,18 @@ func (h *Handler) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	userID, _ := r.Context().Value(middleware.UserIDKey).(string)
 	if err := h.svc.UpdateStatus(r.Context(), id, in.Status, userID); err != nil {
-		response.Error(w, http.StatusInternalServerError, err.Error())
+		response.Error(w, errStatus(err), err.Error())
 		return
 	}
 	response.JSON(w, http.StatusOK, map[string]string{"status": string(in.Status)})
+}
+
+// errStatus: fehlende Ursache ist eine Eingabe des Anwenders (400), sonst 500 wie bisher.
+func errStatus(err error) int {
+	if errors.Is(err, ErrRootCauseRequired) {
+		return http.StatusBadRequest
+	}
+	return http.StatusInternalServerError
 }
 
 // UpdateCostCenter akzeptiert sowohl JSON (für die JS-Fetch-Formulare in

@@ -398,6 +398,8 @@
  "Unter Mindestbestand": "Minimum stok altında",
  "Ursache": "Neden",
  "Ursache (optional)": "Neden (isteğe bağlı)",
+ "Ursache (Pflicht bei Alarm-Tickets)": "Neden (alarm biletlerinde zorunlu)",
+ "Bitte beschreiben, warum der Alarm kam (Feld Ursache).": "Lütfen alarmın neden oluştuğunu açıklayın (Neden alanı).",
  "Verantwortlich": "Sorumlu",
  "Verantwortlich (optional)": "Sorumlu (isteğe bağlı)",
  "Verbesserungsvorschläge, die auf eine Entscheidung warten, davon über der Rückmeldefrist": "Karar bekleyen iyileştirme önerileri, bunlardan geri bildirim süresi geçmiş olanlar",

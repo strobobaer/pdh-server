@@ -59,6 +59,7 @@ type completionInfo struct {
 	Type, Label, Title, Status string
 	PartsURL                   string                `json:"parts_url"`
 	RootCause                  bool                  `json:"root_cause"`
+	RootCauseRequired          bool                  `json:"root_cause_required"` // Alarm-Ticket
 	CanFinish                  bool                  `json:"can_finish"`
 	BookedMin                  int                   `json:"booked_min"` // schon erfasste eigene Zeit
 	RunningSince               string                `json:"running_since,omitempty"`
@@ -143,6 +144,9 @@ func (h *Handler) CompletionInfoWeb(w http.ResponseWriter, r *http.Request) {
 	}
 	info := completionInfo{Type: k.Type, Label: tr(lang, k.Label), Title: title, Status: status, PartsURL: k.PartsAPI + id + "/pending-parts",
 		RootCause: k.RootCause, CanFinish: h.canFinish(r, k, id), Departments: h.completionDepartments(ctx)}
+	if k.Type == "ticket" { // Alarm-Ticket: Ursache ist Pflicht
+		_ = h.db.QueryRow(ctx, `SELECT requires_root_cause FROM tickets WHERE id = $1::uuid`, id).Scan(&info.RootCauseRequired)
+	}
 	_ = h.db.QueryRow(ctx, `SELECT COALESCE(SUM(duration_min), 0)::int FROM time_entries
 		WHERE user_id = $1::uuid AND ref_type::text = $2 AND ref_id = $3::uuid AND ended_at IS NOT NULL AND NOT pending`, u.ID, k.RefType, id).Scan(&info.BookedMin)
 	var running *time.Time
@@ -317,6 +321,13 @@ func (h *Handler) CompletionWeb(w http.ResponseWriter, r *http.Request) {
 	}
 	if k.Type == "maintenance" && in.Finish {
 		if err := h.completionChecklistDone(ctx, id); err != nil {
+			fail(http.StatusBadRequest, err)
+			return
+		}
+	}
+	// Alarm-Ticket ohne Ursache: abweisen, bevor Zeit oder Maßnahme gespeichert wird
+	if k.Type == "ticket" && in.Finish {
+		if err := h.tickets.RequireRootCause(ctx, id, in.RootCause); err != nil {
 			fail(http.StatusBadRequest, err)
 			return
 		}

@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"html/template"
 	"net/http"
@@ -187,6 +188,8 @@ type TicketView struct {
 	BlinkClass       string
 	DueDate          string
 	DueDateISO       string
+	// Alarm-Ticket: Erledigen/Schließen nur mit beschriebener Ursache
+	RequiresRootCause bool
 }
 
 type UserOption struct {
@@ -272,13 +275,13 @@ type Handler struct {
 	dataNetListenAddr  string                                         // Rückkanal-Adresse; leer → :8443 (Tests: :0)
 	dataNetNewNode     func(datanet.NodeConfig) (datanet.Node, error) // nil → datanet.NewTSNode (Tests tauschen aus)
 	dataNetAPIBase     string                                         // Tailscale-API; leer → api.tailscale.com (Tests tauschen aus)
-	dataNetCheckMu     sync.Mutex // schützt das zwischengespeicherte Prüfergebnis des Datennetzes
+	dataNetCheckMu     sync.Mutex                                     // schützt das zwischengespeicherte Prüfergebnis des Datennetzes
 	dataNetCheckAt     time.Time
 	dataNetCheckRes    *dnCheck
-	mirror             MirrorInfo                                     // Spiegelmodus; einmal beim Start gesetzt (SetMirror)
-	tunnelTokenFn      func(context.Context) (string, bool)           // Tunnel-Token für den Abgleich mit pdh-ha; nil → Server-Einstellungen (Tests tauschen aus)
-	mirrorActiveURL    func(*http.Request) string                     // Adresse des aktiven Servers für die Sperrseite; nil → kein Link
-	mirrorPeerFetch    func(context.Context) (haStatus, error)        // pdh-ha-Status; nil → Socket (Tests tauschen aus)
+	mirror             MirrorInfo                              // Spiegelmodus; einmal beim Start gesetzt (SetMirror)
+	tunnelTokenFn      func(context.Context) (string, bool)    // Tunnel-Token für den Abgleich mit pdh-ha; nil → Server-Einstellungen (Tests tauschen aus)
+	mirrorActiveURL    func(*http.Request) string              // Adresse des aktiven Servers für die Sperrseite; nil → kein Link
+	mirrorPeerFetch    func(context.Context) (haStatus, error) // pdh-ha-Status; nil → Socket (Tests tauschen aus)
 	mirrorPeerC        mirrorCache[mirrorPeer]
 	mirrorLagFetch     func(context.Context) (time.Duration, time.Time, error) // Rückstand; nil → mirror.ReplayLag (Tests tauschen aus)
 	mirrorLagC         mirrorCache[mirrorLag]
@@ -1548,6 +1551,9 @@ func (h *Handler) RecordArchiveWeb(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unbekannter datensatztyp", http.StatusBadRequest)
 		return
 	}
+	if writeRootCauseErr(w, err) {
+		return
+	}
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -2639,6 +2645,8 @@ func (h *Handler) TicketDetail(w http.ResponseWriter, r *http.Request) {
 			CreatedAgo:       timeAgo(t.CreatedAt),
 			CostCenterNumber: t.CostCenterNumber,
 			CostCenterName:   t.CostCenterName,
+
+			RequiresRootCause: t.RequiresRootCause,
 		},
 		StatusOptions: []StatusOption{
 			{"open", "Offen"}, {"in_progress", "In Arbeit"}, {"pending", "Wartet"},
@@ -2718,6 +2726,9 @@ func (h *Handler) TicketStatusWeb(w http.ResponseWriter, r *http.Request) {
 	u := getUser(r)
 	w.Header().Set("Content-Type", "text/html")
 	if err := h.tickets.UpdateStatus(r.Context(), id, status, u.ID); err != nil {
+		if writeRootCauseErr(w, err) {
+			return
+		}
 		fmt.Fprintf(w, `<span class="badge b-red" title="%s">Nicht möglich</span>`, esc(err.Error()))
 		return
 	}
@@ -2731,10 +2742,25 @@ func (h *Handler) TicketResolve(w http.ResponseWriter, r *http.Request) {
 	noPartsNeeded := r.FormValue("no_parts_needed") == "on"
 	w.Header().Set("Content-Type", "text/html")
 	if err := h.tickets.Resolve(r.Context(), id, r.FormValue("resolution"), r.FormValue("root_cause"), u.ID, noPartsNeeded); err != nil {
+		if writeRootCauseErr(w, err) {
+			return
+		}
 		fmt.Fprintf(w, `<div style="color:var(--red);padding:10px;text-align:center;font-size:13px">%s</div>`, esc(err.Error()))
 		return
 	}
 	fmt.Fprintf(w, `<div style="color:var(--green);padding:12px;text-align:center"><i class="ti ti-check"></i> Ticket gelöst! <a href="/tickets" style="color:var(--accent)">Zurück zur Liste</a></div>`)
+}
+
+// writeRootCauseErr meldet die fehlende Ursache eines Alarm-Tickets als
+// HTML-Fragment mit HTTP 400 (das Ticket bleibt offen). false: anderer Fehler.
+func writeRootCauseErr(w http.ResponseWriter, err error) bool {
+	if !errors.Is(err, tickets.ErrRootCauseRequired) {
+		return false
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusBadRequest)
+	fmt.Fprintf(w, `<div style="color:var(--red);padding:10px;font-size:13px"><i class="ti ti-alert-triangle"></i> %s</div>`, esc(err.Error()))
+	return true
 }
 
 func (h *Handler) TicketInfrastructureWeb(w http.ResponseWriter, r *http.Request) {

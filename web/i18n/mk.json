@@ -398,6 +398,8 @@
  "Unter Mindestbestand": "Под минимална залиха",
  "Ursache": "Причина",
  "Ursache (optional)": "Причина (опционално)",
+ "Ursache (Pflicht bei Alarm-Tickets)": "Причина (задолжително кај тикети за аларм)",
+ "Bitte beschreiben, warum der Alarm kam (Feld Ursache).": "Опишете зошто се појави алармот (поле Причина).",
  "Verantwortlich": "Одговорен",
  "Verantwortlich (optional)": "Одговорен (опционално)",
  "Verbesserungsvorschläge, die auf eine Entscheidung warten, davon über der Rückmeldefrist": "Предлози за подобрување што чекаат одлука, од кои по рокот за повратна информација",

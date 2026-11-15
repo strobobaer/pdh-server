@@ -12,6 +12,7 @@
   <button class="btn" type="button" title="Löschen" aria-label="Löschen" hx-delete="/tickets/{{$t.ID}}" hx-confirm="Ticket endgültig löschen?" hx-target="body"><i class="ti ti-trash"></i></button>
 </div>
 <div id="archive-result" style="margin-bottom:10px"></div>
+{{if and $t.RequiresRootCause $open}}<div role="note" style="display:flex;align-items:center;gap:8px;margin-bottom:12px;padding:8px 12px;font-size:13px;border-left:3px solid var(--amber);border-radius:4px;background:color-mix(in srgb,var(--amber) 14%,var(--bg));color:var(--text)"><i class="ti ti-alert-triangle" style="color:var(--amber)"></i> Alarm-Ticket – zum Erledigen oder Schließen bitte die Ursache beschreiben</div>{{end}}
 {{template "record-meta-slot" (dict "Module" "ticket" "ID" $t.ID)}}
 {{template "sync-origin" .SyncOrigin}}
 <div class="rec-tabs" role="tablist">
