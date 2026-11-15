@@ -161,6 +161,49 @@ ob es Dopplungen oder Abweichungen zum aktuellen Stand gibt:
 6. Im Pull-Request-Text kurz festhalten, was die Prüfung ergeben hat
    (z. B. „keine Dopplungen“ oder „Migration 152 → 154 umnummeriert“).
 
+Push, Merge und Einspielen nur mit ausdrücklicher Freigabe des Anwenders.
+Ist `gh` nicht verfügbar, wird wie bisher lokal gemergt:
+`git checkout main && git merge --ff-only origin/main && git merge --no-ff <branch> -m "Merge: <Thema> (x.y.z)"`,
+das Prüfergebnis kommt dann in den Text des Merge-Commits, danach
+`git push origin main`.
+
+## Testverbund aktualisieren
+
+Testverbund: `pdh` 10.10.0.14 und `pdh-server` 10.10.0.17 (Server, gemeinsame
+Adresse 10.10.0.15), Zeuge als Docker-Container auf dem Windows-Rechner
+(10.10.0.231). **Produktiv ist nur 10.10.0.202 – dort nie etwas einspielen
+oder ändern.**
+
+1. Aktiven Server feststellen (nur lesend):
+   `ssh michael@10.10.0.14 'sudo -n pdh-ha status'` bzw. `…@10.10.0.17`.
+2. Am **aktiven** Server das Verbund-Update starten:
+   `sudo -n pdh-ha update start <voller Commit von main> --version x.y.z`.
+3. Verlauf mit `sudo -n pdh-ha update status` verfolgen, bis
+   „Update auf x.y.z abgeschlossen“. Die Zeile „Fehlerhafte Versionen: …“
+   nennt alte, zurückgesetzte Stände und ist kein Fehler des laufenden
+   Updates. Die Server tauschen dabei die Rollen.
+4. Danach prüfen: beide Server melden die neue Version; Migration und neue
+   Rechte sind da (`sudo -n -u postgres psql -d pdh …`); die Spiegelung
+   läuft wieder (ein rsync-Fehler direkt nach dem Rollentausch ist
+   vorübergehend).
+5. Der Zeuge (`pdh-ha-witness-witness-1`) zieht über seinen Helfer-Container
+   `pdh-ha-witness-updater-1` innerhalb von etwa 5 Minuten selbst nach.
+   Kein SSH nötig; Stand: `docker exec pdh-ha-witness-witness-1 pdh-ha status`.
+
+## Browserprüfung auf dem Testverbund
+
+- Anmeldung mit dem Prüfkonto `abnahme-abgleich` (Rolle admin). Es ist
+  außerhalb von Prüfungen gesperrt (`active = false`, Kennwort-Hash
+  durch einen Sperrwert ersetzt).
+- Zum Prüfen am aktiven Server entsperren: zufälliges Einmal-Kennwort
+  erzeugen, bcrypt-Hash (`bcrypt.DefaultCost`) setzen, `active = true`.
+  Kennwort nur im Scratchpad ablegen, nie in Dateien des Repositorys,
+  Commits oder Antworten.
+- Prüfen in Fiori und Fluent, hell und dunkel, bei den in diesem Dokument
+  genannten Breiten. Testdaten, die dabei entstehen, danach entfernen.
+- Danach das Konto **wieder sperren** (alten Sperrwert zurückschreiben,
+  `active = false`).
+
 ## Sprache
 
 Antworten, Handbuch, Änderungsprotokoll, Commit-Nachrichten und
