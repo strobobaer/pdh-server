@@ -15,7 +15,6 @@ im Kapitel „Versionen & Updates“ an.
 ### Behoben
 
 - Startseite: Die Widgets werden beim Öffnen nur noch einmal geladen statt manchmal doppelt; das spart Anfragen an den Server und beseitigt eine Fehlermeldung in der Browser-Konsole.
-- Wird ein Alarm-Ticket beim Erledigen einer verknüpften Störung oder Aufgabe wegen fehlender Ursache nicht mitgeschlossen, steht das jetzt zuverlässig im Server-Protokoll.
 
 ## [0.80.15] – 2026-11-15
 

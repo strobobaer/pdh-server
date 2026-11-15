@@ -103,7 +103,7 @@ func (w *AlarmWatch) PassOne(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
-	return w.watchOne(ctx, *th, w.now())
+	return w.safeOne(ctx, *th, w.now())
 }
 
 func (w *AlarmWatch) safeOne(ctx context.Context, th Threshold, now time.Time) (err error) {
