@@ -24,6 +24,7 @@ import (
 
 	"pdh/internal/core/mqttbroker"
 	"pdh/internal/core/mqttimport"
+	"pdh/internal/core/rbac"
 	"pdh/internal/modules/tiamqtt"
 	"pdh/pkg/database"
 )
@@ -409,7 +410,11 @@ func newTIAEnv(t *testing.T, kind string, cfg map[string]string) *tiaEnv {
 		t.Fatal(err)
 	}
 	env := &tiaEnv{pool: pool, allow: map[string]bool{permImportTIA: true, "import.write": true}}
-	env.h = &Handler{db: pool, jwtSecret: "t", mqttBrokers: mqttbroker.NewManager(), mqttImport: mqttimport.NewManager(),
+	rb := rbac.NewService(rbac.NewRepository(pool))
+	if err := rb.Warm(ctx); err != nil {
+		t.Fatal(err)
+	}
+	env.h = &Handler{db: pool, rbac: rb, jwtSecret: "t", mqttBrokers: mqttbroker.NewManager(), mqttImport: mqttimport.NewManager(),
 		hasPermHook: func(_ *http.Request, p string) bool { return env.allow[p] }}
 	sealed, err := sealConnConfig(env.h.connKey(), cfg)
 	if err != nil {
