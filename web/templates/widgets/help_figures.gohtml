@@ -832,6 +832,23 @@
 </figure>
 {{end}}
 
+{{/* TIA-Baustein: Steuerung → Broker → PDH-Zuordnungen, Heartbeat */}}
+{{define "hb-fig-tia"}}
+<figure class="hb-fig">
+<svg viewBox="0 0 640 190" role="img" aria-label="Die Steuerung sendet Werte und einen Heartbeat an den MQTT-Broker, das PDH liest daraus seine Zuordnungen">
+  <rect class="bg" x="1" y="1" width="638" height="188" rx="8"/>
+  <rect class="bg3" x="16" y="30" width="170" height="90" rx="8"/><text x="101" y="52" class="t-c t-b">1 Steuerung</text><text x="101" y="72" class="t-c t-m">Datenbaustein + Baustein</text><text x="101" y="86" class="t-c t-m">sendet bei Trigger</text><text x="101" y="100" class="t-c t-m">und im Takt (Heartbeat)</text>
+  <rect class="bg3" x="235" y="30" width="170" height="90" rx="8"/><text x="320" y="52" class="t-c t-b">2 MQTT-Broker</text><text x="320" y="76" class="t-c t-m">Thema: Werte</text><text x="320" y="92" class="t-c t-m">Thema/heartbeat</text>
+  <rect class="acl" x="454" y="30" width="170" height="90" rx="8"/><text x="539" y="52" class="t-c t-b">3 PDH</text><text x="539" y="76" class="t-c t-m">Zuordnung je Wert</text><text x="539" y="92" class="t-c t-m">Heartbeat wird geprüft</text>
+  <path class="ar" d="M188 66 H233"/><path class="ar" d="M407 66 H452"/>
+  <path class="ar" d="M188 100 H233" stroke-dasharray="4 3"/><path class="ar" d="M407 100 H452" stroke-dasharray="4 3"/>
+  <text x="210" y="60" class="t-c t-m">Werte</text><text x="210" y="116" class="t-c t-m">Heartbeat</text>
+  <rect class="am" x="334" y="140" width="290" height="36" rx="6"/><text x="479" y="162" class="t-c t-m">Bleibt der Heartbeat aus: „Steuerung meldet sich nicht“</text>
+</svg>
+<figcaption>Die Steuerung sendet Werte und einen Heartbeat an den Broker, das PDH liest beides über Zuordnungen. Bleibt der Heartbeat aus, meldet das PDH es.</figcaption>
+</figure>
+{{end}}
+
 {{/* Efficio-Export: Messstellen → Datei → Ablage */}}
 {{define "hb-fig-efficio"}}
 <figure class="hb-fig">

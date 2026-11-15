@@ -1,0 +1,113 @@
+﻿PDH – STEUERUNGSBAUSTEIN „MQTT SENDEN“
+Datenbaustein: "Daten"
+Variante: eigenständig (TCON/TSEND/TRCV, ohne TLS)
+Steuerung: S7-1500, TIA Portal ab V17, SCL mit optimiertem Zugriff
+Broker: 192.168.0.10:1883 (ohne TLS – nur im geschützten Netz einsetzen)
+Erzeugt vom PDH (PDH-Test) am 2026-11-15 10:00 UTC
+
+DATEIEN
+  1_PDH_Daten_Typ.udt       PLC-Datentyp "PDH_Daten_Typ" mit den gesendeten Variablen
+  2_PDH_Daten_Konfig.db     Einstellungen "PDH_Daten_Konfig" und Puffer "PDH_Daten_Puffer"
+  3_PDH_MQTT_Daten.scl      Hilfsbausteine "PDH_J_…" und Funktionsbaustein "PDH_MQTT_Daten"
+  4_Daten_aus_Typ.db        Ersatz für den eigenen Datenbaustein "Daten" auf Basis des Datentyps
+
+SO GEHT'S
+  1. Im TIA Portal in der Projektnavigation unter „Externe Quellen“ alle vier Dateien
+     hinzufügen.
+  2. Vorher eine Kopie des bisherigen Datenbausteins "Daten" sichern (z. B. Projekt
+     archivieren): „Bausteine aus Quelle generieren“ überschreibt den Datenbaustein gleichen
+     Namens. Oder ihn vorher löschen. Datei 4 legt ihn nur mit den gesendeten Variablen neu
+     an: Was unter „NICHT GESENDET“ (weiter unten) steht, fehlt darin. Trage es dort von
+     Hand wieder ein (oder halte es anderswo), bevor du übersetzt.
+  3. „Bausteine aus Quelle generieren“ in dieser Reihenfolge: 1, 2, 3, 4.
+  4. In "PDH_Daten_Konfig" Broker, Benutzer und Kennwort prüfen.
+     Steht dort PASSWORT_EINTRAGEN, das Kennwort des Brokers eintragen.
+  5. Den Baustein in OB1 aufrufen, z. B.:
+       "PDH_MQTT_Daten_DB"(enable := TRUE,
+                        trigger := "Senden",
+                        daten := "Daten");
+  6. hwId: Hardware-Kennung der PROFINET-Schnittstelle (Gerätekonfiguration → Schnittstelle →
+     Eigenschaften → Hardware-Kennung; meist 64). connId muss in der Steuerung eindeutig sein.
+  7. Übersetzen, laden. Im PDH an der MQTT-Verbindung prüfen, ob Werte ankommen.
+  S7-1200: erst ab Firmware 4.2 (die Hilfsbausteine nutzen Array[*]).
+  Client-ID: MQTT 3.1.1 sichert nur 23 Zeichen zu; der PDH-Broker und Mosquitto nehmen
+  auch längere.
+  LReal-Werte: außerhalb von etwa 1E-8 bis 1E36 kann die 15. Stelle vom genauen Wert
+  abweichen (der Wert bleibt bis auf etwa 1E-15 gleich).
+  Je Steuerung nur einmal aufrufen (der Puffer "PDH_Daten_Puffer" gehört zu diesem Aufruf).
+
+ABLAUF
+  enable = TRUE: Verbindung aufbauen (TCON), anmelden (CONNECT), auf Antwort warten (10 s).
+  Steigende Flanke an trigger: Werte als Abbild übernehmen, Uhrzeit lesen, alle Teile
+  nacheinander senden; danach done für einen Zyklus und sentCount + 1.
+  Kommt der Trigger während busy, wird er einmal gemerkt und danach gesendet.
+  Kommt er ohne Verbindung, meldet der Baustein 16#8007 für einen Zyklus und sendet nichts.
+  Ohne Senden nach keepAlive/2 ein PINGREQ; ohne Antwort binnen keepAlive wird neu verbunden.
+  enable = FALSE: DISCONNECT senden und die Verbindung trennen.
+
+STATUS (Ausgang status, Klartext in statusText)
+  16#7000  aus (enable = FALSE)
+  16#7001  verbinde
+  16#7002  warte auf Broker
+  16#7003  bereit
+  16#7004  sende
+  16#8001  TCON-Fehler (Adresse, Hardware-Kennung, Verbindungsnummer prüfen)
+  16#8002  Sendefehler
+  16#8003  Empfangsfehler
+  16#81xx  Broker lehnt ab, xx = Rückgabecode (05 = Benutzer/Kennwort falsch)
+  16#8005  keine Antwort vom Broker
+  16#8006  Verbindung eingeschlafen (keine PINGRESP)
+  16#8007  nicht verbunden beim Trigger (es wird nichts gepuffert)
+  16#8008  Nachricht zu lang
+  16#8009  Uhrzeit nicht lesbar
+Nach einem Verbindungsfehler trennt der Baustein, wartet 5 s und verbindet neu.
+
+NACHRICHTEN
+Topic: sps/linie1/Daten
+Jede Nachricht: {"ts":"2026-11-15T10:01:00Z","part":1,"parts":2,"values":{…}}
+ts ist die Uhrzeit der Steuerung (UTC) beim Trigger, für alle Teile gleich. Im PDH lesen
+die Zuordnungen die Werte über den JSON-Pfad, egal in welchem Teil sie stehen.
+Text (String) wird als Latin-1 (ISO 8859-1) nach UTF-8 umgesetzt: „€“ und andere Zeichen
+aus 0x80 bis 0x9F (Windows-1252) kommen nicht richtig an.
+
+Teil 1 von 2 (höchstens 991 Byte)
+  Zaehler  ->  values.Zaehler  (Real)
+  Takt  ->  values.Takt  (Int)
+  Motor.Drehzahl  ->  values.Motor.Drehzahl  (Real)
+  Motor.Ein  ->  values.Motor.Ein  (Bool)
+  Feld[1]  ->  values.Feld[0]  (Int)
+  Feld[2]  ->  values.Feld[1]  (Int)
+  Feld[3]  ->  values.Feld[2]  (Int)
+  Feld[4]  ->  values.Feld[3]  (Int)
+  Feld[5]  ->  values.Feld[4]  (Int)
+  Feld[6]  ->  values.Feld[5]  (Int)
+  Feld[7]  ->  values.Feld[6]  (Int)
+  Feld[8]  ->  values.Feld[7]  (Int)
+  Feld[9]  ->  values.Feld[8]  (Int)
+  Feld[10]  ->  values.Feld[9]  (Int)
+  Text  ->  values.Text  (String[20])
+  Name  ->  values.Name  (String[254])
+  Zeit  ->  values.Zeit  (DTL)
+  Wort  ->  values.Wort  (Word)
+  Doppelwort  ->  values.Doppelwort  (DWord)
+  Ganz  ->  values.Ganz  (DInt)
+  Vorzeichenlos  ->  values.Vorzeichenlos  (UInt)
+  Gross  ->  values.Gross  (UDInt)
+  Genau  ->  values.Genau  (LReal)
+  Zeitstempel  ->  values.Zeitstempel  (Date_And_Time)
+
+Teil 2 von 2 (höchstens 627 Byte)
+  Bemerkung  ->  values.Bemerkung  (String[254])
+  Zähler.Stück  ->  values.Zähler.Stück  (UDInt)
+  Zähler."it's"  ->  values.Zähler.it's  (Bool)
+
+HEARTBEAT
+Topic: sps/linie1/Daten/heartbeat
+Inhalt: {"ts":"2026-11-15T10:01:00Z","count":N}, N zählt hoch. Immer ohne Retain.
+Intervall: Eingang heartbeatInterval (Vorgabe T#60s).
+Bleibt der Heartbeat länger als drei Intervalle aus, zeigt das PDH „Steuerung meldet sich nicht“.
+
+ACHTUNG RETAIN
+Im eigenen Datenbaustein sind remanente Variablen (Retain) eingestellt. Der Ersatz-DB
+übernimmt das nicht. Nach dem Import im Datenbaustein "Daten" die Remanenz wieder
+einstellen.

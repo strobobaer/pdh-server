@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"regexp"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -39,8 +40,12 @@ func mirrorAllowedWrite(path string) bool {
 	case "/login", "/login/rfid", "/logout", "/lang", "/api/v1/users/login":
 		return true
 	}
-	return strings.HasPrefix(path, "/admin/server-config/ha/")
+	return strings.HasPrefix(path, "/admin/server-config/ha/") || mirrorTIACheckRe.MatchString(path)
 }
+
+// mirrorTIACheckRe: „Prüfen“ der Seite TIA-Baustein liest nur (Herunterladen
+// kann Zuordnungen anlegen und bleibt gesperrt).
+var mirrorTIACheckRe = regexp.MustCompile(`^/import/connections/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/tia/check$`)
 
 // MirrorMiddleware: Spiegel aus → durchreichen. Spiegel an → Schreibanfragen
 // abweisen; Anfragen, die beim Lesen doch schreiben (SQLSTATE 25006, Marke vom

@@ -1,0 +1,33 @@
+{{/* Prüfergebnis der Seite „TIA-Baustein herunterladen“ (tia_block.go, tiaCheckView):
+     erkannte Werte je Nachricht, übersprungene Variablen mit Zeile und Grund.
+     Aussehen über die Klassen tia-* aus tia_block.gohtml. */}}
+{{define "tia-block-check"}}
+{{if .Errors}}
+<div class="card tia-bad" role="alert"><b><i class="ti ti-alert-circle" aria-hidden="true"></i> Das geht so nicht:</b><ul>{{range .Errors}}<li>{{.}}</li>{{end}}</ul></div>
+{{else}}
+<div class="card tia-ok" role="status">
+  <div class="card-title"><span><i class="ti ti-circle-check" style="color:var(--green)" aria-hidden="true"></i> Datenbaustein „{{.DBName}}“: {{.Values}} Werte in {{len .Parts}} Nachricht(en)</span></div>
+  <div style="font-size:12.5px;margin-bottom:8px">Topic <code class="tia-mono">{{.Topic}}</code>{{if .Mappings}} · mit „Zuordnungen anlegen“ {{.Mappings}} Zuordnung(en){{end}}</div>
+  {{if .HasRetain}}<div class="rec-sub" style="margin-bottom:8px"><i class="ti ti-info-circle" aria-hidden="true"></i> Der Baustein hat remanente Variablen – Hinweise dazu in LIESMICH.txt.</div>{{end}}
+  {{range .Parts}}
+  <details class="tia-part"{{if eq .No 1}} open{{end}}>
+    <summary>Nachricht {{.No}}: {{len .Values}} Werte, höchstens {{.MaxBytes}} Byte</summary>
+    <div class="tia-scroll"><table class="tia-table">
+      <thead><tr><th>Variable</th><th>Pfad in PDH</th><th>Typ</th></tr></thead>
+      <tbody>{{range .Values}}<tr><td class="tia-mono">{{.Path}}</td><td class="tia-mono">{{.JSONPath}}</td><td>{{.Type}}</td></tr>{{end}}</tbody>
+    </table></div>
+  </details>
+  {{end}}
+  {{if .Skipped}}
+  <div class="tia-part">
+    <b style="font-size:12.5px"><i class="ti ti-alert-triangle" style="color:var(--amber)" aria-hidden="true"></i> Übersprungen: {{len .Skipped}}</b>
+    <div class="tia-scroll"><table class="tia-table">
+      <thead><tr><th>Variable</th><th>Zeile</th><th>Grund</th></tr></thead>
+      <tbody>{{range .Skipped}}<tr><td class="tia-mono">{{.Path}}</td><td>{{.Line}}</td><td>{{.Reason}}</td></tr>{{end}}</tbody>
+    </table></div>
+    <div class="rec-sub" style="margin-top:6px"><i class="ti ti-info-circle" aria-hidden="true"></i> Diese Variablen fehlen im neuen Datenbaustein (Datei 4). Trage sie dort von Hand wieder ein, bevor du übersetzt.</div>
+  </div>
+  {{end}}
+</div>
+{{end}}
+{{end}}

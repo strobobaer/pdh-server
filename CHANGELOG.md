@@ -10,6 +10,26 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.80.13] – 2026-11-15
+
+### Neu
+
+- Siemens-Steuerungen: An MQTT-Verbindungen gibt es unter „Werkzeuge“ den **TIA-Baustein zum Herunterladen**. Das PDH erzeugt daraus fertige Quellen für das TIA Portal (S7-1500, S7-1200 ab Firmware 4.2) in zwei Varianten: eigenständig ohne TLS oder mit der Siemens-Bibliothek LMQTT (TLS möglich).
+
+- Die Werte kommen aus einem eigenen Datenbaustein der Steuerung. Große Datenmengen gehen automatisch in mehreren Nachrichten mit gleichem Zeitstempel. Vor dem Herunterladen zeigt „Prüfen“, was gesendet wird und was nicht (das geht auch auf dem Spiegelserver).
+
+- Auf Wunsch legt das PDH beim Herunterladen die Zuordnungen gleich an, dazu eine für den Heartbeat. Ein erneutes Herunterladen erzeugt keine Doppelten; nur das Heartbeat-Intervall wird übernommen (Heartbeat 0 schaltet die Überwachung ab).
+
+- Neue Anzeige „Steuerung meldet sich nicht“, wenn der Heartbeat länger als drei Intervalle ausbleibt: als Hinweis auf der Verbindungsseite, als Marke in der Zuordnung und in der Übersicht der Zuordnungen.
+
+- Neues Handbuch-Kapitel „Steuerung per MQTT anbinden (TIA Portal)“ mit Schritt-für-Schritt-Anleitung und Statuscodes.
+
+### Sicherheit
+
+- Neues Recht „Steuerungsbaustein (TIA Portal) herunterladen“ (`import.tia`, Gruppe „Daten & Schnittstellen“). Es haben alle Rollen mit „Import ansehen“; niemand wird durch das Update ausgesperrt.
+
+- Das Kennwort der Verbindung steht nur in der Datei, wenn es ausdrücklich angekreuzt wird – und nur mit dem Recht „Import verwalten“. Das Herunterladen mit Kennwort wird im Verlauf der Verbindung festgehalten. Sonst steht ein Platzhalter in der Datei.
+
 ## [0.80.12] – 2026-11-15
 
 ### Neu

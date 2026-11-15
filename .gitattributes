@@ -2,3 +2,5 @@
 *.sh text eol=lf
 # Golden-Dateien der Tests enthalten SQL/HTML mit LF; unter Windows (autocrlf) nicht umwandeln
 internal/web/testdata/** text eol=lf
+# TIA-Quellen der Tests byte-genau halten (CRLF, Windows-1252)
+internal/modules/tiamqtt/testdata/** -text

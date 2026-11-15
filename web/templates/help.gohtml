@@ -1822,6 +1822,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <li><b>Rollen &amp; Rechte</b> – was welche Rolle darf; Ausnahmen je Person unter Einzelrechte im Benutzerstamm (siehe unten).</li>
     <li><b>Core-Einstellungen</b> – Standards für alle (siehe unten), Fristen, Updates (<a href="#versions">mehr</a>), Microsoft-365-Abgleich samt Nextcloud-Konten (<a href="#users">mehr</a>), Hersteller &amp; Lieferanten, Feldsätze.</li>
     <li><b>Import / Export</b> – Daten aus Maschinen und Systemen (MQTT, OPC UA, Modbus, SQL, Excel, Web) übernehmen und Exporte planen (<a href="#connections">mehr</a>).</li>
+    <li><b>Steuerungsbaustein (TIA Portal)</b> – das Recht <code>import.tia</code> „Steuerungsbaustein (TIA Portal) herunterladen“ steht in der Gruppe „Daten &amp; Schnittstellen“ und liegt bei allen Rollen mit „Import ansehen“. Mit Kennwort oder angelegten Zuordnungen braucht es zusätzlich „Import verwalten“ (<a href="#tiabaustein">mehr</a>).</li>
     <li><b>Energiedaten</b> – Messstellen, Minutenwerte und der Efficio-Export; die Rechte <code>energy.view</code>, <code>energy.edit</code> und <code>energy.admin</code> stehen in der Gruppe „Daten &amp; Schnittstellen“, die Einstellungen ändert nur der Bereichsadministrator (<a href="#energiedaten">mehr</a>).</li>
     <li><b>Abgleich</b> – Meldungen aus einer fremden Datenbank als Tickets oder Störmeldungen übernehmen und Änderungen zurückschreiben; Profile löscht nur der Bereichsadministrator des Abgleichs (<a href="#abgleich">mehr</a>).</li>
     <li><b>Drucker</b> – Etiketten- und Netzwerkdrucker einrichten, prüfen und testen (<a href="#printers">mehr</a>).</li>
@@ -1984,7 +1985,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <li><b>Zuordnungen</b> bzw. <b>Felder</b> – welcher Wert zu welcher Anlage gehört, mit letztem Wert und Zeitpunkt.</li>
     <li><b>Vorlagen</b> – Abfragen und Zuordnungen einer Verbindung als Vorlage speichern und auf eine andere Verbindung desselben Typs anwenden.</li>
     <li><b>Explorer</b> (MQTT, OPC UA, Modbus TCP) – die Werte der Maschine live ansehen und einzelne Werte testweise schreiben. Eine Sitzung dauert höchstens 15 Minuten, pro Benutzer sind drei und auf dem Server 20 Sitzungen offen. Ansehen darf, wer die Verbindung ausführen darf (<b>Import ausführen</b> bzw. <b>Export ausführen</b>), denn der Explorer belastet das echte Gerät. Schreiben braucht zusätzlich <b>Import verwalten</b> bzw. <b>Export verwalten</b>, fragt vorher nach und steht danach im Verlauf der Verbindung. Auf dem Spiegelserver ist der Explorer nur lesend. Bei Modbus wählst du Bereich, Start und Anzahl, siehst jedes Register in allen Datentypen und stellst die Byte- und Wortreihenfolge um (z. B. CDAB bei WAGO); mit „Live verfolgen“ liest der Explorer im gewählten Takt (mindestens 1 Sekunde) und je Verbindung sind höchstens zwei Zugriffe gleichzeitig möglich. Mit <b>Als Zuordnung übernehmen</b> (im Export: <b>Als Zielfeld übernehmen</b>) machst du aus einem Wert direkt eine Zuordnung, ohne die Seite zu verlassen: bei MQTT ein ganzes Thema oder ein einzelnes JSON-Feld, bei OPC UA einen Knoten, bei Modbus ein Register mit Datentyp und Reihenfolge. Der Knopf erscheint nur mit dem Recht <b>Import verwalten</b> bzw. <b>Export verwalten</b>. Bestehende Zuordnungen bleiben unverändert gültig. Zuordnungen mit Reihenfolge (Modbus) oder JSON-Pfad (MQTT, <code>thema#pfad</code>) versteht erst Version 0.80.11 und neuer – im Verbund beide Server gleich aktualisieren. Im Reiter <b>Zuordnungen</b> einer Modbus- oder OPC-UA-Verbindung holt <b>Werte jetzt aktualisieren</b> alle Werte sofort (braucht <b>Import verwalten</b>). Der alte Sniffer, „Namespace durchsuchen“ und „Register lesen“ sind im Explorer aufgegangen, alte Lesezeichen führen dorthin.</li>
-    <li><b>Werkzeuge</b> – Vorschau, Broker-Status usw. der Verbindung.</li>
+    <li><b>Werkzeuge</b> – Vorschau, Broker-Status usw. der Verbindung. Bei MQTT auch <b>TIA-Baustein herunterladen</b> für Siemens-Steuerungen (<a href="#tiabaustein">mehr</a>).</li>
   </ul>
   <div class="hb-howto"><b><i class="ti ti-database-search"></i> So holst du einen Wert per Abfrage</b>
     <ol class="hb-steps">
@@ -2035,6 +2036,72 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <p><b>Kennwörter</b> von Verbindungen werden verschlüsselt gespeichert und nie wieder angezeigt. Beim Bearbeiten das Kennwortfeld <b>leer lassen</b> – dann bleibt das gespeicherte Kennwort.</p>
   <p>Bei <b>MSSQL</b>-Verbindungen gibt es zusätzlich: den <b>Weg</b> (Direkt, ein ausgehender VPN-Tunnel oder ein Client des <a href="#datennetz">Datennetzes</a>; über VPN und Datennetz mit eigenem Abfragetakt von 5 bis 30 Minuten und eigener Zeitgrenze – beim Datennetz bitte den Port eintragen, eine benannte Instanz geht dort nicht), den <b>Fingerabdruck</b> des Serverzertifikats (einmal lesen und bestätigen) und den Schalter <b>Schreiben erlaubt</b>. Ohne diesen Schalter schreibt das PDH nie in die Datenbank. Wird der Weg geändert, stehen scharfe Profile des <a href="#abgleich">Abgleichs</a> wieder auf „Getestet“.</p>
   {{template "hb-shots" (dict "Ref" (index $s "connections") "Can" $can)}}
+</section>
+
+<section class="hb-ch" id="tiabaustein" data-title="Steuerung per MQTT anbinden (TIA Portal)" data-pages="import">
+  <h2><i class="ti ti-cpu"></i> Steuerung per MQTT anbinden (TIA Portal)</h2>
+  <p>Das PDH erzeugt für eine <b>Siemens-Steuerung</b> fertige Bausteine, die Werte aus einem eigenen Datenbaustein per MQTT an den Broker senden. Die Werte kommen als Zuordnungen im PDH an – ohne dass du SCL schreiben musst. Es wird nur <b>gesendet</b>, nichts empfangen.</p>
+  {{template "hb-fig-tia"}}
+  <ul>
+    <li><b>Steuerung:</b> S7-1500; S7-1200 ab Firmware 4.2. Das TIA Portal muss V17 oder neuer sein.</li>
+    <li><b>Eigenständig</b> (TCON/TSEND/TRCV): braucht nichts weiter, sendet aber <b>ohne TLS</b>. Nur im geschützten Werksnetz einsetzen.</li>
+    <li><b>Mit Siemens-Bibliothek LMQTT:</b> sendet auch <b>mit TLS</b> (Port 8883). Die Bibliothek holst du bei Siemens: <a href="https://support.industry.siemens.com/cs/ww/de/view/109748872" target="_blank" rel="noopener">Beitrag 109748872</a>. Das Bibliotheks-Paket „Bibliotheken für Kommunikation für SIMATIC Controller“ (Beitrag 109780503) enthält den Baustein <code>LMQTT_Client</code>. Die Namen der Bibliothek im Baustein sind für die dort beschriebene Version geschrieben; bei einer anderen Version prüfst du sie anhand der Liste „Vor dem Einsatz prüfen“ in der Datei <code>LIESMICH.txt</code>.</li>
+    <li>Beide Bausteine haben dieselben Ein- und Ausgänge. Du kannst die Variante später wechseln.</li>
+  </ul>
+  <div class="hb-howto"><b><i class="ti ti-download"></i> So bekommst du den Baustein</b> (Recht „Steuerungsbaustein (TIA Portal) herunterladen“)
+    <ol class="hb-steps">
+      <li>Im TIA Portal einen <b>Datenbaustein</b> mit den Werten anlegen, die du senden willst (optimierter Zugriff). Rechtsklick → <b>Quelle aus Baustein generieren</b>. Nutzt der Baustein PLC-Datentypen, die abhängigen Bausteine mit auswählen. Das Ergebnis ist eine Datei <code>.db</code>.</li>
+      <li>Im PDH die MQTT-Verbindung öffnen, Reiter <b>Werkzeuge</b> → <b>TIA-Baustein herunterladen</b>.</li>
+      <li>Die Quelle hochladen und <b>Prüfen</b> drücken. Das PDH zeigt, welche Werte gesendet werden und was nicht (mit Grund). Das Prüfen geht auch auf dem Spiegelserver, das Herunterladen nicht.</li>
+      <li>Variante, Steuerung, Broker-Adresse, Port, Topic und Heartbeat eintragen. Die Größengrenze je Nachricht ist 4096 Byte (erlaubt: 1024 bis 16384).</li>
+      <li>Optional <b>Beim Herunterladen die Zuordnungen anlegen</b> ankreuzen (braucht das Recht „Import verwalten“). Dann entsteht je Wert eine Zuordnung, dazu der Heartbeat.</li>
+      <li><b>Herunterladen</b> drücken. Du bekommst eine ZIP-Datei.</li>
+    </ol></div>
+  <div class="hb-howto"><b><i class="ti ti-cpu"></i> So bringst du den Baustein in die Steuerung</b>
+    <ol class="hb-steps">
+      <li>ZIP entpacken. Lies zuerst <code>LIESMICH.txt</code> – dort stehen deine Werte (Broker, Topic, Teile).</li>
+      <li>Mit der LMQTT-Variante: Bibliothek LMQTT öffnen und den Baustein <code>LMQTT_Client</code> samt Datentypen in die Steuerung kopieren.</li>
+      <li>Im TIA Portal unter <b>Externe Quellen</b> die Dateien hinzufügen: <code>1_PDH_…_Typ.udt</code>, <code>2_PDH_…_Konfig.db</code>, <code>3_PDH_MQTT_….scl</code>, <code>4_…_aus_Typ.db</code>.</li>
+      <li>Von deinem bisherigen Datenbaustein <b>vorher eine Kopie sichern</b> (z. B. das Projekt archivieren) oder ihn löschen: „Bausteine aus Quelle generieren“ überschreibt den Datenbaustein gleichen Namens. Datei 4 legt ihn <b>nur mit den gesendeten Variablen</b> neu an. Was in der <code>LIESMICH.txt</code> unter „NICHT GESENDET“ steht, fehlt darin – trage es dort von Hand wieder ein oder halte es anderswo, bevor du übersetzt. Hattest du Variablen als <b>remanent</b> (Retain) eingestellt, stellst du das danach neu ein; das steht dann auch in der <code>LIESMICH.txt</code>.</li>
+      <li>Jede Quelle mit <b>Bausteine aus Quelle generieren</b> übersetzen, <b>in dieser Reihenfolge 1 bis 4</b>.</li>
+      <li>Im Konfigurations-Baustein (<code>PDH_…_Konfig</code>) Broker, Benutzer und Kennwort prüfen. Steht dort <code>PASSWORT_EINTRAGEN</code>, trägst du das Kennwort des Brokers ein.</li>
+      <li>Den Funktionsbaustein in <b>OB1</b> aufrufen: <code>enable := TRUE</code>, <code>trigger</code> mit deiner Bedingung zum Senden (steigende Flanke), <code>daten := "&lt;dein DB&gt;"</code>.</li>
+      <li><code>hwId</code> ist die <b>Hardware-Kennung der PROFINET-Schnittstelle</b> (Gerätekonfiguration → Schnittstelle → Eigenschaften; oft 64). <code>connId</code> muss in der Steuerung einmalig sein.</li>
+      <li>Übersetzen und laden. Am Ausgang <code>statusText</code> siehst du, was der Baustein tut.</li>
+      <li>Im PDH an der Verbindung prüfen: Die Zuordnungen bekommen Werte und der Heartbeat läuft.</li>
+    </ol></div>
+  <h3>Kennwort</h3>
+  <p>Das Kennwort der Verbindung steht <b>nur</b> in der Datei, wenn du <b>Kennwort der Verbindung mitliefern</b> ankreuzt. Das geht nur mit dem Recht „Import verwalten“ und wird im Verlauf der Verbindung festgehalten. Sonst steht <code>PASSWORT_EINTRAGEN</code> in der Datei. Gib die ZIP-Datei mit Kennwort nicht weiter.</p>
+  <h3>Große Datenmengen: mehrere Nachrichten</h3>
+  <p>Passen die Werte nicht in eine Nachricht, teilt der Baustein sie auf. Jede Nachricht trägt <code>part</code> und <code>parts</code> (auch bei nur einer: 1 von 1) und denselben Zeitstempel <code>ts</code> aus der Steuerungsuhr. Alle Teile kommen aus demselben Abbild der Werte. Die Zuordnungen im PDH lesen den Wert über den JSON-Pfad, egal in welchem Teil er steht. Grenzen: höchstens 50 Teile, 2000 Einzelwerte, Quelldatei höchstens 1 MiB. Text zählt mit seiner Höchstlänge (Vorgabe 254 Zeichen). Mit Retain behält der Broker nur den <b>letzten Teil</b>, weil alle Teile an dasselbe Topic gehen – bei mehreren Teilen Retain besser auslassen.</p>
+  <h3>Zuordnungen und erneut herunterladen</h3>
+  <p>Lädst du mit <b>Zuordnungen anlegen</b> erneut herunter, entstehen <b>keine Doppelten</b>. Vorhandene Zuordnungen bleiben unverändert – nur der Heartbeat übernimmt ein geändertes Intervall.</p>
+  <h3>Statuscodes</h3>
+  <table>
+    <thead><tr><th>Status</th><th>Bedeutung</th></tr></thead>
+    <tbody>
+      <tr><td><code>16#7000</code></td><td>aus (<code>enable</code> = FALSE)</td></tr>
+      <tr><td><code>16#7001</code></td><td>verbinde</td></tr>
+      <tr><td><code>16#7002</code></td><td>warte auf Broker</td></tr>
+      <tr><td><code>16#7003</code></td><td>bereit</td></tr>
+      <tr><td><code>16#7004</code></td><td>sende</td></tr>
+      <tr><td><code>16#8001</code></td><td>TCON-Fehler (nur eigenständig): Adresse, Hardware-Kennung, Verbindungsnummer prüfen</td></tr>
+      <tr><td><code>16#8002</code></td><td>Sendefehler</td></tr>
+      <tr><td><code>16#8003</code></td><td>Empfangsfehler (nur eigenständig)</td></tr>
+      <tr><td><code>16#81xx</code></td><td>Broker lehnt ab; xx ist der Rückgabecode (05 = Benutzer oder Kennwort falsch)</td></tr>
+      <tr><td><code>16#8005</code></td><td>keine Antwort vom Broker</td></tr>
+      <tr><td><code>16#8006</code></td><td>Verbindung eingeschlafen (keine Antwort auf PING; nur eigenständig)</td></tr>
+      <tr><td><code>16#8007</code></td><td>beim Trigger nicht verbunden – es wird nichts zwischengespeichert</td></tr>
+      <tr><td><code>16#8008</code></td><td>Nachricht zu lang</td></tr>
+      <tr><td><code>16#8009</code></td><td>Uhrzeit nicht lesbar</td></tr>
+      <tr><td><code>16#82xx</code></td><td>Fehler der Bibliothek LMQTT (<code>16#8201</code> beim Verbinden, <code>16#8202</code> beim Senden); ihr Status steht am Ende von <code>statusText</code></td></tr>
+    </tbody>
+  </table>
+  <p>Nach einem Fehler trennt der Baustein, wartet 5 Sekunden und verbindet neu.</p>
+  <h3>„Steuerung meldet sich nicht“</h3>
+  <p>Der Baustein sendet in festem Abstand einen <b>Heartbeat</b> (Vorgabe 60 Sekunden, nie mit Retain). Mit <code>heartbeatInterval := T#0s</code> am Baustein schaltest du den Heartbeat aus; dann darf es die Heartbeat-Zuordnung nicht geben, sonst meldet sie „meldet sich nicht“. Beim Herunterladen mit Heartbeat 0 und „Zuordnungen anlegen“ schaltet das PDH die Überwachung einer vorhandenen Heartbeat-Zuordnung ab. Änderst du das Topic, bleibt die alte Heartbeat-Zuordnung bestehen – lösche sie, sonst meldet sie „meldet sich nicht“. Kommt der letzte Heartbeat vor länger als <b>drei Intervallen</b>, zeigt das PDH „Steuerung meldet sich nicht“: als Hinweis oben auf der Verbindungsseite, als Marke in der Zeile der Zuordnung und in der Übersicht der Zuordnungen. Vor dem ersten Heartbeat zählt der Zeitpunkt, an dem die Zuordnung angelegt wurde. Prüfe dann: Läuft die Steuerung? Ist der Broker erreichbar? Ist <code>enable</code> gesetzt? Was sagt <code>statusText</code>?</p>
+  <div class="hb-howto"><b><i class="ti ti-test-pipe"></i> Tipp: Ausprobieren mit PLCSIM</b>Übersetzen, Aufruf und Aufbau der Nachricht kannst du in PLCSIM prüfen. Ob das einfache PLCSIM eine echte TCP-Verbindung ins Netz aufbaut, hängt von der Version ab. Teste das vorher mit einem einfachen <code>TCON</code>. Klappt es nicht, nimm für die Netzprüfung PLCSIM Advanced oder eine echte Steuerung.</div>
+  {{template "hb-shots" (dict "Ref" (index $s "tiabaustein") "Can" $can)}}
 </section>
 
 <section class="hb-ch" id="energiedaten" data-title="Energiedaten &amp; Messstellen" data-pages="energy">

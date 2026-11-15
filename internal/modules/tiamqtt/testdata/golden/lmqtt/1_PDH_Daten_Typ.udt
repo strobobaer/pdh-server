@@ -1,0 +1,32 @@
+﻿TYPE "PDH_Daten_Typ"
+VERSION : 0.1
+//Erzeugt vom PDH (PDH-Test) am 2026-11-15 10:00 UTC – bei Änderungen im PDH neu herunterladen.
+//Datenbaustein "Daten", Variante mit Siemens-Bibliothek LMQTT (TLS möglich), S7-1500, höchstens 1024 Byte je Nachricht.
+//Variablen, die der Baustein "PDH_MQTT_Daten" sendet.
+   STRUCT
+      "Zaehler" : Real;
+      "Takt" : Int := 5;
+      "Motor" : Struct
+         "Drehzahl" : Real;
+         "Ein" : Bool;
+      END_STRUCT;
+      "Feld" : Array[1..10] of Int;
+      "Text" : String[20] := 'abc';
+      "Name" : String[254];
+      "Zeit" : DTL;
+      "Wort" : Word := 16#00FF;
+      "Doppelwort" : DWord;
+      "Ganz" : DInt := -7;
+      "Vorzeichenlos" : UInt;
+      "Gross" : UDInt;
+      "Genau" : LReal := 1.5E+3;
+      "Zeitstempel" : Date_And_Time;
+      "Bemerkung" : String[254];
+      "Zähler" : Struct
+         "Stück" : UDInt := 0;
+         "it's" : Bool;
+      END_STRUCT;
+   END_STRUCT;
+
+END_TYPE
+

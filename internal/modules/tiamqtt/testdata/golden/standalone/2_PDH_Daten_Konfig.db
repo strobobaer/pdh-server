@@ -1,0 +1,41 @@
+﻿DATA_BLOCK "PDH_Daten_Konfig"
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+NON_RETAIN
+//Erzeugt vom PDH (PDH-Test) am 2026-11-15 10:00 UTC – bei Änderungen im PDH neu herunterladen.
+//Datenbaustein "Daten", Variante eigenständig (TCON/TSEND/TRCV, ohne TLS), S7-1500, höchstens 1024 Byte je Nachricht.
+//Einstellungen für "PDH_MQTT_Daten". Werte hier ändern, nicht im Baustein.
+   VAR
+      brokerHost : String[254] := '192.168.0.10';   // Adresse des Brokers (IPv4)
+      brokerPort : UInt := 1883;
+      clientId : String[254] := 'pdh-sps-Daten';
+      username : String[254] := 'sps';   // leer = ohne Anmeldung
+      password : String[254] := 'PASSWORT_EINTRAGEN';
+      topic : String[254] := 'sps/linie1/Daten';
+      heartbeatTopic : String[254] := 'sps/linie1/Daten/heartbeat';
+      keepAlive : UInt := 60;   // Sekunden
+      retain : Bool := FALSE;   // Werte auf dem Broker halten (Heartbeat nie)
+   END_VAR
+
+
+BEGIN
+
+END_DATA_BLOCK
+
+DATA_BLOCK "PDH_Daten_Puffer"
+{ S7_Optimized_Access := 'FALSE' }
+VERSION : 0.1
+NON_RETAIN
+//Erzeugt vom PDH (PDH-Test) am 2026-11-15 10:00 UTC – bei Änderungen im PDH neu herunterladen.
+//Datenbaustein "Daten", Variante eigenständig (TCON/TSEND/TRCV, ohne TLS), S7-1500, höchstens 1024 Byte je Nachricht.
+//Sende- und Empfangspuffer für "PDH_MQTT_Daten" mit Standardzugriff, damit TSEND/TRCV die Länge LEN sicher übernehmen.
+   VAR
+      tx : Array[0..1284] of Byte;
+      rx : Array[0..63] of Byte;
+   END_VAR
+
+
+BEGIN
+
+END_DATA_BLOCK
+

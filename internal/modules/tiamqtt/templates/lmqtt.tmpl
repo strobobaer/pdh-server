@@ -1,0 +1,416 @@
+{{- /*
+Variante „LMQTT“: Hülle um den FB "LMQTT_Client" der Siemens-Bibliothek LMQTT
+(Bibliotheken für Kommunikation für SIMATIC Controller, Beitrag 109780503;
+Beschreibung Beitrag 109748872 V3.1 04/2024 für "LMQTT_Client" V4.0.4).
+Die Bibliothek baut TCP/TLS und MQTT auf, sendet PINGREQ und verbindet nach
+einer Unterbrechung selbst neu. Dieser Baustein baut die Nachrichten wie die
+eigenständige Variante (gleiche PDH_J_*-Hilfsbausteine) und gibt sie mit
+publish an die Bibliothek.
+Zustände (#state): 0 aus, 1 verbinde, 3 bereit, 4 senden, 6 Bibliothek aus und
+5 s warten. Nachrichten (#buildKind/#sendKind): 2 Teil, 3 Heartbeat.
+*/ -}}
+
+{{define "konfig_extra"}}
+      useTls : Bool := {{if .O.UseTLS}}TRUE{{else}}FALSE{{end}};   // TRUE = MQTT über TLS (Port meist 8883)
+      validateServer : Bool := TRUE;   // Zertifikat des Brokers beim Verbindungsaufbau prüfen
+      brokerCert : UDInt := 0;   // Zertifikats-ID des Broker- bzw. CA-Zertifikats (Zertifikatsmanager)
+      clientCert : UDInt := 0;   // Zertifikats-ID des eigenen Client-Zertifikats, 0 = keins
+{{- end}}
+
+{{define "fb" -}}
+FUNCTION_BLOCK {{.FBName}}
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+{{template "kopf" .}}
+//Sendet die Werte aus "daten" per MQTT (QoS 0) an den Broker aus {{.KonfigName}}:
+//bei steigender Flanke an trigger als {{.Parts}} Nachricht(en), dazu regelmäßig einen Heartbeat.
+//Nutzt den FB "LMQTT_Client" der Siemens-Bibliothek LMQTT (TLS möglich). Je Verbindung nur einmal aufrufen.
+//
+//Vor dem Einsatz mit der Doku der eingesetzten LMQTT-Version abgleichen (erstellt nach
+//Beitrag 109748872 V3.1 04/2024, "LMQTT_Client" V4.0.4):
+//  Baustein "LMQTT_Client", Datentyp "LMQTT_typeConnParam" mit hwId, connId, broker, port,
+//  tls.enableTls, tls.validateServerIdentity, tls.brokerCert, tls.clientCert, keepAlive;
+//  Parameter enable, publish, subscribe, unsubscribe, connParam, clientIdentifier, username,
+//  password, willTopic, willMsgPayload, willMsgLen, qos, mqttTopic, publishMsgPayload,
+//  publishMsgLen, retain, receivedTopic, receivedMsgPayload, receivedMsgDataLen,
+//  receivedMsgStatus; Ausgänge done, error, status; Bibliotheksstatus (instClient.status)
+//  16#7003 TCP verbunden, 16#7004 MQTT verbunden, 16#9000 Verbindung unterbrochen.
+{{template "fb_schnittstelle" .}}
+   VAR
+      snap : {{.TypeName}};   // Abbild der Werte beim Trigger
+      ts : DTL;   // Zeitstempel (UTC) aller Teile eines Triggers
+      hbTs : DTL;
+      pl : Array[0..{{.PLMax}}] of Byte;   // JSON-Inhalt einer Nachricht
+      instClient : "LMQTT_Client";   // Bibliothek LMQTT
+      connParam : "LMQTT_typeConnParam";
+      clientId : WString[254];
+      user : WString[254];
+      pass : WString[254];
+      willTopic : WString[254];   // kein Last Will
+      willMsg : Array[0..0] of Byte;
+      willLen : UInt;
+      qos : USInt;
+      pubTopic : WString[254];
+      pubLen : UDInt;
+      pubRetain : Bool;
+      rxTopic : WString[200];   // Empfang wird nicht genutzt
+      rxMsg : Array[0..0] of Byte;
+      rxLen : UDInt;
+      rxStatus : USInt;
+      trigEdge : R_TRIG;
+      tmrConn : TON;
+      tmrSend : TON;
+      tmrRetry : TON;
+      tmrHb : TON;
+      state : Int;
+      buildKind : Int;
+      sendKind : Int;
+      part : Int;
+      pos : DInt;
+      ovf : Bool;
+      libEnable : Bool;
+      libUp : Bool;
+      libStatus : Word;
+      pubReq : Bool;
+      failed : Bool;
+      failCode : Word;
+      failText : String[60];
+      lastErr : Word;
+      lastText : String[60];
+      evStatus : Word;
+      evText : String[60];
+      trigPending : Bool;
+      hbDue : Bool;
+   END_VAR
+
+   VAR_TEMP
+      i : Int;
+      n : Int;
+      c : Int;
+      rc : Int;
+   END_VAR
+
+
+BEGIN
+{{template "ab_anfang" .}}
+	// Zeitglieder jeden Zyklus aufrufen, dann laufen sie beim Zustandswechsel neu an.
+	#tmrConn(IN := (#state = 1), PT := T#30s);
+	#tmrSend(IN := (#state = 4 AND #pubReq), PT := T#10s);
+	#tmrRetry(IN := (#state = 6), PT := T#5s);
+{{template "ab_hb_timer" .}}
+{{template "ab_trigger" .}}
+	// ---------------------------------------------------------------- Bibliothek LMQTT
+	IF #state = 1 AND NOT #libEnable THEN
+	    // Verbindungsdaten beim (Neu-)Verbinden aus der Konfiguration übernehmen
+	    #connParam.hwId := #hwId;
+	    #connParam.connId := #connId;
+	    #connParam.broker := {{.KonfigName}}.brokerHost;
+	    #connParam.port := {{.KonfigName}}.brokerPort;
+	    #connParam.tls.enableTls := {{.KonfigName}}.useTls;
+	    #connParam.tls.validateServerIdentity := {{.KonfigName}}.validateServer;
+	    #connParam.tls.brokerCert := {{.KonfigName}}.brokerCert;
+	    #connParam.tls.clientCert := {{.KonfigName}}.clientCert;
+	    #connParam.keepAlive := {{.KonfigName}}.keepAlive;
+	    #clientId := {{.KonfigName}}.clientId;
+	    #user := {{.KonfigName}}.username;
+	    #pass := {{.KonfigName}}.password;
+	    #willTopic := WSTRING#'';
+	    #willLen := 0;
+	    #qos := 0;   // QoS 0 wie die eigenständige Variante
+	    #libEnable := TRUE;   // steigende Flanke an enable: Bibliothek verbindet
+	END_IF;
+	#instClient(enable := #libEnable,
+	            publish := #pubReq,
+	            subscribe := FALSE,
+	            unsubscribe := FALSE,
+	            connParam := #connParam,
+	            clientIdentifier := #clientId,
+	            username := #user,
+	            password := #pass,
+	            willTopic := #willTopic,
+	            willMsgPayload := #willMsg,
+	            willMsgLen := #willLen,
+	            qos := #qos,
+	            mqttTopic := #pubTopic,
+	            publishMsgPayload := #pl,
+	            publishMsgLen := #pubLen,
+	            retain := #pubRetain,
+	            receivedTopic := #rxTopic,
+	            receivedMsgPayload := #rxMsg,
+	            receivedMsgDataLen := #rxLen,
+	            receivedMsgStatus := #rxStatus);
+	#libStatus := #instClient.status;
+	IF NOT #libEnable THEN
+	    #libUp := FALSE;
+	ELSIF #instClient.error THEN
+	    // Fehler der Bibliothek: 16#82xx, ihr Status steht als 16#xxxx am Ende von statusText
+	    IF #state = 4 THEN
+	        #failCode := 16#8202;
+	        #failText := 'LMQTT Sendefehler 16#0000';
+	    ELSE
+	        #failCode := 16#8201;
+	        #failText := 'LMQTT Verbindungsfehler 16#0000';
+	    END_IF;
+	    #n := LEN(#failText) - 4;
+	    FOR #i := 1 TO 4 DO
+	        #c := WORD_TO_INT(SHR(IN := #libStatus, N := 16 - 4 * #i) AND 16#000F);
+	        IF #c < 10 THEN
+	            #c := #c + 48;
+	        ELSE
+	            #c := #c + 55;
+	        END_IF;
+	        #failText[#n + #i] := BYTE_TO_CHAR(INT_TO_BYTE(#c));
+	    END_FOR;
+	ELSIF #libStatus = 16#7004 THEN
+	    #libUp := TRUE;   // MQTT verbunden, kein Auftrag aktiv
+	ELSIF #libStatus = 16#9000 OR #libStatus = 16#7000 OR #libStatus = 16#7001 OR #libStatus = 16#7002 OR #libStatus = 16#7003 THEN
+	    #libUp := FALSE;   // unterbrochen oder noch nicht angemeldet
+	END_IF;
+
+	// ---------------------------------------------------------------- Verbindung unterbrochen
+	// Die Bibliothek verbindet selbst neu. Wie bei einem Fehler wird nichts Gemerktes
+	// (Trigger, Heartbeat) über die Unterbrechung mitgenommen.
+	IF (#state = 3 OR #state = 4) AND NOT #libUp AND #failCode = 16#0000 THEN
+	    IF #state = 4 THEN
+	        #evStatus := 16#8002;
+	        #evText := 'Sendefehler (Verbindung unterbrochen)';
+	    END_IF;
+{{template "ab_verbindung_weg" .}}	    #pubReq := FALSE;
+	    #state := 1;
+	END_IF;
+
+	// ---------------------------------------------------------------- Ablauf
+	IF #failCode = 16#0000 THEN
+	    CASE #state OF
+	        0:  // aus
+	            #connected := FALSE;
+	            #busy := FALSE;
+	            #failed := FALSE;
+	            #libEnable := FALSE;
+	            #pubReq := FALSE;
+	            #trigPending := FALSE;
+	            #hbDue := FALSE;
+	            IF #enable THEN
+	                #state := 1;
+	            END_IF;
+
+	        1:  // verbinden (TCP/TLS und MQTT macht die Bibliothek)
+	            IF NOT #enable THEN
+	                #libEnable := FALSE;
+	                #state := 6;
+	            ELSIF #libUp THEN
+	                #connected := TRUE;
+	                #failed := FALSE;
+	                #state := 3;
+	            ELSIF #tmrConn.Q THEN
+	                #failCode := 16#8005;
+	                #failText := 'keine Antwort vom Broker';
+	            END_IF;
+
+	        3:  // bereit
+	            IF NOT #enable THEN
+	                #libEnable := FALSE;
+	                #connected := FALSE;
+	                #state := 6;
+{{template "ab_bereit_start" .}}	            END_IF;
+
+	        4:  // senden: publish bleibt TRUE bis done, dann mindestens einen Zyklus FALSE
+	            IF NOT #pubReq THEN
+	                // publish war einen Zyklus FALSE: nächsten Teil bauen
+	                #buildKind := 2;
+	            ELSIF #instClient.done THEN
+	                #pubReq := FALSE;   // zurücknehmen, sonst bleibt done stehen
+	                CASE #sendKind OF
+{{template "ab_gesendet" .}}	                END_CASE;
+	            ELSIF #tmrSend.Q THEN
+	                #failCode := 16#8002;
+	                #failText := 'Sendefehler (keine Antwort)';
+	            END_IF;
+
+	        6:  // Bibliothek aus, 5 s warten, dann neu verbinden
+	            #connected := FALSE;
+	            #busy := FALSE;
+	            #libEnable := FALSE;
+	            #pubReq := FALSE;
+	            IF #tmrRetry.Q THEN
+	                IF #enable THEN
+	                    #state := 1;
+	                ELSE
+	                    #state := 0;
+	                END_IF;
+	            END_IF;
+
+	        ELSE
+	            #state := 0;
+	    END_CASE;
+	END_IF;
+
+	// ---------------------------------------------------------------- Nachricht bauen
+	IF #buildKind <> 0 AND #failCode = 16#0000 THEN
+	    #ovf := FALSE;
+	    #pos := 0;
+	    CASE #buildKind OF
+	        2:  // Teil #part: JSON in #pl
+{{template "json_teil" .}}	            #pubTopic := {{.KonfigName}}.topic;
+	            #pubRetain := {{.KonfigName}}.retain;   // Retain nur für die Werte
+
+	        3:  // --- Heartbeat ---
+{{template "json_heartbeat" .}}	            #pubTopic := {{.KonfigName}}.heartbeatTopic;
+	            #pubRetain := FALSE;   // fest: ein alter Heartbeat darf nicht auf dem Broker liegen bleiben
+	            // --- Ende Heartbeat ---
+	    END_CASE;
+	    IF NOT #ovf THEN
+	        #pubLen := DINT_TO_UDINT(#pos);
+	        #sendKind := #buildKind;
+	        #pubReq := TRUE;   // steigende Flanke an publish im nächsten Aufruf
+	        #state := 4;
+	    ELSE
+{{template "ab_zu_lang" .}}	    END_IF;
+	END_IF;
+
+	// ---------------------------------------------------------------- Fehler: Bibliothek aus, 5 s warten, neu verbinden
+	IF #failCode <> 16#0000 THEN
+	    #failed := TRUE;
+	    #lastErr := #failCode;
+	    #lastText := #failText;
+{{template "ab_verbindung_weg" .}}	    #pubReq := FALSE;
+	    #libEnable := FALSE;
+	    #state := 6;
+	END_IF;
+
+{{template "ab_ausgaenge_kopf" .}}	        1:
+	            IF #libStatus = 16#7003 THEN
+	                #status := 16#7002;
+	                #statusText := 'warte auf Broker';
+	            ELSE
+	                #status := 16#7001;
+	                #statusText := 'verbinde';
+	            END_IF;
+	        3:
+	            #status := 16#7003;
+	            #statusText := 'bereit';
+	        4:
+	            IF #busy THEN
+	                #status := 16#7004;
+	                #statusText := 'sende';
+	            ELSE
+	                #status := 16#7003;
+	                #statusText := 'bereit';
+	            END_IF;
+	        6:
+	            IF #enable THEN
+	                #status := 16#7001;
+	                #statusText := 'verbinde';
+	            ELSE
+	                #status := 16#7000;
+	                #statusText := 'aus';
+	            END_IF;
+	        ELSE
+	            #status := 16#7000;
+	            #statusText := 'aus';
+	    END_CASE;
+	END_IF;
+END_FUNCTION_BLOCK
+
+{{end}}
+
+{{define "extra_db"}}{{end}}
+
+{{define "liesmich" -}}
+Vorher die Bibliothek LMQTT ins Projekt holen:
+  {{.InfoURL}}
+  (Beitrag „LMQTT“; der Baustein "LMQTT_Client" steckt in den „Bibliotheken für Kommunikation
+  für SIMATIC Controller“, Beitrag 109780503.) Erstellt nach der Beschreibung V3.1 04/2024 für
+  "LMQTT_Client" V4.0.4, TIA Portal ab V17.
+
+PDH – STEUERUNGSBAUSTEIN „MQTT SENDEN“
+Datenbaustein: "{{text .DB}}"
+Variante: {{.VariantLabel}}
+Steuerung: {{.FamilyLabel}}, TIA Portal ab V17, SCL mit optimiertem Zugriff
+Broker: {{text .O.BrokerHost}}:{{.O.BrokerPort}} ({{if .O.UseTLS}}mit TLS{{else}}ohne TLS – nur im geschützten Netz einsetzen{{end}})
+Erzeugt vom PDH{{with .O.GeneratedBy}} ({{text .}}){{end}} am {{.At}}
+
+DATEIEN
+  1_PDH_{{.Base}}_Typ.udt       PLC-Datentyp {{.TypeName}} mit den gesendeten Variablen
+  2_PDH_{{.Base}}_Konfig.db     Einstellungen {{.KonfigName}}
+  3_PDH_MQTT_{{.Base}}.scl      Hilfsbausteine "PDH_J_…" und Funktionsbaustein {{.FBName}}
+  4_{{.Base}}_aus_Typ.db        Ersatz für den eigenen Datenbaustein "{{text .DB}}" auf Basis des Datentyps
+
+SO GEHT'S
+  1. Die Bibliothek LMQTT (siehe oben) als globale Bibliothek öffnen und den Baustein
+     "LMQTT_Client" samt Datentypen in die Steuerung kopieren.
+  2. Im TIA Portal in der Projektnavigation unter „Externe Quellen“ alle vier Dateien
+     hinzufügen.
+  3. Vorher eine Kopie des bisherigen Datenbausteins "{{text .DB}}" sichern (z. B. Projekt
+     archivieren): „Bausteine aus Quelle generieren“ überschreibt den Datenbaustein gleichen
+     Namens. Oder ihn vorher löschen. Datei 4 legt ihn nur mit den gesendeten Variablen neu
+     an: Was unter „NICHT GESENDET“ (weiter unten) steht, fehlt darin. Trage es dort von
+     Hand wieder ein (oder halte es anderswo), bevor du übersetzt.
+  4. „Bausteine aus Quelle generieren“ in dieser Reihenfolge: 1, 2, 3, 4.
+  5. In {{.KonfigName}} Broker, Benutzer und Kennwort prüfen.
+     Steht dort {{.Placeholder}}, das Kennwort des Brokers eintragen.
+     brokerHost darf eine IP-Adresse oder ein Hostname sein (Hostname: DNS-Server in der
+     CPU einstellen).
+  6. Mit TLS (useTls = TRUE): das CA-Zertifikat des Brokers in STEP 7 importieren, der CPU
+     zuordnen und seine Zertifikats-ID in brokerCert eintragen. Verlangt der Broker ein
+     Client-Zertifikat, dessen ID in clientCert. Die Uhrzeit der CPU muss stimmen.
+     validateServer = TRUE prüft das Zertifikat des Brokers.
+  7. Den Baustein in OB1 aufrufen, z. B.:
+       "PDH_MQTT_{{.Base}}_DB"(enable := TRUE,
+                        trigger := "Senden",
+                        daten := {{.DBIdent}});
+  8. hwId: Hardware-Kennung der PROFINET-Schnittstelle (Gerätekonfiguration → Schnittstelle →
+     Eigenschaften → Hardware-Kennung; meist 64). connId muss in der Steuerung eindeutig sein.
+  9. Übersetzen, laden. Im PDH an der MQTT-Verbindung prüfen, ob Werte ankommen.
+  S7-1200: erst ab Firmware 4.2 (die Hilfsbausteine nutzen Array[*]). Laut der Beschreibung
+  V3.1 (04/2024) braucht LMQTT für Hostname und TLS eine S7-1200 ab Firmware 4.4 bzw. eine
+  S7-1500 ab Firmware 2.0.
+  LReal-Werte: außerhalb von etwa 1E-8 bis 1E36 kann die 15. Stelle vom genauen Wert
+  abweichen (der Wert bleibt bis auf etwa 1E-15 gleich).
+
+VOR DEM EINSATZ PRÜFEN
+Vor dem Einsatz mit der Doku der eingesetzten LMQTT-Version abgleichen: Der Baustein
+{{.FBName}} ruft die Bibliothek mit diesen Namen auf (nach Beitrag 109748872 V3.1 04/2024,
+"LMQTT_Client" V4.0.4). Weicht Ihre Version ab, die Namen im Baustein anpassen.
+  Baustein:   "LMQTT_Client" (Instanz instClient)
+  Datentyp:   "LMQTT_typeConnParam" mit hwId, connId, broker, port, keepAlive und
+              tls.enableTls, tls.validateServerIdentity, tls.brokerCert, tls.clientCert
+  Parameter:  enable, publish, subscribe, unsubscribe, connParam, clientIdentifier,
+              username, password, willTopic, willMsgPayload, willMsgLen, qos, mqttTopic,
+              publishMsgPayload, publishMsgLen, retain, receivedTopic, receivedMsgPayload,
+              receivedMsgDataLen, receivedMsgStatus
+  Ausgänge:   done, error, status
+  Status der Bibliothek (instClient.status, nicht der Ausgang status dieses Bausteins):
+              16#7003 TCP verbunden, 16#7004 MQTT verbunden, 16#9000 Verbindung unterbrochen
+  Texte:      clientIdentifier, username, password, willTopic, mqttTopic als WString
+
+ABLAUF
+  enable = TRUE: Die Bibliothek baut die Verbindung auf (TCP, bei useTls mit TLS) und meldet
+  sich am Broker an. Steht sie nicht binnen 30 s, meldet der Baustein 16#8005 und versucht
+  es nach 5 s neu.
+  Steigende Flanke an trigger: Werte als Abbild übernehmen, Uhrzeit lesen, alle Teile
+  nacheinander senden (publish); danach done für einen Zyklus und sentCount + 1.
+  Kommt der Trigger während busy, wird er einmal gemerkt und danach gesendet.
+  Kommt er ohne Verbindung, meldet der Baustein 16#8007 für einen Zyklus und sendet nichts.
+  Keep-Alive (PINGREQ) und das Neuverbinden nach einer Unterbrechung macht die Bibliothek.
+  enable = FALSE: Die Bibliothek trennt die Verbindung.
+
+STATUS (Ausgang status, Klartext in statusText)
+  16#7000  aus (enable = FALSE)
+  16#7001  verbinde
+  16#7002  warte auf Broker
+  16#7003  bereit
+  16#7004  sende
+  16#8002  Sendefehler (keine Antwort oder Verbindung beim Senden unterbrochen)
+  16#8005  keine Antwort vom Broker
+  16#8007  nicht verbunden beim Trigger (es wird nichts gepuffert)
+  16#8008  Nachricht zu lang
+  16#8009  Uhrzeit nicht lesbar
+  16#82xx  Fehler der Bibliothek LMQTT: 16#8201 beim Verbinden, 16#8202 beim Senden.
+           Der Status der Bibliothek steht als 16#xxxx am Ende von statusText; seine
+           Bedeutung steht in der Bibliotheksbeschreibung (Beitrag 109780503). Genauere
+           Angaben im Ausgang diagnostics der Instanz instClient.
+Nach einem Fehler schaltet der Baustein die Bibliothek ab, wartet 5 s und verbindet neu.
+
+{{template "liesmich_teile" .}}
+{{- end}}
