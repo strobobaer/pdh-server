@@ -9,6 +9,7 @@ package tiamqtt
 import (
 	"bytes"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"unicode"
@@ -164,6 +165,10 @@ type lexer struct {
 	retainAttr bool // ein { … }-Attribut nennt Retain
 }
 
+// retainAttrRe erkennt ein eingeschaltetes Retain-Attribut
+// ({ Retain := 'True' }, { S7_Retain := 'TRUE' }), nicht NON_RETAIN oder 'False'.
+var retainAttrRe = regexp.MustCompile(`(?i)(?:^|[^a-z0-9_]|S7_)retain\s*:=\s*'true'`)
+
 func isWordRune(r rune) bool {
 	return unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_' || r == '#'
 }
@@ -250,8 +255,7 @@ func (lx *lexer) skipAttr() {
 		case '}':
 			depth--
 			if depth == 0 {
-				attr := strings.ToUpper(lx.src[start : i+1])
-				if strings.Contains(strings.ReplaceAll(attr, "NON_RETAIN", ""), "RETAIN") {
+				if retainAttrRe.MatchString(lx.src[start : i+1]) {
 					lx.retainAttr = true
 				}
 				lx.advanceBy(i + 1 - lx.pos)
@@ -467,12 +471,21 @@ func (p *parser) parseFile() *DBSource {
 func (p *parser) skipHeader() {
 	for {
 		switch {
-		case p.isWord("VERSION"), p.isWord("AUTHOR"), p.isWord("FAMILY"), p.isWord("NAME"):
+		case p.isWord("VERSION"):
 			p.advance()
 			p.expectSym(":")
 			if p.cur.kind == tEOF {
 				p.failExpected("Wert")
 			}
+			p.advance()
+		case p.isWord("AUTHOR"), p.isWord("FAMILY"), p.isWord("NAME"):
+			// Der Wert darf Leerzeichen enthalten („AUTHOR : Max Mustermann“):
+			// Rest der Zeile überspringen.
+			p.advance()
+			if !p.isSym(":") {
+				p.failExpected("„:“")
+			}
+			p.lx.skipToEOL()
 			p.advance()
 		case p.isWord("RETAIN"):
 			p.hasRetain = true

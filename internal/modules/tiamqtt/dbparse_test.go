@@ -348,3 +348,31 @@ func TestParseLimits(t *testing.T) {
 		t.Errorf("Typ-Schleife: %v", err)
 	}
 }
+
+func TestParseHeaderWithSpaces(t *testing.T) {
+	src := "TYPE \"Antrieb\"\nAUTHOR : Max Mustermann\nFAMILY : Linie 1 Pumpen\nNAME : Antrieb neu\nVERSION : 0.1\n   STRUCT\n      Drehzahl : Real;\n   END_STRUCT;\nEND_TYPE\n\nDATA_BLOCK \"Daten\"\n{ S7_Optimized_Access := 'TRUE' }\nAUTHOR : Max Mustermann\nFAMILY : Linie 1\nNAME : Daten Linie\nVERSION : 0.1\nNON_RETAIN\n   VAR\n      Pumpe : \"Antrieb\";\n   END_VAR\nBEGIN\nEND_DATA_BLOCK\n"
+	db := mustParse(t, []byte(src))
+	p := wantVar(t, db.Vars, "Pumpe", KindStruct)
+	wantVar(t, p.Members, "Drehzahl", KindReal)
+	if p.Line != 19 {
+		t.Errorf("Pumpe Zeile = %d", p.Line)
+	}
+}
+
+func TestParseRetainAttribute(t *testing.T) {
+	mk := func(attr string) []byte {
+		return []byte("DATA_BLOCK \"D\"\n{ S7_Optimized_Access := 'TRUE' }\nVERSION : 0.1\n   VAR\n      x " + attr + " : Int;\n   END_VAR\nBEGIN\nEND_DATA_BLOCK\n")
+	}
+	for attr, want := range map[string]bool{
+		"{ Retain := 'False' }":             false,
+		"{ S7_Retain := 'FALSE' }":          false,
+		"{ NON_RETAIN := 'TRUE' }":          false,
+		"{ ExternalAccessible := 'False' }": false,
+		"{ Retain := 'True' }":              true,
+		"{ S7_Retain:='TRUE' }":             true,
+	} {
+		if got := mustParse(t, mk(attr)).HasRetain; got != want {
+			t.Errorf("%s: HasRetain = %v, erwartet %v", attr, got, want)
+		}
+	}
+}
