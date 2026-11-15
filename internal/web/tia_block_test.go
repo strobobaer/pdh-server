@@ -146,12 +146,26 @@ func TestTIAToolEntry(t *testing.T) {
 	}
 }
 
+func TestTIASlugUmlauts(t *testing.T) {
+	for in, want := range map[string]string{
+		"TIA-Prüfung (wird gelöscht)": "tia-pruefung-wird-geloescht",
+		"Größe Ärger Übel":            "groesse-aerger-uebel",
+		"Halle 3":                     "halle-3",
+		"ÄÖÜ":                         "aeoeue",
+		"!!!":                         "pdh",
+	} {
+		if got := tiaSlug(in); got != want {
+			t.Errorf("tiaSlug(%q) = %q, erwartet %q", in, got, want)
+		}
+	}
+}
+
 func TestTIADefaultsIntegrated(t *testing.T) {
 	cfg := map[string]string{"broker_mode": "integrated", "int_listen_port": "1884", "int_broker_username": "plc",
 		"int_broker_password": "Geheim123", "ext_broker_host": "nicht.nehmen"}
 	f := tiaDefaults(cfg, "Linie 1 Öfen", "10.1.2.3:8443")
 	want := tiaForm{Variant: "standalone", Family: "s7-1500", BrokerHost: "10.1.2.3", BrokerPort: 1884, Username: "plc",
-		Topic: "sps/linie-1-fen/", HeartbeatSeconds: 60, KeepAliveSeconds: 60, HwID: 64, ConnID: 1, Limit: 4096}
+		Topic: "sps/linie-1-oefen/", HeartbeatSeconds: 60, KeepAliveSeconds: 60, HwID: 64, ConnID: 1, Limit: 4096}
 	if f != want {
 		t.Errorf("Vorgaben:\n got %+v\nwant %+v", f, want)
 	}

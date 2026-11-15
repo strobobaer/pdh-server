@@ -51,10 +51,19 @@ func (h *Handler) tiaCan(r *http.Request, perm, id string) bool {
 }
 
 // tiaSlug: Verbindungsname klein, nur a-z, 0-9 und -.
+// tiaUmlauts: deutsche Umlaute im Topic-Vorschlag lesbar umschreiben statt
+// sie zu Bindestrichen zu machen („Prüfung“ → „pruefung“).
+var tiaUmlauts = map[rune]string{'ä': "ae", 'ö': "oe", 'ü': "ue", 'ß': "ss"}
+
 func tiaSlug(s string) string {
 	var b strings.Builder
 	dash := false
 	for _, r := range strings.ToLower(s) {
+		if rep, ok := tiaUmlauts[r]; ok {
+			b.WriteString(rep)
+			dash = false
+			continue
+		}
 		switch {
 		case r >= 'a' && r <= 'z' || r >= '0' && r <= '9':
 			b.WriteRune(r)
