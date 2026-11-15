@@ -19,6 +19,8 @@ CREATE TABLE IF NOT EXISTS energy_meters (
     active            BOOLEAN NOT NULL DEFAULT true,
     last_value        DOUBLE PRECISION,
     last_at           TIMESTAMPTZ,
+    -- Basiszeitpunkt berechneter Zählermessstellen: ab hier zählt der Zuwachs der Bezüge.
+    base_at           TIMESTAMPTZ,
     created_by        UUID REFERENCES users(id),
     updated_by        UUID REFERENCES users(id),
     created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),

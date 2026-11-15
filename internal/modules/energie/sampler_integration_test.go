@@ -291,3 +291,66 @@ func TestSamplerEvalOrderErrorStillStoresRealValues(t *testing.T) {
 	}
 	wantValue(t, pool, r, m0, 3)
 }
+
+func TestSamplerCounterSwapRecovers(t *testing.T) {
+	pool, sm, gMap, aMap, _, _, v := counterPair(t)
+	ctx := context.Background()
+	m1, m2, m3 := m0.Add(time.Minute), m0.Add(2*time.Minute), m0.Add(3*time.Minute)
+	_, _, err := sm.Pass(ctx, m0)
+	must(t, err)
+	setReading(t, pool, gMap, "1010", m1.Add(-5*time.Second))
+	setReading(t, pool, aMap, "503", m1.Add(-5*time.Second))
+	_, _, err = sm.Pass(ctx, m1)
+	must(t, err)
+	wantValue(t, pool, v, m1, 7)
+	// Zählertausch an G: neuer Zähler beginnt bei 5.
+	setReading(t, pool, gMap, "5", m2.Add(-5*time.Second))
+	setReading(t, pool, aMap, "504", m2.Add(-5*time.Second))
+	_, _, err = sm.Pass(ctx, m2)
+	must(t, err)
+	if _, ok := valueAt(t, pool, v, m2); ok {
+		t.Error("erste Minute nach dem Tausch darf keinen Wert haben")
+	}
+	setReading(t, pool, gMap, "15", m3.Add(-5*time.Second)) // G +10, A +1 seit Minute 2
+	setReading(t, pool, aMap, "505", m3.Add(-5*time.Second))
+	_, _, err = sm.Pass(ctx, m3)
+	must(t, err)
+	wantValue(t, pool, v, m3, 7+9)
+}
+
+func TestSamplerNewCounterRefRecoversAfterOneMinute(t *testing.T) {
+	pool, s, sm, infra := samplerEnv(t)
+	ctx := context.Background()
+	m1, m2 := m0.Add(time.Minute), m0.Add(2*time.Minute)
+	g, _ := source(t, pool, s, infra, KindCounter, 1, "1000", m0.Add(-5*time.Second))
+	gk := keyOf(t, s, g)
+	v := &Meter{Key: uniq("V"), InfraID: infra, Kind: KindCounter, Formula: "[" + gk + "]"}
+	save(t, s, v)
+	_, _, err := sm.Pass(ctx, m0)
+	must(t, err)
+	wantValue(t, pool, v.ID, m0, 0)
+
+	// Zähler A kommt neu in die Formel; zur Basis (Minute 0) hat er keinen Wert.
+	a, aMap := source(t, pool, s, infra, KindCounter, 1, "500", m1.Add(-5*time.Second))
+	v.Formula = "[" + gk + "]-[" + keyOf(t, s, a) + "]"
+	save(t, s, v)
+	setReading(t, pool, gMap(t, pool, g), "1010", m1.Add(-5*time.Second))
+	_, _, err = sm.Pass(ctx, m1)
+	must(t, err)
+	if _, ok := valueAt(t, pool, v.ID, m1); ok {
+		t.Error("Minute der Aufnahme darf keinen Wert haben")
+	}
+	setReading(t, pool, gMap(t, pool, g), "1020", m2.Add(-5*time.Second))
+	setReading(t, pool, aMap, "503", m2.Add(-5*time.Second))
+	_, _, err = sm.Pass(ctx, m2)
+	must(t, err)
+	wantValue(t, pool, v.ID, m2, 10-3) // G +10, A +3 seit Minute 1
+}
+
+// gMap liefert die Zuordnung einer Messstelle.
+func gMap(t *testing.T, pool *pgxpool.Pool, meterID string) string {
+	t.Helper()
+	var id string
+	must(t, pool.QueryRow(context.Background(), `SELECT import_mapping_id::text FROM energy_meters WHERE id = $1::uuid`, meterID).Scan(&id))
+	return id
+}

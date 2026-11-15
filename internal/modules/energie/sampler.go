@@ -23,6 +23,7 @@ type sampleMeter struct {
 	hasSource              bool
 	raw                    *string
 	receivedAt             *time.Time
+	baseAt                 *time.Time
 	lastValue              *float64
 }
 
@@ -43,7 +44,7 @@ func (sm *Sampler) Pass(ctx context.Context, minute time.Time) (stored, missing 
 
 	rows, err := db.Query(ctx, `
 		SELECT m.id::text, m.meter_key, m.kind, m.formula, m.factor, m.import_mapping_id IS NOT NULL,
-		       im.last_value, im.last_received_at
+		       im.last_value, im.last_received_at, m.base_at
 		  FROM energy_meters m
 		  LEFT JOIN import_mappings im ON im.id = m.import_mapping_id
 		 WHERE m.active ORDER BY m.meter_key`)
@@ -53,7 +54,7 @@ func (sm *Sampler) Pass(ctx context.Context, minute time.Time) (stored, missing 
 	var meters []*sampleMeter
 	for rows.Next() {
 		var x sampleMeter
-		if err := rows.Scan(&x.id, &x.key, &x.kind, &x.formula, &x.factor, &x.hasSource, &x.raw, &x.receivedAt); err != nil {
+		if err := rows.Scan(&x.id, &x.key, &x.kind, &x.formula, &x.factor, &x.hasSource, &x.raw, &x.receivedAt, &x.baseAt); err != nil {
 			rows.Close()
 			return 0, 0, err
 		}
@@ -124,7 +125,8 @@ func (sm *Sampler) Pass(ctx context.Context, minute time.Time) (stored, missing 
 		m *sampleMeter
 		v float64
 	}
-	var fresh []result // neu zu schreiben
+	var fresh []result   // neu zu schreiben
+	var rebases []string // berechnete Zähler, deren Basis auf diese Minute rückt
 	set := func(x *sampleMeter, v float64) {
 		cur[x.key] = v
 		if _, done := existing[x.id]; !done {
@@ -168,9 +170,12 @@ func (sm *Sampler) Pass(ctx context.Context, minute time.Time) (stored, missing 
 			cur[key] = old
 			continue
 		}
-		v, ok := sm.evalVirtual(ctx, x, byKey, cur, prev[x.id])
+		v, ok, rebase := sm.evalVirtual(ctx, x, byKey, cur, prev[x.id])
 		if !ok {
 			missing++
+			if rebase {
+				rebases = append(rebases, x.id)
+			}
 			continue
 		}
 		set(x, v)
@@ -191,8 +196,13 @@ func (sm *Sampler) Pass(ctx context.Context, minute time.Time) (stored, missing 
 			continue
 		}
 		stored++
-		if _, err := tx.Exec(ctx, `UPDATE energy_meters SET last_value = $2, last_at = $3 WHERE id = $1::uuid`,
+		if _, err := tx.Exec(ctx, `UPDATE energy_meters SET last_value = $2, last_at = $3, base_at = $3 WHERE id = $1::uuid`,
 			r.m.id, r.v, minute); err != nil {
+			return 0, 0, err
+		}
+	}
+	for _, id := range rebases {
+		if _, err := tx.Exec(ctx, `UPDATE energy_meters SET base_at = $2 WHERE id = $1::uuid`, id, minute); err != nil {
 			return 0, 0, err
 		}
 	}
@@ -202,19 +212,31 @@ func (sm *Sampler) Pass(ctx context.Context, minute time.Time) (stored, missing 
 	return stored, missing, orderErr
 }
 
-// evalVirtual berechnet den Wert einer berechneten Messstelle. Zählerbezüge
-// tragen ihren Zuwachs seit dem Zeitpunkt des letzten Werts dieser Messstelle
-// bei (Basis); fehlt der Bezugswert jetzt oder zur Basis, ist ein Zuwachs
-// negativ oder ein Zählerstand kleiner als 0, gibt es keinen Wert und die Basis
-// bleibt stehen, sodass eine spätere Minute den Zuwachs vollständig nachholt.
-// Ohne eigenen früheren Wert ist der Start 0 (kein Zuwachs).
+// evalVirtual berechnet den Wert einer berechneten Messstelle.
+//
+// Bezüge der Art Zähler tragen ihren Zuwachs seit dem Basiszeitpunkt der
+// Messstelle bei (base_at, sonst Zeitpunkt ihres letzten Werts). Bezüge der
+// Art Verbrauch und Momentanwert haben keine eigene Basis: sie tragen ihren
+// Minutenwert dieser Minute bei. Ohne eigenen früheren Wert ist der Start 0.
+//
+// Kein Wert gibt es, wenn ein Bezugswert jetzt fehlt, der Formelwert eines
+// Zählers kleiner 0 ist oder die Formel nichts ergibt; die Basis bleibt dann
+// stehen und eine spätere Minute holt den Zuwachs nach. Springt ein
+// Zählerbezug zurück (Zählertausch) oder hat er zur Basis keinen Wert
+// (neu aufgenommen), gibt es für diese Minute ebenfalls keinen Wert, aber die
+// Basis rückt auf jetzt (rebase): der Verbrauch dieser einen Minute ist nicht
+// bekannt und wird nicht erfunden, ab der nächsten wird wieder gerechnet.
 func (sm *Sampler) evalVirtual(ctx context.Context, x *sampleMeter, byKey map[string]*sampleMeter,
-	cur map[string]float64, base stamped) (float64, bool) {
+	cur map[string]float64, last stamped) (v float64, ok, rebase bool) {
 	f, err := ParseFormula(x.formula)
 	if err != nil {
-		return 0, false
+		return 0, false, false
 	}
-	hasBase := !base.ts.IsZero()
+	baseTS := last.ts
+	if x.baseAt != nil {
+		baseTS = *x.baseAt
+	}
+	hasBase := !baseTS.IsZero()
 	var baseVals map[string]float64
 	if hasBase {
 		var ids []string
@@ -225,33 +247,33 @@ func (sm *Sampler) evalVirtual(ctx context.Context, x *sampleMeter, byKey map[st
 		}
 		if len(ids) > 0 {
 			rows, err := sm.Store.DB.Query(ctx, `SELECT meter_id::text, value FROM energy_values
-				WHERE ts = $1 AND meter_id = ANY($2::uuid[])`, base.ts, ids)
+				WHERE ts = $1 AND meter_id = ANY($2::uuid[])`, baseTS, ids)
 			if err != nil {
-				return 0, false
+				return 0, false, false
 			}
 			baseVals = map[string]float64{}
 			for rows.Next() {
 				var id string
-				var v float64
-				if err := rows.Scan(&id, &v); err != nil {
+				var bv float64
+				if err := rows.Scan(&id, &bv); err != nil {
 					rows.Close()
-					return 0, false
+					return 0, false, false
 				}
-				baseVals[id] = v
+				baseVals[id] = bv
 			}
 			rows.Close()
 			if rows.Err() != nil {
-				return 0, false
+				return 0, false, false
 			}
 		}
 	}
-	bad := false
-	v, ok := f.Eval(func(ref string) (float64, bool) {
+	missingNow, reset := false, false
+	v, ok = f.Eval(func(ref string) (float64, bool) {
 		r := byKey[ref]
 		now, have := cur[ref]
 		if r == nil || !have {
-			bad = true
-			return 0, false
+			missingNow = true
+			return 0, true // weiter prüfen, damit alle Bezüge erfasst werden
 		}
 		if r.kind != KindCounter {
 			return now, true
@@ -261,21 +283,26 @@ func (sm *Sampler) evalVirtual(ctx context.Context, x *sampleMeter, byKey map[st
 		}
 		b, had := baseVals[r.id]
 		if !had || now < b {
-			bad = true
-			return 0, false
+			reset = true
+			return 0, true
 		}
 		return now - b, true
 	})
-	if !ok || bad {
-		return 0, false
+	switch {
+	case missingNow:
+		return 0, false, false
+	case reset:
+		return 0, false, true
+	case !ok:
+		return 0, false, false
 	}
 	if x.kind == KindCounter {
 		if v < 0 {
-			return 0, false
+			return 0, false, false
 		}
-		v += base.v
+		v += last.v
 	}
-	return v, true
+	return v, true, false
 }
 
 // purge löscht Minutenwerte, die älter als ValueRetentionDays sind.
