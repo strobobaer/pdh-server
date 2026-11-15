@@ -9,7 +9,9 @@ Energiedaten der Anlagen (zuerst von WAGO PFC200 mit EDM-Firmware, grundsätzlic
 - **Lesen:** über die vorhandenen Import-Verbindungen (MQTT, OPC UA, Modbus TCP – mit dem Explorer zuzuordnen; später ggf. SQLite über den Daten-Client) im Minutentakt. Der Lese-Weg vom PFC200 ist noch offen; der Export funktioniert unabhängig davon mit jedem Import, der Messwerte einer Anlage liefert.
 - **Messstellen:** Eine Messstelle ist ein Messwert einer Anlage (z. B. „Zählerstand Linie 1“) mit **Messstellen-ID** (frei, so wie Efficio sie kennt), Einheit und Quelle (Zuordnung eines Imports). Messstellen werden im PDH gepflegt (Liste, anlegen, Anlage, Quelle).
 - **Export „Efficio-CSV“** (neuer Export-Typ bzw. Exportprofil):
-  - 3 Spalten `Zeitstempel;Messstellen-ID;Messwert`, Trennzeichen Semikolon, eine Datei je Lauf.
+  - 3 Spalten `Zeitstempel;Messstellen-ID;Messwert`, Trennzeichen Semikolon. **Mehrere Messstellen in einer Datei, eine Zeile je Messstelle und Zeitpunkt** (Anwender).
+  - **Dateilänge in Tagen** (Anwender: „max Länge der Datei in gespeicherten Tagen“): Eine Datei sammelt die Läufe fortlaufend (jeder Lauf hängt seine Zeilen an), bis sie N Tage Daten umfasst; dann beginnt eine neue Datei. N einstellbar (Vorgabe 1 Tag); N = 0 heißt „eine Datei je Lauf“. Beim Ablageziel wird die laufende Datei jeweils vollständig ersetzt (Netzlaufwerk/FTP: atomar über temporären Namen und Umbenennen), damit Efficio nie eine halbe Datei liest.
+  - Aufbewahrung der Dateien zum Abholen im PDH in Tagen einstellbar (Vorgabe 30).
   - Takt einstellbar, Vorgabe **15 Minuten**; je Messstelle der Wert zum Intervallende (Vorgabe Zählerstand), wahlweise Verbrauch im Intervall.
   - Einstellbar mit Vorgaben: Zeitformat `TT.MM.JJJJ hh:mm`, Dezimalkomma, Kopfzeile ja/nein, Dateiname mit Zeitstempel, Zeichensatz UTF-8 (wahlweise Windows-1252).
   - **Ablage je Export wählbar:** zum **Abholen** im PDH (Download-Liste/Link, Aufbewahrung einstellbar), auf ein **Netzlaufwerk** (vorhandene Laufwerke des PDH), per **FTP oder SFTP** (neu: Zugangsdaten verschlüsselt, Zielordner, Prüfung „Verbindung testen“).
