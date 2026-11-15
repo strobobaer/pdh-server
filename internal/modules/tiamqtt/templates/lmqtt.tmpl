@@ -33,8 +33,8 @@ VERSION : 0.1
 //  Parameter enable, publish, subscribe, unsubscribe, connParam, clientIdentifier, username,
 //  password, willTopic, willMsgPayload, willMsgLen, qos, mqttTopic, publishMsgPayload,
 //  publishMsgLen, retain, receivedTopic, receivedMsgPayload, receivedMsgDataLen,
-//  receivedMsgStatus; Ausgänge done, error, status; Status 16#7003 (TCP verbunden),
-//  16#7004 (MQTT verbunden), 16#9000 (Verbindung unterbrochen).
+//  receivedMsgStatus; Ausgänge done, error, status; Bibliotheksstatus (instClient.status)
+//  16#7003 TCP verbunden, 16#7004 MQTT verbunden, 16#9000 Verbindung unterbrochen.
 {{template "fb_schnittstelle" .}}
    VAR
       snap : {{.TypeName}};   // Abbild der Werte beim Trigger
@@ -92,35 +92,13 @@ VERSION : 0.1
 
 
 BEGIN
-	// ---------------------------------------------------------------- Zyklusanfang
-	#done := FALSE;
-	#error := FALSE;
-	#evStatus := 16#0000;
-	#failCode := 16#0000;
-	#buildKind := 0;
-
+{{template "ab_anfang" .}}
 	// Zeitglieder jeden Zyklus aufrufen, dann laufen sie beim Zustandswechsel neu an.
 	#tmrConn(IN := (#state = 1), PT := T#30s);
 	#tmrSend(IN := (#state = 4 AND #pubReq), PT := T#10s);
 	#tmrRetry(IN := (#state = 6), PT := T#5s);
-	#tmrHb(IN := (#connected AND #heartbeatInterval > T#0s AND NOT #hbDue), PT := #heartbeatInterval);
-	IF #tmrHb.Q THEN
-	    #hbDue := TRUE;
-	END_IF;
-
-	// ---------------------------------------------------------------- Trigger
-	#trigEdge(CLK := #trigger);
-	IF #trigEdge.Q THEN
-	    IF #connected AND #enable THEN
-	        // wird in "bereit" gestartet; während busy bleibt genau eine Wiederholung gemerkt
-	        #trigPending := TRUE;
-	    ELSE
-	        // nicht verbunden: nichts puffern
-	        #evStatus := 16#8007;
-	        #evText := 'nicht verbunden beim Trigger';
-	    END_IF;
-	END_IF;
-
+{{template "ab_hb_timer" .}}
+{{template "ab_trigger" .}}
 	// ---------------------------------------------------------------- Bibliothek LMQTT
 	IF #state = 1 AND NOT #libEnable THEN
 	    // Verbindungsdaten beim (Neu-)Verbinden aus der Konfiguration übernehmen
@@ -189,6 +167,18 @@ BEGIN
 	    #libUp := FALSE;   // unterbrochen oder noch nicht angemeldet
 	END_IF;
 
+	// ---------------------------------------------------------------- Verbindung unterbrochen
+	// Die Bibliothek verbindet selbst neu. Wie bei einem Fehler wird nichts Gemerktes
+	// (Trigger, Heartbeat) über die Unterbrechung mitgenommen.
+	IF (#state = 3 OR #state = 4) AND NOT #libUp AND #failCode = 16#0000 THEN
+	    IF #state = 4 THEN
+	        #evStatus := 16#8002;
+	        #evText := 'Sendefehler (Verbindung unterbrochen)';
+	    END_IF;
+{{template "ab_verbindung_weg" .}}	    #pubReq := FALSE;
+	    #state := 1;
+	END_IF;
+
 	// ---------------------------------------------------------------- Ablauf
 	IF #failCode = 16#0000 THEN
 	    CASE #state OF
@@ -222,62 +212,16 @@ BEGIN
 	                #libEnable := FALSE;
 	                #connected := FALSE;
 	                #state := 6;
-	            ELSIF NOT #libUp THEN
-	                // Verbindung unterbrochen: die Bibliothek verbindet selbst neu
-	                #connected := FALSE;
-	                #state := 1;
-	            ELSIF #trigPending THEN
-	                #trigPending := FALSE;
-	                #rc := RD_SYS_T(OUT => #ts);
-	                IF #rc <> 0 THEN
-	                    #evStatus := 16#8009;
-	                    #evText := 'Uhrzeit nicht lesbar';
-	                ELSE
-	                    #snap := #daten;   // alle Teile aus demselben Abbild
-	                    #part := 1;
-	                    #busy := TRUE;
-	                    #buildKind := 2;
-	                END_IF;
-	            ELSIF #hbDue THEN
-	                #rc := RD_SYS_T(OUT => #hbTs);
-	                IF #rc <> 0 THEN
-	                    #hbDue := FALSE;
-	                    #evStatus := 16#8009;
-	                    #evText := 'Uhrzeit nicht lesbar';
-	                ELSE
-	                    #buildKind := 3;
-	                END_IF;
-	            END_IF;
+{{template "ab_bereit_start" .}}	            END_IF;
 
 	        4:  // senden: publish bleibt TRUE bis done, dann mindestens einen Zyklus FALSE
-	            IF NOT #libUp THEN
-	                #pubReq := FALSE;
-	                #busy := FALSE;
-	                #connected := FALSE;
-	                #evStatus := 16#8002;
-	                #evText := 'Sendefehler (Verbindung unterbrochen)';
-	                #state := 1;
-	            ELSIF NOT #pubReq THEN
+	            IF NOT #pubReq THEN
 	                // publish war einen Zyklus FALSE: nächsten Teil bauen
 	                #buildKind := 2;
 	            ELSIF #instClient.done THEN
 	                #pubReq := FALSE;   // zurücknehmen, sonst bleibt done stehen
-	                IF #sendKind = 2 THEN
-	                    IF #part < {{.Parts}} AND #enable THEN
-	                        #part := #part + 1;   // wird im nächsten Zyklus gebaut
-	                    ELSE
-	                        IF #part >= {{.Parts}} THEN
-	                            #done := TRUE;
-	                            #sentCount := #sentCount + 1;
-	                        END_IF;
-	                        #busy := FALSE;
-	                        #state := 3;
-	                    END_IF;
-	                ELSE  // Heartbeat
-	                    #heartbeatCount := #heartbeatCount + 1;
-	                    #hbDue := FALSE;
-	                    #state := 3;
-	                END_IF;
+	                CASE #sendKind OF
+{{template "ab_gesendet" .}}	                END_CASE;
 	            ELSIF #tmrSend.Q THEN
 	                #failCode := 16#8002;
 	                #failText := 'Sendefehler (keine Antwort)';
@@ -321,15 +265,7 @@ BEGIN
 	        #pubReq := TRUE;   // steigende Flanke an publish im nächsten Aufruf
 	        #state := 4;
 	    ELSE
-	        // Teil oder Heartbeat passt nicht: diesen Trigger verwerfen
-	        #evStatus := 16#8008;
-	        #evText := 'Nachricht zu lang';
-	        IF #buildKind = 3 THEN
-	            #hbDue := FALSE;
-	        END_IF;
-	        #busy := FALSE;
-	        #state := 3;
-	    END_IF;
+{{template "ab_zu_lang" .}}	    END_IF;
 	END_IF;
 
 	// ---------------------------------------------------------------- Fehler: Bibliothek aus, 5 s warten, neu verbinden
@@ -337,27 +273,12 @@ BEGIN
 	    #failed := TRUE;
 	    #lastErr := #failCode;
 	    #lastText := #failText;
-	    #connected := FALSE;
-	    #busy := FALSE;
-	    #trigPending := FALSE;
-	    #hbDue := FALSE;
-	    #pubReq := FALSE;
+{{template "ab_verbindung_weg" .}}	    #pubReq := FALSE;
 	    #libEnable := FALSE;
 	    #state := 6;
 	END_IF;
 
-	// ---------------------------------------------------------------- Ausgänge
-	IF #evStatus <> 16#0000 THEN
-	    #error := TRUE;
-	    #status := #evStatus;
-	    #statusText := #evText;
-	ELSIF #failed THEN
-	    #error := TRUE;
-	    #status := #lastErr;
-	    #statusText := #lastText;
-	ELSE
-	    CASE #state OF
-	        1:
+{{template "ab_ausgaenge_kopf" .}}	        1:
 	            IF #libStatus = 16#7003 THEN
 	                #status := 16#7002;
 	                #statusText := 'warte auf Broker';
@@ -438,7 +359,9 @@ SO GEHT'S
   8. hwId: Hardware-Kennung der PROFINET-Schnittstelle (Gerätekonfiguration → Schnittstelle →
      Eigenschaften → Hardware-Kennung; meist 64). connId muss in der Steuerung eindeutig sein.
   9. Übersetzen, laden. Im PDH an der MQTT-Verbindung prüfen, ob Werte ankommen.
-  S7-1500 ab Firmware 2.0, S7-1200 ab Firmware 4.4 (Hostname und TLS mit LMQTT).
+  S7-1200: erst ab Firmware 4.2 (die Hilfsbausteine nutzen Array[*]). Laut der Beschreibung
+  V3.1 (04/2024) braucht LMQTT für Hostname und TLS eine S7-1200 ab Firmware 4.4 bzw. eine
+  S7-1500 ab Firmware 2.0.
   LReal-Werte: außerhalb von etwa 1E-8 bis 1E36 kann die 15. Stelle vom genauen Wert
   abweichen (der Wert bleibt bis auf etwa 1E-15 gleich).
 
@@ -454,7 +377,8 @@ Vor dem Einsatz mit der Doku der eingesetzten LMQTT-Version abgleichen: Der Baus
               publishMsgPayload, publishMsgLen, retain, receivedTopic, receivedMsgPayload,
               receivedMsgDataLen, receivedMsgStatus
   Ausgänge:   done, error, status
-  Status:     16#7003 TCP verbunden, 16#7004 MQTT verbunden, 16#9000 Verbindung unterbrochen
+  Status der Bibliothek (instClient.status, nicht der Ausgang status dieses Bausteins):
+              16#7003 TCP verbunden, 16#7004 MQTT verbunden, 16#9000 Verbindung unterbrochen
   Texte:      clientIdentifier, username, password, willTopic, mqttTopic als WString
 
 ABLAUF

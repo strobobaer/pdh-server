@@ -94,13 +94,7 @@ VERSION : 0.1
 
 
 BEGIN
-	// ---------------------------------------------------------------- Zyklusanfang
-	#done := FALSE;
-	#error := FALSE;
-	#evStatus := 16#0000;
-	#failCode := 16#0000;
-	#buildKind := 0;
-
+{{template "ab_anfang" .}}
 	// Zeitglieder jeden Zyklus aufrufen, dann laufen sie beim Zustandswechsel neu an.
 	// PINGREQ nach keepAlive/2 ohne Senden, ohne PINGRESP binnen keepAlive neu verbinden.
 	#tPing := DINT_TO_TIME(UINT_TO_DINT({{.KonfigName}}.keepAlive) * 500);
@@ -112,24 +106,8 @@ BEGIN
 	#tmrRetry(IN := (#state = 6), PT := T#5s);
 	#tmrPing(IN := (#state = 3 AND NOT #pingOut AND {{.KonfigName}}.keepAlive > 0), PT := #tPing);
 	#tmrPong(IN := (#pingOut AND #tcpUp), PT := #tPong);
-	#tmrHb(IN := (#connected AND #heartbeatInterval > T#0s AND NOT #hbDue), PT := #heartbeatInterval);
-	IF #tmrHb.Q THEN
-	    #hbDue := TRUE;
-	END_IF;
-
-	// ---------------------------------------------------------------- Trigger
-	#trigEdge(CLK := #trigger);
-	IF #trigEdge.Q THEN
-	    IF #connected AND #enable THEN
-	        // wird in "bereit" gestartet; während busy bleibt genau eine Wiederholung gemerkt
-	        #trigPending := TRUE;
-	    ELSE
-	        // nicht verbunden: nichts puffern
-	        #evStatus := 16#8007;
-	        #evText := 'nicht verbunden beim Trigger';
-	    END_IF;
-	END_IF;
-
+{{template "ab_hb_timer" .}}
+{{template "ab_trigger" .}}
 	// ---------------------------------------------------------------- Empfangen (CONNACK, PINGRESP)
 	IF #state = 0 OR #state = 5 OR #state = 6 THEN
 	    // ohne Verbindung: Kommunikationsbausteine zu Ende laufen lassen
@@ -299,28 +277,7 @@ BEGIN
 	        3:  // bereit
 	            IF NOT #enable THEN
 	                #buildKind := 5;   // DISCONNECT
-	            ELSIF #trigPending THEN
-	                #trigPending := FALSE;
-	                #rc := RD_SYS_T(OUT => #ts);
-	                IF #rc <> 0 THEN
-	                    #evStatus := 16#8009;
-	                    #evText := 'Uhrzeit nicht lesbar';
-	                ELSE
-	                    #snap := #daten;   // alle Teile aus demselben Abbild
-	                    #part := 1;
-	                    #busy := TRUE;
-	                    #buildKind := 2;
-	                END_IF;
-	            ELSIF #hbDue THEN
-	                #rc := RD_SYS_T(OUT => #hbTs);
-	                IF #rc <> 0 THEN
-	                    #hbDue := FALSE;
-	                    #evStatus := 16#8009;
-	                    #evText := 'Uhrzeit nicht lesbar';
-	                ELSE
-	                    #buildKind := 3;
-	                END_IF;
-	            ELSIF #tmrPing.Q THEN
+{{template "ab_bereit_start" .}}	            ELSIF #tmrPing.Q THEN
 	                // PINGREQ: pingOut schon hier setzen – die PINGRESP kann im selben Zyklus
 	                // wie das DONE von TSEND ankommen und darf das Kennzeichen dann nicht verpassen
 	                #buildKind := 4;
@@ -342,23 +299,7 @@ BEGIN
 	                CASE #sendKind OF
 	                    1:  // CONNECT
 	                        #state := 2;
-	                    2:  // Teil
-	                        IF #part < {{.Parts}} AND #enable THEN
-	                            #part := #part + 1;
-	                            #buildKind := 2;
-	                        ELSE
-	                            IF #part >= {{.Parts}} THEN
-	                                #done := TRUE;
-	                                #sentCount := #sentCount + 1;
-	                            END_IF;
-	                            #busy := FALSE;
-	                            #state := 3;
-	                        END_IF;
-	                    3:  // Heartbeat
-	                        #heartbeatCount := #heartbeatCount + 1;
-	                        #hbDue := FALSE;
-	                        #state := 3;
-	                    4:  // PINGREQ (pingOut ist schon beim Einreihen gesetzt)
+{{template "ab_gesendet" .}}	                    4:  // PINGREQ (pingOut ist schon beim Einreihen gesetzt)
 	                        #state := 3;
 	                    ELSE  // DISCONNECT
 	                        #state := 5;
@@ -520,15 +461,7 @@ BEGIN
 	        #failCode := 16#8008;
 	        #failText := 'Nachricht zu lang';
 	    ELSE
-	        // Teil oder Heartbeat passt nicht: diesen Trigger verwerfen
-	        #evStatus := 16#8008;
-	        #evText := 'Nachricht zu lang';
-	        IF #buildKind = 3 THEN
-	            #hbDue := FALSE;
-	        END_IF;
-	        #busy := FALSE;
-	        #state := 3;
-	    END_IF;
+{{template "ab_zu_lang" .}}	    END_IF;
 	END_IF;
 
 	// ---------------------------------------------------------------- Fehler: trennen, 5 s warten, neu verbinden
@@ -536,27 +469,12 @@ BEGIN
 	    #failed := TRUE;
 	    #lastErr := #failCode;
 	    #lastText := #failText;
-	    #connected := FALSE;
-	    #busy := FALSE;
-	    #trigPending := FALSE;
-	    #hbDue := FALSE;
-	    #pingOut := FALSE;
+{{template "ab_verbindung_weg" .}}	    #pingOut := FALSE;
 	    #state := 5;
 	    #discStart := TRUE;
 	END_IF;
 
-	// ---------------------------------------------------------------- Ausgänge
-	IF #evStatus <> 16#0000 THEN
-	    #error := TRUE;
-	    #status := #evStatus;
-	    #statusText := #evText;
-	ELSIF #failed THEN
-	    #error := TRUE;
-	    #status := #lastErr;
-	    #statusText := #lastText;
-	ELSE
-	    CASE #state OF
-	        1, 6:
+{{template "ab_ausgaenge_kopf" .}}	        1, 6:
 	            #status := 16#7001;
 	            #statusText := 'verbinde';
 	        2:

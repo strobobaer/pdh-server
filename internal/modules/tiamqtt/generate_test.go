@@ -840,6 +840,7 @@ func TestLMQTTReadmeLink(t *testing.T) {
 		"16#7000", "16#7003", "16#8005", "16#8007", "16#8008", "16#8009", "16#82xx",
 		"values.Motor.Drehzahl", "values.Feld[0]", "Teil 1", "Teil 2",
 		"sps/linie1/Daten/heartbeat", PasswordPlaceholder, "useTls", "mqtt.werk.local:8883",
+		"erst ab Firmware 4.2", "Status der Bibliothek (instClient.status, nicht der Ausgang status",
 	} {
 		if !strings.Contains(readme, want) {
 			t.Errorf("LIESMICH ohne %q", want)
@@ -899,12 +900,11 @@ func TestLMQTTNoRawUserText(t *testing.T) {
 	o.IncludePassword = true
 	o.ClientID = `sps"1`
 	o.Username = "Bediener ä\t"
-	o.BrokerHost = "broker'; END"
 	o.GeneratedBy = "Max\r\nEND_FUNCTION_BLOCK"
 	files := generateDaten(t, o)
 	konfig := fileByName(t, files, "2_PDH_Daten_Konfig.db")
 	for _, masked := range []string{"WSTRING#'a$'; END_FUNCTION_BLOCK'", "WSTRING#'x$'y$$z'", `WSTRING#'sps"1'`,
-		"WSTRING#'Bediener ä$0009'", "WSTRING#'a$'; END_FUNCTION_BLOCK/heartbeat'", "'broker$'; END'"} {
+		"WSTRING#'Bediener ä$0009'", "WSTRING#'a$'; END_FUNCTION_BLOCK/heartbeat'"} {
 		if !strings.Contains(konfig, masked) {
 			t.Errorf("%s fehlt", masked)
 		}
@@ -913,7 +913,7 @@ func TestLMQTTNoRawUserText(t *testing.T) {
 		if f.Name == "LIESMICH.txt" {
 			continue
 		}
-		for _, raw := range []string{"a';", "x'y", "y$z", "broker'"} {
+		for _, raw := range []string{"a';", "x'y", "y$z"} {
 			if strings.Contains(string(f.Content), raw) {
 				t.Errorf("%s enthält %q unmaskiert", f.Name, raw)
 			}
@@ -944,6 +944,56 @@ func TestLMQTTPasswordPlaceholder(t *testing.T) {
 	}
 	if !strings.Contains(fileByName(t, files, "2_PDH_Daten_Konfig.db"), "password : WString[254] := WSTRING#'"+PasswordPlaceholder+"';") {
 		t.Error("Platzhalter fehlt")
+	}
+}
+
+func TestLMQTTBrokerHost(t *testing.T) {
+	db := loadDaten(t)
+	l, err := Plan(db, FamilyS71500, DefaultLimit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, h := range []string{"mqtt.werk.local", "broker", "mqtt-1.example.com.", "10.0.0.5", "fd00::1", "MQTT01"} {
+		o := lmqttOptions()
+		o.BrokerHost = h
+		if _, err := Generate(db, l, o); err != nil {
+			t.Errorf("%q abgewiesen: %v", h, err)
+		}
+	}
+	for _, h := range []string{"broker'; END", "mqtt werk", "a..b", "-mqtt", "mqtt-.local", "mqtt\tx", "mqtt_1.local", "mqtt.local/x", "ä.local"} {
+		o := lmqttOptions()
+		o.BrokerHost = h
+		if _, err := Generate(db, l, o); err == nil || err.Error() != msgBrokerHost {
+			t.Errorf("%q: Fehler %v, erwartet %q", h, err, msgBrokerHost)
+		}
+	}
+}
+
+// Verbindungsverlust in "bereit" oder "senden": gemerkter Trigger und
+// Heartbeat verfallen wie beim Fehler; die Zweige 3 und 4 wechseln nicht selbst nach 1.
+func TestLMQTTConnectionLossResets(t *testing.T) {
+	scl := fileByName(t, generateDaten(t, lmqttOptions()), "3_PDH_MQTT_Daten.scl")
+	m := regexp.MustCompile(`(?s)IF \(#state = 3 OR #state = 4\) AND NOT #libUp AND #failCode = 16#0000 THEN(.*?)\r\n\tEND_IF;`).FindStringSubmatch(scl)
+	if m == nil {
+		t.Fatal("Abschnitt Verbindungsverlust fehlt")
+	}
+	for _, want := range []string{"#trigPending := FALSE;", "#hbDue := FALSE;", "#busy := FALSE;", "#connected := FALSE;", "#pubReq := FALSE;", "#state := 1;", "16#8002"} {
+		if !strings.Contains(m[1], want) {
+			t.Errorf("Verbindungsverlust ohne %q", want)
+		}
+	}
+	// derselbe Rücksetz-Block wie im Fehlerzweig
+	fail := regexp.MustCompile(`(?s)IF #failCode <> 16#0000 THEN(.*?)\r\n\tEND_IF;`).FindStringSubmatch(scl)
+	reset := "    #connected := FALSE;\r\n\t    #busy := FALSE;\r\n\t    #trigPending := FALSE;\r\n\t    #hbDue := FALSE;\r\n"
+	if fail == nil || !strings.Contains(fail[1], reset) || !strings.Contains(m[1], reset) {
+		t.Error("Verbindungsverlust und Fehler setzen nicht denselben Block zurück")
+	}
+	branches := regexp.MustCompile(`(?s)\r\n\t        3:  // bereit(.*?)\r\n\t        6:  //`).FindStringSubmatch(scl)
+	if branches == nil {
+		t.Fatal("Zweige 3 und 4 nicht gefunden")
+	}
+	if strings.Contains(branches[1], "#state := 1;") || strings.Contains(branches[1], "NOT #libUp") {
+		t.Error("Zweig 3 oder 4 wechselt selbst nach 1 (ohne Rücksetzen)")
 	}
 }
 

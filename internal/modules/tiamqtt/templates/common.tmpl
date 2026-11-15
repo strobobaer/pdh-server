@@ -616,6 +616,106 @@ END_FUNCTION
 	            "PDH_J_Raw"(s := '}', buf := #pl, pos := #pos, ovf := #ovf);
 {{end}}
 
+{{- /* Gemeinsame Abläufe beider FB-Varianten (Zyklusanfang, Heartbeat-Zeit, Trigger,
+Start in "bereit", gesendeter Teil/Heartbeat, Überlauf, Verbindungsverlust, Ausgänge). */ -}}
+{{define "ab_anfang"}}	// ---------------------------------------------------------------- Zyklusanfang
+	#done := FALSE;
+	#error := FALSE;
+	#evStatus := 16#0000;
+	#failCode := 16#0000;
+	#buildKind := 0;
+{{end}}
+
+{{define "ab_hb_timer"}}	#tmrHb(IN := (#connected AND #heartbeatInterval > T#0s AND NOT #hbDue), PT := #heartbeatInterval);
+	IF #tmrHb.Q THEN
+	    #hbDue := TRUE;
+	END_IF;
+{{end}}
+
+{{define "ab_trigger"}}	// ---------------------------------------------------------------- Trigger
+	#trigEdge(CLK := #trigger);
+	IF #trigEdge.Q THEN
+	    IF #connected AND #enable THEN
+	        // wird in "bereit" gestartet; während busy bleibt genau eine Wiederholung gemerkt
+	        #trigPending := TRUE;
+	    ELSE
+	        // nicht verbunden: nichts puffern
+	        #evStatus := 16#8007;
+	        #evText := 'nicht verbunden beim Trigger';
+	    END_IF;
+	END_IF;
+{{end}}
+
+{{define "ab_bereit_start"}}	            ELSIF #trigPending THEN
+	                #trigPending := FALSE;
+	                #rc := RD_SYS_T(OUT => #ts);
+	                IF #rc <> 0 THEN
+	                    #evStatus := 16#8009;
+	                    #evText := 'Uhrzeit nicht lesbar';
+	                ELSE
+	                    #snap := #daten;   // alle Teile aus demselben Abbild
+	                    #part := 1;
+	                    #busy := TRUE;
+	                    #buildKind := 2;
+	                END_IF;
+	            ELSIF #hbDue THEN
+	                #rc := RD_SYS_T(OUT => #hbTs);
+	                IF #rc <> 0 THEN
+	                    #hbDue := FALSE;
+	                    #evStatus := 16#8009;
+	                    #evText := 'Uhrzeit nicht lesbar';
+	                ELSE
+	                    #buildKind := 3;
+	                END_IF;
+{{end}}
+
+{{define "ab_gesendet"}}	                    2:  // Teil
+	                        IF #part < {{.Parts}} AND #enable THEN
+	                            #part := #part + 1;{{if eq .O.Variant "standalone"}}
+	                            #buildKind := 2;{{else}}   // im nächsten Zyklus bauen, publish ist dann einen Zyklus FALSE{{end}}
+	                        ELSE
+	                            IF #part >= {{.Parts}} THEN
+	                                #done := TRUE;
+	                                #sentCount := #sentCount + 1;
+	                            END_IF;
+	                            #busy := FALSE;
+	                            #state := 3;
+	                        END_IF;
+	                    3:  // Heartbeat
+	                        #heartbeatCount := #heartbeatCount + 1;
+	                        #hbDue := FALSE;
+	                        #state := 3;
+{{end}}
+
+{{define "ab_zu_lang"}}	        // Teil oder Heartbeat passt nicht: diesen Trigger verwerfen
+	        #evStatus := 16#8008;
+	        #evText := 'Nachricht zu lang';
+	        IF #buildKind = 3 THEN
+	            #hbDue := FALSE;
+	        END_IF;
+	        #busy := FALSE;
+	        #state := 3;
+{{end}}
+
+{{define "ab_verbindung_weg"}}	    #connected := FALSE;
+	    #busy := FALSE;
+	    #trigPending := FALSE;
+	    #hbDue := FALSE;
+{{end}}
+
+{{define "ab_ausgaenge_kopf"}}	// ---------------------------------------------------------------- Ausgänge
+	IF #evStatus <> 16#0000 THEN
+	    #error := TRUE;
+	    #status := #evStatus;
+	    #statusText := #evText;
+	ELSIF #failed THEN
+	    #error := TRUE;
+	    #status := #lastErr;
+	    #statusText := #lastText;
+	ELSE
+	    CASE #state OF
+{{end}}
+
 {{define "konfig" -}}
 DATA_BLOCK {{.KonfigName}}
 { S7_Optimized_Access := 'TRUE' }

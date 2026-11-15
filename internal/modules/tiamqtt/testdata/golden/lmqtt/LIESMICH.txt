@@ -40,7 +40,9 @@ SO GEHT'S
   8. hwId: Hardware-Kennung der PROFINET-Schnittstelle (Gerätekonfiguration → Schnittstelle →
      Eigenschaften → Hardware-Kennung; meist 64). connId muss in der Steuerung eindeutig sein.
   9. Übersetzen, laden. Im PDH an der MQTT-Verbindung prüfen, ob Werte ankommen.
-  S7-1500 ab Firmware 2.0, S7-1200 ab Firmware 4.4 (Hostname und TLS mit LMQTT).
+  S7-1200: erst ab Firmware 4.2 (die Hilfsbausteine nutzen Array[*]). Laut der Beschreibung
+  V3.1 (04/2024) braucht LMQTT für Hostname und TLS eine S7-1200 ab Firmware 4.4 bzw. eine
+  S7-1500 ab Firmware 2.0.
   LReal-Werte: außerhalb von etwa 1E-8 bis 1E36 kann die 15. Stelle vom genauen Wert
   abweichen (der Wert bleibt bis auf etwa 1E-15 gleich).
 
@@ -56,7 +58,8 @@ Vor dem Einsatz mit der Doku der eingesetzten LMQTT-Version abgleichen: Der Baus
               publishMsgPayload, publishMsgLen, retain, receivedTopic, receivedMsgPayload,
               receivedMsgDataLen, receivedMsgStatus
   Ausgänge:   done, error, status
-  Status:     16#7003 TCP verbunden, 16#7004 MQTT verbunden, 16#9000 Verbindung unterbrochen
+  Status der Bibliothek (instClient.status, nicht der Ausgang status dieses Bausteins):
+              16#7003 TCP verbunden, 16#7004 MQTT verbunden, 16#9000 Verbindung unterbrochen
   Texte:      clientIdentifier, username, password, willTopic, mqttTopic als WString
 
 ABLAUF

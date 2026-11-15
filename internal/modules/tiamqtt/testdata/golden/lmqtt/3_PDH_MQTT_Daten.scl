@@ -569,8 +569,8 @@ VERSION : 0.1
 //  Parameter enable, publish, subscribe, unsubscribe, connParam, clientIdentifier, username,
 //  password, willTopic, willMsgPayload, willMsgLen, qos, mqttTopic, publishMsgPayload,
 //  publishMsgLen, retain, receivedTopic, receivedMsgPayload, receivedMsgDataLen,
-//  receivedMsgStatus; Ausgänge done, error, status; Status 16#7003 (TCP verbunden),
-//  16#7004 (MQTT verbunden), 16#9000 (Verbindung unterbrochen).
+//  receivedMsgStatus; Ausgänge done, error, status; Bibliotheksstatus (instClient.status)
+//  16#7003 TCP verbunden, 16#7004 MQTT verbunden, 16#9000 Verbindung unterbrochen.
    VAR_INPUT
       enable : Bool;   // TRUE = verbinden und bereit halten
       trigger : Bool;   // steigende Flanke = Werte senden
@@ -747,6 +747,22 @@ BEGIN
 	    #libUp := FALSE;   // unterbrochen oder noch nicht angemeldet
 	END_IF;
 
+	// ---------------------------------------------------------------- Verbindung unterbrochen
+	// Die Bibliothek verbindet selbst neu. Wie bei einem Fehler wird nichts Gemerktes
+	// (Trigger, Heartbeat) über die Unterbrechung mitgenommen.
+	IF (#state = 3 OR #state = 4) AND NOT #libUp AND #failCode = 16#0000 THEN
+	    IF #state = 4 THEN
+	        #evStatus := 16#8002;
+	        #evText := 'Sendefehler (Verbindung unterbrochen)';
+	    END_IF;
+	    #connected := FALSE;
+	    #busy := FALSE;
+	    #trigPending := FALSE;
+	    #hbDue := FALSE;
+	    #pubReq := FALSE;
+	    #state := 1;
+	END_IF;
+
 	// ---------------------------------------------------------------- Ablauf
 	IF #failCode = 16#0000 THEN
 	    CASE #state OF
@@ -780,10 +796,6 @@ BEGIN
 	                #libEnable := FALSE;
 	                #connected := FALSE;
 	                #state := 6;
-	            ELSIF NOT #libUp THEN
-	                // Verbindung unterbrochen: die Bibliothek verbindet selbst neu
-	                #connected := FALSE;
-	                #state := 1;
 	            ELSIF #trigPending THEN
 	                #trigPending := FALSE;
 	                #rc := RD_SYS_T(OUT => #ts);
@@ -808,34 +820,28 @@ BEGIN
 	            END_IF;
 
 	        4:  // senden: publish bleibt TRUE bis done, dann mindestens einen Zyklus FALSE
-	            IF NOT #libUp THEN
-	                #pubReq := FALSE;
-	                #busy := FALSE;
-	                #connected := FALSE;
-	                #evStatus := 16#8002;
-	                #evText := 'Sendefehler (Verbindung unterbrochen)';
-	                #state := 1;
-	            ELSIF NOT #pubReq THEN
+	            IF NOT #pubReq THEN
 	                // publish war einen Zyklus FALSE: nächsten Teil bauen
 	                #buildKind := 2;
 	            ELSIF #instClient.done THEN
 	                #pubReq := FALSE;   // zurücknehmen, sonst bleibt done stehen
-	                IF #sendKind = 2 THEN
-	                    IF #part < 2 AND #enable THEN
-	                        #part := #part + 1;   // wird im nächsten Zyklus gebaut
-	                    ELSE
-	                        IF #part >= 2 THEN
-	                            #done := TRUE;
-	                            #sentCount := #sentCount + 1;
+	                CASE #sendKind OF
+	                    2:  // Teil
+	                        IF #part < 2 AND #enable THEN
+	                            #part := #part + 1;   // im nächsten Zyklus bauen, publish ist dann einen Zyklus FALSE
+	                        ELSE
+	                            IF #part >= 2 THEN
+	                                #done := TRUE;
+	                                #sentCount := #sentCount + 1;
+	                            END_IF;
+	                            #busy := FALSE;
+	                            #state := 3;
 	                        END_IF;
-	                        #busy := FALSE;
+	                    3:  // Heartbeat
+	                        #heartbeatCount := #heartbeatCount + 1;
+	                        #hbDue := FALSE;
 	                        #state := 3;
-	                    END_IF;
-	                ELSE  // Heartbeat
-	                    #heartbeatCount := #heartbeatCount + 1;
-	                    #hbDue := FALSE;
-	                    #state := 3;
-	                END_IF;
+	                END_CASE;
 	            ELSIF #tmrSend.Q THEN
 	                #failCode := 16#8002;
 	                #failText := 'Sendefehler (keine Antwort)';

@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"regexp"
 	"strconv"
 	"strings"
 	"text/template"
@@ -73,6 +74,7 @@ const (
 	msgConnID       = "Die Verbindungsnummer muss zwischen 1 und 4095 liegen"
 	msgLayout       = "Die Aufteilung passt nicht zum Datenbaustein"
 	msgClientIDLong = "Client-ID ist zu lang (höchstens 254 Zeichen)"
+	msgBrokerHost   = "Broker-Adresse ist ungültig"
 )
 
 // LMQTTInfoURL ist der Beitrag zur Siemens-Bibliothek LMQTT (vor dem Einbau
@@ -138,6 +140,9 @@ func (o Options) normalize() (Options, error) {
 	if o.BrokerHost == "" || len(o.BrokerHost) > maxConfigBytes {
 		return o, errors.New("Bitte die Adresse des Brokers angeben (höchstens 254 Zeichen)")
 	}
+	if o.Variant == VariantLMQTT && !validBrokerHost(o.BrokerHost) {
+		return o, errors.New(msgBrokerHost)
+	}
 	if o.BrokerPort == 0 {
 		o.BrokerPort = 1883
 		if o.UseTLS {
@@ -191,6 +196,23 @@ func (o Options) normalize() (Options, error) {
 		o.GeneratedAt = time.Now()
 	}
 	return o, nil
+}
+
+// hostLabel ist ein Teil eines Hostnamens: Buchstaben, Ziffern, - (nicht am Rand).
+var hostLabel = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?$`)
+
+// validBrokerHost lässt eine IPv4-/IPv6-Adresse oder einen Hostnamen aus
+// Buchstaben, Ziffern, - und . zu (ein Punkt am Ende ist erlaubt).
+func validBrokerHost(h string) bool {
+	if net.ParseIP(h) != nil {
+		return true
+	}
+	for _, label := range strings.Split(strings.TrimSuffix(h, "."), ".") {
+		if !hostLabel.MatchString(label) {
+			return false
+		}
+	}
+	return true
 }
 
 // genData ist der Inhalt für die Vorlagen.
