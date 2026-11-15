@@ -61,6 +61,7 @@ type Filter struct {
 	Unit, Kind              string
 	ConnectionID, Query     string
 	Stale                   bool   // LastAt leer oder älter als StaleAfter
+	Alarm                   bool   // mindestens ein Schwellwert im Alarm
 	Sort                    string // key|name|infra|unit|kind|last
 	Desc                    bool
 	AllowedIDs              map[string]bool // nil = alle

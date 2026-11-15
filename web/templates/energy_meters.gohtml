@@ -65,6 +65,7 @@
   </div>
   <div class="em-filter-foot">
     <label class="em-check"><input type="checkbox" name="stale" value="1"{{if .Filter.Stale}} checked{{end}}> Nur ohne aktuellen Wert (älter als {{.Set.StaleMinutes}} Minuten)</label>
+    <label class="em-check"><input type="checkbox" name="alarm" value="1"{{if .Filter.Alarm}} checked{{end}}> Nur mit offenem Alarm</label>
     <span class="em-spacer"></span>
     {{if .FilterOn}}<a class="btn" href="/energy/meters">Zurücksetzen</a>{{end}}
     <button type="submit" class="btn btn-primary"><i class="ti ti-filter" aria-hidden="true"></i> Filtern</button>
@@ -124,6 +125,34 @@
   .em-table tr.em-row td{display:flex;gap:10px;justify-content:space-between;border:0;padding:3px 0;text-align:right}
   .em-table tr.em-row td::before{content:attr(data-label);color:var(--muted);font-size:11px;text-align:left}
   .em-table tr.em-row td.em-actions{justify-content:flex-end}
+}
+.em-thr-btn:has(.has-alarm){color:var(--red);border-color:var(--red)}
+.em-thr-box{background:var(--bg2);border-radius:var(--radius,6px)}
+.et-box{padding:10px 12px;text-align:left}
+.et-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px}
+.et-spacer{flex:1}
+.et-muted{color:var(--muted);font-size:12px}
+.et-scroll{overflow-x:auto}
+.et-table{width:100%;border-collapse:collapse;font-size:13px}
+.et-table th{text-align:left;font-weight:600;color:var(--muted);font-size:12px;padding:4px 8px;border-bottom:1px solid var(--border)}
+.et-table td{padding:6px 8px;border-bottom:1px solid var(--border);vertical-align:top}
+.et-row.is-off td{color:var(--muted)}
+.et-num{white-space:nowrap;font-variant-numeric:tabular-nums}
+.et-sub{display:block;font-size:11px;color:var(--muted)}
+.et-ticket{margin-left:6px;font-size:12px;color:var(--accent);text-decoration:none;white-space:nowrap}
+.et-ticket:hover{text-decoration:underline}
+.et-actions{white-space:nowrap;text-align:right}
+.et-empty{color:var(--muted);font-size:13px;margin:6px 0}
+.et-form{margin-top:10px;padding:10px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius,6px)}
+.et-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}
+.et-hint{font-size:12px;color:var(--muted);margin:8px 0}
+.et-check{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--text)}
+.et-buttons{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:8px}
+@media (max-width:760px){
+  .et-table thead{position:absolute;left:-9999px}
+  .et-table tr.et-row{display:block;padding:6px 0;border-bottom:1px solid var(--border)}
+  .et-table tr.et-row td{display:flex;gap:10px;justify-content:space-between;border:0;padding:2px 0;text-align:right}
+  .et-table tr.et-row td::before{content:attr(data-label);color:var(--muted);font-size:11px;text-align:left}
 }
 </style>
 
@@ -209,6 +238,11 @@
     }
   }
   window.emDelete = emDeleteImpl;
+  window.emThr = function(btn){
+    const row = document.getElementById('em-thr-row-' + btn.closest('tr').dataset.id);
+    row.hidden = !row.hidden;
+    btn.setAttribute('aria-expanded', row.hidden ? 'false' : 'true');
+  };
   if(!edit) return;
   window.emSave = async function(){
     const err = $('em-error');

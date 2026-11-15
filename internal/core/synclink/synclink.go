@@ -1,6 +1,11 @@
 package synclink
 
-import "context"
+import (
+	"context"
+	"strings"
+
+	"github.com/rs/zerolog/log"
+)
 
 // Linker verbindet Stoerungen, Tickets und Aufgaben untereinander, ohne
 // dass die Module sich gegenseitig importieren muessen. Jedes Modul
@@ -121,7 +126,7 @@ func (l *Linker) OnFaultStatusChanged(ctx context.Context, faultID, status, user
 	}
 	if l.faultGetLinkedTicketID != nil && l.ticketSetStatusDirect != nil {
 		if id, err := l.faultGetLinkedTicketID(ctx, faultID); err == nil && id != "" {
-			_ = l.ticketSetStatusDirect(ctx, id, mapped, userID)
+			l.setTicketStatus(ctx, id, mapped, userID)
 		}
 	}
 	if l.faultGetLinkedTaskID != nil && l.taskSetStatusDirect != nil {
@@ -189,7 +194,7 @@ func (l *Linker) OnTaskStatusChanged(ctx context.Context, taskID, status, userID
 	if l.taskGetLinkedTicketID != nil && l.ticketSetStatusDirect != nil {
 		if mapped := passthroughStatus(status); mapped != "" {
 			if id, err := l.taskGetLinkedTicketID(ctx, taskID); err == nil && id != "" {
-				_ = l.ticketSetStatusDirect(ctx, id, mapped, userID)
+				l.setTicketStatus(ctx, id, mapped, userID)
 			}
 		}
 	}
@@ -205,5 +210,15 @@ func (l *Linker) OnTaskActionAdded(ctx context.Context, taskID, description, use
 		if id, err := l.taskGetLinkedTicketID(ctx, taskID); err == nil && id != "" {
 			_ = l.ticketAddActionDirect(ctx, id, description, userID)
 		}
+	}
+}
+
+// setTicketStatus gibt den Status an das verknüpfte Ticket weiter. Verweigert das
+// Ticket den Wechsel, weil bei einem Alarm-Ticket die Ursache fehlt, wird das
+// protokolliert, statt es stillschweigend zu verwerfen.
+func (l *Linker) setTicketStatus(ctx context.Context, ticketID, status, userID string) {
+	err := l.ticketSetStatusDirect(ctx, ticketID, status, userID)
+	if err != nil && strings.Contains(err.Error(), "Feld Ursache") {
+		log.Info().Err(err).Str("ticket", ticketID).Str("status", status).Msg("synclink: Ticket-Status nicht übernommen, Ursache fehlt")
 	}
 }

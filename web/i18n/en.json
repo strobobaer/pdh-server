@@ -398,6 +398,8 @@
  "Unter Mindestbestand": "Below minimum stock",
  "Ursache": "Cause",
  "Ursache (optional)": "Cause (optional)",
+ "Ursache (Pflicht bei Alarm-Tickets)": "Cause (required for alarm tickets)",
+ "Bitte beschreiben, warum der Alarm kam (Feld Ursache).": "Please describe why the alarm occurred (Cause field).",
  "Verantwortlich": "Responsible",
  "Verantwortlich (optional)": "Responsible (optional)",
  "Verbesserungsvorschläge, die auf eine Entscheidung warten, davon über der Rückmeldefrist": "Improvement suggestions awaiting a decision, of which past the feedback deadline",

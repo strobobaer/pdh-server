@@ -10,6 +10,23 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.80.15] – 2026-11-15
+
+### Neu
+
+- Energiedaten: An jeder Messstelle lassen sich **Schwellwerte** festlegen (über oder unter einem Grenzwert, mit Zeitraum, Rückschaltzeit, Tag, Priorität und Verantwortlichem). Das PDH wertet je Messart aus (Mittelwert, Menge, Summe) und prüft nur vollständige Zeiträume.
+- Bei einer Überschreitung entsteht **ein Alarm-Ticket** mit Tag, Anlage und Priorität; die Verantwortlichen bekommen eine Nachricht im Chat und per Mail. Der Alarm endet erst nach der Rückschaltzeit am Stück. Wird die Grenze bei offenem Ticket erneut überschritten, kommt ein Eintrag „Erneut überschritten …“ statt eines neuen Tickets.
+- Die Messstellen-Übersicht hat die Spalte **Schwellwerte** (Anzahl · Alarme) und den Filter „mit offenem Alarm“.
+
+### Behoben
+
+- Ticketlisten funktionieren auch bei Tickets ohne Beschreibung.
+
+### Sicherheit
+
+- Neues Recht **Schwellwerte pflegen** (`energy.thresholds`); alle Rollen mit „Messstellen pflegen“ haben es. Schwellwerte löschen darf nur der Bereichsadministrator.
+- Alarm-Tickets lassen sich auf keinem Weg lösen, schließen, archivieren oder verwerfen, ohne dass die Ursache beschrieben ist.
+
 ## [0.80.14] – 2026-11-15
 
 ### Behoben

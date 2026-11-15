@@ -122,6 +122,11 @@ func (s *Store) List(ctx context.Context, f Filter) ([]Meter, error) {
 	if f.Stale {
 		where = append(where, "(m.last_at IS NULL OR m.last_at < "+arg(s.now().Add(-s.settingsOrDefault(ctx).StaleAfter()))+")")
 	}
+	if f.Alarm {
+		where = append(where, `EXISTS (SELECT 1 FROM energy_thresholds t
+			JOIN energy_threshold_state st ON st.threshold_id = t.id AND st.state = 'alarm'
+			WHERE t.meter_id = m.id)`)
+	}
 	if f.AllowedIDs != nil {
 		ids := make([]string, 0, len(f.AllowedIDs))
 		for id, ok := range f.AllowedIDs {
