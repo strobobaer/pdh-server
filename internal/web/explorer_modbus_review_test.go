@@ -237,7 +237,9 @@ func TestModbusWatchOnlyOnChange(t *testing.T) {
 	s := startTestModbusServer(t)
 	s.Set(func(s *testModbusServer) { s.Holding[100] = 0x1234 })
 	oldD, oldA := explorerMaxDuration, modbusAliveEvery
-	explorerMaxDuration, modbusAliveEvery = 3500*time.Millisecond, time.Second
+	// Lebenszeichen-Abstand deutlich unter dem Takt (1 s): lastSent wird nach dem Lesen gesetzt
+	// (erstes Lesen samt Verbindungsaufbau), bei genau 1 s wäre „alive“ beim nächsten Takt Zufall.
+	explorerMaxDuration, modbusAliveEvery = 3500*time.Millisecond, 500*time.Millisecond
 	t.Cleanup(func() { explorerMaxDuration, modbusAliveEvery = oldD, oldA })
 	h := modbusTestHandler(s.Addr, map[string]bool{"import.execute": true})
 	var wg sync.WaitGroup
