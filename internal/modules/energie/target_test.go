@@ -24,6 +24,10 @@ func TestDirTargetAtomic(t *testing.T) {
 	tg := DirTarget{Dir: dir}
 	final := filepath.Join(dir, "x.csv")
 
+	// Die alte Datei liegt schon vor dem Beobachter da (sonst sähe er das Anlegen selbst).
+	if err := os.WriteFile(final, []byte("alt"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	// Während Put darf nie eine halbe x.csv existieren: Beobachter prüft laufend.
 	stop := make(chan struct{})
 	var wg sync.WaitGroup
@@ -51,9 +55,6 @@ func TestDirTargetAtomic(t *testing.T) {
 			}
 		}
 	}()
-	if err := os.WriteFile(final, []byte("alt"), 0o644); err != nil {
-		t.Fatal(err)
-	}
 	for i := 0; i < 20; i++ {
 		if err := tg.Put(context.Background(), "x.csv", []byte(content)); err != nil {
 			t.Fatal(err)

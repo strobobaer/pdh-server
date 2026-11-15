@@ -7,10 +7,12 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/rs/zerolog/log"
 )
 
@@ -64,8 +66,12 @@ type Exporter struct {
 	Store      *Store
 	Configs    func(ctx context.Context) ([]ExportConfig, error)
 	Skip       func() bool
-	Delay      time.Duration // Wartezeit nach Intervallende (2 min)
-	MaxCatchUp time.Duration // längstes Nachholen (7 × 24 h)
+	Delay       time.Duration // Wartezeit nach Intervallende (2 min)
+	MaxCatchUp  time.Duration // längstes Nachholen (7 × 24 h)
+	DeliverWait time.Duration // Warten auf einen anderen Lauf, der gerade zustellt (5 s)
+
+	mu      sync.Mutex
+	running map[string]bool // Verbindungen mit laufendem Exportlauf im Takt
 }
 
 func (e *Exporter) delay() time.Duration {
@@ -392,65 +398,112 @@ func (e *Exporter) block(ctx context.Context, c ExportConfig, meters []Meter, tm
 	return true, nil
 }
 
-// deliver stellt alle Dateien zu, deren Stand noch nicht zugestellt ist. Die
-// Zustellung ist je Verbindung durch eine Advisory-Sperre serialisiert: ein
-// zweiter Lauf wartet und sieht danach den neuen Zustellstand, so überschreibt
-// nie eine ältere Version eine neuere. Scheitert eine Datei, bleibt der Fehler
-// an ihr; der nächste Lauf legt nach.
-func (e *Exporter) deliver(ctx context.Context, c ExportConfig, res *RunResult) error {
-	type pending struct {
-		id, name string
-		content  []byte
-		version  int
-	}
-	tx, err := e.Store.DB.Begin(ctx)
+// querier: Pool oder einzelne Verbindung.
+type querier interface {
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+}
+
+type pendingFile struct{ id, name string }
+
+// pendingFiles nennt die Dateien einer Verbindung, deren Stand noch nicht
+// zugestellt ist, älteste zuerst (ohne Inhalt).
+func pendingFiles(ctx context.Context, q querier, connID string) ([]pendingFile, error) {
+	rows, err := q.Query(ctx, `SELECT id::text, name FROM energy_export_files
+		WHERE connection_id = $1::uuid AND version > delivered_version ORDER BY created_at, name`, connID)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	defer tx.Rollback(ctx)
-	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext($1))`, "energy_export_deliver:"+c.ConnectionID); err != nil {
-		return err
-	}
-	rows, err := tx.Query(ctx, `SELECT id::text, name, content, version FROM energy_export_files
-		WHERE connection_id = $1::uuid AND version > delivered_version ORDER BY created_at, name`, c.ConnectionID)
-	if err != nil {
-		return err
-	}
-	var todo []pending
+	defer rows.Close()
+	var out []pendingFile
 	for rows.Next() {
-		var p pending
-		if err := rows.Scan(&p.id, &p.name, &p.content, &p.version); err != nil {
-			rows.Close()
+		var p pendingFile
+		if err := rows.Scan(&p.id, &p.name); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+// markDelivered hält fest, dass version zugestellt ist – nur, wenn noch keine
+// neuere als zugestellt gilt.
+func markDelivered(ctx context.Context, q querier, id string, version int) error {
+	_, err := q.Exec(ctx, `UPDATE energy_export_files
+		SET delivered_version = $2, delivered_at = now(), last_error = ''
+		WHERE id = $1::uuid AND delivered_version < $2`, id, version)
+	return err
+}
+
+func (e *Exporter) deliverWait() time.Duration {
+	if e.DeliverWait > 0 {
+		return e.DeliverWait
+	}
+	return 5 * time.Second
+}
+
+// deliver stellt alle Dateien zu, deren Stand noch nicht zugestellt ist.
+//
+// Während des Ablegens ist keine Transaktion offen. Die Reihenfolge der
+// Versionen sichert eine Advisory-Sperre je Verbindung auf Sitzungsebene, auf
+// einer eigenen Verbindung außerhalb des Pools: ein zweiter Lauf wartet
+// höchstens deliverWait und überlässt die Zustellung sonst dem nächsten Lauf.
+// So überschreibt nie eine ältere Version eine neuere. Der Zustellstand wird
+// je Datei sofort festgeschrieben. Scheitert eine Datei, bricht die
+// Zustellung ab (das Ziel ist vermutlich nicht erreichbar); der Fehler bleibt
+// an der Datei, der nächste Lauf versucht es erneut.
+func (e *Exporter) deliver(ctx context.Context, c ExportConfig, res *RunResult) error {
+	todo, err := pendingFiles(ctx, e.Store.DB, c.ConnectionID)
+	if err != nil || len(todo) == 0 {
+		return err
+	}
+	conn, err := pgx.ConnectConfig(ctx, e.Store.DB.Config().ConnConfig.Copy())
+	if err != nil {
+		return err
+	}
+	defer conn.Close(context.WithoutCancel(ctx)) // Sitzungsende gibt die Sperre frei
+	if _, err := conn.Exec(ctx, fmt.Sprintf("SET lock_timeout = %d", e.deliverWait().Milliseconds())); err != nil {
+		return err
+	}
+	if _, err := conn.Exec(ctx, `SELECT pg_advisory_lock(hashtext($1))`, "energy_export_deliver:"+c.ConnectionID); err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "55P03" { // lock_not_available
+			res.Notes = append(res.Notes, "Ein anderer Lauf stellt gerade zu; die Dateien folgen im nächsten Lauf.")
+			return nil
+		}
+		return err
+	}
+	// Nach dem Warten neu lesen: ein anderer Lauf kann inzwischen zugestellt haben.
+	if todo, err = pendingFiles(ctx, conn, c.ConnectionID); err != nil {
+		return err
+	}
+	for i, p := range todo {
+		var content []byte
+		var version int
+		err := conn.QueryRow(ctx, `SELECT content, version FROM energy_export_files WHERE id = $1::uuid`, p.id).Scan(&content, &version)
+		if errors.Is(err, pgx.ErrNoRows) { // inzwischen aufgeräumt
+			continue
+		}
+		if err != nil {
 			return err
 		}
-		todo = append(todo, p)
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return err
-	}
-	var errs []error
-	for _, p := range todo {
-		if perr := c.Target.Put(ctx, p.name, p.content); perr != nil {
-			errs = append(errs, fmt.Errorf("%s: %w", p.name, perr))
+		if perr := c.Target.Put(ctx, p.name, content); perr != nil {
 			res.Notes = append(res.Notes, fmt.Sprintf("Zustellung von %s fehlgeschlagen: %v", p.name, perr))
-			if _, err := tx.Exec(ctx, `UPDATE energy_export_files SET last_error = $2 WHERE id = $1::uuid`,
+			if rest := len(todo) - i - 1; rest > 0 {
+				res.Notes = append(res.Notes, fmt.Sprintf("Zustellung abgebrochen: %d weitere Datei(en) folgen im nächsten Lauf.", rest))
+			}
+			if _, err := conn.Exec(ctx, `UPDATE energy_export_files SET last_error = $2 WHERE id = $1::uuid`,
 				p.id, perr.Error()); err != nil {
 				return err
 			}
-			continue
+			return fmt.Errorf("%s: %w", p.name, perr)
 		}
-		if _, err := tx.Exec(ctx, `UPDATE energy_export_files
-			SET delivered_version = GREATEST(delivered_version, $2), delivered_at = now(), last_error = ''
-			WHERE id = $1::uuid`, p.id, p.version); err != nil {
+		if err := markDelivered(ctx, conn, p.id, version); err != nil {
 			return err
 		}
 		res.Delivered++
 	}
-	if err := tx.Commit(ctx); err != nil {
-		return err
-	}
-	return errors.Join(errs...)
+	return nil
 }
 
 func (e *Exporter) logRun(ctx context.Context, c ExportConfig, started time.Time, res RunResult, runErr error) error {
@@ -484,9 +537,37 @@ func (e *Exporter) purge(ctx context.Context, c ExportConfig) error {
 	return err
 }
 
-// Pass führt alle eingerichteten Exporte einmal aus. Fehler eines Exports
-// stoppen die anderen nicht. Läufe ohne neues Intervall werden nicht protokolliert.
-func (e *Exporter) Pass(ctx context.Context) error {
+// Pass führt alle eingerichteten Exporte einmal aus und wartet auf alle.
+// Fehler eines Exports stoppen die anderen nicht. Läufe ohne neues Intervall
+// werden nicht protokolliert.
+func (e *Exporter) Pass(ctx context.Context) error { return e.pass(ctx, true) }
+
+// begin meldet einen Lauf für die Verbindung an; false: es läuft schon einer.
+func (e *Exporter) begin(id string) bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.running == nil {
+		e.running = map[string]bool{}
+	}
+	if e.running[id] {
+		return false
+	}
+	e.running[id] = true
+	return true
+}
+
+func (e *Exporter) end(id string) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	delete(e.running, id)
+}
+
+// pass startet je Export einen eigenen Lauf, damit ein langsames oder
+// ausgefallenes Ziel die anderen Exporte nicht aufhält. Ist der Lauf einer
+// Verbindung aus dem letzten Takt noch nicht fertig, wird sie diesmal
+// ausgelassen. wait: auf alle Läufe warten und ihre Fehler liefern; sonst
+// werden Fehler protokolliert.
+func (e *Exporter) pass(ctx context.Context, wait bool) error {
 	if e.Skip != nil && e.Skip() {
 		return nil
 	}
@@ -497,17 +578,48 @@ func (e *Exporter) Pass(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	var wg sync.WaitGroup
+	var mu sync.Mutex
 	var errs []error
-	for _, c := range cfgs {
-		if _, err := e.run(ctx, c, false); err != nil {
-			errs = append(errs, fmt.Errorf("export %s: %w", c.ConnectionID, err))
+	fail := func(err error) {
+		if !wait {
+			if ctx.Err() == nil {
+				log.Error().Err(err).Msg("energie: export")
+			}
+			return
 		}
+		mu.Lock()
+		errs = append(errs, err)
+		mu.Unlock()
 	}
+	for _, c := range cfgs {
+		if !e.begin(c.ConnectionID) {
+			continue
+		}
+		wg.Add(1)
+		go func(c ExportConfig) {
+			defer wg.Done()
+			defer e.end(c.ConnectionID)
+			defer func() {
+				if r := recover(); r != nil {
+					log.Error().Interface("panic", r).Str("export", c.ConnectionID).Msg("energie: export abgestürzt")
+					fail(fmt.Errorf("export %s: abgestürzt: %v", c.ConnectionID, r))
+				}
+			}()
+			if _, err := e.run(ctx, c, false); err != nil {
+				fail(fmt.Errorf("export %s: %w", c.ConnectionID, err))
+			}
+		}(c)
+	}
+	if !wait {
+		return nil
+	}
+	wg.Wait()
 	return errors.Join(errs...)
 }
 
-// Start führt im Takt von 60 s die Exporte aus, bis ctx endet. Eine Panik in
-// einem Durchlauf wird protokolliert, die Schleife läuft weiter.
+// Start führt im Takt von 60 s die Exporte aus, bis ctx endet. Jeder Export
+// läuft für sich; eine Panik wird protokolliert, die Schleife läuft weiter.
 func (e *Exporter) Start(ctx context.Context) {
 	t := time.NewTicker(exporterInterval)
 	defer t.Stop()
@@ -527,7 +639,7 @@ func (e *Exporter) safePass(ctx context.Context) {
 			log.Error().Interface("panic", r).Msg("energie: export abgestürzt")
 		}
 	}()
-	if err := e.Pass(ctx); err != nil && ctx.Err() == nil {
+	if err := e.pass(ctx, false); err != nil && ctx.Err() == nil {
 		log.Error().Err(err).Msg("energie: export")
 	}
 }
