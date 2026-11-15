@@ -349,25 +349,32 @@ func (e *Exporter) block(ctx context.Context, c ExportConfig, meters []Meter, tm
 
 	if rows > 0 {
 		// Die Datei für den ganzen Block: eine schon begonnene (auch mehrtägig)
-		// wird weitergeführt, sonst entsteht eine neue.
+		// mit demselben Zeitbezug wird weitergeführt, sonst entsteht eine neue.
+		// Nach einem Wechsel des Zeitbezugs enthält so keine Datei gemischte
+		// Zeitstempel.
+		tb := c.CSV.TimeBase
 		var name string
 		var ps, pe time.Time
 		var qerr error
 		if c.FileDays <= 0 {
 			ps, pe = tmax, tmax // eine Datei je Lauf, Name aus dem letzten Lauf-Takt
 			name = FileName(c.Prefix, tmax, loc)
-			qerr = tx.QueryRow(ctx, `SELECT name FROM energy_export_files WHERE connection_id = $1::uuid AND name = $2`,
-				c.ConnectionID, name).Scan(&name)
+			qerr = tx.QueryRow(ctx, `SELECT name FROM energy_export_files
+				WHERE connection_id = $1::uuid AND name = $2 AND time_base = $3`,
+				c.ConnectionID, name, tb).Scan(&name)
 		} else {
 			qerr = tx.QueryRow(ctx, `SELECT name, period_start, period_end FROM energy_export_files
-				WHERE connection_id = $1::uuid AND period_start <= $2 AND period_end > $2
-				ORDER BY period_start DESC LIMIT 1`, c.ConnectionID, first).Scan(&name, &ps, &pe)
+				WHERE connection_id = $1::uuid AND period_start <= $2 AND period_end > $2 AND time_base = $3
+				ORDER BY period_start DESC LIMIT 1`, c.ConnectionID, first, tb).Scan(&name, &ps, &pe)
 		}
 		existing := qerr == nil
 		if errors.Is(qerr, pgx.ErrNoRows) {
 			if c.FileDays > 0 {
 				ps, pe = FilePeriod(first, c.FileDays, loc)
 				name = FileName(c.Prefix, ps, loc)
+			}
+			if name, err = freeName(ctx, tx, c.ConnectionID, name, tb); err != nil {
+				return false, err
 			}
 		} else if qerr != nil {
 			return false, qerr
@@ -381,8 +388,8 @@ func (e *Exporter) block(ctx context.Context, c ExportConfig, meters []Meter, tm
 			if c.CSV.Header {
 				content = joinCSV(HeaderLine(c.CSV), buf)
 			}
-			_, err = tx.Exec(ctx, `INSERT INTO energy_export_files (connection_id, name, period_start, period_end, content, rows)
-				VALUES ($1::uuid, $2, $3, $4, $5, $6)`, c.ConnectionID, name, ps, pe, content, rows)
+			_, err = tx.Exec(ctx, `INSERT INTO energy_export_files (connection_id, name, period_start, period_end, content, rows, time_base)
+				VALUES ($1::uuid, $2, $3, $4, $5, $6, $7)`, c.ConnectionID, name, ps, pe, content, rows, tb)
 		}
 		if err != nil {
 			return false, err
@@ -399,6 +406,30 @@ func (e *Exporter) block(ctx context.Context, c ExportConfig, meters []Meter, tm
 		return false, err
 	}
 	return true, nil
+}
+
+// freeName liefert name, oder – wenn es den Namen schon gibt (Datei mit
+// anderem Zeitbezug) – name mit angehängtem Zeitbezug und ggf. Zähler.
+func freeName(ctx context.Context, tx pgx.Tx, connID, name, timeBase string) (string, error) {
+	base := strings.TrimSuffix(name, ".csv")
+	for k := 0; k < 100; k++ {
+		cand := name
+		switch {
+		case k == 1:
+			cand = base + "_" + timeBase + ".csv"
+		case k > 1:
+			cand = fmt.Sprintf("%s_%s%d.csv", base, timeBase, k)
+		}
+		var taken bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM energy_export_files
+			WHERE connection_id = $1::uuid AND name = $2)`, connID, cand).Scan(&taken); err != nil {
+			return "", err
+		}
+		if !taken {
+			return cand, nil
+		}
+	}
+	return "", fmt.Errorf("kein freier Dateiname für %s", name)
 }
 
 // querier: Pool oder einzelne Verbindung.

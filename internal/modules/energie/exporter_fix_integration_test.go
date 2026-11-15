@@ -386,3 +386,32 @@ func TestExporterDSTTimeBases(t *testing.T) {
 		})
 	}
 }
+
+// Ein Wechsel des Zeitbezugs beginnt eine neue Datei; keine Datei enthält
+// gemischte Zeitstempel.
+func TestExporterTimeBaseChangeStartsNewFile(t *testing.T) {
+	env := exportEnv(t)
+	ctx := context.Background()
+	m := env.instant(t)
+	for k := 0; k < 3; k++ {
+		putValue(t, env.pool, m, e0.Add(time.Duration(k)*15*time.Minute), 1)
+	}
+	_, err := env.e.Run(ctx, env.cfg)
+	must(t, err)
+	env.cfg.CSV.TimeBase = TimeBaseOffset
+	for k := 1; k <= 2; k++ {
+		env.now = env.now.Add(15 * time.Minute)
+		_, err = env.e.Run(ctx, env.cfg)
+		must(t, err)
+	}
+	fs := env.files(t)
+	if len(fs) != 2 || fs[0].name != "efficio_20261115_0000.csv" || fs[1].name != "efficio_20261115_0000_offset.csv" {
+		t.Fatalf("Dateien: %+v", fs)
+	}
+	if fs[0].rows != 1 || strings.Contains(fs[0].content, "+00:00") {
+		t.Errorf("alte Datei: %+v", fs[0])
+	}
+	if fs[1].rows != 2 || strings.Count(fs[1].content, "+00:00;") != 2 || strings.Count(fs[1].content, "Zeitstempel") != 1 {
+		t.Errorf("neue Datei: %+v", fs[1])
+	}
+}
