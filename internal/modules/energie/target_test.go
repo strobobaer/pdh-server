@@ -337,3 +337,64 @@ func TestExporterRedeliversMissedFiles(t *testing.T) {
 		t.Errorf("Protokoll %v", results)
 	}
 }
+
+func TestDirTargetHangingWriterIsSingleFlight(t *testing.T) {
+	dir := t.TempDir()
+	tg := DirTarget{Dir: dir}
+	release := make(chan struct{})
+	lateLive := make(chan bool, 1)
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	// Ein Schreibvorgang hängt über das Zeitlimit hinaus.
+	err := within(ctx, dir, func(live func() bool) error {
+		<-release
+		lateLive <- live()
+		return nil
+	})
+	if err == nil || !strings.Contains(err.Error(), "Zeitlimit") {
+		t.Fatalf("Zeitlimit erwartet, war %v", err)
+	}
+	// Solange er hängt, werden Put und Test sofort abgewiesen.
+	start := time.Now()
+	if err := tg.Put(context.Background(), "x.csv", []byte("a")); !errors.Is(err, ErrDirBusy) {
+		t.Fatalf("ErrDirBusy erwartet, war %v", err)
+	}
+	if _, err := tg.Test(context.Background()); !errors.Is(err, ErrDirBusy) {
+		t.Fatalf("Test: ErrDirBusy erwartet, war %v", err)
+	}
+	if time.Since(start) > time.Second {
+		t.Error("Abweisung nicht sofort")
+	}
+	close(release)
+	if <-lateLive {
+		t.Error("der späte Schreiber gilt noch als aktuell und dürfte umbenennen")
+	}
+	// Danach funktioniert der nächste Lauf wieder.
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		err := tg.Put(context.Background(), "x.csv", []byte("neu"))
+		if err == nil {
+			break
+		}
+		if !errors.Is(err, ErrDirBusy) || time.Now().After(deadline) {
+			t.Fatal(err)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, "x.csv")); string(b) != "neu" {
+		t.Errorf("Inhalt %q", b)
+	}
+}
+
+func TestDirTargetExpiredAttemptDoesNotRename(t *testing.T) {
+	dir := t.TempDir()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // Versuch schon abgelaufen
+	err := DirTarget{Dir: dir}.write("x.csv", []byte("alt"), func() bool { return ctx.Err() == nil })
+	if err == nil {
+		t.Fatal("Fehler erwartet")
+	}
+	if entries, _ := os.ReadDir(dir); len(entries) != 0 {
+		t.Errorf("weder Datei noch Temp-Datei darf bleiben: %v", entries)
+	}
+}

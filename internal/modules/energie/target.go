@@ -3,6 +3,7 @@ package energie
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"crypto/tls"
 	"encoding/base64"
@@ -14,6 +15,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/jlaffaye/ftp"
@@ -86,17 +89,33 @@ func (d DirTarget) check() error {
 	return nil
 }
 
+// dirBusy merkt sich je Ordner, ob noch ein Schreibvorgang läuft (auch einer,
+// dessen Zeitlimit schon abgelaufen ist). So überholt nie ein später Schreiber
+// einen neueren Stand.
+var dirBusy sync.Map // Ordner -> *atomic.Bool
+
+// ErrDirBusy: ein früherer Schreibvorgang auf dem Ordner hängt noch.
+var ErrDirBusy = errors.New("Netzlaufwerk antwortet nicht (ein früherer Schreibvorgang hängt noch)")
+
 // within führt f aus und gibt nach Ablauf des Kontexts auf (ein hängendes
 // Netzlaufwerk lässt sich nicht abbrechen, der Lauf wartet aber nicht mehr).
-func within(ctx context.Context, f func() error) error {
+// Je Ordner läuft höchstens ein Vorgang; f erhält live, das nach dem
+// Zeitlimit false liefert und dann nichts mehr umbenennen oder löschen darf.
+func within(ctx context.Context, dir string, f func(live func() bool) error) error {
+	v, _ := dirBusy.LoadOrStore(filepath.Clean(dir), new(atomic.Bool))
+	busy := v.(*atomic.Bool)
+	if !busy.CompareAndSwap(false, true) {
+		return ErrDirBusy
+	}
 	done := make(chan error, 1)
 	go func() {
+		defer busy.Store(false)
 		defer func() {
 			if r := recover(); r != nil {
 				done <- fmt.Errorf("interner Fehler: %v", r)
 			}
 		}()
-		done <- f()
+		done <- f(func() bool { return ctx.Err() == nil })
 	}()
 	select {
 	case err := <-done:
@@ -112,16 +131,18 @@ func (d DirTarget) Put(ctx context.Context, name string, content []byte) error {
 	}
 	ctx, cancel := limited(ctx)
 	defer cancel()
-	return within(ctx, func() error { return d.write(name, content) })
+	return within(ctx, d.Dir, func(live func() bool) error { return d.write(name, content, live) })
 }
 
-func (d DirTarget) write(name string, content []byte) error {
+func (d DirTarget) write(name string, content []byte, live func() bool) error {
 	if err := d.check(); err != nil {
 		return err
 	}
 	final := filepath.Join(d.Dir, name)
-	tmp := final + ".tmp"
-	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
+	var rnd [6]byte
+	_, _ = rand.Read(rnd[:])
+	tmp := filepath.Join(d.Dir, fmt.Sprintf(".%s.%x.tmp", name, rnd))
+	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 	if err != nil {
 		return err
 	}
@@ -130,6 +151,9 @@ func (d DirTarget) write(name string, content []byte) error {
 	}
 	if cerr := f.Close(); err == nil {
 		err = cerr
+	}
+	if err == nil && !live() {
+		err = errors.New("Zeitlimit überschritten, Datei nicht mehr abgelegt")
 	}
 	if err == nil {
 		err = os.Rename(tmp, final)
@@ -142,13 +166,18 @@ func (d DirTarget) write(name string, content []byte) error {
 }
 
 func (d DirTarget) Test(ctx context.Context) (string, error) {
-	if err := d.check(); err != nil {
-		return "", err
-	}
-	if err := d.Put(ctx, testFileName, []byte("PDH")); err != nil {
-		return "", err
-	}
-	if err := os.Remove(filepath.Join(d.Dir, testFileName)); err != nil {
+	ctx, cancel := limited(ctx)
+	defer cancel()
+	err := within(ctx, d.Dir, func(live func() bool) error {
+		if err := d.check(); err != nil {
+			return err
+		}
+		if err := d.write(testFileName, []byte("PDH"), live); err != nil {
+			return err
+		}
+		return os.Remove(filepath.Join(d.Dir, testFileName))
+	})
+	if err != nil {
 		return "", err
 	}
 	return fmt.Sprintf("Verbindung in Ordnung (Ordner %s)", d.Dir), nil
@@ -405,13 +434,18 @@ func (t SFTPTarget) put(c *sftpConn, name string, content []byte) (err error) {
 		_ = c.Remove(tmp)
 		return fmt.Errorf("Hochladen fehlgeschlagen: %w", err)
 	}
-	if err = c.PosixRename(tmp, final); err != nil {
-		// Ohne die Erweiterung: alte Datei entfernen, dann normal umbenennen.
-		_ = c.Remove(final)
-		if err = c.Rename(tmp, final); err != nil {
+	if _, ok := c.HasExtension("posix-rename@openssh.com"); ok {
+		if err = c.PosixRename(tmp, final); err != nil {
 			_ = c.Remove(tmp)
 			return fmt.Errorf("Umbenennen fehlgeschlagen: %w", err)
 		}
+		return nil
+	}
+	// Ohne die Erweiterung: alte Datei entfernen, dann normal umbenennen.
+	_ = c.Remove(final)
+	if err = c.Rename(tmp, final); err != nil {
+		_ = c.Remove(tmp)
+		return fmt.Errorf("Umbenennen fehlgeschlagen: %w", err)
 	}
 	return nil
 }
