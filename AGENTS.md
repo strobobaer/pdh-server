@@ -192,6 +192,11 @@ oder ändern.**
 
 ## Browserprüfung auf dem Testverbund
 
+- Das PDH ist im Testverbund unter `http://10.10.0.15:8090` erreichbar
+  (`https://10.10.0.15` ist Nextcloud). Ist kein Chrome installiert:
+  Edge über `playwright-core` (`channel: 'msedge'`) aus einem eigenen
+  Ordner im Scratchpad steuern; auf das Laden der Seite warten, nicht auf
+  „networkidle“ (Live-Verbindungen bleiben offen).
 - Anmeldung mit dem Prüfkonto `abnahme-abgleich` (Rolle admin). Es ist
   außerhalb von Prüfungen gesperrt (`active = false`, Kennwort-Hash
   durch einen Sperrwert ersetzt).

@@ -10,6 +10,12 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.80.14] – 2026-11-15
+
+### Behoben
+
+- TIA-Baustein: Der vorgeschlagene Topic schreibt Umlaute im Namen der Verbindung jetzt aus („Prüfung“ wird zu „pruefung“) statt sie durch Bindestriche zu ersetzen.
+
 ## [0.80.13] – 2026-11-15
 
 ### Neu
