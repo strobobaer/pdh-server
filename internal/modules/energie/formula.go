@@ -290,18 +290,24 @@ func evalNode(n *node, get func(string) (float64, bool)) (float64, bool) {
 	if !ok {
 		return 0, false
 	}
+	var v float64
 	switch n.op {
 	case '+':
-		return a + b, true
+		v = a + b
 	case '-':
-		return a - b, true
+		v = a - b
 	case '*':
-		return a * b, true
+		v = a * b
+	default:
+		if b == 0 {
+			return 0, false
+		}
+		v = a / b
 	}
-	if b == 0 {
+	if math.IsNaN(v) || math.IsInf(v, 0) {
 		return 0, false
 	}
-	return a / b, true
+	return v, true
 }
 
 func sortedKeys(m map[string]string) []string {

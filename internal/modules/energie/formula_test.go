@@ -116,3 +116,26 @@ func TestEvalOrderChain(t *testing.T) {
 		t.Errorf("Reihenfolge = %v", got)
 	}
 }
+
+func TestEvalOverflowIsNoValue(t *testing.T) {
+	f, _ := ParseFormula("1/([A]*[A])")
+	if v, ok := f.Eval(vals(map[string]float64{"A": 1e200})); ok {
+		t.Errorf("Überlauf muss kein Wert sein, bekam %v", v)
+	}
+}
+
+func TestParseFormulaRefIDRules(t *testing.T) {
+	for _, src := range []string{"[a;b]", "[a\"b]", "[a\nb]", "[a[b]"} {
+		var fe *FormulaError
+		if _, err := ParseFormula(src); !errors.As(err, &fe) {
+			t.Errorf("%q: erwartet FormulaError, bekam %v", src, err)
+		}
+	}
+	if _, err := ParseFormula("[" + strings.Repeat("x", 64) + "]"); err != nil {
+		t.Errorf("64 Zeichen: %v", err)
+	}
+	var fe *FormulaError
+	if _, err := ParseFormula("[" + strings.Repeat("x", 65) + "]"); !errors.As(err, &fe) {
+		t.Errorf("65 Zeichen: erwartet FormulaError, bekam %v", err)
+	}
+}
