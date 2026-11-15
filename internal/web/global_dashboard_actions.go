@@ -213,7 +213,8 @@ func (h *Handler) applyGlobalBoardAction(r *http.Request, in GlobalBoardActionIn
 			if _, err := h.tickets.AddAction(ctx, in.ID, in.Comment, actorID); err != nil {
 				return err
 			}
-			return h.tickets.Resolve(ctx, in.ID, in.Comment, in.Comment, actorID, in.NoPartsNeeded)
+			// leere Ursache lässt eine gespeicherte Ursache unverändert (kein Ersatztext)
+			return h.tickets.Resolve(ctx, in.ID, in.Comment, cause, actorID, in.NoPartsNeeded)
 		case "maintenance":
 			parts, err := h.maint.GetPendingParts(ctx, in.ID)
 			if err != nil {

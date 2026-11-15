@@ -87,7 +87,7 @@ Variablen des Farbschemas (Fiori und Fluent, hell und dunkel).
           {{if .Groups}}<optgroup label="Gruppen">{{range .Groups}}<option value="group:{{.Value}}"{{if eq (printf "group:%s" .Value) $r}} selected{{end}}>{{.Label}}</option>{{end}}</optgroup>{{end}}
         </select></div>
     </div>
-    <p class="et-hint">Der Alarm löst aus, wenn der Wert im ganzen Zeitraum die Bedingung erfüllt, und endet erst, wenn sie die Rückschaltzeit am Stück nicht mehr erfüllt ist. Ohne Auswahl wird der Verantwortliche der Anlage benachrichtigt.</p>
+    <p class="et-hint">Der Alarm kommt, wenn der ausgewertete Wert des Zeitraums (Mittelwert, Menge oder Summe) die Bedingung erfüllt, und endet erst, wenn die Bedingung die Rückschaltzeit lang am Stück nicht mehr erfüllt ist. Ohne Auswahl wird der Verantwortliche der Anlage benachrichtigt.</p>
     <label class="et-check"><input type="checkbox" name="active" value="1"{{if .Form.Active}} checked{{end}}> Aktiv</label>
     <div class="et-buttons">
       <button type="button" class="btn" hx-get="/energy/meters/{{.MeterID}}/thresholds" hx-target="#et-{{.MeterID}}" hx-swap="outerHTML">Abbrechen</button>
@@ -96,4 +96,5 @@ Variablen des Farbschemas (Fiori und Fluent, hell und dunkel).
   </form>
   {{end}}
 </div>
+{{if .CountText}}<span id="em-thr-lbl-{{.MeterID}}" hx-swap-oob="true"><span class="em-thr-lbl{{if .CountAlarms}} has-alarm{{end}}">{{.CountText}}</span></span>{{end}}
 {{end}}

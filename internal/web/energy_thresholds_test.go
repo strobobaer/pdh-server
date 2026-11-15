@@ -279,6 +279,9 @@ func TestThresholdSaveWeb(t *testing.T) {
 	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "Schwellwert gespeichert.") || !strings.Contains(w.Body.String(), "über 8,5 bar") {
 		t.Fatalf("anlegen: %d %s", w.Code, w.Body.String())
 	}
+	if b := w.Body.String(); !strings.Contains(b, `id="em-thr-lbl-`+meter+`" hx-swap-oob="true"`) || !strings.Contains(b, `em-thr-lbl">1</span>`) {
+		t.Errorf("Speichern frischt den Zählerknopf nicht auf: %s", b)
+	}
 	list, err := st.Thresholds(ctx, meter)
 	must(err)
 	if len(list) != 1 {
@@ -327,10 +330,22 @@ func TestThresholdSaveWeb(t *testing.T) {
 		t.Errorf("Filter mit Alarm: %+v", ms)
 	}
 
+	// Verantwortlicher ist inzwischen inaktiv: Name mit Hinweis statt leerem Text
+	_, err = pool.Exec(ctx, `UPDATE energy_thresholds SET responsible_user_id = $2::uuid WHERE id = $1::uuid`, th.ID, user)
+	must(err)
+	_, err = pool.Exec(ctx, `UPDATE users SET active = false WHERE id = $1::uuid`, user)
+	must(err)
+	if w := thrDo(h.EnergyThresholdsWeb, "GET", "/energy/meters/"+meter+"/thresholds", map[string]string{"id": meter}, nil, true); !strings.Contains(w.Body.String(), "Eva Muster (inaktiv)") {
+		t.Errorf("inaktiver Verantwortlicher: %s", w.Body.String())
+	}
+
 	// löschen
 	w = thrDo(h.EnergyThresholdDeleteWeb, "POST", "/energy/thresholds/"+th.ID+"/delete-web", map[string]string{"tid": th.ID}, nil, true)
 	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "Schwellwert gelöscht.") {
 		t.Fatalf("löschen: %d %s", w.Code, w.Body.String())
+	}
+	if b := w.Body.String(); !strings.Contains(b, `id="em-thr-lbl-`+meter+`" hx-swap-oob="true"`) || !strings.Contains(b, `em-thr-lbl">keine</span>`) {
+		t.Errorf("Löschen frischt den Zählerknopf nicht auf: %s", b)
 	}
 	if list, _ := st.Thresholds(ctx, meter); len(list) != 0 {
 		t.Errorf("nach dem Löschen: %+v", list)

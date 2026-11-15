@@ -50,8 +50,8 @@ dieselbe Eingabezeile (#em-edit) mit dem Infra-Picker der Anlagen.
         <td data-label="Exportieren">{{if .Export}}Ja{{else}}<span class="em-muted">Nein</span>{{end}}</td>
         <td data-label="Aktiv">{{if .Active}}Ja{{else}}<span class="em-muted">Nein</span>{{end}}</td>
         <td data-label="Schwellwerte">
-          <button type="button" class="btn em-thr-btn{{if .ThrAlarms}} has-alarm{{end}}" aria-expanded="false" aria-controls="em-thr-{{.ID}}" onclick="emThr(this)"
-            hx-get="/energy/meters/{{.ID}}/thresholds" hx-target="#em-thr-{{.ID}}" hx-swap="innerHTML" hx-trigger="click once"><i class="ti ti-bell-ringing" aria-hidden="true"></i> {{.ThrText}}</button>
+          <button type="button" class="btn em-thr-btn" aria-expanded="false" aria-controls="em-thr-{{.ID}}" onclick="emThr(this)"
+            hx-get="/energy/meters/{{.ID}}/thresholds" hx-target="#em-thr-{{.ID}}" hx-swap="innerHTML" hx-trigger="click once"><i class="ti ti-bell-ringing" aria-hidden="true"></i> <span id="em-thr-lbl-{{.ID}}"><span class="em-thr-lbl{{if .ThrAlarms}} has-alarm{{end}}">{{.ThrText}}</span></span></button>
         </td>
         <td class="em-actions">
           {{if .CanEdit}}{{template "icon-button" (dict "Action" "edit" "OnClick" "emEdit(this)")}}{{end}}

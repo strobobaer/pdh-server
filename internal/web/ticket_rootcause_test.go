@@ -161,3 +161,22 @@ func TestDashboardDiscardAlarmNeedsRootCause(t *testing.T) {
 		t.Fatalf("Fertig mit Kommentar: %d %s", w.Code, w.Body.String())
 	}
 }
+
+// Gespeicherte Ursache bleibt erhalten, wenn „Fertig“ ohne eigenen Kommentar kommt.
+func TestDashboardDoneKeepsStoredRootCause(t *testing.T) {
+	e := rcWebSetup(t)
+	if _, err := e.pool.Exec(e.ctx, `UPDATE tickets SET root_cause = 'Sensor defekt' WHERE id = $1::uuid`, e.alarm); err != nil {
+		t.Fatal(err)
+	}
+	body := `{"type":"ticket","id":"` + e.alarm + `","action":"done","comment":"","rfid_uid":"` + e.card + `","no_parts_needed":true}`
+	if w := e.call(e.h.GlobalDashboardAction, body, "application/json", nil); w.Code != http.StatusOK {
+		t.Fatalf("Fertig mit gespeicherter Ursache: %d %s", w.Code, w.Body.String())
+	}
+	var rc string
+	if err := e.pool.QueryRow(e.ctx, `SELECT root_cause FROM tickets WHERE id = $1::uuid`, e.alarm).Scan(&rc); err != nil {
+		t.Fatal(err)
+	}
+	if rc != "Sensor defekt" {
+		t.Fatalf("Ursache überschrieben: %q", rc)
+	}
+}

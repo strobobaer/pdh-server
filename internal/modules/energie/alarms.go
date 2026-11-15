@@ -238,7 +238,14 @@ func (w *AlarmWatch) watchOne(ctx context.Context, listed Threshold, now time.Ti
 		return err
 	}
 	for _, f := range afters {
-		f()
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					log.Error().Interface("panic", r).Msg("energie: nachlauf nach alarm abgestürzt")
+				}
+			}()
+			f()
+		}()
 	}
 	return nil
 }

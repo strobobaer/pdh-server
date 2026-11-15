@@ -45,6 +45,8 @@ type ThresholdsData struct {
 	ShowForm                 bool
 	Form                     ThresholdForm
 	Err, Notice              string
+	CountText                string // nur bei Speichern/Löschen: frische Beschriftung des Zählerknopfs (hx-swap-oob)
+	CountAlarms              int
 	Users, Groups            []ThresholdChoice
 	Tags                     []string
 	Priorities               []ThresholdChoice
@@ -183,6 +185,17 @@ func (h *Handler) renderThresholds(w http.ResponseWriter, r *http.Request, st *e
 	}
 	d.Users, d.Groups = h.thresholdPeople(ctx)
 	names := map[string]string{}
+	inactive := func(kind, id string) string { // Name auch bei inaktiven Benutzern/Gruppen
+		var n string
+		q := `SELECT trim(first_name || ' ' || last_name) FROM users WHERE id = $1::uuid`
+		if kind == "group" {
+			q = `SELECT name || ' (Gruppe)' FROM user_groups WHERE id = $1::uuid`
+		}
+		if h.db == nil || h.db.QueryRow(ctx, q, id).Scan(&n) != nil || n == "" {
+			return "unbekannt"
+		}
+		return n + " (inaktiv)"
+	}
 	for _, c := range d.Users {
 		names["user:"+c.Value] = c.Label
 	}
@@ -201,10 +214,25 @@ func (h *Handler) renderThresholds(w http.ResponseWriter, r *http.Request, st *e
 		row.ResponsibleText = "Verantwortlicher der Anlage"
 		if t.ResponsibleUserID != nil {
 			row.ResponsibleText = names["user:"+*t.ResponsibleUserID]
+			if row.ResponsibleText == "" {
+				row.ResponsibleText = inactive("user", *t.ResponsibleUserID)
+			}
 		} else if t.ResponsibleGroupID != nil {
 			row.ResponsibleText = names["group:"+*t.ResponsibleGroupID]
+			if row.ResponsibleText == "" {
+				row.ResponsibleText = inactive("group", *t.ResponsibleGroupID)
+			}
 		}
 		d.Rows = append(d.Rows, row)
+	}
+	if notice != "" { // gespeichert/gelöscht: Zählerknopf in der Tabelle mit auffrischen
+		cnt := energie.ThresholdCount{Total: len(list)}
+		for _, t := range list {
+			if t.State == "alarm" {
+				cnt.Alarms++
+			}
+		}
+		d.CountText, d.CountAlarms = thresholdCountText(cnt)
 	}
 	switch {
 	case form != nil:
