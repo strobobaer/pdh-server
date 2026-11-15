@@ -152,12 +152,16 @@ func efficioConfig(id string, cfg map[string]string, drive func(id string) (*net
 	if err != nil {
 		return c, err
 	}
+	tb, err := efficioChoice(cfg, "time_base", energie.TimeBaseLocal, energie.TimeBaseLocal, energie.TimeBaseUTC, energie.TimeBaseOffset)
+	if err != nil {
+		return c, err
+	}
 	enc, err := efficioChoice(cfg, "encoding", "utf-8", "utf-8", "windows-1252")
 	if err != nil {
 		return c, err
 	}
 	c.CSV = energie.CSVOptions{
-		TimeFormat: tf, DecimalComma: efficioBool(cfg, "decimal_comma", true),
+		TimeFormat: tf, TimeBase: tb, DecimalComma: efficioBool(cfg, "decimal_comma", true),
 		Header: efficioBool(cfg, "has_header", true), Encoding: enc, Loc: time.Local,
 	}
 	for _, k := range efficioList(cfg["filter_infra_ids"], ",;\r\n\t ") {
@@ -772,6 +776,8 @@ func (h *Handler) efficioDisplay(ctx context.Context, field, v string) string {
 			return "JJJJ-MM-TT hh:mm"
 		}
 		return "TT.MM.JJJJ hh:mm"
+	case "time_base":
+		return energie.TimeBaseLabel(v)
 	case "encoding":
 		if v == "windows-1252" {
 			return "Windows-1252"

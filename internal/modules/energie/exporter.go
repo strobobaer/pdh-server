@@ -63,9 +63,9 @@ type RunResult struct {
 
 // Exporter schreibt die Intervallwerte als CSV in Dateien und stellt sie zu.
 type Exporter struct {
-	Store      *Store
-	Configs    func(ctx context.Context) ([]ExportConfig, error)
-	Skip       func() bool
+	Store       *Store
+	Configs     func(ctx context.Context) ([]ExportConfig, error)
+	Skip        func() bool
 	Delay       time.Duration // Wartezeit nach Intervallende (2 min)
 	MaxCatchUp  time.Duration // längstes Nachholen (7 × 24 h)
 	DeliverWait time.Duration // Warten auf einen anderen Lauf, der gerade zustellt (5 s)
@@ -112,6 +112,9 @@ func (c ExportConfig) normalized() ExportConfig {
 	}
 	if c.CSV.Loc == nil {
 		c.CSV.Loc = time.Local
+	}
+	if c.CSV.TimeBase == "" {
+		c.CSV.TimeBase = TimeBaseLocal
 	}
 	return c
 }
@@ -273,7 +276,7 @@ func (e *Exporter) generate(ctx context.Context, c ExportConfig, res *RunResult)
 		return err
 	}
 	tmax := e.Store.now().Add(-e.delay()).Truncate(c.RunEvery)
-	gaps := newGapNotes(c.Interval, c.CSV.Loc)
+	gaps := newGapNotes(c.Interval, c.CSV.loc())
 	defer func() { res.Notes = append(res.Notes, gaps.flush()...) }()
 	for {
 		more, err := e.block(ctx, c, meters, tmax, res, gaps)
@@ -285,7 +288,7 @@ func (e *Exporter) generate(ctx context.Context, c ExportConfig, res *RunResult)
 
 // block verarbeitet den nächsten Block; false: es ist nichts mehr fällig.
 func (e *Exporter) block(ctx context.Context, c ExportConfig, meters []Meter, tmax time.Time, res *RunResult, gaps *gapNotes) (bool, error) {
-	loc := c.CSV.Loc
+	loc := c.CSV.loc() // Tagesgrenzen und Dateinamen im gewählten Zeitbezug
 	tx, err := e.Store.DB.Begin(ctx)
 	if err != nil {
 		return false, err

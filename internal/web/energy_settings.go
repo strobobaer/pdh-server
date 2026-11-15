@@ -32,10 +32,14 @@ func settingsFromForm(r *http.Request) (energie.Settings, string) {
 		FileDays:           num("file_days", "Max. Länge der Datei in Tagen"),
 		RetentionDays:      num("retention_days", "Aufbewahrung in Tagen"),
 		TimeFormat:         strings.TrimSpace(r.FormValue("time_format")),
+		TimeBase:           strings.TrimSpace(r.FormValue("time_base")),
 		Encoding:           strings.TrimSpace(r.FormValue("encoding")),
 		Prefix:             strings.TrimSpace(r.FormValue("prefix")),
 		DecimalComma:       r.FormValue("decimal_comma") != "",
 		Header:             r.FormValue("header") != "",
+	}
+	if s.TimeBase == "" {
+		s.TimeBase = energie.TimeBaseLocal
 	}
 	if len(bad) > 0 {
 		return s, bad[0]

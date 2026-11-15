@@ -27,6 +27,11 @@
       <select id="es-tf" name="time_format" class="form-input"{{if not .SetCanEdit}} disabled{{end}}>
         <option value="dmy"{{if eq .Set.TimeFormat "dmy"}} selected{{end}}>TT.MM.JJJJ hh:mm</option>
         <option value="iso"{{if eq .Set.TimeFormat "iso"}} selected{{end}}>JJJJ-MM-TT hh:mm</option></select></div>
+    <div class="form-group"><label class="form-label" for="es-tb">Zeitbezug</label>
+      <select id="es-tb" name="time_base" class="form-input"{{if not .SetCanEdit}} disabled{{end}}>
+        <option value="local"{{if eq .Set.TimeBase "local"}} selected{{end}}>Ortszeit</option>
+        <option value="utc"{{if eq .Set.TimeBase "utc"}} selected{{end}}>UTC</option>
+        <option value="offset"{{if eq .Set.TimeBase "offset"}} selected{{end}}>Ortszeit mit Zeitzonenangabe</option></select></div>
     <div class="form-group"><label class="form-label" for="es-enc">Zeichensatz</label>
       <select id="es-enc" name="encoding" class="form-input"{{if not .SetCanEdit}} disabled{{end}}>
         <option value="utf-8"{{if eq .Set.Encoding "utf-8"}} selected{{end}}>UTF-8</option>

@@ -154,6 +154,11 @@
           <select id="f_efficio_time_format" name="f_efficio_time_format" class="form-input">
             <option value="dmy"{{if eq $s.TimeFormat "dmy"}} selected{{end}}>TT.MM.JJJJ hh:mm</option>
             <option value="iso"{{if eq $s.TimeFormat "iso"}} selected{{end}}>JJJJ-MM-TT hh:mm</option></select></div>
+        <div class="form-group"><label class="form-label" for="f_efficio_time_base">Zeitbezug</label>
+          <select id="f_efficio_time_base" name="f_efficio_time_base" class="form-input">
+            <option value="local"{{if eq $s.TimeBase "local"}} selected{{end}}>Ortszeit</option>
+            <option value="utc"{{if eq $s.TimeBase "utc"}} selected{{end}}>UTC (Tagesdateien ab UTC-Mitternacht)</option>
+            <option value="offset"{{if eq $s.TimeBase "offset"}} selected{{end}}>Ortszeit mit Zeitzonenangabe (z. B. +02:00)</option></select></div>
         <div class="form-group"><label class="form-label" for="f_efficio_encoding">Zeichensatz</label>
           <select id="f_efficio_encoding" name="f_efficio_encoding" class="form-input">
             <option value="utf-8"{{if eq $s.Encoding "utf-8"}} selected{{end}}>UTF-8</option>

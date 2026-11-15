@@ -27,7 +27,7 @@ func TestEfficioConfigDefaults(t *testing.T) {
 		c.RetentionDays != 30 || c.Prefix != "efficio" || c.ConnectionID != "abc" {
 		t.Errorf("Vorgaben: %+v", c)
 	}
-	if c.CSV.TimeFormat != "dmy" || !c.CSV.DecimalComma || !c.CSV.Header || c.CSV.Encoding != "utf-8" {
+	if c.CSV.TimeFormat != "dmy" || c.CSV.TimeBase != energie.TimeBaseLocal || !c.CSV.DecimalComma || !c.CSV.Header || c.CSV.Encoding != "utf-8" {
 		t.Errorf("CSV: %+v", c.CSV)
 	}
 	if _, ok := c.Target.(energie.PickupTarget); !ok {
@@ -53,6 +53,7 @@ func TestEfficioConfigRejects(t *testing.T) {
 		"Aufbewahrung 0":         {"retention_days": "0"},
 		"Präfix mit Pfad":        {"file_prefix": "../x"},
 		"Zeitformat":             {"time_format": "us"},
+		"Zeitbezug":              {"time_base": "cet"},
 		"Zeichensatz":            {"encoding": "ebcdic"},
 		"Ablage unbekannt":       {"target": "cloud"},
 		"drive_folder mit ..":    {"target": "drive", "drive_id": "ok", "drive_folder": "a/../../b"},
@@ -394,7 +395,7 @@ func TestEnergySettingsWeb(t *testing.T) {
 	t.Cleanup(clean)
 	form := func(mod func(url.Values)) url.Values {
 		v := url.Values{"stale_minutes": {"20"}, "value_retention_days": {"300"}, "run_minutes": {"30"}, "interval_minutes": {"5"},
-			"file_days": {"2"}, "retention_days": {"10"}, "time_format": {"iso"}, "encoding": {"windows-1252"}, "prefix": {"werk1"}, "decimal_comma": {"on"}}
+			"file_days": {"2"}, "retention_days": {"10"}, "time_format": {"iso"}, "time_base": {"offset"}, "encoding": {"windows-1252"}, "prefix": {"werk1"}, "decimal_comma": {"on"}}
 		if mod != nil {
 			mod(v)
 		}
@@ -407,9 +408,10 @@ func TestEnergySettingsWeb(t *testing.T) {
 	}
 	// ungültig: Raster teilt den Takt nicht, negative Tage, keine Zahl
 	for name, mod := range map[string]func(url.Values){
-		"Raster": func(v url.Values) { v.Set("run_minutes", "15"); v.Set("interval_minutes", "10") },
-		"Tage":   func(v url.Values) { v.Set("file_days", "-1") },
-		"Zahl":   func(v url.Values) { v.Set("stale_minutes", "abc") },
+		"Raster":    func(v url.Values) { v.Set("run_minutes", "15"); v.Set("interval_minutes", "10") },
+		"Tage":      func(v url.Values) { v.Set("file_days", "-1") },
+		"Zahl":      func(v url.Values) { v.Set("stale_minutes", "abc") },
+		"Zeitbezug": func(v url.Values) { v.Set("time_base", "cet") },
 	} {
 		w := post(form(mod))
 		if w.Code != http.StatusSeeOther || !strings.Contains(w.Header().Get("Location"), "err=") {
@@ -426,7 +428,7 @@ func TestEnergySettingsWeb(t *testing.T) {
 	}
 	got, _ = energie.NewStore(env.pool).Settings(ctx)
 	if got.StaleMinutes != 20 || got.ValueRetentionDays != 300 || got.RunMinutes != 30 || got.IntervalMinutes != 5 || got.FileDays != 2 ||
-		got.RetentionDays != 10 || got.TimeFormat != "iso" || got.Encoding != "windows-1252" || got.Prefix != "werk1" || !got.DecimalComma || got.Header {
+		got.RetentionDays != 10 || got.TimeFormat != "iso" || got.TimeBase != energie.TimeBaseOffset || got.Encoding != "windows-1252" || got.Prefix != "werk1" || !got.DecimalComma || got.Header {
 		t.Errorf("gelesen: %+v", got)
 	}
 	d := EnergyMetersData{Tab: "settings", Set: got, SetCanEdit: true, SetChoices: energie.MinuteChoices}
@@ -435,5 +437,31 @@ func TestEnergySettingsWeb(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Errorf("Reiter Einstellungen enthält %q nicht", want)
 		}
+	}
+}
+
+// Der Zeitbezug: gültige Werte werden übernommen, die Vorgabe aus den
+// Einstellungen ist im Formular für neue Exporte vorausgewählt.
+func TestEfficioTimeBase(t *testing.T) {
+	for _, v := range []string{energie.TimeBaseLocal, energie.TimeBaseUTC, energie.TimeBaseOffset} {
+		c, err := efficioConfig("", map[string]string{"time_base": v}, nil)
+		if err != nil || c.CSV.TimeBase != v {
+			t.Errorf("%s: %+v %v", v, c.CSV, err)
+		}
+	}
+	def := energie.DefaultSettings()
+	def.TimeBase = energie.TimeBaseUTC
+	out := renderPage(t, loadTestTemplates(t), "export", ConnectionsPageData{Direction: "export", CanWrite: true,
+		EfficioDefault: def, EfficioChoices: energie.MinuteChoices, EfficioInfra: "{}"})
+	if !strings.Contains(out, `<option value="utc" selected>`) || strings.Contains(out, `<option value="local" selected>`) {
+		t.Error("Vorgabe des Zeitbezugs nicht vorausgewählt")
+	}
+	d := EnergyMetersData{Tab: "settings", Set: def, SetCanEdit: true, SetChoices: energie.MinuteChoices}
+	if out := renderPage(t, loadTestTemplates(t), "energy_meters", d); !strings.Contains(out, `name="time_base"`) ||
+		!strings.Contains(out, `<option value="utc" selected>`) {
+		t.Error("Reiter Einstellungen zeigt den Zeitbezug nicht")
+	}
+	if got := (&Handler{}).efficioDisplay(context.Background(), "time_base", "offset"); got != "Ortszeit mit Zeitzonenangabe" {
+		t.Errorf("Anzeige: %q", got)
 	}
 }

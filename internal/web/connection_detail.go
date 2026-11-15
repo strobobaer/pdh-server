@@ -35,7 +35,7 @@ var connFieldLabels = map[string]string{
 	"template_id": "Vorlage", "destination_path": "Zielpfad", "schedule_cron": "Zeitplan (Cron)", "table_name": "Tabelle",
 	"run_minutes": "Datei ergänzen alle (Min.)", "interval_minutes": "Zeilen im Abstand von (Min.)", "value_mode": "Wert",
 	"file_days": "Max. Länge der Datei (Tage)", "retention_days": "Aufbewahrung (Tage)", "file_prefix": "Dateiname beginnt mit",
-	"time_format": "Zeitformat", "decimal_comma": "Dezimalkomma", "encoding": "Zeichensatz", "target": "Ablage",
+	"time_format": "Zeitformat", "time_base": "Zeitbezug", "decimal_comma": "Dezimalkomma", "encoding": "Zeichensatz", "target": "Ablage",
 	"drive_id": "Netzlaufwerk", "drive_folder": "Ordner auf dem Laufwerk", "ftp_host": "Server", "ftp_port": "Port",
 	"ftp_username": "Benutzer", "ftp_password": "Kennwort", "ftp_folder": "Zielordner", "ftp_tls": "TLS",
 	"sftp_host_key": "Fingerabdruck des Servers", "filter_infra_ids": "Nur Anlagen", "filter_meter_keys": "Nur Messstellen",

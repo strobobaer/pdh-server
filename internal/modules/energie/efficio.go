@@ -2,6 +2,7 @@ package energie
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"sort"
 	"strconv"
@@ -17,16 +18,49 @@ const (
 	timeLayoutISO = "2006-01-02 15:04"
 )
 
+// Zeitbezug der Zeitstempel, Tagesgrenzen und Dateinamen.
+const (
+	TimeBaseLocal  = "local"  // Ortszeit (Vorgabe)
+	TimeBaseUTC    = "utc"    // UTC, Tagesdateien ab UTC-Mitternacht
+	TimeBaseOffset = "offset" // Ortszeit mit Zeitzonenangabe, z. B. „+02:00“
+)
+
+// CheckTimeBase prüft den Zeitbezug; leer gilt als Ortszeit.
+func CheckTimeBase(v string) error {
+	switch v {
+	case "", TimeBaseLocal, TimeBaseUTC, TimeBaseOffset:
+		return nil
+	}
+	return errors.New("Ungültiger Zeitbezug.")
+}
+
+// TimeBaseLabel ist die Beschriftung eines Zeitbezugs.
+func TimeBaseLabel(v string) string {
+	switch v {
+	case TimeBaseUTC:
+		return "UTC"
+	case TimeBaseOffset:
+		return "Ortszeit mit Zeitzonenangabe"
+	}
+	return "Ortszeit"
+}
+
 // CSVOptions beschreibt das Aussehen der Efficio-CSV.
 type CSVOptions struct {
 	TimeFormat   string // "dmy" (TT.MM.JJJJ hh:mm) | "iso" (JJJJ-MM-TT hh:mm)
+	TimeBase     string // TimeBaseLocal | TimeBaseUTC | TimeBaseOffset (leer = Ortszeit)
 	DecimalComma bool
 	Header       bool
 	Encoding     string // "utf-8" | "windows-1252"
 	Loc          *time.Location
 }
 
+// loc ist die Zeitbasis von Zeilen, Tagesgrenzen und Dateinamen: bei UTC
+// immer UTC, sonst die Ortszeit.
 func (o CSVOptions) loc() *time.Location {
+	if o.TimeBase == TimeBaseUTC {
+		return time.UTC
+	}
 	if o.Loc != nil {
 		return o.Loc
 	}
@@ -34,8 +68,13 @@ func (o CSVOptions) loc() *time.Location {
 }
 
 func (o CSVOptions) layout() string {
-	if o.TimeFormat == "iso" {
+	switch {
+	case o.TimeFormat == "iso" && o.TimeBase == TimeBaseOffset:
+		return timeLayoutISO + "-07:00" // 2026-10-25 02:15+02:00
+	case o.TimeFormat == "iso":
 		return timeLayoutISO
+	case o.TimeBase == TimeBaseOffset:
+		return timeLayoutDMY + " -07:00" // 25.10.2026 02:15 +02:00
 	}
 	return timeLayoutDMY
 }

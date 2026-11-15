@@ -313,3 +313,76 @@ func TestExporterRunOnStandbyRefused(t *testing.T) {
 		t.Error("auf dem Spiegel darf nichts entstehen")
 	}
 }
+
+// Zeitumstellung 25.10.2026 in allen drei Zeitbezügen: Zeilen, Tagesgrenze, Dateiname.
+func TestExporterDSTTimeBases(t *testing.T) {
+	berlin, err := time.LoadLocation("Europe/Berlin")
+	if err != nil {
+		t.Skip(err)
+	}
+	start := time.Date(2026, 10, 25, 0, 0, 0, 0, berlin)
+	end := time.Date(2026, 10, 26, 0, 0, 0, 0, berlin)
+	cases := []struct {
+		base           string
+		names          []string
+		rows           []int
+		want, dontWant []string
+	}{
+		{TimeBaseLocal, []string{"efficio_20261025_0000.csv", "efficio_20261026_0000.csv"}, []int{100, 1},
+			[]string{"25.10.2026 01:45;", "26.10.2026 00:00;"}, []string{"+0"}},
+		{TimeBaseOffset, []string{"efficio_20261025_0000.csv", "efficio_20261026_0000.csv"}, []int{100, 1},
+			[]string{"25.10.2026 02:15 +02:00;", "25.10.2026 02:15 +01:00;", "25.10.2026 00:00 +02:00;", "26.10.2026 00:00 +01:00;"}, nil},
+		{TimeBaseUTC, []string{"efficio_20261024_0000.csv", "efficio_20261025_0000.csv"}, []int{8, 93},
+			[]string{"24.10.2026 22:00;", "25.10.2026 00:00;", "25.10.2026 01:15;", "25.10.2026 23:00;"}, []string{"+0", "24.10.2026 21:45;"}},
+	}
+	for _, c := range cases {
+		t.Run(c.base, func(t *testing.T) {
+			env := exportEnv(t)
+			env.cfg.CSV.Loc = berlin
+			env.cfg.CSV.TimeBase = c.base
+			m := env.instant(t)
+			fillSeries(t, env.pool, m, start, end, 15*time.Minute)
+			env.setState(t, time.Date(2026, 10, 24, 23, 45, 0, 0, berlin))
+			env.now = end.Add(2 * time.Minute)
+			r, err := env.e.Run(context.Background(), env.cfg)
+			must(t, err)
+			if r.Intervals != 101 || r.Rows != 101 {
+				t.Fatalf("%+v", r)
+			}
+			fs := env.files(t)
+			if len(fs) != len(c.names) {
+				t.Fatalf("Dateien: %+v", fs)
+			}
+			all := ""
+			for i, f := range fs {
+				if f.name != c.names[i] || f.rows != c.rows[i] {
+					t.Errorf("Datei %d: %s mit %d Zeilen, erwartet %s mit %d", i, f.name, f.rows, c.names[i], c.rows[i])
+				}
+				all += f.content
+			}
+			for _, w := range c.want {
+				if strings.Count(all, w) != 1 {
+					t.Errorf("%q kommt %d-mal vor, erwartet einmal", w, strings.Count(all, w))
+				}
+			}
+			for _, w := range c.dontWant {
+				if strings.Contains(all, w) {
+					t.Errorf("%q darf nicht vorkommen", w)
+				}
+			}
+			if c.base == TimeBaseLocal { // Ortszeit ohne Angabe: die doppelte Stunde erscheint zweimal
+				if n := strings.Count(all, "25.10.2026 02:15;"); n != 2 {
+					t.Errorf("02:15 kommt %d-mal vor, erwartet zweimal", n)
+				}
+			} else {
+				seen := map[string]bool{}
+				for _, l := range env.dataLines(t) {
+					if seen[l] {
+						t.Errorf("doppelte Zeile %q", l)
+					}
+					seen[l] = true
+				}
+			}
+		})
+	}
+}

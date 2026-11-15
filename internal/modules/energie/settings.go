@@ -24,6 +24,7 @@ type Settings struct {
 	RunMinutes, IntervalMinutes int // Vorgaben für neue Exporte
 	FileDays, RetentionDays     int
 	TimeFormat                  string // dmy | iso
+	TimeBase                    string // local | utc | offset
 	DecimalComma, Header        bool
 	Encoding                    string // utf-8 | windows-1252
 	Prefix                      string
@@ -34,7 +35,7 @@ func DefaultSettings() Settings {
 	return Settings{
 		StaleMinutes: int(StaleAfter / time.Minute), ValueRetentionDays: ValueRetentionDays,
 		RunMinutes: 15, IntervalMinutes: 1, FileDays: 1, RetentionDays: defaultRetention,
-		TimeFormat: "dmy", DecimalComma: true, Header: true, Encoding: "utf-8", Prefix: "efficio",
+		TimeFormat: "dmy", TimeBase: TimeBaseLocal, DecimalComma: true, Header: true, Encoding: "utf-8", Prefix: "efficio",
 	}
 }
 
@@ -117,6 +118,8 @@ func (s Settings) Validate() error {
 		return errors.New("„Minutenwerte aufbewahren“ muss zwischen 1 und 3650 Tagen liegen.")
 	case s.TimeFormat != "dmy" && s.TimeFormat != "iso":
 		return errors.New("Ungültiges Zeitformat.")
+	case s.TimeBase != TimeBaseLocal && s.TimeBase != TimeBaseUTC && s.TimeBase != TimeBaseOffset:
+		return errors.New("Ungültiger Zeitbezug.")
 	case s.Encoding != "utf-8" && s.Encoding != "windows-1252":
 		return errors.New("Ungültiger Zeichensatz.")
 	}
@@ -139,7 +142,8 @@ func (s Settings) pairs() [][2]string {
 		{"energy.stale_minutes", i(s.StaleMinutes)}, {"energy.value_retention_days", i(s.ValueRetentionDays)},
 		{"energy.export_run_minutes", i(s.RunMinutes)}, {"energy.export_interval_minutes", i(s.IntervalMinutes)},
 		{"energy.export_file_days", i(s.FileDays)}, {"energy.export_retention_days", i(s.RetentionDays)},
-		{"energy.export_time_format", s.TimeFormat}, {"energy.export_decimal_comma", b(s.DecimalComma)},
+		{"energy.export_time_format", s.TimeFormat}, {"energy.export_time_base", s.TimeBase},
+		{"energy.export_decimal_comma", b(s.DecimalComma)},
 		{"energy.export_header", b(s.Header)}, {"energy.export_encoding", s.Encoding}, {"energy.export_prefix", s.Prefix},
 	}
 }
@@ -188,6 +192,7 @@ func (s *Store) Settings(ctx context.Context) (Settings, error) {
 	num("energy.export_file_days", &out.FileDays)
 	num("energy.export_retention_days", &out.RetentionDays)
 	str("energy.export_time_format", &out.TimeFormat)
+	str("energy.export_time_base", &out.TimeBase)
 	flag("energy.export_decimal_comma", &out.DecimalComma)
 	flag("energy.export_header", &out.Header)
 	str("energy.export_encoding", &out.Encoding)
