@@ -179,3 +179,6 @@ func (s *Store) ThresholdCounts(ctx context.Context) (map[string]ThresholdCount,
 	}
 	return out, rows.Err()
 }
+
+// Validate prüft die Eingaben; die Meldungen sind für Anwender gedacht.
+func (t *Threshold) Validate() error { return t.validate() }

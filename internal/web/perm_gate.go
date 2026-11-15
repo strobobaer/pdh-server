@@ -152,6 +152,7 @@ var gateRules = []gateRule{
 	gr(wPost, "kvp.admin", "kvp", false, `^/kvp`+gID+`/delete$`),
 	gr(wPost, permSetupAdmin, setupRef, false, `^/setup`+gID+`/delete-web$`),
 	gr(wPost, permEnergyAdmin, meterRef, false, `^/energy/meters`+gID+`/delete-web$`),
+	gr(wPost, permEnergyAdmin, "", false, `^/energy/thresholds`+gID+`/delete-web$`), // Datensatz (Anlage der Messstelle) prüft der Handler
 	gr("DELETE", "maintenance.admin", "", false, apiV1+`/maintenance/checklists`+gID+gEnd),
 	// ── Zertifikate (Let's Encrypt): Entfernen nur Bereichsadministrator, Full (strict) braucht Cloudflare ──
 	gr(wPost, permCertsAdmin, "", false, `^/admin/server-config/certs/remove$`),
@@ -220,6 +221,7 @@ var gateRules = []gateRule{
 	gr(wPost, "directory.edit", "business_partner", false, apiV1+`/directory`+gID+gEnd),
 	// ── Energiedaten: Messstellen anlegen und ändern mit energy.edit (Anlage bzw. Datensatz prüft der Handler) ──
 	gr(wPost, permEnergyEdit, "", false, `^/energy/meters/save-web$`),
+	gr(wPost, permEnergyThresholds, meterRef, false, `^/energy/meters`+gID+`/thresholds/save-web$`),
 	gr(wPost, permEnergyAdmin, "", false, `^/energy/settings-web$`), // Einstellungen: nur Bereichsadministrator
 	// ── Rüstzeiten: anlegen, bearbeiten und beenden mit setup.edit (für den Datensatz in seiner Abteilung) ──
 	gr(wPost, permSetupEdit, "", false, `^/setup/?$`),

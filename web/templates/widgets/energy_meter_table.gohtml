@@ -25,6 +25,7 @@ dieselbe Eingabezeile (#em-edit) mit dem Infra-Picker der Anlagen.
         <th><a href="{{index .SortURL "last"}}">Letzter Wert {{index .SortMark "last"}}</a></th>
         <th>Exportieren</th>
         <th>Aktiv</th>
+        <th>Schwellwerte</th>
         <th><span class="sr-only">Aktionen</span></th>
       </tr>
     </thead>
@@ -48,19 +49,24 @@ dieselbe Eingabezeile (#em-edit) mit dem Infra-Picker der Anlagen.
         </td>
         <td data-label="Exportieren">{{if .Export}}Ja{{else}}<span class="em-muted">Nein</span>{{end}}</td>
         <td data-label="Aktiv">{{if .Active}}Ja{{else}}<span class="em-muted">Nein</span>{{end}}</td>
+        <td data-label="Schwellwerte">
+          <button type="button" class="btn em-thr-btn{{if .ThrAlarms}} has-alarm{{end}}" aria-expanded="false" aria-controls="em-thr-{{.ID}}" onclick="emThr(this)"
+            hx-get="/energy/meters/{{.ID}}/thresholds" hx-target="#em-thr-{{.ID}}" hx-swap="innerHTML" hx-trigger="click once"><i class="ti ti-bell-ringing" aria-hidden="true"></i> {{.ThrText}}</button>
+        </td>
         <td class="em-actions">
           {{if .CanEdit}}{{template "icon-button" (dict "Action" "edit" "OnClick" "emEdit(this)")}}{{end}}
           {{if .CanDelete}}{{template "icon-button" (dict "Action" "delete" "OnClick" "emDelete(this)")}}{{end}}
         </td>
       </tr>
+      <tr class="em-thr-row" id="em-thr-row-{{.ID}}" hidden><td colspan="12"><div id="em-thr-{{.ID}}" class="em-thr-box"></div></td></tr>
       {{else}}
-      <tr><td colspan="11" class="em-empty">{{if .FilterOn}}Keine Messstelle passt zu den Filtern.{{else}}Noch keine Messstelle angelegt.{{end}}</td></tr>
+      <tr><td colspan="12" class="em-empty">{{if .FilterOn}}Keine Messstelle passt zu den Filtern.{{else}}Noch keine Messstelle angelegt.{{end}}</td></tr>
       {{end}}
       {{if .CanCreate}}
-      <tr id="em-new-row"><td colspan="11">
+      <tr id="em-new-row"><td colspan="12">
         <button type="button" class="btn" onclick="emNew()"><i class="ti ti-plus" aria-hidden="true"></i> Neue Messstelle</button>
       </td></tr>
-      <tr id="em-edit" hidden><td colspan="11">
+      <tr id="em-edit" hidden><td colspan="12">
         <div class="em-form" onkeydown="if(event.key==='Enter'&&event.target.tagName==='INPUT'&&event.target.type!=='radio'){event.preventDefault();emSave();}">
           <input type="hidden" id="em-id">
           <div class="em-grid">

@@ -69,6 +69,8 @@ type MeterRow struct {
 	LastText, LastAtText string
 	Stale                bool
 	CanEdit, CanDelete   bool
+	ThrText              string // „2 · 1 Alarm“ (Schwellwerte der Messstelle)
+	ThrAlarms            int
 	EditJSON             string // Vorbelegung des Bearbeiten-Formulars
 }
 
@@ -77,6 +79,7 @@ type MeterFilterView struct {
 	Infra, InfraLabel, Virtual, Export, Active string
 	Unit, Kind, Conn, Q                        string
 	Stale                                      bool
+	Alarm                                      bool
 }
 
 // MeterSourceOption: ein importierter Wert, der als Quelle gewählt werden kann.
@@ -191,13 +194,13 @@ func (h *Handler) EnergyMetersPage(w http.ResponseWriter, r *http.Request) {
 	} else {
 		d.SortMark[f.Sort] = "▲"
 	}
-	d.Filter = MeterFilterView{Infra: f.InfraID, Unit: f.Unit, Kind: f.Kind, Conn: f.ConnectionID, Q: f.Query, Stale: f.Stale}
+	d.Filter = MeterFilterView{Infra: f.InfraID, Unit: f.Unit, Kind: f.Kind, Conn: f.ConnectionID, Q: f.Query, Stale: f.Stale, Alarm: f.Alarm}
 	for k, p := range map[string]*string{"virtual": &d.Filter.Virtual, "export": &d.Filter.Export, "active": &d.Filter.Active} {
 		if v := q.Get(k); v == "0" || v == "1" {
 			*p = v
 		}
 	}
-	d.FilterOn = f.InfraID != "" || f.ConnectionID != "" || f.Unit != "" || f.Kind != "" || f.Query != "" || f.Stale ||
+	d.FilterOn = f.InfraID != "" || f.ConnectionID != "" || f.Unit != "" || f.Kind != "" || f.Query != "" || f.Stale || f.Alarm ||
 		f.Virtual != nil || f.Export != nil || f.Active != nil
 	if f.InfraID != "" && h.db != nil {
 		_ = h.db.QueryRow(ctx, `SELECT name FROM infrastructure WHERE id = $1::uuid`, f.InfraID).Scan(&d.Filter.InfraLabel)
@@ -232,6 +235,10 @@ func (h *Handler) EnergyMetersPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Rechte je Anlage einmal prüfen: die Abteilung hängt an der Anlage.
+	counts, err := st.ThresholdCounts(ctx)
+	if err != nil {
+		componentLog("energiedaten").Error().Err(err).Msg("schwellwerte zählen")
+	}
 	canEdit, canDel := map[string]bool{}, map[string]bool{}
 	now := time.Now()
 	for _, m := range list {
@@ -242,6 +249,7 @@ func (h *Handler) EnergyMetersPage(w http.ResponseWriter, r *http.Request) {
 			canDel[m.InfraID] = h.energyCanInfra(r, permEnergyAdmin, m.InfraID)
 		}
 		row.CanEdit, row.CanDelete = canEdit[m.InfraID], canDel[m.InfraID]
+		row.ThrText, row.ThrAlarms = thresholdCountText(counts[m.ID])
 		d.Rows = append(d.Rows, row)
 	}
 	d.Total = len(d.Rows)

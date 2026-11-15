@@ -28,6 +28,8 @@ const (
 	permEnergyView  = "energy.view"
 	permEnergyEdit  = "energy.edit"
 	permEnergyAdmin = "energy.admin"
+	// Schwellwerte pflegen (Migration 163)
+	permEnergyThresholds = "energy.thresholds"
 )
 
 // energyStore: Speicher der Messstellen; ohne Datenbank (Tests) nil.
@@ -87,6 +89,7 @@ func meterFilterFromQuery(q url.Values) energie.Filter {
 		Unit:  strings.TrimSpace(q.Get("unit")),
 		Query: strings.TrimSpace(q.Get("q")),
 		Stale: q.Get("stale") == "1",
+		Alarm: q.Get("alarm") == "1",
 		Sort:  q.Get("sort"),
 		Desc:  q.Get("dir") == "desc",
 	}

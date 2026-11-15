@@ -274,6 +274,9 @@ func meterTestData(canEdit bool) EnergyMetersData {
 	for _, m := range rows {
 		r := newMeterRow(m, now)
 		r.CanEdit, r.CanDelete = canEdit, canEdit
+		if m.ID == "m1" {
+			r.ThrText, r.ThrAlarms = thresholdCountText(energie.ThresholdCount{Total: 2, Alarms: 1})
+		}
 		d.Rows = append(d.Rows, r)
 	}
 	return d
@@ -287,14 +290,10 @@ func TestMeterTableRender(t *testing.T) {
 		`<span class="badge b-blue">berechnet</span>`, `<code class="em-formula">[GESAMT] - [ZAEHLER-1]</code>`,
 		"veraltet", "Neue Messstelle", `data-infra-picker`, `name="infra"`, `action="/energy/meters"`,
 		"Exportieren", "Letzter Wert", `id="em-edit"`, `/energy/meters/save-web`,
+		"Schwellwerte", `id="em-thr-row-m1"`, `hx-get="/energy/meters/m1/thresholds"`, "2 · 1 Alarm", `name="alarm"`,
 	} {
 		if !strings.Contains(html, want) {
 			t.Errorf("Seite enthält %q nicht", want)
-		}
-	}
-	for _, bad := range []string{"Schwellwert"} {
-		if strings.Contains(html, bad) {
-			t.Errorf("Seite darf %q (kommt erst mit 0.80.13) nicht enthalten", bad)
 		}
 	}
 	// Die Formel steht in der Spalte „Quelle“ der berechneten Zeile, nicht in einer eigenen Spalte.
