@@ -5,9 +5,12 @@ package tiamqtt
 // Schlüssel im JSON), geht nur über diese Funktionen in eine Vorlage.
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"unicode"
+	"unicode/utf16"
+	"unicode/utf8"
 )
 
 // PasswordPlaceholder steht in der Konfiguration, wenn das Kennwort nicht
@@ -33,6 +36,37 @@ func SCLString(s string, max int) (string, error) {
 			fmt.Fprintf(&b, "$%02X", c)
 		default:
 			b.WriteByte(c)
+		}
+	}
+	b.WriteByte('\'')
+	return b.String(), nil
+}
+
+// SCLWString schreibt s als SCL-Zeichenkette für WString: WSTRING#'…'. $ und
+// ' werden mit $ maskiert, nicht druckbare Zeichen (Steuerzeichen, DEL,
+// Richtungszeichen u. a.) als $hhhh (UTF-16). Druckbare Zeichen wie Umlaute
+// bleiben stehen – die Quelle ist UTF-8, WString hält Unicode. Länger als
+// max Byte (UTF-8) oder kein gültiges UTF-8 → Fehler.
+func SCLWString(s string, max int) (string, error) {
+	if len(s) > max {
+		return "", fmt.Errorf("Text ist %d Byte lang, erlaubt sind höchstens %d", len(s), max)
+	}
+	if !utf8.ValidString(s) {
+		return "", errors.New("Text ist kein gültiges UTF-8")
+	}
+	var b strings.Builder
+	b.WriteString("WSTRING#'")
+	for _, r := range s {
+		switch {
+		case r == '$' || r == '\'':
+			b.WriteByte('$')
+			b.WriteRune(r)
+		case r != ' ' && !unicode.IsPrint(r):
+			for _, u := range utf16.Encode([]rune{r}) {
+				fmt.Fprintf(&b, "$%04X", u)
+			}
+		default:
+			b.WriteRune(r)
 		}
 	}
 	b.WriteByte('\'')

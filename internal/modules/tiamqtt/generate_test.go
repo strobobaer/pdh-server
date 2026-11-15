@@ -113,8 +113,28 @@ func fileByName(t *testing.T, files []File, name string) string {
 }
 
 func TestGenerateStandaloneGolden(t *testing.T) {
-	files := generateDaten(t, goldenOptions())
-	dir := filepath.Join("testdata", "golden", "standalone")
+	checkGolden(t, "standalone", generateDaten(t, goldenOptions()))
+}
+
+// lmqttOptions sind die Golden-Einstellungen für die Variante LMQTT:
+// Hostname statt IPv4, TLS mit Port-Vorgabe 8883.
+func lmqttOptions() Options {
+	o := goldenOptions()
+	o.Variant = VariantLMQTT
+	o.BrokerHost = "mqtt.werk.local"
+	o.BrokerPort = 0
+	o.UseTLS = true
+	return o
+}
+
+func TestGenerateLMQTTGolden(t *testing.T) {
+	checkGolden(t, "lmqtt", generateDaten(t, lmqttOptions()))
+}
+
+// checkGolden vergleicht die Dateien mit testdata/golden/<sub> (-update schreibt neu).
+func checkGolden(t *testing.T, sub string, files []File) {
+	t.Helper()
+	dir := filepath.Join("testdata", "golden", sub)
 	if *update {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			t.Fatal(err)
@@ -705,4 +725,235 @@ func TestGenerateClientIDTooLong(t *testing.T) {
 	if _, err := Generate(loadDaten(t), l, o); err == nil || err.Error() != msgClientIDLong {
 		t.Errorf("Fehler %v", err)
 	}
+}
+
+// ---------------------------------------------------------------- Variante LMQTT
+
+func TestSCLWStringEscapes(t *testing.T) {
+	for _, tc := range []struct{ in, want string }{
+		{"abc", "WSTRING#'abc'"},
+		{"it's", "WSTRING#'it$'s'"},
+		{"$", "WSTRING#'$$'"},
+		{"ä", "WSTRING#'ä'"},
+		{"a\nb", "WSTRING#'a$000Ab'"},
+		{"\t", "WSTRING#'$0009'"},
+		{"\x7F", "WSTRING#'$007F'"},
+		{string(rune(0x202E)), "WSTRING#'$202E'"},
+		{"\U0001F600", "WSTRING#'\U0001F600'"},
+		{`"x"`, `WSTRING#'"x"'`},
+		{"", "WSTRING#''"},
+	} {
+		got, err := SCLWString(tc.in, 254)
+		if err != nil || got != tc.want {
+			t.Errorf("SCLWString(%q) = %q, %v; erwartet %q", tc.in, got, err, tc.want)
+		}
+	}
+	if _, err := SCLWString(strings.Repeat("x", 255), 254); err == nil {
+		t.Error("255 Byte bei max 254: kein Fehler")
+	}
+	if _, err := SCLWString("a\xffb", 254); err == nil {
+		t.Error("ungültiges UTF-8: kein Fehler")
+	}
+}
+
+func TestLMQTTUsesLibrary(t *testing.T) {
+	files := generateDaten(t, lmqttOptions())
+	var names []string
+	for _, f := range files {
+		names = append(names, f.Name)
+	}
+	if got := strings.Join(names, " "); got != "1_PDH_Daten_Typ.udt 2_PDH_Daten_Konfig.db 3_PDH_MQTT_Daten.scl 4_Daten_aus_Typ.db LIESMICH.txt" {
+		t.Errorf("Dateien: %s", got)
+	}
+	scl := fileByName(t, files, "3_PDH_MQTT_Daten.scl")
+	for _, want := range []string{
+		`instClient : "LMQTT_Client";`, `connParam : "LMQTT_typeConnParam";`,
+		"#instClient(enable := #libEnable,", "publish := #pubReq,",
+		"publishMsgPayload := #pl,", "publishMsgLen := #pubLen,", "qos := #qos,", "retain := #pubRetain,",
+		`#connParam.broker := "PDH_Daten_Konfig".brokerHost;`,
+		`#connParam.port := "PDH_Daten_Konfig".brokerPort;`,
+		`#connParam.tls.enableTls := "PDH_Daten_Konfig".useTls;`,
+		`#connParam.keepAlive := "PDH_Daten_Konfig".keepAlive;`,
+		"#qos := 0;", "16#8201", "16#8202",
+		"R_TRIG", "RD_SYS_T(", "#snap := #daten;",
+	} {
+		if !strings.Contains(scl, want) {
+			t.Errorf("SCL enthält %q nicht", want)
+		}
+	}
+	for _, bad := range []string{"TCON", "TSEND", "TRCV", "TDISCON", "Puffer", "16#10;"} {
+		if strings.Contains(scl, bad) {
+			t.Errorf("SCL enthält %q", bad)
+		}
+	}
+	// dieselben Hilfsbausteine wie die eigenständige Variante, vor dem FB
+	std := fileByName(t, generateDaten(t, goldenOptions()), "3_PDH_MQTT_Daten.scl")
+	if i, j := strings.Index(scl, "FUNCTION_BLOCK"), strings.Index(std, "FUNCTION_BLOCK"); i < 0 || j < 0 ||
+		strings.ReplaceAll(scl[:i], variantLabels[VariantLMQTT], "") != strings.ReplaceAll(std[:j], variantLabels[VariantStandalone], "") {
+		t.Error("Hilfsbausteine weichen von der eigenständigen Variante ab")
+	}
+
+	konfig := fileByName(t, files, "2_PDH_Daten_Konfig.db")
+	for _, want := range []string{
+		"useTls : Bool := TRUE;", "brokerPort : UInt := 8883;", "brokerHost : String[254] := 'mqtt.werk.local';",
+		"clientId : WString[254] := WSTRING#'pdh-sps-Daten';", "topic : WString[254] := WSTRING#'sps/linie1/Daten';",
+		"heartbeatTopic : WString[254] := WSTRING#'sps/linie1/Daten/heartbeat';",
+	} {
+		if !strings.Contains(konfig, want) {
+			t.Errorf("Konfig-DB ohne %q", want)
+		}
+	}
+	if strings.Contains(konfig, "Puffer") || countLinesPrefix(konfig, "DATA_BLOCK ") != 1 {
+		t.Error("Konfig-Datei enthält einen Puffer-DB")
+	}
+
+	o := lmqttOptions()
+	o.UseTLS = false
+	konfig = fileByName(t, generateDaten(t, o), "2_PDH_Daten_Konfig.db")
+	for _, want := range []string{"useTls : Bool := FALSE;", "brokerPort : UInt := 1883;"} {
+		if !strings.Contains(konfig, want) {
+			t.Errorf("ohne TLS: Konfig-DB ohne %q", want)
+		}
+	}
+	o.UseTLS, o.BrokerPort, o.BrokerHost = true, 8884, "10.0.0.5"
+	konfig = fileByName(t, generateDaten(t, o), "2_PDH_Daten_Konfig.db")
+	if !strings.Contains(konfig, "brokerPort : UInt := 8884;") || !strings.Contains(konfig, "'10.0.0.5'") {
+		t.Error("angegebener Port oder IPv4-Adresse nicht übernommen")
+	}
+	// die eigenständige Variante hat kein useTls
+	if strings.Contains(fileByName(t, generateDaten(t, goldenOptions()), "2_PDH_Daten_Konfig.db"), "useTls") {
+		t.Error("eigenständige Variante mit useTls")
+	}
+}
+
+func TestLMQTTReadmeLink(t *testing.T) {
+	readme := strings.TrimPrefix(fileByName(t, generateDaten(t, lmqttOptions()), "LIESMICH.txt"), string([]byte{0xEF, 0xBB, 0xBF}))
+	if !strings.HasPrefix(readme, "Vorher die Bibliothek LMQTT ins Projekt holen") {
+		t.Errorf("LIESMICH beginnt mit %q", readme[:min(80, len(readme))])
+	}
+	first := strings.SplitN(readme, "\r\n", 3)
+	if len(first) < 2 || !strings.Contains(first[0]+first[1], LMQTTInfoURL) {
+		t.Error("Link zur Bibliothek fehlt am Anfang")
+	}
+	for _, want := range []string{
+		"LMQTT_Client", "V4.0.4", "Vor dem Einsatz mit der Doku der eingesetzten LMQTT-Version abgleichen",
+		"16#7000", "16#7003", "16#8005", "16#8007", "16#8008", "16#8009", "16#82xx",
+		"values.Motor.Drehzahl", "values.Feld[0]", "Teil 1", "Teil 2",
+		"sps/linie1/Daten/heartbeat", PasswordPlaceholder, "useTls", "mqtt.werk.local:8883",
+	} {
+		if !strings.Contains(readme, want) {
+			t.Errorf("LIESMICH ohne %q", want)
+		}
+	}
+	if strings.Contains(readme, "TCON") || strings.Contains(readme, "Puffer") {
+		t.Error("LIESMICH nennt TCON oder Puffer")
+	}
+}
+
+// fbInterface liefert VAR_INPUT, VAR_OUTPUT und VAR_IN_OUT des FB.
+func fbInterface(t *testing.T, scl string) string {
+	t.Helper()
+	m := regexp.MustCompile(`(?s)FUNCTION_BLOCK "[^"]+"\r\n.*?(   VAR_INPUT\r\n.*?   END_VAR\r\n\r\n   VAR_OUTPUT\r\n.*?   END_VAR\r\n\r\n   VAR_IN_OUT\r\n.*?   END_VAR\r\n)`).FindStringSubmatch(scl)
+	if m == nil {
+		t.Fatal("Schnittstelle des FB nicht gefunden")
+	}
+	return m[1]
+}
+
+func TestVariantsSameInterface(t *testing.T) {
+	std := fbInterface(t, fileByName(t, generateDaten(t, goldenOptions()), "3_PDH_MQTT_Daten.scl"))
+	lm := fbInterface(t, fileByName(t, generateDaten(t, lmqttOptions()), "3_PDH_MQTT_Daten.scl"))
+	if std != lm {
+		t.Errorf("Schnittstellen verschieden:\n%s\n---\n%s", std, lm)
+	}
+	for _, want := range []string{"enable : Bool;", "trigger : Bool;", "heartbeatInterval : Time := T#60s;", "hwId : HW_ANY := 64;",
+		"connId : CONN_OUC := 1;", `daten : "PDH_Daten_Typ";`, "statusText : String[60];", "heartbeatCount : UDInt;"} {
+		if !strings.Contains(lm, want) {
+			t.Errorf("Schnittstelle ohne %q", want)
+		}
+	}
+}
+
+func TestLMQTTHeartbeatNoRetain(t *testing.T) {
+	scl := fileByName(t, generateDaten(t, lmqttOptions()), "3_PDH_MQTT_Daten.scl")
+	m := regexp.MustCompile(`(?s)// --- Heartbeat ---(.*?)// --- Ende Heartbeat ---`).FindStringSubmatch(scl)
+	if m == nil {
+		t.Fatal("Heartbeat-Abschnitt nicht gefunden")
+	}
+	hb := m[1]
+	if !strings.Contains(hb, "#pubRetain := FALSE;") || !strings.Contains(hb, ".heartbeatTopic") {
+		t.Errorf("Heartbeat ohne festes Retain FALSE oder heartbeatTopic:\n%s", hb)
+	}
+	if strings.Contains(hb, ".retain") || strings.Contains(hb, "#pubRetain := TRUE") {
+		t.Errorf("Heartbeat-Abschnitt hat einen Retain-Zweig:\n%s", hb)
+	}
+	if n := strings.Count(scl, ".retain"); n != 1 {
+		t.Errorf("%d Stellen mit .retain, erwartet 1", n)
+	}
+}
+
+func TestLMQTTNoRawUserText(t *testing.T) {
+	o := lmqttOptions()
+	o.Topic = "a'; END_FUNCTION_BLOCK"
+	o.Password = "x'y$z"
+	o.IncludePassword = true
+	o.ClientID = `sps"1`
+	o.Username = "Bediener ä\t"
+	o.BrokerHost = "broker'; END"
+	o.GeneratedBy = "Max\r\nEND_FUNCTION_BLOCK"
+	files := generateDaten(t, o)
+	konfig := fileByName(t, files, "2_PDH_Daten_Konfig.db")
+	for _, masked := range []string{"WSTRING#'a$'; END_FUNCTION_BLOCK'", "WSTRING#'x$'y$$z'", `WSTRING#'sps"1'`,
+		"WSTRING#'Bediener ä$0009'", "WSTRING#'a$'; END_FUNCTION_BLOCK/heartbeat'", "'broker$'; END'"} {
+		if !strings.Contains(konfig, masked) {
+			t.Errorf("%s fehlt", masked)
+		}
+	}
+	for _, f := range files {
+		if f.Name == "LIESMICH.txt" {
+			continue
+		}
+		for _, raw := range []string{"a';", "x'y", "y$z", "broker'"} {
+			if strings.Contains(string(f.Content), raw) {
+				t.Errorf("%s enthält %q unmaskiert", f.Name, raw)
+			}
+		}
+		for _, l := range sclLines(string(f.Content)) {
+			if l == "END_FUNCTION_BLOCK" && f.Name != "3_PDH_MQTT_Daten.scl" {
+				t.Errorf("%s: END_FUNCTION_BLOCK als eigene Zeile", f.Name)
+			}
+		}
+	}
+	scl := fileByName(t, files, "3_PDH_MQTT_Daten.scl")
+	if n := countLines(scl, "END_FUNCTION_BLOCK"); n != 1 {
+		t.Errorf("%d Zeilen END_FUNCTION_BLOCK, erwartet 1", n)
+	}
+	if n := countLines(scl, "END_FUNCTION"); n != 8 {
+		t.Errorf("%d Zeilen END_FUNCTION, erwartet 8", n)
+	}
+}
+
+func TestLMQTTPasswordPlaceholder(t *testing.T) {
+	o := lmqttOptions()
+	o.Password = "Sehr-Geheim-42"
+	files := generateDaten(t, o)
+	for _, f := range files {
+		if strings.Contains(string(f.Content), "Sehr-Geheim") {
+			t.Errorf("%s enthält das Kennwort", f.Name)
+		}
+	}
+	if !strings.Contains(fileByName(t, files, "2_PDH_Daten_Konfig.db"), "password : WString[254] := WSTRING#'"+PasswordPlaceholder+"';") {
+		t.Error("Platzhalter fehlt")
+	}
+}
+
+// countLinesPrefix zählt die Zeilen, die mit prefix beginnen (ohne BOM).
+func countLinesPrefix(s, prefix string) int {
+	n := 0
+	for _, l := range strings.Split(strings.TrimPrefix(s, string([]byte{0xEF, 0xBB, 0xBF})), "\r\n") {
+		if strings.HasPrefix(l, prefix) {
+			n++
+		}
+	}
+	return n
 }

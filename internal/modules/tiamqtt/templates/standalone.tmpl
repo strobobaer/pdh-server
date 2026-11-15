@@ -15,29 +15,7 @@ VERSION : 0.1
 //Sendet die Werte aus "daten" per MQTT 3.1.1 (QoS 0) an den Broker aus {{.KonfigName}}:
 //bei steigender Flanke an trigger als {{.Parts}} Nachricht(en), dazu regelmäßig einen Heartbeat.
 //Eigenständig über TCON/TSEND/TRCV, ohne TLS. Je Steuerung nur einmal aufrufen.
-   VAR_INPUT
-      enable : Bool;   // TRUE = verbinden und bereit halten
-      trigger : Bool;   // steigende Flanke = Werte senden
-      heartbeatInterval : Time := T#{{.O.HeartbeatSeconds}}s;   // T#0s = kein Heartbeat
-      hwId : HW_ANY := {{.O.HwID}};   // Hardware-Kennung der PROFINET-Schnittstelle
-      connId : CONN_OUC := {{.O.ConnID}};   // Verbindungsnummer, in der Steuerung eindeutig
-   END_VAR
-
-   VAR_OUTPUT
-      connected : Bool;
-      busy : Bool;
-      done : Bool;   // einen Zyklus nach dem letzten Teil
-      error : Bool;
-      status : Word;
-      statusText : String[60];
-      sentCount : UDInt;
-      heartbeatCount : UDInt;
-   END_VAR
-
-   VAR_IN_OUT
-      daten : {{.TypeName}};
-   END_VAR
-
+{{template "fb_schnittstelle" .}}
    VAR
       snap : {{.TypeName}};   // Abbild der Werte beim Trigger
       ts : DTL;   // Zeitstempel (UTC) aller Teile eines Triggers
@@ -441,27 +419,14 @@ BEGIN
 	            #hdr := 16#10;
 
 	        2:  // Teil #part: JSON in #pl
-	            "PDH_J_Raw"(s := '{"ts":', buf := #pl, pos := #pos, ovf := #ovf);
-	            "PDH_J_DTL"(v := #ts, zone := TRUE, buf := #pl, pos := #pos, ovf := #ovf);
-	            "PDH_J_Raw"(s := ',"part":', buf := #pl, pos := #pos, ovf := #ovf);
-	            "PDH_J_DInt"(v := INT_TO_DINT(#part), buf := #pl, pos := #pos, ovf := #ovf);
-	            "PDH_J_Raw"(s := ',"parts":{{.Parts}},"values":{', buf := #pl, pos := #pos, ovf := #ovf);
-	            CASE #part OF
-{{.PartsCode}}	            END_CASE;
-	            "PDH_J_Raw"(s := '}}', buf := #pl, pos := #pos, ovf := #ovf);
-	            #pubHdr := 16#30;   // PUBLISH, QoS 0
+{{template "json_teil" .}}	            #pubHdr := 16#30;   // PUBLISH, QoS 0
 	            IF {{.KonfigName}}.retain THEN
 	                #pubHdr := #pubHdr OR 16#01;   // Retain nur für die Werte
 	            END_IF;
 	            #tmpStr := {{.KonfigName}}.topic;
 
 	        3:  // --- Heartbeat ---
-	            "PDH_J_Raw"(s := '{"ts":', buf := #pl, pos := #pos, ovf := #ovf);
-	            "PDH_J_DTL"(v := #hbTs, zone := TRUE, buf := #pl, pos := #pos, ovf := #ovf);
-	            "PDH_J_Raw"(s := ',"count":', buf := #pl, pos := #pos, ovf := #ovf);
-	            "PDH_J_UDInt"(v := #heartbeatCount + 1, buf := #pl, pos := #pos, ovf := #ovf);
-	            "PDH_J_Raw"(s := '}', buf := #pl, pos := #pos, ovf := #ovf);
-	            #pubHdr := 16#30;   // fest: PUBLISH, QoS 0 – ein alter Heartbeat darf nicht auf dem Broker liegen bleiben
+{{template "json_heartbeat" .}}	            #pubHdr := 16#30;   // fest: PUBLISH, QoS 0 – ein alter Heartbeat darf nicht auf dem Broker liegen bleiben
 	            #tmpStr := {{.KonfigName}}.heartbeatTopic;
 	            // --- Ende Heartbeat ---
 

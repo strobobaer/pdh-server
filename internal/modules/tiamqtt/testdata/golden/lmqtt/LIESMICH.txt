@@ -1,0 +1,136 @@
+﻿Vorher die Bibliothek LMQTT ins Projekt holen:
+  https://support.industry.siemens.com/cs/ww/de/view/109748872
+  (Beitrag „LMQTT“; der Baustein "LMQTT_Client" steckt in den „Bibliotheken für Kommunikation
+  für SIMATIC Controller“, Beitrag 109780503.) Erstellt nach der Beschreibung V3.1 04/2024 für
+  "LMQTT_Client" V4.0.4, TIA Portal ab V17.
+
+PDH – STEUERUNGSBAUSTEIN „MQTT SENDEN“
+Datenbaustein: "Daten"
+Variante: mit Siemens-Bibliothek LMQTT (TLS möglich)
+Steuerung: S7-1500, TIA Portal ab V17, SCL mit optimiertem Zugriff
+Broker: mqtt.werk.local:8883 (mit TLS)
+Erzeugt vom PDH (PDH-Test) am 2026-11-15 10:00 UTC
+
+DATEIEN
+  1_PDH_Daten_Typ.udt       PLC-Datentyp "PDH_Daten_Typ" mit den gesendeten Variablen
+  2_PDH_Daten_Konfig.db     Einstellungen "PDH_Daten_Konfig"
+  3_PDH_MQTT_Daten.scl      Hilfsbausteine "PDH_J_…" und Funktionsbaustein "PDH_MQTT_Daten"
+  4_Daten_aus_Typ.db        Ersatz für den eigenen Datenbaustein "Daten" auf Basis des Datentyps
+
+SO GEHT'S
+  1. Die Bibliothek LMQTT (siehe oben) als globale Bibliothek öffnen und den Baustein
+     "LMQTT_Client" samt Datentypen in die Steuerung kopieren.
+  2. Im TIA Portal in der Projektnavigation unter „Externe Quellen“ alle vier Dateien
+     hinzufügen.
+  3. Den bisherigen Datenbaustein "Daten" umbenennen oder löschen – Datei 4 legt ihn
+     mit denselben Variablen neu an.
+  4. „Bausteine aus Quelle generieren“ in dieser Reihenfolge: 1, 2, 3, 4.
+  5. In "PDH_Daten_Konfig" Broker, Benutzer und Kennwort prüfen.
+     Steht dort PASSWORT_EINTRAGEN, das Kennwort des Brokers eintragen.
+     brokerHost darf eine IP-Adresse oder ein Hostname sein (Hostname: DNS-Server in der
+     CPU einstellen).
+  6. Mit TLS (useTls = TRUE): das CA-Zertifikat des Brokers in STEP 7 importieren, der CPU
+     zuordnen und seine Zertifikats-ID in brokerCert eintragen. Verlangt der Broker ein
+     Client-Zertifikat, dessen ID in clientCert. Die Uhrzeit der CPU muss stimmen.
+     validateServer = TRUE prüft das Zertifikat des Brokers.
+  7. Den Baustein in OB1 aufrufen, z. B.:
+       "PDH_MQTT_Daten_DB"(enable := TRUE,
+                        trigger := "Senden",
+                        daten := "Daten");
+  8. hwId: Hardware-Kennung der PROFINET-Schnittstelle (Gerätekonfiguration → Schnittstelle →
+     Eigenschaften → Hardware-Kennung; meist 64). connId muss in der Steuerung eindeutig sein.
+  9. Übersetzen, laden. Im PDH an der MQTT-Verbindung prüfen, ob Werte ankommen.
+  S7-1500 ab Firmware 2.0, S7-1200 ab Firmware 4.4 (Hostname und TLS mit LMQTT).
+  LReal-Werte: außerhalb von etwa 1E-8 bis 1E36 kann die 15. Stelle vom genauen Wert
+  abweichen (der Wert bleibt bis auf etwa 1E-15 gleich).
+
+VOR DEM EINSATZ PRÜFEN
+Vor dem Einsatz mit der Doku der eingesetzten LMQTT-Version abgleichen: Der Baustein
+"PDH_MQTT_Daten" ruft die Bibliothek mit diesen Namen auf (nach Beitrag 109748872 V3.1 04/2024,
+"LMQTT_Client" V4.0.4). Weicht Ihre Version ab, die Namen im Baustein anpassen.
+  Baustein:   "LMQTT_Client" (Instanz instClient)
+  Datentyp:   "LMQTT_typeConnParam" mit hwId, connId, broker, port, keepAlive und
+              tls.enableTls, tls.validateServerIdentity, tls.brokerCert, tls.clientCert
+  Parameter:  enable, publish, subscribe, unsubscribe, connParam, clientIdentifier,
+              username, password, willTopic, willMsgPayload, willMsgLen, qos, mqttTopic,
+              publishMsgPayload, publishMsgLen, retain, receivedTopic, receivedMsgPayload,
+              receivedMsgDataLen, receivedMsgStatus
+  Ausgänge:   done, error, status
+  Status:     16#7003 TCP verbunden, 16#7004 MQTT verbunden, 16#9000 Verbindung unterbrochen
+  Texte:      clientIdentifier, username, password, willTopic, mqttTopic als WString
+
+ABLAUF
+  enable = TRUE: Die Bibliothek baut die Verbindung auf (TCP, bei useTls mit TLS) und meldet
+  sich am Broker an. Steht sie nicht binnen 30 s, meldet der Baustein 16#8005 und versucht
+  es nach 5 s neu.
+  Steigende Flanke an trigger: Werte als Abbild übernehmen, Uhrzeit lesen, alle Teile
+  nacheinander senden (publish); danach done für einen Zyklus und sentCount + 1.
+  Kommt der Trigger während busy, wird er einmal gemerkt und danach gesendet.
+  Kommt er ohne Verbindung, meldet der Baustein 16#8007 für einen Zyklus und sendet nichts.
+  Keep-Alive (PINGREQ) und das Neuverbinden nach einer Unterbrechung macht die Bibliothek.
+  enable = FALSE: Die Bibliothek trennt die Verbindung.
+
+STATUS (Ausgang status, Klartext in statusText)
+  16#7000  aus (enable = FALSE)
+  16#7001  verbinde
+  16#7002  warte auf Broker
+  16#7003  bereit
+  16#7004  sende
+  16#8002  Sendefehler (keine Antwort oder Verbindung beim Senden unterbrochen)
+  16#8005  keine Antwort vom Broker
+  16#8007  nicht verbunden beim Trigger (es wird nichts gepuffert)
+  16#8008  Nachricht zu lang
+  16#8009  Uhrzeit nicht lesbar
+  16#82xx  Fehler der Bibliothek LMQTT: 16#8201 beim Verbinden, 16#8202 beim Senden.
+           Der Status der Bibliothek steht als 16#xxxx am Ende von statusText; seine
+           Bedeutung steht in der Bibliotheksbeschreibung (Beitrag 109780503). Genauere
+           Angaben im Ausgang diagnostics der Instanz instClient.
+Nach einem Fehler schaltet der Baustein die Bibliothek ab, wartet 5 s und verbindet neu.
+
+NACHRICHTEN
+Topic: sps/linie1/Daten
+Jede Nachricht: {"ts":"2026-11-15T10:01:00Z","part":1,"parts":2,"values":{…}}
+ts ist die Uhrzeit der Steuerung (UTC) beim Trigger, für alle Teile gleich. Im PDH lesen
+die Zuordnungen die Werte über den JSON-Pfad, egal in welchem Teil sie stehen.
+
+Teil 1 von 2 (höchstens 991 Byte)
+  Zaehler  ->  values.Zaehler  (Real)
+  Takt  ->  values.Takt  (Int)
+  Motor.Drehzahl  ->  values.Motor.Drehzahl  (Real)
+  Motor.Ein  ->  values.Motor.Ein  (Bool)
+  Feld[1]  ->  values.Feld[0]  (Int)
+  Feld[2]  ->  values.Feld[1]  (Int)
+  Feld[3]  ->  values.Feld[2]  (Int)
+  Feld[4]  ->  values.Feld[3]  (Int)
+  Feld[5]  ->  values.Feld[4]  (Int)
+  Feld[6]  ->  values.Feld[5]  (Int)
+  Feld[7]  ->  values.Feld[6]  (Int)
+  Feld[8]  ->  values.Feld[7]  (Int)
+  Feld[9]  ->  values.Feld[8]  (Int)
+  Feld[10]  ->  values.Feld[9]  (Int)
+  Text  ->  values.Text  (String[20])
+  Name  ->  values.Name  (String[254])
+  Zeit  ->  values.Zeit  (DTL)
+  Wort  ->  values.Wort  (Word)
+  Doppelwort  ->  values.Doppelwort  (DWord)
+  Ganz  ->  values.Ganz  (DInt)
+  Vorzeichenlos  ->  values.Vorzeichenlos  (UInt)
+  Gross  ->  values.Gross  (UDInt)
+  Genau  ->  values.Genau  (LReal)
+  Zeitstempel  ->  values.Zeitstempel  (Date_And_Time)
+
+Teil 2 von 2 (höchstens 627 Byte)
+  Bemerkung  ->  values.Bemerkung  (String[254])
+  Zähler.Stück  ->  values.Zähler.Stück  (UDInt)
+  Zähler."it's"  ->  values.Zähler.it's  (Bool)
+
+HEARTBEAT
+Topic: sps/linie1/Daten/heartbeat
+Inhalt: {"ts":"2026-11-15T10:01:00Z","count":N}, N zählt hoch. Immer ohne Retain.
+Intervall: Eingang heartbeatInterval (Vorgabe T#60s).
+Bleibt der Heartbeat länger als drei Intervalle aus, zeigt das PDH „Steuerung meldet sich nicht“.
+
+ACHTUNG RETAIN
+Im eigenen Datenbaustein sind remanente Variablen (Retain) eingestellt. Der Ersatz-DB
+übernimmt das nicht. Nach dem Import im Datenbaustein "Daten" die Remanenz wieder
+einstellen.

@@ -75,6 +75,10 @@ const (
 	msgClientIDLong = "Client-ID ist zu lang (höchstens 254 Zeichen)"
 )
 
+// LMQTTInfoURL ist der Beitrag zur Siemens-Bibliothek LMQTT (vor dem Einbau
+// im Siemens-Portal prüfen, Beitrag „LMQTT“).
+const LMQTTInfoURL = "https://support.industry.siemens.com/cs/ww/de/view/109748872"
+
 //go:embed templates/*.tmpl
 var templateFS embed.FS
 
@@ -116,7 +120,7 @@ func Zip(files []File) ([]byte, error) {
 
 // normalize prüft die Einstellungen und setzt Vorgaben.
 func (o Options) normalize() (Options, error) {
-	if o.Variant != VariantStandalone {
+	if _, ok := variantLabels[o.Variant]; !ok {
 		return o, errors.New(msgVariant)
 	}
 	if _, ok := familyLabels[o.Family]; !ok {
@@ -217,6 +221,7 @@ type genData struct {
 	Dropped        []string
 	HasRetain      bool
 	Placeholder    string
+	InfoURL        string
 }
 
 type readmePart struct {
@@ -266,6 +271,7 @@ func Generate(db *DBSource, l *Layout, o Options) ([]File, error) {
 		Skipped:        l.Skipped,
 		HasRetain:      db.HasRetain,
 		Placeholder:    PasswordPlaceholder,
+		InfoURL:        LMQTTInfoURL,
 	}
 	d.TXMax = d.TXSize - 1
 
@@ -336,8 +342,19 @@ func Generate(db *DBSource, l *Layout, o Options) ([]File, error) {
 }
 
 func loadTemplates(v Variant) (*template.Template, error) {
+	// cfgstr: Deklaration und Startwert eines Textes in der Konfiguration –
+	// LMQTT erwartet WString, die eigenständige Variante sendet String-Bytes.
+	cfgstr := func(s string, max int) (string, error) {
+		if v == VariantLMQTT {
+			lit, err := SCLWString(s, max)
+			return "WString[254] := " + lit, err
+		}
+		lit, err := SCLString(s, max)
+		return "String[254] := " + lit, err
+	}
 	funcs := template.FuncMap{
 		"sclstr":  SCLString,
+		"cfgstr":  cfgstr,
 		"sclname": SCLName,
 		"comment": sclComment,
 		"text":    sclComment,

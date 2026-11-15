@@ -572,6 +572,50 @@ END_FUNCTION
 
 {{end}}
 
+{{- /* Schnittstelle des FB – in beiden Varianten genau gleich. */ -}}
+{{define "fb_schnittstelle"}}   VAR_INPUT
+      enable : Bool;   // TRUE = verbinden und bereit halten
+      trigger : Bool;   // steigende Flanke = Werte senden
+      heartbeatInterval : Time := T#{{.O.HeartbeatSeconds}}s;   // T#0s = kein Heartbeat
+      hwId : HW_ANY := {{.O.HwID}};   // Hardware-Kennung der PROFINET-Schnittstelle
+      connId : CONN_OUC := {{.O.ConnID}};   // Verbindungsnummer, in der Steuerung eindeutig
+   END_VAR
+
+   VAR_OUTPUT
+      connected : Bool;
+      busy : Bool;
+      done : Bool;   // einen Zyklus nach dem letzten Teil
+      error : Bool;
+      status : Word;
+      statusText : String[60];
+      sentCount : UDInt;
+      heartbeatCount : UDInt;
+   END_VAR
+
+   VAR_IN_OUT
+      daten : {{.TypeName}};
+   END_VAR
+{{end}}
+
+{{- /* JSON eines Teils in #pl (Teil #part, Zeitstempel #ts) – beide Varianten. */ -}}
+{{define "json_teil"}}	            "PDH_J_Raw"(s := '{"ts":', buf := #pl, pos := #pos, ovf := #ovf);
+	            "PDH_J_DTL"(v := #ts, zone := TRUE, buf := #pl, pos := #pos, ovf := #ovf);
+	            "PDH_J_Raw"(s := ',"part":', buf := #pl, pos := #pos, ovf := #ovf);
+	            "PDH_J_DInt"(v := INT_TO_DINT(#part), buf := #pl, pos := #pos, ovf := #ovf);
+	            "PDH_J_Raw"(s := ',"parts":{{.Parts}},"values":{', buf := #pl, pos := #pos, ovf := #ovf);
+	            CASE #part OF
+{{.PartsCode}}	            END_CASE;
+	            "PDH_J_Raw"(s := '}}', buf := #pl, pos := #pos, ovf := #ovf);
+{{end}}
+
+{{- /* JSON des Heartbeats in #pl (Zeitstempel #hbTs) – beide Varianten. */ -}}
+{{define "json_heartbeat"}}	            "PDH_J_Raw"(s := '{"ts":', buf := #pl, pos := #pos, ovf := #ovf);
+	            "PDH_J_DTL"(v := #hbTs, zone := TRUE, buf := #pl, pos := #pos, ovf := #ovf);
+	            "PDH_J_Raw"(s := ',"count":', buf := #pl, pos := #pos, ovf := #ovf);
+	            "PDH_J_UDInt"(v := #heartbeatCount + 1, buf := #pl, pos := #pos, ovf := #ovf);
+	            "PDH_J_Raw"(s := '}', buf := #pl, pos := #pos, ovf := #ovf);
+{{end}}
+
 {{define "konfig" -}}
 DATA_BLOCK {{.KonfigName}}
 { S7_Optimized_Access := 'TRUE' }
@@ -580,13 +624,13 @@ NON_RETAIN
 {{template "kopf" .}}
 //Einstellungen für {{.FBName}}. Werte hier ändern, nicht im Baustein.
    VAR
-      brokerHost : String[254] := {{sclstr .O.BrokerHost 254}};   // Adresse des Brokers{{if eq .O.Variant "standalone"}} (IPv4){{end}}
+      brokerHost : String[254] := {{sclstr .O.BrokerHost 254}};   // Adresse des Brokers{{if eq .O.Variant "standalone"}} (IPv4){{else}} (IP-Adresse oder Hostname){{end}}
       brokerPort : UInt := {{.O.BrokerPort}};
-      clientId : String[254] := {{sclstr .O.ClientID 254}};
-      username : String[254] := {{sclstr .O.Username 254}};   // leer = ohne Anmeldung
-      password : String[254] := {{sclstr .O.Password 254}};
-      topic : String[254] := {{sclstr .O.Topic 244}};
-      heartbeatTopic : String[254] := {{sclstr .HeartbeatTopic 254}};
+      clientId : {{cfgstr .O.ClientID 254}};
+      username : {{cfgstr .O.Username 254}};   // leer = ohne Anmeldung
+      password : {{cfgstr .O.Password 254}};
+      topic : {{cfgstr .O.Topic 244}};
+      heartbeatTopic : {{cfgstr .HeartbeatTopic 254}};
       keepAlive : UInt := {{.O.KeepAliveSeconds}};   // Sekunden
       retain : Bool := {{if .O.Retain}}TRUE{{else}}FALSE{{end}};   // Werte auf dem Broker halten (Heartbeat nie)
 {{- template "konfig_extra" .}}
