@@ -1,0 +1,26 @@
+TYPE "Antrieb"
+VERSION : 0.1
+   STRUCT
+      Drehzahl : Real;
+      Strom : Real;
+      Ein : Bool;
+      Meldung : String[40];
+   END_STRUCT;
+
+END_TYPE
+
+DATA_BLOCK "Anlage"
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+NON_RETAIN
+   VAR
+      Pumpe : "Antrieb";
+      Luefter : "Antrieb";
+      Zustand : Int;
+   END_VAR
+
+
+BEGIN
+
+END_DATA_BLOCK
+
