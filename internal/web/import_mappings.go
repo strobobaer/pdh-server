@@ -29,6 +29,8 @@ type ImportMappingView struct {
 	LastValue          string `json:"last_value"`
 	LastReceivedAt     string `json:"last_received_at"`
 	CreatedAt          string `json:"created_at"`
+	ConnectionID       string `json:"connection_id,omitempty"`   // nur bei availableExportSources
+	ConnectionName     string `json:"connection_name,omitempty"` // nur bei availableExportSources
 }
 
 func (h *Handler) importMappings(ctx context.Context, connectionID string) ([]ImportMappingView, error) {

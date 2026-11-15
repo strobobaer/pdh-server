@@ -33,7 +33,7 @@ import (
 
 func exportableKind(kind string) bool {
 	switch kind {
-	case "excel", "csv", "pdf", "sqlite", "mysql", "mssql", "opcua", "modbus":
+	case "excel", "csv", "pdf", "sqlite", "mysql", "mssql", "opcua", "modbus", efficioKind:
 		return true
 	default:
 		return false
@@ -58,6 +58,8 @@ func exportKindLabel(kind string) string {
 		return "OPC UA"
 	case "modbus":
 		return "Modbus TCP"
+	case efficioKind:
+		return "Efficio-CSV"
 	default:
 		return kind
 	}
@@ -116,6 +118,8 @@ func exportDestinationLabel(kind string, config map[string]string) string {
 		return strings.TrimSpace(config["endpoint_url"])
 	case "modbus":
 		return strings.TrimSpace(config["host"]) + ":" + firstNonEmpty(strings.TrimSpace(config["port"]), "502")
+	case efficioKind:
+		return efficioTargetLabel(config)
 	default:
 		return ""
 	}
@@ -133,6 +137,10 @@ func (h *Handler) ExportPreviewPage(w http.ResponseWriter, r *http.Request) {
 		`SELECT name, kind, config FROM import_export_connections WHERE id=$1 AND direction='export'`, id).
 		Scan(&name, &kind, &configBytes); err != nil {
 		http.Error(w, "Verbindung nicht gefunden", http.StatusNotFound)
+		return
+	}
+	if kind == efficioKind { // keine Feldzuordnung: die Messstellen stehen unter Energiedaten
+		http.Redirect(w, r, "/export/connections/"+id+"/efficio", http.StatusSeeOther)
 		return
 	}
 	config, err := h.openConnJSON(configBytes)
@@ -203,6 +211,11 @@ func (h *Handler) runExport(ctx context.Context, id string) (int, string, error)
 	config, err := h.openConnJSON(configBytes)
 	if err != nil {
 		return 0, "", err
+	}
+
+	if kind == efficioKind {
+		res, err := h.efficioRun(ctx, id)
+		return res.Rows, efficioTargetLabel(config), err
 	}
 
 	mappings, err := h.exportMappings(ctx, id)

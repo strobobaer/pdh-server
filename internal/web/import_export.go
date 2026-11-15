@@ -12,6 +12,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"pdh/internal/core/scheduler"
+	"pdh/internal/modules/energie"
 )
 
 // ── Rechte ───────────────────────────────────────────────────
@@ -69,6 +70,7 @@ var exportKindOptions = []KindOption{
 	{"mssql", "MSSQL"},
 	{"opcua", "OPC UA"},
 	{"modbus", "Modbus TCP"},
+	{"efficio", "Efficio-CSV (Energiedaten)"},
 }
 
 var importKindFields = map[string][]string{
@@ -101,12 +103,15 @@ var exportKindFields = map[string][]string{
 	"mssql":  {"host", "port", "database", "instance_name", "username", "password", "use_tls", "route", "vpn_poll_minutes", "vpn_timeout_seconds", "allow_write", "tls_fingerprint", "table_name", "schedule_cron"},
 	"opcua":  {"endpoint_url", "auth_mode", "username", "password", "schedule_cron"},
 	"modbus": {"host", "port", "unit_id", "schedule_cron"},
+	// Efficio-CSV (Energiedaten): export_efficio.go
+	"efficio": {"run_minutes", "interval_minutes", "value_mode", "file_days", "retention_days", "file_prefix", "time_format", "time_base", "decimal_comma", "has_header", "encoding",
+		"target", "drive_id", "drive_folder", "ftp_host", "ftp_port", "ftp_username", "ftp_password", "ftp_folder", "ftp_tls", "sftp_host_key", "filter_infra_ids", "filter_meter_keys"},
 }
 
 var booleanConfigFields = map[string]bool{
 	"has_header": true, "use_tls": true, "ext_use_tls": true,
 	"int_allow_anonymous": true, "int_persistence_enabled": true, "int_retain_enabled": true,
-	"allow_write": true,
+	"allow_write": true, "decimal_comma": true, "ftp_tls": true,
 }
 
 func connectionKindOptions(direction string) []KindOption {
@@ -159,6 +164,10 @@ type ConnectionsPageData struct {
 	ExcelTemplates []ExportTemplateView
 	Tunnels        []connTunnelOption // ausgehende VPN-Tunnel für „Weg“ (leer ohne VPN)
 	NetClients     []connTunnelOption // Daten-Clients für „Weg“ (leer, wenn das Datennetz aus ist)
+	EfficioDrives  []KindOption       // Netzlaufwerke für „Import & Export“ (Ablage des Efficio-Exports)
+	EfficioDefault energie.Settings   // Vorgaben für neue Efficio-Exporte (Energiedaten → Einstellungen)
+	EfficioChoices []int
+	EfficioInfra   string // Anlagen-ID → Pfad als JSON (Anlagenfilter im Formular)
 	Notice         string
 }
 
@@ -233,6 +242,14 @@ func (h *Handler) connectionsPage(w http.ResponseWriter, r *http.Request, direct
 	if data.CanWrite {
 		data.Tunnels = h.connTunnelOptions(r.Context())
 		data.NetClients = h.connNetOptions(r.Context())
+		if direction == "export" {
+			data.EfficioDrives = h.efficioDriveOptions(r.Context())
+			data.EfficioDefault, data.EfficioChoices = energie.DefaultSettings(), energie.MinuteChoices
+			data.EfficioInfra = h.efficioInfraJSON(r.Context(), conns)
+			if st := h.energyStore(); st != nil {
+				data.EfficioDefault, _ = st.Settings(r.Context())
+			}
+		}
 	}
 	if direction == "export" {
 		if tpls, err := h.exportTemplates(r.Context(), "pdf"); err == nil {
@@ -364,6 +381,10 @@ func (h *Handler) createConnection(w http.ResponseWriter, r *http.Request, direc
 		http.Redirect(w, r, base+"?notice="+url.QueryEscape(err.Error()), http.StatusSeeOther)
 		return
 	}
+	if err := h.validateEfficio(r.Context(), kind, config); err != nil {
+		http.Redirect(w, r, base+"?notice="+url.QueryEscape(err.Error()), http.StatusSeeOther)
+		return
+	}
 	u := getUser(r)
 	var id string
 	err = h.db.QueryRow(r.Context(), `
@@ -424,6 +445,14 @@ func (h *Handler) editConnection(w http.ResponseWriter, r *http.Request, directi
 	config = keepStoredSecrets(config, stored, fields)
 	keepStoredRoute(config, stored, kind, r.Form)
 	if err := validateConnRoute(kind, config); err != nil {
+		if r.FormValue("return_to") == "detail" {
+			http.Redirect(w, r, connectionBackPath(direction, id, "overview", "", err.Error()), http.StatusSeeOther)
+		} else {
+			http.Redirect(w, r, base+"?notice="+url.QueryEscape(err.Error()), http.StatusSeeOther)
+		}
+		return
+	}
+	if err := h.validateEfficio(r.Context(), kind, config); err != nil {
 		if r.FormValue("return_to") == "detail" {
 			http.Redirect(w, r, connectionBackPath(direction, id, "overview", "", err.Error()), http.StatusSeeOther)
 		} else {

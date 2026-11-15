@@ -86,6 +86,7 @@ type BaseData struct {
 	CanTrainings           bool       // Schulungen & Qualifikationen verwalten (trainings.manage)
 	CanCostCenters         bool       // Core → Kostenstellen (costcenters.manage, costcenters_web.go)
 	CanStatistics          bool       // Statistik mit Grafana-Dashboards (statistics.view, grafana.go)
+	CanEnergy              bool       // Energiedaten: Messstellen (energy.view / energy.edit, energy_meters.go)
 	IsBroker               bool       // Broker fuer mind. eine Vorgangsart: Nav-Link "Zuweisung"
 	TerminalInfraID        string     // Standort des Terminals: Infra-Picker klappt bis hierhin auf
 	Look                   Appearance // Farbschema, Schrift und Groesse dieses Benutzers
@@ -966,6 +967,11 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/datanet/check", h.DataNetCheck)
 	r.Post("/datanet/check/fix", h.DataNetFixTags)
 	r.Get("/datanet/download/{file}", h.DataNetDownload)
+	// Energiedaten: Messstellen mit Zuweisungstabelle (energy_meters.go)
+	r.Get("/energy/meters", h.EnergyMetersPage)
+	r.Post("/energy/meters/save-web", h.EnergyMeterSaveWeb)
+	r.Post("/energy/settings-web", h.EnergySettingsWeb)
+	r.Post("/energy/meters/{id}/delete-web", h.EnergyMeterDeleteWeb)
 	// Abgleich mit Fremdsystemen (sync_pages.go, sync_actions.go)
 	r.Get("/sync", h.SyncPage)
 	r.Post("/sync/new-web", h.SyncNewWeb)
@@ -1043,6 +1049,11 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/export/connections/{id}/toggle-web", h.ExportConnectionToggleWeb)
 	r.Get("/export/connections/{id}/preview", h.ExportPreviewPage)
 	r.Post("/export/connections/{id}/preview/run", h.ExportRunWeb)
+	// Efficio-Export (Energiedaten): Dateien, Protokoll, Verbindung testen (export_efficio.go)
+	r.Get("/export/connections/{id}/efficio", h.EfficioPage)
+	r.Get("/export/connections/{id}/efficio/files/{fileId}", h.EfficioDownload)
+	r.Post("/export/connections/{id}/efficio/run-web", h.EfficioRunWeb)
+	r.Post("/export/connections/{id}/efficio/test-web", h.EfficioTestWeb)
 	r.Post("/export/connections/{id}/mappings", h.ExportMappingCreateWeb)
 	r.Post("/export/connections/{id}/mappings/{mappingId}/delete-web", h.ExportMappingDeleteWeb)
 	r.Get("/export/templates", h.ExportTemplatesPage)
@@ -1280,6 +1291,7 @@ func (h *Handler) baseData(r *http.Request, page, title, ctxTitle string) BaseDa
 		CanTrainings:           h.rbac.HasPermissionForUser(u.ID, string(u.Role), trainingsPerm),
 		CanCostCenters:         h.rbac.HasPermissionForUser(u.ID, string(u.Role), "costcenters.manage") || h.rbac.HasPermissionForUser(u.ID, string(u.Role), "system.manage_roles"),
 		CanStatistics:          h.rbac.HasPermissionForUser(u.ID, string(u.Role), "statistics.view"),
+		CanEnergy:              h.rbac.HasPermissionForUser(u.ID, string(u.Role), permEnergyView) || h.rbac.HasPermissionForUser(u.ID, string(u.Role), permEnergyEdit),
 		TerminalInfraID:        h.terminalInfraID(r),
 		CanBackup:              h.rbac.HasPermissionForUser(u.ID, string(u.Role), "system.backup"),
 		CanPrinters:            h.rbac.HasPermissionForUser(u.ID, string(u.Role), "printers.manage"),

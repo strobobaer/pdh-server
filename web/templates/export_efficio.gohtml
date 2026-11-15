@@ -1,0 +1,97 @@
+{{template "base" .}}
+{{define "content"}}
+{{/* Efficio-Export: erzeugte Dateien und Protokoll (export_efficio.go).
+     Farben nur über die Variablen des Farbschemas (Fiori und Fluent, hell und dunkel). */}}
+<div class="ef-head">
+  <div class="ef-head-main">
+    <div class="rec-sub" style="font-size:12px"><a href="/export" style="color:var(--accent)"><i class="ti ti-arrow-left" aria-hidden="true"></i> Export</a> · <a href="/export/connections/{{.ID}}" style="color:var(--accent)">Verbindung</a></div>
+    <h1><i class="ti ti-files" aria-hidden="true"></i> {{.Name}} <span class="badge" style="background:var(--bg3);color:var(--text);border:1px solid var(--border)">Efficio-CSV</span>
+      {{if .Enabled}}<span class="badge" style="background:var(--green)">Aktiv</span>{{else}}<span class="badge" style="background:var(--muted)">Deaktiviert</span>{{end}}</h1>
+  </div>
+  {{if .CanWrite}}{{if not .Mirror}}
+  <div class="ef-actions">
+    <form method="post" action="/export/connections/{{.ID}}/efficio/test-web"><button class="btn" type="submit"><i class="ti ti-plug-connected" aria-hidden="true"></i> Verbindung testen</button></form>
+    <form method="post" action="/export/connections/{{.ID}}/efficio/run-web" onsubmit="var b=this.querySelector('button');b.disabled=true"><button class="btn btn-primary" type="submit"><i class="ti ti-player-play" aria-hidden="true"></i> Jetzt exportieren</button></form>
+  </div>
+  {{end}}{{end}}
+</div>
+
+{{if .Notice}}<div class="card" role="status" style="margin-bottom:14px;border-color:var(--green)"><i class="ti ti-circle-check" style="color:var(--green)" aria-hidden="true"></i> {{.Notice}}</div>{{end}}
+{{if .Err}}<div class="card" role="alert" style="margin-bottom:14px;border-color:var(--red);color:var(--red)"><i class="ti ti-alert-circle" aria-hidden="true"></i> {{.Err}}</div>{{end}}
+{{if .ConfigErr}}<div class="card" role="alert" style="margin-bottom:14px;border-color:var(--amber)"><i class="ti ti-alert-triangle" style="color:var(--amber)" aria-hidden="true"></i> Die Einstellungen sind nicht in Ordnung, der Export läuft so nicht: {{.ConfigErr}} <a href="/export?edit={{.ID}}" style="color:var(--accent)">Einstellungen bearbeiten</a></div>{{end}}
+{{if .Mirror}}<div class="card" role="status" style="margin-bottom:14px"><i class="ti ti-info-circle" aria-hidden="true"></i> Dies ist der Spiegelserver. Hier wird nichts exportiert; die Dateien erzeugt der aktive Server.</div>{{end}}
+
+{{if .Fingerprint}}
+<div class="card" role="alertdialog" aria-label="Fingerabdruck bestätigen" style="margin-bottom:14px;border-color:var(--amber)">
+  <div class="card-title"><i class="ti ti-fingerprint" aria-hidden="true"></i> Fingerabdruck des Servers bestätigen</div>
+  <p style="font-size:13px">Der SFTP-Server zeigt diesen Fingerabdruck:</p>
+  <p><code class="ef-fp">{{.Fingerprint}}</code></p>
+  {{if .FingerprintChange}}<p style="font-size:12.5px;color:var(--red)"><b>Achtung:</b> Es war schon ein anderer Fingerabdruck gespeichert. Übernimm den neuen nur, wenn der Server ausgetauscht wurde.</p>{{end}}
+  <p style="font-size:12.5px;color:var(--muted)">Vergleiche ihn mit dem Fingerabdruck, den dir die Betreiber des Servers nennen. Nur ein bestätigter Server wird später verwendet.</p>
+  <form method="post" action="/export/connections/{{.ID}}/efficio/test-web" style="display:flex;gap:8px;flex-wrap:wrap">
+    <input type="hidden" name="confirm_host_key" value="{{.Fingerprint}}">
+    <button class="btn btn-primary" type="submit"><i class="ti ti-check" aria-hidden="true"></i> Stimmt – speichern und testen</button>
+    <a class="btn" href="/export/connections/{{.ID}}/efficio">Abbrechen</a>
+  </form>
+</div>
+{{end}}
+
+{{if .Settings}}
+<div class="card" style="margin-bottom:14px">
+  <div class="card-title"><span><i class="ti ti-settings" aria-hidden="true"></i> Einstellungen</span>{{if .CanWrite}}<a class="btn btn-small" href="/export?edit={{.ID}}"><i class="ti ti-edit" aria-hidden="true"></i> Bearbeiten</a>{{end}}</div>
+  <dl class="ef-kv">{{range .Settings}}<dt>{{.Label}}</dt><dd>{{.Value}}</dd>{{end}}</dl>
+</div>
+{{end}}
+
+<div class="card" style="margin-bottom:14px">
+  <div class="card-title"><span><i class="ti ti-file-text" aria-hidden="true"></i> Dateien</span></div>
+  {{if .Files}}
+  <div class="ef-scroll"><table class="ef-table">
+    <thead><tr><th>Datei</th><th>Zeitraum</th><th>Zeilen</th><th>Größe</th><th>Zuletzt ergänzt</th><th>Ablage</th><th></th></tr></thead>
+    <tbody>{{range .Files}}<tr>
+      <td class="ef-mono">{{.Name}}</td><td>{{.Period}}</td><td class="ef-num">{{.Rows}}</td><td class="ef-num">{{.Size}}</td><td>{{.Updated}}</td>
+      <td{{if .Failed}} class="ef-bad"{{end}}>{{.Delivery}}</td>
+      <td class="ef-right"><a class="btn btn-small" href="/export/connections/{{$.ID}}/efficio/files/{{.ID}}" download><i class="ti ti-download" aria-hidden="true"></i> Herunterladen</a></td>
+    </tr>{{end}}</tbody>
+  </table></div>
+  {{else}}<div class="rec-sub">Noch keine Datei. Sie entsteht, sobald ein Lauf Messwerte findet – ohne Werte wird keine Datei angelegt.</div>{{end}}
+</div>
+
+<div class="card">
+  <div class="card-title"><span><i class="ti ti-list-details" aria-hidden="true"></i> Protokoll (letzte 30 Läufe)</span></div>
+  {{if .Runs}}
+  <div class="ef-scroll"><table class="ef-table">
+    <thead><tr><th>Zeit</th><th>Ergebnis</th><th>Intervalle</th><th>Zeilen</th><th>Ohne Wert</th><th>Ablage</th><th>Dateien</th><th>Hinweise</th></tr></thead>
+    <tbody>{{range .Runs}}<tr>
+      <td>{{.Started}}</td>
+      <td><span class="ef-res ef-{{.Result}}">{{.ResultLabel}}</span></td>
+      <td class="ef-num">{{.Intervals}}</td><td class="ef-num">{{.Rows}}</td><td class="ef-num">{{.Missing}}</td>
+      <td>{{.Target}}</td><td class="ef-mono">{{.Files}}</td><td class="ef-msg">{{.Message}}</td>
+    </tr>{{end}}</tbody>
+  </table></div>
+  {{else}}<div class="rec-sub">Noch kein Lauf. Der Export läuft im eingestellten Takt, sobald die Verbindung aktiv ist.</div>{{end}}
+</div>
+
+<style>
+.ef-head{display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap;margin-bottom:14px}
+.ef-head-main{flex:1;min-width:220px}
+.ef-head h1{font-size:19px;font-weight:600;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.ef-actions{display:flex;gap:8px;flex-wrap:wrap}
+.ef-kv{display:grid;grid-template-columns:minmax(150px,auto) 1fr;gap:6px 14px;font-size:12.5px}
+.ef-kv dt{color:var(--muted)}
+.ef-kv dd{word-break:break-word}
+.ef-scroll{overflow-x:auto}
+.ef-table{border-collapse:collapse;width:100%;font-size:12.5px}
+.ef-table th{text-align:left;padding:6px 10px;border-bottom:1px solid var(--border);white-space:nowrap;color:var(--muted);font-weight:600}
+.ef-table td{padding:6px 10px;border-bottom:1px solid var(--border);vertical-align:top}
+.ef-mono{font-family:monospace;word-break:break-all}
+.ef-num{text-align:right;font-variant-numeric:tabular-nums}
+.ef-right{text-align:right;white-space:nowrap}
+.ef-msg{white-space:pre-line;word-break:break-word;min-width:200px}
+.ef-bad{color:var(--red)}
+.ef-res{font-weight:600;white-space:nowrap}
+.ef-ok{color:var(--green)}.ef-partial{color:var(--amber)}.ef-error{color:var(--red)}.ef-nothing{color:var(--muted)}
+.ef-fp{font-family:monospace;word-break:break-all;background:var(--bg3);padding:4px 8px;border-radius:6px}
+@media (max-width:760px){.ef-kv{grid-template-columns:1fr}.ef-kv dd{margin-bottom:6px}}
+</style>
+{{end}}

@@ -1,0 +1,238 @@
+{{template "base" .}}
+{{define "content"}}
+{{/* Messstellen (energy_meters.go): Zuweisungstabelle und globale Übersicht. Filter und
+     Sortierung stehen in der Adresse. Farben nur über die Variablen des Farbschemas,
+     damit Fiori und Fluent, hell und dunkel passen. */}}
+<div class="em-head">
+  <div class="em-head-main">
+    <h1>Messstellen</h1>
+    <p>{{.Total}} {{if eq .Total 1}}Messstelle{{else}}Messstellen{{end}}{{if .FilterOn}} nach Filter{{end}} · jeder importierte Wert lässt sich einer Anlage zuweisen</p>
+  </div>
+</div>
+{{if .Err}}<div class="w11-infobar error" role="alert">{{.Err}}</div>{{end}}
+<div id="em-flash" class="w11-infobar error" role="alert" hidden></div>
+<nav class="em-tabs" aria-label="Bereiche der Energiedaten">
+  <a class="em-tab{{if ne .Tab "settings"}} is-on{{end}}" href="/energy/meters"{{if ne .Tab "settings"}} aria-current="page"{{end}}><i class="ti ti-gauge" aria-hidden="true"></i> Messstellen</a>
+  <a class="em-tab{{if eq .Tab "settings"}} is-on{{end}}" href="/energy/meters?tab=settings"{{if eq .Tab "settings"}} aria-current="page"{{end}}><i class="ti ti-settings" aria-hidden="true"></i> Einstellungen</a>
+</nav>
+{{if eq .Tab "settings"}}{{template "energy-settings" .}}{{else}}
+
+<form class="card em-filter" method="get" action="/energy/meters">
+  {{if ne .Sort "key"}}<input type="hidden" name="sort" value="{{.Sort}}">{{end}}
+  {{if .Desc}}<input type="hidden" name="dir" value="desc">{{end}}
+  <details class="em-infra-filter"{{if .Filter.Infra}} open{{end}}>
+    <summary><i class="ti ti-hierarchy-2" aria-hidden="true"></i> Anlage: <b>{{if .Filter.InfraLabel}}{{.Filter.InfraLabel}}{{else}}alle{{end}}</b></summary>
+    {{template "infra-tree-picker" (dict "TargetID" "emf-infra-id" "SelectedLabelID" "emf-infra-selected" "Label" "Anlage (mit Unteranlagen)" "Name" "infra" "Value" .Filter.Infra "SelectedLabel" .Filter.InfraLabel)}}
+  </details>
+  <div class="em-filter-grid">
+    <div class="form-group"><label class="form-label" for="emf-virtual">Messstelle</label>
+      <select id="emf-virtual" name="virtual" class="form-input">
+        <option value="">Echte und berechnete</option>
+        <option value="0"{{if eq .Filter.Virtual "0"}} selected{{end}}>Nur echte</option>
+        <option value="1"{{if eq .Filter.Virtual "1"}} selected{{end}}>Nur berechnete</option>
+      </select></div>
+    <div class="form-group"><label class="form-label" for="emf-export">Exportieren</label>
+      <select id="emf-export" name="export" class="form-input">
+        <option value="">Alle</option>
+        <option value="1"{{if eq .Filter.Export "1"}} selected{{end}}>Ja</option>
+        <option value="0"{{if eq .Filter.Export "0"}} selected{{end}}>Nein</option>
+      </select></div>
+    <div class="form-group"><label class="form-label" for="emf-active">Aktiv</label>
+      <select id="emf-active" name="active" class="form-input">
+        <option value="">Alle</option>
+        <option value="1"{{if eq .Filter.Active "1"}} selected{{end}}>Aktive</option>
+        <option value="0"{{if eq .Filter.Active "0"}} selected{{end}}>Inaktive</option>
+      </select></div>
+    <div class="form-group"><label class="form-label" for="emf-unit">Einheit</label>
+      <select id="emf-unit" name="unit" class="form-input">
+        <option value="">Alle</option>
+        {{$u := .Filter.Unit}}{{range .Units}}<option value="{{.}}"{{if eq . $u}} selected{{end}}>{{.}}</option>{{end}}
+      </select></div>
+    <div class="form-group"><label class="form-label" for="emf-kind">Art</label>
+      <select id="emf-kind" name="kind" class="form-input">
+        <option value="">Alle</option>
+        <option value="counter"{{if eq .Filter.Kind "counter"}} selected{{end}}>Zählerstand</option>
+        <option value="consumption"{{if eq .Filter.Kind "consumption"}} selected{{end}}>Verbrauch</option>
+        <option value="instant"{{if eq .Filter.Kind "instant"}} selected{{end}}>Momentanwert</option>
+      </select></div>
+    <div class="form-group"><label class="form-label" for="emf-conn">Verbindung</label>
+      <select id="emf-conn" name="conn" class="form-input">
+        <option value="">Alle</option>
+        {{$c := .Filter.Conn}}{{range .Conns}}<option value="{{.ID}}"{{if eq .ID $c}} selected{{end}}>{{.Name}}</option>{{end}}
+      </select></div>
+    <div class="form-group em-q"><label class="form-label" for="emf-q">Suche</label>
+      <input id="emf-q" name="q" class="form-input" value="{{.Filter.Q}}" placeholder="ID, Bezeichnung, Einheit, Anlage" autocomplete="off"></div>
+  </div>
+  <div class="em-filter-foot">
+    <label class="em-check"><input type="checkbox" name="stale" value="1"{{if .Filter.Stale}} checked{{end}}> Nur ohne aktuellen Wert (älter als {{.Set.StaleMinutes}} Minuten)</label>
+    <span class="em-spacer"></span>
+    {{if .FilterOn}}<a class="btn" href="/energy/meters">Zurücksetzen</a>{{end}}
+    <button type="submit" class="btn btn-primary"><i class="ti ti-filter" aria-hidden="true"></i> Filtern</button>
+  </div>
+</form>
+
+{{template "energy-meter-table" .}}
+{{end}}
+
+<style>
+.em-tabs{display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:14px;flex-wrap:wrap}
+.em-tab{padding:8px 14px;color:var(--muted);text-decoration:none;border-bottom:2px solid transparent;font-size:13px;display:inline-flex;gap:6px;align-items:center}
+.em-tab:hover{color:var(--text)}
+.em-tab.is-on{color:var(--accent);border-bottom-color:var(--accent);font-weight:600}
+.em-set-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-bottom:10px}
+.em-set h2{font-size:14px;font-weight:600;margin:4px 0 6px}
+.em-head{display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap}
+.em-head-main{flex:1;min-width:200px}
+.em-head h1{font-size:18px;font-weight:600}
+.em-head p{font-size:12px;color:var(--muted);margin-top:2px}
+.em-filter{margin-bottom:14px}
+.em-infra-filter{margin-bottom:10px}
+.em-infra-filter summary{cursor:pointer;font-size:13px;color:var(--text);padding:4px 0}
+.em-filter-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px}
+.em-filter-grid .em-q{grid-column:span 2}
+.em-filter-foot{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:6px}
+.em-spacer{flex:1}
+.em-check,.em-checks label,.em-mode label{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--text)}
+.em-card{padding:0}
+.em-scroll{overflow-x:auto}
+.em-table{min-width:980px}
+.em-table th a{color:inherit;text-decoration:none;white-space:nowrap}
+.em-table th a:hover{color:var(--accent)}
+.em-row.is-off td{color:var(--muted)}
+.em-key{font-size:12px;color:var(--text)}
+.em-formula{font-size:12px;word-break:break-word}
+.em-src{max-width:340px}
+.em-num{font-variant-numeric:tabular-nums;white-space:nowrap}
+.em-sub{display:block;font-size:11px;color:var(--muted)}
+.em-muted{color:var(--muted)}
+.em-empty{text-align:center;color:var(--muted);padding:22px 12px}
+.em-actions{white-space:nowrap;text-align:right}
+.em-flash[hidden],#em-flash[hidden],#em-edit[hidden],#em-formula-box[hidden],#em-source[hidden]{display:none}
+.em-table tr[hidden]{display:none!important}
+.em-form{padding:8px 4px;background:var(--bg2);border-radius:var(--radius,6px)}
+.em-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}
+.em-mode{display:flex;gap:16px;flex-wrap:wrap;margin:4px 0 8px}
+.em-checks{display:flex;gap:18px;flex-wrap:wrap;margin:6px 0}
+.em-hint{font-size:12px;color:var(--muted);margin-top:6px}
+.em-error{font-size:12.5px;color:var(--red);min-height:1em;margin:6px 0}
+.em-buttons{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
+@media (max-width:760px){
+  .em-filter-grid .em-q{grid-column:auto}
+  .em-table{min-width:0}
+  .em-table thead{position:absolute;left:-9999px}
+  .em-table tr.em-row{display:block;padding:8px 12px;border-bottom:1px solid var(--border)}
+  .em-table tr.em-row td{display:flex;gap:10px;justify-content:space-between;border:0;padding:3px 0;text-align:right}
+  .em-table tr.em-row td::before{content:attr(data-label);color:var(--muted);font-size:11px;text-align:left}
+  .em-table tr.em-row td.em-actions{justify-content:flex-end}
+}
+</style>
+
+{{if ne .Tab "settings"}}<script>
+// Eingabezeile der Messstellen (widgets/energy_meter_table.gohtml)
+(function(){
+  const $ = id => document.getElementById(id);
+  const edit = $('em-edit');
+  const pickerRoot = () => document.querySelector('.infra-picker[data-target="em-infra-id"]');
+  const FILTER_INFRA = {id: {{.Filter.Infra}}, label: {{.Filter.InfraLabel}}};
+
+  function setPicker(id, label){
+    $('em-infra-id').value = id || '';
+    $('em-infra-selected').textContent = id ? (label || '') : 'Keine Infrastruktur ausgewählt';
+    const root = pickerRoot();
+    if(root && root.__infraTree) infraPickerReset(root);
+  }
+  window.emMode = function(){
+    const f = document.querySelector('input[name="em-mode"]:checked').value === 'formula';
+    $('em-formula-box').hidden = !f;
+    $('em-source').hidden = f;
+  };
+  function fill(d){
+    $('em-id').value = d.id || '';
+    $('em-key-in').value = d.key || '';
+    $('em-name').value = d.name || '';
+    $('em-unit').value = d.unit || '';
+    $('em-kind').value = d.kind || 'counter';
+    $('em-factor').value = String(d.factor === undefined || d.factor === null ? 1 : d.factor).replace('.', ',');
+    $('em-source').value = d.source_id || '';
+    $('em-formula').value = d.formula || '';
+    $('em-export').checked = d.export !== false;
+    $('em-active').checked = d.active !== false;
+    document.querySelector('input[name="em-mode"][value="' + (d.formula ? 'formula' : 'source') + '"]').checked = true;
+    emMode();
+    setPicker(d.infrastructure_id, d.infra_label);
+    $('em-error').textContent = '';
+  }
+  function show(after){
+    after.after(edit);
+    edit.hidden = false;
+    $('em-key-in').focus();
+    edit.scrollIntoView({block: 'nearest', behavior: 'smooth'});
+  }
+  window.emEdit = function(btn){
+    const row = btn.closest('tr');
+    emClose();
+    row.hidden = true;
+    edit.dataset.row = row.dataset.id;
+    fill(JSON.parse(row.dataset.meter));
+    show(row);
+  };
+  window.emNew = function(){
+    emClose();
+    fill({infrastructure_id: FILTER_INFRA.id, infra_label: FILTER_INFRA.label});
+    show($('em-new-row'));
+  };
+  window.emClose = function(){
+    edit.hidden = true;
+    document.querySelectorAll('#em-body tr.em-row[hidden]').forEach(r => r.hidden = false);
+  };
+  function flash(msg){
+    const f = $('em-flash');
+    f.textContent = msg;
+    f.hidden = !msg;
+    if(msg) f.scrollIntoView({block: 'nearest'});
+  }
+  async function post(url, body){
+    const res = await fetch(url, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: body === undefined ? '{}' : JSON.stringify(body)});
+    const json = await res.json().catch(() => ({}));
+    if(!res.ok) throw new Error(json.error || 'Das hat nicht geklappt.');
+    return json;
+  }
+  async function emDeleteImpl(btn){
+    const row = btn.closest('tr');
+    if(!confirm('Messstelle „' + row.dataset.key + '“ wirklich löschen? Ihre Minutenwerte werden mit gelöscht.')) return;
+    flash('');
+    try{
+      await post('/energy/meters/' + row.dataset.id + '/delete-web');
+      location.reload();
+    }catch(e){
+      flash(e.message);
+    }
+  }
+  window.emDelete = emDeleteImpl;
+  if(!edit) return;
+  window.emSave = async function(){
+    const err = $('em-error');
+    err.textContent = '';
+    const formula = document.querySelector('input[name="em-mode"]:checked').value === 'formula';
+    const factor = parseFloat(($('em-factor').value || '1').replace(',', '.'));
+    if(!isFinite(factor) || factor === 0){ err.textContent = 'Der Faktor muss eine Zahl ungleich 0 sein.'; return; }
+    if(!$('em-infra-id').value){ err.textContent = 'Bitte eine Anlage wählen.'; return; }
+    const payload = {
+      id: $('em-id').value, key: $('em-key-in').value.trim(), name: $('em-name').value.trim(),
+      infrastructure_id: $('em-infra-id').value, unit: $('em-unit').value.trim(), kind: $('em-kind').value, factor: factor,
+      source_id: formula ? '' : $('em-source').value, formula: formula ? $('em-formula').value.trim() : '',
+      export: $('em-export').checked, active: $('em-active').checked
+    };
+    if(formula && !payload.formula){ err.textContent = 'Bitte eine Formel eintragen.'; return; }
+    $('em-save').disabled = true;
+    try{
+      await post('/energy/meters/save-web', payload);
+      location.reload();
+    }catch(e){
+      err.textContent = e.message;
+      $('em-save').disabled = false;
+    }
+  };
+})();
+</script>{{end}}
+{{end}}

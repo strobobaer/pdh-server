@@ -831,3 +831,37 @@
 <figcaption>Im Explorer suchst du links den Wert, prüfst ihn in der Mitte und übernimmst ihn als Zuordnung; schreiben (rechts) geht nur mit Recht und nie auf dem Spiegelserver.</figcaption>
 </figure>
 {{end}}
+
+{{/* Efficio-Export: Messstellen → Datei → Ablage */}}
+{{define "hb-fig-efficio"}}
+<figure class="hb-fig">
+<svg viewBox="0 0 640 190" role="img" aria-label="Die Minutenwerte der Messstellen werden alle 15 Minuten in eine CSV-Datei geschrieben, die zum Abholen im PDH liegt, auf einem Netzlaufwerk oder auf einem FTP- bzw. SFTP-Server">
+  <rect class="bg" x="1" y="1" width="638" height="188" rx="8"/>
+  <rect class="bg3" x="16" y="30" width="170" height="64" rx="8"/><text x="101" y="52" class="t-c t-b">1 Messstellen</text><text x="101" y="70" class="t-c t-m">„Exportieren“ angehakt</text><text x="101" y="84" class="t-c t-m">ein Wert je Minute</text>
+  <rect class="acl" x="236" y="30" width="170" height="64" rx="8"/><text x="321" y="52" class="t-c t-b">2 CSV-Datei</text><text x="321" y="70" class="t-c t-m">alle 15 Min. ergänzt</text><text x="321" y="84" class="t-c t-m">Zeitstempel;ID;Messwert</text>
+  <rect class="bg3" x="456" y="14" width="168" height="38" rx="8"/><text x="540" y="38" class="t-c t-b">Zum Abholen im PDH</text>
+  <rect class="bg3" x="456" y="76" width="168" height="38" rx="8"/><text x="540" y="100" class="t-c t-b">Netzlaufwerk</text>
+  <rect class="bg3" x="456" y="138" width="168" height="38" rx="8"/><text x="540" y="162" class="t-c t-b">FTP / SFTP</text>
+  <path class="ar" d="M188 62 H234"/><path class="ar" d="M408 62 L454 33"/><path class="ar" d="M408 62 L454 95"/><path class="ar" d="M408 70 L454 150"/>
+  <rect class="am" x="16" y="120" width="390" height="56" rx="8"/><text x="211" y="142" class="t-c t-b">Ohne Messwerte entsteht keine Datei</text><text x="211" y="160" class="t-c t-m">Fehlende Werte stehen als Hinweis im Protokoll</text>
+</svg>
+<figcaption>Der Efficio-Export schreibt die Minutenwerte in eine Datei und legt sie dort ab, wo du es einstellst. Dateien und Protokoll siehst du unter <b>Export → Verbindung → Dateien &amp; Protokoll</b>.</figcaption>
+</figure>
+{{end}}
+
+{{/* Energiedaten: Import-Wert → Messstelle → Formel */}}
+{{define "hb-fig-energie"}}
+<figure class="hb-fig">
+<svg viewBox="0 0 640 190" role="img" aria-label="Ein Import-Wert wird einer Messstelle an einer Anlage zugewiesen; eine berechnete Messstelle rechnet mit einer Formel aus anderen Messstellen">
+  <rect class="bg" x="1" y="1" width="638" height="188" rx="8"/>
+  <rect class="bg3" x="16" y="20" width="170" height="64" rx="8"/><text x="101" y="42" class="t-c t-b">1 Import-Wert</text><text x="101" y="60" class="t-c t-m">MQTT, OPC UA, Modbus …</text><text x="101" y="74" class="t-c t-m">letzter Wert, frisch ≤ 15 Min.</text>
+  <rect class="acl" x="236" y="20" width="170" height="64" rx="8"/><text x="321" y="42" class="t-c t-b">2 Messstelle</text><text x="321" y="60" class="t-c t-m">ID · Anlage · Einheit · Art</text><text x="321" y="74" class="t-c t-m">Faktor · exportieren · aktiv</text>
+  <rect class="bg3" x="456" y="20" width="168" height="64" rx="8"/><text x="540" y="42" class="t-c t-b">3 Minutenwert</text><text x="540" y="60" class="t-c t-m">je Minute abgelegt,</text><text x="540" y="74" class="t-c t-m">alle 15 Min. exportiert</text>
+  <path class="ar" d="M188 52 H234"/><path class="ar" d="M408 52 H454"/>
+  <rect class="am" x="16" y="112" width="608" height="64" rx="8"/><text x="320" y="134" class="t-c t-b">Berechnete Messstelle: statt eines Import-Werts eine Formel</text>
+  <text x="320" y="154" class="t-c">[GESAMT] − [LINIE-A] − [LINIE-B]</text><text x="320" y="168" class="t-c t-m">Fehlt ein Bezugswert, fällt die Minute weg – es wird nie mit 0 gerechnet</text>
+  <path class="ar" d="M321 112 V86"/>
+</svg>
+<figcaption>Eine Messstelle bekommt entweder einen Import-Wert oder eine Formel. Beides weist du in der Tabelle unter <b>Messstellen</b> zu.</figcaption>
+</figure>
+{{end}}
