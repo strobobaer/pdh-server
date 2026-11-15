@@ -1013,6 +1013,10 @@ func (h *Handler) Routes() chi.Router {
 		r.Get("/"+dir+"/connections/{id}/explorer/modbus/watch", h.ModbusExplorerWatch(dir))
 		r.Post("/"+dir+"/connections/{id}/explorer/modbus/write", h.ModbusExplorerWrite(dir))
 	}
+	// TIA-Portal-Baustein „MQTT senden“ an einer MQTT-Verbindung (tia_block.go)
+	r.Get("/import/connections/{id}/tia", h.TIABlockPage)
+	r.Post("/import/connections/{id}/tia/check", h.TIABlockCheckWeb)
+	r.Post("/import/connections/{id}/tia/download", h.TIABlockDownload)
 	r.Get("/import/connections/{id}/broker", h.MqttBrokerPage)
 	r.Get("/import/connections/{id}/broker/stream", h.MqttBrokerStream)
 	r.Post("/import/connections/{id}/mappings", h.ImportMappingCreateWeb)

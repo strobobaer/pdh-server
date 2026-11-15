@@ -270,6 +270,9 @@ func (h *Handler) connectionDetailPage(w http.ResponseWriter, r *http.Request, d
 		}
 	}
 	d.Tools = connectionTools(direction, kind, id, config)
+	if direction == "import" && kind == "mqtt" && h.tiaCan(r, permImportTIA, id) {
+		d.Tools = append(d.Tools, tiaTool(id))
+	}
 	if direction == "import" {
 		d.QueriesSupported = queryKindSupported(kind)
 		d.Queries, _ = h.loadConnQueries(ctx, id)

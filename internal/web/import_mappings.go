@@ -68,6 +68,7 @@ type importMappingCreateInput struct {
 	InfrastructureID string `json:"infrastructure_id"`
 	Name             string `json:"name"`
 	Note             string `json:"note"`
+	HeartbeatSeconds int    `json:"heartbeat_seconds,omitempty"` // nur Heartbeat-Zuordnungen; 0 = keine (NULL)
 }
 
 func (h *Handler) ImportMappingCreateWeb(w http.ResponseWriter, r *http.Request) {
@@ -104,13 +105,17 @@ func (h *Handler) ImportMappingCreateWeb(w http.ResponseWriter, r *http.Request)
 		writeGlobalBoardError(w, http.StatusBadRequest, "Zuordnungsnotiz darf höchstens 500 Zeichen lang sein")
 		return
 	}
+	if in.HeartbeatSeconds < 0 || in.HeartbeatSeconds > 86400 {
+		writeGlobalBoardError(w, http.StatusBadRequest, "Heartbeat: 1 bis 86400 Sekunden")
+		return
+	}
 
 	u := getUser(r)
 	var id string
 	err := h.db.QueryRow(r.Context(), `
-		INSERT INTO import_mappings (connection_id, source_ref, infrastructure_id, name, note, created_by)
-		VALUES ($1, $2, $3, $4, $5, $6) RETURNING id::text`,
-		connectionID, in.SourceRef, in.InfrastructureID, in.Name, in.Note, u.ID).Scan(&id)
+		INSERT INTO import_mappings (connection_id, source_ref, infrastructure_id, name, note, created_by, heartbeat_seconds)
+		VALUES ($1, $2, $3, $4, $5, $6, NULLIF($7::int, 0)) RETURNING id::text`,
+		connectionID, in.SourceRef, in.InfrastructureID, in.Name, in.Note, u.ID, in.HeartbeatSeconds).Scan(&id)
 	if err != nil {
 		writeGlobalBoardError(w, http.StatusInternalServerError, "Zuordnung konnte nicht angelegt werden - existiert die gewählte Infrastruktur?")
 		return
