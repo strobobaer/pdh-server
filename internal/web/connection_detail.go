@@ -33,10 +33,17 @@ var connFieldLabels = map[string]string{
 	"base_url": "Basis-URL", "auth_method": "Anmeldung", "bearer_token": "Bearer-Token", "api_key_header": "API-Key-Header", "api_key_value": "API-Key",
 	"unit_id": "Unit-ID", "endpoint_url": "Endpunkt", "auth_mode": "Anmeldung",
 	"template_id": "Vorlage", "destination_path": "Zielpfad", "schedule_cron": "Zeitplan (Cron)", "table_name": "Tabelle",
+	"run_minutes": "Datei ergänzen alle (Min.)", "interval_minutes": "Zeilen im Abstand von (Min.)", "value_mode": "Wert",
+	"file_days": "Max. Länge der Datei (Tage)", "retention_days": "Aufbewahrung (Tage)", "file_prefix": "Dateiname beginnt mit",
+	"time_format": "Zeitformat", "decimal_comma": "Dezimalkomma", "encoding": "Zeichensatz", "target": "Ablage",
+	"drive_id": "Netzlaufwerk", "drive_folder": "Ordner auf dem Laufwerk", "ftp_host": "Server", "ftp_port": "Port",
+	"ftp_username": "Benutzer", "ftp_password": "Kennwort", "ftp_folder": "Zielordner", "ftp_tls": "TLS",
+	"sftp_host_key": "Fingerabdruck des Servers", "filter_infra_ids": "Nur Anlagen (IDs)", "filter_meter_keys": "Nur Messstellen",
 }
 
 var connSecretFields = map[string]bool{
 	"password": true, "ext_password": true, "int_broker_password": true, "bearer_token": true, "api_key_value": true,
+	"ftp_password": true, // Efficio-Export: FTP-/SFTP-Kennwort
 }
 
 type connConfigRow struct{ Label, Value string }
@@ -126,6 +133,12 @@ func connectionTools(direction, kind, id string, config map[string]string) []con
 	base := "/" + direction + "/connections/" + id + "/"
 	var t []connTool
 	explorer := connTool{"/" + direction + "/connections/" + id + "?tab=explorer", "ti-telescope", "Explorer", "Werte live erkunden, testweise schreiben und als Zuordnung übernehmen"}
+	if direction == "export" && kind == efficioKind {
+		return []connTool{
+			{base + "efficio", "ti-files", "Dateien & Protokoll", "Erzeugte Dateien herunterladen, Läufe ansehen, Verbindung testen, jetzt exportieren"},
+			{"/energy/meters", "ti-gauge", "Messstellen", "Welche Messstellen exportiert werden"},
+		}
+	}
 	if direction == "export" {
 		if explorerKindSupported(direction, kind) {
 			t = append(t, explorer)
@@ -234,6 +247,8 @@ func (h *Handler) connectionDetailPage(w http.ResponseWriter, r *http.Request, d
 			v = "•••••• (gesetzt)"
 		case booleanConfigFields[f]:
 			v = map[string]string{"true": "ja", "false": "nein"}[v]
+		case kind == efficioKind:
+			v = h.efficioDisplay(ctx, f, v)
 		case f == "template_id":
 			tpl := h.resolveExportTemplate(ctx, kind, v)
 			if tpl.Name != "" {
@@ -302,6 +317,15 @@ func (h *Handler) connectionDetailPage(w http.ResponseWriter, r *http.Request, d
 		}
 	} else {
 		d.ExportMappings, _ = h.exportMappings(ctx, id)
+		if kind == efficioKind {
+			if ec, err := efficioConfig(id, config, nil); err == nil || ec.RunEvery > 0 {
+				st := "angehalten (Verbindung deaktiviert)"
+				if enabled {
+					st = "läuft"
+				}
+				d.Background = append(d.Background, connConfigRow{"Efficio-Export", "alle " + strconv.Itoa(int(ec.RunEvery/time.Minute)) + " Min. – " + st})
+			}
+		}
 		if h.exportCron != nil {
 			if next, ok := h.exportCron.Next(id); ok {
 				d.Background = append(d.Background, connConfigRow{"Nächster Export", next.Format("02.01.2006 15:04")})

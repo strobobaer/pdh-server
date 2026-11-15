@@ -220,6 +220,7 @@ var gateRules = []gateRule{
 	gr(wPost, "directory.edit", "business_partner", false, apiV1+`/directory`+gID+gEnd),
 	// ── Energiedaten: Messstellen anlegen und ändern mit energy.edit (Anlage bzw. Datensatz prüft der Handler) ──
 	gr(wPost, permEnergyEdit, "", false, `^/energy/meters/save-web$`),
+	gr(wPost, permEnergyAdmin, "", false, `^/energy/settings-web$`), // Einstellungen: nur Bereichsadministrator
 	// ── Rüstzeiten: anlegen, bearbeiten und beenden mit setup.edit (für den Datensatz in seiner Abteilung) ──
 	gr(wPost, permSetupEdit, "", false, `^/setup/?$`),
 	gr(wPost, permSetupEdit, setupRef, false, `^/setup`+gID+`/(?:edit|finish)-web$`),

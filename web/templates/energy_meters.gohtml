@@ -11,6 +11,11 @@
 </div>
 {{if .Err}}<div class="w11-infobar error" role="alert">{{.Err}}</div>{{end}}
 <div id="em-flash" class="w11-infobar error" role="alert" hidden></div>
+<nav class="em-tabs" aria-label="Bereiche der Energiedaten">
+  <a class="em-tab{{if ne .Tab "settings"}} is-on{{end}}" href="/energy/meters"{{if ne .Tab "settings"}} aria-current="page"{{end}}><i class="ti ti-gauge" aria-hidden="true"></i> Messstellen</a>
+  <a class="em-tab{{if eq .Tab "settings"}} is-on{{end}}" href="/energy/meters?tab=settings"{{if eq .Tab "settings"}} aria-current="page"{{end}}><i class="ti ti-settings" aria-hidden="true"></i> Einstellungen</a>
+</nav>
+{{if eq .Tab "settings"}}{{template "energy-settings" .}}{{else}}
 
 <form class="card em-filter" method="get" action="/energy/meters">
   {{if ne .Sort "key"}}<input type="hidden" name="sort" value="{{.Sort}}">{{end}}
@@ -59,7 +64,7 @@
       <input id="emf-q" name="q" class="form-input" value="{{.Filter.Q}}" placeholder="ID, Bezeichnung, Einheit, Anlage" autocomplete="off"></div>
   </div>
   <div class="em-filter-foot">
-    <label class="em-check"><input type="checkbox" name="stale" value="1"{{if .Filter.Stale}} checked{{end}}> Nur ohne aktuellen Wert (älter als 15 Minuten)</label>
+    <label class="em-check"><input type="checkbox" name="stale" value="1"{{if .Filter.Stale}} checked{{end}}> Nur ohne aktuellen Wert (älter als {{.Set.StaleMinutes}} Minuten)</label>
     <span class="em-spacer"></span>
     {{if .FilterOn}}<a class="btn" href="/energy/meters">Zurücksetzen</a>{{end}}
     <button type="submit" class="btn btn-primary"><i class="ti ti-filter" aria-hidden="true"></i> Filtern</button>
@@ -67,8 +72,15 @@
 </form>
 
 {{template "energy-meter-table" .}}
+{{end}}
 
 <style>
+.em-tabs{display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:14px;flex-wrap:wrap}
+.em-tab{padding:8px 14px;color:var(--muted);text-decoration:none;border-bottom:2px solid transparent;font-size:13px;display:inline-flex;gap:6px;align-items:center}
+.em-tab:hover{color:var(--text)}
+.em-tab.is-on{color:var(--accent);border-bottom-color:var(--accent);font-weight:600}
+.em-set-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-bottom:10px}
+.em-set h2{font-size:14px;font-weight:600;margin:4px 0 6px}
 .em-head{display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap}
 .em-head-main{flex:1;min-width:200px}
 .em-head h1{font-size:18px;font-weight:600}
@@ -115,7 +127,7 @@
 }
 </style>
 
-<script>
+{{if ne .Tab "settings"}}<script>
 // Eingabezeile der Messstellen (widgets/energy_meter_table.gohtml)
 (function(){
   const $ = id => document.getElementById(id);
@@ -222,5 +234,5 @@
     }
   };
 })();
-</script>
+</script>{{end}}
 {{end}}

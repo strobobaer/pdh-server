@@ -40,6 +40,7 @@ func (sm *Sampler) Pass(ctx context.Context, minute time.Time) (stored, missing 
 		return 0, 0, nil
 	}
 	minute = minute.Truncate(time.Minute)
+	stale := sm.Store.settingsOrDefault(ctx).StaleAfter()
 	db := sm.Store.DB
 
 	rows, err := db.Query(ctx, `
@@ -143,7 +144,7 @@ func (sm *Sampler) Pass(ctx context.Context, minute time.Time) (stored, missing 
 			cur[x.key] = old
 			continue
 		}
-		if x.receivedAt == nil || x.raw == nil || minute.Sub(*x.receivedAt) > StaleAfter {
+		if x.receivedAt == nil || x.raw == nil || minute.Sub(*x.receivedAt) > stale {
 			continue
 		}
 		v, ok := ParseValue(*x.raw)
@@ -308,7 +309,7 @@ func (sm *Sampler) evalVirtual(ctx context.Context, x *sampleMeter, byKey map[st
 // purge löscht Minutenwerte, die älter als ValueRetentionDays sind.
 func (sm *Sampler) purge(ctx context.Context) error {
 	_, err := sm.Store.DB.Exec(ctx, `DELETE FROM energy_values WHERE ts < $1`,
-		sm.Store.now().AddDate(0, 0, -ValueRetentionDays))
+		sm.Store.now().AddDate(0, 0, -sm.Store.settingsOrDefault(ctx).ValueRetentionDays))
 	return err
 }
 

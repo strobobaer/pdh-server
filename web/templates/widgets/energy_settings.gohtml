@@ -1,0 +1,42 @@
+{{define "energy-settings"}}
+{{/* Reiter „Einstellungen“ der Energiedaten (energy_settings.go). Nur Variablen des Farbschemas. */}}
+{{with .SetNotice}}<div class="card" role="status" style="margin-bottom:14px;border-color:var(--green)"><i class="ti ti-circle-check" style="color:var(--green)" aria-hidden="true"></i> {{.}}</div>{{end}}
+{{with .SetErr}}<div class="card" role="alert" style="margin-bottom:14px;border-color:var(--red);color:var(--red)"><i class="ti ti-alert-circle" aria-hidden="true"></i> {{.}}</div>{{end}}
+<form class="card em-set" method="post" action="/energy/settings-web">
+  <h2>Für alle Messstellen</h2>
+  <div class="em-set-grid">
+    <div class="form-group"><label class="form-label" for="es-stale">Quellwert gilt als veraltet nach … min</label>
+      <input id="es-stale" type="number" name="stale_minutes" class="form-input" min="1" max="1440" value="{{.Set.StaleMinutes}}"{{if not .SetCanEdit}} disabled{{end}}></div>
+    <div class="form-group"><label class="form-label" for="es-keep">Minutenwerte aufbewahren … Tage</label>
+      <input id="es-keep" type="number" name="value_retention_days" class="form-input" min="1" max="3650" value="{{.Set.ValueRetentionDays}}"{{if not .SetCanEdit}} disabled{{end}}></div>
+  </div>
+  <h2>Vorgaben für neue Efficio-Exporte</h2>
+  <p class="em-hint">Ein neuer Export übernimmt diese Werte in seine Felder. Dort lassen sie sich je Export ändern; bestehende Exporte bleiben unverändert.</p>
+  <div class="em-set-grid">
+    <div class="form-group"><label class="form-label" for="es-run">Datei ergänzen alle … min</label>
+      <select id="es-run" name="run_minutes" class="form-input"{{if not .SetCanEdit}} disabled{{end}}>{{$v := .Set.RunMinutes}}{{range .SetChoices}}<option value="{{.}}"{{if eq . $v}} selected{{end}}>{{.}}</option>{{end}}</select></div>
+    <div class="form-group"><label class="form-label" for="es-step">Zeilen im Abstand von … min</label>
+      <select id="es-step" name="interval_minutes" class="form-input"{{if not .SetCanEdit}} disabled{{end}}>{{$s := .Set.IntervalMinutes}}{{range .SetChoices}}<option value="{{.}}"{{if eq . $s}} selected{{end}}>{{.}}</option>{{end}}</select></div>
+    <div class="form-group"><label class="form-label" for="es-days">Max. Länge der Datei in Tagen (0 = eine Datei je Lauf)</label>
+      <input id="es-days" type="number" name="file_days" class="form-input" min="0" max="366" value="{{.Set.FileDays}}"{{if not .SetCanEdit}} disabled{{end}}></div>
+    <div class="form-group"><label class="form-label" for="es-ret">Aufbewahrung in Tagen</label>
+      <input id="es-ret" type="number" name="retention_days" class="form-input" min="1" max="3650" value="{{.Set.RetentionDays}}"{{if not .SetCanEdit}} disabled{{end}}></div>
+    <div class="form-group"><label class="form-label" for="es-prefix">Dateiname beginnt mit</label>
+      <input id="es-prefix" name="prefix" class="form-input" maxlength="40" value="{{.Set.Prefix}}"{{if not .SetCanEdit}} disabled{{end}}></div>
+    <div class="form-group"><label class="form-label" for="es-tf">Zeitformat</label>
+      <select id="es-tf" name="time_format" class="form-input"{{if not .SetCanEdit}} disabled{{end}}>
+        <option value="dmy"{{if eq .Set.TimeFormat "dmy"}} selected{{end}}>TT.MM.JJJJ hh:mm</option>
+        <option value="iso"{{if eq .Set.TimeFormat "iso"}} selected{{end}}>JJJJ-MM-TT hh:mm</option></select></div>
+    <div class="form-group"><label class="form-label" for="es-enc">Zeichensatz</label>
+      <select id="es-enc" name="encoding" class="form-input"{{if not .SetCanEdit}} disabled{{end}}>
+        <option value="utf-8"{{if eq .Set.Encoding "utf-8"}} selected{{end}}>UTF-8</option>
+        <option value="windows-1252"{{if eq .Set.Encoding "windows-1252"}} selected{{end}}>Windows-1252</option></select></div>
+  </div>
+  <div class="em-checks">
+    <label><input type="checkbox" name="decimal_comma"{{if .Set.DecimalComma}} checked{{end}}{{if not .SetCanEdit}} disabled{{end}}> Dezimalkomma</label>
+    <label><input type="checkbox" name="header"{{if .Set.Header}} checked{{end}}{{if not .SetCanEdit}} disabled{{end}}> Kopfzeile</label>
+  </div>
+  {{if .SetCanEdit}}<div class="em-buttons"><button type="submit" class="btn btn-primary"><i class="ti ti-device-floppy" aria-hidden="true"></i> Speichern</button></div>
+  {{else}}<p class="em-hint">Ändern darf nur, wer Messstellen als Bereichsadministrator verwaltet.</p>{{end}}
+</form>
+{{end}}

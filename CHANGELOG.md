@@ -10,6 +10,34 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.80.12] – 2026-11-15
+
+### Neu
+
+- Energiedaten: Neue Seite „Messstellen“ (Navigation → Daten). Jeder importierte Wert lässt sich in einer Tabelle einer Anlage zuweisen – mit Messstellen-ID, Einheit, Art (Zählerstand, Verbrauch, Momentanwert) und Faktor.
+
+- Energiedaten: Berechnete Messstellen rechnen mit einer Formel aus anderen Messstellen, zum Beispiel `[GESAMT] - [LINIE-A]`. Zirkelbezüge und unbekannte Messstellen weist das PDH mit einer verständlichen Meldung ab.
+
+- Energiedaten: Das PDH legt jede Minute den Wert jeder Messstelle ab und behält die Minutenwerte 400 Tage. Ist die Quelle zu alt oder kein Zahlenwert, gibt es für diese Minute keinen Wert – nie eine 0.
+
+- Energiedaten: Die Übersicht über alle Messstellen aller Anlagen lässt sich nach Anlage, echt oder berechnet, exportieren, aktiv, Einheit, Art, Verbindung und Suchtext filtern; „Nur ohne aktuellen Wert“ zeigt Messstellen, deren Quelle nicht mehr liefert.
+
+- Energiedaten: Im Reiter „Einstellungen“ der Messstellen legt der Bereichsadministrator fest, nach wie vielen Minuten ein Quellwert als veraltet gilt, wie lange Minutenwerte bleiben und welche Vorgaben neue Efficio-Exporte bekommen.
+
+- Export: Neue Art „Efficio-CSV (Energiedaten)“ liefert die Minutenwerte der Messstellen als CSV für Berg Efficio. Die Datei wird alle 15 Minuten ergänzt (einstellbar) und enthält Zeilen im Minutentakt (einstellbar); Zeitformat, Dezimalkomma, Kopfzeile, Zeichensatz, Dateilänge und Aufbewahrung lassen sich einstellen.
+
+- Export, Efficio: Die Dateien liegen zum Abholen im PDH, auf einem Netzlaufwerk oder auf einem FTP- bzw. SFTP-Server. Dateien werden erst vollständig geschrieben und dann umbenannt, damit nie eine halbe Datei gelesen wird; was nicht ankommt, wird beim nächsten Lauf nachgelegt.
+
+- Export, Efficio: Die Seite „Dateien & Protokoll“ zeigt die erzeugten Dateien zum Herunterladen und die letzten 30 Läufe samt Lücken; „Verbindung testen“ prüft die Ablage und „Jetzt exportieren“ startet einen Lauf von Hand.
+
+- Export, Efficio: Läuft ein Lauf ohne Messwerte, entsteht keine Datei – auch keine nur mit Kopfzeile. Fehlende Werte werden nicht erfunden, sie stehen als Hinweis im Protokoll.
+
+### Sicherheit
+
+- Neue Rechte „Messstellen sehen“, „Messstellen pflegen“ und „Messstellen löschen (Bereichsadministrator)“; wer bisher Export ansehen oder verwalten durfte, bekommt die ersten beiden mit gleicher Abteilung. Die Einstellungen der Energiedaten ändert nur der Bereichsadministrator.
+
+- Efficio-Export: Das FTP-/SFTP-Kennwort wird verschlüsselt gespeichert und nie angezeigt; SFTP verbindet nur mit einem Server, dessen Fingerabdruck du bestätigt hast.
+
 ## [0.80.11] – 2026-11-14
 
 ### Neu

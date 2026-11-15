@@ -100,6 +100,13 @@ type EnergyMetersData struct {
 	Desc              bool
 	SortURL, SortMark map[string]string
 	Err               string
+
+	// Reiter „Einstellungen“ (energy_settings.go)
+	Tab               string
+	Set               energie.Settings
+	SetCanEdit        bool
+	SetChoices        []int
+	SetNotice, SetErr string
 }
 
 // meterSortURL: Adresse der Seite mit Sortierung nach col (Klick auf die
@@ -170,6 +177,12 @@ func (h *Handler) EnergyMetersPage(w http.ResponseWriter, r *http.Request) {
 	f.AllowedIDs = h.scopeAllowedIDs(r, meterRef)
 
 	d := EnergyMetersData{Sort: f.Sort, Desc: f.Desc, SortURL: map[string]string{}, SortMark: map[string]string{}}
+	d.Set, _ = st.Settings(ctx) // bei Fehler gelten die Vorgaben
+	d.SetCanEdit, d.SetChoices = h.energyCan(r, permEnergyAdmin, ""), energie.MinuteChoices
+	d.SetNotice, d.SetErr = q.Get("notice"), q.Get("err")
+	if q.Get("tab") == "settings" {
+		d.Tab = "settings"
+	}
 	for _, col := range []string{"key", "name", "infra", "unit", "kind", "last"} {
 		d.SortURL[col] = meterSortURL(q, col)
 	}
@@ -223,6 +236,7 @@ func (h *Handler) EnergyMetersPage(w http.ResponseWriter, r *http.Request) {
 	now := time.Now()
 	for _, m := range list {
 		row := newMeterRow(m, now)
+		row.Stale = m.LastAt == nil || now.Sub(*m.LastAt) > d.Set.StaleAfter()
 		if _, ok := canEdit[m.InfraID]; !ok {
 			canEdit[m.InfraID] = h.energyCanInfra(r, permEnergyEdit, m.InfraID)
 			canDel[m.InfraID] = h.energyCanInfra(r, permEnergyAdmin, m.InfraID)

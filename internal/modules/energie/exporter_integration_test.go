@@ -378,3 +378,37 @@ func TestExporterMinuteGridPerRun(t *testing.T) {
 		t.Error("Zeitstempel 10:01 und 10:30 erwartet")
 	}
 }
+
+// Ohne Werte entsteht keine Datei – auch keine mit Kopfzeile. Kommen später
+// Werte, entsteht sie normal; eine vorhandene Datei bleibt bei leerem Lauf unverändert.
+func TestExporterNoDataNoFile(t *testing.T) {
+	env := exportEnv(t)
+	a := env.instant(t) // Messstelle ohne Minutenwert
+	ctx := context.Background()
+	r, err := env.e.Run(ctx, env.cfg)
+	must(t, err)
+	if r.Rows != 0 || len(r.Files) != 0 {
+		t.Fatalf("Lauf ohne Werte: %+v", r)
+	}
+	if fs := env.files(t); len(fs) != 0 {
+		t.Fatalf("Datei trotz fehlender Werte: %+v", fs)
+	}
+	putValue(t, env.pool, a, e0, 4)
+	// Intervall e0 ist schon als leer abgehakt; ein neues Intervall mit Wert erzeugt die Datei.
+	putValue(t, env.pool, a, e0.Add(15*time.Minute), 5)
+	env.now = env.now.Add(15 * time.Minute)
+	r, err = env.e.Run(ctx, env.cfg)
+	must(t, err)
+	fs := env.files(t)
+	if len(fs) != 1 || fs[0].rows != 1 || !strings.Contains(fs[0].content, "Zeitstempel;Messstellen-ID;Messwert") {
+		t.Fatalf("Datei nach Werten: %+v %+v", fs, r)
+	}
+	ver := fs[0].version
+	env.now = env.now.Add(15 * time.Minute) // wieder ein Lauf ohne Werte
+	if _, err = env.e.Run(ctx, env.cfg); err != nil {
+		t.Fatal(err)
+	}
+	if fs = env.files(t); len(fs) != 1 || fs[0].version != ver {
+		t.Errorf("Datei bei leerem Lauf verändert: %+v", fs)
+	}
+}

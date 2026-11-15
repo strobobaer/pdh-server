@@ -50,6 +50,22 @@ func (h *Handler) StartEnergySampler(ctx context.Context) {
 	go sm.Start(ctx)
 }
 
+// StartEnergyExporter startet den Takt der Efficio-Exporte (nur am aktiven
+// Server; auf dem Spiegel und in der Wartungssperre wird nichts abgelegt).
+func (h *Handler) StartEnergyExporter(ctx context.Context) {
+	if h.Mirror().On {
+		log.Info().Msg("energiedaten: efficio-export nicht gestartet (spiegelserver)")
+		return
+	}
+	st := h.energyStore()
+	if st == nil {
+		log.Warn().Msg("energiedaten: efficio-export nicht gestartet (keine datenbank)")
+		return
+	}
+	ex := &energie.Exporter{Store: st, Configs: h.efficioConfigs, Skip: h.MaintLocked}
+	go ex.Start(ctx)
+}
+
 // meterFilterFromQuery liest Filter und Sortierung aus der Adresse
 // (infra, virtual, export, active, unit, kind, conn, q, stale, sort, dir).
 // Ja/Nein-Felder: "1" = ja, "0" = nein, sonst nicht filtern. Ungültige IDs und

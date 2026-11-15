@@ -832,6 +832,23 @@
 </figure>
 {{end}}
 
+{{/* Efficio-Export: Messstellen → Datei → Ablage */}}
+{{define "hb-fig-efficio"}}
+<figure class="hb-fig">
+<svg viewBox="0 0 640 190" role="img" aria-label="Die Minutenwerte der Messstellen werden alle 15 Minuten in eine CSV-Datei geschrieben, die zum Abholen im PDH liegt, auf einem Netzlaufwerk oder auf einem FTP- bzw. SFTP-Server">
+  <rect class="bg" x="1" y="1" width="638" height="188" rx="8"/>
+  <rect class="bg3" x="16" y="30" width="170" height="64" rx="8"/><text x="101" y="52" class="t-c t-b">1 Messstellen</text><text x="101" y="70" class="t-c t-m">„Exportieren“ angehakt</text><text x="101" y="84" class="t-c t-m">ein Wert je Minute</text>
+  <rect class="acl" x="236" y="30" width="170" height="64" rx="8"/><text x="321" y="52" class="t-c t-b">2 CSV-Datei</text><text x="321" y="70" class="t-c t-m">alle 15 Min. ergänzt</text><text x="321" y="84" class="t-c t-m">Zeitstempel;ID;Messwert</text>
+  <rect class="bg3" x="456" y="14" width="168" height="38" rx="8"/><text x="540" y="38" class="t-c t-b">Zum Abholen im PDH</text>
+  <rect class="bg3" x="456" y="76" width="168" height="38" rx="8"/><text x="540" y="100" class="t-c t-b">Netzlaufwerk</text>
+  <rect class="bg3" x="456" y="138" width="168" height="38" rx="8"/><text x="540" y="162" class="t-c t-b">FTP / SFTP</text>
+  <path class="ar" d="M188 62 H234"/><path class="ar" d="M408 62 L454 33"/><path class="ar" d="M408 62 L454 95"/><path class="ar" d="M408 70 L454 150"/>
+  <rect class="am" x="16" y="120" width="390" height="56" rx="8"/><text x="211" y="142" class="t-c t-b">Ohne Messwerte entsteht keine Datei</text><text x="211" y="160" class="t-c t-m">Fehlende Werte stehen als Hinweis im Protokoll</text>
+</svg>
+<figcaption>Der Efficio-Export schreibt die Minutenwerte in eine Datei und legt sie dort ab, wo du es einstellst. Dateien und Protokoll siehst du unter <b>Export → Verbindung → Dateien &amp; Protokoll</b>.</figcaption>
+</figure>
+{{end}}
+
 {{/* Energiedaten: Import-Wert → Messstelle → Formel */}}
 {{define "hb-fig-energie"}}
 <figure class="hb-fig">

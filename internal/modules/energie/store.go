@@ -120,7 +120,7 @@ func (s *Store) List(ctx context.Context, f Filter) ([]Meter, error) {
 			OR p.path ILIKE %[1]s OR im.name ILIKE %[1]s)`, a))
 	}
 	if f.Stale {
-		where = append(where, "(m.last_at IS NULL OR m.last_at < "+arg(s.now().Add(-StaleAfter))+")")
+		where = append(where, "(m.last_at IS NULL OR m.last_at < "+arg(s.now().Add(-s.settingsOrDefault(ctx).StaleAfter()))+")")
 	}
 	if f.AllowedIDs != nil {
 		ids := make([]string, 0, len(f.AllowedIDs))
