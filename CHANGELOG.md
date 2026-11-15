@@ -16,17 +16,17 @@ im Kapitel „Versionen & Updates“ an.
 
 - Energiedaten: Neue Seite „Messstellen“ (Navigation → Daten). Jeder importierte Wert lässt sich in einer Tabelle einer Anlage zuweisen – mit Messstellen-ID, Einheit, Art (Zählerstand, Verbrauch, Momentanwert) und Faktor.
 
-- Energiedaten: Berechnete Messstellen rechnen mit einer Formel aus anderen Messstellen, zum Beispiel `[GESAMT] - [LINIE-A]`. Zirkelbezüge und unbekannte Messstellen weist das PDH mit einer verständlichen Meldung ab.
+- Energiedaten: Berechnete Messstellen rechnen mit einer Formel aus anderen Messstellen, zum Beispiel `[GESAMT] - [LINIE-A]`. Zirkelbezüge und unbekannte Messstellen weist das PDH mit einer verständlichen Meldung ab. Ändert sich Quelle, Faktor, Art oder Formel, zählt der Sprung nicht als Verbrauch.
 
-- Energiedaten: Das PDH legt jede Minute den Wert jeder Messstelle ab und behält die Minutenwerte 400 Tage. Ist die Quelle zu alt oder kein Zahlenwert, gibt es für diese Minute keinen Wert – nie eine 0.
+- Energiedaten: Das PDH legt jede Minute den Wert jeder Messstelle ab und behält die Minutenwerte 400 Tage. Jede Lesung zählt genau einmal in der Minute, in der sie ankam, auch wenn die Quelle öfter als einmal je Minute liefert. Ist die Quelle zu alt oder kein Zahlenwert, oder kam bei Verbrauch keine Lesung, gibt es für diese Minute keinen Wert – nie eine 0.
 
 - Energiedaten: Die Übersicht über alle Messstellen aller Anlagen lässt sich nach Anlage, echt oder berechnet, exportieren, aktiv, Einheit, Art, Verbindung und Suchtext filtern; „Nur ohne aktuellen Wert“ zeigt Messstellen, deren Quelle nicht mehr liefert.
 
 - Energiedaten: Im Reiter „Einstellungen“ der Messstellen legt der Bereichsadministrator fest, nach wie vielen Minuten ein Quellwert als veraltet gilt, wie lange Minutenwerte bleiben und welche Vorgaben neue Efficio-Exporte bekommen.
 
-- Export: Neue Art „Efficio-CSV (Energiedaten)“ liefert die Minutenwerte der Messstellen als CSV für Berg Efficio. Die Datei wird alle 15 Minuten ergänzt (einstellbar) und enthält Zeilen im Minutentakt (einstellbar); Zeitformat, Dezimalkomma, Kopfzeile, Zeichensatz, Dateilänge und Aufbewahrung lassen sich einstellen.
+- Export: Neue Art „Efficio-CSV (Energiedaten)“ liefert die Minutenwerte der Messstellen als CSV für Berg Efficio. Die Datei wird alle 15 Minuten ergänzt (einstellbar) und enthält Zeilen im Minutentakt (einstellbar); Zeitformat, Zeitbezug (Ortszeit, UTC oder Ortszeit mit Zeitzonenangabe), Dezimalkomma, Kopfzeile, Zeichensatz, Dateilänge und Aufbewahrung lassen sich einstellen.
 
-- Export, Efficio: Die Dateien liegen zum Abholen im PDH, auf einem Netzlaufwerk oder auf einem FTP- bzw. SFTP-Server. Dateien werden erst vollständig geschrieben und dann umbenannt, damit nie eine halbe Datei gelesen wird; was nicht ankommt, wird beim nächsten Lauf nachgelegt.
+- Export, Efficio: Die Dateien liegen zum Abholen im PDH, auf einem Netzlaufwerk oder auf einem FTP- bzw. SFTP-Server. Dateien werden erst vollständig geschrieben und dann umbenannt, damit nie eine halbe Datei gelesen wird; was nicht ankommt, wird beim nächsten Lauf nachgelegt. Ist ein Ziel nicht erreichbar, hält das die anderen Exporte nicht auf.
 
 - Export, Efficio: Die Seite „Dateien & Protokoll“ zeigt die erzeugten Dateien zum Herunterladen und die letzten 30 Läufe samt Lücken; „Verbindung testen“ prüft die Ablage und „Jetzt exportieren“ startet einen Lauf von Hand.
 
