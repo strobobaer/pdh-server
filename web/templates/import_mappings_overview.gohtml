@@ -30,7 +30,7 @@
           oncontextmenu="showContextMenu(event, overviewMappingContextItems(this, 'import')); return false;">
         <td style="padding:6px 10px;border-bottom:1px solid var(--border)">{{.ConnectionName}} <span style="color:var(--muted)">({{.ConnectionKindLabel}})</span></td>
         <td style="padding:6px 10px;border-bottom:1px solid var(--border);word-break:break-all;font-family:monospace">{{.SourceRef}}</td>
-        <td style="padding:6px 10px;border-bottom:1px solid var(--border)">{{.Name}}</td>
+        <td style="padding:6px 10px;border-bottom:1px solid var(--border)">{{.Name}}{{if .Silent}} <span class="badge" data-silent-mark style="background:var(--amber)" title="Heartbeat bleibt aus"><i class="ti ti-heart-off"></i> Steuerung meldet sich nicht – {{.SilentSince}}</span>{{end}}</td>
         <td style="padding:6px 10px;border-bottom:1px solid var(--border)">{{.InfrastructureName}}</td>
         <td style="padding:6px 10px;border-bottom:1px solid var(--border)">{{.Note}}</td>
         <td style="padding:6px 10px;border-bottom:1px solid var(--border);font-family:monospace;word-break:break-all">{{if .LastValue}}{{.LastValue}}{{else}}<span style="color:var(--muted)">–</span>{{end}}</td>

@@ -96,8 +96,9 @@ func queryFormFields(kind string) []queryFormField {
 
 type connMappingRow struct {
 	ImportMappingView
-	QueryName string
-	Column    string
+	QueryName   string
+	Column      string
+	SilentSince string // „seit …“ bzw. „noch kein Heartbeat“, nur wenn Silent
 }
 
 type ConnectionDetailData struct {
@@ -116,6 +117,7 @@ type ConnectionDetailData struct {
 	Builtins                                []builtinQueryTemplate
 	OwnTemplates                            []ownTemplateView
 	Mappings                                []connMappingRow
+	SilentPLCs                              []string // Namen der Heartbeat-Zuordnungen, die sich nicht melden
 	ExportMappings                          []ExportMappingView
 	Tools                                   []connTool
 	Background                              []connConfigRow
@@ -123,7 +125,7 @@ type ConnectionDetailData struct {
 	ExplorerLog                             []HistoryView
 	ExplorerTopic                           string
 	ExplorerUnit                            int
-	ExplorerPlainAuth bool // OPC UA mit Benutzer/Kennwort: Übertragung ohne Verschlüsselung
+	ExplorerPlainAuth                       bool // OPC UA mit Benutzer/Kennwort: Übertragung ohne Verschlüsselung
 	// ExportSources: übernommene Import-Werte, aus denen im Export-Explorer ein Zielfeld wird
 	// (nur Export mit Explorer und Schreibrecht).
 	ExportSources []ImportMappingView
@@ -290,6 +292,10 @@ func (h *Handler) connectionDetailPage(w http.ResponseWriter, r *http.Request, d
 					if row.QueryName == "" {
 						row.QueryName = "(gelöschte Abfrage)"
 					}
+				}
+				if m.Silent {
+					row.SilentSince = silentSinceText(m.LastReceivedAt)
+					d.SilentPLCs = append(d.SilentPLCs, m.Name)
 				}
 				d.Mappings = append(d.Mappings, row)
 			}

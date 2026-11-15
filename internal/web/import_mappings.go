@@ -29,8 +29,23 @@ type ImportMappingView struct {
 	LastValue          string `json:"last_value"`
 	LastReceivedAt     string `json:"last_received_at"`
 	CreatedAt          string `json:"created_at"`
-	ConnectionID       string `json:"connection_id,omitempty"`   // nur bei availableExportSources
-	ConnectionName     string `json:"connection_name,omitempty"` // nur bei availableExportSources
+	HeartbeatSeconds   int    `json:"heartbeat_seconds,omitempty"` // 0 = keine Heartbeat-Zuordnung
+	Silent             bool   `json:"silent,omitempty"`            // Heartbeat bleibt aus
+	ConnectionID       string `json:"connection_id,omitempty"`     // nur bei availableExportSources
+	ConnectionName     string `json:"connection_name,omitempty"`   // nur bei availableExportSources
+}
+
+// heartbeatSilentSQL: Heartbeat-Zuordnung (Alias m), deren letzter Wert - vor dem
+// ersten Wert der Anlagezeitpunkt - älter als 3 × Intervall ist.
+const heartbeatSilentSQL = "m.heartbeat_seconds IS NOT NULL AND GREATEST(COALESCE(m.last_received_at, m.created_at), m.created_at) < NOW() - make_interval(secs => 3 * m.heartbeat_seconds)"
+
+// silentSinceText nennt, seit wann sich die Steuerung nicht meldet
+// (lastReceivedAt im Format „TT.MM.JJJJ HH:MM:SS“ oder leer).
+func silentSinceText(lastReceivedAt string) string {
+	if len(lastReceivedAt) < 16 {
+		return "noch kein Heartbeat"
+	}
+	return "seit " + lastReceivedAt[:16]
 }
 
 func (h *Handler) importMappings(ctx context.Context, connectionID string) ([]ImportMappingView, error) {
@@ -42,7 +57,8 @@ func (h *Handler) importMappings(ctx context.Context, connectionID string) ([]Im
 		)
 		SELECT m.id::text, m.source_ref, m.infrastructure_id::text, COALESCE(t.path, ''), m.name, m.note,
 		       COALESCE(m.last_value, ''), COALESCE(to_char(m.last_received_at, 'DD.MM.YYYY HH24:MI:SS'), ''),
-		       to_char(m.created_at, 'DD.MM.YYYY HH24:MI')
+		       to_char(m.created_at, 'DD.MM.YYYY HH24:MI'),
+		       COALESCE(m.heartbeat_seconds, 0), COALESCE(`+heartbeatSilentSQL+`, false)
 		FROM import_mappings m
 		LEFT JOIN tree t ON t.id = m.infrastructure_id
 		WHERE m.connection_id = $1
@@ -55,7 +71,7 @@ func (h *Handler) importMappings(ctx context.Context, connectionID string) ([]Im
 	for rows.Next() {
 		var v ImportMappingView
 		if err := rows.Scan(&v.ID, &v.SourceRef, &v.InfrastructureID, &v.InfrastructureName, &v.Name, &v.Note,
-			&v.LastValue, &v.LastReceivedAt, &v.CreatedAt); err != nil {
+			&v.LastValue, &v.LastReceivedAt, &v.CreatedAt, &v.HeartbeatSeconds, &v.Silent); err != nil {
 			return nil, err
 		}
 		list = append(list, v)
