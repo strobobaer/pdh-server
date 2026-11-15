@@ -2,6 +2,7 @@ package energie
 
 import (
 	"context"
+	"errors"
 	"math"
 	"testing"
 	"time"
@@ -205,4 +206,88 @@ func TestSamplerSkip(t *testing.T) {
 	if stored != 0 || missing != 0 || countValues(t, pool, id) != 0 {
 		t.Errorf("Skip: stored=%d missing=%d", stored, missing)
 	}
+}
+
+func TestSamplerVirtualNegativeFormulaKeepsBase(t *testing.T) {
+	pool, sm, gMap, aMap, _, _, v := counterPair(t)
+	ctx := context.Background()
+	m1, m2 := m0.Add(time.Minute), m0.Add(2*time.Minute)
+	_, _, err := sm.Pass(ctx, m0)
+	must(t, err)
+	setReading(t, pool, gMap, "1003", m1.Add(-5*time.Second)) // G +3, A +5: Formelwert -2
+	setReading(t, pool, aMap, "505", m1.Add(-5*time.Second))
+	_, missing, err := sm.Pass(ctx, m1)
+	must(t, err)
+	if missing != 1 {
+		t.Errorf("missing=%d", missing)
+	}
+	if _, ok := valueAt(t, pool, v, m1); ok {
+		t.Error("negativer Formelwert darf keinen Wert ergeben")
+	}
+	setReading(t, pool, gMap, "1020", m2.Add(-5*time.Second)) // seit Basis m0: G +20, A +5
+	setReading(t, pool, aMap, "505", m2.Add(-5*time.Second))
+	_, _, err = sm.Pass(ctx, m2)
+	must(t, err)
+	wantValue(t, pool, v, m2, 15)
+}
+
+func TestSamplerVirtualMissingRefCatchesUp(t *testing.T) {
+	pool, sm, gMap, aMap, _, _, v := counterPair(t)
+	ctx := context.Background()
+	m1, m2 := m0.Add(time.Minute), m0.Add(2*time.Minute)
+	_, _, err := sm.Pass(ctx, m0)
+	must(t, err)
+	setReading(t, pool, gMap, "1010", m1.Add(-5*time.Second))
+	setReading(t, pool, aMap, "503", m0.Add(-20*time.Minute)) // A fehlt in Minute 1
+	_, missing, err := sm.Pass(ctx, m1)
+	must(t, err)
+	if missing != 1 {
+		t.Errorf("missing=%d", missing)
+	}
+	setReading(t, pool, gMap, "1020", m2.Add(-5*time.Second))
+	setReading(t, pool, aMap, "503", m2.Add(-5*time.Second))
+	_, _, err = sm.Pass(ctx, m2)
+	must(t, err)
+	// Zuwachs seit Minute 0: G +20, A +3, ohne Drift.
+	wantValue(t, pool, v, m2, 17)
+}
+
+func TestSamplerVirtualConsumptionAndInstant(t *testing.T) {
+	pool, s, sm, infra := samplerEnv(t)
+	ctx := context.Background()
+	i1, _ := source(t, pool, s, infra, KindInstant, 1, "4", m0.Add(-5*time.Second))
+	i2, _ := source(t, pool, s, infra, KindInstant, 1, "6", m0.Add(-5*time.Second))
+	c1, _ := source(t, pool, s, infra, KindConsumption, 1, "5", m0.Add(-5*time.Second))
+	c2, _ := source(t, pool, s, infra, KindConsumption, 1, "2", m0.Add(-5*time.Second))
+	vi, _ := virtual(t, s, infra, KindInstant, "["+keyOf(t, s, i1)+"]+["+keyOf(t, s, i2)+"]")
+	vc, _ := virtual(t, s, infra, KindConsumption, "["+keyOf(t, s, c1)+"]+["+keyOf(t, s, c2)+"]")
+	m1 := m0.Add(time.Minute)
+	for _, m := range []time.Time{m0, m1} {
+		_, _, err := sm.Pass(ctx, m)
+		must(t, err)
+	}
+	wantValue(t, pool, vi, m0, 10)
+	wantValue(t, pool, vi, m1, 10)
+	wantValue(t, pool, vc, m0, 7)
+	wantValue(t, pool, vc, m1, 0)
+}
+
+func TestSamplerEvalOrderErrorStillStoresRealValues(t *testing.T) {
+	pool, s, sm, infra := samplerEnv(t)
+	ctx := context.Background()
+	r, _ := source(t, pool, s, infra, KindInstant, 1, "3", m0.Add(-5*time.Second))
+	_, ka := virtual(t, s, infra, KindInstant, "["+keyOf(t, s, r)+"]")
+	_, kb := virtual(t, s, infra, KindInstant, "["+ka+"]")
+	// Zirkel an Save vorbei in die Datenbank schreiben.
+	_, err := pool.Exec(ctx, `UPDATE energy_meters SET formula = $2 WHERE meter_key = $1`, ka, "["+kb+"]")
+	must(t, err)
+	stored, _, err := sm.Pass(ctx, m0)
+	var cyc *CycleError
+	if !errors.As(err, &cyc) {
+		t.Fatalf("erwartet CycleError, erhalten %v", err)
+	}
+	if stored != 1 {
+		t.Errorf("stored=%d", stored)
+	}
+	wantValue(t, pool, r, m0, 3)
 }

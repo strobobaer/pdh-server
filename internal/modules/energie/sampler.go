@@ -43,7 +43,7 @@ func (sm *Sampler) Pass(ctx context.Context, minute time.Time) (stored, missing 
 
 	rows, err := db.Query(ctx, `
 		SELECT m.id::text, m.meter_key, m.kind, m.formula, m.factor, m.import_mapping_id IS NOT NULL,
-		       im.last_value, im.last_received_at, m.last_value
+		       im.last_value, im.last_received_at
 		  FROM energy_meters m
 		  LEFT JOIN import_mappings im ON im.id = m.import_mapping_id
 		 WHERE m.active ORDER BY m.meter_key`)
@@ -53,7 +53,7 @@ func (sm *Sampler) Pass(ctx context.Context, minute time.Time) (stored, missing 
 	var meters []*sampleMeter
 	for rows.Next() {
 		var x sampleMeter
-		if err := rows.Scan(&x.id, &x.key, &x.kind, &x.formula, &x.factor, &x.hasSource, &x.raw, &x.receivedAt, &x.lastValue); err != nil {
+		if err := rows.Scan(&x.id, &x.key, &x.kind, &x.formula, &x.factor, &x.hasSource, &x.raw, &x.receivedAt); err != nil {
 			rows.Close()
 			return 0, 0, err
 		}
@@ -159,53 +159,19 @@ func (sm *Sampler) Pass(ctx context.Context, minute time.Time) (stored, missing 
 		set(x, v*x.factor)
 	}
 
-	// Berechnete Messstellen in Formel-Reihenfolge.
-	order, err := EvalOrder(formulas)
-	if err != nil {
-		return 0, 0, err
-	}
+	// Berechnete Messstellen in Formel-Reihenfolge. Ein Fehler hier (Zirkel)
+	// verhindert die Ablage der echten Werte nicht.
+	order, orderErr := EvalOrder(formulas)
 	for _, key := range order {
 		x := byKey[key]
 		if old, done := existing[x.id]; done {
 			cur[key] = old
 			continue
 		}
-		f, perr := ParseFormula(x.formula)
-		if perr != nil {
+		v, ok := sm.evalVirtual(ctx, x, byKey, cur, prev[x.id])
+		if !ok {
 			missing++
 			continue
-		}
-		bad := false
-		v, ok := f.Eval(func(ref string) (float64, bool) {
-			r := byKey[ref]
-			if r == nil {
-				bad = true
-				return 0, false
-			}
-			now, have := cur[ref]
-			if !have {
-				bad = true
-				return 0, false
-			}
-			if r.kind != KindCounter {
-				return now, true
-			}
-			p, had := prev[r.id]
-			if !had || minute.Sub(p.ts) > StaleAfter {
-				return 0, true // Start: noch kein Vorwert, kein Zuwachs
-			}
-			if now < p.v {
-				bad = true // Zähler zurückgesetzt oder fehlerhaft
-				return 0, false
-			}
-			return now - p.v, true
-		})
-		if !ok || bad {
-			missing++
-			continue
-		}
-		if x.kind == KindCounter {
-			v += prev[x.id].v // ohne Vorwert 0
 		}
 		set(x, v)
 	}
@@ -233,7 +199,83 @@ func (sm *Sampler) Pass(ctx context.Context, minute time.Time) (stored, missing 
 	if err := tx.Commit(ctx); err != nil {
 		return 0, 0, err
 	}
-	return stored, missing, nil
+	return stored, missing, orderErr
+}
+
+// evalVirtual berechnet den Wert einer berechneten Messstelle. Zählerbezüge
+// tragen ihren Zuwachs seit dem Zeitpunkt des letzten Werts dieser Messstelle
+// bei (Basis); fehlt der Bezugswert jetzt oder zur Basis, ist ein Zuwachs
+// negativ oder ein Zählerstand kleiner als 0, gibt es keinen Wert und die Basis
+// bleibt stehen, sodass eine spätere Minute den Zuwachs vollständig nachholt.
+// Ohne eigenen früheren Wert ist der Start 0 (kein Zuwachs).
+func (sm *Sampler) evalVirtual(ctx context.Context, x *sampleMeter, byKey map[string]*sampleMeter,
+	cur map[string]float64, base stamped) (float64, bool) {
+	f, err := ParseFormula(x.formula)
+	if err != nil {
+		return 0, false
+	}
+	hasBase := !base.ts.IsZero()
+	var baseVals map[string]float64
+	if hasBase {
+		var ids []string
+		for _, ref := range f.Refs() {
+			if r := byKey[ref]; r != nil && r.kind == KindCounter {
+				ids = append(ids, r.id)
+			}
+		}
+		if len(ids) > 0 {
+			rows, err := sm.Store.DB.Query(ctx, `SELECT meter_id::text, value FROM energy_values
+				WHERE ts = $1 AND meter_id = ANY($2::uuid[])`, base.ts, ids)
+			if err != nil {
+				return 0, false
+			}
+			baseVals = map[string]float64{}
+			for rows.Next() {
+				var id string
+				var v float64
+				if err := rows.Scan(&id, &v); err != nil {
+					rows.Close()
+					return 0, false
+				}
+				baseVals[id] = v
+			}
+			rows.Close()
+			if rows.Err() != nil {
+				return 0, false
+			}
+		}
+	}
+	bad := false
+	v, ok := f.Eval(func(ref string) (float64, bool) {
+		r := byKey[ref]
+		now, have := cur[ref]
+		if r == nil || !have {
+			bad = true
+			return 0, false
+		}
+		if r.kind != KindCounter {
+			return now, true
+		}
+		if !hasBase {
+			return 0, true
+		}
+		b, had := baseVals[r.id]
+		if !had || now < b {
+			bad = true
+			return 0, false
+		}
+		return now - b, true
+	})
+	if !ok || bad {
+		return 0, false
+	}
+	if x.kind == KindCounter {
+		if v < 0 {
+			return 0, false
+		}
+		v += base.v
+	}
+	return v, true
 }
 
 // purge löscht Minutenwerte, die älter als ValueRetentionDays sind.
