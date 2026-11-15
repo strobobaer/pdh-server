@@ -58,7 +58,7 @@ func (s *Store) Thresholds(ctx context.Context, meterID string) ([]Threshold, er
 	q := thresholdSelect
 	var args []any
 	if meterID == "" {
-		q += " WHERE t.active"
+		q += " WHERE t.active AND m.active"
 	} else {
 		q += " WHERE t.meter_id = $1::uuid"
 		args = append(args, meterID)

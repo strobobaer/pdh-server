@@ -1,6 +1,9 @@
 package energie
 
-import "time"
+import (
+	"math"
+	"time"
+)
 
 // MinuteValue ist ein Messwert; TS ist das Ende der Minute wie in energy_values.
 type MinuteValue struct {
@@ -13,6 +16,14 @@ type MinuteValue struct {
 // Fehlt eine Minute (Gerät offline), wird nicht bewertet (ok=false); ebenso bei
 // einem Zählerstand mit negativer Menge.
 func WindowValue(kind string, vals []MinuteValue, end time.Time, window int) (float64, bool) {
+	v, ok := windowValue(kind, vals, end, window)
+	if !ok || math.IsNaN(v) || math.IsInf(v, 0) {
+		return 0, false
+	}
+	return v, true
+}
+
+func windowValue(kind string, vals []MinuteValue, end time.Time, window int) (float64, bool) {
 	if window < 1 {
 		return 0, false
 	}
@@ -55,6 +66,9 @@ func WindowValue(kind string, vals []MinuteValue, end time.Time, window int) (fl
 
 // Breached sagt, ob der Wert die Grenze verletzt; Gleichheit ist kein Alarm.
 func Breached(cond string, v, limit float64) bool {
+	if math.IsNaN(v) || math.IsNaN(limit) {
+		return false
+	}
 	switch cond {
 	case CondAbove:
 		return v > limit

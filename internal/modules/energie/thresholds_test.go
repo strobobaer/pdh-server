@@ -111,3 +111,56 @@ func TestThresholdCounts(t *testing.T) {
 		t.Errorf("Zahlen = %+v, erwartet 2/1", got)
 	}
 }
+
+func TestThresholdBoundaries(t *testing.T) {
+	s, meter := thresholdMeter(t)
+	ctx := context.Background()
+	for _, n := range []int{1, 1440} {
+		x := okThreshold(meter)
+		x.WindowMinutes, x.ResetMinutes = n, n
+		if err := s.SaveThreshold(ctx, x); err != nil {
+			t.Errorf("Wert %d sollte gültig sein: %v", n, err)
+		}
+	}
+	x := okThreshold(meter)
+	x.ResetMinutes = 1441
+	if err := s.SaveThreshold(ctx, x); err == nil {
+		t.Error("Rückschaltzeit 1441 gültig")
+	}
+	x = okThreshold(meter)
+	x.WindowMinutes = 1441
+	if err := s.SaveThreshold(ctx, x); err == nil {
+		t.Error("Zeitraum 1441 gültig")
+	}
+	x = okThreshold(meter)
+	x.Limit = math.Inf(1)
+	if err := s.SaveThreshold(ctx, x); err == nil {
+		t.Error("+Inf gültig")
+	}
+	x = okThreshold(meter)
+	x.Tag = strings.Repeat("ä", 50)
+	if err := s.SaveThreshold(ctx, x); err != nil {
+		t.Errorf("Schlagwort mit 50 Zeichen: %v", err)
+	}
+}
+
+func TestThresholdsSkipInactiveMeter(t *testing.T) {
+	s, meter := thresholdMeter(t)
+	ctx := context.Background()
+	x := okThreshold(meter)
+	if err := s.SaveThreshold(ctx, x); err != nil {
+		t.Fatal(err)
+	}
+	if all, _ := s.Thresholds(ctx, ""); !containsTh(all, x.ID) {
+		t.Fatal("aktiver Schwellwert an aktiver Messstelle fehlt")
+	}
+	if _, err := s.DB.Exec(ctx, `UPDATE energy_meters SET active = false WHERE id = $1`, meter); err != nil {
+		t.Fatal(err)
+	}
+	if all, _ := s.Thresholds(ctx, ""); containsTh(all, x.ID) {
+		t.Error("Schwellwert einer inaktiven Messstelle in der Wächterliste")
+	}
+	if own, _ := s.Thresholds(ctx, meter); !containsTh(own, x.ID) {
+		t.Error("UI-Liste muss ihn weiter zeigen")
+	}
+}

@@ -1,6 +1,7 @@
 package energie
 
 import (
+	"math"
 	"testing"
 	"time"
 )
@@ -76,5 +77,42 @@ func TestBreachedEquality(t *testing.T) {
 		if got := Breached(c.cond, c.v, c.limit); got != c.want {
 			t.Errorf("Breached(%s,%v,%v) = %v", c.cond, c.v, c.limit, got)
 		}
+	}
+}
+
+func TestEvaluateEdgeCases(t *testing.T) {
+	// Zähler, Zeitraum 1: Werte bei end und end-1
+	v, ok := WindowValue(KindCounter, evSeries(1, func(i int) float64 { return 50 - float64(i)*3 }), evEnd, 1)
+	if !ok || v != 3 {
+		t.Errorf("Zähler window=1 = %v/%v, erwartet 3", v, ok)
+	}
+	if _, ok := WindowValue(KindCounter, evSeries(0, func(i int) float64 { return 1 }), evEnd, 1); ok {
+		t.Error("Zähler window=1 ohne Startwert bewertet")
+	}
+	// Differenz 0 ist gültig
+	if v, ok := WindowValue(KindCounter, evSeries(3, func(i int) float64 { return 7 }), evEnd, 3); !ok || v != 0 {
+		t.Errorf("Differenz 0 = %v/%v", v, ok)
+	}
+	// Lücke genau am Zeitraumanfang (Minute end-window+1)
+	for _, k := range []string{KindInstant, KindConsumption} {
+		var vals []MinuteValue
+		for _, m := range evSeries(3, func(i int) float64 { return 1 }) {
+			if !m.TS.Equal(evEnd.Add(-2 * time.Minute)) {
+				vals = append(vals, m)
+			}
+		}
+		if _, ok := WindowValue(k, vals, evEnd, 3); ok {
+			t.Errorf("%s: Lücke am Zeitraumanfang bewertet", k)
+		}
+	}
+	// NaN/Inf
+	if _, ok := WindowValue(KindInstant, evSeries(1, func(i int) float64 { return math.NaN() }), evEnd, 2); ok {
+		t.Error("NaN bewertet")
+	}
+	if _, ok := WindowValue(KindConsumption, evSeries(1, func(i int) float64 { return math.Inf(1) }), evEnd, 2); ok {
+		t.Error("Inf bewertet")
+	}
+	if Breached(CondAbove, math.NaN(), 1) || Breached(CondBelow, 1, math.NaN()) {
+		t.Error("NaN darf keinen Alarm auslösen")
 	}
 }
