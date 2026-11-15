@@ -318,10 +318,14 @@ func (r *Repository) UpdateDueDate(ctx context.Context, id string, dueDate *time
 }
 
 func (r *Repository) AddComment(ctx context.Context, c *Comment) error {
+	return insertComment(ctx, r.db, c)
+}
+
+func insertComment(ctx context.Context, q rowQuerier, c *Comment) error {
 	query := `INSERT INTO ticket_comments (id, ticket_id, user_id, text)
 		VALUES (pdh_uuid_v7(), $1, $2, $3)
 		RETURNING id, created_at`
-	return r.db.QueryRow(ctx, query, c.TicketID, c.UserID, c.Text).
+	return q.QueryRow(ctx, query, c.TicketID, c.UserID, c.Text).
 		Scan(&c.ID, &c.CreatedAt)
 }
 
@@ -522,6 +526,13 @@ func (s *Service) UpdateDueDate(ctx context.Context, id string, dueDate *time.Ti
 func (s *Service) AddComment(ctx context.Context, ticketID, userID, text string) (*Comment, error) {
 	c := &Comment{TicketID: ticketID, UserID: userID, Text: text}
 	return c, s.repo.AddComment(ctx, c)
+}
+
+// AddCommentTx legt den Kommentar wie AddComment an, aber in der Transaktion
+// tx des Aufrufers (z. B. Schwellwert-Wächter: Kommentar und Alarm-Zustand gemeinsam).
+func (s *Service) AddCommentTx(ctx context.Context, tx pgx.Tx, ticketID, userID, text string) (*Comment, error) {
+	c := &Comment{TicketID: ticketID, UserID: userID, Text: text}
+	return c, insertComment(ctx, tx, c)
 }
 
 func (s *Service) ListComments(ctx context.Context, ticketID string) ([]*Comment, error) {
