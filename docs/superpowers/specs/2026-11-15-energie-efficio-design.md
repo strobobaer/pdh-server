@@ -15,6 +15,16 @@ Energiedaten der Anlagen (zuerst von WAGO PFC200 mit EDM-Firmware, grundsätzlic
   - Fehlt ein Bezugswert, fällt die virtuelle Zeile für dieses Intervall weg. Sie wird nicht mit 0 gerechnet, und das Protokoll vermerkt es.
   - Zirkelbezüge und unbekannte IDs werden beim Speichern abgewiesen. Eine virtuelle Messstelle darf auf andere virtuelle Messstellen verweisen.
   - Virtuelle Messstellen werden wie normale exportiert und sind in der Tabelle als „berechnet“ gekennzeichnet. Ihre Formel steht in der Spalte „Quelle“.
+  - **Berechnung schon beim Import** (Anwender): Virtuelle Messstellen werden nicht erst beim Export berechnet, sondern bei jedem Import-Takt, also minütlich. Ihre Werte werden wie echte Messwerte abgelegt. So stehen sie für Export, Anzeige und Schwellwerte gleich zur Verfügung.
+- **Schwellwerte und Alarme** (Anwender: Stromspitzenerkennung, Werkzeugwechsel):
+  - Je Messstelle, echt oder virtuell, lassen sich ein oder mehrere Schwellwerte festlegen. Dazu gehören Bedingung (über/unter), Grenzwert mit Einheit und Bezeichnung.
+  - **Überwachungszeitraum** je Schwellwert einstellbar, zum Beispiel 1 Minute (Einzelwert) oder 15 Minuten (15-Minuten-Wert). Ausgewertet wird der Wert über diesen Zeitraum: bei Momentanwerten der Mittelwert, bei Zählerständen und Verbrauch die Menge bzw. Leistung im Zeitraum.
+  - Bei Überschreitung legt das PDH ein **Ticket** an (vorhandenes Ticket-Modul) und schickt eine **Nachricht an den Verantwortlichen**. Verantwortlich ist je Schwellwert ein Benutzer oder eine Gruppe, als Vorgabe die Verantwortlichen der Anlage. Die Nachricht läuft über den vorhandenen Benachrichtigungsweg (Mail/Chat/Push).
+  - Das Ticket bekommt einen **Tag**, der in der Einstellung des Schwellwerts gewählt wird (vorhandene `tickets.tags`, z. B. „Stromspitze“, „Werkzeugwechsel“).
+  - **Kommentarpflicht:** Ein solches Ticket lässt sich nur mit Kommentar erledigen oder schließen.
+  - Je Überschreitung entsteht ein Ticket. Solange der Wert über der Grenze bleibt, kommen keine weiteren Tickets dazu. Ein neues Ticket gibt es erst, wenn der Wert wieder im Normalbereich war.
+  - Nur der aktive Server überwacht, der Spiegel legt keine Tickets an (wie die Rüst-Überwachung `internal/modules/ruesten/monitor.go`).
+  - Rechte: Schwellwerte pflegen mit eigenem Recht, Tickets mit den vorhandenen Ticket-Rechten.
 - **Export „Efficio-CSV“** (neuer Export-Typ bzw. Exportprofil):
   - 3 Spalten `Zeitstempel;Messstellen-ID;Messwert`, Trennzeichen Semikolon. **Mehrere Messstellen in einer Datei, eine Zeile je Messstelle und Zeitpunkt** (Anwender).
   - **Dateilänge in Tagen** (Anwender: „max Länge der Datei in gespeicherten Tagen“): Eine Datei sammelt die Läufe fortlaufend (jeder Lauf hängt seine Zeilen an), bis sie N Tage Daten umfasst; dann beginnt eine neue Datei. N einstellbar (Vorgabe 1 Tag); N = 0 heißt „eine Datei je Lauf“. Beim Ablageziel wird die laufende Datei jeweils vollständig ersetzt (Netzlaufwerk/FTP: atomar über temporären Namen und Umbenennen), damit Efficio nie eine halbe Datei liest.
