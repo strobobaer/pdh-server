@@ -134,6 +134,32 @@ func TestWatchClearedAssetGraceFallsBackAndKeepsAlarm(t *testing.T) {
 	if len(sink.opened) != 1 || len(sink.repeated) != 0 || len(sink.recov) != 0 {
 		t.Errorf("keine weiteren Aktionen: opened=%d repeated=%d recov=%d", len(sink.opened), len(sink.repeated), len(sink.recov))
 	}
+
+	// Rückfall: Gerät kommt zurück (Alarm endet) und fällt zur Zeit T erneut aus.
+	setState := func(state string, since time.Time) {
+		_, err := f.s.DB.Exec(ctx, `UPDATE it_assets SET net_state = $2, net_state_since = $3 WHERE id = $1::uuid`, id, state, since)
+		must(t, err)
+	}
+	tBack := t0.Add(4 * time.Minute)
+	setState("online", tBack)
+	must(t, w.Pass(ctx, tBack))
+	if st, _, _ := f.alarmState(id); st != "normal" {
+		t.Fatalf("nach Rückkehr Zustand normal erwartet, war %s", st)
+	}
+	tDown := t0.Add(20 * time.Minute)
+	setState("offline", tDown)
+	must(t, w.Pass(ctx, tDown.Add(2*time.Minute)))
+	if st, _, _ := f.alarmState(id); st != "normal" {
+		t.Fatalf("bei 2 min (alte Asset-Karenz) darf kein Alarm kommen, Zustand %s", st)
+	}
+	must(t, w.Pass(ctx, tDown.Add(10*time.Minute)))
+	if st, _, _ := f.alarmState(id); st != "alarm" {
+		t.Fatalf("bei 10 min (Kategorie-Karenz) Alarm erwartet, Zustand %s", st)
+	}
+	// Das Ticket des ersten Alarms ist noch offen: der zweite Alarm ergänzt es (Repeat).
+	if len(sink.repeated) != 1 || sink.repeated[0].GraceMinutes != 10 {
+		t.Errorf("Wiederholung mit Karenz 10 erwartet: %+v", sink.repeated)
+	}
 }
 
 func TestWatchGeneralGraceWithoutCategoryGrace(t *testing.T) {
