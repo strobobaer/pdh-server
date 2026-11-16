@@ -21,6 +21,7 @@ type AlarmAsset struct {
 	LastSeen             *time.Time
 	OfflineSince         time.Time
 	TicketID             string // Ticket des letzten Alarms (leer, wenn es keins gibt)
+	GraceMinutes         int    // wirksame Karenz in Minuten (Asset, Kategorie oder allgemein)
 }
 
 // AlarmSink setzt Alarme in Tickets und Nachrichten um. Alle Aufrufe laufen in
@@ -136,11 +137,15 @@ func (w *Watch) watchOne(ctx context.Context, id string, now time.Time, grace ti
 	var netState string
 	var stateSince *time.Time
 	var watched bool
-	err = tx.QueryRow(ctx, `SELECT id::text, name, COALESCE(ip_address, ''), net_uplink, COALESCE(infrastructure_id::text, ''),
-		       net_last_seen, net_state, net_state_since,
-		       (net_source IS NOT NULL AND net_monitored AND NOT net_detached AND status = 'active')
-		  FROM it_assets WHERE id = $1::uuid`, id).Scan(&a.ID, &a.Name, &a.IP, &a.Uplink, &a.InfrastructureID,
-		&a.LastSeen, &netState, &stateSince, &watched)
+	var ownGrace *int
+	// Karenz: Wert am Asset, sonst der Kategorie, sonst (NULL) der allgemeine.
+	err = tx.QueryRow(ctx, `SELECT a.id::text, a.name, COALESCE(a.ip_address, ''), a.net_uplink, COALESCE(a.infrastructure_id::text, ''),
+		       a.net_last_seen, a.net_state, a.net_state_since,
+		       (a.net_source IS NOT NULL AND a.net_monitored AND NOT a.net_detached AND a.status = 'active'),
+		       COALESCE(a.net_grace_minutes, c.grace_minutes)
+		  FROM it_assets a LEFT JOIN it_asset_categories c ON c.key = a.type
+		 WHERE a.id = $1::uuid`, id).Scan(&a.ID, &a.Name, &a.IP, &a.Uplink, &a.InfrastructureID,
+		&a.LastSeen, &netState, &stateSince, &watched, &ownGrace)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil
 	}
@@ -150,6 +155,10 @@ func (w *Watch) watchOne(ctx context.Context, id string, now time.Time, grace ti
 	if ticket != nil {
 		a.TicketID = *ticket
 	}
+	if ownGrace != nil {
+		grace = time.Duration(*ownGrace) * time.Minute
+	}
+	a.GraceMinutes = max(1, int(grace/time.Minute))
 
 	var afters []func()
 	add := func(f func(), err error) error {

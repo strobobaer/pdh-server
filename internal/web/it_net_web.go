@@ -97,7 +97,7 @@ func itNetSourceName(src string) string {
 
 // ── Seite ────────────────────────────────────────────────────
 
-// itNetTypes: übernehmbare Typen (wie netsync.adoptTypes) mit deutschen Namen.
+// itNetTypes: übernehmbare Typen mit deutschen Namen.
 var itNetTypes = []itNetOption{
 	{"workstation", "Arbeitsplatz"}, {"printer", "Drucker"}, {"phone", "Telefon"},
 	{"tablet", "Tablet"}, {"server", "Server"}, {"other", "Sonstiges"},
@@ -419,6 +419,8 @@ func (h *Handler) ITNetAdoptWeb(w http.ResponseWriter, r *http.Request) {
 		itNetBack(w, r, "", "nocand")
 	case errors.Is(err, netsync.ErrDetached):
 		itNetBack(w, r, "", "detached")
+	case errors.Is(err, netsync.ErrBadType):
+		itNetBack(w, r, "", "type")
 	case err != nil:
 		itNetLog().Error().Err(err).Msg("vorschlag übernehmen")
 		itNetBack(w, r, "", "adopt")
@@ -624,15 +626,15 @@ func (h *Handler) ITNetDetachWeb(w http.ResponseWriter, r *http.Request) {
 }
 
 // ITNetReattachWeb: POST /it/{id}/net-reattach – getrenntes Asset wieder abgleichen.
-// Überwacht wird es wieder nach der Typ-Regel (Arbeitsplatz, Telefon, Tablet nicht); der Zustand bleibt
-// „unbekannt“ bis zum nächsten Abgleich.
+// Überwacht wird es wieder nach der Vorgabe seiner Kategorie („Neu übernommene
+// überwachen“); der Zustand bleibt „unbekannt“ bis zum nächsten Abgleich.
 func (h *Handler) ITNetReattachWeb(w http.ResponseWriter, r *http.Request) {
 	id, ok := h.itNetAssetGuard(w, r)
 	if !ok {
 		return
 	}
 	if _, err := h.db.Exec(r.Context(), `UPDATE it_assets SET net_detached = false,
-			net_monitored = `+netsync.MonitoredByTypeSQL("type::text")+`, updated_at = now()
+			net_monitored = `+netsync.MonitoredForCategorySQL("type::text")+`, updated_at = now()
 		WHERE id = $1::uuid AND net_source IS NOT NULL AND net_detached`, id); err != nil {
 		itNetLog().Error().Err(err).Msg("wieder verbinden")
 		http.Error(w, "Wieder verbinden fehlgeschlagen", http.StatusInternalServerError)
