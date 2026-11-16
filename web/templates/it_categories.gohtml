@@ -22,7 +22,7 @@
   {{template "icon-button" (dict "Action" "back" "Href" "/it")}}
   <div style="flex:1;min-width:0">
     <h1><i class="ti ti-category"></i> IT-Kategorien</h1>
-    <p style="font-size:12px;color:var(--muted);margin-top:3px">Die Arten Ihrer IT-Assets: Name, Symbol, Reihenfolge, Überwachung und Karenz bis zum Ausfall-Ticket.</p>
+    <p style="font-size:12px;color:var(--muted);margin-top:3px">Die Arten deiner IT-Assets: Name, Symbol, Reihenfolge, Überwachung und Karenz bis zum Ausfall-Ticket.</p>
   </div>
   {{if .CanEdit}}<button type="button" class="btn btn-small btn-primary" onclick="itcToggle('itc-new')"><i class="ti ti-plus"></i> Neue Kategorie</button>{{end}}
 </div>
@@ -34,7 +34,7 @@
 <div class="card" id="itc-new" hidden style="margin-bottom:14px">
   <div class="card-title"><i class="ti ti-plus"></i> Neue Kategorie</div>
   <form method="POST" action="/it/categories">
-    {{template "itc-fields" (dict "ID" "new" "Name" "" "Icon" "" "IconClass" "ti-box" "Sort" 100 "Monitor" false "Grace" "" "General" .GeneralGrace)}}
+    {{template "itc-fields" (dict "ID" "new" "Name" "" "Icon" "" "IconClass" "ti-box" "Sort" 100 "Monitor" true "Grace" "" "General" .GeneralGrace)}}
     <div style="margin-top:12px"><button type="submit" class="btn btn-primary btn-small"><i class="ti ti-device-floppy"></i> Anlegen</button></div>
   </form>
 </div>
@@ -125,7 +125,7 @@ function itcIcon(inp){
   <div class="form-group">
     <label style="display:flex;gap:8px;align-items:center;font-size:13px"><input type="checkbox" name="monitor" value="1" {{if .Monitor}}checked{{end}}> Neu übernommene Geräte überwachen</label></div>
 </div>
-<div class="itc-note">Symbol: Name aus der Symbolbibliothek, z. B. <span style="font-family:monospace">ti-camera</span>; leer = Standardsymbol. Die Auswahl mit Suche steht in der Symbolverwaltung.</div>
+<div class="itc-note">Symbol: Name aus der Symbolbibliothek, z. B. <span style="font-family:monospace">ti-camera</span>; leer = Standardsymbol. Die Vorschau neben dem Feld zeigt das Symbol sofort.</div>
 {{end}}
 
 {{define "context-list"}}{{end}}

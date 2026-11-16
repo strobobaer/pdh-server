@@ -26,6 +26,11 @@ im Kapitel „Versionen & Updates“ an.
 - Listen, Filter und Formulare der IT-Assets nutzen die Kategorien; ausgeblendete Kategorien bleiben an Assets sichtbar, die sie schon haben.
 - Lieferanten und Hersteller zeigen bei IT-Assets den Namen der Kategorie statt eines internen Schlüssels.
 
+### Behoben
+
+- Sicherung: Eine ältere Sicherung lässt sich auch dann wiederherstellen, wenn ein Update inzwischen eine Verknüpfung in der Datenbank angelegt hat; die Wiederherstellung bricht nicht mehr ab.
+- IT-Assets: Verknüpfte IT-Assets zeigen ohne Hostnamen den Namen der Kategorie statt eines internen Schlüssels.
+
 ### Sicherheit
 
 - Neues Recht „IT-Kategorien pflegen“ (`it.categories`); es haben automatisch alle Rollen mit „IT: Bereichsadministrator“ (`it.admin`), mit deren Abteilung. Die Seite ansehen darf, wer IT-Infrastruktur ansehen darf.

@@ -196,3 +196,40 @@ func TestITCategoriesCRUDWeb(t *testing.T) {
 		t.Error("Kategorie noch da")
 	}
 }
+
+// Neues Formular: Überwachung ist vorangekreuzt; die Verknüpfung zeigt ohne
+// Hostnamen den Namen der Kategorie statt ihres Schlüssels.
+func TestITCategoriesNewFormMonitorChecked(t *testing.T) {
+	h, _ := itCatEnv(t)
+	h.hasPermHook = func(*http.Request, string) bool { return true }
+	body := itNetDo(h.ITCategoriesPage, "GET", "/it/categories", "", "", nil).Body.String()
+	i := strings.Index(body, `id="itc-new"`)
+	j := strings.Index(body[i:], "</form>")
+	if i < 0 || j < 0 {
+		t.Fatal("Neu-Formular fehlt")
+	}
+	seg := body[i : i+j]
+	k := strings.Index(seg, `name="monitor"`)
+	if k < 0 || !strings.Contains(seg[k:], "checked") {
+		t.Error("Häkchen Überwachen im Neu-Formular nicht vorangekreuzt")
+	}
+}
+
+func TestLinkITAssetShowsCategoryName(t *testing.T) {
+	h, sfx := itCatEnv(t)
+	ctx := context.Background()
+	c := &it.Category{Name: "Überwachungskamera " + sfx, SortOrder: 902}
+	if err := h.it.CreateCategory(ctx, c); err != nil {
+		t.Fatal(err)
+	}
+	var id string
+	if err := h.db.QueryRow(ctx, `INSERT INTO it_assets (name, type, created_by)
+		VALUES ('kat-link-'||$1::text, $2, (SELECT id FROM users ORDER BY created_at LIMIT 1)) RETURNING id::text`, sfx, c.Key).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	m := fieldModule{Table: "(SELECT '" + id + "'::uuid AS id, '" + id + "'::uuid AS it_asset_id) AS x"}
+	g := h.linkITAsset(ctx, m, id)
+	if len(g.Items) != 1 || g.Items[0].Sub != c.Name {
+		t.Errorf("Verknüpfung: %+v, erwartet Untertitel %q", g.Items, c.Name)
+	}
+}

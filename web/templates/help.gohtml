@@ -740,7 +740,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li><b>IT-Assets</b> → <b>Kategorien</b> → <b>Neue Kategorie</b>.</li>
       <li><b>Name</b> eintragen, z. B. „Kamera“. Mit <b>Reihenfolge</b> bestimmst du die Stelle in Listen und Filtern (kleine Zahl = weiter vorn).</li>
       <li>Bei <b>Symbol</b> den Namen aus der Symbolbibliothek eintragen, z. B. <code>ti-camera</code>; die Vorschau daneben zeigt es sofort. Leer = Standardsymbol.</li>
-      <li><b>Neu übernommene Geräte überwachen</b> ankreuzen, wenn ein Ausfall ein Ticket auslösen soll.</li>
+      <li>Das Häkchen <b>Neu übernommene Geräte überwachen</b> ist vorgesetzt, dann löst ein Ausfall ein Ticket aus. Nimm es heraus, wenn das für diese Kategorie nicht gelten soll.</li>
       <li><b>Anlegen</b>. Die Kategorie steht ab sofort in den Formularen der IT-Assets und beim <b>Übernehmen</b> im Netz-Abgleich zur Wahl.</li>
     </ol>
     Eine Kategorie bearbeitest du mit dem Stift, mit <b>Ausblenden</b> nimmst du sie aus der Auswahl für neue Assets, mit <b>Einblenden</b> holst du sie zurück. Assets, die sie schon nutzen, behalten sie und zeigen sie weiter an. <b>Löschen</b> geht nur bei Kategorien ohne Assets. <b>Netzwerk</b> und <b>Sonstiges</b> sind fest und lassen sich weder ausblenden noch löschen.</div>
@@ -753,7 +753,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <div class="hb-howto"><b><i class="ti ti-clock-check"></i> So stellst du die Karenz für ein einzelnes Gerät ein</b>
     <ol class="hb-steps">
       <li>Das IT-Asset öffnen und zur Karte <b>Netz</b> gehen. Dort steht „Karenz bis zum Alarm: N min“ mit der Herkunft: eigener Wert, Kategorie oder allgemein.</li>
-      <li>Bei <b>Eigene Karenz (Minuten)</b> die Minuten eintragen und <b>Speichern</b>. Leer speichern entfernt den eigenen Wert; dann gilt wieder die Kategorie.</li>
+      <li>Bei <b>Eigene Karenz (Minuten)</b> die Minuten eintragen und <b>Speichern</b>. Leer speichern entfernt den eigenen Wert; dann gilt wieder der Wert der Kategorie bzw. der allgemeine Wert.</li>
     </ol>
     Dafür brauchst du das Recht „IT-Infrastruktur bearbeiten“ für dieses Asset. Es gilt immer die Reihenfolge: eigener Wert am Gerät, dann Kategorie, dann der allgemeine Wert.</div>
   {{template "hb-shots" (dict "Ref" (index $s "infrastructure") "Can" $can)}}

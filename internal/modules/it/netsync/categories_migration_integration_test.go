@@ -2,9 +2,21 @@ package netsync
 
 import (
 	"context"
+	"errors"
 	"os"
 	"testing"
+
+	"github.com/jackc/pgx/v5/pgconn"
 )
+
+// lockSkip überspringt den Test, wenn die geteilte Test-DB die Sperre nicht hergibt.
+func lockSkip(t *testing.T, err error) {
+	t.Helper()
+	var pe *pgconn.PgError
+	if errors.As(err, &pe) && pe.Code == "55P03" {
+		t.Skip("Sperre auf it_assets nicht erhältlich (geteilte Test-DB)")
+	}
+}
 
 func TestITCategoriesMigration(t *testing.T) {
 	pool := testPool(t)
@@ -99,7 +111,10 @@ func TestITCategoriesMigration(t *testing.T) {
 		tx, err := pool.Begin(ctx)
 		must(t, err)
 		defer tx.Rollback(ctx)
+		_, err = tx.Exec(ctx, `SET LOCAL lock_timeout = '5s'`)
+		must(t, err)
 		if _, err := tx.Exec(ctx, string(sql)); err != nil {
+			lockSkip(t, err)
 			t.Fatalf("zweiter Lauf: %v", err)
 		}
 		var n int
@@ -118,14 +133,17 @@ func TestITCategoriesMigration(t *testing.T) {
 		tx, err := pool.Begin(ctx)
 		must(t, err)
 		defer tx.Rollback(ctx)
+		_, err = tx.Exec(ctx, `SET LOCAL lock_timeout = '5s'`)
+		must(t, err)
 		for _, q := range []string{
 			`ALTER TABLE it_assets DROP CONSTRAINT it_assets_type_fkey`,
 			`CREATE TYPE it_asset_type AS ENUM ('server','network','workstation','printer','phone','tablet','other')`,
 			`ALTER TABLE it_assets ALTER COLUMN type DROP DEFAULT`,
-			`ALTER TABLE it_assets ALTER COLUMN type TYPE it_asset_type USING type::it_asset_type`,
+			`ALTER TABLE it_assets ALTER COLUMN type TYPE it_asset_type USING (CASE WHEN type IN ('server','network','workstation','printer','phone','tablet','other') THEN type ELSE 'other' END)::it_asset_type`,
 			`ALTER TABLE it_assets ALTER COLUMN type SET DEFAULT 'other'`,
 		} {
 			if _, err := tx.Exec(ctx, q); err != nil {
+				lockSkip(t, err)
 				t.Fatalf("Altzustand herstellen (%s): %v", q, err)
 			}
 		}
@@ -136,6 +154,7 @@ func TestITCategoriesMigration(t *testing.T) {
 			}
 		}
 		if _, err := tx.Exec(ctx, string(sql)); err != nil {
+			lockSkip(t, err)
 			t.Fatalf("Migration auf Altzustand: %v", err)
 		}
 		for name, typ := range types {
@@ -182,6 +201,51 @@ func TestITCategoriesMigration(t *testing.T) {
 				WHERE c.role_id = a.role_id)`).Scan(&n))
 		if n != 0 {
 			t.Errorf("%d Rollen mit it.admin ohne it.categories", n)
+		}
+	})
+
+	t.Run("Rechte-Übernahme mit Abteilung", func(t *testing.T) {
+		sql, err := os.ReadFile("../../../../migrations/165_it_categories.up.sql")
+		must(t, err)
+		tx, err := pool.Begin(ctx)
+		must(t, err)
+		defer tx.Rollback(ctx)
+		_, err = tx.Exec(ctx, `SET LOCAL lock_timeout = '5s'`)
+		must(t, err)
+		var dept, roleDept, roleAll string
+		must(t, tx.QueryRow(ctx, `INSERT INTO departments (name) VALUES ('kat-test-abteilung') RETURNING id::text`).Scan(&dept))
+		must(t, tx.QueryRow(ctx, `INSERT INTO roles (key, label) VALUES ('kat_test_abt', 'Kat-Test Abteilung') RETURNING id::text`).Scan(&roleDept))
+		must(t, tx.QueryRow(ctx, `INSERT INTO roles (key, label) VALUES ('kat_test_alle', 'Kat-Test überall') RETURNING id::text`).Scan(&roleAll))
+		// Rolle 1: it.admin nur in der Abteilung. Rolle 2: erst in der Abteilung, dann überall.
+		for _, g := range []struct{ role, dept string }{{roleDept, dept}, {roleAll, dept}} {
+			_, err = tx.Exec(ctx, `INSERT INTO role_permissions (role_id, permission_id, department_id)
+				SELECT $1::uuid, id, $2::uuid FROM permissions WHERE key = 'it.admin'`, g.role, g.dept)
+			must(t, err)
+		}
+		_, err = tx.Exec(ctx, `UPDATE role_permissions SET department_id = NULL WHERE role_id = $1::uuid
+			AND permission_id = (SELECT id FROM permissions WHERE key = 'it.admin')`, roleAll)
+		must(t, err)
+		// Die Rolle "überall" hat it.categories schon, aber nur in der Abteilung: "überall" muss gewinnen.
+		_, err = tx.Exec(ctx, `INSERT INTO role_permissions (role_id, permission_id, department_id)
+			SELECT $1::uuid, id, $2::uuid FROM permissions WHERE key = 'it.categories'`, roleAll, dept)
+		must(t, err)
+		if _, err := tx.Exec(ctx, string(sql)); err != nil {
+			lockSkip(t, err)
+			t.Fatalf("Migration: %v", err)
+		}
+		grant := func(role string) (int, *string) {
+			var n int
+			var d *string
+			must(t, tx.QueryRow(ctx, `SELECT count(*), max(rp.department_id::text) FROM role_permissions rp
+				JOIN permissions p ON p.id = rp.permission_id AND p.key = 'it.categories'
+				WHERE rp.role_id = $1::uuid`, role).Scan(&n, &d))
+			return n, d
+		}
+		if n, d := grant(roleDept); n != 1 || d == nil || *d != dept {
+			t.Errorf("Abteilungsrolle: %d Zeilen, Abteilung %v, erwartet genau eine in %s", n, d, dept)
+		}
+		if n, d := grant(roleAll); n != 1 || d != nil {
+			t.Errorf("Rolle überall: %d Zeilen, Abteilung %v, erwartet genau eine ohne Abteilung", n, d)
 		}
 	})
 }

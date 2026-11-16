@@ -478,6 +478,42 @@ func zipEntry(zr *zip.Reader, name string) *zip.File {
 	return nil
 }
 
+// restoredFK ist ein vor dem Laden entfernter Fremdschlüssel.
+type restoredFK struct{ table, name, def string }
+
+// restoreForeignKeys legt die gemerkten Fremdschlüssel wieder an. Hat eine
+// erneut eingespielte Migration den Fremdschlüssel schon angelegt, wird er
+// übersprungen. Verwaiste Verweise brechen die Wiederherstellung nicht ab.
+func restoreForeignKeys(ctx context.Context, tx pgx.Tx, fks []restoredFK) ([]string, error) {
+	var notes []string
+	for _, f := range fks {
+		var exists bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = $1::regclass AND conname = $2)`, f.table, f.name).Scan(&exists); err != nil {
+			return nil, err
+		}
+		if exists {
+			continue
+		}
+		if _, err := tx.Exec(ctx, `SAVEPOINT pdh_fk`); err != nil {
+			return nil, err
+		}
+		add := fmt.Sprintf(`ALTER TABLE %s ADD CONSTRAINT %s %s`, f.table, pgx.Identifier{f.name}.Sanitize(), f.def)
+		if _, err := tx.Exec(ctx, add); err != nil {
+			if _, err2 := tx.Exec(ctx, `ROLLBACK TO SAVEPOINT pdh_fk`); err2 != nil {
+				return nil, err2
+			}
+			if _, err3 := tx.Exec(ctx, add+" NOT VALID"); err3 != nil {
+				return nil, fmt.Errorf("fremdschlüssel %s: %w", f.name, err3)
+			}
+			notes = append(notes, "Hinweis: verwaiste Verweise bei "+f.table+" ("+f.name+")")
+		}
+		if _, err := tx.Exec(ctx, `RELEASE SAVEPOINT pdh_fk`); err != nil {
+			return nil, err
+		}
+	}
+	return notes, nil
+}
+
 func (h *Handler) restoreDatabase(ctx context.Context, zr *zip.Reader, man *backupManifest, currentSchema int) ([]string, error) {
 	var notes []string
 	conn, err := h.db.Acquire(ctx)
@@ -518,8 +554,7 @@ func (h *Handler) restoreDatabase(ctx context.Context, zr *zip.Reader, man *back
 	}
 
 	// 1. Fremdschluessel merken und entfernen (Reihenfolge egal beim Laden)
-	type fk struct{ table, name, def string }
-	var fks []fk
+	var fks []restoredFK
 	rows, err := tx.Query(ctx, `
 		SELECT conrelid::regclass::text, conname, pg_get_constraintdef(oid)
 		  FROM pg_constraint WHERE contype = 'f' AND connamespace = 'public'::regnamespace`)
@@ -527,7 +562,7 @@ func (h *Handler) restoreDatabase(ctx context.Context, zr *zip.Reader, man *back
 		return nil, err
 	}
 	for rows.Next() {
-		var f fk
+		var f restoredFK
 		if err := rows.Scan(&f.table, &f.name, &f.def); err != nil {
 			rows.Close()
 			return nil, err
@@ -594,24 +629,11 @@ func (h *Handler) restoreDatabase(ctx context.Context, zr *zip.Reader, man *back
 	}
 	// 6. Fremdschluessel wieder anlegen. Verwaiste Verweise (z. B. aus nicht
 	//    gesicherten Tabellen) brechen die Wiederherstellung nicht ab.
-	for _, f := range fks {
-		if _, err := tx.Exec(ctx, `SAVEPOINT pdh_fk`); err != nil {
-			return nil, err
-		}
-		add := fmt.Sprintf(`ALTER TABLE %s ADD CONSTRAINT %s %s`, f.table, pgx.Identifier{f.name}.Sanitize(), f.def)
-		if _, err := tx.Exec(ctx, add); err != nil {
-			if _, err2 := tx.Exec(ctx, `ROLLBACK TO SAVEPOINT pdh_fk`); err2 != nil {
-				return nil, err2
-			}
-			if _, err3 := tx.Exec(ctx, add+" NOT VALID"); err3 != nil {
-				return nil, fmt.Errorf("fremdschlüssel %s: %w", f.name, err3)
-			}
-			notes = append(notes, "Hinweis: verwaiste Verweise bei "+f.table+" ("+f.name+")")
-		}
-		if _, err := tx.Exec(ctx, `RELEASE SAVEPOINT pdh_fk`); err != nil {
-			return nil, err
-		}
+	fkNotes, err := restoreForeignKeys(ctx, tx, fks)
+	if err != nil {
+		return nil, err
 	}
+	notes = append(notes, fkNotes...)
 	if _, err := tx.Exec(ctx, `DELETE FROM record_change_queue`); err != nil {
 		return nil, err
 	}
