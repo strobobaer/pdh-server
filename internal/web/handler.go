@@ -590,6 +590,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/it/net/candidates/ignore", h.ITNetIgnoreWeb)
 	r.Post("/it/{id}/net-monitor", h.ITNetMonitorWeb)
 	r.Post("/it/{id}/net-detach", h.ITNetDetachWeb)
+	r.Post("/it/{id}/net-reattach", h.ITNetReattachWeb)
 	r.Get("/it/{id}", h.ITDetail)
 	// QR-Infoseiten fuer Anlagen und IT-Assets (asset_info.go)
 	r.Get("/a/labels", h.AssetLabelsPage)
@@ -2995,6 +2996,7 @@ type ITAssetView struct {
 	NetStateLabel  string
 	NetStateClass  string
 	FirmwareUpdate bool
+	NetDetached    bool // „Quelle getrennt“
 }
 
 type ITDetailData struct {
@@ -3004,8 +3006,9 @@ type ITDetailData struct {
 	Users      []UserOption
 	Asset      ITAssetDetailView
 	// Net: Karte „Netz“ (nil = Asset ohne Quelle); CanNetEdit: it.edit für diesen Datensatz.
-	Net        *ITNetDetailView
-	CanNetEdit bool
+	Net         *ITNetDetailView
+	NetDetached bool // Quelle getrennt: statt der Karte „Wieder verbinden“
+	CanNetEdit  bool
 }
 
 type ITAssetDetailView struct {
@@ -4126,12 +4129,12 @@ func (h *Handler) ITPage(w http.ResponseWriter, r *http.Request) {
 			if scopeIDs != nil && !scopeIDs[a.ID] {
 				continue
 			}
-			if data.NetFilter == "offline" && (a.NetSource == "" || a.NetState != "offline") {
+			if data.NetFilter == "offline" && (a.NetSource == "" || a.NetDetached || a.NetState != "offline") {
 				continue
 			}
 			label, class := itNetStateBadge(a.NetState)
 			data.Assets = append(data.Assets, ITAssetView{
-				NetSource: a.NetSource != "", NetStateLabel: label, NetStateClass: class, FirmwareUpdate: a.FirmwareUpdate,
+				NetSource: a.NetSource != "", NetDetached: a.NetDetached, NetStateLabel: label, NetStateClass: class, FirmwareUpdate: a.FirmwareUpdate,
 				ID: a.ID, Name: a.Name,
 				TypeLabel: typeLabels[string(a.Type)], TypeIcon: typeIcons[string(a.Type)],
 				StatusLabel: statusLabels[string(a.Status)], StatusClass: statusClasses[string(a.Status)],
@@ -4242,7 +4245,11 @@ func (h *Handler) ITDetail(w http.ResponseWriter, r *http.Request) {
 		data.SupplierID = data.Supplier.ID
 	}
 	if a.NetSource != "" {
-		data.Net = h.itNetDetail(ctx, a)
+		if a.NetDetached {
+			data.NetDetached = true
+		} else {
+			data.Net = h.itNetDetail(ctx, a)
+		}
 		data.CanNetEdit = h.itNetCan(r, "it.edit", a.ID)
 	}
 	h.render(w, "it_detail", data)

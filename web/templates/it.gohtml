@@ -63,13 +63,12 @@
   </form>
 </div>
 
-<!-- Filter -->
+<!-- Filter: Typ und „nur offline“ lassen sich kombinieren; „Alle“ setzt beides zurück -->
 <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
-  {{if eq .Filter ""}}{{template "icon-button" (dict "Action" "filter" "ShowLabel" true "Label" "Alle" "Href" "/it" "Class" "btn-primary")}}{{else}}{{template "icon-button" (dict "Action" "filter" "ShowLabel" true "Label" "Alle" "Href" "/it")}}{{end}}
-  {{if eq .Filter "server"}}{{template "icon-button" (dict "Action" "filter" "ShowLabel" true "Label" "Server" "Href" "/it?type=server" "Class" "btn-primary")}}{{else}}{{template "icon-button" (dict "Action" "filter" "ShowLabel" true "Label" "Server" "Href" "/it?type=server")}}{{end}}
-  {{if eq .Filter "network"}}{{template "icon-button" (dict "Action" "filter" "ShowLabel" true "Label" "Netzwerk" "Href" "/it?type=network" "Class" "btn-primary")}}{{else}}{{template "icon-button" (dict "Action" "filter" "ShowLabel" true "Label" "Netzwerk" "Href" "/it?type=network")}}{{end}}
-  {{if eq .NetFilter "offline"}}{{template "icon-button" (dict "Action" "filter" "ShowLabel" true "Label" "Nur offline" "Href" "/it" "Class" "btn-primary")}}{{else}}{{template "icon-button" (dict "Action" "filter" "ShowLabel" true "Label" "Nur offline" "Href" "/it?net=offline")}}{{end}}
-  {{if eq .Filter "workstation"}}{{template "icon-button" (dict "Action" "filter" "ShowLabel" true "Label" "Workstation" "Href" "/it?type=workstation" "Class" "btn-primary")}}{{else}}{{template "icon-button" (dict "Action" "filter" "ShowLabel" true "Label" "Workstation" "Href" "/it?type=workstation")}}{{end}}
+  {{if and (eq .Filter "") (eq .NetFilter "")}}{{template "icon-button" (dict "Action" "filter" "ShowLabel" true "Label" "Alle" "Href" "/it" "Class" "btn-primary")}}{{else}}{{template "icon-button" (dict "Action" "filter" "ShowLabel" true "Label" "Alle" "Href" "/it")}}{{end}}
+  {{range $f := (list (list "server" "Server") (list "network" "Netzwerk") (list "workstation" "Workstation"))}}{{$key := index $f 0}}{{if eq $.Filter $key}}{{template "icon-button" (dict "Action" "filter" "ShowLabel" true "Label" (index $f 1) "Href" ($.TypeURL $key) "Class" "btn-primary")}}{{else}}{{template "icon-button" (dict "Action" "filter" "ShowLabel" true "Label" (index $f 1) "Href" ($.TypeURL $key))}}{{end}}
+  {{end}}
+  {{if eq .NetFilter "offline"}}{{template "icon-button" (dict "Action" "filter" "ShowLabel" true "Label" "Nur offline" "Href" .OfflineURL "Class" "btn-primary")}}{{else}}{{template "icon-button" (dict "Action" "filter" "ShowLabel" true "Label" "Nur offline" "Href" .OfflineURL)}}{{end}}
 </div>
 
 <div class="card" style="padding:0">
@@ -90,7 +89,7 @@
       </td>
       <td style="font-size:12px;color:var(--muted)">{{.Location}}</td>
       <td><span id="it-status-{{.ID}}"><span class="badge {{.StatusClass}}">{{.StatusLabel}}</span></span>
-        {{if .NetSource}}<div style="margin-top:4px;display:flex;gap:4px;flex-wrap:wrap"><span class="badge {{.NetStateClass}} it-net-state" title="Netz-Zustand aus UniFi"><i class="ti ti-network"></i> {{.NetStateLabel}}</span>{{if .FirmwareUpdate}}<span class="badge b-amber" title="Firmware-Update verfügbar">Update</span>{{end}}</div>{{end}}
+        {{if .NetDetached}}<div style="margin-top:4px"><span class="badge b-gray" title="Wird nicht mehr mit UniFi abgeglichen"><i class="ti ti-unlink"></i> Quelle getrennt</span></div>{{else if .NetSource}}<div style="margin-top:4px;display:flex;gap:4px;flex-wrap:wrap"><span class="badge {{.NetStateClass}} it-net-state" title="Netz-Zustand aus UniFi"><i class="ti ti-network"></i> {{.NetStateLabel}}</span>{{if .FirmwareUpdate}}<span class="badge b-amber" title="Firmware-Update verfügbar">Update</span>{{end}}</div>{{end}}
       </td>
       <template class="rx-more">
         <span class="rec-sub">Status:</span>

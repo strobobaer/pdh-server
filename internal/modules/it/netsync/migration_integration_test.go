@@ -3,6 +3,7 @@ package netsync
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -40,7 +41,7 @@ func TestITNetsyncMigration(t *testing.T) {
 
 	t.Run("Spalten und Tabellen vorhanden", func(t *testing.T) {
 		cols := map[string][]string{
-			"it_assets":          {"net_state", "net_monitored", "net_gone", "firmware_update", "firmware", "net_uplink", "net_source", "net_external_id", "net_last_seen", "net_state_since", "net_role"},
+			"it_assets":          {"net_state", "net_monitored", "net_gone", "firmware_update", "firmware", "net_uplink", "net_source", "net_external_id", "net_last_seen", "net_state_since", "net_role", "net_detached"},
 			"it_asset_ports":     {"asset_id", "idx", "connector", "state", "speed_mbps", "max_speed_mbps", "poe_state"},
 			"it_net_candidates":  {"source", "mac", "external_id", "name", "ip", "kind", "uplink", "last_seen", "ignored"},
 			"it_net_alarm_state": {"asset_id", "state", "offline_since", "ticket_id"},
@@ -71,6 +72,23 @@ func TestITNetsyncMigration(t *testing.T) {
 		// Ohne Quelle (von Hand angelegt) darf es mehrfach geben.
 		_, err = pool.Exec(ctx, `INSERT INTO it_assets (name, created_by) VALUES ('mig-hand-1', (SELECT id FROM users LIMIT 1)), ('mig-hand-1', (SELECT id FROM users LIMIT 1))`)
 		must(t, err)
+	})
+
+	t.Run("Migration zweimal ausführbar", func(t *testing.T) {
+		sql, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "migrations", "164_it_netsync.up.sql"))
+		must(t, err)
+		tx, err := pool.Begin(ctx)
+		must(t, err)
+		defer func() { _ = tx.Rollback(ctx) }()
+		if _, err := tx.Exec(ctx, string(sql)); err != nil {
+			t.Fatalf("zweiter Lauf: %v", err)
+		}
+		var def string
+		must(t, tx.QueryRow(ctx, `SELECT column_default || '/' || is_nullable FROM information_schema.columns
+			WHERE table_name = 'it_assets' AND column_name = 'net_detached'`).Scan(&def))
+		if def != "false/NO" {
+			t.Errorf("net_detached: %q, erwartet false/NO", def)
+		}
 	})
 
 	t.Run("Recht it.netsync wie it.edit vergeben", func(t *testing.T) {

@@ -13,7 +13,10 @@ ALTER TABLE it_assets
     ADD COLUMN IF NOT EXISTS firmware_update  BOOLEAN NOT NULL DEFAULT false,
     ADD COLUMN IF NOT EXISTS net_uplink       TEXT NOT NULL DEFAULT '',
     ADD COLUMN IF NOT EXISTS net_gone         BOOLEAN NOT NULL DEFAULT false,
-    ADD COLUMN IF NOT EXISTS net_role         TEXT;
+    ADD COLUMN IF NOT EXISTS net_role         TEXT,
+    -- „Quelle trennen“: Quelle und ID bleiben (kein Doppel beim nächsten
+    -- Abgleich), das Asset wird aber nicht mehr abgeglichen und nicht überwacht.
+    ADD COLUMN IF NOT EXISTS net_detached     BOOLEAN NOT NULL DEFAULT false;
 
 DO $$
 BEGIN

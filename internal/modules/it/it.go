@@ -69,16 +69,17 @@ type Asset struct {
 	FirmwareUpdate bool       `json:"firmware_update"`
 	NetUplink      string     `json:"net_uplink,omitempty"`
 	NetGone        bool       `json:"net_gone"`
+	NetDetached    bool       `json:"net_detached"` // „Quelle trennen“: Quelle bleibt, kein Abgleich
 }
 
 // netCols: Netzfelder in fester Reihenfolge (zu netDest).
 const netCols = `COALESCE(a.net_source,''), COALESCE(a.net_external_id,''), COALESCE(a.net_role,''),
 		a.net_monitored, a.net_state, a.net_state_since, a.net_last_seen,
-		a.firmware, a.firmware_update, a.net_uplink, a.net_gone`
+		a.firmware, a.firmware_update, a.net_uplink, a.net_gone, a.net_detached`
 
 func netDest(a *Asset) []any {
 	return []any{&a.NetSource, &a.NetExternalID, &a.NetRole, &a.NetMonitored, &a.NetState,
-		&a.NetStateSince, &a.NetLastSeen, &a.Firmware, &a.FirmwareUpdate, &a.NetUplink, &a.NetGone}
+		&a.NetStateSince, &a.NetLastSeen, &a.Firmware, &a.FirmwareUpdate, &a.NetUplink, &a.NetGone, &a.NetDetached}
 }
 
 type CreateAssetInput struct {

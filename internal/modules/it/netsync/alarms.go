@@ -65,7 +65,7 @@ func (w *Watch) grace(ctx context.Context) time.Duration {
 func (w *Watch) Pass(ctx context.Context, now time.Time) error {
 	grace := w.grace(ctx)
 	rows, err := w.DB.Query(ctx, `SELECT id::text FROM it_assets
-		 WHERE net_source IS NOT NULL AND net_monitored AND status = 'active'
+		 WHERE net_source IS NOT NULL AND net_monitored AND NOT net_detached AND status = 'active'
 		   AND ($1 = '' OR net_source = $1)
 		UNION
 		SELECT s.asset_id::text FROM it_net_alarm_state s JOIN it_assets a ON a.id = s.asset_id
@@ -138,7 +138,7 @@ func (w *Watch) watchOne(ctx context.Context, id string, now time.Time, grace ti
 	var watched bool
 	err = tx.QueryRow(ctx, `SELECT id::text, name, COALESCE(ip_address, ''), net_uplink, COALESCE(infrastructure_id::text, ''),
 		       net_last_seen, net_state, net_state_since,
-		       (net_source IS NOT NULL AND net_monitored AND status = 'active')
+		       (net_source IS NOT NULL AND net_monitored AND NOT net_detached AND status = 'active')
 		  FROM it_assets WHERE id = $1::uuid`, id).Scan(&a.ID, &a.Name, &a.IP, &a.Uplink, &a.InfrastructureID,
 		&a.LastSeen, &netState, &stateSince, &watched)
 	if errors.Is(err, pgx.ErrNoRows) {

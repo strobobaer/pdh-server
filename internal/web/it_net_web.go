@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/rs/zerolog"
 
 	"pdh/internal/modules/it"
 	"pdh/internal/modules/it/netsync"
@@ -73,8 +74,25 @@ func (h *Handler) itNetOpenCandidates(ctx context.Context) int {
 		return 0
 	}
 	var n int
-	_ = h.db.QueryRow(ctx, `SELECT count(*) FROM it_net_candidates WHERE source = $1 AND NOT ignored`, h.itNetSource()).Scan(&n)
+	if err := h.db.QueryRow(ctx, `SELECT count(*) FROM it_net_candidates WHERE source = $1 AND NOT ignored`, h.itNetSource()).Scan(&n); err != nil {
+		itNetLog().Warn().Err(err).Msg("vorschläge zählen")
+	}
 	return n
+}
+
+func itNetLog() *zerolog.Logger {
+	return componentLog("it-netzabgleich")
+}
+
+// itNetSourceNames: Anzeigenamen der Quellen.
+var itNetSourceNames = map[string]string{itNetSourceUnifi: "UniFi"}
+
+// itNetSourceName: Anzeigename einer Quelle (unbekannt → Schlüssel selbst).
+func itNetSourceName(src string) string {
+	if n, ok := itNetSourceNames[src]; ok {
+		return n
+	}
+	return src
 }
 
 // ── Seite ────────────────────────────────────────────────────
@@ -145,6 +163,7 @@ var itNetErrors = map[string]string{
 	"type":     "Bitte einen gültigen Typ wählen.",
 	"nocand":   "Diesen Vorschlag gibt es nicht mehr.",
 	"adopt":    "Der Vorschlag konnte nicht übernommen werden.",
+	"detached": "Zu dieser MAC-Adresse gibt es ein Asset mit getrennter Quelle – dort „Wieder verbinden“ wählen.",
 }
 
 // ITNetPage: GET /it/net.
@@ -186,23 +205,32 @@ func (h *Handler) ITNetPage(w http.ResponseWriter, r *http.Request) {
 		d.Users, d.Groups = h.itNetUserOptions(ctx), h.itNetGroupOptions(ctx)
 	}
 	src := h.itNetSource()
-	_ = h.db.QueryRow(ctx, `SELECT count(*) FILTER (WHERE NOT ignored), count(*) FILTER (WHERE ignored)
-		FROM it_net_candidates WHERE source = $1`, src).Scan(&d.Open, &d.Hidden)
+	if err := h.db.QueryRow(ctx, `SELECT count(*) FILTER (WHERE NOT ignored), count(*) FILTER (WHERE ignored)
+		FROM it_net_candidates WHERE source = $1`, src).Scan(&d.Open, &d.Hidden); err != nil {
+		itNetLog().Warn().Err(err).Msg("vorschläge zählen")
+	}
 	like := "%" + strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(d.Query) + "%"
 	rows, err := h.db.Query(ctx, `SELECT mac, name, ip, kind, uplink, last_seen FROM it_net_candidates
 		WHERE source = $1 AND ignored = $2
 		  AND ($3 = '%%' OR name ILIKE $3 OR ip ILIKE $3 OR mac ILIKE $3 OR uplink ILIKE $3)
 		ORDER BY last_seen DESC, name LIMIT 500`, src, d.Tab == "hidden", like)
-	if err == nil {
+	if err != nil {
+		itNetLog().Warn().Err(err).Msg("vorschläge lesen")
+	} else {
 		for rows.Next() {
 			var c ITNetCandidate
 			var seen time.Time
-			if rows.Scan(&c.MAC, &c.Name, &c.IP, &c.Kind, &c.Uplink, &seen) == nil {
-				c.LastSeen = alarmTime(seen)
-				d.Rows = append(d.Rows, c)
+			if err := rows.Scan(&c.MAC, &c.Name, &c.IP, &c.Kind, &c.Uplink, &seen); err != nil {
+				itNetLog().Warn().Err(err).Msg("vorschlag lesen")
+				continue
 			}
+			c.LastSeen = alarmTime(seen)
+			d.Rows = append(d.Rows, c)
 		}
 		rows.Close()
+		if err := rows.Err(); err != nil {
+			itNetLog().Warn().Err(err).Msg("vorschläge lesen")
+		}
 	}
 	h.render(w, "it_net", d)
 }
@@ -211,6 +239,7 @@ func (h *Handler) itNetUserOptions(ctx context.Context) []itNetOption {
 	rows, err := h.db.Query(ctx, `SELECT id::text, trim(first_name || ' ' || last_name) FROM users
 		WHERE active AND id <> $1::uuid ORDER BY lower(last_name), lower(first_name)`, pdhSystemUserID)
 	if err != nil {
+		itNetLog().Warn().Err(err).Msg("benutzer lesen")
 		return nil
 	}
 	defer rows.Close()
@@ -220,6 +249,9 @@ func (h *Handler) itNetUserOptions(ctx context.Context) []itNetOption {
 		if rows.Scan(&o.Value, &o.Label) == nil {
 			out = append(out, o)
 		}
+	}
+	if err := rows.Err(); err != nil {
+		itNetLog().Warn().Err(err).Msg("benutzer lesen")
 	}
 	return out
 }
@@ -318,7 +350,7 @@ func (h *Handler) ITNetSettingsWeb(w http.ResponseWriter, r *http.Request) {
 		{keyITNetPriority, s.Priority}, {keyITNetRespUser, s.RespUser}, {keyITNetRespGroup, s.RespGrp},
 	} {
 		if err := h.setAppSetting(ctx, kv[0], kv[1]); err != nil {
-			componentLog("it-netzabgleich").Error().Err(err).Str("einstellung", kv[0]).Msg("einstellung speichern")
+			itNetLog().Error().Err(err).Str("einstellung", kv[0]).Msg("einstellung speichern")
 			itNetBack(w, r, "", "save")
 			return
 		}
@@ -376,8 +408,10 @@ func (h *Handler) ITNetAdoptWeb(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case errors.Is(err, netsync.ErrNoCandidate):
 		itNetBack(w, r, "", "nocand")
+	case errors.Is(err, netsync.ErrDetached):
+		itNetBack(w, r, "", "detached")
 	case err != nil:
-		componentLog("it-netzabgleich").Error().Err(err).Msg("vorschlag übernehmen")
+		itNetLog().Error().Err(err).Msg("vorschlag übernehmen")
 		itNetBack(w, r, "", "adopt")
 	default:
 		itNetBack(w, r, "adopted", "")
@@ -393,7 +427,11 @@ func (h *Handler) ITNetIgnoreWeb(w http.ResponseWriter, r *http.Request) {
 	ignored := r.FormValue("ignored") == "1"
 	store := &netsync.Store{DB: h.db, SystemUserID: pdhSystemUserID}
 	if err := store.Ignore(r.Context(), h.itNetSource(), r.FormValue("mac"), ignored); err != nil {
-		componentLog("it-netzabgleich").Error().Err(err).Msg("vorschlag ausblenden")
+		if !errors.Is(err, netsync.ErrNoCandidate) {
+			itNetLog().Error().Err(err).Msg("vorschlag ausblenden")
+			itNetBack(w, r, "", "save")
+			return
+		}
 		itNetBack(w, r, "", "nocand")
 		return
 	}
@@ -444,7 +482,7 @@ func itNetSpeed(mbps int) string {
 
 // itNetDetail: Daten der Karte „Netz“ samt Ports.
 func (h *Handler) itNetDetail(ctx context.Context, a *it.Asset) *ITNetDetailView {
-	v := &ITNetDetailView{Source: a.NetSource, Firmware: a.Firmware, FirmwareUpdate: a.FirmwareUpdate,
+	v := &ITNetDetailView{Source: itNetSourceName(a.NetSource), Firmware: a.Firmware, FirmwareUpdate: a.FirmwareUpdate,
 		Uplink: a.NetUplink, Monitored: a.NetMonitored, Gone: a.NetGone, Role: "Client"}
 	if a.NetRole == "device" {
 		v.Role = "Netzgerät"
@@ -461,6 +499,7 @@ func (h *Handler) itNetDetail(ctx context.Context, a *it.Asset) *ITNetDetailView
 	}
 	rows, err := h.db.Query(ctx, `SELECT idx, connector, state, speed_mbps, poe_state FROM it_asset_ports WHERE asset_id = $1::uuid ORDER BY idx`, a.ID)
 	if err != nil {
+		itNetLog().Warn().Err(err).Msg("ports lesen")
 		return v
 	}
 	defer rows.Close()
@@ -475,6 +514,9 @@ func (h *Handler) itNetDetail(ctx context.Context, a *it.Asset) *ITNetDetailView
 			}
 			v.Ports = append(v.Ports, p)
 		}
+	}
+	if err := rows.Err(); err != nil {
+		itNetLog().Warn().Err(err).Msg("ports lesen")
 	}
 	return v
 }
@@ -501,8 +543,8 @@ func (h *Handler) ITNetMonitorWeb(w http.ResponseWriter, r *http.Request) {
 	}
 	on := r.FormValue("on") == "1"
 	if _, err := h.db.Exec(r.Context(), `UPDATE it_assets SET net_monitored = $2, updated_at = now()
-		WHERE id = $1::uuid AND net_source IS NOT NULL`, id, on); err != nil {
-		componentLog("it-netzabgleich").Error().Err(err).Msg("überwachung umschalten")
+		WHERE id = $1::uuid AND net_source IS NOT NULL AND NOT net_detached`, id, on); err != nil {
+		itNetLog().Error().Err(err).Msg("überwachung umschalten")
 		http.Error(w, "Speichern fehlgeschlagen", http.StatusInternalServerError)
 		return
 	}
@@ -510,6 +552,8 @@ func (h *Handler) ITNetMonitorWeb(w http.ResponseWriter, r *http.Request) {
 }
 
 // ITNetDetachWeb: POST /it/{id}/net-detach – Asset bleibt, wird nicht mehr abgeglichen.
+// Quelle und ID bleiben stehen (sonst legte der nächste Abgleich ein Doppel an);
+// net_detached sorgt dafür, dass Abgleich, Vorschläge und Wächter es auslassen.
 func (h *Handler) ITNetDetachWeb(w http.ResponseWriter, r *http.Request) {
 	id, ok := h.itNetAssetGuard(w, r)
 	if !ok {
@@ -522,9 +566,9 @@ func (h *Handler) ITNetDetachWeb(w http.ResponseWriter, r *http.Request) {
 			return err
 		}
 		defer func() { _ = tx.Rollback(ctx) }()
-		if _, err := tx.Exec(ctx, `UPDATE it_assets SET net_source = NULL, net_external_id = NULL, net_role = NULL,
-				net_monitored = false, net_state = 'unknown', net_gone = false, updated_at = now()
-			WHERE id = $1::uuid`, id); err != nil {
+		if _, err := tx.Exec(ctx, `UPDATE it_assets SET net_detached = true, net_monitored = false,
+				net_state = 'unknown', net_state_since = NULL, net_gone = false, updated_at = now()
+			WHERE id = $1::uuid AND net_source IS NOT NULL`, id); err != nil {
 			return err
 		}
 		if _, err := tx.Exec(ctx, `DELETE FROM it_asset_ports WHERE asset_id = $1::uuid`, id); err != nil {
@@ -536,9 +580,53 @@ func (h *Handler) ITNetDetachWeb(w http.ResponseWriter, r *http.Request) {
 		return tx.Commit(ctx)
 	}()
 	if err != nil {
-		componentLog("it-netzabgleich").Error().Err(err).Msg("quelle trennen")
+		itNetLog().Error().Err(err).Msg("quelle trennen")
 		http.Error(w, "Trennen fehlgeschlagen", http.StatusInternalServerError)
 		return
 	}
 	http.Redirect(w, r, "/it/"+id, http.StatusSeeOther)
+}
+
+// ITNetReattachWeb: POST /it/{id}/net-reattach – getrenntes Asset wieder abgleichen.
+// Überwacht wird es wieder (Telefon und Tablet nicht); der Zustand bleibt
+// „unbekannt“ bis zum nächsten Abgleich.
+func (h *Handler) ITNetReattachWeb(w http.ResponseWriter, r *http.Request) {
+	id, ok := h.itNetAssetGuard(w, r)
+	if !ok {
+		return
+	}
+	if _, err := h.db.Exec(r.Context(), `UPDATE it_assets SET net_detached = false,
+			net_monitored = type::text NOT IN ('phone', 'tablet'), updated_at = now()
+		WHERE id = $1::uuid AND net_source IS NOT NULL AND net_detached`, id); err != nil {
+		itNetLog().Error().Err(err).Msg("wieder verbinden")
+		http.Error(w, "Wieder verbinden fehlgeschlagen", http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/it/"+id, http.StatusSeeOther)
+}
+
+// itListURL: Adresse der IT-Liste mit Typ- und Netzfilter (leere Werte entfallen).
+func itListURL(typ, net string) string {
+	v := []string{}
+	if typ != "" {
+		v = append(v, "type="+url.QueryEscape(typ))
+	}
+	if net != "" {
+		v = append(v, "net="+url.QueryEscape(net))
+	}
+	if len(v) == 0 {
+		return "/it"
+	}
+	return "/it?" + strings.Join(v, "&")
+}
+
+// TypeURL: Typfilter setzen, Netzfilter behalten (Vorlage it.gohtml).
+func (d ITPageData) TypeURL(typ string) string { return itListURL(typ, d.NetFilter) }
+
+// OfflineURL: „Nur offline“ umschalten, Typfilter behalten.
+func (d ITPageData) OfflineURL() string {
+	if d.NetFilter == "offline" {
+		return itListURL(d.Filter, "")
+	}
+	return itListURL(d.Filter, "offline")
 }

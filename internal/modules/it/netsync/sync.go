@@ -13,6 +13,11 @@ import (
 // ErrNoCandidate: zu dieser Quelle und MAC gibt es keinen Vorschlag.
 var ErrNoCandidate = errors.New("netsync: kein Vorschlag mit dieser MAC-Adresse")
 
+// ErrDetached: zu dieser MAC gibt es ein Asset der Quelle, dessen Quelle
+// getrennt wurde („Quelle trennen“) – erst „Wieder verbinden“, dann gleicht
+// der Abgleich es wieder ab. Adopt legt dann kein zweites Asset an.
+var ErrDetached = errors.New("netsync: Asset mit dieser MAC-Adresse ist vom Abgleich getrennt")
+
 // candidateMaxAge: Vorschläge, die so lange nicht gesehen wurden, entfallen
 // (ausgeblendete bleiben).
 const candidateMaxAge = 30 * 24 * time.Hour
@@ -57,9 +62,12 @@ func (s *Store) Apply(ctx context.Context, source string, snap Snapshot, now tim
 			continue
 		}
 		devExt = append(devExt, d.ExternalID)
-		created, id, err := s.upsertDevice(ctx, tx, source, d, now)
+		created, skipped, id, err := s.upsertDevice(ctx, tx, source, d, now)
 		if err != nil {
 			return res, fmt.Errorf("Gerät %s: %w", d.ExternalID, err)
+		}
+		if skipped {
+			continue // Quelle getrennt: nicht abgleichen
 		}
 		if created {
 			res.Created++
@@ -102,7 +110,7 @@ func (s *Store) Apply(ctx context.Context, source string, snap Snapshot, now tim
 		}
 		if _, err := tx.Exec(ctx, `UPDATE it_assets a SET net_uplink = u.up
 			FROM unnest($2::text[], $3::text[]) AS u(ext, up)
-			WHERE a.net_source = $1 AND a.net_external_id = u.ext AND a.net_uplink IS DISTINCT FROM u.up`,
+			WHERE a.net_source = $1 AND a.net_external_id = u.ext AND NOT a.net_detached AND a.net_uplink IS DISTINCT FROM u.up`,
 			source, ids, ups); err != nil {
 			return res, err
 		}
@@ -112,7 +120,7 @@ func (s *Store) Apply(ctx context.Context, source string, snap Snapshot, now tim
 	tag, err := tx.Exec(ctx, `UPDATE it_assets SET
 			net_state_since = CASE WHEN net_state <> 'unknown' OR net_state_since IS NULL THEN $3 ELSE net_state_since END,
 			net_state = 'unknown', net_gone = true
-		WHERE net_source = $1 AND net_role = 'device'
+		WHERE net_source = $1 AND net_role = 'device' AND NOT net_detached
 		  AND NOT (net_external_id = ANY($2::text[]))
 		  AND (net_gone = false OR net_state <> 'unknown')`, source, devExt, now)
 	if err != nil {
@@ -158,7 +166,7 @@ func (s *Store) Apply(ctx context.Context, source string, snap Snapshot, now tim
 			  FROM it_assets t
 			  LEFT JOIN unnest($2::text[], $3::text[], $4::text[]) AS c(mac, ip, up)
 			    ON replace(c.mac, ':', '') = regexp_replace(lower(t.mac_address), '[^0-9a-f]', '', 'g')
-			 WHERE t.net_source = $1 AND t.net_role = 'client'
+			 WHERE t.net_source = $1 AND t.net_role = 'client' AND NOT t.net_detached
 		) x
 		WHERE a.id = x.id`, source, cMAC, cIP, cUp, now); err != nil {
 		return res, err
@@ -202,17 +210,33 @@ func (s *Store) Apply(ctx context.Context, source string, snap Snapshot, now tim
 
 // upsertDevice legt ein Netzgerät an oder aktualisiert nur die Felder der
 // Quelle. Der Name wird nur beim Anlegen gesetzt.
-func (s *Store) upsertDevice(ctx context.Context, tx pgx.Tx, source string, d Device, now time.Time) (created bool, id string, err error) {
+// Ein getrenntes Asset der Quelle (gleiche ID oder MAC) bleibt unverändert: skipped.
+func (s *Store) upsertDevice(ctx context.Context, tx pgx.Tx, source string, d Device, now time.Time) (created, skipped bool, id string, err error) {
 	mac := NormMAC(d.MAC)
 	st := stateOrUnknown(d.State)
 
-	err = tx.QueryRow(ctx, `SELECT id::text FROM it_assets WHERE net_source = $1 AND net_external_id = $2`, source, d.ExternalID).Scan(&id)
+	var detached bool
+	err = tx.QueryRow(ctx, `SELECT id::text, net_detached FROM it_assets WHERE net_source = $1 AND net_external_id = $2`, source, d.ExternalID).Scan(&id, &detached)
+	if err == nil && detached {
+		return false, true, id, nil
+	}
+	if errors.Is(err, pgx.ErrNoRows) && mac != "" {
+		var did string
+		derr := tx.QueryRow(ctx, `SELECT id::text FROM it_assets WHERE net_source = $1 AND net_detached AND `+sqlAssetMAC+` = replace($2, ':', '')
+			LIMIT 1`, source, mac).Scan(&did)
+		if derr == nil {
+			return false, true, did, nil
+		}
+		if !errors.Is(derr, pgx.ErrNoRows) {
+			return false, false, "", derr
+		}
+	}
 	if errors.Is(err, pgx.ErrNoRows) && mac != "" {
 		err = tx.QueryRow(ctx, `SELECT id::text FROM it_assets WHERE net_source IS NULL AND `+sqlAssetMAC+` = replace($1, ':', '')
 			ORDER BY created_at LIMIT 1 FOR UPDATE`, mac).Scan(&id)
 	}
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-		return false, "", err
+		return false, false, "", err
 	}
 
 	if err == nil {
@@ -227,7 +251,7 @@ func (s *Store) upsertDevice(ctx context.Context, tx pgx.Tx, source string, d De
 				net_last_seen   = CASE WHEN $9 = 'online' THEN $10 ELSE net_last_seen END,
 				net_state = $9, net_gone = false, net_role = 'device', updated_at = now()
 			WHERE id = $1`, id, source, d.ExternalID, mac, d.IP, d.Model, d.Firmware, d.FirmwareUpdate, st, now)
-		return false, id, err
+		return false, false, id, err
 	}
 
 	name := d.Name
@@ -249,7 +273,7 @@ func (s *Store) upsertDevice(ctx context.Context, tx pgx.Tx, source string, d De
 			$7, $8, true, $9, $10, $11, 'device', $12, $13)
 		RETURNING id::text`, name, d.IP, mac, s.Manufacturer[source], d.Model, s.SystemUserID,
 		source, d.ExternalID, st, seen, now, d.Firmware, d.FirmwareUpdate).Scan(&id)
-	return true, id, err
+	return true, false, id, err
 }
 
 func replacePorts(ctx context.Context, tx pgx.Tx, assetID string, ports []Port) error {
@@ -291,7 +315,7 @@ func (s *Store) MarkUnknown(ctx context.Context, source string, now time.Time) e
 	_, err := s.DB.Exec(ctx, `UPDATE it_assets SET
 			net_state_since = CASE WHEN net_state <> 'unknown' OR net_state_since IS NULL THEN $2 ELSE net_state_since END,
 			net_state = 'unknown'
-		WHERE net_source = $1 AND (net_state <> 'unknown' OR net_state_since IS NULL)`, source, now)
+		WHERE net_source = $1 AND NOT net_detached AND (net_state <> 'unknown' OR net_state_since IS NULL)`, source, now)
 	return err
 }
 
@@ -333,6 +357,15 @@ func (s *Store) Adopt(ctx context.Context, source, mac, assetType, userID string
 	}
 	monitored := assetType != "phone" && assetType != "tablet"
 
+	var detached bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM it_assets WHERE net_source = $1 AND net_detached
+			AND (net_external_id = $2 OR `+sqlAssetMAC+` = replace($3, ':', '')))`, source, ext, nmac).Scan(&detached); err != nil {
+		return "", err
+	}
+	if detached {
+		return "", ErrDetached
+	}
+
 	var id string
 	err = tx.QueryRow(ctx, `SELECT id::text FROM it_assets WHERE net_source IS NULL AND `+sqlAssetMAC+` = replace($1, ':', '')
 		ORDER BY created_at LIMIT 1 FOR UPDATE`, nmac).Scan(&id)
@@ -358,9 +391,15 @@ func (s *Store) Adopt(ctx context.Context, source, mac, assetType, userID string
 	return id, tx.Commit(ctx)
 }
 
-// Ignore blendet einen Vorschlag aus oder holt ihn zurück.
+// Ignore blendet einen Vorschlag aus oder holt ihn zurück (ErrNoCandidate, wenn es ihn nicht gibt).
 func (s *Store) Ignore(ctx context.Context, source, mac string, ignored bool) error {
-	_, err := s.DB.Exec(ctx, `UPDATE it_net_candidates SET ignored = $3 WHERE source = $1 AND mac = $2`,
+	tag, err := s.DB.Exec(ctx, `UPDATE it_net_candidates SET ignored = $3 WHERE source = $1 AND mac = $2`,
 		source, NormMAC(mac), ignored)
-	return err
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNoCandidate
+	}
+	return nil
 }

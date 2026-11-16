@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -104,7 +105,7 @@ func TestITNetPagePerms(t *testing.T) {
 		}
 	}
 	// Monitor/Trennen ohne it.edit: 403
-	for _, fn := range []http.HandlerFunc{h.ITNetMonitorWeb, h.ITNetDetachWeb} {
+	for _, fn := range []http.HandlerFunc{h.ITNetMonitorWeb, h.ITNetDetachWeb, h.ITNetReattachWeb} {
 		if w := itNetDo(fn, "POST", "/it/"+itNetTestID+"/net-monitor", itNetTestID, "", url.Values{"on": {"1"}}); w.Code != http.StatusForbidden {
 			t.Errorf("Asset-Schalter ohne it.edit: Status %d", w.Code)
 		}
@@ -118,6 +119,7 @@ func TestITNetPagePerms(t *testing.T) {
 		{"/it/net/candidates/ignore", "it.netsync", ""},
 		{"/it/" + itNetTestID + "/net-monitor", "it.edit", "it_asset"},
 		{"/it/" + itNetTestID + "/net-detach", "it.edit", "it_asset"},
+		{"/it/" + itNetTestID + "/net-reattach", "it.edit", "it_asset"},
 	} {
 		_, perm, ref, _, hit := matchGate("POST", c.path)
 		if !hit || perm != c.perm || ref != c.ref {
@@ -257,6 +259,11 @@ func TestITNetAdoptFlow(t *testing.T) {
 	if n != 0 {
 		t.Errorf("Vorschlag muss weg sein: %d", n)
 	}
+	// unbekannten Vorschlag ausblenden: Meldung statt Erfolg
+	w = itNetDo(h.ITNetIgnoreWeb, "POST", "/it/net/candidates/ignore", "", pdhSystemUserID, url.Values{"mac": {"aa:bb:cc:0a:0b:0c"}, "ignored": {"1"}})
+	if !strings.Contains(w.Header().Get("Location"), "e=nocand") {
+		t.Errorf("unbekannten Vorschlag ausblenden: %s", w.Header().Get("Location"))
+	}
 	// noch einmal: kein Vorschlag mehr
 	w = itNetDo(h.ITNetAdoptWeb, "POST", "/it/net/candidates/adopt", "", pdhSystemUserID, url.Values{"mac": {"aa:bb:cc:0a:0b:0c"}, "type": {"printer"}})
 	if !strings.Contains(w.Header().Get("Location"), "e=nocand") {
@@ -325,7 +332,9 @@ func TestITNetMonitorToggleNeedsRecPerm(t *testing.T) {
 	if monitored(assetA) {
 		t.Error("Asset in A sollte nicht mehr überwacht sein")
 	}
-	// Trennen in A: Quelle weg, Ports und Alarmzustand gelöscht
+	// Trennen in A: Quelle und ID bleiben, getrennt, nicht überwacht, Ports und Alarmzustand gelöscht
+	_, err = pool.Exec(ctx, `UPDATE it_assets SET net_monitored = true, net_state = 'online', net_state_since = now() WHERE id = $1::uuid`, assetA)
+	must(err)
 	_, err = pool.Exec(ctx, `INSERT INTO it_asset_ports (asset_id, idx) VALUES ($1::uuid, 1)`, assetA)
 	must(err)
 	_, err = pool.Exec(ctx, `INSERT INTO it_net_alarm_state (asset_id) VALUES ($1::uuid)`, assetA)
@@ -333,13 +342,42 @@ func TestITNetMonitorToggleNeedsRecPerm(t *testing.T) {
 	if w := itNetDo(h.ITNetDetachWeb, "POST", "/it/"+assetA+"/net-detach", assetA, user, url.Values{}); w.Code != http.StatusSeeOther {
 		t.Errorf("Trennen in A: %d", w.Code)
 	}
-	var srcNull bool
+	var keep, detached, mon, sinceNull bool
+	var state string
 	var ports, alarms int
-	must(pool.QueryRow(ctx, `SELECT net_source IS NULL AND net_external_id IS NULL FROM it_assets WHERE id = $1::uuid`, assetA).Scan(&srcNull))
+	must(pool.QueryRow(ctx, `SELECT net_source = $2 AND net_external_id = 'a', net_detached, net_monitored, net_state, net_state_since IS NULL
+		FROM it_assets WHERE id = $1::uuid`, assetA, src).Scan(&keep, &detached, &mon, &state, &sinceNull))
 	must(pool.QueryRow(ctx, `SELECT count(*) FROM it_asset_ports WHERE asset_id = $1::uuid`, assetA).Scan(&ports))
 	must(pool.QueryRow(ctx, `SELECT count(*) FROM it_net_alarm_state WHERE asset_id = $1::uuid`, assetA).Scan(&alarms))
-	if !srcNull || ports != 0 || alarms != 0 {
-		t.Errorf("Trennen: Quelle leer %v, Ports %d, Alarm %d", srcNull, ports, alarms)
+	if !keep || !detached || mon || state != "unknown" || !sinceNull || ports != 0 || alarms != 0 {
+		t.Errorf("Trennen: Quelle behalten %v, getrennt %v, überwacht %v, Zustand %s, seit leer %v, Ports %d, Alarm %d",
+			keep, detached, mon, state, sinceNull, ports, alarms)
+	}
+	// Überwachen am getrennten Asset ändert nichts
+	itNetDo(h.ITNetMonitorWeb, "POST", "/it/"+assetA+"/net-monitor", assetA, user, url.Values{"on": {"1"}})
+	if monitored(assetA) {
+		t.Error("getrenntes Asset darf nicht überwacht werden")
+	}
+
+	// Wieder verbinden: Abteilungsrecht zählt; Netzwerk-Typ wird wieder überwacht
+	_, err = pool.Exec(ctx, `UPDATE it_assets SET net_detached = true, net_monitored = false WHERE id = $1::uuid`, assetB)
+	must(err)
+	if w := itNetDo(h.ITNetReattachWeb, "POST", "/it/"+assetB+"/net-reattach", assetB, user, url.Values{}); w.Code != http.StatusForbidden {
+		t.Errorf("Wieder verbinden in B: %d, erwartet 403", w.Code)
+	}
+	if w := itNetDo(h.ITNetReattachWeb, "POST", "/it/"+assetA+"/net-reattach", assetA, user, url.Values{}); w.Code != http.StatusSeeOther {
+		t.Errorf("Wieder verbinden in A: %d", w.Code)
+	}
+	must(pool.QueryRow(ctx, `SELECT net_detached, net_monitored, net_state FROM it_assets WHERE id = $1::uuid`, assetA).Scan(&detached, &mon, &state))
+	if detached || !mon || state != "unknown" {
+		t.Errorf("Wieder verbinden: getrennt %v, überwacht %v, Zustand %s", detached, mon, state)
+	}
+	// Telefon wird wieder verbunden, aber nicht überwacht
+	_, err = pool.Exec(ctx, `UPDATE it_assets SET type = 'phone', net_detached = true, net_monitored = false WHERE id = $1::uuid`, assetA)
+	must(err)
+	itNetDo(h.ITNetReattachWeb, "POST", "/it/"+assetA+"/net-reattach", assetA, user, url.Values{})
+	if monitored(assetA) {
+		t.Error("Telefon: nach Wiederverbinden nicht überwacht erwartet")
 	}
 }
 
@@ -349,6 +387,8 @@ func TestITListNetBadge(t *testing.T) {
 		{ID: itNetTestID, Name: "Switch Halle", StatusLabel: "Aktiv", StatusClass: "b-green",
 			NetSource: true, NetStateLabel: "offline", NetStateClass: "b-red", FirmwareUpdate: true},
 		{ID: "22222222-2222-4222-8222-222222222222", Name: "PC ohne Quelle", StatusLabel: "Aktiv", StatusClass: "b-green"},
+		{ID: "33333333-3333-4333-8333-333333333333", Name: "Getrennter Drucker", StatusLabel: "Aktiv", StatusClass: "b-green",
+			NetSource: true, NetDetached: true, NetStateLabel: "unbekannt", NetStateClass: "b-gray"},
 	}}
 	html := renderPage(t, tmpl, "it", data)
 	if !strings.Contains(html, `badge b-red`) {
@@ -360,11 +400,38 @@ func TestITListNetBadge(t *testing.T) {
 	if !strings.Contains(html, `href="/it/net"`) || !strings.Contains(html, ">3<") {
 		t.Error("Knopf Netz-Abgleich mit Zähler fehlt")
 	}
-	if !strings.Contains(html, `/it?net=offline`) {
+	if !strings.Contains(html, `href="/it?net=offline"`) {
 		t.Error("Filter nur offline fehlt")
 	}
 	if strings.Count(html, "it-net-state") != 1 {
-		t.Errorf("Zustandsabzeichen nur bei Assets mit Quelle: %d", strings.Count(html, "it-net-state"))
+		t.Errorf("Zustandsabzeichen nur bei Assets mit Quelle (nicht getrennt): %d", strings.Count(html, "it-net-state"))
+	}
+	if !strings.Contains(html, "Quelle getrennt") {
+		t.Error("Abzeichen „Quelle getrennt“ fehlt")
+	}
+	// Filter: ohne Filter ist „Alle“ hervorgehoben, mit Filter nicht; Typ und net=offline kombinierbar
+	allActive := regexp.MustCompile(`href="/it"[^>]*btn-primary`)
+	if !allActive.MatchString(html) {
+		t.Error("„Alle“ ohne Filter nicht hervorgehoben")
+	}
+	if !strings.Contains(html, `href="/it?type=server&amp;net=offline"`) && !strings.Contains(html, `href="/it?net=offline"`) {
+		t.Error("„Nur offline“ fehlt")
+	}
+	data.NetFilter, data.Filter = "offline", "server"
+	html = renderPage(t, tmpl, "it", data)
+	if allActive.MatchString(html) {
+		t.Error("„Alle“ bei aktivem Filter hervorgehoben")
+	}
+	if !strings.Contains(html, `href="/it?type=network&amp;net=offline"`) {
+		t.Error("Typfilter verliert net=offline")
+	}
+	if !regexp.MustCompile(`href="/it\?type=server"[^>]*btn-primary`).MatchString(html) {
+		t.Error("„Nur offline“ (aktiv) muss beim Abwählen den Typ behalten und hervorgehoben sein")
+	}
+	data.NetFilter = ""
+	html = renderPage(t, tmpl, "it", data)
+	if !strings.Contains(html, `href="/it?type=server&amp;net=offline"`) {
+		t.Error("„Nur offline“ verliert den Typfilter")
 	}
 }
 
@@ -384,8 +451,28 @@ func TestITDetailNetCard(t *testing.T) {
 	if strings.Contains(html, "/net-monitor") || strings.Contains(html, "/net-detach") {
 		t.Error("ohne it.edit keine Schalter")
 	}
+	data.Net.Source = "UniFi"
+	if html = renderPage(t, tmpl, "it_detail", data); !strings.Contains(html, "UniFi ·") {
+		t.Error("Quelle als „UniFi“ erwartet")
+	}
 	data.Net = nil
 	if html = renderPage(t, tmpl, "it_detail", data); strings.Contains(html, "it-net-card") {
 		t.Error("ohne Quelle keine Netzkarte")
+	}
+	// getrennt: keine Netzkarte, Abzeichen und Knopf „Wieder verbinden“
+	data.NetDetached, data.CanNetEdit = true, true
+	html = renderPage(t, tmpl, "it_detail", data)
+	if strings.Contains(html, "it-net-card") || !strings.Contains(html, "Quelle getrennt") || !strings.Contains(html, `action="/it/`+itNetTestID+`/net-reattach"`) {
+		t.Error("getrennt: Abzeichen und Wieder verbinden erwartet, keine Netzkarte")
+	}
+	data.CanNetEdit = false
+	if html = renderPage(t, tmpl, "it_detail", data); strings.Contains(html, "/net-reattach") {
+		t.Error("ohne it.edit kein Wieder verbinden")
+	}
+}
+
+func TestITNetSourceName(t *testing.T) {
+	if itNetSourceName("unifi") != "UniFi" || itNetSourceName("anders") != "anders" {
+		t.Errorf("Quellnamen: %q %q", itNetSourceName("unifi"), itNetSourceName("anders"))
 	}
 }
