@@ -1,0 +1,46 @@
+{
+  "id": "0b7a1c52-3d11-4f0e-9a43-1e6d5c2a8b01",
+  "name": "Switch Halle 1",
+  "model": "USW-Pro-24-PoE",
+  "supported": true,
+  "macAddress": "94:2a:6f:26:c6:ca",
+  "ipAddress": "192.168.1.10",
+  "state": "ONLINE",
+  "configurationId": "7596498d2f367dc2",
+  "firmwareVersion": "7.1.26",
+  "firmwareUpdatable": false,
+  "adoptedAt": "2026-01-10T08:00:00Z",
+  "provisionedAt": "2026-11-01T06:30:00Z",
+  "features": {
+    "switching": {}
+  },
+  "uplink": {
+    "deviceId": "0b7a1c52-3d11-4f0e-9a43-1e6d5c2a8b03"
+  },
+  "interfaces": {
+    "ports": [
+      {
+        "idx": 1,
+        "state": "UP",
+        "connector": "RJ45",
+        "maxSpeedMbps": 2500,
+        "speedMbps": 1000,
+        "poe": {"standard": "802.3at", "type": 2, "enabled": true, "state": "UP"}
+      },
+      {
+        "idx": 2,
+        "state": "DOWN",
+        "connector": "RJ45",
+        "maxSpeedMbps": 2500,
+        "poe": {"standard": "802.3af", "type": 1, "enabled": false, "state": "DOWN"}
+      },
+      {
+        "idx": 25,
+        "state": "UP",
+        "connector": "SFPPLUS",
+        "maxSpeedMbps": 10000,
+        "speedMbps": 10000
+      }
+    ]
+  }
+}

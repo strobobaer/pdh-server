@@ -1,0 +1,34 @@
+{
+  "offset": 0,
+  "limit": 200,
+  "count": 2,
+  "totalCount": 3,
+  "data": [
+    {
+      "id": "0b7a1c52-3d11-4f0e-9a43-1e6d5c2a8b01",
+      "name": "Switch Halle 1",
+      "model": "USW-Pro-24-PoE",
+      "macAddress": "94:2a:6f:26:c6:ca",
+      "ipAddress": "192.168.1.10",
+      "state": "ONLINE",
+      "firmwareVersion": "7.1.26",
+      "firmwareUpdatable": false,
+      "supported": true,
+      "interfaces": ["ports"],
+      "features": ["switching"]
+    },
+    {
+      "id": "0b7a1c52-3d11-4f0e-9a43-1e6d5c2a8b02",
+      "name": "AP Büro",
+      "model": "U6-Pro",
+      "macAddress": "94:2A:6F:26:C6:CB",
+      "ipAddress": "192.168.1.11",
+      "state": "OFFLINE",
+      "firmwareVersion": "6.6.55",
+      "firmwareUpdatable": true,
+      "supported": true,
+      "interfaces": ["ports", "radios"],
+      "features": ["accessPoint"]
+    }
+  ]
+}
