@@ -22,7 +22,7 @@ fest, an die Paket 2 (Omada) und Paket 3 (SNMP v3) später andocken.
 
 1. **Netzgeräte automatisch:** Switches, Access Points, Gateways der UniFi-Anlage
    werden als IT-Assets angelegt und laufend aktualisiert (Name beim Anlegen,
-   Modell, MAC, IP, Firmware, Seriennummer soweit geliefert).
+   Modell, MAC, IP, Firmware). UniFi liefert keine Seriennummer – das Feld bleibt von Hand gepflegt.
 2. **Clients als Vorschläge:** Clients (PCs, Drucker, Handys, Gäste) werden
    **nicht** automatisch angelegt. Sie erscheinen in einer Vorschlagsliste und
    werden per Klick übernommen oder dauerhaft ausgeblendet. Übernommene Clients
@@ -30,7 +30,8 @@ fest, an die Paket 2 (Omada) und Paket 3 (SNMP v3) später andocken.
    *(Vorschlag Claude: verhindert, dass Hunderte wechselnde Handys die Liste fluten.)*
 3. **Überwachung:** je überwachtem Asset Zustand online/offline/unbekannt,
    „zuletzt gesehen“, Firmware mit Hinweis „Update verfügbar“, Ports
-   (Nummer, Name, auf/ab, Geschwindigkeit, PoE) und Uplink (an welchem Gerät/Port).
+   (Nummer, Stecker, auf/ab, Geschwindigkeit, PoE) und Uplink (an welchem Gerät;
+   UniFi nennt den Port nicht).
 4. **Störmeldung:** Ist ein überwachtes Asset länger als die Karenzzeit
    (Standard 5 min) offline, legt der Wächter ein **Alarm-Ticket** an –
    gleiche Regeln wie Schwellwert-Alarme 0.80.15 (`requires_root_cause`,
@@ -82,10 +83,12 @@ type Snapshot struct {
 ```
 
 `NetDevice`: ExternalID, MAC, Name, Model, Kind (switch/ap/gateway/other →
-it-Typ `network`), IP, Firmware, FirmwareUpdatable, Serial, State
-(online/offline/unknown), Ports[], UplinkDeviceID, UplinkPort.
-`NetClient`: ExternalID, MAC, Name/Hostname, IP, Wired/Wireless/VPN,
-UplinkDeviceID, UplinkPort (soweit geliefert).
+it-Typ `network`; UniFi: aus `features` – `switching` → switch, `accessPoint` → ap,
+sonst other), IP, Firmware, FirmwareUpdatable, State (online/offline/unknown),
+Ports[] (nur aus den Details), UplinkDeviceID (nur aus den Details).
+`NetClient`: ExternalID, MAC, Name, IP, Kind (wired/wireless/vpn), UplinkDeviceID.
+UniFi meldet nur gerade verbundene Clients – fehlt ein übernommener Client in
+der Liste, gilt er als offline.
 
 **Schlüssel für die Zuordnung:** MAC (klein, mit Doppelpunkten normiert).
 Gibt es schon ein von Hand angelegtes Asset mit gleicher MAC, wird es
@@ -104,14 +107,14 @@ verknüpft statt doppelt angelegt.
 | `net_last_seen TIMESTAMPTZ` | zuletzt online gesehen |
 | `net_state_since TIMESTAMPTZ` | seit wann im aktuellen Zustand |
 | `firmware TEXT`, `firmware_update BOOLEAN` | Firmware + Update verfügbar |
-| `net_uplink TEXT` | lesbarer Uplink, z. B. „USW-24 · Port 7“ |
+| `net_uplink TEXT` | lesbarer Uplink, z. B. „USW-24“ (Name des Uplink-Geräts) |
 | `net_gone BOOLEAN DEFAULT false` | von der Quelle nicht mehr gemeldet (nicht löschen) |
 
 Eindeutig: `(net_source, net_external_id)` wo gesetzt; Index auf `lower(mac_address)`.
 
 Neue Tabellen:
 
-- `it_asset_ports(asset_id, idx, name, up, speed_mbps, poe, PRIMARY KEY(asset_id, idx))` – wird bei jedem Detail-Abruf ersetzt.
+- `it_asset_ports(asset_id, idx, connector, state, speed_mbps, max_speed_mbps, poe_state, PRIMARY KEY(asset_id, idx))` – wird bei jedem Detail-Abruf ersetzt.
 - `it_net_candidates(source, mac, external_id, name, ip, kind, uplink, last_seen, ignored, PRIMARY KEY(source, mac))` – Client-Vorschläge; übernommene verschwinden, ignorierte bleiben mit `ignored = true`.
 - `it_net_alarm_state(asset_id PK, state normal/alarm, offline_since, ticket_id)` – wie `energy_threshold_state`.
 - Einstellungen in `app_settings`: `it.net.unifi.enabled`, `it.net.interval_s` (60), `it.net.grace_min` (5), `it.net.responsible_user`, `it.net.responsible_group`, `it.net.priority` (high), `it.net.last_run`, `it.net.last_error`.
@@ -123,7 +126,7 @@ Neue Tabellen:
    Fehler in `it.net.last_error`, **kein** Alarm. Nach Behebung normal weiter.
 2. Je Netzgerät: Asset per (Quelle, ID) oder MAC finden, sonst anlegen
    (Typ `network`, Status `active`, `created_by` = Systembenutzer, Hersteller „Ubiquiti“).
-   Überschrieben werden **nur** Quell-Felder: IP, MAC, Modell, Seriennummer,
+   Überschrieben werden **nur** Quell-Felder: IP, MAC, Modell,
    Firmware, Zustand, Uplink, Ports. Name nur beim Anlegen.
 3. Übernommene Clients aktualisieren (IP, Zustand); online = in der Clientliste.
 4. Nicht übernommene Clients in `it_net_candidates` schreiben/auffrischen
@@ -177,7 +180,11 @@ zuletzt gesehen, Link zum Asset. Sink-Umsetzung nach `internal/web/energy_alarms
 Amtlich (UniFi Network Integration API, apidoc-cdn.ui.com):
 `GET /v1/sites/{siteId}/devices` (Seiten), `GET /v1/sites/{siteId}/devices/{id}`
 (Firmware, `firmwareUpdatable`, `interfaces.ports[]`), `GET /v1/sites/{siteId}/clients`
-(Seiten; `type` WIRED/WIRELESS/VPN, `macAddress`, `ipAddress`, `uplinkDeviceId`).
+(Seiten; `type` WIRED/WIRELESS/VPN/TELEPORT, `macAddress`, `ipAddress`, `uplinkDeviceId`).
+Geprüft gegen OpenAPI 10.3.58 am 16.11.2026. Zustände: `ONLINE` → online;
+`OFFLINE`, `CONNECTION_INTERRUPTED`, `ISOLATED` → offline; alle übrigen
+(`UPDATING`, `GETTING_READY`, `ADOPTING`, `PENDING_ADOPTION`, `DELETING`, …) → unknown
+(kein Alarm während eines Firmware-Updates). VPN-/Teleport-Clients werden nicht vorgeschlagen.
 Feldnamen vor dem Bau gegen die aktuelle OpenAPI prüfen und im Abschnitt
 „Form der Schnittstelle“ bündeln; Tests mit Beispiel-JSON in `testdata`.
 Gleiche Sicherheit wie bisher (Pin, nur Hausnetz-Adressen, Fristen, Größenbegrenzung).
