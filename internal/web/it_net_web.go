@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5"
 	"github.com/rs/zerolog"
 
 	"pdh/internal/modules/it"
@@ -97,12 +98,6 @@ func itNetSourceName(src string) string {
 
 // ── Seite ────────────────────────────────────────────────────
 
-// itNetTypes: übernehmbare Typen mit deutschen Namen.
-var itNetTypes = []itNetOption{
-	{"workstation", "Arbeitsplatz"}, {"printer", "Drucker"}, {"phone", "Telefon"},
-	{"tablet", "Tablet"}, {"server", "Server"}, {"other", "Sonstiges"},
-}
-
 var itNetPriorities = []itNetOption{
 	{"low", "Niedrig"}, {"medium", "Mittel"}, {"high", "Hoch"}, {"critical", "Kritisch"},
 }
@@ -178,12 +173,19 @@ func (h *Handler) ITNetPage(w http.ResponseWriter, r *http.Request) {
 		BaseData: h.baseData(r, "it-net", "Netz-Abgleich", "IT-Infrastruktur"),
 		CanSetup: h.itNetCan(r, permITNetsync, ""),
 		CanUnifi: h.itNetCan(r, permUnifi, ""),
-		Types:    itNetTypes, Prios: itNetPriorities,
+		Prios:    itNetPriorities,
 		Tab: q.Get("tab"), Query: strings.TrimSpace(q.Get("q")),
 		Notice: itNetNotices[q.Get("n")], Err: itNetErrors[q.Get("e")],
 	}
 	if d.Tab != "hidden" {
 		d.Tab = ""
+	}
+	// Typauswahl beim Übernehmen: aktive Kategorien außer „Netzwerk“ (das Netzgeräte vorbehalten ist)
+	cats, _ := h.itCategories(ctx)
+	for _, c := range cats {
+		if c.Active && c.Key != "network" {
+			d.Types = append(d.Types, itNetOption{c.Key, c.Name})
+		}
 	}
 	d.Connected = h.certSetting(ctx, keyUnifiURL) != "" && h.certSetting(ctx, keyUnifiKey) != "" && h.certSetting(ctx, keyUnifiPin) != ""
 	d.Enabled = h.itNetEnabled(ctx)
@@ -399,15 +401,7 @@ func (h *Handler) ITNetAdoptWeb(w http.ResponseWriter, r *http.Request) {
 		itNetForbidden(w)
 		return
 	}
-	typ := r.FormValue("type")
-	ok := false
-	for _, t := range itNetTypes {
-		ok = ok || t.Value == typ
-	}
-	if !ok {
-		itNetBack(w, r, "", "type")
-		return
-	}
+	typ := r.FormValue("type") // ungültige oder ausgeblendete Kategorie lehnt Adopt mit ErrBadType ab
 	uid := getUser(r).ID
 	if uid == "" {
 		uid = pdhSystemUserID
@@ -477,6 +471,21 @@ type ITNetDetailView struct {
 	Monitored      bool
 	Gone           bool
 	Ports          []ITNetPortView
+	// Karenz bis zum Alarm: wirksamer Wert in Minuten und Herkunft (eigener Wert, Kategorie, allgemein).
+	GraceMin    int
+	GraceSource string
+	GraceOwn    string // eigener Wert fürs Feld (leer = keiner)
+}
+
+// Hinweise und Fehler der Detailseite (feste Schlüssel in der Adresse).
+var itNetDetailNotices = map[string]string{
+	"grace":       "Karenz gespeichert.",
+	"grace-reset": "Eigener Wert entfernt – es gilt wieder der Wert der Kategorie bzw. der allgemeine.",
+}
+
+var itNetDetailErrors = map[string]string{
+	"grace": "Karenz: bitte 1 bis 1440 Minuten eingeben oder das Feld leeren.",
+	"save":  "Die Karenz konnte nicht gespeichert werden.",
 }
 
 func itNetSpeed(mbps int) string {
@@ -518,9 +527,22 @@ func itNetPoE(s string) string {
 }
 
 // itNetDetail: Daten der Karte „Netz“ samt Ports.
-func (h *Handler) itNetDetail(ctx context.Context, a *it.Asset) *ITNetDetailView {
+func (h *Handler) itNetDetail(ctx context.Context, a *it.Asset, cats map[string]it.Category) *ITNetDetailView {
 	v := &ITNetDetailView{Source: itNetSourceName(a.NetSource), Firmware: a.Firmware, FirmwareUpdate: a.FirmwareUpdate,
 		Uplink: a.NetUplink, Monitored: a.NetMonitored, Gone: a.NetGone, Role: "Client"}
+	// Karenz: eigener Wert, sonst der der Kategorie, sonst der allgemeine (wie der Wächter).
+	v.GraceMin, v.GraceSource = int(h.itNetGrace(ctx)/time.Minute), "allgemein"
+	if c, ok := cats[string(a.Type)]; ok && c.GraceMinutes != nil {
+		v.GraceMin, v.GraceSource = *c.GraceMinutes, "Kategorie"
+	}
+	if h.db != nil {
+		var own *int
+		if err := h.db.QueryRow(ctx, `SELECT net_grace_minutes FROM it_assets WHERE id = $1::uuid`, a.ID).Scan(&own); err != nil {
+			itNetLog().Warn().Err(err).Msg("karenz lesen")
+		} else if own != nil {
+			v.GraceMin, v.GraceSource, v.GraceOwn = *own, "eigener Wert", strconv.Itoa(*own)
+		}
+	}
 	if a.NetRole == "device" {
 		v.Role = "Netzgerät"
 	}
@@ -587,6 +609,37 @@ func (h *Handler) ITNetMonitorWeb(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, "/it/"+id, http.StatusSeeOther)
+}
+
+// ITNetGraceWeb: POST /it/{id}/net-grace (minutes) – eigene Karenz des Assets setzen; leer = zurücksetzen.
+func (h *Handler) ITNetGraceWeb(w http.ResponseWriter, r *http.Request) {
+	id, ok := h.itNetAssetGuard(w, r)
+	if !ok {
+		return
+	}
+	back := func(key string) { http.Redirect(w, r, "/it/"+id+"?"+key, http.StatusSeeOther) }
+	var minutes *int
+	if s := strings.TrimSpace(r.FormValue("minutes")); s != "" {
+		n, err := strconv.Atoi(s)
+		if err != nil || n < 1 || n > 1440 {
+			back("e=grace")
+			return
+		}
+		minutes = &n
+	}
+	switch err := h.it.SetAssetGrace(r.Context(), id, minutes); {
+	case errors.Is(err, pgx.ErrNoRows):
+		http.NotFound(w, r)
+	case errors.Is(err, it.ErrCategoryInvalid):
+		back("e=grace")
+	case err != nil:
+		itNetLog().Error().Err(err).Msg("karenz speichern")
+		back("e=save")
+	case minutes == nil:
+		back("n=grace-reset")
+	default:
+		back("n=grace")
+	}
 }
 
 // ITNetDetachWeb: POST /it/{id}/net-detach – Asset bleibt, wird nicht mehr abgeglichen.

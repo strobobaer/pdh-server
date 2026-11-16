@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"net/url"
@@ -248,3 +249,70 @@ func (h *Handler) ITCategoryDeleteWeb(w http.ResponseWriter, r *http.Request) {
 	h.itCategoryDone(w, r, h.it.DeleteCategory(r.Context(), chi.URLParam(r, "key")), "deleted")
 }
 
+// itCategories lädt alle Kategorien (auch ausgeblendete) einmal je Anfrage.
+// Bei einem Fehler werden leere Werte geliefert, die Seiten zeigen dann den
+// Schlüssel selbst und das Symbol ti-box.
+func (h *Handler) itCategories(ctx context.Context) (list []it.Category, byKey map[string]it.Category) {
+	byKey = map[string]it.Category{}
+	if h.it == nil {
+		return nil, byKey
+	}
+	list, err := h.it.Categories(ctx, true)
+	if err != nil {
+		componentLog("it-kategorien").Warn().Err(err).Msg("kategorien lesen")
+		return nil, byKey
+	}
+	for _, c := range list {
+		byKey[c.Key] = c
+	}
+	return list, byKey
+}
+
+// itCategoryLabelIcon: Bezeichnung und Symbol zu einem Schlüssel; unbekannt → Schlüssel und ti-box.
+func itCategoryLabelIcon(byKey map[string]it.Category, key string) (label, icon string) {
+	c, ok := byKey[key]
+	if !ok {
+		return key, "ti-box"
+	}
+	return c.Name, itCategoryIcon(c)
+}
+
+// ITTypeOption: Eintrag einer Kategorienauswahl oder Filterleiste.
+type ITTypeOption struct {
+	Value, Label, Icon string
+	Selected           bool
+}
+
+// itTypeOptions: aktive Kategorien in Reihenfolge; ist current eine
+// ausgeblendete Kategorie, steht sie zusätzlich (gekennzeichnet) und gewählt in der Liste.
+func itTypeOptions(list []it.Category, current string) []ITTypeOption {
+	var out []ITTypeOption
+	for _, c := range list {
+		if !c.Active && c.Key != current {
+			continue
+		}
+		o := ITTypeOption{Value: c.Key, Label: c.Name, Icon: itCategoryIcon(c), Selected: c.Key == current}
+		if !c.Active {
+			o.Label += " (ausgeblendet)"
+		}
+		out = append(out, o)
+	}
+	return out
+}
+
+// itFilterOptions: aktive Kategorien mit mindestens einem Asset (Filterknöpfe auf /it).
+func itFilterOptions(list []it.Category) []ITTypeOption {
+	var out []ITTypeOption
+	for _, c := range list {
+		if c.Active && c.Assets > 0 {
+			out = append(out, ITTypeOption{Value: c.Key, Label: c.Name, Icon: itCategoryIcon(c)})
+		}
+	}
+	return out
+}
+
+// itCategoryUsable: darf ein Asset diese Kategorie bekommen? Aktiv, oder es ist die bisherige des Assets.
+func itCategoryUsable(byKey map[string]it.Category, key, current string) bool {
+	c, ok := byKey[key]
+	return ok && (c.Active || key == current)
+}

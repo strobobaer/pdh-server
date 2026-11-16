@@ -17,6 +17,7 @@ import (
 
 	"pdh/internal/core/rbac"
 	"pdh/internal/core/users"
+	"pdh/internal/modules/it"
 )
 
 const itNetTestID = "11111111-1111-4111-8111-111111111111"
@@ -129,6 +130,7 @@ func TestITNetPagePerms(t *testing.T) {
 
 	// Darstellung mit Datenbank: it.view allein zeigt keine Formulare.
 	hp, pool, src := itNetPageEnv(t)
+	hp.it = it.NewService(it.NewRepository(pool))
 	ctx := context.Background()
 	if _, err := pool.Exec(ctx, `INSERT INTO it_net_candidates (source, mac, name, ip, kind, last_seen) VALUES ($1, 'aa:bb:cc:01:02:03', 'Drucker Halle', '10.0.0.5', 'wired', now())`, src); err != nil {
 		t.Fatal(err)
@@ -149,7 +151,7 @@ func TestITNetPagePerms(t *testing.T) {
 	}
 	hp.hasPermHook = func(*http.Request, string) bool { return true }
 	body = itNetDo(hp.ITNetPage, "GET", "/it/net", "", "", nil).Body.String()
-	for _, want := range []string{`action="/it/net/settings"`, `action="/it/net/candidates/adopt"`, `action="/it/net/run"`, "Arbeitsplatz", "Telefon"} {
+	for _, want := range []string{`action="/it/net/settings"`, `action="/it/net/candidates/adopt"`, `action="/it/net/run"`, "Workstation", "Telefon"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("mit it.netsync fehlt: %s", want)
 		}
@@ -379,7 +381,7 @@ func TestITNetMonitorToggleNeedsRecPerm(t *testing.T) {
 	if monitored(assetA) {
 		t.Error("Telefon: nach Wiederverbinden nicht überwacht erwartet")
 	}
-	// Arbeitsplatz ebenfalls nicht, Server und Drucker ja
+	// Workstation ebenfalls nicht, Server und Drucker ja
 	for typ, want := range map[string]bool{"workstation": false, "server": true, "printer": true, "other": true} {
 		_, err = pool.Exec(ctx, `UPDATE it_assets SET type = $2::text, net_detached = true, net_monitored = false WHERE id = $1::uuid`, assetA, typ)
 		must(err)
@@ -392,7 +394,8 @@ func TestITNetMonitorToggleNeedsRecPerm(t *testing.T) {
 
 func TestITListNetBadge(t *testing.T) {
 	tmpl := loadTestTemplates(t)
-	data := ITPageData{Stats: map[string]int{}, NetCandidates: 3, Assets: []ITAssetView{
+	data := ITPageData{Stats: map[string]int{}, NetCandidates: 3,
+		Filters: []ITTypeOption{{Value: "server", Label: "Server"}, {Value: "network", Label: "Netzwerk"}, {Value: "workstation", Label: "Workstation"}}, Assets: []ITAssetView{
 		{ID: itNetTestID, Name: "Switch Halle", StatusLabel: "Aktiv", StatusClass: "b-green",
 			NetSource: true, NetStateLabel: "offline", NetStateClass: "b-red", FirmwareUpdate: true},
 		{ID: "22222222-2222-4222-8222-222222222222", Name: "PC ohne Quelle", StatusLabel: "Aktiv", StatusClass: "b-green"},

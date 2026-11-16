@@ -296,15 +296,6 @@ func iconMapAll() map[string]string {
 	return out
 }
 
-// itTypeIcons: Symbol je IT-Asset-Typ (it.<typ>).
-func itTypeIcons() map[string]string {
-	out := map[string]string{}
-	for _, t := range []string{"server", "network", "workstation", "printer", "phone", "tablet", "other"} {
-		out[t] = iconClass("it." + t)
-	}
-	return out
-}
-
 // recordIcon: Symbol einer Vorgangsart bzw. eines Datensatz-Moduls
 // ("maintenance" = Wartungsauftrag); unbekannte Module behalten ihr festes Symbol.
 func recordIcon(module string) string {

@@ -456,12 +456,8 @@ func (h *Handler) partnerParts(ctx context.Context, partnerID string) ([]Partner
 	return list, formatEuro(stockValue)
 }
 
-var itTypeLabels = map[string]string{
-	"pc": "PC", "laptop": "Laptop", "server": "Server", "switch": "Switch", "router": "Router",
-	"printer": "Drucker", "phone": "Telefon", "tablet": "Tablet", "plc": "SPS", "hmi": "HMI", "other": "Sonstiges",
-}
-
 func (h *Handler) partnerIT(ctx context.Context, partnerID string) []PartnerITRow {
+	_, catByKey := h.itCategories(ctx)
 	rows, err := h.db.Query(ctx, `
 		SELECT a.id::text, a.name, a.type::text, COALESCE(a.model, ''), COALESCE(a.serial_no, ''), a.status::text,
 		       COALESCE(a.manufacturer_id = $1, false), COALESCE(a.supplier_id = $1, false)
@@ -479,10 +475,7 @@ func (h *Handler) partnerIT(ctx context.Context, partnerID string) []PartnerITRo
 		if rows.Scan(&a.ID, &a.Name, &typ, &a.Model, &a.SerialNo, &a.Status, &isM, &isS) != nil {
 			continue
 		}
-		a.TypeLabel = itTypeLabels[typ]
-		if a.TypeLabel == "" {
-			a.TypeLabel = typ
-		}
+		a.TypeLabel, _ = itCategoryLabelIcon(catByKey, typ)
 		if isM {
 			a.Roles = append(a.Roles, "manufacturer")
 		}
