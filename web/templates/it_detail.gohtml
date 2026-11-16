@@ -45,6 +45,46 @@
       </div>
     </div>
 
+    {{with .Net}}
+    <!-- Netz (Abgleich mit UniFi) -->
+    <div class="card it-net-card">
+      <div class="card-title" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><i class="ti ti-network"></i> Netz
+        <span class="badge {{.StateClass}}">{{.StateLabel}}</span>
+        {{if .FirmwareUpdate}}<span class="badge b-amber" title="Firmware-Update verfügbar">Update</span>{{end}}
+        {{if .Gone}}<span class="badge b-gray" title="Die Quelle meldet das Gerät nicht mehr">nicht mehr gemeldet</span>{{end}}
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,150px),1fr));gap:12px;font-size:13px">
+        <div><div style="color:var(--muted);font-size:11px">Quelle</div>{{.Source}} · {{.Role}}</div>
+        <div><div style="color:var(--muted);font-size:11px">Zustand seit</div>{{if .StateSince}}{{.StateSince}}{{else}}—{{end}}</div>
+        <div><div style="color:var(--muted);font-size:11px">Zuletzt gesehen</div>{{if .LastSeen}}{{.LastSeen}}{{else}}—{{end}}</div>
+        <div><div style="color:var(--muted);font-size:11px">Firmware</div>{{if .Firmware}}{{.Firmware}}{{else}}—{{end}}</div>
+        <div><div style="color:var(--muted);font-size:11px">Uplink</div>{{if .Uplink}}{{.Uplink}}{{else}}—{{end}}</div>
+        <div><div style="color:var(--muted);font-size:11px">Überwacht</div>{{if .Monitored}}ja – Ausfall erzeugt ein Ticket{{else}}nein{{end}}</div>
+      </div>
+      {{if .Ports}}
+      <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%;margin-top:12px">
+        <table style="min-width:420px">
+          <thead><tr><th>Port</th><th>Anschluss</th><th>Zustand</th><th>Geschwindigkeit</th><th>PoE</th></tr></thead>
+          <tbody>
+          {{range .Ports}}<tr><td>{{.Idx}}</td><td style="font-size:12px">{{if .Connector}}{{.Connector}}{{else}}—{{end}}</td><td>{{if .Up}}<span class="badge b-green">aktiv</span>{{else}}<span class="badge b-gray">{{.State}}</span>{{end}}</td><td style="font-size:12px">{{.Speed}}</td><td style="font-size:12px">{{if .PoE}}{{.PoE}}{{else}}—{{end}}</td></tr>{{end}}
+          </tbody>
+        </table>
+      </div>
+      {{end}}
+      {{if $.CanNetEdit}}
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+        <form method="POST" action="/it/{{$.Asset.ID}}/net-monitor" style="margin:0">
+          <input type="hidden" name="on" value="{{if .Monitored}}0{{else}}1{{end}}">
+          <button type="submit" class="btn btn-small" title="Bei Ausfall ein Alarm-Ticket anlegen"><i class="ti {{if .Monitored}}ti-bell-off{{else}}ti-bell{{end}}"></i> {{if .Monitored}}Nicht mehr überwachen{{else}}Überwachen{{end}}</button>
+        </form>
+        <form method="POST" action="/it/{{$.Asset.ID}}/net-detach" style="margin:0" onsubmit="return confirm('Quelle trennen? Das Asset bleibt erhalten, Zustand und Ports werden nicht mehr abgeglichen. Meldet UniFi das Gerät weiter, wird es beim nächsten Abgleich wieder verknüpft bzw. als Vorschlag gezeigt.')">
+          <button type="submit" class="btn btn-small"><i class="ti ti-unlink"></i> Quelle trennen</button>
+        </form>
+      </div>
+      {{end}}
+    </div>
+    {{end}}
+
     <!-- Notizen -->
     <div class="card">
       <div class="card-title">Notizen</div>

@@ -1,10 +1,12 @@
 {{template "base" .}}
 {{define "content"}}
-<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:18px">
   <div>
     <h1 style="font-size:19px;font-weight:600">IT-Infrastruktur</h1>
     <p style="font-size:12px;color:var(--muted);margin-top:3px">{{.Stats.total}} Assets · {{.Stats.active}} aktiv</p>
   </div>
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end">
+  <a class="btn btn-small" href="/it/net" title="Netz-Abgleich mit UniFi: Zustand, Vorschläge, Einstellungen"><i class="ti ti-network"></i> Netz-Abgleich{{if .NetCandidates}} <span class="badge b-blue" title="Offene Vorschläge">{{.NetCandidates}}</span>{{end}}</a>
   {{template "icon-button-toolbar" (dict
     "Class" "end"
     "Label" "IT-Aktionen"
@@ -13,6 +15,7 @@
       (dict "Action" "new" "ShowLabel" true "Label" "Neues Asset" "OnClick" "document.getElementById('new-asset').style.display='block'")
     )
   )}}
+  </div>
 </div>
 
 <div class="stats" style="grid-template-columns:repeat(4,1fr);margin-bottom:18px">
@@ -65,6 +68,7 @@
   {{if eq .Filter ""}}{{template "icon-button" (dict "Action" "filter" "ShowLabel" true "Label" "Alle" "Href" "/it" "Class" "btn-primary")}}{{else}}{{template "icon-button" (dict "Action" "filter" "ShowLabel" true "Label" "Alle" "Href" "/it")}}{{end}}
   {{if eq .Filter "server"}}{{template "icon-button" (dict "Action" "filter" "ShowLabel" true "Label" "Server" "Href" "/it?type=server" "Class" "btn-primary")}}{{else}}{{template "icon-button" (dict "Action" "filter" "ShowLabel" true "Label" "Server" "Href" "/it?type=server")}}{{end}}
   {{if eq .Filter "network"}}{{template "icon-button" (dict "Action" "filter" "ShowLabel" true "Label" "Netzwerk" "Href" "/it?type=network" "Class" "btn-primary")}}{{else}}{{template "icon-button" (dict "Action" "filter" "ShowLabel" true "Label" "Netzwerk" "Href" "/it?type=network")}}{{end}}
+  {{if eq .NetFilter "offline"}}{{template "icon-button" (dict "Action" "filter" "ShowLabel" true "Label" "Nur offline" "Href" "/it" "Class" "btn-primary")}}{{else}}{{template "icon-button" (dict "Action" "filter" "ShowLabel" true "Label" "Nur offline" "Href" "/it?net=offline")}}{{end}}
   {{if eq .Filter "workstation"}}{{template "icon-button" (dict "Action" "filter" "ShowLabel" true "Label" "Workstation" "Href" "/it?type=workstation" "Class" "btn-primary")}}{{else}}{{template "icon-button" (dict "Action" "filter" "ShowLabel" true "Label" "Workstation" "Href" "/it?type=workstation")}}{{end}}
 </div>
 
@@ -85,7 +89,9 @@
         {{if .Hostname}}<div style="color:var(--muted);font-size:11px">{{.Hostname}}</div>{{end}}
       </td>
       <td style="font-size:12px;color:var(--muted)">{{.Location}}</td>
-      <td id="it-status-{{.ID}}"><span class="badge {{.StatusClass}}">{{.StatusLabel}}</span></td>
+      <td><span id="it-status-{{.ID}}"><span class="badge {{.StatusClass}}">{{.StatusLabel}}</span></span>
+        {{if .NetSource}}<div style="margin-top:4px;display:flex;gap:4px;flex-wrap:wrap"><span class="badge {{.NetStateClass}} it-net-state" title="Netz-Zustand aus UniFi"><i class="ti ti-network"></i> {{.NetStateLabel}}</span>{{if .FirmwareUpdate}}<span class="badge b-amber" title="Firmware-Update verfügbar">Update</span>{{end}}</div>{{end}}
+      </td>
       <template class="rx-more">
         <span class="rec-sub">Status:</span>
         <button type="button" class="btn btn-small" hx-post="/it/{{.ID}}/status-web" hx-vals='{"status":"active"}' hx-target="#it-status-{{.ID}}"><i class="ti ti-circle-check"></i> Aktiv</button>

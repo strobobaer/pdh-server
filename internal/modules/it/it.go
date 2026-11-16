@@ -57,6 +57,28 @@ type Asset struct {
 	ResponsibleTo    *string     `json:"responsible_to,omitempty"`
 	ResponsibleName  string      `json:"responsible_name,omitempty"`
 	InfraName        string      `json:"infra_name,omitempty"`
+	// Netzabgleich (Migration 164): Quelle, Zustand und Firmware.
+	NetSource      string     `json:"net_source,omitempty"`
+	NetExternalID  string     `json:"net_external_id,omitempty"`
+	NetRole        string     `json:"net_role,omitempty"`
+	NetMonitored   bool       `json:"net_monitored"`
+	NetState       string     `json:"net_state,omitempty"`
+	NetStateSince  *time.Time `json:"net_state_since,omitempty"`
+	NetLastSeen    *time.Time `json:"net_last_seen,omitempty"`
+	Firmware       string     `json:"firmware,omitempty"`
+	FirmwareUpdate bool       `json:"firmware_update"`
+	NetUplink      string     `json:"net_uplink,omitempty"`
+	NetGone        bool       `json:"net_gone"`
+}
+
+// netCols: Netzfelder in fester Reihenfolge (zu netDest).
+const netCols = `COALESCE(a.net_source,''), COALESCE(a.net_external_id,''), COALESCE(a.net_role,''),
+		a.net_monitored, a.net_state, a.net_state_since, a.net_last_seen,
+		a.firmware, a.firmware_update, a.net_uplink, a.net_gone`
+
+func netDest(a *Asset) []any {
+	return []any{&a.NetSource, &a.NetExternalID, &a.NetRole, &a.NetMonitored, &a.NetState,
+		&a.NetStateSince, &a.NetLastSeen, &a.Firmware, &a.FirmwareUpdate, &a.NetUplink, &a.NetGone}
 }
 
 type CreateAssetInput struct {
@@ -110,19 +132,20 @@ func (r *Repository) GetByID(ctx context.Context, id string) (*Asset, error) {
 		a.assigned_to, a.infrastructure_id,
 		COALESCE(a.notes,''), a.created_by, a.created_at, a.updated_at,
 		COALESCE(u.first_name||' '||u.last_name,''), COALESCE(i.name,''),
-		a.responsible_to, COALESCE(ru.first_name||' '||ru.last_name,'')
+		a.responsible_to, COALESCE(ru.first_name||' '||ru.last_name,''),
+		`+netCols+`
 		FROM it_assets a
 		LEFT JOIN users u ON a.assigned_to = u.id
 		LEFT JOIN users ru ON a.responsible_to = ru.id
 		LEFT JOIN infrastructure i ON a.infrastructure_id = i.id
 		LEFT JOIN business_partners bp ON a.manufacturer_id = bp.id
-		WHERE a.id=$1`, id).Scan(&a.ID, &a.Name, &a.Type, &a.Status,
+		WHERE a.id=$1`, id).Scan(append([]any{&a.ID, &a.Name, &a.Type, &a.Status,
 		&a.Hostname, &a.IPAddress, &a.MACAddress,
 		&a.Manufacturer, &a.ManufacturerID, &a.ManufacturerName, &a.Model, &a.SerialNo,
 		&a.Location, &a.OS, &purchasedAt, &warrantyUntil,
 		&a.AssignedTo, &a.InfrastructureID,
 		&a.Notes, &a.CreatedBy, &a.CreatedAt, &a.UpdatedAt, &a.AssigneeName, &a.InfraName,
-		&a.ResponsibleTo, &a.ResponsibleName)
+		&a.ResponsibleTo, &a.ResponsibleName}, netDest(a)...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -182,7 +205,8 @@ func (r *Repository) List(ctx context.Context, assetType AssetType, status Asset
 		COALESCE(a.manufacturer,''), a.manufacturer_id, COALESCE(bp.name,''), COALESCE(a.model,''), COALESCE(a.serial_no,''),
 		COALESCE(a.location,''), COALESCE(a.os,''), a.assigned_to, a.infrastructure_id,
 		COALESCE(a.notes,''), a.created_by, a.created_at, a.updated_at,
-		COALESCE(u.first_name||' '||u.last_name,''), COALESCE(i.name,'')
+		COALESCE(u.first_name||' '||u.last_name,''), COALESCE(i.name,''),
+		` + netCols + `
 		FROM it_assets a
 		LEFT JOIN users u ON a.assigned_to = u.id
 		LEFT JOIN infrastructure i ON a.infrastructure_id = i.id
@@ -208,11 +232,13 @@ func (r *Repository) List(ctx context.Context, assetType AssetType, status Asset
 	var list []*Asset
 	for rows.Next() {
 		a := &Asset{}
-		rows.Scan(&a.ID, &a.Name, &a.Type, &a.Status,
+		if err := rows.Scan(append([]any{&a.ID, &a.Name, &a.Type, &a.Status,
 			&a.Hostname, &a.IPAddress, &a.MACAddress,
 			&a.Manufacturer, &a.ManufacturerID, &a.ManufacturerName, &a.Model, &a.SerialNo,
 			&a.Location, &a.OS, &a.AssignedTo, &a.InfrastructureID,
-			&a.Notes, &a.CreatedBy, &a.CreatedAt, &a.UpdatedAt, &a.AssigneeName, &a.InfraName)
+			&a.Notes, &a.CreatedBy, &a.CreatedAt, &a.UpdatedAt, &a.AssigneeName, &a.InfraName}, netDest(a)...)...); err != nil {
+			return nil, err
+		}
 		list = append(list, a)
 	}
 	return list, nil
