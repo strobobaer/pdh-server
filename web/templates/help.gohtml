@@ -711,7 +711,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   {{template "hb-fig-itnet"}}
   <div class="hb-howto"><b><i class="ti ti-plug-connected"></i> So schaltest du den Abgleich mit UniFi ein</b>
     <ol class="hb-steps">
-      <li><b>IT-Assets</b> → <b>Netz-Abgleich</b> öffnen. Steht dort ein Hinweis „UniFi nicht verbunden“, folge dem Link zum Reiter <b>UniFi</b> der Server-Einstellungen und richte die Verbindung ein (dafür braucht es das Recht <code>system.unifi</code>).</li>
+      <li><b>IT-Assets</b> → <b>Netz-Abgleich</b> öffnen. Steht dort der Hinweis „UniFi ist noch nicht verbunden.“, folge dem Link zum Reiter <b>UniFi</b> der Server-Einstellungen und richte die Verbindung ein (dafür braucht es das Recht <code>system.unifi</code>).</li>
       <li>Bei der Quelle <b>UniFi</b> das Kästchen <b>Abgleich mit UniFi einschalten</b> ankreuzen und speichern.</li>
       <li>Unter <b>Einstellungen</b> das <b>Intervall (Sekunden)</b> (30 bis 3600, Standard 60), die <b>Karenz bis zum Alarm (Minuten)</b> (1 bis 1440, Standard 5), <b>Verantwortlich – Benutzer</b> oder die Gruppe und die <b>Priorität der Alarm-Tickets</b> (Standard hoch) festlegen. Ohne Angabe ist die Gruppe „IT“ verantwortlich, sonst die Bereichsadministratoren IT.</li>
       <li><b>Jetzt abgleichen</b> startet sofort einen Lauf; der Knopf ist nur aktiv, solange der Abgleich eingeschaltet ist, und nicht während einer Wartungssperre. Die Karte zeigt letzten Lauf, Fehlertext und die Zahl der Geräte und Clients.</li>
@@ -720,7 +720,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <div class="hb-howto"><b><i class="ti ti-device-desktop-plus"></i> So übernimmst du einen Vorschlag</b>
     <ol class="hb-steps">
       <li>Auf der Seite <b>Netz-Abgleich</b> die Liste der <b>Vorschläge</b> öffnen. Clients (PCs, Drucker, Telefone …) werden nie von allein angelegt.</li>
-      <li><b>Übernehmen</b> wählen und den Typ angeben: Arbeitsplatz, Drucker, Telefon, Tablet, Server oder Sonstiges. Telefon und Tablet starten unüberwacht.</li>
+      <li><b>Übernehmen</b> wählen und den Typ angeben: Arbeitsplatz, Drucker, Telefon, Tablet, Server oder Sonstiges. Arbeitsplatz, Telefon und Tablet starten unüberwacht, Server, Drucker und Sonstiges werden überwacht.</li>
       <li>Oder <b>Ausblenden</b>: Der Client verschwindet aus der Liste und steht im Reiter <b>Ausgeblendet</b>, von wo du ihn zurückholen kannst. Vorschläge, die 30 Tage nicht mehr gesehen wurden, fallen von selbst weg.</li>
     </ol>
     Dafür brauchst du das Recht „Netz-Abgleich einrichten und Vorschläge übernehmen“ (<code>it.netsync</code>); es haben automatisch alle Rollen, die IT-Assets bearbeiten dürfen.</div>

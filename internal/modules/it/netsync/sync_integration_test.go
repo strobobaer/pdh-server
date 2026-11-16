@@ -53,8 +53,8 @@ func TestApplyCreatesDevices(t *testing.T) {
 	snap := Snapshot{Devices: []Device{
 		{ExternalID: "sw", MAC: "AA-BB-CC-00-00-01", Name: "USW-24", Model: "USW24", Kind: "switch", IP: "10.0.0.2", Firmware: "7.1", FirmwareUpdate: true, State: StateOnline, HasDetail: true,
 			Ports: []Port{{Idx: 1, Connector: "RJ45", State: "UP", SpeedMbps: 1000, MaxSpeedMbps: 1000, PoEState: "UP"}, {Idx: 2, State: "DOWN"}}},
-		{ExternalID: "ap", MAC: "aa:bb:cc:00:00:02", Name: "AP-1", State: StateOffline, UplinkExternalID: "sw"},
-		{ExternalID: "ap2", MAC: "aa:bb:cc:00:00:03", Name: "AP-2", State: StateOnline, UplinkExternalID: "fehlt"},
+		{ExternalID: "ap", MAC: "aa:bb:cc:00:00:02", Name: "AP-1", State: StateOffline, UplinkExternalID: "sw", HasDetail: true},
+		{ExternalID: "ap2", MAC: "aa:bb:cc:00:00:03", Name: "AP-2", State: StateOnline, UplinkExternalID: "fehlt", HasDetail: true},
 	}}
 	res, err := f.s.Apply(ctx, f.src, snap, t0)
 	must(t, err)
@@ -252,6 +252,10 @@ func TestAdoptMonitoredByType(t *testing.T) {
 	snap := Snapshot{Clients: []Client{
 		{ExternalID: "p", MAC: "aa:bb:cc:00:06:01", Name: "Handy", IP: "10.0.6.1", Kind: "wireless"},
 		{MAC: "aa:bb:cc:00:06:02", Name: "Drucker", IP: "10.0.6.2", Kind: "wired"},
+		{ExternalID: "w", MAC: "aa:bb:cc:00:06:03", Name: "PC", Kind: "wired"},
+		{ExternalID: "s", MAC: "aa:bb:cc:00:06:04", Name: "Server", Kind: "wired"},
+		{ExternalID: "o", MAC: "aa:bb:cc:00:06:05", Name: "Sonst", Kind: "wired"},
+		{ExternalID: "t", MAC: "aa:bb:cc:00:06:06", Name: "Tab", Kind: "wireless"},
 	}}
 	_, err := f.s.Apply(ctx, f.src, snap, t0)
 	must(t, err)
@@ -259,11 +263,18 @@ func TestAdoptMonitoredByType(t *testing.T) {
 	must(t, err)
 	did, err := f.s.Adopt(ctx, f.src, "AA-BB-CC-00-06-02", "printer", f.user, t0)
 	must(t, err)
+	adopt := func(mac, typ string) string {
+		id, err := f.s.Adopt(ctx, f.src, mac, typ, f.user, t0)
+		must(t, err)
+		return id
+	}
+	wid, sid, oid, tid := adopt("aa:bb:cc:00:06:03", "workstation"), adopt("aa:bb:cc:00:06:04", "server"), adopt("aa:bb:cc:00:06:05", "other"), adopt("aa:bb:cc:00:06:06", "tablet")
 	for _, tc := range []struct {
 		id, typ string
 		mon     bool
 		ext     string
-	}{{pid, "phone", false, "p"}, {did, "printer", true, "aa:bb:cc:00:06:02"}} {
+	}{{pid, "phone", false, "p"}, {did, "printer", true, "aa:bb:cc:00:06:02"},
+		{wid, "workstation", false, "w"}, {sid, "server", true, "s"}, {oid, "other", true, "o"}, {tid, "tablet", false, "t"}} {
 		var typ, state, ext, status string
 		var mon bool
 		must(t, f.s.DB.QueryRow(ctx, `SELECT type::text, net_monitored, net_state, net_external_id, status::text FROM it_assets WHERE id=$1`, tc.id).Scan(&typ, &mon, &state, &ext, &status))

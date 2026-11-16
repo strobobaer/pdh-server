@@ -345,6 +345,7 @@ func (h *Handler) ITNetSettingsWeb(w http.ResponseWriter, r *http.Request) {
 		on = "1"
 	}
 	ctx := r.Context()
+	wasOn := h.itNetEnabled(ctx)
 	for _, kv := range [][2]string{
 		{keyITNetUnifiOn, on}, {keyITNetInterval, strconv.Itoa(s.Interval)}, {keyITNetGrace, strconv.Itoa(s.Grace)},
 		{keyITNetPriority, s.Priority}, {keyITNetRespUser, s.RespUser}, {keyITNetRespGroup, s.RespGrp},
@@ -353,6 +354,13 @@ func (h *Handler) ITNetSettingsWeb(w http.ResponseWriter, r *http.Request) {
 			itNetLog().Error().Err(err).Str("einstellung", kv[0]).Msg("einstellung speichern")
 			itNetBack(w, r, "", "save")
 			return
+		}
+	}
+	if wasOn && !s.Enabled {
+		// Abgleich ausgeschaltet: alte Zustandsmarken wären sonst veraltet.
+		store, source := h.itNetStore()
+		if err := store.MarkUnknown(ctx, source, time.Now()); err != nil {
+			itNetLog().Warn().Err(err).Msg("zustand nicht auf unbekannt gesetzt")
 		}
 	}
 	itNetBack(w, r, "saved", "")
@@ -373,7 +381,8 @@ func (h *Handler) ITNetRunWeb(w http.ResponseWriter, r *http.Request) {
 		itNetBack(w, r, "off", "")
 		return
 	}
-	cctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	// Der Lauf soll nicht abbrechen, wenn der Browser die Anfrage schließt.
+	cctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Minute)
 	defer cancel()
 	if err := h.itNetRunOnce(cctx, time.Now()); err != nil {
 		itNetBack(w, r, "", "run")
@@ -588,7 +597,7 @@ func (h *Handler) ITNetDetachWeb(w http.ResponseWriter, r *http.Request) {
 }
 
 // ITNetReattachWeb: POST /it/{id}/net-reattach – getrenntes Asset wieder abgleichen.
-// Überwacht wird es wieder (Telefon und Tablet nicht); der Zustand bleibt
+// Überwacht wird es wieder nach der Typ-Regel (Arbeitsplatz, Telefon, Tablet nicht); der Zustand bleibt
 // „unbekannt“ bis zum nächsten Abgleich.
 func (h *Handler) ITNetReattachWeb(w http.ResponseWriter, r *http.Request) {
 	id, ok := h.itNetAssetGuard(w, r)
@@ -596,7 +605,7 @@ func (h *Handler) ITNetReattachWeb(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if _, err := h.db.Exec(r.Context(), `UPDATE it_assets SET net_detached = false,
-			net_monitored = type::text NOT IN ('phone', 'tablet'), updated_at = now()
+			net_monitored = `+netsync.MonitoredByTypeSQL("type::text")+`, updated_at = now()
 		WHERE id = $1::uuid AND net_source IS NOT NULL AND net_detached`, id); err != nil {
 		itNetLog().Error().Err(err).Msg("wieder verbinden")
 		http.Error(w, "Wieder verbinden fehlgeschlagen", http.StatusInternalServerError)

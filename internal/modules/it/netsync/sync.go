@@ -35,6 +35,14 @@ type Result struct {
 	Created, Updated, Gone, Candidates int
 }
 
+// MonitoredByTypeSQL: Regel für die Voreinstellung „überwachen“ nach Asset-Typ –
+// Arbeitsplatz, Telefon und Tablet sind oft absichtlich aus, alles andere
+// (Server, Drucker, Sonstiges, Netzwerk) wird überwacht. typeExpr ist ein SQL-
+// Ausdruck vom Typ text (z. B. `type::text` oder `$2::text`). Einzige Stelle der Regel.
+func MonitoredByTypeSQL(typeExpr string) string {
+	return typeExpr + ` NOT IN ('workstation', 'phone', 'tablet')`
+}
+
 // Normalisierte MAC eines Assets in SQL (passt zum Index it_assets_mac_norm).
 const sqlAssetMAC = `regexp_replace(lower(mac_address), '[^0-9a-f]', '', 'g')`
 
@@ -58,11 +66,15 @@ func (s *Store) Apply(ctx context.Context, source string, snap Snapshot, now tim
 	// 1. Netzgeräte anlegen oder aktualisieren.
 	devExt := make([]string, 0, len(snap.Devices))
 	for _, d := range snap.Devices {
+		if d.ExternalID != "" {
+			devExt = append(devExt, d.ExternalID)
+		}
+	}
+	for _, d := range snap.Devices {
 		if d.ExternalID == "" {
 			continue
 		}
-		devExt = append(devExt, d.ExternalID)
-		created, skipped, id, err := s.upsertDevice(ctx, tx, source, d, now)
+		created, skipped, id, err := s.upsertDevice(ctx, tx, source, d, devExt, now)
 		if err != nil {
 			return res, fmt.Errorf("Gerät %s: %w", d.ExternalID, err)
 		}
@@ -102,7 +114,8 @@ func (s *Store) Apply(ctx context.Context, source string, snap Snapshot, now tim
 	{
 		ids, ups := []string{}, []string{}
 		for _, d := range snap.Devices {
-			if d.ExternalID == "" {
+			// Uplink nur mit Detailabruf: ohne bleibt der bisherige Wert stehen.
+			if d.ExternalID == "" || !d.HasDetail {
 				continue
 			}
 			ids = append(ids, d.ExternalID)
@@ -211,7 +224,8 @@ func (s *Store) Apply(ctx context.Context, source string, snap Snapshot, now tim
 // upsertDevice legt ein Netzgerät an oder aktualisiert nur die Felder der
 // Quelle. Der Name wird nur beim Anlegen gesetzt.
 // Ein getrenntes Asset der Quelle (gleiche ID oder MAC) bleibt unverändert: skipped.
-func (s *Store) upsertDevice(ctx context.Context, tx pgx.Tx, source string, d Device, now time.Time) (created, skipped bool, id string, err error) {
+// snapIDs: alle Geräte-IDs der aktuellen Momentaufnahme (für das Umschlüsseln).
+func (s *Store) upsertDevice(ctx context.Context, tx pgx.Tx, source string, d Device, snapIDs []string, now time.Time) (created, skipped bool, id string, err error) {
 	mac := NormMAC(d.MAC)
 	st := stateOrUnknown(d.State)
 
@@ -235,12 +249,20 @@ func (s *Store) upsertDevice(ctx context.Context, tx pgx.Tx, source string, d De
 		err = tx.QueryRow(ctx, `SELECT id::text FROM it_assets WHERE net_source IS NULL AND `+sqlAssetMAC+` = replace($1, ':', '')
 			ORDER BY created_at LIMIT 1 FOR UPDATE`, mac).Scan(&id)
 	}
+	if errors.Is(err, pgx.ErrNoRows) && mac != "" {
+		// Gleiche MAC unter neuer Geräte-ID (Gerät neu adoptiert): das vorhandene
+		// Asset der Quelle bekommt die neue ID, es entsteht kein Doppel.
+		err = tx.QueryRow(ctx, `SELECT id::text FROM it_assets WHERE net_source = $1 AND net_role = 'device' AND NOT net_detached
+			AND `+sqlAssetMAC+` = replace($2, ':', '') AND NOT (net_external_id = ANY($3::text[]))
+			ORDER BY created_at LIMIT 1 FOR UPDATE`, source, mac, snapIDs).Scan(&id)
+	}
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return false, false, "", err
 	}
 
 	if err == nil {
-		_, err = tx.Exec(ctx, `UPDATE it_assets SET
+		tag, err := tx.Exec(ctx, `UPDATE it_assets SET
+				net_monitored = CASE WHEN net_source IS NULL THEN true ELSE net_monitored END,
 				net_source = $2, net_external_id = $3,
 				mac_address = CASE WHEN $4 <> '' THEN $4 ELSE mac_address END,
 				ip_address  = CASE WHEN $5 <> '' THEN $5 ELSE ip_address END,
@@ -250,8 +272,12 @@ func (s *Store) upsertDevice(ctx context.Context, tx pgx.Tx, source string, d De
 				net_state_since = CASE WHEN net_state <> $9 OR net_state_since IS NULL THEN $10 ELSE net_state_since END,
 				net_last_seen   = CASE WHEN $9 = 'online' THEN $10 ELSE net_last_seen END,
 				net_state = $9, net_gone = false, net_role = 'device', updated_at = now()
-			WHERE id = $1`, id, source, d.ExternalID, mac, d.IP, d.Model, d.Firmware, d.FirmwareUpdate, st, now)
-		return false, false, id, err
+			WHERE id = $1 AND NOT net_detached`, id, source, d.ExternalID, mac, d.IP, d.Model, d.Firmware, d.FirmwareUpdate, st, now)
+		if err != nil {
+			return false, false, "", err
+		}
+		// 0 Zeilen: zwischenzeitlich getrennt – unverändert lassen.
+		return false, tag.RowsAffected() == 0, id, nil
 	}
 
 	name := d.Name
@@ -355,7 +381,6 @@ func (s *Store) Adopt(ctx context.Context, source, mac, assetType, userID string
 	if name == "" {
 		name = nmac
 	}
-	monitored := assetType != "phone" && assetType != "tablet"
 
 	var detached bool
 	if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM it_assets WHERE net_source = $1 AND net_detached
@@ -371,16 +396,16 @@ func (s *Store) Adopt(ctx context.Context, source, mac, assetType, userID string
 		ORDER BY created_at LIMIT 1 FOR UPDATE`, nmac).Scan(&id)
 	switch {
 	case err == nil:
-		_, err = tx.Exec(ctx, `UPDATE it_assets SET net_source = $2, net_external_id = $3, net_monitored = $4,
+		_, err = tx.Exec(ctx, `UPDATE it_assets SET net_source = $2, net_external_id = $3, net_monitored = `+MonitoredByTypeSQL("$4::text")+`,
 				net_state = 'online', net_state_since = CASE WHEN net_state <> 'online' OR net_state_since IS NULL THEN $5 ELSE net_state_since END, net_role = 'client', net_last_seen = $5, net_gone = false,
 				ip_address = CASE WHEN $6 <> '' THEN $6 ELSE ip_address END, updated_at = now()
-			WHERE id = $1`, id, source, ext, monitored, now, ip)
+			WHERE id = $1`, id, source, ext, assetType, now, ip)
 	case errors.Is(err, pgx.ErrNoRows):
 		err = tx.QueryRow(ctx, `INSERT INTO it_assets
 				(name, type, status, ip_address, mac_address, created_by, net_source, net_external_id,
 				 net_monitored, net_state, net_last_seen, net_state_since, net_role)
-			VALUES ($1, $2::it_asset_type, 'active', NULLIF($3, ''), $4, $5, $6, $7, $8, 'online', $9, $9, 'client')
-			RETURNING id::text`, name, assetType, ip, nmac, userID, source, ext, monitored, now).Scan(&id)
+			VALUES ($1, $2::it_asset_type, 'active', NULLIF($3, ''), $4, $5, $6, $7, `+MonitoredByTypeSQL("$8::text")+`, 'online', $9, $9, 'client')
+			RETURNING id::text`, name, assetType, ip, nmac, userID, source, ext, assetType, now).Scan(&id)
 	}
 	if err != nil {
 		return "", err

@@ -284,8 +284,15 @@ func TestITNetRunOnceNotConfigured(t *testing.T) {
 	}
 	var st string
 	_ = pool.QueryRow(ctx, `SELECT net_state FROM it_assets WHERE id = $1::uuid`, id).Scan(&st)
-	if st != "online" || h.itNet.failing {
-		t.Errorf("Zustand darf sich nicht ändern: %q failing=%v", st, h.itNet.failing)
+	if st != "unknown" || h.itNet.failing {
+		t.Errorf("beim ersten Mal auf unbekannt, kein Fehlerzustand: %q failing=%v", st, h.itNet.failing)
+	}
+	// zweiter Lauf: Hinweis steht schon, nicht jede Minute neu auf unbekannt setzen
+	_, _ = pool.Exec(ctx, `UPDATE it_assets SET net_state = 'online' WHERE id = $1::uuid`, id)
+	_ = h.itNetRunOnce(ctx, time.Now())
+	_ = pool.QueryRow(ctx, `SELECT net_state FROM it_assets WHERE id = $1::uuid`, id).Scan(&st)
+	if st != "online" {
+		t.Errorf("zweiter Lauf darf den Zustand nicht erneut ändern: %q", st)
 	}
 }
 

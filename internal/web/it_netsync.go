@@ -256,14 +256,10 @@ func (h *Handler) itNetRunOnce(ctx context.Context, now time.Time) error {
 	h.itNet.mu.Lock()
 	defer h.itNet.mu.Unlock()
 
-	source := h.itNet.source
-	if source == "" {
-		source = itNetSourceUnifi
-	}
-	store := &netsync.Store{DB: h.db, SystemUserID: pdhSystemUserID, Manufacturer: map[string]string{source: "Ubiquiti"}}
+	store, source := h.itNetStore()
 	fail := func(err error) error {
 		text := itNetErrText(err)
-		h.itNetPut(ctx, keyITNetLastErr, text)
+		h.itNetPutIfChanged(ctx, keyITNetLastErr, text)
 		if merr := store.MarkUnknown(ctx, source, now); merr != nil {
 			log.Error().Err(merr).Msg("it-netzabgleich: zustand nicht auf unbekannt gesetzt")
 		}
@@ -283,7 +279,13 @@ func (h *Handler) itNetRunOnce(ctx context.Context, now time.Time) error {
 	}
 	if errors.Is(err, errUnifiOff) {
 		// Einschalter an, UniFi aber nicht eingerichtet: nichts tun, nur den Hinweis ablegen.
-		h.itNetPut(ctx, keyITNetLastErr, itNetNotConnected)
+		// Zustandsmarken werden nur beim ersten Mal auf „unbekannt“ gesetzt, nicht jede Minute.
+		if h.appSetting(ctx, keyITNetLastErr, "") != itNetNotConnected {
+			if merr := store.MarkUnknown(ctx, source, now); merr != nil {
+				log.Error().Err(merr).Msg("it-netzabgleich: zustand nicht auf unbekannt gesetzt")
+			}
+		}
+		h.itNetPutIfChanged(ctx, keyITNetLastErr, itNetNotConnected)
 		return nil
 	}
 	if err != nil {
@@ -307,9 +309,9 @@ func (h *Handler) itNetRunOnce(ctx context.Context, now time.Time) error {
 		h.itNet.failing = false
 		log.Info().Msg("it-netzabgleich: unifi wieder erreichbar")
 	}
-	h.itNetPut(ctx, keyITNetLastErr, "")
+	h.itNetPutIfChanged(ctx, keyITNetLastErr, "")
 	h.itNetPut(ctx, keyITNetLastRun, now.UTC().Format(time.RFC3339))
-	h.itNetPut(ctx, keyITNetLastCount, fmt.Sprintf("%d/%d", len(snap.Devices), len(snap.Clients)))
+	h.itNetPutIfChanged(ctx, keyITNetLastCount, fmt.Sprintf("%d/%d", len(snap.Devices), len(snap.Clients)))
 
 	if h.tickets != nil {
 		w := &netsync.Watch{DB: h.db, Sink: itNetAlarmSink{h: h}, Source: source,
@@ -323,6 +325,23 @@ func (h *Handler) itNetRunOnce(ctx context.Context, now time.Time) error {
 
 // itNetNotConnected: Hinweis in last_error, solange der Einschalter an, UniFi aber nicht eingerichtet ist.
 const itNetNotConnected = "UniFi ist noch nicht verbunden"
+
+// itNetStore: Store und Quellenname des Netzabgleichs.
+func (h *Handler) itNetStore() (*netsync.Store, string) {
+	source := h.itNet.source
+	if source == "" {
+		source = itNetSourceUnifi
+	}
+	return &netsync.Store{DB: h.db, SystemUserID: pdhSystemUserID, Manufacturer: map[string]string{source: "Ubiquiti"}}, source
+}
+
+// itNetPutIfChanged speichert nur, wenn sich der Wert geändert hat (kein Schreiben jede Minute).
+func (h *Handler) itNetPutIfChanged(ctx context.Context, key, value string) {
+	if h.appSetting(ctx, key, "") == value {
+		return
+	}
+	h.itNetPut(ctx, key, value)
+}
 
 // itNetPut speichert eine Einstellung; Fehler werden nur protokolliert.
 func (h *Handler) itNetPut(ctx context.Context, key, value string) {

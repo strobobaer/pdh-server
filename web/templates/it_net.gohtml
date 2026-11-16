@@ -89,7 +89,7 @@
 
 <div class="card">
   <div class="card-title"><i class="ti ti-devices-plus"></i> Vorschläge aus dem Netz</div>
-  <p class="itn-note" style="margin:0 0 10px">Clients (PCs, Drucker, Telefone …), die UniFi sieht und die noch kein IT-Asset sind. Übernehmen legt ein Asset an.{{if .CanSetup}} Telefon und Tablet werden zunächst nicht überwacht – sie sind oft absichtlich offline.{{end}}</p>
+  <p class="itn-note" style="margin:0 0 10px">Clients (PCs, Drucker, Telefone …), die UniFi sieht und die noch kein IT-Asset sind. Übernehmen legt ein Asset an.{{if .CanSetup}} Arbeitsplätze, Telefone und Tablets werden zunächst nicht überwacht – sie sind oft absichtlich aus. Server, Drucker und Sonstiges werden überwacht.{{end}}</p>
   <div class="rec-tabs">
     <a class="rec-tab{{if eq .Tab ""}} active{{end}}" href="/it/net"><i class="ti ti-list"></i> Vorschläge <b>{{.Open}}</b></a>
     <a class="rec-tab{{if eq .Tab "hidden"}} active{{end}}" href="/it/net?tab=hidden"><i class="ti ti-eye-off"></i> Ausgeblendet <b>{{.Hidden}}</b></a>
