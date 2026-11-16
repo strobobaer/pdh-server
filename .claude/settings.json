@@ -1,0 +1,8 @@
+{
+  "enabledPlugins": {
+    "codex-hud@anthropic-plugin-directory": true,
+    "autoresearch-ai-plugin@anthropic-plugin-directory": true,
+    "obsidian-notes@anthropic-plugin-directory": true,
+    "obsidian-sync@anthropic-plugin-directory": true
+  }
+}
