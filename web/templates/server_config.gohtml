@@ -59,6 +59,7 @@
   <a class="rec-tab" data-tab="passwords" href="?tab=passwords"><i class="ti ti-password"></i> Passwörter</a>
   <a class="rec-tab" data-tab="vpn" href="?tab=vpn"><i class="ti ti-shield-lock"></i> VPN{{if eq .VPN.Service.State "down"}}<span class="sc-dot bad" title="{{.VPN.Service.Label}}"></span>{{else if eq .VPN.Service.State "ok"}}<span class="sc-dot ok" title="läuft"></span>{{end}}</a>
   {{if .Unifi.Can}}<a class="rec-tab" data-tab="unifi" href="?tab=unifi"><i class="ti ti-router"></i> UniFi{{if and .Unifi.Unifi.URL (not .Unifi.Unifi.Confirmed)}}<span class="sc-dot" style="background:var(--amber,#f59e0b)" title="Fingerabdruck noch nicht bestätigt"></span>{{else if .Unifi.Unifi.Confirmed}}<span class="sc-dot ok" title="angebunden"></span>{{end}}</a>{{end}}
+  {{if .Omada.Can}}<a class="rec-tab" data-tab="omada" href="?tab=omada"><i class="ti ti-access-point"></i> Omada{{if and .Omada.Omada.URL (not .Omada.Omada.Confirmed)}}<span class="sc-dot" style="background:var(--amber,#f59e0b)" title="Fingerabdruck noch nicht bestätigt"></span>{{else if .Omada.Omada.Ready}}<span class="sc-dot ok" title="angebunden"></span>{{end}}</a>{{end}}
   <a class="rec-tab" data-tab="dr" href="?tab=dr"><i class="ti ti-shield-check"></i> Ausfallschutz</a>
   {{if .CanLogs}}<a class="rec-tab" href="/admin/server-config/logs" style="margin-left:auto"><i class="ti ti-file-analytics"></i> Protokoll ansehen</a>{{end}}
 </div>
@@ -241,6 +242,11 @@
 <!-- ── UniFi: Anbindung an die UDM Pro für die Namen im Haus (certs_lan.go, widgets/unifi.gohtml) ── -->
 {{if .Unifi.Can}}<div class="rec-pane" data-pane="unifi">
 {{template "unifi-panel" .Unifi}}
+</div>{{end}}
+
+<!-- ── Omada: Anbindung an den Omada-Controller für den Netz-Abgleich (omada_web.go, widgets/omada.gohtml) ── -->
+{{if .Omada.Can}}<div class="rec-pane" data-pane="omada">
+{{template "omada-panel" .Omada}}
 </div>{{end}}
 
 <!-- ── Ausfallschutz: Sicherung aufs Netzlaufwerk (dr.go, widgets/dr.gohtml) ── -->
