@@ -211,6 +211,8 @@ var gateRules = []gateRule{
 	// Netz-Abgleich: einrichten und Vorschläge mit it.netsync, Schalter am Asset mit it.edit (Abteilung des Assets)
 	gr(wPost, permITNetsync, "", false, `^/it/net/(?:settings|run|candidates/adopt|candidates/ignore)$`),
 	gr(wPost, "it.edit", "it_asset", false, `^/it`+gID+`/net-(?:monitor|detach|reattach)$`),
+	// IT-Kategorien: anlegen, ändern, aus-/einblenden, löschen (Einstellungen ohne Abteilung, nur unbenutzte löschbar)
+	gr(wPost, permITCategories, "", false, `^/it/categories(?:/[a-z0-9-]+(?:/(?:active|delete))?)?$`),
 	// ── Lager und Lagerorte (Stammdaten) ──
 	gr(wPost, "inventory.create", "", false, `^(?:/api/v1)?/inventory/?$`),
 	gr(wPost, "inventory.edit", "", false, apiV1+`/inventory/(?:fields|field-sets)(?:/.*)?$`),

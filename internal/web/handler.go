@@ -583,6 +583,11 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/it", h.ITPage)
 	r.Post("/it", h.ITCreate)
 	// Netz-Abgleich (it_net_web.go): Seite, Einstellungen, Vorschläge, Schalter am Asset
+	r.Get("/it/categories", h.ITCategoriesPage)
+	r.Post("/it/categories", h.ITCategoryCreateWeb)
+	r.Post("/it/categories/{key}", h.ITCategoryUpdateWeb)
+	r.Post("/it/categories/{key}/active", h.ITCategoryActiveWeb)
+	r.Post("/it/categories/{key}/delete", h.ITCategoryDeleteWeb)
 	r.Get("/it/net", h.ITNetPage)
 	r.Post("/it/net/settings", h.ITNetSettingsWeb)
 	r.Post("/it/net/run", h.ITNetRunWeb)
