@@ -18,6 +18,9 @@ var ErrNoCandidate = errors.New("netsync: kein Vorschlag mit dieser MAC-Adresse"
 // der Abgleich es wieder ab. Adopt legt dann kein zweites Asset an.
 var ErrDetached = errors.New("netsync: Asset mit dieser MAC-Adresse ist vom Abgleich getrennt")
 
+// ErrBadType: Kategorie unbekannt, ausgeblendet oder „network“ – so nicht übernehmbar.
+var ErrBadType = errors.New("netsync: Kategorie ist unbekannt, ausgeblendet oder nicht übernehmbar")
+
 // candidateMaxAge: Vorschläge, die so lange nicht gesehen wurden, entfallen
 // (ausgeblendete bleiben).
 const candidateMaxAge = 30 * 24 * time.Hour
@@ -35,12 +38,12 @@ type Result struct {
 	Created, Updated, Gone, Candidates int
 }
 
-// MonitoredByTypeSQL: Regel für die Voreinstellung „überwachen“ nach Asset-Typ –
-// Arbeitsplatz, Telefon und Tablet sind oft absichtlich aus, alles andere
-// (Server, Drucker, Sonstiges, Netzwerk) wird überwacht. typeExpr ist ein SQL-
-// Ausdruck vom Typ text (z. B. `type::text` oder `$2::text`). Einzige Stelle der Regel.
-func MonitoredByTypeSQL(typeExpr string) string {
-	return typeExpr + ` NOT IN ('workstation', 'phone', 'tablet')`
+// MonitoredForCategorySQL: Voreinstellung „überwachen“ nach Kategorie – das
+// Feld monitor_default der Kategorie (Vorgabe: Arbeitsplatz, Telefon und Tablet
+// aus). Unbekannte Kategorie: überwachen. keyExpr ist ein SQL-Ausdruck vom Typ
+// text (z. B. `type::text` oder `$2::text`). Einzige Stelle der Regel.
+func MonitoredForCategorySQL(keyExpr string) string {
+	return `COALESCE((SELECT monitor_default FROM it_asset_categories WHERE key = ` + keyExpr + `), true)`
 }
 
 // Normalisierte MAC eines Assets in SQL (passt zum Index it_assets_mac_norm).
@@ -296,7 +299,7 @@ func (s *Store) upsertDevice(ctx context.Context, tx pgx.Tx, source string, d De
 			 net_source, net_external_id, net_monitored, net_state, net_last_seen, net_state_since, net_role,
 			 firmware, firmware_update)
 		VALUES ($1, 'network', 'active', NULLIF($2, ''), NULLIF($3, ''), NULLIF($4, ''), NULLIF($5, ''), $6,
-			$7, $8, true, $9, $10, $11, 'device', $12, $13)
+			$7, $8, `+MonitoredForCategorySQL("'network'")+`, $9, $10, $11, 'device', $12, $13)
 		RETURNING id::text`, name, d.IP, mac, s.Manufacturer[source], d.Model, s.SystemUserID,
 		source, d.ExternalID, st, seen, now, d.Firmware, d.FirmwareUpdate).Scan(&id)
 	return true, false, id, err
@@ -345,16 +348,12 @@ func (s *Store) MarkUnknown(ctx context.Context, source string, now time.Time) e
 	return err
 }
 
-var adoptTypes = map[string]bool{
-	"server": true, "workstation": true, "printer": true,
-	"phone": true, "tablet": true, "other": true,
-}
-
 // Adopt macht aus einem Vorschlag ein Asset (oder verknüpft ein vorhandenes
-// Asset gleicher MAC ohne Quelle) und entfernt den Vorschlag.
+// Asset gleicher MAC ohne Quelle) und entfernt den Vorschlag. Die Kategorie
+// muss bestehen, aktiv und nicht „network“ sein (sonst ErrBadType).
 func (s *Store) Adopt(ctx context.Context, source, mac, assetType, userID string, now time.Time) (string, error) {
-	if !adoptTypes[assetType] {
-		return "", fmt.Errorf("netsync: unbekannter Asset-Typ %q", assetType)
+	if assetType == "network" {
+		return "", ErrBadType
 	}
 	nmac := NormMAC(mac)
 	if nmac == "" {
@@ -365,6 +364,17 @@ func (s *Store) Adopt(ctx context.Context, source, mac, assetType, userID string
 		return "", err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+
+	// Kategorie in der Transaktion sperren: ein gleichzeitiges Löschen oder
+	// Ausblenden kann nicht dazwischenkommen.
+	var catActive bool
+	err = tx.QueryRow(ctx, `SELECT active FROM it_asset_categories WHERE key = $1 FOR SHARE`, assetType).Scan(&catActive)
+	if errors.Is(err, pgx.ErrNoRows) || (err == nil && !catActive) {
+		return "", ErrBadType
+	}
+	if err != nil {
+		return "", err
+	}
 
 	var ext, name, ip string
 	err = tx.QueryRow(ctx, `SELECT external_id, name, ip FROM it_net_candidates WHERE source = $1 AND mac = $2 FOR UPDATE`,
@@ -396,7 +406,7 @@ func (s *Store) Adopt(ctx context.Context, source, mac, assetType, userID string
 		ORDER BY created_at LIMIT 1 FOR UPDATE`, nmac).Scan(&id)
 	switch {
 	case err == nil:
-		_, err = tx.Exec(ctx, `UPDATE it_assets SET net_source = $2, net_external_id = $3, net_monitored = `+MonitoredByTypeSQL("$4::text")+`,
+		_, err = tx.Exec(ctx, `UPDATE it_assets SET net_source = $2, net_external_id = $3, net_monitored = `+MonitoredForCategorySQL("$4::text")+`,
 				net_state = 'online', net_state_since = CASE WHEN net_state <> 'online' OR net_state_since IS NULL THEN $5 ELSE net_state_since END, net_role = 'client', net_last_seen = $5, net_gone = false,
 				ip_address = CASE WHEN $6 <> '' THEN $6 ELSE ip_address END, updated_at = now()
 			WHERE id = $1`, id, source, ext, assetType, now, ip)
@@ -404,7 +414,7 @@ func (s *Store) Adopt(ctx context.Context, source, mac, assetType, userID string
 		err = tx.QueryRow(ctx, `INSERT INTO it_assets
 				(name, type, status, ip_address, mac_address, created_by, net_source, net_external_id,
 				 net_monitored, net_state, net_last_seen, net_state_since, net_role)
-			VALUES ($1, $2::it_asset_type, 'active', NULLIF($3, ''), $4, $5, $6, $7, `+MonitoredByTypeSQL("$8::text")+`, 'online', $9, $9, 'client')
+			VALUES ($1, $2::text, 'active', NULLIF($3, ''), $4, $5, $6, $7, `+MonitoredForCategorySQL("$8::text")+`, 'online', $9, $9, 'client')
 			RETURNING id::text`, name, assetType, ip, nmac, userID, source, ext, assetType, now).Scan(&id)
 	}
 	if err != nil {

@@ -583,6 +583,11 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/it", h.ITPage)
 	r.Post("/it", h.ITCreate)
 	// Netz-Abgleich (it_net_web.go): Seite, Einstellungen, Vorschläge, Schalter am Asset
+	r.Get("/it/categories", h.ITCategoriesPage)
+	r.Post("/it/categories", h.ITCategoryCreateWeb)
+	r.Post("/it/categories/{key}", h.ITCategoryUpdateWeb)
+	r.Post("/it/categories/{key}/active", h.ITCategoryActiveWeb)
+	r.Post("/it/categories/{key}/delete", h.ITCategoryDeleteWeb)
 	r.Get("/it/net", h.ITNetPage)
 	r.Post("/it/net/settings", h.ITNetSettingsWeb)
 	r.Post("/it/net/run", h.ITNetRunWeb)
@@ -591,6 +596,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/it/{id}/net-monitor", h.ITNetMonitorWeb)
 	r.Post("/it/{id}/net-detach", h.ITNetDetachWeb)
 	r.Post("/it/{id}/net-reattach", h.ITNetReattachWeb)
+	r.Post("/it/{id}/net-grace", h.ITNetGraceWeb)
 	r.Get("/it/{id}", h.ITDetail)
 	// QR-Infoseiten fuer Anlagen und IT-Assets (asset_info.go)
 	r.Get("/a/labels", h.AssetLabelsPage)
@@ -2974,6 +2980,9 @@ type ITPageData struct {
 	NetFilter string
 	// NetCandidates: offene (nicht ausgeblendete) Vorschläge des Netz-Abgleichs.
 	NetCandidates int
+	// Types: aktive Kategorien für „Neues Asset“; Filters: aktive Kategorien mit Assets (Filterknöpfe).
+	Types   []ITTypeOption
+	Filters []ITTypeOption
 }
 
 type ITAssetView struct {
@@ -3009,6 +3018,9 @@ type ITDetailData struct {
 	Net         *ITNetDetailView
 	NetDetached bool // Quelle getrennt: statt der Karte „Wieder verbinden“
 	CanNetEdit  bool
+	// Types: Kategorien fürs Bearbeiten (aktive plus die ausgeblendete des Assets).
+	Types       []ITTypeOption
+	Notice, Err string
 }
 
 type ITAssetDetailView struct {
@@ -4119,8 +4131,8 @@ func (h *Handler) ITPage(w http.ResponseWriter, r *http.Request) {
 		Filter:   r.URL.Query().Get("type"), Stats: map[string]int{},
 		NetFilter: r.URL.Query().Get("net"),
 	}
-	typeLabels := map[string]string{"server": "Server", "network": "Netzwerk", "workstation": "Workstation", "printer": "Drucker", "phone": "Telefon", "tablet": "Tablet", "other": "Sonstiges"}
-	typeIcons := itTypeIcons()
+	cats, catByKey := h.itCategories(r.Context())
+	data.Types, data.Filters = itTypeOptions(cats, ""), itFilterOptions(cats)
 	statusLabels := map[string]string{"active": "Aktiv", "inactive": "Inaktiv", "maintenance": "Wartung", "retired": "Außer Dienst"}
 	statusClasses := map[string]string{"active": "b-green", "inactive": "b-gray", "maintenance": "b-amber", "retired": "b-red"}
 	if list, err := h.it.List(r.Context(), it.AssetType(data.Filter), ""); err == nil {
@@ -4133,10 +4145,11 @@ func (h *Handler) ITPage(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			label, class := itNetStateBadge(a.NetState)
+			typeLabel, typeIcon := itCategoryLabelIcon(catByKey, string(a.Type))
 			data.Assets = append(data.Assets, ITAssetView{
 				NetSource: a.NetSource != "", NetDetached: a.NetDetached, NetStateLabel: label, NetStateClass: class, FirmwareUpdate: a.FirmwareUpdate,
 				ID: a.ID, Name: a.Name,
-				TypeLabel: typeLabels[string(a.Type)], TypeIcon: typeIcons[string(a.Type)],
+				TypeLabel: typeLabel, TypeIcon: typeIcon,
 				StatusLabel: statusLabels[string(a.Status)], StatusClass: statusClasses[string(a.Status)],
 				IPAddress: a.IPAddress, Hostname: a.Hostname,
 				Manufacturer: a.Manufacturer, Model: a.Model, SerialNo: a.SerialNo, Location: a.Location,
@@ -4161,17 +4174,24 @@ func (h *Handler) ITCreate(w http.ResponseWriter, r *http.Request) {
 		SerialNo: r.FormValue("serial_no"), Location: r.FormValue("location"),
 		OS: r.FormValue("os"), InfrastructureID: optionalID(r.FormValue("infrastructure_id")), Notes: r.FormValue("notes"),
 	}
-	a, err := h.it.Create(r.Context(), in, u.ID)
 	w.Header().Set("Content-Type", "text/html")
-	if err != nil {
-		fmt.Fprintf(w, "<tr><td>Fehler: %s</td></tr>", err.Error())
+	_, catByKey := h.itCategories(r.Context())
+	if !itCategoryUsable(catByKey, string(in.Type), "") {
+		fmt.Fprint(w, "<tr><td>Fehler: Bitte eine gültige Kategorie wählen.</td></tr>")
 		return
 	}
-	icons := itTypeIcons()
-	labels := map[string]string{"server": "Server", "network": "Netzwerk", "workstation": "Workstation", "printer": "Drucker", "phone": "Telefon", "tablet": "Tablet", "other": "Sonstiges"}
-	t := string(a.Type)
+	a, err := h.it.Create(r.Context(), in, u.ID)
+	if err != nil {
+		if errors.Is(err, it.ErrCategoryInvalid) {
+			fmt.Fprint(w, "<tr><td>Fehler: Bitte eine gültige Kategorie wählen.</td></tr>")
+			return
+		}
+		fmt.Fprintf(w, "<tr><td>Fehler: %s</td></tr>", esc(err.Error()))
+		return
+	}
+	label, icon := itCategoryLabelIcon(catByKey, string(a.Type))
 	fmt.Fprintf(w, "<tr><td><b>%s</b><div style=\"font-size:11px;color:var(--muted)\">%s</div><div style=\"font-size:11px;color:var(--muted)\">%s</div></td><td><i class=\"ti %s\"></i> %s</td><td>%s</td><td>%s</td><td><span class=\"badge b-green\">Aktiv</span></td></tr>",
-		esc(a.Name), esc(a.InfraName), esc(a.Notes), esc(icons[t]), esc(labels[t]), esc(a.IPAddress), esc(a.Location))
+		esc(a.Name), esc(a.InfraName), esc(a.Notes), esc(icon), esc(label), esc(a.IPAddress), esc(a.Location))
 }
 
 func (h *Handler) ITStatusWeb(w http.ResponseWriter, r *http.Request) {
@@ -4185,14 +4205,13 @@ func (h *Handler) ITStatusWeb(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, `<span class="badge %s">%s</span>`, statusClasses[string(status)], statusLabels[string(status)])
 }
 
-func itAssetDetailView(a *it.Asset) ITAssetDetailView {
-	typeLabels := map[string]string{"server": "Server", "network": "Netzwerk", "workstation": "Workstation", "printer": "Drucker", "phone": "Telefon", "tablet": "Tablet", "other": "Sonstiges"}
-	typeIcons := itTypeIcons()
+func itAssetDetailView(a *it.Asset, cats map[string]it.Category) ITAssetDetailView {
+	typeLabel, typeIcon := itCategoryLabelIcon(cats, string(a.Type))
 	statusLabels := map[string]string{"active": "Aktiv", "inactive": "Inaktiv", "maintenance": "Wartung", "retired": "Außer Dienst"}
 	statusClasses := map[string]string{"active": "b-green", "inactive": "b-gray", "maintenance": "b-amber", "retired": "b-red"}
 	v := ITAssetDetailView{
 		ID: a.ID, Name: a.Name, Type: string(a.Type),
-		TypeLabel: typeLabels[string(a.Type)], TypeIcon: typeIcons[string(a.Type)],
+		TypeLabel: typeLabel, TypeIcon: typeIcon,
 		Status: string(a.Status), StatusLabel: statusLabels[string(a.Status)], StatusClass: statusClasses[string(a.Status)],
 		Hostname: a.Hostname, IPAddress: a.IPAddress, MACAddress: a.MACAddress,
 		Manufacturer: a.Manufacturer, ManufacturerName: a.ManufacturerName, Model: a.Model, SerialNo: a.SerialNo,
@@ -4235,10 +4254,13 @@ func (h *Handler) ITDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	cats, catByKey := h.itCategories(ctx)
 	data := ITDetailData{
 		BaseData: h.baseData(r, "it", a.Name, "IT-Infrastruktur"),
 		Users:    h.userOptions(ctx),
-		Asset:    itAssetDetailView(a),
+		Asset:    itAssetDetailView(a, catByKey),
+		Types:    itTypeOptions(cats, string(a.Type)),
+		Notice:   itNetDetailNotices[r.URL.Query().Get("n")], Err: itNetDetailErrors[r.URL.Query().Get("e")],
 	}
 	data.Supplier = h.itSupplierLink(ctx, id)
 	if data.Supplier != nil {
@@ -4248,7 +4270,7 @@ func (h *Handler) ITDetail(w http.ResponseWriter, r *http.Request) {
 		if a.NetDetached {
 			data.NetDetached = true
 		} else {
-			data.Net = h.itNetDetail(ctx, a)
+			data.Net = h.itNetDetail(ctx, a, catByKey)
 		}
 		data.CanNetEdit = h.itNetCan(r, "it.edit", a.ID)
 	}
@@ -4278,11 +4300,26 @@ func (h *Handler) ITEditWeb(w http.ResponseWriter, r *http.Request) {
 		InfrastructureID: optionalID(r.FormValue("infrastructure_id")),
 		Notes:            r.FormValue("notes"),
 	}
+	// Kategorie: aktiv, oder die bisherige des Assets (auch wenn inzwischen ausgeblendet).
+	current, err := h.it.GetByID(r.Context(), id)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	_, catByKey := h.itCategories(r.Context())
+	if !itCategoryUsable(catByKey, string(in.Type), string(current.Type)) {
+		http.Error(w, "Bitte eine gültige Kategorie wählen.", http.StatusBadRequest)
+		return
+	}
 	if err := h.saveITSupplier(r.Context(), r, id); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	if err := h.it.UpdateDetails(r.Context(), id, in); err != nil {
+		if errors.Is(err, it.ErrCategoryInvalid) {
+			http.Error(w, "Bitte eine gültige Kategorie wählen.", http.StatusBadRequest)
+			return
+		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

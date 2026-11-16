@@ -430,9 +430,9 @@ func itNetAlarmText(a netsync.AlarmAsset) (title, desc string) {
 	if !a.OfflineSince.IsZero() {
 		since = alarmTime(a.OfflineSince)
 	}
-	desc = fmt.Sprintf("IP-Adresse: %s\nUplink: %s\nOffline seit: %s\nZuletzt gesehen: %s\n/it/%s\n\n"+
+	desc = fmt.Sprintf("IP-Adresse: %s\nUplink: %s\nOffline seit: %s\nKarenz: %d min\nZuletzt gesehen: %s\n/it/%s\n\n"+
 		"Bitte beim Erledigen im Feld Ursache beschreiben, warum das Gerät ausgefallen war.",
-		itNetOrDash(a.IP), itNetOrDash(a.Uplink), since, seen, a.ID)
+		itNetOrDash(a.IP), itNetOrDash(a.Uplink), since, a.GraceMinutes, seen, a.ID)
 	return title, desc
 }
 

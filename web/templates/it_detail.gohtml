@@ -60,7 +60,10 @@
         <div><div style="color:var(--muted);font-size:11px">Firmware</div>{{if .Firmware}}{{.Firmware}}{{else}}—{{end}}</div>
         <div><div style="color:var(--muted);font-size:11px">Uplink</div>{{if .Uplink}}{{.Uplink}}{{else}}—{{end}}</div>
         <div><div style="color:var(--muted);font-size:11px">Überwacht</div>{{if .Monitored}}ja – Ausfall erzeugt ein Ticket{{else}}nein{{end}}</div>
+        <div><div style="color:var(--muted);font-size:11px">&nbsp;</div>Karenz bis zum Alarm: {{.GraceMin}} min ({{.GraceSource}})</div>
       </div>
+      {{if $.Notice}}<div class="card" role="status" style="margin:10px 0 0;border-color:var(--green)"><i class="ti ti-circle-check" style="color:var(--green)"></i> {{$.Notice}}</div>{{end}}
+      {{if $.Err}}<div class="card" role="alert" style="margin:10px 0 0;border-color:var(--red);color:var(--red)"><i class="ti ti-alert-circle"></i> {{$.Err}}</div>{{end}}
       {{if .Ports}}
       <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%;margin-top:12px">
         <table style="min-width:420px">
@@ -72,6 +75,11 @@
       </div>
       {{end}}
       {{if $.CanNetEdit}}
+      <form method="POST" action="/it/{{$.Asset.ID}}/net-grace" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:12px 0 0">
+        <label class="form-label" for="it-grace" style="margin:0">Eigene Karenz (Minuten)</label>
+        <input id="it-grace" type="number" name="minutes" class="form-input" min="1" max="1440" value="{{.GraceOwn}}" placeholder="leer = Kategorie bzw. allgemein" style="width:130px;max-width:100%">
+        <button type="submit" class="btn btn-small" title="Leer lassen und speichern, um den eigenen Wert zu entfernen"><i class="ti ti-clock-check"></i> Speichern</button>
+      </form>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
         <form method="POST" action="/it/{{$.Asset.ID}}/net-monitor" style="margin:0">
           <input type="hidden" name="on" value="{{if .Monitored}}0{{else}}1{{end}}">
@@ -117,13 +125,8 @@
         <div class="form-group">
           <label class="form-label">Typ</label>
           <select name="type" class="form-input">
-            <option value="server" {{if eq .Asset.Type "server"}}selected{{end}}>Server</option>
-            <option value="network" {{if eq .Asset.Type "network"}}selected{{end}}>Netzwerk</option>
-            <option value="workstation" {{if eq .Asset.Type "workstation"}}selected{{end}}>Workstation</option>
-            <option value="printer" {{if eq .Asset.Type "printer"}}selected{{end}}>Drucker</option>
-            <option value="phone" {{if eq .Asset.Type "phone"}}selected{{end}}>Telefon</option>
-            <option value="tablet" {{if eq .Asset.Type "tablet"}}selected{{end}}>Tablet</option>
-            <option value="other" {{if eq .Asset.Type "other"}}selected{{end}}>Sonstiges</option>
+            {{range .Types}}<option value="{{.Value}}" {{if .Selected}}selected{{end}}>{{.Label}}</option>
+            {{end}}
           </select>
         </div>
         <div class="grid2" style="gap:10px">

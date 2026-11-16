@@ -6,6 +6,7 @@
     <p style="font-size:12px;color:var(--muted);margin-top:3px">{{.Stats.total}} Assets · {{.Stats.active}} aktiv</p>
   </div>
   <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end">
+  <a class="btn btn-small" href="/it/categories" title="IT-Kategorien pflegen: Namen, Symbole, Überwachung und Karenz"><i class="ti ti-category"></i> Kategorien</a>
   <a class="btn btn-small" href="/it/net" title="Netz-Abgleich mit UniFi: Zustand, Vorschläge, Einstellungen"><i class="ti ti-network"></i> Netz-Abgleich{{if .NetCandidates}} <span class="badge b-blue" title="Offene Vorschläge">{{.NetCandidates}}</span>{{end}}</a>
   {{template "icon-button-toolbar" (dict
     "Class" "end"
@@ -32,13 +33,8 @@
       <div class="form-group"><label class="form-label">Name</label><input name="name" class="form-input" required placeholder="z.B. PDH-Server-01"></div>
       <div class="form-group"><label class="form-label">Typ</label>
         <select name="type" class="form-input">
-          <option value="server">🖥️ Server</option>
-          <option value="network">🌐 Netzwerk</option>
-          <option value="workstation">💻 Workstation</option>
-          <option value="printer">🖨️ Drucker</option>
-          <option value="phone">📱 Telefon/Handy</option>
-          <option value="tablet">📟 Tablet</option>
-          <option value="other">📦 Sonstiges</option>
+          {{range .Types}}<option value="{{.Value}}">{{.Label}}</option>
+          {{end}}
         </select>
       </div>
       <div class="form-group"><label class="form-label">Hostname</label><input name="hostname" class="form-input" placeholder="z.B. pdh-srv-01"></div>
@@ -66,7 +62,7 @@
 <!-- Filter: Typ und „nur offline“ lassen sich kombinieren; „Alle“ setzt beides zurück -->
 <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
   {{if and (eq .Filter "") (eq .NetFilter "")}}{{template "icon-button" (dict "Action" "filter" "ShowLabel" true "Label" "Alle" "Href" "/it" "Class" "btn-primary")}}{{else}}{{template "icon-button" (dict "Action" "filter" "ShowLabel" true "Label" "Alle" "Href" "/it")}}{{end}}
-  {{range $f := (list (list "server" "Server") (list "network" "Netzwerk") (list "workstation" "Workstation"))}}{{$key := index $f 0}}{{if eq $.Filter $key}}{{template "icon-button" (dict "Action" "filter" "ShowLabel" true "Label" (index $f 1) "Href" ($.TypeURL $key) "Class" "btn-primary")}}{{else}}{{template "icon-button" (dict "Action" "filter" "ShowLabel" true "Label" (index $f 1) "Href" ($.TypeURL $key))}}{{end}}
+  {{range $f := .Filters}}{{if eq $.Filter $f.Value}}{{template "icon-button" (dict "Action" "filter" "ShowLabel" true "Label" $f.Label "Href" ($.TypeURL $f.Value) "Class" "btn-primary")}}{{else}}{{template "icon-button" (dict "Action" "filter" "ShowLabel" true "Label" $f.Label "Href" ($.TypeURL $f.Value))}}{{end}}
   {{end}}
   {{if eq .NetFilter "offline"}}{{template "icon-button" (dict "Action" "filter" "ShowLabel" true "Label" "Nur offline" "Href" .OfflineURL "Class" "btn-primary")}}{{else}}{{template "icon-button" (dict "Action" "filter" "ShowLabel" true "Label" "Nur offline" "Href" .OfflineURL)}}{{end}}
 </div>

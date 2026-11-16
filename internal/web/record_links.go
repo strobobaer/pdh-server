@@ -163,7 +163,7 @@ func (h *Handler) linkInfra(ctx context.Context, m fieldModule, id string) linkG
 // linkITAsset: zugeordnetes IT-Asset (QR-Infoseite, migrations/096).
 func (h *Handler) linkITAsset(ctx context.Context, m fieldModule, id string) linkGroup {
 	g := linkGroup{Title: "IT-Asset", Icon: "ti-device-desktop"}
-	g.Items = h.queryLinks(ctx, fmt.Sprintf(`SELECT a.name, COALESCE(NULLIF(a.hostname, ''), a.type::text), '/it/' || a.id, '', 'ti-device-desktop'
+	g.Items = h.queryLinks(ctx, fmt.Sprintf(`SELECT a.name, COALESCE(NULLIF(a.hostname, ''), (SELECT c.name FROM it_asset_categories c WHERE c.key = a.type), a.type), '/it/' || a.id, '', 'ti-device-desktop'
 		FROM it_assets a WHERE a.id = (SELECT it_asset_id FROM %s WHERE id = $1::uuid)`, m.Table), id)
 	return g
 }

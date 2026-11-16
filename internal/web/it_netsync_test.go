@@ -121,12 +121,12 @@ func TestUnifiSourceSkipsVPN(t *testing.T) {
 
 func TestITNetAlarmText(t *testing.T) {
 	ls := time.Date(2026, 11, 16, 7, 30, 0, 0, time.Local)
-	a := netsync.AlarmAsset{ID: "abc", Name: "Switch Halle 2", IP: "10.0.0.5", Uplink: "Core", OfflineSince: time.Date(2026, 11, 16, 8, 0, 0, 0, time.Local), LastSeen: &ls}
+	a := netsync.AlarmAsset{ID: "abc", Name: "Switch Halle 2", IP: "10.0.0.5", Uplink: "Core", OfflineSince: time.Date(2026, 11, 16, 8, 0, 0, 0, time.Local), LastSeen: &ls, GraceMinutes: 10}
 	title, desc := itNetAlarmText(a)
 	if title != "Netzgerät offline: Switch Halle 2" {
 		t.Errorf("Titel: %q", title)
 	}
-	for _, w := range []string{"10.0.0.5", "Core", "16.11.2026 08:00", "16.11.2026 07:30", "/it/abc",
+	for _, w := range []string{"10.0.0.5", "Core", "Offline seit: 16.11.2026 08:00\nKarenz: 10 min", "16.11.2026 07:30", "/it/abc",
 		"Bitte beim Erledigen im Feld Ursache beschreiben, warum das Gerät ausgefallen war."} {
 		if !strings.Contains(desc, w) {
 			t.Errorf("Beschreibung ohne %q:\n%s", w, desc)

@@ -10,6 +10,32 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.80.19] – 2026-11-16
+
+### Neu
+
+- IT-Assets: Die neue Seite **IT-Kategorien** (Knopf „Kategorien“ auf der IT-Seite) lässt dich Kategorien mit Name, Symbol und Reihenfolge anlegen, bearbeiten, aus- und einblenden und – wenn keine Assets darin liegen – löschen; die bisherigen sieben Arten sind jetzt Kategorien.
+- IT-Assets: Jede Kategorie hat eine **Karenz** bis zum Ausfall-Ticket; leer gilt der allgemeine Wert aus dem Netz-Abgleich.
+- IT-Assets: Auf der Karte „Netz“ lässt sich eine **eigene Karenz** je Gerät eintragen; es gilt erst der Wert am Gerät, dann der der Kategorie, dann der allgemeine.
+- Das Ausfall-Ticket „Netzgerät offline“ nennt die wirksame Karenz („Karenz: N min“).
+
+### Geändert
+
+- Netz-Abgleich: Ob ein neu übernommenes Gerät überwacht wird, steht jetzt in der Kategorie („Neu übernommene Geräte überwachen“); die Vorgaben bleiben wie bisher (Workstation, Telefon und Tablet aus, alle anderen an).
+- Netz-Abgleich: Beim Übernehmen stehen alle aktiven Kategorien außer Netzwerk zur Wahl.
+- Listen, Filter und Formulare der IT-Assets nutzen die Kategorien; ausgeblendete Kategorien bleiben an Assets sichtbar, die sie schon haben.
+- Lieferanten und Hersteller zeigen bei IT-Assets den Namen der Kategorie statt eines internen Schlüssels.
+
+### Behoben
+
+- Sicherung: Eine ältere Sicherung lässt sich auch dann wiederherstellen, wenn ein Update inzwischen eine Verknüpfung in der Datenbank angelegt hat; die Wiederherstellung bricht nicht mehr ab.
+- IT-Assets: Verknüpfte IT-Assets zeigen ohne Hostnamen den Namen der Kategorie statt eines internen Schlüssels.
+
+### Sicherheit
+
+- Neues Recht „IT-Kategorien pflegen“ (`it.categories`); es haben automatisch alle Rollen mit „IT: Bereichsadministrator“ (`it.admin`), mit deren Abteilung. Die Seite ansehen darf, wer IT-Infrastruktur ansehen darf.
+- Eine IT-Kategorie endgültig löschen darf nur, wer „IT: Bereichsadministrator“ (`it.admin`) hat – wie bei allen anderen Bereichen.
+
 ## [0.80.18] – 2026-11-16
 
 ### Behoben
