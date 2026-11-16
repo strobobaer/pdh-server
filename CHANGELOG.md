@@ -10,6 +10,28 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.80.21] – 2026-11-17
+
+### Neu
+
+- IT-Assets → Netz-Abgleich: **Omada (TP-Link)** ist die zweite Quelle neben UniFi – Switches, Access Points und Gateways aus dem Omada-Controller werden IT-Assets mit Hersteller TP-Link, verbundene Geräte erscheinen als Vorschläge.
+- Server-Einstellungen: neuer Reiter **Omada** für Adresse, Omada-ID, Client-ID, Client-Secret und Standort des Controllers, mit Bestätigung des Fingerabdrucks und dem Knopf **Verbindung prüfen**.
+- Hinweis: Die Omada-Anbindung ist nach der Dokumentation des Herstellers gebaut und noch nicht an einem echten Controller erprobt.
+- Handbuch: „So bindest du einen Omada-Controller an“ und „Omada als zweite Quelle“ im Abschnitt Netz-Abgleich.
+
+### Geändert
+
+- Die Seite Netz-Abgleich zeigt den Stand je Quelle (UniFi, Omada) und hat in den Einstellungen einen Schalter je Quelle; „Jetzt abgleichen“ läuft über alle eingeschalteten Quellen.
+- Die Liste der Vorschläge gilt für beide Quellen und hat die neue Spalte „Quelle“.
+- Bei Omada-Geräten gibt es keine Anschluss-Tabelle und keinen Hinweis „Update verfügbar“; ein unbekannter Zustand löst nie ein Ausfall-Ticket aus.
+
+### Sicherheit
+
+- Neues Recht „Omada-Controller anbinden“ (`system.omada`): Es bekommen alle Rollen und Benutzer, die „Namen im Haus eintragen (UniFi)“ (`system.unifi`) haben – niemand wird ausgesperrt, niemand bekommt mehr als bisher.
+- Das Omada-Client-Secret liegt verschlüsselt in der Datenbank und wird nie angezeigt, gemeldet oder protokolliert.
+- Das PDH verbindet sich nur mit einem Omada-Controller im Hausnetz (https, private Adresse) und nur, wenn er den bestätigten Fingerabdruck zeigt; es liest nur und ändert am Controller nichts.
+- Eine geänderte Controller-Adresse verlangt das Client-Secret neu und löscht den bestätigten Fingerabdruck.
+
 ## [0.80.20] – 2026-11-17
 
 ### Neu

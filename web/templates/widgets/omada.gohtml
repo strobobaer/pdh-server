@@ -1,0 +1,50 @@
+{{/* Reiter „Omada“ der Server-Einstellungen: Anbindung an einen TP-Link-Omada-Controller im Haus
+     (internal/web/omada_web.go), gebaut wie der Reiter „UniFi“. Ein Zusatz – ohne ihn läuft alles
+     unverändert. Das Client-Secret wird nie angezeigt, beim Zeichnen geht keine Anfrage an den
+     Controller. Daten: omadaTab. */}}
+{{define "omada-panel"}}
+<div id="omada-panel" class="card">
+  <div class="card-title"><span><i class="ti ti-access-point"></i> Omada-Controller (TP-Link)</span><span class="sc-sub">Zusatz – ohne läuft alles wie bisher</span></div>
+  {{if not .Can}}
+  <p class="sc-sub">Die Omada-Anbindung richtet ein, wer das Recht „Omada-Controller anbinden“ (<code>system.omada</code>) hat.</p>
+  {{else}}
+  {{if .Msg}}<div class="sc-sub" style="margin-bottom:8px;color:var(--green)"><i class="ti ti-check"></i> {{.Msg}}</div>{{end}}
+  {{if .Err}}<div class="sc-sub" style="margin-bottom:8px;color:var(--red)"><i class="ti ti-alert-circle"></i> {{.Err}}</div>{{end}}
+  <p class="sc-sub" style="margin:0 0 6px">Mit einem Omada-Controller im Haus liest das PDH Switches, Access Points, Gateways und verbundene Geräte für den Netz-Abgleich der IT-Assets. Das PDH liest nur – am Controller ändert es nichts.</p>
+  <p class="sc-sub" style="margin:0 0 10px">Am Controller unter <b>Einstellungen → Platform Integration → Open API</b> eine Anwendung im Modus <b>Client</b> anlegen; die Rolle <b>Viewer</b> genügt. Dort stehen <b>Omada-ID</b>, <b>Client-ID</b> und <b>Client-Secret</b>. Hier eintragen, speichern und den Fingerabdruck bestätigen.</p>
+  <p class="sc-sub" style="margin:0 0 10px;color:var(--amber)"><i class="ti ti-flask"></i> Die Omada-Anbindung ist nach der Dokumentation des Herstellers gebaut und noch nicht an einem echten Controller erprobt.</p>
+  {{if .Omada.Err}}<div class="sc-sub" style="margin-bottom:8px;color:var(--amber)"><i class="ti ti-alert-triangle"></i> {{.Omada.Err}}</div>{{end}}
+  <form hx-post="/admin/server-config/omada" hx-target="#omada-panel" hx-swap="outerHTML" hx-disabled-elt="find button" class="omada-form">
+    <div class="form-group" style="margin:0"><label class="form-label" for="omada-url">Adresse des Controllers</label><input class="form-input" id="omada-url" name="url" value="{{.Omada.URL}}" placeholder="https://192.168.1.2:8043" autocomplete="off"></div>
+    <div class="form-group" style="margin:0"><label class="form-label" for="omada-id">Omada-ID</label><input class="form-input" id="omada-id" name="omada_id" value="{{.Omada.ID}}" autocomplete="off" spellcheck="false"></div>
+    <div class="form-group" style="margin:0"><label class="form-label" for="omada-client">Client-ID</label><input class="form-input" id="omada-client" name="client_id" value="{{.Omada.Client}}" autocomplete="off" spellcheck="false"></div>
+    <div class="form-group" style="margin:0"><label class="form-label" for="omada-secret">Client-Secret</label><input class="form-input" id="omada-secret" type="password" name="secret" autocomplete="new-password" placeholder="{{if .Omada.HasSecret}}hinterlegt – nur zum Ändern eingeben{{else}}aus dem Omada-Controller{{end}}"></div>
+    <div class="form-group" style="margin:0"><label class="form-label" for="omada-site">Standort</label><input class="form-input" id="omada-site" name="site" value="{{.Omada.Site}}" placeholder="leer = der einzige"></div>
+    <button class="btn btn-primary btn-small" type="submit"><i class="ti ti-device-floppy"></i> Speichern</button>
+  </form>
+  {{if .Omada.HasSecret}}<p class="sc-sub" style="margin:0 0 6px"><i class="ti ti-key"></i> Client-Secret hinterlegt (verschlüsselt). Adresse leer speichern entfernt die Anbindung. Bei einer neuen Adresse das Secret neu eintragen.</p>{{end}}
+  {{if .Omada.SeenPin}}<div class="omada-form">
+    <span class="sc-sub">Fingerabdruck des Controllers: <code class="omada-fp">{{.Omada.SeenPin}}</code><br>Stimmt er mit dem Zertifikat überein, das der Browser auf dem Controller zeigt (SHA-256)?</span>
+    <form hx-post="/admin/server-config/omada/confirm" hx-target="#omada-panel" hx-swap="outerHTML" hx-disabled-elt="find button"
+      hx-confirm="Diesen Fingerabdruck bestätigen? Danach spricht das PDH nur noch mit einem Controller, der genau diesen zeigt.">
+      <input type="hidden" name="fingerprint" value="{{.Omada.SeenPin}}">
+      <button class="btn btn-primary btn-small" type="submit"><i class="ti ti-fingerprint"></i> Bestätigen</button></form>
+  </div>
+  {{else if .Omada.Confirmed}}<p class="sc-sub"><i class="ti ti-fingerprint"></i> Fingerabdruck bestätigt: <code class="omada-fp">{{.Omada.Pin}}</code>. Den Abgleich schaltest du unter <a href="/it/net">IT-Assets → Netz-Abgleich</a> ein.</p>
+  {{else if .Omada.URL}}<p class="sc-sub" style="color:var(--amber)"><i class="ti ti-alert-triangle"></i> Fingerabdruck noch nicht bestätigt. „Speichern“ drücken und den angezeigten Fingerabdruck bestätigen.</p>{{end}}
+  {{if .Omada.Ready}}<div class="omada-form">
+    <form hx-post="/admin/server-config/omada/check" hx-target="#omada-panel" hx-swap="outerHTML" hx-disabled-elt="find button">
+      <button class="btn btn-small" type="submit"><i class="ti ti-plug-connected"></i> Verbindung prüfen</button></form>
+    <span class="sc-sub">Meldet sich am Controller an und zählt die Geräte am Standort. Es wird nichts geändert.</span>
+  </div>{{end}}
+  {{end}}
+<style>
+.omada-form{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin:8px 0}
+.omada-form form{display:inline}
+.omada-form .form-group{flex:1 1 200px;min-width:0}
+.omada-form .form-input{max-width:100%}
+.omada-form>.sc-sub{flex:1 1 200px;min-width:0}
+.omada-fp{overflow-wrap:anywhere;word-break:break-all}
+</style>
+</div>
+{{end}}

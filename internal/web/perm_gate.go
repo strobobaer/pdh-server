@@ -160,6 +160,7 @@ var gateRules = []gateRule{
 	gr(wPost, permCloudflare, "", false, `^/admin/server-config/cloudflare/mtls-(?:off|on)$`),
 	gr(wPost, permCerts, "", false, `^/admin/server-config/certs/(?:settings|add|issue)$`),
 	gr(wPost, permUnifi, "", false, `^/admin/server-config/(?:unifi|unifi/confirm|certs/lan|certs/lan6)$`), // Reiter „UniFi“ und Namen im Haus
+	gr(wPost, permOmada, "", false, `^/admin/server-config/omada(?:/confirm|/check)?$`), // Reiter „Omada“
 	// ── Löschvormerkung von Stammdaten über die Schnittstelle ──
 	gr("DELETE", "inventory.edit", "part", false, `^(?:/api/v1)?/inventory`+gID+gEnd),
 	gr("DELETE", "inventory.edit", "storage", false, `^(?:/api/v1)?/storage`+gID+gEnd),
