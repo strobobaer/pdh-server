@@ -62,10 +62,18 @@ func TestITCategoriesPerms(t *testing.T) {
 			t.Errorf("%s ohne it.categories: %d", name, w.Code)
 		}
 	}
-	for _, p := range []string{"/it/categories", "/it/categories/kameras", "/it/categories/kameras/active", "/it/categories/kameras/delete"} {
+	// Mit it.categories allein: kein Löschen – das darf nur der Bereichsadministrator IT.
+	h.hasPermHook = func(_ *http.Request, p string) bool { return p == "it.view" || p == "it.categories" }
+	if w := itNetDo(h.ITCategoryDeleteWeb, "POST", "/it/categories/x/delete", "", "", nil); w.Code != http.StatusForbidden {
+		t.Errorf("löschen ohne it.admin: %d", w.Code)
+	}
+	for p, want := range map[string]string{
+		"/it/categories": "it.categories", "/it/categories/kameras": "it.categories",
+		"/it/categories/kameras/active": "it.categories", "/it/categories/kameras/delete": "it.admin",
+	} {
 		_, perm, ref, _, hit := matchGate("POST", p)
-		if !hit || perm != "it.categories" || ref != "" {
-			t.Errorf("Gate %s: %v %q %q", p, hit, perm, ref)
+		if !hit || perm != want || ref != "" {
+			t.Errorf("Gate %s: %v %q %q, erwartet %q", p, hit, perm, ref, want)
 		}
 	}
 }
@@ -98,6 +106,12 @@ func TestITCategoriesPageAndForms(t *testing.T) {
 	}
 	if strings.Contains(body, `action="/it/categories/network/delete"`) || strings.Contains(body, `action="/it/categories/other/active"`) {
 		t.Error("feste Kategorien dürfen weder löschbar noch ausblendbar sein")
+	}
+	// Ohne it.admin: bearbeiten ja, Löschen-Knopf nein.
+	h.hasPermHook = func(_ *http.Request, p string) bool { return p != "it.admin" }
+	body = itNetDo(h.ITCategoriesPage, "GET", "/it/categories", "", "", nil).Body.String()
+	if !strings.Contains(body, `action="/it/categories/`+c.Key+`"`) || strings.Contains(body, `/delete"`) {
+		t.Error("ohne it.admin: Bearbeiten muss da sein, Löschen nicht")
 	}
 }
 

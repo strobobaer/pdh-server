@@ -16,7 +16,8 @@ import (
 )
 
 // IT-Kategorien – Oberfläche: Seite „IT-Kategorien“ (/it/categories). Ansehen
-// mit it.view, anlegen, ändern, aus-/einblenden und löschen mit it.categories.
+// mit it.view, anlegen, ändern, aus-/einblenden mit it.categories, endgültig
+// löschen nur der Bereichsadministrator IT (it.admin).
 // Kategorien sind Einstellungen ohne Abteilung, deshalb gilt das Recht global.
 
 const permITCategories = "it.categories"
@@ -45,7 +46,7 @@ type ITCategoryRow struct {
 	IconClass string
 	Grace     string // Minuten oder leer (= allgemein)
 	CanHide   bool
-	CanDelete bool
+	CanDelete bool // it.admin, nicht fest, ohne Assets
 }
 
 type ITCategoriesPageData struct {
@@ -101,8 +102,9 @@ func (h *Handler) ITCategoriesPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Kategorien konnten nicht gelesen werden", http.StatusInternalServerError)
 		return
 	}
+	admin := h.itCategoriesCan(r, itNetPermAdmin) // endgültig löschen: nur Bereichsadministrator IT
 	for _, c := range list {
-		row := ITCategoryRow{Category: c, IconClass: itCategoryIcon(c), CanHide: !c.Builtin, CanDelete: !c.Builtin && c.Assets == 0}
+		row := ITCategoryRow{Category: c, IconClass: itCategoryIcon(c), CanHide: !c.Builtin, CanDelete: admin && !c.Builtin && c.Assets == 0}
 		if c.GraceMinutes != nil {
 			row.Grace = strconv.Itoa(*c.GraceMinutes)
 		}
@@ -240,9 +242,10 @@ func (h *Handler) ITCategoryActiveWeb(w http.ResponseWriter, r *http.Request) {
 	h.itCategoryDone(w, r, h.it.SetCategoryActive(r.Context(), chi.URLParam(r, "key"), on), notice)
 }
 
-// ITCategoryDeleteWeb: POST /it/categories/{key}/delete (it.categories; nur unbenutzte, nicht feste).
+// ITCategoryDeleteWeb: POST /it/categories/{key}/delete (it.admin – endgültig
+// löschen darf nur der Bereichsadministrator; nur unbenutzte, nicht feste).
 func (h *Handler) ITCategoryDeleteWeb(w http.ResponseWriter, r *http.Request) {
-	if !h.itCategoriesCan(r, permITCategories) {
+	if !h.itCategoriesCan(r, itNetPermAdmin) {
 		itNetForbidden(w)
 		return
 	}

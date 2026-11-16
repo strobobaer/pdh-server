@@ -34,6 +34,7 @@ im Kapitel „Versionen & Updates“ an.
 ### Sicherheit
 
 - Neues Recht „IT-Kategorien pflegen“ (`it.categories`); es haben automatisch alle Rollen mit „IT: Bereichsadministrator“ (`it.admin`), mit deren Abteilung. Die Seite ansehen darf, wer IT-Infrastruktur ansehen darf.
+- Eine IT-Kategorie endgültig löschen darf nur, wer „IT: Bereichsadministrator“ (`it.admin`) hat – wie bei allen anderen Bereichen.
 
 ## [0.80.18] – 2026-11-16
 
