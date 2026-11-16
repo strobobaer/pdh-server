@@ -3,6 +3,8 @@ package it
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -113,7 +115,7 @@ func (r *Repository) Create(ctx context.Context, a *Asset) error {
 		a.AssignedTo, a.InfrastructureID, a.Notes, a.CreatedBy,
 	).Scan(&a.ID, &a.CreatedAt, &a.UpdatedAt)
 	if err != nil {
-		return err
+		return assetTypeError(err)
 	}
 	if a.InfrastructureID != nil {
 		_ = r.db.QueryRow(ctx, `SELECT name FROM infrastructure WHERE id=$1`, *a.InfrastructureID).Scan(&a.InfraName)
@@ -197,6 +199,15 @@ func (r *Repository) UpdateDetails(ctx context.Context, id string, in *UpdateDet
 		in.Manufacturer, in.ManufacturerID, in.Model, in.SerialNo, in.Location, in.OS,
 		in.PurchasedAt, in.WarrantyUntil, in.AssignedTo, in.InfrastructureID,
 		in.Notes, id, in.ResponsibleTo)
+	return assetTypeError(err)
+}
+
+// assetTypeError macht aus einer Fremdschlüssel-Verletzung des Typs (unbekannte
+// Kategorie) ErrCategoryInvalid; andere Fehler bleiben unverändert.
+func assetTypeError(err error) error {
+	if isPgCode(err, pgForeignKey, assetTypeFK) {
+		return fmt.Errorf("%w: Kategorie unbekannt", ErrCategoryInvalid)
+	}
 	return err
 }
 
@@ -283,6 +294,29 @@ func (s *Service) UpdateStatus(ctx context.Context, id string, status AssetStatu
 }
 func (s *Service) GetStats(ctx context.Context) (map[string]int, error) { return s.repo.GetStats(ctx) }
 
+// Kategorien: durchgereicht an das Repository (siehe categories.go).
+func (s *Service) Categories(ctx context.Context, withInactive bool) ([]Category, error) {
+	return s.repo.Categories(ctx, withInactive)
+}
+func (s *Service) Category(ctx context.Context, key string) (*Category, error) {
+	return s.repo.Category(ctx, key)
+}
+func (s *Service) CreateCategory(ctx context.Context, c *Category) error {
+	return s.repo.CreateCategory(ctx, c)
+}
+func (s *Service) UpdateCategory(ctx context.Context, c *Category) error {
+	return s.repo.UpdateCategory(ctx, c)
+}
+func (s *Service) SetCategoryActive(ctx context.Context, key string, on bool) error {
+	return s.repo.SetCategoryActive(ctx, key, on)
+}
+func (s *Service) DeleteCategory(ctx context.Context, key string) error {
+	return s.repo.DeleteCategory(ctx, key)
+}
+func (s *Service) SetAssetGrace(ctx context.Context, assetID string, minutes *int) error {
+	return s.repo.SetAssetGrace(ctx, assetID, minutes)
+}
+
 type Handler struct{ svc *Service }
 
 func NewHandler(svc *Service) *Handler { return &Handler{svc: svc} }
@@ -311,7 +345,11 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	userID, _ := r.Context().Value(middleware.UserIDKey).(string)
 	a, err := h.svc.Create(r.Context(), &in, userID)
 	if err != nil {
-		response.Error(w, 500, err.Error())
+		code := 500
+		if errors.Is(err, ErrCategoryInvalid) {
+			code = 400
+		}
+		response.Error(w, code, err.Error())
 		return
 	}
 	response.JSON(w, 201, a)
