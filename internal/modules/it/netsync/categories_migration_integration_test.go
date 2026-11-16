@@ -109,6 +109,65 @@ func TestITCategoriesMigration(t *testing.T) {
 		}
 	})
 
+	t.Run("Umstellung vorhandener Assets bewahrt den Typ", func(t *testing.T) {
+		sql, err := os.ReadFile("../../../../migrations/165_it_categories.up.sql")
+		must(t, err)
+		var uid string
+		must(t, pool.QueryRow(ctx, `SELECT id::text FROM users ORDER BY created_at LIMIT 1`).Scan(&uid))
+		// Alles in einer Transaktion, die immer zurückgerollt wird.
+		tx, err := pool.Begin(ctx)
+		must(t, err)
+		defer tx.Rollback(ctx)
+		for _, q := range []string{
+			`ALTER TABLE it_assets DROP CONSTRAINT it_assets_type_fkey`,
+			`CREATE TYPE it_asset_type AS ENUM ('server','network','workstation','printer','phone','tablet','other')`,
+			`ALTER TABLE it_assets ALTER COLUMN type DROP DEFAULT`,
+			`ALTER TABLE it_assets ALTER COLUMN type TYPE it_asset_type USING type::it_asset_type`,
+			`ALTER TABLE it_assets ALTER COLUMN type SET DEFAULT 'other'`,
+		} {
+			if _, err := tx.Exec(ctx, q); err != nil {
+				t.Fatalf("Altzustand herstellen (%s): %v", q, err)
+			}
+		}
+		types := map[string]string{"kat-alt-printer": "printer", "kat-alt-phone": "phone", "kat-alt-network": "network"}
+		for name, typ := range types {
+			if _, err := tx.Exec(ctx, `INSERT INTO it_assets (name, type, created_by) VALUES ($1, $2::it_asset_type, $3::uuid)`, name, typ, uid); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if _, err := tx.Exec(ctx, string(sql)); err != nil {
+			t.Fatalf("Migration auf Altzustand: %v", err)
+		}
+		for name, typ := range types {
+			var got string
+			must(t, tx.QueryRow(ctx, `SELECT type FROM it_assets WHERE name = $1`, name).Scan(&got))
+			if got != typ {
+				t.Errorf("%s: Typ %q statt %q", name, got, typ)
+			}
+		}
+		var dt string
+		must(t, tx.QueryRow(ctx, `SELECT data_type FROM information_schema.columns
+			WHERE table_name = 'it_assets' AND column_name = 'type'`).Scan(&dt))
+		if dt != "text" {
+			t.Errorf("data_type = %s", dt)
+		}
+		var n int
+		must(t, tx.QueryRow(ctx, `SELECT count(*) FROM pg_constraint WHERE conname = 'it_assets_type_fkey'`).Scan(&n))
+		if n != 1 {
+			t.Error("FK it_assets_type_fkey fehlt")
+		}
+		var valid bool
+		must(t, tx.QueryRow(ctx, `SELECT i.indisvalid FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid
+			WHERE c.relname = 'idx_it_type'`).Scan(&valid))
+		if !valid {
+			t.Error("idx_it_type ungültig")
+		}
+		must(t, tx.QueryRow(ctx, `SELECT count(*) FROM pg_type WHERE typname = 'it_asset_type'`).Scan(&n))
+		if n != 0 {
+			t.Error("Enum it_asset_type nicht gelöscht")
+		}
+	})
+
 	t.Run("Recht it.categories", func(t *testing.T) {
 		var n int
 		must(t, pool.QueryRow(ctx, `SELECT count(*) FROM permissions WHERE key = 'it.categories' AND category = 'IT'`).Scan(&n))
