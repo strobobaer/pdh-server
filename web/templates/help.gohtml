@@ -716,7 +716,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>Unter <b>Einstellungen</b> das <b>Intervall (Sekunden)</b> (30 bis 3600, Standard 60), die <b>Karenz bis zum Alarm (Minuten)</b> (1 bis 1440, Standard 5), <b>Verantwortlich – Benutzer</b> oder die Gruppe und die <b>Priorität der Alarm-Tickets</b> (Standard hoch) festlegen. Ohne Angabe ist die Gruppe „IT“ verantwortlich, sonst die Bereichsadministratoren IT.</li>
       <li><b>Jetzt abgleichen</b> startet sofort einen Lauf; der Knopf ist nur aktiv, solange der Abgleich eingeschaltet ist, und nicht während einer Wartungssperre. Die Karte zeigt letzten Lauf, Fehlertext und die Zahl der Geräte und Clients.</li>
     </ol>
-    <b>Netzgeräte</b> entstehen und aktualisieren sich von selbst: IP, MAC, Modell, Firmware (mit Kennzeichen „Update“), Zustand online/offline/unbekannt, Uplink und Ports (alle 15 Minuten). Name (nur beim Anlegen), Standort, Notizen, Verantwortliche und Status überschreibt der Abgleich nie. UniFi liefert keine Seriennummer.</div>
+    <b>Netzgeräte</b> entstehen und aktualisieren sich von selbst: IP, MAC, Modell, Firmware (mit Marke „Update“), Zustand online/offline/unbekannt, Uplink und Ports (alle 15 Minuten). Name (nur beim Anlegen), Standort, Notizen, Verantwortliche und Status überschreibt der Abgleich nie. UniFi liefert keine Seriennummer.</div>
   <div class="hb-howto"><b><i class="ti ti-device-desktop-plus"></i> So übernimmst du einen Vorschlag</b>
     <ol class="hb-steps">
       <li>Auf der Seite <b>Netz-Abgleich</b> die Liste der <b>Vorschläge</b> öffnen. Clients (PCs, Drucker, Telefone …) werden nie von allein angelegt.</li>
@@ -728,10 +728,10 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <ol class="hb-steps">
       <li>Ist ein überwachtes, aktives Gerät länger als die Karenz offline, entsteht das Ticket <b>Netzgerät offline: &lt;Name&gt;</b>.</li>
       <li>Kommt das Gerät zurück, steht am Ticket der Kommentar „Wieder erreichbar seit …“. Das Ticket bleibt offen, bis du es löst.</li>
-      <li>Zum Abschließen den grünen Haken wählen und im <a href="#completion">Abschluss-Assistenten</a> das Feld <b>Ursache (Pflicht bei Alarm-Tickets)</b> ausfüllen. Ohne Ursache lässt sich das Ticket nicht lösen.</li>
+      <li>Zum Abschließen <b>Bearbeiten &amp; abschließen</b> wählen und im <a href="#completion">Abschluss-Assistenten</a> das Feld <b>Ursache (Pflicht bei Alarm-Tickets)</b> ausfüllen. Ohne Ursache lässt sich das Ticket nicht lösen.</li>
     </ol>
     Fällt dasselbe Gerät bei offenem Ticket erneut aus, kommt ein Eintrag auf dasselbe Ticket. Kein Alarm entsteht, wenn die Quelle selbst nicht erreichbar ist (Zustand „unbekannt“), während eines Firmware-Updates und nicht für Ports oder Firmware.</div>
-  <p>In der Liste <b>IT-Assets</b> zeigen Kennzeichen den Zustand (grün online, rot offline, grau unbekannt, „Quelle getrennt“); der Filter <b>Nur offline</b> lässt sich mit dem Typfilter verbinden. Auf dem Gerät zeigt die Karte <b>Netz</b> Zustand seit, zuletzt gesehen, Firmware, Uplink und die Port-Tabelle. Mit dem Knopf <b>Nicht mehr überwachen</b> (Recht „IT-Assets bearbeiten“) schaltest du den Alarm für ein einzelnes Gerät ab, mit <b>Überwachen</b> wieder ein. <b>Quelle trennen</b> lässt das Asset bestehen, gleicht es aber nicht mehr ab; <b>Wieder verbinden</b> macht das rückgängig.</p>
+  <p>In der Liste <b>IT-Assets</b> zeigen Marken den Zustand (grün online, rot offline, grau unbekannt, „Quelle getrennt“); der Filter <b>Nur offline</b> lässt sich mit dem Typfilter verbinden. Auf dem Gerät zeigt die Karte <b>Netz</b> Zustand seit, zuletzt gesehen, Firmware, Uplink und die Port-Tabelle. Mit dem Knopf <b>Nicht mehr überwachen</b> (Recht „IT-Assets bearbeiten“) schaltest du den Alarm für ein einzelnes Gerät ab, mit <b>Überwachen</b> wieder ein. <b>Quelle trennen</b> lässt das Asset bestehen, gleicht es aber nicht mehr ab; <b>Wieder verbinden</b> macht das rückgängig.</p>
   {{template "hb-shots" (dict "Ref" (index $s "infrastructure") "Can" $can)}}
 </section>
 
