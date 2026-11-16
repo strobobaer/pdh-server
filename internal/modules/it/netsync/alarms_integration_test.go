@@ -2,6 +2,8 @@ package netsync
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -19,11 +21,26 @@ type fakeSink struct {
 	afters   int
 	panicOn  string // Name des Assets, bei dem OpenTicket abstürzt
 	made     []string
+	prefix   string // gesetzt: Aufrufe für Assets ohne dieses Namenspräfix schlagen fehl
+	badID    bool   // OpenTicket liefert eine ungültige Ticket-ID (Fehler beim Speichern)
+}
+
+func (s *fakeSink) guard(name string) error {
+	if s.prefix != "" && !strings.HasPrefix(name, s.prefix) {
+		return errors.New("fremdes Asset " + name)
+	}
+	return nil
 }
 
 func (s *fakeSink) OpenTicket(ctx context.Context, tx pgx.Tx, a AlarmAsset) (string, func(), error) {
+	if err := s.guard(a.Name); err != nil {
+		return "", nil, err
+	}
 	if a.Name == s.panicOn {
 		panic("Senke abgestürzt")
+	}
+	if s.badID {
+		return "kein-uuid", func() { s.afters++ }, nil
 	}
 	var id string
 	if err := tx.QueryRow(ctx, `INSERT INTO tickets (title, created_by) VALUES ($1, $2::uuid) RETURNING id::text`,
@@ -39,10 +56,16 @@ func (s *fakeSink) TicketOpen(ctx context.Context, tx pgx.Tx, id string) (bool, 
 	return s.open[id], nil
 }
 func (s *fakeSink) Repeat(ctx context.Context, tx pgx.Tx, a AlarmAsset) (func(), error) {
+	if err := s.guard(a.Name); err != nil {
+		return nil, err
+	}
 	s.repeated = append(s.repeated, a)
 	return func() { s.afters++ }, nil
 }
 func (s *fakeSink) Recovered(ctx context.Context, tx pgx.Tx, a AlarmAsset, at time.Time) (func(), error) {
+	if err := s.guard(a.Name); err != nil {
+		return nil, err
+	}
 	s.recov = append(s.recov, a)
 	return func() { s.afters++ }, nil
 }
@@ -57,7 +80,7 @@ func newWatch(t *testing.T) (*fx, *fakeSink, *Watch) {
 			_, _ = f.s.DB.Exec(c, `DELETE FROM tickets WHERE id = $1::uuid`, id)
 		}
 	})
-	return f, sink, &Watch{DB: f.s.DB, Sink: sink, Grace: func(context.Context) time.Duration { return 5 * time.Minute }}
+	return f, sink, &Watch{DB: f.s.DB, Sink: sink, Source: f.src, Grace: func(context.Context) time.Duration { return 5 * time.Minute }}
 }
 
 // mk legt ein überwachtes Asset an.
@@ -73,9 +96,10 @@ func (f *fx) mk(ext, state string, since time.Time) string {
 func (f *fx) alarmState(id string) (state string, since *time.Time, ticket *string) {
 	f.t.Helper()
 	err := f.s.DB.QueryRow(context.Background(), `SELECT state, offline_since, ticket_id::text FROM it_net_alarm_state WHERE asset_id = $1::uuid`, id).Scan(&state, &since, &ticket)
-	if err != nil {
+	if errors.Is(err, pgx.ErrNoRows) {
 		return "normal", nil, nil
 	}
+	must(f.t, err)
 	return
 }
 
@@ -204,11 +228,92 @@ func TestWatchMonitoringOff(t *testing.T) {
 	_, err = f.s.DB.Exec(ctx, `UPDATE it_assets SET net_monitored=true WHERE id=$1::uuid`, id)
 	must(t, err)
 	must(t, w.Pass(ctx, t0.Add(time.Hour)))
+	if st, _, _ := f.alarmState(id); len(sink.opened) != 1 || st != "alarm" {
+		t.Fatalf("Alarm erwartet: opened=%d state=%s", len(sink.opened), st)
+	}
+	afters := sink.afters
 	_, err = f.s.DB.Exec(ctx, `UPDATE it_assets SET net_monitored=false WHERE id=$1::uuid`, id)
 	must(t, err)
 	must(t, w.Pass(ctx, t0.Add(time.Hour)))
 	if st, _, _ := f.alarmState(id); st != "normal" {
 		t.Error("Alarm muss still enden")
+	}
+	if len(sink.opened) != 1 || len(sink.repeated) != 0 || len(sink.recov) != 0 || sink.afters != afters {
+		t.Error("Stilllegen darf die Senke nicht aufrufen")
+	}
+}
+
+func TestWatchInactiveSilencesAlarm(t *testing.T) {
+	f, sink, w := newWatch(t)
+	ctx := context.Background()
+	id := f.mk("a", "offline", t0)
+	must(t, w.Pass(ctx, t0.Add(10*time.Minute)))
+	_, err := f.s.DB.Exec(ctx, `UPDATE it_assets SET status='inactive' WHERE id=$1::uuid`, id)
+	must(t, err)
+	must(t, w.Pass(ctx, t0.Add(11*time.Minute)))
+	if st, _, _ := f.alarmState(id); st != "normal" || len(sink.recov) != 0 {
+		t.Errorf("Zustand %s recov %d", st, len(sink.recov))
+	}
+}
+
+// Ein vom Netz gelöstes Asset (Quelle NULL) wird nur bei leerer Source erfasst.
+// Die Senke verweigert fremde Assets, damit der Durchlauf über alle Quellen
+// keine fremden Zeilen verändert (Fehler wird je Asset isoliert).
+func TestWatchDetachedSilencesAlarm(t *testing.T) {
+	f, sink, w := newWatch(t)
+	ctx := context.Background()
+	id := f.mk("a", "offline", t0)
+	must(t, w.Pass(ctx, t0.Add(10*time.Minute)))
+	_, err := f.s.DB.Exec(ctx, `UPDATE it_assets SET net_source=NULL, net_external_id=NULL WHERE id=$1::uuid`, id)
+	must(t, err)
+	w.Source = f.src
+	must(t, w.Pass(ctx, t0.Add(11*time.Minute)))
+	if st, _, _ := f.alarmState(id); st != "alarm" {
+		t.Fatal("mit Source darf das gelöste Asset nicht erfasst werden")
+	}
+	w.Source = ""
+	sink.prefix = "w-" + f.src
+	must(t, w.Pass(ctx, t0.Add(12*time.Minute)))
+	if st, _, tk := f.alarmState(id); st != "normal" || tk == nil {
+		t.Errorf("Zustand %s %v", st, tk)
+	}
+	if len(sink.recov) != 0 {
+		t.Error("kein Wieder-erreichbar-Eintrag")
+	}
+}
+
+func TestWatchGraceFallback(t *testing.T) {
+	for name, g := range map[string]func(context.Context) time.Duration{
+		"null":  func(context.Context) time.Duration { return 0 },
+		"nil":   nil,
+		"minus": func(context.Context) time.Duration { return -time.Minute },
+	} {
+		t.Run(name, func(t *testing.T) {
+			f, sink, w := newWatch(t)
+			w.Grace = g
+			f.mk("a", "offline", t0)
+			must(t, w.Pass(context.Background(), t0.Add(4*time.Minute)))
+			if len(sink.opened) != 0 {
+				t.Fatal("vor 5 Minuten kein Alarm")
+			}
+			must(t, w.Pass(context.Background(), t0.Add(5*time.Minute)))
+			if len(sink.opened) != 1 {
+				t.Fatalf("nach 5 Minuten ein Alarm, war %d", len(sink.opened))
+			}
+		})
+	}
+}
+
+func TestWatchAfterNotRunOnRollback(t *testing.T) {
+	f, sink, w := newWatch(t)
+	sink.badID = true
+	id := f.mk("a", "offline", t0)
+	must(t, w.Pass(context.Background(), t0.Add(10*time.Minute)))
+	if sink.afters != 0 {
+		t.Error("after darf nach Rollback nicht laufen")
+	}
+	if st, _, _ := f.alarmState(id); st != "normal" {
+		t.Error("Zustand muss normal bleiben")
 	}
 }
 

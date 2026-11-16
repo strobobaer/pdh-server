@@ -44,6 +44,11 @@ type Watch struct {
 	DB    *pgxpool.Pool
 	Sink  AlarmSink
 	Grace func(ctx context.Context) time.Duration
+	// Source beschränkt den Durchlauf auf Assets dieser Quelle (net_source).
+	// Leer: alle Quellen (Betrieb); dann werden auch gelöste Assets (ohne
+	// Quelle) mit laufendem Alarm still zurückgesetzt. Gedacht für Tests mit
+	// eigener Quelle gegen eine geteilte Datenbank.
+	Source string
 }
 
 func (w *Watch) grace(ctx context.Context) time.Duration {
@@ -61,8 +66,10 @@ func (w *Watch) Pass(ctx context.Context, now time.Time) error {
 	grace := w.grace(ctx)
 	rows, err := w.DB.Query(ctx, `SELECT id::text FROM it_assets
 		 WHERE net_source IS NOT NULL AND net_monitored AND status = 'active'
+		   AND ($1 = '' OR net_source = $1)
 		UNION
-		SELECT asset_id::text FROM it_net_alarm_state WHERE state = 'alarm'`)
+		SELECT s.asset_id::text FROM it_net_alarm_state s JOIN it_assets a ON a.id = s.asset_id
+		 WHERE s.state = 'alarm' AND ($1 = '' OR a.net_source = $1)`, w.Source)
 	if err != nil {
 		return err
 	}
