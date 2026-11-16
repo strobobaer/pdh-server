@@ -292,6 +292,7 @@ type Handler struct {
 	userByIDFn         func(context.Context, string) (*users.User, error) // nil → users.GetByID (Tests)
 	db                 *pgxpool.Pool
 	itNet              itNetState // IT-Netzabgleich: Quelle und Meldezustand über Läufe hinweg
+	omadaC             omadaConn  // Omada-Controller: Client samt Zugriffstoken über Läufe hinweg
 	tmpl               *template.Template
 	users              *users.Service
 	shifts             *shifts.Service
