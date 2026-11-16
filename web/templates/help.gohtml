@@ -591,7 +591,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   {{template "hb-shots" (dict "Ref" (index $s "maintenance") "Can" $can)}}
 </section>
 
-<section class="hb-ch" id="infrastructure" data-title="Infrastruktur &amp; IT" data-pages="infrastructure it hmi">
+<section class="hb-ch" id="infrastructure" data-title="Infrastruktur &amp; IT" data-pages="infrastructure it it-net hmi">
   <h2><i class="ti ti-hierarchy-2"></i> Infrastruktur &amp; IT</h2>
   <p>Der Anlagenbaum bildet euren Betrieb ab: Gebäude → Linien → Anlagen → Geräte. Er startet zugeklappt; mit dem Pfeil klappst du einen Ast auf, die übrigen Äste klappen dabei zu. Kommst du zurück, ist der zuletzt geöffnete Ast wieder offen. <b>Alle aufklappen</b> zeigt den ganzen Baum. In der Anlagenauswahl (z. B. beim Melden) gilt das genauso; beim Suchen werden alle Treffer aufgeklappt.</p>
   <div class="hb-howto"><b><i class="ti ti-shield-lock"></i> Wer darf was bei der Infrastruktur?</b>Unter <b>Rollen &amp; Rechte</b> (Gruppe „Infrastruktur &amp; Anlagen“) gibt es drei Rechte:
@@ -706,6 +706,32 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li><b>Speichern</b>. Auf der Übersicht steht jetzt „Terminal-Standort“; die Änderung erscheint in der Historie.</li>
     </ol>
     Wird die Anlage später gelöscht, ist der Standort automatisch wieder leer – dann klappt der Baum wie gewohnt ganz auf.</div>
+  <h3 id="it-net"><i class="ti ti-network"></i> Netz-Abgleich (IT-Assets aus UniFi)</h3>
+  <p>Das PDH liest Geräte aus eurem UniFi-Netz und legt Switches, Access Points und Gateways selbst als IT-Assets (Typ Netzwerk) an. Die Seite findest du unter <b>IT-Assets</b> → <b>Netz-Abgleich</b>; neben dem Knopf steht die Zahl offener Vorschläge.</p>
+  {{template "hb-fig-itnet"}}
+  <div class="hb-howto"><b><i class="ti ti-plug-connected"></i> So schaltest du den Abgleich mit UniFi ein</b>
+    <ol class="hb-steps">
+      <li><b>IT-Assets</b> → <b>Netz-Abgleich</b> öffnen. Steht dort ein Hinweis „UniFi nicht verbunden“, folge dem Link zum Reiter <b>UniFi</b> der Server-Einstellungen und richte die Verbindung ein (dafür braucht es das Recht <code>system.unifi</code>).</li>
+      <li>Bei der Quelle <b>UniFi</b> den Schalter einschalten.</li>
+      <li>Unter <b>Einstellungen</b> Takt (30 bis 3600 Sekunden, Standard 60), Wartezeit vor dem Alarm (1 bis 1440 Minuten, Standard 5), Verantwortliche/n oder Gruppe und Priorität (Standard hoch) festlegen. Ohne Angabe ist die Gruppe „IT“ verantwortlich, sonst die Bereichsadministratoren IT.</li>
+      <li><b>Jetzt abgleichen</b> startet sofort einen Lauf (nicht während einer Wartungssperre). Die Karte zeigt letzten Lauf, Fehlertext und die Zahl der Geräte und Clients.</li>
+    </ol>
+    <b>Netzgeräte</b> entstehen und aktualisieren sich von selbst: IP, MAC, Modell, Firmware (mit Kennzeichen „Update“), Zustand online/offline/unbekannt, Uplink und Ports (alle 15 Minuten). Name (nur beim Anlegen), Standort, Notizen, Verantwortliche und Status überschreibt der Abgleich nie. UniFi liefert keine Seriennummer.</div>
+  <div class="hb-howto"><b><i class="ti ti-device-desktop-plus"></i> So übernimmst du einen Vorschlag</b>
+    <ol class="hb-steps">
+      <li>Auf der Seite <b>Netz-Abgleich</b> die Liste der <b>Vorschläge</b> öffnen. Clients (PCs, Drucker, Telefone …) werden nie von allein angelegt.</li>
+      <li><b>Übernehmen</b> wählen und den Typ angeben: Arbeitsplatz, Drucker, Telefon, Tablet, Server oder Sonstiges. Telefon und Tablet starten unüberwacht.</li>
+      <li>Oder <b>Ausblenden</b>: Der Client verschwindet aus der Liste und steht im Reiter <b>Ausgeblendet</b>, von wo du ihn zurückholen kannst. Vorschläge, die 30 Tage nicht mehr gesehen wurden, fallen von selbst weg.</li>
+    </ol>
+    Dafür brauchst du das Recht „Netz-Abgleich einrichten und Vorschläge übernehmen“ (<code>it.netsync</code>); es haben automatisch alle Rollen, die IT-Assets bearbeiten dürfen.</div>
+  <div class="hb-howto"><b><i class="ti ti-alert-triangle"></i> So löst du ein Ausfall-Ticket</b>
+    <ol class="hb-steps">
+      <li>Ist ein überwachtes, aktives Gerät länger als die Wartezeit offline, entsteht das Ticket <b>Netzgerät offline: &lt;Name&gt;</b>.</li>
+      <li>Kommt das Gerät zurück, steht am Ticket der Kommentar „Wieder erreichbar seit …“. Das Ticket bleibt offen, bis du es löst.</li>
+      <li>Auf dem Ticket <b>Ticket lösen</b> wählen und im Feld <b>Ursache</b> eintragen, was passiert ist (Pflichtfeld).</li>
+    </ol>
+    Fällt dasselbe Gerät bei offenem Ticket erneut aus, kommt ein Eintrag auf dasselbe Ticket. Kein Alarm entsteht, wenn die Quelle selbst nicht erreichbar ist (Zustand „unbekannt“), während eines Firmware-Updates und nicht für Ports oder Firmware.</div>
+  <p>In der Liste <b>IT-Assets</b> zeigen Marken den Zustand (grün online, rot offline, grau unbekannt, „Quelle getrennt“); der Filter <b>Nur offline</b> lässt sich mit dem Typfilter verbinden. Auf dem Gerät zeigt die Karte <b>Netz</b> Zustand seit, zuletzt gesehen, Firmware, Uplink und die Port-Tabelle. Mit dem Schalter <b>überwachen</b> (Recht „IT-Assets bearbeiten“) schaltest du den Alarm für ein einzelnes Gerät ab. <b>Quelle trennen</b> lässt das Asset bestehen, gleicht es aber nicht mehr ab; <b>Wieder verbinden</b> macht das rückgängig.</p>
   {{template "hb-shots" (dict "Ref" (index $s "infrastructure") "Can" $can)}}
 </section>
 
@@ -1830,6 +1856,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <li><b>Import / Export</b> – Daten aus Maschinen und Systemen (MQTT, OPC UA, Modbus, SQL, Excel, Web) übernehmen und Exporte planen (<a href="#connections">mehr</a>).</li>
     <li><b>Steuerungsbaustein (TIA Portal)</b> – das Recht <code>import.tia</code> „Steuerungsbaustein (TIA Portal) herunterladen“ steht in der Gruppe „Daten &amp; Schnittstellen“ und liegt bei allen Rollen mit „Import ansehen“. Mit Kennwort oder angelegten Zuordnungen braucht es zusätzlich „Import verwalten“ (<a href="#tiabaustein">mehr</a>).</li>
     <li><b>Energiedaten</b> – Messstellen, Minutenwerte, Schwellwerte und der Efficio-Export; die Rechte <code>energy.view</code>, <code>energy.edit</code>, <code>energy.thresholds</code> und <code>energy.admin</code> stehen in der Gruppe „Daten &amp; Schnittstellen“, die Einstellungen ändert nur der Bereichsadministrator (<a href="#energiedaten">mehr</a>).</li>
+    <li><b>Netz-Abgleich (IT-Assets)</b> – das Recht <code>it.netsync</code> „Netz-Abgleich einrichten und Vorschläge übernehmen“ steht in der Gruppe „IT“ und liegt bei allen Rollen mit „IT-Assets bearbeiten“; die Verbindung zu UniFi braucht <code>system.unifi</code> (<a href="#it-net">mehr</a>).</li>
     <li><b>Abgleich</b> – Meldungen aus einer fremden Datenbank als Tickets oder Störmeldungen übernehmen und Änderungen zurückschreiben; Profile löscht nur der Bereichsadministrator des Abgleichs (<a href="#abgleich">mehr</a>).</li>
     <li><b>Drucker</b> – Etiketten- und Netzwerkdrucker einrichten, prüfen und testen (<a href="#printers">mehr</a>).</li>
     <li><b>Datensicherung</b> – Sicherungen, Zeitpläne und Wiederherstellung (<a href="#backup">mehr</a>).</li>
