@@ -8,7 +8,7 @@
   <button type="button" class="btn btn-small" style="margin-left:8px" hx-get="/admin/server-config/cloudflare/panel" hx-target="#cf-panel" hx-disabled-elt="this"><i class="ti ti-refresh"></i> Neu laden</button></div>
 
 {{if .Targets}}
-<div class="form-label">PDH und Nextcloud über den Tunnel</div>
+<div class="form-label">PDH, Nextcloud und MQTT über den Tunnel</div>
 <div style="overflow-x:auto;margin-bottom:14px"><table class="cf-table">
   <tr><th>Dienst</th><th>Name</th><th>Ziel am Server</th><th>Tunnel</th><th>DNS</th><th></th></tr>
   {{range .Targets}}<tr>

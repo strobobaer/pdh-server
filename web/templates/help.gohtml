@@ -1625,7 +1625,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>Im Cloudflare-Dashboard oben rechts <b>Mein Profil → API-Tokens → Token erstellen</b>. Rechte: <b>Zone lesen</b>, <b>DNS bearbeiten</b>, <b>Zonen-Einstellungen bearbeiten</b> (Zone) und <b>Cloudflare Tunnel bearbeiten</b> (Konto). Auf die eigene Domain beschränken. Den Wert einmal kopieren.</li>
       <li>Server-Einstellungen → Reiter <b>Cloudflare-Tunnel</b>: <b>API-Token</b> und <b>Domain</b> (z. B. <code>firma.de</code>) eintragen und speichern. Der Token wird verschlüsselt gespeichert.</li>
       <li>In der Karte <b>DNS, Proxy und Tunnel-Ziele</b> auf <b>Stand von Cloudflare laden</b>.</li>
-      <li><b>PDH und Nextcloud über den Tunnel:</b> Die Tabelle zeigt für den Hostnamen des PDH und die Nextcloud-Adresse, ob das Ziel im Tunnel und der DNS-Name stimmen. <b>Einrichten</b> legt beides an. Zeigt ein DNS-Eintrag woanders hin, fragt das PDH vorher nach.</li>
+      <li><b>PDH, Nextcloud und MQTT über den Tunnel:</b> Die Tabelle zeigt für den Hostnamen des PDH, die Nextcloud-Adresse und jeden <a href="#mqttbroker">MQTT-Broker mit eigenem Namen</a>, ob das Ziel im Tunnel und der DNS-Name stimmen. <b>Einrichten</b> legt beides an. Zeigt ein DNS-Eintrag woanders hin, fragt das PDH vorher nach.</li>
       <li><b>Ziele im Tunnel:</b> Öffentlichen Namen und Ziel am Server eintragen (z. B. <code>http://localhost:80</code>) → <b>Ziel speichern</b>. Das PDH legt den DNS-Namen gleich mit an. Bei einem selbst ausgestellten Zertifikat am Ziel „Zertifikat des Ziels nicht prüfen“ anhaken.</li>
       <li><b>Verschlüsselung der Domain:</b> Zwischen Cloudflare und Server wählen (empfohlen: Full oder Full strict) und „immer HTTPS“. Das gilt für die ganze Domain.</li>
       <li><b>DNS-Einträge:</b> Einträge der Arten A, AAAA, CNAME und TXT anlegen und löschen. Ein Klick auf <b>an</b>/<b>aus</b> in der Spalte Proxy schaltet um, ob der Name über Cloudflare läuft oder direkt auf den Server zeigt. Namen, die auf den Tunnel zeigen, laufen immer über den Proxy.</li>
@@ -2043,7 +2043,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <li><b>Zuordnungen</b> bzw. <b>Felder</b> – welcher Wert zu welcher Anlage gehört, mit letztem Wert und Zeitpunkt.</li>
     <li><b>Vorlagen</b> – Abfragen und Zuordnungen einer Verbindung als Vorlage speichern und auf eine andere Verbindung desselben Typs anwenden.</li>
     <li><b>Explorer</b> (MQTT, OPC UA, Modbus TCP) – die Werte der Maschine live ansehen und einzelne Werte testweise schreiben. Eine Sitzung dauert höchstens 15 Minuten, pro Benutzer sind drei und auf dem Server 20 Sitzungen offen. Ansehen darf, wer die Verbindung ausführen darf (<b>Import ausführen</b> bzw. <b>Export ausführen</b>), denn der Explorer belastet das echte Gerät. Schreiben braucht zusätzlich <b>Import verwalten</b> bzw. <b>Export verwalten</b>, fragt vorher nach und steht danach im Verlauf der Verbindung. Auf dem Spiegelserver ist der Explorer nur lesend. Bei Modbus wählst du Bereich, Start und Anzahl, siehst jedes Register in allen Datentypen und stellst die Byte- und Wortreihenfolge um (z. B. CDAB bei WAGO); mit „Live verfolgen“ liest der Explorer im gewählten Takt (mindestens 1 Sekunde) und je Verbindung sind höchstens zwei Zugriffe gleichzeitig möglich. Mit <b>Als Zuordnung übernehmen</b> (im Export: <b>Als Zielfeld übernehmen</b>) machst du aus einem Wert direkt eine Zuordnung, ohne die Seite zu verlassen: bei MQTT ein ganzes Thema oder ein einzelnes JSON-Feld, bei OPC UA einen Knoten, bei Modbus ein Register mit Datentyp und Reihenfolge. Der Knopf erscheint nur mit dem Recht <b>Import verwalten</b> bzw. <b>Export verwalten</b>. Bestehende Zuordnungen bleiben unverändert gültig. Zuordnungen mit Reihenfolge (Modbus) oder JSON-Pfad (MQTT, <code>thema#pfad</code>) versteht erst Version 0.80.11 und neuer – im Verbund beide Server gleich aktualisieren. Im Reiter <b>Zuordnungen</b> einer Modbus- oder OPC-UA-Verbindung holt <b>Werte jetzt aktualisieren</b> alle Werte sofort (braucht <b>Import verwalten</b>). Der alte Sniffer, „Namespace durchsuchen“ und „Register lesen“ sind im Explorer aufgegangen, alte Lesezeichen führen dorthin.</li>
-    <li><b>Werkzeuge</b> – Vorschau, Broker-Status usw. der Verbindung. Bei MQTT auch <b>TIA-Baustein herunterladen</b> für Siemens-Steuerungen (<a href="#tiabaustein">mehr</a>).</li>
+    <li><b>Werkzeuge</b> – Vorschau, Broker-Status usw. der Verbindung. Der Broker-Status zeigt die Adressen für Geräte und – wenn der Broker einen <a href="#mqttbroker">eigenen Namen</a> hat – die Prüfliste. Bei MQTT auch <b>TIA-Baustein herunterladen</b> für Siemens-Steuerungen (<a href="#tiabaustein">mehr</a>).</li>
   </ul>
   <div class="hb-howto"><b><i class="ti ti-database-search"></i> So holst du einen Wert per Abfrage</b>
     <ol class="hb-steps">
@@ -2096,6 +2096,49 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   {{template "hb-shots" (dict "Ref" (index $s "connections") "Can" $can)}}
 </section>
 
+<section class="hb-ch" id="mqttbroker" data-title="MQTT-Broker unter eigenem Namen" data-pages="import server-config">
+  <h2><i class="ti ti-server-2"></i> MQTT-Broker unter eigenem Namen</h2>
+  <p>Der <b>integrierte MQTT-Broker</b> einer MQTT-Verbindung kann einen eigenen Namen bekommen, z. B. <code>mqtt.firma.de</code> – wie das PDH und die Nextcloud. Geräte, Steuerungen und Apps tragen dann den Namen ein statt einer IP-Adresse, und die Verbindung ist mit einem gültigen Zertifikat verschlüsselt. Ohne Namen bleibt alles, wie es ist.</p>
+  {{template "hb-fig-mqttname"}}
+  <table class="hb-table">
+    <thead><tr><th>Adresse</th><th>Wo</th><th>Wofür</th></tr></thead>
+    <tbody>
+      <tr><td><code>mqtt://name:1883</code></td><td>im Haus</td><td>Steuerungen und Geräte ohne TLS – der bisherige Port läuft unverändert weiter</td></tr>
+      <tr><td><code>mqtts://name:8883</code></td><td>im Haus und über VPN</td><td>verschlüsselt (TLS-Port); das Zertifikat kommt aus der Zertifikatsliste und erneuert sich ohne Neustart</td></tr>
+      <tr><td><code>wss://name/</code></td><td>im Haus und von außen</td><td>WebSocket über Port 443 – für Apps und Dienste, dieselbe Adresse drinnen und draußen</td></tr>
+    </tbody>
+  </table>
+  <div class="hb-howto"><b><i class="ti ti-world-www"></i> So geht's: Broker unter eigenem Namen erreichbar machen</b>
+    <ol class="hb-steps">
+      <li><b>Import</b> → MQTT-Verbindung mit „Integrierter Broker“ bearbeiten.</li>
+      <li><b>Name des Brokers (Subdomain)</b> eintragen, z. B. <code>mqtt.firma.de</code>. Dazu einen <b>WebSocket-Port</b> (z. B. 8083) und, wenn Geräte per mqtts verbinden sollen, einen <b>TLS-Port</b> (z. B. 8883). Die Felder „TLS-Zertifikat“ und „TLS-Schlüssel“ (Dateipfade) bleiben leer. Speichern.</li>
+      <li><b>Werkzeuge</b> → <b>Broker-Status</b> öffnen. Unter den Client-Einstellungen steht die <b>Prüfliste</b>.</li>
+      <li><b>Zertifikat anfordern</b> drücken. Das PDH trägt den Namen in die Zertifikatsliste ein und holt das Zertifikat bei Let's Encrypt. Das dauert ein bis zwei Minuten; die Zeile aktualisiert sich von selbst.</li>
+      <li><b>Im Haus eintragen</b> drücken – der Name zeigt dann im Firmennetz direkt auf den Server (über die UniFi-Anbindung). Ohne UniFi nennt die Zeile, was du am DNS von Hand einträgst.</li>
+      <li><b>Einrichten</b> in der Zeile „Tunnel“ drücken – damit ist <code>wss://name/</code> auch von außen erreichbar.</li>
+      <li>Oben stehen die fertigen Adressen zum Kopieren. In Steuerung, Gerät oder App eintragen, Benutzer und Kennwort wie bisher.</li>
+    </ol>
+  </div>
+  <h3>Was die Prüfliste zeigt</h3>
+  <ul>
+    <li><b>Zertifikat</b> – fehlt, wird geholt, gültig bis … oder die Fehlermeldung von Let's Encrypt. Ein Zertifikat gibt es nur, wenn Cloudflare eingerichtet ist (die Prüfung läuft über den DNS-Eintrag) und der Name in eurer Domain liegt.</li>
+    <li><b>Name im Haus</b> – zeigt der Name im Firmennetz auf diesen Server? Sonst gehen Geräte im Haus den Umweg über das Internet oder finden den Broker gar nicht.</li>
+    <li><b>Tunnel (von außen)</b> – Ziel im Cloudflare-Tunnel und DNS-Eintrag. Dieselbe Zeile steht als <b>MQTT</b> in den Server-Einstellungen im Reiter Cloudflare-Tunnel.</li>
+    <li><b>TLS-Port (mqtts)</b> – läuft, ist aus oder wartet auf das Zertifikat.</li>
+    <li><b>WebSocket über 443 (wss)</b> – das PDH schreibt dafür eine eigene nginx-Seite. Auch auf dem zweiten Server des Verbunds; nach einem Rollentausch zieht er sie innerhalb weniger Minuten nach.</li>
+  </ul>
+  <p>Die Prüfliste sieht, wer die Verbindung bearbeiten darf. Jeder Knopf braucht zusätzlich das Recht der jeweiligen Aktion: <code>system.certs</code> (Zertifikat), <code>system.unifi</code> (im Haus eintragen), <code>system.cloudflare</code> (Tunnel). Fehlt es dir, steht dort, wer es einrichten kann.</p>
+  <div class="hb-note"><b>Von außen ohne WebSocket nur über VPN.</b> Reines MQTT (Port 1883 oder 8883) geht nicht durch den Cloudflare-Tunnel, und das PDH öffnet dafür keinen Port ins Internet. Geräte außer Haus verbinden sich per <code>wss://name/</code> – oder über das VPN und dann wie im Haus.</div>
+  <ul>
+    <li><b>Keep-Alive:</b> Bei <code>wss</code> höchstens 60 Sekunden einstellen. Cloudflare trennt Verbindungen, auf denen 100 Sekunden nichts läuft.</li>
+    <li><b>Cloudflare, UniFi und Zertifikate sind Zusatz.</b> Ist etwas davon nicht eingerichtet, läuft der Broker trotzdem; die Prüfliste nennt, was dann nicht geht.</li>
+    <li><b>Full (strict)</b> bleibt möglich: Der Name hat eine eigene Seite mit Zertifikat auf Port 443.</li>
+    <li><b>Name ändern oder entfernen:</b> Das PDH räumt die nginx-Seite des alten Namens weg. Das Zertifikat bleibt in der Zertifikatsliste, bis du es dort entfernst.</li>
+    <li><b>Je Name ein Broker.</b> Der Name des PDH und der Nextcloud ist nicht erlaubt.</li>
+  </ul>
+  {{template "hb-shots" (dict "Ref" (index $s "mqttbroker") "Can" $can)}}
+</section>
+
 <section class="hb-ch" id="tiabaustein" data-title="Steuerung per MQTT anbinden (TIA Portal)" data-pages="import">
   <h2><i class="ti ti-cpu"></i> Steuerung per MQTT anbinden (TIA Portal)</h2>
   <p>Das PDH erzeugt für eine <b>Siemens-Steuerung</b> fertige Bausteine, die Werte aus einem eigenen Datenbaustein per MQTT an den Broker senden. Die Werte kommen als Zuordnungen im PDH an – ohne dass du SCL schreiben musst. Es wird nur <b>gesendet</b>, nichts empfangen.</p>
@@ -2111,7 +2154,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>Im TIA Portal einen <b>Datenbaustein</b> mit den Werten anlegen, die du senden willst (optimierter Zugriff). Rechtsklick → <b>Quelle aus Baustein generieren</b>. Nutzt der Baustein PLC-Datentypen, die abhängigen Bausteine mit auswählen. Das Ergebnis ist eine Datei <code>.db</code>.</li>
       <li>Im PDH die MQTT-Verbindung öffnen, Reiter <b>Werkzeuge</b> → <b>TIA-Baustein herunterladen</b>.</li>
       <li>Die Quelle hochladen und <b>Prüfen</b> drücken. Das PDH zeigt, welche Werte gesendet werden und was nicht (mit Grund). Das Prüfen geht auch auf dem Spiegelserver, das Herunterladen nicht.</li>
-      <li>Variante, Steuerung, Broker-Adresse, Port, Topic und Heartbeat eintragen. Die Größengrenze je Nachricht ist 4096 Byte (erlaubt: 1024 bis 16384).</li>
+      <li>Variante, Steuerung, Broker-Adresse, Port, Topic und Heartbeat eintragen. Hat der Broker einen <a href="#mqttbroker">eigenen Namen</a>, ist er vorbelegt; mit dem Haken <b>TLS</b> setzt die Seite den Namen und den TLS-Port ein. Die Größengrenze je Nachricht ist 4096 Byte (erlaubt: 1024 bis 16384).</li>
       <li>Optional <b>Beim Herunterladen die Zuordnungen anlegen</b> ankreuzen (braucht das Recht „Import verwalten“). Dann entsteht je Wert eine Zuordnung, dazu der Heartbeat.</li>
       <li><b>Herunterladen</b> drücken. Du bekommst eine ZIP-Datei.</li>
     </ol></div>

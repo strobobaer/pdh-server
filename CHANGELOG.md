@@ -10,6 +10,27 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.80.20] – 2026-11-17
+
+### Neu
+
+- MQTT: Der integrierte Broker kann einen **eigenen Namen** bekommen (z. B. `mqtt.firma.de`, Feld „Name des Brokers“ an der Verbindung) – Geräte und Apps tragen den Namen ein statt einer IP-Adresse.
+- MQTT: Mit Name gibt es einen zusätzlichen **TLS-Port (mqtts, z. B. 8883)**; das Zertifikat kommt aus der Zertifikatsliste und gilt nach einer Erneuerung ohne Neustart. Der bisherige Port ohne TLS läuft unverändert weiter.
+- MQTT: Apps und Dienste erreichen den Broker unter `wss://name/` (Port 443) – im Haus und von außen mit derselben Adresse.
+- Der Broker-Status zeigt eine **Prüfliste** (Zertifikat, Name im Haus, Tunnel, TLS-Port, WebSocket über 443) mit Knöpfen zum Einrichten.
+- Server-Einstellungen → Cloudflare-Tunnel: Die Tabelle der Tunnel-Ziele hat eine Zeile **MQTT** für jeden Broker mit eigenem Namen.
+- Handbuch: neues Kapitel „MQTT-Broker unter eigenem Namen“.
+
+### Geändert
+
+- Der Broker-Status nennt die fertigen Adressen (`mqtt://`, `mqtts://`, `wss://`) zum Kopieren, wenn der Broker einen Namen hat.
+- TIA-Baustein: Hat der Broker einen Namen, ist er als Adresse vorbelegt; mit dem Haken „TLS“ setzt die Seite den Namen und den TLS-Port ein.
+
+### Behoben
+
+- IT-Assets: Auf schmalen Bildschirmen (Handy) sind die Knöpfe im Kopf der Asset-Seite wieder ganz sichtbar; sie rutschen in eine zweite Zeile.
+- IT-Assets: Der Hinweis im Feld „Eigene Karenz“ ist ganz lesbar.
+
 ## [0.80.19] – 2026-11-16
 
 ### Neu

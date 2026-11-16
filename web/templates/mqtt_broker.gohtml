@@ -17,10 +17,16 @@
   <div class="card-title">Client-Einstellungen</div>
   <p style="font-size:11px;color:var(--muted);margin:0 0 10px">Diese Werte in einem MQTT-Client/Gerät eintragen, um sich mit diesem Broker zu verbinden.</p>
   <dl style="display:grid;grid-template-columns:max-content 1fr;gap:6px 12px;font-size:13px;margin:0">
-    <dt style="color:var(--muted)">Host</dt><dd style="margin:0"><code id="cs-host">{{.SuggestedHost}}</code> {{template "copy-btn" "cs-host"}} <span style="font-size:11px;color:var(--muted)">(Adresse, unter der dieser PDH-Server erreichbar ist - bei eigener Portweiterleitung ggf. abweichend)</span></dd>
+    {{if .PublicHost}}
+    <dt style="color:var(--muted)">Im Haus (ohne TLS)</dt><dd style="margin:0"><code id="cs-a-plain" class="mq-addr">mqtt://{{.PublicHost}}:{{.ListenPort}}</code> {{template "copy-btn" "cs-a-plain"}} <span class="mq-sub">für Steuerungen und Geräte ohne TLS</span></dd>
+    {{if .TLSPort}}<dt style="color:var(--muted)">Im Haus und über VPN</dt><dd style="margin:0"><code id="cs-a-tls" class="mq-addr">mqtts://{{.PublicHost}}:{{.TLSPort}}</code> {{template "copy-btn" "cs-a-tls"}} <span class="mq-sub">verschlüsselt, mit gültigem Zertifikat</span></dd>{{end}}
+    <dt style="color:var(--muted)">Im Haus und von außen</dt><dd style="margin:0"><code id="cs-a-wss" class="mq-addr">wss://{{.PublicHost}}/</code> {{template "copy-btn" "cs-a-wss"}} <span class="mq-sub">WebSocket über Port 443, für Apps und Dienste. Keep-Alive höchstens 60 s einstellen – Cloudflare trennt stille Verbindungen nach 100 s.</span></dd>
+    {{end}}
+    <dt style="color:var(--muted)">Host</dt><dd style="margin:0"><code id="cs-host">{{if .PublicHost}}{{.PublicHost}}{{else}}{{.SuggestedHost}}{{end}}</code> {{template "copy-btn" "cs-host"}} <span style="font-size:11px;color:var(--muted)">(Adresse, unter der dieser PDH-Server erreichbar ist - bei eigener Portweiterleitung ggf. abweichend)</span></dd>
     <dt style="color:var(--muted)">Port (TCP)</dt><dd style="margin:0"><code id="cs-port">{{.ListenPort}}</code> {{template "copy-btn" "cs-port"}}</dd>
     {{if .WebsocketPort}}<dt style="color:var(--muted)">Port (WebSocket)</dt><dd style="margin:0"><code id="cs-ws-port">{{.WebsocketPort}}</code> {{template "copy-btn" "cs-ws-port"}}</dd>{{end}}
-    <dt style="color:var(--muted)">Verschlüsselung</dt><dd style="margin:0">{{if .TLSEnabled}}TLS aktiv (mqtts/wss){{else}}Keine (mqtt/ws){{end}}</dd>
+    {{if .TLSPort}}<dt style="color:var(--muted)">Port (TLS)</dt><dd style="margin:0"><code id="cs-tls-port">{{.TLSPort}}</code> {{template "copy-btn" "cs-tls-port"}}</dd>{{end}}
+    <dt style="color:var(--muted)">Verschlüsselung</dt><dd style="margin:0">{{if .PublicHost}}{{if .TLSPort}}TLS auf Port {{.TLSPort}} (mqtts) und über 443 (wss); Port {{.ListenPort}} ohne TLS{{else}}über 443 (wss); Port {{.ListenPort}} ohne TLS{{end}}{{else if .TLSEnabled}}TLS aktiv (mqtts/wss){{else}}Keine (mqtt/ws){{end}}</dd>
     <dt style="color:var(--muted)">Anmeldung</dt>
     {{if .AllowAnonymous}}
     <dd style="margin:0">Anonym erlaubt - kein Benutzername/Passwort nötig</dd>
@@ -35,6 +41,15 @@
     <dt style="color:var(--muted)">Retained Messages</dt><dd style="margin:0">{{if .RetainEnabled}}erlaubt{{else}}nicht erlaubt{{end}}</dd>
   </dl>
 </div>
+{{if .PublicHost}}
+<div class="card" style="margin-bottom:14px">
+  <div class="card-title">Prüfliste · {{.PublicHost}}</div>
+  <p style="font-size:11px;color:var(--muted);margin:0 0 10px">Was noch fehlt, damit der Broker unter seinem Namen erreichbar ist. Reines MQTT (ohne WebSocket) geht von außen nur über VPN – es wird kein Port ins Internet geöffnet.</p>
+  <div id="mqtt-checklist" hx-get="/import/connections/{{.ConnectionID}}/broker/checklist" hx-trigger="load, mqtt-check" hx-swap="innerHTML">
+    <span style="font-size:12px;color:var(--muted)"><i class="ti ti-loader-2"></i> Prüfe Zertifikat, Namen im Haus und Tunnel …</span>
+  </div>
+</div>
+{{end}}
 {{end}}
 
 {{if not .Enabled}}
@@ -53,6 +68,7 @@
     <dt style="color:var(--muted)">Status</dt><dd style="margin:0" id="info-status"><span class="badge" style="background:var(--green)">Aktiv</span></dd>
     <dt style="color:var(--muted)">TCP-Listener</dt><dd style="margin:0">{{.ListenAddr}}</dd>
     {{if .WebsocketAddr}}<dt style="color:var(--muted)">WebSocket-Listener</dt><dd style="margin:0">{{.WebsocketAddr}}</dd>{{end}}
+    {{if .TLSAddr}}<dt style="color:var(--muted)">TLS-Listener (mqtts)</dt><dd style="margin:0">{{.TLSAddr}}</dd>{{end}}
     <dt style="color:var(--muted)">Gestartet</dt><dd style="margin:0">{{.StartedAt}}</dd>
   </dl>
 </div>
@@ -98,7 +114,63 @@
 {{end}}
 
 {{define "scripts"}}
+<style>
+.mq-addr{word-break:break-all}
+.mq-sub{font-size:11px;color:var(--muted)}
+.mq-rows{display:grid;gap:8px}
+.mq-row{display:grid;grid-template-columns:minmax(120px,190px) 1fr auto;gap:6px 12px;align-items:start;font-size:13px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg2)}
+.mq-row .mq-label{color:var(--muted)}
+.mq-row .mq-hint{grid-column:2/-1;font-size:11.5px;color:var(--muted);overflow-wrap:anywhere}
+.mq-row .mq-state{overflow-wrap:anywhere}
+.mq-msg{font-size:12px;margin-top:8px;overflow-wrap:anywhere}
+@media (max-width:560px){.mq-row{grid-template-columns:1fr}.mq-row .mq-hint{grid-column:1}}
+</style>
 <script>
+// Prüfliste: die Knöpfe rufen die vorhandenen Aktionen der Server-Einstellungen auf.
+// Deren Antwort (die Karte des Reiters) wird nur nach einer Meldung durchsucht, danach lädt die Prüfliste neu.
+async function mqttCheckPost(path, fields){
+  const body = new URLSearchParams(fields);
+  const res = await fetch(path, {method:'POST', headers: Object.assign({'Content-Type':'application/x-www-form-urlencoded'}, csrfHeaders()), body: body, credentials:'same-origin'});
+  const text = await res.text();
+  if(res.status === 403) return {err: 'Dafür fehlt dir das Recht.'};
+  const doc = new DOMParser().parseFromString(text, 'text/html');
+  const bad = doc.querySelector('.ti-alert-circle');
+  if(bad && bad.parentElement) return {err: bad.parentElement.textContent.trim()};
+  if(!res.ok) return {err: 'Fehler ' + res.status};
+  const ok = doc.querySelector('.ti-check');
+  return {msg: ok && ok.parentElement ? ok.parentElement.textContent.trim() : ''};
+}
+async function mqttCheckAct(btn){
+  const d = btn.dataset, box = document.getElementById('mqtt-checklist');
+  if(d.confirm && !confirm(d.confirm)) return;
+  btn.disabled = true;
+  let out = {};
+  try{
+    if(d.act === 'cert'){
+      await mqttCheckPost('/admin/server-config/certs/add', {name: d.host}); // „schon eingetragen“ ist in Ordnung
+      out = await mqttCheckPost('/admin/server-config/certs/issue', {name: d.host});
+    } else if(d.act === 'lan'){
+      out = await mqttCheckPost('/admin/server-config/certs/lan', {name: d.host});
+    } else if(d.act === 'tunnel'){
+      const f = {action:'save', hostname: d.host, old_hostname: d.host, service: d.service};
+      if(d.notls === '1') f.no_tls_verify = 'on';
+      if(d.replace === '1') f.replace_dns = 'on';
+      out = await mqttCheckPost('/admin/server-config/cloudflare/tunnel', f);
+    }
+  }catch(e){ out = {err: 'Der Server antwortet nicht.'}; }
+  window.mqttCheckNote = out;
+  if(window.htmx) htmx.trigger(box, 'mqtt-check');
+}
+document.body.addEventListener('htmx:afterSwap', function(ev){
+  if(!ev.target || ev.target.id !== 'mqtt-checklist' || !window.mqttCheckNote) return;
+  const n = window.mqttCheckNote; window.mqttCheckNote = null;
+  const text = n.err || n.msg; if(!text) return;
+  const el = document.createElement('div');
+  el.className = 'mq-msg'; el.setAttribute('role', n.err ? 'alert' : 'status');
+  el.style.color = n.err ? 'var(--red)' : 'var(--green)';
+  el.textContent = text;
+  ev.target.appendChild(el);
+});
 function copyValue(elementId){
   const el = document.getElementById(elementId);
   if(!el) return;

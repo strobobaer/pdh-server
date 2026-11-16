@@ -148,6 +148,27 @@ func certValidConfPath(s string) bool {
 	return true
 }
 
+// certMQTTSite: eigene nginx-Seite je MQTT-Namen (WebSocket des Brokers über 443).
+func certMQTTSite(name string) string { return "mqtt-" + name + ".conf" }
+
+var certProxyPassRe = regexp.MustCompile(`(?m)^\s*proxy_pass\s+(\S+);`)
+
+// certMQTTUpstream: Ziel der vom Agenten geschriebenen MQTT-Seite des Namens ("" = keine).
+func (a *updateAgent) certMQTTUpstream(sitesDir, name string) string {
+	target, exists, own, err := a.certOwnSite(a.certPath(sitesDir + "/" + certMQTTSite(name)))
+	if err != nil || !exists || !own {
+		return ""
+	}
+	data, err := os.ReadFile(target)
+	if err != nil {
+		return ""
+	}
+	if m := certProxyPassRe.FindSubmatch(data); m != nil {
+		return string(m[1])
+	}
+	return ""
+}
+
 func certDir(name string) string       { return certRootDir + "/" + name }
 func certChainPath(name string) string { return certDir(name) + "/fullchain.pem" }
 func certKeyPath(name string) string   { return certDir(name) + "/privkey.pem" }
@@ -428,7 +449,7 @@ type certRequest struct {
 	Name        string `json:"name"`
 	ChainPEM    string `json:"chain_pem"`
 	KeyPEM      string `json:"key_pem"`
-	Role        string `json:"role"` // pdh | nextcloud | "" (nur Dateien)
+	Role        string `json:"role"` // pdh | nextcloud | mqtt | "" (nur Dateien)
 	Upstream    string `json:"upstream"`
 	RestoreCert string `json:"restore_cert"`
 	RestoreKey  string `json:"restore_key"`
@@ -475,13 +496,18 @@ type certSite struct {
 // certSitesWithName nennt alle Seiten im Seiten-Ordner (außer pdh.conf), deren
 // server_name den Namen enthält.
 func (a *updateAgent) certSitesWithName(sitesDir, name string) ([]certSite, error) {
+	return a.certSitesNamed(sitesDir, name, certPDHSite)
+}
+
+// certSitesNamed: wie certSitesWithName, lässt aber die Datei skip aus.
+func (a *updateAgent) certSitesNamed(sitesDir, name, skip string) ([]certSite, error) {
 	entries, err := os.ReadDir(a.certPath(sitesDir))
 	if err != nil {
 		return nil, errors.New("nginx-Seiten sind nicht lesbar")
 	}
 	var found []certSite
 	for _, e := range entries {
-		if e.Name() == certPDHSite || strings.HasPrefix(e.Name(), ".") {
+		if e.Name() == skip || strings.HasPrefix(e.Name(), ".") {
 			continue
 		}
 		p, err := a.certResolve(a.certPath(sitesDir + "/" + e.Name()))
@@ -517,6 +543,7 @@ func (a *updateAgent) certFindNextcloudSite(sitesDir, name string) (string, erro
 	if err != nil {
 		return "", err
 	}
+	found = a.certWithoutOwnMQTT(sitesDir, name, found)
 	switch len(found) {
 	case 0:
 		return "", errors.New("Keine Nextcloud-Seite mit diesem Namen gefunden – nicht geändert")
@@ -524,6 +551,23 @@ func (a *updateAgent) certFindNextcloudSite(sitesDir, name string) (string, erro
 		return found[0].path, nil
 	}
 	return "", errors.New("Mehrere nginx-Seiten tragen diesen Namen – nicht geändert")
+}
+
+// certWithoutOwnMQTT lässt die vom Agenten geschriebene MQTT-Seite des Namens aus der Liste:
+// Sie ist keine fremde Seite – wechselt der Name die Rolle, räumt der Agent sie selbst weg.
+func (a *updateAgent) certWithoutOwnMQTT(sitesDir, name string, sites []certSite) []certSite {
+	entry := certMQTTSite(name)
+	_, exists, own, err := a.certOwnSite(a.certPath(sitesDir + "/" + entry))
+	if err != nil || !exists || !own {
+		return sites
+	}
+	out := sites[:0:0]
+	for _, s := range sites {
+		if s.entry != entry {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 // certOwnSite prüft die PDH-Seite: target ist die Datei, in die geschrieben wird
@@ -621,7 +665,7 @@ func (a *updateAgent) certRead(w http.ResponseWriter, r *http.Request) (certRequ
 		certFail(w, http.StatusBadRequest, "ungültiger Name")
 		return req, false
 	}
-	if req.Role != "" && req.Role != "pdh" && req.Role != "nextcloud" {
+	if req.Role != "" && req.Role != "pdh" && req.Role != "nextcloud" && req.Role != "mqtt" {
 		certFail(w, http.StatusBadRequest, "unbekannte Rolle")
 		return req, false
 	}
@@ -636,6 +680,10 @@ func (a *updateAgent) certInstallHandler(w http.ResponseWriter, r *http.Request)
 	}
 	if req.Role == "pdh" && !certValidUpstream(req.Upstream) {
 		certFail(w, http.StatusBadRequest, "ungültige Adresse des PDH (erwartet http://127.0.0.1:<Port>)")
+		return
+	}
+	if req.Role == "mqtt" && !certValidUpstream(req.Upstream) {
+		certFail(w, http.StatusBadRequest, "ungültige Adresse des MQTT-Brokers (erwartet http://127.0.0.1:<WebSocket-Port>)")
 		return
 	}
 	fingerprint, err := certParse(req.ChainPEM, req.KeyPEM)
@@ -679,6 +727,7 @@ func (a *updateAgent) certInstallHandler(w http.ResponseWriter, r *http.Request)
 				byHand(err.Error() + " – nicht geändert")
 				break
 			}
+			others = a.certWithoutOwnMQTT(sitesDir, req.Name, others) // wird unten weggeräumt
 			if len(others) > 0 {
 				byHand("Der Name wird schon von der nginx-Seite " + others[0].entry + " bedient – nicht geändert")
 				break
@@ -689,6 +738,29 @@ func (a *updateAgent) certInstallHandler(w http.ResponseWriter, r *http.Request)
 			siteData = certSiteConf(req.Name, req.Upstream, redirect, v6)
 			if v6 {
 				siteV4 = certSiteConfV4Only(req.Name, req.Upstream, redirect)
+			}
+		case "mqtt":
+			// Eigene Datei je Name; pdh.conf bleibt unberührt. Ohne Umleitung von Port 80.
+			entry := certMQTTSite(req.Name)
+			target, _, own, err := a.certOwnSite(a.certPath(sitesDir + "/" + entry))
+			if err != nil || !own {
+				byHand("Die nginx-Seite " + entry + " stammt nicht vom Update-Agent oder ist nicht lesbar – nicht geändert")
+				break
+			}
+			others, err := a.certSitesNamed(sitesDir, req.Name, entry) // auch pdh.conf zählt
+			if err != nil {
+				byHand(err.Error() + " – nicht geändert")
+				break
+			}
+			if len(others) > 0 {
+				byHand("Der Name wird schon von der nginx-Seite " + others[0].entry + " bedient – nicht geändert")
+				break
+			}
+			sitePath = target
+			v6 := certHasIPv6()
+			siteData = certSiteConf(req.Name, req.Upstream, false, v6)
+			if v6 {
+				siteV4 = certSiteConfV4Only(req.Name, req.Upstream, false)
 			}
 		case "nextcloud":
 			// Seite zuerst prüfen: Weicht sie ab, wird sie nicht angefasst.
@@ -721,9 +793,24 @@ func (a *updateAgent) certInstallHandler(w http.ResponseWriter, r *http.Request)
 		}
 	}
 
+	// Trägt kein Broker mehr den Namen (Rolle nicht mqtt), verschwindet die eigene MQTT-Seite.
+	// Liegt sie hinter einer Verknüpfung, geht auch die Verknüpfung weg (sonst zeigt sie ins Leere).
+	staleMQTT, staleLink, staleLinkText := "", "", ""
+	if req.Role != "mqtt" && withNginx {
+		p := a.certPath(sitesDir + "/" + certMQTTSite(req.Name))
+		if target, exists, own, err := a.certOwnSite(p); err == nil && exists && own {
+			staleMQTT = target
+			if target != p {
+				if lt, lerr := os.Readlink(p); lerr == nil {
+					staleLink, staleLinkText = p, lt
+				}
+			}
+		}
+	}
+
 	chainFile := a.certPath(certChainPath(req.Name))
 	keyFile := a.certPath(certKeyPath(req.Name))
-	if note != "" && certSameFile(chainFile, req.ChainPEM) && certSameFile(keyFile, req.KeyPEM) {
+	if staleMQTT == "" && note != "" && certSameFile(chainFile, req.ChainPEM) && certSameFile(keyFile, req.KeyPEM) {
 		// Gleicher Stand schon abgelegt (täglicher Abgleich), keine Seite zu schreiben:
 		// nichts ändern, nginx nicht neu laden.
 		writeMountJSON(w, http.StatusOK, map[string]any{"ok": true, "fingerprint": fingerprint, "note": note})
@@ -743,6 +830,9 @@ func (a *updateAgent) certInstallHandler(w http.ResponseWriter, r *http.Request)
 	if sitePath != "" {
 		paths = append(paths, sitePath)
 	}
+	if staleMQTT != "" {
+		paths = append(paths, staleMQTT) // immer zuletzt: backups[2] bleibt die Seite
+	}
 	for _, p := range paths {
 		b, err := certTake(p)
 		if err != nil {
@@ -750,6 +840,9 @@ func (a *updateAgent) certInstallHandler(w http.ResponseWriter, r *http.Request)
 			return
 		}
 		backups = append(backups, b)
+	}
+	if staleLink != "" {
+		backups = append(backups, certBackup{path: staleLink, link: staleLinkText})
 	}
 	rollback := func() []string {
 		failed := certRestoreAll(backups)
@@ -776,8 +869,21 @@ func (a *updateAgent) certInstallHandler(w http.ResponseWriter, r *http.Request)
 		certFail(w, http.StatusOK, "Schlüssel lässt sich nicht schreiben"+certRollbackNote(rollback()))
 		return
 	}
+	if staleMQTT != "" {
+		err := error(nil)
+		if staleLink != "" {
+			err = os.Remove(staleLink)
+		}
+		if err == nil {
+			err = os.Remove(staleMQTT)
+		}
+		if err != nil {
+			certFail(w, http.StatusOK, "Die nginx-Seite "+certMQTTSite(req.Name)+" lässt sich nicht entfernen"+certRollbackNote(rollback()))
+			return
+		}
+	}
 	if sitePath != "" {
-		if req.Role == "pdh" {
+		if req.Role == "pdh" || req.Role == "mqtt" {
 			err = a.certWriteAtomic(sitePath, []byte(siteData), 0o644, "")
 		} else {
 			// sitePath ist die aufgelöste Zieldatei; die Verknüpfung selbst bleibt.
@@ -956,39 +1062,52 @@ func (a *updateAgent) certRemoveHandler(w http.ResponseWriter, r *http.Request) 
 		certFail(w, http.StatusOK, msg+certRollbackNote(undo()))
 	}
 
-	switch req.Role {
-	case "pdh":
-		p := a.certPath(sitesDir + "/" + certPDHSite)
+	// dropOwn entfernt eine vom Agenten geschriebene Seite (false = abgelehnt, Antwort ist raus).
+	// Eine fremde oder fehlende Seite bleibt; die Verweisprüfung unten entscheidet.
+	dropOwn := func(entry string) bool {
+		p := a.certPath(sitesDir + "/" + entry)
 		target, exists, own, err := a.certOwnSite(p)
 		if err != nil {
-			refuse("Die nginx-Seite " + certPDHSite + " lässt sich nicht prüfen – nicht geändert")
+			refuse("Die nginx-Seite " + entry + " lässt sich nicht prüfen – nicht geändert")
+			return false
+		}
+		if !exists || !own {
+			return true
+		}
+		b, terr := certTake(target)
+		if terr != nil {
+			refuse("Die nginx-Seite " + entry + " ist nicht lesbar – nicht geändert")
+			return false
+		}
+		if target != p { // Verknüpfung: erst sie, dann das Ziel
+			lt, lerr := os.Readlink(p)
+			if lerr != nil {
+				refuse("Die nginx-Seite " + entry + " ist nicht lesbar – nicht geändert")
+				return false
+			}
+			backups = append(backups, certBackup{path: p, link: lt})
+			if err := os.Remove(p); err != nil {
+				refuse("Die nginx-Seite " + entry + " lässt sich nicht entfernen – nicht geändert")
+				return false
+			}
+		}
+		backups = append(backups, b)
+		if err := os.Remove(target); err != nil {
+			refuse("Die nginx-Seite " + entry + " lässt sich nicht entfernen – nicht geändert")
+			return false
+		}
+		return true
+	}
+	// Die eigene MQTT-Seite des Namens geht bei jeder Rolle mit weg.
+	if !dropOwn(certMQTTSite(req.Name)) {
+		return
+	}
+
+	switch req.Role {
+	case "pdh":
+		if !dropOwn(certPDHSite) {
 			return
 		}
-		if exists && own {
-			b, terr := certTake(target)
-			if terr != nil {
-				refuse("Die nginx-Seite " + certPDHSite + " ist nicht lesbar – nicht geändert")
-				return
-			}
-			if target != p { // Verknüpfung: erst sie, dann das Ziel
-				lt, lerr := os.Readlink(p)
-				if lerr != nil {
-					refuse("Die nginx-Seite " + certPDHSite + " ist nicht lesbar – nicht geändert")
-					return
-				}
-				backups = append(backups, certBackup{path: p, link: lt})
-				if err := os.Remove(p); err != nil {
-					refuse("Die nginx-Seite " + certPDHSite + " lässt sich nicht entfernen – nicht geändert")
-					return
-				}
-			}
-			backups = append(backups, b)
-			if err := os.Remove(target); err != nil {
-				refuse("Die nginx-Seite " + certPDHSite + " lässt sich nicht entfernen – nicht geändert")
-				return
-			}
-		}
-		// fremde, unlesbare oder fehlende Seite: bleibt; die Prüfung unten entscheidet.
 	case "nextcloud":
 		if !restore {
 			break // nie umgestellt: wie Rolle ""
@@ -1061,6 +1180,8 @@ type certStatusEntry struct {
 	NotAfter    string `json:"not_after"`
 	Fingerprint string `json:"fingerprint"`
 	Site        bool   `json:"site"` // eine nginx-Seite verweist auf /etc/ssl/pdh/<name>/
+	// MQTTUpstream: Ziel der eigenen MQTT-Seite des Namens ("" = keine oder veraltet).
+	MQTTUpstream string `json:"mqtt_upstream,omitempty"`
 }
 
 // certSiteTexts liest alle lesbaren nginx-Seiten (hinter Verknüpfungen). Ohne nginx oder
@@ -1105,6 +1226,10 @@ func (a *updateAgent) certStatusHandler(w http.ResponseWriter, _ *http.Request) 
 			sites = a.certSiteTexts()
 		}
 		v6 := certHasIPv6()
+		sitesDir := ""
+		if len(sites) > 0 {
+			sitesDir, _ = a.certLayout()
+		}
 		uses := func(name string) bool {
 			needle := certDir(name) + "/"
 			for _, s := range sites {
@@ -1131,12 +1256,16 @@ func (a *updateAgent) certStatusHandler(w http.ResponseWriter, _ *http.Request) 
 				continue
 			}
 			sum := sha256.Sum256(c.Raw)
-			certs = append(certs, certStatusEntry{
+			entry := certStatusEntry{
 				Name:        e.Name(),
 				NotAfter:    c.NotAfter.UTC().Format(time.RFC3339),
 				Fingerprint: hex.EncodeToString(sum[:]),
 				Site:        uses(e.Name()),
-			})
+			}
+			if sitesDir != "" && entry.Site {
+				entry.MQTTUpstream = a.certMQTTUpstream(sitesDir, e.Name())
+			}
+			certs = append(certs, entry)
 		}
 	}
 	sort.Slice(certs, func(i, j int) bool { return certs[i].Name < certs[j].Name })

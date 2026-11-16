@@ -110,6 +110,34 @@ func tiaAtoi(s string, def int) int {
 	return def
 }
 
+// tiaBrokerName: Name des integrierten Brokers ("" = keiner, mqtt_system.go).
+func tiaBrokerName(config map[string]string) string {
+	if config["broker_mode"] != "integrated" {
+		return ""
+	}
+	if name := strings.TrimSpace(config[mqttHostKey]); mqttValidHost(name) {
+		return name
+	}
+	return ""
+}
+
+// tiaNameHost: Adresse für den Namen des Brokers. resolved ist der im Haus aufgelöste Name
+// (oder der Name selbst, wenn er sich nicht auflösen lässt). Zeigt er auf eine fremde Adresse
+// (z. B. Cloudflare, solange der Name im Haus noch nicht eingetragen ist), bleibt es bei der
+// Adresse der Anfrage – dort käme die Steuerung über den Listen-Port nie an.
+func tiaNameHost(resolved, fallback string, own []string) string {
+	ip := net.ParseIP(resolved)
+	if ip == nil {
+		return resolved
+	}
+	for _, o := range own {
+		if o2 := net.ParseIP(o); o2 != nil && o2.Equal(ip) {
+			return resolved
+		}
+	}
+	return fallback
+}
+
 // tiaDefaults: Vorbelegung aus der Verbindung. Client-ID bleibt leer
 // (pdh-sps-<DB>), das Topic endet auf „/“ und bekommt den Namen des
 // Datenbausteins erst nach dem Hochladen.
@@ -121,6 +149,11 @@ func tiaDefaults(config map[string]string, connName, reqHost string) tiaForm {
 	}
 	if config["broker_mode"] == "integrated" {
 		f.BrokerHost = tiaHost(reqHost)
+		// Broker mit eigenem Namen: der Name statt der Adresse der Anfrage. Die eigenständige
+		// Variante braucht eine IPv4-Adresse – tiaHost löst den Namen dafür im Haus auf.
+		if name := tiaBrokerName(config); name != "" {
+			f.BrokerHost = tiaNameHost(tiaHost(name), f.BrokerHost, certOwnAddrs())
+		}
 		f.BrokerPort = tiaAtoi(config["int_listen_port"], 1883)
 		f.Username = strings.TrimSpace(config["int_broker_username"])
 		f.UseTLS = strings.TrimSpace(config["int_tls_cert_path"]) != "" && strings.TrimSpace(config["int_tls_key_path"]) != ""
@@ -336,6 +369,10 @@ type TIABlockPageData struct {
 	InfraLabel         string
 	InfoURL            string
 	MinLimit, MaxLimit int
+
+	// Broker mit eigenem Namen: Beim Umschalten auf TLS setzt die Seite Name und TLS-Port ein.
+	BrokerName    string
+	BrokerTLSPort int // 0 = kein TLS-Port am Broker
 }
 
 var errTIANotMQTT = errors.New("keine MQTT-Import-Verbindung")
@@ -374,6 +411,9 @@ func (h *Handler) tiaPageData(r *http.Request, id, name string, config map[strin
 	}
 	if meterUUIDRe.MatchString(f.InfraID) {
 		d.InfraLabel = h.infraPaths(r.Context(), []string{f.InfraID})[f.InfraID]
+	}
+	if d.BrokerName = tiaBrokerName(config); d.BrokerName != "" {
+		d.BrokerTLSPort, _ = mqttPort(config[mqttTLSPortKey])
 	}
 	return d
 }

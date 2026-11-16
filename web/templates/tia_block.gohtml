@@ -51,7 +51,7 @@
       <legend><i class="ti ti-server-2" aria-hidden="true"></i> Broker</legend>
       <div class="tia-pair">
         <div class="form-group"><label class="form-label" for="tia-host">Adresse *</label><input class="form-input" id="tia-host" name="broker_host" maxlength="254" value="{{.Form.BrokerHost}}" required>
-          {{if .Integrated}}<div class="rec-sub">Integrierter Broker: die Adresse, unter der die Steuerung den PDH erreicht.</div>{{end}}</div>
+          {{if .Integrated}}<div class="rec-sub">Integrierter Broker: die Adresse, unter der die Steuerung den PDH erreicht.{{if .BrokerName}} Der Broker heißt <b>{{.BrokerName}}</b>{{if .BrokerTLSPort}}; mit TLS setzt die Seite den Namen und Port {{.BrokerTLSPort}} ein{{end}}.{{end}}</div>{{end}}</div>
         <div class="form-group"><label class="form-label" for="tia-port">Port *</label><input class="form-input" id="tia-port" type="number" name="broker_port" min="1" max="65535" value="{{.Form.BrokerPort}}" required></div>
       </div>
       <label class="tia-check" id="tia-tls-row"><input type="checkbox" id="tia-tls" name="use_tls" {{if .Form.UseTLS}}checked{{end}}> TLS (nur mit LMQTT)</label>
@@ -124,6 +124,10 @@
 (function(){
   const form = document.getElementById('tia-form');
   const tls = document.getElementById('tia-tls'), row = document.getElementById('tia-tls-row'), port = document.getElementById('tia-port');
+  // Broker mit eigenem Namen und TLS-Port: mit TLS gehören Name und TLS-Port zusammen
+  const host = document.getElementById('tia-host');
+  const brokerName = {{.BrokerName}}, brokerTLS = {{.BrokerTLSPort}};
+  let plainHost = host.value, plainPort = port.value;
   // eigenständig kann kein TLS: Haken aus und gesperrt; Port 1883/8883 mitziehen, solange unverändert
   window.tiaVariant = function(){
     const lmqtt = form.querySelector('input[name=variant]:checked')?.value === 'lmqtt';
@@ -132,6 +136,17 @@
     row.classList.toggle('tia-off', !lmqtt);
   };
   function tiaPort(){
+    if(brokerName && brokerTLS){
+      if(tls.checked){
+        if(host.value !== brokerName) plainHost = host.value;
+        if(port.value !== String(brokerTLS)) plainPort = port.value;
+        host.value = brokerName; port.value = String(brokerTLS);
+      } else {
+        if(host.value === brokerName) host.value = plainHost;
+        if(port.value === String(brokerTLS)) port.value = plainPort;
+      }
+      return;
+    }
     if(port.value === '1883' && tls.checked) port.value = '8883';
     else if(port.value === '8883' && !tls.checked) port.value = '1883';
   }
