@@ -46,7 +46,7 @@
     </div>
 
     {{with .Net}}
-    <!-- Netz (Abgleich mit UniFi) -->
+    <!-- Netz (Abgleich mit UniFi oder Omada) -->
     <div class="card it-net-card">
       <div class="card-title" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><i class="ti ti-network"></i> Netz
         <span class="badge {{.StateClass}}">{{.StateLabel}}</span>
@@ -85,7 +85,7 @@
           <input type="hidden" name="on" value="{{if .Monitored}}0{{else}}1{{end}}">
           <button type="submit" class="btn btn-small" title="Bei Ausfall ein Alarm-Ticket anlegen"><i class="ti {{if .Monitored}}ti-bell-off{{else}}ti-bell{{end}}"></i> {{if .Monitored}}Nicht mehr überwachen{{else}}Überwachen{{end}}</button>
         </form>
-        <form method="POST" action="/it/{{$.Asset.ID}}/net-detach" style="margin:0" onsubmit="return confirm('Quelle trennen? Das Asset bleibt erhalten, wird aber nicht mehr mit UniFi abgeglichen und nicht mehr überwacht. Zustand und Ports werden entfernt. Rückgängig mit „Wieder verbinden“.')">
+        <form method="POST" action="/it/{{$.Asset.ID}}/net-detach" style="margin:0" onsubmit="return confirm('Quelle trennen? Das Asset bleibt erhalten, wird aber nicht mehr mit {{if .Source}}{{.Source}}{{else}}der Quelle{{end}} abgeglichen und nicht mehr überwacht. Zustand und Ports werden entfernt. Rückgängig mit „Wieder verbinden“.')">
           <button type="submit" class="btn btn-small"><i class="ti ti-unlink"></i> Quelle trennen</button>
         </form>
       </div>
@@ -97,7 +97,7 @@
     <div class="card it-net-detached">
       <div class="card-title" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><i class="ti ti-network"></i> Netz
         <span class="badge b-gray"><i class="ti ti-unlink"></i> Quelle getrennt</span></div>
-      <p style="font-size:13px;color:var(--muted);margin:0">Dieses Asset wird nicht mehr mit UniFi abgeglichen und nicht überwacht.</p>
+      <p style="font-size:13px;color:var(--muted);margin:0">Dieses Asset wird nicht mehr mit seiner Quelle (UniFi oder Omada) abgeglichen und nicht überwacht.</p>
       {{if .CanNetEdit}}
       <form method="POST" action="/it/{{.Asset.ID}}/net-reattach" style="margin:12px 0 0">
         <button type="submit" class="btn btn-small" title="Beim nächsten Abgleich wieder Zustand und Ports übernehmen"><i class="ti ti-link"></i> Wieder verbinden</button>
