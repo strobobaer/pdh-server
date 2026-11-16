@@ -10,6 +10,13 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.80.20] – 2026-11-16
+
+### Behoben
+
+- IT-Assets: Auf schmalen Bildschirmen (Handy) sind die Knöpfe im Kopf der Asset-Seite wieder ganz sichtbar; sie rutschen in eine zweite Zeile.
+- IT-Assets: Der Hinweis im Feld „Eigene Karenz“ ist ganz lesbar.
+
 ## [0.80.19] – 2026-11-16
 
 ### Neu
