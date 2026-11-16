@@ -10,6 +10,12 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.80.18] – 2026-11-16
+
+### Behoben
+
+- IT-Assets: Die Port-Tabelle der Karte „Netz“ zeigt Zustand und PoE jetzt auf Deutsch („aktiv“, „getrennt“, „an“, „aus“) statt „UP“/„DOWN“.
+
 ## [0.80.17] – 2026-11-16
 
 ### Neu

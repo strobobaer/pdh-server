@@ -489,6 +489,32 @@ func itNetSpeed(mbps int) string {
 	return fmt.Sprintf("%d Mbit/s", mbps)
 }
 
+// itNetPortState: Port-Zustand von UniFi (UP/DOWN/UNKNOWN) auf Deutsch.
+func itNetPortState(s string) string {
+	switch strings.ToUpper(s) {
+	case "UP":
+		return "aktiv"
+	case "DOWN":
+		return "getrennt"
+	}
+	return "unbekannt"
+}
+
+// itNetPoE: PoE-Zustand von UniFi auf Deutsch; leer, wenn der Port kein PoE hat.
+func itNetPoE(s string) string {
+	switch strings.ToUpper(s) {
+	case "":
+		return ""
+	case "UP":
+		return "an"
+	case "DOWN":
+		return "aus"
+	case "LIMITED":
+		return "begrenzt"
+	}
+	return "unbekannt"
+}
+
 // itNetDetail: Daten der Karte „Netz“ samt Ports.
 func (h *Handler) itNetDetail(ctx context.Context, a *it.Asset) *ITNetDetailView {
 	v := &ITNetDetailView{Source: itNetSourceName(a.NetSource), Firmware: a.Firmware, FirmwareUpdate: a.FirmwareUpdate,
@@ -517,6 +543,7 @@ func (h *Handler) itNetDetail(ctx context.Context, a *it.Asset) *ITNetDetailView
 		var speed int
 		if rows.Scan(&p.Idx, &p.Connector, &p.State, &speed, &p.PoE) == nil {
 			p.Up = strings.EqualFold(p.State, "UP")
+			p.State, p.PoE = itNetPortState(p.State), itNetPoE(p.PoE)
 			p.Speed = itNetSpeed(speed)
 			if !p.Up {
 				p.Speed = "–"
