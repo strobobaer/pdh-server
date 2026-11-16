@@ -381,7 +381,7 @@ func TestITNetMonitorToggleNeedsRecPerm(t *testing.T) {
 	}
 	// Arbeitsplatz ebenfalls nicht, Server und Drucker ja
 	for typ, want := range map[string]bool{"workstation": false, "server": true, "printer": true, "other": true} {
-		_, err = pool.Exec(ctx, `UPDATE it_assets SET type = $2::it_asset_type, net_detached = true, net_monitored = false WHERE id = $1::uuid`, assetA, typ)
+		_, err = pool.Exec(ctx, `UPDATE it_assets SET type = $2::text, net_detached = true, net_monitored = false WHERE id = $1::uuid`, assetA, typ)
 		must(err)
 		itNetDo(h.ITNetReattachWeb, "POST", "/it/"+assetA+"/net-reattach", assetA, user, url.Values{})
 		if monitored(assetA) != want {

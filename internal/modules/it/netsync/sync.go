@@ -404,7 +404,7 @@ func (s *Store) Adopt(ctx context.Context, source, mac, assetType, userID string
 		err = tx.QueryRow(ctx, `INSERT INTO it_assets
 				(name, type, status, ip_address, mac_address, created_by, net_source, net_external_id,
 				 net_monitored, net_state, net_last_seen, net_state_since, net_role)
-			VALUES ($1, $2::it_asset_type, 'active', NULLIF($3, ''), $4, $5, $6, $7, `+MonitoredByTypeSQL("$8::text")+`, 'online', $9, $9, 'client')
+			VALUES ($1, $2::text, 'active', NULLIF($3, ''), $4, $5, $6, $7, `+MonitoredByTypeSQL("$8::text")+`, 'online', $9, $9, 'client')
 			RETURNING id::text`, name, assetType, ip, nmac, userID, source, ext, assetType, now).Scan(&id)
 	}
 	if err != nil {
