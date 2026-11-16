@@ -278,3 +278,24 @@ func TestITDetailGraceOrigin(t *testing.T) {
 	}
 	want(body, "Karenz bis zum Alarm: 7 min (eigener Wert)")
 }
+
+func TestITDetailGraceMessagesWrap(t *testing.T) {
+	h, sfx := itCatEnv(t)
+	h.hasPermHook = func(*http.Request, string) bool { return true }
+	h.users = users.NewService(users.NewRepository(h.db), "t", 1)
+	kam := itCatAssetCat(t, h, "Kameras "+sfx, "ti-camera", 900, true)
+	id := itCatAssetRow(t, h, "Kamera Tor "+sfx, kam, h.itNetSource())
+	for q, want := range map[string]string{
+		"n=grace-reset": "Eigener Wert entfernt", "e=grace": "Karenz: bitte 1 bis 1440",
+	} {
+		body := itNetDo(h.ITDetail, "GET", "/it/"+id+"?"+q, id, pdhSystemUserID, nil).Body.String()
+		i := strings.Index(body, want)
+		if i < 0 {
+			t.Fatalf("%s: Meldung %q fehlt", q, want)
+		}
+		// umbrechende Karte, kein nowrap-Abzeichen
+		if open := body[strings.LastIndex(body[:i], "<div"):i]; !strings.Contains(open, `class="card"`) || strings.Contains(open, "badge") {
+			t.Errorf("%s: Meldung nicht als Karte: %s", q, open)
+		}
+	}
+}

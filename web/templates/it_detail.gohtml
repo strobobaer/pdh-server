@@ -62,8 +62,8 @@
         <div><div style="color:var(--muted);font-size:11px">Überwacht</div>{{if .Monitored}}ja – Ausfall erzeugt ein Ticket{{else}}nein{{end}}</div>
         <div><div style="color:var(--muted);font-size:11px">Alarm-Karenz</div>Karenz bis zum Alarm: {{.GraceMin}} min ({{.GraceSource}})</div>
       </div>
-      {{if $.Notice}}<div class="badge b-green" style="margin-top:10px" role="status">{{$.Notice}}</div>{{end}}
-      {{if $.Err}}<div class="badge b-red" style="margin-top:10px" role="alert">{{$.Err}}</div>{{end}}
+      {{if $.Notice}}<div class="card" role="status" style="margin:10px 0 0;border-color:var(--green)"><i class="ti ti-circle-check" style="color:var(--green)"></i> {{$.Notice}}</div>{{end}}
+      {{if $.Err}}<div class="card" role="alert" style="margin:10px 0 0;border-color:var(--red);color:var(--red)"><i class="ti ti-alert-circle"></i> {{$.Err}}</div>{{end}}
       {{if .Ports}}
       <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%;margin-top:12px">
         <table style="min-width:420px">
