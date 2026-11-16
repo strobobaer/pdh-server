@@ -291,6 +291,7 @@ type Handler struct {
 	mirrorAdminFn      func(*http.Request) bool                           // nil → canServerConfig (Tests)
 	userByIDFn         func(context.Context, string) (*users.User, error) // nil → users.GetByID (Tests)
 	db                 *pgxpool.Pool
+	itNet              itNetState // IT-Netzabgleich: Quelle und Meldezustand über Läufe hinweg
 	tmpl               *template.Template
 	users              *users.Service
 	shifts             *shifts.Service
