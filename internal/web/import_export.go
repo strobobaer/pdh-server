@@ -87,6 +87,7 @@ var importKindFields = map[string][]string{
 		"int_listen_port", "int_websocket_port", "int_allow_anonymous", "int_broker_username", "int_broker_password",
 		"int_max_clients", "int_persistence_enabled", "int_retain_enabled", "int_tls_cert_path", "int_tls_key_path",
 		"int_topic_filter", "int_qos",
+		"int_public_host", "int_tls_port", // Name des Brokers (mqtt_system.go)
 	},
 	"web":      {"url", "method", "poll_interval_minutes"},
 	"rest_api": {"base_url", "auth_method", "username", "password", "bearer_token", "api_key_header", "api_key_value", "poll_interval_minutes"},
@@ -367,6 +368,11 @@ func (h *Handler) createConnection(w http.ResponseWriter, r *http.Request, direc
 		http.Redirect(w, r, base+"?notice="+url.QueryEscape(err.Error()), http.StatusSeeOther)
 		return
 	}
+	// vor dem Verschlüsseln: bringt Name und TLS-Port des Brokers in feste Form
+	if err := h.validateMqttSystem(r.Context(), "", direction, kind, config); err != nil {
+		http.Redirect(w, r, base+"?notice="+url.QueryEscape(err.Error()), http.StatusSeeOther)
+		return
+	}
 	sealed, err := sealConnConfig(h.connKey(), config)
 	if err != nil {
 		http.Error(w, "Kennwort konnte nicht verschlüsselt werden", http.StatusInternalServerError)
@@ -397,6 +403,7 @@ func (h *Handler) createConnection(w http.ResponseWriter, r *http.Request, direc
 	h.reconcileMqttBroker(id, direction, kind, true, config)
 	h.reconcileExportSchedule(id, direction, true, config)
 	h.reconcileImportPoll(id, direction, kind, true, config)
+	h.mqttSiteSync(config[mqttHostKey])
 	// gleich auf die eigene Seite der Verbindung: Pruefen, Abfragen, Zuordnen
 	next := "checks"
 	if direction == "import" && queryKindSupported(kind) {
@@ -460,6 +467,14 @@ func (h *Handler) editConnection(w http.ResponseWriter, r *http.Request, directi
 		}
 		return
 	}
+	if err := h.validateMqttSystem(r.Context(), id, direction, kind, config); err != nil {
+		if r.FormValue("return_to") == "detail" {
+			http.Redirect(w, r, connectionBackPath(direction, id, "overview", "", err.Error()), http.StatusSeeOther)
+		} else {
+			http.Redirect(w, r, base+"?notice="+url.QueryEscape(err.Error()), http.StatusSeeOther)
+		}
+		return
+	}
 	sealed, err := sealConnConfig(h.connKey(), config)
 	if err != nil {
 		http.Error(w, "Kennwort konnte nicht verschlüsselt werden", http.StatusInternalServerError)
@@ -489,6 +504,10 @@ func (h *Handler) editConnection(w http.ResponseWriter, r *http.Request, directi
 	if direction == "import" {
 		h.reconcileQueryPolls(r.Context(), id)
 	}
+	// Name oder WebSocket-Port des Brokers geändert: nginx-Seite gleich nachziehen
+	if kind == "mqtt" && (stored[mqttHostKey] != plain[mqttHostKey] || stored["int_websocket_port"] != plain["int_websocket_port"]) {
+		h.mqttSiteSync(stored[mqttHostKey], plain[mqttHostKey])
+	}
 	// Abgleich: geänderter Weg (direkt ↔ VPN) verlangt einen neuen Test der Profile
 	demoted := ""
 	if n := h.syncDemoteOnRouteChange(r.Context(), id, stored, config); n > 0 {
@@ -513,11 +532,15 @@ func (h *Handler) deleteConnection(w http.ResponseWriter, r *http.Request, direc
 			h.importPoll.Stop(queryPollID(q.ID))
 		}
 	}
+	var brokerHost string // Name des Brokers: seine nginx-Seite geht mit weg
+	_ = h.db.QueryRow(r.Context(),
+		`SELECT COALESCE(config->>'int_public_host','') FROM import_export_connections WHERE id=$1 AND direction=$2`, id, direction).Scan(&brokerHost)
 	if _, err := h.db.Exec(r.Context(),
 		`DELETE FROM import_export_connections WHERE id=$1 AND direction=$2`, id, direction); err != nil {
 		http.Error(w, "Verbindung konnte nicht gelöscht werden", http.StatusInternalServerError)
 		return
 	}
+	h.mqttSiteSync(brokerHost)
 	h.mqttImport.Stop(id)
 	h.mqttBrokers.Stop(id)
 	h.exportCron.Unschedule(id)

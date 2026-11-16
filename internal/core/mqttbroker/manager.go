@@ -33,12 +33,20 @@ type Config struct {
 	RetainEnabled  bool
 	TLSCertPath    string
 	TLSKeyPath     string
+
+	// TLSPort: zusaetzlicher TCP-Listener mit TLS (mqtts), 0 = aus. Das Zertifikat
+	// liefert GetCertificate bei jedem Handshake - so gilt ein erneuertes ohne
+	// Neustart. Nur wenn beide gesetzt sind, startet der Listener. Listen- und
+	// WebSocket-Port bleiben davon unberuehrt.
+	TLSPort        int
+	GetCertificate func(*tls.ClientHelloInfo) (*tls.Certificate, error)
 }
 
 type Status struct {
 	Running          bool      `json:"running"`
 	ListenAddr       string    `json:"listen_addr"`
 	WebsocketAddr    string    `json:"websocket_addr,omitempty"`
+	TLSAddr          string    `json:"tls_addr,omitempty"`
 	StartedAt        time.Time `json:"started_at"`
 	ClientsConnected int64     `json:"clients_connected"`
 	ClientsMaximum   int64     `json:"clients_maximum"`
@@ -61,6 +69,7 @@ type runningBroker struct {
 	server        *mqtt.Server
 	listenAddr    string
 	websocketAddr string
+	tlsAddr       string
 	startedAt     time.Time
 
 	mu           sync.Mutex
@@ -205,6 +214,22 @@ func (m *Manager) start(id string, cfg Config) error {
 		rb.websocketAddr = wsAddr
 	}
 
+	if cfg.TLSPort > 0 && cfg.GetCertificate != nil {
+		if cfg.TLSPort > 65535 || cfg.TLSPort == cfg.ListenPort || cfg.TLSPort == cfg.WebsocketPort {
+			_ = server.Close()
+			return fmt.Errorf("ungültiger TLS-Port")
+		}
+		// eigene tls.Config: die Variable oben gehoert zu den Dateipfaden
+		tlsAddr := fmt.Sprintf(":%d", cfg.TLSPort)
+		tl := listeners.NewTCP(listeners.Config{ID: "tls-" + id, Address: tlsAddr,
+			TLSConfig: &tls.Config{GetCertificate: cfg.GetCertificate, MinVersion: tls.VersionTLS12}})
+		if err := server.AddListener(tl); err != nil {
+			_ = server.Close() // schon geoeffnete Ports wieder freigeben
+			return fmt.Errorf("TLS-Listener konnte nicht gestartet werden: %w", err)
+		}
+		rb.tlsAddr = tlsAddr
+	}
+
 	m.mu.Lock()
 	m.brokers[id] = rb
 	m.mu.Unlock()
@@ -269,6 +294,7 @@ func (m *Manager) Status(id string) (Status, bool) {
 		Running:          true,
 		ListenAddr:       rb.listenAddr,
 		WebsocketAddr:    rb.websocketAddr,
+		TLSAddr:          rb.tlsAddr,
 		StartedAt:        rb.startedAt,
 		ClientsConnected: info.ClientsConnected,
 		ClientsMaximum:   info.ClientsMaximum,

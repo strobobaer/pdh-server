@@ -168,6 +168,8 @@ var gateRules = []gateRule{
 
 	// ── Verbindungen: Zertifikat der Fremddatenbank lesen (wie Verbindung bearbeiten) ──
 	gr(wPost, "import.write", "", false, `^/import/connections/fingerprint$`),
+	// Prüfliste des Brokers mit eigenem Namen (Zustände sieht, wer die Verbindung bearbeiten darf)
+	gr("GET", "import.write", "", false, `^/import/connections`+gID+`/broker/checklist$`),
 	gr(wPost, "export.write", "", false, `^/export/connections/fingerprint$`),
 	// ── Explorer: Testschreiben/Senden wie Verbindung bearbeiten (Erkunden selbst: import/export.execute im Handler) ──
 	gr(wPost, "import.write", "", false, `^/import/connections`+gID+`/explorer/(?:mqtt/publish|opcua/write|modbus/write)$`),

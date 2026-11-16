@@ -35,7 +35,10 @@ type certDeps struct {
 	// Dateien ablegen konnte und an der nginx-Seite etwas von Hand zu tun ist.
 	install func(ctx context.Context, name string, chain, key []byte) (fp, note string, err error)
 	status  func(ctx context.Context) (map[string]certFile, error) // Name → Datei beim Agenten
-	role    func(ctx context.Context, name string) string          // "pdh", "nextcloud" oder ""; nil = ""
+	role    func(ctx context.Context, name string) string          // "pdh", "nextcloud", "mqtt" oder ""; nil = ""
+	// mqttUpstream: Ziel der nginx-Seite, wenn eine Broker-Verbindung den Namen trägt ("" = keine); nil = "".
+	// ok = false: gerade nicht feststellbar – dann wird an der Seite nichts geändert.
+	mqttUpstream func(ctx context.Context, name string) (upstream string, ok bool)
 	blocked func() bool                                            // Spiegel oder Wartung: nichts starten
 	alarm   func(text string)
 	now     func() time.Time
@@ -55,6 +58,8 @@ type certFile struct {
 	Fingerprint string
 	NotAfter    time.Time
 	Site        bool // eine nginx-Seite verweist auf /etc/ssl/pdh/<name>/
+	// MQTTUpstream: Ziel der eigenen MQTT-Seite des Namens beim Agenten ("" = keine).
+	MQTTUpstream string
 }
 
 var errCertBusy = errors.New("Für diesen Namen läuft schon ein Auftrag")
@@ -91,6 +96,9 @@ func (d certDeps) withDefaults() certDeps {
 	}
 	if d.role == nil {
 		d.role = func(context.Context, string) string { return "" }
+	}
+	if d.mqttUpstream == nil {
+		d.mqttUpstream = func(context.Context, string) (string, bool) { return "", true }
 	}
 	return d
 }
@@ -695,6 +703,13 @@ func certReconcile(ctx context.Context, d certDeps, rows []certRow) certReconcil
 				role := d.role(ctx, r.Name)
 				noSite = role == "pdh" || role == "nextcloud"
 			}
+			// MQTT-Name: Seite fehlt, zeigt auf einen anderen WebSocket-Port oder ist übrig
+			// geblieben (kein Broker trägt den Namen mehr) – der Agent stellt den Stand her.
+			if match && d.mqttUpstream != nil {
+				if up, ok := d.mqttUpstream(ctx, r.Name); ok && up != f.MQTTUpstream {
+					noSite = true
+				}
+			}
 		} else {
 			match = strings.EqualFold(r.InstalledFP, r.Fingerprint)
 		}
@@ -906,6 +921,16 @@ func (h *Handler) certDepsLive() certDeps {
 				port, _ = h.nextStartValue(ctx, "PDH_SERVER_PORT")
 			}
 			body := certInstallBody(name, chain, key, host, origin, port, os.Getenv("PDH_NEXTCLOUD_BASEURL"))
+			if body["role"] == "" { // Name eines Brokers: eigene Seite für wss über 443
+				// Nicht lesbar: lieber nichts einrichten, als die Seite des Brokers wegzuräumen.
+				up, err := h.mqttUpstreamFor(ctx, name)
+				if err != nil {
+					return "", "", err
+				}
+				if up != "" {
+					body["role"], body["upstream"] = "mqtt", up
+				}
+			}
 			var out struct {
 				Fingerprint  string `json:"fingerprint"`
 				Note         string `json:"note"`
@@ -929,6 +954,7 @@ func (h *Handler) certDepsLive() certDeps {
 					Fingerprint string `json:"fingerprint"`
 					NotAfter    string `json:"not_after"`
 					Site        bool   `json:"site"`
+					MQTT        string `json:"mqtt_upstream"`
 				} `json:"certs"`
 			}
 			if err := h.agentJSON(ctx, "GET", "/v1/certs/status", nil, &out); err != nil {
@@ -936,7 +962,7 @@ func (h *Handler) certDepsLive() certDeps {
 			}
 			m := make(map[string]certFile, len(out.Certs))
 			for _, c := range out.Certs {
-				f := certFile{Fingerprint: strings.ToLower(c.Fingerprint), Site: c.Site}
+				f := certFile{Fingerprint: strings.ToLower(c.Fingerprint), Site: c.Site, MQTTUpstream: c.MQTT}
 				if t, err := time.Parse(time.RFC3339, c.NotAfter); err == nil {
 					f.NotAfter = t
 				}
@@ -946,7 +972,21 @@ func (h *Handler) certDepsLive() certDeps {
 		},
 		role: func(ctx context.Context, name string) string {
 			host, _ := h.nextStartValue(ctx, cfHostKey)
-			return certRole(name, host, os.Getenv("PDH_NEXTCLOUD_BASEURL"))
+			if role := certRole(name, host, os.Getenv("PDH_NEXTCLOUD_BASEURL")); role != "" {
+				return role
+			}
+			if up, _ := h.mqttUpstreamFor(ctx, name); up != "" {
+				return "mqtt"
+			}
+			return ""
+		},
+		mqttUpstream: func(ctx context.Context, name string) (string, bool) {
+			host, _ := h.nextStartValue(ctx, cfHostKey)
+			if certRole(name, host, os.Getenv("PDH_NEXTCLOUD_BASEURL")) != "" {
+				return "", true // Name des PDH oder der Nextcloud geht vor
+			}
+			up, err := h.mqttUpstreamFor(ctx, name)
+			return up, err == nil
 		},
 		blocked: func() bool { return h.Mirror().On || h.MaintLocked() },
 		alarm: func(text string) {

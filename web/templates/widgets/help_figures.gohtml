@@ -832,6 +832,23 @@
 </figure>
 {{end}}
 
+{{/* MQTT-Broker mit eigenem Namen: drei Wege zum Broker */}}
+{{define "hb-fig-mqttname"}}
+<figure class="hb-fig">
+<svg viewBox="0 0 640 200" role="img" aria-label="Steuerungen im Haus verbinden sich über Port 1883 oder verschlüsselt über Port 8883, Apps im Haus und von außen über WebSocket auf Port 443; von außen läuft das über den Cloudflare-Tunnel">
+  <rect class="bg" x="1" y="1" width="638" height="198" rx="8"/>
+  <rect class="bg3" x="16" y="18" width="180" height="44" rx="8"/><text x="106" y="37" class="t-c t-b">Steuerung im Haus</text><text x="106" y="53" class="t-c t-m">mqtt://name:1883</text>
+  <rect class="bg3" x="16" y="78" width="180" height="44" rx="8"/><text x="106" y="97" class="t-c t-b">Gerät im Haus / VPN</text><text x="106" y="113" class="t-c t-m">mqtts://name:8883</text>
+  <rect class="bg3" x="16" y="138" width="180" height="44" rx="8"/><text x="106" y="157" class="t-c t-b">App, auch von außen</text><text x="106" y="173" class="t-c t-m">wss://name/ (Port 443)</text>
+  <rect class="am" x="250" y="138" width="130" height="44" rx="8"/><text x="315" y="157" class="t-c t-b">Cloudflare-Tunnel</text><text x="315" y="173" class="t-c t-m">nur von außen</text>
+  <rect class="acl" x="444" y="48" width="180" height="104" rx="8"/><text x="534" y="72" class="t-c t-b">MQTT-Broker im PDH</text><text x="534" y="92" class="t-c t-m">ein Name, ein Zertifikat</text><text x="534" y="108" class="t-c t-m">aus der Zertifikatsliste</text><text x="534" y="130" class="t-c t-m">Port 1883 bleibt wie bisher</text>
+  <path class="ar" d="M198 40 L442 76"/><path class="ar" d="M198 100 H442"/>
+  <path class="ar" d="M198 160 H248"/><path class="ar" d="M382 160 L442 132"/>
+</svg>
+<figcaption>Ein Name für den Broker: im Haus direkt (mit oder ohne TLS), für Apps über WebSocket auf Port 443 – von außen durch den Cloudflare-Tunnel. Reines MQTT von außen nur über VPN.</figcaption>
+</figure>
+{{end}}
+
 {{/* TIA-Baustein: Steuerung → Broker → PDH-Zuordnungen, Heartbeat */}}
 {{define "hb-fig-tia"}}
 <figure class="hb-fig">

@@ -29,6 +29,7 @@ var connFieldLabels = map[string]string{
 	"int_broker_username": "Broker-Benutzer", "int_broker_password": "Broker-Passwort", "int_max_clients": "Max. Clients",
 	"int_persistence_enabled": "Speichern", "int_retain_enabled": "Retain", "int_tls_cert_path": "TLS-Zertifikat",
 	"int_tls_key_path": "TLS-Schlüssel", "int_topic_filter": "Topic-Filter", "int_qos": "QoS",
+	"int_public_host": "Name des Brokers", "int_tls_port": "TLS-Port (mqtts)",
 	"url": "URL", "method": "Methode", "poll_interval_minutes": "Abruf-Intervall (Min.)",
 	"base_url": "Basis-URL", "auth_method": "Anmeldung", "bearer_token": "Bearer-Token", "api_key_header": "API-Key-Header", "api_key_value": "API-Key",
 	"unit_id": "Unit-ID", "endpoint_url": "Endpunkt", "auth_mode": "Anmeldung",

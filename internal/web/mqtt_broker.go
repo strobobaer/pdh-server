@@ -68,7 +68,7 @@ func (h *Handler) reconcileMqttBroker(id, direction, kind string, enabled bool, 
 	if !enabled || config["broker_mode"] != "integrated" {
 		return
 	}
-	cfg, err := mqttBrokerConfigFromMap(config)
+	cfg, err := h.mqttBrokerConfig(config)
 	if err != nil {
 		log.Error().Err(err).Str("connection_id", id).Msg("integrierter mqtt-broker: ungültige konfiguration")
 		return
@@ -302,7 +302,7 @@ func (h *Handler) StartEnabledMqttBrokers(ctx context.Context) {
 		if config["broker_mode"] != "integrated" {
 			continue
 		}
-		cfg, err := mqttBrokerConfigFromMap(config)
+		cfg, err := h.mqttBrokerConfig(config)
 		if err != nil {
 			log.Error().Err(err).Str("connection_id", id).Msg("integrierter mqtt-broker: ungültige konfiguration beim start")
 			continue
@@ -332,6 +332,7 @@ type MqttBrokerPageData struct {
 	StartError       string
 	ListenAddr       string
 	WebsocketAddr    string
+	TLSAddr          string
 	StartedAt        string
 	ClientsConnected int64
 	ClientsMaximum   int64
@@ -354,6 +355,10 @@ type MqttBrokerPageData struct {
 	TopicFilter    string
 	QoS            string
 	RetainEnabled  bool
+
+	// Name des Brokers (mqtt_system.go): fertige Adressen und die nachgeladene Prüfliste.
+	PublicHost string
+	TLSPort    string
 }
 
 func (h *Handler) MqttBrokerPage(w http.ResponseWriter, r *http.Request) {
@@ -400,12 +405,17 @@ func (h *Handler) MqttBrokerPage(w http.ResponseWriter, r *http.Request) {
 		data.TopicFilter = config["int_topic_filter"]
 		data.QoS = config["int_qos"]
 		data.RetainEnabled = config["int_retain_enabled"] == "true"
+		data.PublicHost = strings.TrimSpace(config[mqttHostKey])
+		if data.PublicHost != "" {
+			data.TLSPort = strings.TrimSpace(config[mqttTLSPortKey])
+		}
 	}
 	if data.Applicable {
 		if status, ok := h.mqttBrokers.Status(id); ok {
 			data.Running = true
 			data.ListenAddr = status.ListenAddr
 			data.WebsocketAddr = status.WebsocketAddr
+			data.TLSAddr = status.TLSAddr
 			data.StartedAt = status.StartedAt.Format("02.01.2006 15:04:05")
 			data.ClientsConnected = status.ClientsConnected
 			data.ClientsMaximum = status.ClientsMaximum

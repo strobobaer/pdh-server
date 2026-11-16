@@ -46,7 +46,7 @@ type cfRecordView struct {
 	Tunnel bool // CNAME auf einen Tunnel – läuft immer über den Proxy
 }
 
-// cfTarget: ein Name, den das PDH braucht (PDH selbst, Nextcloud), mit Soll und Ist.
+// cfTarget: ein Name, den das PDH braucht (PDH selbst, Nextcloud, MQTT-Broker), mit Soll und Ist.
 type cfTarget struct {
 	Label, Host, Service string
 	NoTLS                bool
@@ -216,6 +216,8 @@ func (h *Handler) cfWantedTargets(ctx context.Context, zone string, ingress []cl
 		}
 		out = append(out, t)
 	}
+	systems, _ := h.mqttSystems(ctx)                 // Lesefehler: nur die Zeilen MQTT fehlen
+	out = append(out, mqttTargets(systems, zone)...) // Broker mit eigenem Namen (wss)
 	return cfStrictWanted(out, h.cfStrictNames(ctx))
 }
 

@@ -101,7 +101,11 @@
         <p style="font-size:11px;color:var(--muted);margin:0 0 10px">Startet einen in PDH eingebetteten MQTT-Broker mit den folgenden Einstellungen.</p>
         <div class="grid2" style="gap:10px">
           <div class="form-group"><label class="form-label">Listen-Port</label><input type="number" name="f_mqtt_int_listen_port" class="form-input" value="1883"></div>
-          <div class="form-group"><label class="form-label">WebSocket-Port</label><input type="number" name="f_mqtt_int_websocket_port" class="form-input" placeholder="optional"></div>
+          <div class="form-group"><label class="form-label">WebSocket-Port</label><input type="number" name="f_mqtt_int_websocket_port" class="form-input" placeholder="optional, z. B. 8083"></div>
+          <div class="form-group"><label class="form-label" for="f_mqtt_int_public_host">Name des Brokers (Subdomain)</label><input id="f_mqtt_int_public_host" name="f_mqtt_int_public_host" class="form-input" maxlength="253" placeholder="optional, z. B. mqtt.firma.de" autocapitalize="none" spellcheck="false">
+            <div style="font-size:11px;color:var(--muted);margin-top:3px">Mit Name: WebSocket-Port nötig, Zertifikat kommt aus der Zertifikatsliste (Dateipfade leer lassen). Einrichten über die Prüfliste im Broker-Status.</div></div>
+          <div class="form-group"><label class="form-label" for="f_mqtt_int_tls_port">TLS-Port (mqtts)</label><input type="number" id="f_mqtt_int_tls_port" name="f_mqtt_int_tls_port" class="form-input" min="1" max="65535" placeholder="optional, z. B. 8883">
+            <div style="font-size:11px;color:var(--muted);margin-top:3px">Nur mit Name. Läuft zusätzlich – der Listen-Port ohne TLS bleibt.</div></div>
           <div class="form-group"><label class="form-label">Broker-Benutzername</label><input name="f_mqtt_int_broker_username" class="form-input" placeholder="optional"></div>
           <div class="form-group"><label class="form-label">Broker-Passwort</label><input type="password" name="f_mqtt_int_broker_password" class="form-input" autocomplete="new-password"></div>
           <div class="form-group"><label class="form-label">Max. Clients</label><input type="number" name="f_mqtt_int_max_clients" class="form-input" placeholder="optional"></div>

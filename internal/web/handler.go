@@ -1040,6 +1040,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/import/connections/{id}/tia/check", h.TIABlockCheckWeb)
 	r.Post("/import/connections/{id}/tia/download", h.TIABlockDownload)
 	r.Get("/import/connections/{id}/broker", h.MqttBrokerPage)
+	r.Get("/import/connections/{id}/broker/checklist", h.MqttBrokerChecklist)
 	r.Get("/import/connections/{id}/broker/stream", h.MqttBrokerStream)
 	r.Post("/import/connections/{id}/mappings", h.ImportMappingCreateWeb)
 	r.Post("/import/connections/{id}/mappings/{mappingId}/delete-web", h.ImportMappingDeleteWeb)
