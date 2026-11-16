@@ -126,7 +126,7 @@ func TestApplyLinksByMAC(t *testing.T) {
 	f := newFx(t)
 	ctx := context.Background()
 	hand := "hand-" + f.src
-	_, err := f.s.DB.Exec(ctx, `INSERT INTO it_assets (name, mac_address, created_by) VALUES ($1, 'AA-BB-CC-00-02-01', $2)`, hand, f.user)
+	_, err := f.s.DB.Exec(ctx, `INSERT INTO it_assets (name, mac_address, created_by) VALUES ($1, ' AABB.CC00.0201 ', $2)`, hand, f.user)
 	must(t, err)
 	res, err := f.s.Apply(ctx, f.src, Snapshot{Devices: []Device{{ExternalID: "x", MAC: "aa:bb:cc:00:02:01", Name: "Anders", State: StateOnline}}}, t0)
 	must(t, err)
@@ -136,8 +136,23 @@ func TestApplyLinksByMAC(t *testing.T) {
 	if _, name, _, _, _, _, _ := f.asset("x"); name != hand {
 		t.Errorf("Name %q", name)
 	}
-	if n := f.count(`SELECT count(*) FROM it_assets WHERE lower(replace(mac_address,'-',':'))='aa:bb:cc:00:02:01'`); n != 1 {
+	if n := f.count(`SELECT count(*) FROM it_assets WHERE regexp_replace(lower(mac_address),'[^0-9a-f]','','g')='aabbcc000201'`); n != 1 {
 		t.Errorf("Assets mit MAC: %d", n)
+	}
+	_, _, state, _, since, _, gone := f.asset("x")
+	if state != "online" || gone || since == nil {
+		t.Fatalf("verknüpft: %s gone=%v since=%v", state, gone, since)
+	}
+	first := *since
+	_, err = f.s.Apply(ctx, f.src, Snapshot{Devices: []Device{{ExternalID: "x", MAC: "aa:bb:cc:00:02:01", State: StateOnline}}}, t0.Add(time.Minute))
+	must(t, err)
+	if _, _, state, _, since, _, _ = f.asset("x"); state != "online" || !since.Equal(first) {
+		t.Errorf("zweiter Lauf: %s since %v (vorher %v)", state, since, first)
+	}
+	res, err = f.s.Apply(ctx, f.src, Snapshot{}, t0.Add(2*time.Minute))
+	must(t, err)
+	if _, _, state, _, _, _, gone = f.asset("x"); !gone || state != "unknown" || res.Gone != 1 {
+		t.Errorf("fehlend: gone=%v state=%s %+v", gone, state, res)
 	}
 }
 
@@ -343,5 +358,49 @@ func TestIgnore(t *testing.T) {
 	must(t, f.s.Ignore(ctx, f.src, "aa:bb:cc:00:0a:01", false))
 	if n := f.count(`SELECT count(*) FROM it_net_candidates WHERE source=$1 AND ignored`, f.src); n != 0 {
 		t.Errorf("zurückgeholt: %d", n)
+	}
+}
+
+func TestAdoptRejectsNetwork(t *testing.T) {
+	f := newFx(t)
+	ctx := context.Background()
+	_, err := f.s.Apply(ctx, f.src, Snapshot{Clients: []Client{{MAC: "aa:bb:cc:00:0b:01", Name: "X", Kind: "wired"}}}, t0)
+	must(t, err)
+	if _, err := f.s.Adopt(ctx, f.src, "aa:bb:cc:00:0b:01", "network", f.user, t0); err == nil {
+		t.Fatal("Typ network muss abgelehnt werden")
+	}
+	if n := f.count(`SELECT count(*) FROM it_net_candidates WHERE source=$1`, f.src); n != 1 {
+		t.Errorf("Vorschlag muss bleiben: %d", n)
+	}
+}
+
+func TestAdoptLinkedNetworkAssetStaysClient(t *testing.T) {
+	f := newFx(t)
+	ctx := context.Background()
+	hand := "hand-" + f.src
+	_, err := f.s.DB.Exec(ctx, `INSERT INTO it_assets (name, type, mac_address, created_by) VALUES ($1, 'network', 'aa:bb:cc:00:0c:01', $2)`, hand, f.user)
+	must(t, err)
+	snap := Snapshot{Clients: []Client{{ExternalID: "k", MAC: "aa:bb:cc:00:0c:01", Name: "Hub", Kind: "wired"}}}
+	_, err = f.s.Apply(ctx, f.src, snap, t0)
+	must(t, err)
+	id, err := f.s.Adopt(ctx, f.src, "aa:bb:cc:00:0c:01", "other", f.user, t0)
+	must(t, err)
+	_, err = f.s.Apply(ctx, f.src, snap, t0.Add(time.Minute))
+	must(t, err)
+	_, err = f.s.Apply(ctx, f.src, snap, t0.Add(2*time.Minute))
+	must(t, err)
+	var role, state string
+	var gone bool
+	var since time.Time
+	must(t, f.s.DB.QueryRow(ctx, `SELECT net_role, net_state, net_gone, net_state_since FROM it_assets WHERE id=$1`, id).Scan(&role, &state, &gone, &since))
+	if role != "client" || state != "online" || gone || !since.Equal(t0) {
+		t.Errorf("%s %s gone=%v since=%v", role, state, gone, since)
+	}
+	snap.Clients = nil
+	res, err := f.s.Apply(ctx, f.src, snap, t0.Add(3*time.Minute))
+	must(t, err)
+	must(t, f.s.DB.QueryRow(ctx, `SELECT net_state, net_gone FROM it_assets WHERE id=$1`, id).Scan(&state, &gone))
+	if state != "offline" || gone || res.Gone != 0 {
+		t.Errorf("fehlender Client: %s gone=%v %+v", state, gone, res)
 	}
 }

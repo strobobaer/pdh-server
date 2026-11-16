@@ -12,10 +12,15 @@ ALTER TABLE it_assets
     ADD COLUMN IF NOT EXISTS firmware         TEXT NOT NULL DEFAULT '',
     ADD COLUMN IF NOT EXISTS firmware_update  BOOLEAN NOT NULL DEFAULT false,
     ADD COLUMN IF NOT EXISTS net_uplink       TEXT NOT NULL DEFAULT '',
-    ADD COLUMN IF NOT EXISTS net_gone         BOOLEAN NOT NULL DEFAULT false;
+    ADD COLUMN IF NOT EXISTS net_gone         BOOLEAN NOT NULL DEFAULT false,
+    ADD COLUMN IF NOT EXISTS net_role         TEXT;
 
 DO $$
 BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'it_assets_net_role_check') THEN
+        ALTER TABLE it_assets ADD CONSTRAINT it_assets_net_role_check
+            CHECK (net_role IN ('device', 'client'));
+    END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'it_assets_net_state_check') THEN
         ALTER TABLE it_assets ADD CONSTRAINT it_assets_net_state_check
             CHECK (net_state IN ('online', 'offline', 'unknown'));
@@ -24,8 +29,10 @@ END $$;
 
 CREATE UNIQUE INDEX IF NOT EXISTS it_assets_net_source_ext
     ON it_assets (net_source, net_external_id) WHERE net_source IS NOT NULL;
+-- MAC-Vergleich unabhängig von Schreibweise (Trenner, Groß-/Kleinschreibung, Leerzeichen).
+DROP INDEX IF EXISTS it_assets_mac_norm;
 CREATE INDEX IF NOT EXISTS it_assets_mac_norm
-    ON it_assets (lower(replace(mac_address, '-', ':')));
+    ON it_assets (regexp_replace(lower(mac_address), '[^0-9a-f]', '', 'g'));
 
 -- ── Ports eines Netzgeräts (bei jedem Abruf ersetzt) ──────────────────────
 CREATE TABLE IF NOT EXISTS it_asset_ports (
@@ -77,3 +84,9 @@ SELECT rp.role_id, p.id, rp.department_id
  WHERE p.key = 'it.netsync'
 ON CONFLICT (role_id, permission_id) DO UPDATE SET department_id = NULL
   WHERE EXCLUDED.department_id IS NULL;
+
+-- Rolle im Abgleich: Netzgerät (Switch, AP …) oder übernommener Client.
+-- Bereits abgeglichene Assets (Entwicklungsstände) bekommen die Rolle nachgetragen.
+UPDATE it_assets
+   SET net_role = CASE WHEN type = 'network' THEN 'device' ELSE 'client' END
+ WHERE net_source IS NOT NULL AND net_role IS NULL;

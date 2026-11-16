@@ -40,7 +40,7 @@ func TestITNetsyncMigration(t *testing.T) {
 
 	t.Run("Spalten und Tabellen vorhanden", func(t *testing.T) {
 		cols := map[string][]string{
-			"it_assets":          {"net_state", "net_monitored", "net_gone", "firmware_update", "firmware", "net_uplink", "net_source", "net_external_id", "net_last_seen", "net_state_since"},
+			"it_assets":          {"net_state", "net_monitored", "net_gone", "firmware_update", "firmware", "net_uplink", "net_source", "net_external_id", "net_last_seen", "net_state_since", "net_role"},
 			"it_asset_ports":     {"asset_id", "idx", "connector", "state", "speed_mbps", "max_speed_mbps", "poe_state"},
 			"it_net_candidates":  {"source", "mac", "external_id", "name", "ip", "kind", "uplink", "last_seen", "ignored"},
 			"it_net_alarm_state": {"asset_id", "state", "offline_since", "ticket_id"},

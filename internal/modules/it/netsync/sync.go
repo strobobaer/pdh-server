@@ -31,7 +31,7 @@ type Result struct {
 }
 
 // Normalisierte MAC eines Assets in SQL (passt zum Index it_assets_mac_norm).
-const sqlAssetMAC = `lower(replace(mac_address, '-', ':'))`
+const sqlAssetMAC = `regexp_replace(lower(mac_address), '[^0-9a-f]', '', 'g')`
 
 func stateOrUnknown(s State) string {
 	switch s {
@@ -75,7 +75,7 @@ func (s *Store) Apply(ctx context.Context, source string, snap Snapshot, now tim
 
 	// 2. Uplink-Namen auflösen (nach dem Anlegen, damit neue Geräte zählen).
 	names := map[string]string{}
-	rows, err := tx.Query(ctx, `SELECT net_external_id, name FROM it_assets WHERE net_source = $1`, source)
+	rows, err := tx.Query(ctx, `SELECT net_external_id, name FROM it_assets WHERE net_source = $1 AND net_external_id IS NOT NULL`, source)
 	if err != nil {
 		return res, err
 	}
@@ -112,7 +112,7 @@ func (s *Store) Apply(ctx context.Context, source string, snap Snapshot, now tim
 	tag, err := tx.Exec(ctx, `UPDATE it_assets SET
 			net_state_since = CASE WHEN net_state <> 'unknown' OR net_state_since IS NULL THEN $3 ELSE net_state_since END,
 			net_state = 'unknown', net_gone = true
-		WHERE net_source = $1 AND type = 'network' AND net_external_id IS NOT NULL
+		WHERE net_source = $1 AND net_role = 'device'
 		  AND NOT (net_external_id = ANY($2::text[]))
 		  AND (net_gone = false OR net_state <> 'unknown')`, source, devExt, now)
 	if err != nil {
@@ -157,8 +157,8 @@ func (s *Store) Apply(ctx context.Context, source string, snap Snapshot, now tim
 			       COALESCE(c.ip, '') AS ip, COALESCE(c.up, '') AS up
 			  FROM it_assets t
 			  LEFT JOIN unnest($2::text[], $3::text[], $4::text[]) AS c(mac, ip, up)
-			    ON c.mac = lower(replace(t.mac_address, '-', ':'))
-			 WHERE t.net_source = $1 AND t.type <> 'network'
+			    ON replace(c.mac, ':', '') = regexp_replace(lower(t.mac_address), '[^0-9a-f]', '', 'g')
+			 WHERE t.net_source = $1 AND t.net_role = 'client'
 		) x
 		WHERE a.id = x.id`, source, cMAC, cIP, cUp, now); err != nil {
 		return res, err
@@ -168,7 +168,7 @@ func (s *Store) Apply(ctx context.Context, source string, snap Snapshot, now tim
 	crows, err := tx.Query(ctx, `INSERT INTO it_net_candidates (source, mac, external_id, name, ip, kind, uplink, last_seen)
 		SELECT $1, c.mac, c.ext, c.name, c.ip, c.kind, c.up, $8
 		  FROM unnest($2::text[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[]) AS c(mac, ext, name, ip, kind, up)
-		 WHERE NOT EXISTS (SELECT 1 FROM it_assets t WHERE t.net_source = $1 AND lower(replace(t.mac_address, '-', ':')) = c.mac)
+		 WHERE NOT EXISTS (SELECT 1 FROM it_assets t WHERE t.net_source = $1 AND regexp_replace(lower(t.mac_address), '[^0-9a-f]', '', 'g') = replace(c.mac, ':', ''))
 		ON CONFLICT (source, mac) DO UPDATE SET external_id = EXCLUDED.external_id, name = EXCLUDED.name,
 			ip = EXCLUDED.ip, kind = EXCLUDED.kind, uplink = EXCLUDED.uplink, last_seen = EXCLUDED.last_seen
 		RETURNING ignored`, source, cMAC, cExt, cName, cIP, cKind, cUp, now)
@@ -192,7 +192,7 @@ func (s *Store) Apply(ctx context.Context, source string, snap Snapshot, now tim
 	// Schon übernommene und lange nicht gesehene Vorschläge entfernen.
 	if _, err := tx.Exec(ctx, `DELETE FROM it_net_candidates c WHERE c.source = $1
 		AND ((c.last_seen < $2 AND NOT c.ignored)
-		  OR EXISTS (SELECT 1 FROM it_assets t WHERE t.net_source = $1 AND lower(replace(t.mac_address, '-', ':')) = c.mac))`,
+		  OR EXISTS (SELECT 1 FROM it_assets t WHERE t.net_source = $1 AND regexp_replace(lower(t.mac_address), '[^0-9a-f]', '', 'g') = replace(c.mac, ':', '')))`,
 		source, now.Add(-candidateMaxAge)); err != nil {
 		return res, err
 	}
@@ -208,7 +208,7 @@ func (s *Store) upsertDevice(ctx context.Context, tx pgx.Tx, source string, d De
 
 	err = tx.QueryRow(ctx, `SELECT id::text FROM it_assets WHERE net_source = $1 AND net_external_id = $2`, source, d.ExternalID).Scan(&id)
 	if errors.Is(err, pgx.ErrNoRows) && mac != "" {
-		err = tx.QueryRow(ctx, `SELECT id::text FROM it_assets WHERE net_source IS NULL AND `+sqlAssetMAC+` = $1
+		err = tx.QueryRow(ctx, `SELECT id::text FROM it_assets WHERE net_source IS NULL AND `+sqlAssetMAC+` = replace($1, ':', '')
 			ORDER BY created_at LIMIT 1 FOR UPDATE`, mac).Scan(&id)
 	}
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
@@ -225,7 +225,7 @@ func (s *Store) upsertDevice(ctx context.Context, tx pgx.Tx, source string, d De
 				firmware_update = $8,
 				net_state_since = CASE WHEN net_state <> $9 OR net_state_since IS NULL THEN $10 ELSE net_state_since END,
 				net_last_seen   = CASE WHEN $9 = 'online' THEN $10 ELSE net_last_seen END,
-				net_state = $9, net_gone = false, updated_at = now()
+				net_state = $9, net_gone = false, net_role = 'device', updated_at = now()
 			WHERE id = $1`, id, source, d.ExternalID, mac, d.IP, d.Model, d.Firmware, d.FirmwareUpdate, st, now)
 		return false, id, err
 	}
@@ -243,10 +243,10 @@ func (s *Store) upsertDevice(ctx context.Context, tx pgx.Tx, source string, d De
 	}
 	err = tx.QueryRow(ctx, `INSERT INTO it_assets
 			(name, type, status, ip_address, mac_address, manufacturer, model, created_by,
-			 net_source, net_external_id, net_monitored, net_state, net_last_seen, net_state_since,
+			 net_source, net_external_id, net_monitored, net_state, net_last_seen, net_state_since, net_role,
 			 firmware, firmware_update)
 		VALUES ($1, 'network', 'active', NULLIF($2, ''), NULLIF($3, ''), NULLIF($4, ''), NULLIF($5, ''), $6,
-			$7, $8, true, $9, $10, $11, $12, $13)
+			$7, $8, true, $9, $10, $11, 'device', $12, $13)
 		RETURNING id::text`, name, d.IP, mac, s.Manufacturer[source], d.Model, s.SystemUserID,
 		source, d.ExternalID, st, seen, now, d.Firmware, d.FirmwareUpdate).Scan(&id)
 	return true, id, err
@@ -296,7 +296,7 @@ func (s *Store) MarkUnknown(ctx context.Context, source string, now time.Time) e
 }
 
 var adoptTypes = map[string]bool{
-	"server": true, "network": true, "workstation": true, "printer": true,
+	"server": true, "workstation": true, "printer": true,
 	"phone": true, "tablet": true, "other": true,
 }
 
@@ -334,19 +334,19 @@ func (s *Store) Adopt(ctx context.Context, source, mac, assetType, userID string
 	monitored := assetType != "phone" && assetType != "tablet"
 
 	var id string
-	err = tx.QueryRow(ctx, `SELECT id::text FROM it_assets WHERE net_source IS NULL AND `+sqlAssetMAC+` = $1
+	err = tx.QueryRow(ctx, `SELECT id::text FROM it_assets WHERE net_source IS NULL AND `+sqlAssetMAC+` = replace($1, ':', '')
 		ORDER BY created_at LIMIT 1 FOR UPDATE`, nmac).Scan(&id)
 	switch {
 	case err == nil:
 		_, err = tx.Exec(ctx, `UPDATE it_assets SET net_source = $2, net_external_id = $3, net_monitored = $4,
-				net_state = 'online', net_state_since = $5, net_last_seen = $5, net_gone = false,
+				net_state = 'online', net_state_since = CASE WHEN net_state <> 'online' OR net_state_since IS NULL THEN $5 ELSE net_state_since END, net_role = 'client', net_last_seen = $5, net_gone = false,
 				ip_address = CASE WHEN $6 <> '' THEN $6 ELSE ip_address END, updated_at = now()
 			WHERE id = $1`, id, source, ext, monitored, now, ip)
 	case errors.Is(err, pgx.ErrNoRows):
 		err = tx.QueryRow(ctx, `INSERT INTO it_assets
 				(name, type, status, ip_address, mac_address, created_by, net_source, net_external_id,
-				 net_monitored, net_state, net_last_seen, net_state_since)
-			VALUES ($1, $2::it_asset_type, 'active', NULLIF($3, ''), $4, $5, $6, $7, $8, 'online', $9, $9)
+				 net_monitored, net_state, net_last_seen, net_state_since, net_role)
+			VALUES ($1, $2::it_asset_type, 'active', NULLIF($3, ''), $4, $5, $6, $7, $8, 'online', $9, $9, 'client')
 			RETURNING id::text`, name, assetType, ip, nmac, userID, source, ext, monitored, now).Scan(&id)
 	}
 	if err != nil {
