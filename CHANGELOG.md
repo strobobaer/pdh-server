@@ -10,6 +10,19 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.80.17] – 2026-11-16
+
+### Neu
+
+- IT-Assets: Die neue Seite **Netz-Abgleich** liest Switches, Access Points und Gateways aus UniFi und legt sie als IT-Assets an; IP, Modell, Firmware, Zustand, Uplink und Ports bleiben automatisch aktuell.
+- Clients aus dem Netz erscheinen als Vorschläge, die du als Arbeitsplatz, Drucker, Telefon, Tablet, Server oder Sonstiges übernehmen oder ausblenden kannst.
+- Ist ein überwachtes Netzgerät länger als die eingestellte **Karenz bis zum Alarm** offline, entsteht das Alarm-Ticket „Netzgerät offline“; beim Lösen ist die Ursache Pflicht.
+- Die IT-Liste zeigt den Zustand als Marke und hat den Filter „Nur offline“; auf dem Gerät gibt es die Karte „Netz“ mit Port-Tabelle und die Knöpfe „Quelle trennen“ und „Wieder verbinden“.
+
+### Sicherheit
+
+- Neues Recht „Netz-Abgleich einrichten und Vorschläge übernehmen“ (`it.netsync`); es haben automatisch alle Rollen, die IT-Assets bearbeiten dürfen; die Bereichsadministratoren IT haben es über `it.admin`.
+
 ## [0.80.16] – 2026-11-15
 
 ### Behoben

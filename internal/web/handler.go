@@ -291,6 +291,7 @@ type Handler struct {
 	mirrorAdminFn      func(*http.Request) bool                           // nil → canServerConfig (Tests)
 	userByIDFn         func(context.Context, string) (*users.User, error) // nil → users.GetByID (Tests)
 	db                 *pgxpool.Pool
+	itNet              itNetState // IT-Netzabgleich: Quelle und Meldezustand über Läufe hinweg
 	tmpl               *template.Template
 	users              *users.Service
 	shifts             *shifts.Service
@@ -581,6 +582,15 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/infrastructure/{id}/obligations/{oid}/delete", h.InfraObligationDeleteWeb)
 	r.Get("/it", h.ITPage)
 	r.Post("/it", h.ITCreate)
+	// Netz-Abgleich (it_net_web.go): Seite, Einstellungen, Vorschläge, Schalter am Asset
+	r.Get("/it/net", h.ITNetPage)
+	r.Post("/it/net/settings", h.ITNetSettingsWeb)
+	r.Post("/it/net/run", h.ITNetRunWeb)
+	r.Post("/it/net/candidates/adopt", h.ITNetAdoptWeb)
+	r.Post("/it/net/candidates/ignore", h.ITNetIgnoreWeb)
+	r.Post("/it/{id}/net-monitor", h.ITNetMonitorWeb)
+	r.Post("/it/{id}/net-detach", h.ITNetDetachWeb)
+	r.Post("/it/{id}/net-reattach", h.ITNetReattachWeb)
 	r.Get("/it/{id}", h.ITDetail)
 	// QR-Infoseiten fuer Anlagen und IT-Assets (asset_info.go)
 	r.Get("/a/labels", h.AssetLabelsPage)
@@ -2960,6 +2970,10 @@ type ITPageData struct {
 	Assets []ITAssetView
 	Stats  map[string]int
 	Filter string
+	// NetFilter "offline": nur Assets mit Quelle, die offline sind (?net=offline).
+	NetFilter string
+	// NetCandidates: offene (nicht ausgeblendete) Vorschläge des Netz-Abgleichs.
+	NetCandidates int
 }
 
 type ITAssetView struct {
@@ -2977,6 +2991,12 @@ type ITAssetView struct {
 	Location     string
 	InfraName    string
 	Notes        string
+	// Netzabgleich: Abzeichen nur bei Assets mit Quelle.
+	NetSource      bool
+	NetStateLabel  string
+	NetStateClass  string
+	FirmwareUpdate bool
+	NetDetached    bool // „Quelle getrennt“
 }
 
 type ITDetailData struct {
@@ -2985,6 +3005,10 @@ type ITDetailData struct {
 	SupplierID string
 	Users      []UserOption
 	Asset      ITAssetDetailView
+	// Net: Karte „Netz“ (nil = Asset ohne Quelle); CanNetEdit: it.edit für diesen Datensatz.
+	Net         *ITNetDetailView
+	NetDetached bool // Quelle getrennt: statt der Karte „Wieder verbinden“
+	CanNetEdit  bool
 }
 
 type ITAssetDetailView struct {
@@ -4093,6 +4117,7 @@ func (h *Handler) ITPage(w http.ResponseWriter, r *http.Request) {
 	data := ITPageData{
 		BaseData: h.baseData(r, "it", "IT-Infrastruktur", "Übersicht"),
 		Filter:   r.URL.Query().Get("type"), Stats: map[string]int{},
+		NetFilter: r.URL.Query().Get("net"),
 	}
 	typeLabels := map[string]string{"server": "Server", "network": "Netzwerk", "workstation": "Workstation", "printer": "Drucker", "phone": "Telefon", "tablet": "Tablet", "other": "Sonstiges"}
 	typeIcons := itTypeIcons()
@@ -4104,7 +4129,12 @@ func (h *Handler) ITPage(w http.ResponseWriter, r *http.Request) {
 			if scopeIDs != nil && !scopeIDs[a.ID] {
 				continue
 			}
+			if data.NetFilter == "offline" && (a.NetSource == "" || a.NetDetached || a.NetState != "offline") {
+				continue
+			}
+			label, class := itNetStateBadge(a.NetState)
 			data.Assets = append(data.Assets, ITAssetView{
+				NetSource: a.NetSource != "", NetDetached: a.NetDetached, NetStateLabel: label, NetStateClass: class, FirmwareUpdate: a.FirmwareUpdate,
 				ID: a.ID, Name: a.Name,
 				TypeLabel: typeLabels[string(a.Type)], TypeIcon: typeIcons[string(a.Type)],
 				StatusLabel: statusLabels[string(a.Status)], StatusClass: statusClasses[string(a.Status)],
@@ -4117,6 +4147,7 @@ func (h *Handler) ITPage(w http.ResponseWriter, r *http.Request) {
 	if stats, err := h.it.GetStats(r.Context()); err == nil {
 		data.Stats = stats
 	}
+	data.NetCandidates = h.itNetOpenCandidates(r.Context())
 	h.render(w, "it", data)
 }
 
@@ -4212,6 +4243,14 @@ func (h *Handler) ITDetail(w http.ResponseWriter, r *http.Request) {
 	data.Supplier = h.itSupplierLink(ctx, id)
 	if data.Supplier != nil {
 		data.SupplierID = data.Supplier.ID
+	}
+	if a.NetSource != "" {
+		if a.NetDetached {
+			data.NetDetached = true
+		} else {
+			data.Net = h.itNetDetail(ctx, a)
+		}
+		data.CanNetEdit = h.itNetCan(r, "it.edit", a.ID)
 	}
 	h.render(w, "it_detail", data)
 }

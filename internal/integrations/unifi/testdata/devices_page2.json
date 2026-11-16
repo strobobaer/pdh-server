@@ -1,0 +1,21 @@
+{
+  "offset": 2,
+  "limit": 200,
+  "count": 1,
+  "totalCount": 3,
+  "data": [
+    {
+      "id": "0b7a1c52-3d11-4f0e-9a43-1e6d5c2a8b03",
+      "name": "UDM Pro",
+      "model": "UDMPRO",
+      "macAddress": "94:2a:6f:26:c6:cc",
+      "ipAddress": "192.168.1.1",
+      "state": "ONLINE",
+      "firmwareVersion": "4.1.13",
+      "firmwareUpdatable": false,
+      "supported": true,
+      "interfaces": ["ports"],
+      "features": ["gateway", "switching"]
+    }
+  ]
+}

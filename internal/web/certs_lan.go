@@ -488,6 +488,16 @@ func certDoUnifiConfirm(ctx context.Context, d certActDeps, posted string) (unif
 
 // unifiClient: nur mit gespeicherter Adresse und Schlüssel; sonst errUnifiOff ohne Anfrage.
 func (h *Handler) unifiClient(ctx context.Context) (certLANClient, error) {
+	c, err := h.unifiAPI(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return c, nil
+}
+
+// unifiAPI: gemeinsamer Teil für alle UniFi-Zugriffe (Namen im Haus, Netzabgleich):
+// Einstellungen lesen, Schlüssel entschlüsseln, Zertifikats-Pin verlangen.
+func (h *Handler) unifiAPI(ctx context.Context) (*unifi.Client, error) {
 	base, enc := h.certSetting(ctx, keyUnifiURL), h.certSetting(ctx, keyUnifiKey)
 	if base == "" || enc == "" {
 		return nil, errUnifiOff

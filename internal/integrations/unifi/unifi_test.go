@@ -45,6 +45,8 @@ func newFakeUDM(t *testing.T) *fakeUDM {
 	t.Helper()
 	sites, policies := readTestdata(t, "sites.json"), readTestdata(t, "dns_policies.json")
 	created, static := readTestdata(t, "dns_policy_created.json"), readTestdata(t, "static_dns.json")
+	devices, devices2 := readTestdata(t, "devices.json"), readTestdata(t, "devices_page2.json")
+	detail, clients := readTestdata(t, "device_detail.json"), readTestdata(t, "clients.json")
 	f := &fakeUDM{}
 	f.srv = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
@@ -84,6 +86,16 @@ func newFakeUDM(t *testing.T) *fakeUDM {
 			_, _ = w.Write(static)
 		case p == "/proxy/network/v2/api/site/default/static-dns" && r.Method == http.MethodPost:
 			_, _ = w.Write([]byte(`{"_id":"65a1b2c3d4e5f60718293aff","key":"pdh.firma.de","record_type":"A","value":"192.168.1.50","enabled":true,"ttl":0}`))
+		case p == "/proxy/network/integration/v1/sites/"+site+"/devices" && r.Method == http.MethodGet:
+			if r.URL.Query().Get("offset") == "0" {
+				_, _ = w.Write(devices)
+			} else {
+				_, _ = w.Write(devices2)
+			}
+		case strings.HasPrefix(p, "/proxy/network/integration/v1/sites/"+site+"/devices/"):
+			_, _ = w.Write(detail)
+		case p == "/proxy/network/integration/v1/sites/"+site+"/clients" && r.Method == http.MethodGet:
+			_, _ = w.Write(clients)
 		case strings.HasPrefix(p, "/proxy/network/v2/api/site/default/static-dns/"):
 			_, _ = w.Write([]byte(`{}`))
 		default:

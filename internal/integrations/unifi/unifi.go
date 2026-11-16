@@ -26,6 +26,7 @@ import (
 	"net/http"
 	"net/netip"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -41,6 +42,13 @@ import (
 //   POST /v1/sites/{siteId}/dns/policies            {type:"A_RECORD", enabled, domain, ipv4Address, ttlSeconds} → 201
 //   PUT  /v1/sites/{siteId}/dns/policies/{id}       wie POST → 200
 //   DELETE /v1/sites/{siteId}/dns/policies/{id}     → 200
+//   GET  /v1/sites/{siteId}/devices                 Seite; Gerät: id, name, model, macAddress, ipAddress, state,
+//                                                   firmwareVersion, firmwareUpdatable, features[] (Zeichenketten)
+//   GET  /v1/sites/{siteId}/devices/{id}            Details; features ist hier ein Objekt (switching, accessPoint),
+//                                                   uplink.deviceId, interfaces.ports[] {idx, connector, state,
+//                                                   speedMbps, maxSpeedMbps, poe{state}}
+//   GET  /v1/sites/{siteId}/clients                 Seite; Client: id, name, type (WIRED/WIRELESS/VPN/TELEPORT),
+//                                                   macAddress, ipAddress, uplinkDeviceId (nur WIRED/WIRELESS)
 //   Fehler: {statusCode, statusName, code, message, …}
 // Am Gerät ungeprüft: Vorsilbe /proxy/network/integration (amtlich nur Server „/integration“),
 // Kopfzeile X-API-KEY (amtlich nur „API Key“ ohne Namen).
@@ -51,6 +59,8 @@ const (
 	pathSites    = "/proxy/network/integration/v1/sites"
 	pathPolicies = "/proxy/network/integration/v1/sites/%s/dns/policies"
 	pathLegacy   = "/proxy/network/v2/api/site/%s/static-dns"
+	pathDevices  = "/proxy/network/integration/v1/sites/%s/devices"
+	pathClients  = "/proxy/network/integration/v1/sites/%s/clients"
 	headerKey    = "X-API-KEY"
 
 	pageLimit  = 200 // amtliches Höchstmaß je Seite
@@ -152,6 +162,8 @@ var (
 	ErrPinChanged = errors.New("Das Zertifikat der UDM Pro hat sich geändert – keine Verbindung. In „Namen im Haus (UniFi)“ speichern und den neuen Fingerabdruck bestätigen, wenn die Änderung von euch stammt")
 	ErrForbidden  = errors.New("Die UDM Pro lehnt den API-Schlüssel ab. In UniFi Network einen neuen Schlüssel anlegen und hier eintragen")
 	ErrNoKey      = errors.New("Kein API-Schlüssel für die UDM Pro hinterlegt")
+	// ErrUnsupported: ältere UniFi-Version ohne die amtliche Integrationsschnittstelle (kein Geräte-/Client-Abruf).
+	ErrUnsupported = errors.New("Diese UniFi-Version kennt die Geräte- und Client-Abfrage nicht. Bitte UniFi Network aktualisieren")
 
 	ErrNotHouse = errors.New("Die Adresse liegt nicht im eigenen Netz. Die UDM Pro muss unter einer privaten Adresse im Haus erreichbar sein")
 
@@ -697,4 +709,190 @@ func (c *Client) Delete(ctx context.Context, id string) error {
 		return err
 	}
 	return nil
+}
+
+// ── Geräte und Clients (nur lesen) ───────────────────────────
+
+// Device: ein angenommenes Gerät (Switch, Access Point, Gateway). Features: switching, accessPoint, gateway.
+type Device struct {
+	ID, Name, Model, MAC, IP, Firmware, State string
+	FirmwareUpdatable                         bool
+	Features                                  []string
+}
+
+// Port: ein Anschluss eines Geräts. PoEState ist leer, wenn der Anschluss kein PoE hat.
+type Port struct {
+	Idx                     int
+	Connector, State        string
+	SpeedMbps, MaxSpeedMbps int
+	PoEState                string
+}
+
+// DeviceDetail: Gerät mit Anschlüssen und dem übergeordneten Gerät (Uplink).
+type DeviceDetail struct {
+	Device
+	UplinkDeviceID string
+	Ports          []Port
+}
+
+// NetClient: ein Teilnehmer im Netz. Type: WIRED, WIRELESS, VPN oder TELEPORT; MAC und
+// UplinkDeviceID gibt es nur bei WIRED und WIRELESS.
+type NetClient struct {
+	ID, Name, MAC, IP, Type, UplinkDeviceID string
+}
+
+type deviceDTO struct {
+	ID                string   `json:"id"`
+	Name              string   `json:"name"`
+	Model             string   `json:"model"`
+	MAC               string   `json:"macAddress"`
+	IP                string   `json:"ipAddress"`
+	State             string   `json:"state"`
+	Firmware          string   `json:"firmwareVersion"`
+	FirmwareUpdatable bool     `json:"firmwareUpdatable"`
+	Features          []string `json:"features"`
+}
+
+func (d deviceDTO) device() Device {
+	return Device{ID: d.ID, Name: d.Name, Model: d.Model, MAC: d.MAC, IP: d.IP, State: d.State,
+		Firmware: d.Firmware, FirmwareUpdatable: d.FirmwareUpdatable, Features: d.Features}
+}
+
+type devicePage struct {
+	Count      int         `json:"count"`
+	TotalCount int64       `json:"totalCount"`
+	Data       []deviceDTO `json:"data"`
+}
+
+// deviceDetailDTO: wie deviceDTO, aber features ist ein Objekt (Schlüssel = Merkmal).
+type deviceDetailDTO struct {
+	ID                string                     `json:"id"`
+	Name              string                     `json:"name"`
+	Model             string                     `json:"model"`
+	MAC               string                     `json:"macAddress"`
+	IP                string                     `json:"ipAddress"`
+	State             string                     `json:"state"`
+	Firmware          string                     `json:"firmwareVersion"`
+	FirmwareUpdatable bool                       `json:"firmwareUpdatable"`
+	Features          map[string]json.RawMessage `json:"features"`
+	Uplink            *struct {
+		DeviceID string `json:"deviceId"`
+	} `json:"uplink"`
+	Interfaces struct {
+		Ports []struct {
+			Idx          int    `json:"idx"`
+			Connector    string `json:"connector"`
+			State        string `json:"state"`
+			SpeedMbps    int    `json:"speedMbps"`
+			MaxSpeedMbps int    `json:"maxSpeedMbps"`
+			PoE          *struct {
+				State string `json:"state"`
+			} `json:"poe"`
+		} `json:"ports"`
+	} `json:"interfaces"`
+}
+
+type clientDTO struct {
+	ID             string `json:"id"`
+	Name           string `json:"name"`
+	Type           string `json:"type"`
+	MAC            string `json:"macAddress"`
+	IP             string `json:"ipAddress"`
+	UplinkDeviceID string `json:"uplinkDeviceId"`
+}
+
+type clientPage struct {
+	Count      int         `json:"count"`
+	TotalCount int64       `json:"totalCount"`
+	Data       []clientDTO `json:"data"`
+}
+
+// resolveNew löst den Standort auf und verlangt die amtliche Schnittstelle.
+func (c *Client) resolveNew(ctx context.Context) error {
+	if err := c.resolve(ctx); err != nil {
+		return err
+	}
+	if c.legacy {
+		return ErrUnsupported
+	}
+	return nil
+}
+
+// Devices liest alle angenommenen Geräte des Standorts.
+func (c *Client) Devices(ctx context.Context) ([]Device, error) {
+	if err := c.resolveNew(ctx); err != nil {
+		return nil, err
+	}
+	base := fmt.Sprintf(pathDevices, url.PathEscape(c.siteID))
+	var out []Device
+	var offset int64
+	for page := 0; page < maxPages; page++ {
+		var p devicePage
+		if err := c.do(ctx, http.MethodGet, fmt.Sprintf("%s?offset=%d&limit=%d", base, offset, pageLimit), nil, &p); err != nil {
+			return nil, err
+		}
+		for _, d := range p.Data {
+			out = append(out, d.device())
+		}
+		offset += int64(p.Count)
+		if p.Count == 0 || offset >= p.TotalCount {
+			break
+		}
+	}
+	return out, nil
+}
+
+// DeviceDetail liest ein Gerät mit Anschlüssen, PoE-Zustand und Uplink.
+func (c *Client) DeviceDetail(ctx context.Context, id string) (DeviceDetail, error) {
+	if strings.TrimSpace(id) == "" {
+		return DeviceDetail{}, errors.New("keine Kennung")
+	}
+	if err := c.resolveNew(ctx); err != nil {
+		return DeviceDetail{}, err
+	}
+	var d deviceDetailDTO
+	if err := c.do(ctx, http.MethodGet, fmt.Sprintf(pathDevices, url.PathEscape(c.siteID))+"/"+url.PathEscape(id), nil, &d); err != nil {
+		return DeviceDetail{}, err
+	}
+	out := DeviceDetail{Device: Device{ID: d.ID, Name: d.Name, Model: d.Model, MAC: d.MAC, IP: d.IP, State: d.State,
+		Firmware: d.Firmware, FirmwareUpdatable: d.FirmwareUpdatable}}
+	for k := range d.Features {
+		out.Features = append(out.Features, k)
+	}
+	sort.Strings(out.Features)
+	if d.Uplink != nil {
+		out.UplinkDeviceID = d.Uplink.DeviceID
+	}
+	for _, p := range d.Interfaces.Ports {
+		port := Port{Idx: p.Idx, Connector: p.Connector, State: p.State, SpeedMbps: p.SpeedMbps, MaxSpeedMbps: p.MaxSpeedMbps}
+		if p.PoE != nil {
+			port.PoEState = p.PoE.State
+		}
+		out.Ports = append(out.Ports, port)
+	}
+	return out, nil
+}
+
+// Clients liest alle verbundenen Clients des Standorts.
+func (c *Client) Clients(ctx context.Context) ([]NetClient, error) {
+	if err := c.resolveNew(ctx); err != nil {
+		return nil, err
+	}
+	base := fmt.Sprintf(pathClients, url.PathEscape(c.siteID))
+	var out []NetClient
+	var offset int64
+	for page := 0; page < maxPages; page++ {
+		var p clientPage
+		if err := c.do(ctx, http.MethodGet, fmt.Sprintf("%s?offset=%d&limit=%d", base, offset, pageLimit), nil, &p); err != nil {
+			return nil, err
+		}
+		for _, n := range p.Data {
+			out = append(out, NetClient{ID: n.ID, Name: n.Name, MAC: n.MAC, IP: n.IP, Type: n.Type, UplinkDeviceID: n.UplinkDeviceID})
+		}
+		offset += int64(p.Count)
+		if p.Count == 0 || offset >= p.TotalCount {
+			break
+		}
+	}
+	return out, nil
 }
