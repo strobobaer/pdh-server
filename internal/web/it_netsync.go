@@ -108,6 +108,7 @@ func (s *unifiSource) Fetch(ctx context.Context) (netsync.Snapshot, error) {
 	}
 	now := s.now()
 	seen := map[string]bool{}
+	fetched := map[string]time.Time{} // erst nach erfolgreichem Abruf übernehmen
 	for _, d := range devs {
 		nd := netsync.Device{
 			ExternalID: d.ID, MAC: d.MAC, Name: d.Name, Model: d.Model, Kind: unifiKind(d.Features),
@@ -132,19 +133,22 @@ func (s *unifiSource) Fetch(ctx context.Context) (netsync.Snapshot, error) {
 					nd.Ports = append(nd.Ports, netsync.Port{Idx: p.Idx, Connector: p.Connector, State: p.State,
 						SpeedMbps: p.SpeedMbps, MaxSpeedMbps: p.MaxSpeedMbps, PoEState: p.PoEState})
 				}
-				s.lastDetail[d.ID] = now
+				fetched[d.ID] = now
 			}
 		}
 		snap.Devices = append(snap.Devices, nd)
+	}
+	cls, err := s.api.Clients(ctx)
+	if err != nil {
+		return snap, err
 	}
 	for id := range s.lastDetail {
 		if !seen[id] {
 			delete(s.lastDetail, id)
 		}
 	}
-	cls, err := s.api.Clients(ctx)
-	if err != nil {
-		return snap, err
+	for id, at := range fetched {
+		s.lastDetail[id] = at
 	}
 	for _, c := range cls {
 		switch strings.ToUpper(c.Type) {
@@ -168,6 +172,10 @@ type itNetState struct {
 	mu      sync.Mutex
 	src     *unifiSource
 	failing bool // letzter Lauf war ein Fehler (Log nur beim Wechsel)
+	// source: Name der Quelle in den Assets; leer → "unifi" (Tests nehmen eine eigene).
+	source string
+	// groupName: Name der Standardgruppe für Ausfälle; leer → "IT" (Tests nehmen eine eigene).
+	groupName string
 	// api: Lesezugriff auf UniFi; nil → h.unifiAPI (Tests tauschen aus).
 	api func(ctx context.Context) (unifiAPIReader, error)
 }
@@ -248,11 +256,15 @@ func (h *Handler) itNetRunOnce(ctx context.Context, now time.Time) error {
 	h.itNet.mu.Lock()
 	defer h.itNet.mu.Unlock()
 
-	store := &netsync.Store{DB: h.db, SystemUserID: pdhSystemUserID, Manufacturer: map[string]string{itNetSourceUnifi: "Ubiquiti"}}
+	source := h.itNet.source
+	if source == "" {
+		source = itNetSourceUnifi
+	}
+	store := &netsync.Store{DB: h.db, SystemUserID: pdhSystemUserID, Manufacturer: map[string]string{source: "Ubiquiti"}}
 	fail := func(err error) error {
 		text := itNetErrText(err)
-		_ = h.setAppSetting(ctx, keyITNetLastErr, text)
-		if merr := store.MarkUnknown(ctx, itNetSourceUnifi, now); merr != nil {
+		h.itNetPut(ctx, keyITNetLastErr, text)
+		if merr := store.MarkUnknown(ctx, source, now); merr != nil {
 			log.Error().Err(merr).Msg("it-netzabgleich: zustand nicht auf unbekannt gesetzt")
 		}
 		if !h.itNet.failing {
@@ -269,6 +281,11 @@ func (h *Handler) itNetRunOnce(ctx context.Context, now time.Time) error {
 	} else {
 		api, err = h.unifiAPI(ctx)
 	}
+	if errors.Is(err, errUnifiOff) {
+		// Einschalter an, UniFi aber nicht eingerichtet: nichts tun, nur den Hinweis ablegen.
+		h.itNetPut(ctx, keyITNetLastErr, itNetNotConnected)
+		return nil
+	}
 	if err != nil {
 		return fail(err)
 	}
@@ -280,25 +297,38 @@ func (h *Handler) itNetRunOnce(ctx context.Context, now time.Time) error {
 	if err != nil {
 		return fail(err)
 	}
-	if _, err := store.Apply(ctx, itNetSourceUnifi, snap, now); err != nil {
-		return fail(err)
+	if _, err := store.Apply(ctx, source, snap, now); err != nil {
+		// Datenbankfehler beim Abgleich: kein Quellenfehler, Zustände bleiben.
+		log.Error().Err(err).Msg("it-netzabgleich: abgleich mit den it-assets fehlgeschlagen")
+		h.itNetPut(ctx, keyITNetLastErr, "Abgleich fehlgeschlagen: "+err.Error())
+		return err
 	}
 	if h.itNet.failing {
 		h.itNet.failing = false
 		log.Info().Msg("it-netzabgleich: unifi wieder erreichbar")
 	}
-	_ = h.setAppSetting(ctx, keyITNetLastErr, "")
-	_ = h.setAppSetting(ctx, keyITNetLastRun, now.UTC().Format(time.RFC3339))
-	_ = h.setAppSetting(ctx, keyITNetLastCount, fmt.Sprintf("%d/%d", len(snap.Devices), len(snap.Clients)))
+	h.itNetPut(ctx, keyITNetLastErr, "")
+	h.itNetPut(ctx, keyITNetLastRun, now.UTC().Format(time.RFC3339))
+	h.itNetPut(ctx, keyITNetLastCount, fmt.Sprintf("%d/%d", len(snap.Devices), len(snap.Clients)))
 
 	if h.tickets != nil {
-		w := &netsync.Watch{DB: h.db, Sink: itNetAlarmSink{h: h}, Source: itNetSourceUnifi,
+		w := &netsync.Watch{DB: h.db, Sink: itNetAlarmSink{h: h}, Source: source,
 			Grace: func(c context.Context) time.Duration { return h.itNetGrace(c) }}
 		if err := w.Pass(ctx, now); err != nil {
 			log.Error().Err(err).Msg("it-netzabgleich: wächterlauf")
 		}
 	}
 	return nil
+}
+
+// itNetNotConnected: Hinweis in last_error, solange der Einschalter an, UniFi aber nicht eingerichtet ist.
+const itNetNotConnected = "UniFi ist noch nicht verbunden"
+
+// itNetPut speichert eine Einstellung; Fehler werden nur protokolliert.
+func (h *Handler) itNetPut(ctx context.Context, key, value string) {
+	if err := h.setAppSetting(ctx, key, value); err != nil {
+		log.Warn().Err(err).Str("einstellung", key).Msg("it-netzabgleich: einstellung nicht gespeichert")
+	}
 }
 
 // ── Senke ────────────────────────────────────────────────────
@@ -340,7 +370,11 @@ func (h *Handler) itNetRecipients(ctx context.Context) (userIDs []string, assign
 		}
 	}
 	var g string
-	err = h.db.QueryRow(ctx, `SELECT id::text FROM user_groups WHERE active AND lower(name) = 'it' ORDER BY created_at LIMIT 1`).Scan(&g)
+	name := h.itNet.groupName
+	if name == "" {
+		name = "IT"
+	}
+	err = h.db.QueryRow(ctx, `SELECT id::text FROM user_groups WHERE active AND lower(name) = lower($1) ORDER BY created_at LIMIT 1`, name).Scan(&g)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil, nil, err
 	}
