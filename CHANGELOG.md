@@ -10,6 +10,12 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.80.24] – 2026-11-17
+
+### Behoben
+
+- Während eines Updates konnte eine Seite kurz „Template-Fehler … no such template“ zeigen (z. B. die Server-Einstellungen), weil die neue Seite schon da war, das Programm aber noch nicht neu gestartet. Jetzt steht dort „Das PDH wird gerade aktualisiert“, und die Seite lädt von selbst neu.
+
 ## [0.80.23] – 2026-11-17
 
 ### Neu

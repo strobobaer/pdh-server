@@ -1144,12 +1144,46 @@ func (h *Handler) render(w http.ResponseWriter, tmpl string, data interface{}) {
 		return
 	}
 	if _, err2 := t.ParseFiles("web/templates/" + tmpl + ".gohtml"); err2 != nil {
+		if renderStale(err2) {
+			renderUpdating(w)
+			return
+		}
 		http.Error(w, "Parse: "+err2.Error(), 500)
 		return
 	}
 	if err3 := t.ExecuteTemplate(w, "base.gohtml", data); err3 != nil {
+		if renderStale(err3) {
+			renderUpdating(w)
+			return
+		}
 		http.Error(w, "Template-Fehler: "+err3.Error(), 500)
 	}
+}
+
+// renderStale: Die Seitendatei auf der Platte ist neuer als das laufende Programm – sie
+// verlangt einen Baustein oder eine Funktion, die erst die neue Version kennt. Das gibt es
+// nur während eines Updates, zwischen dem Einspielen der Dateien und dem Neustart.
+func renderStale(err error) bool {
+	if err == nil {
+		return false
+	}
+	s := err.Error()
+	return strings.Contains(s, "no such template") || (strings.Contains(s, "function ") && strings.Contains(s, " not defined"))
+}
+
+// renderUpdating: kurze Seite statt eines Vorlagenfehlers; lädt sich nach 15 s neu.
+// html/template meldet einen fehlenden Baustein, bevor es etwas ausgibt.
+func renderUpdating(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Retry-After", "15")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusServiceUnavailable)
+	_, _ = w.Write([]byte(`<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="refresh" content="15"><title>PDH wird aktualisiert</title>
+<style>body{font-family:system-ui,sans-serif;margin:0;min-height:100vh;display:grid;place-items:center;background:#f5f6f7;color:#1d2d3e}
+div{max-width:420px;padding:24px;text-align:center}h1{font-size:19px;margin:0 0 8px}p{font-size:14px;margin:0;color:#556b82}
+@media (prefers-color-scheme:dark){body{background:#12171c;color:#eaecee}p{color:#a9b4be}}</style></head>
+<body><div role="status"><h1>Das PDH wird gerade aktualisiert</h1><p>Die Seite lädt in wenigen Sekunden von selbst neu. Deine gespeicherten Daten bleiben erhalten.</p></div></body></html>`))
 }
 
 func esc(s string) string {
