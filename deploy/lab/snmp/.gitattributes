@@ -1,0 +1,3 @@
+# Diese Dateien landen im Container: immer LF, auch unter Windows (autocrlf)
+snmpd.conf text eol=lf
+Dockerfile text eol=lf
