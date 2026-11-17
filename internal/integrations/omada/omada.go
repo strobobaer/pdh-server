@@ -258,7 +258,13 @@ func (c *Client) login(ctx context.Context) error {
 	if err != nil {
 		var ae *apiErr
 		if errors.As(err, &ae) {
-			return ErrAuth
+			// abgelehnt: der Controller antwortet mit eigenem Fehlercode oder 400/401/403.
+			// Alles andere (404, 500 …) deutet auf falsche Adresse, Port oder Version.
+			switch {
+			case ae.code != 0, ae.status == http.StatusBadRequest, ae.status == http.StatusUnauthorized, ae.status == http.StatusForbidden:
+				return ErrAuth
+			}
+			return fmt.Errorf("Der Omada-Controller antwortet auf die Anmeldung mit %d – Adresse und Port der Open API prüfen", ae.status)
 		}
 		return err
 	}
@@ -303,9 +309,11 @@ func (c *Client) authed(ctx context.Context, method, path string, query url.Valu
 }
 
 type page struct {
-	TotalRows int               `json:"totalRows"`
-	Data      []json.RawMessage `json:"data"`
+	TotalRows int             `json:"totalRows"`
+	Data      json.RawMessage `json:"data"` // leer: Feld fehlt – die Antwort ist keine Liste
 }
+
+var errIncomplete = errors.New("Der Omada-Controller liefert die Liste nicht vollständig – Abruf abgebrochen")
 
 // paged liest alle Seiten einer Liste (GET, oder POST mit Seitenangabe im Rumpf).
 func (c *Client) paged(ctx context.Context, method, path string, size int) ([]json.RawMessage, error) {
@@ -322,11 +330,24 @@ func (c *Client) paged(ctx context.Context, method, path string, size int) ([]js
 			return nil, err
 		}
 		var pg page
-		if err := json.Unmarshal(res, &pg); err != nil {
+		var rows []json.RawMessage
+		if err := json.Unmarshal(res, &pg); err != nil || len(pg.Data) == 0 || json.Unmarshal(pg.Data, &rows) != nil {
 			return nil, errors.New("Antwort des Omada-Controllers unverständlich (Liste)")
 		}
-		all = append(all, pg.Data...)
-		if len(pg.Data) < size || (pg.TotalRows > 0 && len(all) >= pg.TotalRows) {
+		all = append(all, rows...)
+		// Nennt der Controller die Gesamtzahl, zählt nur sie: Eine kürzere Seite (er begrenzt
+		// die Seitengröße selbst) ist dann kein Ende. Eine abgeschnittene Liste gälte sonst als
+		// vollständig – und fehlende Clients als offline.
+		if pg.TotalRows > 0 {
+			if len(all) >= pg.TotalRows {
+				return all, nil
+			}
+			if len(rows) == 0 {
+				return nil, errIncomplete
+			}
+			continue
+		}
+		if len(rows) < size {
 			return all, nil
 		}
 	}
@@ -375,6 +396,15 @@ func (c *Client) resolveSite(ctx context.Context) error {
 	return ErrManySites
 }
 
+// forgetSiteOn: Lehnt der Controller eine Abfrage am Standort ab, wird der Standort beim
+// nächsten Lauf neu gesucht (er kann gelöscht und neu angelegt worden sein).
+func (c *Client) forgetSiteOn(err error) {
+	var ae *apiErr
+	if errors.As(err, &ae) {
+		c.siteID = ""
+	}
+}
+
 func (c *Client) sitePath(version int, rest string) string {
 	return c.apiPath(version, "/sites/"+url.PathEscape(c.siteID)+rest)
 }
@@ -413,6 +443,7 @@ func (c *Client) Devices(ctx context.Context) ([]Device, error) {
 	}
 	rows, err := c.paged(ctx, http.MethodGet, c.sitePath(1, "/devices"), 100)
 	if err != nil {
+		c.forgetSiteOn(err)
 		return nil, err
 	}
 	out := make([]Device, 0, len(rows))
@@ -451,6 +482,7 @@ func (c *Client) Clients(ctx context.Context) ([]NetClient, error) {
 		rows, err = c.paged(ctx, http.MethodPost, c.sitePath(2, "/clients"), 1000)
 	}
 	if err != nil {
+		c.forgetSiteOn(err)
 		return nil, err
 	}
 	out := make([]NetClient, 0, len(rows))

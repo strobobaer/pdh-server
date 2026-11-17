@@ -49,6 +49,7 @@ const (
 	itNetMaxInterval     = 3600 * time.Second
 	itNetDefaultGrace    = 5 * time.Minute
 	itNetDetailEvery     = 15 * time.Minute
+	itNetSourceTimeout   = 75 * time.Second // Abruf, Abgleich und Wächterlauf einer Quelle
 )
 
 // ── Quelle ───────────────────────────────────────────────────
@@ -464,7 +465,11 @@ func (h *Handler) itNetRunOnce(ctx context.Context, now time.Time) error {
 	store := h.itNetStore()
 	var errs []error
 	for _, s := range on {
-		if err := h.itNetRunSource(ctx, store, s, now); err != nil {
+		// eigenes Zeitlimit je Quelle: ein hängender Controller hält die andere Quelle nicht lange auf
+		sctx, cancel := context.WithTimeout(ctx, itNetSourceTimeout)
+		err := h.itNetRunSource(sctx, store, s, now)
+		cancel()
+		if err != nil {
 			errs = append(errs, err)
 		}
 	}

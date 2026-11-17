@@ -161,7 +161,7 @@ func (h *Handler) itNetSourceViews(r *http.Request) []ITNetSourceView {
 			v.CanConnect = h.itNetCan(r, permOmada, "")
 			v.ConfigURL = "/admin/server-config?tab=omada"
 			v.Setup = "Adresse, Omada-ID, Client-ID und Client-Secret"
-			v.PermHint = "Die Verbindung richtet eine Person mit dem Recht für den Reiter „Omada“ (system.omada) in den Server-Einstellungen ein."
+			v.PermHint = "Die Verbindung richtet eine Person mit dem Recht „Omada-Controller anbinden“ (system.omada) in den Server-Einstellungen ein."
 			v.Note = itNetOmadaNote
 		}
 		if t, err := time.Parse(time.RFC3339, h.appSetting(ctx, s.keyLastRun, "")); err == nil {

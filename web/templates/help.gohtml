@@ -724,6 +724,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>Die Liste der <b>Vorschläge</b> gilt für beide Quellen; die Spalte <b>Quelle</b> zeigt, woher ein Vorschlag stammt.</li>
       <li>Bei Omada-Geräten gibt es <b>keine Anschluss-Tabelle</b> (Ports) und <b>keinen Hinweis „Update verfügbar“</b>.</li>
       <li>Meldet Omada einen Zustand, den das PDH nicht kennt, gilt das Gerät als „unbekannt“. Ein unbekannter Zustand löst <b>nie</b> ein Ausfall-Ticket aus.</li>
+      <li>Kennt das PDH ein Gerät schon aus der anderen Quelle (gleiche MAC-Adresse, z. B. ein Omada-Access-Point an einem UniFi-Switch), erscheint es nicht noch einmal als Vorschlag – es entsteht kein zweites Asset.</li>
       <li>Das PDH liest nur. Am Omada-Controller ändert es nichts.</li>
     </ul>
     <b>Wichtig:</b> Die Omada-Anbindung ist nach der Dokumentation des Herstellers gebaut und noch nicht an einem echten Controller erprobt. Prüfe nach dem ersten Abgleich, ob Geräte, Zustände und Vorschläge stimmen.</div>

@@ -415,3 +415,31 @@ func TestAdoptLinkedNetworkAssetStaysClient(t *testing.T) {
 		t.Errorf("fehlender Client: %s gone=%v %+v", state, gone, res)
 	}
 }
+
+// Dieselbe MAC gehört schon einem Asset einer anderen Quelle: kein zweites Asset
+// (sonst gäbe es bei einem Ausfall zwei Tickets für dasselbe Gerät).
+func TestApplySkipsMACOfOtherSource(t *testing.T) {
+	f := newFx(t)
+	ctx := context.Background()
+	other := f.src + "-b"
+	t.Cleanup(func() {
+		_, _ = f.s.DB.Exec(context.Background(), `DELETE FROM it_assets WHERE net_source = $1`, other)
+	})
+	mac := "AA-BB-CC-77-00-01"
+	_, err := f.s.Apply(ctx, other, Snapshot{Devices: []Device{{ExternalID: "ap-b", MAC: mac, Name: "AP andere Quelle", State: StateOnline}}}, t0)
+	must(t, err)
+	res, err := f.s.Apply(ctx, f.src, Snapshot{Devices: []Device{
+		{ExternalID: "ap-a", MAC: mac, Name: "AP doppelt", State: StateOffline},
+		{ExternalID: "sw-a", MAC: "AA-BB-CC-77-00-02", Name: "Switch eigen", State: StateOnline},
+	}}, t0)
+	must(t, err)
+	if res.Created != 1 {
+		t.Errorf("angelegt: %d, erwartet 1", res.Created)
+	}
+	if n := f.count(`SELECT count(*) FROM it_assets WHERE net_source = $1`, f.src); n != 1 {
+		t.Errorf("Assets der Quelle: %d", n)
+	}
+	if n := f.count(`SELECT count(*) FROM it_assets WHERE net_source = $1 AND net_state = 'online'`, other); n != 1 {
+		t.Errorf("Asset der anderen Quelle wurde verändert")
+	}
+}

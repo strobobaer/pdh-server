@@ -22,7 +22,7 @@ im Kapitel „Versionen & Updates“ an.
 ### Geändert
 
 - Die Seite Netz-Abgleich zeigt den Stand je Quelle (UniFi, Omada) und hat in den Einstellungen einen Schalter je Quelle; „Jetzt abgleichen“ läuft über alle eingeschalteten Quellen.
-- Die Liste der Vorschläge gilt für beide Quellen und hat die neue Spalte „Quelle“.
+- Die Liste der Vorschläge gilt für beide Quellen und hat die neue Spalte „Quelle“; ein Gerät, das schon als Asset aus der anderen Quelle bekannt ist, wird nicht noch einmal vorgeschlagen.
 - Bei Omada-Geräten gibt es keine Anschluss-Tabelle und keinen Hinweis „Update verfügbar“; ein unbekannter Zustand löst nie ein Ausfall-Ticket aus.
 
 ### Sicherheit

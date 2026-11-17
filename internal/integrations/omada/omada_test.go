@@ -28,6 +28,8 @@ type fakeController struct {
 	devices  []map[string]any
 	clients  []map[string]any
 	noV1     bool // ältere Clients-Abfrage fehlt
+	maxPage  int  // > 0: der Controller liefert höchstens so viele Zeilen je Seite
+	noData   bool // Listen ohne Feld "data"
 	expire   bool // nächste Anfrage mit Token: abgelaufen
 	secret   string
 	lastAuth string
@@ -59,6 +61,13 @@ func (f *fakeController) reply(w http.ResponseWriter, code int, msg string, resu
 }
 
 func (f *fakeController) pageOf(w http.ResponseWriter, all []map[string]any, page, size int) {
+	if f.noData {
+		f.reply(w, 0, "Success.", map[string]any{"totalRows": len(all)})
+		return
+	}
+	if f.maxPage > 0 && size > f.maxPage {
+		size = f.maxPage
+	}
 	from := (page - 1) * size
 	if from > len(all) {
 		from = len(all)
@@ -333,6 +342,41 @@ func TestGarbageAnswer(t *testing.T) {
 	c.HTTP = srv.Client()
 	_, err := c.Devices(context.Background())
 	if err == nil || errors.Is(err, ErrAuth) || !strings.Contains(err.Error(), "unverständlich") {
+		t.Errorf("Fehler: %v", err)
+	}
+}
+
+// Begrenzt der Controller die Seitengröße selbst, darf die Liste nicht als vollständig
+// gelten, bevor die genannte Gesamtzahl erreicht ist (sonst zählten fehlende Clients als offline).
+func TestPagedFollowsTotalRows(t *testing.T) {
+	f := newFake(t)
+	f.maxPage = 10
+	for i := 0; i < 35; i++ {
+		f.clients = append(f.clients, map[string]any{"mac": fmt.Sprintf("11-22-33-00-00-%02X", i), "active": true})
+	}
+	cls, err := f.client().Clients(context.Background())
+	if err != nil || len(cls) != 35 {
+		t.Fatalf("Clients: %d, %v", len(cls), err)
+	}
+}
+
+func TestListWithoutDataIsError(t *testing.T) {
+	f := newFake(t)
+	f.noData = true
+	if _, err := f.client().Devices(context.Background()); err == nil {
+		t.Fatal("Liste ohne data angenommen")
+	}
+}
+
+func TestLoginWrongPortIsNotAuthError(t *testing.T) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "nicht hier", http.StatusNotFound)
+	}))
+	defer srv.Close()
+	c := New(srv.URL, testOmadaID, testClient, testSecret, "", "")
+	c.HTTP = srv.Client()
+	_, err := c.Devices(context.Background())
+	if err == nil || errors.Is(err, ErrAuth) || !strings.Contains(err.Error(), "404") {
 		t.Errorf("Fehler: %v", err)
 	}
 }
