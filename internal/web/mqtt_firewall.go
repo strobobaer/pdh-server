@@ -24,6 +24,9 @@ import (
 // Fehler von ufw), nennt die Prüfliste den Befehl für den Server. Der WebSocket-Port bleibt
 // zu: wss läuft über nginx auf 443. Geschlossen wird nie etwas.
 
+// mqttFwRetry: Pause vor dem zweiten Versuch beim Start des Brokers.
+const mqttFwRetry = time.Minute
+
 // mqttFwState: Antwort des Update-Agenten (POST /v1/firewall/ports).
 type mqttFwState struct {
 	Firewall string `json:"firewall"` // none | inactive | active | unsupported | unknown
@@ -135,7 +138,7 @@ func mqttFwRow(ports []int, agent bool, st mqttFwState, err error) mqttCheckRow 
 }
 
 // mqttFirewallAuto öffnet nach dem Start eines Brokers dessen Ports in der Firewall – im
-// Hintergrund, ein Versuch. Was nicht geht, steht im Protokoll und in der Prüfliste.
+// Hintergrund, bei einem Fehler des Agenten ein zweiter Versuch. Was nicht geht, steht im Protokoll und in der Prüfliste.
 func (h *Handler) mqttFirewallAuto(id string, config map[string]string) {
 	ports := mqttFirewallPorts(config)
 	if len(ports) == 0 || !h.driveAgentConfigured() {
@@ -149,6 +152,11 @@ func (h *Handler) mqttFirewallAuto(id string, config map[string]string) {
 			}
 		}()
 		st, err := h.mqttFirewall(context.Background(), ports, true)
+		if err != nil {
+			// Direkt nach einem Update läuft kurz noch der alte Agent: einmal nachfassen.
+			time.Sleep(mqttFwRetry)
+			st, err = h.mqttFirewall(context.Background(), ports, true)
+		}
 		switch {
 		case err != nil:
 			lg.Warn().Str("connection_id", id).Str("fehler", certSafeText(err.Error())).Msg("firewall für den broker nicht geprüft")
