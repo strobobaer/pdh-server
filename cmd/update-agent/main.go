@@ -122,6 +122,8 @@ func main() {
 	mux.Handle("POST /v1/certs/install", agent.authorized(http.HandlerFunc(agent.certInstallHandler)))
 	mux.Handle("POST /v1/certs/remove", agent.authorized(http.HandlerFunc(agent.certRemoveHandler)))
 	mux.Handle("GET /v1/certs/status", agent.authorized(http.HandlerFunc(agent.certStatusHandler)))
+	// Firewall (ufw): Ports des eingebauten MQTT-Brokers nachsehen und öffnen (firewall.go)
+	mux.Handle("POST /v1/firewall/ports", agent.authorized(http.HandlerFunc(agent.firewallHandler)))
 	// Ausfallschutz – Einzelbetrieb (dr.go)
 	if err := agent.drLoad(); err != nil {
 		log.Printf("ausfallschutz: state.json nicht lesbar: %v", err)

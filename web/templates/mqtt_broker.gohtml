@@ -41,15 +41,14 @@
     <dt style="color:var(--muted)">Retained Messages</dt><dd style="margin:0">{{if .RetainEnabled}}erlaubt{{else}}nicht erlaubt{{end}}</dd>
   </dl>
 </div>
-{{if .PublicHost}}
 <div class="card" style="margin-bottom:14px">
-  <div class="card-title">Prüfliste · {{.PublicHost}}</div>
-  <p style="font-size:11px;color:var(--muted);margin:0 0 10px">Was noch fehlt, damit der Broker unter seinem Namen erreichbar ist. Reines MQTT (ohne WebSocket) geht von außen nur über VPN – es wird kein Port ins Internet geöffnet.</p>
+  <div class="card-title">Prüfliste{{if .PublicHost}} · {{.PublicHost}}{{end}}</div>
+  {{if .PublicHost}}<p style="font-size:11px;color:var(--muted);margin:0 0 10px">Was noch fehlt, damit der Broker unter seinem Namen erreichbar ist. Reines MQTT (ohne WebSocket) geht von außen nur über VPN – es wird kein Port ins Internet geöffnet.</p>
+  {{else}}<p style="font-size:11px;color:var(--muted);margin:0 0 10px">Ob Geräte im Haus den Broker erreichen. Mit einem „Name des Brokers“ in der Verbindung kommen Zertifikat, Name im Haus und Tunnel dazu.</p>{{end}}
   <div id="mqtt-checklist" hx-get="/import/connections/{{.ConnectionID}}/broker/checklist" hx-trigger="load, mqtt-check" hx-swap="innerHTML">
-    <span style="font-size:12px;color:var(--muted)"><i class="ti ti-loader-2"></i> Prüfe Zertifikat, Namen im Haus und Tunnel …</span>
+    <span style="font-size:12px;color:var(--muted)"><i class="ti ti-loader-2"></i> Prüfe {{if .PublicHost}}Zertifikat, Namen im Haus, Tunnel und Firewall{{else}}Firewall{{end}} …</span>
   </div>
 </div>
-{{end}}
 {{end}}
 
 {{if not .Enabled}}
@@ -156,6 +155,8 @@ async function mqttCheckAct(btn){
       if(d.notls === '1') f.no_tls_verify = 'on';
       if(d.replace === '1') f.replace_dns = 'on';
       out = await mqttCheckPost('/admin/server-config/cloudflare/tunnel', f);
+    } else if(d.act === 'firewall'){
+      out = await mqttCheckPost('/import/connections/' + encodeURIComponent(d.conn) + '/broker/firewall', {});
     }
   }catch(e){ out = {err: 'Der Server antwortet nicht.'}; }
   window.mqttCheckNote = out;

@@ -4,7 +4,7 @@
 {{define "mqtt-checklist"}}
 {{if not .Rows}}<span style="font-size:12px;color:var(--muted)">Für diese Verbindung ist kein Name des Brokers eingetragen.</span>{{else}}
 <div class="mq-rows"{{if .Running}} hx-get="/import/connections/{{.ConnectionID}}/broker/checklist" hx-trigger="load delay:5s" hx-target="#mqtt-checklist" hx-swap="innerHTML"{{end}}>
-  {{$host := .Host}}
+  {{$host := .Host}}{{$conn := .ConnectionID}}
   {{range .Rows}}
   <div class="mq-row">
     <div class="mq-label">{{.Label}}</div>
@@ -12,7 +12,8 @@
     <div>
       {{if eq .Action "cert"}}<button type="button" class="btn btn-primary btn-small" data-act="cert" data-host="{{$host}}" onclick="mqttCheckAct(this)"><i class="ti ti-certificate"></i> Zertifikat anfordern</button>
       {{else if eq .Action "lan"}}<button type="button" class="btn btn-primary btn-small" data-act="lan" data-host="{{$host}}" onclick="mqttCheckAct(this)"><i class="ti ti-home"></i> Im Haus eintragen</button>
-      {{else if eq .Action "tunnel"}}<button type="button" class="btn btn-primary btn-small" data-act="tunnel" data-host="{{$host}}" data-service="{{.Service}}"{{if .NoTLS}} data-notls="1"{{end}}{{if .Replace}} data-replace="1" data-confirm="Für {{$host}} gibt es schon einen DNS-Eintrag. Er wird durch den Namen des Tunnels ersetzt. Fortfahren?"{{end}} onclick="mqttCheckAct(this)"><i class="ti ti-plug-connected"></i> Einrichten</button>{{end}}
+      {{else if eq .Action "tunnel"}}<button type="button" class="btn btn-primary btn-small" data-act="tunnel" data-host="{{$host}}" data-service="{{.Service}}"{{if .NoTLS}} data-notls="1"{{end}}{{if .Replace}} data-replace="1" data-confirm="Für {{$host}} gibt es schon einen DNS-Eintrag. Er wird durch den Namen des Tunnels ersetzt. Fortfahren?"{{end}} onclick="mqttCheckAct(this)"><i class="ti ti-plug-connected"></i> Einrichten</button>
+      {{else if eq .Action "firewall"}}<button type="button" class="btn btn-primary btn-small" data-act="firewall" data-conn="{{$conn}}" onclick="mqttCheckAct(this)"><i class="ti ti-shield-check"></i> Ports öffnen</button>{{end}}
     </div>
     {{if .Hint}}<div class="mq-hint">{{.Hint}}</div>{{end}}
   </div>

@@ -10,6 +10,24 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.80.23] – 2026-11-17
+
+### Neu
+
+- Eingebauter MQTT-Broker: Das PDH öffnet den MQTT-Port und den TLS-Port (z. B. 1883 und 8883) bei jedem Start des Brokers selbst in der Firewall des Servers (ufw) – Geräte im Haus erreichen den Broker ohne Handarbeit am Server.
+- Broker-Status: Die Prüfliste zeigt die neue Zeile **Firewall am Server** mit dem Knopf **Ports öffnen**. Kann das PDH die Firewall nicht ändern (kein Update-Agent, Docker-Betrieb, Fehler), steht dort der Befehl für den Server.
+- Broker-Status: Die Prüfliste gibt es jetzt auch für einen Broker ohne eigenen Namen – dort mit der Zeile zur Firewall.
+- Handbuch: „So geht's: Ports in der Firewall öffnen“.
+
+### Behoben
+
+- Broker-Status: „Name im Haus“ meldete „zeigt im Haus auf Cloudflare“, obwohl der Name an der UDM Pro richtig eingetragen war – wenn der Server selbst zusätzlich einen DNS außerhalb des Hauses fragt. Jetzt zählt der Eintrag an der UDM Pro.
+- Broker-Status: Zeigt der Name über IPv6 weiter nach außen, steht das als Hinweis bei „Name im Haus“ – Geräte, die IPv6 bevorzugen, erreichen mqtt und mqtts sonst nicht.
+
+### Sicherheit
+
+- Wer eine Import-Verbindung bearbeiten darf (`import.write`), lässt damit die Ports des eingebauten Brokers in der Firewall des Servers öffnen. Geöffnet werden nur TCP-Ports ab 1024 und nie die von Datenbank, Ausfallschutz oder Update-Agent; ins Internet wird nichts freigegeben, und das PDH schließt oder ändert keine anderen Regeln.
+
 ## [0.80.22] – 2026-11-17
 
 ### Neu

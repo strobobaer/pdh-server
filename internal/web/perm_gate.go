@@ -175,6 +175,8 @@ var gateRules = []gateRule{
 	gr(wPost, "import.write", "", false, `^/import/connections/fingerprint$`),
 	// Prüfliste des Brokers mit eigenem Namen (Zustände sieht, wer die Verbindung bearbeiten darf)
 	gr("GET", "import.write", "", false, `^/import/connections`+gID+`/broker/checklist$`),
+	// Ports des eingebauten Brokers in der Firewall des Servers öffnen (wer den Broker einrichtet)
+	gr(wPost, "import.write", "", false, `^/import/connections`+gID+`/broker/firewall$`),
 	gr(wPost, "export.write", "", false, `^/export/connections/fingerprint$`),
 	// ── Explorer: Testschreiben/Senden wie Verbindung bearbeiten (Erkunden selbst: import/export.execute im Handler) ──
 	gr(wPost, "import.write", "", false, `^/import/connections`+gID+`/explorer/(?:mqtt/publish|opcua/write|modbus/write)$`),
