@@ -286,12 +286,15 @@ type ITNetSNMPRow struct {
 	StateLabel, StateClass string
 	LastOKText             string
 	Open                   bool // Formular „Bearbeiten“ aufgeklappt (nach einem Fehler)
+	// CanRemove: it.admin – und hat der Eintrag ein Asset, it.admin für genau dieses Asset
+	// (Abteilung), so wie „Quelle trennen“ am Asset je Datensatz prüft.
+	CanRemove bool
 }
 
 // ITNetSNMPCard: Karte „SNMP-Geräte“ (Vorlage itn-snmp in widgets/snmp.gohtml).
 type ITNetSNMPCard struct {
 	CanSetup    bool // it.netsync
-	CanRemove   bool // it.admin – aus der Liste entfernen
+	CanRemove   bool // it.admin – aus der Liste entfernen (je Zeile: ITNetSNMPRow.CanRemove)
 	CanProfiles bool // darf den Reiter „SNMP“ öffnen
 	Profiles    []itNetOption
 	Rows        []ITNetSNMPRow
@@ -306,6 +309,8 @@ func itNetSNMPState(t SNMPTarget) (string, string) {
 	switch {
 	case !t.Enabled:
 		return "aus", "b-gray"
+	case t.DetachedAssetID != "":
+		return "Asset getrennt", "b-gray"
 	case t.AssetID == "":
 		return "noch kein Asset", "b-gray"
 	}
@@ -334,7 +339,7 @@ func (h *Handler) itNetSNMPCard(r *http.Request) ITNetSNMPCard {
 		return c
 	}
 	for _, t := range targets {
-		row := ITNetSNMPRow{SNMPTarget: t}
+		row := ITNetSNMPRow{SNMPTarget: t, CanRemove: c.CanRemove && h.snmpMayRemove(r, t.anyAssetID())}
 		row.StateLabel, row.StateClass = itNetSNMPState(t)
 		if t.LastOK != nil {
 			row.LastOKText = alarmTime(*t.LastOK)
@@ -473,8 +478,19 @@ func (h *Handler) ITNetSNMPTargetEnabledWeb(w http.ResponseWriter, r *http.Reque
 	}, nil)
 }
 
+// snmpMayRemove: Eintrag aus der Liste entfernen – it.admin; hat der Eintrag ein Asset
+// (assetID), dann it.admin für genau dieses Asset in seiner Abteilung. Entfernen trennt das
+// Asset vom Abgleich, deshalb gilt dieselbe Prüfung je Datensatz wie bei /it/{id}/net-detach.
+func (h *Handler) snmpMayRemove(r *http.Request, assetID string) bool {
+	if !h.itNetCan(r, itNetPermAdmin, "") {
+		return false
+	}
+	return assetID == "" || h.itNetCan(r, itNetPermAdmin, assetID)
+}
+
 // ITNetSNMPTargetRemoveWeb: POST /it/net/snmp/targets/{id}/remove – nur der
-// Bereichsadministrator IT (it.admin). Das IT-Asset bleibt und wird nicht mehr abgeglichen.
+// Bereichsadministrator IT (it.admin), bei einem Eintrag mit Asset für dieses Asset.
+// Das IT-Asset bleibt und wird nicht mehr abgeglichen.
 func (h *Handler) ITNetSNMPTargetRemoveWeb(w http.ResponseWriter, r *http.Request) {
 	if !h.itNetCan(r, itNetPermAdmin, "") {
 		itNetForbidden(w)
@@ -482,6 +498,11 @@ func (h *Handler) ITNetSNMPTargetRemoveWeb(w http.ResponseWriter, r *http.Reques
 	}
 	id, ok := itNetSNMPID(w, r)
 	if !ok {
+		return
+	}
+	// Unbekannter Eintrag oder Datenbankfehler: weiter unten meldet snmpTargetRemove den Grund.
+	if asset, err := h.snmpTargetAssetID(r.Context(), id); err == nil && !h.snmpMayRemove(r, asset) {
+		itNetForbidden(w)
 		return
 	}
 	h.itNetSNMPAct(w, r, itNetPermAdmin, "gerät-entfernen", func(ctx context.Context) (string, error) {

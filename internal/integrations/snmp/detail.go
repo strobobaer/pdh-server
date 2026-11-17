@@ -237,7 +237,7 @@ func (c *Client) Detail(ctx context.Context) (Detail, error) {
 
 	mac := bridge
 	if mac == nil && len(ports) > 0 {
-		if mac, err = smallestPortMAC(s, ports); err != nil {
+		if mac, err = portMAC(s, ports); err != nil {
 			return Detail{}, wrap(err)
 		}
 	}
@@ -393,23 +393,47 @@ func readPorts(s session) ([]Port, bool, error) {
 	return ports, cut, nil
 }
 
-// smallestPortMAC: die kleinste gültige Hardware-Adresse eines Ethernet-Anschlusses – für
-// Geräte ohne Bridge-Adresse (Drucker, USV, NAS).
-func smallestPortMAC(s session, ports []Port) (net.HardwareAddr, error) {
+// portMAC: Hardware-Adresse für Geräte ohne Bridge-Adresse (Drucker, USV, NAS). Die
+// Ethernet-Anschlüsse werden nach ihrer Nummer (ifIndex) durchgesehen; Null- und
+// Rundruf-Adressen zählen nicht (macOf), lokal verwaltete Adressen (Bit 0x02 im ersten
+// Byte – virtuelle Anschlüsse, Container, Bündel) werden ausgelassen. Bevorzugt wird ein
+// aktiver Anschluss, sonst der erste. Gibt es nur lokal verwaltete Adressen, zählt die
+// des Anschlusses mit der kleinsten Nummer. ports ist nach Idx sortiert.
+func portMAC(s session, ports []Port) (net.HardwareAddr, error) {
 	eth := make(map[int]bool, len(ports))
 	last := 0
 	for _, p := range ports {
 		eth[p.Idx] = true
 		last = max(last, p.Idx)
 	}
-	var best net.HardwareAddr
-	_, err := walkCol(s, colIfPhysAddr, maxIfRows, func(idx int, p gosnmp.SnmpPDU) bool {
+	macs := make(map[int]net.HardwareAddr, len(ports))
+	if _, err := walkCol(s, colIfPhysAddr, maxIfRows, func(idx int, p gosnmp.SnmpPDU) bool {
 		if eth[idx] {
-			if m := macOf(rawBytes(p)); m != nil && (best == nil || bytes.Compare(m, best) < 0) {
-				best = m
+			if m := macOf(rawBytes(p)); m != nil {
+				macs[idx] = m
 			}
 		}
 		return idx < last
-	})
-	return best, err
+	}); err != nil {
+		return nil, err
+	}
+	var global, local net.HardwareAddr
+	for _, p := range ports {
+		m := macs[p.Idx]
+		switch {
+		case m == nil:
+		case m[0]&0x02 != 0:
+			if local == nil {
+				local = m
+			}
+		case p.Up:
+			return m, nil
+		case global == nil:
+			global = m
+		}
+	}
+	if global != nil {
+		return global, nil
+	}
+	return local, nil
 }

@@ -296,6 +296,17 @@ type SNMPTarget struct {
 	AssetID     string     // eigenes Asset der Quelle SNMP ("" = noch keines)
 	AssetName   string
 	NetState    string // online, offline, unknown ("" ohne Asset)
+	// DetachedAssetID: Das Asset des Geräts ist vom Abgleich getrennt (AssetID bleibt dann leer).
+	DetachedAssetID   string
+	DetachedAssetName string
+}
+
+// anyAssetID: abgeglichenes oder getrenntes Asset des Eintrags ("" = keines).
+func (t SNMPTarget) anyAssetID() string {
+	if t.AssetID != "" {
+		return t.AssetID
+	}
+	return t.DetachedAssetID
 }
 
 // snmpCleanTarget prüft Adresse und Port (0 → 161).
@@ -319,10 +330,10 @@ func (h *Handler) snmpTargets(ctx context.Context) ([]SNMPTarget, error) {
 		return nil, errSNMPNoDB
 	}
 	rows, err := h.db.Query(ctx, `SELECT t.id::text, t.host, t.port, t.profile_id::text, p.name, t.enabled, t.last_ok, t.last_error, t.note,
-			COALESCE(a.id::text, ''), COALESCE(a.name, ''), COALESCE(a.net_state, '')
+			COALESCE(a.id::text, ''), COALESCE(a.name, ''), COALESCE(a.net_state, ''), COALESCE(a.net_detached, false)
 		FROM it_snmp_targets t
 		JOIN it_snmp_profiles p ON p.id = t.profile_id
-		LEFT JOIN it_assets a ON a.net_source = $1 AND a.net_external_id = t.id::text AND NOT a.net_detached
+		LEFT JOIN it_assets a ON a.net_source = $1 AND a.net_external_id = t.id::text
 		ORDER BY lower(t.host), t.port, t.id`, h.itNetSNMPName())
 	if err != nil {
 		return nil, err
@@ -331,9 +342,14 @@ func (h *Handler) snmpTargets(ctx context.Context) ([]SNMPTarget, error) {
 	var out []SNMPTarget
 	for rows.Next() {
 		var t SNMPTarget
+		var detached bool
 		if err := rows.Scan(&t.ID, &t.Host, &t.Port, &t.ProfileID, &t.ProfileName, &t.Enabled, &t.LastOK, &t.LastError, &t.Note,
-			&t.AssetID, &t.AssetName, &t.NetState); err != nil {
+			&t.AssetID, &t.AssetName, &t.NetState, &detached); err != nil {
 			return nil, err
+		}
+		if detached {
+			t.DetachedAssetID, t.DetachedAssetName = t.AssetID, t.AssetName
+			t.AssetID, t.AssetName, t.NetState = "", "", ""
 		}
 		out = append(out, t)
 	}
@@ -419,6 +435,25 @@ func (h *Handler) snmpTargetSetEnabled(ctx context.Context, id string, on bool) 
 		return errSNMPNotFound
 	}
 	return nil
+}
+
+// snmpTargetAssetID: Asset eines Eintrags der Liste – abgeglichen oder getrennt ("" = keines;
+// errSNMPNotFound, wenn es den Eintrag nicht gibt).
+func (h *Handler) snmpTargetAssetID(ctx context.Context, id string) (string, error) {
+	if h.db == nil {
+		return "", errSNMPNoDB
+	}
+	if !itNetUUIDRe.MatchString(id) {
+		return "", errSNMPNotFound
+	}
+	var asset string
+	err := h.db.QueryRow(ctx, `SELECT COALESCE((SELECT a.id::text FROM it_assets a
+			WHERE a.net_source = $2 AND a.net_external_id = t.id::text), '')
+		FROM it_snmp_targets t WHERE t.id = $1::uuid`, id, h.itNetSNMPName()).Scan(&asset)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", errSNMPNotFound
+	}
+	return asset, err
 }
 
 // snmpTargetRemove entfernt ein Gerät aus der Liste. Sein Asset bleibt bestehen und wird wie

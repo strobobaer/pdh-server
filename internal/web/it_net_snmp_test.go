@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"pdh/internal/integrations/snmp"
@@ -346,7 +347,7 @@ func TestSNMPSourceStates(t *testing.T) {
 	if id, _ := e.asset(never); id != "" {
 		t.Error("ein Gerät, das noch nie geantwortet hat, darf kein Asset werden")
 	}
-	if tn := e.target(never); tn.LastError != "Keine Antwort" || tn.LastOK != nil || tn.AssetID != "" {
+	if tn := e.target(never); tn.LastError != snmpNeverText || tn.LastOK != nil || tn.AssetID != "" {
 		t.Errorf("nie erreichtes Gerät: %+v", tn)
 	}
 	if ta := e.target(a); ta.LastError != "" || ta.LastOK == nil || !ta.LastOK.Equal(e.now) || ta.AssetID != id || ta.AssetName != "sw-a" ||
@@ -742,14 +743,18 @@ func TestSNMPRemoveDetaches(t *testing.T) {
 	if len(list) != 1 || list[0].ID != b {
 		t.Errorf("Geräteliste nach dem Entfernen: %+v", list)
 	}
-	// Dasselbe Gerät neu aufgenommen: Das getrennte Asset bleibt getrennt, kein Doppel.
+	// Dasselbe Gerät neu aufgenommen: Das getrennte Asset bleibt getrennt, kein Doppel –
+	// und der neue Eintrag sagt, warum kein Asset entsteht (K2).
 	a2, _ := e.dev("10.77.6.1", snmpSwitch("rm-a", "02:77:06:00:00:01"))
 	e.now = e.now.Add(time.Minute)
 	e.mustRun()
 	var n int
 	_ = e.pool.QueryRow(ctx, `SELECT count(*) FROM it_assets WHERE net_source = $1`, e.src).Scan(&n)
-	if id, _ := e.asset(a2); id != "" || n != 2 {
-		t.Errorf("neu aufgenommen: Asset %q, %d Assets der Quelle", id, n)
+	if id, _ := e.asset(a2); id != aid || n != 2 {
+		t.Errorf("neu aufgenommen: Asset %q (erwartet das getrennte %q), %d Assets der Quelle", id, aid, n)
+	}
+	if tg := e.target(a2); tg.AssetID != "" || tg.DetachedAssetID != aid || tg.Note != snmpDetachedNote {
+		t.Errorf("neu aufgenommen: Zeile der Geräteliste: %+v", tg)
 	}
 	check("nach dem erneuten Aufnehmen")
 }
@@ -800,6 +805,11 @@ func TestSNMPDeadlineIsNotOffline(t *testing.T) {
 	if got[a] != netsync.StateOnline || got[b] != netsync.StateUnknown {
 		t.Errorf("Zustände: %v", got)
 	}
+	for _, d := range snap.Devices { // das nicht gefragte Gerät behält seinen Zustand am Asset
+		if d.KeepState != (d.ExternalID == b) {
+			t.Errorf("KeepState von %s: %v", d.ExternalID, d.KeepState)
+		}
+	}
 	if tb := e.target(b); tb.LastError != snmpSkippedText {
 		t.Errorf("last_error: %q", tb.LastError)
 	}
@@ -822,6 +832,491 @@ func TestSNMPUnreadableSecret(t *testing.T) {
 	}
 	if got := e.target(a).LastError; !strings.Contains(got, "Kennwörter nicht lesbar") || strings.Contains(got, snmpTestAuth) {
 		t.Errorf("last_error: %q", got)
+	}
+}
+
+// ── Schlussprüfung ───────────────────────────────────────────
+
+// restart: wie ein Neustart des Programms (oder der andere Server des Verbunds übernimmt) –
+// die Quelle beginnt ohne Gedächtnis.
+func (e *snmpEnv) restart() *snmpSource {
+	e.t.Helper()
+	e.h.itNet.of(itNetSourceSNMP).kept = nil
+	return e.source()
+}
+
+func (e *snmpEnv) source() *snmpSource {
+	e.t.Helper()
+	src, err := e.h.itNetSNMPOpener(e.src)(context.Background())
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	s := src.(*snmpSource)
+	s.now = func() time.Time { return e.now }
+	return s
+}
+
+// setting stellt eine Einstellung für die Dauer des Tests.
+func (e *snmpEnv) setting(key, value string) {
+	e.t.Helper()
+	itNetKeepSettings(e.t, e.h, key)
+	if err := e.h.setAppSetting(context.Background(), key, value); err != nil {
+		e.t.Fatal(err)
+	}
+}
+
+// snmpCountSink zählt, was der Wächter meldet.
+type snmpCountSink struct{ opened, repeated, recovered int }
+
+func (s *snmpCountSink) OpenTicket(context.Context, pgx.Tx, netsync.AlarmAsset) (string, func(), error) {
+	s.opened++
+	return "", nil, errors.New("im Test wird kein Ticket angelegt")
+}
+func (s *snmpCountSink) TicketOpen(context.Context, pgx.Tx, string) (bool, error) { return false, nil }
+func (s *snmpCountSink) Repeat(context.Context, pgx.Tx, netsync.AlarmAsset) (func(), error) {
+	s.repeated++
+	return nil, nil
+}
+func (s *snmpCountSink) Recovered(context.Context, pgx.Tx, netsync.AlarmAsset, time.Time) (func(), error) {
+	s.recovered++
+	return nil, nil
+}
+
+// W1: Nach einer Umschaltung antworten nur die Geräte, die den zweiten Server als Abfrager
+// erlauben. Die übrigen gelten nicht als offline, sondern als „unbekannt“ – bis sie diesem
+// Server einmal geantwortet haben. Ein laufender Alarm wird dadurch nicht still beendet.
+func TestSNMPOfflineOnlyAfterAnswer(t *testing.T) {
+	e := newSNMPEnv(t)
+	ctx := context.Background()
+	e.setting(keyITNetInterval, "60")
+	var ids []string
+	var devs []*fakeSNMPDev
+	for i := 1; i <= 5; i++ {
+		id, fd := e.dev(fmt.Sprintf("10.77.11.%d", i), snmpSwitch(fmt.Sprintf("um-%d", i), fmt.Sprintf("02:77:0b:00:00:%02x", i)))
+		ids, devs = append(ids, id), append(devs, fd)
+	}
+	states := func(when string, want ...string) {
+		t.Helper()
+		for i, id := range ids {
+			if _, st := e.asset(id); st != want[i] {
+				t.Errorf("%s: Gerät %d: Zustand %q, erwartet %q", when, i+1, st, want[i])
+			}
+		}
+	}
+	step := func() {
+		t.Helper()
+		e.now = e.now.Add(time.Minute)
+		e.mustRun()
+	}
+	e.mustRun()
+	states("vor der Umschaltung", "online", "online", "online", "online", "online")
+
+	// Gerät 5 fällt wirklich aus und ist im Alarm, bevor umgeschaltet wird.
+	e.set(devs[4], func(f *fakeSNMPDev) { f.pingErr = snmpErrTimeout })
+	step()
+	states("echter Ausfall", "online", "online", "online", "online", "offline")
+	a5, _ := e.asset(ids[4])
+	if _, err := e.pool.Exec(ctx, `INSERT INTO it_net_alarm_state (asset_id, state, offline_since) VALUES ($1::uuid, 'alarm', $2)
+		ON CONFLICT (asset_id) DO UPDATE SET state = 'alarm', offline_since = EXCLUDED.offline_since`, a5, e.now); err != nil {
+		t.Fatal(err)
+	}
+	sink := &snmpCountSink{}
+	watch := &netsync.Watch{DB: e.pool, Sink: sink, Source: e.src, Grace: func(context.Context) time.Duration { return 2 * time.Minute }}
+	alarm := func() string {
+		t.Helper()
+		var st string
+		if err := e.pool.QueryRow(ctx, `SELECT state FROM it_net_alarm_state WHERE asset_id = $1::uuid`, a5).Scan(&st); err != nil {
+			t.Fatal(err)
+		}
+		return st
+	}
+
+	// Umschaltung: Der zweite Server fragt. Geräte 3 und 4 erlauben ihn nicht.
+	e.restart()
+	e.set(devs[2], func(f *fakeSNMPDev) { f.pingErr = snmpErrTimeout })
+	e.set(devs[3], func(f *fakeSNMPDev) { f.pingErr = snmpErrTimeout })
+	for i := 0; i < 4; i++ { // länger als die Karenz
+		step()
+		states("nach der Umschaltung", "online", "online", "unknown", "unknown", "unknown")
+		if err := watch.Pass(ctx, e.now); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := e.target(ids[2]).LastError; got != snmpNeverText {
+		t.Errorf("Text am Gerät: %q", got)
+	}
+	if got := e.h.appSetting(ctx, keyITNetSNMPLastErr, "x"); got != "" {
+		t.Errorf("kein Fehler an der Quelle erwartet: %q", got)
+	}
+	// Kein Ticket für die nicht freigeschalteten Geräte; der laufende Alarm bleibt bestehen.
+	if sink.opened != 0 || sink.repeated != 0 || sink.recovered != 0 || alarm() != "alarm" {
+		t.Errorf("Wächter: %+v, Alarm von Gerät 5: %q", *sink, alarm())
+	}
+
+	// Gerät 3 wird freigeschaltet und antwortet: ab jetzt kann es wieder „offline“ werden.
+	e.set(devs[2], func(f *fakeSNMPDev) { f.pingErr = nil })
+	step()
+	states("freigeschaltet", "online", "online", "online", "unknown", "unknown")
+	e.set(devs[2], func(f *fakeSNMPDev) { f.pingErr = snmpErrTimeout })
+	step()
+	states("fällt danach aus", "online", "online", "offline", "unknown", "unknown")
+	if got := e.target(ids[2]).LastError; got != "Keine Antwort" {
+		t.Errorf("Text nach echtem Ausfall: %q", got)
+	}
+	// Ein abgelehnter Zugang zählt als Antwort an diesen Server.
+	e.set(devs[3], func(f *fakeSNMPDev) { f.pingErr = snmpErrAuth })
+	step()
+	e.set(devs[3], func(f *fakeSNMPDev) { f.pingErr = snmpErrTimeout })
+	step()
+	states("nach abgelehntem Zugang", "online", "online", "offline", "offline", "unknown")
+
+	// Gerät 5 kommt zurück: Der Alarm endet jetzt regulär mit „wieder erreichbar“.
+	e.set(devs[4], func(f *fakeSNMPDev) { f.pingErr = nil })
+	step()
+	if err := watch.Pass(ctx, e.now); err != nil {
+		t.Fatal(err)
+	}
+	if sink.recovered != 1 || alarm() != "normal" {
+		t.Errorf("nach der Rückkehr: %+v, Alarm %q", *sink, alarm())
+	}
+
+	// Lange Pause ohne Neustart (Wartungssperre, Quelle aus, Rollenwechsel bei weiterlaufendem
+	// Programm): Die Abfrage-Strecke beginnt neu. Mehr als 3 Intervalle, mindestens 5 min.
+	src := e.source()
+	if got := src.streakGap(ctx); got != 5*time.Minute {
+		t.Errorf("Schwelle bei 60 s Intervall: %v", got)
+	}
+	e.now = e.now.Add(5 * time.Minute) // genau die Schwelle: noch dieselbe Strecke
+	e.mustRun()
+	states("an der Schwelle", "online", "online", "offline", "offline", "online")
+	e.now = e.now.Add(5*time.Minute + time.Second)
+	e.mustRun()
+	states("nach langer Pause", "online", "online", "unknown", "unknown", "online")
+	e.setting(keyITNetInterval, "600")
+	if got := src.streakGap(ctx); got != 30*time.Minute {
+		t.Errorf("Schwelle bei 600 s Intervall: %v", got)
+	}
+	// Geänderte Adresse: Das Gerät muss diesem Server unter der neuen Adresse erst antworten.
+	e.setting(keyITNetInterval, "60")
+	if err := e.h.snmpTargetUpdate(ctx, ids[0], "10.77.11.99", 161, e.profile); err != nil {
+		t.Fatal(err)
+	}
+	step()
+	states("neue Adresse ohne Antwort", "unknown", "online", "unknown", "unknown", "online")
+}
+
+// W3: Antwortet länger als die allgemeine Karenz kein Gerät, bekommen die Verantwortlichen
+// genau eine Nachricht – kein Ticket je Gerät. Die nächste erst, nachdem wieder ein Gerät
+// geantwortet hat.
+func TestSNMPStormNotice(t *testing.T) {
+	e := newSNMPEnv(t)
+	e.setting(keyITNetInterval, "60")
+	e.setting(keyITNetGrace, "5")
+	var resp string // Verantwortlicher des Netz-Abgleichs
+	if err := e.pool.QueryRow(context.Background(), `INSERT INTO users (username, email, password_hash, first_name, last_name, role, department, phone)
+		VALUES ($1::text, $1::text || '@example.invalid', 'x', 'Ines', 'Netz', 'viewer', '', '') RETURNING id::text`, "snmpsturm"+strings.TrimPrefix(e.src, "snmptest")).Scan(&resp); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _, _ = e.pool.Exec(context.Background(), `DELETE FROM users WHERE id = $1::uuid`, resp) })
+	e.setting(keyITNetRespUser, resp)
+	type note struct {
+		to   []string
+		body string
+	}
+	var notes []note
+	e.h.itNet.snmpStormNotify = func(to []string, body string) { notes = append(notes, note{to, body}) }
+	var devs []*fakeSNMPDev
+	for i := 1; i <= 3; i++ {
+		_, fd := e.dev(fmt.Sprintf("10.77.12.%d", i), snmpSwitch(fmt.Sprintf("ta-%d", i), fmt.Sprintf("02:77:0c:00:00:%02x", i)))
+		devs = append(devs, fd)
+	}
+	all := func(err error) {
+		for _, fd := range devs {
+			e.set(fd, func(f *fakeSNMPDev) { f.pingErr = err })
+		}
+	}
+	storm := func(minutes int) {
+		t.Helper()
+		for i := 0; i < minutes; i++ {
+			e.now = e.now.Add(time.Minute)
+			if err := e.run(); !errors.Is(err, errSNMPStorm) {
+				t.Fatalf("Sturm-Schutz erwartet: %v", err)
+			}
+		}
+	}
+	e.mustRun()
+	all(snmpErrTimeout)
+	storm(5) // Beginn bei +1 min; bei +5 min sind erst 4 min vergangen
+	if len(notes) != 0 {
+		t.Fatalf("vor Ablauf der Karenz gemeldet: %+v", notes)
+	}
+	storm(1)
+	want := "SNMP: Seit 5 min antwortet kein Gerät. Entweder ist das Netz des PDH-Servers gestört oder alle SNMP-Geräte sind ausgefallen."
+	if len(notes) != 1 || !strings.Contains(notes[0].body, want) || len(notes[0].to) != 1 || notes[0].to[0] != resp {
+		t.Fatalf("Meldung nach der Karenz: %+v", notes)
+	}
+	storm(10)
+	if len(notes) != 1 {
+		t.Errorf("mehr als eine Meldung für denselben Ausfall: %d", len(notes))
+	}
+	var off int
+	_ = e.pool.QueryRow(context.Background(), `SELECT count(*) FROM it_assets WHERE net_source = $1 AND net_state <> 'unknown'`, e.src).Scan(&off)
+	if off != 0 {
+		t.Errorf("%d Geräte nicht „unbekannt“", off)
+	}
+	// Ein Gerät antwortet wieder, danach fällt erneut alles aus: neue Zählung, neue Meldung.
+	e.set(devs[0], func(f *fakeSNMPDev) { f.pingErr = nil })
+	e.now = e.now.Add(time.Minute)
+	e.mustRun()
+	all(snmpErrTimeout)
+	storm(5)
+	if len(notes) != 1 {
+		t.Errorf("zweiter Ausfall zu früh gemeldet: %d", len(notes))
+	}
+	storm(1)
+	if len(notes) != 2 {
+		t.Errorf("zweiter Ausfall nicht gemeldet: %d Meldungen", len(notes))
+	}
+}
+
+// K4: Wurde kein Gerät wirklich gefragt (Profile unlesbar, Namen nicht auflösbar), nennt
+// die Quelle genau das – nicht „Netz des PDH-Servers prüfen“ – und es geht keine Meldung
+// über einen Totalausfall hinaus.
+func TestSNMPNoneAskedText(t *testing.T) {
+	e := newSNMPEnv(t)
+	ctx := context.Background()
+	e.setting(keyITNetInterval, "60")
+	e.setting(keyITNetGrace, "1")
+	told := 0
+	e.h.itNet.snmpStormNotify = func([]string, string) { told++ }
+	var devs []*fakeSNMPDev
+	for i := 1; i <= 3; i++ {
+		_, fd := e.dev(fmt.Sprintf("10.77.13.%d", i), snmpSwitch(fmt.Sprintf("kg-%d", i), fmt.Sprintf("02:77:0d:00:00:%02x", i)))
+		devs = append(devs, fd)
+	}
+	e.mustRun()
+	// alle Namen nicht auflösbar
+	for _, fd := range devs {
+		e.set(fd, func(f *fakeSNMPDev) { f.pingErr = snmpErrResolve })
+	}
+	for i := 0; i < 3; i++ {
+		e.now = e.now.Add(time.Minute)
+		if err := e.run(); !errors.Is(err, errSNMPNoneAsked) || errors.Is(err, errSNMPStorm) {
+			t.Fatalf("eigener Fehler erwartet: %v", err)
+		}
+	}
+	if got := e.h.appSetting(ctx, keyITNetSNMPLastErr, ""); got != "Kein Gerät konnte gefragt werden – Zugangsprofile und Adressen prüfen" {
+		t.Errorf("last_error der Quelle: %q", got)
+	}
+	var known int
+	_ = e.pool.QueryRow(ctx, `SELECT count(*) FROM it_assets WHERE net_source = $1 AND net_state <> 'unknown'`, e.src).Scan(&known)
+	if known != 0 || told != 0 {
+		t.Errorf("%d Geräte nicht „unbekannt“, %d Meldungen", known, told)
+	}
+	// Profil unlesbar: ebenso, ohne dass eine Anfrage hinausgeht
+	for _, fd := range devs {
+		e.set(fd, func(f *fakeSNMPDev) { f.pingErr = nil })
+	}
+	if _, err := e.pool.Exec(ctx, `UPDATE it_snmp_profiles SET priv_secret_enc = 'v1:kaputt' WHERE id = $1::uuid`, e.profile); err != nil {
+		t.Fatal(err)
+	}
+	pings := devs[0].pings
+	e.now = e.now.Add(time.Minute)
+	if err := e.run(); !errors.Is(err, errSNMPNoneAsked) || devs[0].pings != pings {
+		t.Errorf("Profil unlesbar: %v, %d Pings", err, devs[0].pings-pings)
+	}
+	// Ging an ein Gerät wirklich eine Anfrage hinaus, bleibt es beim Sturm-Text.
+	p2 := e.mkProfile("Lesbar")
+	if _, err := e.pool.Exec(ctx, `UPDATE it_snmp_targets SET profile_id = $1::uuid WHERE host = '10.77.13.1'`, p2); err != nil {
+		t.Fatal(err)
+	}
+	e.set(devs[0], func(f *fakeSNMPDev) { f.pingErr = snmpErrTimeout })
+	e.now = e.now.Add(time.Minute)
+	if err := e.run(); !errors.Is(err, errSNMPStorm) {
+		t.Errorf("mit einer echten Anfrage: %v", err)
+	}
+}
+
+// W4: Der Ping-Teil hat ein eigenes Zeitbudget. Reicht es nicht für alle, beginnt der nächste
+// Lauf bei den Geräten, die leer ausgingen; ein nicht gefragtes Gerät behält seinen Zustand
+// und gilt nicht als „nicht mehr gemeldet“.
+func TestSNMPPingBudgetRotation(t *testing.T) {
+	e := newSNMPEnv(t)
+	ctx := context.Background()
+	e.setting(keyITNetInterval, "60")
+	var ids []string
+	var devs []*fakeSNMPDev
+	for i := 1; i <= 10; i++ {
+		id, fd := e.dev(fmt.Sprintf("10.77.14.%d", i), snmpSwitch(fmt.Sprintf("zb-%d", i), fmt.Sprintf("02:77:0e:00:00:%02x", i)))
+		ids, devs = append(ids, id), append(devs, fd)
+		// feste Reihenfolge der Liste
+		if _, err := e.pool.Exec(ctx, `UPDATE it_snmp_targets SET created_at = now() - make_interval(mins => $2) WHERE id = $1::uuid`, id, 60-i); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if snmpPingBudget != 30*time.Second || e.source().pingBudget != snmpPingBudget {
+		t.Errorf("Budget für den Ping-Teil: %v / %v", snmpPingBudget, e.source().pingBudget)
+	}
+	// Jede Antwort braucht 300 ms, das Budget reicht nur für die ersten 8 gleichzeitig.
+	e.net.delay = 300 * time.Millisecond
+	e.source().pingBudget = 100 * time.Millisecond
+	pings := func() string {
+		e.net.mu.Lock()
+		defer e.net.mu.Unlock()
+		var b strings.Builder
+		for _, fd := range devs {
+			fmt.Fprintf(&b, "%d", fd.pings)
+		}
+		return b.String()
+	}
+	t0 := e.now
+	e.mustRun()
+	if got := pings(); got != "1111111100" {
+		t.Fatalf("Lauf 1: gefragt %s", got)
+	}
+	if id, _ := e.asset(ids[8]); id != "" || e.target(ids[8]).LastError != snmpSkippedText {
+		t.Errorf("nicht gefragtes neues Gerät: Asset %q, %q", id, e.target(ids[8]).LastError)
+	}
+	e.now = e.now.Add(time.Minute)
+	e.mustRun()
+	if got := pings(); got != "2222221111" {
+		t.Fatalf("Lauf 2 beginnt nicht bei den leer ausgegangenen: gefragt %s", got)
+	}
+	// Geräte 7 und 8 wurden in Lauf 2 nicht gefragt: Zustand und „seit“ bleiben.
+	for _, i := range []int{6, 7} {
+		var state string
+		var since time.Time
+		var gone bool
+		aid, _ := e.asset(ids[i])
+		if err := e.pool.QueryRow(ctx, `SELECT net_state, net_state_since, net_gone FROM it_assets WHERE id = $1::uuid`, aid).Scan(&state, &since, &gone); err != nil {
+			t.Fatal(err)
+		}
+		if state != "online" || !since.Equal(t0) || gone {
+			t.Errorf("Gerät %d: Zustand %q seit %v (erwartet online seit %v), nicht mehr gemeldet %v", i+1, state, since, t0, gone)
+		}
+		if got := e.target(ids[i]).LastError; got != snmpSkippedText {
+			t.Errorf("Gerät %d: Hinweis %q", i+1, got)
+		}
+	}
+	if _, st := e.asset(ids[9]); st != "online" {
+		t.Errorf("Gerät 10 nach Lauf 2: %q", st)
+	}
+	e.now = e.now.Add(time.Minute)
+	e.mustRun()
+	if got := pings(); got != "3333222222" {
+		t.Errorf("Lauf 3: gefragt %s", got)
+	}
+	// Reicht die Zeit wieder für alle, bleibt keines mehr aus.
+	e.net.delay = 0
+	e.now = e.now.Add(time.Minute)
+	e.mustRun()
+	if got := pings(); got != "4444333333" {
+		t.Errorf("Lauf 4: gefragt %s", got)
+	}
+}
+
+// K1: Der ältere Eintrag hatte bisher kein Asset, der jüngere (dasselbe Gerät) hat eines.
+// Wird der ältere erreichbar, entsteht kein zweites Asset – auch nicht direkt nach einem
+// Neustart, wenn die MAC-Adresse nur noch am Asset steht.
+func TestSNMPDuplicateOfEntryWithAsset(t *testing.T) {
+	e := newSNMPEnv(t)
+	ctx := context.Background()
+	a, fa := e.dev("sw-doppelt.firma.lan", snmpSwitch("dp-a", "02:77:0f:00:00:01"))
+	if _, err := e.pool.Exec(ctx, `UPDATE it_snmp_targets SET created_at = now() - interval '1 hour' WHERE id = $1::uuid`, a); err != nil {
+		t.Fatal(err)
+	}
+	e.set(fa, func(f *fakeSNMPDev) { f.pingErr = snmpErrResolve }) // Name noch nicht im DNS
+	b, fb := e.dev("10.77.15.1", snmpSwitch("dp-a", "02:77:0f:00:00:01"))
+	e.mustRun()
+	bid, _ := e.asset(b)
+	if id, _ := e.asset(a); id != "" || bid == "" {
+		t.Fatalf("Ausgangslage: a=%q b=%q", id, bid)
+	}
+	count := func() int {
+		var n int
+		_ = e.pool.QueryRow(ctx, `SELECT count(*) FROM it_assets WHERE net_source = $1`, e.src).Scan(&n)
+		return n
+	}
+	check := func(when string) {
+		t.Helper()
+		if id, _ := e.asset(a); id != "" || count() != 1 {
+			t.Errorf("%s: zweites Asset angelegt (a=%q, %d Assets)", when, id, count())
+		}
+		if ta := e.target(a); ta.Note != "doppelt in der Liste – dasselbe Gerät wie 10.77.15.1" {
+			t.Errorf("%s: Hinweis am älteren Eintrag: %q", when, ta.Note)
+		}
+		if tb := e.target(b); tb.Note != "" || tb.AssetID != bid {
+			t.Errorf("%s: Eintrag mit Asset: %+v", when, tb)
+		}
+	}
+	e.set(fa, func(f *fakeSNMPDev) { f.pingErr = nil })
+	e.now = e.now.Add(time.Minute)
+	e.mustRun()
+	check("älterer Eintrag wird erreichbar")
+
+	// Neustart, der Eintrag mit Asset antwortet gerade nicht: Seine MAC kommt vom Asset.
+	e.restart()
+	e.set(fb, func(f *fakeSNMPDev) { f.pingErr = snmpErrTimeout })
+	e.now = e.now.Add(time.Minute)
+	e.mustRun()
+	check("nach Neustart")
+}
+
+// K2: Ist das Asset eines Eintrags vom Abgleich getrennt, steht das am Eintrag – mit dem
+// getrennten Asset für den Link. „Wieder verbinden“ am Asset führt den Eintrag weiter.
+func TestSNMPDetachedAssetHint(t *testing.T) {
+	e := newSNMPEnv(t)
+	ctx := context.Background()
+	a, _ := e.dev("10.77.16.1", snmpSwitch("gt-a", "02:77:10:00:00:01"))
+	e.mustRun()
+	aid, _ := e.asset(a)
+	// „Quelle trennen“ am Asset
+	tx, err := e.pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := itNetDetachTx(ctx, tx, aid); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	hint := func(when, target string) {
+		t.Helper()
+		e.now = e.now.Add(time.Minute)
+		e.mustRun()
+		tg := e.target(target)
+		if tg.Note != "Das IT-Asset ist vom Abgleich getrennt – am Asset ‚Wieder verbinden‘ wählen" || tg.DetachedAssetID != aid ||
+			tg.DetachedAssetName != "gt-a" || tg.AssetID != "" || tg.NetState != "" || tg.anyAssetID() != aid {
+			t.Errorf("%s: %+v", when, tg)
+		}
+		if label, _ := itNetSNMPState(tg); label != "Asset getrennt" {
+			t.Errorf("%s: Abzeichen %q", when, label)
+		}
+		var n int
+		_ = e.pool.QueryRow(ctx, `SELECT count(*) FROM it_assets WHERE net_source = $1`, e.src).Scan(&n)
+		if n != 1 {
+			t.Errorf("%s: %d Assets", when, n)
+		}
+	}
+	hint("am Asset getrennt", a)
+
+	// Entfernen und neu aufnehmen: Der neue Eintrag zeigt auf dasselbe getrennte Asset.
+	if err := e.h.snmpTargetRemove(ctx, a); err != nil {
+		t.Fatal(err)
+	}
+	a2, _ := e.dev("10.77.16.1", snmpSwitch("gt-a", "02:77:10:00:00:01"))
+	hint("neu aufgenommen", a2)
+	hint("ein Lauf später", a2)
+
+	// „Wieder verbinden“ am Asset (wie ITNetReattachWeb): Der Eintrag hat sein Asset wieder.
+	if _, err := e.pool.Exec(ctx, `UPDATE it_assets SET net_detached = false, net_monitored = true WHERE id = $1::uuid`, aid); err != nil {
+		t.Fatal(err)
+	}
+	e.now = e.now.Add(time.Minute)
+	e.mustRun()
+	if tg := e.target(a2); tg.AssetID != aid || tg.NetState != "online" || tg.Note != "" || tg.DetachedAssetID != "" {
+		t.Errorf("wieder verbunden: %+v", tg)
 	}
 }
 

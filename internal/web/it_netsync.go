@@ -259,6 +259,9 @@ type itNetState struct {
 	// snmpNotify: Meldung an die Administratoren nach einer Änderung an den SNMP-Profilen;
 	// nil → notifyAdmins (Tests tauschen aus).
 	snmpNotify func(ctx context.Context, msg string)
+	// snmpStormNotify: Nachricht an die Verantwortlichen, wenn anhaltend kein SNMP-Gerät
+	// antwortet; nil → systemNotify (Tests tauschen aus).
+	snmpStormNotify func(userIDs []string, body string)
 }
 
 // itNetSrcState: was eine Quelle über Läufe hinweg behält.

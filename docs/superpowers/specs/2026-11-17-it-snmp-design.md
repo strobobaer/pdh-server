@@ -199,6 +199,75 @@ Sturm-Schutz oben fängt den Fall ab, falls es vergessen wurde.
 Omada). Mit der dritten Quelle werden sie auf eine Liste umgestellt, damit
 nicht ein dritter Satz Felder dazukommt. Verhalten bleibt gleich.
 
+## Festlegungen nach Bau und Schlussprüfung
+
+Was beim Bauen und in der unabhängigen Schlussprüfung anders oder genauer
+festgelegt wurde als oben beschrieben. Bei Widerspruch gilt dieser Abschnitt.
+
+- **Migration 168, Recht `system.snmp_admin`:** „SNMP: Zugangsprofile löschen
+  (Bereichsadministrator)“. Nur damit lässt sich ein Profil endgültig löschen;
+  das Recht allein genügt für den Reiter. Es geht an Rollen, die überall
+  `system.snmp` **und** `system.certs_admin` haben (Einzelrechte entsprechend,
+  Entzug bleibt Entzug).
+- **Asset erst nach der ersten Antwort:** Ein Eintrag der Geräteliste wird erst
+  ein IT-Asset, wenn das Gerät einmal seine Einzelheiten geliefert hat. Ohne
+  MAC-Adresse ließe sich nicht erkennen, ob es schon über eine andere Quelle
+  bekannt ist.
+- **Doppelte Listeneinträge:** Steht dasselbe Gerät zweimal in der Liste (Name
+  und IP-Adresse), wird nur ein Eintrag ein Asset. Vorrang hat der Eintrag, der
+  schon ein Asset hat – dessen MAC zählt auch direkt nach einem Neustart –,
+  sonst der ältere. Am anderen steht „doppelt in der Liste“.
+- **Getrenntes Asset:** Ist das Asset eines Eintrags vom Abgleich getrennt
+  („Quelle trennen“ am Asset, oder entfernt und neu aufgenommen), entsteht kein
+  neues. Am Eintrag steht „Das IT-Asset ist vom Abgleich getrennt – am Asset
+  ‚Wieder verbinden‘ wählen“ mit Link. Nach dem Neu-Aufnehmen bekommt das
+  getrennte Asset die ID des neuen Eintrags (`net_external_id`), damit „Wieder
+  verbinden“ genau diesen Eintrag weiterführt.
+- **Offline erst nach erster Antwort an diesen Server:** „Keine Antwort“ heißt
+  nur dann „offline“, wenn das Gerät diesem Server seit Beginn der laufenden
+  Abfrage-Strecke mindestens einmal geantwortet hat (auch ablehnend). Vorher:
+  „unbekannt“ mit dem Text „Hat diesem Server noch nie geantwortet – Adresse,
+  Profil und Freischaltung für diesen Server prüfen“. Die Strecke lebt im
+  Speicher des Programms und beginnt neu mit dem Programmstart sowie dann, wenn
+  der letzte Lauf der Quelle auf diesem Server länger als 3 Intervalle
+  (mindestens 5 min) zurückliegt – das erfasst Wartungssperre, ausgeschaltete
+  Quelle und einen Rollenwechsel bei weiterlaufendem Programm. Ändert sich die
+  Adresse eines Eintrags, muss das Gerät unter der neuen erst antworten. Ein
+  laufender Alarm (`it_net_alarm_state`) bleibt bei „unbekannt“ bestehen.
+  Das ersetzt die Aussage oben, der Sturm-Schutz fange die vergessene
+  Freischaltung ab: Bei gemischter Freischaltung (5 von 20 antworten) greift er
+  nicht, diese Regel schon. Der Sturm-Schutz „keines von ≥ 3 antwortet“ bleibt
+  zusätzlich.
+- **Meldung bei anhaltendem Totalausfall:** Hält „kein Gerät antwortet“ so lange
+  an wie die allgemeine Karenz, bekommen die Verantwortlichen des Netz-Abgleichs
+  (dieselben wie bei Alarm-Tickets) genau eine Nachricht: „SNMP: Seit <Dauer>
+  antwortet kein Gerät. Entweder ist das Netz des PDH-Servers gestört oder alle
+  SNMP-Geräte sind ausgefallen.“ Kein Ticket je Gerät; die nächste Nachricht
+  erst, nachdem wieder ein Gerät geantwortet hat. Der Merker liegt im Speicher:
+  Nach einem Neustart mitten im Ausfall kann die Nachricht einmal erneut kommen.
+- **Kein Gerät wirklich gefragt:** Sind alle Profile unlesbar oder alle Namen
+  nicht auflösbar, steht an der Quelle „Kein Gerät konnte gefragt werden –
+  Zugangsprofile und Adressen prüfen“ statt des Sturm-Texts; es geht keine
+  Meldung über einen Totalausfall hinaus.
+- **Port abgewiesen = offline:** Weist das Gerät die Anfrage ab (SNMP-Dienst
+  aus) oder meldet das Netz „Gerät nicht erreichbar“, zählt das wie „keine
+  Antwort“. Fehler am PDH-Server selbst (kein Weg ins Netz, Adresse nicht
+  verfügbar, nicht erlaubt, zu viele offene Dateien, kein Puffer) sind
+  „unbekannt“, nie offline.
+- **Zeitbudget:** Der Ping-Teil eines Laufs hat höchstens 30 s. Geräte, die
+  nicht mehr gefragt wurden, behalten Zustand und „seit“ (kein Wechsel auf
+  „unbekannt“, kein „nicht mehr gemeldet“); der nächste Lauf beginnt bei ihnen.
+- **MAC ohne Bridge-Adresse:** nicht die kleinste `ifPhysAddress`, sondern die
+  des ersten Ethernet-Anschlusses nach `ifIndex`, der „up“ ist; lokal
+  verwaltete Adressen (Bit 0x02) sowie Null- und Rundruf-Adressen zählen nicht.
+  Gibt es nur lokal verwaltete, dann die mit dem kleinsten `ifIndex`.
+- **Entfernen je Datensatz:** „Entfernen“ prüft `it.admin`; hat der Eintrag ein
+  Asset, zusätzlich für genau dieses Asset (Abteilung), wie `/it/{id}/net-detach`.
+- **PoE-Spalte nur bei PoE:** Am IT-Asset erscheint die Spalte PoE der
+  Anschluss-Tabelle nur, wenn das Gerät PoE meldet – bei SNMP also nie.
+- **Kennwörter:** Das Handbuch empfiehlt lange, zufällige Kennwörter (mindestens
+  16 Zeichen), weil das Profil an jede eingetragene Hausadresse geschickt wird.
+
 ## Entscheidungen von Claude (bitte bestätigen oder ändern)
 
 1. **Profile getrennt von Geräten** (Reiter „SNMP“ mit `system.snmp`), Geräteliste auf `/it/net` mit `it.netsync`.

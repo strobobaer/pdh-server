@@ -66,7 +66,7 @@
       <button class="btn btn-primary btn-small" type="submit"><i class="ti ti-device-floppy"></i> Profil anlegen</button>
     </form>
     <p class="sc-sub" style="margin:0 0 4px">Das PDH spricht nur angemeldet <b>und</b> verschlüsselt (authPriv). Vorschlag: SHA-256 und AES-128 – das kann fast jedes Gerät. <b>SHA-1</b> gilt als veraltet: nur wählen, wenn das Gerät nichts anderes kann. MD5, DES und SNMP v1/v2c bietet das PDH nicht an.</p>
-    <p class="sc-sub" style="margin:0">Kennwörter haben mindestens 8 Zeichen, werden verschlüsselt gespeichert und nie wieder angezeigt.{{if not .CanDelete}} Ein Profil löschen darf nur, wer das Recht „SNMP: Zugangsprofile löschen (Bereichsadministrator)“ (<code>system.snmp_admin</code>) hat.{{end}}</p>
+    <p class="sc-sub" style="margin:0">Kennwörter haben mindestens 8 Zeichen, werden verschlüsselt gespeichert und nie wieder angezeigt. Empfohlen: lang und zufällig, mindestens 16 Zeichen.{{if not .CanDelete}} Ein Profil löschen darf nur, wer das Recht „SNMP: Zugangsprofile löschen (Bereichsadministrator)“ (<code>system.snmp_admin</code>) hat.{{end}}</p>
   </div>
   {{end}}
 <style>
@@ -112,7 +112,7 @@
           {{if .LastOKText}}<div style="color:var(--muted)">zuletzt geantwortet: {{.LastOKText}}</div>{{else if and (not .LastError) (not .Note)}}<span style="color:var(--muted)">–</span>{{end}}
           <div id="itn-snmp-check-{{.ID}}" aria-live="polite"></div>
         </td>
-        <td style="font-size:12px">{{if .AssetID}}<a href="/it/{{.AssetID}}" style="color:var(--accent)">{{if .AssetName}}{{.AssetName}}{{else}}Asset öffnen{{end}}</a>{{else}}<span style="color:var(--muted)">–</span>{{end}}</td>
+        <td style="font-size:12px">{{if .AssetID}}<a href="/it/{{.AssetID}}" style="color:var(--accent)">{{if .AssetName}}{{.AssetName}}{{else}}Asset öffnen{{end}}</a>{{else if .DetachedAssetID}}<a href="/it/{{.DetachedAssetID}}" style="color:var(--accent)" title="Dieses IT-Asset ist vom Abgleich getrennt. Am Asset „Wieder verbinden“ wählen.">{{if .DetachedAssetName}}{{.DetachedAssetName}}{{else}}Asset öffnen{{end}}</a> <span style="color:var(--muted)">(getrennt)</span>{{else}}<span style="color:var(--muted)">–</span>{{end}}</td>
         {{if or $.CanSetup $.CanRemove}}
         <td>
           <div class="itn-row-form">
@@ -132,7 +132,7 @@
               </form>
             </details>
             {{end}}
-            {{if $.CanRemove}}
+            {{if .CanRemove}}
             <form hx-post="/it/net/snmp/targets/{{.ID}}/remove" hx-target="#itn-snmp" hx-swap="outerHTML" hx-disabled-elt="find button" class="itn-row-form"
               hx-confirm="{{.Host}} aus der Liste entfernen? Das IT-Asset bleibt bestehen und wird nicht mehr abgeglichen.">
               <button type="submit" class="btn btn-small"><i class="ti ti-trash"></i> Entfernen</button>
@@ -157,7 +157,7 @@
       <select class="form-input" id="itn-snmp-profile" name="profile">{{range .Profiles}}<option value="{{.Value}}" {{if eq .Value $.NewProfile}}selected{{end}}>{{.Label}}</option>{{end}}</select></div>
     <button type="submit" class="btn btn-small btn-primary"><i class="ti ti-plus"></i> Gerät hinzufügen</button>
   </form>
-  <p class="itn-note">Nur Adressen im eigenen Netz. Nach dem Hinzufügen mit <b>Prüfen</b> ansehen, was das Gerät antwortet.{{if not .CanRemove}} Aus der Liste entfernen darf nur der Bereichsadministrator IT (<code>it.admin</code>).{{end}}</p>
+  <p class="itn-note">Nur Adressen im eigenen Netz. Nach dem Hinzufügen mit <b>Prüfen</b> ansehen, was das Gerät antwortet. Aus der Liste entfernen darf nur der Bereichsadministrator IT (<code>it.admin</code>) – bei einem Gerät mit IT-Asset der für dessen Abteilung.</p>
   {{else}}
   <p class="itn-note" style="margin-top:10px"><i class="ti ti-key" style="color:var(--amber)"></i> <b>Zuerst ein Zugangsprofil anlegen.</b> {{if .CanProfiles}}Das geht in den <a href="/admin/server-config?tab=snmp" style="color:var(--accent)">Server-Einstellungen im Reiter „SNMP“</a>. Danach kannst du hier Geräte hinzufügen.{{else}}Die Zugangsprofile legt eine Person mit dem Recht „SNMP-Zugangsprofile verwalten“ (<code>system.snmp</code>) in den Server-Einstellungen an.{{end}}</p>
   {{end}}

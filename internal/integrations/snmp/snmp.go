@@ -211,7 +211,10 @@ func wrap(err error) error {
 	return &Error{Kind: k, Msg: msg, Err: err}
 }
 
-const msgAuth = "Zugang abgelehnt – Profil prüfen"
+const (
+	msgAuth  = "Zugang abgelehnt – Profil prüfen"
+	msgLocal = "Abfrage nicht möglich – Netzfehler am PDH-Server"
+)
 
 // classifyRaw deutet die Fehler von gosnmp (Stand v1.47.0) und des Netzes.
 //
@@ -229,7 +232,8 @@ const msgAuth = "Zugang abgelehnt – Profil prüfen"
 //   - Andere Geräte und Reports: ErrDecryption, ErrNotInTimeWindow, ErrUnknownEngineID,
 //     ErrUnknownSecurityLevel sowie ErrUnknownUsername/ErrWrongDigest.
 //
-// Eine echte Zeitüberschreitung trägt ErrMaxRetriesExceeded oder ist ein Netzfehler. Die
+// Eine echte Zeitüberschreitung trägt ErrMaxRetriesExceeded oder ist eine Zeitüberschreitung
+// des Netzes; „Port abgewiesen“ und „Gerät nicht erreichbar“ zählen dazu (isTimeout). Die
 // Reihenfolge zählt: erst alles, was eine Antwort des Geräts belegt.
 func classifyRaw(err error) (Kind, string) {
 	text := err.Error()
@@ -260,23 +264,51 @@ func classifyRaw(err error) (Kind, string) {
 		return KindOther, "Abfrage abgebrochen"
 	case isTimeout(err):
 		return KindTimeout, "Keine Antwort"
+	case isNetErr(err):
+		// Der PDH-Server selbst kann nicht senden (kein Weg ins Netz, keine Adresse, keine
+		// freien Mittel …). Das sagt nichts über das Gerät – es darf nicht als offline gelten.
+		return KindOther, msgLocal
 	}
 	return KindOther, "Antwort des Geräts unverständlich"
 }
 
-// isTimeout: keine Antwort – Zeit abgelaufen, alle Versuche verbraucht, oder das Netz
-// meldet „nicht erreichbar“ (z. B. Port geschlossen).
+// goneErrnos: Meldungen des Netzes, die das Gerät selbst betreffen – der Port ist zu
+// (SNMP-Dienst aus) oder das Gerät ist im Netz nicht zu finden. Unter Windows tragen sie
+// andere Nummern (WSAECONNREFUSED 10061, WSAEHOSTUNREACH 10065); ein abgewiesenes
+// UDP-Paket meldet Windows beim Lesen als WSAECONNRESET (10054). Die Zahlen stehen hier
+// ausgeschrieben, damit die Liste auf jeder Plattform baut.
+var goneErrnos = []syscall.Errno{syscall.ECONNREFUSED, syscall.EHOSTUNREACH,
+	syscall.Errno(10061), syscall.Errno(10065), syscall.Errno(10054)}
+
+// isTimeout: keine Antwort des Geräts – Zeit abgelaufen, alle Versuche verbraucht, Port
+// abgewiesen oder Gerät im Netz nicht erreichbar. Alle anderen Netzfehler (kein Weg ins
+// Netz, Adresse nicht verfügbar, nicht erlaubt, zu viele offene Dateien …) entstehen am
+// PDH-Server und zählen nicht dazu.
 func isTimeout(err error) bool {
 	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) ||
 		errors.Is(err, gosnmp.ErrMaxRetriesExceeded) {
 		return true
 	}
 	var ne net.Error
-	if errors.As(err, &ne) {
-		return true // Zeitüberschreitung, abgewiesen, nicht erreichbar: es kam keine SNMP-Antwort
+	if errors.As(err, &ne) && ne.Timeout() {
+		return true
 	}
 	var se syscall.Errno
-	return errors.As(err, &se)
+	if errors.As(err, &se) {
+		for _, e := range goneErrnos {
+			if se == e {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// isNetErr: irgendein Fehler des Netzes oder des Betriebssystems.
+func isNetErr(err error) bool {
+	var ne net.Error
+	var se syscall.Errno
+	return errors.As(err, &ne) || errors.As(err, &se)
 }
 
 // ── Einstellungen ────────────────────────────────────────────

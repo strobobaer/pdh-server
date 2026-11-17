@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"sort"
 	"strconv"
@@ -27,14 +28,31 @@ const (
 	// snmpFetchReserve: so viel vom Zeitlimit der Quelle bleibt für Abgleich und Wächter.
 	snmpFetchReserve = 15 * time.Second
 
-	snmpStormText   = "Kein Gerät antwortet – Netz des PDH-Servers oder Freischaltung prüfen"
-	snmpSkippedText = "In diesem Lauf nicht gefragt – Zeitlimit des Abgleichs erreicht"
+	// snmpPingBudget: so lange darf der erste Teil („lebt das Gerät?“) eines Laufs dauern.
+	// Der Rest des Zeitlimits bleibt für die Einzelheiten der Geräte, die antworten.
+	snmpPingBudget = 30 * time.Second
+	// Abfrage-Strecke: Liegt der letzte Lauf dieses Servers länger zurück als
+	// snmpStreakIntervals Intervalle – mindestens snmpStreakMinGap –, beginnt sie neu.
+	snmpStreakIntervals = 3
+	snmpStreakMinGap    = 5 * time.Minute
+
+	snmpStormText     = "Kein Gerät antwortet – Netz des PDH-Servers oder Freischaltung prüfen"
+	snmpNoneAskedText = "Kein Gerät konnte gefragt werden – Zugangsprofile und Adressen prüfen"
+	snmpSkippedText   = "In diesem Lauf nicht gefragt – Zeitlimit des Abgleichs erreicht"
+	snmpNeverText     = "Hat diesem Server noch nie geantwortet – Adresse, Profil und Freischaltung für diesen Server prüfen"
+	snmpDetachedNote  = "Das IT-Asset ist vom Abgleich getrennt – am Asset ‚Wieder verbinden‘ wählen"
+	// snmpStormNotice: Meldung an die Verantwortlichen bei anhaltendem Totalausfall (%s = Dauer).
+	snmpStormNotice = "SNMP: Seit %s antwortet kein Gerät. Entweder ist das Netz des PDH-Servers gestört oder alle SNMP-Geräte sind ausgefallen."
 )
 
 // errSNMPStorm: Kein Gerät hat geantwortet. Als Fehler von Fetch setzt der Abgleich alle
 // Assets der Quelle auf „unbekannt“ und legt den Text in it.net.snmp.last_error ab – wie bei
 // einem nicht erreichbaren Controller. Es entstehen keine Alarm-Tickets.
 var errSNMPStorm = errors.New(snmpStormText)
+
+// errSNMPNoneAsked: Kein einziges Gerät wurde wirklich gefragt (Profile unlesbar, Namen
+// nicht auflösbar, Einstellung ungültig). Wirkt wie errSNMPStorm, sagt aber, woran es liegt.
+var errSNMPNoneAsked = errors.New(snmpNoneAskedText)
 
 // itNetSNMPName: Name der Quelle SNMP in den Assets (Tests nehmen einen eigenen).
 func (h *Handler) itNetSNMPName() string {
@@ -98,10 +116,57 @@ type snmpSource struct {
 	now         func() time.Time
 	seen        map[string]snmpSeen // je Geräte-ID
 	last        []snmpRun           // letzter Lauf, für AfterApply
+	pingBudget  time.Duration       // Zeit für den ersten Teil eines Laufs (Tests kürzen)
+
+	// Abfrage-Strecke dieses Servers: answered merkt je Geräte-ID die Adresse, unter der
+	// das Gerät diesem Server seit Beginn der Strecke geantwortet hat (auch ablehnend).
+	// Nur ein solches Gerät kann „offline“ werden. Die Strecke lebt im Speicher: Sie
+	// beginnt mit dem Programmstart neu und nach einer langen Pause (lastFetch).
+	answered  map[string]string
+	lastFetch time.Time // Beginn des letzten Laufs
+	// startAt: Geräte-ID, bei der der nächste Lauf mit dem Fragen beginnt – dort, wo der
+	// letzte aus Zeitmangel aufgehört hat.
+	startAt string
+	// Anhaltender Totalausfall: Beginn und ob die Verantwortlichen schon benachrichtigt sind.
+	stormSince time.Time
+	stormTold  bool
 }
 
 func newSNMPSource(h *Handler) *snmpSource {
-	return &snmpSource{h: h, name: itNetSourceSNMP, detailEvery: itNetDetailEvery, now: time.Now, seen: map[string]snmpSeen{}}
+	return &snmpSource{h: h, name: itNetSourceSNMP, detailEvery: itNetDetailEvery, now: time.Now, seen: map[string]snmpSeen{},
+		pingBudget: snmpPingBudget, answered: map[string]string{}}
+}
+
+// streakGap: so lange darf der letzte Lauf zurückliegen, ohne dass die Abfrage-Strecke neu beginnt.
+func (s *snmpSource) streakGap(ctx context.Context) time.Duration {
+	return max(snmpStreakIntervals*s.h.itNetInterval(ctx), snmpStreakMinGap)
+}
+
+// storm zählt die Dauer des Zustands „kein Gerät antwortet“. Hält er so lange an wie die
+// allgemeine Karenz, gehen die Verantwortlichen des Netz-Abgleichs genau eine Nachricht
+// zu – kein Ticket je Gerät. Die nächste gibt es erst, nachdem zwischendurch wieder ein
+// Gerät geantwortet hat (Fetch setzt stormSince zurück).
+func (s *snmpSource) storm(ctx context.Context, now time.Time) {
+	if s.stormSince.IsZero() {
+		s.stormSince = now
+	}
+	d := now.Sub(s.stormSince)
+	if s.stormTold || d < s.h.itNetGrace(ctx) {
+		return
+	}
+	userIDs, _, _, err := s.h.itNetRecipients(ctx)
+	if err != nil {
+		log.Warn().Err(err).Msg("it-netzabgleich: snmp-totalausfall nicht gemeldet") // nächster Lauf versucht es erneut
+		return
+	}
+	s.stormTold = true
+	body := "⚠️ " + fmt.Sprintf(snmpStormNotice, mirrorLagText(d)) + "\n/it/net"
+	log.Warn().Str("seit", mirrorLagText(d)).Msg("it-netzabgleich: snmp – kein gerät antwortet, verantwortliche benachrichtigt")
+	if s.h.itNet.snmpStormNotify != nil {
+		s.h.itNet.snmpStormNotify(userIDs, body)
+		return
+	}
+	s.h.systemNotify(context.Background(), userIDs, body)
 }
 
 func (s *snmpSource) Kind() string { return itNetSourceSNMP }
@@ -157,39 +222,56 @@ func (s *snmpSource) targets(ctx context.Context) ([]snmpRunTarget, error) {
 
 // Fetch fragt alle eingeschalteten Geräte: bei jedem Lauf die Laufzeit (Ping), die
 // Einzelheiten je Gerät höchstens alle detailEvery. Höchstens snmpParallel Geräte
-// gleichzeitig; reicht das Zeitlimit nicht, bleiben die übrigen in diesem Lauf „unbekannt“
-// (nie offline) und die Einzelheiten kommen im nächsten Lauf.
+// gleichzeitig. Der Ping-Teil hat ein eigenes Zeitbudget (pingBudget); reicht es nicht,
+// behalten die übrigen Geräte in diesem Lauf ihren bisherigen Zustand (KeepState), und
+// der nächste Lauf beginnt bei ihnen – so geht bei vielen toten Geräten nicht immer
+// dasselbe leer aus. Die Einzelheiten kommen sonst im nächsten Lauf.
+//
+// Offline erst nach einer Antwort: „Keine Antwort“ heißt nur dann „offline“, wenn das
+// Gerät diesem Server seit Beginn der laufenden Abfrage-Strecke schon geantwortet hat
+// (answered). Vorher bleibt es „unbekannt“ – etwa nach einer Umschaltung im Verbund, wenn
+// ein Teil der Geräte den zweiten Server nicht als Abfrager erlaubt. Die Strecke beginnt
+// neu mit dem Programmstart und nach einer Pause von mehr als streakGap.
 //
 // Sturm-Schutz: Sind mindestens snmpStormMin Geräte eingeschaltet und keines antwortet –
 // weder mit Daten noch mit „Zugang abgelehnt“, das ja beweist, dass das Netz steht –, liegt
 // es am PDH-Server (Netz weg, oder nach einer Umschaltung im Verbund nicht freigeschaltet).
 // Dann liefert Fetch errSNMPStorm: alle Assets der Quelle werden „unbekannt“, kein Ticket.
+// Hält das an, geht eine Nachricht an die Verantwortlichen (storm).
 func (s *snmpSource) Fetch(ctx context.Context) (netsync.Snapshot, error) {
 	var snap netsync.Snapshot
 	s.last = nil
+	now := s.now()
+	if s.lastFetch.IsZero() || now.Sub(s.lastFetch) > s.streakGap(ctx) {
+		// Neue Abfrage-Strecke: Programmstart, Wartungssperre, Quelle war aus – oder dieser
+		// Server war im Verbund eine Weile nicht der aktive.
+		s.answered = map[string]string{}
+	}
+	s.lastFetch = now
 	targets, err := s.targets(ctx)
 	if err != nil {
 		return snap, err
 	}
-	have := map[string]bool{} // Geräte, die schon ein Asset der Quelle haben
-	rows, err := s.h.db.Query(ctx, `SELECT net_external_id FROM it_assets WHERE net_source = $1 AND net_external_id IS NOT NULL`, s.name)
+	// Geräte, die schon ein Asset der Quelle haben, mit dessen MAC-Adresse.
+	have := map[string]string{}
+	rows, err := s.h.db.Query(ctx, `SELECT net_external_id, COALESCE(mac_address, '')
+		FROM it_assets WHERE net_source = $1 AND net_external_id IS NOT NULL`, s.name)
 	if err != nil {
 		return snap, err
 	}
 	for rows.Next() {
-		var ext string
-		if err := rows.Scan(&ext); err != nil {
+		var ext, mac string
+		if err := rows.Scan(&ext, &mac); err != nil {
 			rows.Close()
 			return snap, err
 		}
-		have[ext] = true
+		have[ext] = mac
 	}
 	rows.Close()
 	if err := rows.Err(); err != nil {
 		return snap, err
 	}
 
-	now := s.now()
 	// Gemerktes von entfernten Geräten und von Geräten mit geänderter Adresse vergessen.
 	listed := map[string]string{}
 	for _, t := range targets {
@@ -200,6 +282,11 @@ func (s *snmpSource) Fetch(ctx context.Context) (netsync.Snapshot, error) {
 			delete(s.seen, id)
 		}
 	}
+	for id, addr := range s.answered {
+		if listed[id] != addr {
+			delete(s.answered, id)
+		}
+	}
 
 	// Eigenes, kürzeres Zeitlimit: Danach müssen noch Abgleich und Wächter laufen.
 	fctx := ctx
@@ -208,29 +295,37 @@ func (s *snmpSource) Fetch(ctx context.Context) (netsync.Snapshot, error) {
 		fctx, cancel = context.WithDeadline(ctx, dl.Add(-snmpFetchReserve))
 		defer cancel()
 	}
+	pctx, pcancel := context.WithTimeout(fctx, s.pingBudget)
+	defer pcancel()
 
 	res := make([]snmpRun, len(targets))
 	sem := make(chan struct{}, snmpParallel)
 	var wg sync.WaitGroup
-	// each: fn für die Geräte in idx, höchstens snmpParallel gleichzeitig; nach Ablauf des
-	// Zeitlimits wird kein weiteres Gerät mehr begonnen.
-	each := func(idx []int, fn func(i int)) {
+	// each: fn für die Geräte in idx – in dieser Reihenfolge, höchstens snmpParallel
+	// gleichzeitig. Nach Ablauf von ectx wird kein weiteres Gerät mehr begonnen; zurück
+	// kommt, wie viele begonnen wurden (die ersten n aus idx).
+	each := func(ectx context.Context, idx []int, fn func(i int)) (n int) {
 		for _, i := range idx {
+			select {
+			case sem <- struct{}{}:
+			case <-ectx.Done():
+				wg.Wait()
+				return n
+			}
+			if ectx.Err() != nil {
+				<-sem
+				break
+			}
+			n++
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				select {
-				case sem <- struct{}{}:
-				case <-fctx.Done():
-					return
-				}
 				defer func() { <-sem }()
-				if fctx.Err() == nil {
-					fn(i)
-				}
+				fn(i)
 			}()
 		}
 		wg.Wait()
+		return n
 	}
 
 	// 1. Ping: lebt das Gerät?
@@ -249,26 +344,61 @@ func (s *snmpSource) Fetch(ctx context.Context) (netsync.Snapshot, error) {
 			ask = append(ask, i)
 		}
 	}
-	each(ask, func(i int) {
-		perr := s.h.snmpClient(res[i].t.cfg).Ping(fctx)
-		if perr != nil && fctx.Err() != nil {
+	// Dort beginnen, wo der letzte Lauf aus Zeitmangel aufgehört hat.
+	for k, i := range ask {
+		if targets[i].ID == s.startAt {
+			ask = append(append([]int(nil), ask[k:]...), ask[:k]...)
+			break
+		}
+	}
+	if n := each(pctx, ask, func(i int) {
+		perr := s.h.snmpClient(res[i].t.cfg).Ping(pctx)
+		if perr != nil && pctx.Err() != nil {
 			return // Zeitlimit des Laufs, kein Befund über das Gerät
 		}
 		r := &res[i]
 		r.asked, r.kind, r.msg = true, snmp.Classify(perr), snmp.Message(perr)
 		r.state = snmpState(r.kind)
-	})
+	}); n < len(ask) {
+		s.startAt = targets[ask[n]].ID
+	}
 	if err := ctx.Err(); err != nil {
 		return snap, err
 	}
 
-	alive := false // irgendein Gerät hat geantwortet (auch ablehnend)
-	for _, r := range res {
-		alive = alive || (r.asked && (r.kind == snmp.KindNone || r.kind == snmp.KindAuth))
+	alive := false   // irgendein Gerät hat geantwortet (auch ablehnend)
+	reached := false // an irgendein Gerät ging wirklich eine Anfrage hinaus
+	allAsked := true // jedes eingeschaltete Gerät wurde in diesem Lauf gewertet
+	for i := range res {
+		r := &res[i]
+		switch {
+		case !r.t.Enabled:
+			continue
+		case !r.asked:
+			allAsked = false
+			continue
+		}
+		switch r.kind {
+		case snmp.KindNone, snmp.KindAuth:
+			alive = true
+			s.answered[r.t.ID] = r.t.addr()
+		}
+		reached = reached || (r.kind != snmp.KindConfig && r.kind != snmp.KindResolve)
+		if r.kind == snmp.KindTimeout && s.answered[r.t.ID] != r.t.addr() {
+			// Hat diesem Server noch nie geantwortet: kein Ausfall, sondern unbekannt.
+			r.state, r.msg = netsync.StateUnknown, snmpNeverText
+		}
 	}
 	if enabled >= snmpStormMin && !alive {
 		s.saveStatus(ctx, res, now)
+		if allAsked && !reached {
+			return snap, errSNMPNoneAsked
+		}
+		s.storm(ctx, now)
 		return snap, errSNMPStorm
+	}
+	if alive {
+		s.stormSince, s.stormTold = time.Time{}, false
 	}
 
 	// 2. Einzelheiten: sofort beim ersten Mal, danach höchstens alle detailEvery – die
@@ -291,7 +421,7 @@ func (s *snmpSource) Fetch(ctx context.Context) (netsync.Snapshot, error) {
 		ran bool
 	}
 	details := make([]detailOut, len(res))
-	each(due, func(i int) {
+	each(fctx, due, func(i int) {
 		d, derr := s.h.snmpClient(res[i].t.cfg).Detail(fctx)
 		if derr != nil && fctx.Err() != nil {
 			return // Zeitlimit des Laufs: im nächsten Lauf erneut
@@ -339,23 +469,40 @@ func (s *snmpSource) Fetch(ctx context.Context) (netsync.Snapshot, error) {
 	// über eine andere Quelle bekannt ist. Zwischen den Detail-Abrufen gehen die gemerkten
 	// Angaben mit (HasDetail = false: Anschlüsse und Uplink am Asset bleiben stehen).
 	// Steht dasselbe Gerät zweimal in der Liste (z. B. mit Name und mit IP-Adresse), wird
-	// nur der ältere Eintrag ein Asset – sonst gäbe es bei einem Ausfall zwei Tickets.
-	first := map[string]string{} // MAC → Adresse des ersten Eintrags
+	// nur ein Eintrag ein Asset – sonst gäbe es bei einem Ausfall zwei Tickets. Vorrang hat
+	// der Eintrag, der schon ein Asset hat (dessen MAC zählt auch, wenn das Gerät seit dem
+	// Programmstart noch keine Einzelheiten geliefert hat), sonst der ältere.
+	first := map[string]string{} // MAC → Adresse des Eintrags, dem sie gehört
+	for i := range res {
+		id := res[i].t.ID
+		assetMAC, ok := have[id]
+		if !ok {
+			continue
+		}
+		for _, mac := range []string{netsync.NormMAC(s.seen[id].d.MAC), netsync.NormMAC(assetMAC)} {
+			if _, taken := first[mac]; mac != "" && !taken {
+				first[mac] = res[i].t.Host
+			}
+		}
+	}
 	for i := range res {
 		r := &res[i]
 		sd := s.seen[r.t.ID]
-		if !have[r.t.ID] && !sd.has {
+		_, hasAsset := have[r.t.ID]
+		if !hasAsset && !sd.has {
 			continue
 		}
-		if mac := netsync.NormMAC(sd.d.MAC); mac != "" {
-			if host, dup := first[mac]; dup && !have[r.t.ID] {
+		if mac := netsync.NormMAC(sd.d.MAC); mac != "" && !hasAsset {
+			if host, dup := first[mac]; dup {
 				r.dupOf = host
 				continue
-			} else if !dup {
-				first[mac] = r.t.Host
 			}
+			first[mac] = r.t.Host
 		}
-		nd := netsync.Device{ExternalID: r.t.ID, State: r.state, Name: sd.d.Name, MAC: sd.d.MAC, Model: sd.d.Model,
+		// KeepState: eingeschaltet, aber in diesem Lauf nicht gewertet (Zeitlimit) – der
+		// bisherige Zustand am Asset bleibt.
+		nd := netsync.Device{ExternalID: r.t.ID, State: r.state, KeepState: r.t.Enabled && !r.asked,
+			Name: sd.d.Name, MAC: sd.d.MAC, Model: sd.d.Model,
 			Kind: sd.d.Kind, IP: sd.d.IP, Firmware: sd.d.Firmware, Serial: sd.d.Serial}
 		if nd.Name == "" {
 			nd.Name = r.t.Host
@@ -400,6 +547,13 @@ func (s *snmpSource) saveStatus(ctx context.Context, res []snmpRun, now time.Tim
 // MAC-Adresse eines Geräts schon zu einem Asset einer anderen Quelle, hat der Abgleich kein
 // zweites Asset angelegt. Ebenso bei einem doppelten Eintrag in der Liste. Hat das Gerät ein
 // eigenes Asset, wird der Hinweis geleert. Ohne bekannte MAC-Adresse bleibt er, wie er ist.
+//
+// Getrenntes Asset: Ist das Asset des Geräts vom Abgleich getrennt („Quelle trennen“ am
+// Asset, oder das Gerät wurde aus der Liste entfernt und neu aufgenommen), legt der
+// Abgleich bewusst kein neues an. Damit das nicht stumm bleibt, steht der Grund am
+// Eintrag. Nach dem Neu-Aufnehmen trägt das getrennte Asset noch die ID des entfernten
+// Eintrags; es bekommt hier die ID des neuen (gleiche MAC-Adresse), damit die Liste zu ihm
+// verlinken kann und „Wieder verbinden“ am Asset genau diesen Eintrag weiterführt.
 func (s *snmpSource) AfterApply(ctx context.Context) {
 	var ids, macs []string
 	dupOf := map[string]string{}
@@ -411,8 +565,16 @@ func (s *snmpSource) AfterApply(ctx context.Context) {
 	if len(ids) == 0 {
 		return
 	}
+	// own: eigenes Asset (Zustand: abgeglichen oder getrennt); orphan: getrenntes Asset der
+	// Quelle mit gleicher MAC, dessen ID zu keinem Eintrag der Liste mehr gehört.
 	rows, err := s.h.db.Query(ctx, `SELECT u.id::text, u.mac,
-			EXISTS (SELECT 1 FROM it_assets o WHERE o.net_source = $1 AND o.net_external_id = u.id::text),
+			COALESCE((SELECT CASE WHEN o.net_detached THEN 'detached' ELSE 'own' END FROM it_assets o
+				WHERE o.net_source = $1 AND o.net_external_id = u.id::text), ''),
+			COALESCE((SELECT d.id::text FROM it_assets d
+				WHERE u.mac <> '' AND d.net_source = $1 AND d.net_detached
+				  AND regexp_replace(lower(d.mac_address), '[^0-9a-f]', '', 'g') = replace(u.mac, ':', '')
+				  AND NOT EXISTS (SELECT 1 FROM it_snmp_targets x WHERE x.id::text = d.net_external_id)
+				ORDER BY d.created_at LIMIT 1), ''),
 			COALESCE((SELECT a.net_source FROM it_assets a
 				WHERE u.mac <> '' AND a.net_source IS NOT NULL AND a.net_source <> $1
 				  AND regexp_replace(lower(a.mac_address), '[^0-9a-f]', '', 'g') = replace(u.mac, ':', '')
@@ -423,21 +585,28 @@ func (s *snmpSource) AfterApply(ctx context.Context) {
 		return
 	}
 	var nIDs, notes []string
+	var rekeyAsset, rekeyTo []string
+	taken := map[string]bool{} // getrennte Assets, die in diesem Lauf schon einem Eintrag zugeordnet sind
 	for rows.Next() {
-		var id, mac, other string
-		var own bool
-		if err := rows.Scan(&id, &mac, &own, &other); err != nil {
+		var id, mac, own, orphan, other string
+		if err := rows.Scan(&id, &mac, &own, &orphan, &other); err != nil {
 			rows.Close()
 			log.Warn().Err(err).Msg("it-netzabgleich: snmp-hinweise nicht ermittelt")
 			return
 		}
 		note := ""
 		switch {
-		case own:
+		case own == "own":
+		case own == "detached":
+			note = snmpDetachedNote
 		case dupOf[id] != "":
 			note = "doppelt in der Liste – dasselbe Gerät wie " + dupOf[id]
 		case mac == "":
 			continue
+		case orphan != "" && !taken[orphan]:
+			taken[orphan] = true
+			rekeyAsset, rekeyTo = append(rekeyAsset, orphan), append(rekeyTo, id)
+			note = snmpDetachedNote
 		case other != "":
 			note = "schon über " + s.h.itNetSourceLabel(other) + " bekannt"
 		}
@@ -446,6 +615,15 @@ func (s *snmpSource) AfterApply(ctx context.Context) {
 	rows.Close()
 	if err := rows.Err(); err != nil || len(nIDs) == 0 {
 		return
+	}
+	if len(rekeyAsset) > 0 {
+		if _, err := s.h.db.Exec(ctx, `UPDATE it_assets a SET net_external_id = u.target
+			FROM unnest($2::uuid[], $3::text[]) AS u(asset, target)
+			WHERE a.id = u.asset AND a.net_source = $1 AND a.net_detached
+			  AND NOT EXISTS (SELECT 1 FROM it_assets o WHERE o.net_source = $1 AND o.net_external_id = u.target)`,
+			s.name, rekeyAsset, rekeyTo); err != nil {
+			log.Warn().Err(err).Msg("it-netzabgleich: getrenntes snmp-asset nicht dem neuen eintrag zugeordnet")
+		}
 	}
 	if _, err := s.h.db.Exec(ctx, `UPDATE it_snmp_targets t SET note = u.note
 		FROM unnest($1::uuid[], $2::text[]) AS u(id, note)

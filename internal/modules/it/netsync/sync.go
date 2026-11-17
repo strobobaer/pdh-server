@@ -277,11 +277,13 @@ func (s *Store) upsertDevice(ctx context.Context, tx pgx.Tx, source string, d De
 				model       = CASE WHEN $6 <> '' THEN $6 ELSE model END,
 				firmware    = CASE WHEN $7 <> '' THEN $7 ELSE firmware END,
 				firmware_update = $8,
-				net_state_since = CASE WHEN net_state <> $9 OR net_state_since IS NULL THEN $10 ELSE net_state_since END,
-				net_last_seen   = CASE WHEN $9 = 'online' THEN $10 ELSE net_last_seen END,
-				net_state = $9, net_gone = false, net_role = 'device', updated_at = now(),
+				net_state_since = CASE WHEN $12 THEN net_state_since
+					WHEN net_state <> $9 OR net_state_since IS NULL THEN $10 ELSE net_state_since END,
+				net_last_seen   = CASE WHEN $9 = 'online' AND NOT $12 THEN $10 ELSE net_last_seen END,
+				net_state = CASE WHEN $12 THEN net_state ELSE $9 END,
+				net_gone = false, net_role = 'device', updated_at = now(),
 				serial_no = CASE WHEN $11 <> '' AND COALESCE(serial_no, '') = '' THEN $11 ELSE serial_no END
-			WHERE id = $1 AND NOT net_detached`, id, source, d.ExternalID, mac, d.IP, d.Model, d.Firmware, d.FirmwareUpdate, st, now, serial)
+			WHERE id = $1 AND NOT net_detached`, id, source, d.ExternalID, mac, d.IP, d.Model, d.Firmware, d.FirmwareUpdate, st, now, serial, d.KeepState)
 		if err != nil {
 			return false, false, "", err
 		}

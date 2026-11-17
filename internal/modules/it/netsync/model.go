@@ -36,6 +36,10 @@ type Device struct {
 	Ports                                            []Port
 	// HasDetail: Ports und Firmware stammen aus einem frischen Detail-Abruf.
 	HasDetail bool
+	// KeepState: Die Quelle konnte das Gerät in diesem Lauf nicht fragen (SNMP: Zeitlimit).
+	// Zustand, „seit“ und „zuletzt gesehen“ am Asset bleiben, wie sie sind; State zählt
+	// nur, wenn das Asset neu entsteht. Das Gerät gilt weiter als gemeldet (kein net_gone).
+	KeepState bool
 	// Serial: Seriennummer (nur SNMP). Sie wird nur eingetragen, solange das Feld am
 	// Asset leer ist – eine von Hand gepflegte Nummer bleibt.
 	Serial string

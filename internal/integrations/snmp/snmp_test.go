@@ -251,14 +251,66 @@ func TestDetailDrucker(t *testing.T) {
 	if n := len([]rune(d.Model)); n > 80 || !strings.HasPrefix(d.Model, "Beispiel LaserJet 400 Farbe, mit") || strings.Contains(d.Model, "Zeile 2") {
 		t.Errorf("Modell = %q (%d Zeichen)", d.Model, n)
 	}
-	if d.MAC != "a4:5d:36:00:00:02" {
-		t.Errorf("MAC = %q, erwartet die kleinste gültige", d.MAC)
+	if d.MAC != "a4:5d:36:00:00:09" {
+		t.Errorf("MAC = %q, erwartet die des ersten aktiven Anschlusses", d.MAC)
 	}
 	if d.Kind != DeviceOther {
 		t.Errorf("Art = %q", d.Kind)
 	}
 	if len(d.Ports) != 3 || d.Ports[0] != (Port{Idx: 2, Name: "Ethernet", Up: true, SpeedMbps: 100}) {
 		t.Errorf("Anschlüsse = %+v", d.Ports)
+	}
+}
+
+// Ohne Bridge-Adresse: Ethernet-Anschlüsse nach Nummer; lokal verwaltete, Null- und
+// Rundruf-Adressen zählen nicht; bevorzugt ein aktiver Anschluss. Gibt es nur lokal
+// verwaltete, dann die mit der kleinsten Nummer – nie „die kleinste MAC“.
+func TestDetailMACErsatz(t *testing.T) {
+	type port struct {
+		idx int
+		mac []byte
+		up  bool
+	}
+	g := func(last byte) []byte { return []byte{0xa4, 0x5d, 0x36, 0, 0, last} } // weltweit eindeutig
+	l := func(last byte) []byte { return []byte{0x02, 0x42, 0xac, 0, 0, last} } // lokal verwaltet
+	zero, bcast := make([]byte, 6), []byte{0xff, 0xff, 0xff, 0xff, 0xff, 0xff}
+	for _, tc := range []struct {
+		name  string
+		ports []port
+		want  string
+	}{
+		{"aktiver vor getrenntem", []port{{1, g(1), false}, {2, g(2), true}}, "a4:5d:36:00:00:02"},
+		{"lokal verwaltete auslassen", []port{{1, l(1), true}, {2, g(9), false}, {3, g(3), true}}, "a4:5d:36:00:00:03"},
+		{"weltweit eindeutig vor aktiv", []port{{1, l(1), true}, {2, g(9), false}}, "a4:5d:36:00:00:09"},
+		{"keiner aktiv: kleinste Nummer", []port{{4, g(1), false}, {2, g(9), false}}, "a4:5d:36:00:00:09"},
+		{"nur lokal verwaltete: kleinste Nummer", []port{{5, l(1), true}, {3, []byte{0x06, 0x99, 0x99, 0x99, 0x99, 0x99}, false}}, "06:99:99:99:99:99"},
+		{"Null und Rundruf zählen nicht", []port{{1, zero, true}, {2, bcast, true}, {3, g(7), false}}, "a4:5d:36:00:00:07"},
+		{"keine gültige", []port{{1, nil, true}, {2, zero, true}}, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newFakeSession()
+			f.str(oidSysName, "geraet")
+			for _, p := range tc.ports {
+				f.num(row(colIfType, p.idx), ifTypeEthernet)
+				f.str(row(colIfPhysAddr, p.idx), string(p.mac))
+				st := 2
+				if p.up {
+					st = operStatusUp
+				}
+				f.num(row(colIfOperStatus, p.idx), st)
+			}
+			// eine Schnittstelle, die kein Ethernet-Anschluss ist, zählt nie
+			f.num(row(colIfType, 9), 53)
+			f.str(row(colIfPhysAddr, 9), string(g(0x55)))
+			f.num(row(colIfOperStatus, 9), operStatusUp)
+			d, err := clientWith(f, testConfig).Detail(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if d.MAC != tc.want {
+				t.Errorf("MAC = %q, erwartet %q", d.MAC, tc.want)
+			}
+		})
 	}
 }
 
@@ -365,7 +417,17 @@ func TestFehlerarten(t *testing.T) {
 		{"Frist des Aufrufers", context.DeadlineExceeded, KindTimeout, "Keine Antwort"},
 		{"Netz: Zeit", &net.OpError{Op: "read", Net: "udp", Err: timeoutErr{}}, KindTimeout, "Keine Antwort"},
 		{"Netz: Port zu", &net.OpError{Op: "read", Net: "udp", Err: os.NewSyscallError("recvfrom", syscall.ECONNREFUSED)}, KindTimeout, "Keine Antwort"},
-		{"Netz: nicht erreichbar", fmt.Errorf("error establishing connection to host: %w", &net.OpError{Op: "dial", Net: "udp", Err: syscall.ENETUNREACH}), KindTimeout, "Keine Antwort"},
+		{"Netz: Gerät nicht erreichbar", fmt.Errorf("error establishing connection to host: %w", &net.OpError{Op: "dial", Net: "udp", Err: syscall.EHOSTUNREACH}), KindTimeout, "Keine Antwort"},
+		{"Windows: Port zu", &net.OpError{Op: "read", Net: "udp", Err: os.NewSyscallError("wsarecv", syscall.Errno(10061))}, KindTimeout, "Keine Antwort"},
+		{"Windows: Port zu (UDP)", &net.OpError{Op: "read", Net: "udp", Err: os.NewSyscallError("wsarecv", syscall.Errno(10054))}, KindTimeout, "Keine Antwort"},
+		{"Windows: Gerät nicht erreichbar", &net.OpError{Op: "write", Net: "udp", Err: os.NewSyscallError("wsasend", syscall.Errno(10065))}, KindTimeout, "Keine Antwort"},
+		// Fehler am PDH-Server selbst sagen nichts über das Gerät: nie „offline“.
+		{"Server: kein Weg ins Netz", fmt.Errorf("error establishing connection to host: %w", &net.OpError{Op: "dial", Net: "udp", Err: syscall.ENETUNREACH}), KindOther, msgLocal},
+		{"Server: Adresse nicht verfügbar", &net.OpError{Op: "dial", Net: "udp", Err: syscall.EADDRNOTAVAIL}, KindOther, msgLocal},
+		{"Server: nicht erlaubt", &net.OpError{Op: "write", Net: "udp", Err: os.NewSyscallError("sendto", syscall.EPERM)}, KindOther, msgLocal},
+		{"Server: zu viele offene Dateien", &net.OpError{Op: "dial", Net: "udp", Err: os.NewSyscallError("socket", syscall.EMFILE)}, KindOther, msgLocal},
+		{"Server: kein Puffer", &net.OpError{Op: "write", Net: "udp", Err: syscall.ENOBUFS}, KindOther, msgLocal},
+		{"Server: Netzfehler ohne Nummer", &net.OpError{Op: "dial", Net: "udp", Err: errors.New("no route")}, KindOther, msgLocal},
 		{"unbekannter Benutzer", gosnmp.ErrUnknownUsername, KindAuth, auth},
 		{"falsches Anmelde-Kennwort", gosnmp.ErrWrongDigest, KindAuth, auth},
 		{"falsches Anmelde-Kennwort, Report verworfen", errors.New("incoming packet is not authentic, discarding"), KindAuth, auth},

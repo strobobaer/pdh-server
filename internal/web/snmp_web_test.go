@@ -675,6 +675,127 @@ func TestITNetSNMPTargetsWeb(t *testing.T) {
 	}
 }
 
+// K3: „Entfernen“ trennt das Asset vom Abgleich – deshalb zählt it.admin für genau dieses
+// Asset (Abteilung), wie bei „Quelle trennen“. it.admin nur in Abteilung A: Eintrag mit
+// Asset in B → 403 und kein Knopf; Eintrag mit Asset in A und Eintrag ohne Asset → erlaubt.
+func TestSNMPRemoveNeedsRecPerm(t *testing.T) {
+	e, _ := snmpWebEnv(t)
+	ctx := context.Background()
+	must := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	id := func(q string, args ...any) string {
+		t.Helper()
+		var s string
+		must(e.pool.QueryRow(ctx, q, args...).Scan(&s))
+		return s
+	}
+	sfx := strings.TrimPrefix(e.src, "snmptest")
+	deptA := id(`INSERT INTO departments (name) VALUES ($1) RETURNING id::text`, "SNMP A "+sfx)
+	deptB := id(`INSERT INTO departments (name) VALUES ($1) RETURNING id::text`, "SNMP B "+sfx)
+	infraA := id(`INSERT INTO infrastructure (name, type, department_id) VALUES ($1, 'line', $2::uuid) RETURNING id::text`, "SNMP-Anlage A "+sfx, deptA)
+	infraB := id(`INSERT INTO infrastructure (name, type, department_id) VALUES ($1, 'line', $2::uuid) RETURNING id::text`, "SNMP-Anlage B "+sfx, deptB)
+	user := id(`INSERT INTO users (username, email, password_hash, first_name, last_name, role, department, phone)
+		VALUES ($1::text, $1::text || '@x', 'x', 'Ines', 'Netz', 'viewer', '', '') RETURNING id::text`, "snmprm"+sfx)
+	t.Cleanup(func() {
+		c := context.Background()
+		_, _ = e.pool.Exec(c, `DELETE FROM it_assets WHERE net_source = $1`, e.src)
+		_, _ = e.pool.Exec(c, `DELETE FROM users WHERE id = $1::uuid`, user)
+		_, _ = e.pool.Exec(c, `DELETE FROM infrastructure WHERE id IN ($1::uuid, $2::uuid)`, infraA, infraB)
+		_, _ = e.pool.Exec(c, `DELETE FROM departments WHERE id IN ($1::uuid, $2::uuid)`, deptA, deptB)
+	})
+	ta, _ := e.dev("10.79.4.1", snmpSwitch("rp-a", "02:79:04:00:00:01"))
+	tb, _ := e.dev("10.79.4.2", snmpSwitch("rp-b", "02:79:04:00:00:02"))
+	tc, _ := e.dev("10.79.4.3", snmpSwitch("rp-c", "02:79:04:00:00:03"))
+	e.net.mu.Lock()
+	delete(e.net.devs, "10.79.4.3") // antwortet nie: Eintrag ohne Asset
+	e.net.mu.Unlock()
+	e.mustRun()
+	assetA, _ := e.asset(ta)
+	assetB, _ := e.asset(tb)
+	if assetC, _ := e.asset(tc); assetA == "" || assetB == "" || assetC != "" {
+		t.Fatalf("Ausgangslage: %q %q %q", assetA, assetB, assetC)
+	}
+	_, err := e.pool.Exec(ctx, `UPDATE it_assets SET infrastructure_id = CASE id WHEN $1::uuid THEN $3::uuid ELSE $4::uuid END
+		WHERE id IN ($1::uuid, $2::uuid)`, assetA, assetB, infraA, infraB)
+	must(err)
+	_, err = e.pool.Exec(ctx, `INSERT INTO user_permissions (user_id, permission_id, granted, department_id)
+		SELECT $1::uuid, p.id, true, $2::uuid FROM permissions p WHERE p.key IN ('it.admin', 'it.netsync', 'it.view')`, user, deptA)
+	must(err)
+	must(e.h.rbac.Warm(ctx))
+	e.h.hasPermHook = nil
+
+	// Karte: Knopf „Entfernen“ nur, wo das Entfernen auch erlaubt ist.
+	var card ITNetSNMPCard
+	itNetDo(func(_ http.ResponseWriter, r *http.Request) { card = e.h.itNetSNMPCard(r) }, "GET", "/it/net", "", user, nil)
+	can := map[string]bool{}
+	for _, row := range card.Rows {
+		can[row.ID] = row.CanRemove
+	}
+	if !card.CanRemove || !can[ta] || can[tb] || !can[tc] {
+		t.Errorf("Knopf „Entfernen“: Karte %v, A %v, B %v, ohne Asset %v", card.CanRemove, can[ta], can[tb], can[tc])
+	}
+	body := snmpCardHTML(t, e, card)
+	if strings.Contains(body, "/targets/"+tb+"/remove") || !strings.Contains(body, "/targets/"+ta+"/remove") || !strings.Contains(body, "/targets/"+tc+"/remove") {
+		t.Error("Karte zeigt „Entfernen“ nicht passend zum Recht je Asset")
+	}
+
+	const base = "/it/net/snmp/targets/"
+	if w := itNetDo(e.h.ITNetSNMPTargetRemoveWeb, "POST", base+tb+"/remove", tb, user, nil); w.Code != http.StatusForbidden {
+		t.Errorf("Entfernen mit Asset in Abteilung B: %d, erwartet 403", w.Code)
+	}
+	var detached bool
+	must(e.pool.QueryRow(ctx, `SELECT net_detached FROM it_assets WHERE id = $1::uuid`, assetB).Scan(&detached))
+	if list, _ := e.h.snmpTargets(ctx); len(list) != 3 || detached {
+		t.Errorf("nach abgelehntem Entfernen: %d Einträge, Asset getrennt %v", len(list), detached)
+	}
+	for _, tid := range []string{ta, tc} {
+		if w := itNetDo(e.h.ITNetSNMPTargetRemoveWeb, "POST", base+tid+"/remove", tid, user, nil); w.Code != http.StatusOK {
+			t.Errorf("Entfernen %s: %d %s", tid, w.Code, w.Body.String())
+		}
+	}
+	if list, _ := e.h.snmpTargets(ctx); len(list) != 1 || list[0].ID != tb {
+		t.Errorf("Liste danach: %+v", list)
+	}
+	must(e.pool.QueryRow(ctx, `SELECT net_detached FROM it_assets WHERE id = $1::uuid`, assetA).Scan(&detached))
+	if !detached {
+		t.Error("Asset in A sollte nach dem Entfernen getrennt sein")
+	}
+}
+
+// K2: Die Geräteliste verlinkt das getrennte Asset und sagt, was zu tun ist.
+func TestSNMPCardDetachedLink(t *testing.T) {
+	e, _ := snmpWebEnv(t)
+	ctx := context.Background()
+	tid, _ := e.dev("10.79.5.1", snmpSwitch("sw-getrennt", "02:79:05:00:00:01"))
+	e.mustRun()
+	asset, _ := e.asset(tid)
+	tx, err := e.pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := itNetDetachTx(ctx, tx, asset); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	e.now = e.now.Add(time.Minute)
+	e.mustRun()
+	var card ITNetSNMPCard
+	itNetDo(func(_ http.ResponseWriter, r *http.Request) { card = e.h.itNetSNMPCard(r) }, "GET", "/it/net", "", "", nil)
+	body := snmpCardHTML(t, e, card)
+	for _, want := range []string{`href="/it/` + asset + `"`, "sw-getrennt</a>", "(getrennt)", "Asset getrennt",
+		"Das IT-Asset ist vom Abgleich getrennt – am Asset", "Wieder verbinden"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("Karte enthält %q nicht", want)
+		}
+	}
+}
+
 // /it/{id} und /it: Quelle „SNMP“, Name des Anschlusses in der Tabelle, keine leere
 // PoE-Spalte, kein „Update“.
 func TestITDetailSNMPCard(t *testing.T) {
@@ -896,4 +1017,18 @@ func TestMigration168Grants(t *testing.T) {
 	if !rb.HasPermissionForUser(uBoth, "viewer", "system.snmp") || rb.HasPermissionForUser(uBoth, "viewer", permSNMPAdmin) {
 		t.Error("Einzelrechte greifen nicht wie erwartet")
 	}
+}
+
+// snmpCardHTML zeichnet die Karte „SNMP-Geräte“ mit den Vorlagen der Testumgebung.
+func snmpCardHTML(t *testing.T, e *snmpEnv, card ITNetSNMPCard) string {
+	t.Helper()
+	tm, err := e.h.tmpl.Clone()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	if err := tm.ExecuteTemplate(&buf, "itn-snmp", card); err != nil {
+		t.Fatal(err)
+	}
+	return buf.String()
 }

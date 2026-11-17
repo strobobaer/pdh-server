@@ -18,6 +18,12 @@ im Kapitel „Versionen & Updates“ an.
 - Server-Einstellungen: neuer Reiter **SNMP** für Zugangsprofile (Benutzer, Verfahren, zwei Kennwörter); ein Profil gilt für viele Geräte.
 - Seite Netz-Abgleich: neue Karte **SNMP-Geräte** mit Adresse, Port, Profil, Zustand und letztem Fehler; **Prüfen** zeigt sofort, was ein Gerät antwortet, oder den Grund in Klartext.
 - Schutz vor falschem Alarm: Lehnt ein Gerät den Zugang ab, gilt es als „unbekannt“ statt offline; antwortet keines von mindestens 3 Geräten, entsteht kein Ausfall-Ticket.
+- SNMP: Ein Gerät gilt erst als „offline“, wenn es dem gerade fragenden Server schon einmal geantwortet hat – nach einer Umschaltung im Verbund, einem Neustart oder einer längeren Pause entstehen so keine Tickets für Geräte, die den Server nur nicht freigeschaltet haben.
+- SNMP: Antwortet länger als die Karenz kein einziges Gerät, bekommen die Verantwortlichen des Netz-Abgleichs eine Nachricht statt vieler Tickets.
+- SNMP: Kann der PDH-Server selbst nicht senden (z. B. kein Weg ins Netz), gelten die Geräte als „unbekannt“ statt offline.
+- SNMP: Reicht die Zeit eines Laufs nicht für alle Geräte, behalten die nicht gefragten ihren Zustand, und der nächste Lauf beginnt bei ihnen.
+- SNMP-Geräteliste: Hinweis mit Link, wenn das IT-Asset eines Geräts vom Abgleich getrennt ist; doppelte Einträge desselben Geräts ergeben kein zweites Asset; konnte gar kein Gerät gefragt werden, steht das an der Quelle.
+- SNMP: Die MAC-Adresse eines Geräts ohne Bridge-Adresse stammt vom ersten echten Netzwerkanschluss (bevorzugt einem aktiven), nicht mehr von einer virtuellen Schnittstelle.
 - Hinweis: SNMP v3 ist im Labor geprüft und noch nicht an echten Switches und Druckern erprobt.
 - Handbuch: „So bindest du ein Gerät per SNMP v3 an“ und „So legst du ein SNMP-Zugangsprofil an“.
 
@@ -32,7 +38,8 @@ im Kapitel „Versionen & Updates“ an.
 - Neues Recht „SNMP: Zugangsprofile löschen (Bereichsadministrator)“ (`system.snmp_admin`): Nur damit lässt sich ein Zugangsprofil endgültig löschen; es bekommen nur Rollen, die schon Bereichsadministrator der Zertifikate sind und die Profile verwalten dürfen.
 - Das PDH fragt Geräte nur angemeldet und verschlüsselt (SNMP v3); SNMP v1/v2c, MD5 und DES gibt es nicht, und abgefragt werden nur Adressen im eigenen Netz.
 - Die Kennwörter der Zugangsprofile liegen nur verschlüsselt in der Datenbank und werden nie wieder angezeigt oder protokolliert.
-- Ein Gerät aus der SNMP-Geräteliste entfernen darf nur die IT-Administration (`it.admin`); das IT-Asset bleibt dabei bestehen.
+- Ein Gerät aus der SNMP-Geräteliste entfernen darf nur die IT-Administration (`it.admin`); hat das Gerät schon ein IT-Asset, zählt das Recht für dessen Abteilung. Das IT-Asset bleibt dabei bestehen.
+- Handbuch: Für SNMP-Zugangsprofile werden lange, zufällige Kennwörter (mindestens 16 Zeichen) empfohlen.
 
 ## [0.80.21] – 2026-11-17
 
