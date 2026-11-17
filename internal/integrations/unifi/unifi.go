@@ -321,6 +321,10 @@ func pinnedClient(pin string) *http.Client {
 	}
 }
 
+// PinnedHTTPClient: derselbe HTTP-Client für andere Geräte im Haus (z. B. Omada-Controller) –
+// nur Adressen im eigenen Netz, TLS allein über den bestätigten Fingerabdruck, keine Umleitungen.
+func PinnedHTTPClient(pin string) *http.Client { return pinnedClient(pin) }
+
 // ValidateBase prüft die Adresse der UDM Pro: nur https, Rechner ist eine private, Loopback-
 // oder Link-Local-IP-Adresse oder ein Hostname (dessen Auflösung prüft houseDial bei jeder Verbindung), kein Benutzer, kein Pfad außer "/", Port optional.
 func ValidateBase(raw string) (string, error) {

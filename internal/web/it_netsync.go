@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/rs/zerolog/log"
 
+	"pdh/internal/integrations/omada"
 	"pdh/internal/integrations/unifi"
 	"pdh/internal/modules/it/netsync"
 	"pdh/internal/modules/tickets"
@@ -32,7 +33,13 @@ const (
 	keyITNetLastErr   = "it.net.unifi.last_error"
 	keyITNetLastCount = "it.net.unifi.last_count"
 
+	keyITNetOmadaOn        = "it.net.omada.enabled"
+	keyITNetOmadaLastRun   = "it.net.omada.last_run"
+	keyITNetOmadaLastErr   = "it.net.omada.last_error"
+	keyITNetOmadaLastCount = "it.net.omada.last_count"
+
 	itNetSourceUnifi = "unifi"
+	itNetSourceOmada = "omada"
 	itNetPermAdmin   = "it.admin"
 )
 
@@ -42,6 +49,7 @@ const (
 	itNetMaxInterval     = 3600 * time.Second
 	itNetDefaultGrace    = 5 * time.Minute
 	itNetDetailEvery     = 15 * time.Minute
+	itNetSourceTimeout   = 75 * time.Second // Abruf, Abgleich und Wächterlauf einer Quelle
 )
 
 // ── Quelle ───────────────────────────────────────────────────
@@ -165,25 +173,213 @@ func (s *unifiSource) Fetch(ctx context.Context) (netsync.Snapshot, error) {
 	return snap, nil
 }
 
+// omadaAPIReader: was der Abgleich von einem Omada-Controller liest (omada.Client; in Tests im Speicher).
+type omadaAPIReader interface {
+	Devices(context.Context) ([]omada.Device, error)
+	Clients(context.Context) ([]omada.NetClient, error)
+}
+
+// omadaSource liefert Momentaufnahmen aus TP-Link Omada (netsync.Source). Der
+// Controller nennt Firmware und Uplink schon in der Geräteliste; einen
+// Detail-Abruf und Anschlüsse gibt es hier nicht. Kennung eines Geräts und
+// eines Clients ist die MAC-Adresse.
+type omadaSource struct{ api omadaAPIReader }
+
+func (s *omadaSource) Kind() string { return itNetSourceOmada }
+
+// omadaState übernimmt den Zustand 1:1; alles andere bleibt unbekannt (nie offline).
+func omadaState(s string) netsync.State {
+	switch s {
+	case omada.StateOnline:
+		return netsync.StateOnline
+	case omada.StateOffline:
+		return netsync.StateOffline
+	}
+	return netsync.StateUnknown
+}
+
+func (s *omadaSource) Fetch(ctx context.Context) (netsync.Snapshot, error) {
+	var snap netsync.Snapshot
+	devs, err := s.api.Devices(ctx)
+	if err != nil {
+		return snap, err
+	}
+	cls, err := s.api.Clients(ctx)
+	if err != nil {
+		return netsync.Snapshot{}, err
+	}
+	for _, d := range devs {
+		id := netsync.NormMAC(d.MAC)
+		if id == "" {
+			continue // ohne gültige MAC nicht zuzuordnen
+		}
+		// HasDetail: der Uplink gilt mit jedem Lauf als frisch gelesen. Die leere
+		// Portliste heißt „keine Anschlüsse“ – es entsteht keine Port-Anzeige.
+		snap.Devices = append(snap.Devices, netsync.Device{
+			ExternalID: id, MAC: d.MAC, Name: d.Name, Model: d.Model, Kind: d.Kind, IP: d.IP,
+			Firmware: d.Firmware, State: omadaState(d.State),
+			UplinkExternalID: netsync.NormMAC(d.UplinkMAC), HasDetail: true,
+		})
+	}
+	for _, c := range cls {
+		id := netsync.NormMAC(c.MAC)
+		if id == "" {
+			continue
+		}
+		kind := "wired"
+		if c.Wireless {
+			kind = "wireless"
+		}
+		snap.Clients = append(snap.Clients, netsync.Client{ExternalID: id, MAC: c.MAC, Name: c.Name, IP: c.IP,
+			Kind: kind, UplinkExternalID: netsync.NormMAC(c.UplinkMAC)})
+	}
+	return snap, nil
+}
+
 // ── Takt ─────────────────────────────────────────────────────
 
 // itNetState: Zustand des Netzabgleichs über Läufe hinweg.
 type itNetState struct {
 	mu      sync.Mutex
 	src     *unifiSource
-	failing bool // letzter Lauf war ein Fehler (Log nur beim Wechsel)
-	// source: Name der Quelle in den Assets; leer → "unifi" (Tests nehmen eine eigene).
+	failing bool // UniFi: letzter Lauf war ein Fehler (Log nur beim Wechsel)
+	// source: Name der Quelle UniFi in den Assets; leer → "unifi" (Tests nehmen eine eigene).
 	source string
 	// groupName: Name der Standardgruppe für Ausfälle; leer → "IT" (Tests nehmen eine eigene).
 	groupName string
 	// api: Lesezugriff auf UniFi; nil → h.unifiAPI (Tests tauschen aus).
 	api func(ctx context.Context) (unifiAPIReader, error)
+
+	omadaFailing bool // Omada: letzter Lauf war ein Fehler
+	// omadaSource: Name der Quelle Omada in den Assets; leer → "omada" (Tests nehmen eine eigene).
+	omadaSource string
+	// omadaAPI: Lesezugriff auf Omada; nil → h.omadaAPI (Tests tauschen aus).
+	omadaAPI func(ctx context.Context) (omadaAPIReader, error)
 }
 
-func (h *Handler) itNetEnabled(ctx context.Context) bool {
-	switch strings.ToLower(strings.TrimSpace(h.appSetting(ctx, keyITNetUnifiOn, ""))) {
+// errITNetOff: die Quelle ist eingeschaltet, aber noch nicht eingerichtet.
+var errITNetOff = errors.New("quelle nicht eingerichtet")
+
+// itNetSrc beschreibt eine Quelle des Netzabgleichs. Jede hat ihren eigenen
+// Einschalter, eigene Marken und einen eigenen Fehlerzustand; Intervall,
+// Karenz, Verantwortliche und Priorität gelten für alle.
+type itNetSrc struct {
+	Key          string // fester Schlüssel: "unifi" oder "omada" (Formulare, Einstellungen)
+	Name         string // net_source in den Assets (in Tests ein eigener Name)
+	Label        string // Anzeigename
+	Manufacturer string // Hersteller neu angelegter Netzgeräte
+
+	keyOn, keyLastRun, keyLastErr, keyLastCount string
+	failing                                     *bool
+	// open liefert die Quelle für einen Lauf; errITNetOff, wenn sie nicht eingerichtet ist.
+	open func(context.Context) (netsync.Source, error)
+}
+
+// notConnected: Hinweis in last_error, solange der Einschalter an, die Quelle aber nicht eingerichtet ist.
+func (s itNetSrc) notConnected() string { return s.Label + " ist noch nicht verbunden" }
+
+// itNetSources: alle Quellen in fester Reihenfolge (UniFi, Omada).
+func (h *Handler) itNetSources() []itNetSrc {
+	uName, oName := h.itNet.source, h.itNet.omadaSource
+	if uName == "" {
+		uName = itNetSourceUnifi
+	}
+	if oName == "" {
+		oName = itNetSourceOmada
+	}
+	return []itNetSrc{
+		{Key: itNetSourceUnifi, Name: uName, Label: "UniFi", Manufacturer: "Ubiquiti",
+			keyOn: keyITNetUnifiOn, keyLastRun: keyITNetLastRun, keyLastErr: keyITNetLastErr, keyLastCount: keyITNetLastCount,
+			failing: &h.itNet.failing, open: h.itNetOpenUnifi},
+		{Key: itNetSourceOmada, Name: oName, Label: "Omada", Manufacturer: "TP-Link",
+			keyOn: keyITNetOmadaOn, keyLastRun: keyITNetOmadaLastRun, keyLastErr: keyITNetOmadaLastErr, keyLastCount: keyITNetOmadaLastCount,
+			failing: &h.itNet.omadaFailing, open: h.itNetOpenOmada},
+	}
+}
+
+// itNetSrcByKey: Quelle zum festen Schlüssel; leer → UniFi (ältere Aufrufe ohne Feld „source“).
+func (h *Handler) itNetSrcByKey(key string) (itNetSrc, bool) {
+	if key == "" {
+		key = itNetSourceUnifi
+	}
+	for _, s := range h.itNetSources() {
+		if s.Key == key {
+			return s, true
+		}
+	}
+	return itNetSrc{}, false
+}
+
+// itNetSourceNamesInUse: net_source-Namen aller Quellen (für Abfragen über beide).
+func (h *Handler) itNetSourceNamesInUse() []string {
+	var out []string
+	for _, s := range h.itNetSources() {
+		out = append(out, s.Name)
+	}
+	return out
+}
+
+// itNetOpenUnifi: UniFi-Quelle (Details-Zeitpunkte bleiben über Läufe erhalten).
+func (h *Handler) itNetOpenUnifi(ctx context.Context) (netsync.Source, error) {
+	var api unifiAPIReader
+	var err error
+	if h.itNet.api != nil {
+		api, err = h.itNet.api(ctx)
+	} else {
+		api, err = h.unifiAPI(ctx)
+	}
+	if errors.Is(err, errUnifiOff) {
+		return nil, errITNetOff
+	}
+	if err != nil {
+		return nil, err
+	}
+	if h.itNet.src == nil {
+		h.itNet.src = newUnifiSource(api)
+	}
+	h.itNet.src.api = api
+	return h.itNet.src, nil
+}
+
+// itNetOpenOmada: Omada-Quelle.
+func (h *Handler) itNetOpenOmada(ctx context.Context) (netsync.Source, error) {
+	var api omadaAPIReader
+	var err error
+	if h.itNet.omadaAPI != nil {
+		api, err = h.itNet.omadaAPI(ctx)
+	} else {
+		var c *omada.Client
+		if c, err = h.omadaAPI(ctx); err == nil {
+			api = c
+		}
+	}
+	if errors.Is(err, errOmadaOff) {
+		return nil, errITNetOff
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &omadaSource{api: api}, nil
+}
+
+// itNetOn: Einschalter einer Quelle.
+func (h *Handler) itNetOn(ctx context.Context, key string) bool {
+	switch strings.ToLower(strings.TrimSpace(h.appSetting(ctx, key, ""))) {
 	case "1", "true", "on", "ja":
 		return true
+	}
+	return false
+}
+
+// itNetEnabled: Abgleich mit UniFi eingeschaltet.
+func (h *Handler) itNetEnabled(ctx context.Context) bool { return h.itNetOn(ctx, keyITNetUnifiOn) }
+
+// itNetAnyEnabled: mindestens eine Quelle ist eingeschaltet.
+func (h *Handler) itNetAnyEnabled(ctx context.Context) bool {
+	for _, s := range h.itNetSources() {
+		if h.itNetOn(ctx, s.keyOn) {
+			return true
+		}
 	}
 	return false
 }
@@ -245,94 +441,106 @@ func itNetErrText(err error) string {
 	return err.Error()
 }
 
-// itNetRunOnce: ein Abgleich mit UniFi und danach ein Wächterlauf. Aus, wenn
-// der Einschalter fehlt (kein Abruf, kein Fehler). Gibt nur Fehler beim Abruf
-// und beim Abgleich zurück; einzelne Assets, die der Wächter nicht schafft,
-// stehen im Log.
+// itNetRunOnce: ein Abgleich je eingeschalteter Quelle und danach je ein
+// Wächterlauf. Ohne Einschalter kein Abruf und kein Fehler. Die Quellen laufen
+// unabhängig: scheitert eine, werden nur ihre Assets „unbekannt“, die andere
+// gleicht normal ab. Gibt die Fehler beim Abruf und beim Abgleich zurück;
+// einzelne Assets, die der Wächter nicht schafft, stehen im Log.
 func (h *Handler) itNetRunOnce(ctx context.Context, now time.Time) error {
-	if h.db == nil || !h.itNetEnabled(ctx) {
+	if h.db == nil {
+		return nil
+	}
+	var on []itNetSrc
+	for _, s := range h.itNetSources() {
+		if h.itNetOn(ctx, s.keyOn) {
+			on = append(on, s)
+		}
+	}
+	if len(on) == 0 {
 		return nil
 	}
 	h.itNet.mu.Lock()
 	defer h.itNet.mu.Unlock()
 
-	store, source := h.itNetStore()
+	store := h.itNetStore()
+	var errs []error
+	for _, s := range on {
+		// eigenes Zeitlimit je Quelle: ein hängender Controller hält die andere Quelle nicht lange auf
+		sctx, cancel := context.WithTimeout(ctx, itNetSourceTimeout)
+		err := h.itNetRunSource(sctx, store, s, now)
+		cancel()
+		if err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
+}
+
+// itNetRunSource: Abgleich und Wächterlauf einer Quelle (h.itNet.mu ist gehalten).
+func (h *Handler) itNetRunSource(ctx context.Context, store *netsync.Store, s itNetSrc, now time.Time) error {
 	fail := func(err error) error {
 		text := itNetErrText(err)
-		h.itNetPutIfChanged(ctx, keyITNetLastErr, text)
-		if merr := store.MarkUnknown(ctx, source, now); merr != nil {
-			log.Error().Err(merr).Msg("it-netzabgleich: zustand nicht auf unbekannt gesetzt")
+		h.itNetPutIfChanged(ctx, s.keyLastErr, text)
+		if merr := store.MarkUnknown(ctx, s.Name, now); merr != nil {
+			log.Error().Err(merr).Str("quelle", s.Key).Msg("it-netzabgleich: zustand nicht auf unbekannt gesetzt")
 		}
-		if !h.itNet.failing {
-			h.itNet.failing = true
-			log.Warn().Str("fehler", text).Msg("it-netzabgleich: unifi nicht erreichbar oder nicht lesbar")
+		if !*s.failing {
+			*s.failing = true
+			log.Warn().Str("fehler", text).Str("quelle", s.Key).Msg("it-netzabgleich: quelle nicht erreichbar oder nicht lesbar")
 		}
 		return err
 	}
 
-	var api unifiAPIReader
-	var err error
-	if h.itNet.api != nil {
-		api, err = h.itNet.api(ctx)
-	} else {
-		api, err = h.unifiAPI(ctx)
-	}
-	if errors.Is(err, errUnifiOff) {
-		// Einschalter an, UniFi aber nicht eingerichtet: nichts tun, nur den Hinweis ablegen.
+	src, err := s.open(ctx)
+	if errors.Is(err, errITNetOff) {
+		// Einschalter an, Quelle aber nicht eingerichtet: nichts tun, nur den Hinweis ablegen.
 		// Zustandsmarken werden nur beim ersten Mal auf „unbekannt“ gesetzt, nicht jede Minute.
-		if h.appSetting(ctx, keyITNetLastErr, "") != itNetNotConnected {
-			if merr := store.MarkUnknown(ctx, source, now); merr != nil {
-				log.Error().Err(merr).Msg("it-netzabgleich: zustand nicht auf unbekannt gesetzt")
+		if h.appSetting(ctx, s.keyLastErr, "") != s.notConnected() {
+			if merr := store.MarkUnknown(ctx, s.Name, now); merr != nil {
+				log.Error().Err(merr).Str("quelle", s.Key).Msg("it-netzabgleich: zustand nicht auf unbekannt gesetzt")
 			}
 		}
-		h.itNetPutIfChanged(ctx, keyITNetLastErr, itNetNotConnected)
+		h.itNetPutIfChanged(ctx, s.keyLastErr, s.notConnected())
 		return nil
 	}
 	if err != nil {
 		return fail(err)
 	}
-	if h.itNet.src == nil {
-		h.itNet.src = newUnifiSource(api)
-	}
-	h.itNet.src.api = api
-	snap, err := h.itNet.src.Fetch(ctx)
+	snap, err := src.Fetch(ctx)
 	if err != nil {
 		return fail(err)
 	}
-	if _, err := store.Apply(ctx, source, snap, now); err != nil {
+	if _, err := store.Apply(ctx, s.Name, snap, now); err != nil {
 		// Datenbankfehler beim Abgleich: kein Quellenfehler, Zustände bleiben.
-		log.Error().Err(err).Msg("it-netzabgleich: abgleich mit den it-assets fehlgeschlagen")
-		h.itNetPut(ctx, keyITNetLastErr, "Abgleich fehlgeschlagen: "+err.Error())
+		log.Error().Err(err).Str("quelle", s.Key).Msg("it-netzabgleich: abgleich mit den it-assets fehlgeschlagen")
+		h.itNetPut(ctx, s.keyLastErr, "Abgleich fehlgeschlagen: "+err.Error())
 		return err
 	}
-	if h.itNet.failing {
-		h.itNet.failing = false
-		log.Info().Msg("it-netzabgleich: unifi wieder erreichbar")
+	if *s.failing {
+		*s.failing = false
+		log.Info().Str("quelle", s.Key).Msg("it-netzabgleich: quelle wieder erreichbar")
 	}
-	h.itNetPutIfChanged(ctx, keyITNetLastErr, "")
-	h.itNetPut(ctx, keyITNetLastRun, now.UTC().Format(time.RFC3339))
-	h.itNetPutIfChanged(ctx, keyITNetLastCount, fmt.Sprintf("%d/%d", len(snap.Devices), len(snap.Clients)))
+	h.itNetPutIfChanged(ctx, s.keyLastErr, "")
+	h.itNetPut(ctx, s.keyLastRun, now.UTC().Format(time.RFC3339))
+	h.itNetPutIfChanged(ctx, s.keyLastCount, fmt.Sprintf("%d/%d", len(snap.Devices), len(snap.Clients)))
 
 	if h.tickets != nil {
-		w := &netsync.Watch{DB: h.db, Sink: itNetAlarmSink{h: h}, Source: source,
+		w := &netsync.Watch{DB: h.db, Sink: itNetAlarmSink{h: h}, Source: s.Name,
 			Grace: func(c context.Context) time.Duration { return h.itNetGrace(c) }}
 		if err := w.Pass(ctx, now); err != nil {
-			log.Error().Err(err).Msg("it-netzabgleich: wächterlauf")
+			log.Error().Err(err).Str("quelle", s.Key).Msg("it-netzabgleich: wächterlauf")
 		}
 	}
 	return nil
 }
 
-// itNetNotConnected: Hinweis in last_error, solange der Einschalter an, UniFi aber nicht eingerichtet ist.
-const itNetNotConnected = "UniFi ist noch nicht verbunden"
-
-// itNetStore: Store und Quellenname des Netzabgleichs.
-func (h *Handler) itNetStore() (*netsync.Store, string) {
-	source := h.itNet.source
-	if source == "" {
-		source = itNetSourceUnifi
+// itNetStore: Store des Netzabgleichs mit den Herstellern je Quelle.
+func (h *Handler) itNetStore() *netsync.Store {
+	man := map[string]string{}
+	for _, s := range h.itNetSources() {
+		man[s.Name] = s.Manufacturer
 	}
-	return &netsync.Store{DB: h.db, SystemUserID: pdhSystemUserID, Manufacturer: map[string]string{source: "Ubiquiti"}}, source
+	return &netsync.Store{DB: h.db, SystemUserID: pdhSystemUserID, Manufacturer: man}
 }
 
 // itNetPutIfChanged speichert nur, wenn sich der Wert geändert hat (kein Schreiben jede Minute).

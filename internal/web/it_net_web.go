@@ -50,7 +50,7 @@ func itNetForbidden(w http.ResponseWriter) {
 	http.Error(w, "Keine Berechtigung", http.StatusForbidden)
 }
 
-// itNetSource: Name der Quelle in den Assets (Tests nehmen eine eigene).
+// itNetSource: Name der Quelle UniFi in den Assets (Tests nehmen eine eigene).
 func (h *Handler) itNetSource() string {
 	if h.itNet.source != "" {
 		return h.itNet.source
@@ -69,13 +69,24 @@ func itNetStateBadge(state string) (string, string) {
 	return "unbekannt", "b-gray"
 }
 
-// itNetOpenCandidates: Zahl der offenen (nicht ausgeblendeten) Vorschläge.
+// itNetCandWhere: Vorschläge der Quellen in $1 (net_source-Namen). Ein Vorschlag
+// entfällt, wenn seine MAC schon ein Asset einer anderen dieser Quellen ist –
+// sonst entstünde beim Übernehmen ein Doppel (z. B. ein Omada-Access-Point, den
+// UniFi als Client am Switch sieht).
+const itNetCandWhere = `c.source = ANY($1::text[]) AND NOT ` + itNetCandTaken
+
+// itNetCandTaken: die MAC des Vorschlags c gehört schon einem Asset einer anderen Quelle aus $1.
+const itNetCandTaken = `EXISTS (SELECT 1 FROM it_assets t
+	WHERE t.net_source = ANY($1::text[]) AND t.net_source <> c.source
+	  AND regexp_replace(lower(t.mac_address), '[^0-9a-f]', '', 'g') = replace(c.mac, ':', ''))`
+
+// itNetOpenCandidates: Zahl der offenen (nicht ausgeblendeten) Vorschläge aller Quellen.
 func (h *Handler) itNetOpenCandidates(ctx context.Context) int {
 	if h.db == nil {
 		return 0
 	}
 	var n int
-	if err := h.db.QueryRow(ctx, `SELECT count(*) FROM it_net_candidates WHERE source = $1 AND NOT ignored`, h.itNetSource()).Scan(&n); err != nil {
+	if err := h.db.QueryRow(ctx, `SELECT count(*) FROM it_net_candidates c WHERE `+itNetCandWhere+` AND NOT c.ignored`, h.itNetSourceNamesInUse()).Scan(&n); err != nil {
 		itNetLog().Warn().Err(err).Msg("vorschläge zählen")
 	}
 	return n
@@ -86,7 +97,7 @@ func itNetLog() *zerolog.Logger {
 }
 
 // itNetSourceNames: Anzeigenamen der Quellen.
-var itNetSourceNames = map[string]string{itNetSourceUnifi: "UniFi"}
+var itNetSourceNames = map[string]string{itNetSourceUnifi: "UniFi", itNetSourceOmada: "Omada"}
 
 // itNetSourceName: Anzeigename einer Quelle (unbekannt → Schlüssel selbst).
 func itNetSourceName(src string) string {
@@ -107,23 +118,76 @@ type itNetOption struct{ Value, Label string }
 // ITNetCandidate: eine Zeile der Vorschlagsliste.
 type ITNetCandidate struct {
 	MAC, Name, IP, Kind, Uplink, LastSeen string
+	Source, SourceLabel                   string // fester Schlüssel (Feld „source“) und Anzeigename
+}
+
+// ITNetSourceView: Status einer Quelle auf der Seite.
+type ITNetSourceView struct {
+	Key, Label string
+	Field      string // Name des Einschalters im Einstellungsformular
+	Connected  bool   // eingerichtet (Adresse, Zugangsdaten, bestätigter Fingerabdruck)
+	Enabled    bool
+	CanConnect bool   // Recht für den Reiter der Server-Einstellungen
+	ConfigURL  string // Reiter der Server-Einstellungen
+	Setup      string // was dort einzutragen ist
+	PermHint   string // wer die Verbindung einrichtet (ohne eigenes Recht)
+	Note       string // Hinweis zur Quelle
+	LastRun    string
+	LastError  string
+	Devices    string
+	Clients    string
+}
+
+// itNetOmadaNote: ehrlicher Hinweis, solange es keinen Test an einem echten Controller gab.
+const itNetOmadaNote = "Die Omada-Anbindung ist noch nicht an einem echten Controller erprobt."
+
+// itNetSourceViews: Status aller Quellen für die Seite.
+func (h *Handler) itNetSourceViews(r *http.Request) []ITNetSourceView {
+	ctx := r.Context()
+	var out []ITNetSourceView
+	for _, s := range h.itNetSources() {
+		v := ITNetSourceView{Key: s.Key, Label: s.Label, Enabled: h.itNetOn(ctx, s.keyOn)}
+		switch s.Key {
+		case itNetSourceUnifi:
+			v.Field = "enabled"
+			v.Connected = h.certSetting(ctx, keyUnifiURL) != "" && h.certSetting(ctx, keyUnifiKey) != "" && h.certSetting(ctx, keyUnifiPin) != ""
+			v.CanConnect = h.itNetCan(r, permUnifi, "")
+			v.ConfigURL = "/admin/server-config?tab=unifi"
+			v.Setup = "Adresse und API-Schlüssel"
+			v.PermHint = "Die Verbindung richtet eine Person mit dem Recht „Namen im Haus eintragen (UniFi)“ in den Server-Einstellungen ein."
+		case itNetSourceOmada:
+			v.Field = "omada_enabled"
+			v.Connected = h.omadaConnected(ctx)
+			v.CanConnect = h.itNetCan(r, permOmada, "")
+			v.ConfigURL = "/admin/server-config?tab=omada"
+			v.Setup = "Adresse, Omada-ID, Client-ID und Client-Secret"
+			v.PermHint = "Die Verbindung richtet eine Person mit dem Recht „Omada-Controller anbinden“ (system.omada) in den Server-Einstellungen ein."
+			v.Note = itNetOmadaNote
+		}
+		if t, err := time.Parse(time.RFC3339, h.appSetting(ctx, s.keyLastRun, "")); err == nil {
+			v.LastRun = alarmTime(t)
+		}
+		if v.Enabled { // Fehler nur, solange der Abgleich eingeschaltet ist
+			v.LastError = h.appSetting(ctx, s.keyLastErr, "")
+		}
+		if dev, cl, ok := strings.Cut(h.appSetting(ctx, s.keyLastCount, ""), "/"); ok {
+			v.Devices, v.Clients = dev, cl
+		}
+		out = append(out, v)
+	}
+	return out
 }
 
 type ITNetPageData struct {
 	BaseData
-	CanSetup  bool // it.netsync
-	CanUnifi  bool // system.unifi: Link zum Reiter „UniFi“
-	Connected bool // UniFi eingerichtet (Adresse, Schlüssel, bestätigter Fingerabdruck)
-	Enabled   bool
+	CanSetup  bool              // it.netsync
+	Sources   []ITNetSourceView // Status je Quelle (UniFi, Omada)
+	AnyOn     bool              // mindestens eine Quelle ist eingeschaltet
 	Interval  int
 	Grace     int
 	RespUser  string
 	RespGroup string
 	Priority  string
-	LastRun   string
-	LastError string
-	Devices   string
-	Clients   string
 	Users     []itNetOption
 	Groups    []itNetOption
 	Types     []itNetOption
@@ -154,7 +218,9 @@ var itNetErrors = map[string]string{
 	"both":     "Bitte entweder einen Benutzer oder eine Gruppe als verantwortlich wählen – nicht beides.",
 	"save":     "Die Einstellungen konnten nicht gespeichert werden.",
 	"maint":    "Wartungssperre aktiv – der Abgleich ist gerade nicht möglich.",
-	"run":      "Der Abgleich ist fehlgeschlagen – siehe Fehler oben.",
+	"run":      "Der Abgleich ist bei mindestens einer Quelle fehlgeschlagen – siehe Fehler bei der Quelle.",
+	"source":   "Unbekannte Quelle – bitte die Seite neu laden und noch einmal versuchen.",
+	"othersrc": "Zu dieser MAC-Adresse gibt es schon ein Asset aus der anderen Quelle – es wird kein zweites angelegt.",
 	"type":     "Bitte einen gültigen Typ wählen.",
 	"nocand":   "Diesen Vorschlag gibt es nicht mehr.",
 	"adopt":    "Der Vorschlag konnte nicht übernommen werden.",
@@ -172,9 +238,8 @@ func (h *Handler) ITNetPage(w http.ResponseWriter, r *http.Request) {
 	d := ITNetPageData{
 		BaseData: h.baseData(r, "it-net", "Netz-Abgleich", "IT-Infrastruktur"),
 		CanSetup: h.itNetCan(r, permITNetsync, ""),
-		CanUnifi: h.itNetCan(r, permUnifi, ""),
 		Prios:    itNetPriorities,
-		Tab: q.Get("tab"), Query: strings.TrimSpace(q.Get("q")),
+		Tab:      q.Get("tab"), Query: strings.TrimSpace(q.Get("q")),
 		Notice: itNetNotices[q.Get("n")], Err: itNetErrors[q.Get("e")],
 	}
 	if d.Tab != "hidden" {
@@ -187,44 +252,45 @@ func (h *Handler) ITNetPage(w http.ResponseWriter, r *http.Request) {
 			d.Types = append(d.Types, itNetOption{c.Key, c.Name})
 		}
 	}
-	d.Connected = h.certSetting(ctx, keyUnifiURL) != "" && h.certSetting(ctx, keyUnifiKey) != "" && h.certSetting(ctx, keyUnifiPin) != ""
-	d.Enabled = h.itNetEnabled(ctx)
+	d.Sources = h.itNetSourceViews(r)
+	for _, s := range d.Sources {
+		d.AnyOn = d.AnyOn || s.Enabled
+	}
 	d.Interval = int(h.itNetInterval(ctx) / time.Second)
 	d.Grace = int(h.itNetGrace(ctx) / time.Minute)
 	d.RespUser = h.appSetting(ctx, keyITNetRespUser, "")
 	d.RespGroup = h.appSetting(ctx, keyITNetRespGroup, "")
 	d.Priority = string(h.itNetPriority(ctx))
-	if t, err := time.Parse(time.RFC3339, h.appSetting(ctx, keyITNetLastRun, "")); err == nil {
-		d.LastRun = alarmTime(t)
-	}
-	if d.Enabled { // Fehler nur, solange der Abgleich eingeschaltet ist
-		d.LastError = h.appSetting(ctx, keyITNetLastErr, "")
-	}
-	if dev, cl, ok := strings.Cut(h.appSetting(ctx, keyITNetLastCount, ""), "/"); ok {
-		d.Devices, d.Clients = dev, cl
-	}
 	if d.CanSetup {
 		d.Users, d.Groups = h.itNetUserOptions(ctx), h.itNetGroupOptions(ctx)
 	}
-	src := h.itNetSource()
-	if err := h.db.QueryRow(ctx, `SELECT count(*) FILTER (WHERE NOT ignored), count(*) FILTER (WHERE ignored)
-		FROM it_net_candidates WHERE source = $1`, src).Scan(&d.Open, &d.Hidden); err != nil {
+	// Vorschläge über alle Quellen; die Zeile nennt ihre Quelle.
+	srcs := h.itNetSources()
+	names := h.itNetSourceNamesInUse()
+	if err := h.db.QueryRow(ctx, `SELECT count(*) FILTER (WHERE NOT c.ignored), count(*) FILTER (WHERE c.ignored)
+		FROM it_net_candidates c WHERE `+itNetCandWhere, names).Scan(&d.Open, &d.Hidden); err != nil {
 		itNetLog().Warn().Err(err).Msg("vorschläge zählen")
 	}
 	like := "%" + strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(d.Query) + "%"
-	rows, err := h.db.Query(ctx, `SELECT mac, name, ip, kind, uplink, last_seen FROM it_net_candidates
-		WHERE source = $1 AND ignored = $2
-		  AND ($3 = '%%' OR name ILIKE $3 OR ip ILIKE $3 OR mac ILIKE $3 OR uplink ILIKE $3)
-		ORDER BY last_seen DESC, name LIMIT 500`, src, d.Tab == "hidden", like)
+	rows, err := h.db.Query(ctx, `SELECT c.source, c.mac, c.name, c.ip, c.kind, c.uplink, c.last_seen FROM it_net_candidates c
+		WHERE `+itNetCandWhere+` AND c.ignored = $2
+		  AND ($3 = '%%' OR c.name ILIKE $3 OR c.ip ILIKE $3 OR c.mac ILIKE $3 OR c.uplink ILIKE $3)
+		ORDER BY c.last_seen DESC, c.name, c.source LIMIT 500`, names, d.Tab == "hidden", like)
 	if err != nil {
 		itNetLog().Warn().Err(err).Msg("vorschläge lesen")
 	} else {
 		for rows.Next() {
 			var c ITNetCandidate
 			var seen time.Time
-			if err := rows.Scan(&c.MAC, &c.Name, &c.IP, &c.Kind, &c.Uplink, &seen); err != nil {
+			var name string
+			if err := rows.Scan(&name, &c.MAC, &c.Name, &c.IP, &c.Kind, &c.Uplink, &seen); err != nil {
 				itNetLog().Warn().Err(err).Msg("vorschlag lesen")
 				continue
+			}
+			for _, s := range srcs {
+				if s.Name == name {
+					c.Source, c.SourceLabel = s.Key, s.Label
+				}
 			}
 			c.LastSeen = alarmTime(seen)
 			d.Rows = append(d.Rows, c)
@@ -291,7 +357,8 @@ func itNetBack(w http.ResponseWriter, r *http.Request, notice, errKey string) {
 // ── Einstellungen ────────────────────────────────────────────
 
 type itNetSettings struct {
-	Enabled           bool
+	Enabled           bool // UniFi
+	OmadaEnabled      bool
 	Interval, Grace   int
 	Priority          string
 	RespUser, RespGrp string
@@ -300,10 +367,11 @@ type itNetSettings struct {
 // itNetSettingsFromForm prüft das Formular; Rückgabe "" oder Schlüssel aus itNetErrors.
 func itNetSettingsFromForm(f url.Values) (itNetSettings, string) {
 	s := itNetSettings{
-		Enabled:  f.Get("enabled") != "",
-		Priority: strings.TrimSpace(f.Get("priority")),
-		RespUser: strings.TrimSpace(f.Get("responsible_user")),
-		RespGrp:  strings.TrimSpace(f.Get("responsible_group")),
+		Enabled:      f.Get("enabled") != "",
+		OmadaEnabled: f.Get("omada_enabled") != "",
+		Priority:     strings.TrimSpace(f.Get("priority")),
+		RespUser:     strings.TrimSpace(f.Get("responsible_user")),
+		RespGrp:      strings.TrimSpace(f.Get("responsible_group")),
 	}
 	var err error
 	if s.Interval, err = strconv.Atoi(strings.TrimSpace(f.Get("interval_s"))); err != nil || s.Interval < 30 || s.Interval > 3600 {
@@ -342,33 +410,43 @@ func (h *Handler) ITNetSettingsWeb(w http.ResponseWriter, r *http.Request) {
 		itNetBack(w, r, "", bad)
 		return
 	}
-	on := "0"
-	if s.Enabled {
-		on = "1"
-	}
 	ctx := r.Context()
-	wasOn := h.itNetEnabled(ctx)
-	for _, kv := range [][2]string{
-		{keyITNetUnifiOn, on}, {keyITNetInterval, strconv.Itoa(s.Interval)}, {keyITNetGrace, strconv.Itoa(s.Grace)},
+	want := map[string]bool{itNetSourceUnifi: s.Enabled, itNetSourceOmada: s.OmadaEnabled}
+	srcs := h.itNetSources()
+	wasOn := map[string]bool{}
+	var kvs [][2]string
+	for _, src := range srcs {
+		wasOn[src.Key] = h.itNetOn(ctx, src.keyOn)
+		on := "0"
+		if want[src.Key] {
+			on = "1"
+		}
+		kvs = append(kvs, [2]string{src.keyOn, on})
+	}
+	kvs = append(kvs, [][2]string{
+		{keyITNetInterval, strconv.Itoa(s.Interval)}, {keyITNetGrace, strconv.Itoa(s.Grace)},
 		{keyITNetPriority, s.Priority}, {keyITNetRespUser, s.RespUser}, {keyITNetRespGroup, s.RespGrp},
-	} {
+	}...)
+	for _, kv := range kvs {
 		if err := h.setAppSetting(ctx, kv[0], kv[1]); err != nil {
 			itNetLog().Error().Err(err).Str("einstellung", kv[0]).Msg("einstellung speichern")
 			itNetBack(w, r, "", "save")
 			return
 		}
 	}
-	if wasOn && !s.Enabled {
-		// Abgleich ausgeschaltet: alte Zustandsmarken wären sonst veraltet.
-		store, source := h.itNetStore()
-		if err := store.MarkUnknown(ctx, source, time.Now()); err != nil {
-			itNetLog().Warn().Err(err).Msg("zustand nicht auf unbekannt gesetzt")
+	for _, src := range srcs {
+		if wasOn[src.Key] && !want[src.Key] {
+			// Quelle ausgeschaltet: ihre alten Zustandsmarken wären sonst veraltet.
+			if err := h.itNetStore().MarkUnknown(ctx, src.Name, time.Now()); err != nil {
+				itNetLog().Warn().Err(err).Str("quelle", src.Key).Msg("zustand nicht auf unbekannt gesetzt")
+			}
 		}
 	}
 	itNetBack(w, r, "saved", "")
 }
 
-// ITNetRunWeb: POST /it/net/run (it.netsync) – ein Abgleich sofort; ruht in der Wartungssperre.
+// ITNetRunWeb: POST /it/net/run (it.netsync) – ein Abgleich sofort über alle
+// eingeschalteten Quellen; ruht in der Wartungssperre.
 func (h *Handler) ITNetRunWeb(w http.ResponseWriter, r *http.Request) {
 	if !h.itNetCan(r, permITNetsync, "") {
 		itNetForbidden(w)
@@ -379,7 +457,7 @@ func (h *Handler) ITNetRunWeb(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := r.Context()
-	if !h.itNetEnabled(ctx) {
+	if !h.itNetAnyEnabled(ctx) {
 		itNetBack(w, r, "off", "")
 		return
 	}
@@ -395,10 +473,20 @@ func (h *Handler) ITNetRunWeb(w http.ResponseWriter, r *http.Request) {
 
 // ── Vorschläge ───────────────────────────────────────────────
 
-// ITNetAdoptWeb: POST /it/net/candidates/adopt (mac, type).
+// itNetFormSource: Quelle aus dem Feld „source“ (fehlt es: UniFi). Nur bekannte Quellen.
+func (h *Handler) itNetFormSource(r *http.Request) (itNetSrc, bool) {
+	return h.itNetSrcByKey(strings.TrimSpace(r.FormValue("source")))
+}
+
+// ITNetAdoptWeb: POST /it/net/candidates/adopt (source, mac, type).
 func (h *Handler) ITNetAdoptWeb(w http.ResponseWriter, r *http.Request) {
 	if !h.itNetCan(r, permITNetsync, "") {
 		itNetForbidden(w)
+		return
+	}
+	src, ok := h.itNetFormSource(r)
+	if !ok {
+		itNetBack(w, r, "", "source")
 		return
 	}
 	typ := r.FormValue("type") // ungültige oder ausgeblendete Kategorie lehnt Adopt mit ErrBadType ab
@@ -407,7 +495,20 @@ func (h *Handler) ITNetAdoptWeb(w http.ResponseWriter, r *http.Request) {
 		uid = pdhSystemUserID
 	}
 	store := &netsync.Store{DB: h.db, SystemUserID: pdhSystemUserID}
-	_, err := store.Adopt(r.Context(), h.itNetSource(), r.FormValue("mac"), typ, uid, time.Now())
+	// Gehört die MAC schon einem Asset der anderen Quelle, entstünde ein Doppel.
+	var taken bool
+	if err := h.db.QueryRow(r.Context(), `SELECT EXISTS (SELECT 1 FROM it_net_candidates c
+		WHERE c.source = $2 AND c.mac = $3 AND `+itNetCandTaken+`)`,
+		h.itNetSourceNamesInUse(), src.Name, netsync.NormMAC(r.FormValue("mac"))).Scan(&taken); err != nil {
+		itNetLog().Error().Err(err).Msg("vorschlag prüfen")
+		itNetBack(w, r, "", "adopt")
+		return
+	}
+	if taken {
+		itNetBack(w, r, "", "othersrc")
+		return
+	}
+	_, err := store.Adopt(r.Context(), src.Name, r.FormValue("mac"), typ, uid, time.Now())
 	switch {
 	case errors.Is(err, netsync.ErrNoCandidate):
 		itNetBack(w, r, "", "nocand")
@@ -423,15 +524,20 @@ func (h *Handler) ITNetAdoptWeb(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// ITNetIgnoreWeb: POST /it/net/candidates/ignore (mac, ignored=1|0).
+// ITNetIgnoreWeb: POST /it/net/candidates/ignore (source, mac, ignored=1|0).
 func (h *Handler) ITNetIgnoreWeb(w http.ResponseWriter, r *http.Request) {
 	if !h.itNetCan(r, permITNetsync, "") {
 		itNetForbidden(w)
 		return
 	}
+	src, ok := h.itNetFormSource(r)
+	if !ok {
+		itNetBack(w, r, "", "source")
+		return
+	}
 	ignored := r.FormValue("ignored") == "1"
 	store := &netsync.Store{DB: h.db, SystemUserID: pdhSystemUserID}
-	if err := store.Ignore(r.Context(), h.itNetSource(), r.FormValue("mac"), ignored); err != nil {
+	if err := store.Ignore(r.Context(), src.Name, r.FormValue("mac"), ignored); err != nil {
 		if !errors.Is(err, netsync.ErrNoCandidate) {
 			itNetLog().Error().Err(err).Msg("vorschlag ausblenden")
 			itNetBack(w, r, "", "save")

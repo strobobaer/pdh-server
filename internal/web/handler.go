@@ -292,6 +292,7 @@ type Handler struct {
 	userByIDFn         func(context.Context, string) (*users.User, error) // nil → users.GetByID (Tests)
 	db                 *pgxpool.Pool
 	itNet              itNetState // IT-Netzabgleich: Quelle und Meldezustand über Läufe hinweg
+	omadaC             omadaConn  // Omada-Controller: Client samt Zugriffstoken über Läufe hinweg
 	tmpl               *template.Template
 	users              *users.Service
 	shifts             *shifts.Service
@@ -680,6 +681,9 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/admin/server-config/certs/strict", h.CertStrictWeb)
 	r.Post("/admin/server-config/unifi", h.CertUnifiWeb) // Reiter „UniFi“ (certs_lan.go)
 	r.Post("/admin/server-config/unifi/confirm", h.CertUnifiConfirmWeb)
+	r.Post("/admin/server-config/omada", h.OmadaWeb) // Reiter „Omada“ (omada_web.go)
+	r.Post("/admin/server-config/omada/confirm", h.OmadaConfirmWeb)
+	r.Post("/admin/server-config/omada/check", h.OmadaCheckWeb)
 	r.Post("/admin/server-config/certs/lan", h.CertLANWeb)
 	r.Post("/admin/server-config/certs/lan6", h.CertLAN6Web) // IPv6 getrennt überschreiben (certs_lan6.go)
 	// Reiter „Ausfallschutz“: Sicherung aufs Netzlaufwerk über den Update-Agenten (dr.go)

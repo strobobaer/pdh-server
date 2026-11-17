@@ -283,6 +283,21 @@ func (s *Store) upsertDevice(ctx context.Context, tx pgx.Tx, source string, d De
 		return false, tag.RowsAffected() == 0, id, nil
 	}
 
+	// Dieselbe MAC gehört schon einem Asset einer anderen Quelle (z. B. Access Point der
+	// einen Anlage am Switch der anderen, dort als Client übernommen): kein zweites Asset –
+	// sonst gäbe es bei einem Ausfall zwei Tickets für dasselbe Gerät.
+	if mac != "" {
+		var other string
+		oerr := tx.QueryRow(ctx, `SELECT id::text FROM it_assets WHERE net_source IS NOT NULL AND net_source <> $1 AND `+sqlAssetMAC+` = replace($2, ':', '')
+			LIMIT 1`, source, mac).Scan(&other)
+		if oerr == nil {
+			return false, true, other, nil
+		}
+		if !errors.Is(oerr, pgx.ErrNoRows) {
+			return false, false, "", oerr
+		}
+	}
+
 	name := d.Name
 	if name == "" {
 		name = mac
