@@ -67,7 +67,7 @@ func itNetPageEnv(t *testing.T) (*Handler, *pgxpool.Pool, string) {
 	t.Cleanup(func() { _ = os.Chdir(cwd) })
 	sfx := strings.ReplaceAll(time.Now().Format("150405.000000"), ".", "")
 	src := "unifiweb" + sfx
-	h.itNet.source = src
+	h.itNet.of(itNetSourceUnifi).name = src
 	for _, k := range []string{keyITNetUnifiOn, keyITNetInterval, keyITNetGrace, keyITNetRespUser, keyITNetRespGroup, keyITNetPriority, keyITNetLastErr} {
 		k, old := k, h.appSetting(ctx, k, "")
 		t.Cleanup(func() { _ = h.setAppSetting(context.Background(), k, old) })

@@ -162,7 +162,7 @@ func TestITNetRunOnceDisabled(t *testing.T) {
 	}
 	f := &fakeUnifiAPI{devErr: errors.New("darf nicht aufgerufen werden")}
 	opened := 0
-	h.itNet.api = func(context.Context) (unifiAPIReader, error) { opened++; return f, nil }
+	h.itNet.of(itNetSourceUnifi).open = h.itNetUnifiOpener(func(context.Context) (unifiAPIReader, error) { opened++; return f, nil })
 	if err := h.itNetRunOnce(ctx, time.Now()); err != nil {
 		t.Fatalf("aus: kein Fehler erwartet: %v", err)
 	}
@@ -256,9 +256,9 @@ func newITNetRunEnv(t *testing.T) (*Handler, *pgxpool.Pool, string, *fakeUnifiAP
 		t.Fatal(err)
 	}
 	src := "unifitest" + sfx
-	h.itNet.source = src
+	h.itNet.of(itNetSourceUnifi).name = src
 	f := &fakeUnifiAPI{}
-	h.itNet.api = func(context.Context) (unifiAPIReader, error) { return f, nil }
+	h.itNet.of(itNetSourceUnifi).open = h.itNetUnifiOpener(func(context.Context) (unifiAPIReader, error) { return f, nil })
 	t.Cleanup(func() {
 		c := context.Background()
 		_, _ = pool.Exec(c, `DELETE FROM it_assets WHERE net_source = $1`, src)
@@ -275,7 +275,7 @@ func TestITNetRunOnceNotConfigured(t *testing.T) {
 		VALUES ('NC ', 'network', 'active', '00000000-0000-4000-8000-00000000d0d1', $1, 'x1', 'device', true, 'online', now() - interval '1 hour') RETURNING id::text`, src).Scan(&id); err != nil {
 		t.Fatal(err)
 	}
-	h.itNet.api = func(context.Context) (unifiAPIReader, error) { return nil, errUnifiOff }
+	h.itNet.of(itNetSourceUnifi).open = h.itNetUnifiOpener(func(context.Context) (unifiAPIReader, error) { return nil, errUnifiOff })
 	if err := h.itNetRunOnce(ctx, time.Now()); err != nil {
 		t.Fatalf("nicht eingerichtet: kein Fehler erwartet: %v", err)
 	}
@@ -284,8 +284,8 @@ func TestITNetRunOnceNotConfigured(t *testing.T) {
 	}
 	var st string
 	_ = pool.QueryRow(ctx, `SELECT net_state FROM it_assets WHERE id = $1::uuid`, id).Scan(&st)
-	if st != "unknown" || h.itNet.failing {
-		t.Errorf("beim ersten Mal auf unbekannt, kein Fehlerzustand: %q failing=%v", st, h.itNet.failing)
+	if st != "unknown" || h.itNet.of(itNetSourceUnifi).failing {
+		t.Errorf("beim ersten Mal auf unbekannt, kein Fehlerzustand: %q failing=%v", st, h.itNet.of(itNetSourceUnifi).failing)
 	}
 	// zweiter Lauf: Hinweis steht schon, nicht jede Minute neu auf unbekannt setzen
 	_, _ = pool.Exec(ctx, `UPDATE it_assets SET net_state = 'online' WHERE id = $1::uuid`, id)

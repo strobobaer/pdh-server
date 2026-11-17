@@ -1,6 +1,6 @@
 # IT-Assets aus dem Netz – Paket 3: SNMP v3 als dritte Quelle (0.80.22)
 
-Stand: 17.11.2026 · Entwurf von Claude, **noch nicht vom Anwender bestätigt**.
+Stand: 17.11.2026 · Entwurf von Claude, **vom Anwender am 17.11.2026 bestätigt**.
 Baut auf Paket 1 UniFi (0.80.17, `2026-11-16-it-netzabgleich-design.md`) und
 Paket 2 Omada (0.80.21) auf.
 

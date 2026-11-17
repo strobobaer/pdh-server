@@ -36,6 +36,9 @@ type Device struct {
 	Ports                                            []Port
 	// HasDetail: Ports und Firmware stammen aus einem frischen Detail-Abruf.
 	HasDetail bool
+	// Serial: Seriennummer (nur SNMP). Sie wird nur eingetragen, solange das Feld am
+	// Asset leer ist – eine von Hand gepflegte Nummer bleibt.
+	Serial string
 }
 
 // Client ist ein verbundenes Endgerät. Kind ist "wired" oder "wireless".

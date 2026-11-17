@@ -126,7 +126,7 @@ func TestITNetSourceNameOmada(t *testing.T) {
 	if s, ok := h.itNetSrcByKey("omada"); !ok || s.Name != "omada" || s.Manufacturer != "TP-Link" || s.notConnected() != "Omada ist noch nicht verbunden" {
 		t.Errorf("omada: %+v %v", s, ok)
 	}
-	for _, bad := range []string{"OMADA", "snmp", "unifi ", "'; --"} {
+	for _, bad := range []string{"OMADA", "SNMP", "snmp2", "unifi ", "'; --"} {
 		if _, ok := h.itNetSrcByKey(bad); ok {
 			t.Errorf("unbekannte Quelle %q angenommen", bad)
 		}
@@ -157,9 +157,9 @@ func newITNetTwoEnv(t *testing.T) (h *Handler, pool *pgxpool.Pool, usrc, osrc st
 		}
 	}
 	osrc = "omadatest" + strings.TrimPrefix(usrc, "unifitest")
-	h.itNet.omadaSource = osrc
+	h.itNet.of(itNetSourceOmada).name = osrc
 	fo = &fakeOmadaAPI{}
-	h.itNet.omadaAPI = func(context.Context) (omadaAPIReader, error) { return fo, nil }
+	h.itNet.of(itNetSourceOmada).open = itNetOmadaOpener(func(context.Context) (omadaAPIReader, error) { return fo, nil })
 	t.Cleanup(func() {
 		c := context.Background()
 		_, _ = pool.Exec(c, `DELETE FROM it_assets WHERE net_source = $1`, osrc)
@@ -305,8 +305,8 @@ func TestITNetSourcesFailIndependently(t *testing.T) {
 	if got := h.appSetting(ctx, keyITNetLastErr, "x"); got != "" {
 		t.Errorf("UniFi darf keinen Fehler tragen: %q", got)
 	}
-	if h.itNet.failing || !h.itNet.omadaFailing {
-		t.Errorf("Fehlerzustand je Quelle: unifi=%v omada=%v", h.itNet.failing, h.itNet.omadaFailing)
+	if h.itNet.of(itNetSourceUnifi).failing || !h.itNet.of(itNetSourceOmada).failing {
+		t.Errorf("Fehlerzustand je Quelle: unifi=%v omada=%v", h.itNet.of(itNetSourceUnifi).failing, h.itNet.of(itNetSourceOmada).failing)
 	}
 
 	// Anmeldung abgelehnt: gleicher Weg, verständlicher Text
@@ -330,8 +330,8 @@ func TestITNetSourcesFailIndependently(t *testing.T) {
 	if h.appSetting(ctx, keyITNetLastErr, "") != "verbindung abgelehnt" || h.appSetting(ctx, keyITNetOmadaLastErr, "x") != "" {
 		t.Errorf("Fehlermarken: unifi %q omada %q", h.appSetting(ctx, keyITNetLastErr, ""), h.appSetting(ctx, keyITNetOmadaLastErr, ""))
 	}
-	if !h.itNet.failing || h.itNet.omadaFailing {
-		t.Errorf("Fehlerzustand je Quelle: unifi=%v omada=%v", h.itNet.failing, h.itNet.omadaFailing)
+	if !h.itNet.of(itNetSourceUnifi).failing || h.itNet.of(itNetSourceOmada).failing {
+		t.Errorf("Fehlerzustand je Quelle: unifi=%v omada=%v", h.itNet.of(itNetSourceUnifi).failing, h.itNet.of(itNetSourceOmada).failing)
 	}
 }
 
@@ -341,15 +341,15 @@ func TestITNetOmadaNotConfigured(t *testing.T) {
 	ctx := context.Background()
 	oid := itNetSeedAsset(t, pool, osrc, "aa:bb:cc:23:00:02", "online")
 	fu.devices = []unifi.Device{{ID: "u1", Name: "UniFi-Switch", MAC: "AA:BB:CC:23:00:01", State: "ONLINE", Features: []string{"switching"}}}
-	h.itNet.omadaAPI = func(context.Context) (omadaAPIReader, error) { return nil, errOmadaOff }
+	h.itNet.of(itNetSourceOmada).open = itNetOmadaOpener(func(context.Context) (omadaAPIReader, error) { return nil, errOmadaOff })
 	if err := h.itNetRunOnce(ctx, time.Now()); err != nil {
 		t.Fatalf("nicht eingerichtet: kein Fehler erwartet: %v", err)
 	}
 	if got := h.appSetting(ctx, keyITNetOmadaLastErr, ""); got != "Omada ist noch nicht verbunden" {
 		t.Errorf("it.net.omada.last_error: %q", got)
 	}
-	if h.itNet.omadaFailing || fo.calls != 0 {
-		t.Errorf("kein Fehlerzustand, kein Abruf: failing=%v calls=%d", h.itNet.omadaFailing, fo.calls)
+	if h.itNet.of(itNetSourceOmada).failing || fo.calls != 0 {
+		t.Errorf("kein Fehlerzustand, kein Abruf: failing=%v calls=%d", h.itNet.of(itNetSourceOmada).failing, fo.calls)
 	}
 	if st := itNetAssetState(t, pool, oid); st != "unknown" {
 		t.Errorf("Omada-Asset: %q", st)
@@ -365,7 +365,7 @@ func TestITNetOmadaNotConfigured(t *testing.T) {
 		t.Errorf("zweiter Lauf darf den Zustand nicht erneut ändern: %q", st)
 	}
 	// Fingerabdruck noch nicht bestätigt: das ist ein Fehler mit Text, UniFi bleibt
-	h.itNet.omadaAPI = func(context.Context) (omadaAPIReader, error) { return nil, omada.ErrNoPin }
+	h.itNet.of(itNetSourceOmada).open = itNetOmadaOpener(func(context.Context) (omadaAPIReader, error) { return nil, omada.ErrNoPin })
 	if err := h.itNetRunOnce(ctx, time.Now().Add(2*time.Minute)); !errors.Is(err, omada.ErrNoPin) {
 		t.Errorf("ohne Fingerabdruck: %v", err)
 	}
@@ -379,7 +379,7 @@ func TestITNetOnlyEnabledSourcesRun(t *testing.T) {
 	h, _, _, _, fu, fo := newITNetTwoEnv(t)
 	ctx := context.Background()
 	opened := 0
-	h.itNet.omadaAPI = func(context.Context) (omadaAPIReader, error) { opened++; return fo, nil }
+	h.itNet.of(itNetSourceOmada).open = itNetOmadaOpener(func(context.Context) (omadaAPIReader, error) { opened++; return fo, nil })
 	_ = h.setAppSetting(ctx, keyITNetOmadaOn, "0")
 	fu.devices = []unifi.Device{{ID: "u1", Name: "SW", MAC: "AA:BB:CC:24:00:01", State: "ONLINE"}}
 	if err := h.itNetRunOnce(ctx, time.Now()); err != nil {
@@ -391,7 +391,7 @@ func TestITNetOnlyEnabledSourcesRun(t *testing.T) {
 	_ = h.setAppSetting(ctx, keyITNetOmadaOn, "1")
 	_ = h.setAppSetting(ctx, keyITNetUnifiOn, "0")
 	uni := 0
-	h.itNet.api = func(context.Context) (unifiAPIReader, error) { uni++; return fu, nil }
+	h.itNet.of(itNetSourceUnifi).open = h.itNetUnifiOpener(func(context.Context) (unifiAPIReader, error) { uni++; return fu, nil })
 	if err := h.itNetRunOnce(ctx, time.Now()); err != nil {
 		t.Fatal(err)
 	}
@@ -464,7 +464,7 @@ func itNetOmadaPageEnv(t *testing.T) (*Handler, *pgxpool.Pool, string, string) {
 	h, pool, usrc := itNetPageEnv(t)
 	itNetKeepSettings(t, h, itNetOmadaKeys...)
 	osrc := "omadaweb" + strings.TrimPrefix(usrc, "unifiweb")
-	h.itNet.omadaSource = osrc
+	h.itNet.of(itNetSourceOmada).name = osrc
 	t.Cleanup(func() {
 		c := context.Background()
 		_, _ = pool.Exec(c, `DELETE FROM it_assets WHERE net_source = $1`, osrc)
@@ -553,11 +553,11 @@ func TestITNetRunWebOmadaOnly(t *testing.T) {
 	_ = h.setAppSetting(ctx, keyITNetUnifiOn, "0")
 	_ = h.setAppSetting(ctx, keyITNetOmadaOn, "1")
 	fo := &fakeOmadaAPI{devices: []omada.Device{{MAC: "AA-BB-CC-27-00-01", Name: "Switch", Kind: "switch", State: omada.StateOnline}}}
-	h.itNet.omadaAPI = func(context.Context) (omadaAPIReader, error) { return fo, nil }
-	h.itNet.api = func(context.Context) (unifiAPIReader, error) {
+	h.itNet.of(itNetSourceOmada).open = itNetOmadaOpener(func(context.Context) (omadaAPIReader, error) { return fo, nil })
+	h.itNet.of(itNetSourceUnifi).open = h.itNetUnifiOpener(func(context.Context) (unifiAPIReader, error) {
 		t.Error("UniFi ist aus und darf nicht abgerufen werden")
 		return nil, errUnifiOff
-	}
+	})
 	w := itNetDo(h.ITNetRunWeb, "POST", "/it/net/run", "", "", url.Values{})
 	if w.Code != http.StatusSeeOther || !strings.Contains(w.Header().Get("Location"), "n=run") {
 		t.Fatalf("Lauf: %d %s", w.Code, w.Header().Get("Location"))
