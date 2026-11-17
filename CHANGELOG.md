@@ -10,6 +10,30 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.80.22] – 2026-11-17
+
+### Neu
+
+- IT-Assets → Netz-Abgleich: **SNMP v3** ist die dritte Quelle neben UniFi und Omada – Geräte ohne Controller (Switches anderer Hersteller, Drucker, USV, NAS) werden einzeln gefragt und IT-Assets mit Modell, Firmware, MAC, Zustand und Anschlüssen.
+- Server-Einstellungen: neuer Reiter **SNMP** für Zugangsprofile (Benutzer, Verfahren, zwei Kennwörter); ein Profil gilt für viele Geräte.
+- Seite Netz-Abgleich: neue Karte **SNMP-Geräte** mit Adresse, Port, Profil, Zustand und letztem Fehler; **Prüfen** zeigt sofort, was ein Gerät antwortet, oder den Grund in Klartext.
+- Schutz vor falschem Alarm: Lehnt ein Gerät den Zugang ab, gilt es als „unbekannt“ statt offline; antwortet keines von mindestens 3 Geräten, entsteht kein Ausfall-Ticket.
+- Hinweis: SNMP v3 ist im Labor geprüft und noch nicht an echten Switches und Druckern erprobt.
+- Handbuch: „So bindest du ein Gerät per SNMP v3 an“ und „So legst du ein SNMP-Zugangsprofil an“.
+
+### Geändert
+
+- Die Seite Netz-Abgleich zeigt den Stand für drei Quellen; Vorschläge kommen weiter nur aus UniFi und Omada, SNMP liefert keine.
+- Am IT-Asset erscheint die Spalte PoE der Anschluss-Tabelle nur noch, wenn das Gerät PoE meldet.
+
+### Sicherheit
+
+- Neues Recht „SNMP-Zugangsprofile verwalten“ (`system.snmp`): Es bekommen alle Rollen und Benutzer, die „Namen im Haus eintragen (UniFi)“ (`system.unifi`) haben – niemand wird ausgesperrt, niemand bekommt mehr als bisher.
+- Neues Recht „SNMP: Zugangsprofile löschen (Bereichsadministrator)“ (`system.snmp_admin`): Nur damit lässt sich ein Zugangsprofil endgültig löschen; es bekommen nur Rollen, die schon Bereichsadministrator der Zertifikate sind und die Profile verwalten dürfen.
+- Das PDH fragt Geräte nur angemeldet und verschlüsselt (SNMP v3); SNMP v1/v2c, MD5 und DES gibt es nicht, und abgefragt werden nur Adressen im eigenen Netz.
+- Die Kennwörter der Zugangsprofile liegen nur verschlüsselt in der Datenbank und werden nie wieder angezeigt oder protokolliert.
+- Ein Gerät aus der SNMP-Geräteliste entfernen darf nur die IT-Administration (`it.admin`); das IT-Asset bleibt dabei bestehen.
+
 ## [0.80.21] – 2026-11-17
 
 ### Neu

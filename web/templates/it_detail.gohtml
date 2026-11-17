@@ -46,7 +46,7 @@
     </div>
 
     {{with .Net}}
-    <!-- Netz (Abgleich mit UniFi oder Omada) -->
+    <!-- Netz (Abgleich mit UniFi, Omada oder SNMP) -->
     <div class="card it-net-card">
       <div class="card-title" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><i class="ti ti-network"></i> Netz
         <span class="badge {{.StateClass}}">{{.StateLabel}}</span>
@@ -67,9 +67,9 @@
       {{if .Ports}}
       <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%;margin-top:12px">
         <table style="min-width:420px">
-          <thead><tr><th>Port</th><th>Anschluss</th><th>Zustand</th><th>Geschwindigkeit</th><th>PoE</th></tr></thead>
+          <thead><tr><th>Port</th><th>Anschluss</th><th>Zustand</th><th>Geschwindigkeit</th>{{if $.Net.HasPoE}}<th>PoE</th>{{end}}</tr></thead>
           <tbody>
-          {{range .Ports}}<tr><td>{{.Idx}}</td><td style="font-size:12px">{{if .Connector}}{{.Connector}}{{else}}—{{end}}</td><td>{{if .Up}}<span class="badge b-green">aktiv</span>{{else}}<span class="badge b-gray">{{.State}}</span>{{end}}</td><td style="font-size:12px">{{.Speed}}</td><td style="font-size:12px">{{if .PoE}}{{.PoE}}{{else}}—{{end}}</td></tr>{{end}}
+          {{range .Ports}}<tr><td>{{.Idx}}</td><td style="font-size:12px">{{if .Connector}}{{.Connector}}{{else}}—{{end}}</td><td>{{if .Up}}<span class="badge b-green">aktiv</span>{{else}}<span class="badge b-gray">{{.State}}</span>{{end}}</td><td style="font-size:12px">{{.Speed}}</td>{{if $.Net.HasPoE}}<td style="font-size:12px">{{if .PoE}}{{.PoE}}{{else}}—{{end}}</td>{{end}}</tr>{{end}}
           </tbody>
         </table>
       </div>
@@ -97,7 +97,7 @@
     <div class="card it-net-detached">
       <div class="card-title" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><i class="ti ti-network"></i> Netz
         <span class="badge b-gray"><i class="ti ti-unlink"></i> Quelle getrennt</span></div>
-      <p style="font-size:13px;color:var(--muted);margin:0">Dieses Asset wird nicht mehr mit seiner Quelle (UniFi oder Omada) abgeglichen und nicht überwacht.</p>
+      <p style="font-size:13px;color:var(--muted);margin:0">Dieses Asset wird nicht mehr mit seiner Quelle (UniFi, Omada oder SNMP) abgeglichen und nicht überwacht.</p>
       {{if .CanNetEdit}}
       <form method="POST" action="/it/{{.Asset.ID}}/net-reattach" style="margin:12px 0 0">
         <button type="submit" class="btn btn-small" title="Beim nächsten Abgleich wieder Zustand und Ports übernehmen"><i class="ti ti-link"></i> Wieder verbinden</button>

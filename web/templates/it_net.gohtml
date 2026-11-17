@@ -15,13 +15,22 @@
 .itn-search{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
 .itn-search input{flex:1 1 180px;min-width:0}
 .itn-mono{font-family:monospace;font-size:12px}
+.itn-snmp-add{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-top:12px}
+.itn-snmp-add .form-group{flex:1 1 170px;min-width:0;margin:0}
+.itn-snmp-add .form-group.itn-snmp-port{flex:0 1 110px}
+.itn-snmp-edit>summary{list-style:none;cursor:pointer;width:max-content}
+.itn-snmp-edit>summary::-webkit-details-marker{display:none}
+.itn-snmp-form{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:6px 0 0}
+.itn-snmp-form .form-input{flex:1 1 130px;min-width:0;width:auto}
+.itn-snmp-form .form-input.itn-snmp-port{flex:0 1 90px}
+.itn-snmp-res{margin-top:6px;padding:8px 0 0;border-top:1px solid var(--border);overflow-wrap:anywhere}
 </style>
 
 <div class="itn-head">
   {{template "icon-button" (dict "Action" "back" "Href" "/it")}}
   <div style="flex:1 1 200px;min-width:0">
     <h1><i class="ti ti-network"></i> Netz-Abgleich</h1>
-    <p style="font-size:12px;color:var(--muted);margin-top:3px">Netzgeräte und Clients aus UniFi und TP-Link Omada als IT-Assets – mit Zustand und Alarm-Tickets bei Ausfall.</p>
+    <p style="font-size:12px;color:var(--muted);margin-top:3px">Netzgeräte aus UniFi, TP-Link Omada und per SNMP v3 als IT-Assets, Clients als Vorschläge – mit Zustand und Alarm-Tickets bei Ausfall.</p>
   </div>
   {{if .CanSetup}}
   <form method="POST" action="/it/net/run" style="margin:0">
@@ -36,21 +45,21 @@
 <div class="itn-grid" style="margin-bottom:14px">
   {{range .Sources}}
   <div class="card itn-src" data-source="{{.Key}}">
-    <div class="card-title" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap"><i class="ti ti-router"></i> Quelle {{.Label}}
+    <div class="card-title" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap"><i class="ti ti-router"></i> {{.Title}}
       {{if .Enabled}}<span class="badge b-green">an</span>{{else}}<span class="badge b-gray">aus</span>{{end}}
       {{if .Connected}}<span class="badge b-green">verbunden</span>{{else}}<span class="badge b-amber">nicht verbunden</span>{{end}}
     </div>
     {{if not .Connected}}
-    <p style="font-size:13px;margin:0 0 10px"><i class="ti ti-plug-connected-x" style="color:var(--amber)"></i> <b>{{.Label}} ist noch nicht verbunden.</b>
-      {{if .CanConnect}}{{.Setup}} in den <a href="{{.ConfigURL}}" style="color:var(--accent)">Server-Einstellungen im Reiter „{{.Label}}“</a> eintragen und den Fingerabdruck bestätigen.{{else}}{{.PermHint}}{{end}}</p>
+    <p style="font-size:13px;margin:0 0 10px"><i class="ti ti-plug-connected-x" style="color:var(--amber)"></i> <b>{{.Missing}}</b>
+      {{if .CanConnect}}{{.Setup}} in den <a href="{{.ConfigURL}}" style="color:var(--accent)">Server-Einstellungen im Reiter „{{.Label}}“</a> {{.SetupDo}}.{{else}}{{.PermHint}}{{end}}</p>
     {{end}}
     <dl class="itn-kv">
       <dt>Letzter Lauf</dt><dd>{{if .LastRun}}{{.LastRun}}{{else}}–{{end}}</dd>
-      <dt>Netzgeräte</dt><dd>{{if .Devices}}{{.Devices}}{{else}}–{{end}}</dd>
-      <dt>Clients</dt><dd>{{if .Clients}}{{.Clients}}{{else}}–{{end}}</dd>
+      <dt>{{if .NoClients}}Geräte{{else}}Netzgeräte{{end}}</dt><dd>{{if .Devices}}{{.Devices}}{{else}}–{{end}}</dd>
+      {{if not .NoClients}}<dt>Clients</dt><dd>{{if .Clients}}{{.Clients}}{{else}}–{{end}}</dd>{{end}}
       {{if .LastError}}<dt>Fehler</dt><dd style="color:var(--red)">{{.LastError}}</dd>{{end}}
     </dl>
-    {{if and .Connected .CanConnect}}<p class="itn-note"><a href="{{.ConfigURL}}" style="color:var(--accent)">Verbindung in den Server-Einstellungen, Reiter „{{.Label}}“</a></p>{{end}}
+    {{if and .Connected .CanConnect}}<p class="itn-note"><a href="{{.ConfigURL}}" style="color:var(--accent)">{{.LinkText}}</a></p>{{end}}
     {{if .Note}}<p class="itn-note"><i class="ti ti-info-circle"></i> {{.Note}}</p>{{end}}
   </div>
   {{end}}
@@ -63,7 +72,7 @@
         {{range .Sources}}
         <label style="display:flex;gap:8px;align-items:center;font-size:13px;margin-bottom:6px"><input type="checkbox" name="{{.Field}}" value="1" {{if .Enabled}}checked{{end}}> Abgleich mit {{.Label}} einschalten</label>
         {{end}}
-        <div class="itn-note">Jede Quelle läuft für sich: Fällt eine aus, gleicht die andere weiter ab. Intervall, Karenz, Verantwortliche und Priorität gelten für beide.</div>
+        <div class="itn-note">Jede Quelle läuft für sich: Fällt eine aus, gleichen die anderen weiter ab. Intervall, Karenz, Verantwortliche und Priorität gelten für alle Quellen.</div>
       </div>
       <div class="grid2" style="gap:10px">
         <div class="form-group"><label class="form-label" for="itn-interval">Intervall (Sekunden)</label>
@@ -92,9 +101,11 @@
   {{end}}
 </div>
 
+{{template "itn-snmp" .SNMP}}
+
 <div class="card">
   <div class="card-title"><i class="ti ti-devices-plus"></i> Vorschläge aus dem Netz</div>
-  <p class="itn-note" style="margin:0 0 10px">Clients (PCs, Drucker, Telefone …), die UniFi oder Omada sieht und die noch kein IT-Asset sind. Übernehmen legt ein Asset an.{{if .CanSetup}} Ob ein neu übernommenes Gerät überwacht wird, bestimmt die Einstellung „überwachen“ seiner Kategorie – einstellbar unter <a href="/it/categories">IT-Kategorien</a>.{{end}}</p>
+  <p class="itn-note" style="margin:0 0 10px">Clients (PCs, Drucker, Telefone …), die UniFi oder Omada sieht und die noch kein IT-Asset sind. Übernehmen legt ein Asset an. SNMP liefert keine Vorschläge – SNMP-Geräte trägst du oben in die Liste „SNMP-Geräte“ ein.{{if .CanSetup}} Ob ein neu übernommenes Gerät überwacht wird, bestimmt die Einstellung „überwachen“ seiner Kategorie – einstellbar unter <a href="/it/categories">IT-Kategorien</a>.{{end}}</p>
   <div class="rec-tabs">
     <a class="rec-tab{{if eq .Tab ""}} active{{end}}" href="/it/net"><i class="ti ti-list"></i> Vorschläge <b>{{.Open}}</b></a>
     <a class="rec-tab{{if eq .Tab "hidden"}} active{{end}}" href="/it/net?tab=hidden"><i class="ti ti-eye-off"></i> Ausgeblendet <b>{{.Hidden}}</b></a>

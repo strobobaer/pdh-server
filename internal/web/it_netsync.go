@@ -256,6 +256,9 @@ type itNetState struct {
 
 	// snmpDial: Abfrage eines SNMP-Geräts; nil → snmp.New (Tests tauschen aus).
 	snmpDial func(snmp.Config) snmpAPI
+	// snmpNotify: Meldung an die Administratoren nach einer Änderung an den SNMP-Profilen;
+	// nil → notifyAdmins (Tests tauschen aus).
+	snmpNotify func(ctx context.Context, msg string)
 }
 
 // itNetSrcState: was eine Quelle über Läufe hinweg behält.

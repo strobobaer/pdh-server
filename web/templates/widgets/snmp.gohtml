@@ -1,0 +1,185 @@
+{{/* SNMP v3 (internal/web/snmp_web.go): Reiter „SNMP“ der Server-Einstellungen mit den
+     Zugangsprofilen (snmp-panel, Daten: snmpTab) und Karte „SNMP-Geräte“ der Seite Netz-Abgleich
+     (itn-snmp, Daten: ITNetSNMPCard) samt Ergebnis von „Prüfen“ (itn-snmp-check). Ein Zusatz –
+     ohne ihn läuft alles unverändert. Kennwörter werden nie angezeigt; beim Zeichnen geht keine
+     Anfrage an ein Gerät. */}}
+
+{{/* Felder eines Profils. Daten: dict "F" snmpProfileForm "T" snmpTab "ID" Kennung "Edit" bool */}}
+{{define "snmp-profile-fields"}}
+    <div class="form-group" style="margin:0"><label class="form-label" for="snmp-name-{{.ID}}">Name des Profils</label><input class="form-input" id="snmp-name-{{.ID}}" name="name" value="{{.F.Name}}" maxlength="80" required placeholder="z. B. Switches" autocomplete="off"></div>
+    <div class="form-group" style="margin:0"><label class="form-label" for="snmp-user-{{.ID}}">SNMP-Benutzer</label><input class="form-input" id="snmp-user-{{.ID}}" name="username" value="{{.F.User}}" required autocomplete="off" spellcheck="false"></div>
+    <div class="form-group" style="margin:0"><label class="form-label" for="snmp-auth-{{.ID}}">Anmeldung – Verfahren</label>
+      <select class="form-input" id="snmp-auth-{{.ID}}" name="auth_proto">{{range .T.AuthProtos}}<option value="{{.Key}}" {{if eq .Key $.F.Auth}}selected{{end}}>{{.Name}}{{if .Old}} (veraltet){{end}}</option>{{end}}</select></div>
+    <div class="form-group" style="margin:0"><label class="form-label" for="snmp-authpw-{{.ID}}">Anmeldung – Kennwort</label><input class="form-input" id="snmp-authpw-{{.ID}}" type="password" name="auth_pass" minlength="8" autocomplete="new-password" {{if .Edit}}placeholder="hinterlegt – nur zum Ändern eingeben"{{else}}required placeholder="mindestens 8 Zeichen"{{end}}></div>
+    <div class="form-group" style="margin:0"><label class="form-label" for="snmp-priv-{{.ID}}">Verschlüsselung – Verfahren</label>
+      <select class="form-input" id="snmp-priv-{{.ID}}" name="priv_proto">{{range .T.PrivProtos}}<option value="{{.Key}}" {{if eq .Key $.F.Priv}}selected{{end}}>{{.Name}}{{if .Old}} (veraltet){{end}}</option>{{end}}</select></div>
+    <div class="form-group" style="margin:0"><label class="form-label" for="snmp-privpw-{{.ID}}">Verschlüsselung – Kennwort</label><input class="form-input" id="snmp-privpw-{{.ID}}" type="password" name="priv_pass" minlength="8" autocomplete="new-password" {{if .Edit}}placeholder="hinterlegt – nur zum Ändern eingeben"{{else}}required placeholder="mindestens 8 Zeichen"{{end}}></div>
+{{end}}
+
+{{define "snmp-panel"}}
+<div id="snmp-panel" class="card">
+  <div class="card-title"><span><i class="ti ti-network"></i> SNMP v3 – Zugangsprofile</span><span class="sc-sub">Zusatz – ohne läuft alles wie bisher</span></div>
+  {{if not .Can}}
+  <p class="sc-sub">Die Zugangsprofile verwaltet, wer das Recht „SNMP-Zugangsprofile verwalten“ (<code>system.snmp</code>) hat.</p>
+  {{else}}
+  {{if .Msg}}<div class="sc-sub" role="status" style="margin-bottom:8px;color:var(--green)"><i class="ti ti-check"></i> {{.Msg}}</div>{{end}}
+  {{if .Err}}<div class="sc-sub" role="alert" style="margin-bottom:8px;color:var(--red)"><i class="ti ti-alert-circle"></i> {{.Err}}</div>{{end}}
+  <p class="sc-sub" style="margin:0 0 6px">Mit SNMP v3 fragt das PDH Geräte direkt, die an keinem Controller hängen – Switches anderer Hersteller, Drucker, USV, NAS. Sie werden IT-Assets im Netz-Abgleich. Das PDH liest nur – an den Geräten ändert es nichts.</p>
+  <p class="sc-sub" style="margin:0 0 6px">Ein <b>Zugangsprofil</b> ist ein SNMP-Benutzer mit zwei Kennwörtern (Anmeldung und Verschlüsselung). Ein Profil gilt für viele Geräte. Die Geräte selbst trägst du unter <a href="/it/net">IT-Assets → Netz-Abgleich</a> in die Liste „SNMP-Geräte“ ein.</p>
+  <p class="sc-sub" style="margin:0 0 6px"><i class="ti ti-arrows-exchange"></i> Im Verbund fragt der gerade aktive Server von seiner eigenen Adresse. Geräte mit einer Liste erlaubter Abfrager müssen <b>beide Server</b> eintragen.</p>
+  <p class="sc-sub" style="margin:0 0 10px;color:var(--amber)"><i class="ti ti-flask"></i> SNMP v3 ist im Labor geprüft und an echten Switches und Druckern noch nicht erprobt.</p>
+
+  {{range .Profiles}}
+  <div class="snmp-prof" data-profile="{{.ID}}">
+    <div class="snmp-prof-head">
+      <b class="snmp-prof-name"><i class="ti ti-key"></i> {{.Name}}</b>
+      <span class="sc-sub">Benutzer <b>{{.User}}</b></span>
+      <span class="sc-sub">{{.AuthName}} / {{.PrivName}}{{if .AuthOld}} <span class="badge b-amber" title="SHA-1 gilt als veraltet. Nur verwenden, wenn das Gerät nichts anderes kann.">veraltet</span>{{end}}</span>
+      <span class="sc-sub">{{if eq .Targets 1}}1 Gerät{{else}}{{.Targets}} Geräte{{end}}</span>
+    </div>
+    <div class="snmp-prof-act">
+      <details class="snmp-edit" {{if .Open}}open{{end}}>
+        <summary class="btn btn-small"><i class="ti ti-pencil"></i> Ändern</summary>
+        <form hx-post="/admin/server-config/snmp/profiles/{{.ID}}" hx-target="#snmp-panel" hx-swap="outerHTML" hx-disabled-elt="find button" class="snmp-form">
+          {{template "snmp-profile-fields" (dict "F" .Form "T" $ "ID" .ID "Edit" true)}}
+          <button class="btn btn-primary btn-small" type="submit"><i class="ti ti-device-floppy"></i> Speichern</button>
+        </form>
+        <p class="sc-sub" style="margin:0"><i class="ti ti-key"></i> Beide Kennwörter sind hinterlegt (verschlüsselt). Leere Kennwort-Felder bleiben unverändert.</p>
+      </details>
+      {{if $.CanDelete}}{{if .Targets}}
+      <button class="btn btn-small" type="button" disabled title="Wird noch von {{if eq .Targets 1}}1 Gerät{{else}}{{.Targets}} Geräten{{end}} genutzt – erst den Geräten ein anderes Profil geben oder sie aus der Liste entfernen"><i class="ti ti-trash"></i> Löschen</button>
+      {{else}}
+      <form hx-post="/admin/server-config/snmp/profiles/{{.ID}}/delete" hx-target="#snmp-panel" hx-swap="outerHTML" hx-disabled-elt="find button"
+        hx-confirm="Zugangsprofil „{{.Name}}“ endgültig löschen? Die Kennwörter lassen sich danach nicht wiederherstellen.">
+        <button class="btn btn-small" type="submit"><i class="ti ti-trash"></i> Löschen</button></form>
+      {{end}}{{end}}
+    </div>
+  </div>
+  {{else}}
+  <p class="sc-sub" style="margin:0 0 10px"><i class="ti ti-info-circle"></i> Noch kein Zugangsprofil. Lege unten das erste an.</p>
+  {{end}}
+
+  <div class="snmp-new">
+    <div class="form-label" style="margin-bottom:6px"><i class="ti ti-plus"></i> Neues Zugangsprofil</div>
+    <form hx-post="/admin/server-config/snmp/profiles" hx-target="#snmp-panel" hx-swap="outerHTML" hx-disabled-elt="find button" class="snmp-form">
+      {{template "snmp-profile-fields" (dict "F" .New "T" . "ID" "neu" "Edit" false)}}
+      <button class="btn btn-primary btn-small" type="submit"><i class="ti ti-device-floppy"></i> Profil anlegen</button>
+    </form>
+    <p class="sc-sub" style="margin:0 0 4px">Das PDH spricht nur angemeldet <b>und</b> verschlüsselt (authPriv). Vorschlag: SHA-256 und AES-128 – das kann fast jedes Gerät. <b>SHA-1</b> gilt als veraltet: nur wählen, wenn das Gerät nichts anderes kann. MD5, DES und SNMP v1/v2c bietet das PDH nicht an.</p>
+    <p class="sc-sub" style="margin:0">Kennwörter haben mindestens 8 Zeichen, werden verschlüsselt gespeichert und nie wieder angezeigt.{{if not .CanDelete}} Ein Profil löschen darf nur, wer das Recht „SNMP: Zugangsprofile löschen (Bereichsadministrator)“ (<code>system.snmp_admin</code>) hat.{{end}}</p>
+  </div>
+  {{end}}
+<style>
+.snmp-prof{display:flex;gap:8px 12px;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;padding:10px 0;border-top:1px solid var(--border)}
+.snmp-prof-head{display:flex;gap:4px 14px;flex-wrap:wrap;align-items:center;flex:1 1 260px;min-width:0}
+.snmp-prof-name{font-size:13px;overflow-wrap:anywhere}
+.snmp-prof-act{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start;flex:1 1 100%;min-width:0}
+.snmp-prof-act form{margin:0}
+.snmp-edit{flex:1 1 220px;min-width:0}
+.snmp-edit>summary{list-style:none;cursor:pointer;width:max-content}
+.snmp-edit>summary::-webkit-details-marker{display:none}
+.snmp-edit[open]>summary{margin-bottom:4px}
+.snmp-new{border-top:1px solid var(--border);padding-top:10px;margin-top:2px}
+.snmp-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,250px),1fr));gap:8px;align-items:end;margin:8px 0}
+.snmp-form .form-group{min-width:0}
+.snmp-form>button{justify-self:start}
+.snmp-form .form-input{max-width:100%}
+</style>
+</div>
+{{end}}
+
+{{/* Karte „SNMP-Geräte“ der Seite Netz-Abgleich. Alle Aktionen zeichnen die Karte neu (htmx). */}}
+{{define "itn-snmp"}}
+<div id="itn-snmp" class="card" style="margin-bottom:14px">
+  <div class="card-title" style="justify-content:flex-start;gap:6px;flex-wrap:wrap"><i class="ti ti-list-details"></i> SNMP-Geräte <span class="badge b-gray">{{len .Rows}} von {{.Max}}</span></div>
+  <p class="itn-note" style="margin:0 0 6px">Geräte ohne Controller (Switches anderer Hersteller, Drucker, USV, NAS …). Jedes Gerät der Liste wird einzeln per SNMP v3 gefragt und wird beim Abgleich ein IT-Asset (Kategorie Netzwerk, am Asset änderbar). Das PDH liest nur.</p>
+  <p class="itn-note" style="margin:0 0 10px"><i class="ti ti-arrows-exchange"></i> Im Verbund fragt der gerade aktive Server von seiner eigenen Adresse – Geräte mit einer Liste erlaubter Abfrager müssen beide Server eintragen.</p>
+  {{if .Msg}}<div class="itn-note" role="status" style="margin:0 0 10px;color:var(--green)"><i class="ti ti-circle-check"></i> {{.Msg}}</div>{{end}}
+  {{if .Err}}<div class="itn-note" role="alert" style="margin:0 0 10px;color:var(--red)"><i class="ti ti-alert-circle"></i> {{.Err}}</div>{{end}}
+  <div class="itn-scroll">
+    <table>
+      <thead><tr><th>Adresse</th><th>Port</th><th>Profil</th><th>Zustand</th><th>Letzter Fehler / Hinweis</th><th>Asset</th>{{if or .CanSetup .CanRemove}}<th>Aktion</th>{{end}}</tr></thead>
+      <tbody>
+      {{range .Rows}}
+      <tr data-target="{{.ID}}">
+        <td class="itn-mono" style="font-weight:500">{{.Host}}</td>
+        <td class="itn-mono">{{.Port}}</td>
+        <td style="font-size:12px">{{.ProfileName}}</td>
+        <td><span class="badge {{.StateClass}}">{{.StateLabel}}</span></td>
+        <td style="font-size:12px;min-width:180px">
+          {{if .LastError}}<div style="color:var(--red)"><i class="ti ti-alert-circle"></i> {{.LastError}}</div>{{end}}
+          {{if .Note}}<div style="color:var(--muted)"><i class="ti ti-info-circle"></i> {{.Note}}</div>{{end}}
+          {{if .LastOKText}}<div style="color:var(--muted)">zuletzt geantwortet: {{.LastOKText}}</div>{{else if and (not .LastError) (not .Note)}}<span style="color:var(--muted)">–</span>{{end}}
+          <div id="itn-snmp-check-{{.ID}}" aria-live="polite"></div>
+        </td>
+        <td style="font-size:12px">{{if .AssetID}}<a href="/it/{{.AssetID}}" style="color:var(--accent)">{{if .AssetName}}{{.AssetName}}{{else}}Asset öffnen{{end}}</a>{{else}}<span style="color:var(--muted)">–</span>{{end}}</td>
+        {{if or $.CanSetup $.CanRemove}}
+        <td>
+          <div class="itn-row-form">
+            {{if $.CanSetup}}
+            <button type="button" class="btn btn-small" hx-post="/it/net/snmp/targets/{{.ID}}/check" hx-target="#itn-snmp-check-{{.ID}}" hx-swap="innerHTML" hx-disabled-elt="this" title="Gerät jetzt fragen – gespeichert wird nichts"><i class="ti ti-stethoscope"></i> Prüfen</button>
+            <form hx-post="/it/net/snmp/targets/{{.ID}}/enabled" hx-target="#itn-snmp" hx-swap="outerHTML" hx-disabled-elt="find button" class="itn-row-form">
+              <input type="hidden" name="on" value="{{if .Enabled}}0{{else}}1{{end}}">
+              <button type="submit" class="btn btn-small" title="{{if .Enabled}}Dieses Gerät nicht mehr fragen{{else}}Dieses Gerät wieder fragen{{end}}"><i class="ti {{if .Enabled}}ti-player-pause{{else}}ti-player-play{{end}}"></i> {{if .Enabled}}Ausschalten{{else}}Einschalten{{end}}</button>
+            </form>
+            <details class="itn-snmp-edit" {{if .Open}}open{{end}}>
+              <summary class="btn btn-small"><i class="ti ti-pencil"></i> Bearbeiten</summary>
+              <form hx-post="/it/net/snmp/targets/{{.ID}}" hx-target="#itn-snmp" hx-swap="outerHTML" hx-disabled-elt="find button" class="itn-snmp-form">
+                <input class="form-input" name="host" value="{{.Host}}" required maxlength="253" autocomplete="off" spellcheck="false" aria-label="Adresse">
+                <input class="form-input itn-snmp-port" type="number" name="port" value="{{.Port}}" min="1" max="65535" required aria-label="Port">
+                <select class="form-input" name="profile" aria-label="Zugangsprofil">{{$pid := .ProfileID}}{{range $.Profiles}}<option value="{{.Value}}" {{if eq .Value $pid}}selected{{end}}>{{.Label}}</option>{{end}}</select>
+                <button type="submit" class="btn btn-small btn-primary"><i class="ti ti-device-floppy"></i> Speichern</button>
+              </form>
+            </details>
+            {{end}}
+            {{if $.CanRemove}}
+            <form hx-post="/it/net/snmp/targets/{{.ID}}/remove" hx-target="#itn-snmp" hx-swap="outerHTML" hx-disabled-elt="find button" class="itn-row-form"
+              hx-confirm="{{.Host}} aus der Liste entfernen? Das IT-Asset bleibt bestehen und wird nicht mehr abgeglichen.">
+              <button type="submit" class="btn btn-small"><i class="ti ti-trash"></i> Entfernen</button>
+            </form>
+            {{end}}
+          </div>
+        </td>
+        {{end}}
+      </tr>
+      {{else}}
+      <tr><td colspan="7" style="text-align:center;color:var(--muted);padding:24px">Noch kein Gerät in der Liste</td></tr>
+      {{end}}
+      </tbody>
+    </table>
+  </div>
+  {{if .CanSetup}}
+  {{if .Profiles}}
+  <form hx-post="/it/net/snmp/targets" hx-target="#itn-snmp" hx-swap="outerHTML" hx-disabled-elt="find button" class="itn-snmp-add">
+    <div class="form-group"><label class="form-label" for="itn-snmp-host">Adresse (IP oder Name)</label><input class="form-input" id="itn-snmp-host" name="host" value="{{.NewHost}}" required maxlength="253" placeholder="z. B. 10.0.4.10" autocomplete="off" spellcheck="false"></div>
+    <div class="form-group itn-snmp-port"><label class="form-label" for="itn-snmp-port">Port</label><input class="form-input" id="itn-snmp-port" type="number" name="port" value="{{.NewPort}}" min="1" max="65535"></div>
+    <div class="form-group"><label class="form-label" for="itn-snmp-profile">Zugangsprofil</label>
+      <select class="form-input" id="itn-snmp-profile" name="profile">{{range .Profiles}}<option value="{{.Value}}" {{if eq .Value $.NewProfile}}selected{{end}}>{{.Label}}</option>{{end}}</select></div>
+    <button type="submit" class="btn btn-small btn-primary"><i class="ti ti-plus"></i> Gerät hinzufügen</button>
+  </form>
+  <p class="itn-note">Nur Adressen im eigenen Netz. Nach dem Hinzufügen mit <b>Prüfen</b> ansehen, was das Gerät antwortet.{{if not .CanRemove}} Aus der Liste entfernen darf nur der Bereichsadministrator IT (<code>it.admin</code>).{{end}}</p>
+  {{else}}
+  <p class="itn-note" style="margin-top:10px"><i class="ti ti-key" style="color:var(--amber)"></i> <b>Zuerst ein Zugangsprofil anlegen.</b> {{if .CanProfiles}}Das geht in den <a href="/admin/server-config?tab=snmp" style="color:var(--accent)">Server-Einstellungen im Reiter „SNMP“</a>. Danach kannst du hier Geräte hinzufügen.{{else}}Die Zugangsprofile legt eine Person mit dem Recht „SNMP-Zugangsprofile verwalten“ (<code>system.snmp</code>) in den Server-Einstellungen an.{{end}}</p>
+  {{end}}
+  {{end}}
+</div>
+{{end}}
+
+{{/* Ergebnis von „Prüfen“. Daten: ITNetSNMPCheckView */}}
+{{define "itn-snmp-check"}}
+{{if .Err}}
+<div class="itn-snmp-res" role="alert" style="color:var(--red)"><i class="ti ti-alert-circle"></i> Prüfen: {{.Err}}</div>
+{{else}}
+<div class="itn-snmp-res" role="status">
+  <div style="color:var(--green);margin-bottom:4px"><i class="ti ti-circle-check"></i> Das Gerät antwortet{{if .Switch}} (Switch){{end}}.</div>
+  <dl class="itn-kv">
+    <dt>Name</dt><dd>{{if .Detail.Name}}{{.Detail.Name}}{{else}}–{{end}}</dd>
+    <dt>Modell</dt><dd>{{if .Detail.Model}}{{.Detail.Model}}{{else}}–{{end}}</dd>
+    <dt>Firmware</dt><dd>{{if .Detail.Firmware}}{{.Detail.Firmware}}{{else}}–{{end}}</dd>
+    <dt>Seriennummer</dt><dd>{{if .Detail.Serial}}{{.Detail.Serial}}{{else}}–{{end}}</dd>
+    <dt>MAC</dt><dd class="itn-mono">{{if .Detail.MAC}}{{.Detail.MAC}}{{else}}–{{end}}</dd>
+    <dt>Anschlüsse</dt><dd>{{.Ports}}{{if .Ports}} ({{.Up}} aktiv){{end}}</dd>
+  </dl>
+</div>
+{{end}}
+{{end}}

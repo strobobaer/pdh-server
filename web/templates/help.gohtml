@@ -706,12 +706,12 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li><b>Speichern</b>. Auf der Übersicht steht jetzt „Terminal-Standort“; die Änderung erscheint in der Historie.</li>
     </ol>
     Wird die Anlage später gelöscht, ist der Standort automatisch wieder leer – dann klappt der Baum wie gewohnt ganz auf.</div>
-  <h3 id="it-net"><i class="ti ti-network"></i> Netz-Abgleich (IT-Assets aus UniFi und Omada)</h3>
-  <p>Das PDH liest Geräte aus eurem Netz und legt Switches, Access Points und Gateways selbst als IT-Assets (Kategorie Netzwerk) an. Es gibt zwei Quellen: <b>UniFi</b> und <b>Omada</b> (TP-Link). Du kannst eine oder beide einschalten. Die Seite findest du unter <b>IT-Assets</b> → <b>Netz-Abgleich</b>; neben dem Knopf steht die Zahl offener Vorschläge.</p>
+  <h3 id="it-net"><i class="ti ti-network"></i> Netz-Abgleich (IT-Assets aus UniFi, Omada und SNMP)</h3>
+  <p>Das PDH liest Geräte aus eurem Netz und legt Switches, Access Points und Gateways selbst als IT-Assets (Kategorie Netzwerk) an. Es gibt drei Quellen: <b>UniFi</b>, <b>Omada</b> (TP-Link) und <b>SNMP v3</b> für Geräte ohne Controller (Switches anderer Hersteller, Drucker, USV, NAS). Du kannst eine, zwei oder alle drei einschalten; jede läuft für sich. Die Seite findest du unter <b>IT-Assets</b> → <b>Netz-Abgleich</b>; neben dem Knopf steht die Zahl offener Vorschläge.</p>
   {{template "hb-fig-itnet"}}
   <div class="hb-howto"><b><i class="ti ti-plug-connected"></i> So schaltest du den Abgleich ein</b>
     <ol class="hb-steps">
-      <li><b>IT-Assets</b> → <b>Netz-Abgleich</b> öffnen. Die Seite zeigt den Stand je Quelle (<b>UniFi</b>, <b>Omada</b>). Ist eine Quelle noch nicht verbunden, folge dem Link zum Reiter <b>UniFi</b> bzw. <b>Omada</b> der Server-Einstellungen und richte die Verbindung ein (dafür braucht es das Recht <code>system.unifi</code> bzw. <code>system.omada</code>).</li>
+      <li><b>IT-Assets</b> → <b>Netz-Abgleich</b> öffnen. Die Seite zeigt den Stand je Quelle (<b>UniFi</b>, <b>Omada</b>, <b>SNMP v3</b>). Ist eine Quelle noch nicht verbunden, folge dem Link zum Reiter <b>UniFi</b>, <b>Omada</b> oder <b>SNMP</b> der Server-Einstellungen und richte sie dort ein (dafür braucht es das Recht <code>system.unifi</code>, <code>system.omada</code> bzw. <code>system.snmp</code>). Bei SNMP heißt „verbunden“: Es gibt mindestens ein Zugangsprofil.</li>
       <li>Im Formular <b>Einstellungen</b> hat jede Quelle einen eigenen Schalter. Die gewünschten Quellen einschalten und speichern.</li>
       <li>Unter <b>Einstellungen</b> das <b>Intervall (Sekunden)</b> (30 bis 3600, Standard 60), die allgemeine <b>Karenz bis zum Alarm (Minuten)</b> (1 bis 1440, Standard 5; sie gilt, wenn weder Kategorie noch Gerät eine eigene Karenz haben), <b>Verantwortlich – Benutzer</b> oder die Gruppe und die <b>Priorität der Alarm-Tickets</b> (Standard hoch) festlegen. Ohne Angabe ist die Gruppe „IT“ verantwortlich, sonst die Bereichsadministratoren IT.</li>
       <li><b>Jetzt abgleichen</b> startet sofort einen Lauf über alle eingeschalteten Quellen; der Knopf ist nur aktiv, solange mindestens eine Quelle eingeschaltet ist, und nicht während einer Wartungssperre. Je Quelle zeigt die Seite letzten Lauf, Fehlertext und die Zahl der Geräte und Clients.</li>
@@ -721,16 +721,36 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <ul>
       <li>Die Verbindung richtest du in den <b>Server-Einstellungen</b> im Reiter <b>Omada</b> ein (<a href="#hb-omada">So bindest du einen Omada-Controller an</a>). Danach auf der Seite <b>Netz-Abgleich</b> den Schalter für Omada einschalten.</li>
       <li>Switches, Access Points und Gateways aus Omada werden IT-Assets mit dem Hersteller <b>TP-Link</b>. Verbundene Geräte (Clients) erscheinen nur als Vorschläge – wie bei UniFi.</li>
-      <li>Die Liste der <b>Vorschläge</b> gilt für beide Quellen; die Spalte <b>Quelle</b> zeigt, woher ein Vorschlag stammt.</li>
+      <li>Die Liste der <b>Vorschläge</b> gilt für UniFi und Omada; die Spalte <b>Quelle</b> zeigt, woher ein Vorschlag stammt.</li>
       <li>Bei Omada-Geräten gibt es <b>keine Anschluss-Tabelle</b> (Ports) und <b>keinen Hinweis „Update verfügbar“</b>.</li>
       <li>Meldet Omada einen Zustand, den das PDH nicht kennt, gilt das Gerät als „unbekannt“. Ein unbekannter Zustand löst <b>nie</b> ein Ausfall-Ticket aus.</li>
-      <li>Kennt das PDH ein Gerät schon aus der anderen Quelle (gleiche MAC-Adresse, z. B. ein Omada-Access-Point an einem UniFi-Switch), erscheint es nicht noch einmal als Vorschlag – es entsteht kein zweites Asset.</li>
+      <li>Kennt das PDH ein Gerät schon aus einer anderen Quelle (gleiche MAC-Adresse, z. B. ein Omada-Access-Point an einem UniFi-Switch), erscheint es nicht noch einmal als Vorschlag – es entsteht kein zweites Asset.</li>
       <li>Das PDH liest nur. Am Omada-Controller ändert es nichts.</li>
     </ul>
     <b>Wichtig:</b> Die Omada-Anbindung ist nach der Dokumentation des Herstellers gebaut und noch nicht an einem echten Controller erprobt. Prüfe nach dem ersten Abgleich, ob Geräte, Zustände und Vorschläge stimmen.</div>
+  <div class="hb-howto" id="it-net-snmp"><b><i class="ti ti-list-details"></i> So bindest du ein Gerät per SNMP v3 an</b>
+    Für Geräte, die an keinem Controller hängen. Das PDH fragt jedes Gerät einzeln: Bist du da, wie heißt du, welche Firmware, welche Anschlüsse. Es liest nur – am Gerät ändert es nichts.
+    <ol class="hb-steps">
+      <li>Am Gerät <b>SNMP v3</b> einschalten und einen Benutzer zum Lesen anlegen – mit Anmeldung <b>und</b> Verschlüsselung (oft „authPriv“ genannt) und zwei Kennwörtern. Hat das Gerät eine Liste erlaubter Abfrager, trage dort den PDH-Server ein – im Verbund <b>beide Server</b>.</li>
+      <li><b>Server-Einstellungen → Reiter SNMP</b>: ein <b>Zugangsprofil</b> mit genau diesen Angaben anlegen (<a href="#hb-snmp">So legst du ein SNMP-Zugangsprofil an</a>). Ein Profil gilt für viele Geräte.</li>
+      <li><b>IT-Assets → Netz-Abgleich</b> → Karte <b>SNMP-Geräte</b>: <b>Adresse</b> (IP oder Name im Haus), <b>Port</b> (üblich 161) und <b>Zugangsprofil</b> eintragen, dann <b>Gerät hinzufügen</b>.</li>
+      <li>In der Zeile <b>Prüfen</b> drücken. Kontrolle: Unter dem Gerät steht „Das Gerät antwortet“ mit Name, Modell, Firmware, Seriennummer, MAC und Zahl der Anschlüsse. Bei einem Fehler steht dort der Grund, z. B. „Keine Antwort“ oder „Zugang abgelehnt – Profil prüfen“. Prüfen speichert nichts.</li>
+      <li>Im Formular <b>Einstellungen</b> den Schalter <b>Abgleich mit SNMP einschalten</b> setzen und speichern. Beim nächsten Lauf wird das Gerät ein IT-Asset (Kategorie Netzwerk, am Asset änderbar) und steht mit Link in der Liste.</li>
+    </ol>
+    <ul>
+      <li><b>Zeile bedienen:</b> <b>Ausschalten</b> fragt das Gerät nicht mehr; sein Asset bleibt und steht auf „unbekannt“. <b>Bearbeiten</b> ändert Adresse, Port oder Profil – das Asset bleibt dasselbe. <b>Entfernen</b> nimmt das Gerät aus der Liste; das IT-Asset bleibt bestehen und wird nicht mehr abgeglichen. Entfernen darf nur der Bereichsadministrator IT (<code>it.admin</code>).</li>
+      <li><b>Was das PDH liest:</b> bei jedem Lauf, ob das Gerät antwortet; alle 15 Minuten Modell, Firmware, MAC und die Anschlüsse (Name, aktiv/getrennt, Geschwindigkeit). Den Namen übernimmt es nur beim Anlegen, die Seriennummer nur, wenn das Feld noch leer ist. Fehlt dem Gerät eine Angabe, bleibt das Feld leer.</li>
+      <li><b>Zustände:</b> Antwortet das Gerät, ist es <b>online</b>. Kommt keine Antwort, ist es <b>offline</b> – nach der Karenz entsteht ein Ausfall-Ticket wie bei den anderen Quellen. Lehnt das Gerät den Zugang ab (falsches Kennwort, falscher Benutzer) oder lässt sich sein Name nicht auflösen, gilt es als <b>unbekannt</b> – daraus entsteht <b>nie</b> ein Ticket; der Grund steht in der Spalte „Letzter Fehler / Hinweis“.</li>
+      <li><b>Schutz vor falschem Alarm:</b> Antwortet in einem Lauf <b>keines</b> von mindestens 3 eingeschalteten Geräten, liegt es am PDH-Server (Netz weg oder nicht freigeschaltet). Dann stehen alle auf „unbekannt“, es entsteht kein Ticket, und an der Quelle steht „Kein Gerät antwortet – Netz des PDH-Servers oder Freischaltung prüfen“. Bei 1 oder 2 Geräten gibt es diesen Schutz nicht; dort schützt die Karenz.</li>
+      <li><b>Verbund (zwei Server):</b> Gefragt wird vom gerade aktiven Server und von dessen <b>eigener</b> Adresse, nicht von der gemeinsamen. Geräte mit einer Liste erlaubter Abfrager müssen deshalb beide Server eintragen – sonst sind nach einer Umschaltung alle Geräte „unbekannt“.</li>
+      <li><b>Doppelte:</b> Kennt das PDH ein Gerät schon aus UniFi oder Omada (gleiche MAC-Adresse), entsteht kein zweites Asset; in der Liste steht der Hinweis „schon über UniFi bekannt“. Ein von Hand angelegtes Asset mit gleicher MAC-Adresse wird verknüpft.</li>
+      <li><b>Was SNMP nicht kann:</b> keine <b>Vorschläge</b> (SNMP kennt keine Clients), kein <b>Uplink</b>, kein Hinweis <b>„Update verfügbar“</b>, kein PoE, kein Suchlauf durchs Netz. Das PDH spricht <b>kein SNMP v1/v2c</b> (unverschlüsselt) und bietet <b>kein MD5 und kein DES</b> an. SHA-1 ist wählbar, gilt aber als veraltet.</li>
+      <li>Grenzen: höchstens 200 Geräte und nur Adressen im eigenen Netz.</li>
+    </ul>
+    <b>Wichtig:</b> SNMP v3 ist im Labor geprüft und <b>noch nicht an echten Switches und Druckern erprobt</b>. Prüfe nach dem ersten Abgleich, ob Name, Modell, Zustand und Anschlüsse stimmen.</div>
   <div class="hb-howto"><b><i class="ti ti-device-desktop-plus"></i> So übernimmst du einen Vorschlag</b>
     <ol class="hb-steps">
-      <li>Auf der Seite <b>Netz-Abgleich</b> die Liste der <b>Vorschläge</b> öffnen. Clients (PCs, Drucker, Telefone …) werden nie von allein angelegt.</li>
+      <li>Auf der Seite <b>Netz-Abgleich</b> die Liste der <b>Vorschläge</b> öffnen. Clients (PCs, Drucker, Telefone …) werden nie von allein angelegt. Vorschläge kommen aus UniFi und Omada; SNMP liefert keine.</li>
       <li><b>Übernehmen</b> wählen und die <b>Kategorie</b> angeben (angeboten werden alle aktiven Kategorien außer Netzwerk). Ob das Gerät überwacht startet, steht in der Kategorie unter <b>Überwachen</b> (siehe <a href="#it-categories">IT-Kategorien</a>). Ab Werk starten Workstation, Telefon und Tablet unüberwacht, alle anderen werden überwacht.</li>
       <li>Oder <b>Ausblenden</b>: Der Client verschwindet aus der Liste und steht im Reiter <b>Ausgeblendet</b>, von wo du ihn zurückholen kannst. Vorschläge, die 30 Tage nicht mehr gesehen wurden, fallen von selbst weg.</li>
     </ol>
@@ -742,7 +762,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>Zum Abschließen <b>Bearbeiten &amp; abschließen</b> wählen und im <a href="#completion">Abschluss-Assistenten</a> das Feld <b>Ursache (Pflicht bei Alarm-Tickets)</b> ausfüllen. Ohne Ursache lässt sich das Ticket nicht lösen.</li>
     </ol>
     Fällt dasselbe Gerät bei offenem Ticket erneut aus, kommt ein Eintrag auf dasselbe Ticket. Kein Alarm entsteht, wenn die Quelle selbst nicht erreichbar ist (Zustand „unbekannt“), während eines Firmware-Updates und nicht für Ports oder Firmware.</div>
-  <p>In der Liste <b>IT-Assets</b> zeigen Marken den Zustand (grün online, rot offline, grau unbekannt, „Quelle getrennt“); der Filter <b>Nur offline</b> lässt sich mit den Kategorie-Filtern verbinden. Auf dem Gerät zeigt die Karte <b>Netz</b> Zustand seit, zuletzt gesehen, Firmware, Uplink, die <b>Karenz bis zum Alarm</b> und die Port-Tabelle. Mit dem Knopf <b>Nicht mehr überwachen</b> (Recht „IT-Assets bearbeiten“) schaltest du den Alarm für ein einzelnes Gerät ab, mit <b>Überwachen</b> wieder ein. <b>Quelle trennen</b> lässt das Asset bestehen, gleicht es aber nicht mehr ab; <b>Wieder verbinden</b> macht das rückgängig; ob das Gerät danach überwacht wird, bestimmt wieder die Kategorie.</p>
+  <p>In der Liste <b>IT-Assets</b> zeigen Marken den Zustand (grün online, rot offline, grau unbekannt, „Quelle getrennt“); der Filter <b>Nur offline</b> lässt sich mit den Kategorie-Filtern verbinden. Auf dem Gerät zeigt die Karte <b>Netz</b> Zustand seit, zuletzt gesehen, Firmware, Uplink, die <b>Karenz bis zum Alarm</b> und die Port-Tabelle. Bei SNMP-Geräten steht in der Spalte <b>Anschluss</b> der Name des Anschlusses (z. B. Gi0/1); die Spalte PoE erscheint nur, wenn das Gerät PoE meldet. Mit dem Knopf <b>Nicht mehr überwachen</b> (Recht „IT-Assets bearbeiten“) schaltest du den Alarm für ein einzelnes Gerät ab, mit <b>Überwachen</b> wieder ein. <b>Quelle trennen</b> lässt das Asset bestehen, gleicht es aber nicht mehr ab; <b>Wieder verbinden</b> macht das rückgängig; ob das Gerät danach überwacht wird, bestimmt wieder die Kategorie.</p>
   <h3 id="it-categories"><i class="ti ti-category"></i> IT-Kategorien</h3>
   <p>Jedes IT-Asset gehört zu einer Kategorie, z. B. Server, Netzwerk, Workstation, Drucker, Telefon, Tablet oder Sonstiges. Die Kategorien pflegst du unter <b>IT-Assets</b> → <b>Kategorien</b>. Die Seite sieht, wer „IT-Infrastruktur ansehen“ darf; ändern darf nur, wer „IT-Kategorien pflegen“ hat (<code>it.categories</code>).</p>
   {{template "hb-fig-itcat"}}
@@ -1726,6 +1746,23 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>Am Spiegelserver und während einer Wartungssperre lässt sich die Anbindung nicht ändern.</li>
       <li>Speichern und Bestätigen stehen im Server-Protokoll und gehen als Meldung an die Administratoren – ohne das Secret.</li>
     </ul></div>
+  <div class="hb-howto" id="hb-snmp"><b><i class="ti ti-network"></i> So legst du ein SNMP-Zugangsprofil an</b>
+    Mit SNMP v3 fragt das PDH Geräte ohne Controller für den <a href="#it-net">Netz-Abgleich der IT-Assets</a>. Ein <b>Zugangsprofil</b> ist ein SNMP-Benutzer mit zwei Kennwörtern; es gilt für beliebig viele Geräte. Die Profile stehen in den Server-Einstellungen im Reiter <b>SNMP</b>. Den Reiter sieht, wer das Recht „SNMP-Zugangsprofile verwalten“ hat. SNMP ist ein Zusatz – ohne läuft alles wie bisher.
+    <ol class="hb-steps">
+      <li><b>Server-Einstellungen → Reiter SNMP</b> öffnen. Unter <b>Neues Zugangsprofil</b> einen <b>Namen</b> (z. B. „Switches“) und den <b>SNMP-Benutzer</b> eintragen, wie er am Gerät angelegt ist.</li>
+      <li><b>Anmeldung</b>: Verfahren wählen (Vorschlag SHA-256) und das Kennwort der Anmeldung eintragen. <b>Verschlüsselung</b>: Verfahren wählen (Vorschlag AES-128) und das Kennwort der Verschlüsselung eintragen. Beides muss zum Gerät passen. Kennwörter haben mindestens 8 Zeichen.</li>
+      <li><b>Profil anlegen</b>. Kontrolle: Das Profil steht in der Liste mit Benutzer, Verfahren und „0 Geräte“.</li>
+      <li>Unter <b>IT-Assets → Netz-Abgleich</b> die Geräte hinzufügen und mit <b>Prüfen</b> testen (<a href="#it-net-snmp">So bindest du ein Gerät per SNMP v3 an</a>).</li>
+    </ol>
+    <ul>
+      <li><b>Ändern:</b> In der Zeile des Profils <b>Ändern</b> aufklappen. Leere Kennwort-Felder bleiben unverändert („hinterlegt – nur zum Ändern eingeben“). Kennwörter werden verschlüsselt gespeichert und nie wieder angezeigt.</li>
+      <li><b>Löschen</b> darf nur der Bereichsadministrator (Recht „SNMP: Zugangsprofile löschen (Bereichsadministrator)“) – und nur, solange kein Gerät das Profil nutzt. Sonst meldet die Karte „wird noch von N Geräten genutzt“: Gib den Geräten erst ein anderes Profil oder entferne sie aus der Liste.</li>
+      <li><b>Verfahren:</b> Das PDH spricht nur angemeldet und verschlüsselt. MD5, DES und SNMP v1/v2c gibt es nicht. <b>SHA-1</b> trägt den Hinweis „veraltet“ – nur wählen, wenn das Gerät nichts anderes kann.</li>
+      <li><b>Verbund:</b> Der gerade aktive Server fragt von seiner eigenen Adresse. Geräte mit einer Liste erlaubter Abfrager müssen beide Server eintragen.</li>
+      <li>Am Spiegelserver und während einer Wartungssperre lassen sich die Profile nicht ändern.</li>
+      <li>Anlegen, Ändern und Löschen stehen im Server-Protokoll und gehen als Meldung an die Administratoren – ohne Kennwörter.</li>
+      <li>SNMP v3 ist im Labor geprüft und <b>noch nicht an echten Switches und Druckern erprobt</b>.</li>
+    </ul></div>
   <div class="hb-howto"><b><i class="ti ti-lock"></i> So schaltest du Full (strict) ein und stellst es zurück</b>
     Mit <b>Full (strict)</b> prüft Cloudflare das Zertifikat am Server. Der Tunnel läuft dann verschlüsselt bis zu nginx.
     <b>Achtung:</b> Die Verschlüsselung gilt für <b>alle</b> Namen der Domain, die über Cloudflare laufen – auch für solche, die nicht über den Tunnel gehen (z. B. eine Firmenseite bei einem Hoster). Die brauchen dann selbst ein gültiges Zertifikat, sonst sind sie nicht mehr erreichbar.
@@ -1908,7 +1945,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <li><b>Import / Export</b> – Daten aus Maschinen und Systemen (MQTT, OPC UA, Modbus, SQL, Excel, Web) übernehmen und Exporte planen (<a href="#connections">mehr</a>).</li>
     <li><b>Steuerungsbaustein (TIA Portal)</b> – das Recht <code>import.tia</code> „Steuerungsbaustein (TIA Portal) herunterladen“ steht in der Gruppe „Daten &amp; Schnittstellen“ und liegt bei allen Rollen mit „Import ansehen“. Mit Kennwort oder angelegten Zuordnungen braucht es zusätzlich „Import verwalten“ (<a href="#tiabaustein">mehr</a>).</li>
     <li><b>Energiedaten</b> – Messstellen, Minutenwerte, Schwellwerte und der Efficio-Export; die Rechte <code>energy.view</code>, <code>energy.edit</code>, <code>energy.thresholds</code> und <code>energy.admin</code> stehen in der Gruppe „Daten &amp; Schnittstellen“, die Einstellungen ändert nur der Bereichsadministrator (<a href="#energiedaten">mehr</a>).</li>
-    <li><b>Netz-Abgleich (IT-Assets)</b> – das Recht <code>it.netsync</code> „Netz-Abgleich einrichten und Vorschläge übernehmen“ steht in der Gruppe „IT“ und liegt bei allen Rollen mit „IT-Assets bearbeiten“; die Verbindung zu UniFi braucht <code>system.unifi</code>, die zu Omada <code>system.omada</code> (<a href="#it-net">mehr</a>).</li>
+    <li><b>Netz-Abgleich (IT-Assets)</b> – das Recht <code>it.netsync</code> „Netz-Abgleich einrichten und Vorschläge übernehmen“ steht in der Gruppe „IT“ und liegt bei allen Rollen mit „IT-Assets bearbeiten“; die Verbindung zu UniFi braucht <code>system.unifi</code>, die zu Omada <code>system.omada</code>, die SNMP-Zugangsprofile <code>system.snmp</code>. Die SNMP-Geräteliste pflegt, wer <code>it.netsync</code> hat; ein Gerät aus der Liste entfernen darf nur der Bereichsadministrator IT (<code>it.admin</code>) (<a href="#it-net">mehr</a>).</li>
     <li><b>IT-Kategorien</b> – das Recht <code>it.categories</code> „IT-Kategorien pflegen“ steht in der Gruppe „IT“ und liegt bei allen Rollen mit „IT: Bereichsadministrator“ (<code>it.admin</code>), mit deren Abteilung; die Seite ansehen darf, wer „IT-Infrastruktur ansehen“ hat. Eine Kategorie endgültig löschen darf nur der Bereichsadministrator IT (<a href="#it-categories">mehr</a>).</li>
     <li><b>Abgleich</b> – Meldungen aus einer fremden Datenbank als Tickets oder Störmeldungen übernehmen und Änderungen zurückschreiben; Profile löscht nur der Bereichsadministrator des Abgleichs (<a href="#abgleich">mehr</a>).</li>
     <li><b>Drucker</b> – Etiketten- und Netzwerkdrucker einrichten, prüfen und testen (<a href="#printers">mehr</a>).</li>
@@ -1985,6 +2022,13 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     Alle drei stehen in der Kategorie „System &amp; Sicherheit“. Mit dem Update bekommen sie alle Rollen, die „Cloudflare verwalten (DNS, Proxy, Tunnel)“ überall haben – niemand wird ausgesperrt. Die Karte hat im Reiter Cloudflare-Tunnel einen eigenen Knopf <b>Zertifikate laden</b>; das Cloudflare-Recht braucht man dafür nicht, den Reiter selbst öffnet, wer die Server-Einstellungen sehen darf.</div>
   <div class="hb-howto"><b><i class="ti ti-access-point"></i> Recht für die Omada-Anbindung</b>
     <b>„Omada-Controller anbinden“</b> (<code>system.omada</code>, Kategorie „System &amp; Sicherheit“): den Reiter <b>Omada</b> der Server-Einstellungen sehen, Adresse und Zugangsdaten speichern, den Fingerabdruck bestätigen und die Verbindung prüfen (<a href="#hb-omada">mehr</a>). Mit dem Update bekommen es alle Rollen und Benutzer, die „Namen im Haus eintragen (UniFi)“ haben – mit derselben Abteilung. Wem das UniFi-Recht einzeln entzogen ist, dem ist auch dieses entzogen. Niemand wird ausgesperrt, niemand bekommt mehr als bisher. Den Abgleich selbst schaltet ein, wer <code>it.netsync</code> hat.</div>
+  <div class="hb-howto"><b><i class="ti ti-network"></i> Rechte für SNMP</b>
+    <ul>
+      <li><b>„SNMP-Zugangsprofile verwalten“</b> (<code>system.snmp</code>, Kategorie „System &amp; Sicherheit“): den Reiter <b>SNMP</b> der Server-Einstellungen sehen, Zugangsprofile anlegen und ändern (<a href="#hb-snmp">mehr</a>). Mit dem Update bekommen es alle Rollen und Benutzer, die „Namen im Haus eintragen (UniFi)“ haben – mit derselben Abteilung. Wem das UniFi-Recht einzeln entzogen ist, dem ist auch dieses entzogen.</li>
+      <li><b>„SNMP: Zugangsprofile löschen (Bereichsadministrator)“</b> (<code>system.snmp_admin</code>): als Einziges berechtigt, ein Zugangsprofil endgültig zu löschen; allein genug, um den Reiter zu sehen und zu bedienen. Mit dem Update bekommen es nur Rollen, die überall sowohl <code>system.snmp</code> als auch „Zertifikate: entfernen und widerrufen (Bereichsadministrator)“ haben.</li>
+      <li><b>Geräteliste</b> auf der Seite Netz-Abgleich: hinzufügen, prüfen, ein-/ausschalten und bearbeiten mit <code>it.netsync</code>. <b>Entfernen</b> nur mit „IT: Bereichsadministrator“ (<code>it.admin</code>); das IT-Asset bleibt dabei bestehen.</li>
+    </ul>
+    Niemand wird ausgesperrt, niemand bekommt mehr als bisher.</div>
   <div class="hb-howto"><b><i class="ti ti-copy"></i> Rechte für die Datei-Spiegelung</b>
     <ul>
       <li><b>„Datei-Spiegelung einstellen“</b> (<code>system.file_mirror</code>, Kategorie „System &amp; Sicherheit“): Spiegelung und „Nextcloud mitnehmen“ ein- und ausschalten, Werte ändern und <b>Jetzt abgleichen</b> (<a href="#hb-dateispiegelung">mehr</a>).</li>

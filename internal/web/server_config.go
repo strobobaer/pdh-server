@@ -185,6 +185,7 @@ type ServerConfigData struct {
 	VPN            vpnView         // Reiter „VPN“: WireGuard auf dem Host (vpn.go)
 	Unifi          unifiTab        // Reiter „UniFi“: Anbindung an die UDM Pro (certs_lan.go), nur mit system.unifi
 	Omada          omadaTab        // Reiter „Omada“: Anbindung an den Omada-Controller (omada_web.go), nur mit system.omada
+	SNMP           snmpTab         // Reiter „SNMP“: Zugangsprofile für den Netz-Abgleich (snmp_web.go), nur mit system.snmp
 	DR             drView          // Reiter „Ausfallschutz“ (dr.go), nur geladen wenn geöffnet
 	AgentReady     bool            // Update-Agent kann .env.docker bereinigen
 	NCTheme        ncTheme         // Reiter Nextcloud: Erscheinungsbild übernehmen (nextcloud_theming.go)
@@ -277,9 +278,10 @@ func (h *Handler) ServerConfigPage(w http.ResponseWriter, r *http.Request) {
 	}
 	d.CF = h.cloudflareView(r.Context())
 	d.CF.CanAPI = h.canCloudflare(r)
-	d.CF.CanCerts = h.certCanManage(r) // nur der Knopf – die Karte lädt erst auf Klick
+	d.CF.CanCerts = h.certCanManage(r)      // nur der Knopf – die Karte lädt erst auf Klick
 	d.Unifi = h.unifiTabFor(r.Context(), r) // liest nur Einstellungen, fragt das Gerät nicht
 	d.Omada = h.omadaTabFor(r.Context(), r) // ebenso: keine Anfrage an den Controller
+	d.SNMP = h.snmpTabFor(r.Context(), r)   // liest nur die Profile, fragt kein Gerät
 	if h.db != nil {
 		show := ""
 		if d.Tab == "vpn" {
