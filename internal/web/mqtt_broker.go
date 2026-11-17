@@ -75,7 +75,9 @@ func (h *Handler) reconcileMqttBroker(id, direction, kind string, enabled bool, 
 	}
 	if err := h.mqttBrokers.Start(id, cfg); err != nil {
 		log.Error().Err(err).Str("connection_id", id).Msg("integrierter mqtt-broker konnte nicht gestartet werden")
+		return
 	}
+	h.mqttFirewallAuto(id, config) // Ports in der Firewall des Servers öffnen (mqtt_firewall.go)
 }
 
 // reconcileMqttConsumer gleicht die automatische Wertuebernahme markierter
@@ -309,7 +311,9 @@ func (h *Handler) StartEnabledMqttBrokers(ctx context.Context) {
 		}
 		if err := h.mqttBrokers.Start(id, cfg); err != nil {
 			log.Error().Err(err).Str("connection_id", id).Msg("integrierter mqtt-broker konnte beim start nicht gestartet werden")
+			continue
 		}
+		h.mqttFirewallAuto(id, config)
 	}
 }
 

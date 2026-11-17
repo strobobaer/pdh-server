@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -231,6 +232,10 @@ func (s *Store) Apply(ctx context.Context, source string, snap Snapshot, now tim
 func (s *Store) upsertDevice(ctx context.Context, tx pgx.Tx, source string, d Device, snapIDs []string, now time.Time) (created, skipped bool, id string, err error) {
 	mac := NormMAC(d.MAC)
 	st := stateOrUnknown(d.State)
+	serial := strings.TrimSpace(d.Serial)
+	if r := []rune(serial); len(r) > 100 { // serial_no VARCHAR(100)
+		serial = string(r[:100])
+	}
 
 	var detached bool
 	err = tx.QueryRow(ctx, `SELECT id::text, net_detached FROM it_assets WHERE net_source = $1 AND net_external_id = $2`, source, d.ExternalID).Scan(&id, &detached)
@@ -272,10 +277,13 @@ func (s *Store) upsertDevice(ctx context.Context, tx pgx.Tx, source string, d De
 				model       = CASE WHEN $6 <> '' THEN $6 ELSE model END,
 				firmware    = CASE WHEN $7 <> '' THEN $7 ELSE firmware END,
 				firmware_update = $8,
-				net_state_since = CASE WHEN net_state <> $9 OR net_state_since IS NULL THEN $10 ELSE net_state_since END,
-				net_last_seen   = CASE WHEN $9 = 'online' THEN $10 ELSE net_last_seen END,
-				net_state = $9, net_gone = false, net_role = 'device', updated_at = now()
-			WHERE id = $1 AND NOT net_detached`, id, source, d.ExternalID, mac, d.IP, d.Model, d.Firmware, d.FirmwareUpdate, st, now)
+				net_state_since = CASE WHEN $12 THEN net_state_since
+					WHEN net_state <> $9 OR net_state_since IS NULL THEN $10 ELSE net_state_since END,
+				net_last_seen   = CASE WHEN $9 = 'online' AND NOT $12 THEN $10 ELSE net_last_seen END,
+				net_state = CASE WHEN $12 THEN net_state ELSE $9 END,
+				net_gone = false, net_role = 'device', updated_at = now(),
+				serial_no = CASE WHEN $11 <> '' AND COALESCE(serial_no, '') = '' THEN $11 ELSE serial_no END
+			WHERE id = $1 AND NOT net_detached`, id, source, d.ExternalID, mac, d.IP, d.Model, d.Firmware, d.FirmwareUpdate, st, now, serial, d.KeepState)
 		if err != nil {
 			return false, false, "", err
 		}
@@ -312,11 +320,11 @@ func (s *Store) upsertDevice(ctx context.Context, tx pgx.Tx, source string, d De
 	err = tx.QueryRow(ctx, `INSERT INTO it_assets
 			(name, type, status, ip_address, mac_address, manufacturer, model, created_by,
 			 net_source, net_external_id, net_monitored, net_state, net_last_seen, net_state_since, net_role,
-			 firmware, firmware_update)
+			 firmware, firmware_update, serial_no)
 		VALUES ($1, 'network', 'active', NULLIF($2, ''), NULLIF($3, ''), NULLIF($4, ''), NULLIF($5, ''), $6,
-			$7, $8, `+MonitoredForCategorySQL("'network'")+`, $9, $10, $11, 'device', $12, $13)
+			$7, $8, `+MonitoredForCategorySQL("'network'")+`, $9, $10, $11, 'device', $12, $13, NULLIF($14, ''))
 		RETURNING id::text`, name, d.IP, mac, s.Manufacturer[source], d.Model, s.SystemUserID,
-		source, d.ExternalID, st, seen, now, d.Firmware, d.FirmwareUpdate).Scan(&id)
+		source, d.ExternalID, st, seen, now, d.Firmware, d.FirmwareUpdate, serial).Scan(&id)
 	return true, false, id, err
 }
 

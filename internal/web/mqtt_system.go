@@ -18,6 +18,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"pdh/internal/core/mqttbroker"
+	"pdh/internal/integrations/unifi"
 )
 
 // Der integrierte MQTT-Broker als eigenes System mit Namen (z. B. mqtt.firma.de):
@@ -378,7 +379,7 @@ func (h *Handler) mqttSiteSync(names ...string) {
 type mqttCheckRow struct {
 	Label, State, Hint string
 	Tone               string // ok | warn | off
-	Action             string // "" | cert | lan | tunnel
+	Action             string // "" | cert | lan | tunnel | firewall
 	Service            string // Tunnel: Ziel am Server
 	NoTLS, Replace     bool
 }
@@ -410,10 +411,14 @@ func (h *Handler) MqttBrokerChecklist(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	list := mqttChecklist{ConnectionID: id, Host: strings.TrimSpace(config[mqttHostKey])}
-	if kind == "mqtt" && config["broker_mode"] == "integrated" && list.Host != "" {
+	if kind == "mqtt" && config["broker_mode"] == "integrated" {
 		ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 		defer cancel()
-		list.Rows, list.Running = h.mqttCheckRows(ctx, r, id, config)
+		if list.Host != "" {
+			list.Rows, list.Running = h.mqttCheckRows(ctx, r, id, config)
+		} else if fw, ok := h.mqttFwCheckRow(ctx, config); ok {
+			list.Rows = []mqttCheckRow{fw} // ohne Namen: nur die Firewall
+		}
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	t, err := h.tmpl.Clone()
@@ -484,15 +489,20 @@ func (h *Handler) mqttCheckRows(ctx context.Context, r *http.Request, id string,
 	lctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	addrs, _ := net.DefaultResolver.LookupHost(lctx, host)
 	cancel()
-	lan := mqttCheckRow{Label: "Name im Haus", Tone: "warn"}
-	switch certLANState(addrs, own) {
-	case "direkt":
-		lan.State, lan.Tone = "zeigt auf diesen Server", "ok"
-	case "cloudflare":
-		lan.State = "zeigt im Haus auf Cloudflare"
-	default:
-		lan.State = "fehlt"
+	// Die UDM Pro nur fragen, wenn die Antwort des Servers nicht reicht: Name nicht auf diesem
+	// Server oder IPv6-Adressen in der Antwort (zeigt IPv6 nach außen?).
+	var recs []unifi.Record
+	needRecs := certLANState(addrs, own) != "direkt"
+	for _, ad := range addrs {
+		if ip := net.ParseIP(ad); ip != nil && ip.To4() == nil {
+			needRecs = true
+		}
 	}
+	if needRecs {
+		recs = h.mqttLANRecords(ctx)
+	}
+	lan := mqttCheckRow{Label: "Name im Haus"}
+	lan.State, lan.Tone, lan.Hint = mqttLANJudge(host, addrs, own, recs)
 	if lan.Tone != "ok" {
 		target := certLANTargetFrom(own, vip)
 		byHand := "Am DNS im Haus von Hand eintragen: " + host
@@ -585,7 +595,25 @@ func (h *Handler) mqttCheckRows(ctx context.Context, r *http.Request, id string,
 		}
 	}
 	rows = append(rows, ws)
+	if fw, ok := h.mqttFwCheckRow(ctx, config); ok {
+		rows = append(rows, fw)
+	}
 	return rows, running
+}
+
+// mqttFwCheckRow: Zeile „Firewall am Server“ – nur nachsehen, nichts ändern.
+func (h *Handler) mqttFwCheckRow(ctx context.Context, config map[string]string) (mqttCheckRow, bool) {
+	ports := mqttFirewallPorts(config)
+	if len(ports) == 0 {
+		return mqttCheckRow{}, false
+	}
+	if !h.driveAgentConfigured() {
+		return mqttFwRow(ports, false, mqttFwState{}, nil), true
+	}
+	fctx, cancel := context.WithTimeout(ctx, 6*time.Second)
+	defer cancel()
+	st, err := h.mqttFirewall(fctx, ports, false)
+	return mqttFwRow(ports, true, st, err), true
 }
 
 // mqttTunnelState: Soll und Ist des Tunnel-Ziels für den Namen (wie die Zeile im Reiter

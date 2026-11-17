@@ -60,6 +60,7 @@
   <a class="rec-tab" data-tab="vpn" href="?tab=vpn"><i class="ti ti-shield-lock"></i> VPN{{if eq .VPN.Service.State "down"}}<span class="sc-dot bad" title="{{.VPN.Service.Label}}"></span>{{else if eq .VPN.Service.State "ok"}}<span class="sc-dot ok" title="läuft"></span>{{end}}</a>
   {{if .Unifi.Can}}<a class="rec-tab" data-tab="unifi" href="?tab=unifi"><i class="ti ti-router"></i> UniFi{{if and .Unifi.Unifi.URL (not .Unifi.Unifi.Confirmed)}}<span class="sc-dot" style="background:var(--amber,#f59e0b)" title="Fingerabdruck noch nicht bestätigt"></span>{{else if .Unifi.Unifi.Confirmed}}<span class="sc-dot ok" title="angebunden"></span>{{end}}</a>{{end}}
   {{if .Omada.Can}}<a class="rec-tab" data-tab="omada" href="?tab=omada"><i class="ti ti-access-point"></i> Omada{{if and .Omada.Omada.URL (not .Omada.Omada.Confirmed)}}<span class="sc-dot" style="background:var(--amber,#f59e0b)" title="Fingerabdruck noch nicht bestätigt"></span>{{else if .Omada.Omada.Ready}}<span class="sc-dot ok" title="angebunden"></span>{{end}}</a>{{end}}
+  {{if .SNMP.Can}}<a class="rec-tab" data-tab="snmp" href="?tab=snmp"><i class="ti ti-network"></i> SNMP{{if .SNMP.Profiles}}<span class="sc-dot ok" title="{{len .SNMP.Profiles}} Zugangsprofil(e)"></span>{{end}}</a>{{end}}
   <a class="rec-tab" data-tab="dr" href="?tab=dr"><i class="ti ti-shield-check"></i> Ausfallschutz</a>
   {{if .CanLogs}}<a class="rec-tab" href="/admin/server-config/logs" style="margin-left:auto"><i class="ti ti-file-analytics"></i> Protokoll ansehen</a>{{end}}
 </div>
@@ -247,6 +248,11 @@
 <!-- ── Omada: Anbindung an den Omada-Controller für den Netz-Abgleich (omada_web.go, widgets/omada.gohtml) ── -->
 {{if .Omada.Can}}<div class="rec-pane" data-pane="omada">
 {{template "omada-panel" .Omada}}
+</div>{{end}}
+
+<!-- ── SNMP: Zugangsprofile für den Netz-Abgleich (snmp_web.go, widgets/snmp.gohtml) ── -->
+{{if .SNMP.Can}}<div class="rec-pane" data-pane="snmp">
+{{template "snmp-panel" .SNMP}}
 </div>{{end}}
 
 <!-- ── Ausfallschutz: Sicherung aufs Netzlaufwerk (dr.go, widgets/dr.gohtml) ── -->

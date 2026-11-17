@@ -1,0 +1,13 @@
+# Labor-Gegenstelle für SNMP v3 (nur zum Testen, nie produktiv).
+# Start: docker compose -p pdh-lab-snmp -f deploy/lab/snmp/docker-compose.yml up -d --build
+# Benutzer und Kennwörter stehen in snmpd.conf und gelten nur im Labor.
+name: pdh-lab-snmp
+
+services:
+  snmpd:
+    build: .
+    image: pdh-lab-snmp:local
+    ports:
+      # nur der eigene Rechner; SNMP läuft über UDP
+      - "127.0.0.1:1161:161/udp"
+    restart: unless-stopped

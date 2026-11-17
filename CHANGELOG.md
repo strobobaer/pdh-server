@@ -10,6 +10,55 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.80.23] – 2026-11-17
+
+### Neu
+
+- Eingebauter MQTT-Broker: Das PDH öffnet den MQTT-Port und den TLS-Port (z. B. 1883 und 8883) bei jedem Start des Brokers selbst in der Firewall des Servers (ufw) – Geräte im Haus erreichen den Broker ohne Handarbeit am Server.
+- Broker-Status: Die Prüfliste zeigt die neue Zeile **Firewall am Server** mit dem Knopf **Ports öffnen**. Kann das PDH die Firewall nicht ändern (kein Update-Agent, Docker-Betrieb, Fehler), steht dort der Befehl für den Server.
+- Broker-Status: Die Prüfliste gibt es jetzt auch für einen Broker ohne eigenen Namen – dort mit der Zeile zur Firewall.
+- Handbuch: „So geht's: Ports in der Firewall öffnen“.
+
+### Behoben
+
+- Broker-Status: „Name im Haus“ meldete „zeigt im Haus auf Cloudflare“, obwohl der Name an der UDM Pro richtig eingetragen war – wenn der Server selbst zusätzlich einen DNS außerhalb des Hauses fragt. Jetzt zählt der Eintrag an der UDM Pro.
+- Broker-Status: Zeigt der Name über IPv6 weiter nach außen, steht das als Hinweis bei „Name im Haus“ – Geräte, die IPv6 bevorzugen, erreichen mqtt und mqtts sonst nicht.
+
+### Sicherheit
+
+- Wer eine Import-Verbindung bearbeiten darf (`import.write`), lässt damit die Ports des eingebauten Brokers in der Firewall des Servers öffnen. Geöffnet werden nur TCP-Ports ab 1024 und nie die von Datenbank, Ausfallschutz oder Update-Agent; ins Internet wird nichts freigegeben, und das PDH schließt oder ändert keine anderen Regeln.
+
+## [0.80.22] – 2026-11-17
+
+### Neu
+
+- IT-Assets → Netz-Abgleich: **SNMP v3** ist die dritte Quelle neben UniFi und Omada – Geräte ohne Controller (Switches anderer Hersteller, Drucker, USV, NAS) werden einzeln gefragt und IT-Assets mit Modell, Firmware, MAC, Zustand und Anschlüssen.
+- Server-Einstellungen: neuer Reiter **SNMP** für Zugangsprofile (Benutzer, Verfahren, zwei Kennwörter); ein Profil gilt für viele Geräte.
+- Seite Netz-Abgleich: neue Karte **SNMP-Geräte** mit Adresse, Port, Profil, Zustand und letztem Fehler; **Prüfen** zeigt sofort, was ein Gerät antwortet, oder den Grund in Klartext.
+- Schutz vor falschem Alarm: Lehnt ein Gerät den Zugang ab, gilt es als „unbekannt“ statt offline; antwortet keines von mindestens 3 Geräten, entsteht kein Ausfall-Ticket.
+- SNMP: Ein Gerät gilt erst als „offline“, wenn es dem gerade fragenden Server schon einmal geantwortet hat – nach einer Umschaltung im Verbund, einem Neustart oder einer längeren Pause entstehen so keine Tickets für Geräte, die den Server nur nicht freigeschaltet haben.
+- SNMP: Antwortet länger als die Karenz kein einziges Gerät, bekommen die Verantwortlichen des Netz-Abgleichs eine Nachricht statt vieler Tickets.
+- SNMP: Kann der PDH-Server selbst nicht senden (z. B. kein Weg ins Netz), gelten die Geräte als „unbekannt“ statt offline.
+- SNMP: Reicht die Zeit eines Laufs nicht für alle Geräte, behalten die nicht gefragten ihren Zustand, und der nächste Lauf beginnt bei ihnen.
+- SNMP-Geräteliste: Hinweis mit Link, wenn das IT-Asset eines Geräts vom Abgleich getrennt ist; doppelte Einträge desselben Geräts ergeben kein zweites Asset; konnte gar kein Gerät gefragt werden, steht das an der Quelle.
+- SNMP: Die MAC-Adresse eines Geräts ohne Bridge-Adresse stammt vom ersten echten Netzwerkanschluss (bevorzugt einem aktiven), nicht mehr von einer virtuellen Schnittstelle.
+- Hinweis: SNMP v3 ist im Labor geprüft und noch nicht an echten Switches und Druckern erprobt.
+- Handbuch: „So bindest du ein Gerät per SNMP v3 an“ und „So legst du ein SNMP-Zugangsprofil an“.
+
+### Geändert
+
+- Die Seite Netz-Abgleich zeigt den Stand für drei Quellen; Vorschläge kommen weiter nur aus UniFi und Omada, SNMP liefert keine.
+- Am IT-Asset erscheint die Spalte PoE der Anschluss-Tabelle nur noch, wenn das Gerät PoE meldet.
+
+### Sicherheit
+
+- Neues Recht „SNMP-Zugangsprofile verwalten“ (`system.snmp`): Es bekommen alle Rollen und Benutzer, die „Namen im Haus eintragen (UniFi)“ (`system.unifi`) haben – niemand wird ausgesperrt, niemand bekommt mehr als bisher.
+- Neues Recht „SNMP: Zugangsprofile löschen (Bereichsadministrator)“ (`system.snmp_admin`): Nur damit lässt sich ein Zugangsprofil endgültig löschen; es bekommen nur Rollen, die schon Bereichsadministrator der Zertifikate sind und die Profile verwalten dürfen.
+- Das PDH fragt Geräte nur angemeldet und verschlüsselt (SNMP v3); SNMP v1/v2c, MD5 und DES gibt es nicht, und abgefragt werden nur Adressen im eigenen Netz.
+- Die Kennwörter der Zugangsprofile liegen nur verschlüsselt in der Datenbank und werden nie wieder angezeigt oder protokolliert.
+- Ein Gerät aus der SNMP-Geräteliste entfernen darf nur die IT-Administration (`it.admin`); hat das Gerät schon ein IT-Asset, zählt das Recht für dessen Abteilung. Das IT-Asset bleibt dabei bestehen.
+- Handbuch: Für SNMP-Zugangsprofile werden lange, zufällige Kennwörter (mindestens 16 Zeichen) empfohlen.
+
 ## [0.80.21] – 2026-11-17
 
 ### Neu

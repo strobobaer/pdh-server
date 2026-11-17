@@ -101,6 +101,7 @@ var areaAdminPerm = map[string]string{
 	"certs":    permCertsAdmin,   // Zertifikate (Let's Encrypt): nur dieses Recht, nicht alle system.*
 	syncRef:    permSyncAdmin,    // Abgleich mit Fremdsystemen: Profile löschen
 	dataNetRef: permDataNetAdmin, // Datennetz: Clients endgültig entfernen
+	"snmp":     permSNMPAdmin,    // SNMP-Zugangsprofile: endgültig löschen
 }
 
 // isAreaAdmin: Bereichsadministrator für diesen Datensatz?
@@ -160,7 +161,10 @@ var gateRules = []gateRule{
 	gr(wPost, permCloudflare, "", false, `^/admin/server-config/cloudflare/mtls-(?:off|on)$`),
 	gr(wPost, permCerts, "", false, `^/admin/server-config/certs/(?:settings|add|issue)$`),
 	gr(wPost, permUnifi, "", false, `^/admin/server-config/(?:unifi|unifi/confirm|certs/lan|certs/lan6)$`), // Reiter „UniFi“ und Namen im Haus
-	gr(wPost, permOmada, "", false, `^/admin/server-config/omada(?:/confirm|/check)?$`), // Reiter „Omada“
+	gr(wPost, permOmada, "", false, `^/admin/server-config/omada(?:/confirm|/check)?$`),                    // Reiter „Omada“
+	// Reiter „SNMP“: Profil löschen nur Bereichsadministrator, anlegen und ändern mit system.snmp
+	gr(wPost, permSNMPAdmin, "", false, `^/admin/server-config/snmp/profiles`+gID+`/delete$`),
+	gr(wPost, permSNMP, "", false, `^/admin/server-config/snmp/profiles(?:`+gID+`)?$`),
 	// ── Löschvormerkung von Stammdaten über die Schnittstelle ──
 	gr("DELETE", "inventory.edit", "part", false, `^(?:/api/v1)?/inventory`+gID+gEnd),
 	gr("DELETE", "inventory.edit", "storage", false, `^(?:/api/v1)?/storage`+gID+gEnd),
@@ -171,6 +175,8 @@ var gateRules = []gateRule{
 	gr(wPost, "import.write", "", false, `^/import/connections/fingerprint$`),
 	// Prüfliste des Brokers mit eigenem Namen (Zustände sieht, wer die Verbindung bearbeiten darf)
 	gr("GET", "import.write", "", false, `^/import/connections`+gID+`/broker/checklist$`),
+	// Ports des eingebauten Brokers in der Firewall des Servers öffnen (wer den Broker einrichtet)
+	gr(wPost, "import.write", "", false, `^/import/connections`+gID+`/broker/firewall$`),
 	gr(wPost, "export.write", "", false, `^/export/connections/fingerprint$`),
 	// ── Explorer: Testschreiben/Senden wie Verbindung bearbeiten (Erkunden selbst: import/export.execute im Handler) ──
 	gr(wPost, "import.write", "", false, `^/import/connections`+gID+`/explorer/(?:mqtt/publish|opcua/write|modbus/write)$`),
@@ -214,6 +220,10 @@ var gateRules = []gateRule{
 	// Netz-Abgleich: einrichten und Vorschläge mit it.netsync, Schalter am Asset mit it.edit (Abteilung des Assets)
 	gr(wPost, permITNetsync, "", false, `^/it/net/(?:settings|run|candidates/adopt|candidates/ignore)$`),
 	gr(wPost, "it.edit", "it_asset", false, `^/it`+gID+`/net-(?:monitor|detach|reattach|grace)$`),
+	// SNMP-Geräteliste: pflegen, prüfen, ein-/ausschalten mit it.netsync; aus der Liste
+	// entfernen nur der Bereichsadministrator IT
+	gr(wPost, itNetPermAdmin, "", false, `^/it/net/snmp/targets`+gID+`/remove$`),
+	gr(wPost, permITNetsync, "", false, `^/it/net/snmp/targets(?:`+gID+`(?:/enabled|/check)?)?$`),
 	// IT-Kategorien: anlegen, ändern, aus-/einblenden mit it.categories (Einstellungen ohne Abteilung);
 	// endgültig löschen nur der Bereichsadministrator IT (nur unbenutzte Kategorien)
 	gr(wPost, itNetPermAdmin, "", false, `^/it/categories/[a-z0-9-]+/delete$`),
@@ -291,6 +301,7 @@ func (h *Handler) PermissionGateMiddleware(next http.Handler) http.Handler {
 // Regeln ohne Datensatz-ID – die Abteilungsprüfung danach gilt dem Gate-Recht.
 var gateAltPerms = map[string][]string{
 	permCerts: {permCertsAdmin}, // Bereichsadministrator der Zertifikate darf auch alles andere der Karte
+	permSNMP:  {permSNMPAdmin},  // ebenso: Bereichsadministrator der SNMP-Zugangsprofile
 }
 
 // gatePermOK: hat jemand das Gate-Recht oder eines seiner Ersatzrechte?

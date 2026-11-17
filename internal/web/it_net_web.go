@@ -52,8 +52,8 @@ func itNetForbidden(w http.ResponseWriter) {
 
 // itNetSource: Name der Quelle UniFi in den Assets (Tests nehmen eine eigene).
 func (h *Handler) itNetSource() string {
-	if h.itNet.source != "" {
-		return h.itNet.source
+	if n := h.itNet.of(itNetSourceUnifi).name; n != "" {
+		return n
 	}
 	return itNetSourceUnifi
 }
@@ -97,7 +97,7 @@ func itNetLog() *zerolog.Logger {
 }
 
 // itNetSourceNames: Anzeigenamen der Quellen.
-var itNetSourceNames = map[string]string{itNetSourceUnifi: "UniFi", itNetSourceOmada: "Omada"}
+var itNetSourceNames = map[string]string{itNetSourceUnifi: "UniFi", itNetSourceOmada: "Omada", itNetSourceSNMP: "SNMP"}
 
 // itNetSourceName: Anzeigename einer Quelle (unbekannt → Schlüssel selbst).
 func itNetSourceName(src string) string {
@@ -124,12 +124,17 @@ type ITNetCandidate struct {
 // ITNetSourceView: Status einer Quelle auf der Seite.
 type ITNetSourceView struct {
 	Key, Label string
+	Title      string // Überschrift der Karte
 	Field      string // Name des Einschalters im Einstellungsformular
-	Connected  bool   // eingerichtet (Adresse, Zugangsdaten, bestätigter Fingerabdruck)
+	Connected  bool   // eingerichtet (Adresse, Zugangsdaten, bestätigter Fingerabdruck; SNMP: mindestens ein Profil)
 	Enabled    bool
+	NoClients  bool   // die Quelle kennt keine Clients (SNMP)
 	CanConnect bool   // Recht für den Reiter der Server-Einstellungen
 	ConfigURL  string // Reiter der Server-Einstellungen
+	Missing    string // Satz, solange die Quelle nicht eingerichtet ist
 	Setup      string // was dort einzutragen ist
+	SetupDo    string // … und was damit zu tun ist
+	LinkText   string // Link zum Reiter, wenn eingerichtet
 	PermHint   string // wer die Verbindung einrichtet (ohne eigenes Recht)
 	Note       string // Hinweis zur Quelle
 	LastRun    string
@@ -141,22 +146,36 @@ type ITNetSourceView struct {
 // itNetOmadaNote: ehrlicher Hinweis, solange es keinen Test an einem echten Controller gab.
 const itNetOmadaNote = "Die Omada-Anbindung ist noch nicht an einem echten Controller erprobt."
 
+// itNetSNMPNote: ebenso für SNMP, solange es keine Abnahme an echten Geräten gab.
+const itNetSNMPNote = "SNMP v3 ist noch nicht an echten Switches und Druckern erprobt."
+
 // itNetSourceViews: Status aller Quellen für die Seite.
 func (h *Handler) itNetSourceViews(r *http.Request) []ITNetSourceView {
 	ctx := r.Context()
 	var out []ITNetSourceView
 	for _, s := range h.itNetSources() {
-		v := ITNetSourceView{Key: s.Key, Label: s.Label, Enabled: h.itNetOn(ctx, s.keyOn)}
+		v := ITNetSourceView{Key: s.Key, Label: s.Label, Title: "Quelle " + s.Label, Field: s.Field, Enabled: h.itNetOn(ctx, s.keyOn),
+			NoClients: s.NoClients, Missing: s.Label + " ist noch nicht verbunden.",
+			SetupDo: "eintragen und den Fingerabdruck bestätigen", LinkText: "Verbindung in den Server-Einstellungen, Reiter „" + s.Label + "“"}
 		switch s.Key {
 		case itNetSourceUnifi:
-			v.Field = "enabled"
 			v.Connected = h.certSetting(ctx, keyUnifiURL) != "" && h.certSetting(ctx, keyUnifiKey) != "" && h.certSetting(ctx, keyUnifiPin) != ""
 			v.CanConnect = h.itNetCan(r, permUnifi, "")
 			v.ConfigURL = "/admin/server-config?tab=unifi"
 			v.Setup = "Adresse und API-Schlüssel"
 			v.PermHint = "Die Verbindung richtet eine Person mit dem Recht „Namen im Haus eintragen (UniFi)“ in den Server-Einstellungen ein."
+		case itNetSourceSNMP:
+			// „verbunden“ heißt hier: Es gibt mindestens ein Zugangsprofil.
+			v.Title = "Quelle SNMP v3"
+			v.Connected = h.snmpProfileCount(ctx) > 0
+			v.CanConnect = h.itNetCan(r, permSNMP, "") || h.itNetCan(r, permSNMPAdmin, "")
+			v.ConfigURL = "/admin/server-config?tab=snmp"
+			v.Missing = "Für SNMP gibt es noch kein Zugangsprofil."
+			v.Setup, v.SetupDo = "Ein Zugangsprofil (Benutzer, Verfahren und Kennwörter)", "anlegen"
+			v.LinkText = "Zugangsprofile in den Server-Einstellungen, Reiter „SNMP“"
+			v.Note = itNetSNMPNote
+			v.PermHint = "Die Zugangsprofile legt eine Person mit dem Recht „SNMP-Zugangsprofile verwalten“ (system.snmp) in den Server-Einstellungen an."
 		case itNetSourceOmada:
-			v.Field = "omada_enabled"
 			v.Connected = h.omadaConnected(ctx)
 			v.CanConnect = h.itNetCan(r, permOmada, "")
 			v.ConfigURL = "/admin/server-config?tab=omada"
@@ -181,7 +200,8 @@ func (h *Handler) itNetSourceViews(r *http.Request) []ITNetSourceView {
 type ITNetPageData struct {
 	BaseData
 	CanSetup  bool              // it.netsync
-	Sources   []ITNetSourceView // Status je Quelle (UniFi, Omada)
+	Sources   []ITNetSourceView // Status je Quelle (UniFi, Omada, SNMP)
+	SNMP      ITNetSNMPCard     // Karte „SNMP-Geräte“ (snmp_web.go)
 	AnyOn     bool              // mindestens eine Quelle ist eingeschaltet
 	Interval  int
 	Grace     int
@@ -220,7 +240,7 @@ var itNetErrors = map[string]string{
 	"maint":    "Wartungssperre aktiv – der Abgleich ist gerade nicht möglich.",
 	"run":      "Der Abgleich ist bei mindestens einer Quelle fehlgeschlagen – siehe Fehler bei der Quelle.",
 	"source":   "Unbekannte Quelle – bitte die Seite neu laden und noch einmal versuchen.",
-	"othersrc": "Zu dieser MAC-Adresse gibt es schon ein Asset aus der anderen Quelle – es wird kein zweites angelegt.",
+	"othersrc": "Zu dieser MAC-Adresse gibt es schon ein Asset aus einer anderen Quelle – es wird kein zweites angelegt.",
 	"type":     "Bitte einen gültigen Typ wählen.",
 	"nocand":   "Diesen Vorschlag gibt es nicht mehr.",
 	"adopt":    "Der Vorschlag konnte nicht übernommen werden.",
@@ -256,6 +276,7 @@ func (h *Handler) ITNetPage(w http.ResponseWriter, r *http.Request) {
 	for _, s := range d.Sources {
 		d.AnyOn = d.AnyOn || s.Enabled
 	}
+	d.SNMP = h.itNetSNMPCard(r)
 	d.Interval = int(h.itNetInterval(ctx) / time.Second)
 	d.Grace = int(h.itNetGrace(ctx) / time.Minute)
 	d.RespUser = h.appSetting(ctx, keyITNetRespUser, "")
@@ -359,6 +380,7 @@ func itNetBack(w http.ResponseWriter, r *http.Request, notice, errKey string) {
 type itNetSettings struct {
 	Enabled           bool // UniFi
 	OmadaEnabled      bool
+	SNMPEnabled       bool
 	Interval, Grace   int
 	Priority          string
 	RespUser, RespGrp string
@@ -369,6 +391,7 @@ func itNetSettingsFromForm(f url.Values) (itNetSettings, string) {
 	s := itNetSettings{
 		Enabled:      f.Get("enabled") != "",
 		OmadaEnabled: f.Get("omada_enabled") != "",
+		SNMPEnabled:  f.Get("snmp_enabled") != "",
 		Priority:     strings.TrimSpace(f.Get("priority")),
 		RespUser:     strings.TrimSpace(f.Get("responsible_user")),
 		RespGrp:      strings.TrimSpace(f.Get("responsible_group")),
@@ -411,7 +434,7 @@ func (h *Handler) ITNetSettingsWeb(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := r.Context()
-	want := map[string]bool{itNetSourceUnifi: s.Enabled, itNetSourceOmada: s.OmadaEnabled}
+	want := map[string]bool{itNetSourceUnifi: s.Enabled, itNetSourceOmada: s.OmadaEnabled, itNetSourceSNMP: s.SNMPEnabled}
 	srcs := h.itNetSources()
 	wasOn := map[string]bool{}
 	var kvs [][2]string
@@ -475,7 +498,9 @@ func (h *Handler) ITNetRunWeb(w http.ResponseWriter, r *http.Request) {
 
 // itNetFormSource: Quelle aus dem Feld „source“ (fehlt es: UniFi). Nur bekannte Quellen.
 func (h *Handler) itNetFormSource(r *http.Request) (itNetSrc, bool) {
-	return h.itNetSrcByKey(strings.TrimSpace(r.FormValue("source")))
+	s, ok := h.itNetSrcByKey(strings.TrimSpace(r.FormValue("source")))
+	// Quellen ohne Clients (SNMP) haben keine Vorschläge – dort gibt es nichts zu übernehmen.
+	return s, ok && !s.NoClients
 }
 
 // ITNetAdoptWeb: POST /it/net/candidates/adopt (source, mac, type).
@@ -577,6 +602,7 @@ type ITNetDetailView struct {
 	Monitored      bool
 	Gone           bool
 	Ports          []ITNetPortView
+	HasPoE         bool // mindestens ein Anschluss meldet PoE – sonst entfällt die Spalte (SNMP liest kein PoE)
 	// Karenz bis zum Alarm: wirksamer Wert in Minuten und Herkunft (eigener Wert, Kategorie, allgemein).
 	GraceMin    int
 	GraceSource string
@@ -678,6 +704,7 @@ func (h *Handler) itNetDetail(ctx context.Context, a *it.Asset, cats map[string]
 			if !p.Up {
 				p.Speed = "–"
 			}
+			v.HasPoE = v.HasPoE || p.PoE != ""
 			v.Ports = append(v.Ports, p)
 		}
 	}
@@ -748,6 +775,21 @@ func (h *Handler) ITNetGraceWeb(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// itNetDetachTx trennt ein Asset von seiner Quelle: Es bleibt bestehen, wird aber nicht
+// mehr abgeglichen und nicht überwacht; Anschlüsse und Wächterzustand entfallen.
+func itNetDetachTx(ctx context.Context, tx pgx.Tx, assetID string) error {
+	if _, err := tx.Exec(ctx, `UPDATE it_assets SET net_detached = true, net_monitored = false,
+			net_state = 'unknown', net_state_since = NULL, net_gone = false, updated_at = now()
+		WHERE id = $1::uuid AND net_source IS NOT NULL`, assetID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM it_asset_ports WHERE asset_id = $1::uuid`, assetID); err != nil {
+		return err
+	}
+	_, err := tx.Exec(ctx, `DELETE FROM it_net_alarm_state WHERE asset_id = $1::uuid`, assetID)
+	return err
+}
+
 // ITNetDetachWeb: POST /it/{id}/net-detach – Asset bleibt, wird nicht mehr abgeglichen.
 // Quelle und ID bleiben stehen (sonst legte der nächste Abgleich ein Doppel an);
 // net_detached sorgt dafür, dass Abgleich, Vorschläge und Wächter es auslassen.
@@ -763,15 +805,7 @@ func (h *Handler) ITNetDetachWeb(w http.ResponseWriter, r *http.Request) {
 			return err
 		}
 		defer func() { _ = tx.Rollback(ctx) }()
-		if _, err := tx.Exec(ctx, `UPDATE it_assets SET net_detached = true, net_monitored = false,
-				net_state = 'unknown', net_state_since = NULL, net_gone = false, updated_at = now()
-			WHERE id = $1::uuid AND net_source IS NOT NULL`, id); err != nil {
-			return err
-		}
-		if _, err := tx.Exec(ctx, `DELETE FROM it_asset_ports WHERE asset_id = $1::uuid`, id); err != nil {
-			return err
-		}
-		if _, err := tx.Exec(ctx, `DELETE FROM it_net_alarm_state WHERE asset_id = $1::uuid`, id); err != nil {
+		if err := itNetDetachTx(ctx, tx, id); err != nil {
 			return err
 		}
 		return tx.Commit(ctx)
