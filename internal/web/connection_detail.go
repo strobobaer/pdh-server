@@ -39,12 +39,13 @@ var connFieldLabels = map[string]string{
 	"time_format": "Zeitformat", "time_base": "Zeitbezug", "decimal_comma": "Dezimalkomma", "encoding": "Zeichensatz", "target": "Ablage",
 	"drive_id": "Netzlaufwerk", "drive_folder": "Ordner auf dem Laufwerk", "ftp_host": "Server", "ftp_port": "Port",
 	"ftp_username": "Benutzer", "ftp_password": "Kennwort", "ftp_folder": "Zielordner", "ftp_tls": "TLS",
-	"sftp_host_key": "Fingerabdruck des Servers", "filter_infra_ids": "Nur Anlagen", "filter_meter_keys": "Nur Messstellen",
+	"sftp_auth": "Anmeldung bei SFTP", "sftp_key": "Eigener Schlüssel (SFTP)", "sftp_host_key": "Fingerabdruck des Servers", "filter_infra_ids": "Nur Anlagen", "filter_meter_keys": "Nur Messstellen",
 }
 
 var connSecretFields = map[string]bool{
 	"password": true, "ext_password": true, "int_broker_password": true, "bearer_token": true, "api_key_value": true,
 	"ftp_password": true, // Efficio-Export: FTP-/SFTP-Kennwort
+	"sftp_key":     true, // Efficio-Export: eigener privater Schlüssel für SFTP
 }
 
 type connConfigRow struct{ Label, Value string }

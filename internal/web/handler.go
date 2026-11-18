@@ -1094,6 +1094,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/export/connections/{id}/efficio/files/{fileId}", h.EfficioDownload)
 	r.Post("/export/connections/{id}/efficio/run-web", h.EfficioRunWeb)
 	r.Post("/export/connections/{id}/efficio/test-web", h.EfficioTestWeb)
+	r.Post("/export/connections/{id}/efficio/key-web", h.EfficioKeyWeb)
 	r.Post("/export/connections/{id}/mappings", h.ExportMappingCreateWeb)
 	r.Post("/export/connections/{id}/mappings/{mappingId}/delete-web", h.ExportMappingDeleteWeb)
 	r.Get("/export/templates", h.ExportTemplatesPage)

@@ -10,6 +10,17 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.80.26] – 2026-11-18
+
+### Neu
+
+- Efficio-Export per SFTP: Anmeldung jetzt auch mit **Schlüssel** statt Kennwort. Das PDH erzeugt dafür ein eigenes Schlüsselpaar; den öffentlichen Schlüssel zeigt die Seite **Dateien & Protokoll** zum Kopieren und Hinterlegen am Server. Kennwort und FTP gehen weiter wie bisher.
+- Handbuch: Schritt „Schlüssel erzeugen“ im Kapitel zum Efficio-Export.
+
+### Sicherheit
+
+- Der private SFTP-Schlüssel wird verschlüsselt in der Verbindung gespeichert und nie angezeigt, auch nicht in Sicherungen im Klartext. Erzeugen und Ersetzen darf, wer die Verbindung bearbeiten darf (`export.write`).
+
 ## [0.80.25] – 2026-11-18
 
 ### Geändert

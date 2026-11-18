@@ -200,6 +200,11 @@
         <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin:6px 0 10px"><input type="checkbox" name="f_efficio_ftp_tls"> Verschlüsselt (FTP mit TLS)</label>
       </div>
       <div class="efficio-target" data-target="sftp" hidden>
+        <div class="form-group"><label class="form-label" for="f_efficio_sftp_auth">Anmeldung</label>
+          <select id="f_efficio_sftp_auth" name="f_efficio_sftp_auth" class="form-input">
+            <option value="password">Kennwort</option>
+            <option value="key">Schlüssel (das PDH erzeugt ein eigenes Schlüsselpaar)</option></select></div>
+        <p style="font-size:11px;color:var(--muted);margin:-4px 0 10px">Mit <b>Schlüssel</b> bleibt das Kennwort-Feld leer. Nach dem Speichern unter „Dateien &amp; Protokoll“ den Schlüssel erzeugen und den öffentlichen Schlüssel am SFTP-Server hinterlegen.</p>
         <div class="form-group"><label class="form-label" for="f_efficio_sftp_host_key">Fingerabdruck des Servers</label>
           <input id="f_efficio_sftp_host_key" name="f_efficio_sftp_host_key" class="form-input" placeholder="SHA256:… – leer lassen, dann zeigt „Verbindung testen“ ihn zur Bestätigung"></div>
         <p style="font-size:11px;color:var(--muted);margin:-4px 0 10px">SFTP verbindet nur mit einem bestätigten Server. Nach dem Speichern: unter „Dateien &amp; Protokoll“ <b>Verbindung testen</b>, den angezeigten Fingerabdruck prüfen und bestätigen.</p>

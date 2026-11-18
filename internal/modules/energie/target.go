@@ -3,10 +3,12 @@ package energie
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/tls"
 	"encoding/base64"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"net"
@@ -319,9 +321,57 @@ type SFTPTarget struct {
 	Port     int
 	User     string
 	Password string
-	Folder   string
-	HostKey  string
-	Timeout  time.Duration
+	// PrivateKey: eigener Schlüssel des PDH im OpenSSH-Format. Ist er gesetzt,
+	// meldet sich das PDH nur damit an – das Kennwort wird dann nicht gesendet.
+	PrivateKey string
+	// KeyAuth: Anmeldung mit Schlüssel ist gewählt (auch wenn noch keiner erzeugt ist).
+	KeyAuth bool
+	Folder  string
+	HostKey string
+	Timeout time.Duration
+}
+
+// ErrSFTPNoKey: Anmeldung mit Schlüssel gewählt, aber noch kein Schlüssel erzeugt.
+var ErrSFTPNoKey = errors.New("für die Anmeldung mit Schlüssel ist noch kein Schlüssel erzeugt")
+
+// GenerateSFTPKey erzeugt ein neues Schlüsselpaar (Ed25519) und liefert den
+// privaten Schlüssel im OpenSSH-Format.
+func GenerateSFTPKey() (string, error) {
+	_, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		return "", err
+	}
+	block, err := ssh.MarshalPrivateKey(priv, "pdh-efficio")
+	if err != nil {
+		return "", err
+	}
+	return string(pem.EncodeToMemory(block)), nil
+}
+
+// SFTPPublicKey liefert zum privaten Schlüssel die Zeile für authorized_keys
+// und den Fingerabdruck ("SHA256:…").
+func SFTPPublicKey(private string) (line, fingerprint string, err error) {
+	signer, err := ssh.ParsePrivateKey([]byte(private))
+	if err != nil {
+		return "", "", errors.New("der gespeicherte Schlüssel ist nicht lesbar – bitte einen neuen erzeugen")
+	}
+	pub := signer.PublicKey()
+	return strings.TrimSpace(string(ssh.MarshalAuthorizedKey(pub))) + " pdh-efficio", HostKeyFingerprint(pub), nil
+}
+
+// auth: Anmeldung mit Schlüssel oder Kennwort.
+func (t SFTPTarget) auth() ([]ssh.AuthMethod, error) {
+	if !t.KeyAuth && t.PrivateKey == "" {
+		return []ssh.AuthMethod{ssh.Password(t.Password)}, nil
+	}
+	if t.PrivateKey == "" {
+		return nil, ErrSFTPNoKey
+	}
+	signer, err := ssh.ParsePrivateKey([]byte(t.PrivateKey))
+	if err != nil {
+		return nil, errors.New("der gespeicherte Schlüssel ist nicht lesbar – bitte einen neuen erzeugen")
+	}
+	return []ssh.AuthMethod{ssh.PublicKeys(signer)}, nil
 }
 
 func (t SFTPTarget) Label() string {
@@ -342,10 +392,14 @@ func (t SFTPTarget) connect(ctx context.Context) (cl *sftpConn, seen string, err
 		return nil, "", errors.New("kein Server eingetragen")
 	}
 	want := strings.TrimSpace(t.HostKey)
+	auth, aerr := t.auth()
+	if aerr != nil {
+		return nil, "", aerr
+	}
 	var hostErr error
 	cfg := &ssh.ClientConfig{
 		User: t.User,
-		Auth: []ssh.AuthMethod{ssh.Password(t.Password)},
+		Auth: auth,
 		HostKeyCallback: func(_ string, _ net.Addr, key ssh.PublicKey) error {
 			seen = HostKeyFingerprint(key)
 			switch {
