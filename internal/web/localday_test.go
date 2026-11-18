@@ -177,3 +177,22 @@ func TestBackupStartedRecently(t *testing.T) {
 		t.Error("Lauf vor 60 Minuten (erstes 02:00 im Herbst) muss den zweiten verhindern")
 	}
 }
+
+// Zweites 02:00 im Herbst: auch wenn der erste Lauf noch auf die Sperre wartet
+// (noch keine backup_runs-Zeile), läuft derselbe Zeitplan nur einmal.
+func TestBackupCronClaim(t *testing.T) {
+	id := "tz-claim-" + t.Name()
+	t0 := time.Now()
+	if !backupCronClaim(id, t0) {
+		t.Fatal("erster Lauf abgelehnt")
+	}
+	if backupCronClaim(id, t0.Add(time.Hour)) {
+		t.Error("zweiter Lauf nach 1 h (doppelte Stunde) nicht verhindert")
+	}
+	if !backupCronClaim("anderer-"+id, t0.Add(time.Hour)) {
+		t.Error("anderer Zeitplan darf laufen")
+	}
+	if !backupCronClaim(id, t0.Add(24*time.Hour)) {
+		t.Error("nächster Tag abgelehnt")
+	}
+}

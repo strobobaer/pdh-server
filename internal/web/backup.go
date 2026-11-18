@@ -884,8 +884,14 @@ const backupCronMinGap = 90 * time.Minute
 // runCronBackup: Aufruf durch den Zeitplan – entfällt, wenn derselbe Zeitplan
 // vor weniger als backupCronMinGap gestartet wurde (auch über „Jetzt ausführen“).
 // Massgeblich ist der Beginn (backup_runs.started_at): last_run_at steht erst
-// am Ende, eine lange Sicherung kann beim zweiten 02:00 noch laufen.
+// am Ende, eine lange Sicherung kann beim zweiten 02:00 noch laufen. Wartet ein
+// Lauf noch auf backupMu (anderer Zeitplan sichert), hat er keine Zeile – dafür
+// merkt sich backupCronClaim den Start im Speicher, bevor gewartet wird.
 func (h *Handler) runCronBackup(scheduleID string) {
+	if !backupCronClaim(scheduleID, time.Now()) {
+		componentLog("backup").Info().Str("schedule", scheduleID).Msg("geplante sicherung übersprungen: zeitplan wurde vor weniger als 90 minuten gestartet (z. b. zeitumstellung im herbst)")
+		return
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	recent := h.backupStartedRecently(ctx, scheduleID, backupCronMinGap)
 	cancel()
@@ -1559,4 +1565,23 @@ func (h *Handler) backupStartedRecently(ctx context.Context, scheduleID string, 
 	err := h.db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM backup_runs WHERE schedule_id = $1::uuid AND started_at > NOW() - make_interval(secs => $2))`,
 		scheduleID, gap.Seconds()).Scan(&recent)
 	return err == nil && recent
+}
+
+// backupCronStarts: letzter Start je Zeitplan durch cron (nur im Speicher, nach
+// einem Neustart deckt backupStartedRecently das ab).
+var backupCronStarts = struct {
+	sync.Mutex
+	at map[string]time.Time
+}{at: map[string]time.Time{}}
+
+// backupCronClaim: true, wenn der Zeitplan jetzt laufen darf, und merkt den
+// Start. now.Sub nutzt die monotone Uhr – die Zeitumstellung zählt nicht.
+func backupCronClaim(scheduleID string, now time.Time) bool {
+	backupCronStarts.Lock()
+	defer backupCronStarts.Unlock()
+	if last, ok := backupCronStarts.at[scheduleID]; ok && now.Sub(last) < backupCronMinGap {
+		return false
+	}
+	backupCronStarts.at[scheduleID] = now
+	return true
 }
