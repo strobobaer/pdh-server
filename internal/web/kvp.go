@@ -358,7 +358,7 @@ func (h *Handler) listKVP(ctx context.Context, f kvpFilter, limit int) []kvpIdea
 	}
 	if f.Query != "" {
 		p := arg("%" + f.Query + "%")
-		where = append(where, "(k.title ILIKE "+p+" OR k.problem ILIKE "+p+" OR k.proposal ILIKE "+p+" OR ('KVP-' || lpad(k.number::text, 4, '0')) ILIKE "+p+")")
+		where = append(where, "(k.title ILIKE "+p+" OR k.problem ILIKE "+p+" OR k.proposal ILIKE "+p+" OR ('KVP-' || lpad(k.number::text, greatest(4, length(k.number::text)), '0')) ILIKE "+p+")")
 	}
 	if f.Mine != "" {
 		p := arg(f.Mine)
@@ -689,7 +689,7 @@ func (a kvpActionView) Overdue() bool {
 
 // kvpActions: Massnahmen eines Vorschlags; ideaID == "" && overdue = alle ueberfaelligen offener Vorschlaege.
 func (h *Handler) kvpActions(ctx context.Context, ideaID string, overdue bool) []kvpActionView {
-	q := `SELECT a.id::text, a.idea_id::text, 'KVP-' || lpad(k.number::text, 4, '0'), k.title, a.description,
+	q := `SELECT a.id::text, a.idea_id::text, 'KVP-' || lpad(k.number::text, greatest(4, length(k.number::text)), '0'), k.title, a.description,
 	             COALESCE(a.responsible_id::text, ''), COALESCE(u.first_name || ' ' || u.last_name, ''), a.due_date,
 	             a.done_at IS NOT NULL, COALESCE(to_char(a.done_at, 'DD.MM.YYYY'), ''), COALESCE(du.first_name || ' ' || du.last_name, '')
 	        FROM kvp_actions a JOIN kvp_ideas k ON k.id = a.idea_id
@@ -1504,7 +1504,7 @@ func (h *Handler) StartKVPScheduler(ctx context.Context) {
 }
 
 func (h *Handler) runKVPReminders(ctx context.Context) {
-	rows, err := h.db.Query(ctx, `SELECT id::text, 'KVP-' || lpad(number::text, 4, '0'), title, COALESCE(reviewer_id::text, '')
+	rows, err := h.db.Query(ctx, `SELECT id::text, 'KVP-' || lpad(number::text, greatest(4, length(number::text)), '0'), title, COALESCE(reviewer_id::text, '')
 		FROM kvp_ideas WHERE status IN ('submitted','review') AND feedback_due < CURRENT_DATE`)
 	if err != nil {
 		componentLog("kvp").Error().Err(err).Msg("erinnerungen")

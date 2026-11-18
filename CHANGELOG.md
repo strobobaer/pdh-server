@@ -10,6 +10,12 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.81.6] – 2026-11-18
+
+### Behoben
+
+- Nummern von Rüstzeiten und KVP-Vorschlägen werden ab 10000 nicht mehr abgeschnitten („RZ-10105“ statt „RZ-1010“); Bestell- und Partnernummern bleiben auch bei langen Zählerständen eindeutig.
+
 ## [0.81.5] – 2026-11-18
 
 ### Behoben

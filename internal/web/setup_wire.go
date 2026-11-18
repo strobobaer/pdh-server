@@ -26,7 +26,7 @@ const (
 // setupTitleSQL: Titel einer Rüstzeit für Listen, Verlauf und Verknüpfungen,
 // z. B. „RZ-0001 · Formatwechsel“. Von Hand angelegte haben keine Rüsttaste –
 // dann steht der Grund da. Alias der Tabelle setup_times: s.
-const setupTitleSQL = `'RZ-' || lpad(s.number::text, 4, '0') || ' · ' ||
+const setupTitleSQL = `'RZ-' || lpad(s.number::text, greatest(4, length(s.number::text)), '0') || ' · ' ||
 	COALESCE(NULLIF(s.button_name, ''), (SELECT sr.name FROM setup_reasons sr WHERE sr.id = s.reason_id), '')`
 
 // setupStore: Speicher der Rüstzeiten; ohne Datenbank (Tests) nil.
