@@ -106,6 +106,15 @@ type sftpFake struct {
 	addr string
 	dir  string
 	key  ssh.PublicKey
+	// allowed: Zeile aus authorized_keys, mit der sich "pdh" per Schlüssel anmelden darf
+	mu      sync.Mutex
+	allowed string
+}
+
+func (f *sftpFake) allow(line string) {
+	f.mu.Lock()
+	f.allowed = line
+	f.mu.Unlock()
 }
 
 func startSFTP(t *testing.T) *sftpFake {
@@ -125,6 +134,17 @@ func startSFTP(t *testing.T) *sftpFake {
 		}
 		return nil, errors.New("falsches Kennwort")
 	}}
+	fake := &sftpFake{dir: dir, key: signer.PublicKey()}
+	cfg.PublicKeyCallback = func(c ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error) {
+		fake.mu.Lock()
+		line := fake.allowed
+		fake.mu.Unlock()
+		want, _, _, _, err := ssh.ParseAuthorizedKey([]byte(line))
+		if err == nil && c.User() == "pdh" && string(want.Marshal()) == string(key.Marshal()) {
+			return nil, nil
+		}
+		return nil, errors.New("Schlüssel nicht hinterlegt")
+	}
 	cfg.AddHostKey(signer)
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -170,7 +190,51 @@ func startSFTP(t *testing.T) *sftpFake {
 			}()
 		}
 	}()
-	return &sftpFake{addr: ln.Addr().String(), dir: dir, key: signer.PublicKey()}
+	fake.addr = ln.Addr().String()
+	return fake
+}
+
+// Anmeldung mit dem eigenen Schlüssel des PDH: erst abgelehnt, nach dem
+// Hinterlegen am Server angenommen; das Kennwort wird dabei nicht benutzt.
+func TestSFTPTargetKeyAuth(t *testing.T) {
+	f := startSFTP(t)
+	ctx := context.Background()
+	priv, err := GenerateSFTPKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	line, fp, err := SFTPPublicKey(priv)
+	if err != nil || !strings.HasPrefix(line, "ssh-ed25519 ") || !strings.HasSuffix(line, " pdh-efficio") || !strings.HasPrefix(fp, "SHA256:") {
+		t.Fatalf("öffentlicher Schlüssel: %q %q %v", line, fp, err)
+	}
+	tg := f.target(HostKeyFingerprint(f.key))
+	tg.Password, tg.KeyAuth = "falsch", true
+	// gewählt, aber noch kein Schlüssel erzeugt
+	if _, err := tg.Test(ctx); !errors.Is(err, ErrSFTPNoKey) {
+		t.Fatalf("ohne Schlüssel: %v", err)
+	}
+	tg.PrivateKey = priv
+	if _, err := tg.Test(ctx); err == nil {
+		t.Fatal("nicht hinterlegter Schlüssel hätte abgelehnt werden müssen")
+	}
+	f.allow(line)
+	if msg, err := tg.Test(ctx); err != nil || !strings.Contains(msg, "Verbindung in Ordnung") {
+		t.Fatalf("mit hinterlegtem Schlüssel: %q %v", msg, err)
+	}
+	if err := tg.Put(ctx, "k.csv", []byte("a;b")); err != nil {
+		t.Fatal(err)
+	}
+	if b, err := os.ReadFile(filepath.Join(f.dir, "k.csv")); err != nil || string(b) != "a;b" {
+		t.Fatalf("Datei: %q %v", b, err)
+	}
+	// unlesbarer Schlüssel: klare Meldung, kein Rückfall auf das Kennwort
+	tg.PrivateKey, tg.Password = "kaputt", "geheim"
+	if _, err := tg.Test(ctx); err == nil || !strings.Contains(err.Error(), "nicht lesbar") {
+		t.Fatalf("kaputter Schlüssel: %v", err)
+	}
+	if _, _, err := SFTPPublicKey("kaputt"); err == nil {
+		t.Fatal("SFTPPublicKey mit kaputtem Schlüssel")
+	}
 }
 
 func (f *sftpFake) target(hostKey string) SFTPTarget {

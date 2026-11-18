@@ -36,6 +36,27 @@
 </div>
 {{end}}
 
+{{if .KeyAuth}}
+<div class="card" style="margin-bottom:14px{{if not .PublicKey}};border-color:var(--amber){{end}}">
+  <div class="card-title"><span><i class="ti ti-key" aria-hidden="true"></i> Anmeldung mit Schlüssel</span></div>
+  {{if .PublicKey}}
+  <p style="font-size:13px;margin:0 0 6px">Diesen <b>öffentlichen Schlüssel</b> beim Benutzer am SFTP-Server hinterlegen (Datei <code>authorized_keys</code>) oder den Betreibern des Servers schicken:</p>
+  <p style="margin:0 0 6px"><code id="ef-pubkey" class="ef-fp" style="overflow-wrap:anywhere;word-break:break-all">{{.PublicKey}}</code></p>
+  <p style="font-size:12.5px;color:var(--muted);margin:0 0 10px">Fingerabdruck: <code>{{.KeyFingerprint}}</code>. Der zugehörige private Schlüssel liegt verschlüsselt im PDH und wird nie angezeigt.</p>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+    <button class="btn btn-small" type="button" onclick="navigator.clipboard&&navigator.clipboard.writeText(document.getElementById('ef-pubkey').textContent).then(()=>{this.textContent='Kopiert'})"><i class="ti ti-copy" aria-hidden="true"></i> Kopieren</button>
+    {{if .CanWrite}}{{if not .Mirror}}<form method="post" action="/export/connections/{{.ID}}/efficio/key-web" onsubmit="return confirm('Neuen Schlüssel erzeugen? Der bisherige gilt dann nicht mehr – der neue muss wieder am Server hinterlegt werden.')">
+      <input type="hidden" name="replace" value="1">
+      <button class="btn btn-small" type="submit"><i class="ti ti-refresh" aria-hidden="true"></i> Neuen Schlüssel erzeugen</button></form>{{end}}{{end}}
+  </div>
+  {{else}}
+  <p style="font-size:13px;margin:0 0 10px">Für diese Verbindung gibt es noch keinen Schlüssel. Solange wird nichts per SFTP zugestellt.</p>
+  {{if .CanWrite}}{{if not .Mirror}}<form method="post" action="/export/connections/{{.ID}}/efficio/key-web">
+    <button class="btn btn-primary" type="submit"><i class="ti ti-key" aria-hidden="true"></i> Schlüssel erzeugen</button></form>{{end}}{{end}}
+  {{end}}
+</div>
+{{end}}
+
 {{if .Settings}}
 <div class="card" style="margin-bottom:14px">
   <div class="card-title"><span><i class="ti ti-settings" aria-hidden="true"></i> Einstellungen</span>{{if .CanWrite}}<a class="btn btn-small" href="/export?edit={{.ID}}"><i class="ti ti-edit" aria-hidden="true"></i> Bearbeiten</a>{{end}}</div>

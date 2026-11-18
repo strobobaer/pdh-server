@@ -106,7 +106,7 @@ var exportKindFields = map[string][]string{
 	"modbus": {"host", "port", "unit_id", "schedule_cron"},
 	// Efficio-CSV (Energiedaten): export_efficio.go
 	"efficio": {"run_minutes", "interval_minutes", "value_mode", "file_days", "retention_days", "file_prefix", "time_format", "time_base", "decimal_comma", "has_header", "encoding",
-		"target", "drive_id", "drive_folder", "ftp_host", "ftp_port", "ftp_username", "ftp_password", "ftp_folder", "ftp_tls", "sftp_host_key", "filter_infra_ids", "filter_meter_keys"},
+		"target", "drive_id", "drive_folder", "ftp_host", "ftp_port", "ftp_username", "ftp_password", "ftp_folder", "ftp_tls", "sftp_auth", "sftp_key", "sftp_host_key", "filter_infra_ids", "filter_meter_keys"},
 }
 
 var booleanConfigFields = map[string]bool{

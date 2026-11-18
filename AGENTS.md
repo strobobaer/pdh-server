@@ -228,27 +228,36 @@ oder ändern.**
 
 ### Offene Punkte (Stand 18.11.2026)
 
-1. **0.80.25 Reste Netz-Abgleich und MQTT-Broker** – gebaut auf
-   `fix/reste-0.80.25`, lokal committet. Offen: Freigabe für Push, Merge,
-   Verbund-Update und Browserprüfung (Netz-Abgleich mit zwei Quellen,
-   Broker-Status mit Prüfliste).
-2. **ESPPDH Paket 1** (Import → ESPPDH, ESPHome als Compiler) – Entwurf
-   `docs/superpowers/specs/2026-11-18-esppdh-design.md` schreiben und vom
-   Anwender bestätigen lassen; danach Plan und Bau auf `feature/esppdh`.
-3. **Efficio-Reste aus 0.80.12:** Zustellung bricht bei Fehler einer
-   einzelnen Datei ab; hängendes Netzlaufwerk blockiert den Ordner bis
-   zum Neustart; SFTP nur mit Kennwort; FTPS ungetestet.
-4. **MQTT klein:** Bei älterem Update-Agenten versucht der tägliche Lauf
+1. **0.81.3 SFTP mit Schlüssel** (Efficio-Export) und **0.81.4 Seite
+   „Netzwerk“** (VLANs und WLANs, Migration 177, Rechte `system.network`
+   und `system.network_admin`) – auf `main` (gebaut als 0.80.26/0.80.27,
+   vor dem Merge auf 0.81.3/0.81.4 und Migration 169 → 177 umgestellt).
+   Offen: Abnahme SFTP mit Schlüssel an einem echten Server.
+2. **ESPPDH = Version 0.82.0** (vom Anwender festgelegt). Entwurf
+   `docs/superpowers/specs/2026-11-18-esppdh-design.md` auf `feature/esppdh`,
+   am 18.11.2026 bestätigt (Paketschnitt, kein ESPPDH im Docker-Betrieb,
+   OTA als Abruf, freier Editor nur Bereichsadministrator in Paket 3,
+   ESPHome-Version fest im Repository; Platinen verschieden; Netze: alles).
+   Die WLANs der Geräte kommen von der Seite „Netzwerk“
+   (`h.networkWLANSecret`). Nächster Schritt: Plan für Paket 1, dann Bau.
+3. **Netz-Abgleich im Browser mit zwei Quellen:** 0.80.25 ist auf `main`
+   und dem Testverbund; die Vorschlagsliste mit zwei eingeschalteten
+   Quellen ist nur automatisch getestet (auf dem Testverbund sind alle
+   Quellen aus).
+4. **Efficio klein:** FTPS ist ungetestet. (Abbruch der Zustellung nach dem
+   ersten Fehler ist Absicht – Reihenfolge der Dateien; kein offener Punkt.)
+5. **MQTT klein:** Bei älterem Update-Agenten versucht der tägliche Lauf
    die nginx-Seite jeden Tag neu (harmlos).
-5. **Abnahmen durch den Anwender:** SNMP an echten Geräten, Omada an
-   echtem Controller, TIA-Baustein in PLCSIM, Datennetz mit echtem Tailnet.
-6. **Zurückgestellt (kein Auftrag):** Abteilungsfeinheiten Rüstzeiten,
+6. **Abnahmen durch den Anwender:** SNMP an echten Geräten, Omada an
+   echtem Controller, TIA-Baustein in PLCSIM, Datennetz mit echtem Tailnet,
+   SFTP mit Schlüssel an einem echten Server.
+7. **Zurückgestellt (kein Auftrag):** Abteilungsfeinheiten Rüstzeiten,
    Datennetz Paket 2/3, Buchungssystem/Lizenzen, Firmenstammdaten.
-7. **0.81.0 Rüstzeit in „Neu anlegen“ und 0.81.1 Tagesgrenzen/Zeitumstellung**
+8. **0.81.0 Rüstzeit in „Neu anlegen“ und 0.81.1 Tagesgrenzen/Zeitumstellung**
    – auf `main`. Offen: Verbund-Update und Browserprüfung (Assistent mit
    Kachel Rüstzeit, Wartung „heute fällig“ nicht überfällig, Sicherungs-
    Formular mit 03:00).
-8. **0.81.2 Terminal-Paket** (Kiosk-Terminals, Anlagenterminal, Kopplung,
+9. **0.81.2 Terminal-Paket** (Kiosk-Terminals, Anlagenterminal, Kopplung,
    Kartensitzung, Anmeldung ohne Karte) – auf `main`, Migrationen
    169–176 (vorher 155–162 auf den Branches `feat/kiosk-terminal`,
    `feat/anlagenterminal`, `feat/kartensitzung`, `feat/terminal-kopplung`;
@@ -256,12 +265,12 @@ oder ändern.**
    neue Migrationen mit `PDH_MIGRATIONS_APPEND=1 go test ./pkg/database
    -run TestMigrationsFrozen` eintragen. Offen: Verbund-Update,
    Browserprüfung, Abnahme am Raspberry Pi mit Kartenleser.
-9. **Zeitzone im Docker-Testsystem** (Vorschlag, kein Auftrag): Container
+10. **Zeitzone im Docker-Testsystem** (Vorschlag, kein Auftrag): Container
    laufen in UTC, Produktion (systemd) in Europe/Berlin. Umstellung nur als
    Paket: `TZ` für app und updater in `compose.yaml`, `time/tzdata` in
    `cmd/server` und `cmd/update-agent`, Postgres-Sitzungszone über pgx
    `RuntimeParams["timezone"]`; nie nur `TZ` an der App, kein `PGTZ`.
-10. **Tagesgrenzen aufräumen (klein):** übrige `Truncate(24*time.Hour)`
+11. **Tagesgrenzen aufräumen (klein):** übrige `Truncate(24*time.Hour)`
     gegen DATE-Spalten (`kanban.go`, `purchases.go`, `trainings.go`,
     `user_qualifications.go`, `procurement.go`, `projects_handler.go`,
     `partners.go`) auf `localDayStart` umstellen.

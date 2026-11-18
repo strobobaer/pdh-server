@@ -1,0 +1,143 @@
+{{template "base" .}}
+{{define "content"}}
+{{/* Server-Seite „Netzwerk“: Netze (VLANs) und WLANs (network.go).
+     Farben nur über die Variablen des Farbschemas (Fiori und Fluent, hell und dunkel). */}}
+<style>
+.nw-head{display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap}
+.nw-head h1{font-size:19px;font-weight:600}
+.nw-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%}
+.nw-scroll table{min-width:640px}
+.nw-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,190px),1fr));gap:10px;align-items:end}
+.nw-actions{display:flex;gap:6px;flex-wrap:wrap;margin:0;justify-content:flex-end}
+.nw-actions form{margin:0}
+.nw-edit td{background:var(--bg)}
+.nw-note{font-size:12px;color:var(--muted);margin-top:6px}
+.nw-mono{font-family:monospace;font-size:12.5px}
+</style>
+
+<div class="nw-head">
+  <div style="flex:1;min-width:0">
+    <h1><i class="ti ti-network" aria-hidden="true"></i> Netzwerk</h1>
+    <p style="font-size:12px;color:var(--muted);margin-top:3px">Die Netze (VLANs) und WLANs des Betriebs an einer Stelle. Andere Bereiche wählen daraus, statt Namen und Kennwörter selbst zu führen.</p>
+  </div>
+</div>
+
+{{if .Notice}}<div class="card" role="status" style="margin-bottom:14px;border-color:var(--green)"><i class="ti ti-circle-check" style="color:var(--green)" aria-hidden="true"></i> {{.Notice}}</div>{{end}}
+{{if .Err}}<div class="card" role="alert" style="margin-bottom:14px;border-color:var(--red);color:var(--red)"><i class="ti ti-alert-circle" aria-hidden="true"></i> {{.Err}}</div>{{end}}
+
+<div class="card" style="margin-bottom:14px">
+  <div class="card-title"><span><i class="ti ti-sitemap" aria-hidden="true"></i> Netze (VLANs)</span>
+    <button type="button" class="btn btn-small btn-primary" onclick="nwToggle('nw-seg-new')"><i class="ti ti-plus" aria-hidden="true"></i> Neues Netz</button></div>
+  <div id="nw-seg-new" hidden style="margin-bottom:12px">
+    <form method="POST" action="/admin/network/segments">
+      {{template "nw-seg-fields" (dict "P" "new" "S" nil)}}
+      <div style="margin-top:12px"><button type="submit" class="btn btn-primary btn-small"><i class="ti ti-device-floppy" aria-hidden="true"></i> Anlegen</button></div>
+    </form>
+  </div>
+  {{if .Segments}}
+  <div class="nw-scroll"><table class="table">
+    <thead><tr><th>Name</th><th>VLAN</th><th>Adressbereich</th><th>Zweck</th><th>WLANs</th><th></th></tr></thead>
+    <tbody>
+    {{range .Segments}}
+    <tr>
+      <td><b>{{.Name}}</b>{{if .Note}}<div class="nw-note" style="margin-top:2px">{{.Note}}</div>{{end}}</td>
+      <td>{{if .VLAN}}<span class="badge b-blue">{{.VLAN}}</span>{{else}}<span style="color:var(--muted)">–</span>{{end}}</td>
+      <td class="nw-mono">{{if .Subnet}}{{.Subnet}}{{else}}<span style="color:var(--muted)">–</span>{{end}}</td>
+      <td>{{.Purpose}}</td>
+      <td>{{.WLANs}}</td>
+      <td><div class="nw-actions">
+        <button type="button" class="btn btn-small" onclick="nwToggle('nw-seg-{{.ID}}')"><i class="ti ti-edit" aria-hidden="true"></i> Bearbeiten</button>
+        {{if $.CanDelete}}<form method="POST" action="/admin/network/segments/{{.ID}}/delete" onsubmit="return confirm('Netz „{{.Name}}“ wirklich löschen? Seine WLANs bleiben und stehen danach ohne Netz da.')">
+          <button type="submit" class="btn btn-small btn-danger" title="Netz löschen" aria-label="Netz {{.Name}} löschen"><i class="ti ti-trash" aria-hidden="true"></i></button></form>{{end}}
+      </div></td>
+    </tr>
+    <tr class="nw-edit" id="nw-seg-{{.ID}}" hidden><td colspan="6">
+      <form method="POST" action="/admin/network/segments/{{.ID}}">
+        {{template "nw-seg-fields" (dict "P" .ID "S" .)}}
+        <div style="margin-top:12px"><button type="submit" class="btn btn-primary btn-small"><i class="ti ti-device-floppy" aria-hidden="true"></i> Speichern</button></div>
+      </form>
+    </td></tr>
+    {{end}}
+    </tbody>
+  </table></div>
+  {{else}}<div class="rec-sub">Noch kein Netz eingetragen. Ein Netz ist z. B. „Büro“, „Maschinen“ oder „Gäste“ – mit oder ohne VLAN-Nummer.</div>{{end}}
+</div>
+
+<div class="card">
+  <div class="card-title"><span><i class="ti ti-wifi" aria-hidden="true"></i> WLANs</span>
+    <button type="button" class="btn btn-small btn-primary" onclick="nwToggle('nw-wlan-new')"><i class="ti ti-plus" aria-hidden="true"></i> Neues WLAN</button></div>
+  <div id="nw-wlan-new" hidden style="margin-bottom:12px">
+    <form method="POST" action="/admin/network/wlans" autocomplete="off">
+      {{template "nw-wlan-fields" (dict "P" "new" "W" nil "Segments" .Segments)}}
+      <div style="margin-top:12px"><button type="submit" class="btn btn-primary btn-small"><i class="ti ti-device-floppy" aria-hidden="true"></i> Anlegen</button></div>
+    </form>
+  </div>
+  {{if .WLANs}}
+  <div class="nw-scroll"><table class="table">
+    <thead><tr><th>WLAN-Name (SSID)</th><th>Netz</th><th>Kennwort</th><th>Notiz</th><th></th></tr></thead>
+    <tbody>
+    {{range .WLANs}}
+    <tr>
+      <td><b>{{.SSID}}</b>{{if .Hidden}} <span class="badge b-gray" title="Das WLAN sendet seinen Namen nicht aus">versteckt</span>{{end}}</td>
+      <td>{{if .SegmentName}}{{.SegmentName}}{{else}}<span style="color:var(--muted)">–</span>{{end}}</td>
+      <td>{{if .HasPassword}}<span class="badge b-green">hinterlegt</span>{{else}}<span class="badge b-amber">offen (ohne Kennwort)</span>{{end}}</td>
+      <td>{{.Note}}</td>
+      <td><div class="nw-actions">
+        <button type="button" class="btn btn-small" onclick="nwToggle('nw-wlan-{{.ID}}')"><i class="ti ti-edit" aria-hidden="true"></i> Bearbeiten</button>
+        {{if $.CanDelete}}<form method="POST" action="/admin/network/wlans/{{.ID}}/delete" onsubmit="return confirm('WLAN „{{.SSID}}“ wirklich löschen?')">
+          <button type="submit" class="btn btn-small btn-danger" title="WLAN löschen" aria-label="WLAN {{.SSID}} löschen"><i class="ti ti-trash" aria-hidden="true"></i></button></form>{{end}}
+      </div></td>
+    </tr>
+    <tr class="nw-edit" id="nw-wlan-{{.ID}}" hidden><td colspan="5">
+      <form method="POST" action="/admin/network/wlans/{{.ID}}" autocomplete="off">
+        {{template "nw-wlan-fields" (dict "P" .ID "W" . "Segments" $.Segments)}}
+        <div style="margin-top:12px"><button type="submit" class="btn btn-primary btn-small"><i class="ti ti-device-floppy" aria-hidden="true"></i> Speichern</button></div>
+      </form>
+    </td></tr>
+    {{end}}
+    </tbody>
+  </table></div>
+  {{else}}<div class="rec-sub">Noch kein WLAN eingetragen.</div>{{end}}
+  <p class="nw-note">Das Kennwort wird verschlüsselt gespeichert und nie angezeigt. Beim Bearbeiten das Feld leer lassen, dann bleibt es.</p>
+</div>
+
+<script>
+function nwToggle(id){ const el = document.getElementById(id); if(el){ el.hidden = !el.hidden; if(!el.hidden){ const f = el.querySelector('input'); if(f) f.focus(); } } }
+</script>
+{{end}}
+
+{{define "nw-seg-fields"}}
+<div class="nw-form">
+  <div class="form-group"><label class="form-label" for="nw-s-name-{{.P}}">Name</label>
+    <input id="nw-s-name-{{.P}}" name="name" class="form-input" required minlength="2" maxlength="80" value="{{with .S}}{{.Name}}{{end}}" placeholder="z. B. Maschinen"></div>
+  <div class="form-group"><label class="form-label" for="nw-s-vlan-{{.P}}">VLAN-Nummer <span style="color:var(--muted);font-weight:400">(optional)</span></label>
+    <input id="nw-s-vlan-{{.P}}" name="vlan" type="number" min="1" max="4094" class="form-input" value="{{with .S}}{{.VLAN}}{{end}}" placeholder="z. B. 20"></div>
+  <div class="form-group"><label class="form-label" for="nw-s-subnet-{{.P}}">Adressbereich <span style="color:var(--muted);font-weight:400">(optional)</span></label>
+    <input id="nw-s-subnet-{{.P}}" name="subnet" class="form-input" maxlength="50" value="{{with .S}}{{.Subnet}}{{end}}" placeholder="z. B. 10.10.20.0/24"></div>
+  <div class="form-group"><label class="form-label" for="nw-s-purpose-{{.P}}">Zweck <span style="color:var(--muted);font-weight:400">(optional)</span></label>
+    <input id="nw-s-purpose-{{.P}}" name="purpose" class="form-input" maxlength="200" value="{{with .S}}{{.Purpose}}{{end}}" placeholder="z. B. Sensoren und Steuerungen"></div>
+  <div class="form-group"><label class="form-label" for="nw-s-note-{{.P}}">Notiz <span style="color:var(--muted);font-weight:400">(optional)</span></label>
+    <input id="nw-s-note-{{.P}}" name="note" class="form-input" maxlength="200" value="{{with .S}}{{.Note}}{{end}}"></div>
+</div>
+{{end}}
+
+{{define "nw-wlan-fields"}}
+{{$w := .W}}
+<div class="nw-form">
+  <div class="form-group"><label class="form-label" for="nw-w-ssid-{{.P}}">WLAN-Name (SSID)</label>
+    <input id="nw-w-ssid-{{.P}}" name="ssid" class="form-input" required maxlength="32" value="{{with $w}}{{.SSID}}{{end}}" autocomplete="off"></div>
+  <div class="form-group"><label class="form-label" for="nw-w-pw-{{.P}}">Kennwort{{if $w}} <span style="color:var(--muted);font-weight:400">(leer = behalten)</span>{{else}} <span style="color:var(--muted);font-weight:400">(leer = offenes WLAN)</span>{{end}}</label>
+    <input id="nw-w-pw-{{.P}}" name="password" type="password" class="form-input" minlength="8" maxlength="63" autocomplete="new-password"></div>
+  <div class="form-group"><label class="form-label" for="nw-w-seg-{{.P}}">Netz <span style="color:var(--muted);font-weight:400">(optional)</span></label>
+    <select id="nw-w-seg-{{.P}}" name="segment" class="form-input">
+      <option value="">– ohne –</option>
+      {{range .Segments}}<option value="{{.ID}}"{{if $w}}{{if eq $w.SegmentID .ID}} selected{{end}}{{end}}>{{.Name}}{{if .VLAN}} (VLAN {{.VLAN}}){{end}}</option>{{end}}
+    </select></div>
+  <div class="form-group"><label class="form-label" for="nw-w-note-{{.P}}">Notiz <span style="color:var(--muted);font-weight:400">(optional)</span></label>
+    <input id="nw-w-note-{{.P}}" name="note" class="form-input" maxlength="200" value="{{with $w}}{{.Note}}{{end}}"></div>
+</div>
+<div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:10px;font-size:13px">
+  <label style="display:flex;align-items:center;gap:8px"><input type="checkbox" name="hidden"{{if $w}}{{if $w.Hidden}} checked{{end}}{{end}}> Versteckt (sendet seinen Namen nicht aus)</label>
+  {{if $w}}{{if $w.HasPassword}}<label style="display:flex;align-items:center;gap:8px"><input type="checkbox" name="open" value="1"> Kennwort entfernen (offenes WLAN)</label>{{end}}{{end}}
+</div>
+{{end}}

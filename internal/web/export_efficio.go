@@ -228,7 +228,16 @@ func efficioConfig(id string, cfg map[string]string, drive func(id string) (*net
 		if fp != "" && !efficioFPRe.MatchString(fp) {
 			return c, errors.New("Der Fingerabdruck muss so aussehen: SHA256:… (wie ihn „Verbindung testen“ anzeigt).")
 		}
-		c.Target = energie.SFTPTarget{Host: host, Port: port, User: user, Password: pass, Folder: folder, HostKey: fp}
+		auth, err := efficioChoice(cfg, "sftp_auth", "password", "password", "key")
+		if err != nil {
+			return c, err
+		}
+		st := energie.SFTPTarget{Host: host, Port: port, User: user, Password: pass, Folder: folder, HostKey: fp}
+		if auth == "key" {
+			// nur der Schlüssel zählt – ein noch gespeichertes Kennwort wird nicht gesendet
+			st.KeyAuth, st.PrivateKey, st.Password = true, cfg["sftp_key"], ""
+		}
+		c.Target = st
 	}
 	return c, nil
 }
@@ -423,6 +432,9 @@ type EfficioPageData struct {
 	Settings                  []connConfigRow
 	Files                     []EfficioFileView
 	Runs                      []EfficioRunView
+	KeyAuth                   bool   // SFTP mit Schlüssel statt Kennwort
+	PublicKey                 string // Zeile für authorized_keys am Server ("" = noch kein Schlüssel)
+	KeyFingerprint            string
 	Fingerprint               string // gesehener SFTP-Fingerabdruck, zur Bestätigung
 	FingerprintChange         bool   // ein bestätigter Fingerabdruck war schon gespeichert
 	IsSFTP                    bool
@@ -476,6 +488,16 @@ func (h *Handler) efficioPageData(r *http.Request, id string) (EfficioPageData, 
 	}
 	if fp := q.Get("fp"); efficioFPRe.MatchString(fp) && d.IsSFTP && d.CanWrite {
 		d.Fingerprint, d.FingerprintChange = fp, strings.TrimSpace(cfg["sftp_host_key"]) != ""
+	}
+	if d.IsSFTP && strings.TrimSpace(cfg["sftp_auth"]) == "key" {
+		d.KeyAuth = true
+		if k := cfg["sftp_key"]; k != "" {
+			if line, kfp, kerr := energie.SFTPPublicKey(k); kerr != nil {
+				d.Err = kerr.Error()
+			} else {
+				d.PublicKey, d.KeyFingerprint = line, kfp
+			}
+		}
 	}
 	ec, cerr := efficioConfig(id, cfg, h.efficioDriveLookup(ctx))
 	if cerr != nil {
@@ -711,6 +733,82 @@ func (h *Handler) EfficioTestWeb(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, back+"notice="+url.QueryEscape(msg), http.StatusSeeOther)
 }
 
+// EfficioKeyWeb: POST /export/connections/{id}/efficio/key-web – eigenes
+// Schlüsselpaar für SFTP erzeugen. Der private Schlüssel wird verschlüsselt in der
+// Verbindung gespeichert und nie angezeigt. Ein vorhandener Schlüssel wird nur
+// mit replace=1 ersetzt (danach muss der neue am Server hinterlegt werden).
+func (h *Handler) EfficioKeyWeb(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if !h.efficioCan(r, "export.write", id) {
+		http.Error(w, "keine berechtigung", http.StatusForbidden)
+		return
+	}
+	if h.Mirror().On {
+		http.Error(w, energie.ErrStandby.Error(), http.StatusConflict)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+	_, _, cfg, err := h.efficioRow(ctx, id)
+	if errors.Is(err, errNotEfficio) {
+		http.NotFound(w, r)
+		return
+	}
+	back := "/export/connections/" + id + "/efficio?"
+	fail := func(msg string) { http.Redirect(w, r, back+"err="+url.QueryEscape(msg), http.StatusSeeOther) }
+	if err != nil && !isConnSecretErr(err) { // ein unlesbarer alter Schlüssel darf ersetzt werden
+		fail(err.Error())
+		return
+	}
+	if cfg["target"] != "sftp" || strings.TrimSpace(cfg["sftp_auth"]) != "key" {
+		fail("Diese Verbindung meldet sich nicht mit einem Schlüssel an. Zuerst in den Einstellungen bei SFTP „Anmeldung: Schlüssel“ wählen.")
+		return
+	}
+	_ = r.ParseForm()
+	if cfg["sftp_key"] != "" && r.FormValue("replace") != "1" {
+		fail("Es gibt schon einen Schlüssel.")
+		return
+	}
+	priv, err := energie.GenerateSFTPKey()
+	if err != nil {
+		componentLog("energiedaten").Error().Err(err).Msg("efficio: schlüssel erzeugen")
+		fail("Der Schlüssel konnte nicht erzeugt werden.")
+		return
+	}
+	if err := h.efficioSaveKey(ctx, id, priv); err != nil {
+		componentLog("energiedaten").Error().Err(err).Msg("efficio: schlüssel speichern")
+		fail("Der Schlüssel konnte nicht gespeichert werden.")
+		return
+	}
+	componentLog("energiedaten").Info().Str("verbindung", id).Str("benutzer", getUser(r).ID).Msg("efficio: sftp-schlüssel erzeugt")
+	http.Redirect(w, r, back+"notice="+url.QueryEscape("Schlüssel erzeugt. Jetzt den öffentlichen Schlüssel unten am SFTP-Server hinterlegen, dann „Verbindung testen“."), http.StatusSeeOther)
+}
+
+// efficioSaveKey speichert den privaten Schlüssel verschlüsselt in der Konfiguration
+// (alle anderen Felder bleiben unberührt).
+func (h *Handler) efficioSaveKey(ctx context.Context, id, priv string) error {
+	enc, err := encryptSecret(h.connKey(), priv)
+	if err != nil {
+		return err
+	}
+	var raw []byte
+	if err := h.db.QueryRow(ctx, `SELECT config FROM import_export_connections WHERE id = $1::uuid AND direction = 'export' AND kind = 'efficio'`, id).Scan(&raw); err != nil {
+		return err
+	}
+	cfg := map[string]string{}
+	if err := json.Unmarshal(raw, &cfg); err != nil {
+		return err
+	}
+	delete(cfg, "sftp_key")
+	cfg["sftp_key_enc"] = enc
+	b, err := json.Marshal(cfg)
+	if err != nil {
+		return err
+	}
+	_, err = h.db.Exec(ctx, `UPDATE import_export_connections SET config = $2, updated_at = NOW() WHERE id = $1::uuid`, id, b)
+	return err
+}
+
 // efficioSaveHostKey trägt den bestätigten Fingerabdruck in die Konfiguration ein
 // (alle anderen Felder, auch das verschlüsselte Kennwort, bleiben unberührt).
 func (h *Handler) efficioSaveHostKey(ctx context.Context, id, fp string) error {
@@ -785,6 +883,11 @@ func (h *Handler) efficioDisplay(ctx context.Context, field, v string) string {
 		return "UTF-8"
 	case "target":
 		return map[string]string{"pickup": "Zum Abholen im PDH", "drive": "Netzlaufwerk", "ftp": "FTP", "sftp": "SFTP"}[v]
+	case "sftp_auth":
+		if v == "key" {
+			return "Schlüssel"
+		}
+		return "Kennwort"
 	case "filter_infra_ids":
 		ids := efficioList(v, ",;\r\n\t ")
 		paths := h.infraPaths(ctx, ids)

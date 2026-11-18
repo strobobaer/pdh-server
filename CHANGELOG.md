@@ -10,6 +10,29 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.81.4] – 2026-11-18
+
+### Neu
+
+- Neue Seite **Administration → Netzwerk**: die Netze (VLANs mit Nummer, Adressbereich und Zweck) und die WLANs des Betriebs an einer Stelle. Andere Bereiche wählen künftig daraus, statt WLAN-Namen und Kennwörter selbst zu führen.
+- Handbuch: Kapitel „Netzwerk (VLANs und WLANs)“.
+
+### Sicherheit
+
+- Neue Rechte **Netzwerk: VLANs und WLANs pflegen** (`system.network`) und **… löschen** (`system.network_admin`, Bereichsadministrator). Pflegen dürfen automatisch alle Rollen, die die UniFi-Anbindung verwalten; löschen nur, wer zusätzlich Bereichsadministrator der Zertifikate ist.
+- WLAN-Kennwörter werden verschlüsselt gespeichert und nie angezeigt.
+
+## [0.81.3] – 2026-11-18
+
+### Neu
+
+- Efficio-Export per SFTP: Anmeldung jetzt auch mit **Schlüssel** statt Kennwort. Das PDH erzeugt dafür ein eigenes Schlüsselpaar; den öffentlichen Schlüssel zeigt die Seite **Dateien & Protokoll** zum Kopieren und Hinterlegen am Server. Kennwort und FTP gehen weiter wie bisher.
+- Handbuch: Schritt „Schlüssel erzeugen“ im Kapitel zum Efficio-Export.
+
+### Sicherheit
+
+- Der private SFTP-Schlüssel wird verschlüsselt in der Verbindung gespeichert und nie angezeigt, auch nicht in Sicherungen im Klartext. Erzeugen und Ersetzen darf, wer die Verbindung bearbeiten darf (`export.write`).
+
 ## [0.81.2] – 2026-11-18
 
 ### Neu
