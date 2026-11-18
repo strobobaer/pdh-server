@@ -153,3 +153,50 @@ func TestUsersListDotsOpenEditing(t *testing.T) {
 		t.Error("altes Menü bzw. 'Admin machen' noch in der Liste")
 	}
 }
+
+func TestUserDetailTerminalDevices(t *testing.T) {
+	tmpl := loadTestTemplates(t)
+	base := UserDetailData{
+		User:          UserView{ID: "u1", FullName: "Terminal Halle", Username: "term", RoleLabel: "Betrachter", IsSystemUser: true},
+		Master:        userMaster{Language: "de"},
+		CanEditMaster: true,
+	}
+	d := base
+	d.CanDevices = true
+	d.Devices = []terminalDeviceRow{
+		{ID: "d1", Name: "Pi Halle 1", Created: "01.11.2026 08:00", LastSeen: "nie"},
+		{ID: "d2", Name: "Pi Alt", Created: "01.10.2026 08:00", LastSeen: "02.10.2026 09:00", Revoked: "03.10.2026 10:00"},
+	}
+	out := renderPage(t, tmpl, "user_detail", d)
+	checkTabs(t, "user_detail(devices)", out, "overview", "master", "work", "fields", "history")
+	for _, want := range []string{"Gekoppelte Geräte", "Pi Halle 1", "Pi Alt", "gesperrt", "Gerät koppeln"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("%q fehlt", want)
+		}
+	}
+	if n := strings.Count(out, `action="/users/u1/devices/`); n != 1 {
+		t.Errorf("Sperren-Formulare: %d, erwartet 1", n)
+	}
+	if !strings.Contains(out, `action="/users/u1/devices/d1/revoke"`) || strings.Contains(out, `devices/d2/revoke`) {
+		t.Error("Sperren-Knopf am falschen Gerät")
+	}
+	if strings.Contains(out, "Noch kein Gerät gekoppelt.") {
+		t.Error("Leerhinweis trotz Geräten")
+	}
+	if i := strings.Index(out, `class="card rec-form"`); i >= 0 {
+		if j := strings.Index(out[i:], "</form>"); j >= 0 && strings.Contains(out[i:i+j], "devices/") {
+			t.Error("Geräte-Formular innerhalb des Stammdaten-Formulars")
+		}
+	}
+
+	d.Devices = nil
+	out = renderPage(t, tmpl, "user_detail", d)
+	if !strings.Contains(out, "Noch kein Gerät gekoppelt.") {
+		t.Error("Leerhinweis fehlt")
+	}
+
+	out = renderPage(t, tmpl, "user_detail", base)
+	if strings.Contains(out, "Gekoppelte Geräte") {
+		t.Error("Karte ohne CanDevices sichtbar")
+	}
+}

@@ -84,7 +84,7 @@
   <a class="rec-tab" data-tab="events" href="?tab=events"><i class="ti ti-timeline"></i> Anlagen-Historie</a>
   <a class="rec-tab" data-tab="fields" href="?tab=fields"><i class="ti ti-forms"></i> Feldsätze</a>
   <a class="rec-tab" data-tab="docs" href="?tab=docs"><i class="ti ti-paperclip"></i> Dokumente</a>
-  {{if or .HMI.View .HMI.Manage}}<a class="rec-tab" data-tab="hmi" href="?tab=hmi"><i class="ti ti-device-desktop-analytics"></i> HMI</a>{{end}}
+  {{if or .HMI.View .HMI.Manage .HMI.Kiosk}}<a class="rec-tab" data-tab="hmi" href="?tab=hmi"><i class="ti ti-device-desktop-analytics"></i> HMI</a>{{end}}
   <a class="rec-tab" data-tab="links" href="?tab=links"><i class="ti ti-link"></i> Verknüpfungen</a>
   <a class="rec-tab" data-tab="history" href="?tab=history"><i class="ti ti-history"></i> Änderungen</a>
 </div>
@@ -193,6 +193,11 @@
     <div class="form-group"><label class="form-label">Verantwortlich</label>
       <select name="responsible_to" class="form-input"><option value="">– von übergeordneter Anlage erben{{if and .EffectiveResp .RespFromID}} ({{.EffectiveResp}}){{end}} –</option>{{range .Users}}<option value="{{.ID}}" {{if eq .ID $.ResponsibleID}}selected{{end}}>{{.Name}}</option>{{end}}</select>
       <div class="rec-sub" style="margin-top:3px">Ansprechperson für diese Anlage. Gilt auch für alle Unteranlagen ohne eigene Angabe.</div></div>
+    {{if .CanKioskAssign}}
+    <div class="form-group"><label class="form-label">Kiosk-Terminal</label>
+      <select name="kiosk_terminal_id" class="form-input"><option value="">– keines –</option>{{range .KioskTerminals}}<option value="{{.ID}}" {{if eq .ID $.KioskTerminalID}}selected{{end}}>{{.Label}}</option>{{end}}</select>
+      <div class="rec-sub" style="margin-top:3px">Terminal am Bedienplatz dieser Anlage. Im Reiter „HMI“ erscheint dann „Am Terminal zeigen“. Terminals einrichten: <a href="/core/settings/kiosk-terminals">Kiosk-Terminals</a>.</div></div>
+    {{end}}
 
     <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">
       <a class="btn" href="?tab=overview">Abbrechen</a>
@@ -397,7 +402,7 @@
 </div>
 
 <!-- ── HMI-Fernzugriff (VNC) ── -->
-{{if or .HMI.View .HMI.Manage}}
+{{if or .HMI.View .HMI.Manage .HMI.Kiosk}}
 <div class="rec-pane" data-pane="hmi">
   <div class="card">
     <div class="card-title" style="display:flex;align-items:center;gap:8px">
@@ -405,7 +410,7 @@
       {{if .HMI.Manage}}<button type="button" class="btn" style="margin-left:auto;font-size:12px" onclick="hmiEdit()"><i class="ti ti-plus"></i> HMI hinzufügen</button>{{end}}
     </div>
     <p style="font-size:12px;color:var(--muted);margin:-4px 0 12px">
-      {{if .HMI.Control}}Du darfst HMIs ansehen und – wo freigegeben – bedienen.{{else if .HMI.View}}Du darfst HMIs nur ansehen; Tastatur und Maus werden nicht übertragen.{{else}}Du darfst HMIs einrichten, aber nicht öffnen.{{end}}
+      {{if .HMI.Control}}Du darfst HMIs ansehen und – wo freigegeben – bedienen.{{else if .HMI.View}}Du darfst HMIs nur ansehen; Tastatur und Maus werden nicht übertragen.{{else if .HMI.Kiosk}}Du darfst HMIs am Kiosk-Terminal der Anlage zeigen.{{else}}Du darfst HMIs einrichten, aber nicht öffnen.{{end}}
       Jeder Zugriff wird protokolliert.
     </p>
     {{if .HMI.Manage}}
@@ -418,7 +423,12 @@
         <div class="form-group"><label class="form-label">VNC-Passwort</label><input name="password" type="password" class="form-input" maxlength="64" autocomplete="new-password" placeholder="leer = ohne Passwort">
           <label id="hmi-clear-pw" style="display:none;gap:6px;align-items:center;font-size:11.5px;color:var(--muted);margin-top:4px"><input type="checkbox" name="clear_password"> gespeichertes Passwort entfernen</label></div>
         <div class="form-group" style="grid-column:1/-1"><label class="form-label">Hinweis</label><input name="notes" class="form-input" maxlength="500" placeholder="optional, z. B. nur bei Stillstand bedienen"></div>
-        <label style="grid-column:1/-1;display:flex;gap:8px;align-items:center;font-size:13px"><input type="checkbox" name="allow_control" checked style="width:18px;height:18px"> Bedienen erlaubt (sonst für alle nur ansehen)</label>
+        <label style="grid-column:1/-1;display:flex;gap:8px;align-items:center;font-size:13px"><input type="checkbox" name="allow_control" checked style="width:18px;height:18px" onchange="hmiTermHint(this.form)"> Bedienen erlaubt (sonst für alle nur ansehen)</label>
+        <div class="form-group"><label class="form-label">Ansehen am Terminal</label><select name="terminal_view" class="form-input" onchange="hmiTermHint(this.form)">
+          <option value="everyone">Jeder</option><option value="card">Nur mit Karte</option><option value="never">Niemand</option></select></div>
+        <div class="form-group"><label class="form-label">Bedienen am Terminal</label><select name="terminal_control" class="form-input" onchange="hmiTermHint(this.form)">
+          <option value="never">Niemand</option><option value="card">Nur mit Karte</option><option value="everyone">Jeder</option></select></div>
+        <div id="hmi-term-hint" role="status" style="grid-column:1/-1;font-size:12px"></div>
       </div>
       <div id="hmi-form-msg" style="font-size:12px;margin:8px 0"></div>
       <div style="display:flex;gap:8px;justify-content:flex-end">
@@ -427,6 +437,7 @@
       </div>
     </form>
     {{end}}
+    <div id="hmi-kiosk-msg" role="status" aria-live="polite" style="display:none;font-size:12.5px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:10px;background:var(--bg2)"></div>
     <div id="hmi-list" style="font-size:12px;color:var(--muted)">Lade HMIs…</div>
   </div>
 </div>
@@ -521,6 +532,7 @@ function infraHistoryReset() {
 // ── HMI-Fernzugriff: Liste, Einrichten, letzte Zugriffe ──
 const HMI_INFRA = '{{.Node.ID}}';
 let hmiItems = [];
+let hmiKioskName = ''; // zugeordnetes Kiosk-Terminal (Knöpfe „Am Terminal …“)
 async function hmiJSON(url, opts){
   const res = await fetch(url, Object.assign({credentials:'same-origin'}, opts||{}));
   const json = await res.json().catch(()=>({}));
@@ -532,12 +544,14 @@ async function hmiLoad(){
   const box = document.getElementById('hmi-list'); if(!box) return;
   try{
     const data = await hmiJSON('/infrastructure/' + HMI_INFRA + '/hmis');
-    hmiItems = data.hmis || []; const p = data.perms || {};
+    hmiItems = data.hmis || []; const p = data.perms || {}; hmiKioskName = data.kiosk_terminal || '';
     if(!hmiItems.length){ box.innerHTML = '<div style="padding:10px;border:1px dashed var(--border);border-radius:8px">Für diese Anlage ist noch kein HMI eingerichtet.</div>'; return; }
     box.innerHTML = hmiItems.map(x => {
       const base = '/infrastructure/' + HMI_INFRA + '/hmi/' + encodeURIComponent(x.id);
       const btns = (p.View ? '<a class="btn" href="' + base + '?mode=view" target="_blank" rel="noopener"><i class="ti ti-eye"></i> Ansehen</a>' : '')
         + (x.can_control ? '<a class="btn btn-primary" href="' + base + '?mode=control" target="_blank" rel="noopener"><i class="ti ti-hand-click"></i> Bedienen</a>' : '')
+        + (x.kiosk_view ? '<button type="button" class="btn" data-hmi-kiosk="' + hmiEsc(x.id) + '" data-mode="view" title="Am Kiosk-Terminal „' + hmiEsc(hmiKioskName) + '“ nur ansehen"><i class="ti ti-device-desktop-share"></i> Am Terminal zeigen</button>' : '')
+        + (x.kiosk_control ? '<button type="button" class="btn" data-hmi-kiosk="' + hmiEsc(x.id) + '" data-mode="control" title="Am Kiosk-Terminal „' + hmiEsc(hmiKioskName) + '“ mit Bedienung öffnen"><i class="ti ti-hand-click"></i> Am Terminal bedienen</button>' : '')
         + (p.Manage ? '<button type="button" class="btn" data-hmi-edit="' + hmiEsc(x.id) + '" title="Bearbeiten"><i class="ti ti-edit"></i></button><button type="button" class="btn btn-danger" data-hmi-del="' + hmiEsc(x.id) + '" title="Löschen"><i class="ti ti-trash"></i></button>' : '');
       const meta = [p.Manage ? hmiEsc(x.host + ':' + x.port) : '', x.allow_control ? '' : 'nur ansehen', p.Manage && !x.has_password ? 'ohne Passwort' : ''].filter(Boolean).join(' · ');
       return '<div style="border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:8px;background:var(--bg2)">'
@@ -552,6 +566,20 @@ async function hmiLoad(){
 }
 document.addEventListener('click', async e => {
   const ed = e.target.closest('[data-hmi-edit]'); if(ed){ hmiEdit(ed.dataset.hmiEdit); return; }
+  const ki = e.target.closest('[data-hmi-kiosk]');
+  if(ki){
+    const msg = document.getElementById('hmi-kiosk-msg');
+    const show = (text, ok) => { msg.style.display = 'block'; msg.style.borderColor = ok ? 'var(--green)' : 'var(--red)';
+      msg.innerHTML = '<i class="ti ' + (ok ? 'ti-circle-check' : 'ti-alert-circle') + '" style="color:' + (ok ? 'var(--green)' : 'var(--red)') + '"></i> ' + hmiEsc(text); };
+    ki.disabled = true;
+    try{
+      const res = await hmiJSON('/infrastructure/' + HMI_INFRA + '/hmis/' + encodeURIComponent(ki.dataset.hmiKiosk) + '/kiosk',
+        {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({mode: ki.dataset.mode})});
+      show(res.message || 'Am Terminal geöffnet.', true);
+    }catch(err){ show(err.message, false); }
+    finally{ ki.disabled = false; }
+    return;
+  }
   const del = e.target.closest('[data-hmi-del]');
   if(del){
     const x = hmiItems.find(i => i.id === del.dataset.hmiDel);
@@ -567,7 +595,7 @@ document.addEventListener('toggle', async e => {
     const rows = await hmiJSON('/infrastructure/' + HMI_INFRA + '/hmis/' + encodeURIComponent(d.dataset.hmiLog) + '/sessions');
     const fmt = s => new Date(s).toLocaleString('de-DE', {dateStyle:'short', timeStyle:'short'});
     out.innerHTML = rows.length ? rows.map(s => '<div>' + fmt(s.started_at) + ' · ' + hmiEsc(s.user || '–') + ' · ' + (s.mode === 'control' ? 'bedient' : 'angesehen')
-      + (s.ended_at ? ' · ' + Math.max(1, Math.round((new Date(s.ended_at) - new Date(s.started_at)) / 60000)) + ' min' : ' · läuft')
+      + (s.terminal ? ' · am Terminal „' + hmiEsc(s.terminal) + '“' : (s.ended_at ? ' · ' + Math.max(1, Math.round((new Date(s.ended_at) - new Date(s.started_at)) / 60000)) + ' min' : ' · läuft'))
       + (s.error ? ' · <span style="color:var(--red)">' + hmiEsc(s.error) + '</span>' : '') + '</div>').join('') : 'Noch keine Zugriffe.';
   }catch(err){ out.textContent = err.message; }
 }, true);
@@ -581,17 +609,29 @@ function hmiEdit(id){
   f.elements.port.value = x.port || 5900;
   f.elements.notes.value = x.notes || '';
   f.elements.allow_control.checked = x.allow_control !== false;
+  f.elements.terminal_view.value = x.terminal_view || 'everyone';
+  f.elements.terminal_control.value = x.terminal_control || 'card';
+  hmiTermHint(f);
   f.elements.password.placeholder = x.has_password ? 'unverändert lassen' : 'leer = ohne Passwort';
   document.getElementById('hmi-clear-pw').style.display = x.has_password ? 'flex' : 'none';
   document.getElementById('hmi-form-msg').textContent = '';
   f.style.display = 'block'; f.elements.name.focus();
+}
+// Hinweis zu „Am Terminal bedienen“: jeder darf / Bedienung am HMI ausgeschaltet
+function hmiTermHint(f){
+  const box = document.getElementById('hmi-term-hint'); if(!box || !f) return;
+  let t = '';
+  if(!f.elements.allow_control.checked) t = '<span style="color:var(--muted)">Bedienung ist für dieses HMI ausgeschaltet – am Terminal nur Ansehen.</span>';
+  else if(f.elements.terminal_control.value === 'everyone') t = '<span style="color:var(--red)">Jede Person am Terminal kann dieses HMI ohne Karte bedienen.</span>';
+  box.innerHTML = t;
 }
 async function hmiSave(f){
   const msg = document.getElementById('hmi-form-msg');
   const id = f.elements.id.value;
   const body = {name: f.elements.name.value, host: f.elements.host.value, port: parseInt(f.elements.port.value, 10) || 5900,
     password: f.elements.password.value, clear_password: f.elements.clear_password.checked,
-    allow_control: f.elements.allow_control.checked, notes: f.elements.notes.value};
+    allow_control: f.elements.allow_control.checked, notes: f.elements.notes.value,
+    terminal_view: f.elements.terminal_view.value, terminal_control: f.elements.terminal_control.value};
   try{
     await hmiJSON('/infrastructure/' + HMI_INFRA + '/hmis' + (id ? '/' + encodeURIComponent(id) : ''), {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
     f.style.display = 'none'; hmiLoad();

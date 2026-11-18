@@ -15,6 +15,21 @@
   </div>
 </div>
 
+
+<div class="card" style="max-width:680px;margin-bottom:14px" id="account-terminal-pin">
+  <div class="card-title"><i class="ti ti-key"></i> Terminal-PIN</div>
+  <p style="font-size:13px;color:var(--muted);margin-bottom:8px">{{if .PINSet}}Eine PIN ist gesetzt.{{else}}Keine PIN gesetzt.{{end}} Mit Kartennummer und PIN meldest du dich an Anlagenterminals ohne Kartenleser an. Die PIN wird nie angezeigt. 4 bis 8 Ziffern, nicht lauter gleiche und keine Zahlenfolge wie 1234.</p>
+  {{if .PINLockedUntil}}<p class="rec-msg err" style="margin-bottom:8px"><i class="ti ti-lock"></i> PIN gesperrt bis {{.PINLockedUntil}}</p>{{end}}
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+    <form method="post" action="/account/terminal-pin" autocomplete="off" style="display:flex;gap:8px;align-items:flex-end;margin:0">
+      <input type="hidden" name="action" value="set">
+      <div><label class="form-label" for="acc-pin">Neue PIN</label><input class="form-input" id="acc-pin" name="pin" type="password" inputmode="numeric" pattern="[0-9]{4,8}" minlength="4" maxlength="8" autocomplete="new-password" required></div>
+      <button class="btn btn-primary" type="submit"><i class="ti ti-key"></i> PIN setzen</button>
+    </form>
+    {{if .PINSet}}<form method="post" action="/account/terminal-pin" style="margin:0"><input type="hidden" name="action" value="clear"><button class="btn" type="submit" style="color:var(--red)"><i class="ti ti-trash"></i> PIN entfernen</button></form>{{end}}
+  </div>
+</div>
+
 <div class="card" style="max-width:680px;margin-bottom:14px">
   <div class="card-title"><i class="ti ti-briefcase"></i> Microsoft 365 · Geschäftlich</div>
   {{with .MicrosoftWork}}{{if .Connected}}

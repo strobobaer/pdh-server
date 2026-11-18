@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex">
+<title>Terminal</title>
+<link rel="icon" href="/favicon.ico">
+<link rel="stylesheet" href="/vendor/tabler-icons/tabler-icons.min.css?v={{appVersion}}">
+<style>
+/* Fehlerseite der Geräteanmeldung (terminal_devices.go): Vollbild, große Schrift, nur Anzeige. */
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#0f1117;--bg2:#1a1d27;--text:#f1f3fb;--muted:#9aa3b8;--border:#2f3348;--red:#ef4444;--font:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--font);font-size:clamp(20px,2.2vw,34px);line-height:1.4;-webkit-user-select:none;user-select:none}
+body{display:flex;align-items:center;justify-content:center;padding:4vh 4vw}
+.t-err{max-width:30em;text-align:center;background:var(--bg2);border:2px solid var(--border);border-radius:24px;padding:6vh 4vw}
+.t-err i{display:block;font-size:2.6em;color:var(--red);margin-bottom:.3em}
+.t-err p{font-weight:700}
+</style>
+</head>
+<body>
+<main class="t-err" role="alert">
+  <i class="ti ti-plug-connected-x" aria-hidden="true"></i>
+  <p>{{.Message}}</p>
+</main>
+</body>
+</html>

@@ -248,15 +248,23 @@ oder ändern.**
    – auf `main`. Offen: Verbund-Update und Browserprüfung (Assistent mit
    Kachel Rüstzeit, Wartung „heute fällig“ nicht überfällig, Sicherungs-
    Formular mit 03:00).
-8. **Zeitzone im Docker-Testsystem** (Vorschlag, kein Auftrag): Container
+8. **0.81.2 Terminal-Paket** (Kiosk-Terminals, Anlagenterminal, Kopplung,
+   Kartensitzung, Anmeldung ohne Karte) – auf `main`, Migrationen
+   169–176 (vorher 155–162 auf den Branches `feat/kiosk-terminal`,
+   `feat/anlagenterminal`, `feat/kartensitzung`, `feat/terminal-kopplung`;
+   diese Branches nicht mehr mergen). Neu: `migrations/checksums.txt` –
+   neue Migrationen mit `PDH_MIGRATIONS_APPEND=1 go test ./pkg/database
+   -run TestMigrationsFrozen` eintragen. Offen: Verbund-Update,
+   Browserprüfung, Abnahme am Raspberry Pi mit Kartenleser.
+9. **Zeitzone im Docker-Testsystem** (Vorschlag, kein Auftrag): Container
    laufen in UTC, Produktion (systemd) in Europe/Berlin. Umstellung nur als
    Paket: `TZ` für app und updater in `compose.yaml`, `time/tzdata` in
    `cmd/server` und `cmd/update-agent`, Postgres-Sitzungszone über pgx
    `RuntimeParams["timezone"]`; nie nur `TZ` an der App, kein `PGTZ`.
-9. **Tagesgrenzen aufräumen (klein):** übrige `Truncate(24*time.Hour)`
-   gegen DATE-Spalten (`kanban.go`, `purchases.go`, `trainings.go`,
-   `user_qualifications.go`, `procurement.go`, `projects_handler.go`,
-   `partners.go`) auf `localDayStart` umstellen.
+10. **Tagesgrenzen aufräumen (klein):** übrige `Truncate(24*time.Hour)`
+    gegen DATE-Spalten (`kanban.go`, `purchases.go`, `trainings.go`,
+    `user_qualifications.go`, `procurement.go`, `projects_handler.go`,
+    `partners.go`) auf `localDayStart` umstellen.
 
 Docker Desktop startet nach einem Neustart des Windows-Rechners nicht von
 selbst – ohne ihn fehlen der Zeuge und die Labor-Datenbank für die Tests.

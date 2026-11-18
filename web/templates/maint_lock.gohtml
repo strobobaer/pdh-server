@@ -101,7 +101,7 @@ html[data-style="fiori"] .err{color:var(--red)}
 </main>
 <script>
 (function(){
-  var admin = {{.Admin}}, loginForm = {{.ShowLogin}}, last = "", gone = false;
+  var admin = {{.Admin}}, device = {{.Device}}, loginForm = {{.ShowLogin}}, last = "", gone = false;
   var remS = {{.RemainingS}}, remAt = Date.now();
   var remTpl = {{t "Spätestens in %d min wieder verfügbar"}};
   function $(id){ return document.getElementById(id); }
@@ -117,7 +117,7 @@ html[data-style="fiori"] .err{color:var(--red)}
       if (!v.locked) {
         gone = true;
         $("mt-title").textContent = {{t "Wartung beendet"}};
-        setTimeout(function(){ location.href = admin ? "/" : "/login"; }, 3000);
+        setTimeout(function(){ location.href = admin ? "/" : device ? "/terminal" : "/login"; }, 3000);
         return;
       }
       // Schritt oder Phase gewechselt: Seite neu laden (Texte kommen übersetzt vom Server)
