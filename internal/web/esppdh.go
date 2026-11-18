@@ -28,6 +28,8 @@ import (
 //	POST /import/esppdh/{id}/delete        endgültig löschen (esppdh.admin, Bereichsadministrator)
 //	GET  /import/esppdh/{id}/config.yaml   ESPHome-Konfiguration ohne Kennwörter (esppdh.view)
 //
+// Firmware bauen, Verlauf und Abbrechen: esppdh_build.go (/import/esppdh/{id}/build…).
+//
 // Die Rechte gelten in der Abteilung der Anlage des Geräts (hasPermRec mit esppdhRef, Regeln in
 // gateRules). Jedes Gerät meldet sich am eingebauten Broker seiner Verbindung mit eigenem
 // Zugang an (esppdh-<kennung>) und darf nur unter esppdh/<kennung>/ senden; gesperrte Geräte
@@ -246,6 +248,8 @@ var esppdhNotices = map[string]string{
 	"unlocked": "Gerät entsperrt – es kann sich wieder am Broker anmelden.",
 	"password": "Neues MQTT-Kennwort vergeben. Das Gerät ist getrennt und braucht eine neue Firmware.",
 	"deleted":  "Gerät gelöscht.",
+	"build":    "Bau eingereiht. Der Verlauf steht unten bei „Firmware“.",
+	"canceled": "Bau abgebrochen.",
 }
 
 func esppdhBoardLabel(key, custom string) string {
@@ -430,6 +434,13 @@ type ESPPDHDevicePageData struct {
 	Notice             string
 	Warn               string // Aktion ausgeführt, aber der Broker ließ sich nicht abgleichen
 	BoardLabel         string
+
+	// Karte „Firmware“ (esppdh_build.go)
+	Runs      []esppdhRunView // letzte Läufe, der jüngste zuerst
+	Run       *esppdhRunView  // jüngster Lauf mit Verlauf
+	CanBuild  bool            // Knopf „Firmware bauen“
+	BuildNote string          // warum gerade nicht gebaut werden kann
+	Changed   bool            // Konfiguration seit dem letzten Bau geändert
 }
 
 // esppdhBlockViews: Zeilen des Formulars – gespeicherte bzw. eingegebene Bausteine.
@@ -564,6 +575,7 @@ func (h *Handler) esppdhRenderDevice(w http.ResponseWriter, r *http.Request, d e
 	if serr == nil && len(rmsgs) == 0 {
 		pd.Problems = append(pd.Problems, esppdh.ValidateDevice(res.Dev)...)
 	}
+	h.esppdhFirmwareCard(ctx, &pd, d, res, mqttPW, apPW, serr == nil)
 	if pd.CanEdit && !d.Wired {
 		pd.APPassword = apPW
 	}
@@ -764,6 +776,7 @@ func (h *Handler) EsppdhDeleteWeb(w http.ResponseWriter, r *http.Request) {
 		h.esppdhLoadFailed(w, r, err)
 		return
 	}
+	h.esppdhForgetDevice(id) // laufenden Bau abbrechen, Firmware löschen (esppdh_build.go)
 	syncErr := h.esppdhSyncBroker(r.Context(), conn, esppdhUserOf(slug))
 	componentLog("esppdh").Info().Str("benutzer", getUser(r).ID).Str("gerät", slug).Str("id", id).Bool("broker_abgeglichen", syncErr == nil).Msg("gerät gelöscht")
 	if syncErr != nil {

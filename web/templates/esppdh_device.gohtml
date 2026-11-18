@@ -4,6 +4,7 @@
      Broker, Hinweise. Gemeinsame Teile in widgets/esppdh_parts.gohtml. Das MQTT-Kennwort steht
      nie auf der Seite; das Kennwort des Notzugangs nur mit esppdh.edit. */}}
 {{template "esppdh-style"}}
+{{template "esppdh-build-style"}}
 <style>
 .esp-cols{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(0,1fr);gap:14px;align-items:start}
 @media (max-width:960px){.esp-cols{grid-template-columns:minmax(0,1fr)}}
@@ -121,6 +122,40 @@
   </div>
 </div>
 </div>
+
+{{/* Firmware: bauen, Verlauf, letzte Läufe (esppdh_build.go, widgets/esppdh_build.gohtml) */}}
+<div class="card esp-card" id="esp-firmware">
+  <div class="card-title"><span><i class="ti ti-cpu-2" aria-hidden="true"></i> Firmware</span></div>
+  {{if .Changed}}<div class="esp-fw-changed" role="status"><i class="ti ti-refresh-alert" aria-hidden="true"></i> Konfiguration seit dem letzten Bau geändert – die Firmware passt nicht mehr dazu. Bitte neu bauen und aufspielen.</div>
+  {{else if not .Dev.BuiltHash}}<p class="esp-note">Noch keine Firmware gebaut.</p>{{end}}
+  {{if .CanBuild}}
+  <form method="POST" action="/import/esppdh/{{.Dev.ID}}/build" class="esp-fw-build">
+    <button type="submit" class="btn btn-primary"><i class="ti ti-hammer" aria-hidden="true"></i> Firmware bauen</button>
+  </form>
+  <p class="esp-note">Es baut immer nur ein Gerät zur Zeit, weitere warten. Der erste Bau je Platinentyp lädt Werkzeuge aus dem Internet (mehrere hundert MB) und dauert deshalb länger.</p>
+  {{else if and .CanEdit .BuildNote}}<p class="esp-note"><i class="ti ti-info-circle" aria-hidden="true"></i> {{.BuildNote}}</p>{{end}}
+  {{with .Run}}{{template "esppdh-build" .}}{{end}}
+  {{if gt (len .Runs) 1}}
+  <div class="esp-runs-title">Letzte Läufe</div>
+  <ul class="esp-runs">
+    {{range .Runs}}<li>
+      <span class="badge {{.Badge}}">{{.StatusLabel}}</span>
+      <span>{{.When}}</span>
+      {{if .BrokerHost}}<span class="esp-mono">für {{.Addr}}</span>{{end}}
+      {{with .Version}}<span>ESPHome {{.}}</span>{{end}}
+      {{if .Size}}<span>{{.SizeText}}</span>{{end}}
+      <button type="button" class="btn btn-small" hx-get="/import/esppdh/{{.DeviceID}}/build/{{.ID}}" hx-target="#esp-build" hx-swap="outerHTML" aria-label="Verlauf des Laufs vom {{.When}} zeigen"><i class="ti ti-file-text" aria-hidden="true"></i> Verlauf</button>
+    </li>{{end}}
+  </ul>
+  {{end}}
+</div>
+<script>
+// Verlauf: beim Nachladen ans Ende rollen – nur, wenn man schon am Ende war
+let espLogAtEnd = true;
+document.addEventListener('htmx:beforeSwap', () => { const l = document.querySelector('#esp-build .esp-log'); if (l) espLogAtEnd = l.scrollTop + l.clientHeight >= l.scrollHeight - 8; });
+document.addEventListener('htmx:afterSwap', () => { const l = document.querySelector('#esp-build .esp-log'); if (l && espLogAtEnd) l.scrollTop = l.scrollHeight; });
+(() => { const l = document.querySelector('#esp-build .esp-log'); if (l) l.scrollTop = l.scrollHeight; })();
+</script>
 
 <p class="esp-note">ESPPDH baut auf ESPHome auf (GPLv3/MIT). Die Konfiguration jedes Geräts lässt sich herunterladen – ohne Kennwörter.</p>
 {{template "esppdh-script"}}

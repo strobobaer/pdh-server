@@ -171,10 +171,10 @@ var gateRules = []gateRule{
 	// Reiter „SNMP“: Profil löschen nur Bereichsadministrator, anlegen und ändern mit system.snmp
 	gr(wPost, permSNMPAdmin, "", false, `^/admin/server-config/snmp/profiles`+gID+`/delete$`),
 	gr(wPost, permSNMP, "", false, `^/admin/server-config/snmp/profiles(?:`+gID+`)?$`),
-	// ESPPDH: Gerät löschen nur Bereichsadministrator; anlegen, ändern, sperren, neues Kennwort
-	// mit esppdh.edit (für ein Gerät in der Abteilung seiner Anlage)
+	// ESPPDH: Gerät löschen nur Bereichsadministrator; anlegen, ändern, sperren, neues Kennwort,
+	// Firmware bauen und Bau abbrechen mit esppdh.edit (für ein Gerät in der Abteilung seiner Anlage)
 	gr(wPost, permESPAdmin, esppdhRef, false, `^/import/esppdh`+gID+`/delete$`),
-	gr(wPost, permESPEdit, esppdhRef, false, `^/import/esppdh`+gID+`(?:/lock|/password)?$`),
+	gr(wPost, permESPEdit, esppdhRef, false, `^/import/esppdh`+gID+`(?:/lock|/password|/build(?:`+gID+`/cancel)?)?$`),
 	gr(wPost, permESPEdit, "", false, `^/import/esppdh/?$`),
 	// ── Löschvormerkung von Stammdaten über die Schnittstelle ──
 	gr("DELETE", "inventory.edit", "part", false, `^(?:/api/v1)?/inventory`+gID+gEnd),

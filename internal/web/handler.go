@@ -358,6 +358,10 @@ type Handler struct {
 	esppdhSyncMu sync.Mutex
 	// nur Tests: läuft in esppdhSyncBroker nach dem Lesen der Liste; ein Fehler gilt als Lesefehler
 	esppdhSyncHook func(connID string) error
+	// ESPPDH (esppdh_build.go): der eine Arbeiter, der Firmware baut, und sein Runner
+	// (nil = esppdh.NewRunner; Tests setzen eine Attrappe)
+	esppdhQ      esppdhQueue
+	esppdhRunner esppdhBuilder
 }
 
 func NewHandler(
@@ -1103,6 +1107,9 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/import/esppdh/{id}/password", h.EsppdhPasswordWeb)
 	r.Post("/import/esppdh/{id}/delete", h.EsppdhDeleteWeb)
 	r.Get("/import/esppdh/{id}/config.yaml", h.EsppdhConfigWeb)
+	r.Post("/import/esppdh/{id}/build", h.EsppdhBuildWeb)                    // Firmware bauen (esppdh_build.go)
+	r.Get("/import/esppdh/{id}/build/{bid}", h.EsppdhBuildPartWeb)           // Verlauf eines Laufs (htmx, alle 2 s)
+	r.Post("/import/esppdh/{id}/build/{bid}/cancel", h.EsppdhBuildCancelWeb) // Bau abbrechen
 	// Verbindungsseiten (connection_detail.go)
 	r.Get("/import/connections/{id}", h.ImportConnectionPage)
 	r.Get("/export/connections/{id}", h.ExportConnectionPage)

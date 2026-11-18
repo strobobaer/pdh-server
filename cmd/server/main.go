@@ -343,6 +343,7 @@ func main() {
 		webHandler.StartUpdateChecker(context.Background())
 		webHandler.StartCertRenewal(context.Background()) // Let's-Encrypt-Zertifikate (optional): täglich prüfen und erneuern
 		webHandler.StartEnabledMqttBrokers(context.Background())
+		webHandler.StartESPPDH(context.Background()) // ESPPDH: ein Arbeiter baut Firmware nacheinander (nicht am Spiegel, nicht in Docker)
 		webHandler.StartEnabledMqttConsumers(context.Background())
 		webHandler.StartEnabledExportSchedules(context.Background())
 		webHandler.StartPurchaseReportSchedule(context.Background())
@@ -534,6 +535,7 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	srv.Shutdown(ctx)
+	webHandler.StopESPPDH() // laufenden Bau abbrechen und als gescheitert eintragen
 	webHandler.StopDataNet()
 	webHandler.StopMqttBrokers()
 	webHandler.StopExportSchedules()
