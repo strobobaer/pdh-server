@@ -229,7 +229,7 @@ oder ändern.**
 ### Offene Punkte (Stand 18.11.2026)
 
 1. **0.81.3 SFTP mit Schlüssel** (Efficio-Export) und **0.81.4 Seite
-   „Netzwerk“** (VLANs und WLANs, Migration 177, Rechte `system.network`
+   „Netzwerk“** (VLANs und WLANs, Migrationen 177 und 178, Rechte `system.network`
    und `system.network_admin`) – auf `main` und dem Testverbund, im
    Browser geprüft (18.11.2026). **0.81.5** (Fingerabdruck bricht auf
    schmalen Bildschirmen um) liegt lokal auf `fix/efficio-fingerabdruck`;
