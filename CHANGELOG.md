@@ -10,6 +10,14 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.81.0] – 2026-11-18
+
+### Neu
+
+- Neu anlegen: Mit dem Recht „Rüstzeiten: erfassen …“ gibt es im Assistenten die Kachel **Rüstzeit** – Grund, Anlage und Beginn Schritt für Schritt wählen; ohne Ende läuft die Rüstzeit, mit Ende oder Dauer wird sie nachgetragen.
+- Neu anlegen: Auf der Seite ohne Assistent führt der Knopf **Rüstzeit** zur Seite „Rüstzeit anlegen“, mit der Anlage der QR-Infoseite vorbelegt.
+- Handbuch: „So legst du eine Rüstzeit über „Neu anlegen“ an“.
+
 ## [0.80.24] – 2026-11-17
 
 ### Behoben

@@ -1,7 +1,9 @@
 {{/*
   Erstellungs-Assistent (create_wizard.go) – gleicher Aufbau und Stil wie der
   Abschluss-Assistent (cw-*-Klassen). Aufruf: pdhCreate() oder
-  pdhCreate('ticket' | 'fault' | 'task' | 'maintenance', vorbelegung?).
+  pdhCreate('ticket' | 'fault' | 'task' | 'maintenance' | 'setup', vorbelegung?).
+  'setup' (Rüstzeit) nur ausserhalb des Leitstands und mit setup.edit:
+  Art → Was? (Grund, Vermerk) → Wo? (Anlage, Pflicht) → Wann? (Beginn, Ende/Dauer) → Anlegen.
   Vorbelegung: {project_id, project_label, infra_id, infra_label, stay, onDone(id)}
   (stay: nach dem Anlegen auf der Seite bleiben und neu laden).
   Links mit data-create="art" (oder "any") und Seitenaufrufe mit ?create=art
@@ -66,26 +68,29 @@
           <button type="button" data-type="ticket"><i class="ti ti-ticket" style="color:#60a5fa"></i><b>{{t "Ticket"}}</b><small>{{t "Anliegen, Auftrag oder Anfrage"}}</small></button>
           <button type="button" data-type="task"><i class="ti ti-list-check" style="color:var(--accent)"></i><b>{{t "Aufgabe"}}</b><small>{{t "To-do mit Termin, auch für mehrere"}}</small></button>
           <button type="button" data-type="maintenance"><i class="ti ti-tool" style="color:var(--amber)"></i><b>{{t "Wartungsauftrag"}}</b><small>{{t "Einmalige Wartung an einer Anlage"}}</small></button>
-          {{if not .Board}}<button type="button" data-kvp="new"><i class="ti ti-bulb" style="color:var(--green)"></i><b>{{t "KVP-Idee"}}</b><small>{{t "Verbesserungsvorschlag schnell einreichen"}}</small></button>{{end}}
+          {{if not .Board}}<button type="button" data-type="setup" id="crw-type-setup" style="display:none"><i class="ti ti-arrows-exchange-2" style="color:#a78bfa"></i><b>{{t "Rüstzeit"}}</b><small>{{t "Umrüsten, Reinigen, Formatwechsel – starten oder nachtragen"}}</small></button>
+          <button type="button" data-kvp="new"><i class="ti ti-bulb" style="color:var(--green)"></i><b>{{t "KVP-Idee"}}</b><small>{{t "Verbesserungsvorschlag schnell einreichen"}}</small></button>{{end}}
         </div>
       </div>
       <!-- 2 Was? -->
       <div class="cw-pane" data-step="1">
         <h3><i class="ti ti-pencil"></i> {{t "Worum geht es?"}}</h3>
-        <p class="hint">{{t "Ein kurzer, eindeutiger Titel – die Details in die Beschreibung."}}</p>
-        <div class="form-group"><label class="form-label">{{t "Titel"}} *</label><input data-suggest="title" class="form-input" id="crw-title-in" maxlength="200" autocomplete="off" placeholder="{{t "z. B. Presse 3 – Hydraulik verliert Öl"}}"></div>
-        <div class="form-group"><label class="form-label">{{t "Beschreibung"}}{{if .Board}} * <small style="color:var(--muted)">({{t "mehr als drei Wörter"}})</small>{{end}}</label><textarea data-suggest="description" class="form-input" id="crw-desc" rows="4" maxlength="4000" placeholder="{{t "Was genau ist los? Seit wann? Was wurde schon versucht?"}}"></textarea></div>
-        <div class="form-group"><label class="form-label">{{t "Fotos"}} <small style="color:var(--muted)">({{t "freiwillig, bis zu 5"}})</small></label>
+        <p class="hint" id="crw-what-hint">{{t "Ein kurzer, eindeutiger Titel – die Details in die Beschreibung."}}</p>
+        {{if not .Board}}<div id="crw-reason-box" class="form-group"><label class="form-label">{{t "Grund"}} *</label>
+          <div class="cw-chips" id="crw-reason"></div></div>{{end}}
+        <div class="form-group" id="crw-title-box"><label class="form-label">{{t "Titel"}} *</label><input data-suggest="title" class="form-input" id="crw-title-in" maxlength="200" autocomplete="off" placeholder="{{t "z. B. Presse 3 – Hydraulik verliert Öl"}}"></div>
+        <div class="form-group"><label class="form-label" id="crw-desc-label">{{t "Beschreibung"}}{{if .Board}} * <small style="color:var(--muted)">({{t "mehr als drei Wörter"}})</small>{{end}}</label><textarea data-suggest="description" class="form-input" id="crw-desc" rows="4" maxlength="4000" placeholder="{{t "Was genau ist los? Seit wann? Was wurde schon versucht?"}}"></textarea></div>
+        <div class="form-group" id="crw-photo-box"><label class="form-label">{{t "Fotos"}} <small style="color:var(--muted)">({{t "freiwillig, bis zu 5"}})</small></label>
           <div class="crw-thumbs" id="crw-thumbs"></div>
           <div style="display:flex;gap:8px;flex-wrap:wrap">
             <label class="btn btn-small" style="cursor:pointer"><i class="ti ti-camera"></i> {{t "Foto aufnehmen"}}<input type="file" accept="image/*" capture="environment" id="crw-cam" hidden></label>
             <label class="btn btn-small" style="cursor:pointer"><i class="ti ti-photo"></i> {{t "Bild wählen"}}<input type="file" accept="image/*" multiple id="crw-pick" hidden></label>
           </div></div>
         <div id="crw-sym-box" class="form-group"><label class="form-label">{{t "Symptome (mit Komma trennen)"}}</label><input class="form-input" id="crw-sym" placeholder="{{t "z. B. Ölaustritt, Druckabfall, Geräusch"}}"></div>
-        <label class="form-label" id="crw-prio-label">{{t "Priorität"}}</label>
+        <div id="crw-prio-box"><label class="form-label" id="crw-prio-label">{{t "Priorität"}}</label>
         <div class="cw-chips" id="crw-prio">
           <button type="button" data-v="low">{{t "Niedrig"}}</button><button type="button" data-v="medium" class="on">{{t "Mittel"}}</button><button type="button" data-v="high">{{t "Hoch"}}</button><button type="button" data-v="critical">{{t "Kritisch"}}</button>
-        </div>
+        </div></div>
         <div id="crw-mtype-box"><label class="form-label">{{t "Art der Wartung"}}</label>
           <div class="cw-chips" id="crw-mtype"><button type="button" data-v="preventive" class="on">{{t "Vorbeugend"}}</button><button type="button" data-v="inspection">{{t "Inspektion"}}</button><button type="button" data-v="calibration">{{t "Kalibrierung"}}</button><button type="button" data-v="cleaning">{{t "Reinigung"}}</button></div>
         </div>
@@ -125,13 +130,22 @@
       {{end}}
       <!-- 5 Wann? -->
       <div class="cw-pane" data-step="4">
-        <h3><i class="ti ti-calendar"></i> {{t "Bis wann?"}}</h3>
+        <h3><i class="ti ti-calendar"></i> <span id="crw-when-title">{{t "Bis wann?"}}</span></h3>
         <p class="hint" id="crw-when-hint">{{t "Fälligkeit wählen – oder ein Datum eintragen."}}</p>
+        <div id="crw-due-box">
         <div class="cw-chips" id="crw-due-quick"></div>
         <div class="cw-time">
           <div><label class="form-label">{{t "Fällig am"}}</label><input class="form-input" id="crw-due" type="date"></div>
           <div id="crw-start-box"><label class="form-label">{{t "Start (Aufgabe)"}}</label><input class="form-input" id="crw-start" type="date"></div>
-        </div>
+        </div></div>
+        {{if not .Board}}<div id="crw-setup-when">
+          <div class="cw-chips" id="crw-setup-mode"><button type="button" data-v="running" class="on"><i class="ti ti-player-play"></i> {{t "Läuft gerade"}}</button><button type="button" data-v="done"><i class="ti ti-history"></i> {{t "Nachtragen (schon beendet)"}}</button></div>
+          <div class="cw-time">
+            <div><label class="form-label">{{t "Beginn"}} *</label><input class="form-input" id="crw-sstart" type="datetime-local"></div>
+            <div class="crw-setup-end"><label class="form-label">{{t "Ende"}}</label><input class="form-input" id="crw-send" type="datetime-local"></div>
+            <div class="crw-setup-end"><label class="form-label">{{t "oder Dauer (Minuten)"}}</label><input class="form-input" id="crw-sdur" type="number" min="1" max="10080" step="1" inputmode="numeric"></div>
+          </div>
+        </div>{{end}}
       </div>
       <!-- 6 Anlegen -->
       <div class="cw-pane" data-step="5">
@@ -181,6 +195,19 @@
   function msg(text, cls){ const m = $('crw-msg'); m.textContent = text || ''; m.className = 'cw-msg' + (cls ? ' ' + cls : ''); }
   // Leitstand-Modus: keine Zuweisung, Melder statt Zustaendigem, Verteilung an die Broker
   const BOARD = {{.Board}};
+  // Rüstzeit (setup_actions.go): nur ausserhalb des Leitstands und nur mit
+  // setup.edit (opts.setup); ohne „Wer?“ – zugeordnet wird der Schichtführer.
+  // Angelegt wird ueber POST /setup mit denselben Pruefungen wie /setup/new.
+  if(!BOARD) TYPES.setup = {label: {{t "Rüstzeit"}}, icon: 'ti-arrows-exchange-2', api: '/setup', ref: 'setup', url: '/setup/'};
+  const isSetup = () => st && st.type === 'setup';
+  // datetime-local im Ortsformat des Browsers (JJJJ-MM-TTThh:mm)
+  const localDT = d => { const p = n => String(n).padStart(2, '0'); return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T' + p(d.getHours()) + ':' + p(d.getMinutes()); };
+  const fmtDT = v => v ? new Date(v).toLocaleString(LOCALE, {dateStyle: 'medium', timeStyle: 'short'}) : '–';
+  // POST /setup liest Beginn und Ende in der Ortszeit des Servers (oft UTC im
+  // Container). Darum zaehlt die Uhr des Servers (opts.setup.now), nicht die des
+  // Browsers: srvSkew = Abstand Server-Wanduhr zu Browser-Uhr (Server sendet Sekunden mit).
+  let srvSkew = 0;
+  const srvNow = () => new Date(Date.now() + srvSkew);
   const escapeHtml = window.escapeHtml || (s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c])));
   const words = s => s.trim().split(/\s+/).filter(Boolean).length;
 
@@ -202,11 +229,27 @@
     return opts;
   }
 
+  // Rüstzeit nur anbieten, wenn der Server Gruende liefert (Recht setup.edit)
+  function applySetupOpts(){
+    if(BOARD) return;
+    const ok = !!(opts && opts.setup && (opts.setup.reasons || []).length);
+    if(ok && opts.setup.now && !opts.setup.skewDone){
+      const t = new Date(opts.setup.now).getTime(); // ohne Zeitzone = Ortszeit des Browsers
+      if(!isNaN(t)) srvSkew = t - Date.now();
+      opts.setup.skewDone = true;
+    }
+    $('crw-type-setup').style.display = ok ? '' : 'none';
+    $('crw-reason').innerHTML = ok ? opts.setup.reasons.map(x => '<button type="button" data-v="' + escapeHtml(x.id) + '"' + (st.reason === x.id ? ' class="on"' : '') + '>' + escapeHtml(x.name) + '</button>').join('') : '';
+    if(!ok && isSetup()){ st.type = ''; st.fixedType = false; st.i = 0; }
+  }
+  const reasonName = () => { const x = ((opts && opts.setup && opts.setup.reasons) || []).find(r => r.id === st.reason); return x ? x.name : '–'; };
+
   // Schritte je Art: 0 Art wird uebersprungen, wenn die Art vorgegeben ist
   function steps(){
     let l = [0, 1, 2, 3, 4, 5];
     if(st.fixedType) l = l.filter(x => x !== 0);
     if(BOARD && st.type === 'fault') l = l.filter(x => x !== 4); // Stoerungen ohne Termin
+    if(isSetup()) l = l.filter(x => x !== 3); // Rüstzeit: Schichtführer kommt automatisch
     return l;
   }
 
@@ -236,16 +279,32 @@
     $('crw-stopped-box').style.display = st.type === 'fault' || st.type === 'ticket' ? '' : 'none';
     $('crw-where-hint').textContent = st.type === 'maintenance'
       ? {{t "Für einen Wartungsauftrag ist die Anlage Pflicht."}}
+      : isSetup() ? {{t "An welcher Anlage wird gerüstet? Die Anlage ist Pflicht."}}
       : {{t "Die Anlage bestimmt auch, welche Abteilung den Vorgang sieht. Ohne Anlage einfach weiter."}};
+    if(!BOARD){
+      // Rüstzeit: Grund und Vermerk statt Titel, Priorität und Fotos; Beginn/Ende statt Fälligkeit
+      const s = isSetup();
+      $('crw-reason-box').style.display = s ? '' : 'none';
+      ['crw-title-box', 'crw-photo-box', 'crw-prio-box', 'crw-due-box'].forEach(id => $(id).style.display = s ? 'none' : '');
+      $('crw-setup-when').style.display = s ? '' : 'none';
+      $('crw-desc-label').textContent = s ? {{t "Vermerk (freiwillig)"}} : {{t "Beschreibung"}};
+      $('crw-what-hint').textContent = s ? {{t "Grund wählen – ein Vermerk ist freiwillig."}} : {{t "Ein kurzer, eindeutiger Titel – die Details in die Beschreibung."}};
+      $('crw-desc').maxLength = s ? 1000 : 4000;
+      $('crw-desc').placeholder = s ? {{t "z. B. Artikel 4711 auf 4712, Werkzeug 3"}} : {{t "Was genau ist los? Seit wann? Was wurde schon versucht?"}};
+      $('crw-when-title').textContent = s ? {{t "Wann wurde gerüstet?"}} : {{t "Bis wann?"}};
+      $('crw-when-hint').textContent = s
+        ? {{t "Läuft das Rüsten gerade, reicht der Beginn – beendet wird es später auf der Detailseite. Zum Nachtragen Ende oder Dauer eintragen."}}
+        : {{t "Fälligkeit wählen – oder ein Datum eintragen."}};
+    }
     if(BOARD){
       document.querySelectorAll('#crw-types button').forEach(b => { b.style.display = opts && (opts.types || []).includes(b.dataset.type) ? '' : 'none'; });
       $('crw-where-hint').textContent = st.type === 'task' ? {{t "Für eine Aufgabe ist die Anlage optional."}} : {{t "Bitte die betroffene Anlage auswählen – Pflicht."}};
       if(cur === 2) renderInfra();
       if(cur === 3) renderReporters();
     } else if(cur === 3) renderPeople();
-    if(cur === 4) renderDue();
+    if(cur === 4) isSetup() ? renderSetupWhen() : renderDue();
     if(cur === 5) renderSum();
-    if(cur === 1) setTimeout(() => $('crw-title-in').focus(), 30);
+    if(cur === 1 && !isSetup()) setTimeout(() => $('crw-title-in').focus(), 30);
     msg('');
   }
 
@@ -269,6 +328,22 @@
     $('crw-due').value = st.due || '';
     $('crw-due-quick').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.d === st.due));
     if(st.type === 'task' && !$('crw-start').value) $('crw-start').value = iso(new Date());
+  }
+
+  // Rüstzeit „Wann?“: läuft gerade (nur Beginn) oder nachtragen (Ende oder Dauer)
+  function renderSetupWhen(){
+    if(!$('crw-sstart').value) $('crw-sstart').value = localDT(srvNow());
+    $('crw-sstart').max = $('crw-send').max = localDT(new Date(srvNow().getTime() + 5 * 60000));
+    const done = st.setupMode === 'done';
+    $('crw-setup-mode').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === st.setupMode));
+    document.querySelectorAll('#crw-setup-when .crw-setup-end').forEach(el => el.style.display = done ? '' : 'none');
+  }
+
+  // Ende der Rüstzeit für Zusammenfassung und Anlegen: {end} oder {dur} oder {} (läuft)
+  function setupEnd(){
+    if(st.setupMode !== 'done') return {};
+    const end = $('crw-send').value, dur = $('crw-sdur').value.trim();
+    return end ? {end} : dur ? {dur} : {};
   }
 
   function whoLabel(){
@@ -310,6 +385,20 @@
       if(st.type === 'fault' && $('crw-sym').value.trim()) rows.splice(3, 0, [{{t "Symptome"}}, $('crw-sym').value.trim()]);
       if(st.type !== 'fault') rows.push([{{t "Fällig"}}, $('crw-due').value ? new Date($('crw-due').value + 'T00:00:00').toLocaleDateString(LOCALE) : {{t "Standard"}}]);
       if((st.type === 'fault' || st.type === 'ticket') && $('crw-stopped').checked) rows.push([{{t "Anlage steht"}}, {{t "ja – Alarm bis zur Annahme"}}]);
+      $('crw-sum').innerHTML = rows.map(r => '<dt>' + escapeHtml(r[0]) + '</dt><dd>' + escapeHtml(r[1]) + '</dd>').join('');
+      return;
+    }
+    if(isSetup()){
+      const e = setupEnd();
+      const rows = [
+        [{{t "Art"}}, TYPES.setup.label],
+        [{{t "Grund"}}, reasonName()],
+        [{{t "Anlage"}}, $('crw-infra-id').value ? $('crw-infra-label').textContent.trim() : '–'],
+        [{{t "Beginn"}}, fmtDT($('crw-sstart').value)],
+        [{{t "Ende"}}, e.end ? fmtDT(e.end) : e.dur ? F({{t "nach %s Minuten"}}, e.dur) : {{t "läuft weiter – später auf der Detailseite beenden"}}],
+        [{{t "Vermerk"}}, $('crw-desc').value.trim() || '–'],
+        [{{t "Zugeordnet"}}, {{t "Schichtführer im Dienst (automatisch)"}}]
+      ];
       $('crw-sum').innerHTML = rows.map(r => '<dt>' + escapeHtml(r[0]) + '</dt><dd>' + escapeHtml(r[1]) + '</dd>').join('');
       return;
     }
@@ -358,6 +447,22 @@
       return '';
     }
     if(cur === 0 && !st.type) return {{t "Bitte eine Art wählen."}};
+    if(isSetup()){
+      // gleiche Regeln wie POST /setup (setupParseTimes) – der Server prueft noch einmal
+      if(cur === 1 && !st.reason) return {{t "Bitte einen Grund wählen."}};
+      if(cur === 2 && !$('crw-infra-id').value) return {{t "Bitte eine Anlage auswählen."}};
+      if(cur === 4){
+        const sv = $('crw-sstart').value, e = setupEnd(), soon = srvNow().getTime() + 5 * 60000;
+        if(!sv) return {{t "Bitte den Beginn angeben."}};
+        if(new Date(sv).getTime() > soon) return {{t "Der Beginn darf nicht in der Zukunft liegen."}};
+        if(st.setupMode === 'done' && !e.end && !e.dur) return {{t "Zum Nachtragen bitte Ende oder Dauer eintragen."}};
+        if(e.end && new Date(e.end) <= new Date(sv)) return {{t "Das Ende muss nach dem Beginn liegen."}};
+        if(e.end && new Date(e.end).getTime() > soon) return {{t "Das Ende darf nicht in der Zukunft liegen."}};
+        if(e.dur && !(/^\d+$/.test(e.dur) && +e.dur > 0 && +e.dur <= 10080)) return {{t "Die Dauer muss eine ganze Zahl von Minuten über 0 sein."}};
+        if(e.dur && new Date(sv).getTime() + e.dur * 60000 > soon) return {{t "Das Ende darf nicht in der Zukunft liegen."}};
+      }
+      return '';
+    }
     if(cur === 1 && !$('crw-title-in').value.trim()) return {{t "Bitte einen Titel eingeben."}};
     if(cur === 2 && st.type === 'maintenance' && !$('crw-infra-id').value) return {{t "Für einen Wartungsauftrag ist die Anlage Pflicht."}};
     return '';
@@ -373,9 +478,10 @@
   window.crwClose = function(){ $('crw').classList.remove('open'); };
 
   function reset(type, preset){
-    st = {type: type || '', fixedType: !!type, i: 0, who: '', rep: '', due: '', dueTouched: false, preset: preset || {}, photos: []};
+    st = {type: type || '', fixedType: !!type, i: 0, who: '', rep: '', due: '', dueTouched: false, preset: preset || {}, photos: [], reason: '', setupMode: 'running'};
     if($('crw-thumbs')) $('crw-thumbs').innerHTML = '';
-    ['crw-title-in', 'crw-desc', 'crw-sym', 'crw-people-q', 'crw-start', 'crw-infra-q', 'crw-rep-q', 'crw-rep-name'].forEach(id => { if($(id)) $(id).value = ''; });
+    ['crw-title-in', 'crw-desc', 'crw-sym', 'crw-people-q', 'crw-start', 'crw-infra-q', 'crw-rep-q', 'crw-rep-name', 'crw-sstart', 'crw-send', 'crw-sdur'].forEach(id => { if($(id)) $(id).value = ''; });
+    if($('crw-reason')) $('crw-reason').querySelectorAll('button').forEach(b => b.classList.remove('on'));
     if($('crw-resp')) $('crw-resp').value = '';
     $('crw-stopped').checked = false;
     if(BOARD) $('crw-infra-label').textContent = '';
@@ -404,7 +510,13 @@
       return;
     }
     render();
-    try{ await loadOpts(); }catch(e){ msg(e.message, 'err'); }
+    try{
+      await loadOpts();
+      // Rüstzeit-Kachel und Gruende stehen erst nach dem Laden fest
+      const before = st.type;
+      applySetupOpts();
+      if(isSetup() || before !== st.type) render();
+    }catch(e){ msg(e.message, 'err'); }
   };
 
   // Fotos: im Browser verkleinert (lange Seite 1600 px), höchstens 5; nach
@@ -481,8 +593,39 @@
     return j;
   }
 
+  // Rüstzeit anlegen: POST /setup (Formular, Antwort als JSON), danach wie die anderen Arten
+  async function setupSubmit(again){
+    const e = setupEnd();
+    const body = new URLSearchParams({infrastructure_id: $('crw-infra-id').value, reason_id: st.reason,
+      started_at: $('crw-sstart').value, note: $('crw-desc').value.trim()});
+    if(e.end) body.set('ended_at', e.end);
+    if(e.dur) body.set('duration_min', e.dur);
+    ['crw-create', 'crw-again'].forEach(id => $(id).disabled = true);
+    msg({{t "Lege an …"}});
+    try{
+      const res = await fetch('/setup', {method: 'POST', credentials: 'same-origin', headers: {'Accept': 'application/json'}, body});
+      const j = await res.json().catch(() => ({}));
+      if(!res.ok || !j.success) throw new Error(j.error || (res.status === 403 ? {{t "Keine Berechtigung für diese Anlage."}} : 'HTTP ' + res.status));
+      const id = j.data && j.data.id;
+      if(!id) throw new Error({{t "Keine ID in der Antwort"}});
+      if(again){
+        reset('setup', st.preset); st.fixedType = true; applySetupOpts(); render();
+        msg(F({{t "%s angelegt"}}, (j.data.number || TYPES.setup.label)) + ' – ' + {{t "jetzt der nächste."}}, 'ok');
+      } else if(typeof st.preset.onDone === 'function'){
+        const done = st.preset.onDone; crwClose(); done(id);
+      } else if(st.preset.stay){
+        location.reload();
+      } else {
+        // notice = deutscher Schluessel, die Detailseite uebersetzt ihn selbst
+        location.href = TYPES.setup.url + encodeURIComponent(id) + '?notice=' + encodeURIComponent('Rüstzeit angelegt.');
+      }
+    }catch(err){ msg(F({{t "Nicht angelegt: %s"}}, err.message), 'err'); }
+    ['crw-create', 'crw-again'].forEach(id => $(id).disabled = false);
+  }
+
   window.crwSubmit = async function(again){
     if(BOARD) return boardSubmit(again);
+    if(isSetup()) return setupSubmit(again);
     const t = TYPES[st.type];
     const title = $('crw-title-in').value.trim(), description = $('crw-desc').value.trim();
     const prio = chipVal('crw-prio'), infra = $('crw-infra-id').value, due = $('crw-due').value, resp = $('crw-resp').value;
@@ -559,6 +702,8 @@
     $('crw-rep-q').addEventListener('input', renderReporters);
     $('crw-rep').addEventListener('change', e => { if(e.target.name === 'crw-rep') st.rep = e.target.value; });
   } else {
+    chips('crw-reason', b => { st.reason = b.dataset.v; });
+    chips('crw-setup-mode', b => { st.setupMode = b.dataset.v; renderSetupWhen(); });
     $('crw-people-q').addEventListener('input', renderPeople);
     $('crw-people').addEventListener('change', e => { if(e.target.name === 'crw-who') st.who = e.target.value; });
     $('crw-who-quick').addEventListener('click', e => {
