@@ -229,10 +229,11 @@ oder ändern.**
 ### Offene Punkte (Stand 18.11.2026)
 
 1. **0.81.3 SFTP mit Schlüssel** (Efficio-Export) und **0.81.4 Seite
-   „Netzwerk“** (VLANs und WLANs, Migration 177, Rechte `system.network`
-   und `system.network_admin`) – auf `main` (gebaut als 0.80.26/0.80.27,
-   vor dem Merge auf 0.81.3/0.81.4 und Migration 169 → 177 umgestellt).
-   Offen: Abnahme SFTP mit Schlüssel an einem echten Server.
+   „Netzwerk“** (VLANs und WLANs, Migrationen 177 und 178, Rechte `system.network`
+   und `system.network_admin`) – auf `main` und dem Testverbund, im
+   Browser geprüft (18.11.2026). **0.81.5** (Fingerabdruck bricht auf
+   schmalen Bildschirmen um) liegt lokal auf `fix/efficio-fingerabdruck`;
+   offen: Freigabe für Push, Merge und Verbund-Update.
 2. **ESPPDH = Version 0.82.0** (vom Anwender festgelegt). Entwurf
    `docs/superpowers/specs/2026-11-18-esppdh-design.md` auf `feature/esppdh`,
    am 18.11.2026 bestätigt (Paketschnitt, kein ESPPDH im Docker-Betrieb,
@@ -254,7 +255,8 @@ oder ändern.**
 7. **Zurückgestellt (kein Auftrag):** Abteilungsfeinheiten Rüstzeiten,
    Datennetz Paket 2/3, Buchungssystem/Lizenzen, Firmenstammdaten.
 8. **0.81.0 Rüstzeit in „Neu anlegen“ und 0.81.1 Tagesgrenzen/Zeitumstellung**
-   – auf `main`. Offen: Verbund-Update und Browserprüfung (Assistent mit
+   – auf `main` und dem Testverbund (mit 0.81.4 eingespielt). Offen:
+   Browserprüfung (Assistent mit
    Kachel Rüstzeit, Wartung „heute fällig“ nicht überfällig, Sicherungs-
    Formular mit 03:00).
 9. **0.81.2 Terminal-Paket** (Kiosk-Terminals, Anlagenterminal, Kopplung,
@@ -263,8 +265,8 @@ oder ändern.**
    `feat/anlagenterminal`, `feat/kartensitzung`, `feat/terminal-kopplung`;
    diese Branches nicht mehr mergen). Neu: `migrations/checksums.txt` –
    neue Migrationen mit `PDH_MIGRATIONS_APPEND=1 go test ./pkg/database
-   -run TestMigrationsFrozen` eintragen. Offen: Verbund-Update,
-   Browserprüfung, Abnahme am Raspberry Pi mit Kartenleser.
+   -run TestMigrationsFrozen` eintragen. Auf dem Testverbund (mit 0.81.4
+   eingespielt). Offen: Browserprüfung, Abnahme am Raspberry Pi mit Kartenleser.
 10. **Zeitzone im Docker-Testsystem** (Vorschlag, kein Auftrag): Container
    laufen in UTC, Produktion (systemd) in Europe/Berlin. Umstellung nur als
    Paket: `TZ` für app und updater in `compose.yaml`, `time/tzdata` in
