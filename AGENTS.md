@@ -240,7 +240,10 @@ oder ändern.**
    OTA als Abruf, freier Editor nur Bereichsadministrator in Paket 3,
    ESPHome-Version fest im Repository; Platinen verschieden; Netze: alles).
    Die WLANs der Geräte kommen von der Seite „Netzwerk“
-   (`h.networkWLANSecret`). Nächster Schritt: Plan für Paket 1, dann Bau.
+   (`h.networkWLANSecret`). Plan für Paket 1:
+   `docs/superpowers/plans/2026-11-18-esppdh-paket1.md` (9 Aufgaben, Migration
+   179). Offen: Anwender bestätigt Plan und die vier Abweichungen vom
+   Entwurf, dann Bau.
 3. **Netz-Abgleich im Browser mit zwei Quellen:** 0.80.25 ist auf `main`
    und dem Testverbund; die Vorschlagsliste mit zwei eingeschalteten
    Quellen ist nur automatisch getestet (auf dem Testverbund sind alle
@@ -276,6 +279,10 @@ oder ändern.**
     gegen DATE-Spalten (`kanban.go`, `purchases.go`, `trainings.go`,
     `user_qualifications.go`, `procurement.go`, `projects_handler.go`,
     `partners.go`) auf `localDayStart` umstellen.
+12. **UUID-Regel (klein):** `energy_export_runs.id` (Migration 161) ist noch
+    eine Zahlenfolge; `go test -tags integration ./pkg/database -run
+    TestUUIDv7Policy` schlägt deshalb fehl. Umstellen oder in die Ausnahmen
+    des Tests aufnehmen – Entscheidung offen.
 
 Docker Desktop startet nach einem Neustart des Windows-Rechners nicht von
 selbst – ohne ihn fehlen der Zeuge und die Labor-Datenbank für die Tests.
