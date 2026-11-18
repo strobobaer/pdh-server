@@ -7,7 +7,7 @@
 package mqttbroker
 
 import (
-	"bytes"
+	"crypto/subtle"
 	"crypto/tls"
 	"fmt"
 	"io"
@@ -16,7 +16,6 @@ import (
 	"time"
 
 	mqtt "github.com/mochi-mqtt/server/v2"
-	"github.com/mochi-mqtt/server/v2/hooks/auth"
 	"github.com/mochi-mqtt/server/v2/listeners"
 	"github.com/mochi-mqtt/server/v2/packets"
 )
@@ -101,10 +100,12 @@ type Manager struct {
 	mu         sync.Mutex
 	brokers    map[string]*runningBroker
 	lastErrors map[string]string
+	devices    map[string]*deviceAccounts // Gerätezugänge je ID, überleben Restart
 }
 
 func NewManager() *Manager {
-	return &Manager{brokers: map[string]*runningBroker{}, lastErrors: map[string]string{}}
+	return &Manager{brokers: map[string]*runningBroker{}, lastErrors: map[string]string{},
+		devices: map[string]*deviceAccounts{}}
 }
 
 // LastError liefert die Fehlermeldung des letzten fehlgeschlagenen
@@ -175,17 +176,14 @@ func (m *Manager) start(id string, cfg Config) error {
 		inlineTopics: map[string]struct{}{},
 	}
 
-	if cfg.AllowAnonymous {
-		if err := server.AddHook(new(auth.AllowHook), nil); err != nil {
-			return err
-		}
-	} else {
-		if err := server.AddHook(&credentialAuthHook{
-			username: []byte(cfg.Username),
-			password: []byte(cfg.Password),
-		}, nil); err != nil {
-			return err
-		}
+	// genau ein Hook für Anmeldung und Themen-Rechte, siehe pdhAuthHook
+	if err := server.AddHook(&pdhAuthHook{
+		allowAnonymous: cfg.AllowAnonymous,
+		username:       []byte(cfg.Username),
+		password:       []byte(cfg.Password),
+		devices:        m.deviceStore(id),
+	}, nil); err != nil {
+		return err
 	}
 	if err := server.AddHook(&activityHook{rb: rb}, nil); err != nil {
 		return err
@@ -397,27 +395,44 @@ func (m *Manager) UnsubscribeAllTopics(id string) {
 
 // ── Hooks ────────────────────────────────────────────────────
 
-// credentialAuthHook prueft Verbindungen gegen ein einzelnes, im Broker
-// hinterlegtes Zugangsdaten-Paar (kein Mehrbenutzer-Ledger - passend zum
-// aktuellen Konfigurationsumfang "Broker-Benutzername/-Passwort").
-type credentialAuthHook struct {
+// pdhAuthHook entscheidet allein über Anmeldung und Themen-Rechte. Es darf
+// keinen zweiten Auth-Hook geben: bei mochi genügt das „ja“ irgendeines
+// Hooks, ein zweiter könnte nichts mehr einschränken.
+//   - Benutzername "esppdh-…": nur Gerätezugänge (auch bei anonymem Broker),
+//     Schreiben und Lesen nur unter dem eigenen Thema (devices.go).
+//   - sonst anonym (allowAnonymous) bzw. das eine Zugangsdaten-Paar aus der
+//     Broker-Konfiguration, beides wie bisher ohne Einschränkung der Themen.
+type pdhAuthHook struct {
 	mqtt.HookBase
-	username []byte
-	password []byte
+	allowAnonymous bool
+	username       []byte
+	password       []byte
+	devices        *deviceAccounts
 }
 
-func (h *credentialAuthHook) ID() string { return "pdh-credential-auth" }
+func (h *pdhAuthHook) ID() string { return "pdh-auth" }
 
-func (h *credentialAuthHook) Provides(b byte) bool {
+func (h *pdhAuthHook) Provides(b byte) bool {
 	return b == mqtt.OnConnectAuthenticate || b == mqtt.OnACLCheck
 }
 
-func (h *credentialAuthHook) OnConnectAuthenticate(cl *mqtt.Client, pk packets.Packet) bool {
-	return bytes.Equal(pk.Connect.Username, h.username) && bytes.Equal(pk.Connect.Password, h.password)
+func (h *pdhAuthHook) OnConnectAuthenticate(cl *mqtt.Client, pk packets.Packet) bool {
+	if isDeviceUsername(string(pk.Connect.Username)) {
+		return h.devices.authenticate(pk)
+	}
+	if h.allowAnonymous {
+		return true
+	}
+	return subtle.ConstantTimeCompare(pk.Connect.Username, h.username)&
+		subtle.ConstantTimeCompare(pk.Connect.Password, h.password) == 1
 }
 
-func (h *credentialAuthHook) OnACLCheck(cl *mqtt.Client, topic string, write bool) bool {
-	return true
+func (h *pdhAuthHook) OnACLCheck(cl *mqtt.Client, topic string, write bool) bool {
+	username := string(cl.Properties.Username)
+	if !isDeviceUsername(username) {
+		return true
+	}
+	return h.devices.allowed(username, topic, write)
 }
 
 // activityHook speist Verbindungen/Trennungen/Abos/Publikationen in den
