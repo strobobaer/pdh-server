@@ -1653,7 +1653,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li><b>Anlegen</b>. Zum Ändern <b>Bearbeiten</b>: Bleibt das Kennwort-Feld leer, gilt das gespeicherte weiter.</li>
     </ol>
     <p>Das Kennwort wird verschlüsselt gespeichert und <b>nie angezeigt</b> – auch nicht für Administratoren. Wer es nachlesen muss, schaut am Access Point oder im Controller nach.</p></div>
-  <p><b>ESPPDH-Geräte</b> nehmen ihr WLAN von hier: Auf der Seite des Geräts wählst du eines dieser WLANs (<a href="#esppdh">mehr</a>). Name und Kennwort kommen beim Bau der Firmware von dieser Seite. Änderst du das Kennwort, zeigt die Seite des Geräts „Konfiguration seit dem letzten Bau geändert“ – dann die Firmware neu bauen und flashen.</p>
+  <p><b>ESPPDH-Geräte</b> nehmen ihr WLAN von hier: Beim Anlegen (<b>Neues Gerät</b>) und auf der Seite des Geräts wählst du eines dieser WLANs (<a href="#esppdh">mehr</a>). Name und Kennwort kommen beim Bau der Firmware von dieser Seite. Änderst du das Kennwort, zeigt die Seite des Geräts „Konfiguration seit dem letzten Bau geändert“ – dann die Firmware neu bauen und flashen.</p>
   <h3>Rechte</h3>
   <ul>
     <li><b>Netzwerk: VLANs und WLANs pflegen</b> (<code>system.network</code>) – Seite sehen, Netze und WLANs anlegen und ändern. Es haben automatisch alle Rollen, die die UniFi-Anbindung verwalten dürfen.</li>
@@ -2140,7 +2140,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li><b>„ESPPDH: Geräte anlegen, ändern, sperren, bauen und flashen“</b> (<code>esppdh.edit</code>): dazu Firmware herunterladen und das Kennwort des Notzugangs sehen.</li>
       <li><b>„ESPPDH: Geräte löschen (Bereichsadministrator)“</b> (<code>esppdh.admin</code>): alle Rechte von ESPPDH und als Einziger Geräte endgültig löschen.</li>
     </ul>
-    <p>Die Rechte gelten überall oder nur in einer Abteilung; maßgeblich ist die Anlage des Geräts. Beim Update bekamen „ansehen“ und „anlegen, ändern …“ alle Rollen und Personen mit „Import verwalten“ – mit derselben Abteilung. Den Bereichsadministrator bekamen die Rollen, die überall „Import verwalten“ und „Server-Einstellungen (.env) bearbeiten &amp; Server neu starten“ haben. Wem eines dieser Rechte einzeln verboten ist, dem ist das neue Recht ebenso verboten. Den Reiter <b>ESPPDH</b> der Server-Einstellungen bedienen Administratoren mit „Server-Einstellungen (.env) bearbeiten &amp; Server neu starten“ (<a href="#esppdh">mehr</a>).</p></div>
+    <p>Die Rechte gelten überall oder nur in einer Abteilung; maßgeblich ist die Anlage des Geräts. Beim Update bekamen „ansehen“ und „anlegen, ändern …“ alle Rollen und Personen mit „Import verwalten“ – mit derselben Abteilung. Den Bereichsadministrator bekamen die Rollen, die überall „Import verwalten“ und „Server-Einstellungen (.env) bearbeiten &amp; Server neu starten“ haben. Wem „Import verwalten“ einzeln verboten ist, dem sind alle drei ESPPDH-Rechte verboten; wem nur „Server-Einstellungen (.env) bearbeiten &amp; Server neu starten“ einzeln verboten ist, dem nur der Bereichsadministrator. Den Reiter <b>ESPPDH</b> der Server-Einstellungen bedienen Administratoren mit „Server-Einstellungen (.env) bearbeiten &amp; Server neu starten“ (<a href="#esppdh">mehr</a>).</p></div>
   <div class="hb-howto"><b><i class="ti ti-tool"></i> Rechte für Update und Wartung</b>
     <ul>
       <li><b>„Wartungsfenster einstellen“</b> (Kategorie „System &amp; Sicherheit“): Wartungsfenster einrichten und fehlerhafte Versionen wieder zulassen (<a href="#ausfallschutz">mehr</a>). Beim Update bekamen es alle Rollen, die „Server-Einstellungen (.env) bearbeiten &amp; Server neu starten“ hatten.</li>
@@ -2432,7 +2432,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
 
 <section class="hb-ch" id="esppdh" data-title="ESPPDH – eigene Mess- und Zählgeräte" data-pages="esppdh server-config">
   <h2><i class="ti ti-cpu"></i> ESPPDH – eigene Mess- und Zählgeräte</h2>
-  <p>Mit <b>ESPPDH</b> baust du kleine Messgeräte selbst: eine ESP-Platine (ESP32 oder ESP8266), daran ein Stromzähler, eine Stromzange, ein Energiemesser oder eine Lichtschranke. Das PDH erstellt die Firmware für das Gerät; danach sendet das Gerät seine Werte alle 10 Sekunden an den eingebauten MQTT-Broker des PDH.</p>
+  <p>Mit <b>ESPPDH</b> baust du kleine Messgeräte selbst: eine ESP-Platine (ESP32 oder ESP8266), daran ein Stromzähler, eine Stromzange, ein Energiemesser oder eine Lichtschranke. Das PDH erstellt die Firmware für das Gerät; danach sendet das Gerät seine Werte an den eingebauten MQTT-Broker des PDH, die meisten alle 10 Sekunden.</p>
   <p>ESPPDH <b>misst für die Betriebsführung, nicht für die Abrechnung</b>. Die Geräte sind nicht geeicht – für Rechnungen gilt weiter der geeichte Zähler. ESPPDH ist ein Zusatz: Ohne es läuft das PDH wie bisher. Im Docker-Betrieb gibt es ESPPDH nicht. ESPPDH baut auf <b>ESPHome</b> auf (Lizenz GPLv3 bzw. MIT).</p>
   <p>Du findest es unter <b>Navigation → Daten → ESPPDH</b> oder auf der Seite <b>Import</b> über den Verweis „ESPPDH – eigene Mess- und Zählgeräte“.</p>
   <div class="hb-howto"><b><i class="ti ti-route"></i> Der Weg zum fertigen Gerät</b>
@@ -2506,7 +2506,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   </tbody></table>
   <ul>
     <li>Die Stromzange braucht einen Pin, der analog messen kann; die anderen Bausteine nehmen digitale Pins. Das Feld schlägt jeweils nur passende Pins vor.</li>
-    <li><b>Nach einem Neustart beginnt das Gerät bei 0.</b> Zählerstand (S0) und Stückzahl zählt das Gerät seit seinem Start. Nach einem Stromausfall oder neuem Flashen geht es wieder bei 0 los – das Gerät speichert sie nicht. Die Energie des PZEM-004T zählt der PZEM selbst; sie bleibt.</li>
+    <li><b>Nach einem Neustart beginnt das Gerät bei 0.</b> Zählerstand (S0) und Stückzahl zählt das Gerät seit seinem Start; es speichert sie nicht. Neu starten wird es nach einem Stromausfall oder Ausstecken, nach dem Flashen und nach einem Absturz. Fallen nur Broker, PDH oder WLAN aus, startet es <b>nicht</b> neu: Es zählt weiter und sendet wieder, sobald die Verbindung steht. Die Energie des PZEM-004T zählt der PZEM selbst; sie bleibt.</li>
     <li>Die <b>Scheinleistung</b> der Stromzange ist Strom mal eingetragene Netzspannung, keine gemessene Wirkleistung. Genauer misst der PZEM-004T.</li>
   </ul>
   <div class="hb-howto"><b><i class="ti ti-bolt"></i> Sicherheit: Netzspannung nur durch eine Elektrofachkraft</b>
@@ -2514,8 +2514,9 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <p><b>S0-Zähler:</b> S0+ des Zählers an den Pin des Bausteins, S0− an GND. Der Pin hat einen Pull-up eingebaut.</p>
   {{template "hb-fig-esp-s0"}}
   <p><b>Stromzange SCT-013:</b> Die Zange kommt um <b>einen</b> Leiter (L oder N), nicht um das ganze Kabel – sonst heben sich die Ströme auf und die Zange misst 0. Ein Ende der Zange an den Analog-Pin. Das andere Ende an eine Vorspannung auf halber Versorgung: zwei gleiche Widerstände (z. B. je 10 kΩ) zwischen 3,3 V und GND, an ihrer Mitte ein Kondensator (z. B. 10 µF) gegen GND. Beim Typ 100A/50mA gehört zusätzlich der Bürdenwiderstand zwischen die beiden Enden der Zange; seinen Wert trägst du bei „Bürdenwiderstand (Ω)“ ein. Die Typen mit 1V haben die Bürde schon eingebaut.</p>
+  <p><b>Bürde bemessen:</b> höchstens 2000 geteilt durch den größten Strom in A – bei 100 A also 20 Ω. Eine größere Bürde schneidet hohe Ströme ab und kann bei vollem Strom den Pin überlasten. Die Zange so wählen, dass ihr Nennstrom über dem größten Strom liegt. <b>ESP32-C3:</b> Sein Analog-Pin misst nur bis etwa 2,5 V. Eine 1-V-Zange misst dort nur bis etwa 60 % ihres Nennstroms (30A/1V bis etwa 18 A), und die Bürde darf höchstens 1200 geteilt durch den Strom sein. Für größere Ströme eine andere Platine nehmen.</p>
   {{template "hb-fig-esp-sct"}}
-  <p><b>PZEM-004T:</b> TX des PZEM an den RX-Pin, RX des PZEM an den TX-Pin – über Kreuz – und GND an GND. Die Schnittstelle des PZEM ist für 5 V gebaut, die Pins des ESP vertragen nur 3,3 V: den PZEM mit 3,3 V vom ESP versorgen, wenn er damit läuft, sonst einen Pegelwandler dazwischen setzen. Mehrere PZEM dürfen an denselben zwei Pins hängen, brauchen dann aber verschiedene Adressen (ab Werk haben alle die Adresse 1). Einfacher ist ein eigenes Pin-Paar je PZEM. Wie viele serielle Anschlüsse die Platine dafür hat, prüft das PDH beim Speichern (nicht bei „Andere Platine“).</p>
+  <p><b>PZEM-004T:</b> Ihn gibt es für 10 A – dann fließt der Strom durch den PZEM, er wird in Reihe angeschlossen – und für 100 A mit Stromwandler um einen Leiter. TX des PZEM an den RX-Pin, RX des PZEM an den TX-Pin – über Kreuz – und GND an GND. Die Schnittstelle des PZEM ist für 5 V gebaut, die Pins des ESP vertragen nur 3,3 V: den PZEM mit 3,3 V vom ESP versorgen, wenn er damit läuft, sonst einen Pegelwandler dazwischen setzen. ESPPDH kann die Adresse eines PZEM nicht einstellen. Mehrere PZEM an denselben zwei Pins brauchen deshalb vorher mit einem anderen Werkzeug je eine eigene Adresse – dabei immer nur einen PZEM anschließen (ab Werk haben alle die Adresse 1). Sonst jedem PZEM ein eigenes Pin-Paar geben. Wie viele serielle Anschlüsse die Platine dafür hat, prüft das PDH beim Speichern (nicht bei „Andere Platine“).</p>
   {{template "hb-fig-esp-pzem"}}
   <p><b>Stückzähler mit Lichtschranke:</b> Der Sensorausgang oder ein Kontakt schaltet zwischen Pin und GND; der Pin hat einen Pull-up. Direkt an den Pin dürfen nur ein potentialfreier Kontakt oder ein Ausgang, der nur nach GND schaltet und selbst keine Spannung ausgibt (offener Kollektor). <b>Sensoren mit 24 V nie direkt anschließen</b> – dazwischen ein Koppelrelais oder Optokoppler, dessen Kontakt zwischen Pin und GND schaltet. <b>Flanke:</b> „fallend“ ist der Normalfall und zählt, wenn der Sensor schaltet (Teil kommt an); „steigend“ zählt, wenn er wieder öffnet (Teil ist durch). <b>Entprellzeit:</b> Kürzere Impulse und Prellen zählen nicht – bei schnellen Teilen kleiner einstellen.</p>
   {{template "hb-fig-esp-counter"}}
@@ -2532,7 +2533,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <ul>
     <li><b>Welche Adresse?</b> Hat der Broker einen <a href="#mqttbroker">eigenen Namen</a>, nimmt die Firmware den Namen. Sonst nimmt sie die Adresse, unter der du das PDH gerade geöffnet hast. Der Lauf zeigt sie als „Firmware für …“. Im Verbund (Ausfallschutz) muss das der Name oder die mitwandernde Adresse sein, nie die feste Adresse eines Servers – sonst findet das Gerät den Broker nach einem Rollentausch nicht.</li>
     <li><b>localhost geht nicht:</b> Steht als Broker <code>localhost</code> oder <code>127.0.0.1</code>, baut das PDH nicht. Dann am Broker einen Namen eintragen oder das PDH über seine Adresse im Netz öffnen und neu bauen.</li>
-    <li><b>„Konfiguration seit dem letzten Bau geändert“</b> zeigt die Karte, sobald sich Gerät, Bausteine, WLAN, Kennwort oder Broker geändert haben. Die Firmware auf dem Gerät passt dann nicht mehr: neu bauen und aufspielen.</li>
+    <li><b>„Konfiguration seit dem letzten Bau geändert“</b> zeigt die Karte, sobald sich etwas geändert hat, das in die Firmware geht: Name, Platine, WLAN oder Kabel, das WLAN-Kennwort (auch auf der Seite Netzwerk), Broker-Adresse, Port oder TLS, das MQTT-Kennwort sowie die Bausteine mit ihren Feldern und ihrer Reihenfolge. Die Firmware auf dem Gerät passt dann nicht mehr: neu bauen und aufspielen. Anlage, Notiz und „Netz am Kabel“ gehen nicht in die Firmware und lösen den Hinweis nicht aus.</li>
     <li>Firmware bauen geht nur am aktiven Server. Am Spiegelserver sind die Seiten nur lesbar.</li>
     <li><b>Konfiguration (YAML, ohne Kennwörter)</b> unter <b>Aktionen</b> lädt die ESPHome-Konfiguration des Geräts zum Nachsehen herunter.</li>
   </ul>
@@ -2568,7 +2569,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>Auf der Seite des Geräts unter <b>Zugang am Broker</b> bei <b>Nachrichten</b> das Thema <code>esppdh/&lt;kennung&gt;/#</code> mit <i class="ti ti-copy"></i> kopieren. Ohne https markiert der Knopf das Thema nur – dann mit <kbd>Strg</kbd>+<kbd>C</kbd> kopieren.</li>
       <li><b>Explorer der Verbindung öffnen</b> (braucht das Recht „Import ausführen“).</li>
       <li>Das Thema in den Themenfilter einfügen und <b>Starten</b> drücken.</li>
-      <li>Im Themenbaum stehen <code>status</code> und je Baustein seine Werte, z. B. <code>s0-1/zaehlerstand</code>. Neue Werte kommen alle 10 Sekunden.</li>
+      <li>Im Themenbaum stehen <code>status</code> und je Baustein seine Werte, z. B. <code>s0-1/zaehlerstand</code>. Die meisten Werte kommen alle 10 Sekunden. Die Leistung des S0-Zählers kommt nur, wenn Impulse eintreffen – bei kleiner Last seltener; kommt 5 Minuten lang kein Impuls, meldet das Gerät 0. Den Zählerstand gibt es ab dem ersten Impuls.</li>
     </ol>
     <p><code>esppdh/&lt;kennung&gt;/status</code> zeigt <code>online</code>, solange das Gerät verbunden ist, und <code>offline</code>, sobald es sich abmeldet oder seine Verbindung abreißt.</p></div>
 
@@ -2586,7 +2587,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   </ol>
   <div class="hb-howto"><b><i class="ti ti-wifi"></i> So hilft der Notzugang (nur bei WLAN)</b>
     <ol class="hb-steps">
-      <li>Findet das Gerät sein WLAN nicht, öffnet es nach etwa einer Minute ein eigenes WLAN: <code>esppdh-&lt;kennung&gt;</code> (bei langen Kennungen gekürzt). Name und Kennwort stehen auf der Seite des Geräts unter <b>Notzugang</b> – das Kennwort nur für alle, die Geräte ändern dürfen.</li>
+      <li>Findet das Gerät sein WLAN nicht, öffnet es nach etwa anderthalb Minuten ein eigenes WLAN: <code>esppdh-&lt;kennung&gt;</code> (bei langen Kennungen gekürzt). Name und Kennwort stehen auf der Seite des Geräts unter <b>Notzugang</b> – das Kennwort nur für alle, die Geräte ändern dürfen.</li>
       <li>Mit Handy oder Laptop in dieses WLAN gehen. Es öffnet sich eine Seite des Geräts (englisch); sonst im Browser <code>http://192.168.4.1</code> aufrufen.</li>
       <li>Dort das richtige WLAN wählen, sein Kennwort eintragen und speichern. Das Gerät verbindet sich dann damit.</li>
       <li>Danach auch im PDH richtigstellen (WLAN auf der Seite des Geräts bzw. Kennwort auf der Seite Netzwerk). Sonst steht beim nächsten Flashen wieder das alte WLAN in der Firmware.</li>
