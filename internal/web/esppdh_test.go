@@ -13,6 +13,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -449,6 +451,9 @@ func TestESPPDHFlow(t *testing.T) {
 	if detail.Code != http.StatusOK {
 		t.Fatalf("Detailseite: %d %s", detail.Code, body)
 	}
+	if cc := detail.Header().Get("Cache-Control"); cc != "no-store" {
+		t.Errorf("Detailseite zeigt das Notzugang-Kennwort, Cache-Control %q statt no-store", cc)
+	}
 	for _, want := range []string{slug, "esppdh-" + slug, "esppdh/" + slug + "/", "ESPPDH baut auf ESPHome auf", apPW,
 		"mqtt-" + e.sfx + ".pdh-test.invalid", "/import/esppdh/" + id + "/config.yaml", "/import/esppdh/" + id + "/delete"} {
 		if !strings.Contains(body, want) {
@@ -807,6 +812,199 @@ func TestESPPDHBrokerSync(t *testing.T) {
 	esppdhExpectLost(t, lost, "gelöscht")
 	if _, _, err := esppdhDial(t, port, user, pw); err == nil {
 		t.Fatal("gelöschtes Gerät meldet sich an")
+	}
+}
+
+// Gleichzeitige Abgleiche dürfen ein gerade gesperrtes Gerät nicht wieder hereinlassen: Lauf A
+// hat die Liste vor dem Sperren gelesen und setzt sie erst danach. Ohne Sperre um Lesen und
+// Setzen liefe der Abgleich des Sperrens (B) dazwischen durch, und A setzte danach die alte Liste.
+func TestESPPDHSyncRace(t *testing.T) {
+	port := esppdhFreePort(t)
+	e := newEsppdhEnv(t, esppdhBrokerCfg(port))
+	ctx := context.Background()
+	e.h.reconcileMqttBroker(e.conn, "import", "mqtt", true, e.cfg)
+	slug := "race-" + e.sfx
+	id := e.create(t, slug, nil)
+	user, pw := "esppdh-"+slug, e.mqttPW(t, id)
+	if _, _, err := esppdhDial(t, port, user, pw); err != nil {
+		t.Fatalf("Gerät meldet sich nicht an: %v", err)
+	}
+
+	var calls atomic.Int32
+	readA, releaseA := make(chan struct{}), make(chan struct{})
+	var once sync.Once
+	release := func() { once.Do(func() { close(releaseA) }) }
+	t.Cleanup(release)
+	e.h.esppdhSyncHook = func(string) error {
+		if calls.Add(1) == 1 { // A: hat die Liste vor dem Sperren gelesen und wartet
+			close(readA)
+			<-releaseA
+		}
+		return nil
+	}
+	t.Cleanup(func() { e.h.esppdhSyncHook = nil })
+	doneA := make(chan struct{})
+	go func() { defer close(doneA); _ = e.h.esppdhSyncBroker(ctx, e.conn) }()
+	select {
+	case <-readA:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Abgleich A liest die Liste nicht")
+	}
+	doneB := make(chan *httptest.ResponseRecorder, 1)
+	go func() {
+		doneB <- esppdhDo(e.h.EsppdhLockWeb, "POST", "/x", id, esppdhUser, url.Values{"locked": {"1"}})
+	}()
+	// erst steht das Sperren in der Datenbank; ohne Sperre liefe B jetzt ganz durch
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		var locked bool
+		_ = e.pool.QueryRow(ctx, `SELECT locked FROM esppdh_devices WHERE id = $1::uuid`, id).Scan(&locked)
+		if locked {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("Sperren kommt nicht in der Datenbank an")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	var wB *httptest.ResponseRecorder
+	select {
+	case wB = <-doneB:
+	case <-time.After(500 * time.Millisecond): // mit Sperre wartet B auf A
+	}
+	release()
+	select {
+	case <-doneA:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Abgleich A endet nicht")
+	}
+	if wB == nil {
+		select {
+		case wB = <-doneB:
+		case <-time.After(5 * time.Second):
+			t.Fatal("Sperren endet nicht")
+		}
+	}
+	if loc := wB.Header().Get("Location"); wB.Code != http.StatusSeeOther || !strings.Contains(loc, "n=locked") {
+		t.Fatalf("Sperren: %d %s", wB.Code, loc)
+	}
+	if _, _, err := esppdhDial(t, port, user, pw); err == nil {
+		t.Fatal("gesperrtes Gerät nach gleichzeitigem Abgleich wieder zugelassen")
+	}
+
+	// dazu viele Abgleiche durcheinander mit Entsperren und Sperren: am Ende gilt der letzte Stand
+	e.h.esppdhSyncHook = nil
+	var wg sync.WaitGroup
+	for i := 0; i < 20; i++ {
+		wg.Add(1)
+		go func() { defer wg.Done(); _ = e.h.esppdhSyncBroker(ctx, e.conn) }()
+	}
+	esppdhDo(e.h.EsppdhLockWeb, "POST", "/x", id, esppdhUser, url.Values{"locked": {"0"}})
+	esppdhDo(e.h.EsppdhLockWeb, "POST", "/x", id, esppdhUser, url.Values{"locked": {"1"}})
+	wg.Wait()
+	if _, _, err := esppdhDial(t, port, user, pw); err == nil {
+		t.Fatal("gesperrtes Gerät nach vielen gleichzeitigen Abgleichen zugelassen")
+	}
+}
+
+// Lässt sich die Liste am Broker nicht lesen, sagt die Seite das, statt „getrennt“ zu melden.
+// Sperren, neues Kennwort und Löschen nehmen den Zugang des Geräts trotzdem einzeln heraus
+// (sicherer Zustand); andere Geräte bleiben verbunden. Ein späterer Abgleich holt alles nach.
+func TestESPPDHSyncFailureWarns(t *testing.T) {
+	port := esppdhFreePort(t)
+	e := newEsppdhEnv(t, esppdhBrokerCfg(port))
+	e.h.reconcileMqttBroker(e.conn, "import", "mqtt", true, e.cfg)
+	slugX, slugY := "fx-"+e.sfx, "fy-"+e.sfx
+	idX, idY := e.create(t, slugX, nil), e.create(t, slugY, nil)
+	userX, userY := "esppdh-"+slugX, "esppdh-"+slugY
+	pwX, pwY := e.mqttPW(t, idX), e.mqttPW(t, idY)
+	_, lostX, err := esppdhDial(t, port, userX, pwX)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, lostY, err := esppdhDial(t, port, userY, pwY)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fail := func(string) error { return errors.New("Datenbank nicht erreichbar") }
+	e.h.esppdhSyncHook = fail
+	t.Cleanup(func() { e.h.esppdhSyncHook = nil })
+	loc := func(w *httptest.ResponseRecorder) string {
+		t.Helper()
+		if w.Code != http.StatusSeeOther {
+			t.Fatalf("Status %d: %s", w.Code, w.Body.String())
+		}
+		return w.Header().Get("Location")
+	}
+
+	// sperren: Warnung statt „getrennt“, das Gerät ist trotzdem draußen, das andere bleibt
+	if l := loc(esppdhDo(e.h.EsppdhLockWeb, "POST", "/x", idX, esppdhUser, url.Values{"locked": {"1"}})); !strings.Contains(l, "w=locked-sync") || strings.Contains(l, "n=") {
+		t.Fatalf("sperren bei Lesefehler: %s", l)
+	}
+	esppdhExpectLost(t, lostX, "gesperrt bei Lesefehler")
+	if _, _, err := esppdhDial(t, port, userX, pwX); err == nil {
+		t.Fatal("gesperrtes Gerät meldet sich trotz Lesefehler an")
+	}
+	select {
+	case <-lostY:
+		t.Fatal("ein anderes Gerät wurde getrennt")
+	case <-time.After(300 * time.Millisecond):
+	}
+	page := esppdhDo(e.h.EsppdhDevicePage, "GET", "/import/esppdh/"+idX+"?w=locked-sync", idX, esppdhUser, nil).Body.String()
+	if !strings.Contains(page, "ließen sich gerade nicht neu lesen") || !strings.Contains(page, "noch einmal sperren") || strings.Contains(page, esppdhNotices["locked"]) {
+		t.Error("Detailseite: Warnung fehlt oder meldet „getrennt“")
+	}
+	// entsperren bei Lesefehler: Warnung, das Gerät bleibt draußen
+	if l := loc(esppdhDo(e.h.EsppdhLockWeb, "POST", "/x", idX, esppdhUser, url.Values{"locked": {"0"}})); !strings.Contains(l, "w=unlocked-sync") {
+		t.Errorf("entsperren bei Lesefehler: %s", l)
+	}
+	if _, _, err := esppdhDial(t, port, userX, pwX); err == nil {
+		t.Error("Gerät kommt herein, obwohl der Broker nicht abgeglichen ist")
+	}
+	// neues Kennwort bei Lesefehler: das alte gilt nicht mehr (Zugang einzeln entfernt)
+	if l := loc(esppdhDo(e.h.EsppdhPasswordWeb, "POST", "/x", idY, esppdhUser, url.Values{})); !strings.Contains(l, "w=password-sync") {
+		t.Errorf("neues Kennwort bei Lesefehler: %s", l)
+	}
+	esppdhExpectLost(t, lostY, "neues Kennwort bei Lesefehler")
+	if _, _, err := esppdhDial(t, port, userY, pwY); err == nil {
+		t.Fatal("altes Kennwort gilt trotz neuem weiter")
+	}
+	// ohne Fehler holt der nächste Abgleich alles nach (hier: entsperren)
+	e.h.esppdhSyncHook = nil
+	if l := loc(esppdhDo(e.h.EsppdhLockWeb, "POST", "/x", idX, esppdhUser, url.Values{"locked": {"0"}})); !strings.Contains(l, "n=unlocked") {
+		t.Errorf("entsperren: %s", l)
+	}
+	if _, _, err := esppdhDial(t, port, userX, pwX); err != nil {
+		t.Errorf("entsperrtes Gerät nach Abgleich: %v", err)
+	}
+	if _, _, err := esppdhDial(t, port, userY, e.mqttPW(t, idY)); err != nil {
+		t.Errorf("neues Kennwort nach Abgleich: %v", err)
+	}
+	// löschen und anlegen bei Lesefehler: Warnung
+	e.h.esppdhSyncHook = fail
+	if l := loc(esppdhDo(e.h.EsppdhDeleteWeb, "POST", "/x", idX, esppdhUser, url.Values{})); l != "/import/esppdh?w=deleted-sync" {
+		t.Errorf("löschen bei Lesefehler: %s", l)
+	}
+	if _, _, err := esppdhDial(t, port, userX, pwX); err == nil {
+		t.Error("gelöschtes Gerät meldet sich trotz Lesefehler an")
+	}
+	list := esppdhDo(e.h.EsppdhPage, "GET", "/import/esppdh?w=deleted-sync", "", esppdhUser, nil).Body.String()
+	if !strings.Contains(list, "Gerät gelöscht – aber die Zugänge am Broker") {
+		t.Error("Liste: Warnung nach dem Löschen fehlt")
+	}
+	w := esppdhDo(e.h.EsppdhCreateWeb, "POST", "/import/esppdh", "", esppdhUser, e.form("fz-"+e.sfx, nil))
+	if l := loc(w); !strings.Contains(l, "w=new-sync") {
+		t.Errorf("anlegen bei Lesefehler: %s", l)
+	}
+}
+
+// Sperren nimmt nur 0 oder 1 an.
+func TestESPPDHLockValue(t *testing.T) {
+	h := &Handler{hasPermHook: func(*http.Request, string) bool { return true }}
+	for _, v := range []string{"", "2", "ja", "true"} {
+		if w := esppdhDo(h.EsppdhLockWeb, "POST", "/x", itNetTestID, esppdhUser, url.Values{"locked": {v}}); w.Code != http.StatusBadRequest {
+			t.Errorf("locked=%q: Status %d", v, w.Code)
+		}
 	}
 }
 

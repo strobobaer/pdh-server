@@ -31,6 +31,7 @@
 
 {{template "esppdh-state" .State}}
 {{if .Notice}}<div class="card esp-msg esp-ok" role="status"><i class="ti ti-circle-check" aria-hidden="true"></i> {{.Notice}}</div>{{end}}
+{{if .Warn}}<div class="card esp-msg esp-warn" role="alert"><i class="ti ti-alert-triangle" aria-hidden="true"></i> {{.Warn}}</div>{{end}}
 {{if .Errs}}<div class="card esp-msg esp-bad" role="alert"><b><i class="ti ti-alert-circle" aria-hidden="true"></i> Nicht gespeichert – bitte prüfen:</b><ul>{{range .Errs}}<li>{{.}}</li>{{end}}</ul></div>{{end}}
 {{range .Hints}}<div class="card esp-msg esp-wrap {{if eq .Tone "bad"}}esp-hint-bad{{else}}esp-warn{{end}}" role="status"><i class="ti {{.Icon}}" aria-hidden="true"></i> {{.Text}}{{if .Link}} <a href="{{.Link}}" style="color:var(--accent)">{{.LinkText}}</a>{{end}}</div>{{end}}
 {{if .Problems}}<div class="card esp-msg esp-warn esp-wrap" role="status"><b><i class="ti ti-list-check" aria-hidden="true"></i> Für die Firmware fehlt noch:</b><ul>{{range .Problems}}<li>{{.}}</li>{{end}}</ul></div>{{end}}

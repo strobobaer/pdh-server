@@ -66,6 +66,20 @@ func (d *deviceAccounts) replace(accts []DeviceAccount) map[string]struct{} {
 	return stale
 }
 
+// remove nimmt einen Zugang heraus. Die Liste wird neu angelegt statt geändert: replace liest
+// die alte Liste nach dem Entsperren noch.
+func (d *deviceAccounts) remove(username string) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	next := make(map[string]DeviceAccount, len(d.byUser))
+	for u, a := range d.byUser {
+		if u != username {
+			next[u] = a
+		}
+	}
+	d.byUser = next
+}
+
 // authenticate prüft die Anmeldung eines Geräts. Zwei Wege an OnACLCheck
 // vorbei werden schon hier geschlossen:
 //   - Client-ID: Bei gleicher ID übernimmt mochi die Sitzung eines anderen
@@ -143,7 +157,22 @@ func (m *Manager) deviceStore(id string) *deviceAccounts {
 // gerade nicht läuft). Verbundene Geräte, deren Zugang fehlt oder deren
 // Kennwort sich änderte, werden sofort getrennt.
 func (m *Manager) SetDeviceAccounts(id string, accts []DeviceAccount) {
-	stale := m.deviceStore(id).replace(accts)
+	m.disconnectDevices(id, m.deviceStore(id).replace(accts))
+}
+
+// RemoveDeviceAccount nimmt einen einzelnen Gerätezugang heraus und trennt das Gerät sofort –
+// für Sperren und Löschen, wenn die ganze Liste gerade nicht neu gelesen werden kann. Namen
+// ohne "esppdh-" sind keine Gerätezugänge und bleiben unberührt.
+func (m *Manager) RemoveDeviceAccount(id, username string) {
+	if !hasDevicePrefix(username) {
+		return
+	}
+	m.deviceStore(id).remove(username)
+	m.disconnectDevices(id, map[string]struct{}{username: {}})
+}
+
+// disconnectDevices trennt verbundene Clients mit diesen Benutzernamen vom Broker id.
+func (m *Manager) disconnectDevices(id string, stale map[string]struct{}) {
 	if len(stale) == 0 {
 		return
 	}

@@ -251,14 +251,13 @@ func (h *Handler) esppdhUpdate(ctx context.Context, d esppdhDevice) error {
 	return tx.Commit(ctx)
 }
 
-// esppdhSetLocked sperrt oder entsperrt ein Gerät; liefert seine Verbindung.
-func (h *Handler) esppdhSetLocked(ctx context.Context, id string, locked bool) (string, error) {
-	var conn string
-	err := h.db.QueryRow(ctx, `UPDATE esppdh_devices SET locked = $2, updated_at = now() WHERE id = $1::uuid RETURNING connection_id::text`, id, locked).Scan(&conn)
+// esppdhSetLocked sperrt oder entsperrt ein Gerät; liefert Verbindung und Kennung.
+func (h *Handler) esppdhSetLocked(ctx context.Context, id string, locked bool) (conn, slug string, err error) {
+	err = h.db.QueryRow(ctx, `UPDATE esppdh_devices SET locked = $2, updated_at = now() WHERE id = $1::uuid RETURNING connection_id::text, slug`, id, locked).Scan(&conn, &slug)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return "", errEsppdhNotFound
+		return "", "", errEsppdhNotFound
 	}
-	return conn, err
+	return conn, slug, err
 }
 
 // esppdhSetPasswords setzt ein neues MQTT-Kennwort und – nur wenn apPW nicht leer ist – ein
@@ -296,39 +295,59 @@ func (h *Handler) esppdhDelete(ctx context.Context, id string) (conn, slug strin
 
 // esppdhSyncBroker gibt dem eingebauten Broker der Verbindung die Zugänge aller nicht
 // gesperrten Geräte (SetDeviceAccounts). Geräte, deren Zugang fehlt oder deren Kennwort sich
-// änderte, trennt der Broker sofort. Läuft nach jedem Anlegen, Sperren, Löschen,
-// Kennwortwechsel und Verbindungswechsel sowie beim Start eines Brokers. Ist die Datenbank
-// gerade nicht lesbar, bleibt die bisherige Liste.
-func (h *Handler) esppdhSyncBroker(ctx context.Context, connID string) {
+// änderte, trennt der Broker sofort. Läuft nach jedem Anlegen, Speichern, Sperren, Löschen und
+// Kennwortwechsel sowie beim Start eines Brokers.
+//
+// Ist die Liste nicht lesbar, bleibt die bisherige am Broker und die Funktion meldet den
+// Fehler; die Zugänge in revokeOnError (Benutzernamen) nimmt sie dann einzeln heraus – so
+// wirken Sperren, Löschen und ein neues Kennwort auch dann (sicherer Zustand).
+func (h *Handler) esppdhSyncBroker(ctx context.Context, connID string, revokeOnError ...string) error {
 	if h.db == nil || h.mqttBrokers == nil || !meterUUIDRe.MatchString(connID) {
-		return
+		return nil
 	}
+	// Lesen und Setzen am Stück: sonst könnte ein älterer Lauf seine Liste nach einem neueren
+	// setzen und ein gerade gesperrtes oder gelöschtes Gerät wieder hereinlassen. So liest der
+	// letzte Lauf immer den zuletzt gespeicherten Stand.
+	h.esppdhSyncMu.Lock()
+	defer h.esppdhSyncMu.Unlock()
 	// eine abgebrochene Anfrage darf die Liste nicht unvollständig lassen
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 	defer cancel()
-	lg := componentLog("esppdh")
+	accts, err := h.esppdhAccounts(ctx, connID)
+	if err == nil && h.esppdhSyncHook != nil {
+		err = h.esppdhSyncHook(connID)
+	}
+	if err != nil {
+		componentLog("esppdh").Error().Err(err).Str("verbindung", connID).Int("einzeln_entfernt", len(revokeOnError)).Msg("gerätezugänge lesen")
+		for _, u := range revokeOnError {
+			h.mqttBrokers.RemoveDeviceAccount(connID, u)
+		}
+		return err
+	}
+	h.mqttBrokers.SetDeviceAccounts(connID, accts)
+	return nil
+}
+
+// esppdhAccounts: Zugänge aller nicht gesperrten Geräte einer Verbindung. Ein Gerät, dessen
+// Kennwort nicht lesbar ist, bekommt keinen Zugang.
+func (h *Handler) esppdhAccounts(ctx context.Context, connID string) ([]mqttbroker.DeviceAccount, error) {
 	rows, err := h.db.Query(ctx, `SELECT slug, mqtt_password_enc FROM esppdh_devices WHERE connection_id = $1::uuid AND NOT locked ORDER BY slug`, connID)
 	if err != nil {
-		lg.Error().Err(err).Str("verbindung", connID).Msg("gerätezugänge lesen")
-		return
+		return nil, err
 	}
+	defer rows.Close()
 	accts := []mqttbroker.DeviceAccount{}
 	for rows.Next() {
 		var slug, enc string
-		if rows.Scan(&slug, &enc) != nil {
-			continue
+		if err := rows.Scan(&slug, &enc); err != nil {
+			return nil, err
 		}
 		pw, err := decryptSecret(h.esppdhKey(), enc)
 		if err != nil || pw == "" || !esppdh.ValidSlug(slug) {
-			lg.Warn().Str("gerät", slug).Msg("mqtt-kennwort nicht lesbar – gerät ohne zugang")
+			componentLog("esppdh").Warn().Str("gerät", slug).Msg("mqtt-kennwort nicht lesbar – gerät ohne zugang")
 			continue
 		}
 		accts = append(accts, mqttbroker.DeviceAccount{Username: esppdhUserOf(slug), Password: pw, TopicPrefix: esppdhTopicPrefix(slug)})
 	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		lg.Error().Err(err).Str("verbindung", connID).Msg("gerätezugänge lesen")
-		return
-	}
-	h.mqttBrokers.SetDeviceAccounts(connID, accts)
+	return accts, rows.Err()
 }

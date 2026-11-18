@@ -258,6 +258,38 @@ func TestDevicePasswordChangeDisconnects(t *testing.T) {
 	mustDial(t, addr, "esppdh-a", "esppdh-a", "neu")
 }
 
+// Einen einzelnen Zugang herausnehmen (Sperren, wenn die ganze Liste gerade nicht lesbar ist):
+// nur dieses Gerät wird getrennt und abgewiesen, die übrigen und der Hauptzugang bleiben.
+func TestRemoveDeviceAccount(t *testing.T) {
+	m, addr := startDeviceBroker(t, false)
+	devB := DeviceAccount{Username: "esppdh-b", Password: "pw-b", TopicPrefix: "esppdh/b/"}
+	m.SetDeviceAccounts(devID, []DeviceAccount{devA, devB})
+	_, lostA := mustDial(t, addr, "esppdh-a", "esppdh-a", "pw")
+	b, lostB := mustDial(t, addr, "esppdh-b", "esppdh-b", "pw-b")
+	haupt, _ := mustDial(t, addr, "haupt", "pdh", "geheim")
+
+	m.RemoveDeviceAccount(devID, "pdh") // kein Gerätezugang: bleibt unberührt
+	m.RemoveDeviceAccount(devID, "esppdh-a")
+	expectLost(t, lostA, "esppdh-a")
+	select {
+	case <-lostB:
+		t.Fatal("anderes Gerät wurde getrennt")
+	case <-time.After(300 * time.Millisecond):
+	}
+	if !b.IsConnected() || !haupt.IsConnected() {
+		t.Fatal("anderes Gerät oder Hauptzugang nicht mehr verbunden")
+	}
+	if _, _, err := dial(t, addr, "esppdh-a", "esppdh-a", "pw"); err == nil {
+		t.Fatal("Wiederanmeldung nach Herausnehmen gelungen")
+	}
+	mustDial(t, addr, "haupt2", "pdh", "geheim")
+	// der Zugang ist danach aus der Liste – auch für spätere Anmeldungen und Neustarts
+	m.RemoveDeviceAccount(devID, "esppdh-b")
+	if _, ok := m.deviceStore(devID).get("esppdh-b"); ok {
+		t.Error("Zugang esppdh-b noch da")
+	}
+}
+
 func TestDeviceAccountsSurviveRestart(t *testing.T) {
 	m, _ := startDeviceBroker(t, false)
 	port := freePort(t)

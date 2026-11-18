@@ -353,6 +353,11 @@ type Handler struct {
 
 	// Explorer (explorer.go): lädt die Verbindung für den Explorer; nil = echt (connectionRow)
 	explorerLoadHook func(r *http.Request, direction string) (explorerConn, error)
+
+	// ESPPDH (esppdh_store.go): Gerätezugänge am Broker lesen und setzen am Stück
+	esppdhSyncMu sync.Mutex
+	// nur Tests: läuft in esppdhSyncBroker nach dem Lesen der Liste; ein Fehler gilt als Lesefehler
+	esppdhSyncHook func(connID string) error
 }
 
 func NewHandler(

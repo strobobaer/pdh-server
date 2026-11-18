@@ -220,6 +220,23 @@ type ESPPDHPageData struct {
 	Errs      []string
 	PlainPort int // ESP8266 an einem Broker mit TLS: „ohne TLS (Port …)“ anbieten
 	Notice    string
+	Warn      string // Aktion ausgeführt, aber der Broker ließ sich nicht abgleichen
+}
+
+// esppdhWarnings: die Aktion ist gespeichert, aber die Zugänge am Broker ließen sich nicht neu
+// lesen (esppdhSyncBroker). Nie „getrennt“ behaupten, was nicht sicher ist.
+var esppdhWarnings = map[string]string{
+	"new-sync": "Gerät angelegt – aber die Zugänge am Broker ließen sich gerade nicht neu lesen. Das Gerät kann sich noch nicht anmelden. Bitte das Gerät gleich einmal speichern, dann gleicht das PDH den Broker erneut ab.",
+	"saved-sync": "Gespeichert – aber die Zugänge am Broker ließen sich gerade nicht neu lesen; der Broker ist nicht auf dem neuen Stand. " +
+		"Bitte gleich noch einmal speichern.",
+	"locked-sync": "Gerät gesperrt – aber die Zugänge am Broker ließen sich gerade nicht neu lesen. Das PDH hat den Zugang dieses Geräts vorsorglich " +
+		"entfernt; ob es wirklich getrennt ist, steht erst nach einem erfolgreichen Abgleich fest. Bitte gleich noch einmal sperren.",
+	"unlocked-sync": "Gerät entsperrt – aber die Zugänge am Broker ließen sich gerade nicht neu lesen. Das Gerät kann sich noch nicht anmelden. " +
+		"Bitte gleich noch einmal entsperren.",
+	"password-sync": "Neues MQTT-Kennwort vergeben – aber die Zugänge am Broker ließen sich gerade nicht neu lesen. Das PDH hat den Zugang des Geräts " +
+		"vorsorglich entfernt; ob es wirklich getrennt ist, steht erst nach einem erfolgreichen Abgleich fest. Bitte das Gerät gleich einmal speichern.",
+	"deleted-sync": "Gerät gelöscht – aber die Zugänge am Broker ließen sich gerade nicht neu lesen. Das PDH hat den Zugang des Geräts vorsorglich " +
+		"entfernt; ob es wirklich getrennt ist, steht erst nach einem erfolgreichen Abgleich fest (beim nächsten Speichern eines Geräts dieser Verbindung).",
 }
 
 var esppdhNotices = map[string]string{
@@ -271,6 +288,7 @@ func (h *Handler) esppdhRenderList(w http.ResponseWriter, r *http.Request, f esp
 		BaseData: h.baseData(r, "esppdh", "ESPPDH", "Import"),
 		State:    h.esppdhStateOf(ctx), Form: f, Errs: errs, PlainPort: plainPort,
 		Notice: esppdhNotices[r.URL.Query().Get("n")],
+		Warn:   esppdhWarnings[r.URL.Query().Get("w")],
 	}
 	d.CanCreate = h.esppdhCan(r, permESPEdit, "") && d.State.Enabled
 	list, err := h.esppdhList(ctx)
@@ -359,9 +377,12 @@ func (h *Handler) EsppdhCreateWeb(w http.ResponseWriter, r *http.Request) {
 		h.esppdhRenderList(w, r, f, []string{"Das Gerät konnte nicht angelegt werden. Näheres steht im Server-Protokoll."}, plainPort)
 		return
 	}
-	h.esppdhSyncBroker(ctx, d.ConnID)
 	componentLog("esppdh").Info().Str("benutzer", getUser(r).ID).Str("gerät", d.Slug).Str("id", id).Msg("gerät angelegt")
-	http.Redirect(w, r, "/import/esppdh/"+id+"?n=new", http.StatusSeeOther)
+	next := "?n=new"
+	if h.esppdhSyncBroker(ctx, d.ConnID) != nil {
+		next = "?w=new-sync"
+	}
+	http.Redirect(w, r, "/import/esppdh/"+id+next, http.StatusSeeOther)
 }
 
 func esppdhSlugTaken(slug string) string {
@@ -407,6 +428,7 @@ type ESPPDHDevicePageData struct {
 	PlainPort          int
 	Errs               []string
 	Notice             string
+	Warn               string // Aktion ausgeführt, aber der Broker ließ sich nicht abgleichen
 	BoardLabel         string
 }
 
@@ -514,6 +536,7 @@ func (h *Handler) esppdhRenderDevice(w http.ResponseWriter, r *http.Request, d e
 		Topic:      esppdhTopicPrefix(d.Slug),
 		APName:     esppdh.APName(d.Slug),
 		Notice:     esppdhNotices[r.URL.Query().Get("n")],
+		Warn:       esppdhWarnings[r.URL.Query().Get("w")],
 		BoardLabel: esppdhBoardLabel(d.BoardKey, d.CustomBoard),
 		PinsJSON:   esppdhPinsJSON(),
 	}
@@ -568,6 +591,7 @@ func (h *Handler) esppdhRenderDevice(w http.ResponseWriter, r *http.Request, d e
 	if t := esppdhNetHint(d, b, certOwnAddrs()); t != "" {
 		pd.Hints = append(pd.Hints, esppdhHint{"warn", "ti-wall", t, "", ""})
 	}
+	w.Header().Set("Cache-Control", "no-store") // die Seite zeigt das Kennwort des Notzugangs
 	h.render(w, "esppdh_device", pd)
 }
 
@@ -617,11 +641,20 @@ func (h *Handler) EsppdhSaveWeb(w http.ResponseWriter, r *http.Request) {
 		h.esppdhRenderDevice(w, r, cur, f, blocks, []string{"Das Gerät konnte nicht gespeichert werden. Näheres steht im Server-Protokoll."}, plainPort)
 		return
 	}
-	if d.ConnID != cur.ConnID { // anderer Broker: Zugang dort weg, hier dazu
-		h.esppdhSyncBroker(ctx, cur.ConnID)
-		h.esppdhSyncBroker(ctx, d.ConnID)
-	}
 	componentLog("esppdh").Info().Str("benutzer", getUser(r).ID).Str("gerät", cur.Slug).Int("bausteine", len(blocks)).Msg("gerät gespeichert")
+	// Broker abgleichen – auch ohne Wechsel der Verbindung: so holt ein Speichern einen
+	// gescheiterten Abgleich nach. Beim Wechsel muss der Zugang am alten Broker weg.
+	var syncErr error
+	if d.ConnID != cur.ConnID {
+		syncErr = h.esppdhSyncBroker(ctx, cur.ConnID, esppdhUserOf(cur.Slug))
+	}
+	if err := h.esppdhSyncBroker(ctx, d.ConnID); err != nil {
+		syncErr = err
+	}
+	if syncErr != nil {
+		http.Redirect(w, r, "/import/esppdh/"+id+"?w=saved-sync", http.StatusSeeOther)
+		return
+	}
 	http.Redirect(w, r, "/import/esppdh/"+id+"?n=saved", http.StatusSeeOther)
 }
 
@@ -640,26 +673,44 @@ func (h *Handler) esppdhRecordAction(w http.ResponseWriter, r *http.Request, per
 	return id, true
 }
 
-// EsppdhLockWeb: POST /import/esppdh/{id}/lock (locked=1 sperren, 0 entsperren). Ein gesperrtes
-// Gerät verliert sofort seinen Zugang am Broker; eine bestehende Verbindung wird getrennt.
+// EsppdhLockWeb: POST /import/esppdh/{id}/lock (locked=1 sperren, 0 entsperren, sonst 400). Ein
+// gesperrtes Gerät verliert sofort seinen Zugang am Broker; eine bestehende Verbindung wird
+// getrennt. Lässt sich die Liste nicht lesen, nimmt das PDH den Zugang einzeln heraus und
+// warnt, statt „getrennt“ zu melden.
 func (h *Handler) EsppdhLockWeb(w http.ResponseWriter, r *http.Request) {
 	id, ok := h.esppdhRecordAction(w, r, permESPEdit)
 	if !ok {
 		return
 	}
-	locked := r.FormValue("locked") == "1"
-	conn, err := h.esppdhSetLocked(r.Context(), id, locked)
+	var locked bool
+	switch r.FormValue("locked") {
+	case "1":
+		locked = true
+	case "0":
+	default:
+		http.Error(w, "locked muss 0 oder 1 sein", http.StatusBadRequest)
+		return
+	}
+	conn, slug, err := h.esppdhSetLocked(r.Context(), id, locked)
 	if err != nil {
 		h.esppdhLoadFailed(w, r, err)
 		return
 	}
-	h.esppdhSyncBroker(r.Context(), conn)
-	notice := "unlocked"
+	var revoke []string
 	if locked {
-		notice = "locked"
+		revoke = []string{esppdhUserOf(slug)}
 	}
-	componentLog("esppdh").Info().Str("benutzer", getUser(r).ID).Str("id", id).Bool("gesperrt", locked).Msg("gerät gesperrt/entsperrt")
-	http.Redirect(w, r, "/import/esppdh/"+id+"?n="+notice, http.StatusSeeOther)
+	syncErr := h.esppdhSyncBroker(r.Context(), conn, revoke...)
+	key := "unlocked"
+	if locked {
+		key = "locked"
+	}
+	componentLog("esppdh").Info().Str("benutzer", getUser(r).ID).Str("id", id).Bool("gesperrt", locked).Bool("broker_abgeglichen", syncErr == nil).Msg("gerät gesperrt/entsperrt")
+	if syncErr != nil {
+		http.Redirect(w, r, "/import/esppdh/"+id+"?w="+key+"-sync", http.StatusSeeOther)
+		return
+	}
+	http.Redirect(w, r, "/import/esppdh/"+id+"?n="+key, http.StatusSeeOther)
 }
 
 // EsppdhPasswordWeb: POST /import/esppdh/{id}/password – neues MQTT-Kennwort. Der Broker trennt
@@ -691,8 +742,13 @@ func (h *Handler) EsppdhPasswordWeb(w http.ResponseWriter, r *http.Request) {
 		h.esppdhLoadFailed(w, r, err)
 		return
 	}
-	h.esppdhSyncBroker(ctx, conn)
-	componentLog("esppdh").Info().Str("benutzer", getUser(r).ID).Str("gerät", d.Slug).Bool("notzugang_neu", newAP != "").Msg("neues mqtt-kennwort")
+	// das alte Kennwort darf nicht weiter gelten: bei Lesefehler den Zugang einzeln herausnehmen
+	syncErr := h.esppdhSyncBroker(ctx, conn, esppdhUserOf(d.Slug))
+	componentLog("esppdh").Info().Str("benutzer", getUser(r).ID).Str("gerät", d.Slug).Bool("notzugang_neu", newAP != "").Bool("broker_abgeglichen", syncErr == nil).Msg("neues mqtt-kennwort")
+	if syncErr != nil {
+		http.Redirect(w, r, "/import/esppdh/"+id+"?w=password-sync", http.StatusSeeOther)
+		return
+	}
 	http.Redirect(w, r, "/import/esppdh/"+id+"?n=password", http.StatusSeeOther)
 }
 
@@ -708,8 +764,12 @@ func (h *Handler) EsppdhDeleteWeb(w http.ResponseWriter, r *http.Request) {
 		h.esppdhLoadFailed(w, r, err)
 		return
 	}
-	h.esppdhSyncBroker(r.Context(), conn)
-	componentLog("esppdh").Info().Str("benutzer", getUser(r).ID).Str("gerät", slug).Str("id", id).Msg("gerät gelöscht")
+	syncErr := h.esppdhSyncBroker(r.Context(), conn, esppdhUserOf(slug))
+	componentLog("esppdh").Info().Str("benutzer", getUser(r).ID).Str("gerät", slug).Str("id", id).Bool("broker_abgeglichen", syncErr == nil).Msg("gerät gelöscht")
+	if syncErr != nil {
+		http.Redirect(w, r, "/import/esppdh?w=deleted-sync", http.StatusSeeOther)
+		return
+	}
 	http.Redirect(w, r, "/import/esppdh?n=deleted", http.StatusSeeOther)
 }
 

@@ -12,6 +12,7 @@
 
 {{template "esppdh-state" .State}}
 {{if .Notice}}<div class="card esp-msg esp-ok" role="status"><i class="ti ti-circle-check" aria-hidden="true"></i> {{.Notice}}</div>{{end}}
+{{if .Warn}}<div class="card esp-msg esp-warn" role="alert"><i class="ti ti-alert-triangle" aria-hidden="true"></i> {{.Warn}}</div>{{end}}
 {{if .Errs}}<div class="card esp-msg esp-bad" role="alert"><b><i class="ti ti-alert-circle" aria-hidden="true"></i> Nicht angelegt – bitte prüfen:</b><ul>{{range .Errs}}<li>{{.}}</li>{{end}}</ul></div>{{end}}
 
 {{if .CanCreate}}
