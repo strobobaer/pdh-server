@@ -85,6 +85,17 @@ func omadaSite(s string) (string, error) {
 	return s, nil
 }
 
+// omadaSitePlain: Standortname für Meldungen. Der Text geht auch in den Chat, der
+// Auszeichnungen (fett, Verweise) deutet – solche Zeichen fallen hier weg.
+func omadaSitePlain(s string) string {
+	return strings.TrimSpace(strings.Map(func(r rune) rune {
+		if strings.ContainsRune("*_[]()<>`~|#\\", r) {
+			return -1
+		}
+		return r
+	}, s))
+}
+
 func omadaIDField(label, raw string) (string, error) {
 	v := strings.TrimSpace(raw)
 	if v == "" {
@@ -173,7 +184,7 @@ func omadaDoSettings(ctx context.Context, d omadaDeps, rawURL, id, client, secre
 	}
 	what := "Omada-Einstellungen gespeichert (" + base
 	if site != "" {
-		what += ", Standort " + site
+		what += ", Standort " + omadaSitePlain(site)
 	}
 	what += ")."
 	if enc != "" {

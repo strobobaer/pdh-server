@@ -169,6 +169,11 @@ func TestITNetAdoptCategoryOptions(t *testing.T) {
 	ctx := context.Background()
 	kam := itCatAssetCat(t, h, "Kameras "+sfx, "ti-camera", 900, true)
 	alt := itCatAssetCat(t, h, "Altgeräte "+sfx, "ti-ghost", 902, false)
+	// Vorschläge zeigt nur eine eingeschaltete Quelle
+	itNetKeepSettings(t, h, keyITNetUnifiOn)
+	if err := h.setAppSetting(ctx, keyITNetUnifiOn, "1"); err != nil {
+		t.Fatal(err)
+	}
 	src := h.itNetSource()
 	if _, err := h.db.Exec(ctx, `INSERT INTO it_net_candidates (source, mac, name, ip, kind, uplink, last_seen) VALUES ($1, 'aa:bb:cc:00:00:01', 'Kandidat', '10.0.0.9', 'wired', '', now())`, src); err != nil {
 		t.Fatal(err)

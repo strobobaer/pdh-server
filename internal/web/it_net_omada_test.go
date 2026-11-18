@@ -499,12 +499,17 @@ func TestITNetPageTwoSources(t *testing.T) {
 		"Abgleich mit UniFi einschalten", "Abgleich mit Omada einschalten",
 		"Die Omada-Anbindung ist noch nicht an einem echten Controller erprobt.",
 		"controller nicht erreichbar", ">17<", "<th>Quelle</th>",
-		"Drucker UniFi", "Kamera Omada",
-		`name="source" value="unifi"`, `name="source" value="omada"`,
+		"Kamera Omada", `name="source" value="omada"`,
 		`/admin/server-config?tab=unifi`, "overflow-x:auto",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("Seite ohne %q", want)
+		}
+	}
+	// UniFi ist ausgeschaltet: seine Vorschläge bleiben gespeichert, erscheinen aber nicht
+	for _, bad := range []string{"Drucker UniFi", `name="source" value="unifi"`} {
+		if strings.Contains(body, bad) {
+			t.Errorf("Seite enthält %q, obwohl UniFi ausgeschaltet ist", bad)
 		}
 	}
 	for _, bad := range []string{`/admin/server-config?tab=omada`, "alter UniFi-Fehler", `name="enabled" value="1" checked`} {
@@ -636,6 +641,12 @@ func TestITNetAdoptIgnoreBySource(t *testing.T) {
 	ctx := context.Background()
 	h.hasPermHook = func(*http.Request, string) bool { return true }
 	const mac = "aa:bb:cc:29:00:01"
+	itNetKeepSettings(t, h, keyITNetUnifiOn, keyITNetOmadaOn)
+	for _, k := range []string{keyITNetUnifiOn, keyITNetOmadaOn} {
+		if err := h.setAppSetting(ctx, k, "1"); err != nil {
+			t.Fatal(err)
+		}
+	}
 	// dieselbe MAC als Vorschlag beider Quellen
 	for _, s := range []string{usrc, osrc} {
 		if _, err := pool.Exec(ctx, `INSERT INTO it_net_candidates (source, mac, name, ip, kind, last_seen) VALUES ($1, $2, $3, '10.0.0.9', 'wireless', now())`, s, mac, "Tablet "+s); err != nil {
@@ -671,20 +682,44 @@ func TestITNetAdoptIgnoreBySource(t *testing.T) {
 	if ignored(usrc) || ignored(osrc) || assets != 0 {
 		t.Fatalf("unbekannte Quelle darf nichts ändern: %v %v %d", ignored(usrc), ignored(osrc), assets)
 	}
-	// source=omada blendet nur den Omada-Vorschlag aus
+	// derselbe Client aus zwei Quellen: eine Zeile in der Liste, der Zähler zählt ihn einmal
+	if n := h.itNetOpenCandidates(ctx); n != 1 {
+		t.Errorf("gleiche MAC aus zwei Quellen zählt einmal: %d", n)
+	}
+	if body := itNetDo(h.ITNetPage, "GET", "/it/net", "", "", nil).Body.String(); strings.Count(body, "Tablet ") != 1 {
+		t.Errorf("gleiche MAC aus zwei Quellen: %d Zeilen statt einer", strings.Count(body, "Tablet "))
+	}
+	// eine ausgeschaltete Quelle zeigt ihre Vorschläge nicht; die andere Quelle bleibt
+	_ = h.setAppSetting(ctx, keyITNetOmadaOn, "0")
+	if body := itNetDo(h.ITNetPage, "GET", "/it/net", "", "", nil).Body.String(); strings.Contains(body, "Tablet "+osrc) || !strings.Contains(body, "Tablet "+usrc) {
+		t.Error("Omada aus: nur der UniFi-Vorschlag darf erscheinen")
+	}
+	_ = h.setAppSetting(ctx, keyITNetUnifiOn, "0")
+	if n := h.itNetOpenCandidates(ctx); n != 0 {
+		t.Errorf("beide Quellen aus: Zähler %d", n)
+	}
+	_ = h.setAppSetting(ctx, keyITNetUnifiOn, "1")
+	_ = h.setAppSetting(ctx, keyITNetOmadaOn, "1")
+	// Ausblenden gilt für den Client, also für beide Quellen
 	if loc := do(h.ITNetIgnoreWeb, "/it/net/candidates/ignore", url.Values{"source": {"omada"}, "mac": {mac}, "ignored": {"1"}}); !strings.Contains(loc, "n=ignored") {
 		t.Errorf("Ausblenden omada: %s", loc)
 	}
-	if ignored(usrc) || !ignored(osrc) {
-		t.Errorf("nur der Omada-Vorschlag ausgeblendet erwartet: unifi %v omada %v", ignored(usrc), ignored(osrc))
+	if !ignored(usrc) || !ignored(osrc) {
+		t.Errorf("Ausblenden gilt für beide Quellen: unifi %v omada %v", ignored(usrc), ignored(osrc))
+	}
+	if n := h.itNetOpenCandidates(ctx); n != 0 {
+		t.Errorf("ausgeblendet: Zähler %d", n)
+	}
+	if body := itNetDo(h.ITNetPage, "GET", "/it/net?tab=hidden", "", "", nil).Body.String(); strings.Count(body, "Tablet ") != 1 {
+		t.Errorf("Ausgeblendet: %d Zeilen statt einer", strings.Count(body, "Tablet "))
 	}
 	// ohne Feld: UniFi (alte Aufrufe)
 	if loc := do(h.ITNetIgnoreWeb, "/it/net/candidates/ignore", url.Values{"mac": {mac}, "ignored": {"1"}}); !strings.Contains(loc, "n=ignored") || !ignored(usrc) {
 		t.Errorf("ohne Feld source muss UniFi gelten: %s", loc)
 	}
 	do(h.ITNetIgnoreWeb, "/it/net/candidates/ignore", url.Values{"source": {"omada"}, "mac": {mac}, "ignored": {"0"}, "tab": {"hidden"}})
-	if ignored(osrc) {
-		t.Error("Zurückholen mit source=omada hat nicht gewirkt")
+	if ignored(osrc) || ignored(usrc) {
+		t.Error("Zurückholen mit source=omada muss für beide Quellen wirken")
 	}
 	// übernehmen aus Omada
 	if loc := do(h.ITNetAdoptWeb, "/it/net/candidates/adopt", url.Values{"source": {"omada"}, "mac": {"AA-BB-CC-29-00-01"}, "type": {"printer"}}); !strings.Contains(loc, "n=adopted") {

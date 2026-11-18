@@ -124,3 +124,31 @@ func TestTLSPortCollision(t *testing.T) {
 		t.Fatal("Broker gilt trotz Fehler als laufend")
 	}
 }
+
+// Ein belegter TLS-Port hält den Broker nicht auf: der Port ohne TLS läuft,
+// der Status nennt den Grund.
+func TestTLSPortBusyKeepsBrokerRunning(t *testing.T) {
+	plain := freePort(t)
+	busy, err := net.Listen("tcp", ":0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer busy.Close()
+	tlsPort := busy.Addr().(*net.TCPAddr).Port
+	m := NewManager()
+	err = m.Start("c1", Config{ListenPort: plain, AllowAnonymous: true, TLSPort: tlsPort,
+		GetCertificate: func(*tls.ClientHelloInfo) (*tls.Certificate, error) { return nil, errors.New("x") }})
+	if err != nil {
+		t.Fatalf("belegter TLS-Port darf den Start nicht verhindern: %v", err)
+	}
+	defer m.StopAll()
+	st, ok := m.Status("c1")
+	if !ok || st.TLSAddr != "" || st.TLSError == "" {
+		t.Fatalf("Status soll den Fehler des TLS-Ports nennen: %+v", st)
+	}
+	c, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", plain), 3*time.Second)
+	if err != nil {
+		t.Fatalf("Listen-Port nicht erreichbar: %v", err)
+	}
+	c.Close()
+}

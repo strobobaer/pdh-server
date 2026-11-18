@@ -209,6 +209,58 @@ oder ändern.**
 - Danach das Konto **wieder sperren** (alten Sperrwert zurückschreiben,
   `active = false`).
 
+## Arbeitsweise und offene Punkte
+
+- Zu Beginn die **Liste der offenen Punkte** unten lesen und mit dem
+  tatsächlichen Stand abgleichen (`git status`, `git fetch origin main`,
+  `VERSION`, Testverbund nur lesend).
+- Die Punkte **Schritt für Schritt** abarbeiten wie ein Programmierer:
+  erst am Code prüfen, ob der Punkt noch stimmt, dann bauen, testen
+  (`go vet ./...`, `go test ./...` in Git Bash mit Labor-Datenbank),
+  Handbuch und Änderungsprotokoll nachziehen, lokal committen.
+- **Nachfragen**, wenn eine Entscheidung dem Anwender gehört (Umfang,
+  Bedienung, Rechte, alles mit Wirkung nach außen). Bis zur Antwort mit
+  dem weitermachen, was davon nicht abhängt.
+- Größere Pakete: erst Entwurf (`docs/superpowers/specs/`), vom Anwender
+  bestätigen lassen, dann Plan und Bau.
+- Die Liste **im selben Schritt pflegen**: Erledigtes streichen, Neues
+  eintragen, Stand und Datum anpassen.
+
+### Offene Punkte (Stand 18.11.2026)
+
+1. **0.80.25 Reste Netz-Abgleich und MQTT-Broker** – gebaut auf
+   `fix/reste-0.80.25`, lokal committet. Offen: Freigabe für Push, Merge,
+   Verbund-Update und Browserprüfung (Netz-Abgleich mit zwei Quellen,
+   Broker-Status mit Prüfliste).
+2. **ESPPDH Paket 1** (Import → ESPPDH, ESPHome als Compiler) – Entwurf
+   `docs/superpowers/specs/2026-11-18-esppdh-design.md` schreiben und vom
+   Anwender bestätigen lassen; danach Plan und Bau auf `feature/esppdh`.
+3. **Efficio-Reste aus 0.80.12:** Zustellung bricht bei Fehler einer
+   einzelnen Datei ab; hängendes Netzlaufwerk blockiert den Ordner bis
+   zum Neustart; SFTP nur mit Kennwort; FTPS ungetestet.
+4. **MQTT klein:** Bei älterem Update-Agenten versucht der tägliche Lauf
+   die nginx-Seite jeden Tag neu (harmlos).
+5. **Abnahmen durch den Anwender:** SNMP an echten Geräten, Omada an
+   echtem Controller, TIA-Baustein in PLCSIM, Datennetz mit echtem Tailnet.
+6. **Zurückgestellt (kein Auftrag):** Abteilungsfeinheiten Rüstzeiten,
+   Datennetz Paket 2/3, Buchungssystem/Lizenzen, Firmenstammdaten.
+7. **0.81.0 Rüstzeit in „Neu anlegen“ und 0.81.1 Tagesgrenzen/Zeitumstellung**
+   – auf `main`. Offen: Verbund-Update und Browserprüfung (Assistent mit
+   Kachel Rüstzeit, Wartung „heute fällig“ nicht überfällig, Sicherungs-
+   Formular mit 03:00).
+8. **Zeitzone im Docker-Testsystem** (Vorschlag, kein Auftrag): Container
+   laufen in UTC, Produktion (systemd) in Europe/Berlin. Umstellung nur als
+   Paket: `TZ` für app und updater in `compose.yaml`, `time/tzdata` in
+   `cmd/server` und `cmd/update-agent`, Postgres-Sitzungszone über pgx
+   `RuntimeParams["timezone"]`; nie nur `TZ` an der App, kein `PGTZ`.
+9. **Tagesgrenzen aufräumen (klein):** übrige `Truncate(24*time.Hour)`
+   gegen DATE-Spalten (`kanban.go`, `purchases.go`, `trainings.go`,
+   `user_qualifications.go`, `procurement.go`, `projects_handler.go`,
+   `partners.go`) auf `localDayStart` umstellen.
+
+Docker Desktop startet nach einem Neustart des Windows-Rechners nicht von
+selbst – ohne ihn fehlen der Zeuge und die Labor-Datenbank für die Tests.
+
 ## Sprache
 
 Antworten, Handbuch, Änderungsprotokoll, Commit-Nachrichten und

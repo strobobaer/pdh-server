@@ -132,6 +132,9 @@ func TestITNetPagePerms(t *testing.T) {
 	hp, pool, src := itNetPageEnv(t)
 	hp.it = it.NewService(it.NewRepository(pool))
 	ctx := context.Background()
+	if err := hp.setAppSetting(ctx, keyITNetUnifiOn, "1"); err != nil { // Vorschläge zeigt nur eine eingeschaltete Quelle
+		t.Fatal(err)
+	}
 	if _, err := pool.Exec(ctx, `INSERT INTO it_net_candidates (source, mac, name, ip, kind, last_seen) VALUES ($1, 'aa:bb:cc:01:02:03', 'Drucker Halle', '10.0.0.5', 'wired', now())`, src); err != nil {
 		t.Fatal(err)
 	}
