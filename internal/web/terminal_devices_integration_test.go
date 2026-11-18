@@ -1,6 +1,6 @@
 //go:build integration
 
-// Kopplungscode für Terminal-Benutzer gegen eine echte PostgreSQL (Migration 157).
+// Kopplungscode für Terminal-Benutzer gegen eine echte PostgreSQL (Migration 171).
 // Aufruf: PDH_TEST_DSN=postgres://... go test -tags integration -run TerminalPairCode ./internal/web/
 package web
 

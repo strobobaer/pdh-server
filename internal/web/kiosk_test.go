@@ -596,7 +596,7 @@ func TestKioskNoticeCodes(t *testing.T) {
 // ── Migration ────────────────────────────────────────────────
 
 func TestKioskMigration(t *testing.T) {
-	b, err := os.ReadFile(filepath.Join("..", "..", "migrations", "155_kiosk_terminals.up.sql"))
+	b, err := os.ReadFile(filepath.Join("..", "..", "migrations", "169_kiosk_terminals.up.sql"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -609,7 +609,7 @@ func TestKioskMigration(t *testing.T) {
 		"'hmi.kiosk'", "'Infrastruktur & Anlagen'", "'admin', 'manager', 'technician', 'asset_manager'", "ON CONFLICT",
 	} {
 		if !strings.Contains(s, want) {
-			t.Errorf("Migration 155: %q fehlt", want)
+			t.Errorf("Migration 169: %q fehlt", want)
 		}
 	}
 }
@@ -638,7 +638,7 @@ func TestMigrationNumbersUnique(t *testing.T) {
 		seen[m[1]] = name
 	}
 	if _, ok := seen["155"]; !ok {
-		t.Error("Migration 155 fehlt")
+		t.Error("Migration 169 fehlt")
 	}
 }
 

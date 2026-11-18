@@ -1,4 +1,4 @@
--- 156_anlagenterminal.up.sql
+-- 170_anlagenterminal.up.sql
 --
 -- Anlagenterminal (Teilprojekt 1).
 -- HMI-Verbindung: wer sie am Terminal ansehen bzw. bedienen darf.

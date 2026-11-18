@@ -1,6 +1,6 @@
 //go:build integration
 
-// Kopplungs-API und Gerätezustand gegen eine echte PostgreSQL (Migration 157).
+// Kopplungs-API und Gerätezustand gegen eine echte PostgreSQL (Migration 171).
 // Aufruf: PDH_TEST_DSN=postgres://... go test -tags integration -run 'TerminalPairAPI|TerminalDeviceAPI' ./internal/web/
 package web
 

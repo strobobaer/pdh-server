@@ -1,6 +1,6 @@
 //go:build integration
 
-// Kiosk-Terminals gegen eine echte PostgreSQL (Migration 155, Speichern,
+// Kiosk-Terminals gegen eine echte PostgreSQL (Migration 169, Speichern,
 // Zuordnung, Befehl „Am Terminal zeigen“, Zugriffsprotokoll, Rechte auf
 // Abteilungsebene).
 // Aufruf: PDH_TEST_DSN=postgres://... go test -tags integration -run Kiosk ./internal/web/

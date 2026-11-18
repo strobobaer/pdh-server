@@ -275,7 +275,7 @@ type InfraDetailData struct {
 	RespFromID      string   // geerbt von diesem Element ("" = eigene Angabe)
 	RespFromName    string   // dessen Name
 	HMI             hmiPerms // Reiter „HMI“: ansehen / bedienen / einrichten
-	KioskTerminalID string   // zugeordnetes Kiosk-Terminal (migrations/155)
+	KioskTerminalID string   // zugeordnetes Kiosk-Terminal (migrations/169)
 	KioskTerminals  []kioskTerminalOption
 	CanKioskAssign  bool // Auswahl „Kiosk-Terminal“: hmi.manage für diese Anlage
 	Message, Error  string

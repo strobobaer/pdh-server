@@ -1,6 +1,6 @@
 //go:build integration
 
-// Anlagenterminal gegen eine echte PostgreSQL (Migration 156).
+// Anlagenterminal gegen eine echte PostgreSQL (Migration 170).
 // Aufruf: PDH_TEST_DSN=postgres://... go test -tags integration -run Anlagenterminal ./internal/web/
 package web
 

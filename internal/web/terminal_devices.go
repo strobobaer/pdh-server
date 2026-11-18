@@ -19,7 +19,7 @@ import (
 	"pdh/internal/core/users"
 )
 
-// Gerätekopplung des Anlagenterminals (Migration 157): Ein Raspberry Pi wird
+// Gerätekopplung des Anlagenterminals (Migration 171): Ein Raspberry Pi wird
 // mit einem Einmalcode an einen Terminal-Benutzer gekoppelt und meldet sich
 // danach mit einem Geräte-Geheimnis an. Gespeichert werden nur Hashes.
 

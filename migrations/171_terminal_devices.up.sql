@@ -1,4 +1,4 @@
--- 157_terminal_devices.up.sql
+-- 171_terminal_devices.up.sql
 --
 -- Gerätekopplung für das Anlagenterminal (TP0b).
 -- Ein Raspberry Pi („PDH-Terminal“) wird mit einem Einmalcode an einen

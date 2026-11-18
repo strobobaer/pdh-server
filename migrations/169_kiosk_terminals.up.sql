@@ -1,4 +1,4 @@
--- 155_kiosk_terminals.up.sql
+-- 169_kiosk_terminals.up.sql
 --
 -- Kiosk-Terminals (hmi-kiosk am Bedienplatz): PDH schickt einen Fernbefehl,
 -- das Terminal zeigt das HMI auf seinem eigenen Bildschirm (kiosk_terminals.go).

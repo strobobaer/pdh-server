@@ -1,4 +1,4 @@
--- 158_terminal_card_sessions.up.sql
+-- 172_terminal_card_sessions.up.sql
 --
 -- Kartensitzung des Anlagenterminals (TP2).
 -- Pro Terminal-Benutzer (users.is_system_user) höchstens eine Sitzung: Die

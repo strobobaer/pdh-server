@@ -1,4 +1,4 @@
--- 162_terminal_manual_login.up.sql
+-- 176_terminal_manual_login.up.sql
 --
 -- Anmeldung am Terminal ohne Kartenleser (K1).
 -- terminal_settings (je System-Benutzer / Terminal):

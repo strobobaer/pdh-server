@@ -1,4 +1,4 @@
--- 159_rfid_uid_upper_index.up.sql
+-- 173_rfid_uid_upper_index.up.sql
 --
 -- Kartensuche (users.GetByRFID) vergleicht die UID ohne Groß-/Kleinschreibung
 -- und Leerraum: upper(btrim(rfid_uid)). Passender Ausdrucksindex, damit die
