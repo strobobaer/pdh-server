@@ -499,7 +499,7 @@ func (h *Handler) PurchaseCreateWeb(w http.ResponseWriter, r *http.Request) {
 	}
 	var id string
 	err := h.db.QueryRow(ctx, `INSERT INTO purchase_orders (number, title, supplier_id, department_id, created_by)
-		VALUES ('B-' || to_char(NOW(), 'YYYY') || '-' || lpad(nextval('purchase_order_seq')::text, 4, '0'), $1, NULLIF($2, '')::uuid, NULLIF($3, '')::uuid, $4::uuid)
+		VALUES ('B-' || to_char(NOW(), 'YYYY') || '-' || (SELECT lpad(v::text, greatest(4, length(v::text)), '0') FROM (SELECT nextval('purchase_order_seq') AS v) seq), $1, NULLIF($2, '')::uuid, NULLIF($3, '')::uuid, $4::uuid)
 		RETURNING id::text`, truncateRunes(title, 200), supplier, dept, nullID(u.ID)).Scan(&id)
 	if err != nil {
 		http.Redirect(w, r, "/purchases?err="+url.QueryEscape(friendlyPartError(err)), http.StatusSeeOther)

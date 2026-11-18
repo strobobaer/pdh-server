@@ -111,7 +111,7 @@ var workKinds = map[string]workKind{
 		Title: "Rüstzeiten", Context: "Laufende Rüstzeiten", Label: "Rüstzeit", Plural: "Rüstzeiten", Items: "Rüstzeiten", Icon: "ti-arrows-exchange-2",
 		DoLabel: "Beenden", DoIcon: "ti-player-stop", DoPath: "/setup/{id}/finish-web", PrioExpr: `''`,
 		NoPrio: true, NoDue: true, NoBroker: true, NoCompletion: true,
-		TitleExpr: `'RZ-' || lpad(r.number::text, 4, '0') || ' · ' || COALESCE(NULLIF(r.button_name, ''), (SELECT sr.name FROM setup_reasons sr WHERE sr.id = r.reason_id), '')`, DescExpr: `r.note`, DueExpr: `NULL::timestamptz`,
+		TitleExpr: `'RZ-' || lpad(r.number::text, greatest(4, length(r.number::text)), '0') || ' · ' || COALESCE(NULLIF(r.button_name, ''), (SELECT sr.name FROM setup_reasons sr WHERE sr.id = r.reason_id), '')`, DescExpr: `r.note`, DueExpr: `NULL::timestamptz`,
 		GroupExpr: `NULL::uuid`, ResolutionExpr: `''`, RootCauseExpr: `''`,
 		ClosedExpr:   "r.ended_at",
 		OpenStatuses: []string{"running"}, DoneStatuses: []string{"done", "fault"},

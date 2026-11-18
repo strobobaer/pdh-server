@@ -36,7 +36,7 @@ func createdInfoQuery(module string) string {
 	case "project":
 		return `SELECT name, COALESCE(created_by::text, ''), '', '', false FROM projects WHERE id = $1::uuid`
 	case "kvp":
-		return `SELECT 'KVP-' || lpad(number::text, 4, '0') || ' · ' || title, COALESCE(created_by::text, submitter_id::text, ''), '', '', false
+		return `SELECT 'KVP-' || lpad(number::text, greatest(4, length(number::text)), '0') || ' · ' || title, COALESCE(created_by::text, submitter_id::text, ''), '', '', false
 			FROM kvp_ideas WHERE id = $1::uuid`
 	}
 	return ""

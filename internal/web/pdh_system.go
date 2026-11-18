@@ -34,8 +34,8 @@ var recordModules = map[string]recordModuleInfo{
 	"part":             {"Ersatzteil", "/inventory/", "spare_parts", "part_number || ' · ' || name", "ti-package"},
 	"storage":          {"Lagerplatz", "/storage/", "storage_nodes", "name", "ti-building-warehouse"},
 	"business_partner": {"Hersteller/Lieferant", "/directory/", "business_partners", "name", "ti-building-store"},
-	"kvp":              {"KVP-Vorschlag", "/kvp/", "kvp_ideas", "'KVP-' || lpad(number::text, 4, '0') || ' · ' || title", "ti-bulb"},
-	"setup": {"Rüstzeit", "/setup/", "setup_times", `'RZ-' || lpad(number::text, 4, '0') || ' · ' ||
+	"kvp":              {"KVP-Vorschlag", "/kvp/", "kvp_ideas", "'KVP-' || lpad(number::text, greatest(4, length(number::text)), '0') || ' · ' || title", "ti-bulb"},
+	"setup": {"Rüstzeit", "/setup/", "setup_times", `'RZ-' || lpad(number::text, greatest(4, length(number::text)), '0') || ' · ' ||
 		COALESCE(NULLIF(button_name, ''), (SELECT sr.name FROM setup_reasons sr WHERE sr.id = reason_id), '')`, "ti-arrows-exchange-2"},
 }
 
