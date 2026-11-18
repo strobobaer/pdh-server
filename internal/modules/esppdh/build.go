@@ -24,9 +24,10 @@ import (
 //
 // Ablauf je Lauf (Runner.Build):
 //  1. freien Platz für den Arbeitsordner prüfen (MinFreeMB) – sonst sofort Fehler;
-//  2. Arbeitsordner <WorkDir>/build/<lauf> mit Rechten 0700 anlegen, darin <kennung>.yaml,
-//     secrets.yaml (0600) und tmp/ (TMPDIR für die Zwischendateien des Compilers);
-//  3. „nice -n 19 <venv>/bin/esphome compile ./<kennung>.yaml“ in diesem Ordner, mit knapper
+//  2. Arbeitsordner <WorkDir>/build/<lauf> mit Rechten 0700 anlegen, darin esppdh.yaml (die
+//     Konfiguration – fester Name, ESPHome nimmt den Gerätenamen aus esphome.name), secrets.yaml
+//     (0600) und tmp/ (TMPDIR für die Zwischendateien des Compilers);
+//  3. „nice -n 19 <venv>/bin/esphome compile ./esppdh.yaml“ in diesem Ordner, mit knapper
 //     Umgebung (envKeep), Zeitlimit und eigener Prozessgruppe (build_unix.go): Bei Zeitlimit
 //     oder Abbruch endet auch jeder Kindprozess (PlatformIO, Compiler);
 //  4. firmware.factory.bin (erstes Flashen ab Adresse 0) und firmware.ota.bin (Update über das
@@ -47,6 +48,10 @@ import (
 const MaxLog = 256 << 10
 
 const (
+	// configName: Konfiguration im Arbeitsordner – nie nach der Kennung benannt, sonst hieße sie
+	// bei der Kennung „secrets“ wie die Geheimnis-Datei und würde von ihr überschrieben
+	configName  = "esppdh.yaml"
+	secretsName = "secrets.yaml" // ESPHome sucht !secret-Werte in dieser Datei neben der Konfiguration
 	factoryName = "firmware.factory.bin"
 	otaName     = "firmware.ota.bin"
 	maxFirmware = 32 << 20        // größer ist keine Firmware eines ESP
@@ -72,7 +77,7 @@ var envKeep = []string{"PATH", "HOME", "LANG", "LC_ALL", "HTTP_PROXY", "HTTPS_PR
 	"SSL_CERT_FILE", "SSL_CERT_DIR", "REQUESTS_CA_BUNDLE"}
 
 // BuildJob: ein Bauauftrag. ID ist die Kennung des Laufs (UUID, Name des Arbeitsordners),
-// Slug die Kennung des Geräts (Dateiname <slug>.yaml). Config und Secrets kommen aus Generate;
+// Slug die Kennung des Geräts (nur geprüft, kein Dateiname). Config und Secrets kommen aus Generate;
 // SecretValues sind die Kennwörter im Klartext – sie werden im Verlauf geschwärzt.
 type BuildJob struct {
 	ID, Slug        string
@@ -167,16 +172,16 @@ func prepareBuildDir(root string, job BuildJob) (string, error) {
 	if err := os.Mkdir(filepath.Join(dir, "tmp"), 0o700); err != nil {
 		return dir, err
 	}
-	if err := os.WriteFile(filepath.Join(dir, job.Slug+".yaml"), job.Config, 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, configName), job.Config, 0o600); err != nil {
 		return dir, err
 	}
-	return dir, os.WriteFile(filepath.Join(dir, "secrets.yaml"), job.Secrets, 0o600)
+	return dir, os.WriteFile(filepath.Join(dir, secretsName), job.Secrets, 0o600)
 }
 
 // removeBuildDir löscht den Arbeitsordner, die Geheimnis-Datei zuerst. Unter Windows halten eben
 // beendete Prozesse Dateien noch kurz fest – deshalb einige Versuche.
 func removeBuildDir(dir string) error {
-	_ = os.Remove(filepath.Join(dir, "secrets.yaml"))
+	_ = os.Remove(filepath.Join(dir, secretsName))
 	var err error
 	for i := 0; i < 20; i++ {
 		if err = os.RemoveAll(dir); err == nil {
@@ -215,8 +220,8 @@ func (r *Runner) run(ctx context.Context, dir string, job BuildJob, progress fun
 	tctx, cancel := context.WithTimeout(ctx, r.Timeout)
 	defer cancel()
 	lg := &buildLog{}
-	// „./“: die Datei kann nie als Schalter gelesen werden (ValidSlug verbietet „-“ am Anfang ohnehin)
-	cmd := r.Command(tctx, dir, "compile", "./"+job.Slug+".yaml")
+	// „./“: die Datei kann nie als Schalter gelesen werden
+	cmd := r.Command(tctx, dir, "compile", "./"+configName)
 	if cmd.Dir == "" {
 		cmd.Dir = dir
 	}

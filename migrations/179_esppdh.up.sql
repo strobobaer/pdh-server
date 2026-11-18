@@ -5,8 +5,9 @@
 
 CREATE TABLE IF NOT EXISTS esppdh_devices (
     id                UUID PRIMARY KEY DEFAULT pdh_uuid_v7(),
-    -- Kennung: Thema esppdh/<slug>/…, Benutzer am Broker esppdh-<slug>
-    slug              TEXT NOT NULL UNIQUE CHECK (slug ~ '^[a-z0-9-]{3,32}$'),
+    -- Kennung: Thema esppdh/<slug>/…, Benutzer am Broker esppdh-<slug>; 3–32 Zeichen aus
+    -- a–z, 0–9 und „-“, ohne „-“ am Anfang und am Ende (wie esppdh.ValidSlug)
+    slug              TEXT NOT NULL UNIQUE CHECK (slug ~ '^[a-z0-9][a-z0-9-]{1,30}[a-z0-9]$'),
     name              TEXT NOT NULL,
     infrastructure_id UUID NOT NULL REFERENCES infrastructure(id),
     connection_id     UUID NOT NULL REFERENCES import_export_connections(id) ON DELETE RESTRICT,

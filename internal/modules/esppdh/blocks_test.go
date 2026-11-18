@@ -1,6 +1,9 @@
 package esppdh
 
 import (
+	"os"
+	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -427,5 +430,20 @@ func TestSlugRule(t *testing.T) {
 		if got := ValidSlug(s); got != want {
 			t.Errorf("ValidSlug(%q) = %v, erwartet %v", s, got, want)
 		}
+	}
+}
+
+// Die Datenbank prüft die Kennung nach derselben Regel wie ValidSlug (CHECK in Migration 179).
+func TestSlugRuleMatchesMigration(t *testing.T) {
+	src, err := os.ReadFile(filepath.Join("..", "..", "..", "migrations", "179_esppdh.up.sql"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := regexp.MustCompile(`slug\s+TEXT NOT NULL UNIQUE CHECK \(slug ~ '([^']*)'\)`).FindSubmatch(src)
+	if m == nil {
+		t.Fatal("CHECK der Kennung in Migration 179 nicht gefunden")
+	}
+	if string(m[1]) != slugRe.String() {
+		t.Errorf("CHECK der Kennung in Migration 179: %s, ValidSlug: %s", m[1], slugRe.String())
 	}
 }

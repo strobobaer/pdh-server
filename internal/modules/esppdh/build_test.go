@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -206,8 +207,9 @@ func TestRunnerOK(t *testing.T) {
 	if err := json.Unmarshal(b, &info); err != nil {
 		t.Fatal(err)
 	}
-	// „./“: eine Kennung kann so nie als Schalter von ESPHome gelesen werden
-	if strings.Join(info.Args, " ") != "compile ./geraet.yaml" {
+	// Konfiguration unter festem Namen (nie secrets.yaml, egal wie das Gerät heißt); „./“: der
+	// Name kann nie als Schalter von ESPHome gelesen werden
+	if strings.Join(info.Args, " ") != "compile ./esppdh.yaml" {
 		t.Errorf("Aufruf: %q", info.Args)
 	}
 	// Zwischendateien des Compilers (mit Kennwörtern) im Arbeitsordner – sie gehen mit ihm
@@ -249,6 +251,33 @@ func TestRunnerOK(t *testing.T) {
 	if st, err := os.Stat(filepath.Join(work, "platformio")); err != nil || !st.IsDir() {
 		t.Errorf("Zwischenspeicher von PlatformIO fehlt: %v", err)
 	}
+}
+
+// Ein Gerät mit der Kennung „secrets“: Konfiguration und Geheimnis-Datei bleiben getrennt (die
+// Konfiguration hieße sonst secrets.yaml und würde von den Geheimnissen überschrieben).
+func TestRunnerSlugSecrets(t *testing.T) {
+	r, work, out, _ := fakeRunner(t, "ok")
+	job := testJob()
+	job.Slug = "secrets"
+	job.Config = []byte("esphome:\n  name: esppdh-secrets\n")
+	if res := r.Build(context.Background(), job, nil); !res.OK {
+		t.Fatalf("Bau: %s", res.Log)
+	}
+	var info struct {
+		Args            []string
+		Config, Secrets string
+	}
+	b, err := os.ReadFile(filepath.Join(out, "info.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(b, &info); err != nil {
+		t.Fatal(err)
+	}
+	if info.Config != string(job.Config) || info.Secrets != string(job.Secrets) || slices.Contains(info.Args, "./secrets.yaml") {
+		t.Errorf("Aufruf %q, Konfiguration %q, Geheimnisse %q", info.Args, info.Config, info.Secrets)
+	}
+	assertGone(t, work)
 }
 
 // ESPHome meldet einen Fehler und zitiert dabei ein Kennwort – auch in der Schreibweise des
