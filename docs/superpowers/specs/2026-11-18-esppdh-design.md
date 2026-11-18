@@ -211,8 +211,13 @@ auf neue Platine).
 4. **Freier Editor nur für den Bereichsadministrator** und erst in Paket 3?
 5. **ESPHome-Version fest im Repository** (kommt mit PDH-Updates) statt
    „immer die neueste beim Update holen“?
-6. **Erste Platinen:** Welche habt ihr bzw. wollt ihr einsetzen (ESP32
-   DevKit, ESP32-C3, ESP8266/D1 mini, mit Ethernet z. B. WT32-ETH01/Olimex)?
-   Danach richtet sich die Auswahlliste in Paket 1.
+6. **Platinen – entschieden am 18.11.2026: „verschieden“.** Es gibt keine
+   feste Platine. Die Auswahl in Paket 1 nennt deshalb die gängigen Familien
+   (ESP32 DevKit, ESP32-S3, ESP32-C3, ESP8266/D1 mini, ESP32 mit Ethernet wie
+   WT32-ETH01 und Olimex ESP32-POE) und dazu **„Andere Platine“** mit der
+   Platinen-Kennung von ESPHome als Freitext. Je Familie hinterlegt das PDH
+   die für die Bausteine erlaubten Anschlüsse (z. B. welche Pins analog
+   messen können) und warnt bei einer unpassenden Wahl; bei „Andere Platine“
+   entfällt diese Prüfung. Ethernet-Platinen gehören damit zu Paket 1.
 7. **Netz der Geräte:** eigenes WLAN/VLAN für die Geräte oder das Betriebs-WLAN?
-   (Bestimmt, ob Ethernet-Platinen in Paket 1 gehören.)
+   (Bestimmt die Vorgabe für neue Geräte und die Hinweise im Handbuch.)
