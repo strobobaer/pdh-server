@@ -1110,6 +1110,11 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/import/esppdh/{id}/build", h.EsppdhBuildWeb)                    // Firmware bauen (esppdh_build.go)
 	r.Get("/import/esppdh/{id}/build/{bid}", h.EsppdhBuildPartWeb)           // Verlauf eines Laufs (htmx, alle 2 s)
 	r.Post("/import/esppdh/{id}/build/{bid}/cancel", h.EsppdhBuildCancelWeb) // Bau abbrechen
+	// Firmware herunterladen und per USB flashen (esppdh_flash.go): nur esppdh.edit am Gerät
+	r.Get("/import/esppdh/{id}/firmware/{bid}/factory.bin", h.EsppdhFactoryWeb)
+	r.Get("/import/esppdh/{id}/firmware/{bid}/ota.bin", h.EsppdhOTAWeb)
+	r.Get("/import/esppdh/{id}/firmware/{bid}/manifest.json", h.EsppdhManifestWeb)
+	r.Get("/static/vendor/esp-web-tools/{file}", h.EsppdhWebToolsWeb) // ESP Web Tools aus dem Programm, nie von außen
 	// Verbindungsseiten (connection_detail.go)
 	r.Get("/import/connections/{id}", h.ImportConnectionPage)
 	r.Get("/export/connections/{id}", h.ExportConnectionPage)

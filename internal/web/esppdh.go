@@ -28,7 +28,8 @@ import (
 //	POST /import/esppdh/{id}/delete        endgültig löschen (esppdh.admin, Bereichsadministrator)
 //	GET  /import/esppdh/{id}/config.yaml   ESPHome-Konfiguration ohne Kennwörter (esppdh.view)
 //
-// Firmware bauen, Verlauf und Abbrechen: esppdh_build.go (/import/esppdh/{id}/build…).
+// Firmware bauen, Verlauf und Abbrechen: esppdh_build.go (/import/esppdh/{id}/build…);
+// Firmware herunterladen und per USB flashen: esppdh_flash.go (/import/esppdh/{id}/firmware/…).
 //
 // Die Rechte gelten in der Abteilung der Anlage des Geräts (hasPermRec mit esppdhRef, Regeln in
 // gateRules). Jedes Gerät meldet sich am eingebauten Broker seiner Verbindung mit eigenem
@@ -441,6 +442,9 @@ type ESPPDHDevicePageData struct {
 	CanBuild  bool            // Knopf „Firmware bauen“
 	BuildNote string          // warum gerade nicht gebaut werden kann
 	Changed   bool            // Konfiguration seit dem letzten Bau geändert
+
+	// Firmware herunterladen und per USB flashen (esppdh_flash.go), nur mit esppdh.edit
+	Flash *esppdhFlashView
 }
 
 // esppdhBlockViews: Zeilen des Formulars – gespeicherte bzw. eingegebene Bausteine.
@@ -576,6 +580,7 @@ func (h *Handler) esppdhRenderDevice(w http.ResponseWriter, r *http.Request, d e
 		pd.Problems = append(pd.Problems, esppdh.ValidateDevice(res.Dev)...)
 	}
 	h.esppdhFirmwareCard(ctx, &pd, d, res, mqttPW, apPW, serr == nil)
+	h.esppdhFlashCard(ctx, &pd, d)
 	if pd.CanEdit && !d.Wired {
 		pd.APPassword = apPW
 	}

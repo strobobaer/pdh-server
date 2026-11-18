@@ -22,6 +22,22 @@
 .esp-actions .btn{width:100%;justify-content:center;white-space:normal;text-align:center;line-height:1.3;padding-top:6px;padding-bottom:6px}
 .esp-hint-bad{border-color:var(--red)}
 .esp-hint-bad>i{color:var(--red)}
+/* Firmware aufspielen (esppdh_flash.go): Knopf „Per USB flashen“ und Herunterladen */
+.esp-flash{border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin:4px 0 14px;background:var(--bg);min-width:0}
+.esp-flash-head{font-weight:600;font-size:13.5px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.esp-flash .btn{white-space:normal;text-align:center;line-height:1.3;max-width:100%;padding-top:6px;padding-bottom:6px}
+.esp-flash-dl{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.esp-flash-usb{margin-top:8px}
+/* Fenster von ESP Web Tools beim USB-Flash: Farben, Schrift und Ecken aus dem Farbschema (hell/dunkel, Fiori/Fluent) */
+ewt-install-dialog,ewt-no-port-picked-dialog{
+  --md-sys-color-primary:var(--accent);--md-sys-color-on-primary:var(--on-accent,#fff);
+  --md-sys-color-surface:var(--bg2);--md-sys-color-surface-container:var(--bg2);--md-sys-color-surface-container-high:var(--bg2);
+  --md-sys-color-surface-container-highest:var(--bg3);--md-sys-color-secondary-container:var(--bg3);--md-sys-color-on-secondary-container:var(--text);
+  --md-sys-color-on-surface:var(--text);--md-sys-color-on-surface-variant:var(--muted);
+  --md-sys-color-outline:var(--border);--md-sys-color-outline-variant:var(--border);
+  --md-sys-color-error:var(--red);--danger-color:var(--red);--text-color:var(--muted);
+  --roboto-font:var(--font);--md-dialog-container-shape:8px}
+html[data-style="fiori"] ewt-install-dialog,html[data-style="fiori"] ewt-no-port-picked-dialog{--md-dialog-container-shape:12px}
 </style>
 
 <div class="esp-head">
@@ -134,6 +150,7 @@
   </form>
   <p class="esp-note">Es baut immer nur ein Gerät zur Zeit, weitere warten. Der erste Bau je Platinentyp lädt Werkzeuge aus dem Internet (mehrere hundert MB) und dauert deshalb länger.</p>
   {{else if and .CanEdit .BuildNote}}<p class="esp-note"><i class="ti ti-info-circle" aria-hidden="true"></i> {{.BuildNote}}</p>{{end}}
+  {{with .Flash}}{{template "esppdh-flash" .}}{{end}}
   {{with .Run}}{{template "esppdh-build" .}}{{end}}
   {{if gt (len .Runs) 1}}
   <div class="esp-runs-title">Letzte Läufe</div>
@@ -185,6 +202,58 @@ function espMove(btn, dir){
   if(dir < 0 && b.previousElementSibling) b.parentNode.insertBefore(b, b.previousElementSibling);
   if(dir > 0 && b.nextElementSibling) b.parentNode.insertBefore(b.nextElementSibling, b);
 }
+</script>
+{{end}}
+{{end}}
+
+{{/* Firmware aufspielen (esppdhFlashView, esppdh_flash.go): jüngster gelungener Lauf, nur mit
+     esppdh.edit. Der Knopf „Per USB flashen“ bleibt verborgen, bis das Skript Web Serial in einem
+     sicheren Kontext (https) findet und ESP Web Tools geladen hat – lokal aus
+     /static/vendor/esp-web-tools/, nie von außen. Ohne JavaScript bleibt der Hinweis stehen. */}}
+{{define "esppdh-flash"}}
+<div class="esp-flash" id="esp-flash">
+  <div class="esp-flash-head"><i class="ti ti-usb" aria-hidden="true"></i> Firmware aufspielen</div>
+  <p class="esp-note" style="margin:4px 0 0">Bau vom {{.When}}{{with .Version}} · ESPHome {{.}}{{end}}{{with .SizeText}} · {{.}}{{end}}</p>
+  {{if not .Chip}}
+  <p class="esp-note">Für „Andere Platine“ gibt es kein USB-Flash im Browser – die Firmware herunterladen und mit einem eigenen Werkzeug (z. B. esptool) ab Adresse 0 aufspielen.</p>
+  {{else if .Stale}}
+  <p class="esp-note"><i class="ti ti-info-circle" aria-hidden="true"></i> Per USB flashen geht erst nach einem neuen Bau – die Konfiguration hat sich seitdem geändert.</p>
+  {{else}}
+  <div class="esp-flash-usb" hidden>
+    <esp-web-install-button manifest="/import/esppdh/{{.DeviceID}}/firmware/{{.BuildID}}/manifest.json">
+      <button slot="activate" type="button" class="btn btn-primary"><i class="ti ti-usb" aria-hidden="true"></i> Per USB flashen</button>
+    </esp-web-install-button>
+    <p class="esp-note">Gerät per USB-Kabel anschließen, „Per USB flashen“ drücken und den Anschluss wählen. Im Fenster (englisch) „Install …“ und dann „Install“ wählen: Das Gerät wird gelöscht und neu beschrieben. Seite dabei offen lassen.</p>
+  </div>
+  <p class="esp-note esp-flash-no">USB-Flash braucht Chrome oder Edge und eine https-Adresse des PDH – hier die Firmware herunterladen</p>
+  {{end}}
+  <div class="esp-flash-dl">
+    <a class="btn" href="/import/esppdh/{{.DeviceID}}/firmware/{{.BuildID}}/factory.bin" download><i class="ti ti-download" aria-hidden="true"></i> Firmware zum ersten Flashen</a>
+    <a class="btn" href="/import/esppdh/{{.DeviceID}}/firmware/{{.BuildID}}/ota.bin" download><i class="ti ti-download" aria-hidden="true"></i> Update-Datei (über das Netz)</a>
+  </div>
+  <p class="esp-note">Die Firmware enthält WLAN- und MQTT-Kennwort – nur für dieses Gerät verwenden und nicht weitergeben.</p>
+</div>
+{{if and .Chip (not .Stale)}}
+<script>
+// Per USB flashen: nur mit Web Serial (Chrome, Edge) in einem sicheren Kontext (https) und wenn
+// die Seite USB darf (nicht in einem fremden Rahmen ohne Freigabe). Erst dann lädt die Seite
+// ESP Web Tools – aus dem Programm, nie von außen; sonst bleibt der Hinweis zum Herunterladen.
+(() => {
+  const usb = document.querySelector('.esp-flash-usb');
+  if (!usb || !(window.isSecureContext && 'serial' in navigator)) return;
+  const pp = document.permissionsPolicy || document.featurePolicy;
+  if (pp && typeof pp.allowsFeature === 'function' && !pp.allowsFeature('serial')) return;
+  const s = document.createElement('script');
+  s.type = 'module';
+  s.src = '/static/vendor/esp-web-tools/install-button.js?v={{appVersion}}';
+  s.onload = () => {
+    if (!customElements.get('esp-web-install-button')) return;
+    usb.hidden = false;
+    const no = document.querySelector('.esp-flash-no');
+    if (no) no.hidden = true;
+  };
+  document.head.appendChild(s);
+})();
 </script>
 {{end}}
 {{end}}
