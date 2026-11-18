@@ -118,9 +118,19 @@ func ValidateDevice(d Device) []string {
 	var msgs []string
 	add := func(format string, args ...any) { msgs = append(msgs, fmt.Sprintf(format, args...)) }
 
+	// Ungültiges UTF-8 (z. B. aus einer falsch kodierten Übernahme) kann yaml.v3 nicht schreiben.
+	utf8OK := func(v, what string) bool {
+		if !utf8.ValidString(v) {
+			add("%s enthält ungültige Zeichen.", what)
+			return false
+		}
+		return true
+	}
+
 	if !ValidSlug(d.Slug) {
 		add("Die Kennung muss 3 bis 32 Zeichen lang sein und darf nur a–z, 0–9 und „-“ enthalten.")
 	}
+	utf8OK(d.Name, "Der Name")
 	b, ok := BoardByKey(d.BoardKey)
 	switch {
 	case !ok:
@@ -140,13 +150,14 @@ func ValidateDevice(d Device) []string {
 		switch {
 		case d.SSID == "":
 			add("Kein WLAN gewählt.")
+		case !utf8OK(d.SSID, "Der WLAN-Name"):
 		case len(d.SSID) > maxSSID:
 			add("Der WLAN-Name ist länger als %d Byte.", maxSSID)
 		}
-		if n := utf8.RuneCountInString(d.WLANPassword); d.WLANPassword != "" && (n < 8 || n > 64) {
+		if n := utf8.RuneCountInString(d.WLANPassword); utf8OK(d.WLANPassword, "Das WLAN-Kennwort") && d.WLANPassword != "" && (n < 8 || n > 64) {
 			add("Das WLAN-Kennwort muss 8 bis 64 Zeichen haben.")
 		}
-		if n := utf8.RuneCountInString(d.APPassword); n < 8 || n > 64 {
+		if n := utf8.RuneCountInString(d.APPassword); utf8OK(d.APPassword, "Das Kennwort für den Notzugang") && (n < 8 || n > 64) {
 			add("Das Kennwort für den Notzugang muss 8 bis 64 Zeichen haben.")
 		}
 	}
@@ -175,6 +186,8 @@ func ValidateDevice(d Device) []string {
 	}
 	if d.MQTTPassword == "" {
 		add("Das MQTT-Kennwort fehlt.")
+	} else {
+		utf8OK(d.MQTTPassword, "Das MQTT-Kennwort")
 	}
 	if ok {
 		msgs = append(msgs, ValidateBlocks(b, d.Blocks)...)
@@ -323,10 +336,10 @@ func mqttNode(d Device) *yaml.Node {
 // blockSensors: Sensoren eines Bausteins. adcScale: Spannungsteiler vor dem Analog-Pin (0 = keiner).
 func blockSensors(slug string, r resolvedBlock, platform string, adcScale float64) []*yaml.Node {
 	topic := func(value string) *yaml.Node {
-		return plain(fmt.Sprintf("esppdh/%s/%s-%d/%s", slug, r.def.Kind, r.n, value))
+		return plain(fmt.Sprintf("esppdh/%s/%s-%d/%s", slug, r.def.Kind, r.nr, value))
 	}
-	name := func(value string) *yaml.Node { return plain(fmt.Sprintf("%s %d %s", r.def.Label, r.n, value)) }
-	id := func(suffix string) *yaml.Node { return plain(fmt.Sprintf("%s_%d_%s", r.def.Kind, r.n, suffix)) }
+	name := func(value string) *yaml.Node { return plain(fmt.Sprintf("%s %d %s", r.def.Label, r.nr, value)) }
+	id := func(suffix string) *yaml.Node { return plain(fmt.Sprintf("%s_%d_%s", r.def.Kind, r.nr, suffix)) }
 	num := func(key string) float64 { f, _ := strconv.ParseFloat(r.p[key], 64); return f }
 	filter := func(kind, value string) *yaml.Node { return newMap().add(kind, plain(value)).Node }
 

@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/pem"
 	"flag"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -43,18 +44,18 @@ type goldenCase struct {
 
 func goldenCases() []goldenCase {
 	// esp32dev mit S0-Zähler, TLS
-	c1 := testDevice("esp32dev", Block{Kind: "s0", Params: map[string]string{"pin": "GPIO4", "pulses": "1000"}})
+	c1 := testDevice("esp32dev", Block{Kind: "s0", Nr: 1, Params: map[string]string{"pin": "GPIO4", "pulses": "1000"}})
 	c1.Name = "Presse 3 / Halle 1"
 	c1.BrokerTLS, c1.BrokerPort = true, 8883
 
 	// D1 mini mit Stückzähler (fallende Flanke), ohne TLS
-	c2 := testDevice("d1-mini", Block{Kind: "counter", Params: map[string]string{"pin": "D5", "edge": "fallend"}})
+	c2 := testDevice("d1-mini", Block{Kind: "counter", Nr: 1, Params: map[string]string{"pin": "D5", "edge": "fallend"}})
 	c2.Slug, c2.MQTTUser, c2.Name = "linie2-takt", "esppdh-linie2-takt", "Linie 2 Takt"
 
 	// WT32-ETH01 am Kabel mit zwei PZEM-004T an einem Anschluss, TLS
 	c3 := testDevice("wt32-eth01",
-		Block{Kind: "pzem", Params: map[string]string{"rx_pin": "GPIO5", "tx_pin": "GPIO17"}},
-		Block{Kind: "pzem", Params: map[string]string{"rx_pin": "GPIO5", "tx_pin": "GPIO17", "address": "2"}},
+		Block{Kind: "pzem", Nr: 1, Params: map[string]string{"rx_pin": "GPIO5", "tx_pin": "GPIO17"}},
+		Block{Kind: "pzem", Nr: 2, Params: map[string]string{"rx_pin": "GPIO5", "tx_pin": "GPIO17", "address": "2"}},
 	)
 	c3.Slug, c3.MQTTUser, c3.Name = "verteiler-h2", "esppdh-verteiler-h2", "Verteiler Halle 2"
 	c3.Wired, c3.SSID, c3.WLANPassword, c3.APPassword = true, "", "", ""
@@ -62,8 +63,8 @@ func goldenCases() []goldenCase {
 
 	// ESP32-S3 mit SCT-013 (Stromausgang, Bürde 33 Ω) und S0-Zähler, verborgenes WLAN
 	c4 := testDevice("esp32-s3",
-		Block{Kind: "sct013", Params: map[string]string{"pin": "GPIO1", "clamp": "100A/50mA", "burden": "33", "voltage": "230"}},
-		Block{Kind: "s0", Params: map[string]string{"pin": "GPIO4", "pulses": "800"}},
+		Block{Kind: "sct013", Nr: 1, Params: map[string]string{"pin": "GPIO1", "clamp": "100A/50mA", "burden": "33", "voltage": "230"}},
+		Block{Kind: "s0", Nr: 1, Params: map[string]string{"pin": "GPIO4", "pulses": "800"}},
 	)
 	c4.Slug, c4.MQTTUser, c4.Name = "kompressor", "esppdh-kompressor", "Kompressor"
 	c4.WLANHidden = true
@@ -152,7 +153,7 @@ func get(n *yaml.Node, key string) *yaml.Node {
 }
 
 func TestGenerateNoSecretsInConfig(t *testing.T) {
-	d := testDevice("esp32dev", Block{Kind: "s0", Params: map[string]string{"pin": "GPIO4"}})
+	d := testDevice("esp32dev", Block{Kind: "s0", Nr: 1, Params: map[string]string{"pin": "GPIO4"}})
 	cfg, sec, err := Generate(d)
 	if err != nil {
 		t.Fatal(err)
@@ -185,7 +186,7 @@ func TestGenerateNoSecretsInConfig(t *testing.T) {
 		t.Errorf("Schlüssel der Geheimnis-Datei: %v", got)
 	}
 	// verkabelt: nur das MQTT-Kennwort
-	w := testDevice("wt32-eth01", Block{Kind: "s0", Params: map[string]string{"pin": "GPIO4"}})
+	w := testDevice("wt32-eth01", Block{Kind: "s0", Nr: 1, Params: map[string]string{"pin": "GPIO4"}})
 	w.Wired = true
 	_, sec, err = Generate(w)
 	if err != nil {
@@ -197,7 +198,7 @@ func TestGenerateNoSecretsInConfig(t *testing.T) {
 }
 
 func TestGenerateEscapesInput(t *testing.T) {
-	d := testDevice("esp32dev", Block{Kind: "s0", Params: map[string]string{"pin": "GPIO4"}})
+	d := testDevice("esp32dev", Block{Kind: "s0", Nr: 1, Params: map[string]string{"pin": "GPIO4"}})
 	d.Name = "x: y\n  lambda: |-\n    boom"
 	d.SSID = "Werk #1 'ost'"
 	d.WLANPassword = `pw: "x" #1 'y' {a: b} ${ 7*7 }`
@@ -247,7 +248,7 @@ func TestGenerateEscapesInput(t *testing.T) {
 	str(get(get(parseYAML(t, cfg2), "esphome"), "friendly_name"), d.Name, "friendly_name mit $")
 
 	// andere Platine: die Platinen-Kennung ist ebenfalls Eingabe
-	o := testDevice(BoardOther, Block{Kind: "s0", Params: map[string]string{"pin": "GPIO4"}})
+	o := testDevice(BoardOther, Block{Kind: "s0", Nr: 1, Params: map[string]string{"pin": "GPIO4"}})
 	o.CustomBoard = "nodemcuv2"
 	cfg3, _, err := Generate(o)
 	if err != nil {
@@ -305,7 +306,7 @@ func TestDeviceName(t *testing.T) {
 }
 
 func TestGenerateRejectsInvalid(t *testing.T) {
-	d := testDevice("d1-mini", Block{Kind: "counter", Params: map[string]string{"pin": "D5"}})
+	d := testDevice("d1-mini", Block{Kind: "counter", Nr: 1, Params: map[string]string{"pin": "D5"}})
 	d.BrokerTLS = true
 	cfg, sec, err := Generate(d)
 	if err == nil || cfg != nil || sec != nil {
@@ -317,10 +318,111 @@ func TestGenerateRejectsInvalid(t *testing.T) {
 	if h := ConfigHash(d); h != "" {
 		t.Errorf("ConfigHash eines ungültigen Geräts: %q", h)
 	}
+
+	// ungültiges UTF-8 fängt schon die Prüfung ab – mit deutscher Meldung, nicht als YAML-Fehler
+	u := testDevice("esp32dev", Block{Kind: "s0", Nr: 1, Params: map[string]string{"pin": "GPIO4"}})
+	u.Name = "Presse \xff 3"
+	if _, _, err := Generate(u); err == nil || !strings.Contains(err.Error(), "ungültige Zeichen") {
+		t.Errorf("Name mit ungültigem UTF-8: %v", err)
+	}
+	if h := ConfigHash(u); h != "" {
+		t.Errorf("ConfigHash mit ungültigem UTF-8: %q", h)
+	}
+}
+
+// sensorsBy: Sensoren der Konfiguration mit der Plattform platform.
+func sensorsBy(t *testing.T, cfg []byte, platform string) []*yaml.Node {
+	t.Helper()
+	var out []*yaml.Node
+	for _, s := range get(parseYAML(t, cfg), "sensor").Content {
+		if p := get(s, "platform"); p != nil && p.Value == platform {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// Themen hängen an der festen Nummer des Bausteins, nicht an seiner Stelle in der Liste:
+// Löschen oder Verschieben eines Bausteins lässt die Werte der anderen nicht wandern.
+func TestTopicsFollowBlockNr(t *testing.T) {
+	a := Block{Kind: "s0", Nr: 1, Params: map[string]string{"pin": "GPIO4"}}
+	b := Block{Kind: "s0", Nr: 2, Params: map[string]string{"pin": "GPIO5"}}
+	topics := func(blocks ...Block) map[string]string { // Thema → Pin
+		t.Helper()
+		cfg, _, err := Generate(testDevice("esp32dev", blocks...))
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := map[string]string{}
+		for _, s := range sensorsBy(t, cfg, "pulse_meter") {
+			out[get(s, "state_topic").Value] = get(get(s, "pin"), "number").Value
+			out[get(get(s, "total"), "state_topic").Value] = get(get(s, "pin"), "number").Value
+		}
+		return out
+	}
+	both := map[string]string{
+		"esppdh/halle1-s0/s0-1/leistung": "GPIO4", "esppdh/halle1-s0/s0-1/zaehlerstand": "GPIO4",
+		"esppdh/halle1-s0/s0-2/leistung": "GPIO5", "esppdh/halle1-s0/s0-2/zaehlerstand": "GPIO5",
+	}
+	if got := topics(a, b); !maps.Equal(got, both) {
+		t.Errorf("zwei S0: %v", got)
+	}
+	if got := topics(b, a); !maps.Equal(got, both) {
+		t.Errorf("vertauscht: %v", got)
+	}
+	if got, want := topics(b), map[string]string{
+		"esppdh/halle1-s0/s0-2/leistung": "GPIO5", "esppdh/halle1-s0/s0-2/zaehlerstand": "GPIO5",
+	}; !maps.Equal(got, want) {
+		t.Errorf("erster gelöscht: %v", got)
+	}
+
+	// PZEM an denselben Pins: der Anschluss heißt nach der kleinsten Nummer, egal in welcher Reihenfolge
+	p := func(nr int, addr string) Block {
+		return Block{Kind: "pzem", Nr: nr, Params: map[string]string{"rx_pin": "GPIO16", "tx_pin": "GPIO17", "address": addr}}
+	}
+	for _, order := range [][]Block{{p(3, "1"), p(2, "2")}, {p(2, "2"), p(3, "1")}} {
+		cfg, _, err := Generate(testDevice("esp32dev", order...))
+		if err != nil {
+			t.Fatal(err)
+		}
+		root := parseYAML(t, cfg)
+		if u := get(get(root, "uart").Content[0], "id"); u.Value != "pzem_uart_2" {
+			t.Errorf("UART-Kennung %q", u.Value)
+		}
+		for _, s := range sensorsBy(t, cfg, "pzemac") {
+			if m := get(s, "modbus_id").Value; m != "pzem_modbus_2" {
+				t.Errorf("modbus_id %q", m)
+			}
+		}
+	}
+}
+
+// Flanke des Stückzählers: Pin mit Pull-up, Sensor oder Kontakt schaltet gegen GND.
+// „fallend“ zählt beim Schalten (Pin fällt auf GND), „steigend“ beim Loslassen.
+func TestCounterEdge(t *testing.T) {
+	for edge, want := range map[string][2]string{
+		"steigend": {"INCREMENT", "DISABLE"},
+		"fallend":  {"DISABLE", "INCREMENT"},
+		"":         {"DISABLE", "INCREMENT"}, // Vorgabe: fallend
+	} {
+		d := testDevice("esp32dev", Block{Kind: "counter", Nr: 1, Params: map[string]string{"pin": "GPIO4", "edge": edge}})
+		cfg, _, err := Generate(d)
+		if err != nil {
+			t.Fatal(err)
+		}
+		s := sensorsBy(t, cfg, "pulse_counter")[0]
+		cm := get(s, "count_mode")
+		if got := [2]string{get(cm, "rising_edge").Value, get(cm, "falling_edge").Value}; got != want {
+			t.Errorf("Flanke %q: rising/falling %v, erwartet %v", edge, got, want)
+		}
+		if pu := get(get(get(s, "pin"), "mode"), "pullup"); pu == nil || pu.Value != "true" {
+			t.Errorf("Flanke %q: kein Pull-up", edge)
+		}
+	}
 }
 
 func TestGenerateTLS(t *testing.T) {
-	d := testDevice("esp32dev", Block{Kind: "s0", Params: map[string]string{"pin": "GPIO4"}})
+	d := testDevice("esp32dev", Block{Kind: "s0", Nr: 1, Params: map[string]string{"pin": "GPIO4"}})
 	cfg, _, err := Generate(d)
 	if err != nil {
 		t.Fatal(err)
@@ -365,7 +467,7 @@ func TestLetsEncryptRoots(t *testing.T) {
 }
 
 func TestConfigHash(t *testing.T) {
-	d := testDevice("esp32dev", Block{Kind: "s0", Params: map[string]string{"pin": "GPIO4"}})
+	d := testDevice("esp32dev", Block{Kind: "s0", Nr: 1, Params: map[string]string{"pin": "GPIO4"}})
 	h := ConfigHash(d)
 	if len(h) != 64 || h != ConfigHash(d) {
 		t.Fatalf("ConfigHash %q", h)
@@ -378,7 +480,7 @@ func TestConfigHash(t *testing.T) {
 	}
 	// … und mit einem Baustein
 	d3 := d
-	d3.Blocks = []Block{{Kind: "s0", Params: map[string]string{"pin": "GPIO4", "pulses": "500"}}}
+	d3.Blocks = []Block{{Kind: "s0", Nr: 1, Params: map[string]string{"pin": "GPIO4", "pulses": "500"}}}
 	if ConfigHash(d3) == h {
 		t.Error("anderer Baustein ändert den Hash nicht")
 	}

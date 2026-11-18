@@ -21,9 +21,26 @@ const (
 )
 
 // Block ist ein Baustein eines Geräts; Params enthält die Felder seiner BlockDef (leer = Vorgabe).
+//
+// Nr ist die feste Nummer des Bausteins je Art (ab 1, je Gerät und Art eindeutig). Sie bestimmt
+// Thema und Kennungen (esppdh/<kennung>/<art>-<Nr>/…). Der Aufrufer vergibt sie einmal beim
+// Anlegen (NextBlockNr) und ändert sie nie – auch nicht, wenn andere Bausteine gelöscht oder
+// verschoben werden. Sonst wanderten Werte nach dem nächsten Bau auf ein anderes Thema.
 type Block struct {
 	Kind   string
+	Nr     int
 	Params map[string]string
+}
+
+// NextBlockNr: Nummer für einen neuen Baustein der Art kind – höchste vorhandene Nummer + 1.
+func NextBlockNr(blocks []Block, kind string) int {
+	n := 0
+	for _, b := range blocks {
+		if b.Kind == kind && b.Nr > n {
+			n = b.Nr
+		}
+	}
+	return n + 1
 }
 
 // BlockDef beschreibt eine Art von Baustein für das Formular.
@@ -42,6 +59,10 @@ type Field struct {
 
 	min, max float64 // Zahlenfeld: erlaubter Bereich
 	integer  bool    // Zahlenfeld: nur ganze Zahlen (kein Tausenderpunkt-Raten)
+
+	// Feld zählt nur, wenn Feld onlyIfKey den Wert onlyIfValue hat (davor stehen); sonst wird es
+	// weder geprüft noch übernommen. Ist es dann leer, fehlt es.
+	onlyIfKey, onlyIfValue string
 }
 
 // Zangentypen des SCT-013. Die Typen mit Spannungsausgang haben die Bürde eingebaut
@@ -74,7 +95,8 @@ func BlockDefs() []BlockDef {
 				{Key: "clamp", Label: "Zangentyp", Type: "select", Required: true,
 					Options: []string{"5A/1V", "30A/1V", "50A/1V", clampCurrentOut}, Help: "Steht auf der Zange."},
 				{Key: "burden", Label: "Bürdenwiderstand (Ω)", Type: "number",
-					Help: "Nur bei 100A/50mA, z. B. 33.", min: 1, max: 10000},
+					Help: "Nur bei 100A/50mA, z. B. 33 oder 22,5.", min: 1, max: 10000,
+					onlyIfKey: "clamp", onlyIfValue: clampCurrentOut},
 				{Key: "voltage", Label: "Netzspannung (V)", Type: "number", Default: "230", Required: true,
 					Help: "Spannung zwischen Leiter und N, meist 230.", min: 1, max: 1000},
 			},
@@ -93,11 +115,15 @@ func BlockDefs() []BlockDef {
 			Kind: KindCounter, Label: "Stückzähler",
 			Help: "Zählt Impulse, z. B. einer Lichtschranke. Liefert die Stückzahl seit dem Start des Geräts.",
 			Fields: []Field{
-				{Key: "pin", Label: "Pin", Type: "pin", Required: true},
+				{Key: "pin", Label: "Pin", Type: "pin", Required: true,
+					Help: "Kontakt oder Sensorausgang zwischen Pin und GND (der Pin hat einen Pull-up)."},
 				{Key: "debounce", Label: "Entprellzeit (ms)", Type: "number", Default: "50", Required: true,
 					Help: "Kürzere Impulse und Prellen werden nicht gezählt.", min: 0, max: 10000, integer: true},
-				{Key: "edge", Label: "Flanke", Type: "select", Default: "steigend", Required: true,
-					Options: []string{"steigend", "fallend"}, Help: "Wann gezählt wird: beim Einschalten (steigend) oder Ausschalten (fallend) des Signals."},
+				// Der Pin hat einen Pull-up; Kontakt oder Sensor ziehen ihn beim Schalten auf GND.
+				// Schalten = Pin fällt (fallend), Loslassen = Pin steigt (steigend).
+				{Key: "edge", Label: "Flanke", Type: "select", Default: "fallend", Required: true,
+					Options: []string{"steigend", "fallend"},
+					Help:    "fallend: zählt, wenn Kontakt oder Sensor schaltet (Teil kommt an). steigend: zählt, wenn er wieder öffnet (Teil ist durch)."},
 			},
 		},
 	}
@@ -116,9 +142,9 @@ func blockDef(kind string) (BlockDef, bool) {
 // und bereinigten Zahlen.
 type resolvedBlock struct {
 	def BlockDef
-	n   int               // laufende Nummer je Art, ab 1 (Thema <art>-<n>)
+	nr  int               // feste Nummer je Art (Block.Nr) – Thema <art>-<nr>
 	p   map[string]string // Werte je Feld
-	bus int               // PZEM: Nummer des seriellen Anschlusses, ab 1
+	bus int               // PZEM: Kennung des seriellen Anschlusses = kleinste Nr der PZEM an diesen Pins
 }
 
 // ValidateBlocks prüft die Bausteine eines Geräts auf der Platine b. Rückgabe: Meldungen auf
@@ -140,9 +166,9 @@ func resolveBlocks(b Board, blocks []Block) ([]resolvedBlock, []string) {
 	var (
 		msgs  []string
 		out   []resolvedBlock
-		count = map[string]int{}
+		nrs   = map[string]int{} // "art#nummer" → Baustein
 		pins  = map[string]use{}
-		buses = map[string]int{} // "rx/tx" → Nummer des Anschlusses
+		buses = map[string]int{} // "rx/tx" → kleinste Nummer der PZEM an diesen Pins
 		addrs = map[string]int{} // "rx/tx#adresse" → Baustein
 	)
 	for i, blk := range blocks {
@@ -153,9 +179,16 @@ func resolveBlocks(b Board, blocks []Block) ([]resolvedBlock, []string) {
 			continue
 		}
 		prefix := fmt.Sprintf("Baustein %d (%s): ", no, def.Label)
+		switch key := fmt.Sprintf("%s#%d", def.Kind, blk.Nr); {
+		case blk.Nr < 1:
+			msgs = append(msgs, prefix+"Die Nummer des Bausteins fehlt.")
+		case nrs[key] > 0:
+			msgs = append(msgs, prefix+fmt.Sprintf("Nummer %d ist schon vergeben (Baustein %d).", blk.Nr, nrs[key]))
+		default:
+			nrs[key] = no
+		}
 		p, fmsgs := resolveFields(b, def, blk.Params)
-		count[def.Kind]++
-		r := resolvedBlock{def: def, n: count[def.Kind], p: p}
+		r := resolvedBlock{def: def, nr: blk.Nr, p: p}
 		for _, m := range fmsgs {
 			msgs = append(msgs, prefix+m)
 		}
@@ -170,10 +203,9 @@ func resolveBlocks(b Board, blocks []Block) ([]resolvedBlock, []string) {
 			}
 			key := p["rx_pin"] + "/" + p["tx_pin"]
 			owner = "pzem-" + key
-			if _, ok := buses[key]; !ok {
-				buses[key] = len(buses) + 1
+			if cur, ok := buses[key]; !ok || blk.Nr < cur {
+				buses[key] = blk.Nr
 			}
-			r.bus = buses[key]
 			if first, ok := addrs[key+"#"+p["address"]]; ok {
 				msgs = append(msgs, prefix+fmt.Sprintf("Adresse %s ist an denselben Pins schon vergeben (Baustein %d).", p["address"], first))
 			} else {
@@ -195,6 +227,12 @@ func resolveBlocks(b Board, blocks []Block) ([]resolvedBlock, []string) {
 		}
 		out = append(out, r)
 	}
+	// Kennung des Anschlusses aus der kleinsten Nummer: unabhängig von der Reihenfolge
+	for i := range out {
+		if out[i].def.Kind == KindPZEM {
+			out[i].bus = buses[out[i].p["rx_pin"]+"/"+out[i].p["tx_pin"]]
+		}
+	}
 	if b.maxUARTs > 0 && len(buses) > b.maxUARTs {
 		msgs = append(msgs, fmt.Sprintf("Diese Platine hat nur %d serielle Anschlüsse für PZEM-004T. "+
 			"Mehrere PZEM können sich einen Anschluss teilen: gleiche RX- und TX-Pins, verschiedene Adressen.", b.maxUARTs))
@@ -207,12 +245,18 @@ func resolveFields(b Board, def BlockDef, params map[string]string) (map[string]
 	p := map[string]string{}
 	var msgs []string
 	for _, f := range def.Fields {
+		if f.onlyIfKey != "" && p[f.onlyIfKey] != f.onlyIfValue {
+			continue // zählt bei dieser Auswahl nicht: weder prüfen noch übernehmen
+		}
 		v := strings.TrimSpace(params[f.Key])
 		if v == "" {
 			v = f.Default
 		}
 		if v == "" {
-			if f.Required {
+			switch {
+			case f.onlyIfKey != "":
+				msgs = append(msgs, fmt.Sprintf("„%s“ fehlt (nötig bei %s).", f.Label, f.onlyIfValue))
+			case f.Required:
 				msgs = append(msgs, fmt.Sprintf("„%s“ fehlt.", f.Label))
 			}
 			continue
@@ -234,6 +278,10 @@ func resolveFields(b Board, def BlockDef, params map[string]string) (map[string]
 			}
 			p[f.Key] = pin
 		case "number":
+			if !f.integer && ambiguousDecimal(v) {
+				msgs = append(msgs, fmt.Sprintf("„%s“: „%s“ ist nicht eindeutig – bitte ohne Tausenderpunkt, Dezimalstellen mit Komma (z. B. 1000 oder 22,5).", f.Label, short(v)))
+				continue
+			}
 			n, ok := parseNumber(v, f.integer)
 			if !ok || n < f.min || n > f.max {
 				what := "eine Zahl"
@@ -254,23 +302,23 @@ func resolveFields(b Board, def BlockDef, params map[string]string) (map[string]
 			p[f.Key] = v
 		}
 	}
-	if def.Kind == KindSCT013 {
-		switch {
-		case p["clamp"] != clampCurrentOut:
-			delete(p, "burden") // nur bei Stromausgang von Bedeutung
-		case strings.TrimSpace(params["burden"]) == "":
-			msgs = append(msgs, fmt.Sprintf("„Bürdenwiderstand“ fehlt (nötig bei %s).", clampCurrentOut))
-		}
-	}
 	return p, msgs
 }
 
 var (
-	pinDigits = regexp.MustCompile(`^[0-9]{1,3}$`)
-	pinName   = regexp.MustCompile(`^([A-Z]{1,8})([0-9]{1,3})$`)
-	intRe     = regexp.MustCompile(`^[0-9]{1,9}$`)
-	decRe     = regexp.MustCompile(`^[0-9]{1,9}(\.[0-9]{1,6})?$`)
+	pinDigits   = regexp.MustCompile(`^[0-9]{1,3}$`)
+	pinName     = regexp.MustCompile(`^([A-Z]{1,8})([0-9]{1,3})$`)
+	intRe       = regexp.MustCompile(`^[0-9]{1,9}$`)
+	decRe       = regexp.MustCompile(`^[0-9]{1,9}(\.[0-9]{1,6})?$`)
+	thousandsRe = regexp.MustCompile(`\.[0-9]{3}($|[.,])`)
 )
+
+// ambiguousDecimal: Dezimalzahl, bei der ein Punkt ein deutscher Tausenderpunkt sein kann –
+// beide Trennzeichen („1.000,5“) oder ein Punkt mit genau drei Ziffern danach („1.000“ wäre
+// sonst 1). Ein Komma ist immer das Dezimalzeichen („22,5“), ein Punkt sonst auch („22.5“).
+func ambiguousDecimal(v string) bool {
+	return strings.Contains(v, ",") && strings.Contains(v, ".") || thousandsRe.MatchString(v)
+}
 
 // normPin schreibt einen Pin einheitlich: „gpio04“ und „4“ werden zu „GPIO4“, „d5“ zu „D5“.
 // Andere Zeichen als Buchstaben und Ziffern sind ungültig.
@@ -316,8 +364,9 @@ func fnum(x float64) string {
 	return strconv.FormatFloat(r, 'f', -1, 64)
 }
 
-// short kürzt eine Eingabe für eine Meldung.
+// short kürzt eine Eingabe für eine Meldung (ungültiges UTF-8 wird zu „�“).
 func short(s string) string {
+	s = strings.ToValidUTF8(s, "�")
 	if r := []rune(s); len(r) > 40 {
 		return string(r[:40]) + "…"
 	}
