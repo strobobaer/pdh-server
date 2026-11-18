@@ -4,3 +4,5 @@
 internal/web/testdata/** text eol=lf
 # TIA-Quellen der Tests byte-genau halten (CRLF, Windows-1252)
 internal/modules/tiamqtt/testdata/** -text
+# ESPPDH-Erwartungsdateien (ESPHome-YAML) werden Byte für Byte verglichen: immer LF
+internal/modules/esppdh/testdata/** text eol=lf
