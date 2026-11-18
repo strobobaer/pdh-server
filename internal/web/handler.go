@@ -709,7 +709,8 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/admin/server-config/snmp/profiles/{id}/delete", h.SNMPProfileDeleteWeb)
 	r.Post("/admin/server-config/certs/lan", h.CertLANWeb)
 	r.Post("/admin/server-config/certs/lan6", h.CertLAN6Web) // IPv6 getrennt überschreiben (certs_lan6.go)
-	r.Post("/admin/server-config/esppdh", h.EsppdhSwitchWeb) // Reiter „ESPPDH“: Schalter und Umgebung (esppdh_settings.go)
+	r.Get("/admin/server-config/esppdh", h.EsppdhPanelWeb)   // Reiter „ESPPDH“: Schalter und Umgebung (esppdh_settings.go)
+	r.Post("/admin/server-config/esppdh", h.EsppdhSwitchWeb) // ein-/ausschalten
 	r.Post("/admin/server-config/esppdh/install", h.EsppdhInstallWeb)
 	// Reiter „Ausfallschutz“: Sicherung aufs Netzlaufwerk über den Update-Agenten (dr.go)
 	r.Post("/admin/server-config/dr/settings", h.DRSettingsWeb)

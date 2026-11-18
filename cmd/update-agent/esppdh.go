@@ -8,6 +8,9 @@ package main
 // Arbeitsordner /var/lib/pdh-esphome für den Dienstbenutzer. Das Skript ist mehrfach
 // ausführbar; install_update.sh ruft es bei jedem Update auf, wenn die Umgebung schon da ist.
 // Im Docker-Betrieb gibt es ESPPDH nicht (das Programm-Abbild enthält kein Python).
+//
+// Die Einrichtung dauert einige Minuten und läuft deshalb im Hintergrund (Muster
+// /v1/ha/install): POST startet, GET liefert den Stand; das PDH fragt alle 2 s nach.
 
 import (
 	"bufio"
@@ -25,9 +28,30 @@ const (
 	esppdhTailLines      = 15
 )
 
-// esppdhBusy: nur eine Einrichtung zur Zeit (das Skript sperrt zusätzlich per flock gegen
-// ein gleichzeitiges Update).
-var esppdhBusy sync.Mutex
+// esppdhStatus: Stand der Einrichtung (GET /v1/esppdh/install).
+type esppdhStatus struct {
+	OK      bool   `json:"ok"` // für agentJSON im PDH
+	Running bool   `json:"running"`
+	Done    bool   `json:"done"`              // ein Lauf ist fertig (seit dem Start des Agenten)
+	Version string `json:"version,omitempty"` // eingerichtete Version, wenn der Lauf geklappt hat
+	Error   string `json:"error,omitempty"`   // Meldung des fehlgeschlagenen Laufs samt Ende der Ausgabe
+}
+
+// esppdhJob: Einrichtung nur im Speicher, immer nur eine (das Skript sperrt zusätzlich per
+// flock gegen ein gleichzeitiges Update).
+type esppdhJob struct {
+	mu      sync.Mutex
+	running bool
+	done    bool
+	version string
+	err     string
+}
+
+func (j *esppdhJob) status() esppdhStatus {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	return esppdhStatus{OK: true, Running: j.running, Done: j.done, Version: j.version, Error: j.err}
+}
 
 // esppdhInstallScript läuft im Host-Namensraum, per systemd-run außerhalb von Agent-cgroup
 // und -Sandbox: Ein Neustart des Agenten bricht die Einrichtung nicht ab, und apt darf nach
@@ -64,40 +88,66 @@ func esppdhVersion(out string) string {
 }
 
 // esppdhTail: die letzten Zeilen der Ausgabe für die Fehlermeldung.
-func esppdhTail(out string) string {
+func esppdhTail(out string) []string {
 	lines := strings.Split(strings.TrimSpace(out), "\n")
 	if len(lines) > esppdhTailLines {
 		lines = lines[len(lines)-esppdhTailLines:]
 	}
-	return strings.Join(lines, "\n")
+	return lines
 }
 
-// esppdhInstallHandler: POST /v1/esppdh/install {} → {"ok":true,"version":"…"}.
-// Wartet, bis die Einrichtung fertig ist (einige Minuten).
-func (a *updateAgent) esppdhInstallHandler(w http.ResponseWriter, r *http.Request) {
+// esppdhResult: Ergebnis eines Laufs – Version oder Fehlermeldung. Die letzte Zeile der
+// Ausgabe (die Meldung des Skripts) steht vorn, darunter das Ende der Ausgabe.
+func esppdhResult(out string, err error) (version, msg string) {
+	tail := esppdhTail(out)
+	if err == nil {
+		if v := esppdhVersion(out); v != "" {
+			return v, ""
+		}
+		return "", "Einrichtung ohne Ergebnis – ESPHome nennt keine Version.\n\nLetzte Ausgabe:\n" + strings.Join(tail, "\n")
+	}
+	last := strings.TrimSpace(tail[len(tail)-1])
+	if last == "" {
+		last = err.Error()
+	}
+	return "", "Einrichtung fehlgeschlagen: " + last + "\n\nLetzte Ausgabe (" + err.Error() + "):\n" + strings.Join(tail, "\n")
+}
+
+// esppdhInstallHandler: POST /v1/esppdh/install {} → {"ok":true,"running":true}, sofort.
+// Läuft schon eine Einrichtung, startet keine zweite.
+func (a *updateAgent) esppdhInstallHandler(w http.ResponseWriter, _ *http.Request) {
 	if a.mode != "systemd" {
 		writeMountJSON(w, http.StatusOK, map[string]any{"ok": false, "error": esppdhDockerMsg})
 		return
 	}
-	if !esppdhBusy.TryLock() {
-		writeMountJSON(w, http.StatusConflict, map[string]any{"ok": false, "error": "Die Einrichtung läuft bereits"})
+	j := &a.esppdh
+	j.mu.Lock()
+	if j.running {
+		j.mu.Unlock()
+		writeMountJSON(w, http.StatusOK, map[string]any{"ok": true, "running": true})
 		return
 	}
-	defer esppdhBusy.Unlock()
-	// Die Antwort kommt erst nach der Einrichtung – länger als die übliche Schreibfrist.
-	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(esppdhInstallTimeout + time.Minute))
-	// Bricht das PDH die Anfrage ab, läuft die Einrichtung trotzdem zu Ende.
-	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), esppdhInstallTimeout)
-	defer cancel()
-	out, err := a.esppdhRunFn()(ctx, esppdhInstallScript, map[string]string{"PDH_ESPHOME_REPO": a.repoDir})
-	if err != nil {
-		writeMountJSON(w, http.StatusOK, map[string]any{"ok": false, "error": "Einrichtung fehlgeschlagen (" + err.Error() + "):\n" + esppdhTail(out)})
+	j.running, j.done, j.version, j.err = true, false, "", ""
+	j.mu.Unlock()
+	run := a.esppdhRunFn()
+	env := map[string]string{"PDH_ESPHOME_REPO": a.repoDir}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), esppdhInstallTimeout)
+		defer cancel()
+		out, err := run(ctx, esppdhInstallScript, env)
+		v, msg := esppdhResult(out, err)
+		j.mu.Lock()
+		j.running, j.done, j.version, j.err = false, true, v, msg
+		j.mu.Unlock()
+	}()
+	writeMountJSON(w, http.StatusOK, map[string]any{"ok": true, "running": true})
+}
+
+// esppdhStatusHandler: GET /v1/esppdh/install → Stand der Einrichtung.
+func (a *updateAgent) esppdhStatusHandler(w http.ResponseWriter, _ *http.Request) {
+	if a.mode != "systemd" {
+		writeMountJSON(w, http.StatusOK, map[string]any{"ok": false, "error": esppdhDockerMsg})
 		return
 	}
-	v := esppdhVersion(out)
-	if v == "" {
-		writeMountJSON(w, http.StatusOK, map[string]any{"ok": false, "error": "Einrichtung ohne Ergebnis – ESPHome nennt keine Version:\n" + esppdhTail(out)})
-		return
-	}
-	writeMountJSON(w, http.StatusOK, map[string]any{"ok": true, "version": v})
+	writeMountJSON(w, http.StatusOK, a.esppdh.status())
 }

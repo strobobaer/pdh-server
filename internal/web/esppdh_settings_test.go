@@ -8,7 +8,9 @@ import (
 	"net/url"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"pdh/internal/core/users"
 	"pdh/internal/modules/esppdh"
@@ -16,7 +18,8 @@ import (
 
 // ESPPDH – Karte in den Server-Einstellungen (esppdh_settings.go): Schalter und
 // „Umgebung einrichten“ nur mit canServerConfig, am Spiegel 409, im Docker-Betrieb nur ein
-// Hinweis. Die Python-Umgebung fehlt in den Tests (PDH_ESPHOME_DIR auf einen leeren Ordner).
+// Hinweis. Das Einrichten läuft beim Update-Agenten im Hintergrund; die Karte fragt alle 2 s
+// nach. Die Python-Umgebung fehlt in den Tests (PDH_ESPHOME_DIR auf einen leeren Ordner).
 
 // esppdhTestEnv: keine echte Umgebung, kein Docker; setzt beides nach dem Test zurück.
 func esppdhTestEnv(t *testing.T, docker bool) {
@@ -28,23 +31,50 @@ func esppdhTestEnv(t *testing.T, docker bool) {
 	esppdhDockerHook = func() bool { return docker }
 }
 
-// esppdhFakeAgent: Update-Agent, der jede Anfrage mitschreibt und mit answer antwortet.
-func esppdhFakeAgent(t *testing.T, answer string) (*httptest.Server, *[]string) {
+// esppdhAgent: Update-Agent im Test. POST /v1/esppdh/install antwortet mit start, GET mit
+// status (änderbar); jede Anfrage wird mitgeschrieben.
+type esppdhAgent struct {
+	mu            sync.Mutex
+	start, status string
+	calls         []string
+}
+
+func (a *esppdhAgent) setStatus(s string) { a.mu.Lock(); a.status = s; a.mu.Unlock() }
+
+func (a *esppdhAgent) log() []string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return append([]string(nil), a.calls...)
+}
+
+func esppdhFakeAgent(t *testing.T, start, status string) (*httptest.Server, *esppdhAgent) {
 	t.Helper()
-	calls := &[]string{}
+	a := &esppdhAgent{start: start, status: status}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
-		*calls = append(*calls, r.Method+" "+r.URL.Path+" "+string(body)+" "+r.Header.Get("Authorization"))
+		a.mu.Lock()
+		a.calls = append(a.calls, r.Method+" "+r.URL.Path+" "+string(body)+" "+r.Header.Get("Authorization"))
+		answer := a.status
+		if r.Method == http.MethodPost {
+			answer = a.start
+		}
+		a.mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
 		io.WriteString(w, answer)
 	}))
 	t.Cleanup(srv.Close)
-	return srv, calls
+	return srv, a
 }
 
-// esppdhReq: POST als Benutzer mit Rolle role.
-func esppdhReq(path string, role users.Role, form url.Values) *http.Request {
-	r := httptest.NewRequest(http.MethodPost, path, strings.NewReader(form.Encode()))
+const (
+	esppdhIdle    = `{"ok":true,"running":false,"done":false}`
+	esppdhRunning = `{"ok":true,"running":true,"done":false}`
+	esppdhOK      = `{"ok":true,"running":false,"done":true,"version":"2026.10.2"}`
+)
+
+// esppdhReq: Anfrage als Benutzer mit Rolle role.
+func esppdhReq(method, path string, role users.Role, form url.Values) *http.Request {
+	r := httptest.NewRequest(method, path, strings.NewReader(form.Encode()))
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	r.Header.Set("HX-Request", "true")
 	return r.WithContext(context.WithValue(r.Context(), "user", &users.User{ID: "u-esppdh", Role: role}))
@@ -58,33 +88,37 @@ func esppdhHandler(t *testing.T, perm bool, agentURL string) *Handler {
 
 func TestEsppdhRoutesNeedServerConfig(t *testing.T) {
 	esppdhTestEnv(t, false)
-	srv, calls := esppdhFakeAgent(t, `{"ok":true,"version":"2026.10.2"}`)
+	srv, ag := esppdhFakeAgent(t, esppdhRunning, esppdhIdle)
 	for _, c := range []struct {
 		name string
 		perm bool
 		role users.Role
 	}{{"ohne Recht", false, users.RoleAdmin}, {"Recht, aber kein Administrator", true, users.RoleManager}} {
 		h := esppdhHandler(t, c.perm, srv.URL)
-		for path, fn := range map[string]http.HandlerFunc{
-			"/admin/server-config/esppdh":         h.EsppdhSwitchWeb,
-			"/admin/server-config/esppdh/install": h.EsppdhInstallWeb,
+		for _, rt := range []struct {
+			method, path string
+			fn           http.HandlerFunc
+		}{
+			{http.MethodPost, "/admin/server-config/esppdh", h.EsppdhSwitchWeb},
+			{http.MethodPost, "/admin/server-config/esppdh/install", h.EsppdhInstallWeb},
+			{http.MethodGet, "/admin/server-config/esppdh", h.EsppdhPanelWeb},
 		} {
 			w := httptest.NewRecorder()
-			fn(w, esppdhReq(path, c.role, url.Values{"on": {"1"}}))
+			rt.fn(w, esppdhReq(rt.method, rt.path, c.role, url.Values{"on": {"1"}}))
 			if w.Code != http.StatusForbidden {
-				t.Errorf("%s %s: Status %d", c.name, path, w.Code)
+				t.Errorf("%s %s %s: Status %d", c.name, rt.method, rt.path, w.Code)
 			}
 		}
 	}
-	if len(*calls) != 0 {
-		t.Errorf("Agent ohne Recht gefragt: %v", *calls)
+	if calls := ag.log(); len(calls) != 0 {
+		t.Errorf("Agent ohne Recht gefragt: %v", calls)
 	}
 }
 
 // Am Spiegelserver: nichts schalten, nichts einrichten – 409.
 func TestEsppdhMirrorConflict(t *testing.T) {
 	esppdhTestEnv(t, false)
-	srv, calls := esppdhFakeAgent(t, `{"ok":true,"version":"2026.10.2"}`)
+	srv, ag := esppdhFakeAgent(t, esppdhRunning, esppdhIdle)
 	h := esppdhHandler(t, true, srv.URL)
 	h.SetMirror(MirrorInfo{On: true})
 	for path, fn := range map[string]http.HandlerFunc{
@@ -92,13 +126,15 @@ func TestEsppdhMirrorConflict(t *testing.T) {
 		"/admin/server-config/esppdh/install": h.EsppdhInstallWeb,
 	} {
 		w := httptest.NewRecorder()
-		fn(w, esppdhReq(path, users.RoleAdmin, url.Values{"on": {"1"}}))
+		fn(w, esppdhReq(http.MethodPost, path, users.RoleAdmin, url.Values{"on": {"1"}}))
 		if w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), mirrorReadOnlyMsg) {
 			t.Errorf("%s: %d %q", path, w.Code, w.Body.String())
 		}
 	}
-	if len(*calls) != 0 {
-		t.Errorf("Agent am Spiegel gefragt: %v", *calls)
+	for _, c := range ag.log() {
+		if strings.HasPrefix(c, "POST") {
+			t.Errorf("Einrichtung am Spiegel gestartet: %v", c)
+		}
 	}
 	// die Karte zeigt am Spiegel keinen Knopf
 	p := h.esppdhPanelFor(context.Background())
@@ -111,7 +147,7 @@ func TestEsppdhMirrorConflict(t *testing.T) {
 // Docker-Betrieb: Hinweis statt Knopf; die Aktionen fragen den Agenten nicht.
 func TestEsppdhDockerHint(t *testing.T) {
 	esppdhTestEnv(t, true)
-	srv, calls := esppdhFakeAgent(t, `{"ok":true,"version":"2026.10.2"}`)
+	srv, ag := esppdhFakeAgent(t, esppdhRunning, esppdhIdle)
 	h := esppdhHandler(t, true, srv.URL)
 	if !inDocker() || h.esppdhEnabled(context.Background()) {
 		t.Fatal("Haken für den Docker-Betrieb wirkt nicht")
@@ -126,41 +162,80 @@ func TestEsppdhDockerHint(t *testing.T) {
 		"/admin/server-config/esppdh/install": h.EsppdhInstallWeb,
 	} {
 		w := httptest.NewRecorder()
-		fn(w, esppdhReq(path, users.RoleAdmin, url.Values{"on": {"1"}}))
+		fn(w, esppdhReq(http.MethodPost, path, users.RoleAdmin, url.Values{"on": {"1"}}))
 		if !strings.Contains(w.Body.String(), "ESPPDH gibt es im Docker-Betrieb nicht") {
 			t.Errorf("%s: %d %q", path, w.Code, w.Body.String())
 		}
 	}
-	if len(*calls) != 0 {
-		t.Errorf("Agent im Docker-Betrieb gefragt: %v", *calls)
+	if calls := ag.log(); len(calls) != 0 {
+		t.Errorf("Agent im Docker-Betrieb gefragt: %v", calls)
 	}
 }
 
-// „Umgebung einrichten“ fragt den Agenten mit {} und meldet die Version.
-func TestEsppdhInstallAsksAgent(t *testing.T) {
+// „Umgebung einrichten“ startet beim Agenten (mit {}) und kehrt sofort zurück; die Karte
+// fragt alle 2 s nach, bis der Lauf fertig ist, und zeigt dann Version bzw. Fehler.
+func TestEsppdhInstallStartsAndPolls(t *testing.T) {
 	esppdhTestEnv(t, false)
-	srv, calls := esppdhFakeAgent(t, `{"ok":true,"version":"2026.10.2"}`)
+	srv, ag := esppdhFakeAgent(t, esppdhRunning, esppdhRunning)
+	h := esppdhHandler(t, true, srv.URL)
+	start := time.Now()
+	w := httptest.NewRecorder()
+	h.EsppdhInstallWeb(w, esppdhReq(http.MethodPost, "/admin/server-config/esppdh/install", users.RoleAdmin, nil))
+	if took := time.Since(start); took > 5*time.Second {
+		t.Fatalf("Start wartet %s", took)
+	}
+	out := w.Body.String()
+	for _, want := range []string{`id="esppdh-panel"`, "Umgebung wird eingerichtet", `hx-get="/admin/server-config/esppdh"`, `hx-trigger="every 2s"`} {
+		if w.Code != http.StatusOK || !strings.Contains(out, want) {
+			t.Errorf("nach dem Start %d: %q fehlt", w.Code, want)
+		}
+	}
+	if strings.Contains(out, "Umgebung einrichten</button>") {
+		t.Error("während des Laufs ist der Knopf zu sehen")
+	}
+	if calls := ag.log(); len(calls) == 0 || calls[0] != "POST /v1/esppdh/install {} Bearer tok" {
+		t.Errorf("Agent: %v", calls)
+	}
+
+	// Abfrage der Karte (GET) während des Laufs: weiter nachfragen
+	poll := func() string {
+		w := httptest.NewRecorder()
+		h.EsppdhPanelWeb(w, esppdhReq(http.MethodGet, "/admin/server-config/esppdh", users.RoleAdmin, nil))
+		if w.Code != http.StatusOK {
+			t.Fatalf("Abfrage: %d", w.Code)
+		}
+		return w.Body.String()
+	}
+	if out := poll(); !strings.Contains(out, `hx-trigger="every 2s"`) || !strings.Contains(out, "Umgebung wird eingerichtet") {
+		t.Errorf("läuft: Abfrage hört auf:\n%s", out)
+	}
+	// fertig: Version, kein Nachfragen mehr
+	ag.setStatus(esppdhOK)
+	if out := poll(); strings.Contains(out, "every 2s") || !strings.Contains(out, "Einrichtung abgeschlossen: ESPHome 2026.10.2") ||
+		!strings.Contains(out, "Umgebung einrichten") {
+		t.Errorf("fertig:\n%s", out)
+	}
+	// fehlgeschlagen: Meldung des Skripts, kein Nachfragen mehr
+	ag.setStatus(`{"ok":true,"done":true,"error":"Einrichtung fehlgeschlagen: ESPHome 2026.10.2 braucht Python 3.12 oder neuer. Vorhanden: Python 3.10."}`)
+	if out := poll(); strings.Contains(out, "every 2s") || !strings.Contains(out, "braucht Python 3.12 oder neuer. Vorhanden: Python 3.10.") {
+		t.Errorf("fehlgeschlagen:\n%s", out)
+	}
+}
+
+// Fehler beim Start und fehlender Agent erscheinen in der Karte.
+func TestEsppdhInstallErrors(t *testing.T) {
+	esppdhTestEnv(t, false)
+	srv, _ := esppdhFakeAgent(t, `{"ok":false,"error":"Der Agent kann gerade nicht"}`, esppdhIdle)
 	h := esppdhHandler(t, true, srv.URL)
 	w := httptest.NewRecorder()
-	h.EsppdhInstallWeb(w, esppdhReq("/admin/server-config/esppdh/install", users.RoleAdmin, nil))
-	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "ESPHome 2026.10.2 ist eingerichtet") || !strings.Contains(w.Body.String(), `id="esppdh-panel"`) {
-		t.Fatalf("Antwort %d:\n%s", w.Code, w.Body.String())
-	}
-	if len(*calls) != 1 || (*calls)[0] != "POST /v1/esppdh/install {} Bearer tok" {
-		t.Errorf("Agent: %v", *calls)
-	}
-	// Fehler des Agenten erscheint in der Karte
-	srv2, _ := esppdhFakeAgent(t, `{"ok":false,"error":"pip: kein Internet"}`)
-	h.updateAgentURL = srv2.URL
-	w = httptest.NewRecorder()
-	h.EsppdhInstallWeb(w, esppdhReq("/admin/server-config/esppdh/install", users.RoleAdmin, nil))
-	if !strings.Contains(w.Body.String(), "pip: kein Internet") {
+	h.EsppdhInstallWeb(w, esppdhReq(http.MethodPost, "/admin/server-config/esppdh/install", users.RoleAdmin, nil))
+	if !strings.Contains(w.Body.String(), "Der Agent kann gerade nicht") || strings.Contains(w.Body.String(), "every 2s") {
 		t.Errorf("Fehler fehlt:\n%s", w.Body.String())
 	}
 	// ohne Update-Agent: kein Aufruf, Knopf gesperrt
 	h.updateAgentURL = ""
 	w = httptest.NewRecorder()
-	h.EsppdhInstallWeb(w, esppdhReq("/admin/server-config/esppdh/install", users.RoleAdmin, nil))
+	h.EsppdhInstallWeb(w, esppdhReq(http.MethodPost, "/admin/server-config/esppdh/install", users.RoleAdmin, nil))
 	if !strings.Contains(w.Body.String(), "Update-Agent") || !strings.Contains(w.Body.String(), "disabled") {
 		t.Errorf("ohne Agent:\n%s", w.Body.String())
 	}
@@ -188,7 +263,7 @@ func TestEsppdhSwitchStores(t *testing.T) {
 		text string
 	}{{"1", true, "ESPPDH ist eingeschaltet"}, {"0", false, "ESPPDH ist ausgeschaltet"}} {
 		w := httptest.NewRecorder()
-		h.EsppdhSwitchWeb(w, esppdhReq("/admin/server-config/esppdh", users.RoleAdmin, url.Values{"on": {c.on}}))
+		h.EsppdhSwitchWeb(w, esppdhReq(http.MethodPost, "/admin/server-config/esppdh", users.RoleAdmin, url.Values{"on": {c.on}}))
 		if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), c.text) {
 			t.Errorf("on=%s: %d\n%s", c.on, w.Code, w.Body.String())
 		}
@@ -229,8 +304,8 @@ func TestEsppdhPanelStates(t *testing.T) {
 			t.Errorf("nicht eingerichtet: %q fehlt", want)
 		}
 	}
-	if strings.Contains(out, "Freier Platz") {
-		t.Error("unbekannter Platz wird angezeigt")
+	if strings.Contains(out, "Freier Platz") || strings.Contains(out, "every 2s") {
+		t.Error("unbekannter Platz wird angezeigt oder die Karte fragt ohne Lauf nach")
 	}
 
 	on := base

@@ -19,6 +19,8 @@ work="${PDH_ESPHOME_WORKDIR:-/var/lib/pdh-esphome}"
 fail() { echo "$*" >&2; exit 1; }
 
 (( EUID == 0 )) || fail "Bitte als root ausführen: sudo bash $0"
+# Schutz vor „rm -rf“ an falscher Stelle: mindestens zwei Ordnerebenen, absolut
+[[ "$venv" =~ ^/[^/]+/[^/]+ ]] || fail "Ungültiger Ordner für die Python-Umgebung: '$venv'"
 version="$(tr -d '[:space:]' < "$script_dir/esphome.version")"
 [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "Ungültige ESPHome-Version in esphome.version: '$version'"
 
@@ -41,16 +43,37 @@ svc_user="$(systemctl show -p User --value pdh 2>/dev/null || true)"
 [[ -n "$svc_user" ]] || svc_user=pdh
 id "$svc_user" >/dev/null 2>&1 || fail "Dienstbenutzer '$svc_user' des PDH nicht gefunden."
 
-if [[ ! -x "$venv/bin/python3" ]]; then
+# Mindestversion von Python für ESPHome $version (PyPI „requires_python“) – beim Anheben
+# von esphome.version abgleichen.
+py_min="3.12"
+py_ok() { "$1" -c "import sys; sys.exit(0 if sys.version_info[:2] >= (${py_min/./, }) else 1)" >/dev/null 2>&1; }
+
+if ! command -v python3 >/dev/null 2>&1; then
+    echo "python3 fehlt – wird mit apt nachgeholt."
+    esphome_apt update || echo "WARNING: apt update ist fehlgeschlagen - die Installation wird trotzdem versucht" >&2
+    esphome_apt install -y python3 python3-venv \
+        || fail "python3 konnte nicht installiert werden. Von Hand: sudo apt-get install -y python3 python3-venv"
+fi
+# Vor dem Anlegen prüfen: Mit zu altem Python bleibt keine halbe Umgebung zurück.
+py_ok python3 || fail "ESPHome $version braucht Python $py_min oder neuer. Vorhanden: $(python3 --version 2>&1). Bitte das Betriebssystem aktualisieren (z. B. Ubuntu 24.04)."
+
+# Umgebung mit zu altem oder fehlendem Python (Abbruch, Wechsel der Python-Version): neu anlegen.
+if [[ -e "$venv" ]] && ! py_ok "$venv/bin/python3"; then
+    echo "Python-Umgebung $venv ist unbrauchbar – wird neu angelegt."
+    rm -rf "$venv"
+fi
+created=0
+if [[ ! -e "$venv" ]]; then
     # Debian/Ubuntu: venv steckt im eigenen Paket python3-venv
-    if ! command -v python3 >/dev/null 2>&1 || ! python3 -m venv "$venv" >/dev/null 2>&1; then
+    if ! python3 -m venv "$venv" >/dev/null 2>&1; then
         rm -rf "$venv"
-        echo "python3 bzw. python3-venv fehlt – wird mit apt nachgeholt."
+        echo "python3-venv fehlt – wird mit apt nachgeholt."
         esphome_apt update || echo "WARNING: apt update ist fehlgeschlagen - die Installation wird trotzdem versucht" >&2
-        esphome_apt install -y python3 python3-venv \
-            || fail "python3-venv konnte nicht installiert werden. Von Hand: sudo apt-get install -y python3 python3-venv"
-        python3 -m venv "$venv" || fail "Python-Umgebung $venv konnte nicht angelegt werden."
+        esphome_apt install -y python3-venv \
+            || fail "python3-venv konnte nicht installiert werden. Von Hand: sudo apt-get install -y python3-venv"
+        python3 -m venv "$venv" || { rm -rf "$venv"; fail "Python-Umgebung $venv konnte nicht angelegt werden."; }
     fi
+    created=1
     echo "Python-Umgebung $venv angelegt."
 fi
 
@@ -62,7 +85,10 @@ else
     echo "ESPHome $version wird installiert${current:+ (bisher $current)} …"
     if ! "$venv/bin/python3" -m pip install --disable-pip-version-check --no-input --no-cache-dir --progress-bar off \
         --upgrade "esphome==$version"; then
-        fail "pip konnte ESPHome $version nicht installieren ($("$venv/bin/python3" --version 2>&1)). Ursache siehe Ausgabe oben."
+        py="$("$venv/bin/python3" --version 2>&1)"
+        # eben angelegt: keine halbe Umgebung zurücklassen; eine vorhandene läuft mit der alten Version weiter
+        if (( created )); then rm -rf "$venv"; fi
+        fail "pip konnte ESPHome $version nicht installieren ($py). Ursache siehe Ausgabe oben."
     fi
 fi
 

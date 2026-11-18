@@ -1,9 +1,10 @@
 {{/* ESPPDH (internal/web/esppdh_settings.go): Karte im Reiter „ESPPDH“ der Server-Einstellungen
      – Schalter, Zustand der Python-Umgebung mit ESPHome und Knopf „Umgebung einrichten“.
      Daten: esppdhPanel. Ein Zusatz – ohne ihn läuft alles unverändert. Im Docker-Betrieb und
-     am Spiegelserver nur ein Hinweis, keine Knöpfe. */}}
+     am Spiegelserver nur ein Hinweis, keine Knöpfe. Solange die Einrichtung beim Update-Agenten
+     läuft, fragt die Karte alle 2 s nach (GET, keine Dauerverbindung). */}}
 {{define "esppdh-panel"}}
-<div id="esppdh-panel" class="card">
+<div id="esppdh-panel" class="card"{{if .Job.Running}} hx-get="/admin/server-config/esppdh" hx-trigger="every 2s" hx-swap="outerHTML"{{end}}>
   <style>
   .esppdh-row{display:flex;gap:8px 12px;align-items:center;flex-wrap:wrap;margin:0 0 10px;font-size:13px}
   .esppdh-row form{margin:0;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
@@ -24,6 +25,11 @@
       {{else}}<input type="hidden" name="on" value="1"><button class="btn btn-primary btn-small" type="submit"><i class="ti ti-player-play"></i> Einschalten</button>{{end}}
     </form>{{end}}
   </div>
+  {{if .Job.Running}}
+  <div class="esppdh-state" role="status"><i class="ti ti-loader-2"></i> <b>Umgebung wird eingerichtet …</b> Das dauert einige Minuten. Die Karte aktualisiert sich selbst.</div>
+  {{else}}
+  {{if .Job.Done}}{{if .Job.Error}}<div class="sc-sub" role="alert" style="margin-bottom:8px;color:var(--red);white-space:pre-line"><i class="ti ti-alert-circle"></i> {{.Job.Error}}</div>
+  {{else}}<div class="sc-sub" role="status" style="margin-bottom:8px;color:var(--green)"><i class="ti ti-check"></i> Einrichtung abgeschlossen: ESPHome {{.Job.Version}}.</div>{{end}}{{end}}
   <div class="esppdh-state">
     {{if .Env.Installed}}<i class="ti ti-circle-check" style="color:var(--green)"></i> Umgebung eingerichtet: ESPHome {{.Env.Version}}{{if .Env.Outdated}}
     <div style="color:var(--amber,#f59e0b);margin-top:4px"><i class="ti ti-clock-up"></i> veraltet – wird mit dem nächsten Update angehoben (festgelegt: ESPHome {{.Pinned}})</div>{{end}}
@@ -33,13 +39,13 @@
   </div>
   {{if not .Mirror}}
   <div class="esppdh-row">
-    <form hx-post="/admin/server-config/esppdh/install" hx-target="#esppdh-panel" hx-swap="outerHTML" hx-disabled-elt="find button" hx-indicator="#esppdh-wait"
+    <form hx-post="/admin/server-config/esppdh/install" hx-target="#esppdh-panel" hx-swap="outerHTML" hx-disabled-elt="find button"
       hx-confirm="Umgebung jetzt einrichten? Das lädt ESPHome {{.Pinned}} aus dem Internet und dauert einige Minuten.">
       <button class="btn btn-small" type="submit" {{if not .AgentReady}}disabled{{end}}><i class="ti ti-download"></i> Umgebung einrichten</button>
-      <span id="esppdh-wait" class="sc-sub htmx-indicator"><i class="ti ti-loader-2"></i> Wird eingerichtet – das dauert einige Minuten …</span>
     </form>
   </div>
   {{if not .AgentReady}}<p class="sc-sub" style="margin:0 0 10px;color:var(--amber,#f59e0b)"><i class="ti ti-alert-triangle"></i> Zum Einrichten braucht das PDH den Update-Agenten.</p>{{end}}
+  {{end}}
   {{end}}
   <p class="sc-sub" style="margin:0 0 6px"><i class="ti ti-world-download"></i> Das Einrichten lädt ESPHome aus dem Internet. Der erste Bau je Platinentyp lädt mehrere hundert MB aus dem Internet.</p>
   <p class="sc-sub" style="margin:0">Mit jedem PDH-Update kommt die passende ESPHome-Version mit, wenn die Umgebung eingerichtet ist.</p>

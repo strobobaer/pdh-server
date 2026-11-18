@@ -15,8 +15,9 @@ import (
 // Zustand der Python-Umgebung mit ESPHome und Knopf „Umgebung einrichten“.
 // Vorlage: web/templates/widgets/esppdh_settings.gohtml.
 //
+//	GET  /admin/server-config/esppdh          Karte neu zeichnen (Abfrage alle 2 s während der Einrichtung)
 //	POST /admin/server-config/esppdh          ESPPDH ein- oder ausschalten (on=1|0)
-//	POST /admin/server-config/esppdh/install  Umgebung über den Update-Agenten einrichten
+//	POST /admin/server-config/esppdh/install  Einrichtung beim Update-Agenten starten (läuft im Hintergrund)
 //
 // ESPPDH ist ein Zusatz: Ohne Umgebung läuft das PDH unverändert. Im Docker-Betrieb gibt es
 // ESPPDH nicht, und am Spiegelserver wird nichts geändert und nichts gebaut.
@@ -24,8 +25,8 @@ import (
 // esppdhSetEnabled: Schalter in app_settings, "1" = an.
 const esppdhSetEnabled = "esppdh.enabled"
 
-// esppdhInstallWait: so lange wartet die Seite auf den Agenten (er bricht nach 20 min ab).
-const esppdhInstallWait = 22 * time.Minute
+// esppdhAgentTimeout: Start und Stand beim Update-Agenten antworten sofort.
+const esppdhAgentTimeout = 5 * time.Second
 
 var errEsppdhDocker = errors.New("ESPPDH gibt es im Docker-Betrieb nicht")
 
@@ -48,13 +49,22 @@ func (h *Handler) esppdhEnabled(ctx context.Context) bool {
 	return h.appSetting(ctx, esppdhSetEnabled, "") == "1"
 }
 
+// esppdhJob: Stand der Einrichtung beim Update-Agenten (GET /v1/esppdh/install).
+type esppdhJob struct {
+	Running bool   `json:"running"`
+	Done    bool   `json:"done"`    // ein Lauf ist fertig (seit dem Start des Agenten)
+	Version string `json:"version"` // eingerichtete Version, wenn der Lauf geklappt hat
+	Error   string `json:"error"`   // Meldung des fehlgeschlagenen Laufs
+}
+
 // esppdhPanel: Karte „ESPPDH“ (widgets/esppdh_settings.gohtml).
 type esppdhPanel struct {
 	Docker     bool            // Docker-Betrieb: nur ein Hinweis
 	Mirror     bool            // Spiegelserver: Hinweis, keine Knöpfe
 	AgentReady bool            // Update-Agent eingerichtet („Umgebung einrichten“)
 	Enabled    bool            // Schalter (app_settings esppdh.enabled)
-	Env        esppdh.EnvState // Zustand der Python-Umgebung
+	Job        esppdhJob       // laufende bzw. letzte Einrichtung
+	Env        esppdh.EnvState // Zustand der Python-Umgebung (nicht während der Einrichtung)
 	Pinned     string          // festgelegte ESPHome-Version
 	Msg, Err   string
 }
@@ -71,15 +81,24 @@ func (p esppdhPanel) Free() string {
 	}
 }
 
-// esppdhPanelFor liest Schalter und Zustand der Umgebung (ruft „esphome version“ auf –
-// deshalb nur, wenn der Reiter offen ist).
+// esppdhPanelFor liest Schalter, Stand der Einrichtung und Zustand der Umgebung (ruft
+// „esphome version“ auf – deshalb nur, wenn der Reiter offen ist, und nicht, solange die
+// Einrichtung läuft).
 func (h *Handler) esppdhPanelFor(ctx context.Context) esppdhPanel {
 	p := esppdhPanel{Docker: inDocker(), Mirror: h.Mirror().On, AgentReady: h.driveAgentConfigured(), Pinned: esppdh.PinnedVersion()}
 	if p.Docker {
 		return p
 	}
 	p.Enabled = h.esppdhEnabled(ctx)
-	p.Env = esppdh.CheckEnv(ctx)
+	if p.AgentReady {
+		actx, cancel := context.WithTimeout(ctx, esppdhAgentTimeout)
+		// Fehler (Agent aus, zu alt): kein Stand – „Umgebung einrichten“ meldet ihn dann selbst
+		_ = h.agentJSON(actx, http.MethodGet, "/v1/esppdh/install", nil, &p.Job)
+		cancel()
+	}
+	if !p.Job.Running {
+		p.Env = esppdh.CheckEnv(ctx)
+	}
 	return p
 }
 
@@ -113,6 +132,16 @@ func (h *Handler) esppdhRender(ctx context.Context, w http.ResponseWriter, msg s
 	}
 }
 
+// EsppdhPanelWeb: GET /admin/server-config/esppdh – Karte neu zeichnen (htmx-Abfrage alle 2 s,
+// solange die Einrichtung läuft). Liest nur, deshalb auch am Spiegel.
+func (h *Handler) EsppdhPanelWeb(w http.ResponseWriter, r *http.Request) {
+	if !h.canServerConfig(r) {
+		http.Error(w, "keine berechtigung", http.StatusForbidden)
+		return
+	}
+	h.esppdhRender(r.Context(), w, "", nil)
+}
+
 // EsppdhSwitchWeb: POST /admin/server-config/esppdh (on=1|0) – ESPPDH ein- oder ausschalten.
 func (h *Handler) EsppdhSwitchWeb(w http.ResponseWriter, r *http.Request) {
 	if !h.esppdhAllowed(w, r) {
@@ -144,12 +173,12 @@ func (h *Handler) EsppdhSwitchWeb(w http.ResponseWriter, r *http.Request) {
 }
 
 // EsppdhInstallWeb: POST /admin/server-config/esppdh/install – der Update-Agent richtet die
-// Python-Umgebung ein (scripts/install-esphome.sh). Wartet, bis sie fertig ist.
+// Python-Umgebung im Hintergrund ein (scripts/install-esphome.sh). Kehrt sofort zurück; die
+// Karte fragt danach alle 2 s nach dem Stand.
 func (h *Handler) EsppdhInstallWeb(w http.ResponseWriter, r *http.Request) {
 	if !h.esppdhAllowed(w, r) {
 		return
 	}
-	var msg string
 	var err error
 	switch {
 	case inDocker():
@@ -157,20 +186,15 @@ func (h *Handler) EsppdhInstallWeb(w http.ResponseWriter, r *http.Request) {
 	case !h.driveAgentConfigured():
 		err = errors.New("Der Update-Agent ist nicht eingerichtet – ohne ihn lässt sich die Umgebung nicht einrichten")
 	default:
-		// pip braucht einige Minuten – länger als die übliche Schreibfrist des Servers
-		_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(esppdhInstallWait + time.Minute))
-		ctx, cancel := context.WithTimeout(r.Context(), esppdhInstallWait)
-		defer cancel()
-		var res struct {
-			Version string `json:"version"`
-		}
+		ctx, cancel := context.WithTimeout(r.Context(), esppdhAgentTimeout)
+		err = h.agentJSON(ctx, http.MethodPost, "/v1/esppdh/install", struct{}{}, nil)
+		cancel()
 		lg, uid := componentLog("esppdh"), getUser(r).ID
-		if err = h.agentJSON(ctx, http.MethodPost, "/v1/esppdh/install", struct{}{}, &res); err != nil {
+		if err != nil {
 			lg.Warn().Str("von", uid).Str("fehler", err.Error()).Msg("umgebung einrichten")
 		} else {
-			msg = "ESPHome " + res.Version + " ist eingerichtet."
-			lg.Info().Str("von", uid).Str("version", res.Version).Msg("umgebung einrichten")
+			lg.Info().Str("von", uid).Msg("umgebung einrichten gestartet")
 		}
 	}
-	h.esppdhRender(r.Context(), w, msg, err)
+	h.esppdhRender(r.Context(), w, "", err)
 }
