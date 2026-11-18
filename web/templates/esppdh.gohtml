@@ -52,7 +52,7 @@
       <td class="esp-wrap">{{.BoardLabel}}</td>
       <td class="esp-wrap">{{.NetLabel}}</td>
       <td>{{.BlockCount}}</td>
-      <td>{{if .Locked}}<span class="badge b-red"><i class="ti ti-lock" aria-hidden="true"></i>&nbsp;gesperrt</span>{{else}}<span class="badge b-gray">frei</span>{{end}}</td>
+      <td class="esp-wrap">{{template "esppdh-live" .Live}}{{with .Live.Hint}}<div class="esp-help">{{.}}</div>{{end}}</td>
     </tr>
     {{end}}
     </tbody>

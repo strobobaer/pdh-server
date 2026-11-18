@@ -42,7 +42,7 @@ html[data-style="fiori"] ewt-install-dialog,html[data-style="fiori"] ewt-no-port
 
 <div class="esp-head">
   <div class="rec-sub"><a href="/import" style="color:var(--accent)"><i class="ti ti-arrow-left" aria-hidden="true"></i> Import</a> · <a href="/import/esppdh" style="color:var(--accent)">ESPPDH</a></div>
-  <h1><i class="ti ti-cpu" aria-hidden="true"></i> <span class="esp-wrap">{{.Dev.Name}}</span>{{if .Dev.Locked}} <span class="badge b-red"><i class="ti ti-lock" aria-hidden="true"></i>&nbsp;gesperrt</span>{{end}}</h1>
+  <h1><i class="ti ti-cpu" aria-hidden="true"></i> <span class="esp-wrap">{{.Dev.Name}}</span> {{template "esppdh-live" .Live}}</h1>
   <p class="esp-intro esp-wrap">Kennung <code class="esp-mono">{{.Dev.Slug}}</code> · {{.BoardLabel}} · {{.Dev.InfraPath}}</p>
 </div>
 
@@ -100,10 +100,14 @@ html[data-style="fiori"] ewt-install-dialog,html[data-style="fiori"] ewt-no-port
   <div class="card esp-card">
     <div class="card-title"><span><i class="ti ti-key" aria-hidden="true"></i> Zugang am Broker</span></div>
     <dl class="esp-dl">
+      {{with .Live.Hint}}<dt>Zustand</dt><dd>{{.}}</dd>{{end}}
       <dt>Benutzer</dt><dd><code class="esp-mono">{{.MQTTUser}}</code> <span class="rec-sub">(auch Client-ID)</span></dd>
       <dt>Thema</dt><dd><code class="esp-mono">{{.Topic}}…</code></dd>
       <dt>Broker</dt><dd>{{if .Broker.Host}}<code class="esp-mono">{{.Broker.Host}}:{{.Broker.Port}}</code> {{if .Broker.TLS}}<span class="badge b-green">TLS</span>{{else}}<span class="badge b-amber">ohne TLS</span>{{end}}{{else}}–{{end}}</dd>
       <dt>Kennwort</dt><dd class="rec-sub">steht verschlüsselt im PDH und kommt mit der Firmware aufs Gerät – es wird nie angezeigt.</dd>
+      <dt>Nachrichten</dt><dd><code class="esp-mono esp-copy-text" id="esp-topic-filter">{{.TopicFilter}}</code>
+        <button type="button" class="btn btn-small" onclick="espCopy('esp-topic-filter', this)" title="Themenfilter kopieren" aria-label="Themenfilter kopieren"><i class="ti ti-copy" aria-hidden="true"></i></button>
+        {{if .ExplorerLink}}<div class="esp-help"><a href="{{.ExplorerLink}}" style="color:var(--accent)"><i class="ti ti-telescope" aria-hidden="true"></i> Explorer der Verbindung öffnen</a> – dort diesen Themenfilter eintragen und „Starten“ drücken.</div>{{end}}</dd>
     </dl>
     <div class="card-title" style="margin-top:16px"><span><i class="ti ti-wifi" aria-hidden="true"></i> Notzugang</span></div>
     {{if .Dev.Wired}}<p class="rec-sub">Am Kabel gibt es keinen Notzugang über WLAN.</p>

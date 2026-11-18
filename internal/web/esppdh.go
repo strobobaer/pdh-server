@@ -36,7 +36,9 @@ import (
 // Zugang an (esppdh-<kennung>) und darf nur unter esppdh/<kennung>/ senden; gesperrte Geräte
 // haben keinen Zugang (esppdhSyncBroker). Gespeichert wird nur, was esppdh.ValidateDevice
 // annimmt – so, wie das Gerät gebaut würde. Am Spiegelserver sind die Seiten nur lesbar
-// (globale Schreibsperre).
+// (globale Schreibsperre). Liste und Detailseite zeigen je Gerät den Zustand am Broker, live
+// und ohne Zwischenspeichern (esppdhLiveStates); die Detailseite nennt das Thema des Geräts
+// für den Explorer der Verbindung.
 
 const (
 	permESPView  = "esppdh.view"
@@ -206,11 +208,130 @@ func esppdhSlugFrom(name string) string {
 	return strings.Trim(s, "-")
 }
 
+// ── Zustand am Broker ────────────────────────────────────────
+
+// esppdhLive: Zustand eines Geräts am Broker für Liste und Detailseite (Vorlage „esppdh-live“).
+// Der Broker kennt nur den Augenblick: angemeldet oder nicht. Wann ein Gerät zuletzt da war,
+// merkt sich das PDH in Paket 1 nicht – ein Gerät, das schon da war und jetzt fehlt, lässt sich
+// von einem, das sich nie gemeldet hat, nicht unterscheiden.
+type esppdhLive struct {
+	Key   string // online | locked | silent | offline
+	Label string // „verbunden“, „gesperrt“ oder „nicht verbunden“
+	Badge string // Farbe des Abzeichens – nie allein: Symbol und Text sagen dasselbe
+	Icon  string
+	Hint  string // kurzer Zusatz ohne Kennwörter: woran es liegen kann
+}
+
+// esppdhTarget: Broker-Adresse, für die die jüngste gelungene Firmware eines Geräts gebaut ist –
+// dorthin verbindet sich das Gerät (Port 0 = keine Firmware).
+type esppdhTarget struct {
+	Host string
+	Port int
+}
+
+// esppdhLiveOf entscheidet den Zustand: gesperrt vor allem anderen, dann verbunden. Sonst „nicht
+// verbunden“ mit Zusatz: Läuft der Broker an diesem Server nicht (Spiegel, Verbindung aus, Port
+// belegt), weiß das PDH hier nichts über das Gerät. Gibt es eine Firmware, fehlt meist die
+// Freigabe in der Firewall – der Hinweis nennt Adresse und Port aus dem Bau.
+func esppdhLiveOf(locked, online, brokerUp, mirror bool, built esppdhTarget) esppdhLive {
+	switch {
+	case locked:
+		return esppdhLive{Key: "locked", Label: "gesperrt", Badge: "b-red", Icon: "ti-lock"}
+	case online:
+		return esppdhLive{Key: "online", Label: "verbunden", Badge: "b-green", Icon: "ti-plug-connected"}
+	}
+	l := esppdhLive{Key: "offline", Label: "nicht verbunden", Badge: "b-gray", Icon: "ti-plug-x"}
+	switch {
+	case mirror && !brokerUp:
+		l.Hint = "Spiegel – den Zustand kennt nur der aktive Server"
+	case !brokerUp:
+		l.Hint = "Der Broker läuft an diesem Server nicht"
+	case built.Host != "" && built.Port > 0:
+		l.Key, l.Badge, l.Icon = "silent", "b-amber", "ti-alert-triangle"
+		l.Hint = fmt.Sprintf("Hat sich noch nicht gemeldet – Freigabe für %s Port %d prüfen", built.Host, built.Port)
+	default:
+		l.Hint = "Noch keine Firmware gebaut"
+	}
+	return l
+}
+
+// esppdhLiveStates: Zustand je Gerät (Schlüssel: ID). Den Broker fragt es unter der
+// Verbindungs-ID – derselben, unter der esppdhSyncBroker die Zugänge setzt; ohne
+// Broker-Verwaltung oder ohne Broker an diesem Server (Spiegel) heißt das „nicht verbunden“,
+// nie ein Fehler. Die Datenbank fragt es höchstens einmal (Firmware der nicht verbundenen
+// Geräte), nie je Gerät.
+func (h *Handler) esppdhLiveStates(ctx context.Context, devs []esppdhDevice) map[string]esppdhLive {
+	up, online := map[string]bool{}, map[string]bool{}
+	var need []string
+	for _, d := range devs {
+		running, known := up[d.ConnID]
+		if !known {
+			running = h.mqttBrokers != nil && meterUUIDRe.MatchString(d.ConnID) && h.mqttBrokers.IsRunning(d.ConnID)
+			up[d.ConnID] = running
+		}
+		switch {
+		case d.Locked || !running:
+		case h.mqttBrokers.DeviceOnline(d.ConnID, esppdhUserOf(d.Slug)):
+			online[d.ID] = true
+		default:
+			need = append(need, d.ID)
+		}
+	}
+	built, err := h.esppdhBuiltTargets(ctx, need)
+	if err != nil {
+		componentLog("esppdh").Error().Err(err).Msg("firmware der geräte lesen")
+	}
+	mirror := h.Mirror().On
+	out := make(map[string]esppdhLive, len(devs))
+	for _, d := range devs {
+		l := esppdhLiveOf(d.Locked, online[d.ID], up[d.ConnID], mirror, built[d.ID])
+		if err != nil && l.Key == "offline" && up[d.ConnID] {
+			l.Hint = "" // ob es eine Firmware gibt, ist gerade nicht bekannt
+		}
+		out[d.ID] = l
+	}
+	return out
+}
+
+// esppdhBuiltTargets: je Gerät die Broker-Adresse seiner jüngsten gelungenen Firmware – eine
+// Abfrage für alle. Geräte ohne Firmware fehlen.
+func (h *Handler) esppdhBuiltTargets(ctx context.Context, ids []string) (map[string]esppdhTarget, error) {
+	out := map[string]esppdhTarget{}
+	if h.db == nil || len(ids) == 0 {
+		return out, nil
+	}
+	rows, err := h.db.Query(ctx, `SELECT DISTINCT ON (device_id) device_id::text, broker_host, broker_port FROM esppdh_builds
+		WHERE device_id = ANY($1::uuid[]) AND status = 'ok' ORDER BY device_id, finished_at DESC NULLS LAST, id DESC`, ids)
+	if err != nil {
+		return out, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id string
+		var t esppdhTarget
+		if err := rows.Scan(&id, &t.Host, &t.Port); err != nil {
+			return out, err
+		}
+		out[id] = t
+	}
+	return out, rows.Err()
+}
+
+// esppdhCanExplore: darf den Explorer einer Import-Verbindung öffnen (import.execute – dasselbe
+// Recht, das der Explorer selbst verlangt).
+func (h *Handler) esppdhCanExplore(r *http.Request) bool {
+	if h.hasPermHook != nil {
+		return h.hasPermHook(r, "import.execute")
+	}
+	return h.rbac != nil && h.canConnectionExecute(r, "import")
+}
+
 // ── Liste ────────────────────────────────────────────────────
 
 type esppdhRow struct {
 	esppdhDevice
 	BoardLabel, NetLabel string
+	Live                 esppdhLive
 }
 
 type ESPPDHPageData struct {
@@ -304,6 +425,7 @@ func (h *Handler) esppdhRenderList(w http.ResponseWriter, r *http.Request, f esp
 	}
 	allowed := h.scopeAllowedIDs(r, esppdhRef) // Abteilung der Rolle (nil = alle)
 	see := map[string]bool{}
+	var visible []esppdhDevice
 	for _, dev := range list {
 		if allowed != nil && !allowed[dev.ID] {
 			continue
@@ -314,8 +436,13 @@ func (h *Handler) esppdhRenderList(w http.ResponseWriter, r *http.Request, f esp
 			see[dev.InfraID] = ok
 		}
 		if ok {
-			d.Rows = append(d.Rows, esppdhRow{esppdhDevice: dev, BoardLabel: esppdhBoardLabel(dev.BoardKey, dev.CustomBoard), NetLabel: esppdhNetLabel(dev)})
+			visible = append(visible, dev)
 		}
+	}
+	live := h.esppdhLiveStates(ctx, visible) // nur für sichtbare Geräte
+	for _, dev := range visible {
+		d.Rows = append(d.Rows, esppdhRow{esppdhDevice: dev, BoardLabel: esppdhBoardLabel(dev.BoardKey, dev.CustomBoard),
+			NetLabel: esppdhNetLabel(dev), Live: live[dev.ID]})
 	}
 	if d.CanCreate {
 		d.Choices = h.esppdhChoicesOf(ctx)
@@ -323,6 +450,7 @@ func (h *Handler) esppdhRenderList(w http.ResponseWriter, r *http.Request, f esp
 			d.Form.InfraLabel = h.infraPaths(ctx, []string{f.InfraID})[f.InfraID]
 		}
 	}
+	w.Header().Set("Cache-Control", "no-store") // Zustand am Broker: immer frisch
 	h.render(w, "esppdh", d)
 }
 
@@ -435,6 +563,11 @@ type ESPPDHDevicePageData struct {
 	Notice             string
 	Warn               string // Aktion ausgeführt, aber der Broker ließ sich nicht abgleichen
 	BoardLabel         string
+
+	// Zustand am Broker (live) und Nachrichten des Geräts im Explorer der Verbindung
+	Live         esppdhLive
+	TopicFilter  string // esppdh/<kennung>/# – zum Kopieren in den Themenfilter des Explorers
+	ExplorerLink string // "" = kein Recht für den Explorer (import.execute)
 
 	// Karte „Firmware“ (esppdh_build.go)
 	Runs      []esppdhRunView // letzte Läufe, der jüngste zuerst
@@ -610,7 +743,13 @@ func (h *Handler) esppdhRenderDevice(w http.ResponseWriter, r *http.Request, d e
 	if t := esppdhNetHint(d, b, certOwnAddrs()); t != "" {
 		pd.Hints = append(pd.Hints, esppdhHint{"warn", "ti-wall", t, "", ""})
 	}
-	w.Header().Set("Cache-Control", "no-store") // die Seite zeigt das Kennwort des Notzugangs
+
+	pd.Live = h.esppdhLiveStates(ctx, []esppdhDevice{d})[d.ID]
+	pd.TopicFilter = esppdhTopicPrefix(d.Slug) + "#"
+	if h.esppdhCanExplore(r) && meterUUIDRe.MatchString(d.ConnID) {
+		pd.ExplorerLink = "/import/connections/" + d.ConnID + "?tab=explorer"
+	}
+	w.Header().Set("Cache-Control", "no-store") // Kennwort des Notzugangs, Zustand am Broker (live)
 	h.render(w, "esppdh_device", pd)
 }
 

@@ -22,10 +22,15 @@
 .esp-scroll table{min-width:720px}
 .esp-wrap{overflow-wrap:anywhere;word-break:break-word;min-width:0}
 .esp-mono{font-family:monospace;font-size:12.5px;overflow-wrap:anywhere;word-break:break-all}
+.esp-copy-text{user-select:all}
 .esp-check{display:flex;align-items:flex-start;gap:8px;font-size:13px;margin:8px 0}
 .esp-check input{margin-top:3px}
 </style>
 {{end}}
+
+{{/* Zustand eines Geräts am Broker (esppdhLive, esppdh.go): Abzeichen mit Symbol und Text –
+     die Farbe trägt die Aussage nie allein. Der Zusatz (.Hint) steht auf der Seite daneben. */}}
+{{define "esppdh-live"}}<span class="badge {{.Badge}}" data-live="{{.Key}}"><i class="ti {{.Icon}}" aria-hidden="true"></i>&nbsp;{{.Label}}</span>{{end}}
 
 {{/* Zustand: Docker, ausgeschaltet, Umgebung fehlt (esppdhState) */}}
 {{define "esppdh-state"}}
@@ -86,5 +91,17 @@ function espBoard(sel){
   }
 }
 function espNet(sel){ const s = document.getElementById(sel.dataset.seg); if(s) s.hidden = sel.value !== 'wired'; }
+// Text in die Zwischenablage; ohne https gibt es die nicht – dann bleibt er markiert zum Kopieren (Strg+C)
+function espCopy(id, btn){
+  const el = document.getElementById(id); if(!el) return;
+  const sel = window.getSelection(), r = document.createRange();
+  r.selectNodeContents(el); sel.removeAllRanges(); sel.addRange(r);
+  if(!navigator.clipboard) return;
+  navigator.clipboard.writeText(el.textContent.trim()).then(() => {
+    const old = btn.innerHTML;
+    btn.innerHTML = '<i class="ti ti-check" aria-hidden="true"></i>';
+    setTimeout(() => { btn.innerHTML = old; }, 1500);
+  }).catch(() => {});
+}
 </script>
 {{end}}

@@ -20,6 +20,7 @@ import (
 
 	paho "github.com/eclipse/paho.mqtt.golang"
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"pdh/internal/core/mqttbroker"
@@ -1254,4 +1255,206 @@ func TestESPPDHConnectionInUse(t *testing.T) {
 	if n != 1 {
 		t.Error("Verbindung trotz Geräten gelöscht")
 	}
+}
+
+// ── Zustand am Broker ────────────────────────────────────────────────────
+
+// Zustand je Gerät: gesperrt vor allem anderen, dann verbunden; sonst „nicht verbunden“ mit
+// Zusatz – Hinweis auf die Freigabe (Adresse und Port aus dem Bau), wenn eine Firmware gebaut
+// ist; ohne laufenden Broker kein Hinweis auf die Firewall.
+func TestESPPDHLiveOf(t *testing.T) {
+	built := esppdhTarget{Host: "mqtt.werk.example", Port: 8883}
+	hint := "Hat sich noch nicht gemeldet – Freigabe für mqtt.werk.example Port 8883 prüfen"
+	for _, c := range []struct {
+		name                     string
+		locked, online, up       bool
+		built                    esppdhTarget
+		key, label, badge, wantH string
+	}{
+		{"gesperrt", true, false, true, built, "locked", "gesperrt", "b-red", ""},
+		{"gesperrt und noch angemeldet", true, true, true, built, "locked", "gesperrt", "b-red", ""},
+		{"verbunden", false, true, true, built, "online", "verbunden", "b-green", ""},
+		{"nie gemeldet, Firmware gebaut", false, false, true, built, "silent", "nicht verbunden", "b-amber", hint},
+		{"ohne Firmware", false, false, true, esppdhTarget{}, "offline", "nicht verbunden", "b-gray", "Noch keine Firmware gebaut"},
+		{"Broker läuft nicht", false, false, false, built, "offline", "nicht verbunden", "b-gray", "Der Broker läuft an diesem Server nicht"},
+	} {
+		l := esppdhLiveOf(c.locked, c.online, c.up, false, c.built)
+		if l.Key != c.key || l.Label != c.label || l.Badge != c.badge || l.Hint != c.wantH || l.Icon == "" {
+			t.Errorf("%s: %+v", c.name, l)
+		}
+	}
+	if l := esppdhLiveOf(false, false, false, true, built); l.Label != "nicht verbunden" || l.Hint != "Spiegel – den Zustand kennt nur der aktive Server" {
+		t.Errorf("Spiegel: %+v", l)
+	}
+}
+
+// esppdhQueryCounter zählt Abfragen, deren SQL sub enthält (pgx-Tracer).
+type esppdhQueryCounter struct {
+	sub string
+	n   atomic.Int32
+}
+
+func (c *esppdhQueryCounter) TraceQueryStart(ctx context.Context, _ *pgx.Conn, d pgx.TraceQueryStartData) context.Context {
+	if strings.Contains(d.SQL, c.sub) {
+		c.n.Add(1)
+	}
+	return ctx
+}
+
+func (c *esppdhQueryCounter) TraceQueryEnd(context.Context, *pgx.Conn, pgx.TraceQueryEndData) {}
+
+// esppdhListRow: die Zeile der Liste mit dieser Kennung.
+func esppdhListRow(t *testing.T, page, slug string) string {
+	t.Helper()
+	i := strings.Index(page, `<div class="rec-sub esp-mono">`+slug+`</div>`)
+	if i < 0 {
+		t.Fatalf("Liste ohne Gerät %s", slug)
+	}
+	start, end := strings.LastIndex(page[:i], "<tr>"), strings.Index(page[i:], "</tr>")
+	if start < 0 || end < 0 {
+		t.Fatalf("Zeile von %s nicht gefunden", slug)
+	}
+	return page[start : i+end]
+}
+
+// Zustand auf Liste und Detailseite, live vom Broker der Verbindung: verbunden; nie gemeldet
+// mit gebauter Firmware → Hinweis auf die Freigabe; gesperrt; ohne Firmware nur „nicht
+// verbunden“. Ein Gerät, das getrennt wurde, ist „nicht verbunden“. Ohne laufenden Broker (wie
+// am Spiegel) und ohne Broker-Verwaltung: „nicht verbunden“, nie ein Fehler. Die Liste fragt
+// die Datenbank dafür einmal, nicht je Gerät; beide Seiten werden nicht zwischengespeichert.
+// Die Detailseite verweist auf den Explorer der Verbindung mit dem Thema des Geräts.
+func TestESPPDHOnlineBadge(t *testing.T) {
+	port := esppdhFreePort(t)
+	e := newEsppdhEnv(t, esppdhBrokerCfg(port))
+	ctx := context.Background()
+	e.h.reconcileMqttBroker(e.conn, "import", "mqtt", true, e.cfg)
+	if !e.h.mqttBrokers.IsRunning(e.conn) {
+		t.Fatalf("Broker läuft nicht: %s", e.h.mqttBrokers.LastError(e.conn))
+	}
+	on, silent, locked, nofw := "on-"+e.sfx, "si-"+e.sfx, "lo-"+e.sfx, "nf-"+e.sfx
+	ids := map[string]string{}
+	for _, s := range []string{on, silent, locked, nofw} {
+		ids[s] = e.create(t, s, nil)
+	}
+	// gebaute Firmware (gelungener Lauf) für Adresse und Port, an die sich das Gerät wendet
+	host := "mqtt-" + e.sfx + ".pdh-test.invalid"
+	for _, s := range []string{silent, locked} {
+		if _, err := e.pool.Exec(ctx, `INSERT INTO esppdh_builds (device_id, status, config_hash, broker_host, broker_port, finished_at)
+			VALUES ($1::uuid, 'ok', 'x', $2, 8883, now())`, ids[s], host); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := e.pool.Exec(ctx, `UPDATE esppdh_devices SET built_hash = 'x' WHERE id = $1::uuid`, ids[s]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if w := esppdhDo(e.h.EsppdhLockWeb, "POST", "/x", ids[locked], esppdhUser, url.Values{"locked": {"1"}}); w.Code != http.StatusSeeOther {
+		t.Fatalf("sperren: %d", w.Code)
+	}
+	dev, _, err := esppdhDial(t, port, "esppdh-"+on, e.mqttPW(t, ids[on]))
+	if err != nil {
+		t.Fatalf("Gerät meldet sich nicht an: %v", err)
+	}
+
+	hint := "Hat sich noch nicht gemeldet – Freigabe für " + host + " Port 8883 prüfen"
+	const isOn, isOff, isLocked = "&nbsp;verbunden</span>", "&nbsp;nicht verbunden</span>", "&nbsp;gesperrt</span>"
+	type want struct{ has, not []string }
+	wants := map[string]want{
+		on:     {[]string{isOn}, []string{isOff, hint}},
+		silent: {[]string{isOff, hint}, []string{isOn}},
+		locked: {[]string{isLocked}, []string{isOn, isOff, hint}},
+		nofw:   {[]string{isOff}, []string{isOn, hint}},
+	}
+	check := func(where, text string, w want) {
+		t.Helper()
+		for _, s := range w.has {
+			if !strings.Contains(text, s) {
+				t.Errorf("%s: %q fehlt", where, s)
+			}
+		}
+		for _, s := range w.not {
+			if strings.Contains(text, s) {
+				t.Errorf("%s: %q steht da", where, s)
+			}
+		}
+	}
+	list := func() string {
+		t.Helper()
+		w := esppdhDo(e.h.EsppdhPage, "GET", "/import/esppdh", "", esppdhUser, nil)
+		if w.Code != http.StatusOK || w.Header().Get("Cache-Control") != "no-store" {
+			t.Fatalf("Liste: %d, Cache-Control %q", w.Code, w.Header().Get("Cache-Control"))
+		}
+		return w.Body.String()
+	}
+	detail := func(slug string) string {
+		t.Helper()
+		w := esppdhDo(e.h.EsppdhDevicePage, "GET", "/import/esppdh/"+ids[slug], ids[slug], esppdhUser, nil)
+		if w.Code != http.StatusOK || w.Header().Get("Cache-Control") != "no-store" {
+			t.Fatalf("Detailseite %s: %d, Cache-Control %q", slug, w.Code, w.Header().Get("Cache-Control"))
+		}
+		return w.Body.String()
+	}
+	page := list()
+	for slug, w := range wants {
+		check("Liste "+slug, esppdhListRow(t, page, slug), w)
+		check("Detailseite "+slug, detail(slug), w)
+	}
+	if row := esppdhListRow(t, page, nofw); !strings.Contains(row, "Noch keine Firmware gebaut") {
+		t.Error("Liste: Zusatz „Noch keine Firmware gebaut“ fehlt")
+	}
+
+	// die Liste fragt die Datenbank für den Zustand einmal, nicht je Gerät (hier zwei ohne Verbindung)
+	cnt := &esppdhQueryCounter{sub: "esppdh_builds"}
+	pcfg, err := pgxpool.ParseConfig(os.Getenv("PDH_TEST_DSN"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	pcfg.ConnConfig.Tracer = cnt
+	traced, err := pgxpool.NewWithConfig(ctx, pcfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(traced.Close)
+	plain := e.h.db
+	e.h.db = traced
+	list()
+	e.h.db = plain
+	if n := cnt.n.Load(); n != 1 {
+		t.Errorf("Liste: %d Abfragen an esppdh_builds, erwartet 1", n)
+	}
+
+	// Explorer: Thema immer zum Kopieren, Verweis nur mit import.execute (Recht des Explorers)
+	explorer := `href="/import/connections/` + e.conn + `?tab=explorer"`
+	if p := detail(on); !strings.Contains(p, "esppdh/"+on+"/#") || strings.Contains(p, explorer) {
+		t.Error("ohne import.execute: Thema fehlt oder Verweis auf den Explorer da")
+	}
+	e.allow["import.execute"] = true
+	if p := detail(on); !strings.Contains(p, "esppdh/"+on+"/#") || !strings.Contains(p, explorer) {
+		t.Error("mit import.execute: Verweis auf den Explorer oder Thema fehlt")
+	}
+
+	// war verbunden, jetzt getrennt: „nicht verbunden“
+	dev.Disconnect(50)
+	deadline := time.Now().Add(3 * time.Second)
+	for e.h.mqttBrokers.DeviceOnline(e.conn, "esppdh-"+on) {
+		if time.Now().After(deadline) {
+			t.Fatal("getrenntes Gerät gilt weiter als verbunden")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	check("Liste nach Trennen", esppdhListRow(t, list(), on), want{[]string{isOff}, []string{isOn}})
+
+	// Broker läuft an diesem Server nicht (wie am Spiegel): nicht verbunden, kein Hinweis auf die Firewall
+	e.h.mqttBrokers.Stop(e.conn)
+	page = list()
+	for _, slug := range []string{on, silent, nofw} {
+		check("Liste ohne Broker "+slug, esppdhListRow(t, page, slug), want{[]string{isOff, "Der Broker läuft an diesem Server nicht"}, []string{isOn, hint}})
+	}
+	check("Detailseite ohne Broker", detail(silent), want{[]string{isOff}, []string{hint}})
+
+	// ohne Broker-Verwaltung: kein Fehler
+	brokers := e.h.mqttBrokers
+	e.h.mqttBrokers = nil
+	check("Liste ohne Broker-Verwaltung", esppdhListRow(t, list(), silent), want{[]string{isOff}, []string{isOn, hint}})
+	check("Detailseite ohne Broker-Verwaltung", detail(on), want{[]string{isOff}, []string{isOn}})
+	e.h.mqttBrokers = brokers
 }
