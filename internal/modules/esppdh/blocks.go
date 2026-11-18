@@ -94,8 +94,12 @@ func BlockDefs() []BlockDef {
 					Help: "Die Zange braucht eine Vorspannung auf halber Versorgung (Spannungsteiler mit Kondensator)."},
 				{Key: "clamp", Label: "Zangentyp", Type: "select", Required: true,
 					Options: []string{"5A/1V", "30A/1V", "50A/1V", clampCurrentOut}, Help: "Steht auf der Zange."},
+				// Bemessung: Vorspannung 1,65 V, Analog-Pin misst bis etwa 3,1 V (ESP32, -S3; D1 mini
+				// 3,2 V) → Spitze höchstens 1,45 V. Spitzenstrom der Zange I·√2/2000 → R ≤ 1,45·2000/(√2·I)
+				// ≈ 2050/I, gerundet 2000/I (100 A → 20 Ω). ESP32-C3 misst nur bis etwa 2,5 V → ≈ 1200/I.
+				// Größer schneidet hohe Ströme ab und treibt den Pin bei vollem Strom über seine Grenzen.
 				{Key: "burden", Label: "Bürdenwiderstand (Ω)", Type: "number",
-					Help: "Nur bei 100A/50mA, z. B. 33 oder 22,5.", min: 1, max: 10000,
+					Help: "Nur bei 100A/50mA. Höchstens 2000 ÷ größter Strom in A, z. B. 20 bei 100 A (ESP32-C3: 1200 ÷ Strom).", min: 1, max: 10000,
 					onlyIfKey: "clamp", onlyIfValue: clampCurrentOut},
 				{Key: "voltage", Label: "Netzspannung (V)", Type: "number", Default: "230", Required: true,
 					Help: "Spannung zwischen Leiter und N, meist 230.", min: 1, max: 1000},

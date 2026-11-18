@@ -30,6 +30,7 @@ mqtt:
   discovery: false
   discover_ip: false
   log_topic: null
+  reboot_timeout: 0s
   birth_message:
     topic: esppdh/linie2-takt/status
     payload: online

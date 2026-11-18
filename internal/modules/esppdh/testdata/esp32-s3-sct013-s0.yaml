@@ -31,6 +31,7 @@ mqtt:
   discovery: false
   discover_ip: false
   log_topic: null
+  reboot_timeout: 0s
   birth_message:
     topic: esppdh/kompressor/status
     payload: online
@@ -57,7 +58,7 @@ sensor:
     sensor: sct013_1_adc
     update_interval: 10s
     filters:
-      - multiply: 60.60606061
+      - multiply: 100
     state_topic: esppdh/kompressor/sct013-1/strom
   - platform: copy
     source_id: sct013_1_strom

@@ -61,9 +61,9 @@ func goldenCases() []goldenCase {
 	c3.Wired, c3.SSID, c3.WLANPassword, c3.APPassword = true, "", "", ""
 	c3.BrokerTLS, c3.BrokerPort = true, 8883
 
-	// ESP32-S3 mit SCT-013 (Stromausgang, Bürde 33 Ω) und S0-Zähler, verborgenes WLAN
+	// ESP32-S3 mit SCT-013 (Stromausgang, Bürde 20 Ω – passend bis 100 A) und S0-Zähler, verborgenes WLAN
 	c4 := testDevice("esp32-s3",
-		Block{Kind: "sct013", Nr: 1, Params: map[string]string{"pin": "GPIO1", "clamp": "100A/50mA", "burden": "33", "voltage": "230"}},
+		Block{Kind: "sct013", Nr: 1, Params: map[string]string{"pin": "GPIO1", "clamp": "100A/50mA", "burden": "20", "voltage": "230"}},
 		Block{Kind: "s0", Nr: 1, Params: map[string]string{"pin": "GPIO4", "pulses": "800"}},
 	)
 	c4.Slug, c4.MQTTUser, c4.Name = "kompressor", "esppdh-kompressor", "Kompressor"
@@ -438,6 +438,20 @@ func TestGenerateTLS(t *testing.T) {
 	ca := get(get(parseYAML(t, cfg), "mqtt"), "certificate_authority")
 	if ca == nil || ca.Value != letsEncryptRoots {
 		t.Fatalf("Stammzertifikate fehlen: %+v", ca)
+	}
+}
+
+// Ohne Broker startet das Gerät nicht neu (ESPHome-Vorgabe wären 15 min): Zählerstand und
+// Stückzahl bleiben bei einem Ausfall des PDH erhalten – bei WLAN und am Kabel.
+func TestMQTTNoRebootWithoutBroker(t *testing.T) {
+	for _, c := range goldenCases() {
+		cfg, _, err := Generate(c.dev)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if rt := get(get(parseYAML(t, cfg), "mqtt"), "reboot_timeout"); rt == nil || rt.Value != "0s" {
+			t.Errorf("%s: mqtt.reboot_timeout = %+v, erwartet 0s", c.name, rt)
+		}
 	}
 }
 

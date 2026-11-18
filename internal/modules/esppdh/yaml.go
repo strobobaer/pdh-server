@@ -338,6 +338,11 @@ func mqttNode(d Device) *yaml.Node {
 		add("discovery", plain("false")).
 		add("discover_ip", plain("false")).
 		add("log_topic", plain("null")).
+		// Ohne Broker nicht neu starten (Vorgabe von ESPHome: nach 15 min): Zählerstand und
+		// Stückzahl begännen sonst bei jedem längeren Ausfall des PDH (Update, Umschaltung) bei 0.
+		// Das Gerät zählt weiter und verbindet sich neu, sobald der Broker wieder da ist. Das WLAN
+		// startet wegen des Notzugangs (ap:) ohnehin nie neu (wifi_component.cpp: nur ohne AP).
+		add("reboot_timeout", plain("0s")).
 		add("birth_message", msg("online")).
 		add("will_message", msg("offline")).
 		add("shutdown_message", msg("offline"))
