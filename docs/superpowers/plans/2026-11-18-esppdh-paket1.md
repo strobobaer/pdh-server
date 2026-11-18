@@ -81,7 +81,7 @@ Entwurf gehören zusammen, Ausführende lesen beide.
 
 ---
 
-### Aufgabe 1: Broker – Gerätezugänge mit Themen-Rechten
+### Task 1: Broker – Gerätezugänge mit Themen-Rechten
 
 **Dateien:**
 - Ändern: `internal/core/mqttbroker/manager.go` (Hooks `:178-189`, `credentialAuthHook` `:400-421`)
@@ -123,7 +123,7 @@ func (m *Manager) DeviceOnline(id, username string) bool
 - [ ] **Schritt 4:** Tests grün, dazu `go test ./internal/core/mqttbroker ./internal/web -run 'Mqtt|TIA|Broker'`.
 - [ ] **Schritt 5:** Commit „MQTT-Broker: Gerätezugänge mit eigenem Thema“.
 
-### Aufgabe 2: Compiler-Umgebung, Schalter und Zustand
+### Task 2: Compiler-Umgebung, Schalter und Zustand
 
 **Dateien:**
 - Neu: `scripts/install-esphome.sh`, `scripts/esphome.version`,
@@ -176,7 +176,7 @@ Docker-Betrieb `{"ok":false,"error":"ESPPDH gibt es im Docker-Betrieb nicht"}`.
   `POST /admin/server-config/esppdh` und `POST /admin/server-config/esppdh/install`.
 - [ ] **Schritt 6:** Tests grün; Commit „ESPPDH: Compiler-Umgebung, Schalter und Zustand“.
 
-### Aufgabe 3: Platinen, Bausteine und YAML-Erzeuger
+### Task 3: Platinen, Bausteine und YAML-Erzeuger
 
 **Dateien:**
 - Neu: `internal/modules/esppdh/boards.go`, `blocks.go`, `yaml.go`,
@@ -241,7 +241,7 @@ gespeichert), Werte `esppdh/<slug>/<baustein>-<n>/<wert>`.
   verkabelten Geräten). `ota:` bleibt in Paket 1 aus.
 - [ ] **Schritt 4:** Tests grün; Commit „ESPPDH: Platinen, Bausteine und Erzeuger der Konfiguration“.
 
-### Aufgabe 4: Geräte – Tabellen, Rechte, Liste und Detailseite
+### Task 4: Geräte – Tabellen, Rechte, Liste und Detailseite
 
 **Dateien:**
 - Neu: `migrations/179_esppdh.up.sql`, `internal/web/esppdh.go`,
@@ -324,7 +324,7 @@ Seiten und Routen (Seitenschlüssel `esppdh`, Titel „ESPPDH“, Bereich „Imp
   in Gruppe `data` mit `needs(permESPView)`; i18n-Schlüssel „ESPPDH“ in vier Katalogen.
 - [ ] **Schritt 6:** Tests grün, Prüfsumme eintragen; Commit „ESPPDH: Geräte, Bausteine und Rechte (Migration 179)“.
 
-### Aufgabe 5: Bauen mit Schlange und Verlauf
+### Task 5: Bauen mit Schlange und Verlauf
 
 **Dateien:**
 - Neu: `internal/modules/esppdh/build.go`, `build_test.go`,
@@ -382,7 +382,7 @@ Routen: `POST /import/esppdh/{id}/build` (einreihen), `POST /import/esppdh/{id}/
   Liste der letzten Läufe.
 - [ ] **Schritt 5:** Tests grün; Commit „ESPPDH: Firmware am Server bauen, mit Schlange und Verlauf“.
 
-### Aufgabe 6: Firmware herunterladen und per USB flashen
+### Task 6: Firmware herunterladen und per USB flashen
 
 **Dateien:**
 - Neu: `web/static/vendor/esp-web-tools/` (Version festhalten in
@@ -410,7 +410,7 @@ Tools: `name`, `version`, `builds[{chipFamily, parts[{path, offset: 0}]}]`).
   außen. Bei `other`-Platine nur Herunterladen.
 - [ ] **Schritt 4:** Tests grün; Commit „ESPPDH: Firmware herunterladen und USB-Flash im Browser“.
 
-### Aufgabe 7: Zustand des Geräts anzeigen
+### Task 7: Zustand des Geräts anzeigen
 
 **Dateien:**
 - Ändern: `internal/web/esppdh.go`, `web/templates/esppdh.gohtml`,
@@ -426,7 +426,7 @@ Tools: `name`, `version`, `builds[{chipFamily, parts[{path, offset: 0}]}]`).
 
 (Störmeldung nach Karenz ist Paket 2.)
 
-### Aufgabe 8: Handbuch
+### Task 8: Handbuch
 
 **Dateien:**
 - Ändern: `web/templates/help.gohtml` (Kapitel `id="esppdh" data-pages="esppdh"`
@@ -443,7 +443,7 @@ Tools: `name`, `version`, `builds[{chipFamily, parts[{path, offset: 0}]}]`).
 - [ ] **Schritt 2:** `go test ./internal/web -run 'TestHelp|TestI18n'` grün.
 - [ ] **Schritt 3:** Commit „Handbuch: Kapitel ESPPDH“.
 
-### Aufgabe 9: Version, Änderungsprotokoll, Schlussprüfung
+### Task 9: Version, Änderungsprotokoll, Schlussprüfung
 
 - [ ] **Schritt 1:** `VERSION` → `0.82.0`; `CHANGELOG.md`-Eintrag (`### Neu`:
   ESPPDH-Seite, Bausteine, Bauen, USB-Flash; `### Sicherheit`: Rechte
