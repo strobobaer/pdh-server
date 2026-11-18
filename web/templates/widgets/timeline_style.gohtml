@@ -53,7 +53,7 @@ window.pdhTimelineCollect = function(tasks, key){
   const done = tasks.filter(t => t.done), active = tasks.filter(t => !t.done);
   if(!done.length) return tasks;
   const open = window.pdhTimelineCollectorOpen(key);
-  const iso = d => typeof d === 'string' ? d : d.toISOString().slice(0, 10);
+  const iso = d => typeof d === 'string' ? d : d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); // Ortsdatum, nicht UTC
   const starts = done.map(t => iso(t.start)).sort(), ends = done.map(t => iso(t.end)).sort();
   const collector = {id: window.PDH_TL_COLLECTOR, name: '✓ Erledigt (' + done.length + ')' + (open ? ' – einklappen' : ''),
     start: starts[0], end: ends[ends.length - 1], progress: 100, done: true, custom_class: 'tl-collector', count: done.length};

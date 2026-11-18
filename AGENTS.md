@@ -228,12 +228,11 @@ oder ändern.**
 
 ### Offene Punkte (Stand 18.11.2026)
 
-1. **0.80.26 SFTP mit Schlüssel** (Efficio-Export) und **0.80.27 Seite
-   „Netzwerk“** (VLANs und WLANs, Migration 169, Rechte `system.network`
-   und `system.network_admin`) – gebaut auf `feature/efficio-sftp-key` und
-   darauf `feature/netzwerk`, lokal committet. Offen: Freigabe für Push,
-   Merge, Verbund-Update und Browserprüfung (Seite „Netzwerk“ in Fiori und
-   Fluent, hell/dunkel, 320–1366 px; Efficio-Seite mit Schlüssel-Karte).
+1. **0.81.3 SFTP mit Schlüssel** (Efficio-Export) und **0.81.4 Seite
+   „Netzwerk“** (VLANs und WLANs, Migration 177, Rechte `system.network`
+   und `system.network_admin`) – auf `main` (gebaut als 0.80.26/0.80.27,
+   vor dem Merge auf 0.81.3/0.81.4 und Migration 169 → 177 umgestellt).
+   Offen: Abnahme SFTP mit Schlüssel an einem echten Server.
 2. **ESPPDH = Version 0.82.0** (vom Anwender festgelegt). Entwurf
    `docs/superpowers/specs/2026-11-18-esppdh-design.md` auf `feature/esppdh`,
    am 18.11.2026 bestätigt (Paketschnitt, kein ESPPDH im Docker-Betrieb,
@@ -254,6 +253,27 @@ oder ändern.**
    SFTP mit Schlüssel an einem echten Server.
 7. **Zurückgestellt (kein Auftrag):** Abteilungsfeinheiten Rüstzeiten,
    Datennetz Paket 2/3, Buchungssystem/Lizenzen, Firmenstammdaten.
+8. **0.81.0 Rüstzeit in „Neu anlegen“ und 0.81.1 Tagesgrenzen/Zeitumstellung**
+   – auf `main`. Offen: Verbund-Update und Browserprüfung (Assistent mit
+   Kachel Rüstzeit, Wartung „heute fällig“ nicht überfällig, Sicherungs-
+   Formular mit 03:00).
+9. **0.81.2 Terminal-Paket** (Kiosk-Terminals, Anlagenterminal, Kopplung,
+   Kartensitzung, Anmeldung ohne Karte) – auf `main`, Migrationen
+   169–176 (vorher 155–162 auf den Branches `feat/kiosk-terminal`,
+   `feat/anlagenterminal`, `feat/kartensitzung`, `feat/terminal-kopplung`;
+   diese Branches nicht mehr mergen). Neu: `migrations/checksums.txt` –
+   neue Migrationen mit `PDH_MIGRATIONS_APPEND=1 go test ./pkg/database
+   -run TestMigrationsFrozen` eintragen. Offen: Verbund-Update,
+   Browserprüfung, Abnahme am Raspberry Pi mit Kartenleser.
+10. **Zeitzone im Docker-Testsystem** (Vorschlag, kein Auftrag): Container
+   laufen in UTC, Produktion (systemd) in Europe/Berlin. Umstellung nur als
+   Paket: `TZ` für app und updater in `compose.yaml`, `time/tzdata` in
+   `cmd/server` und `cmd/update-agent`, Postgres-Sitzungszone über pgx
+   `RuntimeParams["timezone"]`; nie nur `TZ` an der App, kein `PGTZ`.
+11. **Tagesgrenzen aufräumen (klein):** übrige `Truncate(24*time.Hour)`
+    gegen DATE-Spalten (`kanban.go`, `purchases.go`, `trainings.go`,
+    `user_qualifications.go`, `procurement.go`, `projects_handler.go`,
+    `partners.go`) auf `localDayStart` umstellen.
 
 Docker Desktop startet nach einem Neustart des Windows-Rechners nicht von
 selbst – ohne ihn fehlen der Zeuge und die Labor-Datenbank für die Tests.

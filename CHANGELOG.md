@@ -10,7 +10,7 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
-## [0.80.27] – 2026-11-18
+## [0.81.4] – 2026-11-18
 
 ### Neu
 
@@ -22,7 +22,7 @@ im Kapitel „Versionen & Updates“ an.
 - Neue Rechte **Netzwerk: VLANs und WLANs pflegen** (`system.network`) und **… löschen** (`system.network_admin`, Bereichsadministrator). Pflegen dürfen automatisch alle Rollen, die die UniFi-Anbindung verwalten; löschen nur, wer zusätzlich Bereichsadministrator der Zertifikate ist.
 - WLAN-Kennwörter werden verschlüsselt gespeichert und nie angezeigt.
 
-## [0.80.26] – 2026-11-18
+## [0.81.3] – 2026-11-18
 
 ### Neu
 
@@ -32,6 +32,79 @@ im Kapitel „Versionen & Updates“ an.
 ### Sicherheit
 
 - Der private SFTP-Schlüssel wird verschlüsselt in der Verbindung gespeichert und nie angezeigt, auch nicht in Sicherungen im Klartext. Erzeugen und Ersetzen darf, wer die Verbindung bearbeiten darf (`export.write`).
+
+## [0.81.2] – 2026-11-18
+
+### Neu
+
+- Anlagenterminal: Karte am Terminal anmelden. Die Terminalseite nimmt Karten vom lokalen Kartendienst des Raspberry Pi entgegen (nur gekoppelte Geräte, nicht im Bildschirmschoner) und zeigt die Leiste „Angemeldet: Name“ mit dem Knopf „Abmelden“; eine unbekannte Karte meldet „Karte nicht registriert“ für 4 Sekunden. Die Kartensitzung endet nach 2 Minuten, mit „Abmelden“ oder mit dem Bildschirmschoner. Handbuch-Abschnitt „Kartenleser und Kartensitzung“.
+- Anlagenterminal: Anmeldung ohne Kartenleser. Meldet das Terminal keinen oder einen gestörten Kartenleser, gilt die Anmeldeart des Terminals (am Systembenutzer einstellbar): Kartennummer + PIN (Standard), Benutzer + Passwort, nur Kartennummer oder keine; mit Leser gibt es zusätzlich den Knopf „Mit Benutzer und Passwort“ (je Terminal abschaltbar). Die Terminal-PIN (4 bis 8 Ziffern) setzt jede Person unter „Mein Konto“; nach 5 falschen PINs ist sie 15 Minuten gesperrt (an allen Terminals). Geänderte Einstellungen übernimmt das Terminal sofort ohne Neuladen. Ältere Geräte und Terminals ohne Meldung des Lesers funktionieren unverändert.
+- Anlagenterminal: Unter `/terminal` zeigt ein Wandbildschirm den Bildschirmschoner, die offenen Störungen und Tickets der Anlage samt Unteranlagen und führt über „Neu“ zur Meldeseite des Easy-Mode; Störung und Ticket öffnen vorerst beide diese Seite, Stillstand ist noch nicht verfügbar. Es läuft mit einem Systembenutzer, dessen Terminal-Standort die Anlage ist.
+- Rückkehrzeit zum Bildschirmschoner: in den Core-Einstellungen für alle Terminals (Standard 120 Sekunden, erlaubt 30 bis 3600) und je Terminal am Systembenutzer; leer heißt „global“.
+- HMI-Verbindungen haben die neuen Felder „Ansehen am Terminal“ (Jeder, Nur mit Karte, Niemand) und „Bedienen am Terminal“ (Niemand, Nur mit Karte, Jeder); bei ausgeschaltetem „Bedienen erlaubt“ gilt am Terminal immer „Niemand“, bei „Jeder“ warnt das Formular. Wirksam sind die Felder am Terminal erst, sobald dort HMIs angezeigt werden.
+- Handbuch-Kapitel „Anlagenterminal“.
+- Kiosk-Terminals: Im Reiter HMI einer Anlage öffnet „Am Terminal zeigen“ das HMI direkt auf dem Bildschirm des hmi-kiosk-Terminals am Bedienplatz, „Am Terminal bedienen“ mit Tastatur und Maus (nur wo Bedienen erlaubt ist); ist das Terminal belegt, nennt PDH das laufende HMI und seit wann.
+- Neue Verwaltung „Kiosk-Terminals“ (Core-Einstellungen und Navigation): Terminals mit Adresse, Schlüssel und Fingerabdruck anlegen, ändern, löschen und mit „Verbindung prüfen“ testen; in den Stammdaten einer Anlage wählst du ihr Kiosk-Terminal.
+- Befehle an ein Terminal stehen unter „Letzte Zugriffe“ des HMI mit dem Namen des Terminals.
+- Ist das Terminal gerade nicht bereit, zeigt PDH den Grund, den das Terminal nennt (z. B. Wartung, Sicherung oder HMI vom Terminal aus nicht erreichbar).
+- Handbuch-Kapitel „Kiosk-Terminals“, auch zum PDH-Terminalmodus (Web-Kachel mit angemeldetem Systembenutzer am Terminal).
+- Terminal koppeln: Am Systembenutzer erzeugt „Gerät koppeln“ in der Karte „Gekoppelte Geräte“ einen Code (XXXX-XXXX, 10 Minuten gültig, nur einmal verwendbar). Am PDH-Terminal gibst du ihn auf der Admin-Seite unter „PDH“ ein; danach meldet sich das Terminal bei jedem Start selbst an.
+- Gekoppelte Geräte: Die Karte am Systembenutzer zeigt jedes Gerät mit Status „aktiv“ oder „gesperrt“ und dem letzten Kontakt; „Sperren“ sperrt ein Gerät nach Rückfrage.
+- Ein neuer Kopplungscode ersetzt den noch offenen Code des Benutzers.
+- Die Wartungssperre meldet gekoppelte Terminals nicht ab; ein gesperrtes oder entkoppeltes Terminal sieht eine Fehlerseite statt einer Weiterleitung.
+
+### Geändert
+
+- Anlagenterminal: Störungen und Tickets zeigt das Terminal nur, wenn der Terminal-Benutzer „Störungen ansehen“ bzw. „Tickets ansehen“ für die Abteilung der Anlage hat; sonst erscheint an der Stelle ein Hinweis, ohne beide Rechte „Keine Berechtigung“.
+- Anlagenterminal: Ist der Easy-Mode ausgeschaltet, sind „Störung“ und „Ticket“ unter „Neu“ abgeblendet und das Terminal erklärt es, statt zur Anmeldeseite zu führen.
+- Die Karte „Anlagenterminal: Rückkehrzeit“ in den Core-Einstellungen sehen nur Personen, die sie auch speichern dürfen (Benutzer verwalten).
+- Kartennummern (RFID) werden ohne Rücksicht auf Groß- und Kleinschreibung und Leerzeichen am Rand verglichen: Ein gespeichertes `deadbeef` passt zu einer gelesenen `DEADBEEF`.
+
+### Behoben
+
+- HMI speichern: Fehlen „Ansehen/Bedienen am Terminal“ in einer Anfrage (z. B. älteres Formular), bleiben die gespeicherten Werte erhalten, statt auf die Standardwerte zurückzufallen.
+- Rückkehrzeit des Terminals: Datenbankfehler beim Speichern werden gemeldet, statt „gespeichert“ zu zeigen.
+
+### Sicherheit
+
+- Karte am Terminal: höchstens 10 unbekannte Karten je Minute und Terminal; danach antwortet PDH mit „Zu viele unbekannte Karten“ (429).
+- Neues Recht „HMI am Kiosk-Terminal der Anlage zeigen“ (`hmi.kiosk`) für Administratoren, Manager, Techniker und Anlagenverantwortliche; es gilt je Anlage, bei Rechten auf Abteilungsebene also nur für die Anlagen dieser Abteilung.
+- HMI-Verbindungen anlegen und ändern verlangt „HMI-Verbindungen einrichten“ jetzt für die Abteilung der Anlage (bisher genügte das Recht in irgendeiner Abteilung).
+- Terminals einrichten, ändern, prüfen und löschen nur mit „HMI-Verbindungen einrichten“ ohne Abteilungsbegrenzung (standardmäßig Administratoren).
+- Ändert sich Adresse oder Fingerabdruck eines Terminals, verwirft PDH den gespeicherten Schlüssel und verlangt einen neuen – Schlüssel und VNC-Passwörter lassen sich so nicht auf ein anderes Gerät umlenken.
+- An ein Terminal geht immer nur ein Befehl gleichzeitig; Befehle für archivierte Anlagen werden abgewiesen.
+- PDH vertraut einem Terminal nur, wenn der Fingerabdruck seines Zertifikatsschlüssels stimmt; Schlüssel und VNC-Passwort werden verschlüsselt gespeichert, nie angezeigt und nie protokolliert.
+- Terminal-Kopplung: Kopplungscodes und Geräte-Geheimnisse werden nur als SHA-256-Hash gespeichert, nie im Klartext.
+- Nach 5 Fehlversuchen innerhalb von 5 Minuten je Quelle sind Kopplung und Geräteanmeldung für 5 Minuten gesperrt.
+- Ein gesperrtes Gerät wird innerhalb von 30 Sekunden abgemeldet.
+- Geräte-Zugänge werden von der JSON-Schnittstelle `/api/v1` abgewiesen.
+- Die Geräte-Anmeldung liegt als HttpOnly-Cookie vor; Seiten-Skripte können sie nicht lesen.
+- Gesperrte Geräte können Stammdaten nicht mehr zur Löschung vormerken.
+
+## [0.81.1] – 2026-11-18
+
+### Behoben
+
+- Wartung: Ein Auftrag oder Plan, der heute fällig ist, wird nicht mehr schon ab 01:00 Uhr (im Sommer ab 02:00 Uhr) als „überfällig“ angezeigt.
+- Leitstand und Übersichten im Browser: „Überfällig“ und „heute“ richten sich nach dem Datum vor Ort – bisher galt ein gestern fälliger Vorgang den ganzen Tag noch nicht als überfällig.
+- Neu anlegen: Die Schnellwahl der Fälligkeit („heute“, „morgen“ …) und der Beginn einer Aufgabe nehmen kurz nach Mitternacht nicht mehr den Vortag.
+- Anlagen-Verlauf und Zeitstrahl: Zeitraum-Knöpfe und der Sammler „Erledigt“ nutzen das Datum vor Ort statt UTC.
+- Outlook-Kalender: Schichten erscheinen zur richtigen Uhrzeit (bisher 1–2 Stunden zu spät), Nachtschichten auch über die Zeitumstellung; schon eingetragene Schichten korrigiert der nächste Abgleich.
+- Microsoft-Konto: „Letzter Sync“ zeigt die Ortszeit statt UTC.
+- KVP-Auswertung: Der Zwölf-Monats-Verlauf hängt nicht mehr davon ab, dass Programm und Datenbank dieselbe Zeitzone haben.
+- Datensicherung: Bei der Umstellung auf Winterzeit läuft ein Zeitplan um 02:xx nicht mehr doppelt; zwei Sicherungen derselben Uhrzeit überschreiben sich nicht mehr.
+
+### Geändert
+
+- Datensicherung: Neue Zeitpläne starten mit 03:00 Uhr statt 02:00 Uhr; das Formular weist darauf hin, dass eine Sicherung zwischen 02:00 und 02:59 im März ausfällt.
+
+## [0.81.0] – 2026-11-18
+
+### Neu
+
+- Neu anlegen: Mit dem Recht „Rüstzeiten: erfassen …“ gibt es im Assistenten die Kachel **Rüstzeit** – Grund, Anlage und Beginn Schritt für Schritt wählen; ohne Ende läuft die Rüstzeit, mit Ende oder Dauer wird sie nachgetragen.
+- Neu anlegen: Auf der Seite ohne Assistent führt der Knopf **Rüstzeit** zur Seite „Rüstzeit anlegen“, mit der Anlage der QR-Infoseite vorbelegt.
+- Handbuch: „So legst du eine Rüstzeit über „Neu anlegen“ an“.
 
 ## [0.80.25] – 2026-11-18
 

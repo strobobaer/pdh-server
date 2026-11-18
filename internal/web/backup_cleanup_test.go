@@ -19,7 +19,7 @@ func TestBackupCronSpec(t *testing.T) {
 		{backupSchedule{Frequency: "daily", TimeOfDay: "02:30"}, "30 2 * * *"},
 		{backupSchedule{Frequency: "weekly", TimeOfDay: "23:05", Weekday: 0}, "5 23 * * 0"},
 		{backupSchedule{Frequency: "monthly", TimeOfDay: "01:00", Monthday: 15}, "0 1 15 * *"},
-		{backupSchedule{Frequency: "monthly", TimeOfDay: "kaputt", Monthday: 31}, "0 2 1 * *"},
+		{backupSchedule{Frequency: "monthly", TimeOfDay: "kaputt", Monthday: 31}, "0 3 1 * *"},
 	}
 	for _, c := range cases {
 		if got := backupCronSpec(c.s); got != c.want {

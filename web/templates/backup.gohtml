@@ -175,7 +175,7 @@
       <option value="weekly" {{if eq $fr "weekly"}}selected{{end}}>wöchentlich</option>
       <option value="monthly" {{if eq $fr "monthly"}}selected{{end}}>monatlich</option>
     </select></div>
-    <div><label>Uhrzeit</label><input class="form-input" type="time" name="time_of_day" required value="{{if $s}}{{$s.TimeOfDay}}{{else}}02:00{{end}}"></div>
+    <div><label>Uhrzeit (Ortszeit des Servers)</label><input class="form-input" type="time" name="time_of_day" required value="{{if $s}}{{$s.TimeOfDay}}{{else}}03:00{{end}}"><div class="bk-sub" style="margin-top:2px">Nicht 02:00–02:59: Bei der Zeitumstellung fällt die Sicherung im März aus.</div></div>
     <div><label>Wochentag (wöchentlich)</label><select class="form-input" name="weekday">
       {{$wd := 1}}{{if $s}}{{$wd = $s.Weekday}}{{end}}
       {{range $i, $n := .Weekdays}}<option value="{{$i}}" {{if eq $i $wd}}selected{{end}}>{{$n}}</option>{{end}}

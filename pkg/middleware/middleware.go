@@ -108,6 +108,14 @@ func Auth(jwtSecret string) func(http.Handler) http.Handler {
 				return
 			}
 
+			// Gerätesitzungen (Anlagenterminal, Claim device) gelten nur für die Web-Seiten
+			// des Terminals; ihre Sperre wird dort geprüft (terminal_devices.go). Die API
+			// weist sie ab, sonst bliebe ein gesperrtes Gerät (Token 10 Jahre) hier zugelassen.
+			if dev, _ := claims["device"].(string); dev != "" {
+				response.Error(w, http.StatusUnauthorized, "ungültiger token")
+				return
+			}
+
 			if scope, _ := claims["scope"].(string); scope != "" {
 				ref, _ := claims["ref"].(string)
 				if !ScopedTokenAllows(scope, ref, r.Method, r.URL.Path) {

@@ -159,7 +159,7 @@ func (h *Handler) createBackup(ctx context.Context, comps []string, kind, schedu
 	if err := os.MkdirAll(backupDir(), 0o750); err != nil {
 		return "", "", fmt.Errorf("sicherungsordner: %w", err)
 	}
-	name := fmt.Sprintf("pdh-backup-%s-%s.zip", time.Now().Format("20060102-150405"), kind)
+	name := backupFileName(backupDir(), kind, time.Now())
 	runID, err := h.startBackupRun(ctx, name, comps, kind, scheduleID, userID)
 	if err != nil {
 		return "", "", err
@@ -803,7 +803,7 @@ var weekdayNames = []string{"Sonntag", "Montag", "Dienstag", "Mittwoch", "Donner
 func backupCronSpec(s backupSchedule) string {
 	t, err := time.Parse("15:04", s.TimeOfDay)
 	if err != nil {
-		t, _ = time.Parse("15:04", "02:00")
+		t, _ = time.Parse("15:04", "03:00")
 	}
 	switch s.Frequency {
 	case "weekly":
@@ -870,10 +870,36 @@ func (h *Handler) StartBackupSchedules(ctx context.Context) {
 			continue
 		}
 		sid := s.ID
-		if err := h.exportCron.Schedule(id, backupCronSpec(s), func() { h.runScheduledBackup(sid) }); err != nil {
+		if err := h.exportCron.Schedule(id, backupCronSpec(s), func() { h.runCronBackup(sid) }); err != nil {
 			componentLog("backup").Error().Err(err).Str("schedule", s.Name).Msg("sicherungszeitplan einplanen")
 		}
 	}
+}
+
+// backupCronMinGap: Abstand, unter dem ein geplanter Lauf entfällt. Bei der
+// Umstellung auf Winterzeit gibt es 02:00–02:59 zweimal, cron startet dann
+// denselben Zeitplan zweimal. Zeitpläne laufen höchstens täglich.
+const backupCronMinGap = 90 * time.Minute
+
+// runCronBackup: Aufruf durch den Zeitplan – entfällt, wenn derselbe Zeitplan
+// vor weniger als backupCronMinGap gestartet wurde (auch über „Jetzt ausführen“).
+// Massgeblich ist der Beginn (backup_runs.started_at): last_run_at steht erst
+// am Ende, eine lange Sicherung kann beim zweiten 02:00 noch laufen. Wartet ein
+// Lauf noch auf backupMu (anderer Zeitplan sichert), hat er keine Zeile – dafür
+// merkt sich backupCronClaim den Start im Speicher, bevor gewartet wird.
+func (h *Handler) runCronBackup(scheduleID string) {
+	if !backupCronClaim(scheduleID, time.Now()) {
+		componentLog("backup").Info().Str("schedule", scheduleID).Msg("geplante sicherung übersprungen: zeitplan wurde vor weniger als 90 minuten gestartet (z. b. zeitumstellung im herbst)")
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	recent := h.backupStartedRecently(ctx, scheduleID, backupCronMinGap)
+	cancel()
+	if recent {
+		componentLog("backup").Info().Str("schedule", scheduleID).Msg("geplante sicherung übersprungen: zeitplan lief vor weniger als 90 minuten (z. b. zeitumstellung im herbst)")
+		return
+	}
+	h.runScheduledBackup(scheduleID)
 }
 
 func (h *Handler) runScheduledBackup(scheduleID string) {
@@ -1508,4 +1534,54 @@ func (h *Handler) BackupUpdateSettingsWeb(w http.ResponseWriter, r *http.Request
 		err = h.setAppSetting(r.Context(), keyBackupOnUpdateKeep, strconv.Itoa(keep))
 	}
 	backupRedirect(w, r, "schedules", "Einstellung für Updates gespeichert.", err)
+}
+
+// backupFileName: Dateiname aus Ortszeit und Art, eindeutig im Ordner. Im
+// Herbst gibt es 02:xx zweimal – eine zweite Sicherung derselben Wandsekunde
+// bekommt „-2“, „-3“ … statt die erste zu überschreiben (sonst zeigten zwei
+// Läufe auf eine Datei, und das Aufräumen löschte sie für beide).
+func backupFileName(dir, kind string, now time.Time) string {
+	base := fmt.Sprintf("pdh-backup-%s-%s", now.Format("20060102-150405"), kind)
+	name := base + ".zip"
+	for i := 2; backupNameTaken(filepath.Join(dir, name)); i++ {
+		name = fmt.Sprintf("%s-%d.zip", base, i)
+	}
+	return name
+}
+
+func backupNameTaken(path string) bool {
+	for _, p := range []string{path, path + ".part"} {
+		if _, err := os.Lstat(p); err == nil || !os.IsNotExist(err) {
+			return true
+		}
+	}
+	return false
+}
+
+// backupStartedRecently: wurde der Zeitplan in den letzten gap gestartet?
+// Bei einem Datenbankfehler false – lieber einmal zu viel sichern als gar nicht.
+func (h *Handler) backupStartedRecently(ctx context.Context, scheduleID string, gap time.Duration) bool {
+	var recent bool
+	err := h.db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM backup_runs WHERE schedule_id = $1::uuid AND started_at > NOW() - make_interval(secs => $2))`,
+		scheduleID, gap.Seconds()).Scan(&recent)
+	return err == nil && recent
+}
+
+// backupCronStarts: letzter Start je Zeitplan durch cron (nur im Speicher, nach
+// einem Neustart deckt backupStartedRecently das ab).
+var backupCronStarts = struct {
+	sync.Mutex
+	at map[string]time.Time
+}{at: map[string]time.Time{}}
+
+// backupCronClaim: true, wenn der Zeitplan jetzt laufen darf, und merkt den
+// Start. now.Sub nutzt die monotone Uhr – die Zeitumstellung zählt nicht.
+func backupCronClaim(scheduleID string, now time.Time) bool {
+	backupCronStarts.Lock()
+	defer backupCronStarts.Unlock()
+	if last, ok := backupCronStarts.at[scheduleID]; ok && now.Sub(last) < backupCronMinGap {
+		return false
+	}
+	backupCronStarts.at[scheduleID] = now
+	return true
 }

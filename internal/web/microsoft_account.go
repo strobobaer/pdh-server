@@ -59,6 +59,8 @@ type AccountPageData struct {
 	Notice              string
 	UserID              string // Profilbild (avatar.go)
 	Initials, AvatarBg  string
+	PINSet              bool   // eigene Terminal-PIN gesetzt
+	PINLockedUntil      string // "HH:MM", wenn gesperrt
 }
 
 // MicrosoftAccountView beschreibt eine Microsoft-Verbindung eines Nutzers -
@@ -124,6 +126,7 @@ func (h *Handler) AccountPage(w http.ResponseWriter, r *http.Request) {
 	u := getUser(r)
 	data.UserID = u.ID
 	data.Initials, data.AvatarBg = avatarFor(u.FirstName, u.LastName)
+	data.PINSet, data.PINLockedUntil = h.terminalPINView(r.Context(), u.ID)
 	data.MicrosoftWork = h.loadMicrosoftAccountView(r.Context(), getUser(r).ID, microsoftAccountWork)
 	data.MicrosoftPrivate = h.loadMicrosoftAccountView(r.Context(), getUser(r).ID, microsoftAccountPrivate)
 	h.render(w, "account", data)
@@ -150,7 +153,7 @@ func (h *Handler) loadMicrosoftAccountView(ctx context.Context, userID, kind str
 	view.TeamsPermission = strings.Contains(grantedScopes, "Chat.ReadWrite") && strings.Contains(grantedScopes, "ChannelMessage.Send")
 	_ = h.db.QueryRow(ctx, `
 		SELECT sync_shifts, sync_tasks, sync_maintenance, sync_tickets_faults, import_busy_events,
-		       COALESCE(to_char(last_sync_at AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI'), '')
+		       COALESCE(to_char(last_sync_at, 'DD.MM.YYYY HH24:MI'), '') -- Ortszeit (Sitzungszone), nicht UTC
 		FROM microsoft_calendar_preferences WHERE user_id=$1::uuid AND account_kind=$2`, userID, kind,
 	).Scan(&view.SyncShifts, &view.SyncTasks, &view.SyncMaintenance, &view.SyncTicketsFaults, &view.ImportBusyEvents, &view.CalendarLastSync)
 	_ = h.db.QueryRow(ctx, `SELECT COUNT(*) FROM microsoft_calendar_blocks WHERE user_id=$1::uuid AND account_kind=$2`, userID, kind).Scan(&view.CalendarBusyCount)

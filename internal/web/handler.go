@@ -73,6 +73,7 @@ type BaseData struct {
 	CanChat                bool       // Chat-Navigation, Ungelesen-Zaehler und "Im Chat teilen"
 	CanBackup              bool       // Nav-Link "Datensicherung"
 	CanPrinters            bool       // Nav-Link "Drucker" (printers.manage)
+	CanKioskTerminals      bool       // Nav-Link "Kiosk-Terminals" (hmi.manage)
 	CanPrint               bool       // direkt auf eingerichtete Drucker drucken (printers.use)
 	CanCleanup             bool       // Nav-Link "Bereinigung"
 	CanServerConfig        bool       // Nav-Link "Server-Einstellungen" (nur Admins)
@@ -339,11 +340,14 @@ type Handler struct {
 	closeStreams     context.CancelFunc // beendet streams
 	streamsMu        sync.Mutex         // schützt streams/closeStreams (cutStreams ersetzt sie)
 	streamsDone      bool               // CloseStreams gerufen: kein neuer Kontext mehr
+	termEvents       *terminalEventHub  // Verteiler der Terminal-Ereignisse (terminal_events.go)
+	termEventsOnce   sync.Once
 	mlock            maintLock          // Wartungssperre während eines Updates (maint_lock.go)
 	sessionNotBefore atomic.Int64       // Sitzungen mit iat davor sind ungültig (app_settings session.not_before)
 
 	// Austauschbare Quellen (nur Tests; nil = echt): Rechteprüfung und gespeicherter Commit-Vergleich.
 	hasPermHook     func(*http.Request, string) bool
+	kioskPermHook   func(r *http.Request, perm, infraID string) bool // Tests: Rechte je Anlage ("" = ohne Abteilungsbegrenzung), kiosk_terminals.go
 	updateCheckHook func(context.Context) storedUpdateCheck
 
 	// Explorer (explorer.go): lädt die Verbindung für den Explorer; nil = echt (connectionRow)
@@ -385,6 +389,7 @@ func NewHandler(
 	}
 	h.mirrorActiveURL = func(r *http.Request) string { return mirrorActiveLink(r, h.mirrorPeerState(r.Context())) }
 	h.streams, h.closeStreams = context.WithCancel(context.Background())
+	h.termEvents = newTerminalEventHub()
 	// Wartungssperre: geplante Exporte, Bestellvorschlag, Sicherungen und
 	// Abrufe setzen aus (maint_lock.go)
 	h.exportCron.SetGate(h.MaintLocked)
@@ -410,6 +415,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/avatar/{id}", h.AvatarWeb)
 	r.Post("/users/{id}/avatar", h.AvatarUploadWeb)
 	r.Post("/account/appearance", h.AppearanceSaveWeb)
+	r.Post("/account/terminal-pin", h.AccountTerminalPINWeb)
 	r.Post("/account/nav-layout", h.NavLayoutSaveWeb)
 	r.Post("/account/microsoft/connect", h.MicrosoftConnectStart)
 	r.Post("/account/microsoft/connect-teams", h.MicrosoftTeamsConnectStart)
@@ -547,6 +553,8 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/plant-watch/{id}/toggle", h.PlantWatchToggleWeb)
 	r.Get("/infrastructure/{id}", h.InfraDetail)
 	h.hmiRoutes(r)                                     // HMI-Fernzugriff (VNC) aus der Anlage
+	h.kioskRoutes(r)                                   // Kiosk-Terminals: HMI am Terminal zeigen (kiosk_terminals.go)
+	h.terminalRoutes(r)                                // Anlagenterminal: Schoner, Störungsinfo, Neu (terminal_page.go)
 	r.Post("/infrastructure/{id}/edit", h.InfraUpdate) // FIX: war PUT, wird von Cloudflare/Nginx blockiert
 	r.Get("/infrastructure/{id}/history", h.InfraHistoryWeb)
 	r.Get("/infrastructure/{id}/history.csv", h.InfraHistoryCSV)
@@ -831,12 +839,15 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/users/{id}/mail-notifications", h.UserMailNotificationsWeb)
 	r.Post("/users/me/password", h.AccountPasswordWeb)
 	r.Post("/users/{id}/password-change", h.UserRequirePasswordChangeWeb)
+	r.Post("/users/{id}/terminal-pin", h.UserTerminalPINWeb)
 	r.Post("/users/{id}/nextcloud-account", h.UserNextcloudAccountWeb)
 	r.Post("/users/{id}/nextcloud-password", h.UserNextcloudPasswordWeb)
 	r.Post("/users/{id}/master", h.UserMasterSaveWeb)
 	r.Post("/users/{id}/private", h.UserPrivateSaveWeb)
 	r.Post("/users/{id}/qualifications", h.UserQualificationSaveWeb)
 	r.Post("/users/{id}/groups", h.UserGroupsSaveWeb)
+	r.Post("/users/{id}/terminal-code", h.TerminalPairCodeWeb)
+	r.Post("/users/{id}/devices/{dev}/revoke", h.TerminalDeviceRevokeWeb)
 	r.Get("/admin/org-units", h.OrgUnitsPage)
 	r.Get("/trainings", h.TrainingsPage)
 	r.Get("/suggest", h.SuggestWeb)
@@ -976,6 +987,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/core/settings/infra-responsible", h.InfraRespDefaultWeb)
 	r.Post("/core/settings/completion", h.CompletionSettingsWeb)
 	r.Post("/core/settings/easy-mode", h.EasyModeSettingsWeb)
+	r.Post("/core/settings/terminal", h.TerminalSettingsWeb)
 	r.Post("/core/settings/defaults", h.DefaultsSaveWeb)
 	r.Get("/leitstaende", h.LeitstaendePage)
 	r.Get("/leitstaende/{id}", h.LeitstaendePage)
@@ -1377,6 +1389,7 @@ func (h *Handler) baseData(r *http.Request, page, title, ctxTitle string) BaseDa
 		TerminalInfraID:        h.terminalInfraID(r),
 		CanBackup:              h.rbac.HasPermissionForUser(u.ID, string(u.Role), "system.backup"),
 		CanPrinters:            h.rbac.HasPermissionForUser(u.ID, string(u.Role), "printers.manage"),
+		CanKioskTerminals:      h.canManageKiosk(r),
 		CanPrint:               h.rbac.HasPermissionForUser(u.ID, string(u.Role), "printers.use"),
 		CanCleanup:             h.rbac.HasPermissionForUser(u.ID, string(u.Role), "system.cleanup"),
 		CanServerConfig:        u.Role == users.RoleAdmin && h.rbac.HasPermissionForUser(u.ID, string(u.Role), "system.server_config"),
@@ -2341,9 +2354,36 @@ func (h *Handler) sessionUserID(r *http.Request) string {
 // sessionClaims wie sessionUserID, zusätzlich der Ausstellungszeitpunkt (iat,
 // Unix-Sekunden; 0 = fehlt) für die Sitzungs-Epoche (maint_lock.go).
 func (h *Handler) sessionClaims(r *http.Request) (string, int64) {
+	sub, iat, _ := h.sessionToken(r)
+	return sub, iat
+}
+
+// tokenDevice liest den Claim device (Terminal-Gerät) eines Token-Strings; ""
+// bei ungültigem Token oder ohne Claim.
+func (h *Handler) tokenDevice(raw string) string {
+	token, err := jwt.Parse(raw, func(t *jwt.Token) (interface{}, error) {
+		if t.Method != jwt.SigningMethodHS256 {
+			return nil, fmt.Errorf("unerwartete signaturmethode")
+		}
+		return []byte(h.jwtSecret), nil
+	})
+	if err != nil || !token.Valid {
+		return ""
+	}
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		return ""
+	}
+	dev, _ := claims["device"].(string)
+	return dev
+}
+
+// sessionToken wie sessionClaims, zusätzlich der Claim device (Gerätesitzung
+// eines Anlagenterminals, terminal_devices.go; "" = normale Sitzung).
+func (h *Handler) sessionToken(r *http.Request) (string, int64, string) {
 	cookie, err := r.Cookie("pdh_token")
 	if err != nil || cookie.Value == "" {
-		return "", 0
+		return "", 0, ""
 	}
 	token, err := jwt.Parse(cookie.Value, func(t *jwt.Token) (interface{}, error) {
 		if t.Method != jwt.SigningMethodHS256 {
@@ -2353,28 +2393,29 @@ func (h *Handler) sessionClaims(r *http.Request) (string, int64) {
 	})
 	if err != nil {
 		log.Warn().Err(err).Str("path", r.URL.Path).Msg("sitzung: jwt ungueltig")
-		return "", 0
+		return "", 0, ""
 	}
 	if !token.Valid {
 		log.Warn().Str("path", r.URL.Path).Msg("sitzung: jwt als ungueltig markiert")
-		return "", 0
+		return "", 0, ""
 	}
 	claims, ok := token.Claims.(jwt.MapClaims)
 	if !ok {
 		log.Warn().Str("path", r.URL.Path).Msg("sitzung: jwt-claims unlesbar")
-		return "", 0
+		return "", 0, ""
 	}
 	if scope, _ := claims["scope"].(string); scope != "" {
 		// zweckgebundene Tokens (z. B. Fertigmeldung im Leitstand) sind keine Sitzung
 		log.Warn().Str("path", r.URL.Path).Str("scope", scope).Msg("sitzung: zweckgebundenes token als cookie abgelehnt")
-		return "", 0
+		return "", 0, ""
 	}
 	userID, _ := claims["sub"].(string)
 	if userID == "" {
 		log.Warn().Str("path", r.URL.Path).Msg("sitzung: jwt ohne sub-claim")
 	}
 	iat, _ := claims["iat"].(float64)
-	return userID, int64(iat)
+	dev, _ := claims["device"].(string)
+	return userID, int64(iat), dev
 }
 
 // sessionUser validiert die Sitzung vollstaendig: gueltiges JWT UND ein
@@ -2386,7 +2427,7 @@ func (h *Handler) sessionClaims(r *http.Request) (string, int64) {
 // Sitzungen, die vor der letzten Wartungssperre ausgestellt wurden, gelten
 // nicht mehr (außer für Inhaber des Abbruch-Rechts, maint_lock.go).
 func (h *Handler) sessionUser(r *http.Request) *users.User {
-	userID, iat := h.sessionClaims(r)
+	userID, iat, device := h.sessionToken(r)
 	if userID == "" {
 		return nil
 	}
@@ -2394,6 +2435,15 @@ func (h *Handler) sessionUser(r *http.Request) *users.User {
 	if err != nil {
 		log.Warn().Err(err).Str("path", r.URL.Path).Str("user_id", userID).Msg("sitzung: benutzer nicht ladbar (deaktiviert/geloescht?)")
 		return nil
+	}
+	if device != "" {
+		// Gerätesitzung eines Anlagenterminals: Sperre/Entkopplung wirkt sofort (30 s Zwischenspeicher),
+		// die Wartungssperre gilt nicht – das Gerät meldet sich ohnehin selbst wieder an.
+		if !terminalDevices.active(r.Context(), device, userID, h.deviceByID) {
+			log.Info().Str("bereich", "auth").Str("user", user.ID).Str("device", device).Str("path", r.URL.Path).Msg("sitzung: gerät gesperrt oder entkoppelt")
+			return nil
+		}
+		return user
 	}
 	if h.sessionRevoked(user, iat) {
 		log.Info().Str("bereich", "auth").Str("user", user.ID).Str("path", r.URL.Path).Msg("sitzung: durch wartung beendet")
@@ -2405,7 +2455,7 @@ func (h *Handler) sessionUser(r *http.Request) *users.User {
 func (h *Handler) authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Anmeldeseite samt RFID-Anmeldung und Passwort vergessen/zuruecksetzen sind oeffentlich
-		if r.URL.Path == "/login" || strings.HasPrefix(r.URL.Path, "/login/") || r.URL.Path == "/lang" {
+		if r.URL.Path == "/login" || strings.HasPrefix(r.URL.Path, "/login/") || r.URL.Path == "/lang" || (r.URL.Path == "/terminal/geraet" && r.Method == http.MethodPost) {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -2430,6 +2480,12 @@ func (h *Handler) authMiddleware(next http.Handler) http.Handler {
 		}
 		user := h.sessionUser(r)
 		if user == nil {
+			// Gesperrtes oder entkoppeltes Terminal: Fehlerseite statt Weiterleitung ins Leere
+			if _, _, dev := h.sessionToken(r); dev != "" {
+				clearSessionCookies(w)
+				h.renderDeviceError(w, http.StatusForbidden, msgDeviceLoginDenied)
+				return
+			}
 			// Cookie in jedem Fall loeschen - auch wenn das JWT selbst noch
 			// gueltig war, aber der Benutzer nicht mehr geladen werden kann
 			// (deaktiviert/geloescht). Sonst haengt der Browser dauerhaft an
@@ -3994,9 +4050,13 @@ func (h *Handler) OverrideLogoutWeb(w http.ResponseWriter, r *http.Request) {
 		h.Logout(w, r)
 		return
 	}
-	http.SetCookie(w, &http.Cookie{Name: "pdh_token", Value: returnCookie.Value, Path: "/", MaxAge: 86400, SameSite: http.SameSiteLaxMode})
-	http.SetCookie(w, &http.Cookie{Name: "pdh_user_id", Value: userID, Path: "/", MaxAge: 86400, SameSite: http.SameSiteLaxMode})
-	http.Redirect(w, r, "/", http.StatusFound)
+	returnMaxAge, isDevice, target := 86400, false, "/"
+	if h.tokenDevice(returnCookie.Value) != "" {
+		returnMaxAge, isDevice, target = deviceCookieMaxAge, true, "/terminal" // Gerätesitzung behält ihre 400 Tage
+	}
+	http.SetCookie(w, &http.Cookie{Name: "pdh_token", Value: returnCookie.Value, Path: "/", MaxAge: returnMaxAge, HttpOnly: isDevice, SameSite: http.SameSiteLaxMode})
+	http.SetCookie(w, &http.Cookie{Name: "pdh_user_id", Value: userID, Path: "/", MaxAge: returnMaxAge, SameSite: http.SameSiteLaxMode})
+	http.Redirect(w, r, target, http.StatusFound)
 }
 
 // ── Wiederhergestellte Handler ────────────────────────────────

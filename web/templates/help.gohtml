@@ -199,6 +199,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <li>auf einer Projektseite das <b>+</b> bei den Aufgaben – die Aufgabe gehört dann gleich zum Projekt, danach bleibst du auf der Projektseite,</li>
     <li>im <a href="#dashboard">Leitstand</a> die Kacheln – dort ohne Zuweisung, siehe unten.</li>
   </ul>
+  <p>Mit dem Recht „Rüstzeiten: erfassen …“ steht unter <b>Neu anlegen</b> auch die Kachel <b>Rüstzeit</b> – wie das geht, steht unten und im Kapitel <a href="#ruestzeiten">Rüstzeiten</a>. Im Leitstand gibt es sie nicht.</p>
   <p>Die <b>Kostenstelle</b> übernimmt PDH bei Tickets und Störungen wie bisher aus der gewählten Anlage.</p>
   <div class="hb-howto"><b><i class="ti ti-circle-plus"></i> So legst du einen Vorgang an</b>
     <ol class="hb-steps">
@@ -209,6 +210,15 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li><b>Wann?</b> Fälligkeit per Schnellwahl (heute, morgen, 3 Tage, 1–2 Wochen, Standardfrist) oder Datum; bei Aufgaben auch der Start.</li>
       <li>Zusammenfassung prüfen – <b>Anlegen</b> öffnet den neuen Vorgang, <b>Anlegen &amp; nächster</b> beginnt gleich den nächsten derselben Art.</li>
     </ol></div>
+  <div class="hb-howto"><b><i class="ti ti-arrows-exchange-2"></i> So legst du eine Rüstzeit über „Neu anlegen“ an</b>
+    <ol class="hb-steps">
+      <li><b>Neu anlegen</b> → Kachel <b>Rüstzeit</b>.</li>
+      <li><b>Was?</b> den <b>Grund</b> antippen, z. B. „Produktumstellung“. Ein Vermerk ist freiwillig.</li>
+      <li><b>Wo?</b> die Anlage wählen – sie ist Pflicht. An einer Anlage läuft immer höchstens eine Rüstzeit.</li>
+      <li><b>Wann?</b> <b>Läuft gerade</b>: Der Beginn ist schon jetzt eingetragen. <b>Nachtragen</b>: zusätzlich das <b>Ende</b> oder die <b>Dauer</b> in Minuten eintragen.</li>
+      <li><b>Anlegen</b> öffnet die Rüstzeit. Eine laufende Rüstzeit beendest du dort mit <b>Beenden</b>.</li>
+    </ol>
+    Einen Schritt „Wer?“ gibt es hier nicht: Zugeordnet wird von selbst der Schichtführer im Dienst, verantwortlich ist der Anlagenverantwortliche.</div>
   <h3 id="completion"><i class="ti ti-circle-check"></i> Vorgänge abschließen: der Abschluss-Assistent</h3>
   <p>Tickets, Störungen, Aufgaben und Wartungen schließt du immer mit dem <b>grünen Haken</b> ab – auf der Detailseite oder in der Liste: Zeile anklicken → <b>Fertigstellen</b> (bzw. <b>Beheben</b>, <b>Abschließen</b>, <b>Erledigen</b>, <b>Durchführen</b>). Ein Assistent führt dich in fünf kurzen Schritten durch; erst wenn alles da ist, geht es weiter.</p>
   {{template "hb-fig-completion"}}
@@ -494,7 +504,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     Zu viele Antippen hintereinander bremst PDH: je Anlage sind 30 Vorgänge in 10 Minuten möglich. Je Anlage läuft höchstens eine Rüstzeit.</div>
   <div class="hb-howto"><b><i class="ti ti-plus"></i> So erfasst und korrigierst du eine Rüstzeit im PDH</b> (Recht „Rüstzeiten: erfassen …“)
     <ol class="hb-steps">
-      <li><b>Rüstzeiten</b> → <b>Neu</b> – oder die Schnellaktion „Rüstzeit erfassen“ im Dashboard.</li>
+      <li><b>Rüstzeiten</b> → <b>Neu</b> – oder die Schnellaktion „Rüstzeit erfassen“ im Dashboard. Schritt für Schritt geht es auch über <b>Neu anlegen</b> → Kachel <b>Rüstzeit</b> (siehe <a href="#creation">Erstellungs-Assistent</a>).</li>
       <li><b>Anlage</b> und <b>Grund</b> wählen, <b>Beginn</b> eintragen. Ohne Ende läuft die Rüstzeit weiter; mit <b>Ende</b> oder <b>Dauer</b> wird sie nachgetragen.</li>
       <li><b>Rüstzeit anlegen</b> öffnet die Detailseite. Dort beendest du eine laufende Rüstzeit mit <b>Beenden</b>.</li>
       <li>Beginn, Ende, Grund und Notiz korrigierst du im Reiter <b>Bearbeiten</b>. Bei einer beendeten Rüstzeit ist das <b>Ende</b> Pflicht – sie wird nie wieder geöffnet; fehlt das Ende, erscheint eine Meldung und nichts wird geändert. Hat die Rüstzeit schon eine Störmeldung ausgelöst, bleiben Beginn und Ende gesperrt.</li>
@@ -669,7 +679,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <ul>
     <li><b>HMI ansehen</b> – nur zuschauen. Tastatur, Maus und Zwischenablage verwirft der Server, auch wenn der Browser sie schicken würde.</li>
     <li><b>HMI bedienen</b> – mit Tastatur und Maus arbeiten, sofern am HMI „Bedienen erlaubt“ ist. Deine Eingaben wirken direkt auf die Anlage.</li>
-    <li><b>HMI-Verbindungen einrichten</b> – HMIs anlegen, ändern, löschen.</li>
+    <li><b>HMI-Verbindungen einrichten</b> – HMIs anlegen, ändern, löschen. Bei Rechten auf Abteilungsebene gilt das nur für Anlagen dieser Abteilung.</li>
   </ul>
   <p>Standardmäßig dürfen Administratoren, Manager und Techniker ansehen; bedienen und einrichten nur Administratoren. Weitere Rollen bekommen die Rechte unter <b>Rollen &amp; Berechtigungen</b> (Kategorie „Infrastruktur“).</p>
   <div class="hb-howto"><b><i class="ti ti-plug-connected"></i> So richtest du ein HMI ein</b>
@@ -677,6 +687,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>Anlage öffnen → Reiter <b>HMI</b> → <b>HMI hinzufügen</b>.</li>
       <li><b>Name</b>, <b>Adresse</b> (IP oder Rechnername im Anlagennetz), <b>Port</b> (meist 5900) und das <b>VNC-Passwort</b> des Panels eintragen. Der PDH-Server muss das HMI im Netz erreichen können.</li>
       <li><b>Bedienen erlaubt</b> abwählen, wenn an diesem HMI niemand aus der Ferne eingreifen soll – dann ist für alle nur Ansehen möglich.</li>
+      <li><b>Ansehen am Terminal</b> und <b>Bedienen am Terminal</b> legen fest, wer das HMI am <a href="#terminal">Anlagenterminal</a> ansehen bzw. bedienen darf (Jeder, Nur mit Karte, Niemand). Bei ausgeschaltetem „Bedienen erlaubt“ gilt am Terminal beim Bedienen immer „Niemand“.</li>
       <li><b>Speichern</b>. Beim Ändern bleibt das Passwort, wenn du das Feld leer lässt.</li>
     </ol>
     Unterstützt werden VNC ohne Anmeldung und mit VNC-Passwort. Verlangt das HMI ein anderes Verfahren (z. B. VeNCrypt/TLS oder Benutzer + Passwort), meldet der Viewer das.</div>
@@ -793,6 +804,98 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     </ol>
     Dafür brauchst du das Recht „IT-Infrastruktur bearbeiten“ für dieses Asset. Es gilt immer die Reihenfolge: eigener Wert am Gerät, dann Kategorie, dann der allgemeine Wert.</div>
   {{template "hb-shots" (dict "Ref" (index $s "infrastructure") "Can" $can)}}
+</section>
+
+<section class="hb-ch" id="kiosk" data-title="Kiosk-Terminals" data-pages="kiosk-terminals">
+  <h2><i class="ti ti-device-desktop-share"></i> Kiosk-Terminals</h2>
+  <p>Ein <b>Kiosk-Terminal</b> (hmi-kiosk) ist der kleine Rechner mit Bildschirm am Bedienplatz einer Anlage. Ist der Anlage ein Terminal zugeordnet, holst du ein HMI aus PDH direkt auf diesen Bildschirm: Reiter <b>HMI</b> → <b>Am Terminal zeigen</b>. Die Browser-Ansicht (<b>Ansehen</b>/<b>Bedienen</b>) bleibt daneben bestehen.</p>
+  <ul>
+    <li><b>Am Terminal zeigen</b> – das Terminal öffnet das HMI nur zum Ansehen.</li>
+    <li><b>Am Terminal bedienen</b> – mit Tastatur und Maus am Terminal. Nur wenn am HMI „Bedienen erlaubt“ ist und du <b>HMI bedienen</b> darfst. Ist die Kachel am Terminal selbst auf „nur ansehen“ eingestellt, bleibt es dort beim Ansehen.</li>
+  </ul>
+  <p>Das VNC-Passwort schickt der PDH-Server direkt an das Terminal; es erscheint nie im Browser und wird nirgends protokolliert. Am Terminal steht in der Leiste „Anlage / HMI – von PDH: dein Name“. Jeder Befehl steht unter <b>Letzte Zugriffe</b> mit „am Terminal …“ und gegebenenfalls dem Grund, warum es nicht geklappt hat.</p>
+  <div class="hb-howto"><b><i class="ti ti-message-circle"></i> Was die Meldungen bedeuten</b>
+    <ul>
+      <li><b>geöffnet</b> – das HMI startet am Terminal (dauert ein paar Sekunden).</li>
+      <li><b>belegt</b> – am Terminal läuft schon eine Sitzung, auch eine Daueranzeige. PDH nennt das HMI und – falls bekannt – seit wann; hält ein anderes Terminal das HMI, steht dessen Name dabei. Erst dort beenden, dann noch einmal.</li>
+      <li><b>Angaben abgelehnt</b> – das Terminal prüft die VNC-Anmeldung am HMI vorab. Meist ist das VNC-Passwort des HMI falsch; PDH zeigt den Grund vom Terminal.</li>
+      <li><b>zu viele Fehlversuche</b> – nach mehreren falschen Schlüsseln sperrt das Terminal PDH eine Weile. Später erneut versuchen und den Schlüssel prüfen.</li>
+      <li><b>läuft gerade ein Befehl</b> – an dasselbe Terminal geht immer nur ein Befehl gleichzeitig. Kurz warten.</li>
+      <li><b>nicht bereit</b> – PDH zeigt den Grund, den das Terminal nennt: Wartung, laufende Sicherung, eine Sitzung startet gerade oder das HMI ist vom Terminal aus nicht erreichbar. Kurz warten bzw. die Ursache beheben.</li>
+      <li><b>Schlüssel abgelehnt</b> oder <b>Fingerabdruck stimmt nicht</b> – die Verbindung muss unter <b>Kiosk-Terminals</b> neu eingetragen werden.</li>
+      <li><b>nicht erreichbar</b> – Terminal aus, Netzwerk unterbrochen oder falsche Adresse.</li>
+    </ul></div>
+  <div class="hb-howto"><b><i class="ti ti-plug-connected"></i> So verbindest du ein Terminal mit PDH</b>
+    <ol class="hb-steps">
+      <li>Am Terminal die Admin-Seite öffnen (<code>https://&lt;Terminal&gt;:8443</code>) → <b>Netzwerk → Fernsteuerung (PDH)</b> → <b>Schlüssel erzeugen</b>. Den Schlüssel (beginnt mit <code>hmik_</code>) kopieren – er wird nur einmal angezeigt. Daneben steht der <b>Fingerabdruck</b>.</li>
+      <li>In PDH <b>Core-Einstellungen → Kiosk-Terminals</b> (oder Navigation → Kiosk-Terminals) → <b>Terminal hinzufügen</b>: Name, Adresse (<code>https://10.1.2.3:8443</code>), Schlüssel und Fingerabdruck (mit oder ohne Doppelpunkte) eintragen, <b>Speichern</b>.</li>
+      <li><b>Verbindung prüfen</b> zeigt Name und Version des Terminals und ob es gerade belegt ist.</li>
+      <li>Die Anlage öffnen → Reiter <b>Stammdaten</b> → <b>Kiosk-Terminal</b> wählen → <b>Speichern</b>. Jede Anlage hat höchstens ein Terminal; ein Terminal darf mehreren Anlagen dienen.</li>
+    </ol>
+    Der Schlüssel wird verschlüsselt gespeichert und nie wieder angezeigt („gesetzt“). Beim Ändern bleibt er, wenn du das Feld leer lässt – aber nur, solange Adresse und Fingerabdruck gleich bleiben. Änderst du eines davon, verwirft PDH den bisherigen Schlüssel und verlangt einen neuen; so kann niemand den Schlüssel (und damit die VNC-Passwörter) auf ein anderes Gerät umlenken. Das Ergebnis von „Verbindung prüfen“ steht direkt beim Terminal. Erzeugst du am Terminal einen neuen Schlüssel, gilt der alte nicht mehr – dann hier neu eintragen. PDH vertraut nur dem Terminal mit genau diesem Fingerabdruck; ein fremdes Gerät unter derselben Adresse bekommt weder Schlüssel noch Passwort. Inaktive Terminals sind in den Anlagen nicht wählbar und nehmen keine Befehle an.</div>
+  <div class="hb-howto"><b><i class="ti ti-device-desktop"></i> PDH auf dem Terminal (PDH-Terminalmodus)</b>
+    <ol class="hb-steps">
+      <li>Für das Terminal einen <b>Systembenutzer</b> in PDH anlegen (<b>Benutzer</b>, Haken „Systemnutzer“) – am besten mit dem Standort der Anlage (siehe <a href="#infrastructure">Terminal-Standort</a>).</li>
+      <li>Am Terminal auf der Admin-Seite eine <b>Web-Kachel</b> mit der PDH-Adresse anlegen.</li>
+      <li>Die Kachel einmal öffnen und als dieser Systembenutzer anmelden. Die Anmeldung bleibt im Profil des Terminals.</li>
+      <li>Wer am Terminal etwas erledigen will, meldet sich über <b>Anmelden zur Erledigung</b> (Karte oder eigenes Konto) kurz an; danach kehrt PDH zum Systembenutzer zurück.</li>
+    </ol>
+    Nach einer Wartung von PDH sind auch Systembenutzer abgemeldet – dann die Kachel öffnen und den Systembenutzer neu anmelden. Das gilt für die Web-Kachel mit Benutzer-Anmeldung, nicht für gekoppelte PDH-Terminals: Sie bleiben angemeldet (siehe <a href="#terminal">Anlagenterminal</a>).</div>
+  <p>Rechte: <b>HMI am Kiosk-Terminal der Anlage zeigen</b> (<code>hmi.kiosk</code>) haben standardmäßig Administratoren, Manager, Techniker und Anlagenverantwortliche. Gilt ein Recht nur für eine Abteilung, gilt es auch hier nur für deren Anlagen. Anlagen ein Terminal zuordnen dürfen Personen mit <b>HMI-Verbindungen einrichten</b> (<code>hmi.manage</code>) für diese Anlage. Terminals selbst einrichten, ändern, prüfen und löschen dürfen nur Personen, die <code>hmi.manage</code> <b>ohne Abteilungsbegrenzung</b> haben (standardmäßig Administratoren) – ein Terminal kann Anlagen mehrerer Abteilungen dienen.</p>
+  {{template "hb-shots" (dict "Ref" (index $s "kiosk") "Can" $can)}}
+</section>
+
+<section class="hb-ch" id="terminal" data-title="Anlagenterminal" data-pages="">
+  <h2><i class="ti ti-device-tablet"></i> Anlagenterminal</h2>
+  <p>Das <b>Anlagenterminal</b> ist ein Bildschirm an der Anlage (Wandterminal), an dem jede Person ohne Anmeldung sieht, was an dieser Anlage und ihren Unteranlagen gerade los ist, und etwas melden kann. Es ist für den Einsatz mit Touch gedacht: große Flächen, wenig Text, kein PDH-Menü.</p>
+  <div class="hb-howto"><b><i class="ti ti-plug-connected"></i> So richtest du ein Terminal ein</b>
+    <ol class="hb-steps">
+      <li>Einen <b>Systembenutzer</b> für das Terminal anlegen (<b>Benutzer</b>, Haken „Systemnutzer“) und in seinen Stammdaten den <b>Terminal-Standort</b> wählen – das ist die Anlage, für die das Terminal gilt. Das Terminal zeigt diese Anlage und alle ihre Unteranlagen, sonst nichts.</li>
+      <li>Auf der Seite dieses Benutzers in der Karte <b>Gekoppelte Geräte</b> auf <b>Gerät koppeln</b> klicken. PDH zeigt einen Code im Format <code>XXXX-XXXX</code>. Er ist <b>10 Minuten</b> gültig und nur einmal verwendbar; ein neuer Code ersetzt den noch offenen.</li>
+      <li>Am PDH-Terminal (Raspberry Pi) die Admin-Seite öffnen: die obere rechte Ecke des Bildschirms 5 Sekunden lang drücken, dann das Admin-Passwort eingeben. Auf der Seite <b>PDH</b> die PDH-Adresse und den Code eintragen und auf <b>Koppeln</b> klicken.</li>
+      <li>Das Terminal meldet sich ab jetzt bei jedem Start selbst bei <code>/terminal</code> an. Dafür musst du dort nichts mehr anmelden.</li>
+    </ol>
+    Den Code nur an der Admin-Seite des PDH-Terminals eingeben. Die Seite ist nur für Systembenutzer gedacht – andere Benutzer sehen den Hinweis, dass die Seite für Terminal-Benutzer bestimmt ist. Ist dem Benutzer keine Anlage zugeordnet oder die Anlage ausgeblendet, steht auf dem Terminal „Diesem Terminal ist keine Anlage zugeordnet“.</div>
+  <h3>Gerät sperren</h3>
+  <p>Ist ein Terminal verloren gegangen oder soll es nicht mehr angemeldet sein, sperrst du es in der Karte <b>Gekoppelte Geräte</b> auf der Seite des Systembenutzers. Dort steht jedes gekoppelte Gerät mit <b>aktiv</b> oder <b>gesperrt</b> und dem Zeitpunkt, zu dem es zuletzt angemeldet war. Die Karte <b>Gekoppelte Geräte</b> sehen nur Benutzer mit dem Recht zur Benutzerverwaltung. Mit <b>Sperren</b> und einer Bestätigung wird das Gerät gesperrt.</p>
+  <ul>
+    <li>Die Sperre wirkt <b>innerhalb von 30 Sekunden</b>; danach ist das Terminal abgemeldet.</li>
+    <li>Soll dasselbe Terminal wieder angemeldet werden, klicke <b>Gerät koppeln</b>, und gib den neuen Code am Terminal ein (wie oben).</li>
+    <li>Eine Wartung von PDH meldet gekoppelte Geräte nicht ab.</li>
+  </ul>
+  <h3>Was am Terminal passiert</h3>
+  <ul>
+    <li><b>Bildschirmschoner</b> – Anlagenname und Uhrzeit. Eine Berührung öffnet die Störungsinfo.</li>
+    <li><b>Störungsinfo</b> – die offenen Störungen und die offenen Tickets der Anlage und ihrer Unteranlagen, die neuesten zuerst (je höchstens 50, dazu „… und N weitere“). Bei Einträgen aus Unteranlagen steht der Weg dorthin (Pfad unterhalb der Terminal-Anlage) vor dem Alter. Die Seite aktualisiert sich alle 30 Sekunden von selbst. Welche Listen das Terminal zeigt, hängt von den Rechten des <b>Terminal-Benutzers</b> ab (auch wenn sich jemand kurz per Override am Terminal anmeldet): <b>Störungen ansehen</b> für die Störungsliste, <b>Tickets ansehen</b> für die Ticketliste, jeweils für die Abteilung der Anlage. Fehlt eines der Rechte, steht an der Stelle „Keine Berechtigung für Störungen“ bzw. „… für Tickets“; fehlen beide, zeigt das Terminal nur „Keine Berechtigung“. Unten führt <b>Neu</b> weiter.</li>
+    <li><b>Neu</b> – <b>Störung</b> und <b>Ticket</b> öffnen vorerst beide die Meldeseite des Easy-Mode der Anlage (eine eigene Ticket-Meldung ist noch nicht verfügbar). Ist der <b>Easy-Mode</b> in den Core-Einstellungen ausgeschaltet, sind <b>Störung</b> und <b>Ticket</b> abgeblendet und das Terminal weist darauf hin („Melden am Terminal ist ausgeschaltet“) – so landet am Wandbildschirm niemand auf der Anmeldeseite. <b>Stillstand</b> ist noch nicht verfügbar. <b>Zurück</b> geht zur Störungsinfo.</li>
+  </ul>
+  <h3>Kartenleser und Kartensitzung</h3>
+  <p>Ist am Terminal ein Kartenleser angeschlossen, meldet sich eine Person mit ihrer registrierten Karte an: Karte auflegen, dann zeigt das Terminal unten <b>Angemeldet: Name</b>. Die Kartensitzung endet nach <b>2 Minuten</b> ohne Berührung, mit dem Knopf <b>Abmelden</b> oder sobald das Terminal zum Bildschirmschoner zurückkehrt. Eine nicht registrierte Karte meldet niemanden an: das Terminal zeigt kurz <b>Karte nicht registriert</b>. Nach 10 unbekannten Karten innerhalb einer Minute bittet das Terminal, kurz zu warten. Der Kartenleser gehört zum gekoppelten Terminal; in einem normalen Browser gibt es ihn nicht.</p>
+  <h3>Anmeldung ohne Kartenleser</h3>
+  <p>Mit Kartenleser bleibt die Karte der normale Weg; dazu zeigt das Terminal den Knopf <b>Mit Benutzer und Passwort</b> (je Terminal abschaltbar). Meldet das Terminal <b>keinen Kartenleser</b> oder einen gestörten Leser, gilt die <b>Anmeldeart</b> des Terminals. Sie wird am Systembenutzer des Terminals eingestellt:</p>
+  <ul>
+    <li><b>Kartennummer + PIN</b> (Standard) – Felder <b>Kartennummer</b> und <b>PIN</b> mit Ziffernfeld (0–9, A–F).</li>
+    <li><b>Benutzer + Passwort</b> – der Dialog mit Benutzername und Passwort ist sofort offen.</li>
+    <li><b>Nur Kartennummer</b> – nur das Feld <b>Kartennummer</b>. Wer eine Kartennummer kennt, kann sich als diese Person anmelden; diese Art nur an gut einsehbaren Terminals verwenden.</li>
+    <li><b>Keine</b> – das Terminal zeigt <b>Kein Kartenleser – Anmeldung nicht möglich</b>; auch der Knopf entfällt.</li>
+  </ul>
+  <p>Die <b>Terminal-PIN</b> (4 bis 8 Ziffern, nicht lauter gleiche und keine Zahlenfolge wie 1234) setzt jede Person unter <b>Mein Konto</b>; Benutzerverwalter können sie auch am Benutzer setzen oder entfernen. Nach <b>5</b> falschen PINs ist die PIN <b>15 Minuten</b> gesperrt (an allen Terminals); am Terminal erscheint dann nur <b>Anmeldung fehlgeschlagen</b>; die Sperrzeit (<b>PIN gesperrt bis HH:MM</b>) siehst du als Benutzerverwalter beim Benutzer. Ändert sich die Anmeldeart oder der Knopf, übernimmt das Terminal das <b>sofort</b>, ohne Neuladen. Bei Fehlern erscheint kurz <b>Anmeldung fehlgeschlagen</b>, bei zu vielen Versuchen <b>Bitte kurz warten</b>.</p>
+  <p>Rührt niemand das Terminal an, kehrt es nach der <b>Rückkehrzeit</b> von Störungsinfo und „Neu“ zum Bildschirmschoner zurück.</p>
+  <div class="hb-howto"><b><i class="ti ti-clock"></i> So stellst du die Rückkehrzeit ein</b>
+    <ol class="hb-steps">
+      <li><b>Für alle Terminals:</b> <b>Core-Einstellungen</b> → Karte <b>Anlagenterminal: Rückkehrzeit</b> → Sekunden eintragen → <b>Speichern</b>. Erlaubt sind 30 bis 3600 Sekunden, ohne Eintrag gelten <b>120</b> Sekunden. Die Karte sehen und ändern kann nur, wer Benutzer verwalten darf.</li>
+      <li><b>Für ein einzelnes Terminal:</b> den Systembenutzer öffnen und im Terminal-Block <b>Rückkehrzeit zum Bildschirmschoner</b> eintragen. <b>Leer</b> heißt: die globale Einstellung gilt.</li>
+    </ol>
+    Werte außerhalb von 30 bis 3600 oder Text lehnt PDH mit einer Meldung ab; der bisherige Wert bleibt. Ein geänderter Wert gilt für das Terminal sofort, ohne Neuladen.</div>
+  <h3>HMI am Terminal: Ansehen und Bedienen</h3>
+  <p>Je HMI-Verbindung (Anlage → Reiter <b>HMI</b> → HMI anlegen oder bearbeiten) legst du fest, wer das HMI am Terminal ansehen und bedienen darf. Die Felder werden gespeichert; das HMI selbst erscheint am Terminal erst mit einem späteren Ausbau.</p>
+  <ul>
+    <li><b>Ansehen am Terminal</b>: <b>Jeder</b> (Standard) · <b>Nur mit Karte</b> · <b>Niemand</b>.</li>
+    <li><b>Bedienen am Terminal</b>: <b>Niemand</b> · <b>Nur mit Karte</b> (Standard) · <b>Jeder</b>.</li>
+  </ul>
+  <div class="hb-howto"><b><i class="ti ti-alert-triangle"></i> Vorsicht bei „Jeder“</b>Sobald HMIs am Terminal angezeigt werden, kann bei <b>Bedienen am Terminal</b> „Jeder“ jede Person am Terminal das HMI ohne Karte bedienen – ihre Eingaben wirken direkt auf die Anlage. PDH warnt schon jetzt im Formular in Rot. Nutze das nur, wenn der Bildschirm für Unbefugte nicht erreichbar ist.</div>
+  <p>Ist beim HMI <b>Bedienen erlaubt</b> ausgeschaltet, gilt am Terminal beim Bedienen immer „Niemand“, auch wenn etwas anderes gespeichert ist. Das Formular weist darauf hin.</p>
+  {{template "hb-shots" (dict "Ref" (index $s "terminal") "Can" $can)}}
 </section>
 
 <section class="hb-ch" id="watch" data-title="Anlagen-Schnellübersicht" data-pages="plant-watch">
@@ -1338,7 +1441,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>Bei Microsoft anmelden und die Freigabe bestätigen – danach kommst du automatisch zurück ins PDH.</li>
       <li>Je Konto unter <b>Outlook-Kalender</b> anhaken, was in diesen Kalender geschrieben wird (Schichten, Aufgaben, Wartungen, Tickets &amp; Störungen), und ob Termine als <b>Busy-Blocker</b> ins PDH geholt werden. <b>Kalenderauswahl speichern</b>, dann <b>Jetzt synchronisieren</b>.</li>
     </ol></div>
-  <p>Busy-Blocker aus beiden Konten erscheinen im Schichtwochenplan als <b>O</b> („Outlook belegt“). Betreffzeilen werden nie übernommen, und eine Zuweisung bleibt trotzdem möglich. <b>Teams</b> gibt es nur über das Geschäftskonto. <b>Konto trennen</b> löscht die importierten Blocker dieses Kontos; bereits in Outlook eingetragene Termine bleiben dort stehen.</p>
+  <p>Schichten stehen in Outlook mit den Uhrzeiten aus dem Schichtplan (Ortszeit), auch Nachtschichten über die Zeitumstellung. Busy-Blocker aus beiden Konten erscheinen im Schichtwochenplan als <b>O</b> („Outlook belegt“). Betreffzeilen werden nie übernommen, und eine Zuweisung bleibt trotzdem möglich. <b>Teams</b> gibt es nur über das Geschäftskonto. <b>Konto trennen</b> löscht die importierten Blocker dieses Kontos; bereits in Outlook eingetragene Termine bleiben dort stehen.</p>
   <p>In der <b>Benutzerliste</b> öffnet <i class="ti ti-dots"></i> direkt die Bearbeitung. Der Benutzerstamm hat die Reiter Übersicht, Stammdaten, Privat, Nachweise, Einzelrechte, Zuständigkeiten, Feldsätze und Historie. <b>Einzelrechte</b> erlauben oder verbieten einzelne Funktionen abweichend von der Rolle; „Admin machen“ sehen nur Administratoren. <b>Zuständigkeiten</b> listet alle offenen Vorgänge, in denen die Person zugewiesen oder verantwortlich ist – auch über eine zugewiesene Gruppe (Rolle „Gruppe“). Ist die Person Broker, steht darunter <b>Wartet auf Zuweisung (als Broker)</b>: offene Vorgänge ihrer Arten, die noch niemandem gehören. Die gelbe Zahl am Reiter zeigt, wie viele. Zugewiesen wird über <b>Zur Zuweisung</b>.</p>
   <div class="hb-howto"><b><i class="ti ti-mail"></i> So prüfst du den E-Mail-Versand und schaltest Statusmeldungen per E-Mail ein</b>
     <ol class="hb-steps">
@@ -1486,9 +1589,9 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <div class="hb-howto"><b><i class="ti ti-calendar-time"></i> So richtest du eine automatische Sicherung ein</b>
     <ol class="hb-steps">
       <li>Reiter <b>Zeitpläne</b> → „Neuer Zeitplan“.</li>
-      <li>Name, <b>Häufigkeit</b> (täglich, wöchentlich mit Wochentag, monatlich mit Tag 1–28) und <b>Uhrzeit</b> wählen.</li>
+      <li>Name, <b>Häufigkeit</b> (täglich, wöchentlich mit Wochentag, monatlich mit Tag 1–28) und <b>Uhrzeit</b> wählen. Die Uhrzeit ist die Ortszeit des Servers (Vorgabe 03:00). Wähle keine Zeit zwischen 02:00 und 02:59: Bei der Umstellung auf Sommerzeit gibt es diese Stunde nicht, die Sicherung fiele aus.</li>
       <li>Bestandteile anhaken und festlegen, wie viele Sicherungen <b>aufbewahrt</b> werden – ältere werden automatisch entfernt.</li>
-      <li>Speichern. Mit <b>Jetzt ausführen</b> testest du den Zeitplan sofort. Schlägt eine geplante Sicherung fehl, meldet sich „Service“ per Chat bei allen Administratoren.</li>
+      <li>Speichern. Mit <b>Jetzt ausführen</b> testest du den Zeitplan sofort. Schlägt eine geplante Sicherung fehl, meldet sich „Service“ per Chat bei allen Administratoren. Lief derselbe Zeitplan vor weniger als 90 Minuten schon, lässt das PDH den geplanten Lauf aus – so entsteht bei der Umstellung auf Winterzeit keine doppelte Sicherung.</li>
     </ol></div>
   <div class="hb-howto"><b><i class="ti ti-restore"></i> So stellst du eine Sicherung wieder her</b>
     <ol class="hb-steps">

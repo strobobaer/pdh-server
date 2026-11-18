@@ -1,4 +1,4 @@
--- Server-Seite „Netzwerk“ (0.80.27): die Netze (VLANs) und WLANs des Betriebs an einer
+-- Server-Seite „Netzwerk“ (0.81.4): die Netze (VLANs) und WLANs des Betriebs an einer
 -- Stelle. Andere Bereiche (z. B. ESPPDH) wählen daraus, statt Namen und Kennwörter
 -- selbst zu führen. WLAN-Kennwörter stehen nur verschlüsselt in der Datenbank.
 

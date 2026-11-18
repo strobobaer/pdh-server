@@ -130,7 +130,18 @@ func setupParseTimes(r *http.Request, old *ruesten.Entry, now time.Time) (start 
 }
 
 // SetupCreateWeb: POST /setup – Rüstzeit von Hand anlegen (setup.edit an der Anlage).
+// Das Formular /setup/new bekommt eine Weiterleitung; der Erstellungs-Assistent
+// (Accept: application/json) bekommt {success, data:{id}} bzw. {success:false, error}
+// – mit denselben Prüfungen.
 func (h *Handler) SetupCreateWeb(w http.ResponseWriter, r *http.Request) {
+	asJSON := strings.Contains(r.Header.Get("Accept"), "application/json")
+	fail := func(err error) {
+		if asJSON {
+			writeJSON(w, http.StatusUnprocessableEntity, map[string]any{"success": false, "error": tr(h.requestLang(r), err.Error())})
+			return
+		}
+		http.Redirect(w, r, setupFormError(r, err), http.StatusSeeOther)
+	}
 	if !h.setupCan(r, permSetupEdit, "") {
 		setupDenied(w, r)
 		return
@@ -138,7 +149,7 @@ func (h *Handler) SetupCreateWeb(w http.ResponseWriter, r *http.Request) {
 	_ = r.ParseForm()
 	infraID, reasonID := strings.TrimSpace(r.FormValue("infrastructure_id")), strings.TrimSpace(r.FormValue("reason_id"))
 	if !uuidInPathRe.MatchString(infraID) || !uuidInPathRe.MatchString(reasonID) {
-		http.Redirect(w, r, setupFormError(r, errSetupInfraReason), http.StatusSeeOther)
+		fail(errSetupInfraReason)
 		return
 	}
 	if !h.setupCanInfra(r, permSetupEdit, infraID) {
@@ -147,13 +158,17 @@ func (h *Handler) SetupCreateWeb(w http.ResponseWriter, r *http.Request) {
 	}
 	start, end, err := setupParseTimes(r, nil, time.Now())
 	if err != nil {
-		http.Redirect(w, r, setupFormError(r, err), http.StatusSeeOther)
+		fail(err)
 		return
 	}
 	e, err := h.setupStore().Create(r.Context(), ruesten.ManualInput{InfraID: infraID, ReasonID: reasonID,
 		Note: r.FormValue("note"), StartedAt: start, EndedAt: end}, getUser(r).ID)
 	if err != nil {
-		http.Redirect(w, r, setupFormError(r, setupStoreError(r, "anlegen", err)), http.StatusSeeOther)
+		fail(setupStoreError(r, "anlegen", err))
+		return
+	}
+	if asJSON {
+		writeJSON(w, http.StatusCreated, map[string]any{"success": true, "data": map[string]string{"id": e.ID, "number": ruesten.Number(e.Number)}})
 		return
 	}
 	http.Redirect(w, r, setupBack(e.ID, noticeSetupCreated, nil), http.StatusSeeOther)
