@@ -1,6 +1,8 @@
 # ESPPDH – eigene Mess- und Zählgeräte auf ESP-Basis
 
-Stand: 18.11.2026 · Entwurf von Claude, **vom Anwender noch nicht bestätigt**.
+Stand: 18.11.2026 · Entwurf von Claude, **vom Anwender am 18.11.2026 bestätigt**
+(Punkte 1–5 „passt so“, 6 „verschieden“, 7 „alles“). **ESPPDH ist Version 0.82.0**
+(vom Anwender festgelegt).
 Grundlage: die am 15.11.2026 freigegebene Beschreibung (Seite Import → ESPPDH,
 ESPHome als Compiler, Bausteine Produktionsdaten und Stromaufnahme, MQTT-Zugang
 je Gerät, USB-Flash im Browser, OTA, Überwachung, Rechte `esppdh.*`, drei Pakete).
@@ -174,7 +176,7 @@ Neue Kategorie-Einträge unter „Daten & Schnittstellen“:
 
 ## Pakete
 
-**Paket 1 – Gerät bauen und flashen (nächste Korrekturversion)**
+**Paket 1 – Gerät bauen und flashen (Version 0.82.0)**
 Compiler-Umgebung samt Einschalter und Zustandsanzeige; Geräteliste und
 Detailseite; Bausteine Stromaufnahme (S0, SCT-013, PZEM) und Stückzähler;
 Kompilieren mit Verlauf; Firmware herunterladen und USB-Flash; MQTT-Zugang je
@@ -203,7 +205,7 @@ auf neue Platine).
 - Echte Platine: USB-Flash und ein Sensor – das kann nur der Anwender
   (oder ein ESP32 am Windows-Rechner der Entwicklung).
 
-## Offene Entscheidungen für den Anwender
+## Entscheidungen des Anwenders (18.11.2026: 1–5 bestätigt)
 
 1. **Paketschnitt** wie oben? (Vor allem: Produktionsdaten-Ziel erst in Paket 2.)
 2. **Docker-Betrieb** zunächst ohne ESPPDH?
@@ -221,10 +223,14 @@ auf neue Platine).
    entfällt diese Prüfung. Ethernet-Platinen gehören damit zu Paket 1.
 7. **Netz der Geräte – entschieden am 18.11.2026: „alles“.** Geräte hängen
    im Betriebs-WLAN, in einem eigenen WLAN/VLAN oder am Kabel. Folgen:
-   - **Netz-Profile** statt eines festen WLAN: In den ESPPDH-Einstellungen
-     legt man mehrere Netze an (Name, WLAN-Name, Kennwort verschlüsselt,
-     oder „Kabel“). Jedes Gerät wählt sein Profil; ein geändertes Kennwort
-     gilt für alle Geräte des Profils und markiert sie als „Firmware veraltet“.
+   - **WLANs und Netze kommen von der Server-Seite „Netzwerk“** (0.80.27,
+     `/admin/network`, Rechte `system.network`/`system.network_admin`) –
+     vom Anwender am 18.11.2026 so gewünscht. ESPPDH führt keine eigenen
+     WLAN-Namen und Kennwörter: Jedes Gerät wählt ein WLAN dieser Seite
+     oder „Kabel“ (dann optional nur das Netz). Beim Bauen holt ESPPDH
+     Name und Kennwort über `h.networkWLANSecret`. Ändert sich ein WLAN
+     auf der Seite „Netzwerk“, gelten die Geräte, die es nutzen, als
+     „Firmware veraltet“.
    - **Erreichbarkeit des Brokers je Profil:** Aus einem eigenen VLAN muss
      der Broker-Name auflösbar und der MQTT- bzw. TLS-Port durch die
      Firewall des Netzes erlaubt sein. Das PDH kann das nicht selbst prüfen;
