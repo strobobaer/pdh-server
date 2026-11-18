@@ -71,13 +71,13 @@ func TestFormatModbusRegistersTooFewBytes(t *testing.T) {
 }
 
 func TestOpenModbusClientNoHost(t *testing.T) {
-	if _, _, err := openModbusClient(map[string]string{}); err == nil {
+	if _, err := openModbusClient(map[string]string{}); err == nil {
 		t.Fatal("expected error for missing host")
 	}
 }
 
 func TestOpenModbusClientUnreachable(t *testing.T) {
-	_, _, err := openModbusClient(map[string]string{"host": "127.0.0.1", "port": "1"})
+	_, err := openModbusClient(map[string]string{"host": "127.0.0.1", "port": "1"})
 	if err == nil {
 		t.Fatal("expected error for unreachable modbus host")
 	}

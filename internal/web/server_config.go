@@ -60,11 +60,12 @@ var envGroups = []envGroup{
 	{"mail", "E-Mail", "ti-mail", "E-Mail-Versand, z. B. für den täglichen Bestellvorschlag – über einen SMTP-Server oder Microsoft 365.", []envField{
 		{Key: "PDH_MAIL_TRANSPORT", Label: "Versandweg", Help: "smtp = SMTP-Server (Felder unten); graph = Microsoft 365 über die App aus dem Reiter Microsoft 365 (Anwendungsberechtigung Mail.Send) – SMTP-Server, Benutzer und Passwort bleiben dann leer.", Type: "select", Options: []string{"smtp", "graph"}, Default: "smtp"},
 		{Key: "PDH_SMTP_HOST", Label: "SMTP-Server", Type: "text"},
-		{Key: "PDH_SMTP_PORT", Label: "Port", Type: "number", Default: "587"},
+		{Key: "PDH_SMTP_PORT", Label: "Port", Help: "Leer = der übliche Port zur Verschlüsselung (starttls 587, tls 465, none 25).", Type: "number"},
 		{Key: "PDH_SMTP_TLS", Label: "Verschlüsselung", Help: "starttls = Port 587, tls = Port 465.", Type: "select", Options: []string{"starttls", "tls", "none"}, Default: "starttls"},
 		{Key: "PDH_SMTP_USER", Label: "Benutzer", Type: "text"},
 		{Key: "PDH_SMTP_PASSWORD", Label: "Passwort", Type: "text", Secret: true},
 		{Key: "PDH_SMTP_FROM", Label: "Absender", Help: "Bei Microsoft 365 (graph) die Adresse des Postfachs, aus dem gesendet wird.", Type: "email"},
+		{Key: "PDH_MAIL_BRIDGE_ADDR", Label: "Mail-Brücke für Nextcloud", Help: "Lokale Adresse, auf der das PDH Mails von Nextcloud annimmt und über den Versandweg oben weitergibt. Nur 127.0.0.1 oder ::1 ist erlaubt. „aus“ schaltet die Brücke ab.", Type: "text", Default: "127.0.0.1:2525", Restart: true},
 	}},
 	{"copilot", "Copilot (KI)", "ti-brain", "KI-Analyse von Störungen – lokal (Ollama) oder in der Cloud (Anthropic).", []envField{
 		{Key: "PDH_COPILOT_BACKEND", Label: "Anbieter", Type: "select", Options: []string{"ollama", "anthropic"}, Default: "ollama", Restart: true},
@@ -107,6 +108,8 @@ var envGroups = []envGroup{
 		{Key: "PDH_CLOUDFLARE_TUNNEL_TOKEN", Label: "Tunnel-Token", Help: "Aus dem Cloudflare-Dashboard (Networks → Tunnels → Tunnel → Configure). Der ganze Befehl „cloudflared service install …“ darf eingefügt werden.", Type: "text", Secret: true},
 		{Key: "PDH_CLOUDFLARE_HOSTNAME", Label: "Öffentlicher Hostname", Help: "Unter dieser Adresse ist das PDH erreichbar, z. B. pdh.firma.de – wie im Dashboard unter Public Hostname eingetragen.", Type: "text"},
 		{Key: "PDH_CLOUDFLARE_ORIGIN", Label: "Ziel im Tunnel", Help: "Wo cloudflared das PDH auf dem Server erreicht – im Dashboard als Service eintragen.", Type: "url", Default: "http://localhost:8090"},
+		{Key: "PDH_CLOUDFLARE_API_TOKEN", Label: "API-Token", Help: "Für DNS, Proxy und Tunnel-Ziele im PDH. Im Cloudflare-Dashboard unter Mein Profil → API-Tokens anlegen, mit den Rechten Zone lesen, DNS bearbeiten, Zonen-Einstellungen bearbeiten und Cloudflare Tunnel bearbeiten – nur für diese Domain.", Type: "text", Secret: true},
+		{Key: "PDH_CLOUDFLARE_ZONE", Label: "Domain", Help: "Die Domain bei Cloudflare, z. B. firma.de. Leer = aus dem öffentlichen Hostnamen abgeleitet.", Type: "text"},
 	}},
 	{"logging", "Protokoll", "ti-file-analytics", "Wie ausführlich das PDH protokolliert. Das Protokoll selbst findest du im Reiter „Protokoll ansehen“.", []envField{
 		{Key: "PDH_LOG_LEVEL", Label: "Protokollstufe", Help: "debug = sehr ausführlich (auch statische Dateien), info = Normalbetrieb, warn/error = nur Probleme.", Type: "select", Options: []string{"info", "debug", "warn", "error"}, Default: "info"},
@@ -180,10 +183,15 @@ type ServerConfigData struct {
 	Msg, Err       string
 	CF             *CloudflareView // Reiter „Cloudflare-Tunnel“ (cloudflare_tunnel.go)
 	VPN            vpnView         // Reiter „VPN“: WireGuard auf dem Host (vpn.go)
+	Unifi          unifiTab        // Reiter „UniFi“: Anbindung an die UDM Pro (certs_lan.go), nur mit system.unifi
+	Omada          omadaTab        // Reiter „Omada“: Anbindung an den Omada-Controller (omada_web.go), nur mit system.omada
+	SNMP           snmpTab         // Reiter „SNMP“: Zugangsprofile für den Netz-Abgleich (snmp_web.go), nur mit system.snmp
 	DR             drView          // Reiter „Ausfallschutz“ (dr.go), nur geladen wenn geöffnet
 	AgentReady     bool            // Update-Agent kann .env.docker bereinigen
 	NCTheme        ncTheme         // Reiter Nextcloud: Erscheinungsbild übernehmen (nextcloud_theming.go)
 	NCAdmin        ncAdminView     // Reiter Nextcloud: Dienstkonto des PDH (nextcloud_admin.go)
+	NCMail         ncMailView      // Reiter Nextcloud: Mail-Brücke (mail_bridge.go)
+	NCSync         ncSyncView      // Reiter Nextcloud: Abgleich Benutzer, Gruppen, Laufwerke (nextcloud_sync.go)
 	TakeOverTotal  int             // Werte aus .env.docker, die noch nicht in der Datenbank sind
 	// Reiter „Passwörter“ (password_policy.go)
 	Policy          *users.PasswordPolicy
@@ -269,6 +277,11 @@ func (h *Handler) ServerConfigPage(w http.ResponseWriter, r *http.Request) {
 		d.Groups = append(d.Groups, gv)
 	}
 	d.CF = h.cloudflareView(r.Context())
+	d.CF.CanAPI = h.canCloudflare(r)
+	d.CF.CanCerts = h.certCanManage(r)      // nur der Knopf – die Karte lädt erst auf Klick
+	d.Unifi = h.unifiTabFor(r.Context(), r) // liest nur Einstellungen, fragt das Gerät nicht
+	d.Omada = h.omadaTabFor(r.Context(), r) // ebenso: keine Anfrage an den Controller
+	d.SNMP = h.snmpTabFor(r.Context(), r)   // liest nur die Profile, fragt kein Gerät
 	if h.db != nil {
 		show := ""
 		if d.Tab == "vpn" {
@@ -287,10 +300,13 @@ func (h *Handler) ServerConfigPage(w http.ResponseWriter, r *http.Request) {
 		d.DR.HA.NoWindowPerm, d.DR.Single.NoPerm = noWin, noWin
 		u := getUser(r)
 		d.DR.HA.CanConfirmUpdate, d.DR.HA.CanAbortUpdate = h.maintMayAct(u)
+		d.DR.HA.MirrorCan, d.DR.HA.MirrorAdmin = h.maintMayWindow(r, permFileMirror), h.maintMayWindow(r, permFileMirrorAdmin)
 	}
 	h.fillEnvTakeover(r.Context(), &d)
 	d.NCTheme = h.nextcloudTheme()
 	d.NCAdmin = h.ncAdminViewFor(r.Context())
+	d.NCMail = h.ncMailViewFor(r.Context())
+	d.NCSync = h.ncSyncViewFor(r.Context(), h.hasPerm(r, permNCSync))
 	if h.db != nil {
 		p := h.users.Policy(r.Context())
 		d.Policy = &p
@@ -508,7 +524,11 @@ func (h *Handler) applyEnvUpdates(ctx context.Context, updates map[string]string
 	h.reloadLiveConfig(ctx)
 	componentLog("konfiguration").Info().Strs("keys", keys).Str("user", userID).Msg("server-einstellungen geaendert")
 	if h.db != nil { // Sicherheits-Hinweis an alle Admins (ohne Werte)
-		h.notifyAdmins(ctx, "⚙️ **Server-Einstellungen geändert** von "+h.chatUserName(ctx, userID)+": "+strings.Join(keys, ", "))
+		who := "dem PDH selbst" // ohne Person: automatische Einrichtung
+		if userID != "" {
+			who = h.chatUserName(ctx, userID)
+		}
+		h.notifyAdmins(ctx, "⚙️ **Server-Einstellungen geändert** von "+who+": "+strings.Join(keys, ", "))
 	}
 	msg := fmt.Sprintf("Gespeichert (%d Wert(e)).", len(keys))
 	if len(restart) > 0 {

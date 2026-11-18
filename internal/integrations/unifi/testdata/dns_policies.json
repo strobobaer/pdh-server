@@ -1,0 +1,35 @@
+{
+  "offset": 0,
+  "limit": 200,
+  "count": 3,
+  "totalCount": 3,
+  "data": [
+    {
+      "type": "A_RECORD",
+      "id": "1c3b0a58-5d0e-4c3a-9a51-0d2f3c7a1b01",
+      "enabled": true,
+      "domain": "nc.firma.de",
+      "ipv4Address": "192.168.1.20",
+      "ttlSeconds": 300,
+      "metadata": {"origin": "USER_DEFINED"}
+    },
+    {
+      "type": "CNAME_RECORD",
+      "id": "1c3b0a58-5d0e-4c3a-9a51-0d2f3c7a1b02",
+      "enabled": true,
+      "domain": "wiki.firma.de",
+      "targetDomain": "nc.firma.de",
+      "ttlSeconds": 0,
+      "metadata": {"origin": "USER_DEFINED"}
+    },
+    {
+      "type": "AAAA_RECORD",
+      "id": "1c3b0a58-5d0e-4c3a-9a51-0d2f3c7a1b03",
+      "enabled": false,
+      "domain": "nc.firma.de",
+      "ipv6Address": "fd00::20",
+      "ttlSeconds": 0,
+      "metadata": {"origin": "USER_DEFINED"}
+    }
+  ]
+}

@@ -101,7 +101,16 @@ type microsoftProfile struct {
 }
 
 func (h *Handler) ConfigureMicrosoft(config MicrosoftOAuthConfig) {
+	h.msMu.Lock()
 	h.microsoft = config
+	h.msMu.Unlock()
+}
+
+// microsoftCfg: aktuelle Microsoft-Konfiguration (Momentaufnahme, ohne Datenrennen).
+func (h *Handler) microsoftCfg() MicrosoftOAuthConfig {
+	h.msMu.RLock()
+	defer h.msMu.RUnlock()
+	return h.microsoft
 }
 
 func (c MicrosoftOAuthConfig) configured() bool {
@@ -111,7 +120,7 @@ func (c MicrosoftOAuthConfig) configured() bool {
 func (h *Handler) AccountPage(w http.ResponseWriter, r *http.Request) {
 	data := AccountPageData{
 		BaseData:            h.baseData(r, "account", "Mein Konto", "Konto und verbundene Dienste"),
-		MicrosoftConfigured: h.microsoft.configured(),
+		MicrosoftConfigured: h.microsoftCfg().configured(),
 		Notice:              r.URL.Query().Get("notice"),
 	}
 	u := getUser(r)
@@ -144,7 +153,7 @@ func (h *Handler) loadMicrosoftAccountView(ctx context.Context, userID, kind str
 	view.TeamsPermission = strings.Contains(grantedScopes, "Chat.ReadWrite") && strings.Contains(grantedScopes, "ChannelMessage.Send")
 	_ = h.db.QueryRow(ctx, `
 		SELECT sync_shifts, sync_tasks, sync_maintenance, sync_tickets_faults, import_busy_events,
-		       COALESCE(to_char(last_sync_at AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI'), '')
+		       COALESCE(to_char(last_sync_at, 'DD.MM.YYYY HH24:MI'), '') -- Ortszeit (Sitzungszone), nicht UTC
 		FROM microsoft_calendar_preferences WHERE user_id=$1::uuid AND account_kind=$2`, userID, kind,
 	).Scan(&view.SyncShifts, &view.SyncTasks, &view.SyncMaintenance, &view.SyncTicketsFaults, &view.ImportBusyEvents, &view.CalendarLastSync)
 	_ = h.db.QueryRow(ctx, `SELECT COUNT(*) FROM microsoft_calendar_blocks WHERE user_id=$1::uuid AND account_kind=$2`, userID, kind).Scan(&view.CalendarBusyCount)
@@ -178,7 +187,7 @@ func (h *Handler) MicrosoftTeamsConnectStart(w http.ResponseWriter, r *http.Requ
 }
 
 func (h *Handler) startMicrosoftConnect(w http.ResponseWriter, r *http.Request, scopeMode, kind string) {
-	if !h.microsoft.configured() {
+	if !h.microsoftCfg().configured() {
 		http.Redirect(w, r, "/account?notice=Microsoft+OAuth+nicht+konfiguriert", http.StatusSeeOther)
 		return
 	}
@@ -214,9 +223,9 @@ func (h *Handler) startMicrosoftConnect(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	params := url.Values{
-		"client_id":             {h.microsoft.ClientID},
+		"client_id":             {h.microsoftCfg().ClientID},
 		"response_type":         {"code"},
-		"redirect_uri":          {h.microsoft.RedirectURL},
+		"redirect_uri":          {h.microsoftCfg().RedirectURL},
 		"response_mode":         {"query"},
 		"scope":                 {microsoftScopes(scopeMode)},
 		"state":                 {state},
@@ -334,12 +343,12 @@ func (h *Handler) MicrosoftDisconnect(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) exchangeMicrosoftCode(ctx context.Context, kind, code, codeVerifier, scopes string) (microsoftTokenResponse, error) {
 	var tokens microsoftTokenResponse
 	form := url.Values{
-		"client_id":     {h.microsoft.ClientID},
-		"client_secret": {h.microsoft.ClientSecret},
+		"client_id":     {h.microsoftCfg().ClientID},
+		"client_secret": {h.microsoftCfg().ClientSecret},
 		"grant_type":    {"authorization_code"},
 		"code":          {code},
 		"code_verifier": {codeVerifier},
-		"redirect_uri":  {h.microsoft.RedirectURL},
+		"redirect_uri":  {h.microsoftCfg().RedirectURL},
 		"scope":         {scopes},
 	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, microsoftAuthority(kind)+"/token", strings.NewReader(form.Encode()))

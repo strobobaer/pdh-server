@@ -3,11 +3,8 @@ package web
 import (
 	"context"
 	"database/sql"
-	"encoding/binary"
 	"encoding/csv"
-	"encoding/json"
 	"fmt"
-	"math"
 	"net/http"
 	"net/url"
 	"os"
@@ -18,9 +15,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-pdf/fpdf"
-	"github.com/goburrow/modbus"
 	"github.com/gopcua/opcua/ua"
 	"github.com/rs/zerolog/log"
+	"github.com/simonvetter/modbus"
 	"github.com/xuri/excelize/v2"
 )
 
@@ -36,7 +33,7 @@ import (
 
 func exportableKind(kind string) bool {
 	switch kind {
-	case "excel", "csv", "pdf", "sqlite", "mysql", "mssql", "opcua", "modbus":
+	case "excel", "csv", "pdf", "sqlite", "mysql", "mssql", "opcua", "modbus", efficioKind:
 		return true
 	default:
 		return false
@@ -61,6 +58,8 @@ func exportKindLabel(kind string) string {
 		return "OPC UA"
 	case "modbus":
 		return "Modbus TCP"
+	case efficioKind:
+		return "Efficio-CSV"
 	default:
 		return kind
 	}
@@ -119,6 +118,8 @@ func exportDestinationLabel(kind string, config map[string]string) string {
 		return strings.TrimSpace(config["endpoint_url"])
 	case "modbus":
 		return strings.TrimSpace(config["host"]) + ":" + firstNonEmpty(strings.TrimSpace(config["port"]), "502")
+	case efficioKind:
+		return efficioTargetLabel(config)
 	default:
 		return ""
 	}
@@ -138,8 +139,15 @@ func (h *Handler) ExportPreviewPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Verbindung nicht gefunden", http.StatusNotFound)
 		return
 	}
-	config := map[string]string{}
-	_ = json.Unmarshal(configBytes, &config)
+	if kind == efficioKind { // keine Feldzuordnung: die Messstellen stehen unter Energiedaten
+		http.Redirect(w, r, "/export/connections/"+id+"/efficio", http.StatusSeeOther)
+		return
+	}
+	config, err := h.openConnJSON(configBytes)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 
 	data := ExportPreviewPageData{
 		BaseData:         h.baseData(r, "export", "Export-Vorschau", name),
@@ -200,8 +208,15 @@ func (h *Handler) runExport(ctx context.Context, id string) (int, string, error)
 		Scan(&kind, &configBytes); err != nil || !exportableKind(kind) {
 		return 0, "", fmt.Errorf("Verbindung nicht gefunden")
 	}
-	config := map[string]string{}
-	_ = json.Unmarshal(configBytes, &config)
+	config, err := h.openConnJSON(configBytes)
+	if err != nil {
+		return 0, "", err
+	}
+
+	if kind == efficioKind {
+		res, err := h.efficioRun(ctx, id)
+		return res.Rows, efficioTargetLabel(config), err
+	}
 
 	mappings, err := h.exportMappings(ctx, id)
 	if err != nil {
@@ -299,8 +314,11 @@ func (h *Handler) StartEnabledExportSchedules(ctx context.Context) {
 		if err := rows.Scan(&id, &configBytes); err != nil {
 			continue
 		}
-		config := map[string]string{}
-		_ = json.Unmarshal(configBytes, &config)
+		config, err := h.openConnJSON(configBytes)
+		if err != nil {
+			log.Error().Err(err).Str("connection_id", id).Msg("verbindung übersprungen: kennwort nicht lesbar")
+			continue
+		}
 		items = append(items, pending{id: id, config: config})
 	}
 	rows.Close()
@@ -625,15 +643,15 @@ func coerceOPCUAVariant(current *ua.Variant, value string) (*ua.Variant, error) 
 }
 
 // writeModbusExport schreibt fuer jede Zuordnung den Quellwert auf das
-// als Zielfeldname hinterlegte Register ("registertyp:adresse:datentyp",
+// als Zielfeldname hinterlegte Register ("registertyp:adresse:datentyp[:reihenfolge]",
 // gleiche Notation wie auf der Import-Seite). Nur Coils und Holding
 // Register sind beschreibbar.
 func writeModbusExport(config map[string]string, mappings []ExportMappingView) error {
-	handler, client, err := openModbusClient(config)
+	client, err := openModbusClient(config)
 	if err != nil {
 		return err
 	}
-	defer handler.Close()
+	defer client.Close()
 
 	for _, m := range mappings {
 		reading, err := parseModbusReading(m.FieldName)
@@ -647,65 +665,23 @@ func writeModbusExport(config map[string]string, mappings []ExportMappingView) e
 	return nil
 }
 
-func writeModbusValue(client modbus.Client, reading modbusReading, value string) error {
+func writeModbusValue(client *modbus.ModbusClient, reading modbusReading, value string) error {
 	switch reading.RegisterType {
 	case "coil":
 		b, err := strconv.ParseBool(value)
 		if err != nil {
 			return fmt.Errorf("ungültiger Bool-Wert: %w", err)
 		}
-		v := uint16(0)
-		if b {
-			v = 0xFF00
-		}
-		_, err = client.WriteSingleCoil(reading.Address, v)
-		return err
+		return client.WriteCoil(reading.Address, b)
 	case "holding":
-		switch reading.DataType {
-		case "uint16":
-			n, err := strconv.ParseUint(value, 10, 16)
-			if err != nil {
-				return fmt.Errorf("ungültiger Wert: %w", err)
-			}
-			_, err = client.WriteSingleRegister(reading.Address, uint16(n))
-			return err
-		case "int16":
-			n, err := strconv.ParseInt(value, 10, 16)
-			if err != nil {
-				return fmt.Errorf("ungültiger Wert: %w", err)
-			}
-			_, err = client.WriteSingleRegister(reading.Address, uint16(int16(n)))
-			return err
-		case "uint32":
-			n, err := strconv.ParseUint(value, 10, 32)
-			if err != nil {
-				return fmt.Errorf("ungültiger Wert: %w", err)
-			}
-			data := make([]byte, 4)
-			binary.BigEndian.PutUint32(data, uint32(n))
-			_, err = client.WriteMultipleRegisters(reading.Address, 2, data)
-			return err
-		case "int32":
-			n, err := strconv.ParseInt(value, 10, 32)
-			if err != nil {
-				return fmt.Errorf("ungültiger Wert: %w", err)
-			}
-			data := make([]byte, 4)
-			binary.BigEndian.PutUint32(data, uint32(int32(n)))
-			_, err = client.WriteMultipleRegisters(reading.Address, 2, data)
-			return err
-		case "float32":
-			f, err := strconv.ParseFloat(value, 32)
-			if err != nil {
-				return fmt.Errorf("ungültiger Wert: %w", err)
-			}
-			data := make([]byte, 4)
-			binary.BigEndian.PutUint32(data, math.Float32bits(float32(f)))
-			_, err = client.WriteMultipleRegisters(reading.Address, 2, data)
-			return err
-		default:
-			return fmt.Errorf("unbekannter Datentyp")
+		regs, err := encodeModbusValue(value, reading.DataType, reading.order())
+		if err != nil {
+			return fmt.Errorf("ungültiger Wert: %w", err)
 		}
+		if len(regs) == 1 {
+			return client.WriteRegister(reading.Address, regs[0])
+		}
+		return client.WriteRegisters(reading.Address, regs)
 	default:
 		return fmt.Errorf("registertyp '%s' ist nicht beschreibbar (nur coil/holding)", reading.RegisterType)
 	}

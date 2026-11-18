@@ -40,6 +40,7 @@ var iconGroupsStatic = []iconGroup{
 		{"record.maintenance_task", "Wartung", "ti-tool"},
 		{"record.project", "Projekt", "ti-briefcase"},
 		{"record.kvp", "KVP-Vorschlag", "ti-bulb"},
+		{"record.setup", "Rüstzeit", "ti-arrows-exchange-2"},
 		{"record.infrastructure", "Anlage", "ti-building-factory-2"},
 		{"record.part", "Ersatzteil", "ti-package"},
 		{"record.storage", "Lagerplatz", "ti-building-warehouse"},
@@ -295,15 +296,6 @@ func iconMapAll() map[string]string {
 	return out
 }
 
-// itTypeIcons: Symbol je IT-Asset-Typ (it.<typ>).
-func itTypeIcons() map[string]string {
-	out := map[string]string{}
-	for _, t := range []string{"server", "network", "workstation", "printer", "phone", "tablet", "other"} {
-		out[t] = iconClass("it." + t)
-	}
-	return out
-}
-
 // recordIcon: Symbol einer Vorgangsart bzw. eines Datensatz-Moduls
 // ("maintenance" = Wartungsauftrag); unbekannte Module behalten ihr festes Symbol.
 func recordIcon(module string) string {
@@ -320,7 +312,7 @@ func recordIcon(module string) string {
 func linkRecordKey(url string) string {
 	for _, p := range []struct{ prefix, key string }{
 		{"/faults/", "fault"}, {"/tickets/", "ticket"}, {"/tasks/", "task"}, {"/projects/", "project"},
-		{"/maintenance/tasks/", "maintenance_task"}, {"/kvp/", "kvp"}, {"/infrastructure/", "infrastructure"},
+		{"/maintenance/tasks/", "maintenance_task"}, {"/kvp/", "kvp"}, {"/setup/", setupRef}, {"/infrastructure/", "infrastructure"},
 		{"/inventory/", "part"}, {"/storage/", "storage"}, {"/directory/", "business_partner"},
 	} {
 		if strings.HasPrefix(url, p.prefix) {

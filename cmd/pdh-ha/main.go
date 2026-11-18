@@ -38,13 +38,16 @@ const usage = `Aufruf: pdh-ha <Befehl>
   update confirm                      Nachfrage des Wartungsfensters bestätigen
   update abort                        offenen Update-Auftrag abbrechen und zurücksetzen
   window '<json>'                     Wartungsfenster setzen (siehe status --json, Feld window)
-  access [--vip ip/präfix] [--vip-on|--vip-off] [--hooks-on|--hooks-off]
+  access [--vip ip/präfix] [--vip6-ende ende] [--vip-on|--vip-off] [--hooks-on|--hooks-off]
                                       Zugangsweg: mitwandernde Adresse und Skripte
                                       (--vip-on erst nach erfolgreichem vip test)
   hook run                            Skripte beim Rollenwechsel jetzt mit der aktuellen
                                       Rolle ausführen und die Ausgabe zeigen
   vip test [--adresse ip/präfix]      mitwandernde Adresse in alle Richtungen testen
                                       (Standard: die eingetragene Adresse)
+  mirror status|run|trash-empty|confirm  Datei-Spiegelung: Stand zeigen; sofort abgleichen,
+                                      Papierkorb am Partner leeren und bestätigen, dass dieser
+                                      Server vollständig ist (nur am aktiven Server)
   addrs set <knoten> <adr,…> [--neustart]
                                       Adressen eines Knotens ändern (am ersten Server);
                                       --neustart: aktives PostgreSQL dafür neu starten
@@ -52,8 +55,14 @@ const usage = `Aufruf: pdh-ha <Befehl>
                                       zurücksetzen (danach setup oder join)
   replica-init [--confirm-host NAME]  diesen (passiven) Server als Datenbank-Spiegel
                                       des aktiven einrichten (überschreibt die Datenbank)
+  rejoin                              diesen passiven Server mit nur lesender Datenbank wieder
+                                      als Standby des aktiven anbinden (wenn status es meldet;
+                                      eigene Daten werden vorher gesichert); nach einer
+                                      abgebrochenen Wiederanbindung: Datenbank neu kopieren
   peer-pg-major                       PostgreSQL-Hauptversion des aktiven Servers
   should-run-pdh                      Exit 0, wenn pdh hier laufen soll
+  mirror-pipe --label L --term N --node K <host> rsync --server …
+                                      Kanal der Datei-Spiegelung (nur für rsync -e)
   version                             Version anzeigen
 `
 
@@ -208,6 +217,7 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 		return 0
 	case "access":
 		vip := fs.String("vip", "", "mitwandernde Adresse mit Präfix, z. B. 10.10.0.202/24 (leer = entfernen)")
+		vip6 := fs.String("vip6-ende", "", "Ende der mitwandernden IPv6-Adresse, z. B. 15 (leer = entfernen)")
 		vipOn := fs.Bool("vip-on", false, "mitwandernde Adresse einschalten")
 		vipOff := fs.Bool("vip-off", false, "mitwandernde Adresse ausschalten")
 		hooksOn := fs.Bool("hooks-on", false, "Skripte beim Rollenwechsel einschalten")
@@ -217,6 +227,9 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 		}
 		body := map[string]any{}
 		fs.Visit(func(f *flag.Flag) {
+			if f.Name == "vip6-ende" {
+				body["vip6_suffix"] = *vip6
+			}
 			if f.Name == "vip" {
 				body["vip"] = *vip
 			}
@@ -292,6 +305,52 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 			return fail(err)
 		}
 		return printHookResults(stdout, r.Results)
+	case "mirror":
+		if len(args) != 2 {
+			fmt.Fprint(stderr, usage)
+			return 2
+		}
+		switch args[1] {
+		case "status":
+			var m apiMirror
+			if err := apiDo(sock, http.MethodGet, "/v1/mirror", nil, &m); err != nil {
+				return fail(err)
+			}
+			printMirrorStatus(stdout, &m)
+		case "run":
+			if err := apiDoT(sock, 30*time.Minute, http.MethodPost, "/v1/mirror/run", map[string]string{}, nil); err != nil {
+				return fail(err)
+			}
+			fmt.Fprintln(stdout, "Abgleich fertig.")
+		case "confirm":
+			var res struct {
+				Labels []string `json:"labels"`
+			}
+			if err := apiDo(sock, http.MethodPost, "/v1/mirror/confirm", map[string]string{}, &res); err != nil {
+				return fail(err)
+			}
+			// R61: ohne Liste gelten alle wartenden Quellen – die Antwort nennt sie
+			fmt.Fprintf(stdout, "Bestätigt für %s: Der nächste Abgleich löscht, abweichende Dateien am Partner wandern in seinen Papierkorb.\n", strings.Join(res.Labels, ", "))
+		case "trash-empty":
+			if err := apiDo(sock, http.MethodPost, "/v1/mirror/trash-empty", map[string]string{}, nil); err != nil {
+				return fail(err)
+			}
+			fmt.Fprintln(stdout, "Papierkorb der Spiegelung wird beim Partner geleert.")
+		default:
+			fmt.Fprint(stderr, usage)
+			return 2
+		}
+		return 0
+	case "rejoin":
+		if len(args) != 1 {
+			fmt.Fprint(stderr, usage)
+			return 2
+		}
+		if err := apiDo(sock, http.MethodPost, "/v1/rejoin", map[string]string{}, nil); err != nil {
+			return fail(err)
+		}
+		fmt.Fprintln(stdout, "Wiederanbindung eingereiht – Fortschritt unter „pdh-ha status“.")
+		return 0
 	case "reset":
 		yes := fs.Bool("yes", false, "bestätigen")
 		if fs.Parse(args[1:]) != nil {
@@ -311,6 +370,9 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 			fmt.Fprintf(stdout, "Zurückgesetzt. Sicherung: %s (Zustand: %s.reset-…)\n", backup, st.state)
 		}
 		return 0
+	case "mirror-pipe":
+		// Ersatz für ssh bei rsync -e; läuft nur als Kindprozess von rsync
+		return runMirrorPipe(args[1:], os.Stdin, os.Stdout, stderr)
 	case "version":
 		fmt.Fprintf(stdout, "pdh-ha %s %s\n", version, commit)
 		return 0
@@ -470,6 +532,17 @@ func printStatus(w io.Writer, st apiStatus) {
 			where += " (aus)"
 		}
 		fmt.Fprintf(w, "Adresse %s: %s\n", addr, where)
+		if a.VIP6Suffix != "" {
+			if a.VIP6 != "" {
+				fmt.Fprintf(w, "Adresse %s: %s\n", a.VIP6, where)
+			} else {
+				off := ""
+				if !a.VIPOn {
+					off = " (aus)"
+				}
+				fmt.Fprintf(w, "IPv6-Adresse (Ende %s): niemand%s\n", a.VIP6Suffix, off)
+			}
+		}
 		if a.IfaceErr != "" {
 			fmt.Fprintf(w, "  Netzwerkkarte: %s\n", a.IfaceErr)
 		}
@@ -484,6 +557,7 @@ func printStatus(w io.Writer, st apiStatus) {
 		}
 		fmt.Fprintf(w, "Tunnel: %s, Token %s\n", run, tunnelSameText(st))
 	}
+	printMirrorStatus(w, st.Mirror)
 	for _, p := range st.Peers {
 		seen := "nicht gesehen"
 		if p.Seen {
@@ -505,6 +579,9 @@ func printStatus(w io.Writer, st apiStatus) {
 	}
 	for _, x := range st.Warnings {
 		fmt.Fprintf(w, "Hinweis: %s\n", x)
+	}
+	if st.Access.VIP6Note != "" {
+		fmt.Fprintf(w, "Hinweis: %s\n", st.Access.VIP6Note)
 	}
 }
 

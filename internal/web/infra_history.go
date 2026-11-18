@@ -33,6 +33,7 @@ var infraHistoryModules = []infraHistoryModule{
 	{"task", "Aufgaben", "ti-checkbox", "d-blue"},
 	{"maintenance", "Wartung", "ti-tool", "d-green"},
 	{"project", "Projekte", "ti-briefcase", "d-blue"},
+	{setupRef, "Rüstzeiten", "ti-arrows-exchange-2", "d-blue"},
 	{"action", "Maßnahmen", "ti-list-check", "d-blue"},
 	{"part", "Ersatzteile", "ti-package", "d-amber"},
 	{"comment", "Kommentare", "ti-message", "d-blue"},
@@ -187,6 +188,12 @@ WITH RECURSIVE` + infraScopeCTE + `,` + infraStockMovesCTE + `,
 		       p.created_by, p.infrastructure_id, '', NULL, '', false
 		FROM projects p WHERE p.infrastructure_id IN (SELECT id FROM scope)
 		UNION ALL
+		SELECT 'setup', s.id::text, ` + setupTitleSQL + `, COALESCE(s.note, '') || ' ' || sr.name,
+		       s.status, s.started_at, s.ended_at, '/setup/' || s.id, s.created_by, s.infrastructure_id,
+		       '', NULL, '', false
+		FROM setup_times s JOIN setup_reasons sr ON sr.id = s.reason_id
+		WHERE s.infrastructure_id IN (SELECT id FROM scope) AND s.archived_at IS NULL
+		UNION ALL
 		SELECT 'action', a.id::text, f.title, a.description, '', a.created_at, NULL, '/faults/' || f.id,
 		       a.created_by, f.infrastructure_id, 'Störung', NULL, '', false
 		FROM fault_actions a JOIN faults f ON f.id = a.fault_id WHERE f.infrastructure_id IN (SELECT id FROM scope)
@@ -243,8 +250,8 @@ WITH RECURSIVE` + infraScopeCTE + `,` + infraStockMovesCTE + `,
 		  AND ($4::date IS NULL OR e.occurred_at >= $4::date)
 		  AND ($5::date IS NULL OR e.occurred_at < $5::date + 1)
 		  AND ($6::text = ''
-		       OR e.module NOT IN ('fault', 'ticket', 'task', 'maintenance', 'project')
-		       OR (($6::text = 'closed') = (e.status IN ('resolved', 'closed', 'done', 'skipped', 'completed'))))
+		       OR e.module NOT IN ('fault', 'ticket', 'task', 'maintenance', 'project', 'setup')
+		       OR (($6::text = 'closed') = (e.status IN ('resolved', 'closed', 'done', 'skipped', 'completed', 'fault'))))
 	)`
 
 // InfraHistoryEntry ist ein Eintrag der Anlagen-Zeitleiste.
@@ -394,6 +401,9 @@ func (h *Handler) loadInfraHistory(ctx context.Context, r *http.Request, infraID
 		e.Body = strings.TrimSpace(e.Body)
 		if status != "" {
 			e.StatusLabel, e.StatusClass = statusLabel(status), statusClass(status)
+			if e.Module == setupRef {
+				e.StatusLabel = setupStatusText(status)
+			}
 		}
 		e.DateLabel = e.OccurredAt.Local().Format("02.01.2006 15:04")
 		if closedAt != nil {

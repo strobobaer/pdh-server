@@ -186,15 +186,50 @@ func (d *daemon) setJobLocked(j ha.UpdateJob) {
 
 // abortUpdate: Abbruch durch einen Administrator; wirkt im nächsten Schritt.
 func (d *daemon) abortUpdate(by string) error {
+	_, err := d.abortUpdateMsg(by)
+	return err
+}
+
+// abortUpdateMsg wie abortUpdate; am passiven Server (Handweg R53) kommt dazu, was nach dem
+// Beenden gilt: Bei gestoppter Datenbank den eingefrorenen Stand und den echten Ausweg (R60).
+// Am aktiven Server bleibt die Meldung leer (Abbruch vorgemerkt).
+func (d *daemon) abortUpdateMsg(by string) (string, error) {
+	// R65: Am passiven Server zählt der Stand der Datenbank jetzt, nicht der zuletzt abgefragte;
+	// abgefragt wird ohne mu.
+	d.mu.Lock()
+	pa, passive := d.pgActorLocked(), d.p.Role != ha.Active
+	d.mu.Unlock()
+	var fresh *pgStatus
+	if pa != nil && passive {
+		ctx, cancel := context.WithTimeout(context.Background(), abortPGWait)
+		st := pa.pg.status(ctx)
+		cancel()
+		fresh = &st
+	}
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	j := d.up.job
 	if j.ID == "" || upEnded(j) {
-		return errors.New("Kein Update-Auftrag offen")
+		return "", errors.New("Kein Update-Auftrag offen")
 	}
 	if d.p.Role != ha.Active {
-		return errors.New("Abbrechen nur auf dem aktiven Server")
+		if _, hand := d.foreignJobLocked(d.mono()); hand {
+			if err := d.endForeignJobLocked(by); err != nil {
+				return "", err
+			}
+			msg := "Update-Auftrag " + j.ID + " beendet, nichts wurde zurückgedreht. "
+			if h := d.frozenHintFor(fresh); h != "" {
+				return msg + h, nil
+			}
+			return msg + "Die Wiederanbindung folgt über die Marke oder: sudo pdh-ha rejoin", nil
+		}
+		return "", errors.New("Abbrechen nur auf dem aktiven Server")
 	}
+	return "", d.abortActiveLocked(j, by)
+}
+
+// abortActiveLocked: Abbruch am aktiven Server, wirkt im nächsten Schritt.
+func (d *daemon) abortActiveLocked(j ha.UpdateJob, by string) error {
 	// I7: nicht still verwerfen – klar sagen, warum es nichts mehr abzubrechen gibt
 	switch j.Phase {
 	case ha.UpRollback:
@@ -206,6 +241,75 @@ func (d *daemon) abortUpdate(by string) error {
 		by = "unbekannt"
 	}
 	d.up.abort = by
+	return nil
+}
+
+// upForeignHold: So lange muss der Partner den Auftrag nicht führen, bevor er als fremd gilt
+// (Variable für Tests). Beim Tausch im Auftrag kommt die Spiegelung einen Moment später.
+var upForeignHold = 30 * time.Second
+
+// abortPGWait: so lange darf die frische Abfrage der Datenbank beim Abbruch am passiven Server dauern.
+const abortPGWait = 10 * time.Second
+
+// foreignJobLocked (R53): Hier ist ein Auftrag offen, den der aktive Partner nicht führt. Der
+// Server bleibt abgeschottet und bindet nicht von selbst an. alarm: melden. hand: der Partner
+// sagt das ausdrücklich (Feld up_lead), also darf ein Mensch den Auftrag hier beenden. Eine ältere
+// Gegenstelle sendet das Feld nicht; dort gilt nur ihr „kein Auftrag“, und der Handweg bleibt zu.
+func (d *daemon) foreignJobLocked(now time.Duration) (alarm, hand bool) {
+	j := d.up.job
+	partner, _ := d.peerIDsLocked()
+	pv := d.views[partner]
+	ok := partner != "" && !upEnded(j) && d.p.Role == ha.Passive && pv.seen() && pv.Last.T == "hb" &&
+		ha.Role(pv.Last.Role) == ha.Active && pv.Last.Term >= d.p.Term
+	if ok {
+		switch pv.Last.UpLead {
+		case "":
+			ok = !pv.Last.UpJob && d.undoRefused
+		case j.ID:
+			ok = false
+		default:
+			hand = true
+		}
+	}
+	if !ok {
+		d.foreignSince = 0
+		return false, false
+	}
+	if d.foreignSince == 0 {
+		d.foreignSince = max(now, 1)
+		d.foreignPGSeq = d.pgSeq.Load()
+	}
+	if now-d.foreignSince < upForeignHold {
+		return false, false
+	}
+	return true, hand
+}
+
+// foreignJobText: Alarm zum fremden Auftrag, mit dem Befehl oder dem Grund, warum es ihn nicht gibt.
+// frozen (R60): Hinweis, wenn die Datenbank hier ein gestoppter, eingefrorener Stand ist; das
+// Beenden allein bindet dann nicht an.
+func foreignJobText(id string, hand bool, frozen string) string {
+	if !hand {
+		return "Update-Auftrag " + id + " ist hier noch offen, der aktive Partner führt ihn nicht. Dieser Server bleibt abgeschottet. Der Partner hat eine ältere Version: erst ihn aktualisieren, dann lässt sich der Auftrag beenden."
+	}
+	s := "Update-Auftrag " + id + " ist hier noch offen, der aktive Partner führt ihn nicht. Dieser Server bleibt abgeschottet und wird nicht von selbst angebunden. Beenden: sudo pdh-ha update abort – danach "
+	if frozen != "" {
+		return s + frozen
+	}
+	return s + "bindet die Marke an oder: sudo pdh-ha rejoin"
+}
+
+// endForeignJobLocked: Handweg aus R53: nur der eigene, verwaiste Auftrag endet. Nichts wird
+// zurückgedreht; die Wiederanbindung folgt über die Marke oder den Handbefehl rejoin.
+func (d *daemon) endForeignJobLocked(by string) error {
+	j := d.up.job
+	j.Phase, j.PhaseAt = ha.UpFailed, d.wall()
+	j.Result, j.AbortedBy = "abgebrochen von Hand: der aktive Partner führt diesen Auftrag nicht", by
+	j.Seq++
+	if err := d.st.saveJob(j); err != nil {
+		return fmt.Errorf("Update-Auftrag nicht gespeichert: %w", err)
+	}
+	d.setJobLocked(j)
 	return nil
 }
 

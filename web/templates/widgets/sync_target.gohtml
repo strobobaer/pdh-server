@@ -1,0 +1,76 @@
+{{/* Abgleich – Schritt 2 „Ziel“: Ticket oder Störmeldung, Abteilung, Vorgabewerte, Filter, Zeitfenster. */}}
+{{define "sync-target"}}
+{{$p := .P}}
+{{if .CanEdit}}
+<form method="POST" action="/sync/{{$p.ID}}/target-web">
+  <div class="card" style="margin-bottom:14px">
+    <div class="card-title"><span><i class="ti ti-target-arrow"></i> Was entsteht im PDH?</span></div>
+    <div class="sy-grid">
+      <div class="form-group"><label class="form-label" for="sy-target">Aus einer Meldung wird</label>
+        <select id="sy-target" name="target_type" class="form-input" {{if .Locked}}disabled{{end}}>
+          {{range .Target.Types}}<option value="{{.Value}}" {{if eq .Value $p.TargetType}}selected{{end}}>{{.Label}}</option>{{end}}
+        </select>
+        {{if .Locked}}<input type="hidden" name="target_type" value="{{$p.TargetType}}"><div class="sy-note"><i class="ti ti-lock"></i> Fest, weil bereits Meldungen verknüpft sind.</div>{{end}}</div>
+      <div class="form-group"><label class="form-label" for="sy-dept">Abteilung des Profils</label>
+        {{$dep := .Target.Department}}
+        <select id="sy-dept" name="department_id" class="form-input">
+          {{if or .Target.AllowGlobal (not $dep)}}<option value="" {{if not $dep}}selected{{end}}>– alle Abteilungen –</option>{{end}}
+          {{range .Target.Departments}}<option value="{{.Value}}" {{if eq .Value $dep}}selected{{end}}>{{.Label}}</option>{{end}}
+        </select>
+        <div class="sy-note">Wer das Recht nur in einer Abteilung hat, sieht und bearbeitet nur Profile dieser Abteilung.</div></div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:14px">
+    <div class="card-title"><span><i class="ti ti-forms"></i> Vorgabewerte</span></div>
+    <div class="sy-note" style="margin-bottom:8px">Gilt, wenn das Fremdsystem für ein Feld nichts liefert oder das Feld nicht zugeordnet ist.</div>
+    <div class="sy-grid">
+      {{range .Target.Defaults}}
+      <div class="form-group"><label class="form-label" for="sy-def-{{.Key}}">{{.Label}}{{if .Required}} <span class="sy-note">(Pflichtfeld)</span>{{end}}</label>
+        {{if .Options}}
+        {{$v := .Value}}
+        <select id="sy-def-{{.Key}}" name="def_{{.Key}}" class="form-input">
+          <option value="">– keine Vorgabe –</option>
+          {{range .Options}}<option value="{{.Value}}" {{if eq .Value $v}}selected{{end}}>{{.Label}}</option>{{end}}
+        </select>
+        {{else}}
+        <input id="sy-def-{{.Key}}" name="def_{{.Key}}" class="form-input" value="{{.Value}}" maxlength="255">
+        {{end}}
+      </div>
+      {{end}}
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:14px">
+    <div class="card-title"><span><i class="ti ti-filter"></i> Welche Meldungen?</span></div>
+    <div class="form-group"><label class="form-label" for="sy-filter">Filter (Bedingung wie hinter WHERE, leer = alle)</label>
+      <textarea id="sy-filter" name="filter_sql" class="form-input sy-mono" rows="2" maxlength="2000" placeholder="z. B. Bereich = 'Halle 3' AND Zustand <> 'storniert'">{{$p.FilterSQL}}</textarea>
+      <div class="sy-note">Nur zum Lesen. Befehle wie DELETE, UPDATE oder ein Strichpunkt werden abgelehnt.</div></div>
+    <div class="sy-grid">
+      <div class="form-group"><label class="form-label" for="sy-window">Zeitfenster in Tagen (0 = alles)</label>
+        <input id="sy-window" type="number" min="0" max="3650" name="window_days" class="form-input" value="{{$p.WindowDays}}">
+        <div class="sy-note">Mit Änderungsspalte: nur Meldungen, die in den letzten Tagen geändert wurden.</div></div>
+      <div class="form-group"><label class="form-label" for="sy-maxnew">Höchstens neue Meldungen je Lauf</label>
+        <input id="sy-maxnew" type="number" min="1" max="10000" name="max_new" class="form-input" value="{{$p.MaxNew}}">
+        <div class="sy-note">Kommen mehr, hält das Profil an und meldet es – Schutz vor einer Flut falscher Tickets.</div></div>
+    </div>
+  </div>
+
+  <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+    <button class="btn btn-primary" type="submit"><i class="ti ti-device-floppy"></i> Ziel speichern</button>
+    <span class="sy-note">Ein geändertes Ziel setzt das Profil auf „Entwurf“; es muss danach neu getestet werden.</span>
+  </div>
+</form>
+{{else}}
+<div class="card">
+  <div class="card-title"><span><i class="ti ti-target-arrow"></i> Ziel</span></div>
+  <dl class="sy-kv">
+    <dt>Im PDH entsteht</dt><dd>{{.TargetLabel}}</dd>
+    <dt>Filter</dt><dd class="sy-mono">{{if $p.FilterSQL}}{{$p.FilterSQL}}{{else}}–{{end}}</dd>
+    <dt>Zeitfenster</dt><dd>{{if $p.WindowDays}}{{$p.WindowDays}} Tage{{else}}alles{{end}}</dd>
+    <dt>Höchstens neu je Lauf</dt><dd>{{$p.MaxNew}}</dd>
+    {{range .Target.Defaults}}{{if .Value}}<dt>Vorgabe {{.Label}}</dt><dd>{{.Value}}</dd>{{end}}{{end}}
+  </dl>
+</div>
+{{end}}
+{{end}}

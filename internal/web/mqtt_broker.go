@@ -68,14 +68,16 @@ func (h *Handler) reconcileMqttBroker(id, direction, kind string, enabled bool, 
 	if !enabled || config["broker_mode"] != "integrated" {
 		return
 	}
-	cfg, err := mqttBrokerConfigFromMap(config)
+	cfg, err := h.mqttBrokerConfig(config)
 	if err != nil {
 		log.Error().Err(err).Str("connection_id", id).Msg("integrierter mqtt-broker: ungültige konfiguration")
 		return
 	}
 	if err := h.mqttBrokers.Start(id, cfg); err != nil {
 		log.Error().Err(err).Str("connection_id", id).Msg("integrierter mqtt-broker konnte nicht gestartet werden")
+		return
 	}
+	h.mqttFirewallAuto(id, config) // Ports in der Firewall des Servers öffnen (mqtt_firewall.go)
 }
 
 // reconcileMqttConsumer gleicht die automatische Wertuebernahme markierter
@@ -97,8 +99,11 @@ func (h *Handler) reconcileMqttConsumer(connectionID string) {
 	if err != nil || kind != "mqtt" {
 		return
 	}
-	config := map[string]string{}
-	_ = json.Unmarshal(configBytes, &config)
+	config, err := h.openConnJSON(configBytes)
+	if err != nil {
+		log.Error().Err(err).Str("connection_id", connectionID).Msg("mqtt-verbindung: kennwort nicht lesbar")
+		return
+	}
 
 	h.mqttBrokers.UnsubscribeAllTopics(connectionID)
 	h.mqttImport.Stop(connectionID)
@@ -110,13 +115,11 @@ func (h *Handler) reconcileMqttConsumer(connectionID string) {
 	if err != nil || len(mappings) == 0 {
 		return
 	}
-	topics := make([]string, 0, len(mappings))
+	refs := make([]string, 0, len(mappings))
 	for _, mp := range mappings {
-		if isQueryRef(mp.SourceRef) {
-			continue
-		}
-		topics = append(topics, mp.SourceRef)
+		refs = append(refs, mp.SourceRef)
 	}
+	topics := mqttMappingTopics(refs)
 	handler := func(topic string, payload []byte) {
 		if h.MaintLocked() {
 			return // Wartungssperre: Werte nicht schreiben (der nächste Wert kommt nach der Sperre)
@@ -168,16 +171,83 @@ func (h *Handler) reconcileMqttConsumer(connectionID string) {
 // Topics direkt an der Zuordnung (kein Verlauf in dieser Ausbaustufe).
 // Laeuft in einem MQTT-Client-Callback-Goroutine, daher ohne Request-
 // Kontext.
+//
+// Zuordnungen auf das Thema selbst („thema“) übernehmen den Inhalt wie bisher,
+// Zuordnungen auf ein JSON-Feld („thema#pfad“) den Wert unter dem Pfad.
 func (h *Handler) recordMqttValue(connectionID, topic string, payload []byte) {
+	rows, err := h.db.Query(context.Background(), `
+		SELECT id::text, source_ref FROM import_mappings
+		WHERE connection_id = $1 AND (source_ref = $2::text OR left(source_ref, length($2::text) + 1) = $2::text || '#')`,
+		connectionID, topic)
+	if err != nil {
+		log.Error().Err(err).Str("connection_id", connectionID).Str("topic", topic).Msg("mqtt-zuordnungen konnten nicht geladen werden")
+		return
+	}
+	type target struct{ id, ref string }
+	var targets []target
+	for rows.Next() {
+		var t target
+		if rows.Scan(&t.id, &t.ref) == nil {
+			targets = append(targets, t)
+		}
+	}
+	rows.Close()
+	for _, t := range targets {
+		value, ok := mqttMappingValue(t.ref, topic, payload)
+		if !ok {
+			continue // Pfad nicht vorhanden oder kein JSON: der bisherige Wert bleibt
+		}
+		if _, err := h.db.Exec(context.Background(), `
+			UPDATE import_mappings SET last_value=$1, last_received_at=NOW() WHERE id = $2::uuid`, value, t.id); err != nil {
+			log.Error().Err(err).Str("connection_id", connectionID).Str("topic", topic).Msg("mqtt-wert konnte nicht gespeichert werden")
+		}
+	}
+}
+
+// mqttMappingTopics: die Themen, die für die Zuordnungen abonniert werden – je Thema einmal,
+// auch wenn mehrere JSON-Felder davon zugeordnet sind. Abfrage-Verweise zählen nicht.
+func mqttMappingTopics(refs []string) []string {
+	seen := map[string]bool{}
+	topics := make([]string, 0, len(refs))
+	for _, ref := range refs {
+		if isQueryRef(ref) {
+			continue
+		}
+		topic, _ := parseMqttSourceRef(ref)
+		if seen[topic] {
+			continue
+		}
+		seen[topic] = true
+		topics = append(topics, topic)
+	}
+	return topics
+}
+
+const mqttMappingMaxValue = 2000
+
+// mqttMappingValue: der Wert, den eine Zuordnung aus einer Nachricht übernimmt. false, wenn die
+// Nachricht nicht zur Zuordnung gehört (anderes Thema) oder der JSON-Pfad nicht aufzulösen ist.
+func mqttMappingValue(ref, topic string, payload []byte) (string, bool) {
+	refTopic, path := parseMqttSourceRef(ref)
+	if refTopic != topic {
+		return "", false
+	}
 	value := string(payload)
-	if len(value) > 2000 {
-		value = value[:2000]
+	if path != "" {
+		var data any
+		if err := json.Unmarshal(payload, &data); err != nil {
+			return "", false
+		}
+		v, ok := jsonAtPath(data, path)
+		if !ok {
+			return "", false
+		}
+		value = jsonScalarToString(v)
 	}
-	if _, err := h.db.Exec(context.Background(), `
-		UPDATE import_mappings SET last_value=$1, last_received_at=NOW()
-		WHERE connection_id=$2 AND source_ref=$3`, value, connectionID, topic); err != nil {
-		log.Error().Err(err).Str("connection_id", connectionID).Str("topic", topic).Msg("mqtt-wert konnte nicht gespeichert werden")
+	if len(value) > mqttMappingMaxValue {
+		value = value[:mqttMappingMaxValue]
 	}
+	return strings.ToValidUTF8(value, "�"), true
 }
 
 // StartEnabledMqttConsumers baut beim Serverstart die automatische
@@ -226,19 +296,24 @@ func (h *Handler) StartEnabledMqttBrokers(ctx context.Context) {
 			log.Error().Err(err).Msg("integrierte mqtt-broker: zeile konnte nicht gelesen werden")
 			continue
 		}
-		config := map[string]string{}
-		_ = json.Unmarshal(configBytes, &config)
+		config, err := h.openConnJSON(configBytes)
+		if err != nil {
+			log.Error().Err(err).Str("connection_id", id).Msg("verbindung übersprungen: kennwort nicht lesbar")
+			continue
+		}
 		if config["broker_mode"] != "integrated" {
 			continue
 		}
-		cfg, err := mqttBrokerConfigFromMap(config)
+		cfg, err := h.mqttBrokerConfig(config)
 		if err != nil {
 			log.Error().Err(err).Str("connection_id", id).Msg("integrierter mqtt-broker: ungültige konfiguration beim start")
 			continue
 		}
 		if err := h.mqttBrokers.Start(id, cfg); err != nil {
 			log.Error().Err(err).Str("connection_id", id).Msg("integrierter mqtt-broker konnte beim start nicht gestartet werden")
+			continue
 		}
+		h.mqttFirewallAuto(id, config)
 	}
 }
 
@@ -261,6 +336,7 @@ type MqttBrokerPageData struct {
 	StartError       string
 	ListenAddr       string
 	WebsocketAddr    string
+	TLSAddr          string
 	StartedAt        string
 	ClientsConnected int64
 	ClientsMaximum   int64
@@ -280,10 +356,13 @@ type MqttBrokerPageData struct {
 	TLSEnabled     bool
 	AllowAnonymous bool
 	BrokerUsername string
-	BrokerPassword string
 	TopicFilter    string
 	QoS            string
 	RetainEnabled  bool
+
+	// Name des Brokers (mqtt_system.go): fertige Adressen und die nachgeladene Prüfliste.
+	PublicHost string
+	TLSPort    string
 }
 
 func (h *Handler) MqttBrokerPage(w http.ResponseWriter, r *http.Request) {
@@ -301,8 +380,11 @@ func (h *Handler) MqttBrokerPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Verbindung nicht gefunden", http.StatusNotFound)
 		return
 	}
-	config := map[string]string{}
-	_ = json.Unmarshal(configBytes, &config)
+	config, err := h.openConnJSON(configBytes)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 
 	data := MqttBrokerPageData{
 		BaseData:       h.baseData(r, "import", "Broker-Status", name),
@@ -324,16 +406,20 @@ func (h *Handler) MqttBrokerPage(w http.ResponseWriter, r *http.Request) {
 		data.TLSEnabled = strings.TrimSpace(config["int_tls_cert_path"]) != "" && strings.TrimSpace(config["int_tls_key_path"]) != ""
 		data.AllowAnonymous = config["int_allow_anonymous"] == "true"
 		data.BrokerUsername = config["int_broker_username"]
-		data.BrokerPassword = config["int_broker_password"]
 		data.TopicFilter = config["int_topic_filter"]
 		data.QoS = config["int_qos"]
 		data.RetainEnabled = config["int_retain_enabled"] == "true"
+		data.PublicHost = strings.TrimSpace(config[mqttHostKey])
+		if data.PublicHost != "" {
+			data.TLSPort = strings.TrimSpace(config[mqttTLSPortKey])
+		}
 	}
 	if data.Applicable {
 		if status, ok := h.mqttBrokers.Status(id); ok {
 			data.Running = true
 			data.ListenAddr = status.ListenAddr
 			data.WebsocketAddr = status.WebsocketAddr
+			data.TLSAddr = status.TLSAddr
 			data.StartedAt = status.StartedAt.Format("02.01.2006 15:04:05")
 			data.ClientsConnected = status.ClientsConnected
 			data.ClientsMaximum = status.ClientsMaximum

@@ -10,7 +10,7 @@ Schreibzugriffe in Seiten, die nur anzeigen sollen.
 
 - Linux mit Docker und Compose-Plugin (`docker compose version`)
 - Internetzugang beim ersten Bauen (Go-Module, Abbilder `postgres:18`,
-  `golang:1.24-bookworm`, `ubuntu:24.04`)
+  `golang:1.27-bookworm`, `ubuntu:24.04`)
 - Containernamen `pdh-mirror-lab-*` und das Netz `pdh-mirror-lab-net` dürfen
   nicht belegt sein (das pdh-ha-Labor `deploy/ha-lab` stört nicht)
 

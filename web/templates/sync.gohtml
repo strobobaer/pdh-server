@@ -1,0 +1,82 @@
+{{template "base" .}}
+{{define "content"}}
+<style>
+.sy-wrap{overflow-x:auto}
+.sy-tbl{border-collapse:collapse;width:100%;font-size:12.5px}
+.sy-tbl th{text-align:left;padding:6px 10px;border-bottom:1px solid var(--border);white-space:nowrap;color:var(--muted);font-weight:500}
+.sy-tbl td{padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:top}
+.sy-tbl tr:last-child td{border-bottom:0}
+.sy-state{display:inline-flex;align-items:center;gap:6px;font-weight:600;font-size:12px;white-space:nowrap}
+.sy-state::before{content:"";width:8px;height:8px;border-radius:50%;background:currentColor}
+.sy-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px}
+.sy-note{font-size:11.5px;color:var(--muted)}
+</style>
+
+<div style="margin-bottom:18px">
+  <h1 style="font-size:19px;font-weight:600"><i class="ti ti-arrows-exchange"></i> Abgleich mit Fremdsystemen</h1>
+  <p style="font-size:12px;color:var(--muted);margin-top:3px">Meldungen aus einer fremden Datenbank werden im PDH zu Tickets oder Störmeldungen; Änderungen gehen zurück. Im Fremdsystem wird nie etwas gelöscht.</p>
+</div>
+
+{{if .Notice}}<div class="card" role="status" style="margin-bottom:14px;border-color:var(--green)"><i class="ti ti-circle-check" style="color:var(--green)"></i> {{.Notice}}</div>{{end}}
+{{if .Err}}<div class="card" role="alert" style="margin-bottom:14px;border-color:var(--red);color:var(--red)"><i class="ti ti-alert-circle"></i> {{.Err}}</div>{{end}}
+
+<div class="card" style="margin-bottom:14px">
+  <div class="card-title"><span><i class="ti ti-list-details"></i> Profile</span></div>
+  {{if .Profiles}}
+  <div class="sy-wrap">
+    <table class="sy-tbl">
+      <thead><tr><th>Profil</th><th>Zustand</th><th>Ziel</th><th>Verbindung</th><th>Letzter Lauf</th><th>Offen</th></tr></thead>
+      <tbody>
+      {{range .Profiles}}
+        <tr>
+          <td><a href="/sync/{{.ID}}" style="color:var(--accent);font-weight:600">{{.Name}}</a></td>
+          <td><span class="sy-state" style="color:{{.StateColor}}">{{.StateLabel}}</span>{{if .StateNote}}<div class="sy-note">{{.StateNote}}</div>{{end}}</td>
+          <td>{{.Target}}</td>
+          <td>{{if .Connection}}{{.Connection}}{{else}}<span style="color:var(--red)">Verbindung fehlt</span>{{end}}</td>
+          <td>{{if .LastRun}}{{.LastRun}}<div class="sy-note" {{if .LastBad}}style="color:var(--red)"{{end}}>{{.LastResult}}</div>{{else}}<span class="sy-note">noch keiner</span>{{end}}</td>
+          <td>{{if .Open}}<b>{{.Open}}</b> <span class="sy-note">Änderung(en) warten</span>{{else}}<span class="sy-note">nichts</span>{{end}}</td>
+        </tr>
+      {{end}}
+      </tbody>
+    </table>
+  </div>
+  {{else}}
+  <div class="rec-sub">Noch kein Profil. Ein Profil verbindet eine Tabelle des Fremdsystems mit Tickets oder Störmeldungen im PDH.</div>
+  {{end}}
+</div>
+
+{{if .CanEdit}}
+<div class="card">
+  <div class="card-title"><span><i class="ti ti-plus"></i> Neues Profil</span></div>
+  {{if .Connections}}
+  <form method="POST" action="/sync/new-web">
+    <div class="sy-grid">
+      <div class="form-group"><label class="form-label" for="sy-new-name">Name</label>
+        <input id="sy-new-name" name="name" class="form-input" minlength="2" maxlength="150" required placeholder="z. B. Störmeldungen aus dem ERP"></div>
+      <div class="form-group"><label class="form-label" for="sy-new-conn">Verbindung (SQL Server)</label>
+        <select id="sy-new-conn" name="connection_id" class="form-input" required>
+          <option value="">– Verbindung wählen –</option>
+          {{range .Connections}}<option value="{{.Value}}">{{.Label}}</option>{{end}}
+        </select></div>
+      <div class="form-group"><label class="form-label" for="sy-new-target">Im PDH entsteht</label>
+        <select id="sy-new-target" name="target_type" class="form-input" required>
+          <option value="ticket">Ticket</option>
+          <option value="fault">Störmeldung</option>
+        </select></div>
+      <div class="form-group"><label class="form-label" for="sy-new-dept">Abteilung</label>
+        <select id="sy-new-dept" name="department_id" class="form-input">
+          {{if .AllowGlobal}}<option value="">– alle Abteilungen –</option>{{end}}
+          {{range .Departments}}<option value="{{.Value}}">{{.Label}}</option>{{end}}
+        </select></div>
+    </div>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px">
+      <button class="btn btn-primary" type="submit"><i class="ti ti-plus"></i> Profil anlegen</button>
+      <span class="sy-note">Das Profil ist zunächst ein Entwurf. Es läuft erst, wenn es getestet und scharf geschaltet ist.</span>
+    </div>
+  </form>
+  {{else}}
+  <div class="rec-sub">Es gibt noch keine SQL-Server-Verbindung. Lege sie zuerst unter <a href="/import" style="color:var(--accent)">Import</a> an (Typ MSSQL) und prüfe sie dort.</div>
+  {{end}}
+</div>
+{{end}}
+{{end}}

@@ -19,7 +19,7 @@ func TestBackupCronSpec(t *testing.T) {
 		{backupSchedule{Frequency: "daily", TimeOfDay: "02:30"}, "30 2 * * *"},
 		{backupSchedule{Frequency: "weekly", TimeOfDay: "23:05", Weekday: 0}, "5 23 * * 0"},
 		{backupSchedule{Frequency: "monthly", TimeOfDay: "01:00", Monthday: 15}, "0 1 15 * *"},
-		{backupSchedule{Frequency: "monthly", TimeOfDay: "kaputt", Monthday: 31}, "0 2 1 * *"},
+		{backupSchedule{Frequency: "monthly", TimeOfDay: "kaputt", Monthday: 31}, "0 3 1 * *"},
 	}
 	for _, c := range cases {
 		if got := backupCronSpec(c.s); got != c.want {
@@ -236,5 +236,51 @@ func TestTriggerError(t *testing.T) {
 	}
 	if triggerError(nil) != nil {
 		t.Error("nil")
+	}
+}
+
+// R63 (U2, U11): Die Kennung der Datei-Spiegelung (.pdh-mirror-id) kommt weder in die Sicherung
+// noch beim Rückspielen zurück, auch nicht aus einer älteren Sicherung. Auf einem neuen
+// Datenträger fehlt sie danach, und die Spiegelung verlangt die Bestätigung statt zu löschen.
+func TestBackupSkipsMirrorID(t *testing.T) {
+	src := t.TempDir()
+	os.WriteFile(filepath.Join(src, ".pdh-mirror-id"), []byte("0123456789abcdef0123456789abcdef\n"), 0o644)
+	os.WriteFile(filepath.Join(src, "bild.png"), []byte("PNG"), 0o644)
+	// Minor 6: auch eine Kennung tiefer im Baum (Datenordner unter dem Programmordner)
+	os.MkdirAll(filepath.Join(src, "data"), 0o755)
+	os.WriteFile(filepath.Join(src, "data", ".pdh-mirror-id"), []byte("0123456789abcdef0123456789abcdef\n"), 0o644)
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	n, err := backupFiles(zw, src, "files/uploads/")
+	if err != nil || n != 1 {
+		t.Fatalf("backupFiles: %d, %v", n, err)
+	}
+	// ältere Sicherung mit Kennung
+	w, _ := zw.Create("files/uploads/.pdh-mirror-id")
+	w.Write([]byte("fedcba9876543210fedcba9876543210\n"))
+	w, _ = zw.Create("files/uploads/data/.pdh-mirror-id")
+	w.Write([]byte("fedcba9876543210fedcba9876543210\n"))
+	zw.Close()
+	zr, err := zip.NewReader(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := 0
+	for _, f := range zr.File {
+		if strings.HasSuffix(f.Name, ".pdh-mirror-id") {
+			seen++
+		}
+	}
+	if seen != 2 {
+		t.Fatalf("Kennung in der Sicherung: %d (erwartet nur die zwei eingeschleusten)", seen)
+	}
+	dst := t.TempDir()
+	if n, err := restoreFiles(zr, "files/uploads/", dst); err != nil || n != 1 {
+		t.Fatalf("restoreFiles: %d, %v", n, err)
+	}
+	for _, p := range []string{".pdh-mirror-id", filepath.Join("data", ".pdh-mirror-id")} {
+		if _, err := os.Stat(filepath.Join(dst, p)); err == nil {
+			t.Fatalf("Kennung %s zurückgespielt", p)
+		}
 	}
 }

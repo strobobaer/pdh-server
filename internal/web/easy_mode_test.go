@@ -85,10 +85,27 @@ func TestEasyLimiter(t *testing.T) {
 	if !l.allow("ip:1", 3, time.Minute, now.Add(61*time.Second)) {
 		t.Error("nach Ablauf wieder erlaubt")
 	}
-	r := httptest.NewRequest("POST", "/e/x/report", nil)
-	r.Header.Set("X-Forwarded-For", "10.0.0.7, 172.16.0.1")
-	if easyClient(r) != "10.0.0.7" {
-		t.Errorf("Absender hinter Proxy = %q", easyClient(r))
+	// Weitergereichte Adressen zählen nur vom eigenen Rechner (Tunnel/nginx);
+	// von außen sind sie frei erfunden und dürfen die Bremse nicht umgehen.
+	for _, c := range []struct{ remote, xff, cf, want string }{
+		{"192.0.2.1:1234", "10.0.0.7", "", "192.0.2.1"},                       // fremder Absender: Kopfzeile ignorieren
+		{"192.0.2.1:1234", "", "10.0.0.9", "192.0.2.1"},                       // auch CF-Connecting-IP nicht
+		{"127.0.0.1:5000", "6.6.6.6, 10.0.0.7", "", "10.0.0.7"},               // Tunnel: letzter Eintrag (vom Proxy angehängt)
+		{"127.0.0.1:5000", "6.6.6.6, 10.0.0.7", "203.0.113.5", "203.0.113.5"}, // Cloudflare-Angabe hat Vorrang
+		{"[::1]:5000", "", "", "::1"},                                         // lokal ohne Kopfzeile
+		{"127.0.0.1:5000", "kein-ip", "", "127.0.0.1"},                        // Unsinn wird ignoriert
+	} {
+		r := httptest.NewRequest("POST", "/e/x/report", nil)
+		r.RemoteAddr = c.remote
+		if c.xff != "" {
+			r.Header.Set("X-Forwarded-For", c.xff)
+		}
+		if c.cf != "" {
+			r.Header.Set("CF-Connecting-IP", c.cf)
+		}
+		if got := easyClient(r); got != c.want {
+			t.Errorf("remote=%s xff=%q cf=%q: Absender = %q, erwartet %q", c.remote, c.xff, c.cf, got, c.want)
+		}
 	}
 }
 

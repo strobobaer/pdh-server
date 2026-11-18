@@ -80,6 +80,11 @@
       <label><input type="checkbox" name="use_backup" {{with $e}}{{if .UseBackup}}checked{{end}}{{end}}><b><i class="ti ti-database-export"></i> Datensicherung</b><span>Sicherungen in <code>PDH-Sicherungen</code> statt im lokalen Ordner</span></label>
       <label><input type="checkbox" name="use_documents" {{with $e}}{{if .UseDocuments}}checked{{end}}{{end}}><b><i class="ti ti-files"></i> Dokumentenablage</b><span>Anhänge zusätzlich nach Vorgang sortiert in <code>PDH-Dokumente/&lt;Modul&gt;/&lt;Vorgang&gt;</code></span></label>
     </div>
+    <div class="form-label" style="margin-top:8px">Nextcloud</div>
+    <div class="drv-checks">
+      <label><input type="checkbox" name="nextcloud_show" {{with $e}}{{if .NextcloudShow}}checked{{end}}{{end}}> in Nextcloud zeigen (Ordner „PDH-Laufwerke“)</label>
+    </div>
+    <p class="rec-sub">Nur Personen mit dem Recht <b>Netzlaufwerke in Nextcloud nutzen</b> sehen das Laufwerk dort. Hat es oben eine Aufgabe („Verwenden als“), ist es in Nextcloud nur lesbar; bearbeiten darf, wer zusätzlich <b>auch PDH-Daten bearbeiten</b> hat. Braucht den eingeschalteten Abgleich unter Server-Einstellungen → Nextcloud.</p>
     <p class="rec-sub">Datenspeicher, Datensicherung und Dokumentenablage gibt es je einmal – wählst du sie hier, gibt ein anderes Laufwerk die Aufgabe ab.</p>
     <button class="btn btn-primary" type="submit" style="margin-top:8px"><i class="ti ti-device-floppy"></i> Speichern{{if not $e}} &amp; einbinden{{end}}</button>
   </form>

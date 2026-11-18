@@ -1,0 +1,100 @@
+{{/*
+Schwellwerte einer Messstelle (energy_thresholds.go): htmx-Fragment, das in der
+Übersicht der Messstellen unter der Zeile erscheint. Liste mit Zustand und
+Ticket-Link, darunter das Formular zum Anlegen und Ändern. Farben nur über die
+Variablen des Farbschemas (Fiori und Fluent, hell und dunkel).
+
+  {{template "energy-thresholds" .}}   – Datenmodell ThresholdsData
+*/}}
+
+{{define "energy-thresholds"}}
+<div class="et-box" id="et-{{.MeterID}}">
+  {{if .Notice}}<div class="w11-infobar success" role="status">{{.Notice}}</div>{{end}}
+  {{if .Err}}<div class="w11-infobar error" role="alert">{{.Err}}</div>{{end}}
+  <div class="et-head">
+    <b>Schwellwerte</b>
+    <span class="et-muted">{{if .Unit}}Grenzwerte in {{.Unit}}{{else}}Grenzwerte in der Einheit der Messstelle{{end}}</span>
+    <span class="et-spacer"></span>
+    {{if and .CanSave (not .ShowForm)}}
+    <button type="button" class="btn" hx-get="/energy/meters/{{.MeterID}}/thresholds?new=1" hx-target="#et-{{.MeterID}}" hx-swap="outerHTML"><i class="ti ti-plus" aria-hidden="true"></i> Neuer Schwellwert</button>
+    {{end}}
+  </div>
+  {{if .Rows}}
+  <div class="et-scroll">
+  <table class="et-table">
+    <thead><tr>
+      <th>Bezeichnung</th><th>Bedingung</th><th>Zeitraum</th><th>Rückschaltung</th><th>Tag</th>
+      <th>Verantwortlich</th><th>Aktiv</th><th>Zustand</th><th><span class="sr-only">Aktionen</span></th>
+    </tr></thead>
+    <tbody>
+    {{range .Rows}}
+    <tr class="et-row{{if not .Active}} is-off{{end}}">
+      <td data-label="Bezeichnung">{{.Name}}<span class="et-sub">Priorität {{.PriorityText}}</span></td>
+      <td data-label="Bedingung" class="et-num">{{.CondText}} {{.LimitText}}</td>
+      <td data-label="Zeitraum" class="et-num">{{.WindowText}}</td>
+      <td data-label="Rückschaltung" class="et-num">{{.ResetText}}</td>
+      <td data-label="Tag">{{if .Tag}}{{.Tag}}{{else}}<span class="et-muted">–</span>{{end}}</td>
+      <td data-label="Verantwortlich">{{.ResponsibleText}}</td>
+      <td data-label="Aktiv">{{if .Active}}Ja{{else}}<span class="et-muted">Nein</span>{{end}}</td>
+      <td data-label="Zustand">
+        {{if .Clearing}}<span class="badge b-amber">{{.StateText}}</span>
+        {{else if .Alarm}}<span class="badge b-red">{{.StateText}}</span>
+        {{else}}<span class="badge b-green">{{.StateText}}</span>{{end}}
+        {{if .TicketID}}<a class="et-ticket" href="/tickets/{{.TicketID}}"><i class="ti ti-ticket" aria-hidden="true"></i> Ticket</a>{{end}}
+      </td>
+      <td class="et-actions">
+        {{if $.CanSave}}{{template "icon-button" (dict "Action" "edit" "HxGet" (printf "/energy/meters/%s/thresholds?edit=%s" $.MeterID .ID) "HxTarget" (printf "#et-%s" $.MeterID) "HxSwap" "outerHTML")}}{{end}}
+        {{if $.CanDelete}}{{template "icon-button" (dict "Action" "delete" "HxPost" (printf "/energy/thresholds/%s/delete-web" .ID) "HxTarget" (printf "#et-%s" $.MeterID) "HxSwap" "outerHTML" "HxConfirm" (printf "Schwellwert „%s“ wirklich löschen?" .Name))}}{{end}}
+      </td>
+    </tr>
+    {{end}}
+    </tbody>
+  </table>
+  </div>
+  {{else}}
+  <p class="et-empty">Für diese Messstelle gibt es noch keinen Schwellwert.</p>
+  {{end}}
+
+  {{if and .CanSave .ShowForm}}
+  <form class="et-form" hx-post="/energy/meters/{{.MeterID}}/thresholds/save-web" hx-target="#et-{{.MeterID}}" hx-swap="outerHTML">
+    <input type="hidden" name="tid" value="{{.Form.ID}}">
+    <div class="et-grid">
+      <div class="form-group"><label class="form-label" for="et-name-{{.MeterID}}">Bezeichnung</label>
+        <input id="et-name-{{.MeterID}}" name="name" class="form-input" maxlength="100" value="{{.Form.Name}}" autocomplete="off" placeholder="z. B. Druckluft zu hoch" required></div>
+      <div class="form-group"><label class="form-label" for="et-cond-{{.MeterID}}">Bedingung</label>
+        <select id="et-cond-{{.MeterID}}" name="condition" class="form-input">
+          <option value="above"{{if eq .Form.Condition "above"}} selected{{end}}>über dem Grenzwert</option>
+          <option value="below"{{if eq .Form.Condition "below"}} selected{{end}}>unter dem Grenzwert</option>
+        </select></div>
+      <div class="form-group"><label class="form-label" for="et-limit-{{.MeterID}}">Grenzwert{{if .Unit}} ({{.Unit}}){{end}}</label>
+        <input id="et-limit-{{.MeterID}}" name="limit" class="form-input" inputmode="decimal" value="{{.Form.Limit}}" autocomplete="off" required></div>
+      <div class="form-group"><label class="form-label" for="et-win-{{.MeterID}}">Zeitraum (Minuten)</label>
+        <input id="et-win-{{.MeterID}}" name="window_minutes" class="form-input" inputmode="numeric" value="{{.Form.Window}}" autocomplete="off" required></div>
+      <div class="form-group"><label class="form-label" for="et-reset-{{.MeterID}}">Rückschaltzeit (Minuten)</label>
+        <input id="et-reset-{{.MeterID}}" name="reset_minutes" class="form-input" inputmode="numeric" value="{{.Form.Reset}}" autocomplete="off" required></div>
+      <div class="form-group"><label class="form-label" for="et-prio-{{.MeterID}}">Priorität des Tickets</label>
+        <select id="et-prio-{{.MeterID}}" name="priority" class="form-input">
+          {{$p := .Form.Priority}}{{range .Priorities}}<option value="{{.Value}}"{{if eq .Value $p}} selected{{end}}>{{.Label}}</option>{{end}}
+        </select></div>
+      <div class="form-group"><label class="form-label" for="et-tag-{{.MeterID}}">Tag am Ticket</label>
+        <input id="et-tag-{{.MeterID}}" name="tag" class="form-input" maxlength="50" list="et-tags-{{.MeterID}}" value="{{.Form.Tag}}" autocomplete="off" placeholder="vorhandenes wählen oder neu eintippen">
+        <datalist id="et-tags-{{.MeterID}}">{{range .Tags}}<option value="{{.}}">{{end}}</datalist></div>
+      <div class="form-group"><label class="form-label" for="et-resp-{{.MeterID}}">Verantwortlich</label>
+        <select id="et-resp-{{.MeterID}}" name="responsible" class="form-input">
+          {{$r := .Form.Responsible}}
+          <option value="">Verantwortlicher der Anlage</option>
+          {{if .Users}}<optgroup label="Benutzer">{{range .Users}}<option value="user:{{.Value}}"{{if eq (printf "user:%s" .Value) $r}} selected{{end}}>{{.Label}}</option>{{end}}</optgroup>{{end}}
+          {{if .Groups}}<optgroup label="Gruppen">{{range .Groups}}<option value="group:{{.Value}}"{{if eq (printf "group:%s" .Value) $r}} selected{{end}}>{{.Label}}</option>{{end}}</optgroup>{{end}}
+        </select></div>
+    </div>
+    <p class="et-hint">Der Alarm kommt, wenn der ausgewertete Wert des Zeitraums (Mittelwert, Menge oder Summe) die Bedingung erfüllt, und endet erst, wenn die Bedingung die Rückschaltzeit lang am Stück nicht mehr erfüllt ist. Ohne Auswahl wird der Verantwortliche der Anlage benachrichtigt.</p>
+    <label class="et-check"><input type="checkbox" name="active" value="1"{{if .Form.Active}} checked{{end}}> Aktiv</label>
+    <div class="et-buttons">
+      <button type="button" class="btn" hx-get="/energy/meters/{{.MeterID}}/thresholds" hx-target="#et-{{.MeterID}}" hx-swap="outerHTML">Abbrechen</button>
+      <button type="submit" class="btn btn-primary"><i class="ti ti-device-floppy" aria-hidden="true"></i> Speichern</button>
+    </div>
+  </form>
+  {{end}}
+</div>
+{{if .CountText}}<span id="em-thr-lbl-{{.MeterID}}" hx-swap-oob="true"><span class="em-thr-lbl{{if .CountAlarms}} has-alarm{{end}}">{{.CountText}}</span></span>{{end}}
+{{end}}

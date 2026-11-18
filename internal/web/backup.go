@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -25,6 +26,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"pdh"
+	"pdh/internal/ha"
 	"pdh/pkg/config"
 	"pdh/pkg/database"
 )
@@ -157,7 +159,7 @@ func (h *Handler) createBackup(ctx context.Context, comps []string, kind, schedu
 	if err := os.MkdirAll(backupDir(), 0o750); err != nil {
 		return "", "", fmt.Errorf("sicherungsordner: %w", err)
 	}
-	name := fmt.Sprintf("pdh-backup-%s-%s.zip", time.Now().Format("20060102-150405"), kind)
+	name := backupFileName(backupDir(), kind, time.Now())
 	runID, err := h.startBackupRun(ctx, name, comps, kind, scheduleID, userID)
 	if err != nil {
 		return "", "", err
@@ -345,6 +347,9 @@ func backupFiles(zw *zip.Writer, dir, prefix string) (int, error) {
 		if err != nil {
 			return err
 		}
+		if filepath.Base(rel) == ha.MirrorIDName {
+			return nil // R63: Kennung der Datei-Spiegelung gehört zum Datenträger, nicht in die Sicherung
+		}
 		info, err := d.Info()
 		if err != nil {
 			return err
@@ -473,6 +478,42 @@ func zipEntry(zr *zip.Reader, name string) *zip.File {
 	return nil
 }
 
+// restoredFK ist ein vor dem Laden entfernter Fremdschlüssel.
+type restoredFK struct{ table, name, def string }
+
+// restoreForeignKeys legt die gemerkten Fremdschlüssel wieder an. Hat eine
+// erneut eingespielte Migration den Fremdschlüssel schon angelegt, wird er
+// übersprungen. Verwaiste Verweise brechen die Wiederherstellung nicht ab.
+func restoreForeignKeys(ctx context.Context, tx pgx.Tx, fks []restoredFK) ([]string, error) {
+	var notes []string
+	for _, f := range fks {
+		var exists bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = $1::regclass AND conname = $2)`, f.table, f.name).Scan(&exists); err != nil {
+			return nil, err
+		}
+		if exists {
+			continue
+		}
+		if _, err := tx.Exec(ctx, `SAVEPOINT pdh_fk`); err != nil {
+			return nil, err
+		}
+		add := fmt.Sprintf(`ALTER TABLE %s ADD CONSTRAINT %s %s`, f.table, pgx.Identifier{f.name}.Sanitize(), f.def)
+		if _, err := tx.Exec(ctx, add); err != nil {
+			if _, err2 := tx.Exec(ctx, `ROLLBACK TO SAVEPOINT pdh_fk`); err2 != nil {
+				return nil, err2
+			}
+			if _, err3 := tx.Exec(ctx, add+" NOT VALID"); err3 != nil {
+				return nil, fmt.Errorf("fremdschlüssel %s: %w", f.name, err3)
+			}
+			notes = append(notes, "Hinweis: verwaiste Verweise bei "+f.table+" ("+f.name+")")
+		}
+		if _, err := tx.Exec(ctx, `RELEASE SAVEPOINT pdh_fk`); err != nil {
+			return nil, err
+		}
+	}
+	return notes, nil
+}
+
 func (h *Handler) restoreDatabase(ctx context.Context, zr *zip.Reader, man *backupManifest, currentSchema int) ([]string, error) {
 	var notes []string
 	conn, err := h.db.Acquire(ctx)
@@ -513,8 +554,7 @@ func (h *Handler) restoreDatabase(ctx context.Context, zr *zip.Reader, man *back
 	}
 
 	// 1. Fremdschluessel merken und entfernen (Reihenfolge egal beim Laden)
-	type fk struct{ table, name, def string }
-	var fks []fk
+	var fks []restoredFK
 	rows, err := tx.Query(ctx, `
 		SELECT conrelid::regclass::text, conname, pg_get_constraintdef(oid)
 		  FROM pg_constraint WHERE contype = 'f' AND connamespace = 'public'::regnamespace`)
@@ -522,7 +562,7 @@ func (h *Handler) restoreDatabase(ctx context.Context, zr *zip.Reader, man *back
 		return nil, err
 	}
 	for rows.Next() {
-		var f fk
+		var f restoredFK
 		if err := rows.Scan(&f.table, &f.name, &f.def); err != nil {
 			rows.Close()
 			return nil, err
@@ -589,24 +629,11 @@ func (h *Handler) restoreDatabase(ctx context.Context, zr *zip.Reader, man *back
 	}
 	// 6. Fremdschluessel wieder anlegen. Verwaiste Verweise (z. B. aus nicht
 	//    gesicherten Tabellen) brechen die Wiederherstellung nicht ab.
-	for _, f := range fks {
-		if _, err := tx.Exec(ctx, `SAVEPOINT pdh_fk`); err != nil {
-			return nil, err
-		}
-		add := fmt.Sprintf(`ALTER TABLE %s ADD CONSTRAINT %s %s`, f.table, pgx.Identifier{f.name}.Sanitize(), f.def)
-		if _, err := tx.Exec(ctx, add); err != nil {
-			if _, err2 := tx.Exec(ctx, `ROLLBACK TO SAVEPOINT pdh_fk`); err2 != nil {
-				return nil, err2
-			}
-			if _, err3 := tx.Exec(ctx, add+" NOT VALID"); err3 != nil {
-				return nil, fmt.Errorf("fremdschlüssel %s: %w", f.name, err3)
-			}
-			notes = append(notes, "Hinweis: verwaiste Verweise bei "+f.table+" ("+f.name+")")
-		}
-		if _, err := tx.Exec(ctx, `RELEASE SAVEPOINT pdh_fk`); err != nil {
-			return nil, err
-		}
+	fkNotes, err := restoreForeignKeys(ctx, tx, fks)
+	if err != nil {
+		return nil, err
 	}
+	notes = append(notes, fkNotes...)
 	if _, err := tx.Exec(ctx, `DELETE FROM record_change_queue`); err != nil {
 		return nil, err
 	}
@@ -725,6 +752,11 @@ func restoreFiles(zr *zip.Reader, prefix, dir string) (int, error) {
 		if !strings.HasPrefix(f.Name, prefix) || strings.HasSuffix(f.Name, "/") {
 			continue
 		}
+		if path.Base(f.Name) == ha.MirrorIDName {
+			// R63: auch aus älteren Sicherungen nie zurück – auf einem neuen Datenträger muss die
+			// Kennung fehlen, sonst löschte die Spiegelung am Partner ohne Bestätigung
+			continue
+		}
 		rel := filepath.FromSlash(strings.TrimPrefix(f.Name, prefix))
 		target := filepath.Join(root, rel)
 		if !strings.HasPrefix(target, root+string(os.PathSeparator)) {
@@ -771,7 +803,7 @@ var weekdayNames = []string{"Sonntag", "Montag", "Dienstag", "Mittwoch", "Donner
 func backupCronSpec(s backupSchedule) string {
 	t, err := time.Parse("15:04", s.TimeOfDay)
 	if err != nil {
-		t, _ = time.Parse("15:04", "02:00")
+		t, _ = time.Parse("15:04", "03:00")
 	}
 	switch s.Frequency {
 	case "weekly":
@@ -838,10 +870,36 @@ func (h *Handler) StartBackupSchedules(ctx context.Context) {
 			continue
 		}
 		sid := s.ID
-		if err := h.exportCron.Schedule(id, backupCronSpec(s), func() { h.runScheduledBackup(sid) }); err != nil {
+		if err := h.exportCron.Schedule(id, backupCronSpec(s), func() { h.runCronBackup(sid) }); err != nil {
 			componentLog("backup").Error().Err(err).Str("schedule", s.Name).Msg("sicherungszeitplan einplanen")
 		}
 	}
+}
+
+// backupCronMinGap: Abstand, unter dem ein geplanter Lauf entfällt. Bei der
+// Umstellung auf Winterzeit gibt es 02:00–02:59 zweimal, cron startet dann
+// denselben Zeitplan zweimal. Zeitpläne laufen höchstens täglich.
+const backupCronMinGap = 90 * time.Minute
+
+// runCronBackup: Aufruf durch den Zeitplan – entfällt, wenn derselbe Zeitplan
+// vor weniger als backupCronMinGap gestartet wurde (auch über „Jetzt ausführen“).
+// Massgeblich ist der Beginn (backup_runs.started_at): last_run_at steht erst
+// am Ende, eine lange Sicherung kann beim zweiten 02:00 noch laufen. Wartet ein
+// Lauf noch auf backupMu (anderer Zeitplan sichert), hat er keine Zeile – dafür
+// merkt sich backupCronClaim den Start im Speicher, bevor gewartet wird.
+func (h *Handler) runCronBackup(scheduleID string) {
+	if !backupCronClaim(scheduleID, time.Now()) {
+		componentLog("backup").Info().Str("schedule", scheduleID).Msg("geplante sicherung übersprungen: zeitplan wurde vor weniger als 90 minuten gestartet (z. b. zeitumstellung im herbst)")
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	recent := h.backupStartedRecently(ctx, scheduleID, backupCronMinGap)
+	cancel()
+	if recent {
+		componentLog("backup").Info().Str("schedule", scheduleID).Msg("geplante sicherung übersprungen: zeitplan lief vor weniger als 90 minuten (z. b. zeitumstellung im herbst)")
+		return
+	}
+	h.runScheduledBackup(scheduleID)
 }
 
 func (h *Handler) runScheduledBackup(scheduleID string) {
@@ -1476,4 +1534,54 @@ func (h *Handler) BackupUpdateSettingsWeb(w http.ResponseWriter, r *http.Request
 		err = h.setAppSetting(r.Context(), keyBackupOnUpdateKeep, strconv.Itoa(keep))
 	}
 	backupRedirect(w, r, "schedules", "Einstellung für Updates gespeichert.", err)
+}
+
+// backupFileName: Dateiname aus Ortszeit und Art, eindeutig im Ordner. Im
+// Herbst gibt es 02:xx zweimal – eine zweite Sicherung derselben Wandsekunde
+// bekommt „-2“, „-3“ … statt die erste zu überschreiben (sonst zeigten zwei
+// Läufe auf eine Datei, und das Aufräumen löschte sie für beide).
+func backupFileName(dir, kind string, now time.Time) string {
+	base := fmt.Sprintf("pdh-backup-%s-%s", now.Format("20060102-150405"), kind)
+	name := base + ".zip"
+	for i := 2; backupNameTaken(filepath.Join(dir, name)); i++ {
+		name = fmt.Sprintf("%s-%d.zip", base, i)
+	}
+	return name
+}
+
+func backupNameTaken(path string) bool {
+	for _, p := range []string{path, path + ".part"} {
+		if _, err := os.Lstat(p); err == nil || !os.IsNotExist(err) {
+			return true
+		}
+	}
+	return false
+}
+
+// backupStartedRecently: wurde der Zeitplan in den letzten gap gestartet?
+// Bei einem Datenbankfehler false – lieber einmal zu viel sichern als gar nicht.
+func (h *Handler) backupStartedRecently(ctx context.Context, scheduleID string, gap time.Duration) bool {
+	var recent bool
+	err := h.db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM backup_runs WHERE schedule_id = $1::uuid AND started_at > NOW() - make_interval(secs => $2))`,
+		scheduleID, gap.Seconds()).Scan(&recent)
+	return err == nil && recent
+}
+
+// backupCronStarts: letzter Start je Zeitplan durch cron (nur im Speicher, nach
+// einem Neustart deckt backupStartedRecently das ab).
+var backupCronStarts = struct {
+	sync.Mutex
+	at map[string]time.Time
+}{at: map[string]time.Time{}}
+
+// backupCronClaim: true, wenn der Zeitplan jetzt laufen darf, und merkt den
+// Start. now.Sub nutzt die monotone Uhr – die Zeitumstellung zählt nicht.
+func backupCronClaim(scheduleID string, now time.Time) bool {
+	backupCronStarts.Lock()
+	defer backupCronStarts.Unlock()
+	if last, ok := backupCronStarts.at[scheduleID]; ok && now.Sub(last) < backupCronMinGap {
+		return false
+	}
+	backupCronStarts.at[scheduleID] = now
+	return true
 }

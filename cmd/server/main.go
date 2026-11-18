@@ -334,25 +334,43 @@ func main() {
 	// Sperre, startet das PDH gesperrt; danach hält ein Takt (2 s) den Zustand aktuell.
 	webHandler.LoadMaintLock(context.Background())
 	if !mirrorOn { // Spiegel: keine Hintergrunddienste, die schreiben oder nach außen wirken
+		// Kennwörter der Verbindungen einmalig verschlüsseln (vor den Diensten, die sie lesen)
+		if n, err := webHandler.EncryptConnectionSecrets(context.Background()); err != nil {
+			log.Error().Err(err).Msg("verbindungen: kennwörter konnten nicht verschlüsselt werden")
+		} else if n > 0 {
+			log.Info().Int("anzahl", n).Msg("verbindungen: kennwörter im klartext verschlüsselt")
+		}
 		webHandler.StartUpdateChecker(context.Background())
+		webHandler.StartCertRenewal(context.Background()) // Let's-Encrypt-Zertifikate (optional): täglich prüfen und erneuern
 		webHandler.StartEnabledMqttBrokers(context.Background())
 		webHandler.StartEnabledMqttConsumers(context.Background())
 		webHandler.StartEnabledExportSchedules(context.Background())
 		webHandler.StartPurchaseReportSchedule(context.Background())
 		webHandler.StartBackupSystem(context.Background())
 		webHandler.StartChangeNotifier(context.Background())
+		webHandler.StartSync(context.Background()) // Abgleich mit Fremdsystemen (optional): ohne scharfes Profil geschieht nichts
 		maintSvc.StartScheduler(context.Background(), webHandler.MaintLocked) // je Wartungsplan genau ein offener Auftrag (stuendlich)
 		webHandler.StartTrainingScheduler(context.Background())
 		webHandler.StartObligationReminders(context.Background())
 		webHandler.StartNextcloudAdminSync(context.Background())                         // Dienstkonto pdhNCadmin: PDH-Passwort hat Vorrang
+		webHandler.StartMailBridge(context.Background())                                 // lokales SMTP-Relais: Nextcloud versendet über den Mailweg des PDH
+		webHandler.StartNextcloudSync(context.Background())                              // Benutzer, Rollen, Gruppen, Laufwerke: PDH → Nextcloud
 		webHandler.StartPushNotifier(context.Background())                               // Push aufs Handy bei neuen Störungen/Tickets
 		faultSvc.StartPendingTicketWatcher(context.Background(), webHandler.MaintLocked) // Ticket aus Störung erst nach Zuweisung
 		webHandler.StartKVPScheduler(context.Background())
+		webHandler.StartSetupMonitor(context.Background()) // Rüstzeiten: nach Höchstdauer plus Karenz eine Störmeldung
+		webHandler.StartEnergySampler(context.Background()) // Energiedaten: Minutenwerte der Messstellen
+		webHandler.StartEnergyAlarms(context.Background())  // Energiedaten: Schwellwerte prüfen, Alarm-Tickets
+		webHandler.StartITNetsync(context.Background())     // IT-Assets: Netzabgleich mit UniFi, Ausfall-Tickets
+		webHandler.StartEnergyExporter(context.Background()) // Energiedaten: Efficio-CSV erzeugen und ablegen
 		webHandler.StartDriveMonitor(context.Background())
 		webHandler.StartEnabledImportPolls(context.Background())
 		webHandler.StartEnabledQueryPolls(context.Background())
 		webHandler.VPNStartup(context.Background()) // WireGuard: Konfiguration für den Dienst „wireguard“ schreiben
 	}
+	// Datennetz (optional, standardmäßig aus): Knoten im Hintergrund, blockiert nie.
+	// Auf beiden Servern; den Rückkanal für Meldungen bedient nur der aktive.
+	webHandler.StartDataNet(context.Background(), !mirrorOn)
 	// Ausfallschutz: Tunnel-Token an den lokalen pdh-ha weiterreichen – auf beiden
 	// Servern (aktiv und Spiegel); liest nur aus der Datenbank.
 	if haConfigured() {
@@ -516,6 +534,7 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	srv.Shutdown(ctx)
+	webHandler.StopDataNet()
 	webHandler.StopMqttBrokers()
 	webHandler.StopExportSchedules()
 	webHandler.StopImportPolls()

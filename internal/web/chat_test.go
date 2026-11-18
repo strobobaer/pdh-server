@@ -126,3 +126,22 @@ func TestChatPageRenders(t *testing.T) {
 		t.Error("ohne Berechtigung keine Chat-Einbindung")
 	}
 }
+
+// Nachrichten löschen: Touch-Bedienung auf der Chat-Seite und Papierkorb in der Seitenleiste.
+func TestChatDeleteControls(t *testing.T) {
+	tmpl := loadTestTemplates(t)
+	page := renderPage(t, tmpl, "chat", ChatPageData{
+		BaseData: BaseData{Page: "chat", CanChat: true}, MeID: "me-1", QuickEmojis: chatQuickEmojis,
+	})
+	for _, want := range []string{"confirm('Nachricht löschen?')", "(hover:none)", ".msg.act .msg-actions", "classList.add('act')", "Chat.del("} {
+		if !strings.Contains(page, want) {
+			t.Errorf("Chat-Seite enthält %q nicht", want)
+		}
+	}
+	side := renderPage(t, tmpl, "purchase_report", PurchaseReportData{BaseData: BaseData{Page: "directory", CanChat: true}})
+	for _, want := range []string{`class="sc-del"`, `title="Nachricht löschen"`, `aria-label="Nachricht löschen"`, "d.is_admin", "/delete'", "Nachricht gelöscht", "(hover:none)"} {
+		if !strings.Contains(side, want) {
+			t.Errorf("Seitenleiste enthält %q nicht", want)
+		}
+	}
+}

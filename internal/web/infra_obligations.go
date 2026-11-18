@@ -354,7 +354,7 @@ func obligationReminderText(o obligationView, base string) string {
 // runObligationReminders: einmal je Fälligkeit zu Beginn des Vorlaufs, einmal bei Überfälligkeit.
 func (h *Handler) runObligationReminders(ctx context.Context) (int, error) {
 	list := h.dueObligations(ctx)
-	base := strings.TrimRight(strings.TrimSpace(h.mailCfg.PublicURL), "/") // ohne Eintrag: relativer Link
+	base := strings.TrimRight(strings.TrimSpace(h.mailConfig().PublicURL), "/") // ohne Eintrag: relativer Link
 	sent := 0
 	for _, o := range list {
 		col := "reminded_due"

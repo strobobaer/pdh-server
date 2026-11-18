@@ -779,7 +779,7 @@ func TestActionWorkerDemoteKinds(t *testing.T) {
 				defer cancel()
 				go d.actionWorker(ctx)
 				d.pendingActs.Add(1)
-				d.actQ <- queuedAction{a: ha.Action{Kind: kind, Term: 7}, batch: 1}
+				d.actQ <- queuedAction{a: ha.Action{Kind: kind, Term: 7, Seq: 7}, batch: 1}
 				waitFor(t, 2*time.Second, "Aktion fertig", d.actionsIdle)
 				d.lock()
 				done, failed := d.demoteDone, d.demoteFailed

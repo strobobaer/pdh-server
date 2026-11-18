@@ -1,0 +1,28 @@
+﻿DATA_BLOCK "PDH_Daten_Konfig"
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+NON_RETAIN
+//Erzeugt vom PDH (PDH-Test) am 2026-11-15 10:00 UTC – bei Änderungen im PDH neu herunterladen.
+//Datenbaustein "Daten", Variante mit Siemens-Bibliothek LMQTT (TLS möglich), S7-1500, höchstens 1024 Byte je Nachricht.
+//Einstellungen für "PDH_MQTT_Daten". Werte hier ändern, nicht im Baustein.
+   VAR
+      brokerHost : String[254] := 'mqtt.werk.local';   // Adresse des Brokers (IP-Adresse oder Hostname)
+      brokerPort : UInt := 8883;
+      clientId : WString[254] := WSTRING#'pdh-sps-Daten';
+      username : WString[254] := WSTRING#'sps';   // leer = ohne Anmeldung
+      password : WString[254] := WSTRING#'PASSWORT_EINTRAGEN';
+      topic : WString[254] := WSTRING#'sps/linie1/Daten';
+      heartbeatTopic : WString[254] := WSTRING#'sps/linie1/Daten/heartbeat';
+      keepAlive : UInt := 60;   // Sekunden
+      retain : Bool := FALSE;   // Werte auf dem Broker halten (Heartbeat nie)
+      useTls : Bool := TRUE;   // TRUE = MQTT über TLS (Port meist 8883)
+      validateServer : Bool := TRUE;   // Zertifikat des Brokers beim Verbindungsaufbau prüfen
+      brokerCert : UDInt := 0;   // Zertifikats-ID des Broker- bzw. CA-Zertifikats (Zertifikatsmanager)
+      clientCert : UDInt := 0;   // Zertifikats-ID des eigenen Client-Zertifikats, 0 = keins
+   END_VAR
+
+
+BEGIN
+
+END_DATA_BLOCK
+

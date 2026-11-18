@@ -29,6 +29,23 @@ type ImportMappingView struct {
 	LastValue          string `json:"last_value"`
 	LastReceivedAt     string `json:"last_received_at"`
 	CreatedAt          string `json:"created_at"`
+	HeartbeatSeconds   int    `json:"heartbeat_seconds,omitempty"` // 0 = keine Heartbeat-Zuordnung
+	Silent             bool   `json:"silent,omitempty"`            // Heartbeat bleibt aus
+	ConnectionID       string `json:"connection_id,omitempty"`     // nur bei availableExportSources
+	ConnectionName     string `json:"connection_name,omitempty"`   // nur bei availableExportSources
+}
+
+// heartbeatSilentSQL: Heartbeat-Zuordnung (Alias m), deren letzter Wert - vor dem
+// ersten Wert der Anlagezeitpunkt - älter als 3 × Intervall ist.
+const heartbeatSilentSQL = "m.heartbeat_seconds IS NOT NULL AND GREATEST(COALESCE(m.last_received_at, m.created_at), m.created_at) < NOW() - make_interval(secs => 3 * m.heartbeat_seconds)"
+
+// silentSinceText nennt, seit wann sich die Steuerung nicht meldet
+// (lastReceivedAt im Format „TT.MM.JJJJ HH:MM:SS“ oder leer).
+func silentSinceText(lastReceivedAt string) string {
+	if len(lastReceivedAt) < 16 {
+		return "noch kein Heartbeat"
+	}
+	return "seit " + lastReceivedAt[:16]
 }
 
 func (h *Handler) importMappings(ctx context.Context, connectionID string) ([]ImportMappingView, error) {
@@ -40,7 +57,8 @@ func (h *Handler) importMappings(ctx context.Context, connectionID string) ([]Im
 		)
 		SELECT m.id::text, m.source_ref, m.infrastructure_id::text, COALESCE(t.path, ''), m.name, m.note,
 		       COALESCE(m.last_value, ''), COALESCE(to_char(m.last_received_at, 'DD.MM.YYYY HH24:MI:SS'), ''),
-		       to_char(m.created_at, 'DD.MM.YYYY HH24:MI')
+		       to_char(m.created_at, 'DD.MM.YYYY HH24:MI'),
+		       COALESCE(m.heartbeat_seconds, 0), COALESCE(`+heartbeatSilentSQL+`, false)
 		FROM import_mappings m
 		LEFT JOIN tree t ON t.id = m.infrastructure_id
 		WHERE m.connection_id = $1
@@ -53,7 +71,7 @@ func (h *Handler) importMappings(ctx context.Context, connectionID string) ([]Im
 	for rows.Next() {
 		var v ImportMappingView
 		if err := rows.Scan(&v.ID, &v.SourceRef, &v.InfrastructureID, &v.InfrastructureName, &v.Name, &v.Note,
-			&v.LastValue, &v.LastReceivedAt, &v.CreatedAt); err != nil {
+			&v.LastValue, &v.LastReceivedAt, &v.CreatedAt, &v.HeartbeatSeconds, &v.Silent); err != nil {
 			return nil, err
 		}
 		list = append(list, v)
@@ -66,6 +84,7 @@ type importMappingCreateInput struct {
 	InfrastructureID string `json:"infrastructure_id"`
 	Name             string `json:"name"`
 	Note             string `json:"note"`
+	HeartbeatSeconds int    `json:"heartbeat_seconds,omitempty"` // nur Heartbeat-Zuordnungen; 0 = keine (NULL)
 }
 
 func (h *Handler) ImportMappingCreateWeb(w http.ResponseWriter, r *http.Request) {
@@ -102,13 +121,17 @@ func (h *Handler) ImportMappingCreateWeb(w http.ResponseWriter, r *http.Request)
 		writeGlobalBoardError(w, http.StatusBadRequest, "Zuordnungsnotiz darf höchstens 500 Zeichen lang sein")
 		return
 	}
+	if in.HeartbeatSeconds < 0 || in.HeartbeatSeconds > 86400 {
+		writeGlobalBoardError(w, http.StatusBadRequest, "Heartbeat: 0 bis 86400 Sekunden (0 = aus)")
+		return
+	}
 
 	u := getUser(r)
 	var id string
 	err := h.db.QueryRow(r.Context(), `
-		INSERT INTO import_mappings (connection_id, source_ref, infrastructure_id, name, note, created_by)
-		VALUES ($1, $2, $3, $4, $5, $6) RETURNING id::text`,
-		connectionID, in.SourceRef, in.InfrastructureID, in.Name, in.Note, u.ID).Scan(&id)
+		INSERT INTO import_mappings (connection_id, source_ref, infrastructure_id, name, note, created_by, heartbeat_seconds)
+		VALUES ($1, $2, $3, $4, $5, $6, NULLIF($7::int, 0)) RETURNING id::text`,
+		connectionID, in.SourceRef, in.InfrastructureID, in.Name, in.Note, u.ID, in.HeartbeatSeconds).Scan(&id)
 	if err != nil {
 		writeGlobalBoardError(w, http.StatusInternalServerError, "Zuordnung konnte nicht angelegt werden - existiert die gewählte Infrastruktur?")
 		return
@@ -141,5 +164,9 @@ func (h *Handler) ImportMappingDeleteWeb(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	returnPath := importConnectionDetailPath(kind)
-	http.Redirect(w, r, "/import/connections/"+connectionID+"/"+returnPath+"?notice="+"Zuordnung+gelöscht", http.StatusSeeOther)
+	sep := "?"
+	if strings.Contains(returnPath, "?") {
+		sep = "&"
+	}
+	http.Redirect(w, r, "/import/connections/"+connectionID+returnPath+sep+"notice=Zuordnung+gelöscht", http.StatusSeeOther)
 }

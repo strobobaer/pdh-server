@@ -62,6 +62,8 @@ type AssetInfoData struct {
 	QR       template.HTML
 	URL      string
 	CanLabel bool
+	Setup    setupBarView // Abschnitt „Rüsten“ (setup_easy.go)
+	Plant    string       // Kennzeichen "running" / "fault" / ""
 }
 
 const assetOpenLimit = 50
@@ -169,6 +171,10 @@ func (h *Handler) AssetInfoPage(w http.ResponseWriter, r *http.Request) {
 		d.Groups = append(d.Groups, g)
 	}
 	if kind == "infra" {
+		d.Plant = h.setupPlantState(ctx, id)
+		if h.setupCanPlant(r, id) {
+			d.Setup = h.setupBarFor(ctx, h.requestLang(r), id, "/infrastructure/"+id+"/setup", back, false, r.URL.Query().Get("setup"))
+		}
 		if rows, err := h.db.Query(ctx, `SELECT id::text, name, type::text FROM infrastructure WHERE parent_id = $1::uuid AND hidden_at IS NULL ORDER BY name LIMIT 200`, id); err == nil {
 			for rows.Next() {
 				var c assetChild
@@ -216,7 +222,8 @@ func (h *Handler) loadAssetInfo(ctx context.Context, kind, id string) (assetInfo
 	if err != nil {
 		return a, err
 	}
-	v := itAssetDetailView(asset)
+	_, catByKey := h.itCategories(ctx)
+	v := itAssetDetailView(asset, catByKey)
 	a.Name, a.TypeLabel, a.TypeIcon = v.Name, v.TypeLabel, v.TypeIcon
 	a.StatusLabel, a.StatusClass = v.StatusLabel, v.StatusClass
 	a.Location, a.Serial, a.Manufacturer, a.Model = v.Location, v.SerialNo, firstNonEmpty(v.ManufacturerName, v.Manufacturer), v.Model
@@ -399,6 +406,7 @@ func (h *Handler) assetLabelItems(r *http.Request, q url.Values) ([]labelItem, e
 		if !h.canViewIT(r) {
 			return items, fmt.Errorf("keine Berechtigung für IT-Assets")
 		}
+		_, itCatByKey := h.itCategories(ctx)
 		for _, id := range q["it"] {
 			if !uuidInPathRe.MatchString(id) || len(id) != 36 {
 				continue
@@ -407,7 +415,7 @@ func (h *Handler) assetLabelItems(r *http.Request, q url.Values) ([]labelItem, e
 			if err != nil {
 				continue
 			}
-			v := itAssetDetailView(a)
+			v := itAssetDetailView(a, itCatByKey)
 			num, key := v.SerialNo, "Serien-Nr."
 			if num == "" && v.Hostname != "" {
 				num, key = v.Hostname, "Host"

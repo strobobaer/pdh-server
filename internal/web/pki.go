@@ -50,7 +50,7 @@ type pkiCA struct {
 
 // pkiKey: eigener Schlüssel für die CA und die gespeicherten p12-Dateien.
 func (h *Handler) pkiKey() []byte {
-	secret := h.mailCfg.CredentialsKey
+	secret := h.mailConfig().CredentialsKey
 	if secret == "" {
 		secret = h.jwtSecret
 	}

@@ -125,6 +125,7 @@ html[data-style="fiori"] .ez-btn.go{background:var(--accent);border-color:var(--
       <button type="button" class="ez-big f" data-start="fault"><i class="ti ti-alert-triangle"></i>{{t "Störung"}} +</button>
       <button type="button" class="ez-big t" data-start="ticket"><i class="ti ti-ticket"></i>{{t "Ticket"}} +</button>
     </div>
+    {{template "setup-bar" .Setup}}
     <h2>{{t "Letzte Meldungen"}}</h2>
     <div class="ez-recent">
       {{range .Recent}}<div class="ez-item"><b>{{.Title}}</b><small>{{.Type}} · {{.When}}</small><span class="ez-st">{{.Status}}</span></div>

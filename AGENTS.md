@@ -161,6 +161,106 @@ ob es Dopplungen oder Abweichungen zum aktuellen Stand gibt:
 6. Im Pull-Request-Text kurz festhalten, was die Prüfung ergeben hat
    (z. B. „keine Dopplungen“ oder „Migration 152 → 154 umnummeriert“).
 
+Push, Merge und Einspielen nur mit ausdrücklicher Freigabe des Anwenders.
+Ist `gh` nicht verfügbar, wird wie bisher lokal gemergt:
+`git checkout main && git merge --ff-only origin/main && git merge --no-ff <branch> -m "Merge: <Thema> (x.y.z)"`,
+das Prüfergebnis kommt dann in den Text des Merge-Commits, danach
+`git push origin main`.
+
+## Testverbund aktualisieren
+
+Testverbund: `pdh` 10.10.0.14 und `pdh-server` 10.10.0.17 (Server, gemeinsame
+Adresse 10.10.0.15), Zeuge als Docker-Container auf dem Windows-Rechner
+(10.10.0.231). **Produktiv ist nur 10.10.0.202 – dort nie etwas einspielen
+oder ändern.**
+
+1. Aktiven Server feststellen (nur lesend):
+   `ssh michael@10.10.0.14 'sudo -n pdh-ha status'` bzw. `…@10.10.0.17`.
+2. Am **aktiven** Server das Verbund-Update starten:
+   `sudo -n pdh-ha update start <voller Commit von main> --version x.y.z`.
+3. Verlauf mit `sudo -n pdh-ha update status` verfolgen, bis
+   „Update auf x.y.z abgeschlossen“. Die Zeile „Fehlerhafte Versionen: …“
+   nennt alte, zurückgesetzte Stände und ist kein Fehler des laufenden
+   Updates. Die Server tauschen dabei die Rollen.
+4. Danach prüfen: beide Server melden die neue Version; Migration und neue
+   Rechte sind da (`sudo -n -u postgres psql -d pdh …`); die Spiegelung
+   läuft wieder (ein rsync-Fehler direkt nach dem Rollentausch ist
+   vorübergehend).
+5. Der Zeuge (`pdh-ha-witness-witness-1`) zieht über seinen Helfer-Container
+   `pdh-ha-witness-updater-1` innerhalb von etwa 5 Minuten selbst nach.
+   Kein SSH nötig; Stand: `docker exec pdh-ha-witness-witness-1 pdh-ha status`.
+
+## Browserprüfung auf dem Testverbund
+
+- Das PDH ist im Testverbund unter `http://10.10.0.15:8090` erreichbar
+  (`https://10.10.0.15` ist Nextcloud). Ist kein Chrome installiert:
+  Edge über `playwright-core` (`channel: 'msedge'`) aus einem eigenen
+  Ordner im Scratchpad steuern; auf das Laden der Seite warten, nicht auf
+  „networkidle“ (Live-Verbindungen bleiben offen).
+- Anmeldung mit dem Prüfkonto `abnahme-abgleich` (Rolle admin). Es ist
+  außerhalb von Prüfungen gesperrt (`active = false`, Kennwort-Hash
+  durch einen Sperrwert ersetzt).
+- Zum Prüfen am aktiven Server entsperren: zufälliges Einmal-Kennwort
+  erzeugen, bcrypt-Hash (`bcrypt.DefaultCost`) setzen, `active = true`.
+  Kennwort nur im Scratchpad ablegen, nie in Dateien des Repositorys,
+  Commits oder Antworten.
+- Prüfen in Fiori und Fluent, hell und dunkel, bei den in diesem Dokument
+  genannten Breiten. Testdaten, die dabei entstehen, danach entfernen.
+- Danach das Konto **wieder sperren** (alten Sperrwert zurückschreiben,
+  `active = false`).
+
+## Arbeitsweise und offene Punkte
+
+- Zu Beginn die **Liste der offenen Punkte** unten lesen und mit dem
+  tatsächlichen Stand abgleichen (`git status`, `git fetch origin main`,
+  `VERSION`, Testverbund nur lesend).
+- Die Punkte **Schritt für Schritt** abarbeiten wie ein Programmierer:
+  erst am Code prüfen, ob der Punkt noch stimmt, dann bauen, testen
+  (`go vet ./...`, `go test ./...` in Git Bash mit Labor-Datenbank),
+  Handbuch und Änderungsprotokoll nachziehen, lokal committen.
+- **Nachfragen**, wenn eine Entscheidung dem Anwender gehört (Umfang,
+  Bedienung, Rechte, alles mit Wirkung nach außen). Bis zur Antwort mit
+  dem weitermachen, was davon nicht abhängt.
+- Größere Pakete: erst Entwurf (`docs/superpowers/specs/`), vom Anwender
+  bestätigen lassen, dann Plan und Bau.
+- Die Liste **im selben Schritt pflegen**: Erledigtes streichen, Neues
+  eintragen, Stand und Datum anpassen.
+
+### Offene Punkte (Stand 18.11.2026)
+
+1. **0.80.25 Reste Netz-Abgleich und MQTT-Broker** – gebaut auf
+   `fix/reste-0.80.25`, lokal committet. Offen: Freigabe für Push, Merge,
+   Verbund-Update und Browserprüfung (Netz-Abgleich mit zwei Quellen,
+   Broker-Status mit Prüfliste).
+2. **ESPPDH Paket 1** (Import → ESPPDH, ESPHome als Compiler) – Entwurf
+   `docs/superpowers/specs/2026-11-18-esppdh-design.md` schreiben und vom
+   Anwender bestätigen lassen; danach Plan und Bau auf `feature/esppdh`.
+3. **Efficio-Reste aus 0.80.12:** Zustellung bricht bei Fehler einer
+   einzelnen Datei ab; hängendes Netzlaufwerk blockiert den Ordner bis
+   zum Neustart; SFTP nur mit Kennwort; FTPS ungetestet.
+4. **MQTT klein:** Bei älterem Update-Agenten versucht der tägliche Lauf
+   die nginx-Seite jeden Tag neu (harmlos).
+5. **Abnahmen durch den Anwender:** SNMP an echten Geräten, Omada an
+   echtem Controller, TIA-Baustein in PLCSIM, Datennetz mit echtem Tailnet.
+6. **Zurückgestellt (kein Auftrag):** Abteilungsfeinheiten Rüstzeiten,
+   Datennetz Paket 2/3, Buchungssystem/Lizenzen, Firmenstammdaten.
+7. **0.81.0 Rüstzeit in „Neu anlegen“ und 0.81.1 Tagesgrenzen/Zeitumstellung**
+   – auf `main`. Offen: Verbund-Update und Browserprüfung (Assistent mit
+   Kachel Rüstzeit, Wartung „heute fällig“ nicht überfällig, Sicherungs-
+   Formular mit 03:00).
+8. **Zeitzone im Docker-Testsystem** (Vorschlag, kein Auftrag): Container
+   laufen in UTC, Produktion (systemd) in Europe/Berlin. Umstellung nur als
+   Paket: `TZ` für app und updater in `compose.yaml`, `time/tzdata` in
+   `cmd/server` und `cmd/update-agent`, Postgres-Sitzungszone über pgx
+   `RuntimeParams["timezone"]`; nie nur `TZ` an der App, kein `PGTZ`.
+9. **Tagesgrenzen aufräumen (klein):** übrige `Truncate(24*time.Hour)`
+   gegen DATE-Spalten (`kanban.go`, `purchases.go`, `trainings.go`,
+   `user_qualifications.go`, `procurement.go`, `projects_handler.go`,
+   `partners.go`) auf `localDayStart` umstellen.
+
+Docker Desktop startet nach einem Neustart des Windows-Rechners nicht von
+selbst – ohne ihn fehlen der Zeuge und die Labor-Datenbank für die Tests.
+
 ## Sprache
 
 Antworten, Handbuch, Änderungsprotokoll, Commit-Nachrichten und

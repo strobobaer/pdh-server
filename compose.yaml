@@ -25,6 +25,7 @@ services:
     image: pdh-server:local
     restart: unless-stopped
     init: true
+    hostname: testsystem # fester Servername (Datennetz: Knoten pdh-testsystem), sonst wechselt er mit jedem neuen Container
     stop_grace_period: 35s
     depends_on:
       db:

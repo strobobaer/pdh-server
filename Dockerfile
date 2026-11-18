@@ -1,4 +1,4 @@
-FROM golang:1.24-bookworm AS build
+FROM golang:1.27-bookworm AS build
 
 WORKDIR /src
 
@@ -8,7 +8,10 @@ RUN go mod download
 COPY . .
 ARG PDH_BUILD_COMMIT=unknown
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.buildCommit=${PDH_BUILD_COMMIT}" -o /out/pdh ./cmd/server \
-    && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/update-agent ./cmd/update-agent
+    && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/update-agent ./cmd/update-agent \
+    && mkdir -p /out/clients \
+    && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w -X main.version=$(tr -d '[:space:]' < VERSION)" -o /out/clients/pdh-data-client-linux-amd64 ./cmd/pdh-data-client \
+    && CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-s -w -X main.version=$(tr -d '[:space:]' < VERSION)" -o /out/clients/pdh-data-client-windows-amd64.exe ./cmd/pdh-data-client
 
 FROM ubuntu:24.04 AS app
 
@@ -27,6 +30,8 @@ WORKDIR /app
 COPY --from=build --chown=10001:10001 /out/pdh ./pdh
 COPY --chown=10001:10001 migrations ./migrations
 COPY --chown=10001:10001 web ./web
+COPY --from=build --chown=10001:10001 /out/clients ./clients
+ENV PDH_DATA_CLIENT_DIR=/app/clients
 
 USER 10001:10001
 
@@ -52,7 +57,7 @@ ENTRYPOINT ["/usr/local/bin/update-agent"]
 # sich das PDH direkt im Browser bauen und testen lässt (compose.yaml: codeserver).
 FROM codercom/code-server:4.96.4 AS codeserver
 USER root
-COPY --from=golang:1.24-bookworm /usr/local/go /usr/local/go
+COPY --from=golang:1.27-bookworm /usr/local/go /usr/local/go
 RUN apt-get update \
     && apt-get install -y --no-install-recommends make postgresql-client \
     && rm -rf /var/lib/apt/lists/* \

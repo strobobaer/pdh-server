@@ -58,7 +58,7 @@ func buildPGEnv(self, partner clusterNode, cl clusterConfig, pass string, c pgCl
 	if s.Validate() != nil {
 		s = ha.DefaultSettings()
 	}
-	e.SlotKeepMB = s.SlotKeep >> 20
+	e.SlotKeepMB, e.Tick = s.SlotKeep>>20, s.Tick
 	for _, a := range self.Addrs {
 		e.Listen = append(e.Listen, hostOfAddr(a))
 	}
@@ -212,8 +212,8 @@ func configArchive(repo, etc string) ([]byte, error) {
 			}
 			return add("etc/"+rel+"/", fi, nil)
 		}
-		if !de.Type().IsRegular() {
-			return nil
+		if !de.Type().IsRegular() || rel == ha.MirrorIDName {
+			return nil // die Kennung der Spiegelung (R57) gehört zum Ordner dieses Servers
 		}
 		fi, err := de.Info()
 		if err != nil {
@@ -258,6 +258,10 @@ func extractConfig(archive []byte, repo, etc string) error {
 			return fmt.Errorf("Ungültiger Eintrag im Konfigurationsarchiv: %q", name)
 		}
 		rest, inEtc := strings.CutPrefix(name, "etc/")
+		if inEtc && rest == ha.MirrorIDName && !dir {
+			io.Copy(io.Discard, tr) // Kennung der Spiegelung einer anderen Fassung: nie die eigene überschreiben (R57)
+			continue
+		}
 		var dst string
 		switch {
 		case name == ".env" && !dir:

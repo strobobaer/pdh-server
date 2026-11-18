@@ -100,15 +100,17 @@ Gedacht für den Fall, dass Nextcloud unter einem Namen erreichbar ist, für den
 1. Core-Einstellungen → Zertifikate → **Server (Nextcloud)** → alle Namen und IPs eintragen, unter denen Nextcloud erreichbar ist, z. B. `nextcloud.local, 192.168.1.10` → **Ausstellen**. Gültigkeit: 825 Tage, mehr akzeptieren Apple-Geräte nicht.
 2. **Kette** (`…-fullchain.pem`) und **Schlüssel** (`….key`) herunterladen und auf den nginx-Server kopieren:
    ```bash
-   sudo install -m 644 nextcloud.local-fullchain.pem /etc/nginx/pdh-pki/server.crt
-   sudo install -m 600 nextcloud.local.key          /etc/nginx/pdh-pki/server.key
+   sudo install -d -m 755 /etc/ssl/pdh-nextcloud
+   sudo install -m 644 nextcloud.local-fullchain.pem /etc/ssl/pdh-nextcloud/server.crt
+   sudo install -m 600 nextcloud.local.key          /etc/ssl/pdh-nextcloud/server.key
    ```
 3. Im server-Block von Nextcloud:
    ```nginx
-   ssl_certificate     /etc/nginx/pdh-pki/server.crt;
-   ssl_certificate_key /etc/nginx/pdh-pki/server.key;
+   ssl_certificate     /etc/ssl/pdh-nextcloud/server.crt;
+   ssl_certificate_key /etc/ssl/pdh-nextcloud/server.key;
    ```
    dann `sudo nginx -t && sudo systemctl reload nginx`.
+   Der Ordner `/etc/ssl/pdh-nextcloud` ist derselbe wie im Handbuch; im Verbund spiegelt ihn die Datei-Spiegelung mit „Nextcloud mitnehmen“ auf den zweiten Server. (`/etc/nginx/pdh-pki` enthält nur CA und Sperrliste für die Client-Zertifikate.)
 4. In Nextcloud die Adresse erlauben: `sudo -u www-data php occ config:system:set trusted_domains 2 --value=nextcloud.local`.
 5. **Auf den Geräten der CA vertrauen** (einmalig je Gerät, CA-Datei von `…/pki/ca.crt`, für Windows/iOS `…/pki/ca.crt?format=der`):
    - **Android:** Einstellungen → Sicherheit → Verschlüsselung & Anmeldedaten → Zertifikat installieren → **CA-Zertifikat**. Die Nextcloud-App zeigt beim ersten Verbinden das Server-Zertifikat. Fingerabdruck mit dem PDH vergleichen und **vertrauen**.
@@ -129,6 +131,7 @@ Vor Ablauf ein neues Server-Zertifikat ausstellen, Dateien austauschen, nginx ne
   - **Mit der PDH-CA:** Cloudflare Zero Trust → Access → *Service Auth → Mutual TLS* → `ca.crt` hochladen und eine Access-Regel „Valid Certificate“ für die Nextcloud-Adresse anlegen. Eigene CAs (Bring your own CA) bietet Cloudflare nur in bestimmten Tarifen (bisher Enterprise) an. Den Tarif vorher prüfen.
   - **Ohne passenden Tarif:** Cloudflare kann eigene Client-Zertifikate ausstellen (*SSL/TLS → Client-Zertifikate* plus WAF-Regel „mTLS“). Diese kommen dann von Cloudflare, nicht aus dem PDH; Sperren geht nur dort.
 - Gesperrte PDH-Zertifikate kennt Cloudflare nicht automatisch. Bei Cloudflare-Prüfung das Gerät zusätzlich in der Access-Regel ausschließen oder das Zertifikat dort widerrufen.
+- **Nextcloud-App fragt über das Internet nach einem Zertifikat?** Dann ist bei Cloudflare für den Namen der Nextcloud mTLS eingeschaltet (*SSL/TLS → Client-Zertifikate → Hosts*). Cloudflare verlangt dann Zertifikate seiner „Managed CA“; die PDH-Zertifikate kennt es nicht. Auch ohne Sperrregel fragt die App dann nach dem Zertifikat. Im PDH unter *Server-Einstellungen → Reiter Cloudflare-Tunnel → Client-Zertifikate bei Cloudflare (mTLS)* den Namen auf **Abschalten** stellen (**Einschalten** macht es rückgängig). Das PDH entfernt nur diesen einen Namen aus der Liste und ändert keine WAF-Regeln; sperrt eine Regel mit `cf.tls_client_auth` weiter, zeigt die Karte sie an, und sie wird im Cloudflare-Dashboard angepasst. Das Token braucht dafür *SSL and Certificates: Edit* und zum Anzeigen der Regeln *Zone WAF: Read*. Ohne mTLS schützt von außen die Anmeldung, im Firmennetz die nginx-Zertifikatspflicht.
 
 ---
 
@@ -139,6 +142,7 @@ Vor Ablauf ein neues Server-Zertifikat ausstellen, Dateien austauschen, nginx ne
 | Nextcloud: **403 Forbidden** | kein oder kein gültiges Zertifikat gesendet | Zertifikat auf dem Gerät installiert? Gesperrt oder abgelaufen? (Core-Einstellungen → Zertifikate) |
 | **Alle** Zugriffe mit Zertifikat plötzlich 403 | Sperrliste abgelaufen (nginx prüft ihr Ablaufdatum) | `sudo systemctl start pdh-pki-crl`, Timer prüfen: `systemctl list-timers pdh-pki-crl` |
 | PDH-Dateiablage/Deck melden Fehler | PDH greift nicht von 127.0.0.1 auf Nextcloud zu | `PDH_NEXTCLOUD_BASEURL` auf die lokale Adresse stellen oder die Adresse des PDH bei `--exempt` ergänzen |
+| App fragt nie nach dem Zertifikat (auf keinem Gerät) | nginx fordert gar keine Zertifikate an, `configure-nextcloud-client-certs.sh` lief nicht oder nicht auf allen Servern | **Statusanzeige „Zertifikatspflicht“** prüfen (Core-Einstellungen → Zertifikate, oben; auch in Mein Konto). „Nicht eingerichtet“: den dort genannten Befehl ausführen, im Verbund auf beiden Servern, eigene Serveradressen mit `--exempt` |
 | Android-App fragt nie nach dem Zertifikat | Zertifikat als „WLAN“ oder „CA“ statt als „VPN- und App-Nutzerzertifikat“ installiert | neu installieren, richtige Art wählen |
 | .p12-Import: „Passwort falsch“ | Tippfehler (Bindestriche gehören dazu) | Passwort im PDH erneut anzeigen und kopieren |
 | Server-Zertifikat: „nicht vertrauenswürdig“ | CA auf dem Gerät nicht installiert bzw. (iOS) Vertrauen nicht eingeschaltet | Abschnitt 4, Schritt 5 |

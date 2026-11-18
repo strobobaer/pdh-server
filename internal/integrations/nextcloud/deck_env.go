@@ -8,14 +8,14 @@ import (
 func DeckClientFromEnv() *DeckClient {
 	return NewDeckClient(DeckConfig{
 		Enabled:            truthy(os.Getenv("PDH_NEXTCLOUD_DECK_ENABLED")),
-		BaseURL:            envDefault("PDH_NEXTCLOUD_DECK_BASEURL", envDefault("PDH_NEXTCLOUD_BASEURL", "https://cloud.strobl-home.net")),
+		BaseURL:            envDefault("PDH_NEXTCLOUD_DECK_BASEURL", os.Getenv("PDH_NEXTCLOUD_BASEURL")),
 		Username:           envDefault("PDH_NEXTCLOUD_DECK_USERNAME", os.Getenv("PDH_NEXTCLOUD_USERNAME")),
 		Password:           envDefault("PDH_NEXTCLOUD_DECK_PASSWORD", os.Getenv("PDH_NEXTCLOUD_PASSWORD")),
 		BoardID:            os.Getenv("PDH_NEXTCLOUD_DECK_BOARD_ID"),
 		TicketStackID:      os.Getenv("PDH_NEXTCLOUD_DECK_STACK_TICKETS_ID"),
 		FaultStackID:       os.Getenv("PDH_NEXTCLOUD_DECK_STACK_FAULTS_ID"),
 		MaintenanceStackID: os.Getenv("PDH_NEXTCLOUD_DECK_STACK_MAINTENANCE_ID"),
-		PublicPDHURL:       envDefault("PDH_PUBLIC_URL", "https://pdh.strobl-home.net"),
+		PublicPDHURL:       strings.TrimSpace(os.Getenv("PDH_PUBLIC_URL")),
 	})
 }
 

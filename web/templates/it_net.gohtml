@@ -1,0 +1,162 @@
+{{template "base" .}}
+{{define "content"}}
+<style>
+.itn-head{display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap}
+.itn-head h1{font-size:19px;font-weight:600}
+.itn-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:14px;align-items:start}
+.itn-kv{display:grid;grid-template-columns:auto 1fr;gap:6px 12px;font-size:13px}
+.itn-kv dt{color:var(--muted);font-size:12px}
+.itn-kv dd{margin:0;min-width:0;overflow-wrap:anywhere}
+.itn-note{font-size:12px;color:var(--muted);margin-top:6px}
+.itn-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%}
+.itn-scroll table{min-width:700px}
+.itn-row-form{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:0}
+.itn-row-form select{width:auto;min-width:120px}
+.itn-search{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.itn-search input{flex:1 1 180px;min-width:0}
+.itn-mono{font-family:monospace;font-size:12px}
+.itn-snmp-add{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-top:12px}
+.itn-snmp-add .form-group{flex:1 1 170px;min-width:0;margin:0}
+.itn-snmp-add .form-group.itn-snmp-port{flex:0 1 110px}
+.itn-snmp-edit>summary{list-style:none;cursor:pointer;width:max-content}
+.itn-snmp-edit>summary::-webkit-details-marker{display:none}
+.itn-snmp-form{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:6px 0 0}
+.itn-snmp-form .form-input{flex:1 1 130px;min-width:0;width:auto}
+.itn-snmp-form .form-input.itn-snmp-port{flex:0 1 90px}
+.itn-snmp-res{margin-top:6px;padding:8px 0 0;border-top:1px solid var(--border);overflow-wrap:anywhere}
+</style>
+
+<div class="itn-head">
+  {{template "icon-button" (dict "Action" "back" "Href" "/it")}}
+  <div style="flex:1 1 200px;min-width:0">
+    <h1><i class="ti ti-network"></i> Netz-Abgleich</h1>
+    <p style="font-size:12px;color:var(--muted);margin-top:3px">Netzgeräte aus UniFi, TP-Link Omada und per SNMP v3 als IT-Assets, Clients als Vorschläge – mit Zustand und Alarm-Tickets bei Ausfall.</p>
+  </div>
+  {{if .CanSetup}}
+  <form method="POST" action="/it/net/run" style="margin:0">
+    <button type="submit" class="btn btn-small" {{if .AnyOn}}title="Alle eingeschalteten Quellen jetzt abgleichen"{{else}}disabled title="Erst bei einer Quelle den Abgleich einschalten"{{end}}><i class="ti ti-refresh"></i> Jetzt abgleichen</button>
+  </form>
+  {{end}}
+</div>
+
+{{if .Notice}}<div class="card" role="status" style="margin-bottom:14px;border-color:var(--green)"><i class="ti ti-circle-check" style="color:var(--green)"></i> {{.Notice}}</div>{{end}}
+{{if .Err}}<div class="card" role="alert" style="margin-bottom:14px;border-color:var(--red);color:var(--red)"><i class="ti ti-alert-circle"></i> {{.Err}}</div>{{end}}
+
+<div class="itn-grid" style="margin-bottom:14px">
+  {{range .Sources}}
+  <div class="card itn-src" data-source="{{.Key}}">
+    <div class="card-title" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap"><i class="ti ti-router"></i> {{.Title}}
+      {{if .Enabled}}<span class="badge b-green">an</span>{{else}}<span class="badge b-gray">aus</span>{{end}}
+      {{if .Connected}}<span class="badge b-green">verbunden</span>{{else}}<span class="badge b-amber">nicht verbunden</span>{{end}}
+    </div>
+    {{if not .Connected}}
+    <p style="font-size:13px;margin:0 0 10px"><i class="ti ti-plug-connected-x" style="color:var(--amber)"></i> <b>{{.Missing}}</b>
+      {{if .CanConnect}}{{.Setup}} in den <a href="{{.ConfigURL}}" style="color:var(--accent)">Server-Einstellungen im Reiter „{{.Label}}“</a> {{.SetupDo}}.{{else}}{{.PermHint}}{{end}}</p>
+    {{end}}
+    <dl class="itn-kv">
+      <dt>Letzter Lauf</dt><dd>{{if .LastRun}}{{.LastRun}}{{else}}–{{end}}</dd>
+      <dt>{{if .NoClients}}Geräte{{else}}Netzgeräte{{end}}</dt><dd>{{if .Devices}}{{.Devices}}{{else}}–{{end}}</dd>
+      {{if not .NoClients}}<dt>Clients</dt><dd>{{if .Clients}}{{.Clients}}{{else}}–{{end}}</dd>{{end}}
+      {{if .LastError}}<dt>Fehler</dt><dd style="color:var(--red)">{{.LastError}}</dd>{{end}}
+    </dl>
+    {{if and .Connected .CanConnect}}<p class="itn-note"><a href="{{.ConfigURL}}" style="color:var(--accent)">{{.LinkText}}</a></p>{{end}}
+    {{if .Note}}<p class="itn-note"><i class="ti ti-info-circle"></i> {{.Note}}</p>{{end}}
+  </div>
+  {{end}}
+
+  {{if .CanSetup}}
+  <div class="card">
+    <div class="card-title"><i class="ti ti-settings"></i> Einstellungen</div>
+    <form method="POST" action="/it/net/settings">
+      <div class="form-group">
+        {{range .Sources}}
+        <label style="display:flex;gap:8px;align-items:center;font-size:13px;margin-bottom:6px"><input type="checkbox" name="{{.Field}}" value="1" {{if .Enabled}}checked{{end}}> Abgleich mit {{.Label}} einschalten</label>
+        {{end}}
+        <div class="itn-note">Jede Quelle läuft für sich: Fällt eine aus, gleichen die anderen weiter ab. Intervall, Karenz, Verantwortliche und Priorität gelten für alle Quellen.</div>
+      </div>
+      <div class="grid2" style="gap:10px">
+        <div class="form-group"><label class="form-label" for="itn-interval">Intervall (Sekunden)</label>
+          <input id="itn-interval" type="number" name="interval_s" class="form-input" min="30" max="3600" value="{{.Interval}}" required></div>
+        <div class="form-group"><label class="form-label" for="itn-grace">Karenz bis zum Alarm (Minuten)</label>
+          <input id="itn-grace" type="number" name="grace_min" class="form-input" min="1" max="1440" value="{{.Grace}}" required></div>
+      </div>
+      <div class="form-group"><label class="form-label" for="itn-user">Verantwortlich – Benutzer</label>
+        <select id="itn-user" name="responsible_user" class="form-input">
+          <option value="">– kein Benutzer –</option>
+          {{range .Users}}<option value="{{.Value}}" {{if eq .Value $.RespUser}}selected{{end}}>{{.Label}}</option>{{end}}
+        </select></div>
+      <div class="form-group"><label class="form-label" for="itn-group">… oder Gruppe</label>
+        <select id="itn-group" name="responsible_group" class="form-input">
+          <option value="">– keine Gruppe –</option>
+          {{range .Groups}}<option value="{{.Value}}" {{if eq .Value $.RespGroup}}selected{{end}}>{{.Label}}</option>{{end}}
+        </select>
+        <div class="itn-note">Entweder Benutzer oder Gruppe. Ohne Auswahl geht der Alarm an die Gruppe „IT“, sonst an die IT-Administration.</div></div>
+      <div class="form-group"><label class="form-label" for="itn-prio">Priorität der Alarm-Tickets</label>
+        <select id="itn-prio" name="priority" class="form-input">
+          {{range .Prios}}<option value="{{.Value}}" {{if eq .Value $.Priority}}selected{{end}}>{{.Label}}</option>{{end}}
+        </select></div>
+      {{template "icon-button" (dict "Action" "save" "ShowLabel" true "Type" "submit")}}
+    </form>
+  </div>
+  {{end}}
+</div>
+
+{{template "itn-snmp" .SNMP}}
+
+<div class="card">
+  <div class="card-title"><i class="ti ti-devices-plus"></i> Vorschläge aus dem Netz</div>
+  <p class="itn-note" style="margin:0 0 10px">Clients (PCs, Drucker, Telefone …), die UniFi oder Omada sieht und die noch kein IT-Asset sind. Übernehmen legt ein Asset an. SNMP liefert keine Vorschläge – SNMP-Geräte trägst du oben in die Liste „SNMP-Geräte“ ein.{{if .CanSetup}} Ob ein neu übernommenes Gerät überwacht wird, bestimmt die Einstellung „überwachen“ seiner Kategorie – einstellbar unter <a href="/it/categories">IT-Kategorien</a>.{{end}}</p>
+  <div class="rec-tabs">
+    <a class="rec-tab{{if eq .Tab ""}} active{{end}}" href="/it/net"><i class="ti ti-list"></i> Vorschläge <b>{{.Open}}</b></a>
+    <a class="rec-tab{{if eq .Tab "hidden"}} active{{end}}" href="/it/net?tab=hidden"><i class="ti ti-eye-off"></i> Ausgeblendet <b>{{.Hidden}}</b></a>
+  </div>
+  <form method="GET" action="/it/net" class="itn-search" role="search">
+    {{if .Tab}}<input type="hidden" name="tab" value="{{.Tab}}">{{end}}
+    <input type="search" name="q" class="form-input" value="{{.Query}}" placeholder="Name, IP, MAC oder Uplink" aria-label="Vorschläge durchsuchen">
+    <button type="submit" class="btn btn-small"><i class="ti ti-search"></i> Suchen</button>
+  </form>
+  <div class="itn-scroll">
+    <table>
+      <thead><tr><th>Name</th><th>Quelle</th><th>IP / MAC</th><th>Art</th><th>Uplink</th><th>Zuletzt gesehen</th>{{if $.CanSetup}}<th>Aktion</th>{{end}}</tr></thead>
+      <tbody>
+      {{range .Rows}}
+      <tr>
+        <td style="font-weight:500">{{if .Name}}{{.Name}}{{else}}<span style="color:var(--muted)">ohne Namen</span>{{end}}</td>
+        <td style="font-size:12px">{{if .SourceLabel}}{{.SourceLabel}}{{else}}–{{end}}</td>
+        <td><div class="itn-mono">{{if .IP}}{{.IP}}{{else}}–{{end}}</div><div class="itn-mono" style="color:var(--muted)">{{.MAC}}</div></td>
+        <td style="font-size:12px">{{if eq .Kind "wireless"}}<i class="ti ti-wifi"></i> WLAN{{else}}<i class="ti ti-plug"></i> Kabel{{end}}</td>
+        <td style="font-size:12px">{{if .Uplink}}{{.Uplink}}{{else}}–{{end}}</td>
+        <td style="font-size:12px;color:var(--muted)">{{.LastSeen}}</td>
+        {{if $.CanSetup}}
+        <td>
+          {{if eq $.Tab "hidden"}}
+          <form method="POST" action="/it/net/candidates/ignore" class="itn-row-form">
+            <input type="hidden" name="source" value="{{.Source}}"><input type="hidden" name="mac" value="{{.MAC}}"><input type="hidden" name="ignored" value="0"><input type="hidden" name="tab" value="hidden">
+            <button type="submit" class="btn btn-small"><i class="ti ti-eye"></i> Zurückholen</button>
+          </form>
+          {{else}}
+          <div class="itn-row-form">
+            <form method="POST" action="/it/net/candidates/adopt" class="itn-row-form">
+              <input type="hidden" name="source" value="{{.Source}}"><input type="hidden" name="mac" value="{{.MAC}}">
+              <select name="type" class="form-input" aria-label="Typ des neuen Assets">
+                {{range $.Types}}<option value="{{.Value}}" {{if eq .Value "workstation"}}selected{{end}}>{{.Label}}</option>{{end}}
+              </select>
+              <button type="submit" class="btn btn-small btn-primary"><i class="ti ti-plus"></i> Übernehmen</button>
+            </form>
+            <form method="POST" action="/it/net/candidates/ignore" class="itn-row-form">
+              <input type="hidden" name="source" value="{{.Source}}"><input type="hidden" name="mac" value="{{.MAC}}"><input type="hidden" name="ignored" value="1">
+              <button type="submit" class="btn btn-small" title="Vorschlag ausblenden"><i class="ti ti-eye-off"></i> Ausblenden</button>
+            </form>
+          </div>
+          {{end}}
+        </td>
+        {{end}}
+      </tr>
+      {{else}}
+      <tr><td colspan="7" style="text-align:center;color:var(--muted);padding:24px">{{if eq .Tab "hidden"}}Keine ausgeblendeten Vorschläge{{else}}Keine offenen Vorschläge{{end}}</td></tr>
+      {{end}}
+      </tbody>
+    </table>
+  </div>
+</div>
+{{end}}

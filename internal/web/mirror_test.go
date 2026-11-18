@@ -882,3 +882,21 @@ func TestMaintenanceRightsMigration(t *testing.T) {
 		t.Errorf("Migration 154: department_id-IS-NULL-Bedingung %d-mal, erwartet 2", n)
 	}
 }
+
+// Auf dem Spiegel darf „Prüfen“ durch (liest nur), Herunterladen nicht.
+func TestTIAMirrorCheckAllowed(t *testing.T) {
+	hd, calls := mirrorTestHandler(true)
+	id := "11111111-1111-4111-8111-111111111111"
+	if rec := mirrorServe(hd, http.MethodPost, "/import/connections/"+id+"/tia/check", nil); rec.Code != http.StatusOK || *calls != 1 {
+		t.Errorf("Prüfen im Spiegel: %d, Aufrufe %d", rec.Code, *calls)
+	}
+	for _, p := range []string{"/import/connections/" + id + "/tia/download", "/import/connections/x/tia/check",
+		"/import/connections/" + id + "/tia/check/x", "/export/connections/" + id + "/tia/check"} {
+		if rec := mirrorServe(hd, http.MethodPost, p, nil); rec.Code != http.StatusConflict {
+			t.Errorf("%s im Spiegel: %d", p, rec.Code)
+		}
+	}
+	if *calls != 1 {
+		t.Errorf("gesperrte Anfragen erreichten den Handler: %d", *calls)
+	}
+}

@@ -43,7 +43,7 @@ Aktuell registrierte Module:
 
 ## Technik-Stack
 
-- Go `1.24`
+- Go `1.27`
 - PostgreSQL
 - `github.com/go-chi/chi/v5` fuer Routing
 - `github.com/jackc/pgx/v5` fuer PostgreSQL
@@ -79,7 +79,7 @@ Aktuell registrierte Module:
 Auf dem Zielsystem werden benoetigt:
 
 - Linux-Server oder Entwicklungsmaschine
-- Go `1.24` oder neuer – ab Go 1.21 laedt `go build` die passende Version selbst nach (`GOTOOLCHAIN=auto`, nutzen auch die Update-Skripte)
+- Go `1.27` oder neuer – ab Go 1.21 laedt `go build` die passende Version selbst nach (`GOTOOLCHAIN=auto`, nutzen auch die Update-Skripte)
 - PostgreSQL
 - Git
 - Make

@@ -35,10 +35,12 @@ var recordModules = map[string]recordModuleInfo{
 	"storage":          {"Lagerplatz", "/storage/", "storage_nodes", "name", "ti-building-warehouse"},
 	"business_partner": {"Hersteller/Lieferant", "/directory/", "business_partners", "name", "ti-building-store"},
 	"kvp":              {"KVP-Vorschlag", "/kvp/", "kvp_ideas", "'KVP-' || lpad(number::text, 4, '0') || ' · ' || title", "ti-bulb"},
+	"setup": {"Rüstzeit", "/setup/", "setup_times", `'RZ-' || lpad(number::text, 4, '0') || ' · ' ||
+		COALESCE(NULLIF(button_name, ''), (SELECT sr.name FROM setup_reasons sr WHERE sr.id = reason_id), '')`, "ti-arrows-exchange-2"},
 }
 
 // recordModuleOrder: feste Reihenfolge fuer Uebersichten.
-var recordModuleOrder = []string{"ticket", "fault", "task", "project", "maintenance_task", "infrastructure", "part", "storage", "business_partner", "kvp"}
+var recordModuleOrder = []string{"ticket", "fault", "task", "project", "maintenance_task", "infrastructure", "part", "storage", "business_partner", "kvp", "setup"}
 
 func (h *Handler) recordTitle(ctx context.Context, module, id string) string {
 	mi, ok := recordModules[module]

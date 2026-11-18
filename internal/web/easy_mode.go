@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -55,6 +56,7 @@ type EasyPageData struct {
 	LoginURL                                string
 	Test                                    bool // Testansicht für Admins (Knopf an der Anlage)
 	CanTranslate                            bool
+	Setup                                   setupBarView // Abschnitt „Rüsten“ (setup_easy.go)
 }
 
 // easyAsset: Name und Pfad einer aktiven Anlage ("" = unbekannt).
@@ -94,6 +96,7 @@ func (h *Handler) EasyPage(w http.ResponseWriter, r *http.Request) {
 	d.Look = h.appearance(r, d.Brand)
 	d.Recent = h.easyRecent(ctx, lang, h.infraSubtreeIDs(ctx, id))
 	d.Texts = h.easyTextOptions(ctx, lang, h.easyTextsFor(ctx, id))
+	d.Setup = h.setupBarFor(ctx, lang, id, "/e/"+id+"/setup", "", test, r.URL.Query().Get("setup"))
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	t, err := h.tmpl.Clone()
@@ -186,12 +189,26 @@ func (l *easyLimiter) allow(key string, max int, per time.Duration, now time.Tim
 	return true
 }
 
-// easyClient: Absender für die Bremse (hinter dem Proxy die weitergereichte Adresse).
+// easyClient: Absender für die Bremse. Weitergereichte Adressen zählen nur, wenn
+// die Anfrage vom eigenen Rechner kommt (Cloudflare-Tunnel, nginx davor) – sonst
+// könnte jeder mit einem erfundenen X-Forwarded-For die Bremse umgehen. Dann gilt
+// zuerst CF-Connecting-IP (setzt Cloudflare selbst), sonst der letzte Eintrag von
+// X-Forwarded-For (den hat der nächste Proxy angehängt, nicht der Absender).
 func easyClient(r *http.Request) string {
-	if xf := strings.TrimSpace(strings.Split(r.Header.Get("X-Forwarded-For"), ",")[0]); xf != "" {
-		return xf
+	ip := clientIP(r)
+	if p := net.ParseIP(ip); p == nil || !p.IsLoopback() {
+		return ip
 	}
-	return clientIP(r)
+	if cf := strings.TrimSpace(r.Header.Get("CF-Connecting-IP")); net.ParseIP(cf) != nil {
+		return cf
+	}
+	if xf := r.Header.Get("X-Forwarded-For"); xf != "" {
+		parts := strings.Split(xf, ",")
+		if last := strings.TrimSpace(parts[len(parts)-1]); net.ParseIP(last) != nil {
+			return last
+		}
+	}
+	return ip
 }
 
 // easyValidate prüft die Eingaben (ohne Datenbank).

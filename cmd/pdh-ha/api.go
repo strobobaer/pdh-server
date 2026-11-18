@@ -55,6 +55,7 @@ type apiStatus struct {
 	AutoMode       string      `json:"auto_mode"`
 	Busy           bool        `json:"busy"` // eine Aktion läuft
 	Access         apiAccess   `json:"access"`
+	Mirror         *apiMirror  `json:"mirror,omitempty"` // Datei-Spiegelung; fehlt am Zeugen
 
 	// Update im Verbund: Auftrag, Phase, Sperre; als fehlerhaft gemerkte Commits
 	Update        ha.UpdateView `json:"update"`
@@ -64,15 +65,18 @@ type apiStatus struct {
 
 // apiAccess: Zugangsweg – mitwandernde Adresse, Skripte, Tunnel.
 type apiAccess struct {
-	VIP      string     `json:"vip"`
-	VIPOn    bool       `json:"vip_on"`
-	HooksOn  bool       `json:"hooks_on"`
-	Iface    string     `json:"iface"`     // gewählte Netzwerkkarte dieses Servers
-	IfaceErr string     `json:"iface_err"` // Kartenwahl gescheitert
-	Holder   string     `json:"holder"`    // Kennung des Servers mit der Adresse ("" = niemand)
-	Tested   *vipTested `json:"tested"`
-	Hooks    apiHooks   `json:"hooks"`
-	Tunnel   apiTunnel  `json:"tunnel"`
+	VIP        string     `json:"vip"`
+	VIPOn      bool       `json:"vip_on"`
+	HooksOn    bool       `json:"hooks_on"`
+	VIP6Suffix string     `json:"vip6_suffix"` // Ende der mitwandernden IPv6-Adresse ("" = keine)
+	Iface      string     `json:"iface"`       // gewählte Netzwerkkarte dieses Servers
+	IfaceErr   string     `json:"iface_err"`   // Kartenwahl gescheitert
+	Holder     string     `json:"holder"`      // Kennung des Servers mit der Adresse ("" = niemand)
+	VIP6       string     `json:"vip6"`        // IPv6-Adresse beim Halter ("" = keine)
+	VIP6Note   string     `json:"vip6_note"`   // Hinweis zur IPv6-Adresse dieses Servers ("" = keiner)
+	Tested     *vipTested `json:"tested"`
+	Hooks      apiHooks   `json:"hooks"`
+	Tunnel     apiTunnel  `json:"tunnel"`
 }
 
 // apiHooks: Skripte beim Rollenwechsel.
@@ -115,6 +119,7 @@ type apiNode struct {
 
 	// Zugangsweg (Teil 5)
 	VIPHeld   bool   `json:"vip_held"`
+	VIP6Held  string `json:"vip6_held"` // mitwandernde IPv6-Adresse auf diesem Server ("" = keine)
 	HooksSum  string `json:"hooks_sum"`
 	TunnelSum string `json:"tunnel_sum"`
 }
@@ -308,6 +313,14 @@ func apiHandler(d *daemon) http.Handler {
 		}
 		apiOK(w)
 	})
+	// Handbefehl: gestrandeten Server wieder anbinden (R33); läuft danach im Hintergrund
+	mux.HandleFunc("POST /v1/rejoin", func(w http.ResponseWriter, r *http.Request) {
+		if err := d.rejoinCmd(r.Context()); err != nil {
+			apiFail(w, err)
+			return
+		}
+		apiOK(w)
+	})
 	mux.HandleFunc("POST /v1/diverged/delete", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			ID   string `json:"id"`
@@ -390,6 +403,44 @@ func apiHandler(d *daemon) http.Handler {
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "results": res})
+	})
+	// Datei-Spiegelung: Stand, sofort abgleichen, Papierkorb am Partner leeren
+	mux.HandleFunc("GET /v1/mirror", func(w http.ResponseWriter, r *http.Request) {
+		st := d.statusNow()
+		if st.Mirror == nil {
+			apiFail(w, errMirrorWitness)
+			return
+		}
+		writeJSON(w, http.StatusOK, st.Mirror)
+	})
+	mux.HandleFunc("POST /v1/mirror/run", func(w http.ResponseWriter, r *http.Request) {
+		if err := d.mirrorRun(r.Context()); err != nil {
+			apiFail(w, err)
+			return
+		}
+		apiOK(w)
+	})
+	mux.HandleFunc("POST /v1/mirror/confirm", func(w http.ResponseWriter, r *http.Request) {
+		// R61: labels = die Quellen, die die Karte zeigte (leer: alle wartenden, Befehlszeile)
+		var req struct {
+			Labels []string `json:"labels"`
+		}
+		if !decodeBody(w, r, &req) {
+			return
+		}
+		got, err := d.mirrorConfirm(req.Labels)
+		if err != nil {
+			apiFail(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "labels": got})
+	})
+	mux.HandleFunc("POST /v1/mirror/trash-empty", func(w http.ResponseWriter, r *http.Request) {
+		if err := d.mirrorTrashEmptyReq(); err != nil {
+			apiFail(w, err)
+			return
+		}
+		apiOK(w)
 	})
 	// Adresstest; dauert bis etwa eine Minute (Client mit längerer Frist)
 	mux.HandleFunc("POST /v1/vip/test", func(w http.ResponseWriter, r *http.Request) {
@@ -532,6 +583,23 @@ func (d *daemon) updateOpenLocked() bool {
 	return d.up.job.ID != "" && !upEnded(d.up.job)
 }
 
+// updateOpen wie updateOpenLocked, für Aufrufer ohne das Schloss.
+func (d *daemon) updateOpen() bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.updateOpenLocked()
+}
+
+// partnerActiveNowLocked: Der Partner ist aktiv, laut letztem Takt oder laut dem schon
+// eingetroffenen Herzschlag (der letzte Takt kann bis zu einem Takt alt sein).
+func (d *daemon) partnerActiveNowLocked() bool {
+	if p := d.last.Partner; p != nil && p.Seen && p.Role == ha.Active {
+		return true
+	}
+	pv, ok := d.net.peers(d.settingsLocked().Tick)[d.partnerLocked()]
+	return ok && pv.seen() && pv.Last.T == "hb" && ha.Role(pv.Last.Role) == ha.Active
+}
+
 // command merkt einen Handbefehl für den nächsten Takt vor.
 func (d *daemon) command(cmd string) error {
 	d.lock()
@@ -557,7 +625,9 @@ func (d *daemon) command(cmd string) error {
 		return errors.New("Nur mit zwei Servern möglich")
 	case c == ha.CmdForceTakeover && d.p.Role == ha.Active:
 		return errors.New("Nur auf einem nicht aktiven Server möglich")
-	case c == ha.CmdForceTakeover && d.last.Partner != nil && d.last.Partner.Seen && d.last.Partner.Role == ha.Active:
+	case c == ha.CmdForceTakeover && d.rewindUnsafeLocked():
+		return errDataUnsafe // R35: auch von Hand nicht übernehmen, die Rolle wäre sonst schon aktiv
+	case c == ha.CmdForceTakeover && d.partnerActiveNowLocked():
 		// sonst verliert ein gesunder aktiver Server seine Rolle, und was er
 		// bis dahin allein gespeichert hat, landet in den abgezweigten Daten
 		return errors.New("Der aktive Server ist erreichbar – bitte am aktiven Server „Rollen tauschen“ verwenden")
@@ -569,6 +639,20 @@ func (d *daemon) command(cmd string) error {
 		// „Partner aktiv“ wird oben abgewiesen; N2: auch wenn beide passiv
 		// sind) – der Auftrag bricht dann als Übernahme ab.
 		return errUpdateOpen
+	}
+	if swapCommand(c) && d.pendingDemotes.Load() > 0 {
+		return errors.New("Die vorige Abgabe läuft noch – bitte kurz warten")
+	}
+	// Im Erstabgleich fehlen dem Partner noch Dateien: kein Rollentausch.
+	// Übernahme erzwingen wird nie gesperrt (Notweg). Nur Zwischengespeichertes.
+	if c == ha.CmdSwap {
+		if on, done := d.mirrorFirstLocked(); on && !done {
+			if why := d.mirrorUIDWarnLocked(); why != "" {
+				// R2-3: angehalten, nicht „läuft“ – den echten Grund nennen
+				return errors.New("Dateien werden nicht gespiegelt (" + why + ") – Rollentausch erst danach möglich")
+			}
+			return errors.New("Erstabgleich der Dateien läuft – Rollentausch erst danach möglich")
+		}
 	}
 	d.cmd = c
 	d.event("info", "Befehl: "+text)

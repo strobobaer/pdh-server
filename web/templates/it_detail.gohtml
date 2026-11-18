@@ -1,8 +1,8 @@
 {{template "base" .}}
 {{define "content"}}
-<div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
+<div style="display:flex;align-items:center;gap:8px 12px;flex-wrap:wrap;margin-bottom:20px">
   {{template "icon-button" (dict "Action" "back" "Href" "/it")}}
-  <div style="flex:1">
+  <div style="flex:1 1 160px;min-width:0;overflow-wrap:anywhere">
     <h1 style="font-size:18px;font-weight:600"><i class="ti {{.Asset.TypeIcon}}"></i> {{.Asset.Name}}</h1>
     <p style="font-size:12px;color:var(--muted);margin-top:2px">{{.Asset.TypeLabel}} · Erstellt {{.Asset.CreatedAgo}}{{if .Asset.InfraName}} · {{.Asset.InfraName}}{{end}}</p>
   </div>
@@ -45,6 +45,67 @@
       </div>
     </div>
 
+    {{with .Net}}
+    <!-- Netz (Abgleich mit UniFi, Omada oder SNMP) -->
+    <div class="card it-net-card">
+      <div class="card-title" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><i class="ti ti-network"></i> Netz
+        <span class="badge {{.StateClass}}">{{.StateLabel}}</span>
+        {{if .FirmwareUpdate}}<span class="badge b-amber" title="Firmware-Update verfügbar">Update</span>{{end}}
+        {{if .Gone}}<span class="badge b-gray" title="Die Quelle meldet das Gerät nicht mehr">nicht mehr gemeldet</span>{{end}}
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,150px),1fr));gap:12px;font-size:13px">
+        <div><div style="color:var(--muted);font-size:11px">Quelle</div>{{.Source}} · {{.Role}}</div>
+        <div><div style="color:var(--muted);font-size:11px">Zustand seit</div>{{if .StateSince}}{{.StateSince}}{{else}}—{{end}}</div>
+        <div><div style="color:var(--muted);font-size:11px">Zuletzt gesehen</div>{{if .LastSeen}}{{.LastSeen}}{{else}}—{{end}}</div>
+        <div><div style="color:var(--muted);font-size:11px">Firmware</div>{{if .Firmware}}{{.Firmware}}{{else}}—{{end}}</div>
+        <div><div style="color:var(--muted);font-size:11px">Uplink</div>{{if .Uplink}}{{.Uplink}}{{else}}—{{end}}</div>
+        <div><div style="color:var(--muted);font-size:11px">Überwacht</div>{{if .Monitored}}ja – Ausfall erzeugt ein Ticket{{else}}nein{{end}}</div>
+        <div><div style="color:var(--muted);font-size:11px">&nbsp;</div>Karenz bis zum Alarm: {{.GraceMin}} min ({{.GraceSource}})</div>
+      </div>
+      {{if $.Notice}}<div class="card" role="status" style="margin:10px 0 0;border-color:var(--green)"><i class="ti ti-circle-check" style="color:var(--green)"></i> {{$.Notice}}</div>{{end}}
+      {{if $.Err}}<div class="card" role="alert" style="margin:10px 0 0;border-color:var(--red);color:var(--red)"><i class="ti ti-alert-circle"></i> {{$.Err}}</div>{{end}}
+      {{if .Ports}}
+      <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%;margin-top:12px">
+        <table style="min-width:420px">
+          <thead><tr><th>Port</th><th>Anschluss</th><th>Zustand</th><th>Geschwindigkeit</th>{{if $.Net.HasPoE}}<th>PoE</th>{{end}}</tr></thead>
+          <tbody>
+          {{range .Ports}}<tr><td>{{.Idx}}</td><td style="font-size:12px">{{if .Connector}}{{.Connector}}{{else}}—{{end}}</td><td>{{if .Up}}<span class="badge b-green">aktiv</span>{{else}}<span class="badge b-gray">{{.State}}</span>{{end}}</td><td style="font-size:12px">{{.Speed}}</td>{{if $.Net.HasPoE}}<td style="font-size:12px">{{if .PoE}}{{.PoE}}{{else}}—{{end}}</td>{{end}}</tr>{{end}}
+          </tbody>
+        </table>
+      </div>
+      {{end}}
+      {{if $.CanNetEdit}}
+      <form method="POST" action="/it/{{$.Asset.ID}}/net-grace" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:12px 0 0">
+        <label class="form-label" for="it-grace" style="margin:0">Eigene Karenz (Minuten)</label>
+        <input id="it-grace" type="number" name="minutes" class="form-input" min="1" max="1440" value="{{.GraceOwn}}" placeholder="leer = Kategorie bzw. allgemein" style="width:250px;max-width:100%">
+        <button type="submit" class="btn btn-small" title="Leer lassen und speichern, um den eigenen Wert zu entfernen"><i class="ti ti-clock-check"></i> Speichern</button>
+      </form>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+        <form method="POST" action="/it/{{$.Asset.ID}}/net-monitor" style="margin:0">
+          <input type="hidden" name="on" value="{{if .Monitored}}0{{else}}1{{end}}">
+          <button type="submit" class="btn btn-small" title="Bei Ausfall ein Alarm-Ticket anlegen"><i class="ti {{if .Monitored}}ti-bell-off{{else}}ti-bell{{end}}"></i> {{if .Monitored}}Nicht mehr überwachen{{else}}Überwachen{{end}}</button>
+        </form>
+        <form method="POST" action="/it/{{$.Asset.ID}}/net-detach" style="margin:0" onsubmit="return confirm('Quelle trennen? Das Asset bleibt erhalten, wird aber nicht mehr mit {{if .Source}}{{.Source}}{{else}}der Quelle{{end}} abgeglichen und nicht mehr überwacht. Zustand und Ports werden entfernt. Rückgängig mit „Wieder verbinden“.')">
+          <button type="submit" class="btn btn-small"><i class="ti ti-unlink"></i> Quelle trennen</button>
+        </form>
+      </div>
+      {{end}}
+    </div>
+    {{end}}
+    {{if .NetDetached}}
+    <!-- Netz: Quelle getrennt -->
+    <div class="card it-net-detached">
+      <div class="card-title" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><i class="ti ti-network"></i> Netz
+        <span class="badge b-gray"><i class="ti ti-unlink"></i> Quelle getrennt</span></div>
+      <p style="font-size:13px;color:var(--muted);margin:0">Dieses Asset wird nicht mehr mit seiner Quelle (UniFi, Omada oder SNMP) abgeglichen und nicht überwacht.</p>
+      {{if .CanNetEdit}}
+      <form method="POST" action="/it/{{.Asset.ID}}/net-reattach" style="margin:12px 0 0">
+        <button type="submit" class="btn btn-small" title="Beim nächsten Abgleich wieder Zustand und Ports übernehmen"><i class="ti ti-link"></i> Wieder verbinden</button>
+      </form>
+      {{end}}
+    </div>
+    {{end}}
+
     <!-- Notizen -->
     <div class="card">
       <div class="card-title">Notizen</div>
@@ -64,13 +125,8 @@
         <div class="form-group">
           <label class="form-label">Typ</label>
           <select name="type" class="form-input">
-            <option value="server" {{if eq .Asset.Type "server"}}selected{{end}}>Server</option>
-            <option value="network" {{if eq .Asset.Type "network"}}selected{{end}}>Netzwerk</option>
-            <option value="workstation" {{if eq .Asset.Type "workstation"}}selected{{end}}>Workstation</option>
-            <option value="printer" {{if eq .Asset.Type "printer"}}selected{{end}}>Drucker</option>
-            <option value="phone" {{if eq .Asset.Type "phone"}}selected{{end}}>Telefon</option>
-            <option value="tablet" {{if eq .Asset.Type "tablet"}}selected{{end}}>Tablet</option>
-            <option value="other" {{if eq .Asset.Type "other"}}selected{{end}}>Sonstiges</option>
+            {{range .Types}}<option value="{{.Value}}" {{if .Selected}}selected{{end}}>{{.Label}}</option>
+            {{end}}
           </select>
         </div>
         <div class="grid2" style="gap:10px">

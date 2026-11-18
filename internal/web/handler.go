@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"html/template"
 	"net/http"
@@ -27,7 +28,9 @@ import (
 	"pdh/internal/core/shifts"
 	"pdh/internal/core/storage"
 	"pdh/internal/core/users"
+	"pdh/internal/datanet"
 	"pdh/internal/modules/checklists"
+	"pdh/internal/modules/extsync"
 	"pdh/internal/modules/faults"
 	"pdh/internal/modules/inventory"
 	"pdh/internal/modules/it"
@@ -42,6 +45,7 @@ import (
 // ── Template-Daten ───────────────────────────────────────────
 
 type BaseData struct {
+	navCan        func(perm string) bool // Rechteprüfung für die Navigation (nav.go); nil = alles zeigen
 	Title         string
 	Page          string
 	ContextTitle  string
@@ -63,6 +67,8 @@ type BaseData struct {
 	CanManageRoles         bool       // Nav-Link "Rollen & Berechtigungen" anzeigen
 	CanManageLeitstand     bool       // Nav-Link "Leitstände" (leitstand_boards.go)
 	CanImport              bool       // Nav-Link "Import" anzeigen
+	CanSync                bool       // Nav-Link "Abgleich" anzeigen (sync.view)
+	CanDataNet             bool       // Nav-Link "Datennetz" anzeigen (datanet.view)
 	CanExport              bool       // Nav-Link "Export" anzeigen
 	CanChat                bool       // Chat-Navigation, Ungelesen-Zaehler und "Im Chat teilen"
 	CanBackup              bool       // Nav-Link "Datensicherung"
@@ -82,6 +88,7 @@ type BaseData struct {
 	CanTrainings           bool       // Schulungen & Qualifikationen verwalten (trainings.manage)
 	CanCostCenters         bool       // Core → Kostenstellen (costcenters.manage, costcenters_web.go)
 	CanStatistics          bool       // Statistik mit Grafana-Dashboards (statistics.view, grafana.go)
+	CanEnergy              bool       // Energiedaten: Messstellen (energy.view / energy.edit, energy_meters.go)
 	IsBroker               bool       // Broker fuer mind. eine Vorgangsart: Nav-Link "Zuweisung"
 	TerminalInfraID        string     // Standort des Terminals: Infra-Picker klappt bis hierhin auf
 	Look                   Appearance // Farbschema, Schrift und Groesse dieses Benutzers
@@ -182,6 +189,8 @@ type TicketView struct {
 	BlinkClass       string
 	DueDate          string
 	DueDateISO       string
+	// Alarm-Ticket: Erledigen/Schließen nur mit beschriebener Ursache
+	RequiresRootCause bool
 }
 
 type UserOption struct {
@@ -258,49 +267,74 @@ type PartView struct {
 // ── Handler ──────────────────────────────────────────────────
 
 type Handler struct {
-	mirror           MirrorInfo                              // Spiegelmodus; einmal beim Start gesetzt (SetMirror)
-	tunnelTokenFn    func(context.Context) (string, bool)    // Tunnel-Token für den Abgleich mit pdh-ha; nil → Server-Einstellungen (Tests tauschen aus)
-	mirrorActiveURL  func(*http.Request) string              // Adresse des aktiven Servers für die Sperrseite; nil → kein Link
-	mirrorPeerFetch  func(context.Context) (haStatus, error) // pdh-ha-Status; nil → Socket (Tests tauschen aus)
-	mirrorPeerC      mirrorCache[mirrorPeer]
-	mirrorLagFetch   func(context.Context) (time.Duration, time.Time, error) // Rückstand; nil → mirror.ReplayLag (Tests tauschen aus)
-	mirrorLagC       mirrorCache[mirrorLag]
-	mirrorCurFetch   func(context.Context) (bool, error) // Spiegel auf Stand; nil → mirror.Current (Tests tauschen aus)
-	loginFn          func(ctx context.Context, email, password string) (string, *users.User, error)
-	loginRFIDFn      func(ctx context.Context, uid string) (string, *users.User, error)
-	mirrorAdminFn    func(*http.Request) bool                           // nil → canServerConfig (Tests)
-	userByIDFn       func(context.Context, string) (*users.User, error) // nil → users.GetByID (Tests)
-	db               *pgxpool.Pool
-	tmpl             *template.Template
-	users            *users.Service
-	shifts           *shifts.Service
-	storage          *storage.Service
-	infra            *infrastructure.Service
-	tickets          *tickets.Service
-	faults           *faults.Service
-	maint            *maintenance.Service
-	inv              *inventory.Service
-	it               *it.Service
-	time             *timetracking.Service
-	checks           *checklists.Service
-	tasks            *tasks.Service
-	projects         *projects.Service
-	rbac             *rbac.Service
-	jwtSecret        string
-	mailCfg          config.MailConfig
-	chatOnce         sync.Once
-	chatHubRef       *chatHub
-	updateAgentURL   string
-	updateAgentToken string
-	buildCommit      string
-	restartFn        func() // Neustart nach Aenderung der Server-Einstellungen (main.go)
-	restartPending   []string
-	microsoft        MicrosoftOAuthConfig
-	microsoftSyncMu  sync.Mutex
-	mqttBrokers      *mqttbroker.Manager
-	mqttImport       *mqttimport.Manager
-	exportCron       *scheduler.CronManager
-	importPoll       *scheduler.IntervalManager
+	dataNetMu          sync.RWMutex // schützt dataNet und dataNetBridges
+	dataNet            *datanet.Manager
+	dataNetBridges     *datanet.Bridges
+	dataNetCancel      context.CancelFunc
+	dataNetSrv         *http.Server                                   // Rückkanal
+	dataNetActive      bool                                           // Server ist der aktive (nicht der Spiegel); gesetzt von StartDataNet
+	dataNetListenAddr  string                                         // Rückkanal-Adresse; leer → :8443 (Tests: :0)
+	dataNetNewNode     func(datanet.NodeConfig) (datanet.Node, error) // nil → datanet.NewTSNode (Tests tauschen aus)
+	dataNetAPIBase     string                                         // Tailscale-API; leer → api.tailscale.com (Tests tauschen aus)
+	dataNetCheckMu     sync.Mutex                                     // schützt das zwischengespeicherte Prüfergebnis des Datennetzes
+	dataNetCheckAt     time.Time
+	dataNetCheckRes    *dnCheck
+	mirror             MirrorInfo                              // Spiegelmodus; einmal beim Start gesetzt (SetMirror)
+	tunnelTokenFn      func(context.Context) (string, bool)    // Tunnel-Token für den Abgleich mit pdh-ha; nil → Server-Einstellungen (Tests tauschen aus)
+	mirrorActiveURL    func(*http.Request) string              // Adresse des aktiven Servers für die Sperrseite; nil → kein Link
+	mirrorPeerFetch    func(context.Context) (haStatus, error) // pdh-ha-Status; nil → Socket (Tests tauschen aus)
+	mirrorPeerC        mirrorCache[mirrorPeer]
+	mirrorLagFetch     func(context.Context) (time.Duration, time.Time, error) // Rückstand; nil → mirror.ReplayLag (Tests tauschen aus)
+	mirrorLagC         mirrorCache[mirrorLag]
+	mirrorCurFetch     func(context.Context) (bool, error) // Spiegel auf Stand; nil → mirror.Current (Tests tauschen aus)
+	loginFn            func(ctx context.Context, email, password string) (string, *users.User, error)
+	loginRFIDFn        func(ctx context.Context, uid string) (string, *users.User, error)
+	mirrorAdminFn      func(*http.Request) bool                           // nil → canServerConfig (Tests)
+	userByIDFn         func(context.Context, string) (*users.User, error) // nil → users.GetByID (Tests)
+	db                 *pgxpool.Pool
+	itNet              itNetState // IT-Netzabgleich: Quelle und Meldezustand über Läufe hinweg
+	omadaC             omadaConn  // Omada-Controller: Client samt Zugriffstoken über Läufe hinweg
+	tmpl               *template.Template
+	users              *users.Service
+	shifts             *shifts.Service
+	storage            *storage.Service
+	infra              *infrastructure.Service
+	tickets            *tickets.Service
+	faults             *faults.Service
+	maint              *maintenance.Service
+	inv                *inventory.Service
+	it                 *it.Service
+	time               *timetracking.Service
+	checks             *checklists.Service
+	tasks              *tasks.Service
+	projects           *projects.Service
+	rbac               *rbac.Service
+	jwtSecret          string
+	mailCfg            config.MailConfig
+	mailMu             sync.RWMutex                                     // schützt mailCfg: Einstellungen ändern sich im Betrieb (mail_bridge.go liest je Mail frisch)
+	mailBridge         *mailBridge                                      // lokales SMTP-Relais für Nextcloud (mail_bridge.go)
+	mailBridgeStartErr string                                           // warum die Brücke nicht läuft (fester Text für die Karte)
+	mailRawSMTPFn      func(from string, to []string, raw []byte) error // nur Tests
+	mailRawGraphFn     func(ctx context.Context, raw []byte) error      // nur Tests
+	chatOnce           sync.Once
+	chatHubRef         *chatHub
+	updateAgentURL     string
+	updateAgentToken   string
+	buildCommit        string
+	restartFn          func() // Neustart nach Aenderung der Server-Einstellungen (main.go)
+	restartPending     []string
+	microsoft          MicrosoftOAuthConfig
+	msMu               sync.RWMutex // schützt microsoft (Einstellungen ändern sich im Betrieb)
+	microsoftSyncMu    sync.Mutex
+	mqttBrokers        *mqttbroker.Manager
+	mqttImport         *mqttimport.Manager
+	exportCron         *scheduler.CronManager
+	importPoll         *scheduler.IntervalManager
+	syncRunner         *extsync.Runner // Abgleich mit Fremdsystemen; nil am Spiegel und in Tests (sync_wire.go)
+	// syncReaderHook ersetzt in Tests das Lesen des Aufbaus der Fremddatenbank (sync_pages.go); nil = echt.
+	syncReaderHook func(ctx context.Context, connectionID string) (syncReader, extsync.Dialect, map[string]string, error)
+	// syncForeignHook ersetzt in Tests die Fremddatenbank für Test und Lauf (sync_ops.go); nil = echt.
+	syncForeignHook  func(ctx context.Context, connectionID string) (extsync.Foreign, extsync.Dialect, map[string]string, error)
 	toolAct          toolActivity       // offene Admin-Werkzeuge je Sitzung (admin_tool_activity.go)
 	streams          context.Context    // endet beim Beenden: Dauerverbindungen (streams.go)
 	closeStreams     context.CancelFunc // beendet streams
@@ -315,6 +349,9 @@ type Handler struct {
 	hasPermHook     func(*http.Request, string) bool
 	kioskPermHook   func(r *http.Request, perm, infraID string) bool // Tests: Rechte je Anlage ("" = ohne Abteilungsbegrenzung), kiosk_terminals.go
 	updateCheckHook func(context.Context) storedUpdateCheck
+
+	// Explorer (explorer.go): lädt die Verbindung für den Explorer; nil = echt (connectionRow)
+	explorerLoadHook func(r *http.Request, direction string) (explorerConn, error)
 }
 
 func NewHandler(
@@ -366,6 +403,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Use(h.LangMiddleware)
 	r.Use(h.DepartmentScopeMiddleware)
 	r.Use(h.RequestOnceMiddleware) // Doppel-Absende-Sperre (request_once.go)
+	r.Use(h.NCSyncTrigger)         // Änderungen an Benutzern, Gruppen, Rollen, Laufwerken → Abgleich mit Nextcloud (nextcloud_sync.go)
 
 	r.Get("/", h.Dashboard)
 	r.Get("/assignments/new", h.AssignmentNewPage)
@@ -533,6 +571,16 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/infrastructure/easy-texts/{tid}/delete", h.EasyTextDeleteWeb)
 	r.Post("/infrastructure/easy-texts/{tid}/move", h.EasyTextMoveWeb)
 	r.Post("/infrastructure/{id}/easy-texts", h.InfraEasyTextsWeb)
+	// Rüstzeiten: Katalog der Gründe und Rüsttasten, Zuordnung und Höchstdauer (setup_catalog.go)
+	r.Post("/setup/reasons-web", h.SetupReasonsWeb)
+	r.Post("/setup/buttons-web", h.SetupButtonsWeb)
+	r.Post("/setup/buttons/{id}/move-web", h.SetupButtonMoveWeb)
+	r.Post("/setup/buttons/{id}/delete-web", h.SetupButtonDeleteWeb)
+	r.Post("/infrastructure/{id}/setup/start", h.InfraSetupStartWeb) // Rüsten an der Anlage: Recht „Anlage sehen“
+	r.Post("/infrastructure/{id}/setup/finish", h.InfraSetupFinishWeb)
+	r.Post("/infrastructure/{id}/setup-buttons-web", h.InfraSetupButtonsWeb)
+	r.Post("/infrastructure/{id}/setup-max-web", h.InfraSetupMaxWeb)
+	r.Post("/core/settings/setup-web", h.SetupSettingsWeb)
 	// Trockenkammer: Bauteile je Gruppe (chamber.go)
 	r.Post("/infrastructure/{id}/components/{kind}", h.ChamberSaveWeb)
 	r.Post("/infrastructure/{id}/components/{kind}/count", h.ChamberCountWeb)
@@ -543,6 +591,26 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/infrastructure/{id}/obligations/{oid}/delete", h.InfraObligationDeleteWeb)
 	r.Get("/it", h.ITPage)
 	r.Post("/it", h.ITCreate)
+	// Netz-Abgleich (it_net_web.go): Seite, Einstellungen, Vorschläge, Schalter am Asset
+	r.Get("/it/categories", h.ITCategoriesPage)
+	r.Post("/it/categories", h.ITCategoryCreateWeb)
+	r.Post("/it/categories/{key}", h.ITCategoryUpdateWeb)
+	r.Post("/it/categories/{key}/active", h.ITCategoryActiveWeb)
+	r.Post("/it/categories/{key}/delete", h.ITCategoryDeleteWeb)
+	r.Get("/it/net", h.ITNetPage)
+	r.Post("/it/net/settings", h.ITNetSettingsWeb)
+	r.Post("/it/net/run", h.ITNetRunWeb)
+	r.Post("/it/net/candidates/adopt", h.ITNetAdoptWeb)
+	r.Post("/it/net/candidates/ignore", h.ITNetIgnoreWeb)
+	r.Post("/it/net/snmp/targets", h.ITNetSNMPTargetCreateWeb) // Karte „SNMP-Geräte“ (snmp_web.go)
+	r.Post("/it/net/snmp/targets/{id}", h.ITNetSNMPTargetUpdateWeb)
+	r.Post("/it/net/snmp/targets/{id}/enabled", h.ITNetSNMPTargetEnabledWeb)
+	r.Post("/it/net/snmp/targets/{id}/check", h.ITNetSNMPTargetCheckWeb)
+	r.Post("/it/net/snmp/targets/{id}/remove", h.ITNetSNMPTargetRemoveWeb)
+	r.Post("/it/{id}/net-monitor", h.ITNetMonitorWeb)
+	r.Post("/it/{id}/net-detach", h.ITNetDetachWeb)
+	r.Post("/it/{id}/net-reattach", h.ITNetReattachWeb)
+	r.Post("/it/{id}/net-grace", h.ITNetGraceWeb)
 	r.Get("/it/{id}", h.ITDetail)
 	// QR-Infoseiten fuer Anlagen und IT-Assets (asset_info.go)
 	r.Get("/a/labels", h.AssetLabelsPage)
@@ -550,6 +618,8 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/a/{id}", h.AssetInfoPage)
 	r.Get("/e/{id}", h.EasyPage) // Easy-Mode: öffentlich (authMiddleware)
 	r.Post("/e/{id}/report", h.EasyReportWeb)
+	r.Post("/e/{id}/setup/start", h.EasySetupStartWeb)   // Rüsten per Easy-Modus (setup_easy.go)
+	r.Post("/e/{id}/setup/finish", h.EasySetupFinishWeb) // öffentlich wie die Meldungen
 	r.Post("/records/{refType}/{id}/it-asset", h.RecordITAssetWeb)
 	r.Post("/it/{id}/edit-web", h.ITEditWeb)
 	r.Post("/it/{id}/status-web", h.ITStatusWeb) // FIX: war PUT, wird von Cloudflare/Nginx blockiert
@@ -609,6 +679,29 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/admin/server-config/save", h.ServerConfigSaveWeb)
 	r.Post("/admin/server-config/test", h.ServerConfigTestWeb)
 	r.Get("/admin/server-config/cloudflared/script", h.CloudflaredScriptWeb)
+	r.Get("/admin/server-config/cloudflare/panel", h.CloudflarePanelWeb) // DNS, Proxy, Tunnel-Ziele (cloudflare_api.go)
+	r.Post("/admin/server-config/cloudflare/dns", h.CloudflareDNSWeb)
+	r.Post("/admin/server-config/cloudflare/zone", h.CloudflareZoneWeb)
+	r.Post("/admin/server-config/cloudflare/tunnel", h.CloudflareTunnelWeb)
+	r.Get("/admin/server-config/cloudflare/mtls", h.CloudflareMTLSWeb) // mTLS-Namen bei Cloudflare (cloudflare_mtls.go)
+	r.Post("/admin/server-config/cloudflare/mtls-off", h.CloudflareMTLSOffWeb)
+	r.Post("/admin/server-config/cloudflare/mtls-on", h.CloudflareMTLSOnWeb)
+	r.Get("/admin/server-config/certs/panel", h.CertPanelWeb) // Zertifikate (Let's Encrypt, certs_web.go)
+	r.Post("/admin/server-config/certs/settings", h.CertSettingsWeb)
+	r.Post("/admin/server-config/certs/add", h.CertAddWeb)
+	r.Post("/admin/server-config/certs/issue", h.CertIssueWeb)
+	r.Post("/admin/server-config/certs/remove", h.CertRemoveWeb)
+	r.Post("/admin/server-config/certs/strict", h.CertStrictWeb)
+	r.Post("/admin/server-config/unifi", h.CertUnifiWeb) // Reiter „UniFi“ (certs_lan.go)
+	r.Post("/admin/server-config/unifi/confirm", h.CertUnifiConfirmWeb)
+	r.Post("/admin/server-config/omada", h.OmadaWeb) // Reiter „Omada“ (omada_web.go)
+	r.Post("/admin/server-config/omada/confirm", h.OmadaConfirmWeb)
+	r.Post("/admin/server-config/omada/check", h.OmadaCheckWeb)
+	r.Post("/admin/server-config/snmp/profiles", h.SNMPProfileCreateWeb) // Reiter „SNMP“ (snmp_web.go)
+	r.Post("/admin/server-config/snmp/profiles/{id}", h.SNMPProfileUpdateWeb)
+	r.Post("/admin/server-config/snmp/profiles/{id}/delete", h.SNMPProfileDeleteWeb)
+	r.Post("/admin/server-config/certs/lan", h.CertLANWeb)
+	r.Post("/admin/server-config/certs/lan6", h.CertLAN6Web) // IPv6 getrennt überschreiben (certs_lan6.go)
 	// Reiter „Ausfallschutz“: Sicherung aufs Netzlaufwerk über den Update-Agenten (dr.go)
 	r.Post("/admin/server-config/dr/settings", h.DRSettingsWeb)
 	r.Post("/admin/server-config/dr/run", h.DRRunWeb)
@@ -624,6 +717,10 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/admin/server-config/ha/settings", h.HASettingsWeb)
 	r.Post("/admin/server-config/ha/window", h.HAWindowWeb) // Wartungsfenster (maint_window.go)
 	r.Post("/admin/server-config/ha/faulty-allow", h.HAFaultyAllowWeb)
+	r.Post("/admin/server-config/ha/mirror", h.HAMirrorWeb) // Datei-Spiegelung (ha_mirror.go)
+	r.Post("/admin/server-config/ha/mirror-run", h.HAMirrorRunWeb)
+	r.Post("/admin/server-config/ha/mirror-trash-empty", h.HAMirrorTrashEmptyWeb)
+	r.Post("/admin/server-config/ha/mirror-confirm", h.HAMirrorConfirmWeb)
 	r.Post("/admin/server-config/update-window", h.UpdateWindowWeb)
 	r.Post("/admin/server-config/ha/access", h.HAAccessWeb)
 	r.Post("/admin/server-config/ha/vip-test", h.HAVIPTestWeb)
@@ -644,6 +741,8 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/admin/server-config/vpn/zip", h.VPNZipWeb)
 	r.Post("/admin/server-config/restart", h.ServerRestartWeb)
 	r.Post("/admin/server-config/nextcloud/admin", h.NextcloudAdminWeb) // Dienstkonto pdhNCadmin (nextcloud_admin.go)
+	r.Post("/admin/server-config/nextcloud/mail", h.NextcloudMailWeb)   // Mail-Brücke: Nextcloud versendet über das PDH (mail_bridge.go)
+	r.Post("/admin/server-config/nextcloud/sync", h.NextcloudSyncWeb)   // Abgleich PDH → Nextcloud (nextcloud_sync.go)
 	r.Post("/admin/server-config/import", h.ServerConfigImportWeb)
 	r.Post("/admin/server-config/takeover", h.ServerConfigTakeOverWeb)
 	r.Post("/admin/server-config/env-remove", h.ServerConfigEnvRemoveWeb)
@@ -735,6 +834,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/users/{id}/password-change", h.UserRequirePasswordChangeWeb)
 	r.Post("/users/{id}/terminal-pin", h.UserTerminalPINWeb)
 	r.Post("/users/{id}/nextcloud-account", h.UserNextcloudAccountWeb)
+	r.Post("/users/{id}/nextcloud-password", h.UserNextcloudPasswordWeb)
 	r.Post("/users/{id}/master", h.UserMasterSaveWeb)
 	r.Post("/users/{id}/private", h.UserPrivateSaveWeb)
 	r.Post("/users/{id}/qualifications", h.UserQualificationSaveWeb)
@@ -782,6 +882,14 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/kvp/{id}/actions/{aid}/delete", h.KVPActionDeleteWeb)
 	r.Post("/kvp/{id}/comment", h.KVPCommentWeb)
 	r.Post("/kvp/{id}/delete", h.KVPDeleteWeb)
+	// Rüstzeiten (setup_pages.go, setup_actions.go): Arbeitsbereich, Anlegen, Detailseite
+	r.Get("/setup", h.SetupPage)
+	r.Post("/setup", h.SetupCreateWeb)
+	r.Get("/setup/new", h.SetupNewPage)
+	r.Get("/setup/{id}", h.SetupDetailPage)
+	r.Post("/setup/{id}/edit-web", h.SetupEditWeb)
+	r.Post("/setup/{id}/finish-web", h.SetupFinishWeb)
+	r.Post("/setup/{id}/delete-web", h.SetupDeleteWeb)
 	r.Post("/admin/departments", h.DepartmentSaveWeb)
 	r.Post("/admin/departments/{id}/delete", h.DepartmentDeleteWeb)
 	r.Post("/admin/groups", h.GroupSaveWeb)
@@ -847,6 +955,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/core/settings/pki/issue", h.PKIIssueWeb)
 	r.Post("/core/settings/pki/self-service", h.PKISelfServiceWeb)
 	r.Post("/account/certificates", h.AccountCertificateWeb)
+	r.Get("/account/certificates/enforcement", h.PKIEnforcementWeb) // Anzeige Zertifikatspflicht (nur lesend)
 	r.Get("/certificates/{id}/password", h.CertificatePasswordWeb)
 	r.Post("/certificates/{id}/revoke", h.CertificateRevokeWeb)
 	r.Get("/certificates/{id}/{file}", h.CertificateFileWeb)
@@ -892,14 +1001,71 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/admin/settings", h.SettingsWeb)
 
 	// Import & Export
+	// Datennetz: PDH-Daten-Clients im Werk (datanet_pages.go)
+	r.Get("/datanet", h.DataNetPage)
+	r.Post("/datanet/clients", h.DataNetCreate)
+	r.Post("/datanet/clients/{id}/revoke", h.DataNetRevoke)
+	r.Post("/datanet/clients/{id}/delete", h.DataNetDelete)
+	r.Post("/datanet/settings", h.DataNetSettings)
+	r.Get("/datanet/check", h.DataNetCheck)
+	r.Post("/datanet/check/fix", h.DataNetFixTags)
+	r.Get("/datanet/download/{file}", h.DataNetDownload)
+	// Energiedaten: Messstellen mit Zuweisungstabelle (energy_meters.go)
+	r.Get("/energy/meters", h.EnergyMetersPage)
+	r.Post("/energy/meters/save-web", h.EnergyMeterSaveWeb)
+	r.Post("/energy/settings-web", h.EnergySettingsWeb)
+	r.Post("/energy/meters/{id}/delete-web", h.EnergyMeterDeleteWeb)
+	r.Get("/energy/meters/{id}/thresholds", h.EnergyThresholdsWeb)
+	r.Post("/energy/meters/{id}/thresholds/save-web", h.EnergyThresholdSaveWeb)
+	r.Post("/energy/thresholds/{tid}/delete-web", h.EnergyThresholdDeleteWeb)
+	// Abgleich mit Fremdsystemen (sync_pages.go, sync_actions.go)
+	r.Get("/sync", h.SyncPage)
+	r.Post("/sync/new-web", h.SyncNewWeb)
+	r.Get("/sync/{id}", h.SyncProfilePage)
+	r.Get("/sync/{id}/tables", h.SyncTablesFragment)
+	r.Get("/sync/{id}/columns", h.SyncColumnsFragment)
+	r.Get("/sync/{id}/sample", h.SyncSampleFragment)
+	r.Post("/sync/{id}/source-web", h.SyncSourceWeb)
+	r.Post("/sync/{id}/target-web", h.SyncTargetWeb)
+	r.Post("/sync/{id}/maps-web", h.SyncMapsWeb)
+	r.Post("/sync/{id}/delete-web", h.SyncDeleteWeb)
+	r.Post("/sync/{id}/test-dry-web", h.SyncTestDryWeb)
+	r.Post("/sync/{id}/test-write-web", h.SyncTestWriteWeb)
+	r.Post("/sync/{id}/arm-web", h.SyncArmWeb)
+	r.Post("/sync/{id}/pause-web", h.SyncPauseWeb)
+	r.Post("/sync/{id}/run-web", h.SyncRunWeb)
+	r.Post("/sync/{id}/interval-web", h.SyncIntervalWeb)
+	r.Post("/sync/{id}/outbox/{n}/retry-web", h.SyncRetryWeb)
+	r.Get("/sync/{id}/runs", h.SyncRunsFragment)
 	r.Get("/import", h.ImportPage)
 	r.Post("/import/connections", h.ImportConnectionCreateWeb)
+	r.Post("/import/connections/fingerprint", h.MssqlFingerprintWeb("import"))
 	r.Post("/import/connections/{id}/edit-web", h.ImportConnectionEditWeb)
 	r.Post("/import/connections/{id}/delete-web", h.ImportConnectionDeleteWeb)
 	r.Post("/import/connections/{id}/toggle-web", h.ImportConnectionToggleWeb)
-	r.Get("/import/connections/{id}/sniffer", h.MqttSnifferPage)
-	r.Get("/import/connections/{id}/sniffer/stream", h.MqttSnifferStream)
+	h.registerLegacyExplorerRedirects(r)
+	r.Get("/import/connections/{id}/explorer/mqtt/stream", h.MqttExplorerStream)
+	r.Post("/import/connections/{id}/explorer/mqtt/publish", h.MqttExplorerPublish)
+	r.Get("/import/connections/{id}/explorer/opcua/children", h.OPCUAExplorerChildren("import"))
+	r.Get("/import/connections/{id}/explorer/opcua/node", h.OPCUAExplorerNode("import"))
+	r.Get("/import/connections/{id}/explorer/opcua/watch", h.OPCUAExplorerWatch("import"))
+	r.Post("/import/connections/{id}/explorer/opcua/write", h.OPCUAExplorerWrite("import"))
+	r.Get("/export/connections/{id}/explorer/opcua/children", h.OPCUAExplorerChildren("export"))
+	r.Get("/export/connections/{id}/explorer/opcua/node", h.OPCUAExplorerNode("export"))
+	r.Get("/export/connections/{id}/explorer/opcua/watch", h.OPCUAExplorerWatch("export"))
+	r.Post("/export/connections/{id}/explorer/opcua/write", h.OPCUAExplorerWrite("export"))
+	for _, dir := range []string{"import", "export"} {
+		r.Get("/"+dir+"/connections/{id}/explorer/modbus/range", h.ModbusExplorerRange(dir))
+		r.Get("/"+dir+"/connections/{id}/explorer/modbus/watch", h.ModbusExplorerWatch(dir))
+		r.Post("/"+dir+"/connections/{id}/explorer/modbus/write", h.ModbusExplorerWrite(dir))
+	}
+	// TIA-Portal-Baustein „MQTT senden“ an einer MQTT-Verbindung (tia_block.go)
+	r.Get("/import/connections/{id}/tia", h.TIABlockPage)
+	r.Post("/import/connections/{id}/tia/check", h.TIABlockCheckWeb)
+	r.Post("/import/connections/{id}/tia/download", h.TIABlockDownload)
 	r.Get("/import/connections/{id}/broker", h.MqttBrokerPage)
+	r.Get("/import/connections/{id}/broker/checklist", h.MqttBrokerChecklist)
+	r.Post("/import/connections/{id}/broker/firewall", h.MqttBrokerFirewall)
 	r.Get("/import/connections/{id}/broker/stream", h.MqttBrokerStream)
 	r.Post("/import/connections/{id}/mappings", h.ImportMappingCreateWeb)
 	r.Post("/import/connections/{id}/mappings/{mappingId}/delete-web", h.ImportMappingDeleteWeb)
@@ -909,9 +1075,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/import/connections/{id}/browse/refresh", h.SQLRefreshValuesWeb)
 	r.Get("/import/connections/{id}/response", h.ImportResponsePage)
 	r.Post("/import/connections/{id}/response/refresh", h.ImportResponseRefreshWeb)
-	r.Get("/import/connections/{id}/read", h.ModbusReadPage)
 	r.Post("/import/connections/{id}/read/refresh", h.ModbusRefreshValuesWeb)
-	r.Get("/import/connections/{id}/nodes", h.OPCUABrowsePage)
 	r.Post("/import/connections/{id}/nodes/refresh", h.OPCUARefreshValuesWeb)
 	r.Get("/import/mappings", h.ImportMappingsOverviewPage)
 	// Verbindungsseiten (connection_detail.go)
@@ -931,11 +1095,17 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/export/connections/{id}/templates/{tid}/delete", h.ExportConnectionTemplateDeleteWeb)
 	r.Get("/export", h.ExportPage)
 	r.Post("/export/connections", h.ExportConnectionCreateWeb)
+	r.Post("/export/connections/fingerprint", h.MssqlFingerprintWeb("export"))
 	r.Post("/export/connections/{id}/edit-web", h.ExportConnectionEditWeb)
 	r.Post("/export/connections/{id}/delete-web", h.ExportConnectionDeleteWeb)
 	r.Post("/export/connections/{id}/toggle-web", h.ExportConnectionToggleWeb)
 	r.Get("/export/connections/{id}/preview", h.ExportPreviewPage)
 	r.Post("/export/connections/{id}/preview/run", h.ExportRunWeb)
+	// Efficio-Export (Energiedaten): Dateien, Protokoll, Verbindung testen (export_efficio.go)
+	r.Get("/export/connections/{id}/efficio", h.EfficioPage)
+	r.Get("/export/connections/{id}/efficio/files/{fileId}", h.EfficioDownload)
+	r.Post("/export/connections/{id}/efficio/run-web", h.EfficioRunWeb)
+	r.Post("/export/connections/{id}/efficio/test-web", h.EfficioTestWeb)
 	r.Post("/export/connections/{id}/mappings", h.ExportMappingCreateWeb)
 	r.Post("/export/connections/{id}/mappings/{mappingId}/delete-web", h.ExportMappingDeleteWeb)
 	r.Get("/export/templates", h.ExportTemplatesPage)
@@ -986,12 +1156,46 @@ func (h *Handler) render(w http.ResponseWriter, tmpl string, data interface{}) {
 		return
 	}
 	if _, err2 := t.ParseFiles("web/templates/" + tmpl + ".gohtml"); err2 != nil {
+		if renderStale(err2) {
+			renderUpdating(w)
+			return
+		}
 		http.Error(w, "Parse: "+err2.Error(), 500)
 		return
 	}
 	if err3 := t.ExecuteTemplate(w, "base.gohtml", data); err3 != nil {
+		if renderStale(err3) {
+			renderUpdating(w)
+			return
+		}
 		http.Error(w, "Template-Fehler: "+err3.Error(), 500)
 	}
+}
+
+// renderStale: Die Seitendatei auf der Platte ist neuer als das laufende Programm – sie
+// verlangt einen Baustein oder eine Funktion, die erst die neue Version kennt. Das gibt es
+// nur während eines Updates, zwischen dem Einspielen der Dateien und dem Neustart.
+func renderStale(err error) bool {
+	if err == nil {
+		return false
+	}
+	s := err.Error()
+	return strings.Contains(s, "no such template") || (strings.Contains(s, "function ") && strings.Contains(s, " not defined"))
+}
+
+// renderUpdating: kurze Seite statt eines Vorlagenfehlers; lädt sich nach 15 s neu.
+// html/template meldet einen fehlenden Baustein, bevor es etwas ausgibt.
+func renderUpdating(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Retry-After", "15")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusServiceUnavailable)
+	_, _ = w.Write([]byte(`<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="refresh" content="15"><title>PDH wird aktualisiert</title>
+<style>body{font-family:system-ui,sans-serif;margin:0;min-height:100vh;display:grid;place-items:center;background:#f5f6f7;color:#1d2d3e}
+div{max-width:420px;padding:24px;text-align:center}h1{font-size:19px;margin:0 0 8px}p{font-size:14px;margin:0;color:#556b82}
+@media (prefers-color-scheme:dark){body{background:#12171c;color:#eaecee}p{color:#a9b4be}}</style></head>
+<body><div role="status"><h1>Das PDH wird gerade aktualisiert</h1><p>Die Seite lädt in wenigen Sekunden von selbst neu. Deine gespeicherten Daten bleiben erhalten.</p></div></body></html>`))
 }
 
 func esc(s string) string {
@@ -1066,10 +1270,12 @@ func statusClass(s string) string {
 	switch s {
 	case "resolved", "closed", "done", "completed":
 		return "b-green"
-	case "in_progress", "active":
+	case "in_progress", "active", "running":
 		return "b-blue"
 	case "open", "detected", "pending":
 		return "b-amber"
+	case "fault": // Rüstzeit mit Störmeldung
+		return "b-red"
 	default:
 		return "b-gray"
 	}
@@ -1156,6 +1362,8 @@ func (h *Handler) baseData(r *http.Request, page, title, ctxTitle string) BaseDa
 		CanManageRoles:         h.rbac.HasPermissionForUser(u.ID, string(u.Role), "system.manage_roles"),
 		CanManageLeitstand:     h.rbac.HasPermissionForUser(u.ID, string(u.Role), permLeitstand),
 		CanImport:              h.rbac.HasPermissionForUser(u.ID, string(u.Role), "import.read"),
+		CanSync:                h.rbac.HasPermissionForUser(u.ID, string(u.Role), permSyncView),
+		CanDataNet:             h.rbac.HasPermissionForUser(u.ID, string(u.Role), permDataNetView),
 		CanExport:              h.rbac.HasPermissionForUser(u.ID, string(u.Role), "export.read"),
 		CanChat:                u.ID != "" && h.rbac.HasPermissionForUser(u.ID, string(u.Role), "chat.use"),
 		Brand:                  brand,
@@ -1169,6 +1377,7 @@ func (h *Handler) baseData(r *http.Request, page, title, ctxTitle string) BaseDa
 		CanTrainings:           h.rbac.HasPermissionForUser(u.ID, string(u.Role), trainingsPerm),
 		CanCostCenters:         h.rbac.HasPermissionForUser(u.ID, string(u.Role), "costcenters.manage") || h.rbac.HasPermissionForUser(u.ID, string(u.Role), "system.manage_roles"),
 		CanStatistics:          h.rbac.HasPermissionForUser(u.ID, string(u.Role), "statistics.view"),
+		CanEnergy:              h.rbac.HasPermissionForUser(u.ID, string(u.Role), permEnergyView) || h.rbac.HasPermissionForUser(u.ID, string(u.Role), permEnergyEdit),
 		TerminalInfraID:        h.terminalInfraID(r),
 		CanBackup:              h.rbac.HasPermissionForUser(u.ID, string(u.Role), "system.backup"),
 		CanPrinters:            h.rbac.HasPermissionForUser(u.ID, string(u.Role), "printers.manage"),
@@ -1178,6 +1387,7 @@ func (h *Handler) baseData(r *http.Request, page, title, ctxTitle string) BaseDa
 		CanServerConfig:        u.Role == users.RoleAdmin && h.rbac.HasPermissionForUser(u.ID, string(u.Role), "system.server_config"),
 		IsBroker:               h.isBroker(r.Context(), u.ID),
 	}
+	b.navCan = func(perm string) bool { return h.rbac.HasPermissionForUser(u.ID, string(u.Role), perm) } // Navigation: Einträge ohne Recht fehlen
 	b.Nav = buildNav(&b, h.userNavLayout(r.Context(), u.ID))
 	b.Mirror = h.mirrorBanner(r)
 	b.UserAvatar = h.userAvatarURL(r.Context(), u.ID)
@@ -1419,6 +1629,9 @@ func (h *Handler) RecordArchiveWeb(w http.ResponseWriter, r *http.Request) {
 		err = h.faults.QuickResolve(r.Context(), id, "Archiviert", "", u.ID)
 	default:
 		http.Error(w, "unbekannter datensatztyp", http.StatusBadRequest)
+		return
+	}
+	if writeRootCauseErr(w, err) {
 		return
 	}
 	if err != nil {
@@ -2313,6 +2526,7 @@ func (h *Handler) userByID(ctx context.Context, id string) (*users.User, error) 
 
 type FaultDetailData struct {
 	BaseData
+	SyncOrigin    *SyncOriginView // Herkunft aus einem Fremdsystem (sync_ops.go); nil = keine oder kein Recht
 	Fault         FaultDetailView
 	Analysis      *faults.CopilotAnalysis
 	TimeEntries   []*timetracking.TimeEntry
@@ -2441,6 +2655,7 @@ func (h *Handler) FaultDetail(w http.ResponseWriter, r *http.Request) {
 	}
 
 	_ = h.db.QueryRow(ctx, `SELECT ticket_pending FROM faults WHERE id = $1::uuid`, id).Scan(&data.Fault.TicketPending)
+	data.SyncOrigin = h.syncOrigin(r, extsync.RefFault, id)
 	h.render(w, "fault_detail", data)
 }
 
@@ -2494,6 +2709,7 @@ func (h *Handler) Shifts(w http.ResponseWriter, r *http.Request) {
 
 type TicketDetailData struct {
 	BaseData
+	SyncOrigin     *SyncOriginView // Herkunft aus einem Fremdsystem (sync_ops.go); nil = keine oder kein Recht
 	Ticket         TicketView
 	Comments       []CommentView
 	CommentCount   int
@@ -2552,6 +2768,8 @@ func (h *Handler) TicketDetail(w http.ResponseWriter, r *http.Request) {
 			CreatedAgo:       timeAgo(t.CreatedAt),
 			CostCenterNumber: t.CostCenterNumber,
 			CostCenterName:   t.CostCenterName,
+
+			RequiresRootCause: t.RequiresRootCause,
 		},
 		StatusOptions: []StatusOption{
 			{"open", "Offen"}, {"in_progress", "In Arbeit"}, {"pending", "Wartet"},
@@ -2599,6 +2817,7 @@ func (h *Handler) TicketDetail(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	data.SyncOrigin = h.syncOrigin(r, extsync.RefTicket, id)
 	h.render(w, "ticket_detail", data)
 }
 
@@ -2630,6 +2849,9 @@ func (h *Handler) TicketStatusWeb(w http.ResponseWriter, r *http.Request) {
 	u := getUser(r)
 	w.Header().Set("Content-Type", "text/html")
 	if err := h.tickets.UpdateStatus(r.Context(), id, status, u.ID); err != nil {
+		if writeRootCauseErr(w, err) {
+			return
+		}
 		fmt.Fprintf(w, `<span class="badge b-red" title="%s">Nicht möglich</span>`, esc(err.Error()))
 		return
 	}
@@ -2643,10 +2865,25 @@ func (h *Handler) TicketResolve(w http.ResponseWriter, r *http.Request) {
 	noPartsNeeded := r.FormValue("no_parts_needed") == "on"
 	w.Header().Set("Content-Type", "text/html")
 	if err := h.tickets.Resolve(r.Context(), id, r.FormValue("resolution"), r.FormValue("root_cause"), u.ID, noPartsNeeded); err != nil {
+		if writeRootCauseErr(w, err) {
+			return
+		}
 		fmt.Fprintf(w, `<div style="color:var(--red);padding:10px;text-align:center;font-size:13px">%s</div>`, esc(err.Error()))
 		return
 	}
 	fmt.Fprintf(w, `<div style="color:var(--green);padding:12px;text-align:center"><i class="ti ti-check"></i> Ticket gelöst! <a href="/tickets" style="color:var(--accent)">Zurück zur Liste</a></div>`)
+}
+
+// writeRootCauseErr meldet die fehlende Ursache eines Alarm-Tickets als
+// HTML-Fragment mit HTTP 400 (das Ticket bleibt offen). false: anderer Fehler.
+func writeRootCauseErr(w http.ResponseWriter, err error) bool {
+	if !errors.Is(err, tickets.ErrRootCauseRequired) {
+		return false
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusBadRequest)
+	fmt.Fprintf(w, `<div style="color:var(--red);padding:10px;font-size:13px"><i class="ti ti-alert-triangle"></i> %s</div>`, esc(err.Error()))
+	return true
 }
 
 func (h *Handler) TicketInfrastructureWeb(w http.ResponseWriter, r *http.Request) {
@@ -2843,6 +3080,13 @@ type ITPageData struct {
 	Assets []ITAssetView
 	Stats  map[string]int
 	Filter string
+	// NetFilter "offline": nur Assets mit Quelle, die offline sind (?net=offline).
+	NetFilter string
+	// NetCandidates: offene (nicht ausgeblendete) Vorschläge des Netz-Abgleichs.
+	NetCandidates int
+	// Types: aktive Kategorien für „Neues Asset“; Filters: aktive Kategorien mit Assets (Filterknöpfe).
+	Types   []ITTypeOption
+	Filters []ITTypeOption
 }
 
 type ITAssetView struct {
@@ -2860,6 +3104,12 @@ type ITAssetView struct {
 	Location     string
 	InfraName    string
 	Notes        string
+	// Netzabgleich: Abzeichen nur bei Assets mit Quelle.
+	NetSource      bool
+	NetStateLabel  string
+	NetStateClass  string
+	FirmwareUpdate bool
+	NetDetached    bool // „Quelle getrennt“
 }
 
 type ITDetailData struct {
@@ -2868,6 +3118,13 @@ type ITDetailData struct {
 	SupplierID string
 	Users      []UserOption
 	Asset      ITAssetDetailView
+	// Net: Karte „Netz“ (nil = Asset ohne Quelle); CanNetEdit: it.edit für diesen Datensatz.
+	Net         *ITNetDetailView
+	NetDetached bool // Quelle getrennt: statt der Karte „Wieder verbinden“
+	CanNetEdit  bool
+	// Types: Kategorien fürs Bearbeiten (aktive plus die ausgeblendete des Assets).
+	Types       []ITTypeOption
+	Notice, Err string
 }
 
 type ITAssetDetailView struct {
@@ -3298,6 +3555,10 @@ func (h *Handler) UserSaveWeb(w http.ResponseWriter, r *http.Request) {
 	if err := h.users.UpdateWithPassword(ctx, currentUser, password); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
+	}
+	// Administrator in Nextcloud: Das Kennzeichen setzen nur Administratoren (nextcloud_sync.go).
+	if h.actorIsAdmin(r) && r.FormValue("nextcloud_admin_shown") == "1" {
+		_, _ = h.db.Exec(ctx, `UPDATE users SET nextcloud_admin = $1 WHERE id = $2::uuid`, r.FormValue("nextcloud_admin") == "on", userID)
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -3976,9 +4237,10 @@ func (h *Handler) ITPage(w http.ResponseWriter, r *http.Request) {
 	data := ITPageData{
 		BaseData: h.baseData(r, "it", "IT-Infrastruktur", "Übersicht"),
 		Filter:   r.URL.Query().Get("type"), Stats: map[string]int{},
+		NetFilter: r.URL.Query().Get("net"),
 	}
-	typeLabels := map[string]string{"server": "Server", "network": "Netzwerk", "workstation": "Workstation", "printer": "Drucker", "phone": "Telefon", "tablet": "Tablet", "other": "Sonstiges"}
-	typeIcons := itTypeIcons()
+	cats, catByKey := h.itCategories(r.Context())
+	data.Types, data.Filters = itTypeOptions(cats, ""), itFilterOptions(cats)
 	statusLabels := map[string]string{"active": "Aktiv", "inactive": "Inaktiv", "maintenance": "Wartung", "retired": "Außer Dienst"}
 	statusClasses := map[string]string{"active": "b-green", "inactive": "b-gray", "maintenance": "b-amber", "retired": "b-red"}
 	if list, err := h.it.List(r.Context(), it.AssetType(data.Filter), ""); err == nil {
@@ -3987,9 +4249,15 @@ func (h *Handler) ITPage(w http.ResponseWriter, r *http.Request) {
 			if scopeIDs != nil && !scopeIDs[a.ID] {
 				continue
 			}
+			if data.NetFilter == "offline" && (a.NetSource == "" || a.NetDetached || a.NetState != "offline") {
+				continue
+			}
+			label, class := itNetStateBadge(a.NetState)
+			typeLabel, typeIcon := itCategoryLabelIcon(catByKey, string(a.Type))
 			data.Assets = append(data.Assets, ITAssetView{
+				NetSource: a.NetSource != "", NetDetached: a.NetDetached, NetStateLabel: label, NetStateClass: class, FirmwareUpdate: a.FirmwareUpdate,
 				ID: a.ID, Name: a.Name,
-				TypeLabel: typeLabels[string(a.Type)], TypeIcon: typeIcons[string(a.Type)],
+				TypeLabel: typeLabel, TypeIcon: typeIcon,
 				StatusLabel: statusLabels[string(a.Status)], StatusClass: statusClasses[string(a.Status)],
 				IPAddress: a.IPAddress, Hostname: a.Hostname,
 				Manufacturer: a.Manufacturer, Model: a.Model, SerialNo: a.SerialNo, Location: a.Location,
@@ -4000,6 +4268,7 @@ func (h *Handler) ITPage(w http.ResponseWriter, r *http.Request) {
 	if stats, err := h.it.GetStats(r.Context()); err == nil {
 		data.Stats = stats
 	}
+	data.NetCandidates = h.itNetOpenCandidates(r.Context())
 	h.render(w, "it", data)
 }
 
@@ -4013,17 +4282,24 @@ func (h *Handler) ITCreate(w http.ResponseWriter, r *http.Request) {
 		SerialNo: r.FormValue("serial_no"), Location: r.FormValue("location"),
 		OS: r.FormValue("os"), InfrastructureID: optionalID(r.FormValue("infrastructure_id")), Notes: r.FormValue("notes"),
 	}
-	a, err := h.it.Create(r.Context(), in, u.ID)
 	w.Header().Set("Content-Type", "text/html")
-	if err != nil {
-		fmt.Fprintf(w, "<tr><td>Fehler: %s</td></tr>", err.Error())
+	_, catByKey := h.itCategories(r.Context())
+	if !itCategoryUsable(catByKey, string(in.Type), "") {
+		fmt.Fprint(w, "<tr><td>Fehler: Bitte eine gültige Kategorie wählen.</td></tr>")
 		return
 	}
-	icons := itTypeIcons()
-	labels := map[string]string{"server": "Server", "network": "Netzwerk", "workstation": "Workstation", "printer": "Drucker", "phone": "Telefon", "tablet": "Tablet", "other": "Sonstiges"}
-	t := string(a.Type)
+	a, err := h.it.Create(r.Context(), in, u.ID)
+	if err != nil {
+		if errors.Is(err, it.ErrCategoryInvalid) {
+			fmt.Fprint(w, "<tr><td>Fehler: Bitte eine gültige Kategorie wählen.</td></tr>")
+			return
+		}
+		fmt.Fprintf(w, "<tr><td>Fehler: %s</td></tr>", esc(err.Error()))
+		return
+	}
+	label, icon := itCategoryLabelIcon(catByKey, string(a.Type))
 	fmt.Fprintf(w, "<tr><td><b>%s</b><div style=\"font-size:11px;color:var(--muted)\">%s</div><div style=\"font-size:11px;color:var(--muted)\">%s</div></td><td><i class=\"ti %s\"></i> %s</td><td>%s</td><td>%s</td><td><span class=\"badge b-green\">Aktiv</span></td></tr>",
-		esc(a.Name), esc(a.InfraName), esc(a.Notes), esc(icons[t]), esc(labels[t]), esc(a.IPAddress), esc(a.Location))
+		esc(a.Name), esc(a.InfraName), esc(a.Notes), esc(icon), esc(label), esc(a.IPAddress), esc(a.Location))
 }
 
 func (h *Handler) ITStatusWeb(w http.ResponseWriter, r *http.Request) {
@@ -4037,14 +4313,13 @@ func (h *Handler) ITStatusWeb(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, `<span class="badge %s">%s</span>`, statusClasses[string(status)], statusLabels[string(status)])
 }
 
-func itAssetDetailView(a *it.Asset) ITAssetDetailView {
-	typeLabels := map[string]string{"server": "Server", "network": "Netzwerk", "workstation": "Workstation", "printer": "Drucker", "phone": "Telefon", "tablet": "Tablet", "other": "Sonstiges"}
-	typeIcons := itTypeIcons()
+func itAssetDetailView(a *it.Asset, cats map[string]it.Category) ITAssetDetailView {
+	typeLabel, typeIcon := itCategoryLabelIcon(cats, string(a.Type))
 	statusLabels := map[string]string{"active": "Aktiv", "inactive": "Inaktiv", "maintenance": "Wartung", "retired": "Außer Dienst"}
 	statusClasses := map[string]string{"active": "b-green", "inactive": "b-gray", "maintenance": "b-amber", "retired": "b-red"}
 	v := ITAssetDetailView{
 		ID: a.ID, Name: a.Name, Type: string(a.Type),
-		TypeLabel: typeLabels[string(a.Type)], TypeIcon: typeIcons[string(a.Type)],
+		TypeLabel: typeLabel, TypeIcon: typeIcon,
 		Status: string(a.Status), StatusLabel: statusLabels[string(a.Status)], StatusClass: statusClasses[string(a.Status)],
 		Hostname: a.Hostname, IPAddress: a.IPAddress, MACAddress: a.MACAddress,
 		Manufacturer: a.Manufacturer, ManufacturerName: a.ManufacturerName, Model: a.Model, SerialNo: a.SerialNo,
@@ -4087,14 +4362,25 @@ func (h *Handler) ITDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	cats, catByKey := h.itCategories(ctx)
 	data := ITDetailData{
 		BaseData: h.baseData(r, "it", a.Name, "IT-Infrastruktur"),
 		Users:    h.userOptions(ctx),
-		Asset:    itAssetDetailView(a),
+		Asset:    itAssetDetailView(a, catByKey),
+		Types:    itTypeOptions(cats, string(a.Type)),
+		Notice:   itNetDetailNotices[r.URL.Query().Get("n")], Err: itNetDetailErrors[r.URL.Query().Get("e")],
 	}
 	data.Supplier = h.itSupplierLink(ctx, id)
 	if data.Supplier != nil {
 		data.SupplierID = data.Supplier.ID
+	}
+	if a.NetSource != "" {
+		if a.NetDetached {
+			data.NetDetached = true
+		} else {
+			data.Net = h.itNetDetail(ctx, a, catByKey)
+		}
+		data.CanNetEdit = h.itNetCan(r, "it.edit", a.ID)
 	}
 	h.render(w, "it_detail", data)
 }
@@ -4122,11 +4408,26 @@ func (h *Handler) ITEditWeb(w http.ResponseWriter, r *http.Request) {
 		InfrastructureID: optionalID(r.FormValue("infrastructure_id")),
 		Notes:            r.FormValue("notes"),
 	}
+	// Kategorie: aktiv, oder die bisherige des Assets (auch wenn inzwischen ausgeblendet).
+	current, err := h.it.GetByID(r.Context(), id)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	_, catByKey := h.itCategories(r.Context())
+	if !itCategoryUsable(catByKey, string(in.Type), string(current.Type)) {
+		http.Error(w, "Bitte eine gültige Kategorie wählen.", http.StatusBadRequest)
+		return
+	}
 	if err := h.saveITSupplier(r.Context(), r, id); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	if err := h.it.UpdateDetails(r.Context(), id, in); err != nil {
+		if errors.Is(err, it.ErrCategoryInvalid) {
+			http.Error(w, "Bitte eine gültige Kategorie wählen.", http.StatusBadRequest)
+			return
+		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

@@ -25,6 +25,8 @@ var recordDeptSource = map[string]struct {
 	"ticket": {"tickets", true}, "fault": {"faults", true}, "maintenance_task": {"maintenance_tasks", true},
 	"maintenance_plan": {"maintenance_plans", true}, "task": {"tasks", true}, "project": {"projects", true},
 	"it_asset": {"it_assets", false}, "kvp": {"kvp_ideas", false}, "part": {"spare_parts", false},
+	setupRef: {"setup_times", false},
+	meterRef: {"energy_meters", false},
 }
 
 // recordDepartments: Abteilungen eines Datensatzes (leer = keiner Abteilung
@@ -37,6 +39,8 @@ func (h *Handler) recordDepartments(ctx context.Context, refType, id string) []s
 	q := ""
 	if refType == "purchase_order" {
 		q = `SELECT department_id::text FROM purchase_orders WHERE id = $1::uuid AND department_id IS NOT NULL`
+	} else if refType == syncRef {
+		q = `SELECT department_id::text FROM sync_profiles WHERE id = $1::uuid AND department_id IS NOT NULL`
 	} else if refType == "infrastructure" {
 		q = `SELECT department_id::text FROM infrastructure_department WHERE infrastructure_id = $1::uuid`
 	} else if src, ok := recordDeptSource[refType]; ok {
@@ -92,8 +96,12 @@ func (h *Handler) hasPermRec(r *http.Request, perm, refType, id string) bool {
 // areaAdminPerm: Bereichsadministrator-Recht je Modul (Feldsätze/Stammdaten).
 var areaAdminPerm = map[string]string{
 	"ticket": "tickets.admin", "fault": "faults.admin", "maintenance_task": "maintenance.admin", "maintenance": "maintenance.admin",
-	"task": "tasks.admin", "project": "projects.admin", "kvp": "kvp.admin", "infrastructure": "infrastructure.admin",
+	"task": "tasks.admin", "project": "projects.admin", "kvp": "kvp.admin", "infrastructure": "infrastructure.admin", setupRef: permSetupAdmin, meterRef: permEnergyAdmin,
 	"part": "inventory.admin", "storage": "inventory.admin", "purchase_order": "procurement.admin", "business_partner": "directory.admin", "it_asset": "it.admin",
+	"certs":    permCertsAdmin,   // Zertifikate (Let's Encrypt): nur dieses Recht, nicht alle system.*
+	syncRef:    permSyncAdmin,    // Abgleich mit Fremdsystemen: Profile löschen
+	dataNetRef: permDataNetAdmin, // Datennetz: Clients endgültig entfernen
+	"snmp":     permSNMPAdmin,    // SNMP-Zugangsprofile: endgültig löschen
 }
 
 // isAreaAdmin: Bereichsadministrator für diesen Datensatz?
@@ -143,13 +151,48 @@ var gateRules = []gateRule{
 	gr("DELETE", "projects.admin", "project", false, apiV1+`/projects`+gID+gEnd),
 	gr(wPost, "maintenance.admin", "maintenance_task", false, `^/maintenance/tasks`+gID+`/delete-web$`),
 	gr(wPost, "kvp.admin", "kvp", false, `^/kvp`+gID+`/delete$`),
+	gr(wPost, permSetupAdmin, setupRef, false, `^/setup`+gID+`/delete-web$`),
+	gr(wPost, permEnergyAdmin, meterRef, false, `^/energy/meters`+gID+`/delete-web$`),
+	gr(wPost, permEnergyAdmin, "", false, `^/energy/thresholds`+gID+`/delete-web$`), // Datensatz (Anlage der Messstelle) prüft der Handler
 	gr("DELETE", "maintenance.admin", "", false, apiV1+`/maintenance/checklists`+gID+gEnd),
+	// ── Zertifikate (Let's Encrypt): Entfernen nur Bereichsadministrator, Full (strict) braucht Cloudflare ──
+	gr(wPost, permCertsAdmin, "", false, `^/admin/server-config/certs/remove$`),
+	gr(wPost, permCloudflare, "", false, `^/admin/server-config/certs/strict$`),
+	gr(wPost, permCloudflare, "", false, `^/admin/server-config/cloudflare/mtls-(?:off|on)$`),
+	gr(wPost, permCerts, "", false, `^/admin/server-config/certs/(?:settings|add|issue)$`),
+	gr(wPost, permUnifi, "", false, `^/admin/server-config/(?:unifi|unifi/confirm|certs/lan|certs/lan6)$`), // Reiter „UniFi“ und Namen im Haus
+	gr(wPost, permOmada, "", false, `^/admin/server-config/omada(?:/confirm|/check)?$`),                    // Reiter „Omada“
+	// Reiter „SNMP“: Profil löschen nur Bereichsadministrator, anlegen und ändern mit system.snmp
+	gr(wPost, permSNMPAdmin, "", false, `^/admin/server-config/snmp/profiles`+gID+`/delete$`),
+	gr(wPost, permSNMP, "", false, `^/admin/server-config/snmp/profiles(?:`+gID+`)?$`),
 	// ── Löschvormerkung von Stammdaten über die Schnittstelle ──
 	gr("DELETE", "inventory.edit", "part", false, `^(?:/api/v1)?/inventory`+gID+gEnd),
 	gr("DELETE", "inventory.edit", "storage", false, `^(?:/api/v1)?/storage`+gID+gEnd),
 	gr("DELETE", "directory.edit", "business_partner", false, `^(?:/api/v1)?/directory`+gID+gEnd),
 	gr("DELETE", "infrastructure.edit", "infrastructure", false, `^(?:/api/v1)?/infrastructure`+gID+gEnd),
 
+	// ── Verbindungen: Zertifikat der Fremddatenbank lesen (wie Verbindung bearbeiten) ──
+	gr(wPost, "import.write", "", false, `^/import/connections/fingerprint$`),
+	// Prüfliste des Brokers mit eigenem Namen (Zustände sieht, wer die Verbindung bearbeiten darf)
+	gr("GET", "import.write", "", false, `^/import/connections`+gID+`/broker/checklist$`),
+	// Ports des eingebauten Brokers in der Firewall des Servers öffnen (wer den Broker einrichtet)
+	gr(wPost, "import.write", "", false, `^/import/connections`+gID+`/broker/firewall$`),
+	gr(wPost, "export.write", "", false, `^/export/connections/fingerprint$`),
+	// ── Explorer: Testschreiben/Senden wie Verbindung bearbeiten (Erkunden selbst: import/export.execute im Handler) ──
+	gr(wPost, "import.write", "", false, `^/import/connections`+gID+`/explorer/(?:mqtt/publish|opcua/write|modbus/write)$`),
+	gr(wPost, "export.write", "", false, `^/export/connections`+gID+`/explorer/(?:mqtt/publish|opcua/write|modbus/write)$`),
+	// ── Abgleich mit Fremdsystemen: löschen nur Bereichsadministrator, einrichten mit sync.edit ──
+	gr(wPost, permSyncAdmin, syncRef, false, `^/sync`+gID+`/delete-web$`),
+	gr(wPost, permSyncEdit, syncRef, false, `^/sync`+gID+`/(?:source|target|maps|test-dry|test-write|interval)-web$`),
+	gr(wPost, permSyncRun, syncRef, false, `^/sync`+gID+`/(?:arm|pause|run)-web$`),
+	gr(wPost, permSyncRun, syncRef, false, `^/sync`+gID+`/outbox/[0-9]+/retry-web$`),
+	gr(wPost, permSyncEdit, "", false, `^/sync/new-web$`),
+	// ── Datennetz: entfernen nur Bereichsadministrator, anlegen und sperren mit datanet.edit ──
+	gr(wPost, permDataNetAdmin, dataNetRef, false, `^/datanet/clients`+gID+`/delete$`),
+	gr(wPost, permDataNetEdit, dataNetRef, false, `^/datanet/clients`+gID+`/revoke$`),
+	gr(wPost, permDataNetEdit, "", false, `^/datanet/clients$`),
+	gr(wPost, permDataNetAdmin, "", false, `^/datanet/settings$`),
+	gr(wPost, permDataNetAdmin, "", false, `^/datanet/check/fix$`),
 	// ── Störungen (Melden bleibt für alle offen) ──
 	gr(wPost, "faults.resolve", "fault", true, `^(?:/api/v1)?/faults`+gID+`/resolve$`),
 	gr(wPost, "faults.edit", "fault", true, `^/faults`+gID+`/(?:analyze|infrastructure-web)$`),
@@ -174,6 +217,17 @@ var gateRules = []gateRule{
 	// ── IT ──
 	gr(wPost, "it.edit", "", false, `^(?:/api/v1)?/it/?$`),
 	gr(wAll, "it.edit", "it_asset", true, `^(?:/api/v1)?/it`+gID+`/(?:edit-web|status-web|status)$`),
+	// Netz-Abgleich: einrichten und Vorschläge mit it.netsync, Schalter am Asset mit it.edit (Abteilung des Assets)
+	gr(wPost, permITNetsync, "", false, `^/it/net/(?:settings|run|candidates/adopt|candidates/ignore)$`),
+	gr(wPost, "it.edit", "it_asset", false, `^/it`+gID+`/net-(?:monitor|detach|reattach|grace)$`),
+	// SNMP-Geräteliste: pflegen, prüfen, ein-/ausschalten mit it.netsync; aus der Liste
+	// entfernen nur der Bereichsadministrator IT
+	gr(wPost, itNetPermAdmin, "", false, `^/it/net/snmp/targets`+gID+`/remove$`),
+	gr(wPost, permITNetsync, "", false, `^/it/net/snmp/targets(?:`+gID+`(?:/enabled|/check)?)?$`),
+	// IT-Kategorien: anlegen, ändern, aus-/einblenden mit it.categories (Einstellungen ohne Abteilung);
+	// endgültig löschen nur der Bereichsadministrator IT (nur unbenutzte Kategorien)
+	gr(wPost, itNetPermAdmin, "", false, `^/it/categories/[a-z0-9-]+/delete$`),
+	gr(wPost, permITCategories, "", false, `^/it/categories(?:/[a-z0-9-]+(?:/active)?)?$`),
 	// ── Lager und Lagerorte (Stammdaten) ──
 	gr(wPost, "inventory.create", "", false, `^(?:/api/v1)?/inventory/?$`),
 	gr(wPost, "inventory.edit", "", false, apiV1+`/inventory/(?:fields|field-sets)(?:/.*)?$`),
@@ -185,6 +239,20 @@ var gateRules = []gateRule{
 	// ── Hersteller & Lieferanten über die Schnittstelle ──
 	gr(wPost, "directory.edit", "", false, apiV1+`/directory/?$`),
 	gr(wPost, "directory.edit", "business_partner", false, apiV1+`/directory`+gID+gEnd),
+	// ── Energiedaten: Messstellen anlegen und ändern mit energy.edit (Anlage bzw. Datensatz prüft der Handler) ──
+	gr(wPost, permEnergyEdit, "", false, `^/energy/meters/save-web$`),
+	gr(wPost, permEnergyThresholds, meterRef, false, `^/energy/meters`+gID+`/thresholds/save-web$`),
+	gr(wPost, permEnergyAdmin, "", false, `^/energy/settings-web$`), // Einstellungen: nur Bereichsadministrator
+	// ── Rüstzeiten: anlegen, bearbeiten und beenden mit setup.edit (für den Datensatz in seiner Abteilung) ──
+	gr(wPost, permSetupEdit, "", false, `^/setup/?$`),
+	gr(wPost, permSetupEdit, setupRef, false, `^/setup`+gID+`/(?:edit|finish)-web$`),
+	gr(wPost, permSetupEdit, "", false, `^/core/settings/setup-web$`), // maximale Rüstzeit und Karenzzeit
+	// Katalog der Gründe und Rüsttasten (Stamm)
+	// (pflegen mit setup.edit, löschen nur setup.admin; Grund löschen = action=delete auf reasons-web, prüft der Handler)
+	gr(wPost, permSetupAdmin, "", false, `^/setup/buttons`+gID+`/delete-web$`),
+	gr(wPost, permSetupEdit, "", false, `^/setup/(?:reasons-web|buttons-web|buttons`+gID+`/move-web)$`),
+	// Zuordnung der Rüsttasten und Höchstdauer an der Anlage: Infrastruktur bearbeiten (in der Abteilung der Anlage)
+	gr(wPost, "infrastructure.edit", "infrastructure", false, `^/infrastructure`+gID+`/setup-(?:buttons|max)-web$`),
 	// ── Beteiligte, Gruppe, Archiv an beliebigen Vorgängen ──
 	gr(wPost, "edit", "*", true, `^/records/([a-z_]+)`+gID+`/(?:people|group|parties)(?:/.*)?$`),
 	gr(wPost, "done", "*", true, `^/records/([a-z_]+)`+gID+`/archive$`),
@@ -203,7 +271,7 @@ func (h *Handler) PermissionGateMiddleware(next http.Handler) http.Handler {
 		if hit {
 			if uid := h.requestActor(r); uid != "" && h.users != nil {
 				if u, err := h.users.GetByID(r.Context(), uid); err == nil && u != nil {
-					ok := h.rbac.HasPermissionForUser(u.ID, string(u.Role), perm)
+					ok := gatePermOK(perm, func(p string) bool { return h.rbac.HasPermissionForUser(u.ID, string(u.Role), p) })
 					if ok && id != "" {
 						ok = h.rbac.HasPermissionInDepartment(u.ID, string(u.Role), perm, h.recordDepartments(r.Context(), refType, id))
 					}
@@ -227,6 +295,26 @@ func (h *Handler) PermissionGateMiddleware(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// gateAltPerms: Rechte, die ein Gate-Recht ersetzen (eines von beiden genügt). Nur für
+// Regeln ohne Datensatz-ID – die Abteilungsprüfung danach gilt dem Gate-Recht.
+var gateAltPerms = map[string][]string{
+	permCerts: {permCertsAdmin}, // Bereichsadministrator der Zertifikate darf auch alles andere der Karte
+	permSNMP:  {permSNMPAdmin},  // ebenso: Bereichsadministrator der SNMP-Zugangsprofile
+}
+
+// gatePermOK: hat jemand das Gate-Recht oder eines seiner Ersatzrechte?
+func gatePermOK(perm string, has func(string) bool) bool {
+	if has(perm) {
+		return true
+	}
+	for _, alt := range gateAltPerms[perm] {
+		if has(alt) {
+			return true
+		}
+	}
+	return false
 }
 
 // matchGate: Regel, nötiges Recht, Datensatz-Typ und -ID für eine Schreib-Route.

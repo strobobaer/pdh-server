@@ -26,6 +26,9 @@ type ReadyObs struct {
 	MirrorSync         bool
 	LagBytes, LagLimit int64
 
+	// Datei-Spiegelung: eingeschaltet, und der Erstabgleich ist fertig.
+	MirrorOn, MirrorFirstDone bool
+
 	BackupConfigured, LastBaseOK, LastFilesOK bool
 
 	FreeSelf, FreePartner int64
@@ -77,6 +80,14 @@ func UpdateReady(o ReadyObs) (ok bool, reason string, hints []string) {
 	add(o.FreeSelf < UpdateMinFree, "Weniger als 2 GB frei auf diesem Server")
 	if partner {
 		add(o.FreePartner < UpdateMinFree, "Weniger als 2 GB frei auf dem Partner")
+	}
+	if duo {
+		// Im Erstabgleich fehlen dem Partner noch Dateien: kein Tausch. Ist die
+		// Spiegelung aus, hindert das nicht, der Anwender soll es aber wissen.
+		add(o.MirrorOn && !o.MirrorFirstDone, "Erstabgleich der Dateien läuft")
+		if !o.MirrorOn {
+			notes = append(notes, "Datei-Spiegelung ist aus: Dateien können nach dem Tausch fehlen")
+		}
 	}
 	if duo && o.WitnessExpected && !o.WitnessSeen {
 		notes = append(notes, "Zeuge nicht erreichbar")

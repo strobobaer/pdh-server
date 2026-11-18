@@ -151,11 +151,18 @@ Einrichtung virtuelle IP oder DNS-Skript ab.
 
 ## 9. Spiegelung (rsync)
 
-- Aktiv → passiv über SSH mit eigenem, auf rsync beschränktem Schlüssel.
+- Aktiv → passiv über den verschlüsselten Verbund-Kanal auf Port 7480 (TLS mit den
+  Knoten-Zertifikaten, `rsync -e "pdh-ha mirror-pipe …"`), nicht über SSH; der
+  Empfänger setzt Zielpfad und Papierkorb selbst und prüft die rsync-Optionen
+  (Teil 6, `2026-11-03-ausfallschutz-spiegelung-design.md` Abschnitt 4).
 - Intervall einstellbar (Standard 1 min), zusätzlich sofort nach Uploads.
 - Inhalt: Uploads, Chat-Dateien, `/etc/pdh` (ohne `/etc/pdh/ha/`), n8n-Daten,
   pgAdmin-/code-server-Einstellungen, nginx-Seiten, cloudflared-Konfiguration,
   Samba-Freigaben und -Benutzer.
+  Teil 6 setzt davon um: Uploads, Chat-Dateien, `/etc/pdh` (ohne `/ha/`) und mit
+  „Nextcloud mitnehmen“ Nextcloud, nginx und Zertifikate (Teil-Spec Abschnitt 3).
+  Die cloudflared-Konfiguration wird nie gespiegelt (das Token verteilt Teil 5);
+  n8n, pgAdmin, code-server und Samba folgen in späteren Schritten.
 - Papierkorb: gelöschte/überschriebene Dateien auf dem Ziel per `--backup-dir`,
   Aufbewahrung einstellbar (Standard 14 Tage).
 - Richtung folgt der Rolle; der neue aktive Knoten nimmt nichts mehr vom alten an
@@ -239,5 +246,8 @@ Oberfläche, Assistent und Handbuch wachsen mit jedem Teilprojekt mit.
 - Postgres-Hauptversion der Produktion (Ubuntu 22.04 = 14, 24.04 = 16) und
   Umgang mit gemischten Versionen.
 - Weitere Datenbanken im selben Postgres (z. B. Nextcloud) werden mitrepliziert –
-  gewollt; Nextcloud selbst ist nicht Teil der Umschaltung.
+  gewollt. Nextcloud gehört seit Teil 6 zur Umschaltung: Mit „Nextcloud mitnehmen“
+  werden ihre Dateien gespiegelt, und PHP-FPM, Cron und Certbot schalten mit der
+  Rolle um; Nextcloud selbst löst nie eine Umschaltung aus
+  (`2026-11-03-ausfallschutz-spiegelung-design.md` Abschnitt 6).
 - Speicherort und Format von n8n-Daten auf den Produktivservern.

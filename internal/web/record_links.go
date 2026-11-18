@@ -98,7 +98,7 @@ func (h *Handler) RecordLinksWeb(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	switch m.Key {
-	case "ticket", "fault", "task", "project", "maintenance_task", "part":
+	case "ticket", "fault", "task", "project", "maintenance_task", "part", setupRef:
 		add(h.linkInfra(ctx, m, id))
 	}
 	switch m.Key {
@@ -163,7 +163,7 @@ func (h *Handler) linkInfra(ctx context.Context, m fieldModule, id string) linkG
 // linkITAsset: zugeordnetes IT-Asset (QR-Infoseite, migrations/096).
 func (h *Handler) linkITAsset(ctx context.Context, m fieldModule, id string) linkGroup {
 	g := linkGroup{Title: "IT-Asset", Icon: "ti-device-desktop"}
-	g.Items = h.queryLinks(ctx, fmt.Sprintf(`SELECT a.name, COALESCE(NULLIF(a.hostname, ''), a.type::text), '/it/' || a.id, '', 'ti-device-desktop'
+	g.Items = h.queryLinks(ctx, fmt.Sprintf(`SELECT a.name, COALESCE(NULLIF(a.hostname, ''), (SELECT c.name FROM it_asset_categories c WHERE c.key = a.type), a.type), '/it/' || a.id, '', 'ti-device-desktop'
 		FROM it_assets a WHERE a.id = (SELECT it_asset_id FROM %s WHERE id = $1::uuid)`, m.Table), id)
 	return g
 }
@@ -175,6 +175,9 @@ func (h *Handler) linkRecords(ctx context.Context, module, id string) linkGroup 
 	const ticket = `SELECT 'Ticket: ' || t.title, to_char(t.created_at, 'DD.MM.YYYY'), '/tickets/' || t.id, t.status::text, 'ti-ticket' FROM tickets t`
 	const task = `SELECT 'Aufgabe: ' || a.title, COALESCE('fällig ' || to_char(a.due_date, 'DD.MM.YYYY'), ''), '/tasks/' || a.id, a.status, 'ti-checkbox' FROM tasks a`
 	const project = `SELECT 'Projekt: ' || p.name, COALESCE(to_char(p.start_date, 'DD.MM.YYYY') || ' – ' || to_char(p.end_date, 'DD.MM.YYYY'), ''), '/projects/' || p.id, p.status, 'ti-briefcase' FROM projects p`
+	// Rüstzeit: Titel, Status als Wort der Rüstzeit (nicht der gemeinsamen Tabelle statusLabel)
+	const setupRow = `SELECT 'Rüstzeit: ' || ` + setupTitleSQL + `, CASE s.status WHEN 'running' THEN 'läuft seit ' || to_char(s.started_at, 'DD.MM.YYYY HH24:MI')
+			WHEN 'fault' THEN 'Störung durch Rüsten' ELSE to_char(s.started_at, 'DD.MM.YYYY HH24:MI') END, '/setup/' || s.id, '', 'ti-arrows-exchange-2' FROM setup_times s`
 	var q string
 	switch module {
 	case "ticket":
@@ -182,7 +185,10 @@ func (h *Handler) linkRecords(ctx context.Context, module, id string) linkGroup 
 			UNION ` + task + ` WHERE a.id = (SELECT linked_task_id FROM tickets WHERE id = $1::uuid) OR a.linked_ticket_id = $1::uuid`
 	case "fault":
 		q = ticket + ` WHERE t.id = (SELECT linked_ticket_id FROM faults WHERE id = $1::uuid) OR t.linked_fault_id = $1::uuid
-			UNION ` + task + ` WHERE a.id = (SELECT linked_task_id FROM faults WHERE id = $1::uuid) OR a.linked_fault_id = $1::uuid`
+			UNION ` + task + ` WHERE a.id = (SELECT linked_task_id FROM faults WHERE id = $1::uuid) OR a.linked_fault_id = $1::uuid
+			UNION ` + setupRow + ` WHERE s.fault_id = $1::uuid`
+	case setupRef:
+		q = fault + ` WHERE f.id = (SELECT fault_id FROM setup_times WHERE id = $1::uuid)`
 	case "task":
 		q = project + ` WHERE p.id = (SELECT project_id FROM tasks WHERE id = $1::uuid)
 			UNION ` + fault + ` WHERE f.id = (SELECT linked_fault_id FROM tasks WHERE id = $1::uuid) OR f.linked_task_id = $1::uuid
@@ -199,7 +205,8 @@ func (h *Handler) linkRecords(ctx context.Context, module, id string) linkGroup 
 			UNION ALL ` + ticket + ` WHERE t.infrastructure_id = $1::uuid AND t.status NOT IN ('resolved', 'closed')
 			UNION ALL ` + task + ` WHERE a.infrastructure_id = $1::uuid AND a.status NOT IN ('resolved', 'closed')
 			UNION ALL SELECT 'Wartung: ' || m.title, 'fällig ' || to_char(m.due_date, 'DD.MM.YYYY'), '/maintenance/tasks/' || m.id, m.status::text, 'ti-tool'
-			FROM maintenance_tasks m WHERE m.infrastructure_id = $1::uuid AND m.status IN ('open', 'in_progress', 'pending')`
+			FROM maintenance_tasks m WHERE m.infrastructure_id = $1::uuid AND m.status IN ('open', 'in_progress', 'pending')
+			UNION ALL ` + setupRow + ` WHERE s.infrastructure_id = $1::uuid AND s.status = 'running' AND s.archived_at IS NULL`
 	default:
 		return g
 	}

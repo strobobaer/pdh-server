@@ -76,7 +76,7 @@ func i18nKeys(t *testing.T) map[string][]string {
 	for _, code := range []string{"low", "medium", "high", "critical"} {
 		add(severityWord(code), "severityWord")
 	}
-	for _, k := range []string{"Ticket", "Störung", "Aufgabe", "Wartung"} { // Arten in "Mir zugewiesen"
+	for _, k := range []string{"Ticket", "Störung", "Aufgabe", "Wartung", "Rüstzeit"} { // Arten in "Mir zugewiesen"
 		add(k, "listMine")
 	}
 	for _, g := range navDefaultGroups {

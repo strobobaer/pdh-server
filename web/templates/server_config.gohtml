@@ -58,6 +58,9 @@
   <a class="rec-tab" data-tab="branding" href="?tab=branding"><i class="ti ti-palette"></i> Erscheinungsbild</a>
   <a class="rec-tab" data-tab="passwords" href="?tab=passwords"><i class="ti ti-password"></i> Passwörter</a>
   <a class="rec-tab" data-tab="vpn" href="?tab=vpn"><i class="ti ti-shield-lock"></i> VPN{{if eq .VPN.Service.State "down"}}<span class="sc-dot bad" title="{{.VPN.Service.Label}}"></span>{{else if eq .VPN.Service.State "ok"}}<span class="sc-dot ok" title="läuft"></span>{{end}}</a>
+  {{if .Unifi.Can}}<a class="rec-tab" data-tab="unifi" href="?tab=unifi"><i class="ti ti-router"></i> UniFi{{if and .Unifi.Unifi.URL (not .Unifi.Unifi.Confirmed)}}<span class="sc-dot" style="background:var(--amber,#f59e0b)" title="Fingerabdruck noch nicht bestätigt"></span>{{else if .Unifi.Unifi.Confirmed}}<span class="sc-dot ok" title="angebunden"></span>{{end}}</a>{{end}}
+  {{if .Omada.Can}}<a class="rec-tab" data-tab="omada" href="?tab=omada"><i class="ti ti-access-point"></i> Omada{{if and .Omada.Omada.URL (not .Omada.Omada.Confirmed)}}<span class="sc-dot" style="background:var(--amber,#f59e0b)" title="Fingerabdruck noch nicht bestätigt"></span>{{else if .Omada.Omada.Ready}}<span class="sc-dot ok" title="angebunden"></span>{{end}}</a>{{end}}
+  {{if .SNMP.Can}}<a class="rec-tab" data-tab="snmp" href="?tab=snmp"><i class="ti ti-network"></i> SNMP{{if .SNMP.Profiles}}<span class="sc-dot ok" title="{{len .SNMP.Profiles}} Zugangsprofil(e)"></span>{{end}}</a>{{end}}
   <a class="rec-tab" data-tab="dr" href="?tab=dr"><i class="ti ti-shield-check"></i> Ausfallschutz</a>
   {{if .CanLogs}}<a class="rec-tab" href="/admin/server-config/logs" style="margin-left:auto"><i class="ti ti-file-analytics"></i> Protokoll ansehen</a>{{end}}
 </div>
@@ -133,9 +136,24 @@
   </div>
 </form>
 {{if and (eq .Key "cloudflare") $.CF}}{{template "sc-cloudflare" $.CF}}{{end}}
-{{if eq .Key "nextcloud"}}{{with $.NCAdmin}}
+{{if eq .Key "nextcloud"}}{{with $.NCSync}}
+<div class="card" id="nc-sync">
+  <div class="card-title"><span><i class="ti ti-arrows-exchange"></i> Abgleich mit Nextcloud</span><span class="sc-sub">{{if .On}}eingeschaltet – das PDH hat Vorrang{{else}}ausgeschaltet{{end}}</span></div>
+  <p class="sc-sub" style="margin:0 0 10px">Das PDH überträgt Benutzer, Rollen, Abteilungen und Gruppen nach Nextcloud – alle 30 Minuten und kurz nach jeder Änderung. Jeder aktive Benutzer bekommt ein Nextcloud-Konto, deaktivierte werden dort gesperrt. Name, E-Mail, Sprache und die PDH-Gruppen bestimmt allein das PDH; Änderungen in Nextcloud werden überschrieben. Administrator in Nextcloud ist, wer im PDH Administrator ist <b>und</b> in der Benutzerkarte den Haken „Administrator in Nextcloud“ hat. Freigegebene Netzlaufwerke erscheinen im Ordner „PDH-Laufwerke“.</p>
+  {{with .Last}}<div class="sc-sub" style="margin-bottom:8px"><i class="ti ti-clock"></i> Letzter Lauf {{.At}}: {{.People}} Personen, {{.Created}} Konten angelegt, {{.Changed}} geändert, {{.Disabled}} gesperrt, {{.Groups}} Gruppen, {{.Drives}} Laufwerke.</div>
+  {{range .Errors}}<div class="sc-sub" style="color:var(--red)"><i class="ti ti-alert-circle"></i> {{.}}</div>{{end}}
+  {{range .Notes}}<div class="sc-sub" style="color:var(--amber)"><i class="ti ti-info-circle"></i> {{.}}</div>{{end}}{{end}}
+  {{if not .Ready}}<p class="sc-sub" style="color:var(--amber)"><i class="ti ti-alert-triangle"></i> Zuerst Adresse, Benutzer und Passwort eintragen bzw. unten den PDH-Administrator einrichten.</p>{{end}}
+  {{if .CanManage}}<form method="post" action="/admin/server-config/nextcloud/sync" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+    {{if .On}}<button class="btn btn-primary btn-small" name="action" value="run" type="submit" {{if not .Ready}}disabled{{end}}><i class="ti ti-refresh"></i> Jetzt abgleichen</button>
+    <button class="btn btn-small" name="action" value="off" type="submit" onclick="return confirm('Abgleich ausschalten? Konten, Gruppen und Laufwerke in Nextcloud bleiben, wie sie sind.')"><i class="ti ti-player-pause"></i> Ausschalten</button>
+    {{else}}<button class="btn btn-primary btn-small" name="action" value="on" type="submit" {{if not .Ready}}disabled{{end}} onclick="return confirm('Abgleich einschalten? Das PDH legt für alle aktiven Benutzer Nextcloud-Konten an, setzt Namen, E-Mail und Gruppen und nimmt Personen ohne Kennzeichen die Administrator-Rechte in Nextcloud. PDH-Administratoren, die dort schon Administrator sind, bekommen das Kennzeichen von selbst.')"><i class="ti ti-player-play"></i> Einschalten</button>{{end}}
+  </form>{{else}}<p class="sc-sub">Einschalten und starten darf, wer das Recht „Nextcloud-Abgleich einstellen und starten“ hat.</p>{{end}}
+</div>
+{{end}}{{with $.NCAdmin}}
 <div class="card">
   <div class="card-title"><span><i class="ti ti-user-shield"></i> PDH-Administrator in Nextcloud</span><span class="sc-sub">{{if .Managed}}vom PDH verwaltet{{else}}noch nicht eingerichtet{{end}}</span></div>
+  {{if .AutoPending}}<p class="sc-sub" style="margin:0 0 10px"><i class="ti ti-clock"></i> Liegt Nextcloud auf diesem Server, richtet das PDH das Konto innerhalb von 15 Minuten selbst ein und trägt Adresse, Benutzer und Passwort oben ein.</p>{{end}}
   <p class="sc-sub" style="margin:0 0 10px">Ein eigenes Admin-Konto in Nextcloud, mit dem das PDH Konten anlegt, Dateien ablegt, Deck-Karten schreibt und das Erscheinungsbild überträgt. Das Passwort verwaltet das PDH: Es ist zufällig, steht verschlüsselt in den Server-Einstellungen und wird alle 6 Stunden geprüft – ändert es jemand in Nextcloud, setzt das PDH sein Passwort wieder durch.</p>
   {{if .Managed}}<div class="sc-sub" style="margin-bottom:8px"><i class="ti ti-user"></i> Konto <b>{{.User}}</b>{{if .Checked}} · zuletzt geprüft: {{.Checked}}{{end}}</div>{{end}}
   {{if .LastError}}<div class="sc-sub" style="margin-bottom:8px;color:var(--red)"><i class="ti ti-alert-circle"></i> Letzter Versuch: {{.LastError}}</div>{{end}}
@@ -147,6 +165,23 @@
     <button class="btn btn-small" name="action" value="release" type="submit" onclick="return confirm('Das PDH soll das Konto nicht mehr verwalten? Benutzer und Passwort bleiben, wie sie sind.')"><i class="ti ti-unlink"></i> Nicht mehr verwalten</button>{{end}}
   </form>
   <p class="sc-sub" style="margin:8px 0 0">Gilt in Nextcloud Zwei-Faktor-Pflicht für Admins, das Konto davon ausnehmen – das PDH meldet sich mit Benutzername und Passwort an.</p>
+</div>
+{{end}}{{with $.NCMail}}
+<div class="card">
+  <div class="card-title"><span><i class="ti ti-mail-forward"></i> Mailversand über das PDH</span><span class="sc-sub">{{if .On}}Mail-Brücke läuft auf {{.Addr}}{{else}}Mail-Brücke ist aus{{end}}</span></div>
+  <p class="sc-sub" style="margin:0 0 10px">Nextcloud verschickt seine Mails (neues Konto, Freigaben, „Passwort vergessen“, Benachrichtigungen) immer auf demselben Weg wie das PDH – auch über Microsoft 365, was Nextcloud selbst nicht kann. Dazu nimmt das PDH sie auf dem eigenen Rechner an ({{.Addr}}, nur lokal, mit Anmeldung) und gibt sie mit dem Versandweg weiter, der im Reiter E-Mail gerade gilt: <b>{{.Via}}</b>. Ändert sich dort etwas, gilt es sofort auch für Nextcloud.</p>
+  {{if .NoMail}}<p class="sc-sub" style="color:var(--amber)"><i class="ti ti-alert-triangle"></i> Erst Mailversand im PDH einrichten (Reiter E-Mail). Bis dahin nimmt die Brücke keine Mails an.</p>{{end}}
+  {{if .ListenError}}<p class="sc-sub" style="color:var(--red)"><i class="ti ti-alert-circle"></i> {{.ListenError}}</p>{{end}}
+  {{if and (not .On) (not .ListenError)}}<p class="sc-sub" style="color:var(--amber)"><i class="ti ti-alert-triangle"></i> Die Brücke ist aus. Im Reiter E-Mail muss bei „Mail-Brücke für Nextcloud“ eine lokale Adresse stehen (Standard 127.0.0.1:2525); danach das PDH neu starten.</p>{{end}}
+  {{if .AttachedAt}}<div class="sc-sub" style="margin-bottom:6px"><i class="ti ti-plug-connected"></i> Nextcloud ist angeschlossen – zuletzt angeschlossen: {{.AttachedAt}}</div>{{else}}<div class="sc-sub" style="margin-bottom:6px"><i class="ti ti-plug-x"></i> Noch nicht an Nextcloud angeschlossen. Das PDH macht das nach dem Start selbst, wenn Nextcloud auf diesem Server liegt.</div>{{end}}
+  {{if .LastOK}}<div class="sc-sub" style="margin-bottom:6px"><i class="ti ti-send"></i> Letzte weitergeleitete Mail: {{.LastOK}}</div>{{end}}
+  {{if .LastError}}<div class="sc-sub" style="margin-bottom:6px;color:var(--red)"><i class="ti ti-alert-circle"></i> Letzter Fehler bei der Weiterleitung: {{.LastError}}</div>{{end}}
+  {{if .AttachError}}<div class="sc-sub" style="margin-bottom:6px;color:var(--red)"><i class="ti ti-alert-circle"></i> Letzter Anschluss: {{.AttachError}}</div>{{end}}
+  {{if not .AgentReady}}<p class="sc-sub" style="color:var(--amber)"><i class="ti ti-alert-triangle"></i> Der Anschluss braucht den Update-Agenten und Nextcloud auf demselben Server.</p>{{end}}
+  <form method="post" action="/admin/server-config/nextcloud/mail" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+    <button class="btn btn-primary btn-small" type="submit" {{if or (not .On) .NoMail (not .AgentReady)}}disabled{{end}} onclick="return confirm('Nextcloud jetzt auf den Mailversand über das PDH einstellen? Bisherige Mail-Einstellungen in Nextcloud werden ersetzt.')"><i class="ti ti-plug"></i> Mailversand über das PDH einrichten</button>
+    <span class="sc-sub">Grenzen: 25 MB je Mail, 50 Empfänger, 300 Mails je Stunde.</span>
+  </form>
 </div>
 {{end}}{{with $.NCTheme}}
 <div class="card">
@@ -204,6 +239,21 @@
 <div class="rec-pane" data-pane="vpn">
 {{template "vpn-admin" .VPN}}
 </div>
+
+<!-- ── UniFi: Anbindung an die UDM Pro für die Namen im Haus (certs_lan.go, widgets/unifi.gohtml) ── -->
+{{if .Unifi.Can}}<div class="rec-pane" data-pane="unifi">
+{{template "unifi-panel" .Unifi}}
+</div>{{end}}
+
+<!-- ── Omada: Anbindung an den Omada-Controller für den Netz-Abgleich (omada_web.go, widgets/omada.gohtml) ── -->
+{{if .Omada.Can}}<div class="rec-pane" data-pane="omada">
+{{template "omada-panel" .Omada}}
+</div>{{end}}
+
+<!-- ── SNMP: Zugangsprofile für den Netz-Abgleich (snmp_web.go, widgets/snmp.gohtml) ── -->
+{{if .SNMP.Can}}<div class="rec-pane" data-pane="snmp">
+{{template "snmp-panel" .SNMP}}
+</div>{{end}}
 
 <!-- ── Ausfallschutz: Sicherung aufs Netzlaufwerk (dr.go, widgets/dr.gohtml) ── -->
 <div class="rec-pane" data-pane="dr">
@@ -437,6 +487,28 @@
 {{end}}
 
 {{define "sc-cloudflare"}}
+<div class="card" style="margin-top:12px" id="cf-api">
+  <div class="card-title"><span><i class="ti ti-world-cog"></i> DNS, Proxy und Tunnel-Ziele</span><span class="sc-sub">direkt bei Cloudflare</span></div>
+  <p class="sc-sub" style="margin:0 0 10px">Mit dem <b>API-Token</b> oben pflegt das PDH DNS-Einträge, den Proxy je Eintrag, die Verschlüsselung der Domain und die Ziele im Tunnel. Es ändert nichts von selbst – jede Änderung ist ein Knopf, und alle Administratoren bekommen eine Nachricht.</p>
+  {{if not .CanAPI}}<p class="sc-sub">Das darf, wer das Recht „Cloudflare verwalten (DNS, Proxy, Tunnel)“ hat.</p>
+  {{else if not .APITokenSet}}<p class="sc-sub" style="color:var(--amber)"><i class="ti ti-alert-triangle"></i> Zuerst oben den API-Token eintragen und speichern.</p>
+  {{else}}<div id="cf-panel"><button type="button" class="btn btn-primary btn-small" hx-get="/admin/server-config/cloudflare/panel" hx-target="#cf-panel" hx-disabled-elt="this"><i class="ti ti-cloud-download"></i> Stand von Cloudflare laden</button></div>{{end}}
+</div>
+<div class="card" style="margin-top:12px" id="cf-mtls">
+  <div class="card-title"><span><i class="ti ti-shield-lock"></i> Client-Zertifikate bei Cloudflare (mTLS)</span><span class="sc-sub">optional</span></div>
+  <p class="sc-sub" style="margin:0 0 6px">Ist mTLS bei Cloudflare für einen Namen an, verlangt Cloudflare von jedem Gerät ein Zertifikat, das Cloudflare selbst ausgestellt hat (seine „Managed CA“). Die Zertifikate des PDH kennt Cloudflare nicht – die Nextcloud-App auf dem Handy fragt dann über das Internet nach einem Zertifikat, das es nicht gibt.</p>
+  <p class="sc-sub" style="margin:0 0 10px">Ohne mTLS schützt von außen die Anmeldung; im Firmennetz gilt weiter die Zertifikatspflicht von nginx. Hier lässt sich mTLS je Name abschalten (und wieder einschalten). Das PDH ändert nur diese Namensliste, keine WAF-Regeln.</p>
+  {{if not .CanAPI}}<p class="sc-sub">Das darf, wer das Recht „Cloudflare verwalten (DNS, Proxy, Tunnel)“ hat.</p>
+  {{else if not .APITokenSet}}<p class="sc-sub" style="color:var(--amber)"><i class="ti ti-alert-triangle"></i> Zuerst oben den API-Token eintragen und speichern.</p>
+  {{else}}<div id="mtls-panel"><button type="button" class="btn btn-primary btn-small" hx-get="/admin/server-config/cloudflare/mtls" hx-target="#mtls-panel" hx-swap="outerHTML" hx-disabled-elt="this"><i class="ti ti-shield-lock"></i> mTLS-Stand laden</button></div>{{end}}
+</div>
+{{if .CanCerts}}<div class="card" style="margin-top:12px">
+  <div id="cert-panel">
+    <div class="card-title"><span><i class="ti ti-certificate"></i> Zertifikate (Let's Encrypt)</span><span class="sc-sub">optional</span></div>
+    <p class="sc-sub" style="margin:0 0 10px">Eigene Zertifikate für die Namen des PDH und der Nextcloud – geholt und erneuert vom PDH. Die Karte geht auch ohne API-Token auf, z. B. um einen Namen zu entfernen.</p>
+    <button type="button" class="btn btn-primary btn-small" hx-get="/admin/server-config/certs/panel" hx-target="#cert-panel" hx-swap="outerHTML" hx-disabled-elt="this"><i class="ti ti-certificate"></i> Zertifikate laden</button>
+  </div>
+</div>{{end}}
 <div class="card" style="margin-top:12px">
   <div class="card-title"><span><i class="ti ti-list-numbers"></i> Anleitung: Tunnel einrichten</span><span class="sc-sub">einmalig, ca. 10 Minuten</span></div>
   <ol class="sc-steps">

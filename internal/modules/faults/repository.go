@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -17,13 +18,27 @@ func NewRepository(db *pgxpool.Pool) *Repository {
 }
 
 func (r *Repository) Create(ctx context.Context, f *Fault) error {
+	return insertFault(ctx, r.db, f)
+}
+
+// CreateTx legt die Störung in einer laufenden Transaktion an (gleicher Befehl wie Create).
+func (r *Repository) CreateTx(ctx context.Context, tx pgx.Tx, f *Fault) error {
+	return insertFault(ctx, tx, f)
+}
+
+// rowQuerier ist Pool oder Transaktion.
+type rowQuerier interface {
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+}
+
+func insertFault(ctx context.Context, q rowQuerier, f *Fault) error {
 	symptoms, _ := json.Marshal(f.Symptoms)
 	query := `
 		INSERT INTO faults (id, title, description, symptoms, severity, status,
 			infrastructure_id, assigned_to, responsible_to, created_by, detected_at, due_date, cost_center_id)
 		VALUES (pdh_uuid_v7(), $1, $2, $3, $4, 'detected', $5, $6, $7, $8, NOW(), $9, $10)
 		RETURNING id, status, detected_at, created_at, updated_at`
-	return r.db.QueryRow(ctx, query,
+	return q.QueryRow(ctx, query,
 		f.Title, f.Description, symptoms, f.Severity,
 		f.InfrastructureID, f.AssignedTo, f.ResponsibleTo, f.CreatedBy, f.DueDate, f.CostCenterID,
 	).Scan(&f.ID, &f.Status, &f.DetectedAt, &f.CreatedAt, &f.UpdatedAt)

@@ -163,7 +163,7 @@
         <h3><i class="ti ti-message"></i> {{t "Was wurde gemacht?"}}</h3>
         <p class="hint">{{t "Kurz und konkret – erscheint als Maßnahme im Verlauf."}}</p>
         <textarea data-suggest="resolution" class="form-input" id="cw-comment" rows="5" maxlength="4000" placeholder="{{t "z. B. Lichtschranke gereinigt und neu justiert, Funktionstest OK"}}"></textarea>
-        <div id="cw-cause-box" style="margin-top:10px"><label class="form-label">{{t "Ursache (optional)"}}</label><input data-suggest="cause" class="form-input" id="cw-cause" maxlength="500" placeholder="{{t "z. B. Verschmutzung durch Kühlschmierstoff"}}"></div>
+        <div id="cw-cause-box" style="margin-top:10px"><label class="form-label" id="cw-cause-label" for="cw-cause">{{t "Ursache (optional)"}}</label><input data-suggest="cause" class="form-input" id="cw-cause" maxlength="500" placeholder="{{t "z. B. Verschmutzung durch Kühlschmierstoff"}}"></div>
       </div>
       <!-- 5 Abschluss -->
       <div class="cw-pane" data-step="4">
@@ -228,6 +228,9 @@
     $('cw-label').textContent = F({{t "%s abschließen"}}, i.Label);
     $('cw-sub').textContent = S.who ? F({{t "%s · Fertigmeldung von %s"}}, i.Title, S.who) : i.Title;
     $('cw-cause-box').style.display = i.root_cause ? '' : 'none';
+    // Alarm-Ticket: Ursache ist Pflicht zum Abschließen
+    $('cw-cause-label').textContent = i.root_cause_required ? {{t "Ursache (Pflicht bei Alarm-Tickets)"}} : {{t "Ursache (optional)"}};
+    $('cw-cause').required = !!i.root_cause_required;
     $('cw-start').value = i.suggest_start;
     $('cw-booked').innerHTML = i.booked_min > 0 ? '<i class="ti ti-history"></i> ' + F({{t "Von dir bereits erfasst: %s – weitere Zeit ist optional."}}, '<b>' + hm(i.booked_min) + '</b>') : '<i class="ti ti-info-circle"></i> ' + {{t "Für diesen Vorgang hast du noch keine Zeit erfasst."}};
     if(i.running_since){
@@ -526,6 +529,7 @@
       if(bad >= 0){ S.ck.idx = bad; show(-1); msg('err', ckError(S.ck.items[bad])); return; }
     }
     for(let s = 0; s < 4; s++){ const err = check(s); if(err && !(s === 0 && !finish)){ show(s); msg('err', err); return; } }
+    if(finish && S.info.root_cause_required && !$('cw-cause').value.trim()){ show(3); msg('err', {{t "Bitte beschreiben, warum der Alarm kam (Feld Ursache)."}}); $('cw-cause').focus(); return; }
     S.busy = true; $('cw-finish').disabled = true; $('cw-more').disabled = true; msg('', {{t "Speichere…"}});
     const body = {no_parts: $('cw-noparts').checked, start: $('cw-start').value, minutes: S.info.running_since ? 0 : (+$('cw-min').value || 0),
       colleagues: picked(), comment: $('cw-comment').value, root_cause: $('cw-cause').value, finish};

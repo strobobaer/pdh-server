@@ -23,27 +23,25 @@ type ImportMappingOverviewView struct {
 	LastValue           string
 	LastReceivedAt      string
 	CreatedAt           string
+	Silent              bool   // Heartbeat bleibt aus
+	SilentSince         string // „seit …“ bzw. „noch kein Heartbeat“
 }
 
-// importConnectionDetailPath liefert das Detailseiten-Segment der
-// jeweiligen Konnektor-Art - dasselbe Muster wie der returnPath-Switch in
-// ImportMappingDeleteWeb (import_mappings.go).
+// importConnectionDetailPath liefert das Ziel hinter der Verbindungsadresse
+// ("/connections/{id}" + Ergebnis) je Konnektor-Art: ein Seitenpfad mit "/" oder
+// "?tab=explorer" für Verbindungen mit Explorer.
 func importConnectionDetailPath(kind string) string {
 	switch {
-	case kind == "mqtt":
-		return "sniffer"
+	case explorerKindSupported("import", kind):
+		return "?tab=explorer"
 	case kind == "excel", kind == "csv":
-		return "preview"
+		return "/preview"
 	case sqlBrowsableKind(kind):
-		return "browse"
+		return "/browse"
 	case webBrowsableKind(kind):
-		return "response"
-	case kind == "modbus":
-		return "read"
-	case kind == "opcua":
-		return "nodes"
+		return "/response"
 	default:
-		return "sniffer"
+		return "?tab=mappings"
 	}
 }
 
@@ -77,7 +75,8 @@ func (h *Handler) allImportMappings(ctx context.Context) ([]ImportMappingOvervie
 		)
 		SELECT m.id::text, m.connection_id::text, c.name, c.kind, m.source_ref, COALESCE(t.path, ''), m.name, m.note,
 		       COALESCE(m.last_value, ''), COALESCE(to_char(m.last_received_at, 'DD.MM.YYYY HH24:MI:SS'), ''),
-		       to_char(m.created_at, 'DD.MM.YYYY HH24:MI')
+		       to_char(m.created_at, 'DD.MM.YYYY HH24:MI'),
+		       COALESCE(`+heartbeatSilentSQL+`, false)
 		FROM import_mappings m
 		JOIN import_export_connections c ON c.id = m.connection_id
 		LEFT JOIN tree t ON t.id = m.infrastructure_id
@@ -91,8 +90,11 @@ func (h *Handler) allImportMappings(ctx context.Context) ([]ImportMappingOvervie
 		var v ImportMappingOverviewView
 		var kind string
 		if err := rows.Scan(&v.ID, &v.ConnectionID, &v.ConnectionName, &kind, &v.SourceRef, &v.InfrastructureName, &v.Name, &v.Note,
-			&v.LastValue, &v.LastReceivedAt, &v.CreatedAt); err != nil {
+			&v.LastValue, &v.LastReceivedAt, &v.CreatedAt, &v.Silent); err != nil {
 			return nil, err
+		}
+		if v.Silent {
+			v.SilentSince = silentSinceText(v.LastReceivedAt)
 		}
 		v.ConnectionKindLabel = connectionKindLabel("import", kind)
 		v.ConnectionPath = importConnectionDetailPath(kind)

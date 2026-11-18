@@ -9,6 +9,8 @@ pg_ctlcluster "$ver" main start || echo "PostgreSQL startet nicht (wird ggf. von
 cf=${PDH_HA_COMMIT_FILE:-/var/lib/pdh-lab/commit}
 mkdir -p "$(dirname "$cf")"
 [[ -s "$cf" ]] || echo lab0 >"$cf"
+# Nextcloud-Attrappe: nach dem Hochfahren läuft nichts, bis pdh-ha sie startet
+rm -f /run/nc-dummy.running
 socat "TCP-LISTEN:${PDH_SERVER_PORT:-8090},bind=127.0.0.1,reuseaddr,fork" EXEC:"/usr/local/bin/pdh-dummy http" &
 run_args=()
 [[ -n "${PDH_HA_VERSION_OVERRIDE:-}" ]] && run_args+=(--version-override "$PDH_HA_VERSION_OVERRIDE")

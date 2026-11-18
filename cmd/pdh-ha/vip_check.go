@@ -655,6 +655,25 @@ type accessUpdate struct {
 	VIP     *string `json:"vip"`
 	VIPOn   *bool   `json:"vip_on"`
 	HooksOn *bool   `json:"hooks_on"`
+	// VIP6Suffix: Ende der IPv6-Adresse; "" löscht
+	VIP6Suffix *string `json:"vip6_suffix"`
+}
+
+var errVIP6Version = errors.New("Das IPv6-Ende lässt sich erst setzen, wenn beide Server dieselbe Version haben.")
+
+// serversSameVersionLocked: jeder andere Server (Art node) ist gesehen und meldet
+// dieselbe Version wie dieser (wie die Warnung „Versionen unterschiedlich“).
+func (d *daemon) serversSameVersionLocked() bool {
+	for _, n := range d.cl.Nodes {
+		if n.Kind != "node" || n.ID == d.node.ID {
+			continue
+		}
+		v := d.views[n.ID]
+		if !v.seen() || v.Last.Ver != d.version {
+			return false
+		}
+	}
+	return true
 }
 
 func onOff(b bool) string {
@@ -688,9 +707,23 @@ func (d *daemon) updateAccess(u accessUpdate) error {
 	if u.HooksOn != nil {
 		a.HooksOn = *u.HooksOn
 	}
+	if u.VIP6Suffix != nil {
+		a.VIP6Suffix = strings.TrimSpace(*u.VIP6Suffix)
+	} else if u.VIPOn != nil && !*u.VIPOn {
+		// Adresse aus ohne Angabe zum Ende (pdh-ha access --vip-off, ältere
+		// Oberfläche, Skripte): das Ende gilt nur mit eingeschalteter Adresse.
+		a.VIP6Suffix = ""
+	}
 	if err := validateAccess(d.cl, a); err != nil {
 		d.unlock()
 		return err
+	}
+	// Ein neues Ende erst, wenn alle Server dieselbe Version melden: ein Server
+	// mit älterer Version kennt das Feld nicht und verteilt die Knotenliste ohne
+	// es weiter. Leeren geht immer.
+	if a.VIP6Suffix != "" && a.VIP6Suffix != old.VIP6Suffix && !d.serversSameVersionLocked() {
+		d.unlock()
+		return errVIP6Version
 	}
 	if a.VIP != "" {
 		p, _ := parseVIP(a.VIP) // von validateAccess geprüft
@@ -711,7 +744,7 @@ func (d *daemon) updateAccess(u accessUpdate) error {
 			}
 		}
 	}
-	if a.VIP == old.VIP && a.VIPOn == old.VIPOn && a.HooksOn == old.HooksOn {
+	if a.VIP == old.VIP && a.VIPOn == old.VIPOn && a.HooksOn == old.HooksOn && a.VIP6Suffix == old.VIP6Suffix {
 		d.unlock()
 		return nil
 	}

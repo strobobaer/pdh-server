@@ -35,7 +35,7 @@ const (
 
 // passwordResetBaseURL: oeffentliche Adresse fuer den Link ("" = nicht eingerichtet).
 func (h *Handler) passwordResetBaseURL() string {
-	return strings.TrimRight(strings.TrimSpace(h.mailCfg.PublicURL), "/")
+	return strings.TrimRight(strings.TrimSpace(h.mailConfig().PublicURL), "/")
 }
 
 func (h *Handler) passwordResetAvailable() bool {

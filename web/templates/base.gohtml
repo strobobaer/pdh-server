@@ -110,6 +110,10 @@ html.pdh-embedded .main{padding:14px}
 .rec-row:last-child{border:0}
 .rec-row .grow{flex:1;min-width:0}
 .rec-sub{font-size:11px;color:var(--muted)}
+.pki-enforce{border:1px solid var(--border);border-left:4px solid var(--muted);background:var(--bg2);border-radius:8px;padding:9px 12px;font-size:12px;margin:0 0 12px}
+.pki-enforce.ok{border-left-color:var(--green)}.pki-enforce.ok>b{color:var(--green)}
+.pki-enforce.warn{border-left-color:var(--amber)}.pki-enforce.warn>b{color:var(--amber)}
+.pki-enforce pre{margin:4px 0 0;padding:6px 8px;background:var(--bg3);border-radius:6px;white-space:pre-wrap;word-break:break-all;user-select:all;font-size:12px}
 .rec-msg{font-size:12px;padding:8px 12px;border-radius:8px;margin-bottom:12px}
 .rec-msg.ok{background:rgba(16,185,129,.12);color:var(--green)}
 .rec-msg.err{background:rgba(239,68,68,.12);color:var(--red)}
@@ -287,6 +291,13 @@ html.ctx-chat-open:not(.sidebar-right-collapsed){--right-sidebar-w:max(380px, va
 .sc-mention{color:var(--accent)}
 .sc-card{display:flex;align-items:center;gap:6px;margin-top:3px;font-size:11.5px;border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:7px;padding:4px 8px;background:var(--bg2);text-align:left}
 .sc-time{font-size:9.5px;color:var(--muted);margin-top:1px}
+.sc-msg{position:relative}
+.sc-del{display:none;position:absolute;top:-8px;right:0;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:3px 6px;font-size:13px;line-height:1;color:var(--text);cursor:pointer;box-shadow:var(--shadow-card);z-index:2}
+.sc-msg.mine .sc-del{right:auto;left:0}
+.sc-del:hover{background:var(--bg3);color:var(--red)}
+.sc-msg.act .sc-del{display:block}
+@media (hover:hover){.sc-msg:hover .sc-del{display:block}}
+@media (hover:none){.sc-del{padding:7px 10px;font-size:16px}}
 .sc-sys{align-self:center;font-size:10.5px;color:var(--muted);margin:6px 0;text-align:center}
 .sc-compose{display:flex;gap:6px;align-items:flex-end;padding:8px 10px;border-top:1px solid var(--border)}
 .sc-compose textarea{flex:1;resize:none;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font);font-size:12.5px;padding:6px 8px;max-height:120px}
@@ -2619,7 +2630,7 @@ function pdhShareToChat(){
   if(document.documentElement.classList.contains('pdh-embedded') || !window.EventSource) return;
   const $ = id => document.getElementById(id);
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  const S = {me: null, users: {}, convs: {}, teams: {}, current: null, msgs: [], loaded: false};
+  const S = {me: null, users: {}, convs: {}, teams: {}, current: null, msgs: [], loaded: false, isAdmin: false, actId: null};
   const COLORS = ['#4f6ef7','#10b981','#f59e0b','#ef4444','#7c3aed','#0ea5e9','#ec4899','#14b8a6'];
   const color = id => { let h = 0; for(const c of String(id)) h = (h*31 + c.charCodeAt(0)) >>> 0; return COLORS[h % COLORS.length]; };
   const userName = id => (S.users[id] && S.users[id].name) || 'Unbekannt';
@@ -2680,7 +2691,7 @@ function pdhShareToChat(){
   // ── Laden ──
   async function bootstrap(){
     const d = await api('GET', '/chat/api/bootstrap');
-    S.me = d.me; S.users = {}; d.users.forEach(function(u){ S.users[u.id] = u; });
+    S.me = d.me; S.isAdmin = !!d.is_admin; S.users = {}; d.users.forEach(function(u){ S.users[u.id] = u; });
     S.teams = {}; (d.teams || []).forEach(function(t){ S.teams[t.id] = t.name; });
     S.convs = {}; d.conversations.forEach(function(c){ S.convs[c.id] = c; });
     S.loaded = true;
@@ -2742,13 +2753,26 @@ function pdhShareToChat(){
         return '<a class="sc-card" href="' + f.url + '" target="_blank" rel="noopener"><i class="ti ' + (f.is_image ? 'ti-photo' : 'ti-file') + '"></i> ' + esc(f.name) + '</a>';
       }).join('');
       let bubble = '';
-      if(m.deleted) bubble = '<div class="sc-bubble" style="font-style:italic;opacity:.6">gelöscht</div>';
+      if(m.deleted) bubble = '<div class="sc-bubble" style="font-style:italic;opacity:.6">Nachricht gelöscht</div>';
       else if(m.body) bubble = '<div class="sc-bubble">' + renderBody(m) + '</div>';
       const au = S.users[m.user_id];
       const who = mine ? '' : '<div class="sc-who">' + (au && au.avatar ? '<img class="sc-who-av" src="' + esc(au.avatar) + '" alt=""> ' : '') + esc(userName(m.user_id)) + (m.parent_id ? ' <i class="ti ti-arrow-back-up"></i>' : '') + '</div>';
-      return '<div class="sc-msg' + (mine ? ' mine' : '') + '">' + who + bubble + links + files + '<div class="sc-time">' + time(m.created_at) + '</div></div>';
+      const canDel = !m.deleted && (mine || S.isAdmin);
+      const del = canDel ? '<button type="button" class="sc-del" data-del="' + esc(m.id) + '" title="Nachricht löschen" aria-label="Nachricht löschen"><i class="ti ti-trash"></i></button>' : '';
+      return '<div class="sc-msg' + (mine ? ' mine' : '') + (canDel && S.actId === m.id ? ' act' : '') + '" data-mid="' + esc(m.id) + '">' + del + who + bubble + links + files + '<div class="sc-time">' + time(m.created_at) + '</div></div>';
     }).join('') || '<div class="sc-empty">Noch keine Nachrichten</div>';
     box.scrollTop = box.scrollHeight;
+  }
+
+  async function delMsg(id){
+    if(!confirm('Nachricht löschen?')) return;
+    try {
+      const m = await api('POST', '/chat/api/messages/' + encodeURIComponent(id) + '/delete');
+      S.actId = null;
+      const i = S.msgs.findIndex(function(x){ return x.id === id; });
+      if(i >= 0 && m) S.msgs[i] = m; else if(i >= 0) S.msgs[i].deleted = true;
+      renderMsgs();
+    } catch(e){ alert(e.message); }
   }
 
   let readTimer = null;
@@ -2809,7 +2833,17 @@ function pdhShareToChat(){
   document.addEventListener('DOMContentLoaded', function(){
     if(!$('sc-body')) return;
     $('sc-back').onclick = renderList;
-    $('sc-body').addEventListener('click', function(e){ const it = e.target.closest('[data-conv]'); if(it) openConv(it.dataset.conv); });
+    $('sc-body').addEventListener('click', function(e){
+      const it = e.target.closest('[data-conv]'); if(it){ openConv(it.dataset.conv); return; }
+      const db = e.target.closest('[data-del]');
+      if(db){ delMsg(db.dataset.del); return; }
+      if(e.target.closest('a, button, img')) return;
+      // Touch: Antippen einer Nachricht zeigt/versteckt den Papierkorb, Antippen woanders schließt ihn
+      const el = e.target.closest('.sc-msg[data-mid]');
+      const prev = $('sc-body').querySelector('.sc-msg.act');
+      if(prev) prev.classList.remove('act');
+      if(el && el.querySelector('.sc-del') && S.actId !== el.dataset.mid){ S.actId = el.dataset.mid; el.classList.add('act'); } else S.actId = null;
+    });
     $('sc-send').onclick = send;
     $('sc-input').addEventListener('keydown', function(e){ if(e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); send(); } });
     bootstrap().catch(function(){});

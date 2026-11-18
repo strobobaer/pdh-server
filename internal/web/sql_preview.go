@@ -2,9 +2,10 @@ package web
 
 import (
 	"context"
+	"crypto/tls"
 	"database/sql"
-	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -13,6 +14,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	mysqldriver "github.com/go-sql-driver/mysql"
 	_ "github.com/microsoft/go-mssqldb"
+	"github.com/microsoft/go-mssqldb/msdsn"
 	"github.com/rs/zerolog/log"
 	_ "modernc.org/sqlite"
 )
@@ -119,30 +121,53 @@ func openSqliteDBWritable(path string) (*sql.DB, error) {
 	return db, nil
 }
 
-func openMysqlDB(config map[string]string) (*sql.DB, error) {
-	host := strings.TrimSpace(config["host"])
-	if host == "" {
+// mysqlConfig baut die Treiber-Konfiguration. Über das Datennetz ist Addr die
+// lokale Brücke; das Zertifikat wird weiter gegen den eingetragenen Host geprüft.
+func mysqlConfig(config map[string]string) (*mysqldriver.Config, error) {
+	if strings.TrimSpace(config["host"]) == "" {
 		return nil, fmt.Errorf("kein Host konfiguriert")
 	}
-	port := firstNonEmpty(strings.TrimSpace(config["port"]), "3306")
-
+	host, port, tlsName, err := connDialTarget(config, "3306")
+	if err != nil {
+		return nil, err
+	}
 	cfg := mysqldriver.NewConfig()
 	cfg.Net = "tcp"
-	cfg.Addr = host + ":" + port
+	// „[::1]“ schon in Klammern eingetragen: JoinHostPort setzt sie selbst
+	host = strings.TrimSuffix(strings.TrimPrefix(host, "["), "]")
+	tlsName = strings.TrimSuffix(strings.TrimPrefix(tlsName, "["), "]")
+	cfg.Addr = net.JoinHostPort(host, port)
 	cfg.DBName = strings.TrimSpace(config["database"])
 	cfg.User = config["username"]
 	cfg.Passwd = config["password"]
 	cfg.ParseTime = true
 	if config["use_tls"] == "true" {
-		cfg.TLSConfig = "true"
+		cfg.TLS = &tls.Config{ServerName: tlsName}
 	}
+	if parseConnRoute(config).Remote() {
+		cfg.Timeout = connQueryTimeout(config)
+	}
+	return cfg, nil
+}
 
-	db, err := sql.Open("mysql", cfg.FormatDSN())
+func openMysqlDB(config map[string]string) (*sql.DB, error) {
+	cfg, err := mysqlConfig(config)
+	if err != nil {
+		return nil, err
+	}
+	connector, err := mysqldriver.NewConnector(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("Verbindung fehlgeschlagen: %w", err)
 	}
+	db := sql.OpenDB(connector)
 	db.SetConnMaxLifetime(5 * time.Minute)
-	if err := db.PingContext(context.Background()); err != nil {
+	ctx := context.Background()
+	if parseConnRoute(config).Remote() {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, connQueryTimeout(config))
+		defer cancel()
+	}
+	if err := db.PingContext(ctx); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("Verbindung fehlgeschlagen: %w", err)
 	}
@@ -150,15 +175,33 @@ func openMysqlDB(config map[string]string) (*sql.DB, error) {
 }
 
 func openMssqlDB(config map[string]string) (*sql.DB, error) {
+	return mssqlOpen(config)
+}
+
+// mssqlParse baut aus der Verbindungskonfiguration die Treiber-Konfiguration.
+// forceTLS: Verschlüsselung erzwingen (zum Lesen des Zertifikats).
+func mssqlParse(config map[string]string, forceTLS bool) (msdsn.Config, error) {
 	host := strings.TrimSpace(config["host"])
 	if host == "" {
-		return nil, fmt.Errorf("kein Host konfiguriert")
+		return msdsn.Config{}, fmt.Errorf("kein Host konfiguriert")
 	}
 	dsn := url.URL{
 		Scheme: "sqlserver",
 		User:   url.UserPassword(config["username"], config["password"]),
 	}
-	if instance := strings.TrimSpace(config["instance_name"]); instance != "" {
+	rt := parseConnRoute(config)
+	tlsName := host
+	if err := validateConnRoute("mssql", config); err != nil {
+		return msdsn.Config{}, err
+	}
+	if rt.ViaNet {
+		// Über die Brücke: immer Host und Port (der SQL-Server-Browser läuft nicht durch).
+		bh, bp, name, err := connDialTarget(config, "1433")
+		if err != nil {
+			return msdsn.Config{}, err
+		}
+		dsn.Host, tlsName = net.JoinHostPort(bh, bp), name
+	} else if instance := strings.TrimSpace(config["instance_name"]); instance != "" {
 		// Mit Instanzname ohne Port verbinden - der Treiber ermittelt den
 		// tatsaechlichen Port ueber den SQL Server Browser Dienst (UDP 1434).
 		dsn.Host = host
@@ -171,23 +214,24 @@ func openMssqlDB(config map[string]string) (*sql.DB, error) {
 	if db := strings.TrimSpace(config["database"]); db != "" {
 		query.Set("database", db)
 	}
-	if config["use_tls"] == "true" {
+	if config["use_tls"] == "true" || forceTLS {
 		query.Set("encrypt", "true")
+		if rt.ViaNet {
+			// Zertifikatsname bleibt der eingetragene Host, nicht die Brücke.
+			query.Set("hostnameincertificate", tlsName)
+		}
 	} else {
 		query.Set("encrypt", "disable")
 	}
 	dsn.RawQuery = query.Encode()
 
-	db, err := sql.Open("sqlserver", dsn.String())
+	p, err := msdsn.Parse(dsn.String())
 	if err != nil {
-		return nil, fmt.Errorf("Verbindung fehlgeschlagen: %w", err)
+		return p, fmt.Errorf("Verbindung fehlgeschlagen: %w", err)
 	}
-	db.SetConnMaxLifetime(5 * time.Minute)
-	if err := db.PingContext(context.Background()); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("Verbindung fehlgeschlagen: %w", err)
-	}
-	return db, nil
+	// Verbinden und Anmelden sind zeitlich begrenzt (Weg direkt 15 s, über VPN/Datennetz einstellbar)
+	p.DialTimeout = connQueryTimeout(config)
+	return p, nil
 }
 
 func quoteIdent(kind, name string) string {
@@ -397,8 +441,11 @@ func (h *Handler) SQLBrowsePage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Verbindung nicht gefunden", http.StatusNotFound)
 		return
 	}
-	config := map[string]string{}
-	_ = json.Unmarshal(configBytes, &config)
+	config, err := h.openConnJSON(configBytes)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 
 	data := SQLPreviewPageData{
 		BaseData:       h.baseData(r, "import", "Datenbank-Vorschau", name),
@@ -469,8 +516,11 @@ func (h *Handler) SQLRefreshValuesWeb(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Verbindung nicht gefunden", http.StatusNotFound)
 		return
 	}
-	config := map[string]string{}
-	_ = json.Unmarshal(configBytes, &config)
+	config, err := h.openConnJSON(configBytes)
+	if err != nil {
+		http.Redirect(w, r, base+"?notice="+url.QueryEscape("Aktualisierung fehlgeschlagen: "+err.Error()), http.StatusSeeOther)
+		return
+	}
 
 	db, _, err := openSQLConnection(kind, config)
 	if err != nil {

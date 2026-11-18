@@ -62,6 +62,44 @@ func TestValidateAccess(t *testing.T) {
 	}
 }
 
+func TestParseVIP6Suffix(t *testing.T) {
+	for in, want := range map[string]string{"15": "::15", " 0:0:0:15 ": "::15", "aa:15": "::aa:15", "ffff:ffff:ffff:ffff": "::ffff:ffff:ffff:ffff"} {
+		got, err := parseVIP6Suffix(in)
+		if err != nil || got.String() != want {
+			t.Fatalf("%q: %v %v", in, got, err)
+		}
+	}
+	for _, bad := range []string{"", "0", "::", "1:0:0:0:15", "2a02::15", "g", "10.0.0.1", "15/64", "fe80::1%eth0"} {
+		if _, err := parseVIP6Suffix(bad); err == nil {
+			t.Fatalf("%q angenommen", bad)
+		}
+	}
+}
+
+func TestVIP6Addr(t *testing.T) {
+	sfx, _ := parseVIP6Suffix("15")
+	if got := vip6Addr(netip.MustParsePrefix("2a02:f90:e198:1700:215:5dff:fe00:b202/64"), sfx); got.String() != "2a02:f90:e198:1700::15" {
+		t.Fatal(got)
+	}
+}
+
+func TestValidateAccessVIP6(t *testing.T) {
+	cl := accessCluster()
+	ok := accessConfig{VIP: "10.10.0.15/24", VIPOn: true, VIP6Suffix: "15"}
+	if err := validateAccess(cl, ok); err != nil {
+		t.Fatal(err)
+	}
+	for _, a := range []accessConfig{
+		{VIP: "10.10.0.15/24", VIPOn: false, VIP6Suffix: "15"},
+		{VIP6Suffix: "15"},
+		{VIP: "10.10.0.15/24", VIPOn: true, VIP6Suffix: "2a02::1"},
+	} {
+		if err := validateAccess(cl, a); err == nil {
+			t.Fatalf("%+v angenommen", a)
+		}
+	}
+}
+
 func TestPickInterface(t *testing.T) {
 	vip := netip.MustParsePrefix("10.10.0.15/24")
 	addrs := []ifAddr{

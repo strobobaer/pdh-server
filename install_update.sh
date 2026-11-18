@@ -179,26 +179,62 @@ else
             exit 1
         fi
     else
-        # Go: Das Projekt braucht die Go-Version aus go.mod (derzeit 1.24, wegen des
+        # Go: Das Projekt braucht die Go-Version aus go.mod (derzeit 1.27, wegen tailscale.com und des
         # Anthropic-SDK). Aeltere Installationen ab Go 1.21 (z. B. Ubuntu 24.04 mit 1.22)
         # laden die passende Version beim Bauen selbst nach (GOTOOLCHAIN=auto).
         export GOTOOLCHAIN=auto
-        go_minor="$(go env GOVERSION 2>/dev/null | sed -nE 's/^go1\.([0-9]+).*/\1/p')"
+        # Der Update-Agent (systemd) laeuft ohne HOME und GOPATH; ohne sie scheitert das
+        # Nachladen der Toolchain ("missing $GOPATH: HOME is not set").
+        if [[ -z "${HOME:-}" ]]; then
+            HOME="$(getent passwd "$(id -un)" 2>/dev/null | cut -d: -f6 || true)"
+            [[ -n "$HOME" ]] || HOME=/root
+            export HOME
+        fi
+        if [[ -z "${GOPATH:-}" ]]; then
+            export GOPATH=/var/cache/pdh-updater/go
+        fi
+        mkdir -p "$GOPATH" 2>/dev/null || true
+        # Auch fuer den Update-Agenten selbst (wirkt nach dessen naechstem Neustart).
+        if [[ -f "$repo_dir/.env" ]] && ! grep -qE '^[[:space:]]*GOPATH=' "$repo_dir/.env"; then
+            { [[ -z "$(tail -c1 "$repo_dir/.env")" ]] || echo; echo "GOPATH=/var/cache/pdh-updater/go"; } >> "$repo_dir/.env" 2>/dev/null || true
+        fi
+        go_err=""
+        if ! go_ver="$(go env GOVERSION 2>&1)"; then
+            go_err="$go_ver"; go_ver=""
+        fi
+        go_minor="$(printf '%s\n' "$go_ver" | sed -nE 's/^go1\.([0-9]+).*/\1/p')"
         if [[ -z "$go_minor" || "$go_minor" -lt 21 ]]; then
-            echo "Go $(go env GOVERSION 2>/dev/null || echo '?') ist zu alt: noetig ist mindestens Go 1.21 (laedt dann Go 1.24 selbst nach). Bitte Go aktualisieren." >&2
+            if [[ -n "$go_err" ]]; then
+                echo "Go-Pruefung fehlgeschlagen (go env GOVERSION), Meldung von Go:" >&2
+                printf '%s\n' "$go_err" | tail -n 5 >&2
+            fi
+            echo "Go ${go_ver:-?} ist zu alt oder nicht nutzbar: noetig ist mindestens Go 1.21 (laedt dann Go 1.27 selbst nach). Bitte Go pruefen bzw. aktualisieren." >&2
             exit 1
         fi
         # Alles unter .neu-Namen bauen und erst nach dem letzten erfolgreichen Bau
         # umbenennen: scheitert ein Bau, bleibt die laufende Version unberuehrt.
-        rm -f "$bin_dir/.built-commit" "$bin_dir/pdh-ha.neu" "$bin_dir/pdh.neu" "$bin_dir/update-agent.neu"
+        rm -f "$bin_dir/.built-commit" "$bin_dir/pdh-ha.neu" "$bin_dir/pdh.neu" "$bin_dir/update-agent.neu" \
+            "$bin_dir/pdh-data-client-linux-amd64.neu" "$bin_dir/pdh-data-client-windows-amd64.exe.neu"
         (cd "$repo_dir" && go build -buildvcs=false -trimpath -ldflags="-s -w -X main.buildCommit=$target" -o bin/pdh.neu ./cmd/server)
         (cd "$repo_dir" && go build -buildvcs=false -trimpath -ldflags="-s -w" -o bin/update-agent.neu ./cmd/update-agent)
+        # Daten-Client fuer Kunden (Linux und Windows), mit Versionsnummer aus VERSION
+        ver="$(tr -d '[:space:]' < "$repo_dir/VERSION")"
+        # Ein Fehler hier darf das PDH-Update nicht stoppen: dann gibt es nur keinen neuen Daten-Client.
+        clients_ok=1
+        {
+            (cd "$repo_dir" && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -buildvcs=false -trimpath -ldflags="-s -w -X main.version=$ver" -o bin/pdh-data-client-linux-amd64.neu ./cmd/pdh-data-client) &&
+            (cd "$repo_dir" && CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -buildvcs=false -trimpath -ldflags="-s -w -X main.version=$ver" -o bin/pdh-data-client-windows-amd64.exe.neu ./cmd/pdh-data-client)
+        } || { clients_ok=0; echo "WARNUNG: Der Daten-Client konnte nicht gebaut werden (Go-Bau fehlgeschlagen) - das PDH wird trotzdem aktualisiert, der Daten-Client bleibt auf dem bisherigen Stand." >&2; }
         # pdh-ha mit bauen (nach bin/pdh-ha.neu), solange noch nichts neu gestartet wird
         if (( no_restart )) && [[ -x "$pdh_ha_bin" ]]; then
             bash "$repo_dir/scripts/install-pdh-ha.sh" "$repo_dir" --build-only
         fi
         mv -f "$bin_dir/pdh.neu" "$bin_dir/pdh"
         mv -f "$bin_dir/update-agent.neu" "$bin_dir/update-agent"
+        if (( clients_ok )); then
+            mv -f "$bin_dir/pdh-data-client-linux-amd64.neu" "$bin_dir/pdh-data-client-linux-amd64"
+            mv -f "$bin_dir/pdh-data-client-windows-amd64.exe.neu" "$bin_dir/pdh-data-client-windows-amd64.exe"
+        fi
         printf '%s\n' "$target" > "$bin_dir/.built-commit"
     fi
     if (( no_restart )); then
@@ -222,6 +258,32 @@ else
         systemctl restart pdh
     else
         echo "pdh bleibt aus (passiver Server, Datenbank-Spiegel läuft nicht)."
+    fi
+    # nginx für die Zertifikate (Let's Encrypt, Karte "Zertifikate"): nur wenn unter /etc/ssl/pdh
+    # schon ein Zertifikat liegt. Fehlt nginx, wird es eingerichtet; ist es da, aber nicht
+    # eingeschaltet oder nicht gestartet, wird es eingeschaltet und gestartet. Auf jedem Server,
+    # gleich in welcher Rolle: pdh-ha steuert nginx nicht, und nginx auf beiden Servern schadet
+    # nicht (die mitwandernde Adresse entscheidet, wer erreicht wird). Ohne Zertifikate (der
+    # Normalfall) bleibt nginx unberührt. Jeder Fehler (z. B. kein apt) ist nur eine Warnung.
+    ssl_dir="${PDH_SSL_DIR:-/etc/ssl/pdh}"
+    nginx_bin="${PDH_NGINX_BIN:-nginx}"
+    if [[ -d "$ssl_dir" && -n "$(find "$ssl_dir" -mindepth 1 -maxdepth 1 -type d -print -quit 2>/dev/null)" ]]; then
+        # apt außerhalb von Agent-cgroup und -Sandbox (schreibt nach /usr und /var)
+        nginx_apt() {
+            if command -v systemd-run >/dev/null 2>&1; then
+                systemd-run --wait --pipe --collect --quiet --unit=pdh-nginx-apt-$(date +%s) env DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=120 "$@"
+            else
+                DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=120 "$@"
+            fi
+        }
+        if ! command -v "$nginx_bin" >/dev/null 2>&1; then
+            echo "Zertifikate unter $ssl_dir vorhanden, aber nginx fehlt - nginx wird eingerichtet."
+            nginx_apt update || echo "WARNING: apt update ist fehlgeschlagen - die Installation wird trotzdem versucht" >&2
+            nginx_apt install -y nginx || echo "WARNING: nginx konnte nicht eingerichtet werden (apt) - Update trotzdem fertig. Von Hand: sudo apt-get install -y nginx" >&2
+        fi
+        if command -v "$nginx_bin" >/dev/null 2>&1             && ! { systemctl is-enabled --quiet nginx 2>/dev/null && systemctl is-active --quiet nginx 2>/dev/null; }; then
+            systemctl enable --now nginx || echo "WARNING: nginx konnte nicht gestartet werden - siehe 'systemctl status nginx'" >&2
+        fi
     fi
     # Ausfallschutz (pdh-ha): nur wenn eingerichtet. Vor dem Agent-Neustart und
     # per systemd-run außerhalb von Agent-cgroup und -Sandbox (/etc beschreibbar);

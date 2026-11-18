@@ -43,3 +43,10 @@ backups/
 setup-code.txt
 .env.bak-*
 logs/
+
+# Datennetz und WireGuard: Laufzeitzustand mit Schlüsseln
+config/datanet/
+config/wireguard/
+
+# Arbeitsordner der Agenten (eigene Git-Arbeitsbäume)
+.claude/worktrees/

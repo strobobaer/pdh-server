@@ -92,6 +92,8 @@ func Step(in Input) Output {
 	s.out.VotePending, s.out.VoteAskedAt = in.VotePending, in.VoteAskedAt
 	s.out.HandoverPending, s.out.HandoverAt, s.out.HandoverSentAt = in.HandoverPending, in.HandoverAt, in.HandoverSentAt
 	s.out.HandoverReadyAt = in.HandoverReadyAt
+	s.out.SwapSeq, s.out.SwapKind = in.SwapSeq, in.SwapKind
+	s.out.RejoinAsked, s.out.RejoinAlarmed = in.RejoinAsked, in.RejoinAlarmed
 	s.out.NoActiveSince, s.out.NoActiveAlarmed = in.NoActiveSince, in.NoActiveAlarmed
 	s.out.VoteSince, s.out.VoteAlarmed = in.VoteSince, in.VoteAlarmed
 	s.out.LastMutual = in.LastMutual
@@ -107,6 +109,10 @@ func Step(in Input) Output {
 	}
 	if s.p.Role != Passive {
 		s.clearHandover()
+		s.out.RejoinAsked, s.out.RejoinAlarmed = false, false
+	}
+	if s.p.Role != Active {
+		s.p.UnfencePending = false
 	}
 	s.noActive()
 	s.out.Persist = s.p
@@ -117,6 +123,7 @@ func (s *stepper) decide() {
 	if s.in.Mode == Single {
 		s.clearVote()
 		s.become(Active, "")
+		s.unfencePending() // Partner zwischen den Takten entfernt: nicht nur lesend stehen bleiben
 		return
 	}
 	s.observe()
@@ -150,6 +157,7 @@ func (s *stepper) decide() {
 			return
 		}
 		s.manual = false
+		s.strandedRejoin()
 		if s.in.Mode == Trio {
 			s.passiveTrio()
 		} else {
@@ -223,6 +231,14 @@ func (s *stepper) adoptHigherTerm() bool {
 		if s.p.Role == Active {
 			s.event("alarm", fmt.Sprintf("Aktiver Server abgelöst (neue Amtszeit %d)", t))
 		}
+		// R49: Bei offenem Update-Auftrag kein Rejoin, der eingefrorene Rückfallstand bleibt.
+		// Abgeschottet warten, die Marke bindet nach dem Auftrag an (strandedRejoin).
+		if s.in.UpdateOpen {
+			s.act(ActFence, t)
+			s.out.SetUndoRefused = true
+			s.become(Passive, "")
+			return true
+		}
 		s.act(ActRejoin, t)
 		s.become(Rejoin, "")
 		return true
@@ -233,6 +249,12 @@ func (s *stepper) adoptHigherTerm() bool {
 // forceTakeover: Handbefehl, nur wenn nicht aktiv; ohne Stimme und Bremsen.
 func (s *stepper) forceTakeover() bool {
 	if s.p.Role == Active {
+		return false
+	}
+	// Die Schnittstelle prüft das schon, der Befehl läuft aber erst in diesem Takt: Inzwischen
+	// kann der Partner einen Tausch zurückgenommen haben und schreibbar sein.
+	if pa := s.in.Partner; seen(pa) && pa.Role == Active {
+		s.event("alarm", "Übernahme erzwingen abgelehnt: der Partner ist aktiv")
 		return false
 	}
 	s.manual = true
@@ -274,12 +296,50 @@ func (s *stepper) swap(k ActionKind) bool {
 	defer func() { s.manual = false }()
 	// Die Übergabe folgt erst, wenn die eigene Datenbank abgegeben ist
 	// (DemoteDone) – sonst stuft der Partner hoch, während sie noch schreibt.
+	s.out.SwapSeq, s.out.SwapKind = s.in.SwapSeq+1, k
 	s.act(k, s.p.Term)
+	s.out.Actions[len(s.out.Actions)-1].Seq = s.out.SwapSeq
 	s.act(ActVIPRelease, s.p.Term)
 	s.out.HandoverPending, s.out.HandoverAt, s.out.HandoverSentAt = next, s.in.Now, 0
 	s.out.HandoverReadyAt = 0
 	s.become(Passive, "")
 	return true
+}
+
+// PartnerLeads: der Partner ist aktiv gesehen, seine Datenbank Primary und seine Amtszeit
+// nicht älter als term – nur ihm darf ein gestrandeter Server folgen.
+func PartnerLeads(pa *PeerObs, term uint64) bool {
+	return seen(pa) && pa.Role == Active && pa.PG == "primary" && pa.Term >= term
+}
+
+// strandedRejoin (R32): Passiv, und demote hat die Rücknahme verweigert, weil der
+// Partner während der Abgabe übernommen hat (Marke UndoRefused im Daemon-Speicher).
+// Dann einmal je Zustand als Standby wieder anbinden – nur mit Partner aktiv und
+// dessen Datenbank Primary, ohne offene Übergabe und ohne offenen Update-Auftrag
+// (dort hält der eingefrorene Rückfallstand). Die Ursache ist eine Handaktion
+// (geplanter Tausch): Die Aktion ist Manual und läuft auch in Beobachtung und Wartung.
+// Ob die eigene Datenbank wirklich ein nur lesender Primary ist, prüft der Aktor frisch;
+// trifft er einen anderen Stand an, setzt der Daemon RejoinAsked für einen neuen Versuch
+// zurück (R33, gemeldet wird nur beim ersten).
+func (s *stepper) strandedRejoin() {
+	in, pa := s.in, s.in.Partner
+	if in.RejoinBusy {
+		return // eine ist schon eingereiht oder läuft
+	}
+	stranded := in.UndoRefused && !in.UpdateOpen && s.out.HandoverPending == 0 && PartnerLeads(pa, s.p.Term)
+	switch {
+	case !in.UndoRefused:
+		s.out.RejoinAsked, s.out.RejoinAlarmed = false, false
+	case stranded && !in.RejoinAsked:
+		s.out.RejoinAsked = true
+		if !in.RejoinAlarmed {
+			s.out.RejoinAlarmed = true
+			s.event("alarm", "Passiver Server nach verweigerter Rücknahme – wird als Standby wieder angebunden")
+		}
+		s.manual = true
+		s.act(ActRejoinStranded, pa.Term)
+		s.manual = false
+	}
 }
 
 // receiveHandover: der Partner übergibt die nächste Amtszeit – zählt nicht
@@ -294,6 +354,21 @@ func (s *stepper) receiveHandover() bool {
 	return true
 }
 
+// demoteDeadline: so lange darf die Abgabe beim Rollentausch dauern, bevor der
+// Tausch abgebrochen wird: Übernahmezeit + demoteWait. Mit Datei-Spiegelung läuft
+// vorher der letzte Abgleich (R27): seine Frist kommt dazu.
+func demoteDeadline(s Settings, m Mode) time.Duration {
+	d := s.Takeover(m) + demoteWait
+	if s.MirrorOn {
+		fin := s.MirrorFinalMax
+		if fin <= 0 {
+			fin = DefaultSettings().MirrorFinalMax
+		}
+		d += fin
+	}
+	return d
+}
+
 // handover begleitet den eigenen Rollentausch: wiederholen, beenden oder
 // nach der Übernahmezeit zurück nach aktiv. true = Schritt endet.
 func (s *stepper) handover() bool {
@@ -302,20 +377,37 @@ func (s *stepper) handover() bool {
 		return false
 	}
 	in, pa := s.in, s.in.Partner
+	done := in.DemoteDone != 0 && in.DemoteDone == s.out.SwapSeq
 	if s.p.Term >= hp || seen(pa) && pa.Term >= hp {
+		// R42: Der Partner führt, die Abgabe ist aber gescheitert oder läuft noch: Abgeschottet
+		// bleiben und als Standby anbinden. Nur bei demote; der eingefrorene Rückfallstand eines
+		// Update-Auftrags (R32) und ein aufgegebener Stand bleiben unberührt.
+		if !done && s.out.SwapKind == ActDemote {
+			s.act(ActFence, s.p.Term)
+			s.out.SetUndoRefused = true
+		}
 		s.clearHandover()
 		return false
 	}
 	took := in.Settings.Takeover(in.Mode)
+	demoteBy := demoteDeadline(in.Settings, in.Mode)
 	// Abgabe der eigenen Datenbank fehlgeschlagen oder zu langsam: der
-	// Partner hat noch nichts bekommen, also zurück nach aktiv.
-	if in.DemoteFailed == hp-1 || in.DemoteDone != hp-1 && in.Now-s.out.HandoverAt >= took+demoteWait {
+	// Partner hat noch nichts bekommen, also zurück nach aktiv (R51: über unfence, in zwei
+	// Takten wie jede Rücknahme). Ohne Sicht auf den Partner kann er längst übernommen haben
+	// (R43): abgeschaltet, fenced() nimmt erst bei wiederhergestellter Sicht zurück, eine
+	// höhere Amtszeit geht dort vor.
+	if in.DemoteFailed != 0 && in.DemoteFailed == s.out.SwapSeq || !done && in.Now-s.out.HandoverAt >= demoteBy {
 		s.clearHandover()
 		s.event("alarm", "Rollentausch abgebrochen")
+		if !mutual(pa) {
+			s.act(ActFence, s.p.Term) // R49: auch wenn die Abgabe nicht bis zum Abschotten kam
+			s.become(Fenced, "")
+			return true
+		}
 		s.unfence()
 		return true
 	}
-	if in.DemoteDone != hp-1 {
+	if !done {
 		return true // Abgabe läuft noch
 	}
 	if s.out.HandoverReadyAt == 0 {
@@ -361,7 +453,7 @@ func (s *stepper) boot() bool {
 		return false
 	}
 	if !s.in.Settings.Real() {
-		// Beobachtung: Rolle bleibt wie gespeichert.
+		// Beobachtung: Rolle bleibt wie gespeichert, ein gespeicherter Merker zählt im nächsten Takt.
 		if !mutual(s.in.Partner) {
 			s.would(ActFence)
 		}
@@ -379,6 +471,7 @@ func (s *stepper) boot() bool {
 
 func (s *stepper) active() {
 	in := s.in
+	s.unfencePending()
 	if pa := in.Partner; seen(pa) && pa.Role == Active && pa.Term == s.p.Term {
 		if !s.p.Maint {
 			s.setMaint(true)
@@ -432,9 +525,23 @@ func (s *stepper) fenced() {
 	}
 }
 
-func (s *stepper) unfence() {
+// unfencePending: zweiter Takt der Rücknahme (R51); eine höhere Amtszeit hätte schon adoptHigherTerm genommen.
+func (s *stepper) unfencePending() {
+	if !s.p.UnfencePending {
+		return
+	}
+	s.p.UnfencePending = false
+	s.manual = true
 	s.act(ActUnfence, s.p.Term)
 	s.act(ActVIPTake, s.p.Term)
+	s.manual = false
+}
+
+// unfence: der einzige Weg zurück nach aktiv (R51). In diesem Takt nur Rolle aktiv speichern
+// und senden; ActUnfence und ActVIPTake kommen im nächsten Takt aus active(), wenn bis dahin keine
+// höhere Amtszeit gesehen wurde. Der Merker steht in der Zustandsdatei und übersteht einen Neustart.
+func (s *stepper) unfence() {
+	s.p.UnfencePending = true
 	s.become(Active, "")
 }
 
@@ -535,7 +642,11 @@ func (s *stepper) noActive() {
 	if s.out.NoActiveSince == 0 {
 		s.out.NoActiveSince = in.Now
 	}
-	if !s.out.NoActiveAlarmed && in.Now-s.out.NoActiveSince >= in.Settings.Takeover(in.Mode) {
+	wait := in.Settings.Takeover(in.Mode)
+	if pa.Giving {
+		wait = demoteDeadline(in.Settings, in.Mode) // geplanter Tausch: die Abgabe darf so lange dauern
+	}
+	if !s.out.NoActiveAlarmed && in.Now-s.out.NoActiveSince >= wait {
 		s.out.NoActiveAlarmed = true
 		s.event("alarm", "Kein aktiver Server – bitte Übernahme erzwingen")
 	}

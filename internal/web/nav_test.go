@@ -70,6 +70,55 @@ func TestBuildNavCustomLayout(t *testing.T) {
 	}
 }
 
+// Der Nextcloud-Eintrag führt auf die Adresse aus den Server-Einstellungen; ohne
+// (gültige) Adresse fehlt er – früher zeigte er fest auf eine fremde Nextcloud.
+func TestBuildNavNextcloudLink(t *testing.T) {
+	href := func() (string, bool) {
+		for _, g := range buildNav(&BaseData{Lang: "de"}, nil) {
+			for _, it := range g.Items {
+				if it.Key == "nextcloud" {
+					return it.Href, true
+				}
+			}
+		}
+		return "", false
+	}
+	t.Setenv("PDH_NEXTCLOUD_BASEURL", " https://nc.example/ ")
+	if h, ok := href(); !ok || h != "https://nc.example/" {
+		t.Errorf("Link %q sichtbar=%v, erwartet die eingetragene Adresse", h, ok)
+	}
+	for _, bad := range []string{"", "nc.example", "javascript:alert(1)", "ftp://nc.example"} {
+		t.Setenv("PDH_NEXTCLOUD_BASEURL", bad)
+		if h, ok := href(); ok {
+			t.Errorf("Adresse %q: Eintrag sichtbar mit %q", bad, h)
+		}
+	}
+	src, err := os.ReadFile("nav.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(src), "strobl-home.net") {
+		t.Error("nav.go enthält eine feste Nextcloud-Adresse")
+	}
+}
+
+// Die Adresse aus Nextcloud wird nur übernommen, wenn andere sie erreichen.
+func TestNCAddressFrom(t *testing.T) {
+	for in, want := range map[string]string{
+		"https://nc.example/":    "https://nc.example",
+		" http://10.10.0.15 ":    "http://10.10.0.15",
+		"http://localhost":       "",
+		"https://127.0.0.1:8436": "",
+		"http://[::1]":           "",
+		"nc.example":             "",
+		"":                       "",
+	} {
+		if got := ncAddressFrom(in); got != want {
+			t.Errorf("ncAddressFrom(%q) = %q, erwartet %q", in, got, want)
+		}
+	}
+}
+
 // Seiten muessen ihren Kopf ueber baseData bauen – sonst fehlen Navigation,
 // Rechte und Sprache (die Stoerungs-Detailseite hatte eine leere linke Leiste).
 func TestPagesUseBaseData(t *testing.T) {
@@ -87,5 +136,28 @@ func TestPagesUseBaseData(t *testing.T) {
 				t.Errorf("%s:%d: BaseData von Hand gebaut – h.baseData(...) verwenden", f, i+1)
 			}
 		}
+	}
+}
+
+// Menüeinträge erscheinen nur, wenn die Person in dem Bereich wenigstens ein Recht hat –
+// „bearbeiten“ ohne „ansehen“ genügt, kein Recht blendet den Eintrag aus.
+func TestBuildNavHidesWithoutRights(t *testing.T) {
+	have := map[string]bool{"tickets.edit": true, "inventory.view": true}
+	b := &BaseData{Lang: "de", navCan: func(p string) bool { return have[p] }}
+	got := navKeys(buildNav(b, nil))
+	for _, want := range []string{"tickets", "inventory", "storage", "dashboard", "help"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("%s fehlt: %s", want, got)
+		}
+	}
+	for _, bad := range []string{"faults", "maintenance", "tasks", "calendar", "it,", "directory"} {
+		if strings.Contains(got, bad) {
+			t.Errorf("%s ohne Recht sichtbar: %s", bad, got)
+		}
+	}
+	// auch in einer eigenen Anordnung bleibt der Eintrag weg
+	layout, _ := sanitizeNavLayout([]navLayoutGroup{{Key: "top", Items: []string{"faults", "tickets"}}})
+	if got := navKeys(buildNav(b, layout)); !strings.HasPrefix(got, "top():tickets") {
+		t.Errorf("eigene Anordnung: %s", got)
 	}
 }

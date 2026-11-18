@@ -84,6 +84,7 @@
         <div class="form-group"><label class="form-label">Zeitplan (Cron, optional)</label><input name="f_mysql_schedule_cron" class="form-input" placeholder="z.B. 0 6 * * 1"></div>
       </div>
       <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin:6px 0 10px"><input type="checkbox" name="f_mysql_use_tls"> TLS-Verschlüsselung</label>
+      {{template "route-select" (dict "Kind" "mysql" "Tunnels" .Tunnels "NetClients" .NetClients)}}
       <p style="font-size:11px;color:var(--muted);margin:-4px 0 10px">Die Tabelle wird bei Bedarf automatisch angelegt (field_name, value, source, exported_at) - jeder Export hängt neue Zeilen an.</p>
     </div>
 
@@ -99,6 +100,7 @@
         <div class="form-group"><label class="form-label">Zeitplan (Cron, optional)</label><input name="f_mssql_schedule_cron" class="form-input" placeholder="z.B. 0 6 * * 1"></div>
       </div>
       <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin:6px 0 10px"><input type="checkbox" name="f_mssql_use_tls"> TLS-Verschlüsselung</label>
+      {{template "mssql-route-fields" (dict "Tunnels" .Tunnels "NetClients" .NetClients)}}
       <p style="font-size:11px;color:var(--muted);margin:-4px 0 10px">Die Tabelle wird bei Bedarf automatisch angelegt (field_name, value, source, exported_at) - jeder Export hängt neue Zeilen an.</p>
     </div>
 
@@ -130,6 +132,92 @@
       <p style="font-size:11px;color:var(--muted);margin:-4px 0 10px">Schreibt auf Coils/Holding Register (Registertyp:Adresse:Datentyp als Zielfeldname bei der Zuordnung).</p>
     </div>
 
+    <div class="kind-fields" id="fields-efficio" hidden>
+      {{$s := .EfficioDefault}}
+      <p style="font-size:12px;color:var(--muted);margin:0 0 10px">Liefert die Minutenwerte der Messstellen als CSV (<code>Zeitstempel;Messstellen-ID;Messwert</code>). Welche Messstellen exportiert werden, steht unter <a href="/energy/meters">Messstellen</a>; die Vorgaben dieser Felder unter <a href="/energy/meters?tab=settings">Messstellen → Einstellungen</a>.</p>
+      <div class="grid2" style="gap:10px">
+        <div class="form-group"><label class="form-label" for="f_efficio_run_minutes">Datei ergänzen alle … min</label>
+          <select id="f_efficio_run_minutes" name="f_efficio_run_minutes" class="form-input">{{$v := $s.RunMinutes}}{{range .EfficioChoices}}<option value="{{.}}"{{if eq . $v}} selected{{end}}>{{.}}</option>{{end}}</select></div>
+        <div class="form-group"><label class="form-label" for="f_efficio_interval_minutes">Zeilen im Abstand von … min</label>
+          <select id="f_efficio_interval_minutes" name="f_efficio_interval_minutes" class="form-input">{{$w := $s.IntervalMinutes}}{{range .EfficioChoices}}<option value="{{.}}"{{if eq . $w}} selected{{end}}>{{.}}</option>{{end}}</select></div>
+        <div class="form-group"><label class="form-label" for="f_efficio_value_mode">Wert je Zeile</label>
+          <select id="f_efficio_value_mode" name="f_efficio_value_mode" class="form-input">
+            <option value="end">Wert zum Ende des Intervalls</option>
+            <option value="delta">Zuwachs im Intervall (Zählerstände)</option></select></div>
+        <div class="form-group"><label class="form-label" for="f_efficio_file_days">Max. Länge der Datei in Tagen <span style="color:var(--muted);font-weight:400">(0 = eine Datei je Lauf)</span></label>
+          <input id="f_efficio_file_days" type="number" min="0" max="366" name="f_efficio_file_days" class="form-input" value="{{$s.FileDays}}"></div>
+        <div class="form-group"><label class="form-label" for="f_efficio_retention_days">Aufbewahrung in Tagen</label>
+          <input id="f_efficio_retention_days" type="number" min="1" max="3650" name="f_efficio_retention_days" class="form-input" value="{{$s.RetentionDays}}"></div>
+        <div class="form-group"><label class="form-label" for="f_efficio_file_prefix">Dateiname beginnt mit</label>
+          <input id="f_efficio_file_prefix" name="f_efficio_file_prefix" class="form-input" maxlength="40" value="{{$s.Prefix}}"></div>
+        <div class="form-group"><label class="form-label" for="f_efficio_time_format">Zeitformat</label>
+          <select id="f_efficio_time_format" name="f_efficio_time_format" class="form-input">
+            <option value="dmy"{{if eq $s.TimeFormat "dmy"}} selected{{end}}>TT.MM.JJJJ hh:mm</option>
+            <option value="iso"{{if eq $s.TimeFormat "iso"}} selected{{end}}>JJJJ-MM-TT hh:mm</option></select></div>
+        <div class="form-group"><label class="form-label" for="f_efficio_time_base">Zeitbezug</label>
+          <select id="f_efficio_time_base" name="f_efficio_time_base" class="form-input">
+            <option value="local"{{if eq $s.TimeBase "local"}} selected{{end}}>Ortszeit</option>
+            <option value="utc"{{if eq $s.TimeBase "utc"}} selected{{end}}>UTC (Tagesdateien ab UTC-Mitternacht)</option>
+            <option value="offset"{{if eq $s.TimeBase "offset"}} selected{{end}}>Ortszeit mit Zeitzonenangabe (z. B. +02:00)</option></select></div>
+        <div class="form-group"><label class="form-label" for="f_efficio_encoding">Zeichensatz</label>
+          <select id="f_efficio_encoding" name="f_efficio_encoding" class="form-input">
+            <option value="utf-8"{{if eq $s.Encoding "utf-8"}} selected{{end}}>UTF-8</option>
+            <option value="windows-1252"{{if eq $s.Encoding "windows-1252"}} selected{{end}}>Windows-1252</option></select></div>
+      </div>
+      <div style="display:flex;gap:18px;flex-wrap:wrap;margin:6px 0 10px">
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px"><input type="checkbox" name="f_efficio_decimal_comma"{{if $s.DecimalComma}} checked{{end}}> Dezimalkomma</label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px"><input type="checkbox" name="f_efficio_has_header"{{if $s.Header}} checked{{end}}> Kopfzeile</label>
+      </div>
+      <div class="grid2" style="gap:10px">
+        <div class="form-group"><label class="form-label" for="f_efficio_target">Ablage</label>
+          <select id="f_efficio_target" name="f_efficio_target" class="form-input" onchange="efficioTargetChanged()">
+            <option value="pickup">Zum Abholen im PDH</option>
+            <option value="drive">Netzlaufwerk</option>
+            <option value="ftp">FTP</option>
+            <option value="sftp">SFTP</option></select></div>
+      </div>
+      <div class="efficio-target" data-target="drive" hidden>
+        <div class="grid2" style="gap:10px">
+          <div class="form-group"><label class="form-label" for="f_efficio_drive_id">Netzlaufwerk</label>
+            <select id="f_efficio_drive_id" name="f_efficio_drive_id" class="form-input">
+              <option value="">– wählen –</option>
+              {{range .EfficioDrives}}<option value="{{.Value}}">{{.Label}}</option>{{end}}</select></div>
+          <div class="form-group"><label class="form-label" for="f_efficio_drive_folder">Ordner auf dem Laufwerk <span style="color:var(--muted);font-weight:400">(optional)</span></label>
+            <input id="f_efficio_drive_folder" name="f_efficio_drive_folder" class="form-input" placeholder="z. B. energie/efficio"></div>
+        </div>
+        <p style="font-size:11px;color:var(--muted);margin:-4px 0 10px">Zur Wahl stehen Laufwerke mit „Import &amp; Export“. Der Ordner muss auf dem Laufwerk schon vorhanden sein.</p>
+      </div>
+      <div class="efficio-target" data-target="ftp sftp" hidden>
+        <div class="grid2" style="gap:10px">
+          <div class="form-group"><label class="form-label" for="f_efficio_ftp_host">Server</label><input id="f_efficio_ftp_host" name="f_efficio_ftp_host" class="form-input"></div>
+          <div class="form-group"><label class="form-label" for="f_efficio_ftp_port">Port <span style="color:var(--muted);font-weight:400">(leer: 21 bzw. 22)</span></label><input id="f_efficio_ftp_port" type="number" min="1" max="65535" name="f_efficio_ftp_port" class="form-input"></div>
+          <div class="form-group"><label class="form-label" for="f_efficio_ftp_username">Benutzer</label><input id="f_efficio_ftp_username" name="f_efficio_ftp_username" class="form-input" autocomplete="off"></div>
+          <div class="form-group"><label class="form-label" for="f_efficio_ftp_password">Kennwort</label><input id="f_efficio_ftp_password" type="password" name="f_efficio_ftp_password" class="form-input" autocomplete="new-password"></div>
+          <div class="form-group"><label class="form-label" for="f_efficio_ftp_folder">Zielordner <span style="color:var(--muted);font-weight:400">(optional)</span></label><input id="f_efficio_ftp_folder" name="f_efficio_ftp_folder" class="form-input" placeholder="/"></div>
+        </div>
+      </div>
+      <div class="efficio-target" data-target="ftp" hidden>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin:6px 0 10px"><input type="checkbox" name="f_efficio_ftp_tls"> Verschlüsselt (FTP mit TLS)</label>
+      </div>
+      <div class="efficio-target" data-target="sftp" hidden>
+        <div class="form-group"><label class="form-label" for="f_efficio_sftp_host_key">Fingerabdruck des Servers</label>
+          <input id="f_efficio_sftp_host_key" name="f_efficio_sftp_host_key" class="form-input" placeholder="SHA256:… – leer lassen, dann zeigt „Verbindung testen“ ihn zur Bestätigung"></div>
+        <p style="font-size:11px;color:var(--muted);margin:-4px 0 10px">SFTP verbindet nur mit einem bestätigten Server. Nach dem Speichern: unter „Dateien &amp; Protokoll“ <b>Verbindung testen</b>, den angezeigten Fingerabdruck prüfen und bestätigen.</p>
+      </div>
+      <div class="grid2" style="gap:10px">
+        <div class="form-group"><label class="form-label" for="f_efficio_filter_meter_keys">Nur diese Messstellen <span style="color:var(--muted);font-weight:400">(IDs, je Zeile eine; leer = alle)</span></label>
+          <textarea id="f_efficio_filter_meter_keys" name="f_efficio_filter_meter_keys" class="form-input" rows="2"></textarea></div>
+        <div class="form-group" id="efficio-infra-box">
+          <span class="form-label">Nur diese Anlagen <span style="color:var(--muted);font-weight:400">(mit Unteranlagen; leer = alle)</span></span>
+          <input type="hidden" id="f_efficio_filter_infra_ids" name="f_efficio_filter_infra_ids" value="">
+          <div id="efficio-infra-chips" style="display:flex;gap:6px;flex-wrap:wrap;margin:4px 0"></div>
+          {{template "infra-tree-picker" (dict "TargetID" "efficio-infra-pick" "SelectedLabelID" "efficio-infra-pick-label" "Label" "Anlage wählen" "Name" "efficio_infra_pick")}}
+          <button type="button" class="btn btn-small" onclick="efficioInfraAdd()"><i class="ti ti-plus" aria-hidden="true"></i> Anlage hinzufügen</button>
+          <div id="efficio-infra-labels" data-labels="{{.EfficioInfra}}" hidden></div>
+        </div>
+      </div>
+    </div>
+
     <div style="display:flex;gap:8px;margin-top:10px">
       <button type="submit" class="btn btn-primary" id="conn-submit"><i class="ti ti-plus"></i> Verbindung anlegen</button>
       <button type="button" class="btn" id="conn-cancel" onclick="resetConnForm()" hidden>Abbrechen</button>
@@ -144,8 +232,59 @@
 {{define "scripts"}}
 <script>
 // Export-spezifisch; Tabelle, Bearbeiten & Co. kommen aus widgets/connection_list.gohtml
-const CONN_BOOL_FIELDS = ['use_tls'];
+const CONN_BOOL_FIELDS = ['use_tls','allow_write','decimal_comma','has_header','ftp_tls'];
+// Efficio: je nach Ablage nur die passenden Felder zeigen
+function efficioTargetChanged(){
+  const sel = document.getElementById('f_efficio_target');
+  if(!sel) return;
+  document.querySelectorAll('.efficio-target').forEach(function(el){
+    el.hidden = el.dataset.target.split(' ').indexOf(sel.value) === -1;
+  });
+}
+// Anlagenfilter: IDs im versteckten Feld (kommagetrennt), Anzeige als Namen
+const efficioInfraNames = {};
+function efficioInfraIds(){
+  const v = document.getElementById('f_efficio_filter_infra_ids').value;
+  return v.split(/[\s,;]+/).filter(Boolean);
+}
+function efficioInfraRender(){
+  const box = document.getElementById('efficio-infra-chips');
+  if(!box) return;
+  try{ Object.assign(efficioInfraNames, JSON.parse(document.getElementById('efficio-infra-labels').dataset.labels || '{}')); }catch(e){}
+  box.textContent = '';
+  efficioInfraIds().forEach(function(id){
+    const chip = document.createElement('span');
+    chip.className = 'badge';
+    chip.style.cssText = 'background:var(--bg3);color:var(--text);border:1px solid var(--border);display:inline-flex;gap:6px;align-items:center';
+    chip.appendChild(document.createTextNode(efficioInfraNames[id] || id));
+    const x = document.createElement('button');
+    x.type = 'button'; x.title = 'Entfernen'; x.setAttribute('aria-label', 'Anlage entfernen');
+    x.style.cssText = 'border:0;background:none;color:var(--muted);cursor:pointer';
+    x.innerHTML = '<i class="ti ti-x" aria-hidden="true"></i>';
+    x.onclick = function(){
+      document.getElementById('f_efficio_filter_infra_ids').value = efficioInfraIds().filter(function(i){ return i !== id; }).join(',');
+      efficioInfraRender();
+    };
+    chip.appendChild(x);
+    box.appendChild(chip);
+  });
+}
+function efficioInfraAdd(){
+  const id = document.getElementById('efficio-infra-pick').value;
+  if(!id) return;
+  efficioInfraNames[id] = document.getElementById('efficio-infra-pick-label').textContent.trim();
+  const ids = efficioInfraIds();
+  if(ids.indexOf(id) === -1) ids.push(id);
+  document.getElementById('f_efficio_filter_infra_ids').value = ids.join(',');
+  const picker = document.querySelector('#efficio-infra-box [data-infra-picker]');
+  if(picker && typeof clearInfraPicker === 'function') clearInfraPicker(picker);
+  efficioInfraRender();
+}
+function connFormSync(){ opcuaAuthModeChanged(); efficioTargetChanged(); efficioInfraRender(); }
 function connPageItems(row){
+  if(row.dataset.connKind === 'efficio') return [{label: 'Dateien & Protokoll', icon: 'ti-files', onClick: function(){
+    window.location = '/export/connections/' + row.dataset.connId + '/efficio';
+  }}];
   const exportableKinds = ['excel', 'csv', 'pdf', 'sqlite', 'mysql', 'mssql', 'opcua', 'modbus'];
   if(exportableKinds.indexOf(row.dataset.connKind) === -1) return [];
   return [{label: 'Vorschau öffnen', icon: 'ti-table', onClick: function(){

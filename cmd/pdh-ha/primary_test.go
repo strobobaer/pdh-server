@@ -304,3 +304,30 @@ func TestSelectActorOpensPGFirewall(t *testing.T) {
 		return false
 	})
 }
+
+// R57: Die Kennung .pdh-mirror-id von /etc/pdh gehört zum Ordner des Servers; die Übertragung der
+// Konfiguration vor der Abgabe darf sie weder mitnehmen noch die des Partners überschreiben.
+func TestConfigArchiveSkipsMirrorID(t *testing.T) {
+	repo, etc := t.TempDir(), t.TempDir()
+	os.WriteFile(filepath.Join(etc, ha.MirrorIDName), []byte("0123456789abcdef0123456789abcdef\n"), 0o644)
+	os.WriteFile(filepath.Join(etc, "a.conf"), []byte("a"), 0o600)
+	arch, err := configArchive(repo, etc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	etc2 := t.TempDir()
+	os.WriteFile(filepath.Join(etc2, ha.MirrorIDName), []byte("ffffffffffffffffffffffffffffffff\n"), 0o644)
+	if err := extractConfig(arch, t.TempDir(), etc2); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(etc2, ha.MirrorIDName)); string(b) != "ffffffffffffffffffffffffffffffff\n" {
+		t.Fatalf("Kennung des Partners überschrieben: %q", b)
+	}
+	// auch ein Archiv einer anderen Fassung darf sie nicht einspielen
+	if err := extractConfig(tarGz(t, "etc/"+ha.MirrorIDName), t.TempDir(), etc2); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(etc2, ha.MirrorIDName)); string(b) != "ffffffffffffffffffffffffffffffff\n" {
+		t.Fatalf("Kennung aus fremdem Archiv eingespielt: %q", b)
+	}
+}

@@ -291,6 +291,7 @@ func (s *sim) nodeStep(n *simNode) {
 		NoActiveSince:  n.carry.NoActiveSince, NoActiveAlarmed: n.carry.NoActiveAlarmed,
 		VoteSince: n.carry.VoteSince, VoteAlarmed: n.carry.VoteAlarmed, LastMutual: n.carry.LastMutual,
 		HandoverReadyAt: n.carry.HandoverReadyAt, Would: n.carry.Would, DemoteDone: n.demoteDone,
+		SwapSeq: n.carry.SwapSeq, SwapKind: n.carry.SwapKind,
 		ProbeGranted: n.probeGranted,
 	}
 	if s.mode == Trio {
@@ -325,7 +326,7 @@ func (s *sim) nodeStep(n *simNode) {
 			}
 		case ActDemote, ActDemoteFreeze, ActAbandon:
 			// Abgabe der Datenbank gilt im nächsten Takt als erledigt
-			n.demoteDone = a.Term
+			n.demoteDone = a.Seq
 		case ActHandover:
 			if !s.dropHandover && !(s.rng != nil && s.rng.Intn(4) == 0) {
 				s.send(simMsg{from: n.id, to: n.peer, hb: hb, handover: a.Term})

@@ -1,0 +1,36 @@
+{
+  "offset": 0,
+  "limit": 200,
+  "count": 3,
+  "totalCount": 3,
+  "data": [
+    {
+      "type": "WIRED",
+      "id": "5c1d0e9f-1a2b-4c3d-8e4f-0a1b2c3d4e01",
+      "name": "SPS Presse 2",
+      "connectedAt": "2026-11-10T05:12:00Z",
+      "ipAddress": "192.168.1.60",
+      "access": {"type": "DEFAULT"},
+      "macAddress": "00:1B:1B:AA:BB:CC",
+      "uplinkDeviceId": "0b7a1c52-3d11-4f0e-9a43-1e6d5c2a8b01"
+    },
+    {
+      "type": "WIRELESS",
+      "id": "5c1d0e9f-1a2b-4c3d-8e4f-0a1b2c3d4e02",
+      "name": "Tablet Lager",
+      "connectedAt": "2026-11-16T06:00:00Z",
+      "ipAddress": "192.168.1.61",
+      "access": {"type": "DEFAULT"},
+      "macAddress": "a4:83:e7:11:22:33",
+      "uplinkDeviceId": "0b7a1c52-3d11-4f0e-9a43-1e6d5c2a8b02"
+    },
+    {
+      "type": "VPN",
+      "id": "5c1d0e9f-1a2b-4c3d-8e4f-0a1b2c3d4e03",
+      "name": "Notebook Außendienst",
+      "connectedAt": "2026-11-16T07:45:00Z",
+      "ipAddress": "10.20.0.5",
+      "access": {"type": "VPN"}
+    }
+  ]
+}

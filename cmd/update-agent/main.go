@@ -51,6 +51,8 @@ type updateAgent struct {
 	freeSpace func(path string) (int64, bool)                           // nil = freeSpaceOS; Test-Haken
 	sleep     func(time.Duration)                                       // nil = time.Sleep; Test-Haken
 	jobManual bool                                                      // Tests: Schritte des Auftrags von Hand
+
+	certs certRuntime // Zertifikate (certs.go); ohne Nutzung läuft nichts
 }
 
 type limitedBuffer struct {
@@ -113,6 +115,15 @@ func main() {
 	mux.Handle("GET /v1/nextcloud/status", agent.authorized(http.HandlerFunc(agent.ncStatusHandler)))
 	mux.Handle("POST /v1/nextcloud/oidc", agent.authorized(http.HandlerFunc(agent.ncOIDCHandler)))
 	mux.Handle("POST /v1/nextcloud/service-account", agent.authorized(http.HandlerFunc(agent.ncServiceHandler)))
+	mux.Handle("POST /v1/nextcloud/mail", agent.authorized(http.HandlerFunc(agent.ncMailHandler)))
+	mux.Handle("POST /v1/nextcloud/drives", agent.authorized(http.HandlerFunc(agent.ncDrivesHandler)))
+	mux.Handle("POST /v1/nextcloud/apps", agent.authorized(http.HandlerFunc(agent.ncAppsHandler)))
+	// Zertifikate (Let's Encrypt) ablegen und in nginx einbinden (certs.go)
+	mux.Handle("POST /v1/certs/install", agent.authorized(http.HandlerFunc(agent.certInstallHandler)))
+	mux.Handle("POST /v1/certs/remove", agent.authorized(http.HandlerFunc(agent.certRemoveHandler)))
+	mux.Handle("GET /v1/certs/status", agent.authorized(http.HandlerFunc(agent.certStatusHandler)))
+	// Firewall (ufw): Ports des eingebauten MQTT-Brokers nachsehen und öffnen (firewall.go)
+	mux.Handle("POST /v1/firewall/ports", agent.authorized(http.HandlerFunc(agent.firewallHandler)))
 	// Ausfallschutz – Einzelbetrieb (dr.go)
 	if err := agent.drLoad(); err != nil {
 		log.Printf("ausfallschutz: state.json nicht lesbar: %v", err)

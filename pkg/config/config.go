@@ -149,7 +149,6 @@ func Load() (*Config, error) {
 	viper.SetDefault("copilot.model", "llama3.2")
 	viper.SetDefault("copilot.anthropicmodel", "claude-opus-5-5")
 	viper.SetDefault("mail.transport", "smtp")
-	viper.SetDefault("mail.port", 587)
 	viper.SetDefault("mail.tlsmode", "starttls")
 
 	cfg := &Config{}

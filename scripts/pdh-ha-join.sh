@@ -49,6 +49,9 @@ elif [[ -z "$CODE" ]]; then
   [[ -n "$CODE" ]] || { usage; fail "Beitrittscode fehlt"; }
 fi
 
+# install-pdh-ha.sh erfährt so, dass dies ein Zeuge ist (node.json gibt es noch nicht)
+(( ! WITNESS )) || export PDH_HA_WITNESS=1
+
 (( EUID == 0 )) || fail "Bitte als root ausführen: sudo bash $0 …"
 
 . /etc/os-release
@@ -61,6 +64,8 @@ for p in git iputils-ping ufw python3 iproute2 iputils-arping; do
   dpkg -s "$p" >/dev/null 2>&1 || missing+=("$p")
 done
 command -v go >/dev/null 2>&1 || missing+=(golang-go)
+# rsync: Datei-Spiegelung zwischen den Servern; der Zeuge spiegelt nichts.
+(( WITNESS )) || { command -v rsync >/dev/null 2>&1 || missing+=(rsync); }
 if (( ${#missing[@]} > 0 )); then
   apt-get update -qq
   apt-get install -y -qq "${missing[@]}"

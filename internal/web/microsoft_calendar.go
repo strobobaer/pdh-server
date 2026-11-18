@@ -159,8 +159,8 @@ func (h *Handler) microsoftAccessToken(ctx context.Context, userID, kind string)
 		grantedScopes = microsoftScopes("calendar")
 	}
 	form := url.Values{
-		"client_id":     {h.microsoft.ClientID},
-		"client_secret": {h.microsoft.ClientSecret},
+		"client_id":     {h.microsoftCfg().ClientID},
+		"client_secret": {h.microsoftCfg().ClientSecret},
 		"grant_type":    {"refresh_token"},
 		"refresh_token": {refreshToken},
 		"scope":         {grantedScopes},
@@ -303,16 +303,18 @@ func (h *Handler) microsoftCalendarSources(ctx context.Context, userID string, p
 				rows.Close()
 				return nil, err
 			}
-			startAt, err := time.Parse("2006-01-02 15:04:05", date+" "+start)
+			startAt, err := shiftLocalTime(date, start)
 			if err != nil {
 				continue
 			}
-			endAt, err := time.Parse("2006-01-02 15:04:05", date+" "+end)
+			endAt, err := shiftLocalTime(date, end)
 			if err != nil {
 				continue
 			}
-			if !endAt.After(startAt) {
-				endAt = endAt.Add(24 * time.Hour)
+			if !endAt.After(startAt) { // Nachtschicht: Ende am Folgetag (Kalendertag, nicht 24 h – Zeitumstellung)
+				if endAt, err = shiftLocalTime(nextDay(date), end); err != nil {
+					continue
+				}
 			}
 			sources = append(sources, microsoftCalendarSource{Type: "shift", ID: id, Title: "PDH · Schicht · " + name, Start: startAt.UTC(), End: endAt.UTC()})
 		}
@@ -551,4 +553,19 @@ func (h *Handler) microsoftGraphRequest(ctx context.Context, accessToken, method
 		return nil
 	}
 	return json.NewDecoder(io.LimitReader(response.Body, 2<<20)).Decode(target)
+}
+
+// shiftLocalTime: Schichtbeginn bzw. -ende aus Datum (JJJJ-MM-TT) und Uhrzeit
+// (hh:mm:ss) – beides Ortszeit des Werks (Ortszeit des Servers), nicht UTC.
+func shiftLocalTime(date, clock string) (time.Time, error) {
+	return time.ParseInLocation("2006-01-02 15:04:05", date+" "+clock, time.Local)
+}
+
+// nextDay: Folgetag eines Datums JJJJ-MM-TT (unverändert, wenn es keins ist).
+func nextDay(date string) string {
+	d, err := time.Parse("2006-01-02", date)
+	if err != nil {
+		return date
+	}
+	return d.AddDate(0, 0, 1).Format("2006-01-02")
 }

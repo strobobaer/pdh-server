@@ -112,7 +112,7 @@ func (h *Handler) pushVAPIDKeys(ctx context.Context) (pushVAPID, error) {
 		v.Private, v.Public = h.getUpdateSetting(ctx, keyPushVAPIDPriv, ""), h.getUpdateSetting(ctx, keyPushVAPIDPub, "")
 	}
 	v.Subject = "mailto:pdh@localhost"
-	if pub := strings.TrimRight(strings.TrimSpace(h.mailCfg.PublicURL), "/"); strings.HasPrefix(pub, "https://") {
+	if pub := strings.TrimRight(strings.TrimSpace(h.mailConfig().PublicURL), "/"); strings.HasPrefix(pub, "https://") {
 		v.Subject = pub
 	}
 	return v, nil
@@ -748,7 +748,7 @@ func (h *Handler) pushSettingsView(ctx context.Context) pushSettingsView {
 		rows.Close()
 	}
 	_ = h.db.QueryRow(ctx, `SELECT COUNT(*) FROM push_subscriptions`).Scan(&v.Devices)
-	v.HTTPS = strings.HasPrefix(strings.TrimSpace(h.mailCfg.PublicURL), "https://")
+	v.HTTPS = strings.HasPrefix(strings.TrimSpace(h.mailConfig().PublicURL), "https://")
 	return v
 }
 

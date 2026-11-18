@@ -1,0 +1,14 @@
+DATA_BLOCK "Daten"
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+NON_RETAIN
+   VAR 
+      "Zähler" : Real;   // Stückzähler
+      Text : String[10] := 'Grüße';
+   END_VAR
+
+
+BEGIN
+
+END_DATA_BLOCK
+

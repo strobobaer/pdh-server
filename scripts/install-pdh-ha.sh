@@ -48,13 +48,15 @@ build_pdh_ha() {
     export HOME="${HOME:-/root}"
     export GOCACHE="${GOCACHE:-/var/cache/pdh-ha/go-build}"
     export GOMODCACHE="${GOMODCACHE:-/var/cache/pdh-ha/go-mod}"
-    # Go: Das Projekt braucht die Go-Version aus go.mod (derzeit 1.24). Ab Go 1.21
+    export GOPATH="${GOPATH:-/var/cache/pdh-ha/go}"
+    mkdir -p "$GOPATH" 2>/dev/null || true
+    # Go: Das Projekt braucht die Go-Version aus go.mod (derzeit 1.27). Ab Go 1.21
     # lädt go die passende Version beim Bauen selbst nach (GOTOOLCHAIN=auto).
     export GOTOOLCHAIN=auto
     local go_minor
     go_minor="$(go env GOVERSION 2>/dev/null | sed -nE 's/^go1\.([0-9]+).*/\1/p')"
     if [[ -z "$go_minor" || "$go_minor" -lt 21 ]]; then
-        echo "Go $(go env GOVERSION 2>/dev/null || echo '?') ist zu alt: nötig ist mindestens Go 1.21 (lädt dann Go 1.24 selbst nach). Bitte Go aktualisieren." >&2
+        echo "Go $(go env GOVERSION 2>/dev/null || echo '?') ist zu alt: nötig ist mindestens Go 1.21 (lädt dann Go 1.27 selbst nach). Bitte Go aktualisieren." >&2
         exit 1
     fi
     # root liest ggf. das Repo des PDH-Benutzers – git verlangt dafür safe.directory
@@ -135,6 +137,18 @@ if (( ${#vip_packages[@]} > 0 )); then
     export DEBIAN_FRONTEND=noninteractive
     { apt-get update && apt-get install -y "${vip_packages[@]}"; } \
         || echo "WARNUNG: ${vip_packages[*]} nicht installiert – für die mitwandernde Adresse: sudo apt-get install iputils-arping iproute2" >&2
+fi
+
+# Datei-Spiegelung: rsync auf beiden Servern, nicht auf dem Zeugen (er spiegelt
+# nichts). Fehler hier brechen das Update nicht ab: ohne rsync bleibt nur die
+# Datei-Spiegelung aus.
+is_witness=0
+[[ "${PDH_HA_WITNESS:-}" == 1 ]] && is_witness=1
+grep -Eq '"kind"[[:space:]]*:[[:space:]]*"witness"' /etc/pdh/ha/node.json 2>/dev/null && is_witness=1
+if (( ! is_witness )) && ! command -v rsync >/dev/null 2>&1; then
+    export DEBIAN_FRONTEND=noninteractive
+    { apt-get update && apt-get install -y rsync; } \
+        || echo "WARNUNG: rsync nicht installiert – für die Datei-Spiegelung: sudo apt-get install rsync" >&2
 fi
 
 if (( install_built )); then

@@ -1,0 +1,131 @@
+{{template "base" .}}
+{{define "content"}}
+<style>
+.itc-head{display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap}
+.itc-head h1{font-size:19px;font-weight:600}
+.itc-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%}
+.itc-scroll table{min-width:720px}
+.itc-name{display:flex;align-items:center;gap:8px;min-width:0}
+.itc-name i{font-size:18px;color:var(--accent);flex:none}
+.itc-off td{color:var(--muted)}
+.itc-actions{display:flex;gap:6px;flex-wrap:wrap;margin:0}
+.itc-actions form{margin:0}
+.itc-note{font-size:12px;color:var(--muted);margin-top:6px}
+.itc-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,200px),1fr));gap:10px;align-items:end}
+.itc-icon{display:flex;gap:8px;align-items:center}
+.itc-icon i{font-size:20px;width:24px;text-align:center;flex:none;color:var(--accent)}
+.itc-icon input{min-width:0;flex:1}
+.itc-edit td{background:var(--bg)}
+</style>
+
+<div class="itc-head">
+  {{template "icon-button" (dict "Action" "back" "Href" "/it")}}
+  <div style="flex:1;min-width:0">
+    <h1><i class="ti ti-category"></i> IT-Kategorien</h1>
+    <p style="font-size:12px;color:var(--muted);margin-top:3px">Die Arten deiner IT-Assets: Name, Symbol, Reihenfolge, Überwachung und Karenz bis zum Ausfall-Ticket.</p>
+  </div>
+  {{if .CanEdit}}<button type="button" class="btn btn-small btn-primary" onclick="itcToggle('itc-new')"><i class="ti ti-plus"></i> Neue Kategorie</button>{{end}}
+</div>
+
+{{if .Notice}}<div class="card" role="status" style="margin-bottom:14px;border-color:var(--green)"><i class="ti ti-circle-check" style="color:var(--green)"></i> {{.Notice}}</div>{{end}}
+{{if .Err}}<div class="card" role="alert" style="margin-bottom:14px;border-color:var(--red);color:var(--red)"><i class="ti ti-alert-circle"></i> {{.Err}}</div>{{end}}
+
+{{if .CanEdit}}
+<div class="card" id="itc-new" hidden style="margin-bottom:14px">
+  <div class="card-title"><i class="ti ti-plus"></i> Neue Kategorie</div>
+  <form method="POST" action="/it/categories">
+    {{template "itc-fields" (dict "ID" "new" "Name" "" "Icon" "" "IconClass" "ti-box" "Sort" 100 "Monitor" true "Grace" "" "General" .GeneralGrace)}}
+    <div style="margin-top:12px"><button type="submit" class="btn btn-primary btn-small"><i class="ti ti-device-floppy"></i> Anlegen</button></div>
+  </form>
+</div>
+{{end}}
+
+<div class="card">
+  <div class="itc-scroll">
+  <table class="table">
+    <thead><tr>
+      <th>Name</th><th>Symbol</th><th>Reihenfolge</th>
+      <th title="Neu übernommene Geräte überwachen">Überwachen</th>
+      <th>Karenz</th><th>Assets</th>{{if .CanEdit}}<th></th>{{end}}
+    </tr></thead>
+    <tbody>
+    {{range .Rows}}
+    <tr{{if not .Active}} class="itc-off"{{end}}>
+      <td><span class="itc-name"><i class="ti {{.IconClass}}"></i> <b>{{.Name}}</b>
+        {{if .Builtin}}<span class="badge b-blue" title="Feste Kategorie – nicht ausblendbar, nicht löschbar">fest</span>{{end}}
+        {{if not .Active}}<span class="badge b-gray">ausgeblendet</span>{{end}}</span></td>
+      <td class="itn-mono" style="font-family:monospace;font-size:12px">{{.IconClass}}</td>
+      <td>{{.SortOrder}}</td>
+      <td>{{if .MonitorDefault}}<span class="badge b-green">ja</span>{{else}}<span class="badge b-gray">nein</span>{{end}}</td>
+      <td>{{if .Grace}}{{.Grace}} Min.{{else}}<span style="color:var(--muted)">allgemein ({{$.GeneralGrace}} Min.)</span>{{end}}</td>
+      <td>{{.Assets}}</td>
+      {{if $.CanEdit}}
+      <td>
+        <div class="itc-actions">
+          <button type="button" class="btn btn-small" onclick="itcToggle('itc-e-{{.Key}}')" title="Bearbeiten" aria-label="{{.Name}} bearbeiten"><i class="ti ti-pencil"></i></button>
+          {{if .CanHide}}
+          <form method="POST" action="/it/categories/{{.Key}}/active">
+            <input type="hidden" name="on" value="{{if .Active}}0{{else}}1{{end}}">
+            <button type="submit" class="btn btn-small" title="{{if .Active}}Ausblenden{{else}}Einblenden{{end}}" aria-label="{{.Name}} {{if .Active}}ausblenden{{else}}einblenden{{end}}"><i class="ti {{if .Active}}ti-eye-off{{else}}ti-eye{{end}}"></i></button>
+          </form>
+          {{end}}
+          {{if .CanDelete}}
+          <form method="POST" action="/it/categories/{{.Key}}/delete" onsubmit="return confirm('Kategorie „{{.Name}}“ wirklich löschen?')">
+            <button type="submit" class="btn btn-small" title="Löschen" aria-label="{{.Name}} löschen"><i class="ti ti-trash"></i></button>
+          </form>
+          {{end}}
+        </div>
+      </td>
+      {{end}}
+    </tr>
+    {{if $.CanEdit}}
+    <tr class="itc-edit" id="itc-e-{{.Key}}" hidden>
+      <td colspan="7">
+        <form method="POST" action="/it/categories/{{.Key}}">
+          {{template "itc-fields" (dict "ID" .Key "Name" .Name "Icon" .Icon "IconClass" .IconClass "Sort" .SortOrder "Monitor" .MonitorDefault "Grace" .Grace "General" $.GeneralGrace)}}
+          <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+            <button type="submit" class="btn btn-primary btn-small"><i class="ti ti-device-floppy"></i> Speichern</button>
+            <button type="button" class="btn btn-small" onclick="itcToggle('itc-e-{{.Key}}')">Abbrechen</button>
+          </div>
+        </form>
+      </td>
+    </tr>
+    {{end}}
+    {{end}}
+    </tbody>
+  </table>
+  </div>
+  <p class="itc-note">Karenz: so viele Minuten darf ein überwachtes Gerät offline sein, bevor ein Ausfall-Ticket entsteht. Leer = allgemeiner Wert aus dem Netz-Abgleich; am einzelnen Asset lässt sich die Karenz noch überschreiben. „Überwachen“ gilt für neu übernommene Geräte der Kategorie. Löschen geht nur bei Kategorien ohne Assets.</p>
+</div>
+
+{{if .CanEdit}}
+<script>
+function itcToggle(id){ const e = document.getElementById(id); if(e) e.hidden = !e.hidden; }
+function itcIcon(inp){
+  let v = inp.value.trim();
+  if(v && !v.startsWith('ti-')) v = 'ti-' + v;
+  const i = inp.closest('.itc-icon').querySelector('i');
+  i.className = 'ti ' + (v || inp.dataset.default);
+}
+</script>
+{{end}}
+{{end}}
+
+{{define "itc-fields"}}
+<div class="itc-form">
+  <div class="form-group"><label class="form-label" for="itc-name-{{.ID}}">Name</label>
+    <input id="itc-name-{{.ID}}" name="name" class="form-input" maxlength="60" required value="{{.Name}}"></div>
+  <div class="form-group"><label class="form-label" for="itc-icon-{{.ID}}">Symbol</label>
+    <div class="itc-icon"><i class="ti {{.IconClass}}"></i>
+      <input id="itc-icon-{{.ID}}" name="icon" class="form-input" value="{{.Icon}}" placeholder="{{.IconClass}}" data-default="{{.IconClass}}" spellcheck="false" autocomplete="off" oninput="itcIcon(this)"></div></div>
+  <div class="form-group"><label class="form-label" for="itc-sort-{{.ID}}">Reihenfolge</label>
+    <input id="itc-sort-{{.ID}}" type="number" name="sort_order" class="form-input" value="{{.Sort}}"></div>
+  <div class="form-group"><label class="form-label" for="itc-grace-{{.ID}}">Karenz (Minuten)</label>
+    <input id="itc-grace-{{.ID}}" type="number" name="grace" class="form-input" min="1" max="1440" value="{{.Grace}}" placeholder="allgemein ({{.General}})"></div>
+  <div class="form-group">
+    <label style="display:flex;gap:8px;align-items:center;font-size:13px"><input type="checkbox" name="monitor" value="1" {{if .Monitor}}checked{{end}}> Neu übernommene Geräte überwachen</label></div>
+</div>
+<div class="itc-note">Symbol: Name aus der Symbolbibliothek, z. B. <span style="font-family:monospace">ti-camera</span>; leer = Standardsymbol. Die Vorschau neben dem Feld zeigt das Symbol sofort.</div>
+{{end}}
+
+{{define "context-list"}}{{end}}

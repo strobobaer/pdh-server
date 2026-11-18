@@ -1,0 +1,121 @@
+{{/*
+Tabelle der Messstellen (energy_meters.go): Zuweisungstabelle und Übersicht in
+einem. Jede Zeile zeigt ID, Bezeichnung, Anlage, Quelle (Verbindung · Datenpunkt
+bzw. Formel mit Kennzeichen „berechnet“), Einheit, Art, Faktor, letzten Wert mit
+Zeitpunkt, exportieren und aktiv. Wer bearbeiten darf, sieht je Zeile den
+Bearbeiten-Knopf und am Ende die Zeile „Neue Messstelle“; beide öffnen
+dieselbe Eingabezeile (#em-edit) mit dem Infra-Picker der Anlagen.
+
+  {{template "energy-meter-table" .}}   – Datenmodell EnergyMetersData
+*/}}
+
+{{define "energy-meter-table"}}
+<div class="card em-card">
+  <div class="em-scroll">
+  <table class="em-table">
+    <thead>
+      <tr>
+        <th><a href="{{index .SortURL "key"}}">ID {{index .SortMark "key"}}</a></th>
+        <th><a href="{{index .SortURL "name"}}">Bezeichnung {{index .SortMark "name"}}</a></th>
+        <th><a href="{{index .SortURL "infra"}}">Anlage {{index .SortMark "infra"}}</a></th>
+        <th>Quelle</th>
+        <th><a href="{{index .SortURL "unit"}}">Einheit {{index .SortMark "unit"}}</a></th>
+        <th><a href="{{index .SortURL "kind"}}">Art {{index .SortMark "kind"}}</a></th>
+        <th>Faktor</th>
+        <th><a href="{{index .SortURL "last"}}">Letzter Wert {{index .SortMark "last"}}</a></th>
+        <th>Exportieren</th>
+        <th>Aktiv</th>
+        <th>Schwellwerte</th>
+        <th><span class="sr-only">Aktionen</span></th>
+      </tr>
+    </thead>
+    <tbody id="em-body">
+      {{range .Rows}}
+      <tr class="em-row{{if not .Active}} is-off{{end}}" data-meter="{{.EditJSON}}" data-key="{{.Key}}" data-id="{{.ID}}">
+        <td data-label="ID"><code class="em-key">{{.Key}}</code></td>
+        <td data-label="Bezeichnung">{{.Name}}</td>
+        <td data-label="Anlage">{{.InfraPath}}</td>
+        <td data-label="Quelle" class="em-src">
+          {{if .Calc}}<span class="badge b-blue">berechnet</span> <code class="em-formula">{{.Formula}}</code>
+          {{else if .SourceID}}{{if .ConnectionName}}{{.ConnectionName}} · {{end}}{{.SourceLabel}}
+          {{else}}<span class="em-muted">keine Quelle</span>{{end}}
+        </td>
+        <td data-label="Einheit">{{.Unit}}</td>
+        <td data-label="Art">{{.KindText}}</td>
+        <td data-label="Faktor" class="em-num">{{.FactorText}}</td>
+        <td data-label="Letzter Wert">
+          {{if .LastText}}<span class="em-num">{{.LastText}}</span><span class="em-sub">{{.LastAtText}}</span>{{if .Stale}} <span class="badge b-amber">veraltet</span>{{end}}
+          {{else}}<span class="badge b-amber">kein Wert</span>{{end}}
+        </td>
+        <td data-label="Exportieren">{{if .Export}}Ja{{else}}<span class="em-muted">Nein</span>{{end}}</td>
+        <td data-label="Aktiv">{{if .Active}}Ja{{else}}<span class="em-muted">Nein</span>{{end}}</td>
+        <td data-label="Schwellwerte">
+          <button type="button" class="btn em-thr-btn" aria-expanded="false" aria-controls="em-thr-{{.ID}}" onclick="emThr(this)"
+            hx-get="/energy/meters/{{.ID}}/thresholds" hx-target="#em-thr-{{.ID}}" hx-swap="innerHTML" hx-trigger="click once"><i class="ti ti-bell-ringing" aria-hidden="true"></i> <span id="em-thr-lbl-{{.ID}}"><span class="em-thr-lbl{{if .ThrAlarms}} has-alarm{{end}}">{{.ThrText}}</span></span></button>
+        </td>
+        <td class="em-actions">
+          {{if .CanEdit}}{{template "icon-button" (dict "Action" "edit" "OnClick" "emEdit(this)")}}{{end}}
+          {{if .CanDelete}}{{template "icon-button" (dict "Action" "delete" "OnClick" "emDelete(this)")}}{{end}}
+        </td>
+      </tr>
+      <tr class="em-thr-row" id="em-thr-row-{{.ID}}" hidden><td colspan="12"><div id="em-thr-{{.ID}}" class="em-thr-box"></div></td></tr>
+      {{else}}
+      <tr><td colspan="12" class="em-empty">{{if .FilterOn}}Keine Messstelle passt zu den Filtern.{{else}}Noch keine Messstelle angelegt.{{end}}</td></tr>
+      {{end}}
+      {{if .CanCreate}}
+      <tr id="em-new-row"><td colspan="12">
+        <button type="button" class="btn" onclick="emNew()"><i class="ti ti-plus" aria-hidden="true"></i> Neue Messstelle</button>
+      </td></tr>
+      <tr id="em-edit" hidden><td colspan="12">
+        <div class="em-form" onkeydown="if(event.key==='Enter'&&event.target.tagName==='INPUT'&&event.target.type!=='radio'){event.preventDefault();emSave();}">
+          <input type="hidden" id="em-id">
+          <div class="em-grid">
+            <div class="form-group"><label class="form-label" for="em-key-in">Messstellen-ID</label>
+              <input id="em-key-in" class="form-input" maxlength="64" autocomplete="off" placeholder="so wie Efficio sie kennt"></div>
+            <div class="form-group"><label class="form-label" for="em-name">Bezeichnung</label>
+              <input id="em-name" class="form-input" maxlength="150" autocomplete="off" placeholder="z. B. Zählerstand Linie 1"></div>
+            <div class="form-group"><label class="form-label" for="em-unit">Einheit</label>
+              <input id="em-unit" class="form-input" maxlength="20" list="em-units" autocomplete="off" placeholder="z. B. kWh">
+              <datalist id="em-units">{{range .Units}}<option value="{{.}}">{{end}}</datalist></div>
+            <div class="form-group"><label class="form-label" for="em-kind">Art</label>
+              <select id="em-kind" class="form-input">
+                <option value="counter">Zählerstand</option>
+                <option value="consumption">Verbrauch</option>
+                <option value="instant">Momentanwert</option>
+              </select></div>
+            <div class="form-group"><label class="form-label" for="em-factor">Faktor</label>
+              <input id="em-factor" class="form-input" inputmode="decimal" autocomplete="off" value="1"></div>
+          </div>
+          {{template "infra-tree-picker" (dict "TargetID" "em-infra-id" "SelectedLabelID" "em-infra-selected" "Label" "Anlage" "Required" true)}}
+          <div class="form-group">
+            <span class="form-label" id="em-src-label">Quelle</span>
+            <div class="em-mode" role="group" aria-labelledby="em-src-label">
+              <label><input type="radio" name="em-mode" value="source" checked onchange="emMode()"> Import-Wert</label>
+              <label><input type="radio" name="em-mode" value="formula" onchange="emMode()"> Formel aus anderen Messstellen</label>
+            </div>
+            <select id="em-source" class="form-input" aria-label="Import-Wert als Quelle">
+              <option value="">– keine Quelle –</option>
+              {{range .Sources}}<option value="{{.ID}}">{{.Label}}</option>{{end}}
+            </select>
+            <div id="em-formula-box" hidden>
+              <input id="em-formula" class="form-input" maxlength="2000" autocomplete="off" aria-label="Formel" placeholder="[GESAMT] - [LINIE-A] - [LINIE-B]">
+              <p class="em-hint">Bezüge stehen in eckigen Klammern. Erlaubt: + − × ÷, Klammern und Zahlen. Eine Quelle darf mehreren Messstellen zugewiesen sein.</p>
+            </div>
+          </div>
+          <div class="em-checks">
+            <label><input type="checkbox" id="em-export" checked> Exportieren</label>
+            <label><input type="checkbox" id="em-active" checked> Aktiv</label>
+          </div>
+          <p id="em-error" class="em-error" role="alert"></p>
+          <div class="em-buttons">
+            <button type="button" class="btn" onclick="emClose()">Abbrechen</button>
+            <button type="button" class="btn btn-primary" id="em-save" onclick="emSave()"><i class="ti ti-device-floppy" aria-hidden="true"></i> Speichern</button>
+          </div>
+        </div>
+      </td></tr>
+      {{end}}
+    </tbody>
+  </table>
+  </div>
+</div>
+{{end}}

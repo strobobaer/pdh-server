@@ -31,6 +31,8 @@ type AssignmentNewPageData struct {
 	Back                     string // nach dem Anlegen hierher statt in die Liste
 	// Aufgaben und Wartungen legen hier nur Administratoren und Manager an
 	CanCreateRestricted bool
+	// Rüstzeit anlegen (setup.edit): Knopf zur Seite /setup/new
+	CanCreateSetup bool
 	// Broker: offene, nicht zugewiesene Vorgaenge ihrer Arten als Schnelleinstieg
 	Unassigned []unassignedGroup
 }
@@ -162,6 +164,7 @@ func (h *Handler) AssignmentNewPage(w http.ResponseWriter, r *http.Request) {
 		DefaultDueDaysFault:       appsettings.GetInt(ctx, h.db, appsettings.KeyDefaultDueDaysFault, appsettings.DefaultDueDaysFallback),
 	}
 	data.CanCreateRestricted = h.isGlobalBoardAdminOrManager(r)
+	data.CanCreateSetup = h.setupCan(r, permSetupEdit, "")
 	q := r.URL.Query()
 	switch t := q.Get("type"); t {
 	case "ticket", "fault":

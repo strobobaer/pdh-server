@@ -5,11 +5,14 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
 	"pdh/internal/core/scheduler"
+	"pdh/internal/modules/energie"
 )
 
 // ── Rechte ───────────────────────────────────────────────────
@@ -27,6 +30,9 @@ func (h *Handler) canConnectionRead(r *http.Request, direction string) bool {
 }
 
 func (h *Handler) canConnectionWrite(r *http.Request, direction string) bool {
+	if h.rbac == nil { // nur in Tests mit hasPermHook
+		return h.hasPermHook != nil && h.hasPerm(r, direction+".write")
+	}
 	u := getUser(r)
 	return h.rbac.HasPermissionForUser(u.ID, string(u.Role), direction+".write")
 }
@@ -64,14 +70,15 @@ var exportKindOptions = []KindOption{
 	{"mssql", "MSSQL"},
 	{"opcua", "OPC UA"},
 	{"modbus", "Modbus TCP"},
+	{"efficio", "Efficio-CSV (Energiedaten)"},
 }
 
 var importKindFields = map[string][]string{
 	"excel":  {"source_path", "sheet_name", "has_header"},
 	"csv":    {"source_path", "delimiter", "has_header"},
 	"sqlite": {"file_path"},
-	"mysql":  {"host", "port", "database", "username", "password", "use_tls"},
-	"mssql":  {"host", "port", "database", "instance_name", "username", "password", "use_tls"},
+	"mysql":  {"host", "port", "database", "username", "password", "use_tls", "route", "vpn_poll_minutes", "vpn_timeout_seconds"},
+	"mssql":  {"host", "port", "database", "instance_name", "username", "password", "use_tls", "route", "vpn_poll_minutes", "vpn_timeout_seconds", "allow_write", "tls_fingerprint"},
 	"mqtt": {
 		"broker_mode",
 		// externer Broker
@@ -80,6 +87,7 @@ var importKindFields = map[string][]string{
 		"int_listen_port", "int_websocket_port", "int_allow_anonymous", "int_broker_username", "int_broker_password",
 		"int_max_clients", "int_persistence_enabled", "int_retain_enabled", "int_tls_cert_path", "int_tls_key_path",
 		"int_topic_filter", "int_qos",
+		"int_public_host", "int_tls_port", // Name des Brokers (mqtt_system.go)
 	},
 	"web":      {"url", "method", "poll_interval_minutes"},
 	"rest_api": {"base_url", "auth_method", "username", "password", "bearer_token", "api_key_header", "api_key_value", "poll_interval_minutes"},
@@ -92,15 +100,19 @@ var exportKindFields = map[string][]string{
 	"excel":  {"template_id", "destination_path", "schedule_cron"},
 	"csv":    {"destination_path", "delimiter", "schedule_cron"},
 	"sqlite": {"file_path", "table_name", "schedule_cron"},
-	"mysql":  {"host", "port", "database", "username", "password", "use_tls", "table_name", "schedule_cron"},
-	"mssql":  {"host", "port", "database", "instance_name", "username", "password", "use_tls", "table_name", "schedule_cron"},
+	"mysql":  {"host", "port", "database", "username", "password", "use_tls", "route", "vpn_poll_minutes", "vpn_timeout_seconds", "table_name", "schedule_cron"},
+	"mssql":  {"host", "port", "database", "instance_name", "username", "password", "use_tls", "route", "vpn_poll_minutes", "vpn_timeout_seconds", "allow_write", "tls_fingerprint", "table_name", "schedule_cron"},
 	"opcua":  {"endpoint_url", "auth_mode", "username", "password", "schedule_cron"},
 	"modbus": {"host", "port", "unit_id", "schedule_cron"},
+	// Efficio-CSV (Energiedaten): export_efficio.go
+	"efficio": {"run_minutes", "interval_minutes", "value_mode", "file_days", "retention_days", "file_prefix", "time_format", "time_base", "decimal_comma", "has_header", "encoding",
+		"target", "drive_id", "drive_folder", "ftp_host", "ftp_port", "ftp_username", "ftp_password", "ftp_folder", "ftp_tls", "sftp_host_key", "filter_infra_ids", "filter_meter_keys"},
 }
 
 var booleanConfigFields = map[string]bool{
 	"has_header": true, "use_tls": true, "ext_use_tls": true,
 	"int_allow_anonymous": true, "int_persistence_enabled": true, "int_retain_enabled": true,
+	"allow_write": true, "decimal_comma": true, "ftp_tls": true,
 }
 
 func connectionKindOptions(direction string) []KindOption {
@@ -151,6 +163,12 @@ type ConnectionsPageData struct {
 	CanExecute     bool
 	PDFTemplates   []ExportTemplateView
 	ExcelTemplates []ExportTemplateView
+	Tunnels        []connTunnelOption // ausgehende VPN-Tunnel für „Weg“ (leer ohne VPN)
+	NetClients     []connTunnelOption // Daten-Clients für „Weg“ (leer, wenn das Datennetz aus ist)
+	EfficioDrives  []KindOption       // Netzlaufwerke für „Import & Export“ (Ablage des Efficio-Exports)
+	EfficioDefault energie.Settings   // Vorgaben für neue Efficio-Exporte (Energiedaten → Einstellungen)
+	EfficioChoices []int
+	EfficioInfra   string // Anlagen-ID → Pfad als JSON (Anlagenfilter im Formular)
 	Notice         string
 }
 
@@ -174,12 +192,16 @@ func (h *Handler) importExportConnections(ctx context.Context, direction string)
 			return nil, err
 		}
 		v.KindLabel = connectionKindLabel(direction, v.Kind)
-		v.ConfigJSON = string(configBytes)
-		if v.Kind == "mqtt" {
-			var config map[string]string
-			if json.Unmarshal(configBytes, &config) == nil {
+		// Kennwörter und verschlüsselte Felder gehen nie in den Browser
+		var config map[string]string
+		if json.Unmarshal(configBytes, &config) == nil {
+			pub, _ := json.Marshal(publicConnConfig(config))
+			v.ConfigJSON = string(pub)
+			if v.Kind == "mqtt" {
 				v.IsIntegratedBroker = config["broker_mode"] == "integrated"
 			}
+		} else {
+			v.ConfigJSON = "{}"
 		}
 		list = append(list, v)
 	}
@@ -217,6 +239,18 @@ func (h *Handler) connectionsPage(w http.ResponseWriter, r *http.Request, direct
 		CanWrite:    h.canConnectionWrite(r, direction),
 		CanExecute:  h.canConnectionExecute(r, direction),
 		Notice:      r.URL.Query().Get("notice"),
+	}
+	if data.CanWrite {
+		data.Tunnels = h.connTunnelOptions(r.Context())
+		data.NetClients = h.connNetOptions(r.Context())
+		if direction == "export" {
+			data.EfficioDrives = h.efficioDriveOptions(r.Context())
+			data.EfficioDefault, data.EfficioChoices = energie.DefaultSettings(), energie.MinuteChoices
+			data.EfficioInfra = h.efficioInfraJSON(r.Context(), conns)
+			if st := h.energyStore(); st != nil {
+				data.EfficioDefault, _ = st.Settings(r.Context())
+			}
+		}
 	}
 	if direction == "export" {
 		if tpls, err := h.exportTemplates(r.Context(), "pdf"); err == nil {
@@ -277,7 +311,35 @@ func buildConnectionConfig(r *http.Request, kind string, fields []string) map[st
 		}
 		config[f] = strings.TrimSpace(r.FormValue(formKey))
 	}
+	switch kind {
+	case "mssql":
+		normalizeMssqlRouteFields(config)
+	case "mysql":
+		normalizeRouteFields(config)
+	}
 	return config
+}
+
+// normalizeRouteFields: Weg und Zeiten in feste Form bringen (SQL Server und
+// MySQL). Fehlt das Feld oder ist es ungültig, gilt die Vorgabe (direkt, 5 Min., 60 s).
+func normalizeRouteFields(config map[string]string) {
+	switch r := parseConnRoute(config); {
+	case r.ViaVPN:
+		config["route"] = "vpn:" + r.PeerID
+	case r.ViaNet:
+		config["route"] = "net:" + r.ClientID
+	default:
+		config["route"] = "direct"
+	}
+	config["vpn_poll_minutes"] = strconv.Itoa(clampConnInt(config["vpn_poll_minutes"], connPollVPNDefault, connPollVPNMin, connPollVPNMax))
+	config["vpn_timeout_seconds"] = strconv.Itoa(clampConnInt(config["vpn_timeout_seconds"], int(connTimeoutVPN/time.Second), connTimeoutMin, connTimeoutMax))
+}
+
+// normalizeMssqlRouteFields: Weg, Zeiten und Fingerabdruck in feste Form bringen
+// (kein Fingerabdruck, wenn keiner bestätigt ist).
+func normalizeMssqlRouteFields(config map[string]string) {
+	normalizeRouteFields(config)
+	config["tls_fingerprint"] = normalizeFingerprint(config["tls_fingerprint"])
 }
 
 func (h *Handler) createConnection(w http.ResponseWriter, r *http.Request, direction string) {
@@ -306,9 +368,27 @@ func (h *Handler) createConnection(w http.ResponseWriter, r *http.Request, direc
 		http.Redirect(w, r, base+"?notice="+url.QueryEscape(err.Error()), http.StatusSeeOther)
 		return
 	}
-	configJSON, err := json.Marshal(config)
+	// vor dem Verschlüsseln: bringt Name und TLS-Port des Brokers in feste Form
+	if err := h.validateMqttSystem(r.Context(), "", direction, kind, config); err != nil {
+		http.Redirect(w, r, base+"?notice="+url.QueryEscape(err.Error()), http.StatusSeeOther)
+		return
+	}
+	sealed, err := sealConnConfig(h.connKey(), config)
+	if err != nil {
+		http.Error(w, "Kennwort konnte nicht verschlüsselt werden", http.StatusInternalServerError)
+		return
+	}
+	configJSON, err := json.Marshal(sealed)
 	if err != nil {
 		http.Error(w, "Konfiguration ungültig", http.StatusInternalServerError)
+		return
+	}
+	if err := validateConnRoute(kind, config); err != nil {
+		http.Redirect(w, r, base+"?notice="+url.QueryEscape(err.Error()), http.StatusSeeOther)
+		return
+	}
+	if err := h.validateEfficio(r.Context(), kind, config); err != nil {
+		http.Redirect(w, r, base+"?notice="+url.QueryEscape(err.Error()), http.StatusSeeOther)
 		return
 	}
 	u := getUser(r)
@@ -323,6 +403,7 @@ func (h *Handler) createConnection(w http.ResponseWriter, r *http.Request, direc
 	h.reconcileMqttBroker(id, direction, kind, true, config)
 	h.reconcileExportSchedule(id, direction, true, config)
 	h.reconcileImportPoll(id, direction, kind, true, config)
+	h.mqttSiteSync(config[mqttHostKey])
 	// gleich auf die eigene Seite der Verbindung: Pruefen, Abfragen, Zuordnen
 	next := "checks"
 	if direction == "import" && queryKindSupported(kind) {
@@ -340,8 +421,9 @@ func (h *Handler) editConnection(w http.ResponseWriter, r *http.Request, directi
 	id := chi.URLParam(r, "id")
 	var kind string
 	var enabled bool
+	var storedBytes []byte
 	if err := h.db.QueryRow(r.Context(),
-		`SELECT kind, enabled FROM import_export_connections WHERE id=$1 AND direction=$2`, id, direction).Scan(&kind, &enabled); err != nil {
+		`SELECT kind, enabled, config FROM import_export_connections WHERE id=$1 AND direction=$2`, id, direction).Scan(&kind, &enabled, &storedBytes); err != nil {
 		http.Error(w, "Verbindung nicht gefunden", http.StatusNotFound)
 		return
 	}
@@ -364,7 +446,41 @@ func (h *Handler) editConnection(w http.ResponseWriter, r *http.Request, directi
 		http.Redirect(w, r, base+"?notice="+url.QueryEscape(err.Error()), http.StatusSeeOther)
 		return
 	}
-	configJSON, err := json.Marshal(config)
+	// Leeres Geheimfeld im Formular = gespeicherten Wert behalten
+	stored := map[string]string{}
+	_ = json.Unmarshal(storedBytes, &stored)
+	config = keepStoredSecrets(config, stored, fields)
+	keepStoredRoute(config, stored, kind, r.Form)
+	if err := validateConnRoute(kind, config); err != nil {
+		if r.FormValue("return_to") == "detail" {
+			http.Redirect(w, r, connectionBackPath(direction, id, "overview", "", err.Error()), http.StatusSeeOther)
+		} else {
+			http.Redirect(w, r, base+"?notice="+url.QueryEscape(err.Error()), http.StatusSeeOther)
+		}
+		return
+	}
+	if err := h.validateEfficio(r.Context(), kind, config); err != nil {
+		if r.FormValue("return_to") == "detail" {
+			http.Redirect(w, r, connectionBackPath(direction, id, "overview", "", err.Error()), http.StatusSeeOther)
+		} else {
+			http.Redirect(w, r, base+"?notice="+url.QueryEscape(err.Error()), http.StatusSeeOther)
+		}
+		return
+	}
+	if err := h.validateMqttSystem(r.Context(), id, direction, kind, config); err != nil {
+		if r.FormValue("return_to") == "detail" {
+			http.Redirect(w, r, connectionBackPath(direction, id, "overview", "", err.Error()), http.StatusSeeOther)
+		} else {
+			http.Redirect(w, r, base+"?notice="+url.QueryEscape(err.Error()), http.StatusSeeOther)
+		}
+		return
+	}
+	sealed, err := sealConnConfig(h.connKey(), config)
+	if err != nil {
+		http.Error(w, "Kennwort konnte nicht verschlüsselt werden", http.StatusInternalServerError)
+		return
+	}
+	configJSON, err := json.Marshal(sealed)
 	if err != nil {
 		http.Error(w, "Konfiguration ungültig", http.StatusInternalServerError)
 		return
@@ -376,17 +492,32 @@ func (h *Handler) editConnection(w http.ResponseWriter, r *http.Request, directi
 		http.Error(w, "Verbindung konnte nicht gespeichert werden", http.StatusInternalServerError)
 		return
 	}
-	h.reconcileMqttBroker(id, direction, kind, enabled, config)
-	h.reconcileExportSchedule(id, direction, enabled, config)
-	h.reconcileImportPoll(id, direction, kind, enabled, config)
+	// Dienste brauchen die Zugangsdaten im Klartext (nur im Speicher)
+	plain, perr := openConnConfig(h.connKey(), sealed)
+	if perr != nil {
+		http.Redirect(w, r, base+"?notice="+url.QueryEscape(perr.Error()), http.StatusSeeOther)
+		return
+	}
+	h.reconcileMqttBroker(id, direction, kind, enabled, plain)
+	h.reconcileExportSchedule(id, direction, enabled, plain)
+	h.reconcileImportPoll(id, direction, kind, enabled, plain)
 	if direction == "import" {
 		h.reconcileQueryPolls(r.Context(), id)
 	}
+	// Name oder WebSocket-Port des Brokers geändert: nginx-Seite gleich nachziehen
+	if kind == "mqtt" && (stored[mqttHostKey] != plain[mqttHostKey] || stored["int_websocket_port"] != plain["int_websocket_port"]) {
+		h.mqttSiteSync(stored[mqttHostKey], plain[mqttHostKey])
+	}
+	// Abgleich: geänderter Weg (direkt ↔ VPN) verlangt einen neuen Test der Profile
+	demoted := ""
+	if n := h.syncDemoteOnRouteChange(r.Context(), id, stored, config); n > 0 {
+		demoted = " – Weg geändert: " + strconv.Itoa(n) + " Abgleich-Profil(e) stehen wieder auf „getestet“ und müssen neu getestet und scharf geschaltet werden"
+	}
 	if r.FormValue("return_to") == "detail" {
-		http.Redirect(w, r, connectionBackPath(direction, id, "overview", "Einstellungen gespeichert", ""), http.StatusSeeOther)
+		http.Redirect(w, r, connectionBackPath(direction, id, "overview", "Einstellungen gespeichert"+demoted, ""), http.StatusSeeOther)
 		return
 	}
-	http.Redirect(w, r, base+"?notice="+url.QueryEscape("Verbindung gespeichert"), http.StatusSeeOther)
+	http.Redirect(w, r, base+"?notice="+url.QueryEscape("Verbindung gespeichert"+demoted), http.StatusSeeOther)
 }
 
 func (h *Handler) deleteConnection(w http.ResponseWriter, r *http.Request, direction string) {
@@ -401,11 +532,15 @@ func (h *Handler) deleteConnection(w http.ResponseWriter, r *http.Request, direc
 			h.importPoll.Stop(queryPollID(q.ID))
 		}
 	}
+	var brokerHost string // Name des Brokers: seine nginx-Seite geht mit weg
+	_ = h.db.QueryRow(r.Context(),
+		`SELECT COALESCE(config->>'int_public_host','') FROM import_export_connections WHERE id=$1 AND direction=$2`, id, direction).Scan(&brokerHost)
 	if _, err := h.db.Exec(r.Context(),
 		`DELETE FROM import_export_connections WHERE id=$1 AND direction=$2`, id, direction); err != nil {
 		http.Error(w, "Verbindung konnte nicht gelöscht werden", http.StatusInternalServerError)
 		return
 	}
+	h.mqttSiteSync(brokerHost)
 	h.mqttImport.Stop(id)
 	h.mqttBrokers.Stop(id)
 	h.exportCron.Unschedule(id)
@@ -429,8 +564,11 @@ func (h *Handler) toggleConnection(w http.ResponseWriter, r *http.Request, direc
 		http.Error(w, "Verbindung konnte nicht geändert werden", http.StatusInternalServerError)
 		return
 	}
-	config := map[string]string{}
-	_ = json.Unmarshal(configBytes, &config)
+	config, err := h.openConnJSON(configBytes)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusConflict)
+		return
+	}
 	h.reconcileMqttBroker(id, direction, kind, enabled, config)
 	h.reconcileExportSchedule(id, direction, enabled, config)
 	h.reconcileImportPoll(id, direction, kind, enabled, config)
@@ -438,4 +576,22 @@ func (h *Handler) toggleConnection(w http.ResponseWriter, r *http.Request, direc
 		h.reconcileQueryPolls(r.Context(), id)
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// keepStoredRoute: Fehlt das Feld „Weg“ im Formular beim Bearbeiten (z. B. weil der
+// gespeicherte Tunnel nicht mehr angeboten wird), bleibt der gespeicherte Weg.
+// Nur eine ausdrückliche Wahl („direct“ oder anderer Tunnel) ändert ihn.
+func keepStoredRoute(config, stored map[string]string, kind string, form url.Values) {
+	if kind != "mssql" && kind != "mysql" {
+		return
+	}
+	if _, sent := form["f_"+kind+"_route"]; sent {
+		return
+	}
+	switch r := parseConnRoute(stored); {
+	case r.ViaVPN:
+		config["route"] = "vpn:" + r.PeerID
+	case r.ViaNet:
+		config["route"] = "net:" + r.ClientID
+	}
 }

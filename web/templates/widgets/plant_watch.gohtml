@@ -21,6 +21,7 @@
     <div class="pw-path">{{$c.TypeLabel}} · {{$c.Path}}{{if $c.Location}} · {{$c.Location}}{{end}}</div>
     <div class="pw-kpis">
       {{if $c.Faults}}<a class="badge {{if $c.Critical}}b-red{{else}}b-amber{{end}}" href="/a/{{$c.ID}}" title="Offene Störungen (inkl. Unteranlagen)"><i class="ti ti-alert-triangle"></i> {{$c.Faults}} Störung{{if gt $c.Faults 1}}en{{end}}{{if $c.Critical}} · {{$c.Critical}} kritisch{{end}}</a>{{end}}
+      {{if $c.SetupState}}<a class="badge {{if eq $c.SetupState "running"}}b-amber{{else}}b-red{{end}}" href="/infrastructure/{{$c.ID}}" title="Rüstzeit der Anlage"><i class="ti ti-arrows-exchange-2"></i> {{if eq $c.SetupState "running"}}{{t "Rüsten"}}{{else}}{{t "Störung durch Rüsten"}}{{end}}</a>{{end}}
       {{if $c.NOK}}<span class="badge b-red"><i class="ti ti-circle-x"></i> {{$c.NOK}} NOK</span>{{end}}
       {{if $c.MaintOverdue}}<a class="badge b-amber" href="/a/{{$c.ID}}" title="Überfällige Wartungen"><i class="ti ti-tool"></i> {{$c.MaintOverdue}} Wartung überfällig</a>{{end}}
       {{if $c.ObligOverdue}}<a class="badge b-amber" href="/infrastructure/{{$c.ID}}?tab=checks" title="Überfällige Prüfpflichten / GBU"><i class="ti ti-clipboard-check"></i> {{$c.ObligOverdue}} Prüfung überfällig</a>{{end}}

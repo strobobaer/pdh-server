@@ -1,0 +1,131 @@
+{{/* Abgleich – Schritt 1 „Quelle“: Verbindung, Tabelle, Schlüssel, Änderungserkennung.
+     Bausteine: sync-source (ganzer Schritt), sync-tables, sync-columns, sync-sample (per htmx nachgeladen). */}}
+
+{{define "sync-tables"}}
+<label class="form-label" for="sy-table">Tabelle mit den Meldungen</label>
+{{if .Err}}
+  <div class="sy-warn" role="alert"><i class="ti ti-alert-triangle"></i> {{.Err}}</div>
+  <input type="hidden" name="table" value="{{.Table}}">
+  {{if .Table}}<div class="sy-note">Gespeichert: {{.Table}}</div>{{end}}
+{{else}}
+  {{$cur := .Table}}
+  <select id="sy-table" name="table" class="form-input" {{if .Locked}}disabled{{else}}required hx-get="/sync/{{.ID}}/columns" hx-target="#sy-columns" hx-trigger="change"{{end}}>
+    <option value="">– Tabelle wählen –</option>
+    {{range .Tables}}<option value="{{.}}" {{if eq . $cur}}selected{{end}}>{{.}}</option>{{end}}
+  </select>
+  {{if .Locked}}<input type="hidden" name="table" value="{{.Table}}">{{end}}
+{{end}}
+{{end}}
+
+{{define "sync-columns"}}
+{{if .Err}}
+  <div class="sy-warn" role="alert"><i class="ti ti-alert-triangle"></i> {{.Err}}</div>
+{{else}}
+  {{$ro := .ReadOnly}}
+  <div class="form-group">
+    <span class="form-label">Schlüsselspalte(n) – daran erkennt das PDH eine Meldung wieder</span>
+    <div class="sy-note" style="margin-bottom:6px">{{.KeyHint}}</div>
+    <div class="sy-wrap">
+      <table class="sy-tbl">
+        <thead><tr><th>Schlüssel</th><th>Spalte</th><th>Typ</th><th>Hinweis</th></tr></thead>
+        <tbody>
+        {{range .Columns}}
+          <tr>
+            <td><input type="checkbox" name="key" value="{{.Name}}" aria-label="Schlüsselspalte {{.Name}}" {{if .Key}}checked{{end}} {{if $ro}}disabled{{end}}>
+              {{if and $ro .Key}}<input type="hidden" name="key" value="{{.Name}}">{{end}}</td>
+            <td><b>{{.Name}}</b></td><td class="sy-mono" style="white-space:nowrap">{{.Type}}</td><td class="sy-note">{{.Note}}</td>
+          </tr>
+        {{end}}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div class="sy-grid">
+    <div class="form-group"><label class="form-label" for="sy-change">Änderungen erkennen über</label>
+      {{$chg := .Change}}
+      <select id="sy-change" name="change" class="form-input">
+        {{range .Changes}}<option value="{{.Value}}" {{if eq .Value $chg}}selected{{end}}>{{.Label}}</option>{{end}}
+      </select>
+      <div class="sy-note">Mit Änderungsspalte liest das PDH nur, was sich geändert hat.</div></div>
+    <div class="form-group"><label class="form-label" for="sy-created">Anlagedatum der Meldung</label>
+      {{$cr := .Created}}
+      <select id="sy-created" name="created" class="form-input">
+        <option value="">– keine Spalte –</option>
+        {{range .TimeCols}}<option value="{{.}}" {{if eq . $cr}}selected{{end}}>{{.}}</option>{{end}}
+      </select>
+      <div class="sy-note">Damit erkennt das PDH alte Meldungen: Sie werden still als Historie angelegt, ohne Benachrichtigung.</div></div>
+  </div>
+{{end}}
+{{end}}
+
+{{define "sync-sample"}}
+{{if .Err}}
+  <div class="sy-warn" role="alert"><i class="ti ti-alert-triangle"></i> {{.Err}}</div>
+{{else if .Rows}}
+  <div class="sy-note" style="margin:8px 0 4px">Die ersten {{len .Rows}} Zeilen von {{.Table}}{{if .More}} (nur die ersten Spalten){{end}} – nur gelesen, nichts gespeichert.</div>
+  <div class="sy-wrap">
+    <table class="sy-tbl">
+      <thead><tr>{{range .Head}}<th>{{.}}</th>{{end}}</tr></thead>
+      <tbody>{{range .Rows}}<tr>{{range .}}<td class="sy-mono">{{.}}</td>{{end}}</tr>{{end}}</tbody>
+    </table>
+  </div>
+{{else}}
+  <div class="sy-note" style="margin-top:8px">Die Tabelle {{.Table}} ist leer.</div>
+{{end}}
+{{end}}
+
+{{define "sync-source"}}
+{{$p := .P}}
+{{if .CanEdit}}
+<form method="POST" action="/sync/{{$p.ID}}/source-web">
+  <div class="card" style="margin-bottom:14px">
+    <div class="card-title"><span><i class="ti ti-database"></i> Woher kommen die Meldungen?</span></div>
+    {{if .Locked}}<div class="sy-info"><i class="ti ti-lock"></i> Es sind bereits Meldungen verknüpft. Verbindung, Tabelle und Schlüssel sind deshalb fest. Für eine andere Quelle bitte ein neues Profil anlegen.</div>{{end}}
+    <div class="sy-grid">
+      <div class="form-group"><label class="form-label" for="sy-name">Name des Profils</label>
+        <input id="sy-name" name="name" class="form-input" minlength="2" maxlength="150" required value="{{$p.Name}}"></div>
+      <div class="form-group"><label class="form-label" for="sy-conn">Verbindung (SQL Server)</label>
+        <select id="sy-conn" name="connection_id" class="form-input" {{if .Locked}}disabled{{else}}hx-get="/sync/{{$p.ID}}/tables" hx-target="#sy-tables" hx-trigger="change"{{end}}>
+          {{range .Connections}}<option value="{{.Value}}" {{if eq .Value $p.ConnectionID}}selected{{end}}>{{.Label}}</option>{{end}}
+        </select>
+        <div class="sy-note">Verbindungen legst du unter <a href="/import" style="color:var(--accent)">Import</a> an.</div></div>
+      <div class="form-group" id="sy-tables">
+        {{template "sync-tables" (dict "ID" $p.ID "Tables" .Source.Tables "Table" .Source.Table "Locked" .Locked "Err" .ReadErr)}}
+      </div>
+      <div class="form-group"><label class="form-label" for="sy-tz">Zeitzone der Zeitangaben im Fremdsystem</label>
+        {{$tz := $p.TimeZone}}
+        <select id="sy-tz" name="time_zone" class="form-input">
+          {{range .Source.TimeZones}}<option value="{{.Value}}" {{if eq .Value $tz}}selected{{end}}>{{.Label}}</option>{{end}}
+        </select></div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:14px">
+    <div class="card-title"><span><i class="ti ti-columns-3"></i> Spalten der Tabelle</span>
+      {{if not .ReadErr}}<button class="btn btn-small" type="button" hx-get="/sync/{{$p.ID}}/sample" hx-include="[name='table']" hx-target="#sy-sample"><i class="ti ti-eye"></i> Erste Zeilen ansehen</button>{{end}}</div>
+    <div id="sy-columns">
+      {{if .Source.Cols}}{{template "sync-columns" .Source.Cols}}
+      {{else if not .ReadErr}}<div class="rec-sub">Wähle oben eine Tabelle – hier erscheinen dann ihre Spalten.</div>{{end}}
+    </div>
+    <div id="sy-sample"></div>
+  </div>
+
+  <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+    <button class="btn btn-primary" type="submit" {{if .ReadErr}}disabled{{end}}><i class="ti ti-device-floppy"></i> Quelle speichern</button>
+    <span class="sy-note">Eine geänderte Quelle setzt das Profil auf „Entwurf“; es muss danach neu getestet werden.</span>
+  </div>
+</form>
+{{else}}
+<div class="card">
+  <div class="card-title"><span><i class="ti ti-database"></i> Quelle</span></div>
+  <dl class="sy-kv">
+    <dt>Verbindung</dt><dd>{{if .ConnName}}{{.ConnName}}{{else}}–{{end}}</dd>
+    <dt>Tabelle</dt><dd>{{if $p.SourceTable}}{{$p.SourceSchema}}.{{$p.SourceTable}}{{else}}noch nicht gewählt{{end}}</dd>
+    <dt>Schlüssel</dt><dd>{{range $i, $k := $p.KeyColumns}}{{if $i}}, {{end}}{{$k}}{{else}}–{{end}}</dd>
+    <dt>Änderungen über</dt><dd>{{if $p.ChangeColumn}}{{$p.ChangeColumn}}{{else}}Vergleich jeder Zeile{{end}}</dd>
+    <dt>Anlagedatum</dt><dd>{{if $p.CreatedColumn}}{{$p.CreatedColumn}}{{else}}–{{end}}</dd>
+    <dt>Zeitzone</dt><dd>{{if $p.TimeZone}}{{$p.TimeZone}}{{else}}wie der PDH-Server{{end}}</dd>
+  </dl>
+</div>
+{{end}}
+{{end}}

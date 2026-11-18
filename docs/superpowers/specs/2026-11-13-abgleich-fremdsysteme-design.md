@@ -1,0 +1,459 @@
+# Abgleich mit Fremdsystemen (Paket 1) – Entwurf
+
+Stand: 2026-11-13 · Zweig `feature/abgleich-fremdsysteme` · Version 0.80.2
+(nächste Korrekturversion über `main`; beim Merge neu prüfen)
+
+## 1. Ziel
+
+Ein externes System mit eigener Datenbank wird in beide Richtungen an das PDH
+angebunden:
+
+- Kommt dort eine neue Meldung an, entsteht im PDH ein Ticket oder eine
+  Störmeldung.
+- Ändert sich der Datensatz im PDH, geht die Änderung in das externe System
+  zurück.
+
+Paket 1 baut den Abgleich mit festen Regeln und einem Cockpit, in dem die
+Zuordnungen von Hand gepflegt und getestet werden. Die KI-gestützte
+Einrichtung (Paket 2) füllt später dasselbe Cockpit aus.
+
+**Erfolg:**
+
+- Eine neue Zeile in der Meldungstabelle eines SQL Servers erscheint binnen
+  des eingestellten Takts als Ticket oder Störmeldung im PDH, genau einmal.
+- Eine Änderung an einem zugeordneten Feld im PDH steht binnen Sekunden in der
+  fremden Zeile.
+- Ein Kommentar im PDH steht als neue Zeile in der Nebentabelle des
+  Fremdsystems.
+- Der Abgleich läuft direkt (Regelfall, anderes VLAN) und zu Testzwecken über
+  einen ausgehenden VPN-Tunnel, dort mit eigener Abfragezeit.
+- In der fremden Datenbank wird nie gelöscht und nie eine Meldung angelegt.
+
+## 2. Entscheidungen des Anwenders (13.11.2026)
+
+- Grundansatz: fester Abgleich nach bestätigten Regeln; KI nur als
+  Einrichtungshelfer (Paket 2), nicht im laufenden Betrieb.
+- Aus einer fremden Meldung entsteht ein Ticket oder eine Störmeldung, je
+  Profil wählbar.
+- Zurück geht jede Änderung an Feldern, die für den Export zugeordnet sind.
+- Spätere Änderungen im Fremdsystem übernimmt das PDH. Ändern beide Seiten
+  dasselbe Feld, gewinnt das PDH; der Fremdwert steht im Verlauf.
+- Das PDH ändert nur vorhandene Zeilen und hängt Zeilen in Nebentabellen an.
+  **Löschungen auf keinen Fall.** Keine neuen Meldungen im Fremdsystem.
+- Takt: hereinkommend einstellbar je Profil, hinausgehend binnen Sekunden.
+- Weg zur Datenbank: im Betrieb direkt (anderes VLAN, geroutet). Der
+  VPN-Tunnel dient nur zu Testzwecken. Für den Weg über VPN ist die
+  Abfragezeit getrennt einstellbar.
+- Test: Trockenlauf, danach ein echter Schreibversuch, der zurückgenommen wird.
+- Datenbanken: zuerst Microsoft SQL Server; der Aufbau muss weitere
+  Datenbanken und MQTT aufnehmen können (Paket 3).
+- Später, eigene Entwürfe: Produktionsüberwachung (Energie, Produktionszähler,
+  Abmessungen), Qualitätsmerker.
+
+## 3. Rahmen
+
+- **Zusatz.** Ohne Profil ändert sich am PDH nichts. Ein Fehler im Abgleich
+  hält weder das PDH noch einen Rollentausch auf.
+- **Nicht Teil von Paket 1:** KI-Einrichtung, MySQL, PostgreSQL, Oracle, ODBC,
+  MQTT, Anlegen von Meldungen im Fremdsystem, Stammdaten,
+  Produktionsüberwachung, Qualitätsmerker.
+
+## 4. Aufbau
+
+### 4.1 Begriffe und Daten
+
+- **Verbindung:** vorhandener Eintrag in `import_export_connections`
+  (Art `mssql`). Neu: Weg (direkt oder ausgehender VPN-Tunnel), Abfragezeit
+  über VPN (eigener Takt und eigene Zeitgrenze), Verschlüsselung zur
+  Datenbank, „Schreiben erlaubt“.
+- **Profil** (`sync_profiles`): Verbindung, Quelltabelle, Schlüsselspalte(n),
+  optionale Änderungsspalte, Ziel (Ticket oder Störmeldung), Abteilung,
+  Vorgabewerte, Filter, Zeitfenster, Takt, Obergrenze je Lauf (Vorgabe 200),
+  Zustand (`entwurf`, `getestet`, `scharf`, `angehalten`).
+- **Zuordnung** (`sync_field_maps`): fremde Spalte ↔ PDH-Feld, Richtung
+  (`herein`, `hinaus`, `beides`), Werteübersetzung, fester Wert.
+- **Nebentabelle** (im Profil): Tabelle für Kommentare mit Spalte für den
+  Fremdschlüssel der Meldung und den zugeordneten Spalten (Text, Verfasser,
+  Zeit).
+- **Verknüpfung** (`sync_links`): Profil, Schlüssel der fremden Zeile,
+  PDH-Datensatz (Typ, ID), zuletzt gesehener Stand der fremden Zeile
+  (Änderungswert oder Prüfwert, Feldwerte der zugeordneten Spalten), zuletzt
+  zurückgeschriebener Stand. Eindeutig je Profil und fremdem Schlüssel.
+- **Warteliste** (`sync_outbox`): dauerhafte Liste hinausgehender Änderungen
+  je Verknüpfung, in Reihenfolge, mit Versuchszähler und letztem Fehler.
+- **Läufe** (`sync_runs`): je Lauf Zeit, Zahlen (neu, geändert,
+  zurückgeschrieben, fehlgeschlagen), Fehlertexte. Damit die Liste lesbar
+  bleibt: Wird ein Lauf mehrmals hintereinander aus demselben Grund
+  übersprungen (Weg nicht bereit, Datenbank nicht erreichbar, Warteposition),
+  steht dafür **ein** Eintrag mit erstem und letztem Zeitpunkt. Die Durchgänge
+  der Warteliste eines Profils werden je 5 Minuten zu einem Eintrag
+  „hinaus“ zusammengezählt.
+
+Die vorhandene `record_change_queue` wird nach den Benachrichtigungen
+gelöscht und taugt nicht als Warteliste. Die Warteliste wird eigenständig
+gefüllt (im selben Schritt, in dem die Änderung an Ticket, Störmeldung oder
+Kommentar entsteht), nur für verknüpfte Datensätze.
+
+### 4.2 Hereinkommend
+
+Im Takt des Profils, nur am aktiven Server:
+
+1. Zeilen der Quelltabelle lesen, begrenzt durch Filter, Zeitfenster,
+   Zeilen-Obergrenze und Zeitgrenze der Abfrage.
+2. **Erkennen von Änderungen:** über die Änderungsspalte (Zeitstempel oder
+   `rowversion`), sonst über einen Prüfwert der zugeordneten Spalten je Zeile
+   gegen den Stand in `sync_links`.
+3. **Neue Zeile:** Datensatz über `tickets.Service.Create` bzw.
+   `faults.Service.Create` mit dem Systembenutzer anlegen, Verknüpfung
+   schreiben, Herkunft im Verlauf vermerken.
+4. **Geänderte Zeile:** je Feld mit Richtung `herein` oder `beides` den
+   Fremdwert mit dem zuletzt gesehenen Fremdwert vergleichen. Hat sich nur die
+   fremde Seite geändert, übernimmt das PDH. Hat sich auch der PDH-Wert seit
+   dem letzten Stand geändert, bleibt der PDH-Wert, der Fremdwert steht im
+   Verlauf, und die Warteliste bekommt den PDH-Wert zum Zurückschreiben.
+5. Was das PDH selbst zurückgeschrieben hat, gilt nicht als fremde Änderung
+   (Vergleich mit dem zuletzt zurückgeschriebenen Stand).
+6. Übersteigt die Zahl neuer Datensätze die Obergrenze, hält das Profil an
+   und meldet es. Vor dem ersten echten Lauf fragt das Cockpit mit der Zahl
+   nach.
+
+Nicht übersetzbare Werte und fehlende Pflichtfelder lassen nur die betroffene
+Zeile scheitern; sie steht mit Grund im Lauf.
+
+### 4.3 Hinausgehend
+
+Ein Dienst am aktiven Server arbeitet die Warteliste ab, ausgelöst durch die
+Änderung, spätestens nach wenigen Sekunden:
+
+- **Ändern:** genau eine fremde Zeile über ihren Schlüssel, nur Spalten mit
+  Richtung `hinaus` oder `beides`.
+- **Anhängen:** eine Zeile in der Nebentabelle je neuem Kommentar.
+- Je Verknüpfung streng in Reihenfolge. Scheitert ein Eintrag, bleiben er und
+  alle späteren derselben Verknüpfung liegen; andere Verknüpfungen laufen
+  weiter.
+- Nach wiederholten Fehlern wächst die Pause (höchstens 15 Minuten), nach dem
+  ersten Erfolg gilt wieder der normale Takt.
+- Ist die fremde Datenbank gar nicht erreichbar (Weg nicht bereit, Verbindung
+  deaktiviert, Anmeldung scheitert), bleiben die Einträge **unverändert**
+  liegen – das zählt nicht als Fehlversuch eines Eintrags. Die Verbindung
+  pausiert für die Warteliste mit wachsendem Abstand (5 Sekunden bis
+  15 Minuten); der Grund steht einmal im Lauf. Danach wird in Reihenfolge
+  nachgeholt.
+- Ein Eintrag, der fünfmal gescheitert ist, wird einmal am Datensatz gemeldet
+  und weiter versucht.
+- Trifft der Befehl null Zeilen (Meldung im Fremdsystem verschwunden), wird
+  das im Lauf und am Datensatz gemeldet; die Verknüpfung bleibt, nichts wird
+  angelegt.
+
+### 4.4 Schutz der fremden Datenbank
+
+- Der Abgleich kennt genau zwei schreibende Befehlsformen: `UPDATE` einer
+  Zeile über ihren Schlüssel und `INSERT` in die Nebentabelle. `DELETE`,
+  `TRUNCATE`, `DROP`, `MERGE` und `INSERT` in die Meldungstabelle kann der
+  Code nicht erzeugen.
+- Tabellen- und Spaltennamen stammen ausschließlich aus dem gelesenen Aufbau
+  der Datenbank und werden mit den Mitteln des Treibers gequotet. Werte gehen
+  immer als Parameter. Kein freier SQL-Text beim Schreiben.
+- Lesende Abfragen bleiben wie bisher auf `SELECT` beschränkt
+  (`validateSelectSQL`).
+- Steht „Schreiben erlaubt“ an der Verbindung auf nein, kann kein Profil
+  hinausgehende Zuordnungen scharf schalten.
+- Das Cockpit weist darauf hin, wenn der Datenbankbenutzer mehr darf als
+  nötig (z. B. `db_owner` oder `sysadmin`).
+
+### 4.5 Cockpit
+
+Neuer Bereich „Abgleich“ bei Import/Export. Übersicht aller Profile mit
+Zustand, letztem Lauf, offenen Einträgen und Fehlern. Das Cockpit eines
+Profils hat fünf Schritte:
+
+1. **Quelle:** Verbindung, Tabelle, Schlüsselspalte, Änderungsspalte; Aufbau
+   der Datenbank zur Auswahl, auf Wunsch die ersten Zeilen.
+2. **Ziel:** Ticket oder Störmeldung, Abteilung, Vorgabewerte, Filter,
+   Zeitfenster.
+3. **Zuordnungen:** Tabelle fremde Spalte – Richtung – PDH-Feld,
+   Werteübersetzung je Zeile, Nebentabelle für Kommentare. Unzugeordnete
+   Pflichtfelder sind markiert.
+4. **Test:** siehe 4.6.
+5. **Betrieb:** Takt, scharf schalten, anhalten, Läufe, Fehler, einzelne
+   Einträge erneut versuchen.
+
+Ein importierter Datensatz zeigt seine Herkunft (Fremdsystem, fremde Nummer)
+und den Stand des Abgleichs.
+
+Die Schritte 1 bis 3 sind so gebaut, dass Paket 2 sie über dieselben
+Funktionen füllen kann wie die Oberfläche.
+
+### 4.6 Test
+
+- **Stufe 1 – Trockenlauf:** schreibt nirgends. Hereinkommend die Liste der
+  Datensätze, die entstünden, mit Feldwerten und markierten Fehlern.
+  Hinausgehend für eine gewählte Meldung und Probewerte der genaue Befehl mit
+  Parametern.
+- **Stufe 2 – Schreibversuch mit Rücknahme:** Vorher liest das Cockpit die
+  Auslöser (Trigger) der betroffenen Tabellen und warnt mit Namen. Dann
+  schreibt das PDH die Probeänderung in einer Transaktion, liest die Zeile zur
+  Kontrolle und nimmt die Transaktion zurück. Ergebnis: bestanden oder der
+  Fehler der Datenbank.
+- Scharf schalten geht nur nach bestandenen Stufen ohne markierte Fehler.
+  Ohne hinausgehende Zuordnungen entfällt Stufe 2.
+- Jede Änderung an Quelle oder Zuordnungen setzt das Profil auf `entwurf`
+  und hält es an.
+
+### 4.7 Verbindung, VPN, Zugangsdaten
+
+- **Weg:** `direkt` oder ein Tunnel der Art `outbound` aus `vpn_peers`.
+  `direkt` ist der Regelfall: Die Datenbank steht in einem anderen VLAN und
+  ist über das Netz erreichbar; das PDH richtet dafür nichts ein. Der Tunnel
+  ist für Tests gedacht. Der Abgleich baut keine Tunnel. Vor jedem Lauf über
+  VPN: Tunnel steht, Adresse der Datenbank liegt in den Netzen des Tunnels.
+  Sonst Lauf überspringen und melden; die Warteliste bleibt.
+- **Abfragezeit über VPN:** An der Verbindung stehen zwei eigene Werte, die
+  nur gelten, solange der Weg ein Tunnel ist: der Takt für hereinkommende
+  Abfragen (ersetzt den Takt der Profile dieser Verbindung, Vorgabe 5 Minuten,
+  einstellbar 5 bis 30 Minuten)
+  und die Zeitgrenze je Abfrage (Vorgabe 60 Sekunden statt 15 Sekunden
+  direkt). Bei Weg `direkt` sind die Felder ausgeblendet und wirkungslos. Das
+  Hinausgehende bleibt auch über VPN „binnen Sekunden“.
+- **Wechsel des Wegs** (Test über VPN, danach direkt) ist eine Änderung an der
+  Verbindung, keine neue Verbindung: Profile, Zuordnungen und Verknüpfungen
+  bleiben. Nach dem Wechsel fällt ein scharfes Profil auf `getestet` zurück
+  und wird über den neuen Weg neu geprüft und scharf geschaltet.
+- **Prüfung der Verbindung** zeigt die Kette einzeln: Tunnel, Adresse, Port,
+  Anmeldung, Leserecht, Schreibrecht.
+- **Verschlüsselung zur Datenbank:** an (Vorgabe) oder aus; Zertifikat prüfen
+  mit einmal bestätigtem Fingerabdruck.
+- **Zugangsdaten:** Kennwörter in `import_export_connections.config` werden
+  mit `encryptSecret`/`decryptSecret` gespeichert. Eine Migration bzw. ein
+  Schritt beim Start verschlüsselt vorhandene Kennwörter aller Verbindungen;
+  bestehende Verbindungen laufen unverändert weiter. Die Oberfläche zeigt ein
+  gespeichertes Kennwort nie wieder an.
+- **Schonung:** Zeitgrenze und Zeilen-Obergrenze je Abfrage, höchstens ein
+  Lauf je Verbindung gleichzeitig.
+
+**Offene Punkte für den Plan (zuerst messen):**
+
+1. Läuft eine Datenbankverbindung aus dem PDH über einen ausgehenden Tunnel
+   (`pdhoutN`) ohne Änderung am VPN-Teil? Laut Code ja, ungetestet.
+2. Stehen ausgehende Tunnel nach einem Rollentausch am neuen aktiven Server?
+   Nur messen und im Handbuch festhalten. Weil der Tunnel nur dem Test dient,
+   gehört das Mitwandern nicht in dieses Paket; steht er nach dem Tausch
+   nicht, wird der Lauf übersprungen und gemeldet.
+3. Erreicht der neue aktive Server die Datenbank im anderen VLAN nach einem
+   Rollentausch (Absenderadresse, Freigabe in der Firewall für beide Server)?
+   Die Prüfung der Verbindung nennt die Absenderadresse, damit die Freigabe
+   im Fremdnetz für beide Server eingetragen werden kann.
+
+**Messergebnisse (Task 1)**
+
+Gemessen am 2026-11-13, nur lesend, am Testverbund (10.10.0.14 = `pdh`,
+passiv; 10.10.0.17 = `pdh-server`, aktiv, Amtszeit 72, Version 0.80.1).
+
+- **A – Tunnel:** Auf keinem der beiden Server gibt es einen ausgehenden Tunnel.
+  `ip -br addr` zeigt nur `lo` und `eth0` (keine `pdhout*`), `ip route` nur
+  Standardroute und das LAN, `/etc/wireguard` fehlt, `pdh-wireguard` ist
+  `inactive`. (Die Zeile „Tunnel: läuft hier“ in `pdh-ha status` ist der
+  Tunnel des Ausfallschutzes, kein WireGuard.) Punkt 1 bleibt damit am
+  Testverbund ungemessen; Code-Lage: `vpnApply` schreibt je aktivem
+  ausgehendem Tunnel eine `pdhoutN.conf`, der Dienst baut sie auf und setzt
+  NAT (`MASQUERADE` auf `pdhout+`); die Routen kommen aus `AllowedIPs`
+  (= Feld `routes`). Die Abnahme über VPN muss der Anwender einrichten
+  (Rückfrage, nichts angelegt).
+- **B – Rollentausch (aus dem Code):** `pdh-wireguard` ist ein
+  rollenunabhängiger systemd-Dienst je Host (`scripts/pdh-wireguard-daemon.sh`,
+  keine Rollenprüfung); er setzt nur um, was das PDH in den Austauschordner
+  (`/srv/pdh-wireguard`) schreibt. Die Tunnel-Daten (`vpn_peers`) liegen in
+  der Datenbank und sind am Spiegel vorhanden, die `.conf`-Dateien aber nicht
+  zwingend: `VPNStartup` läuft nur auf einem Server ohne Spiegelbetrieb
+  (`cmd/server/main.go`, `!mirrorOn`) und nur bei eingeschaltetem Hub, sonst
+  schreibt erst die nächste Änderung im VPN-Reiter die Dateien. Folge: Nach
+  einem Tausch steht ein ausgehender Tunnel am neuen aktiven Server nicht
+  sicher. Passt zur Festlegung oben: Lauf überspringen und melden. Kein
+  Rollentausch für die Messung.
+- **C – Absenderadresse:** `ip route get 10.10.0.1` liefert auf beiden Servern
+  die **eigene** Adresse als Absender: `10.10.0.17` auf dem aktiven Server,
+  `10.10.0.14` auf dem passiven. Die mitwandernde Adresse `10.10.0.15/32` (am
+  aktiven Server als Zweitadresse auf `eth0`) wird nicht verwendet. Folge: Im
+  Fremdnetz müssen **beide** Serveradressen (.14 und .17, nicht nur .15) für
+  die Datenbank freigegeben werden; die Prüfung der Verbindung nennt die
+  Absenderadresse.
+
+### 4.8 Verbund
+
+Abgleich und Warteliste arbeiten nur am aktiven Server. Verknüpfungen,
+Warteliste und Läufe liegen in der PDH-Datenbank und sind damit nach einem
+Rollentausch am neuen aktiven Server vorhanden. Während der Wartungssperre
+ruht der Abgleich wie die vorhandenen Zeitsteuerungen.
+
+### 4.9 Last und Überlastung (Vorgabe des Anwenders, 13.11.2026)
+
+**Ziel:** 25 bis 40 gleichzeitige Benutzer arbeiten flüssig, auch während der
+Abgleich läuft. Die Benutzer tun dabei Verschiedenes. Der Abgleich hat immer
+Nachrang vor den Benutzern.
+
+- **Takt hereinkommend:** einstellbar von 5 bis 30 Minuten, je Profil und für
+  den Weg über VPN. Kürzer als 5 und länger als 30 Minuten gibt es nicht;
+  andere Werte werden beim Speichern auf diese Grenzen gesetzt. Nach einem
+  Fehler kommt der nächste Versuch nach dem doppelten Takt, höchstens nach
+  15 Minuten.
+- **Warteposition bei Überlastung:** Der Abgleich prüft vor jedem Lauf und vor
+  jedem Durchgang der Warteliste die Last des Servers. Als überlastet gilt der
+  Server, wenn eines zutrifft:
+  - Prozessor: Last der letzten Minute je Kern über 0,85,
+  - Arbeitsspeicher: weniger als 10 % verfügbar,
+  - Datenbank: mehr als 80 % der Verbindungen des PDH belegt.
+- **Verhalten in Warteposition:**
+  - Hereinkommende Läufe werden verschoben und nach 1 Minute erneut geprüft.
+    Spätestens 30 Minuten nach dem letzten Lauf läuft das Profil trotzdem, mit
+    kleiner Zeilenzahl (höchstens 50), damit das Fremdsystem nie länger als
+    30 Minuten unbeachtet bleibt.
+  - Die Warteliste wird langsamer abgearbeitet: alle 30 Sekunden statt alle
+    3 Sekunden, je Durchgang höchstens 5 Einträge. Es geht nichts verloren,
+    die Reihenfolge bleibt.
+  - Tests im Cockpit und von Hand gestartete Läufe („Jetzt abgleichen“)
+    laufen weiter; sie startet ein Benutzer bewusst.
+  - Als „letzter Lauf“ zählt jeder Lauf oder Versuch, nicht die Warteposition
+    selbst. Ein Profil, das noch nie lief, läuft spätestens 30 Minuten nach
+    der ersten Verschiebung.
+- **Sichtbar:** Das Cockpit zeigt „Warteposition wegen hoher Serverlast“ mit
+  dem Grund (Prozessor, Arbeitsspeicher oder Datenbank) und dem Zeitpunkt des
+  nächsten Versuchs. Im Lauf steht der Grund als übersprungen.
+- **Grenzen im Normalbetrieb:** höchstens ein Lauf je Verbindung, höchstens
+  zwei Verbindungen gleichzeitig, höchstens zwei Datenbankverbindungen des PDH
+  für den Abgleich. Ein Lauf holt Zeilen in Blöcken und gibt zwischen den
+  Blöcken ab.
+- **Ohne Messwert** (z. B. Betriebssystem liefert keine Lastwerte) gilt der
+  Server als nicht überlastet; die Grenzen im Normalbetrieb gelten weiter.
+
+Die Schwellen sind Vorgaben im Code und werden nach der Lastprüfung
+(Abschnitt 7) mit den gemessenen Werten bestätigt oder angepasst.
+
+### 4.10 Benachrichtigungen und rückwirkende Meldungen (Vorgabe des Anwenders, 13.11.2026)
+
+- **Neue Tickets und Störmeldungen erzeugen immer eine Benachrichtigung**,
+  wie von Hand angelegte. Der Abgleich unterdrückt sie nicht.
+- **Rückwirkende Meldungen:** Das Fremdsystem kann auch Meldungen von früher
+  liefern. Sie werden angelegt, bleiben aber still und dienen als Historie.
+  Rückwirkend ist eine Meldung, deren Anlagedatum im Fremdsystem **vor dem
+  Tag liegt, an dem das Profil zum ersten Mal scharf geschaltet wurde**
+  (Stichtag, Tagesbeginn nach der Zeit des Servers). Am Tag des
+  Scharfschaltens ist das „vor dem heutigen Tag“, wie vom Anwender vorgegeben.
+  Der Stichtag bleibt danach fest: Würde stattdessen bei jedem Lauf neu „vor
+  heute“ gelten, blieben echte neue Meldungen still, sobald ein Lauf erst
+  nach Mitternacht, nach einem Ausfall oder nach einer Pause des Profils
+  drankommt – das widerspräche der ersten Regel. Vor dem ersten
+  Scharfschalten rechnet der Probelauf mit dem heutigen Tag.
+  - Dafür bekommt das Profil eine optionale **Anlagedatum-Spalte** der fremden
+    Tabelle (Datum oder Zeit). Ohne diese Spalte gilt jede neue Meldung als
+    neu und benachrichtigt.
+  - Eine rückwirkende Meldung erzeugt **keine Benachrichtigung** an Benutzer,
+    weder beim Anlegen noch durch die Werte, die der Abgleich dabei setzt.
+  - Ihr Anlagezeitpunkt im PDH ist das Anlagedatum aus dem Fremdsystem, damit
+    Listen und Auswertungen die Meldung zeitlich richtig einordnen.
+  - Hat sie im Fremdsystem den Zustand **abgeschlossen** (zugeordnet auf
+    „erledigt“ oder „geschlossen“), wird sie im PDH erledigt **und
+    archiviert**. Lösungstext ist der zugeordnete Wert, sonst „Im Fremdsystem
+    erledigt“. Für archivierte rückwirkende Meldungen laufen auch die
+    Folgeschritte des Anlegens nicht (Ereignis an Zusatzmodule, Karte im
+    Aufgabenbrett).
+  - Ist sie im Fremdsystem noch offen, bleibt sie im PDH offen und wird ab
+    dann normal abgeglichen; spätere Änderungen benachrichtigen wie üblich.
+- **Obergrenze je Lauf:** Die Sperre „zu viele neue Meldungen“ zählt nur
+  Meldungen von heute. Rückwirkende Meldungen halten das Profil nie an; je
+  Lauf werden höchstens so viele angelegt, wie die Obergrenze vorgibt, der
+  Rest folgt in den nächsten Läufen.
+- **Vor dem ersten Scharfschalten** zeigt das Cockpit getrennt, wie viele
+  Meldungen neu (mit Benachrichtigung) und wie viele rückwirkend (still)
+  angelegt würden, davon wie viele gleich archiviert.
+- Das Zeitfenster des Profils begrenzt weiterhin, wie weit zurück gelesen
+  wird.
+
+### 4.11 Zeitzone des Fremdsystems (Vorgabe des Anwenders, 13.11.2026)
+
+Datenbanken speichern Datum und Uhrzeit meist ohne Zeitzone. Ob damit
+Ortszeit oder Weltzeit (UTC) gemeint ist, weiß nur das Fremdsystem. Deshalb
+ist das **je Profil einstellbar**:
+
+- Einstellung „Zeiten im Fremdsystem“: **Ortszeit des PDH-Servers** (Vorgabe),
+  **Weltzeit (UTC)** oder eine **benannte Zeitzone** (z. B. `Europe/Berlin`).
+- Sie gilt für alle Zeitwerte des Profils: das Anlagedatum (Stichtag für
+  „rückwirkend“), zugeordnete Zeitfelder wie „Fällig am“ beim Lesen, und
+  dieselben Felder sowie die Zeit von Kommentaren beim Zurückschreiben.
+- Sie ändert nichts daran, wie der Abgleich Änderungen erkennt und wo er
+  weiterliest; dort zählt der gespeicherte Wert unverändert.
+- Reine Datumsspalten ohne Uhrzeit sind Kalendertage und werden nicht
+  umgerechnet.
+- Bei der Umstellung auf Sommer- oder Winterzeit gibt es Uhrzeiten doppelt
+  oder gar nicht. Eine doppelte Uhrzeit (Herbst) gilt als die spätere der
+  beiden; eine Uhrzeit, die es nicht gibt (Frühjahr), rückt um die
+  ausgefallene Stunde nach hinten (02:30 wird 03:30). Das ist durch Tests
+  festgeschrieben und steht im Handbuch.
+- Eine Änderung der Einstellung setzt das Profil auf `entwurf`, weil sich
+  damit Zeitwerte verschieben. Das Cockpit zeigt beim Auswählen eine
+  Beispielzeile mit der gelesenen und der umgerechneten Zeit.
+
+## 5. Rechte
+
+Neue Rechte in der Kategorie „Daten & Schnittstellen“:
+
+| Schlüssel | Erlaubt |
+|---|---|
+| `sync.view` | Profile, Läufe, Fehler, Herkunft am Datensatz sehen |
+| `sync.edit` | Profile anlegen, Zuordnungen ändern, Test fahren |
+| `sync.run` | scharf schalten, anhalten, erneut versuchen |
+| `sync.admin` | Bereichsadministrator; löscht als Einziger Profile samt Verknüpfungen |
+
+- Migration: Rollen mit `import.write` bekommen `sync.view`, `sync.edit`,
+  `sync.run`; Rollen mit Administratorrechten zusätzlich `sync.admin`.
+- Ein Profil gehört einer Abteilung; Prüfung mit `hasPermRec`. Löschrouten in
+  `gateRules`, `sync.admin` in `areaAdminPerm`.
+- Importierte Datensätze folgen den Ticket- bzw. Störungsrechten. Wer einen
+  Datensatz ändern darf, löst das Zurückschreiben aus.
+- Beim Löschen eines Profils bleiben die importierten Datensätze im PDH; im
+  Fremdsystem ändert sich nichts.
+
+## 6. Fehlerbilder
+
+| Lage | Verhalten |
+|---|---|
+| Fremddatenbank nicht erreichbar | Lauf übersprungen, Warteliste bleibt, Pause wächst |
+| Tunnel steht nicht | wie oben, eigener Hinweis |
+| Wert nicht übersetzbar, Pflichtfeld fehlt | nur diese Zeile scheitert, Grund im Lauf |
+| Schreiben abgelehnt (Recht, Sperre, Pflichtfeld) | Eintrag bleibt, erneuter Versuch, Fehler am Datensatz |
+| Fremde Zeile verschwunden | Meldung, Verknüpfung bleibt, nichts wird angelegt |
+| Zu viele neue Meldungen | Profil hält an und meldet es |
+| Beide Seiten ändern dasselbe Feld | PDH gewinnt, Fremdwert im Verlauf |
+| Rollentausch mit gefüllter Warteliste | neuer aktiver Server arbeitet weiter, nichts doppelt |
+
+## 7. Prüfung
+
+- **Tests:** neue und geänderte Zeilen, keine Dubletten, Widerspruch,
+  Reihenfolge und Nachholen der Warteliste, eigenes Zurückgeschriebenes wird
+  nicht wieder importiert, Obergrenze, Rechte, Verschlüsselung vorhandener
+  Kennwörter. Ein eigener Test belegt, dass kein Löschbefehl erzeugt werden
+  kann.
+- **Labor:** SQL Server im Docker-Container mit Beispieltabelle „Meldungen“
+  und Kommentartabelle: Import, Zurückschreiben, Trockenlauf, Schreibversuch
+  mit Rücknahme, auch mit Auslöser an der Tabelle.
+- **Verbund:** Rollentausch mit gefüllter Warteliste.
+- **Last:** 40 gleichzeitige Benutzer mit gemischten Tätigkeiten (Listen und
+  Detailseiten lesen, Tickets ändern, kommentieren, Leitstand) gegen einen
+  Server mit laufendem Abgleich. Gemessen werden Antwortzeiten (Mittel und
+  95 %-Wert) ohne und mit Abgleich, Prozessor, Arbeitsspeicher und belegte
+  Datenbankverbindungen. Flüssig heißt: 95 %-Wert der Seitenaufrufe unter
+  1 Sekunde und durch den Abgleich höchstens 10 % schlechter. Dazu künstliche
+  Überlastung: Der Abgleich geht in Warteposition und holt danach auf.
+- **Abnahme auf .14/.17:** dieselbe Beispieldatenbank, direkt und über einen
+  VPN-Tunnel (dort mit eigenem Takt und eigener Zeitgrenze), Wechsel des Wegs
+  ohne Verlust der Verknüpfungen; Oberfläche in Fiori und Fluent, hell und dunkel, schmal und breit.
+
+## 8. Handbuch und Version
+
+- Neues Kapitel „Abgleich mit Fremdsystemen“ (So geht's: Verbindung,
+  Datenbankbenutzer im Fremdsystem mit Mindestrechten, Profil, Zuordnen,
+  Testen, Scharfschalten, Fehler beheben), Skizze des Cockpits, Eintrag in
+  `helpChapterIDs`.
+- Kapitel „Administration“ (neue Rechte) und VPN (Tunnel-Auswahl an
+  Verbindungen) ergänzen.
+- `CHANGELOG.md` 0.80.2: „Neu“ der Abgleich, „Sicherheit“ verschlüsselte
+  Zugangsdaten und neue Rechte.

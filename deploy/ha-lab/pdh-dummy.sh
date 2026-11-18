@@ -89,7 +89,12 @@ case "${1:-}" in
     start | restart) start ;;
     stop)
         stop_migrate
-        rm -f "$flag"
+        # wartet auf ein laufendes Hochladen (Datei-Spiegelung: UPLOAD_SH in ha-lab.sh),
+        # wie das echte pdh beim Stoppen auf offene Anfragen
+        (
+            flock 8
+            rm -f "$flag"
+        ) 8>/run/pdh-dummy.lock
         ;;
     is-active) [[ -f "$flag" ]] ;;
     enable | disable) : ;;

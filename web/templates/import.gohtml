@@ -57,6 +57,7 @@
         <div class="form-group"><label class="form-label">Passwort</label><input type="password" name="f_mysql_password" class="form-input" autocomplete="new-password"></div>
       </div>
       <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin:6px 0 10px"><input type="checkbox" name="f_mysql_use_tls"> TLS-Verschlüsselung</label>
+      {{template "route-select" (dict "Kind" "mysql" "Tunnels" .Tunnels "NetClients" .NetClients)}}
     </div>
 
     <div class="kind-fields" id="fields-mssql" hidden>
@@ -69,6 +70,7 @@
         <div class="form-group"><label class="form-label">Passwort</label><input type="password" name="f_mssql_password" class="form-input" autocomplete="new-password"></div>
       </div>
       <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin:6px 0 10px"><input type="checkbox" name="f_mssql_use_tls"> TLS-Verschlüsselung</label>
+      {{template "mssql-route-fields" (dict "Tunnels" .Tunnels "NetClients" .NetClients)}}
     </div>
 
     <div class="kind-fields" id="fields-mqtt" hidden>
@@ -99,7 +101,11 @@
         <p style="font-size:11px;color:var(--muted);margin:0 0 10px">Startet einen in PDH eingebetteten MQTT-Broker mit den folgenden Einstellungen.</p>
         <div class="grid2" style="gap:10px">
           <div class="form-group"><label class="form-label">Listen-Port</label><input type="number" name="f_mqtt_int_listen_port" class="form-input" value="1883"></div>
-          <div class="form-group"><label class="form-label">WebSocket-Port</label><input type="number" name="f_mqtt_int_websocket_port" class="form-input" placeholder="optional"></div>
+          <div class="form-group"><label class="form-label">WebSocket-Port</label><input type="number" name="f_mqtt_int_websocket_port" class="form-input" placeholder="optional, z. B. 8083"></div>
+          <div class="form-group"><label class="form-label" for="f_mqtt_int_public_host">Name des Brokers (Subdomain)</label><input id="f_mqtt_int_public_host" name="f_mqtt_int_public_host" class="form-input" maxlength="253" placeholder="optional, z. B. mqtt.firma.de" autocapitalize="none" spellcheck="false">
+            <div style="font-size:11px;color:var(--muted);margin-top:3px">Mit Name: WebSocket-Port nötig, Zertifikat kommt aus der Zertifikatsliste (Dateipfade leer lassen). Einrichten über die Prüfliste im Broker-Status.</div></div>
+          <div class="form-group"><label class="form-label" for="f_mqtt_int_tls_port">TLS-Port (mqtts)</label><input type="number" id="f_mqtt_int_tls_port" name="f_mqtt_int_tls_port" class="form-input" min="1" max="65535" placeholder="optional, z. B. 8883">
+            <div style="font-size:11px;color:var(--muted);margin-top:3px">Nur mit Name. Läuft zusätzlich – der Listen-Port ohne TLS bleibt.</div></div>
           <div class="form-group"><label class="form-label">Broker-Benutzername</label><input name="f_mqtt_int_broker_username" class="form-input" placeholder="optional"></div>
           <div class="form-group"><label class="form-label">Broker-Passwort</label><input type="password" name="f_mqtt_int_broker_password" class="form-input" autocomplete="new-password"></div>
           <div class="form-group"><label class="form-label">Max. Clients</label><input type="number" name="f_mqtt_int_max_clients" class="form-input" placeholder="optional"></div>
@@ -143,10 +149,10 @@
         <div class="form-group"><label class="form-label">Benutzername</label><input name="f_rest_api_username" class="form-input"></div>
         <div class="form-group"><label class="form-label">Passwort</label><input type="password" name="f_rest_api_password" class="form-input" autocomplete="new-password"></div>
       </div>
-      <div id="rest-auth-bearer" hidden class="form-group"><label class="form-label">Bearer-Token</label><input name="f_rest_api_bearer_token" class="form-input"></div>
+      <div id="rest-auth-bearer" hidden class="form-group"><label class="form-label">Bearer-Token</label><input type="password" name="f_rest_api_bearer_token" class="form-input" autocomplete="new-password"></div>
       <div id="rest-auth-api_key" hidden class="grid2" style="gap:10px">
         <div class="form-group"><label class="form-label">Header-Name</label><input name="f_rest_api_api_key_header" class="form-input" placeholder="z.B. X-Api-Key"></div>
-        <div class="form-group"><label class="form-label">Header-Wert</label><input name="f_rest_api_api_key_value" class="form-input"></div>
+        <div class="form-group"><label class="form-label">Header-Wert</label><input type="password" name="f_rest_api_api_key_value" class="form-input" autocomplete="new-password"></div>
       </div>
     </div>
 
@@ -190,7 +196,7 @@
 {{define "scripts"}}
 <script>
 // Import-spezifisch; Tabelle, Bearbeiten & Co. kommen aus widgets/connection_list.gohtml
-const CONN_BOOL_FIELDS = ['has_header','use_tls','ext_use_tls','int_allow_anonymous','int_persistence_enabled','int_retain_enabled'];
+const CONN_BOOL_FIELDS = ['has_header','use_tls','ext_use_tls','int_allow_anonymous','int_persistence_enabled','int_retain_enabled','allow_write'];
 function mqttModeChanged(){
   const mode = document.getElementById('f_mqtt_broker_mode').value;
   document.getElementById('mqtt-mode-external').hidden = mode !== 'external';
@@ -212,14 +218,14 @@ function connPageItems(row){
   const id = row.dataset.connId, kind = row.dataset.connKind, items = [];
   const go = function(label, icon, path){ items.push({label: label, icon: icon, onClick: function(){ window.location = '/import/connections/' + id + path; }}); };
   if(kind === 'mqtt'){
-    go('Sniffer öffnen', 'ti-antenna', '/sniffer');
+    go('Explorer öffnen', 'ti-telescope', '?tab=explorer');
     if(row.dataset.connBrokerIntegrated === 'true') go('Broker-Status öffnen', 'ti-server-2', '/broker');
   }
   if(kind === 'excel' || kind === 'csv') go('Vorschau öffnen', 'ti-table', '/preview');
   if(kind === 'sqlite' || kind === 'mysql' || kind === 'mssql') go('Datenbank durchsuchen', 'ti-table', '/browse');
   if(kind === 'web' || kind === 'rest_api') go('Antwort öffnen', 'ti-api', '/response');
-  if(kind === 'modbus') go('Register lesen', 'ti-plug', '/read');
-  if(kind === 'opcua') go('Namespace durchsuchen', 'ti-sitemap', '/nodes');
+  if(kind === 'modbus') go('Explorer öffnen', 'ti-telescope', '?tab=explorer');
+  if(kind === 'opcua') go('Explorer öffnen', 'ti-telescope', '?tab=explorer');
   return items;
 }
 </script>

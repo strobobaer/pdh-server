@@ -1,0 +1,39 @@
+{{/* Reiter „UniFi“ der Server-Einstellungen: Anbindung an eine UniFi UDM Pro (internal/web/certs_lan.go).
+     Ein Zusatz – ohne ihn läuft alles unverändert. Der API-Schlüssel wird nie angezeigt, beim
+     Zeichnen geht keine Anfrage an das Gerät. Daten: unifiTab. */}}
+{{define "unifi-panel"}}
+<div id="unifi-panel" class="card">
+  <div class="card-title"><span><i class="ti ti-router"></i> UniFi UDM Pro</span><span class="sc-sub">Zusatz – ohne läuft alles wie bisher</span></div>
+  {{if not .Can}}
+  <p class="sc-sub">Die UniFi-Anbindung richtet ein, wer das Recht „Namen im Haus eintragen (UniFi)“ (<code>system.unifi</code>) hat.</p>
+  {{else}}
+  {{if .Msg}}<div class="sc-sub" style="margin-bottom:8px;color:var(--green)"><i class="ti ti-check"></i> {{.Msg}}</div>{{end}}
+  {{if .Err}}<div class="sc-sub" style="margin-bottom:8px;color:var(--red)"><i class="ti ti-alert-circle"></i> {{.Err}}</div>{{end}}
+  <p class="sc-sub" style="margin:0 0 10px">Mit einer UniFi UDM Pro trägt das PDH die Namen im Haus selbst ein (lokaler DNS-Eintrag je Name). Dafür in UniFi Network einen <b>API-Schlüssel</b> für die Netzwerk-Anwendung anlegen (wo, hängt von der Version ab), hier Adresse und Schlüssel speichern und den Fingerabdruck bestätigen.</p>
+  {{if .Unifi.Err}}<div class="sc-sub" style="margin-bottom:8px;color:var(--amber)"><i class="ti ti-alert-triangle"></i> {{.Unifi.Err}}</div>{{end}}
+  <form hx-post="/admin/server-config/unifi" hx-target="#unifi-panel" hx-swap="outerHTML" hx-disabled-elt="find button" class="unifi-form">
+    <div class="form-group" style="margin:0"><label class="form-label" for="unifi-url">Adresse der UDM Pro</label><input class="form-input" id="unifi-url" name="url" value="{{.Unifi.URL}}" placeholder="https://192.168.1.1" autocomplete="off"></div>
+    <div class="form-group" style="margin:0"><label class="form-label" for="unifi-key">API-Schlüssel</label><input class="form-input" id="unifi-key" type="password" name="key" autocomplete="new-password" placeholder="{{if .Unifi.HasKey}}hinterlegt – nur zum Ändern eingeben{{else}}aus UniFi Network{{end}}"></div>
+    <div class="form-group" style="margin:0"><label class="form-label" for="unifi-site">Standort</label><input class="form-input" id="unifi-site" name="site" value="{{.Unifi.Site}}" placeholder="leer = einziger bzw. default"></div>
+    <button class="btn btn-primary btn-small" type="submit"><i class="ti ti-device-floppy"></i> Speichern</button>
+  </form>
+  {{if .Unifi.HasKey}}<p class="sc-sub" style="margin:0 0 6px"><i class="ti ti-key"></i> API-Schlüssel hinterlegt (verschlüsselt). Adresse leer speichern entfernt die Anbindung. Bei einer neuen Adresse den Schlüssel neu eintragen.</p>{{end}}
+  {{if .Unifi.SeenPin}}<div class="unifi-form">
+    <span class="sc-sub">Fingerabdruck der UDM Pro: <code class="unifi-fp">{{.Unifi.SeenPin}}</code><br>Stimmt er mit dem Zertifikat überein, das der Browser auf der UDM Pro zeigt (SHA-256)?</span>
+    <form hx-post="/admin/server-config/unifi/confirm" hx-target="#unifi-panel" hx-swap="outerHTML" hx-disabled-elt="find button"
+      hx-confirm="Diesen Fingerabdruck bestätigen? Danach spricht das PDH nur noch mit einem Gerät, das genau diesen zeigt.">
+      <input type="hidden" name="fingerprint" value="{{.Unifi.SeenPin}}">
+      <button class="btn btn-primary btn-small" type="submit"><i class="ti ti-fingerprint"></i> Bestätigen</button></form>
+  </div>
+  {{else if .Unifi.Confirmed}}<p class="sc-sub"><i class="ti ti-fingerprint"></i> Fingerabdruck bestätigt: <code class="unifi-fp">{{.Unifi.Pin}}</code>. Die Anbindung ist fertig. Die Namen trägst du im Reiter <a href="?tab=cloudflare">Cloudflare-Tunnel</a> in der Karte „Zertifikate (Let's Encrypt)“ ein: je Name der Knopf <i class="ti ti-home-plus"></i>.</p>
+  {{else if .Unifi.URL}}<p class="sc-sub" style="color:var(--amber)"><i class="ti ti-alert-triangle"></i> Fingerabdruck noch nicht bestätigt. „Speichern“ drücken und den angezeigten Fingerabdruck bestätigen.</p>{{end}}
+  {{end}}
+<style>
+.unifi-form{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin:8px 0}
+.unifi-form form{display:inline}
+.unifi-form .form-group{flex:1 1 200px;min-width:0}
+.unifi-form .form-input{max-width:100%}
+.unifi-fp{overflow-wrap:anywhere;word-break:break-all}
+</style>
+</div>
+{{end}}

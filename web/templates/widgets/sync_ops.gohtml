@@ -1,0 +1,123 @@
+{{/* Abgleich – Schritt 5 „Betrieb“: scharf schalten, anhalten, Takt, Warteliste, Läufe.
+     Bausteine: sync-ops (ganzer Schritt), sync-runs (per htmx aktualisiert). */}}
+
+{{define "sync-runs"}}
+{{if .}}
+<div class="sy-wrap">
+  <table class="sy-tbl">
+    <thead><tr><th>Zeit</th><th>Richtung</th><th>Ergebnis</th></tr></thead>
+    <tbody>
+    {{range .}}
+      <tr>
+        <td style="white-space:nowrap">{{.When}}{{if .Until}}<div class="sy-note">bis {{.Until}}</div>{{end}}</td>
+        <td>{{.Direction}}</td>
+        <td>{{if .Waiting}}<span style="color:var(--amber)"><i class="ti ti-hourglass"></i> {{.Summary}}</span>{{else if .Bad}}<span style="color:var(--red)"><i class="ti ti-alert-circle"></i> {{.Summary}}</span>{{else}}{{.Summary}}{{end}}
+          {{range .Errors}}<div class="sy-note" style="color:var(--red)">{{.}}</div>{{end}}</td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table>
+</div>
+{{else}}
+<div class="rec-sub">Noch kein Lauf.</div>
+{{end}}
+{{end}}
+
+{{define "sync-ops"}}
+{{$p := .P}}
+{{$o := .Ops}}
+
+{{with $o.Confirm}}
+<div class="card" style="margin-bottom:14px;border-color:var(--accent)">
+  <div class="card-title"><span><i class="ti ti-help-circle"></i> Vor dem ersten Scharfschalten</span></div>
+  {{if .Error}}
+  <div class="sy-warn" role="alert"><i class="ti ti-alert-triangle"></i> Die Meldungen ließen sich nicht zählen: {{.Error}}</div>
+  {{else}}
+  <p style="font-size:13px;margin-bottom:8px">Der erste Lauf würde im PDH anlegen:</p>
+  <div class="sy-counts" style="margin-bottom:10px">
+    <span><b>{{if .Truncated}}mindestens {{end}}{{.New}}</b> neue {{$.TargetLabel}}(s) – mit Benachrichtigung wie von Hand angelegt</span>
+    <span><b>{{.Backfilled}}</b> rückwirkend – still als Historie{{if .Archived}}, davon {{.Archived}} gleich archiviert{{end}}</span>
+    {{if .Failed}}<span style="color:var(--red)"><b>{{.Failed}}</b> Meldung(en) mit Fehler</span>{{end}}
+  </div>
+  {{if .TooMany}}<div class="sy-warn" role="alert"><i class="ti ti-alert-triangle"></i> <span>Das sind mehr als die erlaubten {{.MaxNew}} neuen Meldungen je Lauf – das Profil würde sofort anhalten. Setze im Schritt <a href="?tab=target" style="color:var(--accent)">Ziel</a> das Zeitfenster oder den Filter enger oder erhöhe die Obergrenze.</span></div>{{end}}
+  {{end}}
+  <div style="display:flex;gap:10px;flex-wrap:wrap">
+    {{if and (not .Error) (not .TooMany)}}
+    <form method="POST" action="/sync/{{$p.ID}}/arm-web"><input type="hidden" name="confirm" value="1">
+      <button class="btn btn-primary" type="submit"><i class="ti ti-bolt"></i> Ja, scharf schalten</button></form>
+    {{end}}
+    <a class="btn" href="?tab=ops">Abbrechen</a>
+  </div>
+</div>
+{{end}}
+
+<div class="card" style="margin-bottom:14px">
+  <div class="card-title"><span><i class="ti ti-activity"></i> Zustand</span><span class="sy-state" style="color:{{.StateColor}}">{{.StateLabel}}</span></div>
+  <dl class="sy-kv" style="margin-bottom:12px">
+    {{if $p.StateNote}}<dt>Hinweis</dt><dd>{{$p.StateNote}}</dd>{{end}}
+    <dt>Takt hereinkommend</dt><dd>{{$o.Effective}}</dd>
+    {{if $o.Armed}}<dt>Nächster Lauf</dt><dd>{{if $o.NextRun}}{{$o.NextRun}}{{else}}gleich{{end}}</dd>{{end}}
+    <dt>Warten auf das Zurückschreiben</dt><dd>{{if $o.Open}}<b>{{$o.Open}}</b> Änderung(en){{else}}nichts{{end}}</dd>
+  </dl>
+  {{if not $o.RunnerOn}}<div class="sy-info"><i class="ti ti-info-circle"></i> Auf diesem Server läuft der Abgleich nicht (Spiegel). Er läuft immer am aktiven Server.</div>{{end}}
+  {{if .CanRun}}
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+    {{if $o.Armed}}
+      <form method="POST" action="/sync/{{$p.ID}}/run-web" onsubmit="this.querySelector('button').disabled=true"><button class="btn btn-primary" type="submit"><i class="ti ti-refresh"></i> Jetzt abgleichen</button></form>
+      <form method="POST" action="/sync/{{$p.ID}}/pause-web"><button class="btn" type="submit"><i class="ti ti-player-pause"></i> Anhalten</button></form>
+    {{else if $o.ArmBlock}}
+      <button class="btn btn-primary" type="button" disabled><i class="ti ti-bolt"></i> Scharf schalten</button>
+      <span class="sy-note"><i class="ti ti-lock"></i> {{$o.ArmBlock}} – siehe Schritt <a href="?tab=test" style="color:var(--accent)">Test</a>.</span>
+    {{else}}
+      <form method="POST" action="/sync/{{$p.ID}}/arm-web" onsubmit="this.querySelector('button').disabled=true">
+        <button class="btn btn-primary" type="submit"><i class="ti ti-bolt"></i> {{if $o.Halted}}Fortsetzen (scharf schalten){{else}}Scharf schalten{{end}}</button></form>
+      {{if $o.FirstArm}}<span class="sy-note">Vorher zeigt das PDH, wie viele Meldungen der erste Lauf anlegen würde.</span>{{end}}
+    {{end}}
+  </div>
+  {{else}}
+  <div class="sy-note">Scharf schalten und anhalten darf, wer das Recht „Abgleich: scharf schalten, anhalten, erneut versuchen“ hat.</div>
+  {{end}}
+</div>
+
+{{if .CanEdit}}
+<div class="card" style="margin-bottom:14px">
+  <div class="card-title"><span><i class="ti ti-clock"></i> Takt</span></div>
+  <form method="POST" action="/sync/{{$p.ID}}/interval-web" style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
+    <div class="form-group" style="margin-bottom:0"><label class="form-label" for="sy-interval">Hereinkommend alle … Minuten ({{$o.MinInterval}} bis {{$o.MaxInterval}})</label>
+      <input id="sy-interval" type="number" min="{{$o.MinInterval}}" max="{{$o.MaxInterval}}" name="interval_minutes" class="form-input" style="max-width:140px" value="{{$o.Interval}}"></div>
+    <button class="btn" type="submit"><i class="ti ti-device-floppy"></i> Takt speichern</button>
+  </form>
+  <div class="sy-note" style="margin-top:6px">Änderungen aus dem PDH gehen innerhalb weniger Sekunden zurück. Bei hoher Serverlast wartet der Abgleich und holt danach auf – die Benutzer haben Vorrang.</div>
+</div>
+{{end}}
+
+<div class="card" style="margin-bottom:14px">
+  <div class="card-title"><span><i class="ti ti-list-check"></i> Warteliste – Änderungen für das Fremdsystem</span></div>
+  {{if $o.Entries}}
+  <div class="sy-wrap">
+    <table class="sy-tbl">
+      <thead><tr><th>Meldung</th><th>Art</th><th>Seit</th><th>Stand</th><th></th></tr></thead>
+      <tbody>
+      {{range $o.Entries}}
+        <tr>
+          <td>{{if .RefPath}}<a href="{{.RefPath}}" style="color:var(--accent)">{{.Key}}</a>{{else}}{{.Key}}{{end}}</td>
+          <td>{{.Kind}}</td>
+          <td style="white-space:nowrap">{{.Since}}</td>
+          <td>{{if .Attempts}}<span style="color:var(--red)">{{.Attempts}} Fehlversuch(e): {{.LastError}}</span><div class="sy-note">nächster Versuch {{.NextTry}}</div>{{else}}<span class="sy-note">wartet</span>{{end}}</td>
+          <td>{{if and $.CanRun .Attempts}}<form method="POST" action="/sync/{{$p.ID}}/outbox/{{.ID}}/retry-web"><button class="btn btn-small" type="submit"><i class="ti ti-refresh"></i> Erneut versuchen</button></form>{{end}}</td>
+        </tr>
+      {{end}}
+      </tbody>
+    </table>
+  </div>
+  {{else}}
+  <div class="rec-sub">Nichts wartet.</div>
+  {{end}}
+</div>
+
+<div class="card">
+  <div class="card-title"><span><i class="ti ti-history"></i> Letzte Läufe</span>
+    <button class="btn btn-small" type="button" hx-get="/sync/{{$p.ID}}/runs" hx-target="#sy-runs"><i class="ti ti-refresh"></i> Aktualisieren</button></div>
+  <div id="sy-runs">{{template "sync-runs" $o.Runs}}</div>
+</div>
+{{end}}

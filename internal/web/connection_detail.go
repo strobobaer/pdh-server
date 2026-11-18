@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/url"
 	"sort"
@@ -20,20 +21,30 @@ var connFieldLabels = map[string]string{
 	"source_path": "Quellpfad", "sheet_name": "Tabellenblatt", "has_header": "Erste Zeile ist Überschrift", "delimiter": "Trennzeichen",
 	"file_path": "Datenbankdatei", "host": "Host", "port": "Port", "database": "Datenbank", "instance_name": "Instanz",
 	"username": "Benutzer", "password": "Passwort", "use_tls": "TLS",
+	"route": "Weg", "vpn_poll_minutes": "Abfragetakt über VPN/Datennetz (Min.)", "vpn_timeout_seconds": "Zeitgrenze je Abfrage über VPN/Datennetz (Sek.)",
+	"allow_write": "Schreiben erlaubt", "tls_fingerprint": "Fingerabdruck des Zertifikats",
 	"broker_mode": "Broker", "ext_broker_host": "Broker-Host", "ext_broker_port": "Broker-Port", "ext_username": "Benutzer",
 	"ext_password": "Passwort", "ext_use_tls": "TLS", "ext_client_id": "Client-ID", "ext_topic_filter": "Topic-Filter", "ext_qos": "QoS",
 	"int_listen_port": "Port (integriert)", "int_websocket_port": "WebSocket-Port", "int_allow_anonymous": "Anonym erlaubt",
 	"int_broker_username": "Broker-Benutzer", "int_broker_password": "Broker-Passwort", "int_max_clients": "Max. Clients",
 	"int_persistence_enabled": "Speichern", "int_retain_enabled": "Retain", "int_tls_cert_path": "TLS-Zertifikat",
 	"int_tls_key_path": "TLS-Schlüssel", "int_topic_filter": "Topic-Filter", "int_qos": "QoS",
+	"int_public_host": "Name des Brokers", "int_tls_port": "TLS-Port (mqtts)",
 	"url": "URL", "method": "Methode", "poll_interval_minutes": "Abruf-Intervall (Min.)",
 	"base_url": "Basis-URL", "auth_method": "Anmeldung", "bearer_token": "Bearer-Token", "api_key_header": "API-Key-Header", "api_key_value": "API-Key",
 	"unit_id": "Unit-ID", "endpoint_url": "Endpunkt", "auth_mode": "Anmeldung",
 	"template_id": "Vorlage", "destination_path": "Zielpfad", "schedule_cron": "Zeitplan (Cron)", "table_name": "Tabelle",
+	"run_minutes": "Datei ergänzen alle (Min.)", "interval_minutes": "Zeilen im Abstand von (Min.)", "value_mode": "Wert",
+	"file_days": "Max. Länge der Datei (Tage)", "retention_days": "Aufbewahrung (Tage)", "file_prefix": "Dateiname beginnt mit",
+	"time_format": "Zeitformat", "time_base": "Zeitbezug", "decimal_comma": "Dezimalkomma", "encoding": "Zeichensatz", "target": "Ablage",
+	"drive_id": "Netzlaufwerk", "drive_folder": "Ordner auf dem Laufwerk", "ftp_host": "Server", "ftp_port": "Port",
+	"ftp_username": "Benutzer", "ftp_password": "Kennwort", "ftp_folder": "Zielordner", "ftp_tls": "TLS",
+	"sftp_host_key": "Fingerabdruck des Servers", "filter_infra_ids": "Nur Anlagen", "filter_meter_keys": "Nur Messstellen",
 }
 
 var connSecretFields = map[string]bool{
 	"password": true, "ext_password": true, "int_broker_password": true, "bearer_token": true, "api_key_value": true,
+	"ftp_password": true, // Efficio-Export: FTP-/SFTP-Kennwort
 }
 
 type connConfigRow struct{ Label, Value string }
@@ -65,11 +76,11 @@ func queryFormFields(kind string) []queryFormField {
 			{Key: "area", Label: "Bereich", Type: "select", Options: modbusRegisterTypes},
 			{Key: "start", Label: "Startadresse", Type: "number", Placeholder: "0", Help: "Adresse ab 0 (nicht 40001)."},
 			{Key: "count", Label: "Anzahl Werte", Type: "number", Placeholder: "10"},
-			{Key: "type", Label: "Datentyp", Type: "select", Options: modbusDataTypes, Help: "32-Bit-Typen belegen je 2 Register."},
+			{Key: "type", Label: "Datentyp", Type: "select", Options: modbusDataTypes, Help: "32-Bit-Typen belegen je 2, 64-Bit-Typen je 4 Register."},
 		}
 	case kind == "opcua":
 		return []queryFormField{
-			{Key: "nodes", Label: "Knoten (je Zeile einer)", Type: "textarea", Placeholder: "ns=2;s=Linie1.Temperatur", Help: "Knoten-IDs findest du unter Werkzeuge → Namespace durchsuchen."},
+			{Key: "nodes", Label: "Knoten (je Zeile einer)", Type: "textarea", Placeholder: "ns=2;s=Linie1.Temperatur", Help: "Knoten-IDs findest du im Reiter Explorer."},
 		}
 	case kind == "excel":
 		return []queryFormField{
@@ -86,44 +97,66 @@ func queryFormFields(kind string) []queryFormField {
 
 type connMappingRow struct {
 	ImportMappingView
-	QueryName string
-	Column    string
+	QueryName   string
+	Column      string
+	SilentSince string // „seit …“ bzw. „noch kein Heartbeat“, nur wenn Silent
 }
 
 type ConnectionDetailData struct {
 	BaseData
-	Direction, ID, Name, Kind, KindLabel string
-	Enabled                              bool
-	CanWrite, CanExecute                 bool
-	Tab, Notice, Err                     string
-	Config                               []connConfigRow
-	Check                                *checkReport
-	CheckAt                              string
-	QueriesSupported                     bool
-	Queries                              []connQuery
-	QueryFields                          []queryFormField
-	OpenQuery                            string
-	Builtins                             []builtinQueryTemplate
-	OwnTemplates                         []ownTemplateView
-	Mappings                             []connMappingRow
-	ExportMappings                       []ExportMappingView
-	Tools                                []connTool
-	Background                           []connConfigRow
+	Direction, ID, Name, Kind, KindLabel    string
+	Enabled                                 bool
+	CanWrite, CanExecute                    bool
+	Tab, Notice, Err                        string
+	Config                                  []connConfigRow
+	Check                                   *checkReport
+	CheckAt                                 string
+	QueriesSupported                        bool
+	Queries                                 []connQuery
+	QueryFields                             []queryFormField
+	OpenQuery                               string
+	Builtins                                []builtinQueryTemplate
+	OwnTemplates                            []ownTemplateView
+	Mappings                                []connMappingRow
+	SilentPLCs                              []string // Namen der Heartbeat-Zuordnungen, die sich nicht melden
+	ExportMappings                          []ExportMappingView
+	Tools                                   []connTool
+	Background                              []connConfigRow
+	Explorer, ExplorerWrite, ExplorerMirror bool
+	ExplorerLog                             []HistoryView
+	ExplorerTopic                           string
+	ExplorerUnit                            int
+	ExplorerPlainAuth                       bool // OPC UA mit Benutzer/Kennwort: Übertragung ohne Verschlüsselung
+	// ExportSources: übernommene Import-Werte, aus denen im Export-Explorer ein Zielfeld wird
+	// (nur Export mit Explorer und Schreibrecht).
+	ExportSources []ImportMappingView
 }
 
 func connectionTools(direction, kind, id string, config map[string]string) []connTool {
 	base := "/" + direction + "/connections/" + id + "/"
 	var t []connTool
+	explorer := connTool{"/" + direction + "/connections/" + id + "?tab=explorer", "ti-telescope", "Explorer", "Werte live erkunden, testweise schreiben und als Zuordnung übernehmen"}
+	if direction == "export" && kind == efficioKind {
+		return []connTool{
+			{base + "efficio", "ti-files", "Dateien & Protokoll", "Erzeugte Dateien herunterladen, Läufe ansehen, Verbindung testen, jetzt exportieren"},
+			{"/energy/meters", "ti-gauge", "Messstellen", "Welche Messstellen exportiert werden"},
+		}
+	}
 	if direction == "export" {
+		if explorerKindSupported(direction, kind) {
+			t = append(t, explorer)
+		}
 		t = append(t, connTool{base + "preview", "ti-table-export", "Vorschau & jetzt exportieren", "Felder auswählen, Werte prüfen, Export starten"})
 		if kind == "pdf" || kind == "excel" {
 			t = append(t, connTool{"/export/templates", "ti-template", "Exportvorlagen", "Kopf, Logo und Layout für PDF/Excel"})
 		}
 		return append(t, connTool{"/export/mappings", "ti-list-details", "Alle Export-Felder", "Übersicht über alle Verbindungen"})
 	}
+	if explorerKindSupported(direction, kind) {
+		t = append(t, explorer)
+	}
 	switch {
 	case kind == "mqtt":
-		t = append(t, connTool{base + "sniffer", "ti-antenna", "Sniffer", "Live-Nachrichten ansehen und Topics zuordnen"})
 		if config["broker_mode"] == "integrated" {
 			t = append(t, connTool{base + "broker", "ti-server-2", "Broker-Status", "Clients und Aktivität des integrierten Brokers"})
 		}
@@ -133,10 +166,6 @@ func connectionTools(direction, kind, id string, config map[string]string) []con
 		t = append(t, connTool{base + "browse", "ti-database-search", "Datenbank durchsuchen", "Tabellen und Spalten ansehen"})
 	case webBrowsableKind(kind):
 		t = append(t, connTool{base + "response", "ti-api", "Antwort ansehen", "Rohantwort der Adresse, Felder direkt zuordnen"})
-	case kind == "modbus":
-		t = append(t, connTool{base + "read", "ti-plug", "Register lesen", "Einzelne Register testen"})
-	case kind == "opcua":
-		t = append(t, connTool{base + "nodes", "ti-sitemap", "Namespace durchsuchen", "Knoten-IDs finden"})
 	}
 	return append(t, connTool{"/import/mappings", "ti-list-details", "Alle Zuordnungen", "Übersicht über alle Verbindungen"})
 }
@@ -171,6 +200,12 @@ func (h *Handler) connectionDetailPage(w http.ResponseWriter, r *http.Request, d
 		return
 	}
 	name, kind, enabled, config, err := h.connectionRow(ctx, id, direction)
+	var secretErr *connSecretError
+	if errors.As(err, &secretErr) {
+		err = nil // Seite trotzdem zeigen, Hinweis unten
+	} else {
+		secretErr = nil
+	}
 	if err != nil {
 		http.Error(w, "Verbindung nicht gefunden", http.StatusNotFound)
 		return
@@ -186,6 +221,9 @@ func (h *Handler) connectionDetailPage(w http.ResponseWriter, r *http.Request, d
 	if d.Tab == "" {
 		d.Tab = "overview"
 	}
+	if secretErr != nil {
+		d.Err = secretErr.Error()
+	}
 	fields, _ := connectionKindFields(direction, kind)
 	for _, f := range fields {
 		v := strings.TrimSpace(config[f])
@@ -195,11 +233,25 @@ func (h *Handler) connectionDetailPage(w http.ResponseWriter, r *http.Request, d
 		if kind == "mqtt" && ((config["broker_mode"] == "integrated" && strings.HasPrefix(f, "ext_")) || (config["broker_mode"] != "integrated" && strings.HasPrefix(f, "int_"))) {
 			continue
 		}
+		if (f == "vpn_poll_minutes" || f == "vpn_timeout_seconds") && !parseConnRoute(config).Remote() {
+			continue // gilt nur über VPN oder Datennetz
+		}
 		switch {
+		case f == "route":
+			switch rt := parseConnRoute(config); {
+			case rt.ViaVPN:
+				v = "über VPN-Tunnel"
+			case rt.ViaNet:
+				v = h.dataNetRouteLabel(ctx, rt.ClientID)
+			default:
+				v = "Direkt"
+			}
 		case connSecretFields[f]:
 			v = "•••••• (gesetzt)"
 		case booleanConfigFields[f]:
 			v = map[string]string{"true": "ja", "false": "nein"}[v]
+		case kind == efficioKind:
+			v = h.efficioDisplay(ctx, f, v)
 		case f == "template_id":
 			tpl := h.resolveExportTemplate(ctx, kind, v)
 			if tpl.Name != "" {
@@ -221,6 +273,9 @@ func (h *Handler) connectionDetailPage(w http.ResponseWriter, r *http.Request, d
 		}
 	}
 	d.Tools = connectionTools(direction, kind, id, config)
+	if direction == "import" && kind == "mqtt" && h.tiaCan(r, permImportTIA, id) {
+		d.Tools = append(d.Tools, tiaTool(id))
+	}
 	if direction == "import" {
 		d.QueriesSupported = queryKindSupported(kind)
 		d.Queries, _ = h.loadConnQueries(ctx, id)
@@ -238,6 +293,10 @@ func (h *Handler) connectionDetailPage(w http.ResponseWriter, r *http.Request, d
 					if row.QueryName == "" {
 						row.QueryName = "(gelöschte Abfrage)"
 					}
+				}
+				if m.Silent {
+					row.SilentSince = silentSinceText(m.LastReceivedAt)
+					d.SilentPLCs = append(d.SilentPLCs, m.Name)
 				}
 				d.Mappings = append(d.Mappings, row)
 			}
@@ -268,6 +327,15 @@ func (h *Handler) connectionDetailPage(w http.ResponseWriter, r *http.Request, d
 		}
 	} else {
 		d.ExportMappings, _ = h.exportMappings(ctx, id)
+		if kind == efficioKind {
+			if ec, err := efficioConfig(id, config, nil); err == nil || ec.RunEvery > 0 {
+				st := "angehalten (Verbindung deaktiviert)"
+				if enabled {
+					st = "läuft"
+				}
+				d.Background = append(d.Background, connConfigRow{"Efficio-Export", "alle " + strconv.Itoa(int(ec.RunEvery/time.Minute)) + " Min. – " + st})
+			}
+		}
 		if h.exportCron != nil {
 			if next, ok := h.exportCron.Next(id); ok {
 				d.Background = append(d.Background, connConfigRow{"Nächster Export", next.Format("02.01.2006 15:04")})
@@ -275,7 +343,47 @@ func (h *Handler) connectionDetailPage(w http.ResponseWriter, r *http.Request, d
 		}
 	}
 	d.OwnTemplates, _ = h.ownTemplates(ctx, direction, kind)
+	h.fillExplorer(r, &d, config)
 	h.render(w, "connection_detail", d)
+}
+
+// fillExplorer setzt die Felder des Explorer-Reiters: sichtbar nur mit Ausführen-Recht
+// und unterstütztem Typ; Schreiben nur mit Bearbeiten-Recht und nicht im Spiegel.
+func (h *Handler) fillExplorer(r *http.Request, d *ConnectionDetailData, config map[string]string) {
+	d.ExplorerMirror = h.Mirror().On
+	d.Explorer = explorerKindSupported(d.Direction, d.Kind) && d.CanExecute
+	if !d.Explorer {
+		return
+	}
+	d.ExplorerWrite = h.explorerCanWrite(r, d.Direction)
+	if d.Direction == "export" && d.ExplorerWrite {
+		if sources, err := h.availableExportSources(r.Context()); err == nil {
+			d.ExportSources = sources
+		}
+	}
+	for _, k := range []string{"ext_topic_filter", "int_topic_filter"} {
+		if v := strings.TrimSpace(config[k]); v != "" {
+			d.ExplorerTopic = v
+			break
+		}
+	}
+	if d.ExplorerTopic == "" {
+		d.ExplorerTopic = "#"
+	}
+	d.ExplorerPlainAuth = d.Kind == "opcua" && config["auth_mode"] == "username"
+	if u, _ := strconv.Atoi(strings.TrimSpace(config["unit_id"])); u > 0 {
+		d.ExplorerUnit = u
+	} else {
+		d.ExplorerUnit = 1
+	}
+	for _, e := range h.recordHistory(r.Context(), "connection", d.ID) {
+		if e.Action == "explorer_write" {
+			d.ExplorerLog = append(d.ExplorerLog, e)
+			if len(d.ExplorerLog) == 10 {
+				break
+			}
+		}
+	}
 }
 
 func (h *Handler) canRunConnection(r *http.Request, direction string) bool {
@@ -326,7 +434,7 @@ func (h *Handler) ConnectionQuerySaveWeb(w http.ResponseWriter, r *http.Request)
 	}
 	ctx := r.Context()
 	_, kind, _, _, err := h.connectionRow(ctx, id, "import")
-	if err != nil {
+	if err != nil && !isConnSecretErr(err) { // nur Metadaten nötig: Kennwortfehler egal
 		http.Error(w, "Verbindung nicht gefunden", http.StatusNotFound)
 		return
 	}
@@ -378,8 +486,12 @@ func (h *Handler) ConnectionQuerySaveWeb(w http.ResponseWriter, r *http.Request)
 	// gleich ausprobieren, damit Ergebnis und Spalten zum Zuordnen da sind
 	if r.FormValue("run") == "1" && h.canRunConnection(r, "import") {
 		qs, _ := h.loadConnQueries(ctx, id)
-		_, _, _, config, _ := h.connectionRow(ctx, id, "import")
+		_, _, _, config, cerr := h.connectionRow(ctx, id, "import")
 		for _, q := range qs {
+			if cerr != nil {
+				back("Abfrage gespeichert", "Ausführen fehlgeschlagen: "+cerr.Error(), qid)
+				return
+			}
 			if q.ID == qid {
 				if _, _, err := h.executeConnQuery(ctx, kind, config, q); err != nil {
 					back("Abfrage gespeichert", "Ausführen fehlgeschlagen: "+err.Error(), qid)
@@ -429,6 +541,11 @@ func (h *Handler) ConnectionQueryRunWeb(w http.ResponseWriter, r *http.Request) 
 	ctx := r.Context()
 	_, kind, _, config, err := h.connectionRow(ctx, id, "import")
 	if err != nil {
+		var secretErr *connSecretError
+		if errors.As(err, &secretErr) {
+			http.Error(w, secretErr.Error(), http.StatusConflict)
+			return
+		}
 		http.Error(w, "Verbindung nicht gefunden", http.StatusNotFound)
 		return
 	}

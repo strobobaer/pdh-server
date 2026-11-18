@@ -1,0 +1,231 @@
+{{template "base" .}}
+{{define "content"}}
+<style>
+.dn-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
+.dn-note{font-size:11.5px;color:var(--muted)}
+.dn-wrap{overflow-x:auto}
+.dn-tbl{border-collapse:collapse;width:100%;font-size:12.5px}
+.dn-tbl th{text-align:left;padding:6px 10px;border-bottom:1px solid var(--border);white-space:nowrap;color:var(--muted);font-weight:500}
+.dn-tbl td{padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:top}
+.dn-tbl tr:last-child td{border-bottom:0}
+.dn-state{display:inline-flex;align-items:center;gap:6px;font-weight:600;font-size:12px;white-space:nowrap}
+.dn-state::before{content:"";width:8px;height:8px;border-radius:50%;background:currentColor}
+.dn-chip{display:inline-flex;align-items:center;gap:4px;padding:1px 8px;margin:0 4px 4px 0;border:1px solid var(--border);border-radius:10px;font-size:11.5px;background:var(--bg2)}
+.dn-chip.ok{color:var(--green)}
+.dn-chip.bad{color:var(--red)}
+.dn-warnbox{margin-top:6px;font-size:11.5px;color:var(--amber)}
+.dn-pre{position:relative;margin:6px 0 10px;padding:10px 12px;padding-right:90px;background:var(--bg2);border:1px solid var(--border);border-radius:6px;font-family:ui-monospace,Consolas,monospace;font-size:12px;white-space:pre-wrap;word-break:break-all;color:var(--text)}
+.dn-pre .dn-copy{position:absolute;top:6px;right:6px}
+.dn-secret{border-color:var(--amber)}
+.dn-actions{display:flex;gap:6px;flex-wrap:wrap}
+.dn-h{font-size:13px;font-weight:600;margin:12px 0 2px}
+.dn-chk-sum{font-weight:600;font-size:13.5px;margin:4px 0 6px}
+.dn-chk-list{list-style:none;margin:2px 0 6px;padding:0}
+.dn-l{display:flex;gap:8px;align-items:flex-start;padding:5px 0;font-size:12.5px;border-bottom:1px solid var(--border)}
+.dn-l:last-child{border-bottom:0}
+.dn-l-ic{flex:0 0 18px;text-align:center;font-weight:700}
+.dn-l-ok .dn-l-ic{color:var(--green)}
+.dn-l-warn .dn-l-ic{color:var(--amber)}
+.dn-l-bad .dn-l-ic{color:var(--red)}
+.dn-l-info .dn-l-ic{color:var(--muted)}
+.dn-l-hint{display:block;margin-top:2px;font-size:11.5px;color:var(--muted)}
+.dn-dl{display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap;margin-bottom:8px}
+.dn-sha{font-family:ui-monospace,Consolas,monospace;font-size:11px;color:var(--muted);word-break:break-all}
+@media (max-width:640px){
+  .dn-tbl thead{display:none}
+  .dn-tbl,.dn-tbl tbody,.dn-tbl tr,.dn-tbl td{display:block;width:100%}
+  .dn-tbl tr{border:1px solid var(--border);border-radius:8px;background:var(--bg2);padding:6px 4px;margin-bottom:10px}
+  .dn-tbl td{border-bottom:0;padding:4px 10px}
+  .dn-tbl td[data-l]::before{content:attr(data-l);display:block;font-size:11px;color:var(--muted)}
+}
+</style>
+
+<div style="margin-bottom:18px">
+  <h1 style="font-size:19px;font-weight:600"><i class="ti ti-topology-star-3"></i> Datennetz</h1>
+  <p style="font-size:12px;color:var(--muted);margin-top:3px">Fremddatenbanken im Werk sicher erreichen, ohne dass dort ein Port offen sein muss: Ein kleiner Daten-Client im Werk verbindet die Datenbank über das Datennetz mit dem PDH.</p>
+</div>
+
+{{if .Notice}}<div class="card" role="status" style="margin-bottom:14px;border-color:var(--green)"><i class="ti ti-circle-check" style="color:var(--green)"></i> {{.Notice}}</div>{{end}}
+{{if .Err}}<div class="card" role="alert" style="margin-bottom:14px;border-color:var(--red);color:var(--red)"><i class="ti ti-alert-circle"></i> {{.Err}}</div>{{end}}
+
+{{with .Created}}
+<div class="card dn-secret" role="status" style="margin-bottom:14px">
+  <div class="card-title"><span><i class="ti ti-key"></i> Client „{{.Name}}“ angelegt</span></div>
+  <p style="font-size:12.5px;color:var(--amber);margin-bottom:8px"><b>Dieses Token wird nur jetzt gezeigt.</b> Es steht danach nirgends mehr im PDH. Geht es verloren, sperre den Client und lege einen neuen an.</p>
+  <div class="dn-h">Token</div>
+  <div class="dn-pre" id="dn-token">{{.Token}}<button type="button" class="btn btn-small dn-copy" data-src="dn-token" onclick="dnCopy(this)"><i class="ti ti-copy"></i> Kopieren</button></div>
+
+  {{if .NoNode}}
+  <p style="font-size:12.5px">{{.Windows}}. Schalte unten unter „Datennetz des PDH“ das Datennetz ein; sobald der Server verbunden ist, erscheint hier der fertige Befehl für die nächste Anlage.</p>
+  {{else}}
+  <div class="dn-h">Installation beim Kunden, empfohlen: Token bleibt nicht in der Shell-Historie</div>
+  <p class="dn-note">Erst das Token abfragen (hier einfügen), dann installieren. Beide Zeilen einzeln ausführen.</p>
+  <div class="dn-grid" style="grid-template-columns:repeat(auto-fit,minmax(320px,1fr))">
+    <div>
+      <b style="font-size:12px"><i class="ti ti-brand-windows"></i> Windows (Eingabeaufforderung als Administrator)</b>
+      <div class="dn-pre" id="dn-wp">{{.PrepWindows}}<button type="button" class="btn btn-small dn-copy" data-src="dn-wp" onclick="dnCopy(this)"><i class="ti ti-copy"></i></button></div>
+      <div class="dn-pre" id="dn-ws">{{.SafeWindows}}<button type="button" class="btn btn-small dn-copy" data-src="dn-ws" onclick="dnCopy(this)"><i class="ti ti-copy"></i></button></div>
+    </div>
+    <div>
+      <b style="font-size:12px"><i class="ti ti-brand-debian"></i> Linux (Bash)</b>
+      <div class="dn-pre" id="dn-lp">{{.PrepLinux}}<button type="button" class="btn btn-small dn-copy" data-src="dn-lp" onclick="dnCopy(this)"><i class="ti ti-copy"></i></button></div>
+      <div class="dn-pre" id="dn-ls">{{.SafeLinux}}<button type="button" class="btn btn-small dn-copy" data-src="dn-ls" onclick="dnCopy(this)"><i class="ti ti-copy"></i></button></div>
+    </div>
+  </div>
+
+  <details style="margin-top:6px">
+    <summary style="cursor:pointer;font-size:12.5px">Einfacher Befehl mit Token (das Token bleibt in der Shell-Historie)</summary>
+    <div class="dn-grid" style="grid-template-columns:repeat(auto-fit,minmax(320px,1fr))">
+      <div><b style="font-size:12px">Windows</b>
+        <div class="dn-pre" id="dn-wt">{{.Windows}}<button type="button" class="btn btn-small dn-copy" data-src="dn-wt" onclick="dnCopy(this)"><i class="ti ti-copy"></i></button></div></div>
+      <div><b style="font-size:12px">Linux</b>
+        <div class="dn-pre" id="dn-lt">{{.Linux}}<button type="button" class="btn btn-small dn-copy" data-src="dn-lt" onclick="dnCopy(this)"><i class="ti ti-copy"></i></button></div></div>
+    </div>
+  </details>
+
+  <p style="font-size:12.5px;margin-top:10px"><b>Den Einmal-Schlüssel</b> (dort, wo <code>&lt;EINMAL-SCHLÜSSEL&gt;</code> steht) im Tailscale-Admin unter <i>Settings → Keys</i> erzeugen: <i>Reusable</i> aus, <i>Pre-approved</i> an, Tag <code>tag:pdh-data</code>. Er gilt nur für diese eine Anmeldung und wird nirgends gespeichert.</p>
+  <p class="dn-note">Das Programm (<code>pdh-data-client-windows-amd64.exe</code> bzw. <code>pdh-data-client-linux-amd64</code>) lädst du weiter unten bei „Programme für den Kunden“. Tipp: Wer das Token als Datei übergeben will, nutzt <code>--token-file &lt;Datei&gt;</code>; die Umgebungsvariable heißt <code>PDH_DATANET_TOKEN</code>.</p>
+  {{end}}
+</div>
+{{end}}
+
+<div class="card" style="margin-bottom:14px">
+  <div class="card-title"><span><i class="ti ti-plug-connected"></i> Datennetz des PDH</span></div>
+  <p style="font-size:12.5px;margin-bottom:8px">
+    Zustand: <span class="dn-state" style="color:{{if eq .NetState "running"}}var(--green){{else if eq .NetState "error"}}var(--red){{else if eq .NetState "off"}}var(--muted){{else}}var(--amber){{end}}">{{.NetStateLabel}}</span>
+    {{if .NetErr}}<span class="dn-note" style="color:var(--red)"> {{.NetErr}}</span>{{end}}
+  </p>
+  <div class="dn-wrap">
+    <table class="dn-tbl">
+      <thead><tr><th>Server</th><th>Adresse im Datennetz</th><th>Zuletzt gemeldet</th>{{if .CanAdmin}}<th>Einmal-Schlüssel</th>{{end}}</tr></thead>
+      <tbody>
+      {{range .Servers}}
+        <tr>
+          <td data-l="Server"><b>{{.Name}}</b>{{if .Self}} <span class="dn-note">(dieser Server)</span>{{end}}</td>
+          <td data-l="Adresse im Datennetz">{{if .Addrs}}{{.Addrs}}{{else}}<span class="dn-note">noch nicht verbunden</span>{{end}}</td>
+          <td data-l="Zuletzt gemeldet">{{if .Seen}}{{.Seen}}{{else}}<span class="dn-note">–</span>{{end}}</td>
+          {{if $.CanAdmin}}<td data-l="Einmal-Schlüssel">{{if .HasKey}}<span class="dn-note" style="color:var(--green)"><i class="ti ti-check"></i> hinterlegt</span>{{end}}</td>{{end}}
+        </tr>
+      {{end}}
+      </tbody>
+    </table>
+  </div>
+  {{if .CanAdmin}}
+  <form method="POST" action="/datanet/settings" autocomplete="off" style="margin-top:12px">
+    <label style="display:flex;gap:8px;align-items:center;font-size:13px;margin-bottom:10px">
+      <input type="checkbox" name="enabled" {{if .Enabled}}checked{{end}}> Datennetz einschalten
+    </label>
+    <div class="dn-grid">
+      {{range .Servers}}
+      <div class="form-group"><label class="form-label" for="dn-key-{{.Name}}">Einmal-Schlüssel für {{.Name}}</label>
+        <input id="dn-key-{{.Name}}" name="authkey.{{.Name}}" type="password" class="form-input" autocomplete="off" spellcheck="false" maxlength="300" placeholder="{{if .HasKey}}hinterlegt – leer lassen zum Behalten{{else}}tskey-auth-…{{end}}"></div>
+      {{end}}
+    </div>
+    <div class="dn-grid" style="margin-top:10px">
+      <div class="form-group"><label class="form-label" for="dn-api-token">Tailscale-API-Token (optional)</label>
+        <input id="dn-api-token" name="apitoken" type="password" class="form-input" autocomplete="off" spellcheck="false" maxlength="300" placeholder="{{if .HasAPIToken}}hinterlegt – leer lassen zum Behalten{{else}}tskey-api-…{{end}}">
+        {{if .HasAPIToken}}<label style="display:flex;gap:6px;align-items:center;font-size:12px;margin-top:4px"><input type="checkbox" name="apitoken_delete"> Token löschen</label>{{end}}
+        <span class="dn-note">Nur für die Prüfung unten: liest Geräte und Access controls und kann Tags korrigieren. Wird verschlüsselt gespeichert und nie angezeigt.</span></div>
+    </div>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px">
+      <button class="btn btn-primary" type="submit"><i class="ti ti-device-floppy"></i> Speichern</button>
+      <span class="dn-note">Den Schlüssel erzeugst du auf tailscale.com unter <i>Settings → Keys</i> (Reusable aus, Pre-approved an, Tag <code>tag:pdh</code>). Er wird verschlüsselt abgelegt und nach der ersten Verbindung gelöscht.</span>
+    </div>
+  </form>
+  {{end}}
+  <p class="dn-note" style="margin-top:10px">Bei tailscale.com liegen nur die Gerätenamen und Adressen. Die Daten selbst laufen verschlüsselt direkt zwischen PDH und Client und liegen nie bei Tailscale.</p>
+</div>
+
+<div class="card" style="margin-bottom:14px" id="dn-check-card">
+  <div class="card-title"><span><i class="ti ti-stethoscope"></i> Datennetz prüfen</span></div>
+  <p style="font-size:12.5px;margin-bottom:8px">Prüft, ob dieser Server und jeder Client im Datennetz sind, die richtigen Tags tragen und ihre Ports erreichbar sind. Jede Zeile zeigt ✓ (in Ordnung), ⚠ (Warnung) oder ✗ (Fehler) und sagt, was zu tun ist.{{if .HasAPIToken}} Mit dem hinterlegten API-Token liest die Prüfung auch die Geräteliste und die Access controls von Tailscale.{{end}}</p>
+  <button type="button" class="btn btn-primary" hx-get="/datanet/check" hx-target="#dn-check" hx-swap="innerHTML" hx-indicator="#dn-check-busy"><i class="ti ti-stethoscope"></i> Datennetz prüfen</button>
+  <span id="dn-check-busy" class="htmx-indicator dn-note" style="margin-left:8px">Prüfe … das kann bis zu einer Minute dauern.</span>
+  <div id="dn-check" aria-live="polite" style="margin-top:8px"></div>
+</div>
+
+<div class="card" style="margin-bottom:14px">
+  <div class="card-title"><span><i class="ti ti-shield-check"></i> Freigabe im Tailnet</span></div>
+  <p style="font-size:12.5px">Damit PDH und Clients einander erreichen, trägst du diese Zeilen einmal im Tailscale-Admin unter <i>Access controls</i> in die Richtlinie ein. {{if not .Clients}}Die Ports ergeben sich aus den Datenbanken, die Clients freigeben; bis dahin steht <code>&lt;PORT&gt;</code> als Platzhalter.{{else}}Die Ports stammen aus den Zielen der Clients.{{end}}</p>
+  <div class="dn-pre" id="dn-acl">{{.ACL}}<button type="button" class="btn btn-small dn-copy" data-src="dn-acl" onclick="dnCopy(this)"><i class="ti ti-copy"></i> Kopieren</button></div>
+</div>
+
+<div class="card" style="margin-bottom:14px">
+  <div class="card-title"><span><i class="ti ti-devices"></i> Daten-Clients</span></div>
+  {{if .Clients}}
+  <div class="dn-wrap">
+    <table class="dn-tbl">
+      <thead><tr><th>Name</th><th>Zustand</th><th>Rechner</th><th>Version</th><th>Letzter Kontakt</th><th>Ziele</th>{{if .CanEdit}}<th></th>{{end}}</tr></thead>
+      <tbody>
+      {{range .Clients}}
+        <tr>
+          <td data-l="Name"><b>{{.Name}}</b></td>
+          <td data-l="Zustand"><span class="dn-state" style="color:{{.StateColor}}">{{.StateLabel}}</span></td>
+          <td data-l="Rechner">{{if .Host}}{{.Host}}{{if .OS}} <span class="dn-note">({{.OS}})</span>{{end}}{{else}}<span class="dn-note">–</span>{{end}}</td>
+          <td data-l="Version">{{if .Version}}{{.Version}}{{if .VersionDiff}}<div class="dn-warnbox"><i class="ti ti-alert-triangle"></i> andere Version als das PDH</div>{{end}}{{else}}<span class="dn-note">–</span>{{end}}</td>
+          <td data-l="Letzter Kontakt">{{if .LastSeen}}{{.LastSeen}}{{else}}<span class="dn-note">noch keine Meldung</span>{{end}}</td>
+          <td data-l="Ziele">{{range .Targets}}<span class="dn-chip {{if .OK}}ok{{else}}bad{{end}}" {{if .Err}}title="{{.Err}}"{{end}}><i class="ti {{if .OK}}ti-circle-check{{else}}ti-alert-circle{{end}}"></i> {{.Port}}</span>{{if .Err}}<div class="dn-note" style="color:var(--red)">{{.Err}}</div>{{end}}{{else}}<span class="dn-note">–</span>{{end}}</td>
+          {{if $.CanEdit}}
+          <td data-l="" class="dn-actions">
+            {{if not .Revoked}}
+            <form method="POST" action="/datanet/clients/{{.ID}}/revoke" onsubmit="return confirm('Client „{{.Name}}“ sperren? Offene Verbindungen werden sofort getrennt.')"><button class="btn btn-small" type="submit"><i class="ti ti-lock"></i> Sperren</button></form>
+            {{end}}
+            {{if $.CanAdmin}}
+            <form method="POST" action="/datanet/clients/{{.ID}}/delete" onsubmit="return confirm('Client „{{.Name}}“ endgültig entfernen?')"><button class="btn btn-small btn-danger" type="submit"><i class="ti ti-trash"></i> Entfernen</button></form>
+            {{end}}
+          </td>
+          {{end}}
+        </tr>
+      {{end}}
+      </tbody>
+    </table>
+  </div>
+  {{else}}
+  <div class="rec-sub">Noch kein Client. Ein Client läuft im Werk neben der Fremddatenbank und gibt deren Port im Datennetz frei.</div>
+  {{end}}
+
+  {{if .CanEdit}}
+  <form method="POST" action="/datanet/clients" autocomplete="off" style="margin-top:14px">
+    <div class="dn-grid">
+      <div class="form-group"><label class="form-label" for="dn-new-name">Neuer Client</label>
+        <input id="dn-new-name" name="name" class="form-input" maxlength="80" required placeholder="z. B. Werk Süd"></div>
+    </div>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:6px">
+      <button class="btn btn-primary" type="submit"><i class="ti ti-plus"></i> Client anlegen</button>
+      <span class="dn-note">Danach zeigt diese Seite einmal das Token und den fertigen Installationsbefehl.</span>
+    </div>
+  </form>
+  {{end}}
+</div>
+
+{{if .CanEdit}}
+<div class="card">
+  <div class="card-title"><span><i class="ti ti-download"></i> Programme für den Kunden</span></div>
+  {{range .Downloads}}
+  <div class="dn-dl">
+    <div style="min-width:180px"><b>{{.Label}}</b></div>
+    <div style="flex:1;min-width:220px">
+      {{if .Present}}
+      <a class="btn btn-small" href="/datanet/download/{{.File}}"><i class="ti ti-download"></i> {{.File}}</a>
+      <div class="dn-sha">SHA-256: {{.SHA256}}</div>
+      {{else}}
+      <span class="dn-note">{{.File}} liegt auf diesem Server nicht bereit.</span>
+      {{end}}
+    </div>
+  </div>
+  {{end}}
+  <p class="dn-note">Version dieses PDH: {{.Version}}. Prüfe nach dem Laden die SHA-256-Summe, bevor du das Programm beim Kunden startest.</p>
+</div>
+{{end}}
+
+<script>
+function dnCopy(b){
+  var el=document.getElementById(b.dataset.src);
+  if(!el||!navigator.clipboard)return;
+  var txt=el.cloneNode(true);var x=txt.querySelector('.dn-copy');if(x)x.remove();
+  navigator.clipboard.writeText(txt.textContent.trim()).then(function(){
+    var old=b.innerHTML;b.textContent='Kopiert';setTimeout(function(){b.innerHTML=old},1500);
+  });
+}
+</script>
+{{end}}

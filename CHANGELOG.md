@@ -10,9 +10,10 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
-## [0.77.9] – 2026-11-09
+## [0.81.2] – 2026-11-18
 
 ### Neu
+
 - Anlagenterminal: Karte am Terminal anmelden. Die Terminalseite nimmt Karten vom lokalen Kartendienst des Raspberry Pi entgegen (nur gekoppelte Geräte, nicht im Bildschirmschoner) und zeigt die Leiste „Angemeldet: Name“ mit dem Knopf „Abmelden“; eine unbekannte Karte meldet „Karte nicht registriert“ für 4 Sekunden. Die Kartensitzung endet nach 2 Minuten, mit „Abmelden“ oder mit dem Bildschirmschoner. Handbuch-Abschnitt „Kartenleser und Kartensitzung“.
 - Anlagenterminal: Anmeldung ohne Kartenleser. Meldet das Terminal keinen oder einen gestörten Kartenleser, gilt die Anmeldeart des Terminals (am Systembenutzer einstellbar): Kartennummer + PIN (Standard), Benutzer + Passwort, nur Kartennummer oder keine; mit Leser gibt es zusätzlich den Knopf „Mit Benutzer und Passwort“ (je Terminal abschaltbar). Die Terminal-PIN (4 bis 8 Ziffern) setzt jede Person unter „Mein Konto“; nach 5 falschen PINs ist sie 15 Minuten gesperrt (an allen Terminals). Geänderte Einstellungen übernimmt das Terminal sofort ohne Neuladen. Ältere Geräte und Terminals ohne Meldung des Lesers funktionieren unverändert.
 - Anlagenterminal: Unter `/terminal` zeigt ein Wandbildschirm den Bildschirmschoner, die offenen Störungen und Tickets der Anlage samt Unteranlagen und führt über „Neu“ zur Meldeseite des Easy-Mode; Störung und Ticket öffnen vorerst beide diese Seite, Stillstand ist noch nicht verfügbar. Es läuft mit einem Systembenutzer, dessen Terminal-Standort die Anlage ist.
@@ -30,16 +31,19 @@ im Kapitel „Versionen & Updates“ an.
 - Die Wartungssperre meldet gekoppelte Terminals nicht ab; ein gesperrtes oder entkoppeltes Terminal sieht eine Fehlerseite statt einer Weiterleitung.
 
 ### Geändert
+
 - Anlagenterminal: Störungen und Tickets zeigt das Terminal nur, wenn der Terminal-Benutzer „Störungen ansehen“ bzw. „Tickets ansehen“ für die Abteilung der Anlage hat; sonst erscheint an der Stelle ein Hinweis, ohne beide Rechte „Keine Berechtigung“.
 - Anlagenterminal: Ist der Easy-Mode ausgeschaltet, sind „Störung“ und „Ticket“ unter „Neu“ abgeblendet und das Terminal erklärt es, statt zur Anmeldeseite zu führen.
 - Die Karte „Anlagenterminal: Rückkehrzeit“ in den Core-Einstellungen sehen nur Personen, die sie auch speichern dürfen (Benutzer verwalten).
 - Kartennummern (RFID) werden ohne Rücksicht auf Groß- und Kleinschreibung und Leerzeichen am Rand verglichen: Ein gespeichertes `deadbeef` passt zu einer gelesenen `DEADBEEF`.
 
 ### Behoben
+
 - HMI speichern: Fehlen „Ansehen/Bedienen am Terminal“ in einer Anfrage (z. B. älteres Formular), bleiben die gespeicherten Werte erhalten, statt auf die Standardwerte zurückzufallen.
 - Rückkehrzeit des Terminals: Datenbankfehler beim Speichern werden gemeldet, statt „gespeichert“ zu zeigen.
 
 ### Sicherheit
+
 - Karte am Terminal: höchstens 10 unbekannte Karten je Minute und Terminal; danach antwortet PDH mit „Zu viele unbekannte Karten“ (429).
 - Neues Recht „HMI am Kiosk-Terminal der Anlage zeigen“ (`hmi.kiosk`) für Administratoren, Manager, Techniker und Anlagenverantwortliche; es gilt je Anlage, bei Rechten auf Abteilungsebene also nur für die Anlagen dieser Abteilung.
 - HMI-Verbindungen anlegen und ändern verlangt „HMI-Verbindungen einrichten“ jetzt für die Abteilung der Anlage (bisher genügte das Recht in irgendeiner Abteilung).
@@ -53,6 +57,525 @@ im Kapitel „Versionen & Updates“ an.
 - Geräte-Zugänge werden von der JSON-Schnittstelle `/api/v1` abgewiesen.
 - Die Geräte-Anmeldung liegt als HttpOnly-Cookie vor; Seiten-Skripte können sie nicht lesen.
 - Gesperrte Geräte können Stammdaten nicht mehr zur Löschung vormerken.
+
+## [0.81.1] – 2026-11-18
+
+### Behoben
+
+- Wartung: Ein Auftrag oder Plan, der heute fällig ist, wird nicht mehr schon ab 01:00 Uhr (im Sommer ab 02:00 Uhr) als „überfällig“ angezeigt.
+- Leitstand und Übersichten im Browser: „Überfällig“ und „heute“ richten sich nach dem Datum vor Ort – bisher galt ein gestern fälliger Vorgang den ganzen Tag noch nicht als überfällig.
+- Neu anlegen: Die Schnellwahl der Fälligkeit („heute“, „morgen“ …) und der Beginn einer Aufgabe nehmen kurz nach Mitternacht nicht mehr den Vortag.
+- Anlagen-Verlauf und Zeitstrahl: Zeitraum-Knöpfe und der Sammler „Erledigt“ nutzen das Datum vor Ort statt UTC.
+- Outlook-Kalender: Schichten erscheinen zur richtigen Uhrzeit (bisher 1–2 Stunden zu spät), Nachtschichten auch über die Zeitumstellung; schon eingetragene Schichten korrigiert der nächste Abgleich.
+- Microsoft-Konto: „Letzter Sync“ zeigt die Ortszeit statt UTC.
+- KVP-Auswertung: Der Zwölf-Monats-Verlauf hängt nicht mehr davon ab, dass Programm und Datenbank dieselbe Zeitzone haben.
+- Datensicherung: Bei der Umstellung auf Winterzeit läuft ein Zeitplan um 02:xx nicht mehr doppelt; zwei Sicherungen derselben Uhrzeit überschreiben sich nicht mehr.
+
+### Geändert
+
+- Datensicherung: Neue Zeitpläne starten mit 03:00 Uhr statt 02:00 Uhr; das Formular weist darauf hin, dass eine Sicherung zwischen 02:00 und 02:59 im März ausfällt.
+
+## [0.81.0] – 2026-11-18
+
+### Neu
+
+- Neu anlegen: Mit dem Recht „Rüstzeiten: erfassen …“ gibt es im Assistenten die Kachel **Rüstzeit** – Grund, Anlage und Beginn Schritt für Schritt wählen; ohne Ende läuft die Rüstzeit, mit Ende oder Dauer wird sie nachgetragen.
+- Neu anlegen: Auf der Seite ohne Assistent führt der Knopf **Rüstzeit** zur Seite „Rüstzeit anlegen“, mit der Anlage der QR-Infoseite vorbelegt.
+- Handbuch: „So legst du eine Rüstzeit über „Neu anlegen“ an“.
+
+## [0.80.25] – 2026-11-18
+
+### Geändert
+
+- Netz-Abgleich: Sehen UniFi und Omada denselben Client (gleiche MAC-Adresse), steht er nur noch einmal in der Liste der Vorschläge. **Ausblenden** und **Zurückholen** gelten für den Client, egal aus welcher Quelle er stammt.
+- Netz-Abgleich: Vorschläge einer ausgeschalteten Quelle erscheinen nicht mehr in der Liste und zählen nicht mehr mit. Sie bleiben gespeichert und sind wieder da, sobald die Quelle eingeschaltet wird.
+
+### Behoben
+
+- Eingebauter MQTT-Broker: War der TLS-Port schon von einem anderen Programm belegt, startete der ganze Broker nicht. Jetzt laufen die übrigen Ports weiter; die Prüfliste nennt in der Zeile **TLS-Port (mqtts)** den Grund.
+- Broker-Status: Nach einem Knopf der Prüfliste konnte die Meldung eines anderen Eintrags erscheinen (z. B. der alte Fehler eines anderen Zertifikats). Jetzt zeigt die Prüfliste nur das Ergebnis der eigenen Aktion.
+- Omada: Sonderzeichen im Standortnamen konnten die Chat-Meldung „Omada-Anbindung geändert“ verunstalten. Die Meldung nennt den Namen jetzt ohne diese Zeichen.
+
+## [0.80.24] – 2026-11-17
+
+### Behoben
+
+- Während eines Updates konnte eine Seite kurz „Template-Fehler … no such template“ zeigen (z. B. die Server-Einstellungen), weil die neue Seite schon da war, das Programm aber noch nicht neu gestartet. Jetzt steht dort „Das PDH wird gerade aktualisiert“, und die Seite lädt von selbst neu.
+
+## [0.80.23] – 2026-11-17
+
+### Neu
+
+- Eingebauter MQTT-Broker: Das PDH öffnet den MQTT-Port und den TLS-Port (z. B. 1883 und 8883) bei jedem Start des Brokers selbst in der Firewall des Servers (ufw) – Geräte im Haus erreichen den Broker ohne Handarbeit am Server.
+- Broker-Status: Die Prüfliste zeigt die neue Zeile **Firewall am Server** mit dem Knopf **Ports öffnen**. Kann das PDH die Firewall nicht ändern (kein Update-Agent, Docker-Betrieb, Fehler), steht dort der Befehl für den Server.
+- Broker-Status: Die Prüfliste gibt es jetzt auch für einen Broker ohne eigenen Namen – dort mit der Zeile zur Firewall.
+- Handbuch: „So geht's: Ports in der Firewall öffnen“.
+
+### Behoben
+
+- Broker-Status: „Name im Haus“ meldete „zeigt im Haus auf Cloudflare“, obwohl der Name an der UDM Pro richtig eingetragen war – wenn der Server selbst zusätzlich einen DNS außerhalb des Hauses fragt. Jetzt zählt der Eintrag an der UDM Pro.
+- Broker-Status: Zeigt der Name über IPv6 weiter nach außen, steht das als Hinweis bei „Name im Haus“ – Geräte, die IPv6 bevorzugen, erreichen mqtt und mqtts sonst nicht.
+
+### Sicherheit
+
+- Wer eine Import-Verbindung bearbeiten darf (`import.write`), lässt damit die Ports des eingebauten Brokers in der Firewall des Servers öffnen. Geöffnet werden nur TCP-Ports ab 1024 und nie die von Datenbank, Ausfallschutz oder Update-Agent; ins Internet wird nichts freigegeben, und das PDH schließt oder ändert keine anderen Regeln.
+
+## [0.80.22] – 2026-11-17
+
+### Neu
+
+- IT-Assets → Netz-Abgleich: **SNMP v3** ist die dritte Quelle neben UniFi und Omada – Geräte ohne Controller (Switches anderer Hersteller, Drucker, USV, NAS) werden einzeln gefragt und IT-Assets mit Modell, Firmware, MAC, Zustand und Anschlüssen.
+- Server-Einstellungen: neuer Reiter **SNMP** für Zugangsprofile (Benutzer, Verfahren, zwei Kennwörter); ein Profil gilt für viele Geräte.
+- Seite Netz-Abgleich: neue Karte **SNMP-Geräte** mit Adresse, Port, Profil, Zustand und letztem Fehler; **Prüfen** zeigt sofort, was ein Gerät antwortet, oder den Grund in Klartext.
+- Schutz vor falschem Alarm: Lehnt ein Gerät den Zugang ab, gilt es als „unbekannt“ statt offline; antwortet keines von mindestens 3 Geräten, entsteht kein Ausfall-Ticket.
+- SNMP: Ein Gerät gilt erst als „offline“, wenn es dem gerade fragenden Server schon einmal geantwortet hat – nach einer Umschaltung im Verbund, einem Neustart oder einer längeren Pause entstehen so keine Tickets für Geräte, die den Server nur nicht freigeschaltet haben.
+- SNMP: Antwortet länger als die Karenz kein einziges Gerät, bekommen die Verantwortlichen des Netz-Abgleichs eine Nachricht statt vieler Tickets.
+- SNMP: Kann der PDH-Server selbst nicht senden (z. B. kein Weg ins Netz), gelten die Geräte als „unbekannt“ statt offline.
+- SNMP: Reicht die Zeit eines Laufs nicht für alle Geräte, behalten die nicht gefragten ihren Zustand, und der nächste Lauf beginnt bei ihnen.
+- SNMP-Geräteliste: Hinweis mit Link, wenn das IT-Asset eines Geräts vom Abgleich getrennt ist; doppelte Einträge desselben Geräts ergeben kein zweites Asset; konnte gar kein Gerät gefragt werden, steht das an der Quelle.
+- SNMP: Die MAC-Adresse eines Geräts ohne Bridge-Adresse stammt vom ersten echten Netzwerkanschluss (bevorzugt einem aktiven), nicht mehr von einer virtuellen Schnittstelle.
+- Hinweis: SNMP v3 ist im Labor geprüft und noch nicht an echten Switches und Druckern erprobt.
+- Handbuch: „So bindest du ein Gerät per SNMP v3 an“ und „So legst du ein SNMP-Zugangsprofil an“.
+
+### Geändert
+
+- Die Seite Netz-Abgleich zeigt den Stand für drei Quellen; Vorschläge kommen weiter nur aus UniFi und Omada, SNMP liefert keine.
+- Am IT-Asset erscheint die Spalte PoE der Anschluss-Tabelle nur noch, wenn das Gerät PoE meldet.
+
+### Sicherheit
+
+- Neues Recht „SNMP-Zugangsprofile verwalten“ (`system.snmp`): Es bekommen alle Rollen und Benutzer, die „Namen im Haus eintragen (UniFi)“ (`system.unifi`) haben – niemand wird ausgesperrt, niemand bekommt mehr als bisher.
+- Neues Recht „SNMP: Zugangsprofile löschen (Bereichsadministrator)“ (`system.snmp_admin`): Nur damit lässt sich ein Zugangsprofil endgültig löschen; es bekommen nur Rollen, die schon Bereichsadministrator der Zertifikate sind und die Profile verwalten dürfen.
+- Das PDH fragt Geräte nur angemeldet und verschlüsselt (SNMP v3); SNMP v1/v2c, MD5 und DES gibt es nicht, und abgefragt werden nur Adressen im eigenen Netz.
+- Die Kennwörter der Zugangsprofile liegen nur verschlüsselt in der Datenbank und werden nie wieder angezeigt oder protokolliert.
+- Ein Gerät aus der SNMP-Geräteliste entfernen darf nur die IT-Administration (`it.admin`); hat das Gerät schon ein IT-Asset, zählt das Recht für dessen Abteilung. Das IT-Asset bleibt dabei bestehen.
+- Handbuch: Für SNMP-Zugangsprofile werden lange, zufällige Kennwörter (mindestens 16 Zeichen) empfohlen.
+
+## [0.80.21] – 2026-11-17
+
+### Neu
+
+- IT-Assets → Netz-Abgleich: **Omada (TP-Link)** ist die zweite Quelle neben UniFi – Switches, Access Points und Gateways aus dem Omada-Controller werden IT-Assets mit Hersteller TP-Link, verbundene Geräte erscheinen als Vorschläge.
+- Server-Einstellungen: neuer Reiter **Omada** für Adresse, Omada-ID, Client-ID, Client-Secret und Standort des Controllers, mit Bestätigung des Fingerabdrucks und dem Knopf **Verbindung prüfen**.
+- Hinweis: Die Omada-Anbindung ist nach der Dokumentation des Herstellers gebaut und noch nicht an einem echten Controller erprobt.
+- Handbuch: „So bindest du einen Omada-Controller an“ und „Omada als zweite Quelle“ im Abschnitt Netz-Abgleich.
+
+### Geändert
+
+- Die Seite Netz-Abgleich zeigt den Stand je Quelle (UniFi, Omada) und hat in den Einstellungen einen Schalter je Quelle; „Jetzt abgleichen“ läuft über alle eingeschalteten Quellen.
+- Die Liste der Vorschläge gilt für beide Quellen und hat die neue Spalte „Quelle“; ein Gerät, das schon als Asset aus der anderen Quelle bekannt ist, wird nicht noch einmal vorgeschlagen.
+- Bei Omada-Geräten gibt es keine Anschluss-Tabelle und keinen Hinweis „Update verfügbar“; ein unbekannter Zustand löst nie ein Ausfall-Ticket aus.
+
+### Sicherheit
+
+- Neues Recht „Omada-Controller anbinden“ (`system.omada`): Es bekommen alle Rollen und Benutzer, die „Namen im Haus eintragen (UniFi)“ (`system.unifi`) haben – niemand wird ausgesperrt, niemand bekommt mehr als bisher.
+- Das Omada-Client-Secret liegt verschlüsselt in der Datenbank und wird nie angezeigt, gemeldet oder protokolliert.
+- Das PDH verbindet sich nur mit einem Omada-Controller im Hausnetz (https, private Adresse) und nur, wenn er den bestätigten Fingerabdruck zeigt; es liest nur und ändert am Controller nichts.
+- Eine geänderte Controller-Adresse verlangt das Client-Secret neu und löscht den bestätigten Fingerabdruck.
+
+## [0.80.20] – 2026-11-17
+
+### Neu
+
+- MQTT: Der integrierte Broker kann einen **eigenen Namen** bekommen (z. B. `mqtt.firma.de`, Feld „Name des Brokers“ an der Verbindung) – Geräte und Apps tragen den Namen ein statt einer IP-Adresse.
+- MQTT: Mit Name gibt es einen zusätzlichen **TLS-Port (mqtts, z. B. 8883)**; das Zertifikat kommt aus der Zertifikatsliste und gilt nach einer Erneuerung ohne Neustart. Der bisherige Port ohne TLS läuft unverändert weiter.
+- MQTT: Apps und Dienste erreichen den Broker unter `wss://name/` (Port 443) – im Haus und von außen mit derselben Adresse.
+- Der Broker-Status zeigt eine **Prüfliste** (Zertifikat, Name im Haus, Tunnel, TLS-Port, WebSocket über 443) mit Knöpfen zum Einrichten.
+- Server-Einstellungen → Cloudflare-Tunnel: Die Tabelle der Tunnel-Ziele hat eine Zeile **MQTT** für jeden Broker mit eigenem Namen.
+- Handbuch: neues Kapitel „MQTT-Broker unter eigenem Namen“.
+
+### Geändert
+
+- Der Broker-Status nennt die fertigen Adressen (`mqtt://`, `mqtts://`, `wss://`) zum Kopieren, wenn der Broker einen Namen hat.
+- TIA-Baustein: Hat der Broker einen Namen, ist er als Adresse vorbelegt; mit dem Haken „TLS“ setzt die Seite den Namen und den TLS-Port ein.
+
+### Behoben
+
+- IT-Assets: Auf schmalen Bildschirmen (Handy) sind die Knöpfe im Kopf der Asset-Seite wieder ganz sichtbar; sie rutschen in eine zweite Zeile.
+- IT-Assets: Der Hinweis im Feld „Eigene Karenz“ ist ganz lesbar.
+
+## [0.80.19] – 2026-11-16
+
+### Neu
+
+- IT-Assets: Die neue Seite **IT-Kategorien** (Knopf „Kategorien“ auf der IT-Seite) lässt dich Kategorien mit Name, Symbol und Reihenfolge anlegen, bearbeiten, aus- und einblenden und – wenn keine Assets darin liegen – löschen; die bisherigen sieben Arten sind jetzt Kategorien.
+- IT-Assets: Jede Kategorie hat eine **Karenz** bis zum Ausfall-Ticket; leer gilt der allgemeine Wert aus dem Netz-Abgleich.
+- IT-Assets: Auf der Karte „Netz“ lässt sich eine **eigene Karenz** je Gerät eintragen; es gilt erst der Wert am Gerät, dann der der Kategorie, dann der allgemeine.
+- Das Ausfall-Ticket „Netzgerät offline“ nennt die wirksame Karenz („Karenz: N min“).
+
+### Geändert
+
+- Netz-Abgleich: Ob ein neu übernommenes Gerät überwacht wird, steht jetzt in der Kategorie („Neu übernommene Geräte überwachen“); die Vorgaben bleiben wie bisher (Workstation, Telefon und Tablet aus, alle anderen an).
+- Netz-Abgleich: Beim Übernehmen stehen alle aktiven Kategorien außer Netzwerk zur Wahl.
+- Listen, Filter und Formulare der IT-Assets nutzen die Kategorien; ausgeblendete Kategorien bleiben an Assets sichtbar, die sie schon haben.
+- Lieferanten und Hersteller zeigen bei IT-Assets den Namen der Kategorie statt eines internen Schlüssels.
+
+### Behoben
+
+- Sicherung: Eine ältere Sicherung lässt sich auch dann wiederherstellen, wenn ein Update inzwischen eine Verknüpfung in der Datenbank angelegt hat; die Wiederherstellung bricht nicht mehr ab.
+- IT-Assets: Verknüpfte IT-Assets zeigen ohne Hostnamen den Namen der Kategorie statt eines internen Schlüssels.
+
+### Sicherheit
+
+- Neues Recht „IT-Kategorien pflegen“ (`it.categories`); es haben automatisch alle Rollen mit „IT: Bereichsadministrator“ (`it.admin`), mit deren Abteilung. Die Seite ansehen darf, wer IT-Infrastruktur ansehen darf.
+- Eine IT-Kategorie endgültig löschen darf nur, wer „IT: Bereichsadministrator“ (`it.admin`) hat – wie bei allen anderen Bereichen.
+
+## [0.80.18] – 2026-11-16
+
+### Behoben
+
+- IT-Assets: Die Port-Tabelle der Karte „Netz“ zeigt Zustand und PoE jetzt auf Deutsch („aktiv“, „getrennt“, „an“, „aus“) statt „UP“/„DOWN“.
+
+## [0.80.17] – 2026-11-16
+
+### Neu
+
+- IT-Assets: Die neue Seite **Netz-Abgleich** liest Switches, Access Points und Gateways aus UniFi und legt sie als IT-Assets an; IP, Modell, Firmware, Zustand, Uplink und Ports bleiben automatisch aktuell.
+- Clients aus dem Netz erscheinen als Vorschläge, die du als Arbeitsplatz, Drucker, Telefon, Tablet, Server oder Sonstiges übernehmen oder ausblenden kannst.
+- Ist ein überwachtes Netzgerät länger als die eingestellte **Karenz bis zum Alarm** offline, entsteht das Alarm-Ticket „Netzgerät offline“; beim Lösen ist die Ursache Pflicht.
+- Die IT-Liste zeigt den Zustand als Marke und hat den Filter „Nur offline“; auf dem Gerät gibt es die Karte „Netz“ mit Port-Tabelle und die Knöpfe „Quelle trennen“ und „Wieder verbinden“.
+
+### Sicherheit
+
+- Neues Recht „Netz-Abgleich einrichten und Vorschläge übernehmen“ (`it.netsync`); es haben automatisch alle Rollen, die IT-Assets bearbeiten dürfen; die Bereichsadministratoren IT haben es über `it.admin`.
+
+## [0.80.16] – 2026-11-15
+
+### Behoben
+
+- Startseite: Die Widgets werden beim Öffnen nur noch einmal geladen statt manchmal doppelt; das spart Anfragen an den Server und beseitigt eine Fehlermeldung in der Browser-Konsole.
+
+## [0.80.15] – 2026-11-15
+
+### Neu
+
+- Energiedaten: An jeder Messstelle lassen sich **Schwellwerte** festlegen (über oder unter einem Grenzwert, mit Zeitraum, Rückschaltzeit, Tag, Priorität und Verantwortlichem). Das PDH wertet je Messart aus (Mittelwert, Menge, Summe) und prüft nur vollständige Zeiträume.
+- Bei einer Überschreitung entsteht **ein Alarm-Ticket** mit Tag, Anlage und Priorität; die Verantwortlichen bekommen eine Nachricht im Chat und per Mail. Der Alarm endet erst nach der Rückschaltzeit am Stück. Wird die Grenze bei offenem Ticket erneut überschritten, kommt ein Eintrag „Erneut überschritten …“ statt eines neuen Tickets.
+- Die Messstellen-Übersicht hat die Spalte **Schwellwerte** (Anzahl · Alarme) und den Filter „mit offenem Alarm“.
+
+### Behoben
+
+- Ticketlisten funktionieren auch bei Tickets ohne Beschreibung.
+
+### Sicherheit
+
+- Neues Recht **Schwellwerte pflegen** (`energy.thresholds`); alle Rollen mit „Messstellen pflegen“ haben es. Schwellwerte löschen darf nur der Bereichsadministrator.
+- Alarm-Tickets lassen sich auf keinem Weg lösen, schließen, archivieren oder verwerfen, ohne dass die Ursache beschrieben ist.
+
+## [0.80.14] – 2026-11-15
+
+### Behoben
+
+- TIA-Baustein: Der vorgeschlagene Topic schreibt Umlaute im Namen der Verbindung jetzt aus („Prüfung“ wird zu „pruefung“) statt sie durch Bindestriche zu ersetzen.
+
+## [0.80.13] – 2026-11-15
+
+### Neu
+
+- Siemens-Steuerungen: An MQTT-Verbindungen gibt es unter „Werkzeuge“ den **TIA-Baustein zum Herunterladen**. Das PDH erzeugt daraus fertige Quellen für das TIA Portal (S7-1500, S7-1200 ab Firmware 4.2) in zwei Varianten: eigenständig ohne TLS oder mit der Siemens-Bibliothek LMQTT (TLS möglich).
+
+- Die Werte kommen aus einem eigenen Datenbaustein der Steuerung. Große Datenmengen gehen automatisch in mehreren Nachrichten mit gleichem Zeitstempel. Vor dem Herunterladen zeigt „Prüfen“, was gesendet wird und was nicht (das geht auch auf dem Spiegelserver).
+
+- Auf Wunsch legt das PDH beim Herunterladen die Zuordnungen gleich an, dazu eine für den Heartbeat. Ein erneutes Herunterladen erzeugt keine Doppelten; nur das Heartbeat-Intervall wird übernommen (Heartbeat 0 schaltet die Überwachung ab).
+
+- Neue Anzeige „Steuerung meldet sich nicht“, wenn der Heartbeat länger als drei Intervalle ausbleibt: als Hinweis auf der Verbindungsseite, als Marke in der Zuordnung und in der Übersicht der Zuordnungen.
+
+- Neues Handbuch-Kapitel „Steuerung per MQTT anbinden (TIA Portal)“ mit Schritt-für-Schritt-Anleitung und Statuscodes.
+
+### Sicherheit
+
+- Neues Recht „Steuerungsbaustein (TIA Portal) herunterladen“ (`import.tia`, Gruppe „Daten & Schnittstellen“). Es haben alle Rollen mit „Import ansehen“; niemand wird durch das Update ausgesperrt.
+
+- Das Kennwort der Verbindung steht nur in der Datei, wenn es ausdrücklich angekreuzt wird – und nur mit dem Recht „Import verwalten“. Das Herunterladen mit Kennwort wird im Verlauf der Verbindung festgehalten. Sonst steht ein Platzhalter in der Datei.
+
+## [0.80.12] – 2026-11-15
+
+### Neu
+
+- Energiedaten: Neue Seite „Messstellen“ (Navigation → Daten). Jeder importierte Wert lässt sich in einer Tabelle einer Anlage zuweisen – mit Messstellen-ID, Einheit, Art (Zählerstand, Verbrauch, Momentanwert) und Faktor.
+
+- Energiedaten: Berechnete Messstellen rechnen mit einer Formel aus anderen Messstellen, zum Beispiel `[GESAMT] - [LINIE-A]`. Zirkelbezüge und unbekannte Messstellen weist das PDH mit einer verständlichen Meldung ab. Ändert sich Quelle, Faktor, Art oder Formel, zählt der Sprung nicht als Verbrauch.
+
+- Energiedaten: Das PDH legt jede Minute den Wert jeder Messstelle ab und behält die Minutenwerte 400 Tage. Jede Lesung zählt genau einmal in der Minute, in der sie ankam, auch wenn die Quelle öfter als einmal je Minute liefert. Ist die Quelle zu alt oder kein Zahlenwert, oder kam bei Verbrauch keine Lesung, gibt es für diese Minute keinen Wert – nie eine 0.
+
+- Energiedaten: Die Übersicht über alle Messstellen aller Anlagen lässt sich nach Anlage, echt oder berechnet, exportieren, aktiv, Einheit, Art, Verbindung und Suchtext filtern; „Nur ohne aktuellen Wert“ zeigt Messstellen, deren Quelle nicht mehr liefert.
+
+- Energiedaten: Im Reiter „Einstellungen“ der Messstellen legt der Bereichsadministrator fest, nach wie vielen Minuten ein Quellwert als veraltet gilt, wie lange Minutenwerte bleiben und welche Vorgaben neue Efficio-Exporte bekommen.
+
+- Export: Neue Art „Efficio-CSV (Energiedaten)“ liefert die Minutenwerte der Messstellen als CSV für Berg Efficio. Die Datei wird alle 15 Minuten ergänzt (einstellbar) und enthält Zeilen im Minutentakt (einstellbar); Zeitformat, Zeitbezug (Ortszeit, UTC oder Ortszeit mit Zeitzonenangabe), Dezimalkomma, Kopfzeile, Zeichensatz, Dateilänge und Aufbewahrung lassen sich einstellen.
+
+- Export, Efficio: Die Dateien liegen zum Abholen im PDH, auf einem Netzlaufwerk oder auf einem FTP- bzw. SFTP-Server. Dateien werden erst vollständig geschrieben und dann umbenannt, damit nie eine halbe Datei gelesen wird; was nicht ankommt, wird beim nächsten Lauf nachgelegt. Ist ein Ziel nicht erreichbar, hält das die anderen Exporte nicht auf.
+
+- Export, Efficio: Die Seite „Dateien & Protokoll“ zeigt die erzeugten Dateien zum Herunterladen und die letzten 30 Läufe samt Lücken; „Verbindung testen“ prüft die Ablage und „Jetzt exportieren“ startet einen Lauf von Hand.
+
+- Export, Efficio: Läuft ein Lauf ohne Messwerte, entsteht keine Datei – auch keine nur mit Kopfzeile. Fehlende Werte werden nicht erfunden, sie stehen als Hinweis im Protokoll.
+
+### Sicherheit
+
+- Neue Rechte „Messstellen sehen“, „Messstellen pflegen“ und „Messstellen löschen (Bereichsadministrator)“; wer bisher Export ansehen oder verwalten durfte, bekommt die ersten beiden mit gleicher Abteilung. Die Einstellungen der Energiedaten ändert nur der Bereichsadministrator.
+
+- Efficio-Export: Das FTP-/SFTP-Kennwort wird verschlüsselt gespeichert und nie angezeigt; SFTP verbindet nur mit einem Server, dessen Fingerabdruck du bestätigt hast.
+
+## [0.80.11] – 2026-11-14
+
+### Neu
+
+- Verbindungen: Neuer Reiter „Explorer“ für MQTT-, OPC-UA- und Modbus-Verbindungen. Er zeigt Werte der Maschine live (höchstens 15 Minuten je Sitzung, drei Sitzungen je Benutzer, 20 am Server) und lässt einzelne Werte testweise schreiben – nach Rückfrage und mit Eintrag im Verlauf der Verbindung. Auf dem Spiegelserver ist er nur lesend.
+
+- Explorer, MQTT: Er zeigt die Themen als Baum mit letztem Wert, Anzahl, Zeit und Retained-Kennzeichen, stellt JSON-Werte aufbereitet dar, zeichnet bei Zahlen eine kleine Kurve, filtert mit Platzhaltern und sendet Werte testweise. Der gesendete Inhalt steht im Verlauf der Verbindung.
+
+- Explorer, OPC UA: Knoten lassen sich schrittweise aufklappen; der Explorer zeigt Wert, Datentyp, Zeitstempel, Qualität und Zugriffsrechte, verfolgt mehrere Knoten live und schreibt testweise (nur beschreibbare Knoten). Meldet sich die Verbindung mit Benutzer und Passwort an, weist der Explorer darauf hin, dass die Verbindung ohne Verschlüsselung (Sicherheitsrichtlinie None) läuft und das Passwort im Klartext übers Netz geht.
+
+- Explorer, Modbus TCP: Er liest Coils, Discrete Inputs, Holding und Input Register (bis 125 Register bzw. 2000 Bits je Lesen), deutet jedes Register als 16-, 32- und 64-Bit-Ganzzahl oder Gleitkommazahl in den vier gängigen Byte- und Wortreihenfolgen (ABCD, CDAB, BADC, DCBA), verfolgt den Bereich live im Takt von 1 bis 60 Sekunden und schreibt Coils und Holding Register testweise; je Verbindung sind höchstens zwei Zugriffe gleichzeitig möglich. Beim Verfolgen kommen nur geänderte Werte der gewählten Reihenfolge; die Matrix aller Reihenfolgen lädt erst der Klick auf eine Zeile. Auch abgelehnte Schreibversuche stehen im Verlauf.
+
+### Geändert
+
+- Zuordnungen: Im Explorer wird ein Wert mit „Als Zuordnung übernehmen“ (im Export „Als Zielfeld übernehmen“) direkt zur Zuordnung, ohne die Seite neu zu laden. Bei MQTT kann eine Zuordnung ein einzelnes JSON-Feld eines Themas sein, bei Modbus enthält sie zusätzlich die Byte- und Wortreihenfolge (z. B. CDAB bei WAGO); der Export schreibt Modbus-Werte in dieser Reihenfolge, auch als 64-Bit-Wert. Bestehende Zuordnungen bleiben unverändert gültig. Zuordnungen mit Reihenfolge (Modbus) oder JSON-Pfad (MQTT, `thema#pfad`) versteht erst Version 0.80.11 und neuer – im Verbund beide Server gleich aktualisieren.
+
+- Zuordnungen: Bei Modbus- und OPC-UA-Verbindungen holt der Knopf „Werte jetzt aktualisieren“ im Reiter „Zuordnungen“ alle Werte sofort.
+
+- Explorer, Modbus: Testweise geschrieben wird nur noch mit der Einheit der Verbindung; Einheit 0 (Rundruf) ist gesperrt, das Schreibformular sperrt sich bei abweichender Einheit und die Rückfrage nennt die Einheit.
+
+- Der MQTT-Sniffer, „Namespace durchsuchen“ und „Register lesen“ sind im Explorer aufgegangen; die Werkzeuge der Verbindung führen jetzt zum Reiter „Explorer“, alte Lesezeichen leiten dorthin um.
+
+- Bibliotheken angehoben (MQTT paho 1.5.1, OPC UA gopcua 0.9.1). Die Modbus-Bibliothek wurde gewechselt (simonvetter/modbus 1.6.4 statt goburrow); Vorschau, Export, Abfragen und Verbindungsprüfung verhalten sich unverändert, Fehlermeldungen von Geräten können aber anders lauten.
+
+### Sicherheit
+
+- Der Explorer belastet echte Geräte und verlangt deshalb das Recht „Import ausführen“ bzw. „Export ausführen“; Schreiben zusätzlich „Import verwalten“ bzw. „Export verwalten“. Schreiben und Senden fragen vorher nach, stehen im Verlauf der Verbindung (auch abgelehnte Versuche) und sind auf dem Spiegelserver gesperrt; Sitzungen sind auf 15 Minuten, drei je Benutzer und 20 je Server begrenzt.
+
+## [0.80.10] – 2026-11-14
+
+### Neu
+
+- Datennetz: Der neue Abschnitt „Datennetz prüfen“ zeigt mit ✓, ⚠ und ✗, ob dieser Server, die anderen PDH-Server und jeder Client im Datennetz sind, die richtigen Tags tragen und ihre Ports erreichbar sind – mit Klartext und Hinweis zur Abhilfe, z. B. „Gerät trägt tag:pdh-test1 statt tag:pdh – der Client lässt es nicht herein.“
+- Datennetz: Optional lässt sich ein Tailscale-API-Token hinterlegen. Dann liest die Prüfung zusätzlich die Geräteliste und die Access controls, meldet fehlende tagOwners und Freigaben und zeigt die fehlenden Zeilen zum Kopieren. Die Access controls ändert das PDH nie selbst. Das Ergebnis bleibt 30 Sekunden gespeichert.
+- Datennetz: Der Knopf „Tags korrigieren“ ergänzt bei PDH-Servern tag:pdh und bei Clients tag:pdh-data, ohne andere Tags zu entfernen, und ordnet Geräte nur über ihre Adresse im Datennetz zu (nach Rückfrage, nur für den Bereichsadministrator und nicht auf dem Spiegelserver); jede Änderung steht im Ereignisprotokoll.
+- Das Handbuch erklärt im Kapitel „Datennetz“, wie man das Datennetz prüft und einen API-Token anlegt, und nennt „Anmeldung EOF“ als Zeichen für falsche Tags.
+
+### Geändert
+
+- Der Daten-Client schreibt ins Protokoll, wenn er eine Gegenstelle ohne tag:pdh abweist („Verbindung von … abgewiesen: Tags …, erwartet tag:pdh“), höchstens einmal je Minute und Adresse.
+
+### Sicherheit
+
+- Der Tailscale-API-Token wird verschlüsselt gespeichert, nie angezeigt und nie im Protokoll genannt; der Zugriff auf Tailscale geschieht nur auf Knopfdruck und mit Zeitgrenzen. Tags korrigieren braucht das Recht „Datennetz: Clients löschen (Bereichsadministrator)“.
+
+## [0.80.9] – 2026-11-14
+
+### Behoben
+
+- Updates auf Servern scheiterten beim Nachladen der neuen Go-Version (fehlendes GOPATH); das Update setzt es jetzt selbst und zeigt Fehler verständlich an. Wer 0.80.8 einspielen will und hängen bleibt: einmalig `GOPATH=/var/cache/pdh-updater/go` in /opt/pdh-server/.env eintragen und den Update-Agenten neu starten.
+
+## [0.80.8] – 2026-11-14
+
+### Neu
+
+- Datennetz: Der Daten-Client läuft am Standort neben der Fremddatenbank (z. B. SQL Server oder MySQL) und verbindet sie über ein privates Netz (Tailscale) mit den PDH-Servern, ohne dass dafür ein Port ins Internet geöffnet wird. Server und Client finden sich über das Netz von tailscale.com, die Daten selbst laufen direkt zwischen beiden; Betriebsprotokolle werden nicht an Tailscale gesendet.
+- Neues Programm „Daten-Client“ für Windows und Linux: Es wird auf dem Rechner am Standort der Fremddatenbank mit einem Befehl eingerichtet und läuft danach im Hintergrund. Es kennt alle PDH-Server und meldet sich nach einem Rollentausch von selbst beim neuen aktiven Server.
+- Neuer Verbindungsweg „Datennetz“: Eine Verbindung (SQL Server oder MySQL) läuft statt über einen Instanznamen über einen festen Port eines Daten-Clients im Datennetz; MySQL-Verbindungen haben jetzt auch die Wege VPN und Datennetz.
+- Neue Seite „Datennetz“ mit den Clients, der Freigabe-Zeile für das Tailnet, dem Sperren und Entfernen von Clients und den Downloads des Daten-Clients.
+- Das Handbuch erklärt im Kapitel „Datennetz“ Einschalten, Einrichten eines Clients, Umstellen einer Verbindung und Sperren.
+
+### Geändert
+
+- Das PDH baut jetzt mit Go 1.27 und aktuellen Bibliotheken. Beim nächsten Update lädt der Server dafür einmalig die neue Go-Version (Download unter 100 MB, entpackt etwa 250 MB) aus dem Internet nach; ohne Internetzugang bricht das Update ab und die bisherige Version bleibt in Betrieb.
+- Die Programme des Daten-Clients stehen erst nach dem zweiten Update zum Download bereit: Das erste Update bringt den Bau mit, danach liegen die Dateien auf dem Server.
+
+### Sicherheit
+
+- Das Datennetz hat eigene Rechte; wer es bisher stillschweigend verwalten durfte (Administratoren), bekommt sie, alle anderen nicht.
+- Der Zugangsschlüssel (Token) eines Clients wird nur einmal angezeigt und nur als Prüfwert (Hash) gespeichert.
+- Über das Datennetz sind nur feste, freigegebene Ports erreichbar, keine beliebigen Ziele.
+- Beim Sperren eines Clients wird seine Verbindung sofort getrennt.
+
+## [0.80.7] – 2026-11-14
+
+### Behoben
+
+- Im Chat lassen sich Nachrichten jetzt auch am Handy (Nachricht antippen) und im Chat-Reiter der rechten Seitenleiste löschen, jeweils mit Rückfrage.
+
+## [0.80.6] – 2026-11-14
+
+### Neu
+
+- Server-Einstellungen, Reiter Cloudflare-Tunnel: Die neue Karte „Client-Zertifikate bei Cloudflare (mTLS)“ zeigt je Name, ob Cloudflare dafür ein Client-Zertifikat verlangt, und kennzeichnet die Namen von PDH und Nextcloud.
+- Mit „Abschalten“ nimmt das PDH nur diesen einen Namen aus der mTLS-Liste von Cloudflare; „Einschalten“ macht es rückgängig. Damit hört die Nextcloud-App auf dem Handy auf, über das Internet nach einem Zertifikat zu fragen.
+- Die Karte zeigt auch die WAF-Regeln mit Zertifikatsprüfung und weist nach dem Abschalten auf aktive Regeln hin, die im Cloudflare-Dashboard zu prüfen sind; Regeln ändert das PDH nie.
+- Das Handbuch erklärt unter „So behebst du: Nextcloud-App fragt über das Internet nach einem Zertifikat“ Ursache und Abhilfe.
+
+### Sicherheit
+
+- Das Abschalten von mTLS bei Cloudflare braucht das Recht „Cloudflare verwalten“ und geht als Nachricht an alle Administratoren; ohne mTLS schützt von außen die Anmeldung, im Firmennetz weiter die Zertifikatspflicht von nginx.
+
+## [0.80.5] – 2026-11-14
+
+### Sicherheit
+
+- Easy-Modus: Die Bremse gegen zu viele Meldungen von derselben Adresse lässt sich nicht mehr mit einer erfundenen Absenderangabe (X-Forwarded-For) umgehen; weitergereichte Adressen zählen nur noch, wenn die Anfrage über den eigenen Server (Cloudflare-Tunnel) kommt.
+
+## [0.80.4] – 2026-11-14
+
+### Neu
+
+- Mail-Brücke: Nextcloud verschickt seine Mails (neues Konto, Freigaben, „Passwort vergessen“, Benachrichtigungen) jetzt immer über das PDH – auch wenn das PDH über Microsoft 365 sendet, was Nextcloud selbst nicht kann.
+- Ändert sich der Versandweg im PDH (SMTP oder Microsoft 365), gilt das sofort auch für Nextcloud, ohne Neustart.
+- In den Server-Einstellungen unter Nextcloud zeigt die neue Karte „Mailversand über das PDH“, ob die Brücke läuft, wann Nextcloud angeschlossen wurde, wann die letzte Mail wegging und was zuletzt schiefging; ein Knopf schließt Nextcloud an, das PDH tut es nach dem Start auch von selbst.
+- Der SMTP-Versand des PDH funktioniert jetzt mit jedem Anbieter: Verschlüsselung per STARTTLS, SSL/TLS oder gar nicht, mit und ohne Anmeldung, und der übliche Port richtet sich nach der Verschlüsselung (587, 465, 25).
+
+### Geändert
+
+- Der SMTP-Port hat keinen festen Standard mehr: Ist keiner eingetragen, gilt der übliche zur Verschlüsselung (STARTTLS 587, SSL/TLS 465, ohne 25); ein eingetragener Port bleibt, wie er ist.
+- Beim SMTP-Versand ohne Verschlüsselungspflicht nutzt das PDH STARTTLS trotzdem, wenn der Server es anbietet, und meldet sich nur an, wenn der Server eine Anmeldung anbietet.
+
+### Behoben
+
+- Apps lassen sich in Nextcloud 35 über die Oberfläche installieren: Das Installationsskript liefert `.mjs`-Dateien als JavaScript aus und setzt den Sicherheitskopf `Strict-Transport-Security`.
+
+### Sicherheit
+
+- Die Mail-Brücke nimmt nur Verbindungen von diesem Server an (127.0.0.1), verlangt eine Anmeldung mit zufälligem, verschlüsselt gespeichertem Passwort und begrenzt Mails auf 25 MB, 50 Empfänger und 300 je Stunde.
+- Das Passwort für Nextcloud geht nicht über Prozess-Argumente oder Protokolle an den Update-Agenten; Fehlertexte von Microsoft stehen nur im Server-Protokoll.
+- Mail-Brücke: Verdeckte Empfänger (Bcc) gehen nie an die anderen Empfänger; es bleibt genau ein Absender (PDH), weitere From-, Sender- und Resent-Zeilen entfallen; über Microsoft 365 müssen alle Empfänger der Kopfzeilen auch im Umschlag stehen (Grenze von 50 Empfängern).
+- Mail-Brücke: Nach einer falschen Anmeldung wartet das PDH eine Sekunde und trennt nach drei Fehlversuchen; das Protokoll warnt höchstens einmal je Minute. Ist der Port der Brücke von einem anderen Programm belegt, steht das im Fehlerprotokoll und auf der Karte.
+
+## [0.80.3] – 2026-11-14
+
+### Neu
+
+- Rüstzeiten: Umrüsten, Reinigen und Formatwechsel sind jetzt ein eigener Vorgang (RZ-0001, …) mit Liste und Detailseite unter „Rüstzeiten“ und den Status Rüsten, Beendet und Störung durch Rüsten.
+- Rüstzeiten: An der Anlage und im Easy-Modus starten Rüsttasten mit einem Tippen die Rüstzeit, „Fertig“ beendet sie.
+- Rüstzeiten: Rüstgründe und Rüsttasten werden im Katalog unter Infrastruktur gepflegt und den Anlagen zugeordnet.
+- Rüstzeiten: In den Core-Einstellungen gelten die maximale Rüstzeit (Standard 120 Minuten) und die Karenzzeit (Standard 15 Minuten); jede Anlage darf eine kürzere Höchstdauer haben, bei einem zu hohen Wert erscheint ein Hinweis.
+- Rüstzeiten: Läuft das Rüsten länger als Höchstdauer plus Karenzzeit, entsteht genau eine Störmeldung „Störung durch Rüsten“, die Anlage gilt als stehend und die Störungsrichtlinie greift.
+- Zertifikate: Die Zertifikatsseite und die Karte „Zertifikat für die Nextcloud-App“ zeigen jetzt, ob Nextcloud überhaupt Zertifikate abfragt („Zertifikatspflicht aktiv“, „nicht eingerichtet“ mit dem fertigen Befehl, „nicht prüfbar“); bei „Server (Nextcloud)“ erklärt ein Hinweis, wann das Let's-Encrypt-Zertifikat reicht.
+
+### Sicherheit
+
+- Neue Rechte „Rüstzeiten: ansehen“, „Rüstzeiten: erfassen, korrigieren, Katalog und Höchstdauer pflegen“ und „Rüstzeiten: Bereichsadministrator“; endgültig löschen darf nur der Bereichsadministrator, bisherige Rollen mit Anlagenrechten haben die passenden Rechte automatisch bekommen.
+
+## [0.80.2] – 2026-11-13
+
+### Neu
+
+- Abgleich mit Fremdsystemen: Meldungen aus einer fremden SQL-Server-Datenbank werden im PDH zu Tickets oder Störmeldungen, Änderungen und Kommentare gehen zurück – ein Zusatz, ohne den alles unverändert läuft. Im Fremdsystem wird nie gelöscht und keine Meldung angelegt.
+- Abgleich: Neuer Bereich „Abgleich“ in der Navigation mit einem Cockpit je Profil in fünf Schritten – Quelle, Ziel, Zuordnungen, Test, Betrieb.
+- Abgleich: Vor dem Scharfschalten zeigt ein Trockenlauf, was entstünde, und ein Schreibversuch prüft das Zurückschreiben und nimmt es wieder zurück; hat die Tabelle Auslöser, fragt das PDH vorher nach.
+- Abgleich: Meldungen von früher werden still als Historie übernommen, abgeschlossene gleich archiviert; neue Meldungen benachrichtigen wie von Hand angelegte.
+- Abgleich: An übernommenen Tickets und Störmeldungen steht die Herkunft mit der Nummer im Fremdsystem und dem Stand des Abgleichs.
+- Abgleich: Bei hoher Serverlast wartet der Abgleich und holt danach auf – die Benutzer haben Vorrang. Der Takt ist von 5 bis 30 Minuten einstellbar.
+- Verbindungen (MSSQL): Der Weg ist „Direkt“ oder ein VPN-Tunnel mit eigenem Abfragetakt und eigener Zeitgrenze; das Serverzertifikat wird über einen einmal bestätigten Fingerabdruck geprüft.
+
+### Geändert
+
+- Verbindungen: Beim Bearbeiten bleibt das gespeicherte Kennwort erhalten, wenn das Kennwortfeld leer bleibt.
+- Verbindungen: Die Prüfung nennt die Absenderadresse des Servers und zeigt Tunnel, Adresse, Port, Anmeldung, Lese- und Schreibrecht einzeln.
+
+### Sicherheit
+
+- Kennwörter und Schlüssel von Verbindungen werden verschlüsselt gespeichert und nicht mehr an den Browser gegeben; vorhandene werden beim Start einmalig verschlüsselt.
+- In eine fremde Datenbank schreibt das PDH nur, wenn an der Verbindung „Schreiben erlaubt“ eingeschaltet ist.
+- Neue Rechte für den Abgleich (sehen, einrichten und testen, scharf schalten, Bereichsadministrator); sie gelten überall oder nur in einer Abteilung. Rollen, die Import bearbeiten dürfen, bekommen sie automatisch; Profile löscht nur der Bereichsadministrator.
+
+## [0.80.1] – 2026-11-12
+
+### Neu
+
+- Ausfallschutz: Der aktive Server kann zusätzlich eine IPv6-Adresse tragen, die beim Rollentausch mitwandert – Feld „IPv6-Ende“ bei der mitwandernden Adresse, ein Zusatz, ohne den alles unverändert läuft.
+- Namen im Haus: Mit einer UniFi UDM Pro trägt das PDH für jeden Namen, der dort auf die mitwandernde Adresse zeigt, auch den IPv6-Eintrag ein – auch für von Hand eingetragene Namen – und hält ihn aktuell, wenn der Anbieter das Präfix wechselt. Geräte mit IPv6 gehen damit im Haus direkt zum Server.
+- Namen im Haus: Ein IPv6-Eintrag, der woandershin zeigt, wird nie von selbst geändert – dafür gibt es einen eigenen Knopf „Überschreiben“ mit Rückfrage, auch für von Hand eingetragene Namen.
+
+### Geändert
+
+- Die nginx-Seite des PDH hört auch auf IPv6; nimmt nginx die IPv6-Zeilen nicht an, bleibt sie bei IPv4 und die Zertifikate-Karte sagt es.
+
+## [0.80.0] – 2026-11-12
+
+### Neu
+
+- Zertifikate von Let's Encrypt: Im Reiter Cloudflare-Tunnel („Zertifikate laden“) holt das PDH je Name ein Zertifikat, erneuert es 30 Tage vor Ablauf und warnt rechtzeitig – ein Zusatz, ohne den alles unverändert läuft.
+- Namen im Haus: Mit einer UniFi UDM Pro trägt das PDH die Namen im Firmennetz selbst ein – Adresse und API-Schlüssel stehen in den Server-Einstellungen im eigenen Reiter „UniFi“; ohne UniFi bleibt der Eintrag Typ A am DNS-Server von Hand.
+- Full (strict): Ein Knopf stellt Tunnel und Domain auf geprüfte Verschlüsselung um, „Zurückstellen“ nimmt es wieder zurück.
+- Im Ausfallschutz-Verbund werden die Zertifikate auf den zweiten Server gespiegelt und in die Sicherung aufgenommen; sobald Zertifikate vorhanden sind, richtet das Update nginx auf beiden Servern ein.
+- Das Handbuch erklärt Zertifikate, Namen im Haus, Full (strict) und die möglichen Fehlerbilder.
+
+### Geändert
+
+- Ausfallschutz: Der Hinweis „Das Zertifikat von Nextcloud enthält die mitwandernde Adresse nicht“ erscheint nicht mehr, wenn Nextcloud ein vom PDH geholtes Zertifikat nutzt – dort zählt der Name, im Haus führt er über „Namen im Haus“ zum Server.
+
+### Sicherheit
+
+- Neue Rechte „Zertifikate verwalten (Let's Encrypt)“ (`system.certs`), „Zertifikate: entfernen und widerrufen (Bereichsadministrator)“ (`system.certs_admin`) und „Namen im Haus eintragen (UniFi)“ (`system.unifi`); Rollen mit dem Cloudflare-Recht bekommen sie mit dem Update.
+- Entfernen und Widerrufen eines Zertifikats darf nur, wer das Recht `system.certs_admin` hat.
+- Die privaten Schlüssel der Zertifikate und der UniFi-API-Schlüssel liegen nur verschlüsselt in der Datenbank.
+- Die UniFi UDM Pro wird nur mit bestätigtem Fingerabdruck und nur über Adressen im eigenen Netz angesprochen.
+
+## [0.77.10] – 2026-11-12
+
+### Geändert
+
+- Cloudflare: Meldungen, die die Karte „DNS, Proxy und Tunnel-Ziele“ anzeigt, stehen jetzt auch im Protokoll (Bereich cloudflare) – so lässt sich später nachsehen, was Cloudflare abgelehnt hat.
+
+## [0.77.9] – 2026-11-09
+
+### Neu
+- Ausfallschutz mit zwei Servern: Die neue Datei-Spiegelung überträgt Anhänge, Chat-Dateien und die Einstellungen in `/etc/pdh` fast in Echtzeit auf den passiven Server – nach einem Tausch fehlt keine Datei mehr; Standard ist aus.
+- Nextcloud im Verbund: Mit „Nextcloud mitnehmen“ werden Datenordner, Programm, nginx-Einstellungen und Zertifikate mitgespiegelt, Nextcloud ist auf beiden Servern startbereit und arbeitet immer nur auf dem aktiven – für Clients bleibt es derselbe Server.
+- Das Nextcloud-Installationsskript kennt `--verbund aktiv-neu`, `--verbund aktiv-vorhanden` und `--verbund passiv` und nennt am Ende den fertigen Befehl für den anderen Server.
+- Neue Karte „Datei-Spiegelung“ im Reiter Ausfallschutz mit Zustand, letztem Abgleich je Quelle, Fortschritt des Erstabgleichs, Papierkorb, Warnungen und Einstellungen; `pdh-ha status` hat eine Zeile „Spiegelung“, dazu `pdh-ha mirror status`, `pdh-ha mirror run` und `pdh-ha mirror trash-empty`.
+- Beim Rollentausch läuft in der kurzen Sperre ein letzter Abgleich der Dateien (höchstens 120 Sekunden); klappt er nicht, bricht der Tausch ohne Änderung ab.
+- Gelöschte und überschriebene Dateien landen am passiven Server 14 Tage lang in einem Papierkorb; „Papierkorb leeren“ leert ihn vorher.
+- Am Partner wird erst gelöscht, wenn sein Stand belegt ist: Ein gefüllter Ordner wartet auf „Dieser Server ist vollständig“ (Knopf oder `pdh-ha mirror confirm`).
+- Nach einem harten Ausfall nennt der neue aktive Server die Nextcloud-Dateien, die noch nicht übertragen waren, in der Karte und im Alarm.
+- Jeder gespiegelte Ordner trägt eine Kennungsdatei `.pdh-mirror-id`; nach einem Plattentausch oder bei nicht eingehängtem Laufwerk löscht die Spiegelung nichts und meldet sich.
+- Handbuch: neuer Abschnitt „Datei-Spiegelung und Nextcloud im Verbund“ mit Einschalten, Bestätigen, Nextcloud, Papierkorb und Fehlerbildern.
+- Nextcloud verbindet sich von selbst: Liegt Nextcloud auf demselben Server, legt das PDH sein Konto „pdhNCadmin“ ohne Zutun an und trägt Adresse, Benutzer und Passwort in den Server-Einstellungen ein; alle Administratoren bekommen eine Nachricht.
+- Das Nextcloud-Installationsskript richtet bei einer neuen Nextcloud gleich Kalender, Kontakte und Deck ein (`--apps` wählt andere oder keine).
+- Abgleich mit Nextcloud, das PDH hat Vorrang: Jeder aktive Benutzer bekommt ein Nextcloud-Konto mit Namen, E-Mail und Sprache aus dem PDH; Rollen, Abteilungen und Gruppen werden zu Nextcloud-Gruppen, deaktivierte Personen dort gesperrt. Einschalten unter Server-Einstellungen → Nextcloud.
+- Ist eine Person einem Microsoft-Konto zugeordnet und die Microsoft-Anmeldung für Nextcloud eingerichtet, bekommt ihr Nextcloud-Konto die Microsoft-E-Mail als Benutzer-ID – die Anmeldung klappt dann ohne eigenes Passwort.
+- Der Abgleich richtet in Nextcloud die Apps ein, die das PDH braucht (Kalender, Kontakte, je nach Einstellung Deck, externer Speicher, Microsoft-Anmeldung); weitere Apps installieren Administratoren in Nextcloud wie gewohnt.
+- Cloudflare im PDH: Mit einem API-Token lassen sich unter Server-Einstellungen → Cloudflare-Tunnel DNS-Einträge, der Proxy je Eintrag, die Verschlüsselung der Domain und die Ziele im Tunnel pflegen; für PDH und Nextcloud zeigt eine Tabelle, was fehlt, und richtet es auf Knopfdruck ein.
+- Benutzerkarte: Haken „Administrator in Nextcloud“ und Knopf „Neues Startpasswort“ für das Nextcloud-Konto.
+- Netzlaufwerke in Nextcloud: Mit dem Haken „in Nextcloud zeigen“ erscheint ein Laufwerk dort im Ordner „PDH-Laufwerke“; Laufwerke, die das PDH selbst benutzt, sind nur lesbar.
+- Haben `pdh` (und mit „Nextcloud mitnehmen“ `www-data`) auf den beiden Servern verschiedene Benutzer- oder Gruppennummern, hält die Spiegelung die betroffenen Ordner mit einem Alarm an – auch schon beim ersten Abgleich nach dem Einschalten; Karte und `pdh-ha mirror status` nennen beide Nummern.
+
+### Geändert
+- Die Navigation zeigt Tickets, Störungen, Wartung, Aufgaben, Kalender, Ersatzteile, Lager, IT-Assets und Hersteller & Lieferanten nur noch, wenn die Person in dem Bereich wenigstens ein Recht hat.
+- „Rollen tauschen“ und die Prüfung „alles grün“ vor einem Update warten, bis der Erstabgleich der Dateien fertig ist.
+- Ein gescheiterter Tausch wird in zwei Schritten zurückgenommen: erst die Rolle, eine Sekunde später Datenbank, Dienste und mitwandernde Adresse.
+- Scheitert die Rücknahme, bleibt die Automatik an; der Server versucht es jede Sekunde neu, bleibt solange nur lesend ohne Dienste und zeigt solange die Warnung „Rücknahme hängt“.
+- Ohne Sicht auf den Partner (und im Trio auf den Zeugen) nimmt ein Server einen gescheiterten Tausch nicht zurück, sondern bleibt abgeschottet.
+- Rollenskripte laufen nur noch bei einem echten Rollenwechsel, nicht beim Neustart von `pdh-ha`.
+- Sicherung, Wiederaufbau und Rückspielen nehmen die Kennungsdatei `.pdh-mirror-id` nicht mit.
+- Die Karte vergleicht neben der `.env` auch `/etc/pdh/pdh.env`; das Token des Update-Agenten gehört nur in die `.env`, `scripts/repair-update-agent-token.sh` nimmt es aus `pdh.env` heraus.
+- Nextcloud-Daten- und Programmordner dürfen nicht unter `/etc/pdh/ha` liegen und müssen verschieden sein.
+
+### Behoben
+- Übernimmt der Partner mitten in einem Tausch, wird der alte Server automatisch wieder als passiver Server angebunden, statt ohne Datenbank stehen zu bleiben.
+- Bricht das Zurückspulen der Datenbank beim Wiederanbinden ab, startet der halb zurückgespulte Stand nicht mehr unbemerkt; `pdh-ha rejoin` kopiert die Datenbank dann neu, `pdh-restore.sh` räumt die Markierung auf.
+- Ein offener Update-Auftrag, den der aktive Partner nicht führt, meldet sich mit Alarm und lässt sich am passiven Server mit `pdh-ha update abort` beenden.
+- „Papierkorb leeren“ meldet die Rückkehrer-Dateien nur noch als erledigt, wenn wirklich alles geleert ist, und hört nach einem Rollenwechsel auf.
+- War der passive Server so lange weg, dass seine Datenbank neu kopiert werden muss, beginnt die Neukopie erst, wenn der aktive Server dafür bereit ist; sie scheitert nicht mehr gleich und wartet dann zehn Minuten.
+- Der Eintrag „Nextcloud“ in der Navigation öffnet jetzt die Nextcloud-Adresse aus den Server-Einstellungen statt einer fest eingebauten Adresse; ohne eingetragene Adresse erscheint er nicht.
+- Das Nextcloud-Installationsskript bricht nach der Installation nicht mehr mit „Memcache … not available“ ab; der Zwischenspeicher wird richtig eingetragen.
+- Die Datei-Spiegelung erkennt den Datenordner neuerer Nextcloud-Fassungen (ab 30, Kennungsdatei `.ncdata`) und meldet ihn nicht mehr als leer.
+- Die Karte „Datei-Spiegelung“ frischt sich während Erstabgleich und Abgleich selbst auf; neu laden ist nicht mehr nötig.
+- Ist der zweite Server nicht erreichbar, zeigen Karte und `pdh-ha status` „wartet auf den zweiten Server“ statt „läuft“ mit einer rohen Fehlermeldung.
+- Bei einem Rollentausch erscheint nicht mehr jedes Mal die Warnung „Dateien … abgelehnt: Dieser Server ist nicht passiv“; der kurze Moment der Übergabe ist nur noch ein Hinweis.
+- Das Ereignisprotokoll des Verbunds verliert bei einem Stromausfall die letzten Zeilen nicht mehr, und Zeilen nach einem früheren Ausfall werden wieder gelesen.
+- Kommt ein Ordner erst nach einer Übernahme neu dazu, nennt der Alarm das jetzt so („Der Ordner ist neu dazugekommen …“) statt „bevor der Erstabgleich fertig war“.
+- Cloudflare: Ein API-Token, der in Cloudflare unter dem Konto angelegt ist, wird nicht mehr als „Invalid API Token (1000)“ abgelehnt.
+
+### Sicherheit
+- Vier neue Rechte (Kategorie „System & Sicherheit“): „Nextcloud-Abgleich einstellen und starten“, „Netzlaufwerke in Nextcloud nutzen“, „Netzlaufwerke in Nextcloud: auch PDH-Daten bearbeiten“ und „Cloudflare verwalten (DNS, Proxy, Tunnel)“. Mit dem Update bekommen sie die Rollen, die überall die Server-Einstellungen pflegen dürfen.
+- Administrator in Nextcloud ist nur noch, wer im PDH Administrator ist und das Kennzeichen „Administrator in Nextcloud“ trägt; das Kennzeichen setzen nur Administratoren. Ohne eingeschalteten Abgleich ändert sich nichts.
+- Beim Einschalten des Nextcloud-Abgleichs bekommen PDH-Administratoren, die in Nextcloud schon Administrator sind, das Kennzeichen von selbst – niemand sperrt sich aus; die Meldung nennt die Namen, die Historie der Person hält es fest.
+- Neue Rechte „Datei-Spiegelung einstellen“ und „Datei-Spiegelung: Löschen am Partner freigeben und Papierkorb leeren“; Rollen, die „Server-Einstellungen (.env) bearbeiten & Server neu starten“ überall hatten, bekommen beide automatisch.
+- Die Dateien laufen durch den verschlüsselten Kanal des Verbunds (Port 7480) mit den Zertifikaten der Server; der Zeuge bekommt keine Dateien.
+- Der Empfänger nimmt nur Dateien an, wenn er passiv ist und sie vom aktuell aktiven Server kommen, setzt Zielpfad und Papierkorb selbst und lässt nur eine feste Liste von rsync-Optionen zu.
+- `/etc/pdh/ha/`, die `.env` und `cloudflared` werden nie gespiegelt.
+- „Dieser Server ist vollständig“ und „Papierkorb leeren“ lehnen Anfragen ab, die von einer fremden Seite kommen (auch von einer Nachbarseite wie Nextcloud unter derselben Domain).
+- Texte vom Partner und Dateinamen erscheinen in Protokoll, Alarm, Chat und Mail ohne Steuerzeichen, Zeilentrenner und Schreibrichtungs-Zeichen.
 
 ## [0.77.8] – 2026-10-30
 

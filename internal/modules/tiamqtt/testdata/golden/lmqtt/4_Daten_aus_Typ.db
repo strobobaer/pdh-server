@@ -1,0 +1,15 @@
+﻿DATA_BLOCK "Daten"
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+NON_RETAIN
+//Erzeugt vom PDH (PDH-Test) am 2026-11-15 10:00 UTC – bei Änderungen im PDH neu herunterladen.
+//Datenbaustein "Daten", Variante mit Siemens-Bibliothek LMQTT (TLS möglich), S7-1500, höchstens 1024 Byte je Nachricht.
+//Ersatz für den eigenen Datenbaustein, jetzt auf Basis von "PDH_Daten_Typ". Startwerte aus der hochgeladenen Quelle.
+"PDH_Daten_Typ"
+
+BEGIN
+   "Feld"[1] := 3;
+   "Motor"."Drehzahl" := 1450.0;
+
+END_DATA_BLOCK
+

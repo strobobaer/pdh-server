@@ -133,7 +133,7 @@ func TestWorkBoardRenders(t *testing.T) {
 		}
 	}
 	for _, kind := range workKinds {
-		if len(kind.Flow) == 0 || len(kind.Rules) == 0 || kind.DueKey == "" || kind.BrokerColumn == "" {
+		if len(kind.Flow) == 0 || len(kind.Rules) == 0 || (kind.DueKey == "" && !kind.NoDue) || (kind.BrokerColumn == "" && !kind.NoBroker) {
 			t.Errorf("%s: Ablauf, Regeln, Frist oder Broker fehlen", kind.Key)
 		}
 	}

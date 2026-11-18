@@ -1,0 +1,50 @@
+# Labor für den Abgleich mit Fremdsystemen (nur zum Testen, nie produktiv).
+# Start: docker compose -p pdh-lab-mssql -f deploy/lab/mssql/docker-compose.yml up -d
+# Die Kennwörter hier gelten nur im Labor.
+name: pdh-lab-mssql
+
+services:
+  db:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "Lab-Sa-Kennwort-2026!"
+    ports:
+      # 0.0.0.0, damit die Testserver im LAN (10.10.0.14 / .17) zugreifen können
+      - "0.0.0.0:14330:1433"
+    volumes:
+      - mssql-data:/var/opt/mssql
+    restart: unless-stopped
+
+  seed:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    depends_on:
+      - db
+    volumes:
+      - ./seed.sql:/seed.sql:ro
+    restart: "no"
+    entrypoint:
+      - /bin/bash
+      - -c
+      - |
+        for i in $$(seq 1 60); do
+          /opt/mssql-tools18/bin/sqlcmd -C -S db -U sa -P 'Lab-Sa-Kennwort-2026!' -Q "SELECT 1" >/dev/null 2>&1 && break
+          sleep 2
+        done
+        /opt/mssql-tools18/bin/sqlcmd -C -S db -U sa -P 'Lab-Sa-Kennwort-2026!' -b -i /seed.sql
+
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: pdh_test
+      POSTGRES_USER: pdh
+      POSTGRES_PASSWORD: lab-pdh-test
+    ports:
+      - "127.0.0.1:54330:5432"
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  mssql-data:
+  pg-data:
