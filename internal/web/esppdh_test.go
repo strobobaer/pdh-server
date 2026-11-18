@@ -688,6 +688,22 @@ func TestESPPDHDepartment(t *testing.T) {
 			t.Errorf("%s an fremder Abteilung: %d", rt.name, w.Code)
 		}
 	}
+	// Firmware und Manifest (esppdh_flash.go) enthalten WLAN- und MQTT-Kennwort: an einem Gerät
+	// der fremden Abteilung 403, auch wenn es einen gelungenen Lauf hat; am Gerät der eigenen
+	// Abteilung lässt das Recht durch (dort fehlt nur die Datei bzw. passt die Prüfsumme nicht)
+	run := func(dev string) string {
+		return id(`INSERT INTO esppdh_builds (device_id, status, config_hash, broker_host, broker_port, finished_at)
+			VALUES ($1::uuid, 'ok', 'x', 'mqtt.pdh-test.invalid', 8883, now()) RETURNING id::text`, dev)
+	}
+	runA, runB := run(devA), run(devB)
+	for name, fn := range esppdhFlashRoutes(e.h) {
+		if w := esppdhDoF(fn, devB, runB, name, u); w.Code != http.StatusForbidden {
+			t.Errorf("%s an fremder Abteilung: %d", name, w.Code)
+		}
+		if w := esppdhDoF(fn, devA, runA, name, u); w.Code == http.StatusForbidden || w.Code == http.StatusOK {
+			t.Errorf("%s an eigener Abteilung: %d", name, w.Code)
+		}
+	}
 	// löschen nur Bereichsadministrator – auch in der eigenen Abteilung nicht
 	if w := esppdhDo(e.h.EsppdhDeleteWeb, "POST", "/x", devA, u, url.Values{}); w.Code != http.StatusForbidden {
 		t.Errorf("löschen ohne esppdh.admin: %d", w.Code)
