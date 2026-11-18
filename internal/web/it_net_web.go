@@ -80,13 +80,34 @@ const itNetCandTaken = `EXISTS (SELECT 1 FROM it_assets t
 	WHERE t.net_source = ANY($1::text[]) AND t.net_source <> c.source
 	  AND regexp_replace(lower(t.mac_address), '[^0-9a-f]', '', 'g') = replace(c.mac, ':', ''))`
 
-// itNetOpenCandidates: Zahl der offenen (nicht ausgeblendeten) Vorschläge aller Quellen.
+// itNetCandView: die Vorschlagsliste als Unterabfrage v. $1 = alle Quellen (für
+// die Doppel-Prüfung gegen Assets), $2 = die eingeschalteten Quellen mit Clients.
+// Vorschläge einer ausgeschalteten Quelle bleiben gespeichert, erscheinen aber
+// nicht. Sehen zwei Quellen denselben Client (gleiche MAC), gibt es eine Zeile
+// (rn = 1, die zuletzt gesehene); ausgeblendet (ign) gilt je MAC.
+const itNetCandView = `(SELECT c.source, c.mac, c.name, c.ip, c.kind, c.uplink, c.last_seen,
+		bool_or(c.ignored) OVER (PARTITION BY c.mac) AS ign,
+		row_number() OVER (PARTITION BY c.mac ORDER BY c.last_seen DESC, c.source) AS rn
+	FROM it_net_candidates c WHERE ` + itNetCandWhere + ` AND c.source = ANY($2::text[])) v`
+
+// itNetCandSources: net_source-Namen der eingeschalteten Quellen, die Clients kennen.
+func (h *Handler) itNetCandSources(ctx context.Context) []string {
+	out := []string{}
+	for _, s := range h.itNetSources() {
+		if !s.NoClients && h.itNetOn(ctx, s.keyOn) {
+			out = append(out, s.Name)
+		}
+	}
+	return out
+}
+
+// itNetOpenCandidates: Zahl der offenen (nicht ausgeblendeten) Vorschläge der eingeschalteten Quellen.
 func (h *Handler) itNetOpenCandidates(ctx context.Context) int {
 	if h.db == nil {
 		return 0
 	}
 	var n int
-	if err := h.db.QueryRow(ctx, `SELECT count(*) FROM it_net_candidates c WHERE `+itNetCandWhere+` AND NOT c.ignored`, h.itNetSourceNamesInUse()).Scan(&n); err != nil {
+	if err := h.db.QueryRow(ctx, `SELECT count(*) FROM `+itNetCandView+` WHERE v.rn = 1 AND NOT v.ign`, h.itNetSourceNamesInUse(), h.itNetCandSources(ctx)).Scan(&n); err != nil {
 		itNetLog().Warn().Err(err).Msg("vorschläge zählen")
 	}
 	return n
@@ -288,15 +309,16 @@ func (h *Handler) ITNetPage(w http.ResponseWriter, r *http.Request) {
 	// Vorschläge über alle Quellen; die Zeile nennt ihre Quelle.
 	srcs := h.itNetSources()
 	names := h.itNetSourceNamesInUse()
-	if err := h.db.QueryRow(ctx, `SELECT count(*) FILTER (WHERE NOT c.ignored), count(*) FILTER (WHERE c.ignored)
-		FROM it_net_candidates c WHERE `+itNetCandWhere, names).Scan(&d.Open, &d.Hidden); err != nil {
+	on := h.itNetCandSources(ctx)
+	if err := h.db.QueryRow(ctx, `SELECT count(*) FILTER (WHERE NOT v.ign), count(*) FILTER (WHERE v.ign)
+		FROM `+itNetCandView+` WHERE v.rn = 1`, names, on).Scan(&d.Open, &d.Hidden); err != nil {
 		itNetLog().Warn().Err(err).Msg("vorschläge zählen")
 	}
 	like := "%" + strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(d.Query) + "%"
-	rows, err := h.db.Query(ctx, `SELECT c.source, c.mac, c.name, c.ip, c.kind, c.uplink, c.last_seen FROM it_net_candidates c
-		WHERE `+itNetCandWhere+` AND c.ignored = $2
-		  AND ($3 = '%%' OR c.name ILIKE $3 OR c.ip ILIKE $3 OR c.mac ILIKE $3 OR c.uplink ILIKE $3)
-		ORDER BY c.last_seen DESC, c.name, c.source LIMIT 500`, names, d.Tab == "hidden", like)
+	rows, err := h.db.Query(ctx, `SELECT v.source, v.mac, v.name, v.ip, v.kind, v.uplink, v.last_seen FROM `+itNetCandView+`
+		WHERE v.rn = 1 AND v.ign = $3
+		  AND ($4 = '%%' OR v.name ILIKE $4 OR v.ip ILIKE $4 OR v.mac ILIKE $4 OR v.uplink ILIKE $4)
+		ORDER BY v.last_seen DESC, v.name, v.source LIMIT 500`, names, on, d.Tab == "hidden", like)
 	if err != nil {
 		itNetLog().Warn().Err(err).Msg("vorschläge lesen")
 	} else {
@@ -569,6 +591,14 @@ func (h *Handler) ITNetIgnoreWeb(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		itNetBack(w, r, "", "nocand")
+		return
+	}
+	// Derselbe Client aus einer anderen Quelle (gleiche MAC) steht in der Liste als
+	// eine Zeile – Ausblenden und Zurückholen gelten deshalb für alle Quellen.
+	if _, err := h.db.Exec(r.Context(), `UPDATE it_net_candidates SET ignored = $1 WHERE mac = $2 AND source = ANY($3::text[]) AND source <> $4`,
+		ignored, netsync.NormMAC(r.FormValue("mac")), h.itNetSourceNamesInUse(), src.Name); err != nil {
+		itNetLog().Error().Err(err).Msg("vorschlag ausblenden (andere quelle)")
+		itNetBack(w, r, "", "save")
 		return
 	}
 	if ignored {

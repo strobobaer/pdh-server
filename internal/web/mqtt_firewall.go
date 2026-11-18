@@ -186,7 +186,7 @@ func (h *Handler) MqttBrokerFirewall(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	fail := func(text string) {
-		fmt.Fprintf(w, `<div><i class="ti ti-alert-circle"></i> %s</div>`, esc(text))
+		fmt.Fprintf(w, `<div data-act-result="err"><i class="ti ti-alert-circle"></i> %s</div>`, esc(text))
 	}
 	config, err := h.openConnJSON(configBytes)
 	if err != nil {
@@ -211,9 +211,9 @@ func (h *Handler) MqttBrokerFirewall(w http.ResponseWriter, r *http.Request) {
 		fail(certSafeText(err.Error()) + "." + byHand)
 	case st.Firewall == "active" && len(st.closed()) == 0:
 		lg.Msg("firewall: ports des brokers geöffnet")
-		fmt.Fprintf(w, `<div><i class="ti ti-check"></i> %s</div>`, esc(mqttPortList(ports)+" in der Firewall dieses Servers offen."))
+		fmt.Fprintf(w, `<div data-act-result="ok"><i class="ti ti-check"></i> %s</div>`, esc(mqttPortList(ports)+" in der Firewall dieses Servers offen."))
 	case st.Firewall == "none" || st.Firewall == "inactive":
-		fmt.Fprint(w, `<div><i class="ti ti-check"></i> Am Server ist keine Firewall (ufw) aktiv – nichts zu öffnen.</div>`)
+		fmt.Fprint(w, `<div data-act-result="ok"><i class="ti ti-check"></i> Am Server ist keine Firewall (ufw) aktiv – nichts zu öffnen.</div>`)
 	default:
 		lg.Str("fehler", certSafeText(st.Note)).Str("stand", st.Firewall).Msg("firewall: öffnen gescheitert")
 		note := certSafeText(st.Note)

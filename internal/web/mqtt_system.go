@@ -558,6 +558,9 @@ func (h *Handler) mqttCheckRows(ctx context.Context, r *http.Request, id string,
 	case p == "":
 		tlsRow.State, tlsRow.Tone = "aus", "off"
 		tlsRow.Hint = "In der Verbindung einen TLS-Port eintragen (z. B. 8883), wenn Geräte verschlüsselt per mqtts verbinden sollen."
+	case isRunning && st.TLSError != "":
+		tlsRow.State = "Port " + p + " lässt sich nicht öffnen"
+		tlsRow.Hint = "Meist ist der Port schon von einem anderen Programm belegt (" + st.TLSError + "). Die übrigen Ports des Brokers laufen. Anderen TLS-Port eintragen oder den Port freimachen, dann die Verbindung speichern."
 	case !isRunning || st.TLSAddr == "":
 		tlsRow.State = "Broker läuft nicht"
 	case !hasCert:

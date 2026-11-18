@@ -47,6 +47,7 @@ type Status struct {
 	ListenAddr       string    `json:"listen_addr"`
 	WebsocketAddr    string    `json:"websocket_addr,omitempty"`
 	TLSAddr          string    `json:"tls_addr,omitempty"`
+	TLSError         string    `json:"tls_error,omitempty"`
 	StartedAt        time.Time `json:"started_at"`
 	ClientsConnected int64     `json:"clients_connected"`
 	ClientsMaximum   int64     `json:"clients_maximum"`
@@ -70,6 +71,7 @@ type runningBroker struct {
 	listenAddr    string
 	websocketAddr string
 	tlsAddr       string
+	tlsErr        string // TLS-Port liess sich nicht oeffnen (z. B. belegt)
 	startedAt     time.Time
 
 	mu           sync.Mutex
@@ -223,11 +225,13 @@ func (m *Manager) start(id string, cfg Config) error {
 		tlsAddr := fmt.Sprintf(":%d", cfg.TLSPort)
 		tl := listeners.NewTCP(listeners.Config{ID: "tls-" + id, Address: tlsAddr,
 			TLSConfig: &tls.Config{GetCertificate: cfg.GetCertificate, MinVersion: tls.VersionTLS12}})
+		// Ein belegter TLS-Port haelt den Broker nicht auf: die Ports ohne TLS
+		// laufen weiter, der Status nennt den Grund.
 		if err := server.AddListener(tl); err != nil {
-			_ = server.Close() // schon geoeffnete Ports wieder freigeben
-			return fmt.Errorf("TLS-Listener konnte nicht gestartet werden: %w", err)
+			rb.tlsErr = err.Error()
+		} else {
+			rb.tlsAddr = tlsAddr
 		}
-		rb.tlsAddr = tlsAddr
 	}
 
 	m.mu.Lock()
@@ -295,6 +299,7 @@ func (m *Manager) Status(id string) (Status, bool) {
 		ListenAddr:       rb.listenAddr,
 		WebsocketAddr:    rb.websocketAddr,
 		TLSAddr:          rb.tlsAddr,
+		TLSError:         rb.tlsErr,
 		StartedAt:        rb.startedAt,
 		ClientsConnected: info.ClientsConnected,
 		ClientsMaximum:   info.ClientsMaximum,
