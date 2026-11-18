@@ -53,6 +53,8 @@ func esppdhChipFamily(boardKey string) string { return esppdhChipFamilies[boardK
 const (
 	esppdhMsgNoUSB = "Für „Andere Platine“ gibt es kein USB-Flash im Browser – bitte die Firmware herunterladen."
 	esppdhMsgStale = "Die Konfiguration des Geräts hat sich seit diesem Bau geändert – die Firmware passt nicht mehr dazu. Bitte neu bauen und dann flashen."
+	// esppdhMsgUnknown: ob die Firmware passt, lässt sich nicht prüfen (Grund im Server-Protokoll)
+	esppdhMsgUnknown = "Ob die Firmware noch zur Konfiguration des Geräts passt, lässt sich gerade nicht prüfen – Näheres auf der Seite des Geräts und im Server-Protokoll."
 	// esppdhToolsDir: ESP Web Tools im eingebetteten Ordner web/static
 	esppdhToolsDir = "web/static/vendor/esp-web-tools"
 )
@@ -177,7 +179,12 @@ func (h *Handler) EsppdhManifestWeb(w http.ResponseWriter, r *http.Request) {
 		h.esppdhLoadFailed(w, r, err)
 		return
 	}
-	if !h.esppdhRunCurrent(r.Context(), d, f.BrokerHost, f.ConfigHash) {
+	switch current, err := h.esppdhFirmwareCurrent(r.Context(), d, f.BrokerHost, f.ConfigHash); {
+	case err != nil:
+		componentLog("esppdh").Warn().Str("gerät", f.Slug).Str("lauf", f.BuildID).Str("grund", err.Error()).Msg("manifest: firmware lässt sich nicht prüfen")
+		http.Error(w, esppdhMsgUnknown, http.StatusConflict)
+		return
+	case !current:
 		http.Error(w, esppdhMsgStale, http.StatusConflict)
 		return
 	}
@@ -199,19 +206,25 @@ func (h *Handler) EsppdhManifestWeb(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(body)
 }
 
-// esppdhRunCurrent: passt ein Lauf (Broker-Adresse und Prüfsumme des Laufs) zum gespeicherten
-// Gerät? Gerechnet wie beim Bau (esppdhJobFor) – geändert sind z. B. Platine, Bausteine, Netz,
-// Kennwörter oder Broker.
-func (h *Handler) esppdhRunCurrent(ctx context.Context, d esppdhDevice, brokerHost, configHash string) bool {
+// esppdhFirmwareCurrent: passt eine gebaute Firmware – Broker-Adresse und Prüfsumme ihres
+// Laufs – noch zum gespeicherten Gerät? Gerechnet wie beim Bau (esppdhJobFor); geändert sind
+// z. B. Platine, Bausteine, Netz, Kennwörter oder Broker. Die eine Quelle für die Karte
+// „Firmware“, den Knopf „Per USB flashen“ und das Manifest. Lässt es sich nicht feststellen
+// (Kennwort nicht lesbar, Gerät nicht auflösbar), ist die Antwort „passt nicht“, und err nennt
+// den Grund fürs Server-Protokoll – ohne Kennwörter.
+func (h *Handler) esppdhFirmwareCurrent(ctx context.Context, d esppdhDevice, brokerHost, configHash string) (bool, error) {
 	if configHash == "" {
-		return false
+		return false, errors.New("Lauf ohne Prüfsumme der Konfiguration")
 	}
 	mqttPW, apPW, err := h.esppdhSecrets(d)
 	if err != nil {
-		return false
+		return false, err
 	}
 	res, msgs := h.esppdhResolve(ctx, d, mqttPW, apPW, brokerHost)
-	return len(msgs) == 0 && esppdh.ConfigHash(res.Dev) == configHash
+	if len(msgs) > 0 {
+		return false, errors.New(strings.Join(msgs, " "))
+	}
+	return esppdh.ConfigHash(res.Dev) == configHash, nil
 }
 
 // ── Detailseite ──────────────────────────────────────────────
@@ -220,13 +233,15 @@ func (h *Handler) esppdhRunCurrent(ctx context.Context, d esppdhDevice, brokerHo
 type esppdhFlashView struct {
 	DeviceID, BuildID, When, Version, SizeText string
 	Chip                                       string // Chip-Familie; "" = kein USB-Flash im Browser (Andere Platine)
-	Stale                                      bool   // Konfiguration seit dem Bau geändert – nur noch Herunterladen
+	Stale                                      bool   // passt nicht (mehr) zur Konfiguration – nur noch Herunterladen
+	Unknown                                    bool   // … weil es sich gerade nicht prüfen lässt
 }
 
 // esppdhFlashCard füllt den Teil „Firmware aufspielen“ der Karte „Firmware“: nur mit
-// esppdh.edit und nur, wenn die Dateien des jüngsten gelungenen Laufs noch da sind. d.BuiltHash
-// ist die Prüfsumme dieses Laufs (esppdhFinishOK setzt beide in einem Schritt).
-func (h *Handler) esppdhFlashCard(ctx context.Context, pd *ESPPDHDevicePageData, d esppdhDevice) {
+// esppdh.edit und nur, wenn die Dateien des jüngsten gelungenen Laufs noch da sind. Ob die
+// Firmware noch passt, hat esppdhFirmwareCard für denselben Lauf schon festgestellt
+// (pd.Changed, pd.ChangedUnknown) – Karte und Knopf sagen so immer dasselbe.
+func (h *Handler) esppdhFlashCard(pd *ESPPDHDevicePageData, d esppdhDevice) {
 	if !pd.CanEdit {
 		return
 	}
@@ -238,10 +253,7 @@ func (h *Handler) esppdhFlashCard(ctx context.Context, pd *ESPPDHDevicePageData,
 			return
 		}
 		v := &esppdhFlashView{DeviceID: d.ID, BuildID: run.ID, When: run.When(), Version: run.Version, SizeText: run.SizeText(),
-			Chip: esppdhChipFamily(d.BoardKey)}
-		if v.Chip != "" {
-			v.Stale = !h.esppdhRunCurrent(ctx, d, run.BrokerHost, d.BuiltHash)
-		}
+			Chip: esppdhChipFamily(d.BoardKey), Stale: pd.Changed || pd.ChangedUnknown, Unknown: pd.ChangedUnknown}
 		pd.Flash = v
 		return
 	}

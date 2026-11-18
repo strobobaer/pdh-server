@@ -691,8 +691,9 @@ func (h *Handler) esppdhRun(ctx context.Context, devID, bid string) (esppdhRunVi
 
 // esppdhFirmwareCard füllt die Karte „Firmware“ der Detailseite: die letzten Läufe, der
 // jüngste mit Verlauf, Knopf „Firmware bauen“ und den Hinweis, wenn die Konfiguration seit dem
-// letzten Bau geändert ist. res: das gespeicherte Gerät, wie es jetzt gebaut würde.
-func (h *Handler) esppdhFirmwareCard(ctx context.Context, pd *ESPPDHDevicePageData, d esppdhDevice, res esppdhResolved, mqttPW, apPW string, secretsOK bool) {
+// letzten Bau geändert ist (oder sich das nicht prüfen lässt). res: das gespeicherte Gerät, wie
+// es jetzt gebaut würde.
+func (h *Handler) esppdhFirmwareCard(ctx context.Context, pd *ESPPDHDevicePageData, d esppdhDevice, res esppdhResolved) {
 	runs, err := h.esppdhRuns(ctx, d.ID, esppdhListRuns)
 	if err != nil {
 		componentLog("esppdh").Error().Err(err).Str("gerät", d.Slug).Msg("läufe lesen")
@@ -713,15 +714,18 @@ func (h *Handler) esppdhFirmwareCard(ctx context.Context, pd *ESPPDHDevicePageDa
 		}
 	}
 	// geändert seit dem letzten Bau? Gerechnet für die Adresse, für die zuletzt gebaut wurde –
-	// ohne Namen des Brokers hängt die Adresse sonst am Aufruf der Seite.
-	if d.BuiltHash != "" && secretsOK {
-		dev := res.Dev
-		if lastOK != nil && lastOK.BrokerHost != "" && lastOK.BrokerHost != res.Broker.Host {
-			if r2, m := h.esppdhResolve(ctx, d, mqttPW, apPW, lastOK.BrokerHost); len(m) == 0 {
-				dev = r2.Dev
-			}
+	// ohne Namen des Brokers hängt die Adresse sonst am Aufruf der Seite. d.BuiltHash ist die
+	// Prüfsumme des jüngsten gelungenen Laufs (esppdhFinishOK setzt beide in einem Schritt).
+	if d.BuiltHash != "" || lastOK != nil {
+		host := res.Broker.Host
+		if lastOK != nil && lastOK.BrokerHost != "" {
+			host = lastOK.BrokerHost
 		}
-		pd.Changed = esppdh.ConfigHash(dev) != d.BuiltHash
+		current, err := h.esppdhFirmwareCurrent(ctx, d, host, d.BuiltHash)
+		if err != nil {
+			componentLog("esppdh").Warn().Str("gerät", d.Slug).Str("grund", err.Error()).Msg("firmware lässt sich nicht gegen die konfiguration prüfen")
+		}
+		pd.Changed, pd.ChangedUnknown = err == nil && !current, err != nil
 	}
 	if res.Broker.Host != "" && esppdhLoopbackHost(res.Broker.Host) {
 		pd.Problems = append(pd.Problems, esppdhLoopbackMsg(res.Broker.Host))

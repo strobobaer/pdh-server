@@ -143,6 +143,7 @@ html[data-style="fiori"] ewt-install-dialog,html[data-style="fiori"] ewt-no-port
 <div class="card esp-card" id="esp-firmware">
   <div class="card-title"><span><i class="ti ti-cpu-2" aria-hidden="true"></i> Firmware</span></div>
   {{if .Changed}}<div class="esp-fw-changed" role="status"><i class="ti ti-refresh-alert" aria-hidden="true"></i> Konfiguration seit dem letzten Bau geändert – die Firmware passt nicht mehr dazu. Bitte neu bauen und aufspielen.</div>
+  {{else if .ChangedUnknown}}<div class="esp-fw-changed" role="status"><i class="ti ti-help-circle" aria-hidden="true"></i> Ob die Firmware noch zur gespeicherten Konfiguration passt, lässt sich gerade nicht prüfen – siehe die Hinweise oben. Per USB flashen geht erst wieder, wenn das geklärt ist.</div>
   {{else if not .Dev.BuiltHash}}<p class="esp-note">Noch keine Firmware gebaut.</p>{{end}}
   {{if .CanBuild}}
   <form method="POST" action="/import/esppdh/{{.Dev.ID}}/build" class="esp-fw-build">
@@ -217,7 +218,7 @@ function espMove(btn, dir){
   {{if not .Chip}}
   <p class="esp-note">Für „Andere Platine“ gibt es kein USB-Flash im Browser – die Firmware herunterladen und mit einem eigenen Werkzeug (z. B. esptool) ab Adresse 0 aufspielen.</p>
   {{else if .Stale}}
-  <p class="esp-note"><i class="ti ti-info-circle" aria-hidden="true"></i> Per USB flashen geht erst nach einem neuen Bau – die Konfiguration hat sich seitdem geändert.</p>
+  <p class="esp-note"><i class="ti ti-info-circle" aria-hidden="true"></i> {{if .Unknown}}Per USB flashen geht gerade nicht – siehe oben.{{else}}Per USB flashen geht erst nach einem neuen Bau – die Konfiguration hat sich seitdem geändert.{{end}}</p>
   {{else}}
   <div class="esp-flash-usb" hidden>
     <esp-web-install-button manifest="/import/esppdh/{{.DeviceID}}/firmware/{{.BuildID}}/manifest.json">

@@ -424,6 +424,74 @@ func TestManifest(t *testing.T) {
 	}
 }
 
+// „Seit dem Bau geändert?“ hat eine Quelle für Karte „Firmware“, Knopf „Per USB flashen“ und
+// Manifest. Lässt es sich nicht prüfen (hier: MQTT-Kennwort nicht lesbar), sagt die Karte das,
+// statt still „passt“ zu zeigen, und Knopf und Manifest bleiben gesperrt.
+func TestFirmwareCurrentOneSource(t *testing.T) {
+	e, fb, _ := newEsppdhBuildEnv(t)
+	e.start(t)
+	ctx := context.Background()
+	id := e.buildable(t, "cs-"+e.sfx)
+	bid := e.built(t, fb, id, "cs")
+	page := func() string {
+		t.Helper()
+		return esppdhDo(e.h.EsppdhDevicePage, "GET", "/import/esppdh/"+id, id, esppdhUser, nil).Body.String()
+	}
+	const changed, unknown = "Konfiguration seit dem letzten Bau geändert", "lässt sich gerade nicht prüfen"
+	if p := page(); !strings.Contains(p, "<esp-web-install-button") || strings.Contains(p, changed) || strings.Contains(p, unknown) {
+		t.Fatal("frisch gebaut: Knopf fehlt oder Hinweis falsch")
+	}
+	if w := esppdhDoF(e.h.EsppdhManifestWeb, id, bid, "manifest.json", esppdhUser); w.Code != http.StatusOK {
+		t.Fatalf("frisch gebaut: Manifest %d", w.Code)
+	}
+
+	// MQTT-Kennwort nicht lesbar: nicht feststellbar → Karte sagt es, Knopf und Manifest gesperrt
+	var enc string
+	if err := e.pool.QueryRow(ctx, `SELECT mqtt_password_enc FROM esppdh_devices WHERE id = $1::uuid`, id).Scan(&enc); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.pool.Exec(ctx, `UPDATE esppdh_devices SET mqtt_password_enc = 'kaputt' WHERE id = $1::uuid`, id); err != nil {
+		t.Fatal(err)
+	}
+	p := page()
+	if strings.Contains(p, "<esp-web-install-button") || !strings.Contains(p, unknown) || strings.Contains(p, changed) {
+		t.Error("Kennwort nicht lesbar: Knopf da oder Karte sagt nicht, dass es sich nicht prüfen lässt")
+	}
+	if w := esppdhDoF(e.h.EsppdhManifestWeb, id, bid, "manifest.json", esppdhUser); w.Code != http.StatusConflict {
+		t.Errorf("Kennwort nicht lesbar: Manifest %d", w.Code)
+	}
+	d, err := e.h.esppdhLoad(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := e.h.esppdhFirmwareCurrent(ctx, d, "x", d.BuiltHash); ok || err == nil || !strings.Contains(err.Error(), "MQTT-Kennwort") {
+		t.Errorf("esppdhFirmwareCurrent bei unlesbarem Kennwort: %v %v", ok, err)
+	}
+	if ok, err := e.h.esppdhFirmwareCurrent(ctx, d, "x", ""); ok || err == nil {
+		t.Errorf("esppdhFirmwareCurrent ohne Prüfsumme: %v %v", ok, err)
+	}
+
+	// Kennwort wieder lesbar, Name geändert: Karte „geändert“, Knopf und Manifest gesperrt – ohne Fehler
+	if _, err := e.pool.Exec(ctx, `UPDATE esppdh_devices SET mqtt_password_enc = $2, name = 'Anders ' || slug WHERE id = $1::uuid`, id, enc); err != nil {
+		t.Fatal(err)
+	}
+	p = page()
+	if strings.Contains(p, "<esp-web-install-button") || !strings.Contains(p, changed) || strings.Contains(p, unknown) {
+		t.Error("geändert: Knopf da oder Hinweis falsch")
+	}
+	if w := esppdhDoF(e.h.EsppdhManifestWeb, id, bid, "manifest.json", esppdhUser); w.Code != http.StatusConflict {
+		t.Errorf("geändert: Manifest %d", w.Code)
+	}
+	if d, err = e.h.esppdhLoad(ctx, id); err != nil {
+		t.Fatal(err)
+	}
+	var host string
+	_ = e.pool.QueryRow(ctx, `SELECT broker_host FROM esppdh_builds WHERE id = $1::uuid`, bid).Scan(&host)
+	if ok, err := e.h.esppdhFirmwareCurrent(ctx, d, host, d.BuiltHash); ok || err != nil {
+		t.Errorf("esppdhFirmwareCurrent nach Änderung: %v %v", ok, err)
+	}
+}
+
 // Die Kennung eines Laufs gilt nur unter seinem Gerät; nur gelungene Läufe haben Firmware.
 func TestFirmwareOfOtherDevice404(t *testing.T) {
 	e, fb, _ := newEsppdhBuildEnv(t)

@@ -442,6 +442,8 @@ type ESPPDHDevicePageData struct {
 	CanBuild  bool            // Knopf „Firmware bauen“
 	BuildNote string          // warum gerade nicht gebaut werden kann
 	Changed   bool            // Konfiguration seit dem letzten Bau geändert
+	// ob die Firmware noch passt, lässt sich nicht prüfen (Grund im Server-Protokoll)
+	ChangedUnknown bool
 
 	// Firmware herunterladen und per USB flashen (esppdh_flash.go), nur mit esppdh.edit
 	Flash *esppdhFlashView
@@ -579,8 +581,8 @@ func (h *Handler) esppdhRenderDevice(w http.ResponseWriter, r *http.Request, d e
 	if serr == nil && len(rmsgs) == 0 {
 		pd.Problems = append(pd.Problems, esppdh.ValidateDevice(res.Dev)...)
 	}
-	h.esppdhFirmwareCard(ctx, &pd, d, res, mqttPW, apPW, serr == nil)
-	h.esppdhFlashCard(ctx, &pd, d)
+	h.esppdhFirmwareCard(ctx, &pd, d, res)
+	h.esppdhFlashCard(&pd, d)
 	if pd.CanEdit && !d.Wired {
 		pd.APPassword = apPW
 	}
