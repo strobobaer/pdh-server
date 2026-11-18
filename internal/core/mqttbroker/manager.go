@@ -77,6 +77,8 @@ type runningBroker struct {
 	recent       []ActivityEvent
 	subscribers  map[chan ActivityEvent]struct{}
 	inlineTopics map[string]struct{}
+
+	kicking sync.Map // *mqtt.Client → struct{}: Geräte, die gerade getrennt werden (devices.go)
 }
 
 func (rb *runningBroker) publish(event ActivityEvent) {
@@ -101,6 +103,11 @@ type Manager struct {
 	brokers    map[string]*runningBroker
 	lastErrors map[string]string
 	devices    map[string]*deviceAccounts // Gerätezugänge je ID, überleben Restart
+
+	// Trennen eines Geräts (devices.go); nur Tests setzen sie: disconnectFn ersetzt
+	// DisconnectClient, disconnectWait die Frist (0 = deviceDisconnectWait).
+	disconnectFn   func(*mqtt.Server, *mqtt.Client)
+	disconnectWait time.Duration
 }
 
 func NewManager() *Manager {

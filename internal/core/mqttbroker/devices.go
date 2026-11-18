@@ -10,7 +10,9 @@ import (
 	"crypto/subtle"
 	"strings"
 	"sync"
+	"time"
 
+	mqtt "github.com/mochi-mqtt/server/v2"
 	"github.com/mochi-mqtt/server/v2/packets"
 )
 
@@ -153,9 +155,14 @@ func (m *Manager) deviceStore(id string) *deviceAccounts {
 	return d
 }
 
+// deviceDisconnectWait: so lange darf das Abschiedspaket an ein getrenntes Gerät dauern; danach
+// schließt der Broker die Verbindung ohne es.
+const deviceDisconnectWait = 5 * time.Second
+
 // SetDeviceAccounts ersetzt die Gerätezugänge des Brokers id (auch wenn er
 // gerade nicht läuft). Verbundene Geräte, deren Zugang fehlt oder deren
-// Kennwort sich änderte, werden sofort getrennt.
+// Kennwort sich änderte, werden sofort getrennt – im Hintergrund, siehe
+// disconnectDevices; die neue Liste gilt schon, wenn der Aufruf zurückkehrt.
 func (m *Manager) SetDeviceAccounts(id string, accts []DeviceAccount) {
 	m.disconnectDevices(id, m.deviceStore(id).replace(accts))
 }
@@ -171,38 +178,77 @@ func (m *Manager) RemoveDeviceAccount(id, username string) {
 	m.disconnectDevices(id, map[string]struct{}{username: {}})
 }
 
-// disconnectDevices trennt verbundene Clients mit diesen Benutzernamen vom Broker id.
+// disconnectDevices trennt verbundene Clients mit diesen Benutzernamen vom Broker id, ohne
+// darauf zu warten: mochi schreibt das Abschiedspaket ohne Frist – ein Gerät, das nicht mehr
+// liest, hielte den Aufrufer (und damit den Abgleich aller Geräte) sonst beliebig lange auf.
+// Der Zugang ist beim Aufruf schon weg; die Clients gelten ab hier nicht mehr als verbunden
+// (DeviceOnline) und werden je in einer eigenen Goroutine getrennt (kick).
 func (m *Manager) disconnectDevices(id string, stale map[string]struct{}) {
 	if len(stale) == 0 {
 		return
 	}
 	m.mu.Lock()
 	rb, ok := m.brokers[id]
+	disconnect, wait := m.disconnectFn, m.disconnectWait
 	m.mu.Unlock()
 	if !ok {
 		return
 	}
+	if disconnect == nil {
+		disconnect = func(s *mqtt.Server, cl *mqtt.Client) { _ = s.DisconnectClient(cl, packets.ErrNotAuthorized) }
+	}
+	if wait <= 0 {
+		wait = deviceDisconnectWait
+	}
 	for _, cl := range rb.server.Clients.GetAll() {
 		if _, drop := stale[string(cl.Properties.Username)]; drop && !cl.Closed() {
-			_ = rb.server.DisconnectClient(cl, packets.ErrNotAuthorized)
+			rb.kicking.Store(cl, struct{}{})
+			go rb.kick(cl, disconnect, wait)
 		}
 	}
 }
 
+// kick trennt einen Client. Hängt das Abschiedspaket länger als wait, schließt kick die
+// Verbindung selbst – das beendet auch den hängenden Schreibversuch.
+func (rb *runningBroker) kick(cl *mqtt.Client, disconnect func(*mqtt.Server, *mqtt.Client), wait time.Duration) {
+	defer rb.kicking.Delete(cl)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		disconnect(rb.server, cl)
+	}()
+	t := time.NewTimer(wait)
+	defer t.Stop()
+	select {
+	case <-done:
+	case <-t.C:
+		cl.Stop(packets.ErrNotAuthorized)
+	}
+}
+
 // DeviceOnline meldet, ob ein Gerät mit diesem Benutzernamen gerade mit dem
-// Broker id verbunden ist.
+// Broker id verbunden ist. Ohne Zugang (entfernt, gesperrt) oder während es
+// getrennt wird, gilt es nicht als verbunden – auch wenn die Verbindung noch
+// einen Augenblick besteht.
 func (m *Manager) DeviceOnline(id, username string) bool {
 	if !hasDevicePrefix(username) {
 		return false
 	}
 	m.mu.Lock()
 	rb, ok := m.brokers[id]
+	d := m.devices[id]
 	m.mu.Unlock()
-	if !ok {
+	if !ok || d == nil {
+		return false
+	}
+	if _, ok := d.get(username); !ok {
 		return false
 	}
 	for _, cl := range rb.server.Clients.GetAll() {
-		if !cl.Closed() && string(cl.Properties.Username) == username {
+		if cl.Closed() || string(cl.Properties.Username) != username {
+			continue
+		}
+		if _, kicking := rb.kicking.Load(cl); !kicking {
 			return true
 		}
 	}

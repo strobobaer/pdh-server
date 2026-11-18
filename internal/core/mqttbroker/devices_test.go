@@ -3,6 +3,7 @@ package mqttbroker
 import (
 	"errors"
 	"fmt"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -287,6 +288,69 @@ func TestRemoveDeviceAccount(t *testing.T) {
 	m.RemoveDeviceAccount(devID, "esppdh-b")
 	if _, ok := m.deviceStore(devID).get("esppdh-b"); ok {
 		t.Error("Zugang esppdh-b noch da")
+	}
+}
+
+// Ein Gerät, dessen Trennen hängt (es liest nicht mehr, mochi schreibt das Abschiedspaket ohne
+// Frist), hält SetDeviceAccounts und RemoveDeviceAccount nicht auf: Der Zugang ist sofort weg –
+// Wiederanmeldung scheitert, DeviceOnline meldet das Gerät nicht mehr –, getrennt wird im
+// Hintergrund und nach Ablauf der Frist notfalls ohne Abschiedspaket.
+func TestSlowDisconnectDoesNotBlock(t *testing.T) {
+	m, addr := startDeviceBroker(t, false)
+	devB := DeviceAccount{Username: "esppdh-b", Password: "pw-b", TopicPrefix: "esppdh/b/"}
+	m.SetDeviceAccounts(devID, []DeviceAccount{devA, devB})
+	release := make(chan struct{})
+	t.Cleanup(func() { close(release) })
+	var hung atomic.Int32
+	m.disconnectWait = 300 * time.Millisecond
+	m.disconnectFn = func(*mqtt.Server, *mqtt.Client) { hung.Add(1); <-release } // hängt wie ein voller Puffer
+	prompt := func(what string, fn func()) {
+		t.Helper()
+		done := make(chan struct{})
+		go func() { fn(); close(done) }()
+		select {
+		case <-done:
+		case <-time.After(time.Second):
+			t.Fatalf("%s wartet auf das Trennen", what)
+		}
+	}
+
+	// Zugang entfällt
+	_, lostA := mustDial(t, addr, "esppdh-a", "esppdh-a", "pw")
+	b, lostB := mustDial(t, addr, "esppdh-b", "esppdh-b", "pw-b")
+	prompt("SetDeviceAccounts", func() { m.SetDeviceAccounts(devID, []DeviceAccount{devB}) })
+	if m.DeviceOnline(devID, "esppdh-a") {
+		t.Error("Gerät ohne Zugang gilt als verbunden")
+	}
+	if _, _, err := dial(t, addr, "esppdh-a", "esppdh-a", "pw"); err == nil {
+		t.Fatal("Wiederanmeldung nach Entfernen des Zugangs gelungen")
+	}
+	expectLost(t, lostA, "esppdh-a (Trennen hängt)")
+
+	// neues Kennwort: der alte Client gilt sofort nicht mehr als verbunden
+	prompt("SetDeviceAccounts (neues Kennwort)", func() {
+		m.SetDeviceAccounts(devID, []DeviceAccount{{Username: "esppdh-b", Password: "neu", TopicPrefix: "esppdh/b/"}})
+	})
+	if m.DeviceOnline(devID, "esppdh-b") {
+		t.Error("Gerät mit altem Kennwort gilt als verbunden")
+	}
+	expectLost(t, lostB, "esppdh-b (Trennen hängt)")
+	if b.IsConnected() {
+		t.Error("Client mit altem Kennwort noch verbunden")
+	}
+
+	// einzeln herausnehmen (Sperren bei Lesefehler)
+	_, lostB2 := mustDial(t, addr, "esppdh-b", "esppdh-b", "neu")
+	if !m.DeviceOnline(devID, "esppdh-b") {
+		t.Fatal("neu angemeldetes Gerät gilt nicht als verbunden")
+	}
+	prompt("RemoveDeviceAccount", func() { m.RemoveDeviceAccount(devID, "esppdh-b") })
+	if m.DeviceOnline(devID, "esppdh-b") {
+		t.Error("herausgenommenes Gerät gilt als verbunden")
+	}
+	expectLost(t, lostB2, "esppdh-b (herausgenommen, Trennen hängt)")
+	if hung.Load() != 3 {
+		t.Errorf("Trennen %d-mal versucht, erwartet 3", hung.Load())
 	}
 }
 
