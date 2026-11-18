@@ -1,0 +1,179 @@
+{{template "base" .}}
+{{define "content"}}
+{{/* ESPPDH – Detailseite eines Geräts (esppdh.go): Einstellungen und Bausteine, Zugang am
+     Broker, Hinweise. Gemeinsame Teile in widgets/esppdh_parts.gohtml. Das MQTT-Kennwort steht
+     nie auf der Seite; das Kennwort des Notzugangs nur mit esppdh.edit. */}}
+{{template "esppdh-style"}}
+<style>
+.esp-cols{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(0,1fr);gap:14px;align-items:start}
+@media (max-width:960px){.esp-cols{grid-template-columns:minmax(0,1fr)}}
+.esp-block{border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:10px;background:var(--bg)}
+.esp-block-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.esp-block-head b{font-size:13.5px}
+.esp-block-tools{margin-left:auto;display:flex;gap:4px}
+.esp-add{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:4px 0 14px}
+.esp-add select{flex:1 1 180px;max-width:320px}
+.esp-dl{display:grid;grid-template-columns:minmax(0,auto) minmax(0,1fr);gap:6px 12px;font-size:13px;margin:0}
+.esp-dl dt{color:var(--muted)}
+.esp-dl dd{margin:0;min-width:0;overflow-wrap:anywhere}
+.esp-actions{display:flex;flex-direction:column;gap:8px}
+.esp-actions form{margin:0}
+.esp-actions .btn{width:100%;justify-content:center;white-space:normal;text-align:center;line-height:1.3;padding-top:6px;padding-bottom:6px}
+.esp-hint-bad{border-color:var(--red)}
+.esp-hint-bad>i{color:var(--red)}
+</style>
+
+<div class="esp-head">
+  <div class="rec-sub"><a href="/import" style="color:var(--accent)"><i class="ti ti-arrow-left" aria-hidden="true"></i> Import</a> · <a href="/import/esppdh" style="color:var(--accent)">ESPPDH</a></div>
+  <h1><i class="ti ti-cpu" aria-hidden="true"></i> <span class="esp-wrap">{{.Dev.Name}}</span>{{if .Dev.Locked}} <span class="badge b-red"><i class="ti ti-lock" aria-hidden="true"></i>&nbsp;gesperrt</span>{{end}}</h1>
+  <p class="esp-intro esp-wrap">Kennung <code class="esp-mono">{{.Dev.Slug}}</code> · {{.BoardLabel}} · {{.Dev.InfraPath}}</p>
+</div>
+
+{{template "esppdh-state" .State}}
+{{if .Notice}}<div class="card esp-msg esp-ok" role="status"><i class="ti ti-circle-check" aria-hidden="true"></i> {{.Notice}}</div>{{end}}
+{{if .Errs}}<div class="card esp-msg esp-bad" role="alert"><b><i class="ti ti-alert-circle" aria-hidden="true"></i> Nicht gespeichert – bitte prüfen:</b><ul>{{range .Errs}}<li>{{.}}</li>{{end}}</ul></div>{{end}}
+{{range .Hints}}<div class="card esp-msg esp-wrap {{if eq .Tone "bad"}}esp-hint-bad{{else}}esp-warn{{end}}" role="status"><i class="ti {{.Icon}}" aria-hidden="true"></i> {{.Text}}{{if .Link}} <a href="{{.Link}}" style="color:var(--accent)">{{.LinkText}}</a>{{end}}</div>{{end}}
+{{if .Problems}}<div class="card esp-msg esp-warn esp-wrap" role="status"><b><i class="ti ti-list-check" aria-hidden="true"></i> Für die Firmware fehlt noch:</b><ul>{{range .Problems}}<li>{{.}}</li>{{end}}</ul></div>{{end}}
+
+<div class="esp-cols">
+<div>
+{{if .CanEdit}}
+  <form method="POST" action="/import/esppdh/{{.Dev.ID}}" autocomplete="off" class="card esp-card" id="esp-form">
+    <div class="card-title"><span><i class="ti ti-settings" aria-hidden="true"></i> Gerät</span></div>
+    <div class="form-group"><label class="form-label" for="esp-name">Name *</label>
+      <input id="esp-name" name="name" class="form-input" required maxlength="120" value="{{.Form.Name}}"></div>
+    {{template "infra-tree-picker" (dict "TargetID" "esp-infra-id" "SelectedLabelID" "esp-infra-selected" "Label" "Anlage *" "Required" true "Value" .Form.InfraID "SelectedLabel" .Form.InfraLabel)}}
+    {{template "esppdh-device-fields" (dict "F" .Form "C" .Choices "P" "dev" "PlainPort" .PlainPort)}}
+
+    <div class="card-title" style="margin-top:16px"><span><i class="ti ti-puzzle" aria-hidden="true"></i> Bausteine</span></div>
+    <p class="esp-note">Je Baustein nur eintragen, was am Gerät angeschlossen ist. Die Nummer eines Bausteins bleibt fest – sie steht im Thema (z. B. <code>…/s0-1/</code>).</p>
+    <div id="esp-pins" data-pins="{{.PinsJSON}}" hidden></div>
+    <datalist id="esp-pins-a">{{range .PinsA}}<option value="{{.}}">{{end}}</datalist>
+    <datalist id="esp-pins-d">{{range .PinsD}}<option value="{{.}}">{{end}}</datalist>
+    <div id="esp-blocks">{{range .Rows}}{{template "esppdh-block" .}}{{end}}</div>
+    <p id="esp-blocks-empty" class="rec-sub"{{if .Rows}} hidden{{end}}>Noch kein Baustein – unten einen hinzufügen.</p>
+    <div class="esp-add">
+      <label class="form-label" for="esp-add-kind" style="margin:0">Baustein</label>
+      <select id="esp-add-kind" class="form-input">{{range .New}}<option value="{{.Kind}}">{{.Label}}</option>{{end}}</select>
+      <button type="button" class="btn btn-small" onclick="espAddBlock()"><i class="ti ti-plus" aria-hidden="true"></i> Hinzufügen</button>
+    </div>
+    <button type="submit" class="btn btn-primary"><i class="ti ti-device-floppy" aria-hidden="true"></i> Speichern</button>
+  </form>
+  {{range .New}}<template id="esp-tpl-{{.Kind}}">{{template "esppdh-block" .}}</template>{{end}}
+{{else}}
+  <div class="card esp-card">
+    <div class="card-title"><span><i class="ti ti-settings" aria-hidden="true"></i> Gerät</span></div>
+    <dl class="esp-dl">
+      <dt>Anlage</dt><dd>{{.Dev.InfraPath}}</dd>
+      <dt>Broker</dt><dd>{{.Dev.ConnName}}</dd>
+      <dt>Platine</dt><dd>{{.BoardLabel}}</dd>
+      <dt>Netz</dt><dd>{{if .Dev.Wired}}Kabel{{if .Dev.NetName}} · {{.Dev.NetName}}{{end}}{{else if .Dev.WLANSSID}}WLAN {{.Dev.WLANSSID}}{{else}}kein WLAN gewählt{{end}}</dd>
+      {{if .Dev.Note}}<dt>Notiz</dt><dd>{{.Dev.Note}}</dd>{{end}}
+    </dl>
+    <div class="card-title" style="margin-top:16px"><span><i class="ti ti-puzzle" aria-hidden="true"></i> Bausteine</span></div>
+    {{range .Rows}}<div class="esp-block"><b>{{.Label}} {{.Nr}}</b> <code class="esp-mono">…/{{.Kind}}-{{.Nr}}/</code>
+      <dl class="esp-dl" style="margin-top:6px">{{range .Fields}}<dt>{{.Label}}</dt><dd>{{if .Value}}{{.Value}}{{else}}–{{end}}</dd>{{end}}</dl></div>
+    {{else}}<p class="rec-sub">Noch kein Baustein.</p>{{end}}
+  </div>
+{{end}}
+</div>
+
+<div>
+  <div class="card esp-card">
+    <div class="card-title"><span><i class="ti ti-key" aria-hidden="true"></i> Zugang am Broker</span></div>
+    <dl class="esp-dl">
+      <dt>Benutzer</dt><dd><code class="esp-mono">{{.MQTTUser}}</code> <span class="rec-sub">(auch Client-ID)</span></dd>
+      <dt>Thema</dt><dd><code class="esp-mono">{{.Topic}}…</code></dd>
+      <dt>Broker</dt><dd>{{if .Broker.Host}}<code class="esp-mono">{{.Broker.Host}}:{{.Broker.Port}}</code> {{if .Broker.TLS}}<span class="badge b-green">TLS</span>{{else}}<span class="badge b-amber">ohne TLS</span>{{end}}{{else}}–{{end}}</dd>
+      <dt>Kennwort</dt><dd class="rec-sub">steht verschlüsselt im PDH und kommt mit der Firmware aufs Gerät – es wird nie angezeigt.</dd>
+    </dl>
+    <div class="card-title" style="margin-top:16px"><span><i class="ti ti-wifi" aria-hidden="true"></i> Notzugang</span></div>
+    {{if .Dev.Wired}}<p class="rec-sub">Am Kabel gibt es keinen Notzugang über WLAN.</p>
+    {{else}}
+    <dl class="esp-dl">
+      <dt>WLAN</dt><dd><code class="esp-mono">{{.APName}}</code></dd>
+      {{if .CanEdit}}<dt>Kennwort</dt><dd><code class="esp-mono">{{.APPassword}}</code></dd>{{end}}
+    </dl>
+    <p class="esp-note">Findet das Gerät sein WLAN nicht, öffnet es dieses eigene WLAN. Darüber lässt sich ein anderes WLAN eintragen – ohne das Gerät auszubauen.</p>
+    {{end}}
+  </div>
+
+  <div class="card esp-card">
+    <div class="card-title"><span><i class="ti ti-tool" aria-hidden="true"></i> Aktionen</span></div>
+    <div class="esp-actions">
+      <a class="btn" href="/import/esppdh/{{.Dev.ID}}/config.yaml"><i class="ti ti-file-download" aria-hidden="true"></i> Konfiguration (YAML, ohne Kennwörter)</a>
+      {{if .CanEdit}}
+      <form method="POST" action="/import/esppdh/{{.Dev.ID}}/lock"{{if not .Dev.Locked}} onsubmit="return confirm('Gerät sperren? Es wird sofort vom Broker getrennt und kann sich nicht mehr anmelden.')"{{end}}>
+        {{if .Dev.Locked}}<input type="hidden" name="locked" value="0"><button type="submit" class="btn"><i class="ti ti-lock-open" aria-hidden="true"></i> Entsperren</button>
+        {{else}}<input type="hidden" name="locked" value="1"><button type="submit" class="btn"><i class="ti ti-lock" aria-hidden="true"></i> Sperren</button>{{end}}
+      </form>
+      <form method="POST" action="/import/esppdh/{{.Dev.ID}}/password" onsubmit="return confirm('Neues MQTT-Kennwort vergeben? Das Gerät wird sofort getrennt und braucht danach eine neue Firmware.')">
+        <button type="submit" class="btn"><i class="ti ti-key" aria-hidden="true"></i> Neues MQTT-Kennwort</button>
+      </form>
+      {{end}}
+      {{if .CanDelete}}
+      <form method="POST" action="/import/esppdh/{{.Dev.ID}}/delete" onsubmit="return confirm('Gerät „{{.Dev.Name}}“ endgültig löschen? Sein Zugang am Broker endet sofort.')">
+        <button type="submit" class="btn btn-danger"><i class="ti ti-trash" aria-hidden="true"></i> Gerät löschen</button>
+      </form>
+      {{end}}
+    </div>
+  </div>
+</div>
+</div>
+
+<p class="esp-note">ESPPDH baut auf ESPHome auf (GPLv3/MIT). Die Konfiguration jedes Geräts lässt sich herunterladen – ohne Kennwörter.</p>
+{{template "esppdh-script"}}
+{{if .CanEdit}}
+<script>
+let espNext = 1000;
+function espEmpty(){ const box = document.getElementById('esp-blocks'), e = document.getElementById('esp-blocks-empty'); if(box && e) e.hidden = box.children.length > 0; }
+function espAddBlock(){
+  const kind = document.getElementById('esp-add-kind').value;
+  const tpl = document.getElementById('esp-tpl-' + kind), box = document.getElementById('esp-blocks');
+  if(!tpl || !box) return;
+  box.insertAdjacentHTML('beforeend', tpl.innerHTML.split('XIDX').join(String(espNext++)));
+  const f = box.lastElementChild && box.lastElementChild.querySelector('input:not([type=hidden]),select');
+  if(f) f.focus();
+  espEmpty();
+}
+function espRemove(btn){
+  const b = btn.closest('.esp-block');
+  if(b && confirm('Baustein entfernen? Er ist erst nach dem Speichern weg.')){ b.remove(); espEmpty(); }
+}
+function espMove(btn, dir){
+  const b = btn.closest('.esp-block'); if(!b) return;
+  if(dir < 0 && b.previousElementSibling) b.parentNode.insertBefore(b, b.previousElementSibling);
+  if(dir > 0 && b.nextElementSibling) b.parentNode.insertBefore(b.nextElementSibling, b);
+}
+</script>
+{{end}}
+{{end}}
+
+{{/* Ein Baustein im Formular (esppdhBlockView). Idx: Zeile; XIDX in der Vorlage für neue. */}}
+{{define "esppdh-block"}}
+<div class="esp-block">
+  <input type="hidden" name="blk" value="{{.Idx}}">
+  <input type="hidden" name="blk_id_{{.Idx}}" value="{{.ID}}">
+  <input type="hidden" name="blk_kind_{{.Idx}}" value="{{.Kind}}">
+  <div class="esp-block-head">
+    <b>{{.Label}}{{if .Nr}} {{.Nr}}{{else}} (neu){{end}}</b>
+    {{if .Nr}}<code class="esp-mono">…/{{.Kind}}-{{.Nr}}/</code>{{end}}
+    <span class="esp-block-tools">
+      <button type="button" class="btn btn-small" onclick="espMove(this,-1)" title="Nach oben" aria-label="Baustein nach oben"><i class="ti ti-arrow-up" aria-hidden="true"></i></button>
+      <button type="button" class="btn btn-small" onclick="espMove(this,1)" title="Nach unten" aria-label="Baustein nach unten"><i class="ti ti-arrow-down" aria-hidden="true"></i></button>
+      <button type="button" class="btn btn-small btn-danger" onclick="espRemove(this)" title="Baustein entfernen" aria-label="Baustein entfernen"><i class="ti ti-trash" aria-hidden="true"></i></button>
+    </span>
+  </div>
+  <div class="esp-help">{{.Help}}</div>
+  <div class="esp-grid" style="margin-top:8px">
+  {{range .Fields}}
+    <div class="form-group"><label class="form-label" for="blk-{{$.Idx}}-{{.Key}}">{{.Label}}{{if .Required}} *{{end}}</label>
+      {{if eq .Type "select"}}{{$v := .Value}}<select id="blk-{{$.Idx}}-{{.Key}}" name="blk_{{$.Idx}}_{{.Key}}" class="form-input">{{range .Options}}<option value="{{.}}"{{if eq . $v}} selected{{end}}>{{.}}</option>{{end}}</select>
+      {{else if eq .Type "pin"}}<input id="blk-{{$.Idx}}-{{.Key}}" name="blk_{{$.Idx}}_{{.Key}}" class="form-input" list="{{.List}}" value="{{.Value}}" autocomplete="off" placeholder="z. B. GPIO4">
+      {{else}}<input id="blk-{{$.Idx}}-{{.Key}}" name="blk_{{$.Idx}}_{{.Key}}" class="form-input" inputmode="decimal" value="{{.Value}}">{{end}}
+      {{if .Help}}<div class="esp-help">{{.Help}}</div>{{end}}
+    </div>
+  {{end}}
+  </div>
+</div>
+{{end}}

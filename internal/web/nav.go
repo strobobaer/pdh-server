@@ -115,6 +115,7 @@ var navDefs = []navDef{
 	{navItem{"sync", "/sync", "ti-arrows-exchange", "Abgleich", "sync", false}, "data", func(b *BaseData) bool { return b.CanSync }},
 	{navItem{"datanet", "/datanet", "ti-topology-star-3", "Datennetz", "datanet", false}, "data", func(b *BaseData) bool { return b.CanDataNet }},
 	{navItem{"energy", "/energy/meters", "ti-gauge", "Messstellen", "energy", false}, "data", func(b *BaseData) bool { return b.CanEnergy }},
+	{navItem{"esppdh", "/import/esppdh", "ti-cpu", "ESPPDH", "esppdh", false}, "data", func(b *BaseData) bool { return b.CanESPPDH }},
 
 	{navItem{"help", "/help", "ti-book", "Handbuch", "help", false}, "links", always},
 	// Adresse aus Server-Einstellungen → Nextcloud (buildNav setzt sie ein); ohne Adresse kein Eintrag

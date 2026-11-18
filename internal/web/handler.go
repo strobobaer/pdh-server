@@ -89,6 +89,7 @@ type BaseData struct {
 	CanCostCenters         bool       // Core → Kostenstellen (costcenters.manage, costcenters_web.go)
 	CanStatistics          bool       // Statistik mit Grafana-Dashboards (statistics.view, grafana.go)
 	CanEnergy              bool       // Energiedaten: Messstellen (energy.view / energy.edit, energy_meters.go)
+	CanESPPDH              bool       // Import → ESPPDH: Navigation und Verweis auf der Import-Seite (esppdh.view / esppdh.edit, esppdh.go)
 	IsBroker               bool       // Broker fuer mind. eine Vorgangsart: Nav-Link "Zuweisung"
 	TerminalInfraID        string     // Standort des Terminals: Infra-Picker klappt bis hierhin auf
 	Look                   Appearance // Farbschema, Schrift und Groesse dieses Benutzers
@@ -1088,6 +1089,15 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/import/connections/{id}/read/refresh", h.ModbusRefreshValuesWeb)
 	r.Post("/import/connections/{id}/nodes/refresh", h.OPCUARefreshValuesWeb)
 	r.Get("/import/mappings", h.ImportMappingsOverviewPage)
+	// ESPPDH: eigene Mess- und Zählgeräte auf ESP-Basis (esppdh.go)
+	r.Get("/import/esppdh", h.EsppdhPage)
+	r.Post("/import/esppdh", h.EsppdhCreateWeb)
+	r.Get("/import/esppdh/{id}", h.EsppdhDevicePage)
+	r.Post("/import/esppdh/{id}", h.EsppdhSaveWeb)
+	r.Post("/import/esppdh/{id}/lock", h.EsppdhLockWeb)
+	r.Post("/import/esppdh/{id}/password", h.EsppdhPasswordWeb)
+	r.Post("/import/esppdh/{id}/delete", h.EsppdhDeleteWeb)
+	r.Get("/import/esppdh/{id}/config.yaml", h.EsppdhConfigWeb)
 	// Verbindungsseiten (connection_detail.go)
 	r.Get("/import/connections/{id}", h.ImportConnectionPage)
 	r.Get("/export/connections/{id}", h.ExportConnectionPage)
@@ -1389,6 +1399,7 @@ func (h *Handler) baseData(r *http.Request, page, title, ctxTitle string) BaseDa
 		CanCostCenters:         h.rbac.HasPermissionForUser(u.ID, string(u.Role), "costcenters.manage") || h.rbac.HasPermissionForUser(u.ID, string(u.Role), "system.manage_roles"),
 		CanStatistics:          h.rbac.HasPermissionForUser(u.ID, string(u.Role), "statistics.view"),
 		CanEnergy:              h.rbac.HasPermissionForUser(u.ID, string(u.Role), permEnergyView) || h.rbac.HasPermissionForUser(u.ID, string(u.Role), permEnergyEdit),
+		CanESPPDH:              h.rbac.HasPermissionForUser(u.ID, string(u.Role), permESPView) || h.rbac.HasPermissionForUser(u.ID, string(u.Role), permESPEdit),
 		TerminalInfraID:        h.terminalInfraID(r),
 		CanBackup:              h.rbac.HasPermissionForUser(u.ID, string(u.Role), "system.backup"),
 		CanPrinters:            h.rbac.HasPermissionForUser(u.ID, string(u.Role), "printers.manage"),

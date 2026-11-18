@@ -116,6 +116,13 @@ func lastLine(s string) string {
 	return string(l)
 }
 
+// EnvPresent: liegt ESPHome in der Python-Umgebung? Prüft nur, ob das Programm da ist, ohne es
+// aufzurufen – schnell genug für jede Seite. Ob es auch startet, sagt CheckEnv.
+func EnvPresent() bool {
+	_, err := os.Stat(esphomeBin())
+	return err == nil
+}
+
 // CheckEnv prüft die Python-Umgebung: ruft „<venv>/bin/esphome version“ mit Zeitlimit 10 s.
 // Fehlt die Umgebung, ist Installed falsch und Problem leer – das ist kein Fehler.
 func CheckEnv(ctx context.Context) EnvState {

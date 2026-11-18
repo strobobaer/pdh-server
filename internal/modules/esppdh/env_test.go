@@ -102,6 +102,21 @@ func TestCheckEnvMissing(t *testing.T) {
 	}
 }
 
+// EnvPresent prüft nur, ob das Programm da ist – ohne ESPHome aufzurufen (für Seiten).
+func TestEnvPresent(t *testing.T) {
+	_, calls := fakeEnv(t, "version", "2099.1.0")
+	if !EnvPresent() {
+		t.Error("Umgebung da: EnvPresent falsch")
+	}
+	t.Setenv("PDH_ESPHOME_DIR", filepath.Join(t.TempDir(), "gibt-es-nicht"))
+	if EnvPresent() {
+		t.Error("Umgebung fehlt: EnvPresent wahr")
+	}
+	if len(*calls) != 0 {
+		t.Errorf("ESPHome aufgerufen: %v", *calls)
+	}
+}
+
 // Umgebung da, ESPHome startet aber nicht oder nennt keine Version: Problem im Klartext.
 func TestCheckEnvBroken(t *testing.T) {
 	fakeEnv(t, "fail", "")

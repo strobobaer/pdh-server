@@ -1,0 +1,64 @@
+{{template "base" .}}
+{{define "content"}}
+{{/* ESPPDH – Liste der Geräte und „Neues Gerät“ (esppdh.go). Gemeinsame Teile in
+     widgets/esppdh_parts.gohtml. Kennwörter stehen nie auf dieser Seite. */}}
+{{template "esppdh-style"}}
+
+<div class="esp-head">
+  <div class="rec-sub"><a href="/import" style="color:var(--accent)"><i class="ti ti-arrow-left" aria-hidden="true"></i> Import</a></div>
+  <h1><i class="ti ti-cpu" aria-hidden="true"></i> ESPPDH</h1>
+  <p class="esp-intro">Eigene Mess- und Zählgeräte auf ESP-Basis: Gerät anlegen, Bausteine wählen, Firmware bauen und flashen. Jedes Gerät meldet sich mit eigenem Zugang am eingebauten MQTT-Broker an und sendet nur unter seinem Thema <code>esppdh/&lt;kennung&gt;/…</code>.</p>
+</div>
+
+{{template "esppdh-state" .State}}
+{{if .Notice}}<div class="card esp-msg esp-ok" role="status"><i class="ti ti-circle-check" aria-hidden="true"></i> {{.Notice}}</div>{{end}}
+{{if .Errs}}<div class="card esp-msg esp-bad" role="alert"><b><i class="ti ti-alert-circle" aria-hidden="true"></i> Nicht angelegt – bitte prüfen:</b><ul>{{range .Errs}}<li>{{.}}</li>{{end}}</ul></div>{{end}}
+
+{{if .CanCreate}}
+<div class="card esp-card">
+  <div class="card-title"><span><i class="ti ti-plus" aria-hidden="true"></i> Neues Gerät</span>
+    {{if not .Errs}}<button type="button" class="btn btn-small btn-primary" onclick="espToggle('esp-new')" aria-controls="esp-new"><i class="ti ti-plus" aria-hidden="true"></i> Neues Gerät</button>{{end}}</div>
+  <div id="esp-new"{{if not .Errs}} hidden{{end}}>
+    {{if not .Choices.Conns}}<p class="esp-note"><i class="ti ti-info-circle" aria-hidden="true"></i> Es gibt noch keine Verbindung mit eingebautem Broker. Unter <a href="/import" style="color:var(--accent)">Import</a> eine MQTT-Verbindung mit „Integrierter Broker“ anlegen.</p>{{end}}
+    <form method="POST" action="/import/esppdh" autocomplete="off">
+      <div class="esp-grid">
+        <div class="form-group"><label class="form-label" for="esp-name">Name *</label>
+          <input id="esp-name" name="name" class="form-input" required maxlength="120" value="{{.Form.Name}}" placeholder="z. B. Presse 3 – Stromzähler"></div>
+        <div class="form-group"><label class="form-label" for="esp-slug">Kennung</label>
+          <input id="esp-slug" name="slug" class="form-input esp-mono" maxlength="32" pattern="[a-z0-9\-]{3,32}" value="{{.Form.Slug}}" placeholder="z. B. presse3-strom">
+          <div class="esp-help">3–32 Zeichen: a–z, 0–9 und „-“. Steht im Thema und im Zugang und bleibt fest. Leer = aus dem Namen.</div></div>
+      </div>
+      {{template "infra-tree-picker" (dict "TargetID" "esp-infra-id" "SelectedLabelID" "esp-infra-selected" "Label" "Anlage *" "Required" true "Value" .Form.InfraID "SelectedLabel" .Form.InfraLabel)}}
+      {{template "esppdh-device-fields" (dict "F" .Form "C" .Choices "P" "new" "PlainPort" .PlainPort)}}
+      <p class="esp-note">MQTT-Kennwort und Kennwort des Notzugangs vergibt das PDH selbst. Die Bausteine wählst du danach auf der Seite des Geräts.</p>
+      <button type="submit" class="btn btn-primary"><i class="ti ti-device-floppy" aria-hidden="true"></i> Anlegen</button>
+    </form>
+  </div>
+</div>
+{{end}}
+
+<div class="card esp-card">
+  <div class="card-title"><span><i class="ti ti-cpu" aria-hidden="true"></i> Geräte</span></div>
+  {{if .Rows}}
+  <div class="esp-scroll"><table class="table">
+    <thead><tr><th>Gerät</th><th>Anlage</th><th>Broker</th><th>Platine</th><th>Netz</th><th>Bausteine</th><th>Zustand</th></tr></thead>
+    <tbody>
+    {{range .Rows}}
+    <tr>
+      <td class="esp-wrap"><a href="/import/esppdh/{{.ID}}" style="color:var(--accent);font-weight:600">{{.Name}}</a><div class="rec-sub esp-mono">{{.Slug}}</div></td>
+      <td class="esp-wrap">{{.InfraPath}}</td>
+      <td class="esp-wrap">{{.ConnName}}</td>
+      <td class="esp-wrap">{{.BoardLabel}}</td>
+      <td class="esp-wrap">{{.NetLabel}}</td>
+      <td>{{.BlockCount}}</td>
+      <td>{{if .Locked}}<span class="badge b-red"><i class="ti ti-lock" aria-hidden="true"></i>&nbsp;gesperrt</span>{{else}}<span class="badge b-gray">frei</span>{{end}}</td>
+    </tr>
+    {{end}}
+    </tbody>
+  </table></div>
+  {{else}}<p class="rec-sub">Noch kein Gerät angelegt.</p>{{end}}
+</div>
+
+<p class="esp-note">ESPPDH baut auf ESPHome auf (GPLv3/MIT).</p>
+{{template "esppdh-script"}}
+{{end}}

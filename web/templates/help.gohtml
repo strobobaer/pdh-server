@@ -2422,6 +2422,13 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   {{template "hb-shots" (dict "Ref" (index $s "tiabaustein") "Can" $can)}}
 </section>
 
+<section class="hb-ch" id="esppdh" data-title="ESPPDH – eigene Mess- und Zählgeräte" data-pages="esppdh">
+  <h2><i class="ti ti-cpu"></i> ESPPDH – eigene Mess- und Zählgeräte</h2>
+  <p>Unter <b>Import → ESPPDH</b> legst du kleine ESP-Geräte an, die Werte an den eingebauten MQTT-Broker des PDH senden – zum Beispiel einen S0-Zähler oder einen Stückzähler. Du wählst Anlage, Broker, Platine und WLAN (von der Seite <b>Netzwerk</b>) und dann die <b>Bausteine</b>; das PDH prüft die Anschlüsse und gibt jedem Gerät einen eigenen Zugang, der nur unter seinem Thema <code>esppdh/&lt;kennung&gt;/…</code> senden darf.</p>
+  <p>Ein Gerät, das verloren geht, sperrst du auf seiner Seite – der Broker trennt es sofort. ESPPDH baut auf ESPHome auf (GPLv3/MIT); einschalten unter Server-Einstellungen → ESPPDH.</p>
+  {{template "hb-shots" (dict "Ref" (index $s "esppdh") "Can" $can)}}
+</section>
+
 <section class="hb-ch" id="energiedaten" data-title="Energiedaten &amp; Messstellen" data-pages="energy">
   <h2><i class="ti ti-gauge"></i> Energiedaten &amp; Messstellen</h2>
   <p>Unter <b>Messstellen</b> (Navigation → Daten) legst du fest, welcher importierte Wert zu welcher Anlage gehört und wie er weiterverwendet wird – zum Beispiel ein Zählerstand für Strom, Gas, Wasser oder Druckluft. Die Seite ist zugleich <b>Zuweisungstabelle</b> und <b>Übersicht</b> über alle Messstellen aller Anlagen. Sie ist ein Zusatz: Ohne Messstellen ändert sich am PDH nichts.</p>

@@ -90,6 +90,9 @@ func deviceName(slug string) string {
 	return strings.TrimRight(n, "-")
 }
 
+// APName: Name des Notzugang-WLANs eines Geräts (wie im Erzeuger, für die Detailseite).
+func APName(slug string) string { return deviceName(slug) }
+
 // friendlyName: Anzeigename für ESPHome – „/“ ist dort verboten und wird zu „-“, höchstens
 // 120 Byte (ohne ein Zeichen zu zerschneiden).
 func friendlyName(name string) string {
@@ -110,6 +113,17 @@ func platformOf(b Board, d Device) string {
 		return customPlatform(d.CustomBoard)
 	}
 	return b.Platform
+}
+
+// PlatformOf: Plattform einer Platine ("esp32", "esp8266"); bei „Andere Platine“ aus der
+// Platinen-Kennung von ESPHome. Leer bei unbekannter Platine oder ungültiger Kennung. Die
+// Seiten brauchen das, weil nur ESP32 über TLS verbinden kann.
+func PlatformOf(boardKey, customBoard string) string {
+	b, ok := BoardByKey(boardKey)
+	if !ok {
+		return ""
+	}
+	return platformOf(b, Device{CustomBoard: customBoard})
 }
 
 // ValidateDevice prüft ein ganzes Gerät (Kennung, Platine, Netz, Broker, Bausteine).

@@ -60,6 +60,11 @@ func mqttCheckSystem(config map[string]string, pdhHost, nextcloudURL string) err
 		config[mqttHostKey], config[mqttTLSPortKey] = "", ""
 		return nil
 	}
+	// Namen „esppdh-…“ gehören den ESPPDH-Geräten: der Broker hielte den Hauptzugang für ein
+	// Gerät und wiese ihn ab
+	if strings.HasPrefix(strings.TrimSpace(config["int_broker_username"]), "esppdh-") {
+		return errors.New("Broker-Benutzer: Namen, die mit „esppdh-“ beginnen, sind für ESPPDH-Geräte reserviert – bitte einen anderen Namen wählen")
+	}
 	host := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(config[mqttHostKey])), ".")
 	tlsPort := strings.TrimSpace(config[mqttTLSPortKey])
 	config[mqttHostKey], config[mqttTLSPortKey] = host, tlsPort

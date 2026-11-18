@@ -83,6 +83,19 @@ func TestCustomBoardPlatform(t *testing.T) {
 	}
 }
 
+// PlatformOf: Plattform für die Seiten (TLS geht nur auf ESP32) – auch bei „Andere Platine“.
+func TestPlatformOf(t *testing.T) {
+	for _, c := range []struct{ board, custom, want string }{
+		{"esp32dev", "", "esp32"}, {"d1-mini", "", "esp8266"}, {"wt32-eth01", "", "esp32"},
+		{BoardOther, "nodemcuv2", "esp8266"}, {BoardOther, "lolin_s2_mini", "esp32"},
+		{BoardOther, "", ""}, {BoardOther, "kaputt!", ""}, {"gibt-es-nicht", "", ""},
+	} {
+		if got := PlatformOf(c.board, c.custom); got != c.want {
+			t.Errorf("PlatformOf(%q, %q) = %q, erwartet %q", c.board, c.custom, got, c.want)
+		}
+	}
+}
+
 func TestBlockDefs(t *testing.T) {
 	defs := BlockDefs()
 	var kinds []string
