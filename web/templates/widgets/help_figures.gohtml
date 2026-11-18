@@ -866,6 +866,116 @@
 </figure>
 {{end}}
 
+{{/* ESPPDH: Anschluss-Skizzen je Baustein (S0-Zähler, Stromzange SCT-013, PZEM-004T, Stückzähler).
+     Schematisch, Werte sind Beispiele; Pins und Felder wie in internal/modules/esppdh/blocks.go. */}}
+{{define "hb-fig-esp-s0"}}
+<figure class="hb-fig">
+<svg viewBox="0 0 480 170" role="img" aria-label="S0-Zähler anschließen: S0-Plus des Zählers an den Pin des Bausteins, S0-Minus an GND der ESP-Platine">
+  <rect class="bg" x="1" y="1" width="478" height="168" rx="8"/>
+  <rect class="bg3" x="20" y="20" width="160" height="128" rx="8"/>
+  <text x="100" y="42" class="t-c t-b">Stromzähler</text><text x="100" y="58" class="t-c t-m">z. B. 1000 imp/kWh</text>
+  <rect class="bg" x="116" y="76" width="52" height="20" rx="4"/><text x="142" y="90" class="t-c t-b">S0+</text>
+  <rect class="bg" x="116" y="110" width="52" height="20" rx="4"/><text x="142" y="124" class="t-c t-b">S0−</text>
+  <rect class="acl" x="300" y="20" width="160" height="128" rx="8"/>
+  <text x="380" y="42" class="t-c t-b">ESP-Platine</text><text x="380" y="58" class="t-c t-m">Pin hat einen Pull-up</text>
+  <rect class="bg" x="312" y="76" width="80" height="20" rx="4"/><text x="352" y="90" class="t-c t-b">Pin</text>
+  <rect class="bg" x="312" y="110" width="80" height="20" rx="4"/><text x="352" y="124" class="t-c t-b">GND</text>
+  <path class="acs" d="M168 86 H312"/><path class="ln" d="M168 120 H312"/>
+  <circle class="ac" cx="168" cy="86" r="3"/><circle class="ac" cx="312" cy="86" r="3"/>
+  <text x="240" y="78" class="t-c t-m">Impulse</text><text x="240" y="138" class="t-c t-m">Masse</text>
+</svg>
+<figcaption>S0-Zähler: S0+ an den Pin des Bausteins, S0− an GND. Die Zahl für „Impulse je kWh“ steht auf dem Zähler.</figcaption>
+</figure>
+{{end}}
+
+{{define "hb-fig-esp-sct"}}
+<figure class="hb-fig">
+<svg viewBox="0 0 480 240" role="img" aria-label="Stromzange SCT-013 anschließen: die Zange um einen einzelnen Leiter; ein Ende an den Analog-Pin, das andere an eine Vorspannung aus zwei gleichen Widerständen zwischen 3,3 V und GND mit Kondensator gegen GND; nur bei 100A/50mA zusätzlich ein Bürdenwiderstand zwischen den beiden Enden">
+  <rect class="bg" x="1" y="1" width="478" height="238" rx="8"/>
+  <rect class="rd" x="12" y="12" width="116" height="216" rx="8"/>
+  <text x="70" y="32" class="t-c t-b">230 V</text><text x="70" y="46" class="t-c t-m">nur Elektrofachkraft</text>
+  <path class="ln" d="M64 60 V218" style="stroke-width:6"/><text x="76" y="212" class="t-m">ein Leiter</text>
+  <ellipse class="acs" cx="64" cy="120" rx="24" ry="10"/><text x="34" y="146" class="t-c t-m">Zange</text>
+  <path class="acs" d="M84 115 L150 67 H384"/><path class="ln" d="M84 125 L150 150 H280"/>
+  <path class="ln" d="M196 67 V92 M196 124 V150" stroke-dasharray="4 3"/>
+  <rect class="ln" x="189" y="92" width="14" height="32" rx="2" stroke-dasharray="4 3"/>
+  <circle class="ac" cx="196" cy="67" r="3"/><circle class="ac" cx="196" cy="150" r="3"/>
+  <text x="208" y="104" class="t-m">Bürde – nur</text><text x="208" y="116" class="t-m">bei 100A/50mA</text>
+  <path class="ln" d="M384 110 H280 V120 M280 144 V162 M280 186 V212 H423 V189"/>
+  <rect class="ln" x="273" y="120" width="14" height="24" rx="2"/><rect class="ln" x="273" y="162" width="14" height="24" rx="2"/>
+  <text x="268" y="136" class="t-m" text-anchor="end">10 kΩ</text><text x="268" y="178" class="t-m" text-anchor="end">10 kΩ</text>
+  <path class="ln" d="M280 150 H320 V168 M320 176 V212"/><path class="ln" d="M308 168 H332 M308 176 H332" style="stroke-width:2.5"/>
+  <text x="336" y="176" class="t-m">10 µF</text>
+  <circle class="ac" cx="280" cy="150" r="3"/><circle class="ac" cx="280" cy="212" r="3"/><circle class="ac" cx="320" cy="212" r="3"/>
+  <text x="300" y="232" class="t-c t-m">Vorspannung: halbe Versorgung (Mitte der Widerstände)</text>
+  <rect class="acl" x="376" y="36" width="94" height="168" rx="8"/><text x="423" y="52" class="t-c t-b">ESP</text>
+  <rect class="bg" x="384" y="58" width="78" height="18" rx="4"/><text x="423" y="71" class="t-c">Analog-Pin</text>
+  <rect class="bg" x="384" y="101" width="78" height="18" rx="4"/><text x="423" y="114" class="t-c">3,3 V</text>
+  <rect class="bg" x="384" y="171" width="78" height="18" rx="4"/><text x="423" y="184" class="t-c">GND</text>
+</svg>
+<figcaption>Stromzange SCT-013: um <b>einen</b> Leiter, nie um das ganze Kabel. Ein Ende an den Analog-Pin, das andere an die Vorspannung aus zwei gleichen Widerständen mit Kondensator. Die Bürde nur bei 100A/50mA. Die Werte sind Beispiele.</figcaption>
+</figure>
+{{end}}
+
+{{define "hb-fig-esp-pzem"}}
+<figure class="hb-fig">
+<svg viewBox="0 0 480 240" role="img" aria-label="PZEM-004T anschließen: die 230-Volt-Seite mit Spannung und Stromwandler schließt eine Elektrofachkraft an; TX des PZEM an den RX-Pin, RX des PZEM an den TX-Pin, über Kreuz, dazu Versorgung und GND. Die Schnittstelle des PZEM hat 5 Volt, die Pins des ESP vertragen nur 3,3 Volt">
+  <rect class="bg" x="1" y="1" width="478" height="238" rx="8"/>
+  <rect class="rd" x="12" y="12" width="124" height="176" rx="8"/>
+  <text x="74" y="32" class="t-c t-b">230 V</text><text x="74" y="46" class="t-c t-m">nur Elektrofachkraft</text>
+  <rect class="bg" x="22" y="60" width="104" height="44" rx="6"/><text x="74" y="78" class="t-c t-b">L und N</text><text x="74" y="94" class="t-c t-m">Spannung</text>
+  <rect class="bg" x="22" y="122" width="104" height="44" rx="6"/><text x="74" y="140" class="t-c t-b">Stromwandler</text><text x="74" y="156" class="t-c t-m">um einen Leiter</text>
+  <path class="ln" d="M126 82 H156 M126 144 H156"/>
+  <rect class="bg3" x="156" y="40" width="110" height="148" rx="8"/><text x="211" y="58" class="t-c t-b">PZEM-004T</text>
+  <rect class="bg" x="214" y="70" width="44" height="18" rx="4"/><text x="236" y="83" class="t-c">5V</text>
+  <rect class="bg" x="214" y="98" width="44" height="18" rx="4"/><text x="236" y="111" class="t-c">RX</text>
+  <rect class="bg" x="214" y="126" width="44" height="18" rx="4"/><text x="236" y="139" class="t-c">TX</text>
+  <rect class="bg" x="214" y="154" width="44" height="18" rx="4"/><text x="236" y="167" class="t-c">GND</text>
+  <rect class="acl" x="354" y="40" width="114" height="148" rx="8"/><text x="411" y="58" class="t-c t-b">ESP</text>
+  <rect class="bg" x="362" y="70" width="98" height="18" rx="4"/><text x="411" y="83" class="t-c">3,3 V</text>
+  <rect class="bg" x="362" y="98" width="98" height="18" rx="4"/><text x="411" y="111" class="t-c">RX-Pin</text>
+  <rect class="bg" x="362" y="126" width="98" height="18" rx="4"/><text x="411" y="139" class="t-c">TX-Pin</text>
+  <rect class="bg" x="362" y="154" width="98" height="18" rx="4"/><text x="411" y="167" class="t-c">GND</text>
+  <path class="ln" d="M258 79 H362 M258 163 H362"/>
+  <path class="acs" d="M258 107 L362 135 M258 135 L362 107"/>
+  <text x="310" y="74" class="t-c t-m">Versorgung</text><text x="310" y="100" class="t-c t-m">über Kreuz</text>
+  <rect class="am" x="156" y="196" width="312" height="36" rx="6"/>
+  <text x="312" y="211" class="t-c">PZEM-Schnittstelle 5 V, ESP-Pins nur 3,3 V</text>
+  <text x="312" y="225" class="t-c t-m">PZEM mit 3,3 V versorgen oder Pegelwandler einsetzen</text>
+</svg>
+<figcaption>PZEM-004T: TX des PZEM an den RX-Pin, RX des PZEM an den TX-Pin (über Kreuz), GND an GND. Die 230-V-Seite schließt eine Elektrofachkraft an.</figcaption>
+</figure>
+{{end}}
+
+{{define "hb-fig-esp-counter"}}
+<figure class="hb-fig">
+<svg viewBox="0 0 480 230" role="img" aria-label="Stückzähler anschließen: Lichtschranke oder Kontakt schaltet zwischen Pin und GND, der Pin hat einen Pull-up auf 3,3 Volt. Fallend zählt, wenn der Sensor schaltet, steigend, wenn er wieder öffnet. 24-Volt-Sensoren nie direkt anschließen">
+  <rect class="bg" x="1" y="1" width="478" height="228" rx="8"/>
+  <rect class="bg3" x="16" y="20" width="170" height="112" rx="8"/>
+  <text x="101" y="40" class="t-c t-b">Lichtschranke</text><text x="101" y="54" class="t-c t-m">oder Kontakt</text>
+  <circle class="ac" cx="150" cy="76" r="3"/><circle class="ac" cx="150" cy="116" r="3"/>
+  <path class="ln" d="M150 116 L166 84" style="stroke-width:2"/>
+  <text x="140" y="100" class="t-m" text-anchor="end">schaltet nach GND</text>
+  <path class="acs" d="M150 76 H320"/><path class="ln" d="M150 116 H320"/>
+  <text x="248" y="70" class="t-c t-m">Signal</text><text x="248" y="110" class="t-c t-m">GND</text>
+  <rect class="acl" x="310" y="20" width="158" height="112" rx="8"/><text x="322" y="40" class="t-b">ESP</text>
+  <rect class="bg" x="320" y="67" width="60" height="18" rx="4"/><text x="350" y="80" class="t-c">Pin</text>
+  <rect class="bg" x="320" y="107" width="60" height="18" rx="4"/><text x="350" y="120" class="t-c">GND</text>
+  <path class="ln" d="M380 76 H416 V68 M416 48 V40"/><rect class="ln" x="410" y="48" width="12" height="20" rx="2"/>
+  <text x="416" y="36" class="t-c t-m">3,3 V</text><text x="428" y="62" class="t-m">Pull-up</text>
+  <rect class="am" x="16" y="146" width="200" height="70" rx="8"/>
+  <text x="116" y="168" class="t-c t-b">Sensor mit 24 V?</text>
+  <text x="116" y="184" class="t-c t-m">nie direkt an den Pin –</text>
+  <text x="116" y="198" class="t-c t-m">über Koppelrelais oder Optokoppler</text>
+  <text x="236" y="160" class="t-m">Signal am Pin</text>
+  <path class="acs" d="M236 172 H286 V202 H396 V172 H466"/>
+  <text x="341" y="194" class="t-c t-m">Sensor schaltet</text>
+  <text x="286" y="220" class="t-c t-b">fallend</text><text x="396" y="220" class="t-c">steigend</text>
+</svg>
+<figcaption>Stückzähler: Kontakt oder Sensorausgang schaltet zwischen Pin und GND. „fallend“ zählt, wenn er schaltet (Teil kommt an) – der Normalfall. „steigend“ zählt, wenn er wieder öffnet (Teil ist durch).</figcaption>
+</figure>
+{{end}}
+
 {{/* Efficio-Export: Messstellen → Datei → Ablage */}}
 {{define "hb-fig-efficio"}}
 <figure class="hb-fig">
