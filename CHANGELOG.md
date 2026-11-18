@@ -10,6 +10,12 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.81.5] – 2026-11-18
+
+### Behoben
+
+- Efficio-Export, Karte „Anmeldung mit Schlüssel“: Der Fingerabdruck des Schlüssels bricht auf schmalen Bildschirmen jetzt um, statt über den Kartenrand hinauszulaufen.
+
 ## [0.81.4] – 2026-11-18
 
 ### Neu
