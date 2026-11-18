@@ -1264,7 +1264,7 @@ func TestESPPDHConnectionInUse(t *testing.T) {
 // ist; ohne laufenden Broker kein Hinweis auf die Firewall.
 func TestESPPDHLiveOf(t *testing.T) {
 	built := esppdhTarget{Host: "mqtt.werk.example", Port: 8883}
-	hint := "Hat sich noch nicht gemeldet – Freigabe für mqtt.werk.example Port 8883 prüfen"
+	hint := "Nicht verbunden. Hat es sich noch nie gemeldet: Freigabe für mqtt.werk.example Port 8883 prüfen."
 	for _, c := range []struct {
 		name                     string
 		locked, online, up       bool
@@ -1355,7 +1355,7 @@ func TestESPPDHOnlineBadge(t *testing.T) {
 		t.Fatalf("Gerät meldet sich nicht an: %v", err)
 	}
 
-	hint := "Hat sich noch nicht gemeldet – Freigabe für " + host + " Port 8883 prüfen"
+	hint := "Nicht verbunden. Hat es sich noch nie gemeldet: Freigabe für " + host + " Port 8883 prüfen."
 	const isOn, isOff, isLocked = "&nbsp;verbunden</span>", "&nbsp;nicht verbunden</span>", "&nbsp;gesperrt</span>"
 	type want struct{ has, not []string }
 	wants := map[string]want{

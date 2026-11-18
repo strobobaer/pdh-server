@@ -248,7 +248,7 @@ func esppdhLiveOf(locked, online, brokerUp, mirror bool, built esppdhTarget) esp
 		l.Hint = "Der Broker läuft an diesem Server nicht"
 	case built.Host != "" && built.Port > 0:
 		l.Key, l.Badge, l.Icon = "silent", "b-amber", "ti-alert-triangle"
-		l.Hint = fmt.Sprintf("Hat sich noch nicht gemeldet – Freigabe für %s Port %d prüfen", built.Host, built.Port)
+		l.Hint = fmt.Sprintf("Nicht verbunden. Hat es sich noch nie gemeldet: Freigabe für %s Port %d prüfen.", built.Host, built.Port)
 	default:
 		l.Hint = "Noch keine Firmware gebaut"
 	}
