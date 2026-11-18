@@ -228,38 +228,15 @@ oder ändern.**
 
 ### Offene Punkte (Stand 18.11.2026)
 
-1. **0.81.3 SFTP mit Schlüssel** (Efficio-Export) und **0.81.4 Seite
-   „Netzwerk“** (VLANs und WLANs, Migrationen 177 und 178, Rechte `system.network`
-   und `system.network_admin`) – auf `main` und dem Testverbund, im
-   Browser geprüft (18.11.2026). **0.81.5** (Fingerabdruck bricht auf
-   schmalen Bildschirmen um) liegt lokal auf `fix/efficio-fingerabdruck`;
-   offen: Freigabe für Push, Merge und Verbund-Update.
-2. **ESPPDH = Version 0.82.0** (vom Anwender festgelegt). Entwurf
-   `docs/superpowers/specs/2026-11-18-esppdh-design.md` auf `feature/esppdh`,
-   am 18.11.2026 bestätigt (Paketschnitt, kein ESPPDH im Docker-Betrieb,
-   OTA als Abruf, freier Editor nur Bereichsadministrator in Paket 3,
-   ESPHome-Version fest im Repository; Platinen verschieden; Netze: alles).
-   Die WLANs der Geräte kommen von der Seite „Netzwerk“
-   (`h.networkWLANSecret`). Nächster Schritt: Plan für Paket 1, dann Bau.
-3. **Netz-Abgleich im Browser mit zwei Quellen:** 0.80.25 ist auf `main`
+1. **Netz-Abgleich im Browser mit zwei Quellen:** 0.80.25 ist auf `main`
    und dem Testverbund; die Vorschlagsliste mit zwei eingeschalteten
    Quellen ist nur automatisch getestet (auf dem Testverbund sind alle
    Quellen aus).
-4. **Efficio klein:** FTPS ist ungetestet. (Abbruch der Zustellung nach dem
-   ersten Fehler ist Absicht – Reihenfolge der Dateien; kein offener Punkt.)
-5. **MQTT klein:** Bei älterem Update-Agenten versucht der tägliche Lauf
-   die nginx-Seite jeden Tag neu (harmlos).
-6. **Abnahmen durch den Anwender:** SNMP an echten Geräten, Omada an
-   echtem Controller, TIA-Baustein in PLCSIM, Datennetz mit echtem Tailnet,
-   SFTP mit Schlüssel an einem echten Server.
-7. **Zurückgestellt (kein Auftrag):** Abteilungsfeinheiten Rüstzeiten,
-   Datennetz Paket 2/3, Buchungssystem/Lizenzen, Firmenstammdaten.
-8. **0.81.0 Rüstzeit in „Neu anlegen“ und 0.81.1 Tagesgrenzen/Zeitumstellung**
+2. **0.81.0 Rüstzeit in „Neu anlegen“ und 0.81.1 Tagesgrenzen/Zeitumstellung**
    – auf `main` und dem Testverbund (mit 0.81.4 eingespielt). Offen:
-   Browserprüfung (Assistent mit
-   Kachel Rüstzeit, Wartung „heute fällig“ nicht überfällig, Sicherungs-
-   Formular mit 03:00).
-9. **0.81.2 Terminal-Paket** (Kiosk-Terminals, Anlagenterminal, Kopplung,
+   Browserprüfung (Assistent mit Kachel Rüstzeit, Wartung „heute fällig“
+   nicht überfällig, Sicherungs-Formular mit 03:00).
+3. **0.81.2 Terminal-Paket** (Kiosk-Terminals, Anlagenterminal, Kopplung,
    Kartensitzung, Anmeldung ohne Karte) – auf `main`, Migrationen
    169–176 (vorher 155–162 auf den Branches `feat/kiosk-terminal`,
    `feat/anlagenterminal`, `feat/kartensitzung`, `feat/terminal-kopplung`;
@@ -267,15 +244,38 @@ oder ändern.**
    neue Migrationen mit `PDH_MIGRATIONS_APPEND=1 go test ./pkg/database
    -run TestMigrationsFrozen` eintragen. Auf dem Testverbund (mit 0.81.4
    eingespielt). Offen: Browserprüfung, Abnahme am Raspberry Pi mit Kartenleser.
-10. **Zeitzone im Docker-Testsystem** (Vorschlag, kein Auftrag): Container
-   laufen in UTC, Produktion (systemd) in Europe/Berlin. Umstellung nur als
-   Paket: `TZ` für app und updater in `compose.yaml`, `time/tzdata` in
-   `cmd/server` und `cmd/update-agent`, Postgres-Sitzungszone über pgx
-   `RuntimeParams["timezone"]`; nie nur `TZ` an der App, kein `PGTZ`.
-11. **Tagesgrenzen aufräumen (klein):** übrige `Truncate(24*time.Hour)`
-    gegen DATE-Spalten (`kanban.go`, `purchases.go`, `trainings.go`,
-    `user_qualifications.go`, `procurement.go`, `projects_handler.go`,
-    `partners.go`) auf `localDayStart` umstellen.
+4. **0.81.3 SFTP mit Schlüssel** (Efficio-Export) und **0.81.4 Seite
+   „Netzwerk“** (VLANs und WLANs, Migrationen 177 und 178, Rechte
+   `system.network` und `system.network_admin`) – auf `main` und dem
+   Testverbund, im Browser geprüft (18.11.2026).
+5. **0.81.5 Fingerabdruck bricht um, Netzwerk-Kennungen** (Efficio-Export
+   auf schmalen Bildschirmen; neue Kennungen mit `pdh_uuid_v7()`,
+   Migration 178) – auf `main`. Offen: Verbund-Update.
+6. **ESPPDH = Version 0.82.0** (vom Anwender festgelegt). Entwurf
+   `docs/superpowers/specs/2026-11-18-esppdh-design.md` auf `feature/esppdh`,
+   am 18.11.2026 bestätigt (Paketschnitt, kein ESPPDH im Docker-Betrieb,
+   OTA als Abruf, freier Editor nur Bereichsadministrator in Paket 3,
+   ESPHome-Version fest im Repository; Platinen verschieden; Netze: alles).
+   Die WLANs der Geräte kommen von der Seite „Netzwerk“
+   (`h.networkWLANSecret`). Nächster Schritt: Plan für Paket 1, dann Bau.
+7. **Tagesgrenzen aufräumen (klein):** übrige `Truncate(24*time.Hour)`
+   gegen DATE-Spalten (`kanban.go`, `purchases.go`, `trainings.go`,
+   `user_qualifications.go`, `procurement.go`, `projects_handler.go`,
+   `partners.go`) auf `localDayStart` umstellen.
+8. **Efficio klein:** FTPS ist ungetestet. (Abbruch der Zustellung nach dem
+   ersten Fehler ist Absicht – Reihenfolge der Dateien; kein offener Punkt.)
+9. **MQTT klein:** Bei älterem Update-Agenten versucht der tägliche Lauf
+   die nginx-Seite jeden Tag neu (harmlos).
+10. **Abnahmen durch den Anwender:** SNMP an echten Geräten, Omada an
+    echtem Controller, TIA-Baustein in PLCSIM, Datennetz mit echtem Tailnet,
+    SFTP mit Schlüssel an einem echten Server.
+11. **Zeitzone im Docker-Testsystem** (Vorschlag, kein Auftrag): Container
+    laufen in UTC, Produktion (systemd) in Europe/Berlin. Umstellung nur als
+    Paket: `TZ` für app und updater in `compose.yaml`, `time/tzdata` in
+    `cmd/server` und `cmd/update-agent`, Postgres-Sitzungszone über pgx
+    `RuntimeParams["timezone"]`; nie nur `TZ` an der App, kein `PGTZ`.
+12. **Zurückgestellt (kein Auftrag):** Abteilungsfeinheiten Rüstzeiten,
+    Datennetz Paket 2/3, Buchungssystem/Lizenzen, Firmenstammdaten.
 
 Docker Desktop startet nach einem Neustart des Windows-Rechners nicht von
 selbst – ohne ihn fehlen der Zeuge und die Labor-Datenbank für die Tests.
