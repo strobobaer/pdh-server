@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -131,6 +133,125 @@ func TestEsppdhInstallFails(t *testing.T) {
 	}
 	if ans := esppdhWaitDone(t, a); !ans.Done || ans.Version != "" || !strings.Contains(ans.Error, "keine Version") {
 		t.Errorf("ohne Version: %+v", ans)
+	}
+}
+
+// ── Schutz in scripts/install-esphome.sh (läuft als root): echte Aufrufe mit bash ──
+
+// esppdhScript: absoluter Pfad des Skripts (Schrägstriche, auch für Git Bash unter Windows).
+func esppdhScript(t *testing.T) (bash, script string) {
+	t.Helper()
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("bash nicht verfügbar")
+	}
+	p, err := filepath.Abs("../../scripts/install-esphome.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return bash, filepath.ToSlash(p)
+}
+
+// esppdhGuard ruft eine Prüffunktion des Skripts auf (source ohne main) – Ausgabe und Fehler.
+func esppdhGuard(t *testing.T, fn string, args ...string) (string, error) {
+	t.Helper()
+	bash, script := esppdhScript(t)
+	out, err := exec.Command(bash, append([]string{"-c", `source "$1"; shift; "$@"`, "esppdh-test", script, fn}, args...)...).CombinedOutput()
+	return string(out), err
+}
+
+func esppdhExists(p string) bool { _, err := os.Lstat(p); return err == nil }
+
+func TestEsppdhScriptPathGuard(t *testing.T) {
+	for _, p := range []string{"/opt/pdh-esphome", "/var/lib/pdh-esphome", "/srv/esphome/venv"} {
+		if out, err := esppdhGuard(t, "esphome_path_ok", "PDH_ESPHOME_DIR", p); err != nil {
+			t.Errorf("%s abgelehnt: %v %s", p, err, out)
+		}
+	}
+	for p, why := range map[string]string{
+		"/opt/../var": "darf weder", "/opt/pdh-esphome/..": "darf weder", "/opt/./x": "darf weder", "/opt/x/.": "darf weder",
+		"/opt//x": "darf weder", "/opt/x/": "darf weder",
+		"/var": "zwei Ordnerebenen", "/": "zwei Ordnerebenen", "opt/pdh-esphome": "absoluter Pfad", "": "absoluter Pfad",
+	} {
+		out, err := esppdhGuard(t, "esphome_path_ok", "PDH_ESPHOME_DIR", p)
+		if err == nil || !strings.Contains(out, why) || !strings.Contains(out, "PDH_ESPHOME_DIR") {
+			t.Errorf("%q: Fehler %v, Meldung %q (erwartet %s)", p, err, out, why)
+		}
+	}
+}
+
+// Löschen nur einer Python-Umgebung (pyvenv.cfg) oder eines leeren Ordners.
+func TestEsppdhScriptRemoveGuard(t *testing.T) {
+	dir := t.TempDir()
+	fremd := filepath.Join(dir, "fremd")
+	_ = os.MkdirAll(filepath.Join(fremd, "postgresql"), 0o755)
+	_ = os.WriteFile(filepath.Join(fremd, "postgresql", "PG_VERSION"), []byte("16\n"), 0o644)
+	out, err := esppdhGuard(t, "esphome_remove_venv", filepath.ToSlash(fremd))
+	if err == nil || !strings.Contains(out, "keine Python-Umgebung (pyvenv.cfg fehlt)") || !esppdhExists(filepath.Join(fremd, "postgresql", "PG_VERSION")) {
+		t.Errorf("fremder Ordner: Fehler %v, Meldung %q, noch da: %v", err, out, esppdhExists(fremd))
+	}
+	datei := filepath.Join(dir, "datei")
+	_ = os.WriteFile(datei, []byte("x"), 0o644)
+	if _, err := esppdhGuard(t, "esphome_remove_venv", filepath.ToSlash(datei)); err == nil || !esppdhExists(datei) {
+		t.Errorf("Datei gelöscht oder angenommen: %v", err)
+	}
+	venv := filepath.Join(dir, "venv")
+	_ = os.MkdirAll(filepath.Join(venv, "bin"), 0o755)
+	_ = os.WriteFile(filepath.Join(venv, "pyvenv.cfg"), []byte("home = /usr/bin\n"), 0o644)
+	_ = os.WriteFile(filepath.Join(venv, "bin", "python3"), []byte("x"), 0o755)
+	if out, err := esppdhGuard(t, "esphome_remove_venv", filepath.ToSlash(venv)); err != nil || esppdhExists(venv) {
+		t.Errorf("Python-Umgebung nicht entfernt: %v %s", err, out)
+	}
+	leer := filepath.Join(dir, "leer")
+	_ = os.MkdirAll(leer, 0o755)
+	if out, err := esppdhGuard(t, "esphome_remove_venv", filepath.ToSlash(leer)); err != nil || esppdhExists(leer) {
+		t.Errorf("leerer Ordner nicht entfernt: %v %s", err, out)
+	}
+}
+
+// Arbeitsordner: neu oder schon dem Dienstbenutzer gehörend – einen fremden nie übernehmen.
+func TestEsppdhScriptWorkdirGuard(t *testing.T) {
+	bash, _ := esppdhScript(t)
+	dir := t.TempDir()
+	vorhanden := filepath.Join(dir, "arbeit")
+	_ = os.MkdirAll(vorhanden, 0o755)
+	o, err := exec.Command(bash, "-c", `stat -c %U "$1"`, "x", filepath.ToSlash(vorhanden)).Output()
+	owner := strings.TrimSpace(string(o))
+	if err != nil || owner == "" {
+		t.Fatalf("Eigentümer nicht lesbar: %v", err)
+	}
+	if out, err := esppdhGuard(t, "esphome_workdir_ok", filepath.ToSlash(filepath.Join(dir, "neu")), "pdh"); err != nil {
+		t.Errorf("neuer Ordner abgelehnt: %v %s", err, out)
+	}
+	if out, err := esppdhGuard(t, "esphome_workdir_ok", filepath.ToSlash(vorhanden), owner); err != nil {
+		t.Errorf("eigener Ordner abgelehnt: %v %s", err, out)
+	}
+	out, err := esppdhGuard(t, "esphome_workdir_ok", filepath.ToSlash(vorhanden), "pdh-gibt-es-nicht")
+	if err == nil || !strings.Contains(out, "gehört "+owner+" und wird nicht übernommen") {
+		t.Errorf("fremder Ordner angenommen: %v %q", err, out)
+	}
+	datei := filepath.Join(dir, "datei")
+	_ = os.WriteFile(datei, []byte("x"), 0o644)
+	if out, err := esppdhGuard(t, "esphome_workdir_ok", filepath.ToSlash(datei), owner); err == nil || !strings.Contains(out, "kein Ordner") {
+		t.Errorf("Datei als Arbeitsordner angenommen: %v %q", err, out)
+	}
+}
+
+// Das ganze Skript: ein falscher Pfad hält es an, bevor es irgendetwas tut (auch vor der root-Prüfung).
+func TestEsppdhScriptStopsOnBadPath(t *testing.T) {
+	bash, script := esppdhScript(t)
+	for env, want := range map[string]string{
+		"PDH_ESPHOME_DIR=/opt/../var":         "PDH_ESPHOME_DIR: '/opt/../var' darf weder",
+		"PDH_ESPHOME_WORKDIR=/var":            "PDH_ESPHOME_WORKDIR: '/var' muss ein absoluter Pfad mit mindestens zwei Ordnerebenen sein.",
+		"PDH_ESPHOME_WORKDIR=/var/lib/../etc": "PDH_ESPHOME_WORKDIR: '/var/lib/../etc' darf weder",
+	} {
+		cmd := exec.Command(bash, script)
+		cmd.Env = append(os.Environ(), env)
+		out, err := cmd.CombinedOutput()
+		var ee *exec.ExitError
+		if !errors.As(err, &ee) || ee.ExitCode() != 1 || !strings.Contains(string(out), want) || strings.Contains(string(out), "root") {
+			t.Errorf("%s: %v %q", env, err, out)
+		}
 	}
 }
 

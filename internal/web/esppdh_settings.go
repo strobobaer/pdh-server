@@ -20,7 +20,8 @@ import (
 //	POST /admin/server-config/esppdh/install  Einrichtung beim Update-Agenten starten (läuft im Hintergrund)
 //
 // ESPPDH ist ein Zusatz: Ohne Umgebung läuft das PDH unverändert. Im Docker-Betrieb gibt es
-// ESPPDH nicht, und am Spiegelserver wird nichts geändert und nichts gebaut.
+// ESPPDH nicht. Am Spiegelserver bleibt der Schalter gesperrt (409, Datenbank nur lesend);
+// die Umgebung lässt sich dort einrichten, weil jeder Server sie selbst braucht.
 
 // esppdhSetEnabled: Schalter in app_settings, "1" = an.
 const esppdhSetEnabled = "esppdh.enabled"
@@ -60,7 +61,7 @@ type esppdhJob struct {
 // esppdhPanel: Karte „ESPPDH“ (widgets/esppdh_settings.gohtml).
 type esppdhPanel struct {
 	Docker     bool            // Docker-Betrieb: nur ein Hinweis
-	Mirror     bool            // Spiegelserver: Hinweis, keine Knöpfe
+	Mirror     bool            // Spiegelserver: kein Schalter, Umgebung einrichten geht
 	AgentReady bool            // Update-Agent eingerichtet („Umgebung einrichten“)
 	Enabled    bool            // Schalter (app_settings esppdh.enabled)
 	Job        esppdhJob       // laufende bzw. letzte Einrichtung
@@ -102,7 +103,8 @@ func (h *Handler) esppdhPanelFor(ctx context.Context) esppdhPanel {
 	return p
 }
 
-// esppdhAllowed: Recht (canServerConfig) und nicht am Spiegel – sonst 403 bzw. 409.
+// esppdhAllowed: Recht (canServerConfig) und nicht am Spiegel – sonst 403 bzw. 409. Für den
+// Schalter (schreibt in die Datenbank); die Umgebung einrichten geht auch am Spiegel.
 func (h *Handler) esppdhAllowed(w http.ResponseWriter, r *http.Request) bool {
 	if !h.canServerConfig(r) {
 		http.Error(w, "keine berechtigung", http.StatusForbidden)
@@ -174,9 +176,12 @@ func (h *Handler) EsppdhSwitchWeb(w http.ResponseWriter, r *http.Request) {
 
 // EsppdhInstallWeb: POST /admin/server-config/esppdh/install – der Update-Agent richtet die
 // Python-Umgebung im Hintergrund ein (scripts/install-esphome.sh). Kehrt sofort zurück; die
-// Karte fragt danach alle 2 s nach dem Stand.
+// Karte fragt danach alle 2 s nach dem Stand. Auch am Spiegel: Die Umgebung braucht jeder
+// Server selbst (im Verbund tauschen die Server bei jedem Update die Rollen); in die Datenbank
+// schreibt das nichts (mirrorAllowedWrite).
 func (h *Handler) EsppdhInstallWeb(w http.ResponseWriter, r *http.Request) {
-	if !h.esppdhAllowed(w, r) {
+	if !h.canServerConfig(r) {
+		http.Error(w, "keine berechtigung", http.StatusForbidden)
 		return
 	}
 	var err error

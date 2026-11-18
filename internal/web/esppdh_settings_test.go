@@ -115,32 +115,49 @@ func TestEsppdhRoutesNeedServerConfig(t *testing.T) {
 	}
 }
 
-// Am Spiegelserver: nichts schalten, nichts einrichten – 409.
-func TestEsppdhMirrorConflict(t *testing.T) {
+// Am Spiegelserver: Schalter gesperrt (409, Datenbank nur lesend); die Umgebung einrichten geht –
+// jeder Server braucht sie selbst, und im Verbund tauschen die Server bei jedem Update die Rollen.
+func TestEsppdhMirror(t *testing.T) {
 	esppdhTestEnv(t, false)
-	srv, ag := esppdhFakeAgent(t, esppdhRunning, esppdhIdle)
+	srv, ag := esppdhFakeAgent(t, esppdhRunning, esppdhRunning)
 	h := esppdhHandler(t, true, srv.URL)
 	h.SetMirror(MirrorInfo{On: true})
-	for path, fn := range map[string]http.HandlerFunc{
-		"/admin/server-config/esppdh":         h.EsppdhSwitchWeb,
-		"/admin/server-config/esppdh/install": h.EsppdhInstallWeb,
-	} {
-		w := httptest.NewRecorder()
-		fn(w, esppdhReq(http.MethodPost, path, users.RoleAdmin, url.Values{"on": {"1"}}))
-		if w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), mirrorReadOnlyMsg) {
-			t.Errorf("%s: %d %q", path, w.Code, w.Body.String())
+	w := httptest.NewRecorder()
+	h.EsppdhSwitchWeb(w, esppdhReq(http.MethodPost, "/admin/server-config/esppdh", users.RoleAdmin, url.Values{"on": {"1"}}))
+	if w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), mirrorReadOnlyMsg) {
+		t.Errorf("Schalter am Spiegel: %d %q", w.Code, w.Body.String())
+	}
+	if calls := ag.log(); len(calls) != 0 {
+		t.Errorf("Schalter am Spiegel fragt den Agenten: %v", calls)
+	}
+	w = httptest.NewRecorder()
+	h.EsppdhInstallWeb(w, esppdhReq(http.MethodPost, "/admin/server-config/esppdh/install", users.RoleAdmin, nil))
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "Umgebung wird eingerichtet") || !strings.Contains(w.Body.String(), `hx-trigger="every 2s"`) {
+		t.Errorf("Einrichten am Spiegel: %d\n%s", w.Code, w.Body.String())
+	}
+	if calls := ag.log(); len(calls) == 0 || calls[0] != "POST /v1/esppdh/install {} Bearer tok" {
+		t.Errorf("Einrichten am Spiegel startet nicht beim Agenten: %v", calls)
+	}
+	// Die Spiegel-Sperre davor lässt nur das Einrichten durch, nicht den Schalter.
+	hd, passed := mirrorTestHandler(true)
+	if rec := mirrorServe(hd, http.MethodPost, "/admin/server-config/esppdh/install", nil); rec.Code != http.StatusOK {
+		t.Errorf("Spiegel-Sperre blockiert das Einrichten: %d", rec.Code)
+	}
+	for _, p := range []string{"/admin/server-config/esppdh", "/admin/server-config/esppdh/installx", "/admin/server-config/esppdh/install/x"} {
+		if rec := mirrorServe(hd, http.MethodPost, p, nil); rec.Code != http.StatusConflict {
+			t.Errorf("POST %s am Spiegel: %d, erwartet 409", p, rec.Code)
 		}
 	}
-	for _, c := range ag.log() {
-		if strings.HasPrefix(c, "POST") {
-			t.Errorf("Einrichtung am Spiegel gestartet: %v", c)
-		}
+	if *passed != 1 {
+		t.Errorf("durchgereicht: %d, erwartet 1", *passed)
 	}
-	// die Karte zeigt am Spiegel keinen Knopf
+	// Karte am Spiegel: Hinweis, kein Schalter, Knopf „Umgebung einrichten“
+	ag.setStatus(esppdhIdle)
 	p := h.esppdhPanelFor(context.Background())
 	out := renderSNMPTemplate(t, "esppdh-panel", p)
-	if !p.Mirror || !strings.Contains(out, "Spiegelserver") || strings.Contains(out, "hx-post") {
-		t.Errorf("Spiegel: Hinweis statt Knopf erwartet:\n%s", out)
+	if !p.Mirror || !strings.Contains(out, "Die Umgebung braucht jeder Server selbst") || strings.Contains(out, `hx-post="/admin/server-config/esppdh"`) ||
+		strings.Contains(out, "Einschalten") || !strings.Contains(out, `hx-post="/admin/server-config/esppdh/install"`) || !strings.Contains(out, "Umgebung einrichten") {
+		t.Errorf("Karte am Spiegel:\n%s", out)
 	}
 }
 
