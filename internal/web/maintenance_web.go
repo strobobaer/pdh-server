@@ -219,7 +219,7 @@ func (h *Handler) MaintenancePage(w http.ResponseWriter, r *http.Request) {
 				mode = "fester Rhythmus"
 			}
 			data.Plans = append(data.Plans, maintPlanRow{Plan: p, IntervalLabel: intervalLabel(p.IntervalUnit, p.IntervalCount),
-				ModeLabel: mode, NextDue: deDate(p.NextDueAt), Overdue: p.Active && p.NextDueAt.Before(today.Truncate(24*time.Hour)),
+				ModeLabel: mode, NextDue: deDate(p.NextDueAt), Overdue: p.Active && p.NextDueAt.Before(localDayStart(today)),
 				Checklists: strings.Join(names, " · "), Stations: stations})
 			if p.OpenTaskID != "" {
 				openIDs = append(openIDs, p.OpenTaskID)
@@ -336,7 +336,7 @@ func (h *Handler) maintYearRows(ctx context.Context, data *MaintenancePageData, 
 		byPlan[m.PlanID] = append(byPlan[m.PlanID], m)
 	}
 	today := time.Now()
-	todayStart := time.Date(today.Year(), today.Month(), today.Day(), 0, 0, 0, 0, time.Local)
+	todayStart := localDayStart(today)
 	for _, p := range plans {
 		if scope != nil && !scope[p.ID] {
 			continue
@@ -590,7 +590,7 @@ func (h *Handler) MaintenanceTaskDetail(w http.ResponseWriter, r *http.Request) 
 		DueDate: deDate(t.DueDate), DueDateISO: t.DueDate.Local().Format("2006-01-02"), Notes: t.Notes,
 		CreatedAt: t.CreatedAt.Local().Format("02.01.2006 15:04"), GroupName: t.GroupName, IsOpen: t.IsOpen(),
 	}
-	v.Overdue = v.IsOpen && t.DueDate.Local().Before(time.Now().Truncate(24*time.Hour))
+	v.Overdue = v.IsOpen && t.DueDate.Before(localDayStart(time.Now()))
 	if t.StartedAt != nil {
 		v.StartedAt = t.StartedAt.Local().Format("02.01.2006 15:04")
 	}

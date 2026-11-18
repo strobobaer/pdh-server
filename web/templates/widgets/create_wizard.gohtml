@@ -190,7 +190,7 @@
     });
   }
   const chipVal = id => { const b = $(id).querySelector('button.on'); return b ? b.dataset.v : ''; };
-  const iso = d => d.toISOString().slice(0, 10);
+  const iso = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); // Ortsdatum (toISOString wäre UTC: kurz nach Mitternacht gestern)
   const addDays = n => { const d = new Date(); d.setDate(d.getDate() + n); return iso(d); };
   function msg(text, cls){ const m = $('crw-msg'); m.textContent = text || ''; m.className = 'cw-msg' + (cls ? ' ' + cls : ''); }
   // Leitstand-Modus: keine Zuweisung, Melder statt Zustaendigem, Verteilung an die Broker

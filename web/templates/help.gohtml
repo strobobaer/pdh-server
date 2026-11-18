@@ -1347,7 +1347,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>Bei Microsoft anmelden und die Freigabe bestätigen – danach kommst du automatisch zurück ins PDH.</li>
       <li>Je Konto unter <b>Outlook-Kalender</b> anhaken, was in diesen Kalender geschrieben wird (Schichten, Aufgaben, Wartungen, Tickets &amp; Störungen), und ob Termine als <b>Busy-Blocker</b> ins PDH geholt werden. <b>Kalenderauswahl speichern</b>, dann <b>Jetzt synchronisieren</b>.</li>
     </ol></div>
-  <p>Busy-Blocker aus beiden Konten erscheinen im Schichtwochenplan als <b>O</b> („Outlook belegt“). Betreffzeilen werden nie übernommen, und eine Zuweisung bleibt trotzdem möglich. <b>Teams</b> gibt es nur über das Geschäftskonto. <b>Konto trennen</b> löscht die importierten Blocker dieses Kontos; bereits in Outlook eingetragene Termine bleiben dort stehen.</p>
+  <p>Schichten stehen in Outlook mit den Uhrzeiten aus dem Schichtplan (Ortszeit), auch Nachtschichten über die Zeitumstellung. Busy-Blocker aus beiden Konten erscheinen im Schichtwochenplan als <b>O</b> („Outlook belegt“). Betreffzeilen werden nie übernommen, und eine Zuweisung bleibt trotzdem möglich. <b>Teams</b> gibt es nur über das Geschäftskonto. <b>Konto trennen</b> löscht die importierten Blocker dieses Kontos; bereits in Outlook eingetragene Termine bleiben dort stehen.</p>
   <p>In der <b>Benutzerliste</b> öffnet <i class="ti ti-dots"></i> direkt die Bearbeitung. Der Benutzerstamm hat die Reiter Übersicht, Stammdaten, Privat, Nachweise, Einzelrechte, Zuständigkeiten, Feldsätze und Historie. <b>Einzelrechte</b> erlauben oder verbieten einzelne Funktionen abweichend von der Rolle; „Admin machen“ sehen nur Administratoren. <b>Zuständigkeiten</b> listet alle offenen Vorgänge, in denen die Person zugewiesen oder verantwortlich ist – auch über eine zugewiesene Gruppe (Rolle „Gruppe“). Ist die Person Broker, steht darunter <b>Wartet auf Zuweisung (als Broker)</b>: offene Vorgänge ihrer Arten, die noch niemandem gehören. Die gelbe Zahl am Reiter zeigt, wie viele. Zugewiesen wird über <b>Zur Zuweisung</b>.</p>
   <div class="hb-howto"><b><i class="ti ti-mail"></i> So prüfst du den E-Mail-Versand und schaltest Statusmeldungen per E-Mail ein</b>
     <ol class="hb-steps">
@@ -1495,9 +1495,9 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <div class="hb-howto"><b><i class="ti ti-calendar-time"></i> So richtest du eine automatische Sicherung ein</b>
     <ol class="hb-steps">
       <li>Reiter <b>Zeitpläne</b> → „Neuer Zeitplan“.</li>
-      <li>Name, <b>Häufigkeit</b> (täglich, wöchentlich mit Wochentag, monatlich mit Tag 1–28) und <b>Uhrzeit</b> wählen.</li>
+      <li>Name, <b>Häufigkeit</b> (täglich, wöchentlich mit Wochentag, monatlich mit Tag 1–28) und <b>Uhrzeit</b> wählen. Die Uhrzeit ist die Ortszeit des Servers (Vorgabe 03:00). Wähle keine Zeit zwischen 02:00 und 02:59: Bei der Umstellung auf Sommerzeit gibt es diese Stunde nicht, die Sicherung fiele aus.</li>
       <li>Bestandteile anhaken und festlegen, wie viele Sicherungen <b>aufbewahrt</b> werden – ältere werden automatisch entfernt.</li>
-      <li>Speichern. Mit <b>Jetzt ausführen</b> testest du den Zeitplan sofort. Schlägt eine geplante Sicherung fehl, meldet sich „Service“ per Chat bei allen Administratoren.</li>
+      <li>Speichern. Mit <b>Jetzt ausführen</b> testest du den Zeitplan sofort. Schlägt eine geplante Sicherung fehl, meldet sich „Service“ per Chat bei allen Administratoren. Lief derselbe Zeitplan vor weniger als 90 Minuten schon, lässt das PDH den geplanten Lauf aus – so entsteht bei der Umstellung auf Winterzeit keine doppelte Sicherung.</li>
     </ol></div>
   <div class="hb-howto"><b><i class="ti ti-restore"></i> So stellst du eine Sicherung wieder her</b>
     <ol class="hb-steps">

@@ -10,6 +10,23 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.81.1] – 2026-11-18
+
+### Behoben
+
+- Wartung: Ein Auftrag oder Plan, der heute fällig ist, wird nicht mehr schon ab 01:00 Uhr (im Sommer ab 02:00 Uhr) als „überfällig“ angezeigt.
+- Leitstand und Übersichten im Browser: „Überfällig“ und „heute“ richten sich nach dem Datum vor Ort – bisher galt ein gestern fälliger Vorgang den ganzen Tag noch nicht als überfällig.
+- Neu anlegen: Die Schnellwahl der Fälligkeit („heute“, „morgen“ …) und der Beginn einer Aufgabe nehmen kurz nach Mitternacht nicht mehr den Vortag.
+- Anlagen-Verlauf und Zeitstrahl: Zeitraum-Knöpfe und der Sammler „Erledigt“ nutzen das Datum vor Ort statt UTC.
+- Outlook-Kalender: Schichten erscheinen zur richtigen Uhrzeit (bisher 1–2 Stunden zu spät), Nachtschichten auch über die Zeitumstellung; schon eingetragene Schichten korrigiert der nächste Abgleich.
+- Microsoft-Konto: „Letzter Sync“ zeigt die Ortszeit statt UTC.
+- KVP-Auswertung: Der Zwölf-Monats-Verlauf hängt nicht mehr davon ab, dass Programm und Datenbank dieselbe Zeitzone haben.
+- Datensicherung: Bei der Umstellung auf Winterzeit läuft ein Zeitplan um 02:xx nicht mehr doppelt; zwei Sicherungen derselben Uhrzeit überschreiben sich nicht mehr.
+
+### Geändert
+
+- Datensicherung: Neue Zeitpläne starten mit 03:00 Uhr statt 02:00 Uhr; das Formular weist darauf hin, dass eine Sicherung zwischen 02:00 und 02:59 im März ausfällt.
+
 ## [0.81.0] – 2026-11-18
 
 ### Neu
