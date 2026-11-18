@@ -508,8 +508,8 @@ function infraCommentEdit(btn, show) {
 }
 function infraHistoryPreset(days) {
   const f = document.getElementById('infra-history-filter');
-  const from = new Date(Date.now() - days * 86400000);
-  f.elements['from'].value = from.toISOString().slice(0, 10);
+  const from = new Date(); from.setDate(from.getDate() - days); // Kalendertage, nicht days×24 h (Zeitumstellung)
+  f.elements['from'].value = from.getFullYear() + '-' + String(from.getMonth() + 1).padStart(2, '0') + '-' + String(from.getDate()).padStart(2, '0'); // Ortsdatum, nicht UTC
   f.elements['to'].value = '';
   htmx.trigger(f, 'submit');
 }

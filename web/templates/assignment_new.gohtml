@@ -18,6 +18,7 @@
     {{if .CanCreateRestricted}}<button type="button" class="btn" data-assign-type="task" onclick="setAssignType('task')"><i class="ti ti-list-check"></i> Aufgabe</button>
     <button type="button" class="btn" data-assign-type="maintenance" onclick="setAssignType('maintenance')"><i class="ti ti-tool"></i> Wartung</button>{{end}}
     <button type="button" class="btn" data-assign-type="fault" onclick="setAssignType('fault')"><i class="ti ti-alert-triangle"></i> Störung</button>
+    {{if .CanCreateSetup}}<a class="btn" href="/setup/new{{if .PresetInfraID}}?infra={{.PresetInfraID}}{{end}}" title="Rüstzeit starten oder nachtragen"><i class="ti ti-arrows-exchange-2"></i> Rüstzeit</a>{{end}}
   </div>
 
   <form id="assign-form" onsubmit="return submitAssignment(event)">

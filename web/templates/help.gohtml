@@ -199,6 +199,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <li>auf einer Projektseite das <b>+</b> bei den Aufgaben – die Aufgabe gehört dann gleich zum Projekt, danach bleibst du auf der Projektseite,</li>
     <li>im <a href="#dashboard">Leitstand</a> die Kacheln – dort ohne Zuweisung, siehe unten.</li>
   </ul>
+  <p>Mit dem Recht „Rüstzeiten: erfassen …“ steht unter <b>Neu anlegen</b> auch die Kachel <b>Rüstzeit</b> – wie das geht, steht unten und im Kapitel <a href="#ruestzeiten">Rüstzeiten</a>. Im Leitstand gibt es sie nicht.</p>
   <p>Die <b>Kostenstelle</b> übernimmt PDH bei Tickets und Störungen wie bisher aus der gewählten Anlage.</p>
   <div class="hb-howto"><b><i class="ti ti-circle-plus"></i> So legst du einen Vorgang an</b>
     <ol class="hb-steps">
@@ -209,6 +210,15 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li><b>Wann?</b> Fälligkeit per Schnellwahl (heute, morgen, 3 Tage, 1–2 Wochen, Standardfrist) oder Datum; bei Aufgaben auch der Start.</li>
       <li>Zusammenfassung prüfen – <b>Anlegen</b> öffnet den neuen Vorgang, <b>Anlegen &amp; nächster</b> beginnt gleich den nächsten derselben Art.</li>
     </ol></div>
+  <div class="hb-howto"><b><i class="ti ti-arrows-exchange-2"></i> So legst du eine Rüstzeit über „Neu anlegen“ an</b>
+    <ol class="hb-steps">
+      <li><b>Neu anlegen</b> → Kachel <b>Rüstzeit</b>.</li>
+      <li><b>Was?</b> den <b>Grund</b> antippen, z. B. „Produktumstellung“. Ein Vermerk ist freiwillig.</li>
+      <li><b>Wo?</b> die Anlage wählen – sie ist Pflicht. An einer Anlage läuft immer höchstens eine Rüstzeit.</li>
+      <li><b>Wann?</b> <b>Läuft gerade</b>: Der Beginn ist schon jetzt eingetragen. <b>Nachtragen</b>: zusätzlich das <b>Ende</b> oder die <b>Dauer</b> in Minuten eintragen.</li>
+      <li><b>Anlegen</b> öffnet die Rüstzeit. Eine laufende Rüstzeit beendest du dort mit <b>Beenden</b>.</li>
+    </ol>
+    Einen Schritt „Wer?“ gibt es hier nicht: Zugeordnet wird von selbst der Schichtführer im Dienst, verantwortlich ist der Anlagenverantwortliche.</div>
   <h3 id="completion"><i class="ti ti-circle-check"></i> Vorgänge abschließen: der Abschluss-Assistent</h3>
   <p>Tickets, Störungen, Aufgaben und Wartungen schließt du immer mit dem <b>grünen Haken</b> ab – auf der Detailseite oder in der Liste: Zeile anklicken → <b>Fertigstellen</b> (bzw. <b>Beheben</b>, <b>Abschließen</b>, <b>Erledigen</b>, <b>Durchführen</b>). Ein Assistent führt dich in fünf kurzen Schritten durch; erst wenn alles da ist, geht es weiter.</p>
   {{template "hb-fig-completion"}}
@@ -494,7 +504,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     Zu viele Antippen hintereinander bremst PDH: je Anlage sind 30 Vorgänge in 10 Minuten möglich. Je Anlage läuft höchstens eine Rüstzeit.</div>
   <div class="hb-howto"><b><i class="ti ti-plus"></i> So erfasst und korrigierst du eine Rüstzeit im PDH</b> (Recht „Rüstzeiten: erfassen …“)
     <ol class="hb-steps">
-      <li><b>Rüstzeiten</b> → <b>Neu</b> – oder die Schnellaktion „Rüstzeit erfassen“ im Dashboard.</li>
+      <li><b>Rüstzeiten</b> → <b>Neu</b> – oder die Schnellaktion „Rüstzeit erfassen“ im Dashboard. Schritt für Schritt geht es auch über <b>Neu anlegen</b> → Kachel <b>Rüstzeit</b> (siehe <a href="#creation">Erstellungs-Assistent</a>).</li>
       <li><b>Anlage</b> und <b>Grund</b> wählen, <b>Beginn</b> eintragen. Ohne Ende läuft die Rüstzeit weiter; mit <b>Ende</b> oder <b>Dauer</b> wird sie nachgetragen.</li>
       <li><b>Rüstzeit anlegen</b> öffnet die Detailseite. Dort beendest du eine laufende Rüstzeit mit <b>Beenden</b>.</li>
       <li>Beginn, Ende, Grund und Notiz korrigierst du im Reiter <b>Bearbeiten</b>. Bei einer beendeten Rüstzeit ist das <b>Ende</b> Pflicht – sie wird nie wieder geöffnet; fehlt das Ende, erscheint eine Meldung und nichts wird geändert. Hat die Rüstzeit schon eine Störmeldung ausgelöst, bleiben Beginn und Ende gesperrt.</li>
@@ -1338,7 +1348,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>Bei Microsoft anmelden und die Freigabe bestätigen – danach kommst du automatisch zurück ins PDH.</li>
       <li>Je Konto unter <b>Outlook-Kalender</b> anhaken, was in diesen Kalender geschrieben wird (Schichten, Aufgaben, Wartungen, Tickets &amp; Störungen), und ob Termine als <b>Busy-Blocker</b> ins PDH geholt werden. <b>Kalenderauswahl speichern</b>, dann <b>Jetzt synchronisieren</b>.</li>
     </ol></div>
-  <p>Busy-Blocker aus beiden Konten erscheinen im Schichtwochenplan als <b>O</b> („Outlook belegt“). Betreffzeilen werden nie übernommen, und eine Zuweisung bleibt trotzdem möglich. <b>Teams</b> gibt es nur über das Geschäftskonto. <b>Konto trennen</b> löscht die importierten Blocker dieses Kontos; bereits in Outlook eingetragene Termine bleiben dort stehen.</p>
+  <p>Schichten stehen in Outlook mit den Uhrzeiten aus dem Schichtplan (Ortszeit), auch Nachtschichten über die Zeitumstellung. Busy-Blocker aus beiden Konten erscheinen im Schichtwochenplan als <b>O</b> („Outlook belegt“). Betreffzeilen werden nie übernommen, und eine Zuweisung bleibt trotzdem möglich. <b>Teams</b> gibt es nur über das Geschäftskonto. <b>Konto trennen</b> löscht die importierten Blocker dieses Kontos; bereits in Outlook eingetragene Termine bleiben dort stehen.</p>
   <p>In der <b>Benutzerliste</b> öffnet <i class="ti ti-dots"></i> direkt die Bearbeitung. Der Benutzerstamm hat die Reiter Übersicht, Stammdaten, Privat, Nachweise, Einzelrechte, Zuständigkeiten, Feldsätze und Historie. <b>Einzelrechte</b> erlauben oder verbieten einzelne Funktionen abweichend von der Rolle; „Admin machen“ sehen nur Administratoren. <b>Zuständigkeiten</b> listet alle offenen Vorgänge, in denen die Person zugewiesen oder verantwortlich ist – auch über eine zugewiesene Gruppe (Rolle „Gruppe“). Ist die Person Broker, steht darunter <b>Wartet auf Zuweisung (als Broker)</b>: offene Vorgänge ihrer Arten, die noch niemandem gehören. Die gelbe Zahl am Reiter zeigt, wie viele. Zugewiesen wird über <b>Zur Zuweisung</b>.</p>
   <div class="hb-howto"><b><i class="ti ti-mail"></i> So prüfst du den E-Mail-Versand und schaltest Statusmeldungen per E-Mail ein</b>
     <ol class="hb-steps">
@@ -1486,9 +1496,9 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <div class="hb-howto"><b><i class="ti ti-calendar-time"></i> So richtest du eine automatische Sicherung ein</b>
     <ol class="hb-steps">
       <li>Reiter <b>Zeitpläne</b> → „Neuer Zeitplan“.</li>
-      <li>Name, <b>Häufigkeit</b> (täglich, wöchentlich mit Wochentag, monatlich mit Tag 1–28) und <b>Uhrzeit</b> wählen.</li>
+      <li>Name, <b>Häufigkeit</b> (täglich, wöchentlich mit Wochentag, monatlich mit Tag 1–28) und <b>Uhrzeit</b> wählen. Die Uhrzeit ist die Ortszeit des Servers (Vorgabe 03:00). Wähle keine Zeit zwischen 02:00 und 02:59: Bei der Umstellung auf Sommerzeit gibt es diese Stunde nicht, die Sicherung fiele aus.</li>
       <li>Bestandteile anhaken und festlegen, wie viele Sicherungen <b>aufbewahrt</b> werden – ältere werden automatisch entfernt.</li>
-      <li>Speichern. Mit <b>Jetzt ausführen</b> testest du den Zeitplan sofort. Schlägt eine geplante Sicherung fehl, meldet sich „Service“ per Chat bei allen Administratoren.</li>
+      <li>Speichern. Mit <b>Jetzt ausführen</b> testest du den Zeitplan sofort. Schlägt eine geplante Sicherung fehl, meldet sich „Service“ per Chat bei allen Administratoren. Lief derselbe Zeitplan vor weniger als 90 Minuten schon, lässt das PDH den geplanten Lauf aus – so entsteht bei der Umstellung auf Winterzeit keine doppelte Sicherung.</li>
     </ol></div>
   <div class="hb-howto"><b><i class="ti ti-restore"></i> So stellst du eine Sicherung wieder her</b>
     <ol class="hb-steps">

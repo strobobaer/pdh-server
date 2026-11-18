@@ -671,6 +671,8 @@ var LS_ROTATE = {seconds: {{.RotateSeconds}}, href: {{$.RotateHref}}, name: {{$.
   let latestData = {items:[], workers:[], gantt_items:[]};
 
   function todayMidnight(){ const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
+  // heute als JJJJ-MM-TT in Ortszeit – todayMidnight().toISOString() wäre in Berlin immer gestern (UTC)
+  function todayISO(){ const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
   function parseISODate(s){
     const parts = String(s || '').split('-').map(Number);
     if(parts.length !== 3 || parts.some(isNaN)) return null;
@@ -1032,7 +1034,7 @@ var LS_ROTATE = {seconds: {{.RotateSeconds}}, href: {{$.RotateHref}}, name: {{$.
     entriesBody.replaceChildren();
     entriesTiles.replaceChildren();
     const asTiles = entriesView() === 'tiles';
-    const todayStr = todayMidnight().toISOString().slice(0,10);
+    const todayStr = todayISO();
     const items = all.filter(function(item){
       return tableMatch(item.type_key, !!(item.due_date && item.due_date < todayStr), !item.assignee, !!item.upcoming);
     });
@@ -1130,7 +1132,7 @@ var LS_ROTATE = {seconds: {{.RotateSeconds}}, href: {{$.RotateHref}}, name: {{$.
 
   function renderMaintenanceSelectList(){
     maintenanceSelectList.replaceChildren();
-    const todayStr = todayMidnight().toISOString().slice(0,10);
+    const todayStr = todayISO();
     const infraNames = {};
     (latestData.infrastructure || []).forEach(function(i){ infraNames[i.id] = i.name; });
     const items = (latestData.items || []).filter(function(item){ return item.type_key === 'maintenance'; });
@@ -1336,7 +1338,7 @@ var LS_ROTATE = {seconds: {{.RotateSeconds}}, href: {{$.RotateHref}}, name: {{$.
 
   // Bausteine Kennzahlen, Aktuelle Störungen, Fällige Wartung (aus den Vorgängen)
   function lsRenderExtras(items){
-    const todayStr = todayMidnight().toISOString().slice(0,10);
+    const todayStr = todayISO();
     const open = items.filter(function(i){ return !i.upcoming; });
     const over = function(i){ return i.due_date && i.due_date < todayStr; };
     document.querySelectorAll('[data-ls-kpis]').forEach(function(box){

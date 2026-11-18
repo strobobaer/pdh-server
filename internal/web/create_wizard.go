@@ -3,6 +3,7 @@ package web
 import (
 	"net/http"
 	"strings"
+	"time"
 
 	"pdh/pkg/appsettings"
 )
@@ -26,7 +27,39 @@ type createGroup struct {
 	Members    int    `json:"members"`
 }
 
-// CreateOptionsWeb: GET /create/options – Personen, Gruppen, Standard-Fristen.
+// createSetup: Angaben für die Art „Rüstzeit“ – nur mit setup.edit (irgendwo).
+// Welche Anlage erlaubt ist, prüft POST /setup beim Anlegen.
+type createSetup struct {
+	Reasons []createReason `json:"reasons"`
+	// Now: Uhrzeit des Servers (JJJJ-MM-TTThh:mm:ss, Ortszeit des Servers). POST
+	// /setup liest Beginn und Ende in dieser Ortszeit (setupFormTime) – der
+	// Assistent rechnet damit statt mit der Uhr des Browsers, wie /setup/new.
+	Now string `json:"now"`
+}
+
+type createReason struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// createSetupOptions: aktive Rüstgründe; nil ohne Recht, ohne Speicher oder ohne Grund
+// (dann bietet der Assistent die Art nicht an).
+func (h *Handler) createSetupOptions(r *http.Request) *createSetup {
+	if !h.setupCan(r, permSetupEdit, "") {
+		return nil
+	}
+	out := &createSetup{Reasons: []createReason{}, Now: time.Now().Format("2006-01-02T15:04:05")} // sekundengenau: Abstand zur Browser-Uhr ohne Rundung
+	for _, x := range h.setupReasonOptions(r, "") {
+		out.Reasons = append(out.Reasons, createReason{ID: x.ID, Name: x.Name})
+	}
+	if len(out.Reasons) == 0 {
+		return nil
+	}
+	return out
+}
+
+// CreateOptionsWeb: GET /create/options – Personen, Gruppen, Standard-Fristen
+// und (mit Recht) die Rüstgründe.
 func (h *Handler) CreateOptionsWeb(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	out := struct {
@@ -34,7 +67,8 @@ func (h *Handler) CreateOptionsWeb(w http.ResponseWriter, r *http.Request) {
 		People  []createPerson `json:"people"`
 		Groups  []createGroup  `json:"groups"`
 		DueDays map[string]int `json:"due_days"`
-	}{Me: getUser(r).ID, People: []createPerson{}, Groups: []createGroup{}, DueDays: map[string]int{}}
+		Setup   *createSetup   `json:"setup,omitempty"`
+	}{Me: getUser(r).ID, People: []createPerson{}, Groups: []createGroup{}, DueDays: map[string]int{}, Setup: h.createSetupOptions(r)}
 	if rows, err := h.db.Query(ctx, `
 		SELECT id::text, first_name || ' ' || last_name, COALESCE(department, '')
 		  FROM users WHERE active AND NOT is_system_user AND NOT is_bot

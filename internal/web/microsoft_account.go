@@ -150,7 +150,7 @@ func (h *Handler) loadMicrosoftAccountView(ctx context.Context, userID, kind str
 	view.TeamsPermission = strings.Contains(grantedScopes, "Chat.ReadWrite") && strings.Contains(grantedScopes, "ChannelMessage.Send")
 	_ = h.db.QueryRow(ctx, `
 		SELECT sync_shifts, sync_tasks, sync_maintenance, sync_tickets_faults, import_busy_events,
-		       COALESCE(to_char(last_sync_at AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI'), '')
+		       COALESCE(to_char(last_sync_at, 'DD.MM.YYYY HH24:MI'), '') -- Ortszeit (Sitzungszone), nicht UTC
 		FROM microsoft_calendar_preferences WHERE user_id=$1::uuid AND account_kind=$2`, userID, kind,
 	).Scan(&view.SyncShifts, &view.SyncTasks, &view.SyncMaintenance, &view.SyncTicketsFaults, &view.ImportBusyEvents, &view.CalendarLastSync)
 	_ = h.db.QueryRow(ctx, `SELECT COUNT(*) FROM microsoft_calendar_blocks WHERE user_id=$1::uuid AND account_kind=$2`, userID, kind).Scan(&view.CalendarBusyCount)

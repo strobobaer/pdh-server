@@ -581,7 +581,8 @@ func (h *Handler) kvpDashboard(ctx context.Context, year int) kvpDashboard {
 		SELECT g::date,
 		       (SELECT COUNT(*) FROM kvp_ideas k WHERE date_trunc('month', k.created_at) = g)::int,
 		       (SELECT COUNT(*) FROM kvp_ideas k WHERE k.status = 'done' AND date_trunc('month', k.closed_at) = g)::int
-		  FROM generate_series($1::timestamptz, $1::timestamptz + interval '11 months', interval '1 month') g`, start); err == nil {
+		  FROM generate_series($1::date::timestamptz, $1::date::timestamptz + interval '11 months', interval '1 month') g`,
+		start.Format("2006-01-02")); err == nil { // nur das Datum: Monatsanfang in der Zone der DB-Sitzung, passend zu date_trunc oben
 		months := []string{"Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"}
 		for rows.Next() {
 			var m kvpMonth
