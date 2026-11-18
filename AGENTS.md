@@ -228,21 +228,31 @@ oder ändern.**
 
 ### Offene Punkte (Stand 18.11.2026)
 
-1. **0.80.25 Reste Netz-Abgleich und MQTT-Broker** – gebaut auf
-   `fix/reste-0.80.25`, lokal committet. Offen: Freigabe für Push, Merge,
-   Verbund-Update und Browserprüfung (Netz-Abgleich mit zwei Quellen,
-   Broker-Status mit Prüfliste).
-2. **ESPPDH Paket 1** (Import → ESPPDH, ESPHome als Compiler) – Entwurf
-   `docs/superpowers/specs/2026-11-18-esppdh-design.md` schreiben und vom
-   Anwender bestätigen lassen; danach Plan und Bau auf `feature/esppdh`.
-3. **Efficio-Reste aus 0.80.12:** Zustellung bricht bei Fehler einer
-   einzelnen Datei ab; hängendes Netzlaufwerk blockiert den Ordner bis
-   zum Neustart; SFTP nur mit Kennwort; FTPS ungetestet.
-4. **MQTT klein:** Bei älterem Update-Agenten versucht der tägliche Lauf
+1. **0.80.26 SFTP mit Schlüssel** (Efficio-Export) und **0.80.27 Seite
+   „Netzwerk“** (VLANs und WLANs, Migration 169, Rechte `system.network`
+   und `system.network_admin`) – gebaut auf `feature/efficio-sftp-key` und
+   darauf `feature/netzwerk`, lokal committet. Offen: Freigabe für Push,
+   Merge, Verbund-Update und Browserprüfung (Seite „Netzwerk“ in Fiori und
+   Fluent, hell/dunkel, 320–1366 px; Efficio-Seite mit Schlüssel-Karte).
+2. **ESPPDH = Version 0.82.0** (vom Anwender festgelegt). Entwurf
+   `docs/superpowers/specs/2026-11-18-esppdh-design.md` auf `feature/esppdh`,
+   am 18.11.2026 bestätigt (Paketschnitt, kein ESPPDH im Docker-Betrieb,
+   OTA als Abruf, freier Editor nur Bereichsadministrator in Paket 3,
+   ESPHome-Version fest im Repository; Platinen verschieden; Netze: alles).
+   Die WLANs der Geräte kommen von der Seite „Netzwerk“
+   (`h.networkWLANSecret`). Nächster Schritt: Plan für Paket 1, dann Bau.
+3. **Netz-Abgleich im Browser mit zwei Quellen:** 0.80.25 ist auf `main`
+   und dem Testverbund; die Vorschlagsliste mit zwei eingeschalteten
+   Quellen ist nur automatisch getestet (auf dem Testverbund sind alle
+   Quellen aus).
+4. **Efficio klein:** FTPS ist ungetestet. (Abbruch der Zustellung nach dem
+   ersten Fehler ist Absicht – Reihenfolge der Dateien; kein offener Punkt.)
+5. **MQTT klein:** Bei älterem Update-Agenten versucht der tägliche Lauf
    die nginx-Seite jeden Tag neu (harmlos).
-5. **Abnahmen durch den Anwender:** SNMP an echten Geräten, Omada an
-   echtem Controller, TIA-Baustein in PLCSIM, Datennetz mit echtem Tailnet.
-6. **Zurückgestellt (kein Auftrag):** Abteilungsfeinheiten Rüstzeiten,
+6. **Abnahmen durch den Anwender:** SNMP an echten Geräten, Omada an
+   echtem Controller, TIA-Baustein in PLCSIM, Datennetz mit echtem Tailnet,
+   SFTP mit Schlüssel an einem echten Server.
+7. **Zurückgestellt (kein Auftrag):** Abteilungsfeinheiten Rüstzeiten,
    Datennetz Paket 2/3, Buchungssystem/Lizenzen, Firmenstammdaten.
 
 Docker Desktop startet nach einem Neustart des Windows-Rechners nicht von

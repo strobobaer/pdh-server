@@ -10,6 +10,18 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.80.27] – 2026-11-18
+
+### Neu
+
+- Neue Seite **Administration → Netzwerk**: die Netze (VLANs mit Nummer, Adressbereich und Zweck) und die WLANs des Betriebs an einer Stelle. Andere Bereiche wählen künftig daraus, statt WLAN-Namen und Kennwörter selbst zu führen.
+- Handbuch: Kapitel „Netzwerk (VLANs und WLANs)“.
+
+### Sicherheit
+
+- Neue Rechte **Netzwerk: VLANs und WLANs pflegen** (`system.network`) und **… löschen** (`system.network_admin`, Bereichsadministrator). Pflegen dürfen automatisch alle Rollen, die die UniFi-Anbindung verwalten; löschen nur, wer zusätzlich Bereichsadministrator der Zertifikate ist.
+- WLAN-Kennwörter werden verschlüsselt gespeichert und nie angezeigt.
+
 ## [0.80.26] – 2026-11-18
 
 ### Neu

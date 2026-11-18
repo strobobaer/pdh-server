@@ -1532,6 +1532,33 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   {{template "hb-shots" (dict "Ref" (index $s "drives") "Can" $can)}}
 </section>
 
+<section class="hb-ch" id="netzwerk" data-title="Netzwerk (VLANs und WLANs)" data-pages="network">
+  <h2><i class="ti ti-network"></i> Netzwerk (VLANs und WLANs)</h2>
+  <p>Unter <b>Administration → Netzwerk</b> stehen die Netze und WLANs eures Betriebs an einer Stelle: welches Netz wofür da ist, welche VLAN-Nummer und welchen Adressbereich es hat und welche WLANs dazugehören. Andere Bereiche wählen daraus, statt WLAN-Namen und Kennwörter selbst zu führen – z. B. ein Messgerät, das in ein bestimmtes WLAN soll. Das PDH richtet damit <b>nichts</b> an Switches, Access Points oder der Firewall ein; die Seite ist ein Verzeichnis.</p>
+  <div class="hb-howto"><b><i class="ti ti-sitemap"></i> So trägst du ein Netz ein</b>
+    <ol class="hb-steps">
+      <li><b>Neues Netz</b> drücken und einen <b>Namen</b> eintragen, z. B. „Büro“, „Maschinen“ oder „Gäste“.</li>
+      <li>Wenn vorhanden die <b>VLAN-Nummer</b> (1 bis 4094) und den <b>Adressbereich</b> eintragen, z. B. <code>10.10.20.0/24</code>. Beides darf leer bleiben.</li>
+      <li>Bei <b>Zweck</b> kurz notieren, was in diesem Netz hängt. <b>Anlegen</b>.</li>
+    </ol>
+    Jede VLAN-Nummer und jeder Name kommt nur einmal vor.</div>
+  <div class="hb-howto"><b><i class="ti ti-wifi"></i> So trägst du ein WLAN ein</b>
+    <ol class="hb-steps">
+      <li><b>Neues WLAN</b> drücken und den <b>WLAN-Namen (SSID)</b> genau so eintragen, wie ihn die Geräte sehen (Groß- und Kleinschreibung zählt).</li>
+      <li>Das <b>Kennwort</b> eintragen (8 bis 63 Zeichen). Leer lassen nur bei einem offenen WLAN.</li>
+      <li>Bei <b>Netz</b> wählen, in welchem Netz das WLAN landet. <b>Versteckt</b> ankreuzen, wenn das WLAN seinen Namen nicht aussendet.</li>
+      <li><b>Anlegen</b>. Zum Ändern <b>Bearbeiten</b>: Bleibt das Kennwort-Feld leer, gilt das gespeicherte weiter.</li>
+    </ol>
+    Das Kennwort wird verschlüsselt gespeichert und <b>nie angezeigt</b> – auch nicht für Administratoren. Wer es nachlesen muss, schaut am Access Point oder im Controller nach.</div>
+  <h3>Rechte</h3>
+  <ul>
+    <li><b>Netzwerk: VLANs und WLANs pflegen</b> (<code>system.network</code>) – Seite sehen, Netze und WLANs anlegen und ändern. Es haben automatisch alle Rollen, die die UniFi-Anbindung verwalten dürfen.</li>
+    <li><b>Netzwerk: VLANs und WLANs löschen</b> (<code>system.network_admin</code>, Bereichsadministrator) – endgültig löschen. Wird ein Netz gelöscht, bleiben seine WLANs und stehen danach ohne Netz da.</li>
+  </ul>
+  <p>Auf dem Spiegelserver ist die Seite nur zum Lesen da.</p>
+  {{template "hb-shots" (dict "Ref" (index $s "netzwerk") "Can" $can)}}
+</section>
+
 <section class="hb-ch" id="server" data-title="Server-Einstellungen &amp; Ersteinrichtung" data-pages="server-config server-logs">
   <h2><i class="ti ti-adjustments-cog"></i> Server-Einstellungen &amp; Ersteinrichtung</h2>
   <p>Im Reiter <b>VPN</b> richtest du das WireGuard-VPN ins Maschinennetz ein (Dienst auf dem Server, Gateways, ausgehende Tunnel, alle Geräte) – siehe <a href="#hb-vpn-setup">VPN ins Maschinennetz</a>.</p>

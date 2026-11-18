@@ -102,6 +102,7 @@ var areaAdminPerm = map[string]string{
 	syncRef:    permSyncAdmin,    // Abgleich mit Fremdsystemen: Profile löschen
 	dataNetRef: permDataNetAdmin, // Datennetz: Clients endgültig entfernen
 	"snmp":     permSNMPAdmin,    // SNMP-Zugangsprofile: endgültig löschen
+	"network":  permNetworkAdmin, // Seite „Netzwerk“: VLANs und WLANs endgültig löschen
 }
 
 // isAreaAdmin: Bereichsadministrator für diesen Datensatz?
@@ -162,6 +163,9 @@ var gateRules = []gateRule{
 	gr(wPost, permCerts, "", false, `^/admin/server-config/certs/(?:settings|add|issue)$`),
 	gr(wPost, permUnifi, "", false, `^/admin/server-config/(?:unifi|unifi/confirm|certs/lan|certs/lan6)$`), // Reiter „UniFi“ und Namen im Haus
 	gr(wPost, permOmada, "", false, `^/admin/server-config/omada(?:/confirm|/check)?$`),                    // Reiter „Omada“
+	// Seite „Netzwerk“: löschen nur Bereichsadministrator, anlegen und ändern mit system.network
+	gr(wPost, permNetworkAdmin, "", false, `^/admin/network/(?:segments|wlans)`+gID+`/delete$`),
+	gr(wPost, permNetwork, "", false, `^/admin/network/(?:segments|wlans)(?:`+gID+`)?$`),
 	// Reiter „SNMP“: Profil löschen nur Bereichsadministrator, anlegen und ändern mit system.snmp
 	gr(wPost, permSNMPAdmin, "", false, `^/admin/server-config/snmp/profiles`+gID+`/delete$`),
 	gr(wPost, permSNMP, "", false, `^/admin/server-config/snmp/profiles(?:`+gID+`)?$`),
