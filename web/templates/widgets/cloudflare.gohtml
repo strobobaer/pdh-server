@@ -1,8 +1,8 @@
 {{/* Server-Einstellungen → Cloudflare: Stand von Cloudflare (DNS, Proxy, Verschlüsselung, Tunnel-Ziele).
      Wird per htmx nach #cf-panel geladen (internal/web/cloudflare_api.go). */}}
 {{define "cf-panel"}}
-{{if .Message}}<div class="sc-sub" style="margin-bottom:10px;color:var(--green)"><i class="ti ti-check"></i> {{.Message}}</div>{{end}}
-{{if .Error}}<div class="sc-sub" style="margin-bottom:10px;color:var(--red)"><i class="ti ti-alert-circle"></i> {{.Error}}</div>{{end}}
+{{if .Message}}<div class="sc-sub" data-act-result="ok" style="margin-bottom:10px;color:var(--green)"><i class="ti ti-check"></i> {{.Message}}</div>{{end}}
+{{if .Error}}<div class="sc-sub" data-act-result="err" style="margin-bottom:10px;color:var(--red)"><i class="ti ti-alert-circle"></i> {{.Error}}</div>{{end}}
 {{if .Zone}}
 <div class="sc-sub" style="margin-bottom:10px"><i class="ti ti-world"></i> Domain <b>{{.Zone}}</b>
   <button type="button" class="btn btn-small" style="margin-left:8px" hx-get="/admin/server-config/cloudflare/panel" hx-target="#cf-panel" hx-disabled-elt="this"><i class="ti ti-refresh"></i> Neu laden</button></div>
@@ -101,8 +101,8 @@
 {{if not .CanManage}}
 <p class="sc-sub">Zertifikate verwaltet, wer das Recht „Zertifikate verwalten (Let's Encrypt)“ (<code>system.certs</code>) hat.</p>
 {{else}}
-{{if .Msg}}<div class="sc-sub" style="margin-bottom:8px;color:var(--green)"><i class="ti ti-check"></i> {{.Msg}}</div>{{end}}
-{{if .Err}}<div class="sc-sub" style="margin-bottom:8px;color:var(--red)"><i class="ti ti-alert-circle"></i> {{.Err}}</div>{{end}}
+{{if .Msg}}<div class="sc-sub" data-act-result="ok" style="margin-bottom:8px;color:var(--green)"><i class="ti ti-check"></i> {{.Msg}}</div>{{end}}
+{{if .Err}}<div class="sc-sub" data-act-result="err" style="margin-bottom:8px;color:var(--red)"><i class="ti ti-alert-circle"></i> {{.Err}}</div>{{end}}
 {{if .Hint}}<p class="sc-sub"><i class="ti ti-info-circle"></i> Zertifikate holt das PDH über die Cloudflare-Anbindung. {{.Hint}}{{if .Lines}} Eingetragene Namen lassen sich trotzdem entfernen.{{end}}</p>
 {{else}}
 <p class="sc-sub" style="margin:0 0 8px">Für jeden Namen holt das PDH ein Zertifikat bei Let's Encrypt (Prüfung über einen DNS-Eintrag bei Cloudflare) und erneuert es 30 Tage vor Ablauf von selbst.</p>
@@ -229,9 +229,9 @@
      Lädt nur auf Knopfdruck; alles dazu braucht system.cloudflare. Daten: mtlsPanel. */}}
 {{define "mtls-panel"}}
 <div id="mtls-panel">
-{{if .Msg}}<div class="sc-sub" style="margin-bottom:8px;color:var(--green)"><i class="ti ti-check"></i> {{.Msg}}</div>{{end}}
+{{if .Msg}}<div class="sc-sub" data-act-result="ok" style="margin-bottom:8px;color:var(--green)"><i class="ti ti-check"></i> {{.Msg}}</div>{{end}}
 {{if .Warn}}<div class="sc-sub" style="margin-bottom:8px;color:var(--amber)"><i class="ti ti-alert-triangle"></i> {{.Warn}}</div>{{end}}
-{{if .Err}}<div class="sc-sub" style="margin-bottom:8px;color:var(--red)"><i class="ti ti-alert-circle"></i> {{.Err}}</div>{{end}}
+{{if .Err}}<div class="sc-sub" data-act-result="err" style="margin-bottom:8px;color:var(--red)"><i class="ti ti-alert-circle"></i> {{.Err}}</div>{{end}}
 {{if .Hint}}<p class="sc-sub"><i class="ti ti-info-circle"></i> {{.Hint}}</p>
 {{else}}
 <div class="sc-sub" style="margin-bottom:8px"><i class="ti ti-world"></i> Domain <b>{{.Zone}}</b>

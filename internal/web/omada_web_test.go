@@ -680,3 +680,13 @@ func TestMigration166Grants(t *testing.T) {
 		t.Errorf("Recht doppelt oder weg: %d %v", perms, err)
 	}
 }
+
+// Der Standortname geht in eine Chat-Meldung: Auszeichnungszeichen fallen weg.
+func TestOmadaSitePlain(t *testing.T) {
+	if got := omadaSitePlain("**Werk** [x](http://a) <b>1</b>"); got != "Werk xhttp://a b1/b" {
+		t.Errorf("omadaSitePlain: %q", got)
+	}
+	if got := omadaSitePlain("Werk Süd-2"); got != "Werk Süd-2" {
+		t.Errorf("gewöhnlicher Name verändert: %q", got)
+	}
+}

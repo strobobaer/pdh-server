@@ -10,6 +10,19 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.80.25] – 2026-11-18
+
+### Geändert
+
+- Netz-Abgleich: Sehen UniFi und Omada denselben Client (gleiche MAC-Adresse), steht er nur noch einmal in der Liste der Vorschläge. **Ausblenden** und **Zurückholen** gelten für den Client, egal aus welcher Quelle er stammt.
+- Netz-Abgleich: Vorschläge einer ausgeschalteten Quelle erscheinen nicht mehr in der Liste und zählen nicht mehr mit. Sie bleiben gespeichert und sind wieder da, sobald die Quelle eingeschaltet wird.
+
+### Behoben
+
+- Eingebauter MQTT-Broker: War der TLS-Port schon von einem anderen Programm belegt, startete der ganze Broker nicht. Jetzt laufen die übrigen Ports weiter; die Prüfliste nennt in der Zeile **TLS-Port (mqtts)** den Grund.
+- Broker-Status: Nach einem Knopf der Prüfliste konnte die Meldung eines anderen Eintrags erscheinen (z. B. der alte Fehler eines anderen Zertifikats). Jetzt zeigt die Prüfliste nur das Ergebnis der eigenen Aktion.
+- Omada: Sonderzeichen im Standortnamen konnten die Chat-Meldung „Omada-Anbindung geändert“ verunstalten. Die Meldung nennt den Namen jetzt ohne diese Zeichen.
+
 ## [0.80.24] – 2026-11-17
 
 ### Behoben

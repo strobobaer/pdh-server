@@ -721,7 +721,8 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <ul>
       <li>Die Verbindung richtest du in den <b>Server-Einstellungen</b> im Reiter <b>Omada</b> ein (<a href="#hb-omada">So bindest du einen Omada-Controller an</a>). Danach auf der Seite <b>Netz-Abgleich</b> den Schalter für Omada einschalten.</li>
       <li>Switches, Access Points und Gateways aus Omada werden IT-Assets mit dem Hersteller <b>TP-Link</b>. Verbundene Geräte (Clients) erscheinen nur als Vorschläge – wie bei UniFi.</li>
-      <li>Die Liste der <b>Vorschläge</b> gilt für UniFi und Omada; die Spalte <b>Quelle</b> zeigt, woher ein Vorschlag stammt.</li>
+      <li>Die Liste der <b>Vorschläge</b> gilt für UniFi und Omada; die Spalte <b>Quelle</b> zeigt, woher ein Vorschlag stammt. Sehen beide Quellen denselben Client (gleiche MAC-Adresse), steht er nur einmal in der Liste.</li>
+      <li>Schaltest du eine Quelle aus, verschwinden ihre Vorschläge aus der Liste. Sie bleiben gespeichert und sind wieder da, wenn du die Quelle einschaltest.</li>
       <li>Bei Omada-Geräten gibt es <b>keine Anschluss-Tabelle</b> (Ports) und <b>keinen Hinweis „Update verfügbar“</b>.</li>
       <li>Meldet Omada einen Zustand, den das PDH nicht kennt, gilt das Gerät als „unbekannt“. Ein unbekannter Zustand löst <b>nie</b> ein Ausfall-Ticket aus.</li>
       <li>Kennt das PDH ein Gerät schon aus einer anderen Quelle (gleiche MAC-Adresse, z. B. ein Omada-Access-Point an einem UniFi-Switch), erscheint es nicht noch einmal als Vorschlag – es entsteht kein zweites Asset.</li>
@@ -756,7 +757,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <ol class="hb-steps">
       <li>Auf der Seite <b>Netz-Abgleich</b> die Liste der <b>Vorschläge</b> öffnen. Clients (PCs, Drucker, Telefone …) werden nie von allein angelegt. Vorschläge kommen aus UniFi und Omada; SNMP liefert keine.</li>
       <li><b>Übernehmen</b> wählen und die <b>Kategorie</b> angeben (angeboten werden alle aktiven Kategorien außer Netzwerk). Ob das Gerät überwacht startet, steht in der Kategorie unter <b>Überwachen</b> (siehe <a href="#it-categories">IT-Kategorien</a>). Ab Werk starten Workstation, Telefon und Tablet unüberwacht, alle anderen werden überwacht.</li>
-      <li>Oder <b>Ausblenden</b>: Der Client verschwindet aus der Liste und steht im Reiter <b>Ausgeblendet</b>, von wo du ihn zurückholen kannst. Vorschläge, die 30 Tage nicht mehr gesehen wurden, fallen von selbst weg.</li>
+      <li>Oder <b>Ausblenden</b>: Der Client verschwindet aus der Liste und steht im Reiter <b>Ausgeblendet</b>, von wo du ihn zurückholen kannst. Das gilt für den Client, auch wenn ihn beide Quellen sehen. Vorschläge, die 30 Tage nicht mehr gesehen wurden, fallen von selbst weg.</li>
     </ol>
     Dafür brauchst du das Recht „Netz-Abgleich einrichten und Vorschläge übernehmen“ (<code>it.netsync</code>); es haben automatisch alle Rollen, die IT-Assets bearbeiten dürfen.</div>
   <div class="hb-howto"><b><i class="ti ti-alert-triangle"></i> So löst du ein Ausfall-Ticket</b>
@@ -2202,7 +2203,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <li><b>Zertifikat</b> – fehlt, wird geholt, gültig bis … oder die Fehlermeldung von Let's Encrypt. Ein Zertifikat gibt es nur, wenn Cloudflare eingerichtet ist (die Prüfung läuft über den DNS-Eintrag) und der Name in eurer Domain liegt.</li>
     <li><b>Name im Haus</b> – zeigt der Name im Firmennetz auf diesen Server? Sonst gehen Geräte im Haus den Umweg über das Internet oder finden den Broker gar nicht. Mit UniFi zählt der Eintrag an der UDM Pro – auch wenn der Server selbst zusätzlich einen DNS außerhalb des Hauses fragt. Zeigt der Name über IPv6 weiter nach außen, steht das als Hinweis dabei: Geräte, die IPv6 bevorzugen, erreichen <code>mqtt</code> und <code>mqtts</code> dann nicht.</li>
     <li><b>Tunnel (von außen)</b> – Ziel im Cloudflare-Tunnel und DNS-Eintrag. Dieselbe Zeile steht als <b>MQTT</b> in den Server-Einstellungen im Reiter Cloudflare-Tunnel.</li>
-    <li><b>TLS-Port (mqtts)</b> – läuft, ist aus oder wartet auf das Zertifikat.</li>
+    <li><b>TLS-Port (mqtts)</b> – läuft, ist aus oder wartet auf das Zertifikat. Ist der Port schon von einem anderen Programm belegt, steht das hier; die übrigen Ports des Brokers laufen trotzdem. Dann einen anderen TLS-Port eintragen und die Verbindung speichern.</li>
     <li><b>WebSocket über 443 (wss)</b> – das PDH schreibt dafür eine eigene nginx-Seite. Auch auf dem zweiten Server des Verbunds; nach einem Rollentausch zieht er sie innerhalb weniger Minuten nach.</li>
     <li><b>Firewall am Server</b> – lässt die Firewall des Servers (ufw) den MQTT-Port und den TLS-Port durch? Diese Zeile gibt es auch bei einem Broker ohne eigenen Namen.</li>
   </ul>

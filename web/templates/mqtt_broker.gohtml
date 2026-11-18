@@ -133,11 +133,13 @@ async function mqttCheckPost(path, fields){
   const text = await res.text();
   if(res.status === 403) return {err: 'Dafür fehlt dir das Recht.'};
   const doc = new DOMParser().parseFromString(text, 'text/html');
-  const bad = doc.querySelector('.ti-alert-circle');
-  if(bad && bad.parentElement) return {err: bad.parentElement.textContent.trim()};
+  // Nur die Meldung der Aktion selbst zählt (data-act-result) – nicht ein Fehler,
+  // der in derselben Karte zu etwas anderem steht (z. B. ein anderes Zertifikat).
+  const bad = doc.querySelector('[data-act-result="err"]');
+  if(bad) return {err: bad.textContent.trim()};
   if(!res.ok) return {err: 'Fehler ' + res.status};
-  const ok = doc.querySelector('.ti-check');
-  return {msg: ok && ok.parentElement ? ok.parentElement.textContent.trim() : ''};
+  const ok = doc.querySelector('[data-act-result="ok"]');
+  return {msg: ok ? ok.textContent.trim() : ''};
 }
 async function mqttCheckAct(btn){
   const d = btn.dataset, box = document.getElementById('mqtt-checklist');
