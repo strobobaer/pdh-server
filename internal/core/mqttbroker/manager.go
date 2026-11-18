@@ -399,9 +399,12 @@ func (m *Manager) UnsubscribeAllTopics(id string) {
 // keinen zweiten Auth-Hook geben: bei mochi genügt das „ja“ irgendeines
 // Hooks, ein zweiter könnte nichts mehr einschränken.
 //   - Benutzername "esppdh-…": nur Gerätezugänge (auch bei anonymem Broker),
-//     Schreiben und Lesen nur unter dem eigenen Thema (devices.go).
+//     Client-ID gleich Benutzername, Schreiben und Lesen nur unter dem
+//     eigenen Thema (devices.go).
 //   - sonst anonym (allowAnonymous) bzw. das eine Zugangsdaten-Paar aus der
-//     Broker-Konfiguration, beides wie bisher ohne Einschränkung der Themen.
+//     Broker-Konfiguration, beides wie bisher ohne Einschränkung der Themen,
+//     aber nie mit einer Client-ID "esppdh-…": gleiche ID übernähme die
+//     Sitzung des Geräts und trennte es.
 type pdhAuthHook struct {
 	mqtt.HookBase
 	allowAnonymous bool
@@ -417,8 +420,11 @@ func (h *pdhAuthHook) Provides(b byte) bool {
 }
 
 func (h *pdhAuthHook) OnConnectAuthenticate(cl *mqtt.Client, pk packets.Packet) bool {
-	if isDeviceUsername(string(pk.Connect.Username)) {
+	if hasDevicePrefix(string(pk.Connect.Username)) {
 		return h.devices.authenticate(pk)
+	}
+	if hasDevicePrefix(pk.Connect.ClientIdentifier) {
+		return false
 	}
 	if h.allowAnonymous {
 		return true
@@ -429,7 +435,7 @@ func (h *pdhAuthHook) OnConnectAuthenticate(cl *mqtt.Client, pk packets.Packet) 
 
 func (h *pdhAuthHook) OnACLCheck(cl *mqtt.Client, topic string, write bool) bool {
 	username := string(cl.Properties.Username)
-	if !isDeviceUsername(username) {
+	if !hasDevicePrefix(username) {
 		return true
 	}
 	return h.devices.allowed(username, topic, write)

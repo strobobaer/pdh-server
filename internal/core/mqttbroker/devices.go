@@ -29,8 +29,9 @@ type deviceAccounts struct {
 	byUser map[string]DeviceAccount
 }
 
-func isDeviceUsername(username string) bool {
-	return strings.HasPrefix(username, deviceUserPrefix)
+// hasDevicePrefix meldet Benutzernamen und Client-IDs, die Geräten gehören.
+func hasDevicePrefix(name string) bool {
+	return strings.HasPrefix(name, deviceUserPrefix)
 }
 
 func (d *deviceAccounts) get(username string) (DeviceAccount, bool) {
@@ -47,7 +48,7 @@ func (d *deviceAccounts) get(username string) (DeviceAccount, bool) {
 func (d *deviceAccounts) replace(accts []DeviceAccount) map[string]struct{} {
 	next := make(map[string]DeviceAccount, len(accts))
 	for _, a := range accts {
-		if isDeviceUsername(a.Username) {
+		if hasDevicePrefix(a.Username) {
 			next[a.Username] = a
 		}
 	}
@@ -65,12 +66,17 @@ func (d *deviceAccounts) replace(accts []DeviceAccount) map[string]struct{} {
 	return stale
 }
 
-// authenticate prüft die Anmeldung eines Geräts. Der Letzte Wille ist eine
-// spätere Veröffentlichung, die mochi nicht über OnACLCheck prüft – liegt er
-// unter fremdem Thema, wird schon die Anmeldung abgelehnt.
+// authenticate prüft die Anmeldung eines Geräts. Zwei Wege an OnACLCheck
+// vorbei werden schon hier geschlossen:
+//   - Client-ID: Bei gleicher ID übernimmt mochi die Sitzung eines anderen
+//     Clients – trennt ihn und stellt dessen vorgemerkte Nachrichten ohne
+//     Rechteprüfung zu. Ein Gerät muss deshalb seinen Benutzernamen als
+//     Client-ID nutzen.
+//   - Letzter Wille: eine spätere Veröffentlichung; liegt er unter fremdem
+//     Thema, wird die Anmeldung abgelehnt.
 func (d *deviceAccounts) authenticate(pk packets.Packet) bool {
 	a, ok := d.get(string(pk.Connect.Username))
-	if !ok || a.Password == "" {
+	if !ok || a.Password == "" || pk.Connect.ClientIdentifier != a.Username {
 		return false
 	}
 	if subtle.ConstantTimeCompare(pk.Connect.Password, []byte(a.Password)) != 1 {
@@ -157,7 +163,7 @@ func (m *Manager) SetDeviceAccounts(id string, accts []DeviceAccount) {
 // DeviceOnline meldet, ob ein Gerät mit diesem Benutzernamen gerade mit dem
 // Broker id verbunden ist.
 func (m *Manager) DeviceOnline(id, username string) bool {
-	if !isDeviceUsername(username) {
+	if !hasDevicePrefix(username) {
 		return false
 	}
 	m.mu.Lock()

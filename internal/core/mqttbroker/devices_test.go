@@ -7,6 +7,7 @@ import (
 	"time"
 
 	paho "github.com/eclipse/paho.mqtt.golang"
+	mqtt "github.com/mochi-mqtt/server/v2"
 )
 
 const devID = "geraete"
@@ -115,7 +116,7 @@ func TestDeviceLoginAndOwnTopic(t *testing.T) {
 	haupt, _ := mustDial(t, addr, "haupt", "pdh", "geheim")
 	got := collect(t, haupt, "#")
 
-	dev, _ := mustDial(t, addr, "geraet-a", "esppdh-a", "pw")
+	dev, _ := mustDial(t, addr, "esppdh-a", "esppdh-a", "pw")
 	send(t, dev, "esppdh/a/status")
 	expectTopic(t, got, "esppdh/a/status")
 }
@@ -125,7 +126,7 @@ func TestDeviceForeignTopicDropped(t *testing.T) {
 	haupt, _ := mustDial(t, addr, "haupt", "pdh", "geheim")
 	got := collect(t, haupt, "#")
 
-	dev, _ := mustDial(t, addr, "geraet-a", "esppdh-a", "pw")
+	dev, _ := mustDial(t, addr, "esppdh-a", "esppdh-a", "pw")
 	send(t, dev, "esppdh/b/status")
 	send(t, dev, "werk/linie1/takt")
 	expectNothing(t, got, 500*time.Millisecond)
@@ -138,7 +139,7 @@ func TestDeviceForeignTopicDropped(t *testing.T) {
 func TestDeviceCannotReadOthers(t *testing.T) {
 	_, addr := startDeviceBroker(t, false)
 	haupt, _ := mustDial(t, addr, "haupt", "pdh", "geheim")
-	dev, _ := mustDial(t, addr, "geraet-a", "esppdh-a", "pw")
+	dev, _ := mustDial(t, addr, "esppdh-a", "esppdh-a", "pw")
 	got := collect(t, dev, "#")
 
 	// ein Abo, das nichts unter esppdh/a/ treffen kann, lehnt der Broker ab
@@ -159,14 +160,14 @@ func TestDeviceCannotReadOthers(t *testing.T) {
 
 func TestDeviceWrongPassword(t *testing.T) {
 	_, addr := startDeviceBroker(t, false)
-	if _, _, err := dial(t, addr, "geraet-a", "esppdh-a", "falsch"); err == nil {
+	if _, _, err := dial(t, addr, "esppdh-a", "esppdh-a", "falsch"); err == nil {
 		t.Fatal("Anmeldung mit falschem Kennwort gelungen")
 	}
-	if _, _, err := dial(t, addr, "geraet-x", "esppdh-x", "pw"); err == nil {
+	if _, _, err := dial(t, addr, "esppdh-x", "esppdh-x", "pw"); err == nil {
 		t.Fatal("Anmeldung ohne Gerätezugang gelungen")
 	}
 	// Hauptkennwort öffnet keinen Gerätezugang
-	if _, _, err := dial(t, addr, "geraet-a2", "esppdh-a", "geheim"); err == nil {
+	if _, _, err := dial(t, addr, "esppdh-a", "esppdh-a", "geheim"); err == nil {
 		t.Fatal("Anmeldung als Gerät mit dem Hauptkennwort gelungen")
 	}
 }
@@ -200,13 +201,13 @@ func TestAnonymousBrokerStillChecksDevices(t *testing.T) {
 	send(t, other, "esppdh/b/status")
 	expectTopic(t, got, "esppdh/b/status")
 
-	if _, _, err := dial(t, addr, "geraet-a-falsch", "esppdh-a", "falsch"); err == nil {
+	if _, _, err := dial(t, addr, "esppdh-a", "esppdh-a", "falsch"); err == nil {
 		t.Fatal("Gerät mit falschem Kennwort am anonymen Broker angemeldet")
 	}
-	if _, _, err := dial(t, addr, "geraet-a-leer", "esppdh-a", ""); err == nil {
+	if _, _, err := dial(t, addr, "esppdh-a", "esppdh-a", ""); err == nil {
 		t.Fatal("Gerät ohne Kennwort am anonymen Broker angemeldet")
 	}
-	dev, _ := mustDial(t, addr, "geraet-a", "esppdh-a", "pw")
+	dev, _ := mustDial(t, addr, "esppdh-a", "esppdh-a", "pw")
 	send(t, dev, "werk/y")
 	send(t, dev, "esppdh/a/status")
 	expectTopic(t, got, "esppdh/a/status")
@@ -214,7 +215,7 @@ func TestAnonymousBrokerStillChecksDevices(t *testing.T) {
 
 func TestRemoveAccountDisconnects(t *testing.T) {
 	m, addr := startDeviceBroker(t, false)
-	_, lost := mustDial(t, addr, "geraet-a", "esppdh-a", "pw")
+	_, lost := mustDial(t, addr, "esppdh-a", "esppdh-a", "pw")
 	if !m.DeviceOnline(devID, "esppdh-a") {
 		t.Fatal("verbundenes Gerät gilt nicht als online")
 	}
@@ -228,7 +229,7 @@ func TestRemoveAccountDisconnects(t *testing.T) {
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	if _, _, err := dial(t, addr, "geraet-a-neu", "esppdh-a", "pw"); err == nil {
+	if _, _, err := dial(t, addr, "esppdh-a", "esppdh-a", "pw"); err == nil {
 		t.Fatal("Wiederanmeldung nach Entfernen des Zugangs gelungen")
 	}
 }
@@ -238,8 +239,8 @@ func TestDevicePasswordChangeDisconnects(t *testing.T) {
 	m, addr := startDeviceBroker(t, false)
 	devB := DeviceAccount{Username: "esppdh-b", Password: "pw-b", TopicPrefix: "esppdh/b/"}
 	m.SetDeviceAccounts(devID, []DeviceAccount{devA, devB})
-	_, lostA := mustDial(t, addr, "geraet-a", "esppdh-a", "pw")
-	b, lostB := mustDial(t, addr, "geraet-b", "esppdh-b", "pw-b")
+	_, lostA := mustDial(t, addr, "esppdh-a", "esppdh-a", "pw")
+	b, lostB := mustDial(t, addr, "esppdh-b", "esppdh-b", "pw-b")
 
 	m.SetDeviceAccounts(devID, []DeviceAccount{{Username: "esppdh-a", Password: "neu", TopicPrefix: "esppdh/a/"}, devB})
 	expectLost(t, lostA, "esppdh-a")
@@ -251,10 +252,10 @@ func TestDevicePasswordChangeDisconnects(t *testing.T) {
 	if !b.IsConnected() || !m.DeviceOnline(devID, "esppdh-b") {
 		t.Fatal("Gerät mit unverändertem Zugang ist nicht mehr verbunden")
 	}
-	if _, _, err := dial(t, addr, "geraet-a-alt", "esppdh-a", "pw"); err == nil {
+	if _, _, err := dial(t, addr, "esppdh-a", "esppdh-a", "pw"); err == nil {
 		t.Fatal("Anmeldung mit altem Kennwort gelungen")
 	}
-	mustDial(t, addr, "geraet-a-neu", "esppdh-a", "neu")
+	mustDial(t, addr, "esppdh-a", "esppdh-a", "neu")
 }
 
 func TestDeviceAccountsSurviveRestart(t *testing.T) {
@@ -263,21 +264,117 @@ func TestDeviceAccountsSurviveRestart(t *testing.T) {
 	if err := m.Restart(devID, Config{ListenPort: port, Username: "pdh", Password: "geheim"}); err != nil {
 		t.Fatal(err)
 	}
-	mustDial(t, fmt.Sprintf("tcp://127.0.0.1:%d", port), "geraet-a", "esppdh-a", "pw")
+	mustDial(t, fmt.Sprintf("tcp://127.0.0.1:%d", port), "esppdh-a", "esppdh-a", "pw")
 }
 
 // Der Letzte Wille ist eine spätere Veröffentlichung: auch er nur unter dem eigenen Thema.
 func TestDeviceForeignWillRejected(t *testing.T) {
 	_, addr := startDeviceBroker(t, false)
-	if _, _, err := dial(t, addr, "geraet-a-wille", "esppdh-a", "pw", func(o *paho.ClientOptions) {
+	if _, _, err := dial(t, addr, "esppdh-a", "esppdh-a", "pw", func(o *paho.ClientOptions) {
 		o.SetWill("werk/linie1/takt", "weg", 0, false)
 	}); err == nil {
 		t.Fatal("Gerät mit Letztem Willen auf fremdem Thema angemeldet")
 	}
 	// ohne Retain: der Test-Broker hat Retain aus und lehnt einen Willen mit Retain ab
-	mustDial(t, addr, "geraet-a", "esppdh-a", "pw", func(o *paho.ClientOptions) {
+	mustDial(t, addr, "esppdh-a", "esppdh-a", "pw", func(o *paho.ClientOptions) {
 		o.SetWill("esppdh/a/status", "offline", 0, false)
 	})
+}
+
+// waitSession wartet bis zu 3 s, bis die Sitzung clientID am Test-Broker cond erfüllt.
+func waitSession(t *testing.T, m *Manager, clientID, what string, cond func(*mqtt.Client) bool) {
+	t.Helper()
+	m.mu.Lock()
+	rb := m.brokers[devID]
+	m.mu.Unlock()
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		if cl, ok := rb.server.Clients.Get(clientID); ok && cond(cl) {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("Sitzung %s: %s", clientID, what)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// Gleiche Client-ID heißt bei mochi: Sitzung übernehmen – den Inhaber trennen
+// und dessen vorgemerkte Nachrichten ohne Rechteprüfung zustellen. Ein Gerät
+// darf deshalb nur seinen Benutzernamen als Client-ID nutzen.
+func TestDeviceCannotTakeOverForeignSession(t *testing.T) {
+	m, addr := startDeviceBroker(t, false)
+	got := make(chan string, 8)
+	persistent := func(o *paho.ClientOptions) {
+		o.SetCleanSession(false)
+		o.SetDefaultPublishHandler(func(_ paho.Client, msg paho.Message) { got <- msg.Topic() })
+	}
+
+	// dauerhafte Sitzung des Hauptzugangs (z. B. Steuerung) mit Abo, dann offline
+	sps, _ := mustDial(t, addr, "sps-dauer", "pdh", "geheim", persistent)
+	if tok := sps.Subscribe("werk/#", 1, nil); !tok.WaitTimeout(3*time.Second) || tok.Error() != nil {
+		t.Fatalf("Abo werk/#: %v", tok.Error())
+	}
+	sps.Disconnect(50)
+	waitSession(t, m, "sps-dauer", "nicht offline", (*mqtt.Client).Closed)
+
+	// QoS-1-Nachricht, die der Broker für die abwesende Sitzung vormerkt
+	pub, lostPub := mustDial(t, addr, "haupt-pub", "pdh", "geheim")
+	if tok := pub.Publish("werk/x", 1, false, "x"); !tok.WaitTimeout(3*time.Second) || tok.Error() != nil {
+		t.Fatalf("Veröffentlichen auf werk/x: %v", tok.Error())
+	}
+	waitSession(t, m, "sps-dauer", "keine vorgemerkte Nachricht", func(cl *mqtt.Client) bool { return cl.State.Inflight.Len() > 0 })
+
+	if _, _, err := dial(t, addr, "sps-dauer", "esppdh-a", "pw", persistent); err == nil {
+		t.Fatal("Gerät hat die Sitzung eines anderen Clients übernommen")
+	}
+	if _, _, err := dial(t, addr, "esppdh-b", "esppdh-a", "pw"); err == nil {
+		t.Fatal("Gerät mit der Client-ID eines anderen Geräts angemeldet")
+	}
+	if _, _, err := dial(t, addr, "", "esppdh-a", "pw"); err == nil {
+		t.Fatal("Gerät ohne Client-ID angemeldet")
+	}
+	// ein verbundener Client wird nicht über seine ID getrennt
+	if _, _, err := dial(t, addr, "haupt-pub", "esppdh-a", "pw"); err == nil {
+		t.Fatal("Gerät mit der Client-ID eines verbundenen Clients angemeldet")
+	}
+	select {
+	case <-lostPub:
+		t.Fatal("Gerät hat einen verbundenen Client über dessen ID getrennt")
+	case <-time.After(300 * time.Millisecond):
+	}
+
+	// die vorgemerkte Nachricht wartet weiter auf ihren Inhaber
+	mustDial(t, addr, "sps-dauer", "pdh", "geheim", persistent)
+	expectTopic(t, got, "werk/x")
+}
+
+// Umgekehrt gehören Client-IDs "esppdh-…" den Geräten: Hauptzugang und anonyme
+// Clients dürfen sie nicht nutzen, sonst trennten sie das Gerät und übernähmen
+// seine Sitzung.
+func TestNonDeviceCannotUseDeviceClientID(t *testing.T) {
+	for _, anonymous := range []bool{false, true} {
+		t.Run(fmt.Sprintf("anonym=%v", anonymous), func(t *testing.T) {
+			_, addr := startDeviceBroker(t, anonymous)
+			_, lost := mustDial(t, addr, "esppdh-a", "esppdh-a", "pw")
+			if _, _, err := dial(t, addr, "esppdh-a", "pdh", "geheim"); err == nil {
+				t.Fatal("Hauptzugang mit Geräte-Client-ID angemeldet")
+			}
+			if _, _, err := dial(t, addr, "esppdh-neu", "pdh", "geheim"); err == nil {
+				t.Fatal("Hauptzugang mit Client-ID esppdh-… angemeldet")
+			}
+			if anonymous {
+				if _, _, err := dial(t, addr, "esppdh-a", "", ""); err == nil {
+					t.Fatal("anonymer Client mit Geräte-Client-ID angemeldet")
+				}
+			}
+			select {
+			case <-lost:
+				t.Fatal("Gerät wurde über seine Client-ID getrennt")
+			case <-time.After(300 * time.Millisecond):
+			}
+		})
+	}
 }
 
 func TestDeviceTopicRules(t *testing.T) {
