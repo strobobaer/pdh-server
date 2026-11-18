@@ -187,6 +187,7 @@ type ServerConfigData struct {
 	Omada          omadaTab        // Reiter „Omada“: Anbindung an den Omada-Controller (omada_web.go), nur mit system.omada
 	SNMP           snmpTab         // Reiter „SNMP“: Zugangsprofile für den Netz-Abgleich (snmp_web.go), nur mit system.snmp
 	DR             drView          // Reiter „Ausfallschutz“ (dr.go), nur geladen wenn geöffnet
+	ESPPDH         esppdhPanel     // Reiter „ESPPDH“ (esppdh_settings.go), nur geladen wenn geöffnet
 	AgentReady     bool            // Update-Agent kann .env.docker bereinigen
 	NCTheme        ncTheme         // Reiter Nextcloud: Erscheinungsbild übernehmen (nextcloud_theming.go)
 	NCAdmin        ncAdminView     // Reiter Nextcloud: Dienstkonto des PDH (nextcloud_admin.go)
@@ -301,6 +302,9 @@ func (h *Handler) ServerConfigPage(w http.ResponseWriter, r *http.Request) {
 		u := getUser(r)
 		d.DR.HA.CanConfirmUpdate, d.DR.HA.CanAbortUpdate = h.maintMayAct(u)
 		d.DR.HA.MirrorCan, d.DR.HA.MirrorAdmin = h.maintMayWindow(r, permFileMirror), h.maintMayWindow(r, permFileMirrorAdmin)
+	}
+	if d.Tab == "esppdh" { // ruft „esphome version“ auf – nur wenn der Reiter offen ist
+		d.ESPPDH = h.esppdhPanelFor(r.Context())
 	}
 	h.fillEnvTakeover(r.Context(), &d)
 	d.NCTheme = h.nextcloudTheme()

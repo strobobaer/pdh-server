@@ -306,6 +306,18 @@ else
             echo "WARNING: pdh-ha-Update fehlgeschlagen – siehe Ausgabe oben" >&2
         fi
     fi
+    # ESPPDH (ESPHome): nur wenn eingerichtet (scripts/install-esphome.sh) – bringt die Umgebung auf die
+    # Version aus scripts/esphome.version. Vor dem Agent-Neustart und per systemd-run außerhalb von
+    # Agent-cgroup und -Sandbox (pip kann Minuten dauern). Ein Fehler ist nur eine Warnung.
+    if [[ -x /opt/pdh-esphome/bin/esphome ]]; then
+        if command -v systemd-run >/dev/null 2>&1; then
+            systemd-run --wait --pipe --collect --quiet --unit=pdh-esphome-update-$(date +%s) bash "$repo_dir/scripts/install-esphome.sh" \
+                || echo "WARNING: ESPHome konnte nicht aktualisiert werden – Update trotzdem fertig." >&2
+        else
+            bash "$repo_dir/scripts/install-esphome.sh" \
+                || echo "WARNING: ESPHome konnte nicht aktualisiert werden – Update trotzdem fertig." >&2
+        fi
+    fi
     if install -m 0755 "$repo_dir/bin/update-agent" "$agent_bin"; then
         systemd-run --quiet --unit=pdh-update-agent-restart --on-active=5s systemctl restart pdh-update-agent
     else
