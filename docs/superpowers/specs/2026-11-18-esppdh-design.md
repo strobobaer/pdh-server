@@ -219,5 +219,18 @@ auf neue Platine).
    die für die Bausteine erlaubten Anschlüsse (z. B. welche Pins analog
    messen können) und warnt bei einer unpassenden Wahl; bei „Andere Platine“
    entfällt diese Prüfung. Ethernet-Platinen gehören damit zu Paket 1.
-7. **Netz der Geräte:** eigenes WLAN/VLAN für die Geräte oder das Betriebs-WLAN?
-   (Bestimmt die Vorgabe für neue Geräte und die Hinweise im Handbuch.)
+7. **Netz der Geräte – entschieden am 18.11.2026: „alles“.** Geräte hängen
+   im Betriebs-WLAN, in einem eigenen WLAN/VLAN oder am Kabel. Folgen:
+   - **Netz-Profile** statt eines festen WLAN: In den ESPPDH-Einstellungen
+     legt man mehrere Netze an (Name, WLAN-Name, Kennwort verschlüsselt,
+     oder „Kabel“). Jedes Gerät wählt sein Profil; ein geändertes Kennwort
+     gilt für alle Geräte des Profils und markiert sie als „Firmware veraltet“.
+   - **Erreichbarkeit des Brokers je Profil:** Aus einem eigenen VLAN muss
+     der Broker-Name auflösbar und der MQTT- bzw. TLS-Port durch die
+     Firewall des Netzes erlaubt sein. Das PDH kann das nicht selbst prüfen;
+     die Geräteseite nennt die nötige Freigabe, und ein Gerät, das sich nach
+     dem Flashen nie meldet, bekommt genau diesen Hinweis.
+   - **Notzugang:** Findet ein Gerät sein WLAN nicht, öffnet es ein eigenes
+     Einrichtungs-WLAN mit gerätespezifischem Kennwort (auf der Geräteseite
+     sichtbar für `esppdh.edit`), damit es ohne Ausbau umgezogen werden kann.
+   - Kabel-Geräte (Ethernet) gehören zu Paket 1 (siehe Punkt 6).
