@@ -26,8 +26,8 @@
         <div class="form-group"><label class="form-label" for="esp-name">Name *</label>
           <input id="esp-name" name="name" class="form-input" required maxlength="120" value="{{.Form.Name}}" placeholder="z. B. Presse 3 – Stromzähler"></div>
         <div class="form-group"><label class="form-label" for="esp-slug">Kennung</label>
-          <input id="esp-slug" name="slug" class="form-input esp-mono" maxlength="32" pattern="[a-z0-9\-]{3,32}" value="{{.Form.Slug}}" placeholder="z. B. presse3-strom">
-          <div class="esp-help">3–32 Zeichen: a–z, 0–9 und „-“. Steht im Thema und im Zugang und bleibt fest. Leer = aus dem Namen.</div></div>
+          <input id="esp-slug" name="slug" class="form-input esp-mono" maxlength="32" pattern="[a-z0-9][a-z0-9\-]{1,30}[a-z0-9]" value="{{.Form.Slug}}" placeholder="z. B. presse3-strom">
+          <div class="esp-help">3–32 Zeichen: a–z, 0–9 und „-“ (nicht am Anfang oder Ende). Steht im Thema und im Zugang und bleibt fest. Leer = aus dem Namen.</div></div>
       </div>
       {{template "infra-tree-picker" (dict "TargetID" "esp-infra-id" "SelectedLabelID" "esp-infra-selected" "Label" "Anlage *" "Required" true "Value" .Form.InfraID "SelectedLabel" .Form.InfraLabel)}}
       {{template "esppdh-device-fields" (dict "F" .Form "C" .Choices "P" "new" "PlainPort" .PlainPort)}}

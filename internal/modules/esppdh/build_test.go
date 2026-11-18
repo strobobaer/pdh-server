@@ -31,7 +31,12 @@ const (
 	testOddCpp    = `Pa\042ss\134w\303\266rt`
 )
 
-// helperArgs: Argumente des Aufrufs nach „--“ (z. B. compile geraet.yaml).
+// helperMark: erstes Argument nach „--“ – so erkennt sich das Testprogramm als Attrappe. Die
+// Einstellungen der Attrappe kommen als Argumente, weil Build ESPHome nur eine knappe Umgebung
+// mitgibt (Variablen des Tests kämen nicht an).
+const helperMark = "esphome-attrappe"
+
+// helperArgs: Argumente des Aufrufs nach „--“.
 func helperArgs() []string {
 	for i, a := range os.Args {
 		if a == "--" {
@@ -41,14 +46,14 @@ func helperArgs() []string {
 	return nil
 }
 
-// TestHelperEsphomeBuild ist kein Test, sondern die Attrappe von „esphome compile …“.
+// TestHelperEsphomeBuild ist kein Test, sondern die Attrappe von „esphome compile …“. Aufruf:
+// -- esphome-attrappe <modus> <ablage> <kennwort> <argumente von ESPHome …>
 func TestHelperEsphomeBuild(t *testing.T) {
-	mode := os.Getenv("PDH_ESPHOME_BUILD_HELPER")
-	if mode == "" {
+	all := helperArgs()
+	if len(all) < 4 || all[0] != helperMark {
 		return
 	}
-	out := os.Getenv("PDH_ESPHOME_BUILD_OUT")
-	args := helperArgs()
+	mode, out, secret, args := all[1], all[2], all[3], all[4:]
 	switch mode {
 	case "ok":
 		cwd, _ := os.Getwd()
@@ -58,21 +63,31 @@ func TestHelperEsphomeBuild(t *testing.T) {
 			cfg, _ = os.ReadFile(args[1])
 			sec, _ = os.ReadFile("secrets.yaml")
 		}
+		tmp := os.Getenv("TMPDIR")
+		tst, terr := os.Stat(tmp)
+		if terr == nil {
+			_ = os.WriteFile(filepath.Join(tmp, "ccXXXX.s"), []byte(`.string "`+secret+`"`), 0o600) // wie gcc
+		}
+		var keys []string
+		for _, kv := range os.Environ() {
+			keys = append(keys, strings.SplitN(kv, "=", 2)[0])
+		}
 		info, _ := json.Marshal(map[string]any{"args": args, "cwd": cwd, "mode": fmt.Sprintf("%o", st.Mode().Perm()),
 			"config": string(cfg), "secrets": string(sec), "pio": os.Getenv("PLATFORMIO_CORE_DIR"), "xdg": os.Getenv("XDG_CACHE_HOME"),
-			"ccache": os.Getenv("ESPHOME_CCACHE_ENABLE"), "idfccache": os.Getenv("IDF_CCACHE_ENABLE")})
+			"ccache": os.Getenv("ESPHOME_CCACHE_ENABLE"), "idfccache": os.Getenv("IDF_CCACHE_ENABLE"),
+			"tmp": tmp, "tmpdir": terr == nil && tst.IsDir(), "env": keys, "geheim": os.Getenv("PDH_TEST_SECRET_ENV")})
 		_ = os.WriteFile(filepath.Join(out, "info.json"), info, 0o600)
 		fmt.Println("INFO ESPHome 2099.1.0")
 		fmt.Println("INFO Reading configuration " + args[len(args)-1] + "...")
 		// wie ein Compiler, der eine Zeile aus main.cpp zitiert – mit Kennwort
-		fmt.Println(`src/main.cpp:42:3: note: wifi_wifiap->set_password("` + os.Getenv("PDH_ESPHOME_BUILD_SECRET") + `");`)
+		fmt.Println(`src/main.cpp:42:3: note: wifi_wifiap->set_password("` + secret + `");`)
 		fmt.Fprintln(os.Stderr, "\x1b[32mINFO Compiling app\x1b[0m")
 		time.Sleep(150 * time.Millisecond) // Zeit für einen Zwischenstand
 		bd := filepath.Join(".esphome", "build", "esppdh-geraet", "build")
 		_ = os.MkdirAll(bd, 0o755)
 		_ = os.WriteFile(filepath.Join(bd, "firmware.factory.bin"), []byte("FACTORY-BYTES"), 0o644)
 		_ = os.WriteFile(filepath.Join(bd, "firmware.ota.bin"), []byte("OTA-BYTES"), 0o644)
-		_ = os.WriteFile(filepath.Join(bd, "main.cpp"), []byte(`set_password("`+os.Getenv("PDH_ESPHOME_BUILD_SECRET")+`")`), 0o644)
+		_ = os.WriteFile(filepath.Join(bd, "main.cpp"), []byte(`set_password("`+secret+`")`), 0o644)
 		fmt.Println("INFO Successfully compiled program.")
 	case "fail":
 		fmt.Println("INFO ESPHome 2099.1.0")
@@ -84,8 +99,7 @@ func TestHelperEsphomeBuild(t *testing.T) {
 	case "hang":
 		// startet einen Kindprozess (wie PlatformIO den Compiler) und hängt; das Kind teilt die
 		// Ausgabe und arbeitet außerhalb des Arbeitsordners (Windows könnte ihn sonst nicht löschen)
-		child := exec.Command(os.Args[0], "-test.run=^TestHelperEsphomeBuild$")
-		child.Env = append(os.Environ(), "PDH_ESPHOME_BUILD_HELPER=sleep")
+		child := exec.Command(os.Args[0], "-test.run=^TestHelperEsphomeBuild$", "--", helperMark, "sleep", out, secret)
 		child.Dir = out
 		child.Stdout, child.Stderr = os.Stdout, os.Stderr
 		if err := child.Start(); err != nil {
@@ -102,7 +116,7 @@ func TestHelperEsphomeBuild(t *testing.T) {
 		for i := 0; i < 3*1024; i++ { // gut 3 MiB
 			fmt.Print(line)
 		}
-		fmt.Println("ENDE " + os.Getenv("PDH_ESPHOME_BUILD_SECRET"))
+		fmt.Println("ENDE " + secret)
 		os.Exit(1)
 	}
 	os.Exit(0)
@@ -114,12 +128,12 @@ func fakeRunner(t *testing.T, mode string) (r *Runner, work, out string, calls *
 	t.Helper()
 	work, out = t.TempDir(), t.TempDir()
 	t.Setenv("PDH_ESPHOME_WORKDIR", work)
+	t.Setenv("PDH_TEST_SECRET_ENV", "datenbank-kennwort") // darf ESPHome nie erreichen
 	calls = &atomic.Int32{}
 	r = &Runner{Timeout: time.Minute, MinFreeMB: 0, Command: func(ctx context.Context, dir string, args ...string) *exec.Cmd {
 		calls.Add(1)
-		cmd := exec.CommandContext(ctx, os.Args[0], append([]string{"-test.run=^TestHelperEsphomeBuild$", "--"}, args...)...)
+		cmd := exec.CommandContext(ctx, os.Args[0], append([]string{"-test.run=^TestHelperEsphomeBuild$", "--", helperMark, mode, out, testSecret}, args...)...)
 		cmd.Dir = dir
-		cmd.Env = append(os.Environ(), "PDH_ESPHOME_BUILD_HELPER="+mode, "PDH_ESPHOME_BUILD_OUT="+out, "PDH_ESPHOME_BUILD_SECRET="+testSecret)
 		return cmd
 	}}
 	return r, work, out, calls
@@ -181,8 +195,9 @@ func TestRunnerOK(t *testing.T) {
 
 	// Aufruf: esphome compile <kennung>.yaml im eigenen Arbeitsordner, mit beiden Dateien
 	var info struct {
-		Args                                                    []string
-		Cwd, Mode, Config, Secrets, Pio, Xdg, Ccache, Idfccache string
+		Args, Env                                                            []string
+		Cwd, Mode, Config, Secrets, Pio, Xdg, Ccache, Idfccache, Tmp, Geheim string
+		Tmpdir                                                               bool
 	}
 	b, err := os.ReadFile(filepath.Join(out, "info.json"))
 	if err != nil {
@@ -191,8 +206,29 @@ func TestRunnerOK(t *testing.T) {
 	if err := json.Unmarshal(b, &info); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(info.Args, " ") != "compile geraet.yaml" {
+	// „./“: eine Kennung kann so nie als Schalter von ESPHome gelesen werden
+	if strings.Join(info.Args, " ") != "compile ./geraet.yaml" {
 		t.Errorf("Aufruf: %q", info.Args)
+	}
+	// Zwischendateien des Compilers (mit Kennwörtern) im Arbeitsordner – sie gehen mit ihm
+	if info.Tmp != filepath.Join(info.Cwd, "tmp") || !info.Tmpdir {
+		t.Errorf("TMPDIR=%q (Ordner da: %v), erwartet %s", info.Tmp, info.Tmpdir, filepath.Join(info.Cwd, "tmp"))
+	}
+	// knappe Umgebung: nichts aus der Umgebung des PDH außer dem Nötigen
+	allowed := map[string]bool{"SYSTEMROOT": true} // fügt Go unter Windows selbst an
+	for _, k := range append(envKeep, "PLATFORMIO_CORE_DIR", "XDG_CACHE_HOME", "ESPHOME_DATA_DIR", "ESPHOME_BUILD_PATH",
+		"ESPHOME_CCACHE_ENABLE", "IDF_CCACHE_ENABLE", "PYTHONUNBUFFERED", "TMPDIR") {
+		allowed[strings.ToUpper(k)] = true
+	}
+	var hasPath bool
+	for _, k := range info.Env {
+		if !allowed[strings.ToUpper(k)] {
+			t.Errorf("Variable %q erreicht ESPHome", k)
+		}
+		hasPath = hasPath || strings.EqualFold(k, "PATH")
+	}
+	if info.Geheim != "" || !hasPath {
+		t.Errorf("PDH_TEST_SECRET_ENV=%q erreicht ESPHome oder PATH fehlt (%v)", info.Geheim, info.Env)
 	}
 	if filepath.Base(info.Cwd) != testBuildID || filepath.Base(filepath.Dir(info.Cwd)) != "build" {
 		t.Errorf("Arbeitsordner: %s", info.Cwd)
@@ -328,7 +364,8 @@ func TestRunnerDiskFull(t *testing.T) {
 // Ungültiger Auftrag (Kennung mit Pfadteilen): kein Ordner, kein Aufruf.
 func TestRunnerRejectsBadJob(t *testing.T) {
 	r, work, _, calls := fakeRunner(t, "ok")
-	for _, j := range []BuildJob{{ID: "../x", Slug: "geraet"}, {ID: testBuildID, Slug: "../böse"}, {ID: "", Slug: "geraet"}} {
+	for _, j := range []BuildJob{{ID: "../x", Slug: "geraet"}, {ID: testBuildID, Slug: "../böse"}, {ID: "", Slug: "geraet"},
+		{ID: testBuildID, Slug: "-ab"}, {ID: testBuildID, Slug: "--help"}, {ID: testBuildID, Slug: "ab-"}} {
 		if res := r.Build(context.Background(), j, nil); res.OK {
 			t.Errorf("%+v angenommen", j)
 		}

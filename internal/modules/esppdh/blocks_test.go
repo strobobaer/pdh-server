@@ -408,16 +408,21 @@ func TestBlockNumbers(t *testing.T) {
 
 func TestSlugRule(t *testing.T) {
 	for s, want := range map[string]bool{
-		"Halle 1":               false,
-		"halle1-s0":             true,
-		"abc":                   true,
-		"ab":                    false,
-		strings.Repeat("a", 32): true,
-		strings.Repeat("a", 33): false,
-		"halle_1":               false,
-		"hälle1":                false,
-		"halle1\n":              false,
-		"":                      false,
+		"Halle 1":                           false,
+		"halle1-s0":                         true,
+		"abc":                               true,
+		"ab":                                false,
+		strings.Repeat("a", 32):             true,
+		strings.Repeat("a", 33):             false,
+		"halle_1":                           false,
+		"hälle1":                            false,
+		"halle1\n":                          false,
+		"":                                  false,
+		"a-b":                               true,
+		"-ab":                               false, // sähe für ESPHome wie ein Schalter aus
+		"--help":                            false,
+		"ab-":                               false, // ergäbe denselben Gerätenamen wie „ab“ (esppdh-ab)
+		"a" + strings.Repeat("-", 30) + "b": true,
 	} {
 		if got := ValidSlug(s); got != want {
 			t.Errorf("ValidSlug(%q) = %v, erwartet %v", s, got, want)

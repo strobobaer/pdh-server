@@ -546,6 +546,41 @@ func TestBuildStaleRunningRecovered(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(old, "secrets.yaml"), []byte("mqtt_password: x"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	// Kommt der Server nach dem Absturz als Spiegel (oder im Docker-Betrieb) zurück, baut er
+	// nicht und schreibt nichts in die Datenbank – die Kennwörter im alten Arbeitsordner
+	// räumt er trotzdem weg.
+	for _, c := range []struct {
+		name           string
+		mirror, docker bool
+	}{{"Spiegel", true, false}, {"Docker", false, true}} {
+		if err := os.MkdirAll(old, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(old, "secrets.yaml"), []byte("mqtt_password: x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		h2 := &Handler{db: e.pool}
+		h2.SetMirror(MirrorInfo{On: c.mirror})
+		esppdhDockerHook = func() bool { return c.docker }
+		h2.StartESPPDH(context.Background())
+		esppdhDockerHook = func() bool { return false }
+		if _, err := os.Stat(old); !os.IsNotExist(err) {
+			t.Errorf("%s: alter Arbeitsordner mit Kennwörtern noch da: %v", c.name, err)
+		}
+		if h2.esppdhQ.done != nil {
+			t.Errorf("%s: Arbeiter gestartet", c.name)
+		}
+		if st, _ := e.build(t, bid); st != "running" {
+			t.Errorf("%s: Lauf %q – am Spiegel wird nichts eingetragen", c.name, st)
+		}
+	}
+	if err := os.MkdirAll(old, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(old, "secrets.yaml"), []byte("mqtt_password: x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
 	e.start(t)
 	st, log := e.build(t, bid)
 	if st != "failed" || !strings.Contains(log, "INFO Compiling") || !strings.Contains(log, "PDH wurde während des Baus neu gestartet") {
@@ -610,6 +645,41 @@ func TestBuildCancel(t *testing.T) {
 	e.waitStatus(t, next, "ok")
 }
 
+// Vor jedem Auftrag prüft der Arbeiter erneut: Ist ESPPDH inzwischen aus oder fehlt die
+// Umgebung, startet er wartende Aufträge nicht, sondern bricht sie mit Hinweis ab.
+func TestBuildWorkerRechecks(t *testing.T) {
+	e, fb, _ := newEsppdhBuildEnv(t)
+	e.start(t)
+	a := e.buildable(t, "ra-"+e.sfx)
+	b := e.buildable(t, "rb-"+e.sfx)
+	c := e.buildable(t, "rc-"+e.sfx)
+	ba := e.queue(t, a)
+	esppdhNextJob(t, fb)
+	bb := e.queue(t, b)
+	esppdhSetSwitch(t, e.h, "0") // ausgeschaltet, während a baut und b wartet
+	fb.gate(ba) <- esppdhBuildOK("a")
+	e.waitStatus(t, ba, "ok")
+	if log := e.waitStatus(t, bb, "canceled"); !strings.Contains(log, "Nicht gebaut") || !strings.Contains(log, "ausgeschaltet") {
+		t.Errorf("Verlauf des wartenden Auftrags: %s", log)
+	}
+	// Umgebung weg (eingereiht, solange sie noch da war; Arbeiter kurz angehalten): ebenso
+	esppdhSetSwitch(t, e.h, "1")
+	e.h.StopESPPDH()
+	bc := e.queue(t, c)
+	if err := os.Remove(filepath.Join(os.Getenv("PDH_ESPHOME_DIR"), "bin", "esphome")); err != nil {
+		t.Fatal(err)
+	}
+	e.h.StartESPPDH(context.Background())
+	if log := e.waitStatus(t, bc, "canceled"); !strings.Contains(log, "Umgebung") {
+		t.Errorf("Verlauf ohne Umgebung: %s", log)
+	}
+	select {
+	case j := <-fb.started:
+		t.Errorf("trotzdem gebaut: %s", j.ID)
+	default:
+	}
+}
+
 // Herunterfahren: der laufende Bau endet als „failed“ mit Hinweis, der Arbeiter ist beendet.
 func TestBuildShutdownMarksFailed(t *testing.T) {
 	e, fb, _ := newEsppdhBuildEnv(t)
@@ -665,5 +735,81 @@ func TestBuildFragment(t *testing.T) {
 	w = esppdhDoB(e.h.EsppdhBuildPartWeb, http.MethodGet, a, ba, esppdhUser, true)
 	if strings.Contains(w.Body.String(), "hx-trigger") || w.Header().Get("HX-Refresh") != "true" {
 		t.Errorf("fertiger Lauf fragt weiter oder lädt die Seite nicht neu: %q\n%s", w.Header().Get("HX-Refresh"), w.Body.String())
+	}
+}
+
+// Den Verlauf eines älteren Laufs öffnen ersetzt nie den Teil des laufenden Baus, der alle 2 s
+// nachfragt: ältere Läufe kommen in einen eigenen Bereich, jeder Teil hat eine eigene Kennung.
+func TestBuildOlderLogKeepsPolling(t *testing.T) {
+	e, fb, _ := newEsppdhBuildEnv(t)
+	e.start(t)
+	id := e.buildable(t, "poll-"+e.sfx)
+	old := e.queue(t, id)
+	esppdhNextJob(t, fb)
+	fb.gate(old) <- esppdhBuildOK("alt")
+	e.waitStatus(t, old, "ok")
+	cur := e.queue(t, id)
+	esppdhNextJob(t, fb)
+	page := esppdhDo(e.h.EsppdhDevicePage, "GET", "/import/esppdh/"+id, id, esppdhUser, nil).Body.String()
+	if !strings.Contains(page, `id="esp-build-`+cur+`"`) || !strings.Contains(page, `hx-trigger="every 2s"`) {
+		t.Fatal("laufender Bau fragt auf der Seite nicht nach")
+	}
+	if strings.Contains(page, `hx-target="#esp-build-`+cur+`"`) || strings.Contains(page, `hx-target="#esp-build"`) {
+		t.Error("ein Knopf „Verlauf“ würde den nachfragenden Teil ersetzen")
+	}
+	if !strings.Contains(page, `hx-get="/import/esppdh/`+id+`/build/`+old+`" hx-target="#esp-build-other"`) || !strings.Contains(page, `id="esp-build-other"`) {
+		t.Error("älterer Lauf öffnet nicht im eigenen Bereich")
+	}
+	if strings.Contains(page, `hx-get="/import/esppdh/`+id+`/build/`+cur+`" hx-target`) {
+		t.Error("Knopf „Verlauf“ für den Lauf, der schon oben steht")
+	}
+	part := esppdhDoB(e.h.EsppdhBuildPartWeb, http.MethodGet, id, old, esppdhUser, true).Body.String()
+	if !strings.Contains(part, `id="esp-build-`+old+`"`) || strings.Contains(part, "hx-trigger") {
+		t.Errorf("Teil des älteren Laufs: %s", part)
+	}
+	fb.gate(cur) <- esppdhBuildOK("neu")
+	e.waitStatus(t, cur, "ok")
+}
+
+// uploads/esppdh ist über /uploads/* nie abrufbar – in keiner Schreibweise; andere Dateien wie bisher.
+func TestUploadsHandlerHidesEsppdh(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "esppdh", "dev"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "esppdh", "dev", "x.bin.enc"), []byte("GEHEIM"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "avatars"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "avatars", "a.txt"), []byte("BILD"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h := UploadsHandler(dir)
+	get := func(p string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(http.MethodGet, "/", nil)
+		r.URL.Path, r.URL.RawPath = p, ""
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		return w
+	}
+	for _, p := range []string{"/uploads/esppdh/dev/x.bin.enc", "/uploads/esppdh/", "/uploads/esppdh", "/uploads/esppdh/dev/",
+		"/uploads/ESPPDH/dev/x.bin.enc", "/uploads/EspPdh/", "/uploads/./esppdh/dev/x.bin.enc", "/uploads//esppdh/dev/x.bin.enc",
+		"/uploads/x/../esppdh/dev/x.bin.enc", "/uploads/avatars/../esppdh/", "/uploads/esppdh/./dev/x.bin.enc", "/uploads/esppdh/dev/../dev/x.bin.enc"} {
+		if w := get(p); w.Code != http.StatusNotFound || strings.Contains(w.Body.String(), "GEHEIM") || strings.Contains(w.Body.String(), "x.bin.enc") {
+			t.Errorf("%s: %d %q", p, w.Code, w.Body.String())
+		}
+	}
+	if w := get("/uploads/avatars/a.txt"); w.Code != http.StatusOK || w.Body.String() != "BILD" {
+		t.Errorf("andere Datei: %d %q", w.Code, w.Body.String())
+	}
+	// in main.go eingehängt
+	src, err := os.ReadFile(filepath.Join("..", "..", "cmd", "server", "main.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(src), `r.Handle("/uploads/*", web.UploadsHandler(`) || strings.Contains(string(src), `http.FileServer(http.Dir("uploads"))`) {
+		t.Error("main.go liefert uploads nicht über UploadsHandler aus")
 	}
 }

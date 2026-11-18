@@ -11,7 +11,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -25,11 +24,11 @@ import (
 //
 // Ablauf je Lauf (Runner.Build):
 //  1. freien Platz für den Arbeitsordner prüfen (MinFreeMB) – sonst sofort Fehler;
-//  2. Arbeitsordner <WorkDir>/build/<lauf> mit Rechten 0700 anlegen, darin <kennung>.yaml und
-//     secrets.yaml (0600);
-//  3. „nice -n 19 <venv>/bin/esphome compile <kennung>.yaml“ in diesem Ordner, mit Zeitlimit
-//     und eigener Prozessgruppe (build_unix.go): Bei Zeitlimit oder Abbruch endet auch jeder
-//     Kindprozess (PlatformIO, Compiler);
+//  2. Arbeitsordner <WorkDir>/build/<lauf> mit Rechten 0700 anlegen, darin <kennung>.yaml,
+//     secrets.yaml (0600) und tmp/ (TMPDIR für die Zwischendateien des Compilers);
+//  3. „nice -n 19 <venv>/bin/esphome compile ./<kennung>.yaml“ in diesem Ordner, mit knapper
+//     Umgebung (envKeep), Zeitlimit und eigener Prozessgruppe (build_unix.go): Bei Zeitlimit
+//     oder Abbruch endet auch jeder Kindprozess (PlatformIO, Compiler);
 //  4. firmware.factory.bin (erstes Flashen ab Adresse 0) und firmware.ota.bin (Update über das
 //     Netz) lesen. ESPHome 2026.10.2 legt beide unter <ordner>/.esphome/build/<name>/ ab – je
 //     nach Werkzeugkette in build/ (ESP-IDF) oder .pioenvs/<name>/ (PlatformIO, Arduino für
@@ -65,6 +64,13 @@ var (
 	ansiRe        = regexp.MustCompile(`\x1b\[[0-9;?]*[ -/]*[@-~]`)
 )
 
+// envKeep: die einzigen Variablen aus der Umgebung des PDH, die ESPHome mitbekommt – die
+// Umgebung des Dienstes kann Zugangsdaten und Schlüssel enthalten, und ESPHome lädt und startet
+// Skripte von PlatformIO und Espressif. Mit dabei: Suchpfad, Heimatordner, Sprache, Proxy (beide
+// Schreibweisen) und eigene Stammzertifikate eines Proxys.
+var envKeep = []string{"PATH", "HOME", "LANG", "LC_ALL", "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy",
+	"SSL_CERT_FILE", "SSL_CERT_DIR", "REQUESTS_CA_BUNDLE"}
+
 // BuildJob: ein Bauauftrag. ID ist die Kennung des Laufs (UUID, Name des Arbeitsordners),
 // Slug die Kennung des Geräts (Dateiname <slug>.yaml). Config und Secrets kommen aus Generate;
 // SecretValues sind die Kennwörter im Klartext – sie werden im Verlauf geschwärzt.
@@ -85,7 +91,8 @@ type BuildResult struct {
 }
 
 // Runner baut eine Firmware. Command baut den Aufruf von ESPHome im Ordner dir (Tests setzen
-// eine Attrappe ein); Umgebung, Ausgabe und Prozessgruppe setzt Build.
+// eine Attrappe ein); Umgebung (knapp, siehe envKeep – eine von Command gesetzte wird ersetzt),
+// Ausgabe und Prozessgruppe setzt Build.
 type Runner struct {
 	Timeout   time.Duration
 	MinFreeMB int64
@@ -155,6 +162,11 @@ func prepareBuildDir(root string, job BuildJob) (string, error) {
 	if err := os.Chmod(dir, 0o700); err != nil {
 		return dir, err
 	}
+	// Zwischendateien des Compilers (TMPDIR) enthalten die Kennwörter als Text – sie bleiben im
+	// Arbeitsordner und verschwinden mit ihm, auch wenn der Compiler hart beendet wird
+	if err := os.Mkdir(filepath.Join(dir, "tmp"), 0o700); err != nil {
+		return dir, err
+	}
 	if err := os.WriteFile(filepath.Join(dir, job.Slug+".yaml"), job.Config, 0o600); err != nil {
 		return dir, err
 	}
@@ -175,15 +187,19 @@ func removeBuildDir(dir string) error {
 	return err
 }
 
-// buildEnv: Umgebung für ESPHome – Werkzeuge dauerhaft unter WorkDir, alles mit Kennwörtern
-// im Arbeitsordner (ESPHOME_DATA_DIR/ESPHOME_BUILD_PATH fest, falls der Dienst sie anders setzt),
-// kein ccache, Ausgabe ohne Puffer (für den Zwischenstand).
-func buildEnv(base []string, dir string) []string {
-	if base == nil {
-		base = os.Environ()
+// buildEnv: Umgebung für ESPHome – nur envKeep aus der Umgebung des PDH, dazu Werkzeuge
+// dauerhaft unter WorkDir, alles mit Kennwörtern im Arbeitsordner (Daten- und Bauordner von
+// ESPHome, TMPDIR), kein ccache, Ausgabe ohne Puffer (für den Zwischenstand).
+func buildEnv(dir string) []string {
+	var env []string
+	for _, k := range envKeep {
+		if v, ok := os.LookupEnv(k); ok {
+			env = append(env, k+"="+v)
+		}
 	}
 	root := workDir()
-	return append(slices.Clip(base),
+	return append(env,
+		"TMPDIR="+filepath.Join(dir, "tmp"),
 		"PLATFORMIO_CORE_DIR="+filepath.Join(root, "platformio"),
 		"XDG_CACHE_HOME="+filepath.Join(root, "cache"),
 		"ESPHOME_DATA_DIR="+filepath.Join(dir, ".esphome"),
@@ -199,11 +215,12 @@ func (r *Runner) run(ctx context.Context, dir string, job BuildJob, progress fun
 	tctx, cancel := context.WithTimeout(ctx, r.Timeout)
 	defer cancel()
 	lg := &buildLog{}
-	cmd := r.Command(tctx, dir, "compile", job.Slug+".yaml")
+	// „./“: die Datei kann nie als Schalter gelesen werden (ValidSlug verbietet „-“ am Anfang ohnehin)
+	cmd := r.Command(tctx, dir, "compile", "./"+job.Slug+".yaml")
 	if cmd.Dir == "" {
 		cmd.Dir = dir
 	}
-	cmd.Env = buildEnv(cmd.Env, dir)
+	cmd.Env = buildEnv(dir)
 	cmd.Stdin = nil
 	cmd.Stdout, cmd.Stderr = lg, lg
 	cmd.WaitDelay = waitDelay

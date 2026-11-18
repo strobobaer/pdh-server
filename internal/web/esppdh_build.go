@@ -69,17 +69,23 @@ var (
 
 // ── Arbeiter ─────────────────────────────────────────────────
 
-// StartESPPDH startet den Arbeiter, der eingereihte Bauten nacheinander baut. Nicht am Spiegel
-// (dort wird nicht gebaut), nicht im Docker-Betrieb und nicht ohne Datenbank. Läufe, die beim
-// letzten Beenden noch liefen, gelten als gescheitert; Arbeitsordner eines abgebrochenen Laufs
-// werden gelöscht (sie enthalten Kennwörter).
+// StartESPPDH startet den Arbeiter, der eingereihte Bauten nacheinander baut. Zuerst – auf
+// jedem Server, auch am Spiegel und im Docker-Betrieb – löscht es Arbeitsordner eines Laufs,
+// den ein Absturz unterbrochen hat: Sie enthalten secrets.yaml und den erzeugten Quelltext mit
+// den Kennwörtern (nach einer Umschaltung kommt der abgestürzte Server als Spiegel zurück). Das
+// schreibt nichts in die Datenbank. Den Arbeiter gibt es nicht am Spiegel (dort wird nicht
+// gebaut), nicht im Docker-Betrieb und nicht ohne Datenbank. Läufe, die beim letzten Beenden
+// noch liefen, gelten als gescheitert.
 func (h *Handler) StartESPPDH(ctx context.Context) {
 	lg := componentLog("esppdh")
+	h.StopESPPDH() // ein Arbeiter je Server: einen früheren zuerst beenden (dann baut nichts mehr)
+	if err := esppdh.CleanupBuilds(); err != nil {
+		lg.Error().Err(err).Msg("alte arbeitsordner löschen")
+	}
 	if h.db == nil || h.Mirror().On || inDocker() {
 		lg.Info().Bool("spiegel", h.Mirror().On).Bool("docker", inDocker()).Msg("bauen nicht gestartet")
 		return
 	}
-	h.StopESPPDH()
 	runner := h.esppdhRunner
 	if runner == nil {
 		runner = esppdh.NewRunner()
@@ -101,9 +107,6 @@ func (h *Handler) StartESPPDH(ctx context.Context) {
 		lg.Error().Err(err).Msg("abgebrochene läufe beenden")
 	case tag.RowsAffected() > 0:
 		lg.Warn().Int64("anzahl", tag.RowsAffected()).Msg("läufe vom letzten start als gescheitert markiert")
-	}
-	if err := esppdh.CleanupBuilds(); err != nil {
-		lg.Error().Err(err).Msg("alte arbeitsordner löschen")
 	}
 	go h.esppdhWorker(wctx, runner, wake, done)
 	lg.Info().Msg("bauen gestartet")
@@ -162,8 +165,20 @@ type esppdhClaim struct {
 	TLS                bool
 }
 
-// esppdhRunNext übernimmt den ältesten wartenden Auftrag und baut ihn. false: keiner da.
+// esppdhRunNext übernimmt den ältesten wartenden Auftrag und baut ihn. false: keiner da. Vorher
+// prüft es erneut, ob hier gebaut werden darf – ist ESPPDH inzwischen aus oder fehlt die
+// Umgebung, werden wartende Aufträge mit Hinweis abgebrochen statt gestartet.
 func (h *Handler) esppdhRunNext(ctx context.Context, runner esppdhBuilder) bool {
+	switch msg, err := h.esppdhWorkerBlocked(ctx); {
+	case err != nil:
+		if ctx.Err() == nil {
+			componentLog("esppdh").Warn().Err(err).Msg("schalter lesen – später erneut")
+		}
+		return false
+	case msg != "":
+		h.esppdhCancelQueued(ctx, "Nicht gebaut: "+msg)
+		return false
+	}
 	q := &h.esppdhQ
 	bctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -370,17 +385,69 @@ func esppdhAddr(host string, port int, tls bool) string {
 // esppdhBuildBlocked: warum an diesem Server gerade nicht gebaut werden kann ("" = es geht).
 func (h *Handler) esppdhBuildBlocked(ctx context.Context) string {
 	if h.Mirror().On {
-		return "Firmware bauen geht nur am aktiven Server – dies ist der Spiegel."
+		return esppdhMsgMirror
 	}
 	switch st := h.esppdhStateOf(ctx); {
 	case st.Docker:
 		return errEsppdhDocker.Error() + "."
 	case !st.Enabled:
-		return "ESPPDH ist ausgeschaltet – einschalten unter Server-Einstellungen → ESPPDH."
+		return esppdhMsgOff
 	case st.EnvMissing:
-		return "Die Umgebung zum Bauen (ESPHome) ist an diesem Server noch nicht eingerichtet – Server-Einstellungen → ESPPDH → „Umgebung einrichten“."
+		return esppdhMsgNoEnv
 	}
 	return ""
+}
+
+const (
+	esppdhMsgMirror = "Firmware bauen geht nur am aktiven Server – dies ist der Spiegel."
+	esppdhMsgOff    = "ESPPDH ist ausgeschaltet – einschalten unter Server-Einstellungen → ESPPDH."
+	esppdhMsgNoEnv  = "Die Umgebung zum Bauen (ESPHome) ist an diesem Server noch nicht eingerichtet – Server-Einstellungen → ESPPDH → „Umgebung einrichten“."
+)
+
+// esppdhWorkerBlocked: wie esppdhBuildBlocked, aber für den Arbeiter – ein Lesefehler der
+// Datenbank ist hier kein „ausgeschaltet“ (sonst würde eine kurze Störung alle wartenden
+// Aufträge abbrechen), sondern ein Fehler: dann später erneut versuchen.
+func (h *Handler) esppdhWorkerBlocked(ctx context.Context) (string, error) {
+	switch {
+	case h.Mirror().On:
+		return esppdhMsgMirror, nil
+	case inDocker():
+		return errEsppdhDocker.Error() + ".", nil
+	}
+	sctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	var on string
+	if err := h.db.QueryRow(sctx, `SELECT value FROM app_settings WHERE key = $1`, esppdhSetEnabled).Scan(&on); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return "", err
+	}
+	switch {
+	case on != "1":
+		return esppdhMsgOff, nil
+	case !esppdh.EnvPresent():
+		return esppdhMsgNoEnv, nil
+	}
+	return "", nil
+}
+
+// esppdhCancelQueued bricht alle wartenden Aufträge mit Hinweis ab (nicht am Spiegel – dort ist
+// die Datenbank nur lesbar, und gebaut wird ohnehin nicht).
+func (h *Handler) esppdhCancelQueued(ctx context.Context, note string) {
+	if h.Mirror().On || inDocker() {
+		return
+	}
+	sctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	tag, err := h.db.Exec(sctx, `UPDATE esppdh_builds SET status = 'canceled', finished_at = now(),
+			log = CASE WHEN log = '' THEN $1 ELSE log || E'\n' || $1 END
+		WHERE status = 'queued'`, note)
+	switch {
+	case err != nil:
+		if ctx.Err() == nil {
+			componentLog("esppdh").Warn().Err(err).Msg("wartende aufträge abbrechen")
+		}
+	case tag.RowsAffected() > 0:
+		componentLog("esppdh").Warn().Int64("anzahl", tag.RowsAffected()).Str("grund", note).Msg("wartende aufträge abgebrochen")
+	}
 }
 
 // EsppdhBuildWeb: POST /import/esppdh/{id}/build – Bau einreihen. Das Gerät muss so, wie es

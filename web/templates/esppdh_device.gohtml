@@ -138,23 +138,27 @@
   {{if gt (len .Runs) 1}}
   <div class="esp-runs-title">Letzte Läufe</div>
   <ul class="esp-runs">
-    {{range .Runs}}<li>
-      <span class="badge {{.Badge}}">{{.StatusLabel}}</span>
-      <span>{{.When}}</span>
-      {{if .BrokerHost}}<span class="esp-mono">für {{.Addr}}</span>{{end}}
-      {{with .Version}}<span>ESPHome {{.}}</span>{{end}}
-      {{if .Size}}<span>{{.SizeText}}</span>{{end}}
-      <button type="button" class="btn btn-small" hx-get="/import/esppdh/{{.DeviceID}}/build/{{.ID}}" hx-target="#esp-build" hx-swap="outerHTML" aria-label="Verlauf des Laufs vom {{.When}} zeigen"><i class="ti ti-file-text" aria-hidden="true"></i> Verlauf</button>
+    {{range $i, $r := .Runs}}<li>
+      <span class="badge {{$r.Badge}}">{{$r.StatusLabel}}</span>
+      <span>{{$r.When}}</span>
+      {{if $r.BrokerHost}}<span class="esp-mono">für {{$r.Addr}}</span>{{end}}
+      {{with $r.Version}}<span>ESPHome {{.}}</span>{{end}}
+      {{if $r.Size}}<span>{{$r.SizeText}}</span>{{end}}
+      {{if $i}}<button type="button" class="btn btn-small" hx-get="/import/esppdh/{{$r.DeviceID}}/build/{{$r.ID}}" hx-target="#esp-build-other" hx-swap="innerHTML" aria-label="Verlauf des Laufs vom {{$r.When}} zeigen"><i class="ti ti-file-text" aria-hidden="true"></i> Verlauf</button>
+      {{else}}<span class="esp-note" style="margin:0 0 0 auto">steht oben</span>{{end}}
     </li>{{end}}
   </ul>
+  {{/* älterer Verlauf: eigener Bereich, der jüngste Lauf oben fragt ungestört weiter nach */}}
+  <div id="esp-build-other"></div>
   {{end}}
 </div>
 <script>
-// Verlauf: beim Nachladen ans Ende rollen – nur, wenn man schon am Ende war
-let espLogAtEnd = true;
-document.addEventListener('htmx:beforeSwap', () => { const l = document.querySelector('#esp-build .esp-log'); if (l) espLogAtEnd = l.scrollTop + l.clientHeight >= l.scrollHeight - 8; });
-document.addEventListener('htmx:afterSwap', () => { const l = document.querySelector('#esp-build .esp-log'); if (l && espLogAtEnd) l.scrollTop = l.scrollHeight; });
-(() => { const l = document.querySelector('#esp-build .esp-log'); if (l) l.scrollTop = l.scrollHeight; })();
+// Verlauf: beim Nachladen ans Ende rollen – nur, wenn man schon am Ende war (je Bereich)
+const espAtEnd = {};
+const espLog = id => { const box = id && document.getElementById(id); return box && box.querySelector('.esp-log'); };
+document.addEventListener('htmx:beforeSwap', e => { const id = e.detail.target && e.detail.target.id, l = espLog(id); if (l) espAtEnd[id] = l.scrollTop + l.clientHeight >= l.scrollHeight - 8; });
+document.addEventListener('htmx:afterSwap', e => { const id = e.detail.target && e.detail.target.id, l = espLog(id); if (l && espAtEnd[id] !== false) l.scrollTop = l.scrollHeight; });
+document.querySelectorAll('.esp-build .esp-log').forEach(l => { l.scrollTop = l.scrollHeight; });
 </script>
 
 <p class="esp-note">ESPPDH baut auf ESPHome auf (GPLv3/MIT). Die Konfiguration jedes Geräts lässt sich herunterladen – ohne Kennwörter.</p>

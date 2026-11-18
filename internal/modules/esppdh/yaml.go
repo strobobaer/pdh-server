@@ -69,12 +69,14 @@ const (
 const interval = "10s"
 
 var (
-	slugRe        = regexp.MustCompile(`^[a-z0-9-]{3,32}$`)
+	slugRe        = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{1,30}[a-z0-9]$`)
 	customBoardRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$`)
 	hostRe        = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*$`)
 )
 
-// ValidSlug: Kennung eines Geräts gültig? 3–32 Zeichen aus a–z, 0–9 und „-“.
+// ValidSlug: Kennung eines Geräts gültig? 3–32 Zeichen aus a–z, 0–9 und „-“, ohne „-“ am
+// Anfang (sähe für ESPHome wie ein Schalter aus) und am Ende (deviceName schneidet es ab – „ab-“
+// hieße dann wie „ab“, mit demselben Notzugang-WLAN).
 func ValidSlug(s string) bool { return slugRe.MatchString(s) }
 
 // deviceUser: Benutzername und Client-ID am Broker.
@@ -142,7 +144,7 @@ func ValidateDevice(d Device) []string {
 	}
 
 	if !ValidSlug(d.Slug) {
-		add("Die Kennung muss 3 bis 32 Zeichen lang sein und darf nur a–z, 0–9 und „-“ enthalten.")
+		add("Die Kennung muss 3 bis 32 Zeichen lang sein, darf nur a–z, 0–9 und „-“ enthalten und nicht mit „-“ beginnen oder enden.")
 	}
 	utf8OK(d.Name, "Der Name")
 	b, ok := BoardByKey(d.BoardKey)

@@ -343,7 +343,6 @@ func main() {
 		webHandler.StartUpdateChecker(context.Background())
 		webHandler.StartCertRenewal(context.Background()) // Let's-Encrypt-Zertifikate (optional): täglich prüfen und erneuern
 		webHandler.StartEnabledMqttBrokers(context.Background())
-		webHandler.StartESPPDH(context.Background()) // ESPPDH: ein Arbeiter baut Firmware nacheinander (nicht am Spiegel, nicht in Docker)
 		webHandler.StartEnabledMqttConsumers(context.Background())
 		webHandler.StartEnabledExportSchedules(context.Background())
 		webHandler.StartPurchaseReportSchedule(context.Background())
@@ -369,6 +368,9 @@ func main() {
 		webHandler.StartEnabledQueryPolls(context.Background())
 		webHandler.VPNStartup(context.Background()) // WireGuard: Konfiguration für den Dienst „wireguard“ schreiben
 	}
+	// ESPPDH: auf jedem Server Reste eines abgestürzten Baus löschen (sie enthalten Kennwörter);
+	// den Arbeiter, der Firmware nacheinander baut, gibt es nur am aktiven Server, nicht in Docker.
+	webHandler.StartESPPDH(context.Background())
 	// Datennetz (optional, standardmäßig aus): Knoten im Hintergrund, blockiert nie.
 	// Auf beiden Servern; den Rückkanal für Meldungen bedient nur der aktive.
 	webHandler.StartDataNet(context.Background(), !mirrorOn)
@@ -475,8 +477,8 @@ func main() {
 	// Symbol-Bibliothek (Tabler Icons) lokal statt aus dem Internet
 	r.Handle("/vendor/tabler-icons/*", icons)
 
-	// Static uploads
-	r.Handle("/uploads/*", http.StripPrefix("/uploads/", http.FileServer(http.Dir("uploads"))))
+	// Static uploads – ohne uploads/esppdh (Firmware nur über die Seiten mit Recht)
+	r.Handle("/uploads/*", web.UploadsHandler(attachments.UploadDir))
 
 	// Zertifizierungsstelle für Nextcloud: CA-Zertifikat und Sperrliste öffentlich
 	// (Geräte installieren die CA, nginx holt die Sperrliste; pki_web.go)

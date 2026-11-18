@@ -1,7 +1,9 @@
 {{/* ESPPDH – Firmware bauen (internal/web/esppdh_build.go). Ein Lauf mit Verlauf (esppdhRunView),
      auf der Detailseite und als htmx-Teil GET /import/esppdh/{id}/build/{bid}. Solange der Lauf
      wartet oder läuft, fragt der Teil alle 2 s nach (keine Dauerverbindung); endet er, lädt
-     die Seite einmal neu. Der Verlauf ist geschwärzt, bricht um und rollt in sich – nie breiter
+     die Seite einmal neu. Jeder Teil hat die Kennung esp-build-<lauf>: Ein älterer Verlauf
+     (Bereich esp-build-other) ersetzt so nie den Teil, der gerade nachfragt.
+     Der Verlauf ist geschwärzt, bricht um und rollt in sich – nie breiter
      als die Seite. Farben nur über die Variablen des Farbschemas (Fiori/Fluent, hell/dunkel). */}}
 
 {{define "esppdh-build-style"}}
@@ -23,7 +25,7 @@
 {{end}}
 
 {{define "esppdh-build"}}
-<div id="esp-build" class="esp-build"{{if .Active}} hx-get="/import/esppdh/{{.DeviceID}}/build/{{.ID}}?poll=1" hx-trigger="every 2s" hx-swap="outerHTML"{{end}}>
+<div id="esp-build-{{.ID}}" class="esp-build"{{if .Active}} hx-get="/import/esppdh/{{.DeviceID}}/build/{{.ID}}?poll=1" hx-trigger="every 2s" hx-swap="outerHTML"{{end}}>
   <div class="esp-build-head">
     <span class="badge {{.Badge}}">{{if .Active}}<i class="ti ti-loader-2" aria-hidden="true"></i>&nbsp;{{end}}{{.StatusLabel}}</span>
     <span class="esp-wrap">Lauf vom {{.When}}{{with .By}} · {{.}}{{end}}{{with .Took}} · Dauer {{.}}{{end}}</span>
