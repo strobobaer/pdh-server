@@ -85,7 +85,15 @@ func NonCanonicalUUIDPathMiddleware(next http.Handler) http.Handler {
 				uuidPathNotFound(w, r)
 				return
 			}
-			u := url.URL{Path: strings.Join(segs, "/"), RawQuery: r.URL.RawQuery}
+			// Umleiten nur auf einen Pfad desselben Servers: nie mit zwei Schrägstrichen oder Schrägstrich plus Rückstrich am Anfang (das wäre
+			// ein Link auf einen fremden Rechner), und ein kodierter Schrägstrich (%2F) oder Rückstrich (%5C) in der Adresse darf nicht zu
+			// einem echten Trenner werden – in beiden Fällen 404 statt Umleitung.
+			raw := strings.ToLower(r.URL.EscapedPath())
+			if strings.HasPrefix(p, "//") || strings.HasPrefix(p, "/\\") || strings.Contains(raw, "%2f") || strings.Contains(raw, "%5c") {
+				uuidPathNotFound(w, r)
+				return
+			}
+			u := url.URL{Path: "/" + strings.TrimLeft(strings.Join(segs, "/"), "/\\"), RawQuery: r.URL.RawQuery}
 			http.Redirect(w, r, u.String(), http.StatusMovedPermanently)
 			return
 		}

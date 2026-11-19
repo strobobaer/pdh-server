@@ -178,6 +178,17 @@ func TestUUIDPathMiddlewareMountedFirst(t *testing.T) {
 	if i < 0 {
 		t.Fatal("NonCanonicalUUIDPathMiddleware ist nicht eingehängt")
 	}
+	var code []string // nur Zeilen ohne Kommentar zählen
+	for _, l := range strings.Split(s, "\n") {
+		if !strings.HasPrefix(strings.TrimSpace(l), "//") {
+			code = append(code, l)
+		}
+	}
+	s = strings.Join(code, "\n")
+	i = strings.Index(s, "r.Use(web.NonCanonicalUUIDPathMiddleware)")
+	if i < 0 {
+		t.Fatal("NonCanonicalUUIDPathMiddleware ist nur auskommentiert")
+	}
 	for _, later := range []string{"r.Use(webHandler.PermissionGateMiddleware)", "r.Use(webHandler.APIDepartmentScope)", `r.Route("/api/v1"`, `r.Mount("/", webHandler.Routes())`} {
 		if j := strings.Index(s, later); j < 0 || j < i {
 			t.Errorf("%s steht nicht hinter der UUID-Prüfung", later)

@@ -53,6 +53,31 @@ func TestNonCanonicalUUIDPathRejected(t *testing.T) {
 	if w := do("GET", "/records/"+upper+"/x/"+upper, ""); w.Code != http.StatusMovedPermanently || w.Header().Get("Location") != "/records/"+id+"/x/"+id {
 		t.Errorf("mehrere Segmente: %d %q", w.Code, w.Header().Get("Location"))
 	}
+	// Kein offener Redirect: nie auf einen anderen Rechner, nie „//“ oder „/\“ am Anfang
+	for _, p := range []string{"//evil.example/" + upper, "///evil.example/" + upper, `/\evil.example/` + upper, "/projects//" + upper} {
+		w := do("GET", p, "")
+		if loc := w.Header().Get("Location"); strings.HasPrefix(loc, "//") || strings.HasPrefix(loc, `/\`) || strings.Contains(loc, "evil.example") {
+			t.Errorf("%q leitet auf %q um", p, loc)
+		}
+	}
+	if c := do("GET", "//evil.example/"+upper, "").Code; c != http.StatusNotFound {
+		t.Errorf("// am Anfang: %d, erwartet 404", c)
+	}
+	if c := do("GET", `/\evil.example/`+upper, "").Code; c != http.StatusNotFound {
+		t.Errorf(`/\ am Anfang: %d, erwartet 404`, c)
+	}
+	// kodierter Schrägstrich: bleibt auf dem Rechner (404), wird nicht zu „//evil.example“
+	{
+		r := httptest.NewRequest("GET", "/%2F%2Fevil.example/"+upper, nil)
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		if loc := w.Header().Get("Location"); w.Code != http.StatusNotFound || loc != "" {
+			t.Errorf("%%2F: %d %q", w.Code, loc)
+		}
+	}
+	if w := do("GET", "/api/v1//evil.example/"+upper, ""); w.Code == http.StatusMovedPermanently && !strings.HasPrefix(w.Header().Get("Location"), "/api/") {
+		t.Errorf("API: %q", w.Header().Get("Location"))
+	}
 	for _, m := range []string{"POST", "PUT", "DELETE"} {
 		if c := do(m, "/api/v1/projects/"+upper, "").Code; c != http.StatusNotFound {
 			t.Errorf("%s groß: %d, erwartet 404", m, c)
