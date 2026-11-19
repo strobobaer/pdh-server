@@ -186,14 +186,21 @@ func TestInstallCandidateNoDowngrade(t *testing.T) {
 		}
 		return ans
 	}
-	for v, want := range map[string]string{"2026.11.5": "schon aktiv", "2026.11.2": "nicht herabgestuft", "2026.9.9": "Mindestversion"} {
-		if v == "2026.9.9" { // unter der Mindestversion – auch ohne aktive Version
+	// Feste Reihenfolge: Der letzte Fall entfernt den Zeiger „active“ – stünde er
+	// früher, gälte für die Fälle danach nur noch die Mindestversion.
+	cases := []struct{ v, want string }{
+		{"2026.11.5", "schon aktiv"},
+		{"2026.11.2", "nicht herabgestuft"},
+		{"2026.9.9", "Mindestversion"},
+	}
+	for _, c := range cases {
+		if c.v == "2026.9.9" { // unter der Mindestversion – auch ohne aktive Version
 			_ = os.Remove(filepath.Join(dir, "active"))
 		}
-		ans := call(v)
-		wantErr := versionsPost(t, a, "activate", v).Error // Meldung beim Umschalten
-		if ans.OK || !strings.Contains(ans.Error, want) || ans.Error != wantErr {
-			t.Errorf("Einrichtung %s: %+v (erwartet %q wie beim Umschalten)", v, ans, wantErr)
+		ans := call(c.v)
+		wantErr := versionsPost(t, a, "activate", c.v).Error // Meldung beim Umschalten
+		if ans.OK || !strings.Contains(ans.Error, c.want) || ans.Error != wantErr {
+			t.Errorf("Einrichtung %s: %+v (erwartet %q wie beim Umschalten)", c.v, ans, wantErr)
 		}
 	}
 	if ran || a.esppdh.status().Running {
