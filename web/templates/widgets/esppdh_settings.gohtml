@@ -53,8 +53,8 @@
     <div class="esppdh-row" style="margin:0">
       <b>ESPHome selbst aktuell halten: {{if .Auto}}an{{else}}aus{{end}}.</b>
       {{if not .Mirror}}<form hx-post="/admin/server-config/esppdh/auto" hx-target="#esppdh-panel" hx-swap="outerHTML" hx-disabled-elt="find button">
-        {{if .Auto}}<input type="hidden" name="on" value="0"><button class="btn btn-small" type="submit"><i class="ti ti-player-pause"></i> Ausschalten</button>
-        {{else}}<input type="hidden" name="on" value="1"><button class="btn btn-primary btn-small" type="submit"><i class="ti ti-player-play"></i> Einschalten</button>{{end}}
+        {{if .Auto}}<input type="hidden" name="on" value="0"><button class="btn btn-small" type="submit" aria-label="ESPHome selbst aktuell halten ausschalten"><i class="ti ti-player-pause"></i> Ausschalten</button>
+        {{else}}<input type="hidden" name="on" value="1"><button class="btn btn-primary btn-small" type="submit" aria-label="ESPHome selbst aktuell halten einschalten"><i class="ti ti-player-play"></i> Einschalten</button>{{end}}
       </form>{{end}}
     </div>
     <div class="sc-sub" style="margin-top:4px">Einmal am Tag sucht das PDH nach einer neueren ESPHome-Version, richtet sie neben der laufenden ein und probt sie an deinen Geräten. Erst wenn die Probe klappt, wird umgeschaltet. Sonst bleibt alles wie es ist.</div>

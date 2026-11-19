@@ -324,17 +324,44 @@ func (h *Handler) EsppdhRollbackWeb(w http.ResponseWriter, r *http.Request) {
 	case !h.esppdhUpdateBegin(): // nie neben einer Prüfung: beide schalten beim Agenten um
 		err = errors.New("Eine Prüfung läuft gerade – bitte warten, bis sie fertig ist")
 	default:
-		msg, err = h.esppdhRollback(r.Context(), getUser(r).ID)
-		h.esppdhUpdateEnd()
+		msg, err = h.esppdhRollbackLocked(r.Context(), getUser(r).ID)
 	}
 	h.esppdhRender(r.Context(), w, msg, err)
+}
+
+// esppdhRollbackLocked: esppdhRollback unter dem mit esppdhUpdateBegin angemeldeten Lauf. Die
+// Freigabe steht im defer – auch ein Absturz (den net/http abfängt) lässt die Prüfungen nicht
+// für immer gesperrt.
+func (h *Handler) esppdhRollbackLocked(ctx context.Context, uid string) (string, error) {
+	defer h.esppdhUpdateEnd()
+	return h.esppdhRollback(ctx, uid)
 }
 
 // esppdhRollback lässt den Agenten zurückschalten und hält im Zustand fest, was nun läuft und
 // welche Version verlassen wurde. msg: Ergebnis in Klartext.
 func (h *Handler) esppdhRollback(ctx context.Context, uid string) (msg string, err error) {
 	lg := componentLog("esppdh")
+	st := esppdh.LoadUpdateState()
+	// Die verlassene Version muss feststehen, damit sie als gescheitert gilt (kein Hin und Her):
+	// gelesene Version vor dem Zurückschalten, sonst Installed aus dem Zustand, sonst „active“ des Agenten.
 	before := esppdhCheckEnv(ctx)
+	left := ""
+	if before.Installed {
+		left = before.Version
+	}
+	if left == "" {
+		left = st.Installed
+	}
+	if left == "" {
+		var v struct {
+			Active string `json:"active"`
+		}
+		actx, cancel := context.WithTimeout(ctx, esppdhAgentTimeout)
+		if h.agentJSON(actx, http.MethodGet, "/v1/esppdh/versions", nil, &v) == nil {
+			left = v.Active
+		}
+		cancel()
+	}
 	actx, cancel := context.WithTimeout(ctx, esppdhSwitchTimeout)
 	err = h.agentJSON(actx, http.MethodPost, "/v1/esppdh/versions", map[string]string{"action": "rollback"}, nil)
 	cancel()
@@ -343,17 +370,18 @@ func (h *Handler) esppdhRollback(ctx context.Context, uid string) (msg string, e
 		return "", errors.New("Zurückstellen nicht möglich: " + err.Error())
 	}
 	after := esppdhCheckEnv(ctx)
-	st := esppdh.LoadUpdateState()
 	msg = "Zurück zur vorigen Version gestellt"
 	if after.Installed {
 		msg = "Zurück auf ESPHome " + after.Version + " gestellt"
 		st.Installed = after.Version
-		if before.Installed && before.Version != after.Version {
-			st.FailedVersion, st.FailedPDH, st.FailedLog = before.Version, pdh.Version(), ""
+		if left != "" && left != after.Version {
+			st.FailedVersion, st.FailedPDH, st.FailedLog = left, pdh.Version(), ""
 		}
 	}
+	// Absicht: „Zuletzt geprüft“ zeigt danach die Zeit des Zurückstellens, und die nächste tägliche
+	// Prüfung folgt erst 24 h später – so wechselt der Server nicht gleich wieder um.
 	st.Result, st.CheckedAt = msg, h.esppdhClock()
-	lg.Info().Str("von", uid).Str("verlassen", before.Version).Str("läuft", after.Version).Msg("esphome zurückgestellt")
+	lg.Info().Str("von", uid).Str("verlassen", left).Str("läuft", after.Version).Msg("esphome zurückgestellt")
 	if serr := esppdh.SaveUpdateState(st); serr != nil {
 		lg.Error().Err(serr).Msg("zustand nach dem zurückstellen speichern")
 		return msg, errors.New("Der Zustand ließ sich nicht speichern. Näheres steht im Server-Protokoll.")

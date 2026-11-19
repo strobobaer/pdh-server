@@ -388,3 +388,71 @@ func TestDeviceOlderFirmwareHint(t *testing.T) {
 		t.Error("Hinweis nicht im Ton „info“")
 	}
 }
+
+// Stürzt etwas beim Zurückstellen ab (net/http fängt es ab), bleibt die Prüfung nicht für immer
+// „laufend“: Eine spätere Prüfung kann starten.
+func TestEsppdhRollbackPanicReleasesCheck(t *testing.T) {
+	tmpl := loadTestTemplates(t)
+	u := newEsppdhUpd(t)
+	h := esppdhConfigHandler(t, u, tmpl)
+	u.set(func() { u.previous = esppdhUpdOld })
+	old := esppdhCheckEnv
+	t.Cleanup(func() { esppdhCheckEnv = old })
+	esppdhCheckEnv = func(context.Context) esppdh.EnvState { panic("Attrappe stürzt ab") }
+	func() {
+		defer func() { _ = recover() }()
+		esppdhPost(h.EsppdhRollbackWeb, esppdhPathRollback, nil)
+	}()
+	if h.esppdhUpdateChecking() {
+		t.Fatal("nach dem Absturz gilt die Prüfung noch als laufend")
+	}
+	if !h.esppdhUpdateBegin() {
+		t.Fatal("eine spätere Prüfung kann nicht starten")
+	}
+	h.esppdhUpdateEnd()
+}
+
+// Ist die laufende Version vor dem Zurückstellen nicht lesbar, gilt als verlassen: Installed aus
+// dem Zustand, sonst „active“ des Agenten – nie bleibt die verlassene Version unvermerkt.
+func TestEsppdhRollbackLeftVersionFallback(t *testing.T) {
+	for _, c := range []struct {
+		name, stateInstalled, agentActive string
+	}{{"aus dem Zustand", esppdhUpdNew, ""}, {"vom Agenten", "", esppdhUpdNew}} {
+		t.Run(c.name, func(t *testing.T) {
+			tmpl := loadTestTemplates(t)
+			u := newEsppdhUpd(t)
+			h := esppdhConfigHandler(t, u, tmpl)
+			u.set(func() { u.previous, u.active = esppdhUpdOld, c.agentActive })
+			old := esppdhCheckEnv
+			t.Cleanup(func() { esppdhCheckEnv = old })
+			esppdhCheckEnv = func(context.Context) esppdh.EnvState {
+				if esppdhCount(u.events(), "rollback") == 0 {
+					return esppdh.EnvState{Problem: "ESPHome startet nicht", FreeMB: -1} // Version unbekannt
+				}
+				return esppdh.EnvState{Installed: true, Version: esppdhUpdOld, FreeMB: -1}
+			}
+			if err := esppdh.SaveUpdateState(esppdh.UpdateState{Installed: c.stateInstalled}); err != nil {
+				t.Fatal(err)
+			}
+			if w := esppdhPost(h.EsppdhRollbackWeb, esppdhPathRollback, nil); w.Code != http.StatusOK {
+				t.Fatalf("Zurück: %d", w.Code)
+			}
+			st := esppdh.LoadUpdateState()
+			if st.Installed != esppdhUpdOld || st.FailedVersion != esppdhUpdNew || st.FailedPDH != pdh.Version() {
+				t.Errorf("Zustand: %+v", st)
+			}
+		})
+	}
+}
+
+// Die Schalter-Knöpfe tragen eine eindeutige Beschriftung für Screenreader.
+func TestEsppdhAutoSwitchAriaLabels(t *testing.T) {
+	p := esppdhPanel{AgentReady: true, Pinned: "2026.10.2", Auto: true, Env: esppdh.EnvState{FreeMB: -1}}
+	if out := renderSNMPTemplate(t, "esppdh-panel", p); !strings.Contains(out, `aria-label="ESPHome selbst aktuell halten ausschalten"`) {
+		t.Error("aria-label „ausschalten“ fehlt")
+	}
+	p.Auto = false
+	if out := renderSNMPTemplate(t, "esppdh-panel", p); !strings.Contains(out, `aria-label="ESPHome selbst aktuell halten einschalten"`) {
+		t.Error("aria-label „einschalten“ fehlt")
+	}
+}

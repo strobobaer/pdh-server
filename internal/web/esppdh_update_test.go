@@ -65,6 +65,7 @@ type esppdhUpdT struct {
 	pypiFn   func(w http.ResponseWriter, r *http.Request) // nil = pypiBody senden
 	pypiBody string
 	// Verhalten des Agenten
+	active      string // „active“ in der Antwort auf GET /v1/esppdh/versions
 	previous    string // „previous“ in der Antwort auf GET /v1/esppdh/versions ("" = keine, "base" = Grundumgebung)
 	tooOld      bool   // kennt /v1/esppdh/versions nicht (404)
 	installErr  string // Einrichtung scheitert mit dieser Meldung
@@ -235,7 +236,7 @@ func (u *esppdhUpdT) agentServe(t *testing.T) func(http.ResponseWriter, *http.Re
 		switch r.Method + " " + r.URL.Path {
 		case "GET /v1/esppdh/versions":
 			u.ev = append(u.ev, "versions")
-			io.WriteString(w, `{"ok":true,"active":"","previous":"`+u.previous+`","installed":[]}`)
+			io.WriteString(w, `{"ok":true,"active":"`+u.active+`","previous":"`+u.previous+`","installed":[]}`)
 		case "POST /v1/esppdh/install":
 			u.ev = append(u.ev, "install "+req.Version)
 			if !u.otherTarget {
