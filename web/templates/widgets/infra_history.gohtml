@@ -3,6 +3,9 @@
   GET /infrastructure/{id}/history). Daten: InfraHistoryResult.
 */}}
 {{define "infra-history-results"}}
+{{/* Sortierart ins Filterformular zurückgeben (Außer-der-Reihe-Austausch), damit Filtern sie behält */}}
+<input type="hidden" id="ih-sort" name="ls_timeline" value="{{.Filter.Sort}}" hx-swap-oob="true">
+<div id="ih-res">
 <div class="ih-chips">
   {{range .Modules}}
   <span class="ih-chip{{if .Active}} on{{end}}" title="{{.Label}}"><i class="ti {{.Icon}}"></i> {{.Label}} <b>{{.Count}}</b></span>
@@ -17,35 +20,28 @@
 {{end}}
 
 <div class="ih-section" style="display:flex;align-items:center;gap:8px">
-  <span style="flex:1"><i class="ti ti-timeline"></i> Zeitleiste · {{.Total}} Einträge{{if .Truncated}} (neueste {{len .Entries}} angezeigt){{end}}</span>
+  <span style="flex:1"><i class="ti ti-timeline"></i> Zeitleiste · {{.Total}} Einträge{{if .Truncated}} ({{if eq .Filter.Sort "old"}}älteste{{else}}neueste{{end}} {{len .Entries}} angezeigt){{end}}</span>
   <a class="btn btn-small" href="{{.ExportURL}}" title="Gefilterte Historie als CSV exportieren"><i class="ti ti-file-spreadsheet"></i> CSV</a>
 </div>
+{{template "sort-bar" .Bar}}
 
-{{if .Entries}}
+{{if .Groups}}
 <div class="ih-timeline">
-  {{range .Entries}}
-  {{if eq .Module "comment"}}
-    {{template "infra-history-comment" (dict "E" . "InfraID" $.InfraID)}}
+  {{range .Groups}}
+  {{if gt .Count 1}}
+  <details class="rh-group">
+    <summary class="li"><div class="act-dot d-blue"></div><div class="li-text"><div class="li-title">{{.Count}}× {{.Label}}</div><div class="li-sub">{{t "zuletzt"}} {{.Last}}</div></div></summary>
+    {{range .Entries}}{{template "infra-history-entry" (dict "E" . "InfraID" $.InfraID)}}{{end}}
+  </details>
   {{else}}
-  <div class="ih-entry">
-    <div class="ih-icon {{.Dot}}"><i class="ti {{.Icon}}"></i></div>
-    <div class="ih-body">
-      <div class="ih-head">
-        <a href="{{.DetailURL}}" class="ih-title">{{if eq .Module "action"}}Maßnahme · {{.ParentTitle}}: {{.Title}}{{else}}{{.Title}}{{end}}</a>
-        {{if .QtyLabel}}<span class="badge b-amber">{{.QtyLabel}}</span>{{end}}
-        {{if .StatusLabel}}<span class="badge {{.StatusClass}}">{{.StatusLabel}}</span>{{end}}
-      </div>
-      <div class="li-sub">
-        {{.ModuleLabel}} · {{.DateLabel}} · {{.Author}}
-        {{if .ClosedLabel}} · abgeschlossen {{.ClosedLabel}}{{end}}
-        {{if and .ParentTitle (ne .Module "action")}} · {{.ParentTitle}}{{end}}
-        {{if .FromChild}} · <a href="/infrastructure/{{.InfraID}}" style="color:var(--accent)"><i class="ti ti-subtask"></i> {{.InfraName}}</a>{{end}}
-      </div>
-      {{if and .Body (ne .Module "part")}}<div class="ih-text">{{.Body}}</div>{{end}}
-    </div>
-  </div>
+  {{range .Entries}}{{template "infra-history-entry" (dict "E" . "InfraID" $.InfraID)}}{{end}}
   {{end}}
   {{end}}
+</div>
+{{if .Capped}}<div class="li-sub" style="padding:6px 0 0">{{t "Nur die neuesten %d Einträge berücksichtigt" .Cap}}</div>{{end}}
+{{else if .Entries}}
+<div class="ih-timeline">
+  {{range .Entries}}{{template "infra-history-entry" (dict "E" . "InfraID" $.InfraID)}}{{end}}
 </div>
 {{else}}
 <div style="font-size:12px;color:var(--muted);padding:14px 0;text-align:center">
@@ -73,6 +69,34 @@
 </div>
 {{else}}
 <div style="font-size:12px;color:var(--muted);padding:6px 0">Keine Ersatzteile über Störungen, Tickets, Aufgaben oder Wartungen gebucht.</div>
+{{end}}
+</div>
+{{end}}
+
+{{/* Eine Zeile der Zeitleiste (Kommentar oder Eintrag eines Moduls). Daten: dict "E" Eintrag, "InfraID" Anlage */}}
+{{define "infra-history-entry"}}
+{{with .E}}
+{{if eq .Module "comment"}}
+  {{template "infra-history-comment" (dict "E" . "InfraID" $.InfraID)}}
+{{else}}
+<div class="ih-entry">
+  <div class="ih-icon {{.Dot}}"><i class="ti {{.Icon}}"></i></div>
+  <div class="ih-body">
+    <div class="ih-head">
+      <a href="{{.DetailURL}}" class="ih-title">{{if eq .Module "action"}}Maßnahme · {{.ParentTitle}}: {{.Title}}{{else}}{{.Title}}{{end}}</a>
+      {{if .QtyLabel}}<span class="badge b-amber">{{.QtyLabel}}</span>{{end}}
+      {{if .StatusLabel}}<span class="badge {{.StatusClass}}">{{.StatusLabel}}</span>{{end}}
+    </div>
+    <div class="li-sub">
+      {{.ModuleLabel}} · {{.DateLabel}} · {{.Author}}
+      {{if .ClosedLabel}} · abgeschlossen {{.ClosedLabel}}{{end}}
+      {{if and .ParentTitle (ne .Module "action")}} · {{.ParentTitle}}{{end}}
+      {{if .FromChild}} · <a href="/infrastructure/{{.InfraID}}" style="color:var(--accent)"><i class="ti ti-subtask"></i> {{.InfraName}}</a>{{end}}
+    </div>
+    {{if and .Body (ne .Module "part")}}<div class="ih-text">{{.Body}}</div>{{end}}
+  </div>
+</div>
+{{end}}
 {{end}}
 {{end}}
 

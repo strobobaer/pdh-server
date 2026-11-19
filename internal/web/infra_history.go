@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+
+	"pdh/internal/core/listsort"
 )
 
 // Anlagen-Historie der Infrastruktur-Stammkarte: fuehrt Stoerungen,
@@ -63,6 +65,9 @@ var infraCommentRefTypes = map[string]struct {
 const (
 	infraHistoryPageLimit   = 200
 	infraHistoryExportLimit = 10000
+	// Für „Häufigste zuerst“ und „Gleiches zusammen“ wird über die gefilterte
+	// Menge gerechnet, nicht nur über die ersten Zeilen der Seite.
+	infraHistoryGroupLimit = 2000
 )
 
 // infraHistoryFilter sind die Filterparameter der Anlagen-Historie
@@ -76,6 +81,8 @@ type infraHistoryFilter struct {
 	ToValue         string
 	State           string // "" | open | closed
 	IncludeChildren bool
+	// Sort: Sortierart der Zeitleiste (leer = neueste zuerst, so auch beim CSV-Export).
+	Sort listsort.Mode
 }
 
 func parseInfraHistoryFilter(r *http.Request) infraHistoryFilter {
@@ -270,6 +277,7 @@ type InfraHistoryEntry struct {
 	ClosedLabel string
 	DetailURL   string
 	Author      string
+	AuthorID    string
 	InfraID     string
 	InfraName   string
 	FromChild   bool
@@ -297,6 +305,15 @@ type infraHistoryModuleCount struct {
 	Active bool
 }
 
+// InfraHistoryGroup ist eine Gruppe gleicher Einträge („Häufigste zuerst“,
+// „Gleiches zusammen“). Mit einem Eintrag wird sie als gewöhnliche Zeile gezeigt.
+type InfraHistoryGroup struct {
+	Label   string
+	Count   int
+	Last    string
+	Entries []InfraHistoryEntry
+}
+
 // InfraHistoryResult ist das Datenmodell des Historien-Fragments.
 type InfraHistoryResult struct {
 	InfraID    string
@@ -304,12 +321,90 @@ type InfraHistoryResult struct {
 	Modules    []infraHistoryModuleCount
 	Pinned     []InfraHistoryEntry
 	Entries    []InfraHistoryEntry
+	Groups     []InfraHistoryGroup // nur in den gruppierenden Sortierarten
 	Total      int
-	Truncated  bool
+	Truncated  bool // Seite zeigt nicht alle (neueste bzw. älteste Zeilen)
+	Capped     bool // beim Gruppieren zählten nur die neuesten Cap Einträge
+	Cap        int
 	Parts      []InfraPartUsage
 	PartsCost  string
 	ExportURL  string
 	IsFiltered bool
+	Bar        SortBar
+	Lang       string
+}
+
+// Language: Sprache für die Vorlagenfunktion t beim Ausgeben.
+func (r *InfraHistoryResult) Language() string { return r.Lang }
+
+// infraHistoryItems: die Sortiereinträge zu den Zeilen (gleiche Reihenfolge).
+func infraHistoryItems(entries []InfraHistoryEntry) []listsort.Item {
+	items := make([]listsort.Item, len(entries))
+	for i, e := range entries {
+		person := ""
+		if e.AuthorID != "" { // ohne Benutzer („System“) steht der Eintrag bei „Nach Person“ am Ende
+			person = e.Author
+		}
+		items[i] = listsort.Item{At: e.OccurredAt, Key: infraHistoryKey(e), Label: infraHistoryLabel(e), Person: person, Kind: e.ModuleLabel}
+	}
+	return items
+}
+
+// infraHistoryOrdered: die Zeilen in der Reihenfolge der Sortierart (ohne Gruppen).
+func infraHistoryOrdered(entries []InfraHistoryEntry, mode listsort.Mode) []InfraHistoryEntry {
+	out := make([]InfraHistoryEntry, 0, len(entries))
+	for _, i := range listsort.Order(infraHistoryItems(entries), mode) {
+		out = append(out, entries[i])
+	}
+	return out
+}
+
+// infraHistoryGroups: gleiche Einträge zu Gruppen zusammengefasst.
+func infraHistoryGroups(entries []InfraHistoryEntry, mode listsort.Mode) []InfraHistoryGroup {
+	var out []InfraHistoryGroup
+	for _, g := range listsort.Groups(infraHistoryItems(entries), mode) {
+		grp := InfraHistoryGroup{Label: g.Label, Count: g.Count, Last: g.Last.Local().Format("02.01.2006")}
+		for _, i := range g.Idx {
+			grp.Entries = append(grp.Entries, entries[i])
+		}
+		out = append(out, grp)
+	}
+	return out
+}
+
+// infraHistoryKey: „gleich“ heißt gleicher Wortschlüssel. Bei Maßnahmen,
+// Kommentaren und Lagerbewegungen zählt der Text mit, sonst nur der Titel.
+func infraHistoryKey(e InfraHistoryEntry) string {
+	switch e.Module {
+	case "action", "comment", "part":
+		return listsort.Key(e.Title + " " + e.Body)
+	}
+	return listsort.Key(e.Title)
+}
+
+// infraHistoryLabel: Gruppentitel, wahr für jeden Eintrag der Gruppe (der
+// Schlüssel enthält den Titel bzw. Text, nicht aber die Art des Bezugs).
+func infraHistoryLabel(e InfraHistoryEntry) string {
+	snip := func(s string) string {
+		s = strings.Join(strings.Fields(s), " ")
+		if r := []rune(s); len(r) > 80 {
+			return string(r[:80]) + "…"
+		}
+		return s
+	}
+	var l string
+	switch e.Module {
+	case "comment":
+		l = snip(e.Body)
+	case "action":
+		l = "Maßnahme · " + snip(e.Body)
+	default:
+		l = snip(e.Title)
+	}
+	if strings.TrimSpace(l) == "" {
+		return e.ModuleLabel
+	}
+	return l
 }
 
 func (f infraHistoryFilter) args(infraID string) []interface{} {
@@ -372,16 +467,29 @@ func (h *Handler) loadInfraHistory(ctx context.Context, r *http.Request, infraID
 		}
 	}
 
+	// Sortierart: der Export bleibt immer nach Datum (neueste zuerst).
+	mode := f.Sort
+	if mode == "" || limit <= 0 {
+		mode = listsort.Newest
+	}
 	fetch := limit
 	if fetch <= 0 {
 		fetch = infraHistoryExportLimit
+	} else if mode.Grouped() {
+		fetch = infraHistoryGroupLimit
+	}
+	// „Älteste zuerst“ sortiert in der Datenbank, damit wirklich die ältesten
+	// erscheinen; ORDER BY kommt nur aus diesen festen Bausteinen.
+	orderBy := "occurred_at DESC, id DESC"
+	if mode == listsort.Oldest {
+		orderBy = "occurred_at ASC, id ASC"
 	}
 	listArgs := append(args, f.Modules)
 	rows, err := h.db.Query(ctx, infraHistoryBaseSQL+fmt.Sprintf(`
 		SELECT module, id, title, body, status, occurred_at, closed_at, url, author, author_id,
 		       infra_id, infra_name, parent_title, qty::float8, unit, pinned
 		FROM filtered WHERE module = ANY($7::text[])
-		ORDER BY occurred_at DESC LIMIT %d`, fetch), listArgs...)
+		ORDER BY %s LIMIT %d`, orderBy, fetch), listArgs...)
 	if err != nil {
 		return nil, err
 	}
@@ -395,6 +503,7 @@ func (h *Handler) loadInfraHistory(ctx context.Context, r *http.Request, infraID
 			&e.DetailURL, &e.Author, &authorID, &e.InfraID, &e.InfraName, &e.ParentTitle, &qty, &unit, &e.Pinned); err != nil {
 			continue
 		}
+		e.AuthorID = authorID
 		if mod, ok := infraHistoryModuleByKey(e.Module); ok {
 			e.ModuleLabel, e.Icon, e.Dot = mod.Label, mod.Icon, mod.Dot
 		}
@@ -457,11 +566,18 @@ func (h *Handler) loadInfraHistory(ctx context.Context, r *http.Request, infraID
 			}
 		}
 	}
-	if limit > 0 && res.Total > len(res.Entries) {
-		res.Truncated = true
-	}
 	if limit <= 0 {
 		return res, nil
+	}
+	// Gezählt und gruppiert wird, was nach dem Abteilungsfilter übrig ist.
+	if more := res.Total > len(res.Entries); mode.Grouped() {
+		res.Capped, res.Cap = more, infraHistoryGroupLimit
+		res.Groups = infraHistoryGroups(res.Entries, mode)
+	} else {
+		res.Truncated = more
+		if mode == listsort.Person || mode == listsort.Kind {
+			res.Entries = infraHistoryOrdered(res.Entries, mode)
+		}
 	}
 
 	// Angeheftete Kommentare - unabhaengig von Filtern immer sichtbar
@@ -528,6 +644,7 @@ func (h *Handler) InfraHistoryWeb(w http.ResponseWriter, r *http.Request) {
 	}
 	id := chi.URLParam(r, "id")
 	f := parseInfraHistoryFilter(r)
+	f.Sort = h.sortMode(r, "timeline")
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if h.db == nil {
 		fmt.Fprint(w, `<div style="color:var(--red);font-size:12px">Keine Datenbank</div>`)
@@ -535,21 +652,21 @@ func (h *Handler) InfraHistoryWeb(w http.ResponseWriter, r *http.Request) {
 	}
 	res, err := h.loadInfraHistory(r.Context(), r, id, f, infraHistoryPageLimit)
 	if err != nil {
+		componentLog("anlagen").Error().Err(err).Str("anlage", id).Msg("anlagen-historie laden")
 		fmt.Fprintf(w, `<div style="color:var(--red);font-size:12px">Fehler: %s</div>`, esc(err.Error()))
 		return
 	}
+	// Export und Sortier-Leiste behalten alle Filter; die Sortierart setzt die Leiste selbst.
+	q := r.URL.Query()
+	q.Del("ls_timeline")
 	exportQuery := r.URL.Query()
+	exportQuery.Del("ls_timeline")
 	exportQuery.Set("filtered", "1")
 	res.ExportURL = fmt.Sprintf("/infrastructure/%s/history.csv?%s", id, exportQuery.Encode())
 	res.IsFiltered = f.Query != "" || f.From != nil || f.To != nil || f.State != "" || len(f.Modules) != len(infraHistoryModules)
-	t, err := h.tmpl.Clone()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	if err := t.ExecuteTemplate(w, "infra-history-results", res); err != nil {
-		fmt.Fprintf(w, `<div style="color:var(--red);font-size:12px">Template-Fehler: %s</div>`, esc(err.Error()))
-	}
+	res.Lang = h.requestLang(r)
+	res.Bar = h.sortBar(r, "timeline", f.Sort, r.URL.Path+"?"+q.Encode(), "#ih-res")
+	h.renderFragment(w, "infra-history-results", res)
 }
 
 // InfraHistoryCSV exportiert die gefilterte Anlagen-Historie als CSV

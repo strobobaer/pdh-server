@@ -10,6 +10,7 @@
 .ih-date{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
 .ih-date input{width:auto}
 .ih-filter{margin-bottom:12px}
+.rh-group>summary~.ih-entry{margin-left:22px}
 .ih-chips{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 12px}
 .ih-chip{font-size:11px;color:var(--muted);padding:3px 8px;border-radius:999px;background:var(--bg3);opacity:.55}
 .ih-chip.on{opacity:1}
@@ -347,6 +348,7 @@
             hx-trigger="load, input delay:350ms, submit, infra-history-refresh from:body"
             hx-indicator="#infra-history-loading">
         <input type="hidden" name="filtered" value="1">
+        <input type="hidden" id="ih-sort" name="ls_timeline" value=""><!-- Sortierart: setzt die Leiste der Zeitleiste, Filtern behält sie -->
         <div class="ih-filter-row">
           <div class="search-box" style="flex:1;min-width:200px">
             <i class="ti ti-search" style="color:var(--muted)"></i>

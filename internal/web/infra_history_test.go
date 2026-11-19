@@ -2,11 +2,18 @@ package web
 
 import (
 	"bytes"
+	"context"
 	"html/template"
 	"net/http/httptest"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/go-chi/chi/v5"
+
+	"pdh/internal/core/users"
 )
 
 func TestParseInfraHistoryFilterDefaults(t *testing.T) {
@@ -82,5 +89,217 @@ func TestInfraHistoryTemplateRenders(t *testing.T) {
 	}
 	if strings.Contains(out, "/comments/c2/delete") {
 		t.Error("fremder Kommentar darf keine Löschen-Aktion haben")
+	}
+}
+
+// ── Sortieren der Anlagen-Historie (Plan 2026-11-19-sortierung, Aufgabe 4) ──
+
+// infra legt eine Anlage an (optional unter einer Oberanlage, optional in einer Abteilung).
+func (e *histEnv) infra(name, parent, dept string) string {
+	e.t.Helper()
+	id := e.id(`INSERT INTO infrastructure (name, type, parent_id, department_id)
+		VALUES ($1, 'device', NULLIF($2,'')::uuid, NULLIF($3,'')::uuid) RETURNING id::text`, name+e.sfx, parent, dept)
+	e.t.Cleanup(func() {
+		_, _ = e.pool.Exec(context.Background(), `DELETE FROM infrastructure WHERE id = $1::uuid`, id)
+	})
+	return id
+}
+
+func (e *histEnv) fault(title, desc, infra string, by *users.User) string {
+	e.t.Helper()
+	return e.row("faults", `INSERT INTO faults (title, description, infrastructure_id, created_by)
+		VALUES ($1, $2, $3::uuid, $4::uuid) RETURNING id::text`, title, desc, infra, by.ID)
+}
+
+func (e *histEnv) faultAction(fault, text string, by *users.User, at time.Time) {
+	e.t.Helper()
+	e.exec(`INSERT INTO fault_actions (fault_id, description, created_by, created_at) VALUES ($1::uuid, $2, $3::uuid, $4)`, fault, text, by.ID, at)
+}
+
+func (e *histEnv) comment(infra, text string, by *users.User, at time.Time) {
+	e.t.Helper()
+	e.exec(`INSERT INTO infrastructure_comments (infrastructure_id, text, created_by, created_at) VALUES ($1::uuid, $2, $3::uuid, $4)`, infra, text, by.ID, at)
+}
+
+// getInfra ruft das Historien-Fragment über den Router auf.
+func (e *histEnv) getInfra(u *users.User, infra, query string) *httptest.ResponseRecorder {
+	e.t.Helper()
+	r := chi.NewRouter()
+	r.Get("/infrastructure/{id}/history", e.h.InfraHistoryWeb)
+	req := httptest.NewRequest("GET", "/infrastructure/"+infra+"/history?"+query, nil)
+	req = req.WithContext(context.WithValue(req.Context(), "user", u))
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != 200 {
+		e.t.Fatalf("%s: %d %s", query, w.Code, w.Body.String())
+	}
+	return w
+}
+
+var infraMarkRe = regexp.MustCompile(`\bm-[a-z0-9]+`)
+
+// infraMarks: die Marken m-… der Eintragskörper in der Reihenfolge ihres Erscheinens.
+// Direkte Wiederholungen (Text und Bearbeiten-Feld eines eigenen Kommentars) zählen einmal.
+func infraMarks(body string) []string {
+	var out []string
+	for _, m := range infraMarkRe.FindAllString(body, -1) {
+		if len(out) == 0 || out[len(out)-1] != m {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+func (e *histEnv) infraViewer(first, last string) *users.User {
+	u := e.user(first, last)
+	e.grant(u, "infrastructure.view", "")
+	return u
+}
+
+func TestInfraHistorySortOld(t *testing.T) {
+	e := newHistEnv(t)
+	u := e.infraViewer("Anna", "Alpha")
+	inf := e.infra("Alt", "", "")
+	e.exec(`INSERT INTO infrastructure_comments (infrastructure_id, text, created_by, created_at)
+		SELECT $1::uuid, 'm-' || lpad(i::text, 3, '0'), $2::uuid, TIMESTAMPTZ '2026-01-01 00:00:00+00' + i * interval '1 minute'
+		FROM generate_series(1, 205) i`, inf, u.ID)
+
+	body := e.getInfra(u, inf, "filtered=1&module=comment&ls_timeline=old").Body.String()
+	old := infraMarks(body)
+	if len(old) != 200 || old[0] != "m-001" || old[199] != "m-200" {
+		t.Errorf("old: %d Einträge, erster %v", len(old), old[:min(2, len(old))])
+	}
+	if !strings.Contains(body, "älteste 200") {
+		t.Errorf("old: Hinweis auf die ältesten fehlt")
+	}
+	nw := infraMarks(e.getInfra(u, inf, "filtered=1&module=comment&ls_timeline=new").Body.String())
+	if len(nw) != 200 || nw[0] != "m-205" || nw[199] != "m-006" {
+		t.Errorf("new: %d Einträge, erster %v", len(nw), nw[:min(2, len(nw))])
+	}
+}
+
+func TestInfraHistoryFrequent(t *testing.T) {
+	e := newHistEnv(t)
+	u := e.infraViewer("Anna", "Alpha")
+	inf := e.infra("Presse", "", "")
+	at := time.Date(2026, 3, 1, 8, 0, 0, 0, time.UTC)
+	f1 := e.fault("Pumpe tropft", "", inf, u)
+	f2 := e.fault("Pumpe tropft", "", inf, u)
+	e.faultAction(f1, "Dichtung getauscht", u, at)
+	e.faultAction(f2, "dichtung  GETAUSCHT!", u, at.AddDate(0, 0, 2)) // gleiche Maßnahme, andere Schreibweise
+	e.faultAction(f1, "Filter gereinigt", u, at.AddDate(0, 0, 1))
+
+	body := e.getInfra(u, inf, "filtered=1&module=action&ls_timeline=freq").Body.String()
+	if !strings.Contains(body, "2× ") || strings.Count(body, "<details") != 1 || strings.Contains(body, "1× ") {
+		t.Errorf("freq: eine Gruppe 2× erwartet: %s", body)
+	}
+	sums := regexp.MustCompile(`(?s)<summary.*?</summary>`).FindAllString(body, -1)
+	if len(sums) != 1 || !strings.Contains(sums[0], "2× ") || !strings.Contains(sums[0], "dichtung") || strings.Contains(sums[0], "Filter") ||
+		!strings.Contains(sums[0], "zuletzt 03.03.2026") {
+		t.Errorf("Gruppenkopf: %q", sums)
+	}
+	if !strings.Contains(body, "Dichtung getauscht") || !strings.Contains(body, "dichtung  GETAUSCHT!") {
+		t.Errorf("beide Einzeleinträge müssen in der Gruppe stehen")
+	}
+	// die Gruppe steht vor der Einzelzeile
+	if a, b := strings.Index(body, "<details"), strings.Index(body, "Filter gereinigt"); !(a >= 0 && a < b) {
+		t.Errorf("Gruppe nicht zuerst: %d %d", a, b)
+	}
+	// „Gleiches zusammen“: Gruppen nach Schlüssel aufsteigend (dichtung vor filter)
+	same := e.getInfra(u, inf, "filtered=1&module=action&ls_timeline=same").Body.String()
+	if a, b := strings.Index(same, "<details"), strings.Index(same, "Filter gereinigt"); !(a >= 0 && a < b) {
+		t.Errorf("same: Reihenfolge %d %d", a, b)
+	}
+	// ungruppiert gibt es keine Gruppen
+	if nw := e.getInfra(u, inf, "filtered=1&module=action&ls_timeline=new").Body.String(); strings.Contains(nw, "<details") {
+		t.Errorf("new darf nicht gruppieren")
+	}
+}
+
+func TestInfraHistoryByKind(t *testing.T) {
+	e := newHistEnv(t)
+	u := e.infraViewer("Anna", "Alpha")
+	inf := e.infra("Kind", "", "")
+	at := time.Date(2026, 3, 1, 8, 0, 0, 0, time.UTC)
+	f := e.fault("Störung A", "m-fault", inf, u)
+	e.faultAction(f, "m-action", u, at.AddDate(0, 0, 1))
+	e.comment(inf, "m-comment", u, at.AddDate(0, 0, 2))
+	// aufsteigend nach Art: Kommentare, Maßnahmen, Störungen
+	got := strings.Join(infraMarks(e.getInfra(u, inf, "filtered=1&module=fault&module=action&module=comment&ls_timeline=kind").Body.String()), " ")
+	if got != "m-comment m-action m-fault" {
+		t.Errorf("kind: %q", got)
+	}
+}
+
+func TestInfraHistoryByPerson(t *testing.T) {
+	e := newHistEnv(t)
+	anna, bert := e.infraViewer("Anna", "Alpha"), e.user("Bert", "Beta")
+	inf := e.infra("Person", "", "")
+	at := time.Date(2026, 3, 1, 8, 0, 0, 0, time.UTC)
+	e.comment(inf, "m-a1", bert, at)
+	e.comment(inf, "m-a2", anna, at.AddDate(0, 0, 1))
+	e.comment(inf, "m-a3", bert, at.AddDate(0, 0, 2))
+	e.comment(inf, "m-a4", anna, at.AddDate(0, 0, 3))
+	// Anna zuerst, je neueste zuerst; danach Bert
+	got := strings.Join(infraMarks(e.getInfra(anna, inf, "filtered=1&module=comment&ls_timeline=person").Body.String()), " ")
+	if got != "m-a4 m-a2 m-a3 m-a1" {
+		t.Errorf("person: %q", got)
+	}
+}
+
+func TestInfraHistorySortKeepsFilter(t *testing.T) {
+	e := newHistEnv(t)
+	u := e.infraViewer("Anna", "Alpha")
+	inf := e.infra("Filter", "", "")
+	at := time.Date(2026, 3, 1, 8, 0, 0, 0, time.UTC)
+	e.comment(inf, "m-alt Dichtung", u, at.AddDate(0, -2, 0)) // vor dem Zeitraum
+	e.comment(inf, "m-neu Dichtung", u, at)
+	e.comment(inf, "m-neu Filter", u, at)
+	body := e.getInfra(u, inf, "filtered=1&q=Dichtung&from=2026-02-01&module=comment&ls_timeline=freq").Body.String()
+	if got := strings.Join(infraMarks(body), " "); got != "m-neu" {
+		t.Errorf("Filter wirkt nicht mit Sortierung: %q", got)
+	}
+	for _, want := range []string{"q=Dichtung", "from=2026-02-01", "module=comment", "filtered=1", "ls_timeline=old", `hx-target="#ih-res"`, `name="ls_timeline"`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("Leiste verliert %q: %s", want, body)
+		}
+	}
+	// die Wahl bleibt beim nächsten Aufruf ohne Parameter erhalten (gemerkt)
+	if again := e.getInfra(u, inf, "filtered=1&module=comment").Body.String(); !strings.Contains(again, `sortbar-b on" role="button" aria-pressed="true" href="/infrastructure/`+inf+`/history?`) {
+		t.Errorf("gemerkte Wahl fehlt: %s", again)
+	}
+}
+
+func TestInfraHistoryScopeCounts(t *testing.T) {
+	e := newHistEnv(t)
+	maker := e.user("Mia", "Macher")
+	a, b := e.dept("A"), e.dept("B")
+	root := e.infra("Wurzel", "", "")
+	inA := e.infra("Halle A", root, a)
+	inB := e.infra("Halle B", root, b)
+	for i := 0; i < 2; i++ {
+		e.fault("Pumpe tropft", "", inA, maker)
+	}
+	for i := 0; i < 3; i++ {
+		e.fault("Pumpe tropft", "", inB, maker)
+	}
+	role := "scoped" + e.sfx
+	e.exec(`INSERT INTO roles (key, label, department_id) VALUES ($1, 'Nur A', $2::uuid)`, role, a)
+	t.Cleanup(func() { _, _ = e.pool.Exec(context.Background(), `DELETE FROM roles WHERE key = $1`, role) })
+	scoped := e.user("Sven", "Scoped")
+	scoped.Role = users.Role(role)
+	e.grant(scoped, "infrastructure.view", "")
+	all := e.infraViewer("Alex", "Ueberall")
+
+	q := "filtered=1&children=1&module=fault&ls_timeline=freq"
+	body := e.getInfra(scoped, root, q).Body.String()
+	if !strings.Contains(body, "2× Pumpe tropft") || strings.Contains(body, "5× ") {
+		t.Errorf("eingeschränkt: Gruppe darf nur 2 zählen: %s", body)
+	}
+	if !strings.Contains(body, "· 2 Einträge") {
+		t.Errorf("eingeschränkt: Summe 2 erwartet: %s", body)
+	}
+	if body := e.getInfra(all, root, q).Body.String(); !strings.Contains(body, "5× Pumpe tropft") {
+		t.Errorf("uneingeschränkt: 5× erwartet: %s", body)
 	}
 }
