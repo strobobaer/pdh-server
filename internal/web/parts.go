@@ -301,7 +301,6 @@ type PartDetailData struct {
 	Users                []UserOption
 	SupplierOptions      []partnerOption
 	StorageOptions       []partnerOption
-	History              []HistoryView
 	// Kanban (Reiter „Kanban“, migrations/132)
 	Kanban         *kanbanLoopView
 	CanKanban      bool // Regelkreis einrichten
@@ -472,7 +471,6 @@ func (h *Handler) PartDetailPage(w http.ResponseWriter, r *http.Request) {
 		data.SupplierOptions = h.supplierOptions(ctx)
 		data.StorageOptions = storageOpts
 	}
-	data.History = h.recordHistory(ctx, "spare_part", id)
 	data.CanBook = h.canBookParts(r) || h.canCorrectParts(r)
 	data.CanKanban = h.canKanbanSetup(r)
 	data.CanKanbanView = data.CanKanban || h.canProcurement(r)

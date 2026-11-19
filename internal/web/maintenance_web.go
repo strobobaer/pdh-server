@@ -560,7 +560,6 @@ type MaintenanceTaskDetailData struct {
 	PartsUsed   []*maintenance.PartUsage
 	Pending     []*maintenance.PendingPart
 	Users       []UserOption
-	History     []HistoryView
 	NextTaskID  string
 	NextTaskDue string
 	ProtocolURL string
@@ -613,7 +612,6 @@ func (h *Handler) MaintenanceTaskDetail(w http.ResponseWriter, r *http.Request) 
 		BaseData: h.baseData(r, "maintenance", t.Title, "Auftrag"),
 		Task:     v,
 		Users:    h.userOptions(ctx),
-		History:  h.recordHistory(ctx, "maintenance_task", id),
 	}
 	steps, _ := h.maint.Steps(ctx, id)
 	for _, s := range steps {

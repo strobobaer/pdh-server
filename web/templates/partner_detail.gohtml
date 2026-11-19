@@ -520,7 +520,7 @@
 
 <!-- ── Historie ── -->
 <div class="pd-pane" data-pane="history">
-  {{template "record-history" .History}}
+  {{template "record-history-slot" (dict "Module" "business_partner" "ID" $p.ID)}}
 </div>
 {{end}}
 {{end}}

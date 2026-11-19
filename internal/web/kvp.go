@@ -960,7 +960,6 @@ type KVPDetailData struct {
 	Statuses   []kvpStatusDef
 	Actions    []kvpActionView
 	Comments   []kvpComment
-	History    []HistoryView
 	Next       []kvpTransition
 	PDCA       []kvpStatusDef
 	Scores     []int
@@ -1075,7 +1074,6 @@ func (h *Handler) KVPDetailPage(w http.ResponseWriter, r *http.Request) {
 		Statuses:   kvpStatuses,
 		Actions:    h.kvpActions(ctx, k.ID, false),
 		Comments:   h.kvpComments(ctx, k.ID),
-		History:    h.recordHistory(ctx, "kvp", k.ID),
 		Scores:     []int{1, 2, 3, 4, 5},
 		MyUserID:   getUser(r).ID,
 	}

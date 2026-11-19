@@ -406,7 +406,7 @@
 <div class="rec-pane" data-pane="links">{{template "record-links-slot" (dict "Module" "kvp" "ID" $k.ID)}}</div>
 
 <!-- ── Historie ── -->
-<div class="rec-pane" data-pane="history">{{template "record-history" .History}}</div>
+<div class="rec-pane" data-pane="history">{{template "record-history-slot" (dict "Module" "kvp" "ID" $k.ID)}}</div>
 {{end}}
 
 {{define "scripts"}}

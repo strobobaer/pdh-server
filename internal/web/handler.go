@@ -207,6 +207,7 @@ type HistoryView struct {
 	Message   string
 	UserName  string
 	CreatedAt string
+	At        time.Time // Zeitpunkt roh (für die Sortierung)
 }
 
 type RecordPeople struct {
@@ -1626,10 +1627,51 @@ func (h *Handler) recordHistory(ctx context.Context, refType, id string) []Histo
 		var created time.Time
 		if err := rows.Scan(&item.Action, &item.FieldName, &item.OldValue, &item.NewValue, &item.Message, &item.UserName, &created); err == nil {
 			item.CreatedAt = created.Format("02.01.2006 15:04")
+			item.At = created
 			list = append(list, item)
 		}
 	}
 	return list
+}
+
+// historyCap: so viele Einträge je Datensatz werden höchstens berücksichtigt
+// (Sortieren und Zusammenfassen rechnen über alle, nicht nur über die gezeigten).
+// Variable statt Konstante, damit ein Test die Grenze herabsetzen kann.
+var historyCap = 5000
+
+// recordHistoryAll liefert die Historie eines Datensatzes, neueste zuerst; bei
+// gleichem Zeitstempel entscheidet die Kennung, damit die Reihenfolge fest
+// bleibt. capped: es gab mehr als historyCap Einträge, zurück kommen die neuesten.
+func (h *Handler) recordHistoryAll(ctx context.Context, refType, id string) (rows []HistoryView, capped bool) {
+	if h.db == nil {
+		return nil, false
+	}
+	res, err := h.db.Query(ctx, `
+		SELECT rh.action, COALESCE(rh.field_name,''), COALESCE(rh.old_value,''),
+		       COALESCE(rh.new_value,''), COALESCE(rh.message,''),
+		       COALESCE(u.first_name || ' ' || u.last_name, 'System'), rh.created_at
+		FROM record_history rh
+		LEFT JOIN users u ON rh.created_by = u.id
+		WHERE rh.ref_type=$1 AND rh.ref_id=$2
+		ORDER BY rh.created_at DESC, rh.id DESC
+		LIMIT $3`, refType, id, historyCap+1)
+	if err != nil {
+		return nil, false
+	}
+	defer res.Close()
+	for res.Next() {
+		var item HistoryView
+		var created time.Time
+		if err := res.Scan(&item.Action, &item.FieldName, &item.OldValue, &item.NewValue, &item.Message, &item.UserName, &created); err == nil {
+			item.CreatedAt = created.Format("02.01.2006 15:04")
+			item.At = created
+			rows = append(rows, item)
+		}
+	}
+	if len(rows) > historyCap {
+		return rows[:historyCap], true
+	}
+	return rows, false
 }
 
 func (h *Handler) addHistory(ctx context.Context, refType, id, action, field, oldValue, newValue, message, userID string) {
@@ -2592,7 +2634,6 @@ type FaultDetailData struct {
 	RunningTime   *timetracking.TimeEntry
 	SimilarFaults []SimilarFaultView
 	Users         []UserOption
-	History       []HistoryView
 }
 
 type FaultDetailView struct {
@@ -2650,7 +2691,6 @@ func (h *Handler) FaultDetail(w http.ResponseWriter, r *http.Request) {
 	data := FaultDetailData{
 		BaseData: base,
 		Users:    h.userOptions(ctx),
-		History:  h.recordHistory(ctx, "fault", id),
 		Fault: FaultDetailView{
 			ID: fault.ID, Title: fault.Title,
 			Description:      fault.Description,
@@ -2777,7 +2817,6 @@ type TicketDetailData struct {
 	StatusOptions  []StatusOption
 	RelatedTickets []TicketView
 	Users          []UserOption
-	History        []HistoryView
 }
 
 type CommentView struct {
@@ -2816,7 +2855,6 @@ func (h *Handler) TicketDetail(w http.ResponseWriter, r *http.Request) {
 	data := TicketDetailData{
 		BaseData: tbase,
 		Users:    h.userOptions(ctx),
-		History:  h.recordHistory(ctx, "ticket", id),
 		Ticket: TicketView{
 			ID: t.ID, Title: t.Title, Description: t.Description,
 			InfraName: h.infraName(ctx, t.InfrastructureID),

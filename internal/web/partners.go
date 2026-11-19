@@ -265,7 +265,6 @@ type PartnerDetailData struct {
 	Links          []PartnerLinkView
 	LinkKinds      interface{}
 	CanCredentials bool
-	History        []HistoryView
 }
 
 func (h *Handler) PartnerNewPage(w http.ResponseWriter, r *http.Request) {
@@ -342,7 +341,6 @@ func (h *Handler) PartnerDetail(w http.ResponseWriter, r *http.Request) {
 	data.Links = h.partnerLinks(ctx, id)
 	data.LinkKinds = partnerLinkKinds
 	data.CanCredentials = h.canPartnerCredentials(r)
-	data.History = h.recordHistory(ctx, "business_partner", id)
 	if h.canPurchaseView(r) {
 		data.Purchases = h.purchasesFor(ctx, "", id)
 	}

@@ -1002,5 +1002,8 @@
  "Gleiches zusammen": "Group identical",
  "Nach Person": "By person",
  "Nach Art": "By type",
- "Nach Termin": "By due date"
+ "Nach Termin": "By due date",
+ "Weitere laden": "Load more",
+ "zuletzt": "last",
+ "Nur die neuesten %d Einträge berücksichtigt": "Only the newest %d entries considered"
 }

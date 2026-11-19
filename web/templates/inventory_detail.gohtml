@@ -393,7 +393,7 @@
 
 <!-- ── Historie ── -->
 <div class="rec-pane" data-pane="history">
-  {{template "record-history" .History}}
+  {{template "record-history-slot" (dict "Module" "part" "ID" $p.ID)}}
 </div>
 {{end}}
 
