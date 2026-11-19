@@ -26,6 +26,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -169,24 +170,32 @@ func (a *updateAgent) pruneVersionOrphans(ctx context.Context) {
 	}
 	a.vmu.Lock()
 	defer a.vmu.Unlock()
+	a.sweepVersions(ctx, readRawPointer(pointerActive), readRawPointer(pointerPrevious))
+}
+
+// installingTarget: wird genau diese Version gerade vom Auftrag dieses Agenten eingerichtet?
+func (a *updateAgent) installingTarget(version string) bool {
+	a.esppdh.mu.Lock()
+	defer a.esppdh.mu.Unlock()
+	return a.esppdh.running && a.esppdh.target == version
+}
+
+// sweepVersions löscht alle Versionsordner außer den genannten (vmu gehalten). Die einzige
+// Stelle, die mehrere Ordner auf einmal löscht: Läuft irgendwo eine Einrichtung, wird nichts
+// gelöscht (pip schreibt noch); der Ordner des eigenen laufenden Auftrags bleibt immer stehen.
+func (a *updateAgent) sweepVersions(ctx context.Context, keep ...string) {
 	if a.esppdhInstallRunning(ctx) {
 		return
 	}
-	keep := map[string]bool{readRawPointer(pointerActive): true, readRawPointer(pointerPrevious): true}
-	a.esppdh.mu.Lock()
-	if a.esppdh.running {
-		keep[a.esppdh.target] = true
-	}
-	a.esppdh.mu.Unlock()
 	for _, v := range installedVersions() {
-		if keep[v] {
+		if a.installingTarget(v) || slices.Contains(keep, v) {
 			continue
 		}
 		if err := removeVersionDir(v); err != nil {
-			log.Printf("esppdh: verwaister Kandidat %s nicht gelöscht: %v", v, err)
+			log.Printf("esppdh: Version %s nicht gelöscht: %v", v, err)
 			continue
 		}
-		log.Printf("esppdh: verwaisten Kandidaten %s gelöscht", v)
+		log.Printf("esppdh: Version %s gelöscht", v)
 	}
 }
 
@@ -243,8 +252,16 @@ func (a *updateAgent) versionsActivate(ctx context.Context, version string) erro
 		return errors.New("ungültige ESPHome-Version")
 	}
 	cur := readRawPointer(pointerActive)
-	if cur == version {
-		return fmt.Errorf("ESPHome %s ist schon aktiv", version)
+	// Nie herabstufen: nur auf eine neuere Version als die aktive und nicht unter die Mindestversion.
+	// Zurück auf die vorige Umgebung geht allein mit „rollback“.
+	if cur != "" && esppdh.CompareVersions(version, cur) <= 0 {
+		if version == cur {
+			return fmt.Errorf("ESPHome %s ist schon aktiv", version)
+		}
+		return fmt.Errorf("ESPHome %s ist älter als die aktive Version %s – es wird nicht herabgestuft", version, cur)
+	}
+	if esppdh.CompareVersions(version, esppdh.PinnedVersion()) < 0 {
+		return fmt.Errorf("ESPHome %s ist älter als die Mindestversion %s", version, esppdh.PinnedVersion())
 	}
 	if !versionDirOK(version) {
 		return fmt.Errorf("ESPHome %s ist nicht eingerichtet", version)
@@ -266,31 +283,24 @@ func (a *updateAgent) versionsActivate(ctx context.Context, version string) erro
 	if err := writePointer(pointerActive, version); err != nil {
 		return fmt.Errorf("Zeiger „active“ nicht schreibbar: %w", err)
 	}
-	for _, v := range installedVersions() {
-		if v == version || v == prev {
-			continue
-		}
-		if err := removeVersionDir(v); err != nil {
-			log.Printf("esppdh: alte Version %s nicht gelöscht: %v", v, err)
-		}
-	}
+	// Alles andere aufräumen – nicht, solange eine Einrichtung läuft (das macht der nächste Lauf).
+	a.sweepVersions(ctx, version, prev)
 	return nil
 }
 
 // versionsDiscard: Ordner eines Kandidaten löschen, wenn er weder aktiv noch „previous“ noch
 // das Ziel eines laufenden Auftrags ist.
-func (a *updateAgent) versionsDiscard(version string) error {
+func (a *updateAgent) versionsDiscard(ctx context.Context, version string) error {
 	if !esppdh.StableVersionRe.MatchString(version) {
 		return errors.New("ungültige ESPHome-Version")
 	}
 	if version == readRawPointer(pointerActive) || version == readRawPointer(pointerPrevious) {
 		return fmt.Errorf("ESPHome %s ist aktiv oder die vorige Version und bleibt erhalten", version)
 	}
-	a.esppdh.mu.Lock()
-	busy := a.esppdh.running && a.esppdh.target == version
-	a.esppdh.mu.Unlock()
-	if busy {
-		return fmt.Errorf("ESPHome %s wird gerade eingerichtet", version)
+	// Läuft eine Einrichtung (auch eine, die der Agent nach einem Neustart nicht mehr kennt),
+	// kann es genau diese Version sein – dann nichts löschen.
+	if a.installingTarget(version) || a.esppdhInstallRunning(ctx) {
+		return fmt.Errorf("ESPHome %s kann jetzt nicht verworfen werden: Es wird gerade eine ESPHome-Version eingerichtet. Bitte danach erneut versuchen", version)
 	}
 	return removeVersionDir(version)
 }
@@ -364,7 +374,7 @@ func (a *updateAgent) versionsPostHandler(w http.ResponseWriter, r *http.Request
 	case "activate":
 		err = a.versionsActivate(r.Context(), req.Version)
 	case "discard":
-		err = a.versionsDiscard(req.Version)
+		err = a.versionsDiscard(r.Context(), req.Version)
 	case "rollback":
 		err = a.versionsRollback()
 	default:

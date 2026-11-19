@@ -118,6 +118,78 @@ func TestVersionsActivate(t *testing.T) {
 	}
 }
 
+// Der Agent stuft nie herab: nur neuer als die aktive Version und nicht unter der Mindestversion.
+func TestVersionsActivateNoDowngrade(t *testing.T) {
+	a, dir := versionsAgent(t)
+	for _, v := range []string{"2026.11.5", "2026.11.2", "2026.11.9", "2026.10.1"} {
+		mkVersion(t, dir, v)
+	}
+	writeRaw(t, dir, "active", "2026.11.5\n")
+	writeRaw(t, dir, "previous", "base\n")
+	for v, want := range map[string]string{"2026.11.2": "älter", "2026.11.5": "schon aktiv", "2026.10.1": "älter"} {
+		ans := versionsPost(t, a, "activate", v)
+		if ans.OK || !strings.Contains(ans.Error, want) {
+			t.Errorf("activate %s: %+v (erwartet Fehler mit %q)", v, ans, want)
+		}
+		if readRaw(dir, "active") != "2026.11.5\n" || readRaw(dir, "previous") != "base\n" {
+			t.Errorf("activate %s: Zeiger verändert: active=%q previous=%q", v, readRaw(dir, "active"), readRaw(dir, "previous"))
+		}
+	}
+	// neuer: geht
+	if ans := versionsPost(t, a, "activate", "2026.11.9"); !ans.OK || ans.Active != "2026.11.9" {
+		t.Errorf("neuere Version: %+v", ans)
+	}
+	// unter der Mindestversion, auch ohne aktive Version (Grundumgebung); eigener Ordner
+	b, bdir := versionsAgent(t)
+	mkVersion(t, bdir, "2026.9.9")
+	ans := versionsPost(t, b, "activate", "2026.9.9")
+	if ans.OK || !strings.Contains(ans.Error, "Mindestversion") || readRaw(bdir, "active") != "<fehlt>" {
+		t.Errorf("unter Mindestversion: %+v", ans)
+	}
+}
+
+// Läuft eine Einrichtung (im Speicher oder nach einem Neustart noch als Dienst), wird nichts gelöscht.
+func TestVersionsNoDeleteWhileInstalling(t *testing.T) {
+	a, dir := versionsAgent(t)
+	mkVersion(t, dir, "2026.11.1")
+	mkVersion(t, dir, "2026.11.2") // Kandidat, der gerade eingerichtet wird
+	mkVersion(t, dir, "2026.11.3") // anderer Ordner
+	// 1) Auftrag dieses Agenten läuft für 2026.11.2: Umschalten klappt, 2026.11.2 bleibt, 2026.11.3 geht
+	a.esppdh.running, a.esppdh.target = true, "2026.11.2"
+	if ans := versionsPost(t, a, "activate", "2026.11.1"); !ans.OK {
+		t.Fatalf("activate: %+v", ans)
+	}
+	if !esppdhExists(filepath.Join(dir, "2026.11.2")) || esppdhExists(filepath.Join(dir, "2026.11.3")) {
+		t.Error("Ziel des laufenden Auftrags gelöscht oder fremder Ordner stehen geblieben")
+	}
+	// 2) Einrichtung läuft außerhalb (Agent neu gestartet): Umschalten klappt, es wird nichts gelöscht,
+	//    verwerfen wird verweigert
+	a.esppdh.running = false
+	a.esppdhBusy = func(context.Context) bool { return true }
+	mkVersion(t, dir, "2026.11.4")
+	mkVersion(t, dir, "2026.11.5")
+	if ans := versionsPost(t, a, "activate", "2026.11.5"); !ans.OK || ans.Active != "2026.11.5" {
+		t.Fatalf("activate bei laufender Einrichtung: %+v", ans)
+	}
+	for _, v := range []string{"2026.11.1", "2026.11.2", "2026.11.4", "2026.11.5"} {
+		if !esppdhExists(filepath.Join(dir, v)) {
+			t.Errorf("%s bei laufender Einrichtung gelöscht", v)
+		}
+	}
+	if ans := versionsPost(t, a, "discard", "2026.11.4"); ans.OK || !strings.Contains(ans.Error, "eingerichtet") || !esppdhExists(filepath.Join(dir, "2026.11.4")) {
+		t.Errorf("discard bei laufender Einrichtung: %+v", ans)
+	}
+	// 3) nichts läuft mehr: verwerfen geht, das nächste Aufräumen holt den Rest
+	a.esppdhBusy = func(context.Context) bool { return false }
+	if ans := versionsPost(t, a, "discard", "2026.11.4"); !ans.OK || esppdhExists(filepath.Join(dir, "2026.11.4")) {
+		t.Errorf("discard danach: %+v", ans)
+	}
+	a.pruneVersionOrphans(context.Background())
+	if esppdhExists(filepath.Join(dir, "2026.11.2")) || !esppdhExists(filepath.Join(dir, "2026.11.1")) {
+		t.Error("Aufräumen nach Ende der Einrichtung")
+	}
+}
+
 func TestVersionsActivateWrongBinary(t *testing.T) {
 	a, dir := versionsAgent(t)
 	mkVersion(t, dir, "2026.11.1")
