@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -115,10 +117,14 @@ func TestKVPPageViewInDepartment(t *testing.T) {
 	role := e.role("vf_kd", map[string]string{"kvp.view": e.deptA})
 	u := e.person("vf_kp3", role)
 	a := e.idea("KVDA", e.infraA)
-	e.idea("KVDB", e.infraB)
-	e.exec(`UPDATE kvp_ideas SET status = 'plan' WHERE id = $1::uuid`, a)
+	b := e.idea("KVDB", e.infraB)
+	e.exec(`UPDATE kvp_ideas SET status = 'plan' WHERE id = ANY($1::uuid[])`, []string{a, b}) // B in PDCA: eine undichte Tafel fiele auf
+	chipRe := regexp.MustCompile(`Alle offenen <b>(\d+)</b>`)
 	for _, target := range []string{"/kvp?tab=ideas", "/kvp?tab=board"} {
 		body := e.page(u, target).Body.String()
+		if m := chipRe.FindStringSubmatch(body); m == nil || m[1] != "1" {
+			t.Errorf("%s: Zähler „Alle offenen“ %v, erwartet 1 (nur A sichtbar)", target, m)
+		}
 		if !strings.Contains(body, "KVDA"+e.sfx) || strings.Contains(body, "KVDB"+e.sfx) {
 			t.Errorf("%s: Abteilung A erwartet, B nicht", target)
 		}
@@ -320,5 +326,99 @@ func TestKVPAttachmentsNeedView(t *testing.T) {
 	// andere Arten bleiben unberührt
 	if got := call(e.person("vf_ka3", e.roleNone), "GET", "/api/v1/attachments/ticket/"+id); got != http.StatusOK {
 		t.Errorf("Anhänge anderer Arten: %d", got)
+	}
+}
+
+// Andere Schreibweisen der ID und ein Token mit Leerzeichen (wie es middleware.Auth annimmt)
+// führen nicht an der Prüfung vorbei.
+func TestKVPAttachmentsBypassAttempts(t *testing.T) {
+	e := newKVPEnv(t)
+	id := e.idea("KVBYP", e.infraA)
+	proj := e.named("PVBYP", e.infraA, "")
+	reached := 0
+	api := e.h.APIDepartmentScope(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { reached++ }))
+	call := func(auth, method, path string) int {
+		r := httptest.NewRequest(method, path, strings.NewReader(""))
+		if auth != "" {
+			r.Header.Set("Authorization", auth)
+		}
+		w := httptest.NewRecorder()
+		before := reached
+		api.ServeHTTP(w, r)
+		if reached > before {
+			return http.StatusOK
+		}
+		return w.Code
+	}
+	none := e.person("vf_kb1", e.roleNone)
+	tok := e.token(none)
+	bare := strings.ReplaceAll(id, "-", "")
+	for _, p := range []string{"/api/v1/attachments/kvp/" + bare, "/api/v1/attachments/kvp/{" + id + "}", "/api/v1/attachments/kvp/" + strings.ToUpper(id) + "x"} {
+		for _, m := range []string{"GET", "POST"} {
+			if got := call("Bearer "+tok, m, p); got != http.StatusForbidden {
+				t.Errorf("%s %s: %d, erwartet 403", m, p, got)
+			}
+		}
+	}
+	for _, p := range []string{"/api/v1/attachments/kvp/" + id, "/api/v1/projects/" + proj} {
+		for name, hdr := range map[string]string{"zwei Leerzeichen": "Bearer  " + tok, "Leerzeichen am Ende": "Bearer " + tok + " ", "normal": "Bearer " + tok} {
+			if got := call(hdr, "GET", p); got != http.StatusForbidden {
+				t.Errorf("%s (%s): %d, erwartet 403", p, name, got)
+			}
+		}
+	}
+	// gültiges Token eines Benutzers mit Recht: weiter erlaubt, auch mit Leerzeichen
+	view := e.person("vf_kb2", e.roleView)
+	vt := e.token(view)
+	for _, hdr := range []string{"Bearer " + vt, "Bearer  " + vt, "Bearer " + vt + " "} {
+		if got := call(hdr, "GET", "/api/v1/attachments/kvp/"+id); got != http.StatusOK {
+			t.Errorf("mit Recht (%q): %d", hdr[:8], got)
+		}
+	}
+	// ohne gültiges Token antwortet die Middleware (401), hier wird durchgereicht
+	if got := call("Bearer kaputt", "GET", "/api/v1/attachments/kvp/"+id); got != http.StatusOK {
+		t.Errorf("ungültiges Token: %d (die Middleware lehnt ab)", got)
+	}
+}
+
+func TestStatKVPCountsVisibleOnly(t *testing.T) {
+	e := newKVPEnv(t)
+	a := e.idea("KVSA", e.infraA)
+	b := e.idea("KVSB", e.infraB)
+	e.exec(`UPDATE kvp_ideas SET status = 'submitted', archived_at = NULL WHERE id = ANY($1::uuid[])`, []string{a, b})
+	count := func(u *users.User) string {
+		v, err := loadStatKVP(e.h, context.Background(), u.ID, WidgetInstance{}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return v.(statData).Value
+	}
+	baseline := func() int {
+		var n int
+		e.must(e.pool.QueryRow(context.Background(), `SELECT COUNT(*) FROM kvp_ideas WHERE archived_at IS NULL AND status IN ('submitted','review')`).Scan(&n))
+		return n
+	}
+	all := e.person("vf_ks1", e.roleView)
+	if got, want := count(all), strconv.Itoa(baseline()); got != want {
+		t.Errorf("Recht überall: %s, erwartet %s", got, want)
+	}
+	inA := e.person("vf_ks2", e.role("vf_ksa", map[string]string{"kvp.view": e.deptA}))
+	own := e.idea("KVSC", e.infraB)
+	e.exec(`UPDATE kvp_ideas SET status = 'review', submitter_id = $2::uuid WHERE id = $1::uuid`, own, inA.ID)
+	// sichtbar für inA: a (Abteilung A) und own (beteiligt); b nicht. Andere Zeilen der Labor-
+	// Datenbank zählen mit, daher wird nur die Veränderung durch die drei Vorschläge geprüft.
+	n0, _ := strconv.Atoi(count(inA))
+	arch := func(id string) { e.exec(`UPDATE kvp_ideas SET archived_at = NOW() WHERE id = $1::uuid`, id) }
+	arch(b)
+	if n, _ := strconv.Atoi(count(inA)); n != n0 {
+		t.Errorf("Vorschlag in B (nicht sichtbar) zählt mit: %d statt %d", n, n0)
+	}
+	arch(a)
+	arch(own)
+	if n, _ := strconv.Atoi(count(inA)); n != n0-2 {
+		t.Errorf("Vorschlag in A und eigener zählen nicht: %d statt %d", n, n0-2)
+	}
+	if n, _ := strconv.Atoi(count(all)); n >= n0+1 { // das Recht überall sah b (jetzt archiviert) eben noch mit
+		t.Logf("Recht überall: %d", n)
 	}
 }

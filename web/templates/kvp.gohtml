@@ -13,7 +13,7 @@
 
 <div class="rec-tabs" role="tablist">
   {{if .ShowDash}}<a class="rec-tab" data-tab="dashboard" href="?tab=dashboard"><i class="ti ti-layout-dashboard"></i> Dashboard</a>{{end}}
-  <a class="rec-tab" data-tab="ideas" href="?tab=ideas"><i class="ti ti-list-details"></i> {{if .OnlyMine}}Meine Vorschläge{{else}}Vorschläge{{end}} <b>{{len .Ideas}}</b></a>
+  <a class="rec-tab" data-tab="ideas" href="?tab=ideas"><i class="ti ti-list-details"></i> {{if .OnlyMine}}{{t "Meine Vorschläge"}}{{else}}Vorschläge{{end}} <b>{{len .Ideas}}</b></a>
   {{if .ShowBoard}}<a class="rec-tab" data-tab="board" href="?tab=board"><i class="ti ti-layout-kanban"></i> PDCA-Board</a>{{end}}
   <a class="rec-tab" data-tab="rules" href="?tab=rules"><i class="ti ti-book-2"></i> Regeln &amp; Vorlagen</a>
 </div>
@@ -96,7 +96,7 @@
 
 <!-- ── Vorschlaege ── -->
 <div class="rec-pane" data-pane="ideas">
-  {{if .OnlyMine}}<p class="rec-sub" style="margin-bottom:8px">Hier siehst du deine Vorschläge – eingereicht, im Team oder als Verantwortliche/r. Alle Vorschläge sieht, wer das Recht „KVP: alle Vorschläge ansehen“ hat.</p>{{end}}
+  {{if .OnlyMine}}<p class="rec-sub" style="margin-bottom:8px">{{t "Hier siehst du deine Vorschläge – eingereicht, im Team oder als Verantwortliche/r. Alle Vorschläge sieht, wer das Recht „KVP: alle Vorschläge ansehen“ hat."}}</p>{{end}}
   <div class="kvp-chips">
     {{range .Chips}}<a class="kvp-chip{{if .Active}} on{{end}}" href="{{.URL}}"><i class="ti {{.Icon}}"></i> {{.Label}} <b>{{.Count}}</b></a>{{end}}
   </div>
@@ -174,7 +174,7 @@
         <li><b>Wer macht was bis wann?</b> Jede Maßnahme hat eine/n Verantwortliche/n und einen Termin.</li>
         <li><b>Erst wirksam, dann fertig.</b> Wirkt es nicht, beginnt ein neuer PDCA-Zyklus.</li>
         <li><b>Gutes wird Standard</b> – Arbeitsanweisung, Checkliste oder Schulung anpassen.</li>
-        <li><b>Transparenz und Anerkennung.</b> Jede/r darf Ideen einreichen und sieht die eigenen; alle Vorschläge sieht, wer das Recht „KVP: alle Vorschläge ansehen“ hat. Umsetzungen werden gewürdigt.</li>
+        <li><b>Transparenz und Anerkennung.</b> {{t "Jede/r darf Ideen einreichen und sieht die eigenen; alle Vorschläge sieht, wer das Recht „KVP: alle Vorschläge ansehen“ hat. Umsetzungen werden gewürdigt."}}</li>
       </ol>
     </div>
     <div class="card">

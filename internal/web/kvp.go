@@ -13,6 +13,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"pdh/internal/core/listsort"
+	"pdh/internal/core/users"
 	"pdh/pkg/appsettings"
 )
 
@@ -412,6 +413,10 @@ func (h *Handler) visibleKVPIDs(r *http.Request) []string {
 		if rows.Scan(&id) == nil && canView(id) {
 			ids = append(ids, id)
 		}
+	}
+	if err := rows.Err(); err != nil {
+		componentLog("kvp").Error().Err(err).Msg("sichtbare vorschlaege lesen")
+		return []string{}
 	}
 	return ids
 }
@@ -1612,11 +1617,26 @@ func (h *Handler) runKVPReminders(ctx context.Context) {
 }
 
 // loadStatKVP: Dashboard-Widget "KVP-Vorschläge".
-func loadStatKVP(h *Handler, ctx context.Context, _ string, _ WidgetInstance, _ func(string) bool) (any, error) {
+// Mit dem Recht überall zählen alle Vorschläge, sonst nur die sichtbaren (wie die Seite:
+// Recht für die Abteilung oder beteiligt).
+func loadStatKVP(h *Handler, ctx context.Context, uid string, _ WidgetInstance, _ func(string) bool) (any, error) {
+	var role string
+	if err := h.db.QueryRow(ctx, `SELECT role FROM users WHERE id = $1::uuid`, uid).Scan(&role); err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(context.WithValue(ctx, "user", &users.User{ID: uid, Role: users.Role(role)}), http.MethodGet, "/", nil)
+	if err != nil {
+		return nil, err
+	}
+	var ids []string
+	restrict := !h.viewsAll(req, "kvp")
+	if restrict {
+		ids = h.visibleKVPIDs(req)
+	}
 	var open, late int
-	err := h.db.QueryRow(ctx, `SELECT COUNT(*) FILTER (WHERE status IN ('submitted','review')),
+	err = h.db.QueryRow(ctx, `SELECT COUNT(*) FILTER (WHERE status IN ('submitted','review')),
 		COUNT(*) FILTER (WHERE status IN ('submitted','review') AND feedback_due < CURRENT_DATE)
-		FROM kvp_ideas WHERE archived_at IS NULL`).Scan(&open, &late)
+		FROM kvp_ideas WHERE archived_at IS NULL AND (NOT $1::bool OR id::text = ANY($2::text[]))`, restrict, ids).Scan(&open, &late)
 	return statData{Value: fmt.Sprint(open), Sub: tr(ctxLang(ctx), "%d über der Frist", late), Color: "green", URL: "/kvp?tab=ideas", Alert: late > 0}, err
 }
 

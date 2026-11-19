@@ -214,10 +214,12 @@ func scopeTarget(path string) (refType, id string, ok bool) {
 	return "", "", false
 }
 
-var kvpAttachmentRe = regexp.MustCompile(`^/attachments/kvp/` + uuidRe)
+var kvpAttachmentRe = regexp.MustCompile(`^/attachments/kvp/([^/]+)`)
 
 // kvpAttachmentTarget: die Vorschlags-ID, wenn der Pfad (ohne /api/v1) Anhänge eines
-// KVP-Vorschlags anspricht (Liste, Hochladen, Datensatzbild), sonst "".
+// KVP-Vorschlags anspricht (Liste, Hochladen, Datensatzbild), sonst "". Das Segment gilt in jeder
+// Schreibweise (auch ohne Bindestriche oder in Klammern, die Postgres als UUID annimmt): ob es
+// eine gültige ID ist, entscheidet canViewRec (nur die Normalform, sonst nicht sichtbar).
 func kvpAttachmentTarget(path string) string {
 	if m := kvpAttachmentRe.FindStringSubmatch(path); m != nil {
 		return m[1]
@@ -257,29 +259,29 @@ func (h *Handler) APIDepartmentScope(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		uid := h.sessionUserID(r)
-		if uid == "" {
-			uid = h.bearerUserID(r)
-		}
-		if uid == "" || h.users == nil {
-			next.ServeHTTP(w, r) // ohne Anmeldung lehnt das Modul selbst ab
-			return
-		}
-		u, err := h.users.GetByID(r.Context(), uid)
-		if kvpID != "" {
-			// Anhänge eines KVP-Vorschlags: kvp steht nicht in scopeTables, daher hier die
-			// Ansichtsprüfung (Recht für die Abteilung oder beteiligt); Fehler sperren.
-			if err != nil || u == nil || !h.canViewRec(r.WithContext(context.WithValue(r.Context(), "user", u)), "kvp", kvpID) {
-				http.Error(w, `{"success":false,"error":"kein zugriff"}`, http.StatusForbidden)
-				return
-			}
+		// Das Token wird genau wie in middleware.Auth gelesen. Ist es gültig, lässt sich aber
+		// kein Benutzer bestimmen, wird gesperrt (nie durchgereicht); ohne gültiges Token
+		// antwortet die Middleware selbst mit 401.
+		uid, valid := h.apiTokenUser(r)
+		if !valid || h.users == nil {
 			next.ServeHTTP(w, r)
 			return
 		}
+		deny := func() { http.Error(w, `{"success":false,"error":"kein zugriff"}`, http.StatusForbidden) }
+		if uid == "" {
+			deny()
+			return
+		}
+		u, err := h.users.GetByID(r.Context(), uid)
 		if err != nil || u == nil {
-			if (single && refType == "project") || (!single && listType == "project") {
-				// Projekte nie ohne geprüften Benutzer ausliefern
-				http.Error(w, `{"success":false,"error":"kein zugriff"}`, http.StatusForbidden)
+			deny()
+			return
+		}
+		if kvpID != "" {
+			// Anhänge eines KVP-Vorschlags: kvp steht nicht in scopeTables, daher hier die
+			// Ansichtsprüfung (Recht für die Abteilung oder beteiligt); Fehler sperren.
+			if !h.canViewRec(r.WithContext(context.WithValue(r.Context(), "user", u)), "kvp", kvpID) {
+				deny()
 				return
 			}
 			next.ServeHTTP(w, r)
@@ -331,23 +333,35 @@ func (h *Handler) APIDepartmentScope(next http.Handler) http.Handler {
 	})
 }
 
-func (h *Handler) bearerUserID(r *http.Request) string {
-	auth := r.Header.Get("Authorization")
-	if !strings.HasPrefix(auth, "Bearer ") {
-		return ""
+// apiTokenUser liest das Token einer API-Anfrage genau wie middleware.Auth (Authorization:
+// Bearer zuerst, sonst der Cookie pdh_token; beides ohne umgebende Leerzeichen; jede
+// HMAC-Signatur). valid: Das Token ist gültig; uid ist dann der Benutzer (leer, wenn das
+// Token keinen enthält).
+func (h *Handler) apiTokenUser(r *http.Request) (uid string, valid bool) {
+	raw := ""
+	if hd := strings.TrimSpace(r.Header.Get("Authorization")); strings.HasPrefix(hd, "Bearer ") {
+		raw = strings.TrimSpace(strings.TrimPrefix(hd, "Bearer "))
 	}
-	token, err := jwt.Parse(strings.TrimPrefix(auth, "Bearer "), func(t *jwt.Token) (interface{}, error) {
-		if t.Method != jwt.SigningMethodHS256 {
+	if raw == "" {
+		if c, err := r.Cookie("pdh_token"); err == nil {
+			raw = strings.TrimSpace(c.Value)
+		}
+	}
+	if raw == "" {
+		return "", false
+	}
+	token, err := jwt.Parse(raw, func(t *jwt.Token) (interface{}, error) {
+		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unerwartete signaturmethode")
 		}
 		return []byte(h.jwtSecret), nil
 	})
 	if err != nil || !token.Valid {
-		return ""
+		return "", false
 	}
 	claims, _ := token.Claims.(jwt.MapClaims)
 	sub, _ := claims["sub"].(string)
-	return sub
+	return sub, true
 }
 
 type bufferWriter struct {
