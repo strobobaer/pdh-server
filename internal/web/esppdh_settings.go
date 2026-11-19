@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"pdh"
 	"pdh/internal/modules/esppdh"
 )
 
@@ -18,6 +19,12 @@ import (
 //	GET  /admin/server-config/esppdh          Karte neu zeichnen (Abfrage alle 2 s während der Einrichtung)
 //	POST /admin/server-config/esppdh          ESPPDH ein- oder ausschalten (on=1|0)
 //	POST /admin/server-config/esppdh/install  Einrichtung beim Update-Agenten starten (läuft im Hintergrund)
+//	POST /admin/server-config/esppdh/auto     „ESPHome selbst aktuell halten“ ein- oder ausschalten (on=1|0)
+//	POST /admin/server-config/esppdh/check    „Jetzt prüfen“: Prüfung im Hintergrund starten (esppdh_update.go)
+//	POST /admin/server-config/esppdh/rollback „Zurück zur vorigen Version“ (der Agent schaltet zurück)
+//
+// Am Spiegelserver gehen „Jetzt prüfen“ und „Zurück“ (jeder Server pflegt seine Umgebung selbst,
+// der Zustand liegt in einer Datei); der Schalter liegt in der Datenbank und bleibt gesperrt.
 //
 // ESPPDH ist ein Zusatz: Ohne Umgebung läuft das PDH unverändert. Im Docker-Betrieb gibt es
 // ESPPDH nicht. Am Spiegelserver bleibt der Schalter gesperrt (409, Datenbank nur lesend);
@@ -60,15 +67,30 @@ type esppdhJob struct {
 
 // esppdhPanel: Karte „ESPPDH“ (widgets/esppdh_settings.gohtml).
 type esppdhPanel struct {
-	Docker     bool            // Docker-Betrieb: nur ein Hinweis
-	Mirror     bool            // Spiegelserver: kein Schalter, Umgebung einrichten geht
-	AgentReady bool            // Update-Agent eingerichtet („Umgebung einrichten“)
-	Enabled    bool            // Schalter (app_settings esppdh.enabled)
-	Job        esppdhJob       // laufende bzw. letzte Einrichtung
-	Env        esppdh.EnvState // Zustand der Python-Umgebung (nicht während der Einrichtung)
-	Pinned     string          // festgelegte ESPHome-Version
+	Docker     bool               // Docker-Betrieb: nur ein Hinweis
+	Mirror     bool               // Spiegelserver: kein Schalter, Umgebung einrichten geht
+	AgentReady bool               // Update-Agent eingerichtet („Umgebung einrichten“)
+	Enabled    bool               // Schalter (app_settings esppdh.enabled)
+	Job        esppdhJob          // laufende bzw. letzte Einrichtung
+	Env        esppdh.EnvState    // Zustand der Python-Umgebung (nicht während der Einrichtung oder Prüfung)
+	Pinned     string             // Mindestversion von ESPHome (scripts/esphome.version)
+	Auto       bool               // Schalter „ESPHome selbst aktuell halten“ (app_settings esppdh.autoupdate)
+	Update     esppdh.UpdateState // was die letzte Prüfung dieses Servers festgestellt hat
+	Checking   bool               // eine Prüfung läuft (Karte fragt alle 2 s nach)
+	Previous   string             // vorige Umgebung laut Agent: Version, "base" = Grundumgebung, "" = keine
 	Msg, Err   string
 }
+
+// CheckedAt: Zeit der letzten Prüfung für die Anzeige; leer, wenn noch nie geprüft.
+func (p esppdhPanel) CheckedAt() string {
+	if p.Update.CheckedAt.IsZero() {
+		return ""
+	}
+	return p.Update.CheckedAt.Local().Format("02.01.2006 15:04")
+}
+
+// Polling: die Karte fragt nur nach, solange eine Einrichtung oder eine Prüfung läuft.
+func (p esppdhPanel) Polling() bool { return p.Job.Running || p.Checking }
 
 // Free: freier Platz für die Anzeige, z. B. „12,3 GB“; leer, wenn unbekannt.
 func (p esppdhPanel) Free() string {
@@ -91,14 +113,29 @@ func (h *Handler) esppdhPanelFor(ctx context.Context) esppdhPanel {
 		return p
 	}
 	p.Enabled = h.esppdhEnabled(ctx)
+	p.Auto = h.esppdhAutoUpdate(ctx)
+	p.Update = esppdh.LoadUpdateState()
+	p.Checking = h.esppdhUpdateChecking()
 	if p.AgentReady {
 		actx, cancel := context.WithTimeout(ctx, esppdhAgentTimeout)
 		// Fehler (Agent aus, zu alt): kein Stand – „Umgebung einrichten“ meldet ihn dann selbst
 		_ = h.agentJSON(actx, http.MethodGet, "/v1/esppdh/install", nil, &p.Job)
 		cancel()
+		if !p.Job.Running && !p.Checking {
+			// Fehler (zu alter Agent): keine vorige Version, der Knopf „Zurück“ fehlt
+			var v struct {
+				Previous string `json:"previous"`
+			}
+			actx, cancel = context.WithTimeout(ctx, esppdhAgentTimeout)
+			if h.agentJSON(actx, http.MethodGet, "/v1/esppdh/versions", nil, &v) == nil {
+				p.Previous = v.Previous
+			}
+			cancel()
+		}
 	}
-	if !p.Job.Running {
-		p.Env = esppdh.CheckEnv(ctx)
+	// „esphome version“ läuft nicht, solange eingerichtet oder geprüft wird (der Agent schaltet dabei um)
+	if !p.Job.Running && !p.Checking {
+		p.Env = esppdhCheckEnv(ctx)
 	}
 	return p
 }
@@ -202,4 +239,124 @@ func (h *Handler) EsppdhInstallWeb(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	h.esppdhRender(r.Context(), w, "", err)
+}
+
+// EsppdhAutoWeb: POST /admin/server-config/esppdh/auto (on=1|0) – „ESPHome selbst aktuell halten“
+// ein- oder ausschalten (app_settings esppdh.autoupdate; nur "0" heißt aus). Wie der Schalter für
+// ESPPDH: am Spiegel 409.
+func (h *Handler) EsppdhAutoWeb(w http.ResponseWriter, r *http.Request) {
+	if !h.esppdhAllowed(w, r) {
+		return
+	}
+	on := r.FormValue("on")
+	if on != "0" && on != "1" {
+		http.Error(w, "ungültiger Wert", http.StatusBadRequest)
+		return
+	}
+	ctx := r.Context()
+	var msg string
+	var err error
+	switch {
+	case inDocker():
+		err = errEsppdhDocker
+	case h.db == nil:
+		err = errors.New("Ohne Datenbank lässt sich der Schalter nicht setzen")
+	default:
+		if e := h.setAppSetting(ctx, esppdhSetAuto, on); e != nil {
+			componentLog("esppdh").Error().Err(e).Msg("schalter „selbst aktuell halten“ speichern")
+			err = errors.New("Speichern hat nicht geklappt. Näheres steht im Server-Protokoll.")
+		} else {
+			msg = "ESPHome wird nicht mehr selbst aktuell gehalten."
+			if on == "1" {
+				msg = "ESPHome wird jetzt selbst aktuell gehalten."
+			}
+			componentLog("esppdh").Info().Str("von", getUser(r).ID).Bool("an", on == "1").Msg("schalter selbst aktuell halten")
+		}
+	}
+	h.esppdhRender(ctx, w, msg, err)
+}
+
+// EsppdhCheckWeb: POST /admin/server-config/esppdh/check – „Jetzt prüfen“. Die Prüfung läuft im
+// Hintergrund und ist nicht an die Anfrage gebunden (sie dauert Minuten und überlebt das Schließen
+// der Seite); die Antwort kommt sofort, die Karte fragt danach alle 2 s nach. Es läuft nie
+// mehr als eine Prüfung (esppdhUpdateBegin). Auch am Spiegel: Jeder Server prüft selbst, die
+// Datenbank bleibt dabei unberührt.
+func (h *Handler) EsppdhCheckWeb(w http.ResponseWriter, r *http.Request) {
+	if !h.canServerConfig(r) {
+		http.Error(w, "keine berechtigung", http.StatusForbidden)
+		return
+	}
+	var msg string
+	var err error
+	switch why := h.esppdhUpdateBlocked(r.Context(), true); {
+	case why != "":
+		err = errors.New(why) // z. B. ESPPDH aus oder keine Umgebung – nichts zu starten
+	case !h.esppdhUpdateBegin():
+		msg = esppdhMsgUpdBusy
+	default:
+		lg := componentLog("esppdh")
+		lg.Info().Str("von", getUser(r).ID).Msg("esphome-prüfung von hand gestartet")
+		go func() {
+			if m, e := h.esppdhUpdateRunning(context.Background(), true); e != nil {
+				lg.Error().Err(e).Str("ergebnis", m).Msg("esphome-prüfung")
+			}
+		}()
+	}
+	h.esppdhRender(r.Context(), w, msg, err)
+}
+
+// EsppdhRollbackWeb: POST /admin/server-config/esppdh/rollback – „Zurück zur vorigen Version“.
+// Der Update-Agent schaltet die vorige Umgebung wieder ein; die verlassene Version gilt danach als
+// gescheitert (kein Hin und Her), bis das PDH aktualisiert wird oder „Jetzt prüfen“ sie erneut
+// versucht. Auch am Spiegel (Zustand liegt in einer Datei).
+func (h *Handler) EsppdhRollbackWeb(w http.ResponseWriter, r *http.Request) {
+	if !h.canServerConfig(r) {
+		http.Error(w, "keine berechtigung", http.StatusForbidden)
+		return
+	}
+	var msg string
+	var err error
+	switch {
+	case inDocker():
+		err = errEsppdhDocker
+	case !h.driveAgentConfigured():
+		err = errors.New("Der Update-Agent ist nicht eingerichtet – ohne ihn lässt sich ESPHome nicht zurückstellen")
+	case !h.esppdhUpdateBegin(): // nie neben einer Prüfung: beide schalten beim Agenten um
+		err = errors.New("Eine Prüfung läuft gerade – bitte warten, bis sie fertig ist")
+	default:
+		msg, err = h.esppdhRollback(r.Context(), getUser(r).ID)
+		h.esppdhUpdateEnd()
+	}
+	h.esppdhRender(r.Context(), w, msg, err)
+}
+
+// esppdhRollback lässt den Agenten zurückschalten und hält im Zustand fest, was nun läuft und
+// welche Version verlassen wurde. msg: Ergebnis in Klartext.
+func (h *Handler) esppdhRollback(ctx context.Context, uid string) (msg string, err error) {
+	lg := componentLog("esppdh")
+	before := esppdhCheckEnv(ctx)
+	actx, cancel := context.WithTimeout(ctx, esppdhSwitchTimeout)
+	err = h.agentJSON(actx, http.MethodPost, "/v1/esppdh/versions", map[string]string{"action": "rollback"}, nil)
+	cancel()
+	if err != nil {
+		lg.Warn().Str("von", uid).Str("fehler", err.Error()).Msg("esphome zurückstellen")
+		return "", errors.New("Zurückstellen nicht möglich: " + err.Error())
+	}
+	after := esppdhCheckEnv(ctx)
+	st := esppdh.LoadUpdateState()
+	msg = "Zurück zur vorigen Version gestellt"
+	if after.Installed {
+		msg = "Zurück auf ESPHome " + after.Version + " gestellt"
+		st.Installed = after.Version
+		if before.Installed && before.Version != after.Version {
+			st.FailedVersion, st.FailedPDH, st.FailedLog = before.Version, pdh.Version(), ""
+		}
+	}
+	st.Result, st.CheckedAt = msg, h.esppdhClock()
+	lg.Info().Str("von", uid).Str("verlassen", before.Version).Str("läuft", after.Version).Msg("esphome zurückgestellt")
+	if serr := esppdh.SaveUpdateState(st); serr != nil {
+		lg.Error().Err(serr).Msg("zustand nach dem zurückstellen speichern")
+		return msg, errors.New("Der Zustand ließ sich nicht speichern. Näheres steht im Server-Protokoll.")
+	}
+	return msg, nil
 }

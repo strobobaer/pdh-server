@@ -5,11 +5,17 @@
      braucht die Umgebung selbst). Solange die Einrichtung beim Update-Agenten
      läuft, fragt die Karte alle 2 s nach (GET, keine Dauerverbindung). */}}
 {{define "esppdh-panel"}}
-<div id="esppdh-panel" class="card"{{if .Job.Running}} hx-get="/admin/server-config/esppdh" hx-trigger="every 2s" hx-swap="outerHTML"{{end}}>
+<div id="esppdh-panel" class="card"{{if .Polling}} hx-get="/admin/server-config/esppdh" hx-trigger="every 2s" hx-swap="outerHTML"{{end}}>
   <style>
   .esppdh-row{display:flex;gap:8px 12px;align-items:center;flex-wrap:wrap;margin:0 0 10px;font-size:13px}
   .esppdh-row form{margin:0;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-  .esppdh-state{border:1px solid var(--border);border-radius:8px;padding:8px 12px;margin:0 0 10px;font-size:13px;background:var(--bg2);color:var(--text)}
+  .esppdh-row .btn{white-space:normal;text-align:center;line-height:1.3;max-width:100%}
+  .esppdh-state{border:1px solid var(--border);border-radius:8px;padding:8px 12px;margin:0 0 10px;font-size:13px;background:var(--bg2);color:var(--text);overflow-wrap:anywhere}
+  .esppdh-warn{border-color:var(--amber)}
+  .esppdh-warn>i{color:var(--amber)}
+  .esppdh-state details{margin-top:6px}
+  .esppdh-state summary{cursor:pointer;color:var(--accent)}
+  .esppdh-state pre{margin:6px 0 0;padding:8px;max-height:260px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text)}
   </style>
   <div class="card-title"><span><i class="ti ti-cpu"></i> ESPPDH – ESP-Geräte</span><span class="sc-sub">Zusatz – ohne läuft alles wie bisher</span></div>
   {{if .Msg}}<div class="sc-sub" role="status" style="margin-bottom:8px;color:var(--green)"><i class="ti ti-check"></i> {{.Msg}}</div>{{end}}
@@ -31,23 +37,51 @@
   {{else}}
   {{if .Job.Done}}{{if .Job.Error}}<div class="sc-sub" role="alert" style="margin-bottom:8px;color:var(--red);white-space:pre-line"><i class="ti ti-alert-circle"></i> {{.Job.Error}}</div>
   {{else}}<div class="sc-sub" role="status" style="margin-bottom:8px;color:var(--green)"><i class="ti ti-check"></i> Einrichtung abgeschlossen: ESPHome {{.Job.Version}}.</div>{{end}}{{end}}
+  {{if .Checking}}
+  <div class="esppdh-state" role="status"><i class="ti ti-loader-2"></i> <b>Prüfung läuft …</b> Das PDH sucht eine neuere ESPHome-Version und probt sie. Das dauert einige Minuten. Die Karte aktualisiert sich selbst.</div>
+  {{else}}
   <div class="esppdh-state">
-    {{if .Env.Installed}}<i class="ti ti-circle-check" style="color:var(--green)"></i> Umgebung eingerichtet: ESPHome {{.Env.Version}}{{if .Env.Outdated}}
-    <div style="color:var(--amber);margin-top:4px"><i class="ti ti-clock-up"></i> veraltet – wird mit dem nächsten Update angehoben (festgelegt: ESPHome {{.Pinned}})</div>{{end}}
+    {{if .Env.Installed}}<i class="ti ti-circle-check" style="color:var(--green)"></i> Umgebung eingerichtet: ESPHome {{.Env.Version}}{{if .Env.Base}} (Grundumgebung){{end}}
+    <div class="sc-sub" style="margin-top:4px"><i class="ti ti-arrow-bar-to-up"></i> Mindestversion: ESPHome {{.Pinned}}</div>
+    {{if .Env.Outdated}}<div style="color:var(--amber);margin-top:4px"><i class="ti ti-clock-up"></i> veraltet – älter als die Mindestversion. Das nächste PDH-Update hebt sie an.</div>{{end}}
     {{else if .Env.Problem}}<i class="ti ti-alert-circle" style="color:var(--red)"></i> Umgebung gestört: {{.Env.Problem}}
     {{else}}<i class="ti ti-circle-dashed"></i> Umgebung noch nicht eingerichtet. Ohne sie lässt sich keine Firmware bauen.{{end}}
     {{with .Free}}<div class="sc-sub" style="margin-top:4px"><i class="ti ti-database"></i> Freier Platz: {{.}}</div>{{end}}
   </div>
+  {{end}}
+  <div class="esppdh-state">
+    <div class="esppdh-row" style="margin:0">
+      <b>ESPHome selbst aktuell halten: {{if .Auto}}an{{else}}aus{{end}}.</b>
+      {{if not .Mirror}}<form hx-post="/admin/server-config/esppdh/auto" hx-target="#esppdh-panel" hx-swap="outerHTML" hx-disabled-elt="find button">
+        {{if .Auto}}<input type="hidden" name="on" value="0"><button class="btn btn-small" type="submit"><i class="ti ti-player-pause"></i> Ausschalten</button>
+        {{else}}<input type="hidden" name="on" value="1"><button class="btn btn-primary btn-small" type="submit"><i class="ti ti-player-play"></i> Einschalten</button>{{end}}
+      </form>{{end}}
+    </div>
+    <div class="sc-sub" style="margin-top:4px">Einmal am Tag sucht das PDH nach einer neueren ESPHome-Version, richtet sie neben der laufenden ein und probt sie an deinen Geräten. Erst wenn die Probe klappt, wird umgeschaltet. Sonst bleibt alles wie es ist.</div>
+    <div class="sc-sub" style="margin-top:6px"><i class="ti ti-clock"></i> {{with .CheckedAt}}Zuletzt geprüft: {{.}}{{with $.Update.Result}} – {{.}}{{end}}{{else}}Noch nicht geprüft.{{end}}</div>
+  </div>
+  {{with .Update.FailedVersion}}
+  <div class="esppdh-state esppdh-warn" role="status"><i class="ti ti-alert-triangle"></i> ESPHome {{.}} wird nicht verwendet: Sie hat die Prüfung nicht bestanden oder wurde zurückgenommen. Ein neuer Versuch folgt nach dem nächsten PDH-Update oder mit „Jetzt prüfen“.
+    {{with $.Update.FailedLog}}<details><summary>Ausgabe anzeigen</summary><pre>{{.}}</pre></details>{{end}}
+  </div>
+  {{end}}
   <div class="esppdh-row">
     <form hx-post="/admin/server-config/esppdh/install" hx-target="#esppdh-panel" hx-swap="outerHTML" hx-disabled-elt="find button"
       hx-confirm="Umgebung jetzt einrichten? Das lädt ESPHome {{.Pinned}} aus dem Internet und dauert einige Minuten.">
-      <button class="btn btn-small" type="submit" {{if not .AgentReady}}disabled{{end}}><i class="ti ti-download"></i> Umgebung einrichten</button>
+      <button class="btn btn-small" type="submit" {{if or (not .AgentReady) .Checking}}disabled{{end}}><i class="ti ti-download"></i> Umgebung einrichten</button>
     </form>
+    <form hx-post="/admin/server-config/esppdh/check" hx-target="#esppdh-panel" hx-swap="outerHTML" hx-disabled-elt="find button">
+      <button class="btn btn-small" type="submit" {{if or (not .AgentReady) .Checking}}disabled{{end}}><i class="ti ti-refresh"></i> Jetzt prüfen</button>
+    </form>
+    {{if .Previous}}<form hx-post="/admin/server-config/esppdh/rollback" hx-target="#esppdh-panel" hx-swap="outerHTML" hx-disabled-elt="find button"
+      hx-confirm="Zur vorigen ESPHome-Version zurückkehren? Die jetzige Version wird danach nicht mehr verwendet, bis das PDH aktualisiert wird oder du „Jetzt prüfen“ drückst.">
+      <button class="btn btn-small" type="submit" {{if or (not .AgentReady) .Checking}}disabled{{end}}><i class="ti ti-arrow-back-up"></i> Zurück zur vorigen Version ({{if eq .Previous "base"}}Grundumgebung{{else}}{{.Previous}}{{end}})</button>
+    </form>{{end}}
   </div>
   {{if not .AgentReady}}<p class="sc-sub" style="margin:0 0 10px;color:var(--amber)"><i class="ti ti-alert-triangle"></i> Zum Einrichten braucht das PDH den Update-Agenten.</p>{{end}}
   {{end}}
   <p class="sc-sub" style="margin:0 0 6px"><i class="ti ti-world-download"></i> Das Einrichten lädt ESPHome aus dem Internet. Der erste Bau je Platinentyp lädt mehrere hundert MB aus dem Internet.</p>
-  <p class="sc-sub" style="margin:0">Mit jedem PDH-Update kommt die passende ESPHome-Version mit, wenn die Umgebung eingerichtet ist.</p>
+  <p class="sc-sub" style="margin:0">Ein PDH-Update hebt ESPHome nur auf die Mindestversion an, wenn die Umgebung älter ist. Eine neuere, selbst geholte Version bleibt.</p>
   {{end}}
   <p class="sc-sub" style="margin:10px 0 0">ESPPDH baut auf ESPHome auf (Lizenz GPLv3 bzw. MIT).</p>
 </div>

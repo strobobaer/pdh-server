@@ -164,14 +164,44 @@ func (h *Handler) esppdhUpdateDue() bool {
 // Höchstens ein Lauf zur Zeit. msg: Ergebnis in Klartext (auch, warum nichts geschah); err nur,
 // wenn sich der Zustand nicht speichern ließ oder die Prüfung abstürzte.
 func (h *Handler) esppdhUpdateRun(ctx context.Context, force bool) (msg string, err error) {
-	u := &h.esppdhUpd
-	u.mu.Lock()
-	if u.running {
-		u.mu.Unlock()
+	if !h.esppdhUpdateBegin() {
 		return esppdhMsgUpdBusy, nil
 	}
+	return h.esppdhUpdateRunning(ctx, force)
+}
+
+// esppdhUpdateBegin meldet einen Lauf an (false: es läuft schon einer). Wer true bekommt, muss
+// esppdhUpdateRunning aufrufen – das gibt den Lauf am Ende wieder frei. So kann „Jetzt prüfen“
+// den Lauf anmelden, bevor es antwortet, und im Hintergrund ausführen.
+func (h *Handler) esppdhUpdateBegin() bool {
+	u := &h.esppdhUpd
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	if u.running {
+		return false
+	}
 	u.running = true
-	u.mu.Unlock()
+	return true
+}
+
+// esppdhUpdateEnd gibt einen mit esppdhUpdateBegin angemeldeten Lauf frei, ohne ihn auszuführen
+// (z. B. beim Zurückstellen, das den Agenten nicht neben einer Prüfung bedienen soll).
+func (h *Handler) esppdhUpdateEnd() {
+	h.esppdhUpd.mu.Lock()
+	h.esppdhUpd.running = false
+	h.esppdhUpd.mu.Unlock()
+}
+
+// esppdhUpdateChecking: läuft gerade eine Prüfung?
+func (h *Handler) esppdhUpdateChecking() bool {
+	h.esppdhUpd.mu.Lock()
+	defer h.esppdhUpd.mu.Unlock()
+	return h.esppdhUpd.running
+}
+
+// esppdhUpdateRunning führt den mit esppdhUpdateBegin angemeldeten Lauf aus.
+func (h *Handler) esppdhUpdateRunning(ctx context.Context, force bool) (msg string, err error) {
+	u := &h.esppdhUpd
 	defer func() {
 		u.mu.Lock()
 		u.running = false

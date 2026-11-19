@@ -736,6 +736,9 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/admin/server-config/esppdh", h.EsppdhPanelWeb)   // Reiter „ESPPDH“: Schalter und Umgebung (esppdh_settings.go)
 	r.Post("/admin/server-config/esppdh", h.EsppdhSwitchWeb) // ein-/ausschalten
 	r.Post("/admin/server-config/esppdh/install", h.EsppdhInstallWeb)
+	r.Post("/admin/server-config/esppdh/auto", h.EsppdhAutoWeb)         // ESPHome selbst aktuell halten (esppdh_update.go)
+	r.Post("/admin/server-config/esppdh/check", h.EsppdhCheckWeb)       // Jetzt prüfen
+	r.Post("/admin/server-config/esppdh/rollback", h.EsppdhRollbackWeb) // Zurück zur vorigen Version
 	// Reiter „Ausfallschutz“: Sicherung aufs Netzlaufwerk über den Update-Agenten (dr.go)
 	r.Post("/admin/server-config/dr/settings", h.DRSettingsWeb)
 	r.Post("/admin/server-config/dr/run", h.DRRunWeb)
