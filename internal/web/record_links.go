@@ -4,10 +4,13 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
+
+	"pdh/internal/core/listsort"
 )
 
 // Generische Reiter-Inhalte fuer alle Stammdaten-/Vorgangsseiten, per htmx
@@ -75,13 +78,221 @@ func (h *Handler) renderFragment(w http.ResponseWriter, name string, data interf
 	}
 }
 
-// RecordHistoryWeb liefert die Datensatzhistorie eines Moduls.
-func (h *Handler) RecordHistoryWeb(w http.ResponseWriter, r *http.Request) {
-	m, id, ok := h.recordViewContext(w, r)
+// historyModule: ein Modul der Datensatzhistorie. Can prüft genau das, was die
+// Detailseite des Moduls prüft (auch die Abteilungsebene, wo die Seite sie prüft).
+type historyModule struct {
+	RefType, Table string
+	Can            func(h *Handler, r *http.Request, id string) bool
+}
+
+// historyLogin: für Module, deren Detailseite kein Einzelrecht prüft – jeder
+// Angemeldete (die Abteilung sperrt DepartmentScopeMiddleware, soweit scopePaths
+// das Modul kennt, auf Seite und Historienpfad gleich).
+func historyLogin(h *Handler, r *http.Request, id string) bool { return getUser(r).ID != "" }
+
+// historyViewRight: Historie nur mit dem Recht „ansehen“ oder „bearbeiten“ des Bereichs
+// (wie canViewRecord; so lud sie bei Aufgabe und Wartung schon vor dem Sortieren).
+func historyViewRight(key string) func(h *Handler, r *http.Request, id string) bool {
+	m, ok := fieldModuleByKey(key)
 	if !ok {
+		panic("historyViewRight: unbekanntes Modul " + key)
+	}
+	return func(h *Handler, r *http.Request, id string) bool { return h.canViewRecord(r, m, id) }
+}
+
+// historyModuleOf: Tabelle und ref_type eines Moduls aus der Feldsatz-Tabelle. Ein
+// unbekannter Schlüssel ist ein Programmfehler und stoppt den Start (nie „offen“).
+func historyModuleOf(key string, can func(h *Handler, r *http.Request, id string) bool) historyModule {
+	m, ok := fieldModuleByKey(key)
+	if !ok {
+		panic("historyModules: unbekanntes Modul " + key)
+	}
+	return historyModule{historyRefType(key), m.Table, can}
+}
+
+// historyModules: erlaubte Module von /records/history/{module}/{id}. Eigene Tabelle
+// (nicht fieldModules), weil dort für Projekt, KVP, Infrastruktur und Lager kein
+// Ansichtsrecht steht und die Historie sonst jedem Angemeldeten offen stünde.
+var historyModules = map[string]historyModule{
+	// Störung (FaultDetail, handler.go), Ticket (TicketDetail), Projekt (ProjectDetail, projects_handler.go),
+	// KVP (KVPDetailPage, kvp.go), Ersatzteil (PartDetailPage, parts.go): die Seiten verlangen nur die
+	// Anmeldung – wer dort nur „lösen“, „buchen“ o. Ä. darf, sieht auch die Historie. Aufgabe und Wartung
+	// brauchen wie vor dem Sortieren das Recht „ansehen“ oder „bearbeiten“ des Bereichs (historyViewRight);
+	// „lösen“ allein reicht dort nicht.
+	"fault":            historyModuleOf("fault", historyLogin),
+	"ticket":           historyModuleOf("ticket", historyLogin),
+	"task":             historyModuleOf("task", historyViewRight("task")),
+	"maintenance_task": historyModuleOf("maintenance_task", historyViewRight("maintenance_task")),
+	"project":          historyModuleOf("project", historyLogin),
+	"kvp":              historyModuleOf("kvp", historyLogin),
+	"part":             historyModuleOf("part", historyLogin),
+	// Rüstzeit: SetupDetailPage (setup_pages.go) – permSetupView in der Abteilung der Rüstzeit
+	"setup": historyModuleOf("setup", func(h *Handler, r *http.Request, id string) bool {
+		return h.setupCan(r, permSetupView, id)
+	}),
+	// Benutzer: UserDetailPage (user_detail.go) – eigenes Konto, Benutzerverwaltung oder unterstellte Person
+	"user": historyModuleOf("user", func(h *Handler, r *http.Request, id string) bool {
+		if getUser(r).ID == id || h.canManageUsers(r) {
+			return true
+		}
+		if h.users == nil {
+			return false
+		}
+		sub, _ := h.users.IsSubordinate(r.Context(), getUser(r).ID, id)
+		return sub
+	}),
+	// Anlage: InfraDetail (infra_web.go) – infrastructure.view oder .edit
+	"infrastructure": historyModuleOf("infrastructure", func(h *Handler, r *http.Request, id string) bool { return h.canViewInfra(r) }),
+	// Lagerort: StorageDetailPage (storage_detail.go) – inventory.view oder .edit
+	"storage": historyModuleOf("storage", func(h *Handler, r *http.Request, id string) bool {
+		return h.hasPerm(r, "inventory.view") || h.hasPerm(r, "inventory.edit")
+	}),
+	// Partner: PartnerDetail (partners.go) – directory.view oder .edit
+	"business_partner": historyModuleOf("business_partner", func(h *Handler, r *http.Request, id string) bool { return h.canViewPartners(r) }),
+	// Bestellung: PurchaseDetailPage (purchases.go) – procurement.view in der Abteilung der Bestellung
+	"purchase_order": {refPurchase, "purchase_orders", func(h *Handler, r *http.Request, id string) bool {
+		return h.hasPermRec(r, permPurchaseView, refPurchase, id)
+	}},
+}
+
+const historyStep = 30 // Zeilen (bzw. Gruppen) je Schritt von „Weitere laden“
+
+// historyRow: ein Eintrag; Title ist seine Meldung, Label die feste Beschriftung
+// seiner Art (Vorgang + Feld) – sie gilt für Gruppen und die Sortierart „Nach Art“.
+type historyRow struct {
+	HistoryView
+	Title string
+	Label string
+}
+
+// historyActionLabels: feste deutsche Beschriftung je Vorgang (action in record_history),
+// unabhängig vom Freitext der einzelnen Meldung. Jeder im Code geschriebene Vorgang steht
+// hier (TestHistoryActionsCovered prüft das gegen den Quelltext); nur Altdaten und
+// Fremdsysteme können einen unbekannten liefern, der als „Sonstige Änderung“ erscheint.
+var historyActionLabels = map[string]string{
+	"create": "Angelegt", "created": "Angelegt", "update": "Geändert", "updated": "Geändert",
+	"status": "Status geändert", "resolved": "Abgeschlossen", "ended": "Beendet", "switched": "Umgestellt",
+	"fault": "Störung", "ticket": "Ticket verknüpft", "people": "Zuständigkeit geändert",
+	"category": "Kategorie geändert", "archive": "Archiviert", "work": "Arbeitsschritt erfasst",
+	"document": "Dokument abgelegt", "explorer_write": "Testweise geschrieben",
+	"attachment": "Anhang geändert", "record_image": "Bild geändert", "broker": "Vermittlung",
+	"push": "Benachrichtigung", "state": "Zustand geändert", "delete": "Gelöscht",
+	"terminal_paired": "Terminal gekoppelt", "terminal_revoked": "Terminal getrennt",
+	"tia_download": "TIA-Baustein geladen", "sync": "Abgleich", "sync_out": "Abgleich nach außen",
+	"sync_origin": "Herkunft Abgleich", "credentials_update": "Zugangsdaten geändert",
+	"credentials_view": "Zugangsdaten angezeigt",
+}
+
+// historyFieldLabels: deutsche Beschriftung technischer Feldnamen. Felder, die schon
+// deutsch geschrieben werden (z. B. „Kanban“), bleiben, wie sie sind.
+var historyFieldLabels = map[string]string{
+	"due_date": "Fälligkeitsdatum", "assigned_to": "Zugewiesener Mitarbeiter", "responsible_to": "Verantwortlicher",
+	"assigned_group_id": "Zugewiesene Gruppe", "title": "Titel", "assessment": "Bewertung", "plan": "Plan",
+	"check_result": "Wirksamkeit", "act": "Ergebnis", "action": "Maßnahme", "file": "Datei",
+	"nextcloud_user_id": "Nextcloud-Konto", "nextcloud_admin": "Nextcloud-Administrator",
+	"nextcloud_password": "Nextcloud-Kennwort", "must_change_password": "Kennwortwechsel",
+	"infrastructure_id": "Anlage", "attachments": "Anhänge", "record_image_attachment_id": "Bild",
+	"ticket_id": "Ticket", "locked": "Sperre", "active": "Aktivstatus", "hidden": "Ausgeblendet",
+	"deletion": "Löschvormerkung", "portal_link": "Zugangsdaten", "plant_stopped": "Anlage steht",
+	"mail_notifications": "Mail-Benachrichtigungen", "certificate": "Zertifikat",
+	"archived_at": "Archiviert am", "status": "Status (System)", "category": "Kategorie", "broker": "Vermittler",
+	"push": "Benachrichtigung", "reason_id": "Grund", "started_at": "Beginn", "ended_at": "Ende", "note": "Notiz",
+}
+
+// historyFieldLabel: Beschriftung eines Felds (auch „external_<Rolle>“ der externen Stellen).
+func historyFieldLabel(field string) (string, bool) {
+	if f, ok := historyFieldLabels[field]; ok {
+		return f, true
+	}
+	if strings.HasPrefix(field, "external_") {
+		return "Externe Stelle", true
+	}
+	return field, false
+}
+
+// historyNamesField: Paare (Vorgang/Feld), bei denen die Beschriftung des Vorgangs das Feld
+// schon nennt; nur dann entfällt das Feld im Titel. Sonst bekommen verschiedene Gruppen
+// verschiedene Titel.
+var historyNamesField = map[string]bool{
+	"status/status": true, "resolved/status": true, "ended/status": true, "switched/status": true,
+	"fault/status": true, "category/category": true, "archive/archived_at": true,
+	"broker/broker": true, "push/push": true, "credentials_update/portal_link": true,
+	"credentials_view/portal_link": true,
+}
+
+// historyLabel: stabile Beschriftung zu (Vorgang, Feld), z. B. „Status geändert“ oder
+// „Geändert · Fälligkeit“. Ein unbekannter Vorgang heißt „Sonstige Änderung“, nie der
+// technische Schlüssel.
+func historyLabel(action, field string) string {
+	l, ok := historyActionLabels[action]
+	if !ok {
+		l = "Sonstige Änderung"
+	}
+	if field == "" || historyNamesField[action+"/"+field] {
+		return l
+	}
+	f, _ := historyFieldLabel(field)
+	return l + " · " + f
+}
+
+// historyPage: Daten des Kärtchens (Vorlage „record-history“).
+type historyPage struct {
+	Lang    string
+	Bar     SortBar
+	Entries []listEntry[historyRow]
+	Cap     int  // Grenze der berücksichtigten Einträge
+	Capped  bool // es gab mehr, nur die neuesten zählen
+	MoreURL string
+}
+
+func (p historyPage) Language() string { return p.Lang }
+
+// RecordHistoryWeb liefert die Datensatzhistorie eines Moduls als Kärtchen mit
+// Sortier-Leiste und „Weitere laden“. Das Recht wird vor allem anderen geprüft.
+func (h *Handler) RecordHistoryWeb(w http.ResponseWriter, r *http.Request) {
+	m, ok := historyModules[chi.URLParam(r, "module")]
+	id := chi.URLParam(r, "id")
+	if !ok || h.db == nil {
+		http.Error(w, "unbekanntes Modul", http.StatusNotFound)
 		return
 	}
-	h.renderFragment(w, "record-history", h.recordHistory(r.Context(), historyRefType(m.Key), id))
+	if !m.Can(h, r, id) {
+		http.Error(w, "keine berechtigung", http.StatusForbidden)
+		return
+	}
+	var exists bool
+	if !uuidInPathRe.MatchString(id) || h.db.QueryRow(r.Context(), fmt.Sprintf(`SELECT EXISTS (SELECT 1 FROM %s WHERE id = $1::uuid)`, m.Table), id).Scan(&exists) != nil || !exists {
+		http.Error(w, "Datensatz nicht gefunden", http.StatusNotFound)
+		return
+	}
+	mode := h.sortMode(r, "history")
+	n := historyStep
+	if v, err := strconv.Atoi(r.URL.Query().Get("n")); err == nil && v > 0 {
+		n = min(v, historyCap)
+	}
+	rows, capped := h.recordHistoryAll(r.Context(), m.RefType, id)
+	items := make([]listsort.Item, len(rows))
+	hrows := make([]historyRow, len(rows))
+	for i, hv := range rows {
+		hr := historyRow{HistoryView: hv, Title: hv.Message, Label: historyLabel(hv.Action, hv.FieldName)}
+		if hr.Title == "" {
+			hr.Title = hr.Label
+		}
+		hrows[i] = hr
+		// gleich = gleicher Vorgang und gleiches Feld; die Beschriftung steht vorn, damit
+		// „Gleiches zusammen“ nach dem sortiert, was angezeigt wird
+		items[i] = listsort.Item{At: hv.At, Key: hr.Label + "\x00" + hv.Action + "\x00" + hv.FieldName, Label: hr.Label, Person: hv.UserName, Kind: hr.Label}
+	}
+	entries := arrangeRows(items, hrows, mode)
+	p := historyPage{Lang: h.requestLang(r), Cap: historyCap, Capped: capped}
+	base := r.URL.Path + "?ls_history=" + string(mode)
+	if len(entries) > n {
+		entries = entries[:n]
+		p.MoreURL = base + "&n=" + strconv.Itoa(n+historyStep)
+	}
+	p.Entries = entries
+	p.Bar = h.sortBar(r, "history", mode, base, "#rec-history") // Sortieren beginnt wieder bei 30
+	h.renderFragment(w, "record-history", p)
 }
 
 // RecordLinksWeb liefert alle Verknuepfungen eines Datensatzes.

@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	"pdh/internal/core/listsort"
 	"pdh/internal/core/textmatch"
 )
 
@@ -251,7 +252,7 @@ func copSolutionKey(c *copCandidate) string {
 	if text == "" {
 		text = strings.Join(c.actions, " ")
 	}
-	return strings.Join(textmatch.Words(text), " ")
+	return listsort.Key(text)
 }
 
 func copFirst(l []string, n int) []string {

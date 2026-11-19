@@ -161,14 +161,15 @@ html[data-style="fiori"] ewt-install-dialog,html[data-style="fiori"] ewt-no-port
   {{with .Run}}{{template "esppdh-build" .}}{{end}}
   {{if gt (len .Runs) 1}}
   <div class="esp-runs-title">Letzte Läufe</div>
+  {{template "sort-bar" .RunBar}}
   <ul class="esp-runs">
-    {{range $i, $r := .Runs}}<li>
+    {{range $r := .RunList}}<li>
       <span class="badge {{$r.Badge}}">{{$r.StatusLabel}}</span>
       <span>{{$r.When}}</span>
       {{if $r.BrokerHost}}<span class="esp-mono">für {{$r.Addr}}</span>{{end}}
       {{with $r.Version}}<span>ESPHome {{.}}</span>{{end}}
       {{if $r.Size}}<span>{{$r.SizeText}}</span>{{end}}
-      {{if $i}}<button type="button" class="btn btn-small" hx-get="/import/esppdh/{{$r.DeviceID}}/build/{{$r.ID}}" hx-target="#esp-build-other" hx-swap="innerHTML" aria-label="Verlauf des Laufs vom {{$r.When}} zeigen"><i class="ti ti-file-text" aria-hidden="true"></i> Verlauf</button>
+      {{if ne $r.ID $.LatestRunID}}<button type="button" class="btn btn-small" hx-get="/import/esppdh/{{$r.DeviceID}}/build/{{$r.ID}}" hx-target="#esp-build-other" hx-swap="innerHTML" aria-label="Verlauf des Laufs vom {{$r.When}} zeigen"><i class="ti ti-file-text" aria-hidden="true"></i> Verlauf</button>
       {{else}}<span class="esp-note" style="margin:0 0 0 auto">steht oben</span>{{end}}
     </li>{{end}}
   </ul>

@@ -643,6 +643,11 @@ func (h *Handler) syncProfileData(r *http.Request, p *extsync.Profile, tab strin
 		d.Test = h.syncTestView(ctx, p, maps, d.AllowWrite, d.CanEdit)
 	case "ops":
 		d.Ops = h.syncOpsView(ctx, p, maps, d.AllowWrite)
+		if blk, err := h.syncRunsBlock(r, p); err == nil {
+			d.Ops.Runs = blk
+		} else {
+			componentLog("abgleich").Error().Err(err).Str("profil", p.ID).Msg("läufe laden")
+		}
 	}
 	return d
 }

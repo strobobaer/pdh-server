@@ -417,6 +417,21 @@ tr:last-child td{border:0}
 .btn-icon-labeled{width:auto;min-width:44px;padding:0 14px;gap:8px}
 .btn-icon-label{font-size:13px;font-weight:600;line-height:1;white-space:nowrap}
 .btn-small{min-height:40px;padding:0 12px;font-size:12px}
+.sortbar{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:0 0 12px}
+.sortbar-lbl{font-size:12px;color:var(--muted);margin-right:2px}
+.sortbar-b{display:inline-flex;align-items:center;min-height:32px;padding:0 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg2);color:var(--text);font-size:12px;line-height:1;text-decoration:none;cursor:pointer;transition:background .1s,border-color .1s}
+.sortbar-b:hover{border-color:var(--muted)}
+.sortbar-b.on{border-color:var(--accent);color:var(--accent);font-weight:600;background:color-mix(in srgb,var(--accent) 12%,var(--bg2))}
+.sortbar-sel{display:none;width:auto;min-width:0;max-width:100%;font-size:12px;min-height:32px;padding-top:0;padding-bottom:0}
+@media(max-width:760px){.sortbar-b{display:none}.sortbar-sel{display:block}}
+/* Zusammengefasste Historie (Fiori und Fluent gleich, nur Variablen): Pfeil, Zeiger, Einzug der Einzeleinträge */
+.rh-group>summary{list-style:none;cursor:pointer;position:relative;padding-left:18px}
+.rh-group>summary::-webkit-details-marker{display:none}
+.rh-group>summary::before{content:"";position:absolute;left:3px;top:50%;width:6px;height:6px;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:translateY(-70%) rotate(-45deg);transition:transform .12s}
+.rh-group[open]>summary::before{transform:translateY(-70%) rotate(45deg)}
+.rh-group>summary:hover{background:color-mix(in srgb,var(--accent) 6%,transparent)}
+.rh-group>summary~.li{margin-left:22px}
+.rh-group>summary~.rc-row{margin-left:22px}
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 .theme-toggle{height:44px;padding:0 14px;border:1px solid var(--border);border-radius:8px;background:var(--bg3);color:var(--text);display:inline-flex;align-items:center;gap:8px;font-size:13px;font-family:var(--font);cursor:pointer}
 .theme-toggle:hover{border-color:var(--muted);background:var(--bg2)}
@@ -652,6 +667,8 @@ a.kpi:hover{border-color:var(--stroke-strong);background:color-mix(in srgb,var(-
 .btn-primary{background:var(--accent);border-color:transparent;border-bottom-color:rgba(0,0,0,.22);color:var(--on-accent)}
 .btn-primary:hover{background:color-mix(in srgb,var(--accent) 90%,#fff);opacity:1}
 .btn-small{min-height:32px}
+.sortbar-b{border-radius:4px;border-bottom-color:var(--stroke-strong);background:color-mix(in srgb,var(--bg2) 88%,var(--text) 4%)}
+.sortbar-b.on{border-bottom:2px solid var(--accent);background:color-mix(in srgb,var(--accent) 12%,var(--bg2))}
 .btn-icon{width:36px;min-width:36px;height:36px;border-color:transparent;background:transparent}
 .btn-icon:hover{background:var(--fill-hover);border-color:transparent}
 .form-input{border-radius:4px;background:color-mix(in srgb,var(--bg2) 92%,var(--text) 3%);border:1px solid var(--stroke);border-bottom-color:color-mix(in srgb,var(--text) 40%,transparent)}
@@ -767,6 +784,8 @@ html .btn-icon.btn-primary:hover{filter:brightness(1.08)}
 html .btn-icon.btn-success{background:var(--green);border-color:var(--green);color:#fff}
 html .btn-icon.btn-danger{background:var(--red);border-color:var(--red);color:#fff}
 html .btn-icon.btn-warning{background:var(--amber);border-color:var(--amber);color:#111827}
+html[data-style="fiori"] .sortbar-b{border-radius:999px;border-color:var(--btn-border);background:var(--bg2);color:var(--accent)}
+html[data-style="fiori"] .sortbar-b.on{background:color-mix(in srgb,var(--accent) 14%,var(--bg2));border-color:var(--accent);font-weight:700}
 </style>
 <style id="pdh-mobile">
 /* ── Tablet & Smartphone ──────────────────────────────────────
@@ -2204,6 +2223,7 @@ document.body.addEventListener('htmx:afterRequest', (event) => {
   const xhr = event.detail && event.detail.xhr;
   if(xhr && xhr.status === 423) showGlobalError('Gesperrt', xhr.responseText || 'Datensatz gesperrt');
   else if(xhr && xhr.status === 409 && xhr.getResponseHeader('X-PDH-Spiegel')) showGlobalError('Spiegel – nur lesen', xhr.responseText || 'Änderungen bitte am aktiven Server.');
+  else if(xhr && xhr.status === 403 && event.detail.elt && event.detail.elt.hasAttribute && event.detail.elt.hasAttribute('data-quiet-denied')) { /* leise: Status anderer Anfragen nicht anfassen */ }
   else if(xhr && xhr.status >= 400) showGlobalError('HTTP ' + xhr.status, xhr.statusText || 'HTMX-Fehler');
   else if(!pdhHtmxQuiet(event)) setGlobalStatus('ok', 'Fertig', 100, 'Keine Fehler');
 });
@@ -2218,6 +2238,9 @@ document.addEventListener('submit', (event) => {
 window.addEventListener('pageshow', (event) => { if(event.persisted) setGlobalStatus('ok', 'Bereit', 0, 'Keine Fehler'); });
 document.body.addEventListener('htmx:responseError', (event) => {
   const xhr = event.detail && event.detail.xhr;
+  // Nachgeladene Teile, die ohne Recht leise abgelehnt werden (z. B. Historie): Hinweis statt Fehlermeldung
+  const elt = event.detail && event.detail.elt;
+  if(xhr && xhr.status === 403 && elt && elt.hasAttribute && elt.hasAttribute('data-quiet-denied')) { const note = document.createElement('div'); note.style.cssText = 'font-size:12px;color:var(--muted);padding:8px 0'; note.textContent = elt.getAttribute('data-quiet-denied'); elt.replaceChildren(note); return; }
   showGlobalError('HTMX-Fehler', xhr ? ('HTTP ' + xhr.status + ' ' + xhr.statusText) : 'Antwortfehler');
 });
 document.body.addEventListener('htmx:sendError', () => showGlobalError('HTMX-Sendefehler', 'Anfrage konnte nicht gesendet werden'));

@@ -432,8 +432,9 @@ type EfficioPageData struct {
 	Settings                  []connConfigRow
 	Files                     []EfficioFileView
 	Runs                      []EfficioRunView
-	KeyAuth                   bool   // SFTP mit Schlüssel statt Kennwort
-	PublicKey                 string // Zeile für authorized_keys am Server ("" = noch kein Schlüssel)
+	RunsBar                   SortBar // Sortierung des Protokolls
+	KeyAuth                   bool    // SFTP mit Schlüssel statt Kennwort
+	PublicKey                 string  // Zeile für authorized_keys am Server ("" = noch kein Schlüssel)
 	KeyFingerprint            string
 	Fingerprint               string // gesehener SFTP-Fingerabdruck, zur Bestätigung
 	FingerprintChange         bool   // ein bestätigter Fingerabdruck war schon gespeichert
@@ -544,8 +545,10 @@ func (h *Handler) efficioPageData(r *http.Request, id string) (EfficioPageData, 
 		rows.Close()
 	}
 
+	exMode := h.sortMode(r, "export")
+	d.RunsBar = h.sortBar(r, "export", exMode, r.URL.Path, "")
 	rrows, err := h.db.Query(ctx, `SELECT started_at, intervals, rows, missing, target, files, result, message
-		FROM energy_export_runs WHERE connection_id = $1::uuid ORDER BY started_at DESC, id DESC LIMIT 30`, id)
+		FROM energy_export_runs WHERE connection_id = $1::uuid ORDER BY `+logOrderSQL(exMode, "started_at", "", "result")+`, id DESC LIMIT 30`, id)
 	if err != nil {
 		componentLog("energiedaten").Error().Err(err).Msg("efficio: protokoll laden")
 		d.Err = "Das Protokoll konnte nicht geladen werden."

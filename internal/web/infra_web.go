@@ -263,42 +263,45 @@ func (h *Handler) InfraCreate(w http.ResponseWriter, r *http.Request) {
 
 type InfraDetailData struct {
 	BaseData
-	Node            InfraNodeView
-	Children        []InfraNodeView
-	Parent          *InfraNodeView
-	ParentOptions   []InfraNodeView // erlaubte Übergeordnete (ohne sich selbst und eigene Unteranlagen)
-	Types           []infraTypeOption
-	HistoryModules  []infraHistoryModule
-	CommentRefs     []InfraCommentRefOption
-	PartnerLinks    []PartnerLink
-	SupplierID      string
-	ServiceID       string
-	ServiceName     string
-	Departments     []deptView
-	DepartmentID    string // eigene Abteilung der Anlage
-	EffectiveDept   string // wirksame Abteilung (ggf. geerbt)
-	DeptInherited   bool
-	ResponsibleID   string   // eigene Verantwortliche/r (migrations/127)
-	EffectiveRespID string   // wirksame Person (ggf. geerbt)
-	EffectiveResp   string   // deren Name
-	RespFromID      string   // geerbt von diesem Element ("" = eigene Angabe)
-	RespFromName    string   // dessen Name
-	HMI             hmiPerms // Reiter „HMI“: ansehen / bedienen / einrichten
-	KioskTerminalID string   // zugeordnetes Kiosk-Terminal (migrations/169)
-	KioskTerminals  []kioskTerminalOption
-	CanKioskAssign  bool // Auswahl „Kiosk-Terminal“: hmi.manage für diese Anlage
-	Message, Error  string
-	Obligations     []obligationView    // Reiter „Prüfungen & GBU“ (infra_obligations.go)
-	ObligationDue   int                 // davon überfällig oder im Vorlauf
-	Users           []UserOption        // Verantwortliche
-	Today           string              // JJJJ-MM-TT (Formular „erledigt am“)
-	EasyTexts       []easyText          // Reiter „Meldetexte“ (easy_texts.go)
-	EasyTextCount   int                 // davon an dieser Anlage wirksam
-	SetupTab        setupInfraTab       // Reiter „Rüsttasten“ und Höchstdauer (setup_catalog.go)
-	SetupState      string              // Kennzeichen "running" / "fault" / "" (setup_easy.go)
-	Chamber         []chamberGroup      // Trockenkammer: Reiter „Bauteile“ (chamber.go)
-	ChamberNOK      int                 // davon NOK
-	ChamberParts    []chamberPartOption // Vorschlagsliste „Typ (Ersatzteil)“
+	Node             InfraNodeView
+	Children         []InfraNodeView
+	Parent           *InfraNodeView
+	ParentOptions    []InfraNodeView // erlaubte Übergeordnete (ohne sich selbst und eigene Unteranlagen)
+	Types            []infraTypeOption
+	HistoryModules   []infraHistoryModule
+	CommentRefs      []InfraCommentRefOption
+	PartnerLinks     []PartnerLink
+	SupplierID       string
+	ServiceID        string
+	ServiceName      string
+	Departments      []deptView
+	DepartmentID     string // eigene Abteilung der Anlage
+	EffectiveDept    string // wirksame Abteilung (ggf. geerbt)
+	DeptInherited    bool
+	ResponsibleID    string   // eigene Verantwortliche/r (migrations/127)
+	EffectiveRespID  string   // wirksame Person (ggf. geerbt)
+	EffectiveResp    string   // deren Name
+	RespFromID       string   // geerbt von diesem Element ("" = eigene Angabe)
+	RespFromName     string   // dessen Name
+	HMI              hmiPerms // Reiter „HMI“: ansehen / bedienen / einrichten
+	KioskTerminalID  string   // zugeordnetes Kiosk-Terminal (migrations/169)
+	KioskTerminals   []kioskTerminalOption
+	CanKioskAssign   bool // Auswahl „Kiosk-Terminal“: hmi.manage für diese Anlage
+	Message, Error   string
+	Obligations      []obligationView    // Reiter „Prüfungen & GBU“ (infra_obligations.go)
+	ObligationDue    int                 // davon überfällig oder im Vorlauf
+	HMIBar           SortBar             // Sortierung „Letzte Zugriffe“ am HMI (Vorlage, das Skript lädt neu)
+	ObligationBar    SortBar             // Sortierung der Nachweise
+	ObligationHasLog bool                // mindestens ein Nachweis vorhanden (Leiste zeigen)
+	Users            []UserOption        // Verantwortliche
+	Today            string              // JJJJ-MM-TT (Formular „erledigt am“)
+	EasyTexts        []easyText          // Reiter „Meldetexte“ (easy_texts.go)
+	EasyTextCount    int                 // davon an dieser Anlage wirksam
+	SetupTab         setupInfraTab       // Reiter „Rüsttasten“ und Höchstdauer (setup_catalog.go)
+	SetupState       string              // Kennzeichen "running" / "fault" / "" (setup_easy.go)
+	Chamber          []chamberGroup      // Trockenkammer: Reiter „Bauteile“ (chamber.go)
+	ChamberNOK       int                 // davon NOK
+	ChamberParts     []chamberPartOption // Vorschlagsliste „Typ (Ersatzteil)“
 }
 
 func (h *Handler) InfraDetail(w http.ResponseWriter, r *http.Request) {
@@ -329,7 +332,15 @@ func (h *Handler) InfraDetail(w http.ResponseWriter, r *http.Request) {
 			data.ServiceName = l.Name // bleibt in der Auswahl sichtbar, auch wenn kein Lieferant
 		}
 	}
-	data.Obligations = h.infraObligations(ctx, id)
+	data.HMIBar = h.sortBar(r, "hmi", h.sortMode(r, "hmi"), r.URL.Path+"?tab=hmi", "")
+	obMode := h.sortMode(r, "obligations")
+	data.Obligations = h.infraObligations(ctx, id, obMode)
+	data.ObligationBar = h.sortBar(r, "obligations", obMode, r.URL.Path+"?tab=checks", "")
+	for _, o := range data.Obligations {
+		if len(o.Log) > 0 {
+			data.ObligationHasLog = true
+		}
+	}
 	for _, o := range data.Obligations {
 		if o.State == "overdue" || o.State == "soon" {
 			data.ObligationDue++

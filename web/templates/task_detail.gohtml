@@ -109,16 +109,7 @@
 
 <!-- ── Maßnahmen & Ersatzteile ── -->
 <div class="rec-pane" data-pane="work">
-  <div class="card">
-    <div class="card-title">Durchgeführte Maßnahmen</div>
-    <div id="task-actions-list" style="margin-bottom:10px;font-size:12px;color:var(--muted)">Lade...</div>
-    {{if $t.CanResolve}}
-    <div style="display:flex;gap:8px">
-      <input data-suggest="action" id="ta-new-action" class="form-input" placeholder="z.B. Ursache behoben" style="flex:1" onkeydown="if(event.key==='Enter'){event.preventDefault();addTaskAction();}">
-      <button type="button" class="btn" onclick="addTaskAction()"><i class="ti ti-plus"></i> Maßnahme</button>
-    </div>
-    {{end}}
-  </div>
+  {{template "record-actions-slot" (dict "Module" "task" "ID" .Task.ID)}}
 
   {{if $t.CanResolve}}
   <div class="card">
@@ -181,36 +172,6 @@
 var TASK_ID = '{{.Task.ID}}';
 var taPartsCache = null;
 function escTa(s){return String(s||'').replace(/[&<>'"]/g,function(c){return ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]);});}
-
-async function loadTaskActions(){
-  var box = document.getElementById('task-actions-list');
-  if(!box) return;
-  try{
-    var res = await fetch('/api/v1/tasks/'+TASK_ID+'/actions', {credentials:'same-origin'});
-    var json = await res.json();
-    var actions = json.data || json || [];
-    box.innerHTML = actions.length ? actions.map(function(a){
-      var t = new Date(a.created_at);
-      var timeStr = t.toLocaleString('de-DE', {day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
-      return '<div class="li"><div class="li-text"><div class="li-title" style="font-size:13px">'+escTa(a.description)+'</div><div class="li-sub">'+timeStr+' · '+escTa(a.created_by_name)+'</div></div></div>';
-    }).join('') : '<div style="padding:4px 0">Noch keine Maßnahmen erfasst</div>';
-  }catch(e){ box.innerHTML = '<span style="color:var(--red)">Fehler beim Laden</span>'; }
-}
-async function addTaskAction(){
-  var input = document.getElementById('ta-new-action');
-  var description = input.value.trim();
-  if(!description) return;
-  try{
-    var res = await fetch('/api/v1/tasks/'+TASK_ID+'/actions', {
-      method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({description:description})
-    });
-    var json = await res.json();
-    if(!res.ok) throw new Error(json.error||'Fehler');
-    input.value='';
-    loadTaskActions();
-  }catch(e){ alert('Fehler: '+e.message); }
-}
 
 async function loadTaskPartsList(){
   var box = document.getElementById('task-parts-list');
@@ -357,8 +318,8 @@ async function stopTaskTime(entryID){
   }catch(e){ result.innerHTML = '<span style="color:var(--red)">Fehler: '+escTa(e.message)+'</span>'; }
 }
 
-if(document.readyState !== 'loading'){ loadTaskActions(); loadTaskPartsList(); }
-else document.addEventListener('DOMContentLoaded', function(){ loadTaskActions(); loadTaskPartsList(); });
+if(document.readyState !== 'loading'){ loadTaskPartsList(); }
+else document.addEventListener('DOMContentLoaded', function(){ loadTaskPartsList(); });
 </script>
 {{end}}
 

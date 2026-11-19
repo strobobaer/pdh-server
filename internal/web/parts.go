@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"pdh/internal/core/listsort"
 	"pdh/internal/modules/inventory"
 )
 
@@ -296,12 +297,13 @@ type PartDetailData struct {
 	Reservations         []PartReservationRow
 	StockValue           string
 	Movements            []PartMovementRow
+	RecentMoves          []PartMovementRow // „Letzte Bewegungen“ (5) der Übersicht, immer neueste zuerst
+	MovesBar             SortBar
 	Usage                []PartUsageRow
 	Categories           []string
 	Users                []UserOption
 	SupplierOptions      []partnerOption
 	StorageOptions       []partnerOption
-	History              []HistoryView
 	// Kanban (Reiter „Kanban“, migrations/132)
 	Kanban         *kanbanLoopView
 	CanKanban      bool // Regelkreis einrichten
@@ -429,7 +431,17 @@ func (h *Handler) PartDetailPage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	data.Movements = h.partMovements(ctx, id, paths, 150)
+	movMode := h.sortMode(r, "moves")
+	data.Movements = h.partMovements(ctx, id, paths, 150, movMode)
+	data.MovesBar = h.sortBar(r, "moves", movMode, r.URL.Path+"?tab=stock", "")
+	if movMode == listsort.Newest {
+		data.RecentMoves = data.Movements
+	} else {
+		data.RecentMoves = h.partMovements(ctx, id, paths, 5, listsort.Newest)
+	}
+	if len(data.RecentMoves) > 5 {
+		data.RecentMoves = data.RecentMoves[:5]
+	}
 
 	if rows, err := h.db.Query(ctx, `
 		SELECT label, id, title, SUM(net)::float8, MAX(at) FROM (
@@ -472,7 +484,6 @@ func (h *Handler) PartDetailPage(w http.ResponseWriter, r *http.Request) {
 		data.SupplierOptions = h.supplierOptions(ctx)
 		data.StorageOptions = storageOpts
 	}
-	data.History = h.recordHistory(ctx, "spare_part", id)
 	data.CanBook = h.canBookParts(r) || h.canCorrectParts(r)
 	data.CanKanban = h.canKanbanSetup(r)
 	data.CanKanbanView = data.CanKanban || h.canProcurement(r)

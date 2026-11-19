@@ -412,7 +412,6 @@ type PurchaseDetailData struct {
 	Suppliers, Storage              []partnerOption
 	Departments                     []deptView
 	Parts                           []purchasePartOption
-	History                         []HistoryView
 	Today                           string
 	HasOpen                         bool
 }
@@ -440,7 +439,6 @@ func (h *Handler) PurchaseDetailPage(w http.ResponseWriter, r *http.Request) {
 		CanInvoice: !p.Final() && p.Status != "quote" && h.hasPermRec(r, permPurchaseInvoice, refPurchase, id),
 		CanDelete:  h.hasPermRec(r, "procurement.admin", refPurchase, id),
 		Today:      time.Now().Format("2006-01-02"),
-		History:    h.recordHistory(ctx, refPurchase, id),
 	}
 	for _, it := range p.Items {
 		if it.Open() > 0 {

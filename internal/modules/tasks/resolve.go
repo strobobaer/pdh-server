@@ -2,6 +2,7 @@ package tasks
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -59,9 +60,19 @@ func (r *Repository) CountActions(ctx context.Context, taskID string) (int, erro
 	return n, err
 }
 
-func (r *Repository) DeleteAction(ctx context.Context, id string) error {
-	_, err := r.db.Exec(ctx, `DELETE FROM task_actions WHERE id=$1`, id)
-	return err
+// ErrActionNotFound: die Maßnahme gibt es nicht oder sie gehört zu einer anderen Aufgabe.
+var ErrActionNotFound = errors.New("maßnahme nicht gefunden")
+
+// DeleteAction löscht die Maßnahme nur, wenn sie zur Aufgabe taskID gehört.
+func (r *Repository) DeleteAction(ctx context.Context, taskID, id string) error {
+	tag, err := r.db.Exec(ctx, `DELETE FROM task_actions WHERE id=$1 AND task_id=$2`, id, taskID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrActionNotFound
+	}
+	return nil
 }
 
 // AddActionDirect wird nur vom synclink-Paket aufgerufen (keine erneute
@@ -262,8 +273,8 @@ func (s *Service) AddAction(ctx context.Context, taskID, description, userID str
 func (s *Service) GetActions(ctx context.Context, taskID string) ([]*TaskAction, error) {
 	return s.repo.GetActions(ctx, taskID)
 }
-func (s *Service) DeleteAction(ctx context.Context, id string) error {
-	return s.repo.DeleteAction(ctx, id)
+func (s *Service) DeleteAction(ctx context.Context, taskID, id string) error {
+	return s.repo.DeleteAction(ctx, taskID, id)
 }
 func (s *Service) AddPendingPart(ctx context.Context, taskID string, in *AddPendingPartInput, userID string) (*PendingPart, error) {
 	if in.PartID == "" || in.StorageNodeID == "" {

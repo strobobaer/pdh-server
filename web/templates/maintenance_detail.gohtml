@@ -68,7 +68,6 @@
         {{if .ProtocolURL}}<a class="btn" href="{{.ProtocolURL}}" target="_blank" rel="noopener"><i class="ti ti-file-type-pdf"></i> Protokoll</a>{{end}}
       </div>
       {{if .Task.Notes}}<p class="md-notes">{{.Task.Notes}}</p>{{end}}
-      {{if .Actions}}<div class="md-sub">Maßnahmen</div>{{range .Actions}}<div class="md-line"><span>{{.Description}}</span><small>{{.CreatedByName}} · {{.CreatedAt.Format "02.01. 15:04"}}</small></div>{{end}}{{end}}
       {{if .PartsUsed}}<div class="md-sub">Verwendetes Material</div>{{range .PartsUsed}}<div class="md-line"><span>{{.PartName}} <small>{{.PartNumber}}</small></span><b>{{.Qty}}</b></div>{{end}}{{end}}
     </div>
     {{end}}
@@ -108,6 +107,9 @@
     {{if .Task.Description}}
     <div class="card"><div class="card-title"><i class="ti ti-file-description"></i> Beschreibung</div><p class="md-notes">{{.Task.Description}}</p></div>
     {{end}}
+
+    {{/* Maßnahmen: immer, nur lesend – eingetragen wird beim Abschließen */}}
+    {{template "record-actions-slot" (dict "Module" "maintenance_task" "ID" .Task.ID)}}
 
     {{if and .Task.IsOpen .Pending}}
     <div class="card"><div class="card-title"><i class="ti ti-package"></i> Reserviertes Material</div>

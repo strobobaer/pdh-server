@@ -86,6 +86,7 @@
 <div class="rec-pane" data-pane="done">
 <div class="card">
   <div class="card-title"><span><i class="ti ti-player-play"></i> Bereinigungsläufe</span></div>
+  {{if .Runs}}{{template "sort-bar" .CleanupBar}}{{end}}
   {{range .Runs}}
   <div style="border-bottom:1px solid var(--border);padding:8px 0">
     <div style="font-size:13px;font-weight:600">{{.At}} · {{.By}}</div>
@@ -97,6 +98,7 @@
 <div class="card">
   <div class="card-title"><span><i class="ti ti-history"></i> Erledigte Vormerkungen</span></div>
   {{if .Done}}
+  {{template "sort-bar" .CleanupBar}}
   <div style="overflow-x:auto"><table class="cl-table">
     <thead><tr><th>Datensatz</th><th>Ergebnis</th><th>Am</th></tr></thead>
     <tbody>
@@ -104,7 +106,7 @@
     <tr>
       <td><i class="ti {{.Icon}}" style="color:var(--muted)"></i> {{if eq .Status "deleted"}}{{.Title}}{{else}}<a href="{{.URL}}" data-frame data-frame-title="{{.Title}}" style="color:var(--accent)">{{.Title}}</a>{{end}}<div class="cl-sub">{{.ModuleLabel}}{{if .Reason}} · „{{.Reason}}“{{end}}</div></td>
       <td>{{if eq .Status "deleted"}}<span class="cl-ok">gelöscht</span>{{else if eq .Status "hidden"}}<span class="cl-hide">ausgeblendet</span>{{else}}<span class="cl-sub">aufgehoben</span>{{end}}<div class="cl-sub">{{.Note}}</div></td>
-      <td>{{.At}}</td>
+      <td>{{.At}}{{if .By}}<div class="cl-sub">{{.By}}</div>{{end}}</td>
     </tr>
     {{end}}
     </tbody>

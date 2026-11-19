@@ -2,6 +2,7 @@ package maintenance
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"time"
 )
@@ -269,9 +270,19 @@ func (r *Repository) CountActions(ctx context.Context, taskID string) (int, erro
 	return n, err
 }
 
-func (r *Repository) DeleteAction(ctx context.Context, id string) error {
-	_, err := r.db.Exec(ctx, `DELETE FROM maintenance_task_actions WHERE id=$1::uuid`, id)
-	return err
+// ErrActionNotFound: die Maßnahme gibt es nicht oder sie gehört zu einem anderen Auftrag.
+var ErrActionNotFound = errors.New("Maßnahme nicht gefunden")
+
+// DeleteAction löscht die Maßnahme nur, wenn sie zum Auftrag taskID gehört.
+func (r *Repository) DeleteAction(ctx context.Context, taskID, id string) error {
+	tag, err := r.db.Exec(ctx, `DELETE FROM maintenance_task_actions WHERE id=$1::uuid AND task_id=$2::uuid`, id, taskID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrActionNotFound
+	}
+	return nil
 }
 
 // ── Ersatzteile ──────────────────────────────────────────────

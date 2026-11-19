@@ -1,17 +1,37 @@
-{{define "record-history"}}
-<div class="card">
-  <div class="card-title"><span><i class="ti ti-history"></i> Datensatzhistorie</span></div>
-  {{range .}}
+{{/*
+  Datensatzhistorie (Plan 2026-11-19-sortierung): Kärtchen mit Sortier-Leiste,
+  zusammengefassten Gruppen (häufigste / gleiches zusammen) und „Weitere laden“.
+  Daten: historyPage aus RecordHistoryWeb (record_links.go); geladen über
+  {{template "record-history-slot" …}} (record_links.gohtml).
+*/}}
+{{define "record-history-row"}}
   <div class="li">
     <div class="act-dot d-blue"></div>
     <div class="li-text">
-      <div class="li-title">{{if .Message}}{{.Message}}{{else}}{{.Action}}{{end}}</div>
+      <div class="li-title">{{.Title}}</div>
       <div class="li-sub">{{.CreatedAt}}{{if .UserName}} &middot; {{.UserName}}{{end}}{{if .FieldName}} &middot; {{.FieldName}}{{end}}</div>
       {{if or .OldValue .NewValue}}<div class="li-sub">{{.OldValue}} &rarr; {{.NewValue}}</div>{{end}}
     </div>
   </div>
+{{end}}
+
+{{define "record-history"}}
+<div class="card" id="rec-history">
+  <div class="card-title"><span><i class="ti ti-history"></i> Datensatzhistorie</span></div>
+  {{template "sort-bar" .Bar}}
+  {{range .Entries}}
+    {{if gt .Count 1}}
+    <details class="rh-group">
+      <summary class="li"><div class="act-dot d-blue"></div><div class="li-text"><div class="li-title">{{.Count}}× {{.Label}}</div><div class="li-sub">{{t "zuletzt"}} {{.Last}}</div></div></summary>
+      {{range .Rows}}{{template "record-history-row" .}}{{end}}
+    </details>
+    {{else}}
+    {{template "record-history-row" .Row}}
+    {{end}}
   {{else}}
   <div style="font-size:12px;color:var(--muted);padding:4px 0">Noch keine Historie</div>
   {{end}}
+  {{if .MoreURL}}<div style="padding:8px 0 0"><button type="button" class="btn btn-small" hx-get="{{.MoreURL}}" hx-target="#rec-history" hx-swap="outerHTML">{{t "Weitere laden"}}</button></div>{{end}}
+  {{if .Capped}}<div class="rec-sub" style="padding:6px 0 0">{{t "Nur die neuesten %d Einträge berücksichtigt" .Cap}}</div>{{end}}
 </div>
 {{end}}

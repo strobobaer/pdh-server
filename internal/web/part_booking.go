@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"pdh/internal/core/listsort"
 	"pdh/internal/modules/inventory"
 )
 
@@ -137,15 +138,21 @@ func (h *Handler) PartBookingPage(w http.ResponseWriter, r *http.Request) {
 			})
 		}
 	}
-	d.Moves = h.partMovements(ctx, id, paths, 8)
+	d.Moves = h.partMovements(ctx, id, paths, 8, listsort.Newest)
 	if k := h.kanbanLoop(ctx, id); k != nil && k.Active {
 		d.Kanban = k
 	}
 	h.render(w, "inventory_booking", d)
 }
 
+// movesOrder: ORDER BY der Lagerbewegungen (Alias sm für stock_movements, u für den Benutzer),
+// mit der Zeilenkennung als festem Gleichstand.
+func movesOrder(m listsort.Mode) string {
+	return logOrderSQL(m, "sm.created_at", "NULLIF(TRIM(u.first_name || ' ' || u.last_name), '')", "sm.type::text") + ", sm.id"
+}
+
 // partMovements: letzte Bewegungen eines Teils mit Bezug (Vorgang oder Anlage).
-func (h *Handler) partMovements(ctx context.Context, partID string, paths map[string]string, limit int) []PartMovementRow {
+func (h *Handler) partMovements(ctx context.Context, partID string, paths map[string]string, limit int, mode listsort.Mode) []PartMovementRow {
 	rows, err := h.db.Query(ctx, `
 		SELECT sm.created_at, sm.type::text, sm.qty::float8, sm.qty_before::float8, sm.qty_after::float8,
 		       COALESCE(sm.storage_node_id::text, ''), COALESCE(TRIM(u.first_name || ' ' || u.last_name), ''),
@@ -161,7 +168,7 @@ func (h *Handler) partMovements(ctx context.Context, partID string, paths map[st
 		LEFT JOIN tasks ta ON ta.id = sm.task_id
 		LEFT JOIN maintenance_tasks m ON m.id = sm.maintenance_task_id
 		LEFT JOIN infrastructure i ON i.id = sm.infrastructure_id
-		WHERE sm.part_id = $1::uuid ORDER BY sm.created_at DESC LIMIT $2`, partID, limit)
+		WHERE sm.part_id = $1::uuid ORDER BY `+movesOrder(mode)+` LIMIT $2`, partID, limit)
 	if err != nil {
 		return nil
 	}

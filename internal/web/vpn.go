@@ -18,6 +18,8 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+
+	"pdh/internal/core/listsort"
 )
 
 // VPN ins Maschinennetz (migrations/136, 137): PDH ist WireGuard-Hub für Geräte
@@ -264,6 +266,7 @@ type vpnView struct {
 	Gateways  []vpnPeer
 	Outbound  []vpnPeer
 	Events    []vpnEvent
+	EventsBar SortBar // Sortierung des Protokolls (Verwaltung)
 	People    []UserOption
 	Show      *vpnPeer // frisch angelegt bzw. „Konfiguration anzeigen“
 	ShowConf  string
@@ -286,7 +289,7 @@ type VPNPageData struct {
 }
 
 // vpnLoadView: Geräte, Status und (Verwaltung) alles Übrige; show = Konfiguration anzeigen.
-func (h *Handler) vpnLoadView(ctx context.Context, uid string, admin bool, show string) vpnView {
+func (h *Handler) vpnLoadView(ctx context.Context, uid string, admin bool, show string, mode listsort.Mode) vpnView {
 	v := vpnView{Admin: admin, Base: "/vpn", Back: "/vpn?"}
 	if admin {
 		v.Base, v.Back = vpnAdminURL+"/vpn", vpnAdminURL+"?tab=vpn&"
@@ -328,7 +331,7 @@ func (h *Handler) vpnLoadView(ctx context.Context, uid string, admin bool, show 
 	v.Summary = vpnSummarize(shown)
 	if admin {
 		v.People = h.userOptions(ctx)
-		v.Events = h.vpnEvents(ctx)
+		v.Events = h.vpnEvents(ctx, mode)
 	}
 	if show != "" {
 		if conf, p, err := h.vpnPeerConf(ctx, show, uid, admin); err == nil {
@@ -356,7 +359,7 @@ func (h *Handler) VPNPage(w http.ResponseWriter, r *http.Request) {
 		CanAdmin: h.canServerConfig(r),
 		Message:  q.Get("msg"), Error: q.Get("err"),
 	}
-	d.VPN = h.vpnLoadView(r.Context(), getUser(r).ID, false, q.Get("show"))
+	d.VPN = h.vpnLoadView(r.Context(), getUser(r).ID, false, q.Get("show"), listsort.Newest)
 	if d.Error == "" {
 		d.Error = d.VPN.Error
 	}
@@ -406,10 +409,10 @@ func (h *Handler) vpnLog(ctx context.Context, uid, peerID, peerName, action, not
 	componentLog("vpn").Info().Str("aktion", action).Str("zugang", peerName).Str("benutzer", uid).Msg(note)
 }
 
-func (h *Handler) vpnEvents(ctx context.Context) []vpnEvent {
+func (h *Handler) vpnEvents(ctx context.Context, mode listsort.Mode) []vpnEvent {
 	var out []vpnEvent
 	rows, err := h.db.Query(ctx, `SELECT e.at, COALESCE(NULLIF(TRIM(u.first_name || ' ' || u.last_name), ''), '–'), e.peer_name, e.action, e.note
-		FROM vpn_events e LEFT JOIN users u ON u.id = e.user_id ORDER BY e.at DESC LIMIT 50`)
+		FROM vpn_events e LEFT JOIN users u ON u.id = e.user_id ORDER BY `+logOrderSQL(mode, "e.at", "NULLIF(TRIM(u.first_name || ' ' || u.last_name), '')", "e.action")+`, e.id LIMIT 50`)
 	if err != nil {
 		return out
 	}

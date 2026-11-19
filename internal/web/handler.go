@@ -207,6 +207,7 @@ type HistoryView struct {
 	Message   string
 	UserName  string
 	CreatedAt string
+	At        time.Time // Zeitpunkt roh (für die Sortierung)
 }
 
 type RecordPeople struct {
@@ -456,7 +457,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/tickets/{id}/status-web", h.TicketStatusWeb) // FIX: war PUT, wird von Cloudflare/Nginx blockiert
 	r.Post("/tickets/{id}/resolve-web", h.TicketResolve)
 	r.Post("/tickets/{id}/infrastructure-web", h.TicketInfrastructureWeb) // war PUT, wird von Cloudflare/Nginx blockiert
-	r.Post("/tickets/{id}/comment", h.TicketAddComment)
+	r.Post("/tickets/{id}/comment", h.TicketCommentLegacy)                // alter Weg, läuft über den Baustein
 	r.Post("/tickets/{id}/time/start", h.TicketStartTime)
 	r.Get("/faults", h.Faults)
 	r.Post("/faults", h.CreateFault)
@@ -687,6 +688,12 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/records/fields/{module}/{id}", h.RecordFieldsWeb)
 	r.Get("/records/links/{module}/{id}", h.RecordLinksWeb)
 	r.Get("/records/history/{module}/{id}", h.RecordHistoryWeb)
+	// Maßnahmen an Störung, Ticket, Aufgabe, Wartung (record_actions.go); der POST ist in gateRules gesichert
+	r.Get("/records/actions/{module}/{id}", h.RecordActionsWeb)
+	r.Post("/records/actions/{module}/{id}", h.RecordActionsAddWeb)
+	// Kommentare an Ticket und KVP-Vorschlag (record_comments.go); wie bisher ohne eigenes Recht
+	r.Get("/records/comments/{module}/{id}", h.RecordCommentsWeb)
+	r.Post("/records/comments/{module}/{id}", h.RecordCommentsAddWeb)
 	r.Post("/records/fields/{module}/{id}", h.RecordFieldsSaveWeb)
 	// Kopfleiste: Kategorien (#) + Stammdaten-Status (Sperren/Deaktivieren/Loeschvormerkung)
 	r.Get("/records/meta/{module}/{id}", h.RecordMetaWeb)
@@ -920,7 +927,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/kvp/{id}/actions", h.KVPActionAddWeb)
 	r.Post("/kvp/{id}/actions/{aid}/toggle", h.KVPActionToggleWeb)
 	r.Post("/kvp/{id}/actions/{aid}/delete", h.KVPActionDeleteWeb)
-	r.Post("/kvp/{id}/comment", h.KVPCommentWeb)
+	r.Post("/kvp/{id}/comment", h.KVPCommentLegacy) // alter Weg, läuft über den Baustein (record_comments.go)
 	r.Post("/kvp/{id}/delete", h.KVPDeleteWeb)
 	// Rüstzeiten (setup_pages.go, setup_actions.go): Arbeitsbereich, Anlegen, Detailseite
 	r.Get("/setup", h.SetupPage)
@@ -1603,7 +1610,10 @@ func (h *Handler) updateInfrastructureWeb(w http.ResponseWriter, r *http.Request
 	fmt.Fprintf(w, `<div style="color:var(--green);font-size:12px">Gespeichert: %s</div>`, esc(label))
 }
 
-func (h *Handler) recordHistory(ctx context.Context, refType, id string) []HistoryView {
+// queryHistory liest bis zu limit Historieneinträge eines Datensatzes, neueste
+// zuerst; bei gleichem Zeitstempel entscheidet die Kennung, damit die
+// Reihenfolge fest bleibt. Fehler werden protokolliert, nicht verschluckt.
+func (h *Handler) queryHistory(ctx context.Context, refType, id string, limit int) []HistoryView {
 	if h.db == nil {
 		return nil
 	}
@@ -1614,22 +1624,47 @@ func (h *Handler) recordHistory(ctx context.Context, refType, id string) []Histo
 		FROM record_history rh
 		LEFT JOIN users u ON rh.created_by = u.id
 		WHERE rh.ref_type=$1 AND rh.ref_id=$2
-		ORDER BY rh.created_at DESC
-		LIMIT 30`, refType, id)
+		ORDER BY rh.created_at DESC, rh.id DESC
+		LIMIT $3`, refType, id, limit)
 	if err != nil {
+		componentLog("historie").Error().Err(err).Str("ref", refType).Str("id", id).Msg("historie lesen")
 		return nil
 	}
 	defer rows.Close()
 	var list []HistoryView
 	for rows.Next() {
 		var item HistoryView
-		var created time.Time
-		if err := rows.Scan(&item.Action, &item.FieldName, &item.OldValue, &item.NewValue, &item.Message, &item.UserName, &created); err == nil {
-			item.CreatedAt = created.Format("02.01.2006 15:04")
-			list = append(list, item)
+		if err := rows.Scan(&item.Action, &item.FieldName, &item.OldValue, &item.NewValue, &item.Message, &item.UserName, &item.At); err != nil {
+			componentLog("historie").Error().Err(err).Str("ref", refType).Str("id", id).Msg("historie lesen")
+			continue
 		}
+		item.CreatedAt = item.At.Format("02.01.2006 15:04")
+		list = append(list, item)
+	}
+	if err := rows.Err(); err != nil {
+		componentLog("historie").Error().Err(err).Str("ref", refType).Str("id", id).Msg("historie lesen")
 	}
 	return list
+}
+
+// recordHistory: die letzten 30 Einträge (Explorer-Protokoll).
+func (h *Handler) recordHistory(ctx context.Context, refType, id string) []HistoryView {
+	return h.queryHistory(ctx, refType, id, 30)
+}
+
+// historyCap: so viele Einträge je Datensatz werden höchstens berücksichtigt
+// (Sortieren und Zusammenfassen rechnen über alle, nicht nur über die gezeigten).
+// Variable statt Konstante, damit ein Test die Grenze herabsetzen kann.
+var historyCap = 5000
+
+// recordHistoryAll liefert die Historie eines Datensatzes, neueste zuerst.
+// capped: es gab mehr als historyCap Einträge, zurück kommen die neuesten.
+func (h *Handler) recordHistoryAll(ctx context.Context, refType, id string) (rows []HistoryView, capped bool) {
+	rows = h.queryHistory(ctx, refType, id, historyCap+1)
+	if len(rows) > historyCap {
+		return rows[:historyCap], true
+	}
+	return rows, false
 }
 
 func (h *Handler) addHistory(ctx context.Context, refType, id, action, field, oldValue, newValue, message, userID string) {
@@ -2592,7 +2627,6 @@ type FaultDetailData struct {
 	RunningTime   *timetracking.TimeEntry
 	SimilarFaults []SimilarFaultView
 	Users         []UserOption
-	History       []HistoryView
 }
 
 type FaultDetailView struct {
@@ -2650,7 +2684,6 @@ func (h *Handler) FaultDetail(w http.ResponseWriter, r *http.Request) {
 	data := FaultDetailData{
 		BaseData: base,
 		Users:    h.userOptions(ctx),
-		History:  h.recordHistory(ctx, "fault", id),
 		Fault: FaultDetailView{
 			ID: fault.ID, Title: fault.Title,
 			Description:      fault.Description,
@@ -2770,29 +2803,12 @@ type TicketDetailData struct {
 	BaseData
 	SyncOrigin     *SyncOriginView // Herkunft aus einem Fremdsystem (sync_ops.go); nil = keine oder kein Recht
 	Ticket         TicketView
-	Comments       []CommentView
 	CommentCount   int
 	TimeEntries    []*timetracking.TimeEntry
 	RunningTime    *timetracking.TimeEntry
 	StatusOptions  []StatusOption
 	RelatedTickets []TicketView
 	Users          []UserOption
-	History        []HistoryView
-}
-
-type CommentView struct {
-	ID         string
-	UserName   string
-	Initial    string
-	Text       string
-	CreatedAgo string
-}
-
-func commentView(id, name, text string, at time.Time) CommentView {
-	if name == "" {
-		name = "Unbekannt"
-	}
-	return CommentView{ID: id, UserName: name, Initial: string([]rune(name)[:1]), Text: text, CreatedAgo: timeAgo(at)}
 }
 
 type StatusOption struct {
@@ -2816,7 +2832,6 @@ func (h *Handler) TicketDetail(w http.ResponseWriter, r *http.Request) {
 	data := TicketDetailData{
 		BaseData: tbase,
 		Users:    h.userOptions(ctx),
-		History:  h.recordHistory(ctx, "ticket", id),
 		Ticket: TicketView{
 			ID: t.ID, Title: t.Title, Description: t.Description,
 			InfraName: h.infraName(ctx, t.InfrastructureID),
@@ -2852,11 +2867,9 @@ func (h *Handler) TicketDetail(w http.ResponseWriter, r *http.Request) {
 	data.Ticket.ResponsibleName = people.ResponsibleName
 	data.Ticket.RecordImageURL = h.recordImageURL(ctx, "ticket", id)
 
-	if cs, err := h.tickets.ListComments(ctx, id); err == nil {
-		for _, c := range cs {
-			data.Comments = append(data.Comments, commentView(c.ID, c.UserName, c.Text, c.CreatedAt))
-		}
-		data.CommentCount = len(data.Comments)
+	// nur die Zahl am Reiter; die Liste lädt der Baustein „Kommentare“ (record_comments.go)
+	if err := h.db.QueryRow(ctx, `SELECT COUNT(*)::int FROM ticket_comments WHERE ticket_id = $1::uuid`, id).Scan(&data.CommentCount); err != nil {
+		componentLog("tickets").Warn().Err(err).Str("ticket", id).Msg("kommentare zählen")
 	}
 	if running, err := h.time.GetRunning(ctx, u.ID); err == nil {
 		data.RunningTime = running
@@ -2878,27 +2891,6 @@ func (h *Handler) TicketDetail(w http.ResponseWriter, r *http.Request) {
 	}
 	data.SyncOrigin = h.syncOrigin(r, extsync.RefTicket, id)
 	h.render(w, "ticket_detail", data)
-}
-
-func (h *Handler) TicketAddComment(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	u := getUser(r)
-	r.ParseForm()
-	c, err := h.tickets.AddComment(r.Context(), id, u.ID, r.FormValue("text"))
-	w.Header().Set("Content-Type", "text/html")
-	if err != nil {
-		fmt.Fprintf(w, `<div style="color:var(--red)">Fehler</div>`)
-		return
-	}
-	initial := "?"
-	if r := []rune(u.FirstName); len(r) > 0 {
-		initial = string(r[:1])
-	}
-	fmt.Fprintf(w, `<div style="display:flex;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)">
-		<div style="width:30px;height:30px;background:var(--accent);border-radius:50%%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;flex-shrink:0;color:#fff">%s</div>
-		<div><div style="font-size:12px;font-weight:500">%s · <span style="color:var(--muted);font-weight:400">gerade eben</span></div>
-		<div style="font-size:13px;margin-top:4px">%s</div></div></div>`,
-		esc(initial), esc(u.FirstName+" "+u.LastName), esc(c.Text))
 }
 
 func (h *Handler) TicketStatusWeb(w http.ResponseWriter, r *http.Request) {

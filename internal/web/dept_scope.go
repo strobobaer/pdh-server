@@ -184,7 +184,7 @@ var scopePaths = []struct {
 	{regexp.MustCompile(`^/setup/` + uuidRe), setupRef},
 	{regexp.MustCompile(`^/energy/meters/` + uuidRe), meterRef},
 	{regexp.MustCompile(`^/import/esppdh/` + uuidRe), esppdhRef},
-	{regexp.MustCompile(`^/records/(?:fields|links|history|meta|state|categories)/([a-z_]+)/` + uuidRe), ""},
+	{regexp.MustCompile(`^/records/(?:fields|links|history|meta|state|categories|actions|comments)/([a-z_]+)/` + uuidRe), ""},
 	{regexp.MustCompile(`^/records/([a-z_]+)/` + uuidRe), ""},
 	{regexp.MustCompile(`^/complete/([a-z_]+)/` + uuidRe), ""},
 	{regexp.MustCompile(`^/attachments/([a-z_]+)/` + uuidRe), ""},

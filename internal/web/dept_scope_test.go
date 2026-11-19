@@ -23,6 +23,11 @@ func TestScopeTarget(t *testing.T) {
 		"/records/meta/fault/" + id:                              "fault",
 		"/records/history/maintenance_task/" + id:                "maintenance_task",
 		"/complete/maintenance/" + id:                            "maintenance_task",
+		"/records/actions/fault/" + id:                           "fault",
+		"/records/actions/ticket/" + id:                          "ticket",
+		"/records/actions/task/" + id:                            "task",
+		"/records/actions/maintenance_task/" + id:                "maintenance_task",
+		"/records/comments/ticket/" + id:                         "ticket",
 		"/attachments/ticket/" + id:                              "ticket",
 	} {
 		rt, gotID, ok := scopeTarget(path)

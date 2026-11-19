@@ -3,6 +3,7 @@ package tasks
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"time"
 
@@ -213,7 +214,11 @@ func (h *Handler) GetActions(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) DeleteAction(w http.ResponseWriter, r *http.Request) {
-	if err := h.svc.DeleteAction(r.Context(), chi.URLParam(r, "actionID")); err != nil {
+	if err := h.svc.DeleteAction(r.Context(), chi.URLParam(r, "id"), chi.URLParam(r, "actionID")); err != nil {
+		if errors.Is(err, ErrActionNotFound) {
+			response.Error(w, 404, err.Error())
+			return
+		}
 		response.Error(w, 500, err.Error())
 		return
 	}

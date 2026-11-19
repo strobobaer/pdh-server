@@ -181,7 +181,7 @@
   {{end}}
 </div>
 
-{{template "record-history" .History}}
+{{template "record-history-slot" (dict "Module" "purchase_order" "ID" $p.ID)}}
 
 <datalist id="pd-parts">{{range .Parts}}<option value="{{.No}}" data-id="{{.ID}}" data-name="{{.Name}}" data-unit="{{.Unit}}">{{.Name}}</option>{{end}}</datalist>
 <template id="pd-row-tpl">

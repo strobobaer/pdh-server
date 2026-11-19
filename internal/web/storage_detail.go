@@ -36,6 +36,7 @@ type StorageDetailData struct {
 	Stock                                                            []storageStockRow
 	Movements                                                        []PartMovementRow
 	MovementParts                                                    map[string]string
+	MovesBar                                                         SortBar
 	PartCount                                                        int
 	StockValue                                                       string
 	Error                                                            string
@@ -98,6 +99,8 @@ func (h *Handler) StorageDetailPage(w http.ResponseWriter, r *http.Request) {
 
 	_, paths := h.storagePaths(ctx)
 	var value float64
+	movMode := h.sortMode(r, "moves")
+	d.MovesBar = h.sortBar(r, "moves", movMode, r.URL.Path+"?tab=moves", "")
 	if rows, err := h.db.Query(ctx, `
 		WITH RECURSIVE sub AS (SELECT id FROM storage_nodes WHERE id = $1::uuid
 		                       UNION ALL SELECT n.id FROM storage_nodes n JOIN sub ON n.parent_id = sub.id)
@@ -137,7 +140,7 @@ func (h *Handler) StorageDetailPage(w http.ResponseWriter, r *http.Request) {
 		FROM stock_movements sm JOIN spare_parts sp ON sp.id = sm.part_id
 		LEFT JOIN users u ON u.id = sm.created_by
 		WHERE sm.storage_node_id IN (SELECT id FROM sub)
-		ORDER BY sm.created_at DESC LIMIT 200`, id); err == nil {
+		ORDER BY `+movesOrder(movMode)+` LIMIT 200`, id); err == nil {
 		for rows.Next() {
 			var mv PartMovementRow
 			var at time.Time

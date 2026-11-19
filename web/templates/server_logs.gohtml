@@ -103,6 +103,7 @@
   </div>
 </form>
 
+{{template "sort-bar" .SortBar}}
 <div id="lg-rows" {{if .Filter.Live}}hx-get="{{.RowsURL}}" hx-trigger="every 5s" hx-swap="innerHTML"{{end}}>
   {{template "server-log-rows" .}}
 </div>

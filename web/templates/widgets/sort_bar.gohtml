@@ -1,0 +1,19 @@
+{{/*
+  Sortier-Leiste (Plan 2026-11-19-sortierung):
+    {{template "sort-bar" .SortBar}}
+  Daten: SortBar aus h.sortBar(r, listenart, aktuelleArt, url, ziel).
+  Ziel leer = Seitenmodus (gewöhnliche Links), sonst htmx-Austausch von Ziel
+  (outerHTML). Bis 760 px Breite erscheint statt der Knöpfe ein Auswahlfeld
+  (reines CSS, Regeln in base.gohtml).
+*/}}
+{{define "sort-bar"}}
+<div class="sortbar" role="group" aria-label="{{t "Sortieren"}}">
+  <span class="sortbar-lbl">{{t "Sortieren:"}}</span>
+  {{range .Options}}
+  <a class="sortbar-b{{if .On}} on{{end}}" role="button" aria-pressed="{{if .On}}true{{else}}false{{end}}" href="{{$.Href .Mode}}"{{if $.Htmx}} hx-get="{{$.Href .Mode}}" hx-target="{{$.Target}}" hx-swap="outerHTML"{{end}}>{{.Label}}</a>
+  {{end}}
+  <select class="sortbar-sel form-input" aria-label="{{t "Sortieren"}}"{{if .Htmx}} data-target="{{.Target}}"{{end}} onchange="if(this.dataset.target){htmx.ajax('GET',this.value,{target:this.dataset.target,swap:'outerHTML'})}else{location.href=this.value}">
+    {{range .Options}}<option value="{{$.Href .Mode}}"{{if .On}} selected{{end}}>{{.Label}}</option>{{end}}
+  </select>
+</div>
+{{end}}

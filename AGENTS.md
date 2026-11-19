@@ -266,8 +266,8 @@ oder ändern.**
    **0.82.1: ESPHome hält sich selbst aktuell** – Entwurf
    `docs/superpowers/specs/2026-11-19-esphome-aktuell-design.md`, Plan
    `docs/superpowers/plans/2026-11-19-esphome-aktuell.md` (vom Anwender am
-   19.11.2026 freigegeben). Gebaut auf dem Branch `feature/esphome-aktuell`
-   (keine Migration, kein neues Recht). Offen: Freigabe für Merge und Push;
+   19.11.2026 freigegeben). Auf `main` (19.11.2026, Merge `ad75fb0`; keine
+   Migration, kein neues Recht). Offen: Freigabe für das Verbund-Update;
    danach am Testverbund (zusammen mit 0.82.0): Umgebung einrichten, „Jetzt
    prüfen“ auf beiden Servern, „Zurück zur vorigen Version“ am Spiegel, eine
    Probe während `systemctl restart pdh`, Reiter „ESPPDH“ im Browser in Fiori
@@ -283,7 +283,27 @@ oder ändern.**
    182, Branch `feature/sortierung` ab `main` mit 0.82.1). Der Plan behebt
    zwei Lücken im Bestand mit: Löschen einer Maßnahme prüft den Datensatz
    nicht; Historie von Projekt, KVP, Anlage und Lagerort ist ohne
-   Ansichtsrecht abrufbar. Offen: Bau nach 0.82.1.
+   Ansichtsrecht abrufbar. Gebaut auf dem Branch `feature/sortierung`
+   (Migration 182, kein neues Recht). Offen: Freigabe für Merge und Push;
+   danach Browserprüfung der Leiste in Fiori/Fluent, hell/dunkel, 320–1366 px
+   an Störung, Ticket, KVP, Anlage und einer Protokoll-Liste. Entscheidung des
+   Anwenders offen: eigenes Ansichtsrecht für Projekte und KVP (ihre Seiten
+   und damit ihre Historie sieht heute jeder Angemeldete) und ob die Historie
+   von Aufgaben und Wartungsaufträgen wie die Seite für jeden sichtbar sein
+   soll, der den Vorgang öffnen kann (heute: Recht „ansehen“ oder „bearbeiten“
+   des Bereichs nötig). Geparkt für die Browserprüfung: Unterrand des
+   gewählten Sortier-Knopfs in Fiori, Breite des Auswahlfelds auf dem Handy.
+   Geparkt aus der Schlussprüfung (klein): Test zur gemischten Gruppe in der
+   Anlagen-Historie greift den Fehlerfall nicht; Hinweis „neueste N“ fehlt,
+   wenn der Abteilungsfilter alle geladenen Zeilen entfernt, und liest sich
+   mit der Anzahl widersprüchlich; Namen nur aus Satzzeichen sortieren bei
+   „Nach Person“ nach vorn; Umlaute sortieren in Listen aus der Datenbank
+   anders als in Listen aus dem Programm; Gruppen laden alle Einzeleinträge
+   (bis 5000) mit; Gruppentitel der Historie nur deutsch.
+   **Wunsch vom 19.11.2026: Netzwerkliste aus UniFi und Omada vorbefüllen**
+   (Seite „Netzwerk“: Netze und WLANs vom Controller holen, der Anwender
+   bestätigt nur noch). Noch kein Entwurf; offen ist die Antwort, ob auch die
+   WLAN-Kennwörter vom Controller übernommen werden sollen.
 7. **0.81.6 Nummern ab 10000** (Rüstzeit, KVP, Bestellung und Partner waren auf
    vier Stellen abgeschnitten) – mit 0.82.0 auf `main`; der lokale Branch
    `fix/ruestzeit-nummer` ist damit erledigt.

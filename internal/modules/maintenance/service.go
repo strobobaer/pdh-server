@@ -329,8 +329,8 @@ func (s *Service) GetActions(ctx context.Context, taskID string) ([]*TaskAction,
 	return s.repo.GetActions(ctx, taskID)
 }
 
-func (s *Service) DeleteAction(ctx context.Context, id string) error {
-	return s.repo.DeleteAction(ctx, id)
+func (s *Service) DeleteAction(ctx context.Context, taskID, id string) error {
+	return s.repo.DeleteAction(ctx, taskID, id)
 }
 
 // AddPendingPart: Ersatzteil reservieren (Lager bucht sofort ab) bzw. vormerken.

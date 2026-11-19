@@ -556,11 +556,9 @@ type MaintenanceTaskDetailData struct {
 	FilledCount int
 	Progress    int // Prozent erfasst
 	Templates   []*maintenance.ChecklistTemplate
-	Actions     []*maintenance.TaskAction
 	PartsUsed   []*maintenance.PartUsage
 	Pending     []*maintenance.PendingPart
 	Users       []UserOption
-	History     []HistoryView
 	NextTaskID  string
 	NextTaskDue string
 	ProtocolURL string
@@ -613,7 +611,6 @@ func (h *Handler) MaintenanceTaskDetail(w http.ResponseWriter, r *http.Request) 
 		BaseData: h.baseData(r, "maintenance", t.Title, "Auftrag"),
 		Task:     v,
 		Users:    h.userOptions(ctx),
-		History:  h.recordHistory(ctx, "maintenance_task", id),
 	}
 	steps, _ := h.maint.Steps(ctx, id)
 	for _, s := range steps {
@@ -634,7 +631,6 @@ func (h *Handler) MaintenanceTaskDetail(w http.ResponseWriter, r *http.Request) 
 		data.Templates, _ = h.maint.Repo().ListTemplates(ctx)
 		data.Pending, _ = h.maint.GetPendingParts(ctx, id)
 	}
-	data.Actions, _ = h.maint.GetActions(ctx, id)
 	data.PartsUsed, _ = h.maint.GetPartsUsage(ctx, id)
 	if !v.IsOpen && t.PlanID != nil {
 		var due time.Time

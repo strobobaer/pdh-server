@@ -75,6 +75,7 @@
 
 <!-- ── Bewegungen ── -->
 <div class="rec-pane" data-pane="moves">
+  {{if .Movements}}{{template "sort-bar" .MovesBar}}{{end}}
   <div class="card" style="padding:0;overflow-x:auto">
     <table>
       <thead><tr><th>Datum</th><th>Art</th><th>Teil</th><th style="text-align:right">Menge</th><th>Platz</th><th>Benutzer</th></tr></thead>

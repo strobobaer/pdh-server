@@ -1,0 +1,51 @@
+{{/*
+  Maßnahmen an Störung, Ticket, Aufgabe und Wartung (Plan 2026-11-19-sortierung):
+  Karte „Durchgeführte Maßnahmen“ mit Sortier-Leiste, zusammengefassten Gruppen
+  (häufigste / gleiches zusammen) und – wo erlaubt – Eingabezeile.
+  Daten: actionsPage aus RecordActionsWeb (record_actions.go); geladen über
+    {{template "record-actions-slot" (dict "Module" "fault" "ID" .Fault.ID)}}
+  Das Aussehen der Gruppen ist dasselbe wie bei der Datensatzhistorie (.rh-group).
+*/}}
+{{define "record-actions-slot"}}
+<div hx-get="/records/actions/{{.Module}}/{{.ID}}" hx-trigger="intersect once" hx-swap="innerHTML" data-quiet-denied="{{t "Keine Berechtigung für die Maßnahmen"}}">
+  <div style="font-size:12px;color:var(--muted);padding:8px 0">{{t "Maßnahmen werden geladen…"}}</div>
+</div>
+{{end}}
+
+{{define "record-action-row"}}
+  <div class="li">
+    <div class="li-text">
+      <div class="li-title">{{.Text}}</div>
+      <div class="li-sub">{{.When}}{{if .Person}} &middot; {{.Person}}{{end}}</div>
+    </div>
+  </div>
+{{end}}
+
+{{define "record-actions"}}
+<div class="card" id="rec-actions">
+  <div class="card-title">{{t "Durchgeführte Maßnahmen"}}</div>
+  {{template "sort-bar" .Bar}}
+  <div style="margin-bottom:10px">
+  {{range .Entries}}
+    {{if gt .Count 1}}
+    <details class="rh-group">
+      <summary class="li"><div class="li-text"><div class="li-title">{{.Count}}× {{.Label}}</div><div class="li-sub">{{t "zuletzt"}} {{.Last}}</div></div></summary>
+      {{range .Rows}}{{template "record-action-row" .}}{{end}}
+    </details>
+    {{else}}
+    {{template "record-action-row" .Row}}
+    {{end}}
+  {{else}}
+  <div style="font-size:12px;color:var(--muted);padding:4px 0">{{t "Noch keine Maßnahmen erfasst"}}</div>
+  {{end}}
+  </div>
+  {{if .Error}}<div role="alert" style="color:var(--red);font-size:13px;margin-bottom:8px">{{.Error}}</div>{{end}}
+  {{if .CanAdd}}
+  <form hx-post="{{.PostURL}}" hx-target="#rec-actions" hx-swap="outerHTML" style="display:flex;gap:8px">
+    <input data-suggest="action" name="description" value="{{.Draft}}" class="form-input" required maxlength="4000" autocomplete="off" aria-label="{{t "Maßnahme eintragen"}}" style="flex:1"{{if .Focus}} autofocus{{end}}
+      placeholder="{{if eq .Module "fault"}}{{t "z.B. Sicherung getauscht"}}{{else if eq .Module "ticket"}}{{t "z.B. Ersatzteil bestellt"}}{{else}}{{t "z.B. Ursache behoben"}}{{end}}">
+    <button type="submit" class="btn" aria-label="{{t "Maßnahme eintragen"}}"><i class="ti ti-plus"></i></button>
+  </form>
+  {{end}}
+</div>
+{{end}}

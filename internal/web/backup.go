@@ -26,6 +26,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"pdh"
+	"pdh/internal/core/listsort"
 	"pdh/internal/ha"
 	"pdh/pkg/config"
 	"pdh/pkg/database"
@@ -973,6 +974,7 @@ type BackupPageData struct {
 	Files         []backupFileView
 	Schedules     []backupSchedule
 	Runs          []backupRunView
+	RunsBar       SortBar
 	Running       bool
 	Dir           string
 	SchemaVersion int
@@ -1043,28 +1045,42 @@ func (h *Handler) BackupPage(w http.ResponseWriter, r *http.Request) {
 		d.Err = err.Error()
 	}
 	d.Schedules, _ = h.loadBackupSchedules(ctx, false)
-	if rows, err := h.db.Query(ctx, `
+	backupMode := h.sortMode(r, "backups")
+	d.Runs, d.Running = h.backupRuns(ctx, backupMode)
+	d.RunsBar = h.sortBar(r, "backups", backupMode, r.URL.Path+"?tab=log", "")
+	h.render(w, "backup", d)
+}
+
+// backupRuns: Reiter „Protokoll“ – die letzten 100 Läufe in der gewählten Sortierung (die
+// Auswahl der 100 trifft die Datenbank, auch bei „älteste zuerst“). running: läuft gerade
+// eine Sicherung (unabhängig von der Sortierung und vom Ausschnitt).
+func (h *Handler) backupRuns(ctx context.Context, mode listsort.Mode) (runs []backupRunView, running bool) {
+	rows, err := h.db.Query(ctx, `
 		SELECT to_char(b.started_at, 'DD.MM.YYYY HH24:MI:SS'), b.kind, b.file_name, b.status, COALESCE(b.message, ''),
 		       COALESCE(TRIM(u.first_name || ' ' || u.last_name), ''),
 		       COALESCE(EXTRACT(EPOCH FROM (b.finished_at - b.started_at))::int, -1)
-		  FROM backup_runs b LEFT JOIN users u ON u.id = b.created_by ORDER BY b.started_at DESC LIMIT 100`); err == nil {
-		for rows.Next() {
-			var v backupRunView
-			var secs int
-			if rows.Scan(&v.At, &v.Kind, &v.File, &v.Status, &v.Message, &v.By, &secs) == nil {
-				v.KindLabel = backupKindLabels[v.Kind]
-				if secs >= 0 {
-					v.Duration = (time.Duration(secs) * time.Second).String()
-				}
-				if v.Status == "running" {
-					d.Running = true
-				}
-				d.Runs = append(d.Runs, v)
-			}
-		}
-		rows.Close()
+		  FROM backup_runs b LEFT JOIN users u ON u.id = b.created_by
+		 ORDER BY `+logOrderSQL(mode, "b.started_at", "NULLIF(TRIM(u.first_name || ' ' || u.last_name), '')", "b.kind")+`, b.id LIMIT 100`)
+	if err != nil {
+		componentLog("backup").Error().Err(err).Msg("protokoll lesen")
+		return nil, false
 	}
-	h.render(w, "backup", d)
+	defer rows.Close()
+	for rows.Next() {
+		var v backupRunView
+		var secs int
+		if rows.Scan(&v.At, &v.Kind, &v.File, &v.Status, &v.Message, &v.By, &secs) == nil {
+			v.KindLabel = backupKindLabels[v.Kind]
+			if secs >= 0 {
+				v.Duration = (time.Duration(secs) * time.Second).String()
+			}
+			runs = append(runs, v)
+		}
+	}
+	if err := h.db.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM backup_runs WHERE status = 'running')`).Scan(&running); err != nil {
+		componentLog("backup").Error().Err(err).Msg("laufende sicherung prüfen")
+	}
+	return runs, running
 }
 
 func backupRedirect(w http.ResponseWriter, r *http.Request, tab, msg string, err error) {

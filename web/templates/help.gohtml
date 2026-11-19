@@ -190,6 +190,25 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <h3><i class="ti ti-hash"></i> Kopfleiste: Kategorien und Status</h3>
   {{template "hb-fig-meta"}}
   <p>Direkt über den Reitern stehen die <a href="#categories">Kategorien</a> (#Energie, #Optimierung …) – antippen setzt oder entfernt sie. Bei <b>Stammdaten</b> (Anlagen, Ersatzteile, Lagerplätze, Hersteller &amp; Lieferanten) zeigt die Leiste außerdem, ob der Datensatz <b>gesperrt</b>, <b>deaktiviert</b> oder <b>zum Löschen vorgemerkt</b> ist. Über <b>Status</b> änderst du das (<a href="#cleanup">mehr</a>).</p>
+  <h3 id="sort"><i class="ti ti-arrows-sort"></i> Listen sortieren</h3>
+  <p>Über Verläufen, Maßnahmen, Kommentaren und Protokoll-Listen steht die Leiste <b>Sortieren:</b>. Damit bringst du die Einträge in die Reihenfolge, die du gerade brauchst – zum Beispiel um zu sehen, was an einer Anlage am häufigsten vorkommt.</p>
+  {{template "hb-fig-sort"}}
+  <div class="hb-howto"><b><i class="ti ti-arrows-sort"></i> So sortierst du eine Liste</b>
+    <ol class="hb-steps">
+      <li>Über der Liste die gewünschte Sortierung antippen. Auf dem Handy und in schmalen Fenstern ist es ein <b>Auswahlfeld</b> – dort die Sortierung auswählen.</li>
+      <li><b>Neueste zuerst</b> und <b>Älteste zuerst</b> ordnen nach Datum. <b>Nach Person</b> sammelt die Einträge je Name (bei den KVP-Maßnahmen: je verantwortliche Person, nicht je Person, die die Maßnahme eingetragen hat), <b>Nach Art</b> je Art des Eintrags (z. B. „Status geändert“). Bei den Maßnahmen im KVP gibt es zusätzlich <b>Nach Termin</b>.</li>
+      <li><b>Häufigste zuerst</b> und <b>Gleiches zusammen</b> fassen gleiche Einträge zu einer Zeile zusammen, z. B. „12× Lager läuft heiß – zuletzt 18.11.2026“. Auf die Zeile tippen klappt die einzelnen Einträge auf.</li>
+      <li>PDH <b>merkt sich deine Wahl</b> für jede Art von Liste. Beim nächsten Mal ist sie schon eingestellt. Am Spiegelserver gilt die Wahl nur für diesen Aufruf und wird nicht gespeichert.</li>
+    </ol>
+    <b>Was heißt „gleich“?</b> Gleich ist ein Text, wenn er sich nur in Groß- und Kleinschreibung, Umlauten, Satzzeichen oder Leerzeichen unterscheidet. Ähnliche Texte mit anderen Wörtern werden <b>nicht</b> zusammengelegt. In der Historie eines Datensatzes heißt „gleich“: dieselbe Änderung am selben Feld.</div>
+  <div class="hb-howto"><b><i class="ti ti-history"></i> So liest du die Historie</b>
+    <ol class="hb-steps">
+      <li>Am Datensatz den Reiter <b>Historie</b> öffnen. Zuerst stehen die neuesten 30 Einträge.</li>
+      <li>Mit <b>Weitere laden</b> kommen die nächsten dazu.</li>
+      <li>Sortierung wie oben wählen. Berücksichtigt werden höchstens die neuesten 5000 Einträge; sind es mehr, steht ein Hinweis da.</li>
+    </ol>
+    Die Historie eines Datensatzes sieht, wer den Datensatz selbst sehen darf (bei Aufgaben und Wartungen: wer den Bereich ansehen oder bearbeiten darf). In der <a href="#infrastructure">Anlagen-Historie</a> stehen die Sortierung und die Filter nebeneinander; beim Umschalten bleiben die Filter erhalten.</div>
+  <p>Unverändert bleiben die kurzen Auszüge wie „Letzte Bewegungen“, „Letzte Buchungen“ und „Letzte Scans“ – sie zeigen nur die jüngsten Einträge.</p>
   <h3 id="creation"><i class="ti ti-circle-plus"></i> Vorgänge anlegen: der Erstellungs-Assistent</h3>
   <p>Neue Tickets, Störungen, Aufgaben und Wartungsaufträge legst du überall im gleichen Stil wie beim Abschließen Schritt für Schritt an. Jeder Weg zum Anlegen öffnet diesen Assistenten:</p>
   <ul>
@@ -385,6 +404,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <div class="hb-howto"><b><i class="ti ti-message-question"></i> Den Copilot nach euren Daten fragen</b>Den Copilot in der rechten Seitenleiste kannst du auf jeder Seite fragen – z. B. „Welche Störungen hatte Presse 3 in den letzten 30 Tagen?“, „Haben wir noch Lager 6205 und wo liegen sie?“ oder „Welche Wartungen sind diese Woche fällig?“. Er sucht dafür selbst in Störungen, Tickets, Aufgaben, Wartungen, Projekten, Anlagen, Ersatzteilen und den Messwerten aus dem Import. Links in der Antwort öffnen den Vorgang; darunter steht, welche PDH-Daten er benutzt hat. Auf einer Störung bezieht er deren Kontext mit ein. Eine Störung und das daraus erstellte Ticket behandelt er als <b>einen</b> Vorgang – er zählt sie nicht doppelt und nennt beide Links.
     <br>Der Copilot sieht nur, was du auch sehen darfst (deine Rechte und Abteilungs-Sicht), und ändert nichts. Er hat keinen Internetzugang; allgemeines Fachwissen kennzeichnet er als solches. Das selbstständige Nachschlagen gibt es mit Claude (Anthropic-Schlüssel); mit Ollama bekommt er vorab die Suchtreffer zur Frage.</div>
   <div class="hb-howto"><b><i class="ti ti-users"></i> Verantwortlich und Zugewiesen</b>Jeder Vorgang hat zwei Zuständigkeiten: <b>Verantwortlich</b> – wer dafür geradesteht und den Überblick behält – und <b>Zugewiesen</b> – wer die Arbeit macht. Das gilt einheitlich für Tickets, Störungen, Wartungspläne und -aufträge, Aufgaben (hier auch mehrere Zugewiesene), Projekte und IT-Assets. Aufträge aus einem Wartungsplan übernehmen beide Personen und die Gruppe aus dem Plan. Zusätzlich lässt sich eine <b>Gruppe</b> zuweisen (Feld „Zugewiesene Gruppe“): Alle Mitglieder sehen den Vorgang im Dashboard unter <b>Mir zugewiesen</b> und bekommen die Änderungshinweise im Chat. Auf der Seite <b>Neu anlegen</b> stehen im Feld „Zugewiesen an“ unter den Personen auch die <b>Gruppen</b> – so landet ein neuer Auftrag direkt bei einem Team.</div>
+  <p>Die <b>Maßnahmen</b> einer Störung lassen sich über der Liste sortieren, z. B. nach Person oder „Häufigste zuerst“ (<a href="#sort">mehr</a>).</p>
   {{template "hb-shots" (dict "Ref" (index $s "faults") "Can" $can)}}
 </section>
 
@@ -425,6 +445,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     </ol></div>
   <div class="hb-howto"><b><i class="ti ti-inbox"></i> Tipp für Broker</b>
     Dein Eingang ist die Seite <b>Zuweisung</b> (Navigation oben). Dort weist du direkt zu (<a href="#dashboard">mehr</a>). In der Ticketliste zeigt der Filter <b>Ohne Zuweisung</b> dieselben Tickets.</div>
+  <p><b>Maßnahmen</b> und <b>Kommentare</b> eines Tickets haben eine Sortier-Leiste (<a href="#sort">mehr</a>). Ein Kommentar darf bis zu 4000 Zeichen lang sein.</p>
   {{template "hb-shots" (dict "Ref" (index $s "tickets") "Can" $can)}}
 </section>
 
@@ -441,6 +462,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li><b>Anstehend</b> öffnet die Aufgaben-Liste gefiltert auf dieses Projekt.</li>
     </ol></div>
   <p>Zusätzlich zeigt das Projekt seine Aufgaben im <b>Zeitstrahl</b>. Ein Doppelklick auf eine Aufgabe im Zeitstrahl öffnet sie zur Bearbeitung. Der Rand der Balken zeigt, ob eine Aufgabe läuft, fällig, überfällig, nicht zugewiesen oder beendet ist (<a href="#timeline-style">Zeitstrahl-Darstellung</a>).</p>
+  <p>Die <b>Maßnahmen</b> einer Aufgabe lassen sich über der Liste sortieren (<a href="#sort">mehr</a>).</p>
   {{template "hb-shots" (dict "Ref" (index $s "tasks") "Can" $can)}}
 </section>
 
@@ -473,6 +495,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     </ol>
     Wie im Abschluss-Assistenten: <b>Fertig</b> schaltet weiter, <b>Nur speichern – geht noch weiter</b> sichert nur die Angaben. Fehlt für einen Schritt noch etwas, nennt PDH es bei der Auswahl und schaltet nicht weiter; das bereits Eingegebene bleibt gespeichert. Einzelne Angaben lassen sich auch direkt in den Reitern <b>Bewertung</b> und <b>PDCA &amp; Maßnahmen</b> ändern. <b>A3-Report</b> druckt den ganzen Vorschlag auf einer Seite zum Aushängen.</div>
   <p>Das <b>Dashboard</b> zeigt Kennzahlen des Jahres (Vorschläge je Mitarbeitende/n, Annahmequote, Ø Zeit bis zur Entscheidung, Beteiligung, Einsparungen und Prämien), den Ablauf, die letzten 12 Monate, die Themen, die Nutzen-Aufwand-Matrix und alles Überfällige. Das <b>PDCA-Board</b> zeigt die Vorschläge in Umsetzung als Karten. Unter <b>Regeln &amp; Vorlagen</b> stehen die KVP-Regeln; dort stellt die KVP-Steuerung die Rückmeldefrist ein.</p>
+  <p>Die <b>Maßnahmen</b> im Schritt „Do“ sind ab Werk <b>nach Termin</b> geordnet; die Kommentare haben dieselbe Sortier-Leiste (<a href="#sort">mehr</a>). Assistent, Abhak-Ansicht und A3-Report bleiben nach Termin sortiert.</p>
   {{template "hb-shots" (dict "Ref" (index $s "kvp") "Can" $can)}}
 </section>
 
@@ -598,6 +621,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>Mit <i class="ti ti-photo-plus"></i> <b>Bild</b> Fotos oder Skizzen zur <b>Darstellung</b> hinterlegen (z. B. wo der Messpunkt sitzt). Sie erscheinen bei der Durchführung über dem Eingabefeld.</li>
       <li>Die Reihenfolge der Punkte lässt sich ändern. Eine Checkliste kann in mehreren Plänen stecken.</li>
     </ol></div>
+  <p>Die <b>Maßnahmen</b> einer Wartung stehen jetzt immer im Reiter <b>Übersicht</b> – auch vor dem Abschließen, dort nur zum Lesen. Eingetragen werden sie weiter beim Abschließen. Sortieren geht wie in <a href="#sort">Listen sortieren</a> beschrieben.</p>
   {{template "hb-shots" (dict "Ref" (index $s "maintenance") "Can" $can)}}
 </section>
 
@@ -803,6 +827,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>Bei <b>Eigene Karenz (Minuten)</b> die Minuten eintragen und <b>Speichern</b>. Leer speichern entfernt den eigenen Wert; dann gilt wieder der Wert der Kategorie bzw. der allgemeine Wert.</li>
     </ol>
     Dafür brauchst du das Recht „IT-Infrastruktur bearbeiten“ für dieses Asset. Es gilt immer die Reihenfolge: eigener Wert am Gerät, dann Kategorie, dann der allgemeine Wert.</div>
+  <p>In der <b>Anlagen-Historie</b>, bei den <b>Prüfnachweisen</b> und bei den <b>HMI-Zugriffen</b> einer Anlage gibt es die Sortier-Leiste (<a href="#sort">mehr</a>). „Häufigste zuerst“ zählt dieselbe Maßnahme auch über verschiedene Störungen der Anlage hinweg; berücksichtigt werden höchstens die neuesten 2000 Einträge. Die Historie einer Anlage sieht, wer die Anlage sehen darf.</p>
   {{template "hb-shots" (dict "Ref" (index $s "infrastructure") "Can" $can)}}
 </section>
 
@@ -1055,6 +1080,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>Ist die Nummer eindeutig einem Teil zugeordnet – EAN, Teilenummer, Hersteller- oder Lieferanten-Artikelnummer –, öffnet sich das Teil direkt im Reiter <b>Lager &amp; Bewegungen</b> zum Buchen. Sonst zeigt die Liste alle Treffer. Ein QR-Code von einem PDH-Etikett oder einer Kanban-Karte öffnet direkt die Buchungserfassung bzw. die Karte.</li>
     </ol>
     Die EAN trägst du in den <b>Stammdaten</b> des Teils ein – auch per Barcode-Knopf neben dem Feld. PDH prüft die Prüfziffer. Beim Lieferschein- und Bauteil-Scan wird eine erkannte EAN bei neuen Teilen übernommen und bei vorhandenen ohne EAN ergänzt. Kann der Browser keine Barcodes lesen (z. B. Safari auf dem iPhone), fragt PDH nach der Nummer zum Eintippen.</div>
+  <p>Die <b>Lagerbewegungen</b> eines Teils lassen sich sortieren, z. B. nach Person oder Art (<a href="#sort">mehr</a>). „Letzte Bewegungen“ und „Letzte Buchungen“ bleiben kurze Auszüge.</p>
   {{template "hb-shots" (dict "Ref" (index $s "inventory") "Can" $can)}}
 </section>
 
@@ -1126,6 +1152,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li><b>Name</b> der Kopie eintragen. Für mehrere Kopien Präfix, von und bis ausfüllen, z. B. „Regal “ von 2 bis 5.</li>
       <li>„mit allen Unterknoten“ kopiert Fächer und Plätze mit. Bestand und Buchungen werden nicht kopiert.</li>
     </ol></div>
+  <p>Die <b>Lagerbewegungen</b> eines Lagerorts lassen sich sortieren (<a href="#sort">mehr</a>). Die Historie eines Lagerorts sieht, wer den Lagerort sehen darf.</p>
   {{template "hb-shots" (dict "Ref" (index $s "storage") "Can" $can)}}
 </section>
 
@@ -1568,6 +1595,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     </ol></div>
   <p>Die Reiter <b>Gesperrt</b>, <b>Deaktiviert</b> und <b>Ausgeblendet</b> zeigen alle betroffenen Stammdaten – dort lassen sie sich mit einem Klick entsperren, aktivieren oder wieder einblenden. Der <b>Verlauf</b> zeigt jeden Bereinigungslauf mit Details. Ersatzteile findest du außerdem über den Listenfilter „Deaktiviert“ bzw. „Gesperrt“, Firmen über den Reiter „Inaktiv“.</p>
   <p>Auch Schnittstellen können keine Stammdaten löschen: Eine Löschanforderung über die API wird automatisch zur Löschvormerkung.</p>
+  <p>Im Reiter <b>Verlauf</b> haben beide Listen eine Sortier-Leiste (<a href="#sort">mehr</a>).</p>
   {{template "hb-shots" (dict "Ref" (index $s "cleanup") "Can" $can)}}
 </section>
 
@@ -1603,6 +1631,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <div class="hb-howto"><b><i class="ti ti-refresh-alert"></i> Automatische Vollsicherung bei jedem Update</b>
     Startet das PDH nach einem Update zum ersten Mal, sichert es <b>vor</b> allen Datenbank-Änderungen den kompletten bisherigen Stand (Datenbank, Anhänge, Chat-Dateien) – egal ob über <b>Core-Einstellungen → Update installieren</b>, den Installer oder von Hand aktualisiert wurde. Die Sicherung erscheint in der Liste als <b>Vor Update</b>; aufbewahrt werden die letzten 5 (einstellbar unter <b>Zeitpläne → Automatisch bei jedem Update</b>, dort auch abschaltbar). Schlägt die Sicherung fehl (z. B. Speicher voll), wird das Update <b>nicht</b> angewendet und im Server-Protokoll steht der Grund. Nur im Notfall lässt sich das mit der Umgebungsvariablen <code>PDH_SKIP_UPDATE_BACKUP=1</code> übergehen.</div>
   <p><b>Wichtig:</b> Eine Sicherung aus einer <b>neueren</b> PDH-Version kann erst nach einem Update eingespielt werden. Ältere Sicherungen werden beim Einspielen automatisch auf den aktuellen Stand gebracht. Sicherungsprotokoll und Zeitpläne selbst werden nicht überschrieben.</p>
+  <p>Im Reiter <b>Protokoll</b> lassen sich die Sicherungen sortieren (<a href="#sort">mehr</a>).</p>
   {{template "hb-shots" (dict "Ref" (index $s "backup") "Can" $can)}}
 </section>
 
@@ -2035,6 +2064,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <li><b>Herunterladen:</b> die gefilterte Liste als CSV (für Excel) oder JSON, oder eine ganze Tagesdatei.</li>
     <li><b>Einstellungen</b> im Reiter <b>Protokoll</b>: Stufe (debug/info/warn/error), ob alle oder nur fehlerhafte Seitenaufrufe protokolliert werden, Aufbewahrung in Tagen und Ordner – sofort wirksam.</li>
   </ul>
+  <p>Das <b>Server-Protokoll</b> lässt sich sortieren (<a href="#sort">mehr</a>). „Älteste zuerst“ dreht nur die zuletzt geladenen Zeilen um; ein Hinweis über der Liste sagt das.</p>
   {{template "hb-shots" (dict "Ref" (index $s "server") "Can" $can)}}
 </section>
 
@@ -2184,6 +2214,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     </ul>
     Die beiden Rechte sind <b>eigenständig</b>: Das zweite schließt das erste nicht ein, anders als ein Bereichsadministrator. Wer einstellen und bestätigen soll, braucht beide. Sie gelten systemweit. Beim Update bekamen beide alle Rollen, die „Server-Einstellungen (.env) bearbeiten &amp; Server neu starten“ überall hatten.</div>
   <p><b>Was ohne Recht geht:</b> Störungen und Tickets melden, kommentieren, Zeiten erfassen und Chat. Alles andere – bearbeiten, Status ändern, abschließen, anlegen von Aufgaben, Projekten, Wartungen, IT-Geräten, Ersatzteilen und Lagerorten – braucht das passende Recht. Wer an einem Vorgang beteiligt ist (zugewiesen, verantwortlich, angelegt oder über die Gruppe), darf diesen Vorgang auch ohne das Recht bearbeiten. Fehlt ein Recht, meldet PDH „Keine Berechtigung“ mit dem Namen des Rechts.</p>
+  <p><b>Historie:</b> Die Historie eines Datensatzes sieht, wer den Datensatz selbst sehen darf. Das gilt auch für Anlagen und Lagerorte. Bei Aufgaben und Wartungen braucht es dafür das Recht „ansehen“ oder „bearbeiten“ des Bereichs. Das Löschen einer Maßnahme über die Schnittstelle (API) prüft, ob die Maßnahme zu dem Vorgang gehört, unter dem sie gelöscht wird. Die Sortierung von Listen ist für alle gleich und braucht kein eigenes Recht (<a href="#sort">mehr</a>).</p>
   <p>Server-Einstellungen wie Datenbank, E-Mail, Microsoft 365 oder Nextcloud pflegst du unter <b>Server-Einstellungen</b> (<a href="#server">mehr</a>) – die <code>.env</code>-Datei muss dafür niemand mehr von Hand bearbeiten.</p>
   <h3>Berechtigungen <i class="ti ti-refresh" title="automatisch aus dem System"></i></h3>
   {{range .PermGroups}}
@@ -2659,6 +2690,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <li><b>ESPPDH: Geräte löschen (Bereichsadministrator)</b> (<code>esppdh.admin</code>) – alle Rechte von ESPPDH und als Einziger Geräte löschen.</li>
   </ul>
   <p>Die Rechte gelten überall oder nur in einer Abteilung; maßgeblich ist die Anlage des Geräts. Wer sie mit dem Update bekommen hat, steht unter <a href="#admin">Administration</a>.</p>
+  <p>Auch die Liste „Letzte Läufe“ (Bauläufe) hat eine Sortier-Leiste (<a href="#sort">mehr</a>).</p>
   {{template "hb-shots" (dict "Ref" (index $s "esppdh") "Can" $can)}}
 </section>
 
@@ -2829,6 +2861,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   </table>
   <p><b>Ausfallschutz:</b> Der Abgleich läuft nur am aktiven Server. Verknüpfungen, Warteliste und Läufe liegen in der Datenbank des PDH. Nach einem Rollentausch arbeitet der neue aktive Server dort weiter – nichts wird doppelt angelegt. Ein VPN-Tunnel steht nach einem Tausch nicht sicher; dann wird der Lauf übersprungen und gemeldet. Während eines Updates (Wartungssperre) ruht der Abgleich.</p>
   <p><b>Rechte:</b> sehen – <b>Abgleich: Profile, Läufe und Herkunft sehen</b>; einrichten und testen – <b>Profile einrichten und testen</b>; scharf schalten, anhalten, erneut versuchen – das gleichnamige Recht. Löschen darf nur der Bereichsadministrator des Abgleichs; dabei bleiben die Tickets im PDH und alle Daten im Fremdsystem. Die Rechte gelten überall oder nur in einer Abteilung.</p>
+  <p>Das Protokoll der Läufe lässt sich sortieren – ebenso die Läufe des Efficio-Exports (<a href="#sort">mehr</a>).</p>
   {{template "hb-shots" (dict "Ref" (index $s "abgleich") "Can" $can)}}
 </section>
 
@@ -2904,6 +2937,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li><b>Verbunden, aber Steuerung nicht erreichbar:</b> Am Gateway die Weiterleitung ins LAN erlauben; die Geräte im Maschinennetz brauchen den Router als Gateway.</li>
     </ul></div>
   <p>Ein <b>ausgehender Tunnel</b> kann auch der <b>Weg einer MSSQL-Verbindung</b> sein (Import → Verbindung → Weg), z. B. um den <a href="#abgleich">Abgleich mit einem Fremdsystem</a> zu testen. Der Abgleich baut und ändert keine Tunnel; steht der Tunnel nicht oder liegt die Adresse der Datenbank nicht in seinen Netzen, wird der Lauf übersprungen und gemeldet.</p>
+  <p>Die VPN-Ereignisse lassen sich sortieren, z. B. nach Person oder Art (<a href="#sort">mehr</a>).</p>
   {{template "hb-shots" (dict "Ref" (index $s "vpn") "Can" $can)}}
 </section>
 

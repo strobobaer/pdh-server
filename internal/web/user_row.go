@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"encoding/json"
 	"sync"
 	"time"
 )
@@ -22,6 +23,7 @@ type userRow struct {
 	translateLang, language string
 	broker                  [4]bool // faults, tickets, tasks, maintenance
 	active                  bool
+	ListSort                map[string]string // gemerkte Sortierwahl je Listenart (users.list_sort)
 }
 
 type userRowKey struct{}
@@ -32,13 +34,17 @@ func (h *Handler) withUserRow(ctx context.Context, uid string) context.Context {
 		return ctx
 	}
 	u := &userRow{id: uid}
+	var listSort []byte
 	err := h.db.QueryRow(ctx, `SELECT ui_palette, ui_font, ui_style, ui_scale, ui_row, avatar_path, nav_layout,
-			live_translate, translate_lang, language, broker_faults, broker_tickets, broker_tasks, broker_maintenance, active
+			live_translate, translate_lang, language, broker_faults, broker_tickets, broker_tasks, broker_maintenance, active, list_sort
 		FROM users WHERE id = $1::uuid`, uid).
 		Scan(&u.palette, &u.font, &u.style, &u.scale, &u.row, &u.avatarPath, &u.navLayout,
-			&u.liveTranslate, &u.translateLang, &u.language, &u.broker[0], &u.broker[1], &u.broker[2], &u.broker[3], &u.active)
+			&u.liveTranslate, &u.translateLang, &u.language, &u.broker[0], &u.broker[1], &u.broker[2], &u.broker[3], &u.active, &listSort)
 	if err != nil {
 		return ctx // Hilfsfunktionen fragen dann wie bisher einzeln
+	}
+	if len(listSort) > 0 {
+		_ = json.Unmarshal(listSort, &u.ListSort) // kaputter Wert = keine gemerkte Wahl
 	}
 	return context.WithValue(ctx, userRowKey{}, u)
 }

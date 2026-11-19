@@ -276,6 +276,7 @@ html[data-theme="dark"] .ha-mirror-acts .btn-primary,html[data-theme="dark"] .ha
 {{template "vpn-live" .}}
 <div class="card" id="events">
   <div class="card-title"><span><i class="ti ti-history"></i> Protokoll <small class="vp-meta">die letzten 50 Einträge</small></span></div>
+  {{if .Events}}{{template "sort-bar" .EventsBar}}{{end}}
   {{range .Events}}<div class="vp-ev"><span>{{.At}}</span><span>{{.User}}</span><span>{{if .Peer}}<b>{{.Peer}}</b> – {{end}}{{.Note}}</span></div>{{else}}<p class="vp-hint">Noch keine Einträge.</p>{{end}}
 </div>
 {{end}}

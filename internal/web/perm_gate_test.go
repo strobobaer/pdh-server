@@ -28,6 +28,11 @@ func TestPermissionGateRules(t *testing.T) {
 		{"POST", "/api/v1/inventory/stocktake/" + id + "/count", "inventory.book", ""},
 		{"POST", "/storage/" + id + "/children-web", "inventory.create", ""},
 		{"POST", "/records/fault/" + id + "/people", "faults.edit", "fault"},
+		// Maßnahmen-Baustein: dieselben Rechte wie die Schnittstelle unter /api/v1/…/actions
+		{"POST", "/records/actions/fault/" + id, "faults.edit", "fault"},
+		{"POST", "/records/actions/ticket/" + id, "tickets.edit", "ticket"},
+		{"POST", "/records/actions/task/" + id, "tasks.edit", "task"},
+		{"POST", "/records/actions/maintenance_task/" + id, "maintenance.edit", "maintenance_task"},
 		{"POST", "/records/maintenance/" + id + "/archive", "maintenance.complete", "maintenance_task"},
 	}
 	for _, c := range cases {
@@ -38,7 +43,10 @@ func TestPermissionGateRules(t *testing.T) {
 	}
 	// offen: Melden, Kommentare, Chat, Zeiterfassung, Lesen
 	for _, c := range [][2]string{{"POST", "/faults"}, {"POST", "/api/v1/faults/"}, {"POST", "/tickets"}, {"POST", "/tickets/" + id + "/comment"},
-		{"POST", "/api/v1/faults/" + id + "/chat"}, {"POST", "/faults/" + id + "/time/start"}, {"GET", "/api/v1/tasks/" + id}} {
+		{"POST", "/api/v1/faults/" + id + "/chat"}, {"POST", "/faults/" + id + "/time/start"}, {"GET", "/api/v1/tasks/" + id},
+		{"GET", "/records/actions/fault/" + id},
+		// Kommentar-Baustein: wie die alten Wege (/tickets/{id}/comment, /kvp/{id}/comment) ohne eigenes Recht
+		{"POST", "/records/comments/ticket/" + id}, {"POST", "/records/comments/kvp/" + id}, {"GET", "/records/comments/kvp/" + id}} {
 		if _, perm, _, _, ok := matchGate(c[0], c[1]); ok {
 			t.Errorf("%s %s sollte offen sein, verlangt %q", c[0], c[1], perm)
 		}

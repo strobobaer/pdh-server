@@ -198,14 +198,7 @@
 <!-- ── Maßnahmen & Ersatzteile ── -->
 <div class="rec-pane" data-pane="work">
     <!-- Durchgeführte Maßnahmen -->
-    <div class="card">
-      <div class="card-title">Durchgeführte Maßnahmen</div>
-      <div id="fault-actions-list" style="margin-bottom:10px;font-size:12px;color:var(--muted)">Lade...</div>
-      <div style="display:flex;gap:8px">
-        <input data-suggest="action" id="fa-new-action" class="form-input" placeholder="z.B. Sicherung getauscht" style="flex:1" onkeydown="if(event.key==='Enter'){event.preventDefault();addFaultAction();}">
-        <button type="button" class="btn" onclick="addFaultAction()"><i class="ti ti-plus"></i></button>
-      </div>
-    </div>
+    {{template "record-actions-slot" (dict "Module" "fault" "ID" .Fault.ID)}}
 
     <!-- Ersatzteile: Merkliste (Buchung erst beim Lösen) bzw. gebuchte Teile -->
     <div class="card">
@@ -239,7 +232,7 @@
 <div class="rec-pane" data-pane="links">{{template "record-links-slot" (dict "Module" "fault" "ID" .Fault.ID)}}</div>
 
 <!-- ── Historie ── -->
-<div class="rec-pane" data-pane="history">{{template "record-history" .History}}</div>
+<div class="rec-pane" data-pane="history">{{template "record-history-slot" (dict "Module" "fault" "ID" .Fault.ID)}}</div>
 {{end}}
 
 {{define "context-list"}}
@@ -277,35 +270,6 @@ const FAULT_RESOLVED = {{if .Fault.Resolution}}true{{else}}false{{end}};
 let faPartsCache = null;
 
 function escFa(s){return String(s||'').replace(/[&<>'"]/g,function(c){return ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'})[c];});}
-
-async function loadFaultActions(){
-  const box = document.getElementById('fault-actions-list');
-  try{
-    const res = await fetch('/api/v1/faults/'+FAULT_ID+'/actions', {credentials:'same-origin'});
-    const json = await res.json();
-    const actions = json.data || json || [];
-    box.innerHTML = actions.length ? actions.map(function(a){
-      const t = new Date(a.created_at);
-      const timeStr = t.toLocaleString('de-DE', {day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
-      return '<div class="li"><div class="li-text"><div class="li-title" style="font-size:13px">'+escFa(a.description)+'</div><div class="li-sub">'+timeStr+' · '+escFa(a.created_by_name)+'</div></div></div>';
-    }).join('') : '<div style="padding:4px 0">Noch keine Maßnahmen erfasst</div>';
-  }catch(e){ box.innerHTML = '<span style="color:var(--red)">Fehler beim Laden</span>'; }
-}
-async function addFaultAction(){
-  const input = document.getElementById('fa-new-action');
-  const description = input.value.trim();
-  if(!description) return;
-  try{
-    const res = await fetch('/api/v1/faults/'+FAULT_ID+'/actions', {
-      method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({description:description})
-    });
-    const json = await res.json();
-    if(!res.ok) throw new Error(json.error||'Fehler');
-    input.value='';
-    loadFaultActions();
-  }catch(e){ alert('Fehler: '+e.message); }
-}
 
 async function loadFaultPartsUsage(){
   const box = document.getElementById('fault-parts-usage-list');
@@ -418,7 +382,7 @@ async function bookFaultPart(){
   }catch(e){ errEl.textContent='Fehler: '+e.message; errEl.style.display='block'; }
 }
 
-if(document.readyState !== 'loading'){ loadFaultActions(); loadFaultPartsUsage(); }
-else document.addEventListener('DOMContentLoaded', function(){ loadFaultActions(); loadFaultPartsUsage(); });
+if(document.readyState !== 'loading'){ loadFaultPartsUsage(); }
+else document.addEventListener('DOMContentLoaded', function(){ loadFaultPartsUsage(); });
 </script>
 {{end}}
