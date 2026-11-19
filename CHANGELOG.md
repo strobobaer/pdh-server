@@ -15,26 +15,27 @@ im Kapitel „Versionen & Updates“ an.
 ### Neu
 
 - Über Verläufen, Maßnahmen, Kommentaren und Protokoll-Listen steht jetzt die Leiste „Sortieren:“ mit Neueste zuerst, Älteste zuerst, Häufigste zuerst, Gleiches zusammen, Nach Person und Nach Art; bei den KVP-Maßnahmen zusätzlich Nach Termin.
-- „Häufigste zuerst“ und „Gleiches zusammen“ fassen gleiche Einträge zu einer Zeile wie „12× Text – zuletzt 18.11.2026“ zusammen, die sich zum Ansehen der Einzeleinträge aufklappen lässt; Texte, die sich nur in Groß- und Kleinschreibung, Umlauten, Satzzeichen oder Leerzeichen unterscheiden, zählen als gleich.
+- „Häufigste zuerst“ und „Gleiches zusammen“ fassen gleiche Einträge zu einer Zeile wie „12× Text – zuletzt 18.11.2026“ zusammen, die sich zum Ansehen der Einzeleinträge aufklappen lässt.
+- Texte, die sich nur in Groß- und Kleinschreibung, Umlauten, Satzzeichen oder Leerzeichen unterscheiden, zählen als gleich.
 - PDH merkt sich die Sortierung je Benutzer und Listenart; am Spiegelserver gilt sie nur für den Aufruf.
 - Auf schmalen Bildschirmen (bis 760 Pixel) wird die Leiste zu einem Auswahlfeld.
-- Die Historie eines Datensatzes zeigt zuerst 30 Einträge und lädt mit „Weitere laden“ nach; sortiert und zusammengefasst werden die neuesten 5000 Einträge, darüber steht ein Hinweis.
+- Die Historie eines Datensatzes zeigt zuerst 30 Einträge und lädt mit „Weitere laden“ nach.
+- Sortiert und zusammengefasst werden die neuesten 5000 Einträge, darüber steht ein Hinweis.
 - Die Anlagen-Historie hat die Sortier-Leiste neben den Filtern (die Filter bleiben beim Umschalten erhalten) und berücksichtigt bis zu 2000 Einträge.
 - Sortieren lassen sich außerdem Lagerbewegungen, Prüfnachweise und HMI-Zugriffe einer Anlage, VPN-Ereignisse, ESPPDH-Bauläufe, Sicherungen, die beiden Listen der Bereinigung, Abgleich-Läufe, Efficio-Export-Läufe und das Server-Protokoll.
-- Handbuch: Unterabschnitt „Listen sortieren“ im Kapitel „Arbeiten mit Datensätzen“ mit Skizze, dazu kurze Verweise in den betroffenen Kapiteln.
 
 ### Geändert
 
 - Die Maßnahmen an einer Wartung stehen jetzt immer im Reiter „Übersicht“ (dort nur zum Lesen; eingetragen wird weiter beim Abschließen).
-- Maßnahmen an Störung, Ticket, Aufgabe und Wartung sowie Kommentare an Ticket und KVP sind je ein gemeinsamer Baustein und laden ohne Seitenskript.
+- Maßnahmen an Störung, Ticket, Aufgabe und Wartung sowie Kommentare an Ticket und KVP sind je ein gemeinsamer Baustein und aktualisieren sich ohne Neuladen der Seite.
 - Eine abgewiesene oder ungültige Eingabe bei Maßnahmen und Kommentaren zeigt eine Meldung auf Deutsch im Baustein.
 - Kommentare an Tickets sind auf 4000 Zeichen begrenzt.
 - Im Server-Protokoll dreht „Älteste zuerst“ nur die zuletzt geladenen Zeilen um; ein Hinweis sagt das.
 
 ### Sicherheit
 
-- Das Löschen einer Maßnahme über die Oberfläche prüft jetzt, ob die Maßnahme zur Störung, zum Ticket, zur Aufgabe oder zur Wartung gehört, in der sie gelöscht werden soll.
-- Die Historie einer Anlage und eines Lagerorts können nur noch Benutzer abrufen, die diese Anlage oder diesen Lagerort sehen dürfen; vorher ging das für jeden angemeldeten Benutzer.
+- Das Löschen einer Maßnahme über die Schnittstelle (API) prüft jetzt, ob die Maßnahme zu dem Vorgang gehört, unter dem sie gelöscht wird.
+- Die Historie einer Anlage und eines Lagerorts kann nur noch abrufen, wer diese Anlage oder diesen Lagerort sehen darf; vorher ging das für jeden angemeldeten Benutzer.
 
 ## [0.82.1] – 2026-11-19
 

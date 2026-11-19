@@ -288,7 +288,11 @@ oder ändern.**
    danach Browserprüfung der Leiste in Fiori/Fluent, hell/dunkel, 320–1366 px
    an Störung, Ticket, KVP, Anlage und einer Protokoll-Liste. Entscheidung des
    Anwenders offen: eigenes Ansichtsrecht für Projekte und KVP (ihre Seiten
-   und damit ihre Historie sieht heute jeder Angemeldete).
+   und damit ihre Historie sieht heute jeder Angemeldete) und ob die Historie
+   von Aufgaben und Wartungsaufträgen wie die Seite für jeden sichtbar sein
+   soll, der den Vorgang öffnen kann (heute: Recht „ansehen“ oder „bearbeiten“
+   des Bereichs nötig). Geparkt für die Browserprüfung: Unterrand des
+   gewählten Sortier-Knopfs in Fiori, Breite des Auswahlfelds auf dem Handy.
    **Wunsch vom 19.11.2026: Netzwerkliste aus UniFi und Omada vorbefüllen**
    (Seite „Netzwerk“: Netze und WLANs vom Controller holen, der Anwender
    bestätigt nur noch). Noch kein Entwurf; offen ist die Antwort, ob auch die

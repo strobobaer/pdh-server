@@ -196,7 +196,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <div class="hb-howto"><b><i class="ti ti-arrows-sort"></i> So sortierst du eine Liste</b>
     <ol class="hb-steps">
       <li>Über der Liste die gewünschte Sortierung antippen. Auf dem Handy und in schmalen Fenstern ist es ein <b>Auswahlfeld</b> – dort die Sortierung auswählen.</li>
-      <li><b>Neueste zuerst</b> und <b>Älteste zuerst</b> ordnen nach Datum. <b>Nach Person</b> sammelt die Einträge je Name, <b>Nach Art</b> je Art des Eintrags (z. B. „Status geändert“). Bei den Maßnahmen im KVP gibt es zusätzlich <b>Nach Termin</b>.</li>
+      <li><b>Neueste zuerst</b> und <b>Älteste zuerst</b> ordnen nach Datum. <b>Nach Person</b> sammelt die Einträge je Name (bei den KVP-Maßnahmen: je verantwortliche Person, nicht je Person, die die Maßnahme eingetragen hat), <b>Nach Art</b> je Art des Eintrags (z. B. „Status geändert“). Bei den Maßnahmen im KVP gibt es zusätzlich <b>Nach Termin</b>.</li>
       <li><b>Häufigste zuerst</b> und <b>Gleiches zusammen</b> fassen gleiche Einträge zu einer Zeile zusammen, z. B. „12× Lager läuft heiß – zuletzt 18.11.2026“. Auf die Zeile tippen klappt die einzelnen Einträge auf.</li>
       <li>PDH <b>merkt sich deine Wahl</b> für jede Art von Liste. Beim nächsten Mal ist sie schon eingestellt. Am Spiegelserver gilt die Wahl nur für diesen Aufruf und wird nicht gespeichert.</li>
     </ol>
@@ -207,7 +207,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>Mit <b>Weitere laden</b> kommen die nächsten dazu.</li>
       <li>Sortierung wie oben wählen. Berücksichtigt werden höchstens die neuesten 5000 Einträge; sind es mehr, steht ein Hinweis da.</li>
     </ol>
-    Die Historie eines Datensatzes sieht, wer den Datensatz selbst öffnen darf. In der <a href="#infrastructure">Anlagen-Historie</a> stehen die Sortierung und die Filter nebeneinander; beim Umschalten bleiben die Filter erhalten.</div>
+    Die Historie eines Datensatzes sieht, wer den Datensatz selbst sehen darf (bei Aufgaben und Wartungen: wer den Bereich ansehen oder bearbeiten darf). In der <a href="#infrastructure">Anlagen-Historie</a> stehen die Sortierung und die Filter nebeneinander; beim Umschalten bleiben die Filter erhalten.</div>
   <p>Unverändert bleiben die kurzen Auszüge wie „Letzte Bewegungen“, „Letzte Buchungen“ und „Letzte Scans“ – sie zeigen nur die jüngsten Einträge.</p>
   <h3 id="creation"><i class="ti ti-circle-plus"></i> Vorgänge anlegen: der Erstellungs-Assistent</h3>
   <p>Neue Tickets, Störungen, Aufgaben und Wartungsaufträge legst du überall im gleichen Stil wie beim Abschließen Schritt für Schritt an. Jeder Weg zum Anlegen öffnet diesen Assistenten:</p>
@@ -2214,6 +2214,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     </ul>
     Die beiden Rechte sind <b>eigenständig</b>: Das zweite schließt das erste nicht ein, anders als ein Bereichsadministrator. Wer einstellen und bestätigen soll, braucht beide. Sie gelten systemweit. Beim Update bekamen beide alle Rollen, die „Server-Einstellungen (.env) bearbeiten &amp; Server neu starten“ überall hatten.</div>
   <p><b>Was ohne Recht geht:</b> Störungen und Tickets melden, kommentieren, Zeiten erfassen und Chat. Alles andere – bearbeiten, Status ändern, abschließen, anlegen von Aufgaben, Projekten, Wartungen, IT-Geräten, Ersatzteilen und Lagerorten – braucht das passende Recht. Wer an einem Vorgang beteiligt ist (zugewiesen, verantwortlich, angelegt oder über die Gruppe), darf diesen Vorgang auch ohne das Recht bearbeiten. Fehlt ein Recht, meldet PDH „Keine Berechtigung“ mit dem Namen des Rechts.</p>
+  <p><b>Historie:</b> Die Historie eines Datensatzes sieht, wer den Datensatz selbst sehen darf. Das gilt auch für Anlagen und Lagerorte. Bei Aufgaben und Wartungen braucht es dafür das Recht „ansehen“ oder „bearbeiten“ des Bereichs. Das Löschen einer Maßnahme über die Schnittstelle (API) prüft, ob die Maßnahme zu dem Vorgang gehört, unter dem sie gelöscht wird. Die Sortierung von Listen ist für alle gleich und braucht kein eigenes Recht (<a href="#sort">mehr</a>).</p>
   <p>Server-Einstellungen wie Datenbank, E-Mail, Microsoft 365 oder Nextcloud pflegst du unter <b>Server-Einstellungen</b> (<a href="#server">mehr</a>) – die <code>.env</code>-Datei muss dafür niemand mehr von Hand bearbeiten.</p>
   <h3>Berechtigungen <i class="ti ti-refresh" title="automatisch aus dem System"></i></h3>
   {{range .PermGroups}}
@@ -2263,7 +2264,6 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     </ul>
     <p><b>Server-Zertifikat oder Let's Encrypt?</b> Für die öffentliche Nextcloud-Adresse gilt das Let's-Encrypt-Zertifikat aus Server-Einstellungen → Reiter <b>Cloudflare-Tunnel</b>. Ein Server-Zertifikat aus dem PDH brauchst du nur für interne Namen ohne öffentliches Zertifikat, etwa <code>nextcloud.local</code> oder eine IP. Bei „Server (Nextcloud)“ steht dazu ein Hinweis; gibt es das Let's-Encrypt-Zertifikat schon, nennt er dessen Namen.</p>
     Die ausführliche Anleitung mit Cloudflare, Server-Zertifikat und Fehlersuche steht in <code>docs/nextcloud-zertifikate.md</code>. Achtung: Die Zertifizierungsstelle hängt am Geheimnis <code>PDH_AUTH_JWTSECRET</code>; wird es geändert, müssen alle Zertifikate neu ausgestellt werden.</div>
-  <p><b>Historie:</b> Die Historie eines Datensatzes sieht nur, wer den Datensatz selbst öffnen darf. Das gilt auch für Anlagen und Lagerorte. Das Löschen einer Maßnahme prüft jetzt, dass sie zum geöffneten Datensatz gehört. Die Sortierung von Listen ist für alle gleich und braucht kein eigenes Recht (<a href="#sort">mehr</a>).</p>
   {{template "hb-shots" (dict "Ref" (index $s "admin") "Can" $can)}}
 </section>
 
