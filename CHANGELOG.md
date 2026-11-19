@@ -10,6 +10,28 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.82.1] – 2026-11-19
+
+### Neu
+
+- ESPPDH: ESPHome hält sich selbst aktuell – jeder Server prüft einmal am Tag auf eine neuere Version, richtet sie neben der laufenden ein, probt sie an den Geräten und schaltet nur um, wenn die Probe klappt.
+- Die Probe prüft die Konfiguration aller nicht gesperrten Geräte und baut am aktiven Server je verwendeter Chip-Familie probeweise eine Firmware; scheitert sie, bleibt die bisherige Version, und die ESPPDH-Bereichsadministratoren bekommen eine Meldung.
+- Server-Einstellungen, Reiter **ESPPDH**: Schalter „ESPHome selbst aktuell halten“ (ab Werk an), Knöpfe „Jetzt prüfen“ und „Zurück zur vorigen Version“ sowie Anzeige von letzter Prüfung, Ergebnis und gescheiterter Version mit Ausgabe.
+- Die Seite eines Geräts weist darauf hin, wenn seine Firmware mit einer älteren ESPHome-Version gebaut wurde als die, die der Server jetzt hat; neu bauen ist möglich, aber nicht nötig.
+- Handbuch: Unterabschnitt „ESPHome bleibt von selbst aktuell“ im Kapitel „ESPPDH – eigene Mess- und Zählgeräte“.
+
+### Geändert
+
+- Die ESPHome-Version, die mit dem PDH kommt, ist jetzt die Mindestversion; „veraltet“ zeigt der Reiter nur noch bei einer älteren Umgebung.
+- PDH-Updates stufen ESPHome nicht mehr herab: eine neuere, selbst geholte Version bleibt bestehen.
+- Ein echter Bau und eine Probe laufen nie zugleich; ein Bau, der während einer Probe startet, wartet in der Schlange und lässt sich abbrechen.
+
+### Sicherheit
+
+- Der Update-Agent holt nur das Paket `esphome` von PyPI und nimmt nur Versionsangaben der Form JJJJ.M.P an; eine neue Version muss mindestens 3 Tage veröffentlicht sein (Karenz).
+- Der Update-Agent stuft nie von selbst auf eine ältere ESPHome-Version herab – zurück geht es nur auf die eine aufbewahrte vorige Version – und löscht keine Umgebung, solange eine eingerichtet wird.
+- Kein neues Recht: Schalter und Knöpfe prüfen dasselbe Recht wie „Umgebung einrichten“; die Meldung bei gescheiterter Probe geht an das Recht `esppdh.admin`.
+
 ## [0.82.0] – 2026-11-19
 
 ### Neu

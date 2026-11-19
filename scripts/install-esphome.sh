@@ -5,8 +5,9 @@
 #
 # Aufrufer: der Update-Agent (Server-Einstellungen → ESPPDH → „Umgebung einrichten“) und
 # install_update.sh bei jedem Update, wenn die Umgebung schon eingerichtet ist.
-# Mehrfach ausführbar. Die Version steht in scripts/esphome.version und kommt mit
-# PDH-Updates. Am Ende gibt das Skript „Version: …“ von ESPHome aus.
+# Mehrfach ausführbar. Die Version in scripts/esphome.version ist die Mindestversion
+# (Grundumgebung); eine neuere Version holt der Update-Agent selbst (siehe PDH_ESPHOME_VERSION)
+# und ein PDH-Update stuft sie nicht herab. Am Ende gibt das Skript „Version: …“ von ESPHome aus.
 #
 #   PDH_ESPHOME_DIR      Python-Umgebung (Standard /opt/pdh-esphome)
 #   PDH_ESPHOME_VERSION  Kandidat einrichten: genau diese Version (JJJJ.M.P) unter
