@@ -304,7 +304,8 @@ oder ändern.**
    Vorgang öffnen kann (ja). Branch `feature/rechte-projekte-kvp`. Entwurf
    `docs/superpowers/specs/2026-11-19-rechte-projekte-kvp-design.md` (mit
    zwei Sicherheitspunkten: Leitstand-Kalender für Gäste, Ordnerlisten unter
-   `/uploads/`) – wartet auf Freigabe. Vorschlag für später: Anhänge nur mit
+   `/uploads/`) – am 19.11.2026 freigegeben („Passt“), Plan und Bau folgen.
+   Vorschlag für später: Anhänge nur mit
    Anmeldung.
    (b) **0.82.4 Seite „Netzwerk“:** Netze und WLANs aus UniFi und Omada
    vorschlagen, der Anwender bestätigt nur noch; WLAN-Kennwörter werden mit
@@ -313,7 +314,7 @@ oder ändern.**
    und DNS ändern (Stufe 1 reicht, ja). Eine andere Adresse vergeben (Stufe 2)
    ist kein Auftrag. Entwurf
    `docs/superpowers/specs/2026-11-19-netzwerk-vorschlaege-server-design.md`
-   – wartet auf Freigabe.
+   – am 19.11.2026 freigegeben („Passt“); Bau nach 0.82.3.
 7. **0.81.6 Nummern ab 10000** (Rüstzeit, KVP, Bestellung und Partner waren auf
    vier Stellen abgeschnitten) – mit 0.82.0 auf `main`; der lokale Branch
    `fix/ruestzeit-nummer` ist damit erledigt.

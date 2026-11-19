@@ -13,6 +13,9 @@ Stand 19.11.2026. Wünsche des Anwenders (19.11.2026):
 
 Version **0.82.4** (nach 0.82.3), Migration **184**.
 
+**Vom Anwender am 19.11.2026 freigegeben („Passt“)**, samt der Festlegungen
+unten.
+
 ## Ausgangslage (0.82.2)
 
 - Seite `/admin/network` (0.81.4): Netze (Name, VLAN, Adressbereich, Zweck,

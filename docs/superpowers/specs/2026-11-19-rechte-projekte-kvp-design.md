@@ -8,6 +8,9 @@ Stand 19.11.2026. Entscheidungen des Anwenders (19.11.2026, „3 ja, ja“):
 
 Version **0.82.3**, Migration **183**, Branch `feature/rechte-projekte-kvp`.
 
+**Vom Anwender am 19.11.2026 freigegeben („Passt“)**, samt der Festlegungen
+unten.
+
 ## Ausgangslage (0.82.2)
 
 - Es gibt `projects.edit`, `projects.admin`, `kvp.manage`, `kvp.admin` – aber
