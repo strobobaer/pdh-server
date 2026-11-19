@@ -537,6 +537,11 @@ func (h *Handler) deleteConnection(w http.ResponseWriter, r *http.Request, direc
 		`SELECT COALESCE(config->>'int_public_host','') FROM import_export_connections WHERE id=$1 AND direction=$2`, id, direction).Scan(&brokerHost)
 	if _, err := h.db.Exec(r.Context(),
 		`DELETE FROM import_export_connections WHERE id=$1 AND direction=$2`, id, direction); err != nil {
+		if strings.Contains(err.Error(), "23503") && strings.Contains(err.Error(), "esppdh_devices") {
+			// ESPPDH-Geräte hängen am Broker dieser Verbindung (ON DELETE RESTRICT)
+			http.Redirect(w, r, base+"?notice="+url.QueryEscape("Die Verbindung wird noch von ESPPDH-Geräten genutzt – erst die Geräte löschen oder einer anderen Verbindung zuordnen (Import → ESPPDH)."), http.StatusSeeOther)
+			return
+		}
 		http.Error(w, "Verbindung konnte nicht gelöscht werden", http.StatusInternalServerError)
 		return
 	}

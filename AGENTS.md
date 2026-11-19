@@ -226,7 +226,7 @@ oder ändern.**
 - Die Liste **im selben Schritt pflegen**: Erledigtes streichen, Neues
   eintragen, Stand und Datum anpassen.
 
-### Offene Punkte (Stand 18.11.2026)
+### Offene Punkte (Stand 19.11.2026)
 
 1. **Netz-Abgleich im Browser mit zwei Quellen:** 0.80.25 ist auf `main`
    und dem Testverbund; die Vorschlagsliste mit zwei eingeschalteten
@@ -250,31 +250,60 @@ oder ändern.**
    Testverbund, im Browser geprüft (18.11.2026).
 5. **0.81.5 Fingerabdruck bricht um, Netzwerk-Kennungen** (Efficio-Export
    auf schmalen Bildschirmen; neue Kennungen mit `pdh_uuid_v7()`,
-   Migration 178) – auf `main`. Offen: Verbund-Update.
-6. **ESPPDH = Version 0.82.0** (vom Anwender festgelegt). Entwurf
-   `docs/superpowers/specs/2026-11-18-esppdh-design.md` auf `feature/esppdh`,
-   am 18.11.2026 bestätigt (Paketschnitt, kein ESPPDH im Docker-Betrieb,
-   OTA als Abruf, freier Editor nur Bereichsadministrator in Paket 3,
-   ESPHome-Version fest im Repository; Platinen verschieden; Netze: alles).
-   Die WLANs der Geräte kommen von der Seite „Netzwerk“
-   (`h.networkWLANSecret`). Nächster Schritt: Plan für Paket 1, dann Bau.
-7. **Tagesgrenzen aufräumen (klein):** übrige `Truncate(24*time.Hour)`
+   Migration 178) – auf `main` und dem Testverbund (18.11.2026).
+6. **ESPPDH Paket 1 = Version 0.82.0** (vom Anwender festgelegt): auf `main`
+   (19.11.2026; Migrationen 179 bis 181, Rechte `esppdh.view`, `esppdh.edit`,
+   `esppdh.admin`; Entwurf `docs/superpowers/specs/2026-11-18-esppdh-design.md`,
+   Plan `docs/superpowers/plans/2026-11-18-esppdh-paket1.md`). Offen: Freigabe
+   für das Verbund-Update; danach am Testverbund auf der Seite „Netzwerk“ den
+   Haken „Für ESPPDH-Geräte nutzbar“ am Geräte-WLAN setzen, auf beiden Servern
+   die Umgebung einrichten, ein Gerät bauen, die Rollen umschalten, die
+   Firmware am zweiten Server herunterladen und im Browser prüfen. Paket 2 und
+   3 sind nicht begonnen. Geparkt aus der Schlussprüfung: Bau ohne
+   `ionice`/Speicherschutz (am Testverbund beobachten), eigener Benutzer für
+   den Bau, gekürzter Gerätename bei Kennungen über 24 Zeichen, gespeicherte
+   Statusnachricht bleibt nach dem Löschen eines Geräts am Broker.
+   **Danach 0.82.1: ESPHome hält sich selbst aktuell** – Entwurf
+   `docs/superpowers/specs/2026-11-19-esphome-aktuell-design.md` am 19.11.2026
+   bestätigt, Plan `docs/superpowers/plans/2026-11-19-esphome-aktuell.md`
+   (6 Aufgaben, Branch `feature/esphome-aktuell`). Offen: Anwender bestätigt
+   den Plan, dann Bau.
+   **Danach: Sortieren in Historie, Maßnahmen und Kommentaren** (Auftrag vom
+   19.11.2026) – Entwurf `docs/superpowers/specs/2026-11-19-sortierung-design.md`
+   mit vier offenen Fragen an den Anwender; noch nicht bestätigt.
+7. **0.81.6 Nummern ab 10000** (Rüstzeit, KVP, Bestellung und Partner waren auf
+   vier Stellen abgeschnitten) – mit 0.82.0 auf `main`; der lokale Branch
+   `fix/ruestzeit-nummer` ist damit erledigt.
+8. **Tagesgrenzen aufräumen (klein):** übrige `Truncate(24*time.Hour)`
    gegen DATE-Spalten (`kanban.go`, `purchases.go`, `trainings.go`,
    `user_qualifications.go`, `procurement.go`, `projects_handler.go`,
    `partners.go`) auf `localDayStart` umstellen.
-8. **Efficio klein:** FTPS ist ungetestet. (Abbruch der Zustellung nach dem
+9. **Efficio klein:** FTPS ist ungetestet. (Abbruch der Zustellung nach dem
    ersten Fehler ist Absicht – Reihenfolge der Dateien; kein offener Punkt.)
-9. **MQTT klein:** Bei älterem Update-Agenten versucht der tägliche Lauf
-   die nginx-Seite jeden Tag neu (harmlos).
-10. **Abnahmen durch den Anwender:** SNMP an echten Geräten, Omada an
+10. **MQTT klein:** Bei älterem Update-Agenten versucht der tägliche Lauf
+    die nginx-Seite jeden Tag neu (harmlos).
+11. **Abnahmen durch den Anwender:** SNMP an echten Geräten, Omada an
     echtem Controller, TIA-Baustein in PLCSIM, Datennetz mit echtem Tailnet,
-    SFTP mit Schlüssel an einem echten Server.
-11. **Zeitzone im Docker-Testsystem** (Vorschlag, kein Auftrag): Container
+    SFTP mit Schlüssel an einem echten Server; ESPPDH an echter Hardware
+    (USB-Flash auf einer echten Platine, ein echter Sensor je Baustein, Gerät
+    im eigenen VLAN).
+12. **Zeitzone im Docker-Testsystem** (Vorschlag, kein Auftrag): Container
     laufen in UTC, Produktion (systemd) in Europe/Berlin. Umstellung nur als
     Paket: `TZ` für app und updater in `compose.yaml`, `time/tzdata` in
     `cmd/server` und `cmd/update-agent`, Postgres-Sitzungszone über pgx
     `RuntimeParams["timezone"]`; nie nur `TZ` an der App, kein `PGTZ`.
-12. **Zurückgestellt (kein Auftrag):** Abteilungsfeinheiten Rüstzeiten,
+13. **Internet-Abhängigkeit der Oberfläche (klein):** Jede PDH-Seite lädt htmx
+    von unpkg.com und die Schrift DM Sans von Google Fonts, eine
+    Content-Security-Policy fehlt. Das widerspricht „läuft ohne Internet“;
+    Entscheidung offen (Dateien mitliefern oder so lassen).
+14. **UUID-Regel (klein):** `go test -tags integration ./pkg/database -run
+    TestUUIDv7Policy` schlägt auf `main` fehl für `energy_readings`,
+    `energy_export_runs`, `datanet_events`, `sync_outbox` (Zahlenfolge) und
+    `sync_profiles`, `sync_field_maps`, `sync_links`, `sync_runs`
+    (`gen_random_uuid()`). Die ESPPDH-Tabellen halten die Regel ein.
+    Umstellen per Migration oder in die Ausnahmen des Tests aufnehmen –
+    Entscheidung offen.
+15. **Zurückgestellt (kein Auftrag):** Abteilungsfeinheiten Rüstzeiten,
     Datennetz Paket 2/3, Buchungssystem/Lizenzen, Firmenstammdaten.
 
 Docker Desktop startet nach einem Neustart des Windows-Rechners nicht von

@@ -1,0 +1,64 @@
+# ESPPDH: vom PDH erzeugt – Änderungen gehen beim nächsten Bau verloren.
+# Kennwörter stehen nicht hier, sondern als !secret in der Geheimnis-Datei.
+
+esphome:
+  name: esppdh-linie2-takt
+  friendly_name: !literal "Linie 2 Takt"
+
+esp8266:
+  board: d1_mini
+
+logger:
+
+wifi:
+  networks:
+    - ssid: !literal "Werk-Produktion"
+      password: !secret wifi_password
+  ap:
+    ssid: esppdh-linie2-takt
+    password: !secret ap_password
+
+captive_portal:
+
+mqtt:
+  broker: !literal "mqtt.werk.example"
+  port: 1883
+  username: esppdh-linie2-takt
+  password: !secret mqtt_password
+  client_id: esppdh-linie2-takt
+  topic_prefix: esppdh/linie2-takt
+  discovery: false
+  discover_ip: false
+  log_topic: null
+  reboot_timeout: 0s
+  birth_message:
+    topic: esppdh/linie2-takt/status
+    payload: online
+    retain: true
+  will_message:
+    topic: esppdh/linie2-takt/status
+    payload: offline
+    retain: true
+  shutdown_message:
+    topic: esppdh/linie2-takt/status
+    payload: offline
+    retain: true
+
+sensor:
+  - platform: pulse_counter
+    id: counter_1_takt
+    internal: true
+    pin:
+      number: D5
+      mode:
+        input: true
+        pullup: true
+    count_mode:
+      rising_edge: DISABLE
+      falling_edge: INCREMENT
+    internal_filter: 50ms
+    update_interval: 10s
+    total:
+      name: Stückzähler 1 Stückzahl
+      unit_of_measurement: Stk
+      state_topic: esppdh/linie2-takt/counter-1/stueckzahl

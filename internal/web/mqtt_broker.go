@@ -63,6 +63,9 @@ func (h *Handler) reconcileMqttBroker(id, direction, kind string, enabled bool, 
 		return
 	}
 	defer h.reconcileMqttConsumer(id)
+	// Gerätezugänge (ESPPDH) aus der Datenbank – auch nach einem Neustart des PDH, wenn die
+	// Broker-Verwaltung sie noch nicht kennt (läuft vor reconcileMqttConsumer)
+	defer h.esppdhSyncBroker(context.Background(), id)
 
 	h.mqttBrokers.Stop(id)
 	if !enabled || config["broker_mode"] != "integrated" {
@@ -309,6 +312,7 @@ func (h *Handler) StartEnabledMqttBrokers(ctx context.Context) {
 			log.Error().Err(err).Str("connection_id", id).Msg("integrierter mqtt-broker: ungültige konfiguration beim start")
 			continue
 		}
+		h.esppdhSyncBroker(ctx, id) // Gerätezugänge (ESPPDH) vor dem Start, damit Geräte gleich herein dürfen
 		if err := h.mqttBrokers.Start(id, cfg); err != nil {
 			log.Error().Err(err).Str("connection_id", id).Msg("integrierter mqtt-broker konnte beim start nicht gestartet werden")
 			continue

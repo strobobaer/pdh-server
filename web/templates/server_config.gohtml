@@ -61,6 +61,7 @@
   {{if .Unifi.Can}}<a class="rec-tab" data-tab="unifi" href="?tab=unifi"><i class="ti ti-router"></i> UniFi{{if and .Unifi.Unifi.URL (not .Unifi.Unifi.Confirmed)}}<span class="sc-dot" style="background:var(--amber,#f59e0b)" title="Fingerabdruck noch nicht bestätigt"></span>{{else if .Unifi.Unifi.Confirmed}}<span class="sc-dot ok" title="angebunden"></span>{{end}}</a>{{end}}
   {{if .Omada.Can}}<a class="rec-tab" data-tab="omada" href="?tab=omada"><i class="ti ti-access-point"></i> Omada{{if and .Omada.Omada.URL (not .Omada.Omada.Confirmed)}}<span class="sc-dot" style="background:var(--amber,#f59e0b)" title="Fingerabdruck noch nicht bestätigt"></span>{{else if .Omada.Omada.Ready}}<span class="sc-dot ok" title="angebunden"></span>{{end}}</a>{{end}}
   {{if .SNMP.Can}}<a class="rec-tab" data-tab="snmp" href="?tab=snmp"><i class="ti ti-network"></i> SNMP{{if .SNMP.Profiles}}<span class="sc-dot ok" title="{{len .SNMP.Profiles}} Zugangsprofil(e)"></span>{{end}}</a>{{end}}
+  <a class="rec-tab" data-tab="esppdh" href="?tab=esppdh"><i class="ti ti-cpu"></i> ESPPDH</a>
   <a class="rec-tab" data-tab="dr" href="?tab=dr"><i class="ti ti-shield-check"></i> Ausfallschutz</a>
   {{if .CanLogs}}<a class="rec-tab" href="/admin/server-config/logs" style="margin-left:auto"><i class="ti ti-file-analytics"></i> Protokoll ansehen</a>{{end}}
 </div>
@@ -131,7 +132,7 @@
       <span id="test-{{.Key}}" class="sc-sub">{{with .Test}}<span style="color:{{if .OK}}var(--green){{else}}var(--red){{end}}"><i class="ti {{if .OK}}ti-circle-check{{else}}ti-alert-circle{{end}}"></i> {{.Msg}} <span style="color:var(--muted)">({{.At}})</span></span>{{end}}</span>
     {{end}}
     {{if eq .Key "security"}}
-      <label class="sc-sub"><input type="checkbox" name="new_jwt" value="1" onchange="if(this.checked&&!confirm('Neuen Anmelde-Schlüssel erzeugen? Nach dem Neustart müssen sich alle neu anmelden.'))this.checked=false"> Neuen Anmelde-Schlüssel erzeugen</label>
+      <label class="sc-sub"><input type="checkbox" name="new_jwt" value="1" onchange="if(this.checked&&!confirm('Neuen Anmelde-Schlüssel erzeugen? Nach dem Neustart müssen sich alle neu anmelden. Ist der Schlüssel für Portal-Passwörter leer, brauchen ESPPDH-Geräte vor dem nächsten Bau der Firmware je ein neues MQTT-Kennwort.'))this.checked=false"> Neuen Anmelde-Schlüssel erzeugen</label>
     {{end}}
   </div>
 </form>
@@ -254,6 +255,11 @@
 {{if .SNMP.Can}}<div class="rec-pane" data-pane="snmp">
 {{template "snmp-panel" .SNMP}}
 </div>{{end}}
+
+<!-- ── ESPPDH: Compiler-Umgebung (ESPHome), Schalter und Zustand (esppdh_settings.go, widgets/esppdh_settings.gohtml) ── -->
+<div class="rec-pane" data-pane="esppdh">
+{{if eq .Tab "esppdh"}}{{template "esppdh-panel" .ESPPDH}}{{else}}<div class="card"><a class="btn" href="?tab=esppdh"><i class="ti ti-cpu"></i> ESPPDH laden</a></div>{{end}}
+</div>
 
 <!-- ── Ausfallschutz: Sicherung aufs Netzlaufwerk (dr.go, widgets/dr.gohtml) ── -->
 <div class="rec-pane" data-pane="dr">

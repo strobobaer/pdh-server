@@ -250,7 +250,7 @@ func (r *Repository) Create(ctx context.Context, p *Partner) error {
 	return r.db.QueryRow(ctx, `
 		INSERT INTO business_partners (`+fieldNames+`, partner_no, created_by)
 		VALUES (`+strings.Join(values, ", ")+`,
-		        COALESCE(NULLIF($46::text, ''), 'P-' || lpad(nextval('business_partner_no_seq')::text, 5, '0')),
+		        COALESCE(NULLIF($46::text, ''), 'P-' || (SELECT lpad(v::text, greatest(5, length(v::text)), '0') FROM (SELECT nextval('business_partner_no_seq') AS v) seq)),
 		        $47)
 		RETURNING id, partner_no, active`, args...,
 	).Scan(&p.ID, &p.PartnerNo, &p.Active)

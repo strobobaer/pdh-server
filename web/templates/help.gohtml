@@ -1644,18 +1644,24 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>Wenn vorhanden die <b>VLAN-Nummer</b> (1 bis 4094) und den <b>Adressbereich</b> eintragen, z. B. <code>10.10.20.0/24</code>. Beides darf leer bleiben.</li>
       <li>Bei <b>Zweck</b> kurz notieren, was in diesem Netz hängt. <b>Anlegen</b>.</li>
     </ol>
-    Jede VLAN-Nummer und jeder Name kommt nur einmal vor.</div>
+    <p>Jede VLAN-Nummer und jeder Name kommt nur einmal vor.</p></div>
   <div class="hb-howto"><b><i class="ti ti-wifi"></i> So trägst du ein WLAN ein</b>
     <ol class="hb-steps">
       <li><b>Neues WLAN</b> drücken und den <b>WLAN-Namen (SSID)</b> genau so eintragen, wie ihn die Geräte sehen (Groß- und Kleinschreibung zählt).</li>
       <li>Das <b>Kennwort</b> eintragen (8 bis 63 Zeichen). Leer lassen nur bei einem offenen WLAN.</li>
       <li>Bei <b>Netz</b> wählen, in welchem Netz das WLAN landet. <b>Versteckt</b> ankreuzen, wenn das WLAN seinen Namen nicht aussendet.</li>
+      <li>Nur wenn ESPPDH-Geräte in dieses WLAN sollen: <b>Für ESPPDH-Geräte nutzbar</b> ankreuzen (siehe unten). Sonst leer lassen.</li>
       <li><b>Anlegen</b>. Zum Ändern <b>Bearbeiten</b>: Bleibt das Kennwort-Feld leer, gilt das gespeicherte weiter.</li>
     </ol>
-    Das Kennwort wird verschlüsselt gespeichert und <b>nie angezeigt</b> – auch nicht für Administratoren. Wer es nachlesen muss, schaut am Access Point oder im Controller nach.</div>
+    <p>Das Kennwort wird verschlüsselt gespeichert und auf keiner Seite angezeigt – auch nicht für Administratoren. Wer es nachlesen muss, schaut am Access Point oder im Controller nach. <b>Ausnahme:</b> In der Firmware von ESPPDH-Geräten steht das Kennwort lesbar. Deshalb gibt es den Haken „Für ESPPDH-Geräte nutzbar“.</p></div>
+  <p><b>ESPPDH-Geräte</b> nehmen ihr WLAN von hier – aber nur WLANs mit Haken <b>Für ESPPDH-Geräte nutzbar</b>. Ab Werk ist der Haken aus; ist er gesetzt, steht in der Liste <span class="badge b-blue">ESPPDH</span>. Beim Anlegen (<b>Neues Gerät</b>) und auf der Seite des Geräts wählst du eines dieser WLANs (<a href="#esppdh">mehr</a>). Name und Kennwort kommen beim Bau der Firmware von dieser Seite. Änderst du das Kennwort, zeigt die Seite des Geräts „Konfiguration seit dem letzten Bau geändert“ – dann die Firmware neu bauen und flashen.</p>
+  <ul>
+    <li><b>Wer ESPPDH-Geräte bauen darf, kann das WLAN-Kennwort lesen:</b> Er lädt die Firmware herunter, und darin steht es. Am besten ein eigenes WLAN nur für Geräte anlegen und nur dieses freigeben – nie das Büro-WLAN.</li>
+    <li><b>Haken später entfernt:</b> Geräte in diesem WLAN lassen sich dann nicht mehr speichern und nicht mehr bauen; ihre Seite sagt „Das WLAN … ist nicht mehr für ESPPDH-Geräte freigegeben“. Schon gebaute Firmware lässt sich weiter herunterladen, und die Geräte behalten das Kennwort. Soll es niemand mehr nutzen können, das Kennwort am Access Point ändern.</li>
+  </ul>
   <h3>Rechte</h3>
   <ul>
-    <li><b>Netzwerk: VLANs und WLANs pflegen</b> (<code>system.network</code>) – Seite sehen, Netze und WLANs anlegen und ändern. Es haben automatisch alle Rollen, die die UniFi-Anbindung verwalten dürfen.</li>
+    <li><b>Netzwerk: VLANs und WLANs pflegen</b> (<code>system.network</code>) – Seite sehen, Netze und WLANs anlegen und ändern, auch den Haken „Für ESPPDH-Geräte nutzbar“ setzen. Es haben automatisch alle Rollen, die die UniFi-Anbindung verwalten dürfen. Die Rechte von ESPPDH allein reichen dafür nicht.</li>
     <li><b>Netzwerk: VLANs und WLANs löschen</b> (<code>system.network_admin</code>, Bereichsadministrator) – endgültig löschen. Wird ein Netz gelöscht, bleiben seine WLANs und stehen danach ohne Netz da.</li>
   </ul>
   <p>Auf dem Spiegelserver ist die Seite nur zum Lesen da.</p>
@@ -1677,7 +1683,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     </ol></div>
   <p>Startet die Datenbank nur etwas später (z. B. nach einem Neustart des Servers), wartet der Assistent und macht von selbst weiter.</p>
   <h3><i class="ti ti-adjustments-cog"></i> Server-Einstellungen im Betrieb</h3>
-  <p>Unter <b>Navigation → Server-Einstellungen</b> (nur Administratoren) stehen alle Werte, die früher von Hand in der <code>.env</code> gepflegt wurden – in Reitern: Server, Datenbank, Sicherheit, E-Mail, Copilot, Übersetzung, Microsoft 365, Nextcloud, Störungen, Cloudflare-Tunnel, Protokoll, Updates &amp; Sicherung. Dazu kommen eigene Reiter wie Erscheinungsbild, Passwörter, VPN, <b>UniFi</b> (nur mit dem Recht „Namen im Haus eintragen (UniFi)“), <b>Omada</b> (nur mit dem Recht „Omada-Controller anbinden“) und Ausfallschutz.</p>
+  <p>Unter <b>Navigation → Server-Einstellungen</b> (nur Administratoren) stehen alle Werte, die früher von Hand in der <code>.env</code> gepflegt wurden – in Reitern: Server, Datenbank, Sicherheit, E-Mail, Copilot, Übersetzung, Microsoft 365, Nextcloud, Störungen, Cloudflare-Tunnel, Protokoll, Updates &amp; Sicherung. Dazu kommen eigene Reiter wie Erscheinungsbild, Passwörter, VPN, <b>UniFi</b> (nur mit dem Recht „Namen im Haus eintragen (UniFi)“), <b>Omada</b> (nur mit dem Recht „Omada-Controller anbinden“), <b>ESPPDH</b> (eigene Mess- und Zählgeräte, <a href="#esppdh">mehr</a>) und Ausfallschutz.</p>
   <p><b>Gespeichert wird in der Datenbank</b> – Passwörter, Schlüssel und Tokens verschlüsselt. In der <code>.env</code> bleiben nur der <b>Datenbank-Zugang</b> und der Schlüssel <code>PDH_SETTINGS_KEY</code>, ohne die das PDH die Datenbank nicht erreichen bzw. die Geheimnisse nicht entschlüsseln kann. <b>Diese Datei deshalb unbedingt mitsichern</b> – eine Datenbank-Sicherung allein genügt für die verschlüsselten Werte nicht.</p>
   <div class="hb-howto"><b><i class="ti ti-database-import"></i> Übernahme einer bestehenden .env</b>
     Beim Start überträgt das PDH alle Werte der <code>.env</code>, die noch nicht in der Datenbank stehen, automatisch dorthin und kommentiert sie in der Datei aus (daneben liegt eine Sicherungskopie <code>.env.bak-…</code>, die die alten Werte im Klartext enthält – nach Prüfung löschen). Trägt jemand später wieder einen Wert in die <code>.env</code> ein, zeigt die Seite einen Hinweis mit <b>jetzt übernehmen</b>. Werte, die Docker (<code>.env.docker</code>) oder systemd von außen setzen, haben Vorrang, bis du sie übernimmst (siehe unten).</div>
@@ -2133,6 +2139,13 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li><b>Datennetz-Rechte gelten immer für alle Clients.</b> Clients gehören keiner Abteilung; eine Abteilungsbeschränkung bei <code>datanet.*</code> hat deshalb keine Wirkung.</li>
     </ul>
     Beim Update bekamen „sehen“ und „anlegen und sperren“ alle Rollen, die überall „Server-Einstellungen (.env) bearbeiten &amp; Server neu starten“ oder den Abgleich-Bereichsadministrator haben. Den Bereichsadministrator bekamen die Rolle Administrator, die Abgleich-Bereichsadministratoren und die Rollen, die überall Server-Einstellungen bearbeiten dürfen und schon in einem anderen Bereich Bereichsadministrator sind. Alle anderen Rollen, auch solche nur mit „VPN nutzen“, bekamen nichts. Die Rechte gelten überall oder nur in einer Abteilung; das Ein- und Ausschalten braucht das Recht überall (<a href="#datennetz">mehr</a>).</div>
+  <div class="hb-howto"><b><i class="ti ti-cpu"></i> Rechte für ESPPDH</b> (Gruppe „Daten &amp; Schnittstellen“)
+    <ul>
+      <li><b>„ESPPDH: Geräte und Zustand ansehen“</b> (<code>esppdh.view</code>): Liste, Seite des Geräts, Verlauf der Bauten und die Konfiguration ohne Kennwörter.</li>
+      <li><b>„ESPPDH: Geräte anlegen, ändern, sperren, bauen und flashen“</b> (<code>esppdh.edit</code>): dazu Firmware herunterladen und das Kennwort des Notzugangs sehen.</li>
+      <li><b>„ESPPDH: Geräte löschen (Bereichsadministrator)“</b> (<code>esppdh.admin</code>): alle Rechte von ESPPDH und als Einziger Geräte endgültig löschen.</li>
+    </ul>
+    <p>Die Rechte gelten überall oder nur in einer Abteilung; maßgeblich ist die Anlage des Geräts. Beim Update bekamen „ansehen“ und „anlegen, ändern …“ alle Rollen und Personen mit „Import verwalten“ – mit derselben Abteilung. Den Bereichsadministrator bekamen die Rollen, die überall „Import verwalten“ und „Server-Einstellungen (.env) bearbeiten &amp; Server neu starten“ haben. Wem „Import verwalten“ einzeln verboten ist, dem sind alle drei ESPPDH-Rechte verboten; wem nur „Server-Einstellungen (.env) bearbeiten &amp; Server neu starten“ einzeln verboten ist, dem nur der Bereichsadministrator. Den Reiter <b>ESPPDH</b> der Server-Einstellungen bedienen Administratoren mit „Server-Einstellungen (.env) bearbeiten &amp; Server neu starten“ (<a href="#esppdh">mehr</a>).</p></div>
   <div class="hb-howto"><b><i class="ti ti-tool"></i> Rechte für Update und Wartung</b>
     <ul>
       <li><b>„Wartungsfenster einstellen“</b> (Kategorie „System &amp; Sicherheit“): Wartungsfenster einrichten und fehlerhafte Versionen wieder zulassen (<a href="#ausfallschutz">mehr</a>). Beim Update bekamen es alle Rollen, die „Server-Einstellungen (.env) bearbeiten &amp; Server neu starten“ hatten.</li>
@@ -2420,6 +2433,202 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <p>Der Baustein sendet in festem Abstand einen <b>Heartbeat</b> (Vorgabe 60 Sekunden, nie mit Retain). Mit <code>heartbeatInterval := T#0s</code> am Baustein schaltest du den Heartbeat aus; dann darf es die Heartbeat-Zuordnung nicht geben, sonst meldet sie „meldet sich nicht“. Beim Herunterladen mit Heartbeat 0 und „Zuordnungen anlegen“ schaltet das PDH die Überwachung einer vorhandenen Heartbeat-Zuordnung ab. Änderst du das Topic, bleibt die alte Heartbeat-Zuordnung bestehen – lösche sie, sonst meldet sie „meldet sich nicht“. Kommt der letzte Heartbeat vor länger als <b>drei Intervallen</b>, zeigt das PDH „Steuerung meldet sich nicht“: als Hinweis oben auf der Verbindungsseite, als Marke in der Zeile der Zuordnung und in der Übersicht der Zuordnungen. Vor dem ersten Heartbeat zählt der Zeitpunkt, an dem die Zuordnung angelegt wurde. Prüfe dann: Läuft die Steuerung? Ist der Broker erreichbar? Ist <code>enable</code> gesetzt? Was sagt <code>statusText</code>?</p>
   <div class="hb-howto"><b><i class="ti ti-test-pipe"></i> Tipp: Ausprobieren mit PLCSIM</b>Übersetzen, Aufruf und Aufbau der Nachricht kannst du in PLCSIM prüfen. Ob das einfache PLCSIM eine echte TCP-Verbindung ins Netz aufbaut, hängt von der Version ab. Teste das vorher mit einem einfachen <code>TCON</code>. Klappt es nicht, nimm für die Netzprüfung PLCSIM Advanced oder eine echte Steuerung.</div>
   {{template "hb-shots" (dict "Ref" (index $s "tiabaustein") "Can" $can)}}
+</section>
+
+<section class="hb-ch" id="esppdh" data-title="ESPPDH – eigene Mess- und Zählgeräte" data-pages="esppdh server-config">
+  <h2><i class="ti ti-cpu"></i> ESPPDH – eigene Mess- und Zählgeräte</h2>
+  <p>Mit <b>ESPPDH</b> baust du kleine Messgeräte selbst: eine ESP-Platine (ESP32 oder ESP8266), daran ein Stromzähler, eine Stromzange, ein Energiemesser oder eine Lichtschranke. Das PDH erstellt die Firmware für das Gerät; danach sendet das Gerät seine Werte an den eingebauten MQTT-Broker des PDH, die meisten alle 10 Sekunden.</p>
+  <p>ESPPDH <b>misst für die Betriebsführung, nicht für die Abrechnung</b>. Die Geräte sind nicht geeicht – für Rechnungen gilt weiter der geeichte Zähler. ESPPDH ist ein Zusatz: Ohne es läuft das PDH wie bisher. Im Docker-Betrieb gibt es ESPPDH nicht. ESPPDH baut auf <b>ESPHome</b> auf (Lizenz GPLv3 bzw. MIT).</p>
+  <p>Du findest es unter <b>Navigation → Daten → ESPPDH</b> oder auf der Seite <b>Import</b> über den Verweis „ESPPDH – eigene Mess- und Zählgeräte“.</p>
+  <div class="hb-howto"><b><i class="ti ti-route"></i> Der Weg zum fertigen Gerät</b>
+    <ol class="hb-steps">
+      <li><a href="#hb-esp-env">Umgebung einrichten</a> – einmal je Server.</li>
+      <li><a href="#netzwerk">WLAN für Geräte freigeben</a> – einmal je WLAN, auf der Seite Netzwerk.</li>
+      <li><a href="#hb-esp-new">Gerät anlegen</a>.</li>
+      <li><a href="#hb-esp-blocks">Bausteine wählen und anschließen</a>.</li>
+      <li><a href="#hb-esp-build">Firmware bauen</a>.</li>
+      <li><a href="#hb-esp-flash">Firmware aufspielen (flashen)</a>.</li>
+      <li><a href="#hb-esp-check">Im Explorer prüfen</a>, ob die Werte ankommen.</li>
+    </ol></div>
+
+  <h3 id="hb-esp-env"><i class="ti ti-tool"></i> Umgebung einrichten</h3>
+  <p>Die Firmware baut das PDH am Server mit ESPHome. Dafür braucht jeder Server einmal eine eigene Umgebung. Das machen Administratoren mit dem Recht „Server-Einstellungen (.env) bearbeiten &amp; Server neu starten“.</p>
+  <div class="hb-howto"><b><i class="ti ti-download"></i> So richtest du ESPPDH ein</b>
+    <ol class="hb-steps">
+      <li><b>Server-Einstellungen</b> → Reiter <b>ESPPDH</b> öffnen.</li>
+      <li><b>Umgebung einrichten</b> drücken und bestätigen. Das PDH lädt ESPHome aus dem Internet. Der Server braucht dafür Internet und Python 3.12 oder neuer (z. B. Ubuntu 24.04). Fehlt Python ganz, installiert das PDH es nach.</li>
+      <li>Warten: Die Einrichtung läuft im Hintergrund und dauert einige Minuten. Die Karte zeigt „Umgebung wird eingerichtet …“ und aktualisiert sich selbst. Fertig ist es bei „Umgebung eingerichtet: ESPHome …“.</li>
+      <li><b>Einschalten</b> drücken. Erst dann lassen sich Geräte anlegen.</li>
+    </ol>
+    <p>Ist der Knopf grau, fehlt der Update-Agent – ohne ihn lässt sich die Umgebung nicht einrichten. Klappt die Einrichtung nicht, steht der Grund rot in der Karte.</p></div>
+  <ul>
+    <li><b>Im Verbund (Ausfallschutz) auf beiden Servern einrichten.</b> Jeder Server baut mit seiner eigenen Umgebung, und bei jedem Update tauschen die Server die Rollen. Auf dem Spiegelserver geht „Umgebung einrichten“ genauso; ein- und ausschalten nur am aktiven Server.</li>
+    <li><b>Updates:</b> Ist die Umgebung eingerichtet, bringt jedes PDH-Update die passende ESPHome-Version mit. Läuft gerade eine Einrichtung, wartet das Update bis zu 15 Minuten darauf. Steht in der Karte „veraltet“, hebt das nächste Update ESPHome an.</li>
+    <li><b>Internet und Platz:</b> Das Einrichten, ein Update mit neuer ESPHome-Version und der erste Bau je Platinentyp laden aus dem Internet – der erste Bau mehrere hundert MB. Ein Bau braucht mindestens 2 GB freien Platz; die Karte zeigt, wie viel frei ist.</li>
+    <li><b>Ausschalten:</b> Danach lassen sich keine Geräte anlegen und keine Firmware bauen. Wartende Bauten bricht das PDH ab, ein laufender Bau läuft zu Ende. Vorhandene Geräte senden weiter; du kannst sie weiter ändern, sperren und löschen.</li>
+  </ul>
+
+  <h3 id="hb-esp-new"><i class="ti ti-plus"></i> Gerät anlegen</h3>
+  <div class="hb-howto"><b><i class="ti ti-cpu"></i> So legst du ein Gerät an</b>
+    <ol class="hb-steps">
+      <li>Vorher, einmal je WLAN: Auf der Seite <a href="#netzwerk">Netzwerk</a> beim WLAN der Geräte <b>Bearbeiten</b>, den Haken <b>Für ESPPDH-Geräte nutzbar</b> setzen und speichern. Das darf, wer die Seite Netzwerk pflegt (<code>system.network</code>). Für „Kabel“ ist das nicht nötig.</li>
+      <li><b>ESPPDH</b> öffnen und <b>Neues Gerät</b> drücken.</li>
+      <li><b>Name</b> eintragen, z. B. „Presse 3 – Stromzähler“.</li>
+      <li><b>Kennung</b> eintragen: 3 bis 32 Zeichen aus a–z, 0–9 und „-“, das „-“ nicht am Anfang oder Ende. Leer lassen – dann bildet das PDH sie aus dem Namen. Die Kennung steht im Thema und im Zugang am Broker und <b>lässt sich später nicht ändern</b>.</li>
+      <li><b>Anlage</b> wählen. Sie zählt auch für die Rechte: Wer ESPPDH nur in einer Abteilung darf, sieht und ändert nur Geräte an deren Anlagen.</li>
+      <li><b>Broker (Verbindung)</b> wählen. Zur Wahl stehen nur MQTT-Verbindungen mit „Integrierter Broker“. Gibt es noch keine, unter <b>Import</b> eine anlegen.</li>
+      <li><b>Platine</b> wählen (siehe Tabelle). Bei „Andere Platine“ die <b>Platinen-Kennung von ESPHome</b> eintragen, z. B. <code>nodemcuv2</code>.</li>
+      <li><b>WLAN oder Kabel</b> wählen. Zur Wahl stehen nur die WLANs, die auf der Seite <a href="#netzwerk">Netzwerk</a> für ESPPDH-Geräte freigegeben sind; ist noch keines freigegeben, sagt das Formular es. „Kabel“ geht nur mit Platinen mit Ethernet; bei <b>Netz am Kabel</b> kannst du das Netz angeben.</li>
+      <li><b>Anlegen</b> drücken. Die Kennwörter für den Zugang am Broker und für den Notzugang vergibt das PDH selbst. Danach öffnet sich die Seite des Geräts.</li>
+    </ol></div>
+  <table><thead><tr><th>Platine</th><th>Netz</th><th>TLS</th><th>USB-Flash im Browser</th></tr></thead><tbody>
+    <tr><td>ESP32 DevKit</td><td>WLAN</td><td>ja</td><td>ja</td></tr>
+    <tr><td>ESP32-S3 DevKitC</td><td>WLAN</td><td>ja</td><td>ja</td></tr>
+    <tr><td>ESP32-C3 DevKitM</td><td>WLAN</td><td>ja</td><td>ja</td></tr>
+    <tr><td>ESP8266 D1 mini</td><td>WLAN</td><td>nein</td><td>ja</td></tr>
+    <tr><td>WT32-ETH01 (Ethernet)</td><td>Kabel oder WLAN</td><td>ja</td><td>ja</td></tr>
+    <tr><td>Olimex ESP32-POE (Ethernet)</td><td>Kabel oder WLAN</td><td>ja</td><td>ja</td></tr>
+    <tr><td>Andere Platine</td><td>WLAN</td><td>ja, außer ESP8266</td><td>nein – herunterladen</td></tr>
+  </tbody></table>
+  <ul>
+    <li><b>Andere Platine:</b> Das PDH prüft dann keine Pins. Es kennt auch keinen Spannungsteiler vor dem Analog-Pin – die Stromzange zeigt dann womöglich falsche Werte – und keine Grenze für serielle Anschlüsse. Wenn möglich, eine Platine aus der Liste nehmen.</li>
+    <li><b>ESP8266</b> kann nicht verschlüsselt verbinden. Hat der Broker TLS und dazu einen Port ohne TLS, erscheint <b>ohne TLS (Port …)</b> zum Ankreuzen – das Gerät sendet dann unverschlüsselt. Besser: eine ESP32-Platine.</li>
+  </ul>
+
+  <h3 id="hb-esp-blocks"><i class="ti ti-puzzle"></i> Bausteine wählen und anschließen</h3>
+  <p>Ein <b>Baustein</b> ist das, was am Gerät hängt: ein Zähler, eine Zange, ein Energiemesser oder ein Sensor. Ein Gerät hat bis zu 24 Bausteine.</p>
+  <div class="hb-howto"><b><i class="ti ti-puzzle"></i> So fügst du einen Baustein hinzu</b>
+    <ol class="hb-steps">
+      <li>Auf der Seite des Geräts unter <b>Bausteine</b> bei <b>Baustein</b> die Art wählen und <b>Hinzufügen</b> drücken.</li>
+      <li>Die Felder ausfüllen. Beim Pin schlägt das Feld die Pins der Platine vor, z. B. <code>GPIO4</code> oder beim D1 mini <code>D5</code>. Kommazahlen mit Komma und ohne Tausenderpunkt, z. B. <code>22,5</code>.</li>
+      <li><b>Speichern</b>. Das PDH prüft alles wie beim Bau. Passt ein Pin nicht zur Platine oder ist er doppelt belegt, steht oben „Nicht gespeichert – bitte prüfen“ mit dem Grund.</li>
+    </ol>
+    <p>Mit <i class="ti ti-arrow-up"></i> und <i class="ti ti-arrow-down"></i> änderst du die Reihenfolge, mit <i class="ti ti-trash"></i> entfernst du einen Baustein. Beides gilt erst nach dem Speichern.</p></div>
+  <p>Jeder Baustein bekommt eine <b>feste Nummer</b> je Art, z. B. <code>s0-1</code>, <code>s0-2</code>. Sie bleibt, auch wenn du andere Bausteine löschst oder verschiebst, denn sie steht im Thema: <code>esppdh/&lt;kennung&gt;/&lt;baustein&gt;-&lt;nr&gt;/&lt;wert&gt;</code>, z. B. <code>esppdh/presse3-strom/s0-1/zaehlerstand</code>. Nur wenn du den Baustein mit der höchsten Nummer löschst, bekommt der nächste neue dieser Art dieselbe Nummer wieder.</p>
+  <table><thead><tr><th>Baustein</th><th>Felder</th><th>Werte (Ende des Themas)</th></tr></thead><tbody>
+    <tr><td><b>S0-Zähler</b> (<code>s0</code>) – Impulsausgang eines Stromzählers</td><td>Pin; Impulse je kWh (Vorgabe 1000, steht auf dem Zähler)</td><td><code>leistung</code> (W), <code>zaehlerstand</code> (kWh)</td></tr>
+    <tr><td><b>Stromzange SCT-013</b> (<code>sct013</code>)</td><td>Analog-Pin; Zangentyp (5A/1V, 30A/1V, 50A/1V oder 100A/50mA – steht auf der Zange); Bürdenwiderstand (Ω), nur bei 100A/50mA; Netzspannung (V, Vorgabe 230)</td><td><code>strom</code> (A), <code>scheinleistung</code> (VA)</td></tr>
+    <tr><td><b>PZEM-004T</b> (<code>pzem</code>) – Energiemesser, Version 3</td><td>RX-Pin; TX-Pin; Adresse (Vorgabe 1)</td><td><code>spannung</code> (V), <code>strom</code> (A), <code>leistung</code> (W), <code>energie</code> (kWh)</td></tr>
+    <tr><td><b>Stückzähler</b> (<code>counter</code>) – z. B. Lichtschranke</td><td>Pin; Entprellzeit (ms, Vorgabe 50); Flanke (Vorgabe „fallend“)</td><td><code>stueckzahl</code> (Stk)</td></tr>
+  </tbody></table>
+  <ul>
+    <li>Die Stromzange braucht einen Pin, der analog messen kann; die anderen Bausteine nehmen digitale Pins. Das Feld schlägt jeweils nur passende Pins vor.</li>
+    <li><b>Nach einem Neustart beginnt das Gerät bei 0.</b> Zählerstand (S0) und Stückzahl zählt das Gerät seit seinem Start; es speichert sie nicht. Neu starten wird es nach einem Stromausfall oder Ausstecken, nach dem Flashen und nach einem Absturz. Fallen nur Broker, PDH oder WLAN aus, startet es <b>nicht</b> neu: Es zählt weiter und sendet wieder, sobald die Verbindung steht. Die Energie des PZEM-004T zählt der PZEM selbst; sie bleibt.</li>
+    <li>Die <b>Scheinleistung</b> der Stromzange ist Strom mal eingetragene Netzspannung, keine gemessene Wirkleistung. Genauer misst der PZEM-004T.</li>
+  </ul>
+  <div class="hb-howto"><b><i class="ti ti-bolt"></i> Sicherheit: Netzspannung nur durch eine Elektrofachkraft</b>
+    <p>PZEM-004T und Stromzangen sitzen an Leitungen mit 230 V. Den PZEM anschließen, eine Zange um einen Leiter legen oder einen Verteiler öffnen darf <b>nur eine Elektrofachkraft</b>. Die ESP-Platine selbst läuft mit Kleinspannung (USB oder Netzteil). Ihre Pins vertragen höchstens 3,3 V.</p></div>
+  <p><b>S0-Zähler:</b> S0+ des Zählers an den Pin des Bausteins, S0− an GND. Der Pin hat einen Pull-up eingebaut.</p>
+  {{template "hb-fig-esp-s0"}}
+  <p><b>Stromzange SCT-013:</b> Die Zange kommt um <b>einen</b> Leiter (L oder N), nicht um das ganze Kabel – sonst heben sich die Ströme auf und die Zange misst 0. Ein Ende der Zange an den Analog-Pin. Das andere Ende an eine Vorspannung auf halber Versorgung: zwei gleiche Widerstände (z. B. je 10 kΩ) zwischen 3,3 V und GND, an ihrer Mitte ein Kondensator (z. B. 10 µF) gegen GND. Beim Typ 100A/50mA gehört zusätzlich der Bürdenwiderstand zwischen die beiden Enden der Zange; seinen Wert trägst du bei „Bürdenwiderstand (Ω)“ ein. Die Typen mit 1V haben die Bürde schon eingebaut.</p>
+  <p><b>Bürde bemessen:</b> höchstens 2000 geteilt durch den größten Strom in A – bei 100 A also 20 Ω. Eine größere Bürde schneidet hohe Ströme ab und kann bei vollem Strom den Pin überlasten. Die Zange so wählen, dass ihr Nennstrom über dem größten Strom liegt. <b>ESP32-C3:</b> Sein Analog-Pin misst nur bis etwa 2,5 V. Eine 1-V-Zange misst dort nur bis etwa 60 % ihres Nennstroms (30A/1V bis etwa 18 A), und die Bürde darf höchstens 1200 geteilt durch den Strom sein. Für größere Ströme eine andere Platine nehmen.</p>
+  {{template "hb-fig-esp-sct"}}
+  <p><b>PZEM-004T:</b> Ihn gibt es für 10 A – dann fließt der Strom durch den PZEM, er wird in Reihe angeschlossen – und für 100 A mit Stromwandler um einen Leiter. TX des PZEM an den RX-Pin, RX des PZEM an den TX-Pin – über Kreuz – und GND an GND. Die Schnittstelle des PZEM ist für 5 V gebaut, die Pins des ESP vertragen nur 3,3 V: den PZEM mit 3,3 V vom ESP versorgen, wenn er damit läuft, sonst einen Pegelwandler dazwischen setzen. ESPPDH kann die Adresse eines PZEM nicht einstellen. Mehrere PZEM an denselben zwei Pins brauchen deshalb vorher mit einem anderen Werkzeug je eine eigene Adresse – dabei immer nur einen PZEM anschließen (ab Werk haben alle die Adresse 1). Sonst jedem PZEM ein eigenes Pin-Paar geben. Wie viele serielle Anschlüsse die Platine dafür hat, prüft das PDH beim Speichern (nicht bei „Andere Platine“).</p>
+  {{template "hb-fig-esp-pzem"}}
+  <p><b>Stückzähler mit Lichtschranke:</b> Der Sensorausgang oder ein Kontakt schaltet zwischen Pin und GND; der Pin hat einen Pull-up. Direkt an den Pin dürfen nur ein potentialfreier Kontakt oder ein Ausgang, der nur nach GND schaltet und selbst keine Spannung ausgibt (offener Kollektor). <b>Sensoren mit 24 V nie direkt anschließen</b> – dazwischen ein Koppelrelais oder Optokoppler, dessen Kontakt zwischen Pin und GND schaltet. <b>Flanke:</b> „fallend“ ist der Normalfall und zählt, wenn der Sensor schaltet (Teil kommt an); „steigend“ zählt, wenn er wieder öffnet (Teil ist durch). <b>Entprellzeit:</b> Kürzere Impulse und Prellen zählen nicht – bei schnellen Teilen kleiner einstellen.</p>
+  {{template "hb-fig-esp-counter"}}
+
+  <h3 id="hb-esp-build"><i class="ti ti-hammer"></i> Firmware bauen</h3>
+  <div class="hb-howto"><b><i class="ti ti-hammer"></i> So baust du die Firmware</b>
+    <ol class="hb-steps">
+      <li>Gerät und Bausteine speichern. Steht oben „Für die Firmware fehlt noch:“, erst das ergänzen und speichern.</li>
+      <li>Unter <b>Zugang am Broker</b> die Zeile <b>Broker</b> prüfen: Für diese Adresse und diesen Port wird die Firmware gebaut. Das Gerät muss den Server darunter erreichen.</li>
+      <li>In der Karte <b>Firmware</b> auf <b>Firmware bauen</b> drücken. Der Bau steht in der Schlange („wartet“) – es baut immer nur ein Gerät zur Zeit.</li>
+      <li>Der Verlauf erscheint darunter und aktualisiert sich alle 2 Sekunden. Am Ende steht <b>fertig</b> – oder <b>fehlgeschlagen</b>, dann steht der Grund unten im Verlauf.</li>
+    </ol>
+    <p>Der erste Bau je Platinentyp lädt Werkzeuge aus dem Internet (mehrere hundert MB) und dauert deshalb länger. Ein Bau darf höchstens 30 Minuten dauern, danach bricht das PDH ihn ab. <b>Abbrechen</b> beendet einen wartenden oder laufenden Bau. Unter <b>Letzte Läufe</b> zeigt <b>Verlauf</b> ältere Läufe. Kennwörter schwärzt das PDH im Verlauf.</p></div>
+  <ul>
+    <li><b>Welche Adresse?</b> Hat der Broker einen <a href="#mqttbroker">eigenen Namen</a>, nimmt die Firmware den Namen. Sonst nimmt sie die Adresse, unter der du das PDH gerade geöffnet hast. Der Lauf zeigt sie als „Firmware für …“. Im Verbund (Ausfallschutz) muss das der Name oder die mitwandernde Adresse sein, nie die feste Adresse eines Servers – sonst findet das Gerät den Broker nach einem Rollentausch nicht.</li>
+    <li><b>localhost geht nicht:</b> Steht als Broker <code>localhost</code> oder <code>127.0.0.1</code>, baut das PDH nicht. Dann am Broker einen Namen eintragen oder das PDH über seine Adresse im Netz öffnen und neu bauen.</li>
+    <li><b>„Konfiguration seit dem letzten Bau geändert“</b> zeigt die Karte, sobald sich etwas geändert hat, das in die Firmware geht: Name, Platine, WLAN oder Kabel, das WLAN-Kennwort (auch auf der Seite Netzwerk), Broker-Adresse, Port oder TLS, das MQTT-Kennwort sowie die Bausteine mit ihren Feldern und ihrer Reihenfolge. Die Firmware auf dem Gerät passt dann nicht mehr: neu bauen und aufspielen. Anlage, Notiz und „Netz am Kabel“ gehen nicht in die Firmware und lösen den Hinweis nicht aus.</li>
+    <li>Firmware bauen geht nur am aktiven Server. Am Spiegelserver sind die Seiten nur lesbar.</li>
+    <li><b>Konfiguration (YAML, ohne Kennwörter)</b> unter <b>Aktionen</b> lädt die ESPHome-Konfiguration des Geräts zum Nachsehen herunter.</li>
+  </ul>
+
+  <h3 id="hb-esp-flash"><i class="ti ti-usb"></i> Firmware aufspielen (flashen)</h3>
+  <div class="hb-howto"><b><i class="ti ti-usb"></i> So flashst du per USB</b>
+    <ol class="hb-steps">
+      <li>Die Seite des Geräts in <b>Chrome oder Edge</b> öffnen, und zwar über die <b>https-Adresse</b> des PDH. Nur dann erscheint der Knopf <b>Per USB flashen</b>.</li>
+      <li>Das Gerät per USB-Kabel an diesen Rechner anschließen.</li>
+      <li>In der Karte <b>Firmware</b> unter <b>Firmware aufspielen</b> auf <b>Per USB flashen</b> drücken und den Anschluss wählen.</li>
+      <li>Im Fenster (es ist englisch) „Install …“ und dann „Install“ wählen. Das Gerät wird gelöscht und neu beschrieben. Die Seite dabei offen lassen.</li>
+      <li>Das Gerät startet neu und meldet sich am Broker. Seite neu laden: Oben steht dann <b>verbunden</b>. Sonst siehe <a href="#hb-esp-silent">Wenn sich das Gerät nicht meldet</a>.</li>
+    </ol>
+    <p>Platinen ohne USB-Buchse (z. B. WT32-ETH01) schließt du über einen USB-Seriell-Wandler mit 3,3 V an; wie die Platine in den Flash-Modus kommt, steht beim Hersteller.</p></div>
+  <ul>
+    <li><b>Ohne Chrome oder Edge oder ohne https</b> steht dort „USB-Flash braucht Chrome oder Edge und eine https-Adresse des PDH“. Dann mit <b>Firmware zum ersten Flashen</b> die Datei herunterladen (<code>esppdh-&lt;kennung&gt;-factory.bin</code>) und mit einem anderen Werkzeug (z. B. esptool) ab Adresse 0 aufspielen.</li>
+    <li><b>Andere Platine:</b> kein USB-Flash im Browser, nur herunterladen.</li>
+    <li><b>Update-Datei (über das Netz)</b> (<code>…-ota.bin</code>) ist für spätere Updates über das Netz gedacht. Das kann ESPPDH noch nicht – bis dahin jedes Gerät per USB neu flashen.</li>
+    <li><b>Nach einer Änderung erst neu bauen.</b> Passt die Firmware nicht mehr zur Konfiguration, fehlt der Knopf „Per USB flashen“; dort steht „Per USB flashen geht erst nach einem neuen Bau“.</li>
+    <li>Die Firmware enthält WLAN- und MQTT-Kennwort. Nur für dieses Gerät verwenden und die Datei nicht weitergeben.</li>
+  </ul>
+
+  <h3 id="hb-esp-check"><i class="ti ti-radar"></i> Im Explorer prüfen</h3>
+  <p>Liste und Seite des Geräts zeigen den <b>Zustand</b> am Broker:</p>
+  <table><thead><tr><th>Zustand</th><th>Bedeutung</th></tr></thead><tbody>
+    <tr><td><span class="badge b-green">verbunden</span></td><td>Das Gerät ist gerade am Broker angemeldet.</td></tr>
+    <tr><td><span class="badge b-gray">nicht verbunden</span></td><td>Gerade nicht angemeldet. Der Zusatz sagt mehr, z. B. „Noch keine Firmware gebaut“, „Der Broker läuft an diesem Server nicht“ oder – gelb – „Nicht verbunden. Hat es sich noch nie gemeldet: Freigabe für … Port … prüfen.“</td></tr>
+    <tr><td><span class="badge b-red">gesperrt</span></td><td>Das Gerät ist gesperrt und kann sich nicht anmelden.</td></tr>
+  </tbody></table>
+  <p>Das PDH weiß nur, ob das Gerät <b>jetzt</b> verbunden ist – nicht, wann es sich zuletzt gemeldet hat. Der Zustand gilt beim Öffnen der Seite; zum Auffrischen die Seite neu laden. Am Spiegelserver steht „Spiegel – den Zustand kennt nur der aktive Server“.</p>
+  <div class="hb-howto"><b><i class="ti ti-radar"></i> So siehst du die Werte des Geräts</b>
+    <ol class="hb-steps">
+      <li>Auf der Seite des Geräts unter <b>Zugang am Broker</b> bei <b>Nachrichten</b> das Thema <code>esppdh/&lt;kennung&gt;/#</code> mit <i class="ti ti-copy"></i> kopieren. Ohne https markiert der Knopf das Thema nur – dann mit <kbd>Strg</kbd>+<kbd>C</kbd> kopieren.</li>
+      <li><b>Explorer der Verbindung öffnen</b> (braucht das Recht „Import ausführen“).</li>
+      <li>Das Thema in den Themenfilter einfügen und <b>Starten</b> drücken.</li>
+      <li>Im Themenbaum stehen <code>status</code> und je Baustein seine Werte, z. B. <code>s0-1/zaehlerstand</code>. Die meisten Werte kommen alle 10 Sekunden. Die Leistung des S0-Zählers kommt nur, wenn Impulse eintreffen – bei kleiner Last seltener; kommt 5 Minuten lang kein Impuls, meldet das Gerät 0. Den Zählerstand gibt es ab dem ersten Impuls.</li>
+    </ol>
+    <p><code>esppdh/&lt;kennung&gt;/status</code> zeigt <code>online</code>, solange das Gerät verbunden ist, und <code>offline</code>, sobald es sich abmeldet oder seine Verbindung abreißt.</p></div>
+
+  <h3 id="hb-esp-silent"><i class="ti ti-help-circle"></i> Wenn sich das Gerät nicht meldet</h3>
+  <p>Zuerst die Hinweise oben auf der Seite des Geräts lesen. Dann der Reihe nach prüfen:</p>
+  <ol>
+    <li><b>Nachrichten speichern am Broker an?</b> Das Gerät meldet seinen Zustand als gespeicherte Nachricht. Ist an der Verbindung „Retained Messages erlauben“ aus, weist der Broker das Gerät ab. Die Seite des Geräts zeigt dann einen roten Hinweis mit dem Weg zu den Einstellungen der Verbindung: dort einschalten und speichern.</li>
+    <li><b>Verbindung eingeschaltet?</b> Ist sie aus, läuft ihr Broker nicht.</li>
+    <li><b>Freigabe in der Firewall:</b> Liegt das Gerät in einem anderen Netz (VLAN) als der Server, muss die Firewall zwischen den Netzen durchlassen: <b>von</b> dem Netz des Geräts (Adressbereich auf der Seite <a href="#netzwerk">Netzwerk</a>) <b>zu</b> der Adresse des Brokers, <b>Port</b> wie unter „Zugang am Broker“ (z. B. 1883 ohne TLS, 8883 mit TLS), Protokoll <b>TCP</b>. Ist auf der Seite Netzwerk der Adressbereich eingetragen und liegt der Server nicht darin, nennt die Seite des Geräts die nötige Freigabe selbst. Die Firewall des Servers selbst öffnet das PDH in der Regel von allein (<a href="#hb-mqtt-firewall">mehr</a>).</li>
+    <li><b>Name im Haus:</b> Hat der Broker einen Namen, muss er im Netz des Geräts auf den Server zeigen. Das zeigt an der Verbindung <b>Werkzeuge → Broker-Status</b> die Prüfliste.</li>
+    <li><b>TLS</b> geht nur mit ESP32-Platinen und nur, wenn der Broker einen Namen mit TLS-Port hat – das Zertifikat kommt von Let's Encrypt. Die Firmware vertraut nur den Stammzertifikaten von Let's Encrypt. Wechselt Let's Encrypt sie einmal, brauchen die Geräte eine neue Firmware: neu bauen und flashen. Verschlüsselt der Broker nur mit einem eigenen Zertifikat (Dateipfade), können ESPPDH-Geräte ihn nicht nutzen.</li>
+    <li><b>ESP8266</b> (D1 mini) kann kein TLS und verbindet nur über den Port ohne TLS.</li>
+    <li><b>Neues MQTT-Kennwort vergeben?</b> Dann passt die alte Firmware nicht mehr: neu bauen und flashen.</li>
+    <li><b>WLAN-Kennwort falsch oder WLAN außer Reichweite?</b> Dann hilft der Notzugang.</li>
+  </ol>
+  <div class="hb-howto"><b><i class="ti ti-wifi"></i> So hilft der Notzugang (nur bei WLAN)</b>
+    <ol class="hb-steps">
+      <li>Findet das Gerät sein WLAN nicht, öffnet es nach etwa anderthalb Minuten ein eigenes WLAN: <code>esppdh-&lt;kennung&gt;</code> (bei langen Kennungen gekürzt). Name und Kennwort stehen auf der Seite des Geräts unter <b>Notzugang</b> – das Kennwort nur für alle, die Geräte ändern dürfen.</li>
+      <li>Mit Handy oder Laptop in dieses WLAN gehen. Es öffnet sich eine Seite des Geräts (englisch); sonst im Browser <code>http://192.168.4.1</code> aufrufen.</li>
+      <li>Dort das richtige WLAN wählen, sein Kennwort eintragen und speichern. Das Gerät verbindet sich dann damit.</li>
+      <li>Danach auch im PDH richtigstellen (WLAN auf der Seite des Geräts bzw. Kennwort auf der Seite Netzwerk). Sonst steht beim nächsten Flashen wieder das alte WLAN in der Firmware.</li>
+    </ol></div>
+
+  <h3 id="hb-esp-lock"><i class="ti ti-lock"></i> Gerät sperren, neues Kennwort, löschen</h3>
+  <p>Unter <b>Aktionen</b> auf der Seite des Geräts:</p>
+  <ul>
+    <li><b>Sperren</b> – für ein verlorenes oder ausgebautes Gerät. Der Broker trennt es sofort, und es kann sich nicht mehr anmelden. <b>Entsperren</b> lässt es wieder zu.</li>
+    <li><b>Neues MQTT-Kennwort</b> – das Gerät wird sofort getrennt. Danach die Firmware neu bauen und flashen. Das Kennwort des Notzugangs bleibt.</li>
+    <li><b>Gerät löschen</b> – nur der Bereichsadministrator (<code>esppdh.admin</code>). Der Zugang am Broker endet sofort; Bausteine, Bauten und Firmware sind danach weg. Das lässt sich nicht rückgängig machen.</li>
+  </ul>
+  <p><b>Warnung „… ließen sich gerade nicht neu lesen“:</b> Die Aktion ist gespeichert, aber der Broker ist noch nicht auf dem neuen Stand. Beim Sperren, beim neuen Kennwort und beim Löschen nimmt das PDH den Zugang des Geräts vorsorglich heraus; ob das Gerät wirklich getrennt ist, steht erst nach einem gelungenen Abgleich fest. Dann die Aktion gleich noch einmal ausführen oder das Gerät einmal speichern – nach dem Löschen ein anderes Gerät derselben Verbindung. Kommt die Warnung immer wieder, steht der Grund im Server-Protokoll.</p>
+  <p>Eine Verbindung, an der noch Geräte hängen, lässt sich nicht löschen.</p>
+
+  <h3 id="hb-esp-sec"><i class="ti ti-shield-lock"></i> Sicherheit</h3>
+  <ul>
+    <li>Jedes Gerät hat einen <b>eigenen Zugang</b> am Broker (Benutzer <code>esppdh-&lt;kennung&gt;</code>, zugleich Client-ID) und darf nur unter seinem Thema <code>esppdh/&lt;kennung&gt;/</code> senden und lesen. Benutzernamen, die mit <code>esppdh-</code> beginnen, sind am Broker deshalb für Geräte reserviert.</li>
+    <li>Die Kennwörter stehen <b>verschlüsselt</b> im PDH. Das MQTT-Kennwort zeigt das PDH nie an, das Kennwort des Notzugangs nur denen, die Geräte ändern dürfen. Der Broker kennt vom MQTT-Kennwort nur einen Prüfwert, nie das Kennwort selbst.</li>
+    <li><b>Wechsel des Schlüssels</b> (Schlüssel für Portal-Passwörter, oder der Anmelde-Schlüssel, wenn jener leer ist): Die Geräte behalten ihren Zugang am Broker, brauchen aber vor dem nächsten Bau der Firmware je ein <b>Neues MQTT-Kennwort</b> – die Seite des Geräts sagt es. Das Kennwort der Verbindung (Broker) und die WLAN-Kennwörter auf der Seite Netzwerk müssen danach neu eingetragen werden.</li>
+    <li>Die <b>Firmware enthält WLAN- und MQTT-Kennwort</b>. Herunterladen und flashen darf deshalb nur, wer Geräte ändern darf (<code>esppdh.edit</code>). Wer welche Firmware geholt hat, steht im Server-Protokoll. Firmware-Dateien nicht weitergeben.</li>
+    <li><b>WLAN-Kennwort:</b> Wer Geräte bauen darf, kann das Kennwort des gewählten WLANs aus der Firmware lesen. Deshalb stehen nur WLANs zur Wahl, die auf der Seite <a href="#netzwerk">Netzwerk</a> für ESPPDH-Geräte freigegeben sind. Am besten ein eigenes WLAN nur für Geräte verwenden. Wird die Freigabe entfernt, lassen sich Geräte in diesem WLAN nicht mehr speichern und bauen; schon gebaute Firmware bleibt herunterladbar (Per USB flashen im Browser geht erst wieder mit Freigabe).</li>
+    <li>Erlaubt der Broker <b>anonyme Verbindungen</b>, kann jeder im Netz auch unter dem Thema eines Geräts senden und dessen Werte vortäuschen – die Themen-Rechte schützen nur vor anderen Geräten. Die Seite des Geräts warnt dann; besser an der Verbindung „Anonyme Verbindungen erlauben“ ausschalten.</li>
+    <li>Ohne TLS gehen Werte und Anmeldung <b>unverschlüsselt</b> durchs Netz. Dann das Gerät nur in einem geschützten Netz betreiben – besser eine ESP32-Platine und den Broker mit Namen und TLS-Port.</li>
+  </ul>
+
+  <h3><i class="ti ti-key"></i> Rechte</h3>
+  <ul>
+    <li><b>ESPPDH: Geräte und Zustand ansehen</b> (<code>esppdh.view</code>) – Liste, Seite des Geräts, Verlauf der Bauten und die Konfiguration ohne Kennwörter.</li>
+    <li><b>ESPPDH: Geräte anlegen, ändern, sperren, bauen und flashen</b> (<code>esppdh.edit</code>) – dazu Firmware herunterladen und das Kennwort des Notzugangs sehen.</li>
+    <li><b>ESPPDH: Geräte löschen (Bereichsadministrator)</b> (<code>esppdh.admin</code>) – alle Rechte von ESPPDH und als Einziger Geräte löschen.</li>
+  </ul>
+  <p>Die Rechte gelten überall oder nur in einer Abteilung; maßgeblich ist die Anlage des Geräts. Wer sie mit dem Update bekommen hat, steht unter <a href="#admin">Administration</a>.</p>
+  {{template "hb-shots" (dict "Ref" (index $s "esppdh") "Can" $can)}}
 </section>
 
 <section class="hb-ch" id="energiedaten" data-title="Energiedaten &amp; Messstellen" data-pages="energy">

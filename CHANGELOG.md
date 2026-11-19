@@ -10,6 +10,40 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.82.0] – 2026-11-19
+
+### Neu
+
+- Neue Seite **Daten → ESPPDH**: eigene Mess- und Zählgeräte aus ESP32- und ESP8266-Platinen anlegen, je Gerät mit Name, Kennung, Platine und Netzanschluss (WLAN von der Seite „Netzwerk“ oder Kabel).
+- Bausteine für die Geräte: S0-Zähler, Stromzange SCT-013, Energiemesser PZEM-004T und Stückzähler (Lichtschranke); das PDH prüft die Anschlüsse der Platine und meldet falsche Belegungen verständlich.
+- Server-Einstellungen, neuer Reiter **ESPPDH**: Umgebung für die Firmware einrichten (ESPHome 2026.10.2 in fest vorgegebener Version, je Server einmal) und ESPPDH ein- oder ausschalten; jedes PDH-Update bringt die passende ESPHome-Version mit.
+- Die Firmware wird am Server gebaut, mit Warteschlange und Protokoll je Lauf; sie sendet die Messwerte an den eingebauten MQTT-Broker.
+- Firmware herunterladen oder direkt im Browser per USB auf die Platine spielen (Chrome oder Edge, über eine https-Adresse).
+- Zustand je Gerät: verbunden, nicht verbunden oder gesperrt; Geräte lassen sich sperren, wieder freigeben und trennen.
+- Handbuch: Kapitel „ESPPDH – eigene Mess- und Zählgeräte“. Noch nicht an echter Hardware geprüft: Platinen, Bausteine und USB-Flash wurden bisher nur automatisch getestet.
+
+### Geändert
+
+- MQTT-Broker: Gerätezugänge dürfen sich nur mit ihrer eigenen Client-ID verbinden und können keine fremde Sitzung übernehmen.
+- MQTT-Broker: Der Hauptbenutzer des Brokers darf nicht mit „esppdh-“ beginnen; diese Namen sind für ESPPDH-Geräte reserviert.
+- Seite „Netzwerk“: Jedes WLAN hat den neuen Haken „Für ESPPDH-Geräte nutzbar“ (ab Werk aus), freigegebene WLANs tragen in der Liste das Abzeichen „ESPPDH“.
+
+### Sicherheit
+
+- ESPPDH bietet nur WLANs an, die auf der Seite „Netzwerk“ für ESPPDH-Geräte freigegeben sind, denn wer Geräte bauen darf, kann das WLAN-Kennwort aus der Firmware lesen; den Haken setzen darf nur, wer die Seite „Netzwerk“ pflegt (`system.network`).
+- Neue Rechte **ESPPDH: Geräte und Zustand ansehen** (`esppdh.view`), **… anlegen, ändern, sperren, bauen und flashen** (`esppdh.edit`) und **… löschen** (`esppdh.admin`, Bereichsadministrator). Ansehen und pflegen dürfen automatisch alle Rollen mit dem Recht „Import-Verbindungen verwalten“, löschen nur Rollen, die zusätzlich die Server-Einstellungen ändern dürfen; die Rechte gelten je Abteilung.
+- Jedes Gerät hat einen eigenen Zugang am MQTT-Broker, beschränkt auf sein eigenes Thema `esppdh/<kennung>/…`; ein gesperrtes Gerät kommt nicht mehr hinein.
+- Die fertige Firmware und die Gerätekennwörter werden verschlüsselt abgelegt; Firmware laden darf nur, wer das Pflegerecht (`esppdh.edit`) für das Gerät hat.
+- Die Seite eines ESPPDH-Geräts warnt, wenn sein Broker anonyme Verbindungen erlaubt, denn dann kann jeder im Netz unter dem Thema des Geräts senden.
+- Der MQTT-Broker kennt von jedem Gerät nur einen Prüfwert des Kennworts, nie das Kennwort selbst, und die Geräte behalten ihren Zugang auch nach einem Wechsel des Schlüssels – vor dem nächsten Bau der Firmware braucht ein Gerät dann ein neues MQTT-Kennwort.
+- ESPPDH ist im Docker-Testbetrieb nicht verfügbar, nur im Betrieb mit systemd.
+
+## [0.81.6] – 2026-11-18
+
+### Behoben
+
+- Nummern von Rüstzeiten und KVP-Vorschlägen werden ab 10000 nicht mehr abgeschnitten („RZ-10105“ statt „RZ-1010“); Bestell- und Partnernummern bleiben auch bei langen Zählerständen eindeutig.
+
 ## [0.81.5] – 2026-11-18
 
 ### Behoben

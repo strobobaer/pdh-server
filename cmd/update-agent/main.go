@@ -35,6 +35,8 @@ type updateAgent struct {
 	drPartner func(context.Context) bool                                        // nil = pdh-ha-Status (dr_timeline.go)
 	ha        haJob                                                             // pdh-ha-Installation (ha.go)
 	haRun     func(context.Context, string, map[string]string, io.Writer) error // nil = hostCommandEnv
+	esppdh    esppdhJob                                                         // ESPHome-Einrichtung (esppdh.go)
+	esppdhRun func(context.Context, string, map[string]string) (string, error)  // nil = hostCommandEnv (esppdh.go)
 	mu        sync.RWMutex
 	status    jobStatus
 	token     string
@@ -124,6 +126,9 @@ func main() {
 	mux.Handle("GET /v1/certs/status", agent.authorized(http.HandlerFunc(agent.certStatusHandler)))
 	// Firewall (ufw): Ports des eingebauten MQTT-Brokers nachsehen und öffnen (firewall.go)
 	mux.Handle("POST /v1/firewall/ports", agent.authorized(http.HandlerFunc(agent.firewallHandler)))
+	// ESPPDH: Python-Umgebung mit ESPHome einrichten (esppdh.go)
+	mux.Handle("POST /v1/esppdh/install", agent.authorized(http.HandlerFunc(agent.esppdhInstallHandler)))
+	mux.Handle("GET /v1/esppdh/install", agent.authorized(http.HandlerFunc(agent.esppdhStatusHandler)))
 	// Ausfallschutz – Einzelbetrieb (dr.go)
 	if err := agent.drLoad(); err != nil {
 		log.Printf("ausfallschutz: state.json nicht lesbar: %v", err)

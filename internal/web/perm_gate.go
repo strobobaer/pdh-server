@@ -25,8 +25,9 @@ var recordDeptSource = map[string]struct {
 	"ticket": {"tickets", true}, "fault": {"faults", true}, "maintenance_task": {"maintenance_tasks", true},
 	"maintenance_plan": {"maintenance_plans", true}, "task": {"tasks", true}, "project": {"projects", true},
 	"it_asset": {"it_assets", false}, "kvp": {"kvp_ideas", false}, "part": {"spare_parts", false},
-	setupRef: {"setup_times", false},
-	meterRef: {"energy_meters", false},
+	setupRef:  {"setup_times", false},
+	meterRef:  {"energy_meters", false},
+	esppdhRef: {"esppdh_devices", false}, // ESPPDH-Geräte: Abteilung über die Anlage
 }
 
 // recordDepartments: Abteilungen eines Datensatzes (leer = keiner Abteilung
@@ -103,6 +104,7 @@ var areaAdminPerm = map[string]string{
 	dataNetRef: permDataNetAdmin, // Datennetz: Clients endgültig entfernen
 	"snmp":     permSNMPAdmin,    // SNMP-Zugangsprofile: endgültig löschen
 	"network":  permNetworkAdmin, // Seite „Netzwerk“: VLANs und WLANs endgültig löschen
+	esppdhRef:  permESPAdmin,     // ESPPDH: Geräte endgültig löschen
 }
 
 // isAreaAdmin: Bereichsadministrator für diesen Datensatz?
@@ -169,6 +171,11 @@ var gateRules = []gateRule{
 	// Reiter „SNMP“: Profil löschen nur Bereichsadministrator, anlegen und ändern mit system.snmp
 	gr(wPost, permSNMPAdmin, "", false, `^/admin/server-config/snmp/profiles`+gID+`/delete$`),
 	gr(wPost, permSNMP, "", false, `^/admin/server-config/snmp/profiles(?:`+gID+`)?$`),
+	// ESPPDH: Gerät löschen nur Bereichsadministrator; anlegen, ändern, sperren, neues Kennwort,
+	// Firmware bauen und Bau abbrechen mit esppdh.edit (für ein Gerät in der Abteilung seiner Anlage)
+	gr(wPost, permESPAdmin, esppdhRef, false, `^/import/esppdh`+gID+`/delete$`),
+	gr(wPost, permESPEdit, esppdhRef, false, `^/import/esppdh`+gID+`(?:/lock|/password|/build(?:`+gID+`/cancel)?)?$`),
+	gr(wPost, permESPEdit, "", false, `^/import/esppdh/?$`),
 	// ── Löschvormerkung von Stammdaten über die Schnittstelle ──
 	gr("DELETE", "inventory.edit", "part", false, `^(?:/api/v1)?/inventory`+gID+gEnd),
 	gr("DELETE", "inventory.edit", "storage", false, `^(?:/api/v1)?/storage`+gID+gEnd),

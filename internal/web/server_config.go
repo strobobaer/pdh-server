@@ -53,9 +53,9 @@ var envGroups = []envGroup{
 		{Key: "PDH_DATABASE_SSLMODE", Label: "Verschlüsselung (SSL)", Type: "select", Options: []string{"disable", "prefer", "require", "verify-ca", "verify-full"}, Default: "disable", Restart: true},
 	}},
 	{"security", "Sicherheit", "ti-shield-lock", "Schlüssel für Anmeldung und gespeicherte Passwörter.", []envField{
-		{Key: "PDH_AUTH_JWTSECRET", Label: "Anmelde-Schlüssel (JWT)", Help: "Mindestens 32 Zeichen. Ein neuer Schlüssel meldet alle Benutzer ab.", Type: "text", Secret: true, Restart: true},
+		{Key: "PDH_AUTH_JWTSECRET", Label: "Anmelde-Schlüssel (JWT)", Help: "Mindestens 32 Zeichen. Ein neuer Schlüssel meldet alle Benutzer ab. Ist der Schlüssel für Portal-Passwörter leer, gilt zusätzlich, was dort steht – auch für ESPPDH-Geräte: Sie behalten ihren Zugang am Broker, brauchen aber vor dem nächsten Bau der Firmware je ein neues MQTT-Kennwort. Das Kennwort der Broker-Verbindung danach neu eintragen – sonst startet der Broker nicht.", Type: "text", Secret: true, Restart: true},
 		{Key: "PDH_AUTH_TOKENDURATION", Label: "Anmeldung gültig (Stunden)", Type: "number", Default: "24", Restart: true},
-		{Key: "PDH_CREDENTIALS_KEY", Label: "Schlüssel für Portal-Passwörter", Help: "Leer = aus dem Anmelde-Schlüssel abgeleitet. Nach dem ersten Speichern von Portal-Zugangsdaten NICHT mehr ändern – sonst sind sie unlesbar.", Type: "text", Secret: true},
+		{Key: "PDH_CREDENTIALS_KEY", Label: "Schlüssel für Portal-Passwörter", Help: "Leer = aus dem Anmelde-Schlüssel abgeleitet. Nach dem ersten Speichern von Portal-Zugangsdaten NICHT mehr ändern – sonst sind sie unlesbar. ESPPDH-Geräte behalten nach einem Wechsel ihren Zugang am Broker, brauchen aber vor dem nächsten Bau der Firmware je ein neues MQTT-Kennwort. Das Kennwort der Broker-Verbindung danach neu eintragen – sonst startet der Broker nicht.", Type: "text", Secret: true},
 	}},
 	{"mail", "E-Mail", "ti-mail", "E-Mail-Versand, z. B. für den täglichen Bestellvorschlag – über einen SMTP-Server oder Microsoft 365.", []envField{
 		{Key: "PDH_MAIL_TRANSPORT", Label: "Versandweg", Help: "smtp = SMTP-Server (Felder unten); graph = Microsoft 365 über die App aus dem Reiter Microsoft 365 (Anwendungsberechtigung Mail.Send) – SMTP-Server, Benutzer und Passwort bleiben dann leer.", Type: "select", Options: []string{"smtp", "graph"}, Default: "smtp"},
@@ -187,6 +187,7 @@ type ServerConfigData struct {
 	Omada          omadaTab        // Reiter „Omada“: Anbindung an den Omada-Controller (omada_web.go), nur mit system.omada
 	SNMP           snmpTab         // Reiter „SNMP“: Zugangsprofile für den Netz-Abgleich (snmp_web.go), nur mit system.snmp
 	DR             drView          // Reiter „Ausfallschutz“ (dr.go), nur geladen wenn geöffnet
+	ESPPDH         esppdhPanel     // Reiter „ESPPDH“ (esppdh_settings.go), nur geladen wenn geöffnet
 	AgentReady     bool            // Update-Agent kann .env.docker bereinigen
 	NCTheme        ncTheme         // Reiter Nextcloud: Erscheinungsbild übernehmen (nextcloud_theming.go)
 	NCAdmin        ncAdminView     // Reiter Nextcloud: Dienstkonto des PDH (nextcloud_admin.go)
@@ -301,6 +302,9 @@ func (h *Handler) ServerConfigPage(w http.ResponseWriter, r *http.Request) {
 		u := getUser(r)
 		d.DR.HA.CanConfirmUpdate, d.DR.HA.CanAbortUpdate = h.maintMayAct(u)
 		d.DR.HA.MirrorCan, d.DR.HA.MirrorAdmin = h.maintMayWindow(r, permFileMirror), h.maintMayWindow(r, permFileMirrorAdmin)
+	}
+	if d.Tab == "esppdh" { // ruft „esphome version“ auf – nur wenn der Reiter offen ist
+		d.ESPPDH = h.esppdhPanelFor(r.Context())
 	}
 	h.fillEnvTakeover(r.Context(), &d)
 	d.NCTheme = h.nextcloudTheme()

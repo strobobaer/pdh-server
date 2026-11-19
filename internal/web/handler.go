@@ -89,6 +89,7 @@ type BaseData struct {
 	CanCostCenters         bool       // Core → Kostenstellen (costcenters.manage, costcenters_web.go)
 	CanStatistics          bool       // Statistik mit Grafana-Dashboards (statistics.view, grafana.go)
 	CanEnergy              bool       // Energiedaten: Messstellen (energy.view / energy.edit, energy_meters.go)
+	CanESPPDH              bool       // Import → ESPPDH: Navigation und Verweis auf der Import-Seite (esppdh.view / esppdh.edit, esppdh.go)
 	IsBroker               bool       // Broker fuer mind. eine Vorgangsart: Nav-Link "Zuweisung"
 	TerminalInfraID        string     // Standort des Terminals: Infra-Picker klappt bis hierhin auf
 	Look                   Appearance // Farbschema, Schrift und Groesse dieses Benutzers
@@ -352,6 +353,15 @@ type Handler struct {
 
 	// Explorer (explorer.go): lädt die Verbindung für den Explorer; nil = echt (connectionRow)
 	explorerLoadHook func(r *http.Request, direction string) (explorerConn, error)
+
+	// ESPPDH (esppdh_store.go): Gerätezugänge am Broker lesen und setzen am Stück
+	esppdhSyncMu sync.Mutex
+	// nur Tests: läuft in esppdhSyncBroker nach dem Lesen der Liste; ein Fehler gilt als Lesefehler
+	esppdhSyncHook func(connID string) error
+	// ESPPDH (esppdh_build.go): der eine Arbeiter, der Firmware baut, und sein Runner
+	// (nil = esppdh.NewRunner; Tests setzen eine Attrappe)
+	esppdhQ      esppdhQueue
+	esppdhRunner esppdhBuilder
 }
 
 func NewHandler(
@@ -709,6 +719,9 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/admin/server-config/snmp/profiles/{id}/delete", h.SNMPProfileDeleteWeb)
 	r.Post("/admin/server-config/certs/lan", h.CertLANWeb)
 	r.Post("/admin/server-config/certs/lan6", h.CertLAN6Web) // IPv6 getrennt überschreiben (certs_lan6.go)
+	r.Get("/admin/server-config/esppdh", h.EsppdhPanelWeb)   // Reiter „ESPPDH“: Schalter und Umgebung (esppdh_settings.go)
+	r.Post("/admin/server-config/esppdh", h.EsppdhSwitchWeb) // ein-/ausschalten
+	r.Post("/admin/server-config/esppdh/install", h.EsppdhInstallWeb)
 	// Reiter „Ausfallschutz“: Sicherung aufs Netzlaufwerk über den Update-Agenten (dr.go)
 	r.Post("/admin/server-config/dr/settings", h.DRSettingsWeb)
 	r.Post("/admin/server-config/dr/run", h.DRRunWeb)
@@ -1085,6 +1098,23 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/import/connections/{id}/read/refresh", h.ModbusRefreshValuesWeb)
 	r.Post("/import/connections/{id}/nodes/refresh", h.OPCUARefreshValuesWeb)
 	r.Get("/import/mappings", h.ImportMappingsOverviewPage)
+	// ESPPDH: eigene Mess- und Zählgeräte auf ESP-Basis (esppdh.go)
+	r.Get("/import/esppdh", h.EsppdhPage)
+	r.Post("/import/esppdh", h.EsppdhCreateWeb)
+	r.Get("/import/esppdh/{id}", h.EsppdhDevicePage)
+	r.Post("/import/esppdh/{id}", h.EsppdhSaveWeb)
+	r.Post("/import/esppdh/{id}/lock", h.EsppdhLockWeb)
+	r.Post("/import/esppdh/{id}/password", h.EsppdhPasswordWeb)
+	r.Post("/import/esppdh/{id}/delete", h.EsppdhDeleteWeb)
+	r.Get("/import/esppdh/{id}/config.yaml", h.EsppdhConfigWeb)
+	r.Post("/import/esppdh/{id}/build", h.EsppdhBuildWeb)                    // Firmware bauen (esppdh_build.go)
+	r.Get("/import/esppdh/{id}/build/{bid}", h.EsppdhBuildPartWeb)           // Verlauf eines Laufs (htmx, alle 2 s)
+	r.Post("/import/esppdh/{id}/build/{bid}/cancel", h.EsppdhBuildCancelWeb) // Bau abbrechen
+	// Firmware herunterladen und per USB flashen (esppdh_flash.go): nur esppdh.edit am Gerät
+	r.Get("/import/esppdh/{id}/firmware/{bid}/factory.bin", h.EsppdhFactoryWeb)
+	r.Get("/import/esppdh/{id}/firmware/{bid}/ota.bin", h.EsppdhOTAWeb)
+	r.Get("/import/esppdh/{id}/firmware/{bid}/manifest.json", h.EsppdhManifestWeb)
+	r.Get("/static/vendor/esp-web-tools/{file}", h.EsppdhWebToolsWeb) // ESP Web Tools aus dem Programm, nie von außen
 	// Verbindungsseiten (connection_detail.go)
 	r.Get("/import/connections/{id}", h.ImportConnectionPage)
 	r.Get("/export/connections/{id}", h.ExportConnectionPage)
@@ -1386,6 +1416,7 @@ func (h *Handler) baseData(r *http.Request, page, title, ctxTitle string) BaseDa
 		CanCostCenters:         h.rbac.HasPermissionForUser(u.ID, string(u.Role), "costcenters.manage") || h.rbac.HasPermissionForUser(u.ID, string(u.Role), "system.manage_roles"),
 		CanStatistics:          h.rbac.HasPermissionForUser(u.ID, string(u.Role), "statistics.view"),
 		CanEnergy:              h.rbac.HasPermissionForUser(u.ID, string(u.Role), permEnergyView) || h.rbac.HasPermissionForUser(u.ID, string(u.Role), permEnergyEdit),
+		CanESPPDH:              h.rbac.HasPermissionForUser(u.ID, string(u.Role), permESPView) || h.rbac.HasPermissionForUser(u.ID, string(u.Role), permESPEdit),
 		TerminalInfraID:        h.terminalInfraID(r),
 		CanBackup:              h.rbac.HasPermissionForUser(u.ID, string(u.Role), "system.backup"),
 		CanPrinters:            h.rbac.HasPermissionForUser(u.ID, string(u.Role), "printers.manage"),

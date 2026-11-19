@@ -1,0 +1,44 @@
+{{/* ESPPDH – Firmware bauen (internal/web/esppdh_build.go). Ein Lauf mit Verlauf (esppdhRunView),
+     auf der Detailseite und als htmx-Teil GET /import/esppdh/{id}/build/{bid}. Solange der Lauf
+     wartet oder läuft, fragt der Teil alle 2 s nach (keine Dauerverbindung); endet er, lädt
+     die Seite einmal neu. Jeder Teil hat die Kennung esp-build-<lauf>: Ein älterer Verlauf
+     (Bereich esp-build-other) ersetzt so nie den Teil, der gerade nachfragt.
+     Der Verlauf ist geschwärzt, bricht um und rollt in sich – nie breiter
+     als die Seite. Farben nur über die Variablen des Farbschemas (Fiori/Fluent, hell/dunkel). */}}
+
+{{define "esppdh-build-style"}}
+<style>
+.esp-fw-changed{border:1px solid var(--amber);border-radius:8px;padding:8px 10px;margin:0 0 10px;font-size:13px;color:var(--text);background:var(--bg)}
+.esp-fw-changed>i{color:var(--amber)}
+.esp-fw-build{margin:0 0 4px}
+.esp-build{border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin:10px 0;background:var(--bg);min-width:0}
+.esp-build-head{display:flex;align-items:center;gap:6px 10px;flex-wrap:wrap;font-size:13px}
+.esp-build-head form{margin:0 0 0 auto}
+.esp-build .esp-dl{margin-top:8px}
+.esp-log{margin:10px 0 0;max-height:420px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;
+  font-family:monospace;font-size:12px;line-height:1.45;background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px 10px;max-width:100%}
+.esp-runs-title{font-size:12.5px;color:var(--muted);margin:14px 0 4px}
+.esp-runs{list-style:none;margin:0;padding:0}
+.esp-runs li{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;padding:6px 0;border-top:1px solid var(--border);font-size:12.5px;min-width:0}
+.esp-runs li .btn{margin-left:auto}
+</style>
+{{end}}
+
+{{define "esppdh-build"}}
+<div id="esp-build-{{.ID}}" class="esp-build"{{if .Active}} hx-get="/import/esppdh/{{.DeviceID}}/build/{{.ID}}?poll=1" hx-trigger="every 2s" hx-swap="outerHTML"{{end}}>
+  <div class="esp-build-head">
+    <span class="badge {{.Badge}}">{{if .Active}}<i class="ti ti-loader-2" aria-hidden="true"></i>&nbsp;{{end}}{{.StatusLabel}}</span>
+    <span class="esp-wrap">Lauf vom {{.When}}{{with .By}} · {{.}}{{end}}{{with .Took}} · Dauer {{.}}{{end}}</span>
+    {{if .CanCancel}}<form method="POST" action="/import/esppdh/{{.DeviceID}}/build/{{.ID}}/cancel" onsubmit="return confirm('Bau abbrechen?')">
+      <button type="submit" class="btn btn-small"><i class="ti ti-player-stop" aria-hidden="true"></i> Abbrechen</button>
+    </form>{{end}}
+  </div>
+  <dl class="esp-dl">
+    {{if .BrokerHost}}<dt>Broker</dt><dd>Firmware für <code class="esp-mono">{{.Addr}}</code> {{if .BrokerTLS}}<span class="badge b-green">TLS</span>{{else}}<span class="badge b-amber">ohne TLS</span>{{end}}</dd>{{end}}
+    {{with .Version}}<dt>ESPHome</dt><dd>{{.}}</dd>{{end}}
+    {{if .Size}}<dt>Firmware</dt><dd>{{.SizeText}}</dd>{{end}}
+  </dl>
+  {{if eq .Status "queued"}}<p class="esp-note"><i class="ti ti-clock" aria-hidden="true"></i> Wartet, bis der laufende Bau fertig ist – es baut immer nur ein Gerät zur Zeit.</p>{{end}}
+  <pre class="esp-log" tabindex="0" aria-label="Verlauf des Baus">{{if .Log}}{{.Log}}{{else if .Active}}Noch keine Ausgabe …{{else}}Kein Verlauf.{{end}}</pre>
+</div>
+{{end}}

@@ -1,0 +1,98 @@
+# ESPPDH: vom PDH erzeugt – Änderungen gehen beim nächsten Bau verloren.
+# Kennwörter stehen nicht hier, sondern als !secret in der Geheimnis-Datei.
+
+esphome:
+  name: esppdh-kompressor
+  friendly_name: !literal "Kompressor"
+
+esp32:
+  board: esp32-s3-devkitc-1
+
+logger:
+
+wifi:
+  networks:
+    - ssid: !literal "Werk-Produktion"
+      password: !secret wifi_password
+      hidden: true
+  ap:
+    ssid: esppdh-kompressor
+    password: !secret ap_password
+
+captive_portal:
+
+mqtt:
+  broker: !literal "mqtt.werk.example"
+  port: 1883
+  username: esppdh-kompressor
+  password: !secret mqtt_password
+  client_id: esppdh-kompressor
+  topic_prefix: esppdh/kompressor
+  discovery: false
+  discover_ip: false
+  log_topic: null
+  reboot_timeout: 0s
+  birth_message:
+    topic: esppdh/kompressor/status
+    payload: online
+    retain: true
+  will_message:
+    topic: esppdh/kompressor/status
+    payload: offline
+    retain: true
+  shutdown_message:
+    topic: esppdh/kompressor/status
+    payload: offline
+    retain: true
+
+sensor:
+  - platform: adc
+    id: sct013_1_adc
+    pin: GPIO1
+    attenuation: 12db
+    internal: true
+    update_interval: never
+  - platform: ct_clamp
+    id: sct013_1_strom
+    name: Stromzange SCT-013 1 Strom
+    sensor: sct013_1_adc
+    update_interval: 10s
+    filters:
+      - multiply: 100
+    state_topic: esppdh/kompressor/sct013-1/strom
+  - platform: copy
+    source_id: sct013_1_strom
+    name: Stromzange SCT-013 1 Scheinleistung
+    unit_of_measurement: VA
+    device_class: apparent_power
+    state_class: measurement
+    accuracy_decimals: 0
+    filters:
+      - multiply: 230
+    state_topic: esppdh/kompressor/sct013-1/scheinleistung
+  - platform: pulse_meter
+    name: S0-Zähler 1 Leistung
+    pin:
+      number: GPIO4
+      mode:
+        input: true
+        pullup: true
+    internal_filter: 20ms
+    unit_of_measurement: W
+    device_class: power
+    state_class: measurement
+    accuracy_decimals: 0
+    filters:
+      - multiply: 75
+      - throttle_average: 10s
+    state_topic: esppdh/kompressor/s0-1/leistung
+    total:
+      name: S0-Zähler 1 Zählerstand
+      unit_of_measurement: kWh
+      device_class: energy
+      state_class: total_increasing
+      accuracy_decimals: 3
+      filters:
+        - multiply: 0.00125
+        - heartbeat: 10s
+      state_topic: esppdh/kompressor/s0-1/zaehlerstand

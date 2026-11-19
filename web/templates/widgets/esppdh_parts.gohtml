@@ -1,0 +1,108 @@
+{{/* Gemeinsame Teile der Seiten ESPPDH (esppdh.gohtml, esppdh_device.gohtml; esppdh.go).
+     Farben, Ecken und Schatten nur über die Variablen des Farbschemas (Fiori und Fluent,
+     hell und dunkel). Lange Werte (Themen, Kennwörter) brechen um. */}}
+
+{{define "esppdh-style"}}
+<style>
+.esp-head{margin-bottom:16px}
+.esp-head h1{font-size:19px;font-weight:600;display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:4px}
+.esp-intro{font-size:12.5px;color:var(--muted);margin-top:4px;max-width:900px}
+.esp-card{margin-bottom:14px}
+.esp-msg{margin-bottom:14px}
+.esp-msg ul{margin:6px 0 0 18px}
+.esp-ok{border-color:var(--green)}
+.esp-ok>i{color:var(--green)}
+.esp-bad{border-color:var(--red);color:var(--red)}
+.esp-warn{border-color:var(--amber)}
+.esp-warn>i{color:var(--amber)}
+.esp-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));gap:10px;align-items:start}
+.esp-help{font-size:11.5px;color:var(--muted);margin-top:3px}
+.esp-note{font-size:12px;color:var(--muted);margin:8px 0}
+.esp-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%}
+.esp-scroll table{min-width:720px}
+.esp-wrap{overflow-wrap:anywhere;word-break:break-word;min-width:0}
+.esp-mono{font-family:monospace;font-size:12.5px;overflow-wrap:anywhere;word-break:break-all}
+.esp-copy-text{user-select:all}
+.esp-check{display:flex;align-items:flex-start;gap:8px;font-size:13px;margin:8px 0}
+.esp-check input{margin-top:3px}
+</style>
+{{end}}
+
+{{/* Zustand eines Geräts am Broker (esppdhLive, esppdh.go): Abzeichen mit Symbol und Text –
+     die Farbe trägt die Aussage nie allein. Der Zusatz (.Hint) steht auf der Seite daneben. */}}
+{{define "esppdh-live"}}<span class="badge {{.Badge}}" data-live="{{.Key}}"><i class="ti {{.Icon}}" aria-hidden="true"></i>&nbsp;{{.Label}}</span>{{end}}
+
+{{/* Zustand: Docker, ausgeschaltet, Umgebung fehlt (esppdhState) */}}
+{{define "esppdh-state"}}
+{{if .Docker}}<div class="card esp-msg esp-warn" role="status"><i class="ti ti-brand-docker" aria-hidden="true"></i> Im Docker-Betrieb gibt es ESPPDH nicht. Geräte lassen sich nur auf einem Server mit systemd anlegen und bauen.</div>
+{{else if not .Enabled}}<div class="card esp-msg esp-warn" role="status"><i class="ti ti-power" aria-hidden="true"></i> ESPPDH ist ausgeschaltet. Neue Geräte lassen sich erst anlegen, wenn es eingeschaltet ist: <a href="/admin/server-config?tab=esppdh" style="color:var(--accent)">Server-Einstellungen → ESPPDH</a>.</div>
+{{else if .EnvMissing}}<div class="card esp-msg esp-warn" role="status"><i class="ti ti-tool" aria-hidden="true"></i> Die Umgebung zum Bauen (ESPHome) ist an diesem Server noch nicht eingerichtet. Geräte lassen sich anlegen; Firmware bauen geht erst danach: <a href="/admin/server-config?tab=esppdh" style="color:var(--accent)">Server-Einstellungen → ESPPDH</a>.</div>{{end}}
+{{end}}
+
+{{/* Felder eines Geräts außer Name, Kennung und Anlage. F: esppdhForm, C: esppdhChoices,
+     P: Kennung für die Element-IDs, PlainPort: „ohne TLS (Port …)“ anbieten (ESP8266). */}}
+{{define "esppdh-device-fields"}}
+{{$f := .F}}
+<div class="esp-grid" style="margin-top:10px">
+  <div class="form-group"><label class="form-label" for="esp-conn-{{.P}}">Broker (Verbindung) *</label>
+    <select id="esp-conn-{{.P}}" name="connection_id" class="form-input" required>
+      <option value="">– wählen –</option>
+      {{range .C.Conns}}<option value="{{.ID}}"{{if eq .ID $f.ConnID}} selected{{end}}>{{.Label}}</option>{{end}}
+    </select>
+    <div class="esp-help">Nur Verbindungen mit eingebautem Broker.</div></div>
+  <div class="form-group"><label class="form-label" for="esp-board-{{.P}}">Platine *</label>
+    <select id="esp-board-{{.P}}" name="board_key" class="form-input" required onchange="espBoard(this)" data-custom="esp-custom-{{.P}}">
+      {{range .C.Boards}}<option value="{{.Key}}"{{if eq .Key $f.BoardKey}} selected{{end}}>{{.Label}}</option>{{end}}
+    </select></div>
+  <div class="form-group" id="esp-custom-{{.P}}"{{if ne $f.BoardKey "other"}} hidden{{end}}><label class="form-label" for="esp-custom-in-{{.P}}">Platinen-Kennung von ESPHome</label>
+    <input id="esp-custom-in-{{.P}}" name="custom_board" class="form-input" maxlength="64" value="{{$f.CustomBoard}}" placeholder="z. B. nodemcuv2">
+    <div class="esp-help">Bei „Andere Platine“ prüft das PDH die Pins nicht.</div></div>
+  <div class="form-group"><label class="form-label" for="esp-net-{{.P}}">WLAN oder Kabel *</label>
+    <select id="esp-net-{{.P}}" name="net" class="form-input" required onchange="espNet(this)" data-seg="esp-seg-{{.P}}">
+      <option value="">– wählen –</option>
+      {{range .C.WLANs}}<option value="{{.ID}}"{{if eq .ID $f.Net}} selected{{end}}>WLAN {{.Label}}</option>{{end}}
+      <option value="wired"{{if eq $f.Net "wired"}} selected{{end}}>Kabel (nur Platinen mit Ethernet)</option>
+    </select>
+    {{if .C.WLANs}}<div class="esp-help">Zur Wahl stehen die WLANs, die auf der Seite <a href="/admin/network" style="color:var(--accent)">Netzwerk</a> für ESPPDH-Geräte freigegeben sind.</div>
+    {{else}}<div class="esp-help" role="note"><i class="ti ti-info-circle" aria-hidden="true"></i> Noch kein WLAN für ESPPDH-Geräte freigegeben. Auf der Seite <a href="/admin/network" style="color:var(--accent)">Netzwerk</a> beim WLAN den Haken „Für ESPPDH-Geräte nutzbar“ setzen – das darf, wer die Seite Netzwerk pflegt. „Kabel“ geht auch ohne.</div>{{end}}</div>
+  <div class="form-group" id="esp-seg-{{.P}}"{{if ne $f.Net "wired"}} hidden{{end}}><label class="form-label" for="esp-seg-in-{{.P}}">Netz am Kabel <span style="color:var(--muted);font-weight:400">(optional)</span></label>
+    <select id="esp-seg-in-{{.P}}" name="segment_id" class="form-input">
+      <option value="">– unbekannt –</option>
+      {{range .C.Segments}}<option value="{{.ID}}"{{if eq .ID $f.SegmentID}} selected{{end}}>{{.Label}}</option>{{end}}
+    </select></div>
+  <div class="form-group"><label class="form-label" for="esp-note-{{.P}}">Notiz <span style="color:var(--muted);font-weight:400">(optional)</span></label>
+    <input id="esp-note-{{.P}}" name="note" class="form-input" maxlength="500" value="{{$f.Note}}"></div>
+</div>
+{{if .PlainPort}}<label class="esp-check"><input type="checkbox" name="plain"{{if $f.Plain}} checked{{end}}> <span><b>ohne TLS (Port {{.PlainPort}})</b> – ESP8266 kann nicht verschlüsselt verbinden; das Gerät sendet dann unverschlüsselt. Besser: eine ESP32-Platine.</span></label>
+{{else if $f.Plain}}<input type="hidden" name="plain" value="on">{{end}}
+{{end}}
+
+{{define "esppdh-script"}}
+<script>
+function espToggle(id){ const el = document.getElementById(id); if(el){ el.hidden = !el.hidden; if(!el.hidden){ const f = el.querySelector('input:not([type=hidden]),select'); if(f) f.focus(); } } }
+// Platine gewechselt: Feld „Platinen-Kennung“ und die Pin-Vorschläge der Bausteine anpassen
+function espBoard(sel){
+  const c = document.getElementById(sel.dataset.custom); if(c) c.hidden = sel.value !== 'other';
+  const src = document.getElementById('esp-pins'); if(!src) return;
+  let pins = {}; try { pins = JSON.parse(src.dataset.pins || '{}'); } catch(e) {}
+  const p = pins[sel.value] || {};
+  for (const [id, list] of [['esp-pins-a', p.a || []], ['esp-pins-d', p.d || []]]) {
+    const dl = document.getElementById(id); if(!dl) continue;
+    dl.replaceChildren(...list.map(v => { const o = document.createElement('option'); o.value = v; return o; }));
+  }
+}
+function espNet(sel){ const s = document.getElementById(sel.dataset.seg); if(s) s.hidden = sel.value !== 'wired'; }
+// Text in die Zwischenablage; ohne https gibt es die nicht – dann bleibt er markiert zum Kopieren (Strg+C)
+function espCopy(id, btn){
+  const el = document.getElementById(id); if(!el) return;
+  const sel = window.getSelection(), r = document.createRange();
+  r.selectNodeContents(el); sel.removeAllRanges(); sel.addRange(r);
+  if(!navigator.clipboard) return;
+  navigator.clipboard.writeText(el.textContent.trim()).then(() => {
+    const old = btn.innerHTML;
+    btn.innerHTML = '<i class="ti ti-check" aria-hidden="true"></i>';
+    setTimeout(() => { btn.innerHTML = old; }, 1500);
+  }).catch(() => {});
+}
+</script>
+{{end}}
