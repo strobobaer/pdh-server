@@ -362,6 +362,16 @@ type Handler struct {
 	// (nil = esppdh.NewRunner; Tests setzen eine Attrappe)
 	esppdhQ      esppdhQueue
 	esppdhRunner esppdhBuilder
+	// ESPPDH (esppdh_update.go): ESPHome täglich prüfen, proben und umschalten. Adresse der
+	// Versionsliste (leer = pypi.org), Prüfer mit einem bestimmten Programm (nil = esppdh.Runner),
+	// höchstens ein Lauf zur Zeit (Takt und Knopf „Jetzt prüfen“), Uhr (nil = time.Now)
+	esppdhPyPIURL string
+	esppdhProber  func(bin string) esppdhProbeRunner
+	esppdhUpd     struct {
+		mu      sync.Mutex
+		running bool
+	}
+	esppdhNow func() time.Time
 }
 
 func NewHandler(

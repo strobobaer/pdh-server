@@ -54,6 +54,9 @@ type esppdhQueue struct {
 	runDev    string             // sein Gerät
 	cancelRun context.CancelFunc // bricht den laufenden Bau ab
 	byUser    bool               // … weil jemand „Abbrechen“ gedrückt oder das Gerät gelöscht hat
+	// runMu: gehalten, solange ESPHome läuft – vom Bau (esppdhRunBuild) wie von der Probe einer
+	// neuen Version (esppdh_update.go). So laufen nie zwei ESPHome-Aufrufe zugleich.
+	runMu sync.Mutex
 }
 
 const (
@@ -211,6 +214,9 @@ func (h *Handler) esppdhRunNext(ctx context.Context, runner esppdhBuilder) bool 
 // esppdhRunBuild baut einen übernommenen Auftrag und trägt das Ergebnis ein. ctx endet beim
 // Herunterfahren, bctx zusätzlich beim Abbrechen.
 func (h *Handler) esppdhRunBuild(ctx, bctx context.Context, runner esppdhBuilder, c esppdhClaim) {
+	// nie zugleich mit einer Probe: läuft gerade eine, wartet der Bau auf ihr Ende
+	h.esppdhQ.runMu.Lock()
+	defer h.esppdhQ.runMu.Unlock()
 	lg := componentLog("esppdh")
 	var job esppdh.BuildJob
 	var res esppdh.BuildResult
@@ -264,6 +270,18 @@ func (h *Handler) esppdhRunBuild(ctx, bctx context.Context, runner esppdhBuilder
 	}
 	h.esppdhPrune(c.DeviceID, false)
 	lg.Info().Str("lauf", c.ID).Str("gerät", job.Slug).Bool("von_hand", byUser).Msg("bau ohne firmware beendet")
+}
+
+// esppdhQueueIdle: wartet und läuft kein Bau? Ist das nicht lesbar, gilt die Schlange als belegt.
+func (h *Handler) esppdhQueueIdle(ctx context.Context) bool {
+	if h.db == nil {
+		return true
+	}
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	var busy bool
+	err := h.db.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM esppdh_builds WHERE status IN ('queued', 'running'))`).Scan(&busy)
+	return err == nil && !busy
 }
 
 // esppdhJobFor setzt den Auftrag aus dem Gerät zusammen, wie es jetzt gespeichert ist, für die
