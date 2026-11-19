@@ -1006,5 +1006,13 @@
  "Weitere laden": "Load more",
  "zuletzt": "last",
  "Nur die neuesten %d Einträge berücksichtigt": "Only the newest %d entries considered",
- "Keine Berechtigung für die Historie": "No permission to view the history"
+ "Keine Berechtigung für die Historie": "No permission to view the history",
+ "Keine Berechtigung für die Maßnahmen": "No permission to view the measures",
+ "Maßnahmen werden geladen…": "Loading measures…",
+ "Durchgeführte Maßnahmen": "Measures taken",
+ "Noch keine Maßnahmen erfasst": "No measures recorded yet",
+ "Maßnahme eintragen": "Record a measure",
+ "z.B. Sicherung getauscht": "e.g. fuse replaced",
+ "z.B. Ersatzteil bestellt": "e.g. spare part ordered",
+ "z.B. Ursache behoben": "e.g. cause fixed"
 }

@@ -3,6 +3,7 @@ package tickets
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -64,9 +65,19 @@ func (r *Repository) CountActions(ctx context.Context, ticketID string) (int, er
 	return n, err
 }
 
-func (r *Repository) DeleteAction(ctx context.Context, id string) error {
-	_, err := r.db.Exec(ctx, `DELETE FROM ticket_actions WHERE id=$1`, id)
-	return err
+// ErrActionNotFound: die Maßnahme gibt es nicht oder sie gehört zu einem anderen Ticket.
+var ErrActionNotFound = errors.New("maßnahme nicht gefunden")
+
+// DeleteAction löscht die Maßnahme nur, wenn sie zum Ticket ticketID gehört.
+func (r *Repository) DeleteAction(ctx context.Context, ticketID, id string) error {
+	tag, err := r.db.Exec(ctx, `DELETE FROM ticket_actions WHERE id=$1 AND ticket_id=$2`, id, ticketID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrActionNotFound
+	}
+	return nil
 }
 
 // ── Ersatzteil-Merkliste (Buchung erst beim Schließen) ────────
@@ -286,8 +297,8 @@ func (s *Service) AddAction(ctx context.Context, ticketID, description, userID s
 func (s *Service) GetActions(ctx context.Context, ticketID string) ([]*TicketAction, error) {
 	return s.repo.GetActions(ctx, ticketID)
 }
-func (s *Service) DeleteAction(ctx context.Context, id string) error {
-	return s.repo.DeleteAction(ctx, id)
+func (s *Service) DeleteAction(ctx context.Context, ticketID, id string) error {
+	return s.repo.DeleteAction(ctx, ticketID, id)
 }
 func (s *Service) AddPendingPart(ctx context.Context, ticketID string, in *AddPendingPartInput, userID string) (*PendingPart, error) {
 	if in.PartID == "" || in.StorageNodeID == "" {
@@ -364,7 +375,11 @@ func (h *Handler) GetActions(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) DeleteAction(w http.ResponseWriter, r *http.Request) {
-	if err := h.svc.DeleteAction(r.Context(), chi.URLParam(r, "actionID")); err != nil {
+	if err := h.svc.DeleteAction(r.Context(), chi.URLParam(r, "id"), chi.URLParam(r, "actionID")); err != nil {
+		if errors.Is(err, ErrActionNotFound) {
+			response.Error(w, http.StatusNotFound, err.Error())
+			return
+		}
 		response.Error(w, http.StatusInternalServerError, err.Error())
 		return
 	}

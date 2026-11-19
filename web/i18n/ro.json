@@ -1006,5 +1006,13 @@
  "Weitere laden": "Încarcă mai multe",
  "zuletzt": "ultima dată",
  "Nur die neuesten %d Einträge berücksichtigt": "Sunt luate în calcul doar cele mai noi %d intrări",
- "Keine Berechtigung für die Historie": "Nu aveți permisiunea de a vedea istoricul"
+ "Keine Berechtigung für die Historie": "Nu aveți permisiunea de a vedea istoricul",
+ "Keine Berechtigung für die Maßnahmen": "Nu aveți permisiunea de a vedea măsurile",
+ "Maßnahmen werden geladen…": "Se încarcă măsurile…",
+ "Durchgeführte Maßnahmen": "Măsuri luate",
+ "Noch keine Maßnahmen erfasst": "Nicio măsură înregistrată încă",
+ "Maßnahme eintragen": "Înregistrează o măsură",
+ "z.B. Sicherung getauscht": "de ex. siguranță schimbată",
+ "z.B. Ersatzteil bestellt": "de ex. piesă de schimb comandată",
+ "z.B. Ursache behoben": "de ex. cauză remediată"
 }

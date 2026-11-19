@@ -266,6 +266,8 @@ var gateRules = []gateRule{
 	gr(wPost, "infrastructure.edit", "infrastructure", false, `^/infrastructure`+gID+`/setup-(?:buttons|max)-web$`),
 	// ── Beteiligte, Gruppe, Archiv an beliebigen Vorgängen ──
 	gr(wPost, "edit", "*", true, `^/records/([a-z_]+)`+gID+`/(?:people|group|parties)(?:/.*)?$`),
+	// Maßnahmen-Baustein: wie die Schnittstelle …/actions (Bearbeiten des Moduls, Beteiligte dürfen)
+	gr(wPost, "edit", "*", true, `^/records/actions/([a-z_]+)`+gID+`$`),
 	gr(wPost, "done", "*", true, `^/records/([a-z_]+)`+gID+`/archive$`),
 }
 

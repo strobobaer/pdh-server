@@ -3,6 +3,7 @@ package faults
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -62,9 +63,19 @@ func (r *Repository) GetActions(ctx context.Context, faultID string) ([]*FaultAc
 // apply_fault_actions_repository_patch_v2.py direkt in repository.go
 // ergaenzt (fuer Service.Resolve()) - hier nicht nochmal definieren.
 
-func (r *Repository) DeleteAction(ctx context.Context, id string) error {
-	_, err := r.db.Exec(ctx, `DELETE FROM fault_actions WHERE id=$1`, id)
-	return err
+// ErrActionNotFound: die Maßnahme gibt es nicht oder sie gehört zu einer anderen Störung.
+var ErrActionNotFound = errors.New("maßnahme nicht gefunden")
+
+// DeleteAction löscht die Maßnahme nur, wenn sie zur Störung faultID gehört.
+func (r *Repository) DeleteAction(ctx context.Context, faultID, id string) error {
+	tag, err := r.db.Exec(ctx, `DELETE FROM fault_actions WHERE id=$1 AND fault_id=$2`, id, faultID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrActionNotFound
+	}
+	return nil
 }
 
 // FaultPartUsage: ein Ersatzteil, das für diese Störung gebucht wurde
@@ -119,8 +130,8 @@ func (s *Service) AddAction(ctx context.Context, faultID, description, userID st
 func (s *Service) GetActions(ctx context.Context, faultID string) ([]*FaultAction, error) {
 	return s.repo.GetActions(ctx, faultID)
 }
-func (s *Service) DeleteAction(ctx context.Context, id string) error {
-	return s.repo.DeleteAction(ctx, id)
+func (s *Service) DeleteAction(ctx context.Context, faultID, id string) error {
+	return s.repo.DeleteAction(ctx, faultID, id)
 }
 func (s *Service) GetPartsUsage(ctx context.Context, faultID string) ([]*FaultPartUsage, error) {
 	return s.repo.GetPartsUsage(ctx, faultID)
@@ -165,7 +176,11 @@ func (h *Handler) GetActions(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) DeleteAction(w http.ResponseWriter, r *http.Request) {
-	if err := h.svc.DeleteAction(r.Context(), chi.URLParam(r, "actionID")); err != nil {
+	if err := h.svc.DeleteAction(r.Context(), chi.URLParam(r, "id"), chi.URLParam(r, "actionID")); err != nil {
+		if errors.Is(err, ErrActionNotFound) {
+			response.Error(w, http.StatusNotFound, err.Error())
+			return
+		}
 		response.Error(w, http.StatusInternalServerError, err.Error())
 		return
 	}

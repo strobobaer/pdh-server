@@ -1006,5 +1006,13 @@
  "Weitere laden": "Вчитај повеќе",
  "zuletzt": "последно",
  "Nur die neuesten %d Einträge berücksichtigt": "Се земени предвид само најновите %d записи",
- "Keine Berechtigung für die Historie": "Немате дозвола за историјата"
+ "Keine Berechtigung für die Historie": "Немате дозвола за историјата",
+ "Keine Berechtigung für die Maßnahmen": "Немате дозвола за мерките",
+ "Maßnahmen werden geladen…": "Мерките се вчитуваат…",
+ "Durchgeführte Maßnahmen": "Преземени мерки",
+ "Noch keine Maßnahmen erfasst": "Сè уште нема запишани мерки",
+ "Maßnahme eintragen": "Запиши мерка",
+ "z.B. Sicherung getauscht": "на пр. заменет осигурувач",
+ "z.B. Ersatzteil bestellt": "на пр. нарачан резервен дел",
+ "z.B. Ursache behoben": "на пр. причината е отстранета"
 }

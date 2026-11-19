@@ -688,6 +688,9 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/records/fields/{module}/{id}", h.RecordFieldsWeb)
 	r.Get("/records/links/{module}/{id}", h.RecordLinksWeb)
 	r.Get("/records/history/{module}/{id}", h.RecordHistoryWeb)
+	// Maßnahmen an Störung, Ticket, Aufgabe, Wartung (record_actions.go); der POST ist in gateRules gesichert
+	r.Get("/records/actions/{module}/{id}", h.RecordActionsWeb)
+	r.Post("/records/actions/{module}/{id}", h.RecordActionsAddWeb)
 	r.Post("/records/fields/{module}/{id}", h.RecordFieldsSaveWeb)
 	// Kopfleiste: Kategorien (#) + Stammdaten-Status (Sperren/Deaktivieren/Loeschvormerkung)
 	r.Get("/records/meta/{module}/{id}", h.RecordMetaWeb)

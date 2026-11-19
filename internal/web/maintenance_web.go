@@ -556,8 +556,7 @@ type MaintenanceTaskDetailData struct {
 	FilledCount int
 	Progress    int // Prozent erfasst
 	Templates   []*maintenance.ChecklistTemplate
-	Actions     []*maintenance.TaskAction
-	PartsUsed   []*maintenance.PartUsage
+	PartsUsed  []*maintenance.PartUsage
 	Pending     []*maintenance.PendingPart
 	Users       []UserOption
 	NextTaskID  string
@@ -632,7 +631,6 @@ func (h *Handler) MaintenanceTaskDetail(w http.ResponseWriter, r *http.Request) 
 		data.Templates, _ = h.maint.Repo().ListTemplates(ctx)
 		data.Pending, _ = h.maint.GetPendingParts(ctx, id)
 	}
-	data.Actions, _ = h.maint.GetActions(ctx, id)
 	data.PartsUsed, _ = h.maint.GetPartsUsage(ctx, id)
 	if !v.IsOpen && t.PlanID != nil {
 		var due time.Time
