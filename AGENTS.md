@@ -250,7 +250,7 @@ oder ändern.**
    Testverbund, im Browser geprüft (18.11.2026).
 5. **0.81.5 Fingerabdruck bricht um, Netzwerk-Kennungen** (Efficio-Export
    auf schmalen Bildschirmen; neue Kennungen mit `pdh_uuid_v7()`,
-   Migration 178) – auf `main`. Offen: Verbund-Update.
+   Migration 178) – auf `main` und dem Testverbund (18.11.2026).
 6. **ESPPDH Paket 1 = Version 0.82.0** (vom Anwender festgelegt): gebaut und
    lokal committet auf `feature/esppdh` (Migrationen 179 und 180, Rechte
    `esppdh.view`, `esppdh.edit`, `esppdh.admin`; Entwurf
