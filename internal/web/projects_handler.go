@@ -149,6 +149,7 @@ type ProjectsPageData struct {
 	Projects []ProjectView
 	Total    int
 	Users    []UserOption
+	Mine     bool // ohne Ansichtsrecht: nur die Projekte, an denen die Person beteiligt ist
 }
 
 func (h *Handler) ProjectsPage(w http.ResponseWriter, r *http.Request) {
@@ -164,10 +165,17 @@ func (h *Handler) ProjectsPage(w http.ResponseWriter, r *http.Request) {
 	}, false)
 	list, err := h.projects.List(ctx, projects.Status(filter))
 	if err == nil {
-		data.Total = len(list)
 		tagIDs := h.categoryFilterIDs(r, "project")
 		scopeIDs := h.scopeAllowedIDs(r, "project")
+		// Ansichtsrecht (view_rights.go): mit Recht die Projekte der erlaubten Abteilungen, ohne Recht
+		// nur die eigenen („Meine Projekte“).
+		canView := h.viewFilter(r, "project")
+		data.Mine = !h.mayViewAny(r, "project")
 		for _, p := range list {
+			if !canView(p.ID) {
+				continue
+			}
+			data.Total++
 			if tagIDs != nil && !tagIDs[p.ID] || scopeIDs != nil && !scopeIDs[p.ID] {
 				continue
 			}
@@ -190,6 +198,11 @@ func (h *Handler) ProjectDetail(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	id := chi.URLParam(r, "id")
 
+	// Ansichtsrecht für die Abteilung des Projekts oder beteiligt (view_rights.go)
+	if !h.canViewRec(r, "project", id) {
+		http.Error(w, tr(h.requestLang(r), "Keine Berechtigung"), http.StatusForbidden)
+		return
+	}
 	p, err := h.projects.GetByID(ctx, id)
 	if err != nil {
 		http.Redirect(w, r, "/projects", http.StatusFound)

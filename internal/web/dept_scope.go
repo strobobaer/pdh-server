@@ -255,17 +255,34 @@ func (h *Handler) APIDepartmentScope(next http.Handler) http.Handler {
 		}
 		u, err := h.users.GetByID(r.Context(), uid)
 		if err != nil || u == nil {
+			if (single && refType == "project") || (!single && listType == "project") {
+				// Projekte nie ohne geprüften Benutzer ausliefern
+				http.Error(w, `{"success":false,"error":"kein zugriff"}`, http.StatusForbidden)
+				return
+			}
 			next.ServeHTTP(w, r)
 			return
 		}
 		s := h.deptScopeFor(r.Context(), u.ID, string(u.Role))
-		if s == nil {
+		// Projekte: zusätzlich das Ansichtsrecht (view_rights.go), auch ohne Abteilungssperre der Rolle
+		viewType := ""
+		if single && refType == "project" {
+			viewType = "project"
+		} else if !single && listType == "project" {
+			viewType = "project"
+		}
+		if s == nil && viewType == "" {
 			next.ServeHTTP(w, r)
 			return
 		}
+		req := r.WithContext(context.WithValue(r.Context(), "user", u))
 		if single {
-			if !h.recordInScope(r.Context(), s, refType, id) {
+			if s != nil && !h.recordInScope(r.Context(), s, refType, id) {
 				http.Error(w, `{"success":false,"error":"kein zugriff: andere abteilung"}`, http.StatusForbidden)
+				return
+			}
+			if viewType != "" && !h.canViewRec(req, viewType, id) {
+				http.Error(w, `{"success":false,"error":"kein zugriff"}`, http.StatusForbidden)
 				return
 			}
 			next.ServeHTTP(w, r)
@@ -276,8 +293,12 @@ func (h *Handler) APIDepartmentScope(next http.Handler) http.Handler {
 		next.ServeHTTP(rec, r)
 		body := rec.buf.Bytes()
 		if rec.status == http.StatusOK {
-			req := r.WithContext(context.WithValue(r.Context(), "user", u))
-			body = filterJSONList(body, h.scopeAllowedIDs(req, listType))
+			if s != nil {
+				body = filterJSONList(body, h.scopeAllowedIDs(req, listType))
+			}
+			if viewType != "" {
+				body = filterJSONFunc(body, h.viewFilter(req, viewType))
+			}
 		}
 		for k, v := range rec.header {
 			w.Header()[k] = v
@@ -323,10 +344,15 @@ func filterJSONList(body []byte, allowed map[string]bool) []byte {
 	if allowed == nil {
 		return body
 	}
+	return filterJSONFunc(body, func(id string) bool { return allowed[id] })
+}
+
+// filterJSONFunc: wie filterJSONList, mit einer Prüffunktion statt einer Menge.
+func filterJSONFunc(body []byte, allowed func(id string) bool) []byte {
 	keep := func(items []map[string]any) []map[string]any {
 		out := make([]map[string]any, 0, len(items))
 		for _, it := range items {
-			if id, _ := it["id"].(string); allowed[id] {
+			if id, _ := it["id"].(string); allowed(id) {
 				out = append(out, it)
 			}
 		}

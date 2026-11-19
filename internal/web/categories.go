@@ -144,7 +144,15 @@ func (h *Handler) CategoriesPage(w http.ResponseWriter, r *http.Request) {
 	if d.Selected != nil {
 		for _, module := range recordModuleOrder {
 			fm, ok := fieldModuleByKey(module)
-			if !ok || !(h.hasPerm(r, fm.ViewPerm) || h.hasPerm(r, fm.EditPerm)) {
+			if !ok {
+				continue
+			}
+			// Projekt und KVP: je Datensatz Ansichtsrecht (Abteilung) oder beteiligt; „bearbeiten“
+			// zeigt keine Titel (view_rights.go). Alle anderen Module wie bisher nach Recht.
+			var canView func(string) bool
+			if _, viewed := viewRights[module]; viewed {
+				canView = h.viewFilter(r, module)
+			} else if !(h.hasPerm(r, fm.ViewPerm) || h.hasPerm(r, fm.EditPerm)) {
 				continue
 			}
 			mi := recordModules[module]
@@ -159,7 +167,7 @@ func (h *Handler) CategoriesPage(w http.ResponseWriter, r *http.Request) {
 			}
 			for rs.Next() {
 				var id, title string
-				if rs.Scan(&id, &title) == nil {
+				if rs.Scan(&id, &title) == nil && (canView == nil || canView(id)) {
 					g.Items = append(g.Items, categoryRecord{Title: title, URL: mi.Path + id})
 				}
 			}

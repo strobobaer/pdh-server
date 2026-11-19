@@ -90,8 +90,8 @@ type historyModule struct {
 // das Modul kennt, auf Seite und Historienpfad gleich).
 func historyLogin(h *Handler, r *http.Request, id string) bool { return getUser(r).ID != "" }
 
-// historyViewRight: Historie nur mit dem Recht „ansehen“ oder „bearbeiten“ des Bereichs
-// (wie canViewRecord; so lud sie bei Aufgabe und Wartung schon vor dem Sortieren).
+// historyViewRight: Historie wie canViewRecord – bei Projekt und KVP Ansichtsrecht oder
+// Beteiligung (viewRights), sonst „ansehen“ oder „bearbeiten“ des Bereichs.
 func historyViewRight(key string) func(h *Handler, r *http.Request, id string) bool {
 	m, ok := fieldModuleByKey(key)
 	if !ok {
@@ -114,17 +114,16 @@ func historyModuleOf(key string, can func(h *Handler, r *http.Request, id string
 // (nicht fieldModules), weil dort für Projekt, KVP, Infrastruktur und Lager kein
 // Ansichtsrecht steht und die Historie sonst jedem Angemeldeten offen stünde.
 var historyModules = map[string]historyModule{
-	// Störung (FaultDetail, handler.go), Ticket (TicketDetail), Projekt (ProjectDetail, projects_handler.go),
-	// KVP (KVPDetailPage, kvp.go), Ersatzteil (PartDetailPage, parts.go): die Seiten verlangen nur die
-	// Anmeldung – wer dort nur „lösen“, „buchen“ o. Ä. darf, sieht auch die Historie. Aufgabe und Wartung
-	// brauchen wie vor dem Sortieren das Recht „ansehen“ oder „bearbeiten“ des Bereichs (historyViewRight);
-	// „lösen“ allein reicht dort nicht.
+	// Störung (FaultDetail, handler.go), Ticket (TicketDetail), Aufgabe, Wartung, Ersatzteil (PartDetailPage,
+	// parts.go): die Seiten verlangen nur die Anmeldung (und die Abteilungssperre) – wer dort nur „lösen“,
+	// „buchen“ o. Ä. darf, sieht auch die Historie. Projekt und KVP: Ansichtsrecht oder beteiligt
+	// (historyViewRight → canViewRec).
 	"fault":            historyModuleOf("fault", historyLogin),
 	"ticket":           historyModuleOf("ticket", historyLogin),
-	"task":             historyModuleOf("task", historyViewRight("task")),
-	"maintenance_task": historyModuleOf("maintenance_task", historyViewRight("maintenance_task")),
-	"project":          historyModuleOf("project", historyLogin),
-	"kvp":              historyModuleOf("kvp", historyLogin),
+	"task":             historyModuleOf("task", historyLogin),
+	"maintenance_task": historyModuleOf("maintenance_task", historyLogin),
+	"project":          historyModuleOf("project", historyViewRight("project")),
+	"kvp":              historyModuleOf("kvp", historyViewRight("kvp")),
 	"part":             historyModuleOf("part", historyLogin),
 	// Rüstzeit: SetupDetailPage (setup_pages.go) – permSetupView in der Abteilung der Rüstzeit
 	"setup": historyModuleOf("setup", func(h *Handler, r *http.Request, id string) bool {
@@ -541,6 +540,11 @@ func (h *Handler) linkChat(ctx context.Context, module, id, userID string) linkG
 func (h *Handler) canViewRecord(r *http.Request, m fieldModule, id string) bool {
 	if m.Key == "user" && id == getUser(r).ID {
 		return true
+	}
+	// Projekt und KVP: Ansichtsrecht für die Abteilung des Datensatzes oder beteiligt
+	// (view_rights.go); „bearbeiten“ schließt das Ansehen nicht ein.
+	if _, ok := viewRights[m.Key]; ok {
+		return h.canViewRec(r, m.Key, id)
 	}
 	return h.hasPerm(r, m.ViewPerm) || h.hasPerm(r, m.EditPerm)
 }
