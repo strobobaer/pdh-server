@@ -457,7 +457,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/tickets/{id}/status-web", h.TicketStatusWeb) // FIX: war PUT, wird von Cloudflare/Nginx blockiert
 	r.Post("/tickets/{id}/resolve-web", h.TicketResolve)
 	r.Post("/tickets/{id}/infrastructure-web", h.TicketInfrastructureWeb) // war PUT, wird von Cloudflare/Nginx blockiert
-	r.Post("/tickets/{id}/comment", h.TicketAddComment)
+	r.Post("/tickets/{id}/comment", h.TicketCommentLegacy)                // alter Weg, läuft über den Baustein
 	r.Post("/tickets/{id}/time/start", h.TicketStartTime)
 	r.Get("/faults", h.Faults)
 	r.Post("/faults", h.CreateFault)
@@ -691,6 +691,9 @@ func (h *Handler) Routes() chi.Router {
 	// Maßnahmen an Störung, Ticket, Aufgabe, Wartung (record_actions.go); der POST ist in gateRules gesichert
 	r.Get("/records/actions/{module}/{id}", h.RecordActionsWeb)
 	r.Post("/records/actions/{module}/{id}", h.RecordActionsAddWeb)
+	// Kommentare an Ticket und KVP-Vorschlag (record_comments.go); wie bisher ohne eigenes Recht
+	r.Get("/records/comments/{module}/{id}", h.RecordCommentsWeb)
+	r.Post("/records/comments/{module}/{id}", h.RecordCommentsAddWeb)
 	r.Post("/records/fields/{module}/{id}", h.RecordFieldsSaveWeb)
 	// Kopfleiste: Kategorien (#) + Stammdaten-Status (Sperren/Deaktivieren/Loeschvormerkung)
 	r.Get("/records/meta/{module}/{id}", h.RecordMetaWeb)
@@ -2906,27 +2909,6 @@ func (h *Handler) TicketDetail(w http.ResponseWriter, r *http.Request) {
 	}
 	data.SyncOrigin = h.syncOrigin(r, extsync.RefTicket, id)
 	h.render(w, "ticket_detail", data)
-}
-
-func (h *Handler) TicketAddComment(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	u := getUser(r)
-	r.ParseForm()
-	c, err := h.tickets.AddComment(r.Context(), id, u.ID, r.FormValue("text"))
-	w.Header().Set("Content-Type", "text/html")
-	if err != nil {
-		fmt.Fprintf(w, `<div style="color:var(--red)">Fehler</div>`)
-		return
-	}
-	initial := "?"
-	if r := []rune(u.FirstName); len(r) > 0 {
-		initial = string(r[:1])
-	}
-	fmt.Fprintf(w, `<div style="display:flex;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)">
-		<div style="width:30px;height:30px;background:var(--accent);border-radius:50%%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;flex-shrink:0;color:#fff">%s</div>
-		<div><div style="font-size:12px;font-weight:500">%s · <span style="color:var(--muted);font-weight:400">gerade eben</span></div>
-		<div style="font-size:13px;margin-top:4px">%s</div></div></div>`,
-		esc(initial), esc(u.FirstName+" "+u.LastName), esc(c.Text))
 }
 
 func (h *Handler) TicketStatusWeb(w http.ResponseWriter, r *http.Request) {

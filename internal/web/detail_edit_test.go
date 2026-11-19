@@ -64,12 +64,11 @@ func TestTicketDetailShowsComments(t *testing.T) {
 		Comments:     []CommentView{c, commentView("c2", "", "ohne Namen", time.Now())},
 		CommentCount: 2,
 	})
-	for _, w := range []string{"Testspiegel", "Übel Ärger", "ohne Namen", "Unbekannt", "Kommentare <b>2</b>"} {
+	// die Liste kommt über den Baustein (record_comments.go, geprüft in record_comments_test.go);
+	// die Seite zeigt nur die Zahl am Reiter und den Platzhalter, der den Baustein nachlädt
+	for _, w := range []string{"Kommentare <b>2</b>", `hx-get="/records/comments/ticket/t1"`} {
 		if !strings.Contains(out, w) {
 			t.Errorf("%q fehlt", w)
 		}
-	}
-	if strings.Contains(out, "Noch keine Kommentare") {
-		t.Error("leer trotz Kommentaren")
 	}
 }

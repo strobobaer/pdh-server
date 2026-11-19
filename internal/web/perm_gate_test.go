@@ -44,7 +44,9 @@ func TestPermissionGateRules(t *testing.T) {
 	// offen: Melden, Kommentare, Chat, Zeiterfassung, Lesen
 	for _, c := range [][2]string{{"POST", "/faults"}, {"POST", "/api/v1/faults/"}, {"POST", "/tickets"}, {"POST", "/tickets/" + id + "/comment"},
 		{"POST", "/api/v1/faults/" + id + "/chat"}, {"POST", "/faults/" + id + "/time/start"}, {"GET", "/api/v1/tasks/" + id},
-		{"GET", "/records/actions/fault/" + id}} {
+		{"GET", "/records/actions/fault/" + id},
+		// Kommentar-Baustein: wie die alten Wege (/tickets/{id}/comment, /kvp/{id}/comment) ohne eigenes Recht
+		{"POST", "/records/comments/ticket/" + id}, {"POST", "/records/comments/kvp/" + id}, {"GET", "/records/comments/kvp/" + id}} {
 		if _, perm, _, _, ok := matchGate(c[0], c[1]); ok {
 			t.Errorf("%s %s sollte offen sein, verlangt %q", c[0], c[1], perm)
 		}

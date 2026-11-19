@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"pdh/internal/core/listsort"
 	"pdh/pkg/appsettings"
 )
 
@@ -680,6 +681,8 @@ type kvpActionView struct {
 	DueDate                                                                      *time.Time
 	Done                                                                         bool
 	DoneAt, DoneBy                                                               string
+	CreatedByName                                                                string
+	CreatedAt                                                                    time.Time
 }
 
 func (a kvpActionView) DueLabel() string { return kvpDate(a.DueDate) }
@@ -691,10 +694,12 @@ func (a kvpActionView) Overdue() bool {
 func (h *Handler) kvpActions(ctx context.Context, ideaID string, overdue bool) []kvpActionView {
 	q := `SELECT a.id::text, a.idea_id::text, 'KVP-' || lpad(k.number::text, greatest(4, length(k.number::text)), '0'), k.title, a.description,
 	             COALESCE(a.responsible_id::text, ''), COALESCE(u.first_name || ' ' || u.last_name, ''), a.due_date,
-	             a.done_at IS NOT NULL, COALESCE(to_char(a.done_at, 'DD.MM.YYYY'), ''), COALESCE(du.first_name || ' ' || du.last_name, '')
-	        FROM kvp_actions a JOIN kvp_ideas k ON k.id = a.idea_id
-	        LEFT JOIN users u ON u.id = a.responsible_id
-	        LEFT JOIN users du ON du.id = a.done_by`
+	             a.done_at IS NOT NULL, COALESCE(to_char(a.done_at, 'DD.MM.YYYY'), ''), COALESCE(du.first_name || ' ' || du.last_name, ''),
+		             COALESCE(TRIM(cu.first_name || ' ' || cu.last_name), ''), a.created_at
+		        FROM kvp_actions a JOIN kvp_ideas k ON k.id = a.idea_id
+		        LEFT JOIN users u ON u.id = a.responsible_id
+		        LEFT JOIN users du ON du.id = a.done_by
+		        LEFT JOIN users cu ON cu.id = a.created_by`
 	var args []any
 	if overdue {
 		q += ` WHERE a.done_at IS NULL AND a.due_date < CURRENT_DATE AND k.archived_at IS NULL ORDER BY a.due_date LIMIT 20`
@@ -711,11 +716,25 @@ func (h *Handler) kvpActions(ctx context.Context, ideaID string, overdue bool) [
 	for rows.Next() {
 		var a kvpActionView
 		if rows.Scan(&a.ID, &a.IdeaID, &a.IdeaCode, &a.IdeaTitle, &a.Description, &a.ResponsibleID, &a.ResponsibleName, &a.DueDate,
-			&a.Done, &a.DoneAt, &a.DoneBy) == nil {
+			&a.Done, &a.DoneAt, &a.DoneBy, &a.CreatedByName, &a.CreatedAt) == nil {
 			out = append(out, a)
 		}
 	}
 	return out
+}
+
+// arrangeKVPActions ordnet Maßnahmen für die Karte „Do“: nach Termin (Standard), Eingang, Person
+// (Verantwortlicher) oder – bei „häufigste“ und „gleiches zusammen“ – gleiche Beschreibungen gruppiert.
+// kvpActions selbst bleibt nach Termin sortiert (Assistent, Abhak-Ansicht, A3-Druck).
+func arrangeKVPActions(list []kvpActionView, mode listsort.Mode) []listEntry[kvpActionView] {
+	items := make([]listsort.Item, len(list))
+	for i, a := range list {
+		items[i] = listsort.Item{At: a.CreatedAt, Key: listsort.Key(a.Description), Label: a.Description, Person: a.ResponsibleName}
+		if a.DueDate != nil {
+			items[i].Due = *a.DueDate
+		}
+	}
+	return arrangeRows(items, list, mode)
 }
 
 type kvpComment struct {
@@ -959,11 +978,14 @@ type KVPDetailData struct {
 	Categories []kvpCategoryDef
 	Statuses   []kvpStatusDef
 	Actions    []kvpActionView
-	Comments   []kvpComment
-	Next       []kvpTransition
-	PDCA       []kvpStatusDef
-	Scores     []int
-	MyUserID   string
+	// ActionEntries: dieselben Maßnahmen in der gewählten Sortierung (Karte „Do“), ActionBar: die Leiste dazu
+	ActionEntries []listEntry[kvpActionView]
+	ActionBar     SortBar
+	Comments      []kvpComment
+	Next          []kvpTransition
+	PDCA          []kvpStatusDef
+	Scores        []int
+	MyUserID      string
 }
 
 type kvpTransition struct {
@@ -1078,6 +1100,9 @@ func (h *Handler) KVPDetailPage(w http.ResponseWriter, r *http.Request) {
 		MyUserID:   getUser(r).ID,
 	}
 	d.Title = k.Code() + " · " + k.Title
+	mode := h.sortMode(r, "kvp_actions")
+	d.ActionEntries = arrangeKVPActions(d.Actions, mode)
+	d.ActionBar = h.sortBar(r, "kvp_actions", mode, "/kvp/"+k.ID+"?tab=pdca", "")
 	for _, s := range kvpPDCA {
 		d.PDCA = append(d.PDCA, kvpStatus(s))
 	}

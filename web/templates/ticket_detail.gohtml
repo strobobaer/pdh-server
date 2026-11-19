@@ -131,26 +131,7 @@
 <!-- ── Kommentare ── -->
 <div class="rec-pane" data-pane="comments">
     <!-- Kommentare -->
-    <div class="card">
-      <div class="card-title">Kommentare <span style="font-size:11px;color:var(--muted)">{{.CommentCount}}</span></div>
-      <div id="comments-list">
-        {{range .Comments}}
-        <div style="display:flex;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)">
-          <div style="width:30px;height:30px;background:var(--accent);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;flex-shrink:0;color:#fff">{{.Initial}}</div>
-          <div style="flex:1">
-            <div style="font-size:12px;font-weight:500">{{.UserName}} <span style="color:var(--muted);font-weight:400">· {{.CreatedAgo}}</span></div>
-            <div style="font-size:13px;margin-top:4px;line-height:1.5">{{.Text}}</div>
-          </div>
-        </div>
-        {{else}}
-        <div style="color:var(--muted);font-size:12px;padding:8px 0">Noch keine Kommentare</div>
-        {{end}}
-      </div>
-      <form hx-post="/tickets/{{.Ticket.ID}}/comment" hx-target="#comments-list" hx-swap="beforeend" style="margin-top:12px;display:flex;gap:8px">
-        <input data-suggest="comment" name="text" class="form-input" placeholder="Kommentar hinzufügen..." style="flex:1;font-size:12px" required>
-        <button class="btn" type="submit" aria-label="Senden"><i class="ti ti-send"></i></button>
-      </form>
-    </div>
+    {{template "record-comments-slot" (dict "Module" "ticket" "ID" .Ticket.ID)}}
 </div>
 
 <!-- ── Maßnahmen & Ersatzteile ── -->
