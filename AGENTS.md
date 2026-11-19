@@ -283,7 +283,12 @@ oder ändern.**
    182, Branch `feature/sortierung` ab `main` mit 0.82.1). Der Plan behebt
    zwei Lücken im Bestand mit: Löschen einer Maßnahme prüft den Datensatz
    nicht; Historie von Projekt, KVP, Anlage und Lagerort ist ohne
-   Ansichtsrecht abrufbar. Im Bau auf `feature/sortierung`.
+   Ansichtsrecht abrufbar. Gebaut auf dem Branch `feature/sortierung`
+   (Migration 182, kein neues Recht). Offen: Freigabe für Merge und Push;
+   danach Browserprüfung der Leiste in Fiori/Fluent, hell/dunkel, 320–1366 px
+   an Störung, Ticket, KVP, Anlage und einer Protokoll-Liste. Entscheidung des
+   Anwenders offen: eigenes Ansichtsrecht für Projekte und KVP (ihre Seiten
+   und damit ihre Historie sieht heute jeder Angemeldete).
    **Wunsch vom 19.11.2026: Netzwerkliste aus UniFi und Omada vorbefüllen**
    (Seite „Netzwerk“: Netze und WLANs vom Controller holen, der Anwender
    bestätigt nur noch). Noch kein Entwurf; offen ist die Antwort, ob auch die
