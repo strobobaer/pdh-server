@@ -254,8 +254,10 @@ oder ändern.**
 6. **ESPPDH Paket 1 = Version 0.82.0** (vom Anwender festgelegt): auf `main`
    (19.11.2026; Migrationen 179 bis 181, Rechte `esppdh.view`, `esppdh.edit`,
    `esppdh.admin`; Entwurf `docs/superpowers/specs/2026-11-18-esppdh-design.md`,
-   Plan `docs/superpowers/plans/2026-11-18-esppdh-paket1.md`). Offen: Freigabe
-   für das Verbund-Update; danach am Testverbund auf der Seite „Netzwerk“ den
+   Plan `docs/superpowers/plans/2026-11-18-esppdh-paket1.md`). **0.82.0 bis
+   0.82.2 sind auf dem Testverbund** (19.11.2026, Verbund-Update auf
+   `1cfbe6e`; beide Server und Zeuge 0.82.2, Migrationen 179–182 da, aktiv
+   jetzt `pdh-server` 10.10.0.17). Offen: am Testverbund auf der Seite „Netzwerk“ den
    Haken „Für ESPPDH-Geräte nutzbar“ am Geräte-WLAN setzen, auf beiden Servern
    die Umgebung einrichten, ein Gerät bauen, die Rollen umschalten, die
    Firmware am zweiten Server herunterladen und im Browser prüfen. Paket 2 und
@@ -267,8 +269,8 @@ oder ändern.**
    `docs/superpowers/specs/2026-11-19-esphome-aktuell-design.md`, Plan
    `docs/superpowers/plans/2026-11-19-esphome-aktuell.md` (vom Anwender am
    19.11.2026 freigegeben). Auf `main` (19.11.2026, Merge `ad75fb0`; keine
-   Migration, kein neues Recht). Offen: Freigabe für das Verbund-Update;
-   danach am Testverbund (zusammen mit 0.82.0): Umgebung einrichten, „Jetzt
+   Migration, kein neues Recht); auf dem Testverbund. Offen am Testverbund
+   (zusammen mit 0.82.0): Umgebung einrichten, „Jetzt
    prüfen“ auf beiden Servern, „Zurück zur vorigen Version“ am Spiegel, eine
    Probe während `systemctl restart pdh`, Reiter „ESPPDH“ im Browser in Fiori
    und Fluent, hell/dunkel, 320–1366 px. Geparkt: Hinweis am Gerät bleibt alt,
@@ -284,8 +286,8 @@ oder ändern.**
    zwei Lücken im Bestand mit: Löschen einer Maßnahme prüft den Datensatz
    nicht; Historie von Projekt, KVP, Anlage und Lagerort ist ohne
    Ansichtsrecht abrufbar. Auf `main` (19.11.2026, Merge `1cfbe6e`;
-   Migration 182, kein neues Recht). Offen: Freigabe für das Verbund-Update;
-   danach Browserprüfung der Leiste in Fiori/Fluent, hell/dunkel, 320–1366 px
+   Migration 182, kein neues Recht); auf dem Testverbund. Offen:
+   Browserprüfung der Leiste in Fiori/Fluent, hell/dunkel, 320–1366 px
    an Störung, Ticket, KVP, Anlage und einer Protokoll-Liste. Geparkt für
    die Browserprüfung: Unterrand des gewählten Sortier-Knopfs in Fiori,
    Breite des Auswahlfelds auf dem Handy.
@@ -300,13 +302,18 @@ oder ändern.**
    (a) **0.82.3 Rechte:** eigenes Ansichtsrecht für Projekte und für KVP
    (ja); Historie von Aufgaben und Wartungsaufträgen sieht jeder, der den
    Vorgang öffnen kann (ja). Branch `feature/rechte-projekte-kvp`. Entwurf
-   in Arbeit.
+   `docs/superpowers/specs/2026-11-19-rechte-projekte-kvp-design.md` (mit
+   zwei Sicherheitspunkten: Leitstand-Kalender für Gäste, Ordnerlisten unter
+   `/uploads/`) – wartet auf Freigabe. Vorschlag für später: Anhänge nur mit
+   Anmeldung.
    (b) **0.82.4 Seite „Netzwerk“:** Netze und WLANs aus UniFi und Omada
    vorschlagen, der Anwender bestätigt nur noch; WLAN-Kennwörter werden mit
    übernommen (ja, Handeingabe als Rückfall); Karte „Dieser Server“ mit
    Adresse, Gateway, DNS, fest/automatisch, „Jetzige Adresse fest einstellen“
    und DNS ändern (Stufe 1 reicht, ja). Eine andere Adresse vergeben (Stufe 2)
-   ist kein Auftrag. Entwurf in Arbeit.
+   ist kein Auftrag. Entwurf
+   `docs/superpowers/specs/2026-11-19-netzwerk-vorschlaege-server-design.md`
+   – wartet auf Freigabe.
 7. **0.81.6 Nummern ab 10000** (Rüstzeit, KVP, Bestellung und Partner waren auf
    vier Stellen abgeschnitten) – mit 0.82.0 auf `main`; der lokale Branch
    `fix/ruestzeit-nummer` ist damit erledigt.
