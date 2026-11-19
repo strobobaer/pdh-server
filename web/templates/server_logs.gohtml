@@ -8,6 +8,8 @@
 .lg-filter .form-input{min-width:0;max-width:100%}
 .lg-filter .wide{grid-column:span 2}
 .lg-filter [hidden]{display:none!important}
+/* schmal (nur eine Spalte passt, 320–440 px): breite Felder ohne zusätzliche, implizite zweite Spalte */
+@media(max-width:480px){.lg-filter .wide{grid-column:1/-1}}
 .lg-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}
 .lg-meta{font-size:11px;color:var(--muted);margin:6px 0}
 .lg-live{color:var(--green,#16a34a)}

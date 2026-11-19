@@ -22,25 +22,31 @@ im Kapitel „Versionen & Updates“ an.
 
 - Ohne „Projekte: ansehen“ fehlt der Menüpunkt Projekte, die Liste zeigt nur „Meine Projekte“, und Detail, Kalender, Schnittstelle, Copilot und Zähler zeigen nur sichtbare Projekte.
 - Ohne „KVP: alle Vorschläge ansehen“ zeigt die KVP-Seite nur „Meine Vorschläge“ und „Idee einreichen“, ohne Kennzahlen und Board; Einreichen dürfen weiter alle.
-- Das Feld „KVP“ auf der Startseite erscheint nur noch mit dem Recht und zählt nur sichtbare Ideen.
+- Das Widget „KVP-Vorschläge“ auf der Startseite erscheint nur noch mit dem Recht und zählt nur sichtbare Ideen.
 - „Projekte bearbeiten“ und „KVP steuern“ wirken ohne das Ansehen-Recht nur an Vorgängen, an denen man beteiligt ist.
+- Aufgaben, Partner und Anlagen-Kommentare lassen sich nur noch mit Projekten verknüpfen, die man sehen darf; ein schon verknüpftes Projekt bleibt beim Speichern erhalten.
+- Ein Projekt-Link im Chat zeigt den Projektnamen nur, wenn der Absender das Projekt sehen darf.
 - Die Historie von Aufgaben und Wartungen sieht jetzt, wer die Aufgabe oder Wartung öffnen darf, wie die Seite selbst.
+- Im Server-Protokoll erscheinen die Felder „von“ und „bis“ nur noch, wenn beim Zeitraum „frei wählen …“ ausgewählt ist.
 
 ### Behoben
 
 - Der Reiter „Zuständigkeiten“ auf der Benutzerseite war für alle leer und zeigt wieder die offenen Vorgänge.
-- Die Sortier-Leiste: Der aktive Knopf hat in Fiori wieder einen gleich dünnen Rand wie die anderen Seiten.
+- Die Reiter der Projektübersicht zählen bei Rollen mit Abteilung dieselben Projekte, die die Liste zeigt.
+- Auf der KVP-Seite zeigen der Reiter „Meine Vorschläge“ und der Filter „Meine“ dieselben Ideen, auch solche, bei denen man nur für eine Maßnahme eingetragen ist.
+- Der aktive Knopf der Sortier-Leiste hat in Fiori wieder einen 1 Pixel dünnen Unterrand.
 - In der KVP-Karte „Do“ bricht die Sortier-Leiste nicht mehr auf mehrere Zeilen um, sondern ist ein Auswahlfeld.
 - Eine einzelne Zeile direkt unter einer aufgeklappten Gruppe in Verläufen, Maßnahmen und Kommentaren hat jetzt Abstand.
 - Im Server-Protokoll überlappt das Feld „Stufe“ nicht mehr das Feld „bis“, sondern bricht in die nächste Zeile um.
 
 ### Sicherheit
 
-- Der Leitstand-Kalender ohne Anmeldung zeigt Gästen genau die Einstellung des Leitstands, keine anderen Arten, Abteilungen oder Personen über die Adresse und keine Listen von Mitarbeiternamen; ein unbekannter Leitstand ergibt „nicht gefunden“.
-- Unter `/uploads/` gibt es keine Ordnerlisten mehr; vorher ließen sich Anhänge aller Vorgänge ohne Anmeldung finden.
-- Datensatz-Kennungen in anderer Schreibweise in Adressen (ohne Bindestriche, in Klammern, `urn:uuid:`) werden abgewiesen, Kennungen in Großbuchstaben auf die normale Schreibweise umgeleitet; vorher umgingen solche Adressen die Abteilungssperre und die Sichtprüfung.
-- Die Schnittstelle (API) weist Zugriffs-Token ab, deren Benutzer sich nicht bestimmen lässt oder deaktiviert ist, auch wenn das Token mit Leerzeichen geschrieben ist; vorher umgingen solche Anfragen die Abteilungssperre.
-- Anhänge von KVP-Ideen sind über die Schnittstelle nur noch mit dem Ansehen-Recht oder als Beteiligter abrufbar.
+- Der Leitstand-Kalender ohne Anmeldung zeigt Gästen genau die Einstellung des Leitstands, keine anderen Arten, Abteilungen oder Personen über die Adresse und keine Auswahllisten von Abteilungen, Gruppen und Personen; ein unbekannter Leitstand ergibt „nicht gefunden“.
+- Unter `/uploads/` gibt es keine Ordnerlisten mehr.
+- Datensatz-Kennungen in anderer Schreibweise in Adressen werden abgewiesen, Kennungen in Großbuchstaben auf die normale Schreibweise umgeleitet; vorher umgingen solche Adressen die Abteilungssperre und die Sichtprüfung.
+- Die Rechteprüfung beim Speichern und Löschen erkennt die angemeldete Person jetzt genau wie die Anmeldung selbst und weist Anfragen ab, deren Anmeldung nicht mehr gilt; vorher ließ sie sich mit einer leicht veränderten Anmeldung umgehen.
+- Die Schnittstelle (API) weist beim Abruf einzelner Vorgänge, von Vorgangslisten und von KVP-Anhängen Zugriffs-Token ab, deren Benutzer sich nicht bestimmen lässt oder deaktiviert ist, auch wenn das Token mit Leerzeichen geschrieben ist; vorher umgingen solche Anfragen die Abteilungssperre.
+- Die Liste der Anhänge einer KVP-Idee und das Hochladen über die Schnittstelle gehen nur noch mit dem Ansehen-Recht oder als Beteiligter; wer den Link einer Datei hat, kann sie weiterhin öffnen.
 
 ## [0.82.2] – 2026-11-19
 

@@ -320,7 +320,11 @@ oder ändern.**
    Störungen (Bestand); Partner-Auswahl zeigt höchstens 500 Vorgänge vor dem
    Rechtefilter; KVP-Kennzahlen für Rollen mit Recht nur in einer Abteilung
    ausgeblendet (Erweiterung möglich); Kalender-Personenzeilen lassen
-   Vorgänge von Personen außerhalb der Leitstand-Abteilung weg (Bestand).
+   Vorgänge von Personen außerhalb der Leitstand-Abteilung weg (Bestand);
+   `recordDepartments` und `deptScopeFor` geben bei Datenbankfehlern „keine
+   Einschränkung“ zurück (Bestand; betrifft Bearbeiten-Rechte im Gate und die
+   Abteilungssperre); Benutzer, deren Rolle gelöscht wurde, sehen nach 0.82.3
+   nur noch eigene Projekte/Vorschläge – vor dem Einspielen prüfen.
    Vorschlag für später: Anhänge nur mit Anmeldung.
    (b) **0.82.4 Seite „Netzwerk“:** Netze und WLANs aus UniFi und Omada
    vorschlagen, der Anwender bestätigt nur noch; WLAN-Kennwörter werden mit
