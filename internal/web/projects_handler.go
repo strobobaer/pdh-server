@@ -163,6 +163,22 @@ func (h *Handler) ProjectsPage(w http.ResponseWriter, r *http.Request) {
 		{"planning", "Planung", "ti-pencil"}, {"active", "Aktiv", "ti-player-play"},
 		{"paused", "Pausiert", "ti-player-pause"}, {"completed", "Abgeschlossen", "ti-check"},
 	}, false)
+	// Reiterzähler nur über die Projekte, die die Person sehen darf (view_rights.go)
+	if !h.viewsAll(r, "project") {
+		if all, err := h.projects.List(ctx, ""); err == nil {
+			canView := h.viewFilter(r, "project")
+			counts := map[string]int{}
+			for _, p := range all {
+				if canView(p.ID) {
+					counts[""]++
+					counts[string(p.Status)]++
+				}
+			}
+			for i := range data.Tabs {
+				data.Tabs[i].Count = counts[data.Tabs[i].Key]
+			}
+		}
+	}
 	list, err := h.projects.List(ctx, projects.Status(filter))
 	if err == nil {
 		tagIDs := h.categoryFilterIDs(r, "project")

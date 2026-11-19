@@ -252,3 +252,38 @@ func (h *Handler) viewFilter(r *http.Request, refType string) func(id string) bo
 		return involved[id] || h.hasPermIn(r, perm, recDepts[id])
 	}
 }
+
+// viewsAll: hat die Person das Ansichtsrecht überall (dann gibt es nichts zu
+// filtern)? Typen ohne Ansichtsrecht: immer ja.
+func (h *Handler) viewsAll(r *http.Request, refType string) bool {
+	perm, ok := viewRights[refAlias(refType)]
+	if !ok {
+		return true
+	}
+	all, _, _ := h.viewMode(r, perm)
+	return all
+}
+
+// hiddenCategoryCounts: je Kategorie die Zahl der Datensätze des Typs, die die
+// Person nicht sehen darf. nil, wenn nichts zu verstecken ist (Typ ohne
+// Ansichtsrecht oder Recht überall). Damit zeigen Zähler nie mehr als die Liste.
+func (h *Handler) hiddenCategoryCounts(r *http.Request, module string) map[string]int {
+	if h.viewsAll(r, module) || h.db == nil {
+		return nil
+	}
+	canView := h.viewFilter(r, module)
+	rows, err := h.db.Query(r.Context(), `SELECT category_id::text, record_id::text FROM record_categories WHERE module = $1`, module)
+	if err != nil {
+		componentLog("rechte").Error().Err(err).Str("typ", module).Msg("kategorie-zähler laden")
+		return nil
+	}
+	defer rows.Close()
+	out := map[string]int{}
+	for rows.Next() {
+		var cat, rec string
+		if rows.Scan(&cat, &rec) == nil && !canView(rec) {
+			out[cat]++
+		}
+	}
+	return out
+}

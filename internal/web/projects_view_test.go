@@ -8,6 +8,8 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -305,8 +307,8 @@ func TestProjectEditNeedsView(t *testing.T) {
 			t.Errorf("bearbeiten mit ansehen %s: %d", p, got)
 		}
 	}
-	// beteiligt (ohne Bearbeiten-Recht): wie bisher durchgelassen
-	viewer := e.person("vf_e3", e.roleNone)
+	// beteiligt, ganz ohne Bearbeiten- und Ansichtsrecht: wie bisher durchgelassen
+	viewer := e.person("vf_e3", e.role("vf_pnoperm", nil))
 	e.exec(`UPDATE projects SET assigned_to = $2::uuid WHERE id = $1::uuid`, pa, viewer.ID)
 	for _, p := range paths {
 		if got := post(viewer, p); got != http.StatusOK {
@@ -319,6 +321,19 @@ func TestProjectEditNeedsView(t *testing.T) {
 		if got := post(onlyView, p); got != http.StatusForbidden {
 			t.Errorf("nur ansehen %s: %d", p, got)
 		}
+	}
+	// Bearbeiten überall, Ansehen nur in A: Projekt in B abgelehnt (mit eigener Meldung), in A erlaubt
+	pb := e.named("PVEB", e.infraB, "")
+	editInA := e.person("vf_e5", e.role("vf_peva", map[string]string{"projects.edit": "", "projects.view": e.deptA}))
+	r := httptest.NewRequest("POST", "/api/v1/projects/"+pb+"/edit", strings.NewReader(""))
+	r.Header.Set("Authorization", "Bearer "+e.token(editInA))
+	w := httptest.NewRecorder()
+	gate.ServeHTTP(w, r)
+	if w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), "nicht ansehen") {
+		t.Errorf("bearbeiten überall, ansehen nur in A, Projekt in B: %d %s", w.Code, w.Body.String())
+	}
+	if got := post(editInA, "/api/v1/projects/"+pa+"/edit"); got != http.StatusOK {
+		t.Errorf("bearbeiten überall, ansehen in A, Projekt in A: %d", got)
 	}
 	// Anlegen betrifft das Ansehen nicht
 	if got := post(none, "/api/v1/projects/"); got != http.StatusOK {
@@ -335,6 +350,7 @@ func TestRecordsBlocksProjectView(t *testing.T) {
 	rt.Get("/records/meta/{module}/{id}", e.h.RecordMetaWeb)
 	rt.Get("/records/history/{module}/{id}", e.h.RecordHistoryWeb)
 	rt.Get("/records/{refType}/{id}/parties", e.h.RecordPartiesWeb)
+	rt.Get("/records/{refType}/{id}/group-options", e.h.RecordGroupOptionsWeb)
 	get := func(u *users.User, path string) int {
 		r := httptest.NewRequest("GET", path, nil)
 		r = r.WithContext(context.WithValue(r.Context(), "user", u))
@@ -345,7 +361,7 @@ func TestRecordsBlocksProjectView(t *testing.T) {
 	paths := []string{
 		"/records/fields/project/" + pa, "/records/links/project/" + pa,
 		"/records/meta/project/" + pa, "/records/history/project/" + pa,
-		"/records/project/" + pa + "/parties",
+		"/records/project/" + pa + "/parties", "/records/project/" + pa + "/group-options",
 	}
 	none := e.person("vf_r1", e.roleNone)
 	for _, p := range paths {
@@ -355,8 +371,8 @@ func TestRecordsBlocksProjectView(t *testing.T) {
 	}
 	e.exec(`UPDATE projects SET created_by = $2::uuid WHERE id = $1::uuid`, pa, none.ID)
 	for _, p := range paths {
-		if got := get(none, p); got == http.StatusForbidden {
-			t.Errorf("%s beteiligt: 403", p)
+		if got := get(none, p); got != http.StatusOK {
+			t.Errorf("%s beteiligt: %d, erwartet 200", p, got)
 		}
 	}
 	inB := e.person("vf_r2", e.roleInA)
@@ -416,5 +432,109 @@ func TestCategoriesHidesWithoutView(t *testing.T) {
 	kvpRoleA := e.role("vf_ka", map[string]string{"kvp.view": ""})
 	if body := page(e.person("vf_c4", kvpRoleA)); !strings.Contains(body, "PVCK"+e.sfx) || strings.Contains(body, "PVCP"+e.sfx) {
 		t.Errorf("kvp.view überall: KVP ja, Projekt nein")
+	}
+}
+
+// Zähler zeigen nie mehr als die Liste: Reiter der Projektseite, Chips des Kategorie-Filters und
+// die Zahl der Kategorienseite zählen nur Datensätze, die die Person sehen darf.
+func TestViewCountsMatchVisible(t *testing.T) {
+	e := newProjEnv(t)
+	pa := e.named("PVZA", e.infraA, "")
+	pb := e.named("PVZB", e.infraB, "")
+	pn := e.named("PVZN", "", "")
+	e.exec(`UPDATE projects SET status = 'active' WHERE id = ANY($1::uuid[])`, []string{pa, pn})
+	e.exec(`UPDATE projects SET status = 'planning' WHERE id = $1::uuid`, pb)
+	ka, kb := e.kvp(e.infraA), e.kvp(e.infraB)
+	cat := e.id(`INSERT INTO categories (name, color, icon) VALUES ($1, '#112233', 'ti-hash') RETURNING id::text`, "vfcat"+e.sfx)
+	t.Cleanup(func() {
+		_, _ = e.pool.Exec(context.Background(), `DELETE FROM record_categories WHERE category_id = $1::uuid`, cat)
+		_, _ = e.pool.Exec(context.Background(), `DELETE FROM categories WHERE id = $1::uuid`, cat)
+	})
+	e.exec(`INSERT INTO record_categories (module, record_id, category_id) VALUES ('project', $1::uuid, $5::uuid), ('project', $2::uuid, $5::uuid), ('project', $3::uuid, $5::uuid), ('kvp', $4::uuid, $5::uuid), ('kvp', $6::uuid, $5::uuid)`, pa, pb, pn, ka, cat, kb)
+
+	both := e.role("vf_zboth", map[string]string{"projects.view": "", "kvp.view": ""})
+	bothA := e.role("vf_zbotha", map[string]string{"projects.view": e.deptA, "kvp.view": e.deptA})
+	all := e.person("vf_z1", both)
+	inA := e.person("vf_z2", bothA)
+	none := e.person("vf_z3", e.roleNone)
+	e.exec(`UPDATE projects SET assigned_to = $2::uuid WHERE id = $1::uuid`, pn, none.ID) // ein beteiligtes Projekt (aktiv)
+
+	num := func(body, pattern string) int {
+		t.Helper()
+		m := regexp.MustCompile(pattern).FindStringSubmatch(body)
+		if m == nil {
+			t.Fatalf("%q nicht gefunden", pattern)
+		}
+		n, _ := strconv.Atoi(m[1])
+		return n
+	}
+	tabs := func(u *users.User) (alle, aktiv, planung int) {
+		b := e.do(e.h.ProjectsPage, "GET", "/projects", u, nil, nil).Body.String()
+		return num(b, `Alle <b>(\d+)</b>`), num(b, `Aktiv <b>(\d+)</b>`), num(b, `Planung <b>(\d+)</b>`)
+	}
+	chip := func(u *users.User, module string) int {
+		b := e.do(e.h.CategoryFilterWeb, "GET", "/categories/filter/"+module+"?url=/", u, map[string]string{"module": module}, nil).Body.String()
+		return num(b, `vfcat`+e.sfx+` <b>(\d+)</b>`)
+	}
+	total := func(u *users.User) int {
+		b := e.do(e.h.CategoriesPage, "GET", "/categories?c="+cat, u, nil, nil).Body.String()
+		return num(b, `(?s)#vfcat`+e.sfx+`</span>\s*<span class="c">(\d+)</span>`)
+	}
+
+	// ohne Recht, nur ein beteiligtes aktives Projekt: genau dieses zählt
+	if a, ak, p := tabs(none); a != 1 || ak != 1 || p != 0 {
+		t.Errorf("Reiter ohne Recht: alle=%d aktiv=%d planung=%d, erwartet 1/1/0", a, ak, p)
+	}
+	if c := chip(none, "project"); c != 1 {
+		t.Errorf("Chip Projekt ohne Recht: %d, erwartet 1", c)
+	}
+	if c := chip(none, "kvp"); c != 0 {
+		t.Errorf("Chip KVP ohne Recht: %d, erwartet 0", c)
+	}
+	if c := total(none); c != 1 {
+		t.Errorf("Kategorienseite ohne Recht: %d, erwartet 1", c)
+	}
+	// Recht in A: A und ohne Abteilung (zwei aktive), nicht das Projekt in B
+	aAll, akAll, pAll := tabs(all)
+	aA, akA, pA := tabs(inA)
+	if aAll-aA != 1 || akAll-akA != 0 || pAll-pA != 1 {
+		t.Errorf("Reiter Recht in A (gegen überall): alle %d/%d, aktiv %d/%d, Planung %d/%d – nur das Projekt in B darf fehlen", aA, aAll, akA, akAll, pA, pAll)
+	}
+	if c := chip(inA, "project"); c != 2 {
+		t.Errorf("Chip Projekt Recht in A: %d, erwartet 2", c)
+	}
+	if c := chip(inA, "kvp"); c != 1 {
+		t.Errorf("Chip KVP Recht in A: %d, erwartet 1", c)
+	}
+	if c := total(inA); c != 3 {
+		t.Errorf("Kategorienseite Recht in A: %d, erwartet 3", c)
+	}
+	// Recht überall: die alten, ungefilterten Zahlen
+	if c := chip(all, "project"); c != 3 {
+		t.Errorf("Chip Projekt Recht überall: %d, erwartet 3", c)
+	}
+	if c := chip(all, "kvp"); c != 2 {
+		t.Errorf("Chip KVP Recht überall: %d, erwartet 2", c)
+	}
+	if c := total(all); c != 5 {
+		t.Errorf("Kategorienseite Recht überall: %d, erwartet 5", c)
+	}
+}
+
+// Die API-Antwort für nicht ladbare Benutzer: Projekte nie ausliefern.
+func TestProjectAPIUnknownUser(t *testing.T) {
+	e := newProjEnv(t)
+	pa := e.named("PVUA", e.infraA, "")
+	reached := false
+	api := e.h.APIDepartmentScope(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { reached = true }))
+	ghost := &users.User{ID: "0f8a2b3c-1d2e-4f50-8a9b-0c1d2e3f4a5b"}
+	for _, p := range []string{"/api/v1/projects", "/api/v1/projects/" + pa} {
+		r := httptest.NewRequest("GET", p, nil)
+		r.Header.Set("Authorization", "Bearer "+e.token(ghost))
+		w := httptest.NewRecorder()
+		api.ServeHTTP(w, r)
+		if w.Code != http.StatusForbidden || reached {
+			t.Errorf("%s ohne ladbaren Benutzer: %d, Modul erreicht=%v", p, w.Code, reached)
+		}
 	}
 }

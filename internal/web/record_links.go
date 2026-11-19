@@ -111,8 +111,9 @@ func historyModuleOf(key string, can func(h *Handler, r *http.Request, id string
 }
 
 // historyModules: erlaubte Module von /records/history/{module}/{id}. Eigene Tabelle
-// (nicht fieldModules), weil dort für Projekt, KVP, Infrastruktur und Lager kein
-// Ansichtsrecht steht und die Historie sonst jedem Angemeldeten offen stünde.
+// (nicht fieldModules), weil dort für Infrastruktur und Lager kein Ansichtsrecht steht und
+// die Historie sonst jedem Angemeldeten offen stünde; jedes Modul prüft hier genau das, was
+// seine Detailseite prüft.
 var historyModules = map[string]historyModule{
 	// Störung (FaultDetail, handler.go), Ticket (TicketDetail), Aufgabe, Wartung, Ersatzteil (PartDetailPage,
 	// parts.go): die Seiten verlangen nur die Anmeldung (und die Abteilungssperre) – wer dort nur „lösen“,

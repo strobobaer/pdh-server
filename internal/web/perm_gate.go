@@ -293,10 +293,23 @@ func (h *Handler) PermissionGateMiddleware(next http.Handler) http.Handler {
 					}
 					// Bearbeiten wirkt nur an Vorgängen, die man sehen darf (Projekt, KVP: Ansichtsrecht
 					// oder beteiligt, view_rights.go) – „bearbeiten“ schließt „ansehen“ nicht ein.
+					viewDenied := false
 					if ok && id != "" {
 						if _, viewed := viewRights[refType]; viewed {
 							ok = h.canViewRec(r.WithContext(context.WithValue(r.Context(), "user", u)), refType, id)
+							viewDenied = !ok
 						}
+					}
+					if viewDenied {
+						componentLog("rechte").Info().Str("user", u.ID).Str("typ", refType).Str("pfad", r.URL.Path).Msg("schreibzugriff ohne ansichtsrecht abgelehnt")
+						if strings.HasPrefix(r.URL.Path, "/api/") || r.Header.Get("HX-Request") == "true" || strings.Contains(r.Header.Get("Accept"), "json") {
+							w.Header().Set("Content-Type", "application/json")
+							w.WriteHeader(http.StatusForbidden)
+							_, _ = w.Write([]byte(`{"success":false,"error":"Keine Berechtigung: Diesen Vorgang darfst du nicht ansehen."}`))
+							return
+						}
+						http.Error(w, "Keine Berechtigung: Diesen Vorgang darfst du nicht ansehen.", http.StatusForbidden)
+						return
 					}
 					if !ok {
 						componentLog("rechte").Info().Str("user", u.ID).Str("recht", perm).Str("pfad", r.URL.Path).Msg("schreibzugriff ohne recht abgelehnt")

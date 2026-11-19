@@ -296,7 +296,7 @@ func (h *Handler) APIDepartmentScope(next http.Handler) http.Handler {
 			if s != nil {
 				body = filterJSONList(body, h.scopeAllowedIDs(req, listType))
 			}
-			if viewType != "" {
+			if viewType != "" && !h.viewsAll(req, viewType) {
 				body = filterJSONFunc(body, h.viewFilter(req, viewType))
 			}
 		}
