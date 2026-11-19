@@ -1604,7 +1604,10 @@ func (h *Handler) updateInfrastructureWeb(w http.ResponseWriter, r *http.Request
 	fmt.Fprintf(w, `<div style="color:var(--green);font-size:12px">Gespeichert: %s</div>`, esc(label))
 }
 
-func (h *Handler) recordHistory(ctx context.Context, refType, id string) []HistoryView {
+// queryHistory liest bis zu limit Historieneinträge eines Datensatzes, neueste
+// zuerst; bei gleichem Zeitstempel entscheidet die Kennung, damit die
+// Reihenfolge fest bleibt. Fehler werden protokolliert, nicht verschluckt.
+func (h *Handler) queryHistory(ctx context.Context, refType, id string, limit int) []HistoryView {
 	if h.db == nil {
 		return nil
 	}
@@ -1615,23 +1618,32 @@ func (h *Handler) recordHistory(ctx context.Context, refType, id string) []Histo
 		FROM record_history rh
 		LEFT JOIN users u ON rh.created_by = u.id
 		WHERE rh.ref_type=$1 AND rh.ref_id=$2
-		ORDER BY rh.created_at DESC
-		LIMIT 30`, refType, id)
+		ORDER BY rh.created_at DESC, rh.id DESC
+		LIMIT $3`, refType, id, limit)
 	if err != nil {
+		log.Printf("Historie %s/%s lesen: %v", refType, id, err)
 		return nil
 	}
 	defer rows.Close()
 	var list []HistoryView
 	for rows.Next() {
 		var item HistoryView
-		var created time.Time
-		if err := rows.Scan(&item.Action, &item.FieldName, &item.OldValue, &item.NewValue, &item.Message, &item.UserName, &created); err == nil {
-			item.CreatedAt = created.Format("02.01.2006 15:04")
-			item.At = created
-			list = append(list, item)
+		if err := rows.Scan(&item.Action, &item.FieldName, &item.OldValue, &item.NewValue, &item.Message, &item.UserName, &item.At); err != nil {
+			log.Printf("Historie %s/%s lesen: %v", refType, id, err)
+			continue
 		}
+		item.CreatedAt = item.At.Format("02.01.2006 15:04")
+		list = append(list, item)
+	}
+	if err := rows.Err(); err != nil {
+		log.Printf("Historie %s/%s lesen: %v", refType, id, err)
 	}
 	return list
+}
+
+// recordHistory: die letzten 30 Einträge (Explorer-Protokoll).
+func (h *Handler) recordHistory(ctx context.Context, refType, id string) []HistoryView {
+	return h.queryHistory(ctx, refType, id, 30)
 }
 
 // historyCap: so viele Einträge je Datensatz werden höchstens berücksichtigt
@@ -1639,35 +1651,10 @@ func (h *Handler) recordHistory(ctx context.Context, refType, id string) []Histo
 // Variable statt Konstante, damit ein Test die Grenze herabsetzen kann.
 var historyCap = 5000
 
-// recordHistoryAll liefert die Historie eines Datensatzes, neueste zuerst; bei
-// gleichem Zeitstempel entscheidet die Kennung, damit die Reihenfolge fest
-// bleibt. capped: es gab mehr als historyCap Einträge, zurück kommen die neuesten.
+// recordHistoryAll liefert die Historie eines Datensatzes, neueste zuerst.
+// capped: es gab mehr als historyCap Einträge, zurück kommen die neuesten.
 func (h *Handler) recordHistoryAll(ctx context.Context, refType, id string) (rows []HistoryView, capped bool) {
-	if h.db == nil {
-		return nil, false
-	}
-	res, err := h.db.Query(ctx, `
-		SELECT rh.action, COALESCE(rh.field_name,''), COALESCE(rh.old_value,''),
-		       COALESCE(rh.new_value,''), COALESCE(rh.message,''),
-		       COALESCE(u.first_name || ' ' || u.last_name, 'System'), rh.created_at
-		FROM record_history rh
-		LEFT JOIN users u ON rh.created_by = u.id
-		WHERE rh.ref_type=$1 AND rh.ref_id=$2
-		ORDER BY rh.created_at DESC, rh.id DESC
-		LIMIT $3`, refType, id, historyCap+1)
-	if err != nil {
-		return nil, false
-	}
-	defer res.Close()
-	for res.Next() {
-		var item HistoryView
-		var created time.Time
-		if err := res.Scan(&item.Action, &item.FieldName, &item.OldValue, &item.NewValue, &item.Message, &item.UserName, &created); err == nil {
-			item.CreatedAt = created.Format("02.01.2006 15:04")
-			item.At = created
-			rows = append(rows, item)
-		}
-	}
+	rows = h.queryHistory(ctx, refType, id, historyCap+1)
 	if len(rows) > historyCap {
 		return rows[:historyCap], true
 	}

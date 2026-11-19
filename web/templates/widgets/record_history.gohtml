@@ -22,7 +22,7 @@
   {{range .Entries}}
     {{if gt .Count 1}}
     <details class="rh-group">
-      <summary class="li"><div class="act-dot d-blue"></div><div class="li-text"><div class="li-title">{{.Count}}× {{.Row.Title}}</div><div class="li-sub">{{t "zuletzt"}} {{.Last}}</div></div></summary>
+      <summary class="li"><div class="act-dot d-blue"></div><div class="li-text"><div class="li-title">{{.Count}}× {{.Label}}</div><div class="li-sub">{{t "zuletzt"}} {{.Last}}</div></div></summary>
       {{range .Rows}}{{template "record-history-row" .}}{{end}}
     </details>
     {{else}}

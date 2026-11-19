@@ -85,39 +85,59 @@ type historyModule struct {
 	Can            func(h *Handler, r *http.Request, id string) bool
 }
 
-// historyViaFields: wie bisher über die Feldsatz-Tabelle (Ansehen- oder Bearbeiten-Recht,
-// das eigene Benutzerkonto immer).
-func historyViaFields(key string) historyModule {
-	m, _ := fieldModuleByKey(key)
-	return historyModule{historyRefType(key), m.Table, func(h *Handler, r *http.Request, id string) bool {
-		return h.canViewRecord(r, m, id)
-	}}
+// historyLogin: für Module, deren Detailseite kein Einzelrecht prüft – jeder
+// Angemeldete (die Abteilung sperrt DepartmentScopeMiddleware, soweit scopePaths
+// das Modul kennt, auf Seite und Historienpfad gleich).
+func historyLogin(h *Handler, r *http.Request, id string) bool { return getUser(r).ID != "" }
+
+// historyModuleOf: Tabelle und ref_type eines Moduls aus der Feldsatz-Tabelle. Ein
+// unbekannter Schlüssel ist ein Programmfehler und stoppt den Start (nie „offen“).
+func historyModuleOf(key string, can func(h *Handler, r *http.Request, id string) bool) historyModule {
+	m, ok := fieldModuleByKey(key)
+	if !ok {
+		panic("historyModules: unbekanntes Modul " + key)
+	}
+	return historyModule{historyRefType(key), m.Table, can}
 }
 
 // historyModules: erlaubte Module von /records/history/{module}/{id}. Eigene Tabelle
 // (nicht fieldModules), weil dort für Projekt, KVP, Infrastruktur und Lager kein
 // Ansichtsrecht steht und die Historie sonst jedem Angemeldeten offen stünde.
 var historyModules = map[string]historyModule{
-	"part":             historyViaFields("part"),
-	"ticket":           historyViaFields("ticket"),
-	"fault":            historyViaFields("fault"),
-	"task":             historyViaFields("task"),
-	"setup":            historyViaFields("setup"),
-	"maintenance_task": historyViaFields("maintenance_task"),
-	"user":             historyViaFields("user"),
-	// Projekt (ProjectDetail, projects_handler.go) und KVP (KVPDetailPage, kvp.go): die Seiten
-	// verlangen nur die Anmeldung; die Abteilung sperrt DepartmentScopeMiddleware für Projekte
-	// auch für diesen Pfad (scopePaths). Ohne Anmeldung gibt es nichts.
-	"project": {"project", "projects", func(h *Handler, r *http.Request, id string) bool { return getUser(r).ID != "" }},
-	"kvp":     {"kvp", "kvp_ideas", func(h *Handler, r *http.Request, id string) bool { return getUser(r).ID != "" }},
+	// Störung (FaultDetail, handler.go), Ticket (TicketDetail), Aufgabe (TaskDetail, tasks_handler.go),
+	// Wartung (MaintenanceTaskDetail, maintenance_web.go), Projekt (ProjectDetail, projects_handler.go),
+	// KVP (KVPDetailPage, kvp.go), Ersatzteil (PartDetailPage, parts.go): die Seiten verlangen nur die
+	// Anmeldung (wer nur „lösen“, „buchen“ o. Ä. darf, sieht die Historie weiter).
+	"fault":            historyModuleOf("fault", historyLogin),
+	"ticket":           historyModuleOf("ticket", historyLogin),
+	"task":             historyModuleOf("task", historyLogin),
+	"maintenance_task": historyModuleOf("maintenance_task", historyLogin),
+	"project":          historyModuleOf("project", historyLogin),
+	"kvp":              historyModuleOf("kvp", historyLogin),
+	"part":             historyModuleOf("part", historyLogin),
+	// Rüstzeit: SetupDetailPage (setup_pages.go) – permSetupView in der Abteilung der Rüstzeit
+	"setup": historyModuleOf("setup", func(h *Handler, r *http.Request, id string) bool {
+		return h.setupCan(r, permSetupView, id)
+	}),
+	// Benutzer: UserDetailPage (user_detail.go) – eigenes Konto, Benutzerverwaltung oder unterstellte Person
+	"user": historyModuleOf("user", func(h *Handler, r *http.Request, id string) bool {
+		if getUser(r).ID == id || h.canManageUsers(r) {
+			return true
+		}
+		if h.users == nil {
+			return false
+		}
+		sub, _ := h.users.IsSubordinate(r.Context(), getUser(r).ID, id)
+		return sub
+	}),
 	// Anlage: InfraDetail (infra_web.go) – infrastructure.view oder .edit
-	"infrastructure": {"infrastructure", "infrastructure", func(h *Handler, r *http.Request, id string) bool { return h.canViewInfra(r) }},
+	"infrastructure": historyModuleOf("infrastructure", func(h *Handler, r *http.Request, id string) bool { return h.canViewInfra(r) }),
 	// Lagerort: StorageDetailPage (storage_detail.go) – inventory.view oder .edit
-	"storage": {"storage", "storage_nodes", func(h *Handler, r *http.Request, id string) bool {
+	"storage": historyModuleOf("storage", func(h *Handler, r *http.Request, id string) bool {
 		return h.hasPerm(r, "inventory.view") || h.hasPerm(r, "inventory.edit")
-	}},
+	}),
 	// Partner: PartnerDetail (partners.go) – directory.view oder .edit
-	"business_partner": {"business_partner", "business_partners", func(h *Handler, r *http.Request, id string) bool { return h.canViewPartners(r) }},
+	"business_partner": historyModuleOf("business_partner", func(h *Handler, r *http.Request, id string) bool { return h.canViewPartners(r) }),
 	// Bestellung: PurchaseDetailPage (purchases.go) – procurement.view in der Abteilung der Bestellung
 	"purchase_order": {refPurchase, "purchase_orders", func(h *Handler, r *http.Request, id string) bool {
 		return h.hasPermRec(r, permPurchaseView, refPurchase, id)
@@ -127,19 +147,52 @@ var historyModules = map[string]historyModule{
 const historyStep = 30 // Zeilen (bzw. Gruppen) je Schritt von „Weitere laden“
 
 // historyEntry: eine Zeile der Historie; Count ab 2 = zusammengefasste Gruppe
-// („N× Text – zuletzt …“) mit den Einzeleinträgen in Rows.
+// („N× Beschriftung – zuletzt …“) mit den Einzeleinträgen in Rows.
 type historyEntry struct {
 	Row   historyRow
+	Label string
 	Count int
 	Last  string
 	Rows  []historyRow
 }
 
-// historyRow: ein Eintrag mit der Beschriftung des Vorgangs.
+// historyRow: ein Eintrag; Title ist seine Meldung, Label die feste Beschriftung
+// seiner Art (Vorgang + Feld) – sie gilt für Gruppen und die Sortierart „Nach Art“.
 type historyRow struct {
 	HistoryView
-	Title string // Meldung, sonst Vorgang
-	Kind  string // Beschriftung des Vorgangs mit Feld (Sortierart „Nach Art“)
+	Title string
+	Label string
+}
+
+// historyActionLabels / historyFieldLabels: feste deutsche Beschriftung je Vorgang
+// und Feld, unabhängig vom Freitext der einzelnen Meldung.
+var historyActionLabels = map[string]string{
+	"create": "Angelegt", "update": "Geändert", "status": "Status geändert", "people": "Zuständigkeit geändert",
+	"category": "Kategorie geändert", "archive": "Archiviert", "work": "Arbeitsschritt erfasst",
+	"document": "Dokument abgelegt", "explorer_write": "Testweise geschrieben",
+}
+
+var historyFieldLabels = map[string]string{
+	"due_date": "Fälligkeit", "assigned_to": "Zugewiesener Mitarbeiter", "responsible_to": "Verantwortlicher",
+	"assigned_group_id": "Zugewiesene Gruppe", "title": "Titel", "assessment": "Bewertung", "plan": "Plan",
+	"check_result": "Wirksamkeit", "act": "Ergebnis", "action": "Maßnahme", "file": "Datei",
+	"nextcloud_user_id": "Nextcloud-Konto", "must_change_password": "Kennwortwechsel", "infrastructure_id": "Anlage",
+}
+
+// historyLabel: stabile Beschriftung zu (Vorgang, Feld), z. B. „Status geändert“
+// oder „Geändert · Fälligkeit“. Felder, die der Vorgang schon nennt, entfallen.
+func historyLabel(action, field string) string {
+	l, ok := historyActionLabels[action]
+	if !ok {
+		l = action
+	}
+	if field == "" || field == action || field == "status" || field == "category" || field == "archived_at" {
+		return l
+	}
+	if f, ok := historyFieldLabels[field]; ok {
+		field = f
+	}
+	return l + " · " + field
 }
 
 // historyPage: Daten des Kärtchens (Vorlage „record-history“).
@@ -181,21 +234,19 @@ func (h *Handler) RecordHistoryWeb(w http.ResponseWriter, r *http.Request) {
 	items := make([]listsort.Item, len(rows))
 	hrows := make([]historyRow, len(rows))
 	for i, hv := range rows {
-		hr := historyRow{HistoryView: hv, Title: hv.Message, Kind: hv.Message}
+		hr := historyRow{HistoryView: hv, Title: hv.Message, Label: historyLabel(hv.Action, hv.FieldName)}
 		if hr.Title == "" {
-			hr.Title, hr.Kind = hv.Action, hv.Action
-		}
-		if hv.FieldName != "" {
-			hr.Kind += " · " + hv.FieldName
+			hr.Title = hr.Label
 		}
 		hrows[i] = hr
-		// gleich = gleiche Vorgangsart und gleiches Feld
-		items[i] = listsort.Item{At: hv.At, Key: hv.Action + "\x00" + hv.FieldName, Label: hr.Title, Person: hv.UserName, Kind: hr.Kind}
+		// gleich = gleicher Vorgang und gleiches Feld; die Beschriftung steht vorn, damit
+		// „Gleiches zusammen“ nach dem sortiert, was angezeigt wird
+		items[i] = listsort.Item{At: hv.At, Key: hr.Label + "\x00" + hv.Action + "\x00" + hv.FieldName, Label: hr.Label, Person: hv.UserName, Kind: hr.Label}
 	}
 	var entries []historyEntry
 	if mode.Grouped() {
 		for _, g := range listsort.Groups(items, mode) {
-			e := historyEntry{Row: hrows[g.Idx[0]], Count: g.Count, Last: g.Last.Format("02.01.2006")}
+			e := historyEntry{Row: hrows[g.Idx[0]], Label: hrows[g.Idx[0]].Label, Count: g.Count, Last: g.Last.Format("02.01.2006")}
 			if g.Count > 1 {
 				for _, i := range g.Idx {
 					e.Rows = append(e.Rows, hrows[i])

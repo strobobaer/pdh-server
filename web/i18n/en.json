@@ -1005,5 +1005,6 @@
  "Nach Termin": "By due date",
  "Weitere laden": "Load more",
  "zuletzt": "last",
- "Nur die neuesten %d Einträge berücksichtigt": "Only the newest %d entries considered"
+ "Nur die neuesten %d Einträge berücksichtigt": "Only the newest %d entries considered",
+ "Keine Berechtigung für die Historie": "No permission to view the history"
 }
