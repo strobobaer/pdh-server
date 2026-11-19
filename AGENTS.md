@@ -260,6 +260,12 @@ oder ändern.**
    beiden Servern die Umgebung einrichten, ein Gerät bauen, die Rollen
    umschalten, die Firmware am zweiten Server herunterladen und im Browser
    prüfen. Paket 2 und 3 sind nicht begonnen.
+   **Danach 0.82.1 (Auftrag vom 19.11.2026): ESPHome hält sich selbst
+   aktuell** – täglich auf eine neue Version prüfen, sie daneben einrichten,
+   damit die Konfiguration aller Geräte prüfen und nur bei Erfolg umschalten;
+   sonst bleibt die alte Version und es gibt einen Hinweis. Firmware wird
+   nicht von selbst neu gebaut. Ersetzt die Festlegung „ESPHome-Version fest
+   im Repository“.
 7. **0.81.6 Nummern ab 10000** (Rüstzeit, KVP, Bestellung und Partner waren auf
    vier Stellen abgeschnitten) – steckt in `feature/esppdh` und auf dem
    lokalen Branch `fix/ruestzeit-nummer`; geht nach Freigabe zusammen mit
@@ -286,7 +292,14 @@ oder ändern.**
     von unpkg.com und die Schrift DM Sans von Google Fonts, eine
     Content-Security-Policy fehlt. Das widerspricht „läuft ohne Internet“;
     Entscheidung offen (Dateien mitliefern oder so lassen).
-14. **Zurückgestellt (kein Auftrag):** Abteilungsfeinheiten Rüstzeiten,
+14. **UUID-Regel (klein):** `go test -tags integration ./pkg/database -run
+    TestUUIDv7Policy` schlägt auf `main` fehl für `energy_readings`,
+    `energy_export_runs`, `datanet_events`, `sync_outbox` (Zahlenfolge) und
+    `sync_profiles`, `sync_field_maps`, `sync_links`, `sync_runs`
+    (`gen_random_uuid()`). Die ESPPDH-Tabellen halten die Regel ein.
+    Umstellen per Migration oder in die Ausnahmen des Tests aufnehmen –
+    Entscheidung offen.
+15. **Zurückgestellt (kein Auftrag):** Abteilungsfeinheiten Rüstzeiten,
     Datennetz Paket 2/3, Buchungssystem/Lizenzen, Firmenstammdaten.
 
 Docker Desktop startet nach einem Neustart des Windows-Rechners nicht von
