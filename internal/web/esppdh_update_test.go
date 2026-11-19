@@ -619,6 +619,112 @@ func TestUpdateForceRetries(t *testing.T) {
 	}
 }
 
+// Zwei neuere Versionen scheitern beide: Jede wird genau einmal probiert und einmal gemeldet –
+// kein tägliches Hin und Her zwischen den beiden.
+func TestUpdateTwoFailingVersions(t *testing.T) {
+	u := newEsppdhUpd(t)
+	const mid = "2026.11.0"
+	body := esppdhPyPIBody(
+		esppdhPyPIRel{esppdhUpdOld, esppdhUpdNow.Add(-30 * 24 * time.Hour)},
+		esppdhPyPIRel{mid, esppdhUpdNow.Add(-12 * 24 * time.Hour)},
+		esppdhPyPIRel{esppdhUpdNew, esppdhUpdNow.Add(-9 * 24 * time.Hour)})
+	a := "tf-" + u.sfx
+	u.device(t, a, "0upd Zwei "+u.sfx, "esp32dev", "")
+	u.set(func() {
+		u.pypiBody = body
+		u.configFail = func(slug string, cand bool) bool { return slug == a && cand }
+	})
+	var msgs []string
+	for range 4 {
+		msg, _ := u.run(t, false)
+		msgs = append(msgs, msg)
+	}
+	ev := u.mine()
+	if esppdhCount(ev, "install ") != 2 || !slices.Contains(ev, "install "+esppdhUpdNew) || !slices.Contains(ev, "install "+mid) {
+		t.Errorf("Einrichtungen: %v", ev)
+	}
+	if n := u.notes(t); n != 2 {
+		t.Errorf("%d Meldungen, erwartet 2", n)
+	}
+	if want := "ESPHome " + esppdhUpdOld + " ist aktuell"; msgs[2] != want || msgs[3] != want {
+		t.Errorf("Läufe 3 und 4: %q", msgs)
+	}
+	st := esppdh.LoadUpdateState()
+	if got := st.SkipFor(pdh.Version()); !slices.Contains(got, mid) || !slices.Contains(got, esppdhUpdNew) || !st.WasNotified(mid) || !st.WasNotified(esppdhUpdNew) {
+		t.Errorf("Zustand: %+v", st)
+	}
+}
+
+// „Zurück zur vorigen Version“ nach einem früheren Fehlschlag einer neueren Version: Beide gelten als
+// gescheitert, der Server richtet weder die neuere noch die verlassene Version wieder ein.
+func TestUpdateRollbackKeepsEarlierFailure(t *testing.T) {
+	u := newEsppdhUpd(t)
+	const mid = "2026.11.0" // läuft, wird verlassen
+	body := esppdhPyPIBody(
+		esppdhPyPIRel{esppdhUpdOld, esppdhUpdNow.Add(-30 * 24 * time.Hour)},
+		esppdhPyPIRel{mid, esppdhUpdNow.Add(-12 * 24 * time.Hour)},
+		esppdhPyPIRel{esppdhUpdNew, esppdhUpdNow.Add(-9 * 24 * time.Hour)})
+	a := "rk-" + u.sfx
+	u.device(t, a, "0upd Zurück "+u.sfx, "esp32dev", "")
+	old := esppdhCheckEnv
+	t.Cleanup(func() { esppdhCheckEnv = old })
+	// es läuft 2026.11.0, nach dem Zurückstellen 2026.10.2
+	esppdhCheckEnv = func(context.Context) esppdh.EnvState {
+		v := mid
+		if esppdhCount(u.events(), "rollback") > 0 {
+			v = esppdhUpdOld
+		}
+		return esppdh.EnvState{Installed: true, Version: v, FreeMB: -1}
+	}
+	u.set(func() {
+		u.pypiBody, u.previous = body, esppdhUpdOld
+		u.configFail = func(slug string, cand bool) bool { return slug == a && cand }
+	})
+	if msg, _ := u.run(t, false); !strings.HasPrefix(msg, "ESPHome "+esppdhUpdNew+" hat die Probe nicht bestanden") {
+		t.Fatalf("erster Lauf: %q", msg)
+	}
+	u.set(func() { u.configFail = nil }) // beide Versionen würden die Probe jetzt bestehen
+	if _, err := u.h.esppdhRollback(context.Background(), "test"); err != nil {
+		t.Fatal(err)
+	}
+	before := len(u.events())
+	for range 2 {
+		if msg, _ := u.run(t, false); msg != "ESPHome "+esppdhUpdOld+" ist aktuell" {
+			t.Errorf("nach dem Zurückstellen: %q", msg)
+		}
+	}
+	if ev := u.events()[before:]; esppdhCount(ev, "install ") > 0 {
+		t.Errorf("wieder eingerichtet: %v", ev)
+	}
+	st := esppdh.LoadUpdateState()
+	if got := st.SkipFor(pdh.Version()); !slices.Contains(got, mid) || !slices.Contains(got, esppdhUpdNew) {
+		t.Errorf("gescheiterte Versionen: %v", got)
+	}
+}
+
+// Eine Zustandsdatei aus der Zeit vor den Listen (nur Einzelfelder) gilt weiter.
+func TestUpdateOldStateFile(t *testing.T) {
+	u := newEsppdhUpd(t)
+	old := `{"Installed":"` + esppdhUpdOld + `","FailedVersion":"` + esppdhUpdNew + `","FailedPDH":"` + pdh.Version() +
+		`","FailedLog":"alt","NotifiedVersion":"` + esppdhUpdNew + `"}`
+	if err := os.WriteFile(filepath.Join(os.Getenv("PDH_ESPHOME_WORKDIR"), "update-state.json"), []byte(old), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if msg, _ := u.run(t, false); msg != "ESPHome "+esppdhUpdOld+" ist aktuell" || len(u.events()) != 0 {
+		t.Errorf("ohne Knopf: %q %v", msg, u.events())
+	}
+	// „Jetzt prüfen“: erneuter Versuch, scheitert – die schon gemeldete Version wird nicht noch einmal gemeldet
+	a := "os-" + u.sfx
+	u.device(t, a, "0upd Alt "+u.sfx, "esp32dev", "")
+	u.set(func() { u.configFail = func(slug string, cand bool) bool { return slug == a && cand } })
+	if msg, _ := u.run(t, true); !strings.HasPrefix(msg, "ESPHome "+esppdhUpdNew+" hat die Probe nicht bestanden") {
+		t.Errorf("mit Knopf: %q", msg)
+	}
+	if n := u.notes(t); n != 0 {
+		t.Errorf("%d Meldungen, erwartet 0", n)
+	}
+}
+
 // Ein Gerät, das schon mit der laufenden Version nicht durch die Prüfung kommt, lässt den
 // Kandidaten nicht scheitern; es wird im Ergebnis als übersprungen genannt und nicht gebaut.
 func TestProbeIgnoresAlreadyBroken(t *testing.T) {

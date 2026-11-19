@@ -282,9 +282,9 @@ func (h *Handler) esppdhUpdateCheck(ctx context.Context, st *esppdh.UpdateState,
 	if err != nil {
 		return "Prüfung nicht möglich: " + err.Error()
 	}
-	skip := ""
-	if !force && st.FailedPDH == pdh.Version() {
-		skip = st.FailedVersion
+	var skip []string // alle unter dieser PDH-Version gescheiterten Versionen – „Jetzt prüfen“ versucht sie erneut
+	if !force {
+		skip = st.SkipFor(pdh.Version())
 	}
 	cand := esppdh.PickCandidate(rels, env.Version, esppdhPythonOf(esppdh.ActiveBin()), h.esppdhClock(), skip)
 	if cand == "" {
@@ -314,30 +314,42 @@ func (h *Handler) esppdhUpdateCheck(ctx context.Context, st *esppdh.UpdateState,
 		return "Umschalten auf ESPHome " + cand + " nicht möglich: " + err.Error() + " – es bleibt bei " + env.Version
 	}
 	st.Installed = cand
-	st.FailedVersion, st.FailedPDH, st.FailedLog = "", "", ""
+	st.Activated(cand) // gescheiterte und gemeldete Versionen bis cand sind erledigt
+	u := &h.esppdhUpd
+	u.mu.Lock()
+	for v := range u.notified {
+		if esppdh.CompareVersions(v, cand) <= 0 {
+			delete(u.notified, v)
+		}
+	}
+	u.mu.Unlock()
 	return "Auf ESPHome " + cand + " umgestellt" + note
 }
 
 // esppdhFailed vermerkt eine gescheiterte Version (Kandidat verwerfen, Verlauf – schon gekürzt
-// und geschwärzt) und meldet sie einmal je Version an die ESPPDH-Bereichsadministratoren – nicht
-// am Spiegel (Datenbank nur lesbar; der aktive Server meldet selbst).
+// und geschwärzt) zu den schon gescheiterten und meldet sie einmal je Version an die
+// ESPPDH-Bereichsadministratoren – nicht am Spiegel (Datenbank nur lesbar; der aktive Server
+// meldet selbst).
 func (h *Handler) esppdhFailed(ctx context.Context, st *esppdh.UpdateState, cand, old, what, log string) string {
 	h.esppdhDiscard(ctx, cand)
-	st.FailedVersion, st.FailedPDH, st.FailedLog = cand, pdh.Version(), log
+	st.AddFailed(cand, pdh.Version(), log)
 	if h.Mirror().On {
 		return "ESPHome " + cand + " " + what + " – es bleibt bei " + old
 	}
 	// schon gemeldet – laut Zustandsdatei oder, falls sie sich nicht speichern ließ, im Speicher
 	u := &h.esppdhUpd
 	u.mu.Lock()
-	notified := u.notified == cand
-	u.notified = cand
+	notified := u.notified[cand]
+	if u.notified == nil {
+		u.notified = map[string]bool{}
+	}
+	u.notified[cand] = true
 	u.mu.Unlock()
-	if st.NotifiedVersion != cand && !notified {
+	if !st.WasNotified(cand) && !notified {
 		h.systemNotify(ctx, h.usersWithPerm(ctx, permESPAdmin, ""),
 			"ESPPDH: ESPHome "+cand+" "+what+". ESPPDH baut weiter mit ESPHome "+old+". Näheres unter Server-Einstellungen → ESPPDH.")
 	}
-	st.NotifiedVersion = cand
+	st.AddNotified(cand)
 	return "ESPHome " + cand + " " + what + " – es bleibt bei " + old
 }
 

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -139,9 +140,10 @@ func pythonOK(req string, py [2]int) bool {
 }
 
 // PickCandidate wählt die höchste Ausgabe, die neuer als die installierte ist, stabil, nicht
-// zurückgezogen, mindestens 72 Stunden alt, nicht übersprungen und zur Python-Version passend.
-// py ist die Python-Version des Servers ({0,0} = unbekannt, kein Filter). Ohne Treffer: "".
-func PickCandidate(rels []Release, installed string, py [2]int, now time.Time, skip string) string {
+// zurückgezogen, mindestens 72 Stunden alt, nicht in skip (gescheiterte Versionen) und zur
+// Python-Version passend. py ist die Python-Version des Servers ({0,0} = unbekannt, kein
+// Filter). Ohne Treffer: "".
+func PickCandidate(rels []Release, installed string, py [2]int, now time.Time, skip []string) string {
 	if installed == "" {
 		return ""
 	}
@@ -152,7 +154,7 @@ func PickCandidate(rels []Release, installed string, py [2]int, now time.Time, s
 			CompareVersions(r.Version, installed) <= 0,
 			r.Yanked,
 			now.Sub(r.Uploaded) < minReleaseAge,
-			r.Version == skip,
+			slices.Contains(skip, r.Version),
 			!pythonOK(r.RequiresPython, py):
 			continue
 		}

@@ -7,7 +7,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -305,11 +307,14 @@ func TestRunnerBin(t *testing.T) {
 func TestUpdateStateRoundTrip(t *testing.T) {
 	work := t.TempDir()
 	t.Setenv("PDH_ESPHOME_WORKDIR", filepath.Join(work, "neu")) // Ordner gibt es noch nicht
-	if st := LoadUpdateState(); st != (UpdateState{}) {
+	if st := LoadUpdateState(); !reflect.DeepEqual(st, UpdateState{}) {
 		t.Fatalf("ohne Datei: %+v", st)
 	}
-	in := UpdateState{CheckedAt: time.Date(2026, 11, 19, 8, 30, 0, 0, time.UTC), Result: "ok", Installed: "2099.1.0",
-		FailedVersion: "2099.2.0", FailedPDH: "0.82.1", FailedLog: "Fehler\n", NotifiedVersion: "2099.2.0"}
+	in := UpdateState{CheckedAt: time.Date(2026, 11, 19, 8, 30, 0, 0, time.UTC), Result: "ok", Installed: "2099.1.0"}
+	in.AddFailed("2099.3.0", "0.82.1", "")
+	in.AddFailed("2099.2.0", "0.82.1", "Fehler\n")
+	in.AddNotified("2099.3.0")
+	in.AddNotified("2099.2.0")
 	if err := SaveUpdateState(in); err != nil {
 		t.Fatal(err)
 	}
@@ -318,7 +323,7 @@ func TestUpdateStateRoundTrip(t *testing.T) {
 		t.Errorf("CheckedAt: %v", out.CheckedAt)
 	}
 	out.CheckedAt = in.CheckedAt
-	if out != in {
+	if !reflect.DeepEqual(out, in) {
 		t.Errorf("Zustand: %+v, erwartet %+v", out, in)
 	}
 	path := filepath.Join(work, "neu", "update-state.json")
@@ -341,7 +346,7 @@ func TestUpdateStateCorrupt(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(work, "update-state.json"), []byte("{kaputt"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if st := LoadUpdateState(); st != (UpdateState{}) {
+	if st := LoadUpdateState(); !reflect.DeepEqual(st, UpdateState{}) {
 		t.Errorf("kaputte Datei: %+v", st)
 	}
 	// überschreiben geht trotzdem
@@ -350,5 +355,71 @@ func TestUpdateStateCorrupt(t *testing.T) {
 	}
 	if st := LoadUpdateState(); st.Installed != "2099.1.0" {
 		t.Errorf("nach Speichern: %+v", st)
+	}
+}
+
+// Eine Zustandsdatei aus der Zeit vor den Listen (nur Einzelfelder) gilt weiter: Die gescheiterte
+// Version wird nicht erneut versucht, die gemeldete nicht noch einmal gemeldet.
+func TestUpdateStateOldFile(t *testing.T) {
+	work := t.TempDir()
+	t.Setenv("PDH_ESPHOME_WORKDIR", work)
+	old := `{"CheckedAt":"2026-11-19T08:30:00Z","Result":"x","Installed":"2026.10.2",` +
+		`"FailedVersion":"2026.11.1","FailedPDH":"0.82.1","FailedLog":"Fehler","NotifiedVersion":"2026.11.1"}`
+	if err := os.WriteFile(filepath.Join(work, "update-state.json"), []byte(old), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	st := LoadUpdateState()
+	if !reflect.DeepEqual(st.Failed, []FailedEntry{{Version: "2026.11.1", PDH: "0.82.1"}}) || !reflect.DeepEqual(st.Notified, []string{"2026.11.1"}) {
+		t.Fatalf("Einzelfelder nicht übernommen: %+v", st)
+	}
+	if !reflect.DeepEqual(st.SkipFor("0.82.1"), []string{"2026.11.1"}) || len(st.SkipFor("0.82.2")) != 0 || !st.WasNotified("2026.11.1") {
+		t.Errorf("SkipFor/WasNotified: %v %v %v", st.SkipFor("0.82.1"), st.SkipFor("0.82.2"), st.WasNotified("2026.11.1"))
+	}
+	// zweimal laden und speichern verdoppelt nichts
+	if err := SaveUpdateState(st); err != nil {
+		t.Fatal(err)
+	}
+	if st := LoadUpdateState(); len(st.Failed) != 1 || len(st.Notified) != 1 {
+		t.Errorf("verdoppelt: %+v", st)
+	}
+}
+
+// Gescheiterte und gemeldete Versionen: Menge ohne Doppel, höchstens 50, ältere fallen weg;
+// nach dem Umschalten entfällt alles bis einschließlich der neuen Version.
+func TestUpdateStateLists(t *testing.T) {
+	var st UpdateState
+	st.AddFailed("2026.11.1", "0.82.1", "a")
+	st.AddFailed("2026.11.0", "0.82.1", "b")
+	st.AddFailed("2026.11.1", "0.82.2", "c") // erneut gescheitert unter neuer PDH-Version: rückt ans Ende
+	want := []FailedEntry{{"2026.11.0", "0.82.1"}, {"2026.11.1", "0.82.2"}}
+	if !reflect.DeepEqual(st.Failed, want) || st.FailedVersion != "2026.11.1" || st.FailedPDH != "0.82.2" || st.FailedLog != "c" {
+		t.Errorf("AddFailed: %+v", st)
+	}
+	if got := st.SkipFor("0.82.2"); !reflect.DeepEqual(got, []string{"2026.11.1"}) {
+		t.Errorf("SkipFor: %v", got)
+	}
+	st.AddNotified("2026.11.1")
+	st.AddNotified("2026.11.1")
+	if len(st.Notified) != 1 || st.NotifiedVersion != "2026.11.1" {
+		t.Errorf("AddNotified doppelt: %+v", st.Notified)
+	}
+	for i := range 60 {
+		v := "2027.1." + strconv.Itoa(i)
+		st.AddFailed(v, "0.82.2", "")
+		st.AddNotified(v)
+	}
+	if len(st.Failed) != 50 || len(st.Notified) != 50 || st.Failed[0].Version != "2027.1.10" || st.Notified[49] != "2027.1.59" {
+		t.Errorf("Obergrenze: %d %d %v %v", len(st.Failed), len(st.Notified), st.Failed[0], st.Notified[49])
+	}
+
+	var a UpdateState
+	a.AddFailed("2026.11.2", "0.82.1", "")
+	a.AddFailed("2026.11.0", "0.82.1", "x")
+	a.AddNotified("2026.11.2")
+	a.AddNotified("2026.11.0")
+	a.Activated("2026.11.1")
+	if !reflect.DeepEqual(a.Failed, []FailedEntry{{"2026.11.2", "0.82.1"}}) || !reflect.DeepEqual(a.Notified, []string{"2026.11.2"}) ||
+		a.FailedVersion != "" || a.FailedLog != "" || a.NotifiedVersion != "" {
+		t.Errorf("Activated: %+v", a)
 	}
 }

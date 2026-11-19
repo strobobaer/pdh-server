@@ -90,23 +90,25 @@ func TestPickCandidate(t *testing.T) {
 		rels      []Release
 		installed string
 		py        [2]int
-		skip      string
+		skip      []string
 		want      string
 	}{
-		{"neuere mit 4 Tagen", []Release{rel("2026.10.2", 30*day), rel("2026.11.0", 4*day)}, "2026.10.2", [2]int{3, 12}, "", "2026.11.0"},
-		{"zu frisch (2 Tage)", []Release{rel("2026.10.2", 30*day), rel("2026.11.0", 2*day)}, "2026.10.2", [2]int{3, 12}, "", ""},
-		{"Vorabversion nie", []Release{rel("2026.11.0b1", 10*day)}, "2026.10.2", [2]int{3, 12}, "", ""},
-		{"zurückgezogen nie", []Release{yanked}, "2026.10.2", [2]int{3, 12}, "", ""},
-		{"übersprungene Version, nächstniedrigere", []Release{rel("2026.11.0", 10*day), rel("2026.11.1", 10*day)}, "2026.10.2", [2]int{3, 12}, "2026.11.1", "2026.11.0"},
-		{"übersprungene Version, keine andere", []Release{rel("2026.11.1", 10*day)}, "2026.10.2", [2]int{3, 12}, "2026.11.1", ""},
-		{"Python zu alt", []Release{py313}, "2026.10.2", [2]int{3, 12}, "", ""},
-		{"Python passt bei 3.13", []Release{py313}, "2026.10.2", [2]int{3, 13}, "", "2026.11.1"},
-		{"Python obere Grenze", []Release{py312cap}, "2026.10.2", [2]int{3, 12}, "", ""},
-		{"Python unbekannt: Filter aus", []Release{py313}, "2026.10.2", [2]int{0, 0}, "", "2026.11.1"},
-		{"nicht neuer als installiert", []Release{rel("2026.10.2", 30*day)}, "2026.10.2", [2]int{3, 12}, "", ""},
-		{"installiert leer", []Release{rel("2026.11.0", 10*day)}, "", [2]int{3, 12}, "", ""},
-		{"leere Liste", nil, "2026.10.2", [2]int{3, 12}, "", ""},
-		{"höchste gewinnt", []Release{rel("2026.11.0", 10*day), rel("2026.12.0", 10*day), rel("2026.10.9", 10*day)}, "2026.10.2", [2]int{3, 12}, "", "2026.12.0"},
+		{"neuere mit 4 Tagen", []Release{rel("2026.10.2", 30*day), rel("2026.11.0", 4*day)}, "2026.10.2", [2]int{3, 12}, nil, "2026.11.0"},
+		{"zu frisch (2 Tage)", []Release{rel("2026.10.2", 30*day), rel("2026.11.0", 2*day)}, "2026.10.2", [2]int{3, 12}, nil, ""},
+		{"Vorabversion nie", []Release{rel("2026.11.0b1", 10*day)}, "2026.10.2", [2]int{3, 12}, nil, ""},
+		{"zurückgezogen nie", []Release{yanked}, "2026.10.2", [2]int{3, 12}, nil, ""},
+		{"übersprungene Version, nächstniedrigere", []Release{rel("2026.11.0", 10*day), rel("2026.11.1", 10*day)}, "2026.10.2", [2]int{3, 12}, []string{"2026.11.1"}, "2026.11.0"},
+		{"übersprungene Version, keine andere", []Release{rel("2026.11.1", 10*day)}, "2026.10.2", [2]int{3, 12}, []string{"2026.11.1"}, ""},
+		{"zwei übersprungene Versionen", []Release{rel("2026.11.0", 10*day), rel("2026.11.1", 10*day)}, "2026.10.2", [2]int{3, 12}, []string{"2026.11.1", "2026.11.0"}, ""},
+		{"übersprungene Versionen, dritte bleibt", []Release{rel("2026.10.9", 10*day), rel("2026.11.0", 10*day), rel("2026.11.1", 10*day)}, "2026.10.2", [2]int{3, 12}, []string{"2026.11.0", "2026.11.1"}, "2026.10.9"},
+		{"Python zu alt", []Release{py313}, "2026.10.2", [2]int{3, 12}, nil, ""},
+		{"Python passt bei 3.13", []Release{py313}, "2026.10.2", [2]int{3, 13}, nil, "2026.11.1"},
+		{"Python obere Grenze", []Release{py312cap}, "2026.10.2", [2]int{3, 12}, nil, ""},
+		{"Python unbekannt: Filter aus", []Release{py313}, "2026.10.2", [2]int{0, 0}, nil, "2026.11.1"},
+		{"nicht neuer als installiert", []Release{rel("2026.10.2", 30*day)}, "2026.10.2", [2]int{3, 12}, nil, ""},
+		{"installiert leer", []Release{rel("2026.11.0", 10*day)}, "", [2]int{3, 12}, nil, ""},
+		{"leere Liste", nil, "2026.10.2", [2]int{3, 12}, nil, ""},
+		{"höchste gewinnt", []Release{rel("2026.11.0", 10*day), rel("2026.12.0", 10*day), rel("2026.10.9", 10*day)}, "2026.10.2", [2]int{3, 12}, nil, "2026.12.0"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			if got := PickCandidate(c.rels, c.installed, c.py, now, c.skip); got != c.want {

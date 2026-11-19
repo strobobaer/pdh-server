@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 )
@@ -80,16 +81,94 @@ func FreeMBAt(path string) int64 { return freeMB(path) }
 
 // ── Zustand je Server ─────────────────────────────────────────
 
+// maxStateEntries: so viele gescheiterte und gemeldete Versionen merkt sich der Zustand höchstens;
+// darüber fallen die ältesten weg.
+const maxStateEntries = 50
+
+// FailedEntry: eine Version, die sich nicht einrichten ließ, an der Probe scheiterte oder von
+// Hand verlassen wurde – mit der PDH-Version, unter der das geschah.
+type FailedEntry struct {
+	Version string
+	PDH     string
+}
+
 // UpdateState: was der tägliche Lauf dieses Servers zuletzt festgestellt hat
-// (<WorkDir>/update-state.json). FailedVersion ist eine Version, die sich nicht einrichten ließ
-// oder beim Prüfen scheiterte – mit der PDH-Version (FailedPDH) und dem Verlauf; NotifiedVersion
-// die Version, über die schon benachrichtigt wurde.
+// (<WorkDir>/update-state.json).
+//
+// Failed sind alle gescheiterten Versionen; eine Version wird nur unter derselben PDH-Version
+// nicht erneut versucht (SkipFor). Notified sind alle Versionen, über die schon benachrichtigt
+// wurde. FailedVersion, FailedPDH, FailedLog und NotifiedVersion beschreiben die zuletzt
+// gescheiterte bzw. gemeldete Version für die Anzeige. Eine ältere Datei, die nur diese
+// Einzelfelder kennt, wird beim Lesen in die Listen übernommen.
 type UpdateState struct {
 	CheckedAt                           time.Time
 	Result                              string
 	Installed                           string
 	FailedVersion, FailedPDH, FailedLog string
 	NotifiedVersion                     string
+	Failed                              []FailedEntry `json:",omitempty"`
+	Notified                            []string      `json:",omitempty"`
+}
+
+// migrate übernimmt die Einzelfelder einer älteren Zustandsdatei in die Listen.
+func (st *UpdateState) migrate() {
+	if st.FailedVersion != "" && !slices.ContainsFunc(st.Failed, func(e FailedEntry) bool { return e.Version == st.FailedVersion }) {
+		st.Failed = append(st.Failed, FailedEntry{Version: st.FailedVersion, PDH: st.FailedPDH})
+	}
+	if st.NotifiedVersion != "" && !slices.Contains(st.Notified, st.NotifiedVersion) {
+		st.Notified = append(st.Notified, st.NotifiedVersion)
+	}
+}
+
+// AddFailed vermerkt eine gescheiterte Version, auch als zuletzt gescheiterte für die Anzeige.
+// Eine schon vermerkte Version bekommt die neue PDH-Version und rückt ans Ende.
+func (st *UpdateState) AddFailed(version, pdhVersion, log string) {
+	st.FailedVersion, st.FailedPDH, st.FailedLog = version, pdhVersion, log
+	st.Failed = slices.DeleteFunc(st.Failed, func(e FailedEntry) bool { return e.Version == version })
+	st.Failed = append(st.Failed, FailedEntry{Version: version, PDH: pdhVersion})
+	if n := len(st.Failed) - maxStateEntries; n > 0 {
+		st.Failed = slices.Clone(st.Failed[n:])
+	}
+}
+
+// SkipFor: die Versionen, die unter dieser PDH-Version gescheitert sind – sie werden ohne
+// „Jetzt prüfen“ nicht erneut versucht.
+func (st UpdateState) SkipFor(pdhVersion string) []string {
+	var out []string
+	for _, e := range st.Failed {
+		if e.PDH == pdhVersion {
+			out = append(out, e.Version)
+		}
+	}
+	return out
+}
+
+// WasNotified: Wurde über diese Version schon benachrichtigt?
+func (st UpdateState) WasNotified(version string) bool { return slices.Contains(st.Notified, version) }
+
+// AddNotified vermerkt, dass über die Version benachrichtigt wurde.
+func (st *UpdateState) AddNotified(version string) {
+	st.NotifiedVersion = version
+	if !slices.Contains(st.Notified, version) {
+		st.Notified = append(st.Notified, version)
+	}
+	if n := len(st.Notified) - maxStateEntries; n > 0 {
+		st.Notified = slices.Clone(st.Notified[n:])
+	}
+}
+
+// Activated räumt nach dem Umschalten auf version auf: Gescheiterte und gemeldete Versionen bis
+// einschließlich version entfallen – als Kandidat kommen nur neuere in Frage.
+func (st *UpdateState) Activated(version string) {
+	upTo := func(v string) bool { return CompareVersions(v, version) <= 0 }
+	st.Failed = slices.DeleteFunc(st.Failed, func(e FailedEntry) bool { return upTo(e.Version) })
+	st.Notified = slices.DeleteFunc(st.Notified, upTo)
+	if st.FailedVersion != "" && upTo(st.FailedVersion) {
+		st.FailedVersion, st.FailedPDH, st.FailedLog = "", "", ""
+	}
+	if st.NotifiedVersion != "" && upTo(st.NotifiedVersion) {
+		st.NotifiedVersion = ""
+	}
 }
 
 func updateStatePath() string { return filepath.Join(workDir(), updateStateName) }
@@ -101,6 +180,7 @@ func LoadUpdateState() UpdateState {
 	if err != nil || json.Unmarshal(b, &st) != nil {
 		return UpdateState{}
 	}
+	st.migrate()
 	return st
 }
 

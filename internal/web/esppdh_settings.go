@@ -375,7 +375,8 @@ func (h *Handler) esppdhRollback(ctx context.Context, uid string) (msg string, e
 		msg = "Zurück auf ESPHome " + after.Version + " gestellt"
 		st.Installed = after.Version
 		if left != "" && left != after.Version {
-			st.FailedVersion, st.FailedPDH, st.FailedLog = left, pdh.Version(), ""
+			// zu den schon gescheiterten Versionen – keine davon wird danach wieder versucht
+			st.AddFailed(left, pdh.Version(), "")
 		}
 	}
 	// Absicht: „Zuletzt geprüft“ zeigt danach die Zeit des Zurückstellens, und die nächste tägliche
