@@ -543,8 +543,8 @@ func TestSyncTestAndOpsTemplatesRender(t *testing.T) {
 		t.Error("Betrieb (angehalten): Fortsetzen fehlt")
 	}
 	out = ops(SyncOpsView{Armed: true, RunnerOn: true, NextRun: "13.11.2026 10:05", Open: 2,
-		Runs: []syncRunRow{{When: "13.11.2026 10:00", Until: "13.11. 10:20", Direction: "herein", Summary: "Warteposition wegen hoher Serverlast (Prozessor)", Waiting: true},
-			{When: "13.11.2026 09:55", Direction: "hinaus", Summary: "1 fehlgeschlagen", Bad: true, Errors: []string{"Meldung 17 – Sperre"}}}}, true, true)
+		Runs: map[string]any{"Bar": SortBar{List: "sync", URL: "/sync/p1/runs", Target: "#sy-runs", Htmx: true}, "Runs": []syncRunRow{{When: "13.11.2026 10:00", Until: "13.11. 10:20", Direction: "herein", Summary: "Warteposition wegen hoher Serverlast (Prozessor)", Waiting: true},
+			{When: "13.11.2026 09:55", Direction: "hinaus", Summary: "1 fehlgeschlagen", Bad: true, Errors: []string{"Meldung 17 – Sperre"}}}}}, true, true)
 	for _, want := range []string{"Jetzt abgleichen", "Anhalten", "13.11.2026 10:05", "<b>2</b> Änderung(en)", "bis 13.11. 10:20", "Warteposition wegen hoher Serverlast (Prozessor)", "Meldung 17 – Sperre", `hx-get="/sync/p1/runs"`} {
 		if !strings.Contains(out, want) {
 			t.Errorf("Betrieb (scharf) ohne %q", want)

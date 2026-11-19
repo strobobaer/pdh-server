@@ -17,6 +17,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
 
+	"pdh/internal/core/listsort"
 	"pdh/internal/modules/esppdh"
 )
 
@@ -695,10 +696,10 @@ func esppdhScanRun(row pgx.Row, extra ...any) (esppdhRunView, error) {
 	return b, err
 }
 
-// esppdhRuns: die letzten Läufe eines Geräts (ohne Verlauf), der jüngste zuerst.
-func (h *Handler) esppdhRuns(ctx context.Context, devID string, limit int) ([]esppdhRunView, error) {
+// esppdhRuns: die Läufe eines Geräts (ohne Verlauf) in der gewählten Sortierung, höchstens limit.
+func (h *Handler) esppdhRuns(ctx context.Context, devID string, limit int, mode listsort.Mode) ([]esppdhRunView, error) {
 	rows, err := h.db.Query(ctx, esppdhRunSelect+` FROM esppdh_builds b LEFT JOIN users u ON u.id = b.requested_by
-		WHERE b.device_id = $1::uuid ORDER BY b.created_at DESC, b.id DESC LIMIT $2`, devID, limit)
+		WHERE b.device_id = $1::uuid ORDER BY `+logOrderSQL(mode, "b.created_at", "NULLIF(TRIM(u.first_name || ' ' || u.last_name), '')", "b.status")+`, b.id DESC LIMIT $2`, devID, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -733,12 +734,27 @@ func (h *Handler) esppdhRun(ctx context.Context, devID, bid string) (esppdhRunVi
 // jüngste mit Verlauf, Knopf „Firmware bauen“ und den Hinweis, wenn die Konfiguration seit dem
 // letzten Bau geändert ist (oder sich das nicht prüfen lässt). res: das gespeicherte Gerät, wie
 // es jetzt gebaut würde.
-func (h *Handler) esppdhFirmwareCard(ctx context.Context, pd *ESPPDHDevicePageData, d esppdhDevice, res esppdhResolved) {
-	runs, err := h.esppdhRuns(ctx, d.ID, esppdhListRuns)
+func (h *Handler) esppdhFirmwareCard(ctx context.Context, r *http.Request, pd *ESPPDHDevicePageData, d esppdhDevice, res esppdhResolved) {
+	runs, err := h.esppdhRuns(ctx, d.ID, esppdhListRuns, listsort.Newest)
 	if err != nil {
 		componentLog("esppdh").Error().Err(err).Str("gerät", d.Slug).Msg("läufe lesen")
 	}
 	pd.Runs = runs
+	// Liste „Letzte Läufe“: gewählte Sortierung; die Logik unten (jüngster Lauf, letzter
+	// gelungener) bleibt bei „neueste zuerst“.
+	mode := h.sortMode(r, "builds")
+	pd.RunList = runs
+	if mode != listsort.Newest {
+		if l, err := h.esppdhRuns(ctx, d.ID, esppdhListRuns, mode); err != nil {
+			componentLog("esppdh").Error().Err(err).Str("gerät", d.Slug).Msg("läufe sortiert lesen")
+		} else {
+			pd.RunList = l
+		}
+	}
+	pd.RunBar = h.sortBar(r, "builds", mode, r.URL.Path, "")
+	if len(runs) > 0 {
+		pd.LatestRunID = runs[0].ID
+	}
 	active := false
 	var lastOK *esppdhRunView
 	for i := range runs {

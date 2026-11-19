@@ -122,6 +122,22 @@ func (h *Handler) sortBar(r *http.Request, list string, cur listsort.Mode, url, 
 	return b
 }
 
+// logOrderSQL: ORDER BY-Text für Protokoll-Listen aus festen Bausteinen je Kennung.
+// at, person und kind sind Spaltenausdrücke aus dem Programm, nie Anfragedaten.
+// person/kind leer oder eine andere Kennung: wie „new“. Der Aufrufer hängt bei Bedarf
+// selbst einen festen Gleichstand (z. B. die Zeilenkennung) an.
+func logOrderSQL(m listsort.Mode, at, person, kind string) string {
+	switch {
+	case m == listsort.Oldest:
+		return at + " ASC"
+	case m == listsort.Person && person != "":
+		return "lower(" + person + ") ASC NULLS LAST, " + at + " DESC"
+	case m == listsort.Kind && kind != "":
+		return kind + " ASC, " + at + " DESC"
+	}
+	return at + " DESC"
+}
+
 // sortLabel: Beschriftung einer Sortierart in der Sprache des Benutzers.
 func sortLabel(lang string, m listsort.Mode) string {
 	switch m {

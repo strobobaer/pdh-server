@@ -288,7 +288,9 @@ func (h *Handler) ServerConfigPage(w http.ResponseWriter, r *http.Request) {
 		if d.Tab == "vpn" {
 			show = q.Get("show")
 		}
-		d.VPN = h.vpnLoadView(r.Context(), getUser(r).ID, true, show)
+		vpnMode := h.sortMode(r, "vpn")
+		d.VPN = h.vpnLoadView(r.Context(), getUser(r).ID, true, show, vpnMode)
+		d.VPN.EventsBar = h.sortBar(r, "vpn", vpnMode, r.URL.Path+"?tab=vpn", "")
 		if d.Tab == "vpn" && vpnZipIDsOK(q.Get("zip")) {
 			d.VPN.ZipIDs = q.Get("zip")
 		}

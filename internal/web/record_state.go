@@ -12,6 +12,8 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+
+	"pdh/internal/core/listsort"
 )
 
 // Stammdaten werden nicht direkt geloescht. Stattdessen:
@@ -467,6 +469,7 @@ type CleanupPageData struct {
 	Pending, Locked, Inactive []cleanupRow
 	Hidden, Done              []cleanupRow
 	Runs                      []cleanupRunView
+	CleanupBar                SortBar // Sortierung im Reiter „Verlauf“ (Läufe und erledigte Vormerkungen)
 	Msg, Err                  string
 }
 
@@ -514,50 +517,80 @@ func (h *Handler) CleanupPage(w http.ResponseWriter, r *http.Request) {
 	if d.Tab == "" {
 		d.Tab = "pending"
 	}
-	load := func(where string, limit int) []cleanupRow {
-		rows, err := h.db.Query(ctx, `
-			SELECT d.id::text, d.module, d.record_id::text, d.title, d.reason, COALESCE(TRIM(u.first_name || ' ' || u.last_name), ''),
-			       to_char(COALESCE(d.processed_at, d.requested_at), 'DD.MM.YYYY HH24:MI'), d.status, COALESCE(d.result_note, '')
-			  FROM deletion_requests d LEFT JOIN users u ON u.id = d.requested_by
-			 WHERE `+where+` ORDER BY COALESCE(d.processed_at, d.requested_at) DESC LIMIT `+fmt.Sprint(limit))
-		if err != nil {
-			d.Err = err.Error()
-			return nil
-		}
-		defer rows.Close()
-		var out []cleanupRow
-		for rows.Next() {
-			var c cleanupRow
-			if rows.Scan(&c.ID, &c.Module, &c.RecordID, &c.Title, &c.Reason, &c.By, &c.At, &c.Status, &c.Note) == nil {
-				mi := recordModules[c.Module]
-				c.ModuleLabel, c.Icon, c.URL = mi.Label, mi.Icon, mi.Path+c.RecordID
-				out = append(out, c)
-			}
-		}
-		return out
+	var err error
+	d.Pending, err = h.deletionRows(ctx, "d.status = 'pending'", "COALESCE(d.processed_at, d.requested_at) DESC", 1000)
+	if err != nil {
+		d.Err = err.Error()
 	}
-	d.Pending = load("d.status = 'pending'", 1000)
 	for i := range d.Pending {
 		c := checkDeletable(ctx, h.db, d.Pending[i].Module, d.Pending[i].RecordID)
 		d.Pending[i].Check = &c
 	}
-	d.Done = load("d.status <> 'pending'", 300)
+	// Reiter „Verlauf“: beide Listen (Läufe und erledigte Vormerkungen) teilen Listenart und Wahl
+	mode := h.sortMode(r, "cleanup")
+	if d.Done, err = h.cleanupDone(ctx, mode); err != nil {
+		d.Err = err.Error()
+	}
+	d.Runs = h.cleanupRuns(ctx, mode)
+	d.CleanupBar = h.sortBar(r, "cleanup", mode, r.URL.Path+"?tab=done", "")
 	d.Locked = h.masterStateRows(ctx, "t.locked_at IS NOT NULL")
 	d.Inactive = h.masterStateRows(ctx, "NOT t.active AND t.hidden_at IS NULL AND NOT EXISTS (SELECT 1 FROM deletion_requests dr WHERE dr.record_id = t.id AND dr.status = 'pending')")
 	d.Hidden = h.masterStateRows(ctx, "t.hidden_at IS NOT NULL")
-	if rows, err := h.db.Query(ctx, `
+	h.render(w, "cleanup", d)
+}
+
+// deletionRows liest Löschvormerkungen; where und order sind feste Texte aus dem Programm.
+func (h *Handler) deletionRows(ctx context.Context, where, order string, limit int) ([]cleanupRow, error) {
+	rows, err := h.db.Query(ctx, `
+		SELECT d.id::text, d.module, d.record_id::text, d.title, d.reason, COALESCE(TRIM(u.first_name || ' ' || u.last_name), ''),
+		       to_char(COALESCE(d.processed_at, d.requested_at), 'DD.MM.YYYY HH24:MI'), d.status, COALESCE(d.result_note, '')
+		  FROM deletion_requests d LEFT JOIN users u ON u.id = d.requested_by
+		 WHERE `+where+` ORDER BY `+order+` LIMIT `+fmt.Sprint(limit))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []cleanupRow
+	for rows.Next() {
+		var c cleanupRow
+		if rows.Scan(&c.ID, &c.Module, &c.RecordID, &c.Title, &c.Reason, &c.By, &c.At, &c.Status, &c.Note) == nil {
+			mi := recordModules[c.Module]
+			c.ModuleLabel, c.Icon, c.URL = mi.Label, mi.Icon, mi.Path+c.RecordID
+			out = append(out, c)
+		}
+	}
+	return out, nil
+}
+
+// cleanupDone: erledigte Vormerkungen (die letzten 300) in der gewählten Sortierung; Art ist
+// das Ergebnis (gelöscht / ausgeblendet / aufgehoben). Die Auswahl der 300 trifft die Datenbank.
+func (h *Handler) cleanupDone(ctx context.Context, mode listsort.Mode) ([]cleanupRow, error) {
+	return h.deletionRows(ctx, "d.status <> 'pending'",
+		logOrderSQL(mode, "COALESCE(d.processed_at, d.requested_at)", "NULLIF(TRIM(u.first_name || ' ' || u.last_name), '')", "d.status")+", d.id", 300)
+}
+
+// cleanupRuns: die letzten 30 Bereinigungsläufe in der gewählten Sortierung. Art ist das
+// Ergebnis des Laufs: mit Fehlern, mit Ausgeblendetem, mit Gelöschtem, ohne Änderung.
+func (h *Handler) cleanupRuns(ctx context.Context, mode listsort.Mode) []cleanupRunView {
+	rows, err := h.db.Query(ctx, `
 		SELECT to_char(c.started_at, 'DD.MM.YYYY HH24:MI'), COALESCE(TRIM(u.first_name || ' ' || u.last_name), ''),
 		       c.deleted, c.hidden, c.failed, COALESCE(c.summary, '')
-		  FROM cleanup_runs c LEFT JOIN users u ON u.id = c.started_by ORDER BY c.started_at DESC LIMIT 30`); err == nil {
-		for rows.Next() {
-			var v cleanupRunView
-			if rows.Scan(&v.At, &v.By, &v.Deleted, &v.Hidden, &v.Failed, &v.Summary) == nil {
-				d.Runs = append(d.Runs, v)
-			}
-		}
-		rows.Close()
+		  FROM cleanup_runs c LEFT JOIN users u ON u.id = c.started_by
+		 ORDER BY `+logOrderSQL(mode, "c.started_at", "NULLIF(TRIM(u.first_name || ' ' || u.last_name), '')",
+		"CASE WHEN c.failed > 0 THEN 1 WHEN c.hidden > 0 THEN 2 WHEN c.deleted > 0 THEN 3 ELSE 4 END")+`, c.id LIMIT 30`)
+	if err != nil {
+		componentLog("bereinigung").Error().Err(err).Msg("läufe lesen")
+		return nil
 	}
-	h.render(w, "cleanup", d)
+	defer rows.Close()
+	var out []cleanupRunView
+	for rows.Next() {
+		var v cleanupRunView
+		if rows.Scan(&v.At, &v.By, &v.Deleted, &v.Hidden, &v.Failed, &v.Summary) == nil {
+			out = append(out, v)
+		}
+	}
+	return out
 }
 
 // CleanupRunWeb: POST /admin/cleanup/run

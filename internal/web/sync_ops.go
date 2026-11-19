@@ -454,8 +454,8 @@ type SyncOpsView struct {
 	NextRun       string
 	Open          int
 	Entries       []syncOutboxRow
-	Runs          []syncRunRow
-	ArmBlock      string // warum Scharfschalten gerade nicht geht ("" = möglich)
+	Runs          map[string]any // Daten für „sync-runs“ (Läufe, Leiste), s. syncRunsBlock
+	ArmBlock      string         // warum Scharfschalten gerade nicht geht ("" = möglich)
 	Armed, Halted bool
 	FirstArm      bool // noch nie scharf: vor dem Scharfschalten wird nachgefragt
 	RunnerOn      bool
@@ -523,10 +523,23 @@ func (h *Handler) syncOpsView(ctx context.Context, p *extsync.Profile, maps []ex
 			ov.Entries = append(ov.Entries, row)
 		}
 	}
-	if runs, err := store.ListRuns(ctx, p.ID, 20); err == nil {
-		ov.Runs = syncRunRows(p.TargetType, runs)
-	}
 	return ov
+}
+
+// syncRunsBlock: Daten des Bausteins „sync-runs“ – die letzten 20 Läufe in der gewählten
+// Sortierung samt Leiste (htmx: tauscht den Block #sy-runs aus). Die Auswahl der 20 trifft
+// die Datenbank.
+func (h *Handler) syncRunsBlock(r *http.Request, p *extsync.Profile) (map[string]any, error) {
+	mode := h.sortMode(r, "sync")
+	runs, err := h.syncStore().ListRunsSorted(r.Context(), p.ID, 20, mode)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{
+		"Runs": syncRunRows(p.TargetType, runs),
+		"Bar":  h.sortBar(r, "sync", mode, "/sync/"+p.ID+"/runs", "#sy-runs"),
+		"ID":   p.ID,
+	}, nil
 }
 
 func (h *Handler) syncOpsFail(w http.ResponseWriter, r *http.Request, id, msg string) {
@@ -673,12 +686,13 @@ func (h *Handler) SyncRunsFragment(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	runs, err := h.syncStore().ListRuns(r.Context(), p.ID, 20)
+	blk, err := h.syncRunsBlock(r, p)
 	if err != nil {
+		componentLog("abgleich").Error().Err(err).Str("profil", p.ID).Msg("läufe laden")
 		http.Error(w, "Läufe konnten nicht geladen werden", http.StatusInternalServerError)
 		return
 	}
-	h.syncFragment(w, "sync-runs", syncRunRows(p.TargetType, runs))
+	h.syncFragment(w, "sync-runs", blk)
 }
 
 // ── Herkunft am Datensatz ────────────────────────────────────────────────

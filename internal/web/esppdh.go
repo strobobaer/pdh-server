@@ -594,11 +594,15 @@ type ESPPDHDevicePageData struct {
 	ExplorerLink string // "" = kein Recht für den Explorer (import.execute)
 
 	// Karte „Firmware“ (esppdh_build.go)
-	Runs      []esppdhRunView // letzte Läufe, der jüngste zuerst
-	Run       *esppdhRunView  // jüngster Lauf mit Verlauf
-	CanBuild  bool            // Knopf „Firmware bauen“
-	BuildNote string          // warum gerade nicht gebaut werden kann
-	Changed   bool            // Konfiguration seit dem letzten Bau geändert
+	Runs []esppdhRunView // letzte Läufe, der jüngste zuerst
+	// dieselben Läufe in der gewählten Sortierung (Liste „Letzte Läufe“), Leiste und der jüngste Lauf
+	RunList     []esppdhRunView
+	RunBar      SortBar
+	LatestRunID string
+	Run         *esppdhRunView // jüngster Lauf mit Verlauf
+	CanBuild    bool           // Knopf „Firmware bauen“
+	BuildNote   string         // warum gerade nicht gebaut werden kann
+	Changed     bool           // Konfiguration seit dem letzten Bau geändert
 	// ob die Firmware noch passt, lässt sich nicht prüfen (Grund im Server-Protokoll)
 	ChangedUnknown bool
 
@@ -738,7 +742,7 @@ func (h *Handler) esppdhRenderDevice(w http.ResponseWriter, r *http.Request, d e
 	if serr == nil && len(rmsgs) == 0 {
 		pd.Problems = append(pd.Problems, esppdh.ValidateDevice(res.Dev)...)
 	}
-	h.esppdhFirmwareCard(ctx, &pd, d, res)
+	h.esppdhFirmwareCard(ctx, r, &pd, d, res)
 	h.esppdhFlashCard(&pd, d)
 	if pd.CanEdit && !d.Wired {
 		pd.APPassword = apPW

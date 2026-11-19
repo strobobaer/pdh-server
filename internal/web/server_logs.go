@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"pdh/internal/core/listsort"
 	"pdh/pkg/logger"
 )
 
@@ -42,6 +43,7 @@ type ServerLogsData struct {
 	BaseData
 	Filter     logFilterView
 	Rows       []logRowView
+	SortBar    SortBar // Sortierung der Zeilen (Seitenmodus, Filter bleiben)
 	Scanned    int
 	Truncated  bool
 	Components []string
@@ -156,8 +158,18 @@ func (h *Handler) loadLogs(r *http.Request) ServerLogsData {
 	d.CSVURL = "/admin/server-config/logs/download?format=csv&" + d.Query
 	d.JSONURL = "/admin/server-config/logs/download?format=json&" + d.Query
 	d.Now = time.Now().Format("15:04:05")
-	for _, e := range entries {
-		d.Rows = append(d.Rows, logRow(e))
+	// Sortierung: der Dateispeicher liefert nur „neueste zuerst“ – die bereits gefilterten
+	// Zeilen werden hier geordnet (Art = Stufe)
+	mode := h.sortMode(r, "serverlog")
+	d.SortBar = h.sortBar(r, "serverlog", mode, "/admin/server-config/logs?"+d.Query, "")
+	rows := make([]logRowView, len(entries))
+	items := make([]listsort.Item, len(entries))
+	for i, e := range entries {
+		rows[i] = logRow(e)
+		items[i] = listsort.Item{At: e.Time, Person: rows[i].User, Kind: e.Level}
+	}
+	for _, i := range listsort.Order(items, mode) {
+		d.Rows = append(d.Rows, rows[i])
 		row := &d.Rows[len(d.Rows)-1]
 		row.ComponentURL = with("component", row.Component)
 		if row.User != "" {

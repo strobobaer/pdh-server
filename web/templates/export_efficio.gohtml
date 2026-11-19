@@ -81,6 +81,7 @@
 <div class="card">
   <div class="card-title"><span><i class="ti ti-list-details" aria-hidden="true"></i> Protokoll (letzte 30 Läufe)</span></div>
   {{if .Runs}}
+  {{template "sort-bar" .RunsBar}}
   <div class="ef-scroll"><table class="ef-table">
     <thead><tr><th>Zeit</th><th>Ergebnis</th><th>Intervalle</th><th>Zeilen</th><th>Ohne Wert</th><th>Ablage</th><th>Dateien</th><th>Hinweise</th></tr></thead>
     <tbody>{{range .Runs}}<tr>

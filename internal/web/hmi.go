@@ -261,7 +261,7 @@ func (h *Handler) HMISessions(w http.ResponseWriter, r *http.Request) {
 		JOIN infrastructure_hmis x ON x.id = s.hmi_id AND x.infrastructure_id = $1::uuid
 		LEFT JOIN users u ON u.id = s.user_id
 		LEFT JOIN kiosk_terminals k ON k.id = s.kiosk_terminal_id
-		WHERE s.hmi_id = $2::uuid ORDER BY s.started_at DESC LIMIT 20`, chi.URLParam(r, "id"), chi.URLParam(r, "hmiID"))
+		WHERE s.hmi_id = $2::uuid ORDER BY `+logOrderSQL(h.sortMode(r, "hmi"), "s.started_at", "NULLIF(TRIM(u.first_name || ' ' || u.last_name), '')", "s.mode")+`, s.id LIMIT 20`, chi.URLParam(r, "id"), chi.URLParam(r, "hmiID"))
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Zugriffe konnten nicht geladen werden"})
 		return

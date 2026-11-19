@@ -145,6 +145,7 @@
 <div class="card">
   <div class="card-title"><span><i class="ti ti-list-details"></i> Protokoll</span><span class="bk-sub">Sicherungen und Wiederherstellungen</span></div>
   {{if .Runs}}
+  {{template "sort-bar" .RunsBar}}
   <div style="overflow-x:auto"><table class="bk-table">
     <thead><tr><th>Start</th><th>Art</th><th>Status</th><th>Datei / Hinweis</th><th>Dauer</th></tr></thead>
     <tbody>

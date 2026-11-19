@@ -2,12 +2,14 @@
      Bausteine: sync-ops (ganzer Schritt), sync-runs (per htmx aktualisiert). */}}
 
 {{define "sync-runs"}}
-{{if .}}
+<div id="sy-runs">
+{{if .Runs}}
+{{template "sort-bar" .Bar}}
 <div class="sy-wrap">
   <table class="sy-tbl">
     <thead><tr><th>Zeit</th><th>Richtung</th><th>Ergebnis</th></tr></thead>
     <tbody>
-    {{range .}}
+    {{range .Runs}}
       <tr>
         <td style="white-space:nowrap">{{.When}}{{if .Until}}<div class="sy-note">bis {{.Until}}</div>{{end}}</td>
         <td>{{.Direction}}</td>
@@ -21,6 +23,7 @@
 {{else}}
 <div class="rec-sub">Noch kein Lauf.</div>
 {{end}}
+</div>
 {{end}}
 
 {{define "sync-ops"}}
@@ -117,7 +120,7 @@
 
 <div class="card">
   <div class="card-title"><span><i class="ti ti-history"></i> Letzte Läufe</span>
-    <button class="btn btn-small" type="button" hx-get="/sync/{{$p.ID}}/runs" hx-target="#sy-runs"><i class="ti ti-refresh"></i> Aktualisieren</button></div>
-  <div id="sy-runs">{{template "sync-runs" $o.Runs}}</div>
+    <button class="btn btn-small" type="button" hx-get="/sync/{{$p.ID}}/runs" hx-target="#sy-runs" hx-swap="outerHTML"><i class="ti ti-refresh"></i> Aktualisieren</button></div>
+  {{template "sync-runs" $o.Runs}}
 </div>
 {{end}}

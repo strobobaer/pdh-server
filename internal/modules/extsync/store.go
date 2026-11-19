@@ -9,6 +9,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"pdh/internal/core/listsort"
 )
 
 // Store speichert Profile, Zuordnungen, Verknüpfungen, Warteliste und Läufe.
@@ -1029,12 +1031,30 @@ func (s *Store) FinishRun(ctx context.Context, r *Run) error {
 
 // ListRuns liefert die letzten Läufe eines Profils, neueste zuerst.
 func (s *Store) ListRuns(ctx context.Context, profileID string, limit int) ([]Run, error) {
+	return s.ListRunsSorted(ctx, profileID, limit, listsort.Newest)
+}
+
+// runsOrder: ORDER BY der Läufe aus festen Bausteinen je Sortierart (Liste „sync“: neueste,
+// älteste, nach Richtung); alles andere gilt als „neueste zuerst“. Gleichstand: Kennung.
+func runsOrder(m listsort.Mode) string {
+	switch m {
+	case listsort.Oldest:
+		return "started_at ASC, id"
+	case listsort.Kind:
+		return "direction ASC, started_at DESC, id"
+	}
+	return "started_at DESC, id"
+}
+
+// ListRunsSorted liefert die Läufe eines Profils in der gewählten Sortierung; die Auswahl der
+// letzten limit Läufe trifft die Datenbank (auch bei „älteste zuerst“).
+func (s *Store) ListRunsSorted(ctx context.Context, profileID string, limit int, mode listsort.Mode) ([]Run, error) {
 	if limit <= 0 {
 		limit = 50
 	}
 	rows, err := s.db.Query(ctx, `SELECT id::text, profile_id::text, direction, started_at, finished_at,
 			n_new, n_changed, n_written, n_failed, n_backfill, n_archived, skipped_reason, errors
-		FROM sync_runs WHERE profile_id = $1 ORDER BY started_at DESC, id LIMIT $2`, profileID, limit)
+		FROM sync_runs WHERE profile_id = $1 ORDER BY `+runsOrder(mode)+` LIMIT $2`, profileID, limit)
 	if err != nil {
 		return nil, fmt.Errorf("abgleich: läufe laden: %w", err)
 	}

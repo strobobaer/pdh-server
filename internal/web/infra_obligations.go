@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+
+	"pdh/internal/core/listsort"
 )
 
 // Prüfpflichten und Gefährdungsbeurteilungen je Anlage (migrations/109):
@@ -115,13 +117,19 @@ func (h *Handler) scanObligations(ctx context.Context, where string, args ...any
 	return out
 }
 
+// obligationLogOrder: ORDER BY der Nachweise (Alias l, u); Art ist das Ergebnis (ohne
+// Mängel / mit Mängeln), fester Gleichstand: Erfassungszeit und Kennung.
+func obligationLogOrder(m listsort.Mode) string {
+	return logOrderSQL(m, "l.done_on", "NULLIF(TRIM(u.first_name || ' ' || u.last_name), '')", "l.result") + ", l.created_at, l.id"
+}
+
 // infraObligations: alle Einträge einer Anlage mit den letzten Nachweisen.
-func (h *Handler) infraObligations(ctx context.Context, infraID string) []obligationView {
+func (h *Handler) infraObligations(ctx context.Context, infraID string, mode listsort.Mode) []obligationView {
 	list := h.scanObligations(ctx, `o.infrastructure_id = $1::uuid`, infraID)
 	for i := range list {
 		rows, err := h.db.Query(ctx, `SELECT l.done_on, l.result, l.note, COALESCE(NULLIF(TRIM(u.first_name || ' ' || u.last_name), ''), '')
 			FROM infra_obligation_log l LEFT JOIN users u ON u.id = l.done_by
-			WHERE l.obligation_id = $1::uuid ORDER BY l.done_on DESC, l.created_at DESC LIMIT 10`, list[i].ID)
+			WHERE l.obligation_id = $1::uuid ORDER BY `+obligationLogOrder(mode)+` LIMIT 10`, list[i].ID)
 		if err != nil {
 			continue
 		}

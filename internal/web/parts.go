@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"pdh/internal/core/listsort"
 	"pdh/internal/modules/inventory"
 )
 
@@ -296,6 +297,8 @@ type PartDetailData struct {
 	Reservations         []PartReservationRow
 	StockValue           string
 	Movements            []PartMovementRow
+	RecentMoves          []PartMovementRow // „Letzte Bewegungen“ (5) der Übersicht, immer neueste zuerst
+	MovesBar             SortBar
 	Usage                []PartUsageRow
 	Categories           []string
 	Users                []UserOption
@@ -428,7 +431,17 @@ func (h *Handler) PartDetailPage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	data.Movements = h.partMovements(ctx, id, paths, 150)
+	movMode := h.sortMode(r, "moves")
+	data.Movements = h.partMovements(ctx, id, paths, 150, movMode)
+	data.MovesBar = h.sortBar(r, "moves", movMode, r.URL.Path+"?tab=stock", "")
+	if movMode == listsort.Newest {
+		data.RecentMoves = data.Movements
+	} else {
+		data.RecentMoves = h.partMovements(ctx, id, paths, 5, listsort.Newest)
+	}
+	if len(data.RecentMoves) > 5 {
+		data.RecentMoves = data.RecentMoves[:5]
+	}
 
 	if rows, err := h.db.Query(ctx, `
 		SELECT label, id, title, SUM(net)::float8, MAX(at) FROM (

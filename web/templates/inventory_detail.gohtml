@@ -93,7 +93,7 @@
     </div>
     <div class="card" style="margin:0">
       <div class="card-title"><span><i class="ti ti-arrows-exchange"></i> Letzte Bewegungen</span></div>
-      {{range $i, $m := .Movements}}{{if lt $i 5}}
+      {{range $i, $m := .RecentMoves}}{{if lt $i 5}}
       <div class="rec-row"><div class="grow">{{$m.TypeLabel}}{{if $m.RecordLabel}} · <a href="{{$m.RecordURL}}" data-frame data-frame-title="{{$m.RecordLabel}}" style="color:var(--accent)">{{$m.RecordLabel}}</a>{{end}}<div class="rec-sub">{{$m.Date}} · {{$m.User}}</div></div><b>{{$m.Qty}}</b></div>
       {{end}}{{else}}<div class="rec-sub">Keine Bewegungen</div>{{end}}
     </div>
@@ -196,7 +196,8 @@
       <div style="display:flex;justify-content:flex-end"><button class="btn btn-primary btn-small" type="submit"><i class="ti ti-check"></i> Buchen</button></div>
     </form>
   </div>
-  <div class="card" style="padding:0;overflow-x:auto;margin-top:12px">
+  {{if .Movements}}<div style="margin-top:12px">{{template "sort-bar" .MovesBar}}</div>{{end}}
+  <div class="card" style="padding:0;overflow-x:auto;margin-top:{{if .Movements}}0{{else}}12px{{end}}">
     <table>
       <thead><tr><th>Datum</th><th>Art</th><th style="text-align:right">Menge</th><th style="text-align:right">Bestand vorher → nachher</th><th>Lagerplatz</th><th>Bezug</th><th>Benutzer</th></tr></thead>
       <tbody>
