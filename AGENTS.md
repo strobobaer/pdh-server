@@ -324,7 +324,15 @@ oder ändern.**
    `recordDepartments` und `deptScopeFor` geben bei Datenbankfehlern „keine
    Einschränkung“ zurück (Bestand; betrifft Bearbeiten-Rechte im Gate und die
    Abteilungssperre); Benutzer, deren Rolle gelöscht wurde, sehen nach 0.82.3
-   nur noch eigene Projekte/Vorschläge – vor dem Einspielen prüfen.
+   nur noch eigene Projekte/Vorschläge – vor dem Einspielen prüfen (am
+   Testverbund geprüft: keiner). Aus der Schlussprüfung geparkt: Schreibt
+   jemand mit abgelaufener Anmeldung über eine gesperrte Route, kommt eine
+   Textmeldung „Bitte neu anmelden“ statt der Weiterleitung (sperrend lassen,
+   nur das Aussehen wie `authMiddleware`); `webActor` prüft die bei Wartung
+   zurückgezogenen Sitzungen nicht (Bestand); Pfad-Aufteilung auf `/api/v1/`
+   enger fassen; `middleware.Auth` prüft nicht, ob der Benutzer noch aktiv
+   ist – Schlüssel deaktivierter Benutzer gelten an Schnittstellen-Wegen ohne
+   Rechte-Regel bis zum Ablauf (Bestand, Systembenutzer 10 Jahre).
    Vorschlag für später: Anhänge nur mit Anmeldung.
    (b) **0.82.4 Seite „Netzwerk“:** Netze und WLANs aus UniFi und Omada
    vorschlagen, der Anwender bestätigt nur noch; WLAN-Kennwörter werden mit
