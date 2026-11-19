@@ -140,6 +140,32 @@ func TestEsppdhPanelShowsFailure(t *testing.T) {
 	}
 }
 
+// Das Ende einer Einrichtung zeigt die Karte nur für „Umgebung einrichten“ (Grundumgebung) – nicht
+// für den Kandidaten einer Prüfung, sonst stünde „Einrichtung abgeschlossen: ESPHome X“ neben
+// „ESPHome X wird nicht verwendet“.
+func TestEsppdhPanelHidesCandidateJob(t *testing.T) {
+	p := esppdhPanel{AgentReady: true, Pinned: "2026.10.2", Env: esppdh.EnvState{Installed: true, Version: "2026.10.2", FreeMB: -1},
+		Job:    esppdhJob{Done: true, Version: "2026.11.1", Target: "2026.11.1"},
+		Update: esppdh.UpdateState{FailedVersion: "2026.11.1", FailedPDH: pdh.Version()}}
+	out := renderSNMPTemplate(t, "esppdh-panel", p)
+	if strings.Contains(out, "Einrichtung abgeschlossen") || !strings.Contains(out, "ESPHome 2026.11.1 wird nicht verwendet") {
+		t.Errorf("Kandidat gelungen:\n%s", out)
+	}
+	p.Job = esppdhJob{Done: true, Error: "Einrichtung fehlgeschlagen: pip", Target: "2026.11.1"}
+	if out = renderSNMPTemplate(t, "esppdh-panel", p); strings.Contains(out, "Einrichtung fehlgeschlagen: pip") {
+		t.Errorf("Kandidat gescheitert:\n%s", out)
+	}
+	// Grundumgebung: wie bisher
+	p.Job = esppdhJob{Done: true, Version: "2026.10.2"}
+	if out = renderSNMPTemplate(t, "esppdh-panel", p); !strings.Contains(out, "Einrichtung abgeschlossen: ESPHome 2026.10.2") {
+		t.Errorf("Grundumgebung gelungen:\n%s", out)
+	}
+	p.Job = esppdhJob{Done: true, Error: "Einrichtung fehlgeschlagen: pip"}
+	if out = renderSNMPTemplate(t, "esppdh-panel", p); !strings.Contains(out, "Einrichtung fehlgeschlagen: pip") {
+		t.Errorf("Grundumgebung gescheitert:\n%s", out)
+	}
+}
+
 // „veraltet“ heißt: älter als die Mindestversion.
 func TestEsppdhPanelOutdatedMeansBelowMinimum(t *testing.T) {
 	p := esppdhPanel{AgentReady: true, Pinned: "2026.10.2", Env: esppdh.EnvState{Installed: true, Version: "2026.9.1", Outdated: true, FreeMB: -1}}

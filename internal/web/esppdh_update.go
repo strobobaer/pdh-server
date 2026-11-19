@@ -528,12 +528,6 @@ func esppdhPythonOf(bin string) [2]int {
 
 // ── Einrichten ───────────────────────────────────────────────
 
-// esppdhInstallStatus: Stand der Einrichtung beim Agenten, mit dem Kandidaten des Laufs.
-type esppdhInstallStatus struct {
-	esppdhJob
-	Target string `json:"target"` // leer = Grundumgebung
-}
-
 // esppdhInstall lässt den Agenten den Kandidaten einrichten und wartet auf das Ende (alle 5 s,
 // höchstens 25 min). failed: die Einrichtung ist gescheitert (log = Meldung des Agenten);
 // stopped: kein Urteil über die Version (note sagt, warum).
@@ -567,7 +561,7 @@ func (h *Handler) esppdhInstall(ctx context.Context, cand string) (out esppdhOut
 			case <-time.After(esppdhInstallPoll):
 			}
 		}
-		var s esppdhInstallStatus
+		var s esppdhJob
 		actx, cancel := context.WithTimeout(ctx, esppdhAgentTimeout)
 		err := h.agentJSON(actx, http.MethodGet, "/v1/esppdh/install", nil, &s)
 		cancel()

@@ -35,7 +35,8 @@
   {{if .Job.Running}}
   <div class="esppdh-state" role="status"><i class="ti ti-loader-2"></i> <b>Umgebung wird eingerichtet …</b> Das dauert einige Minuten. Die Karte aktualisiert sich selbst.</div>
   {{else}}
-  {{if .Job.Done}}{{if .Job.Error}}<div class="sc-sub" role="alert" style="margin-bottom:8px;color:var(--red);white-space:pre-line"><i class="ti ti-alert-circle"></i> {{.Job.Error}}</div>
+  {{/* nur „Umgebung einrichten“ (Grundumgebung); das Ende eines Kandidaten steht im Ergebnis der Prüfung */}}
+  {{if and .Job.Done (not .Job.Target)}}{{if .Job.Error}}<div class="sc-sub" role="alert" style="margin-bottom:8px;color:var(--red);white-space:pre-line"><i class="ti ti-alert-circle"></i> {{.Job.Error}}</div>
   {{else}}<div class="sc-sub" role="status" style="margin-bottom:8px;color:var(--green)"><i class="ti ti-check"></i> Einrichtung abgeschlossen: ESPHome {{.Job.Version}}.</div>{{end}}{{end}}
   {{if .Checking}}
   <div class="esppdh-state" role="status"><i class="ti ti-loader-2"></i> <b>Prüfung läuft …</b> Das PDH sucht eine neuere ESPHome-Version und probt sie. Das dauert einige Minuten. Die Karte aktualisiert sich selbst.</div>

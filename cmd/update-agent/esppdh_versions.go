@@ -40,6 +40,14 @@ const (
 	pointerBase     = "base" // Wert von „previous“: Grundumgebung
 )
 
+// versionsDir: Ordner der ESPHome-Versionen. Der Agent läuft als root und liest dafür keine
+// Umgebungsvariable (anders als das PDH, dessen Tests PDH_ESPHOME_VERSIONS_DIR setzen) – nur die
+// Tests des Agenten setzen diese Variable direkt.
+var versionsDir = esppdh.VersionsDir
+
+// versionBin: Programm ESPHome einer Version im Versionen-Ordner.
+func versionBin(version string) string { return filepath.Join(versionsDir, version, "bin", "esphome") }
+
 // versionsAnswer: Antwort von GET und POST /v1/esppdh/versions.
 type versionsAnswer struct {
 	OK        bool     `json:"ok"`
@@ -52,7 +60,7 @@ type versionsAnswer struct {
 // readRawPointer: Inhalt der Zeigerdatei – nur wenn er dem Versionsmuster entspricht (bei
 // „previous“ auch „base“); sonst leer.
 func readRawPointer(name string) string {
-	b, err := os.ReadFile(filepath.Join(esppdh.VersionsDirPath(), name))
+	b, err := os.ReadFile(filepath.Join(versionsDir, name))
 	if err != nil {
 		return ""
 	}
@@ -65,7 +73,7 @@ func readRawPointer(name string) string {
 
 // writePointer schreibt eine Zeigerdatei atomar (Temp-Datei im selben Ordner, dann Rename), 0644.
 func writePointer(name, value string) error {
-	dir := esppdh.VersionsDirPath()
+	dir := versionsDir
 	tmp, err := os.CreateTemp(dir, "."+name+".*.tmp")
 	if err != nil {
 		return err
@@ -86,7 +94,7 @@ func writePointer(name, value string) error {
 
 // removePointer entfernt eine Zeigerdatei (fehlt sie schon, ist das gut).
 func removePointer(name string) error {
-	err := os.Remove(filepath.Join(esppdh.VersionsDirPath(), name))
+	err := os.Remove(filepath.Join(versionsDir, name))
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
@@ -96,7 +104,7 @@ func removePointer(name string) error {
 // installedVersions: Namen der Versionsordner (echte Ordner mit gültigem Namen), aufsteigend.
 func installedVersions() []string {
 	out := []string{}
-	entries, err := os.ReadDir(esppdh.VersionsDirPath())
+	entries, err := os.ReadDir(versionsDir)
 	if err != nil {
 		return out
 	}
@@ -116,7 +124,7 @@ func removeVersionDir(version string) error {
 	if !esppdh.StableVersionRe.MatchString(version) {
 		return fmt.Errorf("ungültige ESPHome-Version %q", version)
 	}
-	base := filepath.Clean(esppdh.VersionsDirPath())
+	base := filepath.Clean(versionsDir)
 	if !filepath.IsAbs(base) || filepath.Dir(base) == base {
 		return fmt.Errorf("ungültiger Versionsordner %q", base)
 	}
@@ -234,7 +242,7 @@ func firstLine(s string) string {
 
 // versionDirOK: der Ordner der Version ist ein echter Ordner (kein Verweis).
 func versionDirOK(version string) bool {
-	fi, err := os.Lstat(filepath.Join(esppdh.VersionsDirPath(), version))
+	fi, err := os.Lstat(filepath.Join(versionsDir, version))
 	return err == nil && fi.IsDir()
 }
 
@@ -245,16 +253,21 @@ func (a *updateAgent) versionsState(errMsg string) versionsAnswer {
 	}
 }
 
-// versionsActivate: die Version wird aktiv; die bisherige aktive (oder die Grundumgebung) wird
-// „previous“; alle anderen Versionsordner werden gelöscht (eine Generation bleibt erhalten).
-func (a *updateAgent) versionsActivate(ctx context.Context, version string) error {
-	if !esppdh.StableVersionRe.MatchString(version) {
-		return errors.New("ungültige ESPHome-Version")
-	}
+// effectiveActive: der Zeiger „active“, wie er gilt – ist er älter als die Mindestversion, nimmt
+// das PDH die Grundumgebung (esppdh.ActiveVersionPointer), dann hier "" (Grundumgebung).
+func effectiveActive() string {
 	cur := readRawPointer(pointerActive)
-	// Nie herabstufen: nur auf eine neuere Version als die aktive und nicht unter die Mindestversion.
-	// Zurück auf die vorige Umgebung geht allein mit „rollback“.
-	if cur != "" && esppdh.CompareVersions(version, cur) <= 0 {
+	if cur != "" && esppdh.CompareVersions(cur, esppdh.PinnedVersion()) < 0 {
+		return ""
+	}
+	return cur
+}
+
+// upgradeAllowed: Darf version aktiv werden? Nie herabstufen – nur eine neuere Version als die
+// aktive und nicht unter der Mindestversion; zurück auf die vorige Umgebung geht allein mit
+// „rollback“. Gilt beim Umschalten und schon beim Einrichten eines Kandidaten.
+func upgradeAllowed(version string) error {
+	if cur := effectiveActive(); cur != "" && esppdh.CompareVersions(version, cur) <= 0 {
 		if version == cur {
 			return fmt.Errorf("ESPHome %s ist schon aktiv", version)
 		}
@@ -263,10 +276,24 @@ func (a *updateAgent) versionsActivate(ctx context.Context, version string) erro
 	if esppdh.CompareVersions(version, esppdh.PinnedVersion()) < 0 {
 		return fmt.Errorf("ESPHome %s ist älter als die Mindestversion %s", version, esppdh.PinnedVersion())
 	}
+	return nil
+}
+
+// versionsActivate: die Version wird aktiv; die bisherige aktive (oder die Grundumgebung) wird
+// „previous“; alle anderen Versionsordner werden gelöscht (eine Generation bleibt erhalten).
+func (a *updateAgent) versionsActivate(ctx context.Context, version string) error {
+	if !esppdh.StableVersionRe.MatchString(version) {
+		return errors.New("ungültige ESPHome-Version")
+	}
+	if err := upgradeAllowed(version); err != nil {
+		return err
+	}
+	// eine aktive Version unter der Mindestversion gilt nicht – „previous“ wird dann die Grundumgebung
+	cur := effectiveActive()
 	if !versionDirOK(version) {
 		return fmt.Errorf("ESPHome %s ist nicht eingerichtet", version)
 	}
-	got, err := a.esphomeVersionOf(ctx, esppdh.VersionBin(version))
+	got, err := a.esphomeVersionOf(ctx, versionBin(version))
 	if err != nil {
 		return fmt.Errorf("ESPHome %s lässt sich nicht starten: %w", version, err)
 	}

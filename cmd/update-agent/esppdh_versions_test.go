@@ -14,12 +14,14 @@ import (
 
 // ESPPDH: ESPHome-Versionen nebeneinander (esppdh_versions.go).
 
-// versionsAgent: Agent im systemd-Betrieb mit Temp-Ordner als VersionsDir; ESPHome „nennt“ die
+// versionsAgent: Agent im systemd-Betrieb mit Temp-Ordner als versionsDir; ESPHome „nennt“ die
 // Version seines Ordners, laufende Einrichtungen gibt es nicht.
 func versionsAgent(t *testing.T) (*updateAgent, string) {
 	t.Helper()
 	dir := t.TempDir()
-	t.Setenv("PDH_ESPHOME_VERSIONS_DIR", dir)
+	old := versionsDir
+	versionsDir = dir
+	t.Cleanup(func() { versionsDir = old })
 	a := &updateAgent{mode: "systemd", repoDir: "/srv/pdh"}
 	a.esphomeVersion = func(_ context.Context, bin string) (string, error) {
 		return filepath.Base(filepath.Dir(filepath.Dir(bin))), nil
@@ -145,6 +147,81 @@ func TestVersionsActivateNoDowngrade(t *testing.T) {
 	ans := versionsPost(t, b, "activate", "2026.9.9")
 	if ans.OK || !strings.Contains(ans.Error, "Mindestversion") || readRaw(bdir, "active") != "<fehlt>" {
 		t.Errorf("unter Mindestversion: %+v", ans)
+	}
+}
+
+// Ein Zeiger „active“ unter der Mindestversion (z. B. nach einem PDH-Update mit höherer
+// Mindestversion) gilt nicht: Beim Umschalten wird „previous“ die Grundumgebung, nicht die alte Version.
+func TestVersionsActivateStaleActive(t *testing.T) {
+	a, dir := versionsAgent(t)
+	mkVersion(t, dir, "2026.9.9") // älter als die Mindestversion
+	mkVersion(t, dir, "2026.11.1")
+	writeRaw(t, dir, "active", "2026.9.9\n")
+	ans := versionsPost(t, a, "activate", "2026.11.1")
+	if !ans.OK || ans.Active != "2026.11.1" || ans.Previous != "base" {
+		t.Fatalf("Antwort: %+v", ans)
+	}
+	if readRaw(dir, "previous") != "base\n" || esppdhExists(filepath.Join(dir, "2026.9.9")) {
+		t.Errorf("previous = %q, alte Version noch da: %v", readRaw(dir, "previous"), esppdhExists(filepath.Join(dir, "2026.9.9")))
+	}
+}
+
+// Einen Kandidaten, der sich nie einschalten ließe (nicht neuer als die aktive Version oder unter
+// der Mindestversion), richtet der Agent gar nicht erst ein – gleiche Regel und Meldung wie beim Umschalten.
+func TestInstallCandidateNoDowngrade(t *testing.T) {
+	a, dir := versionsAgent(t)
+	mkVersion(t, dir, "2026.11.5")
+	writeRaw(t, dir, "active", "2026.11.5\n")
+	ran := false
+	a.esppdhRun = func(context.Context, string, map[string]string) (string, error) {
+		ran = true
+		return "Version: 2026.11.6\n", nil
+	}
+	call := func(version string) esppdhAnswer {
+		w := httptest.NewRecorder()
+		a.esppdhInstallHandler(w, httptest.NewRequest(http.MethodPost, "/v1/esppdh/install", strings.NewReader(`{"version":"`+version+`"}`)))
+		var ans esppdhAnswer
+		if err := json.Unmarshal(w.Body.Bytes(), &ans); err != nil {
+			t.Fatalf("Antwort ist kein JSON: %q", w.Body.String())
+		}
+		return ans
+	}
+	for v, want := range map[string]string{"2026.11.5": "schon aktiv", "2026.11.2": "nicht herabgestuft", "2026.9.9": "Mindestversion"} {
+		if v == "2026.9.9" { // unter der Mindestversion – auch ohne aktive Version
+			_ = os.Remove(filepath.Join(dir, "active"))
+		}
+		ans := call(v)
+		wantErr := versionsPost(t, a, "activate", v).Error // Meldung beim Umschalten
+		if ans.OK || !strings.Contains(ans.Error, want) || ans.Error != wantErr {
+			t.Errorf("Einrichtung %s: %+v (erwartet %q wie beim Umschalten)", v, ans, wantErr)
+		}
+	}
+	if ran || a.esppdh.status().Running {
+		t.Fatal("Einrichtung trotzdem gestartet")
+	}
+	// neuer als die aktive Version: geht
+	writeRaw(t, dir, "active", "2026.11.5\n")
+	if ans := call("2026.11.6"); !ans.OK || !ans.Running {
+		t.Fatalf("neuere Version: %+v", ans)
+	}
+	esppdhWaitDone(t, a)
+}
+
+// Der Agent (root) liest den Versionen-Ordner nicht aus der Umgebung – nur aus versionsDir.
+func TestVersionsIgnoresEnv(t *testing.T) {
+	a, dir := versionsAgent(t)
+	other := t.TempDir()
+	t.Setenv("PDH_ESPHOME_VERSIONS_DIR", other)
+	mkVersion(t, other, "2026.11.1")
+	writeRaw(t, other, "active", "2026.11.1\n")
+	if ans := versionsGet(t, a); ans.Active != "" || len(ans.Installed) != 0 {
+		t.Errorf("Umgebungsvariable gelesen: %+v", ans)
+	}
+	if ans := versionsPost(t, a, "activate", "2026.11.1"); ans.OK || readRaw(dir, "active") != "<fehlt>" {
+		t.Errorf("Ordner aus der Umgebung umgeschaltet: %+v", ans)
+	}
+	if got := versionBin("2026.11.1"); got != filepath.Join(dir, "2026.11.1", "bin", "esphome") {
+		t.Errorf("versionBin: %s", got)
 	}
 }
 

@@ -63,6 +63,9 @@ type esppdhJob struct {
 	Done    bool   `json:"done"`    // ein Lauf ist fertig (seit dem Start des Agenten)
 	Version string `json:"version"` // eingerichtete Version, wenn der Lauf geklappt hat
 	Error   string `json:"error"`   // Meldung des fehlgeschlagenen Laufs
+	// Target: Version eines Kandidaten der täglichen Prüfung; leer = Grundumgebung („Umgebung
+	// einrichten“). Das Ende eines Kandidaten zeigt die Karte nicht – sein Ergebnis steht in der Prüfung.
+	Target string `json:"target"`
 }
 
 // esppdhPanel: Karte „ESPPDH“ (widgets/esppdh_settings.gohtml).

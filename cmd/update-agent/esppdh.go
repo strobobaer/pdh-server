@@ -141,9 +141,19 @@ func (a *updateAgent) esppdhInstallHandler(w http.ResponseWriter, r *http.Reques
 			}
 		}
 	}
-	if req.Version != "" && !esppdh.StableVersionRe.MatchString(req.Version) {
-		writeMountJSON(w, http.StatusOK, map[string]any{"ok": false, "error": "ungültige ESPHome-Version (erwartet JJJJ.M.P)"})
-		return
+	if req.Version != "" {
+		if !esppdh.StableVersionRe.MatchString(req.Version) {
+			writeMountJSON(w, http.StatusOK, map[string]any{"ok": false, "error": "ungültige ESPHome-Version (erwartet JJJJ.M.P)"})
+			return
+		}
+		// nichts einrichten, was sich nie einschalten ließe (gleiche Regel wie beim Umschalten)
+		a.vmu.Lock()
+		err := upgradeAllowed(req.Version)
+		a.vmu.Unlock()
+		if err != nil {
+			writeMountJSON(w, http.StatusOK, map[string]any{"ok": false, "error": err.Error()})
+			return
+		}
 	}
 	j := &a.esppdh
 	j.mu.Lock()
