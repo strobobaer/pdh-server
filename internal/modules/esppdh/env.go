@@ -42,7 +42,8 @@ var versionCmd = func(ctx context.Context, bin string) *exec.Cmd {
 type EnvState struct {
 	Installed bool   // ESPHome startet und nennt seine Version
 	Version   string // installierte Version, z. B. "2026.10.2"
-	Outdated  bool   // installierte Version weicht von PinnedVersion ab
+	Outdated  bool   // installierte Version ist älter als PinnedVersion (gleich oder neuer ist nicht veraltet)
+	Base      bool   // es läuft die Grundumgebung, keine Version aus dem Versionen-Ordner
 	Docker    bool   // das PDH läuft in einem Container – dort gibt es ESPPDH nicht
 	FreeMB    int64  // freier Platz für den Arbeitsordner in MB; -1 = unbekannt
 	Problem   string // Umgebung ist da, aber ESPHome startet nicht (Klartext); leer, wenn sie fehlt
@@ -64,8 +65,9 @@ func venvDir() string { return envOr("PDH_ESPHOME_DIR", VenvDir) }
 // workDir: Arbeitsordner der Bauläufe.
 func workDir() string { return envOr("PDH_ESPHOME_WORKDIR", WorkDir) }
 
-// esphomeBin: Programm ESPHome in der Python-Umgebung.
-func esphomeBin() string { return filepath.Join(venvDir(), "bin", "esphome") }
+// esphomeBin: Programm ESPHome der aktiven Umgebung (Version aus dem Versionen-Ordner, sonst die
+// Grundumgebung – siehe versions.go).
+func esphomeBin() string { return ActiveBin() }
 
 // InContainer: läuft das Programm in einem Container (Docker, Podman)?
 func InContainer() bool {
@@ -126,7 +128,7 @@ func EnvPresent() bool {
 // CheckEnv prüft die Python-Umgebung: ruft „<venv>/bin/esphome version“ mit Zeitlimit 10 s.
 // Fehlt die Umgebung, ist Installed falsch und Problem leer – das ist kein Fehler.
 func CheckEnv(ctx context.Context) EnvState {
-	st := EnvState{Docker: InContainer(), FreeMB: freeMB(workDir())}
+	st := EnvState{Docker: InContainer(), FreeMB: freeMB(workDir()), Base: ActiveVersionPointer() == ""}
 	bin := esphomeBin()
 	if _, err := os.Stat(bin); err != nil {
 		if !errors.Is(err, fs.ErrNotExist) {
@@ -155,7 +157,7 @@ func CheckEnv(ctx context.Context) EnvState {
 			st.Problem = "ESPHome meldet keine Version"
 			return st
 		}
-		st.Installed, st.Version, st.Outdated = true, v, v != PinnedVersion()
+		st.Installed, st.Version, st.Outdated = true, v, CompareVersions(v, PinnedVersion()) < 0
 	}
 	return st
 }

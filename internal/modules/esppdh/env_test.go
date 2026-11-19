@@ -65,10 +65,11 @@ func fakeEnv(t *testing.T, mode, version string) (string, *[]string) {
 	return dir, calls
 }
 
-func TestCheckEnvInstalledOutdated(t *testing.T) {
+// Eine neuere Version als die Mindestversion ist nicht veraltet (siehe TestOutdatedOnlyWhenOlder).
+func TestCheckEnvInstalledNewer(t *testing.T) {
 	dir, calls := fakeEnv(t, "version", "2099.1.0")
 	st := CheckEnv(context.Background())
-	if !st.Installed || st.Version != "2099.1.0" || !st.Outdated || st.Problem != "" {
+	if !st.Installed || st.Version != "2099.1.0" || st.Outdated || !st.Base || st.Problem != "" {
 		t.Fatalf("Zustand: %+v", st)
 	}
 	if want := filepath.Join(dir, "bin", "esphome"); len(*calls) != 1 || (*calls)[0] != want {
@@ -149,7 +150,7 @@ func TestCheckEnvTimeout(t *testing.T) {
 // Unter Linux: das echte „<venv>/bin/esphome version“ mit dem Shell-Skript als Attrappe.
 func TestCheckEnvRealCommand(t *testing.T) {
 	if runtime.GOOS == "windows" {
-		t.Skip("Shell-Skript lässt sich unter Windows nicht starten (TestCheckEnvInstalledOutdated deckt CheckEnv ab)")
+		t.Skip("Shell-Skript lässt sich unter Windows nicht starten (TestCheckEnvInstalledNewer deckt CheckEnv ab)")
 	}
 	dir := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(dir, "bin"), 0o755); err != nil {
@@ -159,7 +160,7 @@ func TestCheckEnvRealCommand(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("PDH_ESPHOME_DIR", dir)
-	if st := CheckEnv(context.Background()); !st.Installed || st.Version != "2099.1.0" || !st.Outdated {
+	if st := CheckEnv(context.Background()); !st.Installed || st.Version != "2099.1.0" || st.Outdated {
 		t.Fatalf("Zustand: %+v", st)
 	}
 }
