@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/golang-jwt/jwt/v5"
+	"pdh/pkg/middleware"
 )
 
 // PDH-System: technischer Benutzer (Migration 072), der automatische
@@ -146,37 +146,69 @@ func (t *actorTracker) actor(id string) string {
 	return ""
 }
 
-// requestActor ermittelt den Benutzer aus Cookie oder Bearer-Token, ohne
-// die Anfrage zu veraendern (die eigentliche Pruefung macht die Route).
+// requestActor ermittelt den Benutzer genau so, wie ihn die Anmeldung der Route liest, ohne
+// die Anfrage zu veraendern (die eigentliche Pruefung macht die Route): unter /api/ wie
+// middleware.Auth, sonst wie die Anmeldung der Web-Oberflaeche (authMiddleware). "" = keiner.
 func (h *Handler) requestActor(r *http.Request) string {
-	raw := ""
-	if c, err := r.Cookie("pdh_token"); err == nil {
-		raw = c.Value
+	uid, _ := h.requestCredentials(r)
+	return uid
+}
+
+// requestCredentials: wie requestActor; present sagt, ob die Anfrage Anmeldedaten traegt, die
+// die Anmeldung der Route ansieht. Die Rechte-Sperre laesst eine Anfrage mit Anmeldedaten, aus
+// denen sich kein Benutzer bestimmen laesst, nie durch (perm_gate.go).
+func (h *Handler) requestCredentials(r *http.Request) (uid string, present bool) {
+	if strings.HasPrefix(r.URL.Path, "/api/") {
+		return h.apiActor(r)
 	}
-	if a := r.Header.Get("Authorization"); strings.HasPrefix(a, "Bearer ") {
-		raw = strings.TrimPrefix(a, "Bearer ")
+	return h.webActor(r)
+}
+
+// apiActor: Benutzer einer Schnittstellen-Anfrage wie middleware.Auth – Token aus
+// „Authorization: Bearer“, sonst aus dem Cookie pdh_token (beides ohne umgebende Leerzeichen),
+// jede HMAC-Signatur. Geraete-Token und zweckgebundene Token ausserhalb ihres Zwecks weist
+// middleware.Auth ab; dann gibt es auch hier keinen Benutzer.
+func (h *Handler) apiActor(r *http.Request) (string, bool) {
+	claims, present, ok := h.apiTokenClaims(r)
+	if !ok || h.jwtSecret == "" {
+		return "", present
 	}
-	if raw == "" || h.jwtSecret == "" {
-		return ""
+	if dev, _ := claims["device"].(string); dev != "" {
+		return "", true
 	}
-	tok, err := jwt.Parse(raw, func(t *jwt.Token) (interface{}, error) {
-		if t.Method != jwt.SigningMethodHS256 {
-			return nil, fmt.Errorf("signaturmethode")
+	if scope, _ := claims["scope"].(string); scope != "" {
+		ref, _ := claims["ref"].(string)
+		if !middleware.ScopedTokenAllows(scope, ref, r.Method, r.URL.Path) {
+			return "", true
 		}
-		return []byte(h.jwtSecret), nil
-	})
-	if err != nil || !tok.Valid {
-		return ""
 	}
-	claims, _ := tok.Claims.(jwt.MapClaims)
 	sub, _ := claims["sub"].(string)
-	if dev, _ := claims["device"].(string); dev != "" && sub != "" {
-		// Geräte-Token eines Terminals: nach Sperre/Entkopplung kein Bearbeiter mehr
-		if !terminalDevices.active(r.Context(), dev, sub, h.deviceByID) {
-			return ""
-		}
+	return sub, true
+}
+
+// webActor: Benutzer einer Anfrage an die Web-Oberflaeche wie authMiddleware – zuerst das Token
+// der Fertigmeldung im Leitstand (nur fuer seinen Vorgang), sonst allein das Sitzungs-Cookie,
+// unveraendert gelesen wie in sessionToken. Den Kopf „Authorization“ liest die Web-Anmeldung
+// sonst nicht. Gesperrte oder entkoppelte Terminals haben keinen Benutzer.
+func (h *Handler) webActor(r *http.Request) (string, bool) {
+	if sub := h.boardCompleteSub(r); sub != "" {
+		return sub, true
 	}
-	return sub
+	c, err := r.Cookie("pdh_token")
+	if err != nil || c.Value == "" {
+		return "", false
+	}
+	if h.jwtSecret == "" {
+		return "", true
+	}
+	s := h.parseSessionToken(c.Value)
+	if s.sub == "" {
+		return "", true
+	}
+	if s.device != "" && !terminalDevices.active(r.Context(), s.device, s.sub, h.deviceByID) {
+		return "", true // Geraete-Token eines Terminals: nach Sperre/Entkopplung kein Bearbeiter mehr
+	}
+	return s.sub, true
 }
 
 // masterPathRe erkennt Stammdaten-Pfade (Web und API) fuer Sperre und

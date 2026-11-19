@@ -13,7 +13,7 @@ import (
 // Handler, der die Pfad-ID unverändert an SQL gibt, ließe sich damit an den Prüfungen vorbei
 // ansprechen. Darum antwortet diese Middleware (vor allen Prüfungen, für Web und /api/v1) auf
 // jeden Pfadteil in solch einer Schreibweise mit 404. Auch die groß geschriebene Normalform
-// zählt dazu (sie wird bei GET/HEAD umgeleitet): Die Pfadregeln (uuidRe) erkennen sie, aber ältere
+// zählt dazu (sie wird umgeleitet): Die Pfadregeln (uuidRe) erkennen sie, aber ältere
 // Vergleiche `id::text = …` fänden den Datensatz nicht; recordInScope vergleicht inzwischen als UUID.
 var (
 	uuidCanonicalSegRe = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
@@ -55,9 +55,9 @@ func nonCanonicalUUIDSegment(seg string) bool {
 }
 
 // NonCanonicalUUIDPathMiddleware: Pfade mit einer UUID in nicht-kanonischer Schreibweise
-// bekommen 404 (unter /api/v1 als JSON). Nur die groß geschriebene Normalform wird bei GET und
-// HEAD mit 301 auf dieselbe Adresse in Kleinschreibung umgeleitet (Abfrage bleibt erhalten);
-// bei anderen Methoden gilt auch sie als nicht gefunden.
+// bekommen 404 (unter /api/v1 als JSON). Nur die groß geschriebene Normalform wird auf dieselbe
+// Adresse in Kleinschreibung umgeleitet (Abfrage bleibt erhalten): GET und HEAD mit 301, alle
+// anderen Methoden mit 308 (Methode und Inhalt bleiben, der Aufrufer schickt sie erneut).
 func NonCanonicalUUIDPathMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		p := r.URL.Path
@@ -81,10 +81,6 @@ func NonCanonicalUUIDPathMiddleware(next http.Handler) http.Handler {
 			}
 		}
 		if upper {
-			if r.Method != http.MethodGet && r.Method != http.MethodHead {
-				uuidPathNotFound(w, r)
-				return
-			}
 			// Umleiten nur auf einen Pfad desselben Servers: nie mit zwei Schrägstrichen oder Schrägstrich plus Rückstrich am Anfang (das wäre
 			// ein Link auf einen fremden Rechner), und ein kodierter Schrägstrich (%2F) oder Rückstrich (%5C) in der Adresse darf nicht zu
 			// einem echten Trenner werden – in beiden Fällen 404 statt Umleitung.
@@ -94,7 +90,11 @@ func NonCanonicalUUIDPathMiddleware(next http.Handler) http.Handler {
 				return
 			}
 			u := url.URL{Path: "/" + strings.TrimLeft(strings.Join(segs, "/"), "/\\"), RawQuery: r.URL.RawQuery}
-			http.Redirect(w, r, u.String(), http.StatusMovedPermanently)
+			code := http.StatusMovedPermanently
+			if r.Method != http.MethodGet && r.Method != http.MethodHead {
+				code = http.StatusPermanentRedirect // 308: Methode und Inhalt bleiben erhalten
+			}
+			http.Redirect(w, r, u.String(), code)
 			return
 		}
 		next.ServeHTTP(w, r)

@@ -93,6 +93,16 @@ func (e *projEnv) token(u *users.User) string {
 	return tok
 }
 
+// login meldet eine Anfrage an wie die echten Wege: Schnittstelle (/api/) per Bearer-Token,
+// Web-Seiten per Sitzungs-Cookie (die Web-Anmeldung liest den Kopf „Authorization“ nicht).
+func (e *projEnv) login(r *http.Request, u *users.User) {
+	if strings.HasPrefix(r.URL.Path, "/api/") {
+		r.Header.Set("Authorization", "Bearer "+e.token(u))
+		return
+	}
+	r.AddCookie(&http.Cookie{Name: "pdh_token", Value: e.token(u)})
+}
+
 func TestProjectsNavNeedsView(t *testing.T) {
 	e := newProjEnv(t)
 	admin := e.role("vf_padm", map[string]string{"projects.admin": ""})
@@ -280,7 +290,7 @@ func TestProjectEditNeedsView(t *testing.T) {
 	gate := e.h.PermissionGateMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { reached++ }))
 	post := func(u *users.User, path string) int {
 		r := httptest.NewRequest("POST", path, strings.NewReader(""))
-		r.Header.Set("Authorization", "Bearer "+e.token(u))
+		e.login(r, u)
 		w := httptest.NewRecorder()
 		before := reached
 		gate.ServeHTTP(w, r)
@@ -518,6 +528,131 @@ func TestViewCountsMatchVisible(t *testing.T) {
 	}
 	if c := total(all); c != 5 {
 		t.Errorf("Kategorienseite Recht überall: %d, erwartet 5", c)
+	}
+}
+
+// Die Rechte-Sperre erkennt den Benutzer wie die Anmeldung der Route: Ein zusätzlicher Kopf
+// „Authorization“ an einer Web-Seite oder ein Token mit Leerzeichen an der Schnittstelle führt
+// nicht mehr an der Prüfung vorbei. Geprüft durch die echte Web-Anmeldung bzw. middleware.Auth.
+func TestGateRecognisesUserLikeLogin(t *testing.T) {
+	e := newProjEnv(t)
+	pa := e.named("PVGA", e.infraA, "")
+	t.Cleanup(func() {
+		_, _ = e.pool.Exec(context.Background(), `DELETE FROM record_history WHERE ref_id = $1::uuid`, pa)
+	})
+	web := chi.NewRouter()
+	web.Use(e.h.authMiddleware)
+	web.Post("/records/{refType}/{id}/people", e.h.RecordPeopleWeb)
+	webChain := e.h.PermissionGateMiddleware(web)
+	setPeople := func(u *users.User, auth string) int {
+		form := url.Values{"responsible_to": {u.ID}}
+		r := httptest.NewRequest("POST", "/records/project/"+pa+"/people", strings.NewReader(form.Encode()))
+		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		r.AddCookie(&http.Cookie{Name: "pdh_token", Value: e.token(u)})
+		if auth != "" {
+			r.Header.Set("Authorization", auth)
+		}
+		w := httptest.NewRecorder()
+		webChain.ServeHTTP(w, r)
+		return w.Code
+	}
+	responsible := func() string {
+		return e.id(`SELECT COALESCE(responsible_to::text, '') FROM projects WHERE id = $1::uuid`, pa)
+	}
+	none := e.person("vf_g1", e.roleNone) // darf bearbeiten, aber nicht ansehen, unbeteiligt
+	editor := e.person("vf_g2", e.roleEdit)
+	for name, auth := range map[string]string{
+		"ohne Kopf": "", "mit fremdem Kopf": "Bearer x", "mit Token eines Berechtigten im Kopf": "Bearer " + e.token(editor),
+	} {
+		if c := setPeople(none, auth); c != http.StatusForbidden {
+			t.Errorf("Web %s: %d, erwartet 403", name, c)
+		}
+		if got := responsible(); got != "" {
+			t.Fatalf("Web %s: Zuständigkeit trotzdem gesetzt (%s)", name, got)
+		}
+	}
+	// wer darf, darf weiter – auch mit einem überflüssigen Kopf
+	if c := setPeople(editor, "Bearer x"); c != http.StatusOK || responsible() != editor.ID {
+		t.Errorf("Web mit Recht: %d, verantwortlich %q", c, responsible())
+	}
+
+	// Schnittstelle: endgültig löschen nur mit projects.admin
+	api := chi.NewRouter()
+	api.Mount("/api/v1/projects", projects.NewHandler(e.h.projects).Routes("test-secret"))
+	apiChain := e.h.PermissionGateMiddleware(api)
+	pd := e.named("PVGD", e.infraA, "")
+	exists := func() bool { return e.id(`SELECT COUNT(*)::text FROM projects WHERE id = $1::uuid`, pd) == "1" }
+	del := func(auth, cookie string) int {
+		r := httptest.NewRequest("DELETE", "/api/v1/projects/"+pd, nil)
+		if auth != "" {
+			r.Header.Set("Authorization", auth)
+		}
+		if cookie != "" {
+			r.Header.Set("Cookie", "pdh_token="+cookie)
+		}
+		w := httptest.NewRecorder()
+		apiChain.ServeHTTP(w, r)
+		return w.Code
+	}
+	tok := e.token(editor)
+	for name, c := range map[string][2]string{
+		"zwei Leerzeichen": {"Bearer  " + tok, ""}, "Leerzeichen am Ende": {"Bearer " + tok + " ", ""},
+		"Leerzeichen vorn": {" Bearer " + tok, ""}, "normal": {"Bearer " + tok, ""}, "Cookie mit Leerzeichen": {"", " " + tok},
+	} {
+		if got := del(c[0], c[1]); got != http.StatusForbidden || !exists() {
+			t.Errorf("Löschen ohne projects.admin (%s): %d, Projekt noch da=%v", name, got, exists())
+		}
+	}
+	admin := e.person("vf_g3", e.role("vf_gadm", map[string]string{"projects.admin": ""}))
+	// deaktiviert: Das Token gilt noch, der Benutzer nicht mehr – nie durchlassen
+	e.exec(`UPDATE users SET active = false WHERE id = $1::uuid`, admin.ID)
+	if got := del("Bearer  "+e.token(admin), ""); got != http.StatusForbidden || !exists() {
+		t.Errorf("deaktivierter Bereichsadministrator: %d, Projekt noch da=%v", got, exists())
+	}
+	e.exec(`UPDATE users SET active = true WHERE id = $1::uuid`, admin.ID)
+	if got := del("Bearer  "+e.token(admin), ""); got != http.StatusOK || exists() {
+		t.Errorf("Bereichsadministrator: %d, Projekt noch da=%v", got, exists())
+	}
+}
+
+// Die Abteilungs- und Sichtprüfung der Schnittstelle (APIDepartmentScope) liest das Token wie
+// middleware.Auth: auch nur aus dem Cookie pdh_token; Token deaktivierter Benutzer gelten nicht.
+func TestProjectAPICookieAndDeactivated(t *testing.T) {
+	e := newProjEnv(t)
+	pa := e.named("PVCD", e.infraA, "")
+	reached := 0
+	api := e.h.APIDepartmentScope(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { reached++ }))
+	get := func(auth, cookie string) int {
+		r := httptest.NewRequest("GET", "/api/v1/projects/"+pa, nil)
+		if auth != "" {
+			r.Header.Set("Authorization", auth)
+		}
+		if cookie != "" {
+			r.Header.Set("Cookie", "pdh_token="+cookie)
+		}
+		w := httptest.NewRecorder()
+		before := reached
+		api.ServeHTTP(w, r)
+		if reached > before {
+			return http.StatusOK
+		}
+		return w.Code
+	}
+	none := e.person("vf_cd1", e.roleNone)
+	for name, ck := range map[string]string{"Cookie": e.token(none), "Cookie mit Leerzeichen": " " + e.token(none) + " "} {
+		if got := get("", ck); got != http.StatusForbidden {
+			t.Errorf("ohne Recht, Token nur im %s: %d, erwartet 403", name, got)
+		}
+	}
+	view := e.person("vf_cd2", e.roleView)
+	if got := get("", e.token(view)); got != http.StatusOK {
+		t.Errorf("mit Recht, Token im Cookie: %d", got)
+	}
+	e.exec(`UPDATE users SET active = false WHERE id = $1::uuid`, view.ID)
+	for name, c := range map[string][2]string{"Kopf": {"Bearer " + e.token(view), ""}, "Cookie": {"", e.token(view)}} {
+		if got := get(c[0], c[1]); got != http.StatusForbidden {
+			t.Errorf("deaktiviert (%s): %d, erwartet 403", name, got)
+		}
 	}
 }
 

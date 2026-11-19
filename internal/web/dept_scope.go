@@ -339,6 +339,17 @@ func (h *Handler) APIDepartmentScope(next http.Handler) http.Handler {
 // HMAC-Signatur). valid: Das Token ist gültig; uid ist dann der Benutzer (leer, wenn das
 // Token keinen enthält).
 func (h *Handler) apiTokenUser(r *http.Request) (uid string, valid bool) {
+	claims, _, ok := h.apiTokenClaims(r)
+	if !ok {
+		return "", false
+	}
+	sub, _ := claims["sub"].(string)
+	return sub, true
+}
+
+// apiTokenClaims: Inhalt des Tokens einer API-Anfrage, gelesen wie in middleware.Auth.
+// present: ein Token kam mit; ok: es ist gültig (claims sind dann gesetzt).
+func (h *Handler) apiTokenClaims(r *http.Request) (claims jwt.MapClaims, present, ok bool) {
 	raw := ""
 	if hd := strings.TrimSpace(r.Header.Get("Authorization")); strings.HasPrefix(hd, "Bearer ") {
 		raw = strings.TrimSpace(strings.TrimPrefix(hd, "Bearer "))
@@ -349,7 +360,7 @@ func (h *Handler) apiTokenUser(r *http.Request) (uid string, valid bool) {
 		}
 	}
 	if raw == "" {
-		return "", false
+		return nil, false, false
 	}
 	token, err := jwt.Parse(raw, func(t *jwt.Token) (interface{}, error) {
 		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
@@ -358,11 +369,10 @@ func (h *Handler) apiTokenUser(r *http.Request) (uid string, valid bool) {
 		return []byte(h.jwtSecret), nil
 	})
 	if err != nil || !token.Valid {
-		return "", false
+		return nil, true, false
 	}
-	claims, _ := token.Claims.(jwt.MapClaims)
-	sub, _ := claims["sub"].(string)
-	return sub, true
+	claims, ok = token.Claims.(jwt.MapClaims)
+	return claims, true, ok
 }
 
 type bufferWriter struct {

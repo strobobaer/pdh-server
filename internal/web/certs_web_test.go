@@ -194,7 +194,9 @@ func TestCertRemoveWithoutCloudflare(t *testing.T) {
 	store := newMemCertStore(certRow{Name: "nc.firma.de", State: certStateGueltig, ChainPEM: "-----BEGIN CERTIFICATE-----", InstalledFP: "ab"})
 	l := &certActLog{revokeErr: errors.New("kein Zugang"), settings: map[string]string{keyCertNotePrefix + "nc.firma.de": "x", keyCertPendingPrefix + "nc.firma.de": "y"}}
 	d := testCertAct(store, l)
-	d.zone = func(context.Context) (string, error) { return "", errors.New("Zuerst oben den API-Token eintragen und speichern") }
+	d.zone = func(context.Context) (string, error) {
+		return "", errors.New("Zuerst oben den API-Token eintragen und speichern")
+	}
 	if _, err := certDoRemove(ctx, d, "unbekannt.firma.de"); err == nil || !strings.Contains(err.Error(), "nicht eingetragen") {
 		t.Fatalf("nicht eingetragen: %v", err)
 	}
@@ -380,7 +382,7 @@ func TestCertGateMiddlewareIntegration(t *testing.T) {
 		tok, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{"sub": uid}).SignedString([]byte(secret))
 		must(err)
 		req := httptest.NewRequest("POST", path, nil)
-		req.Header.Set("Authorization", "Bearer "+tok)
+		req.AddCookie(&http.Cookie{Name: "pdh_token", Value: tok}) // Web-Seite: Anmeldung über das Sitzungs-Cookie
 		reached = false
 		gate.ServeHTTP(httptest.NewRecorder(), req)
 		return reached

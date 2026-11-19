@@ -11,7 +11,7 @@ import (
 
 // Kennungen in anderer Schreibweise (32 Hexziffern, Klammern, urn:uuid:) werden früh abgewiesen,
 // bevor Abteilungs- und Rechteprüfung den Pfad ansehen (uuid_path.go). Die groß geschriebene
-// Normalform wird bei GET/HEAD auf die Kleinschreibung umgeleitet.
+// Normalform wird auf die Kleinschreibung umgeleitet (GET/HEAD 301, sonst 308).
 func TestNonCanonicalUUIDPathRejected(t *testing.T) {
 	const id = "01a18200-0000-7000-8000-000000000001"
 	const upper = "01A18200-0000-7000-8000-000000000001"
@@ -78,9 +78,25 @@ func TestNonCanonicalUUIDPathRejected(t *testing.T) {
 	if w := do("GET", "/api/v1//evil.example/"+upper, ""); w.Code == http.StatusMovedPermanently && !strings.HasPrefix(w.Header().Get("Location"), "/api/") {
 		t.Errorf("API: %q", w.Header().Get("Location"))
 	}
-	for _, m := range []string{"POST", "PUT", "DELETE"} {
-		if c := do(m, "/api/v1/projects/"+upper, "").Code; c != http.StatusNotFound {
-			t.Errorf("%s groß: %d, erwartet 404", m, c)
+	// andere Methoden: 308 (Methode und Inhalt bleiben), dieselben Regeln gegen fremde Rechner
+	for _, m := range []string{"POST", "PUT", "PATCH", "DELETE"} {
+		w := do(m, "/api/v1/projects/"+upper+"/edit", "x=1")
+		if w.Code != http.StatusPermanentRedirect || w.Header().Get("Location") != "/api/v1/projects/"+id+"/edit?x=1" {
+			t.Errorf("%s groß: %d %q, erwartet 308 auf Kleinschreibung", m, w.Code, w.Header().Get("Location"))
+		}
+		for _, p := range []string{"//evil.example/" + upper, `/\evil.example/` + upper} {
+			if w := do(m, p, ""); w.Code != http.StatusNotFound || w.Header().Get("Location") != "" {
+				t.Errorf("%s %q: %d %q, erwartet 404 ohne Umleitung", m, p, w.Code, w.Header().Get("Location"))
+			}
+		}
+		r := httptest.NewRequest(m, "/%2F%2Fevil.example/"+upper, nil)
+		rw := httptest.NewRecorder()
+		h.ServeHTTP(rw, r)
+		if rw.Code != http.StatusNotFound || rw.Header().Get("Location") != "" {
+			t.Errorf("%s %%2F: %d %q", m, rw.Code, rw.Header().Get("Location"))
+		}
+		if w := do(m, "/projects//"+upper, ""); w.Code == http.StatusPermanentRedirect && !strings.HasPrefix(w.Header().Get("Location"), "/projects/") {
+			t.Errorf("%s doppelter Schrägstrich: %q", m, w.Header().Get("Location"))
 		}
 	}
 	for _, p := range []string{
