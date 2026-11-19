@@ -293,6 +293,13 @@ oder ändern.**
    soll, der den Vorgang öffnen kann (heute: Recht „ansehen“ oder „bearbeiten“
    des Bereichs nötig). Geparkt für die Browserprüfung: Unterrand des
    gewählten Sortier-Knopfs in Fiori, Breite des Auswahlfelds auf dem Handy.
+   Geparkt aus der Schlussprüfung (klein): Test zur gemischten Gruppe in der
+   Anlagen-Historie greift den Fehlerfall nicht; Hinweis „neueste N“ fehlt,
+   wenn der Abteilungsfilter alle geladenen Zeilen entfernt, und liest sich
+   mit der Anzahl widersprüchlich; Namen nur aus Satzzeichen sortieren bei
+   „Nach Person“ nach vorn; Umlaute sortieren in Listen aus der Datenbank
+   anders als in Listen aus dem Programm; Gruppen laden alle Einzeleinträge
+   (bis 5000) mit; Gruppentitel der Historie nur deutsch.
    **Wunsch vom 19.11.2026: Netzwerkliste aus UniFi und Omada vorbefüllen**
    (Seite „Netzwerk“: Netze und WLANs vom Controller holen, der Anwender
    bestätigt nur noch). Noch kein Entwurf; offen ist die Antwort, ob auch die

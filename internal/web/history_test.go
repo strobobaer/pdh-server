@@ -332,9 +332,9 @@ func TestHistoryFragmentPerms(t *testing.T) {
 	if w := e.get(none, "/records/history/purchase_order/"+inA); w.Code != http.StatusForbidden {
 		t.Errorf("Bestellung ohne Recht: %d", w.Code)
 	}
-	// Projekt, KVP, Störung, Ticket, Aufgabe, Wartung, Ersatzteil: ihre Seiten prüfen kein Einzelrecht
-	// (jeder Angemeldete, Abteilung über die Vorgangssperre der Route) – die Historie zeigt dasselbe,
-	// aber nie ohne Anmeldung.
+	// Ohne Anmeldung gibt es nie eine Historie. Mit Anmeldung: Projekt, KVP, Störung, Ticket und
+	// Ersatzteil wie ihre Seiten (kein Einzelrecht); Aufgabe und Wartung brauchen „ansehen“ oder
+	// „bearbeiten“ (siehe TestHistoryLikeThePage).
 	for _, m := range []string{"project", "kvp", "fault", "ticket", "task", "maintenance_task", "part"} {
 		if w := e.get(&users.User{Role: "viewer"}, "/records/history/"+m+"/"+someID); w.Code != http.StatusForbidden {
 			t.Errorf("%s ohne Anmeldung: %d", m, w.Code)

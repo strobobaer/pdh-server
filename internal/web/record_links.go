@@ -116,8 +116,9 @@ func historyModuleOf(key string, can func(h *Handler, r *http.Request, id string
 var historyModules = map[string]historyModule{
 	// Störung (FaultDetail, handler.go), Ticket (TicketDetail), Projekt (ProjectDetail, projects_handler.go),
 	// KVP (KVPDetailPage, kvp.go), Ersatzteil (PartDetailPage, parts.go): die Seiten verlangen nur die
-	// Anmeldung. Aufgabe und Wartung brauchen wie vor dem Sortieren das Recht „ansehen“ oder „bearbeiten“
-	// des Bereichs (historyViewRight). (wer nur „lösen“, „buchen“ o. Ä. darf, sieht die Historie weiter).
+	// Anmeldung – wer dort nur „lösen“, „buchen“ o. Ä. darf, sieht auch die Historie. Aufgabe und Wartung
+	// brauchen wie vor dem Sortieren das Recht „ansehen“ oder „bearbeiten“ des Bereichs (historyViewRight);
+	// „lösen“ allein reicht dort nicht.
 	"fault":            historyModuleOf("fault", historyLogin),
 	"ticket":           historyModuleOf("ticket", historyLogin),
 	"task":             historyModuleOf("task", historyViewRight("task")),
