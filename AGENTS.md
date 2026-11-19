@@ -283,16 +283,12 @@ oder ändern.**
    182, Branch `feature/sortierung` ab `main` mit 0.82.1). Der Plan behebt
    zwei Lücken im Bestand mit: Löschen einer Maßnahme prüft den Datensatz
    nicht; Historie von Projekt, KVP, Anlage und Lagerort ist ohne
-   Ansichtsrecht abrufbar. Gebaut auf dem Branch `feature/sortierung`
-   (Migration 182, kein neues Recht). Offen: Freigabe für Merge und Push;
+   Ansichtsrecht abrufbar. Auf `main` (19.11.2026, Merge `1cfbe6e`;
+   Migration 182, kein neues Recht). Offen: Freigabe für das Verbund-Update;
    danach Browserprüfung der Leiste in Fiori/Fluent, hell/dunkel, 320–1366 px
-   an Störung, Ticket, KVP, Anlage und einer Protokoll-Liste. Entscheidung des
-   Anwenders offen: eigenes Ansichtsrecht für Projekte und KVP (ihre Seiten
-   und damit ihre Historie sieht heute jeder Angemeldete) und ob die Historie
-   von Aufgaben und Wartungsaufträgen wie die Seite für jeden sichtbar sein
-   soll, der den Vorgang öffnen kann (heute: Recht „ansehen“ oder „bearbeiten“
-   des Bereichs nötig). Geparkt für die Browserprüfung: Unterrand des
-   gewählten Sortier-Knopfs in Fiori, Breite des Auswahlfelds auf dem Handy.
+   an Störung, Ticket, KVP, Anlage und einer Protokoll-Liste. Geparkt für
+   die Browserprüfung: Unterrand des gewählten Sortier-Knopfs in Fiori,
+   Breite des Auswahlfelds auf dem Handy.
    Geparkt aus der Schlussprüfung (klein): Test zur gemischten Gruppe in der
    Anlagen-Historie greift den Fehlerfall nicht; Hinweis „neueste N“ fehlt,
    wenn der Abteilungsfilter alle geladenen Zeilen entfernt, und liest sich
@@ -300,10 +296,17 @@ oder ändern.**
    „Nach Person“ nach vorn; Umlaute sortieren in Listen aus der Datenbank
    anders als in Listen aus dem Programm; Gruppen laden alle Einzeleinträge
    (bis 5000) mit; Gruppentitel der Historie nur deutsch.
-   **Wunsch vom 19.11.2026: Netzwerkliste aus UniFi und Omada vorbefüllen**
-   (Seite „Netzwerk“: Netze und WLANs vom Controller holen, der Anwender
-   bestätigt nur noch). Noch kein Entwurf; offen ist die Antwort, ob auch die
-   WLAN-Kennwörter vom Controller übernommen werden sollen.
+   **Nächste Pakete (Entscheidungen des Anwenders vom 19.11.2026):**
+   (a) **0.82.3 Rechte:** eigenes Ansichtsrecht für Projekte und für KVP
+   (ja); Historie von Aufgaben und Wartungsaufträgen sieht jeder, der den
+   Vorgang öffnen kann (ja). Branch `feature/rechte-projekte-kvp`. Entwurf
+   in Arbeit.
+   (b) **0.82.4 Seite „Netzwerk“:** Netze und WLANs aus UniFi und Omada
+   vorschlagen, der Anwender bestätigt nur noch; WLAN-Kennwörter werden mit
+   übernommen (ja, Handeingabe als Rückfall); Karte „Dieser Server“ mit
+   Adresse, Gateway, DNS, fest/automatisch, „Jetzige Adresse fest einstellen“
+   und DNS ändern (Stufe 1 reicht, ja). Eine andere Adresse vergeben (Stufe 2)
+   ist kein Auftrag. Entwurf in Arbeit.
 7. **0.81.6 Nummern ab 10000** (Rüstzeit, KVP, Bestellung und Partner waren auf
    vier Stellen abgeschnitten) – mit 0.82.0 auf `main`; der lokale Branch
    `fix/ruestzeit-nummer` ist damit erledigt.
