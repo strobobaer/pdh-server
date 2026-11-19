@@ -993,5 +993,14 @@
  "nach %s Minuten": "after %s minutes",
  "oder Dauer (Minuten)": "or duration (minutes)",
  "z. B. Artikel 4711 auf 4712, Werkzeug 3": "e.g. item 4711 to 4712, tool 3",
- "Grund wählen – ein Vermerk ist freiwillig.": "Choose a reason – a note is optional."
+ "Grund wählen – ein Vermerk ist freiwillig.": "Choose a reason – a note is optional.",
+ "Sortieren": "Sort",
+ "Sortieren:": "Sort:",
+ "Neueste zuerst": "Newest first",
+ "Älteste zuerst": "Oldest first",
+ "Häufigste zuerst": "Most frequent first",
+ "Gleiches zusammen": "Group identical",
+ "Nach Person": "By person",
+ "Nach Art": "By type",
+ "Nach Termin": "By due date"
 }

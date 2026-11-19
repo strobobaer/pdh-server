@@ -993,5 +993,14 @@
  "nach %s Minuten": "по %s минути",
  "oder Dauer (Minuten)": "или времетраење (минути)",
  "z. B. Artikel 4711 auf 4712, Werkzeug 3": "на пр. артикл 4711 на 4712, алат 3",
- "Grund wählen – ein Vermerk ist freiwillig.": "Изберете причина – забелешката е по избор."
+ "Grund wählen – ein Vermerk ist freiwillig.": "Изберете причина – забелешката е по избор.",
+ "Sortieren": "Сортирај",
+ "Sortieren:": "Сортирај:",
+ "Neueste zuerst": "Најнови први",
+ "Älteste zuerst": "Најстари први",
+ "Häufigste zuerst": "Најчести први",
+ "Gleiches zusammen": "Исто заедно",
+ "Nach Person": "По лице",
+ "Nach Art": "По вид",
+ "Nach Termin": "По рок"
 }

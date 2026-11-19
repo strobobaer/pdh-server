@@ -993,5 +993,14 @@
  "nach %s Minuten": "%s dakika sonra",
  "oder Dauer (Minuten)": "veya süre (dakika)",
  "z. B. Artikel 4711 auf 4712, Werkzeug 3": "ör. ürün 4711'den 4712'ye, takım 3",
- "Grund wählen – ein Vermerk ist freiwillig.": "Bir neden seçin – not isteğe bağlıdır."
+ "Grund wählen – ein Vermerk ist freiwillig.": "Bir neden seçin – not isteğe bağlıdır.",
+ "Sortieren": "Sırala",
+ "Sortieren:": "Sırala:",
+ "Neueste zuerst": "Önce en yeni",
+ "Älteste zuerst": "Önce en eski",
+ "Häufigste zuerst": "Önce en sık",
+ "Gleiches zusammen": "Aynılar birlikte",
+ "Nach Person": "Kişiye göre",
+ "Nach Art": "Türe göre",
+ "Nach Termin": "Termine göre"
 }

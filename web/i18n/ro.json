@@ -993,5 +993,14 @@
  "nach %s Minuten": "după %s minute",
  "oder Dauer (Minuten)": "sau durată (minute)",
  "z. B. Artikel 4711 auf 4712, Werkzeug 3": "de ex. articolul 4711 la 4712, scula 3",
- "Grund wählen – ein Vermerk ist freiwillig.": "Alegeți un motiv – nota este opțională."
+ "Grund wählen – ein Vermerk ist freiwillig.": "Alegeți un motiv – nota este opțională.",
+ "Sortieren": "Sortare",
+ "Sortieren:": "Sortare:",
+ "Neueste zuerst": "Cele mai noi primele",
+ "Älteste zuerst": "Cele mai vechi primele",
+ "Häufigste zuerst": "Cele mai frecvente primele",
+ "Gleiches zusammen": "Identicele împreună",
+ "Nach Person": "După persoană",
+ "Nach Art": "După tip",
+ "Nach Termin": "După termen"
 }
