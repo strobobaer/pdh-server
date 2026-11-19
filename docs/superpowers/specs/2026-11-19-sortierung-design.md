@@ -5,7 +5,9 @@ wie auch den Kommentaren eine Sortierungsmöglichkeit einbauen – nach Datum,
 nach Häufigkeit, nach Gleichung usw., komplett über das System durchgezogen“.
 Geplant als eigene Version nach 0.82.1.
 
-**Noch nicht bestätigt.** Offene Fragen stehen am Ende.
+**Vom Anwender am 19.11.2026 freigegeben („3. Freigegeben“).** Die vier
+Fragen am Ende blieben unbeantwortet und sind mit den Vorschlägen dieses
+Entwurfs entschieden (siehe „Festlegungen“). Version 0.82.2.
 
 ## Bestand (am Code geprüft)
 
@@ -86,18 +88,18 @@ Art wieder. Standard bleibt wie heute.
    VPN-Ereignisse, Bau-Läufe, Sicherungen, Bereinigungsläufe …) – dort nur
    Datum, Person, Art; Häufigkeit ergibt dort wenig Sinn.
 
-## Offene Fragen an den Anwender
+## Festlegungen (19.11.2026)
 
-1. **„Nach Gleichung“** – ist damit „Gleiches zusammen“ wie oben gemeint
-   (gleiche Einträge als eine Zeile mit Zähler)? Oder sollen auch **ähnliche**
-   Texte zusammenkommen („Filter gereinigt“ und „Filter gesäubert“)? Ähnlich
-   geht mit der vorhandenen Textsuche, ist aber nie ganz treffsicher.
-2. **Häufigkeit über einen Datensatz hinaus:** An einer einzelnen Störung
-   stehen selten viele gleiche Maßnahmen. Soll „Häufigste zuerst“ zusätzlich
-   zeigen, wie oft dieselbe Maßnahme **an der ganzen Anlage** (samt
-   Unteranlagen) vorkam – und soll es eine Auswertung „häufigste Maßnahmen und
-   Ursachen“ je Anlage bzw. im ganzen Betrieb geben?
-3. **Umfang:** Paket C (alle übrigen Protokoll-Listen) mitbauen oder erst A
-   und B?
-4. **Weitere Sortierungen**, die Sie mit „usw.“ meinen (z. B. nach Dauer,
-   nach Priorität, nach Anlage)?
+Der Anwender hat den Entwurf freigegeben, ohne die vier Fragen einzeln zu
+beantworten. Es gelten daher die Vorschläge des Entwurfs; der Anwender kann
+jede Festlegung noch ändern.
+
+1. **„Nach Gleichung“ = „Gleiches zusammen“:** gleiche Einträge als eine Zeile
+   mit Zähler, gleich nach der vorhandenen Angleichung. **Ähnliche** Texte
+   („Filter gereinigt“ / „Filter gesäubert“) werden nicht zusammengelegt.
+2. **Häufigkeit nur innerhalb der jeweiligen Liste.** Keine Zählung über die
+   ganze Anlage, keine Auswertung „häufigste Maßnahmen und Ursachen“ – das
+   wäre ein eigenes Paket.
+3. **Umfang: Pakete A, B und C** („komplett über das System durchgezogen“).
+4. **Keine weiteren Sortierungen** über Datum, Häufigkeit, Gleiches, Person
+   und Art hinaus.
