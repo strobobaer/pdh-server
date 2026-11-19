@@ -10,6 +10,38 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.82.3] – 2026-11-19
+
+### Neu
+
+- Zwei neue Rechte: „Projekte: ansehen“ und „KVP: alle Vorschläge ansehen“ bestimmen, wer Projekte bzw. alle KVP-Vorschläge sieht, auch begrenzt auf eine Abteilung.
+- Alle bisherigen Rollen haben beide Rechte, bis ein Administrator sie entzieht; neu angelegte Rollen bekommen sie nicht von selbst.
+- Wer an einem Projekt oder einer KVP-Idee beteiligt ist, sieht sie immer, auch ohne das Ansehen-Recht.
+
+### Geändert
+
+- Ohne „Projekte: ansehen“ fehlt der Menüpunkt Projekte, die Liste zeigt nur „Meine Projekte“, und Detail, Kalender, Schnittstelle, Copilot und Zähler zeigen nur sichtbare Projekte.
+- Ohne „KVP: alle Vorschläge ansehen“ zeigt die KVP-Seite nur „Meine Vorschläge“ und „Idee einreichen“, ohne Kennzahlen und Board; Einreichen dürfen weiter alle.
+- Das Feld „KVP“ auf der Startseite erscheint nur noch mit dem Recht und zählt nur sichtbare Ideen.
+- „Projekte bearbeiten“ und „KVP steuern“ wirken ohne das Ansehen-Recht nur an Vorgängen, an denen man beteiligt ist.
+- Die Historie von Aufgaben und Wartungen sieht jetzt, wer die Aufgabe oder Wartung öffnen darf, wie die Seite selbst.
+
+### Behoben
+
+- Der Reiter „Zuständigkeiten“ auf der Benutzerseite war für alle leer und zeigt wieder die offenen Vorgänge.
+- Die Sortier-Leiste: Der aktive Knopf hat in Fiori wieder einen gleich dünnen Rand wie die anderen Seiten.
+- In der KVP-Karte „Do“ bricht die Sortier-Leiste nicht mehr auf mehrere Zeilen um, sondern ist ein Auswahlfeld.
+- Eine einzelne Zeile direkt unter einer aufgeklappten Gruppe in Verläufen, Maßnahmen und Kommentaren hat jetzt Abstand.
+- Im Server-Protokoll überlappt das Feld „Stufe“ nicht mehr das Feld „bis“, sondern bricht in die nächste Zeile um.
+
+### Sicherheit
+
+- Der Leitstand-Kalender ohne Anmeldung zeigt Gästen genau die Einstellung des Leitstands, keine anderen Arten, Abteilungen oder Personen über die Adresse und keine Listen von Mitarbeiternamen; ein unbekannter Leitstand ergibt „nicht gefunden“.
+- Unter `/uploads/` gibt es keine Ordnerlisten mehr; vorher ließen sich Anhänge aller Vorgänge ohne Anmeldung finden.
+- Datensatz-Kennungen in anderer Schreibweise in Adressen (ohne Bindestriche, in Klammern, `urn:uuid:`) werden abgewiesen, Kennungen in Großbuchstaben auf die normale Schreibweise umgeleitet; vorher umgingen solche Adressen die Abteilungssperre und die Sichtprüfung.
+- Die Schnittstelle (API) weist Zugriffs-Token ab, deren Benutzer sich nicht bestimmen lässt oder deaktiviert ist, auch wenn das Token mit Leerzeichen geschrieben ist; vorher umgingen solche Anfragen die Abteilungssperre.
+- Anhänge von KVP-Ideen sind über die Schnittstelle nur noch mit dem Ansehen-Recht oder als Beteiligter abrufbar.
+
 ## [0.82.2] – 2026-11-19
 
 ### Neu

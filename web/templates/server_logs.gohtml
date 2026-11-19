@@ -2,9 +2,12 @@
 {{define "content"}}
 <style>
 .lg-msg{font-size:12px;padding:8px 12px;border-radius:8px;margin-bottom:12px;background:rgba(239,68,68,.12);color:var(--red)}
-.lg-filter{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px 10px;align-items:end}
+.lg-filter{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:8px 10px;align-items:end}
 .lg-filter label{font-size:11px;color:var(--muted);display:block;margin-bottom:3px}
+.lg-filter>div{min-width:0}
+.lg-filter .form-input{min-width:0;max-width:100%}
 .lg-filter .wide{grid-column:span 2}
+.lg-filter [hidden]{display:none!important}
 .lg-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}
 .lg-meta{font-size:11px;color:var(--muted);margin:6px 0}
 .lg-live{color:var(--green,#16a34a)}
@@ -62,7 +65,7 @@
         <option value="7d" {{if eq $r "7d"}}selected{{end}}>letzte 7 Tage</option>
         <option value="custom" {{if eq $r "custom"}}selected{{end}}>frei wählen …</option>
       </select></div>
-    <div id="lg-custom" class="wide" {{if ne .Filter.Range "custom"}}hidden{{end}} style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+    <div id="lg-custom" class="wide" {{if ne .Filter.Range "custom"}}hidden{{end}} style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px">
       <div><label>von</label><input class="form-input" type="datetime-local" name="from" value="{{.Filter.From}}"></div>
       <div><label>bis</label><input class="form-input" type="datetime-local" name="to" value="{{.Filter.To}}"></div>
     </div>

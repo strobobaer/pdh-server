@@ -290,7 +290,7 @@ oder ändern.**
    geprüft (19.11.2026: Störung, Ticket, KVP, Anlage, zwei Protokolle,
    Netzwerk, ESPPDH; Fiori/Fluent, hell/dunkel, 320–1366 px; kein
    Überlauf, keine Konsolenfehler; „Weitere laden“ mangels langer Historie
-   nicht gesehen). Kosmetische Befunde, mit 0.82.3 zu beheben: Fiori-Knopf
+   nicht gesehen). Kosmetische Befunde, mit 0.82.3 behoben: Fiori-Knopf
    mit 2 px Unterrand; KVP-Karte „Do“ bricht die Leiste auf 2–3 Zeilen um;
    Einzelzeile direkt unter einer aufgeklappten Gruppe ohne Abstand;
    Server-Protokoll: Feld „Stufe“ überlappt „bis“ (vermutlich Bestand).
@@ -311,9 +311,17 @@ oder ändern.**
    Vorgang öffnen kann (ja). Branch `feature/rechte-projekte-kvp`. Entwurf
    `docs/superpowers/specs/2026-11-19-rechte-projekte-kvp-design.md` (mit
    zwei Sicherheitspunkten: Leitstand-Kalender für Gäste, Ordnerlisten unter
-   `/uploads/`) – am 19.11.2026 freigegeben („Passt“), Plan und Bau folgen.
-   Vorschlag für später: Anhänge nur mit
-   Anmeldung.
+   `/uploads/`) – am 19.11.2026 freigegeben („Passt“). Gebaut auf dem Branch
+   `feature/rechte-projekte-kvp` (Migration 183, Rechte `projects.view`,
+   `kvp.view`). Offen: Freigabe für Merge und Push; danach Verbund-Update und
+   Browserprüfung (Rolle ohne die neuen Rechte: Menü, Projekte-Liste,
+   KVP-Seite; Leitstand-Kalender als Gast; `GET /uploads/` → 404). Geparkt:
+   Copilot-Suche über alle Vorgangsarten scheitert an einem Feld der
+   Störungen (Bestand); Partner-Auswahl zeigt höchstens 500 Vorgänge vor dem
+   Rechtefilter; KVP-Kennzahlen für Rollen mit Recht nur in einer Abteilung
+   ausgeblendet (Erweiterung möglich); Kalender-Personenzeilen lassen
+   Vorgänge von Personen außerhalb der Leitstand-Abteilung weg (Bestand).
+   Vorschlag für später: Anhänge nur mit Anmeldung.
    (b) **0.82.4 Seite „Netzwerk“:** Netze und WLANs aus UniFi und Omada
    vorschlagen, der Anwender bestätigt nur noch; WLAN-Kennwörter werden mit
    übernommen (ja, Handeingabe als Rückfall); Karte „Dieser Server“ mit
