@@ -1,8 +1,12 @@
 package mqttbroker
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"reflect"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -13,7 +17,7 @@ import (
 
 const devID = "geraete"
 
-var devA = DeviceAccount{Username: "esppdh-a", Password: "pw", TopicPrefix: "esppdh/a/"}
+var devA = DeviceAccount{Username: "esppdh-a", PasswordSHA256: DevicePasswordSHA256("pw"), TopicPrefix: "esppdh/a/"}
 
 // startDeviceBroker startet einen Broker mit Hauptzugang pdh/geheim (bzw.
 // anonym) und dem Gerätezugang esppdh-a/pw auf esppdh/a/. Die Zugänge werden
@@ -173,6 +177,44 @@ func TestDeviceWrongPassword(t *testing.T) {
 	}
 }
 
+// Der Broker kennt von einem Gerät nur den Prüfwert (SHA-256) seines Kennworts, nie das Kennwort
+// selbst: Anmeldung mit dem richtigen Kennwort geht, mit falschem, leerem oder dem Prüfwert als
+// Kennwort nicht. Ein unbrauchbarer Prüfwert gibt keinen Zugang.
+func TestDeviceHashedAccount(t *testing.T) {
+	if _, ok := reflect.TypeOf(DeviceAccount{}).FieldByName("Password"); ok {
+		t.Fatal("DeviceAccount hat noch ein Feld für das Kennwort im Klartext")
+	}
+	sum := sha256.Sum256([]byte("pw"))
+	if got := DevicePasswordSHA256("pw"); got != hex.EncodeToString(sum[:]) {
+		t.Fatalf("DevicePasswordSHA256: %q", got)
+	}
+	m, addr := startDeviceBroker(t, false)
+	mustDial(t, addr, "esppdh-a", "esppdh-a", "pw")
+	for _, bad := range []string{"falsch", "", DevicePasswordSHA256("pw"), "pw "} {
+		if _, _, err := dial(t, addr, "esppdh-a", "esppdh-a", bad); err == nil {
+			t.Errorf("Anmeldung mit %q gelungen", bad)
+		}
+	}
+	// Großbuchstaben im Prüfwert sind derselbe Wert: kein Trennen, Anmeldung geht weiter
+	_, lost := mustDial(t, addr, "esppdh-a", "esppdh-a", "pw")
+	m.SetDeviceAccounts(devID, []DeviceAccount{{Username: "esppdh-a", PasswordSHA256: strings.ToUpper(DevicePasswordSHA256("pw")), TopicPrefix: "esppdh/a/"}})
+	select {
+	case <-lost:
+		t.Fatal("gleicher Prüfwert in Großbuchstaben trennt das Gerät")
+	case <-time.After(300 * time.Millisecond):
+	}
+	mustDial(t, addr, "esppdh-a", "esppdh-a", "pw")
+	// unbrauchbare Prüfwerte: kein Zugang, auch nicht mit leerem Kennwort
+	for _, hash := range []string{"", "zz", DevicePasswordSHA256("pw")[:62], DevicePasswordSHA256("")} {
+		m.SetDeviceAccounts(devID, []DeviceAccount{{Username: "esppdh-a", PasswordSHA256: hash, TopicPrefix: "esppdh/a/"}})
+		for _, pw := range []string{"pw", "", hash} {
+			if _, _, err := dial(t, addr, "esppdh-a", "esppdh-a", pw); err == nil {
+				t.Errorf("Prüfwert %q: Anmeldung mit %q gelungen", hash, pw)
+			}
+		}
+	}
+}
+
 func TestMainAccountUnchanged(t *testing.T) {
 	_, addr := startDeviceBroker(t, false)
 	if _, _, err := dial(t, addr, "falsch", "pdh", "falsch"); err == nil {
@@ -238,12 +280,12 @@ func TestRemoveAccountDisconnects(t *testing.T) {
 // Neues Kennwort trennt nur dieses Gerät; unveränderte Zugänge bleiben verbunden.
 func TestDevicePasswordChangeDisconnects(t *testing.T) {
 	m, addr := startDeviceBroker(t, false)
-	devB := DeviceAccount{Username: "esppdh-b", Password: "pw-b", TopicPrefix: "esppdh/b/"}
+	devB := DeviceAccount{Username: "esppdh-b", PasswordSHA256: DevicePasswordSHA256("pw-b"), TopicPrefix: "esppdh/b/"}
 	m.SetDeviceAccounts(devID, []DeviceAccount{devA, devB})
 	_, lostA := mustDial(t, addr, "esppdh-a", "esppdh-a", "pw")
 	b, lostB := mustDial(t, addr, "esppdh-b", "esppdh-b", "pw-b")
 
-	m.SetDeviceAccounts(devID, []DeviceAccount{{Username: "esppdh-a", Password: "neu", TopicPrefix: "esppdh/a/"}, devB})
+	m.SetDeviceAccounts(devID, []DeviceAccount{{Username: "esppdh-a", PasswordSHA256: DevicePasswordSHA256("neu"), TopicPrefix: "esppdh/a/"}, devB})
 	expectLost(t, lostA, "esppdh-a")
 	select {
 	case <-lostB:
@@ -263,7 +305,7 @@ func TestDevicePasswordChangeDisconnects(t *testing.T) {
 // nur dieses Gerät wird getrennt und abgewiesen, die übrigen und der Hauptzugang bleiben.
 func TestRemoveDeviceAccount(t *testing.T) {
 	m, addr := startDeviceBroker(t, false)
-	devB := DeviceAccount{Username: "esppdh-b", Password: "pw-b", TopicPrefix: "esppdh/b/"}
+	devB := DeviceAccount{Username: "esppdh-b", PasswordSHA256: DevicePasswordSHA256("pw-b"), TopicPrefix: "esppdh/b/"}
 	m.SetDeviceAccounts(devID, []DeviceAccount{devA, devB})
 	_, lostA := mustDial(t, addr, "esppdh-a", "esppdh-a", "pw")
 	b, lostB := mustDial(t, addr, "esppdh-b", "esppdh-b", "pw-b")
@@ -297,7 +339,7 @@ func TestRemoveDeviceAccount(t *testing.T) {
 // Hintergrund und nach Ablauf der Frist notfalls ohne Abschiedspaket.
 func TestSlowDisconnectDoesNotBlock(t *testing.T) {
 	m, addr := startDeviceBroker(t, false)
-	devB := DeviceAccount{Username: "esppdh-b", Password: "pw-b", TopicPrefix: "esppdh/b/"}
+	devB := DeviceAccount{Username: "esppdh-b", PasswordSHA256: DevicePasswordSHA256("pw-b"), TopicPrefix: "esppdh/b/"}
 	m.SetDeviceAccounts(devID, []DeviceAccount{devA, devB})
 	release := make(chan struct{})
 	t.Cleanup(func() { close(release) })
@@ -329,7 +371,7 @@ func TestSlowDisconnectDoesNotBlock(t *testing.T) {
 
 	// neues Kennwort: der alte Client gilt sofort nicht mehr als verbunden
 	prompt("SetDeviceAccounts (neues Kennwort)", func() {
-		m.SetDeviceAccounts(devID, []DeviceAccount{{Username: "esppdh-b", Password: "neu", TopicPrefix: "esppdh/b/"}})
+		m.SetDeviceAccounts(devID, []DeviceAccount{{Username: "esppdh-b", PasswordSHA256: DevicePasswordSHA256("neu"), TopicPrefix: "esppdh/b/"}})
 	})
 	if m.DeviceOnline(devID, "esppdh-b") {
 		t.Error("Gerät mit altem Kennwort gilt als verbunden")

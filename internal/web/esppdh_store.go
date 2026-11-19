@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -17,9 +18,10 @@ import (
 
 // Speicherung der ESPPDH-Geräte (Tabellen esppdh_devices und esppdh_blocks, Migration 179).
 // Die Kennwörter eines Geräts (MQTT-Zugang, Notzugang-WLAN) stehen nur verschlüsselt mit
-// esppdhKey in der Datenbank. Entschlüsselt werden sie nur für den Broker (esppdhSyncBroker),
-// für die Prüfung und den Bau der Firmware und – das Notzugang-Kennwort – für die
-// Detailseite mit esppdh.edit.
+// esppdhKey in der Datenbank. Entschlüsselt werden sie nur für die Prüfung und den Bau der
+// Firmware und – das Notzugang-Kennwort – für die Detailseite mit esppdh.edit. Der Broker
+// bekommt nur den Prüfwert des MQTT-Kennworts (mqtt_pw_sha256, Migration 181; esppdhAccounts):
+// Er hängt nicht am Schlüssel, die Zugänge überstehen so einen Wechsel des Schlüssels.
 
 var (
 	errEsppdhNotFound = errors.New("Das Gerät gibt es nicht (mehr).")
@@ -81,12 +83,13 @@ type esppdhDevice struct {
 	BlockCount           int
 
 	mqttEnc, apEnc string
+	mqttHash       string // Prüfwert des MQTT-Kennworts ("" = noch nicht nachgetragen)
 }
 
 const esppdhSelect = `SELECT d.id::text, d.slug, d.name, d.infrastructure_id::text, d.connection_id::text, c.name,
 		d.board_key, d.custom_board, d.wired, COALESCE(d.wlan_id::text, ''), COALESCE(w.ssid, ''), COALESCE(w.hidden, false),
 		COALESCE(d.segment_id::text, ''), COALESCE(s.name, ''), COALESCE(s.subnet, ''),
-		d.use_tls, d.locked, d.built_hash, d.note, d.mqtt_password_enc, d.ap_password_enc, d.created_at, d.updated_at,
+		d.use_tls, d.locked, d.built_hash, d.note, d.mqtt_password_enc, d.ap_password_enc, d.mqtt_pw_sha256, d.created_at, d.updated_at,
 		(SELECT count(*) FROM esppdh_blocks b WHERE b.device_id = d.id)
 	FROM esppdh_devices d
 	JOIN import_export_connections c ON c.id = d.connection_id
@@ -98,7 +101,7 @@ func esppdhScan(row pgx.Row) (esppdhDevice, error) {
 	err := row.Scan(&d.ID, &d.Slug, &d.Name, &d.InfraID, &d.ConnID, &d.ConnName,
 		&d.BoardKey, &d.CustomBoard, &d.Wired, &d.WLANID, &d.WLANSSID, &d.WLANHidden,
 		&d.SegmentID, &d.NetName, &d.NetSubnet,
-		&d.UseTLS, &d.Locked, &d.BuiltHash, &d.Note, &d.mqttEnc, &d.apEnc, &d.CreatedAt, &d.UpdatedAt, &d.BlockCount)
+		&d.UseTLS, &d.Locked, &d.BuiltHash, &d.Note, &d.mqttEnc, &d.apEnc, &d.mqttHash, &d.CreatedAt, &d.UpdatedAt, &d.BlockCount)
 	return d, err
 }
 
@@ -162,10 +165,21 @@ func (h *Handler) esppdhList(ctx context.Context) ([]esppdhDevice, error) {
 	return list, nil
 }
 
-// esppdhSecrets entschlüsselt MQTT- und Notzugang-Kennwort eines Geräts.
+// esppdhSecrets entschlüsselt MQTT- und Notzugang-Kennwort eines Geräts. Ist das MQTT-Kennwort
+// nicht lesbar, sagt die Meldung, ob das Gerät am Broker bleibt (Prüfwert vorhanden) oder
+// ausgesperrt ist.
 func (h *Handler) esppdhSecrets(d esppdhDevice) (mqttPW, apPW string, err error) {
 	if mqttPW, err = decryptSecret(h.esppdhKey(), d.mqttEnc); err != nil || mqttPW == "" {
-		return "", "", errors.New("Das MQTT-Kennwort des Geräts ist nicht lesbar – der Schlüssel hat sich geändert. Bitte ein neues MQTT-Kennwort vergeben.")
+		if d.mqttHash != "" {
+			return "", "", errors.New("Das MQTT-Kennwort des Geräts ist nicht lesbar – der Schlüssel hat sich geändert. Das Gerät bleibt am Broker angemeldet; " +
+				"vor dem nächsten Bau der Firmware bitte unter Aktionen „Neues MQTT-Kennwort“ wählen.")
+		}
+		return "", "", errors.New("Das MQTT-Kennwort des Geräts ist nicht lesbar – der Schlüssel hat sich geändert. Das Gerät kann sich deshalb nicht am Broker anmelden: " +
+			"bitte unter Aktionen „Neues MQTT-Kennwort“ wählen, dann die Firmware neu bauen und aufspielen.")
+	}
+	if d.mqttHash != "" && !strings.EqualFold(d.mqttHash, mqttbroker.DevicePasswordSHA256(mqttPW)) {
+		// der Broker prüft mit dem Prüfwert – eine Firmware mit diesem Kennwort käme nicht hinein
+		return "", "", errors.New("Das MQTT-Kennwort des Geräts passt nicht zu seinem Zugang am Broker. Bitte unter Aktionen „Neues MQTT-Kennwort“ wählen.")
 	}
 	if apPW, err = decryptSecret(h.esppdhKey(), d.apEnc); err != nil {
 		return "", "", errors.New("Das Kennwort des Notzugangs ist nicht lesbar – der Schlüssel hat sich geändert. Bitte ein neues MQTT-Kennwort vergeben, das setzt auch den Notzugang neu.")
@@ -189,10 +203,11 @@ func (h *Handler) esppdhInsert(ctx context.Context, d esppdhDevice, mqttPW, apPW
 	}
 	var id string
 	err = h.db.QueryRow(ctx, `INSERT INTO esppdh_devices (slug, name, infrastructure_id, connection_id, board_key, custom_board,
-			wired, wlan_id, segment_id, use_tls, mqtt_password_enc, ap_password_enc, note, created_by)
-		VALUES ($1, $2, $3::uuid, $4::uuid, $5, $6, $7, $8::uuid, $9::uuid, $10, $11, $12, $13, $14::uuid) RETURNING id::text`,
+			wired, wlan_id, segment_id, use_tls, mqtt_password_enc, ap_password_enc, note, created_by, mqtt_pw_sha256)
+		VALUES ($1, $2, $3::uuid, $4::uuid, $5, $6, $7, $8::uuid, $9::uuid, $10, $11, $12, $13, $14::uuid, $15) RETURNING id::text`,
 		d.Slug, d.Name, d.InfraID, d.ConnID, d.BoardKey, d.CustomBoard,
-		d.Wired, nullIfEmpty(d.WLANID), nullIfEmpty(d.SegmentID), d.UseTLS, mqttEnc, apEnc, d.Note, nullIfEmpty(by)).Scan(&id)
+		d.Wired, nullIfEmpty(d.WLANID), nullIfEmpty(d.SegmentID), d.UseTLS, mqttEnc, apEnc, d.Note, nullIfEmpty(by),
+		mqttbroker.DevicePasswordSHA256(mqttPW)).Scan(&id)
 	return id, err
 }
 
@@ -260,9 +275,9 @@ func (h *Handler) esppdhSetLocked(ctx context.Context, id string, locked bool) (
 	return conn, slug, err
 }
 
-// esppdhSetPasswords setzt ein neues MQTT-Kennwort und – nur wenn apPW nicht leer ist – ein
-// neues Kennwort für den Notzugang; liefert die Verbindung. Der Notzugang bleibt sonst, damit
-// das angezeigte Kennwort zur Firmware auf dem Gerät passt.
+// esppdhSetPasswords setzt ein neues MQTT-Kennwort (samt Prüfwert für den Broker) und – nur
+// wenn apPW nicht leer ist – ein neues Kennwort für den Notzugang; liefert die Verbindung. Der
+// Notzugang bleibt sonst, damit das angezeigte Kennwort zur Firmware auf dem Gerät passt.
 func (h *Handler) esppdhSetPasswords(ctx context.Context, id, mqttPW, apPW string) (string, error) {
 	mqttEnc, err := encryptSecret(h.esppdhKey(), mqttPW)
 	if err != nil {
@@ -275,9 +290,9 @@ func (h *Handler) esppdhSetPasswords(ctx context.Context, id, mqttPW, apPW strin
 		}
 	}
 	var conn string
-	err = h.db.QueryRow(ctx, `UPDATE esppdh_devices SET mqtt_password_enc = $2,
+	err = h.db.QueryRow(ctx, `UPDATE esppdh_devices SET mqtt_password_enc = $2, mqtt_pw_sha256 = $4,
 			ap_password_enc = CASE WHEN $3 = '' THEN ap_password_enc ELSE $3 END, updated_at = now()
-		WHERE id = $1::uuid RETURNING connection_id::text`, id, mqttEnc, apEnc).Scan(&conn)
+		WHERE id = $1::uuid RETURNING connection_id::text`, id, mqttEnc, apEnc, mqttbroker.DevicePasswordSHA256(mqttPW)).Scan(&conn)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", errEsppdhNotFound
 	}
@@ -328,26 +343,54 @@ func (h *Handler) esppdhSyncBroker(ctx context.Context, connID string, revokeOnE
 	return nil
 }
 
-// esppdhAccounts: Zugänge aller nicht gesperrten Geräte einer Verbindung. Ein Gerät, dessen
-// Kennwort nicht lesbar ist, bekommt keinen Zugang.
+// esppdhAccounts: Zugänge aller nicht gesperrten Geräte einer Verbindung – mit dem Prüfwert des
+// MQTT-Kennworts (mqtt_pw_sha256), nie mit dem Kennwort selbst. Ein Gerät behält so seinen
+// Zugang, auch wenn sich der Schlüssel geändert hat und das Kennwort nicht mehr lesbar ist (erst
+// der nächste Bau braucht dann ein neues Kennwort; die Seite des Geräts sagt es). Fehlt der
+// Prüfwert noch (Gerät von vor Migration 181), rechnet es ihn aus dem entschlüsselten Kennwort
+// und trägt ihn nach – nicht am Spiegel, dort ist die Datenbank nur lesbar. Ist das Kennwort
+// dann nicht lesbar, bekommt das Gerät keinen Zugang.
 func (h *Handler) esppdhAccounts(ctx context.Context, connID string) ([]mqttbroker.DeviceAccount, error) {
-	rows, err := h.db.Query(ctx, `SELECT slug, mqtt_password_enc FROM esppdh_devices WHERE connection_id = $1::uuid AND NOT locked ORDER BY slug`, connID)
+	rows, err := h.db.Query(ctx, `SELECT id::text, slug, mqtt_password_enc, mqtt_pw_sha256 FROM esppdh_devices
+		WHERE connection_id = $1::uuid AND NOT locked ORDER BY slug`, connID)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	lg := componentLog("esppdh")
 	accts := []mqttbroker.DeviceAccount{}
+	var fill [][2]string // Gerät, nachzutragender Prüfwert
 	for rows.Next() {
-		var slug, enc string
-		if err := rows.Scan(&slug, &enc); err != nil {
+		var id, slug, enc, sum string
+		if err := rows.Scan(&id, &slug, &enc, &sum); err != nil {
+			rows.Close()
 			return nil, err
 		}
-		pw, err := decryptSecret(h.esppdhKey(), enc)
-		if err != nil || pw == "" || !esppdh.ValidSlug(slug) {
-			componentLog("esppdh").Warn().Str("gerät", slug).Msg("mqtt-kennwort nicht lesbar – gerät ohne zugang")
+		if !esppdh.ValidSlug(slug) {
+			lg.Warn().Str("gerät", slug).Msg("ungültige kennung – gerät ohne zugang")
 			continue
 		}
-		accts = append(accts, mqttbroker.DeviceAccount{Username: esppdhUserOf(slug), Password: pw, TopicPrefix: esppdhTopicPrefix(slug)})
+		if sum == "" {
+			pw, err := decryptSecret(h.esppdhKey(), enc)
+			if err != nil || pw == "" {
+				lg.Warn().Str("gerät", slug).Msg("mqtt-kennwort nicht lesbar und kein prüfwert – gerät ohne zugang")
+				continue
+			}
+			sum = mqttbroker.DevicePasswordSHA256(pw)
+			fill = append(fill, [2]string{id, sum})
+		}
+		accts = append(accts, mqttbroker.DeviceAccount{Username: esppdhUserOf(slug), PasswordSHA256: sum, TopicPrefix: esppdhTopicPrefix(slug)})
 	}
-	return accts, rows.Err()
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if !h.Mirror().On {
+		for _, f := range fill {
+			// nur, wo noch keiner steht: ein inzwischen neues Kennwort bringt seinen eigenen mit
+			if _, err := h.db.Exec(ctx, `UPDATE esppdh_devices SET mqtt_pw_sha256 = $2 WHERE id = $1::uuid AND mqtt_pw_sha256 = ''`, f[0], f[1]); err != nil {
+				lg.Warn().Err(err).Str("id", f[0]).Msg("prüfwert des mqtt-kennworts nachtragen")
+			}
+		}
+	}
+	return accts, nil
 }

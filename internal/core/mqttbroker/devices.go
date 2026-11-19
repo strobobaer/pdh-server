@@ -5,9 +5,15 @@ package mqttbroker
 // ("esppdh/<kennung>/") schreiben und lesen. Wer sich mit einem solchen
 // Namen anmeldet, gilt immer als Gerät – auch wenn der Broker anonyme Clients
 // erlaubt. Die Prüfung selbst steckt in pdhAuthHook (manager.go).
+//
+// Der Broker kennt von einem Gerät nur den Prüfwert seines Kennworts (SHA-256),
+// nie das Kennwort selbst. Ein einfacher Hash genügt: Die Kennwörter sind 192 Bit
+// Zufall (ESPPDH), Durchprobieren ist aussichtslos.
 
 import (
+	"crypto/sha256"
 	"crypto/subtle"
+	"encoding/hex"
 	"strings"
 	"sync"
 	"time"
@@ -19,9 +25,30 @@ import (
 // deviceUserPrefix ist der Anfang aller Benutzernamen von Gerätezugängen.
 const deviceUserPrefix = "esppdh-"
 
-// DeviceAccount ist ein Gerätezugang am integrierten Broker. TopicPrefix ist
-// das eigene Thema des Geräts, z. B. "esppdh/halle1-s0/".
-type DeviceAccount struct{ Username, Password, TopicPrefix string }
+// DeviceAccount ist ein Gerätezugang am integrierten Broker. PasswordSHA256 ist
+// der Prüfwert des Kennworts (DevicePasswordSHA256, 64 Hex-Zeichen); TopicPrefix
+// ist das eigene Thema des Geräts, z. B. "esppdh/halle1-s0/".
+type DeviceAccount struct{ Username, PasswordSHA256, TopicPrefix string }
+
+// DevicePasswordSHA256 liefert den Prüfwert eines Gerätekennworts: SHA-256 als
+// Hex-Text in Kleinbuchstaben.
+func DevicePasswordSHA256(password string) string {
+	sum := sha256.Sum256([]byte(password))
+	return hex.EncodeToString(sum[:])
+}
+
+// emptyPasswordSHA256: Prüfwert des leeren Kennworts – nie ein gültiger Zugang.
+var emptyPasswordSHA256 = DevicePasswordSHA256("")
+
+// devicePasswordSum: Prüfwert als Bytes, ok=false bei einem unbrauchbaren Wert
+// (nicht 64 Hex-Zeichen oder der Wert des leeren Kennworts).
+func devicePasswordSum(hexSum string) ([]byte, bool) {
+	b, err := hex.DecodeString(hexSum)
+	if err != nil || len(b) != sha256.Size || strings.EqualFold(hexSum, emptyPasswordSHA256) {
+		return nil, false
+	}
+	return b, true
+}
 
 // deviceAccounts hält die Gerätezugänge eines Brokers. Sie liegen im Manager
 // je Verbindungs-ID, nicht im laufenden Server – so überleben sie Stop,
@@ -46,11 +73,13 @@ func (d *deviceAccounts) get(username string) (DeviceAccount, bool) {
 // replace setzt die neue Liste und liefert die Benutzernamen, deren Zugang
 // entfiel oder deren Kennwort sich änderte. Namen ohne "esppdh-" sind keine
 // Gerätezugänge und werden übergangen – sonst könnte eine Liste den
-// Hauptzugang trennen.
+// Hauptzugang trennen. Ebenso Zugänge mit unbrauchbarem Prüfwert: Sie gelten
+// als entfallen (kein Zugang).
 func (d *deviceAccounts) replace(accts []DeviceAccount) map[string]struct{} {
 	next := make(map[string]DeviceAccount, len(accts))
 	for _, a := range accts {
-		if hasDevicePrefix(a.Username) {
+		if _, ok := devicePasswordSum(a.PasswordSHA256); ok && hasDevicePrefix(a.Username) {
+			a.PasswordSHA256 = strings.ToLower(a.PasswordSHA256)
 			next[a.Username] = a
 		}
 	}
@@ -61,7 +90,7 @@ func (d *deviceAccounts) replace(accts []DeviceAccount) map[string]struct{} {
 
 	stale := map[string]struct{}{}
 	for u, old := range prev {
-		if cur, ok := next[u]; !ok || cur.Password != old.Password {
+		if cur, ok := next[u]; !ok || cur.PasswordSHA256 != old.PasswordSHA256 {
 			stale[u] = struct{}{}
 		}
 	}
@@ -90,12 +119,20 @@ func (d *deviceAccounts) remove(username string) {
 //     Client-ID nutzen.
 //   - Letzter Wille: eine spätere Veröffentlichung; liegt er unter fremdem
 //     Thema, wird die Anmeldung abgelehnt.
+//
+// Das Kennwort wird gehasht und mit dem Prüfwert verglichen (konstante Zeit);
+// ein leeres Kennwort gilt nie.
 func (d *deviceAccounts) authenticate(pk packets.Packet) bool {
 	a, ok := d.get(string(pk.Connect.Username))
-	if !ok || a.Password == "" || pk.Connect.ClientIdentifier != a.Username {
+	if !ok || len(pk.Connect.Password) == 0 || pk.Connect.ClientIdentifier != a.Username {
 		return false
 	}
-	if subtle.ConstantTimeCompare(pk.Connect.Password, []byte(a.Password)) != 1 {
+	want, ok := devicePasswordSum(a.PasswordSHA256)
+	if !ok {
+		return false
+	}
+	got := sha256.Sum256(pk.Connect.Password)
+	if subtle.ConstantTimeCompare(got[:], want) != 1 {
 		return false
 	}
 	return !pk.Connect.WillFlag || deviceTopicAllowed(a.TopicPrefix, pk.Connect.WillTopic, true)

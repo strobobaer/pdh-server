@@ -35,6 +35,7 @@ im Kapitel „Versionen & Updates“ an.
 - Neue Rechte **ESPPDH: Geräte und Zustand ansehen** (`esppdh.view`), **… anlegen, ändern, sperren, bauen und flashen** (`esppdh.edit`) und **… löschen** (`esppdh.admin`, Bereichsadministrator). Ansehen und pflegen dürfen automatisch alle Rollen mit dem Recht „Import-Verbindungen verwalten“, löschen nur Rollen, die zusätzlich die Server-Einstellungen ändern dürfen; die Rechte gelten je Abteilung.
 - Jedes Gerät hat einen eigenen Zugang am MQTT-Broker, beschränkt auf sein eigenes Thema `esppdh/<kennung>/…`; ein gesperrtes Gerät kommt nicht mehr hinein.
 - Die fertige Firmware und die Gerätekennwörter werden verschlüsselt abgelegt; Firmware laden darf nur, wer das Pflegerecht (`esppdh.edit`) für das Gerät hat.
+- Der MQTT-Broker kennt von jedem Gerät nur einen Prüfwert des Kennworts, nie das Kennwort selbst, und die Geräte behalten ihren Zugang auch nach einem Wechsel des Schlüssels – vor dem nächsten Bau der Firmware braucht ein Gerät dann ein neues MQTT-Kennwort.
 - ESPPDH ist im Docker-Testbetrieb nicht verfügbar, nur im Betrieb mit systemd.
 
 ## [0.81.6] – 2026-11-18

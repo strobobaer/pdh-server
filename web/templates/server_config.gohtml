@@ -132,7 +132,7 @@
       <span id="test-{{.Key}}" class="sc-sub">{{with .Test}}<span style="color:{{if .OK}}var(--green){{else}}var(--red){{end}}"><i class="ti {{if .OK}}ti-circle-check{{else}}ti-alert-circle{{end}}"></i> {{.Msg}} <span style="color:var(--muted)">({{.At}})</span></span>{{end}}</span>
     {{end}}
     {{if eq .Key "security"}}
-      <label class="sc-sub"><input type="checkbox" name="new_jwt" value="1" onchange="if(this.checked&&!confirm('Neuen Anmelde-Schlüssel erzeugen? Nach dem Neustart müssen sich alle neu anmelden.'))this.checked=false"> Neuen Anmelde-Schlüssel erzeugen</label>
+      <label class="sc-sub"><input type="checkbox" name="new_jwt" value="1" onchange="if(this.checked&&!confirm('Neuen Anmelde-Schlüssel erzeugen? Nach dem Neustart müssen sich alle neu anmelden. Ist der Schlüssel für Portal-Passwörter leer, brauchen ESPPDH-Geräte vor dem nächsten Bau der Firmware je ein neues MQTT-Kennwort.'))this.checked=false"> Neuen Anmelde-Schlüssel erzeugen</label>
     {{end}}
   </div>
 </form>

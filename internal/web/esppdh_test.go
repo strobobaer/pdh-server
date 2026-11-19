@@ -833,6 +833,113 @@ func TestESPPDHBrokerSync(t *testing.T) {
 	}
 }
 
+// pwHash: gespeicherter Prüfwert des MQTT-Kennworts eines Geräts.
+func (e *esppdhEnvT) pwHash(t *testing.T, id string) string {
+	t.Helper()
+	var h string
+	if err := e.pool.QueryRow(context.Background(), `SELECT mqtt_pw_sha256 FROM esppdh_devices WHERE id = $1::uuid`, id).Scan(&h); err != nil {
+		t.Fatal(err)
+	}
+	return h
+}
+
+// Der Broker prüft Geräte mit dem Prüfwert (SHA-256) des MQTT-Kennworts: Er entsteht beim
+// Anlegen und bei „Neues MQTT-Kennwort“, wird für ältere Geräte beim Abgleich nachgetragen, und
+// ein Wechsel des Schlüssels sperrt die Geräte nicht aus – die Seite des Geräts sagt dann, dass
+// vor dem nächsten Bau ein neues MQTT-Kennwort nötig ist. Ohne Prüfwert und mit unlesbarem
+// Kennwort gibt es keinen Zugang, und die Seite sagt das.
+func TestESPPDHAccountsSurviveKeyChange(t *testing.T) {
+	port := esppdhFreePort(t)
+	e := newEsppdhEnv(t, esppdhBrokerCfg(port))
+	ctx := context.Background()
+	slug := "key-" + e.sfx
+	user := "esppdh-" + slug
+	id := e.create(t, slug, nil)
+	if got, want := e.pwHash(t, id), mqttbroker.DevicePasswordSHA256(e.mqttPW(t, id)); got != want {
+		t.Fatalf("Prüfwert nach dem Anlegen: %q, erwartet %q", got, want)
+	}
+	esppdhDo(e.h.EsppdhPasswordWeb, "POST", "/x", id, esppdhUser, url.Values{})
+	pw := e.mqttPW(t, id)
+	if got := e.pwHash(t, id); got != mqttbroker.DevicePasswordSHA256(pw) {
+		t.Fatalf("Prüfwert nach „Neues MQTT-Kennwort“: %q", got)
+	}
+	account := func() (mqttbroker.DeviceAccount, bool) {
+		t.Helper()
+		accts, err := e.h.esppdhAccounts(ctx, e.conn)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, a := range accts {
+			if a.Username == user {
+				return a, true
+			}
+		}
+		return mqttbroker.DeviceAccount{}, false
+	}
+	// Gerät von vor Migration 181: Prüfwert fehlt → beim Abgleich nachgetragen
+	if _, err := e.pool.Exec(ctx, `UPDATE esppdh_devices SET mqtt_pw_sha256 = '' WHERE id = $1::uuid`, id); err != nil {
+		t.Fatal(err)
+	}
+	if a, ok := account(); !ok || a.PasswordSHA256 != mqttbroker.DevicePasswordSHA256(pw) {
+		t.Fatalf("Zugang ohne gespeicherten Prüfwert: %v %+v", ok, a)
+	}
+	if got := e.pwHash(t, id); got != mqttbroker.DevicePasswordSHA256(pw) {
+		t.Fatalf("Prüfwert nicht nachgetragen: %q", got)
+	}
+	// Prüfwert passt nicht zum Kennwort: nicht bauen (die Firmware käme nicht an den Broker)
+	if _, err := e.pool.Exec(ctx, `UPDATE esppdh_devices SET mqtt_pw_sha256 = $2 WHERE id = $1::uuid`, id, mqttbroker.DevicePasswordSHA256("anders")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.h.esppdhBuildInput(ctx, id, esppdhTestHost); err == nil || !strings.Contains(err.Error(), "passt nicht zu seinem Zugang") {
+		t.Errorf("Prüfwert passt nicht: %v", err)
+	}
+	if _, err := e.pool.Exec(ctx, `UPDATE esppdh_devices SET mqtt_pw_sha256 = $2 WHERE id = $1::uuid`, id, mqttbroker.DevicePasswordSHA256(pw)); err != nil {
+		t.Fatal(err)
+	}
+
+	// Schlüssel gewechselt (anderer Anmelde-Schlüssel, PDH neu gestartet): Kennwort nicht mehr
+	// lesbar, das Gerät meldet sich trotzdem an
+	e.h.jwtSecret = "ein-ganz-anderer-schluessel-" + e.sfx
+	d, err := e.h.esppdhLoad(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := e.h.esppdhSecrets(d); err == nil {
+		t.Fatal("Kennwort trotz anderem Schlüssel lesbar – Test prüft nichts")
+	}
+	e.h.mqttBrokers.StopAll()
+	e.h.mqttBrokers = mqttbroker.NewManager()
+	e.h.reconcileMqttBroker(e.conn, "import", "mqtt", true, e.cfg)
+	if !e.h.mqttBrokers.IsRunning(e.conn) {
+		t.Fatalf("Broker läuft nicht: %s", e.h.mqttBrokers.LastError(e.conn))
+	}
+	if _, _, err := esppdhDial(t, port, user, pw); err != nil {
+		t.Fatalf("Gerät nach Wechsel des Schlüssels ausgesperrt: %v", err)
+	}
+	if _, _, err := esppdhDial(t, port, user, "falsch"); err == nil {
+		t.Error("falsches Kennwort angenommen")
+	}
+	page := esppdhDo(e.h.EsppdhDevicePage, "GET", "/x", id, esppdhUser, nil).Body.String()
+	if !strings.Contains(page, "Das Gerät bleibt am Broker angemeldet") || !strings.Contains(page, "Neues MQTT-Kennwort") {
+		t.Error("Seite des Geräts sagt nicht, dass vor dem nächsten Bau ein neues MQTT-Kennwort nötig ist")
+	}
+
+	// ohne Prüfwert und mit unlesbarem Kennwort: kein Zugang, die Seite sagt es
+	if _, err := e.pool.Exec(ctx, `UPDATE esppdh_devices SET mqtt_pw_sha256 = '' WHERE id = $1::uuid`, id); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := account(); ok {
+		t.Error("Zugang ohne Prüfwert und mit unlesbarem Kennwort")
+	}
+	if got := e.pwHash(t, id); got != "" {
+		t.Errorf("Prüfwert aus unlesbarem Kennwort nachgetragen: %q", got)
+	}
+	page = esppdhDo(e.h.EsppdhDevicePage, "GET", "/x", id, esppdhUser, nil).Body.String()
+	if !strings.Contains(page, "kann sich deshalb nicht am Broker anmelden") {
+		t.Error("Seite des Geräts verschweigt den fehlenden Zugang")
+	}
+}
+
 // Gleichzeitige Abgleiche dürfen ein gerade gesperrtes Gerät nicht wieder hereinlassen: Lauf A
 // hat die Liste vor dem Sperren gelesen und setzt sie erst danach. Ohne Sperre um Lesen und
 // Setzen liefe der Abgleich des Sperrens (B) dazwischen durch, und A setzte danach die alte Liste.
