@@ -37,6 +37,11 @@ type updateAgent struct {
 	haRun     func(context.Context, string, map[string]string, io.Writer) error // nil = hostCommandEnv
 	esppdh    esppdhJob                                                         // ESPHome-Einrichtung (esppdh.go)
 	esppdhRun func(context.Context, string, map[string]string) (string, error)  // nil = hostCommandEnv (esppdh.go)
+
+	vmu            sync.Mutex                                           // Versionsordner und Zeiger (esppdh_versions.go)
+	esphomeVersion func(ctx context.Context, bin string) (string, error) // nil = „bin version“ ausführen; Test-Haken
+	esppdhBusy     func(ctx context.Context) bool                       // nil = läuft eine Einrichtung? (systemd); Test-Haken
+
 	mu        sync.RWMutex
 	status    jobStatus
 	token     string
@@ -101,6 +106,7 @@ func main() {
 		agent.loadUpdateStatus() // Ergebnis des letzten Laufs überlebt den Neustart des Agenten
 		agent.windowLoad()
 		agent.loadSingleJob() // offener Auftrag (Einzelserver) läuft weiter
+		go agent.pruneVersionOrphans(context.Background()) // verwaiste ESPHome-Kandidaten (esppdh_versions.go)
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {
@@ -129,6 +135,9 @@ func main() {
 	// ESPPDH: Python-Umgebung mit ESPHome einrichten (esppdh.go)
 	mux.Handle("POST /v1/esppdh/install", agent.authorized(http.HandlerFunc(agent.esppdhInstallHandler)))
 	mux.Handle("GET /v1/esppdh/install", agent.authorized(http.HandlerFunc(agent.esppdhStatusHandler)))
+	// ESPPDH: ESPHome-Versionen nebeneinander – umschalten, verwerfen, zurück (esppdh_versions.go)
+	mux.Handle("GET /v1/esppdh/versions", agent.authorized(http.HandlerFunc(agent.versionsGetHandler)))
+	mux.Handle("POST /v1/esppdh/versions", agent.authorized(http.HandlerFunc(agent.versionsPostHandler)))
 	// Ausfallschutz – Einzelbetrieb (dr.go)
 	if err := agent.drLoad(); err != nil {
 		log.Printf("ausfallschutz: state.json nicht lesbar: %v", err)

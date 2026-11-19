@@ -9,6 +9,9 @@
 # PDH-Updates. Am Ende gibt das Skript „Version: …“ von ESPHome aus.
 #
 #   PDH_ESPHOME_DIR      Python-Umgebung (Standard /opt/pdh-esphome)
+#   PDH_ESPHOME_VERSION  Kandidat einrichten: genau diese Version (JJJJ.M.P) unter
+#                        /opt/pdh-esphome-versions/<Version>, daneben die Grundumgebung
+#                        unverändert; PDH_ESPHOME_DIR wird dann ignoriert
 #   PDH_ESPHOME_WORKDIR  Arbeitsordner der Bauläufe (Standard /var/lib/pdh-esphome)
 #
 # Das Skript läuft als root. Es löscht nur eine Python-Umgebung (Ordner mit pyvenv.cfg) oder
@@ -18,6 +21,11 @@
 # Mindestversion von Python für die ESPHome-Version (PyPI „requires_python“) – beim Anheben
 # von esphome.version abgleichen.
 py_min="3.12"
+
+# Ordner der zusätzlichen Umgebungen (neuere ESPHome-Versionen nebeneinander, vom Update-Agenten
+# umgeschaltet) und der Platz, den eine Umgebung samt pip-Zwischenspeicher mindestens braucht.
+esphome_versions_dir="/opt/pdh-esphome-versions"
+esphome_min_free_mb=3072
 
 fail() { echo "$*" >&2; exit 1; }
 
@@ -34,6 +42,27 @@ esphome_path_ok() {
     if [[ ! "$p" =~ ^/[^/]+/[^/]+ ]]; then
         echo "$name: '$p' muss ein absoluter Pfad mit mindestens zwei Ordnerebenen sein." >&2
         return 1
+    fi
+}
+
+# esphome_version_ok VERSION: nur eine stabile Version JJJJ.M.P (Ziffern und Punkte) – diese
+# Zeichenfolge wird zum Ordnernamen, darum nichts anderes zulassen.
+esphome_version_ok() {
+    # Der Glob zuerst: Er sieht die ganze Zeichenfolge, auch mit Zeilenumbruch (Regex-Anker nicht).
+    if [[ "$1" == *[!0-9.]* || ! "$1" =~ ^[0-9]{4}\.[0-9]{1,2}\.[0-9]{1,3}$ ]]; then
+        echo "Ungültige ESPHome-Version: '$1' (erwartet JJJJ.M.P, z. B. 2026.11.1)." >&2
+        return 1
+    fi
+}
+
+# esphome_venv_dir: Zielordner der Python-Umgebung. Mit PDH_ESPHOME_VERSION immer
+# <Versionsordner>/<Version> (ein mitgegebenes PDH_ESPHOME_DIR wird ignoriert), sonst
+# PDH_ESPHOME_DIR bzw. die Grundumgebung.
+esphome_venv_dir() {
+    if [[ -n "${PDH_ESPHOME_VERSION:-}" ]]; then
+        echo "$esphome_versions_dir/$PDH_ESPHOME_VERSION"
+    else
+        echo "${PDH_ESPHOME_DIR:-/opt/pdh-esphome}"
     fi
 }
 
@@ -80,17 +109,24 @@ esphome_apt() {
 
 main() {
     set -Eeuo pipefail
-    local script_dir venv work version svc_user svc_group current py created=0
+    local script_dir venv work version candidate svc_user svc_group current py free created=0
     script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    venv="${PDH_ESPHOME_DIR:-/opt/pdh-esphome}"
     work="${PDH_ESPHOME_WORKDIR:-/var/lib/pdh-esphome}"
+    candidate="${PDH_ESPHOME_VERSION:-}"
 
     # Pfade zuerst prüfen – vor allem, was etwas löscht oder Rechte setzt.
+    if [[ -n "$candidate" ]]; then
+        esphome_version_ok "$candidate" || exit 1
+        version="$candidate"
+    fi
+    venv="$(esphome_venv_dir)"
     esphome_path_ok PDH_ESPHOME_DIR "$venv" || exit 1
     esphome_path_ok PDH_ESPHOME_WORKDIR "$work" || exit 1
     (( EUID == 0 )) || fail "Bitte als root ausführen: sudo bash $0"
-    version="$(tr -d '[:space:]' < "$script_dir/esphome.version")"
-    [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "Ungültige ESPHome-Version in esphome.version: '$version'"
+    if [[ -z "$candidate" ]]; then
+        version="$(tr -d '[:space:]' < "$script_dir/esphome.version")"
+        [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "Ungültige ESPHome-Version in esphome.version: '$version'"
+    fi
 
     # Nur eine Einrichtung zur Zeit (Knopf und Update gleichzeitig).
     exec 9>/run/pdh-esphome-install.lock
@@ -111,6 +147,15 @@ main() {
     fi
     # Vor dem Anlegen prüfen: Mit zu altem Python bleibt keine halbe Umgebung zurück.
     py_ok python3 || fail "ESPHome $version braucht Python $py_min oder neuer. Vorhanden: $(python3 --version 2>&1). Bitte das Betriebssystem aktualisieren (z. B. Ubuntu 24.04)."
+
+    # Kandidat: genug Platz unter /opt (Umgebung samt pip-Zwischenspeicher), Elternordner anlegen.
+    if [[ -n "$candidate" ]]; then
+        free="$(df -Pm /opt 2>/dev/null | awk 'NR==2 {print $4}')"
+        if [[ "$free" =~ ^[0-9]+$ ]] && (( free < esphome_min_free_mb )); then
+            fail "Zu wenig Platz unter /opt: ${free} MB frei, für ESPHome $version werden mindestens ${esphome_min_free_mb} MB gebraucht."
+        fi
+        install -d -m 0755 -o root -g root "$esphome_versions_dir"
+    fi
 
     # Umgebung mit zu altem oder fehlendem Python (Abbruch, Wechsel der Python-Version): neu anlegen.
     if [[ -e "$venv" || -L "$venv" ]] && ! py_ok "$venv/bin/python3"; then

@@ -255,6 +255,63 @@ func TestEsppdhScriptStopsOnBadPath(t *testing.T) {
 	}
 }
 
+// Kandidat: nur gültige, stabile Versionen (JJJJ.M.P) – nichts anderes landet in einem Pfad.
+func TestEsppdhVersionGuard(t *testing.T) {
+	for _, v := range []string{"2026.11.1", "2026.1.12", "2027.12.100"} {
+		if out, err := esppdhGuard(t, "esphome_version_ok", v); err != nil {
+			t.Errorf("%s abgelehnt: %v %s", v, err, out)
+		}
+	}
+	for _, v := range []string{"2026.11.0b1", "1.2", "2026.11.1; rm", "", "../x", "2026.11.1/..", "2026.11.1 "} {
+		out, err := esppdhGuard(t, "esphome_version_ok", v)
+		if err == nil || !strings.Contains(out, "Ungültige ESPHome-Version") {
+			t.Errorf("%q: Fehler %v, Meldung %q", v, err, out)
+		}
+	}
+	// Zeilenumbruch mitten in der Version: in Bash selbst gebildet (ein Argument aus Go verliert ihn unter Windows)
+	bash, script := esppdhScript(t)
+	out, err := exec.Command(bash, "-c", `source "$1"; esphome_version_ok $'2026.11.1\n2026.11.2'`, "x", script).CombinedOutput()
+	if err == nil || !strings.Contains(string(out), "Ungültige ESPHome-Version") {
+		t.Errorf("Version mit Zeilenumbruch: Fehler %v, Meldung %q", err, out)
+	}
+}
+
+// Mit PDH_ESPHOME_VERSION ist der Zielordner immer <Versionsordner>/<Version> – ein mitgegebenes
+// PDH_ESPHOME_DIR wird ignoriert; ohne bleibt es bei PDH_ESPHOME_DIR bzw. der Grundumgebung.
+func TestEsppdhCandidateIgnoresDir(t *testing.T) {
+	bash, script := esppdhScript(t)
+	run := func(env ...string) string {
+		t.Helper()
+		cmd := exec.Command(bash, "-c", `source "$1"; esphome_venv_dir`, "x", script)
+		cmd.Env = append(os.Environ(), env...)
+		out, err := cmd.Output()
+		if err != nil {
+			t.Fatalf("%v: %v", env, err)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	if got := run("PDH_ESPHOME_VERSION=2026.11.1", "PDH_ESPHOME_DIR=/opt/pdh-esphome"); got != "/opt/pdh-esphome-versions/2026.11.1" {
+		t.Errorf("Kandidat: %q", got)
+	}
+	if got := run("PDH_ESPHOME_VERSION=2026.11.1", "PDH_ESPHOME_DIR=/etc/boese"); got != "/opt/pdh-esphome-versions/2026.11.1" {
+		t.Errorf("Kandidat mit fremdem Ordner: %q", got)
+	}
+	if got := run("PDH_ESPHOME_VERSION=", "PDH_ESPHOME_DIR=/srv/esphome/venv"); got != "/srv/esphome/venv" {
+		t.Errorf("mit PDH_ESPHOME_DIR: %q", got)
+	}
+	if got := run("PDH_ESPHOME_VERSION=", "PDH_ESPHOME_DIR="); got != "/opt/pdh-esphome" {
+		t.Errorf("Grundumgebung: %q", got)
+	}
+	// das ganze Skript bricht bei ungültiger Version ab, bevor etwas geschieht
+	cmd := exec.Command(bash, script)
+	cmd.Env = append(os.Environ(), "PDH_ESPHOME_VERSION=2026.11.0b1")
+	out, err := cmd.CombinedOutput()
+	var ee *exec.ExitError
+	if !errors.As(err, &ee) || ee.ExitCode() != 1 || !strings.Contains(string(out), "Ungültige ESPHome-Version") || strings.Contains(string(out), "root") {
+		t.Errorf("ungültige Version: %v %q", err, out)
+	}
+}
+
 // install_update.sh: ESPHome nur, wenn eingerichtet; vor dem Agent-Neustart und außerhalb
 // seiner cgroup (sonst beendet der Neustart pip); ein Fehler ist nur eine Warnung.
 func TestEsppdhUpdateScripts(t *testing.T) {

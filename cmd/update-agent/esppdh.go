@@ -14,11 +14,16 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
+	"encoding/json"
+	"io"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
+
+	"pdh/internal/modules/esppdh"
 )
 
 const (
@@ -35,6 +40,7 @@ type esppdhStatus struct {
 	Done    bool   `json:"done"`              // ein Lauf ist fertig (seit dem Start des Agenten)
 	Version string `json:"version,omitempty"` // eingerichtete Version, wenn der Lauf geklappt hat
 	Error   string `json:"error,omitempty"`   // Meldung des fehlgeschlagenen Laufs samt Ende der Ausgabe
+	Target  string `json:"target,omitempty"`  // Version des Kandidaten, leer = Grundumgebung
 }
 
 // esppdhJob: Einrichtung nur im Speicher, immer nur eine (das Skript sperrt zusätzlich per
@@ -45,12 +51,13 @@ type esppdhJob struct {
 	done    bool
 	version string
 	err     string
+	target  string // Kandidat dieses Laufs (leer = Grundumgebung)
 }
 
 func (j *esppdhJob) status() esppdhStatus {
 	j.mu.Lock()
 	defer j.mu.Unlock()
-	return esppdhStatus{OK: true, Running: j.running, Done: j.done, Version: j.version, Error: j.err}
+	return esppdhStatus{OK: true, Running: j.running, Done: j.done, Version: j.version, Error: j.err, Target: j.target}
 }
 
 // esppdhInstallScript läuft im Host-Namensraum, per systemd-run außerhalb von Agent-cgroup
@@ -59,7 +66,7 @@ func (j *esppdhJob) status() esppdhStatus {
 const esppdhInstallScript = `set -euo pipefail
 if command -v systemd-run >/dev/null 2>&1; then
     exec systemd-run --wait --pipe --collect --quiet --unit="pdh-esphome-install-$(date +%s)" \
-        --setenv=PDH_ESPHOME_REPO bash "$PDH_ESPHOME_REPO/scripts/install-esphome.sh"
+        --setenv=PDH_ESPHOME_REPO --setenv=PDH_ESPHOME_VERSION bash "$PDH_ESPHOME_REPO/scripts/install-esphome.sh"
 fi
 exec bash "$PDH_ESPHOME_REPO/scripts/install-esphome.sh"
 `
@@ -113,11 +120,29 @@ func esppdhResult(out string, err error) (version, msg string) {
 	return "", "Einrichtung fehlgeschlagen: " + last + "\n\nLetzte Ausgabe (" + err.Error() + "):\n" + strings.Join(tail, "\n")
 }
 
-// esppdhInstallHandler: POST /v1/esppdh/install {} → {"ok":true,"running":true}, sofort.
-// Läuft schon eine Einrichtung, startet keine zweite.
-func (a *updateAgent) esppdhInstallHandler(w http.ResponseWriter, _ *http.Request) {
+// esppdhInstallHandler: POST /v1/esppdh/install {} oder {"version":"2026.11.1"} →
+// {"ok":true,"running":true}, sofort. Ohne Version wird die Grundumgebung eingerichtet, mit
+// Version ein Kandidat unter <VersionsDir>/<Version>. Läuft schon eine Einrichtung, startet
+// keine zweite.
+func (a *updateAgent) esppdhInstallHandler(w http.ResponseWriter, r *http.Request) {
 	if a.mode != "systemd" {
 		writeMountJSON(w, http.StatusOK, map[string]any{"ok": false, "error": esppdhDockerMsg})
+		return
+	}
+	var req struct {
+		Version string `json:"version"`
+	}
+	if r.Body != nil {
+		body, _ := io.ReadAll(io.LimitReader(r.Body, 4096))
+		if len(bytes.TrimSpace(body)) > 0 {
+			if err := json.Unmarshal(body, &req); err != nil {
+				writeMountJSON(w, http.StatusOK, map[string]any{"ok": false, "error": "ungültiger Rumpf"})
+				return
+			}
+		}
+	}
+	if req.Version != "" && !esppdh.StableVersionRe.MatchString(req.Version) {
+		writeMountJSON(w, http.StatusOK, map[string]any{"ok": false, "error": "ungültige ESPHome-Version (erwartet JJJJ.M.P)"})
 		return
 	}
 	j := &a.esppdh
@@ -127,13 +152,17 @@ func (a *updateAgent) esppdhInstallHandler(w http.ResponseWriter, _ *http.Reques
 		writeMountJSON(w, http.StatusOK, map[string]any{"ok": true, "running": true})
 		return
 	}
-	j.running, j.done, j.version, j.err = true, false, "", ""
+	j.running, j.done, j.version, j.err, j.target = true, false, "", "", req.Version
 	j.mu.Unlock()
 	run := a.esppdhRunFn()
 	env := map[string]string{"PDH_ESPHOME_REPO": a.repoDir}
+	if req.Version != "" {
+		env["PDH_ESPHOME_VERSION"] = req.Version
+	}
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), esppdhInstallTimeout)
 		defer cancel()
+		a.pruneVersionOrphans(ctx) // verwaiste Kandidaten weg, der eigene Auftrag ist geschützt
 		out, err := run(ctx, esppdhInstallScript, env)
 		v, msg := esppdhResult(out, err)
 		j.mu.Lock()
