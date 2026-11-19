@@ -286,11 +286,18 @@ oder ändern.**
    zwei Lücken im Bestand mit: Löschen einer Maßnahme prüft den Datensatz
    nicht; Historie von Projekt, KVP, Anlage und Lagerort ist ohne
    Ansichtsrecht abrufbar. Auf `main` (19.11.2026, Merge `1cfbe6e`;
-   Migration 182, kein neues Recht); auf dem Testverbund. Offen:
-   Browserprüfung der Leiste in Fiori/Fluent, hell/dunkel, 320–1366 px
-   an Störung, Ticket, KVP, Anlage und einer Protokoll-Liste. Geparkt für
-   die Browserprüfung: Unterrand des gewählten Sortier-Knopfs in Fiori,
-   Breite des Auswahlfelds auf dem Handy.
+   Migration 182, kein neues Recht); auf dem Testverbund, im Browser
+   geprüft (19.11.2026: Störung, Ticket, KVP, Anlage, zwei Protokolle,
+   Netzwerk, ESPPDH; Fiori/Fluent, hell/dunkel, 320–1366 px; kein
+   Überlauf, keine Konsolenfehler; „Weitere laden“ mangels langer Historie
+   nicht gesehen). Kosmetische Befunde, mit 0.82.3 zu beheben: Fiori-Knopf
+   mit 2 px Unterrand; KVP-Karte „Do“ bricht die Leiste auf 2–3 Zeilen um;
+   Einzelzeile direkt unter einer aufgeklappten Gruppe ohne Abstand;
+   Server-Protokoll: Feld „Stufe“ überlappt „bis“ (vermutlich Bestand).
+   Auswahlfeld am Handy volle Breite – passt. Testdaten: Ticket und
+   KVP-Idee gelöscht; Störung „Abnahme Sortierung Störung“
+   (`01a1f566-b4d2-783f-b0f7-e6e42ee3deae`) ist noch da – Störungen haben
+   keine Löschfunktion; löschen nur per Datenbank mit Freigabe.
    Geparkt aus der Schlussprüfung (klein): Test zur gemischten Gruppe in der
    Anlagen-Historie greift den Fehlerfall nicht; Hinweis „neueste N“ fehlt,
    wenn der Abteilungsfilter alle geladenen Zeilen entfernt, und liest sich
