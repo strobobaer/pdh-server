@@ -41,9 +41,31 @@ func TestServerLogSort(t *testing.T) {
 		}
 		out := renderPage(t, tmpl, "server_logs", d)
 		logBarOK(t, out, "serverlog", c.mode)
+		if strings.Contains(d.CSVURL, "ls_serverlog") || strings.Contains(d.JSONURL, "ls_serverlog") {
+			t.Errorf("%s: Sortierung in den Download-Adressen", c.mode)
+		}
+		if d.SortPartial {
+			t.Errorf("%s: Hinweis „nur die neuesten“ ohne erreichte Grenze", c.mode)
+		}
 		// Filter bleiben beim Umschalten erhalten
 		if !strings.Contains(out, "component="+tag) {
 			t.Errorf("%s: Filter „Bereich“ geht in der Leiste verloren", c.mode)
+		}
+	}
+	// Grenze erreicht (Anzahl 3 von 3): Hinweis nur, wenn nicht „neueste zuerst“
+	for _, c := range []struct {
+		mode string
+		want bool
+	}{{"new", false}, {"old", true}, {"person", true}} {
+		req := httptest.NewRequest("GET", "/admin/server-config/logs?range=24h&limit=3&component="+tag+"&ls_serverlog="+c.mode, nil)
+		req = req.WithContext(context.WithValue(req.Context(), "user", e.user("Dora", "Doe")))
+		d := e.h.loadLogs(req)
+		if d.SortPartial != c.want || !d.Truncated {
+			t.Errorf("%s: Hinweis=%v Grenze=%v, erwartet Hinweis=%v", c.mode, d.SortPartial, d.Truncated, c.want)
+		}
+		hint := strings.Contains(renderWidget(t, tmpl, "server-log-rows", d), "Sortiert sind nur die neuesten 3 Zeilen.")
+		if hint != c.want {
+			t.Errorf("%s: Hinweis im HTML=%v, erwartet %v", c.mode, hint, c.want)
 		}
 	}
 }

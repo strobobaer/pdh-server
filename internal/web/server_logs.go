@@ -41,22 +41,23 @@ type logDetail struct{ Key, Value string }
 
 type ServerLogsData struct {
 	BaseData
-	Filter     logFilterView
-	Rows       []logRowView
-	SortBar    SortBar // Sortierung der Zeilen (Seitenmodus, Filter bleiben)
-	Scanned    int
-	Truncated  bool
-	Components []string
-	Days       []logDayView
-	Stats      map[string]int
-	Dir        string
-	Query      string // aktuelle Filter als Query (Downloads/Live)
-	RowsURL    string
-	CSVURL     string
-	JSONURL    string
-	Now        string
-	Err        string
-	CanConfig  bool
+	Filter      logFilterView
+	Rows        []logRowView
+	SortBar     SortBar // Sortierung der Zeilen (Seitenmodus, Filter bleiben)
+	SortPartial bool    // Grenze erreicht und nicht „neueste zuerst“: geordnet sind nur die neuesten Zeilen
+	Scanned     int
+	Truncated   bool
+	Components  []string
+	Days        []logDayView
+	Stats       map[string]int
+	Dir         string
+	Query       string // aktuelle Filter als Query (Downloads/Live)
+	RowsURL     string
+	CSVURL      string
+	JSONURL     string
+	Now         string
+	Err         string
+	CanConfig   bool
 }
 
 type logDayView struct{ Day, Size string }
@@ -142,6 +143,7 @@ func (h *Handler) loadLogs(r *http.Request) ServerLogsData {
 	}
 	q := r.URL.Query()
 	q.Del("live")
+	q.Del("ls_serverlog") // Downloads sind nicht sortiert
 	d.Query = q.Encode()
 	entries, scanned, err := s.Query(f)
 	if err != nil {
@@ -161,6 +163,7 @@ func (h *Handler) loadLogs(r *http.Request) ServerLogsData {
 	// Sortierung: der Dateispeicher liefert nur „neueste zuerst“ – die bereits gefilterten
 	// Zeilen werden hier geordnet (Art = Stufe)
 	mode := h.sortMode(r, "serverlog")
+	d.SortPartial = d.Truncated && mode != listsort.Newest
 	d.SortBar = h.sortBar(r, "serverlog", mode, "/admin/server-config/logs?"+d.Query, "")
 	rows := make([]logRowView, len(entries))
 	items := make([]listsort.Item, len(entries))

@@ -597,12 +597,14 @@ document.addEventListener('click', async e => {
 const hmiBarTpl = document.getElementById('hmi-sortbar');
 let hmiSort = hmiBarTpl ? hmiBarTpl.dataset.mode : '';
 const hmiSortOf = href => new URL(href, location.href).searchParams.get('ls_hmi') || '';
+// markiert in einer Leiste die gewählte Art (Knöpfe und Auswahlfeld)
+function hmiSortMark(bar, mode){
+  bar.querySelectorAll('.sortbar-b').forEach(b => { const on = hmiSortOf(b.href) === mode; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
+  const sel = bar.querySelector('.sortbar-sel'); if(sel){ for(const o of sel.options){ if(hmiSortOf(o.value) === mode) sel.value = o.value; } }
+}
 function hmiSortSet(mode){
   hmiSort = mode;
-  document.querySelectorAll('details[data-hmi-log] .sortbar').forEach(bar => {
-    bar.querySelectorAll('.sortbar-b').forEach(b => { const on = hmiSortOf(b.href) === mode; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
-    const sel = bar.querySelector('.sortbar-sel'); if(sel){ for(const o of sel.options){ if(hmiSortOf(o.value) === mode) sel.value = o.value; } }
-  });
+  document.querySelectorAll('details[data-hmi-log] .sortbar').forEach(bar => hmiSortMark(bar, mode));
   document.querySelectorAll('details[data-hmi-log][open]').forEach(hmiLoadLog);
 }
 // Leiste im Protokoll: kein Seitenwechsel, nur das Protokoll neu laden
@@ -616,7 +618,10 @@ document.addEventListener('change', e => {
 }, true);
 document.addEventListener('toggle', e => {
   const d = e.target; if(!d.matches || !d.matches('details[data-hmi-log]') || !d.open) return;
-  if(hmiBarTpl && !d.querySelector('.sortbar')) d.insertBefore(hmiBarTpl.content.cloneNode(true), d.querySelector('.hmi-log-out'));
+  if(hmiBarTpl && !d.querySelector('.sortbar')){
+    d.insertBefore(hmiBarTpl.content.cloneNode(true), d.querySelector('.hmi-log-out'));
+    hmiSortMark(d.querySelector('.sortbar'), hmiSort); // die Vorlage trägt noch die Art vom Laden der Seite
+  }
   hmiLoadLog(d);
 }, true);
 async function hmiLoadLog(d){

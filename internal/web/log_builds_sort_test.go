@@ -39,8 +39,17 @@ func TestBuildsSort(t *testing.T) {
 		d.Dev.ID = dev
 		out := renderPage(t, tmpl, "esppdh_device", d)
 		logBarOK(t, out, "builds", c.mode)
-		if got := logOrder(strings.ReplaceAll(out, "ESPHome ", "")); !strings.HasPrefix(got, c.want) && !strings.Contains(got, c.want) {
-			t.Errorf("%s: Liste im HTML %q, erwartet %q", c.mode, got, c.want)
+		// Reihenfolge der drei Zeilen im HTML nach der Stelle ihrer Marke „ESPHome rN“
+		var pos []int
+		for _, v := range strings.Split(c.want, "|") {
+			i := strings.Index(out, "ESPHome "+v+"<")
+			if i < 0 {
+				t.Fatalf("%s: Zeile %s fehlt im HTML", c.mode, v)
+			}
+			pos = append(pos, i)
+		}
+		if !(pos[0] < pos[1] && pos[1] < pos[2]) {
+			t.Errorf("%s: Zeilen im HTML nicht in der Reihenfolge %s (Stellen %v)", c.mode, c.want, pos)
 		}
 	}
 }

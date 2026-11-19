@@ -64,4 +64,10 @@ func TestHMISessionsSort(t *testing.T) {
 	if !strings.Contains(out, `<template id="hmi-sortbar" data-mode="old">`) || !strings.Contains(out, "ls_hmi=") {
 		t.Error("Leistenvorlage oder Neuladen mit ls_hmi fehlt")
 	}
+	// Eine später geöffnete Leiste und die schon offenen nutzen dieselbe Markierung (Hilfsfunktion)
+	if !strings.Contains(out, "function hmiSortMark(bar, mode)") ||
+		!strings.Contains(out, ".forEach(bar => hmiSortMark(bar, mode))") ||
+		!strings.Contains(out, "hmiSortMark(d.querySelector('.sortbar'), hmiSort)") {
+		t.Error("Markierung der Leiste: Hilfsfunktion oder einer der beiden Aufrufe fehlt")
+	}
 }

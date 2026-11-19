@@ -1,6 +1,6 @@
 {{/* Tabelle der Protokollansicht (auch per htmx nachgeladen, Live-Modus) */}}
 {{define "server-log-rows"}}
-<div class="lg-meta">{{len .Rows}} Einträge{{if .Truncated}} (Grenze erreicht – Filter eingrenzen oder Anzahl erhöhen){{end}} · {{.Scanned}} geprüft{{if .Filter.Live}} · <span class="lg-live"><i class="ti ti-point-filled"></i> live, aktualisiert {{.Now}}</span>{{end}}</div>
+<div class="lg-meta">{{len .Rows}} Einträge{{if .Truncated}} (Grenze erreicht – Filter eingrenzen oder Anzahl erhöhen){{end}}{{if .SortPartial}} · Sortiert sind nur die neuesten {{len .Rows}} Zeilen.{{end}} · {{.Scanned}} geprüft{{if .Filter.Live}} · <span class="lg-live"><i class="ti ti-point-filled"></i> live, aktualisiert {{.Now}}</span>{{end}}</div>
 {{if .Err}}<div class="lg-msg">{{.Err}}</div>{{end}}
 {{if .Rows}}
 <div class="lg-table">
