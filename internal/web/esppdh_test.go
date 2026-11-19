@@ -297,7 +297,8 @@ func (e *esppdhEnvT) addConn(t *testing.T, name string, cfg map[string]string) s
 	return id
 }
 
-// addWLAN legt ein WLAN der Seite „Netzwerk“ an (Kennwort verschlüsselt).
+// addWLAN legt ein WLAN der Seite „Netzwerk“ an (Kennwort verschlüsselt), für ESPPDH-Geräte
+// freigegeben (Haken „Für ESPPDH-Geräte nutzbar“).
 func (e *esppdhEnvT) addWLAN(t *testing.T, ssid, pw, segment string) string {
 	t.Helper()
 	enc, err := encryptSecret(e.h.networkKey(), pw)
@@ -309,7 +310,7 @@ func (e *esppdhEnvT) addWLAN(t *testing.T, ssid, pw, segment string) string {
 		seg = &segment
 	}
 	var id string
-	if err := e.pool.QueryRow(context.Background(), `INSERT INTO net_wlans (ssid, password_enc, segment_id) VALUES ($1, $2, $3::uuid) RETURNING id::text`,
+	if err := e.pool.QueryRow(context.Background(), `INSERT INTO net_wlans (ssid, password_enc, segment_id, esppdh_ok) VALUES ($1, $2, $3::uuid, true) RETURNING id::text`,
 		ssid, enc, seg).Scan(&id); err != nil {
 		t.Fatal(err)
 	}
@@ -1153,6 +1154,85 @@ func TestESPPDHDisabled(t *testing.T) {
 		t.Error("Hinweis auf die fehlende Umgebung fehlt")
 	}
 	e.create(t, slug, nil)
+}
+
+// esppdhReleaseWLAN setzt oder entfernt den Haken „Für ESPPDH-Geräte nutzbar“ eines WLANs.
+func (e *esppdhEnvT) esppdhReleaseWLAN(t *testing.T, id string, ok bool) {
+	t.Helper()
+	if _, err := e.pool.Exec(context.Background(), `UPDATE net_wlans SET esppdh_ok = $2 WHERE id = $1::uuid`, id, ok); err != nil {
+		t.Fatal(err)
+	}
+}
+
+const esppdhNotReleased = "ist nicht mehr für ESPPDH-Geräte freigegeben"
+
+// Nur WLANs mit Haken „Für ESPPDH-Geräte nutzbar“ stehen zur Wahl; ein anderes nimmt das PDH
+// weder beim Anlegen noch beim Speichern an (auch nicht über die ID im Formular). Wird der Haken
+// später entfernt, sagt die Seite des Geräts es klar, und die Konfiguration lässt sich nicht
+// mehr erzeugen.
+func TestESPPDHWLANRelease(t *testing.T) {
+	e := newEsppdhEnv(t, nil)
+	ctx := context.Background()
+	office := e.addWLAN(t, "pdh-buero-"+e.sfx, "Buero-Geheim-"+e.sfx, "")
+	e.esppdhReleaseWLAN(t, office, false)
+	page := esppdhDo(e.h.EsppdhPage, "GET", "/import/esppdh", "", esppdhUser, nil).Body.String()
+	if strings.Contains(page, "pdh-buero-"+e.sfx) || strings.Contains(page, office) || !strings.Contains(page, "pdh-esp-"+e.sfx) {
+		t.Error("Auswahl: nicht freigegebenes WLAN steht zur Wahl oder freigegebenes fehlt")
+	}
+	slug := "buero-" + e.sfx
+	w := esppdhDo(e.h.EsppdhCreateWeb, "POST", "/import/esppdh", "", esppdhUser, e.form(slug, url.Values{"net": {office}}))
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "Das WLAN „pdh-buero-"+e.sfx+"“ "+esppdhNotReleased) || e.count(t, slug) != 0 {
+		t.Fatalf("anlegen mit nicht freigegebenem WLAN: %d, %d Zeilen", w.Code, e.count(t, slug))
+	}
+	// beim Speichern eines vorhandenen Geräts ebenso: nichts gespeichert
+	id := e.create(t, "frei-"+e.sfx, nil)
+	v := e.saveForm("Umgestellt " + e.sfx)
+	v.Set("net", office)
+	esppdhAddBlock(v, "0", "", "s0", map[string]string{"pin": "GPIO4", "pulses": "1000"})
+	if w := esppdhDo(e.h.EsppdhSaveWeb, "POST", "/x", id, esppdhUser, v); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), esppdhNotReleased) {
+		t.Fatalf("speichern mit nicht freigegebenem WLAN: %d", w.Code)
+	}
+	var wlan string
+	_ = e.pool.QueryRow(ctx, `SELECT wlan_id::text FROM esppdh_devices WHERE id = $1::uuid`, id).Scan(&wlan)
+	if wlan != e.wlan {
+		t.Fatalf("WLAN trotz Meldung umgestellt: %s", wlan)
+	}
+	// Haken am WLAN des Geräts entfernt: klare Meldung, Konfiguration lässt sich nicht erzeugen
+	e.esppdhReleaseWLAN(t, e.wlan, false)
+	detail := esppdhDo(e.h.EsppdhDevicePage, "GET", "/x", id, esppdhUser, nil).Body.String()
+	if !strings.Contains(detail, "Das WLAN „pdh-esp-"+e.sfx+"“ "+esppdhNotReleased) {
+		t.Error("Seite des Geräts nennt das nicht mehr freigegebene WLAN nicht")
+	}
+	if _, err := e.h.esppdhBuildInput(ctx, id, esppdhTestHost); err == nil || !strings.Contains(err.Error(), esppdhNotReleased) {
+		t.Errorf("Konfiguration mit nicht freigegebenem WLAN: %v", err)
+	}
+	if w := esppdhDo(e.h.EsppdhConfigWeb, "GET", "/x", id, esppdhUser, nil); w.Code != http.StatusConflict {
+		t.Errorf("config.yaml mit nicht freigegebenem WLAN: %d", w.Code)
+	}
+	// das WLAN des Geräts steht im Formular nicht mehr zur Wahl
+	if strings.Contains(detail, `value="`+e.wlan+`"`) {
+		t.Error("nicht mehr freigegebenes WLAN steht im Formular zur Wahl")
+	}
+	e.esppdhReleaseWLAN(t, e.wlan, true)
+	if _, err := e.h.esppdhBuildInput(ctx, id, esppdhTestHost); err != nil {
+		t.Errorf("wieder freigegeben: %v", err)
+	}
+}
+
+// Ist kein WLAN für ESPPDH-Geräte freigegeben, sagt das Formular es und verweist auf die Seite
+// „Netzwerk“.
+func TestESPPDHNoWLANReleasedHint(t *testing.T) {
+	tmpl := loadTestTemplates(t)
+	const hint = "Noch kein WLAN für ESPPDH-Geräte freigegeben"
+	d := ESPPDHPageData{CanCreate: true, State: esppdhState{Enabled: true}, Form: esppdhForm{BoardKey: "esp32dev"}}
+	out := renderPage(t, tmpl, "esppdh", d)
+	if !strings.Contains(out, hint) || !strings.Contains(out, `href="/admin/network"`) {
+		t.Error("Hinweis ohne freigegebenes WLAN fehlt")
+	}
+	d.Choices.WLANs = []esppdhChoice{{ID: itNetTestID, Label: "Geräte-WLAN"}}
+	if out := renderPage(t, tmpl, "esppdh", d); strings.Contains(out, hint) {
+		t.Error("Hinweis trotz freigegebenem WLAN")
+	}
 }
 
 // Nur Verbindungen mit eingebautem Broker stehen zur Wahl.

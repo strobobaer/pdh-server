@@ -63,7 +63,8 @@
       {{range .C.WLANs}}<option value="{{.ID}}"{{if eq .ID $f.Net}} selected{{end}}>WLAN {{.Label}}</option>{{end}}
       <option value="wired"{{if eq $f.Net "wired"}} selected{{end}}>Kabel (nur Platinen mit Ethernet)</option>
     </select>
-    <div class="esp-help">WLANs kommen von der Seite <a href="/admin/network" style="color:var(--accent)">Netzwerk</a>.</div></div>
+    {{if .C.WLANs}}<div class="esp-help">Zur Wahl stehen die WLANs, die auf der Seite <a href="/admin/network" style="color:var(--accent)">Netzwerk</a> für ESPPDH-Geräte freigegeben sind.</div>
+    {{else}}<div class="esp-help" role="note"><i class="ti ti-info-circle" aria-hidden="true"></i> Noch kein WLAN für ESPPDH-Geräte freigegeben. Auf der Seite <a href="/admin/network" style="color:var(--accent)">Netzwerk</a> beim WLAN den Haken „Für ESPPDH-Geräte nutzbar“ setzen – das darf, wer die Seite Netzwerk pflegt. „Kabel“ geht auch ohne.</div>{{end}}</div>
   <div class="form-group" id="esp-seg-{{.P}}"{{if ne $f.Net "wired"}} hidden{{end}}><label class="form-label" for="esp-seg-in-{{.P}}">Netz am Kabel <span style="color:var(--muted);font-weight:400">(optional)</span></label>
     <select id="esp-seg-in-{{.P}}" name="segment_id" class="form-input">
       <option value="">– unbekannt –</option>

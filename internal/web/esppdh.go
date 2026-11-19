@@ -106,7 +106,8 @@ func (h *Handler) esppdhStateOf(ctx context.Context) esppdhState {
 
 type esppdhChoice struct{ ID, Label string }
 
-// esppdhChoices: was im Formular zur Wahl steht. Verbindungen nur mit eingebautem Broker.
+// esppdhChoices: was im Formular zur Wahl steht. Verbindungen nur mit eingebautem Broker, WLANs
+// nur mit Haken „Für ESPPDH-Geräte nutzbar“ (Seite „Netzwerk“).
 type esppdhChoices struct {
 	Conns, WLANs, Segments []esppdhChoice
 	Boards                 []esppdh.Board
@@ -137,6 +138,9 @@ func (h *Handler) esppdhChoicesOf(ctx context.Context) esppdhChoices {
 		lg.Error().Err(err).Msg("netze lesen")
 	}
 	for _, w := range wlans {
+		if !w.ESPPDH {
+			continue // nur WLANs mit Haken „Für ESPPDH-Geräte nutzbar“ (Kennwort steht in der Firmware)
+		}
 		label := w.SSID
 		if w.SegmentName != "" {
 			label += " (" + w.SegmentName + ")"

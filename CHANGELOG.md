@@ -26,8 +26,11 @@ im Kapitel „Versionen & Updates“ an.
 
 - MQTT-Broker: Gerätezugänge dürfen sich nur mit ihrer eigenen Client-ID verbinden und können keine fremde Sitzung übernehmen.
 - MQTT-Broker: Der Hauptbenutzer des Brokers darf nicht mit „esppdh-“ beginnen; diese Namen sind für ESPPDH-Geräte reserviert.
+- Seite „Netzwerk“: Jedes WLAN hat den neuen Haken „Für ESPPDH-Geräte nutzbar“ (ab Werk aus), freigegebene WLANs tragen in der Liste das Abzeichen „ESPPDH“.
 
 ### Sicherheit
+
+- ESPPDH bietet nur WLANs an, die auf der Seite „Netzwerk“ für ESPPDH-Geräte freigegeben sind, denn wer Geräte bauen darf, kann das WLAN-Kennwort aus der Firmware lesen; den Haken setzen darf nur, wer die Seite „Netzwerk“ pflegt (`system.network`).
 
 - Neue Rechte **ESPPDH: Geräte und Zustand ansehen** (`esppdh.view`), **… anlegen, ändern, sperren, bauen und flashen** (`esppdh.edit`) und **… löschen** (`esppdh.admin`, Bereichsadministrator). Ansehen und pflegen dürfen automatisch alle Rollen mit dem Recht „Import-Verbindungen verwalten“, löschen nur Rollen, die zusätzlich die Server-Einstellungen ändern dürfen; die Rechte gelten je Abteilung.
 - Jedes Gerät hat einen eigenen Zugang am MQTT-Broker, beschränkt auf sein eigenes Thema `esppdh/<kennung>/…`; ein gesperrtes Gerät kommt nicht mehr hinein.

@@ -169,6 +169,80 @@ func TestNetworkFlow(t *testing.T) {
 	}
 }
 
+// Haken „Für ESPPDH-Geräte nutzbar“ je WLAN: Vorgabe aus, setzen und wieder entfernen über das
+// Formular, Abzeichen in der Liste, Hinweis unter dem Haken. Ohne system.network lässt er sich
+// nicht setzen (403, nichts geändert) – auch nicht mit den Rechten von ESPPDH.
+func TestNetworkWLANForESPPDH(t *testing.T) {
+	h, pool, _ := itNetPageEnv(t)
+	h.jwtSecret = "t"
+	h.hasPermHook = func(*http.Request, string) bool { return true }
+	ctx := context.Background()
+	sfx := strings.ReplaceAll(time.Now().Format("150405.000000"), ".", "")
+	ssid := "pdh-espok-" + sfx[len(sfx)-8:]
+	t.Cleanup(func() { _, _ = pool.Exec(context.Background(), `DELETE FROM net_wlans WHERE ssid = $1`, ssid) })
+	flag := func() bool {
+		t.Helper()
+		var ok bool
+		if err := pool.QueryRow(ctx, `SELECT esppdh_ok FROM net_wlans WHERE ssid = $1`, ssid).Scan(&ok); err != nil {
+			t.Fatal(err)
+		}
+		return ok
+	}
+	save := func(id string, v url.Values) *http.Response {
+		t.Helper()
+		return itNetDo(h.NetworkWLANSaveWeb, "POST", "/x", id, pdhSystemUserID, v).Result()
+	}
+	if r := save("", url.Values{"ssid": {ssid}, "password": {"Geraete-Geheim-1"}}); r.StatusCode != http.StatusSeeOther {
+		t.Fatalf("WLAN anlegen: %d", r.StatusCode)
+	}
+	if flag() {
+		t.Fatal("neues WLAN ohne Haken ist für ESPPDH freigegeben")
+	}
+	var id string
+	if err := pool.QueryRow(ctx, `SELECT id::text FROM net_wlans WHERE ssid = $1`, ssid).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	body := itNetDo(h.NetworkPage, "GET", "/admin/network", "", pdhSystemUserID, nil).Body.String()
+	for _, want := range []string{`name="esppdh_ok"`, "Für ESPPDH-Geräte nutzbar",
+		"Wer ESPPDH-Geräte bauen darf, kann das Kennwort dieses WLANs aus der Firmware lesen. Am besten ein eigenes WLAN nur für Geräte verwenden."} {
+		if !strings.Contains(body, want) {
+			t.Errorf("Seite ohne %q", want)
+		}
+	}
+	if strings.Contains(body, `data-esppdh="`+id+`"`) {
+		t.Error("Abzeichen ESPPDH ohne Haken")
+	}
+	// Haken setzen: gespeichert, Abzeichen in der Liste, Haken im Formular gesetzt
+	if r := save(id, url.Values{"ssid": {ssid}, "esppdh_ok": {"on"}}); r.StatusCode != http.StatusSeeOther || !flag() {
+		t.Fatalf("Haken setzen: %d %v", r.StatusCode, flag())
+	}
+	body = itNetDo(h.NetworkPage, "GET", "/admin/network", "", pdhSystemUserID, nil).Body.String()
+	if !strings.Contains(body, `data-esppdh="`+id+`"`) || !strings.Contains(body, `id="nw-w-esp-`+id+`" name="esppdh_ok" checked`) {
+		t.Error("Abzeichen in der Liste oder gesetzter Haken im Formular fehlt")
+	}
+	// ohne system.network: abgelehnt, auch mit allen Rechten von ESPPDH
+	h.hasPermHook = func(_ *http.Request, p string) bool { return p == permESPView || p == permESPEdit || p == permESPAdmin }
+	if _, err := pool.Exec(ctx, `UPDATE net_wlans SET esppdh_ok = false WHERE id = $1::uuid`, id); err != nil {
+		t.Fatal(err)
+	}
+	if r := save(id, url.Values{"ssid": {ssid}, "esppdh_ok": {"on"}}); r.StatusCode != http.StatusForbidden || flag() {
+		t.Errorf("Haken ohne system.network: %d, gesetzt %v", r.StatusCode, flag())
+	}
+	if r := save("", url.Values{"ssid": {ssid + "x"}, "esppdh_ok": {"on"}}); r.StatusCode != http.StatusForbidden {
+		t.Errorf("WLAN mit Haken anlegen ohne system.network: %d", r.StatusCode)
+	}
+	// mit system.network: wieder setzen, dann ohne Haken speichern = entfernt
+	h.hasPermHook = func(_ *http.Request, p string) bool { return p == permNetwork }
+	save(id, url.Values{"ssid": {ssid}, "esppdh_ok": {"on"}})
+	if !flag() {
+		t.Fatal("Haken mit system.network nicht gesetzt")
+	}
+	save(id, url.Values{"ssid": {ssid}})
+	if flag() {
+		t.Error("Haken nach dem Speichern ohne Haken noch gesetzt")
+	}
+}
+
 // Die Migration vergibt die neuen Rechte an die Rollen mit system.unifi.
 func TestNetworkMigrationGrants(t *testing.T) {
 	_, pool, _ := itNetPageEnv(t)

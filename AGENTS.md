@@ -252,7 +252,7 @@ oder ändern.**
    auf schmalen Bildschirmen; neue Kennungen mit `pdh_uuid_v7()`,
    Migration 178) – auf `main` und dem Testverbund (18.11.2026).
 6. **ESPPDH Paket 1 = Version 0.82.0** (vom Anwender festgelegt): gebaut und
-   lokal committet auf `feature/esppdh` (Migrationen 179 und 180, Rechte
+   lokal committet auf `feature/esppdh` (Migrationen 179 bis 181, Rechte
    `esppdh.view`, `esppdh.edit`, `esppdh.admin`; Entwurf
    `docs/superpowers/specs/2026-11-18-esppdh-design.md`, Plan
    `docs/superpowers/plans/2026-11-18-esppdh-paket1.md`). Offen: Freigabe des

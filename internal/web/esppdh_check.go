@@ -111,23 +111,45 @@ type esppdhResolved struct {
 	Platform string
 }
 
+// esppdhWLANNotReleased: Meldung für ein WLAN ohne Haken „Für ESPPDH-Geräte nutzbar“.
+func esppdhWLANNotReleased(ssid string) string {
+	return "Das WLAN „" + ssid + "“ ist nicht mehr für ESPPDH-Geräte freigegeben – bitte ein anderes WLAN wählen oder es auf der Seite „Netzwerk“ " +
+		"freigeben lassen (Haken „Für ESPPDH-Geräte nutzbar“)."
+}
+
 // esppdhResolve setzt das Gerät für den Erzeuger zusammen: WLAN (Name und Kennwort von der
-// Seite „Netzwerk“) und Broker der Verbindung. Meldungen: was dabei nicht aufging.
+// Seite „Netzwerk“) und Broker der Verbindung. Meldungen: was dabei nicht aufging. Ein WLAN ohne
+// Haken „Für ESPPDH-Geräte nutzbar“ wird nicht aufgelöst – sein Kennwort käme sonst in die
+// Firmware. Alles, was baut, prüft oder speichert, geht hier durch (esppdhCheck,
+// esppdhBuildInput, EsppdhBuildWeb, esppdhJobFor, esppdhFirmwareCurrent); schon gebaute
+// Firmware bleibt davon unberührt.
 func (h *Handler) esppdhResolve(ctx context.Context, d esppdhDevice, mqttPW, apPW, reqHost string) (esppdhResolved, []string) {
 	var msgs []string
 	res := esppdhResolved{Platform: esppdh.PlatformOf(d.BoardKey, d.CustomBoard)}
 	dev := esppdh.Device{Slug: d.Slug, Name: d.Name, BoardKey: d.BoardKey, CustomBoard: d.CustomBoard, Wired: d.Wired,
 		APPassword: apPW, MQTTUser: esppdhUserOf(d.Slug), MQTTPassword: mqttPW, Blocks: esppdhBlocksOf(d.Blocks)}
 	if !d.Wired && d.WLANID != "" {
-		ssid, pw, err := h.networkWLANSecret(ctx, d.WLANID)
+		var name string
+		var hidden, released bool
+		err := errNetNoWLAN
+		if meterUUIDRe.MatchString(d.WLANID) {
+			err = h.db.QueryRow(ctx, `SELECT ssid, hidden, esppdh_ok FROM net_wlans WHERE id = $1::uuid`, d.WLANID).Scan(&name, &hidden, &released)
+		}
 		switch {
-		case errors.Is(err, errNetNoWLAN):
-			msgs = append(msgs, "Das gewählte WLAN gibt es nicht (mehr).")
 		case err != nil:
-			msgs = append(msgs, err.Error())
+			msgs = append(msgs, "Das gewählte WLAN gibt es nicht (mehr).")
+		case !released:
+			msgs = append(msgs, esppdhWLANNotReleased(name))
 		default:
-			dev.SSID, dev.WLANPassword = ssid, pw
-			_ = h.db.QueryRow(ctx, `SELECT hidden FROM net_wlans WHERE id = $1::uuid`, d.WLANID).Scan(&dev.WLANHidden)
+			ssid, pw, err := h.networkWLANSecret(ctx, d.WLANID)
+			switch {
+			case errors.Is(err, errNetNoWLAN):
+				msgs = append(msgs, "Das gewählte WLAN gibt es nicht (mehr).")
+			case err != nil:
+				msgs = append(msgs, err.Error())
+			default:
+				dev.SSID, dev.WLANPassword, dev.WLANHidden = ssid, pw, hidden
+			}
 		}
 	}
 	name, enabled, config, err := h.esppdhConnConfig(ctx, d.ConnID)

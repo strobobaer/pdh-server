@@ -28,7 +28,10 @@ import (
 //
 // Ansehen und pflegen mit system.network; endgültig löschen nur der
 // Bereichsadministrator (system.network_admin, Regeln in gateRules).
-// WLAN-Kennwörter stehen verschlüsselt in der Datenbank und werden nie angezeigt.
+// WLAN-Kennwörter stehen verschlüsselt in der Datenbank und werden nie angezeigt. In der
+// Firmware von ESPPDH-Geräten steht das Kennwort aber lesbar – ESPPDH bietet deshalb nur WLANs
+// mit Haken „Für ESPPDH-Geräte nutzbar“ an (esppdh_ok, Migration 181; setzen nur mit
+// system.network über NetworkWLANSaveWeb).
 
 const (
 	permNetwork      = "system.network"
@@ -55,6 +58,7 @@ type NetSegment struct {
 type NetWLAN struct {
 	ID, SSID, SegmentID, SegmentName, Note string
 	HasPassword, Hidden                    bool
+	ESPPDH                                 bool // für ESPPDH-Geräte freigegeben (esppdh_ok)
 }
 
 type NetworkPageData struct {
@@ -144,7 +148,7 @@ func (h *Handler) networkLists(ctx context.Context) ([]NetSegment, []NetWLAN, er
 	}
 	var wlans []NetWLAN
 	rows, err = h.db.Query(ctx, `SELECT w.id::text, w.ssid, COALESCE(w.segment_id::text, ''), COALESCE(s.name, ''), w.note,
-			w.password_enc <> '', w.hidden
+			w.password_enc <> '', w.hidden, w.esppdh_ok
 		FROM net_wlans w LEFT JOIN net_segments s ON s.id = w.segment_id ORDER BY lower(w.ssid)`)
 	if err != nil {
 		return nil, nil, err
@@ -152,7 +156,7 @@ func (h *Handler) networkLists(ctx context.Context) ([]NetSegment, []NetWLAN, er
 	defer rows.Close()
 	for rows.Next() {
 		var x NetWLAN
-		if err := rows.Scan(&x.ID, &x.SSID, &x.SegmentID, &x.SegmentName, &x.Note, &x.HasPassword, &x.Hidden); err != nil {
+		if err := rows.Scan(&x.ID, &x.SSID, &x.SegmentID, &x.SegmentName, &x.Note, &x.HasPassword, &x.Hidden, &x.ESPPDH); err != nil {
 			return nil, nil, err
 		}
 		wlans = append(wlans, x)
@@ -281,7 +285,9 @@ func (h *Handler) networkDelete(w http.ResponseWriter, r *http.Request, table, n
 
 // NetworkWLANSaveWeb: POST /admin/network/wlans und /admin/network/wlans/{id}.
 // Beim Ändern bleibt das gespeicherte Kennwort, wenn das Feld leer ist; mit
-// open=1 wird es entfernt (offenes WLAN).
+// open=1 wird es entfernt (offenes WLAN). esppdh_ok=on: Haken „Für ESPPDH-Geräte
+// nutzbar“ – ohne ihn ist das WLAN für ESPPDH gesperrt (auch beim Ändern: das Formular
+// zeigt den Haken immer).
 func (h *Handler) NetworkWLANSaveWeb(w http.ResponseWriter, r *http.Request) {
 	if !h.hasPerm(r, permNetwork) {
 		http.Error(w, "keine berechtigung", http.StatusForbidden)
@@ -323,12 +329,13 @@ func (h *Handler) NetworkWLANSaveWeb(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	hidden := f.Get("hidden") == "on"
+	esppdhOK := f.Get("esppdh_ok") == "on"
 	id := chi.URLParam(r, "id")
 	var err error
 	notice := "wlan-new"
 	if id == "" {
-		_, err = h.db.Exec(r.Context(), `INSERT INTO net_wlans (ssid, segment_id, password_enc, hidden, note) VALUES ($1, $2::uuid, $3, $4, $5)`,
-			ssid, seg, enc, hidden, note)
+		_, err = h.db.Exec(r.Context(), `INSERT INTO net_wlans (ssid, segment_id, password_enc, hidden, note, esppdh_ok) VALUES ($1, $2::uuid, $3, $4, $5, $6)`,
+			ssid, seg, enc, hidden, note, esppdhOK)
 	} else {
 		notice = "wlan-saved"
 		if !meterUUIDRe.MatchString(id) {
@@ -338,8 +345,8 @@ func (h *Handler) NetworkWLANSaveWeb(w http.ResponseWriter, r *http.Request) {
 		// keep: leeres Feld behält das Kennwort – außer das WLAN wird ausdrücklich als offen gespeichert
 		keep := pw == "" && f.Get("open") != "1"
 		tag, e := h.db.Exec(r.Context(), `UPDATE net_wlans SET ssid = $2, segment_id = $3::uuid,
-				password_enc = CASE WHEN $7 THEN password_enc ELSE $4 END, hidden = $5, note = $6, updated_at = now()
-			WHERE id = $1::uuid`, id, ssid, seg, enc, hidden, note, keep)
+				password_enc = CASE WHEN $7 THEN password_enc ELSE $4 END, hidden = $5, note = $6, esppdh_ok = $8, updated_at = now()
+			WHERE id = $1::uuid`, id, ssid, seg, enc, hidden, note, keep, esppdhOK)
 		if err = e; e == nil && tag.RowsAffected() == 0 {
 			networkBack(w, r, "", "gone")
 			return
@@ -352,7 +359,7 @@ func (h *Handler) NetworkWLANSaveWeb(w http.ResponseWriter, r *http.Request) {
 		componentLog("netzwerk").Error().Err(err).Msg("wlan speichern")
 		networkBack(w, r, "", "save")
 	default:
-		componentLog("netzwerk").Info().Str("benutzer", getUser(r).ID).Str("wlan", ssid).Msg("wlan gespeichert")
+		componentLog("netzwerk").Info().Str("benutzer", getUser(r).ID).Str("wlan", ssid).Bool("esppdh", esppdhOK).Msg("wlan gespeichert")
 		networkBack(w, r, notice, "")
 	}
 }
@@ -362,6 +369,7 @@ var errNetNoWLAN = errors.New("WLAN nicht gefunden")
 
 // networkWLANSecret liefert Name und Kennwort eines WLANs für Bereiche, die es
 // brauchen (z. B. ESPPDH beim Bauen der Firmware). Nie für eine Anzeige verwenden.
+// Prüft keine Freigabe – ESPPDH prüft esppdh_ok vorher selbst (esppdhResolve).
 func (h *Handler) networkWLANSecret(ctx context.Context, id string) (ssid, password string, err error) {
 	if !meterUUIDRe.MatchString(id) {
 		return "", "", errNetNoWLAN

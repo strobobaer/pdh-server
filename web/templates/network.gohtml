@@ -13,6 +13,9 @@
 .nw-edit td{background:var(--bg)}
 .nw-note{font-size:12px;color:var(--muted);margin-top:6px}
 .nw-mono{font-family:monospace;font-size:12.5px}
+.nw-check{display:flex;align-items:flex-start;gap:8px;font-size:13px;margin-top:10px;max-width:760px}
+.nw-check input{margin-top:3px;flex-shrink:0}
+.nw-check .nw-note{margin-top:2px}
 </style>
 
 <div class="nw-head">
@@ -78,7 +81,7 @@
     <tbody>
     {{range .WLANs}}
     <tr>
-      <td><b>{{.SSID}}</b>{{if .Hidden}} <span class="badge b-gray" title="Das WLAN sendet seinen Namen nicht aus">versteckt</span>{{end}}</td>
+      <td><b>{{.SSID}}</b>{{if .Hidden}} <span class="badge b-gray" title="Das WLAN sendet seinen Namen nicht aus">versteckt</span>{{end}}{{if .ESPPDH}} <span class="badge b-blue" data-esppdh="{{.ID}}" title="Steht beim Anlegen von ESPPDH-Geräten zur Wahl – das Kennwort steht dann in deren Firmware"><i class="ti ti-cpu" aria-hidden="true"></i> ESPPDH</span>{{end}}</td>
       <td>{{if .SegmentName}}{{.SegmentName}}{{else}}<span style="color:var(--muted)">–</span>{{end}}</td>
       <td>{{if .HasPassword}}<span class="badge b-green">hinterlegt</span>{{else}}<span class="badge b-amber">offen (ohne Kennwort)</span>{{end}}</td>
       <td>{{.Note}}</td>
@@ -98,7 +101,7 @@
     </tbody>
   </table></div>
   {{else}}<div class="rec-sub">Noch kein WLAN eingetragen.</div>{{end}}
-  <p class="nw-note">Das Kennwort wird verschlüsselt gespeichert und nie angezeigt. Beim Bearbeiten das Feld leer lassen, dann bleibt es.</p>
+  <p class="nw-note">Das Kennwort wird verschlüsselt gespeichert und nie angezeigt. Beim Bearbeiten das Feld leer lassen, dann bleibt es. In der Firmware von ESPPDH-Geräten steht es aber lesbar – deshalb stehen dort nur WLANs mit Haken „Für ESPPDH-Geräte nutzbar“ zur Wahl.</p>
 </div>
 
 <script>
@@ -140,4 +143,7 @@ function nwToggle(id){ const el = document.getElementById(id); if(el){ el.hidden
   <label style="display:flex;align-items:center;gap:8px"><input type="checkbox" name="hidden"{{if $w}}{{if $w.Hidden}} checked{{end}}{{end}}> Versteckt (sendet seinen Namen nicht aus)</label>
   {{if $w}}{{if $w.HasPassword}}<label style="display:flex;align-items:center;gap:8px"><input type="checkbox" name="open" value="1"> Kennwort entfernen (offenes WLAN)</label>{{end}}{{end}}
 </div>
+<label class="nw-check" for="nw-w-esp-{{.P}}"><input type="checkbox" id="nw-w-esp-{{.P}}" name="esppdh_ok"{{if $w}}{{if $w.ESPPDH}} checked{{end}}{{end}} aria-describedby="nw-w-esp-help-{{.P}}">
+  <span><b>Für ESPPDH-Geräte nutzbar</b>
+    <span class="nw-note" id="nw-w-esp-help-{{.P}}" style="display:block">Wer ESPPDH-Geräte bauen darf, kann das Kennwort dieses WLANs aus der Firmware lesen. Am besten ein eigenes WLAN nur für Geräte verwenden.</span></span></label>
 {{end}}

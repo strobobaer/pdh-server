@@ -680,6 +680,38 @@ func TestBuildWorkerRechecks(t *testing.T) {
 	}
 }
 
+// Haken „Für ESPPDH-Geräte nutzbar“ am WLAN entfernt: ein schon eingereihter Bau scheitert mit
+// klarer Meldung, ein neuer lässt sich nicht einreihen. Die schon gebaute Firmware bleibt zum
+// Herunterladen da.
+func TestBuildRefusedWhenWLANNotReleased(t *testing.T) {
+	e, fb, _ := newEsppdhBuildEnv(t)
+	e.start(t)
+	ctx := context.Background()
+	id := e.buildable(t, "wl-"+e.sfx)
+	old := e.built(t, fb, id, "wl")
+	e.h.StopESPPDH() // Arbeiter anhalten: der nächste Auftrag wartet
+	bid := e.queue(t, id)
+	e.esppdhReleaseWLAN(t, e.wlan, false)
+	e.h.StartESPPDH(ctx)
+	if log := e.waitStatus(t, bid, "failed"); !strings.Contains(log, esppdhNotReleased) {
+		t.Errorf("Verlauf des Baus: %s", log)
+	}
+	select {
+	case j := <-fb.started:
+		t.Errorf("trotzdem gebaut: %s", j.ID)
+	default:
+	}
+	w := esppdhDo(e.h.EsppdhBuildWeb, "POST", "/import/esppdh/"+id+"/build", id, esppdhUser, url.Values{})
+	if w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), esppdhNotReleased) {
+		t.Errorf("einreihen ohne Freigabe: %d %s", w.Code, w.Body.String())
+	}
+	for _, file := range []string{"factory.bin", "ota.bin"} {
+		if w := esppdhDoF(esppdhFlashRoutes(e.h)[file], id, old, file, esppdhUser); w.Code != http.StatusOK {
+			t.Errorf("gebaute Firmware %s ohne Freigabe: %d", file, w.Code)
+		}
+	}
+}
+
 // Herunterfahren: der laufende Bau endet als „failed“ mit Hinweis, der Arbeiter ist beendet.
 func TestBuildShutdownMarksFailed(t *testing.T) {
 	e, fb, _ := newEsppdhBuildEnv(t)

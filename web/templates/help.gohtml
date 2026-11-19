@@ -1650,13 +1650,18 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li><b>Neues WLAN</b> drücken und den <b>WLAN-Namen (SSID)</b> genau so eintragen, wie ihn die Geräte sehen (Groß- und Kleinschreibung zählt).</li>
       <li>Das <b>Kennwort</b> eintragen (8 bis 63 Zeichen). Leer lassen nur bei einem offenen WLAN.</li>
       <li>Bei <b>Netz</b> wählen, in welchem Netz das WLAN landet. <b>Versteckt</b> ankreuzen, wenn das WLAN seinen Namen nicht aussendet.</li>
+      <li>Nur wenn ESPPDH-Geräte in dieses WLAN sollen: <b>Für ESPPDH-Geräte nutzbar</b> ankreuzen (siehe unten). Sonst leer lassen.</li>
       <li><b>Anlegen</b>. Zum Ändern <b>Bearbeiten</b>: Bleibt das Kennwort-Feld leer, gilt das gespeicherte weiter.</li>
     </ol>
-    <p>Das Kennwort wird verschlüsselt gespeichert und <b>nie angezeigt</b> – auch nicht für Administratoren. Wer es nachlesen muss, schaut am Access Point oder im Controller nach.</p></div>
-  <p><b>ESPPDH-Geräte</b> nehmen ihr WLAN von hier: Beim Anlegen (<b>Neues Gerät</b>) und auf der Seite des Geräts wählst du eines dieser WLANs (<a href="#esppdh">mehr</a>). Name und Kennwort kommen beim Bau der Firmware von dieser Seite. Änderst du das Kennwort, zeigt die Seite des Geräts „Konfiguration seit dem letzten Bau geändert“ – dann die Firmware neu bauen und flashen.</p>
+    <p>Das Kennwort wird verschlüsselt gespeichert und auf keiner Seite angezeigt – auch nicht für Administratoren. Wer es nachlesen muss, schaut am Access Point oder im Controller nach. <b>Ausnahme:</b> In der Firmware von ESPPDH-Geräten steht das Kennwort lesbar. Deshalb gibt es den Haken „Für ESPPDH-Geräte nutzbar“.</p></div>
+  <p><b>ESPPDH-Geräte</b> nehmen ihr WLAN von hier – aber nur WLANs mit Haken <b>Für ESPPDH-Geräte nutzbar</b>. Ab Werk ist der Haken aus; ist er gesetzt, steht in der Liste <span class="badge b-blue">ESPPDH</span>. Beim Anlegen (<b>Neues Gerät</b>) und auf der Seite des Geräts wählst du eines dieser WLANs (<a href="#esppdh">mehr</a>). Name und Kennwort kommen beim Bau der Firmware von dieser Seite. Änderst du das Kennwort, zeigt die Seite des Geräts „Konfiguration seit dem letzten Bau geändert“ – dann die Firmware neu bauen und flashen.</p>
+  <ul>
+    <li><b>Wer ESPPDH-Geräte bauen darf, kann das WLAN-Kennwort lesen:</b> Er lädt die Firmware herunter, und darin steht es. Am besten ein eigenes WLAN nur für Geräte anlegen und nur dieses freigeben – nie das Büro-WLAN.</li>
+    <li><b>Haken später entfernt:</b> Geräte in diesem WLAN lassen sich dann nicht mehr speichern und nicht mehr bauen; ihre Seite sagt „Das WLAN … ist nicht mehr für ESPPDH-Geräte freigegeben“. Schon gebaute Firmware lässt sich weiter herunterladen, und die Geräte behalten das Kennwort. Soll es niemand mehr nutzen können, das Kennwort am Access Point ändern.</li>
+  </ul>
   <h3>Rechte</h3>
   <ul>
-    <li><b>Netzwerk: VLANs und WLANs pflegen</b> (<code>system.network</code>) – Seite sehen, Netze und WLANs anlegen und ändern. Es haben automatisch alle Rollen, die die UniFi-Anbindung verwalten dürfen.</li>
+    <li><b>Netzwerk: VLANs und WLANs pflegen</b> (<code>system.network</code>) – Seite sehen, Netze und WLANs anlegen und ändern, auch den Haken „Für ESPPDH-Geräte nutzbar“ setzen. Es haben automatisch alle Rollen, die die UniFi-Anbindung verwalten dürfen. Die Rechte von ESPPDH allein reichen dafür nicht.</li>
     <li><b>Netzwerk: VLANs und WLANs löschen</b> (<code>system.network_admin</code>, Bereichsadministrator) – endgültig löschen. Wird ein Netz gelöscht, bleiben seine WLANs und stehen danach ohne Netz da.</li>
   </ul>
   <p>Auf dem Spiegelserver ist die Seite nur zum Lesen da.</p>
@@ -2438,6 +2443,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <div class="hb-howto"><b><i class="ti ti-route"></i> Der Weg zum fertigen Gerät</b>
     <ol class="hb-steps">
       <li><a href="#hb-esp-env">Umgebung einrichten</a> – einmal je Server.</li>
+      <li><a href="#netzwerk">WLAN für Geräte freigeben</a> – einmal je WLAN, auf der Seite Netzwerk.</li>
       <li><a href="#hb-esp-new">Gerät anlegen</a>.</li>
       <li><a href="#hb-esp-blocks">Bausteine wählen und anschließen</a>.</li>
       <li><a href="#hb-esp-build">Firmware bauen</a>.</li>
@@ -2465,13 +2471,14 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <h3 id="hb-esp-new"><i class="ti ti-plus"></i> Gerät anlegen</h3>
   <div class="hb-howto"><b><i class="ti ti-cpu"></i> So legst du ein Gerät an</b>
     <ol class="hb-steps">
+      <li>Vorher, einmal je WLAN: Auf der Seite <a href="#netzwerk">Netzwerk</a> beim WLAN der Geräte <b>Bearbeiten</b>, den Haken <b>Für ESPPDH-Geräte nutzbar</b> setzen und speichern. Das darf, wer die Seite Netzwerk pflegt (<code>system.network</code>). Für „Kabel“ ist das nicht nötig.</li>
       <li><b>ESPPDH</b> öffnen und <b>Neues Gerät</b> drücken.</li>
       <li><b>Name</b> eintragen, z. B. „Presse 3 – Stromzähler“.</li>
       <li><b>Kennung</b> eintragen: 3 bis 32 Zeichen aus a–z, 0–9 und „-“, das „-“ nicht am Anfang oder Ende. Leer lassen – dann bildet das PDH sie aus dem Namen. Die Kennung steht im Thema und im Zugang am Broker und <b>lässt sich später nicht ändern</b>.</li>
       <li><b>Anlage</b> wählen. Sie zählt auch für die Rechte: Wer ESPPDH nur in einer Abteilung darf, sieht und ändert nur Geräte an deren Anlagen.</li>
       <li><b>Broker (Verbindung)</b> wählen. Zur Wahl stehen nur MQTT-Verbindungen mit „Integrierter Broker“. Gibt es noch keine, unter <b>Import</b> eine anlegen.</li>
       <li><b>Platine</b> wählen (siehe Tabelle). Bei „Andere Platine“ die <b>Platinen-Kennung von ESPHome</b> eintragen, z. B. <code>nodemcuv2</code>.</li>
-      <li><b>WLAN oder Kabel</b> wählen. Die WLANs kommen von der Seite <a href="#netzwerk">Netzwerk</a>. „Kabel“ geht nur mit Platinen mit Ethernet; bei <b>Netz am Kabel</b> kannst du das Netz angeben.</li>
+      <li><b>WLAN oder Kabel</b> wählen. Zur Wahl stehen nur die WLANs, die auf der Seite <a href="#netzwerk">Netzwerk</a> für ESPPDH-Geräte freigegeben sind; ist noch keines freigegeben, sagt das Formular es. „Kabel“ geht nur mit Platinen mit Ethernet; bei <b>Netz am Kabel</b> kannst du das Netz angeben.</li>
       <li><b>Anlegen</b> drücken. Die Kennwörter für den Zugang am Broker und für den Notzugang vergibt das PDH selbst. Danach öffnet sich die Seite des Geräts.</li>
     </ol></div>
   <table><thead><tr><th>Platine</th><th>Netz</th><th>TLS</th><th>USB-Flash im Browser</th></tr></thead><tbody>
@@ -2608,6 +2615,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <li>Jedes Gerät hat einen <b>eigenen Zugang</b> am Broker (Benutzer <code>esppdh-&lt;kennung&gt;</code>, zugleich Client-ID) und darf nur unter seinem Thema <code>esppdh/&lt;kennung&gt;/</code> senden und lesen. Benutzernamen, die mit <code>esppdh-</code> beginnen, sind am Broker deshalb für Geräte reserviert.</li>
     <li>Die Kennwörter stehen <b>verschlüsselt</b> im PDH. Das MQTT-Kennwort zeigt das PDH nie an, das Kennwort des Notzugangs nur denen, die Geräte ändern dürfen.</li>
     <li>Die <b>Firmware enthält WLAN- und MQTT-Kennwort</b>. Herunterladen und flashen darf deshalb nur, wer Geräte ändern darf (<code>esppdh.edit</code>). Wer welche Firmware geholt hat, steht im Server-Protokoll. Firmware-Dateien nicht weitergeben.</li>
+    <li><b>WLAN-Kennwort:</b> Wer Geräte bauen darf, kann das Kennwort des gewählten WLANs aus der Firmware lesen. Deshalb stehen nur WLANs zur Wahl, die auf der Seite <a href="#netzwerk">Netzwerk</a> für ESPPDH-Geräte freigegeben sind. Am besten ein eigenes WLAN nur für Geräte verwenden. Wird die Freigabe entfernt, lassen sich Geräte in diesem WLAN nicht mehr speichern und bauen; schon gebaute Firmware bleibt herunterladbar (Per USB flashen im Browser geht erst wieder mit Freigabe).</li>
     <li>Ohne TLS gehen Werte und Anmeldung <b>unverschlüsselt</b> durchs Netz. Dann das Gerät nur in einem geschützten Netz betreiben – besser eine ESP32-Platine und den Broker mit Namen und TLS-Port.</li>
   </ul>
 
