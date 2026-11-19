@@ -449,6 +449,14 @@ func TestHistorySlotQuietDenied(t *testing.T) {
 	if !strings.Contains(string(b), "data-quiet-denied") {
 		t.Errorf("base.gohtml behandelt data-quiet-denied nicht")
 	}
+	for _, want := range []string{".rh-group>summary~.li{", "replaceChildren(note)", "leise: Status anderer Anfragen nicht anfassen"} {
+		if !strings.Contains(string(b), want) {
+			t.Errorf("base.gohtml: %q fehlt", want)
+		}
+	}
+	if strings.Contains(string(b), ".rh-group>.li{") {
+		t.Errorf("der Einzug darf die Kopfzeile nicht erfassen")
+	}
 }
 
 // Ein unbekannter Schlüssel darf nie „offen“ heißen: der Start bricht ab.
@@ -465,12 +473,139 @@ func TestHistoryLabelStable(t *testing.T) {
 	for _, c := range []struct{ action, field, want string }{
 		{"status", "status", "Status geändert"},
 		{"create", "", "Angelegt"},
-		{"update", "due_date", "Geändert · Fälligkeit"},
+		{"created", "", "Angelegt"},
+		{"update", "due_date", "Geändert · Fälligkeitsdatum"},
 		{"update", "Kanban", "Geändert · Kanban"},
-		{"seltsam", "", "seltsam"},
+		{"update", "status", "Geändert · Status (System)"},
+		{"update", "archived_at", "Geändert · Archiviert am"},
+		{"update", "", "Geändert"},
+		{"people", "external_service", "Zuständigkeit geändert · Externe Stelle"},
+		{"seltsam", "", "Sonstige Änderung"}, // nie der technische Schlüssel
+		{"seltsam", "feld_x", "Sonstige Änderung · feld_x"},
 	} {
 		if got := historyLabel(c.action, c.field); got != c.want {
 			t.Errorf("%s/%s: %q, erwartet %q", c.action, c.field, got, c.want)
 		}
+	}
+}
+
+// historyWritten sammelt (Vorgang, Feld) aller im Quelltext (internal/) geschriebenen
+// Historieneinträge, soweit sie als Text im Code stehen.
+func historyWritten(t *testing.T) map[[2]string]string {
+	t.Helper()
+	out := map[[2]string]string{} // Paar -> Fundstelle
+	add := func(action, field, where string) {
+		if action != "" {
+			out[[2]string{action, field}] = where
+		}
+	}
+	lit := func(tok string) string { // 'text' oder "text" -> text, sonst ""
+		tok = strings.TrimSpace(tok)
+		if len(tok) >= 2 && (tok[0] == '\'' || tok[0] == '"') && tok[len(tok)-1] == tok[0] {
+			return tok[1 : len(tok)-1]
+		}
+		return ""
+	}
+	addCall := regexp.MustCompile(`addHistory\(\s*[^,\n]+,[^,\n]+,[^,\n]+,\s*"([^"]+)"\s*,\s*([^,\n]+)`)
+	sqlIns := regexp.MustCompile("INSERT INTO record_history \\(([^)]*)\\)\\s*(?:VALUES|SELECT)\\s*\\(?([^`]*)")
+	ruesten := regexp.MustCompile(`\bhistory\(ctx, \w+, \w+, "([^"]+)",\s*([^,\n]+)`)
+	consts := regexp.MustCompile(`(?m)^\s*(?:const )?action\w*\s*=\s*"([^"]+)"`)
+	creds := regexp.MustCompile(`logPartnerCredentialEvent\(\s*[^,\n]+,[^,\n]+,[^,\n]+,[^,\n]+,\s*"([^"]+)"`)
+	err := filepath.Walk("..", func(p string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() || !strings.HasSuffix(p, ".go") || strings.HasSuffix(p, "_test.go") {
+			return err
+		}
+		b, _ := os.ReadFile(p)
+		src := string(b)
+		for _, m := range addCall.FindAllStringSubmatch(src, -1) {
+			add(m[1], lit(m[2]), p)
+		}
+		for _, m := range ruesten.FindAllStringSubmatch(src, -1) {
+			add(m[1], lit(m[2]), p)
+		}
+		if strings.Contains(filepath.ToSlash(p), "modules/extsync/") {
+			for _, m := range consts.FindAllStringSubmatch(src, -1) {
+				add(m[1], "", p)
+			}
+		}
+		for _, m := range creds.FindAllStringSubmatch(src, -1) {
+			add(m[1], "portal_link", p)
+		}
+		for _, m := range sqlIns.FindAllStringSubmatch(src, -1) {
+			cols := strings.Split(m[1], ",")
+			vals := strings.Split(m[2], ",")
+			var action, field string
+			for i, c := range cols {
+				if i >= len(vals) {
+					break
+				}
+				switch strings.TrimSpace(c) {
+				case "action":
+					action = lit(vals[i])
+				case "field_name":
+					field = lit(vals[i])
+				}
+			}
+			add(action, field, p)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
+// Jeder im Code geschriebene Vorgang und jedes technische Feld hat eine deutsche Beschriftung;
+// ein neuer fällt hier auf, statt als technischer Schlüssel in der Oberfläche zu erscheinen.
+func TestHistoryActionsCovered(t *testing.T) {
+	found := historyWritten(t)
+	if len(found) < 40 {
+		t.Fatalf("nur %d Vorgänge im Quelltext gefunden – Suche kaputt?", len(found))
+	}
+	technical := regexp.MustCompile(`^[a-z_]+$`)
+	for pair, where := range found {
+		if _, ok := historyActionLabels[pair[0]]; !ok {
+			t.Errorf("Vorgang %q (%s) hat keine Beschriftung in historyActionLabels", pair[0], where)
+		}
+		if technical.MatchString(pair[1]) {
+			if _, ok := historyFieldLabel(pair[1]); !ok {
+				t.Errorf("Feld %q (Vorgang %q, %s) hat keine Beschriftung in historyFieldLabels", pair[1], pair[0], where)
+			}
+		}
+	}
+	for _, want := range []string{"created", "updated", "ended", "fault", "state", "resolved", "attachment", "record_image", "ticket", "broker", "push", "delete", "terminal_paired", "terminal_revoked", "sync", "credentials_view"} {
+		seen := false
+		for pair := range found {
+			seen = seen || pair[0] == want
+		}
+		if !seen {
+			t.Errorf("Suche findet %q nicht (Erwartung aus dem Bestand)", want)
+		}
+	}
+}
+
+// Verschiedene Gruppen (Vorgang + Feld) tragen verschiedene Titel; nur die Schreibweisen
+// derselben Handlung (create/created, update/updated) teilen sich einen.
+func TestHistoryLabelsDistinct(t *testing.T) {
+	canon := map[string]string{"created": "create", "updated": "update"}
+	pairs := map[[2]string]bool{
+		{"update", "status"}: true, {"update", "archived_at"}: true, {"update", ""}: true,
+		{"status", "status"}: true, {"archive", "archived_at"}: true,
+	}
+	for p := range historyWritten(t) {
+		pairs[p] = true
+	}
+	byLabel := map[string][2]string{}
+	for p := range pairs {
+		c := p
+		if v, ok := canon[c[0]]; ok {
+			c[0] = v
+		}
+		l := historyLabel(p[0], p[1])
+		if prev, ok := byLabel[l]; ok && prev != c {
+			t.Errorf("%q gilt für %v und %v", l, prev, c)
+		}
+		byLabel[l] = c
 	}
 }

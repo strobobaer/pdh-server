@@ -164,35 +164,74 @@ type historyRow struct {
 	Label string
 }
 
-// historyActionLabels / historyFieldLabels: feste deutsche Beschriftung je Vorgang
-// und Feld, unabhängig vom Freitext der einzelnen Meldung.
+// historyActionLabels: feste deutsche Beschriftung je Vorgang (action in record_history),
+// unabhängig vom Freitext der einzelnen Meldung. Jeder im Code geschriebene Vorgang steht
+// hier (TestHistoryActionsCovered prüft das gegen den Quelltext); nur Altdaten und
+// Fremdsysteme können einen unbekannten liefern, der als „Sonstige Änderung“ erscheint.
 var historyActionLabels = map[string]string{
-	"create": "Angelegt", "update": "Geändert", "status": "Status geändert", "people": "Zuständigkeit geändert",
+	"create": "Angelegt", "created": "Angelegt", "update": "Geändert", "updated": "Geändert",
+	"status": "Status geändert", "resolved": "Abgeschlossen", "ended": "Beendet", "switched": "Umgestellt",
+	"fault": "Störung", "ticket": "Ticket verknüpft", "people": "Zuständigkeit geändert",
 	"category": "Kategorie geändert", "archive": "Archiviert", "work": "Arbeitsschritt erfasst",
 	"document": "Dokument abgelegt", "explorer_write": "Testweise geschrieben",
+	"attachment": "Anhang geändert", "record_image": "Bild geändert", "broker": "Vermittlung",
+	"push": "Benachrichtigung", "state": "Zustand geändert", "delete": "Gelöscht",
+	"terminal_paired": "Terminal gekoppelt", "terminal_revoked": "Terminal getrennt",
+	"tia_download": "TIA-Baustein geladen", "sync": "Abgleich", "sync_out": "Abgleich nach außen",
+	"sync_origin": "Herkunft Abgleich", "credentials_update": "Zugangsdaten geändert",
+	"credentials_view": "Zugangsdaten angezeigt",
 }
 
+// historyFieldLabels: deutsche Beschriftung technischer Feldnamen. Felder, die schon
+// deutsch geschrieben werden (z. B. „Kanban“), bleiben, wie sie sind.
 var historyFieldLabels = map[string]string{
-	"due_date": "Fälligkeit", "assigned_to": "Zugewiesener Mitarbeiter", "responsible_to": "Verantwortlicher",
+	"due_date": "Fälligkeitsdatum", "assigned_to": "Zugewiesener Mitarbeiter", "responsible_to": "Verantwortlicher",
 	"assigned_group_id": "Zugewiesene Gruppe", "title": "Titel", "assessment": "Bewertung", "plan": "Plan",
 	"check_result": "Wirksamkeit", "act": "Ergebnis", "action": "Maßnahme", "file": "Datei",
-	"nextcloud_user_id": "Nextcloud-Konto", "must_change_password": "Kennwortwechsel", "infrastructure_id": "Anlage",
+	"nextcloud_user_id": "Nextcloud-Konto", "nextcloud_admin": "Nextcloud-Administrator",
+	"nextcloud_password": "Nextcloud-Kennwort", "must_change_password": "Kennwortwechsel",
+	"infrastructure_id": "Anlage", "attachments": "Anhänge", "record_image_attachment_id": "Bild",
+	"ticket_id": "Ticket", "locked": "Sperre", "active": "Aktivstatus", "hidden": "Ausgeblendet",
+	"deletion": "Löschvormerkung", "portal_link": "Zugangsdaten", "plant_stopped": "Anlage steht",
+	"mail_notifications": "Mail-Benachrichtigungen", "certificate": "Zertifikat",
+	"archived_at": "Archiviert am", "status": "Status (System)", "category": "Kategorie", "broker": "Vermittler",
+	"push": "Benachrichtigung", "reason_id": "Grund", "started_at": "Beginn", "ended_at": "Ende", "note": "Notiz",
 }
 
-// historyLabel: stabile Beschriftung zu (Vorgang, Feld), z. B. „Status geändert“
-// oder „Geändert · Fälligkeit“. Felder, die der Vorgang schon nennt, entfallen.
+// historyFieldLabel: Beschriftung eines Felds (auch „external_<Rolle>“ der externen Stellen).
+func historyFieldLabel(field string) (string, bool) {
+	if f, ok := historyFieldLabels[field]; ok {
+		return f, true
+	}
+	if strings.HasPrefix(field, "external_") {
+		return "Externe Stelle", true
+	}
+	return field, false
+}
+
+// historyNamesField: Paare (Vorgang/Feld), bei denen die Beschriftung des Vorgangs das Feld
+// schon nennt; nur dann entfällt das Feld im Titel. Sonst bekommen verschiedene Gruppen
+// verschiedene Titel.
+var historyNamesField = map[string]bool{
+	"status/status": true, "resolved/status": true, "ended/status": true, "switched/status": true,
+	"fault/status": true, "category/category": true, "archive/archived_at": true,
+	"broker/broker": true, "push/push": true, "credentials_update/portal_link": true,
+	"credentials_view/portal_link": true,
+}
+
+// historyLabel: stabile Beschriftung zu (Vorgang, Feld), z. B. „Status geändert“ oder
+// „Geändert · Fälligkeit“. Ein unbekannter Vorgang heißt „Sonstige Änderung“, nie der
+// technische Schlüssel.
 func historyLabel(action, field string) string {
 	l, ok := historyActionLabels[action]
 	if !ok {
-		l = action
+		l = "Sonstige Änderung"
 	}
-	if field == "" || field == action || field == "status" || field == "category" || field == "archived_at" {
+	if field == "" || historyNamesField[action+"/"+field] {
 		return l
 	}
-	if f, ok := historyFieldLabels[field]; ok {
-		field = f
-	}
-	return l + " · " + field
+	f, _ := historyFieldLabel(field)
+	return l + " · " + f
 }
 
 // historyPage: Daten des Kärtchens (Vorlage „record-history“).

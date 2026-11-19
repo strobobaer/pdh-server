@@ -1621,7 +1621,7 @@ func (h *Handler) queryHistory(ctx context.Context, refType, id string, limit in
 		ORDER BY rh.created_at DESC, rh.id DESC
 		LIMIT $3`, refType, id, limit)
 	if err != nil {
-		log.Printf("Historie %s/%s lesen: %v", refType, id, err)
+		componentLog("historie").Error().Err(err).Str("ref", refType).Str("id", id).Msg("historie lesen")
 		return nil
 	}
 	defer rows.Close()
@@ -1629,14 +1629,14 @@ func (h *Handler) queryHistory(ctx context.Context, refType, id string, limit in
 	for rows.Next() {
 		var item HistoryView
 		if err := rows.Scan(&item.Action, &item.FieldName, &item.OldValue, &item.NewValue, &item.Message, &item.UserName, &item.At); err != nil {
-			log.Printf("Historie %s/%s lesen: %v", refType, id, err)
+			componentLog("historie").Error().Err(err).Str("ref", refType).Str("id", id).Msg("historie lesen")
 			continue
 		}
 		item.CreatedAt = item.At.Format("02.01.2006 15:04")
 		list = append(list, item)
 	}
 	if err := rows.Err(); err != nil {
-		log.Printf("Historie %s/%s lesen: %v", refType, id, err)
+		componentLog("historie").Error().Err(err).Str("ref", refType).Str("id", id).Msg("historie lesen")
 	}
 	return list
 }
