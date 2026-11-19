@@ -370,6 +370,10 @@ type Handler struct {
 	esppdhUpd     struct {
 		mu      sync.Mutex
 		running bool
+		// auch ohne Zustandsdatei (nicht speicherbar): letzter Lauf und zuletzt gemeldete
+		// gescheiterte Version dieses Prozesses – kein Lauf alle 5 min, keine zweite Meldung
+		lastRun  time.Time
+		notified string
 	}
 	esppdhNow func() time.Time
 }

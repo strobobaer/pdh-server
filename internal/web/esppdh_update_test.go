@@ -73,8 +73,9 @@ type esppdhUpdT struct {
 	jobTarget   string
 	jobPolls    int
 	// Verhalten der Attrappe
-	configFail func(slug string, cand bool) bool
-	buildFail  func(slug string) bool
+	configFail  func(slug string, cand bool) bool
+	buildFail   func(slug string) bool
+	configPanic bool
 }
 
 func (u *esppdhUpdT) add(e string) {
@@ -117,14 +118,36 @@ func esppdhKeepSetting(t *testing.T, h *Handler, key, value string) {
 // esppdhFastUpdate verkürzt alle Wartezeiten des Ablaufs und stellt sie nach dem Test wieder her.
 func esppdhFastUpdate(t *testing.T) {
 	t.Helper()
-	old := []time.Duration{esppdhInstallPoll, esppdhInstallLimit, esppdhIdleWait, esppdhIdleLimit, esppdhUpdTick, esppdhUpdDelay, esppdhPyPITimeout}
+	old := []time.Duration{esppdhInstallPoll, esppdhInstallLimit, esppdhIdleWait, esppdhIdleLimit, esppdhUpdTick, esppdhUpdDelay, esppdhPyPITimeout, esppdhRunPoll}
 	t.Cleanup(func() {
 		esppdhInstallPoll, esppdhInstallLimit, esppdhIdleWait, esppdhIdleLimit = old[0], old[1], old[2], old[3]
-		esppdhUpdTick, esppdhUpdDelay, esppdhPyPITimeout = old[4], old[5], old[6]
+		esppdhUpdTick, esppdhUpdDelay, esppdhPyPITimeout, esppdhRunPoll = old[4], old[5], old[6], old[7]
 	})
 	esppdhInstallPoll, esppdhInstallLimit = time.Millisecond, 10*time.Second
 	esppdhIdleWait, esppdhIdleLimit = 5*time.Millisecond, 10*time.Second
-	esppdhUpdTick, esppdhUpdDelay, esppdhPyPITimeout = 5*time.Millisecond, time.Millisecond, 5*time.Second
+	esppdhUpdTick, esppdhUpdDelay, esppdhPyPITimeout, esppdhRunPoll = 5*time.Millisecond, time.Millisecond, 5*time.Second, 5*time.Millisecond
+}
+
+// set ändert das Verhalten der Attrappen unter u.mu (die Server lesen es in eigenen Goroutinen).
+func (u *esppdhUpdT) set(f func()) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	f()
+}
+
+// loop lässt den Takt laufen, bis wait zurückkehrt, und wartet auf sein Ende.
+func (u *esppdhUpdT) loop(t *testing.T, wait func()) {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { u.h.esppdhUpdateLoop(ctx); close(done) }()
+	wait()
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("Takt endet nicht")
+	}
 }
 
 // esppdhFakeEnv: installierte Version oldVersion (statt „esphome version“ aufzurufen).
@@ -285,7 +308,11 @@ func (p *esppdhFakeProber) Config(_ context.Context, job esppdh.BuildJob) (strin
 	p.u.add("config " + job.Slug + p.tag())
 	p.u.mu.Lock()
 	fail := p.u.configFail != nil && p.u.configFail(job.Slug, p.cand())
+	crash := p.u.configPanic
 	p.u.mu.Unlock()
+	if crash {
+		panic("Attrappe stürzt ab")
+	}
 	if fail {
 		return "INFO Reading configuration ./esppdh.yaml...\nERROR Ungültig: " + strings.Join(job.SecretValues, " ") + "\n",
 			errors.New("ESPHome hat mit einem Fehler beendet (Exit-Code 2).")
@@ -430,10 +457,11 @@ func TestEsppdhPythonOf(t *testing.T) {
 // Keine neuere, ausgereifte stabile Version: „aktuell“, der Agent wird nicht gefragt.
 func TestUpdateNoCandidate(t *testing.T) {
 	u := newEsppdhUpd(t)
-	u.pypiBody = esppdhPyPIBody(
+	body := esppdhPyPIBody(
 		esppdhPyPIRel{esppdhUpdOld, esppdhUpdNow.Add(-30 * 24 * time.Hour)},
 		esppdhPyPIRel{"2026.11.2", esppdhUpdNow.Add(-24 * time.Hour)},       // zu jung
 		esppdhPyPIRel{"2026.12.0b1", esppdhUpdNow.Add(-9 * 24 * time.Hour)}) // Vorabversion
+	u.set(func() { u.pypiBody = body })
 	msg, st := u.run(t, false)
 	if want := "ESPHome " + esppdhUpdOld + " ist aktuell"; msg != want || st.Result != want {
 		t.Errorf("Ergebnis %q / %q", msg, st.Result)
@@ -496,7 +524,7 @@ func TestUpdateSwitches(t *testing.T) {
 	}
 	install, activate := esppdhIndex(ev, "install "+esppdhUpdNew), esppdhIndex(ev, "activate "+esppdhUpdNew)
 	configs := esppdhIndex(ev, "config ")
-	if len(install) != 1 || len(activate) != 1 || len(configs) == 0 || install[0] > configs[0] ||
+	if len(install) != 1 || len(activate) != 1 || len(configs) == 0 || len(builds) == 0 || install[0] > configs[0] ||
 		configs[len(configs)-1] > builds[0] || builds[len(builds)-1] > activate[0] || esppdhCount(ev, "discard") > 0 {
 		t.Errorf("Reihenfolge install → config → build → activate: %v", ev)
 	}
@@ -520,7 +548,7 @@ func TestUpdateProbeFails(t *testing.T) {
 	u := newEsppdhUpd(t)
 	a := "fa-" + u.sfx
 	u.device(t, a, "0upd Fehler "+u.sfx, "esp32dev", "")
-	u.configFail = func(slug string, cand bool) bool { return slug == a && cand }
+	u.set(func() { u.configFail = func(slug string, cand bool) bool { return slug == a && cand } })
 
 	msg, st := u.run(t, false)
 	want := "ESPHome " + esppdhUpdNew + " hat die Probe nicht bestanden – es bleibt bei " + esppdhUpdOld
@@ -596,7 +624,7 @@ func TestProbeIgnoresAlreadyBroken(t *testing.T) {
 	ok, broken := "pa-"+u.sfx, "pb-"+u.sfx
 	u.device(t, broken, "0upd Kaputt "+u.sfx, "esp32dev", "")
 	u.device(t, ok, "0upd Gut "+u.sfx, "esp32dev", "")
-	u.configFail = func(slug string, _ bool) bool { return slug == broken }
+	u.set(func() { u.configFail = func(slug string, _ bool) bool { return slug == broken } })
 	msg, st := u.run(t, false)
 	if !strings.HasPrefix(msg, "Auf ESPHome "+esppdhUpdNew+" umgestellt") || !strings.Contains(msg, "übersprungen") ||
 		!strings.Contains(msg, "0upd Kaputt "+u.sfx) || st.FailedVersion != "" {
@@ -661,7 +689,7 @@ func TestProbeQueueBusy(t *testing.T) {
 // Fehlt der Kandidat zur Probe (vom Agenten aufgeräumt), ist das kein Fehlschlag der Version.
 func TestProbeCandidateGone(t *testing.T) {
 	u := newEsppdhUpd(t)
-	u.noBin = true
+	u.set(func() { u.noBin = true })
 	msg, st := u.run(t, false)
 	if !strings.Contains(msg, "nicht mehr vorhanden") || st.FailedVersion != "" || u.notes(t) != 0 {
 		t.Errorf("%q %+v", msg, st)
@@ -684,7 +712,7 @@ func TestUpdateMirrorNoBuild(t *testing.T) {
 		!slices.Contains(ev, "activate "+esppdhUpdNew) {
 		t.Errorf("%q %v", msg, ev)
 	}
-	u.configFail = func(slug string, cand bool) bool { return slug == a && cand }
+	u.set(func() { u.configFail = func(slug string, cand bool) bool { return slug == a && cand } })
 	msg, st := u.run(t, false)
 	if !strings.HasPrefix(msg, "ESPHome "+esppdhUpdNew+" hat die Probe nicht bestanden") || st.FailedVersion != esppdhUpdNew || st.NotifiedVersion != "" {
 		t.Errorf("gescheitert am Spiegel: %q %+v", msg, st)
@@ -716,10 +744,11 @@ func TestUpdateCheckBadPyPI(t *testing.T) {
 		{"5 MB", "größer als 4 MB", func(w http.ResponseWriter, _ *http.Request) { io.WriteString(w, big) }},
 		{"leer", "keine Ausgaben", func(w http.ResponseWriter, _ *http.Request) { io.WriteString(w, `{"releases":{}}`) }},
 	} {
-		u.mu.Lock()
-		u.pypiFn = c.fn
-		u.mu.Unlock()
-		esppdhPyPITimeout = 200 * time.Millisecond
+		u.set(func() { u.pypiFn = c.fn })
+		esppdhPyPITimeout = 5 * time.Second // nur „Zeitlimit“ kurz – sonst wackelt es auf langsamen Rechnern
+		if c.name == "Zeitlimit" {
+			esppdhPyPITimeout = 200 * time.Millisecond
+		}
 		msg, st := u.run(t, false)
 		if !strings.HasPrefix(msg, "Prüfung nicht möglich: ") || !strings.Contains(msg, c.want) || st.Result != msg ||
 			!st.CheckedAt.Equal(esppdhUpdNow) || st.Installed != esppdhUpdOld {
@@ -734,7 +763,9 @@ func TestUpdateCheckBadPyPI(t *testing.T) {
 // Die Einrichtung scheitert (z. B. Platz, pip): Version vermerken, nicht täglich neu versuchen.
 func TestUpdateInstallFails(t *testing.T) {
 	u := newEsppdhUpd(t)
-	u.installErr = "Einrichtung fehlgeschlagen: Zu wenig Platz unter /opt (frei 900 MB, nötig 3072 MB).\n\nLetzte Ausgabe:\nzeile"
+	u.set(func() {
+		u.installErr = "Einrichtung fehlgeschlagen: Zu wenig Platz unter /opt (frei 900 MB, nötig 3072 MB).\n\nLetzte Ausgabe:\nzeile"
+	})
 	msg, st := u.run(t, false)
 	want := "ESPHome " + esppdhUpdNew + " ließ sich nicht einrichten – es bleibt bei " + esppdhUpdOld
 	if msg != want || st.FailedVersion != esppdhUpdNew || st.FailedPDH != pdh.Version() || !strings.Contains(st.FailedLog, "Zu wenig Platz") {
@@ -753,7 +784,7 @@ func TestUpdateInstallFails(t *testing.T) {
 // Ein Update-Agent ohne ESPHome-Versionen (404): Hinweis, die Version gilt nicht als gescheitert.
 func TestUpdateAgentTooOld(t *testing.T) {
 	u := newEsppdhUpd(t)
-	u.tooOld = true
+	u.set(func() { u.tooOld = true })
 	msg, st := u.run(t, false)
 	if msg != "Der Update-Agent ist zu alt – zuerst das PDH aktualisieren" || st.Result != msg || st.FailedVersion != "" || !st.CheckedAt.Equal(esppdhUpdNow) {
 		t.Errorf("%q %+v", msg, st)
@@ -766,7 +797,7 @@ func TestUpdateAgentTooOld(t *testing.T) {
 // Läuft beim Agenten schon eine andere Einrichtung, endet der Lauf mit Hinweis – ohne Vermerk.
 func TestUpdateInstallOtherTarget(t *testing.T) {
 	u := newEsppdhUpd(t)
-	u.otherTarget = true
+	u.set(func() { u.otherTarget = true })
 	msg, st := u.run(t, false)
 	if !strings.Contains(msg, "andere ESPHome-Umgebung") || st.FailedVersion != "" || u.notes(t) != 0 {
 		t.Errorf("%q %+v", msg, st)
@@ -803,13 +834,15 @@ func TestUpdateSwitchOff(t *testing.T) {
 func TestUpdateSingleFlight(t *testing.T) {
 	u := newEsppdhUpd(t)
 	release := make(chan struct{})
-	u.pypiFn = func(w http.ResponseWriter, r *http.Request) {
-		select {
-		case <-release:
-		case <-r.Context().Done():
+	u.set(func() {
+		u.pypiFn = func(w http.ResponseWriter, r *http.Request) {
+			select {
+			case <-release:
+			case <-r.Context().Done():
+			}
+			io.WriteString(w, `{"releases":{}}`)
 		}
-		io.WriteString(w, `{"releases":{}}`)
-	}
+	})
 	done := make(chan string, 1)
 	go func() {
 		msg, _ := u.h.esppdhUpdateRun(context.Background(), false)
@@ -844,30 +877,18 @@ func TestUpdateSingleFlight(t *testing.T) {
 // Takt: fällig erst 24 h nach der letzten Prüfung.
 func TestUpdateScheduler(t *testing.T) {
 	u := newEsppdhUpd(t)
-	u.pypiBody = `{"releases":{}}`
-	loop := func(wait func()) {
-		ctx, cancel := context.WithCancel(context.Background())
-		done := make(chan struct{})
-		go func() { u.h.esppdhUpdateLoop(ctx); close(done) }()
-		wait()
-		cancel()
-		select {
-		case <-done:
-		case <-time.After(10 * time.Second):
-			t.Fatal("Takt endet nicht")
-		}
-	}
+	u.set(func() { u.pypiBody = `{"releases":{}}` })
 	if err := esppdh.SaveUpdateState(esppdh.UpdateState{CheckedAt: esppdhUpdNow.Add(-23 * time.Hour)}); err != nil {
 		t.Fatal(err)
 	}
-	loop(func() { time.Sleep(100 * time.Millisecond) })
+	u.loop(t, func() { time.Sleep(100 * time.Millisecond) })
 	if u.hits() != 0 {
 		t.Errorf("vor Ablauf von 24 h geprüft: %d", u.hits())
 	}
 	if err := esppdh.SaveUpdateState(esppdh.UpdateState{CheckedAt: esppdhUpdNow.Add(-25 * time.Hour)}); err != nil {
 		t.Fatal(err)
 	}
-	loop(func() {
+	u.loop(t, func() {
 		deadline := time.Now().Add(5 * time.Second)
 		for u.hits() == 0 && time.Now().Before(deadline) {
 			time.Sleep(5 * time.Millisecond)
@@ -876,5 +897,102 @@ func TestUpdateScheduler(t *testing.T) {
 	})
 	if st := esppdh.LoadUpdateState(); u.hits() != 1 || !st.CheckedAt.Equal(esppdhUpdNow) {
 		t.Errorf("fällig: %d Abfragen, Zustand %+v", u.hits(), st)
+	}
+}
+
+// Lässt sich der Zustand nicht speichern (Arbeitsordner kaputt, Platte voll), meldet der Lauf den
+// Fehler, wiederholt sich aber nicht im 5-Minuten-Takt und meldet dieselbe Version nicht noch
+// einmal – auch nicht über „Jetzt prüfen“.
+func TestUpdateSaveFailsBacksOff(t *testing.T) {
+	u := newEsppdhUpd(t)
+	a := "sf-" + u.sfx
+	u.device(t, a, "0upd Speicher "+u.sfx, "esp32dev", "")
+	u.set(func() { u.configFail = func(slug string, cand bool) bool { return slug == a && cand } })
+	blocker := filepath.Join(t.TempDir(), "datei-statt-ordner")
+	if err := os.WriteFile(blocker, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PDH_ESPHOME_WORKDIR", blocker) // eine Datei statt des Arbeitsordners: nichts lässt sich speichern
+	failed := "ESPHome " + esppdhUpdNew + " hat die Probe nicht bestanden"
+
+	msg, err := u.h.esppdhUpdateRun(context.Background(), false)
+	if err == nil || !strings.HasPrefix(msg, failed) {
+		t.Fatalf("erster Lauf: %q %v", msg, err)
+	}
+	if u.h.esppdhUpdateDue() {
+		t.Error("ohne gespeicherten Zustand gleich wieder fällig")
+	}
+	hits := u.hits()
+	u.loop(t, func() { time.Sleep(100 * time.Millisecond) })
+	if u.hits() != hits {
+		t.Errorf("Takt wiederholt die Prüfung: %d Abfragen, vorher %d", u.hits(), hits)
+	}
+	if n := u.notes(t); n != 1 {
+		t.Errorf("%d Meldungen, erwartet 1", n)
+	}
+	msg, err = u.h.esppdhUpdateRun(context.Background(), true)
+	if err == nil || !strings.HasPrefix(msg, failed) {
+		t.Errorf("mit Knopf: %q %v", msg, err)
+	}
+	if n := u.notes(t); n != 1 {
+		t.Errorf("%d Meldungen nach dem zweiten Fehlschlag, erwartet 1", n)
+	}
+}
+
+// Stürzt die Prüfung ab: Fehler statt Absturz des PDH, runMu wieder frei, Lauf vermerkt (Datei
+// und Speicher) – der Takt wiederholt ihn nicht gleich.
+func TestUpdatePanicBacksOff(t *testing.T) {
+	u := newEsppdhUpd(t)
+	u.set(func() { u.configPanic = true })
+	msg, err := u.h.esppdhUpdateRun(context.Background(), false)
+	if err == nil || !strings.HasPrefix(msg, "Interner Fehler bei der Prüfung") {
+		t.Fatalf("%q %v", msg, err)
+	}
+	if !u.h.esppdhQ.runMu.TryLock() {
+		t.Fatal("runMu nach dem Absturz noch belegt")
+	}
+	u.h.esppdhQ.runMu.Unlock()
+	if st := esppdh.LoadUpdateState(); !st.CheckedAt.Equal(esppdhUpdNow) || st.Result != msg {
+		t.Errorf("Zustand: %+v", st)
+	}
+	if u.h.esppdhUpdateDue() || u.h.esppdhUpd.running {
+		t.Errorf("fällig %v, läuft %v", u.h.esppdhUpdateDue(), u.h.esppdhUpd.running)
+	}
+}
+
+// Baut gerade eine Probe (runMu belegt), übernimmt der Arbeiter keinen Auftrag: Er bleibt
+// „wartet“ und lässt sich sofort abbrechen – mit „Von Hand abgebrochen.“, nicht als Fehlschlag.
+func TestProbeCancelWaitingBuild(t *testing.T) {
+	u := newEsppdhUpd(t)
+	u.start(t)
+	id := u.device(t, "cw-"+u.sfx, "0upd Abbrechen "+u.sfx, "esp32dev", "")
+	u.h.esppdhQ.runMu.Lock() // wie ein laufender Probebau
+	locked := true
+	t.Cleanup(func() { // vor StopESPPDH (später angemeldet, früher ausgeführt)
+		if locked {
+			u.h.esppdhQ.runMu.Unlock()
+		}
+	})
+	bid := u.queue(t, id)
+	time.Sleep(200 * time.Millisecond)
+	if st, _ := u.build(t, bid); st != "queued" {
+		t.Errorf("Auftrag während der Probe: %q, erwartet queued", st)
+	}
+	if w := esppdhDoB(u.h.EsppdhBuildCancelWeb, http.MethodPost, id, bid, esppdhUser, false); w.Code != http.StatusSeeOther {
+		t.Fatalf("Abbrechen: %d %s", w.Code, w.Body.String())
+	}
+	if log := u.waitStatus(t, bid, "canceled"); !strings.Contains(log, "Von Hand abgebrochen.") {
+		t.Errorf("Verlauf: %q", log)
+	}
+	u.h.esppdhQ.runMu.Unlock()
+	locked = false
+	time.Sleep(200 * time.Millisecond)
+	select {
+	case j := <-u.fb.started:
+		t.Errorf("abgebrochener Auftrag gebaut: %s", j.ID)
+	default:
+	}
+	if st, _ := u.build(t, bid); st != "canceled" {
+		t.Errorf("nach der Probe: %q", st)
 	}
 }

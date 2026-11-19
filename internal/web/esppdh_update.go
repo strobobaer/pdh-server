@@ -144,8 +144,15 @@ func (h *Handler) esppdhUpdateLoop(ctx context.Context) {
 }
 
 // esppdhUpdateDue: letzte Prüfung älter als 24 h (oder nie, oder die Uhr ging deutlich zurück).
+// Es zählt die spätere aus Zustandsdatei und Speicher – lässt sich die Datei nicht schreiben,
+// läuft die Prüfung trotzdem nicht alle 5 min.
 func (h *Handler) esppdhUpdateDue() bool {
 	last := esppdh.LoadUpdateState().CheckedAt
+	h.esppdhUpd.mu.Lock()
+	if h.esppdhUpd.lastRun.After(last) {
+		last = h.esppdhUpd.lastRun
+	}
+	h.esppdhUpd.mu.Unlock()
 	d := h.esppdhClock().Sub(last)
 	return last.IsZero() || d >= esppdhUpdDue || d < -time.Hour
 }
@@ -170,20 +177,41 @@ func (h *Handler) esppdhUpdateRun(ctx context.Context, force bool) (msg string, 
 		u.running = false
 		u.mu.Unlock()
 	}()
-	defer func() { // läuft im Hintergrund: ein Absturz darf das PDH nicht beenden
-		if p := recover(); p != nil {
-			componentLog("esppdh").Error().Interface("panic", p).Msg("esphome-prüfung abgestürzt")
-			msg, err = "Interner Fehler bei der Prüfung – Näheres steht im Server-Protokoll.", fmt.Errorf("esphome-prüfung abgestürzt: %v", p)
+	lg := componentLog("esppdh")
+	var st esppdh.UpdateState
+	started := false
+	// Ein begonnener Lauf zählt als Prüfung – auch wenn er abstürzt oder sich der Zustand nicht
+	// speichern lässt (lastRun im Speicher). Läuft im Hintergrund: ein Absturz darf das PDH nicht
+	// beenden.
+	defer func() {
+		p := recover()
+		if !started && p == nil {
+			return
+		}
+		now := h.esppdhClock()
+		u.mu.Lock()
+		u.lastRun = now
+		u.mu.Unlock()
+		if p == nil {
+			return
+		}
+		lg.Error().Interface("panic", p).Msg("esphome-prüfung abgestürzt")
+		msg, err = "Interner Fehler bei der Prüfung – Näheres steht im Server-Protokoll.", fmt.Errorf("esphome-prüfung abgestürzt: %v", p)
+		if started {
+			st.Result, st.CheckedAt = msg, now
+			if serr := esppdh.SaveUpdateState(st); serr != nil {
+				lg.Error().Err(serr).Msg("zustand der esphome-prüfung speichern")
+			}
 		}
 	}()
 
 	if msg := h.esppdhUpdateBlocked(ctx, force); msg != "" {
 		return msg, nil
 	}
-	st := esppdh.LoadUpdateState()
+	st = esppdh.LoadUpdateState()
+	started = true
 	st.Result = h.esppdhUpdateCheck(ctx, &st, force)
 	st.CheckedAt = h.esppdhClock()
-	lg := componentLog("esppdh")
 	if err := esppdh.SaveUpdateState(st); err != nil {
 		lg.Error().Err(err).Msg("zustand der esphome-prüfung speichern")
 		return st.Result, fmt.Errorf("Der Zustand der Prüfung ließ sich nicht speichern: %w", err)
@@ -266,11 +294,20 @@ func (h *Handler) esppdhUpdateCheck(ctx context.Context, st *esppdh.UpdateState,
 func (h *Handler) esppdhFailed(ctx context.Context, st *esppdh.UpdateState, cand, old, what, log string) string {
 	h.esppdhDiscard(ctx, cand)
 	st.FailedVersion, st.FailedPDH, st.FailedLog = cand, pdh.Version(), log
-	if st.NotifiedVersion != cand && !h.Mirror().On {
+	if h.Mirror().On {
+		return "ESPHome " + cand + " " + what + " – es bleibt bei " + old
+	}
+	// schon gemeldet – laut Zustandsdatei oder, falls sie sich nicht speichern ließ, im Speicher
+	u := &h.esppdhUpd
+	u.mu.Lock()
+	notified := u.notified == cand
+	u.notified = cand
+	u.mu.Unlock()
+	if st.NotifiedVersion != cand && !notified {
 		h.systemNotify(ctx, h.usersWithPerm(ctx, permESPAdmin, ""),
 			"ESPPDH: ESPHome "+cand+" "+what+". ESPPDH baut weiter mit ESPHome "+old+". Näheres unter Server-Einstellungen → ESPPDH.")
-		st.NotifiedVersion = cand
 	}
+	st.NotifiedVersion = cand
 	return "ESPHome " + cand + " " + what + " – es bleibt bei " + old
 }
 
