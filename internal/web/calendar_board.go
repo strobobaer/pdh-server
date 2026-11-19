@@ -485,6 +485,12 @@ func (h *Handler) buildCalendar(r *http.Request, board *leitstand) CalendarData 
 		}
 	}
 	if d.Show["project"] {
+		// Ansichtsrecht: angemeldete Personen sehen nur Projekte, die sie sehen dürfen
+		// (Ansichtsrecht oder beteiligt). Gäste im Leitstand: Task 5 (eigene Regel).
+		canViewProject := func(string) bool { return true }
+		if me.ID != "" {
+			canViewProject = h.viewFilter(r, "project")
+		}
 		args := []any{from, to}
 		sc, sa := scopeSQL(scope, "project", "p", len(args))
 		args = append(args, sa...)
@@ -497,7 +503,7 @@ func (h *Handler) buildCalendar(r *http.Request, board *leitstand) CalendarData 
 				var id, name string
 				var a, b time.Time
 				var ppl []string
-				if rs.Scan(&id, &name, &a, &b, &ppl) != nil {
+				if rs.Scan(&id, &name, &a, &b, &ppl) != nil || !canViewProject(id) {
 					continue
 				}
 				_ = ppl

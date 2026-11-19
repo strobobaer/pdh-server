@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
@@ -44,18 +45,69 @@ type copilotData struct {
 	userID string
 	scope  *deptScope
 	can    func(string) bool
+	// Ansichtsrecht für Projekte (limitProjects): Ohne Aufruf sieht der Copilot
+	// keine Projekte (sicherer Ausgangszustand).
+	projAll bool     // Recht überall: nichts zu filtern
+	projIDs []string // sonst: die sichtbaren Projekte
+	projCan func(string) bool
+}
+
+// limitProjects: legt fest, welche Projekte der Copilot der Person zeigt –
+// die, die sie mit Ansichtsrecht oder als Beteiligte sehen darf. Bei einem
+// Fehler bleibt die Liste leer.
+func (d *copilotData) limitProjects(r *http.Request) {
+	d.projCan = d.h.viewFilter(r, "project")
+	if d.h.viewsAll(r, "project") {
+		d.projAll = true
+		return
+	}
+	d.projAll, d.projIDs = false, nil
+	if d.h.db == nil {
+		return
+	}
+	rows, err := d.h.db.Query(r.Context(), `SELECT id::text FROM projects`)
+	if err != nil {
+		componentLog("copilot").Error().Err(err).Msg("sichtbare projekte laden")
+		return
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id string
+		if rows.Scan(&id) == nil && d.projCan(id) {
+			d.projIDs = append(d.projIDs, id)
+		}
+	}
+	if rows.Err() != nil {
+		componentLog("copilot").Error().Err(rows.Err()).Msg("sichtbare projekte lesen")
+		d.projIDs = nil
+	}
+}
+
+// projectVisible: darf der Copilot dieses Projekt zeigen?
+func (d *copilotData) projectVisible(id string) bool {
+	return d.projAll || (d.projCan != nil && d.projCan(id))
 }
 
 func (d *copilotData) allowed(k copilotKind) bool { return k.Perm == "" || d.can(k.Perm) }
 
-// where: Grundbedingungen (Archiv, Abteilungs-Sicht) ab Platzhalter n.
+// where: Grundbedingungen (Archiv, Abteilungs-Sicht, bei Projekten das
+// Ansichtsrecht) ab Platzhalter n.
 func (d *copilotData) where(k copilotKind, n int) (string, []any) {
 	w := " WHERE TRUE"
 	if k.Archived {
 		w += " AND r.archived_at IS NULL"
 	}
 	s, args := scopeSQL(d.scope, k.ScopeRef, "r", n)
-	return w + s, args
+	w += s
+	if k.Key == "project" && !d.projAll {
+		ids := d.projIDs
+		if ids == nil {
+			ids = []string{}
+		}
+		args = append(args, ids)
+		w += fmt.Sprintf(" AND r.id::text = ANY($%d)", n+len(args))
+	}
+	return w, args
 }
 
 func jsonOut(v any) (string, error) {
@@ -331,6 +383,9 @@ func (d *copilotData) getRecord(ctx context.Context, typ, id string) (string, er
 		return "", errors.New("keine Berechtigung oder unbekannte Art")
 	}
 	if !d.h.recordInScope(ctx, d.scope, k.ScopeRef, id) {
+		return "", errors.New("dieser Vorgang ist für die fragende Person nicht sichtbar")
+	}
+	if k.Key == "project" && !d.projectVisible(id) {
 		return "", errors.New("dieser Vorgang ist für die fragende Person nicht sichtbar")
 	}
 	extra := ", '' , ''"

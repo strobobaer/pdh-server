@@ -336,7 +336,7 @@ func (h *Handler) PartnerDetail(w http.ResponseWriter, r *http.Request) {
 	data.Infra = h.partnerInfra(ctx, id)
 	data.Parts, data.PartSupplyCost = h.partnerParts(ctx, id)
 	data.IT = h.partnerIT(ctx, id)
-	data.Records = h.partnerRecords(ctx, id)
+	data.Records = h.partnerRecords(r, id)
 	data.InfraFaults = h.partnerInfraFaults(ctx, id)
 	data.Links = h.partnerLinks(ctx, id)
 	data.LinkKinds = partnerLinkKinds
@@ -347,7 +347,7 @@ func (h *Handler) PartnerDetail(w http.ResponseWriter, r *http.Request) {
 	if data.CanEdit {
 		data.PartOptions = h.partnerSimpleOptions(ctx, `SELECT id::text, part_number || ' · ' || name FROM spare_parts WHERE active ORDER BY name LIMIT 3000`)
 		data.ITOptions = h.partnerSimpleOptions(ctx, `SELECT id::text, name || COALESCE(' · ' || NULLIF(model, ''), '') FROM it_assets ORDER BY name LIMIT 3000`)
-		data.RecordOptions = h.partnerRecordOptions(ctx)
+		data.RecordOptions = h.partnerRecordOptions(r)
 	}
 	h.render(w, "partner_detail", data)
 }
@@ -493,7 +493,11 @@ func recordRefURL(refType, id string) (string, string) {
 	return "", refType
 }
 
-func (h *Handler) partnerRecords(ctx context.Context, partnerID string) []PartnerRecordRow {
+// partnerRecords: Vorgänge, denen der Partner zugewiesen ist. Projekte nur,
+// wenn die Person sie sehen darf.
+func (h *Handler) partnerRecords(r *http.Request, partnerID string) []PartnerRecordRow {
+	ctx := r.Context()
+	canViewProject := h.viewFilter(r, "project")
 	rows, err := h.db.Query(ctx, `
 		SELECT rp.id::text, rp.ref_type, rp.ref_id::text, rp.role, to_char(rp.created_at, 'DD.MM.YYYY'),
 		       COALESCE(t.title, f.title, m.title, ta.title, p.name, '(gelöscht)'),
@@ -515,6 +519,9 @@ func (h *Handler) partnerRecords(ctx context.Context, partnerID string) []Partne
 		var rec PartnerRecordRow
 		var refID, role, status string
 		if rows.Scan(&rec.PartyID, &rec.RefType, &refID, &role, &rec.Date, &rec.Title, &status) != nil {
+			continue
+		}
+		if rec.RefType == "project" && !canViewProject(refID) {
 			continue
 		}
 		rec.URL, rec.ModuleLabel = recordRefURL(rec.RefType, refID)
@@ -572,7 +579,9 @@ func (h *Handler) partnerSimpleOptions(ctx context.Context, query string) []part
 
 // partnerRecordOptions: offene Vorgaenge, denen der Partner als externe
 // Firma zugewiesen werden kann (gruppiert nach Modul).
-func (h *Handler) partnerRecordOptions(ctx context.Context) []partnerOptionGroup {
+func (h *Handler) partnerRecordOptions(r *http.Request) []partnerOptionGroup {
+	ctx := r.Context()
+	canViewProject := h.viewFilter(r, "project")
 	rows, err := h.db.Query(ctx, `
 		SELECT ref_type, id, title FROM (
 			SELECT 'fault' AS ref_type, id::text AS id, title::text AS title, created_at FROM faults
@@ -594,6 +603,9 @@ func (h *Handler) partnerRecordOptions(ctx context.Context) []partnerOptionGroup
 	for rows.Next() {
 		var refType, id, title string
 		if rows.Scan(&refType, &id, &title) == nil {
+			if refType == "project" && !canViewProject(id) {
+				continue
+			}
 			byType[refType] = append(byType[refType], partnerOption{Value: refType + ":" + id, Label: title})
 		}
 	}

@@ -209,7 +209,7 @@ func (h *Handler) UserDetailPage(w http.ResponseWriter, r *http.Request) {
 			d.Error = "Die gekoppelten Geräte konnten nicht geladen werden"
 		}
 	}
-	d.Responsibilities = h.userResponsibilities(ctx, id)
+	d.Responsibilities = h.userResponsibilities(r, id)
 	// Broker: offene Vorgänge seiner Arten ohne Zuweisung (Sichtbarkeit des Betrachters)
 	for _, g := range h.brokerUnassigned(ctx, r, id, 50, false, false) {
 		if len(g.Items) > 0 {
@@ -306,7 +306,12 @@ func userResponsibilityWho(alias string) string {
 
 // userResponsibilities: offene Vorgaenge, fuer die der Benutzer zustaendig,
 // verantwortlich oder ueber eine Gruppe zugewiesen ist.
-func (h *Handler) userResponsibilities(ctx context.Context, id string) []userResponsibility {
+// Projekte erscheinen nur, wenn die betrachtende Person sie sehen darf. Die
+// eigenen Zuständigkeiten bleiben immer sichtbar: Wer zuständig oder
+// verantwortlich ist, ist am Projekt beteiligt.
+func (h *Handler) userResponsibilities(r *http.Request, id string) []userResponsibility {
+	ctx := r.Context()
+	canViewProject := h.viewFilter(r, "project")
 	rows, err := h.db.Query(ctx, `
 		SELECT * FROM (
 			SELECT 'Störung' AS m, f.title::text AS t, '/faults/' || f.id AS u, `+userResponsibilityRole("f")+` AS r, f.status::text AS s,
@@ -319,10 +324,10 @@ func (h *Handler) userResponsibilities(ctx context.Context, id string) []userRes
 			UNION ALL
 			SELECT 'Aufgabe', a.title::text, '/tasks/' || a.id,
 			       CASE WHEN a.responsible_to = $1::uuid THEN 'Verantwortlich'
-			            WHEN a.assigned_to = $1::uuid OR EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id = a.id AND ta.user_id = $1::uuid) THEN 'Zuständig'
+			            WHEN EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id = a.id AND ta.user_id = $1::uuid) THEN 'Zuständig'
 			            ELSE 'Gruppe' END,
 			       a.status::text, COALESCE(to_char(a.due_date, 'DD.MM.YYYY'), ''), a.created_at
-			FROM tasks a WHERE (`+userResponsibilityWho("a")+`
+			FROM tasks a WHERE (a.responsible_to = $1::uuid OR a.assigned_group_id IN (SELECT gm.group_id FROM user_group_members gm WHERE gm.user_id = $1::uuid)
 			                    OR EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id = a.id AND ta.user_id = $1::uuid))
 			  AND a.status NOT IN ('resolved', 'closed', 'done', 'skipped') AND a.archived_at IS NULL
 			UNION ALL
@@ -345,6 +350,9 @@ func (h *Handler) userResponsibilities(ctx context.Context, id string) []userRes
 		var status string
 		var created time.Time
 		if rows.Scan(&it.Module, &it.Title, &it.URL, &it.Role, &status, &it.Due, &created) == nil {
+			if pid, ok := strings.CutPrefix(it.URL, "/projects/"); ok && !canViewProject(pid) {
+				continue
+			}
 			it.StatusLabel, it.StatusClass = statusLabel(status), statusClass(status)
 			list = append(list, it)
 		}

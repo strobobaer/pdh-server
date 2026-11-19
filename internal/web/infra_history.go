@@ -259,8 +259,58 @@ WITH RECURSIVE` + infraScopeCTE + `,` + infraStockMovesCTE + `,
 		  AND ($5::date IS NULL OR e.occurred_at < $5::date + 1)
 		  AND ($6::text = ''
 		       OR e.module NOT IN ('fault', 'ticket', 'task', 'maintenance', 'project', 'setup')
-		       OR (($6::text = 'closed') = (e.status IN ('resolved', 'closed', 'done', 'skipped', 'completed', 'fault'))))
+		       OR (($6::text = 'closed') = (e.status IN ('resolved', 'closed', 'done', 'skipped', 'completed', 'fault'))))` + infraHistoryHideMark + `
 	)`
+
+// infraHistoryHideMark: Platzhalter am Ende der Bedingung von "filtered"; dort
+// kommen die Projekte hinein, die die Person nicht sehen darf (infraHistorySQL).
+const infraHistoryHideMark = ` /*HIDE*/`
+
+// infraHistorySQL: die Historien-Abfrage ohne die Projekt-Einträge (und die
+// Kommentare an Projekten), die hidden (Projekt-IDs) nennt. So zählen Zähler,
+// Seitengrenze und Gruppen nur Sichtbares. Die IDs stammen aus der Datenbank
+// und werden trotzdem als UUID geprüft; eine ungültige wird übersprungen.
+func infraHistorySQL(hidden []string) string {
+	var urls []string
+	for _, id := range hidden {
+		if bareUUIDRe.MatchString(id) {
+			urls = append(urls, `'/projects/`+id+`'`)
+		}
+	}
+	if len(urls) == 0 {
+		return infraHistoryBaseSQL
+	}
+	return strings.Replace(infraHistoryBaseSQL, infraHistoryHideMark, ` AND e.url <> ALL(ARRAY[`+strings.Join(urls, ",")+`]::text[])`, 1)
+}
+
+// hiddenProjectIDs: alle Projekte, die die Person nicht sehen darf (bei Recht
+// überall: keine). Bei einem Fehler wird mit dem Fehler abgebrochen, damit die
+// Historie nie ungefiltert erscheint.
+func (h *Handler) hiddenProjectIDs(r *http.Request) ([]string, error) {
+	if h.viewsAll(r, "project") {
+		return nil, nil
+	}
+	if h.db == nil {
+		return nil, errViewNoDB
+	}
+	rows, err := h.db.Query(r.Context(), `SELECT id::text FROM projects`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	canView := h.viewFilter(r, "project")
+	var out []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		if !canView(id) {
+			out = append(out, id)
+		}
+	}
+	return out, rows.Err()
+}
 
 // InfraHistoryEntry ist ein Eintrag der Anlagen-Zeitleiste.
 type InfraHistoryEntry struct {
@@ -459,10 +509,18 @@ func formatEuro(v float64) string {
 func (h *Handler) loadInfraHistory(ctx context.Context, r *http.Request, infraID string, f infraHistoryFilter, limit int) (*InfraHistoryResult, error) {
 	res := &InfraHistoryResult{InfraID: infraID, Filter: f}
 	args := f.args(infraID)
+	// Ansichtsrecht: Projekte (und Kommentare an Projekten), die die Person nicht sehen darf, fehlen
+	// schon in der Abfrage – Zähler, Seitengrenze und Gruppen zählen nur Sichtbares.
+	hidden, err := h.hiddenProjectIDs(r)
+	if err != nil {
+		componentLog("rechte").Error().Err(err).Msg("anlagen-historie: nicht sichtbare projekte laden")
+		return nil, err
+	}
+	baseSQL := infraHistorySQL(hidden)
 
 	// Modul-Zaehler (ohne Modulfilter, damit die Chips zeigen, was es gibt)
 	counts := map[string]int{}
-	if rows, err := h.db.Query(ctx, infraHistoryBaseSQL+` SELECT module, COUNT(*) FROM filtered GROUP BY module`, args...); err == nil {
+	if rows, err := h.db.Query(ctx, baseSQL+` SELECT module, COUNT(*) FROM filtered GROUP BY module`, args...); err == nil {
 		for rows.Next() {
 			var m string
 			var n int
@@ -499,7 +557,7 @@ func (h *Handler) loadInfraHistory(ctx context.Context, r *http.Request, infraID
 		orderBy = "occurred_at ASC, id ASC"
 	}
 	listArgs := append(args, f.Modules)
-	rows, err := h.db.Query(ctx, infraHistoryBaseSQL+fmt.Sprintf(`
+	rows, err := h.db.Query(ctx, baseSQL+fmt.Sprintf(`
 		SELECT module, id, title, body, status, occurred_at, closed_at, url, author, author_id,
 		       infra_id, infra_name, parent_title, qty::float8, unit, pinned
 		FROM filtered WHERE module = ANY($7::text[])
@@ -600,14 +658,19 @@ func (h *Handler) loadInfraHistory(ctx context.Context, r *http.Request, infraID
 	// Angeheftete Kommentare - unabhaengig von Filtern immer sichtbar
 	if prow, err := h.db.Query(ctx, `
 		SELECT c.id::text, c.text, c.created_at, COALESCE(c.created_by::text, ''),
-		       COALESCE(NULLIF(TRIM(COALESCE(u.first_name, '') || ' ' || COALESCE(u.last_name, '')), ''), 'System')
+		       COALESCE(NULLIF(TRIM(COALESCE(u.first_name, '') || ' ' || COALESCE(u.last_name, '')), ''), 'System'),
+		       CASE WHEN c.ref_type = 'project' THEN c.ref_id::text ELSE '' END
 		FROM infrastructure_comments c LEFT JOIN users u ON u.id = c.created_by
 		WHERE c.infrastructure_id = $1 AND c.pinned
 		ORDER BY c.created_at DESC`, infraID); err == nil {
+		hiddenSet := map[string]bool{}
+		for _, id := range hidden {
+			hiddenSet[id] = true
+		}
 		for prow.Next() {
 			var e InfraHistoryEntry
-			var authorID string
-			if prow.Scan(&e.ID, &e.Body, &e.OccurredAt, &authorID, &e.Author) == nil {
+			var authorID, projRef string
+			if prow.Scan(&e.ID, &e.Body, &e.OccurredAt, &authorID, &e.Author, &projRef) == nil && !hiddenSet[projRef] {
 				e.Module, e.Pinned = "comment", true
 				e.DateLabel = e.OccurredAt.Local().Format("02.01.2006 15:04")
 				e.CanEdit = h.canModerateInfraComment(r, authorID)
@@ -745,10 +808,12 @@ type InfraCommentRefOption struct {
 
 // infraCommentRefOptions listet die juengsten Vorgaenge der Anlage als
 // moegliche Bezuege eines Kommentars.
-func (h *Handler) infraCommentRefOptions(ctx context.Context, infraID string) []InfraCommentRefOption {
+func (h *Handler) infraCommentRefOptions(r *http.Request, infraID string) []InfraCommentRefOption {
+	ctx := r.Context()
 	if h.db == nil {
 		return nil
 	}
+	canViewProject := h.viewFilter(r, "project")
 	rows, err := h.db.Query(ctx, `
 		SELECT ref_type, id, title FROM (
 			SELECT 'fault' AS ref_type, id::text AS id, title::text AS title, created_at FROM faults WHERE infrastructure_id = $1
@@ -765,6 +830,9 @@ func (h *Handler) infraCommentRefOptions(ctx context.Context, infraID string) []
 	for rows.Next() {
 		var refType, id, title string
 		if rows.Scan(&refType, &id, &title) != nil {
+			continue
+		}
+		if refType == "project" && !canViewProject(id) {
 			continue
 		}
 		list = append(list, InfraCommentRefOption{
