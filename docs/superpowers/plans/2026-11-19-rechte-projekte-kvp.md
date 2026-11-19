@@ -103,6 +103,8 @@
 - Modify: `internal/web/calendar_board.go` (`CalendarBoardFragment`, `buildCalendar`), `internal/web/uploads.go` (`UploadsHandler`) + Tests (`calendar_board_test.go` o. ä., `uploads_test.go`)
 - Vorher: prüfen, dass keine Seite und kein Skript des PDH Ordnerlisten unter `/uploads/` lädt (`grep -rn "uploads/" web/ internal/`); Ergebnis in den Bericht.
 
+- **Ergänzt nach der Prüfung von Task 4 (19.11.2026):** Pfadabschnitte, die eine UUID in **anderer** Schreibweise sind (32 Hex-Zeichen ohne Bindestriche, `{…}`, `urn:uuid:…`), werden zentral abgelehnt (404), bevor Abteilungssperre, Gate und Handler laufen – sonst greifen `scopePaths`/`gateRules` (kennen nur die Normalform) nicht, während Postgres die Schreibweise annimmt (z. B. `GET /api/v1/projects/<32 hex>` lieferte das Projekt ungeprüft). Test `TestNonCanonicalUUIDPathRejected` (Web- und `/api/v1`-Pfade; Normalform weiter 200).
+
 - [ ] **Schritt 1: Tests.** `TestCalendarGuestIgnoresQuery` (Gast mit `?b=<slug>&set=1&show=project&show=fault&dept=<andere>&group=<andere>&user=<x>` → nur Arten, Abteilung und Gruppe des Leitstands; Projekt einer anderen Abteilung fehlt). `TestCalendarGuestWithoutBoard` (Gast ohne bzw. mit ungültigem `b` → 404). `TestCalendarBoardLoggedInRespectsRights` (angemeldet ohne `projects.view`: keine Projektzeilen). `TestUploadsNoDirectoryListing` (`/uploads/`, `/uploads/ticket/`, `/uploads/ticket` → 404; eine vorhandene Datei → 200; `uploads/esppdh` weiterhin 404).
 - [ ] **Schritt 2–4:** scheitern, umsetzen (Ordner erkennen über `os.Stat` des bereinigten Pfads im Upload-Verzeichnis → 404), `go test ./internal/web` grün.
 - [ ] **Schritt 5:** Commit „Sicherheit: Leitstand-Kalender zeigt Gästen nur seine Einstellung; keine Ordnerlisten unter /uploads/“.
