@@ -151,15 +151,16 @@ func (h *Handler) allowedIDsFor(ctx context.Context, s *deptScope, refType strin
 }
 
 // recordInScope: darf die Person den Vorgang sehen? Unbekannte IDs gelten als
-// erlaubt (der eigentliche Handler meldet dann "nicht gefunden").
+// erlaubt (der eigentliche Handler meldet dann "nicht gefunden"); eine ID, die keine gültige UUID ist, gilt als
+// nicht sichtbar.
 func (h *Handler) recordInScope(ctx context.Context, s *deptScope, refType, id string) bool {
 	st, ok := scopeTables[refType]
 	if s == nil || !ok {
 		return true
 	}
 	var exists, allowed bool
-	err := h.db.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM `+st.table+` r WHERE r.id::text = $3),
-		EXISTS (SELECT 1 FROM `+st.table+` r WHERE r.id::text = $3 AND `+scopeWhere(st)+`)`, s.UserID, s.Departments, id).Scan(&exists, &allowed)
+	err := h.db.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM `+st.table+` r WHERE r.id = $3::uuid),
+		EXISTS (SELECT 1 FROM `+st.table+` r WHERE r.id = $3::uuid AND `+scopeWhere(st)+`)`, s.UserID, s.Departments, id).Scan(&exists, &allowed)
 	if err != nil {
 		return false
 	}

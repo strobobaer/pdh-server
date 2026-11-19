@@ -3,42 +3,96 @@ package web
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+
+	"github.com/go-chi/chi/v5"
 )
 
 // Kennungen in anderer Schreibweise (32 Hexziffern, Klammern, urn:uuid:) werden früh abgewiesen,
-// bevor Abteilungs- und Rechteprüfung den Pfad ansehen (uuid_path.go).
+// bevor Abteilungs- und Rechteprüfung den Pfad ansehen (uuid_path.go). Die groß geschriebene
+// Normalform wird bei GET/HEAD auf die Kleinschreibung umgeleitet.
 func TestNonCanonicalUUIDPathRejected(t *testing.T) {
 	const id = "01a18200-0000-7000-8000-000000000001"
+	const upper = "01A18200-0000-7000-8000-000000000001"
 	const hex = "01a18200000070008000000000000001"
 	ok := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
 	h := NonCanonicalUUIDPathMiddleware(ok)
-	code := func(p string) int {
-		r := httptest.NewRequest("GET", "/", nil)
-		r.URL.Path = p
+	do := func(method, p, query string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(method, "/", nil)
+		r.URL.Path, r.URL.RawQuery = p, query
 		w := httptest.NewRecorder()
 		h.ServeHTTP(w, r)
-		return w.Code
+		return w
 	}
 	for _, p := range []string{
 		"/projects/" + hex, "/api/v1/projects/" + hex, "/api/v1/projects/{" + id + "}", "/api/v1/projects/{" + hex + "}",
 		"/api/v1/projects/urn:uuid:" + id, "/api/v1/projects/URN:UUID:" + id, "/tickets/" + hex + "/edit",
 		"/api/v1/attachments/kvp/" + hex, "/records/fault/" + hex, "/projects/01a18200-0000-7000-80000000-00000001",
-		"/projects/01A18200000070008000000000000001", "/api/v1/projects/01A18200-0000-7000-8000-000000000001",
+		"/projects/01A18200000070008000000000000001", "/certificates/" + hex + "/p12",
 	} {
-		if c := code(p); c != http.StatusNotFound {
+		if c := do("GET", p, "").Code; c != http.StatusNotFound {
 			t.Errorf("%s: %d, erwartet 404", p, c)
 		}
 	}
+	// Schnittstelle: JSON statt Text
+	w := do("GET", "/api/v1/projects/"+hex, "")
+	if ct := w.Header().Get("Content-Type"); !strings.HasPrefix(ct, "application/json") || strings.TrimSpace(w.Body.String()) != `{"success":false,"error":"nicht gefunden"}` {
+		t.Errorf("API-Antwort: %q %q", ct, w.Body.String())
+	}
+	if ct := do("GET", "/projects/"+hex, "").Header().Get("Content-Type"); strings.HasPrefix(ct, "application/json") {
+		t.Errorf("Web-Antwort sollte kein JSON sein: %q", ct)
+	}
+	// groß geschriebene Normalform: GET/HEAD -> 301 auf Kleinschreibung, Abfrage bleibt
+	for _, m := range []string{"GET", "HEAD"} {
+		w := do(m, "/api/v1/projects/"+upper+"/tasks", "a=1&b=X")
+		if w.Code != http.StatusMovedPermanently || w.Header().Get("Location") != "/api/v1/projects/"+id+"/tasks?a=1&b=X" {
+			t.Errorf("%s groß: %d %q", m, w.Code, w.Header().Get("Location"))
+		}
+	}
+	if w := do("GET", "/records/"+upper+"/x/"+upper, ""); w.Code != http.StatusMovedPermanently || w.Header().Get("Location") != "/records/"+id+"/x/"+id {
+		t.Errorf("mehrere Segmente: %d %q", w.Code, w.Header().Get("Location"))
+	}
+	for _, m := range []string{"POST", "PUT", "DELETE"} {
+		if c := do(m, "/api/v1/projects/"+upper, "").Code; c != http.StatusNotFound {
+			t.Errorf("%s groß: %d, erwartet 404", m, c)
+		}
+	}
 	for _, p := range []string{
-		"/projects/" + id, "/api/v1/projects/" + id, "/projects", "/api/v1/projects/",
-		"/tickets/" + id + "/edit",
+		"/projects/" + id, "/api/v1/projects/" + id, "/projects", "/api/v1/projects/", "/tickets/" + id + "/edit",
 		// Bereiche mit Dateinamen/Prüfsummen bleiben unberührt
-		"/uploads/" + hex + ".png", "/static/" + hex + ".js", "/certificates/" + id + "/" + hex, "/global/b/" + hex, "/pki/ca.crt",
+		"/uploads/" + hex + ".png", "/static/" + hex + ".js", "/global/b/" + hex, "/pki/ca.crt",
 		"/import/esppdh/" + id + "/firmware/" + id + "/factory.bin",
 	} {
-		if c := code(p); c != http.StatusOK {
+		if c := do("GET", p, "").Code; c != http.StatusOK {
 			t.Errorf("%s: %d, erwartet 200", p, c)
 		}
+	}
+}
+
+// Durch die echte Reihenfolge der Prüfungen (Middleware vor Rechte-Sperre und Abteilungsfilter, API
+// unter /api/v1 mit APIDepartmentScope): die Schreibweisen kommen gar nicht erst bis zum Handler.
+func TestNonCanonicalUUIDPathThroughChain(t *testing.T) {
+	const id = "01a18200-0000-7000-8000-000000000001"
+	h := &Handler{}
+	reached := false
+	r := chi.NewRouter()
+	r.Use(NonCanonicalUUIDPathMiddleware, h.PermissionGateMiddleware)
+	r.Route("/api/v1", func(r chi.Router) {
+		r.Use(h.APIDepartmentScope)
+		r.Get("/projects/{id}", func(w http.ResponseWriter, r *http.Request) { reached = true })
+	})
+	get := func(p string) *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest("GET", "/", nil)
+		req.URL.Path = p
+		r.ServeHTTP(w, req)
+		return w
+	}
+	if w := get("/api/v1/projects/01a18200000070008000000000000001"); w.Code != http.StatusNotFound || !strings.Contains(w.Body.String(), `"success":false`) || reached {
+		t.Errorf("32 Hex: %d %q erreicht=%v", w.Code, w.Body.String(), reached)
+	}
+	if w := get("/api/v1/projects/01A18200-0000-7000-8000-000000000001"); w.Code != http.StatusMovedPermanently || w.Header().Get("Location") != "/api/v1/projects/"+id || reached {
+		t.Errorf("groß: %d %q erreicht=%v", w.Code, w.Header().Get("Location"), reached)
 	}
 }

@@ -91,7 +91,7 @@ type CalendarData struct {
 	Conflicts, Warns  int
 	Counts            map[string]int
 	LoadErrors        []string // Arten, die nicht geladen werden konnten (statt still zu fehlen)
-	Embed             bool     // als Baustein im Leitstand (/global/calendar)
+	Guest, Embed      bool     // als Baustein im Leitstand (/global/calendar)
 	ThisWeek          string   // Montag der laufenden Woche
 	Weeks             []calWeek
 	ProjectRows       []calRow // Projekte ganz oben, ohne Personen-Zuordnung
@@ -154,7 +154,6 @@ func (h *Handler) buildCalendar(r *http.Request, board *leitstand) CalendarData 
 	// zählt nicht – es gilt genau die Einstellung des Leitstands. Nur der Zeitraum (from, days) bleibt frei.
 	guest := embed && me.ID == ""
 	var boardIDs map[string]map[string]bool
-	var guestScope *deptScope
 	if guest {
 		keep := url.Values{}
 		for _, k := range []string{"from", "days"} {
@@ -164,9 +163,6 @@ func (h *Handler) buildCalendar(r *http.Request, board *leitstand) CalendarData 
 		}
 		q = keep
 		boardIDs = h.boardAllowedIDs(ctx, board)
-		if board.DepartmentID != "" {
-			guestScope = h.boardDeptScope(ctx, board.DepartmentID)
-		}
 	}
 	// Auswahl: aus der Adresse, sonst die zuletzt gemerkte (nur auf der Seite)
 	if embed {
@@ -198,7 +194,7 @@ func (h *Handler) buildCalendar(r *http.Request, board *leitstand) CalendarData 
 	}
 	d := CalendarData{
 		Kinds: calKinds, Ranges: calRanges, Show: map[string]bool{}, Counts: map[string]int{},
-		Dept: q.Get("dept"), Group: q.Get("group"), User: q.Get("user"), Embed: embed,
+		Dept: q.Get("dept"), Group: q.Get("group"), User: q.Get("user"), Embed: embed, Guest: guest,
 	}
 	if embed {
 		d.Board = board.Slug
@@ -263,7 +259,9 @@ func (h *Handler) buildCalendar(r *http.Request, board *leitstand) CalendarData 
 		d.Days = append(d.Days, plannerDay{Date: ds, Label: t.Format("02.01."), Short: weekdayShort[t.Weekday()], Holiday: free[ds],
 			Weekend: t.Weekday() == time.Saturday || t.Weekday() == time.Sunday, Today: ds == d.Today})
 	}
-	d.Depts, d.Groups, d.Users = h.plannerDeptOptions(ctx), h.plannerGroupOptions(ctx), h.userOptions(ctx)
+	if !guest { // Gäste bekommen keine Namenslisten (Abteilungen, Gruppen, Personen)
+		d.Depts, d.Groups, d.Users = h.plannerDeptOptions(ctx), h.plannerGroupOptions(ctx), h.userOptions(ctx)
+	}
 
 	// Personen (Filter Abteilung/Gruppe/Person)
 	people := h.plannerUsers(ctx, d.Dept, d.Group)
@@ -307,9 +305,6 @@ func (h *Handler) buildCalendar(r *http.Request, board *leitstand) CalendarData 
 		return &row.Cells[c]
 	}
 	scope := h.requestScope(r)
-	if guest {
-		scope = guestScope // Gäste: nur Vorgänge der Abteilung des Leitstands
-	}
 	planner := h.canShiftPlan(r)
 
 	if d.Show["absence"] {
@@ -517,10 +512,13 @@ func (h *Handler) buildCalendar(r *http.Request, board *leitstand) CalendarData 
 	}
 	if d.Show["project"] {
 		// Ansichtsrecht: angemeldete Personen sehen nur Projekte, die sie sehen dürfen
-		// (Ansichtsrecht oder beteiligt). Gäste im Leitstand: nur die Abteilung des Leitstands (guestScope).
+		// (Ansichtsrecht oder beteiligt). Gäste im Leitstand: nur Projekte des Leitstands (boardIDs).
 		canViewProject := func(string) bool { return true }
 		if me.ID != "" {
 			canViewProject = h.viewFilter(r, "project")
+		}
+		if guest {
+			canViewProject = func(id string) bool { return boardIDs == nil || boardIDs["project"][id] }
 		}
 		args := []any{from, to}
 		sc, sa := scopeSQL(scope, "project", "p", len(args))
@@ -623,28 +621,6 @@ func (h *Handler) buildCalendar(r *http.Request, board *leitstand) CalendarData 
 		d.Rows = append(d.Rows, *nobody)
 	}
 	return d
-}
-
-// boardDeptScope: Einschränkung für Gäste eines Leitstands – die Abteilung und ihre
-// Unterabteilungen; die „Person“ ist die Nullkennung, es gibt also keine Beteiligung.
-func (h *Handler) boardDeptScope(ctx context.Context, deptID string) *deptScope {
-	deps := []string{}
-	if h.db != nil {
-		rows, err := h.db.Query(ctx, `WITH RECURSIVE sub AS (
-				SELECT id FROM departments WHERE id = $1::uuid
-				UNION ALL SELECT c.id FROM departments c JOIN sub ON c.parent_id = sub.id
-			) SELECT id::text FROM sub`, deptID)
-		if err == nil {
-			for rows.Next() {
-				var id string
-				if rows.Scan(&id) == nil {
-					deps = append(deps, id)
-				}
-			}
-			rows.Close()
-		}
-	}
-	return &deptScope{UserID: "00000000-0000-0000-0000-000000000000", Departments: deps}
 }
 
 // calMovable: Vorgänge, deren Fälligkeit sich im Kalender per Ziehen verschieben lässt.

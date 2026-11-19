@@ -2,6 +2,7 @@ package web
 
 import (
 	"net/http"
+	"net/url"
 	"regexp"
 	"strings"
 )
@@ -12,9 +13,8 @@ import (
 // Handler, der die Pfad-ID unverändert an SQL gibt, ließe sich damit an den Prüfungen vorbei
 // ansprechen. Darum antwortet diese Middleware (vor allen Prüfungen, für Web und /api/v1) auf
 // jeden Pfadteil in solch einer Schreibweise mit 404. Auch die groß geschriebene Normalform
-// zählt dazu: Die Pfadregeln (uuidRe) erkennen sie, aber recordInScope vergleicht `id::text = $3`
-// buchstabengenau, fände den Datensatz nicht und ließe ihn durch, während der Handler ihn über
-// `::uuid` trotzdem lädt.
+// zählt dazu (sie wird bei GET/HEAD umgeleitet): Die Pfadregeln (uuidRe) erkennen sie, aber ältere
+// Vergleiche `id::text = …` fänden den Datensatz nicht; recordInScope vergleicht inzwischen als UUID.
 var (
 	uuidCanonicalSegRe = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 	uuidLooseSegRe     = regexp.MustCompile(`^[0-9a-fA-F-]+$`)
@@ -25,11 +25,15 @@ var (
 // trägt Datensatz-IDs und wird geprüft.
 var uuidPathExempt = []string{
 	"/static/", "/uploads/", "/vendor/", "/pki/", "/sso/", "/n8n", "/pgadmin", "/grafana/", "/code/",
-	"/api/terminal/", "/certificates/", "/datanet/download/", "/global/b/", "/health",
+	"/api/terminal/", "/datanet/download/", "/global/b/", "/health",
 }
 
+// uuidUpperSegRe: groß (oder gemischt) geschriebene Normalform 8-4-4-4-12.
+var uuidUpperSegRe = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+
 // nonCanonicalUUIDSegment: ist der Pfadteil eine UUID in anderer Schreibweise als der
-// klein geschriebenen Normalform 8-4-4-4-12?
+// klein geschriebenen Normalform 8-4-4-4-12? (Auch die groß geschriebene Normalform zählt dazu;
+// sie wird aber umgeleitet, siehe unten.)
 func nonCanonicalUUIDSegment(seg string) bool {
 	if len(seg) < 32 {
 		return false
@@ -40,7 +44,7 @@ func nonCanonicalUUIDSegment(seg string) bool {
 	}
 	if len(t) >= 2 && t[0] == '{' && t[len(t)-1] == '}' {
 		t = t[1 : len(t)-1]
-		if uuidCanonicalSegRe.MatchString(t) {
+		if uuidUpperSegRe.MatchString(t) {
 			return true
 		}
 	}
@@ -50,7 +54,10 @@ func nonCanonicalUUIDSegment(seg string) bool {
 	return len(strings.ReplaceAll(t, "-", "")) == 32
 }
 
-// NonCanonicalUUIDPathMiddleware: 404 für Pfade mit einer UUID in nicht-kanonischer Schreibweise.
+// NonCanonicalUUIDPathMiddleware: Pfade mit einer UUID in nicht-kanonischer Schreibweise
+// bekommen 404 (unter /api/v1 als JSON). Nur die groß geschriebene Normalform wird bei GET und
+// HEAD mit 301 auf dieselbe Adresse in Kleinschreibung umgeleitet (Abfrage bleibt erhalten);
+// bei anderen Methoden gilt auch sie als nicht gefunden.
 func NonCanonicalUUIDPathMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		p := r.URL.Path
@@ -60,13 +67,39 @@ func NonCanonicalUUIDPathMiddleware(next http.Handler) http.Handler {
 				return
 			}
 		}
-		for _, seg := range strings.Split(p, "/") {
+		segs := strings.Split(p, "/")
+		upper := false
+		for i, seg := range segs {
+			if uuidUpperSegRe.MatchString(seg) && !uuidCanonicalSegRe.MatchString(seg) {
+				upper = true
+				segs[i] = strings.ToLower(seg)
+				continue
+			}
 			if nonCanonicalUUIDSegment(seg) {
-				componentLog("rechte").Debug().Str("pfad", p).Msg("kennung in ungewöhnlicher Schreibweise abgewiesen")
-				http.Error(w, "Nicht gefunden.", http.StatusNotFound)
+				uuidPathNotFound(w, r)
 				return
 			}
 		}
+		if upper {
+			if r.Method != http.MethodGet && r.Method != http.MethodHead {
+				uuidPathNotFound(w, r)
+				return
+			}
+			u := url.URL{Path: strings.Join(segs, "/"), RawQuery: r.URL.RawQuery}
+			http.Redirect(w, r, u.String(), http.StatusMovedPermanently)
+			return
+		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+func uuidPathNotFound(w http.ResponseWriter, r *http.Request) {
+	componentLog("rechte").Debug().Str("pfad", r.URL.Path).Msg("kennung in ungewöhnlicher Schreibweise abgewiesen")
+	if strings.HasPrefix(r.URL.Path, "/api/") {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"success":false,"error":"nicht gefunden"}`))
+		return
+	}
+	http.Error(w, "Nicht gefunden.", http.StatusNotFound)
 }

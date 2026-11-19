@@ -9,15 +9,15 @@
     <a class="btn btn-icon cal-nav" href="{{if .Embed}}/global/calendar?b={{.Board}}&{{else}}/calendar?{{end}}set=1&from={{.Next}}&days={{.Range}}{{range $k, $v := .Show}}&show={{$k}}{{end}}&dept={{.Dept}}&group={{.Group}}&user={{.User}}&busy={{if .OnlyBusy}}1{{else}}0{{end}}" title="Weiter"><i class="ti ti-chevron-right"></i></a>
     {{if ne .From .ThisWeek}}<a class="btn btn-small cal-nav" href="{{if .Embed}}/global/calendar?b={{.Board}}&{{else}}/calendar?{{end}}set=1&from={{.ThisWeek}}&days={{.Range}}{{range $k, $v := .Show}}&show={{$k}}{{end}}&dept={{.Dept}}&group={{.Group}}&user={{.User}}&busy={{if .OnlyBusy}}1{{else}}0{{end}}">Diese Woche</a>{{end}}
     <select name="days" class="form-input" style="width:auto" onchange="this.form.requestSubmit()">{{range .Ranges}}<option value="{{.}}" {{if eq . $.Range}}selected{{end}}>{{if eq . 7}}1 Woche{{else if eq . 14}}2 Wochen{{else if eq . 21}}3 Wochen{{else if eq . 28}}4 Wochen{{else}}6 Wochen{{end}}</option>{{end}}</select>
-    <select name="dept" class="form-input" style="width:auto" onchange="this.form.requestSubmit()"><option value="">Alle Abteilungen</option>{{range .Depts}}<option value="{{.Value}}" {{if eq .Value $.Dept}}selected{{end}}>{{.Label}}</option>{{end}}</select>
+    {{if not .Guest}}<select name="dept" class="form-input" style="width:auto" onchange="this.form.requestSubmit()"><option value="">Alle Abteilungen</option>{{range .Depts}}<option value="{{.Value}}" {{if eq .Value $.Dept}}selected{{end}}>{{.Label}}</option>{{end}}</select>
     <select name="group" class="form-input" style="width:auto" onchange="this.form.requestSubmit()"><option value="">Alle Gruppen</option>{{range .Groups}}<option value="{{.Value}}" {{if eq .Value $.Group}}selected{{end}}>{{.Label}}</option>{{end}}</select>
-    <select name="user" class="form-input" style="width:auto" onchange="this.form.requestSubmit()"><option value="">Alle Personen</option>{{range .Users}}<option value="{{.ID}}" {{if eq .ID $.User}}selected{{end}}>{{.Name}}</option>{{end}}</select>
+    <select name="user" class="form-input" style="width:auto" onchange="this.form.requestSubmit()"><option value="">Alle Personen</option>{{range .Users}}<option value="{{.ID}}" {{if eq .ID $.User}}selected{{end}}>{{.Name}}</option>{{end}}</select>{{end}}
   </div>
-  <div class="cal-row">
+  {{if not .Guest}}<div class="cal-row">
     {{range .Kinds}}<label class="cal-kind" style="--kc:{{css .Color}}"><input type="checkbox" name="show" value="{{.Key}}" {{if index $.Show .Key}}checked{{end}} onchange="this.form.requestSubmit()"><i class="ti {{.Icon}}"></i> {{.Label}}{{with index $.Counts .Key}} <b>{{.}}</b>{{end}}</label>{{end}}
     <label class="cal-kind" style="margin-left:auto"><input type="hidden" name="busy" value="0"><input type="checkbox" name="busy" value="1" {{if .OnlyBusy}}checked{{end}} onchange="this.form.requestSubmit()"> nur Personen mit Einträgen</label>
     {{if .Embed}}<a class="btn btn-small cal-nav" href="/global/calendar?b={{.Board}}" title="Auswahl des Leitstands"><i class="ti ti-restore"></i></a>{{else}}<a class="btn btn-small" href="/calendar?reset=1" title="Auswahl zurücksetzen"><i class="ti ti-restore"></i></a>{{end}}
-  </div>
+  </div>{{end}}
 </form>
 
 <div class="card cal-scroll" style="padding:0;overflow:auto;{{if not .Embed}}max-height:calc(100vh - 260px){{else}}max-height:70vh{{end}}">
