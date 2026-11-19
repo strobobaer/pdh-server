@@ -98,6 +98,10 @@ type CalendarData struct {
 	Board             string   // Leitstand-Adresse im Baustein
 }
 
+// calendarProjectLimit: höchstens so viele (sichtbare) Projekt-Zeilen im Kalender (Variable,
+// damit Tests sie senken können).
+var calendarProjectLimit = 500
+
 func calChipFor(k calKind) calChip { return calChip{Kind: k.Key, Color: k.Color, Icon: k.Icon} }
 
 func calKindByKey(key string) calKind {
@@ -523,12 +527,14 @@ func (h *Handler) buildCalendar(r *http.Request, board *leitstand) CalendarData 
 		args := []any{from, to}
 		sc, sa := scopeSQL(scope, "project", "p", len(args))
 		args = append(args, sa...)
+		// Erst filtern, dann begrenzen: höchstens calendarProjectLimit sichtbare Projekte (nicht so
+		// viele vor dem Filter, sonst fielen sichtbare hinter unsichtbaren weg).
 		if rs, err := h.db.Query(ctx, `SELECT p.id::text, p.name, COALESCE(p.start_date, p.created_at::date), COALESCE(p.end_date, p.start_date, p.created_at::date),
 				ARRAY_REMOVE(ARRAY[p.responsible_to::text, p.assigned_to::text], NULL)
 			FROM projects p WHERE p.status NOT IN ('completed', 'cancelled')
 			  AND COALESCE(p.start_date, p.created_at::date) <= $2 AND COALESCE(p.end_date, p.start_date, p.created_at::date) >= $1`+sc+`
-			ORDER BY 3 LIMIT 500`, args...); err == nil {
-			for rs.Next() {
+			ORDER BY 3`, args...); err == nil {
+			for rs.Next() && len(d.ProjectRows) < calendarProjectLimit {
 				var id, name string
 				var a, b time.Time
 				var ppl []string

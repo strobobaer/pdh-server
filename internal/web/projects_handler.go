@@ -163,42 +163,50 @@ func (h *Handler) ProjectsPage(w http.ResponseWriter, r *http.Request) {
 		{"planning", "Planung", "ti-pencil"}, {"active", "Aktiv", "ti-player-play"},
 		{"paused", "Pausiert", "ti-player-pause"}, {"completed", "Abgeschlossen", "ti-check"},
 	}, false)
-	// Reiterzähler nur über die Projekte, die die Person sehen darf (view_rights.go)
+	data.Mine = !h.mayViewAny(r, "project")
+	// Liste und Reiterzähler aus derselben Menge, je einmal geladen: Ansichtsrecht (view_rights.go;
+	// ohne Recht nur die eigenen, „Meine Projekte“) und Abteilungssperre der Rolle (scopeIDs).
+	// Die Kategorie-Auswahl (tagIDs) grenzt nur die Liste ein.
+	all, err := h.projects.List(ctx, "")
+	if err != nil {
+		componentLog("projekte").Error().Err(err).Msg("projekte laden")
+		h.render(w, "projects", data)
+		return
+	}
+	var visible map[string]bool // nil = Recht überall
 	if !h.viewsAll(r, "project") {
-		if all, err := h.projects.List(ctx, ""); err == nil {
-			canView := h.viewFilter(r, "project")
-			counts := map[string]int{}
-			for _, p := range all {
-				if canView(p.ID) {
-					counts[""]++
-					counts[string(p.Status)]++
-				}
-			}
-			for i := range data.Tabs {
-				data.Tabs[i].Count = counts[data.Tabs[i].Key]
-			}
+		ids := make([]string, len(all))
+		for i, p := range all {
+			ids[i] = p.ID
+		}
+		vis, _ := h.viewSplit(r, "project", ids)
+		visible = make(map[string]bool, len(vis))
+		for _, id := range vis {
+			visible[id] = true
 		}
 	}
-	list, err := h.projects.List(ctx, projects.Status(filter))
-	if err == nil {
-		tagIDs := h.categoryFilterIDs(r, "project")
-		scopeIDs := h.scopeAllowedIDs(r, "project")
-		// Ansichtsrecht (view_rights.go): mit Recht die Projekte der erlaubten Abteilungen, ohne Recht
-		// nur die eigenen („Meine Projekte“).
-		canView := h.viewFilter(r, "project")
-		data.Mine = !h.mayViewAny(r, "project")
-		for _, p := range list {
-			if !canView(p.ID) {
-				continue
-			}
-			data.Total++
-			if tagIDs != nil && !tagIDs[p.ID] || scopeIDs != nil && !scopeIDs[p.ID] {
-				continue
-			}
-			data.Projects = append(data.Projects, projectView(p))
+	scopeIDs := h.scopeAllowedIDs(r, "project")
+	tagIDs := h.categoryFilterIDs(r, "project")
+	counts := map[string]int{}
+	for _, p := range all {
+		if visible != nil && !visible[p.ID] || scopeIDs != nil && !scopeIDs[p.ID] {
+			continue
 		}
-		h.projectTaskStats(ctx, data.Projects)
+		counts[""]++
+		counts[string(p.Status)]++
+		if filter != "" && string(p.Status) != filter {
+			continue
+		}
+		data.Total++
+		if tagIDs != nil && !tagIDs[p.ID] {
+			continue
+		}
+		data.Projects = append(data.Projects, projectView(p))
 	}
+	for i := range data.Tabs {
+		data.Tabs[i].Count = counts[data.Tabs[i].Key]
+	}
+	h.projectTaskStats(ctx, data.Projects)
 	h.render(w, "projects", data)
 }
 

@@ -2,12 +2,19 @@ package web
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 
 	"pdh/internal/core/users"
+	"pdh/internal/modules/tasks"
+
+	"github.com/go-chi/chi/v5"
 )
 
 // Ansichtsrecht für Projekte in den übrigen Stellen: Aufgaben-Formular, Partner,
@@ -248,6 +255,217 @@ func TestCopilotProjectsHidesWithoutView(t *testing.T) {
 	}
 	if _, err := d.getRecord(ctx, "project", p.other); err != nil {
 		t.Errorf("getRecord mit Recht: %v", err)
+	}
+}
+
+// Rolle mit Abteilungssperre: Reiterzähler und Überschrift zählen dieselben Projekte wie die
+// Liste (vorher zählten die Reiter bei Recht überall alle Projekte der Datenbank).
+func TestProjectTabsMatchListWithDepartmentLock(t *testing.T) {
+	e := newProjEnv(t)
+	pa := e.named("PVSA", e.infraA, "")
+	pb := e.named("PVSB", e.infraB, "")
+	e.exec(`UPDATE projects SET status = 'active' WHERE id = ANY($1::uuid[])`, []string{pa, pb})
+	locked := e.role("vf_plock", map[string]string{"projects.view": ""})
+	e.exec(`UPDATE roles SET department_id = $2::uuid WHERE key = $1`, locked, e.deptA)
+	u := e.person("vf_s1", locked)
+	cardRe := regexp.MustCompile(`class="mt-plan [^"]*" href="/projects/`)
+	num := func(body, pattern string) int {
+		t.Helper()
+		m := regexp.MustCompile(pattern).FindStringSubmatch(body)
+		if m == nil {
+			t.Fatalf("%q nicht gefunden", pattern)
+		}
+		n, _ := strconv.Atoi(m[1])
+		return n
+	}
+	for target, tab := range map[string]string{"/projects": `Alle <b>(\d+)</b>`, "/projects?status=active": `Aktiv <b>(\d+)</b>`} {
+		body := e.do(e.h.ProjectsPage, "GET", target, u, nil, nil).Body.String()
+		if !strings.Contains(body, "PVSA"+e.sfx) || strings.Contains(body, "PVSB"+e.sfx) {
+			t.Fatalf("%s: Projekt in A erwartet, in B (gesperrte Abteilung) nicht", target)
+		}
+		cards := len(cardRe.FindAllString(body, -1))
+		if n := num(body, tab); n != cards {
+			t.Errorf("%s: Reiter zählt %d, Liste zeigt %d", target, n, cards)
+		}
+		if n := num(body, `<p>(\d+) Projekte`); n != cards {
+			t.Errorf("%s: Überschrift zählt %d, Liste zeigt %d", target, n, cards)
+		}
+	}
+}
+
+// Verknüpfen per Kennung nur mit Projekten, die man sehen darf: Aufgabe (Schnittstelle, die auch
+// die Formulare nutzen), Partner-Zuordnung und Bezug eines Anlagen-Kommentars.
+func TestProjectLinkNeedsView(t *testing.T) {
+	p := newPlacesFx(t)
+	ctx := context.Background()
+	title := "PLTASK" + p.sfx
+	t.Cleanup(func() { _, _ = p.pool.Exec(context.Background(), `DELETE FROM tasks WHERE title LIKE $1`, title+"%") })
+	th := tasks.NewHandler(p.h.tasks)
+	th.ProjectAllowed = p.h.MayLinkProject
+	api := chi.NewRouter()
+	api.Mount("/api/v1/tasks", th.Routes("test-secret"))
+	call := func(u *users.User, path, body string) (int, string) {
+		r := httptest.NewRequest("POST", path, strings.NewReader(body))
+		r.Header.Set("Authorization", "Bearer "+p.token(u))
+		r.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		api.ServeHTTP(w, r)
+		return w.Code, w.Body.String()
+	}
+	taskProject := func(id string) string {
+		return p.id(`SELECT COALESCE(project_id::text, '') FROM tasks WHERE id = $1::uuid`, id)
+	}
+	// anlegen: fremdes Projekt abgelehnt, beteiligtes erlaubt
+	if c, b := call(p.none, "/api/v1/tasks/", `{"title":"`+title+`1","project_id":"`+p.other+`"}`); c != http.StatusForbidden || !strings.Contains(b, "nicht ansehen") {
+		t.Errorf("Aufgabe am fremden Projekt anlegen: %d %s", c, b)
+	}
+	if n := p.id(`SELECT COUNT(*)::text FROM tasks WHERE title = $1`, title+"1"); n != "0" {
+		t.Errorf("Aufgabe trotzdem angelegt")
+	}
+	c, b := call(p.none, "/api/v1/tasks/", `{"title":"`+title+`2","project_id":"`+p.mine+`"}`)
+	var created struct {
+		Data struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(b), &created); c != http.StatusCreated || err != nil || created.Data.ID == "" {
+		t.Fatalf("Aufgabe am beteiligten Projekt anlegen: %d %s", c, b)
+	}
+	tid := created.Data.ID
+	// ändern: auf das fremde Projekt umhängen abgelehnt
+	if c, b := call(p.none, "/api/v1/tasks/"+tid+"/edit", `{"project_id":"`+p.other+`"}`); c != http.StatusForbidden || taskProject(tid) != p.mine {
+		t.Errorf("auf fremdes Projekt umhängen: %d %s, Projekt %s", c, b, taskProject(tid))
+	}
+	// schon verknüpftes Projekt bleibt beim Speichern erlaubt (unverändert mitgeschickt)
+	p.exec(`UPDATE tasks SET project_id = $2::uuid WHERE id = $1::uuid`, tid, p.other)
+	if c, b := call(p.none, "/api/v1/tasks/"+tid+"/edit", `{"title":"`+title+`2b","project_id":"`+p.other+`"}`); c != http.StatusOK {
+		t.Errorf("Speichern mit unverändertem Projekt: %d %s", c, b)
+	}
+	// mit Recht: erlaubt
+	if c, b := call(p.view, "/api/v1/tasks/", `{"title":"`+title+`3","project_id":"`+p.other+`"}`); c != http.StatusCreated {
+		t.Errorf("mit Recht anlegen: %d %s", c, b)
+	}
+
+	// Partner einem Vorgang zuordnen
+	partner := p.id(`INSERT INTO business_partners (name) VALUES ($1) RETURNING id::text`, "PLAssign"+p.sfx)
+	t.Cleanup(func() {
+		_, _ = p.pool.Exec(context.Background(), `DELETE FROM record_external_parties WHERE partner_id = $1::uuid`, partner)
+		_, _ = p.pool.Exec(context.Background(), `DELETE FROM record_history WHERE ref_id = ANY($1::uuid[])`, []string{p.mine, p.other})
+		_, _ = p.pool.Exec(context.Background(), `DELETE FROM business_partners WHERE id = $1::uuid`, partner)
+	})
+	parties := func(id string) string {
+		return p.id(`SELECT COUNT(*)::text FROM record_external_parties WHERE partner_id = $1::uuid AND ref_id = $2::uuid`, partner, id)
+	}
+	if err := p.h.assignPartner(ctx, p.reqFor(p.none, "/"), partner, "record", "assigned", "project:"+p.other); err == nil || !strings.Contains(err.Error(), "nicht ansehen") || parties(p.other) != "0" {
+		t.Errorf("Partner am fremden Projekt: %v", err)
+	}
+	if err := p.h.assignPartner(ctx, p.reqFor(p.none, "/"), partner, "record", "assigned", "project:"+p.mine); err != nil || parties(p.mine) != "1" {
+		t.Errorf("Partner am beteiligten Projekt: %v", err)
+	}
+	if err := p.h.assignPartner(ctx, p.reqFor(p.view, "/"), partner, "record", "assigned", "project:"+p.other); err != nil {
+		t.Errorf("Partner mit Recht: %v", err)
+	}
+
+	// Bezug eines Anlagen-Kommentars
+	if _, _, err := p.h.parseInfraCommentRef(p.reqFor(p.none, "/"), p.infraA, "project:"+p.other); err == nil || !strings.Contains(err.Error(), "nicht ansehen") {
+		t.Errorf("Kommentar-Bezug auf fremdes Projekt: %v", err)
+	}
+	if _, _, err := p.h.parseInfraCommentRef(p.reqFor(p.none, "/"), p.infraA, "project:"+p.mine); err != nil {
+		t.Errorf("Kommentar-Bezug auf beteiligtes Projekt: %v", err)
+	}
+	if _, _, err := p.h.parseInfraCommentRef(p.reqFor(p.view, "/"), p.infraA, "project:"+p.other); err != nil {
+		t.Errorf("Kommentar-Bezug mit Recht: %v", err)
+	}
+}
+
+// Ein Projekt-Verweis im Chat bekommt seinen Titel nur, wenn der Absender das Projekt sehen darf.
+func TestChatLinkTitleNeedsView(t *testing.T) {
+	p := newPlacesFx(t)
+	ctx := context.Background()
+	conv := p.id(`INSERT INTO chat_conversations (kind, name, created_by) VALUES ('group', $1, $2::uuid) RETURNING id::text`, "PLChat"+p.sfx, p.none.ID)
+	msg := p.id(`INSERT INTO chat_messages (conversation_id, user_id, body) VALUES ($1::uuid, $2::uuid, 'x') RETURNING id::text`, conv, p.none.ID)
+	t.Cleanup(func() {
+		c := context.Background()
+		_, _ = p.pool.Exec(c, `DELETE FROM chat_message_links WHERE message_id = $1::uuid`, msg)
+		_, _ = p.pool.Exec(c, `DELETE FROM chat_messages WHERE conversation_id = $1::uuid`, conv)
+		_, _ = p.pool.Exec(c, `DELETE FROM chat_conversations WHERE id = $1::uuid`, conv)
+	})
+	body := "siehe /projects/" + p.other + " und /projects/" + p.mine
+	titles := func(sender string) map[string]string {
+		p.h.chatResolveLinks(ctx, msg, body, sender)
+		out := map[string]string{}
+		rows, err := p.pool.Query(ctx, `SELECT ref_id::text, title FROM chat_message_links WHERE message_id = $1::uuid`, msg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var id, title string
+			if rows.Scan(&id, &title) == nil {
+				out[id] = title
+			}
+		}
+		return out
+	}
+	got := titles(p.none.ID)
+	if v, ok := got[p.other]; !ok || v != "" {
+		t.Errorf("fremdes Projekt ohne Recht: Verweis da=%v, Titel %q (erwartet ohne Titel)", ok, v)
+	}
+	if got[p.mine] != p.mineName {
+		t.Errorf("beteiligtes Projekt: Titel %q", got[p.mine])
+	}
+	if got := titles(p.view.ID); got[p.other] != p.otherName {
+		t.Errorf("mit Recht: Titel %q", got[p.other])
+	}
+}
+
+// Erst filtern, dann begrenzen: Liegen unsichtbare Projekte vorn, bleibt das sichtbare trotzdem.
+func TestCalendarProjectLimitAfterFilter(t *testing.T) {
+	p := newPlacesFx(t)
+	old := calendarProjectLimit
+	calendarProjectLimit = 1
+	t.Cleanup(func() { calendarProjectLimit = old })
+	// das fremde Projekt beginnt vor dem eigenen (sortiert nach Beginn)
+	p.exec(`UPDATE projects SET start_date = CURRENT_DATE - 300, end_date = CURRENT_DATE + 30, status = 'active' WHERE id = $1::uuid`, p.other)
+	p.exec(`UPDATE projects SET start_date = CURRENT_DATE - 1, end_date = CURRENT_DATE + 30, status = 'active' WHERE id = $1::uuid`, p.mine)
+	d := p.h.buildCalendar(p.reqFor(p.none, "/calendar?set=1&show=project&days=14"), nil)
+	if len(d.ProjectRows) != 1 || d.ProjectRows[0].Name != p.mineName {
+		var s []string
+		for _, r := range d.ProjectRows {
+			s = append(s, r.Name)
+		}
+		t.Errorf("ohne Recht, Grenze 1: %q, erwartet nur %s", s, p.mineName)
+	}
+}
+
+// Die Partnerliste zählt nur Vorgänge, die die Person sehen darf.
+func TestPartnerListCountsVisibleRecords(t *testing.T) {
+	p := newPlacesFx(t)
+	partner := p.id(`INSERT INTO business_partners (name) VALUES ($1) RETURNING id::text`, "PLZaehl"+p.sfx)
+	t.Cleanup(func() {
+		_, _ = p.pool.Exec(context.Background(), `DELETE FROM record_external_parties WHERE partner_id = $1::uuid`, partner)
+		_, _ = p.pool.Exec(context.Background(), `DELETE FROM business_partners WHERE id = $1::uuid`, partner)
+	})
+	for _, id := range []string{p.mine, p.other} {
+		p.exec(`INSERT INTO record_external_parties (ref_type, ref_id, role, kind, name, partner_id) VALUES ('project', $1::uuid, 'assigned', 'company', 'X', $2::uuid)`, id, partner)
+	}
+	listCount := func(u *users.User) string {
+		t.Helper()
+		body := p.do(p.h.DirectoryPage, "GET", "/directory?q="+url.QueryEscape("PLZaehl"+p.sfx), u, nil, nil).Body.String()
+		m := regexp.MustCompile(`title="Vorgänge"><i class="ti ti-briefcase"></i>(\d+)`).FindStringSubmatch(body)
+		if m == nil {
+			t.Fatalf("Zahl der Vorgänge nicht gefunden")
+		}
+		return m[1]
+	}
+	none := p.person("vf_pz1", p.role("vf_pzn", map[string]string{"directory.view": ""}))
+	p.exec(`UPDATE projects SET assigned_to = $2::uuid WHERE id = $1::uuid`, p.mine, none.ID)
+	view := p.person("vf_pz2", p.role("vf_pzv", map[string]string{"directory.view": "", "projects.view": ""}))
+	if got := listCount(none); got != "1" {
+		t.Errorf("ohne Recht: %s Vorgänge, erwartet 1 (nur das beteiligte Projekt)", got)
+	}
+	if got := listCount(view); got != "2" {
+		t.Errorf("mit Recht: %s Vorgänge, erwartet 2", got)
 	}
 }
 

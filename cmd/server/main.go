@@ -315,6 +315,7 @@ func main() {
 
 	// Web Handler
 	webHandler := web.NewHandler(db.Pool, tmpl, userSvc, shiftSvc, storageSvc, infraSvc, ticketSvc, faultSvc, maintSvc, invSvc, itSvc, timeSvc, checkSvc, taskSvc, projectSvc, rbacSvc, cfg.Auth.JWTSecret)
+	taskHandler.ProjectAllowed = webHandler.MayLinkProject                                           // Aufgabe nur mit einem Projekt verknüpfen, das man sehen darf
 	webHandler.SetMirror(web.MirrorInfo{On: mirrorOn, Restricted: restricted, Reason: mirrorReason}) // vor Routes(), danach unveränderlich
 	webHandler.RegisterMaintenanceProtocol()                                                         // Wartungsprotokoll (PDF) an der Anlage
 	webHandler.ConfigureUpdates(cfg.Update.AgentURL, cfg.Update.AgentToken, buildCommit)
@@ -348,7 +349,7 @@ func main() {
 		webHandler.StartPurchaseReportSchedule(context.Background())
 		webHandler.StartBackupSystem(context.Background())
 		webHandler.StartChangeNotifier(context.Background())
-		webHandler.StartSync(context.Background()) // Abgleich mit Fremdsystemen (optional): ohne scharfes Profil geschieht nichts
+		webHandler.StartSync(context.Background())                            // Abgleich mit Fremdsystemen (optional): ohne scharfes Profil geschieht nichts
 		maintSvc.StartScheduler(context.Background(), webHandler.MaintLocked) // je Wartungsplan genau ein offener Auftrag (stuendlich)
 		webHandler.StartTrainingScheduler(context.Background())
 		webHandler.StartObligationReminders(context.Background())
@@ -358,10 +359,10 @@ func main() {
 		webHandler.StartPushNotifier(context.Background())                               // Push aufs Handy bei neuen Störungen/Tickets
 		faultSvc.StartPendingTicketWatcher(context.Background(), webHandler.MaintLocked) // Ticket aus Störung erst nach Zuweisung
 		webHandler.StartKVPScheduler(context.Background())
-		webHandler.StartSetupMonitor(context.Background()) // Rüstzeiten: nach Höchstdauer plus Karenz eine Störmeldung
-		webHandler.StartEnergySampler(context.Background()) // Energiedaten: Minutenwerte der Messstellen
-		webHandler.StartEnergyAlarms(context.Background())  // Energiedaten: Schwellwerte prüfen, Alarm-Tickets
-		webHandler.StartITNetsync(context.Background())     // IT-Assets: Netzabgleich mit UniFi, Ausfall-Tickets
+		webHandler.StartSetupMonitor(context.Background())   // Rüstzeiten: nach Höchstdauer plus Karenz eine Störmeldung
+		webHandler.StartEnergySampler(context.Background())  // Energiedaten: Minutenwerte der Messstellen
+		webHandler.StartEnergyAlarms(context.Background())   // Energiedaten: Schwellwerte prüfen, Alarm-Tickets
+		webHandler.StartITNetsync(context.Background())      // IT-Assets: Netzabgleich mit UniFi, Ausfall-Tickets
 		webHandler.StartEnergyExporter(context.Background()) // Energiedaten: Efficio-CSV erzeugen und ablegen
 		webHandler.StartDriveMonitor(context.Background())
 		webHandler.StartEnabledImportPolls(context.Background())

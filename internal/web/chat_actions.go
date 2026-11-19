@@ -80,7 +80,11 @@ func chatExtractLinks(body string) [][2]string {
 	return out
 }
 
-func (h *Handler) chatResolveLinks(ctx context.Context, msgID, body string) {
+// chatResolveLinks merkt sich die Datensatz-Verweise einer Nachricht mit ihrem Titel. Vorgänge mit
+// Ansichtsrecht (Projekte) bekommen den Titel nur, wenn der Absender (senderID) sie sehen darf;
+// sonst bleibt der Verweis ohne Titel – so verrät eine Kennung im Chat keinen Projektnamen.
+// Ausnahme: Hinweise des PDH-Systems (pdh_system.go) nennen den Titel ohnehin selbst.
+func (h *Handler) chatResolveLinks(ctx context.Context, msgID, body, senderID string) {
 	_, _ = h.db.Exec(ctx, `DELETE FROM chat_message_links WHERE message_id = $1::uuid`, msgID)
 	for _, l := range chatExtractLinks(body) {
 		def, ok := chatLinkTypeByPath(l[0])
@@ -88,7 +92,9 @@ func (h *Handler) chatResolveLinks(ctx context.Context, msgID, body string) {
 			continue
 		}
 		var title string
-		if err := h.db.QueryRow(ctx, fmt.Sprintf(`SELECT %s FROM %s WHERE id = $1::uuid`, def.titleExpr, def.table), l[1]).Scan(&title); err != nil {
+		if _, viewed := viewRights[def.refType]; viewed && senderID != pdhSystemUserID && !h.canViewRecAs(ctx, senderID, def.refType, l[1]) {
+			title = "" // ohne Titel und ohne Nachsehen, ob es den Vorgang gibt
+		} else if err := h.db.QueryRow(ctx, fmt.Sprintf(`SELECT %s FROM %s WHERE id = $1::uuid`, def.titleExpr, def.table), l[1]).Scan(&title); err != nil {
 			continue // unbekannter Datensatz -> bleibt normaler Link
 		}
 		_, _ = h.db.Exec(ctx, `
@@ -210,7 +216,7 @@ func (h *Handler) ChatSend(w http.ResponseWriter, r *http.Request) {
 		chatError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	h.chatResolveLinks(ctx, msgID, body)
+	h.chatResolveLinks(ctx, msgID, body, me)
 
 	msgs, err := h.chatLoadMessagesByID(ctx, []string{msgID})
 	if err != nil || len(msgs) != 1 {
@@ -412,7 +418,7 @@ func (h *Handler) ChatEdit(w http.ResponseWriter, r *http.Request) {
 		chatError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	h.chatResolveLinks(ctx, msgID, in.Body)
+	h.chatResolveLinks(ctx, msgID, in.Body, me)
 	msg, err := h.chatPublishUpdate(ctx, convID, msgID)
 	if err != nil {
 		chatError(w, http.StatusInternalServerError, err.Error())
@@ -1096,7 +1102,7 @@ func (h *Handler) chatPost(ctx context.Context, convID, userID, body string) err
 	}
 	_, _ = h.db.Exec(ctx, `UPDATE chat_conversations SET last_message_at = NOW() WHERE id = $1::uuid`, convID)
 	_, _ = h.db.Exec(ctx, `UPDATE chat_members SET last_read_at = NOW() WHERE conversation_id = $1::uuid AND user_id = $2::uuid`, convID, userID)
-	h.chatResolveLinks(ctx, msgID, body)
+	h.chatResolveLinks(ctx, msgID, body, userID)
 	if msgs, err := h.chatLoadMessagesByID(ctx, []string{msgID}); err == nil && len(msgs) == 1 {
 		members := h.chatMemberIDs(ctx, convID)
 		h.chatRefresh(members) // neue Unterhaltung in allen Listen sichtbar machen

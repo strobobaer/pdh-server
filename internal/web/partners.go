@@ -163,6 +163,11 @@ func (h *Handler) DirectoryPage(w http.ResponseWriter, r *http.Request) {
 	if tag := q.Get("tag"); tag != "" {
 		add(`bp.id IN (SELECT record_id FROM record_categories WHERE module = 'business_partner' AND category_id::text = $?)`, tag)
 	}
+	// Zahl der Vorgänge je Partner: nur Vorgänge, die die Person sehen darf (Projekte und KVP mit
+	// Ansichtsrecht, view_rights.go); vor der Abfrage ermittelt, damit keine zwei Verbindungen offen sind.
+	hiddenRefs, hiddenTypes := h.hiddenRecordRefs(r)
+	args = append(args, hiddenRefs, hiddenTypes)
+	pHidden, pTypes := "$"+strconv.Itoa(len(args)-1), "$"+strconv.Itoa(len(args))
 	rows, err := h.db.Query(ctx, `
 		SELECT bp.id::text, bp.partner_no, bp.name, bp.short_name, bp.kind, bp.category, bp.approval_status, bp.rating,
 		       bp.city, bp.phone, bp.email, bp.active,
@@ -175,7 +180,8 @@ func (h *Handler) DirectoryPage(w http.ResponseWriter, r *http.Request) {
 		       (SELECT COUNT(*) FROM spare_parts sp WHERE sp.active AND (sp.manufacturer_id = bp.id
 		            OR EXISTS (SELECT 1 FROM spare_part_suppliers s WHERE s.part_id = sp.id AND s.partner_id = bp.id))),
 		       (SELECT COUNT(*) FROM it_assets a WHERE bp.id IN (a.manufacturer_id, a.supplier_id)),
-		       (SELECT COUNT(DISTINCT rp.ref_id) FROM record_external_parties rp WHERE rp.partner_id = bp.id)
+		       (SELECT COUNT(DISTINCT rp.ref_id) FROM record_external_parties rp WHERE rp.partner_id = bp.id
+		         AND rp.ref_type <> ALL(`+pTypes+`::text[]) AND (rp.ref_type || ':' || rp.ref_id::text) <> ALL(`+pHidden+`::text[]))
 		FROM business_partners bp
 		WHERE `+strings.Join(where, " AND ")+`
 		ORDER BY bp.name`, args...)
@@ -938,6 +944,10 @@ func (h *Handler) assignPartner(ctx context.Context, r *http.Request, partnerID,
 		def, ok := infraCommentRefTypes[parts[0]]
 		if !ok {
 			return errors.New("ungültiger Vorgangstyp")
+		}
+		// Projekte nur, wenn die Person sie sehen darf (Ansichtsrecht oder beteiligt, view_rights.go)
+		if !h.canViewRec(r, parts[0], parts[1]) {
+			return errors.New(msgRecordNotVisible)
 		}
 		var exists bool
 		if err := h.db.QueryRow(ctx, fmt.Sprintf(`SELECT EXISTS (SELECT 1 FROM %s WHERE id = $1::uuid)`, def.Table), parts[1]).Scan(&exists); err != nil || !exists {

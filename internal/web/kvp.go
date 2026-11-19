@@ -365,10 +365,8 @@ func (h *Handler) listKVP(ctx context.Context, f kvpFilter, limit int) []kvpIdea
 		p := arg("%" + f.Query + "%")
 		where = append(where, "(k.title ILIKE "+p+" OR k.problem ILIKE "+p+" OR k.proposal ILIKE "+p+" OR ('KVP-' || lpad(k.number::text, greatest(4, length(k.number::text)), '0')) ILIKE "+p+")")
 	}
-	if f.Mine != "" {
-		p := arg(f.Mine)
-		where = append(where, "(k.submitter_id::text = "+p+" OR k.created_by::text = "+p+" OR k.responsible_to::text = "+p+" OR k.reviewer_id::text = "+p+
-			" OR EXISTS (SELECT 1 FROM kvp_members m WHERE m.idea_id = k.id AND m.user_id::text = "+p+"))")
+	if f.Mine != "" { // beteiligt wie beim Ansehen (kvpPeopleCond), auch als Verantwortliche/r einer Maßnahme
+		where = append(where, "("+kvpPeopleSQL("k", arg(f.Mine))+")")
 	}
 	if f.Restrict {
 		ids := f.IDs
@@ -400,25 +398,20 @@ func (h *Handler) canManageKVP(r *http.Request) bool { return h.hasPerm(r, kvpPe
 // visibleKVPIDs: alle Vorschläge, die die Person sehen darf (Recht für die Abteilung oder
 // beteiligt, view_rights.go). Bei einem Fehler: leer (nie "alle").
 func (h *Handler) visibleKVPIDs(r *http.Request) []string {
-	ids := []string{}
-	rows, err := h.db.Query(r.Context(), `SELECT id::text FROM kvp_ideas`)
+	all, visible, _, err := h.viewIDs(r, "kvp")
 	if err != nil {
 		componentLog("kvp").Error().Err(err).Msg("sichtbare vorschlaege laden")
-		return ids
-	}
-	defer rows.Close()
-	canView := h.viewFilter(r, "kvp")
-	for rows.Next() {
-		var id string
-		if rows.Scan(&id) == nil && canView(id) {
-			ids = append(ids, id)
-		}
-	}
-	if err := rows.Err(); err != nil {
-		componentLog("kvp").Error().Err(err).Msg("sichtbare vorschlaege lesen")
 		return []string{}
 	}
-	return ids
+	if all { // Recht überall: alle Vorschläge (die Aufrufer schränken dann nicht ein)
+		ids, err := h.tableIDs(r.Context(), "kvp_ideas")
+		if err != nil {
+			componentLog("kvp").Error().Err(err).Msg("sichtbare vorschlaege laden")
+			return []string{}
+		}
+		return append([]string{}, ids...)
+	}
+	return visible
 }
 
 // kvpViewable lädt den Vorschlag der Adresse und prüft das Ansehen: nicht gefunden = 404,
@@ -897,8 +890,7 @@ func (h *Handler) KVPPage(w http.ResponseWriter, r *http.Request) {
 	_ = h.db.QueryRow(ctx, `SELECT COUNT(*) FILTER (WHERE archived_at IS NULL),
 		COUNT(*) FILTER (WHERE archived_at IS NULL AND ((status IN ('submitted','review') AND feedback_due < CURRENT_DATE) OR (status IN ('plan','do','check','act') AND due_date < CURRENT_DATE))),
 		COUNT(*) FILTER (WHERE archived_at IS NOT NULL),
-		COUNT(*) FILTER (WHERE submitter_id::text = $1 OR created_by::text = $1 OR responsible_to::text = $1 OR reviewer_id::text = $1
-		                 OR EXISTS (SELECT 1 FROM kvp_members m WHERE m.idea_id = kvp_ideas.id AND m.user_id::text = $1))
+		COUNT(*) FILTER (WHERE `+kvpPeopleSQL("kvp_ideas", "$1")+`)
 		FROM kvp_ideas WHERE (NOT $2::bool OR id::text = ANY($3::text[]))`, d.MyUserID, !all, ids).Scan(&nAll, &overdue, &archive, &mine)
 	if rows, err := h.db.Query(ctx, `SELECT status, COUNT(*)::int FROM kvp_ideas WHERE archived_at IS NULL AND (NOT $1::bool OR id::text = ANY($2::text[])) GROUP BY status`, !all, ids); err == nil {
 		for rows.Next() {

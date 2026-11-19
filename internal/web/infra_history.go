@@ -287,29 +287,11 @@ func infraHistorySQL(hidden []string) string {
 // überall: keine). Bei einem Fehler wird mit dem Fehler abgebrochen, damit die
 // Historie nie ungefiltert erscheint.
 func (h *Handler) hiddenProjectIDs(r *http.Request) ([]string, error) {
-	if h.viewsAll(r, "project") {
-		return nil, nil
-	}
-	if h.db == nil {
-		return nil, errViewNoDB
-	}
-	rows, err := h.db.Query(r.Context(), `SELECT id::text FROM projects`)
-	if err != nil {
+	all, _, hidden, err := h.viewIDs(r, "project")
+	if all || err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	canView := h.viewFilter(r, "project")
-	var out []string
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		if !canView(id) {
-			out = append(out, id)
-		}
-	}
-	return out, rows.Err()
+	return hidden, nil
 }
 
 // InfraHistoryEntry ist ein Eintrag der Anlagen-Zeitleiste.
@@ -844,8 +826,10 @@ func (h *Handler) infraCommentRefOptions(r *http.Request, infraID string) []Infr
 }
 
 // parseInfraCommentRef prueft einen Bezug "<ref_type>:<id>" und stellt
-// sicher, dass der Vorgang zur Anlage (oder einer Unteranlage) gehoert.
-func (h *Handler) parseInfraCommentRef(ctx context.Context, infraID, raw string) (refType, refID interface{}, err error) {
+// sicher, dass der Vorgang zur Anlage (oder einer Unteranlage) gehoert und
+// die Person ihn sehen darf (Projekte: Ansichtsrecht oder beteiligt).
+func (h *Handler) parseInfraCommentRef(r *http.Request, infraID, raw string) (refType, refID interface{}, err error) {
+	ctx := r.Context()
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return nil, nil, nil
@@ -854,6 +838,9 @@ func (h *Handler) parseInfraCommentRef(ctx context.Context, infraID, raw string)
 	def, ok := infraCommentRefTypes[parts[0]]
 	if len(parts) != 2 || !ok {
 		return nil, nil, fmt.Errorf("ungültiger Bezug")
+	}
+	if !h.canViewRec(r, parts[0], parts[1]) {
+		return nil, nil, fmt.Errorf("%s", msgRecordNotVisible)
 	}
 	var exists bool
 	query := fmt.Sprintf(`
@@ -890,7 +877,7 @@ func (h *Handler) InfraCommentAddWeb(w http.ResponseWriter, r *http.Request) {
 		infraCommentError(w, "Kommentar ist leer")
 		return
 	}
-	refType, refID, err := h.parseInfraCommentRef(r.Context(), id, r.FormValue("ref"))
+	refType, refID, err := h.parseInfraCommentRef(r, id, r.FormValue("ref"))
 	if err != nil {
 		infraCommentError(w, err.Error())
 		return

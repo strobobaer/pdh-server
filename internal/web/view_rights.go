@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
+
+	"pdh/pkg/middleware"
 )
 
 // Ansichtsrecht für Projekte und KVP-Vorschläge (Migration 183).
@@ -33,7 +36,16 @@ const kvpPeopleCond = `r.submitter_id = $1::uuid OR r.created_by = $1::uuid OR r
 	` OR EXISTS (SELECT 1 FROM kvp_members m WHERE m.idea_id = r.id AND m.user_id = $1::uuid)` +
 	` OR EXISTS (SELECT 1 FROM kvp_actions a WHERE a.idea_id = r.id AND a.responsible_id = $1::uuid)`
 
+// kvpPeopleSQL: kvpPeopleCond für einen anderen Tabellen-Alias und Platzhalter – damit „Meine“
+// auf der KVP-Seite genau die Vorschläge zählt und zeigt, an denen die Person beteiligt ist.
+func kvpPeopleSQL(alias, param string) string {
+	return strings.NewReplacer("r.", alias+".", "$1", param).Replace(kvpPeopleCond)
+}
+
 var errViewNoDB = errors.New("keine datenbank")
+
+// msgRecordNotVisible: Meldung, wenn jemand einen Vorgang verknüpfen will, den er nicht sehen darf.
+const msgRecordNotVisible = "Keine Berechtigung: Diesen Vorgang darfst du nicht ansehen."
 
 // involvedSource: Tabelle und Beteiligungs-Bedingung eines Typs mit Ansichtsrecht.
 func involvedSource(refType string) (table, cond string, ok bool) {
@@ -210,6 +222,32 @@ func (h *Handler) canViewRec(r *http.Request, refType, id string) bool {
 	return h.involvedIn(r.Context(), u.ID, refType, id)
 }
 
+// canViewRecAs: wie canViewRec für eine Person, die nicht aus der Web-Anmeldung kommt
+// (Schnittstelle, Absender einer Chat-Nachricht). Nicht ladbare oder deaktivierte Personen
+// sehen nichts. Typen ohne Ansichtsrecht: immer ja.
+func (h *Handler) canViewRecAs(ctx context.Context, uid, refType, id string) bool {
+	if _, ok := viewRights[refAlias(refType)]; !ok {
+		return true
+	}
+	if uid == "" || (h.users == nil && h.userByIDFn == nil) {
+		return false
+	}
+	u, err := h.userByID(ctx, uid)
+	if err != nil || u == nil {
+		return false
+	}
+	r := (&http.Request{}).WithContext(context.WithValue(ctx, "user", u))
+	return h.canViewRec(r, refType, id)
+}
+
+// MayLinkProject: darf die Person einer Schnittstellen-Anfrage (Benutzer aus middleware.Auth)
+// eine Aufgabe mit diesem Projekt verknüpfen? Nur mit Ansichtsrecht oder als Beteiligte
+// (tasks.Handler.ProjectAllowed, eingehängt in cmd/server/main.go).
+func (h *Handler) MayLinkProject(r *http.Request, projectID string) bool {
+	uid, _ := r.Context().Value(middleware.UserIDKey).(string)
+	return h.canViewRecAs(r.Context(), uid, "project", projectID)
+}
+
 // mayViewAny: hat die Person das Ansichtsrecht irgendwo (überall oder in
 // mindestens einer Abteilung)? Für Menüeinträge und Bausteine.
 func (h *Handler) mayViewAny(r *http.Request, refType string) bool {
@@ -262,6 +300,80 @@ func (h *Handler) viewsAll(r *http.Request, refType string) bool {
 	}
 	all, _, _ := h.viewMode(r, perm)
 	return all
+}
+
+// viewIDs: Kennungen aller Datensätze eines Typs mit Ansichtsrecht, getrennt in sichtbare und
+// nicht sichtbare. all: Recht überall (oder Typ ohne Ansichtsrecht) – dann wird nichts geladen.
+// Die Kennungen werden vollständig gelesen und die Abfrage geschlossen, bevor viewFilter seine
+// eigenen Abfragen stellt; eine Anfrage hält so nie zwei Verbindungen zugleich. Bei einem
+// Fehler: err (die Aufrufer zeigen dann nichts bzw. brechen ab, nie "alle").
+func (h *Handler) viewIDs(r *http.Request, refType string) (all bool, visible, hidden []string, err error) {
+	table, _, ok := involvedSource(refType)
+	if !ok || h.viewsAll(r, refType) {
+		return true, nil, nil, nil
+	}
+	if h.db == nil {
+		return false, nil, nil, errViewNoDB
+	}
+	ids, err := h.tableIDs(r.Context(), table)
+	if err != nil {
+		return false, nil, nil, err
+	}
+	visible, hidden = h.viewSplit(r, refType, ids)
+	return false, visible, hidden, nil
+}
+
+// tableIDs: alle Kennungen einer Tabelle (Abfrage danach geschlossen).
+func (h *Handler) tableIDs(ctx context.Context, table string) ([]string, error) {
+	rows, err := h.db.Query(ctx, `SELECT id::text FROM `+table)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
+// viewSplit: teilt schon gelesene Kennungen (keine offene Abfrage) in sichtbare und nicht
+// sichtbare – ein viewFilter für die ganze Liste. Beide Ergebnisse sind nie nil.
+func (h *Handler) viewSplit(r *http.Request, refType string, ids []string) (visible, hidden []string) {
+	canView := h.viewFilter(r, refType)
+	visible, hidden = []string{}, []string{}
+	for _, id := range ids {
+		if canView(id) {
+			visible = append(visible, id)
+		} else {
+			hidden = append(hidden, id)
+		}
+	}
+	return visible, hidden
+}
+
+// hiddenRecordRefs: nicht sichtbare Projekte und KVP-Vorschläge als "<typ>:<id>" – für Zähler
+// über Tabellen mit ref_type/ref_id. types: Typen, deren Sicht sich nicht bestimmen ließ (dann
+// zählt keiner davon). Beide nie nil.
+func (h *Handler) hiddenRecordRefs(r *http.Request) (refs, types []string) {
+	refs, types = []string{}, []string{}
+	for _, t := range []string{"project", "kvp"} {
+		all, _, hidden, err := h.viewIDs(r, t)
+		switch {
+		case err != nil:
+			componentLog("rechte").Error().Err(err).Str("typ", t).Msg("nicht sichtbare vorgänge laden")
+			types = append(types, t)
+		case !all:
+			for _, id := range hidden {
+				refs = append(refs, t+":"+id)
+			}
+		}
+	}
+	return refs, types
 }
 
 // hiddenCategoryCounts: je Kategorie die Zahl der Datensätze des Typs, die die

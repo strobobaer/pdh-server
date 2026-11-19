@@ -72,9 +72,25 @@ func (s *Service) Delete(ctx context.Context, id string) error {
 
 // ── Handler ──────────────────────────────────────────────────
 
-type Handler struct{ svc *Service }
+type Handler struct {
+	svc *Service
+	// ProjectAllowed: darf die anfragende Person eine Aufgabe mit diesem Projekt verknüpfen
+	// (Ansichtsrecht, internal/web/view_rights.go)? nil = keine Prüfung.
+	ProjectAllowed func(r *http.Request, projectID string) bool
+}
 
 func NewHandler(svc *Service) *Handler { return &Handler{svc: svc} }
+
+const msgProjectNotVisible = "Keine Berechtigung: Dieses Projekt darfst du nicht ansehen."
+
+// projectRefused: Verknüpfung mit einem Projekt, das die Person nicht sehen darf? Ein schon
+// verknüpftes Projekt (current) bleibt beim Speichern unverändert erlaubt.
+func (h *Handler) projectRefused(r *http.Request, projectID *string, current string) bool {
+	if h.ProjectAllowed == nil || projectID == nil || *projectID == "" || *projectID == current {
+		return false
+	}
+	return !h.ProjectAllowed(r, *projectID)
+}
 
 func (h *Handler) Routes(jwtSecret string) chi.Router {
 	r := chi.NewRouter()
@@ -118,6 +134,10 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, 400, "ungültige eingabe")
 		return
 	}
+	if h.projectRefused(r, in.ProjectID, "") {
+		response.Error(w, http.StatusForbidden, msgProjectNotVisible)
+		return
+	}
 	t, err := h.svc.Create(r.Context(), &in, uid(r))
 	if err != nil {
 		response.Error(w, 500, err.Error())
@@ -140,6 +160,16 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		response.Error(w, 400, "ungültige eingabe")
 		return
+	}
+	if in.ProjectID != nil && *in.ProjectID != "" && h.ProjectAllowed != nil {
+		current := ""
+		if t, err := h.svc.GetByID(r.Context(), chi.URLParam(r, "id")); err == nil && t.ProjectID != nil {
+			current = *t.ProjectID
+		}
+		if h.projectRefused(r, in.ProjectID, current) {
+			response.Error(w, http.StatusForbidden, msgProjectNotVisible)
+			return
+		}
 	}
 	if err := h.svc.Update(r.Context(), chi.URLParam(r, "id"), &in); err != nil {
 		response.Error(w, 500, err.Error())

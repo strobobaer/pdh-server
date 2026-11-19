@@ -47,45 +47,33 @@ type copilotData struct {
 	can    func(string) bool
 	// Ansichtsrecht für Projekte (limitProjects): Ohne Aufruf sieht der Copilot
 	// keine Projekte (sicherer Ausgangszustand).
-	projAll bool     // Recht überall: nichts zu filtern
-	projIDs []string // sonst: die sichtbaren Projekte
-	projCan func(string) bool
+	projAll bool            // Recht überall: nichts zu filtern
+	projIDs []string        // sonst: die sichtbaren Projekte
+	projSet map[string]bool // dieselben als Menge
 }
 
 // limitProjects: legt fest, welche Projekte der Copilot der Person zeigt –
-// die, die sie mit Ansichtsrecht oder als Beteiligte sehen darf. Bei einem
-// Fehler bleibt die Liste leer.
+// die, die sie mit Ansichtsrecht oder als Beteiligte sehen darf (viewIDs). Bei
+// einem Fehler bleibt die Liste leer.
 func (d *copilotData) limitProjects(r *http.Request) {
-	d.projCan = d.h.viewFilter(r, "project")
-	if d.h.viewsAll(r, "project") {
-		d.projAll = true
+	all, visible, _, err := d.h.viewIDs(r, "project")
+	d.projAll, d.projIDs, d.projSet = all, nil, map[string]bool{}
+	if all {
 		return
 	}
-	d.projAll, d.projIDs = false, nil
-	if d.h.db == nil {
-		return
-	}
-	rows, err := d.h.db.Query(r.Context(), `SELECT id::text FROM projects`)
 	if err != nil {
 		componentLog("copilot").Error().Err(err).Msg("sichtbare projekte laden")
 		return
 	}
-	defer rows.Close()
-	for rows.Next() {
-		var id string
-		if rows.Scan(&id) == nil && d.projCan(id) {
-			d.projIDs = append(d.projIDs, id)
-		}
-	}
-	if rows.Err() != nil {
-		componentLog("copilot").Error().Err(rows.Err()).Msg("sichtbare projekte lesen")
-		d.projIDs = nil
+	d.projIDs = visible
+	for _, id := range visible {
+		d.projSet[id] = true
 	}
 }
 
 // projectVisible: darf der Copilot dieses Projekt zeigen?
 func (d *copilotData) projectVisible(id string) bool {
-	return d.projAll || (d.projCan != nil && d.projCan(id))
+	return d.projAll || d.projSet[id]
 }
 
 func (d *copilotData) allowed(k copilotKind) bool { return k.Perm == "" || d.can(k.Perm) }

@@ -381,6 +381,32 @@ func TestKVPAttachmentsBypassAttempts(t *testing.T) {
 	}
 }
 
+// „Meine“ zählt und zeigt dieselben Vorschläge wie die Sicht ohne Recht – auch die, an denen die
+// Person nur als Verantwortliche/r einer Maßnahme beteiligt ist (kvpPeopleCond).
+func TestKVPMineCountsActionResponsible(t *testing.T) {
+	e := newKVPEnv(t)
+	id := e.idea("KVMASS", e.infraA)
+	tabRe, chipRe := regexp.MustCompile(`Meine Vorschläge <b>(\d+)</b>`), regexp.MustCompile(`Meine <b>(\d+)</b>`)
+	for _, c := range []struct{ name, role string }{{"ohne Recht", e.roleNone}, {"mit Recht", e.roleView}} {
+		u := e.person("vf_kmine_"+strings.ReplaceAll(c.name, " ", ""), c.role)
+		e.exec(`DELETE FROM kvp_actions WHERE idea_id = $1::uuid`, id)
+		e.exec(`INSERT INTO kvp_actions (idea_id, description, responsible_id) VALUES ($1::uuid, 'M', $2::uuid)`, id, u.ID)
+		body := e.page(u, "/kvp?tab=ideas").Body.String()
+		chip := chipRe.FindStringSubmatch(body)
+		if chip == nil || chip[1] != "1" {
+			t.Errorf("%s: Chip „Meine“ %v, erwartet 1", c.name, chip)
+		}
+		if c.role == e.roleNone {
+			if tab := tabRe.FindStringSubmatch(body); tab == nil || tab[1] != chip[1] {
+				t.Errorf("%s: Reiter „Meine Vorschläge“ %v, Chip %v – müssen gleich sein", c.name, tab, chip)
+			}
+		}
+		if b := e.page(u, "/kvp?tab=ideas&status=mine").Body.String(); !strings.Contains(b, "KVMASS"+e.sfx) {
+			t.Errorf("%s: Liste „Meine“ ohne den Vorschlag mit eigener Maßnahme", c.name)
+		}
+	}
+}
+
 func TestStatKVPCountsVisibleOnly(t *testing.T) {
 	e := newKVPEnv(t)
 	a := e.idea("KVSA", e.infraA)
