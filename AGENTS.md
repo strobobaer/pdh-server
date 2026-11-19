@@ -251,25 +251,29 @@ oder ändern.**
 5. **0.81.5 Fingerabdruck bricht um, Netzwerk-Kennungen** (Efficio-Export
    auf schmalen Bildschirmen; neue Kennungen mit `pdh_uuid_v7()`,
    Migration 178) – auf `main` und dem Testverbund (18.11.2026).
-6. **ESPPDH Paket 1 = Version 0.82.0** (vom Anwender festgelegt): gebaut und
-   lokal committet auf `feature/esppdh` (Migrationen 179 bis 181, Rechte
-   `esppdh.view`, `esppdh.edit`, `esppdh.admin`; Entwurf
-   `docs/superpowers/specs/2026-11-18-esppdh-design.md`, Plan
-   `docs/superpowers/plans/2026-11-18-esppdh-paket1.md`). Offen: Freigabe des
-   Anwenders für Push, Merge und Verbund-Update; danach am Testverbund auf
-   beiden Servern die Umgebung einrichten, ein Gerät bauen, die Rollen
-   umschalten, die Firmware am zweiten Server herunterladen und im Browser
-   prüfen. Paket 2 und 3 sind nicht begonnen.
-   **Danach 0.82.1 (Auftrag vom 19.11.2026): ESPHome hält sich selbst
-   aktuell** – täglich auf eine neue Version prüfen, sie daneben einrichten,
-   damit die Konfiguration aller Geräte prüfen und nur bei Erfolg umschalten;
-   sonst bleibt die alte Version und es gibt einen Hinweis. Firmware wird
-   nicht von selbst neu gebaut. Ersetzt die Festlegung „ESPHome-Version fest
-   im Repository“.
+6. **ESPPDH Paket 1 = Version 0.82.0** (vom Anwender festgelegt): auf `main`
+   (19.11.2026; Migrationen 179 bis 181, Rechte `esppdh.view`, `esppdh.edit`,
+   `esppdh.admin`; Entwurf `docs/superpowers/specs/2026-11-18-esppdh-design.md`,
+   Plan `docs/superpowers/plans/2026-11-18-esppdh-paket1.md`). Offen: Freigabe
+   für das Verbund-Update; danach am Testverbund auf der Seite „Netzwerk“ den
+   Haken „Für ESPPDH-Geräte nutzbar“ am Geräte-WLAN setzen, auf beiden Servern
+   die Umgebung einrichten, ein Gerät bauen, die Rollen umschalten, die
+   Firmware am zweiten Server herunterladen und im Browser prüfen. Paket 2 und
+   3 sind nicht begonnen. Geparkt aus der Schlussprüfung: Bau ohne
+   `ionice`/Speicherschutz (am Testverbund beobachten), eigener Benutzer für
+   den Bau, gekürzter Gerätename bei Kennungen über 24 Zeichen, gespeicherte
+   Statusnachricht bleibt nach dem Löschen eines Geräts am Broker.
+   **Danach 0.82.1: ESPHome hält sich selbst aktuell** – Entwurf
+   `docs/superpowers/specs/2026-11-19-esphome-aktuell-design.md` am 19.11.2026
+   bestätigt, Plan `docs/superpowers/plans/2026-11-19-esphome-aktuell.md`
+   (6 Aufgaben, Branch `feature/esphome-aktuell`). Offen: Anwender bestätigt
+   den Plan, dann Bau.
+   **Danach: Sortieren in Historie, Maßnahmen und Kommentaren** (Auftrag vom
+   19.11.2026) – Entwurf `docs/superpowers/specs/2026-11-19-sortierung-design.md`
+   mit vier offenen Fragen an den Anwender; noch nicht bestätigt.
 7. **0.81.6 Nummern ab 10000** (Rüstzeit, KVP, Bestellung und Partner waren auf
-   vier Stellen abgeschnitten) – steckt in `feature/esppdh` und auf dem
-   lokalen Branch `fix/ruestzeit-nummer`; geht nach Freigabe zusammen mit
-   0.82.0 (oder einzeln) auf `main`.
+   vier Stellen abgeschnitten) – mit 0.82.0 auf `main`; der lokale Branch
+   `fix/ruestzeit-nummer` ist damit erledigt.
 8. **Tagesgrenzen aufräumen (klein):** übrige `Truncate(24*time.Hour)`
    gegen DATE-Spalten (`kanban.go`, `purchases.go`, `trainings.go`,
    `user_qualifications.go`, `procurement.go`, `projects_handler.go`,
