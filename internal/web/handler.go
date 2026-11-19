@@ -349,6 +349,7 @@ type Handler struct {
 
 	// Austauschbare Quellen (nur Tests; nil = echt): Rechteprüfung und gespeicherter Commit-Vergleich.
 	hasPermHook     func(*http.Request, string) bool
+	viewDeptErr     error
 	kioskPermHook   func(r *http.Request, perm, infraID string) bool // Tests: Rechte je Anlage ("" = ohne Abteilungsbegrenzung), kiosk_terminals.go
 	updateCheckHook func(context.Context) storedUpdateCheck
 

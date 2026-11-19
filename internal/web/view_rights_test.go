@@ -28,6 +28,9 @@ type viewFx struct {
 	infraB  string
 	groupA  string
 	creator string // Ersteller aller Datensätze, ohne Rechte und nie beteiligt außer als Ersteller
+	projIDs []string
+	kvpIDs  []string
+	extra   []string // weitere Abteilungen (Unterabteilungen), werden zuletzt gelöscht
 }
 
 func (f *viewFx) must(err error) {
@@ -79,14 +82,18 @@ func (f *viewFx) req(uid, role string) *http.Request {
 
 func (f *viewFx) project(infra, group string) string {
 	f.t.Helper()
-	return f.id(`INSERT INTO projects (name, created_by, infrastructure_id, assigned_group_id)
+	id := f.id(`INSERT INTO projects (name, created_by, infrastructure_id, assigned_group_id)
 		VALUES ('P', $1::uuid, NULLIF($2,'')::uuid, NULLIF($3,'')::uuid) RETURNING id::text`, f.creator, infra, group)
+	f.projIDs = append(f.projIDs, id)
+	return id
 }
 
 func (f *viewFx) kvp(infra string) string {
 	f.t.Helper()
-	return f.id(`INSERT INTO kvp_ideas (title, created_by, infrastructure_id)
+	id := f.id(`INSERT INTO kvp_ideas (title, created_by, infrastructure_id)
 		VALUES ('K', $1::uuid, NULLIF($2,'')::uuid) RETURNING id::text`, f.creator, infra)
+	f.kvpIDs = append(f.kvpIDs, id)
+	return id
 }
 
 func newViewFx(t *testing.T) *viewFx {
@@ -106,12 +113,14 @@ func newViewFx(t *testing.T) *viewFx {
 	f.creator = f.user("vf_creator", noRole)
 	t.Cleanup(func() {
 		c := context.Background()
-		pool.Exec(c, `DELETE FROM kvp_ideas WHERE created_by = $1::uuid OR title = 'K'`, f.creator)
-		pool.Exec(c, `DELETE FROM projects WHERE created_by = $1::uuid`, f.creator)
+		pool.Exec(c, `DELETE FROM kvp_ideas WHERE id::text = ANY($1)`, f.kvpIDs)
+		pool.Exec(c, `DELETE FROM projects WHERE id::text = ANY($1)`, f.projIDs)
 		pool.Exec(c, `DELETE FROM users WHERE username LIKE 'vf\_%' || $1`, f.sfx)
 		pool.Exec(c, `DELETE FROM roles WHERE key LIKE 'vf\_%' || $1`, f.sfx)
 		pool.Exec(c, `DELETE FROM user_groups WHERE id = $1::uuid`, f.groupA)
 		pool.Exec(c, `DELETE FROM infrastructure WHERE id IN ($1::uuid, $2::uuid)`, f.infraA, f.infraB)
+		pool.Exec(c, `DELETE FROM infrastructure WHERE department_id::text = ANY($1)`, f.extra)
+		pool.Exec(c, `DELETE FROM departments WHERE id::text = ANY($1)`, f.extra)
 		pool.Exec(c, `DELETE FROM departments WHERE id IN ($1::uuid, $2::uuid)`, f.deptA, f.deptB)
 	})
 	return f
@@ -126,9 +135,10 @@ func TestMigration183GrantsAllRoles(t *testing.T) {
 		OR (key = 'kvp.view' AND label = 'KVP: alle Vorschläge ansehen' AND category = 'KVP')`).Scan(&n); err != nil || n != 2 {
 		t.Fatalf("Rechte mit Beschriftung und Kategorie: %d, %v", n, err)
 	}
-	// Rollen der Tests (vf_…) entstehen erst nach der Migration und zählen nicht.
+	// Nur Rollen, die vor der Migration 183 bestanden (später angelegte Rollen bekommen die Rechte nicht).
 	for _, key := range []string{"projects.view", "kvp.view"} {
-		if err := pool.QueryRow(ctx, `SELECT count(*) FROM roles r WHERE r.key NOT LIKE 'vf\_%'
+		if err := pool.QueryRow(ctx, `SELECT count(*) FROM roles r
+			WHERE r.created_at < (SELECT applied_at FROM schema_migrations WHERE version = 183)
 			AND NOT EXISTS (SELECT 1 FROM role_permissions rp JOIN permissions p ON p.id = rp.permission_id
 			                 WHERE rp.role_id = r.id AND p.key = $1 AND rp.department_id IS NULL)`, key).Scan(&n); err != nil || n != 0 {
 			t.Errorf("%d Rollen ohne %s (überall): %v", n, key, err)
@@ -319,5 +329,122 @@ func TestCanViewRecOtherTypes(t *testing.T) {
 	}
 	if !f.h.viewFilter(r, "ticket")("x") || !f.h.mayViewAny(r, "ticket") {
 		t.Error("andere Typen: Filter und mayViewAny immer wahr")
+	}
+}
+
+// Fehler beim Laden der Abteilungen: nur Beteiligung zählt, nie "ohne Abteilung = für alle".
+func TestCanViewRecDeptLookupFailsClosed(t *testing.T) {
+	f := newViewFx(t)
+	role := f.role("vf_x", map[string]string{permProjectsView: f.deptA, permKVPView: f.deptA})
+	uid := f.user("vf_x", role)
+	r := f.req(uid, role)
+	pA, pMine := f.project(f.infraA, ""), f.project(f.infraA, "")
+	f.exec(`UPDATE projects SET responsible_to = $2::uuid WHERE id = $1::uuid`, pMine, uid)
+	kA, kMine := f.kvp(f.infraA), f.kvp(f.infraA)
+	f.exec(`UPDATE kvp_ideas SET submitter_id = $2::uuid WHERE id = $1::uuid`, kMine, uid)
+
+	// Vorprobe: ohne Fehler sieht die Rolle beide Projekte
+	if !f.h.canViewRec(r, "project", pA) {
+		t.Fatal("Vorprobe: Projekt in A sichtbar")
+	}
+	f.h.viewDeptErr = errViewNoDB
+	for typ, c := range map[string][2]string{"project": {pA, pMine}, "kvp": {kA, kMine}} {
+		if f.h.canViewRec(r, typ, c[0]) {
+			t.Errorf("%s: Abteilungsfehler darf nicht sichtbar machen", typ)
+		}
+		if !f.h.canViewRec(r, typ, c[1]) {
+			t.Errorf("%s: Beteiligte sehen trotz Abteilungsfehler", typ)
+		}
+		flt := f.h.viewFilter(r, typ)
+		if flt(c[0]) || !flt(c[1]) {
+			t.Errorf("%s: viewFilter bei Abteilungsfehler nur Beteiligte", typ)
+		}
+	}
+	// Datenbank gar nicht erreichbar (geschlossener Pool): nichts sichtbar, auch nicht beteiligt
+	f.h.viewDeptErr = nil
+	dead, err := pgxpool.New(context.Background(), "postgres://pdh:lab-pdh-test@127.0.0.1:54330/pdh_test?sslmode=disable")
+	f.must(err)
+	dead.Close()
+	hd := &Handler{db: dead, rbac: f.rb}
+	if hd.canViewRec(r, "project", pA) || hd.viewFilter(r, "project")(pA) || hd.viewFilter(r, "project")(pMine) {
+		t.Error("geschlossene Datenbank: nichts sichtbar")
+	}
+}
+
+// Ohne rbac (Tests mit hasPermHook): das Recht gilt überall, wenn der Hook es gibt.
+func TestCanViewRecHookWithoutRBAC(t *testing.T) {
+	f := newViewFx(t)
+	role := f.role("vf_h", nil)
+	uid := f.user("vf_h", role)
+	r := f.req(uid, role)
+	p := f.project(f.infraB, "")
+	grant := false
+	h := &Handler{db: f.pool, hasPermHook: func(_ *http.Request, perm string) bool { return grant && perm == permProjectsView }}
+	if h.canViewRec(r, "project", p) || h.mayViewAny(r, "project") || h.viewFilter(r, "project")(p) {
+		t.Error("Hook verweigert: nichts sichtbar")
+	}
+	grant = true
+	if !h.canViewRec(r, "project", p) || !h.mayViewAny(r, "project") || !h.viewFilter(r, "project")(p) {
+		t.Error("Hook erlaubt: überall sichtbar")
+	}
+	grant = false
+	f.exec(`UPDATE projects SET responsible_to = $2::uuid WHERE id = $1::uuid`, p, uid)
+	if !h.canViewRec(r, "project", p) || !h.viewFilter(r, "project")(p) {
+		t.Error("Beteiligung zählt auch ohne rbac")
+	}
+}
+
+func TestCanViewRecMalformedID(t *testing.T) {
+	f := newViewFx(t)
+	role := f.role("vf_m", map[string]string{permProjectsView: f.deptA})
+	r := f.req(f.user("vf_m", role), role)
+	for _, id := range []string{"", "abc", "00000000-0000-0000-0000-00000000000g", "x' OR 1=1 --"} {
+		if f.h.canViewRec(r, "project", id) || f.h.involvedIn(context.Background(), "x", "kvp", id) {
+			t.Errorf("ungültige ID %q darf nicht sichtbar sein", id)
+		}
+	}
+}
+
+// Benannte Risiken: gemischte Abteilungen, Unterabteilung, Verbot per Einzelrecht, KVP-Filter.
+func TestCanViewRecNamedRisks(t *testing.T) {
+	f := newViewFx(t)
+	sub := f.id(`INSERT INTO departments (name, parent_id) VALUES ($1, $2::uuid) RETURNING id::text`, "VS "+f.sfx, f.deptA)
+	f.extra = append(f.extra, sub)
+	infraSub := f.id(`INSERT INTO infrastructure (name, type, department_id) VALUES ($1, 'line', $2::uuid) RETURNING id::text`, "AnlS "+f.sfx, sub)
+	f.must(f.rb.RefreshCache(context.Background()))
+	role := f.role("vf_r", map[string]string{permProjectsView: f.deptA, permKVPView: f.deptA})
+	uid := f.user("vf_r", role)
+	r := f.req(uid, role)
+
+	mixed := f.project(f.infraB, f.groupA) // Anlage in B, Gruppe in A
+	inSub := f.project(infraSub, "")
+	kSub, kB := f.kvp(infraSub), f.kvp(f.infraB)
+	if !f.h.canViewRec(r, "project", mixed) {
+		t.Error("Anlage in B, Gruppe in A: sichtbar (eine passende Abteilung genügt)")
+	}
+	if !f.h.canViewRec(r, "project", inSub) || !f.h.canViewRec(r, "kvp", kSub) || f.h.canViewRec(r, "kvp", kB) {
+		t.Error("Unterabteilung von A zählt zu A, B nicht")
+	}
+	for typ, ids := range map[string][]string{"project": {mixed, inSub, f.project(f.infraB, "")}, "kvp": {kSub, kB, f.kvp(f.infraA), f.kvp("")}} {
+		flt := f.h.viewFilter(r, typ)
+		for i, id := range ids {
+			if got, want := flt(id), f.h.canViewRec(r, typ, id); got != want {
+				t.Errorf("%s %d: viewFilter %v, canViewRec %v", typ, i, got, want)
+			}
+		}
+	}
+
+	// Einzelrecht-Verbot gegen die Rolle: nur noch Beteiligte
+	f.exec(`INSERT INTO user_permissions (user_id, permission_id, granted) SELECT $1::uuid, id, false FROM permissions WHERE key = 'projects.view'`, uid)
+	f.must(f.rb.RefreshCache(context.Background()))
+	if f.h.canViewRec(r, "project", inSub) || f.h.mayViewAny(r, "project") || f.h.viewFilter(r, "project")(inSub) {
+		t.Error("Verbot per Einzelrecht: nichts sichtbar")
+	}
+	f.exec(`UPDATE projects SET responsible_to = $2::uuid WHERE id = $1::uuid`, inSub, uid)
+	if !f.h.canViewRec(r, "project", inSub) || !f.h.viewFilter(r, "project")(inSub) {
+		t.Error("Verbot per Einzelrecht: Beteiligte sehen weiter")
+	}
+	if !f.h.canViewRec(r, "kvp", kSub) {
+		t.Error("das Verbot gilt nur für Projekte, nicht für KVP")
 	}
 }

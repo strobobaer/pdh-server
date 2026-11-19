@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"errors"
 	"net/http"
 )
 
@@ -11,6 +12,9 @@ import (
 // Datensatzes hat (Bereichsadministrator eingeschlossen, das erledigt
 // rbac.Scope) oder am Vorgang beteiligt ist. "Bearbeiten" (projects.edit) und
 // "Steuern" (kvp.manage) schließen das Ansehen nicht ein.
+//
+// Fehler beim Laden der Abteilungen oder der Beteiligung führen immer zu
+// "nicht sichtbar" (nie zu "ohne Abteilung = für alle").
 
 const (
 	permProjectsView = "projects.view"
@@ -29,6 +33,8 @@ const kvpPeopleCond = `r.submitter_id = $1::uuid OR r.created_by = $1::uuid OR r
 	` OR EXISTS (SELECT 1 FROM kvp_members m WHERE m.idea_id = r.id AND m.user_id = $1::uuid)` +
 	` OR EXISTS (SELECT 1 FROM kvp_actions a WHERE a.idea_id = r.id AND a.responsible_id = $1::uuid)`
 
+var errViewNoDB = errors.New("keine datenbank")
+
 // involvedSource: Tabelle und Beteiligungs-Bedingung eines Typs mit Ansichtsrecht.
 func involvedSource(refType string) (table, cond string, ok bool) {
 	switch refAlias(refType) {
@@ -43,7 +49,7 @@ func involvedSource(refType string) (table, cond string, ok bool) {
 // involvedIn: ist die Person (aktueller Stand) am Projekt bzw. Vorschlag beteiligt?
 func (h *Handler) involvedIn(ctx context.Context, uid, refType, id string) bool {
 	table, cond, ok := involvedSource(refType)
-	if !ok || h.db == nil || uid == "" || id == "" {
+	if !ok || h.db == nil || uid == "" || !bareUUIDRe.MatchString(id) {
 		return false
 	}
 	var yes bool
@@ -54,26 +60,127 @@ func (h *Handler) involvedIn(ctx context.Context, uid, refType, id string) bool 
 	return yes
 }
 
-// involvedIDs: alle Projekte bzw. Vorschläge, an denen die Person beteiligt ist.
+// involvedIDs: alle Projekte bzw. Vorschläge, an denen die Person beteiligt ist
+// (bei einem Fehler: leer).
 func (h *Handler) involvedIDs(ctx context.Context, uid, refType string) map[string]bool {
+	out, err := h.involvedIDsErr(ctx, uid, refType)
+	if err != nil {
+		componentLog("rechte").Error().Err(err).Str("typ", refType).Msg("beteiligte vorgänge laden")
+		return map[string]bool{}
+	}
+	return out
+}
+
+func (h *Handler) involvedIDsErr(ctx context.Context, uid, refType string) (map[string]bool, error) {
 	out := map[string]bool{}
 	table, cond, ok := involvedSource(refType)
-	if !ok || h.db == nil || uid == "" {
-		return out
+	if !ok || uid == "" {
+		return out, nil
+	}
+	if h.db == nil {
+		return out, errViewNoDB
 	}
 	rows, err := h.db.Query(ctx, `SELECT r.id::text FROM `+table+` r WHERE `+cond, uid)
 	if err != nil {
-		componentLog("rechte").Error().Err(err).Str("typ", refType).Msg("beteiligte vorgänge laden")
-		return out
+		return out, err
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var id string
-		if rows.Scan(&id) == nil {
-			out[id] = true
+		if err := rows.Scan(&id); err != nil {
+			return out, err
+		}
+		out[id] = true
+	}
+	return out, rows.Err()
+}
+
+// viewDepartments: Abteilungen eines Datensatzes – anders als
+// recordDepartments mit Fehler: ein Fehler darf nie als "keine Abteilung"
+// (= für alle sichtbar) gelten.
+func (h *Handler) viewDepartments(ctx context.Context, refType, id string) ([]string, error) {
+	if h.viewDeptErr != nil {
+		return nil, h.viewDeptErr
+	}
+	src, ok := recordDeptSource[refAlias(refType)]
+	if !ok {
+		return nil, nil
+	}
+	if h.db == nil {
+		return nil, errViewNoDB
+	}
+	q := `SELECT idp.department_id::text FROM ` + src.table + ` r JOIN infrastructure_department idp ON idp.infrastructure_id = r.infrastructure_id WHERE r.id = $1::uuid`
+	if src.group {
+		q += ` UNION SELECT g.department_id::text FROM ` + src.table + ` r JOIN user_groups g ON g.id = r.assigned_group_id WHERE r.id = $1::uuid AND g.department_id IS NOT NULL`
+	}
+	rows, err := h.db.Query(ctx, q, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var d string
+		if err := rows.Scan(&d); err != nil {
+			return nil, err
+		}
+		if d != "" {
+			out = append(out, d)
 		}
 	}
-	return out
+	return out, rows.Err()
+}
+
+// allRecordDepartments: Abteilungen aller Datensätze eines Typs (wie
+// viewDepartments, aber in einer Abfrage); Datensätze ohne Abteilung fehlen.
+func (h *Handler) allRecordDepartments(ctx context.Context, refType string) (map[string][]string, error) {
+	if h.viewDeptErr != nil {
+		return nil, h.viewDeptErr
+	}
+	out := map[string][]string{}
+	src, ok := recordDeptSource[refAlias(refType)]
+	if !ok {
+		return out, nil
+	}
+	if h.db == nil {
+		return nil, errViewNoDB
+	}
+	q := `SELECT r.id::text, idp.department_id::text FROM ` + src.table + ` r JOIN infrastructure_department idp ON idp.infrastructure_id = r.infrastructure_id`
+	if src.group {
+		q += ` UNION SELECT r.id::text, g.department_id::text FROM ` + src.table + ` r JOIN user_groups g ON g.id = r.assigned_group_id WHERE g.department_id IS NOT NULL`
+	}
+	rows, err := h.db.Query(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id, d string
+		if err := rows.Scan(&id, &d); err != nil {
+			return nil, err
+		}
+		if d != "" {
+			out[id] = append(out[id], d)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// viewMode: wie das Recht ausgewertet wird. Ohne rbac gilt nur in Tests mit
+// hasPermHook: dann "überall", wenn der Hook das Recht gibt.
+func (h *Handler) viewMode(r *http.Request, perm string) (all bool, depts []string, useRBAC bool) {
+	if h.rbac == nil {
+		return h.hasPermHook != nil && h.hasPerm(r, perm), nil, false
+	}
+	u := getUser(r)
+	if u == nil || u.ID == "" || (h.hasPermHook != nil && !h.hasPerm(r, perm)) {
+		return false, nil, true
+	}
+	all, depts = h.rbac.Scope(u.ID, string(u.Role), perm)
+	return all, depts, true
 }
 
 // canViewRec: darf die angemeldete Person diesen Datensatz sehen? Typen ohne
@@ -84,11 +191,23 @@ func (h *Handler) canViewRec(r *http.Request, refType, id string) bool {
 	if !ok {
 		return true
 	}
-	u := getUser(r)
-	if u == nil || u.ID == "" || h.rbac == nil {
+	if !bareUUIDRe.MatchString(id) {
 		return false
 	}
-	return h.hasPermRec(r, perm, refType, id) || h.involvedIn(r.Context(), u.ID, refType, id)
+	u := getUser(r)
+	if u == nil || u.ID == "" {
+		return false
+	}
+	if all, depts, _ := h.viewMode(r, perm); all {
+		return true
+	} else if len(depts) > 0 {
+		if rd, err := h.viewDepartments(r.Context(), refType, id); err != nil {
+			componentLog("rechte").Error().Err(err).Str("typ", refType).Msg("abteilung des datensatzes laden")
+		} else if h.hasPermIn(r, perm, rd) {
+			return true
+		}
+	}
+	return h.involvedIn(r.Context(), u.ID, refType, id)
 }
 
 // mayViewAny: hat die Person das Ansichtsrecht irgendwo (überall oder in
@@ -98,17 +217,13 @@ func (h *Handler) mayViewAny(r *http.Request, refType string) bool {
 	if !ok {
 		return true
 	}
-	u := getUser(r)
-	if u == nil || u.ID == "" || h.rbac == nil {
-		return false
-	}
-	all, depts := h.rbac.Scope(u.ID, string(u.Role), perm)
+	all, depts, _ := h.viewMode(r, perm)
 	return all || len(depts) > 0
 }
 
 // viewFilter: Listenfilter "darf diese ID gesehen werden" – gleiches Ergebnis
 // wie canViewRec, aber mit einer Abfrage je Liste statt je Eintrag. Bei Recht
-// "überall" ohne Abfrage immer wahr.
+// "überall" ohne Abfrage immer wahr. Bei Fehlern zählt nur die Beteiligung.
 func (h *Handler) viewFilter(r *http.Request, refType string) func(id string) bool {
 	refType = refAlias(refType)
 	perm, ok := viewRights[refType]
@@ -116,10 +231,10 @@ func (h *Handler) viewFilter(r *http.Request, refType string) func(id string) bo
 		return func(string) bool { return true }
 	}
 	u := getUser(r)
-	if u == nil || u.ID == "" || h.rbac == nil {
+	if u == nil || u.ID == "" {
 		return func(string) bool { return false }
 	}
-	all, depts := h.rbac.Scope(u.ID, string(u.Role), perm)
+	all, depts, _ := h.viewMode(r, perm)
 	if all {
 		return func(string) bool { return true }
 	}
@@ -128,35 +243,12 @@ func (h *Handler) viewFilter(r *http.Request, refType string) func(id string) bo
 	if len(depts) == 0 {
 		return func(id string) bool { return involved[id] }
 	}
-	recDepts := h.allRecordDepartments(ctx, refType)
+	recDepts, err := h.allRecordDepartments(ctx, refType)
+	if err != nil {
+		componentLog("rechte").Error().Err(err).Str("typ", refType).Msg("abteilungen der datensätze laden")
+		return func(id string) bool { return involved[id] }
+	}
 	return func(id string) bool {
 		return involved[id] || h.hasPermIn(r, perm, recDepts[id])
 	}
-}
-
-// allRecordDepartments: Abteilungen aller Datensätze eines Typs (wie
-// recordDepartments, aber in einer Abfrage); Datensätze ohne Abteilung fehlen.
-func (h *Handler) allRecordDepartments(ctx context.Context, refType string) map[string][]string {
-	out := map[string][]string{}
-	src, ok := recordDeptSource[refAlias(refType)]
-	if !ok || h.db == nil {
-		return out
-	}
-	q := `SELECT r.id::text, idp.department_id::text FROM ` + src.table + ` r JOIN infrastructure_department idp ON idp.infrastructure_id = r.infrastructure_id`
-	if src.group {
-		q += ` UNION SELECT r.id::text, g.department_id::text FROM ` + src.table + ` r JOIN user_groups g ON g.id = r.assigned_group_id WHERE g.department_id IS NOT NULL`
-	}
-	rows, err := h.db.Query(ctx, q)
-	if err != nil {
-		componentLog("rechte").Error().Err(err).Str("typ", refType).Msg("abteilungen der datensätze laden")
-		return out
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var id, d string
-		if rows.Scan(&id, &d) == nil && d != "" {
-			out[id] = append(out[id], d)
-		}
-	}
-	return out
 }
