@@ -371,6 +371,9 @@ func main() {
 	// ESPPDH: auf jedem Server Reste eines abgestürzten Baus löschen (sie enthalten Kennwörter);
 	// den Arbeiter, der Firmware nacheinander baut, gibt es nur am aktiven Server, nicht in Docker.
 	webHandler.StartESPPDH(context.Background())
+	// ESPPDH: jeder Server prüft täglich selbst auf eine neuere ESPHome-Version und probt sie
+	// (Probebau nur am aktiven Server; am Spiegel nur die Konfigurationsprüfung).
+	webHandler.StartESPPDHUpdate(context.Background())
 	// Datennetz (optional, standardmäßig aus): Knoten im Hintergrund, blockiert nie.
 	// Auf beiden Servern; den Rückkanal für Meldungen bedient nur der aktive.
 	webHandler.StartDataNet(context.Background(), !mirrorOn)
@@ -534,6 +537,9 @@ func main() {
 		doRestart = true
 	}
 	log.Info().Bool("neustart", doRestart).Msg("PDH wird gestoppt...")
+	// ESPPDH: eine laufende ESPHome-Prüfung zuerst abbrechen – systemd beendet ESPHome mit dem PDH,
+	// das darf nicht als gescheiterte Probe zählen
+	webHandler.StopESPPDHUpdate()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	srv.Shutdown(ctx)

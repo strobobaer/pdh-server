@@ -341,7 +341,7 @@ func TestEsppdhPanelStates(t *testing.T) {
 	old := on
 	old.Env = esppdh.EnvState{Installed: true, Version: "2026.9.1", Outdated: true, FreeMB: 800}
 	out = renderSNMPTemplate(t, "esppdh-panel", old)
-	for _, want := range []string{"ESPHome 2026.9.1", "veraltet – wird mit dem nächsten Update angehoben", "2026.10.2", "Freier Platz: 800 MB"} {
+	for _, want := range []string{"ESPHome 2026.9.1", "veraltet – älter als die Mindestversion", "2026.10.2", "Freier Platz: 800 MB"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("veraltet: %q fehlt", want)
 		}

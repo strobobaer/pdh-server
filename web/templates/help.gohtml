@@ -2463,9 +2463,40 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <p>Ist der Knopf grau, fehlt der Update-Agent – ohne ihn lässt sich die Umgebung nicht einrichten. Klappt die Einrichtung nicht, steht der Grund rot in der Karte.</p></div>
   <ul>
     <li><b>Im Verbund (Ausfallschutz) auf beiden Servern einrichten.</b> Jeder Server baut mit seiner eigenen Umgebung, und bei jedem Update tauschen die Server die Rollen. Auf dem Spiegelserver geht „Umgebung einrichten“ genauso; ein- und ausschalten nur am aktiven Server.</li>
-    <li><b>Updates:</b> Ist die Umgebung eingerichtet, bringt jedes PDH-Update die passende ESPHome-Version mit. Läuft gerade eine Einrichtung, wartet das Update bis zu 15 Minuten darauf. Steht in der Karte „veraltet“, hebt das nächste Update ESPHome an.</li>
+    <li><b>Updates:</b> Die ESPHome-Version, die mit dem PDH kommt, ist die <b>Mindestversion</b> (Grundumgebung). Ein PDH-Update hebt ESPHome nur an, wenn die Umgebung älter ist; eine neuere, vom PDH selbst geholte Version bleibt (siehe <a href="#hb-esp-aktuell">ESPHome bleibt von selbst aktuell</a>). Läuft gerade eine Einrichtung, wartet das Update bis zu 15 Minuten darauf. „veraltet“ steht in der Karte nur, wenn die Umgebung älter als die Mindestversion ist.</li>
     <li><b>Internet und Platz:</b> Das Einrichten, ein Update mit neuer ESPHome-Version und der erste Bau je Platinentyp laden aus dem Internet – der erste Bau mehrere hundert MB. Ein Bau braucht mindestens 2 GB freien Platz; die Karte zeigt, wie viel frei ist.</li>
     <li><b>Ausschalten:</b> Danach lassen sich keine Geräte anlegen und keine Firmware bauen. Wartende Bauten bricht das PDH ab, ein laufender Bau läuft zu Ende. Vorhandene Geräte senden weiter; du kannst sie weiter ändern, sperren und löschen.</li>
+  </ul>
+
+  <h3 id="hb-esp-aktuell"><i class="ti ti-refresh"></i> ESPHome bleibt von selbst aktuell</h3>
+  <p>Jeder Server prüft <b>einmal am Tag</b> selbst, ob es eine neuere ESPHome-Version gibt. Er probt sie aus und schaltet nur um, wenn die Probe klappt. Sonst bleibt alles wie es war. Firmware von Geräten wird dabei <b>nie von selbst neu gebaut</b> oder aufgespielt.</p>
+  <div class="hb-howto"><b><i class="ti ti-list-check"></i> Das geschieht jeden Tag</b>
+    <ol class="hb-steps">
+      <li><b>Prüfen:</b> Das PDH sucht die neueste stabile Version. Sie muss neuer sein als die laufende und mindestens <b>3 Tage</b> veröffentlicht sein (fehlerhafte Ausgaben werden meist in diesen Tagen ersetzt).</li>
+      <li><b>Daneben einrichten:</b> Die neue Version bekommt eine eigene Umgebung neben der laufenden. Die laufende wird nicht angefasst, Bauten gehen weiter.</li>
+      <li><b>Probe:</b> Das PDH prüft die Konfiguration der Musterkonfigurationen und jedes nicht gesperrten Geräts mit der neuen Version. Am aktiven Server baut es zusätzlich <b>einmal je verwendeter Chip-Familie</b> probeweise eine Firmware (das Ergebnis wird verworfen). Dafür nimmt es ein Gerät, dessen letzter Bau geklappt hat. Hat eine Chip-Familie kein solches Gerät, gibt es für sie keinen Probebau; das Ergebnis nennt das. Ein Server ohne Geräte macht keinen Probebau.</li>
+      <li><b>Umschalten:</b> Klappt alles, nutzt das PDH ab jetzt die neue Version. Die bisherige bleibt als vorige Version liegen, ältere werden gelöscht.</li>
+    </ol>
+    <p>Ein Gerät, das schon mit der laufenden Version nicht durchgeht, zählt nicht gegen die neue. Das gilt auch für den Probebau: Scheitert er, baut das PDH dasselbe Gerät mit der laufenden Version. Scheitert es auch dort, wird es übersprungen.</p>
+    <p>Ein echter Bau und eine Probe laufen nie zugleich. Wird während der Probe ein Bau gestartet, wartet er nur, bis der laufende Prüfschritt fertig ist. Dann ist er vor den übrigen Prüfungen dran. Solange er wartet, lässt er sich abbrechen.</p></div>
+  <div class="hb-howto"><b><i class="ti ti-adjustments"></i> So bedienst du es</b>
+    <ol class="hb-steps">
+      <li><b>Server-Einstellungen</b> → Reiter <b>ESPPDH</b> öffnen.</li>
+      <li><b>ESPHome selbst aktuell halten</b> mit <b>Ausschalten</b> oder <b>Einschalten</b> umstellen. Ab Werk ist es an. Aus: Die Version ändert sich nur noch mit <b>Jetzt prüfen</b> oder durch ein PDH-Update auf eine neuere Mindestversion.</li>
+      <li><b>Jetzt prüfen</b> startet die Prüfung sofort. Die 3 Tage Wartezeit gelten weiter; eine gescheiterte Version wird dabei erneut versucht. Solange geprüft wird („Prüfung läuft …“), sind die Knöpfe grau.</li>
+      <li><b>Zurück zur vorigen Version</b> (steht nur da, solange es eine vorige Version gibt) bestätigen. Die Version, die du verlässt, gilt dann als gescheitert; die nächste tägliche Prüfung kommt erst 24 Stunden später. Während einer Prüfung geht das nicht.</li>
+    </ol>
+    <p>Die Karte zeigt, welche Version läuft, die Mindestversion, wann zuletzt geprüft wurde und mit welchem Ergebnis, den freien Platz und die zuletzt gescheiterte Version samt Ausgabe („Ausgabe anzeigen“). Die Knöpfe sind grau, wenn der Update-Agent fehlt. Ist er zu alt, steht in der Karte „Der Update-Agent ist zu alt – zuerst das PDH aktualisieren“: Dann zuerst das PDH aktualisieren.</p></div>
+  <ul>
+    <li><b>Wenn die Probe scheitert:</b> Die neue Version wird entfernt und mit dem Ende der Ausgabe vermerkt. Das PDH baut weiter mit der bisherigen Version. Die ESPPDH-Bereichsadministratoren (Recht <code>esppdh.admin</code>) bekommen <b>eine Meldung</b> je Version. Dasselbe gilt, wenn sich die neue Version nicht einrichten lässt, z. B. weil pip scheitert.</li>
+    <li><b>Zu wenig Platz</b> zählt nicht gegen die neue Version. Für eine neue Version braucht der Server 3 GB freien Platz, für den Probebau 2 GB. Fehlt der Platz, zeigt die Karte einen Hinweis. Der nächste Lauf versucht es erneut.</li>
+    <li><b>Neustart während der Probe:</b> Wird das PDH während einer Probe beendet oder neu gestartet, zählt das nicht gegen die neue Version. Es gibt keine Meldung. Bald nach dem Start prüft das PDH erneut.</li>
+    <li><b>Neuer Versuch:</b> Eine gescheiterte Version wird <b>nicht täglich</b> wiederholt, sondern erst nach einem PDH-Update (das PDH kann dann angepasst sein) oder mit „Jetzt prüfen“. Das PDH merkt sich <b>alle</b> gescheiterten Versionen, nicht nur die letzte. Eine noch neuere Version wird ganz normal geprüft.</li>
+    <li><b>Höchstens vier Umgebungen:</b> die Grundumgebung aus dem PDH (Mindestversion), die laufende, die vorige und eine neue Version in der Probe.</li>
+    <li><b>Der Update-Agent stuft nie von selbst herab.</b> Zurück geht es nur auf die eine aufbewahrte vorige Version, und nie, während eine Umgebung eingerichtet wird.</li>
+    <li><b>Zwei Server im Verbund:</b> Jeder Server prüft für sich und hat seine eigene Umgebung. Für kurze Zeit können sie verschiedene Versionen haben. Am Spiegelserver lässt sich der Schalter nicht umstellen; „Jetzt prüfen“ und „Zurück zur vorigen Version“ gehen dort. Der Spiegel macht nur die Konfigurationsprüfung, keinen Probebau.</li>
+    <li><b>Ohne Internet</b> bleibt die Version, wie sie ist. Die Karte vermerkt, dass die Prüfung nicht möglich war. Das PDH läuft unverändert.</li>
+    <li><b>Am Gerät:</b> Wurde die Firmware mit einer älteren ESPHome-Version gebaut als die, die der Server jetzt hat, zeigt die Seite des Geräts einen Hinweis. Neu bauen und flashen ist möglich, aber nicht nötig – das entscheidest du.</li>
   </ul>
 
   <h3 id="hb-esp-new"><i class="ti ti-plus"></i> Gerät anlegen</h3>

@@ -54,6 +54,10 @@ type esppdhQueue struct {
 	runDev    string             // sein Gerät
 	cancelRun context.CancelFunc // bricht den laufenden Bau ab
 	byUser    bool               // … weil jemand „Abbrechen“ gedrückt oder das Gerät gelöscht hat
+	// runMu: gehalten, solange ESPHome läuft – vom Arbeiter vom Übernehmen eines Auftrags bis zum
+	// Ende des Baus (esppdhRunNext) wie von der Probe einer neuen Version (esppdh_update.go). So
+	// laufen nie zwei ESPHome-Aufrufe zugleich.
+	runMu sync.Mutex
 }
 
 const (
@@ -61,6 +65,10 @@ const (
 	esppdhIdlePoll = 30 * time.Second // ohne Weckruf: so oft nach Aufträgen sehen
 	esppdhStopWait = 20 * time.Second // Herunterfahren wartet höchstens so lange auf den Arbeiter
 )
+
+// esppdhRunPoll: Baut gerade eine Probe (runMu belegt), sieht der Arbeiter so oft nach, ob er
+// wieder darf (Tests verkürzen es).
+var esppdhRunPoll = 2 * time.Second
 
 var (
 	errEsppdhNoBuild     = errors.New("Diesen Lauf gibt es nicht.")
@@ -179,6 +187,12 @@ func (h *Handler) esppdhRunNext(ctx context.Context, runner esppdhBuilder) bool 
 		h.esppdhCancelQueued(ctx, "Nicht gebaut: "+msg)
 		return false
 	}
+	// erst runMu, dann übernehmen: Baut gerade eine Probe, bleibt der Auftrag „wartet“ und lässt
+	// sich sofort abbrechen
+	if !h.esppdhLockRun(ctx) {
+		return false
+	}
+	defer h.esppdhQ.runMu.Unlock()
 	q := &h.esppdhQ
 	bctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -208,8 +222,22 @@ func (h *Handler) esppdhRunNext(ctx context.Context, runner esppdhBuilder) bool 
 	return true
 }
 
-// esppdhRunBuild baut einen übernommenen Auftrag und trägt das Ergebnis ein. ctx endet beim
-// Herunterfahren, bctx zusätzlich beim Abbrechen.
+// esppdhLockRun wartet auf runMu (siehe esppdhRunPoll). false: ctx endete vorher (Herunterfahren).
+func (h *Handler) esppdhLockRun(ctx context.Context) bool {
+	for {
+		if h.esppdhQ.runMu.TryLock() {
+			return true
+		}
+		select {
+		case <-ctx.Done():
+			return false
+		case <-time.After(esppdhRunPoll):
+		}
+	}
+}
+
+// esppdhRunBuild baut einen übernommenen Auftrag und trägt das Ergebnis ein (der Aufrufer hält
+// runMu). ctx endet beim Herunterfahren, bctx zusätzlich beim Abbrechen.
 func (h *Handler) esppdhRunBuild(ctx, bctx context.Context, runner esppdhBuilder, c esppdhClaim) {
 	lg := componentLog("esppdh")
 	var job esppdh.BuildJob
@@ -264,6 +292,18 @@ func (h *Handler) esppdhRunBuild(ctx, bctx context.Context, runner esppdhBuilder
 	}
 	h.esppdhPrune(c.DeviceID, false)
 	lg.Info().Str("lauf", c.ID).Str("gerät", job.Slug).Bool("von_hand", byUser).Msg("bau ohne firmware beendet")
+}
+
+// esppdhQueueIdle: wartet und läuft kein Bau? Ist das nicht lesbar, gilt die Schlange als belegt.
+func (h *Handler) esppdhQueueIdle(ctx context.Context) bool {
+	if h.db == nil {
+		return true
+	}
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	var busy bool
+	err := h.db.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM esppdh_builds WHERE status IN ('queued', 'running'))`).Scan(&busy)
+	return err == nil && !busy
 }
 
 // esppdhJobFor setzt den Auftrag aus dem Gerät zusammen, wie es jetzt gespeichert ist, für die

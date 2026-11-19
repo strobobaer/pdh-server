@@ -33,13 +33,15 @@ var errMirrorNotCreated = errors.New("Im Spiegel nicht verfügbar – wird beim 
 // mirrorAllowedWrite: Schreibanfragen, die der Spiegel trotzdem annimmt –
 // Anmelden/Abmelden (auch über die Schnittstelle), Sprache (nur Cookie) und
 // Ausfallschutz-Befehle (pdh-ha-Socket) und das Einrichten der ESPHome-Umgebung
-// (jeder Server braucht sie selbst; schreibt nichts in die Datenbank). Nicht
+// sowie „Jetzt prüfen“ und „Zurück zur vorigen Version“ bei ESPHome (jeder Server pflegt seine
+// Umgebung selbst; sie schreiben nichts in die Datenbank). Nicht
 // dabei: Passwort vergessen, zurücksetzen und Pflichtwechsel (/login/forgot,
 // /login/reset, /login/change) – sie schreiben und bekommen die Sperrmeldung
 // statt einer falschen Bestätigung.
 func mirrorAllowedWrite(path string) bool {
 	switch path {
-	case "/login", "/login/rfid", "/logout", "/lang", "/api/v1/users/login", "/admin/server-config/esppdh/install":
+	case "/login", "/login/rfid", "/logout", "/lang", "/api/v1/users/login", "/admin/server-config/esppdh/install",
+		"/admin/server-config/esppdh/check", "/admin/server-config/esppdh/rollback":
 		return true
 	}
 	return strings.HasPrefix(path, "/admin/server-config/ha/") || mirrorTIACheckRe.MatchString(path)

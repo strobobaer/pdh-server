@@ -101,18 +101,30 @@ type BuildResult struct {
 type Runner struct {
 	Timeout   time.Duration
 	MinFreeMB int64
-	Command   func(ctx context.Context, dir string, args ...string) *exec.Cmd
+	// Bin: das Programm ESPHome des echten Aufrufs; leer = ActiveBin() (aktive Umgebung).
+	Bin     string
+	Command func(ctx context.Context, dir string, args ...string) *exec.Cmd
 }
 
-// NewRunner: Zeitlimit 30 min, mindestens 2048 MB frei, Aufruf „nice -n 19 <venv>/bin/esphome“.
+// BuildMinFreeMB: so viel Platz (MB) braucht ein Bau mindestens im Arbeitsordner.
+const BuildMinFreeMB = 2048
+
+// NewRunner: Zeitlimit 30 min, mindestens BuildMinFreeMB frei, Aufruf „nice -n 19 <Bin> …“ (Bin
+// leer: aktive Umgebung, sonst <venv>/bin/esphome).
 func NewRunner() *Runner {
-	return &Runner{Timeout: 30 * time.Minute, MinFreeMB: 2048, Command: esphomeCommand}
+	r := &Runner{Timeout: 30 * time.Minute, MinFreeMB: BuildMinFreeMB}
+	r.Command = func(ctx context.Context, dir string, args ...string) *exec.Cmd {
+		return esphomeCommand(ctx, r.Bin, dir, args...)
+	}
+	return r
 }
 
-// esphomeCommand: „nice -n 19 <venv>/bin/esphome <args>“ im Ordner dir – niedrige Priorität,
-// damit ein Bau das PDH nicht bremst (ohne nice, falls es fehlt).
-func esphomeCommand(ctx context.Context, dir string, args ...string) *exec.Cmd {
-	bin := esphomeBin()
+// esphomeCommand: „nice -n 19 <bin> <args>“ im Ordner dir – niedrige Priorität, damit ein Bau das
+// PDH nicht bremst (ohne nice, falls es fehlt). bin leer = ActiveBin().
+func esphomeCommand(ctx context.Context, bin, dir string, args ...string) *exec.Cmd {
+	if bin == "" {
+		bin = ActiveBin()
+	}
 	name, argv := bin, args
 	if nice, err := exec.LookPath("nice"); err == nil {
 		name, argv = nice, append([]string{"-n", "19", bin}, args...)
@@ -136,17 +148,58 @@ func (r *Runner) Build(ctx context.Context, job BuildJob, progress func(log stri
 	}
 	dir, err := prepareBuildDir(root, job)
 	defer func() { // immer aufräumen – auch bei Fehler, Zeitlimit, Abbruch und panic
-		if dir == "" {
-			return
-		}
-		if err := removeBuildDir(dir); err != nil {
-			res.Log = Redact(res.Log+"\nDer Arbeitsordner ließ sich nicht löschen: "+err.Error(), job.SecretValues)
-		}
+		res.Log = cleanupRun(dir, res.Log, job)
 	}()
 	if err != nil {
 		return BuildResult{Log: "Der Arbeitsordner lässt sich nicht anlegen: " + err.Error()}
 	}
 	return r.run(ctx, dir, job, progress)
+}
+
+// configTimeout: so lange darf die Konfigurationsprüfung höchstens dauern (Tests verkürzen es).
+var configTimeout = 3 * time.Minute
+
+// Config prüft die Konfiguration des Auftrags mit „esphome config ./esppdh.yaml“ – ohne zu
+// übersetzen. Gleicher Laufordner mit secrets.yaml, gleiche knappe Umgebung, gleiches Aufräumen
+// und gleiches Schwärzen wie Build; Zeitlimit 3 min. Das Ergebnis ist der geschwärzte Verlauf;
+// err ist gesetzt, wenn die Prüfung scheitert (Fehler in der Konfiguration, Zeitlimit, Abbruch).
+func (r *Runner) Config(ctx context.Context, job BuildJob) (log string, err error) {
+	if !buildIDRe.MatchString(job.ID) || !ValidSlug(job.Slug) {
+		return "Ungültiger Bauauftrag – nichts geprüft.", errors.New("ungültiger Bauauftrag")
+	}
+	dir, perr := prepareBuildDir(workDir(), job)
+	defer func() { log = cleanupRun(dir, log, job) }()
+	if perr != nil {
+		return "Der Arbeitsordner lässt sich nicht anlegen: " + perr.Error(), perr
+	}
+	c := r.execute(ctx, dir, job, configTimeout, "Prüfung", []string{"config", "./" + configName}, nil)
+	if !c.started {
+		return c.status, errors.New(c.status)
+	}
+	log = Redact(withNewline(c.out)+c.status+"\n", job.SecretValues)
+	if !c.ok {
+		return log, errors.New(c.status)
+	}
+	return log, nil
+}
+
+// cleanupRun löscht den Arbeitsordner eines Laufs (dir leer: nichts zu tun) und hängt an den
+// Verlauf einen Hinweis, falls das misslingt.
+func cleanupRun(dir, log string, job BuildJob) string {
+	if dir == "" {
+		return log
+	}
+	if err := removeBuildDir(dir); err != nil {
+		return Redact(log+"\nDer Arbeitsordner ließ sich nicht löschen: "+err.Error(), job.SecretValues)
+	}
+	return log
+}
+
+func withNewline(s string) string {
+	if s != "" && !strings.HasSuffix(s, "\n") {
+		return s + "\n"
+	}
+	return s
 }
 
 // prepareBuildDir legt Werkzeug-Ordner und den Arbeitsordner des Laufs (0700) mit beiden
@@ -215,13 +268,23 @@ func buildEnv(dir string) []string {
 	)
 }
 
-// run startet ESPHome im Arbeitsordner und wertet das Ende aus.
-func (r *Runner) run(ctx context.Context, dir string, job BuildJob, progress func(string)) BuildResult {
-	tctx, cancel := context.WithTimeout(ctx, r.Timeout)
+// cmdRun: Ergebnis eines Aufrufs von ESPHome (execute). started falsch: der Prozess ließ sich nicht
+// starten, status nennt den Grund (schon geschwärzt). Sonst ist out die gereinigte Ausgabe, ok
+// sagt, ob ESPHome mit 0 geendet ist, und status bei Misserfolg den Grund (Abbruch, Zeitlimit,
+// Exit-Code).
+type cmdRun struct {
+	started, ok bool
+	out, status string
+}
+
+// execute startet ESPHome mit args im Arbeitsordner (knappe Umgebung, eigene Prozessgruppe,
+// Zeitlimit timeout) und wartet auf das Ende. what („Bau“, „Prüfung“) steht in den Meldungen.
+// progress (darf nil sein) bekommt alle 2 s den geschwärzten Verlauf.
+func (r *Runner) execute(ctx context.Context, dir string, job BuildJob, timeout time.Duration, what string, args []string, progress func(string)) cmdRun {
+	tctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	lg := &buildLog{}
-	// „./“: die Datei kann nie als Schalter gelesen werden
-	cmd := r.Command(tctx, dir, "compile", "./"+configName)
+	cmd := r.Command(tctx, dir, args...)
 	if cmd.Dir == "" {
 		cmd.Dir = dir
 	}
@@ -231,7 +294,7 @@ func (r *Runner) run(ctx context.Context, dir string, job BuildJob, progress fun
 	cmd.WaitDelay = waitDelay
 	ownGroup(cmd)
 	if err := cmd.Start(); err != nil {
-		return BuildResult{Log: Redact("ESPHome lässt sich nicht starten: "+err.Error(), job.SecretValues)}
+		return cmdRun{status: Redact("ESPHome lässt sich nicht starten: "+err.Error(), job.SecretValues)}
 	}
 	// Zeitlimit oder Abbruch: die ganze Prozessgruppe beenden
 	stopKill := context.AfterFunc(tctx, func() { killGroup(cmd) })
@@ -267,37 +330,47 @@ func (r *Runner) run(ctx context.Context, dir string, job BuildJob, progress fun
 		err = nil // ESPHome ist fertig; nur ein Kindprozess hielt die Ausgabe noch offen
 	}
 
-	out := cleanLog(lg.snapshot(false))
-	res := BuildResult{}
-	if m := versionLineRe.FindStringSubmatch(out); m != nil {
-		res.Version = m[1]
-	}
-	var status string
+	res := cmdRun{started: true, out: cleanLog(lg.snapshot(false))}
 	switch {
 	case ctx.Err() != nil:
-		status = "Bau abgebrochen."
+		res.status = what + " abgebrochen."
 	case errors.Is(tctx.Err(), context.DeadlineExceeded):
-		status = "Zeitlimit von " + durText(r.Timeout) + " überschritten – Bau abgebrochen."
+		res.status = "Zeitlimit von " + durText(timeout) + " überschritten – " + what + " abgebrochen."
 	case err != nil:
 		var ee *exec.ExitError
 		if errors.As(err, &ee) {
-			status = fmt.Sprintf("ESPHome hat mit einem Fehler beendet (Exit-Code %d).", ee.ExitCode())
+			res.status = fmt.Sprintf("ESPHome hat mit einem Fehler beendet (Exit-Code %d).", ee.ExitCode())
 		} else {
-			status = "ESPHome ist mit einem Fehler beendet: " + err.Error()
+			res.status = "ESPHome ist mit einem Fehler beendet: " + err.Error()
 		}
 	default:
+		res.ok = true
+	}
+	return res
+}
+
+// run übersetzt die Konfiguration im Arbeitsordner („esphome compile“) und wertet das Ende aus.
+func (r *Runner) run(ctx context.Context, dir string, job BuildJob, progress func(string)) BuildResult {
+	// „./“: die Datei kann nie als Schalter gelesen werden
+	c := r.execute(ctx, dir, job, r.Timeout, "Bau", []string{"compile", "./" + configName}, progress)
+	if !c.started {
+		return BuildResult{Log: c.status}
+	}
+	res := BuildResult{}
+	if m := versionLineRe.FindStringSubmatch(c.out); m != nil {
+		res.Version = m[1]
+	}
+	status := c.status
+	if c.ok {
 		factory, ota, ferr := readFirmware(dir)
 		if ferr != nil {
 			status = ferr.Error()
-			break
+		} else {
+			res.OK, res.Factory, res.OTA = true, factory, ota
+			status = fmt.Sprintf("Firmware gebaut (%s, für Updates über das Netz %s).", sizeText(len(factory)), sizeText(len(ota)))
 		}
-		res.OK, res.Factory, res.OTA = true, factory, ota
-		status = fmt.Sprintf("Firmware gebaut (%s, für Updates über das Netz %s).", sizeText(len(factory)), sizeText(len(ota)))
 	}
-	if out != "" && !strings.HasSuffix(out, "\n") {
-		out += "\n"
-	}
-	res.Log = Redact(out+status+"\n", job.SecretValues)
+	res.Log = Redact(withNewline(c.out)+status+"\n", job.SecretValues)
 	return res
 }
 

@@ -541,7 +541,27 @@ type esppdhBlockView struct {
 	Fields                     []esppdhFieldView
 }
 
-// esppdhHint: Hinweis auf der Detailseite (Tone: warn | bad).
+// esppdhOlderFirmware: sachlicher Hinweis, wenn der jüngste gelungene Lauf mit einer älteren
+// ESPHome-Version gebaut wurde als die, die jetzt auf dem Server läuft (Zustand des täglichen
+// Laufs). "" = kein Hinweis: gleiche oder neuere Version, kein gelungener Lauf, Version oder
+// Zustand unbekannt. Neu bauen und flashen entscheidet der Anwender – es ist kein Fehler.
+func esppdhOlderFirmware(runs []esppdhRunView, installed string) string {
+	if strings.TrimSpace(installed) == "" {
+		return ""
+	}
+	for _, r := range runs {
+		if r.Status != "ok" {
+			continue
+		}
+		if strings.TrimSpace(r.Version) == "" || esppdh.CompareVersions(r.Version, installed) >= 0 {
+			return ""
+		}
+		return "Firmware mit ESPHome " + r.Version + " gebaut, auf dem Server ist " + installed + ". Neu bauen und flashen ist möglich, aber nicht nötig."
+	}
+	return ""
+}
+
+// esppdhHint: Hinweis auf der Detailseite (Tone: info | warn | bad).
 type esppdhHint struct {
 	Tone, Icon, Text, Link, LinkText string
 }
@@ -753,6 +773,9 @@ func (h *Handler) esppdhRenderDevice(w http.ResponseWriter, r *http.Request, d e
 	}
 	if t := esppdhNetHint(d, b, certOwnAddrs()); t != "" {
 		pd.Hints = append(pd.Hints, esppdhHint{"warn", "ti-wall", t, "", ""})
+	}
+	if t := esppdhOlderFirmware(pd.Runs, esppdh.LoadUpdateState().Installed); t != "" {
+		pd.Hints = append(pd.Hints, esppdhHint{"info", "ti-info-circle", t, "", ""})
 	}
 
 	pd.Live = h.esppdhLiveStates(ctx, []esppdhDevice{d})[d.ID]

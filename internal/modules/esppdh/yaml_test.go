@@ -27,55 +27,7 @@ import (
 var update = flag.Bool("update", false, "Erwartungsdateien neu schreiben")
 
 // testDevice: gültiges WLAN-Gerät ohne TLS mit den angegebenen Bausteinen.
-func testDevice(board string, blocks ...Block) Device {
-	return Device{
-		Slug: "halle1-s0", Name: "Presse 3", BoardKey: board,
-		SSID: "Werk-Produktion", WLANPassword: "wlan-kennwort-1", APPassword: "notzugang-kennwort-1",
-		BrokerHost: "mqtt.werk.example", BrokerPort: 1883,
-		MQTTUser: "esppdh-halle1-s0", MQTTPassword: "mqtt-kennwort-1",
-		Blocks: blocks,
-	}
-}
-
-type goldenCase struct {
-	name string
-	dev  Device
-}
-
-func goldenCases() []goldenCase {
-	// esp32dev mit S0-Zähler, TLS
-	c1 := testDevice("esp32dev", Block{Kind: "s0", Nr: 1, Params: map[string]string{"pin": "GPIO4", "pulses": "1000"}})
-	c1.Name = "Presse 3 / Halle 1"
-	c1.BrokerTLS, c1.BrokerPort = true, 8883
-
-	// D1 mini mit Stückzähler (fallende Flanke), ohne TLS
-	c2 := testDevice("d1-mini", Block{Kind: "counter", Nr: 1, Params: map[string]string{"pin": "D5", "edge": "fallend"}})
-	c2.Slug, c2.MQTTUser, c2.Name = "linie2-takt", "esppdh-linie2-takt", "Linie 2 Takt"
-
-	// WT32-ETH01 am Kabel mit zwei PZEM-004T an einem Anschluss, TLS
-	c3 := testDevice("wt32-eth01",
-		Block{Kind: "pzem", Nr: 1, Params: map[string]string{"rx_pin": "GPIO5", "tx_pin": "GPIO17"}},
-		Block{Kind: "pzem", Nr: 2, Params: map[string]string{"rx_pin": "GPIO5", "tx_pin": "GPIO17", "address": "2"}},
-	)
-	c3.Slug, c3.MQTTUser, c3.Name = "verteiler-h2", "esppdh-verteiler-h2", "Verteiler Halle 2"
-	c3.Wired, c3.SSID, c3.WLANPassword, c3.APPassword = true, "", "", ""
-	c3.BrokerTLS, c3.BrokerPort = true, 8883
-
-	// ESP32-S3 mit SCT-013 (Stromausgang, Bürde 20 Ω – passend bis 100 A) und S0-Zähler, verborgenes WLAN
-	c4 := testDevice("esp32-s3",
-		Block{Kind: "sct013", Nr: 1, Params: map[string]string{"pin": "GPIO1", "clamp": "100A/50mA", "burden": "20", "voltage": "230"}},
-		Block{Kind: "s0", Nr: 1, Params: map[string]string{"pin": "GPIO4", "pulses": "800"}},
-	)
-	c4.Slug, c4.MQTTUser, c4.Name = "kompressor", "esppdh-kompressor", "Kompressor"
-	c4.WLANHidden = true
-
-	return []goldenCase{
-		{"esp32dev-s0", c1},
-		{"d1-mini-counter", c2},
-		{"wt32-eth01-pzem", c3},
-		{"esp32-s3-sct013-s0", c4},
-	}
-}
+func testDevice(board string, blocks ...Block) Device { return sampleDevice(board, blocks...) }
 
 // readGolden liest eine Erwartungsdatei; Zeilenenden aus einem Windows-Checkout zählen nicht.
 func readGolden(t *testing.T, path string) []byte {
@@ -88,9 +40,9 @@ func readGolden(t *testing.T, path string) []byte {
 }
 
 func TestGenerateGolden(t *testing.T) {
-	for _, c := range goldenCases() {
-		t.Run(c.name, func(t *testing.T) {
-			cfg, sec, err := Generate(c.dev)
+	for _, c := range Samples() {
+		t.Run(c.Name, func(t *testing.T) {
+			cfg, sec, err := Generate(c.Device)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -98,8 +50,8 @@ func TestGenerateGolden(t *testing.T) {
 				path string
 				got  []byte
 			}{
-				{filepath.Join("testdata", c.name+".yaml"), cfg},
-				{filepath.Join("testdata", c.name+".secrets.yaml"), sec},
+				{filepath.Join("testdata", c.Name+".yaml"), cfg},
+				{filepath.Join("testdata", c.Name+".secrets.yaml"), sec},
 			} {
 				if *update {
 					if err := os.WriteFile(f.path, f.got, 0o644); err != nil {
@@ -112,7 +64,7 @@ func TestGenerateGolden(t *testing.T) {
 				}
 			}
 			// dieselbe Eingabe ergibt dieselbe Datei
-			cfg2, sec2, _ := Generate(c.dev)
+			cfg2, sec2, _ := Generate(c.Device)
 			if !bytes.Equal(cfg, cfg2) || !bytes.Equal(sec, sec2) {
 				t.Error("zweiter Lauf erzeugt andere Dateien")
 			}
@@ -444,13 +396,13 @@ func TestGenerateTLS(t *testing.T) {
 // Ohne Broker startet das Gerät nicht neu (ESPHome-Vorgabe wären 15 min): Zählerstand und
 // Stückzahl bleiben bei einem Ausfall des PDH erhalten – bei WLAN und am Kabel.
 func TestMQTTNoRebootWithoutBroker(t *testing.T) {
-	for _, c := range goldenCases() {
-		cfg, _, err := Generate(c.dev)
+	for _, c := range Samples() {
+		cfg, _, err := Generate(c.Device)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if rt := get(get(parseYAML(t, cfg), "mqtt"), "reboot_timeout"); rt == nil || rt.Value != "0s" {
-			t.Errorf("%s: mqtt.reboot_timeout = %+v, erwartet 0s", c.name, rt)
+			t.Errorf("%s: mqtt.reboot_timeout = %+v, erwartet 0s", c.Name, rt)
 		}
 	}
 }
@@ -507,13 +459,13 @@ func TestEsphomeConfigAccepts(t *testing.T) {
 	if !st.Installed {
 		t.Skip("ESPHome ist nicht eingerichtet (" + venvDir() + ")")
 	}
-	for _, c := range goldenCases() {
-		t.Run(c.name, func(t *testing.T) {
+	for _, c := range Samples() {
+		t.Run(c.Name, func(t *testing.T) {
 			dir := t.TempDir()
-			cfg := filepath.Join(dir, c.name+".yaml")
+			cfg := filepath.Join(dir, c.Name+".yaml")
 			for src, dst := range map[string]string{
-				filepath.Join("testdata", c.name+".yaml"):         cfg,
-				filepath.Join("testdata", c.name+".secrets.yaml"): filepath.Join(dir, "secrets.yaml"),
+				filepath.Join("testdata", c.Name+".yaml"):         cfg,
+				filepath.Join("testdata", c.Name+".secrets.yaml"): filepath.Join(dir, "secrets.yaml"),
 			} {
 				if err := os.WriteFile(dst, readGolden(t, src), 0o600); err != nil {
 					t.Fatal(err)
@@ -523,7 +475,7 @@ func TestEsphomeConfigAccepts(t *testing.T) {
 			defer cancel()
 			out, err := exec.CommandContext(ctx, esphomeBin(), "config", cfg).CombinedOutput()
 			if err != nil {
-				t.Errorf("esphome config lehnt %s ab: %v\n%s", c.name, err, out)
+				t.Errorf("esphome config lehnt %s ab: %v\n%s", c.Name, err, out)
 			}
 		})
 	}

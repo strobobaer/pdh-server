@@ -362,6 +362,23 @@ type Handler struct {
 	// (nil = esppdh.NewRunner; Tests setzen eine Attrappe)
 	esppdhQ      esppdhQueue
 	esppdhRunner esppdhBuilder
+	// ESPPDH (esppdh_update.go): ESPHome täglich prüfen, proben und umschalten. Adresse der
+	// Versionsliste (leer = pypi.org), Prüfer mit einem bestimmten Programm (nil = esppdh.Runner),
+	// höchstens ein Lauf zur Zeit (Takt und Knopf „Jetzt prüfen“), Uhr (nil = time.Now)
+	esppdhPyPIURL string
+	esppdhProber  func(bin string) esppdhProbeRunner
+	esppdhUpd     struct {
+		mu      sync.Mutex
+		running bool
+		// auch ohne Zustandsdatei (nicht speicherbar): letzter Lauf und alle gemeldeten
+		// gescheiterten Versionen dieses Prozesses – kein Lauf alle 5 min, keine zweite Meldung
+		lastRun  time.Time
+		notified map[string]bool
+		// Kontext des täglichen Laufs und von „Jetzt prüfen“; StopESPPDHUpdate beendet ihn
+		ctx  context.Context
+		stop context.CancelFunc
+	}
+	esppdhNow func() time.Time
 }
 
 func NewHandler(
@@ -722,6 +739,9 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/admin/server-config/esppdh", h.EsppdhPanelWeb)   // Reiter „ESPPDH“: Schalter und Umgebung (esppdh_settings.go)
 	r.Post("/admin/server-config/esppdh", h.EsppdhSwitchWeb) // ein-/ausschalten
 	r.Post("/admin/server-config/esppdh/install", h.EsppdhInstallWeb)
+	r.Post("/admin/server-config/esppdh/auto", h.EsppdhAutoWeb)         // ESPHome selbst aktuell halten (esppdh_update.go)
+	r.Post("/admin/server-config/esppdh/check", h.EsppdhCheckWeb)       // Jetzt prüfen
+	r.Post("/admin/server-config/esppdh/rollback", h.EsppdhRollbackWeb) // Zurück zur vorigen Version
 	// Reiter „Ausfallschutz“: Sicherung aufs Netzlaufwerk über den Update-Agenten (dr.go)
 	r.Post("/admin/server-config/dr/settings", h.DRSettingsWeb)
 	r.Post("/admin/server-config/dr/run", h.DRRunWeb)

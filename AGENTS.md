@@ -263,14 +263,27 @@ oder ändern.**
    `ionice`/Speicherschutz (am Testverbund beobachten), eigener Benutzer für
    den Bau, gekürzter Gerätename bei Kennungen über 24 Zeichen, gespeicherte
    Statusnachricht bleibt nach dem Löschen eines Geräts am Broker.
-   **Danach 0.82.1: ESPHome hält sich selbst aktuell** – Entwurf
-   `docs/superpowers/specs/2026-11-19-esphome-aktuell-design.md` am 19.11.2026
-   bestätigt, Plan `docs/superpowers/plans/2026-11-19-esphome-aktuell.md`
-   (6 Aufgaben, Branch `feature/esphome-aktuell`). Offen: Anwender bestätigt
-   den Plan, dann Bau.
-   **Danach: Sortieren in Historie, Maßnahmen und Kommentaren** (Auftrag vom
-   19.11.2026) – Entwurf `docs/superpowers/specs/2026-11-19-sortierung-design.md`
-   mit vier offenen Fragen an den Anwender; noch nicht bestätigt.
+   **0.82.1: ESPHome hält sich selbst aktuell** – Entwurf
+   `docs/superpowers/specs/2026-11-19-esphome-aktuell-design.md`, Plan
+   `docs/superpowers/plans/2026-11-19-esphome-aktuell.md` (vom Anwender am
+   19.11.2026 freigegeben). Gebaut auf dem Branch `feature/esphome-aktuell`
+   (keine Migration, kein neues Recht). Offen: Freigabe für Merge und Push;
+   danach am Testverbund (zusammen mit 0.82.0): Umgebung einrichten, „Jetzt
+   prüfen“ auf beiden Servern, „Zurück zur vorigen Version“ am Spiegel, eine
+   Probe während `systemctl restart pdh`, Reiter „ESPPDH“ im Browser in Fiori
+   und Fluent, hell/dunkel, 320–1366 px. Geparkt: Hinweis am Gerät bleibt alt,
+   wenn der Schalter aus ist und ein PDH-Update die Grundumgebung anhebt;
+   PlatformIO-Zwischenspeicher wächst mit verworfenen Versionen (beobachten);
+   Uhrzeit der täglichen Prüfung liegt 24 h nach der letzten (kann in die
+   Schicht fallen).
+   **Danach 0.82.2: Sortieren in Historie, Maßnahmen und Kommentaren** –
+   Entwurf `docs/superpowers/specs/2026-11-19-sortierung-design.md` am
+   19.11.2026 freigegeben (vier Festlegungen dort), Plan
+   `docs/superpowers/plans/2026-11-19-sortierung.md` (8 Aufgaben, Migration
+   182, Branch `feature/sortierung` ab `main` mit 0.82.1). Der Plan behebt
+   zwei Lücken im Bestand mit: Löschen einer Maßnahme prüft den Datensatz
+   nicht; Historie von Projekt, KVP, Anlage und Lagerort ist ohne
+   Ansichtsrecht abrufbar. Offen: Bau nach 0.82.1.
 7. **0.81.6 Nummern ab 10000** (Rüstzeit, KVP, Bestellung und Partner waren auf
    vier Stellen abgeschnitten) – mit 0.82.0 auf `main`; der lokale Branch
    `fix/ruestzeit-nummer` ist damit erledigt.

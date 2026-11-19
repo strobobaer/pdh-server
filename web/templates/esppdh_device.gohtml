@@ -22,6 +22,8 @@
 .esp-actions .btn{width:100%;justify-content:center;white-space:normal;text-align:center;line-height:1.3;padding-top:6px;padding-bottom:6px}
 .esp-hint-bad{border-color:var(--red)}
 .esp-hint-bad>i{color:var(--red)}
+.esp-hint-info{border-color:var(--accent)}
+.esp-hint-info>i{color:var(--accent)}
 /* Firmware aufspielen (esppdh_flash.go): Knopf „Per USB flashen“ und Herunterladen */
 .esp-flash{border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin:4px 0 14px;background:var(--bg);min-width:0}
 .esp-flash-head{font-weight:600;font-size:13.5px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
@@ -50,7 +52,7 @@ html[data-style="fiori"] ewt-install-dialog,html[data-style="fiori"] ewt-no-port
 {{if .Notice}}<div class="card esp-msg esp-ok" role="status"><i class="ti ti-circle-check" aria-hidden="true"></i> {{.Notice}}</div>{{end}}
 {{if .Warn}}<div class="card esp-msg esp-warn" role="alert"><i class="ti ti-alert-triangle" aria-hidden="true"></i> {{.Warn}}</div>{{end}}
 {{if .Errs}}<div class="card esp-msg esp-bad" role="alert"><b><i class="ti ti-alert-circle" aria-hidden="true"></i> Nicht gespeichert – bitte prüfen:</b><ul>{{range .Errs}}<li>{{.}}</li>{{end}}</ul></div>{{end}}
-{{range .Hints}}<div class="card esp-msg esp-wrap {{if eq .Tone "bad"}}esp-hint-bad{{else}}esp-warn{{end}}" role="status"><i class="ti {{.Icon}}" aria-hidden="true"></i> {{.Text}}{{if .Link}} <a href="{{.Link}}" style="color:var(--accent)">{{.LinkText}}</a>{{end}}</div>{{end}}
+{{range .Hints}}<div class="card esp-msg esp-wrap {{if eq .Tone "bad"}}esp-hint-bad{{else if eq .Tone "info"}}esp-hint-info{{else}}esp-warn{{end}}" role="status"><i class="ti {{.Icon}}" aria-hidden="true"></i> {{.Text}}{{if .Link}} <a href="{{.Link}}" style="color:var(--accent)">{{.LinkText}}</a>{{end}}</div>{{end}}
 {{if .Problems}}<div class="card esp-msg esp-warn esp-wrap" role="status"><b><i class="ti ti-list-check" aria-hidden="true"></i> Für die Firmware fehlt noch:</b><ul>{{range .Problems}}<li>{{.}}</li>{{end}}</ul></div>{{end}}
 
 <div class="esp-cols">

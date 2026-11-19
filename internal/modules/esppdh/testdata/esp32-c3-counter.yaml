@@ -1,0 +1,65 @@
+# ESPPDH: vom PDH erzeugt – Änderungen gehen beim nächsten Bau verloren.
+# Kennwörter stehen nicht hier, sondern als !secret in der Geheimnis-Datei.
+
+esphome:
+  name: esppdh-stanze-c3
+  friendly_name: !literal "Stanze C3"
+
+esp32:
+  board: esp32-c3-devkitm-1
+
+logger:
+
+wifi:
+  networks:
+    - ssid: !literal "Werk-Produktion"
+      password: !secret wifi_password
+  ap:
+    ssid: esppdh-stanze-c3
+    password: !secret ap_password
+
+captive_portal:
+
+mqtt:
+  broker: !literal "mqtt.werk.example"
+  port: 1883
+  username: esppdh-stanze-c3
+  password: !secret mqtt_password
+  client_id: esppdh-stanze-c3
+  topic_prefix: esppdh/stanze-c3
+  discovery: false
+  discover_ip: false
+  log_topic: null
+  reboot_timeout: 0s
+  birth_message:
+    topic: esppdh/stanze-c3/status
+    payload: online
+    retain: true
+  will_message:
+    topic: esppdh/stanze-c3/status
+    payload: offline
+    retain: true
+  shutdown_message:
+    topic: esppdh/stanze-c3/status
+    payload: offline
+    retain: true
+
+sensor:
+  - platform: pulse_counter
+    id: counter_1_takt
+    internal: true
+    pin:
+      number: GPIO4
+      mode:
+        input: true
+        pullup: true
+    count_mode:
+      rising_edge: INCREMENT
+      falling_edge: DISABLE
+    use_pcnt: false
+    internal_filter: 50ms
+    update_interval: 10s
+    total:
+      name: Stückzähler 1 Stückzahl
+      unit_of_measurement: Stk
+      state_topic: esppdh/stanze-c3/counter-1/stueckzahl
