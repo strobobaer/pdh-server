@@ -123,11 +123,18 @@ func (h *Handler) CalendarPage(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) CalendarBoardFragment(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	board := h.resolveLeitstand(r)
-	if b := h.boardBySlug(r, r.URL.Query().Get("b")); b != nil {
+	slug := r.URL.Query().Get("b")
+	b := h.boardBySlug(r, slug)
+	if b != nil {
 		board = b
 	}
 	if u := h.sessionUser(r); u != nil {
 		r = r.WithContext(context.WithValue(r.Context(), "user", u))
+	} else if board == nil || (slug != "" && b == nil) {
+		// Gäste bekommen den Kalender nur als Baustein eines gültigen Leitstands, nie den vollen
+		// (ohne Angabe „b“ gilt wie bisher der Leitstand des Bildschirms bzw. der Standard)
+		http.NotFound(w, r)
+		return
 	}
 	d := h.buildCalendar(r, board)
 	h.renderFragment(w, "calendar-board", d)
@@ -143,6 +150,24 @@ func (h *Handler) buildCalendar(r *http.Request, board *leitstand) CalendarData 
 	}
 	q := r.URL.Query()
 	embed := board != nil
+	// Gast im Leitstand (ohne Anmeldung): Abfrage-Auswahl (set, show, dept, group, user, busy)
+	// zählt nicht – es gilt genau die Einstellung des Leitstands. Nur der Zeitraum (from, days) bleibt frei.
+	guest := embed && me.ID == ""
+	var boardIDs map[string]map[string]bool
+	var guestScope *deptScope
+	if guest {
+		keep := url.Values{}
+		for _, k := range []string{"from", "days"} {
+			if v := q.Get(k); v != "" {
+				keep.Set(k, v)
+			}
+		}
+		q = keep
+		boardIDs = h.boardAllowedIDs(ctx, board)
+		if board.DepartmentID != "" {
+			guestScope = h.boardDeptScope(ctx, board.DepartmentID)
+		}
+	}
 	// Auswahl: aus der Adresse, sonst die zuletzt gemerkte (nur auf der Seite)
 	if embed {
 		if q.Get("set") == "" {
@@ -282,6 +307,9 @@ func (h *Handler) buildCalendar(r *http.Request, board *leitstand) CalendarData 
 		return &row.Cells[c]
 	}
 	scope := h.requestScope(r)
+	if guest {
+		scope = guestScope // Gäste: nur Vorgänge der Abteilung des Leitstands
+	}
 	planner := h.canShiftPlan(r)
 
 	if d.Show["absence"] {
@@ -441,6 +469,9 @@ func (h *Handler) buildCalendar(r *http.Request, board *leitstand) CalendarData 
 			if rs.Scan(&id, &title, &due, &noDue, &ppl, &group, &infra) != nil {
 				continue
 			}
+			if boardIDs != nil && !boardIDs[s.kind][id] {
+				continue // Gast: nur, was zu Abteilung/Gruppe des Leitstands gehört
+			}
 			due = due.Local()
 			tip := calKindByKey(s.kind).Label + ": " + title
 			switch {
@@ -486,7 +517,7 @@ func (h *Handler) buildCalendar(r *http.Request, board *leitstand) CalendarData 
 	}
 	if d.Show["project"] {
 		// Ansichtsrecht: angemeldete Personen sehen nur Projekte, die sie sehen dürfen
-		// (Ansichtsrecht oder beteiligt). Gäste im Leitstand: Task 5 (eigene Regel).
+		// (Ansichtsrecht oder beteiligt). Gäste im Leitstand: nur die Abteilung des Leitstands (guestScope).
 		canViewProject := func(string) bool { return true }
 		if me.ID != "" {
 			canViewProject = h.viewFilter(r, "project")
@@ -592,6 +623,28 @@ func (h *Handler) buildCalendar(r *http.Request, board *leitstand) CalendarData 
 		d.Rows = append(d.Rows, *nobody)
 	}
 	return d
+}
+
+// boardDeptScope: Einschränkung für Gäste eines Leitstands – die Abteilung und ihre
+// Unterabteilungen; die „Person“ ist die Nullkennung, es gibt also keine Beteiligung.
+func (h *Handler) boardDeptScope(ctx context.Context, deptID string) *deptScope {
+	deps := []string{}
+	if h.db != nil {
+		rows, err := h.db.Query(ctx, `WITH RECURSIVE sub AS (
+				SELECT id FROM departments WHERE id = $1::uuid
+				UNION ALL SELECT c.id FROM departments c JOIN sub ON c.parent_id = sub.id
+			) SELECT id::text FROM sub`, deptID)
+		if err == nil {
+			for rows.Next() {
+				var id string
+				if rows.Scan(&id) == nil {
+					deps = append(deps, id)
+				}
+			}
+			rows.Close()
+		}
+	}
+	return &deptScope{UserID: "00000000-0000-0000-0000-000000000000", Departments: deps}
 }
 
 // calMovable: Vorgänge, deren Fälligkeit sich im Kalender per Ziehen verschieben lässt.

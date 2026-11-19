@@ -421,6 +421,9 @@ func main() {
 	r := chi.NewRouter()
 	// RequestID vor dem Protokoll, damit jede Zeile ihre Request-ID traegt
 	r.Use(chimw.RequestID, webHandler.RequestLogger, chimw.Recoverer, middleware.CORS)
+	// Kennungen in ungewöhnlicher Schreibweise (32 Hexziffern, Klammern, urn:uuid:) abweisen,
+	// bevor Abteilungs- und Rechteprüfung den Pfad ansehen (uuid_path.go)
+	r.Use(web.NonCanonicalUUIDPathMiddleware)
 	// Wartungssperre während eines Updates: vor allen Routen und Schnittstellen (maint_lock.go)
 	r.Use(webHandler.MaintLockMiddleware)
 	// Dauerverbindungen (EventSource) enden beim Beenden sofort (streams.go)
