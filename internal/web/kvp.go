@@ -1454,20 +1454,6 @@ func (h *Handler) KVPActionDeleteWeb(w http.ResponseWriter, r *http.Request) {
 	kvpRedirect(w, r, "/kvp/"+k.ID+"?tab=pdca", "Maßnahme entfernt", err)
 }
 
-// KVPCommentWeb: POST /kvp/{id}/comment – jede/r darf kommentieren.
-func (h *Handler) KVPCommentWeb(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	id := chi.URLParam(r, "id")
-	r.ParseForm()
-	text := strings.TrimSpace(r.FormValue("text"))
-	if text == "" || len([]rune(text)) > 4000 {
-		kvpRedirect(w, r, "/kvp/"+id+"?tab=comments", "", errors.New("Bitte einen Kommentar eingeben"))
-		return
-	}
-	_, err := h.db.Exec(ctx, `INSERT INTO kvp_comments (idea_id, user_id, text) VALUES ($1::uuid, $2, $3)`, id, nullID(getUser(r).ID), text)
-	kvpRedirect(w, r, "/kvp/"+id+"?tab=comments", "", err)
-}
-
 // KVPDeleteWeb: POST /kvp/{id}/delete – nur KVP-Steuerung.
 func (h *Handler) KVPDeleteWeb(w http.ResponseWriter, r *http.Request) {
 	if !h.canManageKVP(r) {

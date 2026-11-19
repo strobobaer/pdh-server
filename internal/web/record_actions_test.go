@@ -108,7 +108,7 @@ func (e *histEnv) actRouter() http.Handler {
 	return r
 }
 
-func (e *histEnv) actDo(u *users.User, method, target string, form url.Values) *httptest.ResponseRecorder {
+func (e *histEnv) actDo(u *users.User, method, target string, form url.Values, hdr ...string) *httptest.ResponseRecorder {
 	e.t.Helper()
 	var req *http.Request
 	if method == "POST" {
@@ -116,6 +116,9 @@ func (e *histEnv) actDo(u *users.User, method, target string, form url.Values) *
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	} else {
 		req = httptest.NewRequest(method, target, nil)
+	}
+	for i := 0; i+1 < len(hdr); i += 2 {
+		req.Header.Set(hdr[i], hdr[i+1])
 	}
 	req = req.WithContext(context.WithValue(req.Context(), "user", u))
 	w := httptest.NewRecorder()
@@ -359,6 +362,50 @@ func TestActionsBlockInputRules(t *testing.T) {
 	}
 	if got := post("maintenance_task", m); got != http.StatusConflict || e.actCount("maintenance_task", m) != 1 {
 		t.Errorf("Wartung POST: %d", got)
+	}
+}
+
+// Abgewiesene Eingaben: über htmx 200 mit dem Klartext im Baustein (nichts gespeichert), sonst der
+// echte Status; nach dem Eintragen behält das Feld den Fokus.
+func TestActionsBlockRefuseInline(t *testing.T) {
+	e := newActEnv(t)
+	maker, none := e.user("Mia", "Macher"), e.user("Nora", "Nichts")
+	writer := e.user("Willi", "Writer")
+	e.grant(writer, "faults.edit", "")
+	e.grant(writer, "tickets.edit", "")
+	hx := []string{"HX-Request", "true"}
+	fault := e.actRecord("fault", maker, "", "")
+	closed := e.actRecord("ticket", maker, "", "closed")
+	check := func(label string, u *users.User, module, rec string, form url.Values, wantCode int, wantText string) {
+		t.Helper()
+		target := "/records/actions/" + module + "/" + rec
+		plain := e.actDo(u, "POST", target, form)
+		if plain.Code != wantCode || strings.TrimSpace(plain.Body.String()) != wantText {
+			t.Errorf("%s ohne htmx: %d %q, erwartet %d %q", label, plain.Code, plain.Body.String(), wantCode, wantText)
+		}
+		h := e.actDo(u, "POST", target, form, hx...)
+		if h.Code != 200 || !strings.Contains(h.Body.String(), `id="rec-actions"`) || !strings.Contains(h.Body.String(), `role="alert"`) || !strings.Contains(h.Body.String(), wantText) {
+			t.Errorf("%s mit htmx: %d %s", label, h.Code, h.Body.String())
+		}
+		if n := e.actCount(module, rec); n != 0 {
+			t.Errorf("%s: %d Maßnahmen gespeichert", label, n)
+		}
+	}
+	check("ohne Recht", none, "fault", fault, url.Values{"description": {"x"}}, http.StatusForbidden, "Dafür fehlt die Berechtigung.")
+	check("gelöstes Ticket", writer, "ticket", closed, url.Values{"description": {"x"}}, http.StatusConflict, "Hier können keine Maßnahmen eingetragen werden.")
+	check("leer", writer, "fault", fault, url.Values{"description": {"  "}}, http.StatusBadRequest, "Bitte eine Maßnahme eingeben.")
+	long := strings.Repeat("x", 4001)
+	check("zu lang", writer, "fault", fault, url.Values{"description": {long}}, http.StatusBadRequest, "Die Maßnahme darf höchstens 4000 Zeichen haben.")
+	if h := e.actDo(writer, "POST", "/records/actions/fault/"+fault, url.Values{"description": {long}}, hx...); !strings.Contains(h.Body.String(), `value="`+long+`"`) {
+		t.Error("zu lang: der Text bleibt nicht im Feld")
+	}
+	// Erfolg: Fokus bleibt im Feld, ein reines Laden setzt ihn nicht
+	ok := e.actDo(writer, "POST", "/records/actions/fault/"+fault, url.Values{"description": {"Filter getauscht"}}, hx...)
+	if ok.Code != 200 || !strings.Contains(ok.Body.String(), "autofocus") || strings.Contains(ok.Body.String(), `role="alert"`) {
+		t.Errorf("Erfolg: %d %s", ok.Code, ok.Body.String())
+	}
+	if g := e.actDo(writer, "GET", "/records/actions/fault/"+fault, nil); strings.Contains(g.Body.String(), "autofocus") {
+		t.Error("Laden setzt den Fokus")
 	}
 }
 

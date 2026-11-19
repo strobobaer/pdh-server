@@ -927,7 +927,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/kvp/{id}/actions", h.KVPActionAddWeb)
 	r.Post("/kvp/{id}/actions/{aid}/toggle", h.KVPActionToggleWeb)
 	r.Post("/kvp/{id}/actions/{aid}/delete", h.KVPActionDeleteWeb)
-	r.Post("/kvp/{id}/comment", h.KVPCommentWeb)
+	r.Post("/kvp/{id}/comment", h.KVPCommentLegacy) // alter Weg, läuft über den Baustein (record_comments.go)
 	r.Post("/kvp/{id}/delete", h.KVPDeleteWeb)
 	// Rüstzeiten (setup_pages.go, setup_actions.go): Arbeitsbereich, Anlegen, Detailseite
 	r.Get("/setup", h.SetupPage)

@@ -39,9 +39,10 @@
   <div style="font-size:12px;color:var(--muted);padding:4px 0">{{t "Noch keine Maßnahmen erfasst"}}</div>
   {{end}}
   </div>
+  {{if .Error}}<div role="alert" style="color:var(--red);font-size:13px;margin-bottom:8px">{{.Error}}</div>{{end}}
   {{if .CanAdd}}
   <form hx-post="{{.PostURL}}" hx-target="#rec-actions" hx-swap="outerHTML" style="display:flex;gap:8px">
-    <input data-suggest="action" name="description" class="form-input" required maxlength="4000" autocomplete="off" aria-label="{{t "Maßnahme eintragen"}}" style="flex:1"
+    <input data-suggest="action" name="description" value="{{.Draft}}" class="form-input" required maxlength="4000" autocomplete="off" aria-label="{{t "Maßnahme eintragen"}}" style="flex:1"{{if .Focus}} autofocus{{end}}
       placeholder="{{if eq .Module "fault"}}{{t "z.B. Sicherung getauscht"}}{{else if eq .Module "ticket"}}{{t "z.B. Ersatzteil bestellt"}}{{else}}{{t "z.B. Ursache behoben"}}{{end}}">
     <button type="submit" class="btn" aria-label="{{t "Maßnahme eintragen"}}"><i class="ti ti-plus"></i></button>
   </form>

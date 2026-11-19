@@ -70,6 +70,7 @@ func (e *histEnv) commRouter() http.Handler {
 	r.Get("/records/comments/{module}/{id}", e.h.RecordCommentsWeb)
 	r.Post("/records/comments/{module}/{id}", e.h.RecordCommentsAddWeb)
 	r.Post("/tickets/{id}/comment", e.h.TicketCommentLegacy)
+	r.Post("/kvp/{id}/comment", e.h.KVPCommentLegacy)
 	return r
 }
 
@@ -302,6 +303,20 @@ func TestTicketCommentOldRoute(t *testing.T) {
 	}
 	if w := e.commDo(u, "POST", "/tickets/"+tk+"/comment", url.Values{"text": {" "}}); w.Code != http.StatusBadRequest || e.commCount("ticket", tk) != 1 {
 		t.Errorf("alter Weg leer: %d", w.Code)
+	}
+}
+
+// Auch der alte KVP-Weg läuft über den Baustein: ohne htmx kommt das Kartenfragment (keine Weiterleitung).
+func TestKVPCommentOldRoute(t *testing.T) {
+	e := newActEnv(t)
+	u := e.user("Kai", "Alt")
+	idea := e.commRecord("kvp", u, "")
+	w := e.commDo(u, "POST", "/kvp/"+idea+"/comment", url.Values{"text": {"über den alten KVP-Weg"}})
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `id="rec-comments"`) || !strings.Contains(w.Body.String(), "über den alten KVP-Weg") || e.commCount("kvp", idea) != 1 {
+		t.Errorf("alter KVP-Weg: %d %s", w.Code, w.Body.String())
+	}
+	if w := e.commDo(u, "POST", "/kvp/"+idea+"/comment", url.Values{"text": {" "}}); w.Code != http.StatusBadRequest || e.commCount("kvp", idea) != 1 {
+		t.Errorf("alter KVP-Weg leer: %d", w.Code)
 	}
 }
 
