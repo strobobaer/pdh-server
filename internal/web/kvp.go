@@ -336,6 +336,9 @@ func (h *Handler) loadKVP(ctx context.Context, id string) (*kvpIdea, error) {
 type kvpFilter struct {
 	Status, Category, Query string
 	Mine                    string // Benutzer-ID: eigene Vorschlaege (eingereicht, Team, verantwortlich)
+	// Restrict: nur die Vorschläge aus IDs (Ansichtsrecht, view_rights.go); ohne Restrict alle.
+	Restrict bool
+	IDs      []string
 }
 
 func (h *Handler) listKVP(ctx context.Context, f kvpFilter, limit int) []kvpIdea {
@@ -366,6 +369,13 @@ func (h *Handler) listKVP(ctx context.Context, f kvpFilter, limit int) []kvpIdea
 		where = append(where, "(k.submitter_id::text = "+p+" OR k.created_by::text = "+p+" OR k.responsible_to::text = "+p+" OR k.reviewer_id::text = "+p+
 			" OR EXISTS (SELECT 1 FROM kvp_members m WHERE m.idea_id = k.id AND m.user_id::text = "+p+"))")
 	}
+	if f.Restrict {
+		ids := f.IDs
+		if ids == nil {
+			ids = []string{}
+		}
+		where = append(where, "k.id::text = ANY("+arg(ids)+"::text[])")
+	}
 	q := kvpSelect + " WHERE " + strings.Join(where, " AND ") + `
 		ORDER BY CASE k.status WHEN 'submitted' THEN 1 WHEN 'review' THEN 2 WHEN 'plan' THEN 3 WHEN 'do' THEN 4 WHEN 'check' THEN 5 WHEN 'act' THEN 6 ELSE 7 END,
 		         k.created_at DESC LIMIT ` + arg(limit)
@@ -385,6 +395,42 @@ func (h *Handler) listKVP(ctx context.Context, f kvpFilter, limit int) []kvpIdea
 }
 
 func (h *Handler) canManageKVP(r *http.Request) bool { return h.hasPerm(r, kvpPerm) }
+
+// visibleKVPIDs: alle Vorschläge, die die Person sehen darf (Recht für die Abteilung oder
+// beteiligt, view_rights.go). Bei einem Fehler: leer (nie "alle").
+func (h *Handler) visibleKVPIDs(r *http.Request) []string {
+	ids := []string{}
+	rows, err := h.db.Query(r.Context(), `SELECT id::text FROM kvp_ideas`)
+	if err != nil {
+		componentLog("kvp").Error().Err(err).Msg("sichtbare vorschlaege laden")
+		return ids
+	}
+	defer rows.Close()
+	canView := h.viewFilter(r, "kvp")
+	for rows.Next() {
+		var id string
+		if rows.Scan(&id) == nil && canView(id) {
+			ids = append(ids, id)
+		}
+	}
+	return ids
+}
+
+// kvpViewable lädt den Vorschlag der Adresse und prüft das Ansehen: nicht gefunden = 404,
+// nicht sichtbar = 403. Alle Wege an einem einzelnen Vorschlag laufen hierüber; Steuern und
+// Bearbeiten wirken nur an Vorschlägen, die man sehen darf.
+func (h *Handler) kvpViewable(w http.ResponseWriter, r *http.Request) (*kvpIdea, bool) {
+	k, err := h.loadKVP(r.Context(), chi.URLParam(r, "id"))
+	if err != nil {
+		http.Error(w, "Vorschlag nicht gefunden", http.StatusNotFound)
+		return nil, false
+	}
+	if !h.canViewRec(r, "kvp", k.ID) {
+		http.Error(w, "keine berechtigung", http.StatusForbidden)
+		return nil, false
+	}
+	return k, true
+}
 
 // canWorkKVP: Bewertende, Umsetzungsverantwortliche und KVP-Steuerung
 // bearbeiten Bewertung, PDCA-Schritte und Massnahmen.
@@ -763,15 +809,18 @@ type KVPPageData struct {
 	BaseData
 	Tab, Message, Error string
 	CanManage           bool
-	Dash                kvpDashboard
-	Ideas               []kvpIdea
-	Filter              kvpFilter
-	Chips               []kvpChip
-	Statuses            []kvpStatusDef
-	Categories          []kvpCategoryDef
-	FeedbackDays        int
-	MyUserID            string
-	BoardCols           []kvpStatusDef
+	// Ansichtsrecht (view_rights.go): Kennzahlen und Dashboard nur mit dem Recht überall, die
+	// Tafel mit dem Recht irgendwo; ohne Recht nur "Meine Vorschläge".
+	ShowDash, ShowBoard, OnlyMine bool
+	Dash                          kvpDashboard
+	Ideas                         []kvpIdea
+	Filter                        kvpFilter
+	Chips                         []kvpChip
+	Statuses                      []kvpStatusDef
+	Categories                    []kvpCategoryDef
+	FeedbackDays                  int
+	MyUserID                      string
+	BoardCols                     []kvpStatusDef
 }
 
 // KVPPage: GET /kvp – Dashboard, Vorschlagsliste, PDCA-Board, Regeln.
@@ -802,9 +851,26 @@ func (h *Handler) KVPPage(w http.ResponseWriter, r *http.Request) {
 			d.BoardCols = append(d.BoardCols, s)
 		}
 	}
-	d.Dash = h.kvpDashboard(ctx, year)
+	all, anyView := h.viewsAll(r, "kvp"), h.mayViewAny(r, "kvp")
+	d.ShowDash, d.ShowBoard, d.OnlyMine = all, anyView, !anyView
+	var visible []string
+	if !all {
+		visible = h.visibleKVPIDs(r)
+	}
+	switch {
+	case all:
+		d.Dash = h.kvpDashboard(ctx, year)
+	case anyView: // nur die Tafel der sichtbaren Vorschläge, keine Kennzahlen aller
+		d.Dash = kvpDashboard{Board: map[string][]kvpIdea{}}
+		for _, k := range h.listKVP(ctx, kvpFilter{Restrict: true, IDs: visible}, 500) {
+			if k.InPDCA() {
+				d.Dash.Board[k.Status] = append(d.Dash.Board[k.Status], k)
+			}
+		}
+	}
 
 	listF := d.Filter
+	listF.Restrict, listF.IDs = !all, visible
 	switch listF.Status {
 	case "all": // alle offenen (Kategorie-Links aus dem Dashboard)
 		listF.Status = ""
@@ -818,14 +884,18 @@ func (h *Handler) KVPPage(w http.ResponseWriter, r *http.Request) {
 
 	// Filter-Chips mit Anzahl
 	cnt := map[string]int{}
-	var all, overdue, archive, mine int
+	var nAll, overdue, archive, mine int
+	ids := visible
+	if ids == nil {
+		ids = []string{}
+	}
 	_ = h.db.QueryRow(ctx, `SELECT COUNT(*) FILTER (WHERE archived_at IS NULL),
 		COUNT(*) FILTER (WHERE archived_at IS NULL AND ((status IN ('submitted','review') AND feedback_due < CURRENT_DATE) OR (status IN ('plan','do','check','act') AND due_date < CURRENT_DATE))),
 		COUNT(*) FILTER (WHERE archived_at IS NOT NULL),
 		COUNT(*) FILTER (WHERE submitter_id::text = $1 OR created_by::text = $1 OR responsible_to::text = $1 OR reviewer_id::text = $1
 		                 OR EXISTS (SELECT 1 FROM kvp_members m WHERE m.idea_id = kvp_ideas.id AND m.user_id::text = $1))
-		FROM kvp_ideas`, d.MyUserID).Scan(&all, &overdue, &archive, &mine)
-	if rows, err := h.db.Query(ctx, `SELECT status, COUNT(*)::int FROM kvp_ideas WHERE archived_at IS NULL GROUP BY status`); err == nil {
+		FROM kvp_ideas WHERE (NOT $2::bool OR id::text = ANY($3::text[]))`, d.MyUserID, !all, ids).Scan(&nAll, &overdue, &archive, &mine)
+	if rows, err := h.db.Query(ctx, `SELECT status, COUNT(*)::int FROM kvp_ideas WHERE archived_at IS NULL AND (NOT $1::bool OR id::text = ANY($2::text[])) GROUP BY status`, !all, ids); err == nil {
 		for rows.Next() {
 			var s string
 			var n int
@@ -843,7 +913,7 @@ func (h *Handler) KVPPage(w http.ResponseWriter, r *http.Request) {
 		active := d.Filter.Status == key || (key == "" && d.Filter.Status == "all")
 		return kvpChip{key, label, icon, u, n, active}
 	}
-	d.Chips = append(d.Chips, chip("", "Alle offenen", "ti-list", all), chip("mine", "Meine", "ti-user", mine))
+	d.Chips = append(d.Chips, chip("", "Alle offenen", "ti-list", nAll), chip("mine", "Meine", "ti-user", mine))
 	for _, s := range kvpStatuses {
 		if s.Key == "done" || s.Key == "rejected" {
 			continue
@@ -1073,6 +1143,10 @@ func (h *Handler) KVPDetailPage(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/kvp?tab=ideas", http.StatusFound)
 		return
 	}
+	if !h.canViewRec(r, "kvp", k.ID) {
+		http.Error(w, "keine berechtigung", http.StatusForbidden)
+		return
+	}
 	d := KVPDetailData{
 		BaseData:     h.baseData(r, "kvp", "KVP-Vorschlag", "KVP"),
 		Idea:         k,
@@ -1106,9 +1180,8 @@ func (h *Handler) KVPDetailPage(w http.ResponseWriter, r *http.Request) {
 // KVPPrintPage: GET /kvp/{id}/print – A3-Report zum Ausdrucken/Aushängen.
 func (h *Handler) KVPPrintPage(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	k, err := h.loadKVP(ctx, chi.URLParam(r, "id"))
-	if err != nil {
-		http.Error(w, "Vorschlag nicht gefunden", http.StatusNotFound)
+	k, ok := h.kvpViewable(w, r)
+	if !ok {
 		return
 	}
 	d := KVPDetailData{
@@ -1121,9 +1194,8 @@ func (h *Handler) KVPPrintPage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) kvpForWork(w http.ResponseWriter, r *http.Request) (*kvpIdea, bool) {
-	k, err := h.loadKVP(r.Context(), chi.URLParam(r, "id"))
-	if err != nil {
-		http.Error(w, "Vorschlag nicht gefunden", http.StatusNotFound)
+	k, ok := h.kvpViewable(w, r)
+	if !ok {
 		return nil, false
 	}
 	if !h.canWorkKVP(r, k) {
@@ -1141,9 +1213,8 @@ func (h *Handler) kvpForWork(w http.ResponseWriter, r *http.Request) (*kvpIdea, 
 // KVPSaveWeb: POST /kvp/{id} – Inhalt (Titel, Kategorie, Ist, Vorschlag, Nutzen, Anlage, Team).
 func (h *Handler) KVPSaveWeb(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	k, err := h.loadKVP(ctx, chi.URLParam(r, "id"))
-	if err != nil {
-		http.Error(w, "Vorschlag nicht gefunden", http.StatusNotFound)
+	k, ok := h.kvpViewable(w, r)
+	if !ok {
 		return
 	}
 	if !h.canEditKVPContent(r, k) {
@@ -1163,7 +1234,7 @@ func (h *Handler) KVPSaveWeb(w http.ResponseWriter, r *http.Request) {
 	if h.canManageKVP(r) && r.FormValue("submitter_id") != "" {
 		submitter = r.FormValue("submitter_id")
 	}
-	_, err = h.db.Exec(ctx, `UPDATE kvp_ideas SET title=$1, category=$2, problem=$3, proposal=$4, benefit=$5, infrastructure_id=$6,
+	_, err := h.db.Exec(ctx, `UPDATE kvp_ideas SET title=$1, category=$2, problem=$3, proposal=$4, benefit=$5, infrastructure_id=$6,
 		cost_center_id=$7, submitter_id=$8, updated_at=NOW() WHERE id=$9::uuid`,
 		title, kvpCategory(r.FormValue("category")).Key, problem, proposal, strings.TrimSpace(r.FormValue("benefit")),
 		nullID(r.FormValue("infrastructure_id")), nullID(r.FormValue("cost_center_id")), nullID(submitter), k.ID)
@@ -1287,9 +1358,8 @@ func (h *Handler) KVPActWeb(w http.ResponseWriter, r *http.Request) {
 // KVPAdvanceWeb: POST /kvp/{id}/status – naechster Schritt (to, note).
 func (h *Handler) KVPAdvanceWeb(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	k, err := h.loadKVP(ctx, chi.URLParam(r, "id"))
-	if err != nil {
-		http.Error(w, "Vorschlag nicht gefunden", http.StatusNotFound)
+	k, ok := h.kvpViewable(w, r)
+	if !ok {
 		return
 	}
 	r.ParseForm()
@@ -1333,7 +1403,7 @@ func (h *Handler) KVPAdvanceWeb(w http.ResponseWriter, r *http.Request) {
 	case "done":
 		set += ", closed_at=NOW(), archived_at=NOW()"
 	}
-	_, err = h.db.Exec(ctx, `UPDATE kvp_ideas SET `+set+` WHERE id=$2::uuid`, to, k.ID, nullID(u), note)
+	_, err := h.db.Exec(ctx, `UPDATE kvp_ideas SET `+set+` WHERE id=$2::uuid`, to, k.ID, nullID(u), note)
 	if err != nil {
 		kvpRedirect(w, r, back, "", err)
 		return
@@ -1406,9 +1476,8 @@ func (h *Handler) KVPActionAddWeb(w http.ResponseWriter, r *http.Request) {
 // Darf auch die/der fuer die Massnahme Verantwortliche.
 func (h *Handler) KVPActionToggleWeb(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	k, err := h.loadKVP(ctx, chi.URLParam(r, "id"))
-	if err != nil {
-		http.Error(w, "Vorschlag nicht gefunden", http.StatusNotFound)
+	k, ok := h.kvpViewable(w, r)
+	if !ok {
 		return
 	}
 	aid, uid := chi.URLParam(r, "aid"), getUser(r).ID
@@ -1419,7 +1488,7 @@ func (h *Handler) KVPActionToggleWeb(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var done bool
-	err = h.db.QueryRow(ctx, `UPDATE kvp_actions SET done_at = CASE WHEN done_at IS NULL THEN NOW() END,
+	err := h.db.QueryRow(ctx, `UPDATE kvp_actions SET done_at = CASE WHEN done_at IS NULL THEN NOW() END,
 		done_by = CASE WHEN done_at IS NULL THEN $3::uuid END WHERE id=$1::uuid AND idea_id=$2::uuid RETURNING done_at IS NOT NULL`,
 		aid, k.ID, nullID(uid)).Scan(&done)
 	if err == nil {
@@ -1452,6 +1521,10 @@ func (h *Handler) KVPDeleteWeb(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := chi.URLParam(r, "id")
+	if !h.canViewRec(r, "kvp", id) {
+		http.Error(w, "keine berechtigung", http.StatusForbidden)
+		return
+	}
 	_, err := h.db.Exec(r.Context(), `DELETE FROM kvp_ideas WHERE id=$1::uuid`, id)
 	if err == nil {
 		_, _ = h.db.Exec(r.Context(), `DELETE FROM record_history WHERE ref_type='kvp' AND ref_id=$1::uuid`, id)

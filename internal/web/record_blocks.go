@@ -101,6 +101,11 @@ func (h *Handler) blockRecord(w http.ResponseWriter, r *http.Request, comp, key,
 		http.Error(w, "Der Datensatz konnte nicht geladen werden.", http.StatusInternalServerError)
 		return "", false
 	}
+	// Projekt und KVP: nur mit Ansichtsrecht oder als Beteiligte/r (view_rights.go)
+	if !h.canViewRec(r, key, id) {
+		http.Error(w, "keine berechtigung", http.StatusForbidden)
+		return "", false
+	}
 	return status, true
 }
 

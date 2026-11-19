@@ -214,6 +214,17 @@ func scopeTarget(path string) (refType, id string, ok bool) {
 	return "", "", false
 }
 
+var kvpAttachmentRe = regexp.MustCompile(`^/attachments/kvp/` + uuidRe)
+
+// kvpAttachmentTarget: die Vorschlags-ID, wenn der Pfad (ohne /api/v1) Anhänge eines
+// KVP-Vorschlags anspricht (Liste, Hochladen, Datensatzbild), sonst "".
+func kvpAttachmentTarget(path string) string {
+	if m := kvpAttachmentRe.FindStringSubmatch(path); m != nil {
+		return m[1]
+	}
+	return ""
+}
+
 // DepartmentScopeMiddleware sperrt Detailseiten und Bearbeitungsrouten von
 // Vorgaengen ausserhalb der eigenen Abteilung (Web-Oberflaeche).
 func (h *Handler) DepartmentScopeMiddleware(next http.Handler) http.Handler {
@@ -241,7 +252,8 @@ func (h *Handler) APIDepartmentScope(next http.Handler) http.Handler {
 		path := strings.TrimPrefix(r.URL.Path, "/api/v1")
 		refType, id, single := scopeTarget(path)
 		listType, isList := apiListModules[strings.TrimSuffix(path, "/")]
-		if !single && !(isList && r.Method == http.MethodGet) {
+		kvpID := kvpAttachmentTarget(path)
+		if !single && kvpID == "" && !(isList && r.Method == http.MethodGet) {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -254,6 +266,16 @@ func (h *Handler) APIDepartmentScope(next http.Handler) http.Handler {
 			return
 		}
 		u, err := h.users.GetByID(r.Context(), uid)
+		if kvpID != "" {
+			// Anhänge eines KVP-Vorschlags: kvp steht nicht in scopeTables, daher hier die
+			// Ansichtsprüfung (Recht für die Abteilung oder beteiligt); Fehler sperren.
+			if err != nil || u == nil || !h.canViewRec(r.WithContext(context.WithValue(r.Context(), "user", u)), "kvp", kvpID) {
+				http.Error(w, `{"success":false,"error":"kein zugriff"}`, http.StatusForbidden)
+				return
+			}
+			next.ServeHTTP(w, r)
+			return
+		}
 		if err != nil || u == nil {
 			if (single && refType == "project") || (!single && listType == "project") {
 				// Projekte nie ohne geprüften Benutzer ausliefern
