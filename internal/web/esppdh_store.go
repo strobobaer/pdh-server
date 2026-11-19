@@ -171,7 +171,7 @@ func (h *Handler) esppdhList(ctx context.Context) ([]esppdhDevice, error) {
 func (h *Handler) esppdhSecrets(d esppdhDevice) (mqttPW, apPW string, err error) {
 	if mqttPW, err = decryptSecret(h.esppdhKey(), d.mqttEnc); err != nil || mqttPW == "" {
 		if d.mqttHash != "" {
-			return "", "", errors.New("Das MQTT-Kennwort des Geräts ist nicht lesbar – der Schlüssel hat sich geändert. Das Gerät bleibt am Broker angemeldet; " +
+			return "", "", errors.New("Das MQTT-Kennwort des Geräts ist nicht lesbar – der Schlüssel hat sich geändert. Das Gerät behält seinen Zugang am Broker;" +
 				"vor dem nächsten Bau der Firmware bitte unter Aktionen „Neues MQTT-Kennwort“ wählen.")
 		}
 		return "", "", errors.New("Das MQTT-Kennwort des Geräts ist nicht lesbar – der Schlüssel hat sich geändert. Das Gerät kann sich deshalb nicht am Broker anmelden: " +

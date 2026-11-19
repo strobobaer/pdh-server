@@ -921,7 +921,7 @@ func TestESPPDHAccountsSurviveKeyChange(t *testing.T) {
 		t.Error("falsches Kennwort angenommen")
 	}
 	page := esppdhDo(e.h.EsppdhDevicePage, "GET", "/x", id, esppdhUser, nil).Body.String()
-	if !strings.Contains(page, "Das Gerät bleibt am Broker angemeldet") || !strings.Contains(page, "Neues MQTT-Kennwort") {
+	if !strings.Contains(page, "Das Gerät behält seinen Zugang am Broker") || !strings.Contains(page, "Neues MQTT-Kennwort") {
 		t.Error("Seite des Geräts sagt nicht, dass vor dem nächsten Bau ein neues MQTT-Kennwort nötig ist")
 	}
 
