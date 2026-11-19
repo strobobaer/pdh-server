@@ -2803,28 +2803,12 @@ type TicketDetailData struct {
 	BaseData
 	SyncOrigin     *SyncOriginView // Herkunft aus einem Fremdsystem (sync_ops.go); nil = keine oder kein Recht
 	Ticket         TicketView
-	Comments       []CommentView
 	CommentCount   int
 	TimeEntries    []*timetracking.TimeEntry
 	RunningTime    *timetracking.TimeEntry
 	StatusOptions  []StatusOption
 	RelatedTickets []TicketView
 	Users          []UserOption
-}
-
-type CommentView struct {
-	ID         string
-	UserName   string
-	Initial    string
-	Text       string
-	CreatedAgo string
-}
-
-func commentView(id, name, text string, at time.Time) CommentView {
-	if name == "" {
-		name = "Unbekannt"
-	}
-	return CommentView{ID: id, UserName: name, Initial: string([]rune(name)[:1]), Text: text, CreatedAgo: timeAgo(at)}
 }
 
 type StatusOption struct {
@@ -2883,11 +2867,9 @@ func (h *Handler) TicketDetail(w http.ResponseWriter, r *http.Request) {
 	data.Ticket.ResponsibleName = people.ResponsibleName
 	data.Ticket.RecordImageURL = h.recordImageURL(ctx, "ticket", id)
 
-	if cs, err := h.tickets.ListComments(ctx, id); err == nil {
-		for _, c := range cs {
-			data.Comments = append(data.Comments, commentView(c.ID, c.UserName, c.Text, c.CreatedAt))
-		}
-		data.CommentCount = len(data.Comments)
+	// nur die Zahl am Reiter; die Liste lädt der Baustein „Kommentare“ (record_comments.go)
+	if err := h.db.QueryRow(ctx, `SELECT COUNT(*)::int FROM ticket_comments WHERE ticket_id = $1::uuid`, id).Scan(&data.CommentCount); err != nil {
+		componentLog("tickets").Warn().Err(err).Str("ticket", id).Msg("kommentare zählen")
 	}
 	if running, err := h.time.GetRunning(ctx, u.ID); err == nil {
 		data.RunningTime = running

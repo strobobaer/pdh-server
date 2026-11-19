@@ -210,7 +210,7 @@
   <a class="rec-tab" data-tab="overview" href="?tab=overview"><i class="ti ti-bulb"></i> Vorschlag</a>
   <a class="rec-tab" data-tab="assess" href="?tab=assess"><i class="ti ti-scale"></i> Bewertung</a>
   <a class="rec-tab" data-tab="pdca" href="?tab=pdca"><i class="ti ti-refresh"></i> PDCA &amp; Maßnahmen <b>{{$k.ActionsDone}}/{{$k.ActionsTotal}}</b></a>
-  <a class="rec-tab" data-tab="comments" href="?tab=comments"><i class="ti ti-message"></i> Kommentare <b>{{len .Comments}}</b></a>
+  <a class="rec-tab" data-tab="comments" href="?tab=comments"><i class="ti ti-message"></i> Kommentare <b>{{.CommentCount}}</b></a>
   <a class="rec-tab" data-tab="fields" href="?tab=fields"><i class="ti ti-forms"></i> Feldsätze</a>
   <a class="rec-tab" data-tab="docs" href="?tab=docs"><i class="ti ti-paperclip"></i> Vorher/Nachher</a>
   <a class="rec-tab" data-tab="links" href="?tab=links"><i class="ti ti-link"></i> Verknüpfungen</a>
@@ -320,7 +320,7 @@
     {{range .ActionEntries}}
     {{if gt .Count 1}}
     <details class="rh-group">
-      <summary class="kvp-act"><div style="flex:1"><div class="kvp-act-title">{{.Count}}× {{.Label}}</div><div class="rec-sub">zuletzt {{.Last}}</div></div></summary>
+      <summary class="kvp-act"><div style="flex:1"><div class="kvp-act-title">{{.Count}}× {{.Label}}</div><div class="rec-sub">{{t "zuletzt"}} {{.Last}}</div></div></summary>
       {{range .Rows}}{{template "kvp-action-row" (dict "A" . "K" $k "D" $d)}}{{end}}
     </details>
     {{else}}{{template "kvp-action-row" (dict "A" .Row "K" $k "D" $d)}}{{end}}

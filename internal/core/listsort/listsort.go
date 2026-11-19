@@ -77,12 +77,17 @@ func Order(items []Item, m Mode) []int {
 		}
 	case Person:
 		less = func(a, b int) (bool, bool) {
-			pa, pb := strings.ToLower(items[a].Person), strings.ToLower(items[b].Person)
-			if pa != pb {
-				if pa == "" || pb == "" {
-					return pb == "", true // ohne Name ans Ende
-				}
-				return pa < pb, true
+			pa, pb := strings.TrimSpace(items[a].Person), strings.TrimSpace(items[b].Person)
+			if (pa == "") != (pb == "") {
+				return pb == "", true // ohne Name ans Ende
+			}
+			// nach dem Schlüssel (Umlaute und Groß/Klein gefaltet: „Özlem“ steht bei „O“, nicht hinter „Zoe“),
+			// bei gleichem Schlüssel nach dem Namen ohne Groß/Klein
+			if ka, kb := Key(pa), Key(pb); ka != kb {
+				return ka < kb, true
+			}
+			if la, lb := strings.ToLower(pa), strings.ToLower(pb); la != lb {
+				return la < lb, true
 			}
 			return newer(a, b)
 		}

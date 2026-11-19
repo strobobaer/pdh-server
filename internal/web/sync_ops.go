@@ -538,7 +538,6 @@ func (h *Handler) syncRunsBlock(r *http.Request, p *extsync.Profile) (map[string
 	return map[string]any{
 		"Runs": syncRunRows(p.TargetType, runs),
 		"Bar":  h.sortBar(r, "sync", mode, "/sync/"+p.ID+"/runs", "#sy-runs"),
-		"ID":   p.ID,
 	}, nil
 }
 

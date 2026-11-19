@@ -45,7 +45,7 @@
   </div>
   {{if .Error}}<div role="alert" style="color:var(--red);font-size:13px;margin-top:10px">{{.Error}}</div>{{end}}
   <form hx-post="{{.PostURL}}" hx-target="#rec-comments" hx-swap="outerHTML" style="margin-top:12px;display:flex;gap:8px">
-    <input data-suggest="comment" name="text" class="form-input" value="{{.Draft}}" placeholder="{{t "Kommentar hinzufügen…"}}" aria-label="{{t "Kommentar hinzufügen…"}}" style="flex:1;font-size:12px" required autocomplete="off"{{if .Focus}} autofocus{{end}}>
+    <input data-suggest="comment" name="text" class="form-input" value="{{.Draft}}" placeholder="{{t "Kommentar hinzufügen…"}}" aria-label="{{t "Kommentar hinzufügen…"}}" style="flex:1;font-size:12px" required maxlength="4000" autocomplete="off"{{if .Focus}} autofocus{{end}}>
     <button class="btn" type="submit" aria-label="{{t "Senden"}}"><i class="ti ti-send"></i></button>
   </form>
 </div>

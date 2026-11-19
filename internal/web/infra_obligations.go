@@ -120,7 +120,12 @@ func (h *Handler) scanObligations(ctx context.Context, where string, args ...any
 // obligationLogOrder: ORDER BY der Nachweise (Alias l, u); Art ist das Ergebnis (ohne
 // Mängel / mit Mängeln), fester Gleichstand: Erfassungszeit und Kennung.
 func obligationLogOrder(m listsort.Mode) string {
-	return logOrderSQL(m, "l.done_on", "NULLIF(TRIM(u.first_name || ' ' || u.last_name), '')", "l.result") + ", l.created_at, l.id"
+	// Gleichstand in Richtung der Art: nur „Älteste zuerst“ aufsteigend, sonst absteigend wie vor dem Sortieren
+	dir := " DESC"
+	if m == listsort.Oldest {
+		dir = " ASC"
+	}
+	return logOrderSQL(m, "l.done_on", "NULLIF(TRIM(u.first_name || ' ' || u.last_name), '')", "l.result") + ", l.created_at" + dir + ", l.id" + dir
 }
 
 // infraObligations: alle Einträge einer Anlage mit den letzten Nachweisen.

@@ -32,7 +32,7 @@ func arrangeRows[T any](items []listsort.Item, rows []T, mode listsort.Mode) []l
 	var entries []listEntry[T]
 	if mode.Grouped() {
 		for _, g := range listsort.Groups(items, mode) {
-			e := listEntry[T]{Row: rows[g.Idx[0]], Label: g.Label, Count: g.Count, Last: g.Last.Local().Format("02.01.2006")}
+			e := listEntry[T]{Row: rows[g.Idx[0]], Label: groupTitle(g.Label), Count: g.Count, Last: g.Last.Local().Format("02.01.2006")}
 			if g.Count > 1 {
 				for _, i := range g.Idx {
 					e.Rows = append(e.Rows, rows[i])
@@ -46,6 +46,16 @@ func arrangeRows[T any](items []listsort.Item, rows []T, mode listsort.Mode) []l
 		entries = append(entries, listEntry[T]{Row: rows[i], Count: 1})
 	}
 	return entries
+}
+
+// groupTitle kürzt den Titel einer Gruppe auf 80 Zeichen (Leerraum zusammengezogen, „…“ am Ende);
+// die Einzeleinträge darin behalten den vollen Text. Gleiche Kürzung wie die Zeitleiste der Anlage.
+func groupTitle(s string) string {
+	s = strings.Join(strings.Fields(s), " ")
+	if r := []rune(s); len(r) > 80 {
+		return string(r[:80]) + "…"
+	}
+	return s
 }
 
 // blockRow: eine geladene Zeile (Text, Zeitpunkt, Name der Person).

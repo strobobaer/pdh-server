@@ -65,10 +65,11 @@ var infraCommentRefTypes = map[string]struct {
 const (
 	infraHistoryPageLimit   = 200
 	infraHistoryExportLimit = 10000
-	// Für „Häufigste zuerst“ und „Gleiches zusammen“ wird über die gefilterte
-	// Menge gerechnet, nicht nur über die ersten Zeilen der Seite.
-	infraHistoryGroupLimit = 2000
 )
+
+// infraHistoryGroupLimit: Für „Häufigste zuerst“ und „Gleiches zusammen“ wird über die gefilterte
+// Menge gerechnet, nicht nur über die ersten Zeilen der Seite (Variable, damit Tests sie senken können).
+var infraHistoryGroupLimit = 2000
 
 // infraHistoryFilter sind die Filterparameter der Anlagen-Historie
 // (aus der Query-String des Filterformulars).
@@ -367,9 +368,24 @@ func infraHistoryGroups(entries []InfraHistoryEntry, mode listsort.Mode) []Infra
 		for _, i := range g.Idx {
 			grp.Entries = append(grp.Entries, entries[i])
 		}
+		// „Maßnahme · “ nur, wenn die ganze Gruppe aus Maßnahmen besteht (Maßnahme und Kommentar
+		// gleichen Textes landen in einer Gruppe).
+		if allInfraActions(grp.Entries) && grp.Label != grp.Entries[0].ModuleLabel {
+			grp.Label = "Maßnahme · " + grp.Label
+		}
 		out = append(out, grp)
 	}
 	return out
+}
+
+// allInfraActions: wahr, wenn jeder Eintrag eine Maßnahme ist.
+func allInfraActions(es []InfraHistoryEntry) bool {
+	for _, e := range es {
+		if e.Module != "action" {
+			return false
+		}
+	}
+	return len(es) > 0
 }
 
 // infraHistoryKey: „gleich“ heißt gleicher Wortschlüssel. Bei Maßnahmen,
@@ -392,21 +408,12 @@ func infraHistoryKey(e InfraHistoryEntry) string {
 // infraHistoryLabel: Gruppentitel, wahr für jeden Eintrag der Gruppe (der
 // Schlüssel enthält den Titel bzw. Text, nicht aber die Art des Bezugs).
 func infraHistoryLabel(e InfraHistoryEntry) string {
-	snip := func(s string) string {
-		s = strings.Join(strings.Fields(s), " ")
-		if r := []rune(s); len(r) > 80 {
-			return string(r[:80]) + "…"
-		}
-		return s
-	}
 	var l string
 	switch e.Module {
-	case "comment":
-		l = snip(e.Body)
-	case "action":
-		l = "Maßnahme · " + snip(e.Body)
+	case "comment", "action":
+		l = groupTitle(e.Body)
 	default:
-		l = snip(e.Title)
+		l = groupTitle(e.Title)
 	}
 	if strings.TrimSpace(l) == "" {
 		return e.ModuleLabel
@@ -537,6 +544,9 @@ func (h *Handler) loadInfraHistory(ctx context.Context, r *http.Request, infraID
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
+	// Vor dem Abteilungsfilter merken, ob die Abfrage ihre Grenze erreicht hat (der Zähler danach
+	// zählt nur noch die sichtbaren Einträge).
+	hitLimit := res.Total > len(res.Entries)
 	// Abteilungsrechte: Vorgaenge (und deren Massnahmen/Teile/Kommentare)
 	// fremder Abteilungen ausblenden; Zaehler dann aus den sichtbaren Eintraegen
 	if s := h.requestScope(r); s != nil {
@@ -577,7 +587,7 @@ func (h *Handler) loadInfraHistory(ctx context.Context, r *http.Request, infraID
 		return res, nil
 	}
 	// Gezählt und gruppiert wird, was nach dem Abteilungsfilter übrig ist.
-	if more := res.Total > len(res.Entries); mode.Grouped() {
+	if more := hitLimit || res.Total > len(res.Entries); mode.Grouped() {
 		res.Capped, res.Cap = more, infraHistoryGroupLimit
 		res.Groups = infraHistoryGroups(res.Entries, mode)
 	} else {

@@ -37,3 +37,27 @@ func TestObligationsSort(t *testing.T) {
 		logBarOK(t, renderPage(t, tmpl, "infra_detail", d), "obligations", c.mode)
 	}
 }
+
+// Zwei Nachweise am selben Tag: „Neueste zuerst“ zeigt den später erfassten zuerst (wie vor dem Sortieren),
+// „Älteste zuerst“ den früher erfassten.
+func TestObligationsSortSameDay(t *testing.T) {
+	e := newHistEnv(t)
+	anna := e.user("Anna", "Alpha")
+	infra := e.infra("Prüfanlage", "", "")
+	ob := e.id(`INSERT INTO infra_obligations (infrastructure_id, kind, title) VALUES ($1::uuid, 'inspection', 'Leiter') RETURNING id::text`, infra)
+	for i, note := range []string{"früh", "spät"} {
+		e.exec(`INSERT INTO infra_obligation_log (obligation_id, done_on, result, note, done_by, created_at)
+			VALUES ($1::uuid, $2::date, 'ok', $3, $4::uuid, $5)`, ob, logSeedAt(0), note, anna.ID, logSeedAt(i+1))
+	}
+	for _, c := range []struct{ mode, want string }{{"new", "spät|früh"}, {"person", "spät|früh"}, {"kind", "spät|früh"}, {"old", "früh|spät"}} {
+		req := httptest.NewRequest("GET", "/infrastructure/"+infra+"?tab=checks&ls_obligations="+c.mode, nil)
+		list := e.h.infraObligations(e.ctx, infra, e.h.sortMode(req, "obligations"))
+		var notes []string
+		for _, l := range list[0].Log {
+			notes = append(notes, l.Note)
+		}
+		if got := strings.Join(notes, "|"); got != c.want {
+			t.Errorf("%s: Reihenfolge %q, erwartet %q", c.mode, got, c.want)
+		}
+	}
+}

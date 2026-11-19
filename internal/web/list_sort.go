@@ -2,7 +2,6 @@ package web
 
 import (
 	"encoding/json"
-	"log"
 	"net/http"
 	"net/url"
 
@@ -72,7 +71,7 @@ func (h *Handler) sortMode(r *http.Request, list string) listsort.Mode {
 		if uid != "" && h.db != nil && !h.Mirror().On && stored[list] != string(m) {
 			if _, err := h.db.Exec(r.Context(), `UPDATE users SET list_sort = COALESCE(list_sort,'{}'::jsonb) || jsonb_build_object($1::text,$2::text) WHERE id=$3::uuid`,
 				list, string(m), uid); err != nil {
-				log.Printf("sortMode: Wahl %s=%s nicht gespeichert: %v", list, m, err)
+				componentLog("sortierung").Warn().Err(err).Str("liste", list).Str("wahl", string(m)).Msg("sortierwahl speichern")
 			}
 		}
 		return m

@@ -304,3 +304,61 @@ func TestInfraHistoryScopeCounts(t *testing.T) {
 		t.Errorf("uneingeschränkt: 5× erwartet: %s", body)
 	}
 }
+
+// Hinweis „Nur die neuesten … berücksichtigt“ bleibt auch für Benutzer mit Abteilungsbeschränkung,
+// obwohl der Zähler nach dem Filter nur noch ihre sichtbaren Einträge kennt.
+func TestInfraHistoryCapNoticeWithScope(t *testing.T) {
+	e := newHistEnv(t)
+	maker := e.user("Mia", "Macher")
+	a, b := e.dept("A"), e.dept("B")
+	root := e.infra("Wurzel", "", "")
+	inA := e.infra("Halle A", root, a)
+	inB := e.infra("Halle B", root, b)
+	// erst B, dann A: unter den neuesten 3 sind beide Abteilungen, der eingeschränkte Benutzer sieht nur A
+	for i := 0; i < 3; i++ {
+		e.fault("Pumpe tropft", "", inB, maker)
+	}
+	for i := 0; i < 2; i++ {
+		e.fault("Pumpe tropft", "", inA, maker)
+	}
+	role := "scopedcap" + e.sfx
+	e.exec(`INSERT INTO roles (key, label, department_id) VALUES ($1, 'Nur A', $2::uuid)`, role, a)
+	t.Cleanup(func() { _, _ = e.pool.Exec(context.Background(), `DELETE FROM roles WHERE key = $1`, role) })
+	scoped := e.user("Sven", "Scoped")
+	scoped.Role = users.Role(role)
+	e.grant(scoped, "infrastructure.view", "")
+
+	old := infraHistoryGroupLimit
+	infraHistoryGroupLimit = 3
+	t.Cleanup(func() { infraHistoryGroupLimit = old })
+	body := e.getInfra(scoped, root, "filtered=1&children=1&module=fault&ls_timeline=freq").Body.String()
+	if !strings.Contains(body, "Nur die neuesten 3 Einträge berücksichtigt") {
+		t.Errorf("Hinweis fehlt für eingeschränkten Benutzer: %s", body)
+	}
+	// Grenze nicht erreicht: kein Hinweis
+	infraHistoryGroupLimit = 100
+	if body := e.getInfra(scoped, root, "filtered=1&children=1&module=fault&ls_timeline=freq").Body.String(); strings.Contains(body, "Nur die neuesten") {
+		t.Errorf("Hinweis ohne erreichte Grenze: %s", body)
+	}
+}
+
+// Maßnahme und Kommentar gleichen Textes bilden eine Gruppe ohne „Maßnahme · “; nur reine Maßnahmen-Gruppen tragen es.
+func TestInfraHistoryGroupLabelMixed(t *testing.T) {
+	e := newHistEnv(t)
+	u := e.infraViewer("Anna", "Alpha")
+	inf := e.infra("Gemischt", "", "")
+	at := time.Date(2026, 3, 1, 8, 0, 0, 0, time.UTC)
+	f := e.fault("Pumpe tropft", "", inf, u)
+	e.faultAction(f, "Dichtung getauscht", u, at)
+	e.comment(inf, "dichtung getauscht", u, at.AddDate(0, 0, 1)) // neuester Eintrag ist ein Kommentar
+	body := e.getInfra(u, inf, "filtered=1&module=action&module=comment&ls_timeline=freq").Body.String()
+	sums := regexp.MustCompile(`(?s)<summary.*?</summary>`).FindAllString(body, -1)
+	if len(sums) != 1 || !strings.Contains(sums[0], "2× dichtung getauscht") || strings.Contains(sums[0], "Maßnahme ·") {
+		t.Errorf("gemischte Gruppe: %q", sums)
+	}
+	e.faultAction(f, "Dichtung getauscht", u, at.AddDate(0, 0, 2))
+	body = e.getInfra(u, inf, "filtered=1&module=action&ls_timeline=freq").Body.String()
+	if sums = regexp.MustCompile(`(?s)<summary.*?</summary>`).FindAllString(body, -1); len(sums) != 1 || !strings.Contains(sums[0], "Maßnahme · Dichtung getauscht") {
+		t.Errorf("reine Maßnahmen-Gruppe: %q", sums)
+	}
+}

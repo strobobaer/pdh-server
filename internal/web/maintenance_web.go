@@ -556,7 +556,7 @@ type MaintenanceTaskDetailData struct {
 	FilledCount int
 	Progress    int // Prozent erfasst
 	Templates   []*maintenance.ChecklistTemplate
-	PartsUsed  []*maintenance.PartUsage
+	PartsUsed   []*maintenance.PartUsage
 	Pending     []*maintenance.PendingPart
 	Users       []UserOption
 	NextTaskID  string

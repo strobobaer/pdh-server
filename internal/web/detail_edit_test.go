@@ -55,13 +55,8 @@ func TestDetailEditTabs(t *testing.T) {
 // Kommentare erscheinen nach dem Neuladen (vorher wurde die Liste nie gefüllt).
 func TestTicketDetailShowsComments(t *testing.T) {
 	tmpl := loadTestTemplates(t)
-	c := commentView("c1", "Übel Ärger", "Testspiegel", time.Now())
-	if c.Initial != "Ü" {
-		t.Fatalf("Initiale %q", c.Initial)
-	}
 	out := renderPage(t, tmpl, "ticket_detail", TicketDetailData{
 		Ticket:       TicketView{ID: "t1", Title: "T", Status: "open"},
-		Comments:     []CommentView{c, commentView("c2", "", "ohne Namen", time.Now())},
 		CommentCount: 2,
 	})
 	// die Liste kommt über den Baustein (record_comments.go, geprüft in record_comments_test.go);

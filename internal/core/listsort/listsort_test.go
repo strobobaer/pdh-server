@@ -131,3 +131,23 @@ func TestGroupsEmptyKey(t *testing.T) {
 		t.Errorf("eine Gruppe „(ohne Text)“ erwartet: %+v", g)
 	}
 }
+
+// „Nach Person“ sortiert nach dem gefalteten Namen: „Özlem“ steht vor „Zoe“, „anna“ und „Anna“ gelten als gleich
+// (dann entscheidet die Zeit), ohne Namen am Ende.
+func TestOrderPersonFoldsUmlauts(t *testing.T) {
+	d := func(i int) time.Time { return time.Date(2026, 3, 1+i, 8, 0, 0, 0, time.UTC) }
+	items := []Item{
+		{At: d(0), Person: "Zoe"},
+		{At: d(1), Person: "Özlem"},
+		{At: d(2), Person: "anna"},
+		{At: d(3), Person: ""},
+		{At: d(4), Person: "Anna"},
+	}
+	got := Order(items, Person)
+	want := []int{4, 2, 1, 0, 3} // Anna (neuer), anna, Özlem, Zoe, ohne Namen
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("Reihenfolge %v, erwartet %v", got, want)
+		}
+	}
+}
