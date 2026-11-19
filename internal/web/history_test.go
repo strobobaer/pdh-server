@@ -339,8 +339,13 @@ func TestHistoryFragmentPerms(t *testing.T) {
 		if w := e.get(&users.User{Role: "viewer"}, "/records/history/"+m+"/"+someID); w.Code != http.StatusForbidden {
 			t.Errorf("%s ohne Anmeldung: %d", m, w.Code)
 		}
-		if w := e.get(none, "/records/history/"+m+"/"+someID); w.Code != http.StatusNotFound {
-			t.Errorf("%s angemeldet, Datensatz fehlt: %d", m, w.Code)
+		// Aufgabe und Wartung brauchen wie vor dem Sortieren „ansehen“ oder „bearbeiten“ des Bereichs
+		want := http.StatusNotFound
+		if m == "task" || m == "maintenance_task" {
+			want = http.StatusForbidden
+		}
+		if w := e.get(none, "/records/history/"+m+"/"+someID); w.Code != want {
+			t.Errorf("%s angemeldet, Datensatz fehlt: %d, erwartet %d", m, w.Code, want)
 		}
 	}
 	// Recht gilt: Seitenprüfung genügt, dann erst die Existenz (404)
@@ -428,6 +433,34 @@ func TestHistoryLikeThePage(t *testing.T) {
 	// ein Benutzer ganz ohne Rechte, aber angemeldet, sieht sie ebenfalls (wie die Seite)
 	if w := e.get(e.user("Nina", "Nichts"), "/records/history/fault/"+fault); w.Code != 200 {
 		t.Errorf("angemeldet ohne Einzelrecht: %d", w.Code)
+	}
+
+	// Aufgabe und Wartung: wie vor dem Sortieren nur mit „ansehen“ oder „bearbeiten“ des Bereichs
+	task := e.row("tasks", `INSERT INTO tasks (title, description, priority, status, created_by) VALUES ('H-Aufgabe', 'x', 'medium', 'open', $1::uuid) RETURNING id::text`, maker.ID)
+	maint := e.row("maintenance_tasks", `INSERT INTO maintenance_tasks (title, type, infrastructure_id, priority, status, due_date, created_by)
+		VALUES ('H-Wartung', 'inspection', $2::uuid, 'medium', 'open', CURRENT_DATE + 7, $1::uuid) RETURNING id::text`, maker.ID, e.infra("H-Anlage", "", ""))
+	e.histT("task", task, "status", "status", "Status geändert", "w01", maker, at)
+	e.histT("maintenance_task", maint, "status", "status", "Status geändert", "w01", maker, at)
+	for _, c := range []struct{ module, id, view, edit, other string }{
+		{"task", task, "tasks.view", "tasks.edit", "tasks.resolve"},
+		{"maintenance_task", maint, "maintenance.view", "maintenance.edit", "maintenance.resolve"},
+	} {
+		url := "/records/history/" + c.module + "/" + c.id
+		if w := e.get(e.user("Nina", "Nichts"), url); w.Code != 403 {
+			t.Errorf("%s ohne Recht: %d, erwartet 403", c.module, w.Code)
+		}
+		other := e.user("Olaf", "Anderes")
+		e.grant(other, c.other, "")
+		if w := e.get(other, url); w.Code != 403 {
+			t.Errorf("%s nur mit %s: %d, erwartet 403", c.module, c.other, w.Code)
+		}
+		for _, perm := range []string{c.view, c.edit} {
+			u := e.user("Vera", "Viewer")
+			e.grant(u, perm, "")
+			if w := e.get(u, url); w.Code != 200 || len(histValues(w.Body.String())) != 1 {
+				t.Errorf("%s mit %s: %d %s", c.module, perm, w.Code, w.Body.String())
+			}
+		}
 	}
 }
 

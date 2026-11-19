@@ -366,7 +366,7 @@ func TestKVPActionsSort(t *testing.T) {
 		t.Fatalf("%d Maßnahmen geladen", len(list))
 	}
 	for _, a := range list {
-		if a.CreatedAt.IsZero() || a.CreatedByName == "" {
+		if a.CreatedAt.IsZero() {
 			t.Errorf("Erstellung fehlt: %+v", a)
 		}
 	}
@@ -376,8 +376,8 @@ func TestKVPActionsSort(t *testing.T) {
 		{"due", "Lager fetten|Sicherung|Filter reinigen|filter  reinigen!"},
 		{"new", "Sicherung|filter  reinigen!|Lager fetten|Filter reinigen"},
 		{"old", "Filter reinigen|Lager fetten|filter  reinigen!|Sicherung"},
-		{"freq", "2× filter  reinigen!|filter  reinigen!|Filter reinigen|Sicherung|Lager fetten"},
-		{"same", "2× filter  reinigen!|filter  reinigen!|Filter reinigen|Lager fetten|Sicherung"},
+		{"freq", "2× filter reinigen!|filter  reinigen!|Filter reinigen|Sicherung|Lager fetten"},
+		{"same", "2× filter reinigen!|filter  reinigen!|Filter reinigen|Lager fetten|Sicherung"},
 		{"person", "filter  reinigen!|Filter reinigen|Sicherung|Lager fetten"},
 	} {
 		req := httptest.NewRequest("GET", "/kvp/"+idea+"?tab=pdca&ls_kvp_actions="+c.mode, nil)
@@ -412,5 +412,36 @@ func TestKVPActionsSort(t *testing.T) {
 	// Assistent, Abhak-Ansicht und A3-Druck bleiben nach Termin: kvpActions ändert seine Reihenfolge nicht
 	if got := fmt.Sprint(list[0].Description, "|", list[3].Description); got != "Lager fetten|filter  reinigen!" {
 		t.Errorf("kvpActions nicht mehr nach Termin: %s", got)
+	}
+}
+
+// Standard „Nach Termin“ wie vor dem Sortieren: erledigte Maßnahmen bleiben unten, auch mit früherem Termin.
+func TestKVPActionsDueKeepsDoneLast(t *testing.T) {
+	e := newActEnv(t)
+	anna := e.user("Anna", "Alpha")
+	idea := e.commRecord("kvp", anna, "")
+	base := time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC)
+	e.exec(`INSERT INTO kvp_actions (idea_id, description, responsible_id, due_date, created_by, created_at)
+		VALUES ($1::uuid, 'Offen', $2::uuid, '2026-04-05', $2::uuid, $3)`, idea, anna.ID, base)
+	e.exec(`INSERT INTO kvp_actions (idea_id, description, responsible_id, due_date, created_by, created_at, done_at, done_by)
+		VALUES ($1::uuid, 'Erledigt', $2::uuid, '2026-04-01', $2::uuid, $3, $3, $2::uuid)`, idea, anna.ID, base.AddDate(0, 0, 1))
+	entries := arrangeKVPActions(e.h.kvpActions(e.ctx, idea, false), listsort.Due)
+	var got []string
+	for _, en := range entries {
+		got = append(got, en.Row.Description)
+	}
+	if strings.Join(got, "|") != "Offen|Erledigt" {
+		t.Errorf("Nach Termin: %v, erwartet Offen vor Erledigt", got)
+	}
+}
+
+// Gruppentitel werden wie in der Zeitleiste der Anlage auf 80 Zeichen gekürzt; kurze bleiben, Leerraum wird zusammengezogen.
+func TestGroupTitleShortened(t *testing.T) {
+	long := strings.Repeat("ä", 120)
+	if got := groupTitle(long); got != strings.Repeat("ä", 80)+"…" {
+		t.Errorf("lang: %d Zeichen", len([]rune(got)))
+	}
+	if got := groupTitle("  Filter   reinigen\n"); got != "Filter reinigen" {
+		t.Errorf("kurz: %q", got)
 	}
 }

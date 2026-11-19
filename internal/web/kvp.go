@@ -681,7 +681,6 @@ type kvpActionView struct {
 	DueDate                                                                      *time.Time
 	Done                                                                         bool
 	DoneAt, DoneBy                                                               string
-	CreatedByName                                                                string
 	CreatedAt                                                                    time.Time
 }
 
@@ -694,12 +693,10 @@ func (a kvpActionView) Overdue() bool {
 func (h *Handler) kvpActions(ctx context.Context, ideaID string, overdue bool) []kvpActionView {
 	q := `SELECT a.id::text, a.idea_id::text, 'KVP-' || lpad(k.number::text, greatest(4, length(k.number::text)), '0'), k.title, a.description,
 	             COALESCE(a.responsible_id::text, ''), COALESCE(u.first_name || ' ' || u.last_name, ''), a.due_date,
-	             a.done_at IS NOT NULL, COALESCE(to_char(a.done_at, 'DD.MM.YYYY'), ''), COALESCE(du.first_name || ' ' || du.last_name, ''),
-		             COALESCE(TRIM(cu.first_name || ' ' || cu.last_name), ''), a.created_at
+	             a.done_at IS NOT NULL, COALESCE(to_char(a.done_at, 'DD.MM.YYYY'), ''), COALESCE(du.first_name || ' ' || du.last_name, ''), a.created_at
 		        FROM kvp_actions a JOIN kvp_ideas k ON k.id = a.idea_id
 		        LEFT JOIN users u ON u.id = a.responsible_id
-		        LEFT JOIN users du ON du.id = a.done_by
-		        LEFT JOIN users cu ON cu.id = a.created_by`
+		        LEFT JOIN users du ON du.id = a.done_by`
 	var args []any
 	if overdue {
 		q += ` WHERE a.done_at IS NULL AND a.due_date < CURRENT_DATE AND k.archived_at IS NULL ORDER BY a.due_date LIMIT 20`
@@ -716,7 +713,7 @@ func (h *Handler) kvpActions(ctx context.Context, ideaID string, overdue bool) [
 	for rows.Next() {
 		var a kvpActionView
 		if rows.Scan(&a.ID, &a.IdeaID, &a.IdeaCode, &a.IdeaTitle, &a.Description, &a.ResponsibleID, &a.ResponsibleName, &a.DueDate,
-			&a.Done, &a.DoneAt, &a.DoneBy, &a.CreatedByName, &a.CreatedAt) == nil {
+			&a.Done, &a.DoneAt, &a.DoneBy, &a.CreatedAt) == nil {
 			out = append(out, a)
 		}
 	}
@@ -734,30 +731,24 @@ func arrangeKVPActions(list []kvpActionView, mode listsort.Mode) []listEntry[kvp
 			items[i].Due = *a.DueDate
 		}
 	}
+	if mode == listsort.Due {
+		// Standard: die Reihenfolge von kvpActions bleibt (offene vor erledigten, dann Termin), wie vor dem Sortieren
+		var entries []listEntry[kvpActionView]
+		for _, a := range list {
+			entries = append(entries, listEntry[kvpActionView]{Row: a, Count: 1})
+		}
+		return entries
+	}
 	return arrangeRows(items, list, mode)
 }
 
-type kvpComment struct {
-	UserName, Text, CreatedAgo string
-}
-
-func (h *Handler) kvpComments(ctx context.Context, id string) []kvpComment {
-	rows, err := h.db.Query(ctx, `SELECT COALESCE(u.first_name || ' ' || u.last_name, 'Unbekannt'), c.text, c.created_at
-		FROM kvp_comments c LEFT JOIN users u ON u.id = c.user_id WHERE c.idea_id = $1::uuid ORDER BY c.created_at`, id)
-	if err != nil {
-		return nil
+// kvpCommentCount: Anzahl der Kommentare (für die Zahl am Reiter; die Liste lädt die Karte „Kommentare“).
+func (h *Handler) kvpCommentCount(ctx context.Context, id string) int {
+	var n int
+	if err := h.db.QueryRow(ctx, `SELECT COUNT(*)::int FROM kvp_comments WHERE idea_id = $1::uuid`, id).Scan(&n); err != nil {
+		componentLog("kvp").Warn().Err(err).Str("vorschlag", id).Msg("kommentare zählen")
 	}
-	defer rows.Close()
-	var out []kvpComment
-	for rows.Next() {
-		var c kvpComment
-		var at time.Time
-		if rows.Scan(&c.UserName, &c.Text, &at) == nil {
-			c.CreatedAgo = timeAgo(at)
-			out = append(out, c)
-		}
-	}
-	return out
+	return n
 }
 
 // ── Seiten ──────────────────────────────────────────────────
@@ -981,7 +972,7 @@ type KVPDetailData struct {
 	// ActionEntries: dieselben Maßnahmen in der gewählten Sortierung (Karte „Do“), ActionBar: die Leiste dazu
 	ActionEntries []listEntry[kvpActionView]
 	ActionBar     SortBar
-	Comments      []kvpComment
+	CommentCount  int
 	Next          []kvpTransition
 	PDCA          []kvpStatusDef
 	Scores        []int
@@ -1083,21 +1074,21 @@ func (h *Handler) KVPDetailPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	d := KVPDetailData{
-		BaseData:   h.baseData(r, "kvp", "KVP-Vorschlag", "KVP"),
-		Idea:       k,
-		Message:    r.URL.Query().Get("msg"),
-		Error:      r.URL.Query().Get("err"),
-		CanManage:  h.canManageKVP(r),
-		CanDelete:  h.isAreaAdmin(r, "kvp", k.ID),
-		CanWork:    h.canWorkKVP(r, k) && !k.Final(),
-		CanEdit:    h.canEditKVPContent(r, k),
-		Users:      h.userOptions(ctx),
-		Categories: kvpCategories,
-		Statuses:   kvpStatuses,
-		Actions:    h.kvpActions(ctx, k.ID, false),
-		Comments:   h.kvpComments(ctx, k.ID),
-		Scores:     []int{1, 2, 3, 4, 5},
-		MyUserID:   getUser(r).ID,
+		BaseData:     h.baseData(r, "kvp", "KVP-Vorschlag", "KVP"),
+		Idea:         k,
+		Message:      r.URL.Query().Get("msg"),
+		Error:        r.URL.Query().Get("err"),
+		CanManage:    h.canManageKVP(r),
+		CanDelete:    h.isAreaAdmin(r, "kvp", k.ID),
+		CanWork:      h.canWorkKVP(r, k) && !k.Final(),
+		CanEdit:      h.canEditKVPContent(r, k),
+		Users:        h.userOptions(ctx),
+		Categories:   kvpCategories,
+		Statuses:     kvpStatuses,
+		Actions:      h.kvpActions(ctx, k.ID, false),
+		CommentCount: h.kvpCommentCount(ctx, k.ID),
+		Scores:       []int{1, 2, 3, 4, 5},
+		MyUserID:     getUser(r).ID,
 	}
 	d.Title = k.Code() + " · " + k.Title
 	mode := h.sortMode(r, "kvp_actions")

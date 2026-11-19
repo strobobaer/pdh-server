@@ -90,6 +90,16 @@ type historyModule struct {
 // das Modul kennt, auf Seite und Historienpfad gleich).
 func historyLogin(h *Handler, r *http.Request, id string) bool { return getUser(r).ID != "" }
 
+// historyViewRight: Historie nur mit dem Recht „ansehen“ oder „bearbeiten“ des Bereichs
+// (wie canViewRecord; so lud sie bei Aufgabe und Wartung schon vor dem Sortieren).
+func historyViewRight(key string) func(h *Handler, r *http.Request, id string) bool {
+	m, ok := fieldModuleByKey(key)
+	if !ok {
+		panic("historyViewRight: unbekanntes Modul " + key)
+	}
+	return func(h *Handler, r *http.Request, id string) bool { return h.canViewRecord(r, m, id) }
+}
+
 // historyModuleOf: Tabelle und ref_type eines Moduls aus der Feldsatz-Tabelle. Ein
 // unbekannter Schlüssel ist ein Programmfehler und stoppt den Start (nie „offen“).
 func historyModuleOf(key string, can func(h *Handler, r *http.Request, id string) bool) historyModule {
@@ -104,14 +114,14 @@ func historyModuleOf(key string, can func(h *Handler, r *http.Request, id string
 // (nicht fieldModules), weil dort für Projekt, KVP, Infrastruktur und Lager kein
 // Ansichtsrecht steht und die Historie sonst jedem Angemeldeten offen stünde.
 var historyModules = map[string]historyModule{
-	// Störung (FaultDetail, handler.go), Ticket (TicketDetail), Aufgabe (TaskDetail, tasks_handler.go),
-	// Wartung (MaintenanceTaskDetail, maintenance_web.go), Projekt (ProjectDetail, projects_handler.go),
+	// Störung (FaultDetail, handler.go), Ticket (TicketDetail), Projekt (ProjectDetail, projects_handler.go),
 	// KVP (KVPDetailPage, kvp.go), Ersatzteil (PartDetailPage, parts.go): die Seiten verlangen nur die
-	// Anmeldung (wer nur „lösen“, „buchen“ o. Ä. darf, sieht die Historie weiter).
+	// Anmeldung. Aufgabe und Wartung brauchen wie vor dem Sortieren das Recht „ansehen“ oder „bearbeiten“
+	// des Bereichs (historyViewRight). (wer nur „lösen“, „buchen“ o. Ä. darf, sieht die Historie weiter).
 	"fault":            historyModuleOf("fault", historyLogin),
 	"ticket":           historyModuleOf("ticket", historyLogin),
-	"task":             historyModuleOf("task", historyLogin),
-	"maintenance_task": historyModuleOf("maintenance_task", historyLogin),
+	"task":             historyModuleOf("task", historyViewRight("task")),
+	"maintenance_task": historyModuleOf("maintenance_task", historyViewRight("maintenance_task")),
 	"project":          historyModuleOf("project", historyLogin),
 	"kvp":              historyModuleOf("kvp", historyLogin),
 	"part":             historyModuleOf("part", historyLogin),
@@ -145,16 +155,6 @@ var historyModules = map[string]historyModule{
 }
 
 const historyStep = 30 // Zeilen (bzw. Gruppen) je Schritt von „Weitere laden“
-
-// historyEntry: eine Zeile der Historie; Count ab 2 = zusammengefasste Gruppe
-// („N× Beschriftung – zuletzt …“) mit den Einzeleinträgen in Rows.
-type historyEntry struct {
-	Row   historyRow
-	Label string
-	Count int
-	Last  string
-	Rows  []historyRow
-}
 
 // historyRow: ein Eintrag; Title ist seine Meldung, Label die feste Beschriftung
 // seiner Art (Vorgang + Feld) – sie gilt für Gruppen und die Sortierart „Nach Art“.
@@ -238,7 +238,7 @@ func historyLabel(action, field string) string {
 type historyPage struct {
 	Lang    string
 	Bar     SortBar
-	Entries []historyEntry
+	Entries []listEntry[historyRow]
 	Cap     int  // Grenze der berücksichtigten Einträge
 	Capped  bool // es gab mehr, nur die neuesten zählen
 	MoreURL string
@@ -282,22 +282,7 @@ func (h *Handler) RecordHistoryWeb(w http.ResponseWriter, r *http.Request) {
 		// „Gleiches zusammen“ nach dem sortiert, was angezeigt wird
 		items[i] = listsort.Item{At: hv.At, Key: hr.Label + "\x00" + hv.Action + "\x00" + hv.FieldName, Label: hr.Label, Person: hv.UserName, Kind: hr.Label}
 	}
-	var entries []historyEntry
-	if mode.Grouped() {
-		for _, g := range listsort.Groups(items, mode) {
-			e := historyEntry{Row: hrows[g.Idx[0]], Label: hrows[g.Idx[0]].Label, Count: g.Count, Last: g.Last.Format("02.01.2006")}
-			if g.Count > 1 {
-				for _, i := range g.Idx {
-					e.Rows = append(e.Rows, hrows[i])
-				}
-			}
-			entries = append(entries, e)
-		}
-	} else {
-		for _, i := range listsort.Order(items, mode) {
-			entries = append(entries, historyEntry{Row: hrows[i], Count: 1})
-		}
-	}
+	entries := arrangeRows(items, hrows, mode)
 	p := historyPage{Lang: h.requestLang(r), Cap: historyCap, Capped: capped}
 	base := r.URL.Path + "?ls_history=" + string(mode)
 	if len(entries) > n {
