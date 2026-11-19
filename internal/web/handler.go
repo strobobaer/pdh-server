@@ -374,6 +374,9 @@ type Handler struct {
 		// gescheiterten Versionen dieses Prozesses – kein Lauf alle 5 min, keine zweite Meldung
 		lastRun  time.Time
 		notified map[string]bool
+		// Kontext des täglichen Laufs und von „Jetzt prüfen“; StopESPPDHUpdate beendet ihn
+		ctx  context.Context
+		stop context.CancelFunc
 	}
 	esppdhNow func() time.Time
 }

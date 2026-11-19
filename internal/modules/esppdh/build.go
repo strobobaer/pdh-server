@@ -106,10 +106,13 @@ type Runner struct {
 	Command func(ctx context.Context, dir string, args ...string) *exec.Cmd
 }
 
-// NewRunner: Zeitlimit 30 min, mindestens 2048 MB frei, Aufruf „nice -n 19 <Bin> …“ (Bin leer:
-// aktive Umgebung, sonst <venv>/bin/esphome).
+// BuildMinFreeMB: so viel Platz (MB) braucht ein Bau mindestens im Arbeitsordner.
+const BuildMinFreeMB = 2048
+
+// NewRunner: Zeitlimit 30 min, mindestens BuildMinFreeMB frei, Aufruf „nice -n 19 <Bin> …“ (Bin
+// leer: aktive Umgebung, sonst <venv>/bin/esphome).
 func NewRunner() *Runner {
-	r := &Runner{Timeout: 30 * time.Minute, MinFreeMB: 2048}
+	r := &Runner{Timeout: 30 * time.Minute, MinFreeMB: BuildMinFreeMB}
 	r.Command = func(ctx context.Context, dir string, args ...string) *exec.Cmd {
 		return esphomeCommand(ctx, r.Bin, dir, args...)
 	}

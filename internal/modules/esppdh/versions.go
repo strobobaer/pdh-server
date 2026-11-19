@@ -76,8 +76,12 @@ func ActiveBin() string {
 	return filepath.Join(venvDir(), "bin", "esphome")
 }
 
-// FreeMBAt: freier Platz in MB für path (-1 = unbekannt), siehe freeMB.
+// FreeMBAt: freier Platz in MB für path (-1 = unbekannt), siehe freeMB. Fehlt path noch, zählt
+// der nächste vorhandene Elternordner.
 func FreeMBAt(path string) int64 { return freeMB(path) }
+
+// WorkDirPath: der tatsächlich geltende Arbeitsordner (Bauten, Zustand je Server).
+func WorkDirPath() string { return workDir() }
 
 // ── Zustand je Server ─────────────────────────────────────────
 

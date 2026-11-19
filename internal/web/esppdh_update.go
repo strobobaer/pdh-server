@@ -45,6 +45,8 @@ const (
 	// esppdhSwitchTimeout: Umschalten und Verwerfen beim Agenten – er ruft „esphome version“ auf
 	// (bis 60 s) und löscht alte Umgebungen
 	esppdhSwitchTimeout = 2 * time.Minute
+	// esppdhCandFreeMB: unter so viel freiem Platz (MB) wird keine neue Version eingerichtet
+	esppdhCandFreeMB = 3072
 )
 
 // Wartezeiten des Ablaufs (Tests verkürzen sie).
@@ -57,17 +59,28 @@ var (
 	esppdhUpdTick      = 5 * time.Minute  // Takt des täglichen Laufs
 	esppdhUpdDelay     = 10 * time.Minute // erste Prüfung frühestens so lange nach dem Start
 	esppdhUpdDue       = 24 * time.Hour   // fällig, wenn die letzte Prüfung so lange her ist
+	// esppdhStopGrace: Nach einem Fehler von ESPHome so lange abwarten, ob das PDH gerade beendet
+	// wird. systemd beendet ESPHome zusammen mit dem PDH – der Fehler kommt dann vor dem Abbruch.
+	esppdhStopGrace = 3 * time.Second
 )
 
 // esppdhCheckEnv: Zustand der laufenden Umgebung (ruft „esphome version“; Tests ersetzen ihn).
 var esppdhCheckEnv = esppdh.CheckEnv
+
+// esppdhFreeMB: freier Platz in MB für einen Ordner (-1 = unbekannt; Tests ersetzen es).
+var esppdhFreeMB = esppdh.FreeMBAt
 
 const (
 	esppdhMsgUpdBusy  = "Eine Prüfung läuft schon"
 	esppdhMsgAgentOld = "Der Update-Agent ist zu alt – zuerst das PDH aktualisieren"
 	esppdhMsgVertagt  = "Probe vertagt – Bau-Schlange belegt"
 	esppdhMsgStopped  = "Prüfung abgebrochen – das PDH wurde beendet"
+	esppdhMsgNoSpace  = "Zu wenig Platz für eine neue ESPHome-Version (unter 3 GB frei)"
 )
+
+// errEsppdhQueueBusy: Die Probe hat nicht auf die Bau-Schlange gewartet – sie blieb zu lange
+// belegt, oder das PDH wird beendet.
+var errEsppdhQueueBusy = errors.New("bau-schlange belegt")
 
 // esppdhProbeRunner prüft und baut mit einem bestimmten ESPHome-Programm (esppdh.Runner; Tests
 // setzen eine Attrappe ein).
@@ -114,11 +127,58 @@ func (h *Handler) esppdhProberFor(bin string) esppdhProbeRunner {
 
 // StartESPPDHUpdate startet den täglichen Lauf (Takt 5 min, erste Prüfung frühestens 10 min nach
 // dem Start). Auf jedem Server, auch am Spiegel; nicht im Docker-Betrieb und nicht ohne Datenbank.
+// Der Lauf endet mit ctx oder mit StopESPPDHUpdate.
 func (h *Handler) StartESPPDHUpdate(ctx context.Context) {
 	if h.db == nil || inDocker() {
 		return
 	}
-	go h.esppdhUpdateLoop(ctx)
+	lctx, cancel := context.WithCancel(ctx)
+	stopAfter := context.AfterFunc(h.esppdhUpdContext(), cancel)
+	go func() {
+		defer cancel()
+		defer stopAfter()
+		h.esppdhUpdateLoop(lctx)
+	}()
+}
+
+// esppdhUpdContext: Kontext für den täglichen Lauf und „Jetzt prüfen“. Er hängt an keiner
+// Anfrage (eine Prüfung dauert Minuten), endet aber mit StopESPPDHUpdate.
+func (h *Handler) esppdhUpdContext() context.Context {
+	u := &h.esppdhUpd
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	if u.ctx == nil {
+		u.ctx, u.stop = context.WithCancel(context.Background())
+	}
+	return u.ctx
+}
+
+// StopESPPDHUpdate bricht beim Herunterfahren den täglichen Lauf und eine laufende Prüfung ab –
+// vor srv.Shutdown aufrufen. Eine so abgebrochene Prüfung zählt nicht gegen die geprüfte Version
+// und nicht als „geprüft“; den halb eingerichteten Kandidaten räumt der Update-Agent auf.
+func (h *Handler) StopESPPDHUpdate() {
+	h.esppdhUpdContext() // legt den Kontext an, falls es noch keinen gibt
+	h.esppdhUpd.mu.Lock()
+	stop := h.esppdhUpd.stop
+	h.esppdhUpd.mu.Unlock()
+	stop()
+}
+
+// esppdhStopping: Wird das PDH gerade beendet? Nach einem Fehler von ESPHome wartet es dafür kurz
+// (esppdhStopGrace): systemd beendet ESPHome zugleich mit dem PDH, der Fehler kommt dann vor dem
+// Abbruch – ohne die Wartezeit würde eine gute Version als gescheitert gelten.
+func esppdhStopping(ctx context.Context) bool {
+	if ctx.Err() != nil {
+		return true
+	}
+	t := time.NewTimer(esppdhStopGrace)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return true
+	case <-t.C:
+		return false
+	}
 }
 
 func (h *Handler) esppdhUpdateLoop(ctx context.Context) {
@@ -240,7 +300,15 @@ func (h *Handler) esppdhUpdateRunning(ctx context.Context, force bool) (msg stri
 	}
 	st = esppdh.LoadUpdateState()
 	started = true
-	st.Result = h.esppdhUpdateCheck(ctx, &st, force)
+	res, stopped := h.esppdhUpdateCheck(ctx, &st, force)
+	if stopped {
+		// Das PDH wird beendet: kein Vermerk „geprüft“ (weder Datei noch Speicher) – nach dem
+		// Neustart wird bald wieder geprüft, und die Version gilt nicht als gescheitert.
+		started = false
+		lg.Info().Str("ergebnis", res).Msg("esphome-prüfung abgebrochen")
+		return res, nil
+	}
+	st.Result = res
 	st.CheckedAt = h.esppdhClock()
 	if err := esppdh.SaveUpdateState(st); err != nil {
 		lg.Error().Err(err).Msg("zustand der esphome-prüfung speichern")
@@ -268,19 +336,26 @@ func (h *Handler) esppdhUpdateBlocked(ctx context.Context, force bool) string {
 }
 
 // esppdhUpdateCheck: Schritte 1–4; setzt Installed und die Felder zu gescheiterten Versionen,
-// liefert das Ergebnis.
-func (h *Handler) esppdhUpdateCheck(ctx context.Context, st *esppdh.UpdateState, force bool) string {
+// liefert das Ergebnis. stopped: Das PDH wird beendet – der Lauf zählt nicht als Prüfung.
+func (h *Handler) esppdhUpdateCheck(ctx context.Context, st *esppdh.UpdateState, force bool) (result string, stopped bool) {
+	// halt: ohne Urteil über die Version beendet; endete dabei ctx, wird das PDH beendet
+	halt := func(note string) (string, bool) {
+		if ctx.Err() != nil {
+			return esppdhMsgStopped, true
+		}
+		return note, false
+	}
 	env := esppdhCheckEnv(ctx)
 	st.Installed = env.Version
 	if !env.Installed {
 		if env.Problem != "" {
-			return "Prüfung nicht möglich: " + env.Problem
+			return halt("Prüfung nicht möglich: " + env.Problem)
 		}
-		return "Prüfung nicht möglich: ESPHome ist an diesem Server nicht eingerichtet"
+		return halt("Prüfung nicht möglich: ESPHome ist an diesem Server nicht eingerichtet")
 	}
 	rels, err := h.esppdhReleases(ctx)
 	if err != nil {
-		return "Prüfung nicht möglich: " + err.Error()
+		return halt("Prüfung nicht möglich: " + err.Error())
 	}
 	var skip []string // alle unter dieser PDH-Version gescheiterten Versionen – „Jetzt prüfen“ versucht sie erneut
 	if !force {
@@ -288,30 +363,43 @@ func (h *Handler) esppdhUpdateCheck(ctx context.Context, st *esppdh.UpdateState,
 	}
 	cand := esppdh.PickCandidate(rels, env.Version, esppdhPythonOf(esppdh.ActiveBin()), h.esppdhClock(), skip)
 	if cand == "" {
-		return "ESPHome " + env.Version + " ist aktuell"
+		return "ESPHome " + env.Version + " ist aktuell", false
 	}
-	componentLog("esppdh").Info().Str("kandidat", cand).Str("installiert", env.Version).Msg("neue esphome-version gefunden")
+	lg := componentLog("esppdh")
+	lg.Info().Str("kandidat", cand).Str("installiert", env.Version).Msg("neue esphome-version gefunden")
+	// Platz für die neue Umgebung: Fehlt der Versionen-Ordner noch, zählt sein nächster
+	// vorhandener Elternordner (FreeMBAt); unbekannt (-1) hält nicht auf. Kein Urteil über die Version.
+	if free := esppdhFreeMB(esppdh.VersionsDirPath()); free >= 0 && free < esppdhCandFreeMB {
+		lg.Warn().Str("kandidat", cand).Int64("frei_mb", free).Msg("zu wenig platz für eine neue esphome-version")
+		return esppdhMsgNoSpace, false
+	}
 
 	switch out, log, note := h.esppdhInstall(ctx, cand); out {
 	case esppdhStopped:
-		return note
+		return halt(note)
 	case esppdhFailed:
-		return h.esppdhFailed(ctx, st, cand, env.Version, "ließ sich nicht einrichten", log)
+		return h.esppdhFailed(ctx, st, cand, env.Version, "ließ sich nicht einrichten", log), false
 	}
 	out, log, note := h.esppdhProbe(ctx, cand)
 	switch out {
 	case esppdhStopped:
+		if ctx.Err() != nil { // den halben Kandidaten räumt der Agent vor der nächsten Einrichtung auf
+			return esppdhMsgStopped, true
+		}
 		h.esppdhDiscard(ctx, cand)
-		return note
+		return note, false
 	case esppdhFailed:
-		return h.esppdhFailed(ctx, st, cand, env.Version, "hat die Probe nicht bestanden", log)
+		return h.esppdhFailed(ctx, st, cand, env.Version, "hat die Probe nicht bestanden", log), false
 	}
 	actx, cancel := context.WithTimeout(ctx, esppdhSwitchTimeout)
 	err = h.agentJSON(actx, http.MethodPost, "/v1/esppdh/versions", map[string]string{"action": "activate", "version": cand}, nil)
 	cancel()
 	if err != nil {
+		if ctx.Err() != nil {
+			return esppdhMsgStopped, true
+		}
 		h.esppdhDiscard(ctx, cand)
-		return "Umschalten auf ESPHome " + cand + " nicht möglich: " + err.Error() + " – es bleibt bei " + env.Version
+		return "Umschalten auf ESPHome " + cand + " nicht möglich: " + err.Error() + " – es bleibt bei " + env.Version, false
 	}
 	st.Installed = cand
 	st.Activated(cand) // gescheiterte und gemeldete Versionen bis cand sind erledigt
@@ -323,7 +411,7 @@ func (h *Handler) esppdhUpdateCheck(ctx context.Context, st *esppdh.UpdateState,
 		}
 	}
 	u.mu.Unlock()
-	return "Auf ESPHome " + cand + " umgestellt" + note
+	return "Auf ESPHome " + cand + " umgestellt" + note, false
 }
 
 // esppdhFailed vermerkt eine gescheiterte Version (Kandidat verwerfen, Verlauf – schon gekürzt
@@ -510,21 +598,32 @@ type esppdhProbed struct {
 }
 
 // esppdhProbe prüft den Kandidaten: Musterkonfigurationen, Geräte, am aktiven Server je
-// Chip-Familie ein Probebau. passed: note nennt übersprungene Geräte (für das Ergebnis);
-// failed: log ist das geschwärzte Ende der Ausgabe; stopped: note sagt, warum.
+// Chip-Familie ein Probebau. passed: note nennt Übersprungenes (für das Ergebnis); failed: log
+// ist das geschwärzte Ende der Ausgabe; stopped: note sagt, warum.
 func (h *Handler) esppdhProbe(ctx context.Context, cand string) (out esppdhOutcome, log, note string) {
 	bin := esppdh.VersionBin(cand)
 	if why := esppdhProbeAbort(ctx, cand); why != "" {
 		return esppdhStopped, "", why
 	}
 	run := h.esppdhProberFor(bin)
-	// fail: an der Version gescheitert – außer, das PDH wird beendet oder der Kandidat ist weg
+	// fail: an der Version gescheitert – außer, das PDH wird gerade beendet oder der Kandidat ist weg
 	fail := func(what, log string, job esppdh.BuildJob) (esppdhOutcome, string, string) {
+		if esppdhStopping(ctx) {
+			return esppdhStopped, "", esppdhMsgStopped
+		}
 		if why := esppdhProbeAbort(ctx, cand); why != "" {
 			return esppdhStopped, "", why
 		}
 		return esppdhFailed, what + ":\n" + esppdhTail(esppdh.Redact(log, job.SecretValues)), ""
 	}
+	// busy: Die Bau-Schlange blieb zu lange belegt (vertagt), oder das PDH wird beendet.
+	busy := func() (esppdhOutcome, string, string) {
+		if ctx.Err() != nil {
+			return esppdhStopped, "", esppdhMsgStopped
+		}
+		return esppdhStopped, "", esppdhMsgVertagt
+	}
+	var notes esppdhProbeNotes
 
 	for _, s := range esppdh.Samples() {
 		job, err := esppdhProbeJob(s.Device)
@@ -532,7 +631,11 @@ func (h *Handler) esppdhProbe(ctx context.Context, cand string) (out esppdhOutco
 			componentLog("esppdh").Error().Err(err).Str("muster", s.Name).Msg("musterkonfiguration erzeugen")
 			return esppdhStopped, "", "Probe nicht möglich: Die Musterkonfiguration „" + s.Name + "“ lässt sich nicht erzeugen"
 		}
-		if log, err := h.esppdhConfigLocked(ctx, run, job); err != nil {
+		log, err := h.esppdhConfigLocked(ctx, run, job)
+		switch {
+		case errors.Is(err, errEsppdhQueueBusy):
+			return busy()
+		case err != nil:
 			return fail("Musterkonfiguration „"+s.Name+"“, Prüfung mit ESPHome "+cand, log, job)
 		}
 	}
@@ -543,7 +646,6 @@ func (h *Handler) esppdhProbe(ctx context.Context, cand string) (out esppdhOutco
 		return esppdhStopped, "", "Probe nicht möglich: Die Geräte ließen sich nicht lesen – neuer Versuch beim nächsten Lauf"
 	}
 	var probed []esppdhProbed
-	var skipped []string
 	for _, d := range devs {
 		if d.Locked {
 			continue
@@ -557,9 +659,15 @@ func (h *Handler) esppdhProbe(ctx context.Context, cand string) (out esppdhOutco
 			continue
 		}
 		log, err := h.esppdhConfigLocked(ctx, run, job)
-		if err == nil {
+		switch {
+		case err == nil:
 			probed = append(probed, esppdhProbed{d, job})
 			continue
+		case errors.Is(err, errEsppdhQueueBusy):
+			return busy()
+		}
+		if esppdhStopping(ctx) { // ESPHome kann vor dem Abbruch beendet worden sein
+			return esppdhStopped, "", esppdhMsgStopped
 		}
 		if why := esppdhProbeAbort(ctx, cand); why != "" {
 			return esppdhStopped, "", why
@@ -567,42 +675,134 @@ func (h *Handler) esppdhProbe(ctx context.Context, cand string) (out esppdhOutco
 		// schon mit der laufenden Version kaputt? Dann zählt das Gerät nicht.
 		old := job
 		old.ID = uuid.NewString()
-		if _, oerr := h.esppdhConfigLocked(ctx, h.esppdhProberFor(esppdh.ActiveBin()), old); oerr != nil {
-			if ctx.Err() != nil {
-				return esppdhStopped, "", esppdhMsgStopped
-			}
-			skipped = append(skipped, d.Name)
+		_, oerr := h.esppdhConfigLocked(ctx, h.esppdhProberFor(esppdh.ActiveBin()), old)
+		switch {
+		case errors.Is(oerr, errEsppdhQueueBusy):
+			return busy()
+		case oerr != nil && ctx.Err() != nil:
+			return esppdhStopped, "", esppdhMsgStopped
+		case oerr != nil:
+			notes.broken = append(notes.broken, d.Name)
 			continue
 		}
 		return fail("Gerät „"+d.Name+"“ ("+d.Slug+"), Prüfung der Konfiguration mit ESPHome "+cand, log, job)
 	}
 
-	if !h.Mirror().On { // gebaut wird nur am aktiven Server
-		seen := map[string]bool{}
-		for _, p := range probed {
-			chip := esppdh.ChipOf(p.d.BoardKey, p.d.CustomBoard)
-			if seen[chip] {
-				continue
-			}
-			seen[chip] = true
-			if !h.esppdhProbeLock(ctx) {
-				if ctx.Err() != nil {
-					return esppdhStopped, "", esppdhMsgStopped
-				}
-				return esppdhStopped, "", esppdhMsgVertagt
-			}
-			job := p.job
-			job.ID = uuid.NewString()
-			res := func() esppdh.BuildResult {
-				defer h.esppdhQ.runMu.Unlock()
-				return run.Build(ctx, job, nil)
-			}()
-			if !res.OK { // die Firmware eines gelungenen Probebaus wird nicht gebraucht
-				return fail("Gerät „"+p.d.Name+"“ ("+p.d.Slug+", Chip "+chip+"), Probebau mit ESPHome "+cand, res.Log, job)
-			}
+	if h.Mirror().On { // gebaut wird nur am aktiven Server
+		return esppdhPassed, "", notes.text()
+	}
+	builtOK, err := h.esppdhBuiltOK(ctx)
+	if err != nil {
+		if ctx.Err() != nil {
+			return esppdhStopped, "", esppdhMsgStopped
+		}
+		componentLog("esppdh").Error().Err(err).Msg("bauten für die probe lesen")
+		return esppdhStopped, "", "Probe nicht möglich: Die Bauten der Geräte ließen sich nicht lesen – neuer Versuch beim nächsten Lauf"
+	}
+	for _, f := range esppdhProbeFamilies(probed, builtOK) {
+		if f.p == nil {
+			notes.noBuild = append(notes.noBuild, f.chip)
+			continue
+		}
+		res, why := h.esppdhProbeBuild(ctx, run, f.p.job)
+		if why != "" {
+			return esppdhStopped, "", why
+		}
+		if res.OK { // die Firmware eines gelungenen Probebaus wird nicht gebraucht
+			continue
+		}
+		if esppdhStopping(ctx) {
+			return esppdhStopped, "", esppdhMsgStopped
+		}
+		// Baut das Gerät mit der laufenden Version? Sonst zählt der Fehlschlag nicht gegen die neue
+		// (z. B. das Gerät lässt sich heute gar nicht mehr übersetzen).
+		ores, why := h.esppdhProbeBuild(ctx, h.esppdhProberFor(esppdh.ActiveBin()), f.p.job)
+		switch {
+		case why != "":
+			return esppdhStopped, "", why
+		case !ores.OK:
+			notes.buildBroken = append(notes.buildBroken, f.p.d.Name)
+			continue
+		}
+		return fail("Gerät „"+f.p.d.Name+"“ ("+f.p.d.Slug+", Chip "+f.chip+"), Probebau mit ESPHome "+cand, res.Log, f.p.job)
+	}
+	return esppdhPassed, "", notes.text()
+}
+
+// esppdhProbeFamily: eine Chip-Familie unter den geprüften Geräten und das Gerät für ihren
+// Probebau (nil: keines hat bisher erfolgreich gebaut – kein Probebau).
+type esppdhProbeFamily struct {
+	chip string
+	p    *esppdhProbed
+}
+
+// esppdhProbeFamilies: je Chip-Familie (in der Reihenfolge der Geräte) das erste geprüfte Gerät,
+// dessen letzter echter Bau gelang. So scheitert der Probebau nicht an einem Gerät, das sich
+// schon mit der laufenden Version nicht bauen lässt.
+func esppdhProbeFamilies(probed []esppdhProbed, builtOK map[string]bool) []esppdhProbeFamily {
+	var out []esppdhProbeFamily
+	at := map[string]int{}
+	for i := range probed {
+		p := &probed[i]
+		chip := esppdh.ChipOf(p.d.BoardKey, p.d.CustomBoard)
+		k, seen := at[chip]
+		if !seen {
+			k = len(out)
+			at[chip] = k
+			out = append(out, esppdhProbeFamily{chip: chip})
+		}
+		if out[k].p == nil && builtOK[p.d.ID] {
+			out[k].p = p
 		}
 	}
-	return esppdhPassed, "", esppdhSkippedNote(skipped)
+	return out
+}
+
+// esppdhBuiltOK: Geräte, deren letzter echter Bau (gelungen oder gescheitert, nicht abgebrochen)
+// gelang.
+func (h *Handler) esppdhBuiltOK(ctx context.Context) (map[string]bool, error) {
+	ok := map[string]bool{}
+	if h.db == nil {
+		return ok, nil
+	}
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	rows, err := h.db.Query(ctx, `SELECT device_id::text FROM (
+			SELECT DISTINCT ON (device_id) device_id, status FROM esppdh_builds
+			WHERE status IN ('ok', 'failed') AND finished_at IS NOT NULL
+			ORDER BY device_id, finished_at DESC, id DESC) b
+		WHERE status = 'ok'`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ok[id] = true
+	}
+	return ok, rows.Err()
+}
+
+// esppdhProbeBuild: ein Probebau mit run. Wartet, bis die Bau-Schlange frei ist, hält dann runMu
+// und prüft vorher den Platz im Arbeitsordner. why != "": nicht gebaut (Schlange zu lange belegt,
+// zu wenig Platz, PDH beendet) – kein Urteil über die Version.
+func (h *Handler) esppdhProbeBuild(ctx context.Context, run esppdhProbeRunner, job esppdh.BuildJob) (res esppdh.BuildResult, why string) {
+	if !h.esppdhProbeLock(ctx) {
+		if ctx.Err() != nil {
+			return res, esppdhMsgStopped
+		}
+		return res, esppdhMsgVertagt
+	}
+	defer h.esppdhQ.runMu.Unlock()
+	if free := esppdhFreeMB(esppdh.WorkDirPath()); free >= 0 && free < esppdh.BuildMinFreeMB {
+		return res, fmt.Sprintf("Probebau nicht möglich: Zu wenig Platz für den Bau (frei %d MB, nötig %d MB) – neuer Versuch beim nächsten Lauf",
+			free, esppdh.BuildMinFreeMB)
+	}
+	job.ID = uuid.NewString()
+	return run.Build(ctx, job, nil), ""
 }
 
 // esppdhProbeAbort: Grund, die Probe ohne Urteil über die Version abzubrechen ("" = keiner).
@@ -632,9 +832,16 @@ func esppdhProbeJob(d esppdh.Device) (esppdh.BuildJob, error) {
 	return esppdh.BuildJob{ID: uuid.NewString(), Slug: d.Slug, Config: cfg, Secrets: sec, SecretValues: secrets}, nil
 }
 
-// esppdhConfigLocked: „esphome config“ unter runMu – nie gleichzeitig mit einem Bau.
+// esppdhConfigLocked: „esphome config“ unter runMu – nie gleichzeitig mit einem Bau. Am aktiven
+// Server wartet jede Prüfung wie der Probebau, bis kein Bau wartet oder läuft: Sonst käme ein
+// eingereihter Bau erst nach allen Prüfungen dran. errEsppdhQueueBusy: zu lange gewartet oder ctx
+// beendet. Am Spiegel wird nicht gebaut (die Tabelle zeigt dort die Schlange des aktiven Servers).
 func (h *Handler) esppdhConfigLocked(ctx context.Context, run esppdhProbeRunner, job esppdh.BuildJob) (string, error) {
-	h.esppdhQ.runMu.Lock()
+	if h.Mirror().On {
+		h.esppdhQ.runMu.Lock()
+	} else if !h.esppdhProbeLock(ctx) {
+		return "", errEsppdhQueueBusy
+	}
 	defer h.esppdhQ.runMu.Unlock()
 	return run.Config(ctx, job)
 }
@@ -661,18 +868,39 @@ func (h *Handler) esppdhProbeLock(ctx context.Context) bool {
 	}
 }
 
-// esppdhSkippedNote: Zusatz zum Ergebnis für Geräte, die schon mit der laufenden Version nicht
-// durch die Prüfung kommen ("" = keine).
-func esppdhSkippedNote(names []string) string {
-	if len(names) == 0 {
+// esppdhProbeNotes: was die Probe übersprungen hat, ohne dass es gegen die neue Version zählt.
+type esppdhProbeNotes struct {
+	broken      []string // Geräte, deren Konfiguration schon mit der bisherigen Version scheitert
+	noBuild     []string // Chip-Familien ohne Gerät mit gelungenem Bau – kein Probebau
+	buildBroken []string // Geräte, deren Probebau auch mit der bisherigen Version scheitert
+}
+
+// text: Zusatz zum Ergebnis ("" = nichts übersprungen).
+func (n esppdhProbeNotes) text() string {
+	var parts []string
+	if len(n.broken) > 0 {
+		parts = append(parts, "übersprungen, weil schon mit der bisherigen Version fehlerhaft: "+esppdhNames(n.broken))
+	}
+	if len(n.noBuild) > 0 {
+		parts = append(parts, "Probebau übersprungen für Chip "+strings.Join(n.noBuild, ", ")+": noch kein Gerät erfolgreich gebaut")
+	}
+	if len(n.buildBroken) > 0 {
+		parts = append(parts, "Probebau übersprungen, weil der Bau schon mit der bisherigen Version scheitert: "+esppdhNames(n.buildBroken))
+	}
+	if len(parts) == 0 {
 		return ""
 	}
+	return " (" + strings.Join(parts, "; ") + ")"
+}
+
+// esppdhNames: höchstens esppdhSkipNames Namen, der Rest als „und N weitere“.
+func esppdhNames(names []string) string {
 	more := ""
 	if len(names) > esppdhSkipNames {
 		more = fmt.Sprintf(" und %d weitere", len(names)-esppdhSkipNames)
 		names = names[:esppdhSkipNames]
 	}
-	return " (übersprungen, weil schon mit der bisherigen Version fehlerhaft: " + strings.Join(names, ", ") + more + ")"
+	return strings.Join(names, ", ") + more
 }
 
 // esppdhTail: die letzten 40 Zeilen (höchstens 16 KB) eines schon geschwärzten Verlaufs.

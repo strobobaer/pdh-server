@@ -278,9 +278,9 @@ func (h *Handler) EsppdhAutoWeb(w http.ResponseWriter, r *http.Request) {
 
 // EsppdhCheckWeb: POST /admin/server-config/esppdh/check – „Jetzt prüfen“. Die Prüfung läuft im
 // Hintergrund und ist nicht an die Anfrage gebunden (sie dauert Minuten und überlebt das Schließen
-// der Seite); die Antwort kommt sofort, die Karte fragt danach alle 2 s nach. Es läuft nie
-// mehr als eine Prüfung (esppdhUpdateBegin). Auch am Spiegel: Jeder Server prüft selbst, die
-// Datenbank bleibt dabei unberührt.
+// der Seite), endet aber beim Herunterfahren (StopESPPDHUpdate); die Antwort kommt sofort, die
+// Karte fragt danach alle 2 s nach. Es läuft nie mehr als eine Prüfung (esppdhUpdateBegin). Auch
+// am Spiegel: Jeder Server prüft selbst, die Datenbank bleibt dabei unberührt.
 func (h *Handler) EsppdhCheckWeb(w http.ResponseWriter, r *http.Request) {
 	if !h.canServerConfig(r) {
 		http.Error(w, "keine berechtigung", http.StatusForbidden)
@@ -297,7 +297,7 @@ func (h *Handler) EsppdhCheckWeb(w http.ResponseWriter, r *http.Request) {
 		lg := componentLog("esppdh")
 		lg.Info().Str("von", getUser(r).ID).Msg("esphome-prüfung von hand gestartet")
 		go func() {
-			if m, e := h.esppdhUpdateRunning(context.Background(), true); e != nil {
+			if m, e := h.esppdhUpdateRunning(h.esppdhUpdContext(), true); e != nil {
 				lg.Error().Err(e).Str("ergebnis", m).Msg("esphome-prüfung")
 			}
 		}()

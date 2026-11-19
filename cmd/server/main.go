@@ -537,6 +537,9 @@ func main() {
 		doRestart = true
 	}
 	log.Info().Bool("neustart", doRestart).Msg("PDH wird gestoppt...")
+	// ESPPDH: eine laufende ESPHome-Prüfung zuerst abbrechen – systemd beendet ESPHome mit dem PDH,
+	// das darf nicht als gescheiterte Probe zählen
+	webHandler.StopESPPDHUpdate()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	srv.Shutdown(ctx)
