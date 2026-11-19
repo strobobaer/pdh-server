@@ -16,9 +16,9 @@
   {{if .Err}}<div class="sc-sub" role="alert" style="margin-bottom:8px;color:var(--red);white-space:pre-line"><i class="ti ti-alert-circle"></i> {{.Err}}</div>{{end}}
   <p class="sc-sub" style="margin:0 0 10px">Mit ESPPDH legst du kleine Messgeräte mit ESP32 oder ESP8266 an. Das PDH baut ihre Firmware mit ESPHome. Die Geräte senden ihre Werte an den eingebauten MQTT-Broker.</p>
   {{if .Docker}}
-  <p class="sc-sub" style="margin:0 0 10px;color:var(--amber,#f59e0b)"><i class="ti ti-info-circle"></i> ESPPDH gibt es im Docker-Betrieb nicht. Im Betrieb mit systemd lässt es sich hier einschalten.</p>
+  <p class="sc-sub" style="margin:0 0 10px;color:var(--amber)"><i class="ti ti-info-circle"></i> ESPPDH gibt es im Docker-Betrieb nicht. Im Betrieb mit systemd lässt es sich hier einschalten.</p>
   {{else}}
-  {{if .Mirror}}<p class="sc-sub" style="margin:0 0 10px;color:var(--amber,#f59e0b)"><i class="ti ti-server-2"></i> Dies ist der Spiegelserver. Die Umgebung braucht jeder Server selbst – im Verbund tauschen die Server bei jedem Update die Rollen. Hier lässt sie sich einrichten; ein- und ausschalten nur am aktiven Server.</p>{{end}}
+  {{if .Mirror}}<p class="sc-sub" style="margin:0 0 10px;color:var(--amber)"><i class="ti ti-server-2"></i> Dies ist der Spiegelserver. Die Umgebung braucht jeder Server selbst – im Verbund tauschen die Server bei jedem Update die Rollen. Hier lässt sie sich einrichten; ein- und ausschalten nur am aktiven Server.</p>{{end}}
   <div class="esppdh-row">
     <b>ESPPDH ist {{if .Enabled}}eingeschaltet{{else}}ausgeschaltet{{end}}.</b>
     {{if not .Mirror}}<form hx-post="/admin/server-config/esppdh" hx-target="#esppdh-panel" hx-swap="outerHTML" hx-disabled-elt="find button">
@@ -33,7 +33,7 @@
   {{else}}<div class="sc-sub" role="status" style="margin-bottom:8px;color:var(--green)"><i class="ti ti-check"></i> Einrichtung abgeschlossen: ESPHome {{.Job.Version}}.</div>{{end}}{{end}}
   <div class="esppdh-state">
     {{if .Env.Installed}}<i class="ti ti-circle-check" style="color:var(--green)"></i> Umgebung eingerichtet: ESPHome {{.Env.Version}}{{if .Env.Outdated}}
-    <div style="color:var(--amber,#f59e0b);margin-top:4px"><i class="ti ti-clock-up"></i> veraltet – wird mit dem nächsten Update angehoben (festgelegt: ESPHome {{.Pinned}})</div>{{end}}
+    <div style="color:var(--amber);margin-top:4px"><i class="ti ti-clock-up"></i> veraltet – wird mit dem nächsten Update angehoben (festgelegt: ESPHome {{.Pinned}})</div>{{end}}
     {{else if .Env.Problem}}<i class="ti ti-alert-circle" style="color:var(--red)"></i> Umgebung gestört: {{.Env.Problem}}
     {{else}}<i class="ti ti-circle-dashed"></i> Umgebung noch nicht eingerichtet. Ohne sie lässt sich keine Firmware bauen.{{end}}
     {{with .Free}}<div class="sc-sub" style="margin-top:4px"><i class="ti ti-database"></i> Freier Platz: {{.}}</div>{{end}}
@@ -44,7 +44,7 @@
       <button class="btn btn-small" type="submit" {{if not .AgentReady}}disabled{{end}}><i class="ti ti-download"></i> Umgebung einrichten</button>
     </form>
   </div>
-  {{if not .AgentReady}}<p class="sc-sub" style="margin:0 0 10px;color:var(--amber,#f59e0b)"><i class="ti ti-alert-triangle"></i> Zum Einrichten braucht das PDH den Update-Agenten.</p>{{end}}
+  {{if not .AgentReady}}<p class="sc-sub" style="margin:0 0 10px;color:var(--amber)"><i class="ti ti-alert-triangle"></i> Zum Einrichten braucht das PDH den Update-Agenten.</p>{{end}}
   {{end}}
   <p class="sc-sub" style="margin:0 0 6px"><i class="ti ti-world-download"></i> Das Einrichten lädt ESPHome aus dem Internet. Der erste Bau je Platinentyp lädt mehrere hundert MB aus dem Internet.</p>
   <p class="sc-sub" style="margin:0">Mit jedem PDH-Update kommt die passende ESPHome-Version mit, wenn die Umgebung eingerichtet ist.</p>

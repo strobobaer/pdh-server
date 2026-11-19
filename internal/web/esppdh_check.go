@@ -30,6 +30,7 @@ type esppdhBroker struct {
 	TLSPort          int    // TLS-Port (mqtts) für Geräte; 0 = keiner
 	PlainPort        int    // Port ohne TLS; 0 = der Listen-Port verschlüsselt selbst
 	Retain           bool   // „Retained Messages erlauben“
+	Anonymous        bool   // „Anonyme Verbindungen erlauben“ – jeder im Netz darf senden
 
 	// für dieses Gerät
 	Host string
@@ -52,6 +53,7 @@ func esppdhBrokerOf(config map[string]string, reqHost, platform string, useTLS b
 		return b, "Der eingebaute Broker hat keinen gültigen Listen-Port."
 	}
 	b.Retain = config["int_retain_enabled"] == "true"
+	b.Anonymous = config["int_allow_anonymous"] == "true"
 	b.Name = tiaBrokerName(config)
 	if p, ok := mqttPort(config[mqttTLSPortKey]); ok && b.Name != "" {
 		b.TLSPort = p

@@ -737,6 +737,13 @@ func (h *Handler) esppdhRenderDevice(w http.ResponseWriter, r *http.Request, d e
 			"Am Broker ist „Retained Messages erlauben“ (Nachrichten speichern) aus – das Gerät wird abgewiesen, weil es seinen Zustand gespeichert meldet. Bitte in den Einstellungen der Verbindung einschalten.",
 			connLink, "Einstellungen der Verbindung"})
 	}
+	if b.ConnID != "" && b.Anonymous {
+		// Gerätezugänge prüft der Broker immer – aber anonyme Clients dürfen auf jedes Thema senden
+		pd.Hints = append(pd.Hints, esppdhHint{"warn", "ti-user-question",
+			"Der Broker erlaubt anonyme Verbindungen – dann kann jeder im Netz auch unter " + esppdhTopicPrefix(d.Slug) + "… senden und Werte dieses Geräts vortäuschen. " +
+				"Die Themen-Rechte schützen nur vor anderen Geräten. Besser „Anonyme Verbindungen erlauben“ an der Verbindung ausschalten.",
+			connLink, "Einstellungen der Verbindung"})
+	}
 	switch {
 	case b.Port == 0:
 	case b.TLSPort == 0:

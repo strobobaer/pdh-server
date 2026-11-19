@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -1424,6 +1425,54 @@ func TestESPPDHHints(t *testing.T) {
 	w := esppdhDo(e.h.EsppdhCreateWeb, "POST", "/import/esppdh", "", esppdhUser, e.form(slug, url.Values{"net": {"wired"}}))
 	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "kein Ethernet") || e.count(t, slug) != 0 {
 		t.Errorf("Kabel an ESP32 DevKit: %d", w.Code)
+	}
+}
+
+// Erlaubt der Broker anonyme Verbindungen, warnt die Seite des Geräts: Dann kann jeder im Netz
+// unter dem Thema des Geräts senden – die Themen-Rechte schützen nur vor anderen Geräten.
+func TestESPPDHAnonymousBrokerHint(t *testing.T) {
+	const hint = "Der Broker erlaubt anonyme Verbindungen"
+	e := newEsppdhEnv(t, esppdhBrokerCfg(1883))
+	anon := e.addConn(t, "esp-anonym-"+e.sfx, esppdhBrokerCfg(1884, "int_allow_anonymous", "true"))
+	id := e.create(t, "anon-"+e.sfx, url.Values{"connection_id": {anon}})
+	page := esppdhDo(e.h.EsppdhDevicePage, "GET", "/x", id, esppdhUser, nil).Body.String()
+	i := strings.Index(page, hint)
+	if i < 0 {
+		t.Fatal("Hinweis auf anonyme Verbindungen fehlt")
+	}
+	if start := strings.LastIndex(page[:i], "<div class=\"card esp-msg"); start < 0 || !strings.Contains(page[start:i], "esp-warn") {
+		t.Error("Hinweis auf anonyme Verbindungen nicht im Ton „warn“")
+	}
+	for _, want := range []string{"esppdh/anon-" + e.sfx + "/…", "nur vor anderen Geräten", `href="/import/connections/` + anon + `"`} {
+		if !strings.Contains(page, want) {
+			t.Errorf("Hinweis ohne %q", want)
+		}
+	}
+	// ohne anonyme Verbindungen: kein Hinweis
+	id2 := e.create(t, "auth-"+e.sfx, nil)
+	if page := esppdhDo(e.h.EsppdhDevicePage, "GET", "/x", id2, esppdhUser, nil).Body.String(); strings.Contains(page, hint) {
+		t.Error("Hinweis trotz Anmeldepflicht am Broker")
+	}
+}
+
+// Die Vorlagen von ESPPDH nehmen Farben nur aus den Variablen des Farbschemas – auch keine festen
+// Werte als Rückfall (var(--amber,#f59e0b)).
+func TestESPPDHTemplatesNoFixedColors(t *testing.T) {
+	files, _ := filepath.Glob(filepath.Join("..", "..", "web", "templates", "esppdh*.gohtml"))
+	more, _ := filepath.Glob(filepath.Join("..", "..", "web", "templates", "widgets", "esppdh_*.gohtml"))
+	files = append(files, more...)
+	if len(files) < 5 {
+		t.Fatalf("Vorlagen nicht gefunden: %v", files)
+	}
+	hexColor := regexp.MustCompile(`#[0-9a-fA-F]{3}(?:[0-9a-fA-F]{3})?\b`)
+	for _, f := range files {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if m := hexColor.FindAllString(string(b), -1); len(m) > 0 {
+			t.Errorf("%s: feste Farben %v", filepath.Base(f), m)
+		}
 	}
 }
 
