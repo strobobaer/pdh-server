@@ -10,6 +10,30 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.82.0] – 2026-11-19
+
+### Neu
+
+- Neue Seite **Daten → ESPPDH**: eigene Mess- und Zählgeräte aus ESP32- und ESP8266-Platinen anlegen, je Gerät mit Name, Kennung, Platine und Netzanschluss (WLAN von der Seite „Netzwerk“ oder Kabel).
+- Bausteine für die Geräte: S0-Zähler, Stromzange SCT-013, Energiemesser PZEM-004T und Stückzähler (Lichtschranke); das PDH prüft die Anschlüsse der Platine und meldet falsche Belegungen verständlich.
+- Server-Einstellungen, neuer Reiter **ESPPDH**: Umgebung für die Firmware einrichten (ESPHome 2026.10.2 in fest vorgegebener Version, je Server einmal) und ESPPDH ein- oder ausschalten; jedes PDH-Update bringt die passende ESPHome-Version mit.
+- Die Firmware wird am Server gebaut, mit Warteschlange und Protokoll je Lauf; sie sendet die Messwerte an den eingebauten MQTT-Broker.
+- Firmware herunterladen oder direkt im Browser per USB auf die Platine spielen (Chrome oder Edge, über eine https-Adresse).
+- Zustand je Gerät: verbunden, nicht verbunden oder gesperrt; Geräte lassen sich sperren, wieder freigeben und trennen.
+- Handbuch: Kapitel „ESPPDH – eigene Mess- und Zählgeräte“. Noch nicht an echter Hardware geprüft: Platinen, Bausteine und USB-Flash wurden bisher nur automatisch getestet.
+
+### Geändert
+
+- MQTT-Broker: Gerätezugänge dürfen sich nur mit ihrer eigenen Client-ID verbinden und können keine fremde Sitzung übernehmen.
+- MQTT-Broker: Der Hauptbenutzer des Brokers darf nicht mit „esppdh-“ beginnen; diese Namen sind für ESPPDH-Geräte reserviert.
+
+### Sicherheit
+
+- Neue Rechte **ESPPDH: Geräte und Zustand ansehen** (`esppdh.view`), **… anlegen, ändern, sperren, bauen und flashen** (`esppdh.edit`) und **… löschen** (`esppdh.admin`, Bereichsadministrator). Ansehen und pflegen dürfen automatisch alle Rollen mit dem Recht „Import-Verbindungen verwalten“, löschen nur Rollen, die zusätzlich die Server-Einstellungen ändern dürfen; die Rechte gelten je Abteilung.
+- Jedes Gerät hat einen eigenen Zugang am MQTT-Broker, beschränkt auf sein eigenes Thema `esppdh/<kennung>/…`; ein gesperrtes Gerät kommt nicht mehr hinein.
+- Die fertige Firmware und die Gerätekennwörter werden verschlüsselt abgelegt; Firmware laden darf nur, wer das Pflegerecht (`esppdh.edit`) für das Gerät hat.
+- ESPPDH ist im Docker-Testbetrieb nicht verfügbar, nur im Betrieb mit systemd.
+
 ## [0.81.6] – 2026-11-18
 
 ### Behoben
