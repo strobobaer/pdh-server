@@ -184,10 +184,11 @@ func TestInfraHistoryFrequent(t *testing.T) {
 	inf := e.infra("Presse", "", "")
 	at := time.Date(2026, 3, 1, 8, 0, 0, 0, time.UTC)
 	f1 := e.fault("Pumpe tropft", "", inf, u)
-	f2 := e.fault("Pumpe tropft", "", inf, u)
+	f2 := e.fault("Ventil klemmt", "", inf, u) // anderer Titel: die Maßnahme gruppiert trotzdem
 	e.faultAction(f1, "Dichtung getauscht", u, at)
 	e.faultAction(f2, "dichtung  GETAUSCHT!", u, at.AddDate(0, 0, 2)) // gleiche Maßnahme, andere Schreibweise
-	e.faultAction(f1, "Filter gereinigt", u, at.AddDate(0, 0, 1))
+	e.faultAction(f1, "Filter gereinigt", u, at.AddDate(0, 0, 1))     // andere Maßnahme am selben Vorgang: bleibt getrennt
+	e.faultAction(f1, "Lager geölt", u, at.AddDate(0, 0, 1))
 
 	body := e.getInfra(u, inf, "filtered=1&module=action&ls_timeline=freq").Body.String()
 	if !strings.Contains(body, "2× ") || strings.Count(body, "<details") != 1 || strings.Contains(body, "1× ") {

@@ -376,7 +376,14 @@ func infraHistoryGroups(entries []InfraHistoryEntry, mode listsort.Mode) []Infra
 // Kommentaren und Lagerbewegungen zählt der Text mit, sonst nur der Titel.
 func infraHistoryKey(e InfraHistoryEntry) string {
 	switch e.Module {
-	case "action", "comment", "part":
+	case "action", "comment":
+		// Der eigene Text ist der Text; der Titel ist der des Vorgangs, an dem er hängt.
+		// So zeigt „Häufigste zuerst“, was an dieser Anlage über Vorgänge hinweg wiederkehrt.
+		if k := listsort.Key(e.Body); k != "" {
+			return k
+		}
+		return listsort.Key(e.Title)
+	case "part":
 		return listsort.Key(e.Title + " " + e.Body)
 	}
 	return listsort.Key(e.Title)
