@@ -15,7 +15,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"regexp"
 	"strconv"
@@ -523,6 +525,236 @@ func (c *Client) Clients(ctx context.Context) ([]NetClient, error) {
 		out = append(out, NetClient{MAC: d.MAC, Name: name, IP: strings.TrimSpace(d.IP), UplinkMAC: up, Wireless: d.Wireless})
 	}
 	return out, nil
+}
+
+// ── Netze und WLANs (nur lesen) ──────────────────────────────
+//
+// Feldnamen nach dem aus der amtlichen Spec erzeugten SDK (Omada Open API), am echten
+// Controller noch ungeprüft; ob der Controller das WLAN-Kennwort im Klartext herausgibt
+// (Feld hidePwd), ist ungeklärt – fehlt es, bleibt die Passphrase leer. Fehlende oder
+// anders benannte Felder ergeben leere Werte, nie einen Fehler.
+
+// LanNetwork ist ein Netz (VLAN) des Standorts. Subnet: Netzadresse mit Länge, "" wenn unbekannt.
+// VLAN 0 = ohne VLAN (oder vom Controller nicht genannt).
+type LanNetwork struct {
+	ID, Name, Subnet string
+	VLAN             int
+}
+
+// SSID ist ein WLAN. VLAN 0 = ohne VLAN (Standardnetz). Die Passphrase wird nie ausgegeben
+// (String, GoString, Format, MarshalJSON).
+type SSID struct {
+	ID, Name, Security, Passphrase string
+	VLAN                           int
+	Hidden                         bool
+}
+
+// String gibt das WLAN ohne Passphrase aus (auch für %v und %+v).
+func (s SSID) String() string {
+	return fmt.Sprintf("SSID{ID:%s Name:%s Security:%s VLAN:%d Hidden:%t}", s.ID, s.Name, s.Security, s.VLAN, s.Hidden)
+}
+
+// GoString gibt das WLAN ohne Passphrase aus (für %#v).
+func (s SSID) GoString() string { return s.String() }
+
+// Format maskiert die Passphrase bei jedem fmt-Verb (%v, %+v, %#v, %s, %q, %x …).
+func (s SSID) Format(f fmt.State, _ rune) { _, _ = io.WriteString(f, s.String()) }
+
+// MarshalJSON lässt die Passphrase weg (anonyme Struktur ohne das Feld, keine Rekursion).
+func (s SSID) MarshalJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		ID, Name, Security string
+		VLAN               int
+		Hidden             bool
+	}{s.ID, s.Name, s.Security, s.VLAN, s.Hidden})
+}
+
+// flexInt nimmt eine Zahl oder eine Zeichenkette mit Zahl, sonst 0 – nie ein Fehler.
+type flexInt int
+
+func (n *flexInt) UnmarshalJSON(b []byte) error {
+	*n = 0
+	s := strings.Trim(strings.TrimSpace(string(b)), `"`)
+	if v, err := strconv.Atoi(s); err == nil {
+		*n = flexInt(v)
+	} else if f, err := strconv.ParseFloat(s, 64); err == nil {
+		*n = flexInt(f)
+	}
+	return nil
+}
+
+// netAddr bildet "IP/Länge" oder "IP/255.255.255.0" auf die Netzadresse mit Länge ab; ungültig → "".
+func netAddr(ip, mask string) string {
+	addr, err := netip.ParseAddr(strings.TrimSpace(ip))
+	if err != nil || !addr.Is4() {
+		return ""
+	}
+	mask = strings.TrimSpace(mask)
+	var ones int
+	if strings.Contains(mask, ".") {
+		m, err := netip.ParseAddr(mask)
+		if err != nil || !m.Is4() {
+			return ""
+		}
+		b := m.As4()
+		o, bits := net.IPMask(b[:]).Size()
+		if bits == 0 {
+			return "" // keine gültige Maske
+		}
+		ones = o
+	} else {
+		n, err := strconv.Atoi(mask)
+		if err != nil || n < 0 || n > 32 {
+			return ""
+		}
+		ones = n
+	}
+	return netip.PrefixFrom(addr, ones).Masked().String()
+}
+
+func lanSubnet(gatewaySubnet, ip, netmask string) string {
+	if gs := strings.TrimSpace(gatewaySubnet); gs != "" {
+		if a, m, ok := strings.Cut(gs, "/"); ok {
+			return netAddr(a, m)
+		}
+		// ohne "/" unbrauchbar: auf ip.ip/ip.netmask zurückfallen
+	}
+	return netAddr(ip, netmask)
+}
+
+func notFound(err error) bool {
+	var ae *apiErr
+	return errors.As(err, &ae) && (ae.status == http.StatusNotFound || ae.code == codeNoEndpoint)
+}
+
+// LanNetworks: alle Netze des Standorts. Kennt der Controller die Abfrage v3 nicht, wird v2,
+// dann v1 genommen (nur bei „nicht gefunden“, nicht bei Anmelde- oder Netzfehlern).
+func (c *Client) LanNetworks(ctx context.Context) ([]LanNetwork, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if err := c.resolveSite(ctx); err != nil {
+		return nil, err
+	}
+	var rows []json.RawMessage
+	var err error
+	for _, v := range []int{3, 2, 1} {
+		rows, err = c.paged(ctx, http.MethodGet, c.sitePath(v, "/lan-networks"), 100)
+		if !notFound(err) {
+			break
+		}
+	}
+	if err != nil {
+		c.forgetSiteOn(err)
+		return nil, err
+	}
+	out := make([]LanNetwork, 0, len(rows))
+	for _, r := range rows {
+		var d struct {
+			ID            string  `json:"id"`
+			Name          string  `json:"name"`
+			VLAN          flexInt `json:"vlan"`
+			GatewaySubnet string  `json:"gatewaySubnet"`
+			IP            struct {
+				IP      string `json:"ip"`
+				Netmask string `json:"netmask"`
+			} `json:"ip"`
+		}
+		if json.Unmarshal(r, &d) != nil || strings.TrimSpace(d.ID) == "" {
+			continue
+		}
+		out = append(out, LanNetwork{ID: d.ID, Name: strings.TrimSpace(d.Name), VLAN: int(d.VLAN),
+			Subnet: lanSubnet(d.GatewaySubnet, d.IP.IP, d.IP.Netmask)})
+	}
+	return out, nil
+}
+
+func ssidSecurity(n int, known bool) string {
+	if !known {
+		return ""
+	}
+	switch n {
+	case 0:
+		return unifi.SecOpen
+	case 3:
+		return unifi.SecPersonal
+	case 2, 5:
+		return unifi.SecEnterprise
+	}
+	return "" // 4 (PPSK ohne RADIUS) und Unbekanntes
+}
+
+// ssidPassphrase fragt das Kennwort eines WLANs einzeln ab. Antwortet der Controller mit einem
+// Fehler zu diesem WLAN, bleibt das Kennwort leer; alle anderen Fehler (Anmeldung, Zertifikat,
+// Zeitgrenze, Netz, abgebrochener Kontext) werden gemeldet. Das Kennwort steht nie in Fehlern.
+func (c *Client) ssidPassphrase(ctx context.Context, id string) (string, error) {
+	res, err := c.authed(ctx, http.MethodGet, c.sitePath(1, "/wireless-network/ssids/"+url.PathEscape(id)), nil, nil)
+	if err != nil {
+		var ae *apiErr
+		if errors.As(err, &ae) {
+			return "", nil // gewöhnliche Antwort des Controllers: Kennwort bleibt leer, weiter
+		}
+		return "", err // Anmeldung, Zertifikat, Zeitgrenze, Netz: Abbruch statt stilles Weitermachen
+	}
+	var d struct {
+		PSK struct {
+			Key string `json:"securityKey"`
+		} `json:"pskSetting"`
+	}
+	if json.Unmarshal(res, &d) != nil {
+		return "", nil
+	}
+	return d.PSK.Key, nil
+}
+
+// SSIDs: alle WLANs des Standorts. Für WLANs mit Kennwort (personal) wird je WLAN die
+// Einzelabfrage gestellt; liefert sie das Kennwort nicht, bleibt es leer.
+func (c *Client) SSIDs(ctx context.Context) ([]SSID, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if err := c.resolveSite(ctx); err != nil {
+		return nil, err
+	}
+	rows, err := c.paged(ctx, http.MethodGet, c.sitePath(2, "/wireless-network/ssids"), 100)
+	if err != nil {
+		c.forgetSiteOn(err)
+		return nil, err
+	}
+	out := make([]SSID, 0, len(rows))
+	for _, r := range rows {
+		var d struct {
+			ID         string          `json:"id"`
+			Name       string          `json:"name"`
+			Broadcast  *bool           `json:"broadcast"`
+			Security   json.RawMessage `json:"security"`
+			VLANEnable bool            `json:"vlanEnable"`
+			VLANID     flexInt         `json:"vlanId"`
+		}
+		if json.Unmarshal(r, &d) != nil || strings.TrimSpace(d.ID) == "" {
+			continue
+		}
+		var sec flexInt
+		_ = sec.UnmarshalJSON(d.Security)
+		known := isNumber(d.Security) // fehlend oder Text: unbekannt, nicht „offen“
+		s := SSID{ID: d.ID, Name: strings.TrimSpace(d.Name), Security: ssidSecurity(int(sec), known),
+			Hidden: d.Broadcast != nil && !*d.Broadcast}
+		if d.VLANEnable {
+			s.VLAN = int(d.VLANID)
+		}
+		if s.Security == unifi.SecPersonal {
+			pw, err := c.ssidPassphrase(ctx, s.ID)
+			if err != nil {
+				return nil, err
+			}
+			s.Passphrase = pw
+		}
+		out = append(out, s)
+	}
+	return out, nil
+}
+
+func isNumber(raw json.RawMessage) bool {
+	_, err := strconv.ParseFloat(strings.Trim(strings.TrimSpace(string(raw)), `"`), 64)
+	return err == nil
 }
 
 // Check meldet sich an und sucht den Standort – für „Verbindung prüfen“ in den Einstellungen.

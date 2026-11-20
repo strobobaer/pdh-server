@@ -1,0 +1,35 @@
+{
+  "offset": 0,
+  "limit": 200,
+  "count": 3,
+  "totalCount": 3,
+  "data": [
+    {
+      "management": "GATEWAY",
+      "id": "5f0c3a10-0000-4a00-8000-000000000001",
+      "name": "Default",
+      "enabled": true,
+      "vlanId": 1,
+      "default": true,
+      "metadata": { "origin": "SYSTEM_DEFINED" }
+    },
+    {
+      "management": "GATEWAY",
+      "id": "5f0c3a10-0000-4a00-8000-000000000020",
+      "name": "Gäste",
+      "enabled": true,
+      "vlanId": 20,
+      "default": false,
+      "metadata": { "origin": "USER_DEFINED" }
+    },
+    {
+      "management": "UNMANAGED",
+      "id": "5f0c3a10-0000-4a00-8000-000000000030",
+      "name": "Fremdnetz",
+      "enabled": true,
+      "vlanId": 30,
+      "default": false,
+      "metadata": { "origin": "USER_DEFINED" }
+    }
+  ]
+}

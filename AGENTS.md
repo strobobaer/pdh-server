@@ -226,7 +226,7 @@ oder ändern.**
 - Die Liste **im selben Schritt pflegen**: Erledigtes streichen, Neues
   eintragen, Stand und Datum anpassen.
 
-### Offene Punkte (Stand 19.11.2026)
+### Offene Punkte (Stand 20.11.2026)
 
 1. **Netz-Abgleich im Browser mit zwei Quellen:** 0.80.25 ist auf `main`
    und dem Testverbund; die Vorschlagsliste mit zwei eingeschalteten
@@ -341,7 +341,29 @@ oder ändern.**
    und DNS ändern (Stufe 1 reicht, ja). Eine andere Adresse vergeben (Stufe 2)
    ist kein Auftrag. Entwurf
    `docs/superpowers/specs/2026-11-19-netzwerk-vorschlaege-server-design.md`
-   – am 19.11.2026 freigegeben („Passt“); Bau nach 0.82.3.
+   – am 19.11.2026 freigegeben („Passt“). Gebaut auf dem Branch
+   `feature/netzwerk-vorschlaege` (auf 0.82.3; Migration 184, kein neues
+   Recht; pdh-ha meldet `net` und `maint_seq`; Schlussprüfung mit Fix-Welle
+   am 20.11.2026 erledigt). Offen: Freigabe für Merge und
+   Push (nach 0.82.3); danach Verbund-Update und Abnahme am Testverbund:
+   Vorschläge mit echtem UniFi/Omada (Kennwort im Klartext?, Feldnamen,
+   Versionen), Karte beider Server, „DNS ändern“ am Spiegel mit Countdown,
+   Rückfall ohne Bestätigung, Wartung an/aus am aktiven Server, Dauer des
+   Ausfalls der gemeinsamen Adresse; Browserprüfung Fiori/Fluent,
+   hell/dunkel, 320–1366 px. Geparkt: Gemeinsamer Wartungszähler:
+   gleichzeitige Änderungen an beiden Servern (später `if_seq` in
+   `POST /v1/maintenance`); Konsolen-Dialog nimmt keine Sperre und löscht beim
+   Zurücksetzen eine vorher vorhandene cloud-init-Datei (Bestand); WPA2 mit
+   mehreren Schlüsseln (UniFi `presharedKeys`) und Omada-PPSK werden nicht
+   übernommen; scheitert bei UniFi die Einzelabfrage eines WLANs, gilt
+   „versteckt“ als „nein“ (Angleichen könnte den Haken entfernen – „unbekannt“
+   wäre richtig); gleiche SSID auf zwei VLANs (zweite wird NEU, Übernehmen
+   scheitert sauber); fehlendes `totalCount` bei UniFi liest nur Seite 1;
+   netplan-Zusammenführung mit einer festen Adresse in einer anderen Datei
+   (`00-installer-config`/`50-cloud-init`) nur am echten System prüfbar – vor
+   dem Einsatz auf 10.10.0.202 `/etc/netplan` nur lesend ansehen;
+   Bestätigen-Frist 30 s kürzer als der schlimmste Fall des Skripts (Web liest
+   neu).
 7. **0.81.6 Nummern ab 10000** (Rüstzeit, KVP, Bestellung und Partner waren auf
    vier Stellen abgeschnitten) – mit 0.82.0 auf `main`; der lokale Branch
    `fix/ruestzeit-nummer` ist damit erledigt.

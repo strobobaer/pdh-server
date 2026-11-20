@@ -10,6 +10,21 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.82.4] – 2026-11-20
+
+### Neu
+
+- Die Seite „Netzwerk“ schlägt Netze und WLANs aus UniFi (Network ab Version 10.0) und Omada vor, du übernimmst sie mit einem Klick oder gleichst abweichende Einträge an.
+- WLAN-Kennwörter werden verschlüsselt mit übernommen, wenn der Controller sie herausgibt; sonst weist die Seite darauf hin, sie von Hand einzutragen.
+- Vorschläge lassen sich ausblenden, und Einträge, die am Controller nicht mehr vorhanden sind, werden markiert, aber nie gelöscht.
+- Neue Karte „Dieser Server“ zeigt Adresse, Gateway, DNS-Server und ob die Adresse fest oder automatisch ist, im Verbund auch die des Partners.
+- Administratoren können die jetzige Adresse fest einstellen und die DNS-Server ändern; bleibt die Bestätigung nach 2 Minuten aus, stellt der Server die vorige Einstellung selbst wieder her.
+
+### Geändert
+
+- Der Ausfallschutz meldet dem Partner-Server jetzt die eigenen Netzwerkdaten, damit die Seite „Netzwerk“ beide Server zeigen kann.
+- Die Anleitung zu festen IP-Adressen verweist auf die neue Karte; das Konsolen-Skript funktioniert weiter wie bisher.
+
 ## [0.82.3] – 2026-11-19
 
 ### Neu

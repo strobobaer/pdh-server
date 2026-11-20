@@ -20,19 +20,27 @@ type fakeController struct {
 	t   *testing.T
 	srv *httptest.Server
 
-	mu       sync.Mutex
-	calls    []string
-	logins   int
-	tokens   map[string]bool
-	sites    []map[string]any
-	devices  []map[string]any
-	clients  []map[string]any
-	noV1     bool // ältere Clients-Abfrage fehlt
-	maxPage  int  // > 0: der Controller liefert höchstens so viele Zeilen je Seite
-	noData   bool // Listen ohne Feld "data"
-	expire   bool // nächste Anfrage mit Token: abgelaufen
-	secret   string
-	lastAuth string
+	mu         sync.Mutex
+	calls      []string
+	logins     int
+	tokens     map[string]bool
+	sites      []map[string]any
+	devices    []map[string]any
+	clients    []map[string]any
+	lans       []map[string]any
+	ssids      []map[string]any
+	ssidDetail map[string]map[string]any
+	noV3       bool   // lan-networks v3 fehlt
+	noV2       bool   // lan-networks v2 fehlt
+	noDetail   bool   // Einzelabfrage des WLANs fehlt
+	onDetail   func() // wird in der Einzelabfrage aufgerufen (z. B. Kontext abbrechen)
+	revokeAuth bool   // Einzelabfrage widerruft das Token (Anmeldung scheitert)
+	noV1       bool   // ältere Clients-Abfrage fehlt
+	maxPage    int    // > 0: der Controller liefert höchstens so viele Zeilen je Seite
+	noData     bool   // Listen ohne Feld "data"
+	expire     bool   // nächste Anfrage mit Token: abgelaufen
+	secret     string
+	lastAuth   string
 }
 
 const (
@@ -127,6 +135,29 @@ func (f *fakeController) serve(w http.ResponseWriter, r *http.Request) {
 		f.pageOf(w, f.clients, page, size)
 	case r.Method == http.MethodPost && r.URL.Path == "/openapi/v2/"+testOmadaID+"/sites/site-a/clients":
 		f.pageOf(w, f.clients, page, size)
+	case r.Method == http.MethodGet && r.URL.Path == "/openapi/v3/"+testOmadaID+"/sites/site-a/lan-networks" && !f.noV3:
+		f.pageOf(w, f.lans, page, size)
+	case r.Method == http.MethodGet && r.URL.Path == "/openapi/v2/"+testOmadaID+"/sites/site-a/lan-networks" && !f.noV2:
+		f.pageOf(w, f.lans, page, size)
+	case r.Method == http.MethodGet && r.URL.Path == base+"/sites/site-a/lan-networks":
+		f.pageOf(w, f.lans, page, size)
+	case r.Method == http.MethodGet && r.URL.Path == "/openapi/v2/"+testOmadaID+"/sites/site-a/wireless-network/ssids":
+		f.pageOf(w, f.ssids, page, size)
+	case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, base+"/sites/site-a/wireless-network/ssids/") && !f.noDetail:
+		if f.onDetail != nil {
+			f.onDetail()
+		}
+		if f.revokeAuth {
+			f.tokens = map[string]bool{}
+			f.reply(w, codeTokenInvalid, "The access token is invalid.", nil)
+			return
+		}
+		d, ok := f.ssidDetail[strings.TrimPrefix(r.URL.Path, base+"/sites/site-a/wireless-network/ssids/")]
+		if !ok {
+			f.reply(w, codeNoEndpoint, "not found", nil)
+			return
+		}
+		f.reply(w, 0, "Success.", d)
 	default:
 		f.reply(w, codeNoEndpoint, "The endpoint does not exist.", nil)
 	}

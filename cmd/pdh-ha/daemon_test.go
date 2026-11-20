@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"pdh/internal/ha"
+	"pdh/internal/hostnet"
 )
 
 // fakeNet ersetzt den Transport: feste Sicht, protokolliert Sendungen.
@@ -146,6 +147,7 @@ func loadFakeDaemon(t *testing.T, st store, fn *fakeNet) *daemon {
 	d.pingFn = func(context.Context, string) bool { return true }
 	d.gwFn = func() (string, error) { return "", errors.New("kein Gateway") }
 	d.ufwFn = func(context.Context, [][]string) error { return nil }
+	d.netCollect = func(context.Context) hostnet.Summary { return hostnet.Summary{Mode: hostnet.ModeUnknown} } // keine echten ip-Befehle
 	d.up.agent = &fakeAgent{}
 	d.up.healthFn = func(context.Context) (pdhHealth, error) { return pdhHealth{}, errors.New("kein pdh (Test)") }
 	if err := d.load(); err != nil {

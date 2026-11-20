@@ -15,6 +15,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"pdh/internal/hostnet"
 )
 
 type jobStatus struct {
@@ -38,16 +40,22 @@ type updateAgent struct {
 	esppdh    esppdhJob                                                         // ESPHome-Einrichtung (esppdh.go)
 	esppdhRun func(context.Context, string, map[string]string) (string, error)  // nil = hostCommandEnv (esppdh.go)
 
-	vmu            sync.Mutex                                           // Versionsordner und Zeiger (esppdh_versions.go)
-	esphomeVersion func(ctx context.Context, bin string) (string, error) // nil = „bin version“ ausführen; Test-Haken
-	esppdhBusy     func(ctx context.Context) bool                       // nil = läuft eine Einrichtung? (systemd); Test-Haken
+	netJob      netJob                                                           // Netzwerk dieses Servers (net.go)
+	netStateDir string                                                           // "" = /var/lib/pdh-net
+	netRun      func(context.Context, string, map[string]string) (string, error) // nil = hostCommandEnv
+	netCollect  func(context.Context) hostnet.Summary                            // nil = hostnet.Collect über a.run
+	netProbe    func(ctx context.Context, server string) error                   // nil = hostnet.ProbeDNS
 
-	mu        sync.RWMutex
-	status    jobStatus
-	token     string
-	repoDir   string
-	mode      string
-	project   string
+	vmu            sync.Mutex                                            // Versionsordner und Zeiger (esppdh_versions.go)
+	esphomeVersion func(ctx context.Context, bin string) (string, error) // nil = „bin version“ ausführen; Test-Haken
+	esppdhBusy     func(ctx context.Context) bool                        // nil = läuft eine Einrichtung? (systemd); Test-Haken
+
+	mu      sync.RWMutex
+	status  jobStatus
+	token   string
+	repoDir string
+	mode    string
+	project string
 
 	updateRun func(args []string) // nil = runUpdate (install_update.sh); Test-Haken
 
@@ -105,8 +113,9 @@ func main() {
 	if mode == "systemd" {
 		agent.loadUpdateStatus() // Ergebnis des letzten Laufs überlebt den Neustart des Agenten
 		agent.windowLoad()
-		agent.loadSingleJob() // offener Auftrag (Einzelserver) läuft weiter
+		agent.loadSingleJob()                              // offener Auftrag (Einzelserver) läuft weiter
 		go agent.pruneVersionOrphans(context.Background()) // verwaiste ESPHome-Kandidaten (esppdh_versions.go)
+		go agent.netResume(context.Background())           // wartende Netzwerk-Änderung nach Neustart (net.go)
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {
@@ -138,6 +147,10 @@ func main() {
 	// ESPPDH: ESPHome-Versionen nebeneinander – umschalten, verwerfen, zurück (esppdh_versions.go)
 	mux.Handle("GET /v1/esppdh/versions", agent.authorized(http.HandlerFunc(agent.versionsGetHandler)))
 	mux.Handle("POST /v1/esppdh/versions", agent.authorized(http.HandlerFunc(agent.versionsPostHandler)))
+	// Netzwerk dieses Servers: Zustand, Adresse fest einstellen bzw. DNS ändern, bestätigen (net.go)
+	mux.Handle("GET /v1/net/status", agent.authorized(http.HandlerFunc(agent.netStatusHandler)))
+	mux.Handle("POST /v1/net/apply", agent.authorized(http.HandlerFunc(agent.netApplyHandler)))
+	mux.Handle("POST /v1/net/confirm", agent.authorized(http.HandlerFunc(agent.netConfirmHandler)))
 	// Ausfallschutz – Einzelbetrieb (dr.go)
 	if err := agent.drLoad(); err != nil {
 		log.Printf("ausfallschutz: state.json nicht lesbar: %v", err)

@@ -1,0 +1,11 @@
+{
+  "type": "STANDARD",
+  "id": "7a1e0000-0000-4b00-8000-0000000000a2",
+  "name": "Firma",
+  "enabled": true,
+  "metadata": { "origin": "USER_DEFINED" },
+  "network": { "type": "NATIVE" },
+  "securityConfiguration": { "type": "WPA2_ENTERPRISE" },
+  "hideName": false,
+  "clientIsolationEnabled": false
+}

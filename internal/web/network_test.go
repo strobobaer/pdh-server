@@ -42,10 +42,20 @@ func TestNetworkGateRules(t *testing.T) {
 		"/admin/network/wlans" + id:                permNetwork,
 		"/admin/network/segments" + id + "/delete": permNetworkAdmin,
 		"/admin/network/wlans" + id + "/delete":    permNetworkAdmin,
+		"/admin/network/suggestions/adopt":         permNetwork,
+		"/admin/network/suggestions/adopt-all":     permNetwork,
+		"/admin/network/suggestions/hide":          permNetwork,
+		// Karte „Dieser Server“: Aktionen an der Server-Adresse nur mit system.server_config
+		"/admin/network/server/fix":     "system.server_config",
+		"/admin/network/server/dns":     "system.server_config",
+		"/admin/network/server/confirm": "system.server_config",
 	} {
 		if _, perm, _, _, ok := matchGate("POST", path); !ok || perm != want {
 			t.Errorf("%s: Treffer %v Recht %q, erwartet %q", path, ok, perm, want)
 		}
+	}
+	if _, _, _, _, ok := matchGate("GET", "/admin/network/server"); ok {
+		t.Error("Ansehen der Karte „Dieser Server“ steht in gateRules")
 	}
 	if areaAdminPerm["network"] != permNetworkAdmin {
 		t.Error("Bereichsadministrator für „network“ fehlt")
