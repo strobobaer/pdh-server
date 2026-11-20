@@ -28,7 +28,7 @@
       <div class="rec-sub">{{.KindLabel}} · <code>{{.Source}}</code> → <code>{{.Path}}</code></div>
       {{if .Uses}}<div style="margin-top:4px;display:flex;gap:4px;flex-wrap:wrap">{{range .Uses}}<span class="badge b-blue">{{.}}</span>{{end}}</div>{{end}}
       {{if and .LastError (not .Mounted)}}<div class="rec-sub" style="color:var(--red);margin-top:4px"><i class="ti ti-alert-circle"></i> {{.LastError}}{{if .LastChecked}} ({{.LastChecked}}){{end}}</div>{{end}}
-      {{if .UsageLabel}}<div class="drv-usage"><span style="width:{{.UsedPct}}%"></span></div><div class="rec-sub">{{.UsageLabel}}{{if and .Mounted (not .ReadOnly) (not .Writable)}} · <span style="color:var(--red)">nicht beschreibbar</span>{{end}}</div>{{end}}
+      {{if .UsageLabel}}<div class="drv-usage"><span style="width:{{.UsedPct}}%"></span></div><div class="rec-sub">{{.UsageLabel}}{{if and .Mounted (not .ReadOnly) (not .Writable)}} · <span style="color:var(--red)">nicht beschreibbar{{if .WriteErr}}: {{.WriteErr}}{{end}}</span>{{end}}</div>{{end}}
     </div>
     <div class="drv-actions">
       {{if .Mounted}}
