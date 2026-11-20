@@ -2,6 +2,7 @@ package unifi
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -170,6 +171,15 @@ func TestWifiBroadcastStringHidesPassphrase(t *testing.T) {
 		fmt.Sprintf("%v", w), fmt.Sprintf("%+v", w), fmt.Sprintf("%#v", w), fmt.Sprintf("%s", w),
 		fmt.Sprint([]WifiBroadcast{w}), fmt.Sprintf("%v", &w), fmt.Sprintf("%+v", []*WifiBroadcast{&w}),
 		fmt.Sprintf("%#v", []WifiBroadcast{w}), w.String(), w.GoString(),
+		fmt.Sprintf("%q", w), fmt.Sprintf("%x", w), fmt.Sprintf("%v", map[string]WifiBroadcast{"a": w}),
+		fmt.Sprintln(w), fmt.Sprintln(&w), fmt.Sprintf("%#v", map[string]*WifiBroadcast{"a": &w}),
+	}
+	for _, v := range []any{w, &w, []WifiBroadcast{w}, map[string]WifiBroadcast{"a": w}} {
+		b, err := json.Marshal(v)
+		if err != nil {
+			t.Fatal(err)
+		}
+		outs = append(outs, string(b))
 	}
 	for i, s := range outs {
 		if strings.Contains(s, wifiPass) || strings.Contains(s, "Sommer") {

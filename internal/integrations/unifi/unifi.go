@@ -937,6 +937,19 @@ func (w WifiBroadcast) String() string {
 // GoString gibt das WLAN ohne Passphrase aus (für %#v).
 func (w WifiBroadcast) GoString() string { return w.String() }
 
+// Format maskiert die Passphrase bei jedem fmt-Verb (%v, %+v, %#v, %s, %q, %x …).
+// Die Passphrase ist nur über das exportierte Feld erreichbar (Vergleich und
+// Verschlüsselung im Speicher), nie über eine Ausgabe.
+func (w WifiBroadcast) Format(f fmt.State, _ rune) { _, _ = io.WriteString(f, w.String()) }
+
+// MarshalJSON lässt die Passphrase weg (anonyme Struktur ohne das Feld, keine Rekursion).
+func (w WifiBroadcast) MarshalJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		ID, Name, NetworkID, Security string
+		Native, Hidden                bool
+	}{w.ID, w.Name, w.NetworkID, w.Security, w.Native, w.Hidden})
+}
+
 // flexInt nimmt eine Zahl oder eine Zeichenkette mit Zahl, sonst 0 – nie ein Fehler.
 type flexInt int
 
