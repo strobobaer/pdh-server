@@ -1,0 +1,11 @@
+{
+  "type": "STANDARD",
+  "id": "7a1e0000-0000-4b00-8000-0000000000a1",
+  "name": "Gast-WLAN",
+  "enabled": true,
+  "metadata": { "origin": "USER_DEFINED" },
+  "network": { "type": "SPECIFIC", "networkId": "5f0c3a10-0000-4a00-8000-000000000020" },
+  "securityConfiguration": { "type": "WPA2_PERSONAL", "passphrase": "Sommer-Test-2026!" },
+  "hideName": true,
+  "clientIsolationEnabled": true
+}

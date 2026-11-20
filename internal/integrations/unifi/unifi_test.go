@@ -30,6 +30,9 @@ type fakeUDM struct {
 	legacy   bool
 	status   int // erzwungene Antwort (z. B. 403)
 	redirect bool
+	noNet    bool   // Netze/WLANs: 404 (Network vor 10.0)
+	noSites  bool   // /v1/sites: 404
+	gone     string // Einzelabfrage mit dieser Kennung: 404
 }
 
 func readTestdata(t *testing.T, name string) []byte {
@@ -56,6 +59,7 @@ func newFakeUDM(t *testing.T) *fakeUDM {
 		f.calls = append(f.calls, r.Method+" "+r.URL.Path)
 		f.bodies = append(f.bodies, string(body))
 		legacy, status, redirect := f.legacy, f.status, f.redirect
+		noNet, noSites, gone := f.noNet, f.noSites, f.gone
 		f.mu.Unlock()
 		if redirect {
 			http.Redirect(w, r, "https://anderswo.example/", http.StatusFound)
@@ -69,7 +73,28 @@ func newFakeUDM(t *testing.T) *fakeUDM {
 		w.Header().Set("Content-Type", "application/json")
 		const site = "88f7af54-98f8-306a-a1c7-c9349722b1f6"
 		p := r.URL.Path
+		const base = "/proxy/network/integration/v1/sites/" + site
 		switch {
+		case noSites && p == "/proxy/network/integration/v1/sites":
+			w.WriteHeader(http.StatusNotFound)
+		case noNet && (strings.HasPrefix(p, base+"/networks") || strings.HasPrefix(p, base+"/wifi/")):
+			w.WriteHeader(http.StatusNotFound)
+		case gone != "" && strings.HasSuffix(p, "/"+gone):
+			w.WriteHeader(http.StatusNotFound)
+		case p == base+"/networks" && r.Method == http.MethodGet:
+			_, _ = w.Write(readTestdata(t, "networks.json"))
+		case p == base+"/networks/5f0c3a10-0000-4a00-8000-000000000020" && r.Method == http.MethodGet:
+			_, _ = w.Write(readTestdata(t, "network_detail_gateway.json"))
+		case strings.HasPrefix(p, base+"/networks/") && r.Method == http.MethodGet:
+			_, _ = w.Write(readTestdata(t, "network_detail_unmanaged.json"))
+		case p == base+"/wifi/broadcasts" && r.Method == http.MethodGet:
+			_, _ = w.Write(readTestdata(t, "wifi_broadcasts.json"))
+		case p == base+"/wifi/broadcasts/7a1e0000-0000-4b00-8000-0000000000a1" && r.Method == http.MethodGet:
+			_, _ = w.Write(readTestdata(t, "wifi_detail_wpa2.json"))
+		case p == base+"/wifi/broadcasts/7a1e0000-0000-4b00-8000-0000000000a2" && r.Method == http.MethodGet:
+			_, _ = w.Write(readTestdata(t, "wifi_detail_enterprise.json"))
+		case p == base+"/wifi/broadcasts/7a1e0000-0000-4b00-8000-0000000000a3" && r.Method == http.MethodGet:
+			_, _ = w.Write(readTestdata(t, "wifi_detail_open.json"))
 		case p == "/proxy/network/integration/v1/sites" && r.Method == http.MethodGet:
 			_, _ = w.Write(sites)
 		case strings.HasPrefix(p, "/proxy/network/integration/v1/sites/"+site+"/dns/policies") && legacy:

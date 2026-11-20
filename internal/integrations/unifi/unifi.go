@@ -61,6 +61,8 @@ const (
 	pathLegacy   = "/proxy/network/v2/api/site/%s/static-dns"
 	pathDevices  = "/proxy/network/integration/v1/sites/%s/devices"
 	pathClients  = "/proxy/network/integration/v1/sites/%s/clients"
+	pathNetworks = "/proxy/network/integration/v1/sites/%s/networks"
+	pathWifi     = "/proxy/network/integration/v1/sites/%s/wifi/broadcasts"
 	headerKey    = "X-API-KEY"
 
 	pageLimit  = 200 // amtliches Höchstmaß je Seite
@@ -897,6 +899,224 @@ func (c *Client) Clients(ctx context.Context) ([]NetClient, error) {
 		if p.Count == 0 || offset >= p.TotalCount {
 			break
 		}
+	}
+	return out, nil
+}
+
+// ── Netze und WLANs (nur lesen) ──────────────────────────────
+
+// Sicherheitsarten eines WLANs; "" = unbekannt oder anders.
+const (
+	SecOpen       = "open"
+	SecPersonal   = "personal"
+	SecEnterprise = "enterprise"
+)
+
+// ErrNetUnsupported: die Anwendung kennt die Netz-Schnittstelle nicht (Network vor 10.0).
+var ErrNetUnsupported = errors.New("UniFi-Network-Anwendung zu alt – Netze und WLANs gibt es ab Version 10.0")
+
+// Network ist ein Netz (VLAN) des Standorts.
+type Network struct {
+	ID, Name, Subnet string // Subnet: Netzadresse mit Länge, "" wenn unbekannt
+	VLAN             int
+	Default          bool
+}
+
+// WifiBroadcast ist ein WLAN. Die Passphrase wird nie ausgegeben (String, GoString).
+type WifiBroadcast struct {
+	ID, Name, NetworkID, Security, Passphrase string
+	Native, Hidden                            bool
+}
+
+// String gibt das WLAN ohne Passphrase aus (auch für %v und %+v).
+func (w WifiBroadcast) String() string {
+	return fmt.Sprintf("WLAN{ID:%s Name:%s NetworkID:%s Security:%s Native:%t Hidden:%t}",
+		w.ID, w.Name, w.NetworkID, w.Security, w.Native, w.Hidden)
+}
+
+// GoString gibt das WLAN ohne Passphrase aus (für %#v).
+func (w WifiBroadcast) GoString() string { return w.String() }
+
+// flexInt nimmt eine Zahl oder eine Zeichenkette mit Zahl, sonst 0 – nie ein Fehler.
+type flexInt int
+
+func (n *flexInt) UnmarshalJSON(b []byte) error {
+	*n = 0
+	s := strings.Trim(strings.TrimSpace(string(b)), `"`)
+	if v, err := strconv.Atoi(s); err == nil {
+		*n = flexInt(v)
+	}
+	return nil
+}
+
+type netDTO struct {
+	ID      string  `json:"id"`
+	Name    string  `json:"name"`
+	VlanID  flexInt `json:"vlanId"`
+	Default bool    `json:"default"`
+	IPv4    *struct {
+		Host   string  `json:"hostIpAddress"`
+		Prefix flexInt `json:"prefixLength"`
+	} `json:"ipv4Configuration"`
+}
+
+type netPage struct {
+	Count      int      `json:"count"`
+	TotalCount int64    `json:"totalCount"`
+	Data       []netDTO `json:"data"`
+}
+
+type wifiDTO struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	HideName bool   `json:"hideName"`
+	Network  *struct {
+		Type      string `json:"type"`
+		NetworkID string `json:"networkId"`
+	} `json:"network"`
+	Security *struct {
+		Type       string `json:"type"`
+		Passphrase string `json:"passphrase"`
+	} `json:"securityConfiguration"`
+}
+
+type wifiPage struct {
+	Count      int       `json:"count"`
+	TotalCount int64     `json:"totalCount"`
+	Data       []wifiDTO `json:"data"`
+}
+
+// netSite löst den Standort auf; ohne amtliche Schnittstelle oder Standortliste: ErrNetUnsupported.
+// Nicht resolveNew: dessen legacy-Zustand hängt nur an dns/policies, nicht an den Netzen.
+func (c *Client) netSite(ctx context.Context) (string, error) {
+	if err := c.resolve(ctx); err != nil {
+		return "", err
+	}
+	c.mu.Lock()
+	id := c.siteID
+	c.mu.Unlock()
+	if id == "" {
+		return "", ErrNetUnsupported
+	}
+	return url.PathEscape(id), nil
+}
+
+// netAddress maskiert die Host-Adresse auf die Netzadresse (10.10.20.1, 24 → 10.10.20.0/24); ungültig → "".
+func netAddress(host string, prefix int) string {
+	a, err := netip.ParseAddr(strings.TrimSpace(host))
+	if err != nil || !a.Is4() || prefix < 1 || prefix > 32 {
+		return ""
+	}
+	return netip.PrefixFrom(a, prefix).Masked().String()
+}
+
+// Networks liest alle Netze des Standorts samt Subnetz (je Netz eine Einzelabfrage).
+func (c *Client) Networks(ctx context.Context) ([]Network, error) {
+	site, err := c.netSite(ctx)
+	if err != nil {
+		return nil, err
+	}
+	base := fmt.Sprintf(pathNetworks, site)
+	var all []netDTO
+	var offset int64
+	for page := 0; page < maxPages; page++ {
+		var p netPage
+		err := c.do(ctx, http.MethodGet, fmt.Sprintf("%s?offset=%d&limit=%d", base, offset, pageLimit), nil, &p)
+		if errors.Is(err, errNotFound) {
+			return nil, ErrNetUnsupported
+		}
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, p.Data...)
+		offset += int64(p.Count)
+		if p.Count == 0 || offset >= p.TotalCount {
+			break
+		}
+	}
+	out := make([]Network, 0, len(all))
+	for _, n := range all {
+		net := Network{ID: n.ID, Name: n.Name, VLAN: int(n.VlanID), Default: n.Default || n.VlanID == 1}
+		var d netDTO
+		err := c.do(ctx, http.MethodGet, base+"/"+url.PathEscape(n.ID), nil, &d)
+		if err != nil && !errors.Is(err, errNotFound) {
+			return nil, err
+		}
+		if err == nil && d.IPv4 != nil {
+			net.Subnet = netAddress(d.IPv4.Host, int(d.IPv4.Prefix))
+		}
+		out = append(out, net)
+	}
+	return out, nil
+}
+
+// secKind ordnet den Sicherheitstyp des Controllers den drei Arten zu.
+func secKind(t string) string {
+	t = strings.ToUpper(strings.TrimSpace(t))
+	switch {
+	case t == "OPEN":
+		return SecOpen
+	case strings.HasSuffix(t, "_ENTERPRISE"):
+		return SecEnterprise
+	case strings.HasSuffix(t, "_PERSONAL"):
+		return SecPersonal
+	}
+	return ""
+}
+
+// WifiBroadcasts liest alle WLANs des Standorts samt Passphrase (je WLAN eine Einzelabfrage).
+func (c *Client) WifiBroadcasts(ctx context.Context) ([]WifiBroadcast, error) {
+	site, err := c.netSite(ctx)
+	if err != nil {
+		return nil, err
+	}
+	base := fmt.Sprintf(pathWifi, site)
+	var all []wifiDTO
+	var offset int64
+	for page := 0; page < maxPages; page++ {
+		var p wifiPage
+		err := c.do(ctx, http.MethodGet, fmt.Sprintf("%s?offset=%d&limit=%d", base, offset, pageLimit), nil, &p)
+		if errors.Is(err, errNotFound) {
+			return nil, ErrNetUnsupported
+		}
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, p.Data...)
+		offset += int64(p.Count)
+		if p.Count == 0 || offset >= p.TotalCount {
+			break
+		}
+	}
+	out := make([]WifiBroadcast, 0, len(all))
+	for _, l := range all {
+		var d wifiDTO
+		err := c.do(ctx, http.MethodGet, base+"/"+url.PathEscape(l.ID), nil, &d)
+		if errors.Is(err, errNotFound) { // inzwischen gelöscht
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		w := WifiBroadcast{ID: l.ID, Name: d.Name, Hidden: d.HideName}
+		if w.Name == "" {
+			w.Name = l.Name
+		}
+		if d.Security != nil {
+			w.Security = secKind(d.Security.Type)
+			if w.Security == SecPersonal {
+				w.Passphrase = d.Security.Passphrase
+			}
+		}
+		if d.Network != nil {
+			switch strings.ToUpper(d.Network.Type) {
+			case "NATIVE":
+				w.Native = true
+			case "SPECIFIC":
+				w.NetworkID = d.Network.NetworkID
+			}
+		}
+		out = append(out, w)
 	}
 	return out, nil
 }

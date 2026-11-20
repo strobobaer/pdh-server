@@ -1,0 +1,9 @@
+{
+  "management": "UNMANAGED",
+  "id": "5f0c3a10-0000-4a00-8000-000000000030",
+  "name": "Fremdnetz",
+  "enabled": true,
+  "vlanId": 30,
+  "default": false,
+  "metadata": { "origin": "USER_DEFINED" }
+}

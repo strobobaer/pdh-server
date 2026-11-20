@@ -1,0 +1,35 @@
+{
+  "offset": 0,
+  "limit": 200,
+  "count": 3,
+  "totalCount": 3,
+  "data": [
+    {
+      "type": "STANDARD",
+      "id": "7a1e0000-0000-4b00-8000-0000000000a1",
+      "name": "Gast-WLAN",
+      "enabled": true,
+      "metadata": { "origin": "USER_DEFINED" },
+      "network": { "type": "SPECIFIC", "networkId": "5f0c3a10-0000-4a00-8000-000000000020" },
+      "securityConfiguration": { "type": "WPA2_PERSONAL" }
+    },
+    {
+      "type": "STANDARD",
+      "id": "7a1e0000-0000-4b00-8000-0000000000a2",
+      "name": "Firma",
+      "enabled": true,
+      "metadata": { "origin": "USER_DEFINED" },
+      "network": { "type": "NATIVE" },
+      "securityConfiguration": { "type": "WPA2_ENTERPRISE" }
+    },
+    {
+      "type": "STANDARD",
+      "id": "7a1e0000-0000-4b00-8000-0000000000a3",
+      "name": "Offen",
+      "enabled": true,
+      "metadata": { "origin": "USER_DEFINED" },
+      "network": { "type": "SPECIFIC", "networkId": "5f0c3a10-0000-4a00-8000-000000000030" },
+      "securityConfiguration": { "type": "OPEN" }
+    }
+  ]
+}
