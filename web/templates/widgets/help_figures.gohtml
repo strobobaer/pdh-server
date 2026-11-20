@@ -834,23 +834,30 @@
 </figure>
 {{end}}
 
-{{/* Seite Netzwerk: Vorschläge vom Controller und Karte „Dieser Server“ */}}
+{{/* Seite Netzwerk in der Reihenfolge der Seite: Karten der Server, Vorschläge vom Controller,
+     Netze mit übernommenem Eintrag. „Jetzige Adresse fest einstellen“ gibt es nur bei DHCP. */}}
 {{define "hb-fig-netzwerk"}}
 <figure class="hb-fig">
-<svg viewBox="0 0 640 230" role="img" aria-label="Seite Netzwerk: oben der Block „Vom Controller gefunden“ mit einer neuen Zeile (Übernehmen) und einer abweichenden Zeile (Angleichen); darunter die Karten „Dieser Server“ und Partner mit Adresse, Gateway, DNS und den Knöpfen zum Festeinstellen.">
-  <rect class="bg" x="1" y="1" width="638" height="228" rx="8"/>
-  <rect class="bg3" x="14" y="12" width="612" height="100" rx="8"/>
-  <text x="26" y="32" class="t-b">Vom Controller gefunden</text><text x="614" y="32" class="t-m" text-anchor="end">Neu abfragen</text>
-  <rect class="gr" x="26" y="42" width="588" height="26" rx="5"/><text x="36" y="59" class="t-b">NEU</text><text x="86" y="59" class="t-c" text-anchor="start">WLAN „Geräte“ · aus UniFi</text><text x="602" y="59" class="t-m" text-anchor="end">Übernehmen · Ausblenden</text>
-  <rect class="acl" x="26" y="74" width="588" height="26" rx="5"/><text x="36" y="91" class="t-b">ANDERS</text><text x="96" y="91" class="t-c" text-anchor="start">Netz „Maschinen“ · VLAN 20</text><text x="602" y="91" class="t-m" text-anchor="end">Angleichen · Ausblenden</text>
-  <rect class="acl" x="14" y="124" width="300" height="96" rx="8"/><text x="26" y="144" class="t-b">Dieser Server</text>
-  <text x="26" y="162" class="t-m">Adresse 10.10.0.17 · fest</text><text x="26" y="178" class="t-m">Gateway 10.10.0.1 · DNS 10.10.0.1</text>
-  <text x="26" y="206" class="t-m">[Jetzige Adresse fest einstellen] [DNS-Server ändern]</text>
-  <rect class="bg3" x="326" y="124" width="300" height="96" rx="8"/><text x="338" y="144" class="t-b">Partner</text>
-  <text x="338" y="162" class="t-m">Adresse 10.10.0.14 · automatisch (DHCP)</text><text x="338" y="178" class="t-m">Gemeinsame Adresse liegt hier nicht</text>
-  <text x="338" y="206" class="t-m">Auf «pdh» öffnen</text>
+<svg viewBox="0 0 640 300" role="img" aria-label="Seite Netzwerk: oben die eigene Karte mit automatischer Adresse (DHCP) und den Knöpfen „Jetzige Adresse fest einstellen“ und „DNS-Server ändern“, daneben die Karte des Partners mit fester Adresse und Verweis „Auf pdh öffnen“; darunter der Block „Vom Controller gefunden“ mit einer neuen Zeile (Übernehmen) und einer abweichenden Zeile (Angleichen); unten in der Liste der Netze ein übernommenes Netz mit der Marke „aus UniFi“.">
+  <rect class="bg" x="1" y="1" width="638" height="298" rx="8"/>
+  <rect class="acl" x="14" y="12" width="340" height="110" rx="8"/>
+  <text x="26" y="32" class="t-b">pdh-server (aktiv)</text><rect class="bg3" x="270" y="20" width="72" height="17" rx="4"/><text x="306" y="32" class="t-c t-m">Dieser Server</text>
+  <text x="26" y="52" class="t-m">Adresse 10.10.0.17/24 · automatisch (DHCP)</text><text x="26" y="68" class="t-m">Gateway 10.10.0.1 · DNS 10.10.0.1</text>
+  <rect class="ac" x="26" y="84" width="186" height="24" rx="5"/><text x="119" y="100" class="t-c t-w">Jetzige Adresse fest einstellen</text>
+  <rect class="ctl" x="220" y="84" width="122" height="24" rx="5"/><text x="281" y="100" class="t-c">DNS-Server ändern</text>
+  <rect class="bg3" x="366" y="12" width="260" height="110" rx="8"/><text x="378" y="32" class="t-b">pdh (Spiegel)</text>
+  <text x="378" y="52" class="t-m">Adresse 10.10.0.14/24 · fest</text><text x="378" y="68" class="t-m">Gateway 10.10.0.1 · DNS 10.10.0.1</text>
+  <rect class="ctl" x="378" y="84" width="112" height="24" rx="5"/><text x="434" y="100" class="t-c">Auf pdh öffnen ↗</text>
+  <rect class="bg3" x="14" y="134" width="612" height="96" rx="8"/>
+  <text x="26" y="153" class="t-b">Vom Controller gefunden</text><text x="614" y="153" class="t-m" text-anchor="end">Neu abfragen</text>
+  <text x="26" y="170" class="t-m">UniFi · vor 2 Min.</text>
+  <rect class="gr" x="26" y="176" width="588" height="22" rx="5"/><text x="36" y="191" class="t-b">NEU</text><text x="84" y="191">WLAN Geräte · → Geräte · Kennwort ✓</text><text x="602" y="191" class="t-m" text-anchor="end">Übernehmen · Ausblenden</text>
+  <rect class="am" x="26" y="202" width="588" height="22" rx="5"/><text x="36" y="217" class="t-b">ANDERS</text><text x="100" y="217">Netz Maschinen · VLAN 20 · 10.10.20.0/24</text><text x="602" y="217" class="t-m" text-anchor="end">Angleichen · Ausblenden</text>
+  <rect class="bg3" x="14" y="240" width="612" height="50" rx="8"/><text x="26" y="258" class="t-b">Netze (VLANs)</text>
+  <text x="26" y="279">Maschinen</text><rect class="bg" x="86" y="267" width="58" height="16" rx="4"/><text x="115" y="279" class="t-c t-m">aus UniFi</text>
+  <text x="156" y="279" class="t-m">VLAN 20 · 10.10.20.0/24 · Sensoren und Steuerungen</text>
 </svg>
-<figcaption>Oben die Vorschläge vom Controller, unten die Karten der Server. Adresse und DNS änderst du über die Knöpfe der Karte.</figcaption>
+<figcaption>Oben die Karten der Server – Adresse und DNS änderst du über die Knöpfe der eigenen Karte. Darunter die Vorschläge vom Controller; übernommene Einträge tragen in der Liste „aus UniFi“ bzw. „aus Omada“.</figcaption>
 </figure>
 {{end}}
 

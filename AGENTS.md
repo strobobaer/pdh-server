@@ -343,7 +343,8 @@ oder ändern.**
    `docs/superpowers/specs/2026-11-19-netzwerk-vorschlaege-server-design.md`
    – am 19.11.2026 freigegeben („Passt“). Gebaut auf dem Branch
    `feature/netzwerk-vorschlaege` (auf 0.82.3; Migration 184, kein neues
-   Recht; pdh-ha meldet `net` und `maint_seq`). Offen: Freigabe für Merge und
+   Recht; pdh-ha meldet `net` und `maint_seq`; Schlussprüfung mit Fix-Welle
+   am 20.11.2026 erledigt). Offen: Freigabe für Merge und
    Push (nach 0.82.3); danach Verbund-Update und Abnahme am Testverbund:
    Vorschläge mit echtem UniFi/Omada (Kennwort im Klartext?, Feldnamen,
    Versionen), Karte beider Server, „DNS ändern“ am Spiegel mit Countdown,
@@ -354,7 +355,13 @@ oder ändern.**
    `POST /v1/maintenance`); Konsolen-Dialog nimmt keine Sperre und löscht beim
    Zurücksetzen eine vorher vorhandene cloud-init-Datei (Bestand); WPA2 mit
    mehreren Schlüsseln (UniFi `presharedKeys`) und Omada-PPSK werden nicht
-   übernommen.
+   übernommen; gleiche SSID auf zwei VLANs (zweite wird NEU, Übernehmen
+   scheitert sauber); fehlendes `totalCount` bei UniFi liest nur Seite 1;
+   netplan-Zusammenführung mit einer festen Adresse in einer anderen Datei
+   (`00-installer-config`/`50-cloud-init`) nur am echten System prüfbar – vor
+   dem Einsatz auf 10.10.0.202 `/etc/netplan` nur lesend ansehen;
+   Bestätigen-Frist 30 s kürzer als der schlimmste Fall des Skripts (Web liest
+   neu).
 7. **0.81.6 Nummern ab 10000** (Rüstzeit, KVP, Bestellung und Partner waren auf
    vier Stellen abgeschnitten) – mit 0.82.0 auf `main`; der lokale Branch
    `fix/ruestzeit-nummer` ist damit erledigt.

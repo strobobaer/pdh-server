@@ -22,7 +22,7 @@ im Kapitel „Versionen & Updates“ an.
 
 ### Geändert
 
-- Der Ausfallschutz meldet dem Partner die Netzwerkdaten des Servers und den Stand der Wartung.
+- Der Ausfallschutz meldet dem Partner-Server jetzt die eigenen Netzwerkdaten, damit die Seite „Netzwerk“ beide Server zeigen kann.
 - Die Anleitung zu festen IP-Adressen verweist auf die neue Karte; das Konsolen-Skript funktioniert weiter wie bisher.
 
 ## [0.82.3] – 2026-11-19

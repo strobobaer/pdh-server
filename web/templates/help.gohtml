@@ -1693,7 +1693,14 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li><b>Neu abfragen</b> holt den aktuellen Stand vom Controller. Sonst gilt das Ergebnis 5 Minuten.</li>
     </ol>
     <p>Übernommene Einträge zeigen <b>aus UniFi</b> bzw. <b>aus Omada</b>. Gibt es einen Eintrag am Controller nicht mehr, steht <b>am Controller nicht mehr vorhanden</b> dabei – das PDH löscht nie von selbst etwas.</p>
-    <p><b>WLAN-Kennwörter:</b> Gibt der Controller das Kennwort heraus, übernimmt das PDH es verschlüsselt mit. Sonst steht dort „Controller gibt das Kennwort nicht heraus – bitte von Hand eintragen“; trage es dann über <b>Bearbeiten</b> ein. Weitere Hinweise: „offen“ (ohne Kennwort), „Anmeldung mit Benutzer (Enterprise)“ – solche WLANs sind <b>für ESPPDH nicht nutzbar</b>. „Kennwort geändert“ siehst du nur, wenn der Controller das Kennwort herausgibt. Den Haken „Für ESPPDH-Geräte nutzbar“ setzt das PDH <b>nie</b> von selbst.</p>
+    <p><b>WLAN-Kennwörter</b> – was die Hinweise in der Zeile bedeuten:</p>
+    <ul>
+      <li><b>„Kennwort ✓“:</b> Der Controller gibt das Kennwort heraus. Das PDH übernimmt es verschlüsselt mit.</li>
+      <li><b>„Controller gibt das Kennwort nicht heraus – bitte von Hand eintragen“:</b> Nach dem Übernehmen das Kennwort über <b>Bearbeiten</b> eintragen.</li>
+      <li><b>„offen“</b> (ohne Kennwort) oder <b>„Anmeldung mit Benutzer (Enterprise)“:</b> Solche WLANs sind <b>für ESPPDH nicht nutzbar</b>.</li>
+      <li><b>„Kennwort geändert“</b> siehst du nur, wenn der Controller das Kennwort herausgibt.</li>
+    </ul>
+    <p>Den Haken „Für ESPPDH-Geräte nutzbar“ setzt das PDH <b>nie</b> von selbst.</p>
     <p><b>Wenn eine Zeile nicht übernommen wird:</b> Hat sich der Vorschlag inzwischen geändert (anderer Benutzer, neuer Stand am Controller), lehnt das PDH ab: „Der Vorschlag hat sich inzwischen geändert – bitte die Liste ansehen und erneut wählen.“ Es wurde dann nichts übernommen. Pro Controller steht bei einem Problem eine eigene Zeile, z. B. „UniFi-Network-Anwendung zu alt – Netze und WLANs gibt es ab Version 10.0“. Am Spiegelserver fragt der Block den Controller nicht ab und verweist auf den aktiven Server.</p></div>
   <div class="hb-howto"><b><i class="ti ti-sitemap"></i> So trägst du ein Netz ein</b>
     <ol class="hb-steps">
@@ -1717,7 +1724,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <li><b>Haken später entfernt:</b> Geräte in diesem WLAN lassen sich dann nicht mehr speichern und nicht mehr bauen; ihre Seite sagt „Das WLAN … ist nicht mehr für ESPPDH-Geräte freigegeben“. Schon gebaute Firmware lässt sich weiter herunterladen, und die Geräte behalten das Kennwort. Soll es niemand mehr nutzen können, das Kennwort am Access Point ändern.</li>
   </ul>
   <h3><i class="ti ti-server"></i> Dieser Server: Adresse und DNS</h3>
-  <p>Die Karte <b>Dieser Server</b> zeigt die Netzwerkdaten des Servers: Netzwerkkarte, Adresse (<b>fest</b>, <b>automatisch (DHCP)</b> oder <b>unbekannt</b>), gemeinsame Adresse im Verbund und wo sie gerade liegt, Gateway, DNS-Server und IPv6. Im Verbund steht daneben die Karte des Partners; <b>Auf «Name» öffnen</b> führt zu dessen Seite. Den Partner siehst du erst, wenn beide Server auf dieser Version sind.</p>
+  <p>Die Karte <b>Dieser Server</b> zeigt die Netzwerkdaten des Servers: Netzwerkkarte, Adresse (<b>fest</b>, <b>automatisch (DHCP)</b> oder <b>unbekannt</b>), gemeinsame Adresse im Verbund und wo sie gerade liegt, Gateway, DNS-Server und IPv6. Im Verbund steht daneben die Karte des Partners; <b>Auf «Name» öffnen</b> führt zu dessen Seite. Die Karte des Partners zeigt „unbekannt“, bis beide Server auf dieser Version sind.</p>
   <div class="hb-howto"><b><i class="ti ti-lock"></i> So stellst du die Adresse fest ein oder änderst die DNS-Server</b>
     <ol class="hb-steps">
       <li>Im Verbund <b>zuerst den Spiegel</b> ändern, dann den aktiven Server. Öffne die Seite dafür über die <b>eigene Adresse</b> des Servers, nicht über die gemeinsame.</li>
@@ -1727,13 +1734,14 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>Danach läuft ein <b>Countdown von 2 Minuten</b>. Kommt die Seite wieder, drücke <b>Seite erreichbar – Einstellung behalten</b>.</li>
     </ol>
     <p><b>Ohne Bestätigung</b> stellt der Server die vorige Einstellung nach den 2 Minuten selbst wieder her – auch wenn zwischendurch das PDH, der Update-Agent oder der ganze Server neu startet. Die Wartung des Ausfallschutzes schaltet er dann ebenfalls wieder aus, auch später, falls es nicht gleich ging. Eine Wartung, die jemand anderes eingeschaltet hat, bleibt unberührt.</p>
-    <p><b>Gesperrt</b> ist die Änderung, solange ein PDH-Update, eine Wartung, ein Rollentausch oder eine frühere Änderung noch läuft. Es gibt sie nur für Administratoren mit dem Recht „Server-Einstellungen“, nur auf Ubuntu-Servern mit netplan und nicht im Docker-Testsystem (dort nur ein Hinweis). Die Adresse und das Gateway selbst lassen sich hier nicht ändern. Auf der Konsole geht es weiter mit <code>pdh-static-ip.sh</code> (siehe <a href="#ausfallschutz">Ausfallschutz</a>).</p></div>
+    <p>Steht kurz <b>„Stand gerade nicht lesbar – wird weiter abgefragt“</b>, baut der Server gerade seine Verbindung neu auf. Der Countdown läuft weiter, und du kannst trotzdem bestätigen.</p>
+    <p><b>Gesperrt</b> ist die Änderung, solange ein PDH-Update, eine Wartung, ein Rollentausch oder eine frühere Änderung noch läuft. Am aktiven Server ist sie außerdem gesperrt, solange er den Partner nicht sieht („Der Partner-Server ist gerade nicht erreichbar …“) – dann zuerst die Verbindung der Server in Ordnung bringen. Es gibt die Änderung nur für Administratoren mit dem Recht „Server-Einstellungen“, nur auf Ubuntu-Servern, deren Netzwerk mit netplan eingerichtet ist (bei Ubuntu Server ab Werk so), und nicht im Docker-Testsystem (dort nur ein Hinweis). Die Adresse und das Gateway selbst lassen sich hier nicht ändern. Auf der Konsole geht es weiter mit <code>pdh-static-ip.sh</code> (siehe <a href="#ausfallschutz">Ausfallschutz</a>).</p></div>
   <h3>Rechte</h3>
   <ul>
     <li><b>Netzwerk: VLANs und WLANs pflegen</b> (<code>system.network</code>) – Seite sehen, auch die Karte „Dieser Server“ und die Vorschläge vom Controller, Netze und WLANs anlegen, übernehmen und ändern, auch den Haken „Für ESPPDH-Geräte nutzbar“ setzen. Adresse fest einstellen und DNS ändern dürfen nur Administratoren mit dem Recht „Server-Einstellungen“. Es haben automatisch alle Rollen, die die UniFi-Anbindung verwalten dürfen. Die Rechte von ESPPDH allein reichen dafür nicht.</li>
     <li><b>Netzwerk: VLANs und WLANs löschen</b> (<code>system.network_admin</code>, Bereichsadministrator) – endgültig löschen. Wird ein Netz gelöscht, bleiben seine WLANs und stehen danach ohne Netz da.</li>
   </ul>
-  <p>Auf dem Spiegelserver ist die Seite nur zum Lesen da.</p>
+  <p>Auf dem Spiegelserver ist die Seite nur zum Lesen da – bis auf die Karte <b>Dieser Server</b>: <b>Jetzige Adresse fest einstellen</b> und <b>DNS-Server ändern</b> gehen an jedem Server für diesen Server selbst. Vorschläge vom Controller übernimmst du am aktiven Server.</p>
   {{template "hb-shots" (dict "Ref" (index $s "netzwerk") "Can" $can)}}
 </section>
 
