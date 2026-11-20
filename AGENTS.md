@@ -255,9 +255,9 @@ oder ändern.**
    (19.11.2026; Migrationen 179 bis 181, Rechte `esppdh.view`, `esppdh.edit`,
    `esppdh.admin`; Entwurf `docs/superpowers/specs/2026-11-18-esppdh-design.md`,
    Plan `docs/superpowers/plans/2026-11-18-esppdh-paket1.md`). **0.82.0 bis
-   0.82.7 sind auf dem Testverbund** (zuletzt 20.11.2026, Verbund-Update auf
-   `5154bda`; beide Server und Zeuge 0.82.7, Migrationen 179–184 da, aktiv
-   jetzt `pdh-server` 10.10.0.17). Offen: am Testverbund auf der Seite „Netzwerk“ den
+   0.82.8 sind auf dem Testverbund** (zuletzt 20.11.2026, Verbund-Update auf
+   `b303fd4`; beide Server und Zeuge 0.82.8, Migrationen 179–184 da, aktiv
+   jetzt `pdh` 10.10.0.14). Offen: am Testverbund auf der Seite „Netzwerk“ den
    Haken „Für ESPPDH-Geräte nutzbar“ am Geräte-WLAN setzen, auf beiden Servern
    die Umgebung einrichten, ein Gerät bauen, die Rollen umschalten, die
    Firmware am zweiten Server herunterladen und im Browser prüfen. Paket 2 und
@@ -402,15 +402,16 @@ oder ändern.**
    Hinweis in Handbuch und CHANGELOG berichtigt – auf `main` (Merge
    `5154bda`) und dem Testverbund. Auf 10.10.0.202 erledigt (20.11.2026,
    vom Anwender): „pdhnas“ ist verbunden – Punkt abgeschlossen.
-   (d) **0.82.8 Einstellungsdatei** – Branch `fix/einstellungsdatei-rechte`
-   (lokal): Seite „Server-Einstellungen“ nennt, warum die Einstellungsdatei
+   (d) **0.82.8 Einstellungsdatei** – auf `main` (Merge `b303fd4`) und dem
+   Testverbund: Seite „Server-Einstellungen“ nennt, warum die Einstellungsdatei
    nicht beschreibbar ist (Besitzer und Dienstbenutzer, auch der Ordner für
    `<datei>.tmp`), samt Befehl, und warnt bei Rechten über 600
    (`internal/web/envfile_check.go`). Anlass: auf 10.10.0.202 gehörte
    `/home/michael/pdh/.env` seit 15.11.2026 04:09 `root:root` mit 644 (vom
    Anwender am 20.11.2026 auf `michael:michael` 600 gestellt); kein Skript im
    Repository legt die Datei so an – vermutlich von Hand als root neu
-   geschrieben. Offen: Freigabe für Merge und Push.
+   geschrieben. Die beiden Meldungen sind nur im Seitentest gesehen (am
+   Testverbund ist die Datei in Ordnung, sie erscheinen dort nicht).
 7. **0.81.6 Nummern ab 10000** (Rüstzeit, KVP, Bestellung und Partner waren auf
    vier Stellen abgeschnitten) – mit 0.82.0 auf `main`; der lokale Branch
    `fix/ruestzeit-nummer` ist damit erledigt.
