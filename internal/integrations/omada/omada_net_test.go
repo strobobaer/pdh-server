@@ -3,6 +3,7 @@ package omada
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -127,13 +128,36 @@ func TestSSIDDetailRespectsContext(t *testing.T) {
 	f := newFake(t)
 	f.ssids = []map[string]any{{"id": "s1", "name": "A", "security": 3}, {"id": "s2", "name": "B", "security": 3}}
 	ctx, cancel := context.WithCancel(context.Background())
-	c := f.client()
-	if _, err := c.SSIDs(ctx); err != nil {
-		t.Fatal(err)
+	defer cancel()
+	f.onDetail = cancel // der Kontext endet mitten in der ersten Einzelabfrage
+	if _, err := f.client().SSIDs(ctx); err == nil {
+		t.Fatal("abgebrochener Kontext muss einen Fehler liefern")
 	}
-	cancel()
-	if _, err := c.SSIDs(ctx); err == nil {
-		t.Error("abgebrochener Kontext muss einen Fehler liefern")
+	if n := f.count("GET /openapi/v1/" + testOmadaID + "/sites/site-a/wireless-network/ssids/s2"); n != 0 {
+		t.Errorf("nach dem Abbruch weitere Einzelabfragen: %d", n)
+	}
+}
+
+func TestSSIDDetailAuthErrorStops(t *testing.T) {
+	f := newFake(t)
+	f.revokeAuth = true
+	f.ssids = []map[string]any{{"id": "s1", "name": "A", "security": 3}, {"id": "s2", "name": "B", "security": 3}}
+	_, err := f.client().SSIDs(context.Background())
+	if !errors.Is(err, ErrAuth) {
+		t.Fatalf("ErrAuth erwartet, bekam %v", err)
+	}
+	if n := f.count("GET /openapi/v1/" + testOmadaID + "/sites/site-a/wireless-network/ssids/s2"); n != 0 {
+		t.Errorf("nach dem Fehler weitere Einzelabfragen: %d", n)
+	}
+}
+
+func TestLanNetworksSubnetWithoutSlashFallsBack(t *testing.T) {
+	f := newFake(t)
+	f.lans = []map[string]any{{"id": "n1", "name": "A", "vlan": 1, "gatewaySubnet": "192.168.1.1",
+		"ip": map[string]any{"ip": "192.168.1.1", "netmask": "255.255.255.0"}}}
+	got, err := f.client().LanNetworks(context.Background())
+	if err != nil || len(got) != 1 || got[0].Subnet != "192.168.1.0/24" {
+		t.Fatalf("Netze: %+v, %v", got, err)
 	}
 }
 
@@ -157,7 +181,7 @@ func TestSSIDStringHidesPassphrase(t *testing.T) {
 		if strings.Contains(s, ssidPass) || strings.Contains(s, "Sommer") {
 			t.Errorf("Ausgabe %d enthält das Kennwort: %s", i, s)
 		}
-		if i != 12 && !strings.Contains(s, "Gast") { // %x gibt Hex aus
+		if !strings.Contains(s, "Gast") {
 			t.Errorf("Ausgabe %d ohne Namen: %s", i, s)
 		}
 	}

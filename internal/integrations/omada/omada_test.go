@@ -30,13 +30,15 @@ type fakeController struct {
 	lans       []map[string]any
 	ssids      []map[string]any
 	ssidDetail map[string]map[string]any
-	noV3       bool // lan-networks v3 fehlt
-	noV2       bool // lan-networks v2 fehlt
-	noDetail   bool // Einzelabfrage des WLANs fehlt
-	noV1       bool // ältere Clients-Abfrage fehlt
-	maxPage    int  // > 0: der Controller liefert höchstens so viele Zeilen je Seite
-	noData     bool // Listen ohne Feld "data"
-	expire     bool // nächste Anfrage mit Token: abgelaufen
+	noV3       bool   // lan-networks v3 fehlt
+	noV2       bool   // lan-networks v2 fehlt
+	noDetail   bool   // Einzelabfrage des WLANs fehlt
+	onDetail   func() // wird in der Einzelabfrage aufgerufen (z. B. Kontext abbrechen)
+	revokeAuth bool   // Einzelabfrage widerruft das Token (Anmeldung scheitert)
+	noV1       bool   // ältere Clients-Abfrage fehlt
+	maxPage    int    // > 0: der Controller liefert höchstens so viele Zeilen je Seite
+	noData     bool   // Listen ohne Feld "data"
+	expire     bool   // nächste Anfrage mit Token: abgelaufen
 	secret     string
 	lastAuth   string
 }
@@ -142,6 +144,14 @@ func (f *fakeController) serve(w http.ResponseWriter, r *http.Request) {
 	case r.Method == http.MethodGet && r.URL.Path == "/openapi/v2/"+testOmadaID+"/sites/site-a/wireless-network/ssids":
 		f.pageOf(w, f.ssids, page, size)
 	case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, base+"/sites/site-a/wireless-network/ssids/") && !f.noDetail:
+		if f.onDetail != nil {
+			f.onDetail()
+		}
+		if f.revokeAuth {
+			f.tokens = map[string]bool{}
+			f.reply(w, codeTokenInvalid, "The access token is invalid.", nil)
+			return
+		}
 		d, ok := f.ssidDetail[strings.TrimPrefix(r.URL.Path, base+"/sites/site-a/wireless-network/ssids/")]
 		if !ok {
 			f.reply(w, codeNoEndpoint, "not found", nil)

@@ -535,6 +535,7 @@ func (c *Client) Clients(ctx context.Context) ([]NetClient, error) {
 // anders benannte Felder ergeben leere Werte, nie einen Fehler.
 
 // LanNetwork ist ein Netz (VLAN) des Standorts. Subnet: Netzadresse mit Länge, "" wenn unbekannt.
+// VLAN 0 = ohne VLAN (oder vom Controller nicht genannt).
 type LanNetwork struct {
 	ID, Name, Subnet string
 	VLAN             int
@@ -616,7 +617,7 @@ func lanSubnet(gatewaySubnet, ip, netmask string) string {
 		if a, m, ok := strings.Cut(gs, "/"); ok {
 			return netAddr(a, m)
 		}
-		return ""
+		// ohne "/" unbrauchbar: auf ip.ip/ip.netmask zurückfallen
 	}
 	return netAddr(ip, netmask)
 }
@@ -682,15 +683,17 @@ func ssidSecurity(n int, known bool) string {
 	return "" // 4 (PPSK ohne RADIUS) und Unbekanntes
 }
 
-// ssidPassphrase fragt das Kennwort eines WLANs einzeln ab. Fehler → "" (der Controller gibt
-// es dann nicht heraus); nur ein abgebrochener Kontext wird gemeldet. Nichts davon in Fehlern.
+// ssidPassphrase fragt das Kennwort eines WLANs einzeln ab. Antwortet der Controller mit einem
+// Fehler zu diesem WLAN, bleibt das Kennwort leer; alle anderen Fehler (Anmeldung, Zertifikat,
+// Zeitgrenze, Netz, abgebrochener Kontext) werden gemeldet. Das Kennwort steht nie in Fehlern.
 func (c *Client) ssidPassphrase(ctx context.Context, id string) (string, error) {
 	res, err := c.authed(ctx, http.MethodGet, c.sitePath(1, "/wireless-network/ssids/"+url.PathEscape(id)), nil, nil)
 	if err != nil {
-		if ctx.Err() != nil {
-			return "", ctx.Err()
+		var ae *apiErr
+		if errors.As(err, &ae) {
+			return "", nil // gewöhnliche Antwort des Controllers: Kennwort bleibt leer, weiter
 		}
-		return "", nil
+		return "", err // Anmeldung, Zertifikat, Zeitgrenze, Netz: Abbruch statt stilles Weitermachen
 	}
 	var d struct {
 		PSK struct {
