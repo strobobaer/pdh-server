@@ -56,7 +56,10 @@ func netSrvPend(id, state string, applied bool, started, deadline time.Time, ext
 type netSrvAgent struct {
 	mu                     sync.Mutex
 	status, apply, confirm string
-	afterConfirm           string // neuer Status nach POST /v1/net/confirm ("" = unverändert)
+	afterConfirm           string                   // neuer Status nach POST /v1/net/confirm ("" = unverändert)
+	statusFail             bool                     // GET /v1/net/status antwortet 500 (Stand nicht lesbar)
+	failAfterApply         bool                     // nach POST /v1/net/apply ist der Stand nicht lesbar
+	delay                  map[string]time.Duration // „METHODE PFAD“ antwortet erst nach dieser Zeit
 	calls                  []string
 }
 
@@ -110,11 +113,19 @@ func netSrvEnv(t *testing.T) *netSrvFix {
 		ag.mu.Lock()
 		ag.calls = append(ag.calls, strings.TrimSpace(r.Method+" "+r.URL.Path+" "+string(body)))
 		var answer string
-		switch r.Method + " " + r.URL.Path {
+		key := r.Method + " " + r.URL.Path
+		wait := ag.delay[key]
+		switch key {
 		case "GET /v1/net/status":
+			if ag.statusFail {
+				ag.mu.Unlock()
+				http.Error(w, "kaputt", http.StatusInternalServerError)
+				return
+			}
 			answer = ag.status
 		case "POST /v1/net/apply":
 			answer = ag.apply
+			ag.statusFail = ag.statusFail || ag.failAfterApply
 		case "POST /v1/net/confirm":
 			answer = ag.confirm
 			if ag.afterConfirm != "" {
@@ -126,6 +137,13 @@ func netSrvEnv(t *testing.T) *netSrvFix {
 			return
 		}
 		ag.mu.Unlock()
+		if wait > 0 {
+			select {
+			case <-time.After(wait):
+			case <-r.Context().Done():
+				return
+			}
+		}
 		w.Header().Set("Content-Type", "application/json")
 		io.WriteString(w, answer)
 	}))
@@ -155,7 +173,21 @@ func (f *netSrvFix) setHA(st haStatus, err error) {
 
 // do ruft einen Handler als Benutzer „Ada Admin“ mit Rolle role auf.
 func (f *netSrvFix) do(fn http.HandlerFunc, method string, role users.Role, form url.Values) *httptest.ResponseRecorder {
-	r := httptest.NewRequest(method, "/admin/network/server", strings.NewReader(form.Encode()))
+	return f.doAt(fn, method, "/admin/network/server", role, form)
+}
+
+// get: Karte unter target (mit Abfrage, z. B. ?wait=…&dl=…) als Administrator.
+func (f *netSrvFix) get(t *testing.T, target string) string {
+	t.Helper()
+	w := f.doAt(f.h.NetworkServerWeb, http.MethodGet, target, users.RoleAdmin, nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("Karte %s: Status %d %s", target, w.Code, w.Body.String())
+	}
+	return w.Body.String()
+}
+
+func (f *netSrvFix) doAt(fn http.HandlerFunc, method, target string, role users.Role, form url.Values) *httptest.ResponseRecorder {
+	r := httptest.NewRequest(method, target, strings.NewReader(form.Encode()))
 	r.Host = f.host
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	r.Header.Set("HX-Request", "true")
@@ -370,13 +402,20 @@ func TestNetServerBlocked(t *testing.T) {
 		haOK, locked bool
 		want         string
 	}{
-		"Update im Verbund":        {upd, true, false, "Ein PDH-Update läuft – bitte danach erneut versuchen."},
-		"Wartungssperre":           {haStatus{}, false, true, "Ein PDH-Update läuft – bitte danach erneut versuchen."},
-		"Wartung":                  {haStatus{Configured: true, Maint: true}, true, false, "Die Wartung des Ausfallschutzes ist an – bitte zuerst beenden."},
-		"beschäftigt":              {haStatus{Configured: true, Busy: true}, true, false, "Ein Rollentausch läuft – bitte warten, bis er fertig ist."},
-		"abgeschaltet":             {haStatus{Configured: true, Self: haNode{Role: "abgeschaltet"}}, true, false, "Ein Rollentausch läuft – bitte warten, bis er fertig ist."},
-		"wiedereingliederung":      {haStatus{Configured: true, Self: haNode{Role: "wiedereingliederung"}}, true, false, "Ein Rollentausch läuft – bitte warten, bis er fertig ist."},
-		"frei":                     {haStatus{Configured: true, Self: haNode{Role: "aktiv"}}, true, false, ""},
+		"Update im Verbund":   {upd, true, false, "Ein PDH-Update läuft – bitte danach erneut versuchen."},
+		"Wartungssperre":      {haStatus{}, false, true, "Ein PDH-Update läuft – bitte danach erneut versuchen."},
+		"Wartung":             {haStatus{Configured: true, Maint: true}, true, false, "Die Wartung des Ausfallschutzes ist an – bitte zuerst beenden."},
+		"beschäftigt":         {haStatus{Configured: true, Busy: true}, true, false, "Ein Rollentausch läuft – bitte warten, bis er fertig ist."},
+		"abgeschaltet":        {haStatus{Configured: true, Self: haNode{Role: "abgeschaltet"}}, true, false, "Ein Rollentausch läuft – bitte warten, bis er fertig ist."},
+		"wiedereingliederung": {haStatus{Configured: true, Self: haNode{Role: "wiedereingliederung"}}, true, false, "Ein Rollentausch läuft – bitte warten, bis er fertig ist."},
+		"frei": {haStatus{Configured: true, Mode: "duo", Self: haNode{Role: "aktiv"},
+			Peers: []haNode{{Kind: "node", Seen: true}, {Kind: "witness"}}}, true, false, ""},
+		// Regel N9: am aktiven Server nur, wenn er den Partner sieht (der Zeuge zählt nicht)
+		"Partner nicht gesehen": {haStatus{Configured: true, Mode: "trio", Self: haNode{Role: "aktiv"},
+			Peers: []haNode{{Kind: "node"}, {Kind: "witness", Seen: true}}}, true, false, netSrvMsgPeerGone},
+		"Verbund ohne Partner":     {haStatus{Configured: true, Mode: "duo", Self: haNode{Role: "aktiv"}}, true, false, netSrvMsgPeerGone},
+		"Spiegel ohne Partner":     {haStatus{Configured: true, Mode: "duo", Self: haNode{Role: "passiv"}, Peers: []haNode{{Kind: "node"}}}, true, false, ""},
+		"einzel ohne Partner":      {haStatus{Configured: true, Mode: "einzel", Self: haNode{Role: "aktiv"}}, true, false, ""},
 		"ohne Verbund (Wartung)":   {haStatus{Maint: true}, false, false, ""},
 		"ohne Verbund ohne Sperre": {haStatus{}, false, false, ""},
 	} {
@@ -405,13 +444,22 @@ func TestNetServerBlocked(t *testing.T) {
 		"Wartung":      func(s *haStatus) { s.Maint = true },
 		"Rollentausch": func(s *haStatus) { s.Busy = true },
 		"abgeschaltet": func(s *haStatus) { s.Self.Role = "abgeschaltet" },
+		"Partner weg":  func(s *haStatus) { s.Peers[0].Seen = false },
 	} {
 		st := netSrvCluster("aktiv", "passiv", "pdh-server")
 		mod(&st)
 		f.setHA(st, nil)
 		want := map[string]string{"Update": "Ein PDH-Update läuft", "Wartung": "Die Wartung des Ausfallschutzes ist an – bitte zuerst beenden.",
-			"Rollentausch": "Ein Rollentausch läuft – bitte warten, bis er fertig ist.", "abgeschaltet": "Ein Rollentausch läuft"}[name]
+			"Rollentausch": "Ein Rollentausch läuft – bitte warten, bis er fertig ist.", "abgeschaltet": "Ein Rollentausch läuft",
+			"Partner weg": "Der Partner-Server ist gerade nicht erreichbar – am aktiven Server erst ändern, wenn beide Server sich sehen."}[name]
 		check(name, want)
+	}
+	// am Spiegel hindert ein unsichtbarer Partner nicht (jeder Server ändert nur sich selbst)
+	st := netSrvCluster("passiv", "aktiv", "pdh")
+	st.Peers[0].Seen = false
+	f.setHA(st, nil)
+	if b := f.card(t); !strings.Contains(b, netSrvDNSBtn) || strings.Contains(b, "Partner-Server ist gerade nicht erreichbar") {
+		t.Errorf("Spiegel ohne sichtbaren Partner gesperrt: %s", b)
 	}
 	// Wartungssperre des PDH (Update ohne Verbund)
 	f.setHA(haStatus{}, errNetNoHA)
@@ -679,6 +727,171 @@ func TestNetServerConfirm(t *testing.T) {
 	b = f.do(f.h.NetworkServerConfirmWeb, http.MethodPost, users.RoleAdmin, url.Values{"id": {"20261120-4711"}}).Body.String()
 	if !strings.Contains(b, "Bestätigen hat nicht geklappt") || !strings.Contains(b, "Nicht bestätigt – vorige Einstellung wiederhergestellt") {
 		t.Errorf("Fehler, zurückgestellt: %s", b)
+	}
+}
+
+// Ein einzelner gescheiterter Abruf beim Agenten (Neustart, netplan apply) beendet weder
+// Nachfragen noch Countdown noch „behalten“ – sonst käme der Rückfall, obwohl die Seite erreichbar
+// ist. Ohne wait bleibt alles wie bisher.
+func TestNetServerUnreadKeepsWaiting(t *testing.T) {
+	f := netSrvEnv(t)
+	now := time.Now()
+	dl := now.Add(90 * time.Second).Truncate(time.Second)
+	dlS := strconv.FormatInt(dl.Unix(), 10)
+	poll := `hx-get="/admin/network/server?wait=20261120-4711&amp;dl=` + dlS + `"`
+	unread := "Stand gerade nicht lesbar – wird weiter abgefragt."
+
+	// Stand lesbar: Nachfragen mit Kennung und Frist, Formular mit beidem
+	f.ag.set(netSrvStatus("static", netSrvPend("20261120-4711", "pending", true, now, dl, ""), false))
+	body := f.card(t)
+	for _, want := range []string{poll, `hx-trigger="every 2s"`, `name="id" value="20261120-4711"`, `name="dl" value="` + dlS + `"`,
+		`<div class="nw-srv-count" aria-live="off">`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("lesbar: ohne %q\n%s", want, body)
+		}
+	}
+	// der Countdown steht nicht im Bereich mit role="status"
+	if i := strings.Index(body, `role="status"`); i < 0 || strings.Contains(body[i:strings.Index(body, `class="nw-srv-count"`)], "data-nw-deadline") {
+		t.Error("Countdown innerhalb von role=\"status\"")
+	}
+
+	// Agent antwortet nicht: weiter nachfragen (alle 3 s), Countdown und Knopf bleiben
+	f.ag.with(func(a *netSrvAgent) { a.statusFail = true })
+	body = f.get(t, "/admin/network/server?wait=20261120-4711&dl="+dlS)
+	for _, want := range []string{poll, `hx-trigger="every 3s"`, `data-nw-deadline="` + dlS + `"`, `name="id" value="20261120-4711"`,
+		`name="dl" value="` + dlS + `"`, "Seite erreichbar – Einstellung behalten", unread} {
+		if !strings.Contains(body, want) {
+			t.Errorf("nicht lesbar: ohne %q\n%s", want, body)
+		}
+	}
+	if strings.Contains(body, `role="alert"`) || strings.Contains(body, netSrvFixBtn) || strings.Contains(body, netSrvDNSBtn) {
+		t.Errorf("nicht lesbar: Fehlermeldung oder Knöpfe für eine neue Änderung\n%s", body)
+	}
+	// ohne Recht: weiter nachfragen, aber kein „behalten“
+	f.perms["system.server_config"] = false
+	if b := f.get(t, "/admin/network/server?wait=20261120-4711&dl="+dlS); !strings.Contains(b, poll) || strings.Contains(b, "Einstellung behalten") {
+		t.Error("ohne Recht: Nachfragen fehlt oder Knopf sichtbar")
+	}
+	f.perms["system.server_config"] = true
+
+	// ohne wait: wie bisher – Fehler, kein Nachfragen, kein Countdown
+	body = f.card(t)
+	if strings.Contains(body, "hx-trigger") || !strings.Contains(body, "Update-Agent") || strings.Contains(body, "data-nw-deadline") ||
+		strings.Contains(body, "Einstellung behalten") || strings.Contains(body, unread) {
+		t.Errorf("ohne wait: %s", body)
+	}
+	// Frist plus 60 s vorbei: Schluss mit Nachfragen
+	late := strconv.FormatInt(now.Add(-61*time.Second).Unix(), 10)
+	if b := f.get(t, "/admin/network/server?wait=20261120-4711&dl="+late); strings.Contains(b, "hx-trigger") || !strings.Contains(b, "Update-Agent") {
+		t.Errorf("nach der Frist: %s", b)
+	}
+	// ungültige Parameter zählen nicht
+	far := strconv.FormatInt(now.Add(2*time.Hour).Unix(), 10)
+	for _, q := range []string{"wait=x%20y&dl=" + dlS, "wait=..%2Fa&dl=" + dlS, "wait=20261120-4711&dl=abc", "wait=20261120-4711&dl=-5",
+		"wait=20261120-4711&dl=" + far, "wait=20261120-4711", "dl=" + dlS, "wait=20261120-4711&dl=" + dlS + "0000000"} {
+		if b := f.get(t, "/admin/network/server?"+q); strings.Contains(b, "hx-trigger") || strings.Contains(b, "Einstellung behalten") {
+			t.Errorf("%s: gilt als gültig", q)
+		}
+	}
+	// Anwenden läuft noch ohne Kennung: weiter nachfragen, kein Countdown, kein Knopf
+	body = f.get(t, "/admin/network/server?wait=run&dl="+dlS)
+	if !strings.Contains(body, `hx-get="/admin/network/server?wait=run&amp;dl=`+dlS+`"`) || !strings.Contains(body, `hx-trigger="every 3s"`) ||
+		!strings.Contains(body, "Die Änderung wird vorbereitet") || !strings.Contains(body, unread) ||
+		strings.Contains(body, "data-nw-deadline") || strings.Contains(body, "Einstellung behalten") {
+		t.Errorf("wait=run: %s", body)
+	}
+
+	// Bestätigen scheitert (Agent weg), Stand nicht lesbar: Kennung und Frist aus dem Formular
+	agentURL := f.h.updateAgentURL
+	f.h.updateAgentURL = "http://127.0.0.1:1"
+	b := f.do(f.h.NetworkServerConfirmWeb, http.MethodPost, users.RoleAdmin, url.Values{"id": {"20261120-4711"}, "dl": {dlS}}).Body.String()
+	for _, want := range []string{"Bestätigen hat nicht geklappt", poll, `hx-trigger="every 3s"`, `name="id" value="20261120-4711"`, unread} {
+		if !strings.Contains(b, want) {
+			t.Errorf("Bestätigen gescheitert: ohne %q\n%s", want, b)
+		}
+	}
+	// ohne dl im Formular: wie bisher (Fehler, kein Nachfragen)
+	b = f.do(f.h.NetworkServerConfirmWeb, http.MethodPost, users.RoleAdmin, url.Values{"id": {"20261120-4711"}}).Body.String()
+	if !strings.Contains(b, "Bestätigen hat nicht geklappt") || strings.Contains(b, "hx-trigger") {
+		t.Errorf("Bestätigen ohne dl: %s", b)
+	}
+	f.h.updateAgentURL = agentURL
+
+	// Start gelungen, Stand gleich danach nicht lesbar: wait=run
+	f.ag.with(func(a *netSrvAgent) {
+		a.statusFail, a.failAfterApply, a.status = false, true, netSrvStatus("dhcp", "", false)
+	})
+	b = f.do(f.h.NetworkServerFixWeb, http.MethodPost, users.RoleAdmin, nil).Body.String()
+	for _, want := range []string{"Die Änderung wird angewendet.", `hx-get="/admin/network/server?wait=run&amp;dl=`, `hx-trigger="every 3s"`, unread} {
+		if !strings.Contains(b, want) {
+			t.Errorf("nach dem Start: ohne %q\n%s", want, b)
+		}
+	}
+	// Anwenden läuft, Stand lesbar: Nachfragen mit wait=run
+	f.ag.with(func(a *netSrvAgent) {
+		a.statusFail, a.failAfterApply, a.status = false, false, netSrvStatus("dhcp", "", true)
+	})
+	if b := f.card(t); !strings.Contains(b, `hx-get="/admin/network/server?wait=run&amp;dl=`) || !strings.Contains(b, `hx-trigger="every 2s"`) {
+		t.Errorf("läuft: %s", b)
+	}
+}
+
+func TestNetServerWaitParams(t *testing.T) {
+	now := time.Unix(1_800_000_000, 0)
+	dl := now.Add(time.Minute)
+	if w := netSrvWaitFrom("20261120-4711", "1800000060", now); w.ID != "20261120-4711" || w.Run || !w.DL.Equal(dl) {
+		t.Errorf("Kennung: %+v", w)
+	}
+	if w := netSrvWaitFrom("run", "1800000060", now); !w.Run || w.ID != "" || w.url() != "/admin/network/server?wait=run&dl=1800000060" {
+		t.Errorf("run: %+v %s", w, w.url())
+	}
+	for _, c := range [][2]string{{"", "1800000060"}, {"a b", "1800000060"}, {"20261120-1", ""}, {"20261120-1", "1e9"},
+		{"20261120-1", "1800003661"}, {"20261120-1", "1799913599"}, {strings.Repeat("a", 65), "1800000060"}} {
+		if w := netSrvWaitFrom(c[0], c[1], now); w.set() {
+			t.Errorf("%q: %+v", c, w)
+		}
+	}
+	// ohne gültige Kennung oder Frist fragt die Karte ohne Parameter nach
+	for _, w := range []netSrvWait{{ID: "x;y", DL: dl}, {ID: "x1"}, {}} {
+		if u := w.url(); u != "/admin/network/server" {
+			t.Errorf("%+v: %s", w, u)
+		}
+	}
+}
+
+// Zeitüberschreitung beim Agenten über den echten Weg (agentJSON): erkennbar trotz agentRaw, das
+// die Ursache nur als Text weitergibt – mit eigenem Hinweis beim Starten und beim Bestätigen.
+func TestNetServerAgentSlow(t *testing.T) {
+	f := netSrvEnv(t)
+	oldA, oldC := netSrvApplyTimeout, netSrvConfirmTimeout
+	netSrvApplyTimeout, netSrvConfirmTimeout = 150*time.Millisecond, 150*time.Millisecond
+	t.Cleanup(func() { netSrvApplyTimeout, netSrvConfirmTimeout = oldA, oldC })
+	f.ag.with(func(a *netSrvAgent) {
+		a.delay = map[string]time.Duration{"POST /v1/net/apply": 3 * time.Second, "POST /v1/net/confirm": 3 * time.Second}
+	})
+
+	err := f.h.netAgentCall(context.Background(), 100*time.Millisecond, http.MethodPost, "/v1/net/apply", netApplyBody{Action: "fix"}, nil)
+	if !errors.Is(err, context.DeadlineExceeded) || !strings.Contains(err.Error(), "Update-Agent nicht erreichbar") {
+		t.Errorf("Fehler: %v", err)
+	}
+	// andere Fehler tragen keine Zeitüberschreitung
+	f.h.updateAgentURL = "http://127.0.0.1:1"
+	if err := f.h.netAgentCall(context.Background(), 2*time.Second, http.MethodGet, "/v1/net/status", nil, nil); err == nil || errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("Verbindung abgelehnt: %v", err)
+	}
+	f = netSrvEnv(t)
+	f.ag.with(func(a *netSrvAgent) {
+		a.delay = map[string]time.Duration{"POST /v1/net/apply": 3 * time.Second, "POST /v1/net/confirm": 3 * time.Second}
+	})
+
+	if b := f.do(f.h.NetworkServerFixWeb, http.MethodPost, users.RoleAdmin, nil).Body.String(); !strings.Contains(b, netSrvMsgAgentSlow) {
+		t.Errorf("Starten: %s", b)
+	}
+	now := time.Now()
+	f.ag.set(netSrvStatus("static", netSrvPend("20261120-4711", "pending", true, now, now.Add(90*time.Second), ""), false))
+	b := f.do(f.h.NetworkServerConfirmWeb, http.MethodPost, users.RoleAdmin, url.Values{"id": {"20261120-4711"}}).Body.String()
+	if !strings.Contains(b, "Bestätigen hat nicht geklappt: keine rechtzeitige Antwort vom Update-Agenten") || !strings.Contains(b, "Einstellung behalten") {
+		t.Errorf("Bestätigen: %s", b)
 	}
 }
 

@@ -51,10 +51,11 @@
 {{/* Karte „Dieser Server“ (internal/web/network_server.go): je Server eine Karte, im Verbund
      nebeneinander, am Handy untereinander. Knöpfe nur auf der Karte des Servers, auf dem die Seite
      läuft; der Partner bekommt einen Verweis auf seine eigene Adresse. Solange eine Änderung läuft,
-     fragt der Block alle 2 s nach; den Countdown zählt das Skript in network.gohtml
-     (data-nw-deadline, data-nw-now). Daten: NetServerView. */}}
+     fragt der Block nach (PollURL mit Kennung und Frist, alle 2 s; ist der Stand gerade nicht
+     lesbar, alle 3 s); den Countdown zählt das Skript in network.gohtml (data-nw-deadline,
+     data-nw-now). Daten: NetServerView. */}}
 {{define "nw-server"}}
-<div id="nw-server" class="nw-srv"{{if or .Pending .Running}} hx-get="/admin/network/server" hx-trigger="every 2s" hx-swap="outerHTML"{{end}}>
+<div id="nw-server" class="nw-srv"{{with .PollURL}} hx-get="{{.}}" hx-trigger="every {{$.PollEvery}}" hx-swap="outerHTML"{{end}}>
   {{if .Msg}}<div class="nw-srv-msg" role="status"><i class="ti ti-circle-check" style="color:var(--green)" aria-hidden="true"></i> {{.Msg}}</div>{{end}}
   {{if .Err}}<div class="nw-srv-msg nw-srv-err" role="alert"><i class="ti ti-alert-circle" aria-hidden="true"></i> {{.Err}}</div>{{end}}
   <div class="nw-srv-grid{{if gt (len .Cards) 1}} nw-srv-two{{end}}">
@@ -83,21 +84,23 @@
 </div>
 {{end}}
 
-{{/* Eigene Karte: laufende Änderung mit Countdown, letzte Änderung, Sperrgrund oder Knöpfe mit Vorschau. */}}
+{{/* Eigene Karte: laufende Änderung mit Countdown, letzte Änderung, Sperrgrund oder Knöpfe mit Vorschau.
+     role="status" nur um den festen Satz – der Countdown ändert sich jede Sekunde und wird nicht
+     vorgelesen (aria-live="off"). Unread: Stand gerade nicht lesbar, Kennung und Frist aus der Anfrage. */}}
 {{define "nw-server-self"}}{{$v := .V}}{{$c := .C}}
 {{if $v.Pending}}{{with $v.Pending}}
-<div class="nw-srv-state" role="status">
-  <b>{{.ActionText}}</b>{{with .By}} ({{.}}){{end}}:
-  {{if and .Applied (not $v.Running)}}angewendet. Bitte prüfen, ob die Seite noch erreichbar ist.{{else}}wird angewendet …{{end}}
-  <div class="nw-srv-count">Noch <b data-nw-deadline="{{.Deadline.Unix}}" data-nw-now="{{$v.Now}}">{{$v.Remaining}}</b> Min. – ohne Bestätigung stellt der Server danach die vorige Einstellung von selbst wieder her.</div>
+<div class="nw-srv-state">
+  <div role="status">{{if $v.Unread}}<b>Laufende Änderung</b>: {{$v.UnreadText}}{{else}}<b>{{.ActionText}}</b>{{with .By}} ({{.}}){{end}}:
+  {{if and .Applied (not $v.Running)}}angewendet. Bitte prüfen, ob die Seite noch erreichbar ist.{{else}}wird angewendet …{{end}}{{end}}</div>
+  <div class="nw-srv-count" aria-live="off">Noch <b data-nw-deadline="{{.Deadline.Unix}}" data-nw-now="{{$v.Now}}">{{$v.Remaining}}</b> Min. – ohne Bestätigung stellt der Server danach die vorige Einstellung von selbst wieder her.</div>
   {{if and $v.Admin .Applied (not $v.Running)}}
   <form hx-post="/admin/network/server/confirm" hx-target="#nw-server" hx-swap="outerHTML" hx-disabled-elt="find button">
-    <input type="hidden" name="id" value="{{.ID}}">
+    <input type="hidden" name="id" value="{{.ID}}"><input type="hidden" name="dl" value="{{.Deadline.Unix}}">
     <button type="submit" class="btn btn-primary btn-small"><i class="ti ti-check" aria-hidden="true"></i> Seite erreichbar – Einstellung behalten</button>
   </form>{{end}}
 </div>
 {{end}}{{else if $v.Running}}
-<div class="nw-srv-state" role="status"><i class="ti ti-loader-2" aria-hidden="true"></i> Die Änderung wird vorbereitet …</div>
+<div class="nw-srv-state" role="status"><i class="ti ti-loader-2" aria-hidden="true"></i> Die Änderung wird vorbereitet …{{if $v.Unread}} {{$v.UnreadText}}{{end}}</div>
 {{end}}
 {{with $v.Last}}<div class="nw-note">{{$v.LastText}}</div>{{end}}
 {{with $v.JobErr}}<div class="nw-srv-state nw-srv-warn" role="status"><i class="ti ti-alert-triangle" aria-hidden="true"></i> Letzter Versuch gescheitert: {{.}}</div>{{end}}

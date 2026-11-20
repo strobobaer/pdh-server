@@ -90,7 +90,9 @@ if [[ -f "$PDH_NETPLAN_DIR/90-pdh-static.yaml" ]]; then
 fi
 printf 'netplan %s [state=%s yaml=%s]\n' "$*" "${s:--}" "$y" >>"$NET_LOG"
 case "$1" in
-  get) printf '%s:\n  dhcp4: true\n' "${NET_ETHERNETS:-eth0}" ;;
+  get)
+    if [[ -n "${NET_HANG_GET:-}" ]]; then exec sleep 30; fi
+    printf '%s:\n  dhcp4: true\n' "${NET_ETHERNETS:-eth0}" ;;
   generate)
     n=$(( $(cat "$NET_LOG.gen" 2>/dev/null || echo 0) + 1 )); echo "$n" >"$NET_LOG.gen"
     if [[ -n "${NET_HANG_GENERATE:-}" && $n -ge 2 ]]; then exec sleep 30; fi
@@ -443,6 +445,52 @@ func TestStaticIPAutoNeedsEthernetsKey(t *testing.T) {
 	if code != 1 || !strings.Contains(out, "nicht unter „ethernets“") || netExists(e.yaml) || e.count("pdh-ha") != 0 || e.count("systemd-run") != 0 {
 		t.Errorf("%d %q\n%s", code, out, e.dump())
 	}
+}
+
+// Was der Zustand verbietet (Änderung wartet, Wartung noch offen, Sicherungen nach gescheitertem
+// Rückfall), prüft das Skript gleich nach der Sperre – vor jedem Aufruf von netplan. Ein hängendes
+// „netplan get“ hält es unter der Sperre nicht auf (Zeitgrenze).
+func TestStaticIPAutoChecksBeforeNetplan(t *testing.T) {
+	t.Parallel()
+	for name, c := range map[string]struct {
+		state string
+		bak   bool
+		code  int
+		want  string
+	}{
+		"Änderung wartet":    {"id=x1\nstate=pending\napplied=1\n", false, 3, "Eine Änderung wartet noch auf Bestätigung"},
+		"Wartung offen":      {"id=x1\nstate=confirmed\nmaint=1\nmaint_off=pending\n", false, 1, "aus der vorigen Änderung ist noch an"},
+		"Sicherung behalten": {"id=x1\nstate=failed\nbak=keep\n", true, 1, "ließ sich nicht vollständig zurücknehmen"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			e := newNetSEnv(t)
+			if err := os.MkdirAll(e.state, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			e.write(filepath.Join(e.state, "state"), c.state)
+			if c.bak {
+				e.write(e.bakYAML, "# vorige Einstellung\n")
+			}
+			out, code := e.main(nil, netArgs("--ha-maint")...)
+			if code != c.code || !strings.Contains(out, c.want) {
+				t.Errorf("Ausgang %d, Ausgabe %q (erwartet %d und %q)", code, out, c.code, c.want)
+			}
+			if e.index("flock", 0) < 0 || e.count("netplan") != 0 || e.count("pdh-ha") != 0 || e.count("systemd-run") != 0 || netExists(e.yaml) {
+				t.Errorf("vor der Prüfung etwas aufgerufen:\n%s", e.dump())
+			}
+		})
+	}
+	t.Run("netplan get hängt", func(t *testing.T) {
+		t.Parallel()
+		e := newNetSEnv(t)
+		start := time.Now()
+		out, code := e.main([]string{"NET_HANG_GET=1", "PDH_NET_GET_TIMEOUT=2"}, netArgs("--ha-maint")...)
+		if code != 1 || !strings.Contains(out, "netplan get antwortet nicht innerhalb der Zeitgrenze") || netExists(e.yaml) ||
+			e.count("pdh-ha") != 0 || e.count("systemd-run") != 0 || time.Since(start) > 20*time.Second {
+			t.Errorf("Ausgang %d, Ausgabe %q nach %s:\n%s", code, out, time.Since(start), e.dump())
+		}
+	})
 }
 
 // Wartung an vor dem Schreiben, aus nach Bestätigen und nach dem Rückfall; ohne --ha-maint nie.

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
@@ -242,15 +243,25 @@ func TestNetApplyBusy(t *testing.T) {
 	})
 }
 
-// Ausfallschutz: Wartung, Rollentausch, Update im Verbund oder nicht erreichbar → gesperrt.
+// netHAPeer: Partner-Server und Zeuge im Status von pdh-ha (seen: Partner gerade gesehen).
+func netHAPeer(seen bool) string {
+	return fmt.Sprintf(`"mode":"trio","peers":[{"id":"b","kind":"node","seen":%v},{"id":"w","kind":"witness","seen":true}]`, seen)
+}
+
+// Ausfallschutz: Wartung, Rollentausch, abgeschaltet, Update im Verbund, nicht erreichbar oder –
+// am aktiven Server – Partner nicht zu sehen → gesperrt, mit demselben Wortlaut wie die Karte.
 // Am aktiven Server schaltet der Agent die Wartung auch ohne ha_maint ein.
 func TestNetApplyHA(t *testing.T) {
+	const peerGone = "Der Partner-Server ist gerade nicht erreichbar – am aktiven Server erst ändern, wenn beide Server sich sehen."
 	for name, c := range map[string]struct{ status, want string }{
-		"Wartung":      {`{"ok":true,"configured":true,"maint":true,"self":{"id":"a","role":"aktiv"}}`, "Die Wartung des Ausfallschutzes ist an – bitte danach erneut versuchen"},
-		"Aktion läuft": {`{"ok":true,"configured":true,"busy":true,"self":{"id":"a","role":"aktiv"}}`, "Ein Rollentausch läuft – bitte danach erneut versuchen"},
-		"Rückkehr":     {`{"ok":true,"configured":true,"self":{"id":"a","role":"wiedereingliederung"}}`, "Ein Rollentausch läuft – bitte danach erneut versuchen"},
+		"Wartung":      {`{"ok":true,"configured":true,"maint":true,"self":{"id":"a","role":"aktiv"}}`, "Die Wartung des Ausfallschutzes ist an – bitte zuerst beenden."},
+		"Aktion läuft": {`{"ok":true,"configured":true,"busy":true,"self":{"id":"a","role":"aktiv"}}`, "Ein Rollentausch läuft – bitte warten, bis er fertig ist."},
+		"Rückkehr":     {`{"ok":true,"configured":true,"self":{"id":"a","role":"wiedereingliederung"}}`, "Ein Rollentausch läuft – bitte warten, bis er fertig ist."},
+		"abgeschaltet": {`{"ok":true,"configured":true,` + netHAPeer(true) + `,"self":{"id":"a","role":"abgeschaltet"}}`, "Ein Rollentausch läuft – bitte warten, bis er fertig ist."},
 		"Update":       {`{"ok":true,"configured":true,"update":{"active":true},"self":{"id":"a","role":"passiv"}}`, "Ein PDH-Update läuft – bitte danach erneut versuchen"},
 		"Fehler":       {`{"ok":true,"configured":false,"error":"node.json kaputt"}`, "Ausfallschutz nicht erreichbar – bitte später erneut versuchen"},
+		"Partner weg":  {`{"ok":true,"configured":true,` + netHAPeer(false) + `,"self":{"id":"a","role":"aktiv"}}`, peerGone},
+		"ohne Partner": {`{"ok":true,"configured":true,"mode":"duo","peers":[],"self":{"id":"a","role":"aktiv"}}`, peerGone},
 	} {
 		t.Run(name, func(t *testing.T) {
 			rec := &netRec{}
@@ -278,7 +289,7 @@ func TestNetApplyHA(t *testing.T) {
 		rec := &netRec{}
 		a := netTestAgent(t, rec, nil)
 		haInstalled(t)
-		haFakeSocket(t, `{"ok":true,"configured":true,"self":{"id":"a","role":"aktiv"}}`)
+		haFakeSocket(t, `{"ok":true,"configured":true,`+netHAPeer(true)+`,"self":{"id":"a","role":"aktiv"}}`)
 		if ans := netCall(t, a, http.MethodPost, "/v1/net/apply", `{"action":"fix","ha_maint":false}`); !ans.OK {
 			t.Fatalf("%+v", ans)
 		}
@@ -287,11 +298,22 @@ func TestNetApplyHA(t *testing.T) {
 			t.Errorf("Wartung am aktiven Server nicht verlangt: %+v", c)
 		}
 	})
+	t.Run("aktiv im Modus einzel", func(t *testing.T) {
+		rec := &netRec{}
+		a := netTestAgent(t, rec, nil)
+		haInstalled(t)
+		haFakeSocket(t, `{"ok":true,"configured":true,"mode":"einzel","peers":[],"self":{"id":"a","role":"aktiv"}}`)
+		if ans := netCall(t, a, http.MethodPost, "/v1/net/apply", `{"action":"fix"}`); !ans.OK {
+			t.Fatalf("%+v", ans)
+		}
+		netWaitIdle(t, a)
+	})
 	t.Run("Spiegel", func(t *testing.T) {
 		rec := &netRec{}
 		a := netTestAgent(t, rec, nil)
 		haInstalled(t)
-		haFakeSocket(t, `{"ok":true,"configured":true,"self":{"id":"b","role":"passiv"}}`)
+		// am Spiegel hindert ein unsichtbarer Partner nicht: jeder Server ändert nur sich selbst
+		haFakeSocket(t, `{"ok":true,"configured":true,`+netHAPeer(false)+`,"self":{"id":"b","role":"passiv"}}`)
 		if ans := netCall(t, a, http.MethodPost, "/v1/net/apply", `{"action":"fix"}`); !ans.OK {
 			t.Fatalf("%+v", ans)
 		}
@@ -656,6 +678,61 @@ func TestNetAgentResumeOnStart(t *testing.T) {
 		t.Error("main.go startet netResume nicht im systemd-Block")
 	}
 }
+
+// Die Wache schreibt das Ergebnis einer Änderung einmal je Kennung ins Protokoll des Agenten – auch
+// einen Rückfall, den niemand auf der Karte sieht; zu alte Ergebnisse nicht mehr.
+func TestNetWatchLogsResult(t *testing.T) {
+	var buf strings.Builder
+	var mu sync.Mutex
+	old := log.Writer()
+	log.SetOutput(writerFunc(func(p []byte) (int, error) { mu.Lock(); defer mu.Unlock(); return buf.Write(p) }))
+	t.Cleanup(func() { log.SetOutput(old) })
+	logged := func() string { mu.Lock(); defer mu.Unlock(); return buf.String() }
+
+	rec := &netRec{}
+	a := netTestAgent(t, rec, nil)
+	now := time.Now()
+	netWriteState(t, a, fmt.Sprintf("id=20261120-777\nstate=restored\naction=dns\nby=Anna\nstarted=%d\nmsg=Nicht bestätigt – vorige Einstellung wiederhergestellt\n", now.Unix()-150))
+	a.netWatch(context.Background(), now)
+	a.netWatch(context.Background(), now.Add(30*time.Second))
+	if l := logged(); strings.Count(l, "20261120-777") != 1 || !strings.Contains(l, `(DNS-Server ändern, von "Anna") zurückgenommen: Nicht bestätigt – vorige Einstellung wiederhergestellt`) {
+		t.Errorf("Rückfall: %q", l)
+	}
+	netWriteState(t, a, fmt.Sprintf("id=20261120-778\nstate=confirmed\naction=fix\nby=Anna\nconfirmed_by=Bert\nstarted=%d\n", now.Unix()))
+	a.netWatch(context.Background(), now)
+	netWriteState(t, a, fmt.Sprintf("id=20261120-779\nstate=failed\naction=fix\nby=Anna\nstarted=%d\nmsg=netplan apply ist gescheitert\n", now.Unix()))
+	a.netWatch(context.Background(), now)
+	l := logged()
+	if !strings.Contains(l, `Änderung 20261120-778 (Jetzige Adresse fest einstellen, von "Anna") bestätigt von "Bert"`) ||
+		!strings.Contains(l, "Änderung 20261120-779 (Jetzige Adresse fest einstellen, von \"Anna\") gescheitert: netplan apply ist gescheitert") {
+		t.Errorf("Ergebnisse: %q", l)
+	}
+	// wartend: nichts; älter als ein Tag: nichts
+	netWriteState(t, a, fmt.Sprintf("id=20261120-780\nstate=pending\ndeadline=%d\n", now.Unix()+100))
+	a.netWatch(context.Background(), now)
+	netWriteState(t, a, fmt.Sprintf("id=20261118-1\nstate=restored\nstarted=%d\n", now.Add(-48*time.Hour).Unix()))
+	a.netWatch(context.Background(), now)
+	if l := logged(); strings.Contains(l, "20261120-780") || strings.Contains(l, "20261118-1") {
+		t.Errorf("wartend oder alt protokolliert: %q", l)
+	}
+	// über die Karte bestätigt: steht schon im Protokoll, die Wache schreibt es nicht noch einmal
+	netWriteState(t, a, fmt.Sprintf("id=20261120-781\nstate=pending\napplied=1\ndeadline=%d\n", now.Unix()+100))
+	if ans := netCall(t, a, http.MethodPost, "/v1/net/confirm", `{"id":"20261120-781","by":"Bert"}`); !ans.OK {
+		t.Fatalf("Bestätigen: %+v", ans)
+	}
+	netWriteState(t, a, fmt.Sprintf("id=20261120-781\nstate=confirmed\nconfirmed_by=Bert\nstarted=%d\n", now.Unix()))
+	a.netWatch(context.Background(), now)
+	if n := strings.Count(logged(), "20261120-781"); n != 1 {
+		t.Errorf("Bestätigung %d-mal im Protokoll: %q", n, logged())
+	}
+	if n := len(rec.all()); n != 1 {
+		t.Errorf("%d Skriptaufrufe (nur das Bestätigen erwartet)", n)
+	}
+}
+
+type writerFunc func([]byte) (int, error)
+
+func (f writerFunc) Write(p []byte) (int, error) { return f(p) }
 
 func TestParseNetState(t *testing.T) {
 	if p := parseNetState(nil); p != nil {

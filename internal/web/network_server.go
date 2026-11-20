@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -22,10 +23,11 @@ import (
 // Partners; auf der Karte des Servers, auf dem die Seite läuft, die Aktionen „Jetzige Adresse
 // fest einstellen“ und „DNS-Server ändern“ mit Rückfall nach 2 Minuten.
 //
-//	GET  /admin/network/server          Karte (system.network); fragt alle 2 s nach, solange eine Änderung läuft
+//	GET  /admin/network/server          Karte (system.network); fragt alle 2 s nach, solange eine Änderung
+//	                                    läuft (?wait=Kennung|run&dl=Frist, siehe netSrvWait)
 //	POST /admin/network/server/fix      jetzige Adresse fest einstellen (canServerConfig)
 //	POST /admin/network/server/dns      DNS-Server ändern, Felder dns1 bis dns3 (canServerConfig)
-//	POST /admin/network/server/confirm  „Seite erreichbar – Einstellung behalten“, Feld id (canServerConfig)
+//	POST /admin/network/server/confirm  „Seite erreichbar – Einstellung behalten“, Felder id, dl (canServerConfig)
 //
 // Antwort ist immer das Fragment „nw-server“ (widgets/network_parts.gohtml). Ausgeführt wird die
 // Änderung vom Update-Agenten dieses Servers (cmd/update-agent/net.go, scripts/pdh-static-ip.sh):
@@ -35,18 +37,37 @@ import (
 // Die Aktionen gehen auch am Spiegel (mirrorAllowedWrite): jeder Server stellt nur seine eigene
 // Adresse ein, in die Datenbank schreibt das nichts.
 
-const (
-	netSrvStatusTimeout = 10 * time.Second // Stand beim Agenten (er liest selbst bis zu 15 s, meist unter 1 s)
+// Fristen beim Update-Agenten (Variablen nur für Tests).
+var (
+	// Stand beim Agenten: über seiner eigenen Frist (netCollectTimeout 15 s), damit ein langsames
+	// Lesen während „netplan apply“ nicht als Fehler endet; meist unter 1 s.
+	netSrvStatusTimeout = 20 * time.Second
 	netSrvApplyTimeout  = 20 * time.Second // der Agent prüft und startet nur, das Anwenden läuft im Hintergrund
 	// Der Agent bestätigt synchron und gibt dem Skript 30 s; etwas länger warten, damit seine
 	// Meldung ankommt. Nach jedem Fehler wird der Stand ohnehin neu gelesen.
 	netSrvConfirmTimeout = 35 * time.Second
-	netSrvProbeTimeout   = 3 * time.Second
-	netSrvLastShown      = 24 * time.Hour // so lange steht die letzte Änderung auf der Karte
+)
+
+const (
+	netSrvProbeTimeout = 3 * time.Second
+	netSrvLastShown    = 24 * time.Hour // so lange steht die letzte Änderung auf der Karte
+
+	// Nachfragen der Karte, solange eine Änderung läuft: alle 2 s; ist der Stand gerade nicht
+	// lesbar (Agent startet neu, netplan baut die Verbindung neu auf), alle 3 s bis höchstens
+	// netSrvWaitGrace nach der Frist. Läuft das Anwenden noch ohne Kennung, gilt als Frist
+	// netSrvRunWindow ab dem letzten gelesenen Stand. Fristen weiter als netSrvWaitAhead in der
+	// Zukunft gelten nicht (das Skript erlaubt höchstens 3600 s).
+	netSrvPollEvery  = "2s"
+	netSrvPollUnread = "3s"
+	netSrvWaitGrace  = 60 * time.Second
+	netSrvRunWindow  = 2 * time.Minute
+	netSrvWaitAhead  = time.Hour
 
 	netSrvMsgUpdate     = "Ein PDH-Update läuft – bitte danach erneut versuchen."
 	netSrvMsgMaint      = "Die Wartung des Ausfallschutzes ist an – bitte zuerst beenden."
 	netSrvMsgSwap       = "Ein Rollentausch läuft – bitte warten, bis er fertig ist."
+	netSrvMsgPeerGone   = "Der Partner-Server ist gerade nicht erreichbar – am aktiven Server erst ändern, wenn beide Server sich sehen."
+	netSrvMsgUnread     = "Stand gerade nicht lesbar – wird weiter abgefragt."
 	netSrvMsgHAUnreach  = "Ausfallschutz nicht erreichbar – bitte später erneut versuchen."
 	netSrvMsgMaintOff   = "Die Wartung des Ausfallschutzes aus der vorigen Änderung wird noch ausgeschaltet – bitte danach erneut versuchen."
 	netSrvMsgDocker     = "Im Docker-Testsystem nicht verfügbar"
@@ -68,7 +89,62 @@ const (
 var errNetNoHA = errors.New("kein Ausfallschutz eingerichtet")
 
 // netSrvIDRe: Kennung einer Änderung (wie im Agenten: Datum und Prozessnummer des Skripts).
-var netSrvIDRe = regexp.MustCompile(`^[0-9A-Za-z-]{1,64}$`)
+// netSrvDLRe: Frist als Unix-Sekunden.
+var (
+	netSrvIDRe = regexp.MustCompile(`^[0-9A-Za-z-]{1,64}$`)
+	netSrvDLRe = regexp.MustCompile(`^[0-9]{1,12}$`)
+)
+
+// netSrvWait: die Karte wartet auf eine laufende Änderung – mit Kennung (ID) oder, solange das
+// Anwenden noch ohne Kennung läuft, Run – und kennt deren Frist (DL). Die Karte schickt beides
+// beim Nachfragen mit (wait, dl), damit Countdown und „behalten“ bleiben, auch wenn der Stand
+// beim Agenten einmal nicht lesbar ist. Leer = keine.
+type netSrvWait struct {
+	ID  string
+	Run bool
+	DL  time.Time
+}
+
+func (w netSrvWait) set() bool { return (w.ID != "" || w.Run) && !w.DL.IsZero() }
+
+// url: Adresse zum Nachfragen; ohne gültige Kennung bzw. Frist die Karte ohne Parameter.
+func (w netSrvWait) url() string {
+	const base = "/admin/network/server"
+	if !w.set() || w.DL.Unix() <= 0 {
+		return base
+	}
+	id := "run"
+	if !w.Run {
+		if !netSrvIDRe.MatchString(w.ID) {
+			return base
+		}
+		id = w.ID
+	}
+	return base + "?wait=" + url.QueryEscape(id) + "&dl=" + strconv.FormatInt(w.DL.Unix(), 10)
+}
+
+// netSrvWaitFrom: wait und dl aus Abfrage oder Formular, streng geprüft – wait ist „run“ oder eine
+// Kennung, dl eine Zahl, höchstens netSrvLastShown alt und netSrvWaitAhead voraus. Sonst leer.
+func netSrvWaitFrom(wait, dl string, now time.Time) netSrvWait {
+	if wait == "" || !netSrvDLRe.MatchString(dl) {
+		return netSrvWait{}
+	}
+	n, err := strconv.ParseInt(dl, 10, 64)
+	if err != nil || n <= 0 {
+		return netSrvWait{}
+	}
+	t := time.Unix(n, 0)
+	if t.Before(now.Add(-netSrvLastShown)) || t.After(now.Add(netSrvWaitAhead)) {
+		return netSrvWait{}
+	}
+	switch {
+	case wait == "run":
+		return netSrvWait{Run: true, DL: t}
+	case netSrvIDRe.MatchString(wait):
+		return netSrvWait{ID: wait, DL: t}
+	}
+	return netSrvWait{}
+}
 
 // netAgentStatus: Antwort von GET /v1/net/status des Update-Agenten (Schlüssel wie dort).
 type netAgentStatus struct {
@@ -202,6 +278,13 @@ type NetServerView struct {
 	MaintOff string // Wartung aus der vorigen Änderung noch an (Grund vom Agenten)
 	JobErr   string // letzter Lauf des Agenten gescheitert (nur, wenn nicht schon in Last)
 
+	// Nachfragen, solange eine Änderung läuft: Adresse (mit wait und dl) und Abstand ("" = keins)
+	PollURL, PollEvery string
+	// Unread: Stand beim Agenten gerade nicht lesbar, die Karte wartet aber auf eine Änderung –
+	// Countdown und „behalten“ bleiben mit Kennung und Frist aus der Anfrage (Agent und Skript
+	// prüfen beim Bestätigen selbst noch einmal).
+	Unread bool
+
 	agentOK bool             // Stand beim Agenten gelesen
 	agent   *netAgentPending // Stand laut Agent, ohne Altersgrenze (Bestätigen prüft ihn)
 }
@@ -214,6 +297,9 @@ func (v NetServerView) Remaining() string {
 	left := max(v.Pending.Deadline.Unix()-v.Now, 0)
 	return fmt.Sprintf("%d:%02d", left/60, left%60)
 }
+
+// UnreadText: Hinweis, solange der Stand beim Agenten nicht lesbar ist (Unread).
+func (v NetServerView) UnreadText() string { return netSrvMsgUnread }
 
 // LastText: „Letzte Änderung: …“ mit Ergebnis.
 func (v NetServerView) LastText() string {
@@ -282,8 +368,27 @@ func netServerBlocked(st haStatus, haOK, pdhLocked bool) string {
 		return netSrvMsgMaint
 	case st.Busy || st.Self.Role == string(ha.Fenced) || st.Self.Role == string(ha.Rejoin):
 		return netSrvMsgSwap
+	case st.Mode != string(ha.Single) && st.Self.Role == string(ha.Active) && !netPeerSeen(st):
+		// Die Wartung gilt nur mit einem Partner, der zustimmt; fällt dazu das Gateway länger aus,
+		// könnte sich der aktive Server sonst abschalten (wie im Agenten).
+		return netSrvMsgPeerGone
 	}
 	return ""
+}
+
+// netPeerSeen: es gibt einen Partner-Server, und jeder wird gerade gesehen (der Zeuge zählt nicht).
+func netPeerSeen(st haStatus) bool {
+	seen := false
+	for _, n := range st.Peers {
+		if n.Kind != "node" {
+			continue
+		}
+		if !n.Seen {
+			return false
+		}
+		seen = true
+	}
+	return seen
 }
 
 // netDNSForm: Felder dns1 bis dns3 – ein bis drei IPv4-Adressen (leere Felder zählen nicht, doppelte
@@ -324,14 +429,28 @@ func netUserName(u *users.User) string {
 	return u.ID
 }
 
-// netAgentCall: Anfrage an den Update-Agenten mit eigener Frist.
+// netAgentSlow: Zeitüberschreitung beim Update-Agenten. Der Text bleibt der gemeldete; erkennbar
+// ist sie an errors.Is(err, context.DeadlineExceeded) – agentRaw gibt die Ursache nur als Text weiter.
+type netAgentSlow struct{ err error }
+
+func (e netAgentSlow) Error() string   { return e.err.Error() }
+func (e netAgentSlow) Unwrap() []error { return []error{e.err, context.DeadlineExceeded} }
+
+// netAgentCall: Anfrage an den Update-Agenten mit eigener Frist. Ist die Frist abgelaufen, trägt
+// der Fehler context.DeadlineExceeded (netSrvMsgAgentSlow bzw. „keine rechtzeitige Antwort“).
 func (h *Handler) netAgentCall(ctx context.Context, timeout time.Duration, method, path string, body, out any) error {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
+	var err error
 	if h.netAgentHook != nil {
-		return h.netAgentHook(ctx, method, path, body, out)
+		err = h.netAgentHook(ctx, method, path, body, out)
+	} else {
+		err = h.agentJSON(ctx, method, path, body, out)
 	}
-	return h.agentJSON(ctx, method, path, body, out)
+	if err != nil && !errors.Is(err, context.DeadlineExceeded) && errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		err = netAgentSlow{err}
+	}
+	return err
 }
 
 // netHAState: Status des Ausfallschutzes; ohne Socket errNetNoHA (Einzelserver, Docker).
@@ -352,11 +471,20 @@ func netSameIP(a, b string) bool {
 	return err1 == nil && err2 == nil && x.Unmap() == y.Unmap()
 }
 
-// netServerView liest Ausfallschutz und Update-Agent und baut die Karten. Sperren gelten nur ohne
-// laufende Änderung (während der Änderung ist die Wartung des Ausfallschutzes absichtlich an).
+// netServerView: Karte für GET – wait und dl der Abfrage zählen (Nachfragen während einer Änderung).
 func (h *Handler) netServerView(r *http.Request) NetServerView {
+	q := r.URL.Query()
+	return h.netServerViewWait(r, netSrvWaitFrom(q.Get("wait"), q.Get("dl"), time.Now()))
+}
+
+// netServerViewWait liest Ausfallschutz und Update-Agent und baut die Karten. Sperren gelten nur
+// ohne laufende Änderung (während der Änderung ist die Wartung des Ausfallschutzes absichtlich an).
+// wait: die Karte wartet auf eine Änderung – ist der Stand beim Agenten dann nicht lesbar, fragt
+// sie bis netSrvWaitGrace nach der Frist weiter nach und behält Countdown und „behalten“.
+func (h *Handler) netServerViewWait(r *http.Request, wait netSrvWait) NetServerView {
 	ctx := r.Context()
-	v := NetServerView{Now: time.Now().Unix(), ViaAddr: hostOnly(r.Host), Admin: h.canServerConfig(r), Docker: inDocker()}
+	now := time.Now()
+	v := NetServerView{Now: now.Unix(), ViaAddr: hostOnly(r.Host), Admin: h.canServerConfig(r), Docker: inDocker()}
 	st, haErr := h.netHAState(ctx)
 	haOK := haErr == nil && st.Configured
 	v.ActiveInCluster = haOK && st.Mode != string(ha.Single) && st.Self.Role == string(ha.Active)
@@ -381,7 +509,17 @@ func (h *Handler) netServerView(r *http.Request) NetServerView {
 	} else {
 		var as netAgentStatus
 		if err := h.netAgentCall(ctx, netSrvStatusTimeout, http.MethodGet, "/v1/net/status", nil, &as); err != nil {
-			if v.Err = err.Error(); !strings.Contains(v.Err, "Update-Agent") {
+			if wait.set() && now.Before(wait.DL.Add(netSrvWaitGrace)) {
+				// Stand gerade nicht lesbar (Agent startet neu, netplan baut die Verbindung neu auf):
+				// weiter nachfragen, Countdown und „behalten“ mit Kennung und Frist der Anfrage.
+				v.Unread = true
+				v.PollURL, v.PollEvery = wait.url(), netSrvPollUnread
+				if wait.Run {
+					v.Running = true
+				} else {
+					v.Pending = &netAgentPending{ID: wait.ID, State: "pending", Deadline: wait.DL, Applied: true}
+				}
+			} else if v.Err = err.Error(); !strings.Contains(v.Err, "Update-Agent") {
 				v.Err = "Update-Agent: " + v.Err
 			}
 			if haOK {
@@ -408,6 +546,15 @@ func (h *Handler) netServerView(r *http.Request) NetServerView {
 				v.JobErr = as.JobErr
 			}
 			h.netLogFinal(v.Last)
+			switch {
+			case v.Pending != nil:
+				v.PollURL = netSrvWait{ID: v.Pending.ID, DL: v.Pending.Deadline}.url()
+			case v.Running:
+				v.PollURL = netSrvWait{Run: true, DL: now.Add(netSrvRunWindow)}.url()
+			}
+			if v.PollURL != "" {
+				v.PollEvery = netSrvPollEvery
+			}
 		}
 		if self.Net != nil && !self.Net.Netplan {
 			self.Note = netSrvMsgNetplan
@@ -600,7 +747,13 @@ func (h *Handler) netServerAct(w http.ResponseWriter, r *http.Request, action st
 	} else {
 		lg.Info().Str("benutzer", u.ID).Str("name", body.By).Str("aktion", action).Strs("dns", dns).Bool("wartung", body.HAMaint).Msg("server-adresse: änderung gestartet")
 	}
-	v = h.netServerView(r) // zeigt den laufenden Auftrag und fragt danach selbst nach
+	// zeigt den laufenden Auftrag und fragt danach selbst nach – auch wenn der Stand gleich danach
+	// nicht lesbar ist (gestartet oder vielleicht gestartet: Zeitüberschreitung)
+	var wait netSrvWait
+	if err == nil || errors.Is(err, context.DeadlineExceeded) {
+		wait = netSrvWait{Run: true, DL: time.Now().Add(netSrvRunWindow)}
+	}
+	v = h.netServerViewWait(r, wait)
 	switch {
 	case errors.Is(err, context.DeadlineExceeded):
 		v.Err = netSrvMsgAgentSlow
@@ -612,9 +765,10 @@ func (h *Handler) netServerAct(w http.ResponseWriter, r *http.Request, action st
 	h.netServerRender(w, v)
 }
 
-// NetworkServerConfirmWeb: POST /admin/network/server/confirm (id) – „Seite erreichbar – Einstellung
-// behalten“. Bestätigt wird nur die Änderung mit dieser Kennung. Nach einem Fehler (auch einer
-// Zeitüberschreitung) zählt der neu gelesene Stand: Der Agent kann trotzdem bestätigt haben.
+// NetworkServerConfirmWeb: POST /admin/network/server/confirm (id, dl) – „Seite erreichbar –
+// Einstellung behalten“. Bestätigt wird nur die Änderung mit dieser Kennung. Nach einem Fehler
+// (auch einer Zeitüberschreitung) zählt der neu gelesene Stand: Der Agent kann trotzdem bestätigt
+// haben. Ist auch der nicht lesbar, wartet die Karte mit Kennung und Frist (dl) weiter.
 func (h *Handler) NetworkServerConfirmWeb(w http.ResponseWriter, r *http.Request) {
 	if !h.canServerConfig(r) {
 		http.Error(w, "keine berechtigung", http.StatusForbidden)
@@ -637,7 +791,11 @@ func (h *Handler) NetworkServerConfirmWeb(w http.ResponseWriter, r *http.Request
 		By string `json:"by"`
 	}{id, netUserName(u)}
 	err := h.netAgentCall(r.Context(), netSrvConfirmTimeout, http.MethodPost, "/v1/net/confirm", body, nil)
-	v := h.netServerView(r)
+	var wait netSrvWait
+	if err != nil {
+		wait = netSrvWaitFrom(id, r.FormValue("dl"), time.Now())
+	}
+	v := h.netServerViewWait(r, wait)
 	confirmed := v.agent != nil && v.agent.ID == id && v.agent.State == "confirmed"
 	lg := componentLog("netzwerk")
 	switch {

@@ -51,6 +51,12 @@ const (
 	netNotWaiting  = "Keine Änderung wartet auf Bestätigung"
 	netStillApply  = "Die Änderung wird noch angewendet – bitte gleich erneut bestätigen"
 	netRunWaitStop = 10 * time.Second // nach Ablauf der Frist höchstens so lange auf die Ausgabe warten
+	netLogMaxAge   = 24 * time.Hour   // ältere Ergebnisse schreibt die Wache nicht mehr ins Protokoll
+
+	// Sperrgründe – wörtlich wie auf der Karte (internal/web/network_server.go)
+	netMsgMaint    = "Die Wartung des Ausfallschutzes ist an – bitte zuerst beenden."
+	netMsgSwap     = "Ein Rollentausch läuft – bitte warten, bis er fertig ist."
+	netMsgPeerGone = "Der Partner-Server ist gerade nicht erreichbar – am aktiven Server erst ändern, wenn beide Server sich sehen."
 )
 
 // netWatchEvery: so oft prüft der Agent, ob eine wartende Änderung längst hätte zurückgenommen
@@ -77,6 +83,7 @@ type netPending struct {
 	Maint           bool      `json:"maint"`   // Wartung des Ausfallschutzes von dieser Änderung eingeschaltet
 	MaintOffPending bool      `json:"maint_off_pending"`
 	MaintMsg        string    `json:"maint_msg,omitempty"`
+	ConfirmedBy     string    `json:"confirmed_by,omitempty"`
 }
 
 // netStatusResp: GET /v1/net/status.
@@ -107,6 +114,7 @@ type netJob struct {
 
 	maintNext time.Time     // nächster Versuch „Wartung aus“ (Wache)
 	maintWait time.Duration // Abstand nach dem letzten Fehlschlag
+	logged    string        // Kennung der Änderung, deren Ergebnis schon im Protokoll steht
 }
 
 func (j *netJob) get() (bool, string) {
@@ -235,6 +243,8 @@ func parseNetState(b []byte) *netPending {
 			maintOff = v
 		case "maint_msg":
 			p.MaintMsg = v
+		case "confirmed_by":
+			p.ConfirmedBy = v
 		}
 	}
 	if p.State == "" {
@@ -284,8 +294,28 @@ type netHA struct {
 	Maint      bool
 	Busy       bool // pdh-ha führt eine Aktion aus (Rollentausch, Übernahme …)
 	Rejoin     bool
+	Fenced     bool // dieser Server hat sich abgeschaltet
 	Update     bool // Update im Verbund offen
+	Cluster    bool // Verbund mit Partner (Modus nicht „einzel“)
+	PeerSeen   bool // es gibt einen Partner-Server, und jeder wird gerade gesehen (Zeuge zählt nicht)
 	Exclude    []netip.Addr
+}
+
+// refusal: Sperrgrund laut pdh-ha ("" = frei), Wortlaut wie auf der Karte. Am aktiven Server im
+// Verbund nur, wenn er den Partner sieht: Die Wartung gilt nur mit einem Partner, der zustimmt,
+// und bei längerem Gateway-Ausfall während der Änderung könnte er sich sonst abschalten.
+func (h netHA) refusal() string {
+	switch {
+	case h.Maint:
+		return netMsgMaint
+	case h.Busy || h.Rejoin || h.Fenced:
+		return netMsgSwap
+	case h.Update:
+		return "Ein PDH-Update läuft – bitte danach erneut versuchen"
+	case h.Active && h.Cluster && !h.PeerSeen:
+		return netMsgPeerGone
+	}
+	return ""
 }
 
 // netHAInfo: Stand laut pdh-ha. Ohne node.json (kein Verbund) leer und ohne Fehler; eingerichtet,
@@ -299,12 +329,17 @@ func (a *updateAgent) netHAInfo(ctx context.Context) (netHA, error) {
 	var st struct {
 		Configured bool   `json:"configured"`
 		Error      string `json:"error"`
+		Mode       string `json:"mode"`
 		Maint      bool   `json:"maint"`
 		Busy       bool   `json:"busy"`
 		Self       struct {
 			Role     string `json:"role"`
 			VIP6Held string `json:"vip6_held"`
 		} `json:"self"`
+		Peers []struct {
+			Kind string `json:"kind"`
+			Seen bool   `json:"seen"`
+		} `json:"peers"`
 		Access struct {
 			VIP  string `json:"vip"`
 			VIP6 string `json:"vip6"`
@@ -325,7 +360,16 @@ func (a *updateAgent) netHAInfo(ctx context.Context) (netHA, error) {
 		return netHA{}, nil
 	}
 	info := netHA{Configured: true, Active: st.Self.Role == string(ha.Active), Maint: st.Maint, Busy: st.Busy,
-		Rejoin: st.Self.Role == string(ha.Rejoin), Update: st.Update.Active}
+		Rejoin: st.Self.Role == string(ha.Rejoin), Fenced: st.Self.Role == string(ha.Fenced), Update: st.Update.Active,
+		Cluster: st.Mode != string(ha.Single), PeerSeen: true}
+	nodes := 0
+	for _, p := range st.Peers {
+		if p.Kind == "node" {
+			nodes++
+			info.PeerSeen = info.PeerSeen && p.Seen
+		}
+	}
+	info.PeerSeen = info.PeerSeen && nodes > 0
 	add := func(a netip.Addr) {
 		for _, x := range info.Exclude {
 			if x == a {
@@ -444,18 +488,12 @@ func (a *updateAgent) netApplyHandler(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), netCollectTimeout)
 	defer cancel()
 	info, err := a.netHAInfo(ctx)
-	switch {
-	case err != nil:
+	if err != nil {
 		netRefuse(w, netHAUnreach)
 		return
-	case info.Maint:
-		netRefuse(w, "Die Wartung des Ausfallschutzes ist an – bitte danach erneut versuchen")
-		return
-	case info.Busy || info.Rejoin:
-		netRefuse(w, "Ein Rollentausch läuft – bitte danach erneut versuchen")
-		return
-	case info.Update:
-		netRefuse(w, "Ein PDH-Update läuft – bitte danach erneut versuchen")
+	}
+	if why := info.refusal(); why != "" {
+		netRefuse(w, why)
 		return
 	}
 	sum := a.netSummary(ctx, info.Exclude)
@@ -562,6 +600,9 @@ func (a *updateAgent) netConfirmHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	log.Printf("netzwerk: Einstellung %s von %q bestätigt", req.ID, by)
+	a.netJob.mu.Lock()
+	a.netJob.logged = req.ID // steht schon im Protokoll – die Wache schreibt es nicht noch einmal
+	a.netJob.mu.Unlock()
 	writeMountJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
@@ -602,6 +643,41 @@ func (a *updateAgent) netResume(ctx context.Context) {
 	}
 }
 
+// netLogFinal: Ergebnis einer Änderung (bestätigt, zurückgestellt, gescheitert) einmal je Kennung
+// ins Protokoll des Agenten (journalctl -u pdh-update-agent) – auch wenn niemand die Karte öffnet,
+// z. B. ein Rückfall in der Nacht. Das Protokoll des PDH bekommt den Eintrag erst, wenn jemand die
+// Karte öffnet (internal/web netLogFinal). Ergebnisse älter als netLogMaxAge nicht mehr; nach
+// einem Neustart des Agenten erscheint das letzte Ergebnis höchstens einmal erneut.
+func (a *updateAgent) netLogFinal(p *netPending, now time.Time) {
+	if p == nil || p.ID == "" || (p.State != "confirmed" && p.State != "restored" && p.State != "failed") {
+		return
+	}
+	j := &a.netJob
+	j.mu.Lock()
+	seen := j.logged == p.ID
+	j.logged = p.ID
+	j.mu.Unlock()
+	if seen || !p.Started.IsZero() && now.Sub(p.Started) > netLogMaxAge {
+		return
+	}
+	what := "Jetzige Adresse fest einstellen"
+	if p.Action == "dns" {
+		what = "DNS-Server ändern"
+	}
+	switch p.State {
+	case "confirmed":
+		log.Printf("netzwerk: Änderung %s (%s, von %q) bestätigt von %q", p.ID, what, p.By, p.ConfirmedBy)
+	case "restored":
+		msg := p.Msg
+		if msg == "" {
+			msg = "Nicht bestätigt – vorige Einstellung wiederhergestellt"
+		}
+		log.Printf("netzwerk: Änderung %s (%s, von %q) zurückgenommen: %s", p.ID, what, p.By, msg)
+	default:
+		log.Printf("netzwerk: Änderung %s (%s, von %q) gescheitert: %s", p.ID, what, p.By, p.Msg)
+	}
+}
+
 // netWatch: ein Durchgang der Wache.
 //   - Eine Änderung wartet und ist seit netWatchGrace über der Frist (Wecker gescheitert) →
 //     Rückfall über --resume. Läuft das Anwenden laut Agent noch, wartet die Wache zusätzlich die
@@ -613,6 +689,7 @@ func (a *updateAgent) netWatch(ctx context.Context, now time.Time) {
 	if p == nil {
 		return
 	}
+	a.netLogFinal(p, now)
 	running, _ := a.netJob.get()
 	if p.State == "pending" {
 		// ohne gültige Frist nimmt das Skript die Änderung ebenfalls zurück

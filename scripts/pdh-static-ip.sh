@@ -66,6 +66,7 @@ TIMER_UNIT=pdh-static-ip-rollback
 # Sperre so lange, danach holt der Update-Agent den Rückfall nach.
 NP_GENERATE_TIMEOUT="${PDH_NET_GENERATE_TIMEOUT:-60}"
 NP_APPLY_TIMEOUT="${PDH_NET_APPLY_TIMEOUT:-90}"
+NP_GET_TIMEOUT="${PDH_NET_GET_TIMEOUT:-30}"
 RESTORE_WAIT="${PDH_NET_RESTORE_WAIT:-600}"
 
 # Netplan führt Dateien zusammen; der Eintrag muss dieselbe Kennung haben wie
@@ -210,6 +211,8 @@ flush() { sync -- "$@" >/dev/null 2>&1 || true; }
 # Die vom Skript ignorierten Signale gelten für netplan wieder (sonst wirkte erst das KILL).
 np_generate() { ( trap - PIPE HUP INT TERM; exec timeout -k 10 "$NP_GENERATE_TIMEOUT" netplan generate ) 2>&1; }
 np_apply() { ( trap - PIPE HUP INT TERM; exec timeout -k 10 "$NP_APPLY_TIMEOUT" netplan apply ) 2>&1; }
+# np_get SCHLÜSSEL: nur die Ausgabe (Warnungen von netplan auf stderr fallen weg)
+np_get() { ( trap - PIPE HUP INT TERM; exec timeout -k 10 "$NP_GET_TIMEOUT" netplan get "$@" ) 2>/dev/null; }
 # np_err AUSGANG AUSGABE: Grund für die Meldung
 np_err() {
   if [[ "$1" == 124 || "$1" == 137 ]]; then
@@ -526,6 +529,15 @@ auto_apply() {
   local -a dns_list base
   command -v netplan >/dev/null 2>&1 || nfail 1 "netplan fehlt – dieses Skript ist für Ubuntu-Server."
   net_lock
+  # Zuerst, was der Zustand verbietet – vor jedem Aufruf von netplan unter der Sperre
+  [[ "$(state_get state)" != pending ]] || nfail 3 "Eine Änderung wartet noch auf Bestätigung"
+  if maint_open; then
+    nfail 1 "Die Wartung des Ausfallschutzes aus der vorigen Änderung ist noch an – sie wird automatisch ausgeschaltet, bitte danach erneut versuchen. Es wurde nichts geändert."
+  fi
+  # Sicherungen nach gescheitertem Rückfall sind die einzige Kopie der vorigen Einstellung
+  if [[ "$(state_get bak)" == keep ]] && [[ -e "$BAK_YAML" || -e "$BAK_CLOUD" ]]; then
+    nfail 1 "Eine frühere Änderung ließ sich nicht vollständig zurücknehmen – bitte zuerst von Hand prüfen und die Sicherungen in $STATE_DIR danach löschen, es wurde nichts geändert."
+  fi
   out="$(np_generate)"
   rc=$?
   if (( rc )); then
@@ -560,19 +572,16 @@ auto_apply() {
   for d in "${dns_list[@]}"; do [[ "$d" =~ $ipv4_re ]] || nfail 2 "Ungültiger DNS-Server: $d"; done
   # Nur eine Karte, die netplan unter genau diesem Namen als „ethernets“ führt – keine Brücke,
   # kein Bond, kein Raten einer anderen Kennung.
-  ids="$(netplan get ethernets 2>/dev/null | grep -E '^[^ #][^:]*:' | sed 's/:.*//')"
+  out="$(np_get ethernets)"
+  rc=$?
+  if [[ "$rc" == 124 || "$rc" == 137 ]]; then
+    nfail 1 "netplan get antwortet nicht innerhalb der Zeitgrenze – es wurde nichts geändert."
+  fi
+  ids="$(grep -E '^[^ #][^:]*:' <<<"$out" | sed 's/:.*//')"
   grep -qxF -- "$IFACE" <<<"$ids" ||
     nfail 1 "Netzwerkkarte $IFACE steht in netplan nicht unter „ethernets“ (Brücke, Bond oder andere Kennung) – bitte von Hand einstellen, es wurde nichts geändert."
   yaml="$(static_yaml "$IFACE" "$IP" "$GW" "$DNS")"
 
-  [[ "$(state_get state)" != pending ]] || nfail 3 "Eine Änderung wartet noch auf Bestätigung"
-  if maint_open; then
-    nfail 1 "Die Wartung des Ausfallschutzes aus der vorigen Änderung ist noch an – sie wird automatisch ausgeschaltet, bitte danach erneut versuchen. Es wurde nichts geändert."
-  fi
-  # Sicherungen nach gescheitertem Rückfall sind die einzige Kopie der vorigen Einstellung
-  if [[ "$(state_get bak)" == keep ]] && [[ -e "$BAK_YAML" || -e "$BAK_CLOUD" ]]; then
-    nfail 1 "Eine frühere Änderung ließ sich nicht vollständig zurücknehmen – bitte zuerst von Hand prüfen und die Sicherungen in $STATE_DIR danach löschen, es wurde nichts geändert."
-  fi
   if (( HA_MAINT )); then
     cur="$(ha_maint_status)" || nfail 1 "Ausfallschutz (pdh-ha) antwortet nicht oder nennt keinen Wartungsstand – es wurde nichts geändert."
     [[ "${cur%% *}" == off ]] || nfail 1 "Die Wartung des Ausfallschutzes ist schon an – bitte danach erneut versuchen, es wurde nichts geändert."
@@ -688,6 +697,7 @@ net_main() {
   # Zeitgrenzen nur als Zahl (Umgebung für Tests)
   [[ "$NP_GENERATE_TIMEOUT" =~ ^[0-9]+$ ]] || NP_GENERATE_TIMEOUT=60
   [[ "$NP_APPLY_TIMEOUT" =~ ^[0-9]+$ ]] || NP_APPLY_TIMEOUT=90
+  [[ "$NP_GET_TIMEOUT" =~ ^[0-9]+$ ]] || NP_GET_TIMEOUT=30
   [[ "$RESTORE_WAIT" =~ ^[0-9]+$ ]] || RESTORE_WAIT=600
   am_root || nfail 1 "Bitte als root ausführen: sudo bash $0 …"
   case "$MODE" in
