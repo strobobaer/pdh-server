@@ -313,9 +313,18 @@ oder ändern.**
    zwei Sicherheitspunkten: Leitstand-Kalender für Gäste, Ordnerlisten unter
    `/uploads/`) – am 19.11.2026 freigegeben („Passt“). Gebaut auf dem Branch
    `feature/rechte-projekte-kvp` (Migration 183, Rechte `projects.view`,
-   `kvp.view`). Offen: Freigabe für Merge und Push; danach Verbund-Update und
-   Browserprüfung (Rolle ohne die neuen Rechte: Menü, Projekte-Liste,
-   KVP-Seite; Leitstand-Kalender als Gast; `GET /uploads/` → 404). Geparkt:
+   `kvp.view`). Auf `main` (20.11.2026, Merge `9ee7ac8`) und dem
+   Testverbund (Verbund-Update auf `f64c940`; Migration 183, beide Rechte
+   bei allen 6 Rollen). Am Testverbund geprüft (20.11.2026): Leitstand-
+   Kalender als Gast mit veränderter Adresse liefert dasselbe wie ohne;
+   `GET /uploads/` → 404; Rolle ohne die neuen Rechte (Betrachter ohne
+   `projects.view`/`kvp.view`, fremdes Projekt und fremder Vorschlag):
+   Menü ohne „Projekte“, Liste „Meine Projekte“ ohne das fremde Projekt,
+   KVP nur „Meine Vorschläge“ und „Regeln & Vorlagen“ mit „Idee
+   einreichen“, Detailseiten und KVP-Druck 403; Fiori/Fluent, hell/dunkel,
+   320–1366 px ohne Überlauf. Testdaten und Testrolle entfernt. Kleinpunkt
+   (Bestand): „Neues Projekt“ steht auch ohne `projects.edit` da – Speichern
+   scheitert dann an der Rechte-Regel; Knopf ausblenden. Geparkt:
    Copilot-Suche über alle Vorgangsarten scheitert an einem Feld der
    Störungen (Bestand); Partner-Auswahl zeigt höchstens 500 Vorgänge vor dem
    Rechtefilter; KVP-Kennzahlen für Rollen mit Recht nur in einer Abteilung
@@ -344,13 +353,22 @@ oder ändern.**
    – am 19.11.2026 freigegeben („Passt“). Gebaut auf dem Branch
    `feature/netzwerk-vorschlaege` (auf 0.82.3; Migration 184, kein neues
    Recht; pdh-ha meldet `net` und `maint_seq`; Schlussprüfung mit Fix-Welle
-   am 20.11.2026 erledigt). Offen: Freigabe für Merge und
-   Push (nach 0.82.3); danach Verbund-Update und Abnahme am Testverbund:
-   Vorschläge mit echtem UniFi/Omada (Kennwort im Klartext?, Feldnamen,
-   Versionen), Karte beider Server, „DNS ändern“ am Spiegel mit Countdown,
-   Rückfall ohne Bestätigung, Wartung an/aus am aktiven Server, Dauer des
-   Ausfalls der gemeinsamen Adresse; Browserprüfung Fiori/Fluent,
-   hell/dunkel, 320–1366 px. Geparkt: Gemeinsamer Wartungszähler:
+   am 20.11.2026 erledigt). Auf `main` (20.11.2026, Merge `f64c940`) und
+   dem Testverbund (Migration 184, `net` beider Server und `maint_seq` im
+   Status). Am Testverbund geprüft (20.11.2026): Karte beider Server in
+   Fiori/Fluent, hell/dunkel, 320–1366 px ohne Überlauf und
+   Konsolenfehler; „DNS ändern“ am Spiegel (gleiche Werte, netplan mit
+   `00-installer-config.yaml` + `90-pdh-static.yaml`) angewendet nach 3 s,
+   bestätigt, keine Ausfälle, keine Wartung am Spiegel; ohne Bestätigung
+   nach 2 Minuten zurückgestellt (Dateien wie vorher, Karte meldet es);
+   am aktiven Server über die eigene Adresse: Wartung an/aus
+   (`maint_seq` 25 → 26 → 27), gemeinsame Adresse rund 2 s weg (IPv4 und
+   IPv6 danach wieder da). Kleinpunkt: Wer sehr schnell bestätigt, schaltet
+   die Wartung aus, während die gemeinsame Adresse noch 2–4 s fehlt (kein
+   Schaden beobachtet; Bestätigen erst anbieten, wenn sie zurück ist).
+   Offen: Vorschläge mit
+   echtem UniFi/Omada (Kennwort im Klartext?, Feldnamen, Versionen) – am
+   Testverbund sind die Quellen aus. Geparkt: Gemeinsamer Wartungszähler:
    gleichzeitige Änderungen an beiden Servern (später `if_seq` in
    `POST /v1/maintenance`); Konsolen-Dialog nimmt keine Sperre und löscht beim
    Zurücksetzen eine vorher vorhandene cloud-init-Datei (Bestand); WPA2 mit
@@ -364,6 +382,16 @@ oder ändern.**
    dem Einsatz auf 10.10.0.202 `/etc/netplan` nur lesend ansehen;
    Bestätigen-Frist 30 s kürzer als der schlimmste Fall des Skripts (Web liest
    neu).
+   (c) **0.82.5 Netzlaufwerk-Test und Zeuge** – Branch
+   `fix/laufwerk-schreibgrund` (lokal): „Testen“ nennt den echten Grund,
+   wenn PDH nicht schreiben kann; Bau-Rezept des Zeugen kopiert
+   `internal/hostnet` (seit 0.82.4 scheiterte der Bau, der Helfer setzte den
+   Zeugen auf 0.82.2 zurück; `TestDockerfileCopiesAllPdhHaPackages`). Offen:
+   Freigabe für Merge und Push; danach zieht der Zeuge selbst nach. Anlass:
+   Meldung „pdhnas: erreichbar, aber PDH darf nicht schreiben“ – am
+   Testverbund schreibt PDH auf „pdhnas“ (`//10.10.0.202/pdh-nas`)
+   einwandfrei; die Meldung kam vermutlich von 10.10.0.202 (prüft der
+   Anwender selbst nur lesend).
 7. **0.81.6 Nummern ab 10000** (Rüstzeit, KVP, Bestellung und Partner waren auf
    vier Stellen abgeschnitten) – mit 0.82.0 auf `main`; der lokale Branch
    `fix/ruestzeit-nummer` ist damit erledigt.
