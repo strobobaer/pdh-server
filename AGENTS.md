@@ -226,7 +226,7 @@ oder ändern.**
 - Die Liste **im selben Schritt pflegen**: Erledigtes streichen, Neues
   eintragen, Stand und Datum anpassen.
 
-### Offene Punkte (Stand 19.11.2026)
+### Offene Punkte (Stand 20.11.2026)
 
 1. **Netz-Abgleich im Browser mit zwei Quellen:** 0.80.25 ist auf `main`
    und dem Testverbund; die Vorschlagsliste mit zwei eingeschalteten
@@ -355,7 +355,9 @@ oder ändern.**
    `POST /v1/maintenance`); Konsolen-Dialog nimmt keine Sperre und löscht beim
    Zurücksetzen eine vorher vorhandene cloud-init-Datei (Bestand); WPA2 mit
    mehreren Schlüsseln (UniFi `presharedKeys`) und Omada-PPSK werden nicht
-   übernommen; gleiche SSID auf zwei VLANs (zweite wird NEU, Übernehmen
+   übernommen; scheitert bei UniFi die Einzelabfrage eines WLANs, gilt
+   „versteckt“ als „nein“ (Angleichen könnte den Haken entfernen – „unbekannt“
+   wäre richtig); gleiche SSID auf zwei VLANs (zweite wird NEU, Übernehmen
    scheitert sauber); fehlendes `totalCount` bei UniFi liest nur Seite 1;
    netplan-Zusammenführung mit einer festen Adresse in einer anderen Datei
    (`00-installer-config`/`50-cloud-init`) nur am echten System prüfbar – vor
