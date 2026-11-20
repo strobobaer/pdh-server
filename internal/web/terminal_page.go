@@ -288,19 +288,20 @@ func (h *Handler) terminalGate(w http.ResponseWriter, r *http.Request, mode stri
 	}
 	if mode != "schoner" {
 		p.Idle = h.terminalIdleSeconds(r.Context(), uid)
-		p.CardEvents = h.terminalDeviceSession(r) // im Schoner wird nichts abonniert
-		// Anfangswerte der Anmeldung ohne Leser; Änderungen kommen per /terminal/events nach.
-		p.ManualLogin, p.PasswordButton = loginCardPIN, true
-		notify := effectiveCardNotify(nil)
-		if p.CardEvents {
-			if ls, err := h.terminalLoginSettings(r.Context(), uid); err == nil {
-				p.ManualLogin, p.PasswordButton = ls.ManualLogin, ls.PasswordButton
-				notify = effectiveCardNotify(ls.CardNotify)
-			}
-		}
-		nb, _ := json.Marshal(notify)
-		p.CardNotify = string(nb)
 	}
+	// Auch der Schoner abonniert den Kartenstrom: eine Karte weckt ihn (Seite /terminal/info meldet sie an).
+	p.CardEvents = h.terminalDeviceSession(r)
+	// Anfangswerte der Anmeldung ohne Leser; Änderungen kommen per /terminal/events nach.
+	p.ManualLogin, p.PasswordButton = loginCardPIN, true
+	notify := effectiveCardNotify(nil)
+	if p.CardEvents {
+		if ls, err := h.terminalLoginSettings(r.Context(), uid); err == nil {
+			p.ManualLogin, p.PasswordButton = ls.ManualLogin, ls.PasswordButton
+			notify = effectiveCardNotify(ls.CardNotify)
+		}
+	}
+	nb, _ := json.Marshal(notify)
+	p.CardNotify = string(nb)
 	return p, true
 }
 

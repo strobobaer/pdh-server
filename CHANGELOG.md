@@ -15,6 +15,11 @@ im Kapitel „Versionen & Updates“ an.
 ### Neu
 
 - Am Systembenutzer eines Terminals lässt sich einstellen, wie ein Windows-Terminal im Hintergrund auf eine gelesene Karte aufmerksam macht: Windows-Mitteilung, Fenster in der Mitte (Vorgabe), Leiste oben, Terminal nach vorn oder keine Benachrichtigung. Die Einstellung erreicht das Terminal sofort; ältere Terminals ignorieren sie.
+- Windows-Terminals melden nach jeder Anmeldung und Abmeldung per Karte das Ergebnis an das lokale Terminalprogramm, damit es im Hintergrund benachrichtigen kann. Ältere Terminals ohne diese Schnittstelle laufen unverändert weiter.
+
+### Geändert
+
+- Eine Karte weckt jetzt auch den Bildschirmschoner eines Terminals (auch am Raspberry Pi): Die Störungsinfo öffnet sich und die Person ist gleich angemeldet.
 
 ## [0.82.8] – 2026-11-20
 

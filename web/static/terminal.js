@@ -19,6 +19,53 @@
     return !!(settings && settings.password_button && settings.manual_login !== 'none');
   }
 
+  // Kartendienst des lokalen Terminals (Ursprung der Ereignisse und der Rückmeldung).
+  var CARD_ORIGIN = 'http://127.0.0.1:8080';
+
+  // Rückmeldung an das Terminal – reine Funktionen.
+  // Nutzdaten für POST /api/card/result: {ok, name, message, notify, logout}.
+  function resultPayload(d, notify, logout) {
+    d = d || {};
+    return {
+      ok: d.ok === true,
+      name: typeof d.name === 'string' ? d.name : '',
+      message: typeof d.message === 'string' ? d.message : '',
+      notify: Array.isArray(notify) ? notify : [],
+      logout: !!logout
+    };
+  }
+  // Benachrichtigungsarten aus dem JSON-Text (data-card-notify); fehlt oder ungültig → [].
+  function parseNotify(text) {
+    var v = null;
+    try { v = JSON.parse(text); } catch (e) { return []; }
+    if (!Array.isArray(v)) return [];
+    return v.filter(function (x) { return typeof x === 'string'; });
+  }
+  // Karte, die der Schoner hinterlegt hat: liefert die UID, wenn der Eintrag höchstens 10 s alt ist; löscht ihn immer.
+  function takePendingCard(store, now) {
+    var raw = null;
+    try {
+      raw = store.getItem('pdh.pendingCard');
+      store.removeItem('pdh.pendingCard');
+    } catch (e) { return ''; }
+    if (!raw) return '';
+    var v = null;
+    try { v = JSON.parse(raw); } catch (e) { return ''; }
+    if (!v || typeof v.uid !== 'string' || !v.uid || typeof v.t !== 'number') return '';
+    var age = now - v.t;
+    return (age <= 10000 && age >= -2000) ? v.uid : '';
+  }
+  // Dasselbe Kartenereignis (uid + at) nur einmal verarbeiten: der Pi spielt beim Verbinden ein bis zu 5 s
+  // altes Ereignis erneut ab (jede Seitennavigation). true = schon gesehen.
+  function seenCardEvent(d) {
+    var evKey = d.uid + '|' + String(d.at);
+    var seen = null;
+    try { seen = sessionStorage.getItem('pdhLastCardEvent'); } catch (e) { /* kein Speicher */ }
+    if (seen === evKey) return true;
+    try { sessionStorage.setItem('pdhLastCardEvent', evKey); } catch (e) { /* kein Speicher */ }
+    return false;
+  }
+
   // Uhr (nur Anzeige)
   var clocks = document.querySelectorAll('[data-clock]');
   function tick() {
@@ -92,6 +139,24 @@
     setInterval(refresh, 30000);
   }
 
+  // Bildschirmschoner: eine Karte weckt ihn. Die UID wandert (mit Zeit) in den Sitzungsspeicher, die
+  // Info-Seite meldet sie an wie eine frisch gelesene.
+  if (body.dataset.cardEvents === '1' && mode === 'schoner') {
+    try {
+      var ses = new EventSource(CARD_ORIGIN + '/api/card/events');
+      ses.addEventListener('card', function (ev) {
+        var d = null;
+        try { d = JSON.parse(ev.data); } catch (e) { /* ungültig */ }
+        if (!d || typeof d.uid !== 'string' || !d.uid) return;
+        if (seenCardEvent(d)) return;
+        try { sessionStorage.setItem('pdh.pendingCard', JSON.stringify({ uid: d.uid, t: Date.now() })); } catch (e) { /* kein Speicher */ }
+        ses.close();
+        location.replace('/terminal/info');
+      });
+      ses.onerror = function () { /* stumm: der EventSource verbindet selbst neu */ };
+    } catch (e) { /* kein Kartendienst */ }
+  }
+
   // Kartenleser: der Kartendienst auf dem Pi (nur Gerätesitzung, data-card-events) meldet
   // gelesene Karten per Server-Sent Events; die Seite reicht sie an PDH weiter.
   if (body.dataset.cardEvents === '1' && mode !== 'schoner') {
@@ -103,6 +168,21 @@
       var loggedIn = false, lastPing = 0, msgTimer = null, gen = 0;
       var onLoginChange = function () {}; // wird vom Anmeldeteil unten gesetzt
       var onReader = function () {};      // Leserstatus des Kartendienstes
+      var notify = parseNotify(body.dataset.cardNotify); // wirksame Benachrichtigungsarten (alter PDH: [])
+      var reportOk = true;
+      // Ergebnis an das lokale Terminal melden (Windows-Mitteilung im Hintergrund). Jeder Fehler und jedes 404
+      // (älteres Terminal ohne diese Schnittstelle) bleibt stumm; nach dem ersten Fehlschlag ruht es bis zum Neuladen.
+      var report = function (d, logout) {
+        if (!reportOk) return;
+        try {
+          fetch(CARD_ORIGIN + '/api/card/result', {
+            mode: 'cors', method: 'POST', cache: 'no-store',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(resultPayload(d, notify, logout))
+          }).then(function (r) { if (!r.ok) reportOk = false; })
+            .catch(function () { reportOk = false; });
+        } catch (e) { reportOk = false; }
+      };
       var post = function (url, data) {
         return fetch(url, {
           method: 'POST', credentials: 'same-origin', cache: 'no-store',
@@ -136,6 +216,7 @@
           .then(function (d) {
             if (!d) return;
             if (g !== gen) return;
+            report(d, false);
             if (d.ok) { msgEl.hidden = true; showBar(d.name); lastPing = Date.now(); }
             else if (d.message) showMsg(d.message);
           })
@@ -143,8 +224,11 @@
       };
       logoutBtn.addEventListener('click', function () {
         gen++;
+        var who = nameEl.textContent;
         showBar('');
-        post('/terminal/card/abmelden').catch(function () {});
+        post('/terminal/card/abmelden').then(function () {
+          report({ ok: true, name: who, message: '' }, true);
+        }).catch(function () {});
       });
       // Berührung bei laufender Kartensitzung: höchstens alle 20 s nachfragen, ob sie noch läuft
       document.addEventListener('pointerdown', function (ev) {
@@ -280,6 +364,7 @@
             if (typeof d.password_button === 'boolean') settings.password_button = d.password_button;
             // neue Rückkehrzeit gilt ab dem nächsten Zurücksetzen des Timers
             if (typeof d.idle === 'number' && d.idle > 0) { idle = d.idle; settings.idle = d.idle; }
+            if (Array.isArray(d.card_notify)) notify = parseNotify(JSON.stringify(d.card_notify));
             dismissed = false;
             render();
           });
@@ -289,7 +374,7 @@
       }
 
       try {
-        var es = new EventSource('http://127.0.0.1:8080/api/card/events');
+        var es = new EventSource(CARD_ORIGIN + '/api/card/events');
         es.addEventListener('reader', function (ev) {
           var d = null;
           try { d = JSON.parse(ev.data); } catch (e) { /* ungültig */ }
@@ -299,19 +384,18 @@
           var d = null;
           try { d = JSON.parse(ev.data); } catch (e) { /* ungültig */ }
           if (d && typeof d.uid === 'string' && d.uid) {
-            // Der Pi spielt beim Verbinden ein bis zu 5 s altes Ereignis erneut ab (jede Seitennavigation).
-            // Dasselbe Ereignis (uid + at) nur einmal verarbeiten, sonst wird eine Karte doppelt gemeldet
-            // bzw. nach "Abmelden" + Navigation die Person wieder angemeldet.
-            var evKey = d.uid + '|' + String(d.at);
-            var seen = null;
-            try { seen = sessionStorage.getItem('pdhLastCardEvent'); } catch (e) { /* kein Speicher */ }
-            if (seen === evKey) return;
-            try { sessionStorage.setItem('pdhLastCardEvent', evKey); } catch (e) { /* kein Speicher */ }
+            // Doppelte Wiedergabe sonst: Karte doppelt gemeldet bzw. nach "Abmelden" + Navigation wieder angemeldet.
+            if (seenCardEvent(d)) return;
             onCard(d.uid);
           }
         });
         es.onerror = function () { /* stumm: der EventSource verbindet selbst neu */ };
       } catch (e) { /* kein Kartendienst */ }
+
+      // Karte vom Schoner: wie eine frisch gelesene anmelden (Eintrag wird sofort gelöscht, höchstens 10 s alt).
+      var pending = '';
+      try { pending = takePendingCard(sessionStorage, Date.now()); } catch (e) { /* kein Speicher */ }
+      if (pending) onCard(pending);
     }
   }
 })();
