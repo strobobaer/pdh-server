@@ -4,7 +4,9 @@
 FROM golang:1.27 AS build
 WORKDIR /src
 COPY go.mod go.sum ./
+# alle eigenen Pakete von pdh-ha (go list -deps ./cmd/pdh-ha; TestDockerfileCopiesAllPdhHaPackages)
 COPY internal/ha ./internal/ha
+COPY internal/hostnet ./internal/hostnet
 COPY cmd/pdh-ha ./cmd/pdh-ha
 COPY VERSION ./
 ARG VERSION=""

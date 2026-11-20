@@ -46,6 +46,8 @@ type updateAgent struct {
 	netCollect  func(context.Context) hostnet.Summary                            // nil = hostnet.Collect über a.run
 	netProbe    func(ctx context.Context, server string) error                   // nil = hostnet.ProbeDNS
 
+	mountUnitShow func(context.Context) (string, error) // nil = „systemctl show pdh -p User -p Group“ (mounts.go)
+
 	vmu            sync.Mutex                                            // Versionsordner und Zeiger (esppdh_versions.go)
 	esphomeVersion func(ctx context.Context, bin string) (string, error) // nil = „bin version“ ausführen; Test-Haken
 	esppdhBusy     func(ctx context.Context) bool                        // nil = läuft eine Einrichtung? (systemd); Test-Haken

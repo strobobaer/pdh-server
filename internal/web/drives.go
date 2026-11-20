@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"net/url"
 	"os"
@@ -19,6 +20,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -56,6 +58,7 @@ type networkDrive struct {
 
 	// Laufzeit
 	Mounted, Writable bool
+	WriteErr          string // warum die Schreibprobe scheiterte (Anwendersprache), "" = schreibbar oder nicht geprüft
 	Total, Free       uint64
 }
 
@@ -185,8 +188,33 @@ func (d *networkDrive) probe(mounts map[string]bool) {
 		if err := os.WriteFile(test, []byte("pdh"), 0o640); err == nil {
 			d.Writable = true
 			_ = os.Remove(test)
+		} else {
+			d.WriteErr = driveWriteReason(err)
 		}
 	}
+}
+
+// driveWriteReason übersetzt den Fehler der Schreibprobe, damit „Testen“ und
+// die Liste den echten Grund nennen statt bei jedem Fehler „Rechte prüfen“.
+func driveWriteReason(err error) string {
+	switch {
+	case errors.Is(err, syscall.EROFS):
+		return "das Laufwerk ist nur lesend eingebunden – am NAS die Freigabe schreibbar stellen, dann „Trennen“ und neu einbinden"
+	case errors.Is(err, syscall.ENOSPC), errors.Is(err, syscall.EDQUOT):
+		return "kein Speicherplatz frei (Laufwerk voll oder Kontingent des Benutzers erschöpft)"
+	case errors.Is(err, fs.ErrPermission):
+		return "Zugriff verweigert – am NAS prüfen, ob der eingetragene Benutzer in dieser Freigabe schreiben darf"
+	case errors.Is(err, syscall.EIO), errors.Is(err, syscall.ETIMEDOUT), errors.Is(err, syscall.EHOSTDOWN),
+		errors.Is(err, syscall.EHOSTUNREACH), errors.Is(err, syscall.ECONNRESET), errors.Is(err, syscall.ENOTCONN),
+		errors.Is(err, syscall.EAGAIN):
+		return "Verbindung zum NAS gestört – in ein paar Minuten erneut testen"
+	}
+	msg := err.Error()
+	var pe *fs.PathError
+	if errors.As(err, &pe) {
+		msg = pe.Err.Error() // ohne den Pfad der Probedatei
+	}
+	return "Freigabe-/Dateirechte prüfen (" + msg + ")"
 }
 
 // driveRoles: aktuell nutzbare Laufwerke je Aufgabe (Pfade, "" = keins).
@@ -788,7 +816,11 @@ func (h *Handler) DriveActionWeb(w http.ResponseWriter, r *http.Request) {
 		case d.ReadOnly:
 			msg = d.Name + ": erreichbar (schreibgeschützt) · " + d.UsageLabel()
 		case !d.Writable:
-			err = errors.New(d.Name + ": erreichbar, aber PDH darf nicht schreiben – Freigabe-/Dateirechte prüfen")
+			why := d.WriteErr
+			if why == "" {
+				why = "Freigabe-/Dateirechte prüfen"
+			}
+			err = errors.New(d.Name + ": erreichbar, aber PDH kann nicht schreiben – " + why)
 		default:
 			msg = d.Name + ": erreichbar und beschreibbar · " + d.UsageLabel()
 		}
