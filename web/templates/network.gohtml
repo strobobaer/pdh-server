@@ -43,7 +43,7 @@
     <tbody>
     {{range .Segments}}
     <tr>
-      <td><b>{{.Name}}</b>{{if .Note}}<div class="nw-note" style="margin-top:2px">{{.Note}}</div>{{end}}</td>
+      <td><b>{{.Name}}</b>{{if .Source}} <span class="badge b-gray">aus {{.SourceLabel}}</span><span id="nw-gone-{{.ID}}"></span>{{end}}{{if .Note}}<div class="nw-note" style="margin-top:2px">{{.Note}}</div>{{end}}</td>
       <td>{{if .VLAN}}<span class="badge b-blue">{{.VLAN}}</span>{{else}}<span style="color:var(--muted)">–</span>{{end}}</td>
       <td class="nw-mono">{{if .Subnet}}{{.Subnet}}{{else}}<span style="color:var(--muted)">–</span>{{end}}</td>
       <td>{{.Purpose}}</td>
@@ -81,7 +81,7 @@
     <tbody>
     {{range .WLANs}}
     <tr>
-      <td><b>{{.SSID}}</b>{{if .Hidden}} <span class="badge b-gray" title="Das WLAN sendet seinen Namen nicht aus">versteckt</span>{{end}}{{if .ESPPDH}} <span class="badge b-blue" data-esppdh="{{.ID}}" title="Steht beim Anlegen von ESPPDH-Geräten zur Wahl – das Kennwort steht dann in deren Firmware"><i class="ti ti-cpu" aria-hidden="true"></i> ESPPDH</span>{{end}}</td>
+      <td><b>{{.SSID}}</b>{{if .Source}} <span class="badge b-gray">aus {{.SourceLabel}}</span><span id="nw-gone-{{.ID}}"></span>{{end}}{{if .Hidden}} <span class="badge b-gray" title="Das WLAN sendet seinen Namen nicht aus">versteckt</span>{{end}}{{if .ESPPDH}} <span class="badge b-blue" data-esppdh="{{.ID}}" title="Steht beim Anlegen von ESPPDH-Geräten zur Wahl – das Kennwort steht dann in deren Firmware"><i class="ti ti-cpu" aria-hidden="true"></i> ESPPDH</span>{{end}}</td>
       <td>{{if .SegmentName}}{{.SegmentName}}{{else}}<span style="color:var(--muted)">–</span>{{end}}</td>
       <td>{{if .HasPassword}}<span class="badge b-green">hinterlegt</span>{{else}}<span class="badge b-amber">offen (ohne Kennwort)</span>{{end}}</td>
       <td>{{.Note}}</td>
