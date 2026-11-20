@@ -16,6 +16,13 @@
 .nw-check{display:flex;align-items:flex-start;gap:8px;font-size:13px;margin-top:10px;max-width:760px}
 .nw-check input{margin-top:3px;flex-shrink:0}
 .nw-check .nw-note{margin-top:2px}
+.nw-sugg-src{margin-top:12px;min-width:0}
+.nw-sugg-src h3{font-size:13px;font-weight:600;margin:0 0 6px;overflow-wrap:anywhere}
+.nw-sugg-row{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;padding:8px 0;border-top:1px solid var(--border);min-width:0}
+.nw-sugg-what{flex:1 1 220px;min-width:0;overflow-wrap:anywhere}
+.nw-sugg-what .nw-note{margin-top:2px}
+.nw-sugg-row .nw-actions{flex:0 0 auto}
+.nw-sugg-foot{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding-top:8px;border-top:1px solid var(--border);font-size:13px;color:var(--muted)}
 </style>
 
 <div class="nw-head">
@@ -27,6 +34,11 @@
 
 {{if .Notice}}<div class="card" role="status" style="margin-bottom:14px;border-color:var(--green)"><i class="ti ti-circle-check" style="color:var(--green)" aria-hidden="true"></i> {{.Notice}}</div>{{end}}
 {{if .Err}}<div class="card" role="alert" style="margin-bottom:14px;border-color:var(--red);color:var(--red)"><i class="ti ti-alert-circle" aria-hidden="true"></i> {{.Err}}</div>{{end}}
+
+{{if .HasCtl}}<div id="nw-sugg" class="card nw-sugg" style="margin-bottom:14px" hx-get="/admin/network/suggestions" hx-trigger="load" hx-swap="outerHTML">
+  <div class="card-title"><span><i class="ti ti-cloud-download" aria-hidden="true"></i> Vom Controller gefunden</span></div>
+  <div class="rec-sub">Wird geladen …</div>
+</div>{{end}}
 
 <div class="card" style="margin-bottom:14px">
   <div class="card-title"><span><i class="ti ti-sitemap" aria-hidden="true"></i> Netze (VLANs)</span>

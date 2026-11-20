@@ -1,0 +1,47 @@
+{{/* Seite „Netzwerk“: Block „Vom Controller gefunden“ (internal/web/network_suggest_web.go).
+     Zeigt nie ein Kennwort – nur „Kennwort ✓“. Farben über die Variablen des Farbschemas. */}}
+{{define "nw-sugg"}}
+<div id="nw-sugg" class="card nw-sugg" style="margin-bottom:14px">
+  <div class="card-title"><span><i class="ti ti-cloud-download" aria-hidden="true"></i> Vom Controller gefunden</span>
+    {{if not .Mirror}}<button type="button" class="btn btn-small" hx-get="/admin/network/suggestions?fresh=1" hx-target="#nw-sugg" hx-swap="outerHTML"><i class="ti ti-refresh" aria-hidden="true"></i> Neu abfragen</button>{{end}}</div>
+  {{if .Mirror}}
+  <div class="rec-sub">Vorschläge übernehmen am aktiven Server{{if .ActiveLink}}: <a href="{{.ActiveLink}}">Seite „Netzwerk“ dort öffnen</a>{{end}}</div>
+  {{else}}
+  {{range .Sources}}
+  <div class="nw-sugg-src">{{$src := .}}
+    {{if .Err}}<h3>{{.Label}} · {{.Err}}</h3>
+    {{else}}<h3>{{.Label}} · {{.Ago}}</h3>
+    {{range .Rows}}
+    <div class="nw-sugg-row">
+      <span class="badge {{if eq .State "NEU"}}b-green{{else}}b-amber{{end}}">{{.State}}</span>
+      <div class="nw-sugg-what">
+        <b>{{if eq .Kind "segment"}}Netz{{else}}WLAN{{end}} {{.Name}}</b>
+        {{if eq .Kind "segment"}}{{if .VLAN}} · VLAN {{.VLAN}}{{end}}{{if .Subnet}} · <span class="nw-mono">{{.Subnet}}</span>{{end}}
+        {{else}}{{if .NetName}} · → {{.NetName}}{{if .NetNew}} (wird mit angelegt){{end}}{{end}}{{if .Hint}} · {{.Hint}}{{end}}{{if .ESPPDHUnusable}} · für ESPPDH nicht nutzbar{{end}}{{end}}
+        {{range .Diffs}}<div class="nw-note">{{.}}</div>{{end}}
+      </div>
+      <div class="nw-actions">
+        <form method="POST" action="/admin/network/suggestions/adopt">
+          <input type="hidden" name="source" value="{{$src.Source}}">
+          <input type="hidden" name="kind" value="{{.Kind}}"><input type="hidden" name="ext" value="{{.ExtID}}"><input type="hidden" name="fp" value="{{.Fingerprint}}">
+          <button type="submit" class="btn btn-small btn-primary">{{if eq .State "NEU"}}Übernehmen{{else}}Angleichen{{end}}</button></form>
+        <form method="POST" action="/admin/network/suggestions/hide">
+          <input type="hidden" name="source" value="{{$src.Source}}">
+          <input type="hidden" name="kind" value="{{.Kind}}"><input type="hidden" name="ext" value="{{.ExtID}}"><input type="hidden" name="fp" value="{{.Fingerprint}}">
+          <button type="submit" class="btn btn-small">Ausblenden</button></form>
+      </div>
+    </div>
+    {{end}}
+    <div class="nw-sugg-foot">
+      <span>{{if .Same}}{{.Same}} Einträge stimmen schon überein.{{else if not .Rows}}Nichts Neues – alles stimmt überein.{{end}}</span>
+      {{if .CanAll}}<form method="POST" action="/admin/network/suggestions/adopt-all" style="margin:0 0 0 auto" onsubmit="return confirm('Alle Vorschläge von {{.Label}} übernehmen?')">
+        <input type="hidden" name="source" value="{{.Source}}">
+        <button type="submit" class="btn btn-small btn-primary">Alle übernehmen</button></form>{{end}}
+    </div>
+    {{range .Gone}}<span id="nw-gone-{{.}}" hx-swap-oob="true" class="badge b-amber">am Controller nicht mehr vorhanden</span>{{end}}
+    {{end}}
+  </div>
+  {{else}}<div class="rec-sub">Kein Controller eingerichtet.</div>{{end}}
+  {{end}}
+</div>
+{{end}}

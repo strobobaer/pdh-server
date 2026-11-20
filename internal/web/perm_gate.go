@@ -171,6 +171,7 @@ var gateRules = []gateRule{
 	// Seite „Netzwerk“: löschen nur Bereichsadministrator, anlegen und ändern mit system.network
 	gr(wPost, permNetworkAdmin, "", false, `^/admin/network/(?:segments|wlans)`+gID+`/delete$`),
 	gr(wPost, permNetwork, "", false, `^/admin/network/(?:segments|wlans)(?:`+gID+`)?$`),
+	gr(wPost, permNetwork, "", false, `^/admin/network/suggestions/(?:adopt|adopt-all|hide)$`),
 	// Reiter „SNMP“: Profil löschen nur Bereichsadministrator, anlegen und ändern mit system.snmp
 	gr(wPost, permSNMPAdmin, "", false, `^/admin/server-config/snmp/profiles`+gID+`/delete$`),
 	gr(wPost, permSNMP, "", false, `^/admin/server-config/snmp/profiles(?:`+gID+`)?$`),

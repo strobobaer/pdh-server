@@ -42,6 +42,9 @@ func TestNetworkGateRules(t *testing.T) {
 		"/admin/network/wlans" + id:                permNetwork,
 		"/admin/network/segments" + id + "/delete": permNetworkAdmin,
 		"/admin/network/wlans" + id + "/delete":    permNetworkAdmin,
+		"/admin/network/suggestions/adopt":         permNetwork,
+		"/admin/network/suggestions/adopt-all":     permNetwork,
+		"/admin/network/suggestions/hide":          permNetwork,
 	} {
 		if _, perm, _, _, ok := matchGate("POST", path); !ok || perm != want {
 			t.Errorf("%s: Treffer %v Recht %q, erwartet %q", path, ok, perm, want)

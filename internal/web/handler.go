@@ -269,33 +269,39 @@ type PartView struct {
 // ── Handler ──────────────────────────────────────────────────
 
 type Handler struct {
-	dataNetMu          sync.RWMutex // schützt dataNet und dataNetBridges
-	dataNet            *datanet.Manager
-	dataNetBridges     *datanet.Bridges
-	dataNetCancel      context.CancelFunc
-	dataNetSrv         *http.Server                                   // Rückkanal
-	dataNetActive      bool                                           // Server ist der aktive (nicht der Spiegel); gesetzt von StartDataNet
-	dataNetListenAddr  string                                         // Rückkanal-Adresse; leer → :8443 (Tests: :0)
-	dataNetNewNode     func(datanet.NodeConfig) (datanet.Node, error) // nil → datanet.NewTSNode (Tests tauschen aus)
-	dataNetAPIBase     string                                         // Tailscale-API; leer → api.tailscale.com (Tests tauschen aus)
-	dataNetCheckMu     sync.Mutex                                     // schützt das zwischengespeicherte Prüfergebnis des Datennetzes
-	dataNetCheckAt     time.Time
-	dataNetCheckRes    *dnCheck
-	mirror             MirrorInfo                              // Spiegelmodus; einmal beim Start gesetzt (SetMirror)
-	tunnelTokenFn      func(context.Context) (string, bool)    // Tunnel-Token für den Abgleich mit pdh-ha; nil → Server-Einstellungen (Tests tauschen aus)
-	mirrorActiveURL    func(*http.Request) string              // Adresse des aktiven Servers für die Sperrseite; nil → kein Link
-	mirrorPeerFetch    func(context.Context) (haStatus, error) // pdh-ha-Status; nil → Socket (Tests tauschen aus)
-	mirrorPeerC        mirrorCache[mirrorPeer]
-	mirrorLagFetch     func(context.Context) (time.Duration, time.Time, error) // Rückstand; nil → mirror.ReplayLag (Tests tauschen aus)
-	mirrorLagC         mirrorCache[mirrorLag]
-	mirrorCurFetch     func(context.Context) (bool, error) // Spiegel auf Stand; nil → mirror.Current (Tests tauschen aus)
-	loginFn            func(ctx context.Context, email, password string) (string, *users.User, error)
-	loginRFIDFn        func(ctx context.Context, uid string) (string, *users.User, error)
-	mirrorAdminFn      func(*http.Request) bool                           // nil → canServerConfig (Tests)
-	userByIDFn         func(context.Context, string) (*users.User, error) // nil → users.GetByID (Tests)
-	db                 *pgxpool.Pool
-	itNet              itNetState // IT-Netzabgleich: Quelle und Meldezustand über Läufe hinweg
-	omadaC             omadaConn  // Omada-Controller: Client samt Zugriffstoken über Läufe hinweg
+	dataNetMu         sync.RWMutex // schützt dataNet und dataNetBridges
+	dataNet           *datanet.Manager
+	dataNetBridges    *datanet.Bridges
+	dataNetCancel     context.CancelFunc
+	dataNetSrv        *http.Server                                   // Rückkanal
+	dataNetActive     bool                                           // Server ist der aktive (nicht der Spiegel); gesetzt von StartDataNet
+	dataNetListenAddr string                                         // Rückkanal-Adresse; leer → :8443 (Tests: :0)
+	dataNetNewNode    func(datanet.NodeConfig) (datanet.Node, error) // nil → datanet.NewTSNode (Tests tauschen aus)
+	dataNetAPIBase    string                                         // Tailscale-API; leer → api.tailscale.com (Tests tauschen aus)
+	dataNetCheckMu    sync.Mutex                                     // schützt das zwischengespeicherte Prüfergebnis des Datennetzes
+	dataNetCheckAt    time.Time
+	dataNetCheckRes   *dnCheck
+	mirror            MirrorInfo                              // Spiegelmodus; einmal beim Start gesetzt (SetMirror)
+	tunnelTokenFn     func(context.Context) (string, bool)    // Tunnel-Token für den Abgleich mit pdh-ha; nil → Server-Einstellungen (Tests tauschen aus)
+	mirrorActiveURL   func(*http.Request) string              // Adresse des aktiven Servers für die Sperrseite; nil → kein Link
+	mirrorPeerFetch   func(context.Context) (haStatus, error) // pdh-ha-Status; nil → Socket (Tests tauschen aus)
+	mirrorPeerC       mirrorCache[mirrorPeer]
+	mirrorLagFetch    func(context.Context) (time.Duration, time.Time, error) // Rückstand; nil → mirror.ReplayLag (Tests tauschen aus)
+	mirrorLagC        mirrorCache[mirrorLag]
+	mirrorCurFetch    func(context.Context) (bool, error) // Spiegel auf Stand; nil → mirror.Current (Tests tauschen aus)
+	loginFn           func(ctx context.Context, email, password string) (string, *users.User, error)
+	loginRFIDFn       func(ctx context.Context, uid string) (string, *users.User, error)
+	mirrorAdminFn     func(*http.Request) bool                           // nil → canServerConfig (Tests)
+	userByIDFn        func(context.Context, string) (*users.User, error) // nil → users.GetByID (Tests)
+	db                *pgxpool.Pool
+	itNet             itNetState // IT-Netzabgleich: Quelle und Meldezustand über Läufe hinweg
+	omadaC            omadaConn  // Omada-Controller: Client samt Zugriffstoken über Läufe hinweg
+	netSugg           struct {   // Seite „Netzwerk“: Abruf von UniFi/Omada, 5 Minuten im Speicher (network_suggest_web.go)
+		mu  sync.Mutex
+		at  time.Time
+		res []netCtlResult
+	}
+	netCtlFetchHook    func(ctx context.Context) []netCtlResult // nur Tests; nil = echter Abruf
 	tmpl               *template.Template
 	users              *users.Service
 	shifts             *shifts.Service
@@ -739,6 +745,10 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/admin/network/wlans", h.NetworkWLANSaveWeb)
 	r.Post("/admin/network/wlans/{id}", h.NetworkWLANSaveWeb)
 	r.Post("/admin/network/wlans/{id}/delete", h.NetworkWLANDeleteWeb)
+	r.Get("/admin/network/suggestions", h.NetworkSuggWeb) // Block „Vom Controller gefunden“ (network_suggest_web.go)
+	r.Post("/admin/network/suggestions/adopt", h.NetworkSuggAdoptWeb)
+	r.Post("/admin/network/suggestions/adopt-all", h.NetworkSuggAdoptAllWeb)
+	r.Post("/admin/network/suggestions/hide", h.NetworkSuggHideWeb)
 	r.Post("/admin/server-config/snmp/profiles", h.SNMPProfileCreateWeb) // Reiter „SNMP“ (snmp_web.go)
 	r.Post("/admin/server-config/snmp/profiles/{id}", h.SNMPProfileUpdateWeb)
 	r.Post("/admin/server-config/snmp/profiles/{id}/delete", h.SNMPProfileDeleteWeb)

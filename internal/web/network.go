@@ -81,6 +81,7 @@ type NetworkPageData struct {
 	BaseData
 	Notice, Err string
 	CanDelete   bool
+	HasCtl      bool // UniFi oder Omada ist eingerichtet: Block „Vom Controller gefunden“ nachladen
 	Segments    []NetSegment
 	WLANs       []NetWLAN
 }
@@ -88,20 +89,23 @@ type NetworkPageData struct {
 var networkNotices = map[string]string{
 	"seg-new": "Netz angelegt.", "seg-saved": "Netz gespeichert.", "seg-deleted": "Netz gelöscht.",
 	"wlan-new": "WLAN angelegt.", "wlan-saved": "WLAN gespeichert.", "wlan-deleted": "WLAN gelöscht.",
+	"sugg-adopted": "Vom Controller übernommen.", "sugg-all": "Alle Vorschläge der Quelle übernommen.", "sugg-hidden": "Vorschlag ausgeblendet.",
 }
 
 var networkErrors = map[string]string{
-	"name":     "Name des Netzes: bitte 2 bis 80 Zeichen eingeben.",
-	"vlan":     "VLAN-Nummer: bitte 1 bis 4094 eingeben oder das Feld leer lassen.",
-	"subnet":   "Adressbereich: bitte in der Form 10.10.20.0/24 eingeben oder das Feld leer lassen.",
-	"text":     "Zweck und Notiz dürfen höchstens 200 Zeichen lang sein.",
-	"seg-dup":  "Ein Netz mit diesem Namen oder dieser VLAN-Nummer gibt es schon.",
-	"ssid":     "WLAN-Name (SSID): bitte 1 bis 32 Zeichen eingeben.",
-	"password": "WLAN-Kennwort: bitte 8 bis 63 Zeichen eingeben – oder leer lassen für ein offenes WLAN.",
-	"segment":  "Das gewählte Netz gibt es nicht (mehr).",
-	"wlan-dup": "Ein WLAN mit diesem Namen gibt es schon.",
-	"gone":     "Diesen Eintrag gibt es nicht mehr.",
-	"save":     "Der Eintrag konnte nicht gespeichert werden.",
+	"name":       "Name des Netzes: bitte 2 bis 80 Zeichen eingeben.",
+	"vlan":       "VLAN-Nummer: bitte 1 bis 4094 eingeben oder das Feld leer lassen.",
+	"subnet":     "Adressbereich: bitte in der Form 10.10.20.0/24 eingeben oder das Feld leer lassen.",
+	"text":       "Zweck und Notiz dürfen höchstens 200 Zeichen lang sein.",
+	"seg-dup":    "Ein Netz mit diesem Namen oder dieser VLAN-Nummer gibt es schon.",
+	"ssid":       "WLAN-Name (SSID): bitte 1 bis 32 Zeichen eingeben.",
+	"password":   "WLAN-Kennwort: bitte 8 bis 63 Zeichen eingeben – oder leer lassen für ein offenes WLAN.",
+	"segment":    "Das gewählte Netz gibt es nicht (mehr).",
+	"wlan-dup":   "Ein WLAN mit diesem Namen gibt es schon.",
+	"gone":       "Diesen Eintrag gibt es nicht mehr.",
+	"save":       "Der Eintrag konnte nicht gespeichert werden.",
+	"sugg-stale": "Der Vorschlag hat sich inzwischen geändert – bitte die Liste ansehen und erneut wählen. Es wurde nichts übernommen.",
+	"sugg-ctl":   "Der Controller ist gerade nicht erreichbar – es wurde nichts übernommen.",
 }
 
 func networkBack(w http.ResponseWriter, r *http.Request, notice, errKey string) {
@@ -131,6 +135,7 @@ func (h *Handler) NetworkPage(w http.ResponseWriter, r *http.Request) {
 		Notice:    networkNotices[q.Get("n")],
 		Err:       networkErrors[q.Get("e")],
 		CanDelete: h.hasPerm(r, permNetworkAdmin),
+		HasCtl:    len(h.netCtlConfigured(r.Context())) > 0,
 	}
 	var err error
 	if d.Segments, d.WLANs, err = h.networkLists(r.Context()); err != nil {
