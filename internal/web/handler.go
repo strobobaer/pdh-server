@@ -300,8 +300,11 @@ type Handler struct {
 		mu  sync.Mutex
 		at  time.Time
 		res []netCtlResult
+		cfg string // Einstellungen von UniFi/Omada beim Abruf (ändern sie sich, gilt der Speicher nicht mehr)
 	}
-	netCtlFetchHook    func(ctx context.Context) []netCtlResult // nur Tests; nil = echter Abruf
+	netCtlFetchHook    func(ctx context.Context) []netCtlResult      // nur Tests; nil = echter Abruf
+	netUnifiOpen       func(context.Context) (netUnifiReader, error) // nur Tests: Leser statt unifiAPI
+	netOmadaOpen       func(context.Context) (netOmadaReader, error) // nur Tests: Leser statt omadaAPI
 	tmpl               *template.Template
 	users              *users.Service
 	shifts             *shifts.Service

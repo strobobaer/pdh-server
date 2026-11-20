@@ -4,7 +4,8 @@
 <div id="nw-sugg" class="card nw-sugg" style="margin-bottom:14px">
   <div class="card-title"><span><i class="ti ti-cloud-download" aria-hidden="true"></i> Vom Controller gefunden</span>
     {{if not .Mirror}}<button type="button" class="btn btn-small" hx-get="/admin/network/suggestions?fresh=1" hx-target="#nw-sugg" hx-swap="outerHTML"><i class="ti ti-refresh" aria-hidden="true"></i> Neu abfragen</button>{{end}}</div>
-  {{if .Mirror}}
+  {{if .Err}}<div class="rec-sub" role="alert" style="color:var(--red)">{{.Err}}</div>
+  {{else if .Mirror}}
   <div class="rec-sub">Vorschläge übernehmen am aktiven Server{{if .ActiveLink}}: <a href="{{.ActiveLink}}">Seite „Netzwerk“ dort öffnen</a>{{end}}</div>
   {{else}}
   {{range .Sources}}
@@ -23,19 +24,20 @@
       <div class="nw-actions">
         <form method="POST" action="/admin/network/suggestions/adopt">
           <input type="hidden" name="source" value="{{$src.Source}}">
-          <input type="hidden" name="kind" value="{{.Kind}}"><input type="hidden" name="ext" value="{{.ExtID}}"><input type="hidden" name="fp" value="{{.Fingerprint}}">
+          <input type="hidden" name="kind" value="{{.Kind}}"><input type="hidden" name="ext" value="{{.ExtID}}"><input type="hidden" name="fp" value="{{.Fingerprint}}"><input type="hidden" name="state" value="{{.StateKey}}"><input type="hidden" name="pdh" value="{{.PDHID}}">
           <button type="submit" class="btn btn-small btn-primary">{{if eq .State "NEU"}}Übernehmen{{else}}Angleichen{{end}}</button></form>
         <form method="POST" action="/admin/network/suggestions/hide">
           <input type="hidden" name="source" value="{{$src.Source}}">
-          <input type="hidden" name="kind" value="{{.Kind}}"><input type="hidden" name="ext" value="{{.ExtID}}"><input type="hidden" name="fp" value="{{.Fingerprint}}">
+          <input type="hidden" name="kind" value="{{.Kind}}"><input type="hidden" name="ext" value="{{.ExtID}}"><input type="hidden" name="fp" value="{{.Fingerprint}}"><input type="hidden" name="state" value="{{.StateKey}}"><input type="hidden" name="pdh" value="{{.PDHID}}">
           <button type="submit" class="btn btn-small">Ausblenden</button></form>
       </div>
     </div>
     {{end}}
     <div class="nw-sugg-foot">
-      <span>{{if .Same}}{{.Same}} Einträge stimmen schon überein.{{else if not .Rows}}Nichts Neues – alles stimmt überein.{{end}}</span>
+      <span>{{if .Same}}{{.SameText}}{{else if not .Rows}}Nichts Neues – alles stimmt überein.{{end}}</span>
       {{if .CanAll}}<form method="POST" action="/admin/network/suggestions/adopt-all" style="margin:0 0 0 auto" onsubmit="return confirm('Alle Vorschläge von {{.Label}} übernehmen?')">
         <input type="hidden" name="source" value="{{.Source}}">
+        <input type="hidden" name="set" value="{{.SetFP}}">
         <button type="submit" class="btn btn-small btn-primary">Alle übernehmen</button></form>{{end}}
     </div>
     {{range .Gone}}<span id="nw-gone-{{.}}" hx-swap-oob="true" class="badge b-amber">am Controller nicht mehr vorhanden</span>{{end}}
