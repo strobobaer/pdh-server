@@ -386,12 +386,14 @@ oder ändern.**
    `fix/laufwerk-schreibgrund` (lokal): „Testen“ nennt den echten Grund,
    wenn PDH nicht schreiben kann; Bau-Rezept des Zeugen kopiert
    `internal/hostnet` (seit 0.82.4 scheiterte der Bau, der Helfer setzte den
-   Zeugen auf 0.82.2 zurück; `TestDockerfileCopiesAllPdhHaPackages`). Offen:
-   Freigabe für Merge und Push; danach zieht der Zeuge selbst nach. Anlass:
-   Meldung „pdhnas: erreichbar, aber PDH darf nicht schreiben“ – am
-   Testverbund schreibt PDH auf „pdhnas“ (`//10.10.0.202/pdh-nas`)
-   einwandfrei; die Meldung kam vermutlich von 10.10.0.202 (prüft der
-   Anwender selbst nur lesend).
+   Zeugen auf 0.82.2 zurück; `TestDockerfileCopiesAllPdhHaPackages`);
+   SMB-Laufwerke gehören dem Benutzer der Einheit `pdh` (`User=`/`Group=`
+   per `systemctl show`, Rückfall Benutzer „pdh“, sonst 10001, nie root;
+   `PDH_MOUNT_UID` hat Vorrang). Anlass: Meldung „pdhnas: erreichbar, aber
+   PDH darf nicht schreiben“ – am Testverbund schreibt PDH auf „pdhnas“
+   (`//10.10.0.202/pdh-nas`) einwandfrei; vermutet auf 10.10.0.202: Dienst
+   läuft dort nicht als „pdh“ (prüft der Anwender selbst nur lesend; nach
+   dem Einspielen dort das Laufwerk einmal trennen und neu einbinden).
 7. **0.81.6 Nummern ab 10000** (Rüstzeit, KVP, Bestellung und Partner waren auf
    vier Stellen abgeschnitten) – mit 0.82.0 auf `main`; der lokale Branch
    `fix/ruestzeit-nummer` ist damit erledigt.

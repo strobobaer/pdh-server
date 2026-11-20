@@ -22,6 +22,7 @@ import (
 	"os/user"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -58,8 +59,25 @@ func mountRoot() string {
 }
 
 // mountOwner: Benutzer, unter dem PDH laeuft (Dateirechte bei SMB).
-func (a *updateAgent) mountOwner() (string, string) {
+// Reihenfolge: PDH_MOUNT_UID/PDH_MOUNT_GID; bei systemd der Benutzer der Einheit
+// „pdh“ (User=/Group=) – PDH laeuft nicht ueberall als „pdh“; sonst der
+// Systembenutzer „pdh“; sonst 10001. Nie root.
+func (a *updateAgent) mountOwner(ctx context.Context) (string, string) {
 	uid, gid := strings.TrimSpace(os.Getenv("PDH_MOUNT_UID")), strings.TrimSpace(os.Getenv("PDH_MOUNT_GID"))
+	if uid == "" && a.mode == "systemd" {
+		show := a.mountUnitShow
+		if show == nil {
+			show = func(ctx context.Context) (string, error) {
+				return a.run(ctx, "systemctl", "show", "pdh", "-p", "User", "-p", "Group")
+			}
+		}
+		if out, err := show(ctx); err == nil {
+			un, gn := parseUnitOwner(out)
+			if u, g, ok := ownerIDs(un, gn, user.Lookup, user.LookupGroup); ok {
+				uid, gid = u, g
+			}
+		}
+	}
 	if uid == "" && a.mode == "systemd" {
 		if u, err := user.Lookup("pdh"); err == nil {
 			uid, gid = u.Uid, u.Gid
@@ -72,6 +90,54 @@ func (a *updateAgent) mountOwner() (string, string) {
 		gid = uid
 	}
 	return uid, gid
+}
+
+// parseUnitOwner liest User= und Group= aus „systemctl show“. Leer = nicht
+// gesetzt (Dienst laeuft als root) oder Einheit unbekannt.
+func parseUnitOwner(out string) (userName, groupName string) {
+	for _, line := range strings.Split(out, "\n") {
+		k, v, ok := strings.Cut(strings.TrimSpace(line), "=")
+		if !ok {
+			continue
+		}
+		switch k {
+		case "User":
+			userName = strings.TrimSpace(v)
+		case "Group":
+			groupName = strings.TrimSpace(v)
+		}
+	}
+	return userName, groupName
+}
+
+// ownerIDs loest Benutzer und Gruppe der Einheit in Kennungen auf (Name oder
+// Zahl). ok=false fuer leer, unbekannt oder root – dann gilt die bisherige Regel.
+// Ohne Group= gilt die Hauptgruppe des Benutzers.
+func ownerIDs(userName, groupName string, lookupUser func(string) (*user.User, error), lookupGroup func(string) (*user.Group, error)) (uid, gid string, ok bool) {
+	if userName == "" {
+		return "", "", false
+	}
+	if u, err := lookupUser(userName); err == nil {
+		uid, gid = u.Uid, u.Gid
+	} else if _, err := strconv.ParseUint(userName, 10, 32); err == nil {
+		uid = userName
+	} else {
+		return "", "", false
+	}
+	if uid == "0" || uid == "" {
+		return "", "", false
+	}
+	if groupName != "" {
+		if g, err := lookupGroup(groupName); err == nil {
+			gid = g.Gid
+		} else if _, err := strconv.ParseUint(groupName, 10, 32); err == nil {
+			gid = groupName
+		}
+	}
+	if gid == "" {
+		gid = uid
+	}
+	return uid, gid, true
 }
 
 func validateMount(req *mountRequest) error {
@@ -204,7 +270,7 @@ func (a *updateAgent) mountHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		defer os.Remove(cred)
-		uid, gid := a.mountOwner()
+		uid, gid := a.mountOwner(ctx)
 		opts = append(opts, "credentials="+cred, "uid="+uid, "gid="+gid, "forceuid", "forcegid", "file_mode=0660", "dir_mode=0770", "iocharset=utf8")
 	case "nfs":
 		fsType = "nfs"
