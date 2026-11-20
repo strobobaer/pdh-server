@@ -390,7 +390,9 @@ oder ändern.**
    Zeugen auf 0.82.2 zurück; `TestDockerfileCopiesAllPdhHaPackages`);
    SMB-Laufwerke gehören dem Benutzer der Einheit `pdh` (`User=`/`Group=`
    per `systemctl show`, Rückfall Benutzer „pdh“, sonst 10001, nie root;
-   `PDH_MOUNT_UID` hat Vorrang). Anlass: Meldung „pdhnas: erreichbar, aber
+   `PDH_MOUNT_UID` hat Vorrang; **0.82.6** auf Branch `fix/mount-gid`, lokal:
+   eine gesetzte `PDH_MOUNT_GID` gilt auch dann – Freigabe für Merge und Push
+   offen). Anlass: Meldung „pdhnas: erreichbar, aber
    PDH darf nicht schreiben“ – am Testverbund schreibt PDH auf „pdhnas“
    (`//10.10.0.202/pdh-nas`) einwandfrei; vermutet auf 10.10.0.202: Dienst
    läuft dort nicht als „pdh“ (prüft der Anwender selbst nur lesend; nach

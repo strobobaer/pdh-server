@@ -78,6 +78,18 @@ func TestMountOwnerFromUnit(t *testing.T) {
 		t.Fatalf("systemd: %q, %q (gefragt %d×) – erwartet 4242, 4343 aus der Einheit", uid, gid, asked)
 	}
 
+	// Nur die Gruppe fest vorgegeben: Benutzer aus der Einheit, Gruppe bleibt die Vorgabe.
+	t.Setenv("PDH_MOUNT_GID", "777")
+	if uid, gid := a.mountOwner(context.Background()); uid != "4242" || gid != "777" {
+		t.Fatalf("PDH_MOUNT_GID: %q, %q – erwartet 4242, 777", uid, gid)
+	}
+	// … auch beim Rückfall (Einheit nicht lesbar).
+	r := &updateAgent{mode: "systemd", mountUnitShow: func(context.Context) (string, error) { return "", errors.New("weg") }}
+	if _, gid := r.mountOwner(context.Background()); gid != "777" {
+		t.Fatalf("PDH_MOUNT_GID im Rückfall: %q – erwartet 777", gid)
+	}
+	t.Setenv("PDH_MOUNT_GID", "")
+
 	// Feste Vorgabe hat Vorrang, die Einheit wird dann nicht gefragt.
 	t.Setenv("PDH_MOUNT_UID", "1500")
 	asked = 0
