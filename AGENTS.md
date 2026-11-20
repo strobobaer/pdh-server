@@ -396,7 +396,11 @@ oder ändern.**
    PDH darf nicht schreiben“ – am Testverbund schreibt PDH auf „pdhnas“
    (`//10.10.0.202/pdh-nas`) einwandfrei; vermutet auf 10.10.0.202: Dienst
    läuft dort nicht als „pdh“ (prüft der Anwender selbst nur lesend; nach
-   dem Einspielen dort das Laufwerk einmal trennen und neu einbinden).
+   dem Einspielen dort das Laufwerk öffnen und „Speichern“ – nicht „Trennen“,
+   das schaltet „automatisch einbinden“ aus). **Am 20.11.2026 auf 202
+   bestätigt:** `User=michael`, Laufwerk `uid=10001,gid=10001`. **0.82.7**
+   (Branch `docs/offene-punkte-0826`, lokal): Hinweis in Handbuch und
+   CHANGELOG berichtigt – Freigabe für Merge und Push offen.
 7. **0.81.6 Nummern ab 10000** (Rüstzeit, KVP, Bestellung und Partner waren auf
    vier Stellen abgeschnitten) – mit 0.82.0 auf `main`; der lokale Branch
    `fix/ruestzeit-nummer` ist damit erledigt.
