@@ -23,6 +23,33 @@
 .nw-sugg-what .nw-note{margin-top:2px}
 .nw-sugg-row .nw-actions{flex:0 0 auto}
 .nw-sugg-foot{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding-top:8px;border-top:1px solid var(--border);font-size:13px;color:var(--muted)}
+/* Karte „Dieser Server“ (widgets/network_parts.gohtml, nw-server) */
+.nw-srv{margin-bottom:14px;min-width:0}
+.nw-srv-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:14px}
+.nw-srv-grid.nw-srv-two{grid-template-columns:repeat(2,minmax(0,1fr))}
+@media (max-width:760px){.nw-srv-grid.nw-srv-two{grid-template-columns:minmax(0,1fr)}}
+.nw-srv-card{min-width:0;margin:0}
+.nw-srv-card .card-title{flex-wrap:wrap;gap:6px}
+.nw-srv-card .card-title>span:first-child{min-width:0;overflow-wrap:anywhere}
+.nw-srv-dl{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:4px 12px;margin:0;font-size:13px}
+.nw-srv-dl dt{color:var(--muted)}
+.nw-srv-dl dd{margin:0;min-width:0;overflow-wrap:anywhere}
+.nw-srv-acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.nw-srv-acts .btn,.nw-srv-state .btn,.nw-dlg .btn{white-space:normal;text-align:center;max-width:100%}
+.nw-srv-state{border:1px solid var(--border);border-radius:8px;padding:8px 12px;margin-top:12px;font-size:13px;background:var(--bg);color:var(--text);overflow-wrap:anywhere}
+.nw-srv-state form{margin:8px 0 0}
+.nw-srv-count{margin-top:4px;color:var(--muted)}
+.nw-srv-count b{color:var(--text);font-variant-numeric:tabular-nums}
+.nw-srv-warn{border-color:var(--amber)}
+.nw-srv-warn>i{color:var(--amber)}
+.nw-srv-msg{border:1px solid var(--green);border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:13px;background:var(--bg2);color:var(--text);overflow-wrap:anywhere}
+.nw-srv-err{border-color:var(--red);color:var(--red)}
+.nw-dlg{border:1px solid var(--border);border-radius:8px;background:var(--bg2);color:var(--text);padding:18px;width:min(520px,calc(100vw - 32px));max-height:calc(100vh - 32px);overflow:auto;box-shadow:var(--shadow-flyout,var(--shadow-card))}
+.nw-dlg::backdrop{background:rgba(0,0,0,.45)}
+.nw-dlg h3{font-size:15px;font-weight:600;margin:0 0 10px}
+.nw-dlg-list{margin:10px 0 0;padding-left:18px;font-size:13px;color:var(--text);overflow-wrap:anywhere}
+.nw-dlg-list li{margin:3px 0}
+.nw-dlg-btns{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;margin-top:14px}
 </style>
 
 <div class="nw-head">
@@ -34,6 +61,11 @@
 
 {{if .Notice}}<div class="card" role="status" style="margin-bottom:14px;border-color:var(--green)"><i class="ti ti-circle-check" style="color:var(--green)" aria-hidden="true"></i> {{.Notice}}</div>{{end}}
 {{if .Err}}<div class="card" role="alert" style="margin-bottom:14px;border-color:var(--red);color:var(--red)"><i class="ti ti-alert-circle" aria-hidden="true"></i> {{.Err}}</div>{{end}}
+
+<div id="nw-server" class="nw-srv" hx-get="/admin/network/server" hx-trigger="load" hx-swap="outerHTML">
+  <div class="card"><div class="card-title"><span><i class="ti ti-server" aria-hidden="true"></i> Dieser Server</span></div>
+  <div class="rec-sub">Wird geladen …</div></div>
+</div>
 
 {{if .HasCtl}}<div id="nw-sugg" class="card nw-sugg" style="margin-bottom:14px" hx-get="/admin/network/suggestions" hx-trigger="load" hx-swap="outerHTML">
   <div class="card-title"><span><i class="ti ti-cloud-download" aria-hidden="true"></i> Vom Controller gefunden</span></div>
@@ -118,6 +150,22 @@
 
 <script>
 function nwToggle(id){ const el = document.getElementById(id); if(el){ el.hidden = !el.hidden; if(!el.hidden){ const f = el.querySelector('input'); if(f) f.focus(); } } }
+// Countdown der Karte „Dieser Server“: zählt jede Sekunde bis data-nw-deadline (Unix-Sekunden des
+// Servers). data-nw-now ist die Serverzeit beim Zeichnen – so stört eine falsch gehende Uhr im
+// Browser nicht. Läuft einmal je Seite und findet auch die Karte nach jedem htmx-Austausch.
+(function(){
+  function nwTick(){
+    document.querySelectorAll('[data-nw-deadline]').forEach(function(el){
+      if(el.dataset.nwSkew === undefined){ el.dataset.nwSkew = String(Number(el.dataset.nwNow) - Date.now() / 1000); }
+      var left = Math.max(0, Math.round(Number(el.dataset.nwDeadline) - (Date.now() / 1000 + Number(el.dataset.nwSkew))));
+      el.textContent = Math.floor(left / 60) + ':' + String(left % 60).padStart(2, '0');
+    });
+  }
+  if(!window.nwCountdown){
+    window.nwCountdown = setInterval(nwTick, 1000);
+    document.addEventListener('htmx:afterSwap', nwTick);
+  }
+})();
 </script>
 {{end}}
 

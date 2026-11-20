@@ -172,6 +172,9 @@ var gateRules = []gateRule{
 	gr(wPost, permNetworkAdmin, "", false, `^/admin/network/(?:segments|wlans)`+gID+`/delete$`),
 	gr(wPost, permNetwork, "", false, `^/admin/network/(?:segments|wlans)(?:`+gID+`)?$`),
 	gr(wPost, permNetwork, "", false, `^/admin/network/suggestions/(?:adopt|adopt-all|hide)$`),
+	// Karte „Dieser Server“: Adresse fest einstellen, DNS ändern, bestätigen nur mit system.server_config
+	// (der Handler verlangt zusätzlich die Rolle Administrator, canServerConfig)
+	gr(wPost, "system.server_config", "", false, `^/admin/network/server/(?:fix|dns|confirm)$`),
 	// Reiter „SNMP“: Profil löschen nur Bereichsadministrator, anlegen und ändern mit system.snmp
 	gr(wPost, permSNMPAdmin, "", false, `^/admin/server-config/snmp/profiles`+gID+`/delete$`),
 	gr(wPost, permSNMP, "", false, `^/admin/server-config/snmp/profiles(?:`+gID+`)?$`),

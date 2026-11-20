@@ -302,9 +302,17 @@ type Handler struct {
 		res []netCtlResult
 		cfg string // Einstellungen von UniFi/Omada beim Abruf (ändern sie sich, gilt der Speicher nicht mehr)
 	}
-	netCtlFetchHook    func(ctx context.Context) []netCtlResult      // nur Tests; nil = echter Abruf
-	netUnifiOpen       func(context.Context) (netUnifiReader, error) // nur Tests: Leser statt unifiAPI
-	netOmadaOpen       func(context.Context) (netOmadaReader, error) // nur Tests: Leser statt omadaAPI
+	netCtlFetchHook func(ctx context.Context) []netCtlResult      // nur Tests; nil = echter Abruf
+	netUnifiOpen    func(context.Context) (netUnifiReader, error) // nur Tests: Leser statt unifiAPI
+	netOmadaOpen    func(context.Context) (netOmadaReader, error) // nur Tests: Leser statt omadaAPI
+	// Karte „Dieser Server“ (network_server.go)
+	netAgentHook func(ctx context.Context, method, path string, body, out any) error // nur Tests; nil = agentJSON
+	netHAHook    func(ctx context.Context) (haStatus, error)                         // nur Tests; nil = haStatusFetch (ohne Socket errNetNoHA)
+	netProbeHook func(ctx context.Context, server string) error                      // nur Tests; nil = hostnet.ProbeDNS
+	netLogged    struct {                                                            // zuletzt protokollierter Rückfall bzw. Fehlschlag (je Änderung einmal)
+		mu sync.Mutex
+		id string
+	}
 	tmpl               *template.Template
 	users              *users.Service
 	shifts             *shifts.Service
@@ -752,6 +760,10 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/admin/network/suggestions/adopt", h.NetworkSuggAdoptWeb)
 	r.Post("/admin/network/suggestions/adopt-all", h.NetworkSuggAdoptAllWeb)
 	r.Post("/admin/network/suggestions/hide", h.NetworkSuggHideWeb)
+	r.Get("/admin/network/server", h.NetworkServerWeb) // Karte „Dieser Server“ (network_server.go)
+	r.Post("/admin/network/server/fix", h.NetworkServerFixWeb)
+	r.Post("/admin/network/server/dns", h.NetworkServerDNSWeb)
+	r.Post("/admin/network/server/confirm", h.NetworkServerConfirmWeb)
 	r.Post("/admin/server-config/snmp/profiles", h.SNMPProfileCreateWeb) // Reiter „SNMP“ (snmp_web.go)
 	r.Post("/admin/server-config/snmp/profiles/{id}", h.SNMPProfileUpdateWeb)
 	r.Post("/admin/server-config/snmp/profiles/{id}/delete", h.SNMPProfileDeleteWeb)

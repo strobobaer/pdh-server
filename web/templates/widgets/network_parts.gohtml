@@ -47,3 +47,122 @@
   {{end}}
 </div>
 {{end}}
+
+{{/* Karte „Dieser Server“ (internal/web/network_server.go): je Server eine Karte, im Verbund
+     nebeneinander, am Handy untereinander. Knöpfe nur auf der Karte des Servers, auf dem die Seite
+     läuft; der Partner bekommt einen Verweis auf seine eigene Adresse. Solange eine Änderung läuft,
+     fragt der Block alle 2 s nach; den Countdown zählt das Skript in network.gohtml
+     (data-nw-deadline, data-nw-now). Daten: NetServerView. */}}
+{{define "nw-server"}}
+<div id="nw-server" class="nw-srv"{{if or .Pending .Running}} hx-get="/admin/network/server" hx-trigger="every 2s" hx-swap="outerHTML"{{end}}>
+  {{if .Msg}}<div class="nw-srv-msg" role="status"><i class="ti ti-circle-check" style="color:var(--green)" aria-hidden="true"></i> {{.Msg}}</div>{{end}}
+  {{if .Err}}<div class="nw-srv-msg nw-srv-err" role="alert"><i class="ti ti-alert-circle" aria-hidden="true"></i> {{.Err}}</div>{{end}}
+  <div class="nw-srv-grid{{if gt (len .Cards) 1}} nw-srv-two{{end}}">
+  {{range .Cards}}
+  <section class="card nw-srv-card" data-nw-card="{{if .Self}}self{{else}}peer{{end}}" aria-label="Server {{.Title}}">
+    <div class="card-title"><span><i class="ti ti-server" aria-hidden="true"></i> {{.Title}}{{with .RoleText}} ({{.}}){{end}}</span>{{if .Self}}<span class="badge b-blue">Dieser Server</span>{{end}}</div>
+    {{if and .Self $.Docker}}
+    <div class="rec-sub">{{.Note}}</div>
+    {{else}}
+    {{if not .Seen}}<div class="nw-note" style="margin:0 0 6px">Zurzeit nicht erreichbar{{if .Net}} – Angaben vom letzten Lebenszeichen{{end}}.</div>{{end}}
+    <dl class="nw-srv-dl">
+      <dt>Netzwerkkarte</dt><dd>{{.IfaceText}}</dd>
+      <dt>Adresse</dt><dd>{{with .AddrText}}<span class="nw-mono">{{.}}</span> · {{end}}{{.ModeText}}</dd>
+      {{if .VIP}}<dt>Gemeinsame</dt><dd>{{if .VIPHere}}<span class="nw-mono">{{.VIP}}</span> hier{{else}}–{{end}}</dd>{{end}}
+      <dt>Gateway</dt><dd class="nw-mono">{{.GatewayText}}</dd>
+      <dt>DNS</dt><dd class="nw-mono">{{.DNSText}}</dd>
+      <dt>IPv6</dt><dd class="nw-mono">{{.IPv6Text}}</dd>
+    </dl>
+    {{with .Note}}<div class="nw-note">{{.}}</div>{{end}}
+    {{if .Self}}{{template "nw-server-self" (dict "V" $ "C" .)}}
+    {{else if .Link}}<div class="nw-srv-acts"><a class="btn btn-small" href="{{.Link}}">Auf {{.Title}} öffnen ↗</a></div>{{end}}
+    {{end}}
+  </section>
+  {{end}}
+  </div>
+</div>
+{{end}}
+
+{{/* Eigene Karte: laufende Änderung mit Countdown, letzte Änderung, Sperrgrund oder Knöpfe mit Vorschau. */}}
+{{define "nw-server-self"}}{{$v := .V}}{{$c := .C}}
+{{if $v.Pending}}{{with $v.Pending}}
+<div class="nw-srv-state" role="status">
+  <b>{{.ActionText}}</b>{{with .By}} ({{.}}){{end}}:
+  {{if and .Applied (not $v.Running)}}angewendet. Bitte prüfen, ob die Seite noch erreichbar ist.{{else}}wird angewendet …{{end}}
+  <div class="nw-srv-count">Noch <b data-nw-deadline="{{.Deadline.Unix}}" data-nw-now="{{$v.Now}}">{{$v.Remaining}}</b> Min. – ohne Bestätigung stellt der Server danach die vorige Einstellung von selbst wieder her.</div>
+  {{if and $v.Admin .Applied (not $v.Running)}}
+  <form hx-post="/admin/network/server/confirm" hx-target="#nw-server" hx-swap="outerHTML" hx-disabled-elt="find button">
+    <input type="hidden" name="id" value="{{.ID}}">
+    <button type="submit" class="btn btn-primary btn-small"><i class="ti ti-check" aria-hidden="true"></i> Seite erreichbar – Einstellung behalten</button>
+  </form>{{end}}
+</div>
+{{end}}{{else if $v.Running}}
+<div class="nw-srv-state" role="status"><i class="ti ti-loader-2" aria-hidden="true"></i> Die Änderung wird vorbereitet …</div>
+{{end}}
+{{with $v.Last}}<div class="nw-note">{{$v.LastText}}</div>{{end}}
+{{with $v.JobErr}}<div class="nw-srv-state nw-srv-warn" role="status"><i class="ti ti-alert-triangle" aria-hidden="true"></i> Letzter Versuch gescheitert: {{.}}</div>{{end}}
+{{with $v.MaintOff}}<div class="nw-srv-state nw-srv-warn" role="status"><i class="ti ti-alert-triangle" aria-hidden="true"></i> {{.}}</div>{{end}}
+{{if $v.Admin}}
+{{if $v.Blocked}}<div class="nw-srv-state nw-srv-warn" role="status"><i class="ti ti-lock" aria-hidden="true"></i> {{$v.Blocked}}</div>
+{{else if $v.CanAct}}
+<div class="nw-srv-acts">
+  {{if $v.CanFix}}<button type="button" class="btn btn-small btn-primary" onclick="document.getElementById('nw-dlg-fix').showModal()"><i class="ti ti-pin" aria-hidden="true"></i> Jetzige Adresse fest einstellen</button>{{end}}
+  <button type="button" class="btn btn-small" onclick="document.getElementById('nw-dlg-dns').showModal()"><i class="ti ti-world" aria-hidden="true"></i> DNS-Server ändern</button>
+</div>
+{{if $v.CanFix}}
+<dialog id="nw-dlg-fix" class="nw-dlg" aria-labelledby="nw-dlg-fix-h">
+  <form hx-post="/admin/network/server/fix" hx-target="#nw-server" hx-swap="outerHTML" hx-disabled-elt="find button[type=submit]">
+    <h3 id="nw-dlg-fix-h">Jetzige Adresse fest einstellen</h3>
+    <p class="nw-note">Das wird fest eingetragen:</p>
+    <dl class="nw-srv-dl">
+      <dt>Netzwerkkarte</dt><dd>{{$c.IfaceText}}</dd>
+      <dt>Adresse</dt><dd class="nw-mono">{{$c.AddrText}}</dd>
+      <dt>Gateway</dt><dd class="nw-mono">{{$c.GatewayText}}</dd>
+      <dt>DNS</dt><dd class="nw-mono">{{$c.FixDNS}}</dd>
+    </dl>
+    {{template "nw-server-effects" $v}}
+    <div class="nw-dlg-btns"><button class="btn" type="button" onclick="this.closest('dialog').close()">Abbrechen</button>
+      <button class="btn btn-primary" type="submit"><i class="ti ti-pin" aria-hidden="true"></i> Fest einstellen</button></div>
+  </form>
+</dialog>
+{{end}}
+<dialog id="nw-dlg-dns" class="nw-dlg" aria-labelledby="nw-dlg-dns-h">
+  <form hx-post="/admin/network/server/dns" hx-target="#nw-server" hx-swap="outerHTML" hx-disabled-elt="find button[type=submit]">
+    <h3 id="nw-dlg-dns-h">DNS-Server ändern</h3>
+    <dl class="nw-srv-dl">
+      <dt>Netzwerkkarte</dt><dd>{{$c.IfaceText}}</dd>
+      <dt>Adresse</dt><dd class="nw-mono">{{$c.AddrText}}</dd>
+      <dt>Gateway</dt><dd class="nw-mono">{{$c.GatewayText}}</dd>
+      <dt>DNS bisher</dt><dd class="nw-mono">{{$c.DNSText}}</dd>
+    </dl>
+    <div class="nw-form" style="margin-top:10px">
+      <div class="form-group"><label class="form-label" for="nw-dns1">DNS-Server 1</label>
+        <input id="nw-dns1" name="dns1" class="form-input nw-mono" required maxlength="15" inputmode="decimal" autocomplete="off" value="{{$c.DNS4At 0}}" placeholder="z. B. 10.10.0.1"></div>
+      <div class="form-group"><label class="form-label" for="nw-dns2">DNS-Server 2 <span style="color:var(--muted);font-weight:400">(optional)</span></label>
+        <input id="nw-dns2" name="dns2" class="form-input nw-mono" maxlength="15" inputmode="decimal" autocomplete="off" value="{{$c.DNS4At 1}}"></div>
+      <div class="form-group"><label class="form-label" for="nw-dns3">DNS-Server 3 <span style="color:var(--muted);font-weight:400">(optional)</span></label>
+        <input id="nw-dns3" name="dns3" class="form-input nw-mono" maxlength="15" inputmode="decimal" autocomplete="off" value="{{$c.DNS4At 2}}"></div>
+    </div>
+    <ul class="nw-dlg-list">
+      <li>Jeder neue DNS-Server muss auf eine Anfrage antworten – sonst wird nichts geändert.</li>
+      <li>Stellt die jetzige Adresse dabei ebenfalls fest ein.</li>
+    </ul>
+    {{template "nw-server-effects" $v}}
+    <div class="nw-dlg-btns"><button class="btn" type="button" onclick="this.closest('dialog').close()">Abbrechen</button>
+      <button class="btn btn-primary" type="submit"><i class="ti ti-world" aria-hidden="true"></i> DNS-Server ändern</button></div>
+  </form>
+</dialog>
+{{end}}
+{{end}}
+{{end}}
+
+{{/* Nebenwirkungen in beiden Dialogen. Daten: NetServerView. */}}
+{{define "nw-server-effects"}}
+<ul class="nw-dlg-list">
+  <li>Die automatische Konfiguration durch cloud-init wird abgeschaltet.</li>
+  <li>Danach 2 Minuten Zeit zum Bestätigen – sonst stellt der Server die vorige Einstellung von selbst wieder her.</li>
+  {{if .ActiveInCluster}}<li>Die gemeinsame Adresse ist dabei einige Sekunden weg. Am besten zuerst den Spiegel ändern.</li>
+  <li>Bis zum Bestätigen bzw. zum Rückfall ist die Wartung des Ausfallschutzes an.</li>{{end}}
+  {{if .OwnLink}}<li>Diese Seite läuft über {{.ViaAddr}}. Für diese Aktion besser die eigene Adresse des Servers nehmen: <a href="{{.OwnLink}}">{{.OwnLink}}</a></li>{{end}}
+</ul>
+{{end}}
