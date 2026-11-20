@@ -10,6 +10,12 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.82.7] – 2026-11-20
+
+### Behoben
+
+- Handbuch und Änderungsprotokoll zu 0.82.5 sagen jetzt richtig, wie ein Netzlaufwerk den neuen Besitzer übernimmt: Laufwerk öffnen und „Speichern“ drücken; „Trennen“ hätte das automatische Einbinden ausgeschaltet.
+
 ## [0.82.6] – 2026-11-20
 
 ### Behoben
@@ -22,7 +28,7 @@ im Kapitel „Versionen & Updates“ an.
 
 - „Testen“ bei einem Netzlaufwerk nennt jetzt den echten Grund, wenn PDH nicht schreiben kann (Zugriff verweigert, nur lesend eingebunden, kein Speicherplatz frei oder Verbindung zum NAS gestört), statt immer „Freigabe-/Dateirechte prüfen“; die Liste der Laufwerke zeigt den Grund neben „nicht beschreibbar“.
 - Der Zeuge im Docker-Container zieht wieder selbst auf die neue Version nach; seit 0.82.4 fehlte beim Bau ein Programmteil, er blieb deshalb auf 0.82.2 stehen.
-- Läuft der PDH-Dienst unter einem anderen Benutzer als „pdh“, gehören eingebundene SMB-Laufwerke jetzt diesem Benutzer, sodass PDH dort schreiben darf; ein schon eingebundenes Laufwerk dafür einmal trennen und neu einbinden.
+- Läuft der PDH-Dienst unter einem anderen Benutzer als „pdh“, gehören eingebundene SMB-Laufwerke jetzt diesem Benutzer, sodass PDH dort schreiben darf; ein schon eingebundenes Laufwerk dafür einmal öffnen und „Speichern“ drücken (nicht „Trennen“ – das schaltet das automatische Einbinden aus).
 
 ## [0.82.4] – 2026-11-20
 
