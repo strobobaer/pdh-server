@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"pdh/internal/ha"
+	"pdh/internal/hostnet"
 )
 
 // Transport: je Gegenstelle und Weg eine dauerhafte mTLS-Verbindung (TLS 1.3)
@@ -88,6 +89,9 @@ type message struct {
 	VIP6Held string `json:"vip6_held,omitempty"`
 	Hooks    string `json:"hooks,omitempty"` // Kurzstand der Skripte beim Rollenwechsel
 	Tun      string `json:"tun,omitempty"`   // Kurzstand des Cloudflare-Tunnels
+	// Net: Netzwerkzustand dieses Servers (Adresse, Gateway, DNS, fest/DHCP);
+	// ältere Server senden nichts, der Partner zeigt dann „unbekannt“
+	Net *hostnet.Summary `json:"net,omitempty"`
 	// cluster: dieser Knoten darf PostgreSQL für neue Adressen neu starten (addrs set --neustart)
 	RestartPG string `json:"restart_pg,omitempty"`
 	// cluster: Zugang (pg_hba, primary_conninfo) auch ohne Änderung neu schreiben (addrs set, Wiederholung)

@@ -204,6 +204,7 @@ func (d *daemon) statusLocked() apiStatus {
 		if st.Self.PG == "" {
 			st.Self.PG = "unknown"
 		}
+		st.Self.Net = d.ownNet.Load()
 		st.Self.VIPHeld = d.access != nil && d.access.held()
 		if d.access != nil {
 			st.Self.VIP6Held, note6 = d.access.held6()
@@ -258,6 +259,7 @@ func (d *daemon) statusLocked() apiStatus {
 			an.PG, an.LSN, an.LagBytes, an.Sync, an.Stale, an.Timeline, an.DataCurrent, an.Diverged =
 				m.PG, m.LSN, m.Lag, m.Sync, m.Stale, m.TL, m.DataCurrent, m.Diverged
 			an.VIPHeld, an.VIP6Held, an.HooksSum, an.TunnelSum = m.VIP, m.VIP6Held, m.Hooks, m.Tun
+			an.Net = m.Net
 			hosts[n.ID] = m.HostID
 			if d.node.Kind == "witness" && an.Seen && m.UpJob {
 				st.Update.Active = true // Zeuge: ein Server meldet einen laufenden Auftrag
@@ -369,6 +371,7 @@ func (d *daemon) heartbeatLocked(gw bool, views map[string]peerView, wall time.T
 		}
 		_, m.Hooks, _ = d.hooks.info()
 		m.Tun = d.tunnel.Sum()
+		m.Net = d.ownNet.Load() // Zwischenspeicher, kein Befehl unter der Sperre
 		m.PDH = d.pdhHBLocked() // Update im Verbund: „pdh auf B antwortet“
 		m.UpJob = !upEnded(d.up.job)
 		m.UpLead = "-"

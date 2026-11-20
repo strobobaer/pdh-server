@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"pdh/internal/ha"
+	"pdh/internal/hostnet"
 )
 
 // Der Dienst: Takt-Schleife für Knoten und Zeugen, Nachrichten, Befehle.
@@ -109,6 +110,10 @@ type daemon struct {
 	recopying         atomic.Bool   // Neukopie nach ungültigem Slot läuft
 	recopyAt          time.Duration // letzte Neukopie (monoton)
 	staleAckTerm      uint64        // Zeuge hat „Partner nicht aktuell“ für diese Amtszeit bestätigt
+
+	// Netzwerkzustand dieses Servers; netLoop schreibt, Lebenszeichen und Status lesen
+	ownNet     atomic.Pointer[hostnet.Summary]
+	netCollect func(context.Context) hostnet.Summary // nil = hostnet.Collect über d.sys
 
 	sys           runner        // Systembefehle (Tests: Fake)
 	reconcileAt   time.Duration // letzter Abgleich (monoton)
@@ -633,6 +638,7 @@ func (d *daemon) run(ctx context.Context) error {
 	d.runCtx = ctx
 	d.hooks.ctx = ctx
 	go d.hooks.loop(ctx) // Skript-Ordner alle 30 s neu lesen
+	go d.netLoop(ctx)    // eigener Netzwerkzustand für Lebenszeichen und Status
 	d.startLocked()
 	d.unlock()
 	go d.applyFirewall()

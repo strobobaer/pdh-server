@@ -26,6 +26,7 @@ import (
 	"pdh"
 	"pdh/internal/core/users"
 	"pdh/internal/ha"
+	"pdh/internal/hostnet"
 )
 
 // haTimeout: ein hängender Dienst darf den Reiter nicht blockieren.
@@ -105,6 +106,9 @@ type haNode struct {
 	VIPHeld   bool   `json:"vip_held"`
 	HooksSum  string `json:"hooks_sum"`
 	TunnelSum string `json:"tunnel_sum"`
+
+	// Netzwerkzustand des Servers laut Ausfallschutz (nil = unbekannt, z. B. älterer Partner)
+	Net *hostnet.Summary `json:"net"`
 
 	// Datenbank-Spiegel
 	PG          string       `json:"pg"` // primary, standby, stopped, error, unknown

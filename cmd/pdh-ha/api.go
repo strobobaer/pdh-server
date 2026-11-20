@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"pdh/internal/ha"
+	"pdh/internal/hostnet"
 )
 
 // Socket-API für das PDH und den Update-Agenten (HTTP über Unix-Socket).
@@ -122,6 +123,9 @@ type apiNode struct {
 	VIP6Held  string `json:"vip6_held"` // mitwandernde IPv6-Adresse auf diesem Server ("" = keine)
 	HooksSum  string `json:"hooks_sum"`
 	TunnelSum string `json:"tunnel_sum"`
+
+	// Netzwerkzustand dieses Servers (nil = unbekannt, z. B. älterer Partner)
+	Net *hostnet.Summary `json:"net,omitempty"`
 }
 
 type apiPath struct {
