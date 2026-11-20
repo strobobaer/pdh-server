@@ -90,9 +90,72 @@ func TestNetLoopCollects(t *testing.T) {
 	calls.Store(0)
 	w := fakeDaemon(t, nodeConfig{ID: "w", Kind: "witness"}, duoCluster(), ha.Persisted{Term: 1}, newFakeNet())
 	w.netCollect = collect
-	w.netLoop(context.Background()) // kehrt sofort zurück
+	wctx, wcancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
+	defer wcancel()
+	w.netLoop(wctx)
 	if calls.Load() != 0 || w.ownNet.Load() != nil {
 		t.Fatalf("Zeuge hat gelesen: %d", calls.Load())
+	}
+}
+
+// Start ohne Einrichtung, Einrichtung später im laufenden Prozess: die
+// Schleife darf nicht enden und muss danach lesen (auch unter -race ohne Wettlauf).
+func TestNetLoopAfterLateSetup(t *testing.T) {
+	old := netWaitEvery
+	netWaitEvery = 10 * time.Millisecond
+	t.Cleanup(func() { netWaitEvery = old })
+	st := store{etc: t.TempDir(), state: t.TempDir()}
+	d := loadFakeDaemon(t, st, newFakeNet())
+	var calls atomic.Int32
+	d.netCollect = func(context.Context) hostnet.Summary {
+		calls.Add(1)
+		return hostnet.Summary{Addr: "10.0.0.5/24", Mode: hostnet.ModeStatic}
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { d.netLoop(ctx); close(done) }()
+	time.Sleep(60 * time.Millisecond)
+	if calls.Load() != 0 || d.ownNet.Load() != nil {
+		t.Fatalf("vor der Einrichtung gelesen: %d", calls.Load())
+	}
+	if err := st.saveNode(nodeConfig{ID: "a", Kind: "node"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.saveCluster(duoCluster()); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.saveState(ha.Persisted{Role: ha.Active, Term: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.load(); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for d.ownNet.Load() == nil && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if s := d.ownNet.Load(); s == nil || s.Addr != "10.0.0.5/24" {
+		t.Fatalf("nach der Einrichtung nicht gelesen: %+v", s)
+	}
+	cancel()
+	<-done
+}
+
+// Die gemeinsame Adresse darf nie als eigene erscheinen, auch nicht im
+// alten Zustand „gemeinsame Adresse mit Netzpräfix vorn, echte Adresse secondary“.
+func TestNetLoopExcludesSharedAddr(t *testing.T) {
+	d := fakeDaemon(t, nodeConfig{ID: "a", Kind: "node"}, withVIP(duoCluster()), ha.Persisted{Role: ha.Active, Term: 1}, newFakeNet())
+	d.netCollect = nil
+	f := &fakeRunner{}
+	f.on("ip -4 route show default", "", "default via 10.77.1.1 dev eth0 proto static\n", nil)
+	f.on("ip -o addr show dev eth0", "", ipShowOldFront, nil)
+	d.sys = f
+	d.mu.Lock()
+	ex := d.netExcludeLocked()
+	d.mu.Unlock()
+	s := d.collectNet(context.Background(), ex...)
+	if s.Addr != "10.77.1.7/24" {
+		t.Fatalf("eigene Adresse %q (gemeinsame 10.77.1.50 darf es nicht sein)", s.Addr)
 	}
 }
 

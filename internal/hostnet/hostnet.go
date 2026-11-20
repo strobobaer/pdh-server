@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"slices"
 	"strings"
 	"time"
 
@@ -29,6 +30,9 @@ const (
 
 // Summary ist die Kurzfassung des Netzwerkzustands. Sie reist im Lebenszeichen
 // von pdh-ha, daher kurze Schlüssel und nichts Überflüssiges.
+//
+// Protokollvertrag: ältere und neuere Server sprechen miteinander. Es dürfen
+// nur Felder dazukommen; Schlüssel und Typen bestehender Felder ändern sich nie.
 type Summary struct {
 	Iface   string   `json:"if,omitempty"`   // Netzwerkkarte der Standardroute
 	Addr    string   `json:"addr,omitempty"` // eigene IPv4-Adresse mit Präfix
@@ -50,13 +54,25 @@ func (s Summary) DNS4() []string {
 	return out
 }
 
+// Obergrenzen der Listen, damit ein Lebenszeichen nie über maxLine wächst.
+const (
+	maxDNS  = 5
+	maxIPv6 = 8
+)
+
 // RunFunc führt einen Befehl aus und liefert seine Ausgabe.
 type RunFunc func(ctx context.Context, name string, args ...string) ([]byte, error)
 
 // Collect sammelt die Zusammenfassung. Jeder fehlgeschlagene Befehl lässt nur
-// sein Feld leer. Ohne Netplan-Unterstützung oder ohne Adresse ist die Art
-// „unbekannt“; Adresse, Gateway und DNS bleiben trotzdem gefüllt.
-func Collect(ctx context.Context, run RunFunc, readFile func(string) ([]byte, error)) Summary {
+// sein Feld leer. Ohne Netplan-Unterstützung, ohne Adresse oder ohne
+// Standardroute ist die Art „unbekannt“; Adresse, Gateway und DNS bleiben
+// gefüllt.
+//
+// exclude: Adressen, die nie als eigene gelten (die gemeinsame Adresse des
+// Ausfallschutzes, IPv4 und IPv6), unabhängig von Präfix und Merkmalen. Jeder
+// Aufrufer, der die Zusammenfassung für Aktionen nutzt (auch der Update-Agent),
+// muss dieselben Adressen übergeben.
+func Collect(ctx context.Context, run RunFunc, readFile func(string) ([]byte, error), exclude ...netip.Addr) Summary {
 	s := Summary{Mode: ModeUnknown}
 	if out, err := run(ctx, "ip", "-4", "route", "show", "default"); err == nil {
 		s.Gateway, s.Iface = ParseDefaultRoute(string(out))
@@ -64,13 +80,11 @@ func Collect(ctx context.Context, run RunFunc, readFile func(string) ([]byte, er
 	dynamic := false
 	if s.Iface != "" {
 		if out, err := run(ctx, "ip", "-o", "addr", "show", "dev", s.Iface); err == nil {
-			s.Addr, dynamic, s.IPv6 = ParseAddrs(string(out), s.Iface)
+			s.Addr, _, dynamic, s.IPv6 = parseAddrs(string(out), s.Iface, exclude)
 		}
 	} else if out, err := run(ctx, "ip", "-o", "addr", "show", "scope", "global"); err == nil {
-		// keine Standardroute: erste globale Adresse nehmen
-		var iface string
-		s.Addr, iface, dynamic, s.IPv6 = parseAddrs(string(out), "")
-		s.Iface = iface
+		// keine Standardroute: erste globale Adresse einer echten Karte zeigen
+		s.Addr, s.Iface, dynamic, s.IPv6 = parseAddrs(string(out), "", exclude)
 	}
 	if s.Iface != "" {
 		if out, err := run(ctx, "resolvectl", "dns", s.Iface); err == nil {
@@ -86,8 +100,11 @@ func Collect(ctx context.Context, run RunFunc, readFile func(string) ([]byte, er
 			}
 		}
 	}
+	s.DNS = capList(s.DNS, maxDNS)
+	s.IPv6 = capList(s.IPv6, maxIPv6)
 	s.Netplan = netplanSupported(ctx, run, readFile)
-	if s.Netplan && s.Addr != "" {
+	// ohne Standardroute ist unklar, welche Karte die des Servers ist
+	if s.Netplan && s.Addr != "" && s.Gateway != "" {
 		s.Mode = ModeStatic
 		if dynamic {
 			s.Mode = ModeDHCP
@@ -147,12 +164,33 @@ func ParseDefaultRoute(out string) (gw, iface string) {
 // globale IPv4-Adresse, die nicht „secondary“ und kein /32 ist (die
 // mitwandernde Adresse des Ausfallschutzes zählt nicht als eigene); dynamic
 // bedeutet DHCP. v6 sind globale IPv6-Adressen ohne temporary/deprecated.
-func ParseAddrs(out, iface string) (addr string, dynamic bool, v6 []string) {
-	addr, _, dynamic, v6 = parseAddrs(out, iface)
+//
+// Die gemeinsame IPv6-Adresse liegt als /128 mit „deprecated“ auf der Karte und
+// fällt deshalb schon hier heraus; Collect schließt sie zusätzlich über exclude aus.
+func ParseAddrs(out, iface string, exclude ...netip.Addr) (addr string, dynamic bool, v6 []string) {
+	addr, _, dynamic, v6 = parseAddrs(out, iface, exclude)
 	return
 }
 
-func parseAddrs(out, iface string) (addr, ifc string, dynamic bool, v6 []string) {
+func capList(l []string, n int) []string {
+	if len(l) > n {
+		return l[:n]
+	}
+	return l
+}
+
+// virtuelle Karten (Docker, Brücken, Container), die ohne Standardroute nie „der Server“ sind
+func virtualIface(n string) bool {
+	for _, p := range []string{"docker", "br-", "veth", "virbr", "lxc", "cni", "flannel", "cali", "lo"} {
+		if strings.HasPrefix(n, p) {
+			return true
+		}
+	}
+	return false
+}
+
+func parseAddrs(out, iface string, exclude []netip.Addr) (addr, ifc string, dynamic bool, v6 []string) {
+	secAddr, secIfc, secDyn := "", "", false // Rückfall: erste Nebenadresse
 	for _, line := range strings.Split(out, "\n") {
 		f := strings.Fields(line)
 		// 2: eth0    inet 10.10.0.17/24 brd … scope global dynamic eth0\ valid_lft …
@@ -162,6 +200,12 @@ func parseAddrs(out, iface string) (addr, ifc string, dynamic bool, v6 []string)
 		name := strings.TrimSuffix(f[1], ":")
 		if iface != "" && name != iface && !strings.HasPrefix(name, iface+":") {
 			continue
+		}
+		if iface == "" && virtualIface(name) {
+			continue
+		}
+		if p, err := netip.ParsePrefix(f[3]); err == nil && slices.Contains(exclude, p.Addr()) {
+			continue // gemeinsame Adresse, egal mit welchem Präfix
 		}
 		has := func(w string) bool {
 			for _, x := range f[4:] {
@@ -177,10 +221,18 @@ func parseAddrs(out, iface string) (addr, ifc string, dynamic bool, v6 []string)
 		switch f[2] {
 		case "inet":
 			p, err := netip.ParsePrefix(f[3])
-			if err != nil || p.Bits() == 32 || has("secondary") || addr != "" {
+			if err != nil || p.Bits() == 32 {
 				continue
 			}
-			addr, ifc, dynamic = f[3], name, has("dynamic")
+			if has("secondary") {
+				if secAddr == "" {
+					secAddr, secIfc, secDyn = f[3], name, has("dynamic")
+				}
+				continue
+			}
+			if addr == "" {
+				addr, ifc, dynamic = f[3], name, has("dynamic")
+			}
 		case "inet6":
 			p, err := netip.ParsePrefix(f[3])
 			if err != nil || has("temporary") || has("deprecated") {
@@ -188,6 +240,9 @@ func parseAddrs(out, iface string) (addr, ifc string, dynamic bool, v6 []string)
 			}
 			v6 = append(v6, p.Addr().String())
 		}
+	}
+	if addr == "" {
+		addr, ifc, dynamic = secAddr, secIfc, secDyn
 	}
 	return
 }
@@ -266,6 +321,9 @@ func ProbeDNS(ctx context.Context, server string) error {
 		host = h
 	} else {
 		addr = net.JoinHostPort(server, "53")
+	}
+	if _, err := netip.ParseAddr(host); err != nil { // nur IP-Adressen, nie Namen
+		return fmt.Errorf("Der DNS-Server %s ist keine IP-Adresse", host)
 	}
 	fail := fmt.Errorf("Der DNS-Server %s antwortet nicht", host)
 

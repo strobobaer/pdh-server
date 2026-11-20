@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
+	"net/netip"
 	"os"
 	"reflect"
 	"strings"
@@ -64,6 +66,80 @@ func TestParseAddrs(t *testing.T) {
 	}
 	if addr, _, _ := ParseAddrs(addrStatic, "eth9"); addr != "" {
 		t.Errorf("fremde Karte: %q", addr)
+	}
+}
+
+// Altzustand aus pdh-ha: gemeinsame Adresse mit Netzpräfix vorn, die echte secondary.
+const addrOldFront = `2: eth0    inet 10.77.1.50/24 scope global eth0\       valid_lft forever preferred_lft forever
+2: eth0    inet 10.77.1.7/24 brd 10.77.1.255 scope global secondary eth0\       valid_lft forever preferred_lft forever
+2: eth0    inet6 2a02:810:1::15/128 scope global deprecated \       valid_lft forever preferred_lft 0sec
+`
+
+// Die gemeinsame IPv6-Adresse liegt als /128 mit „deprecated“ auf der Karte
+// und fällt deshalb von selbst heraus; zusätzlich gilt der Ausschluss.
+func TestParseAddrsExcludeShared(t *testing.T) {
+	// ohne Ausschluss würde die gemeinsame Adresse als eigene gelten
+	if addr, _, _ := ParseAddrs(addrOldFront, "eth0"); addr != "10.77.1.50/24" {
+		t.Fatalf("Ausgangslage: %q", addr)
+	}
+	ex := netip.MustParseAddr("10.77.1.50")
+	addr, _, v6 := ParseAddrs(addrOldFront, "eth0", ex)
+	if addr != "10.77.1.7/24" || len(v6) != 0 {
+		t.Fatalf("mit Ausschluss: %q %v", addr, v6)
+	}
+	// bevorzugt die erste Adresse ohne secondary
+	if addr, _, _ := ParseAddrs(addrDHCP, "eth0", netip.MustParseAddr("10.10.0.99")); addr != "10.10.0.17/24" {
+		t.Fatalf("%q", addr)
+	}
+	// IPv6 ausdrücklich ausgeschlossen, auch ohne deprecated
+	line := "2: eth0    inet6 2a02:810:1::15/64 scope global \\ x\n"
+	if _, _, v6 := ParseAddrs(line, "eth0", netip.MustParseAddr("2a02:810:1::15")); len(v6) != 0 {
+		t.Fatalf("%v", v6)
+	}
+}
+
+func TestCollectExcludeAndNoRoute(t *testing.T) {
+	f := ubuntuDHCP()
+	f.out["ip -o addr show dev eth0"] = addrOldFront
+	got := Collect(context.Background(), f.run, files(map[string]string{"/etc/os-release": osUbuntu}), netip.MustParseAddr("10.77.1.50"))
+	if got.Addr != "10.77.1.7/24" {
+		t.Fatalf("%+v", got)
+	}
+	// ohne Standardroute: Docker-Brücke nie als Server, Art unbekannt
+	g := &fakeSys{out: map[string]string{
+		"ip -4 route show default":             "",
+		"ip -o addr show scope global":         "3: docker0    inet 172.17.0.1/16 brd 172.17.255.255 scope global docker0\\ x\n" + addrStatic,
+		"resolvectl dns ens18":                 "Link 2 (ens18): 192.168.5.1\n",
+		"systemctl is-active systemd-networkd": "active\n",
+		"netplan get":                          "network:\n",
+	}}
+	got = Collect(context.Background(), g.run, files(map[string]string{"/etc/os-release": osUbuntu}))
+	if got.Iface != "ens18" || got.Addr != "192.168.5.20/24" || got.Mode != ModeUnknown {
+		t.Fatalf("ohne Route: %+v", got)
+	}
+}
+
+func TestCollectCapsLists(t *testing.T) {
+	f := ubuntuDHCP()
+	f.out["resolvectl dns eth0"] = "Link 2 (eth0): 1.1.1.1 1.1.1.2 1.1.1.3 1.1.1.4 1.1.1.5 1.1.1.6 1.1.1.7\n"
+	var v6 strings.Builder
+	for i := 1; i <= 12; i++ {
+		fmt.Fprintf(&v6, "2: eth0    inet6 2a02:810:1::%x/64 scope global \\ x\n", i)
+	}
+	f.out["ip -o addr show dev eth0"] = addrDHCP + v6.String()
+	got := Collect(context.Background(), f.run, files(map[string]string{"/etc/os-release": osUbuntu}))
+	if len(got.DNS) != 5 || len(got.IPv6) != 8 {
+		t.Fatalf("dns %d, v6 %d", len(got.DNS), len(got.IPv6))
+	}
+}
+
+func TestProbeDNSOnlyIPLiterals(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	for _, s := range []string{"localhost", "dns.example.com:53", "localhost:53"} {
+		if err := ProbeDNS(ctx, s); err == nil {
+			t.Errorf("%q darf nicht angefragt werden", s)
+		}
 	}
 }
 
@@ -209,7 +285,7 @@ func TestCollectNoDefaultRoute(t *testing.T) {
 		"netplan get":                          "network:\n",
 	}}
 	got := Collect(context.Background(), f.run, files(map[string]string{"/etc/os-release": osUbuntu}))
-	want := Summary{Iface: "ens18", Addr: "192.168.5.20/24", Mode: ModeStatic, DNS: []string{"192.168.5.1"}, Netplan: true}
+	want := Summary{Iface: "ens18", Addr: "192.168.5.20/24", Mode: ModeUnknown, DNS: []string{"192.168.5.1"}, Netplan: true}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("%+v\nerwartet %+v", got, want)
 	}
