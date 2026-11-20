@@ -10,6 +10,12 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.82.9] – 2026-11-20
+
+### Neu
+
+- Am Systembenutzer eines Terminals lässt sich einstellen, wie ein Windows-Terminal im Hintergrund auf eine gelesene Karte aufmerksam macht: Windows-Mitteilung, Fenster in der Mitte (Vorgabe), Leiste oben, Terminal nach vorn oder keine Benachrichtigung. Die Einstellung erreicht das Terminal sofort; ältere Terminals ignorieren sie.
+
 ## [0.82.8] – 2026-11-20
 
 ### Geändert

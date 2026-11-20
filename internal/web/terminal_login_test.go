@@ -15,22 +15,22 @@ func TestLoginKindAllowed(t *testing.T) {
 		kind string
 		want bool
 	}{
-		{"password mit Knopf bei card_pin", terminalLoginSettings{loginCardPIN, true}, loginPassword, true},
-		{"password ohne Knopf bei card_pin", terminalLoginSettings{loginCardPIN, false}, loginPassword, false},
-		{"password mit Knopf bei card_only", terminalLoginSettings{loginCardOnly, true}, loginPassword, true},
-		{"password ohne Knopf bei password", terminalLoginSettings{loginPassword, false}, loginPassword, true},
-		{"password mit Knopf bei password", terminalLoginSettings{loginPassword, true}, loginPassword, true},
-		{"password bei none mit Knopf", terminalLoginSettings{loginNone, true}, loginPassword, false},
-		{"password bei none ohne Knopf", terminalLoginSettings{loginNone, false}, loginPassword, false},
-		{"card_pin bei card_pin", terminalLoginSettings{loginCardPIN, false}, loginCardPIN, true},
-		{"card_pin bei card_only", terminalLoginSettings{loginCardOnly, true}, loginCardPIN, false},
-		{"card_pin bei password", terminalLoginSettings{loginPassword, true}, loginCardPIN, false},
-		{"card_pin bei none", terminalLoginSettings{loginNone, true}, loginCardPIN, false},
-		{"card_only bei card_only", terminalLoginSettings{loginCardOnly, false}, loginCardOnly, true},
-		{"card_only bei card_pin", terminalLoginSettings{loginCardPIN, true}, loginCardOnly, false},
-		{"card_only bei none", terminalLoginSettings{loginNone, true}, loginCardOnly, false},
-		{"unbekannte Art", terminalLoginSettings{loginCardPIN, true}, "foo", false},
-		{"leere Art", terminalLoginSettings{loginCardOnly, true}, "", false},
+		{"password mit Knopf bei card_pin", terminalLoginSettings{ManualLogin: loginCardPIN, PasswordButton: true}, loginPassword, true},
+		{"password ohne Knopf bei card_pin", terminalLoginSettings{ManualLogin: loginCardPIN, PasswordButton: false}, loginPassword, false},
+		{"password mit Knopf bei card_only", terminalLoginSettings{ManualLogin: loginCardOnly, PasswordButton: true}, loginPassword, true},
+		{"password ohne Knopf bei password", terminalLoginSettings{ManualLogin: loginPassword, PasswordButton: false}, loginPassword, true},
+		{"password mit Knopf bei password", terminalLoginSettings{ManualLogin: loginPassword, PasswordButton: true}, loginPassword, true},
+		{"password bei none mit Knopf", terminalLoginSettings{ManualLogin: loginNone, PasswordButton: true}, loginPassword, false},
+		{"password bei none ohne Knopf", terminalLoginSettings{ManualLogin: loginNone, PasswordButton: false}, loginPassword, false},
+		{"card_pin bei card_pin", terminalLoginSettings{ManualLogin: loginCardPIN, PasswordButton: false}, loginCardPIN, true},
+		{"card_pin bei card_only", terminalLoginSettings{ManualLogin: loginCardOnly, PasswordButton: true}, loginCardPIN, false},
+		{"card_pin bei password", terminalLoginSettings{ManualLogin: loginPassword, PasswordButton: true}, loginCardPIN, false},
+		{"card_pin bei none", terminalLoginSettings{ManualLogin: loginNone, PasswordButton: true}, loginCardPIN, false},
+		{"card_only bei card_only", terminalLoginSettings{ManualLogin: loginCardOnly, PasswordButton: false}, loginCardOnly, true},
+		{"card_only bei card_pin", terminalLoginSettings{ManualLogin: loginCardPIN, PasswordButton: true}, loginCardOnly, false},
+		{"card_only bei none", terminalLoginSettings{ManualLogin: loginNone, PasswordButton: true}, loginCardOnly, false},
+		{"unbekannte Art", terminalLoginSettings{ManualLogin: loginCardPIN, PasswordButton: true}, "foo", false},
+		{"leere Art", terminalLoginSettings{ManualLogin: loginCardOnly, PasswordButton: true}, "", false},
 	}
 	for _, c := range cases {
 		if got := loginKindAllowed(c.s, c.kind); got != c.want {

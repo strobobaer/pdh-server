@@ -921,6 +921,16 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <li><b>Keine</b> – das Terminal zeigt <b>Kein Kartenleser – Anmeldung nicht möglich</b>; auch der Knopf entfällt.</li>
   </ul>
   <p>Die <b>Terminal-PIN</b> (4 bis 8 Ziffern, nicht lauter gleiche und keine Zahlenfolge wie 1234) setzt jede Person unter <b>Mein Konto</b>; Benutzerverwalter können sie auch am Benutzer setzen oder entfernen. Nach <b>5</b> falschen PINs ist die PIN <b>15 Minuten</b> gesperrt (an allen Terminals); am Terminal erscheint dann nur <b>Anmeldung fehlgeschlagen</b>; die Sperrzeit (<b>PIN gesperrt bis HH:MM</b>) siehst du als Benutzerverwalter beim Benutzer. Ändert sich die Anmeldeart oder der Knopf, übernimmt das Terminal das <b>sofort</b>, ohne Neuladen. Bei Fehlern erscheint kurz <b>Anmeldung fehlgeschlagen</b>, bei zu vielen Versuchen <b>Bitte kurz warten</b>.</p>
+  <h3>Benachrichtigung beim Kartenlesen (Windows-Terminal)</h3>
+  <p>Wird an einem Windows-Terminal eine Karte gelesen, während das Terminalfenster im Hintergrund ist, zeigt das Terminal, wer angemeldet wurde. Welche Art der Benachrichtigung gilt, stellst du am Systembenutzer des Terminals ein (Terminal-Block, <b>Benachrichtigung beim Kartenlesen</b>). Mehrere Arten lassen sich zusammen wählen:</p>
+  <ul>
+    <li><b>Windows-Mitteilung</b> – eine Mitteilung von Windows.</li>
+    <li><b>Fenster in der Mitte</b> (Vorgabe) – ein Fenster in der Bildschirmmitte, das nach 4 Sekunden schließt.</li>
+    <li><b>Leiste oben</b> – eine Leiste am oberen Bildschirmrand, die nach 4 Sekunden schließt.</li>
+    <li><b>Terminal nach vorn</b> – das Terminalfenster kommt in den Vordergrund.</li>
+    <li><b>Keine Benachrichtigung</b> – schließt alle anderen Arten aus.</li>
+  </ul>
+  <p>Ist nichts angehakt, gilt die Vorgabe (Fenster in der Mitte). Die Einstellung wirkt nur an Windows-Terminals in der Betriebsart Zusatz und gilt am Terminal sofort, ohne Neuladen.</p>
   <p>Rührt niemand das Terminal an, kehrt es nach der <b>Rückkehrzeit</b> von Störungsinfo und „Neu“ zum Bildschirmschoner zurück.</p>
   <div class="hb-howto"><b><i class="ti ti-clock"></i> So stellst du die Rückkehrzeit ein</b>
     <ol class="hb-steps">

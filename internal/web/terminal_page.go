@@ -55,20 +55,21 @@ type terminalInfo struct {
 
 // terminalPage: Daten für terminal.gohtml.
 type terminalPage struct {
-	Mode       string // schoner | info | neu
-	Idle       int    // Rückkehrzeit in Sekunden (0 = kein Timer)
-	NoInfra    bool
-	NoPerm     bool // dem Terminal-Benutzer fehlen faults.view und tickets.view für diese Anlage
-	CanFaults  bool
-	CanTickets bool
-	EasyMode   bool // Easy-Mode an: „Neu“ darf zur Meldeseite /e/{id} führen
-	CardEvents bool // Gerätesitzung (gekoppelter Pi): Kartenleser-Ereignisse abonnieren
+	Mode           string // schoner | info | neu
+	Idle           int    // Rückkehrzeit in Sekunden (0 = kein Timer)
+	NoInfra        bool
+	NoPerm         bool // dem Terminal-Benutzer fehlen faults.view und tickets.view für diese Anlage
+	CanFaults      bool
+	CanTickets     bool
+	EasyMode       bool   // Easy-Mode an: „Neu“ darf zur Meldeseite /e/{id} führen
+	CardEvents     bool   // Gerätesitzung (gekoppelter Pi): Kartenleser-Ereignisse abonnieren
 	ManualLogin    string // Anfangswert: card_pin | password | card_only | none
 	PasswordButton bool   // Anfangswert: Knopf „Mit Benutzer und Passwort“
-	InfraID    string
-	Name       string
-	Path       string
-	Info       terminalInfo
+	CardNotify     string // Anfangswert: wirksame Benachrichtigungsarten als JSON-Liste, z. B. ["overlay"]
+	InfraID        string
+	Name           string
+	Path           string
+	Info           terminalInfo
 }
 
 // FaultsMore/TicketsMore: nicht angezeigte offene Einträge.
@@ -290,11 +291,15 @@ func (h *Handler) terminalGate(w http.ResponseWriter, r *http.Request, mode stri
 		p.CardEvents = h.terminalDeviceSession(r) // im Schoner wird nichts abonniert
 		// Anfangswerte der Anmeldung ohne Leser; Änderungen kommen per /terminal/events nach.
 		p.ManualLogin, p.PasswordButton = loginCardPIN, true
+		notify := effectiveCardNotify(nil)
 		if p.CardEvents {
 			if ls, err := h.terminalLoginSettings(r.Context(), uid); err == nil {
 				p.ManualLogin, p.PasswordButton = ls.ManualLogin, ls.PasswordButton
+				notify = effectiveCardNotify(ls.CardNotify)
 			}
 		}
+		nb, _ := json.Marshal(notify)
+		p.CardNotify = string(nb)
 	}
 	return p, true
 }

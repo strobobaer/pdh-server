@@ -117,6 +117,7 @@ func (h *Handler) terminalSettingsEvent(r *http.Request, userID string) (string,
 		"manual_login":    s.ManualLogin,
 		"password_button": s.PasswordButton,
 		"idle":            h.terminalIdleSeconds(r.Context(), userID),
+		"card_notify":     effectiveCardNotify(s.CardNotify),
 	})
 	if err != nil {
 		return "", err

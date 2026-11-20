@@ -139,6 +139,9 @@ func TestTerminalEventsStream(t *testing.T) {
 	if ev.Name != "settings" || ev.Data["manual_login"] != "card_only" || ev.Data["password_button"] != false || ev.Data["idle"] != float64(75) {
 		t.Fatalf("erstes Ereignis: %+v", ev)
 	}
+	if cn, _ := ev.Data["card_notify"].([]any); len(cn) != 1 || cn[0] != "overlay" {
+		t.Fatalf("card_notify ohne Eintrag: %+v", ev.Data["card_notify"])
+	}
 
 	e.must(h.saveTerminalLoginSettings(e.ctx, term, terminalLoginSettings{ManualLogin: loginPassword, PasswordButton: true}))
 	h.notifyTerminalSettings(term)
