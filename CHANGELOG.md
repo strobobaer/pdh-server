@@ -10,6 +10,16 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.82.8] – 2026-11-20
+
+### Geändert
+
+- Kann PDH die Einstellungsdatei nicht speichern, nennt die Seite „Server-Einstellungen“ jetzt den Grund (etwa „Die Datei gehört „root“, PDH läuft als „michael“.“) und den Befehl zur Abhilfe am Server; geprüft wird auch der Ordner, in dem PDH beim Speichern eine Hilfsdatei anlegt.
+
+### Sicherheit
+
+- Die Seite „Server-Einstellungen“ warnt, wenn die Einstellungsdatei für andere Benutzer des Servers lesbar ist – sie enthält Kennwörter und Schlüssel –, und nennt den Befehl, um das abzustellen.
+
 ## [0.82.7] – 2026-11-20
 
 ### Behoben

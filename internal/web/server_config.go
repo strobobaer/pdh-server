@@ -173,6 +173,10 @@ type ServerConfigData struct {
 	Groups         []envGroupView
 	EnvFile        string
 	FileWritable   bool
+	FileProblem    string // warum nicht beschreibbar (envfile_check.go)
+	FileFix        string // Befehl zur Abhilfe am Server
+	FileExposed    string // Warnung: für andere Benutzer lesbar
+	FileExposedFix string
 	RestartPending []string
 	PendingImport  []string // Werte in der Datei, noch nicht in der Datenbank
 	Undecryptable  []string
@@ -215,7 +219,8 @@ func (h *Handler) ServerConfigPage(w http.ResponseWriter, r *http.Request) {
 	if abs, err := absPath(path); err == nil {
 		d.EnvFile = abs
 	}
-	d.FileWritable = fileWritable(path)
+	st := checkEnvFile(path)
+	d.FileWritable, d.FileProblem, d.FileFix, d.FileExposed, d.FileExposedFix = st.Writable, st.Problem, st.Fix, st.Exposed, st.ExposedFix
 	dbVals := map[string]config.DBSetting{}
 	if h.db != nil {
 		if v, err := config.LoadDBSettings(r.Context(), h.db); err == nil {
@@ -791,29 +796,6 @@ func absPath(p string) (string, error) {
 		return p, err
 	}
 	return wd + string(os.PathSeparator) + p, nil
-}
-
-// fileWritable prueft, ob die Einstellungsdatei (bzw. ihr Ordner) beschreibbar ist.
-func fileWritable(path string) bool {
-	if f, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND, 0); err == nil {
-		f.Close()
-		return true
-	}
-	if _, err := os.Stat(path); err == nil {
-		return false
-	}
-	dir := "."
-	if i := strings.LastIndexAny(path, `/\`); i > 0 {
-		dir = path[:i]
-	}
-	tmp, err := os.CreateTemp(dir, ".pdh-write-test-*")
-	if err != nil {
-		return false
-	}
-	name := tmp.Name()
-	tmp.Close()
-	os.Remove(name)
-	return true
 }
 
 // IsSecretSetting: geheimer Wert laut Katalog (bzw. Namens-Heuristik).
