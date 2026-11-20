@@ -255,8 +255,8 @@ oder ändern.**
    (19.11.2026; Migrationen 179 bis 181, Rechte `esppdh.view`, `esppdh.edit`,
    `esppdh.admin`; Entwurf `docs/superpowers/specs/2026-11-18-esppdh-design.md`,
    Plan `docs/superpowers/plans/2026-11-18-esppdh-paket1.md`). **0.82.0 bis
-   0.82.2 sind auf dem Testverbund** (19.11.2026, Verbund-Update auf
-   `1cfbe6e`; beide Server und Zeuge 0.82.2, Migrationen 179–182 da, aktiv
+   0.82.5 sind auf dem Testverbund** (zuletzt 20.11.2026, Verbund-Update auf
+   `7388415`; beide Server und Zeuge 0.82.5, Migrationen 179–184 da, aktiv
    jetzt `pdh-server` 10.10.0.17). Offen: am Testverbund auf der Seite „Netzwerk“ den
    Haken „Für ESPPDH-Geräte nutzbar“ am Geräte-WLAN setzen, auf beiden Servern
    die Umgebung einrichten, ein Gerät bauen, die Rollen umschalten, die
@@ -382,14 +382,17 @@ oder ändern.**
    dem Einsatz auf 10.10.0.202 `/etc/netplan` nur lesend ansehen;
    Bestätigen-Frist 30 s kürzer als der schlimmste Fall des Skripts (Web liest
    neu).
-   (c) **0.82.5 Netzlaufwerk-Test und Zeuge** – Branch
-   `fix/laufwerk-schreibgrund` (lokal): „Testen“ nennt den echten Grund,
+   (c) **0.82.5 Netzlaufwerk-Test und Zeuge** – auf `main` (20.11.2026,
+   Merge `7388415`) und dem Testverbund (beide Server und Zeuge 0.82.5; der
+   Zeuge zog selbst nach und sieht beide Server): „Testen“ nennt den echten Grund,
    wenn PDH nicht schreiben kann; Bau-Rezept des Zeugen kopiert
    `internal/hostnet` (seit 0.82.4 scheiterte der Bau, der Helfer setzte den
    Zeugen auf 0.82.2 zurück; `TestDockerfileCopiesAllPdhHaPackages`);
    SMB-Laufwerke gehören dem Benutzer der Einheit `pdh` (`User=`/`Group=`
    per `systemctl show`, Rückfall Benutzer „pdh“, sonst 10001, nie root;
-   `PDH_MOUNT_UID` hat Vorrang). Anlass: Meldung „pdhnas: erreichbar, aber
+   `PDH_MOUNT_UID` hat Vorrang; **0.82.6** auf Branch `fix/mount-gid`, lokal:
+   eine gesetzte `PDH_MOUNT_GID` gilt auch dann – Freigabe für Merge und Push
+   offen). Anlass: Meldung „pdhnas: erreichbar, aber
    PDH darf nicht schreiben“ – am Testverbund schreibt PDH auf „pdhnas“
    (`//10.10.0.202/pdh-nas`) einwandfrei; vermutet auf 10.10.0.202: Dienst
    läuft dort nicht als „pdh“ (prüft der Anwender selbst nur lesend; nach

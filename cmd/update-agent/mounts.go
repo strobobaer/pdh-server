@@ -61,9 +61,11 @@ func mountRoot() string {
 // mountOwner: Benutzer, unter dem PDH laeuft (Dateirechte bei SMB).
 // Reihenfolge: PDH_MOUNT_UID/PDH_MOUNT_GID; bei systemd der Benutzer der Einheit
 // „pdh“ (User=/Group=) – PDH laeuft nicht ueberall als „pdh“; sonst der
-// Systembenutzer „pdh“; sonst 10001. Nie root.
+// Systembenutzer „pdh“; sonst 10001. Nie root. Eine gesetzte PDH_MOUNT_GID
+// gilt immer, auch wenn der Benutzer so ermittelt wird.
 func (a *updateAgent) mountOwner(ctx context.Context) (string, string) {
-	uid, gid := strings.TrimSpace(os.Getenv("PDH_MOUNT_UID")), strings.TrimSpace(os.Getenv("PDH_MOUNT_GID"))
+	uid, envGID := strings.TrimSpace(os.Getenv("PDH_MOUNT_UID")), strings.TrimSpace(os.Getenv("PDH_MOUNT_GID"))
+	gid := envGID
 	if uid == "" && a.mode == "systemd" {
 		show := a.mountUnitShow
 		if show == nil {
@@ -85,6 +87,9 @@ func (a *updateAgent) mountOwner(ctx context.Context) (string, string) {
 	}
 	if uid == "" {
 		uid = "10001"
+	}
+	if envGID != "" {
+		gid = envGID // fest vorgegebene Gruppe gilt immer, auch wenn der Benutzer ermittelt wurde
 	}
 	if gid == "" {
 		gid = uid

@@ -10,6 +10,12 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.82.6] – 2026-11-20
+
+### Behoben
+
+- Ist am Update-Agenten nur die Gruppe für Netzlaufwerke fest eingestellt (`PDH_MOUNT_GID`), gilt sie jetzt auch, wenn der Benutzer selbst ermittelt wird; vorher konnte die Gruppe des Dienstes sie überschreiben.
+
 ## [0.82.5] – 2026-11-20
 
 ### Behoben
