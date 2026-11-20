@@ -400,9 +400,8 @@ oder ändern.**
    das schaltet „automatisch einbinden“ aus). **Am 20.11.2026 auf 202
    bestätigt:** `User=michael`, Laufwerk `uid=10001,gid=10001`. **0.82.7**:
    Hinweis in Handbuch und CHANGELOG berichtigt – auf `main` (Merge
-   `5154bda`) und dem Testverbund. Offen (Anwender): 0.82.7 auf 202
-   einspielen, „pdhnas“ öffnen → Speichern, `findmnt` zeigt die Kennung von
-   `michael`, „Testen“ meldet beschreibbar.
+   `5154bda`) und dem Testverbund. Auf 10.10.0.202 erledigt (20.11.2026,
+   vom Anwender): „pdhnas“ ist verbunden – Punkt abgeschlossen.
 7. **0.81.6 Nummern ab 10000** (Rüstzeit, KVP, Bestellung und Partner waren auf
    vier Stellen abgeschnitten) – mit 0.82.0 auf `main`; der lokale Branch
    `fix/ruestzeit-nummer` ist damit erledigt.
