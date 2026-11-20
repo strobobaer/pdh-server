@@ -255,9 +255,9 @@ oder ändern.**
    (19.11.2026; Migrationen 179 bis 181, Rechte `esppdh.view`, `esppdh.edit`,
    `esppdh.admin`; Entwurf `docs/superpowers/specs/2026-11-18-esppdh-design.md`,
    Plan `docs/superpowers/plans/2026-11-18-esppdh-paket1.md`). **0.82.0 bis
-   0.82.6 sind auf dem Testverbund** (zuletzt 20.11.2026, Verbund-Update auf
-   `bd22fe9`; beide Server und Zeuge 0.82.6, Migrationen 179–184 da, aktiv
-   jetzt `pdh` 10.10.0.14). Offen: am Testverbund auf der Seite „Netzwerk“ den
+   0.82.7 sind auf dem Testverbund** (zuletzt 20.11.2026, Verbund-Update auf
+   `5154bda`; beide Server und Zeuge 0.82.7, Migrationen 179–184 da, aktiv
+   jetzt `pdh-server` 10.10.0.17). Offen: am Testverbund auf der Seite „Netzwerk“ den
    Haken „Für ESPPDH-Geräte nutzbar“ am Geräte-WLAN setzen, auf beiden Servern
    die Umgebung einrichten, ein Gerät bauen, die Rollen umschalten, die
    Firmware am zweiten Server herunterladen und im Browser prüfen. Paket 2 und
@@ -398,9 +398,11 @@ oder ändern.**
    läuft dort nicht als „pdh“ (prüft der Anwender selbst nur lesend; nach
    dem Einspielen dort das Laufwerk öffnen und „Speichern“ – nicht „Trennen“,
    das schaltet „automatisch einbinden“ aus). **Am 20.11.2026 auf 202
-   bestätigt:** `User=michael`, Laufwerk `uid=10001,gid=10001`. **0.82.7**
-   (Branch `docs/offene-punkte-0826`, lokal): Hinweis in Handbuch und
-   CHANGELOG berichtigt – Freigabe für Merge und Push offen.
+   bestätigt:** `User=michael`, Laufwerk `uid=10001,gid=10001`. **0.82.7**:
+   Hinweis in Handbuch und CHANGELOG berichtigt – auf `main` (Merge
+   `5154bda`) und dem Testverbund. Offen (Anwender): 0.82.7 auf 202
+   einspielen, „pdhnas“ öffnen → Speichern, `findmnt` zeigt die Kennung von
+   `michael`, „Testen“ meldet beschreibbar.
 7. **0.81.6 Nummern ab 10000** (Rüstzeit, KVP, Bestellung und Partner waren auf
    vier Stellen abgeschnitten) – mit 0.82.0 auf `main`; der lokale Branch
    `fix/ruestzeit-nummer` ist damit erledigt.
