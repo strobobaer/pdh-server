@@ -46,27 +46,37 @@ const (
 	netProbeTimeout   = 3 * time.Second
 	netCollectTimeout = 15 * time.Second
 
-	netPendingMsg = "Eine Änderung wartet noch auf Bestätigung"
-	netHAUnreach  = "Ausfallschutz nicht erreichbar – bitte später erneut versuchen"
+	netPendingMsg  = "Eine Änderung wartet noch auf Bestätigung"
+	netHAUnreach   = "Ausfallschutz nicht erreichbar – bitte später erneut versuchen"
+	netNotWaiting  = "Keine Änderung wartet auf Bestätigung"
+	netStillApply  = "Die Änderung wird noch angewendet – bitte gleich erneut bestätigen"
+	netRunWaitStop = 10 * time.Second // nach Ablauf der Frist höchstens so lange auf die Ausgabe warten
 )
 
 // netWatchEvery: so oft prüft der Agent, ob eine wartende Änderung längst hätte zurückgenommen
-// sein müssen (Wecker gescheitert); netWatchGrace: so lange nach Fristende wartet er auf den Wecker.
+// sein müssen (Wecker gescheitert) und ob eine Wartung noch aus muss; netWatchGrace: so lange nach
+// Fristende wartet er auf den Wecker; netMaintMaxWait: längster Abstand der Versuche „Wartung aus“.
 var (
-	netWatchEvery = 30 * time.Second
-	netWatchGrace = 30 * time.Second
+	netWatchEvery   = 30 * time.Second
+	netWatchGrace   = 30 * time.Second
+	netMaintMaxWait = 10 * time.Minute
 )
 
-// netPending: Inhalt der Zustandsdatei des Skripts (jeder Stand, nicht nur „pending“).
+// netPending: Inhalt der Zustandsdatei des Skripts (jeder Stand, nicht nur „pending“). Die Karte
+// bestätigt mit ID; MaintOffPending: die Wartung des Ausfallschutzes aus dieser Änderung ist noch
+// an und wird nachgeholt (MaintMsg nennt den Grund).
 type netPending struct {
-	ID       string    `json:"id"`
-	State    string    `json:"state"` // pending, confirmed, restored, failed
-	Action   string    `json:"action"`
-	By       string    `json:"by"`
-	Msg      string    `json:"msg"`
-	Started  time.Time `json:"started"`
-	Deadline time.Time `json:"deadline"`
-	Maint    bool      `json:"maint"` // Wartung des Ausfallschutzes von dieser Änderung eingeschaltet
+	ID              string    `json:"id"`
+	State           string    `json:"state"` // pending, confirmed, restored, failed
+	Action          string    `json:"action"`
+	By              string    `json:"by"`
+	Msg             string    `json:"msg"`
+	Started         time.Time `json:"started,omitzero"`
+	Deadline        time.Time `json:"deadline,omitzero"`
+	Applied         bool      `json:"applied"` // netplan apply gelungen – erst dann lässt sich bestätigen
+	Maint           bool      `json:"maint"`   // Wartung des Ausfallschutzes von dieser Änderung eingeschaltet
+	MaintOffPending bool      `json:"maint_off_pending"`
+	MaintMsg        string    `json:"maint_msg,omitempty"`
 }
 
 // netStatusResp: GET /v1/net/status.
@@ -79,7 +89,7 @@ type netStatusResp struct {
 	JobErr  string           `json:"job_error,omitempty"`
 }
 
-// netApplyReq: POST /v1/net/apply. Bestätigen: POST /v1/net/confirm {"by": "…"}.
+// netApplyReq: POST /v1/net/apply. Bestätigen: POST /v1/net/confirm {"id": "…", "by": "…"}.
 type netApplyReq struct {
 	Action  string   `json:"action"` // fix (jetzige Adresse fest) oder dns (DNS-Server ändern)
 	DNS     []string `json:"dns"`
@@ -94,6 +104,9 @@ type netJob struct {
 	mu      sync.Mutex
 	running bool
 	err     string
+
+	maintNext time.Time     // nächster Versuch „Wartung aus“ (Wache)
+	maintWait time.Duration // Abstand nach dem letzten Fehlschlag
 }
 
 func (j *netJob) get() (bool, string) {
@@ -112,12 +125,19 @@ exec systemd-run --wait --pipe --collect --quiet --unit="pdh-static-ip-apply-$(d
 `
 
 const netConfirmScript = `set -euo pipefail
-exec systemd-run --wait --pipe --collect --quiet --unit="pdh-static-ip-confirm-$(date +%s)-$$" bash "$PDH_NET_SCRIPT" --confirm --by "$PDH_NET_BY"
+exec systemd-run --wait --pipe --collect --quiet --unit="pdh-static-ip-confirm-$(date +%s)-$$" bash "$PDH_NET_SCRIPT" --confirm --id "$PDH_NET_CONFIRM_ID" --by "$PDH_NET_BY"
 `
 
 const netResumeScript = `set -euo pipefail
 exec systemd-run --wait --pipe --collect --quiet --unit="pdh-static-ip-resume-$(date +%s)-$$" bash "$PDH_NET_SCRIPT" --resume
 `
+
+const netMaintOffScript = `set -euo pipefail
+exec systemd-run --wait --pipe --collect --quiet --unit="pdh-static-ip-maint-off-$(date +%s)-$$" bash "$PDH_NET_SCRIPT" --maint-off
+`
+
+// netIDRe: Kennung einer Änderung (vom Skript: Datum und Prozessnummer).
+var netIDRe = regexp.MustCompile(`^[0-9A-Za-z-]{1,64}$`)
 
 func (a *updateAgent) netStateFile() string {
 	dir := a.netStateDir
@@ -136,7 +156,11 @@ func (a *updateAgent) netRunFn() func(context.Context, string, map[string]string
 		return a.netRun
 	}
 	return func(ctx context.Context, script string, env map[string]string) (string, error) {
-		out, err := a.hostCommandEnv(ctx, false, script, env).CombinedOutput()
+		cmd := a.hostCommandEnv(ctx, false, script, env)
+		// Der systemd-Dienst hält die Ausgabe (--pipe) offen, auch wenn der Aufrufer nach Ablauf
+		// der Frist beendet ist: nicht unbegrenzt auf das Ende der Ausgabe warten.
+		cmd.WaitDelay = netRunWaitStop
+		out, err := cmd.CombinedOutput()
 		return string(out), err
 	}
 }
@@ -170,9 +194,12 @@ func (a *updateAgent) netReadState() *netPending {
 }
 
 // parseNetState liest Zeilen „schlüssel=wert“; unbekannte Schlüssel und Zeilen ohne „=“ fallen
-// weg, Zeiten sind Unix-Sekunden. Ohne Schlüssel state: nil.
+// weg, Zeiten sind Unix-Sekunden. Ohne Schlüssel state: nil. MaintOffPending folgt derselben
+// Regel wie maint_open im Skript: Die Änderung wartet nicht mehr, und ihre Wartung ist noch
+// nicht geklärt (maint_off=pending, oder eingeschaltet/vorgemerkt ohne Ergebnis).
 func parseNetState(b []byte) *netPending {
 	var p netPending
+	maint, maintOff := "", ""
 	unix := func(v string) time.Time {
 		n, err := strconv.ParseInt(v, 10, 64)
 		if err != nil || n <= 0 {
@@ -200,13 +227,22 @@ func parseNetState(b []byte) *netPending {
 			p.Started = unix(v)
 		case "deadline":
 			p.Deadline = unix(v)
+		case "applied":
+			p.Applied = v == "1"
 		case "maint":
-			p.Maint = v == "1"
+			maint = v
+		case "maint_off":
+			maintOff = v
+		case "maint_msg":
+			p.MaintMsg = v
 		}
 	}
 	if p.State == "" {
 		return nil
 	}
+	p.Maint = maint == "1"
+	p.MaintOffPending = p.State != "pending" &&
+		(maintOff == "pending" || maintOff == "" && (maint == "1" || maint == "on-requested"))
 	return &p
 }
 
@@ -401,6 +437,9 @@ func (a *updateAgent) netApplyHandler(w http.ResponseWriter, r *http.Request) {
 	if p := a.netReadState(); p != nil && p.State == "pending" {
 		netRefuse(w, netPendingMsg)
 		return
+	} else if p != nil && p.MaintOffPending {
+		netRefuse(w, "Die Wartung des Ausfallschutzes aus der vorigen Änderung wird noch ausgeschaltet – bitte danach erneut versuchen")
+		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), netCollectTimeout)
 	defer cancel()
@@ -472,13 +511,16 @@ func (a *updateAgent) netApplyHandler(w http.ResponseWriter, r *http.Request) {
 	writeMountJSON(w, http.StatusOK, map[string]any{"ok": true, "running": true})
 }
 
-// netConfirmHandler: POST /v1/net/confirm {"by":"…"} → Einstellung behalten (synchron).
+// netConfirmHandler: POST /v1/net/confirm {"id":"…","by":"…"} → Einstellung behalten (synchron).
+// Bestätigt wird nur die Änderung mit dieser Kennung, solange sie wartet und angewendet ist; das
+// Skript prüft dasselbe noch einmal unter der Sperre.
 func (a *updateAgent) netConfirmHandler(w http.ResponseWriter, r *http.Request) {
 	if a.mode != "systemd" {
 		netRefuse(w, netDockerMsg)
 		return
 	}
 	var req struct {
+		ID string `json:"id"`
 		By string `json:"by"`
 	}
 	body, _ := io.ReadAll(io.LimitReader(r.Body, 4096))
@@ -488,44 +530,65 @@ func (a *updateAgent) netConfirmHandler(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 	}
+	if !netIDRe.MatchString(req.ID) {
+		netRefuse(w, "Kennung der Änderung fehlt")
+		return
+	}
 	if running, _ := a.netJob.get(); running {
-		netRefuse(w, "Die Änderung wird noch angewendet – bitte gleich erneut bestätigen")
+		netRefuse(w, netStillApply)
+		return
+	}
+	switch p := a.netReadState(); {
+	case p == nil || p.State != "pending":
+		netRefuse(w, netNotWaiting)
+		return
+	case p.ID != req.ID:
+		netRefuse(w, "Diese Änderung wartet nicht mehr auf Bestätigung")
+		return
+	case !p.Applied:
+		netRefuse(w, netStillApply)
 		return
 	}
 	by := netBy(req.By)
 	ctx, cancel := context.WithTimeout(r.Context(), netConfirmTimeout)
 	defer cancel()
-	out, err := a.netRunFn()(ctx, netConfirmScript, map[string]string{"PDH_NET_SCRIPT": a.netScriptPath(), "PDH_NET_BY": by})
+	out, err := a.netRunFn()(ctx, netConfirmScript, map[string]string{
+		"PDH_NET_SCRIPT": a.netScriptPath(), "PDH_NET_BY": by, "PDH_NET_CONFIRM_ID": req.ID,
+	})
 	if err != nil {
 		msg := netLastLine(out, err)
 		log.Printf("netzwerk: Bestätigung von %q abgelehnt: %s", by, msg)
 		netRefuse(w, msg)
 		return
 	}
-	log.Printf("netzwerk: Einstellung von %q bestätigt", by)
+	log.Printf("netzwerk: Einstellung %s von %q bestätigt", req.ID, by)
 	writeMountJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
-// netResume: beim Start des Agenten (systemd). Wartet eine Änderung, ruft er das Skript mit
-// --resume: Frist vorbei → Rückfall, sonst Wecker neu stellen (nach einem Neustart des Servers
-// fehlt er). Danach prüft er alle netWatchEvery, ob eine Änderung längst hätte zurückgenommen
-// sein müssen (Wecker gescheitert), und holt das nach. Kehrt zurück, wenn ctx endet.
+// netScriptRun: Skript mit festem Ablauf (--resume, --maint-off) aufrufen und ins Protokoll
+// schreiben; true = gelungen.
+func (a *updateAgent) netScriptRun(ctx context.Context, what, script string) bool {
+	rctx, cancel := context.WithTimeout(ctx, netResumeTimeout)
+	defer cancel()
+	out, err := a.netRunFn()(rctx, script, map[string]string{"PDH_NET_SCRIPT": a.netScriptPath()})
+	if err != nil {
+		log.Printf("netzwerk: %s gescheitert: %s", what, netLastLine(out, err))
+		return false
+	}
+	log.Printf("netzwerk: %s: %s", what, netLastLine(out, nil))
+	return true
+}
+
+// netResume: beim Start des Agenten (systemd). Wartet eine Änderung oder ist ihre Wartung noch
+// an, ruft er das Skript mit --resume: Frist vorbei → Rückfall, sonst Wecker neu stellen (nach
+// einem Neustart des Servers fehlt er); offene Wartung ausschalten. Danach Wache alle
+// netWatchEvery (netWatch). Kehrt zurück, wenn ctx endet.
 func (a *updateAgent) netResume(ctx context.Context) {
 	if a.mode != "systemd" {
 		return
 	}
-	resume := func() {
-		rctx, cancel := context.WithTimeout(ctx, netResumeTimeout)
-		defer cancel()
-		out, err := a.netRunFn()(rctx, netResumeScript, map[string]string{"PDH_NET_SCRIPT": a.netScriptPath()})
-		if err != nil {
-			log.Printf("netzwerk: Wiederaufnahme gescheitert: %s", netLastLine(out, err))
-			return
-		}
-		log.Printf("netzwerk: Wiederaufnahme: %s", netLastLine(out, nil))
-	}
-	if p := a.netReadState(); p != nil && p.State == "pending" {
-		resume()
+	if p := a.netReadState(); p != nil && (p.State == "pending" || p.MaintOffPending) {
+		a.netScriptRun(ctx, "Wiederaufnahme", netResumeScript)
 	}
 	t := time.NewTicker(netWatchEvery)
 	defer t.Stop()
@@ -535,13 +598,51 @@ func (a *updateAgent) netResume(ctx context.Context) {
 			return
 		case <-t.C:
 		}
-		if running, _ := a.netJob.get(); running {
-			continue
-		}
-		// ohne gültige Frist nimmt das Skript die Änderung ebenfalls zurück
-		if p := a.netReadState(); p != nil && p.State == "pending" && (p.Deadline.IsZero() || time.Now().After(p.Deadline.Add(netWatchGrace))) {
-			log.Printf("netzwerk: Frist der Änderung %s seit %s vorbei – Rückfall wird nachgeholt", p.ID, time.Since(p.Deadline).Round(time.Second))
-			resume()
-		}
+		a.netWatch(ctx, time.Now())
 	}
+}
+
+// netWatch: ein Durchgang der Wache.
+//   - Eine Änderung wartet und ist seit netWatchGrace über der Frist (Wecker gescheitert) →
+//     Rückfall über --resume. Läuft das Anwenden laut Agent noch, wartet die Wache zusätzlich die
+//     Höchstdauer des Anwendens ab – nie unbegrenzt.
+//   - Die Wartung einer früheren Änderung ist noch an → --maint-off; nicht während eines Updates
+//     im Verbund (pdh-ha lehnt dann ab), nach Fehlschlägen mit wachsendem Abstand.
+func (a *updateAgent) netWatch(ctx context.Context, now time.Time) {
+	p := a.netReadState()
+	if p == nil {
+		return
+	}
+	running, _ := a.netJob.get()
+	if p.State == "pending" {
+		// ohne gültige Frist nimmt das Skript die Änderung ebenfalls zurück
+		over := p.Deadline.IsZero() || now.After(p.Deadline.Add(netWatchGrace))
+		if over && (!running || now.After(p.Deadline.Add(netWatchGrace+netApplyTimeout))) {
+			log.Printf("netzwerk: Frist der Änderung %s seit %s vorbei – Rückfall wird nachgeholt", p.ID, now.Sub(p.Deadline).Round(time.Second))
+			a.netScriptRun(ctx, "Rückfall", netResumeScript)
+		}
+		return
+	}
+	if !p.MaintOffPending || running {
+		return
+	}
+	j := &a.netJob
+	j.mu.Lock()
+	wait := now.Before(j.maintNext)
+	j.mu.Unlock()
+	if wait {
+		return
+	}
+	if info, err := a.netHAInfo(ctx); err == nil && info.Update {
+		return // pdh-ha schaltet die Wartung während eines Updates im Verbund nicht aus
+	}
+	ok := a.netScriptRun(ctx, "Wartung des Ausfallschutzes aus", netMaintOffScript)
+	j.mu.Lock()
+	if ok {
+		j.maintWait, j.maintNext = 0, time.Time{}
+	} else {
+		j.maintWait = min(max(2*j.maintWait, netWatchEvery), netMaintMaxWait)
+		j.maintNext = now.Add(j.maintWait)
+	}
+	j.mu.Unlock()
 }

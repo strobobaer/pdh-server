@@ -199,6 +199,17 @@ func TestNetApplyBusy(t *testing.T) {
 			t.Error("Skript gestartet")
 		}
 	})
+	t.Run("Wartung der vorigen Änderung noch an", func(t *testing.T) {
+		rec := &netRec{}
+		a := netTestAgent(t, rec, nil)
+		netWriteState(t, a, "id=x1\nstate=confirmed\nmaint=1\nmaint_off=pending\n")
+		if ans := netCall(t, a, http.MethodPost, "/v1/net/apply", `{"action":"fix"}`); ans.OK || !strings.Contains(ans.Error, "wird noch ausgeschaltet") {
+			t.Errorf("%+v", ans)
+		}
+		if len(rec.all()) != 0 {
+			t.Error("Skript gestartet")
+		}
+	})
 	t.Run("ohne netplan", func(t *testing.T) {
 		rec := &netRec{}
 		a := netTestAgent(t, rec, nil)
@@ -427,7 +438,10 @@ func TestNetApplyWrapperArgs(t *testing.T) {
 	if strings.Contains(strings.Join(got, " "), "--dns") || strings.Contains(strings.Join(got, " "), "--ha-maint") {
 		t.Errorf("fix: %q", got)
 	}
-	if got := run(netConfirmScript, "PDH_NET_SCRIPT=/s.sh", "PDH_NET_BY=Bert"); !reflect.DeepEqual(got[5:], []string{"bash", "/s.sh", "--confirm", "--by", "Bert"}) ||
+	if got := run(netMaintOffScript, "PDH_NET_SCRIPT=/s.sh"); !reflect.DeepEqual(got[5:], []string{"bash", "/s.sh", "--maint-off"}) {
+		t.Errorf("maint-off: %q", got)
+	}
+	if got := run(netConfirmScript, "PDH_NET_SCRIPT=/s.sh", "PDH_NET_BY=Bert", "PDH_NET_CONFIRM_ID=20261120-1"); !reflect.DeepEqual(got[5:], []string{"bash", "/s.sh", "--confirm", "--id", "20261120-1", "--by", "Bert"}) ||
 		!strings.HasPrefix(got[4], "--unit=pdh-static-ip-confirm-") {
 		t.Errorf("confirm: %q", got)
 	}
@@ -445,12 +459,22 @@ func TestNetStatusReadsState(t *testing.T) {
 	if !ans.OK || ans.Pending != nil || ans.Running || ans.JobErr != "" || ans.Net == nil || !reflect.DeepEqual(*ans.Net, netTestSummary) {
 		t.Fatalf("ohne Datei: %+v", ans)
 	}
-	netWriteState(t, a, "id=20261120-1\nstate=restored\naction=dns\nby=Anna\nstarted=1763600000\ndeadline=1763600120\nmaint=1\nmsg=Nicht bestätigt – vorige Einstellung wiederhergestellt\n")
+	netWriteState(t, a, "id=20261120-1\nstate=restored\naction=dns\nby=Anna\nstarted=1763600000\ndeadline=1763600120\napplied=1\nmaint=1\nmaint_seq=8\n"+
+		"maint_off=pending\nmaint_msg=Wartung des Ausfallschutzes noch an – wird automatisch ausgeschaltet, sobald möglich\n"+
+		"msg=Nicht bestätigt – vorige Einstellung wiederhergestellt\n")
 	ans = netCall(t, a, http.MethodGet, "/v1/net/status", "")
 	p := ans.Pending
-	if p == nil || p.ID != "20261120-1" || p.State != "restored" || p.Action != "dns" || p.By != "Anna" || !p.Maint ||
+	if p == nil || p.ID != "20261120-1" || p.State != "restored" || p.Action != "dns" || p.By != "Anna" || !p.Maint || !p.Applied ||
+		!p.MaintOffPending || !strings.Contains(p.MaintMsg, "sobald möglich") ||
 		p.Deadline.Unix() != 1763600120 || p.Started.Unix() != 1763600000 || p.Msg != "Nicht bestätigt – vorige Einstellung wiederhergestellt" {
 		t.Fatalf("Zustand: %+v", p)
+	}
+	// Zeitpunkte ohne Wert fehlen im JSON (keine „0001-01-01“)
+	netWriteState(t, a, "id=x1\nstate=failed\nmsg=Abgebrochen\n")
+	w := httptest.NewRecorder()
+	a.netStatusHandler(w, httptest.NewRequest(http.MethodGet, "/v1/net/status", nil))
+	if s := w.Body.String(); strings.Contains(s, `"started"`) || strings.Contains(s, `"deadline"`) || !strings.Contains(s, `"maint_off_pending":false`) {
+		t.Errorf("JSON: %s", s)
 	}
 	if ans := netCall(t, a, http.MethodPost, "/v1/net/apply", `{"action":"fix"}`); !ans.OK {
 		t.Fatalf("Start: %+v", ans)
@@ -460,36 +484,82 @@ func TestNetStatusReadsState(t *testing.T) {
 	}
 }
 
+// Bestätigen nur mit Kennung, solange die Änderung wartet und angewendet ist.
 func TestNetConfirm(t *testing.T) {
 	rec := &netRec{}
 	a := netTestAgent(t, rec, nil)
-	if ans := netCall(t, a, http.MethodPost, "/v1/net/confirm", `{"by":"Bert"}`); !ans.OK || ans.Error != "" {
+	waiting := fmt.Sprintf("id=20261120-1\nstate=pending\napplied=1\ndeadline=%d\n", time.Now().Unix()+100)
+	netWriteState(t, a, waiting)
+	if ans := netCall(t, a, http.MethodPost, "/v1/net/confirm", `{"id":"20261120-1","by":"Bert"}`); !ans.OK || ans.Error != "" {
 		t.Fatalf("%+v", ans)
 	}
 	c := rec.all()
-	if len(c) != 1 || !strings.Contains(c[0].script, "--confirm") || c[0].env["PDH_NET_BY"] != "Bert" ||
-		c[0].env["PDH_NET_SCRIPT"] != "/srv/pdh/scripts/pdh-static-ip.sh" || strings.Contains(c[0].script, "Bert") {
+	if len(c) != 1 || !strings.Contains(c[0].script, "--confirm") || c[0].env["PDH_NET_BY"] != "Bert" || c[0].env["PDH_NET_CONFIRM_ID"] != "20261120-1" ||
+		c[0].env["PDH_NET_SCRIPT"] != "/srv/pdh/scripts/pdh-static-ip.sh" || strings.Contains(c[0].script, "Bert") || strings.Contains(c[0].script, "20261120-1") {
 		t.Errorf("Aufruf: %+v", c)
 	}
-	a.netRun = func(context.Context, string, map[string]string) (string, error) {
-		return "Keine Änderung wartet auf Bestätigung\n", errors.New("exit status 3")
+	for name, cs := range map[string]struct{ state, body, want string }{
+		"ohne Kennung":       {waiting, `{"by":"Bert"}`, "Kennung der Änderung fehlt"},
+		"Kennung kaputt":     {waiting, `{"id":"x;reboot"}`, "Kennung der Änderung fehlt"},
+		"alte Kennung":       {waiting, `{"id":"20261119-7"}`, "Diese Änderung wartet nicht mehr auf Bestätigung"},
+		"nicht angewendet":   {"id=20261120-1\nstate=pending\n", `{"id":"20261120-1"}`, netStillApply},
+		"schon bestätigt":    {"id=20261120-1\nstate=confirmed\napplied=1\n", `{"id":"20261120-1"}`, netNotWaiting},
+		"ohne Zustandsdatei": {"", `{"id":"20261120-1"}`, netNotWaiting},
+	} {
+		t.Run(name, func(t *testing.T) {
+			rec := &netRec{}
+			a := netTestAgent(t, rec, nil)
+			if cs.state != "" {
+				netWriteState(t, a, cs.state)
+			}
+			if ans := netCall(t, a, http.MethodPost, "/v1/net/confirm", cs.body); ans.OK || ans.Error != cs.want {
+				t.Errorf("%+v (erwartet %q)", ans, cs.want)
+			}
+			if len(rec.all()) != 0 {
+				t.Error("Skript aufgerufen")
+			}
+		})
 	}
-	if ans := netCall(t, a, http.MethodPost, "/v1/net/confirm", `{"by":"Bert"}`); ans.OK || ans.Error != "Keine Änderung wartet auf Bestätigung" {
+	// Skript lehnt ab (z. B. Frist abgelaufen): letzte Zeile
+	a.netRun = func(context.Context, string, map[string]string) (string, error) {
+		return "Frist abgelaufen – die vorige Einstellung wird wiederhergestellt\n", errors.New("exit status 3")
+	}
+	if ans := netCall(t, a, http.MethodPost, "/v1/net/confirm", `{"id":"20261120-1"}`); ans.OK || ans.Error != "Frist abgelaufen – die vorige Einstellung wird wiederhergestellt" {
 		t.Errorf("Ausgang 3: %+v", ans)
 	}
-	// während die Änderung noch angewendet wird
+	// während die Änderung noch angewendet wird (auch nach Neustart des Agenten: applied fehlt)
 	a.netJob.running = true
-	if ans := netCall(t, a, http.MethodPost, "/v1/net/confirm", `{}`); ans.OK || !strings.Contains(ans.Error, "noch angewendet") {
+	if ans := netCall(t, a, http.MethodPost, "/v1/net/confirm", `{"id":"20261120-1"}`); ans.OK || ans.Error != netStillApply {
 		t.Errorf("während des Laufs: %+v", ans)
 	}
 }
 
-// Start des Agenten (systemd): eine wartende Änderung wird wieder aufgenommen (--resume); ohne
-// wartende Änderung nichts. Ist die Frist lange vorbei, wiederholt der Agent die Wiederaufnahme.
+// Start des Agenten (systemd): eine wartende Änderung bzw. eine noch offene Wartung wird wieder
+// aufgenommen (--resume); ohne beides nichts. Die Wache holt einen ausgebliebenen Rückfall nach
+// (auch wenn das Anwenden laut Agent hängt) und schaltet offene Wartung aus.
 func TestNetAgentResumeOnStart(t *testing.T) {
 	old := netWatchEvery
 	netWatchEvery = 20 * time.Millisecond
 	t.Cleanup(func() { netWatchEvery = old })
+	scripts := func(rec *netRec, flag string) int {
+		n := 0
+		for _, c := range rec.all() {
+			if strings.Contains(c.script, flag) {
+				n++
+			}
+		}
+		return n
+	}
+	waitFor := func(t *testing.T, rec *netRec, flag string, n int) {
+		t.Helper()
+		deadline := time.Now().Add(3 * time.Second)
+		for scripts(rec, flag) < n && time.Now().Before(deadline) {
+			time.Sleep(10 * time.Millisecond)
+		}
+		if got := scripts(rec, flag); got < n {
+			t.Errorf("%s: %d Aufrufe, erwartet mindestens %d", flag, got, n)
+		}
+	}
 
 	t.Run("ohne Änderung", func(t *testing.T) {
 		rec := &netRec{}
@@ -524,12 +594,56 @@ func TestNetAgentResumeOnStart(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		go a.netResume(ctx)
-		deadline := time.Now().Add(3 * time.Second)
-		for len(rec.all()) < 3 && time.Now().Before(deadline) {
-			time.Sleep(10 * time.Millisecond)
+		waitFor(t, rec, "--resume", 3)
+	})
+	t.Run("Anwenden hängt laut Agent", func(t *testing.T) {
+		rec := &netRec{}
+		a := netTestAgent(t, rec, nil)
+		a.netJob.running = true
+		now := time.Now()
+		// knapp über der Frist: die Wache wartet auf das laufende Anwenden
+		netWriteState(t, a, fmt.Sprintf("state=pending\ndeadline=%d\n", now.Unix()-60))
+		a.netWatch(context.Background(), now)
+		if n := len(rec.all()); n != 0 {
+			t.Errorf("Rückfall trotz laufendem Anwenden innerhalb der Höchstdauer: %d", n)
 		}
-		if n := len(rec.all()); n < 3 {
-			t.Errorf("nur %d Wiederaufnahmen", n)
+		// über Frist + Nachlauf + Höchstdauer des Anwendens: Rückfall trotzdem
+		netWriteState(t, a, fmt.Sprintf("state=pending\ndeadline=%d\n", now.Add(-netWatchGrace-netApplyTimeout-time.Minute).Unix()))
+		a.netWatch(context.Background(), now)
+		if scripts(rec, "--resume") != 1 {
+			t.Errorf("kein Rückfall: %+v", rec.all())
+		}
+	})
+	t.Run("Wartung noch an", func(t *testing.T) {
+		rec := &netRec{}
+		fails := 1
+		var mu sync.Mutex
+		a := netTestAgent(t, rec, func(_ context.Context, script string, _ map[string]string) (string, error) {
+			mu.Lock()
+			defer mu.Unlock()
+			if strings.Contains(script, "--maint-off") && fails > 0 {
+				fails--
+				return "Wartung des Ausfallschutzes noch an – pdh-ha antwortet nicht, wird automatisch erneut versucht\n", errors.New("exit status 1")
+			}
+			return "Wartung des Ausfallschutzes ausgeschaltet.\n", nil
+		})
+		netWriteState(t, a, "id=x1\nstate=confirmed\nmaint=1\nmaint_seq=8\nmaint_off=pending\n")
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		go a.netResume(ctx)
+		// beim Start --resume (pdh-ha beim Hochfahren noch nicht da), danach --maint-off, bis es gelingt
+		waitFor(t, rec, "--resume", 1)
+		waitFor(t, rec, "--maint-off", 2)
+	})
+	t.Run("Wartung während eines Updates im Verbund", func(t *testing.T) {
+		rec := &netRec{}
+		a := netTestAgent(t, rec, nil)
+		haInstalled(t)
+		haFakeSocket(t, `{"ok":true,"configured":true,"update":{"active":true},"self":{"id":"a","role":"aktiv"}}`)
+		netWriteState(t, a, "id=x1\nstate=restored\nmaint=1\nmaint_off=pending\n")
+		a.netWatch(context.Background(), time.Now())
+		if n := len(rec.all()); n != 0 {
+			t.Errorf("Wartung aus während eines Updates versucht: %d", n)
 		}
 	})
 	// main startet die Wiederaufnahme im systemd-Betrieb
@@ -549,11 +663,25 @@ func TestParseNetState(t *testing.T) {
 	}
 	p := parseNetState([]byte("kaputt\n=nur\nid=x1\nstate=pending\nunbekannt=1\naction=fix\nby=A=B\nstarted=12\ndeadline=abc\nmaint=0\nmsg=\r\n"))
 	if p == nil || p.ID != "x1" || p.State != "pending" || p.Action != "fix" || p.By != "A=B" || p.Started.Unix() != 12 ||
-		!p.Deadline.IsZero() || p.Maint || p.Msg != "" {
+		!p.Deadline.IsZero() || p.Maint || p.Msg != "" || p.Applied || p.MaintOffPending {
 		t.Errorf("%+v", p)
 	}
 	if p := parseNetState([]byte("id=x\nmsg=nur Text\n")); p != nil {
 		t.Errorf("ohne state: %+v", p)
+	}
+	// offene Wartung: wie maint_open im Skript
+	for content, want := range map[string]bool{
+		"state=pending\nmaint=1\n":                         false, // wartet: Wartung bleibt an
+		"state=confirmed\nmaint=1\nmaint_off=pending\n":    true,
+		"state=confirmed\nmaint=1\nmaint_off=done\n":       false,
+		"state=restored\nmaint=1\nmaint_off=skipped\n":     false,
+		"state=failed\nmaint=on-requested\n":               true, // Abbruch nach der Vormerkung
+		"state=failed\nmaint=on-requested\nmaint_off=done": false,
+		"state=confirmed\nmaint=0\n":                       false,
+	} {
+		if p := parseNetState([]byte(content)); p == nil || p.MaintOffPending != want {
+			t.Errorf("%q: %+v, erwartet %v", content, p, want)
+		}
 	}
 }
 
