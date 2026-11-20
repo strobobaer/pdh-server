@@ -2,6 +2,8 @@ package web
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -146,17 +148,45 @@ func TestNetPDHStateDecrypts(t *testing.T) {
 	}
 	pw := m["m184-pw"+sfx]
 	if !pw.HasPassword || !pw.PasswordOK || pw.Password != "Klartext-123" || pw.SegmentID != segID || pw.Source != "omada" || pw.ExtID != "w-"+sfx {
-		t.Errorf("WLAN mit Kennwort: %+v", pw)
+		t.Errorf("WLAN mit Kennwort: %s (Kennwort gelesen: %v)", pw, pw.Password == "Klartext-123")
 	}
 	op := m["m184-open"+sfx]
 	if op.HasPassword || op.Password != "" || !op.PasswordOK || !op.Hidden {
-		t.Errorf("offenes WLAN: %+v", op)
+		t.Errorf("offenes WLAN: %s (Kennwort leer: %v)", op, op.Password == "")
 	}
 	h.jwtSecret = "anderes"
 	_, m = find()
 	pw = m["m184-pw"+sfx]
 	if !pw.HasPassword || pw.PasswordOK || pw.Password != "" {
-		t.Errorf("anderer Schlüssel: %+v", pw)
+		t.Errorf("anderer Schlüssel: %s (Kennwort leer: %v)", pw, pw.Password == "")
+	}
+}
+
+func TestNetPDHWLANNeverPrintsPassword(t *testing.T) {
+	const secret = "Geheim-Klartext-987"
+	w := netPDHWLAN{ID: "i1", SSID: "s1", HasPassword: true, PasswordOK: true, Password: secret}
+	outs := map[string]string{
+		"%v":      fmt.Sprintf("%v", w),
+		"%+v":     fmt.Sprintf("%+v", w),
+		"%#v":     fmt.Sprintf("%#v", w),
+		"%s":      fmt.Sprintf("%s", w),
+		"Zeiger":  fmt.Sprintf("%+v", &w),
+		"Liste":   fmt.Sprintf("%+v", []netPDHWLAN{w}),
+		"Liste#":  fmt.Sprintf("%#v", []netPDHWLAN{w}),
+		"Println": fmt.Sprintln(w),
+	}
+	b, err := json.Marshal([]netPDHWLAN{w})
+	if err != nil {
+		t.Fatal(err)
+	}
+	outs["JSON"] = string(b)
+	for k, v := range outs {
+		if strings.Contains(v, secret) {
+			t.Errorf("%s gibt das Kennwort aus", k)
+		}
+	}
+	if !strings.Contains(outs["%v"], "Kennwort:✓") {
+		t.Errorf("Maske fehlt: %s", outs["%v"])
 	}
 }
 

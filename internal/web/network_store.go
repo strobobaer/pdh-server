@@ -1,6 +1,11 @@
 package web
 
-import "context"
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+)
 
 // Speicher der Seite „Netzwerk“ für die Vorschläge aus UniFi und Omada
 // (Migration 184): der Stand der PDH-Einträge samt entschlüsselten Kennwörtern
@@ -26,13 +31,35 @@ type netPDHWLAN struct {
 	Password                           string
 }
 
+// Kennwortschutz: netPDHWLAN gibt das Kennwort nie aus – weder über %v/%+v/%#v/%s
+// noch als JSON.
+func (w netPDHWLAN) String() string {
+	pw := "–"
+	if w.HasPassword {
+		pw = "✓"
+	}
+	return fmt.Sprintf("netPDHWLAN{ID:%s, SSID:%s, Kennwort:%s}", w.ID, w.SSID, pw)
+}
+
+func (w netPDHWLAN) GoString() string { return w.String() }
+
+func (w netPDHWLAN) Format(f fmt.State, _ rune) { _, _ = io.WriteString(f, w.String()) }
+
+func (w netPDHWLAN) MarshalJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		ID, SSID, SegmentID, Source, ExtID string
+		Hidden, HasPassword, PasswordOK    bool
+	}{w.ID, w.SSID, w.SegmentID, w.Source, w.ExtID, w.Hidden, w.HasPassword, w.PasswordOK})
+}
+
 // netHidden: ein ausgeblendeter Vorschlag (Quelle, Art, Kennung beim Controller).
 type netHidden struct {
 	Source, Kind, ExtID, Fingerprint string
 }
 
 // netPDHState liest alle Netze und WLANs mit Herkunft; Kennwörter werden mit dem
-// Netzwerk-Schlüssel entschlüsselt. Ein nicht entschlüsselbares Kennwort ist kein Fehler.
+// Netzwerk-Schlüssel entschlüsselt. Password ist nur für den Vergleich im Speicher
+// gedacht und darf nie in Vorlagendaten, Protokolle oder Fehlermeldungen gelangen. Ein nicht entschlüsselbares Kennwort ist kein Fehler.
 func (h *Handler) netPDHState(ctx context.Context) ([]netPDHSeg, []netPDHWLAN, error) {
 	var segs []netPDHSeg
 	rows, err := h.db.Query(ctx, `SELECT id::text, name, COALESCE(vlan_id, 0), subnet, source, ext_id
