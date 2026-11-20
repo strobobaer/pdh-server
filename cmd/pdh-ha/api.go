@@ -44,6 +44,7 @@ type apiStatus struct {
 	Self           apiNode     `json:"self"`
 	Peers          []apiNode   `json:"peers"`
 	Maint          bool        `json:"maint"`
+	MaintSeq       uint64      `json:"maint_seq"` // Stand der Wartung (jedes Ein/Aus zählt hoch; Update-Agent: nur eigene ausschalten)
 	Settings       ha.Settings `json:"settings"`
 	Window         ha.Window   `json:"window"` // Wartungsfenster
 	GatewayTargets []string    `json:"gateway_targets"`
