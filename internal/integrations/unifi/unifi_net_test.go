@@ -121,6 +121,86 @@ func TestNetDetailGone(t *testing.T) {
 	}
 }
 
+// Eine Fehlerantwort (nicht 404) oder eine unlesbare Antwort zu einem einzelnen Netz oder WLAN
+// lässt die Liste stehen: das Netz ohne Adressbereich, das WLAN mit den Angaben der Liste und ohne
+// Passphrase.
+func TestNetDetailErrorKeepsList(t *testing.T) {
+	for _, code := range []int{http.StatusForbidden, http.StatusInternalServerError, 0} {
+		name := fmt.Sprint(code)
+		f := newFakeUDM(t)
+		if code == 0 {
+			name = "unlesbar"
+			f.lists = map[string][]byte{"/" + idNetGuest: []byte(`{kaputt`), "/" + idWifiWPA2: []byte(`{kaputt`)}
+		} else {
+			f.fail = map[string]int{idNetGuest: code, idWifiWPA2: code}
+		}
+		nets, err := f.client().Networks(context.Background())
+		if err != nil || len(nets) != 3 {
+			t.Fatalf("%s: Netze %v %+v", name, err, nets)
+		}
+		if nets[1] != (Network{ID: idNetGuest, Name: "Gäste", VLAN: 20}) {
+			t.Errorf("%s: Netz ohne Einzelheiten: %+v", name, nets[1])
+		}
+		ws, err := f.client().WifiBroadcasts(context.Background())
+		if err != nil || len(ws) != 3 {
+			t.Fatalf("%s: WLANs %v %+v", name, err, ws)
+		}
+		w := ws[0]
+		if w.ID != idWifiWPA2 || w.Name != "Gast-WLAN" || w.Security != SecPersonal || w.Passphrase != "" ||
+			w.NetworkID != idNetGuest || w.Native || w.Hidden {
+			t.Errorf("%s: WLAN aus der Liste: %+v", name, w)
+		}
+		if ws[1].Security != SecEnterprise || ws[2].Security != SecOpen {
+			t.Errorf("%s: übrige WLANs: %+v", name, ws[1:])
+		}
+	}
+}
+
+// Antwortet der Controller bei einer Einzelabfrage gar nicht, scheitert die ganze Abfrage (wie Omada).
+func TestNetDetailTransportFails(t *testing.T) {
+	f := newFakeUDM(t)
+	f.drop = idNetGuest
+	if nets, err := f.client().Networks(context.Background()); err == nil || !strings.Contains(err.Error(), "UDM Pro nicht erreichbar") {
+		t.Errorf("Netze: %v %+v", err, nets)
+	}
+	g := newFakeUDM(t)
+	g.drop = idWifiWPA2
+	if ws, err := g.client().WifiBroadcasts(context.Background()); err == nil || !strings.Contains(err.Error(), "UDM Pro nicht erreichbar") {
+		t.Errorf("WLANs: %v %+v", err, ws)
+	}
+	// abgebrochener Kontext: kein stilles Weitermachen
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := newFakeUDM(t).client().WifiBroadcasts(ctx); err == nil {
+		t.Error("WLANs trotz abgebrochenem Kontext")
+	}
+}
+
+// Listeneinträge ohne Kennung fallen weg – keine Einzelabfrage an die Liste.
+func TestNetEmptyIDSkipped(t *testing.T) {
+	f := newFakeUDM(t)
+	f.lists = map[string][]byte{
+		"/networks": []byte(`{"count":2,"totalCount":2,"data":[{"id":"","name":"ohne","vlanId":40},
+			{"id":"` + idNetGuest + `","name":"Gäste","vlanId":20}]}`),
+		"/wifi/broadcasts": []byte(`{"count":2,"totalCount":2,"data":[{"id":"  ","name":"ohne"},
+			{"id":"` + idWifiWPA2 + `","name":"Gast-WLAN","securityConfiguration":{"type":"WPA2_PERSONAL"}}]}`),
+	}
+	c := f.client()
+	nets, err := c.Networks(context.Background())
+	if err != nil || len(nets) != 1 || nets[0].ID != idNetGuest || nets[0].Subnet != "10.10.20.0/24" {
+		t.Fatalf("Netze: %v %+v", err, nets)
+	}
+	ws, err := c.WifiBroadcasts(context.Background())
+	if err != nil || len(ws) != 1 || ws[0].ID != idWifiWPA2 || ws[0].Passphrase != wifiPass {
+		t.Fatalf("WLANs: %v %+v", err, ws)
+	}
+	for _, call := range f.calls {
+		if strings.HasSuffix(strings.TrimSpace(call), "/") {
+			t.Errorf("Einzelabfrage ohne Kennung: %s", call)
+		}
+	}
+}
+
 func TestNetOnlyGET(t *testing.T) {
 	f := newFakeUDM(t)
 	c := f.client()

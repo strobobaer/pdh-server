@@ -30,9 +30,12 @@ type fakeUDM struct {
 	legacy   bool
 	status   int // erzwungene Antwort (z. B. 403)
 	redirect bool
-	noNet    bool   // Netze/WLANs: 404 (Network vor 10.0)
-	noSites  bool   // /v1/sites: 404
-	gone     string // Einzelabfrage mit dieser Kennung: 404
+	noNet    bool              // Netze/WLANs: 404 (Network vor 10.0)
+	noSites  bool              // /v1/sites: 404
+	gone     string            // Einzelabfrage mit dieser Kennung: 404
+	fail     map[string]int    // Einzelabfrage mit dieser Kennung: dieser Status (z. B. 403, 500)
+	drop     string            // Einzelabfrage mit dieser Kennung: Verbindung ohne Antwort schließen
+	lists    map[string][]byte // Liste unter diesem Pfadende („/networks“, „/wifi/broadcasts“) ersetzen
 }
 
 func readTestdata(t *testing.T, name string) []byte {
@@ -60,7 +63,38 @@ func newFakeUDM(t *testing.T) *fakeUDM {
 		f.bodies = append(f.bodies, string(body))
 		legacy, status, redirect := f.legacy, f.status, f.redirect
 		noNet, noSites, gone := f.noNet, f.noSites, f.gone
+		var failCode int
+		var list []byte
+		for id, code := range f.fail {
+			if strings.HasSuffix(r.URL.Path, "/"+id) {
+				failCode = code
+			}
+		}
+		for suffix, b := range f.lists {
+			if strings.HasSuffix(r.URL.Path, suffix) {
+				list = b
+			}
+		}
+		drop := f.drop != "" && strings.HasSuffix(r.URL.Path, "/"+f.drop)
 		f.mu.Unlock()
+		if drop {
+			if hj, ok := w.(http.Hijacker); ok {
+				if conn, _, err := hj.Hijack(); err == nil {
+					_ = conn.Close()
+				}
+			}
+			return
+		}
+		if failCode != 0 {
+			w.WriteHeader(failCode)
+			_, _ = w.Write([]byte(`{"statusCode":` + fmt.Sprint(failCode) + `,"message":"Einzelabfrage gescheitert"}`))
+			return
+		}
+		if list != nil {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write(list)
+			return
+		}
 		if redirect {
 			http.Redirect(w, r, "https://anderswo.example/", http.StatusFound)
 			return

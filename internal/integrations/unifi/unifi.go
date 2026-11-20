@@ -463,7 +463,7 @@ func (c *Client) do(ctx context.Context, method, path string, in, out any) error
 		if errors.Is(err, ErrNotHouse) {
 			return ErrNotHouse
 		}
-		return fmt.Errorf("UDM Pro nicht erreichbar (%s %s): %v", method, path, errors.Unwrap(err))
+		return &transportError{fmt.Sprintf("UDM Pro nicht erreichbar (%s %s): %v", method, path, errors.Unwrap(err))}
 	}
 	defer resp.Body.Close()
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxBody+1))
@@ -1023,7 +1023,22 @@ func netAddress(host string, prefix int) string {
 	return netip.PrefixFrom(a, prefix).Masked().String()
 }
 
-// Networks liest alle Netze des Standorts samt Subnetz (je Netz eine Einzelabfrage).
+// transportError: die UDM Pro hat gar nicht geantwortet (Netz, Zeitgrenze, TLS). Text wie bisher.
+type transportError struct{ msg string }
+
+func (e *transportError) Error() string { return e.msg }
+
+// detailFatal: Fehler einer Einzelabfrage, der die ganze Abfrage beendet – wie bei Omada nur,
+// wenn der Controller gar nicht erreichbar ist (abgebrochener Kontext, keine Antwort, geändertes
+// Zertifikat, Adresse außer Haus). Eine Fehlerantwort zu einem einzelnen Eintrag (403, 500,
+// unlesbare Antwort) lässt nur diesen Eintrag ohne Einzelheiten.
+func detailFatal(ctx context.Context, err error) bool {
+	var te *transportError
+	return ctx.Err() != nil || errors.As(err, &te) || errors.Is(err, ErrPinChanged) || errors.Is(err, ErrNotHouse)
+}
+
+// Networks liest alle Netze des Standorts samt Subnetz (je Netz eine Einzelabfrage). Scheitert
+// die Einzelabfrage eines Netzes, fehlt nur dessen Adressbereich; Einträge ohne Kennung fallen weg.
 func (c *Client) Networks(ctx context.Context) ([]Network, error) {
 	site, err := c.netSite(ctx)
 	if err != nil {
@@ -1049,10 +1064,13 @@ func (c *Client) Networks(ctx context.Context) ([]Network, error) {
 	}
 	out := make([]Network, 0, len(all))
 	for _, n := range all {
+		if strings.TrimSpace(n.ID) == "" {
+			continue // ohne Kennung keine Einzelabfrage (sonst ginge sie an die Liste)
+		}
 		net := Network{ID: n.ID, Name: n.Name, VLAN: int(n.VlanID), Default: n.Default || n.VlanID == 1}
 		var d netDTO
 		err := c.do(ctx, http.MethodGet, base+"/"+url.PathEscape(n.ID), nil, &d)
-		if err != nil && !errors.Is(err, errNotFound) {
+		if err != nil && detailFatal(ctx, err) {
 			return nil, err
 		}
 		if err == nil && d.IPv4 != nil {
@@ -1078,6 +1096,9 @@ func secKind(t string) string {
 }
 
 // WifiBroadcasts liest alle WLANs des Standorts samt Passphrase (je WLAN eine Einzelabfrage).
+// Scheitert die Einzelabfrage eines WLANs (nicht 404), gelten die Angaben aus der Liste ohne
+// Passphrase – die Seite bittet dann, das Kennwort von Hand einzutragen. Einträge ohne Kennung
+// fallen weg.
 func (c *Client) WifiBroadcasts(ctx context.Context) ([]WifiBroadcast, error) {
 	site, err := c.netSite(ctx)
 	if err != nil {
@@ -1103,13 +1124,24 @@ func (c *Client) WifiBroadcasts(ctx context.Context) ([]WifiBroadcast, error) {
 	}
 	out := make([]WifiBroadcast, 0, len(all))
 	for _, l := range all {
+		if strings.TrimSpace(l.ID) == "" {
+			continue // ohne Kennung keine Einzelabfrage (sonst ginge sie an die Liste)
+		}
 		var d wifiDTO
 		err := c.do(ctx, http.MethodGet, base+"/"+url.PathEscape(l.ID), nil, &d)
-		if errors.Is(err, errNotFound) { // inzwischen gelöscht
+		switch {
+		case errors.Is(err, errNotFound): // inzwischen gelöscht
 			continue
-		}
-		if err != nil {
+		case err != nil && detailFatal(ctx, err):
 			return nil, err
+		case err != nil:
+			// Angaben aus der Liste, ohne Passphrase (die Liste nennt keine)
+			d = l
+			if l.Security != nil {
+				sec := *l.Security
+				sec.Passphrase = ""
+				d.Security = &sec
+			}
 		}
 		w := WifiBroadcast{ID: l.ID, Name: d.Name, Hidden: d.HideName}
 		if w.Name == "" {
