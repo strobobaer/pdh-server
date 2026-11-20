@@ -155,9 +155,10 @@ func netPwUsable(pw string) bool {
 func netFingerprint(n *netCtlNet, w *netCtlWLAN) string {
 	var s string
 	if n != nil {
-		s = fmt.Sprintf("segment|%s|%d|%s", n.Name, n.VLAN, n.Subnet)
+		// %q je Feld: ein „|“ oder Anführungszeichen im Namen kann nichts verschieben.
+		s = fmt.Sprintf("segment|%q|%d|%q", n.Name, n.VLAN, n.Subnet)
 	} else if w != nil {
-		s = fmt.Sprintf("wlan|%s|%s|%t|%s|%d", w.SSID, w.Security, w.Hidden, w.NetExtID, w.VLAN)
+		s = fmt.Sprintf("wlan|%q|%q|%t|%q|%d", w.SSID, w.Security, w.Hidden, w.NetExtID, w.VLAN)
 	}
 	sum := sha256.Sum256([]byte(s))
 	return hex.EncodeToString(sum[:])
@@ -187,6 +188,19 @@ func jaNein(b bool) string {
 // netSuggest ordnet die Controller-Daten einer Quelle den PDH-Einträgen zu. gone: PDH-IDs
 // dieser Quelle mit Kennung, die am Controller kein Gegenstück mehr haben.
 func netSuggest(source string, nets []netCtlNet, wlans []netCtlWLAN, segs []netPDHSeg, pw []netPDHWLAN, hidden []netHidden) (rows []netSuggRow, gone []string) {
+	return netSuggestFetched(source, nets, wlans, segs, pw, hidden, netFetched{Nets: true, WLANs: true})
+}
+
+// netFetched sagt, welche Art beim Controller erfolgreich abgefragt wurde. Eine
+// fehlgeschlagene Abfrage darf nichts als „am Controller nicht mehr vorhanden“
+// (gone) markieren; der Aufrufer (Task 5) übergibt hier das Ergebnis je Art.
+type netFetched struct{ Nets, WLANs bool }
+
+// netSuggestFetched wie netSuggest, berechnet gone nur für erfolgreich abgefragte Arten.
+// Annahmen für das Übernehmen (Aufgabe des Aufrufers, nicht der Auswertung): zwei WLANs
+// oder Netz-Zeile und WLAN mit demselben fehlenden Netz dürfen es nicht doppelt anlegen –
+// das Netz wird beim Übernehmen über Quelle+Kennung, dann VLAN neu aufgelöst, bevor es entsteht.
+func netSuggestFetched(source string, nets []netCtlNet, wlans []netCtlWLAN, segs []netPDHSeg, pw []netPDHWLAN, hidden []netHidden, fetched netFetched) (rows []netSuggRow, gone []string) {
 	// Netze: Kennung, dann VLAN, dann Name; jede PDH-Zeile höchstens einmal.
 	segOf := make([]int, len(nets)) // Index in segs oder -1
 	for i := range segOf {
@@ -358,15 +372,19 @@ func netSuggest(source string, nets []netCtlNet, wlans []netCtlWLAN, segs []netP
 			if w.Hidden != p.Hidden {
 				r.Diffs = append(r.Diffs, "versteckt: "+jaNein(p.Hidden)+" → "+jaNein(w.Hidden))
 			}
-			if p.PasswordOK {
-				switch {
-				case w.Security == unifi.SecOpen && p.HasPassword:
-					r.Diffs = append(r.Diffs, "jetzt offen (Kennwort entfällt)")
-				case r.PwKnown && !p.HasPassword:
-					r.Diffs = append(r.Diffs, "Kennwort neu")
-				case r.PwKnown && p.Password != w.Password:
-					r.Diffs = append(r.Diffs, "Kennwort geändert")
-				}
+			switch {
+			case w.Security == unifi.SecOpen && p.HasPassword:
+				// Ob das WLAN jetzt offen ist, hängt nicht vom Entschlüsseln ab.
+				r.Diffs = append(r.Diffs, "jetzt offen (Kennwort entfällt)")
+			case r.PwKnown && !p.HasPassword:
+				r.Diffs = append(r.Diffs, "Kennwort neu")
+			case r.PwKnown && !p.PasswordOK:
+				r.Diffs = append(r.Diffs, "Gespeichertes Kennwort nicht lesbar – bitte prüfen")
+			case r.PwKnown && p.Password != w.Password:
+				r.Diffs = append(r.Diffs, "Kennwort geändert")
+			}
+			if netName != "" && netPDH == "" && r.NetCreate != nil {
+				r.Diffs = append(r.Diffs, "Netz fehlt im PDH: "+netName)
 			}
 		}
 		r.State = suggState(r.PDHID, r.Diffs)
@@ -377,12 +395,12 @@ func netSuggest(source string, nets []netCtlNet, wlans []netCtlWLAN, segs []netP
 	}
 
 	for j, s := range segs {
-		if !segUsed[j] && s.Source == source && s.ExtID != "" {
+		if fetched.Nets && !segUsed[j] && s.Source == source && s.ExtID != "" {
 			gone = append(gone, s.ID)
 		}
 	}
 	for j, p := range pw {
-		if !pwUsed[j] && p.Source == source && p.ExtID != "" {
+		if fetched.WLANs && !pwUsed[j] && p.Source == source && p.ExtID != "" {
 			gone = append(gone, p.ID)
 		}
 	}

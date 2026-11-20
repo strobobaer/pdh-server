@@ -194,8 +194,9 @@ func TestNetSuggestPassword(t *testing.T) {
 		{"offen und PDH ohne", netCtlWLAN{Security: unifi.SecOpen}, netPDHWLAN{PasswordOK: true}, ""},
 		{"Controller liefert keins", netCtlWLAN{Security: unifi.SecPersonal}, netPDHWLAN{HasPassword: true, PasswordOK: true, Password: "geheim123"}, ""},
 		{"verdeckt", netCtlWLAN{Security: unifi.SecPersonal, Password: "********"}, netPDHWLAN{HasPassword: true, PasswordOK: true, Password: "geheim123"}, ""},
-		{"PDH nicht lesbar", netCtlWLAN{Security: unifi.SecPersonal, Password: "geheim123"}, netPDHWLAN{HasPassword: true, PasswordOK: false}, ""},
-		{"offen, PDH nicht lesbar", netCtlWLAN{Security: unifi.SecOpen}, netPDHWLAN{HasPassword: true, PasswordOK: false}, ""},
+		{"PDH nicht lesbar", netCtlWLAN{Security: unifi.SecPersonal, Password: "geheim123"}, netPDHWLAN{HasPassword: true, PasswordOK: false}, "Gespeichertes Kennwort nicht lesbar – bitte prüfen"},
+		{"PDH nicht lesbar, Controller ohne Kennwort", netCtlWLAN{Security: unifi.SecPersonal}, netPDHWLAN{HasPassword: true, PasswordOK: false}, ""},
+		{"offen, PDH nicht lesbar", netCtlWLAN{Security: unifi.SecOpen}, netPDHWLAN{HasPassword: true, PasswordOK: false}, "jetzt offen (Kennwort entfällt)"},
 		{"Enterprise", netCtlWLAN{Security: unifi.SecEnterprise}, netPDHWLAN{HasPassword: true, PasswordOK: true, Password: "geheim123"}, ""},
 	}
 	for _, c := range cases {
@@ -370,5 +371,52 @@ func TestNetCtlWLANStringHidesPassword(t *testing.T) {
 		if strings.Contains(o, pw) {
 			t.Errorf("Ausgabe %d enthält das Kennwort: %s", i, o)
 		}
+	}
+}
+
+func TestNetSuggestGoneOnlyFetchedKinds(t *testing.T) {
+	segs := []netPDHSeg{{ID: "s1", Name: "A", Source: "unifi", ExtID: "c1"}, {ID: "s2", Name: "B", Source: "unifi", ExtID: "c2"}}
+	pw := []netPDHWLAN{{ID: "w1", SSID: "X", Source: "unifi", ExtID: "x1", PasswordOK: true}}
+	nets := []netCtlNet{{ExtID: "c1", Name: "A"}}
+	rows, gone := netSuggestFetched("unifi", nets, nil, segs, pw, nil, netFetched{Nets: true})
+	if strings.Join(gone, ",") != "s2" {
+		t.Errorf("gone = %v, erwartet nur s2", gone)
+	}
+	if len(rows) != 1 || rows[0].PDHID != "s1" {
+		t.Errorf("Netze nicht zugeordnet: %+v", rows)
+	}
+	_, gone = netSuggestFetched("unifi", nil, nil, segs, pw, nil, netFetched{})
+	if len(gone) != 0 {
+		t.Errorf("ohne Abfrage gone = %v", gone)
+	}
+}
+
+func TestNetSuggestUmlautCaseInsensitive(t *testing.T) {
+	rows, _ := netSuggest("unifi", []netCtlNet{{ExtID: "c1", Name: "BÜRO"}}, nil, []netPDHSeg{{ID: "p1", Name: "Büro"}}, nil, nil)
+	if rows[0].PDHID != "p1" {
+		t.Errorf("Büro/BÜRO nicht zugeordnet: %+v", rows[0])
+	}
+}
+
+func TestNetSuggestWLANPendingNetNotSame(t *testing.T) {
+	nets := []netCtlNet{{ExtID: "n1", Name: "Prod", VLAN: 20}}
+	pw := []netPDHWLAN{{ID: "pw1", SSID: "W", Source: "unifi", ExtID: "w1", PasswordOK: true}}
+	rows, _ := netSuggest("unifi", nets, []netCtlWLAN{{ExtID: "w1", SSID: "W", NetExtID: "n1", Security: unifi.SecOpen}}, nil, pw, nil)
+	r := suggFind(t, rows, netKindWLAN, "w1")
+	if r.State != netStateDiff || r.NetCreate == nil || len(r.Diffs) != 1 || r.Diffs[0] != "Netz fehlt im PDH: Prod" {
+		t.Errorf("w1 = %+v", r)
+	}
+}
+
+func TestNetFingerprintUnambiguous(t *testing.T) {
+	a := netFingerprint(&netCtlNet{Name: "a|1", VLAN: 2, Subnet: "x"}, nil)
+	b := netFingerprint(&netCtlNet{Name: "a", VLAN: 1, Subnet: "2|x"}, nil)
+	if a == b {
+		t.Error("Fingerabdruck mehrdeutig bei „|“ im Namen")
+	}
+	w1 := netFingerprint(nil, &netCtlWLAN{SSID: "a|open", Security: ""})
+	w2 := netFingerprint(nil, &netCtlWLAN{SSID: "a", Security: "open|"})
+	if w1 == w2 {
+		t.Error("WLAN-Fingerabdruck mehrdeutig")
 	}
 }
