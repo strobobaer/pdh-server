@@ -834,6 +834,26 @@
 </figure>
 {{end}}
 
+{{/* Seite Netzwerk: Vorschläge vom Controller und Karte „Dieser Server“ */}}
+{{define "hb-fig-netzwerk"}}
+<figure class="hb-fig">
+<svg viewBox="0 0 640 230" role="img" aria-label="Seite Netzwerk: oben der Block „Vom Controller gefunden“ mit einer neuen Zeile (Übernehmen) und einer abweichenden Zeile (Angleichen); darunter die Karten „Dieser Server“ und Partner mit Adresse, Gateway, DNS und den Knöpfen zum Festeinstellen.">
+  <rect class="bg" x="1" y="1" width="638" height="228" rx="8"/>
+  <rect class="bg3" x="14" y="12" width="612" height="100" rx="8"/>
+  <text x="26" y="32" class="t-b">Vom Controller gefunden</text><text x="614" y="32" class="t-m" text-anchor="end">Neu abfragen</text>
+  <rect class="gr" x="26" y="42" width="588" height="26" rx="5"/><text x="36" y="59" class="t-b">NEU</text><text x="86" y="59" class="t-c" text-anchor="start">WLAN „Geräte“ · aus UniFi</text><text x="602" y="59" class="t-m" text-anchor="end">Übernehmen · Ausblenden</text>
+  <rect class="acl" x="26" y="74" width="588" height="26" rx="5"/><text x="36" y="91" class="t-b">ANDERS</text><text x="96" y="91" class="t-c" text-anchor="start">Netz „Maschinen“ · VLAN 20</text><text x="602" y="91" class="t-m" text-anchor="end">Angleichen · Ausblenden</text>
+  <rect class="acl" x="14" y="124" width="300" height="96" rx="8"/><text x="26" y="144" class="t-b">Dieser Server</text>
+  <text x="26" y="162" class="t-m">Adresse 10.10.0.17 · fest</text><text x="26" y="178" class="t-m">Gateway 10.10.0.1 · DNS 10.10.0.1</text>
+  <text x="26" y="206" class="t-m">[Jetzige Adresse fest einstellen] [DNS-Server ändern]</text>
+  <rect class="bg3" x="326" y="124" width="300" height="96" rx="8"/><text x="338" y="144" class="t-b">Partner</text>
+  <text x="338" y="162" class="t-m">Adresse 10.10.0.14 · automatisch (DHCP)</text><text x="338" y="178" class="t-m">Gemeinsame Adresse liegt hier nicht</text>
+  <text x="338" y="206" class="t-m">Auf «pdh» öffnen</text>
+</svg>
+<figcaption>Oben die Vorschläge vom Controller, unten die Karten der Server. Adresse und DNS änderst du über die Knöpfe der Karte.</figcaption>
+</figure>
+{{end}}
+
 {{/* Explorer-Reiter einer Verbindung */}}
 {{define "hb-fig-explorer"}}
 <figure class="hb-fig">

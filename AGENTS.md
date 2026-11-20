@@ -341,7 +341,20 @@ oder ändern.**
    und DNS ändern (Stufe 1 reicht, ja). Eine andere Adresse vergeben (Stufe 2)
    ist kein Auftrag. Entwurf
    `docs/superpowers/specs/2026-11-19-netzwerk-vorschlaege-server-design.md`
-   – am 19.11.2026 freigegeben („Passt“); Bau nach 0.82.3.
+   – am 19.11.2026 freigegeben („Passt“). Gebaut auf dem Branch
+   `feature/netzwerk-vorschlaege` (auf 0.82.3; Migration 184, kein neues
+   Recht; pdh-ha meldet `net` und `maint_seq`). Offen: Freigabe für Merge und
+   Push (nach 0.82.3); danach Verbund-Update und Abnahme am Testverbund:
+   Vorschläge mit echtem UniFi/Omada (Kennwort im Klartext?, Feldnamen,
+   Versionen), Karte beider Server, „DNS ändern“ am Spiegel mit Countdown,
+   Rückfall ohne Bestätigung, Wartung an/aus am aktiven Server, Dauer des
+   Ausfalls der gemeinsamen Adresse; Browserprüfung Fiori/Fluent,
+   hell/dunkel, 320–1366 px. Geparkt: Gemeinsamer Wartungszähler:
+   gleichzeitige Änderungen an beiden Servern (später `if_seq` in
+   `POST /v1/maintenance`); Konsolen-Dialog nimmt keine Sperre und löscht beim
+   Zurücksetzen eine vorher vorhandene cloud-init-Datei (Bestand); WPA2 mit
+   mehreren Schlüsseln (UniFi `presharedKeys`) und Omada-PPSK werden nicht
+   übernommen.
 7. **0.81.6 Nummern ab 10000** (Rüstzeit, KVP, Bestellung und Partner waren auf
    vier Stellen abgeschnitten) – mit 0.82.0 auf `main`; der lokale Branch
    `fix/ruestzeit-nummer` ist damit erledigt.

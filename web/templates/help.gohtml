@@ -1682,7 +1682,19 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
 
 <section class="hb-ch" id="netzwerk" data-title="Netzwerk (VLANs und WLANs)" data-pages="network">
   <h2><i class="ti ti-network"></i> Netzwerk (VLANs und WLANs)</h2>
-  <p>Unter <b>Administration → Netzwerk</b> stehen die Netze und WLANs eures Betriebs an einer Stelle: welches Netz wofür da ist, welche VLAN-Nummer und welchen Adressbereich es hat und welche WLANs dazugehören. Andere Bereiche wählen daraus, statt WLAN-Namen und Kennwörter selbst zu führen – z. B. ein Messgerät, das in ein bestimmtes WLAN soll. Das PDH richtet damit <b>nichts</b> an Switches, Access Points oder der Firewall ein; die Seite ist ein Verzeichnis.</p>
+  <p>Unter <b>Administration → Netzwerk</b> stehen die Netze und WLANs eures Betriebs an einer Stelle: welches Netz wofür da ist, welche VLAN-Nummer und welchen Adressbereich es hat und welche WLANs dazugehören. Andere Bereiche wählen daraus, statt WLAN-Namen und Kennwörter selbst zu führen – z. B. ein Messgerät, das in ein bestimmtes WLAN soll. Das PDH richtet damit <b>nichts</b> an Switches, Access Points oder der Firewall ein; die Seite ist ein Verzeichnis. Ist UniFi oder Omada angebunden, liest das PDH die Netze und WLANs von dort und schlägt sie dir vor – du musst sie nicht abtippen.</p>
+  {{template "hb-fig-netzwerk"}}
+  <div class="hb-howto"><b><i class="ti ti-download"></i> So übernimmst du Netze und WLANs vom Controller</b>
+    <ol class="hb-steps">
+      <li>Die Seite <b>Netzwerk</b> öffnen. Ist UniFi oder Omada eingerichtet, erscheint oben der Block <b>Vom Controller gefunden</b>. Er lädt nach ein paar Sekunden nach.</li>
+      <li>Jede Zeile ist <b>NEU</b> (gibt es im PDH noch nicht) oder <b>ANDERS</b> (gibt es schon, aber mit anderen Werten). Einträge, die schon übereinstimmen, werden nur gezählt (<b>stimmt überein</b>).</li>
+      <li>Bei <b>NEU</b> drückst du <b>Übernehmen</b>, bei <b>ANDERS</b> <b>Angleichen</b>. Zweck, Notiz und der Haken „Für ESPPDH-Geräte nutzbar“ bleiben dabei, wie sie sind. Mit <b>Alle übernehmen</b> geht alles auf einmal.</li>
+      <li>Willst du einen Vorschlag nicht, drücke <b>Ausblenden</b>. Er kommt erst wieder, wenn er sich am Controller ändert.</li>
+      <li><b>Neu abfragen</b> holt den aktuellen Stand vom Controller. Sonst gilt das Ergebnis 5 Minuten.</li>
+    </ol>
+    <p>Übernommene Einträge zeigen <b>aus UniFi</b> bzw. <b>aus Omada</b>. Gibt es einen Eintrag am Controller nicht mehr, steht <b>am Controller nicht mehr vorhanden</b> dabei – das PDH löscht nie von selbst etwas.</p>
+    <p><b>WLAN-Kennwörter:</b> Gibt der Controller das Kennwort heraus, übernimmt das PDH es verschlüsselt mit. Sonst steht dort „Controller gibt das Kennwort nicht heraus – bitte von Hand eintragen“; trage es dann über <b>Bearbeiten</b> ein. Weitere Hinweise: „offen“ (ohne Kennwort), „Anmeldung mit Benutzer (Enterprise)“ – solche WLANs sind <b>für ESPPDH nicht nutzbar</b>. „Kennwort geändert“ siehst du nur, wenn der Controller das Kennwort herausgibt. Den Haken „Für ESPPDH-Geräte nutzbar“ setzt das PDH <b>nie</b> von selbst.</p>
+    <p><b>Wenn eine Zeile nicht übernommen wird:</b> Hat sich der Vorschlag inzwischen geändert (anderer Benutzer, neuer Stand am Controller), lehnt das PDH ab: „Der Vorschlag hat sich inzwischen geändert – bitte die Liste ansehen und erneut wählen.“ Es wurde dann nichts übernommen. Pro Controller steht bei einem Problem eine eigene Zeile, z. B. „UniFi-Network-Anwendung zu alt – Netze und WLANs gibt es ab Version 10.0“. Am Spiegelserver fragt der Block den Controller nicht ab und verweist auf den aktiven Server.</p></div>
   <div class="hb-howto"><b><i class="ti ti-sitemap"></i> So trägst du ein Netz ein</b>
     <ol class="hb-steps">
       <li><b>Neues Netz</b> drücken und einen <b>Namen</b> eintragen, z. B. „Büro“, „Maschinen“ oder „Gäste“.</li>
@@ -1704,9 +1716,21 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <li><b>Wer ESPPDH-Geräte bauen darf, kann das WLAN-Kennwort lesen:</b> Er lädt die Firmware herunter, und darin steht es. Am besten ein eigenes WLAN nur für Geräte anlegen und nur dieses freigeben – nie das Büro-WLAN.</li>
     <li><b>Haken später entfernt:</b> Geräte in diesem WLAN lassen sich dann nicht mehr speichern und nicht mehr bauen; ihre Seite sagt „Das WLAN … ist nicht mehr für ESPPDH-Geräte freigegeben“. Schon gebaute Firmware lässt sich weiter herunterladen, und die Geräte behalten das Kennwort. Soll es niemand mehr nutzen können, das Kennwort am Access Point ändern.</li>
   </ul>
+  <h3><i class="ti ti-server"></i> Dieser Server: Adresse und DNS</h3>
+  <p>Die Karte <b>Dieser Server</b> zeigt die Netzwerkdaten des Servers: Netzwerkkarte, Adresse (<b>fest</b>, <b>automatisch (DHCP)</b> oder <b>unbekannt</b>), gemeinsame Adresse im Verbund und wo sie gerade liegt, Gateway, DNS-Server und IPv6. Im Verbund steht daneben die Karte des Partners; <b>Auf «Name» öffnen</b> führt zu dessen Seite. Den Partner siehst du erst, wenn beide Server auf dieser Version sind.</p>
+  <div class="hb-howto"><b><i class="ti ti-lock"></i> So stellst du die Adresse fest ein oder änderst die DNS-Server</b>
+    <ol class="hb-steps">
+      <li>Im Verbund <b>zuerst den Spiegel</b> ändern, dann den aktiven Server. Öffne die Seite dafür über die <b>eigene Adresse</b> des Servers, nicht über die gemeinsame.</li>
+      <li>Auf der Karte <b>Jetzige Adresse fest einstellen</b> drücken (gibt es nur bei automatischer Adresse) oder <b>DNS-Server ändern</b> (1 bis 3 Adressen). Beim Ändern der DNS-Server wird die jetzige Adresse ebenfalls fest.</li>
+      <li>Das PDH zeigt vorab, was passiert. Am aktiven Server ist die gemeinsame Adresse kurz weg, und der Ausfallschutz steht solange in Wartung. Die automatische Netzwerkeinrichtung des Servers (cloud-init) wird abgeschaltet.</li>
+      <li>Das PDH prüft, ob jeder DNS-Server antwortet. Antwortet einer nicht, wird <b>nichts</b> geschrieben.</li>
+      <li>Danach läuft ein <b>Countdown von 2 Minuten</b>. Kommt die Seite wieder, drücke <b>Seite erreichbar – Einstellung behalten</b>.</li>
+    </ol>
+    <p><b>Ohne Bestätigung</b> stellt der Server die vorige Einstellung nach den 2 Minuten selbst wieder her – auch wenn zwischendurch das PDH, der Update-Agent oder der ganze Server neu startet. Die Wartung des Ausfallschutzes schaltet er dann ebenfalls wieder aus, auch später, falls es nicht gleich ging. Eine Wartung, die jemand anderes eingeschaltet hat, bleibt unberührt.</p>
+    <p><b>Gesperrt</b> ist die Änderung, solange ein PDH-Update, eine Wartung, ein Rollentausch oder eine frühere Änderung noch läuft. Es gibt sie nur für Administratoren mit dem Recht „Server-Einstellungen“, nur auf Ubuntu-Servern mit netplan und nicht im Docker-Testsystem (dort nur ein Hinweis). Die Adresse und das Gateway selbst lassen sich hier nicht ändern. Auf der Konsole geht es weiter mit <code>pdh-static-ip.sh</code> (siehe <a href="#ausfallschutz">Ausfallschutz</a>).</p></div>
   <h3>Rechte</h3>
   <ul>
-    <li><b>Netzwerk: VLANs und WLANs pflegen</b> (<code>system.network</code>) – Seite sehen, Netze und WLANs anlegen und ändern, auch den Haken „Für ESPPDH-Geräte nutzbar“ setzen. Es haben automatisch alle Rollen, die die UniFi-Anbindung verwalten dürfen. Die Rechte von ESPPDH allein reichen dafür nicht.</li>
+    <li><b>Netzwerk: VLANs und WLANs pflegen</b> (<code>system.network</code>) – Seite sehen, auch die Karte „Dieser Server“ und die Vorschläge vom Controller, Netze und WLANs anlegen, übernehmen und ändern, auch den Haken „Für ESPPDH-Geräte nutzbar“ setzen. Adresse fest einstellen und DNS ändern dürfen nur Administratoren mit dem Recht „Server-Einstellungen“. Es haben automatisch alle Rollen, die die UniFi-Anbindung verwalten dürfen. Die Rechte von ESPPDH allein reichen dafür nicht.</li>
     <li><b>Netzwerk: VLANs und WLANs löschen</b> (<code>system.network_admin</code>, Bereichsadministrator) – endgültig löschen. Wird ein Netz gelöscht, bleiben seine WLANs und stehen danach ohne Netz da.</li>
   </ul>
   <p>Auf dem Spiegelserver ist die Seite nur zum Lesen da.</p>
@@ -3113,7 +3137,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <div class="hb-howto"><b><i class="ti ti-network"></i> So stellst du feste IP-Adressen ein</b>
     <p>Die Server und der Zeuge kennen sich über ihre Adressen. Vergibt der Router per DHCP eine neue Adresse, finden sie sich nicht mehr. Deshalb jede Adresse fest einstellen – am besten, bevor der Verbund eingerichtet wird.</p>
     <ol class="hb-steps">
-      <li>Auf jedem Server: <code>sudo bash /opt/pdh-server/scripts/pdh-static-ip.sh</code>. Das Skript zeigt die jetzige Adresse, das Gateway und die DNS-Server und fragt nach.</li>
+      <li>Am einfachsten geht es in der Oberfläche: <b>Administration → Netzwerk</b>, Karte <b>Dieser Server</b>, <b>Jetzige Adresse fest einstellen</b> (siehe <a href="#netzwerk">Netzwerk</a>). Oder auf jedem Server per SSH: <code>sudo bash /opt/pdh-server/scripts/pdh-static-ip.sh</code>. Das Skript zeigt die jetzige Adresse, das Gateway und die DNS-Server und fragt nach.</li>
       <li>Nach dem Bestätigen testet es die Einstellung: Ist die Verbindung noch da, <b>ENTER</b> drücken. Sonst geht nach 120 Sekunden alles automatisch zurück – auch über SSH ungefährlich.</li>
       <li>Im Router die Adresse aus dem DHCP-Bereich nehmen oder für den Server reservieren. Für den Zeugen-PC eine DHCP-Reservierung im Router anlegen.</li>
       <li>Netzlaufwerke (Freigaben) müssen von <b>beiden</b> Servern erreichbar sein – die Freigabe also für beide Adressen erlauben. Die Netzlaufwerk-Sicherung schaltet der neue aktive Server nach einer Übernahme nach etwa einer Minute selbst ein (eigener Ordner unter <code>PDH-Ausfallschutz/</code>, beginnend mit einer Grundsicherung).</li>
