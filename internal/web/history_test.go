@@ -332,16 +332,15 @@ func TestHistoryFragmentPerms(t *testing.T) {
 	if w := e.get(none, "/records/history/purchase_order/"+inA); w.Code != http.StatusForbidden {
 		t.Errorf("Bestellung ohne Recht: %d", w.Code)
 	}
-	// Ohne Anmeldung gibt es nie eine Historie. Mit Anmeldung: Projekt, KVP, Störung, Ticket und
-	// Ersatzteil wie ihre Seiten (kein Einzelrecht); Aufgabe und Wartung brauchen „ansehen“ oder
-	// „bearbeiten“ (siehe TestHistoryLikeThePage).
+	// Ohne Anmeldung gibt es nie eine Historie. Mit Anmeldung: Störung, Ticket, Aufgabe, Wartung und
+	// Ersatzteil wie ihre Seiten (kein Einzelrecht); Projekt und KVP nur mit Ansichtsrecht oder als
+	// Beteiligter (viewRights) – ohne Recht 403, auch wenn der Datensatz fehlt.
 	for _, m := range []string{"project", "kvp", "fault", "ticket", "task", "maintenance_task", "part"} {
 		if w := e.get(&users.User{Role: "viewer"}, "/records/history/"+m+"/"+someID); w.Code != http.StatusForbidden {
 			t.Errorf("%s ohne Anmeldung: %d", m, w.Code)
 		}
-		// Aufgabe und Wartung brauchen wie vor dem Sortieren „ansehen“ oder „bearbeiten“ des Bereichs
 		want := http.StatusNotFound
-		if m == "task" || m == "maintenance_task" {
+		if m == "project" || m == "kvp" {
 			want = http.StatusForbidden
 		}
 		if w := e.get(none, "/records/history/"+m+"/"+someID); w.Code != want {
@@ -435,31 +434,20 @@ func TestHistoryLikeThePage(t *testing.T) {
 		t.Errorf("angemeldet ohne Einzelrecht: %d", w.Code)
 	}
 
-	// Aufgabe und Wartung: wie vor dem Sortieren nur mit „ansehen“ oder „bearbeiten“ des Bereichs
+	// Aufgabe und Wartung: wie die Seite – jeder Angemeldete (Abteilungssperre wie auf der Seite)
 	task := e.row("tasks", `INSERT INTO tasks (title, description, priority, status, created_by) VALUES ('H-Aufgabe', 'x', 'medium', 'open', $1::uuid) RETURNING id::text`, maker.ID)
 	maint := e.row("maintenance_tasks", `INSERT INTO maintenance_tasks (title, type, infrastructure_id, priority, status, due_date, created_by)
 		VALUES ('H-Wartung', 'inspection', $2::uuid, 'medium', 'open', CURRENT_DATE + 7, $1::uuid) RETURNING id::text`, maker.ID, e.infra("H-Anlage", "", ""))
 	e.histT("task", task, "status", "status", "Status geändert", "w01", maker, at)
 	e.histT("maintenance_task", maint, "status", "status", "Status geändert", "w01", maker, at)
-	for _, c := range []struct{ module, id, view, edit, other string }{
-		{"task", task, "tasks.view", "tasks.edit", "tasks.resolve"},
-		{"maintenance_task", maint, "maintenance.view", "maintenance.edit", "maintenance.resolve"},
-	} {
+	for _, c := range []struct{ module, id string }{{"task", task}, {"maintenance_task", maint}} {
 		url := "/records/history/" + c.module + "/" + c.id
-		if w := e.get(e.user("Nina", "Nichts"), url); w.Code != 403 {
-			t.Errorf("%s ohne Recht: %d, erwartet 403", c.module, w.Code)
+		w := e.get(e.user("Nina", "Nichts"), url)
+		if w.Code != 200 || len(histValues(w.Body.String())) != 1 {
+			t.Errorf("%s angemeldet ohne Einzelrecht: %d %s", c.module, w.Code, w.Body.String())
 		}
-		other := e.user("Olaf", "Anderes")
-		e.grant(other, c.other, "")
-		if w := e.get(other, url); w.Code != 403 {
-			t.Errorf("%s nur mit %s: %d, erwartet 403", c.module, c.other, w.Code)
-		}
-		for _, perm := range []string{c.view, c.edit} {
-			u := e.user("Vera", "Viewer")
-			e.grant(u, perm, "")
-			if w := e.get(u, url); w.Code != 200 || len(histValues(w.Body.String())) != 1 {
-				t.Errorf("%s mit %s: %d %s", c.module, perm, w.Code, w.Body.String())
-			}
+		if w := e.get(&users.User{Role: "viewer"}, url); w.Code != 403 {
+			t.Errorf("%s ohne Anmeldung: %d, erwartet 403", c.module, w.Code)
 		}
 	}
 }

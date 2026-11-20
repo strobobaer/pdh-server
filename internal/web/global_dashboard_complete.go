@@ -83,12 +83,13 @@ func (h *Handler) GlobalDashboardCompleteStart(w http.ResponseWriter, r *http.Re
 	_ = json.NewEncoder(w).Encode(map[string]string{"token": token, "name": name})
 }
 
-// boardCompleteUser: Person hinter einem gueltigen Leitstand-Token, sofern
-// die Anfrage genau den freigegebenen Vorgang betrifft (/complete/{type}/{id}).
-func (h *Handler) boardCompleteUser(r *http.Request) *coreusers.User {
+// boardCompleteSub: Benutzer-ID eines gueltigen Leitstand-Tokens, sofern die Anfrage genau den
+// freigegebenen Vorgang betrifft (/complete/{type}/{id}); "" sonst. Nur das Token, ohne den
+// Benutzer zu laden (auch fuer requestActor).
+func (h *Handler) boardCompleteSub(r *http.Request) string {
 	auth := strings.TrimSpace(r.Header.Get("Authorization"))
 	if !strings.HasPrefix(auth, "Bearer ") {
-		return nil
+		return ""
 	}
 	token, err := jwt.Parse(strings.TrimPrefix(auth, "Bearer "), func(t *jwt.Token) (interface{}, error) {
 		if t.Method != jwt.SigningMethodHS256 {
@@ -97,20 +98,27 @@ func (h *Handler) boardCompleteUser(r *http.Request) *coreusers.User {
 		return []byte(h.jwtSecret), nil
 	})
 	if err != nil || !token.Valid {
-		return nil
+		return ""
 	}
 	claims, ok := token.Claims.(jwt.MapClaims)
 	if !ok || claims["scope"] != boardCompleteScope {
-		return nil
+		return ""
 	}
 	ref, _ := claims["ref"].(string)
 	typ, id, ok := strings.Cut(ref, ":")
 	// der Vorgang selbst und seine Unterpfade (Checklistenpunkte, Fotos)
 	base := "/complete/" + typ + "/" + id
 	if !ok || (r.URL.Path != base && !strings.HasPrefix(r.URL.Path, base+"/steps/")) {
-		return nil
+		return ""
 	}
 	sub, _ := claims["sub"].(string)
+	return sub
+}
+
+// boardCompleteUser: Person hinter einem gueltigen Leitstand-Token, sofern
+// die Anfrage genau den freigegebenen Vorgang betrifft (/complete/{type}/{id}).
+func (h *Handler) boardCompleteUser(r *http.Request) *coreusers.User {
+	sub := h.boardCompleteSub(r)
 	if sub == "" {
 		return nil
 	}

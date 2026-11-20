@@ -83,7 +83,7 @@ func TestKVPPagesRender(t *testing.T) {
 	checkScripts(t, "kvp_detail", rev)
 	checkScripts(t, "kvp_detail_plan", out)
 	k.Status = "plan"
-	list := renderPage(t, tmpl, "kvp", KVPPageData{Ideas: []kvpIdea{*k}, Statuses: kvpStatuses, Categories: kvpCategories,
+	list := renderPage(t, tmpl, "kvp", KVPPageData{ShowDash: true, ShowBoard: true, Ideas: []kvpIdea{*k}, Statuses: kvpStatuses, Categories: kvpCategories,
 		BoardCols: kvpStatuses[2:6], Dash: kvpDashboard{Board: map[string][]kvpIdea{"plan": {*k}}}})
 	checkTabs(t, "kvp", list, "dashboard", "ideas", "board", "rules")
 	if !strings.Contains(list, "Regal sichern") {

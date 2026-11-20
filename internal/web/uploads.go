@@ -2,6 +2,7 @@ package web
 
 import (
 	"net/http"
+	"os"
 	"path"
 	"path/filepath"
 	"runtime"
@@ -19,7 +20,7 @@ import (
 func UploadsHandler(dir string) http.Handler {
 	files := http.StripPrefix("/uploads/", http.FileServer(http.Dir(dir)))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if uploadsHidden(r.URL.Path) || uploadsInFirmware(dir, r.URL.Path) {
+		if uploadsHidden(r.URL.Path) || uploadsInFirmware(dir, r.URL.Path) || uploadsIsDir(dir, r.URL.Path) {
 			http.NotFound(w, r)
 			return
 		}
@@ -68,6 +69,15 @@ func uploadsInFirmware(dir, p string) bool {
 		fw = real // esppdh selbst als Verweis auf einen anderen Ordner
 	}
 	return uploadsWithin(target, fw)
+}
+
+// uploadsIsDir: führt der Pfad auf einen Ordner (mit oder ohne „/“ am Ende)? Dann gibt es keine
+// Dateiliste – wer einen Dateinamen kennt, bekommt die Datei, aber niemand kann den Inhalt eines
+// Ordners auflisten. Verglichen wird wie bei http.Dir (bereinigter Pfad im Upload-Ordner).
+func uploadsIsDir(dir, p string) bool {
+	rest := strings.TrimPrefix(strings.TrimPrefix(p, "/uploads"), "/")
+	fi, err := os.Stat(filepath.Join(dir, filepath.FromSlash(path.Clean("/"+rest))))
+	return err == nil && fi.IsDir()
 }
 
 // uploadsWithin: ist p der Ordner dir oder liegt darin? Unter Windows ohne Rücksicht auf

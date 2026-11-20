@@ -17,7 +17,8 @@ import (
 //	POST /records/comments/{modul}/{id}   trägt einen Kommentar ein und liefert die Karte neu
 //
 // Lesen wie die Detailseite: TicketDetail prüft kein Einzelrecht (jeder Angemeldete, die Abteilung
-// sperrt DepartmentScopeMiddleware über scopePaths), KVPDetailPage ebenso und blendet nichts aus.
+// sperrt DepartmentScopeMiddleware über scopePaths). KVP: Ansichtsrecht für die Abteilung des
+// Vorschlags oder beteiligt (blockRecord → canViewRec, view_rights.go).
 // Schreiben wie bisher (die alten Wege /tickets/{id}/comment und /kvp/{id}/comment – beide ohne
 // Recht, siehe gateRules): wer die Seite sieht, darf kommentieren. Daher gibt es hier auch keine
 // Regel in gateRules.

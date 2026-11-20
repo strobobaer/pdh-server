@@ -151,15 +151,16 @@ func (h *Handler) allowedIDsFor(ctx context.Context, s *deptScope, refType strin
 }
 
 // recordInScope: darf die Person den Vorgang sehen? Unbekannte IDs gelten als
-// erlaubt (der eigentliche Handler meldet dann "nicht gefunden").
+// erlaubt (der eigentliche Handler meldet dann "nicht gefunden"); eine ID, die keine gültige UUID ist, gilt als
+// nicht sichtbar.
 func (h *Handler) recordInScope(ctx context.Context, s *deptScope, refType, id string) bool {
 	st, ok := scopeTables[refType]
 	if s == nil || !ok {
 		return true
 	}
 	var exists, allowed bool
-	err := h.db.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM `+st.table+` r WHERE r.id::text = $3),
-		EXISTS (SELECT 1 FROM `+st.table+` r WHERE r.id::text = $3 AND `+scopeWhere(st)+`)`, s.UserID, s.Departments, id).Scan(&exists, &allowed)
+	err := h.db.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM `+st.table+` r WHERE r.id = $3::uuid),
+		EXISTS (SELECT 1 FROM `+st.table+` r WHERE r.id = $3::uuid AND `+scopeWhere(st)+`)`, s.UserID, s.Departments, id).Scan(&exists, &allowed)
 	if err != nil {
 		return false
 	}
@@ -214,6 +215,19 @@ func scopeTarget(path string) (refType, id string, ok bool) {
 	return "", "", false
 }
 
+var kvpAttachmentRe = regexp.MustCompile(`^/attachments/kvp/([^/]+)`)
+
+// kvpAttachmentTarget: die Vorschlags-ID, wenn der Pfad (ohne /api/v1) Anhänge eines
+// KVP-Vorschlags anspricht (Liste, Hochladen, Datensatzbild), sonst "". Das Segment gilt in jeder
+// Schreibweise (auch ohne Bindestriche oder in Klammern, die Postgres als UUID annimmt): ob es
+// eine gültige ID ist, entscheidet canViewRec (nur die Normalform, sonst nicht sichtbar).
+func kvpAttachmentTarget(path string) string {
+	if m := kvpAttachmentRe.FindStringSubmatch(path); m != nil {
+		return m[1]
+	}
+	return ""
+}
+
 // DepartmentScopeMiddleware sperrt Detailseiten und Bearbeitungsrouten von
 // Vorgaengen ausserhalb der eigenen Abteilung (Web-Oberflaeche).
 func (h *Handler) DepartmentScopeMiddleware(next http.Handler) http.Handler {
@@ -241,31 +255,59 @@ func (h *Handler) APIDepartmentScope(next http.Handler) http.Handler {
 		path := strings.TrimPrefix(r.URL.Path, "/api/v1")
 		refType, id, single := scopeTarget(path)
 		listType, isList := apiListModules[strings.TrimSuffix(path, "/")]
-		if !single && !(isList && r.Method == http.MethodGet) {
+		kvpID := kvpAttachmentTarget(path)
+		if !single && kvpID == "" && !(isList && r.Method == http.MethodGet) {
 			next.ServeHTTP(w, r)
 			return
 		}
-		uid := h.sessionUserID(r)
-		if uid == "" {
-			uid = h.bearerUserID(r)
+		// Das Token wird genau wie in middleware.Auth gelesen. Ist es gültig, lässt sich aber
+		// kein Benutzer bestimmen, wird gesperrt (nie durchgereicht); ohne gültiges Token
+		// antwortet die Middleware selbst mit 401.
+		uid, valid := h.apiTokenUser(r)
+		if !valid || h.users == nil {
+			next.ServeHTTP(w, r)
+			return
 		}
-		if uid == "" || h.users == nil {
-			next.ServeHTTP(w, r) // ohne Anmeldung lehnt das Modul selbst ab
+		deny := func() { http.Error(w, `{"success":false,"error":"kein zugriff"}`, http.StatusForbidden) }
+		if uid == "" {
+			deny()
 			return
 		}
 		u, err := h.users.GetByID(r.Context(), uid)
 		if err != nil || u == nil {
+			deny()
+			return
+		}
+		if kvpID != "" {
+			// Anhänge eines KVP-Vorschlags: kvp steht nicht in scopeTables, daher hier die
+			// Ansichtsprüfung (Recht für die Abteilung oder beteiligt); Fehler sperren.
+			if !h.canViewRec(r.WithContext(context.WithValue(r.Context(), "user", u)), "kvp", kvpID) {
+				deny()
+				return
+			}
 			next.ServeHTTP(w, r)
 			return
 		}
 		s := h.deptScopeFor(r.Context(), u.ID, string(u.Role))
-		if s == nil {
+		// Projekte: zusätzlich das Ansichtsrecht (view_rights.go), auch ohne Abteilungssperre der Rolle
+		viewType := ""
+		if single && refType == "project" {
+			viewType = "project"
+		} else if !single && listType == "project" {
+			viewType = "project"
+		}
+		if s == nil && viewType == "" {
 			next.ServeHTTP(w, r)
 			return
 		}
+		req := r.WithContext(context.WithValue(r.Context(), "user", u))
 		if single {
-			if !h.recordInScope(r.Context(), s, refType, id) {
+			if s != nil && !h.recordInScope(r.Context(), s, refType, id) {
 				http.Error(w, `{"success":false,"error":"kein zugriff: andere abteilung"}`, http.StatusForbidden)
+				return
+			}
+			if viewType != "" && !h.canViewRec(req, viewType, id) {
+				http.Error(w, `{"success":false,"error":"kein zugriff"}`, http.StatusForbidden)
 				return
 			}
 			next.ServeHTTP(w, r)
@@ -276,8 +318,12 @@ func (h *Handler) APIDepartmentScope(next http.Handler) http.Handler {
 		next.ServeHTTP(rec, r)
 		body := rec.buf.Bytes()
 		if rec.status == http.StatusOK {
-			req := r.WithContext(context.WithValue(r.Context(), "user", u))
-			body = filterJSONList(body, h.scopeAllowedIDs(req, listType))
+			if s != nil {
+				body = filterJSONList(body, h.scopeAllowedIDs(req, listType))
+			}
+			if viewType != "" && !h.viewsAll(req, viewType) {
+				body = filterJSONFunc(body, h.viewFilter(req, viewType))
+			}
 		}
 		for k, v := range rec.header {
 			w.Header()[k] = v
@@ -288,23 +334,45 @@ func (h *Handler) APIDepartmentScope(next http.Handler) http.Handler {
 	})
 }
 
-func (h *Handler) bearerUserID(r *http.Request) string {
-	auth := r.Header.Get("Authorization")
-	if !strings.HasPrefix(auth, "Bearer ") {
-		return ""
+// apiTokenUser liest das Token einer API-Anfrage genau wie middleware.Auth (Authorization:
+// Bearer zuerst, sonst der Cookie pdh_token; beides ohne umgebende Leerzeichen; jede
+// HMAC-Signatur). valid: Das Token ist gültig; uid ist dann der Benutzer (leer, wenn das
+// Token keinen enthält).
+func (h *Handler) apiTokenUser(r *http.Request) (uid string, valid bool) {
+	claims, _, ok := h.apiTokenClaims(r)
+	if !ok {
+		return "", false
 	}
-	token, err := jwt.Parse(strings.TrimPrefix(auth, "Bearer "), func(t *jwt.Token) (interface{}, error) {
-		if t.Method != jwt.SigningMethodHS256 {
+	sub, _ := claims["sub"].(string)
+	return sub, true
+}
+
+// apiTokenClaims: Inhalt des Tokens einer API-Anfrage, gelesen wie in middleware.Auth.
+// present: ein Token kam mit; ok: es ist gültig (claims sind dann gesetzt).
+func (h *Handler) apiTokenClaims(r *http.Request) (claims jwt.MapClaims, present, ok bool) {
+	raw := ""
+	if hd := strings.TrimSpace(r.Header.Get("Authorization")); strings.HasPrefix(hd, "Bearer ") {
+		raw = strings.TrimSpace(strings.TrimPrefix(hd, "Bearer "))
+	}
+	if raw == "" {
+		if c, err := r.Cookie("pdh_token"); err == nil {
+			raw = strings.TrimSpace(c.Value)
+		}
+	}
+	if raw == "" {
+		return nil, false, false
+	}
+	token, err := jwt.Parse(raw, func(t *jwt.Token) (interface{}, error) {
+		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unerwartete signaturmethode")
 		}
 		return []byte(h.jwtSecret), nil
 	})
 	if err != nil || !token.Valid {
-		return ""
+		return nil, true, false
 	}
-	claims, _ := token.Claims.(jwt.MapClaims)
-	sub, _ := claims["sub"].(string)
-	return sub
+	claims, ok = token.Claims.(jwt.MapClaims)
+	return claims, true, ok
 }
 
 type bufferWriter struct {
@@ -323,10 +391,15 @@ func filterJSONList(body []byte, allowed map[string]bool) []byte {
 	if allowed == nil {
 		return body
 	}
+	return filterJSONFunc(body, func(id string) bool { return allowed[id] })
+}
+
+// filterJSONFunc: wie filterJSONList, mit einer Prüffunktion statt einer Menge.
+func filterJSONFunc(body []byte, allowed func(id string) bool) []byte {
 	keep := func(items []map[string]any) []map[string]any {
 		out := make([]map[string]any, 0, len(items))
 		for _, it := range items {
-			if id, _ := it["id"].(string); allowed[id] {
+			if id, _ := it["id"].(string); allowed(id) {
 				out = append(out, it)
 			}
 		}

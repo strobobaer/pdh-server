@@ -149,6 +149,7 @@ type ProjectsPageData struct {
 	Projects []ProjectView
 	Total    int
 	Users    []UserOption
+	Mine     bool // ohne Ansichtsrecht: nur die Projekte, an denen die Person beteiligt ist
 }
 
 func (h *Handler) ProjectsPage(w http.ResponseWriter, r *http.Request) {
@@ -162,19 +163,50 @@ func (h *Handler) ProjectsPage(w http.ResponseWriter, r *http.Request) {
 		{"planning", "Planung", "ti-pencil"}, {"active", "Aktiv", "ti-player-play"},
 		{"paused", "Pausiert", "ti-player-pause"}, {"completed", "Abgeschlossen", "ti-check"},
 	}, false)
-	list, err := h.projects.List(ctx, projects.Status(filter))
-	if err == nil {
-		data.Total = len(list)
-		tagIDs := h.categoryFilterIDs(r, "project")
-		scopeIDs := h.scopeAllowedIDs(r, "project")
-		for _, p := range list {
-			if tagIDs != nil && !tagIDs[p.ID] || scopeIDs != nil && !scopeIDs[p.ID] {
-				continue
-			}
-			data.Projects = append(data.Projects, projectView(p))
-		}
-		h.projectTaskStats(ctx, data.Projects)
+	data.Mine = !h.mayViewAny(r, "project")
+	// Liste und Reiterzähler aus derselben Menge, je einmal geladen: Ansichtsrecht (view_rights.go;
+	// ohne Recht nur die eigenen, „Meine Projekte“) und Abteilungssperre der Rolle (scopeIDs).
+	// Die Kategorie-Auswahl (tagIDs) grenzt nur die Liste ein.
+	all, err := h.projects.List(ctx, "")
+	if err != nil {
+		componentLog("projekte").Error().Err(err).Msg("projekte laden")
+		h.render(w, "projects", data)
+		return
 	}
+	var visible map[string]bool // nil = Recht überall
+	if !h.viewsAll(r, "project") {
+		ids := make([]string, len(all))
+		for i, p := range all {
+			ids[i] = p.ID
+		}
+		vis, _ := h.viewSplit(r, "project", ids)
+		visible = make(map[string]bool, len(vis))
+		for _, id := range vis {
+			visible[id] = true
+		}
+	}
+	scopeIDs := h.scopeAllowedIDs(r, "project")
+	tagIDs := h.categoryFilterIDs(r, "project")
+	counts := map[string]int{}
+	for _, p := range all {
+		if visible != nil && !visible[p.ID] || scopeIDs != nil && !scopeIDs[p.ID] {
+			continue
+		}
+		counts[""]++
+		counts[string(p.Status)]++
+		if filter != "" && string(p.Status) != filter {
+			continue
+		}
+		data.Total++
+		if tagIDs != nil && !tagIDs[p.ID] {
+			continue
+		}
+		data.Projects = append(data.Projects, projectView(p))
+	}
+	for i := range data.Tabs {
+		data.Tabs[i].Count = counts[data.Tabs[i].Key]
+	}
+	h.projectTaskStats(ctx, data.Projects)
 	h.render(w, "projects", data)
 }
 
@@ -190,6 +222,11 @@ func (h *Handler) ProjectDetail(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	id := chi.URLParam(r, "id")
 
+	// Ansichtsrecht für die Abteilung des Projekts oder beteiligt (view_rights.go)
+	if !h.canViewRec(r, "project", id) {
+		http.Error(w, tr(h.requestLang(r), "Keine Berechtigung"), http.StatusForbidden)
+		return
+	}
 	p, err := h.projects.GetByID(ctx, id)
 	if err != nil {
 		http.Redirect(w, r, "/projects", http.StatusFound)

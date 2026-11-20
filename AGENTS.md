@@ -254,8 +254,10 @@ oder ändern.**
 6. **ESPPDH Paket 1 = Version 0.82.0** (vom Anwender festgelegt): auf `main`
    (19.11.2026; Migrationen 179 bis 181, Rechte `esppdh.view`, `esppdh.edit`,
    `esppdh.admin`; Entwurf `docs/superpowers/specs/2026-11-18-esppdh-design.md`,
-   Plan `docs/superpowers/plans/2026-11-18-esppdh-paket1.md`). Offen: Freigabe
-   für das Verbund-Update; danach am Testverbund auf der Seite „Netzwerk“ den
+   Plan `docs/superpowers/plans/2026-11-18-esppdh-paket1.md`). **0.82.0 bis
+   0.82.2 sind auf dem Testverbund** (19.11.2026, Verbund-Update auf
+   `1cfbe6e`; beide Server und Zeuge 0.82.2, Migrationen 179–182 da, aktiv
+   jetzt `pdh-server` 10.10.0.17). Offen: am Testverbund auf der Seite „Netzwerk“ den
    Haken „Für ESPPDH-Geräte nutzbar“ am Geräte-WLAN setzen, auf beiden Servern
    die Umgebung einrichten, ein Gerät bauen, die Rollen umschalten, die
    Firmware am zweiten Server herunterladen und im Browser prüfen. Paket 2 und
@@ -267,8 +269,8 @@ oder ändern.**
    `docs/superpowers/specs/2026-11-19-esphome-aktuell-design.md`, Plan
    `docs/superpowers/plans/2026-11-19-esphome-aktuell.md` (vom Anwender am
    19.11.2026 freigegeben). Auf `main` (19.11.2026, Merge `ad75fb0`; keine
-   Migration, kein neues Recht). Offen: Freigabe für das Verbund-Update;
-   danach am Testverbund (zusammen mit 0.82.0): Umgebung einrichten, „Jetzt
+   Migration, kein neues Recht); auf dem Testverbund. Offen am Testverbund
+   (zusammen mit 0.82.0): Umgebung einrichten, „Jetzt
    prüfen“ auf beiden Servern, „Zurück zur vorigen Version“ am Spiegel, eine
    Probe während `systemctl restart pdh`, Reiter „ESPPDH“ im Browser in Fiori
    und Fluent, hell/dunkel, 320–1366 px. Geparkt: Hinweis am Gerät bleibt alt,
@@ -283,16 +285,19 @@ oder ändern.**
    182, Branch `feature/sortierung` ab `main` mit 0.82.1). Der Plan behebt
    zwei Lücken im Bestand mit: Löschen einer Maßnahme prüft den Datensatz
    nicht; Historie von Projekt, KVP, Anlage und Lagerort ist ohne
-   Ansichtsrecht abrufbar. Gebaut auf dem Branch `feature/sortierung`
-   (Migration 182, kein neues Recht). Offen: Freigabe für Merge und Push;
-   danach Browserprüfung der Leiste in Fiori/Fluent, hell/dunkel, 320–1366 px
-   an Störung, Ticket, KVP, Anlage und einer Protokoll-Liste. Entscheidung des
-   Anwenders offen: eigenes Ansichtsrecht für Projekte und KVP (ihre Seiten
-   und damit ihre Historie sieht heute jeder Angemeldete) und ob die Historie
-   von Aufgaben und Wartungsaufträgen wie die Seite für jeden sichtbar sein
-   soll, der den Vorgang öffnen kann (heute: Recht „ansehen“ oder „bearbeiten“
-   des Bereichs nötig). Geparkt für die Browserprüfung: Unterrand des
-   gewählten Sortier-Knopfs in Fiori, Breite des Auswahlfelds auf dem Handy.
+   Ansichtsrecht abrufbar. Auf `main` (19.11.2026, Merge `1cfbe6e`;
+   Migration 182, kein neues Recht); auf dem Testverbund, im Browser
+   geprüft (19.11.2026: Störung, Ticket, KVP, Anlage, zwei Protokolle,
+   Netzwerk, ESPPDH; Fiori/Fluent, hell/dunkel, 320–1366 px; kein
+   Überlauf, keine Konsolenfehler; „Weitere laden“ mangels langer Historie
+   nicht gesehen). Kosmetische Befunde, mit 0.82.3 behoben: Fiori-Knopf
+   mit 2 px Unterrand; KVP-Karte „Do“ bricht die Leiste auf 2–3 Zeilen um;
+   Einzelzeile direkt unter einer aufgeklappten Gruppe ohne Abstand;
+   Server-Protokoll: Feld „Stufe“ überlappt „bis“ (vermutlich Bestand).
+   Auswahlfeld am Handy volle Breite – passt. Testdaten: Ticket und
+   KVP-Idee gelöscht; Störung „Abnahme Sortierung Störung“
+   (`01a1f566-b4d2-783f-b0f7-e6e42ee3deae`) ist noch da – Störungen haben
+   keine Löschfunktion; löschen nur per Datenbank mit Freigabe.
    Geparkt aus der Schlussprüfung (klein): Test zur gemischten Gruppe in der
    Anlagen-Historie greift den Fehlerfall nicht; Hinweis „neueste N“ fehlt,
    wenn der Abteilungsfilter alle geladenen Zeilen entfernt, und liest sich
@@ -300,10 +305,43 @@ oder ändern.**
    „Nach Person“ nach vorn; Umlaute sortieren in Listen aus der Datenbank
    anders als in Listen aus dem Programm; Gruppen laden alle Einzeleinträge
    (bis 5000) mit; Gruppentitel der Historie nur deutsch.
-   **Wunsch vom 19.11.2026: Netzwerkliste aus UniFi und Omada vorbefüllen**
-   (Seite „Netzwerk“: Netze und WLANs vom Controller holen, der Anwender
-   bestätigt nur noch). Noch kein Entwurf; offen ist die Antwort, ob auch die
-   WLAN-Kennwörter vom Controller übernommen werden sollen.
+   **Nächste Pakete (Entscheidungen des Anwenders vom 19.11.2026):**
+   (a) **0.82.3 Rechte:** eigenes Ansichtsrecht für Projekte und für KVP
+   (ja); Historie von Aufgaben und Wartungsaufträgen sieht jeder, der den
+   Vorgang öffnen kann (ja). Branch `feature/rechte-projekte-kvp`. Entwurf
+   `docs/superpowers/specs/2026-11-19-rechte-projekte-kvp-design.md` (mit
+   zwei Sicherheitspunkten: Leitstand-Kalender für Gäste, Ordnerlisten unter
+   `/uploads/`) – am 19.11.2026 freigegeben („Passt“). Gebaut auf dem Branch
+   `feature/rechte-projekte-kvp` (Migration 183, Rechte `projects.view`,
+   `kvp.view`). Offen: Freigabe für Merge und Push; danach Verbund-Update und
+   Browserprüfung (Rolle ohne die neuen Rechte: Menü, Projekte-Liste,
+   KVP-Seite; Leitstand-Kalender als Gast; `GET /uploads/` → 404). Geparkt:
+   Copilot-Suche über alle Vorgangsarten scheitert an einem Feld der
+   Störungen (Bestand); Partner-Auswahl zeigt höchstens 500 Vorgänge vor dem
+   Rechtefilter; KVP-Kennzahlen für Rollen mit Recht nur in einer Abteilung
+   ausgeblendet (Erweiterung möglich); Kalender-Personenzeilen lassen
+   Vorgänge von Personen außerhalb der Leitstand-Abteilung weg (Bestand);
+   `recordDepartments` und `deptScopeFor` geben bei Datenbankfehlern „keine
+   Einschränkung“ zurück (Bestand; betrifft Bearbeiten-Rechte im Gate und die
+   Abteilungssperre); Benutzer, deren Rolle gelöscht wurde, sehen nach 0.82.3
+   nur noch eigene Projekte/Vorschläge – vor dem Einspielen prüfen (am
+   Testverbund geprüft: keiner). Aus der Schlussprüfung geparkt: Schreibt
+   jemand mit abgelaufener Anmeldung über eine gesperrte Route, kommt eine
+   Textmeldung „Bitte neu anmelden“ statt der Weiterleitung (sperrend lassen,
+   nur das Aussehen wie `authMiddleware`); `webActor` prüft die bei Wartung
+   zurückgezogenen Sitzungen nicht (Bestand); Pfad-Aufteilung auf `/api/v1/`
+   enger fassen; `middleware.Auth` prüft nicht, ob der Benutzer noch aktiv
+   ist – Schlüssel deaktivierter Benutzer gelten an Schnittstellen-Wegen ohne
+   Rechte-Regel bis zum Ablauf (Bestand, Systembenutzer 10 Jahre).
+   Vorschlag für später: Anhänge nur mit Anmeldung.
+   (b) **0.82.4 Seite „Netzwerk“:** Netze und WLANs aus UniFi und Omada
+   vorschlagen, der Anwender bestätigt nur noch; WLAN-Kennwörter werden mit
+   übernommen (ja, Handeingabe als Rückfall); Karte „Dieser Server“ mit
+   Adresse, Gateway, DNS, fest/automatisch, „Jetzige Adresse fest einstellen“
+   und DNS ändern (Stufe 1 reicht, ja). Eine andere Adresse vergeben (Stufe 2)
+   ist kein Auftrag. Entwurf
+   `docs/superpowers/specs/2026-11-19-netzwerk-vorschlaege-server-design.md`
+   – am 19.11.2026 freigegeben („Passt“); Bau nach 0.82.3.
 7. **0.81.6 Nummern ab 10000** (Rüstzeit, KVP, Bestellung und Partner waren auf
    vier Stellen abgeschnitten) – mit 0.82.0 auf `main`; der lokale Branch
    `fix/ruestzeit-nummer` ist damit erledigt.

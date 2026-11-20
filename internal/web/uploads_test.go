@@ -106,3 +106,20 @@ func TestUploadsHiddenThroughAlias(t *testing.T) {
 		t.Errorf("andere Datei: %d %q", w.Code, w.Body.String())
 	}
 }
+
+// Keine Ordnerlisten unter /uploads/: Ordner (mit und ohne „/“) antworten 404, Dateien liefern
+// weiter, und uploads/esppdh bleibt gesperrt.
+func TestUploadsNoDirectoryListing(t *testing.T) {
+	dir := uploadsTestDir(t)
+	h := UploadsHandler(dir)
+	for _, p := range []string{"/uploads/", "/uploads", "/uploads/avatars/", "/uploads/avatars", "/uploads/./avatars/", "/uploads/avatars/../avatars"} {
+		if w := uploadsGet(h, p); w.Code != http.StatusNotFound || strings.Contains(w.Body.String(), "a.txt") {
+			t.Errorf("%s: %d %q", p, w.Code, w.Body.String())
+		}
+	}
+	if w := uploadsGet(h, "/uploads/avatars/a.txt"); w.Code != http.StatusOK || w.Body.String() != "BILD" {
+		t.Errorf("Datei: %d %q", w.Code, w.Body.String())
+	}
+	uploadsAssertHidden(t, h, "/uploads/esppdh/")
+	uploadsAssertHidden(t, h, "/uploads/esppdh/dev/x.bin.enc")
+}

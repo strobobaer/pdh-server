@@ -344,11 +344,12 @@ type Handler struct {
 	streamsDone      bool               // CloseStreams gerufen: kein neuer Kontext mehr
 	termEvents       *terminalEventHub  // Verteiler der Terminal-Ereignisse (terminal_events.go)
 	termEventsOnce   sync.Once
-	mlock            maintLock          // Wartungssperre während eines Updates (maint_lock.go)
-	sessionNotBefore atomic.Int64       // Sitzungen mit iat davor sind ungültig (app_settings session.not_before)
+	mlock            maintLock    // Wartungssperre während eines Updates (maint_lock.go)
+	sessionNotBefore atomic.Int64 // Sitzungen mit iat davor sind ungültig (app_settings session.not_before)
 
 	// Austauschbare Quellen (nur Tests; nil = echt): Rechteprüfung und gespeicherter Commit-Vergleich.
 	hasPermHook     func(*http.Request, string) bool
+	viewDeptErr     error
 	kioskPermHook   func(r *http.Request, perm, infraID string) bool // Tests: Rechte je Anlage ("" = ohne Abteilungsbegrenzung), kiosk_terminals.go
 	updateCheckHook func(context.Context) storedUpdateCheck
 
@@ -1998,6 +1999,7 @@ func (h *Handler) CopilotAskWeb(w http.ResponseWriter, r *http.Request) {
 	}
 	// Copilot mit PDH-Daten (copilot_data.go): liest mit den Rechten der fragenden Person
 	d := &copilotData{h: h, userID: u.ID, scope: scope, can: func(p string) bool { return h.hasPerm(r, p) }}
+	d.limitProjects(r) // Projekte nur mit Ansichtsrecht oder als Beteiligte
 	reply, sources, err := h.askCopilot(ctx, d, strings.TrimSpace(u.FirstName+" "+u.LastName), q, fid)
 	if err != nil {
 		componentLog("copilot").Error().Err(err).Msg("frage fehlgeschlagen")
@@ -2471,37 +2473,62 @@ func (h *Handler) sessionToken(r *http.Request) (string, int64, string) {
 	if err != nil || cookie.Value == "" {
 		return "", 0, ""
 	}
-	token, err := jwt.Parse(cookie.Value, func(t *jwt.Token) (interface{}, error) {
+	s := h.parseSessionToken(cookie.Value)
+	if s.problem != "" {
+		ev := log.Warn()
+		if s.err != nil {
+			ev = ev.Err(s.err)
+		}
+		ev = ev.Str("path", r.URL.Path)
+		if s.scope != "" {
+			ev = ev.Str("scope", s.scope)
+		}
+		ev.Msg(s.problem)
+	}
+	return s.sub, s.iat, s.device
+}
+
+// sessionTok: geprüftes Sitzungs-Token (Cookie pdh_token). problem ist die Meldung fürs
+// Protokoll, wenn das Token nicht gilt (err der Grund aus jwt.Parse, scope bei einem
+// zweckgebundenen Token); sub ist dann leer.
+type sessionTok struct {
+	sub, device, scope, problem string
+	iat                         int64
+	err                         error
+}
+
+// parseSessionToken prüft ein Sitzungs-Token wie die Web-Anmeldung (nur HS256, kein
+// zweckgebundenes Token), ohne zu protokollieren – für sessionToken und requestActor.
+func (h *Handler) parseSessionToken(raw string) sessionTok {
+	token, err := jwt.Parse(raw, func(t *jwt.Token) (interface{}, error) {
 		if t.Method != jwt.SigningMethodHS256 {
 			return nil, fmt.Errorf("unerwartete signaturmethode")
 		}
 		return []byte(h.jwtSecret), nil
 	})
 	if err != nil {
-		log.Warn().Err(err).Str("path", r.URL.Path).Msg("sitzung: jwt ungueltig")
-		return "", 0, ""
+		return sessionTok{problem: "sitzung: jwt ungueltig", err: err}
 	}
 	if !token.Valid {
-		log.Warn().Str("path", r.URL.Path).Msg("sitzung: jwt als ungueltig markiert")
-		return "", 0, ""
+		return sessionTok{problem: "sitzung: jwt als ungueltig markiert"}
 	}
 	claims, ok := token.Claims.(jwt.MapClaims)
 	if !ok {
-		log.Warn().Str("path", r.URL.Path).Msg("sitzung: jwt-claims unlesbar")
-		return "", 0, ""
+		return sessionTok{problem: "sitzung: jwt-claims unlesbar"}
 	}
 	if scope, _ := claims["scope"].(string); scope != "" {
 		// zweckgebundene Tokens (z. B. Fertigmeldung im Leitstand) sind keine Sitzung
-		log.Warn().Str("path", r.URL.Path).Str("scope", scope).Msg("sitzung: zweckgebundenes token als cookie abgelehnt")
-		return "", 0, ""
+		return sessionTok{problem: "sitzung: zweckgebundenes token als cookie abgelehnt", scope: scope}
 	}
-	userID, _ := claims["sub"].(string)
-	if userID == "" {
-		log.Warn().Str("path", r.URL.Path).Msg("sitzung: jwt ohne sub-claim")
+	s := sessionTok{}
+	s.sub, _ = claims["sub"].(string)
+	if s.sub == "" {
+		s.problem = "sitzung: jwt ohne sub-claim"
 	}
 	iat, _ := claims["iat"].(float64)
-	dev, _ := claims["device"].(string)
-	return userID, int64(iat), dev
+	s.iat = int64(iat)
+	s.device, _ = claims["device"].(string)
+	return s
 }
 
 // sessionUser validiert die Sitzung vollstaendig: gueltiges JWT UND ein

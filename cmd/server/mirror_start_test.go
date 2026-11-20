@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -162,5 +163,35 @@ func TestSkipUpdateBackup(t *testing.T) {
 	}
 	if skipUpdateBackup(get(""), "") || skipUpdateBackup(get("unknown"), "unknown") {
 		t.Error("leerer/unbekannter Stand darf nie auslassen")
+	}
+}
+
+// Die Prüfung der Pfad-Kennungen läuft vor Rechte-Sperre, Abteilungsfilter und Schnittstelle
+// (cmd/server/main.go) – sonst käme eine andere Schreibweise an ihnen vorbei.
+func TestUUIDPathMiddlewareMountedFirst(t *testing.T) {
+	src, err := os.ReadFile("main.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(src)
+	i := strings.Index(s, "r.Use(web.NonCanonicalUUIDPathMiddleware)")
+	if i < 0 {
+		t.Fatal("NonCanonicalUUIDPathMiddleware ist nicht eingehängt")
+	}
+	var code []string // nur Zeilen ohne Kommentar zählen
+	for _, l := range strings.Split(s, "\n") {
+		if !strings.HasPrefix(strings.TrimSpace(l), "//") {
+			code = append(code, l)
+		}
+	}
+	s = strings.Join(code, "\n")
+	i = strings.Index(s, "r.Use(web.NonCanonicalUUIDPathMiddleware)")
+	if i < 0 {
+		t.Fatal("NonCanonicalUUIDPathMiddleware ist nur auskommentiert")
+	}
+	for _, later := range []string{"r.Use(webHandler.PermissionGateMiddleware)", "r.Use(webHandler.APIDepartmentScope)", `r.Route("/api/v1"`, `r.Mount("/", webHandler.Routes())`} {
+		if j := strings.Index(s, later); j < 0 || j < i {
+			t.Errorf("%s steht nicht hinter der UUID-Prüfung", later)
+		}
 	}
 }

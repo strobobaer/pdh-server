@@ -58,7 +58,7 @@ var widgetDefs = []WidgetDef{
 	{Type: "stat_faults", Name: "Aktive Störungen", Icon: "ti-alert-triangle", Category: catStats, Size: 1, Perm: "faults.view", Refresh: 30, Desc: "Störungen, die noch nicht behoben sind, davon neu gemeldet", load: loadStatFaults},
 	{Type: "stat_maintenance", Name: "Wartung fällig", Icon: "ti-tool", Category: catStats, Size: 1, Perm: "maintenance.view", Refresh: 300, Desc: "Bis heute fällige Wartungen, davon überfällig", load: loadStatMaintenance},
 	{Type: "stat_stock", Name: "Nachbestellen", Icon: "ti-package", Category: catStats, Size: 1, Perm: "inventory.view", Refresh: 300, Desc: "Ersatzteile unter Mindestbestand, davon kritisch", load: loadStatStock},
-	{Type: "stat_kvp", Name: "KVP-Vorschläge", Icon: "ti-bulb", Category: catStats, Size: 1, Refresh: 300, Desc: "Verbesserungsvorschläge, die auf eine Entscheidung warten, davon über der Rückmeldefrist", load: loadStatKVP},
+	{Type: "stat_kvp", Name: "KVP-Vorschläge", Icon: "ti-bulb", Category: catStats, Size: 1, Perm: permKVPView, Refresh: 300, Desc: "Verbesserungsvorschläge, die auf eine Entscheidung warten, davon über der Rückmeldefrist", load: loadStatKVP},
 	{Type: "stat_my_tasks", Name: "Meine Aufgaben", Icon: "ti-list-check", Category: catStats, Size: 1, Refresh: 120, Desc: "Deine offenen Aufgaben, davon überfällig", load: loadStatMyTasks},
 	{Type: "stat_my_hours", Name: "Meine Stunden", Icon: "ti-clock", Category: catStats, Size: 1, Refresh: 120, Desc: "Erfasste Zeit diese Woche und heute", load: loadStatMyHours},
 	{Type: "chart_trend", Name: "Verlauf 14 Tage", Icon: "ti-chart-bar", Category: catStats, Size: 2, Refresh: 600, Desc: "Neue Tickets und Störungen pro Tag der letzten zwei Wochen", load: loadChartTrend},

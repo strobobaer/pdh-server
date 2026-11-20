@@ -73,6 +73,11 @@ func (h *Handler) RecordGroupOptionsWeb(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, "unbekannter datensatztyp", http.StatusBadRequest)
 		return
 	}
+	// Projekt, KVP: die zugewiesene Gruppe nur mit Ansichtsrecht oder als Beteiligter (view_rights.go)
+	if id != "new" && !h.canViewRec(r, refType, id) {
+		http.Error(w, "keine berechtigung", http.StatusForbidden)
+		return
+	}
 	selected := ""
 	if id != "new" {
 		selected = h.recordGroupID(r.Context(), table, id)

@@ -134,6 +134,14 @@ func (h *Handler) CategoriesPage(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		rows.Close()
+		// Zähler nur über sichtbare Projekte und KVP-Vorschläge
+		for module := range viewRights {
+			if hidden := h.hiddenCategoryCounts(r, module); hidden != nil {
+				for i := range d.Categories {
+					d.Categories[i].Count -= hidden[d.Categories[i].ID]
+				}
+			}
+		}
 	}
 	sel := q.Get("c")
 	for i := range d.Categories {
@@ -144,22 +152,36 @@ func (h *Handler) CategoriesPage(w http.ResponseWriter, r *http.Request) {
 	if d.Selected != nil {
 		for _, module := range recordModuleOrder {
 			fm, ok := fieldModuleByKey(module)
-			if !ok || !(h.hasPerm(r, fm.ViewPerm) || h.hasPerm(r, fm.EditPerm)) {
+			if !ok {
+				continue
+			}
+			// Projekt und KVP: je Datensatz Ansichtsrecht (Abteilung) oder beteiligt; „bearbeiten“
+			// zeigt keine Titel (view_rights.go). Alle anderen Module wie bisher nach Recht.
+			var canView func(string) bool
+			if _, viewed := viewRights[module]; viewed {
+				canView = h.viewFilter(r, module)
+			} else if !(h.hasPerm(r, fm.ViewPerm) || h.hasPerm(r, fm.EditPerm)) {
 				continue
 			}
 			mi := recordModules[module]
 			g := categoryGroup{Module: module, Label: mi.Label, Icon: recordIcon(module)}
+			// Mit Sichtfilter ohne SQL-Grenze lesen und nach dem Filtern bei 300 sichtbaren Einträgen
+			// abbrechen – sonst zählten unsichtbare Datensätze gegen die Grenze.
+			limitSQL := "LIMIT 300"
+			if canView != nil {
+				limitSQL = ""
+			}
 			rs, err := h.db.Query(ctx, fmt.Sprintf(`
 				SELECT t.id::text, COALESCE(%s, '') FROM record_categories rc JOIN %s t ON t.id = rc.record_id
-				 WHERE rc.module = $1 AND rc.category_id = $2::uuid ORDER BY rc.created_at DESC LIMIT 300`, mi.TitleExpr, mi.Table),
+				 WHERE rc.module = $1 AND rc.category_id = $2::uuid ORDER BY rc.created_at DESC `+limitSQL, mi.TitleExpr, mi.Table),
 				module, d.Selected.ID)
 			if err != nil {
 				log.Error().Err(err).Str("module", module).Msg("kategorie-datensaetze")
 				continue
 			}
-			for rs.Next() {
+			for rs.Next() && len(g.Items) < 300 {
 				var id, title string
-				if rs.Scan(&id, &title) == nil {
+				if rs.Scan(&id, &title) == nil && (canView == nil || canView(id)) {
 					g.Items = append(g.Items, categoryRecord{Title: title, URL: mi.Path + id})
 				}
 			}
@@ -256,6 +278,7 @@ type categoryFilterChip struct {
 	Name, Color, Icon, URL string
 	Count                  int
 	Active                 bool
+	id                     string // Kategorie-ID (für die Zähler nach Sichtrecht)
 }
 
 type categoryFilterData struct {
@@ -298,6 +321,7 @@ func (h *Handler) CategoryFilterWeb(w http.ResponseWriter, r *http.Request) {
 			var id string
 			var c categoryFilterChip
 			if rows.Scan(&id, &c.Name, &c.Color, &c.Icon, &c.Count) == nil {
+				c.id = id
 				c.Active = id == current
 				if c.Active {
 					c.URL = link("")
@@ -308,6 +332,13 @@ func (h *Handler) CategoryFilterWeb(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		rows.Close()
+	}
+	if viewed := viewRights[module]; viewed != "" {
+		if hidden := h.hiddenCategoryCounts(r, module); hidden != nil {
+			for i := range d.Chips {
+				d.Chips[i].Count -= hidden[d.Chips[i].id]
+			}
+		}
 	}
 	h.renderFragment(w, "category-filter", d)
 }

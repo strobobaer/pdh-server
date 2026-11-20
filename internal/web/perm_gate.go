@@ -2,9 +2,12 @@ package web
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"regexp"
 	"strings"
+
+	"pdh/internal/core/users"
 )
 
 // Rechte auf Abteilungsebene und Bereichsadministratoren im Web
@@ -281,33 +284,71 @@ func (h *Handler) PermissionGateMiddleware(next http.Handler) http.Handler {
 			return
 		}
 		g, perm, refType, id, hit := matchGate(r.Method, r.URL.Path)
-		if hit {
-			if uid := h.requestActor(r); uid != "" && h.users != nil {
-				if u, err := h.users.GetByID(r.Context(), uid); err == nil && u != nil {
-					ok := gatePermOK(perm, func(p string) bool { return h.rbac.HasPermissionForUser(u.ID, string(u.Role), p) })
-					if ok && id != "" {
-						ok = h.rbac.HasPermissionInDepartment(u.ID, string(u.Role), perm, h.recordDepartments(r.Context(), refType, id))
-					}
-					if !ok && g.involved && id != "" {
-						ok = h.recordInvolved(r.Context(), u.ID, refType, id)
-					}
-					if !ok {
-						componentLog("rechte").Info().Str("user", u.ID).Str("recht", perm).Str("pfad", r.URL.Path).Msg("schreibzugriff ohne recht abgelehnt")
-						if strings.HasPrefix(r.URL.Path, "/api/") || r.Header.Get("HX-Request") == "true" || strings.Contains(r.Header.Get("Accept"), "json") {
-							w.Header().Set("Content-Type", "application/json")
-							w.WriteHeader(http.StatusForbidden)
-							_, _ = w.Write([]byte(`{"success":false,"error":"Keine Berechtigung: Recht ` + perm + ` fehlt"}`))
-							return
-						}
-						http.Error(w, "Keine Berechtigung: dafür brauchst du das Recht „"+h.permLabel(r, perm)+"“", http.StatusForbidden)
-						return
-					}
-				}
+		if !hit {
+			next.ServeHTTP(w, r)
+			return
+		}
+		// Der Benutzer wird genau wie in der Anmeldung der Route bestimmt (requestCredentials).
+		// Ohne Anmeldedaten lehnt die Route selbst ab. Mit Anmeldedaten, aus denen sich kein
+		// aktiver Benutzer bestimmen lässt, wird nie durchgelassen – sonst ginge eine leicht
+		// veränderte Anmeldung an dieser Prüfung vorbei, die die Route trotzdem annimmt.
+		uid, present := h.requestCredentials(r)
+		var u *users.User
+		if uid != "" && h.users != nil {
+			if got, err := h.users.GetByID(r.Context(), uid); err == nil && got != nil {
+				u = got
 			}
-			// ohne Anmeldung lehnt die Route selbst ab
+		}
+		if u == nil {
+			if !present {
+				next.ServeHTTP(w, r)
+				return
+			}
+			componentLog("rechte").Info().Str("pfad", r.URL.Path).Msg("schreibzugriff ohne bestimmbaren benutzer abgelehnt")
+			const msg = "Keine Berechtigung: Die Anmeldung ist nicht mehr gültig. Bitte neu anmelden."
+			gateDeny(w, r, msg, msg)
+			return
+		}
+		ok := gatePermOK(perm, func(p string) bool { return h.rbac.HasPermissionForUser(u.ID, string(u.Role), p) })
+		if ok && id != "" {
+			ok = h.rbac.HasPermissionInDepartment(u.ID, string(u.Role), perm, h.recordDepartments(r.Context(), refType, id))
+		}
+		if !ok && g.involved && id != "" {
+			ok = h.recordInvolved(r.Context(), u.ID, refType, id)
+		}
+		// Bearbeiten wirkt nur an Vorgängen, die man sehen darf (Projekt, KVP: Ansichtsrecht
+		// oder beteiligt, view_rights.go) – „bearbeiten“ schließt „ansehen“ nicht ein.
+		if ok && id != "" {
+			if _, viewed := viewRights[refType]; viewed && !h.canViewRec(r.WithContext(context.WithValue(r.Context(), "user", u)), refType, id) {
+				componentLog("rechte").Info().Str("user", u.ID).Str("typ", refType).Str("pfad", r.URL.Path).Msg("schreibzugriff ohne ansichtsrecht abgelehnt")
+				const msg = "Keine Berechtigung: Diesen Vorgang darfst du nicht ansehen."
+				gateDeny(w, r, msg, msg)
+				return
+			}
+		}
+		if !ok {
+			componentLog("rechte").Info().Str("user", u.ID).Str("recht", perm).Str("pfad", r.URL.Path).Msg("schreibzugriff ohne recht abgelehnt")
+			gateDeny(w, r, "Keine Berechtigung: Recht "+perm+" fehlt", "Keine Berechtigung: dafür brauchst du das Recht „"+h.permLabel(r, perm)+"“")
+			return
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// gateDeny: Ablehnung der Rechte-Sperre (403) – als JSON für Schnittstelle, htmx und fetch,
+// sonst als Text.
+func gateDeny(w http.ResponseWriter, r *http.Request, jsonMsg, textMsg string) {
+	if strings.HasPrefix(r.URL.Path, "/api/") || r.Header.Get("HX-Request") == "true" || strings.Contains(r.Header.Get("Accept"), "json") {
+		b, _ := json.Marshal(struct {
+			Success bool   `json:"success"`
+			Error   string `json:"error"`
+		}{false, jsonMsg})
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write(b)
+		return
+	}
+	http.Error(w, textMsg, http.StatusForbidden)
 }
 
 // gateAltPerms: Rechte, die ein Gate-Recht ersetzen (eines von beiden genügt). Nur für

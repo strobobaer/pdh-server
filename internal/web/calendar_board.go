@@ -91,12 +91,16 @@ type CalendarData struct {
 	Conflicts, Warns  int
 	Counts            map[string]int
 	LoadErrors        []string // Arten, die nicht geladen werden konnten (statt still zu fehlen)
-	Embed             bool     // als Baustein im Leitstand (/global/calendar)
+	Guest, Embed      bool     // als Baustein im Leitstand (/global/calendar)
 	ThisWeek          string   // Montag der laufenden Woche
 	Weeks             []calWeek
 	ProjectRows       []calRow // Projekte ganz oben, ohne Personen-Zuordnung
 	Board             string   // Leitstand-Adresse im Baustein
 }
+
+// calendarProjectLimit: höchstens so viele (sichtbare) Projekt-Zeilen im Kalender (Variable,
+// damit Tests sie senken können).
+var calendarProjectLimit = 500
 
 func calChipFor(k calKind) calChip { return calChip{Kind: k.Key, Color: k.Color, Icon: k.Icon} }
 
@@ -123,11 +127,18 @@ func (h *Handler) CalendarPage(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) CalendarBoardFragment(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	board := h.resolveLeitstand(r)
-	if b := h.boardBySlug(r, r.URL.Query().Get("b")); b != nil {
+	slug := r.URL.Query().Get("b")
+	b := h.boardBySlug(r, slug)
+	if b != nil {
 		board = b
 	}
 	if u := h.sessionUser(r); u != nil {
 		r = r.WithContext(context.WithValue(r.Context(), "user", u))
+	} else if board == nil || (slug != "" && b == nil) {
+		// Gäste bekommen den Kalender nur als Baustein eines gültigen Leitstands, nie den vollen
+		// (ohne Angabe „b“ gilt wie bisher der Leitstand des Bildschirms bzw. der Standard)
+		http.NotFound(w, r)
+		return
 	}
 	d := h.buildCalendar(r, board)
 	h.renderFragment(w, "calendar-board", d)
@@ -143,6 +154,20 @@ func (h *Handler) buildCalendar(r *http.Request, board *leitstand) CalendarData 
 	}
 	q := r.URL.Query()
 	embed := board != nil
+	// Gast im Leitstand (ohne Anmeldung): Abfrage-Auswahl (set, show, dept, group, user, busy)
+	// zählt nicht – es gilt genau die Einstellung des Leitstands. Nur der Zeitraum (from, days) bleibt frei.
+	guest := embed && me.ID == ""
+	var boardIDs map[string]map[string]bool
+	if guest {
+		keep := url.Values{}
+		for _, k := range []string{"from", "days"} {
+			if v := q.Get(k); v != "" {
+				keep.Set(k, v)
+			}
+		}
+		q = keep
+		boardIDs = h.boardAllowedIDs(ctx, board)
+	}
 	// Auswahl: aus der Adresse, sonst die zuletzt gemerkte (nur auf der Seite)
 	if embed {
 		if q.Get("set") == "" {
@@ -173,7 +198,7 @@ func (h *Handler) buildCalendar(r *http.Request, board *leitstand) CalendarData 
 	}
 	d := CalendarData{
 		Kinds: calKinds, Ranges: calRanges, Show: map[string]bool{}, Counts: map[string]int{},
-		Dept: q.Get("dept"), Group: q.Get("group"), User: q.Get("user"), Embed: embed,
+		Dept: q.Get("dept"), Group: q.Get("group"), User: q.Get("user"), Embed: embed, Guest: guest,
 	}
 	if embed {
 		d.Board = board.Slug
@@ -238,7 +263,9 @@ func (h *Handler) buildCalendar(r *http.Request, board *leitstand) CalendarData 
 		d.Days = append(d.Days, plannerDay{Date: ds, Label: t.Format("02.01."), Short: weekdayShort[t.Weekday()], Holiday: free[ds],
 			Weekend: t.Weekday() == time.Saturday || t.Weekday() == time.Sunday, Today: ds == d.Today})
 	}
-	d.Depts, d.Groups, d.Users = h.plannerDeptOptions(ctx), h.plannerGroupOptions(ctx), h.userOptions(ctx)
+	if !guest { // Gäste bekommen keine Namenslisten (Abteilungen, Gruppen, Personen)
+		d.Depts, d.Groups, d.Users = h.plannerDeptOptions(ctx), h.plannerGroupOptions(ctx), h.userOptions(ctx)
+	}
 
 	// Personen (Filter Abteilung/Gruppe/Person)
 	people := h.plannerUsers(ctx, d.Dept, d.Group)
@@ -441,6 +468,9 @@ func (h *Handler) buildCalendar(r *http.Request, board *leitstand) CalendarData 
 			if rs.Scan(&id, &title, &due, &noDue, &ppl, &group, &infra) != nil {
 				continue
 			}
+			if boardIDs != nil && !boardIDs[s.kind][id] {
+				continue // Gast: nur, was zu Abteilung/Gruppe des Leitstands gehört
+			}
 			due = due.Local()
 			tip := calKindByKey(s.kind).Label + ": " + title
 			switch {
@@ -485,19 +515,30 @@ func (h *Handler) buildCalendar(r *http.Request, board *leitstand) CalendarData 
 		}
 	}
 	if d.Show["project"] {
+		// Ansichtsrecht: angemeldete Personen sehen nur Projekte, die sie sehen dürfen
+		// (Ansichtsrecht oder beteiligt). Gäste im Leitstand: nur Projekte des Leitstands (boardIDs).
+		canViewProject := func(string) bool { return true }
+		if me.ID != "" {
+			canViewProject = h.viewFilter(r, "project")
+		}
+		if guest {
+			canViewProject = func(id string) bool { return boardIDs == nil || boardIDs["project"][id] }
+		}
 		args := []any{from, to}
 		sc, sa := scopeSQL(scope, "project", "p", len(args))
 		args = append(args, sa...)
+		// Erst filtern, dann begrenzen: höchstens calendarProjectLimit sichtbare Projekte (nicht so
+		// viele vor dem Filter, sonst fielen sichtbare hinter unsichtbaren weg).
 		if rs, err := h.db.Query(ctx, `SELECT p.id::text, p.name, COALESCE(p.start_date, p.created_at::date), COALESCE(p.end_date, p.start_date, p.created_at::date),
 				ARRAY_REMOVE(ARRAY[p.responsible_to::text, p.assigned_to::text], NULL)
 			FROM projects p WHERE p.status NOT IN ('completed', 'cancelled')
 			  AND COALESCE(p.start_date, p.created_at::date) <= $2 AND COALESCE(p.end_date, p.start_date, p.created_at::date) >= $1`+sc+`
-			ORDER BY 3 LIMIT 500`, args...); err == nil {
-			for rs.Next() {
+			ORDER BY 3`, args...); err == nil {
+			for rs.Next() && len(d.ProjectRows) < calendarProjectLimit {
 				var id, name string
 				var a, b time.Time
 				var ppl []string
-				if rs.Scan(&id, &name, &a, &b, &ppl) != nil {
+				if rs.Scan(&id, &name, &a, &b, &ppl) != nil || !canViewProject(id) {
 					continue
 				}
 				_ = ppl

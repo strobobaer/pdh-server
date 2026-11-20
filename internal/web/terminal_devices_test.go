@@ -220,13 +220,19 @@ func TestRequestActorDeviceToken(t *testing.T) {
 	h := &Handler{jwtSecret: "geheim"}
 	tok, _ := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{"sub": "u1", "device": "dev-1", "exp": time.Now().Add(time.Hour).Unix()}).SignedString([]byte("geheim"))
 	req := func() *http.Request {
-		r := httptest.NewRequest("DELETE", "/api/v1/inventory/x", nil)
+		r := httptest.NewRequest("DELETE", "/inventory/x", nil)
 		r.AddCookie(&http.Cookie{Name: "pdh_token", Value: tok})
 		return r
 	}
 	primeDevice(t, "dev-1", "u1", true)
 	if got := h.requestActor(req()); got != "u1" {
 		t.Errorf("aktives Gerät: %q", got)
+	}
+	// Die Schnittstelle nimmt Geräte-Token nie an (middleware.Auth) – dann auch kein Bearbeiter.
+	api := httptest.NewRequest("DELETE", "/api/v1/inventory/x", nil)
+	api.AddCookie(&http.Cookie{Name: "pdh_token", Value: tok})
+	if got, present := h.requestCredentials(api); got != "" || !present {
+		t.Errorf("Geräte-Token an der Schnittstelle: %q, Anmeldedaten=%v", got, present)
 	}
 	primeDevice(t, "dev-1", "u1", false)
 	if got := h.requestActor(req()); got != "" {

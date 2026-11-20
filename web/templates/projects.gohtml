@@ -2,7 +2,7 @@
 {{define "content"}}
 <div class="mt-head">
   <div>
-    <h1>Projekte</h1>
+    <h1>{{if .Mine}}{{t "Meine Projekte"}}{{else}}{{t "Projekte"}}{{end}}</h1>
     <p>{{.Total}} Projekte – jedes bündelt seine Aufgaben mit Fortschritt und Terminen</p>
   </div>
   <button type="button" class="btn btn-primary" onclick="document.getElementById('new-project-form').style.display='block'"><i class="ti ti-plus"></i> Neues Projekt</button>

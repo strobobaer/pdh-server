@@ -53,6 +53,11 @@ func (h *Handler) RecordPartiesWeb(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unbekannter datensatztyp", http.StatusBadRequest)
 		return
 	}
+	// Projekt, KVP: nur mit Ansichtsrecht oder als Beteiligter (view_rights.go)
+	if !h.canViewRec(r, refType, id) {
+		http.Error(w, "keine berechtigung", http.StatusForbidden)
+		return
+	}
 	h.writeParties(w, r, refType, id, "")
 }
 

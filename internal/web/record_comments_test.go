@@ -106,6 +106,7 @@ func TestCommentsBlockSorts(t *testing.T) {
 	e := newActEnv(t)
 	anna, bert := e.user("Anna", "Alpha"), e.user("Bert", "Beta")
 	base := time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC)
+	e.grant(bert, "kvp.view", "") // Bert ist nicht am Vorschlag beteiligt und liest ihn mit dem Ansichtsrecht
 	for _, m := range commModules {
 		rec := e.commRecord(m.module, anna, "")
 		e.commSeed(m.module, rec, "filter  gereinigt!", bert, base)
@@ -238,13 +239,23 @@ func TestCommentsBlockPerms(t *testing.T) {
 			t.Errorf("POST %s: %d, erwartet 404", c, w.Code)
 		}
 	}
-	// KVP: wie die Detailseite – jeder Angemeldete liest und kommentiert, auch ohne jedes Recht
+	// KVP: wie die Detailseite – Ansichtsrecht (für die Abteilung des Vorschlags) oder beteiligt
 	idea := e.commRecord("kvp", maker, "")
+	if w := e.commDo(none, "GET", "/records/comments/kvp/"+idea, nil); w.Code != http.StatusForbidden {
+		t.Errorf("KVP lesen ohne Recht und unbeteiligt: %d", w.Code)
+	}
+	if p := e.commDo(none, "POST", "/records/comments/kvp/"+idea, url.Values{"text": {"Frage"}}); p.Code != http.StatusForbidden || e.commCount("kvp", idea) != 0 {
+		t.Errorf("KVP schreiben ohne Recht und unbeteiligt: %d", p.Code)
+	}
+	if w := e.commDo(maker, "GET", "/records/comments/kvp/"+idea, nil); w.Code != 200 {
+		t.Errorf("KVP lesen als Beteiligter: %d", w.Code)
+	}
+	e.grant(none, "kvp.view", "")
 	if w := e.commDo(none, "GET", "/records/comments/kvp/"+idea, nil); w.Code != 200 {
-		t.Errorf("KVP lesen: %d", w.Code)
+		t.Errorf("KVP lesen mit Ansichtsrecht: %d", w.Code)
 	}
 	if p := e.commDo(none, "POST", "/records/comments/kvp/"+idea, url.Values{"text": {"Frage"}}); p.Code != 200 || e.commCount("kvp", idea) != 1 {
-		t.Errorf("KVP schreiben: %d", p.Code)
+		t.Errorf("KVP schreiben mit Ansichtsrecht: %d", p.Code)
 	}
 	// Ticket ohne Recht: wie die Detailseite jeder Angemeldete (ohne Abteilungssperre)
 	tk := e.commRecord("ticket", maker, "")

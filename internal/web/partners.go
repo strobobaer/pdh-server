@@ -163,6 +163,11 @@ func (h *Handler) DirectoryPage(w http.ResponseWriter, r *http.Request) {
 	if tag := q.Get("tag"); tag != "" {
 		add(`bp.id IN (SELECT record_id FROM record_categories WHERE module = 'business_partner' AND category_id::text = $?)`, tag)
 	}
+	// Zahl der Vorgänge je Partner: nur Vorgänge, die die Person sehen darf (Projekte und KVP mit
+	// Ansichtsrecht, view_rights.go); vor der Abfrage ermittelt, damit keine zwei Verbindungen offen sind.
+	hiddenRefs, hiddenTypes := h.hiddenRecordRefs(r)
+	args = append(args, hiddenRefs, hiddenTypes)
+	pHidden, pTypes := "$"+strconv.Itoa(len(args)-1), "$"+strconv.Itoa(len(args))
 	rows, err := h.db.Query(ctx, `
 		SELECT bp.id::text, bp.partner_no, bp.name, bp.short_name, bp.kind, bp.category, bp.approval_status, bp.rating,
 		       bp.city, bp.phone, bp.email, bp.active,
@@ -175,7 +180,8 @@ func (h *Handler) DirectoryPage(w http.ResponseWriter, r *http.Request) {
 		       (SELECT COUNT(*) FROM spare_parts sp WHERE sp.active AND (sp.manufacturer_id = bp.id
 		            OR EXISTS (SELECT 1 FROM spare_part_suppliers s WHERE s.part_id = sp.id AND s.partner_id = bp.id))),
 		       (SELECT COUNT(*) FROM it_assets a WHERE bp.id IN (a.manufacturer_id, a.supplier_id)),
-		       (SELECT COUNT(DISTINCT rp.ref_id) FROM record_external_parties rp WHERE rp.partner_id = bp.id)
+		       (SELECT COUNT(DISTINCT rp.ref_id) FROM record_external_parties rp WHERE rp.partner_id = bp.id
+		         AND rp.ref_type <> ALL(`+pTypes+`::text[]) AND (rp.ref_type || ':' || rp.ref_id::text) <> ALL(`+pHidden+`::text[]))
 		FROM business_partners bp
 		WHERE `+strings.Join(where, " AND ")+`
 		ORDER BY bp.name`, args...)
@@ -336,7 +342,7 @@ func (h *Handler) PartnerDetail(w http.ResponseWriter, r *http.Request) {
 	data.Infra = h.partnerInfra(ctx, id)
 	data.Parts, data.PartSupplyCost = h.partnerParts(ctx, id)
 	data.IT = h.partnerIT(ctx, id)
-	data.Records = h.partnerRecords(ctx, id)
+	data.Records = h.partnerRecords(r, id)
 	data.InfraFaults = h.partnerInfraFaults(ctx, id)
 	data.Links = h.partnerLinks(ctx, id)
 	data.LinkKinds = partnerLinkKinds
@@ -347,7 +353,7 @@ func (h *Handler) PartnerDetail(w http.ResponseWriter, r *http.Request) {
 	if data.CanEdit {
 		data.PartOptions = h.partnerSimpleOptions(ctx, `SELECT id::text, part_number || ' · ' || name FROM spare_parts WHERE active ORDER BY name LIMIT 3000`)
 		data.ITOptions = h.partnerSimpleOptions(ctx, `SELECT id::text, name || COALESCE(' · ' || NULLIF(model, ''), '') FROM it_assets ORDER BY name LIMIT 3000`)
-		data.RecordOptions = h.partnerRecordOptions(ctx)
+		data.RecordOptions = h.partnerRecordOptions(r)
 	}
 	h.render(w, "partner_detail", data)
 }
@@ -493,7 +499,11 @@ func recordRefURL(refType, id string) (string, string) {
 	return "", refType
 }
 
-func (h *Handler) partnerRecords(ctx context.Context, partnerID string) []PartnerRecordRow {
+// partnerRecords: Vorgänge, denen der Partner zugewiesen ist. Projekte nur,
+// wenn die Person sie sehen darf.
+func (h *Handler) partnerRecords(r *http.Request, partnerID string) []PartnerRecordRow {
+	ctx := r.Context()
+	canViewProject := h.viewFilter(r, "project")
 	rows, err := h.db.Query(ctx, `
 		SELECT rp.id::text, rp.ref_type, rp.ref_id::text, rp.role, to_char(rp.created_at, 'DD.MM.YYYY'),
 		       COALESCE(t.title, f.title, m.title, ta.title, p.name, '(gelöscht)'),
@@ -515,6 +525,9 @@ func (h *Handler) partnerRecords(ctx context.Context, partnerID string) []Partne
 		var rec PartnerRecordRow
 		var refID, role, status string
 		if rows.Scan(&rec.PartyID, &rec.RefType, &refID, &role, &rec.Date, &rec.Title, &status) != nil {
+			continue
+		}
+		if rec.RefType == "project" && !canViewProject(refID) {
 			continue
 		}
 		rec.URL, rec.ModuleLabel = recordRefURL(rec.RefType, refID)
@@ -572,7 +585,9 @@ func (h *Handler) partnerSimpleOptions(ctx context.Context, query string) []part
 
 // partnerRecordOptions: offene Vorgaenge, denen der Partner als externe
 // Firma zugewiesen werden kann (gruppiert nach Modul).
-func (h *Handler) partnerRecordOptions(ctx context.Context) []partnerOptionGroup {
+func (h *Handler) partnerRecordOptions(r *http.Request) []partnerOptionGroup {
+	ctx := r.Context()
+	canViewProject := h.viewFilter(r, "project")
 	rows, err := h.db.Query(ctx, `
 		SELECT ref_type, id, title FROM (
 			SELECT 'fault' AS ref_type, id::text AS id, title::text AS title, created_at FROM faults
@@ -594,6 +609,9 @@ func (h *Handler) partnerRecordOptions(ctx context.Context) []partnerOptionGroup
 	for rows.Next() {
 		var refType, id, title string
 		if rows.Scan(&refType, &id, &title) == nil {
+			if refType == "project" && !canViewProject(id) {
+				continue
+			}
 			byType[refType] = append(byType[refType], partnerOption{Value: refType + ":" + id, Label: title})
 		}
 	}
@@ -926,6 +944,10 @@ func (h *Handler) assignPartner(ctx context.Context, r *http.Request, partnerID,
 		def, ok := infraCommentRefTypes[parts[0]]
 		if !ok {
 			return errors.New("ungültiger Vorgangstyp")
+		}
+		// Projekte nur, wenn die Person sie sehen darf (Ansichtsrecht oder beteiligt, view_rights.go)
+		if !h.canViewRec(r, parts[0], parts[1]) {
+			return errors.New(msgRecordNotVisible)
 		}
 		var exists bool
 		if err := h.db.QueryRow(ctx, fmt.Sprintf(`SELECT EXISTS (SELECT 1 FROM %s WHERE id = $1::uuid)`, def.Table), parts[1]).Scan(&exists); err != nil || !exists {

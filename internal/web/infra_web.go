@@ -322,7 +322,7 @@ func (h *Handler) InfraDetail(w http.ResponseWriter, r *http.Request) {
 		Node:           infraNodeView(node),
 		Types:          infraTypes,
 		HistoryModules: infraHistoryModules,
-		CommentRefs:    h.infraCommentRefOptions(ctx, id),
+		CommentRefs:    h.infraCommentRefOptions(r, id),
 		HMI:            h.hmiPermsFor(r),
 		Message:        q.Get("msg"), Error: q.Get("err"),
 	}

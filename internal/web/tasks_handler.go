@@ -104,6 +104,25 @@ type TaskDetailData struct {
 	RunningTime    *timetracking.TimeEntry
 }
 
+// projectOptions: Projekte zur Auswahl im Aufgaben-Formular – nur die, die die
+// Person sehen darf (Ansichtsrecht oder beteiligt). Das aktuell gewählte
+// Projekt der Aufgabe (keep) bleibt in der Auswahl, damit Speichern es nicht
+// stillschweigend löst; sein Name steht ohnehin an der Aufgabe.
+func (h *Handler) projectOptions(r *http.Request, keep string) []ProjectOption {
+	projs, err := h.projects.List(r.Context(), "")
+	if err != nil {
+		return nil
+	}
+	canView := h.viewFilter(r, "project")
+	var out []ProjectOption
+	for _, p := range projs {
+		if p.ID == keep || canView(p.ID) {
+			out = append(out, ProjectOption{ID: p.ID, Name: p.Name})
+		}
+	}
+	return out
+}
+
 func (h *Handler) TaskDetail(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	id := chi.URLParam(r, "id")
@@ -119,11 +138,7 @@ func (h *Handler) TaskDetail(w http.ResponseWriter, r *http.Request) {
 		Task:     taskView(t),
 		Users:    h.userOptions(ctx),
 	}
-	if projs, err := h.projects.List(ctx, ""); err == nil {
-		for _, p := range projs {
-			data.ProjectOptions = append(data.ProjectOptions, ProjectOption{ID: p.ID, Name: p.Name})
-		}
-	}
+	data.ProjectOptions = h.projectOptions(r, data.Task.ProjectID)
 
 	if entries, err := h.time.ListByRef(ctx, timetracking.RefTask, id); err == nil {
 		data.TimeEntries = entries

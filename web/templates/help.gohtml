@@ -291,7 +291,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <ol class="hb-steps">
       <li>Navigation → <b>Leitstände</b> → <b>Neuer Leitstand</b>. Name eingeben – die <b>Adresse</b> schlägt PDH vor.</li>
       <li>Bei <b>Was der Leitstand zeigt</b> die <b>Abteilung</b> und/oder <b>Gruppe / Team</b> wählen und die <b>Vorgangsarten</b> ankreuzen. Ohne Auswahl zeigt er alles.</li>
-      <li><b>Bausteine</b> zusammenstellen: hinzufügen, an der Griffleiste <i class="ti ti-grip-vertical"></i> ziehen, Breite (¼ bis ganz) und Überschrift wählen, mit <i class="ti ti-x"></i> entfernen. Zur Auswahl: Neu anlegen, Vorgänge, Zeitstrahl, Kennzahlen, Aktuelle Störungen, Fällige Wartung, <b>Schichtplan</b> (wie im Planer: Schichten × Tage mit Namen, darunter Sonderdienste mit Telefon; Woche, Modell und Feldhöhe oben wählen), <b>Kalender</b> (wie unter Übersicht → Kalender: Schichten, Sonderdienste wie Bereitschaft, Abwesenheit und fällige Vorgänge – oben im Baustein Zeitraum, Abteilung, Gruppe, Person und Arten wählen; ohne Anmeldung nur lesbar, Abwesenheit ohne Grund), Hinweistext, Andere Leitstände (Knöpfe zum Umschalten), <b>Dokumente</b> (Bilder, PDF, Word- und Excel-Dateien direkt im Baustein hochladen, mit ↑ ordnen; mehrere wechseln sich nach der eingestellten Zeit ab, ‹ › blättert von Hand, ↗ öffnet die Datei; braucht zum Hochladen das Recht <i>Dokumente für Dashboard und Leitstand hochladen</i>), <b>Webseite</b> (eine externe Seite eingebettet, z. B. Anlagenvisualisierung oder Wetter: Adresse mit <code>https://</code> oder eine eigene PDH-Seite wie <code>/planner</code>, dazu Höhe in Pixeln und auf Wunsch „neu laden alle … Minuten“; bleibt das Feld leer, verbietet die Seite das Einbetten – dann hilft nur <b>↗ öffnen</b> im Baustein).</li>
+      <li><b>Bausteine</b> zusammenstellen: hinzufügen, an der Griffleiste <i class="ti ti-grip-vertical"></i> ziehen, Breite (¼ bis ganz) und Überschrift wählen, mit <i class="ti ti-x"></i> entfernen. Zur Auswahl: Neu anlegen, Vorgänge, Zeitstrahl, Kennzahlen, Aktuelle Störungen, Fällige Wartung, <b>Schichtplan</b> (wie im Planer: Schichten × Tage mit Namen, darunter Sonderdienste mit Telefon; Woche, Modell und Feldhöhe oben wählen), <b>Kalender</b> (wie unter Übersicht → Kalender: Schichten, Sonderdienste wie Bereitschaft, Abwesenheit und fällige Vorgänge – oben im Baustein Zeitraum, Abteilung, Gruppe, Person und Arten wählen; ohne Anmeldung nur lesbar, Abwesenheit ohne Grund; Gäste sehen genau das, was am Leitstand eingestellt ist – keine anderen Arten, Abteilungen oder Personen, keine Auswahllisten von Abteilungen, Gruppen und Personen), Hinweistext, Andere Leitstände (Knöpfe zum Umschalten), <b>Dokumente</b> (Bilder, PDF, Word- und Excel-Dateien direkt im Baustein hochladen, mit ↑ ordnen; mehrere wechseln sich nach der eingestellten Zeit ab, ‹ › blättert von Hand, ↗ öffnet die Datei; braucht zum Hochladen das Recht <i>Dokumente für Dashboard und Leitstand hochladen</i>), <b>Webseite</b> (eine externe Seite eingebettet, z. B. Anlagenvisualisierung oder Wetter: Adresse mit <code>https://</code> oder eine eigene PDH-Seite wie <code>/planner</code>, dazu Höhe in Pixeln und auf Wunsch „neu laden alle … Minuten“; bleibt das Feld leer, verbietet die Seite das Einbetten – dann hilft nur <b>↗ öffnen</b> im Baustein).</li>
       <li>Optional <b>Weiterblättern</b>: nach so vielen Sekunden (mindestens 10) zum nächsten Leitstand – für mehrere im Kreis bei jedem den nächsten eintragen. Oben rechts läuft die Zeit mit. Berührt jemand den Bildschirm, beginnt die Zeit neu; ist ein Formular offen, bleibt er stehen.</li>
       <li>Optional <b>Dazwischen Grafana-Dashboards zeigen</b>: Dashboards aus der <a href="#statistics">Statistik</a> ankreuzen und an der Griffleiste <i class="ti ti-grip-vertical"></i> in die Reihenfolge ziehen. Der Bildschirm zeigt dann diesen Leitstand → die Dashboards bildschirmfüllend (je gleich lange) → den nächsten Leitstand; ohne nächsten wieder diesen. In Grafana neu angelegte Dashboards stehen mit „neu in Grafana“ automatisch dabei und kommen beim Speichern in die Statistik. Grafana braucht am Bildschirm eine Anmeldung mit dem Recht <i>Statistik ansehen</i>.</li>
       <li>Unten bei <b>Direktlink</b> <b>Vollbild</b> und <b>Kioskmodus</b> ankreuzen, <b>Kopieren</b> und den Link am Hallenbildschirm öffnen oder als Lesezeichen/Autostart eintragen. Kioskmodus zeigt nur den Inhalt, ohne Kopfzeile und Knöpfe; die Maus bewegen blendet unten rechts <b>Kiosk beenden</b> ein. Vollbild verlangen manche Browser erst nach einer Berührung („Tippen für Vollbild“). Beim Weiterblättern bleibt beides eingeschaltet.</li>
@@ -463,12 +463,21 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     </ol></div>
   <p>Zusätzlich zeigt das Projekt seine Aufgaben im <b>Zeitstrahl</b>. Ein Doppelklick auf eine Aufgabe im Zeitstrahl öffnet sie zur Bearbeitung. Der Rand der Balken zeigt, ob eine Aufgabe läuft, fällig, überfällig, nicht zugewiesen oder beendet ist (<a href="#timeline-style">Zeitstrahl-Darstellung</a>).</p>
   <p>Die <b>Maßnahmen</b> einer Aufgabe lassen sich über der Liste sortieren (<a href="#sort">mehr</a>).</p>
+  <div class="hb-howto"><b><i class="ti ti-eye"></i> Wer welche Projekte sieht</b>
+    <ol class="hb-steps">
+      <li>Alle Projekte sieht, wer das Recht <b>„Projekte: ansehen“</b> hat – auch auf eine Abteilung begrenzt. Dann gilt die Abteilung der Anlage oder der zugewiesenen Gruppe.</li>
+      <li>Ohne dieses Recht fehlt der Menüpunkt <b>Projekte</b>. Die Projektübersicht zeigt dann nur <b>Meine Projekte</b>: Projekte, die du angelegt hast, für die du verantwortlich oder zugewiesen bist oder die deiner Gruppe zugewiesen sind.</li>
+      <li>Wer an einem Projekt beteiligt ist, sieht es immer. Der Projektname an einer Aufgabe bleibt für alle sichtbar.</li>
+      <li>Zähler – die Reiter der Projektübersicht, Kategorien und die Vorgänge eines Partners – zählen nur Projekte, die du sehen darfst.</li>
+      <li>Aufgaben, Partner und Anlagen-Kommentare verknüpfst du nur mit Projekten, die du sehen darfst. Ein schon verknüpftes Projekt bleibt beim Speichern erhalten.</li>
+      <li>Ein Projekt-Link im Chat zeigt den Projektnamen nur, wenn der Absender das Projekt sehen darf.</li>
+    </ol></div>
   {{template "hb-shots" (dict "Ref" (index $s "tasks") "Can" $can)}}
 </section>
 
 <section class="hb-ch" id="kvp" data-title="KVP – Verbesserungen" data-pages="kvp">
   <h2><i class="ti ti-bulb"></i> KVP – Kontinuierliche Verbesserung</h2>
-  <p>Im <b>KVP</b> reicht jede/r Verbesserungsideen ein – vom wackeligen Regal bis zur schnelleren Rüstzeit. Alle sehen alle Vorschläge. Jede Idee bekommt innerhalb der <b>Rückmeldefrist</b> (Vorgabe 14 Tage) eine begründete Entscheidung und wird danach im <b>PDCA-Zyklus</b> umgesetzt: <b>Plan</b> → <b>Do</b> → <b>Check</b> → <b>Act</b>.</p>
+  <p>Im <b>KVP</b> reicht jede/r Verbesserungsideen ein – vom wackeligen Regal bis zur schnelleren Rüstzeit. Einreichen dürfen alle. Alle Vorschläge sieht, wer das Recht <b>„KVP: alle Vorschläge ansehen“</b> hat; ohne dieses Recht zeigt die Seite nur <b>Meine Vorschläge</b> und <b>Idee einreichen</b>. Jede Idee bekommt innerhalb der <b>Rückmeldefrist</b> (Vorgabe 14 Tage) eine begründete Entscheidung und wird danach im <b>PDCA-Zyklus</b> umgesetzt: <b>Plan</b> → <b>Do</b> → <b>Check</b> → <b>Act</b>.</p>
   {{template "hb-fig-kvp"}}
   <div class="hb-howto"><b><i class="ti ti-bulb"></i> So reichst du eine Idee ein</b>
     <ol class="hb-steps">
@@ -494,6 +503,13 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li><b>Act:</b> beschreiben, was zum Standard wurde (Arbeitsanweisung, Checkliste, Schulung …), tatsächliche Einsparung und ggf. Prämie – dann <b>Abschließen</b>.</li>
     </ol>
     Wie im Abschluss-Assistenten: <b>Fertig</b> schaltet weiter, <b>Nur speichern – geht noch weiter</b> sichert nur die Angaben. Fehlt für einen Schritt noch etwas, nennt PDH es bei der Auswahl und schaltet nicht weiter; das bereits Eingegebene bleibt gespeichert. Einzelne Angaben lassen sich auch direkt in den Reitern <b>Bewertung</b> und <b>PDCA &amp; Maßnahmen</b> ändern. <b>A3-Report</b> druckt den ganzen Vorschlag auf einer Seite zum Aushängen.</div>
+  <div class="hb-howto"><b><i class="ti ti-eye"></i> Wer welche Vorschläge sieht</b>
+    <ol class="hb-steps">
+      <li>Mit „KVP: alle Vorschläge ansehen“ siehst du alle Ideen samt Kennzahlen, Dashboard und PDCA-Board. Das Recht kann auf eine Abteilung der Anlage begrenzt sein; dann sind Dashboard-Kennzahlen über alle Ideen ausgeblendet, Liste, Board und Zähler zeigen die sichtbaren Ideen.</li>
+      <li>Ohne das Recht siehst du nur Ideen, an denen du beteiligt bist: eingereicht, miteingereicht, angelegt, bewertet, verantwortlich oder für eine Maßnahme eingetragen. Kennzahlen (Einsparungen, Prämien, Zahlen je Person) und das Board fehlen. Das Widget „KVP-Vorschläge“ auf der Startseite erscheint ebenfalls nur mit dem Recht.</li>
+      <li>Die Zähler der Reiter und Filter zählen nur Ideen, die du sehen darfst. „Meine“ zeigt alle Ideen, an denen du beteiligt bist – auch über eine Maßnahme.</li>
+      <li>Detail, A3-Report, Kommentare, Historie und die Liste der Anhänge einer Idee öffnen sich mit dem Recht oder wenn du beteiligt bist. Wer den Link einer Datei hat, kann sie weiterhin öffnen.</li>
+    </ol></div>
   <p>Das <b>Dashboard</b> zeigt Kennzahlen des Jahres (Vorschläge je Mitarbeitende/n, Annahmequote, Ø Zeit bis zur Entscheidung, Beteiligung, Einsparungen und Prämien), den Ablauf, die letzten 12 Monate, die Themen, die Nutzen-Aufwand-Matrix und alles Überfällige. Das <b>PDCA-Board</b> zeigt die Vorschläge in Umsetzung als Karten. Unter <b>Regeln &amp; Vorlagen</b> stehen die KVP-Regeln; dort stellt die KVP-Steuerung die Rückmeldefrist ein.</p>
   <p>Die <b>Maßnahmen</b> im Schritt „Do“ sind ab Werk <b>nach Termin</b> geordnet; die Kommentare haben dieselbe Sortier-Leiste (<a href="#sort">mehr</a>). Assistent, Abhak-Ansicht und A3-Report bleiben nach Termin sortiert.</p>
   {{template "hb-shots" (dict "Ref" (index $s "kvp") "Can" $can)}}
@@ -2055,7 +2071,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <div class="hb-howto"><b><i class="ti ti-filter"></i> So findest du einen Fehler</b>
     <ol class="hb-steps">
       <li><b>Server-Einstellungen → Protokoll ansehen</b> (Berechtigung <i>Server-Protokoll ansehen</i>, standardmäßig nur Administratoren).</li>
-      <li>Oben die Kachel <b>Fehler (24 h)</b> antippen – oder Zeitraum, Stufe, Bereich, Benutzer, Pfad, HTTP-Status, Request-ID oder einen Suchbegriff wählen und <b>Filtern</b>.</li>
+      <li>Oben die Kachel <b>Fehler (24 h)</b> antippen – oder Zeitraum, Stufe, Bereich, Benutzer, Pfad, HTTP-Status, Request-ID oder einen Suchbegriff wählen und <b>Filtern</b>. Die Felder <b>von</b> und <b>bis</b> erscheinen, wenn du beim Zeitraum <b>frei wählen …</b> nimmst.</li>
       <li>Eine Zeile antippen zeigt alle Details (IP, Browser, Abfrage, Fehlermeldung …). <b>Alle Einträge dieser Anfrage</b> zeigt, was während genau dieses Aufrufs passiert ist.</li>
       <li>Bereich oder Benutzer in einer Zeile antippen filtert direkt danach. <b>Live</b> aktualisiert die Liste alle 5 Sekunden.</li>
     </ol></div>
@@ -2154,6 +2170,13 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>Alle anderen können Stammdaten weiter <b>zum Löschen vormerken</b>; der Bereinigungslauf erledigt den Rest.</li>
     </ol>
     Anfangs hat nur die Rolle Administrator alle Bereichsadministrator-Rechte. Ein ausdrückliches Verbot eines Einzelrechts gilt auch gegen den Bereichsadministrator.</div>
+  <div class="hb-howto"><b><i class="ti ti-eye"></i> Rechte „Projekte: ansehen“ und „KVP: alle Vorschläge ansehen“</b>
+    <ol class="hb-steps">
+      <li>Die Rechte <code>projects.view</code> und <code>kvp.view</code> bestimmen, wer Projekte bzw. alle KVP-Vorschläge sieht – auch der Bereichsadministrator. Sie gelten überall oder nur in einer Abteilung (Projekt: Abteilung der Anlage oder der zugewiesenen Gruppe; KVP: Abteilung der Anlage). Vorgänge ohne Abteilung sieht, wer das Recht irgendwo hat.</li>
+      <li>Mit dem Update haben alle bisherigen Rollen beide Rechte; es ändert sich nichts, bis du sie einer Rolle entziehst. Neu angelegte Rollen bekommen sie nicht von selbst.</li>
+      <li>Wer das Recht verliert, sieht nur noch Projekte und Vorschläge, an denen er beteiligt ist. Beteiligte sehen ihren Vorgang immer. „Projekte bearbeiten“ und „KVP steuern“ wirken ohne das Ansehen-Recht nur an eigenen Vorgängen.</li>
+      <li>Ohne „Projekte: ansehen“ fehlt der Menüpunkt Projekte; Liste, Detail, Zeitstrahl der Anlage, Kalender, Schnittstelle und Copilot zeigen nur sichtbare Projekte. Einreichen von KVP-Ideen dürfen weiter alle.</li>
+    </ol></div>
   <div class="hb-howto"><b><i class="ti ti-arrows-exchange-2"></i> Rechte für Rüstzeiten</b> (Gruppe „Infrastruktur &amp; Anlagen“)
     <ul>
       <li><b>„Rüstzeiten: ansehen“</b> (<code>setup.view</code>): Liste, Detailseite und Historie.</li>
@@ -2214,7 +2237,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     </ul>
     Die beiden Rechte sind <b>eigenständig</b>: Das zweite schließt das erste nicht ein, anders als ein Bereichsadministrator. Wer einstellen und bestätigen soll, braucht beide. Sie gelten systemweit. Beim Update bekamen beide alle Rollen, die „Server-Einstellungen (.env) bearbeiten &amp; Server neu starten“ überall hatten.</div>
   <p><b>Was ohne Recht geht:</b> Störungen und Tickets melden, kommentieren, Zeiten erfassen und Chat. Alles andere – bearbeiten, Status ändern, abschließen, anlegen von Aufgaben, Projekten, Wartungen, IT-Geräten, Ersatzteilen und Lagerorten – braucht das passende Recht. Wer an einem Vorgang beteiligt ist (zugewiesen, verantwortlich, angelegt oder über die Gruppe), darf diesen Vorgang auch ohne das Recht bearbeiten. Fehlt ein Recht, meldet PDH „Keine Berechtigung“ mit dem Namen des Rechts.</p>
-  <p><b>Historie:</b> Die Historie eines Datensatzes sieht, wer den Datensatz selbst sehen darf. Das gilt auch für Anlagen und Lagerorte. Bei Aufgaben und Wartungen braucht es dafür das Recht „ansehen“ oder „bearbeiten“ des Bereichs. Das Löschen einer Maßnahme über die Schnittstelle (API) prüft, ob die Maßnahme zu dem Vorgang gehört, unter dem sie gelöscht wird. Die Sortierung von Listen ist für alle gleich und braucht kein eigenes Recht (<a href="#sort">mehr</a>).</p>
+  <p><b>Historie:</b> Die Historie eines Datensatzes sieht, wer den Datensatz selbst sehen darf. Das gilt auch für Anlagen und Lagerorte. Bei Aufgaben und Wartungen sieht sie, wer die Aufgabe oder Wartung öffnen darf – wie die Seite selbst. Das Löschen einer Maßnahme über die Schnittstelle (API) prüft, ob die Maßnahme zu dem Vorgang gehört, unter dem sie gelöscht wird. Die Sortierung von Listen ist für alle gleich und braucht kein eigenes Recht (<a href="#sort">mehr</a>).</p>
   <p>Server-Einstellungen wie Datenbank, E-Mail, Microsoft 365 oder Nextcloud pflegst du unter <b>Server-Einstellungen</b> (<a href="#server">mehr</a>) – die <code>.env</code>-Datei muss dafür niemand mehr von Hand bearbeiten.</p>
   <h3>Berechtigungen <i class="ti ti-refresh" title="automatisch aus dem System"></i></h3>
   {{range .PermGroups}}

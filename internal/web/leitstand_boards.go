@@ -407,8 +407,9 @@ func (h *Handler) boardAllowedIDs(ctx context.Context, b *leitstand) map[string]
 		SELECT 'fault', f.id::text FROM faults f WHERE f.archived_at IS NULL AND ` + cond("f", false) + `
 		UNION ALL SELECT 'ticket', t.id::text FROM tickets t WHERE t.archived_at IS NULL AND ` + cond("t", false) + `
 		UNION ALL SELECT 'maintenance', m.id::text FROM maintenance_tasks m WHERE m.archived_at IS NULL AND ` + cond("m", false) + `
-		UNION ALL SELECT 'task', k.id::text FROM tasks k WHERE k.archived_at IS NULL AND ` + cond("k", true)
-	out := map[string]map[string]bool{"fault": {}, "ticket": {}, "maintenance": {}, "task": {}}
+		UNION ALL SELECT 'task', k.id::text FROM tasks k WHERE k.archived_at IS NULL AND ` + cond("k", true) + `
+		UNION ALL SELECT 'project', p.id::text FROM projects p WHERE ` + cond("p", false)
+	out := map[string]map[string]bool{"fault": {}, "ticket": {}, "maintenance": {}, "task": {}, "project": {}}
 	rows, err := h.db.Query(ctx, q, dept, group)
 	if err != nil {
 		componentLog("leitstand").Error().Err(err).Str("leitstand", b.Slug).Msg("vorgänge des leitstands ermitteln")
