@@ -34,6 +34,12 @@
       logout: !!logout
     };
   }
+  // Ergebnis der Abmeldung für das Terminal: ok nur, wenn PDH die Abmeldung angenommen hat (HTTP 2xx);
+  // sonst steht eine Meldung dabei. Ohne Antwort (null) gilt sie als fehlgeschlagen.
+  function logoutResult(r, who) {
+    var ok = !!(r && r.ok);
+    return { ok: ok, name: typeof who === 'string' ? who : '', message: ok ? '' : 'Abmeldung fehlgeschlagen' };
+  }
   // Benachrichtigungsarten aus dem JSON-Text (data-card-notify); fehlt oder ungültig → [].
   function parseNotify(text) {
     var v = null;
@@ -226,8 +232,8 @@
         gen++;
         var who = nameEl.textContent;
         showBar('');
-        post('/terminal/card/abmelden').then(function () {
-          report({ ok: true, name: who, message: '' }, true);
+        post('/terminal/card/abmelden').then(function (r) {
+          report(logoutResult(r, who), true);
         }).catch(function () {});
       });
       // Berührung bei laufender Kartensitzung: höchstens alle 20 s nachfragen, ob sie noch läuft

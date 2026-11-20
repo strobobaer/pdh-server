@@ -21,6 +21,10 @@ im Kapitel „Versionen & Updates“ an.
 
 - Eine Karte weckt jetzt auch den Bildschirmschoner eines Terminals (auch am Raspberry Pi): Die Störungsinfo öffnet sich und die Person ist gleich angemeldet.
 
+### Behoben
+
+- Meldet das Terminal die Abmeldung per Karte an das lokale Terminalprogramm, gilt sie nur noch dann als gelungen, wenn PDH sie angenommen hat; bei einem Fehler zeigt die Benachrichtigung die Störung statt „Abgemeldet“.
+
 ## [0.82.8] – 2026-11-20
 
 ### Geändert

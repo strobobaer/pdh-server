@@ -200,7 +200,7 @@ func TestTerminalScriptPureFunctions(t *testing.T) {
 	}
 	src = bytes.ReplaceAll(src, []byte("\r\n"), []byte("\n")) // Arbeitskopie kann CRLF haben
 	var fns []string
-	for _, name := range []string{"resultPayload", "takePendingCard", "parseNotify"} {
+	for _, name := range []string{"resultPayload", "logoutResult", "takePendingCard", "parseNotify"} {
 		m := regexp.MustCompile(`(?s)\n  function ` + name + `\(.*?\n  \}\n`).Find(src)
 		if m == nil {
 			t.Fatalf("Funktion %s nicht gefunden", name)
@@ -214,6 +214,10 @@ eq(resultPayload({ok: true, name: 'Anna', message: ''}, ['overlay'], false), {ok
 eq(resultPayload({ok: false, message: 'Karte nicht registriert'}, ['toast'], false), {ok: false, name: '', message: 'Karte nicht registriert', notify: ['toast'], logout: false}, 'Fehler');
 eq(resultPayload({ok: true, name: 'Anna'}, [], true), {ok: true, name: 'Anna', message: '', notify: [], logout: true}, 'Abmeldung');
 eq(resultPayload(null, null, false), {ok: false, name: '', message: '', notify: [], logout: false}, 'leer');
+eq(logoutResult({ok: true}, 'Anna'), {ok: true, name: 'Anna', message: ''}, 'Abmeldung angenommen');
+eq(logoutResult({ok: false, status: 500}, 'Anna'), {ok: false, name: 'Anna', message: 'Abmeldung fehlgeschlagen'}, 'Abmeldung mit HTTP-Fehler');
+eq(logoutResult(null, 'Anna'), {ok: false, name: 'Anna', message: 'Abmeldung fehlgeschlagen'}, 'Abmeldung ohne Antwort');
+eq(logoutResult({ok: true}, undefined), {ok: true, name: '', message: ''}, 'Abmeldung ohne Namen');
 eq(parseNotify('["overlay","banner"]'), ['overlay', 'banner'], 'Liste');
 eq(parseNotify(undefined), [], 'fehlt');
 eq(parseNotify('kaputt'), [], 'ungültig');
