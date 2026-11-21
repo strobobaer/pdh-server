@@ -970,6 +970,14 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   </ul>
   <p>In der Liste ändern die Pfeile <b>Hoch</b> und <b>Runter</b> die Reihenfolge, <b>Bearbeiten</b> öffnet das Formular, und der Papierkorb löscht die Folie nach einer Rückfrage. Bei Bildfolien zeigt die Liste eine Vorschau. Jede Änderung erreicht alle Infobildschirme sofort, ohne Neuladen.</p>
   <p>Ungültige Eingaben (zu langer Text, falsche Bildart, ein Bild über 5 MB, eine Dauer außerhalb von 5 bis 600) lehnt PDH mit einer Meldung im Formular ab; gespeichert wird dann nichts.</p>
+  <div class="hb-howto"><b><i class="ti ti-hand-finger"></i> So bedient man den Infobildschirm</b>
+    <ul>
+      <li><b>Weiterblättern</b> – auf eine freie Fläche tippen oder mit dem Finger nach links wischen. Die Dauer der nächsten Folie beginnt dann neu.</li>
+      <li><b>Vorgang ansehen</b> – in einer Vorgänge-Folie einen Eintrag antippen. Die Ansicht zeigt Titel, Status, Anlage, Beschreibung, wann der Vorgang erstellt und zuletzt geändert wurde und die letzten fünf Verlaufseinträge. Sie ist nur zum Lesen: keine Anhänge, keine Knöpfe außer <b>Zurück</b>. Nach der Rückkehrzeit des Terminals geht es von selbst zur Folienschau zurück.</li>
+      <li><b>Nicht freigegeben</b> – ein Vorgang, der nicht zu einer Anlage einer aktiven Vorgänge-Folie gehört oder den der Terminal-Benutzer nicht sehen darf, lässt sich nicht öffnen.</li>
+      <li><b>Ohne Folien</b> zeigt der Bildschirm „Keine Folien eingerichtet“.</li>
+    </ul></div>
+  <p>Ein globales Terminal liest keine Karten und hat keine Anmeldung; die Wege dafür sind gesperrt. Schaltest du das Kästchen am Systembenutzer aus, wird der Bildschirm von selbst wieder zum normalen Anlagenterminal. Ein Terminalprogramm mit Zwischenspeicher bekommt die Folien samt Bildern nach jeder Änderung mitgeschickt (je Bild höchstens 5 MB, insgesamt höchstens 50 MB); ältere Terminalprogramme ignorieren das.</p>
   {{template "hb-shots" (dict "Ref" (index $s "infobildschirm") "Can" $can)}}
 </section>
 

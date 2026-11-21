@@ -19,6 +19,52 @@
     return !!(settings && settings.password_button && settings.manual_login !== 'none');
   }
 
+  // Folienschau des Infobildschirms (Modus global) – reine Funktionen.
+  // Nächste Folie (reihum); ohne Folien 0.
+  function nextSlideIndex(slides, i) {
+    var n = Array.isArray(slides) ? slides.length : 0;
+    if (n < 1) return 0;
+    if (typeof i !== 'number' || i < 0 || i >= n - 1) return 0;
+    return i + 1;
+  }
+  // Anzeigedauer einer Folie in Millisekunden: 5 bis 600 s, sonst 15 s.
+  function slideDurationMs(slide) {
+    var s = slide && typeof slide.duration === 'number' ? slide.duration : 15;
+    if (!(s >= 5 && s <= 600)) s = 15;
+    return Math.round(s * 1000);
+  }
+  // Wischgeste nach links: mindestens 60 px waagerecht, weniger als 40 px senkrecht.
+  function isSwipeLeft(start, end) {
+    if (!start || !end) return false;
+    var dx = start.x - end.x, dy = Math.abs(start.y - end.y);
+    return dx >= 60 && dy < 40;
+  }
+  // Nutzdaten für POST /api/slides/cache: {version, saved_at, slides, images:{id: base64}}.
+  // Je Bild höchstens 5 MB (größere entfallen), gesamt höchstens 50 MB (sonst gar keine Bilder).
+  // images: {id: base64-Text}; savedAt optional (Date), sonst jetzt.
+  function cachePayload(json, images, savedAt) {
+    var out = {};
+    var total = 0;
+    var src = images && typeof images === 'object' ? images : {};
+    Object.keys(src).forEach(function (id) {
+      var b = src[id];
+      if (typeof b !== 'string' || !b) return;
+      var pad = b.charAt(b.length - 1) === '=' ? (b.charAt(b.length - 2) === '=' ? 2 : 1) : 0;
+      var bytes = Math.floor(b.length * 3 / 4) - pad;
+      if (bytes > 5 * 1024 * 1024) return;
+      out[id] = b;
+      total += bytes;
+    });
+    if (total > 50 * 1024 * 1024) out = {};
+    json = json || {};
+    return {
+      version: typeof json.version === 'string' ? json.version : '',
+      saved_at: (savedAt instanceof Date ? savedAt : new Date()).toISOString(),
+      slides: Array.isArray(json.slides) ? json.slides : [],
+      images: out
+    };
+  }
+
   // Kartendienst des lokalen Terminals (Ursprung der Ereignisse und der Rückmeldung).
   var CARD_ORIGIN = 'http://127.0.0.1:8080';
 
@@ -366,6 +412,7 @@
             var d = null;
             try { d = JSON.parse(ev.data); } catch (e) { /* ungültig */ }
             if (!d) return;
+            if (d.global_screen === true) { location.reload(); return; } // jetzt ein globales Terminal: Seite wird zur Folienschau
             if (typeof d.manual_login === 'string') settings.manual_login = d.manual_login;
             if (typeof d.password_button === 'boolean') settings.password_button = d.password_button;
             // neue Rückkehrzeit gilt ab dem nächsten Zurücksetzen des Timers
@@ -403,5 +450,193 @@
       try { pending = takePendingCard(sessionStorage, Date.now()); } catch (e) { /* kein Speicher */ }
       if (pending) onCard(pending);
     }
+  }
+
+  // Zwischenspeicher des lokalen Terminals (Ursprung wie bei /api/card/result). Fehler und 404 (älteres
+  // Terminal) bleiben stumm; nach dem ersten Fehlschlag ruht es bis zum Neuladen.
+  var cacheOk = true;
+  function cacheCall(method, data) {
+    if (!cacheOk) return;
+    try {
+      var opt = { mode: 'cors', method: method, cache: 'no-store' };
+      if (data) { opt.headers = { 'Content-Type': 'application/json' }; opt.body = JSON.stringify(data); }
+      fetch(CARD_ORIGIN + '/api/slides/cache', opt)
+        .then(function (r) { if (!r.ok) cacheOk = false; })
+        .catch(function () { cacheOk = false; });
+    } catch (e) { cacheOk = false; }
+  }
+
+  // Normales Terminal (Gerätesitzung): ein eventuell vorhandener Zwischenspeicher wird gelöscht.
+  if (mode !== 'global' && body.dataset.cardEvents === '1') cacheCall('DELETE', null);
+
+  // Infobildschirm: Folienschau.
+  if (mode === 'global') {
+    var stage = document.getElementById('g-stage');
+    var pdhName = (stage && stage.dataset.name) || 'PDH';
+    var slides = [], version = '', cur = -1, slideTimer = null, cachedVersion = null, caching = false, again = false;
+    document.addEventListener('contextmenu', function (ev) { ev.preventDefault(); });
+    document.addEventListener('selectstart', function (ev) { ev.preventDefault(); });
+    document.addEventListener('dragstart', function (ev) { ev.preventDefault(); });
+
+    var el = function (tag, cls, text) {
+      var e = document.createElement(tag);
+      if (cls) e.className = cls;
+      if (text !== undefined) e.textContent = text;
+      return e;
+    };
+    var fillList = function (tile, kind, items, total) {
+      var ul = el('ul', 't-list');
+      items.forEach(function (it) {
+        var li = el('li');
+        li.setAttribute('data-kind', kind);
+        li.setAttribute('data-id', it.id);
+        li.appendChild(el('span', 'ti-title', it.title));
+        li.appendChild(el('span', 'ti-st', it.statusLabel));
+        li.appendChild(el('span', 'ti-meta', (it.path ? it.path + ' · ' : '') + it.age));
+        ul.appendChild(li);
+      });
+      if (items.length) tile.appendChild(ul);
+      else tile.appendChild(el('div', 't-empty', kind === 'fault' ? 'Keine offenen Störungen' : 'Keine offenen Tickets'));
+      var rest = Math.max(0, total - items.length);
+      if (rest) tile.appendChild(el('div', 't-more', '… und ' + rest + ' weitere'));
+    };
+    var tileFor = function (kind, items, total) {
+      var t = el('section', 't-tile ' + (kind === 'fault' ? 'faults' : 'tickets'));
+      var h = el('h2', null, kind === 'fault' ? 'Offene Störungen ' : 'Offene Tickets ');
+      h.appendChild(el('span', 'n' + (total ? ' has' : ''), String(total)));
+      t.appendChild(h);
+      fillList(t, kind, items, total);
+      return t;
+    };
+    // Eine Folie anzeigen (nur textContent, nie HTML aus den Daten).
+    var draw = function (s) {
+      stage.textContent = '';
+      if (!s) {
+        var e = el('div', 'g-empty', 'Keine Folien eingerichtet');
+        e.appendChild(el('small', null, pdhName));
+        stage.appendChild(e);
+        return;
+      }
+      if (s.kind === 'image') {
+        if (s.image_url) { var img = el('img', 'g-img'); img.alt = ''; img.src = s.image_url; stage.appendChild(img); }
+        if (s.title) stage.appendChild(el('div', 'g-cap', s.title));
+      } else if (s.kind === 'vorgaenge') {
+        var g = el('div', 'g-vorg');
+        var f = s.faults || [], t = s.tickets || [];
+        var hasF = f.length > 0 || (s.faults_total || 0) > 0, hasT = t.length > 0 || (s.tickets_total || 0) > 0;
+        // Eine Art ohne jeden Eintrag nur zeigen, wenn auch die andere leer ist (dann beide, mit Leer-Hinweis)
+        if (hasF || !hasT) g.appendChild(tileFor('fault', f, s.faults_total || 0));
+        if (hasT || !hasF) g.appendChild(tileFor('ticket', t, s.tickets_total || 0));
+        if (g.children.length === 1) g.className += ' one';
+        stage.appendChild(g);
+      } else {
+        var box = el('div', 'g-text');
+        if (s.title) box.appendChild(el('h1', null, s.title));
+        if (s.body) box.appendChild(el('p', null, s.body));
+        stage.appendChild(box);
+      }
+    };
+    var show = function (i) {
+      if (slideTimer) { clearTimeout(slideTimer); slideTimer = null; }
+      cur = slides.length ? i : -1;
+      draw(slides.length ? slides[cur] : null);
+      if (slides.length) {
+        slideTimer = setTimeout(function () { show(nextSlideIndex(slides, cur)); }, slideDurationMs(slides[cur]));
+        if (slides[cur].kind === 'vorgaenge') load(true); // Liste beim Erscheinen neu holen
+      }
+    };
+
+    // Zwischenspeicher füllen: Bilder einzeln holen, base64, dann an das lokale Terminal senden.
+    var toB64 = function (blob) {
+      return new Promise(function (res, rej) {
+        var fr = new FileReader();
+        fr.onload = function () { var s = String(fr.result); res(s.slice(s.indexOf(',') + 1)); };
+        fr.onerror = function () { rej(fr.error); };
+        fr.readAsDataURL(blob);
+      });
+    };
+    var saveCache = function (json) {
+      if (!cacheOk || json.version === cachedVersion) return;
+      if (caching) { again = true; return; }
+      caching = true;
+      var imgs = {}, total = 0;
+      var chain = Promise.resolve();
+      json.slides.forEach(function (s) {
+        if (s.kind !== 'image' || !s.image_url) return;
+        chain = chain.then(function () {
+          if (total > 50 * 1024 * 1024) return null;
+          return fetch(s.image_url, { credentials: 'same-origin' })
+            .then(function (r) { return r.ok ? r.blob() : null; })
+            .then(function (b) { if (!b || b.size > 5 * 1024 * 1024) return null; total += b.size; return toB64(b); })
+            .then(function (b64) { if (b64) imgs[s.id] = b64; })
+            .catch(function () { /* Bild fehlt im Zwischenspeicher */ });
+        });
+      });
+      chain.then(function () {
+        cachedVersion = json.version;
+        cacheCall('POST', cachePayload(json, imgs));
+      }).catch(function () { /* stumm */ }).then(function () {
+        caching = false;
+        if (again) { again = false; load(true); }
+      });
+    };
+
+    // slides.json laden. keep: die laufende Folie bleibt stehen (Timer unberührt), nur ihr Inhalt wird erneuert.
+    var load = function (keep) {
+      fetch('/terminal/slides.json', { cache: 'no-store', credentials: 'same-origin' })
+        .then(function (r) {
+          // Kein globales Terminal mehr (403) oder Sitzung weg: Seite neu laden, sie wird zum normalen Terminal
+          if (r.status === 403 || r.redirected) { location.reload(); return null; }
+          if (!r.ok) return null; // vorübergehender Fehler: alter Stand bleibt
+          return r.json();
+        })
+        .then(function (d) {
+          if (!d || !Array.isArray(d.slides)) return;
+          var same = d.version === version;
+          var curId = cur >= 0 && slides[cur] ? slides[cur].id : null;
+          slides = d.slides; version = d.version;
+          if (!same || cur < 0 || !keep) {
+            var idx = -1;
+            if (keep && curId) for (var k = 0; k < slides.length; k++) if (slides[k].id === curId) { idx = k; break; }
+            if (keep && idx >= 0) { cur = idx; draw(slides[cur]); } // gleiche Folie weiter, nur neu zeichnen
+            else show(0);
+          }
+          saveCache(d);
+        })
+        .catch(function () { /* offline: alter Stand bleibt */ });
+    };
+
+    // Eingabe: Tippen auf freie Fläche oder Wischen nach links blättert weiter, ein Vorgang öffnet seine Ansicht.
+    var down = null;
+    stage.addEventListener('pointerdown', function (ev) { down = { x: ev.clientX, y: ev.clientY }; });
+    stage.addEventListener('pointercancel', function () { down = null; });
+    stage.addEventListener('pointerup', function (ev) {
+      var st = down; down = null;
+      if (!st || !slides.length) return;
+      var end = { x: ev.clientX, y: ev.clientY };
+      if (isSwipeLeft(st, end)) { show(nextSlideIndex(slides, cur)); return; }
+      if (Math.abs(end.x - st.x) > 20 || Math.abs(end.y - st.y) > 20) return; // Ziehen ohne Wischen: nichts
+      var li = ev.target && ev.target.closest ? ev.target.closest('[data-kind][data-id]') : null;
+      if (li) {
+        var kind = li.getAttribute('data-kind'), id = li.getAttribute('data-id');
+        if ((kind === 'fault' || kind === 'ticket') && /^[0-9a-fA-F-]{36}$/.test(id)) location.href = '/terminal/vorgang/' + kind + '/' + id;
+        return;
+      }
+      show(nextSlideIndex(slides, cur));
+    });
+
+    // Änderungen: Ereignis „slides“ lädt neu, „settings“ mit global_screen aus macht die Seite zum normalen Terminal.
+    try {
+      var gev = new EventSource('/terminal/events');
+      gev.addEventListener('slides', function () { load(true); });
+      gev.addEventListener('settings', function (ev) {
+        var d = null;
+        try { d = JSON.parse(ev.data); } catch (e) { /* ungültig */ }
+        if (d && d.global_screen === false) location.reload();
+      });
+      gev.onerror = function () { /* stumm: der EventSource verbindet selbst neu */ };
+    } catch (e) { /* kein EventSource */ }
+    setInterval(function () { load(true); }, 60000); // Vorgänge und Version auch ohne Ereignis aktuell halten
+    load(false);
   }
 })();

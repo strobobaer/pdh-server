@@ -58,7 +58,7 @@ func dummyLoginHash() []byte {
 // {"kind":"card_pin","card":"…","pin":"…"} | {"kind":"card_only","card":"…"} |
 // {"kind":"password","user":"…","password":"…"}
 func (h *Handler) TerminalLogin(w http.ResponseWriter, r *http.Request) {
-	term, ok := h.cardTerminal(w, r)
+	term, ok := h.cardTerminalLocked(w, r)
 	if !ok {
 		return
 	}
