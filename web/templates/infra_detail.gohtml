@@ -87,6 +87,7 @@
   <a class="rec-tab" data-tab="docs" href="?tab=docs"><i class="ti ti-paperclip"></i> Dokumente</a>
   {{if or .HMI.View .HMI.Manage .HMI.Kiosk}}<a class="rec-tab" data-tab="hmi" href="?tab=hmi"><i class="ti ti-device-desktop-analytics"></i> HMI</a>{{end}}
   {{if .ESPPDHTab}}<a class="rec-tab" data-tab="esppdh" href="?tab=esppdh"><i class="ti ti-cpu"></i> ESPPDH</a>{{end}}
+  {{if .CompanyTab}}<a class="rec-tab" data-tab="firma" href="?tab=firma"><i class="ti ti-building"></i> Firma</a>{{end}}
   <a class="rec-tab" data-tab="links" href="?tab=links"><i class="ti ti-link"></i> Verknüpfungen</a>
   <a class="rec-tab" data-tab="history" href="?tab=history"><i class="ti ti-history"></i> Änderungen</a>
 </div>
@@ -411,6 +412,13 @@
 <div class="rec-pane" data-pane="esppdh">
   <div class="card"><div class="card-title"><span><i class="ti ti-cpu" aria-hidden="true"></i> ESPPDH-Geräte dieser Anlage</span></div>
   <div hx-get="/infrastructure/{{.Node.ID}}/esppdh" hx-trigger="load, every 10s" hx-swap="innerHTML"><p class="rec-sub">Werte werden geladen …</p></div></div>
+</div>
+{{end}}
+{{if .CompanyTab}}
+<!-- ── Firma: Firmenstammdaten, an jedem obersten Knoten gleich (company_web.go) ── -->
+<div class="rec-pane" data-pane="firma">
+  <div class="card"><div class="card-title"><span><i class="ti ti-building" aria-hidden="true"></i> Firmenstammdaten</span></div>
+  <div hx-get="/infrastructure/company" hx-trigger="load" hx-swap="innerHTML"><p class="rec-sub">Wird geladen …</p></div></div>
 </div>
 {{end}}
 

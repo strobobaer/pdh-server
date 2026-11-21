@@ -34,6 +34,7 @@ type maintProtocol struct {
 	Actions                            []maintProtocolLine
 	Parts                              []maintProtocolLine
 	Company                            string
+	CompanyAddress, Legal, Contact     string // Firmenstammdaten und Ansprechpartner (0.82.21)
 	Logo                               string // Dateipfad oder leer
 }
 
@@ -256,8 +257,32 @@ func (h *Handler) loadMaintProtocol(ctx context.Context, taskID, userID string) 
 	p.Checklist = items
 	b := h.branding()
 	p.Company = b.AppName
+	if cp := h.company(ctx); cp.Name != "" { // Firmenstammdaten (0.82.21)
+		p.Company, p.CompanyAddress, p.Legal = cp.Name, companyAddressLine(cp), companyLegalLine(cp)
+	}
+	p.Contact = contactLine(h.contactPersonFor(ctx, userID))
 	p.Logo = h.exportLogoFile()
 	return p, nil
+}
+
+// maintHeaderLineY: Trennlinie im Kopf – mindestens y+15 (wie bisher), unter dem Text des
+// Kopfs und unter dem Logo.
+func maintHeaderLineY(y, logoH, textBottom float64) float64 {
+	return max(y+15, textBottom+1, y+logoH+2)
+}
+
+// maintFooterLines: Fuß des Wartungsprotokolls – Zeile 1 Erstellt … · Firma (sonst PDH),
+// Zeile 2 Pflichtangaben und Ansprechpartner (leer, wenn nichts da).
+func maintFooterLines(p *maintProtocol, created time.Time) (string, string) {
+	who := p.Company
+	if who == "" {
+		who = "PDH"
+	}
+	contact := ""
+	if p.Contact != "" {
+		contact = "Ansprechpartner: " + p.Contact
+	}
+	return "Erstellt " + created.Format("02.01.2006 15:04") + " · " + who, joinDot(p.Legal, contact)
 }
 
 // uploadPath: /uploads/... → Dateipfad (nur innerhalb von uploads)
@@ -339,21 +364,26 @@ func renderMaintProtocolPDF(p *maintProtocol) ([]byte, error) {
 			sub = p.Company + " · " + sub
 		}
 		pdf.CellFormat(contentW, 5, tr(sub), "", 1, "R", false, 0, "")
-		lineY := y + 15
-		if logoH+2 > 15 {
-			lineY = y + logoH + 2
+		if p.CompanyAddress != "" {
+			pdf.CellFormat(contentW, 4, tr(p.CompanyAddress), "", 1, "R", false, 0, "")
 		}
+		lineY := maintHeaderLineY(y, logoH, pdf.GetY())
 		pdf.SetDrawColor(200, 200, 200)
 		pdf.Line(left, lineY, pageW-right, lineY)
 		pdf.SetY(lineY + 4)
 		pdf.SetTextColor(20, 20, 20)
 	})
 	pdf.SetFooterFunc(func() {
-		pdf.SetY(-13)
+		l1, l2 := maintFooterLines(p, created)
+		pdf.SetY(-16)
 		pdf.SetFont("Helvetica", "", 8)
 		pdf.SetTextColor(120, 120, 120)
-		pdf.CellFormat(contentW/2, 5, tr("Erstellt "+created.Format("02.01.2006 15:04")+" · PDH"), "", 0, "L", false, 0, "")
-		pdf.CellFormat(contentW/2, 5, tr(fmt.Sprintf("Seite %d von {nb}", pdf.PageNo())), "", 0, "R", false, 0, "")
+		pdf.CellFormat(contentW/2, 5, tr(l1), "", 0, "L", false, 0, "")
+		pdf.CellFormat(contentW/2, 5, tr(fmt.Sprintf("Seite %d von {nb}", pdf.PageNo())), "", 1, "R", false, 0, "")
+		if l2 != "" {
+			pdf.SetFont("Helvetica", "", 7)
+			pdf.MultiCell(contentW, 3.5, tr(l2), "", "L", false)
+		}
 	})
 	pdf.AddPage()
 

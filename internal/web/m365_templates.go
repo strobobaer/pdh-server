@@ -113,7 +113,7 @@ func (h *Handler) M365Page(w http.ResponseWriter, r *http.Request) {
 	if d.CanManage {
 		d.Signatures = h.loadSignatures(ctx)
 		d.PreviewUsers = h.userOptions(ctx)
-		d.Company = h.getUpdateSetting(ctx, m365CompanySetting, "")
+		d.Company = h.company(ctx).Name
 		d.SharePointSite = h.getUpdateSetting(ctx, m365SharePointSite, "")
 		d.SharePointLibrary = h.getUpdateSetting(ctx, m365SharePointLibrary, "")
 		d.GraphReady = h.microsoftAppConfigured()

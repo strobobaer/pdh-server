@@ -303,6 +303,7 @@ type InfraDetailData struct {
 	ChamberNOK       int                 // davon NOK
 	ChamberParts     []chamberPartOption // Vorschlagsliste „Typ (Ersatzteil)“
 	ESPPDHTab        bool                // Reiter „ESPPDH“: Gerät hier und Recht dafür (infra_esppdh.go)
+	CompanyTab       bool                // Reiter „Firma“: oberster Knoten (company_web.go)
 }
 
 func (h *Handler) InfraDetail(w http.ResponseWriter, r *http.Request) {
@@ -349,6 +350,7 @@ func (h *Handler) InfraDetail(w http.ResponseWriter, r *http.Request) {
 	}
 	data.HMI.Kiosk = h.kioskPerm(r, permHMIKiosk, id) // Reiter „HMI“ und Knöpfe: Recht für diese Anlage
 	data.ESPPDHTab = h.infraESPPDHTab(r, id)
+	data.CompanyTab = companyTabFor(data.Node.ParentID, h.canViewInfra(r))
 	data.Today = time.Now().Format("2006-01-02")
 	data.EasyTexts = h.infraEasyTexts(ctx, id)
 	data.SetupTab = h.infraSetupTab(ctx, id)
