@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -113,10 +114,127 @@ func TestAppWriteGuard(t *testing.T) {
 		t.Errorf("Once nach 500 nicht frei: replay=%q runs+=%d", rec.Header().Get("X-PDH-Once-Replay"), runs-runsBefore)
 	}
 
+	// M4: ohne Gerät (nicht hinter appAuth) → 401
+	noDev := httptest.NewRequest("POST", "/api/app/v1/x", nil)
+	noDev.Header.Set("X-PDH-Once", once())
+	rec = httptest.NewRecorder()
+	guard.ServeHTTP(rec, noDev)
+	if rec.Code != 401 || code(rec) != "app_unauthorized" {
+		t.Errorf("ohne Gerät: %d %s", rec.Code, rec.Body.String())
+	}
+
+	// M6: Replay eines erfolgreichen ersten Aufrufs: Handler läuft einmal mehr mit appIsReplay
+	o6 := once()
+	status = 200
+	r0, p0 := runs, replays
+	do(o6)
+	do(o6)
+	if runs-r0 != 2 || replays-p0 != 1 {
+		t.Errorf("M6: runs+=%d replays+=%d, will 2/1", runs-r0, replays-p0)
+	}
+
+	// M3: Once eines anderen Benutzers oder Pfads → 409 app_conflict, Handler läuft nicht
+	o3 := once()
+	do(o3)
+	rBefore := runs
+	other := e.user("appx"+e.sfx, "user", false)
+	req3 := httptest.NewRequest("POST", "/api/app/v1/x", nil)
+	req3.Header.Set("X-PDH-Once", o3)
+	req3 = req3.WithContext(context.WithValue(req3.Context(), appDeviceKey{}, &appDeviceCtx{ID: "d2", UserID: other}))
+	rec = httptest.NewRecorder()
+	guard.ServeHTTP(rec, req3)
+	if rec.Code != 409 || code(rec) != "app_conflict" || rec.Header().Get("X-PDH-Once-Replay") != "" {
+		t.Errorf("M3 anderer Benutzer: %d %s", rec.Code, rec.Body.String())
+	}
+	req3 = httptest.NewRequest("POST", "/api/app/v1/anderer", nil)
+	req3.Header.Set("X-PDH-Once", o3)
+	req3 = req3.WithContext(context.WithValue(req3.Context(), appDeviceKey{}, &appDeviceCtx{ID: "d", UserID: uid}))
+	rec = httptest.NewRecorder()
+	guard.ServeHTTP(rec, req3)
+	if rec.Code != 409 || code(rec) != "app_conflict" || runs != rBefore {
+		t.Errorf("M3 anderer Pfad: %d %s runs+=%d", rec.Code, rec.Body.String(), runs-rBefore)
+	}
+
+	// I1: erste Anfrage läuft noch → zweite 409 app_conflict mit Retry-After, ohne Handler;
+	// scheitert die erste, ist die Once frei und die dritte läuft wirklich.
+	o1 := once()
+	started, release := make(chan struct{}), make(chan struct{})
+	var bruns int
+	var failing atomic.Bool
+	failing.Store(true)
+	blocking := h.appWrite(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		bruns++
+		if bruns == 1 {
+			close(started)
+			<-release
+		}
+		if failing.Load() && bruns == 1 {
+			w.WriteHeader(500)
+			return
+		}
+		w.WriteHeader(200)
+	}))
+	mk := func() *http.Request {
+		q := httptest.NewRequest("POST", "/api/app/v1/x", nil)
+		q.Header.Set("X-PDH-Once", o1)
+		return q.WithContext(context.WithValue(q.Context(), appDeviceKey{}, &appDeviceCtx{ID: "d", UserID: uid}))
+	}
+	done := make(chan *httptest.ResponseRecorder)
+	go func() {
+		ra := httptest.NewRecorder()
+		blocking.ServeHTTP(ra, mk())
+		done <- ra
+	}()
+	<-started
+	rb := httptest.NewRecorder()
+	blocking.ServeHTTP(rb, mk())
+	if rb.Code != 409 || code(rb) != "app_conflict" || rb.Header().Get("Retry-After") != "2" || bruns != 1 {
+		t.Errorf("I1 B: %d %s retry=%q runs=%d", rb.Code, rb.Body.String(), rb.Header().Get("Retry-After"), bruns)
+	}
+	close(release)
+	if ra := <-done; ra.Code != 500 {
+		t.Errorf("I1 A: %d", ra.Code)
+	}
+	rc := httptest.NewRecorder()
+	blocking.ServeHTTP(rc, mk())
+	if rc.Code != 200 || rc.Header().Get("X-PDH-Once-Replay") != "" || bruns != 2 {
+		t.Errorf("I1 C: %d replay=%q runs=%d", rc.Code, rc.Header().Get("X-PDH-Once-Replay"), bruns)
+	}
+
+	// I2: Panik im Handler gibt die Once frei (und die Panik läuft weiter)
+	o2p := once()
+	pruns := 0
+	panicky := h.appWrite(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		pruns++
+		if pruns == 1 {
+			panic("boom")
+		}
+		w.WriteHeader(200)
+	}))
+	mkp := func() *http.Request {
+		q := httptest.NewRequest("POST", "/api/app/v1/x", nil)
+		q.Header.Set("X-PDH-Once", o2p)
+		return q.WithContext(context.WithValue(q.Context(), appDeviceKey{}, &appDeviceCtx{ID: "d", UserID: uid}))
+	}
+	func() {
+		defer func() {
+			if recover() == nil {
+				t.Error("I2: Panik wurde verschluckt")
+			}
+		}()
+		panicky.ServeHTTP(httptest.NewRecorder(), mkp())
+	}()
+	rp := httptest.NewRecorder()
+	panicky.ServeHTTP(rp, mkp())
+	if rp.Code != 200 || rp.Header().Get("X-PDH-Once-Replay") != "" || pruns != 2 {
+		t.Errorf("I2: %d replay=%q runs=%d", rp.Code, rp.Header().Get("X-PDH-Once-Replay"), pruns)
+	}
+
 	// Ohne Datenbank: vorübergehend nicht verfügbar statt ohne Schutz durchzureichen
 	nodb := &Handler{}
 	req := httptest.NewRequest("POST", "/api/app/v1/x", nil)
 	req.Header.Set("X-PDH-Once", once())
+	req = req.WithContext(context.WithValue(req.Context(), appDeviceKey{}, &appDeviceCtx{ID: "d", UserID: uid}))
 	rec = httptest.NewRecorder()
 	nodb.appWrite(next).ServeHTTP(rec, req)
 	if rec.Code != 503 || code(rec) != "app_unavailable" {
