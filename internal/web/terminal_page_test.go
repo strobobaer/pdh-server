@@ -367,3 +367,44 @@ func TestTerminalScriptSettingsStreamOnSchoner(t *testing.T) {
 		}
 	}
 }
+
+// Zahnrad zur lokalen Admin-Seite: nur in der Gerätesitzung, in allen Modi, mit Beschriftung.
+func TestTerminalGearOnlyForDeviceSession(t *testing.T) {
+	h, _ := terminalTestHandler(t)
+	render := func(p terminalPage) string {
+		rec := httptest.NewRecorder()
+		h.renderTerminal(rec, p)
+		return rec.Body.String()
+	}
+	for _, mode := range []string{"schoner", "info", "neu", "global"} {
+		b := render(terminalPage{Mode: mode, Name: "X", DeviceSession: true, AdminURL: terminalLocalAdminURL})
+		for _, want := range []string{`class="t-gear"`, `href="http://127.0.0.1:8081/admin/"`, `aria-label="Terminal-Einstellungen"`} {
+			if !strings.Contains(b, want) {
+				t.Errorf("%s: %q fehlt", mode, want)
+			}
+		}
+		if b = render(terminalPage{Mode: mode, Name: "X"}); strings.Contains(b, "t-gear\"") || strings.Contains(b, "8081") {
+			t.Errorf("%s: Zahnrad ohne Gerätesitzung", mode)
+		}
+	}
+	if !strings.Contains(render(terminalPage{NoInfra: true, DeviceSession: true, AdminURL: terminalLocalAdminURL}), `class="t-gear"`) {
+		t.Error("Seite ohne Anlage: Zahnrad fehlt")
+	}
+	if !strings.Contains(CSSMinTouch(t), "width:48px;height:48px") {
+		t.Error("Trefferfläche unter 44 px")
+	}
+}
+
+func CSSMinTouch(t *testing.T) string {
+	t.Helper()
+	b, err := os.ReadFile(terminalTemplatePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(b)
+	i := strings.Index(s, ".t-gear{")
+	if i < 0 {
+		t.Fatal(".t-gear fehlt")
+	}
+	return s[i : i+400]
+}

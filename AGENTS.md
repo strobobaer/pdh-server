@@ -577,7 +577,7 @@ und 3 drückt bis auf Weiteres der Anwender.
     Oberfläche, `go-modules-licenses.txt` behalten, Test für die
     Vollständigkeit von `THIRD_PARTY_LICENSES.md`); Markenprüfung
     „Pulse Data Hub“ angeboten.
-19. **Firmenstammdaten = 0.82.17** (Wunsch des Anwenders vom 21.11.2026):
+19. **Firmenstammdaten = 0.82.18** (Wunsch des Anwenders vom 21.11.2026):
     Fenster am obersten Knoten der Infrastruktur; die Daten gelten
     unternehmensweit im Mail- und Postverkehr, der angemeldete Benutzer ist
     Ansprechpartner. Entschieden: „A jetzt, B danach“ (A: alle Mails mit
@@ -609,7 +609,7 @@ und 3 drückt bis auf Weiteres der Anwender.
     neues Recht, keine Migration. **Auf `main`** (21.11.2026, Merge `a44e091`,
     Schlussprüfung mit Fix-Welle) und dem Testverbund (beide Server und Zeuge
     0.82.15, aktiv jetzt `pdh-server` 10.10.0.17; alle nginx-Seiten dort mit
-    IPv6). **0.82.16**: Name im Haus ist keine Pflicht mehr zum Scharfschalten
+    IPv6). **0.82.17**: Name im Haus ist keine Pflicht mehr zum Scharfschalten
     (Anwender: „MQTT ohne DNS ok“), nur Hinweis. Offen: Browserprüfung der
     Prüfliste, Einspielen auf 202 (Anwender, mit Sicherung). Geparkte kleine
     Befunde der Schlussprüfung: Seite fehlt bis zum Tageslauf, wenn der
@@ -620,7 +620,7 @@ und 3 drückt bis auf Weiteres der Anwender.
     Knopf bis ca. 75 s.
 21. **ESPPDH: Update übers Netz (OTA)** – Wunsch des Anwenders vom
     21.11.2026 („Passt“): heute keine OTA-Funktion (kein `ota:`-Baustein,
-    `web_server` mit `ota: false`); geplant als eigenes Paket nach 0.82.17,
+    `web_server` mit `ota: false`); geplant als eigenes Paket nach 0.82.18,
     mit Kennwort je Gerät. Offen: PDH schiebt (Knopf, Server erreicht das
     Gerät) oder Gerät holt (fragt beim PDH, geht auch im abgeschotteten VLAN).
 
