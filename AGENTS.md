@@ -255,9 +255,9 @@ oder ändern.**
    (19.11.2026; Migrationen 179 bis 181, Rechte `esppdh.view`, `esppdh.edit`,
    `esppdh.admin`; Entwurf `docs/superpowers/specs/2026-11-18-esppdh-design.md`,
    Plan `docs/superpowers/plans/2026-11-18-esppdh-paket1.md`). **0.82.0 bis
-   0.82.8 sind auf dem Testverbund** (zuletzt 20.11.2026, Verbund-Update auf
-   `b303fd4`; beide Server und Zeuge 0.82.8, Migrationen 179–184 da, aktiv
-   jetzt `pdh` 10.10.0.14). Offen: am Testverbund auf der Seite „Netzwerk“ den
+   0.82.9 sind auf dem Testverbund** (zuletzt 21.11.2026, Verbund-Update auf
+   `d244bc4`; beide Server und Zeuge 0.82.9, Migrationen 179–185 da, aktiv
+   jetzt `pdh-server` 10.10.0.17). Offen: am Testverbund auf der Seite „Netzwerk“ den
    Haken „Für ESPPDH-Geräte nutzbar“ am Geräte-WLAN setzen, auf beiden Servern
    die Umgebung einrichten, ein Gerät bauen, die Rollen umschalten, die
    Firmware am zweiten Server herunterladen und im Browser prüfen. Paket 2 und
@@ -418,8 +418,18 @@ oder ändern.**
    (`mayCreateProject` = Rechte-Regel), Migration 185 benennt das Recht in
    „Projekte bearbeiten“ um; „Einstellung behalten“ am aktiven Server erst,
    wenn die gemeinsame Adresse zurück ist (`VIPMissing`, auch im Handler).
-   Lokal committet (21.11.2026), `go vet` und `go test ./...` grün; nicht
-   gepusht. Browser nicht geprüft (Verbund-Update nicht beauftragt).
+   Auf `main` (21.11.2026, Merge `d244bc4`) und dem Testverbund. Am
+   Testverbund geprüft (21.11.2026): als Administrator Knopf und Formular
+   „Neues Projekt“ da, Recht heißt unter „Rollen & Rechte“ „Projekte
+   bearbeiten“; mit einer Rolle ohne `projects.edit` fehlen Knopf und
+   Formular; Startseite, Schulungen, Rahmenverträge, Bestellungen,
+   Netzwerk und Handbuch in Fiori/Fluent, hell/dunkel, 320–1366 px ohne
+   Überlauf und Konsolenfehler; „DNS-Server ändern“ am aktiven Server
+   (gleiche Werte): Hinweis „Die gemeinsame Adresse … ist noch nicht
+   zurück“ rund 4,5 s, danach erst „Einstellung behalten“, bestätigt,
+   Wartung wieder aus. Testrolle entfernt, Prüfkonto gesperrt. Nicht im
+   Browser gesehen: Tagesgrenzen zwischen 0 und 1 Uhr (nur automatisch
+   getestet).
    Geparkt (Tests, klein): Laufen alle Pakete gleichzeitig gegen die
    Labor-Datenbank, kann ein Test ein Gerät `w-test-…` auf den
    Lasttest-Benutzer `last01` buchen; dann scheitert
