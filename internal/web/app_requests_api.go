@@ -60,6 +60,37 @@ func hashAppToken(tok string) string {
 	return hex.EncodeToString(sum[:])
 }
 
+// tryAcquire reserviert atomar einen Platz im Limit (false, wenn voll). Mit
+// release wird er zurückgegeben; so lässt sich das Limit nicht mit parallelen
+// Anfragen umgehen und es zählen nur wirklich angelegte Anfragen.
+func (l *failLimiter) tryAcquire(key string, now time.Time) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	hs := l.recent(key, now)
+	if len(hs) >= l.max {
+		return false
+	}
+	l.hits[key] = append(hs, now)
+	return true
+}
+
+func (l *failLimiter) release(key string, slot time.Time) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	hs := l.hits[key]
+	for i, h := range hs {
+		if h.Equal(slot) {
+			hs = append(hs[:i:i], hs[i+1:]...)
+			break
+		}
+	}
+	if len(hs) == 0 {
+		delete(l.hits, key)
+	} else {
+		l.hits[key] = hs
+	}
+}
+
 type appRequestInput struct {
 	Name         string `json:"name"`
 	DepartmentID string `json:"department_id"`
@@ -77,7 +108,7 @@ func appRequestReply(w http.ResponseWriter, status int, id, fingerprint string) 
 
 // AppRequestCreateAPI: POST /api/app/v1/requests.
 func (h *Handler) AppRequestCreateAPI(w http.ResponseWriter, r *http.Request) {
-	key := limiterKey(clientIP(r))
+	key := limiterKey(easyClient(r))
 	body, err := io.ReadAll(io.LimitReader(r.Body, appRequestMaxBody+1))
 	if err != nil || len(body) > appRequestMaxBody {
 		terminalJSONErr(w, http.StatusUnprocessableEntity, "Eingabe zu groß oder nicht lesbar")
@@ -92,7 +123,7 @@ func (h *Handler) AppRequestCreateAPI(w http.ResponseWriter, r *http.Request) {
 	}
 	name := strings.TrimSpace(in.Name)
 	if err := validDeviceName(name); err != nil {
-		terminalJSONErr(w, http.StatusUnprocessableEntity, err.Error())
+		terminalJSONErr(w, http.StatusUnprocessableEntity, strings.Replace(err.Error(), "Gerätename", "Name", 1))
 		return
 	}
 	label := strings.TrimSpace(in.DeviceLabel)
@@ -110,11 +141,11 @@ func (h *Handler) AppRequestCreateAPI(w http.ResponseWriter, r *http.Request) {
 		terminalJSONErr(w, http.StatusUnprocessableEntity, "App-Version ungültig")
 		return
 	}
-	if _, err := parseAppPublicKey(in.PublicKey); err != nil {
+	der, derErr := appDecodeB64(in.PublicKey)
+	if _, err := parseAppPublicKey(in.PublicKey); err != nil || derErr != nil {
 		terminalJSONErr(w, http.StatusUnprocessableEntity, "Geräteschlüssel ungültig")
 		return
 	}
-	der, _ := appDecodeB64(in.PublicKey)
 	pub := base64.RawURLEncoding.EncodeToString(der)
 	fp := appKeyFingerprint(pub)
 	if fp == "" || appConfirmCode(fp) == "" {
@@ -161,26 +192,42 @@ func (h *Handler) AppRequestCreateAPI(w http.ResponseWriter, r *http.Request) {
 		appRequestReply(w, http.StatusOK, id, fp)
 		return
 	}
-	var known bool
-	if err := h.db.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM app_devices WHERE key_fingerprint = $1)`, fp).Scan(&known); err != nil {
+	var revoked bool
+	switch err := h.db.QueryRow(ctx, `SELECT revoked_at IS NOT NULL FROM app_devices WHERE key_fingerprint = $1`, fp).Scan(&revoked); {
+	case err == nil && revoked:
+		terminalJSONErr(w, http.StatusConflict, "Dieses Gerät wurde gesperrt. Bitte die App zurücksetzen und den Zugang neu anfragen.")
+		return
+	case err == nil:
+		terminalJSONErr(w, http.StatusConflict, "Dieses Gerät ist bereits eingerichtet")
+		return
+	case !errors.Is(err, pgx.ErrNoRows):
 		serverErr(err)
 		return
 	}
-	if known {
-		terminalJSONErr(w, http.StatusConflict, "Dieses Gerät ist bereits eingerichtet")
-		return
-	}
-	if appRequestLimit.blocked(key, time.Now()) {
+	// Platz im Limit atomar reservieren; bei Fehler, Rollback oder Wiederholung zurückgeben.
+	slot := time.Now()
+	if !appRequestLimit.tryAcquire(key, slot) {
+		// Wiederholung einer inzwischen angelegten Anfrage bleibt auch bei vollem Limit gültig.
+		if id, ok, err := existing(); err == nil && ok {
+			appRequestReply(w, http.StatusOK, id, fp)
+			return
+		}
 		terminalJSONErr(w, http.StatusTooManyRequests, msgAppBlocked)
 		return
 	}
+	created := false
+	defer func() {
+		if !created {
+			appRequestLimit.release(key, slot)
+		}
+	}()
 
 	title := "App-Zugang: " + name
 	if deptName != "" {
 		title += " (" + deptName + ")"
 	}
 	desc := fmt.Sprintf("Zugang für die PDH-App angefragt.\n\nName: %s\nAbteilung: %s\nGerät: %s\nSystem: %s\nApp-Version: %s\nBestätigungscode: %s\n\nDen Code mit dem Telefon vergleichen, bevor das Gerät freigegeben wird.",
-		name, deptNameOrDash(deptName), deviceOrDash(label), in.Platform, in.AppVersion, appConfirmCode(fp))
+		name, dashIfEmpty(deptName), dashIfEmpty(label), in.Platform, in.AppVersion, appConfirmCode(fp))
 	group := appAdminGroupID
 
 	tx, err := h.db.Begin(ctx)
@@ -205,9 +252,11 @@ func (h *Handler) AppRequestCreateAPI(w http.ResponseWriter, r *http.Request) {
 		serverErr(err)
 		return
 	}
-	t := &tickets.Ticket{Title: title, Description: desc, Priority: tickets.PriorityMedium,
-		CreatedBy: appSystemUserID, AssignedGroupID: &group}
-	if err := tickets.NewRepository(h.db).CreateTx(ctx, tx, t); err != nil {
+	t, err := h.tickets.CreateInTx(ctx, tx, &tickets.CreateInput{
+		Title: title, Description: desc, Priority: tickets.PriorityMedium,
+		AssignedGroupID: &group, Tags: []string{},
+	}, appSystemUserID)
+	if err != nil {
 		serverErr(err)
 		return
 	}
@@ -223,25 +272,24 @@ func (h *Handler) AppRequestCreateAPI(w http.ResponseWriter, r *http.Request) {
 		serverErr(err)
 		return
 	}
-	appRequestLimit.fail(key, time.Now()) // zählt nur neu angelegte Anfragen
+	created = true // der reservierte Platz bleibt: zählt nur neu angelegte Anfragen
+	h.tickets.AfterCreate(t)
 	componentLog("app").Info().Str("request", reqID).Str("ticket", t.ID).Msg("app: zugang angefragt")
 	appRequestReply(w, http.StatusCreated, reqID, fp)
 }
 
-func deptNameOrDash(s string) string {
+func dashIfEmpty(s string) string {
 	if s == "" {
 		return "–"
 	}
 	return s
 }
 
-func deviceOrDash(s string) string { return deptNameOrDash(s) }
-
 // AppRequestStatusAPI: GET /api/app/v1/requests/{id}. Signiert mit dem
 // Schlüssel der Anfrage. Nach der Freigabe liefert es das Token, solange das
 // Gerät es noch nicht benutzt hat (jede Abholung stellt ein neues aus).
 func (h *Handler) AppRequestStatusAPI(w http.ResponseWriter, r *http.Request) {
-	key := limiterKey(clientIP(r))
+	key := limiterKey(easyClient(r))
 	now := time.Now()
 	if appFailLimit.blocked(key, now) {
 		terminalJSONErr(w, http.StatusTooManyRequests, msgAppBlocked)
@@ -288,6 +336,8 @@ func (h *Handler) AppRequestStatusAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Gleichzeitige Abholungen vor der Erstnutzung stellen je ein Token aus, gültig
+	// ist nur das zuletzt ausgestellte; die App fragt bei 401 erneut nach.
 	tx, err := h.db.Begin(ctx)
 	if err != nil {
 		serverErr(err)
@@ -303,7 +353,11 @@ func (h *Handler) AppRequestStatusAPI(w http.ResponseWriter, r *http.Request) {
 		serverErr(err)
 		return
 	}
-	if firstUsed != nil || revoked != nil {
+	if revoked != nil { // gesperrt: nie ein Token, die App muss neu anfragen
+		terminalJSONErr(w, http.StatusUnauthorized, "app_revoked")
+		return
+	}
+	if firstUsed != nil {
 		terminalJSON(w, http.StatusOK, map[string]string{"status": "approved"})
 		return
 	}

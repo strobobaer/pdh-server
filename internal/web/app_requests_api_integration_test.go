@@ -7,13 +7,20 @@ package web
 import (
 	"context"
 	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
+
+	"pdh/internal/modules/tickets"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -29,7 +36,7 @@ func newAppReqEnv(t *testing.T) *appReqEnv {
 	e := newATEnv(t)
 	appRequestLimit = newFailLimiter(3, time.Hour)
 	appFailLimit = newFailLimiter(10, 5*time.Minute)
-	h := &Handler{db: e.pool}
+	h := &Handler{db: e.pool, tickets: tickets.NewService(tickets.NewRepository(e.pool))}
 	r := chi.NewRouter()
 	r.Post("/api/app/v1/requests", h.AppRequestCreateAPI)
 	r.Get("/api/app/v1/requests/{id}", h.AppRequestStatusAPI)
@@ -179,7 +186,15 @@ func TestAppRequestCreateInvalid(t *testing.T) {
 	dept := e.dept("Abt")
 	ip := e.nextIP()
 	_, pub := appTestKey(t)
-	p384 := "MHYwEAYHKoZIzj0CAQYFK4EEACIDYgAE" + strings.Repeat("A", 128)
+	k384, err := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	der384, err := x509.MarshalPKIXPublicKey(&k384.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p384 := base64.RawURLEncoding.EncodeToString(der384)
 	cases := map[string]string{
 		"leerer Name":       e.body("  ", dept, "ios", pub),
 		"Name zu lang":      e.body(strings.Repeat("a", 121), dept, "ios", pub),
@@ -320,5 +335,178 @@ func TestAppRequestRejected(t *testing.T) {
 	e.exec(`INSERT INTO app_devices (user_id, public_key, key_fingerprint, label) VALUES ($1::uuid, $2, $3, $4)`, uid, pub3, appKeyFingerprint(pub3), "x "+e.sfx)
 	if rec = e.post(ip, e.body("Dev "+e.sfx, "", "ios", pub3)); rec.Code != 409 {
 		t.Errorf("Schlüssel eines Geräts: %d", rec.Code)
+	}
+}
+
+// postXFF: wie post, mit X-Forwarded-For.
+func (e *appReqEnv) postXFF(ip, xff, body string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest("POST", "/api/app/v1/requests", strings.NewReader(body))
+	req.RemoteAddr = ip
+	req.Header.Set("X-Forwarded-For", xff)
+	rec := httptest.NewRecorder()
+	e.router.ServeHTTP(rec, req)
+	return rec
+}
+
+func (e *appReqEnv) newBody(name string) (string, string) {
+	_, k := appTestKey(e.t)
+	return e.body(name+" "+e.sfx, "", "ios", k), k
+}
+
+// Das Limit hält auch bei parallelen Anfragen: höchstens 3 werden angelegt.
+func TestAppRequestLimitParallel(t *testing.T) {
+	e := newAppReqEnv(t)
+	ip := e.nextIP()
+	const n = 12
+	bodies := make([]string, n)
+	for i := range bodies {
+		bodies[i], _ = e.newBody("Par")
+	}
+	codes := make([]int, n)
+	var wg sync.WaitGroup
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			codes[i] = e.post(ip, bodies[i]).Code
+		}(i)
+	}
+	wg.Wait()
+	created, limited := 0, 0
+	for _, c := range codes {
+		switch c {
+		case 201:
+			created++
+		case 429:
+			limited++
+		}
+	}
+	if created != 3 || limited != n-3 {
+		t.Fatalf("codes: %v", codes)
+	}
+	var cnt int
+	e.must(e.pool.QueryRow(e.ctx, `SELECT count(*) FROM app_requests WHERE name LIKE '%'||$1||'%'`, e.sfx).Scan(&cnt))
+	if cnt != 3 {
+		t.Errorf("angelegte Anfragen: %d", cnt)
+	}
+}
+
+// Gleichzeitige Anfragen mit demselben Schlüssel: eine Anfrage, ein Ticket, ein Platz im Limit.
+func TestAppRequestSameKeyParallel(t *testing.T) {
+	e := newAppReqEnv(t)
+	ip := e.nextIP()
+	body, _ := e.newBody("Same")
+	const n = 3 // innerhalb des Limits, damit der 23505-Weg geprüft wird
+	recs := make([]*httptest.ResponseRecorder, n)
+	var wg sync.WaitGroup
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			recs[i] = e.post(ip, body)
+		}(i)
+	}
+	wg.Wait()
+	id, created := "", 0
+	for _, rec := range recs {
+		if rec.Code != 200 && rec.Code != 201 {
+			t.Fatalf("antwort: %d %s", rec.Code, rec.Body.String())
+		}
+		if rec.Code == 201 {
+			created++
+		}
+		m := decodeAppReq(t, rec)
+		if id == "" {
+			id = m.RequestID
+		} else if m.RequestID != id {
+			t.Fatalf("verschiedene Anfragen: %s %s", id, m.RequestID)
+		}
+	}
+	if created != 1 {
+		t.Errorf("201 mal: %d", created)
+	}
+	var cnt int
+	e.must(e.pool.QueryRow(e.ctx, `SELECT count(*) FROM tickets WHERE app_request_id = $1::uuid`, id).Scan(&cnt))
+	if cnt != 1 {
+		t.Errorf("tickets: %d", cnt)
+	}
+	// Nur ein Platz belegt: zwei weitere neue Anfragen gehen noch.
+	for i := 0; i < 2; i++ {
+		b, _ := e.newBody("More")
+		if rec := e.post(ip, b); rec.Code != 201 {
+			t.Errorf("weitere %d: %d", i, rec.Code)
+		}
+	}
+}
+
+// Quelladresse: X-Forwarded-For zählt nur von Loopback.
+func TestAppRequestClientAddress(t *testing.T) {
+	e := newAppReqEnv(t)
+	fill := func(ip, xff string) {
+		for i := 0; i < 3; i++ {
+			b, _ := e.newBody("Fill")
+			if rec := e.postXFF(ip, xff, b); rec.Code != 201 {
+				t.Fatalf("%s %s: %d", ip, xff, rec.Code)
+			}
+		}
+	}
+	// Von Loopback: getrennte Behälter je weitergereichter Adresse.
+	fill("127.0.0.1:5000", "203.0.113.1")
+	b, _ := e.newBody("A")
+	if rec := e.postXFF("127.0.0.1:5000", "203.0.113.1", b); rec.Code != 429 {
+		t.Errorf("gleiche Adresse: %d", rec.Code)
+	}
+	b, _ = e.newBody("B")
+	if rec := e.postXFF("127.0.0.1:5000", "203.0.113.2", b); rec.Code != 201 {
+		t.Errorf("andere Adresse: %d", rec.Code)
+	}
+	// Nicht von Loopback: Kopfzeile wird ignoriert.
+	ip := e.nextIP()
+	fill(ip, "203.0.113.50")
+	b, _ = e.newBody("C")
+	if rec := e.postXFF(ip, "203.0.113.51", b); rec.Code != 429 {
+		t.Errorf("erfundene Adresse von außen: %d", rec.Code)
+	}
+}
+
+// Gesperrtes Gerät: Abholen -> 401 app_revoked (auch vor der Erstnutzung); neue Anfrage -> 409.
+func TestAppRequestRevokedDevice(t *testing.T) {
+	e := newAppReqEnv(t)
+	ip := e.nextIP()
+	priv, pub := appTestKey(t)
+	id := decodeAppReq(t, e.post(ip, e.body("Rev "+e.sfx, "", "ios", pub))).RequestID
+	uid := e.user("apprev", "worker", false)
+	var devID string
+	e.must(e.pool.QueryRow(e.ctx, `INSERT INTO app_devices (request_id, user_id, public_key, key_fingerprint, label)
+		SELECT id, $2::uuid, public_key, key_fingerprint, device_label FROM app_requests WHERE id = $1::uuid RETURNING id::text`, id, uid).Scan(&devID))
+	e.exec(`UPDATE app_requests SET status = 'approved', device_id = $2::uuid WHERE id = $1::uuid`, id, devID)
+
+	// aktiv: bestehende Meldung
+	rec := e.post(ip, e.body("Rev "+e.sfx, "", "ios", pub))
+	if rec.Code != 409 || !strings.Contains(rec.Body.String(), "bereits eingerichtet") {
+		t.Errorf("aktives Gerät: %d %s", rec.Code, rec.Body.String())
+	}
+	e.exec(`UPDATE app_devices SET revoked_at = NOW() WHERE id = $1::uuid`, devID)
+	rec = e.get(ip, id, priv, e.nonce("v1"))
+	if rec.Code != 401 || decodeAppReq(t, rec).Error != "app_revoked" || strings.Contains(rec.Body.String(), "pdha_") {
+		t.Errorf("gesperrt vor Erstnutzung: %d %s", rec.Code, rec.Body.String())
+	}
+	e.exec(`UPDATE app_devices SET first_used_at = NOW() WHERE id = $1::uuid`, devID)
+	rec = e.get(ip, id, priv, e.nonce("v2"))
+	if rec.Code != 401 || decodeAppReq(t, rec).Error != "app_revoked" {
+		t.Errorf("gesperrt nach Erstnutzung: %d %s", rec.Code, rec.Body.String())
+	}
+	rec = e.post(ip, e.body("Rev "+e.sfx, "", "ios", pub))
+	if rec.Code != 409 || !strings.Contains(rec.Body.String(), "Dieses Gerät wurde gesperrt. Bitte die App zurücksetzen und den Zugang neu anfragen.") {
+		t.Errorf("neue Anfrage gesperrt: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestAppRequestNameMessage(t *testing.T) {
+	e := newAppReqEnv(t)
+	_, pub := appTestKey(t)
+	rec := e.post(e.nextIP(), e.body("  ", "", "ios", pub))
+	if rec.Code != 422 || !strings.Contains(rec.Body.String(), "Der Name muss 1 bis 120 Zeichen lang sein") {
+		t.Errorf("meldung: %d %s", rec.Code, rec.Body.String())
 	}
 }
