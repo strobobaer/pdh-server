@@ -54,8 +54,8 @@ func (h *Handler) AssignmentBoardPage(w http.ResponseWriter, r *http.Request) {
 		BaseData: h.baseData(r, "assignments", "Zuweisung", "Offene Vorgänge ohne Zuweisung"),
 		// alle Arten zeigen – zuweisen darf der Broker der Art bzw. ein Admin
 		Groups: h.brokerUnassigned(ctx, r, u.ID, assignmentBoardLimit, true, admin),
-		Users:    h.userOptions(ctx),
-		Teams:    h.loadGroups(ctx),
+		Users:  h.userOptions(ctx),
+		Teams:  h.loadGroups(ctx),
 	}
 	for _, g := range data.Groups {
 		data.Total += len(g.Items) + g.More
