@@ -183,6 +183,32 @@ func TestForbiddenProduction(t *testing.T) {
 	}
 }
 
+// Eine vertippte Angabe darf die Sperre nicht abschalten: Die Lastprüfung startet dann nicht.
+func TestForbiddenInvalidProductionValue(t *testing.T) {
+	for _, bad := range []string{"10.10.0.2O", "192.0.2.202/24", "prod-server", "192.0.2"} {
+		t.Setenv("PDH_LAST_PRODUCTION", bad)
+		for _, c := range []map[string]string{{"-base": "http://127.0.0.1:8097"}, {"-dsn": "postgres://pdh:x@192.0.2.15:5432/pdh"}} {
+			if err := forbidden(c); err == nil || !strings.Contains(err.Error(), "PDH_LAST_PRODUCTION") {
+				t.Errorf("PDH_LAST_PRODUCTION=%q, %v: hätte abgelehnt werden müssen: %v", bad, c, err)
+			}
+		}
+	}
+}
+
+// Ein Rechnername, der auf den Produktivserver zeigt, ist ebenso gesperrt wie die Adresse.
+func TestForbiddenProductionByHostname(t *testing.T) {
+	t.Setenv("PDH_LAST_PRODUCTION", "127.0.0.1")
+	for _, c := range []map[string]string{
+		{"-base": "http://localhost:8090"},
+		{"-ssh": "admin@localhost"},
+		{"-dsn": "host=localhost dbname=pdh user=pdh"},
+	} {
+		if err := forbidden(c); err == nil {
+			t.Errorf("%v zeigt über den Namen auf den Produktivserver und hätte abgelehnt werden müssen", c)
+		}
+	}
+}
+
 func TestForbiddenProductionFromEnv(t *testing.T) {
 	t.Setenv("PDH_LAST_PRODUCTION", " 198.51.100.7 ")
 	if err := forbidden(map[string]string{"-ssh": "admin@198.51.100.7"}); err == nil || !strings.Contains(err.Error(), "198.51.100.7") {
