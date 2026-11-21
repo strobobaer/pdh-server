@@ -98,6 +98,19 @@
     {{else}}<p class="rec-sub">Noch kein Gerät gekoppelt.</p>{{end}}
   </div>
   {{end}}
+  {{if .ShowAppDevices}}
+  <div class="card">
+    <div class="card-title"><span><i class="ti ti-device-mobile"></i> {{t "App-Geräte"}}</span></div>
+    {{range .AppDevices}}
+    <div class="rec-row" style="flex-wrap:wrap;gap:8px{{if .Revoked}};opacity:.55{{end}}">
+      <i class="ti ti-device-mobile" style="color:var(--muted)"></i>
+      <div class="grow"><b>{{if .Label}}{{.Label}}{{else}}{{.Platform}}{{end}}</b> {{if .Revoked}}<span class="badge b-red">{{t "gesperrt"}}</span>{{else}}<span class="badge b-green">{{t "aktiv"}}</span>{{end}}
+        <div class="rec-sub">{{.Platform}} · {{t "App-Version"}} {{.Version}} · {{t "eingerichtet"}} {{.Created}} · {{t "zuletzt gesehen"}} {{.LastSeen}}{{if .Revoked}} · {{t "gesperrt"}} {{.Revoked}}{{end}}</div></div>
+      {{if .CanRevoke}}<form method="post" action="/app/devices/{{.ID}}/revoke" style="margin:0" onsubmit="return confirm({{t "Gerät sperren? Die App wird innerhalb von 30 Sekunden abgemeldet."}})"><input type="hidden" name="back" value="user"><button class="btn btn-small" type="submit" style="color:var(--red)"><i class="ti ti-ban"></i> {{t "Sperren"}}</button></form>{{end}}
+    </div>
+    {{else}}<p class="rec-sub">{{t "Noch kein App-Gerät eingerichtet."}}</p>{{end}}
+  </div>
+  {{end}}
   {{if $m.Notes}}<div class="card"><div class="card-title"><span><i class="ti ti-notes"></i> Notizen</span></div><div class="rec-v" style="font-size:13px">{{$m.Notes}}</div></div>{{end}}
   {{if .CanMailSettings}}
   <div class="card">

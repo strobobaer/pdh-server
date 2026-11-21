@@ -3583,7 +3583,7 @@ curl -fsS -X PUT "https://api.cloudflare.com/client/v4/zones/$CF_ZONE/dns_record
   {{template "hb-shots" (dict "Ref" (index $s "spiegelbetrieb") "Can" $can)}}
 </section>
 
-<section class="hb-ch" id="pdh-app" data-title="PDH-App" data-pages="app_setup app_request">
+<section class="hb-ch" id="pdh-app" data-title="PDH-App" data-pages="app_setup app_request app_devices app_install">
   <h2><i class="ti ti-device-mobile"></i> PDH-App</h2>
   <p>Die PDH-App verbindet Handy und Tablet mit diesem Server; die Einrichtungsseite <b>/app/setup</b> führt durch die Installation.</p>
   <div class="hb-howto"><b><i class="ti ti-device-mobile-check"></i> So gibst du ein Telefon frei</b>
@@ -3596,6 +3596,20 @@ curl -fsS -X PUT "https://api.cloudflare.com/client/v4/zones/$CF_ZONE/dns_record
       <li><b>Freigeben</b> legt das Gerät an und schließt das Ticket; die App holt ihren Zugang danach selbst ab. <b>Ablehnen</b> schließt das Ticket ohne Gerät.</li>
     </ol>
     Die Rechte vergibst du nicht am Gerät: Es gelten die Rechte der Person; das Gerät kann sie nur einschränken. Einzelrechte änderst du über das Schild-Symbol neben der Person.
+  </div>
+  <div class="hb-howto"><b><i class="ti ti-devices"></i> So sperrst du ein Telefon und stellst die App ein</b>
+    <ol class="hb-steps">
+      <li>Unter <b>Verwaltung → App-Geräte</b> stehen die eingerichteten Telefone mit Benutzer, System, App-Version und letztem Zugriff. Du siehst nur Geräte von Personen aus Abteilungen, für die du „App: Geräte freigeben und sperren“ hast; offene Anfragen stehen darüber mit einem Link zur App-Konfiguration.</li>
+      <li><b>Sperren</b> trennt das Telefon sofort von diesem Server (spätestens nach 30 Sekunden); gesperrt wird nur, wenn deine Rolle die der Person übertrifft. Dasselbe Knöpfchen steht in der Benutzerverwaltung am Benutzer unter „App-Geräte“. Ein gesperrtes Telefon richtet man neu ein.</li>
+      <li>Das Formular <b>Einstellungen für die App</b> sehen nur Personen mit diesem Recht für die ganze Firma: zusätzliche Adressen (eine je Zeile, nur http:// oder https://), die neueste App-Version je System, ob die vorige Version weiter arbeiten darf, und die Store-Adressen. Trägst du eine neue „neueste Version“ ein, merkt sich der Server die alte als vorige Version.</li>
+    </ol>
+  </div>
+  <div class="hb-howto"><b><i class="ti ti-qrcode"></i> So installierst du die App</b>
+    <ol class="hb-steps">
+      <li>Oben rechts im Benutzermenü <b>App installieren</b> wählen (nur mit dem Recht „App: nutzen“).</li>
+      <li>Den QR-Code mit der Kamera des Telefons scannen, die Seite öffnen und die App aus dem Store installieren; bei Bedarf stehen die Store-Knöpfe auch auf der Seite.</li>
+      <li>In der App den Zugang anfragen; der Code, den das Telefon zeigt, geht an die App-Administratoren (siehe oben).</li>
+    </ol>
   </div>
   {{template "hb-shots" (dict "Ref" (index $s "pdh-app") "Can" $can)}}
 </section>

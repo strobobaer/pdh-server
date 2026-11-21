@@ -1,0 +1,35 @@
+{{template "base" .}}
+{{define "content"}}
+{{/* PDH-App: „App installieren“ – QR-Code zur Einrichtungsseite (app_devices.go).
+     Nur Farbvariablen. Der QR-Code bleibt schwarz auf weiß (Lesbarkeit). */}}
+<style>
+.app-inst{max-width:520px;margin:0 auto}
+.app-inst h1{font-size:19px;font-weight:600;margin-bottom:14px}
+.app-inst-qr{width:min(260px,70vw);margin:0 auto 10px;border-radius:8px;overflow:hidden;border:1px solid var(--border);background:#fff}
+.app-inst-qr svg{display:block;width:100%;height:auto}
+.app-inst-url{text-align:center;font-size:12px;color:var(--muted);overflow-wrap:anywhere;margin-bottom:14px}
+.app-inst-stores{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-bottom:6px}
+.app-inst-steps{margin:0;padding-left:20px;font-size:14px;line-height:1.6}
+</style>
+<div class="app-inst">
+  <h1><i class="ti ti-device-mobile"></i> {{t "App installieren"}}</h1>
+  <div class="card" style="margin-bottom:14px;text-align:center">
+    <p class="rec-sub" style="margin-bottom:10px">{{t "Mit der Kamera des Telefons scannen:"}}</p>
+    <div class="app-inst-qr" role="img" aria-label="{{t "QR-Code zur Einrichtungsseite der App"}}">{{.QR}}</div>
+    <div class="app-inst-url">{{.SetupURL}}</div>
+    {{if or .IOS .Android}}
+    <div class="app-inst-stores">
+      {{if .IOS}}<a class="btn" href="{{.IOS}}" rel="noopener"><i class="ti ti-brand-apple"></i> {{t "App Store (iOS)"}}</a>{{end}}
+      {{if .Android}}<a class="btn" href="{{.Android}}" rel="noopener"><i class="ti ti-brand-google-play"></i> {{t "Google Play (Android)"}}</a>{{end}}
+    </div>
+    {{end}}
+  </div>
+  <div class="card">
+    <div class="card-title"><span><i class="ti ti-list-numbers"></i> {{t "So geht's"}}</span></div>
+    <ol class="app-inst-steps">
+      <li>{{t "QR-Code mit der Kamera scannen und die Seite öffnen. Dort die App aus dem Store installieren."}}</li>
+      <li>{{t "App öffnen, Zugang anfragen und den angezeigten Code an die App-Administratoren weitergeben. Nach der Freigabe ist die App einsatzbereit."}}</li>
+    </ol>
+  </div>
+</div>
+{{end}}

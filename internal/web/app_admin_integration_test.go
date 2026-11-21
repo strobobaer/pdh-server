@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -40,6 +41,11 @@ func newAppAdmEnv(t *testing.T) *appAdmEnv {
 	r.Get("/app/requests/{id}", e.h.AppRequestPage)
 	r.Post("/app/requests/{id}/approve", e.h.AppRequestApproveWeb)
 	r.Post("/app/requests/{id}/reject", e.h.AppRequestRejectWeb)
+	r.Get("/app/devices", e.h.AppDevicesPage)
+	r.Post("/app/devices/{id}/revoke", e.h.AppDeviceRevokeWeb)
+	r.Post("/app/settings", e.h.AppSettingsSaveWeb)
+	r.Get("/app/install", e.h.AppInstallPage)
+	r.With(e.h.AppAuth).Get("/api/app/v1/me", e.h.AppMeAPI)
 	return &appAdmEnv{appReqEnv: e, adm: r}
 }
 
@@ -398,4 +404,182 @@ func TestAppReject(t *testing.T) {
 	if rec := e.do("POST", "/app/requests/"+rq.ID+"/reject", admin, url.Values{}); rec.Code != 409 {
 		t.Errorf("zweites Ablehnen: %d", rec.Code)
 	}
+}
+
+// device legt ein freigegebenes Gerät mit Token an (für Sperr-Tests).
+func (e *appAdmEnv) device(user *users.User) (devID, token string, key *ecdsa.PrivateKey) {
+	e.t.Helper()
+	k, pub := appTestKey(e.t)
+	tok, err := newAppToken()
+	e.must(err)
+	devID = e.id(`INSERT INTO app_devices (user_id, public_key, key_fingerprint, token_sha256, platform, app_version, label)
+		VALUES ($1::uuid, $2, $3, $4, 'android', '1.0.0', $5) RETURNING id::text`, user.ID, pub, appKeyFingerprint(pub), hashAppToken(tok), "Gerät "+e.sfx)
+	e.t.Cleanup(func() { appDeviceCache.forget(devID) })
+	return devID, tok, k
+}
+
+func (e *appAdmEnv) me(tok string, k *ecdsa.PrivateKey, n string) *httptest.ResponseRecorder {
+	req := appSignedRequest(e.t, k, "GET", "/api/app/v1/me", nil, time.Now(), "rv-"+n+"-"+e.sfx+"00000000")
+	req.Header.Set("Authorization", "PDHApp "+tok)
+	req.RemoteAddr = "192.0.2.88:5000"
+	rec := httptest.NewRecorder()
+	e.adm.ServeHTTP(rec, req)
+	return rec
+}
+
+func TestAppRevokeAndSettings(t *testing.T) {
+	e := newAppAdmEnv(t)
+	deptA, deptB := e.dept("A"), e.dept("B")
+	admin := e.au("vadm", "admin", "")
+	mgrA := e.au("vmgrA", "manager", deptA)
+	e.grant(mgrA.ID, permAppAdmin, deptA, true)
+	viewer := e.au("vvw", "viewer", "")
+	e.grant(viewer.ID, permAppUse, "", false) // Rolle darf app.use, dieser Benutzer ausdrücklich nicht
+	tgtA := e.au("vtA", "worker", deptA)
+	tgtB := e.au("vtB", "worker", deptB)
+	tgtMgr := e.au("vtMg", "manager", deptA)
+	e.grant(tgtA.ID, permAppUse, "", true)
+	e.grant(tgtB.ID, permAppUse, "", true)
+	e.warm()
+	devA, tokA, keyA := e.device(tgtA)
+	devB, _, _ := e.device(tgtB)
+	devM, _, _ := e.device(tgtMgr)
+
+	t.Run("Sperren wirkt sofort", func(t *testing.T) {
+		if rec := e.me(tokA, keyA, "1"); rec.Code != 200 {
+			t.Fatalf("vor Sperre: %d %s", rec.Code, rec.Body.String())
+		}
+		if rec := e.do("POST", "/app/devices/"+devA+"/revoke", viewer, url.Values{}); rec.Code != 403 {
+			t.Errorf("Betrachter: %d", rec.Code)
+		}
+		rec := e.do("POST", "/app/devices/"+devA+"/revoke", mgrA, url.Values{})
+		if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/app/devices" {
+			t.Fatalf("sperren: %d %s", rec.Code, rec.Body.String())
+		}
+		if rec := e.me(tokA, keyA, "2"); rec.Code != 401 || !strings.Contains(rec.Body.String(), "app_revoked") {
+			t.Errorf("nach Sperre: %d %s", rec.Code, rec.Body.String())
+		}
+		if n := e.count(`SELECT count(*) FROM app_devices WHERE id = $1::uuid AND revoked_at IS NOT NULL AND revoked_by = $2::uuid`, devA, mgrA.ID); n != 1 {
+			t.Error("revoked_* fehlt")
+		}
+		if n := e.count(`SELECT count(*) FROM record_history WHERE ref_type = 'user' AND ref_id = $1::uuid AND action = 'app_device_revoked' AND created_by = $2::uuid`, tgtA.ID, mgrA.ID); n != 1 {
+			t.Errorf("historie: %d", n)
+		}
+		if rec := e.do("POST", "/app/devices/"+devA+"/revoke", mgrA, url.Values{}); rec.Code != 409 {
+			t.Errorf("zweites Sperren: %d", rec.Code)
+		}
+		if n := e.count(`SELECT count(*) FROM record_history WHERE action = 'app_device_revoked' AND ref_id = $1::uuid`, tgtA.ID); n != 1 {
+			t.Errorf("Historie doppelt: %d", n)
+		}
+		if rec := e.do("POST", "/app/devices/00000000-0000-4000-8000-00000000dead/revoke", admin, url.Values{}); rec.Code != 404 {
+			t.Errorf("unbekannt: %d", rec.Code)
+		}
+	})
+
+	t.Run("Abteilung und Rang", func(t *testing.T) {
+		list := e.do("GET", "/app/devices", mgrA, nil)
+		if list.Code != 200 {
+			t.Fatalf("liste: %d %.200s", list.Code, list.Body.String())
+		}
+		if strings.Contains(list.Body.String(), devB) {
+			t.Error("Gerät aus Abteilung B sichtbar")
+		}
+		if !strings.Contains(list.Body.String(), "Gerät "+e.sfx) {
+			t.Error("Gerät aus A fehlt")
+		}
+		if rec := e.do("POST", "/app/devices/"+devB+"/revoke", mgrA, url.Values{}); rec.Code != 403 {
+			t.Errorf("fremde Abteilung: %d", rec.Code)
+		}
+		if rec := e.do("POST", "/app/devices/"+devM+"/revoke", mgrA, url.Values{}); rec.Code != 403 { // gleicher Rang
+			t.Errorf("gleicher Rang: %d", rec.Code)
+		}
+		if n := e.count(`SELECT count(*) FROM app_devices WHERE id = ANY($1::uuid[]) AND revoked_at IS NOT NULL`, []string{devB, devM}); n != 0 {
+			t.Errorf("trotz 403 gesperrt: %d", n)
+		}
+		if rec := e.do("GET", "/app/devices", viewer, nil); rec.Code != 403 {
+			t.Errorf("Liste ohne Recht: %d", rec.Code)
+		}
+	})
+
+	t.Run("Einstellungen", func(t *testing.T) {
+		for _, k := range []string{keyAppAddresses, keyAppAllowPrevious, keyAppLatestPrefix + "android", keyAppPrevPrefix + "android", keyAppStorePrefix + "android", keyAppLatestPrefix + "ios", keyAppPrevPrefix + "ios", keyAppStorePrefix + "ios"} {
+			k := k
+			_, _ = e.pool.Exec(e.ctx, `DELETE FROM app_settings WHERE key = $1`, k)
+			e.t.Cleanup(func() { _, _ = e.pool.Exec(context.Background(), `DELETE FROM app_settings WHERE key = $1`, k) })
+		}
+		form := func(latest string) url.Values {
+			return url.Values{"addresses": {"https://pdh.example.org/\nhttp://192.0.2.5:8090"}, "allow_previous": {"0"},
+				"latest_android": {latest}, "latest_ios": {""}, "store_android": {"https://play.example.org/x"}, "store_ios": {""}}
+		}
+		get := func(k string) string {
+			var v string
+			_ = e.pool.QueryRow(e.ctx, `SELECT value FROM app_settings WHERE key = $1`, k).Scan(&v)
+			return v
+		}
+		if rec := e.do("POST", "/app/settings", mgrA, form("1.2.0")); rec.Code != 403 {
+			t.Errorf("Abteilungs-Admin: %d", rec.Code)
+		}
+		if get(keyAppLatestPrefix+"android") != "" {
+			t.Error("trotz 403 gespeichert")
+		}
+		if rec := e.do("POST", "/app/settings", admin, form("1.2.0")); rec.Code != 303 {
+			t.Fatalf("speichern: %d %.300s", rec.Code, rec.Body.String())
+		}
+		if get(keyAppLatestPrefix+"android") != "1.2.0" || get(keyAppAllowPrevious) != "0" || get(keyAppStorePrefix+"android") != "https://play.example.org/x" ||
+			get(keyAppAddresses) != "https://pdh.example.org\nhttp://192.0.2.5:8090" {
+			t.Errorf("Werte: %q %q %q %q", get(keyAppLatestPrefix+"android"), get(keyAppAllowPrevious), get(keyAppStorePrefix+"android"), get(keyAppAddresses))
+		}
+		if get(keyAppPrevPrefix+"android") != "" {
+			t.Error("erste Version darf keine vorige setzen")
+		}
+		if rec := e.do("POST", "/app/settings", admin, form("1.2.0")); rec.Code != 303 || get(keyAppPrevPrefix+"android") != "" {
+			t.Errorf("unverändert: %d prev=%q", rec.Code, get(keyAppPrevPrefix+"android"))
+		}
+		if rec := e.do("POST", "/app/settings", admin, form("1.3.0")); rec.Code != 303 {
+			t.Fatalf("neue Version: %d", rec.Code)
+		}
+		if get(keyAppLatestPrefix+"android") != "1.3.0" || get(keyAppPrevPrefix+"android") != "1.2.0" {
+			t.Errorf("Version: %q vorige %q", get(keyAppLatestPrefix+"android"), get(keyAppPrevPrefix+"android"))
+		}
+		bad := form("1.4.0")
+		bad.Set("addresses", "ftp://x")
+		rec := e.do("POST", "/app/settings", admin, bad)
+		if rec.Code != http.StatusUnprocessableEntity || !strings.Contains(rec.Body.String(), "http://") {
+			t.Errorf("ftp: %d %.200s", rec.Code, rec.Body.String())
+		}
+		if get(keyAppLatestPrefix+"android") != "1.3.0" {
+			t.Error("bei Fehler wurde gespeichert")
+		}
+		if rec := e.do("POST", "/app/settings", admin, form("abc")); rec.Code != http.StatusUnprocessableEntity || get(keyAppLatestPrefix+"android") != "1.3.0" {
+			t.Errorf("Version abc: %d", rec.Code)
+		}
+		page := e.do("GET", "/app/devices", admin, nil)
+		if !strings.Contains(page.Body.String(), `name="latest_android"`) {
+			t.Error("Formular fehlt für globalen Admin")
+		}
+		if strings.Contains(e.do("GET", "/app/devices", mgrA, nil).Body.String(), `name="latest_android"`) {
+			t.Error("Formular für Abteilungs-Admin sichtbar")
+		}
+	})
+
+	t.Run("App installieren", func(t *testing.T) {
+		if rec := e.do("GET", "/app/install", viewer, nil); rec.Code != 403 {
+			t.Errorf("ohne app.use: %d", rec.Code)
+		}
+		rec := e.do("GET", "/app/install", tgtA, nil)
+		if rec.Code != 200 || !strings.Contains(rec.Body.String(), "<svg") || !strings.Contains(rec.Body.String(), "/app/setup") {
+			t.Errorf("mit app.use: %d %.200s", rec.Code, rec.Body.String())
+		}
+	})
+
+	t.Run("Benutzermenü", func(t *testing.T) {
+		req := withUser(httptest.NewRequest("GET", "/", nil), viewer)
+		if b := e.h.baseData(req, "dashboard", "Dashboard", ""); b.CanAppUse {
+			t.Error("CanAppUse ohne app.use")
+		}
+		req = withUser(httptest.NewRequest("GET", "/", nil), tgtA)
+		if b := e.h.baseData(req, "dashboard", "Dashboard", ""); !b.CanAppUse {
+			t.Error("CanAppUse mit app.use fehlt")
+		}
+	})
 }

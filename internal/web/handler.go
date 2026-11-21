@@ -74,6 +74,7 @@ type BaseData struct {
 	CanBackup              bool       // Nav-Link "Datensicherung"
 	CanPrinters            bool       // Nav-Link "Drucker" (printers.manage)
 	CanKioskTerminals      bool       // Nav-Link "Kiosk-Terminals" (hmi.manage)
+	CanAppUse              bool       // Benutzermenü „App installieren“ (app.use)
 	CanPrint               bool       // direkt auf eingerichtete Drucker drucken (printers.use)
 	CanCleanup             bool       // Nav-Link "Bereinigung"
 	CanServerConfig        bool       // Nav-Link "Server-Einstellungen" (nur Admins)
@@ -919,6 +920,10 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/app/requests/{id}", h.AppRequestPage)
 	r.Post("/app/requests/{id}/approve", h.AppRequestApproveWeb)
 	r.Post("/app/requests/{id}/reject", h.AppRequestRejectWeb)
+	r.Get("/app/devices", h.AppDevicesPage)
+	r.Post("/app/devices/{id}/revoke", h.AppDeviceRevokeWeb)
+	r.Post("/app/settings", h.AppSettingsSaveWeb)
+	r.Get("/app/install", h.AppInstallPage)
 	r.Post("/users/{id}/devices/{dev}/revoke", h.TerminalDeviceRevokeWeb)
 	r.Get("/admin/org-units", h.OrgUnitsPage)
 	r.Get("/trainings", h.TrainingsPage)
@@ -1483,6 +1488,7 @@ func (h *Handler) baseData(r *http.Request, page, title, ctxTitle string) BaseDa
 		CanBackup:              h.rbac.HasPermissionForUser(u.ID, string(u.Role), "system.backup"),
 		CanPrinters:            h.rbac.HasPermissionForUser(u.ID, string(u.Role), "printers.manage"),
 		CanKioskTerminals:      h.canManageKiosk(r),
+		CanAppUse:              h.rbac.HasPermissionForUser(u.ID, string(u.Role), permAppUse),
 		CanPrint:               h.rbac.HasPermissionForUser(u.ID, string(u.Role), "printers.use"),
 		CanCleanup:             h.rbac.HasPermissionForUser(u.ID, string(u.Role), "system.cleanup"),
 		CanServerConfig:        u.Role == users.RoleAdmin && h.rbac.HasPermissionForUser(u.ID, string(u.Role), "system.server_config"),
