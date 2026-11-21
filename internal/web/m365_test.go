@@ -17,7 +17,7 @@ func TestSignaturePlaceholders(t *testing.T) {
 	if !strings.Contains(out, "<b>Eva &lt;Muster&gt;</b> Leitung") || !strings.Contains(out, "{Telefn}") {
 		t.Errorf("Vorschau = %q", out)
 	}
-	rule := signatureRuleHTML(`{Name} · {Mobil} · {E-Mail} · {Firma}`)
+	rule := signatureRuleHTML(`{Name} · {Mobil} · {E-Mail} · {Firma}`, nil)
 	if !strings.HasPrefix(rule, "%%DisplayName%% · %%MobileNumber%% · %%Email%% · %%Company%%") || !strings.Contains(rule, sigRuleMarker) {
 		t.Errorf("Regel-HTML = %q", rule)
 	}
@@ -56,7 +56,7 @@ func TestSignatureRulesScript(t *testing.T) {
 		{Name: "Vertrieb", Department: "Einkauf", HTML: "x", Active: true},
 		{Name: "Alt", HTML: "y", Active: false},
 	}
-	s := signatureRulesScript(sigs, time.Date(2026, 10, 19, 9, 0, 0, 0, time.UTC))
+	s := signatureRulesScript(sigs, nil, time.Date(2026, 10, 19, 9, 0, 0, 0, time.UTC))
 	iDept := strings.Index(s, "'PDH-Signatur: Vertrieb'")
 	iStd := strings.Index(s, "'PDH-Signatur: Standard'")
 	if iDept < 0 || iStd < 0 || iDept > iStd {
@@ -107,13 +107,29 @@ func TestM365PageRenders(t *testing.T) {
 	if strings.Contains(out, "/m365/templates/t1/delete") || strings.Contains(out, "Exchange-Skript") {
 		t.Error("Verwaltung ohne Recht sichtbar")
 	}
-	d.CanManage, d.Fields = true, sigFields
+	d.CanManage, d.Fields, d.Company = true, sigFields, "Muster GmbH"
 	d.Edit = &mailSignatureRow{HTML: defaultSignatureHTML, Active: true}
 	d.Signatures = []mailSignatureRow{{ID: "s1", Name: "Standard", RuleLength: 6000}}
 	out = renderPage(t, tmpl, "m365", d)
-	for _, want := range []string{"/m365/templates/t1/delete", "Exchange-Skript herunterladen", "zu lang für Exchange", "{Telefon}", `hx-post="/m365/signatures/preview"`} {
+	for _, want := range []string{"/m365/templates/t1/delete", "Exchange-Skript herunterladen", "zu lang für Exchange", "{Telefon}", `hx-post="/m365/signatures/preview"`, "Muster GmbH", "Firmenstammdaten", "{Firmenanschrift}"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("Verwaltungsseite enthält %q nicht", want)
 		}
+	}
+}
+
+// Anschrift, Telefon und Website der Firma haben kein Exchange-Feld: Sie kommen als fester,
+// maskierter Text in die Regel; {Firma} bleibt %%Company%% (Entscheidung „B“).
+func TestSignatureFixedCompanyPlaceholders(t *testing.T) {
+	fixed := companyFixedPlaceholders(companyProfile{Name: "Muster GmbH", Street: "Hauptstr. 1 <b>", City: "Augsburg", Phone: "+49 821 99"})
+	rule := signatureRuleHTML(`{Firma} | {Firmenanschrift} | {Firmentelefon} | {Website}`, fixed)
+	if !strings.HasPrefix(rule, "%%Company%% | Hauptstr. 1 &lt;b&gt; · Augsburg | +49 821 99 | ") {
+		t.Errorf("Regel-HTML = %q", rule)
+	}
+	if strings.Contains(rule, "{Website}") || strings.Contains(rule, "<b>") {
+		t.Errorf("leere oder unmaskierte Werte: %q", rule)
+	}
+	if got := unknownSigPlaceholders(`{Firmenanschrift} {Firmentelefon} {Website}`); len(got) != 0 {
+		t.Errorf("neue Platzhalter gelten als unbekannt: %v", got)
 	}
 }

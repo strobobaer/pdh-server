@@ -84,6 +84,11 @@ func (h *Handler) contactPersonFor(ctx context.Context, userID string) *contactP
 		Mobile: strings.TrimSpace(mobile), Email: strings.TrimSpace(email)}
 }
 
+// companyFixedPlaceholders: Werte für die Signatur-Platzhalter ohne Exchange-Feld.
+func companyFixedPlaceholders(p companyProfile) map[string]string {
+	return map[string]string{"Firmenanschrift": companyAddressLine(p), "Firmentelefon": p.Phone, "Website": p.Website}
+}
+
 // companyPrint: Firma im Druckkopf jeder Seite (base.gohtml, .print-brand).
 type companyPrint struct{ Name, Address string }
 

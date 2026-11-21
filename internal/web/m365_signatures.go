@@ -33,13 +33,13 @@ var sigFields = []sigField{
 	{"Vorname", "FirstName"}, {"Nachname", "LastName"}, {"Name", "DisplayName"},
 	{"E-Mail", "Email"}, {"Position", "Title"}, {"Abteilung", "Department"},
 	{"Telefon", "PhoneNumber"}, {"Mobil", "MobileNumber"}, {"Standort", "Office"}, {"Firma", "Company"},
+	// ohne Exchange-Feld: fester Text aus den Firmenstammdaten (companyFixedPlaceholders)
+	{"Firmenanschrift", ""}, {"Firmentelefon", ""}, {"Website", ""},
 }
 
 // microsoftSignatureSelect: zusätzliche Entra-Felder im Verzeichnisabgleich.
 const microsoftSignatureSelect = "givenName,surname,jobTitle,businessPhones,mobilePhone,officeLocation,companyName"
 
-// m365CompanySetting: Firmenname für {Firma} (app_settings).
-const m365CompanySetting = "m365_company_name"
 
 // sigRuleMarker steht unsichtbar in jeder Signatur: Regeln greifen nicht, wenn
 // er schon im Text steht (Antworten, zweite Regel).
@@ -86,10 +86,16 @@ func renderSignature(src string, values map[string]string) string {
 	})
 }
 
-// signatureRuleHTML: Platzhalter → Exchange-Attribute, plus Marker.
-func signatureRuleHTML(src string) string {
+// signatureRuleHTML: Platzhalter → Exchange-Attribute, plus Marker. Platzhalter ohne
+// Exchange-Feld (Firmenanschrift, Firmentelefon, Website) werden durch den maskierten Text
+// aus fixed ersetzt (fehlt er: leer) – nach einer Änderung der Stammdaten Regel neu übertragen.
+func signatureRuleHTML(src string, fixed map[string]string) string {
 	ex := map[string]string{}
 	for _, f := range sigFields {
+		if f.Exchange == "" {
+			ex[f.Key] = html.EscapeString(fixed[f.Key])
+			continue
+		}
 		ex[f.Key] = "%%" + f.Exchange + "%%"
 	}
 	out := sigPlaceholderRe.ReplaceAllStringFunc(src, func(m string) string {
@@ -118,8 +124,13 @@ func (h *Handler) signatureValues(ctx context.Context, userID string) (map[strin
 	if err != nil {
 		return nil, err
 	}
-	p[8] = h.getUpdateSetting(ctx, m365CompanySetting, "")
-	return mergeSignatureValues(p, m), nil
+	cp := h.company(ctx) // Firmenstammdaten (0.82.18) – leer: Firma aus Entra
+	p[8] = cp.Name
+	vals := mergeSignatureValues(p, m)
+	for k, v := range companyFixedPlaceholders(cp) {
+		vals[k] = v
+	}
+	return vals, nil
 }
 
 // mergeSignatureValues: Reihenfolge Vorname, Nachname, E-Mail, Position,
@@ -152,7 +163,7 @@ func (h *Handler) loadSignatures(ctx context.Context) []mailSignatureRow {
 		var t time.Time
 		if rows.Scan(&s.ID, &s.Name, &s.Department, &s.HTML, &s.Active, &t) == nil {
 			s.Updated = t.Local().Format("02.01.2006 15:04")
-			s.RuleLength = len(signatureRuleHTML(s.HTML))
+			s.RuleLength = len(signatureRuleHTML(s.HTML, companyFixedPlaceholders(h.company(ctx))))
 			out = append(out, s)
 		}
 	}
@@ -202,8 +213,8 @@ func (h *Handler) M365SignatureSaveWeb(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	msg := "Signatur gespeichert – zum Ausrollen das Exchange-Skript neu herunterladen und ausführen"
-	if len(signatureRuleHTML(src)) > sigMaxHTML {
-		msg = fmt.Sprintf("Signatur gespeichert – aber zu lang für Exchange (%d von %d Zeichen)", len(signatureRuleHTML(src)), sigMaxHTML)
+	if len(signatureRuleHTML(src, companyFixedPlaceholders(h.company(ctx)))) > sigMaxHTML {
+		msg = fmt.Sprintf("Signatur gespeichert – aber zu lang für Exchange (%d von %d Zeichen)", len(signatureRuleHTML(src, companyFixedPlaceholders(h.company(ctx)))), sigMaxHTML)
 	}
 	m365Back(w, r, "signatures", "&sig="+id, msg, nil)
 }
@@ -241,26 +252,16 @@ func (h *Handler) M365SignaturePreviewWeb(w http.ResponseWriter, r *http.Request
 	if bad := unknownSigPlaceholders(src); len(bad) > 0 {
 		out += `<p style="color:var(--red);font-size:12px"><i class="ti ti-alert-circle"></i> Unbekannte Platzhalter: ` + html.EscapeString(strings.Join(bad, ", ")) + `</p>`
 	}
-	if n := len(signatureRuleHTML(src)); n > sigMaxHTML {
+	if n := len(signatureRuleHTML(src, companyFixedPlaceholders(h.company(r.Context())))); n > sigMaxHTML {
 		out += fmt.Sprintf(`<p style="color:var(--red);font-size:12px"><i class="ti ti-alert-circle"></i> Zu lang für Exchange: %d von %d Zeichen</p>`, n, sigMaxHTML)
 	}
 	_, _ = w.Write([]byte(out))
 }
 
-// M365CompanySaveWeb: POST /m365/company – Firmenname für {Firma}
-func (h *Handler) M365CompanySaveWeb(w http.ResponseWriter, r *http.Request) {
-	if !h.canManageM365(r) {
-		http.Error(w, "keine berechtigung", http.StatusForbidden)
-		return
-	}
-	err := h.setUpdateSetting(r.Context(), m365CompanySetting, strings.TrimSpace(r.FormValue("company")))
-	m365Back(w, r, "settings", "", "Firmenname gespeichert", err)
-}
-
 // signatureRulesScript: PowerShell für Exchange Online. Legt je aktiver
 // Signatur eine Regel „PDH-Signatur: …“ an (Abteilungsregeln zuerst) und
 // entfernt alle anderen PDH-Signaturregeln.
-func signatureRulesScript(sigs []mailSignatureRow, now time.Time) string {
+func signatureRulesScript(sigs []mailSignatureRow, fixed map[string]string, now time.Time) string {
 	psq := func(s string) string { return "'" + strings.ReplaceAll(s, "'", "''") + "'" }
 	var active []mailSignatureRow
 	var depts []string
@@ -289,7 +290,7 @@ func signatureRulesScript(sigs []mailSignatureRow, now time.Time) string {
 		}
 		used[strings.ToLower(name)] = true
 		b.WriteString("  @{ Name = " + psq(name) + "; Department = " + psq(s.Department) +
-			"; Html = (Dec '" + base64.StdEncoding.EncodeToString([]byte(signatureRuleHTML(s.HTML))) + "') }")
+			"; Html = (Dec '" + base64.StdEncoding.EncodeToString([]byte(signatureRuleHTML(s.HTML, fixed))) + "') }")
 		if i < len(active)-1 {
 			b.WriteString(",")
 		}
@@ -342,7 +343,7 @@ func (h *Handler) M365SignatureScriptWeb(w http.ResponseWriter, r *http.Request)
 			return
 		}
 	}
-	script := signatureRulesScript(h.loadSignatures(r.Context()), time.Now())
+	script := signatureRulesScript(h.loadSignatures(r.Context()), companyFixedPlaceholders(h.company(r.Context())), time.Now())
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Header().Set("Content-Disposition", `attachment; filename="pdh-signaturen.ps1"`)
 	// UTF-8 mit BOM, damit Windows PowerShell 5.1 Umlaute richtig liest
@@ -385,7 +386,7 @@ func (h *Handler) M365PushEntraWeb(w http.ResponseWriter, r *http.Request) {
 		m365Back(w, r, "signatures", "", "", err)
 		return
 	}
-	company := h.getUpdateSetting(ctx, m365CompanySetting, "")
+	company := h.company(ctx).Name // Firmenstammdaten (0.82.18)
 	rows, err := h.db.Query(ctx, `
 		SELECT d.microsoft_user_id, u.id::text, u.first_name, u.last_name, COALESCE(u.job_title,''), COALESCE(u.department,''),
 		       COALESCE(u.phone,''), COALESCE(u.phone_mobile,''), COALESCE(u.work_location,''),

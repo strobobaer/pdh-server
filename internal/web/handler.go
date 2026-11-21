@@ -1055,7 +1055,6 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/m365/signatures/script", h.M365SignatureScriptWeb)
 	r.Post("/m365/signatures/{id}", h.M365SignatureSaveWeb)
 	r.Post("/m365/signatures/{id}/delete", h.M365SignatureDeleteWeb)
-	r.Post("/m365/company", h.M365CompanySaveWeb)
 	r.Post("/m365/sharepoint", h.M365SharePointSaveWeb)
 	r.Post("/m365/sharepoint/sync", h.M365SharePointSyncWeb)
 	r.Post("/core/settings/microsoft/assign", h.MicrosoftDirectoryAssignWeb)
