@@ -427,6 +427,7 @@ type mqttChecklist struct {
 	ConnectionID, Host string
 	Rows               []mqttCheckRow
 	Running            bool // ein Zertifikatsauftrag läuft: gleich noch einmal nachsehen
+	Pending            bool // Name vorgemerkt: Knopf „Einrichten / erneut prüfen“
 }
 
 // MqttBrokerChecklist: GET /import/connections/{id}/broker/checklist – wird von der
@@ -449,7 +450,7 @@ func (h *Handler) MqttBrokerChecklist(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	list := mqttChecklist{ConnectionID: id, Host: strings.TrimSpace(config[mqttHostKey])}
+	list := mqttChecklist{ConnectionID: id, Host: strings.TrimSpace(config[mqttHostKey]), Pending: config[mqttPendingKey] == "1"}
 	if kind == "mqtt" && config["broker_mode"] == "integrated" {
 		ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 		defer cancel()
@@ -472,6 +473,15 @@ func (h *Handler) MqttBrokerChecklist(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) mqttCheckRows(ctx context.Context, r *http.Request, id string, config map[string]string) (rows []mqttCheckRow, running bool) {
 	host := strings.TrimSpace(config[mqttHostKey])
 	wsPort, _ := mqttPort(config["int_websocket_port"])
+	pending := config[mqttPendingKey] == "1"
+
+	// Stand: vorgemerkt (noch keine nginx-Seite, keine Tunnel-Zeile) oder scharf
+	stand := mqttCheckRow{Label: "Stand", State: "scharf", Tone: "ok"}
+	if pending {
+		stand.State, stand.Tone = "vorgemerkt – wird scharf, sobald Zertifikat, Name im Haus und Firewall grün sind", "warn"
+		stand.Hint = "Bis dahin schreibt das PDH keine nginx-Seite und keine Tunnel-Zeile für den Namen. „Einrichten / erneut prüfen“ holt nach, was das PDH selbst darf."
+	}
+	rows = append(rows, stand)
 
 	// Zertifikat
 	var row certRow
@@ -582,7 +592,9 @@ func (h *Handler) mqttCheckRows(ctx context.Context, r *http.Request, id string,
 			break
 		}
 		tun.State = "Tunnel: " + t.TunnelNote + " · DNS: " + t.DNSNote
-		if h.canCloudflare(r) {
+		if pending {
+			tun.Hint = "Wird eingerichtet, sobald der Name scharf ist (Eintrag: " + host + " → " + t.Service + ")."
+		} else if h.canCloudflare(r) {
 			tun.Action, tun.Service, tun.NoTLS, tun.Replace = "tunnel", t.Service, t.NoTLS, t.Replace
 		} else {
 			tun.Hint = "Einrichten kann ein Administrator mit dem Recht „Cloudflare“ (system.cloudflare)."
@@ -617,6 +629,8 @@ func (h *Handler) mqttCheckRows(ctx context.Context, r *http.Request, id string,
 		ws.Hint = "Ohne ihn schreibt das PDH keine nginx-Seite; wss://" + host + " gibt es dann nicht."
 	case !hasCert:
 		ws.State = "wartet auf Zertifikat"
+	case pending:
+		ws.State, ws.Tone = "wird geschrieben, sobald der Name scharf ist", "off"
 	default:
 		files, err := h.certDepsLive().status(ctx)
 		want := "http://127.0.0.1:" + strconv.Itoa(wsPort)

@@ -407,6 +407,9 @@ func (h *Handler) createConnection(w http.ResponseWriter, r *http.Request, direc
 	h.reconcileExportSchedule(id, direction, true, config)
 	h.reconcileImportPoll(id, direction, kind, true, config)
 	h.mqttSiteSync(config[mqttHostKey])
+	if kind == "mqtt" {
+		h.mqttSetupAfterSave(r, id, map[string]string{}, config) // vorgemerkter Name: einrichten
+	}
 	// gleich auf die eigene Seite der Verbindung: Pruefen, Abfragen, Zuordnen
 	next := "checks"
 	if direction == "import" && queryKindSupported(kind) {
@@ -513,6 +516,9 @@ func (h *Handler) editConnection(w http.ResponseWriter, r *http.Request, directi
 	// Name oder WebSocket-Port des Brokers geändert: nginx-Seite gleich nachziehen
 	if kind == "mqtt" && (stored[mqttHostKey] != plain[mqttHostKey] || stored["int_websocket_port"] != plain["int_websocket_port"]) {
 		h.mqttSiteSync(stored[mqttHostKey], plain[mqttHostKey])
+	}
+	if kind == "mqtt" {
+		h.mqttSetupAfterSave(r, id, stored, plain) // einrichten bzw. Tunnel auf neuen Port
 	}
 	// Abgleich: geänderter Weg (direkt ↔ VPN) verlangt einen neuen Test der Profile
 	demoted := ""

@@ -1142,6 +1142,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/import/connections/{id}/broker", h.MqttBrokerPage)
 	r.Get("/import/connections/{id}/broker/checklist", h.MqttBrokerChecklist)
 	r.Post("/import/connections/{id}/broker/firewall", h.MqttBrokerFirewall)
+	r.Post("/import/connections/{id}/broker/setup", h.MqttBrokerSetupWeb)
 	r.Get("/import/connections/{id}/broker/stream", h.MqttBrokerStream)
 	r.Post("/import/connections/{id}/mappings", h.ImportMappingCreateWeb)
 	r.Post("/import/connections/{id}/mappings/{mappingId}/delete-web", h.ImportMappingDeleteWeb)

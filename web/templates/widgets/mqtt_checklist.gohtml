@@ -19,6 +19,9 @@
   </div>
   {{end}}
 </div>
-<div style="margin-top:8px"><button type="button" class="btn btn-small" onclick="htmx.trigger('#mqtt-checklist','mqtt-check')"><i class="ti ti-refresh"></i> Neu prüfen</button></div>
+<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
+  {{if .Pending}}<button type="button" class="btn btn-primary btn-small" hx-post="/import/connections/{{.ConnectionID}}/broker/setup" hx-target="#mqtt-checklist" hx-swap="innerHTML" hx-disabled-elt="this" title="Holt nach, was das PDH selbst einrichten darf, und schaltet den Namen scharf, wenn alles grün ist"><i class="ti ti-player-play"></i> Einrichten / erneut prüfen</button>{{end}}
+  <button type="button" class="btn btn-small" onclick="htmx.trigger('#mqtt-checklist','mqtt-check')"><i class="ti ti-refresh"></i> Neu prüfen</button>
+</div>
 {{end}}
 {{end}}
