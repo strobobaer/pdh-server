@@ -3583,6 +3583,12 @@ curl -fsS -X PUT "https://api.cloudflare.com/client/v4/zones/$CF_ZONE/dns_record
   {{template "hb-shots" (dict "Ref" (index $s "spiegelbetrieb") "Can" $can)}}
 </section>
 
+<section class="hb-ch" id="pdh-app" data-title="PDH-App" data-pages="app_setup">
+  <h2><i class="ti ti-device-mobile"></i> PDH-App</h2>
+  <p>Die PDH-App verbindet Handy und Tablet mit diesem Server; die Einrichtungsseite <b>/app/setup</b> führt durch die Installation.</p>
+  {{template "hb-shots" (dict "Ref" (index $s "pdh-app") "Can" $can)}}
+</section>
+
 <section class="hb-ch" id="faq" data-title="Tipps &amp; häufige Fragen" data-pages="">
   <h2><i class="ti ti-help-circle"></i> Tipps &amp; häufige Fragen</h2>
   <h3>Ich sehe einen Reiter oder Knopf nicht.</h3>

@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="{{lang}}">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex">
+<title>{{.Brand.AppName}} · {{t "PDH-App installieren"}}</title>
+{{if .Brand.AppLogo}}<link rel="icon" href="{{.Brand.AppLogo}}">{{else}}<link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" href="/favicon.svg" type="image/svg+xml">{{end}}
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#0f1117;--bg2:#1a1d27;--bg3:#222536;--accent:#4f6ef7;--on-accent:#fff;--text:#e8eaf6;--muted:#6b7280;--border:#2a2d3e;--shadow-card:none;--font:'DM Sans',system-ui,sans-serif}
+/* hell (Gerät hell eingestellt, data-theme setzt das Skript unten) */
+html[data-theme="light"]{--bg:#f3f3f3;--bg2:#fff;--bg3:#f9f9f9;--accent:#005fb8;--on-accent:#fff;--text:#1b1b1b;--muted:#5f5f5f;--border:#e2e2e2;--shadow-card:0 2px 8px rgba(0,0,0,.08)}
+body{background:var(--bg);color:var(--text);font-family:var(--font);display:flex;align-items:center;justify-content:center;min-height:100vh;padding:16px}
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow-card);padding:32px;width:100%;max-width:420px;text-align:center}
+.logo{display:block;max-width:180px;max-height:80px;margin:0 auto 18px;object-fit:contain}
+.name{font-size:15px;color:var(--muted);margin-bottom:6px;overflow-wrap:anywhere}
+h1{font-size:21px;font-weight:600;line-height:1.3;margin-bottom:10px}
+.text{font-size:14px;color:var(--muted);line-height:1.5;margin-bottom:22px}
+.btn{display:block;width:100%;background:var(--accent);color:var(--on-accent);border:1px solid var(--accent);border-radius:8px;padding:12px 16px;font:inherit;font-size:15px;text-decoration:none;margin-top:10px}
+.btn:hover{opacity:.9}
+.btn.alt{background:transparent;color:var(--text);border-color:var(--border)}
+.btn.alt:hover{border-color:var(--accent);color:var(--accent);opacity:1}
+.sep{margin:22px 0 4px;font-size:12px;color:var(--muted)}
+</style>
+<style>{{.Brand.ThemeCSS}}</style>
+{{with .Brand.DefaultLook.FontHref}}<link rel="stylesheet" href="{{.}}">{{end}}
+<style>{{.Brand.DefaultLook.CSS}} body{zoom:var(--ui-scale)}</style>
+<!-- Farbschema und Design-Stil: Firmenstandard; hell/dunkel folgt dem Gerät (prefers-color-scheme) -->
+<script>(function(){var e=document.documentElement,m=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)');function s(){e.dataset.theme=m&&m.matches?'dark':'light';}e.dataset.palette={{.Brand.ThemeID}};document.documentElement.dataset.style={{.Brand.StyleID}};s();if(m&&m.addEventListener)m.addEventListener('change',s);})();</script>
+<style>
+html[data-style="fiori"]{--bg:#12171c;--bg2:#1d232a;--bg3:#242c35;--text:#eaecee;--muted:#a9b4be;--border:#3a4552;--shadow-card:0 0 2px rgba(0,0,0,.5),0 8px 16px rgba(0,0,0,.5)}
+html[data-style="fiori"][data-theme="light"]{--bg:#f5f6f7;--bg2:#fff;--bg3:#fff;--text:#1d2d3e;--muted:#556b82;--border:#d9d9d9;--shadow-card:0 0 2px rgba(34,53,72,.2),0 8px 16px rgba(34,53,72,.15)}
+html[data-style="fiori"] .card{border:0;box-shadow:var(--shadow-card)}
+html[data-style="fiori"] h1{font-weight:700}
+html[data-style="fiori"] .btn{border-radius:8px;font-weight:700}
+@media (max-width:480px){.card{padding:24px 18px}}
+</style>
+</head>
+<body>
+<main class="card">
+  {{if .Brand.AppLogo}}<img class="logo" src="{{.Brand.AppLogo}}" alt="{{.Brand.AppName}}">{{end}}
+  <p class="name">{{.Brand.AppName}}</p>
+  <h1>{{t "PDH-App installieren"}}</h1>
+  <p class="text">{{t "Installiere die App aus dem Store und öffne sie danach hier mit dem Knopf unten – sie verbindet sich dann mit diesem Server."}}</p>
+  {{with .IOS}}<a class="btn" href="{{.}}" rel="noopener">{{t "App für iPhone laden"}}</a>{{end}}
+  {{with .Android}}<a class="btn" href="{{.}}" rel="noopener">{{t "App für Android laden"}}</a>{{end}}
+  <p class="sep">{{t "Schon installiert?"}}</p>
+  <a class="btn alt" href="{{.OpenURL}}">{{t "In der App öffnen"}}</a>
+</main>
+</body>
+</html>

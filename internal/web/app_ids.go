@@ -17,3 +17,14 @@ const (
 	// appRef: Bereich „App“ für areaAdminPerm.
 	appRef = "app"
 )
+
+// Öffentliche Schnittstelle der App: Stufe und Einstellungsschlüssel (app_settings).
+const (
+	appAPILevel = 1
+
+	keyAppAddresses     = "app.addresses"       // zusätzliche Server-Adressen, eine je Zeile
+	keyAppAllowPrevious = "app.allow_previous"  // "1"/"0", Grundwert "1"
+	keyAppLatestPrefix  = "app.latest_version." // + ios | android
+	keyAppPrevPrefix    = "app.previous_version."
+	keyAppStorePrefix   = "app.store_url."
+)
