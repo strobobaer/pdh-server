@@ -40,14 +40,18 @@ ON CONFLICT (key) DO NOTHING;
 
 -- Wer bisher den Firmennamen (Signaturen) oder das Erscheinungsbild pflegen durfte,
 -- behält das: Rollen und Benutzer mit einem dieser Rechte, samt Abteilung.
+-- Zuerst, wo eines der Rechte überall gilt (eine Zeile je Rolle und Recht: sonst könnte eine
+-- Abteilungszeile gewinnen und die Rolle wäre beim Bearbeiten ausgesperrt), danach der Rest.
 INSERT INTO role_permissions (role_id, permission_id, department_id)
-SELECT rp.role_id, p.id, rp.department_id
+SELECT DISTINCT ON (rp.role_id) rp.role_id, p.id, rp.department_id
   FROM role_permissions rp
   JOIN permissions o ON o.id = rp.permission_id
        AND o.key IN ('system.server_config', 'm365.templates.manage', 'system.manage_roles')
   CROSS JOIN permissions p
  WHERE p.key = 'company.edit'
-ON CONFLICT (role_id, permission_id) DO NOTHING;
+ ORDER BY rp.role_id, rp.department_id NULLS FIRST
+ON CONFLICT (role_id, permission_id) DO UPDATE SET department_id = NULL
+ WHERE EXCLUDED.department_id IS NULL;
 
 INSERT INTO role_permissions (role_id, permission_id)
 SELECT r.id, p.id FROM roles r CROSS JOIN permissions p
@@ -55,10 +59,12 @@ SELECT r.id, p.id FROM roles r CROSS JOIN permissions p
 ON CONFLICT (role_id, permission_id) DO NOTHING;
 
 INSERT INTO user_permissions (user_id, permission_id, granted, department_id)
-SELECT up.user_id, p.id, up.granted, up.department_id
+SELECT DISTINCT ON (up.user_id) up.user_id, p.id, up.granted, up.department_id
   FROM user_permissions up
   JOIN permissions o ON o.id = up.permission_id
        AND o.key IN ('system.server_config', 'm365.templates.manage', 'system.manage_roles')
   CROSS JOIN permissions p
  WHERE p.key = 'company.edit' AND up.granted
-ON CONFLICT (user_id, permission_id) DO NOTHING;
+ ORDER BY up.user_id, up.department_id NULLS FIRST
+ON CONFLICT (user_id, permission_id) DO UPDATE SET department_id = NULL
+ WHERE EXCLUDED.department_id IS NULL;

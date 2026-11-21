@@ -75,3 +75,15 @@ func TestCompanyFooterHTML(t *testing.T) {
 		t.Errorf("leere Trenner:\n%s", noPerson)
 	}
 }
+
+// Ohne Ansprechpartner stehen Telefon und E-Mail der Firma nur einmal in der Fußzeile.
+func TestCompanyFooterNoDuplicateContact(t *testing.T) {
+	p := companyProfile{Name: "Muster GmbH", Phone: "+49 821 99", Email: "info@firma.de", Website: "https://firma.de"}
+	got := string(companyFooterHTML(p, nil))
+	if n := strings.Count(got, "info@firma.de"); n != 1 {
+		t.Errorf("E-Mail %d-mal in der Fußzeile:\n%s", n, got)
+	}
+	if !strings.Contains(got, "https://firma.de") {
+		t.Errorf("Website fehlt:\n%s", got)
+	}
+}

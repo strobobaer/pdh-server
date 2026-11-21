@@ -114,10 +114,10 @@ func contactLine(c *contactPerson) string {
 var companyFooterTmpl = template.Must(template.New("company-footer").Parse(
 	`<div style="margin-top:20px;padding-top:10px;border-top:1px solid #ddd;color:#888;font-size:12px;line-height:1.5">` +
 		`{{with .Person}}<div><b>Ansprechpartner:</b> {{.Name}}{{with .Title}} · {{.}}{{end}}{{with .Phone}} · Tel. {{.}}{{end}}{{with .Mobile}} · Mobil {{.}}{{end}}{{with .Email}} · {{.}}{{end}}</div>` +
-		`{{else}}{{with .Contact}}<div><b>Kontakt:</b> {{.}}</div>{{end}}{{end}}` +
+		`{{else}}{{with .Reach}}<div><b>Kontakt:</b> {{.}}</div>{{end}}{{end}}` +
 		`<div><b>{{.Name}}</b>{{with .Addition}} · {{.}}{{end}}</div>` +
 		`{{with .Address}}<div>{{.}}</div>{{end}}` +
-		`{{with .Reach}}<div>{{.}}</div>{{end}}` +
+		`{{if .Person}}{{with .Reach}}<div>{{.}}</div>{{end}}{{end}}` +
 		`{{with .Legal}}<div>{{.}}</div>{{end}}` +
 		`</div>`))
 
@@ -132,7 +132,6 @@ func companyFooterHTML(p companyProfile, c *contactPerson) template.HTML {
 	}
 	data := map[string]any{
 		"Person":   c,
-		"Contact":  joinDot(tel, p.Email),
 		"Name":     p.Name,
 		"Addition": p.NameAddition,
 		"Address":  companyAddressLine(p),

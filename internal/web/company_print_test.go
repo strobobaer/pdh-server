@@ -41,3 +41,18 @@ func TestContactLine(t *testing.T) {
 		t.Errorf("Ansprechpartner: %q", got)
 	}
 }
+
+// Die Trennlinie im Kopf des Wartungsprotokolls liegt unter Text und Logo (vorher schnitt sie
+// mit Logo die Anschriftszeile).
+func TestMaintHeaderLineY(t *testing.T) {
+	cases := []struct{ y, logoH, textBottom, want float64 }{
+		{12, 0, 25, 27},  // ohne Logo, ohne Anschrift: wie bisher y+15
+		{12, 14, 29, 30}, // Logo 14 mm, Text bis y+17: unter den Text
+		{12, 30, 29, 44}, // hohes Logo: unter das Logo
+	}
+	for _, c := range cases {
+		if got := maintHeaderLineY(c.y, c.logoH, c.textBottom); got != c.want {
+			t.Errorf("maintHeaderLineY(%v,%v,%v) = %v, erwartet %v", c.y, c.logoH, c.textBottom, got, c.want)
+		}
+	}
+}

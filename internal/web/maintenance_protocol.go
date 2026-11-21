@@ -265,6 +265,12 @@ func (h *Handler) loadMaintProtocol(ctx context.Context, taskID, userID string) 
 	return p, nil
 }
 
+// maintHeaderLineY: Trennlinie im Kopf – mindestens y+15 (wie bisher), unter dem Text des
+// Kopfs und unter dem Logo.
+func maintHeaderLineY(y, logoH, textBottom float64) float64 {
+	return max(y+15, textBottom+1, y+logoH+2)
+}
+
 // maintFooterLines: Fuß des Wartungsprotokolls – Zeile 1 Erstellt … · Firma (sonst PDH),
 // Zeile 2 Pflichtangaben und Ansprechpartner (leer, wenn nichts da).
 func maintFooterLines(p *maintProtocol, created time.Time) (string, string) {
@@ -361,13 +367,7 @@ func renderMaintProtocolPDF(p *maintProtocol) ([]byte, error) {
 		if p.CompanyAddress != "" {
 			pdf.CellFormat(contentW, 4, tr(p.CompanyAddress), "", 1, "R", false, 0, "")
 		}
-		lineY := y + 18
-		if p.CompanyAddress == "" {
-			lineY = y + 15
-		}
-		if logoH+2 > 15 {
-			lineY = y + logoH + 2
-		}
+		lineY := maintHeaderLineY(y, logoH, pdf.GetY())
 		pdf.SetDrawColor(200, 200, 200)
 		pdf.Line(left, lineY, pageW-right, lineY)
 		pdf.SetY(lineY + 4)
