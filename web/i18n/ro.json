@@ -1103,5 +1103,11 @@
   "Adressen: eine je Zeile, nur mit http:// oder https:// und Rechnername.": "Adrese: una pe rând, doar cu http:// sau https:// și nume de gazdă.",
   "Versionen nur als Zahlen mit Punkten, z. B. 1.2.0.": "Versiunile doar ca numere cu puncte, de ex. 1.2.0.",
   "Store-Adressen nur mit http:// oder https://.": "Adresele magazinului doar cu http:// sau https://.",
-  "Das App-Gerät wurde gesperrt.": "Dispozitivul aplicației a fost blocat."
+  "Das App-Gerät wurde gesperrt.": "Dispozitivul aplicației a fost blocat.",
+  "Das App-Gerät wurde freigegeben.": "Dispozitivul aplicației a fost aprobat.",
+  "Die Anfrage wurde abgelehnt.": "Cererea a fost respinsă.",
+ "Infobildschirm": "Ecran informativ",
+ "Terminal": "Terminal",
+ "Terminal-Software herunterladen": "Descarcă software-ul terminalului",
+ "Raspberry-Pi-Abbild, Windows-Setup (EXE/MSI) und Updates": "Imagine Raspberry Pi, program de instalare Windows (EXE/MSI) și actualizări"
 }

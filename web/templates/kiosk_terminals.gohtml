@@ -19,6 +19,8 @@
 {{if .Notice}}<div class="card" role="status" style="margin-bottom:14px;border-color:var(--green)"><i class="ti ti-circle-check" style="color:var(--green)"></i> {{.Notice}}</div>{{end}}
 {{if .Err}}<div class="card" role="alert" style="margin-bottom:14px;border-color:var(--red);color:var(--red)"><i class="ti ti-alert-circle"></i> {{.Err}}</div>{{end}}
 
+{{template "terminal-download-link"}}
+
 <div class="card" style="margin-bottom:14px">
   <div class="card-title"><span><i class="ti ti-list-check"></i> So verbindest du ein Terminal</span>
     <button class="btn btn-small btn-primary" type="button" onclick="ktNew()"><i class="ti ti-plus"></i> Terminal hinzufügen</button></div>

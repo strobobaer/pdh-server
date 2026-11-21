@@ -31,7 +31,32 @@ import (
 const (
 	mqttHostKey    = "int_public_host"
 	mqttTLSPortKey = "int_tls_port"
+	// mqttPendingKey: "1" = Name vorgemerkt – noch keine nginx-Seite und keine Tunnel-Zeile,
+	// bis Zertifikat, Eintrag im Haus und Firewall stehen (mqtt_setup.go). Fehlt der
+	// Schlüssel, ist der Name scharf (so bleiben Namen von vor 0.82.15, wie sie sind).
+	mqttPendingKey = "int_public_pending"
 )
+
+// mqttNormHost: Name klein, ohne Leerzeichen und Punkt am Ende.
+func mqttNormHost(s string) string {
+	return strings.TrimSuffix(strings.ToLower(strings.TrimSpace(s)), ".")
+}
+
+// mqttMarkPending setzt die Vormerkung vor dem Speichern: kein Name → weg; neuer oder
+// geänderter Name → "1"; gleicher Name → wie gespeichert (das Formular trägt sie nicht mit).
+func mqttMarkPending(stored, config map[string]string) {
+	host := mqttNormHost(config[mqttHostKey])
+	switch {
+	case host == "":
+		delete(config, mqttPendingKey)
+	case host != mqttNormHost(stored[mqttHostKey]):
+		config[mqttPendingKey] = "1"
+	case stored[mqttPendingKey] == "1":
+		config[mqttPendingKey] = "1"
+	default:
+		delete(config, mqttPendingKey)
+	}
+}
 
 var mqttLabelRe = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)
 
@@ -137,6 +162,7 @@ type mqttSystem struct {
 	ID, ConnName, Host string
 	WSPort             int
 	Enabled            bool
+	Pending            bool // vorgemerkt: noch nicht scharf (mqttPendingKey)
 }
 
 // Upstream: wohin die nginx-Seite des Namens weiterreicht.
@@ -150,7 +176,8 @@ func (h *Handler) mqttSystems(ctx context.Context) ([]mqttSystem, error) {
 		return nil, nil
 	}
 	rows, err := h.db.Query(ctx, `
-		SELECT id::text, name, enabled, lower(config->>'int_public_host'), COALESCE(config->>'int_websocket_port','')
+		SELECT id::text, name, enabled, lower(config->>'int_public_host'), COALESCE(config->>'int_websocket_port',''),
+		       COALESCE(config->>'int_public_pending','') = '1'
 		FROM import_export_connections
 		WHERE direction='import' AND kind='mqtt' AND config->>'broker_mode'='integrated'
 		  AND COALESCE(config->>'int_public_host','') <> ''
@@ -164,7 +191,7 @@ func (h *Handler) mqttSystems(ctx context.Context) ([]mqttSystem, error) {
 	for rows.Next() {
 		var s mqttSystem
 		var ws string
-		if rows.Scan(&s.ID, &s.ConnName, &s.Enabled, &s.Host, &ws) != nil {
+		if rows.Scan(&s.ID, &s.ConnName, &s.Enabled, &s.Host, &ws, &s.Pending) != nil {
 			continue
 		}
 		p, ok := mqttPort(ws)
@@ -193,12 +220,19 @@ func (h *Handler) mqttUpstreamFor(ctx context.Context, name string) (string, err
 	if err != nil {
 		return "", err
 	}
+	return mqttUpstreamIn(systems, name), nil
+}
+
+// mqttUpstreamIn: Ziel der nginx-Seite für name; vorgemerkte Namen haben (noch) keins –
+// der Agent legt dann nur das Zertifikat ab und räumt eine eigene MQTT-Seite weg.
+func mqttUpstreamIn(systems []mqttSystem, name string) string {
+	name = mqttNormHost(name)
 	for _, s := range systems {
-		if s.Host == name {
-			return s.Upstream(), nil
+		if s.Host == name && !s.Pending {
+			return s.Upstream()
 		}
 	}
-	return "", nil
+	return ""
 }
 
 // mqttTargets: Zeilen „MQTT“ für die Tunnel-Ziele – je aktiver Broker-Verbindung mit Namen
@@ -206,7 +240,7 @@ func (h *Handler) mqttUpstreamFor(ctx context.Context, name string) (string, err
 func mqttTargets(systems []mqttSystem, zone string) []cfTarget {
 	var act []mqttSystem
 	for _, s := range systems {
-		if s.Enabled && zone != "" && (s.Host == zone || strings.HasSuffix(s.Host, "."+zone)) {
+		if s.Enabled && !s.Pending && zone != "" && (s.Host == zone || strings.HasSuffix(s.Host, "."+zone)) {
 			act = append(act, s)
 		}
 	}
@@ -216,7 +250,7 @@ func mqttTargets(systems []mqttSystem, zone string) []cfTarget {
 		if len(act) > 1 {
 			label += " · " + s.ConnName
 		}
-		out = append(out, cfTarget{Label: label, Host: s.Host, Service: "http://localhost:" + strconv.Itoa(s.WSPort)})
+		out = append(out, cfTarget{Label: label, Host: s.Host, Service: "http://127.0.0.1:" + strconv.Itoa(s.WSPort)})
 	}
 	return out
 }
@@ -393,6 +427,7 @@ type mqttChecklist struct {
 	ConnectionID, Host string
 	Rows               []mqttCheckRow
 	Running            bool // ein Zertifikatsauftrag läuft: gleich noch einmal nachsehen
+	Pending            bool // Name vorgemerkt: Knopf „Einrichten / erneut prüfen“
 }
 
 // MqttBrokerChecklist: GET /import/connections/{id}/broker/checklist – wird von der
@@ -415,7 +450,7 @@ func (h *Handler) MqttBrokerChecklist(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	list := mqttChecklist{ConnectionID: id, Host: strings.TrimSpace(config[mqttHostKey])}
+	list := mqttChecklist{ConnectionID: id, Host: strings.TrimSpace(config[mqttHostKey]), Pending: config[mqttPendingKey] == "1"}
 	if kind == "mqtt" && config["broker_mode"] == "integrated" {
 		ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 		defer cancel()
@@ -438,6 +473,20 @@ func (h *Handler) MqttBrokerChecklist(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) mqttCheckRows(ctx context.Context, r *http.Request, id string, config map[string]string) (rows []mqttCheckRow, running bool) {
 	host := strings.TrimSpace(config[mqttHostKey])
 	wsPort, _ := mqttPort(config["int_websocket_port"])
+	pending := config[mqttPendingKey] == "1"
+
+	// Stand: vorgemerkt (noch keine nginx-Seite, keine Tunnel-Zeile) oder scharf
+	stand := mqttCheckRow{Label: "Stand", State: "scharf", Tone: "ok"}
+	if pending {
+		stand.State, stand.Tone = "vorgemerkt – wird scharf, sobald Zertifikat, Name im Haus und Firewall grün sind", "warn"
+		stand.Hint = "Bis dahin schreibt das PDH keine nginx-Seite und keine Tunnel-Zeile für den Namen. „Einrichten / erneut prüfen“ holt nach, was das PDH selbst darf."
+	}
+	if h.db != nil {
+		if last := strings.TrimSpace(h.appSetting(ctx, mqttSetupNoteKey(id), "")); last != "" {
+			stand.Hint = strings.TrimSpace(stand.Hint + " Letzter Lauf: " + strings.ReplaceAll(last, "\n", " · "))
+		}
+	}
+	rows = append(rows, stand)
 
 	// Zertifikat
 	var row certRow
@@ -534,7 +583,7 @@ func (h *Handler) mqttCheckRows(ctx context.Context, r *http.Request, id string,
 	switch {
 	case cfErr != nil || a.tunnel == "":
 		tun.State, tun.Tone = "Cloudflare-Tunnel nicht eingerichtet (optional)", "off"
-		tun.Hint = "Von außen ist der Broker dann nur über VPN erreichbar."
+		tun.Hint = "Von außen ist der Broker dann nur über VPN erreichbar. " + mqttTunnelByHand(host, mqttWSService(wsPort)) + "."
 	case !inZone:
 		tun.State = "Name nicht in der Domain " + a.zone
 	default:
@@ -548,10 +597,12 @@ func (h *Handler) mqttCheckRows(ctx context.Context, r *http.Request, id string,
 			break
 		}
 		tun.State = "Tunnel: " + t.TunnelNote + " · DNS: " + t.DNSNote
-		if h.canCloudflare(r) {
+		if pending {
+			tun.Hint = "Wird eingerichtet, sobald der Name scharf ist (Eintrag: " + host + " → " + t.Service + ")."
+		} else if h.canCloudflare(r) {
 			tun.Action, tun.Service, tun.NoTLS, tun.Replace = "tunnel", t.Service, t.NoTLS, t.Replace
 		} else {
-			tun.Hint = "Einrichten kann ein Administrator mit dem Recht „Cloudflare“ (system.cloudflare)."
+			tun.Hint = "Einrichten kann ein Administrator mit dem Recht „Cloudflare“ (system.cloudflare). " + mqttTunnelByHand(host, t.Service) + "."
 		}
 	}
 	rows = append(rows, tun)
@@ -583,6 +634,8 @@ func (h *Handler) mqttCheckRows(ctx context.Context, r *http.Request, id string,
 		ws.Hint = "Ohne ihn schreibt das PDH keine nginx-Seite; wss://" + host + " gibt es dann nicht."
 	case !hasCert:
 		ws.State = "wartet auf Zertifikat"
+	case pending:
+		ws.State, ws.Tone = "wird geschrieben, sobald der Name scharf ist", "off"
 	default:
 		files, err := h.certDepsLive().status(ctx)
 		want := "http://127.0.0.1:" + strconv.Itoa(wsPort)
@@ -625,9 +678,9 @@ func (h *Handler) mqttFwCheckRow(ctx context.Context, config map[string]string) 
 }
 
 // mqttTunnelState: Soll und Ist des Tunnel-Ziels für den Namen (wie die Zeile im Reiter
-// Cloudflare-Tunnel; bei Full (strict) ist https://localhost:443 das Soll).
+// Cloudflare-Tunnel; bei Full (strict) ist https://127.0.0.1:443 das Soll).
 func (h *Handler) mqttTunnelState(ctx context.Context, a *cfAccess, host string, wsPort int) (cfTarget, error) {
-	t := cfTarget{Label: "MQTT", Host: host, Service: "http://localhost:" + strconv.Itoa(wsPort)}
+	t := cfTarget{Label: "MQTT", Host: host, Service: "http://127.0.0.1:" + strconv.Itoa(wsPort)}
 	ctx, cancel := context.WithTimeout(ctx, 8*time.Second)
 	defer cancel()
 	zone, err := a.client.ZoneByName(ctx, a.zone)

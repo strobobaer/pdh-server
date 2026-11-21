@@ -106,7 +106,7 @@ func TestMqttTargets(t *testing.T) {
 		{ID: "3", ConnName: "fremd", Host: "mqtt.andere.de", WSPort: 8085, Enabled: true},
 	}
 	got := mqttTargets(sys, "firma.de")
-	if len(got) != 1 || got[0].Label != "MQTT" || got[0].Host != "mqtt.firma.de" || got[0].Service != "http://localhost:8083" || got[0].NoTLS {
+	if len(got) != 1 || got[0].Label != "MQTT" || got[0].Host != "mqtt.firma.de" || got[0].Service != "http://127.0.0.1:8083" || got[0].NoTLS {
 		t.Fatalf("Zeile MQTT: %+v", got)
 	}
 	if len(mqttTargets(sys, "")) != 0 {
@@ -120,7 +120,7 @@ func TestMqttTargets(t *testing.T) {
 	}
 	// Full (strict): nginx bedient den Namen auf 443 – das ist dann das Soll
 	strict := cfStrictWanted(got, []string{"mqtt.firma.de"})
-	if strict[0].Service != certStrictService || strict[1].Service != "http://localhost:8084" {
+	if strict[0].Service != certStrictService || strict[1].Service != "http://127.0.0.1:8084" {
 		t.Fatalf("Full (strict): %+v", strict)
 	}
 }

@@ -55,20 +55,22 @@ type terminalInfo struct {
 
 // terminalPage: Daten für terminal.gohtml.
 type terminalPage struct {
-	Mode       string // schoner | info | neu
-	Idle       int    // Rückkehrzeit in Sekunden (0 = kein Timer)
-	NoInfra    bool
-	NoPerm     bool // dem Terminal-Benutzer fehlen faults.view und tickets.view für diese Anlage
-	CanFaults  bool
-	CanTickets bool
-	EasyMode   bool // Easy-Mode an: „Neu“ darf zur Meldeseite /e/{id} führen
-	CardEvents bool // Gerätesitzung (gekoppelter Pi): Kartenleser-Ereignisse abonnieren
+	Mode           string // schoner | info | neu | global (Folienschau des Infobildschirms)
+	Idle           int    // Rückkehrzeit in Sekunden (0 = kein Timer)
+	NoInfra        bool
+	NoPerm         bool // dem Terminal-Benutzer fehlen faults.view und tickets.view für diese Anlage
+	CanFaults      bool
+	CanTickets     bool
+	EasyMode       bool   // Easy-Mode an: „Neu“ darf zur Meldeseite /e/{id} führen
+	SettingsEvents bool   // Gerätesitzung (nicht global): /terminal/events abonnieren (Wechsel zum globalen Terminal)
+	CardEvents     bool   // Gerätesitzung (gekoppelter Pi): Kartenleser-Ereignisse abonnieren
 	ManualLogin    string // Anfangswert: card_pin | password | card_only | none
 	PasswordButton bool   // Anfangswert: Knopf „Mit Benutzer und Passwort“
-	InfraID    string
-	Name       string
-	Path       string
-	Info       terminalInfo
+	CardNotify     string // Anfangswert: wirksame Benachrichtigungsarten als JSON-Liste, z. B. ["overlay"]
+	InfraID        string
+	Name           string
+	Path           string
+	Info           terminalInfo
 }
 
 // FaultsMore/TicketsMore: nicht angezeigte offene Einträge.
@@ -81,6 +83,9 @@ func (h *Handler) terminalRoutes(r chi.Router) {
 	r.Get("/terminal/info", h.TerminalInfoPage)
 	r.Get("/terminal/neu", h.TerminalNeuPage)
 	r.Get("/terminal/info.json", h.TerminalInfoJSON)
+	r.Get("/terminal/slides.json", h.TerminalSlidesJSON)
+	r.Get("/terminal/slides/{id}/image", h.TerminalSlideImage)
+	r.Get("/terminal/vorgang/{kind}/{id}", h.TerminalVorgang)
 	r.Get("/terminal/sensors.json", h.TerminalSensorsJSON) // ESPPDH-Sensoren nach Kartenanmeldung (terminal_sensors.go)
 	r.Get("/terminal/terminal.js", h.TerminalScript)
 	h.cardRoutes(r)
@@ -244,12 +249,12 @@ func (h *Handler) loadTerminalInfo(ctx context.Context, infraID string, canFault
 		return items, total, rs.Err()
 	}
 	if canFaults {
-		if info.Faults, info.FaultsTotal, err = load("faults", "status::text NOT IN ('resolved','closed')"); err != nil {
+		if info.Faults, info.FaultsTotal, err = load("faults", terminalFaultOpenCond); err != nil {
 			return info, err
 		}
 	}
 	if canTickets {
-		if info.Tickets, info.TicketsTotal, err = load("tickets", "status::text IN ('open','in_progress','pending')"); err != nil {
+		if info.Tickets, info.TicketsTotal, err = load("tickets", terminalTicketOpenCond); err != nil {
 			return info, err
 		}
 	}
@@ -265,6 +270,22 @@ func (h *Handler) terminalGate(w http.ResponseWriter, r *http.Request, mode stri
 		http.Error(w, "Diese Seite ist nur für Terminal-Benutzer (Systembenutzer) bestimmt.", http.StatusForbidden)
 		return p, false
 	}
+	// Globales Terminal (nur Gerätesitzung): Folienschau statt Schoner, Info und Neu – ohne Anlage, Karten und Anmeldung.
+	if h.terminalDeviceSession(r) {
+		g, err := h.terminalIsGlobal(r.Context(), uid)
+		if err != nil {
+			componentLog("terminal").Error().Err(err).Msg("globales terminal prüfen")
+			http.Error(w, "Daten nicht verfügbar", http.StatusInternalServerError)
+			return p, false
+		}
+		if g {
+			p.Mode, p.Name = "global", h.branding().AppName
+			return p, true
+		}
+	}
+	// Gerätesitzung (nicht global): Einstellungsstrom auch auf Schoner und Seite „keine Anlage“, damit ein
+	// später als global gekennzeichnetes Terminal sofort zur Folienschau wechselt.
+	p.SettingsEvents = h.terminalDeviceSession(r)
 	infra, role, err := h.terminalInfraLookup(r.Context(), uid)
 	var name string
 	var ok bool
@@ -288,15 +309,20 @@ func (h *Handler) terminalGate(w http.ResponseWriter, r *http.Request, mode stri
 	}
 	if mode != "schoner" {
 		p.Idle = h.terminalIdleSeconds(r.Context(), uid)
-		p.CardEvents = h.terminalDeviceSession(r) // im Schoner wird nichts abonniert
-		// Anfangswerte der Anmeldung ohne Leser; Änderungen kommen per /terminal/events nach.
-		p.ManualLogin, p.PasswordButton = loginCardPIN, true
-		if p.CardEvents {
-			if ls, err := h.terminalLoginSettings(r.Context(), uid); err == nil {
-				p.ManualLogin, p.PasswordButton = ls.ManualLogin, ls.PasswordButton
-			}
+	}
+	// Auch der Schoner abonniert den Kartenstrom: eine Karte weckt ihn (Seite /terminal/info meldet sie an).
+	p.CardEvents = h.terminalDeviceSession(r)
+	// Anfangswerte der Anmeldung ohne Leser; Änderungen kommen per /terminal/events nach.
+	p.ManualLogin, p.PasswordButton = loginCardPIN, true
+	notify := effectiveCardNotify(nil)
+	if p.CardEvents {
+		if ls, err := h.terminalLoginSettings(r.Context(), uid); err == nil {
+			p.ManualLogin, p.PasswordButton = ls.ManualLogin, ls.PasswordButton
+			notify = effectiveCardNotify(ls.CardNotify)
 		}
 	}
+	nb, _ := json.Marshal(notify)
+	p.CardNotify = string(nb)
 	return p, true
 }
 
@@ -318,7 +344,8 @@ func (h *Handler) renderTerminal(w http.ResponseWriter, d terminalPage) {
 // TerminalSchoner: GET /terminal
 func (h *Handler) TerminalSchoner(w http.ResponseWriter, r *http.Request) {
 	if p, ok := h.terminalGate(w, r, "schoner"); ok {
-		// Schoner = Ruhezustand: laufende Kartensitzung beenden.
+		// Schoner = Ruhezustand: laufende Kartensitzung beenden (auch beim globalen Terminal: eine Sitzung aus der
+		// Zeit vor der Umstellung darf nicht weiterlaufen).
 		if uid := h.terminalUserID(r); uid != "" && h.db != nil {
 			if err := h.cardSessionEnd(r.Context(), uid); err != nil {
 				componentLog("terminal").Error().Err(err).Msg("kartensitzung beenden")
@@ -334,7 +361,7 @@ func (h *Handler) TerminalInfoPage(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !p.NoInfra && !p.NoPerm {
+	if !p.NoInfra && !p.NoPerm && p.Mode != "global" {
 		info, err := h.loadTerminalInfo(r.Context(), p.InfraID, p.CanFaults, p.CanTickets)
 		if err != nil {
 			componentLog("terminal").Error().Err(err).Msg("störungsinfo")
@@ -357,6 +384,10 @@ func (h *Handler) TerminalNeuPage(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) TerminalInfoJSON(w http.ResponseWriter, r *http.Request) {
 	p, ok := h.terminalGate(w, r, "info")
 	if !ok {
+		return
+	}
+	if p.Mode == "global" {
+		http.Error(w, "Globales Terminal: keine Anlagendaten", http.StatusNotFound)
 		return
 	}
 	if p.NoInfra {

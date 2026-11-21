@@ -177,6 +177,8 @@ var gateRules = []gateRule{
 	gr(wPost, permNetworkAdmin, "", false, `^/admin/network/(?:segments|wlans)`+gID+`/delete$`),
 	gr(wPost, permNetwork, "", false, `^/admin/network/(?:segments|wlans)(?:`+gID+`)?$`),
 	gr(wPost, permNetwork, "", false, `^/admin/network/suggestions/(?:adopt|adopt-all|hide)$`),
+	// Infobildschirm: Folien anlegen, ändern, verschieben, löschen mit terminal.slides.edit
+	gr(wPost, permTerminalSlides, "", false, `^/terminal-slides(?:`+gID+`(?:/delete|/move)?)?/?$`),
 	// Karte „Dieser Server“: Adresse fest einstellen, DNS ändern, bestätigen nur mit system.server_config
 	// (der Handler verlangt zusätzlich die Rolle Administrator, canServerConfig)
 	gr(wPost, "system.server_config", "", false, `^/admin/network/server/(?:fix|dns|confirm)$`),
@@ -200,6 +202,7 @@ var gateRules = []gateRule{
 	gr("GET", "import.write", "", false, `^/import/connections`+gID+`/broker/checklist$`),
 	// Ports des eingebauten Brokers in der Firewall des Servers öffnen (wer den Broker einrichtet)
 	gr(wPost, "import.write", "", false, `^/import/connections`+gID+`/broker/firewall$`),
+	gr(wPost, "import.write", "", false, `^/import/connections`+gID+`/broker/setup$`),
 	gr(wPost, "export.write", "", false, `^/export/connections/fingerprint$`),
 	// ── Explorer: Testschreiben/Senden wie Verbindung bearbeiten (Erkunden selbst: import/export.execute im Handler) ──
 	gr(wPost, "import.write", "", false, `^/import/connections`+gID+`/explorer/(?:mqtt/publish|opcua/write|modbus/write)$`),

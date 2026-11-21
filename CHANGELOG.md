@@ -10,6 +10,44 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.82.15] – 2026-11-21
+
+### Behoben
+
+- Ein neuer MQTT-Name kann den Zugang zum PDH nicht mehr unterbrechen: Der Update-Agent prüft nach jeder neuen nginx-Seite, ob alle anderen Namen ihr Zertifikat behalten, und nimmt sie sonst zurück.
+- Eine nginx-Seite des Update-Agenten hört nur noch dann auf IPv6, wenn alle anderen Seiten auf Port 443 das auch tun.
+- Nach einer Änderung des WebSocket-Ports zeigt die Tunnel-Zeile des MQTT-Namens selbst auf den neuen Port.
+
+### Geändert
+
+- Ein neuer oder geänderter MQTT-Name ist zuerst vorgemerkt und wird erst scharf geschaltet, wenn Zertifikat, Eintrag im Haus und Firewall stehen; was das PDH nicht selbst darf, zeigt die Prüfliste mit dem genauen Eintrag.
+- Der Cloudflare-Tunnel erreicht die Dienste über 127.0.0.1 statt localhost; vorhandene Zeilen mit localhost gelten weiter als richtig.
+## [0.82.14] – 2026-11-21
+
+### Neu
+
+- Auf den Seiten „Kiosk-Terminals“ und beim Systembenutzer (Gekoppelte Geräte) führt der Link „Terminal-Software herunterladen“ zur neuesten Ausgabe der Terminal-Software auf GitHub: Raspberry-Pi-Abbild, Windows-Setup (EXE/MSI) und Updates.
+
+## [0.82.13] – 2026-11-21
+
+### Neu
+
+- Am Systembenutzer eines Terminals lässt sich einstellen, wie ein Windows-Terminal im Hintergrund auf eine gelesene Karte aufmerksam macht: Windows-Mitteilung, Fenster in der Mitte (Vorgabe), Leiste oben, Terminal nach vorn oder keine Benachrichtigung. Die Einstellung erreicht das Terminal sofort; ältere Terminals ignorieren sie.
+- Am Systembenutzer eines Terminals gibt es das Kästchen „Globales Terminal (Infobildschirm)“. Dazu gehören ein Speicher für Folien (Bild, Text, Vorgänge mit Dauer und Reihenfolge) und das neue Recht „Infobildschirm bearbeiten“ (Admin und Manager); die Umschaltung erreicht das Terminal sofort.
+- Ein globales Terminal (Infobildschirm) zeigt jetzt die Folien: Bild, Text oder die offenen Störungen und Tickets ausgewählter Anlagen, jede so lange, wie ihre Dauer sagt. Tippen oder Wischen nach links blättert weiter; ein angetippter Vorgang öffnet eine reine Leseansicht (Titel, Status, Anlage, Beschreibung, die letzten fünf Verlaufseinträge, keine Anhänge, nur „Zurück“), die nach der Rückkehrzeit zur Folienschau zurückkehrt. Zu sehen ist nur, was der Terminal-Benutzer für die gewählten Anlagen sehen darf. Ein globales Terminal liest keine Karten und bietet keine Anmeldung. Das Terminalprogramm erhält zudem einen Zwischenspeicher der Folien für den Betrieb ohne PDH; ältere Terminals ignorieren das.
+- Neue Seite „Infobildschirm“ (Administration, mit dem Recht „Infobildschirm bearbeiten“): Folien für globale Terminals anlegen, ändern, löschen und mit Hoch/Runter ordnen – als Bild (JPEG, PNG, WebP, bis 5 MB), Text (bis 2000 Zeichen) oder Vorgänge (Störungen und Tickets ausgewählter Anlagen), je mit Dauer und Aktiv-Haken. Jede Änderung erreicht die Infobildschirme sofort. Das Handbuch hat dazu das Kapitel „Infobildschirm“.
+- Windows-Terminals melden nach jeder Anmeldung und Abmeldung per Karte das Ergebnis an das lokale Terminalprogramm, damit es im Hintergrund benachrichtigen kann. Ältere Terminals ohne diese Schnittstelle laufen unverändert weiter.
+
+### Geändert
+
+- Eine Karte weckt jetzt auch den Bildschirmschoner eines Terminals (auch am Raspberry Pi): Die Störungsinfo öffnet sich und die Person ist gleich angemeldet.
+
+### Behoben
+
+- Meldet das Terminal die Abmeldung per Karte an das lokale Terminalprogramm, gilt sie nur noch dann als gelungen, wenn PDH sie angenommen hat; bei einem Fehler zeigt die Benachrichtigung die Störung statt „Abgemeldet“.
+- Infobildschirm bei Ausfall von PDH: Nach drei fehlgeschlagenen Abrufen der Folien oder des Ereignisstroms in Folge wechselt ein globales Terminal zur Startseite des Terminalprogramms, die die gespeicherte Folienschau zeigt und nach PDH zurückkehrt, sobald es antwortet. Auch „Zurück“ und die Rückkehrzeit der Vorgang-Ansicht prüfen vorher, ob PDH antwortet.
+- Ein Terminal mit Anlage oder ohne Anlage wird sofort zur Folienschau, wenn es als globales Terminal gekennzeichnet wird; bisher galt das nur für die Info- und Neu-Seiten. Eine noch offene Kartensitzung eines globalen Terminals wird beim Wechsel beendet, und die Meldung „Keine Folien eingerichtet“ nennt den Namen der Instanz statt „PDH“.
+
 ## [0.82.12] – 2026-11-21
 
 ### Geändert

@@ -1103,5 +1103,11 @@
   "Adressen: eine je Zeile, nur mit http:// oder https:// und Rechnername.": "Addresses: one per line, only with http:// or https:// and a host name.",
   "Versionen nur als Zahlen mit Punkten, z. B. 1.2.0.": "Versions only as numbers with dots, e.g. 1.2.0.",
   "Store-Adressen nur mit http:// oder https://.": "Store addresses only with http:// or https://.",
-  "Das App-Gerät wurde gesperrt.": "The app device has been blocked."
+  "Das App-Gerät wurde gesperrt.": "The app device has been blocked.",
+  "Das App-Gerät wurde freigegeben.": "The app device has been approved.",
+  "Die Anfrage wurde abgelehnt.": "The request has been rejected.",
+ "Infobildschirm": "Info screen",
+ "Terminal": "Terminal",
+ "Terminal-Software herunterladen": "Download terminal software",
+ "Raspberry-Pi-Abbild, Windows-Setup (EXE/MSI) und Updates": "Raspberry Pi image, Windows setup (EXE/MSI) and updates"
 }

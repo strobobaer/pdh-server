@@ -1103,5 +1103,11 @@
   "Adressen: eine je Zeile, nur mit http:// oder https:// und Rechnername.": "Адреси: една во ред, само со http:// или https:// и име на домаќин.",
   "Versionen nur als Zahlen mit Punkten, z. B. 1.2.0.": "Верзиите само како броеви со точки, на пр. 1.2.0.",
   "Store-Adressen nur mit http:// oder https://.": "Адресите на продавницата само со http:// или https://.",
-  "Das App-Gerät wurde gesperrt.": "Уредот на апликацијата е блокиран."
+  "Das App-Gerät wurde gesperrt.": "Уредот на апликацијата е блокиран.",
+  "Das App-Gerät wurde freigegeben.": "Уредот на апликацијата е одобрен.",
+  "Die Anfrage wurde abgelehnt.": "Барањето е одбиено.",
+ "Infobildschirm": "Инфо екран",
+ "Terminal": "Терминал",
+ "Terminal-Software herunterladen": "Преземи го софтверот за терминал",
+ "Raspberry-Pi-Abbild, Windows-Setup (EXE/MSI) und Updates": "Слика за Raspberry Pi, Windows-инсталација (EXE/MSI) и ажурирања"
 }

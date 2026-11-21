@@ -1,6 +1,6 @@
 //go:build integration
 
-// PDH-App Paket 1: Migration 187 (Rechte, Tabellen, Systembenutzer, Gruppe).
+// PDH-App Paket 1: Migration 189 (Rechte, Tabellen, Systembenutzer, Gruppe).
 // Aufruf: PDH_TEST_DSN=postgres://... go test -tags integration -run TestAppMigration ./internal/web/
 package web
 

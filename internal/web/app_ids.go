@@ -1,7 +1,7 @@
 package web
 
 // PDH-App (Paket 1): feste Kennungen und Rechte. Die Werte stehen auch in
-// Migration 187_app_grundlage.up.sql.
+// Migration 189_app_grundlage.up.sql.
 const (
 	// appSystemUserID: inaktiver Systembenutzer „PDH-App“ (Urheber von Vorgängen aus der App).
 	appSystemUserID = "00000000-0000-4000-8000-0000000a0001"

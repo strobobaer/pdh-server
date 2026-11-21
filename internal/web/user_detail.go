@@ -28,13 +28,15 @@ type userMaster struct {
 	EntryDate, ExitDate, Notes                          string
 	BrokerTickets, BrokerFaults                         bool
 	BrokerTasks, BrokerMaintenance                      bool
-	TerminalInfraID, TerminalInfraPath                  string // Standort des Terminals (Systembenutzer)
-	LeitstandID, LeitstandName                          string // direkt gewählter Leitstand des Terminals
-	LiveTranslate                                       bool   // Live-Übersetzung (live_translate.go)
-	TerminalIdle                                        string // eigene Rückkehrzeit des Terminals in Sekunden, "" = globaler Wert
-	TranslateLang                                       string // Zielsprache, "" = Sprache der Oberfläche
-	TerminalManualLogin                                 string // Anmeldeart ohne Kartenleser (Systembenutzer)
-	TerminalPasswordButton                              bool   // Knopf „Mit Benutzer und Passwort“
+	TerminalInfraID, TerminalInfraPath                  string          // Standort des Terminals (Systembenutzer)
+	LeitstandID, LeitstandName                          string          // direkt gewählter Leitstand des Terminals
+	LiveTranslate                                       bool            // Live-Übersetzung (live_translate.go)
+	TerminalIdle                                        string          // eigene Rückkehrzeit des Terminals in Sekunden, "" = globaler Wert
+	TranslateLang                                       string          // Zielsprache, "" = Sprache der Oberfläche
+	TerminalManualLogin                                 string          // Anmeldeart ohne Kartenleser (Systembenutzer)
+	TerminalPasswordButton                              bool            // Knopf „Mit Benutzer und Passwort“
+	TerminalCardNotify                                  map[string]bool // gespeicherte Benachrichtigungsarten (leer = Vorgabe)
+	TerminalGlobalScreen                                bool            // globales Terminal (Infobildschirm)
 }
 
 type userPrivate struct {
@@ -268,6 +270,13 @@ func (h *Handler) loadUserMasterErr(ctx context.Context, id string) (userMaster,
 		m.TerminalManualLogin, m.TerminalPasswordButton = loginCardPIN, true
 		if ls, err := h.terminalLoginSettings(ctx, id); err == nil {
 			m.TerminalManualLogin, m.TerminalPasswordButton = ls.ManualLogin, ls.PasswordButton
+			m.TerminalGlobalScreen = ls.GlobalScreen
+			for _, k := range ls.CardNotify {
+				if m.TerminalCardNotify == nil {
+					m.TerminalCardNotify = map[string]bool{}
+				}
+				m.TerminalCardNotify[k] = true
+			}
 		} else {
 			componentLog("terminal").Error().Err(err).Str("user", id).Msg("anmeldeart (formular)")
 		}
@@ -462,6 +471,34 @@ func (h *Handler) UserMasterSaveWeb(w http.ResponseWriter, r *http.Request) {
 		}
 		loginSent = sys
 	}
+	// Benachrichtigung beim Kartenlesen (nur Benutzerverwaltung, nur System-Benutzer; ältere Formulare senden den Marker nicht)
+	notifySent := false
+	var notifyKinds []string
+	if _, sent := r.Form["terminal_card_notify_sent"]; sent && h.canManageUsers(r) {
+		var err error
+		if notifyKinds, err = normalizeCardNotify(r.Form["terminal_card_notify"]); err != nil {
+			userRedirect(w, r, id, "master", "", err)
+			return
+		}
+		sys, err := h.isSystemUser(ctx, id)
+		if err != nil {
+			componentLog("terminal").Error().Err(err).Str("user", id).Msg("systembenutzer prüfen")
+			userRedirect(w, r, id, "master", "", errTerminalLoginSave)
+			return
+		}
+		notifySent = sys
+	}
+	// Globales Terminal (Infobildschirm): nur Benutzerverwaltung, nur System-Benutzer, nur mit Marker
+	globalSent := false
+	if _, sent := r.Form["terminal_global_screen_sent"]; sent && h.canManageUsers(r) {
+		sys, err := h.isSystemUser(ctx, id)
+		if err != nil {
+			componentLog("terminal").Error().Err(err).Str("user", id).Msg("systembenutzer prüfen")
+			userRedirect(w, r, id, "master", "", errTerminalLoginSave)
+			return
+		}
+		globalSent = sys
+	}
 	old := h.loadUserMaster(ctx, id)
 	brokerT, brokerF, brokerA, brokerM := old.BrokerTickets, old.BrokerFaults, old.BrokerTasks, old.BrokerMaintenance
 	if h.canManageUsers(r) {
@@ -511,16 +548,44 @@ func (h *Handler) UserMasterSaveWeb(w http.ResponseWriter, r *http.Request) {
 		h.notifyTerminalSettings(id)
 	}
 	if loginSent {
-		ls := terminalLoginSettings{ManualLogin: v("terminal_manual_login"), PasswordButton: r.FormValue("terminal_password_button") == "on"}
 		oldLS, _ := h.terminalLoginSettings(ctx, id)
+		ls := terminalLoginSettings{ManualLogin: v("terminal_manual_login"), PasswordButton: r.FormValue("terminal_password_button") == "on", CardNotify: oldLS.CardNotify}
 		if err := h.saveTerminalLoginSettings(ctx, id, ls); err != nil {
 			componentLog("terminal").Error().Err(err).Str("user", id).Msg("anmeldeart speichern")
 			userRedirect(w, r, id, "master", "", errTerminalLoginSave)
 			return
 		}
-		if oldLS != ls {
+		if oldLS.ManualLogin != ls.ManualLogin || oldLS.PasswordButton != ls.PasswordButton {
 			h.addHistory(ctx, "user", id, "update", "Anmeldung ohne Kartenleser", loginSummary(oldLS), loginSummary(ls),
 				"Anmeldung ohne Kartenleser: "+loginKindLabel(ls.ManualLogin), getUser(r).ID)
+		}
+		h.notifyTerminalSettings(id)
+	}
+	if notifySent {
+		oldLS, _ := h.terminalLoginSettings(ctx, id)
+		if err := h.saveTerminalCardNotify(ctx, id, notifyKinds); err != nil {
+			componentLog("terminal").Error().Err(err).Str("user", id).Msg("benachrichtigung speichern")
+			userRedirect(w, r, id, "master", "", errTerminalLoginSave)
+			return
+		}
+		if o, n := cardNotifySummary(oldLS.CardNotify), cardNotifySummary(notifyKinds); o != n {
+			h.addHistory(ctx, "user", id, "update", "Benachrichtigung beim Kartenlesen", o, n,
+				"Benachrichtigung beim Kartenlesen: "+n, getUser(r).ID)
+		}
+		h.notifyTerminalSettings(id)
+	}
+	if globalSent {
+		oldLS, _ := h.terminalLoginSettings(ctx, id)
+		on := r.FormValue("terminal_global_screen") == "on"
+		if err := h.saveTerminalGlobalScreen(ctx, id, on); err != nil {
+			componentLog("terminal").Error().Err(err).Str("user", id).Msg("globales terminal speichern")
+			userRedirect(w, r, id, "master", "", errTerminalLoginSave)
+			return
+		}
+		if oldLS.GlobalScreen != on {
+			yn := map[bool]string{true: "an", false: "aus"}
+			h.addHistory(ctx, "user", id, "update", "Globales Terminal (Infobildschirm)", yn[oldLS.GlobalScreen], yn[on],
+				"Globales Terminal (Infobildschirm): "+yn[on], getUser(r).ID)
 		}
 		h.notifyTerminalSettings(id)
 	}

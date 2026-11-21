@@ -1103,5 +1103,11 @@
   "Adressen: eine je Zeile, nur mit http:// oder https:// und Rechnername.": "Adresler: satır başına bir tane, yalnızca http:// veya https:// ve ana bilgisayar adıyla.",
   "Versionen nur als Zahlen mit Punkten, z. B. 1.2.0.": "Sürümler yalnızca noktalı sayılar olarak, örn. 1.2.0.",
   "Store-Adressen nur mit http:// oder https://.": "Mağaza adresleri yalnızca http:// veya https:// ile.",
-  "Das App-Gerät wurde gesperrt.": "Uygulama cihazı engellendi."
+  "Das App-Gerät wurde gesperrt.": "Uygulama cihazı engellendi.",
+  "Das App-Gerät wurde freigegeben.": "Uygulama cihazı onaylandı.",
+  "Die Anfrage wurde abgelehnt.": "İstek reddedildi.",
+ "Infobildschirm": "Bilgi ekranı",
+ "Terminal": "Terminal",
+ "Terminal-Software herunterladen": "Terminal yazılımını indir",
+ "Raspberry-Pi-Abbild, Windows-Setup (EXE/MSI) und Updates": "Raspberry Pi imajı, Windows kurulumu (EXE/MSI) ve güncellemeler"
 }

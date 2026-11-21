@@ -873,6 +873,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li><b>Schlüssel abgelehnt</b> oder <b>Fingerabdruck stimmt nicht</b> – die Verbindung muss unter <b>Kiosk-Terminals</b> neu eingetragen werden.</li>
       <li><b>nicht erreichbar</b> – Terminal aus, Netzwerk unterbrochen oder falsche Adresse.</li>
     </ul></div>
+  <p>Die Software für das Terminal (Raspberry-Pi-Abbild, Windows-Setup als EXE/MSI und Updates) holst du über den Link <b>Terminal-Software herunterladen</b> – er steht auf der Seite „Kiosk-Terminals“ und beim Systembenutzer unter „Gekoppelte Geräte“.</p>
   <div class="hb-howto"><b><i class="ti ti-plug-connected"></i> So verbindest du ein Terminal mit PDH</b>
     <ol class="hb-steps">
       <li>Am Terminal die Admin-Seite öffnen (<code>https://&lt;Terminal&gt;:8443</code>) → <b>Netzwerk → Fernsteuerung (PDH)</b> → <b>Schlüssel erzeugen</b>. Den Schlüssel (beginnt mit <code>hmik_</code>) kopieren – er wird nur einmal angezeigt. Daneben steht der <b>Fingerabdruck</b>.</li>
@@ -913,7 +914,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   </ul>
   <h3>Was am Terminal passiert</h3>
   <ul>
-    <li><b>Bildschirmschoner</b> – Anlagenname und Uhrzeit. Eine Berührung öffnet die Störungsinfo.</li>
+    <li><b>Bildschirmschoner</b> – Anlagenname und Uhrzeit. Eine Berührung öffnet die Störungsinfo. Wird eine Karte gelesen, öffnet sich die Störungsinfo ebenfalls und die Person ist gleich angemeldet.</li>
     <li><b>Störungsinfo</b> – die offenen Störungen und die offenen Tickets der Anlage und ihrer Unteranlagen, die neuesten zuerst (je höchstens 50, dazu „… und N weitere“). Bei Einträgen aus Unteranlagen steht der Weg dorthin (Pfad unterhalb der Terminal-Anlage) vor dem Alter. Die Seite aktualisiert sich alle 30 Sekunden von selbst. Welche Listen das Terminal zeigt, hängt von den Rechten des <b>Terminal-Benutzers</b> ab (auch wenn sich jemand kurz per Override am Terminal anmeldet): <b>Störungen ansehen</b> für die Störungsliste, <b>Tickets ansehen</b> für die Ticketliste, jeweils für die Abteilung der Anlage. Fehlt eines der Rechte, steht an der Stelle „Keine Berechtigung für Störungen“ bzw. „… für Tickets“; fehlen beide, zeigt das Terminal nur „Keine Berechtigung“. Unten führt <b>Neu</b> weiter.</li>
     <li><b>Neu</b> – <b>Störung</b> und <b>Ticket</b> öffnen vorerst beide die Meldeseite des Easy-Mode der Anlage (eine eigene Ticket-Meldung ist noch nicht verfügbar). Ist der <b>Easy-Mode</b> in den Core-Einstellungen ausgeschaltet, sind <b>Störung</b> und <b>Ticket</b> abgeblendet und das Terminal weist darauf hin („Melden am Terminal ist ausgeschaltet“) – so landet am Wandbildschirm niemand auf der Anmeldeseite. <b>Stillstand</b> ist noch nicht verfügbar. <b>Zurück</b> geht zur Störungsinfo.</li>
   </ul>
@@ -928,6 +929,18 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <li><b>Keine</b> – das Terminal zeigt <b>Kein Kartenleser – Anmeldung nicht möglich</b>; auch der Knopf entfällt.</li>
   </ul>
   <p>Die <b>Terminal-PIN</b> (4 bis 8 Ziffern, nicht lauter gleiche und keine Zahlenfolge wie 1234) setzt jede Person unter <b>Mein Konto</b>; Benutzerverwalter können sie auch am Benutzer setzen oder entfernen. Nach <b>5</b> falschen PINs ist die PIN <b>15 Minuten</b> gesperrt (an allen Terminals); am Terminal erscheint dann nur <b>Anmeldung fehlgeschlagen</b>; die Sperrzeit (<b>PIN gesperrt bis HH:MM</b>) siehst du als Benutzerverwalter beim Benutzer. Ändert sich die Anmeldeart oder der Knopf, übernimmt das Terminal das <b>sofort</b>, ohne Neuladen. Bei Fehlern erscheint kurz <b>Anmeldung fehlgeschlagen</b>, bei zu vielen Versuchen <b>Bitte kurz warten</b>.</p>
+  <h3>Benachrichtigung beim Kartenlesen (Windows-Terminal)</h3>
+  <p>Wird an einem Windows-Terminal eine Karte gelesen, während das Terminalfenster im Hintergrund ist, zeigt das Terminal, wer angemeldet wurde. Welche Art der Benachrichtigung gilt, stellst du am Systembenutzer des Terminals ein (Terminal-Block, <b>Benachrichtigung beim Kartenlesen</b>). Mehrere Arten lassen sich zusammen wählen:</p>
+  <ul>
+    <li><b>Windows-Mitteilung</b> – eine Mitteilung von Windows.</li>
+    <li><b>Fenster in der Mitte</b> (Vorgabe) – ein Fenster in der Bildschirmmitte, das nach 4 Sekunden schließt.</li>
+    <li><b>Leiste oben</b> – eine Leiste am oberen Bildschirmrand, die nach 4 Sekunden schließt.</li>
+    <li><b>Terminal nach vorn</b> – das Terminalfenster kommt in den Vordergrund.</li>
+    <li><b>Keine Benachrichtigung</b> – schließt alle anderen Arten aus.</li>
+  </ul>
+  <p>Ist nichts angehakt, gilt die Vorgabe (Fenster in der Mitte). Die Einstellung wirkt nur an Windows-Terminals in der Betriebsart Zusatz und gilt am Terminal sofort, ohne Neuladen.</p>
+  <h3>Globales Terminal (Infobildschirm)</h3>
+  <p>Ein Terminal lässt sich zum <b>Infobildschirm</b> machen: Am Systembenutzer des Terminals das Kästchen <b>Globales Terminal (Infobildschirm)</b> anhaken und speichern. Das Terminal zeigt dann eine Folienschau, ohne Anmeldung und ohne Kartenleser. Die Folien pflegst du unter <b>Administration → Infobildschirm</b> (siehe Kapitel <a href="#infobildschirm">Infobildschirm</a>); dafür brauchst du das Recht <b>Infobildschirm bearbeiten</b>. Die Umschaltung gilt am Terminal sofort, ohne Neuladen; ältere Terminals zeigen weiter die Störungsinfo.</p>
   <p>Rührt niemand das Terminal an, kehrt es nach der <b>Rückkehrzeit</b> von Störungsinfo und „Neu“ zum Bildschirmschoner zurück.</p>
   <div class="hb-howto"><b><i class="ti ti-clock"></i> So stellst du die Rückkehrzeit ein</b>
     <ol class="hb-steps">
@@ -950,6 +963,35 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>Nach dem Abmelden verschwindet der Bereich sofort.</li>
     </ol></div>
   {{template "hb-shots" (dict "Ref" (index $s "terminal") "Can" $can)}}
+</section>
+
+<section class="hb-ch" id="infobildschirm" data-title="Infobildschirm" data-pages="terminal-slides">
+  <h2><i class="ti ti-slideshow"></i> Infobildschirm</h2>
+  <p>Der <b>Infobildschirm</b> ist ein Terminal, das keine Anlage zeigt, sondern eine <b>Folienschau</b> für den ganzen Betrieb: ein Bild (z. B. ein Aushang), ein Text (z. B. eine Mitteilung) oder die aktuellen Störungen und Tickets ausgewählter Anlagen. Die Folien laufen der Reihe nach, jede so lange, wie ihre Dauer sagt. Das Terminal braucht dafür weder eine Anmeldung noch einen Kartenleser.</p>
+  <div class="hb-howto"><b><i class="ti ti-slideshow"></i> So richtest du den Infobildschirm ein</b>
+    <ol class="hb-steps">
+      <li>Am Systembenutzer des Terminals das Kästchen <b>Globales Terminal (Infobildschirm)</b> anhaken und speichern (siehe <a href="#terminal">Anlagenterminal</a>).</li>
+      <li>In der Navigation <b>Administration → Infobildschirm</b> öffnen. Den Eintrag siehst du nur mit dem Recht <b>Infobildschirm bearbeiten</b> (Vorgabe: Administratoren und Manager).</li>
+      <li>Oben <b>Bildfolie</b>, <b>Textfolie</b> oder <b>Vorgänge</b> wählen und das Formular ausfüllen, dann <b>Speichern</b>.</li>
+    </ol></div>
+  <ul>
+    <li><b>Bild</b> – eine Datei als JPEG, PNG oder WebP, höchstens 5 MB. Der Titel ist freiwillig. Beim Bearbeiten bleibt das jetzige Bild, wenn du keine neue Datei wählst.</li>
+    <li><b>Text</b> – Titel und Text, zusammen mindestens eines von beiden. Der Text hat höchstens 2000 Zeichen; Zeilenumbrüche bleiben erhalten. Es ist reiner Text, Formatierungen oder HTML werden nicht ausgeführt.</li>
+    <li><b>Vorgänge</b> – die offenen Störungen und Tickets. Wähle eine oder mehrere <b>Anlagen</b> (jeweils mit ihren Unteranlagen); ohne Auswahl gelten alle. Mit den beiden Kästchen schaltest du <b>Störungen</b> und <b>Tickets</b> einzeln ab. Das Terminal zeigt höchstens 12 je Art und nur, was der Terminal-Benutzer sehen darf.</li>
+    <li><b>Dauer</b> – 5 bis 600 Sekunden, ohne Eintrag 15.</li>
+    <li><b>Aktiv</b> – nur aktive Folien laufen. Mit dem Haken aus bleibt die Folie gespeichert, wird aber nicht gezeigt.</li>
+  </ul>
+  <p>In der Liste ändern die Pfeile <b>Hoch</b> und <b>Runter</b> die Reihenfolge, <b>Bearbeiten</b> öffnet das Formular, und der Papierkorb löscht die Folie nach einer Rückfrage. Bei Bildfolien zeigt die Liste eine Vorschau. Jede Änderung erreicht alle Infobildschirme sofort, ohne Neuladen.</p>
+  <p>Ungültige Eingaben (zu langer Text, falsche Bildart, ein Bild über 5 MB, eine Dauer außerhalb von 5 bis 600) lehnt PDH mit einer Meldung im Formular ab; gespeichert wird dann nichts.</p>
+  <div class="hb-howto"><b><i class="ti ti-hand-finger"></i> So bedient man den Infobildschirm</b>
+    <ul>
+      <li><b>Weiterblättern</b> – auf eine freie Fläche tippen oder mit dem Finger nach links wischen. Die Dauer der nächsten Folie beginnt dann neu.</li>
+      <li><b>Vorgang ansehen</b> – in einer Vorgänge-Folie einen Eintrag antippen. Die Ansicht zeigt Titel, Status, Anlage, Beschreibung, wann der Vorgang erstellt und zuletzt geändert wurde und die letzten fünf Verlaufseinträge. Sie ist nur zum Lesen: keine Anhänge, keine Knöpfe außer <b>Zurück</b>. Nach der Rückkehrzeit des Terminals geht es von selbst zur Folienschau zurück.</li>
+      <li><b>Nicht freigegeben</b> – ein Vorgang, der nicht zu einer Anlage einer aktiven Vorgänge-Folie gehört oder den der Terminal-Benutzer nicht sehen darf, lässt sich nicht öffnen.</li>
+      <li><b>Ohne Folien</b> zeigt der Bildschirm „Keine Folien eingerichtet“.</li>
+    </ul></div>
+  <p>Ein globales Terminal liest keine Karten und hat keine Anmeldung; die Wege dafür sind gesperrt. Schaltest du das Kästchen am Systembenutzer aus, wird der Bildschirm von selbst wieder zum normalen Anlagenterminal. Ein Terminalprogramm mit Zwischenspeicher bekommt die Folien samt Bildern nach jeder Änderung mitgeschickt (je Bild höchstens 5 MB, insgesamt höchstens 50 MB); ältere Terminalprogramme ignorieren das.</p>
+  {{template "hb-shots" (dict "Ref" (index $s "infobildschirm") "Can" $can)}}
 </section>
 
 <section class="hb-ch" id="watch" data-title="Anlagen-Schnellübersicht" data-pages="plant-watch">
@@ -1895,7 +1937,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li><b>Verschlüsselung der Domain:</b> Zwischen Cloudflare und Server wählen (empfohlen: Full oder Full strict) und „immer HTTPS“. Das gilt für die ganze Domain.</li>
       <li><b>DNS-Einträge:</b> Einträge der Arten A, AAAA, CNAME und TXT anlegen und löschen. Ein Klick auf <b>an</b>/<b>aus</b> in der Spalte Proxy schaltet um, ob der Name über Cloudflare läuft oder direkt auf den Server zeigt. Namen, die auf den Tunnel zeigen, laufen immer über den Proxy.</li>
     </ol>
-    Das PDH ändert bei Cloudflare nichts von selbst. Jede Änderung geht als Nachricht an alle Administratoren und steht im Protokoll. Auch die Meldungen der Karte selbst (z. B. ein fehlendes Recht am Token) stehen im Protokoll, Bereich <b>cloudflare</b>. Die Karte sieht, wer das Recht <b>Cloudflare verwalten (DNS, Proxy, Tunnel)</b> hat. Meldet die Karte „lehnt den API-Token ab“, fehlt dem Token ein Recht oder die Domain. Die Ziele im Tunnel brauchen zusätzlich den Tunnel-Token. Zertifikate von Let's Encrypt holt das PDH ebenfalls über diese Anbindung – siehe <a href="#hb-zertifikate">Zertifikate, Namen im Haus und Full (strict)</a>.</div>
+    Das PDH ändert bei Cloudflare nichts von selbst – mit einer Ausnahme: Wird ein MQTT-Name scharf oder ändert sich sein WebSocket-Port, schreibt es dessen Tunnel-Zeile selbst (einen fremden DNS-Eintrag ersetzt es nie). Die Ziele im Tunnel heißen <code>127.0.0.1</code> statt <code>localhost</code>, weil <code>localhost</code> am Server oft zuerst die IPv6-Adresse ist. Jede Änderung geht als Nachricht an alle Administratoren und steht im Protokoll. Auch die Meldungen der Karte selbst (z. B. ein fehlendes Recht am Token) stehen im Protokoll, Bereich <b>cloudflare</b>. Die Karte sieht, wer das Recht <b>Cloudflare verwalten (DNS, Proxy, Tunnel)</b> hat. Meldet die Karte „lehnt den API-Token ab“, fehlt dem Token ein Recht oder die Domain. Die Ziele im Tunnel brauchen zusätzlich den Tunnel-Token. Zertifikate von Let's Encrypt holt das PDH ebenfalls über diese Anbindung – siehe <a href="#hb-zertifikate">Zertifikate, Namen im Haus und Full (strict)</a>.</div>
   <div class="hb-howto" id="hb-cloudflare-mtls"><b><i class="ti ti-shield-lock"></i> So behebst du: Nextcloud-App fragt über das Internet nach einem Zertifikat</b>
     <b>Ursache:</b> Bei Cloudflare ist für den Namen der Nextcloud „mTLS“ (Client-Zertifikate) eingeschaltet. Dann verlangt Cloudflare von jedem Gerät ein Zertifikat, das Cloudflare selbst ausgestellt hat. Die Zertifikate des PDH kennt Cloudflare nicht – die App fragt nach einem Zertifikat, das es nicht gibt. Ohne mTLS schützt von außen die Anmeldung; im Firmennetz gilt weiter die Zertifikatspflicht von nginx.
     <ol class="hb-steps">
@@ -1954,7 +1996,8 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>Hast du einen solchen Eintrag an der UDM Pro selbst geändert, lässt das PDH ihn in Ruhe und zeigt einen Hinweis.</li>
       <li>Eintragen und beide Knöpfe <b>Überschreiben</b> brauchen das Recht „Namen im Haus eintragen (UniFi)“.</li>
     </ul>
-    Die nginx-Seite des PDH hört jetzt auch auf IPv6. Bestehende Seiten richtet der tägliche Check nach dem Update einmal neu ein (dabei lädt nginx einmal neu). Nimmt nginx die IPv6-Zeilen nicht an, hört die Seite nur auf IPv4; die Karte sagt es im Hinweis.
+    <b>Kein Name stört einen anderen:</b> Eine Seite des Agenten hört nur dann auch auf IPv6, wenn alle anderen Seiten auf Port 443 das ebenfalls tun – sonst bekäme jeder Aufruf über IPv6 für deren Namen das falsche Zertifikat. Nach jeder neuen Seite prüft der Agent, ob alle anderen Namen über 127.0.0.1 und ::1 noch ihr Zertifikat bekommen. Ändert sich eines, versucht er die Seite ohne IPv6; hilft das nicht, nimmt er sie zurück und meldet „würde … stören“.
+    Die nginx-Seite des PDH hört auf IPv6, wenn alle anderen Seiten das auch tun. Nimmt nginx die IPv6-Zeilen nicht an, hört die Seite nur auf IPv4; die Karte sagt es im Hinweis.
     Ein geholtes Zertifikat gilt nur für den Namen. Rufst du PDH oder Nextcloud im Haus über die Adresse auf (<code>https://10.…</code>), meldet der Browser deshalb einen Zertifikatsfehler – nimm den Namen.
     <ul>
       <li>Die Anbindung ist nach der Schnittstellenbeschreibung des Herstellers für UniFi Network 10.3 gebaut und <b>noch nicht an einem echten Gerät ausprobiert</b>. Ältere UniFi-Network-Versionen bieten diese Schnittstelle womöglich nicht – dann trägst du die Namen von Hand ein.</li>
@@ -2438,15 +2481,16 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <ol class="hb-steps">
       <li><b>Import</b> → MQTT-Verbindung mit „Integrierter Broker“ bearbeiten.</li>
       <li><b>Name des Brokers (Subdomain)</b> eintragen, z. B. <code>mqtt.firma.de</code>. Dazu einen <b>WebSocket-Port</b> (z. B. 8083) und, wenn Geräte per mqtts verbinden sollen, einen <b>TLS-Port</b> (z. B. 8883). Die Felder „TLS-Zertifikat“ und „TLS-Schlüssel“ (Dateipfade) bleiben leer. Speichern.</li>
-      <li><b>Werkzeuge</b> → <b>Broker-Status</b> öffnen. Unter den Client-Einstellungen steht die <b>Prüfliste</b>. Die Ports in der Firewall des Servers öffnet das PDH beim Speichern selbst.</li>
-      <li><b>Zertifikat anfordern</b> drücken. Das PDH trägt den Namen in die Zertifikatsliste ein und holt das Zertifikat bei Let's Encrypt. Das dauert ein bis zwei Minuten; die Zeile aktualisiert sich von selbst.</li>
-      <li><b>Im Haus eintragen</b> drücken – der Name zeigt dann im Firmennetz direkt auf den Server (über die UniFi-Anbindung). Ohne UniFi nennt die Zeile, was du am DNS von Hand einträgst.</li>
-      <li><b>Einrichten</b> in der Zeile „Tunnel“ drücken – damit ist <code>wss://name/</code> auch von außen erreichbar.</li>
+      <li>Der Name ist jetzt <b>vorgemerkt</b>. Das PDH richtet von selbst ein, was du darfst: Zertifikat holen (Recht „Zertifikate“), Namen im Haus eintragen (Recht „UniFi“) und die Ports in der Firewall des Servers öffnen. Das Zertifikat dauert ein bis zwei Minuten.</li>
+      <li><b>Werkzeuge</b> → <b>Broker-Status</b> öffnen. Unter den Client-Einstellungen steht die <b>Prüfliste</b>. Oben steht der <b>Stand</b>: „vorgemerkt“ oder „scharf“. Was das PDH nicht selbst darf, steht in der Zeile mit dem genauen Eintrag, z. B. „A mqtt.firma.de → 192.0.2.15“ für den DNS im Haus.</li>
+      <li>Sind Zertifikat, Name im Haus und Firewall grün, schaltet das PDH den Namen <b>scharf</b>: Es schreibt die nginx-Seite für <code>wss://name/</code> und die Zeile im Cloudflare-Tunnel (Recht „Cloudflare“). Hast du einen Eintrag von Hand nachgeholt, drücke <b>Einrichten / erneut prüfen</b>.</li>
+      <li>Vorher ändert das PDH nichts an nginx und am Tunnel – ein halb eingerichteter Name kann den Zugang zum PDH so nicht stören. Änderst du später nur den WebSocket-Port, zieht das PDH die Tunnel-Zeile selbst nach.</li>
       <li>Oben stehen die fertigen Adressen zum Kopieren. In Steuerung, Gerät oder App eintragen, Benutzer und Kennwort wie bisher.</li>
     </ol>
   </div>
   <h3>Was die Prüfliste zeigt</h3>
   <ul>
+    <li><b>Stand</b> – <b>vorgemerkt</b> (neuer oder geänderter Name, noch keine nginx-Seite und keine Tunnel-Zeile) oder <b>scharf</b>. Namen, die schon vor Version 0.82.15 eingerichtet waren, sind scharf.</li>
     <li><b>Zertifikat</b> – fehlt, wird geholt, gültig bis … oder die Fehlermeldung von Let's Encrypt. Ein Zertifikat gibt es nur, wenn Cloudflare eingerichtet ist (die Prüfung läuft über den DNS-Eintrag) und der Name in eurer Domain liegt.</li>
     <li><b>Name im Haus</b> – zeigt der Name im Firmennetz auf diesen Server? Sonst gehen Geräte im Haus den Umweg über das Internet oder finden den Broker gar nicht. Mit UniFi zählt der Eintrag an der UDM Pro – auch wenn der Server selbst zusätzlich einen DNS außerhalb des Hauses fragt. Zeigt der Name über IPv6 weiter nach außen, steht das als Hinweis dabei: Geräte, die IPv6 bevorzugen, erreichen <code>mqtt</code> und <code>mqtts</code> dann nicht.</li>
     <li><b>Tunnel (von außen)</b> – Ziel im Cloudflare-Tunnel und DNS-Eintrag. Dieselbe Zeile steht als <b>MQTT</b> in den Server-Einstellungen im Reiter Cloudflare-Tunnel.</li>

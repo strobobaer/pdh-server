@@ -1,4 +1,4 @@
--- 187_app_grundlage.up.sql
+-- 189_app_grundlage.up.sql
 --
 -- PDH-App, Paket 1 (Server-Grundlage): Rechte, Tabellen für Geräteanfragen und
 -- gekoppelte Telefone, Systembenutzer „PDH-App“ und Gruppe „App-Administratoren“.

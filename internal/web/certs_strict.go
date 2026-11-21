@@ -24,9 +24,9 @@ type strictBefore struct {
 	Ingress []cloudflare.Ingress `json:"ingress"`
 }
 
-const certStrictService = "https://localhost:443"
+const certStrictService = "https://127.0.0.1:443"
 
-// certStrictIngress stellt die Ziele der geführten Namen auf https://localhost:443 mit
+// certStrictIngress stellt die Ziele der geführten Namen auf https://127.0.0.1:443 mit
 // Prüfung um. Andere Ziele (und weitere Angaben in deren originRequest) bleiben unverändert;
 // Reihenfolge und Auffangregel auch.
 func certStrictIngress(list []cloudflare.Ingress, names []string) []cloudflare.Ingress {
