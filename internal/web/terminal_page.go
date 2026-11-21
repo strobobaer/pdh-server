@@ -81,6 +81,8 @@ type terminalPage struct {
 	SetupAdd       bool // Ansicht Nachtragen
 	SetupAgo       []terminalChoice
 	SetupDur       []terminalChoice
+	Report         terminalReport // Meldeseiten Störung/Ticket (terminal_report.go)
+	Done           string         // Neu: gerade gemeldet (fault | ticket)
 }
 
 // terminalLocalAdminURL: lokale Admin-Seite des gekoppelten PDH-Terminals (Loopback am Terminal; gleich
@@ -100,6 +102,10 @@ func (h *Handler) terminalRoutes(r chi.Router) {
 	r.Post("/terminal/rusten/start", h.TerminalRustenStart)
 	r.Post("/terminal/rusten/finish", h.TerminalRustenFinish)
 	r.Post("/terminal/rusten/add", h.TerminalRustenAdd)
+	r.Get("/terminal/stoerung", h.TerminalReportPage("fault"))
+	r.Post("/terminal/stoerung", h.TerminalReportSubmit("fault"))
+	r.Get("/terminal/ticket", h.TerminalReportPage("ticket"))
+	r.Post("/terminal/ticket", h.TerminalReportSubmit("ticket"))
 	r.Get("/terminal/info.json", h.TerminalInfoJSON)
 	r.Get("/terminal/slides.json", h.TerminalSlidesJSON)
 	r.Get("/terminal/slides/{id}/image", h.TerminalSlideImage)
@@ -401,6 +407,9 @@ func (h *Handler) TerminalNeuPage(w http.ResponseWriter, r *http.Request) {
 	if p, ok := h.terminalGate(w, r, "neu"); ok {
 		if !p.NoInfra && p.Mode != "global" {
 			h.terminalSetupFill(r, &p, h.terminalUserID(r))
+		}
+		if d := r.URL.Query().Get("done"); d == "fault" || d == "ticket" {
+			p.Done = d
 		}
 		h.renderTerminal(w, p)
 	}

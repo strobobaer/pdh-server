@@ -15,6 +15,7 @@ im Kapitel „Versionen & Updates“ an.
 ### Neu
 
 - **Rüsttasten am Anlagenterminal:** Auf der Seite „Neu“ erscheint unterhalb von Störung und Ticket die Kachel **Rüsten**, sobald an der Anlage des Terminals (direkt oder von Halle/Linie darüber geerbt) Rüsttasten vorhanden sind. Eine eigene Terminalseite (`/terminal/rusten`) zeigt die Tasten, das laufende Rüsten mit **Fertig** und **Rüstzeit nachtragen** (Rüsttaste, Beginn und Dauer per Antippen). Es gibt keinen Umweg über die Meldeseite des Easy-Modus. Rüstzeiten werden immer von der am Terminal angemeldeten Person erstellt (Karte oder manuelle Anmeldung); ohne Anmeldung verlangt die Seite zuerst die Anmeldung. Die Person braucht das Recht „Rüstzeiten: erfassen …“ (`setup.edit`) für die Abteilung der Anlage. Gleiche Prüfungen und Bremse wie im Easy-Modus. Keine Migration.
+- **Störung und Ticket am Anlagenterminal:** Die Kacheln auf „Neu“ öffnen jetzt eigene Terminalseiten (`/terminal/stoerung`, `/terminal/ticket`) statt der Meldeseite des Easy-Modus; sie funktionieren auch bei ausgeschaltetem Easy-Modus. Die Anlage des Terminals ist vorgegeben (eine Unteranlage darunter ist wählbar), dazu Meldetexte der Anlage oder freier Text, Art, „Anlage steht“ und optional Fotos. Gemeldet wird immer von der am Terminal angemeldeten Person (Karte oder manuell; ohne Anmeldung steht „Bitte zuerst anmelden“); der Terminal-Benutzer braucht `faults.edit` bzw. `tickets.edit` für die Abteilung der Anlage (Rolle Terminal bringt sie mit). Anlegen, Benachrichtigungen und Alarm bei „Anlage steht“ wie bisher.
 
 ### Behoben
 
