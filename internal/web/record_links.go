@@ -181,6 +181,7 @@ var historyActionLabels = map[string]string{
 	"tia_download": "TIA-Baustein geladen", "sync": "Abgleich", "sync_out": "Abgleich nach außen",
 	"sync_origin": "Herkunft Abgleich", "credentials_update": "Zugangsdaten geändert",
 	"credentials_view": "Zugangsdaten angezeigt",
+	"app_device_approved": "App-Gerät freigegeben", "app_request_rejected": "App-Zugang abgelehnt",
 }
 
 // historyFieldLabels: deutsche Beschriftung technischer Feldnamen. Felder, die schon

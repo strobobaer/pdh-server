@@ -1,0 +1,120 @@
+{{template "base" .}}
+{{define "content"}}
+{{/* PDH-App: Gerät bestätigen, Person zuordnen, freigeben oder ablehnen (app_admin.go).
+     Nur Farbvariablen – gleiche Seite in Fiori und Fluent, hell und dunkel. */}}
+{{$q := .Req}}
+<style>
+.app-req{max-width:780px;margin:0 auto}
+.app-req-head{display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap}
+.app-req-head h1{font-size:19px;font-weight:600;flex:1;min-width:200px}
+.app-req-facts{display:grid;grid-template-columns:max-content 1fr;gap:6px 16px;font-size:13px;margin:0}
+.app-req-facts dt{color:var(--muted)}
+.app-req-facts dd{margin:0;overflow-wrap:anywhere}
+.app-req-list{max-height:320px;overflow:auto;border:1px solid var(--border);border-radius:8px;margin-top:8px}
+.app-req-user{display:flex;gap:10px;align-items:flex-start;padding:8px 12px;border-bottom:1px solid var(--border);cursor:pointer;font-size:13px}
+.app-req-user:last-child{border-bottom:0}
+.app-req-user:hover,.app-req-user:focus-within{background:var(--bg2)}
+.app-req-user input{margin-top:3px}
+.app-req-user[hidden]{display:none}
+.app-req-user .rec-sub{display:block;margin-top:2px}
+.app-req-types{display:flex;flex-wrap:wrap;gap:8px 18px;margin-top:6px}
+.app-req-types label,.app-req-create label{display:inline-flex;align-items:center;gap:6px;font-size:13px}
+.app-req-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.app-req-code{max-width:200px;font-family:monospace;font-size:20px;letter-spacing:3px}
+</style>
+<div class="app-req">
+  <div class="app-req-head">
+    <a class="btn" href="{{.BackHref}}" title="{{.Back}}" aria-label="{{.Back}}"><i class="ti ti-arrow-left"></i></a>
+    <h1><i class="ti ti-device-mobile-check"></i> {{t "App-Konfiguration"}}</h1>
+    <span class="badge {{if eq $q.Status "approved"}}b-green{{else if eq $q.Status "rejected"}}b-red{{else}}b-amber{{end}}" style="font-size:12px;padding:4px 12px">{{.StatusText}}</span>
+  </div>
+
+  {{if .Error}}<p class="rec-msg err" role="alert" style="margin-bottom:12px"><i class="ti ti-alert-circle"></i> {{.Error}}</p>{{end}}
+
+  <div class="card" style="margin-bottom:14px">
+    <div class="card-title"><span><i class="ti ti-device-mobile"></i> {{t "Telefon-Anfrage"}}</span></div>
+    <dl class="app-req-facts">
+      <dt>{{t "Name"}}</dt><dd>{{$q.Name}}</dd>
+      <dt>{{t "Abteilung"}}</dt><dd>{{if $q.DeptName}}{{$q.DeptName}}{{else}}–{{end}}</dd>
+      <dt>{{t "Gerät"}}</dt><dd>{{if $q.Label}}{{$q.Label}}{{else}}–{{end}}</dd>
+      <dt>{{t "System"}}</dt><dd>{{.Platform}}</dd>
+      <dt>{{t "App-Version"}}</dt><dd>{{$q.Version}}</dd>
+      <dt>{{t "Angefragt"}}</dt><dd>{{$q.Created.Local.Format "02.01.2006 15:04"}}</dd>
+      {{if .Decided}}<dt>{{t "Entschieden"}}</dt><dd>{{.Decided}}</dd>{{end}}
+    </dl>
+  </div>
+
+  {{if not .Pending}}
+  <p class="rec-sub" style="margin-bottom:12px"><i class="ti ti-info-circle"></i> {{t "Die Anfrage ist bereits entschieden."}}</p>
+  {{else}}
+  <form method="post" action="/app/requests/{{$q.ID}}/approve" autocomplete="off">
+    <div class="card" style="margin-bottom:14px">
+      <div class="card-title"><span><i class="ti ti-shield-check"></i> {{t "Telefon bestätigen"}}</span></div>
+      <p class="rec-sub" style="margin-bottom:8px">{{t "Gib den Code ein, den das Telefon jetzt anzeigt. So ist sichergestellt, dass du das richtige Gerät freigibst."}}</p>
+      <label class="form-label" for="app-code">{{t "Code vom Telefon"}}</label>
+      <input class="form-input app-req-code" id="app-code" name="confirm_code" type="text" inputmode="numeric" autocomplete="off" maxlength="7" required>
+    </div>
+
+    <div class="card" style="margin-bottom:14px">
+      <div class="card-title"><span><i class="ti ti-user-check"></i> {{t "Person zuordnen"}}</span></div>
+      <p class="rec-sub" style="margin-bottom:8px">{{t "Wem gehört das Telefon? Es werden nur aktive Personen gezeigt, die du verwalten darfst."}}</p>
+      <input class="form-input" id="app-user-filter" type="search" placeholder="{{t "Person suchen"}}" aria-label="{{t "Person suchen"}}" autocomplete="off">
+      <div class="app-req-list" role="radiogroup" aria-label="{{t "Person zuordnen"}}">
+        {{$sel := .SelUser}}
+        {{range .Users}}
+        <label class="app-req-user" data-search="{{.Name}} {{.Username}} {{.Dept}}" data-create="{{if .Create}}1{{end}}">
+          <input type="radio" name="user_id" value="{{.ID}}" required {{if eq .ID $sel}}checked{{end}}>
+          <span style="flex:1;min-width:0">
+            <b>{{.Name}}</b> <span class="rec-sub" style="display:inline">· {{.Username}}{{if .Dept}} · {{.Dept}}{{else}} · {{t "keine Abteilung"}}{{end}}</span>{{if .Suggest}} <span class="badge b-green">{{t "Vorschlag"}}</span>{{end}}
+            <span class="rec-sub">{{t "App-Rechte:"}} {{if .Rights}}{{range $i, $r := .Rights}}{{if $i}}, {{end}}{{$r}}{{end}}{{else}}{{t "keine"}}{{end}}</span>
+          </span>
+          <a class="btn btn-small" href="/users/{{.ID}}?tab=perms" target="_blank" rel="noopener" title="{{t "Einzelrechte öffnen"}}" aria-label="{{t "Einzelrechte öffnen"}}"><i class="ti ti-shield-lock"></i></a>
+        </label>
+        {{else}}
+        <p class="rec-sub" style="padding:12px">{{t "Keine Person verfügbar."}}</p>
+        {{end}}
+      </div>
+      <p class="rec-sub" style="margin-top:8px">{{t "Die Rechte der Person bleiben maßgeblich; das Gerät kann sie nur einschränken. Einzelrechte änderst du mit dem Schild-Symbol."}}</p>
+    </div>
+
+    <div class="card" style="margin-bottom:14px">
+      <div class="card-title"><span><i class="ti ti-list-check"></i> {{t "Erlaubte Vorgangsarten"}}</span></div>
+      <div class="app-req-types">
+        {{range .Types}}<label><input type="checkbox" name="types[]" value="{{.Key}}" {{if .Checked}}checked{{end}}> {{.Label}}</label>{{end}}
+      </div>
+      <div class="app-req-create" id="app-create-row" style="margin-top:12px" hidden>
+        <label><input type="checkbox" name="may_create" value="on" id="app-may-create" {{if .MayCreate}}checked{{end}}> {{t "Vorgänge aus der App anlegen"}}</label>
+      </div>
+    </div>
+
+    <div class="app-req-actions">
+      <button class="btn btn-primary" type="submit"><i class="ti ti-check"></i> {{t "Freigeben"}}</button>
+      <button class="btn" type="submit" formaction="/app/requests/{{$q.ID}}/reject" formnovalidate style="color:var(--red)" onclick="return confirm({{t "Diese Anfrage wirklich ablehnen?"}})"><i class="ti ti-x"></i> {{t "Ablehnen"}}</button>
+    </div>
+  </form>
+  <script>
+  (function () {
+    var filter = document.getElementById('app-user-filter');
+    var rows = document.querySelectorAll('.app-req-user');
+    var createRow = document.getElementById('app-create-row');
+    var createBox = document.getElementById('app-may-create');
+    function norm(s) { return (s || '').toLowerCase(); }
+    function applyFilter() {
+      var q = norm(filter && filter.value).trim();
+      rows.forEach(function (r) { r.hidden = q !== '' && norm(r.getAttribute('data-search')).indexOf(q) < 0; });
+    }
+    // Der Haken „Vorgänge anlegen“ erscheint nur, wenn die gewählte Person app.create hat.
+    function applyCreate() {
+      var on = document.querySelector('.app-req-user input:checked');
+      var may = !!on && on.closest('.app-req-user').getAttribute('data-create') === '1';
+      createRow.hidden = !may;
+      if (!may) createBox.checked = false;
+    }
+    if (filter) filter.addEventListener('input', applyFilter);
+    rows.forEach(function (r) { r.querySelector('input').addEventListener('change', applyCreate); });
+    applyCreate();
+  })();
+  </script>
+  {{end}}
+</div>
+{{end}}

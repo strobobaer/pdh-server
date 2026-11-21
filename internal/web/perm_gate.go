@@ -45,6 +45,10 @@ func (h *Handler) recordDepartments(ctx context.Context, refType, id string) []s
 		q = `SELECT department_id::text FROM purchase_orders WHERE id = $1::uuid AND department_id IS NOT NULL`
 	} else if refType == syncRef {
 		q = `SELECT department_id::text FROM sync_profiles WHERE id = $1::uuid AND department_id IS NOT NULL`
+	} else if refType == appRef {
+		// PDH-App: Abteilung der Geräteanfrage (ohne Abteilung: leer; die App-Seiten
+		// verlangen dann das globale Recht, siehe appAdminIn)
+		q = `SELECT department_id::text FROM app_requests WHERE id = $1::uuid AND department_id IS NOT NULL`
 	} else if refType == "infrastructure" {
 		q = `SELECT department_id::text FROM infrastructure_department WHERE infrastructure_id = $1::uuid`
 	} else if src, ok := recordDeptSource[refType]; ok {

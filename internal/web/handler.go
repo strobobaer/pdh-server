@@ -916,6 +916,9 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/users/{id}/qualifications", h.UserQualificationSaveWeb)
 	r.Post("/users/{id}/groups", h.UserGroupsSaveWeb)
 	r.Post("/users/{id}/terminal-code", h.TerminalPairCodeWeb)
+	r.Get("/app/requests/{id}", h.AppRequestPage)
+	r.Post("/app/requests/{id}/approve", h.AppRequestApproveWeb)
+	r.Post("/app/requests/{id}/reject", h.AppRequestRejectWeb)
 	r.Post("/users/{id}/devices/{dev}/revoke", h.TerminalDeviceRevokeWeb)
 	r.Get("/admin/org-units", h.OrgUnitsPage)
 	r.Get("/trainings", h.TrainingsPage)
@@ -2860,6 +2863,7 @@ func (h *Handler) Shifts(w http.ResponseWriter, r *http.Request) {
 type TicketDetailData struct {
 	BaseData
 	SyncOrigin     *SyncOriginView // Herkunft aus einem Fremdsystem (sync_ops.go); nil = keine oder kein Recht
+	AppRequestID   string          // APP-Ticket: Anfrage der PDH-App, nur wenn der Benutzer sie bearbeiten darf (app.admin)
 	Ticket         TicketView
 	CommentCount   int
 	TimeEntries    []*timetracking.TimeEntry
@@ -2948,6 +2952,12 @@ func (h *Handler) TicketDetail(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	data.SyncOrigin = h.syncOrigin(r, extsync.RefTicket, id)
+	if h.hasPerm(r, permAppAdmin) {
+		var reqID string
+		if err := h.db.QueryRow(ctx, `SELECT COALESCE(app_request_id::text, '') FROM tickets WHERE id = $1::uuid`, id).Scan(&reqID); err == nil && reqID != "" && h.appAdminInRequest(r, reqID) {
+			data.AppRequestID = reqID
+		}
+	}
 	h.render(w, "ticket_detail", data)
 }
 

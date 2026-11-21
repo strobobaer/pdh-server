@@ -1,0 +1,387 @@
+//go:build integration
+
+// App-Konfiguration (PDH-App): Gerät bestätigen, Benutzer zuordnen, freigeben oder ablehnen.
+// Aufruf: PDH_TEST_DSN=postgres://... go test -tags integration -run 'TestApp(Approve|Reject)' ./internal/web/
+package web
+
+import (
+	"context"
+	"crypto/ecdsa"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"os"
+	"strings"
+	"sync"
+	"testing"
+
+	"github.com/go-chi/chi/v5"
+
+	"pdh/internal/core/users"
+)
+
+type appAdmEnv struct {
+	*appReqEnv
+	adm http.Handler
+}
+
+func newAppAdmEnv(t *testing.T) *appAdmEnv {
+	e := newAppReqEnv(t)
+	tmpl := loadTestTemplates(t) // vor dem Wechsel des Arbeitsverzeichnisses
+	wd, err := os.Getwd()
+	e.must(err)
+	e.must(os.Chdir("../.."))
+	t.Cleanup(func() { _ = os.Chdir(wd) })
+	e.h.rbac = e.rb
+	e.h.users = users.NewService(users.NewRepository(e.pool), "test-secret", 1)
+	e.h.jwtSecret = "test-geheim"
+	e.h.tmpl = tmpl
+	r := chi.NewRouter()
+	r.Get("/app/requests/{id}", e.h.AppRequestPage)
+	r.Post("/app/requests/{id}/approve", e.h.AppRequestApproveWeb)
+	r.Post("/app/requests/{id}/reject", e.h.AppRequestRejectWeb)
+	return &appAdmEnv{appReqEnv: e, adm: r}
+}
+
+// au legt einen Benutzer an und räumt Historie und Tickets weg, die auf ihn zeigen
+// (record_history.created_by und tickets.archived_by haben kein ON DELETE).
+func (e *appAdmEnv) au(name, role string, dept string) *users.User {
+	uid := e.user(name, role, false)
+	if dept != "" {
+		e.exec(`UPDATE users SET department_id = $2::uuid WHERE id = $1::uuid`, uid, dept)
+	}
+	e.t.Cleanup(func() {
+		bg := context.Background()
+		_, _ = e.pool.Exec(bg, `DELETE FROM tickets WHERE app_request_id IN (SELECT id FROM app_requests WHERE name LIKE '%'||$1||'%')`, e.sfx)
+		_, _ = e.pool.Exec(bg, `DELETE FROM record_history WHERE created_by = $1::uuid OR ref_id = $1::uuid`, uid)
+		_, _ = e.pool.Exec(bg, `UPDATE tickets SET archived_by = NULL WHERE archived_by = $1::uuid`, uid)
+		_, _ = e.pool.Exec(bg, `DELETE FROM app_devices WHERE user_id = $1::uuid OR approved_by = $1::uuid`, uid)
+		_, _ = e.pool.Exec(bg, `UPDATE app_requests SET decided_by = NULL WHERE decided_by = $1::uuid`, uid)
+	})
+	return &users.User{ID: uid, Role: users.Role(role)}
+}
+
+type appReq struct {
+	ID, Code, Ticket string
+	Key              *ecdsa.PrivateKey
+	IP               string
+}
+
+// request legt über die öffentliche Schnittstelle eine Anfrage an (mit Ticket).
+func (e *appAdmEnv) request(dept string) appReq {
+	e.t.Helper()
+	ip := e.nextIP()
+	k, pub := appTestKey(e.t)
+	rec := e.post(ip, e.body("Erika "+e.sfx, dept, "android", pub))
+	if rec.Code != 201 {
+		e.t.Fatalf("anfrage: %d %s", rec.Code, rec.Body.String())
+	}
+	m := decodeAppReq(e.t, rec)
+	return appReq{ID: m.RequestID, Code: m.ConfirmCode, Key: k, IP: ip,
+		Ticket: e.id(`SELECT ticket_id::text FROM app_requests WHERE id = $1::uuid`, m.RequestID)}
+}
+
+func (e *appAdmEnv) do(method, target string, actor *users.User, form url.Values) *httptest.ResponseRecorder {
+	var req *http.Request
+	if form != nil {
+		req = httptest.NewRequest(method, target, strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	} else {
+		req = httptest.NewRequest(method, target, nil)
+	}
+	rec := httptest.NewRecorder()
+	e.adm.ServeHTTP(rec, withUser(req, actor))
+	return rec
+}
+
+func (e *appAdmEnv) approve(rq appReq, actor *users.User, code, userID string, types []string, mayCreate bool) *httptest.ResponseRecorder {
+	f := url.Values{"confirm_code": {code}, "user_id": {userID}, "types[]": types}
+	if mayCreate {
+		f.Set("may_create", "on")
+	}
+	return e.do("POST", "/app/requests/"+rq.ID+"/approve", actor, f)
+}
+
+var allAppTypes = []string{"fault", "ticket", "task", "maintenance"}
+
+func (e *appAdmEnv) count(q string, args ...any) int {
+	e.t.Helper()
+	var n int
+	e.must(e.pool.QueryRow(e.ctx, q, args...).Scan(&n))
+	return n
+}
+
+func (e *appAdmEnv) requestStatus(id string) string {
+	return e.id(`SELECT status FROM app_requests WHERE id = $1::uuid`, id)
+}
+
+func (e *appAdmEnv) devices(reqID string) int {
+	return e.count(`SELECT count(*) FROM app_devices WHERE request_id = $1::uuid`, reqID)
+}
+
+func TestAppApprove(t *testing.T) {
+	e := newAppAdmEnv(t)
+	deptA, deptB := e.dept("A"), e.dept("B")
+	admin := e.au("aadm", "admin", "")
+	mgrA := e.au("amgr", "manager", deptA)
+	e.grant(mgrA.ID, permAppAdmin, deptA, true) // Einzelrecht nur in A ersetzt das globale Rollenrecht
+	viewer := e.au("avw", "viewer", "")
+	tgtA := e.au("atA", "viewer", deptA)
+	tgtB := e.au("atB", "viewer", deptB)
+	tgtNone := e.au("atN", "viewer", "")
+	tgtAdmin := e.au("atAd", "admin", deptA)
+	tgtMgr := e.au("atMg", "manager", deptA)
+	e.warm()
+
+	t.Run("Freigeben", func(t *testing.T) {
+		rq := e.request(deptA)
+		rec := e.approve(rq, admin, rq.Code, tgtA.ID, []string{"fault", "task"}, false)
+		if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/app/devices" {
+			t.Fatalf("freigeben: %d %s %.200s", rec.Code, rec.Header().Get("Location"), rec.Body.String())
+		}
+		var uid, types, fp, approvedBy string
+		var tokenNull, mayCreate bool
+		e.must(e.pool.QueryRow(e.ctx, `SELECT user_id::text, array_to_string(allowed_types, ','), key_fingerprint, approved_by::text, token_sha256 IS NULL, may_create
+			FROM app_devices WHERE request_id = $1::uuid`, rq.ID).Scan(&uid, &types, &fp, &approvedBy, &tokenNull, &mayCreate))
+		if uid != tgtA.ID || types != "fault,task" || fp != appKeyFingerprint(e.id(`SELECT public_key FROM app_requests WHERE id=$1::uuid`, rq.ID)) ||
+			approvedBy != admin.ID || !tokenNull || mayCreate {
+			t.Errorf("gerät: %s %s %s %s %v %v", uid, types, fp, approvedBy, tokenNull, mayCreate)
+		}
+		if s := e.requestStatus(rq.ID); s != "approved" {
+			t.Errorf("anfrage: %s", s)
+		}
+		if n := e.count(`SELECT count(*) FROM app_requests WHERE id = $1::uuid AND decided_at IS NOT NULL AND decided_by = $2::uuid AND device_id IS NOT NULL`, rq.ID, admin.ID); n != 1 {
+			t.Errorf("decided_*/device_id nicht gesetzt")
+		}
+		if s := e.id(`SELECT status FROM tickets WHERE id = $1::uuid`, rq.Ticket); s != "closed" {
+			t.Errorf("ticket: %s", s)
+		}
+		if n := e.count(`SELECT count(*) FROM record_history WHERE ref_type = 'user' AND ref_id = $1::uuid AND action = 'app_device_approved' AND created_by = $2::uuid`, tgtA.ID, admin.ID); n != 1 {
+			t.Errorf("historie am Benutzer: %d", n)
+		}
+		// Abholen liefert jetzt das Token (Zusammenspiel mit der Zugangs-Schnittstelle).
+		got := e.get(rq.IP, rq.ID, rq.Key, e.nonce("a1"))
+		if m := decodeAppReq(t, got); got.Code != 200 || m.Status != "approved" || !strings.HasPrefix(m.Token, "pdha_") {
+			t.Errorf("abholen: %d %+v", got.Code, m)
+		}
+	})
+
+	t.Run("Seite", func(t *testing.T) {
+		rq := e.request(deptA)
+		rec := e.do("GET", "/app/requests/"+rq.ID, admin, nil)
+		body := rec.Body.String()
+		if rec.Code != 200 || !strings.Contains(body, "Erika "+e.sfx) || !strings.Contains(body, "Freigeben") ||
+			!strings.Contains(body, "Ablehnen") || !strings.Contains(body, `name="confirm_code"`) || !strings.Contains(body, tgtA.ID) {
+			t.Fatalf("seite: %d %.600s", rec.Code, body)
+		}
+		if strings.Contains(body, appSystemUserID) {
+			t.Error("Systembenutzer in der Auswahl")
+		}
+		if rec = e.do("GET", "/app/requests/"+rq.ID, viewer, nil); rec.Code != 403 {
+			t.Errorf("Betrachter ohne app.admin: %d", rec.Code)
+		}
+		if rec = e.do("GET", "/app/requests/"+e.id(`SELECT pdh_uuid_v7()::text`), admin, nil); rec.Code != 404 {
+			t.Errorf("unbekannte Anfrage: %d", rec.Code)
+		}
+		if rec = e.do("GET", "/app/requests/kein-uuid", admin, nil); rec.Code != 404 {
+			t.Errorf("ungültige Kennung: %d", rec.Code)
+		}
+	})
+
+	t.Run("falscher Code", func(t *testing.T) {
+		rq := e.request(deptA)
+		wrong := "000000"
+		if rq.Code == wrong {
+			wrong = "111111"
+		}
+		rec := e.approve(rq, admin, wrong, tgtA.ID, allAppTypes, false)
+		if rec.Code != 200 || !strings.Contains(rec.Body.String(), "Der Bestätigungscode stimmt nicht mit dem Telefon überein.") {
+			t.Fatalf("falscher code: %d %.400s", rec.Code, rec.Body.String())
+		}
+		if e.devices(rq.ID) != 0 || e.requestStatus(rq.ID) != "pending" || e.id(`SELECT status FROM tickets WHERE id=$1::uuid`, rq.Ticket) == "closed" {
+			t.Error("trotz falschem Code gespeichert")
+		}
+		if rec = e.approve(rq, admin, "", tgtA.ID, allAppTypes, false); rec.Code != 200 || e.devices(rq.ID) != 0 {
+			t.Errorf("leerer code: %d", rec.Code)
+		}
+		// Eingabe mit Leerzeichen und Trennstrich gilt als dieselbe Zahl.
+		spaced := rq.Code[:3] + " " + rq.Code[3:]
+		if rec = e.approve(rq, admin, spaced, tgtA.ID, allAppTypes, false); rec.Code != 303 {
+			t.Errorf("code mit Leerzeichen: %d", rec.Code)
+		}
+	})
+
+	t.Run("Abteilung und Rang", func(t *testing.T) {
+		// Anfrage aus B: Manager (nur A) darf nicht.
+		rqB := e.request(deptB)
+		if rec := e.do("GET", "/app/requests/"+rqB.ID, mgrA, nil); rec.Code != 403 {
+			t.Errorf("Seite fremde Abteilung: %d", rec.Code)
+		}
+		if rec := e.approve(rqB, mgrA, rqB.Code, tgtA.ID, allAppTypes, false); rec.Code != 403 || e.devices(rqB.ID) != 0 {
+			t.Errorf("Anfrage aus B: %d", rec.Code)
+		}
+		if rec := e.do("POST", "/app/requests/"+rqB.ID+"/reject", mgrA, url.Values{}); rec.Code != 403 || e.requestStatus(rqB.ID) != "pending" {
+			t.Errorf("ablehnen aus B: %d", rec.Code)
+		}
+		// Anfrage ohne Abteilung: nur globales app.admin.
+		rqN := e.request("")
+		if rec := e.approve(rqN, mgrA, rqN.Code, tgtA.ID, allAppTypes, false); rec.Code != 403 || e.devices(rqN.ID) != 0 {
+			t.Errorf("Anfrage ohne Abteilung: %d", rec.Code)
+		}
+		// Anfrage aus A, aber Zielbenutzer in B / ohne Abteilung / Rolle admin / gleicher Rang.
+		rqA := e.request(deptA)
+		for name, tgt := range map[string]*users.User{"Zielbenutzer in B": tgtB, "ohne Abteilung": tgtNone, "Rolle admin": tgtAdmin, "gleicher Rang": tgtMgr} {
+			if rec := e.approve(rqA, mgrA, rqA.Code, tgt.ID, allAppTypes, false); rec.Code != 403 || e.devices(rqA.ID) != 0 {
+				t.Errorf("%s: %d", name, rec.Code)
+			}
+		}
+		// Kontrolle: Zielbenutzer in A klappt.
+		if rec := e.approve(rqA, mgrA, rqA.Code, tgtA.ID, allAppTypes, false); rec.Code != 303 {
+			t.Errorf("Manager in A: %d %.300s", rec.Code, rec.Body.String())
+		}
+		// Administrator (überall) darf auch Anfrage ohne Abteilung und Zielbenutzer ohne Abteilung.
+		if rec := e.approve(rqN, admin, rqN.Code, tgtNone.ID, allAppTypes, false); rec.Code != 303 {
+			t.Errorf("Administrator ohne Abteilung: %d %.300s", rec.Code, rec.Body.String())
+		}
+	})
+
+	t.Run("Benutzer", func(t *testing.T) {
+		sys := e.au("asys", "viewer", "")
+		e.exec(`UPDATE users SET is_system_user = true WHERE id = $1::uuid`, sys.ID)
+		bot := e.au("abot", "viewer", "")
+		e.exec(`UPDATE users SET is_bot = true WHERE id = $1::uuid`, bot.ID)
+		off := e.au("aoff", "viewer", "")
+		e.exec(`UPDATE users SET active = false WHERE id = $1::uuid`, off.ID)
+		rq := e.request(deptA)
+		for name, id := range map[string]string{"Systembenutzer": sys.ID, "Bot": bot.ID, "inaktiv": off.ID, "unbekannt": e.id(`SELECT pdh_uuid_v7()::text`), "leer": "", "keine Kennung": "x"} {
+			if rec := e.approve(rq, admin, rq.Code, id, allAppTypes, false); rec.Code != 422 || e.devices(rq.ID) != 0 {
+				t.Errorf("%s: %d", name, rec.Code)
+			}
+		}
+		// Auswahlliste führt sie nicht auf.
+		body := e.do("GET", "/app/requests/"+rq.ID, admin, nil).Body.String()
+		for _, id := range []string{sys.ID, bot.ID, off.ID} {
+			if strings.Contains(body, id) {
+				t.Errorf("nicht wählbarer Benutzer %s in der Liste", id)
+			}
+		}
+	})
+
+	t.Run("Vorgangsarten", func(t *testing.T) {
+		rq := e.request(deptA)
+		rec := e.approve(rq, admin, rq.Code, tgtA.ID, nil, false)
+		if rec.Code != 422 || !strings.Contains(rec.Body.String(), "Bitte mindestens eine Vorgangsart wählen.") || e.devices(rq.ID) != 0 {
+			t.Errorf("leer: %d %.300s", rec.Code, rec.Body.String())
+		}
+		if rec = e.approve(rq, admin, rq.Code, tgtA.ID, []string{"fault", "kaffee"}, false); rec.Code != 422 || e.devices(rq.ID) != 0 {
+			t.Errorf("unbekannte Art: %d", rec.Code)
+		}
+		if rec = e.approve(rq, admin, rq.Code, tgtA.ID, []string{"maintenance", "maintenance", "ticket"}, false); rec.Code != 303 {
+			t.Fatalf("doppelte Art: %d", rec.Code)
+		}
+		if got := e.id(`SELECT array_to_string(allowed_types, ',') FROM app_devices WHERE request_id = $1::uuid`, rq.ID); got != "maintenance,ticket" && got != "ticket,maintenance" {
+			t.Errorf("allowed_types: %s", got)
+		}
+	})
+
+	t.Run("may_create", func(t *testing.T) {
+		rq := e.request(deptA)
+		if rec := e.approve(rq, admin, rq.Code, tgtA.ID, allAppTypes, true); rec.Code != 303 {
+			t.Fatalf("freigeben: %d", rec.Code)
+		}
+		if e.count(`SELECT count(*) FROM app_devices WHERE request_id = $1::uuid AND may_create`, rq.ID) != 0 {
+			t.Error("may_create für Benutzer ohne app.create gespeichert")
+		}
+		withCreate := e.au("acr", "manager", deptA) // Rolle manager hat app.create
+		rq2 := e.request(deptA)
+		if rec := e.approve(rq2, admin, rq2.Code, withCreate.ID, allAppTypes, true); rec.Code != 303 {
+			t.Fatalf("freigeben 2: %d", rec.Code)
+		}
+		if e.count(`SELECT count(*) FROM app_devices WHERE request_id = $1::uuid AND may_create`, rq2.ID) != 1 {
+			t.Error("may_create bei Benutzer mit app.create nicht gespeichert")
+		}
+	})
+
+	t.Run("bereits entschieden", func(t *testing.T) {
+		rq := e.request(deptA)
+		if rec := e.approve(rq, admin, rq.Code, tgtA.ID, allAppTypes, false); rec.Code != 303 {
+			t.Fatalf("erste: %d", rec.Code)
+		}
+		before := e.id(`SELECT decided_at::text || device_id::text FROM app_requests WHERE id = $1::uuid`, rq.ID)
+		if rec := e.approve(rq, admin, rq.Code, tgtB.ID, []string{"fault"}, false); rec.Code != 409 {
+			t.Errorf("zweite Freigabe: %d", rec.Code)
+		}
+		if rec := e.do("POST", "/app/requests/"+rq.ID+"/reject", admin, url.Values{}); rec.Code != 409 {
+			t.Errorf("Ablehnen nach Freigabe: %d", rec.Code)
+		}
+		if e.devices(rq.ID) != 1 || e.requestStatus(rq.ID) != "approved" ||
+			e.id(`SELECT decided_at::text || device_id::text FROM app_requests WHERE id = $1::uuid`, rq.ID) != before {
+			t.Error("entschiedene Anfrage verändert")
+		}
+		if rec := e.do("GET", "/app/requests/"+rq.ID, admin, nil); rec.Code != 200 || strings.Contains(rec.Body.String(), `name="confirm_code"`) {
+			t.Errorf("Seite einer entschiedenen Anfrage: %d", rec.Code)
+		}
+	})
+
+	t.Run("gleichzeitig", func(t *testing.T) {
+		rq := e.request(deptA)
+		var wg sync.WaitGroup
+		codes := make([]int, 6)
+		for i := range codes {
+			wg.Add(1)
+			go func(i int) {
+				defer wg.Done()
+				codes[i] = e.approve(rq, admin, rq.Code, tgtA.ID, allAppTypes, false).Code
+			}(i)
+		}
+		wg.Wait()
+		ok, conflict := 0, 0
+		for _, c := range codes {
+			switch c {
+			case 303:
+				ok++
+			case 409:
+				conflict++
+			}
+		}
+		if ok != 1 || conflict != len(codes)-1 || e.devices(rq.ID) != 1 {
+			t.Errorf("parallel: %v, Geräte %d", codes, e.devices(rq.ID))
+		}
+	})
+}
+
+func TestAppReject(t *testing.T) {
+	e := newAppAdmEnv(t)
+	deptA := e.dept("A")
+	admin := e.au("radm", "admin", "")
+	viewer := e.au("rvw", "viewer", "")
+	e.warm()
+
+	rq := e.request(deptA)
+	if rec := e.do("POST", "/app/requests/"+rq.ID+"/reject", viewer, url.Values{}); rec.Code != 403 || e.requestStatus(rq.ID) != "pending" {
+		t.Errorf("Betrachter: %d", rec.Code)
+	}
+	rec := e.do("POST", "/app/requests/"+rq.ID+"/reject", admin, url.Values{})
+	if rec.Code != 303 || rec.Header().Get("Location") != "/app/devices" {
+		t.Fatalf("ablehnen: %d %s", rec.Code, rec.Header().Get("Location"))
+	}
+	if e.requestStatus(rq.ID) != "rejected" || e.devices(rq.ID) != 0 {
+		t.Error("Anfrage nicht abgelehnt")
+	}
+	if n := e.count(`SELECT count(*) FROM app_requests WHERE id = $1::uuid AND decided_at IS NOT NULL AND decided_by = $2::uuid`, rq.ID, admin.ID); n != 1 {
+		t.Error("decided_* fehlt")
+	}
+	if s := e.id(`SELECT status FROM tickets WHERE id = $1::uuid`, rq.Ticket); s != "closed" {
+		t.Errorf("ticket: %s", s)
+	}
+	if n := e.count(`SELECT count(*) FROM record_history WHERE ref_type = 'app_request' AND ref_id = $1::uuid AND action = 'app_request_rejected' AND created_by = $2::uuid`, rq.ID, admin.ID); n != 1 {
+		t.Errorf("historie: %d", n)
+	}
+	got := e.get(rq.IP, rq.ID, rq.Key, e.nonce("r1"))
+	if m := decodeAppReq(t, got); got.Code != 200 || m.Status != "rejected" || m.Token != "" {
+		t.Errorf("abholen: %d %+v", got.Code, m)
+	}
+	if rec := e.do("POST", "/app/requests/"+rq.ID+"/reject", admin, url.Values{}); rec.Code != 409 {
+		t.Errorf("zweites Ablehnen: %d", rec.Code)
+	}
+}

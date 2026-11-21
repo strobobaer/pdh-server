@@ -3583,9 +3583,20 @@ curl -fsS -X PUT "https://api.cloudflare.com/client/v4/zones/$CF_ZONE/dns_record
   {{template "hb-shots" (dict "Ref" (index $s "spiegelbetrieb") "Can" $can)}}
 </section>
 
-<section class="hb-ch" id="pdh-app" data-title="PDH-App" data-pages="app_setup">
+<section class="hb-ch" id="pdh-app" data-title="PDH-App" data-pages="app_setup app_request">
   <h2><i class="ti ti-device-mobile"></i> PDH-App</h2>
   <p>Die PDH-App verbindet Handy und Tablet mit diesem Server; die Einrichtungsseite <b>/app/setup</b> führt durch die Installation.</p>
+  <div class="hb-howto"><b><i class="ti ti-device-mobile-check"></i> So gibst du ein Telefon frei</b>
+    <ol class="hb-steps">
+      <li>Wer die App einrichtet, fragt den Zugang an. Dabei entsteht ein <b>APP-Ticket</b> für die Gruppe „App-Administratoren“; das Telefon zeigt einen sechsstelligen <b>Code</b>.</li>
+      <li>Im Ticket auf <b>App-Konfiguration öffnen</b> klicken (nur mit dem Recht „App: Geräte freigeben und sperren“).</li>
+      <li>Den Code eingeben, den das Telefon <i>jetzt</i> anzeigt. Stimmt er nicht, wird nichts gespeichert.</li>
+      <li>Die Person wählen, der das Telefon gehört. Vorgeschlagen werden Personen mit gleichem Nachnamen oder aus derselben Abteilung. Du kannst nur Personen wählen, deren Rolle unter deiner liegt und für deren Abteilung du das Recht hast.</li>
+      <li>Die erlaubten Vorgangsarten (Störungen, Tickets, Aufgaben, Wartung) ankreuzen. „Vorgänge aus der App anlegen“ erscheint nur, wenn die Person das Recht „App: Vorgänge anlegen“ hat.</li>
+      <li><b>Freigeben</b> legt das Gerät an und schließt das Ticket; die App holt ihren Zugang danach selbst ab. <b>Ablehnen</b> schließt das Ticket ohne Gerät.</li>
+    </ol>
+    Die Rechte vergibst du nicht am Gerät: Es gelten die Rechte der Person; das Gerät kann sie nur einschränken. Einzelrechte änderst du über das Schild-Symbol neben der Person.
+  </div>
   {{template "hb-shots" (dict "Ref" (index $s "pdh-app") "Can" $can)}}
 </section>
 
