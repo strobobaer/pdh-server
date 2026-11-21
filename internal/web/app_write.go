@@ -2,11 +2,14 @@ package web
 
 import (
 	"context"
+	"errors"
 	"math/rand/v2"
 	"net/http"
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/jackc/pgx/v5"
 )
 
 // Wächter für schreibende App-Wege (muss hinter appAuth hängen; ohne Gerät 401 app_unauthorized):
@@ -58,6 +61,11 @@ func appOnceHeader(r *http.Request) string {
 
 // AppWrite ist appWrite für die Routen in cmd/server.
 func (h *Handler) AppWrite(next http.Handler) http.Handler { return h.appWrite(next) }
+
+// appOnceLookup liest Benutzer und Pfad einer bekannten Once (in Tests austauschbar).
+var appOnceLookup = func(ctx context.Context, h *Handler, token string, owner, path **string) error {
+	return h.db.QueryRow(ctx, `SELECT user_id::text, path FROM request_once WHERE token = $1::uuid`, token).Scan(owner, path)
+}
 
 // appOnceInflight: Onces, deren erste Anfrage in diesem Prozess noch läuft.
 var appOnceInflight sync.Map
@@ -121,8 +129,13 @@ func (h *Handler) appWrite(next http.Handler) http.Handler {
 		if tag.RowsAffected() == 0 {
 			// Bekannte Once: nur für denselben Benutzer und Pfad ein Replay.
 			var owner, path *string
-			if err := h.db.QueryRow(ctx, `SELECT user_id::text, path FROM request_once WHERE token = $1::uuid`, token).Scan(&owner, &path); err != nil ||
-				owner == nil || *owner != dev.UserID || path == nil || *path != r.URL.Path {
+			if err := appOnceLookup(ctx, h, token, &owner, &path); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+				// Datenbankfehler ist kein Konflikt: vorübergehend nicht verfügbar.
+				release()
+				componentLog("app").Error().Err(err).Msg("app: once nicht lesbar")
+				appJSONErr(w, http.StatusServiceUnavailable, "app_unavailable", "Vorübergehend nicht verfügbar")
+				return
+			} else if err != nil || owner == nil || *owner != dev.UserID || path == nil || *path != r.URL.Path {
 				appConflict(w)
 				return
 			}

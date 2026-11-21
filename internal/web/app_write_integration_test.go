@@ -7,6 +7,7 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -153,6 +154,18 @@ func TestAppWriteGuard(t *testing.T) {
 	guard.ServeHTTP(rec, req3)
 	if rec.Code != 409 || code(rec) != "app_conflict" || runs != rBefore {
 		t.Errorf("M3 anderer Pfad: %d %s runs+=%d", rec.Code, rec.Body.String(), runs-rBefore)
+	}
+
+	// Datenbankfehler beim Nachsehen der bekannten Once: 503 app_unavailable, kein Konflikt, Handler läuft nicht
+	o7 := once()
+	do(o7)
+	r7 := runs
+	orig := appOnceLookup
+	appOnceLookup = func(context.Context, *Handler, string, **string, **string) error { return errors.New("db weg") }
+	rec = do(o7)
+	appOnceLookup = orig
+	if rec.Code != 503 || code(rec) != "app_unavailable" || runs != r7 {
+		t.Errorf("Lookup-Fehler: %d %s runs+=%d", rec.Code, rec.Body.String(), runs-r7)
 	}
 
 	// I1: erste Anfrage läuft noch → zweite 409 app_conflict mit Retry-After, ohne Handler;

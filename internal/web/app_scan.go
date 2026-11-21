@@ -92,6 +92,11 @@ func (h *Handler) appScanTarget(r *http.Request, code string) (p, rawQuery, orig
 			return "", "", "", false
 		}
 	}
+	// Nach einmaligem Entschlüsseln darf kein „\“ und kein „%“ mehr im Pfad stehen
+	// (doppelt kodiertes „..“, Windows-Trenner).
+	if strings.ContainsAny(u.Path, `\%`) {
+		return "", "", "", false
+	}
 	for _, seg := range strings.Split(u.Path, "/") {
 		if seg == ".." {
 			return "", "", "", false
@@ -227,7 +232,7 @@ func (h *Handler) AppScanAPI(w http.ResponseWriter, r *http.Request) {
 			if origin == "" {
 				origin = h.appAddresses(r)[0]
 			}
-			u := origin + spath
+			u := origin + (&url.URL{Path: spath}).EscapedPath()
 			if rawQuery != "" {
 				u += "?" + rawQuery
 			}

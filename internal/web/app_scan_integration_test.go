@@ -166,6 +166,7 @@ func TestAppScan(t *testing.T) {
 			"https://PDH.scan.test:443/inventory/x": appScanBase + "/inventory/x",
 			"http://pdh.scan.test/k/abc":            appScanBase + "/k/abc", // Adresse des Servers gewinnt
 			appScanBase + "/inventory//x/./y":       appScanBase + "/inventory/x/y",
+			appScanBase + "/inventory/a%3Fb":        appScanBase + "/inventory/a%3Fb", // „?“ bleibt kodiert, kein Abfrageteil
 		} {
 			status, m := e.scan(code)
 			if status != 200 || m["kind"] != "web" || m["url"] != want {
@@ -179,6 +180,7 @@ func TestAppScan(t *testing.T) {
 			"//pdh.scan.test/a/" + e.infra, "//fremd.example/a/" + e.infra, "//pdh.scan.test/inventory/x",
 			appScanBase + "/inventory/../a/" + e.infra, appScanBase + "/inventory/%2e%2e/x", "/inventory/../k/x",
 			appScanBase + ":8443/a/" + e.infra,
+			appScanBase + "/inventory/%252e%252e/x", appScanBase + `/inventory/a`, appScanBase + "/inventory/a%5Cb",
 		} {
 			if status, m := e.scan(code); status != 404 || m["code"] != "app_not_found" {
 				t.Errorf("%q: %d %v", code, status, m)
