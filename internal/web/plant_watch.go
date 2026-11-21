@@ -37,13 +37,14 @@ type watchBoard struct {
 // watchStats: Kennzahlen einer Anlage samt Unteranlagen.
 type watchStats struct {
 	Faults, Critical, MaintOverdue, ObligOverdue, NOK int
+	HandshakeDown                                     int // Handshakes der Anlage, die stehen (watchHandshakes)
 }
 
 func (s watchStats) State() string {
 	switch {
 	case s.Critical > 0 || s.NOK > 0:
 		return "red"
-	case s.Faults > 0 || s.MaintOverdue > 0 || s.ObligOverdue > 0:
+	case s.Faults > 0 || s.MaintOverdue > 0 || s.ObligOverdue > 0 || s.HandshakeDown > 0:
 		return "amber"
 	}
 	return "green"
@@ -68,6 +69,8 @@ type watchCard struct {
 	Chamber      []chamberGroup
 	Children     []watchChild
 	MoreChildren int
+	Handshakes   []handshakeView // Lebenszeichen der Anlage samt Unteranlagen (watchHandshakes)
+	hsCounts     map[string]string
 }
 
 // watchCards: Karten einer Übersicht plus Zähler je Ampelfarbe.
@@ -280,6 +283,12 @@ func (h *Handler) watchBody(ctx context.Context, b *watchBoard, only bool, lang 
 		c.watchStats = stats[c.ID]
 		c.Energy = energy[c.ID]
 		c.SetupState = setupStates[c.ID]
+		c.Handshakes, c.hsCounts = h.watchHandshakes(ctx, c.ID)
+		for _, hs := range c.Handshakes {
+			if !hs.Running {
+				c.HandshakeDown++
+			}
+		}
 		for i := range c.Children {
 			c.Children[i].watchStats = stats[c.Children[i].ID]
 		}
@@ -367,6 +376,7 @@ func (h *Handler) PlantWatchWeb(w http.ResponseWriter, r *http.Request) {
 		h.loadWatchContent(ctx, data.Board)
 		data.Body = h.watchBody(ctx, data.Board, q.Get("only") == "1", data.Lang)
 		data.Body.CanToggle = data.CanEditInfra
+		h.watchUnmask(r, &data.Body)
 	}
 	t, _ := h.tmpl.Clone()
 	t = bindLang(t, data.Lang)
@@ -387,6 +397,7 @@ func (h *Handler) PlantWatchCardsWeb(w http.ResponseWriter, r *http.Request) {
 			h.loadWatchContent(ctx, &b)
 			body := h.watchBody(ctx, &b, r.URL.Query().Get("only") == "1", lang)
 			body.CanToggle = h.canEditInfra(r)
+			h.watchUnmask(r, &body)
 			h.renderFragment(w, "pw-cards", body)
 			return
 		}
@@ -580,5 +591,6 @@ func (h *Handler) PlantWatchToggleWeb(w http.ResponseWriter, r *http.Request) {
 	h.loadWatchContent(ctx, b)
 	body := h.watchBody(ctx, b, r.FormValue("only") == "1", lang)
 	body.CanToggle = true
+	h.watchUnmask(r, &body)
 	h.renderFragment(w, "pw-cards", body)
 }

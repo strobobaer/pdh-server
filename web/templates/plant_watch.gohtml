@@ -29,6 +29,7 @@
 .pw-ch a:hover{color:var(--accent)}
 .pw-path{font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pw-kpis{display:flex;gap:6px;flex-wrap:wrap}
+.pw-hs{display:flex;gap:6px;flex-wrap:wrap}.pw-hs:empty{display:none}
 .pw-kpis .badge{font-size:11.5px;gap:4px;align-items:center;text-decoration:none;padding:3px 8px}
 .pw-dot{display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--green);flex:none}
 .pw-dot.amber{background:var(--amber)}
@@ -135,6 +136,7 @@ button.pw-slot:hover{outline:2px solid var(--accent);outline-offset:1px}
 <div id="pw-body" hx-get="/plant-watch/{{.ID}}/cards{{if $.Body.Only}}?only=1{{end}}" hx-trigger="every 60s" hx-swap="innerHTML">
   {{template "pw-cards" $.Body}}
 </div>
+<div hidden hx-get="/plant-watch/{{.ID}}/handshakes" hx-trigger="every 10s" hx-swap="none"></div>{{/* nur Handshake-Zeilen, out of band */}}
 {{end}}
 
 {{else}}

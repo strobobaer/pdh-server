@@ -51,15 +51,20 @@ var blockGroup = map[string]string{
 }
 
 // Topics: alle Zustands-Themen des Geräts in der Reihenfolge der Bausteine, danach Laufzeit
-// (Handshake) und Adresse. Fehler, wenn Platine oder Bausteine ungültig sind.
+// (Handshake) und Adresse. Sind Platine oder Bausteine ungültig, gibt es einen Fehler und nur die
+// beiden Geräte-Themen – die hängen nicht an den Bausteinen.
 func Topics(d Device) ([]TopicInfo, error) {
+	info := []TopicInfo{
+		{Topic: infoTopic(d.Slug, topicUptime), Name: nameUptime, Unit: "s", Group: GroupDevice, Interval: 10 * time.Second, Handshake: true},
+		{Topic: infoTopic(d.Slug, topicAddress), Name: nameAddress, Group: GroupDevice},
+	}
 	b, ok := BoardByKey(d.BoardKey)
 	if !ok {
-		return nil, fmt.Errorf("Platine %q unbekannt", d.BoardKey)
+		return info, fmt.Errorf("Platine %q unbekannt", d.BoardKey)
 	}
 	blocks, msgs := resolveBlocks(b, d.Blocks)
 	if len(msgs) > 0 {
-		return nil, errors.New(strings.Join(msgs, " "))
+		return info, errors.New(strings.Join(msgs, " "))
 	}
 	var out []TopicInfo
 	for _, r := range blocks {
@@ -73,8 +78,5 @@ func Topics(d Device) ([]TopicInfo, error) {
 			})
 		}
 	}
-	out = append(out,
-		TopicInfo{Topic: infoTopic(d.Slug, topicUptime), Name: nameUptime, Unit: "s", Group: GroupDevice, Interval: 10 * time.Second, Handshake: true},
-		TopicInfo{Topic: infoTopic(d.Slug, topicAddress), Name: nameAddress, Group: GroupDevice})
-	return out, nil
+	return append(out, info...), nil
 }

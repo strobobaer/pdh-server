@@ -63,6 +63,25 @@ func TestTopicsMatchGeneratedYAML(t *testing.T) {
 	}
 }
 
+// Laufzeit und Adresse hängen nicht an den Bausteinen – auch ein Gerät ohne (gültige) Bausteine
+// liefert sie, damit Handshake und Adresse angezeigt werden.
+func TestTopicsInfoWithoutBlocks(t *testing.T) {
+	d := webDevice("esp32dev")
+	d.Blocks = nil
+	list, err := Topics(d)
+	if err == nil {
+		t.Log("ohne Bausteine kein Fehler")
+	}
+	var hs, addr bool
+	for _, ti := range list {
+		hs = hs || ti.Handshake
+		addr = addr || ti.Topic == "esppdh/halle1-s0/info/adresse"
+	}
+	if !hs || !addr {
+		t.Errorf("ohne Bausteine: %+v – Laufzeit und Adresse fehlen", list)
+	}
+}
+
 func TestTopicsGroupsAndHandshake(t *testing.T) {
 	d := webDevice("esp32dev")
 	d.Blocks = append(d.Blocks, Block{Kind: "counter", Nr: 1, Params: map[string]string{"pin": "GPIO5"}})

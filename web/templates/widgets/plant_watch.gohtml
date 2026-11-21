@@ -25,8 +25,10 @@
       {{if $c.NOK}}<span class="badge b-red"><i class="ti ti-circle-x"></i> {{$c.NOK}} NOK</span>{{end}}
       {{if $c.MaintOverdue}}<a class="badge b-amber" href="/a/{{$c.ID}}" title="Überfällige Wartungen"><i class="ti ti-tool"></i> {{$c.MaintOverdue}} Wartung überfällig</a>{{end}}
       {{if $c.ObligOverdue}}<a class="badge b-amber" href="/infrastructure/{{$c.ID}}?tab=checks" title="Überfällige Prüfpflichten / GBU"><i class="ti ti-clipboard-check"></i> {{$c.ObligOverdue}} Prüfung überfällig</a>{{end}}
+      {{if $c.HandshakeDown}}<span class="badge b-amber" title="Eine Quelle meldet sich nicht mehr"><i class="ti ti-heart-broken"></i> {{$c.HandshakeDown}} Handshake steht</span>{{end}}
       {{if eq $c.State "green"}}<span class="badge b-green"><i class="ti ti-check"></i> alles OK</span>{{end}}
     </div>
+    <div class="pw-hs" id="pw-hs-{{$c.ID}}">{{range $c.Handshakes}}{{template "handshake" .}}{{end}}</div>
     {{if $c.Energy}}
     <div class="pw-energy">
       {{range $c.Energy}}<div class="pw-en{{if .Stale}} stale{{end}}" title="{{if .Infra}}{{.Infra}} · {{end}}{{if .Age}}gemessen {{.Age}}{{end}}"><i class="ti ti-bolt"></i><span class="n">{{.Name}}{{if .Infra}} <small>({{.Infra}})</small>{{end}}</span><b>{{.Value}}</b></div>{{end}}
@@ -57,3 +59,6 @@
 {{end}}
 </div>
 {{end}}
+
+{{/* Handshake-Zeilen aller Karten als Out-of-band-Tausch (PlantWatchHandshakesWeb, alle 10 s) */}}
+{{define "pw-hs-oob"}}{{range .Cards}}<div class="pw-hs" id="pw-hs-{{.ID}}" hx-swap-oob="true">{{range .Handshakes}}{{template "handshake" .}}{{end}}</div>{{end}}{{end}}

@@ -594,6 +594,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/vpn/peers/{id}/toggle", h.VPNToggleWeb) // aktivieren/deaktivieren (vpn_status.go)
 	r.Get("/vpn/status", h.VPNStatusWeb)
 	r.Get("/plant-watch/{id}/cards", h.PlantWatchCardsWeb)
+	r.Get("/plant-watch/{id}/handshakes", h.PlantWatchHandshakesWeb) // nur Handshake-Zeilen (htmx, alle 10 s, out of band)
 	r.Post("/plant-watch", h.PlantWatchSaveWeb)
 	r.Post("/plant-watch/{id}", h.PlantWatchSaveWeb)
 	r.Post("/plant-watch/{id}/delete", h.PlantWatchDeleteWeb)
