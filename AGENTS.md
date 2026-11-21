@@ -563,7 +563,12 @@ und 3 drückt bis auf Weiteres der Anwender.
     IPv6-Präfix → `2001:db8::`, `/home/michael` → `/home/pdh`). Hier in
     AGENTS.md bleiben die echten Adressen. **Lastprüfung:** vor Läufen
     gegen den Testverbund `export PDH_LAST_PRODUCTION=10.10.0.202` setzen –
-    ohne die Angabe lässt `deploy/lab/last` nur Ziele auf diesem Rechner zu.
+    ohne die Angabe lässt `deploy/lab/last` nur Ziele auf diesem Rechner zu,
+    eine Angabe, die keine IP-Adresse ist, stoppt den Lauf, Rechnernamen
+    werden aufgelöst. **Auf `main`** (21.11.2026, Merge `0cb3b6e`, Sperre
+    `2523579`) und dem Testverbund (beide Server und Zeuge 0.82.12, aktiv
+    jetzt `pdh` 10.10.0.14, Spiegelung läuft, Anmeldeseite zeigt „PDH –
+    Pulse Data Hub“).
     Offen vor einer Veröffentlichung: private Domain in 29 Dateien (u. a.
     Nextcloud-App), Name/Benutzer in Tests, Handbuch-Skizze und
     `tiamqtt/testdata/Daten.db`, VLAN-Beispiele `10.10.x.0/24` (echte
