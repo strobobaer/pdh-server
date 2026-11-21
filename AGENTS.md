@@ -577,16 +577,42 @@ und 3 drückt bis auf Weiteres der Anwender.
     Oberfläche, `go-modules-licenses.txt` behalten, Test für die
     Vollständigkeit von `THIRD_PARTY_LICENSES.md`); Markenprüfung
     „Pulse Data Hub“ angeboten.
-19. **Firmenstammdaten** (Wunsch des Anwenders vom 21.11.2026): Fenster am
-    obersten Knoten der Infrastruktur; die Daten gelten unternehmensweit im
-    Mail- und Postverkehr, der angemeldete Benutzer ist Ansprechpartner. In
-    Besprechung – offen: wo die Daten erscheinen (Vorschlag A: alle Mails mit
+19. **Firmenstammdaten = 0.82.14** (Wunsch des Anwenders vom 21.11.2026):
+    Fenster am obersten Knoten der Infrastruktur; die Daten gelten
+    unternehmensweit im Mail- und Postverkehr, der angemeldete Benutzer ist
+    Ansprechpartner. Entschieden: „A jetzt, B danach“ (A: alle Mails mit
     Absendername und Fußzeile samt Pflichtangaben, Briefkopf in Druck und
     Wartungsprotokoll, {Firma} der M365-Signaturen; B: Bestellung als PDF an
-    den Lieferanten als eigenes Paket danach). Befund: mehrere oberste Knoten
+    den Lieferanten als eigenes Paket); Variante 1: eine Firma, Werke werden
+    untergeordnet (eigene Angaben eines Werks später mit B am Werk-Knoten).
+    Nächster Schritt: Entwurf schreiben und bestätigen lassen. Befund: mehrere oberste Knoten
     möglich, kein Typ „Unternehmen“, keine eigenen Adress-, Steuer- oder
     Bankdaten; Firmenname liegt doppelt (`branding.app_name`,
     `m365_company_name`).
+20. **0.82.13 MQTT-Name sicher einrichten** – Anlass: Störung auf 10.10.0.202
+    am 21.11.2026 12:36 (nach Port-Änderung und Name `mqtt.strobl-home.net`:
+    MQTT-Seite des Agenten mit `listen [::]:443`, Seite `pdh` nur IPv4, Tunnel
+    `https://localhost:443` → `::1` → falsches Zertifikat → 502; Tunnel-Zeile
+    MQTT blieb auf Port 8083). Sofort-Hilfe auf 202 erledigt (Zeile
+    `listen [::]:443 ssl;` in `/etc/nginx/sites-enabled/pdh`, Sicherung
+    `/root/nginx-pdh.bak-20261121`); vorübergehende sudo-Regel
+    `/etc/sudoers.d/90-claude-wartung` – löscht der Anwender
+    (`sudo rm /etc/sudoers.d/90-claude-wartung`). Offen auf 202: Tunnel-Zeile
+    MQTT im Reiter Cloudflare-Tunnel nachziehen (Anwender). Entwurf
+    `docs/superpowers/specs/2026-11-21-mqtt-name-sicher-design.md`, Plan
+    `docs/superpowers/plans/2026-11-21-mqtt-name-sicher.md`, Branch
+    `fix/mqtt-name-sicher` (lokal): Agent prüft Zertifikate anderer Namen
+    vor/nach dem Neuladen (Rückfall IPv4, sonst Rücknahme), IPv6 nur wenn alle
+    anderen 443-Seiten IPv6 haben, Tunnel-Ziele `127.0.0.1`, neue/geänderte
+    Namen „vorgemerkt“ (`int_public_pending`) bis Zertifikat, Name im Haus und
+    Firewall grün, dann scharf (nginx + Tunnel), Port-Änderung zieht Tunnel
+    nach. Kein neues Recht, keine Migration. Offen: Schlussprüfung,
+    Freigabe Push/Merge, Verbund-Update, Browserprüfung, Einspielen auf 202.
+21. **ESPPDH: Update übers Netz (OTA)** – Wunsch des Anwenders vom
+    21.11.2026 („Passt“): heute keine OTA-Funktion (kein `ota:`-Baustein,
+    `web_server` mit `ota: false`); geplant als eigenes Paket nach 0.82.14,
+    mit Kennwort je Gerät. Offen: PDH schiebt (Knopf, Server erreicht das
+    Gerät) oder Gerät holt (fragt beim PDH, geht auch im abgeschotteten VLAN).
 
 Docker Desktop startet nach einem Neustart des Windows-Rechners nicht von
 selbst – ohne ihn fehlen der Zeuge und die Labor-Datenbank für die Tests.
