@@ -34,6 +34,7 @@ im Kapitel „Versionen & Updates“ an.
 
 - Ein neuer oder geänderter MQTT-Name ist zuerst vorgemerkt und wird erst scharf geschaltet, wenn Zertifikat, Eintrag im Haus und Firewall stehen; was das PDH nicht selbst darf, zeigt die Prüfliste mit dem genauen Eintrag.
 - Der Cloudflare-Tunnel erreicht die Dienste über 127.0.0.1 statt localhost; vorhandene Zeilen mit localhost gelten weiter als richtig.
+
 ## [0.82.14] – 2026-11-21
 
 ### Neu
