@@ -147,3 +147,30 @@ func TestEsppdhConfigDownloadNoWebPassword(t *testing.T) {
 		t.Errorf("Konfiguration: Verweis fehlt oder Kennwort im Klartext")
 	}
 }
+
+// Neues Kennwort der Webseite (Schlussprüfung): mit esppdh.edit, danach ein anderes Kennwort.
+func TestEsppdhWebPasswordNew(t *testing.T) {
+	e := newEsppdhEnv(t, nil)
+	id := e.create(t, "webnew-"+e.sfx, url.Values{"web": {"on"}})
+	ctx := context.Background()
+	d, _ := e.h.esppdhLoad(ctx, id)
+	old, err := e.h.esppdhWebPassword(ctx, &d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := "/import/esppdh/" + id + "/web-password/new"
+	if w := esppdhDo(e.h.EsppdhWebPasswordNewWeb, "POST", path, id, esppdhUser, url.Values{}); w.Code != http.StatusSeeOther {
+		t.Fatalf("neues Kennwort: %d %s", w.Code, w.Body.String())
+	}
+	d2, _ := e.h.esppdhLoad(ctx, id)
+	if pw, err := e.h.esppdhWebPassword(ctx, &d2); err != nil || pw == old || pw == "" {
+		t.Errorf("Kennwort nach dem Erneuern: gleich oder leer (%v)", err)
+	}
+	e.allow[permESPEdit] = false
+	if w := esppdhDo(e.h.EsppdhWebPasswordNewWeb, "POST", path, id, esppdhUser, url.Values{}); w.Code != http.StatusForbidden {
+		t.Errorf("ohne esppdh.edit: %d, erwartet 403", w.Code)
+	}
+	if _, perm, _, _, ok := matchGate(http.MethodPost, path); !ok || perm != permESPEdit {
+		t.Errorf("Rechte-Regel: gefunden=%v, Recht %q", ok, perm)
+	}
+}

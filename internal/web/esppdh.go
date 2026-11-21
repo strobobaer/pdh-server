@@ -948,6 +948,32 @@ func (h *Handler) EsppdhWebPasswordWeb(w http.ResponseWriter, r *http.Request) {
 	h.renderFragment(w, "esppdh-web-password", map[string]string{"User": "pdh", "Password": pw})
 }
 
+// EsppdhWebPasswordNewWeb: POST /import/esppdh/{id}/web-password/new – neues Kennwort für die
+// Webseite des Geräts (z. B. wenn es bekannt geworden ist). Wirkt erst mit der nächsten Firmware;
+// der geänderte Konfigurations-Prüfwert zeigt „neu bauen“ an.
+func (h *Handler) EsppdhWebPasswordNewWeb(w http.ResponseWriter, r *http.Request) {
+	id, ok := h.esppdhRecordAction(w, r, permESPEdit)
+	if !ok {
+		return
+	}
+	ctx := r.Context()
+	pw, err := esppdhNewPassword()
+	var enc string
+	if err == nil {
+		enc, err = encryptSecret(h.esppdhKey(), pw)
+	}
+	var slug string
+	if err == nil {
+		err = h.db.QueryRow(ctx, `UPDATE esppdh_devices SET web_password_enc = $2, updated_at = now() WHERE id = $1::uuid RETURNING slug`, id, enc).Scan(&slug)
+	}
+	if err != nil {
+		h.esppdhLoadFailed(w, r, err)
+		return
+	}
+	componentLog("esppdh").Info().Str("benutzer", getUser(r).ID).Str("gerät", slug).Msg("neues webseiten-kennwort")
+	http.Redirect(w, r, "/import/esppdh/"+id+"?n=web-password", http.StatusSeeOther)
+}
+
 // EsppdhPasswordWeb: POST /import/esppdh/{id}/password – neues MQTT-Kennwort. Der Broker trennt
 // das Gerät sofort; es braucht eine neue Firmware. Der Notzugang bleibt (das angezeigte Kennwort
 // passt so weiter zur Firmware auf dem Gerät), außer sein Kennwort ist nicht mehr lesbar –
