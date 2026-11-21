@@ -39,6 +39,10 @@
     var dx = start.x - end.x, dy = Math.abs(start.y - end.y);
     return dx >= 60 && dy < 40;
   }
+  // Folienarten, die ältere Terminals kennen. Neuere Arten (Statistik, Grafana) bleiben aus dem
+  // Zwischenspeicher: ein Terminal mit älterem Stand lehnt unbekannte Arten ab und würde alles verwerfen.
+  var CACHEABLE_KINDS = ['image', 'text', 'vorgaenge'];
+
   // Nutzdaten für POST /api/slides/cache: {version, saved_at, slides, images:{id: base64}}.
   // Je Bild höchstens 5 MB (größere entfallen), gesamt höchstens 50 MB (sonst gar keine Bilder).
   // images: {id: base64-Text}; savedAt optional (Date), sonst jetzt.
@@ -60,7 +64,9 @@
     return {
       version: typeof json.version === 'string' ? json.version : '',
       saved_at: (savedAt instanceof Date ? savedAt : new Date()).toISOString(),
-      slides: Array.isArray(json.slides) ? json.slides : [],
+      slides: Array.isArray(json.slides) ? json.slides.filter(function (s) {
+        return s && CACHEABLE_KINDS.indexOf(s.kind) !== -1;
+      }) : [],
       images: out
     };
   }
@@ -618,6 +624,62 @@
       fillList(t, kind, items, total);
       return t;
     };
+    // Statistikfolie: Kennzahlen und Säulendiagramm (SVG, Beschriftungen nur über textContent).
+    var SVGNS = 'http://www.w3.org/2000/svg';
+    var svgEl = function (tag, attrs, text) {
+      var e = document.createElementNS(SVGNS, tag);
+      Object.keys(attrs || {}).forEach(function (k) { e.setAttribute(k, String(attrs[k])); });
+      if (text !== undefined) e.textContent = text;
+      return e;
+    };
+    var drawChart = function (st) {
+      var labels = st.labels || [], series = st.series || [];
+      // Bei Rüstzeiten (Einheit min) zeigt das Diagramm nur die Anzahl; die Minuten stehen bei den Kennzahlen.
+      if (st.unit === 'min') series = series.slice(0, 1);
+      var W = 1000, H = 420, L = 50, B = 50, T = 20, R = 10;
+      var svg = svgEl('svg', { viewBox: '0 0 ' + W + ' ' + H, preserveAspectRatio: 'xMidYMid meet', 'class': 'g-chart', role: 'img' });
+      var max = 1;
+      series.forEach(function (se) { (se.values || []).forEach(function (v) { if (v > max) max = v; }); });
+      max = Math.ceil(max);
+      var plotH = H - T - B, plotW = W - L - R, n = labels.length || 1;
+      for (var i = 0; i <= 4; i++) {
+        var y = T + plotH - plotH * i / 4;
+        svg.appendChild(svgEl('line', { x1: L, x2: W - R, y1: y, y2: y, 'class': 'g-grid' }));
+        svg.appendChild(svgEl('text', { x: L - 8, y: y + 6, 'text-anchor': 'end', 'class': 'g-axis' }, String(Math.round(max * i / 4 * 10) / 10)));
+      }
+      var slot = plotW / n, bw = Math.min(60, slot / (series.length + 1));
+      labels.forEach(function (lb, li) {
+        var cx = L + slot * li + slot / 2;
+        svg.appendChild(svgEl('text', { x: cx, y: H - 16, 'text-anchor': 'middle', 'class': 'g-axis' }, lb));
+        series.forEach(function (se, si) {
+          var v = (se.values || [])[li] || 0, bh = plotH * v / max;
+          var x = cx - bw * series.length / 2 + bw * si;
+          svg.appendChild(svgEl('rect', { x: x, y: T + plotH - bh, width: Math.max(bw - 4, 2), height: bh, 'class': 'g-bar s' + si }));
+        });
+      });
+      return svg;
+    };
+    var drawStats = function (s) {
+      var st = s.stats || { numbers: [], labels: [], series: [] };
+      var box = el('div', 'g-stats');
+      if (s.title) box.appendChild(el('h1', null, s.title));
+      var nums = el('div', 'g-nums');
+      (st.numbers || []).forEach(function (n) {
+        var c = el('div', 'g-num');
+        c.appendChild(el('b', null, n.value));
+        c.appendChild(el('span', null, n.label));
+        nums.appendChild(c);
+      });
+      box.appendChild(nums);
+      var wrap = el('div', 'g-chartbox');
+      wrap.appendChild(drawChart(st));
+      var leg = el('div', 'g-legend');
+      var legSeries = st.unit === 'min' ? (st.series || []).slice(0, 1) : (st.series || []);
+      legSeries.forEach(function (se, i) { leg.appendChild(el('span', 'k s' + i, se.name)); });
+      wrap.appendChild(leg);
+      box.appendChild(wrap);
+      return box;
+    };
     // Eine Folie anzeigen (nur textContent, nie HTML aus den Daten).
     var draw = function (s) {
       stage.textContent = '';
@@ -630,6 +692,17 @@
       if (s.kind === 'image') {
         if (s.image_url) { var img = el('img', 'g-img'); img.alt = ''; img.src = s.image_url; stage.appendChild(img); }
         if (s.title) stage.appendChild(el('div', 'g-cap', s.title));
+      } else if (s.kind === 'grafana') {
+        if (typeof s.url === 'string' && /^(https:\/\/|\/grafana\/|http:\/\/(localhost|127\.0\.0\.1)([:\/]|$))/.test(s.url)) {
+          var fr = el('iframe', 'g-frame');
+          fr.title = s.title || 'Dashboard';
+          fr.setAttribute('referrerpolicy', 'no-referrer');
+          fr.src = s.url;
+          stage.appendChild(fr);
+        }
+        if (s.title) stage.appendChild(el('div', 'g-cap', s.title));
+      } else if (s.kind === 'stats_faults' || s.kind === 'stats_tickets' || s.kind === 'stats_setup') {
+        stage.appendChild(drawStats(s));
       } else if (s.kind === 'vorgaenge') {
         var g = el('div', 'g-vorg');
         var f = s.faults || [], t = s.tickets || [];
@@ -652,7 +725,7 @@
       draw(slides.length ? slides[cur] : null);
       if (slides.length) {
         slideTimer = setTimeout(function () { show(nextSlideIndex(slides, cur)); }, slideDurationMs(slides[cur]));
-        if (slides[cur].kind === 'vorgaenge') load(true); // Liste beim Erscheinen neu holen
+        if (slides[cur].kind === 'vorgaenge' || /^stats_/.test(slides[cur].kind)) load(true); // Liste beim Erscheinen neu holen
       }
     };
 
@@ -709,6 +782,8 @@
         })
         .then(function (d) {
           if (!d || !Array.isArray(d.slides)) return;
+          // Die Seite trägt ihre frame-src-Regel im Kopf; kommt für die Folien eine andere, neu laden.
+          if (typeof d.frame_csp === 'string' && stage && stage.dataset.frameCsp && d.frame_csp !== stage.dataset.frameCsp) { location.reload(); return; }
           var same = d.version === version;
           var curId = cur >= 0 && slides[cur] ? slides[cur].id : null;
           slides = d.slides; version = d.version;
@@ -717,6 +792,8 @@
             if (keep && curId) for (var k = 0; k < slides.length; k++) if (slides[k].id === curId) { idx = k; break; }
             if (keep && idx >= 0) { cur = idx; draw(slides[cur]); } // gleiche Folie weiter, nur neu zeichnen
             else show(0);
+          } else if (cur >= 0 && slides[cur] && /^stats_/.test(slides[cur].kind)) {
+            draw(slides[cur]); // Zahlen der laufenden Statistikfolie erneuern; die Reihenfolge bleibt
           }
           saveCache(d);
         })

@@ -10,6 +10,17 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.82.19] – 2026-11-21
+
+### Neu
+
+- Infobildschirm: neue Folien „Statistik Störungen“, „Statistik Tickets“ und „Statistik Rüstzeiten“ (Kennzahlen und Säulendiagramm für 7 oder 30 Tage, für die gewählten Anlagen samt Unteranlagen) sowie „Grafana-Dashboard“ zum Einbetten eines Dashboards.
+- Neue fertige Rolle „Terminal“: darf Tickets, Störungen und Rüstzeiten ansehen und melden, sonst nichts; über die Abteilung im Rollen-Dialog auf eine Halle begrenzbar (Handbuch „Anlagenterminal“).
+
+### Sicherheit
+
+- Die Folienschau darf per Content-Security-Policy nur PDH selbst und die Adresse der Grafana-Folien einbetten; Statistik und Grafana-Folien zeigen nur, was der Terminal-Benutzer sehen darf.
+
 ## [0.82.18] – 2026-11-21
 
 ### Neu

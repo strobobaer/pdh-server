@@ -906,6 +906,16 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     </ol>
     Den Code nur an der Admin-Seite des PDH-Terminals eingeben. Die Seite ist nur für Systembenutzer gedacht – andere Benutzer sehen den Hinweis, dass die Seite für Terminal-Benutzer bestimmt ist. Ist dem Benutzer keine Anlage zugeordnet oder die Anlage ausgeblendet, steht auf dem Terminal „Diesem Terminal ist keine Anlage zugeordnet“.</div>
   <p>Am gekoppelten PDH-Terminal gibt es oben rechts ein kleines <b>Zahnrad</b>. Es öffnet die Einstellungen des Terminals (die lokale Admin-Seite) und erscheint in allen Ansichten, auch im Schoner und in der Folienschau. Im Browser an einem normalen PC fehlt es.</p>
+  <h3>Rolle „Terminal“ und Halle begrenzen</h3>
+  <p>Für den Systembenutzer eines Terminals gibt es die fertige Rolle <b>Terminal</b> (Schlüssel <code>terminal</code>). Sie darf <b>Tickets, Störungen und Rüstzeiten ansehen und melden</b> (<code>tickets.view</code>, <code>tickets.edit</code>, <code>faults.view</code>, <code>faults.edit</code>, <code>setup.view</code>, <code>setup.edit</code>) und sonst nichts: kein Löschen, kein Administrieren. Ein eigenes Recht „anlegen“ gibt es nicht, Anlegen hängt am Bearbeiten-Recht. Ohne Begrenzung gilt die Rolle für <b>alle</b> Abteilungen.</p>
+  <div class="hb-howto"><b><i class="ti ti-building-factory"></i> So begrenzt du das Terminal auf eine Halle</b>
+    <p>PDH begrenzt Rechte nach <b>Abteilung</b> (mit Unterabteilungen); die Abteilung einer Anlage kommt von der Anlage oder vom nächsten Elternknoten. Die Halle muss also als Abteilung angelegt und an ihren Anlagen eingetragen sein.</p>
+    <ol class="hb-steps">
+      <li>Den Systembenutzer des Terminals öffnen, Rolle <b>Terminal</b> wählen und speichern.</li>
+      <li><b>Administration → Rollen &amp; Berechtigungen</b> öffnen. In der Berechtigungs-Matrix die Spalte <b>Terminal</b> suchen.</li>
+      <li>Bei jedem der sechs Rechte (Tickets, Störungen und Rüstzeiten: ansehen und bearbeiten) unter dem Häkchen auf das kleine Gebäudesymbol tippen, die Abteilung (z. B. <b>Halle 1</b>) wählen und <b>Übernehmen</b>. Der Knopf zeigt dann den Abteilungsnamen.</li>
+    </ol>
+    Die Begrenzung an der Rolle gilt für alle Terminal-Benutzer mit dieser Rolle. Brauchen zwei Hallen unterschiedliche Terminals, gib dem Terminal-Benutzer die Rechte stattdessen als <b>Einzelrechte</b> mit Abteilung (Benutzerstamm) und lass die Rolle ohne Abteilung. Die Auswahl über den Anlagenbaum gibt es für Rechte nicht, nur über die Abteilung.</div>
   <h3>Gerät sperren</h3>
   <p>Ist ein Terminal verloren gegangen oder soll es nicht mehr angemeldet sein, sperrst du es in der Karte <b>Gekoppelte Geräte</b> auf der Seite des Systembenutzers. Dort steht jedes gekoppelte Gerät mit <b>aktiv</b> oder <b>gesperrt</b> und dem Zeitpunkt, zu dem es zuletzt angemeldet war. Die Karte <b>Gekoppelte Geräte</b> sehen nur Benutzer mit dem Recht zur Benutzerverwaltung. Mit <b>Sperren</b> und einer Bestätigung wird das Gerät gesperrt.</p>
   <ul>
@@ -979,6 +989,8 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <li><b>Bild</b> – eine Datei als JPEG, PNG oder WebP, höchstens 5 MB. Der Titel ist freiwillig. Beim Bearbeiten bleibt das jetzige Bild, wenn du keine neue Datei wählst.</li>
     <li><b>Text</b> – Titel und Text, zusammen mindestens eines von beiden. Der Text hat höchstens 2000 Zeichen; Zeilenumbrüche bleiben erhalten. Es ist reiner Text, Formatierungen oder HTML werden nicht ausgeführt.</li>
     <li><b>Vorgänge</b> – die offenen Störungen und Tickets. Wähle eine oder mehrere <b>Anlagen</b> (jeweils mit ihren Unteranlagen); ohne Auswahl gelten alle. Mit den beiden Kästchen schaltest du <b>Störungen</b> und <b>Tickets</b> einzeln ab. Das Terminal zeigt höchstens 12 je Art und nur, was der Terminal-Benutzer sehen darf.</li>
+    <li><b>Statistik Störungen / Tickets / Rüstzeiten</b> – Kennzahlen und ein Säulendiagramm für die gewählten Anlagen samt Unteranlagen (ohne Auswahl alle). Zeitraum <b>7 Tage</b> (je Tag) oder <b>letzte 5 Wochen</b> (je Kalenderwoche, die laufende eingeschlossen). Die Zahlen erneuern sich, wenn die Folie erscheint (höchstens einmal pro Minute neu berechnet). Störungen: offene, neue und erledigte, dazu die mittlere Dauer bis zur Lösung (Stillstandszeiten werden nicht erfasst). Tickets: offene je Status, neue und erledigte. Rüstzeiten: laufende, Anzahl und mittlere Dauer. Gezählt wird nur, was der Terminal-Benutzer ansehen darf (Störungen, Tickets, Rüstzeiten ansehen, je Abteilung der Anlage).</li>
+    <li><b>Grafana-Dashboard</b> – bettet ein Dashboard ein: ein Vorschlag aus der Statistik, ein Pfad unter <code>/grafana/…</code> oder eine volle https-Adresse (http nur für localhost; keine Platzhalter oder Zugangsdaten). Der Bildschirm darf nur PDH selbst und diese Adresse einbetten; kommt eine neue Adresse hinzu, lädt der Bildschirm einmal neu. Der Terminal-Benutzer braucht das Recht <b>Statistik ansehen</b> (die Rolle Terminal hat es nicht, weil Grafana nicht nach Anlagen getrennt ist), sonst bleibt die Fläche leer; die Verwaltung weist darauf hin.</li>
     <li><b>Dauer</b> – 5 bis 600 Sekunden, ohne Eintrag 15.</li>
     <li><b>Aktiv</b> – nur aktive Folien laufen. Mit dem Haken aus bleibt die Folie gespeichert, wird aber nicht gezeigt.</li>
   </ul>
@@ -991,7 +1003,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li><b>Nicht freigegeben</b> – ein Vorgang, der nicht zu einer Anlage einer aktiven Vorgänge-Folie gehört oder den der Terminal-Benutzer nicht sehen darf, lässt sich nicht öffnen.</li>
       <li><b>Ohne Folien</b> zeigt der Bildschirm „Keine Folien eingerichtet“.</li>
     </ul></div>
-  <p>Ein globales Terminal liest keine Karten und hat keine Anmeldung; die Wege dafür sind gesperrt. Schaltest du das Kästchen am Systembenutzer aus, wird der Bildschirm von selbst wieder zum normalen Anlagenterminal. Ein Terminalprogramm mit Zwischenspeicher bekommt die Folien samt Bildern nach jeder Änderung mitgeschickt (je Bild höchstens 5 MB, insgesamt höchstens 50 MB); ältere Terminalprogramme ignorieren das.</p>
+  <p>Ein globales Terminal liest keine Karten und hat keine Anmeldung; die Wege dafür sind gesperrt. Schaltest du das Kästchen am Systembenutzer aus, wird der Bildschirm von selbst wieder zum normalen Anlagenterminal. Ein Terminalprogramm mit Zwischenspeicher bekommt die Folien samt Bildern nach jeder Änderung mitgeschickt (je Bild höchstens 5 MB, insgesamt höchstens 50 MB); ältere Terminalprogramme ignorieren das. Statistik- und Grafana-Folien laufen nur, solange PDH erreichbar ist: sie kommen nicht in den Zwischenspeicher, ein Terminal ohne Verbindung überspringt sie.</p>
   {{template "hb-shots" (dict "Ref" (index $s "infobildschirm") "Can" $can)}}
 </section>
 

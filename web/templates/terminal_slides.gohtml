@@ -24,11 +24,16 @@
     <a class="btn btn-small btn-primary" href="/terminal-slides/new?kind=image"><i class="ti ti-photo-plus" aria-hidden="true"></i> Bildfolie</a>
     <a class="btn btn-small btn-primary" href="/terminal-slides/new?kind=text"><i class="ti ti-text-plus" aria-hidden="true"></i> Textfolie</a>
     <a class="btn btn-small btn-primary" href="/terminal-slides/new?kind=vorgaenge"><i class="ti ti-list-details" aria-hidden="true"></i> Vorgänge</a>
+    <a class="btn btn-small btn-primary" href="/terminal-slides/new?kind=stats_faults"><i class="ti ti-chart-bar" aria-hidden="true"></i> Statistik Störungen</a>
+    <a class="btn btn-small btn-primary" href="/terminal-slides/new?kind=stats_tickets"><i class="ti ti-chart-bar" aria-hidden="true"></i> Statistik Tickets</a>
+    <a class="btn btn-small btn-primary" href="/terminal-slides/new?kind=stats_setup"><i class="ti ti-chart-bar" aria-hidden="true"></i> Statistik Rüstzeiten</a>
+    <a class="btn btn-small btn-primary" href="/terminal-slides/new?kind=grafana"><i class="ti ti-chart-line" aria-hidden="true"></i> Grafana</a>
   </div>
 </div>
 
 {{if .Notice}}<div class="card" role="status" style="margin-bottom:14px;border-color:var(--green)"><i class="ti ti-circle-check" style="color:var(--green)" aria-hidden="true"></i> {{.Notice}}</div>{{end}}
 
+{{if .NoStatsUsers}}<div class="card" role="alert" style="margin-bottom:14px;border-color:var(--amber)"><i class="ti ti-alert-triangle" style="color:var(--amber)" aria-hidden="true"></i> Grafana-Folien bleiben bei diesen Infobildschirmen leer, weil das Recht „Statistik ansehen“ fehlt: {{range $i, $n := .NoStatsUsers}}{{if $i}}, {{end}}{{$n}}{{end}}.</div>{{end}}
 <div class="card">
   <div class="card-title"><span><i class="ti ti-playlist" aria-hidden="true"></i> Folien in Reihenfolge</span></div>
   {{if .Slides}}
@@ -39,7 +44,7 @@
     <tr{{if not .Active}} class="sl-off"{{end}}>
       <td><div style="display:flex;gap:10px;align-items:center;min-width:0">
         {{if .HasImage}}<img class="sl-thumb" src="/terminal-slides/{{.ID}}/image?v={{.UpdatedKey}}" alt="Vorschau{{if .Title}}: {{.Title}}{{end}}" loading="lazy">
-        {{else}}<div class="sl-thumb-none" aria-hidden="true"><i class="ti {{if eq .Kind "text"}}ti-article{{else}}ti-list-details{{end}}"></i></div>{{end}}
+        {{else}}<div class="sl-thumb-none" aria-hidden="true"><i class="ti {{if eq .Kind "text"}}ti-article{{else if eq .Kind "grafana"}}ti-chart-line{{else if or (eq .Kind "stats_faults") (eq .Kind "stats_tickets") (eq .Kind "stats_setup")}}ti-chart-bar{{else}}ti-list-details{{end}}"></i></div>{{end}}
         <div class="sl-what"><b>{{if .Title}}{{.Title}}{{else}}<span style="color:var(--muted)">(ohne Titel)</span>{{end}}</b>
           {{if .Summary}}<div class="sl-sub">{{.Summary}}</div>{{end}}</div>
       </div></td>
