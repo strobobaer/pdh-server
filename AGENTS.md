@@ -629,6 +629,19 @@ und 3 drückt bis auf Weiteres der Anwender.
     Die App erzeugt nach einer Sperre oder dem Zurücksetzen einen neuen
     Schlüssel; die erste schreibende App-Route muss `mirrorGate` und den
     Rückzug der Sitzungen bei Wartung beachten.
+    Offen zur Entscheidung des Anwenders: Manager haben `app.admin` per
+    Migration in allen Abteilungen (der Entwurf sagt „in ihrer
+    Abteilung“; eine Rolle kann die eigene Abteilung nicht ausdrücken).
+    Geparkt aus der Schlussprüfung (klein): Indizes auf
+    `tickets.app_request_id`/`app_devices.request_id` (nur per neuer
+    Migration); ein freigegebenes Gerät könnte den Nonce-Speicher (100 000 je
+    10 min) füllen → Begrenzung je Gerät; Nonce-Speicher und Begrenzer liegen
+    je Server (vor schreibenden Routen klären); keine Obergrenze offener
+    Anfragen; `/me` liefert keine Abteilungs-ID; `last_seen_at`-Schreiben am
+    Spiegel; `appStoreConfigured` je Seite ohne Zwischenspeicher; Render-Test
+    für `/app/setup` ohne Integrations-Tag; Pfad-Präfix im `pdh://`-Link;
+    `CloseTx` ohne Prüfung der betroffenen Zeilen; Testlabor: eigene
+    Datenbank `pdh_test_app` (in `pdh_test` liegen fremde Migrationen).
 
 Docker Desktop startet nach einem Neustart des Windows-Rechners nicht von
 selbst – ohne ihn fehlen der Zeuge und die Labor-Datenbank für die Tests.
