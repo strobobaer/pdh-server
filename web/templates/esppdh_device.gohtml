@@ -100,6 +100,10 @@ html[data-style="fiori"] ewt-install-dialog,html[data-style="fiori"] ewt-no-port
 
 <div>
   <div class="card esp-card">
+    <div class="card-title"><span><i class="ti ti-gauge" aria-hidden="true"></i> Werte</span></div>
+    <div hx-get="/import/esppdh/{{.Dev.ID}}/values" hx-trigger="every 10s" hx-swap="innerHTML">{{template "esppdh-values" (dict "V" .Values "Link" false)}}</div>
+  </div>
+  <div class="card esp-card">
     <div class="card-title"><span><i class="ti ti-key" aria-hidden="true"></i> Zugang am Broker</span></div>
     <dl class="esp-dl">
       {{with .Live.Hint}}<dt>Zustand</dt><dd>{{.}}</dd>{{end}}

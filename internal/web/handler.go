@@ -346,6 +346,7 @@ type Handler struct {
 	msMu               sync.RWMutex // schützt microsoft (Einstellungen ändern sich im Betrieb)
 	microsoftSyncMu    sync.Mutex
 	mqttBrokers        *mqttbroker.Manager
+	topicSrc           topicSource // nur Tests: ersetzt den Broker für die ESPPDH-Werte (esppdh_values.go)
 	mqttImport         *mqttimport.Manager
 	exportCron         *scheduler.CronManager
 	importPoll         *scheduler.IntervalManager
@@ -1161,6 +1162,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/import/esppdh/{id}/web-password", h.EsppdhWebPasswordWeb) // Kennwort der Webseite anzeigen (protokolliert)
 	r.Post("/import/esppdh/{id}/delete", h.EsppdhDeleteWeb)
 	r.Get("/import/esppdh/{id}/config.yaml", h.EsppdhConfigWeb)
+	r.Get("/import/esppdh/{id}/values", h.EsppdhValuesWeb) // letzte Werte, Handshake, Adresse (htmx, alle 10 s)
 	r.Post("/import/esppdh/{id}/build", h.EsppdhBuildWeb)                    // Firmware bauen (esppdh_build.go)
 	r.Get("/import/esppdh/{id}/build/{bid}", h.EsppdhBuildPartWeb)           // Verlauf eines Laufs (htmx, alle 2 s)
 	r.Post("/import/esppdh/{id}/build/{bid}/cancel", h.EsppdhBuildCancelWeb) // Bau abbrechen

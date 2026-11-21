@@ -1,0 +1,6 @@
+{{/* Handshake (handshakeView, internal/web/handshake.go): Zähler, der zeigt, dass eine Quelle lebt.
+     Stil und Puls beim Weiterzählen: .hs / pdhHandshakePulse in base.gohtml. */}}
+{{define "handshake"}}<span class="hs {{if .Running}}hs-run{{else}}hs-stop{{end}}" data-hs="{{.ID}}" data-count="{{.Count}}" role="status">
+<i class="ti {{if .Running}}ti-heartbeat{{else}}ti-heart-broken{{end}}" aria-hidden="true"></i>
+<span class="hs-label">{{.Label}}</span> <code class="hs-count">{{.Count}}</code>
+<span class="hs-state">{{if .Running}}läuft{{else if .Since}}steht seit {{.Since}}{{else}}kein Lebenszeichen{{end}}</span></span>{{end}}

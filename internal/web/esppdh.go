@@ -9,6 +9,7 @@ import (
 	"net/netip"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -583,8 +584,9 @@ type ESPPDHDevicePageData struct {
 	State              esppdhState
 	Broker             esppdhBroker
 	MQTTUser, Topic    string
-	APName, APPassword string // Notzugang; das Kennwort nur mit esppdh.edit
-	WebNeedsInternet   bool   // ESP8266 mit Webseite: Seite lädt ihr Programm aus dem Internet
+	APName, APPassword string           // Notzugang; das Kennwort nur mit esppdh.edit
+	WebNeedsInternet   bool             // ESP8266 mit Webseite: Seite lädt ihr Programm aus dem Internet
+	Values             esppdhValuesView // letzte Werte, Handshake, Adresse (esppdh_values.go)
 	Problems           []string
 	Hints              []esppdhHint
 	PlainPort          int
@@ -753,6 +755,7 @@ func (h *Handler) esppdhRenderDevice(w http.ResponseWriter, r *http.Request, d e
 		pd.APPassword = apPW
 	}
 	pd.WebNeedsInternet = d.WebEnabled && res.Platform == "esp8266"
+	pd.Values = h.esppdhValues(ctx, []esppdhDevice{d}, time.Now())[0]
 
 	b := res.Broker
 	if pd.PlainPort == 0 && res.Platform == "esp8266" && b.TLSPort > 0 && b.PlainPort > 0 {
