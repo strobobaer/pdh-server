@@ -5,11 +5,14 @@
 package web
 
 import (
+	"context"
 	"net/url"
 	"strings"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
+
+	"pdh/internal/modules/it"
 )
 
 const appScanBase = "https://pdh.scan.test"
@@ -157,6 +160,70 @@ func TestAppScan(t *testing.T) {
 			t.Errorf("items %q", got)
 		}
 	})
+	t.Run("Adressen: Standard-Port, Schema-relativ, Pfad mit ..", func(t *testing.T) {
+		e := newAppScanEnv(t)
+		for code, want := range map[string]string{
+			"https://PDH.scan.test:443/inventory/x": appScanBase + "/inventory/x",
+			"http://pdh.scan.test/k/abc":            appScanBase + "/k/abc", // Adresse des Servers gewinnt
+			appScanBase + "/inventory//x/./y":       appScanBase + "/inventory/x/y",
+		} {
+			status, m := e.scan(code)
+			if status != 200 || m["kind"] != "web" || m["url"] != want {
+				t.Errorf("%s: %d %v", code, status, m)
+			}
+		}
+		if status, m := e.scan("https://pdh.scan.test:443/a/" + e.infra); status != 200 || m["kind"] != "asset" {
+			t.Errorf("anlage mit :443: %d %v", status, m)
+		}
+		for _, code := range []string{
+			"//pdh.scan.test/a/" + e.infra, "//fremd.example/a/" + e.infra, "//pdh.scan.test/inventory/x",
+			appScanBase + "/inventory/../a/" + e.infra, appScanBase + "/inventory/%2e%2e/x", "/inventory/../k/x",
+			appScanBase + ":8443/a/" + e.infra,
+		} {
+			if status, m := e.scan(code); status != 404 || m["code"] != "app_not_found" {
+				t.Errorf("%q: %d %v", code, status, m)
+			}
+		}
+	})
+	t.Run("Anlage in fremder Abteilung: 403", func(t *testing.T) {
+		e := newAppScanEnv(t)
+		deptA, deptB := e.dept("DA"), e.dept("DB")
+		infraB := e.atEnv.infra("Fremd ", deptB, "")
+		role := "scandept" + e.sfx
+		e.exec(`INSERT INTO roles (key, label, level, department_id) VALUES ($1, 'SD', 10, $2::uuid)`, role, deptA)
+		t.Cleanup(func() { _, _ = e.pool.Exec(context.Background(), `DELETE FROM roles WHERE key = $1`, role) })
+		e.exec(`UPDATE users SET role = $2 WHERE id = $1::uuid`, e.uid, role)
+		e.grant(e.uid, permAppCreate, "", true)
+		e.warm()
+		appDeviceCache.forget(e.devID)
+		if status, m := e.scan(infraB); status != 403 || m["code"] != "app_no_permission" {
+			t.Errorf("scan: %d %v", status, m)
+		}
+		if status, m := e.scan(e.infra); status != 200 { // Anlage ohne Abteilung
+			t.Errorf("eigene anlage: %d %v", status, m)
+		}
+		rec, m := e.post("/api/app/v1/faults", map[string]any{"asset_id": infraB, "title": "Fremd " + e.sfx}, "")
+		if rec.Code != 403 || m["code"] != "app_no_permission" {
+			t.Errorf("melden: %d %v", rec.Code, m)
+		}
+	})
+	t.Run("IT-Asset über /e/: Vorgänge ja, may_report nein", func(t *testing.T) {
+		e := newAppScanEnv(t)
+		e.h.it = it.NewService(it.NewRepository(e.pool))
+		e.grant(e.uid, permAppCreate, "", true)
+		e.grant(e.uid, "it.view", "", true)
+		e.warm()
+		id := e.id(`INSERT INTO it_assets (name, type, status, created_by) VALUES ($1, 'server', 'active', $2::uuid) RETURNING id::text`, "ITA "+e.sfx, e.uid)
+		t.Cleanup(func() { _, _ = e.pool.Exec(context.Background(), `DELETE FROM it_assets WHERE id = $1::uuid`, id) })
+		e.exec(`INSERT INTO faults (title, description, severity, status, it_asset_id, created_by) VALUES ($1, '', 'low', 'detected', $2::uuid, $3::uuid)`, e.title("ITStoerung"), id, e.other)
+		status, m := e.scan(appScanBase + "/e/" + id)
+		if status != 200 || m["kind"] != "asset" || m["may_report"] != false {
+			t.Fatalf("%d %v", status, m)
+		}
+		if got := strings.Join(e.scanTitles(m), ","); got != "ITStoerung" {
+			t.Errorf("items %q", got)
+		}
+	})
 	t.Run("ohne Anmeldung 401", func(t *testing.T) {
 		e := newAppScanEnv(t)
 		rec := e.call("GET", "/api/app/v1/scan?code="+e.infra, nil, e.key, "", "1.0.0")
@@ -289,6 +356,25 @@ func TestAppReportFault(t *testing.T) {
 		}
 		if status, again := report(e, once, in); status != 200 || again["id"] != first["id"] {
 			t.Errorf("erste once nach zweiter meldung: %d %v", status, again)
+		}
+	})
+	t.Run("Wiederholung ordnet die richtige Störung zu, auch wenn die Anlage inzwischen fehlt", func(t *testing.T) {
+		e := newAppScanEnv(t)
+		e.grant(e.uid, permAppCreate, "", true)
+		e.warm()
+		in := map[string]any{"asset_id": e.infra, "title": "Gleich " + e.sfx}
+		onceA, onceB := e.once(), e.once()
+		_, a := report(e, onceA, in)
+		_, b := report(e, onceB, in)
+		if a["id"] == nil || b["id"] == nil || a["id"] == b["id"] {
+			t.Fatalf("a %v b %v", a, b)
+		}
+		if status, again := report(e, onceB, in); status != 200 || again["id"] != b["id"] {
+			t.Errorf("wiederholung B: %d %v (erwartet %v)", status, again, b["id"])
+		}
+		e.exec(`UPDATE infrastructure SET hidden_at = now() WHERE id = $1::uuid`, e.infra)
+		if status, again := report(e, onceA, in); status != 200 || again["id"] != a["id"] {
+			t.Errorf("wiederholung A bei verborgener Anlage: %d %v (erwartet %v)", status, again, a["id"])
 		}
 	})
 	t.Run("Spiegelserver und Wartung lehnen ab", func(t *testing.T) {

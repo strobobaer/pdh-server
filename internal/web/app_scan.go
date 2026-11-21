@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"path"
 	"sort"
 	"strings"
 	"time"
@@ -34,23 +35,36 @@ const (
 	appFaultTextMax  = appTextMax
 )
 
-// appHostOf: Host (mit Port, klein) einer Server-Adresse; leer, wenn nicht lesbar.
-func appHostOf(addr string) string {
-	u, err := url.Parse(strings.TrimSpace(addr))
-	if err != nil || u.Host == "" {
+// appHostKey: Host einer Adresse zum Vergleichen – kleingeschrieben, Standard-Port
+// (80 bei http, 443 bei https) weggelassen; leer, wenn kein Host.
+func appHostKey(u *url.URL) string {
+	host := strings.ToLower(u.Hostname())
+	if host == "" {
 		return ""
 	}
-	return strings.ToLower(u.Host)
+	port := u.Port()
+	if (u.Scheme == "http" && port == "80") || (u.Scheme == "https" && port == "443") {
+		port = ""
+	}
+	if strings.Contains(host, ":") { // IPv6
+		host = "[" + host + "]"
+	}
+	if port != "" {
+		host += ":" + port
+	}
+	return host
 }
 
-// appScanTarget zerlegt den Code: Pfad samt Abfrage und – bei einer Adresse – die
-// Herkunft (Schema://Host). ok=false: Adresse eines fremden Servers oder kein
-// brauchbarer Code. Ein Code ohne Host (nackte UUID, Pfad) ist immer in Ordnung.
-func (h *Handler) appScanTarget(r *http.Request, code string) (path, rawQuery, origin string, ok bool) {
+// appScanTarget zerlegt den Code: Pfad (bereinigt) samt Abfrage und – bei einer Adresse –
+// die passende Server-Adresse als Herkunft. ok=false: Adresse eines fremden Servers,
+// Adresse ohne Schema (//host/…), Pfad mit „..“ oder kein brauchbarer Code. Ein Code
+// ohne Host (nackte UUID, Pfad) ist immer in Ordnung.
+func (h *Handler) appScanTarget(r *http.Request, code string) (p, rawQuery, origin string, ok bool) {
 	code = strings.TrimSpace(code)
 	if code == "" || len(code) > 2048 {
 		return "", "", "", false
 	}
+	var u *url.URL
 	if !strings.Contains(code, "://") {
 		if bareUUIDRe.MatchString(code) {
 			return "/a/" + strings.ToLower(code), "", "", true
@@ -58,23 +72,36 @@ func (h *Handler) appScanTarget(r *http.Request, code string) (path, rawQuery, o
 		if !strings.HasPrefix(code, "/") {
 			return "", "", "", false
 		}
-		u, err := url.Parse(code)
-		if err != nil {
+		var err error
+		if u, err = url.Parse(code); err != nil || u.Host != "" { // „//host/…“ ist kein Pfad
 			return "", "", "", false
 		}
-		return u.Path, u.RawQuery, "", true
-	}
-	u, err := url.Parse(code)
-	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-		return "", "", "", false
-	}
-	host := strings.ToLower(u.Host)
-	for _, a := range h.appAddresses(r) {
-		if appHostOf(a) == host {
-			return u.Path, u.RawQuery, u.Scheme + "://" + u.Host, true
+	} else {
+		var err error
+		if u, err = url.Parse(code); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			return "", "", "", false
+		}
+		key := appHostKey(u)
+		for _, a := range h.appAddresses(r) {
+			if au, err := url.Parse(strings.TrimSpace(a)); err == nil && key != "" && appHostKey(au) == key {
+				origin = strings.TrimRight(strings.TrimSpace(a), "/")
+				break
+			}
+		}
+		if origin == "" {
+			return "", "", "", false
 		}
 	}
-	return "", "", "", false
+	for _, seg := range strings.Split(u.Path, "/") {
+		if seg == ".." {
+			return "", "", "", false
+		}
+	}
+	p = path.Clean(u.Path)
+	if strings.HasSuffix(u.Path, "/") && p != "/" {
+		p += "/" // Pfade wie „/inventory/“ behalten den Schrägstrich
+	}
+	return p, u.RawQuery, origin, true
 }
 
 // appInfraInScope: liegt die Anlage im Abteilungsbereich des Benutzers? (Anlagen ohne
@@ -190,17 +217,17 @@ func (h *Handler) AppScanAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	notFound := func() { appJSONErr(w, http.StatusNotFound, "app_not_found", "app_not_found") }
-	path, rawQuery, origin, ok := h.appScanTarget(r, r.URL.Query().Get("code"))
+	spath, rawQuery, origin, ok := h.appScanTarget(r, r.URL.Query().Get("code"))
 	if !ok {
 		notFound()
 		return
 	}
 	for _, p := range appScanWebPrefixes {
-		if strings.HasPrefix(path, p) {
+		if strings.HasPrefix(spath, p) {
 			if origin == "" {
 				origin = h.appAddresses(r)[0]
 			}
-			u := origin + path
+			u := origin + spath
 			if rawQuery != "" {
 				u += "?" + rawQuery
 			}
@@ -208,7 +235,7 @@ func (h *Handler) AppScanAPI(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	m := assetQRRe.FindStringSubmatch(path)
+	m := assetQRRe.FindStringSubmatch(spath)
 	if m == nil {
 		notFound()
 		return
@@ -263,11 +290,14 @@ type appFaultIn struct {
 // request_once hat keine freie Spalte (und es kommt keine Migration): gesucht wird die
 // erste Störung desselben Benutzers an derselben Anlage mit demselben Titel, die nach
 // dem Eintrag der Once entstand. Leer: nicht gefunden.
+// Grenze: Zwei gleichzeitige Onces mit gleichem Benutzer, gleicher Anlage und gleichem
+// Titel können beide auf die frühere Störung zeigen – bis Paket 3 (vom Telefon erzeugte
+// IDs) hingenommen.
 func (h *Handler) appFaultByOnce(ctx context.Context, once, uid, assetID, title string) string {
 	var id string
 	err := h.db.QueryRow(ctx, `SELECT f.id::text FROM faults f
 		WHERE f.created_by = $2::uuid AND f.infrastructure_id = $3::uuid AND f.title = $4
-		  AND f.created_at >= (SELECT created_at FROM request_once WHERE token = $1::uuid) - INTERVAL '5 seconds'
+		  AND f.created_at >= (SELECT created_at FROM request_once WHERE token = $1::uuid)
 		ORDER BY f.created_at, f.id LIMIT 1`, once, uid, assetID, title).Scan(&id)
 	if err != nil {
 		return ""
@@ -317,6 +347,15 @@ func (h *Handler) AppFaultCreateAPI(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 	u := getUser(r)
+	if appIsReplay(r) { // schon angelegt: die Störung des ersten Aufrufs melden
+		id := h.appFaultByOnce(ctx, appOnce(r), u.ID, assetID, title)
+		if id == "" {
+			appJSONErr(w, http.StatusConflict, "app_conflict", "Die Meldung ist bereits verarbeitet, die Störung aber nicht mehr auffindbar.")
+			return
+		}
+		terminalJSON(w, http.StatusOK, map[string]any{"type": "fault", "id": id})
+		return
+	}
 	var exists bool
 	if err := h.db.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM infrastructure WHERE id = $1::uuid AND hidden_at IS NULL)`, assetID).Scan(&exists); err != nil {
 		appUnavailable(w, err, "fault", assetID, "app: anlage prüfen")
@@ -328,15 +367,6 @@ func (h *Handler) AppFaultCreateAPI(w http.ResponseWriter, r *http.Request) {
 	}
 	if !h.appInfraInScope(ctx, h.requestScope(r), assetID) {
 		appJSONErr(w, http.StatusForbidden, "app_no_permission", "app_no_permission")
-		return
-	}
-	if appIsReplay(r) { // schon angelegt: die Störung des ersten Aufrufs melden
-		id := h.appFaultByOnce(ctx, appOnce(r), u.ID, assetID, title)
-		if id == "" {
-			appJSONErr(w, http.StatusConflict, "app_conflict", "Die Meldung ist bereits verarbeitet, die Störung aber nicht mehr auffindbar.")
-			return
-		}
-		terminalJSON(w, http.StatusOK, map[string]any{"type": "fault", "id": id})
 		return
 	}
 	if h.faults == nil {
