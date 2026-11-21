@@ -45,6 +45,9 @@ type terminalSlide struct {
 	UpdatedAt                        time.Time
 }
 
+// errSlideNeedsImage: Bildfolie ohne (vorhandenes) Bild – ein Eingabefehler, kein Datenbankfehler.
+var errSlideNeedsImage = errors.New("Die Bildfolie braucht ein Bild")
+
 var slideUUIDRe = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
 // validateTerminalSlide prüft die Grenzen. Die Bildart wird aus dem Inhalt
@@ -145,7 +148,7 @@ func (h *Handler) saveTerminalSlide(ctx context.Context, s *terminalSlide) error
 		return err
 	}
 	if s.ID == "" && s.Kind == slideKindImage && len(s.Image) == 0 {
-		return errors.New("Die Bildfolie braucht ein Bild")
+		return errSlideNeedsImage
 	}
 	infra := s.InfraIDs
 	if infra == nil {
@@ -180,7 +183,7 @@ func (h *Handler) saveTerminalSlide(ctx context.Context, s *terminalSlide) error
 				return err
 			}
 			if !has {
-				return errors.New("Die Bildfolie braucht ein Bild")
+				return errSlideNeedsImage
 			}
 		}
 		// Bild: andere Art = löschen; image mit neuem Bild = ersetzen; sonst behalten.

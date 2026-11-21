@@ -15,7 +15,8 @@ im Kapitel „Versionen & Updates“ an.
 ### Neu
 
 - Am Systembenutzer eines Terminals lässt sich einstellen, wie ein Windows-Terminal im Hintergrund auf eine gelesene Karte aufmerksam macht: Windows-Mitteilung, Fenster in der Mitte (Vorgabe), Leiste oben, Terminal nach vorn oder keine Benachrichtigung. Die Einstellung erreicht das Terminal sofort; ältere Terminals ignorieren sie.
-- Am Systembenutzer eines Terminals gibt es das Kästchen „Globales Terminal (Infobildschirm)“. Dazu gehören ein Speicher für Folien (Bild, Text, Vorgänge mit Dauer und Reihenfolge) und das neue Recht „Infobildschirm bearbeiten“ (Admin und Manager); die Umschaltung erreicht das Terminal sofort. Die Seite zum Pflegen der Folien und der Abspieler folgen.
+- Am Systembenutzer eines Terminals gibt es das Kästchen „Globales Terminal (Infobildschirm)“. Dazu gehören ein Speicher für Folien (Bild, Text, Vorgänge mit Dauer und Reihenfolge) und das neue Recht „Infobildschirm bearbeiten“ (Admin und Manager); die Umschaltung erreicht das Terminal sofort. Der Abspieler folgt.
+- Neue Seite „Infobildschirm“ (Administration, mit dem Recht „Infobildschirm bearbeiten“): Folien für globale Terminals anlegen, ändern, löschen und mit Hoch/Runter ordnen – als Bild (JPEG, PNG, WebP, bis 5 MB), Text (bis 2000 Zeichen) oder Vorgänge (Störungen und Tickets ausgewählter Anlagen), je mit Dauer und Aktiv-Haken. Jede Änderung erreicht die Infobildschirme sofort. Das Handbuch hat dazu das Kapitel „Infobildschirm“.
 - Windows-Terminals melden nach jeder Anmeldung und Abmeldung per Karte das Ergebnis an das lokale Terminalprogramm, damit es im Hintergrund benachrichtigen kann. Ältere Terminals ohne diese Schnittstelle laufen unverändert weiter.
 
 ### Geändert
