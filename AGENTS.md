@@ -527,8 +527,11 @@ und 3 drückt bis auf Weiteres der Anwender.
     Sensorwerte am Anlagenterminal (neues Recht `esppdh.values`),
     Handshake-Zähler überall; 0.82.12 Sensorkatalog aus ESPHome (Ansatz C);
     0.82.13 Plausibilität mit Betriebszeiten der Anlage – noch zu besprechen
-    (Quelle der Betriebszeiten, „Minimal- und Maximalzeit“). Nächster
-    Schritt: Bauplan Teil 1.
+    (Quelle der Betriebszeiten, „Minimal- und Maximalzeit“). Bauplan Teil 1:
+    `docs/superpowers/plans/2026-11-21-esppdh-teil1.md` (8 Aufgaben,
+    Migration 186; Werte-Speicher im Broker statt eigenem Abo, weil
+    `reconcileMqttConsumer` alle Abos löscht). Nächster Schritt: Plan vom
+    Anwender lesen lassen, Ausführungsart wählen, bauen.
 17. **Eigenes Projekt: ESPPDH-Vorlagen für Messaufgaben** (Wunsch des
     Anwenders vom 21.11.2026, vom Anwender ausdrücklich als separates
     Projekt eingeordnet, noch nicht begonnen): eigene Vorlagen „mit Hilfe“
