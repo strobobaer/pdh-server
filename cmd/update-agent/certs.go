@@ -734,7 +734,7 @@ func (a *updateAgent) certInstallHandler(w http.ResponseWriter, r *http.Request)
 			}
 			redirect := req.Redirect == nil || *req.Redirect
 			sitePath = target // hinter einer Verknüpfung: die Zieldatei, die Verknüpfung bleibt
-			v6 := certHasIPv6()
+			v6 := a.certWantV6(sitesDir, certPDHSite)
 			siteData = certSiteConf(req.Name, req.Upstream, redirect, v6)
 			if v6 {
 				siteV4 = certSiteConfV4Only(req.Name, req.Upstream, redirect)
@@ -757,7 +757,7 @@ func (a *updateAgent) certInstallHandler(w http.ResponseWriter, r *http.Request)
 				break
 			}
 			sitePath = target
-			v6 := certHasIPv6()
+			v6 := a.certWantV6(sitesDir, entry)
 			siteData = certSiteConf(req.Name, req.Upstream, false, v6)
 			if v6 {
 				siteV4 = certSiteConfV4Only(req.Name, req.Upstream, false)
@@ -1188,6 +1188,18 @@ type certStatusEntry struct {
 // ohne lesbaren Seiten-Ordner: nichts. Nicht lesbare Seiten zählen hier nicht – der Status
 // sagt nur, ob eine Seite sicher verweist.
 func (a *updateAgent) certSiteTexts() []string {
+	var out []string
+	for _, f := range a.certSiteFiles() {
+		out = append(out, f.text)
+	}
+	return out
+}
+
+// certSiteFile: eine Seite im Seiten-Ordner (Eintrag, aufgelöster Inhalt).
+type certSiteFile struct{ entry, text string }
+
+// certSiteFiles: wie certSiteTexts, mit dem Namen des Eintrags.
+func (a *updateAgent) certSiteFiles() []certSiteFile {
 	if !a.certNginxPresent() {
 		return nil
 	}
@@ -1196,7 +1208,7 @@ func (a *updateAgent) certSiteTexts() []string {
 	if err != nil {
 		return nil
 	}
-	var out []string
+	var out []certSiteFile
 	for _, e := range entries {
 		if strings.HasPrefix(e.Name(), ".") {
 			continue
@@ -1209,10 +1221,49 @@ func (a *updateAgent) certSiteTexts() []string {
 			continue
 		}
 		if data, err := os.ReadFile(p); err == nil {
-			out = append(out, string(data))
+			out = append(out, certSiteFile{entry: e.Name(), text: string(data)})
 		}
 	}
 	return out
+}
+
+var (
+	certListen443Re   = regexp.MustCompile(`(?m)^[ \t]*listen[ \t]+(?:[0-9.]+:)?443\b`)
+	certListen443V6Re = regexp.MustCompile(`(?m)^[ \t]*listen[ \t]+\[[^\]]*\]:443\b`)
+)
+
+// certWantV6: Soll eine Seite des Agenten zusätzlich auf IPv6 hören? Nur, wenn der Server
+// IPv6 hat und jede andere Seite auf Port 443 ebenfalls auf IPv6 hört – sonst bekäme jeder
+// Aufruf über IPv6 (auch der Tunnel über ::1) für deren Namen das Zertifikat dieser Seite.
+// skipEntry ist die eigene Datei. Nicht lesbare Seiten zählen als „nur IPv4“.
+func (a *updateAgent) certWantV6(sitesDir, skipEntry string) bool {
+	if !certHasIPv6() {
+		return false
+	}
+	entries, err := os.ReadDir(a.certPath(sitesDir))
+	if err != nil {
+		return false
+	}
+	for _, e := range entries {
+		if e.Name() == skipEntry || strings.HasPrefix(e.Name(), ".") {
+			continue
+		}
+		p, err := a.certResolve(a.certPath(sitesDir + "/" + e.Name()))
+		if err != nil {
+			return false
+		}
+		if st, err := os.Stat(p); err != nil || st.IsDir() {
+			continue
+		}
+		data, err := os.ReadFile(p)
+		if err != nil {
+			return false
+		}
+		if certListen443Re.Match(data) && !certListen443V6Re.Match(data) {
+			return false
+		}
+	}
+	return true
 }
 
 // certStatusHandler: GET /v1/certs/status – ohne nginx oder ohne Ordner eine
@@ -1221,11 +1272,10 @@ func (a *updateAgent) certStatusHandler(w http.ResponseWriter, _ *http.Request) 
 	certs := []certStatusEntry{}
 	entries, err := os.ReadDir(a.certPath(certRootDir))
 	if err == nil {
-		var sites []string
+		var sites []certSiteFile
 		if len(entries) > 0 {
-			sites = a.certSiteTexts()
+			sites = a.certSiteFiles()
 		}
-		v6 := certHasIPv6()
 		sitesDir := ""
 		if len(sites) > 0 {
 			sitesDir, _ = a.certLayout()
@@ -1233,7 +1283,7 @@ func (a *updateAgent) certStatusHandler(w http.ResponseWriter, _ *http.Request) 
 		uses := func(name string) bool {
 			needle := certDir(name) + "/"
 			for _, s := range sites {
-				if strings.Contains(s, needle) && !certSiteStale(s, v6) {
+				if strings.Contains(s.text, needle) && !certSiteStale(s.text, a.certWantV6(sitesDir, s.entry)) {
 					return true
 				}
 			}
