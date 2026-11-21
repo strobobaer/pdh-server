@@ -533,9 +533,10 @@ und 3 drückt bis auf Weiteres der Anwender.
     Projekt eingeordnet, noch nicht begonnen): eigene Vorlagen „mit Hilfe“
     erstellen, z. B. Plattenstärke mit zwei Abstandssensoren (Eingabe
     Sollstärke und Toleranz, Kalibrierfunktion, Inbetriebnahmeanleitung mit
-    Piktogrammen) oder Längenmessung. Offen: Wer erstellt Vorlagen (ich im
-    Repository / Copilot im PDH mit Editor / beides) und wer darf sie
-    anlegen; Vorschlag: Gerät misst, das PDH rechnet und bewertet (kein
+    Piktogrammen) oder Längenmessung. Entschieden (21.11.2026, „B“):
+    Vorlagen-Editor in ESPPDH, der Copilot im PDH schlägt Sensoren,
+    Rechnung und Anleitung vor, der Anwender bestätigt – ohne Update.
+    Offen: wer Vorlagen anlegen darf; Vorschlag: Gerät misst, das PDH rechnet und bewertet (kein
     `lambda` auf dem Gerät). Baut auf 16 (Teil 1 und 2) auf.
 
 Docker Desktop startet nach einem Neustart des Windows-Rechners nicht von
