@@ -142,7 +142,7 @@ func TestAppApprove(t *testing.T) {
 	t.Run("Freigeben", func(t *testing.T) {
 		rq := e.request(deptA)
 		rec := e.approve(rq, admin, rq.Code, tgtA.ID, []string{"fault", "task"}, false)
-		if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/app/devices?revoked=1" {
+		if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/app/devices?approved=1" {
 			t.Fatalf("freigeben: %d %s %.200s", rec.Code, rec.Header().Get("Location"), rec.Body.String())
 		}
 		var uid, types, fp, approvedBy string
@@ -382,7 +382,7 @@ func TestAppReject(t *testing.T) {
 		t.Errorf("Betrachter: %d", rec.Code)
 	}
 	rec := e.do("POST", "/app/requests/"+rq.ID+"/reject", admin, url.Values{})
-	if rec.Code != 303 || rec.Header().Get("Location") != "/app/devices?revoked=1" {
+	if rec.Code != 303 || rec.Header().Get("Location") != "/app/devices?rejected=1" {
 		t.Fatalf("ablehnen: %d %s", rec.Code, rec.Header().Get("Location"))
 	}
 	if e.requestStatus(rq.ID) != "rejected" || e.devices(rq.ID) != 0 {

@@ -449,7 +449,7 @@ func (h *Handler) AppRequestApproveWeb(w http.ResponseWriter, r *http.Request) {
 		h.tickets.AfterClose(ctx, *ticketID, actor.ID)
 	}
 	componentLog("app").Info().Str("request", id).Str("device", devID).Str("user", userID).Str("von", actor.ID).Msg("app: gerät freigegeben")
-	http.Redirect(w, r, "/app/devices", http.StatusSeeOther)
+	http.Redirect(w, r, "/app/devices?approved=1", http.StatusSeeOther)
 }
 
 // AppRequestRejectWeb: POST /app/requests/{id}/reject.
@@ -519,7 +519,7 @@ func (h *Handler) AppRequestRejectWeb(w http.ResponseWriter, r *http.Request) {
 		h.tickets.AfterClose(ctx, *ticketID, actor.ID)
 	}
 	componentLog("app").Info().Str("request", id).Str("von", actor.ID).Msg("app: anfrage abgelehnt")
-	http.Redirect(w, r, "/app/devices", http.StatusSeeOther)
+	http.Redirect(w, r, "/app/devices?rejected=1", http.StatusSeeOther)
 }
 
 func appPlatformName(p string) string {

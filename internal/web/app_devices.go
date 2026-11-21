@@ -55,6 +55,8 @@ type appDevicesPageData struct {
 	Form        appSettingsForm
 	Saved       bool
 	Revoked     bool
+	Approved    bool
+	Rejected    bool
 	Error       string
 }
 
@@ -152,6 +154,8 @@ func (h *Handler) renderAppDevices(w http.ResponseWriter, r *http.Request, statu
 		CanSettings: h.appAdminIn(r, ""),
 		Saved:       r.URL.Query().Get("saved") == "1",
 		Revoked:     r.URL.Query().Get("revoked") == "1",
+		Approved:    r.URL.Query().Get("approved") == "1",
+		Rejected:    r.URL.Query().Get("rejected") == "1",
 		Error:       msg,
 	}
 	var err error

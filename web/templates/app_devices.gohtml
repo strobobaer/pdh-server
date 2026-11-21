@@ -22,6 +22,8 @@
   </div>
 
   {{if .Revoked}}<p class="rec-msg" role="status" style="margin-bottom:12px"><i class="ti ti-check"></i> {{t "Das App-Gerät wurde gesperrt."}}</p>{{end}}
+  {{if .Approved}}<p class="rec-msg" role="status" style="margin-bottom:12px"><i class="ti ti-check"></i> {{t "Das App-Gerät wurde freigegeben."}}</p>{{end}}
+  {{if .Rejected}}<p class="rec-msg" role="status" style="margin-bottom:12px"><i class="ti ti-check"></i> {{t "Die Anfrage wurde abgelehnt."}}</p>{{end}}
   {{if .Saved}}<p class="rec-msg" role="status" style="margin-bottom:12px"><i class="ti ti-check"></i> {{t "Die App-Einstellungen sind gespeichert."}}</p>{{end}}
   {{if .Error}}<p class="rec-msg err" role="alert" style="margin-bottom:12px"><i class="ti ti-alert-circle"></i> {{.Error}}</p>{{end}}
 
