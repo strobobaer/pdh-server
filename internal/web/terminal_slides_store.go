@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"path"
 	"regexp"
 	"slices"
 	"strings"
@@ -65,28 +66,58 @@ var errSlideNeedsImage = errors.New("Die Bildfolie braucht ein Bild")
 
 var slideUUIDRe = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
-// validateGrafanaSlideURL: erlaubt ist ein Pfad auf dem PDH (z. B. /grafana/d/…) oder eine volle
-// http(s)-Adresse ohne Zugangsdaten.
-func validateGrafanaSlideURL(raw string) error {
+// grafanaHostRe: erlaubte Rechnernamen (mit Port) einer vollen Grafana-Adresse; keine Platzhalter,
+// Strichpunkte, Zugangsdaten oder IPv6-Klammern.
+var grafanaHostRe = regexp.MustCompile(`^[A-Za-z0-9.-]+(:\d+)?$`)
+
+// parseGrafanaSlideURL prüft die Adresse einer Grafana-Folie und liefert den Ursprung für die
+// Content-Security-Policy ("" bei einem Pfad auf dem PDH). Erlaubt: ein Pfad unter /grafana/ (nach path.Clean)
+// oder eine volle https-Adresse; http nur für localhost und 127.0.0.1.
+func parseGrafanaSlideURL(raw string) (origin string, err error) {
 	if raw == "" {
-		return errors.New("Die Grafana-Folie braucht eine Adresse")
+		return "", errors.New("Die Grafana-Folie braucht eine Adresse")
 	}
 	if len(raw) > slideMaxURL {
-		return fmt.Errorf("Die Adresse darf höchstens %d Zeichen haben", slideMaxURL)
+		return "", fmt.Errorf("Die Adresse darf höchstens %d Zeichen haben", slideMaxURL)
 	}
-	if strings.HasPrefix(raw, "//") || strings.ContainsFunc(raw, func(c rune) bool {
-		return c <= ' ' || c == 0x5c || c == 0x22 || c == 0x27 || c == '<' || c == '>'
+	if strings.ContainsFunc(raw, func(c rune) bool {
+		return c <= ' ' || c == 0x7f || c == 0x5c || c == 0x22 || c == 0x27 || c == '<' || c == '>' || c == ';' || c == '*'
 	}) {
-		return errors.New("Ungültige Adresse")
-	}
-	if strings.HasPrefix(raw, "/") {
-		return nil
+		return "", errors.New("Ungültige Adresse")
 	}
 	u, err := url.Parse(raw)
-	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil {
-		return errors.New("Die Adresse muss mit http://, https:// oder / beginnen")
+	if err != nil || u.User != nil || u.Opaque != "" {
+		return "", errors.New("Ungültige Adresse")
 	}
-	return nil
+	if u.Scheme == "" && u.Host == "" {
+		if !strings.HasPrefix(raw, "/") || strings.HasPrefix(raw, "//") {
+			return "", errors.New("Ungültige Adresse")
+		}
+		if !strings.HasPrefix(path.Clean(u.Path), "/grafana/") {
+			return "", errors.New("Ein Pfad muss unter /grafana/ liegen")
+		}
+		return "", nil
+	}
+	host := u.Hostname()
+	if !grafanaHostRe.MatchString(u.Host) || host == "" {
+		return "", errors.New("Ungültiger Rechnername in der Adresse")
+	}
+	switch {
+	case u.Scheme == "https":
+	case u.Scheme == "http" && (host == "localhost" || host == "127.0.0.1"):
+	default:
+		return "", errors.New("Die Adresse muss mit https:// beginnen (http nur für localhost)")
+	}
+	origin = u.Scheme + "://" + host
+	if p := u.Port(); p != "" {
+		origin += ":" + p
+	}
+	return origin, nil
+}
+
+func validateGrafanaSlideURL(raw string) error {
+	_, err := parseGrafanaSlideURL(raw)
+	return err
 }
 
 // validateTerminalSlide prüft die Grenzen. Die Bildart wird aus dem Inhalt

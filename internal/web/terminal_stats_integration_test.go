@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 )
 
 type gtStatSlide struct {
@@ -53,6 +54,8 @@ func sumSeries(st *terminalStats, name string) (n float64) {
 }
 
 func TestTerminalStatsSlides(t *testing.T) {
+	statsCacheTTL = 0
+	t.Cleanup(func() { statsCacheTTL = 60 * time.Second })
 	g := newGTEnv(t)
 	e := g.e
 	cG := g.cookie(g.termG, g.devG)
@@ -96,8 +99,8 @@ func TestTerminalStatsSlides(t *testing.T) {
 	if su == nil || statNum(su, "Rüstzeiten (7 Tage)") != "1" || statNum(su, "Ø Dauer") != "30 min" || sumSeries(su, "Anzahl") != 1 {
 		t.Errorf("Rüstzeiten mit Recht: %+v", su)
 	}
-	if v1 == v2 {
-		t.Error("Version ändert sich nicht, wenn sich die Zahlen ändern")
+	if v1 != v2 {
+		t.Error("Version ändert sich mit den Zahlen; sie soll nur Änderungen an den Folien folgen")
 	}
 	// Terminal ohne Ticket-Recht sieht keine Tickets
 	cNT := g.cookie(g.termNoTickets, g.devNT)
@@ -117,6 +120,9 @@ func TestTerminalStatsGrafanaSlide(t *testing.T) {
 		!strings.HasPrefix(slides[1].URL, "https://stats.example.org:3000/d/abc") {
 		t.Fatalf("Adressen: %+v", slides)
 	}
+	if len(slides) == 2 && slides[1].Stats != nil {
+		t.Error("Grafana-Folie hat Statistik")
+	}
 	if csp := g.h.terminalFrameCSP(g.e.ctx); csp != "frame-src 'self' https://stats.example.org:3000" {
 		t.Errorf("CSP: %q", csp)
 	}
@@ -125,7 +131,7 @@ func TestTerminalStatsGrafanaSlide(t *testing.T) {
 		t.Errorf("CSP-Kopf der Seite: %q", got)
 	}
 	// Ungültige Adressen werden nicht gespeichert
-	for _, u := range []string{"", "javascript:alert(1)", "//evil.example/x", "http://u:p@host/x", "/grafana/\"x"} {
+	for _, u := range []string{"", "javascript:alert(1)", "//evil.example/x", "http://u:p@host/x", "/grafana/\"x", "https://*.x.com/d/a", "https://a;script-src x/d", "http://evil/d/a", "/d/abc", "/grafana/../admin", "/grafana/%2e%2e/admin", "https://[::1]/d"} {
 		s := terminalSlide{Kind: slideKindGrafana, URL: u, DurationSeconds: 10, Active: true}
 		if err := g.h.saveTerminalSlide(g.e.ctx, &s); err == nil {
 			t.Errorf("Adresse %q wurde angenommen", u)

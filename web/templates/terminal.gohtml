@@ -143,7 +143,7 @@ body.has-gear .g-vorg{padding-top:60px}
   <small>Bitte in PDH unter „Benutzer“ eine Anlage für dieses Terminal festlegen.</small>
 </div>
 {{else if eq .Mode "global"}}
-<div class="g-stage" id="g-stage" data-name="{{.Name}}" aria-live="off"><div class="g-empty">{{.Name}}<small>Folien werden geladen …</small></div></div>
+<div class="g-stage" id="g-stage" data-name="{{.Name}}" data-frame-csp="{{.FrameCSP}}" aria-live="off"><div class="g-empty">{{.Name}}<small>Folien werden geladen …</small></div></div>
 {{else if eq .Mode "schoner"}}
 <a class="t-saver" href="/terminal/info" aria-label="Zum Melden berühren">
   <div class="name">{{.Name}}</div>

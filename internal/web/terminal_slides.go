@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -61,6 +62,8 @@ type terminalSlideView struct {
 
 type TerminalSlidesPageData struct {
 	BaseData
+	NoStatsUsers []string // Infobildschirm-Benutzer ohne Recht „Statistik ansehen“ (Grafana-Folien bleiben leer)
+	HasGrafana   bool
 	Notice string
 	Slides []terminalSlideView
 }
@@ -76,6 +79,7 @@ type terminalSlideFormData struct {
 	MaxBody     int
 	MaxTitle    int
 	MaxMB       int
+	NoStatsUsers []string
 	Dashboards  []grafanaDashboard // vorhandene Grafana-Dashboards (Statistik-Kacheln) als Vorschläge
 }
 
@@ -110,6 +114,12 @@ func (h *Handler) TerminalSlidesPage(w http.ResponseWriter, r *http.Request) {
 		BaseData: h.baseData(r, "terminal-slides", "Infobildschirm", "Terminal"),
 		Notice:   slideNotices[r.URL.Query().Get("n")],
 	}
+	for _, s := range list {
+		d.HasGrafana = d.HasGrafana || s.Kind == slideKindGrafana
+	}
+	if d.HasGrafana {
+		d.NoStatsUsers = h.globalTerminalsWithoutStatistics(r.Context())
+	}
 	for i, s := range list {
 		v := terminalSlideView{terminalSlide: s, KindLabel: slideKindLabels[s.Kind],
 			HasImage: s.Kind == slideKindImage && s.ImageType != "", First: i == 0, Last: i == len(list)-1}
@@ -119,7 +129,7 @@ func (h *Handler) TerminalSlidesPage(w http.ResponseWriter, r *http.Request) {
 		case slideKindGrafana:
 			v.Summary = s.URL
 		case slideKindStatsFaults, slideKindStatsTickets, slideKindStatsSetup:
-			v.Summary = fmt.Sprintf("%d Tage · %s", s.StatsDays, slideInfraSummary(len(s.InfraIDs)))
+			v.Summary = fmt.Sprintf("%s · %s", statsPeriodLabel(s.StatsDays), slideInfraSummary(len(s.InfraIDs)))
 		case slideKindVorgaenge:
 			switch n := len(s.InfraIDs); {
 			case n == 0:
@@ -145,6 +155,37 @@ func (h *Handler) TerminalSlidesPage(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	h.render(w, "terminal_slides", d)
+}
+
+// statsPeriodLabel: Zeitraum einer Statistikfolie in Worten.
+func statsPeriodLabel(days int) string {
+	if days == 30 {
+		return "letzte 5 Wochen"
+	}
+	return "7 Tage"
+}
+
+// globalTerminalsWithoutStatistics: Benutzernamen der Infobildschirme, die Grafana-Folien nicht sehen dürfen.
+// Das Recht statistics.view gilt überall (Grafana ist nicht nach Anlagen getrennt); die Rolle terminal
+// hat es bewusst nicht.
+func (h *Handler) globalTerminalsWithoutStatistics(ctx context.Context) []string {
+	if h.db == nil || h.rbac == nil {
+		return nil
+	}
+	rows, err := h.db.Query(ctx, `SELECT u.id::text, u.username, u.role::text FROM terminal_settings ts
+		JOIN users u ON u.id = ts.user_id WHERE ts.global_screen ORDER BY u.username`)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var id, name, role string
+		if rows.Scan(&id, &name, &role) == nil && !h.rbac.HasPermissionForUser(id, role, "statistics.view") {
+			out = append(out, name)
+		}
+	}
+	return out
 }
 
 // slideInfraSummary: Kurzinfo zur Anlagenauswahl.
@@ -202,8 +243,21 @@ func (h *Handler) slideFormPage(w http.ResponseWriter, r *http.Request, s termin
 	}
 	b, _ := json.Marshal(labels)
 	d.InfraLabels = string(b)
+	if s.Kind == slideKindGrafana {
+		d.NoStatsUsers = h.globalTerminalsWithoutStatistics(r.Context())
+	}
 	if base, _ := h.grafanaBase(r); h.db != nil {
 		d.Dashboards, _ = h.grafanaDashboards(r.Context(), base, false)
+		for i := range d.Dashboards { // Vorschlag als Adresse, die die Folie annimmt (Pfad unter /grafana/ oder https)
+			u := d.Dashboards[i].URL
+			if strings.HasPrefix(u, "/") && !strings.HasPrefix(u, grafanaProxyPath+"/") {
+				u = grafanaProxyPath + u
+			}
+			if validateGrafanaSlideURL(u) != nil {
+				u = ""
+			}
+			d.Dashboards[i].URL = u
+		}
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	if status != http.StatusOK {

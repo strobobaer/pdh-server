@@ -693,7 +693,7 @@
         if (s.image_url) { var img = el('img', 'g-img'); img.alt = ''; img.src = s.image_url; stage.appendChild(img); }
         if (s.title) stage.appendChild(el('div', 'g-cap', s.title));
       } else if (s.kind === 'grafana') {
-        if (s.url) {
+        if (typeof s.url === 'string' && /^(https:\/\/|\/grafana\/|http:\/\/(localhost|127\.0\.0\.1)([:\/]|$))/.test(s.url)) {
           var fr = el('iframe', 'g-frame');
           fr.title = s.title || 'Dashboard';
           fr.setAttribute('referrerpolicy', 'no-referrer');
@@ -782,6 +782,8 @@
         })
         .then(function (d) {
           if (!d || !Array.isArray(d.slides)) return;
+          // Die Seite trägt ihre frame-src-Regel im Kopf; kommt für die Folien eine andere, neu laden.
+          if (typeof d.frame_csp === 'string' && stage && stage.dataset.frameCsp && d.frame_csp !== stage.dataset.frameCsp) { location.reload(); return; }
           var same = d.version === version;
           var curId = cur >= 0 && slides[cur] ? slides[cur].id : null;
           slides = d.slides; version = d.version;
@@ -790,6 +792,8 @@
             if (keep && curId) for (var k = 0; k < slides.length; k++) if (slides[k].id === curId) { idx = k; break; }
             if (keep && idx >= 0) { cur = idx; draw(slides[cur]); } // gleiche Folie weiter, nur neu zeichnen
             else show(0);
+          } else if (cur >= 0 && slides[cur] && /^stats_/.test(slides[cur].kind)) {
+            draw(slides[cur]); // Zahlen der laufenden Statistikfolie erneuern; die Reihenfolge bleibt
           }
           saveCache(d);
         })

@@ -33,6 +33,7 @@
 
 {{if .Notice}}<div class="card" role="status" style="margin-bottom:14px;border-color:var(--green)"><i class="ti ti-circle-check" style="color:var(--green)" aria-hidden="true"></i> {{.Notice}}</div>{{end}}
 
+{{if .NoStatsUsers}}<div class="card" role="alert" style="margin-bottom:14px;border-color:var(--amber)"><i class="ti ti-alert-triangle" style="color:var(--amber)" aria-hidden="true"></i> Grafana-Folien bleiben bei diesen Infobildschirmen leer, weil das Recht „Statistik ansehen“ fehlt: {{range $i, $n := .NoStatsUsers}}{{if $i}}, {{end}}{{$n}}{{end}}.</div>{{end}}
 <div class="card">
   <div class="card-title"><span><i class="ti ti-playlist" aria-hidden="true"></i> Folien in Reihenfolge</span></div>
   {{if .Slides}}

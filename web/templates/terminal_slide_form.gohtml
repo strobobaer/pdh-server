@@ -61,15 +61,16 @@
     <div data-sf-kind="stats_faults stats_tickets stats_setup" class="form-group"><label class="form-label" for="sf-days">Zeitraum</label>
       <select id="sf-days" name="stats_days" class="form-input">
         <option value="7"{{if ne .Slide.StatsDays 30}} selected{{end}}>7 Tage (je Tag)</option>
-        <option value="30"{{if eq .Slide.StatsDays 30}} selected{{end}}>30 Tage (je Woche)</option>
+        <option value="30"{{if eq .Slide.StatsDays 30}} selected{{end}}>Letzte 5 Wochen (je Woche)</option>
       </select>
       <div class="sf-hint">Gezählt wird für die gewählten Anlagen samt Unteranlagen (leer = alle), im Umfang der Rechte des Terminal-Benutzers (Ansehen von Störungen, Tickets bzw. Rüstzeiten). Stillstandszeiten werden nicht erfasst; bei Störungen steht die mittlere Dauer bis zur Lösung.</div></div>
 
     <div data-sf-kind="grafana">
       <div class="form-group"><label class="form-label" for="sf-url">Adresse des Dashboards</label>
         <input id="sf-url" name="url" class="form-input" maxlength="1000" value="{{.Slide.URL}}" placeholder="/grafana/d/pdh-overview/pdh-ubersicht" list="sf-dash-list">
-        {{if .Dashboards}}<datalist id="sf-dash-list">{{range .Dashboards}}<option value="{{.URL}}">{{.Title}}</option>{{end}}</datalist>{{end}}
-        <div class="sf-hint">Ein Dashboard aus der Statistik (Vorschläge) oder eine Adresse: Pfad auf dem PDH wie /grafana/d/… oder volle https-Adresse. Das Terminal bettet nur diese Adresse ein; der Terminal-Benutzer braucht dafür das Recht „Statistik ansehen“.</div></div>
+        {{if .Dashboards}}<datalist id="sf-dash-list">{{range .Dashboards}}{{if .URL}}<option value="{{.URL}}">{{.Title}}</option>{{end}}{{end}}</datalist>{{end}}
+        <div class="sf-hint">Ein Dashboard aus der Statistik (Vorschläge) oder eine Adresse: Pfad auf dem PDH wie /grafana/d/… oder volle https-Adresse. Erlaubt sind nur Pfade unter /grafana/ und https-Adressen (http nur für localhost). Das Terminal bettet nur diese Adresse ein; der Terminal-Benutzer braucht dafür das Recht „Statistik ansehen“.</div>
+        {{if .NoStatsUsers}}<div class="sf-hint" role="alert" style="color:var(--amber)"><i class="ti ti-alert-triangle" aria-hidden="true"></i> Diesen Infobildschirmen fehlt das Recht „Statistik ansehen“, die Folie bliebe dort leer: {{range $i, $n := .NoStatsUsers}}{{if $i}}, {{end}}{{$n}}{{end}}. Grafana ist nicht nach Anlagen getrennt, die Rolle „Terminal“ hat das Recht deshalb nicht; gib es dem Terminal-Benutzer nur bei Bedarf als Einzelrecht.</div>{{end}}</div>
     </div>
 
     <div data-sf-kind="vorgaenge stats_faults stats_tickets stats_setup" id="sf-infra-box">

@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -220,6 +219,8 @@ type terminalSlideJSON struct {
 type terminalSlidesDoc struct {
 	Version string              `json:"version"`
 	Idle    int                 `json:"idle"`
+	// FrameCSP: frame-src der Seite; weicht er vom Wert der geladenen Seite ab, lädt der Player neu.
+	FrameCSP string `json:"frame_csp"`
 	Slides  []terminalSlideJSON `json:"slides"`
 }
 
@@ -312,20 +313,18 @@ func (h *Handler) buildSlidesDoc(ctx context.Context, uid string) (terminalSlide
 			}
 			perm := map[string]string{slideKindStatsFaults: "faults.view", slideKindStatsTickets: "tickets.view", slideKindStatsSetup: "setup.view"}[s.Kind]
 			ids := h.terminalPermittedInfra(gi, uid, role, perm, gi.infraSet(s))
-			if js.Stats, err = h.slideStats(ctx, s.Kind, s.StatsDays, ids); err != nil {
+			if js.Stats, err = h.slideStatsCached(ctx, uid, s.Kind, s.StatsDays, ids); err != nil {
 				return doc, err
 			}
 			js.Days = s.StatsDays
-			if b, merr := json.Marshal(js.Stats); merr == nil {
-				fmt.Fprintf(sum, "X|%s|%s\n", s.ID, b)
-			}
 		}
 		if s.Kind == slideKindGrafana {
-			js.URL = h.slideGrafanaSrc(ctx, s.URL)
+			js.URL = slideGrafanaSrc(s.URL)
 			fmt.Fprintf(sum, "G|%s|%s\n", s.ID, js.URL)
 		}
 		doc.Slides = append(doc.Slides, js)
 	}
+	doc.FrameCSP = frameCSP(slides)
 	doc.Version = hex.EncodeToString(sum.Sum(nil))[:16]
 	return doc, nil
 }

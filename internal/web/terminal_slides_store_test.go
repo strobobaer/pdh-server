@@ -39,6 +39,12 @@ func TestValidateTerminalSlide(t *testing.T) {
 		{"grafana leer", terminalSlide{Kind: "grafana", DurationSeconds: 15}, true},
 		{"grafana javascript", terminalSlide{Kind: "grafana", URL: "javascript:alert(1)", DurationSeconds: 15}, true},
 		{"grafana protokollrelativ", terminalSlide{Kind: "grafana", URL: "//evil.example/x", DurationSeconds: 15}, true},
+		{"grafana https platzhalter", terminalSlide{Kind: "grafana", URL: "https://*.x.com", DurationSeconds: 15}, true},
+		{"grafana strichpunkt", terminalSlide{Kind: "grafana", URL: "https://a;script-src x", DurationSeconds: 15}, true},
+		{"grafana http fremd", terminalSlide{Kind: "grafana", URL: "http://evil", DurationSeconds: 15}, true},
+		{"grafana http localhost", terminalSlide{Kind: "grafana", URL: "http://localhost:3000/d/a", DurationSeconds: 15}, false},
+		{"grafana pfad ausserhalb", terminalSlide{Kind: "grafana", URL: "/admin", DurationSeconds: 15}, true},
+		{"grafana pfad hoch", terminalSlide{Kind: "grafana", URL: "/grafana/../admin", DurationSeconds: 15}, true},
 		{"grafana mit zugangsdaten", terminalSlide{Kind: "grafana", URL: "http://a:b@h/x", DurationSeconds: 15}, true},
 	}
 	for _, c := range cases {

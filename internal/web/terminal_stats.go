@@ -4,8 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"net/url"
 	"slices"
+	"sort"
+	"sync"
 	"strings"
 	"time"
 )
@@ -36,6 +39,10 @@ type terminalStats struct {
 	Series  []terminalStatSeries `json:"series"`
 	Unit    string               `json:"unit"` // Einheit der Reihen, z. B. "" (Anzahl) oder "min"
 }
+
+// countedCond: welche Vorgänge in Neu/Erledigt zählen. "Offen" zählt nur nicht archivierte; erledigte Vorgänge
+// werden mit der Lösung archiviert und zählen deshalb mit, ohne Lösung archivierte (aussortierte) nicht.
+const countedCond = "(t.archived_at IS NULL OR t.resolved_at IS NOT NULL)"
 
 // statBuckets liefert je Zeitfenster (Tag bei 7 Tagen, Woche bei 30) die Anzahl der Zeilen von table,
 // deren Zeitstempel tsCol im Fenster liegt, und den Mittelwert von avgExpr (Rüstzeiten: Minuten).
@@ -90,6 +97,53 @@ func minutesLabel(m float64) string {
 	return fmt.Sprintf("%d min", int(m+0.5))
 }
 
+// Zwischenspeicher der Statistikfolien: je (Art, Zeitraum, Anlagen, Terminal-Benutzer) 60 Sekunden.
+// Die Folie holt ihre Zahlen beim Erscheinen neu; so belastet ein Bildschirm die Datenbank kaum.
+var statsCacheTTL = 60 * time.Second
+
+type statsCacheEntry struct {
+	at time.Time
+	st *terminalStats
+}
+
+var (
+	statsCacheMu sync.Mutex
+	statsCache   = map[string]statsCacheEntry{}
+)
+
+func (h *Handler) slideStatsCached(ctx context.Context, uid, kind string, days int, ids []string) (*terminalStats, error) {
+	sorted := append([]string(nil), ids...)
+	sort.Strings(sorted)
+	key := uid + "|" + kind + "|" + strconv.Itoa(days) + "|" + strings.Join(sorted, ",")
+	now := time.Now()
+	if statsCacheTTL > 0 {
+		statsCacheMu.Lock()
+		e, ok := statsCache[key]
+		statsCacheMu.Unlock()
+		if ok && now.Sub(e.at) < statsCacheTTL {
+			return e.st, nil
+		}
+	}
+	st, err := h.slideStats(ctx, kind, days, ids)
+	if err != nil || statsCacheTTL <= 0 {
+		return st, err
+	}
+	statsCacheMu.Lock()
+	if len(statsCache) > 200 {
+		for k, e := range statsCache {
+			if now.Sub(e.at) >= statsCacheTTL {
+				delete(statsCache, k)
+			}
+		}
+		if len(statsCache) > 200 {
+			statsCache = map[string]statsCacheEntry{}
+		}
+	}
+	statsCache[key] = statsCacheEntry{at: now, st: st}
+	statsCacheMu.Unlock()
+	return st, nil
+}
+
 // slideStats berechnet die Statistik einer Folie für die erlaubten Anlagen ids.
 func (h *Handler) slideStats(ctx context.Context, kind string, days int, ids []string) (*terminalStats, error) {
 	if days != 30 {
@@ -99,7 +153,10 @@ func (h *Handler) slideStats(ctx context.Context, kind string, days int, ids []s
 	if len(ids) == 0 {
 		ids = []string{}
 	}
-	period := fmt.Sprintf("%d Tage", days)
+	period := "7 Tage"
+	if days == 30 {
+		period = "letzte 5 Wochen" // je Kalenderwoche, die laufende Woche eingeschlossen
+	}
 	switch kind {
 	case slideKindStatsFaults, slideKindStatsTickets:
 		table, openCond, name := "faults", terminalFaultOpenCond, "Störungen"
@@ -131,11 +188,11 @@ func (h *Handler) slideStats(ctx context.Context, kind string, days int, ids []s
 				return nil, err
 			}
 		}
-		labels, created, _, err := h.statBuckets(ctx, table, "created_at", "true", "0", ids, days)
+		labels, created, _, err := h.statBuckets(ctx, table, "created_at", countedCond, "0", ids, days)
 		if err != nil {
 			return nil, err
 		}
-		_, done, mean, err := h.statBuckets(ctx, table, "resolved_at", "true", "EXTRACT(EPOCH FROM (t.resolved_at - t.created_at)) / 3600", ids, days)
+		_, done, mean, err := h.statBuckets(ctx, table, "resolved_at", countedCond, "EXTRACT(EPOCH FROM (t.resolved_at - t.created_at)) / 3600", ids, days)
 		if err != nil {
 			return nil, err
 		}
@@ -191,56 +248,49 @@ func (h *Handler) slideStats(ctx context.Context, kind string, days int, ids []s
 	return st, nil
 }
 
-// slideGrafanaSrc: die Adresse, die der Player einbettet. Ein Pfad (/grafana/d/…, /d/…) wird an die
-// Grafana-Adresse des PDH gehängt (wie die Seite Statistik), eine volle Adresse bleibt. kiosk wird ergänzt.
-func (h *Handler) slideGrafanaSrc(ctx context.Context, raw string) string {
-	base := grafanaProxyPath
-	if !grafanaProxyEnabled() {
-		if b := strings.TrimRight(strings.TrimSpace(h.getUpdateSetting(ctx, keyGrafanaBase, "")), "/"); b != "" {
-			base = b
-		}
+// slideGrafanaSrc: die Adresse, die der Player einbettet (kiosk wird ergänzt); "" bei ungültiger Adresse.
+func slideGrafanaSrc(raw string) string {
+	if _, err := parseGrafanaSlideURL(raw); err != nil {
+		return ""
 	}
-	if strings.HasPrefix(raw, "/") && !strings.HasPrefix(raw, grafanaProxyPath+"/") && raw != grafanaProxyPath {
-		raw = base + raw
+	u, err := url.Parse(raw)
+	if err != nil {
+		return ""
 	}
-	if u, err := url.Parse(raw); err == nil {
-		q := u.Query()
-		q.Del("kiosk")
-		parts := []string{}
-		if enc := q.Encode(); enc != "" {
-			parts = append(parts, enc)
-		}
-		parts = append(parts, "kiosk")
-		u.RawQuery = strings.Join(parts, "&")
-		return u.String()
+	q := u.Query()
+	q.Del("kiosk")
+	parts := []string{}
+	if enc := q.Encode(); enc != "" {
+		parts = append(parts, enc)
 	}
-	return raw
+	parts = append(parts, "kiosk")
+	u.RawQuery = strings.Join(parts, "&")
+	return u.String()
 }
 
-// terminalFrameCSP: Content-Security-Policy der Folienschau. Es steht nur frame-src darin (alles andere
-// bleibt wie bisher): eingebettet werden darf das PDH selbst und der Ursprung der Grafana-Folien, sonst nichts.
-func (h *Handler) terminalFrameCSP(ctx context.Context) string {
+// frameCSP: Content-Security-Policy der Folienschau aus allen aktiven Grafana-Folien. Es steht nur frame-src
+// darin (alles andere bleibt wie bisher): eingebettet werden darf das PDH selbst und der Ursprung der
+// Grafana-Folien, sonst nichts. Der Wert steht auch in slides.json (frame_csp); ändert er sich, lädt der
+// Player die Seite neu, damit der Kopf zu den Folien passt.
+func frameCSP(slides []terminalSlide) string {
 	src := []string{"'self'"}
+	for _, s := range slides {
+		if s.Kind != slideKindGrafana || !s.Active {
+			continue
+		}
+		if o, err := parseGrafanaSlideURL(s.URL); err == nil && o != "" && !slices.Contains(src, o) {
+			src = append(src, o)
+		}
+	}
+	sort.Strings(src[1:])
+	return "frame-src " + strings.Join(src, " ")
+}
+
+func (h *Handler) terminalFrameCSP(ctx context.Context) string {
 	slides, err := h.listTerminalSlides(ctx, true)
 	if err != nil {
 		return "frame-src 'self'"
 	}
-	for _, s := range slides {
-		if s.Kind != slideKindGrafana {
-			continue
-		}
-		if o := grafanaFrameOrigin(h.slideGrafanaSrc(ctx, s.URL)); o != "" && !slices.Contains(src, o) {
-			src = append(src, o)
-		}
-	}
-	return "frame-src " + strings.Join(src, " ")
+	return frameCSP(slides)
 }
 
-// grafanaFrameOrigin: Ursprung einer Grafana-Adresse für CSP frame-src; "" bei Pfaden auf dem PDH ('self').
-func grafanaFrameOrigin(src string) string {
-	u, err := url.Parse(src)
-	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
-		return ""
-	}
-	return u.Scheme + "://" + u.Host
-}

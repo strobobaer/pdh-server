@@ -55,6 +55,7 @@ type terminalInfo struct {
 
 // terminalPage: Daten für terminal.gohtml.
 type terminalPage struct {
+	FrameCSP       string // Modus global: frame-src der Seite (Kopf und data-frame-csp)
 	Mode           string // schoner | info | neu | global (Folienschau des Infobildschirms)
 	Idle           int    // Rückkehrzeit in Sekunden (0 = kein Timer)
 	NoInfra        bool
@@ -289,7 +290,8 @@ func (h *Handler) terminalGate(w http.ResponseWriter, r *http.Request, mode stri
 		}
 		if g {
 			p.Mode, p.Name = "global", h.branding().AppName
-			w.Header().Set("Content-Security-Policy", h.terminalFrameCSP(r.Context()))
+			p.FrameCSP = h.terminalFrameCSP(r.Context())
+			w.Header().Set("Content-Security-Policy", p.FrameCSP)
 			return p, true
 		}
 	}
