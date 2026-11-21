@@ -171,3 +171,15 @@ if (out.length) { console.log(out.join('\n')); process.exit(1); }
 		t.Errorf("Hilfsfunktionen: %s", b)
 	}
 }
+
+// Wischen auf Touchscreens: ohne touch-action:none bricht Chromium den Zeigerstrom bei waagerechter Bewegung
+// mit pointercancel ab, und die Wischgeste käme nie an.
+func TestTerminalGlobalStageTouchAction(t *testing.T) {
+	b, err := os.ReadFile("../../web/templates/terminal.gohtml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !regexp.MustCompile(`\.g-stage\{[^}]*touch-action:none`).Match(b) {
+		t.Error(".g-stage braucht touch-action:none")
+	}
+}

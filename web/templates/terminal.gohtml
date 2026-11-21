@@ -84,7 +84,7 @@ a{color:inherit;text-decoration:none}
 .t-dialog .l-row .t-btn{flex:1}
 /* Infobildschirm (Modus global): Folienschau, nur Berührung, nichts verlinkt, kein Markieren */
 body[data-mode="global"]{padding:0;-webkit-touch-callout:none}
-.g-stage{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--bg);overflow:hidden}
+.g-stage{touch-action:none;position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--bg);overflow:hidden}
 .g-img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000;pointer-events:none;-webkit-user-drag:none}
 .g-cap{position:absolute;left:0;right:0;bottom:0;padding:2vh 4vw;background:linear-gradient(transparent,rgba(0,0,0,.75));font-size:clamp(24px,3vw,56px);font-weight:800;text-align:center;pointer-events:none}
 .g-text{max-width:90vw;max-height:94vh;overflow:hidden;text-align:center;display:flex;flex-direction:column;gap:3vh}
