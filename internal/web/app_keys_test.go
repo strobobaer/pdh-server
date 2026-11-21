@@ -235,3 +235,17 @@ func TestAppCanonicalVector(t *testing.T) {
 		t.Fatalf("RequestURI-Weg weicht ab: %s", h)
 	}
 }
+
+// appCanonicalVector2Hex: zweiter fester Vektor mit prozentkodiertem Pfad,
+// abschließendem Schrägstrich und kodierter Abfrage (gleich in der App).
+const appCanonicalVector2Hex = "504448415050310a4745540a2f6170692f6170702f76312f782f2543332541342f3f713d61253230620a313736373232353630300a414141414141414141414141414141414141414141410a65336230633434323938666331633134396166626634633839393666623932343237616534316534363439623933346361343935393931623738353262383535"
+
+func TestAppCanonicalVectorEncodedPath(t *testing.T) {
+	r := httptest.NewRequest("GET", "/api/app/v1/x/%C3%A4/?q=a%20b", nil)
+	if got := r.URL.RequestURI(); got != "/api/app/v1/x/%C3%A4/?q=a%20b" {
+		t.Fatalf("RequestURI = %q", got)
+	}
+	if h := hex.EncodeToString(appCanonical(r.Method, r.URL.RequestURI(), "1767225600", "AAAAAAAAAAAAAAAAAAAAAA", nil)); h != appCanonicalVector2Hex {
+		t.Fatalf("kanonische Bytes weichen ab:\n got %s\nwant %s", h, appCanonicalVector2Hex)
+	}
+}
