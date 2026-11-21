@@ -415,8 +415,19 @@ Pfade öffnen die Webseite im Browser.
   App sperrt die Bedienung bis zur Aktualisierung (noch nicht übertragene
   Schritte werden vorher noch gesendet, sofern die Schnittstelle sie
   annimmt).
-- Ältere App-Versionen bis zur Mindestversion arbeiten weiter mit neuen
-  Servern (Schnittstelle nur hinzufügend erweitern).
+- **Wie lange alte Versionen mitlaufen** (vom Anwender festgelegt): gar nicht
+  bis höchstens **einen Schritt zurück**. Einstellung „Ältere App-Version
+  erlauben: 0 / 1“ in den Core-Einstellungen; Grundwert 1 *(Festlegung des
+  Entwurfs: wer mitten in der Schicht steht, kann noch fertig arbeiten)*.
+  Die Mindestversion ergibt sich daraus automatisch aus der neuesten
+  Version.
+- „Verfügbar“ gilt **je System**: eine Version zählt erst, wenn sie im
+  jeweiligen Store freigegeben ist (Apple prüft teils Tage länger als
+  Google). Die neueste Version je System wird beim Veröffentlichen im PDH
+  eingetragen (bzw. automatisch abgefragt, wo der Store das erlaubt – dem
+  Builder überlassen).
+- Damit muss der Server nur die **aktuelle und die vorige** App-Version
+  bedienen; die Schnittstelle wird trotzdem nur hinzufügend erweitert.
 - Vom Anwender selbst anzulegen: Apple-Developer-Konto der Firma (99 $/Jahr),
   Google-Play-Konto (25 $ einmalig), Firebase-Projekt.
 - **Vorführ-Server** mit Testdaten und Prüfzugang für die Apple-Prüfung,
