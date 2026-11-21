@@ -845,6 +845,12 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     </ol>
     Dafür brauchst du das Recht „IT-Infrastruktur bearbeiten“ für dieses Asset. Es gilt immer die Reihenfolge: eigener Wert am Gerät, dann Kategorie, dann der allgemeine Wert.</div>
   <p>In der <b>Anlagen-Historie</b>, bei den <b>Prüfnachweisen</b> und bei den <b>HMI-Zugriffen</b> einer Anlage gibt es die Sortier-Leiste (<a href="#sort">mehr</a>). „Häufigste zuerst“ zählt dieselbe Maßnahme auch über verschiedene Störungen der Anlage hinweg; berücksichtigt werden höchstens die neuesten 2000 Einträge. Die Historie einer Anlage sieht, wer die Anlage sehen darf.</p>
+  <div class="hb-howto"><b><i class="ti ti-cpu"></i> Reiter „ESPPDH“ an der Anlage</b>
+    <ol class="hb-steps">
+      <li>Hängt an der Anlage ein ESPPDH-Gerät, gibt es den Reiter <b>ESPPDH</b> – mit dem Recht „ESPPDH: Sensorwerte ansehen“ oder „ESPPDH: Geräte und Zustand ansehen“.</li>
+      <li>Je Gerät: online/offline, Handshake, die letzten Werte nach Gruppen mit Einheit und Alter. Graue Werte sind veraltet. Der Reiter lädt alle 10 Sekunden neu.</li>
+      <li>Der Name führt zur Geräteseite (nur mit „ESPPDH: Geräte und Zustand ansehen“), <b>Webseite des Geräts</b> direkt aufs Gerät (nur im Netz der Geräte).</li>
+    </ol></div>
   {{template "hb-shots" (dict "Ref" (index $s "infrastructure") "Can" $can)}}
 </section>
 
@@ -937,6 +943,12 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   </ul>
   <div class="hb-howto"><b><i class="ti ti-alert-triangle"></i> Vorsicht bei „Jeder“</b>Sobald HMIs am Terminal angezeigt werden, kann bei <b>Bedienen am Terminal</b> „Jeder“ jede Person am Terminal das HMI ohne Karte bedienen – ihre Eingaben wirken direkt auf die Anlage. PDH warnt schon jetzt im Formular in Rot. Nutze das nur, wenn der Bildschirm für Unbefugte nicht erreichbar ist.</div>
   <p>Ist beim HMI <b>Bedienen erlaubt</b> ausgeschaltet, gilt am Terminal beim Bedienen immer „Niemand“, auch wenn etwas anderes gespeichert ist. Das Formular weist darauf hin.</p>
+  <div class="hb-howto"><b><i class="ti ti-cpu"></i> Sensoren am Terminal abfragen (Instandhalter)</b>
+    <ol class="hb-steps">
+      <li>Mit der Karte am Terminal anmelden.</li>
+      <li>Mit dem Recht <b>ESPPDH: Sensorwerte ansehen</b> für diese Anlage erscheint unten der Bereich <b>Sensoren</b>: die ESPPDH-Geräte und Lebenszeichen (Handshake) der Anlage samt Unteranlagen mit ihren letzten Werten. Er lädt alle 10 Sekunden neu.</li>
+      <li>Nach dem Abmelden verschwindet der Bereich sofort.</li>
+    </ol></div>
   {{template "hb-shots" (dict "Ref" (index $s "terminal") "Can" $can)}}
 </section>
 
@@ -964,6 +976,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>Mit dem Recht <b>Anlagen-Schnellübersichten einrichten und für Benutzer/Gruppen freigeben</b> (Administratoren, Manager, Anlagenverantwortliche) gibst du Übersichten für Gruppen oder einzelne Personen frei und kannst alle Übersichten bearbeiten und löschen. Wer in einer freigegebenen Gruppe ist, sieht die Übersicht automatisch.</li>
     </ul>
     Löschen entfernt nur die Übersicht – die Anlagen und ihre Daten bleiben unverändert.</div>
+  <p><b>Handshake:</b> Jede Karte zeigt die Lebenszeichen der Anlage samt Unteranlagen – ESPPDH-Geräte und Heartbeats von Steuerungen (z. B. TIA-Baustein) – mit ihrem Zähler, der sichtbar weiterläuft (alle 10 Sekunden). Steht ein Zähler, wird die Karte gelb („Handshake steht“). Den Zähler eines ESPPDH-Geräts siehst du mit dem Recht „ESPPDH: Sensorwerte ansehen“, sonst nur „läuft“ oder „steht“.</p>
   {{template "hb-shots" (dict "Ref" (index $s "watch") "Can" $can)}}
 </section>
 
@@ -2230,6 +2243,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <div class="hb-howto"><b><i class="ti ti-cpu"></i> Rechte für ESPPDH</b> (Gruppe „Daten &amp; Schnittstellen“)
     <ul>
       <li><b>„ESPPDH: Geräte und Zustand ansehen“</b> (<code>esppdh.view</code>): Liste, Seite des Geräts, Verlauf der Bauten und die Konfiguration ohne Kennwörter.</li>
+      <li><b>„ESPPDH: Sensorwerte ansehen (Anlage und Terminal)“</b> (<code>esppdh.values</code>): Reiter „ESPPDH“ an der Anlage, Sensoren am Anlagenterminal nach Kartenanmeldung und der Zähler auf der Schnellübersicht. Ab 0.82.11 bei Administrator, Manager, Anlagenverantwortlichen und Technikern.</li>
       <li><b>„ESPPDH: Geräte anlegen, ändern, sperren, bauen und flashen“</b> (<code>esppdh.edit</code>): dazu Firmware herunterladen und das Kennwort des Notzugangs sehen.</li>
       <li><b>„ESPPDH: Geräte löschen (Bereichsadministrator)“</b> (<code>esppdh.admin</code>): alle Rechte von ESPPDH und als Einziger Geräte endgültig löschen.</li>
     </ul>
@@ -2521,6 +2535,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <h3>„Steuerung meldet sich nicht“</h3>
   <p>Der Baustein sendet in festem Abstand einen <b>Heartbeat</b> (Vorgabe 60 Sekunden, nie mit Retain). Mit <code>heartbeatInterval := T#0s</code> am Baustein schaltest du den Heartbeat aus; dann darf es die Heartbeat-Zuordnung nicht geben, sonst meldet sie „meldet sich nicht“. Beim Herunterladen mit Heartbeat 0 und „Zuordnungen anlegen“ schaltet das PDH die Überwachung einer vorhandenen Heartbeat-Zuordnung ab. Änderst du das Topic, bleibt die alte Heartbeat-Zuordnung bestehen – lösche sie, sonst meldet sie „meldet sich nicht“. Kommt der letzte Heartbeat vor länger als <b>drei Intervallen</b>, zeigt das PDH „Steuerung meldet sich nicht“: als Hinweis oben auf der Verbindungsseite, als Marke in der Zeile der Zuordnung und in der Übersicht der Zuordnungen. Vor dem ersten Heartbeat zählt der Zeitpunkt, an dem die Zuordnung angelegt wurde. Prüfe dann: Läuft die Steuerung? Ist der Broker erreichbar? Ist <code>enable</code> gesetzt? Was sagt <code>statusText</code>?</p>
   <div class="hb-howto"><b><i class="ti ti-test-pipe"></i> Tipp: Ausprobieren mit PLCSIM</b>Übersetzen, Aufruf und Aufbau der Nachricht kannst du in PLCSIM prüfen. Ob das einfache PLCSIM eine echte TCP-Verbindung ins Netz aufbaut, hängt von der Version ab. Teste das vorher mit einem einfachen <code>TCON</code>. Klappt es nicht, nimm für die Netzprüfung PLCSIM Advanced oder eine echte Steuerung.</div>
+  <p>Der Heartbeat enthält einen Zähler (<code>count</code>). Das PDH zeigt ihn als <b>Handshake</b> auf der Anlagen-Schnellübersicht und am Terminal: Läuft er weiter, ist die Steuerung verbunden.</p>
   {{template "hb-shots" (dict "Ref" (index $s "tiabaustein") "Can" $can)}}
 </section>
 
@@ -2744,11 +2759,21 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <h3><i class="ti ti-key"></i> Rechte</h3>
   <ul>
     <li><b>ESPPDH: Geräte und Zustand ansehen</b> (<code>esppdh.view</code>) – Liste, Seite des Geräts, Verlauf der Bauten und die Konfiguration ohne Kennwörter.</li>
+    <li><b>ESPPDH: Sensorwerte ansehen (Anlage und Terminal)</b> (<code>esppdh.values</code>) – Reiter „ESPPDH“ an der Anlage, Sensoren am Terminal, Zähler auf der Schnellübersicht.</li>
     <li><b>ESPPDH: Geräte anlegen, ändern, sperren, bauen und flashen</b> (<code>esppdh.edit</code>) – dazu Firmware herunterladen und das Kennwort des Notzugangs sehen.</li>
     <li><b>ESPPDH: Geräte löschen (Bereichsadministrator)</b> (<code>esppdh.admin</code>) – alle Rechte von ESPPDH und als Einziger Geräte löschen.</li>
   </ul>
   <p>Die Rechte gelten überall oder nur in einer Abteilung; maßgeblich ist die Anlage des Geräts. Wer sie mit dem Update bekommen hat, steht unter <a href="#admin">Administration</a>.</p>
   <p>Auch die Liste „Letzte Läufe“ (Bauläufe) hat eine Sortier-Leiste (<a href="#sort">mehr</a>).</p>
+  <h3>Webseite des Geräts, Adresse und Handshake</h3>
+  <div class="hb-howto"><b><i class="ti ti-world-www"></i> So schaust du auf die Webseite eines Geräts</b>
+    <ol class="hb-steps">
+      <li>Beim Anlegen oder unter „Bearbeiten“ ist <b>Webseite des Geräts</b> angekreuzt (Vorgabe). Das Gerät bekommt dann eine eigene Webseite (Port 80) mit Benutzer <code>pdh</code> und eigenem Kennwort.</li>
+      <li>Firmware neu bauen und aufspielen. Erst dann meldet das Gerät seine <b>Adresse</b> und seinen <b>Handshake</b> (Laufzeit in Sekunden, zählt alle 10 Sekunden hoch).</li>
+      <li>Auf der Geräteseite steht im Bereich <b>Werte</b> der Knopf <b>Webseite des Geräts</b>. Er erscheint nur, wenn die gemeldete Adresse zur Verbindung des Geräts passt. Die Seite ist nur im Netz der Geräte erreichbar.</li>
+      <li>Das Kennwort zeigt <b>Kennwort anzeigen</b> (Recht „ESPPDH: Geräte anlegen, ändern, sperren, bauen und flashen“). Jedes Anzeigen steht im Server-Protokoll.</li>
+    </ol></div>
+  <p>Über die Webseite lässt sich weder schalten noch Firmware aufspielen. ESP8266: Die Webseite braucht Internet am Browser (für die eingebaute Seite fehlt der Speicher). Der <b>Handshake</b> zeigt grün „läuft“, solange das Gerät innerhalb von 30 Sekunden einen neuen Zähler schickt, sonst rot „steht seit …“.</p>
   {{template "hb-shots" (dict "Ref" (index $s "esppdh") "Can" $can)}}
 </section>
 

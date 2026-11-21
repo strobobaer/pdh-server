@@ -128,7 +128,7 @@ html[data-style="fiori"] ewt-install-dialog,html[data-style="fiori"] ewt-no-port
     {{if .Dev.WebEnabled}}
     <dl class="esp-dl">
       <dt>Benutzer</dt><dd><code class="esp-mono">pdh</code></dd>
-      <dt>Kennwort</dt><dd id="esp-web-pw">{{if .CanEdit}}<button type="button" class="btn btn-small" hx-post="/import/esppdh/{{.Dev.ID}}/web-password" hx-target="#esp-web-pw" hx-swap="innerHTML"><i class="ti ti-eye" aria-hidden="true"></i> Kennwort anzeigen</button>{{else}}<span class="rec-sub">nur mit dem Recht „ESPPDH bearbeiten“</span>{{end}}</dd>
+      <dt>Kennwort</dt><dd id="esp-web-pw">{{if .CanEdit}}<button type="button" class="btn btn-small" hx-post="/import/esppdh/{{.Dev.ID}}/web-password" hx-target="#esp-web-pw" hx-swap="innerHTML"><i class="ti ti-eye" aria-hidden="true"></i> Kennwort anzeigen</button>{{else}}<span class="rec-sub">nur mit dem Recht „ESPPDH: Geräte anlegen, ändern, sperren, bauen und flashen“</span>{{end}}</dd>
     </dl>
     <p class="esp-note">Die Webseite läuft auf dem Gerät (Port 80) und ist nur im Netz der Geräte erreichbar. Firmware lässt sich darüber nicht aufspielen.</p>
     {{if .WebNeedsInternet}}<p class="esp-note" role="note"><i class="ti ti-info-circle" aria-hidden="true"></i> ESP8266: Die Webseite des Geräts braucht Internet am Browser – für die eingebaute Seite fehlt der Speicher.</p>{{end}}

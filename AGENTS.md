@@ -530,8 +530,14 @@ und 3 drückt bis auf Weiteres der Anwender.
     (Quelle der Betriebszeiten, „Minimal- und Maximalzeit“). Bauplan Teil 1:
     `docs/superpowers/plans/2026-11-21-esppdh-teil1.md` (8 Aufgaben,
     Migration 186; Werte-Speicher im Broker statt eigenem Abo, weil
-    `reconcileMqttConsumer` alle Abos löscht). Nächster Schritt: Plan vom
-    Anwender lesen lassen, Ausführungsart wählen, bauen.
+    `reconcileMqttConsumer` alle Abos löscht). **Teil 1 (0.82.11) gebaut**
+    auf `feature/esppdh-sensoren` (21.11.2026, nicht gepusht; Fortschritt und
+    Entscheidungen im Ledger `.superpowers/sdd/2026-11-21-esppdh-teil1/`).
+    Wichtig: `web_server` braucht `ota: false` – ESPHome lädt sonst über
+    `captive_portal` von selbst `ota.web_server` (mit `esphome config`
+    2026.10.2 per Docker geprüft). Terminal-Tests laufen mit
+    `-tags integration`. Offen: Schlussprüfung, Freigabe Push/Merge,
+    Verbund-Update, Browserprüfung; echte Platine (Anwender). Danach Teil 2.
 17. **Eigenes Projekt: ESPPDH-Vorlagen für Messaufgaben** (Wunsch des
     Anwenders vom 21.11.2026, vom Anwender ausdrücklich als separates
     Projekt eingeordnet, noch nicht begonnen): eigene Vorlagen „mit Hilfe“
