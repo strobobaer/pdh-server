@@ -75,7 +75,7 @@ func (h *Handler) GlobalDashboardAction(w http.ResponseWriter, r *http.Request) 
 	var followUpDate *time.Time
 	if in.Action == "wait" {
 		date, err := time.Parse("2006-01-02", in.FollowUpDate)
-		if err != nil || date.Before(time.Now().Truncate(24*time.Hour)) {
+		if err != nil || date.Before(localDate(time.Now())) {
 			writeGlobalBoardError(w, http.StatusBadRequest, "Bitte einen heutigen oder zukünftigen Wiedervorlagetermin angeben")
 			return
 		}

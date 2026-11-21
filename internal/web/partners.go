@@ -329,7 +329,7 @@ func (h *Handler) PartnerDetail(w http.ResponseWriter, r *http.Request) {
 	}
 	if p.ContractValidUntil != "" {
 		if t, err := time.Parse("2006-01-02", p.ContractValidUntil); err == nil {
-			today := time.Now().Truncate(24 * time.Hour)
+			today := localDate(time.Now())
 			switch {
 			case t.Before(today):
 				data.ContractState = "expired"

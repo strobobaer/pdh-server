@@ -1,4 +1,4 @@
--- 185_terminal_card_notify.up.sql
+-- 186_terminal_card_notify.up.sql
 --
 -- Benachrichtigung am Windows-Terminal beim Kartenlesen (W1, Betriebsart Zusatz).
 -- terminal_settings.card_notify (je System-Benutzer / Terminal): Liste der Arten

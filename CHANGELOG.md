@@ -10,7 +10,7 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
-## [0.82.9] – 2026-11-20
+## [0.82.10] – 2026-11-21
 
 ### Neu
 
@@ -24,6 +24,14 @@ im Kapitel „Versionen & Updates“ an.
 ### Behoben
 
 - Meldet das Terminal die Abmeldung per Karte an das lokale Terminalprogramm, gilt sie nur noch dann als gelungen, wenn PDH sie angenommen hat; bei einem Fehler zeigt die Benachrichtigung die Störung statt „Abgemeldet“.
+
+## [0.82.9] – 2026-11-21
+
+### Behoben
+
+- Fälligkeiten mit reinem Datum (Kanban, Rahmenverträge, Bestellungen, Projekte, Schulungen, Qualifikationen, Vertragsende bei Partnern, Wiedervorlage im Leitstand) und die Startseiten-Liste rechnen jetzt mit dem Kalendertag in Ortszeit; vorher galt zwischen Mitternacht und 1 Uhr (Sommer 2 Uhr) noch der Vortag, und eine Schulung, die am letzten Tag der Vorwarnfrist abläuft, wurde nicht als „bald fällig“ gezeigt.
+- Den Knopf „Neues Projekt“ gibt es nur noch mit dem Recht „Projekte bearbeiten“ – ohne das Recht scheiterte bisher erst das Speichern. Das Recht hieß unter „Rollen & Rechte“ bisher „Projekte: Zusatzfelder (Feldsätze) bearbeiten“, obwohl es seit 0.76.4 auch das Anlegen und Bearbeiten von Projekten regelt.
+- Ändert man am aktiven Server die DNS-Server oder stellt die Adresse fest ein, erscheint „Seite erreichbar – Einstellung behalten“ erst, wenn auch die gemeinsame Adresse wieder da ist; vorher schaltete schnelles Bestätigen die Wartung aus, während sie noch fehlte.
 
 ## [0.82.8] – 2026-11-20
 

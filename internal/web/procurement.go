@@ -69,7 +69,7 @@ type ProcurementData struct {
 }
 
 func (h *Handler) contractStatus(c *contractView, until *time.Time) {
-	today := time.Now().Truncate(24 * time.Hour)
+	today := localDate(time.Now())
 	switch {
 	case !c.Active:
 		c.StatusLabel, c.StatusClass = "inaktiv", "b-gray"

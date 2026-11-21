@@ -177,7 +177,7 @@ func (h *Handler) kanbanCards(ctx context.Context, partIDs []string) (map[string
 		return out, err
 	}
 	defer rows.Close()
-	today := time.Now().Truncate(24 * time.Hour)
+	today := localDate(time.Now())
 	for rows.Next() {
 		var partID string
 		var c kanbanCardView

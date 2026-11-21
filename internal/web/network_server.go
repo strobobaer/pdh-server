@@ -81,6 +81,8 @@ const (
 	netSrvMsgStarted    = "Die Änderung wird angewendet. Danach bitte innerhalb von 2 Minuten bestätigen."
 	netSrvMsgConfirmed  = "Einstellung behalten."
 	netSrvMsgNoID       = "Kennung der Änderung fehlt – bitte die Seite neu laden."
+	// %s = gemeinsame Adresse; am aktiven Server kurz nach netplan apply (pdh-ha setzt sie im Sekundentakt neu)
+	netSrvMsgVIPWait = "Die gemeinsame Adresse %s ist noch nicht zurück – „Einstellung behalten“ erscheint, sobald sie wieder da ist (meist nach wenigen Sekunden)."
 	netSrvMsgAgentSlow  = "Der Update-Agent hat nicht rechtzeitig geantwortet – die Karte zeigt den jetzigen Stand."
 	netSrvConfirmFailed = "Bestätigen hat nicht geklappt: "
 )
@@ -285,9 +287,18 @@ type NetServerView struct {
 	// prüfen beim Bestätigen selbst noch einmal).
 	Unread bool
 
+	// VIPMissing: aktiver Server im Verbund, die gemeinsame Adresse ist gerade nicht gesetzt
+	// (kurz nach netplan apply) – „Einstellung behalten“ erst danach, sonst ginge die Wartung aus,
+	// während sie noch fehlt.
+	VIPMissing bool
+
 	agentOK bool             // Stand beim Agenten gelesen
 	agent   *netAgentPending // Stand laut Agent, ohne Altersgrenze (Bestätigen prüft ihn)
+	vip     string           // gemeinsame Adresse (ohne Präfix), "" = keine
 }
+
+// VIPWaitText: Hinweis, solange die gemeinsame Adresse fehlt (VIPMissing).
+func (v NetServerView) VIPWaitText() string { return fmt.Sprintf(netSrvMsgVIPWait, v.vip) }
 
 // Remaining: verbleibende Zeit bis zum Rückfall („1:40“), bevor das Skript zählt.
 func (v NetServerView) Remaining() string {
@@ -503,6 +514,7 @@ func (h *Handler) netServerViewWait(r *http.Request, wait netSrvWait) NetServerV
 		self.Title = "Dieser Server"
 	}
 	self.VIPHere = vip != "" && st.Access.Holder != "" && st.Access.Holder == st.Self.ID
+	v.vip, v.VIPMissing = vip, v.ActiveInCluster && vip != "" && !self.VIPHere
 
 	if v.Docker {
 		self.Note = netSrvMsgDocker
@@ -783,6 +795,12 @@ func (h *Handler) NetworkServerConfirmWeb(w http.ResponseWriter, r *http.Request
 		v := h.netServerView(r)
 		v.Err = netSrvMsgNoID
 		h.netServerRender(w, v)
+		return
+	}
+	if pre := h.netServerView(r); pre.VIPMissing {
+		// Karte von vorhin oder zu früh geklickt: erst wenn die gemeinsame Adresse zurück ist
+		pre.Err = pre.VIPWaitText()
+		h.netServerRender(w, pre)
 		return
 	}
 	u := getUser(r)

@@ -199,7 +199,7 @@ func scanPurchase(row rowScanner) (*purchaseView, error) {
 	if due == nil {
 		due = wanted
 	}
-	if due != nil && (p.Status == "ordered" || p.Status == "confirmed" || p.Status == "partial") && due.Before(time.Now().Truncate(24*time.Hour)) {
+	if due != nil && (p.Status == "ordered" || p.Status == "confirmed" || p.Status == "partial") && due.Before(localDate(time.Now())) {
 		p.Late = true
 	}
 	return &p, nil
