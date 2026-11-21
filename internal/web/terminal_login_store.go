@@ -36,6 +36,7 @@ type terminalLoginSettings struct {
 	ManualLogin    string
 	PasswordButton bool
 	CardNotify     []string // gespeichert (leer = Vorgabe); wirksam: effectiveCardNotify
+	GlobalScreen   bool     // globales Terminal (Infobildschirm); nur saveTerminalGlobalScreen schreibt es
 }
 
 // Arten der Benachrichtigung beim Kartenlesen am Windows-Terminal
@@ -98,8 +99,8 @@ func (h *Handler) terminalLoginSettings(ctx context.Context, userID string) (ter
 		return def, errors.New("keine Datenbank")
 	}
 	var s terminalLoginSettings
-	err := h.db.QueryRow(ctx, `SELECT manual_login, password_button, card_notify FROM terminal_settings WHERE user_id = $1::uuid`, userID).
-		Scan(&s.ManualLogin, &s.PasswordButton, &s.CardNotify)
+	err := h.db.QueryRow(ctx, `SELECT manual_login, password_button, card_notify, global_screen FROM terminal_settings WHERE user_id = $1::uuid`, userID).
+		Scan(&s.ManualLogin, &s.PasswordButton, &s.CardNotify, &s.GlobalScreen)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return def, nil
 	}
@@ -166,6 +167,20 @@ func (h *Handler) saveTerminalCardNotify(ctx context.Context, userID string, kin
 		INSERT INTO terminal_settings (user_id, card_notify, updated_at)
 		SELECT id, $2::text[], NOW() FROM users WHERE id = $1::uuid AND is_system_user
 		ON CONFLICT (user_id) DO UPDATE SET card_notify = EXCLUDED.card_notify, updated_at = NOW()`, userID, notify)
+	return err
+}
+
+// saveTerminalGlobalScreen schaltet nur das globale Terminal (Infobildschirm) eines
+// System-Benutzers; die übrigen Einstellungen bleiben unverändert. Bei
+// Nicht-System-Benutzern passiert nichts.
+func (h *Handler) saveTerminalGlobalScreen(ctx context.Context, userID string, on bool) error {
+	if h.db == nil {
+		return errors.New("keine Datenbank")
+	}
+	_, err := h.db.Exec(ctx, `
+		INSERT INTO terminal_settings (user_id, global_screen, updated_at)
+		SELECT id, $2, NOW() FROM users WHERE id = $1::uuid AND is_system_user
+		ON CONFLICT (user_id) DO UPDATE SET global_screen = EXCLUDED.global_screen, updated_at = NOW()`, userID, on)
 	return err
 }
 

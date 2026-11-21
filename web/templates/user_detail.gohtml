@@ -193,6 +193,9 @@
         <label style="font-size:13px;display:flex;gap:8px;align-items:center;margin-top:4px"><input type="checkbox" name="terminal_card_notify" value="off" {{if index $m.TerminalCardNotify "off"}}checked{{end}} data-cn="off"> Keine Benachrichtigung</label>
       </div>
       <div class="rec-sub" style="margin-top:4px">Wirkt nur an Windows-Terminals in der Betriebsart Zusatz. Nichts angehakt: Vorgabe. (Vorgabe: Fenster in der Mitte)</div>
+      <input type="hidden" name="terminal_global_screen_sent" value="1">
+      <label style="font-size:13px;display:flex;gap:8px;align-items:center;margin-top:8px"><input type="checkbox" name="terminal_global_screen" {{if $m.TerminalGlobalScreen}}checked{{end}}> Globales Terminal (Infobildschirm)</label>
+      <div class="rec-sub" style="margin-top:4px">Zeigt die Folien aus „Infobildschirm“, ohne Anmeldung und ohne Kartenleser.</div>
       <script>
       (function () {
         var box = document.getElementById('ud-card-notify');
