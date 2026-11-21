@@ -70,6 +70,8 @@ type UserDetailData struct {
 	CanSetPIN           bool                // PIN setzen/entfernen (Benutzerverwaltung, Rang über dem Ziel)
 	CanDevices          bool                // Terminal-Geräte koppeln (System-Benutzer, Benutzerverwaltung, höherer Rang)
 	Devices             []terminalDeviceRow // gekoppelte Terminal-Geräte (nur bei CanDevices)
+	ShowAppDevices      bool                // Abschnitt „App-Geräte“ (app.admin in der Abteilung des Benutzers)
+	AppDevices          []appDeviceRow      // App-Geräte des Benutzers
 	Boards              []*leitstand        // Auswahl „Leitstand“ für Terminals
 	CanAvatar           bool                // Profilbild ändern (selbst oder Benutzerverwaltung)
 	CanPrivate          bool
@@ -211,6 +213,7 @@ func (h *Handler) UserDetailPage(w http.ResponseWriter, r *http.Request) {
 			d.Error = "Die gekoppelten Geräte konnten nicht geladen werden"
 		}
 	}
+	h.loadUserAppDevices(r, &d, id)
 	d.Responsibilities = h.userResponsibilities(r, id)
 	// Broker: offene Vorgänge seiner Arten ohne Zuweisung (Sichtbarkeit des Betrachters)
 	for _, g := range h.brokerUnassigned(ctx, r, id, 50, false, false) {

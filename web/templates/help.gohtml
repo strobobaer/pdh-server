@@ -2240,6 +2240,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <li><b>Netz-Abgleich (IT-Assets)</b> – das Recht <code>it.netsync</code> „Netz-Abgleich einrichten und Vorschläge übernehmen“ steht in der Gruppe „IT“ und liegt bei allen Rollen mit „IT-Assets bearbeiten“; die Verbindung zu UniFi braucht <code>system.unifi</code>, die zu Omada <code>system.omada</code>, die SNMP-Zugangsprofile <code>system.snmp</code>. Die SNMP-Geräteliste pflegt, wer <code>it.netsync</code> hat; ein Gerät aus der Liste entfernen darf nur der Bereichsadministrator IT (<code>it.admin</code>) (<a href="#it-net">mehr</a>).</li>
     <li><b>IT-Kategorien</b> – das Recht <code>it.categories</code> „IT-Kategorien pflegen“ steht in der Gruppe „IT“ und liegt bei allen Rollen mit „IT: Bereichsadministrator“ (<code>it.admin</code>), mit deren Abteilung; die Seite ansehen darf, wer „IT-Infrastruktur ansehen“ hat. Eine Kategorie endgültig löschen darf nur der Bereichsadministrator IT (<a href="#it-categories">mehr</a>).</li>
     <li><b>Abgleich</b> – Meldungen aus einer fremden Datenbank als Tickets oder Störmeldungen übernehmen und Änderungen zurückschreiben; Profile löscht nur der Bereichsadministrator des Abgleichs (<a href="#abgleich">mehr</a>).</li>
+    <li><b>App-Zugang</b> – die Rechte <code>app.use</code> „App: nutzen“, <code>app.create</code> „App: Vorgänge anlegen“, <code>app.cockpit</code> „App: Cockpits verwalten“, <code>app.sensors.view</code> „App: Telefon-Sensoren ansehen“ und <code>app.admin</code> „App: Geräte freigeben und sperren (Bereichsadministrator)“ stehen in der Gruppe „App“. „App: nutzen“ haben alle Rollen, <code>app.create</code> und <code>app.admin</code> Administrator und Manager. Die Gruppe <b>App-Administratoren</b> bekommt die APP-Tickets; wer dort Mitglied ist, prüft und gibt Telefone frei (<a href="#pdh-app">mehr</a>).</li>
     <li><b>Drucker</b> – Etiketten- und Netzwerkdrucker einrichten, prüfen und testen (<a href="#printers">mehr</a>).</li>
     <li><b>Datensicherung</b> – Sicherungen, Zeitpläne und Wiederherstellung (<a href="#backup">mehr</a>).</li>
     <li><b>Bereinigung</b> – Löschvormerkungen prüfen und den Bereinigungslauf starten (<a href="#cleanup">mehr</a>).</li>
@@ -3638,6 +3639,52 @@ curl -fsS -X PUT "https://api.cloudflare.com/client/v4/zones/$CF_ZONE/dns_record
   <div class="hb-howto"><b><i class="ti ti-flask"></i> Testlabor</b>
     Für Tests gibt es ein Docker-Testlabor. Es dient nur zum Ausprobieren – im Betrieb laufen die Server mit systemd.</div>
   {{template "hb-shots" (dict "Ref" (index $s "spiegelbetrieb") "Can" $can)}}
+</section>
+
+<section class="hb-ch" id="pdh-app" data-title="PDH-App" data-pages="app_setup app_request app_devices app_install">
+  <h2><i class="ti ti-device-mobile"></i> PDH-App</h2>
+  <p>Die PDH-App verbindet Handy und Tablet mit diesem Server; die Einrichtungsseite <b>/app/setup</b> führt durch die Installation.</p>
+  <div class="hb-howto"><b><i class="ti ti-info-circle"></i> Stand</b>
+    Dieses Paket legt den <b>Zugang</b> an: Telefon anfragen, freigeben, sperren, Einstellungen. Die App selbst mit Störungen, Tickets und Aufgaben folgt mit den nächsten Paketen.</div>
+  {{template "hb-fig-app"}}
+  <div class="hb-howto"><b><i class="ti ti-users"></i> Einmal vorbereiten</b>
+    <ol class="hb-steps">
+      <li>Unter <b>Verwaltung → Abteilungen &amp; Gruppen</b> (oder am Benutzer) die Personen, die Telefone freigeben sollen, zur Gruppe <b>„App-Administratoren“</b> hinzufügen. Ohne Mitglieder meldet das APP-Ticket niemanden.</li>
+    </ol>
+  </div>
+  <div class="hb-howto"><b><i class="ti ti-device-mobile-check"></i> So gibst du ein Telefon frei</b>
+    <ol class="hb-steps">
+      <li>Wer die App einrichtet, fragt den Zugang an. Dabei entsteht ein <b>APP-Ticket</b> für die Gruppe „App-Administratoren“; das Telefon zeigt einen sechsstelligen <b>Code</b>.</li>
+      <li>Im Ticket auf <b>App-Konfiguration öffnen</b> klicken (nur mit dem Recht „App: Geräte freigeben und sperren“).</li>
+      <li>Den Code eingeben, den das Telefon <i>jetzt</i> anzeigt. Stimmt er nicht, wird nichts gespeichert.</li>
+      <li>Die Person wählen, der das Telefon gehört. Vorgeschlagen werden Personen mit gleichem Nachnamen oder aus derselben Abteilung. Du kannst nur Personen wählen, deren Rolle du verwalten darfst und für deren Abteilung du das Recht hast.</li>
+      <li>Die erlaubten Vorgangsarten (Störungen, Tickets, Aufgaben, Wartung) ankreuzen. „Vorgänge aus der App anlegen“ erscheint nur, wenn die Person das Recht „App: Vorgänge anlegen“ hat.</li>
+      <li><b>Freigeben</b> legt das Gerät an und schließt das Ticket; die App holt ihren Zugang danach selbst ab. <b>Ablehnen</b> schließt das Ticket ohne Gerät.</li>
+    </ol>
+    Die Rechte vergibst du nicht am Gerät: Es gelten die Rechte der Person; das Gerät kann sie nur einschränken. Einzelrechte änderst du über das Schild-Symbol neben der Person.
+    Danach öffnet sich die Seite <b>App-Geräte</b> mit der Meldung „Das App-Gerät wurde freigegeben.“ bzw. nach <b>Ablehnen</b> „Die Anfrage wurde abgelehnt.“ Hat die gewählte Person das Recht „App: nutzen“ nicht, warnt die Seite vorher; die Freigabe ist trotzdem möglich, die App ist dann aber nicht nutzbar. Später zeigt die App-Konfiguration einer freigegebenen Anfrage einen Link zum Gerät und, wenn du es darfst, den Knopf <b>Sperren</b>.
+  </div>
+  <div class="hb-howto"><b><i class="ti ti-devices"></i> So sperrst du ein Telefon und stellst die App ein</b>
+    <ol class="hb-steps">
+      <li>Unter <b>Verwaltung → App-Geräte</b> stehen die eingerichteten Telefone mit Benutzer, System, App-Version und letztem Zugriff. Du siehst nur Geräte von Personen aus Abteilungen, für die du „App: Geräte freigeben und sperren“ hast; offene Anfragen stehen darüber mit einem Link zur App-Konfiguration.</li>
+      <li><b>Sperren</b> trennt das Telefon sofort von diesem Server (spätestens nach 30 Sekunden); gesperrt wird nur, wenn deine Rolle die der Person übertrifft. Dasselbe Knöpfchen steht in der Benutzerverwaltung am Benutzer unter „App-Geräte“. Nach einer Sperre muss die Person die App auf dem Telefon <b>zurücksetzen</b> und den Zugang <b>neu anfragen</b>; dabei entsteht ein neuer Schlüssel, der alte Zugang bleibt gesperrt.</li>
+      <li>Das Formular <b>Einstellungen für die App</b> (zusätzliche Adressen, eine je Zeile, nur http:// oder https://; neueste App-Version je System; ob die vorige Version weiter arbeiten darf; Store-Adressen) pflegen allein <b>Administratoren mit dem Recht „Server-Einstellungen (.env) bearbeiten &amp; Server neu starten“</b> auf der Seite <b>App-Geräte</b>; „App: Geräte freigeben und sperren“ genügt dafür nicht. Trägst du eine höhere „neueste Version“ ein, merkt sich der Server die alte als <b>vorige Version</b> (nur zur Anzeige); bei einer niedrigeren Version entfällt eine höhere vorige Version, damit keine App ausgesperrt wird.</li>
+    </ol>
+  </div>
+  <div class="hb-howto"><b><i class="ti ti-world"></i> Wichtig für die Einrichtung</b>
+    <ol class="hb-steps">
+      <li>Die <b>öffentliche Adresse</b> des Servers (Einstellung <code>PDH_PUBLIC_URL</code>) muss gesetzt sein. Nur dann bekommt die App die richtige Serveradresse, auch hinter einem Proxy oder Tunnel.</li>
+      <li>Die <b>Abteilungsliste</b> ist ohne Anmeldung lesbar: Wer den Zugang anfragt, wählt dabei seine Abteilung, bevor er einen Zugang hat. Darin stehen nur Abteilungsnamen.</li>
+    </ol>
+  </div>
+  <div class="hb-howto"><b><i class="ti ti-qrcode"></i> So installierst du die App</b>
+    <ol class="hb-steps">
+      <li>Oben rechts im Benutzermenü <b>App installieren</b> wählen (nur mit dem Recht „App: nutzen“ und sobald mindestens eine Store-Adresse eingetragen ist; sonst steht auf der Seite „Die App ist noch nicht verfügbar.“).</li>
+      <li>Den QR-Code mit der Kamera des Telefons scannen, die Seite öffnen und die App aus dem Store installieren; bei Bedarf stehen die Store-Knöpfe auch auf der Seite.</li>
+      <li>In der App den Zugang anfragen; der Code, den das Telefon zeigt, geht an die App-Administratoren (siehe oben).</li>
+    </ol>
+  </div>
+  {{template "hb-shots" (dict "Ref" (index $s "pdh-app") "Can" $can)}}
 </section>
 
 <section class="hb-ch" id="faq" data-title="Tipps &amp; häufige Fragen" data-pages="">

@@ -389,6 +389,29 @@ func SetLinker(l *synclink.Linker) {
 	)
 }
 
+// CloseTx schließt das Ticket in der Transaktion tx: dieselben Felder und derselben
+// Verlaufseintrag wie UpdateStatus(closed), aber ohne den Weg „Ticket lösen“ (z. B. APP-Ticket).
+// Der Aufrufer ruft nach dem Commit Service.AfterClose.
+func (r *Repository) CloseTx(ctx context.Context, tx pgx.Tx, id, userID string) error {
+	if _, err := tx.Exec(ctx, `UPDATE tickets SET status = 'closed', updated_at = NOW(), resolved_at = COALESCE(resolved_at, NOW()),
+		archived_at = COALESCE(archived_at, NOW()), archived_by = $2::uuid WHERE id = $1::uuid`, id, userID); err != nil {
+		return err
+	}
+	_, err := tx.Exec(ctx, `INSERT INTO record_history (ref_type, ref_id, action, field_name, new_value, created_by, message)
+		VALUES ('ticket', $1::uuid, 'status', 'status', 'closed', $2::uuid, 'Status geändert')`, id, userID)
+	return err
+}
+
+// CloseTx: siehe Repository.CloseTx.
+func (s *Service) CloseTx(ctx context.Context, tx pgx.Tx, id, userID string) error {
+	return s.repo.CloseTx(ctx, tx, id, userID)
+}
+
+// AfterClose meldet den Statuswechsel nach dem Commit an die Verknüpfungen (synclink).
+func (s *Service) AfterClose(ctx context.Context, id, userID string) {
+	notifyTicketLinkerStatus(ctx, id, string(StatusClosed), userID)
+}
+
 // notifyTicketLinkerStatus ruft den synclink-Hook auf (falls gesetzt).
 func notifyTicketLinkerStatus(ctx context.Context, ticketID, status, userID string) {
 	if ticketLinker != nil {

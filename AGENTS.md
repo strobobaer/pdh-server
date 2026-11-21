@@ -577,7 +577,7 @@ und 3 drückt bis auf Weiteres der Anwender.
     Oberfläche, `go-modules-licenses.txt` behalten, Test für die
     Vollständigkeit von `THIRD_PARTY_LICENSES.md`); Markenprüfung
     „Pulse Data Hub“ angeboten.
-19. **Firmenstammdaten = 0.82.18** (Wunsch des Anwenders vom 21.11.2026):
+19. **Firmenstammdaten = nächste freie Korrekturversion** (Wunsch des Anwenders vom 21.11.2026; 0.82.16 und 0.82.18 gingen an andere Pakete, zuletzt die PDH-App):
     Fenster am obersten Knoten der Infrastruktur; die Daten gelten
     unternehmensweit im Mail- und Postverkehr, der angemeldete Benutzer ist
     Ansprechpartner. Entschieden: „A jetzt, B danach“ (A: alle Mails mit
@@ -620,9 +620,37 @@ und 3 drückt bis auf Weiteres der Anwender.
     Knopf bis ca. 75 s.
 21. **ESPPDH: Update übers Netz (OTA)** – Wunsch des Anwenders vom
     21.11.2026 („Passt“): heute keine OTA-Funktion (kein `ota:`-Baustein,
-    `web_server` mit `ota: false`); geplant als eigenes Paket nach 0.82.18,
+    `web_server` mit `ota: false`); geplant als eigenes Paket nach den Firmenstammdaten,
     mit Kennwort je Gerät. Offen: PDH schiebt (Knopf, Server erreicht das
     Gerät) oder Gerät holt (fragt beim PDH, geht auch im abgeschotteten VLAN).
+22. **PDH-App (Android/iOS):** Entwurf
+    `docs/superpowers/specs/2026-11-21-pdh-app-design.md` am 21.11.2026
+    freigegeben (Branch `feature/pdh-app`): eine Installations-App für alle
+    Server (Domain-Abfrage), Flutter, Zugang per APP-Ticket und
+    gerätegebundenem Token, Rechte `app.*`, Offline mit Schritten und
+    UUIDv7 vom Telefon, zentraler Push-Dienst `pdh-push`, sieben Pakete.
+    **Paket 1 (Server-Grundlage, 0.82.18) auf `main`** (21.11.2026, Merge `98d41ff`; Testverbund und 10.10.0.202 noch nicht eingespielt): Migration 189 (`189_app_grundlage`),
+    Rechte `app.use`, `app.create`, `app.cockpit`, `app.sensors.view`, `app.admin` (Gruppe
+    „App-Administratoren“), Schnittstelle `/api/app/v1`, Seiten
+    „App-Konfiguration“ und „App-Geräte“, „App installieren“ im
+    Benutzermenü, Kapitel „PDH-App“ im Handbuch. Nächster Schritt: Testverbund aktualisieren und im Browser prüfen,
+    dann **Paket 2 (Flutter-App)**. Für Paket 2 merken:
+    Die App erzeugt nach einer Sperre oder dem Zurücksetzen einen neuen
+    Schlüssel; die erste schreibende App-Route muss `mirrorGate` und den
+    Rückzug der Sitzungen bei Wartung beachten.
+    Entschieden (Anwender, 21.11.2026: „Manager passt“): Manager behalten
+    `app.admin` in allen Abteilungen (Freigabe/Sperre bleibt durch die
+    Rangfolge begrenzt).
+    Geparkt aus der Schlussprüfung (klein): Indizes auf
+    `tickets.app_request_id`/`app_devices.request_id` (nur per neuer
+    Migration); ein freigegebenes Gerät könnte den Nonce-Speicher (100 000 je
+    10 min) füllen → Begrenzung je Gerät; Nonce-Speicher und Begrenzer liegen
+    je Server (vor schreibenden Routen klären); keine Obergrenze offener
+    Anfragen; `/me` liefert keine Abteilungs-ID; `last_seen_at`-Schreiben am
+    Spiegel; `appStoreConfigured` je Seite ohne Zwischenspeicher; Render-Test
+    für `/app/setup` ohne Integrations-Tag; Pfad-Präfix im `pdh://`-Link;
+    `CloseTx` ohne Prüfung der betroffenen Zeilen; Testlabor: eigene
+    Datenbank `pdh_test_app` (in `pdh_test` liegen fremde Migrationen).
 
 Docker Desktop startet nach einem Neustart des Windows-Rechners nicht von
 selbst – ohne ihn fehlen der Zeuge und die Labor-Datenbank für die Tests.

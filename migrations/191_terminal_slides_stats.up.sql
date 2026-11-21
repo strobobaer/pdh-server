@@ -1,4 +1,4 @@
--- 190_terminal_slides_stats.up.sql
+-- 191_terminal_slides_stats.up.sql
 --
 -- Infobildschirm: neue Folienarten stats_faults, stats_tickets, stats_setup
 -- (Statistik zu Störungen, Tickets, Rüstzeiten für die gewählten Anlagen samt

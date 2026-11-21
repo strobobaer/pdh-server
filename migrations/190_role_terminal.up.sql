@@ -1,4 +1,4 @@
--- 189_role_terminal.up.sql
+-- 190_role_terminal.up.sql
 --
 -- Feste Rolle „Terminal“ (Schlüssel terminal) für den Systembenutzer eines
 -- Terminals bzw. Infobildschirms: ansehen und melden (anlegen) von Tickets,
