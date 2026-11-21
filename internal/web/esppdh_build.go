@@ -338,7 +338,7 @@ func (h *Handler) esppdhJobFor(ctx context.Context, c esppdhClaim) (esppdh.Build
 		return esppdh.BuildJob{}, "", err
 	}
 	var secrets []string
-	for _, s := range []string{res.Dev.WLANPassword, res.Dev.APPassword, res.Dev.MQTTPassword} {
+	for _, s := range []string{res.Dev.WLANPassword, res.Dev.APPassword, res.Dev.MQTTPassword, res.Dev.WebPassword} {
 		if s != "" {
 			secrets = append(secrets, s)
 		}

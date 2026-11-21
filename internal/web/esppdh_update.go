@@ -818,7 +818,7 @@ func esppdhProbeJob(d esppdh.Device) (esppdh.BuildJob, error) {
 		return esppdh.BuildJob{}, err
 	}
 	var secrets []string
-	for _, s := range []string{d.WLANPassword, d.APPassword, d.MQTTPassword} {
+	for _, s := range []string{d.WLANPassword, d.APPassword, d.MQTTPassword, d.WebPassword} {
 		if s != "" {
 			secrets = append(secrets, s)
 		}
