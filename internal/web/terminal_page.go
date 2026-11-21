@@ -71,7 +71,13 @@ type terminalPage struct {
 	Name           string
 	Path           string
 	Info           terminalInfo
+	DeviceSession  bool   // Gerätesitzung (alle Modi): kleines Zahnrad zur lokalen Admin-Seite des Terminals
+	AdminURL       string // Ziel des Zahnrads (terminalLocalAdminURL)
 }
+
+// terminalLocalAdminURL: lokale Admin-Seite des gekoppelten PDH-Terminals (Loopback am Terminal; gleich
+// web.LocalAdminURL im Terminal-Repository).
+const terminalLocalAdminURL = "http://127.0.0.1:8081/admin/"
 
 // FaultsMore/TicketsMore: nicht angezeigte offene Einträge.
 func (p terminalPage) FaultsMore() int  { return max(0, p.Info.FaultsTotal-len(p.Info.Faults)) }
@@ -269,6 +275,9 @@ func (h *Handler) terminalGate(w http.ResponseWriter, r *http.Request, mode stri
 	if uid == "" {
 		http.Error(w, "Diese Seite ist nur für Terminal-Benutzer (Systembenutzer) bestimmt.", http.StatusForbidden)
 		return p, false
+	}
+	if h.terminalDeviceSession(r) {
+		p.DeviceSession, p.AdminURL = true, terminalLocalAdminURL
 	}
 	// Globales Terminal (nur Gerätesitzung): Folienschau statt Schoner, Info und Neu – ohne Anlage, Karten und Anmeldung.
 	if h.terminalDeviceSession(r) {
