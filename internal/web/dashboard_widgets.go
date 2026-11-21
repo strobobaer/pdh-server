@@ -565,27 +565,10 @@ type listItem struct {
 }
 
 func loadListMine(h *Handler, ctx context.Context, uid string, _ WidgetInstance, can func(string) bool) (any, error) {
-	rows, err := h.db.Query(ctx, `
-		SELECT * FROM (
-			SELECT 'ticket' AS k, id::text, title::text, priority::text AS priority, due_date::date AS due_date, status::text FROM tickets
-			 WHERE (assigned_to = $1::uuid OR responsible_to = $1::uuid OR assigned_group_id IN `+myGroupIDs+`) AND status IN ('open','in_progress','pending') AND archived_at IS NULL
-			UNION ALL
-			SELECT 'fault', id::text, title::text, severity::text, due_date::date, status::text FROM faults
-			 WHERE (assigned_to = $1::uuid OR responsible_to = $1::uuid OR assigned_group_id IN `+myGroupIDs+`) AND status IN ('detected','analyzing','in_progress','pending') AND archived_at IS NULL
-			UNION ALL
-			SELECT 'task', t.id::text, t.title::text, t.priority::text, t.due_date::date, t.status::text FROM tasks t WHERE `+myTasksWhere+`
-			UNION ALL
-			SELECT 'maintenance', id::text, title::text, priority::text, due_date::date, status::text FROM maintenance_tasks
-			 WHERE (assigned_to = $1::uuid OR responsible_to = $1::uuid OR assigned_group_id IN `+myGroupIDs+`) AND status::text IN ('open','in_progress','pending') AND archived_at IS NULL
-			UNION ALL
-			-- laufende Rüstzeiten beim Anlagenverantwortlichen und beim Schichtführer (beendete nicht)
-			SELECT 'setup', s.id::text, (`+setupTitleSQL+`)::text, ''::text, NULL::date, s.status::text FROM setup_times s
-			 WHERE (s.responsible_to = $1::uuid OR s.assigned_to = $1::uuid) AND s.status = 'running' AND s.archived_at IS NULL
-		) x ORDER BY (due_date IS NULL), due_date, (priority = 'critical') DESC LIMIT 8`, uid)
+	rows, err := h.myOpenWork(ctx, uid, []string{"ticket", "fault", "task", "maintenance", setupRef}, 8)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	meta := map[string][3]string{
 		"ticket": {recordIcon("ticket"), "Ticket", "/tickets/"}, "fault": {recordIcon("fault"), "Störung", "/faults/"},
 		"task": {recordIcon("task"), "Aufgabe", "/tasks/"}, "maintenance": {recordIcon("maintenance"), "Wartung", "/maintenance/tasks/"},
@@ -594,12 +577,8 @@ func loadListMine(h *Handler, ctx context.Context, uid string, _ WidgetInstance,
 	perm := map[string]string{"ticket": "tickets.view", "fault": "faults.view", "task": "", "maintenance": "maintenance.view", setupRef: permSetupView}
 	var out []listItem
 	today := localDayStart(time.Now())
-	for rows.Next() {
-		var k, id, title, prio, status string
-		var due *time.Time
-		if err := rows.Scan(&k, &id, &title, &prio, &due, &status); err != nil {
-			return nil, err
-		}
+	for _, w := range rows {
+		k, id, title, status, due := w.Type, w.ID, w.Title, w.Status, w.Due
 		if !can(perm[k]) {
 			continue
 		}
@@ -621,7 +600,7 @@ func loadListMine(h *Handler, ctx context.Context, uid string, _ WidgetInstance,
 		}
 		out = append(out, it)
 	}
-	return out, rows.Err()
+	return out, nil
 }
 
 func loadListFaults(h *Handler, ctx context.Context, uid string, _ WidgetInstance, _ func(string) bool) (any, error) {
