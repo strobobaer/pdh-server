@@ -100,7 +100,7 @@ body[data-mode="global"]{padding:0;-webkit-touch-callout:none}
 @media (max-width:820px){.g-vorg{grid-template-columns:1fr}.t-cols,.t-new{grid-template-columns:1fr}.t-new{grid-template-rows:auto}}
 </style>
 </head>
-<body data-mode="{{.Mode}}" data-idle="{{.Idle}}"{{if .CardEvents}} data-card-events="1" data-card-notify="{{.CardNotify}}"{{if ne .Mode "schoner"}} data-manual-login="{{.ManualLogin}}" data-password-button="{{if .PasswordButton}}1{{else}}0{{end}}"{{end}}{{end}}>
+<body data-mode="{{.Mode}}" data-idle="{{.Idle}}"{{if .SettingsEvents}} data-settings-events="1"{{end}}{{if .CardEvents}} data-card-events="1" data-card-notify="{{.CardNotify}}"{{if ne .Mode "schoner"}} data-manual-login="{{.ManualLogin}}" data-password-button="{{if .PasswordButton}}1{{else}}0{{end}}"{{end}}{{end}}>
 {{if .NoInfra}}
 <div class="t-none">
   <i class="ti ti-plug-off" aria-hidden="true"></i>

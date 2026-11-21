@@ -68,6 +68,21 @@
   // Kartendienst des lokalen Terminals (Ursprung der Ereignisse und der Rückmeldung).
   var CARD_ORIGIN = 'http://127.0.0.1:8080';
 
+  // Ausfall des PDH-Servers – reine Funktionen. Im globalen Modus zeigt der Kartendienst des Terminals
+  // (CARD_ORIGIN + '/start') die zwischengespeicherte Folienschau, solange PDH nicht erreichbar ist.
+  var OUTAGE_LIMIT = 3;
+  // Zähler aufeinanderfolgender Netzfehler: failed=true zählt hoch, failed=false setzt zurück.
+  // Rückgabe {fails, leave}; leave=true ab OUTAGE_LIMIT Fehlern in Folge.
+  function outageStep(fails, failed) {
+    var n = failed ? (typeof fails === 'number' && fails > 0 ? fails : 0) + 1 : 0;
+    return { fails: n, leave: n >= OUTAGE_LIMIT };
+  }
+  // Ziel beim Verlassen der Vorgang-Ansicht: PDH erreichbar → Folienschau (/terminal),
+  // Netzfehler → Startseite des Terminals (zeigt offline die zwischengespeicherte Folienschau).
+  function backTarget(networkFailed, cardOrigin) {
+    return networkFailed ? String(cardOrigin) + '/start' : '/terminal';
+  }
+
   // Rückmeldung an das Terminal – reine Funktionen.
   // Nutzdaten für POST /api/card/result: {ok, name, message, notify, logout}.
   function resultPayload(d, notify, logout) {
@@ -126,6 +141,20 @@
   }
   if (clocks.length) { tick(); setInterval(tick, 5000); }
 
+  // Vorgang-Ansicht verlassen (Zurück oder Ruhezeit): erst prüfen, ob PDH antwortet; bei Netzfehler zur
+  // Startseite des Terminals (dort läuft offline die zwischengespeicherte Folienschau).
+  function leaveVorgang() {
+    var go = function (failed) { location.replace(backTarget(failed, CARD_ORIGIN)); };
+    try {
+      fetch('/terminal/slides.json', { cache: 'no-store', credentials: 'same-origin' })
+        .then(function () { go(false); }, function () { go(true); });
+    } catch (e) { go(true); }
+  }
+  if (mode === 'vorgang') {
+    var backLink = document.querySelector('.v-back');
+    if (backLink) backLink.addEventListener('click', function (ev) { ev.preventDefault(); leaveVorgang(); });
+  }
+
   // Inaktivität: keine Berührung/Taste für data-idle Sekunden → zurück zum Schoner.
   // Auf dem Schoner selbst (data-idle="0") gibt es keinen Timer.
   var idle = parseInt(body.dataset.idle, 10) || 0;
@@ -133,7 +162,7 @@
     var timer = null;
     var reset = function () {
       if (timer) clearTimeout(timer);
-      timer = setTimeout(function () { location.replace('/terminal'); }, idle * 1000);
+      timer = setTimeout(function () { if (mode === 'vorgang') leaveVorgang(); else location.replace('/terminal'); }, idle * 1000);
     };
     document.addEventListener('pointerdown', reset, true);
     document.addEventListener('keydown', reset, true);
@@ -189,6 +218,20 @@
         .catch(function () { /* offline: alter Stand bleibt */ });
     };
     setInterval(refresh, 30000);
+  }
+
+  // Gerätesitzung ohne Anmeldeteil (Schoner, Seite „keine Anlage“): auf Einstellungen hören. Wird das Terminal
+  // zum globalen, lädt die Seite neu und wird zur Folienschau. (Info und Neu tun das im Anmeldeteil.)
+  if (body.dataset.settingsEvents === '1' && mode !== 'global' && (body.dataset.cardEvents !== '1' || mode === 'schoner')) {
+    try {
+      var sev = new EventSource('/terminal/events');
+      sev.addEventListener('settings', function (ev) {
+        var d = null;
+        try { d = JSON.parse(ev.data); } catch (e) { /* ungültig */ }
+        if (d && d.global_screen === true) location.reload();
+      });
+      sev.onerror = function () { /* stumm: der EventSource verbindet selbst neu */ };
+    } catch (e) { /* kein EventSource */ }
   }
 
   // Bildschirmschoner: eine Karte weckt ihn. Die UID wandert (mit Zeit) in den Sitzungsspeicher, die
@@ -582,9 +625,16 @@
     };
 
     // slides.json laden. keep: die laufende Folie bleibt stehen (Timer unberührt), nur ihr Inhalt wird erneuert.
+    var loadFails = 0, streamFails = 0, left = false;
+    // Netzfehler zählen (slides.json und Ereignisstrom getrennt); ab OUTAGE_LIMIT in Folge zur Startseite des
+    // Terminals: sie zeigt offline die zwischengespeicherte Folienschau und kehrt nach PDH zurück, sobald es antwortet.
+    var leaveOnOutage = function (st) {
+      if (st.leave && !left) { left = true; location.replace(CARD_ORIGIN + '/start'); }
+    };
     var load = function (keep) {
       fetch('/terminal/slides.json', { cache: 'no-store', credentials: 'same-origin' })
         .then(function (r) {
+          loadFails = outageStep(loadFails, false).fails; // PDH hat geantwortet
           // Kein globales Terminal mehr (403) oder Sitzung weg: Seite neu laden, sie wird zum normalen Terminal
           if (r.status === 403 || r.redirected) { location.reload(); return null; }
           if (!r.ok) return null; // vorübergehender Fehler: alter Stand bleibt
@@ -603,7 +653,9 @@
           }
           saveCache(d);
         })
-        .catch(function () { /* offline: alter Stand bleibt */ });
+        .catch(function () { // offline: alter Stand bleibt, nach mehreren Fehlern in Folge Folienschau des Terminals
+          var st = outageStep(loadFails, true); loadFails = st.fails; leaveOnOutage(st);
+        });
     };
 
     // Eingabe: Tippen auf freie Fläche oder Wischen nach links blättert weiter, ein Vorgang öffnet seine Ansicht.
@@ -634,7 +686,10 @@
         try { d = JSON.parse(ev.data); } catch (e) { /* ungültig */ }
         if (d && d.global_screen === false) location.reload();
       });
-      gev.onerror = function () { /* stumm: der EventSource verbindet selbst neu */ };
+      gev.onopen = function () { streamFails = outageStep(streamFails, false).fails; };
+      gev.onerror = function () { // der EventSource verbindet selbst neu; viele Fehler in Folge = PDH nicht erreichbar
+        var st = outageStep(streamFails, true); streamFails = st.fails; leaveOnOutage(st);
+      };
     } catch (e) { /* kein EventSource */ }
     setInterval(function () { load(true); }, 60000); // Vorgänge und Version auch ohne Ereignis aktuell halten
     load(false);

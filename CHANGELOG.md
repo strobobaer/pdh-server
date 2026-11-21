@@ -27,6 +27,8 @@ im Kapitel „Versionen & Updates“ an.
 ### Behoben
 
 - Meldet das Terminal die Abmeldung per Karte an das lokale Terminalprogramm, gilt sie nur noch dann als gelungen, wenn PDH sie angenommen hat; bei einem Fehler zeigt die Benachrichtigung die Störung statt „Abgemeldet“.
+- Infobildschirm bei Ausfall von PDH: Nach drei fehlgeschlagenen Abrufen der Folien oder des Ereignisstroms in Folge wechselt ein globales Terminal zur Startseite des Terminalprogramms, die die gespeicherte Folienschau zeigt und nach PDH zurückkehrt, sobald es antwortet. Auch „Zurück“ und die Rückkehrzeit der Vorgang-Ansicht prüfen vorher, ob PDH antwortet.
+- Ein Terminal mit Anlage oder ohne Anlage wird sofort zur Folienschau, wenn es als globales Terminal gekennzeichnet wird; bisher galt das nur für die Info- und Neu-Seiten. Eine noch offene Kartensitzung eines globalen Terminals wird beim Wechsel beendet, und die Meldung „Keine Folien eingerichtet“ nennt den Namen der Instanz statt „PDH“.
 
 ## [0.82.9] – 2026-11-21
 

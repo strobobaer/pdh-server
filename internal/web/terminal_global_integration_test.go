@@ -421,3 +421,35 @@ func TestTerminalGlobalVorgangView(t *testing.T) {
 		t.Errorf("nicht global: %d", rec.Code)
 	}
 }
+
+// Schoner und Seite „keine Anlage“ hören auf /terminal/events (Wechsel zum globalen Terminal), die globale Seite nicht
+// über das Attribut (sie öffnet ihren Strom selbst); der Schoner des globalen Terminals zeigt die Instanz statt „PDH“-Festtext.
+func TestTerminalGlobalSettingsEventsAttribute(t *testing.T) {
+	g := newGTEnv(t)
+	// Anlagenterminal: Schoner und Info tragen das Attribut
+	cN := g.cookie(g.termNormal, g.devN)
+	for _, p := range []string{"/terminal", "/terminal/info", "/terminal/neu"} {
+		if b := g.do("GET", p, cN, nil).Body.String(); !strings.Contains(b, `data-settings-events="1"`) {
+			t.Errorf("%s am Anlagenterminal: data-settings-events fehlt", p)
+		}
+	}
+	// ohne Gerätesitzung kein Strom
+	if b := g.do("GET", "/terminal", g.cookie(g.termNormal, ""), nil).Body.String(); strings.Contains(b, "data-settings-events") {
+		t.Error("ohne Gerätesitzung darf data-settings-events nicht stehen")
+	}
+	// Terminal ohne Anlage (Gerätesitzung): Seite „keine Anlage“ trägt das Attribut
+	noInfra := g.e.user("gtnoinfra", "viewer", true)
+	secret, err := newDeviceSecret()
+	g.e.must(err)
+	dev := g.e.id(`INSERT INTO terminal_devices (user_id, name, secret_sha256) VALUES ($1::uuid, 'Pi', $2) RETURNING id::text`, noInfra, hashDeviceSecret(secret))
+	t.Cleanup(func() { _, _ = g.e.pool.Exec(context.Background(), `DELETE FROM terminal_devices WHERE id = $1::uuid`, dev) })
+	terminalDevices.forget(dev)
+	rec := g.do("GET", "/terminal", g.cookie(noInfra, dev), nil)
+	if b := rec.Body.String(); rec.Code != 200 || !strings.Contains(b, "keine Anlage zugeordnet") || !strings.Contains(b, `data-settings-events="1"`) {
+		t.Errorf("Seite ohne Anlage: %d, Attribut fehlt", rec.Code)
+	}
+	// globale Seite: Modus global, kein Kartenattribut
+	if b := g.do("GET", "/terminal", g.cookie(g.termG, g.devG), nil).Body.String(); !strings.Contains(b, `data-mode="global"`) || strings.Contains(b, "data-settings-events") {
+		t.Error("globale Seite: falscher Modus oder unerwartetes Attribut")
+	}
+}

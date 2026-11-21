@@ -83,7 +83,7 @@ func TestTerminalGlobalRoutesNeedDeviceSession(t *testing.T) {
 func TestTerminalScriptGlobal(t *testing.T) {
 	_, r := terminalTestHandler(t)
 	b := terminalGet(r, "/terminal/terminal.js", &users.User{ID: "x", IsSystemUser: true}).Body.String()
-	for _, s := range []string{"CARD_ORIGIN + '/api/slides/cache'", "mode: 'cors'", "cacheCall('DELETE'", "cacheCall('POST'", "/terminal/slides.json", "/terminal/events", "addEventListener('slides'", "global_screen", "/terminal/vorgang/", "cachePayload", "nextSlideIndex", "isSwipeLeft", "slideDurationMs"} {
+	for _, s := range []string{"CARD_ORIGIN + '/api/slides/cache'", "mode: 'cors'", "cacheCall('DELETE'", "cacheCall('POST'", "/terminal/slides.json", "/terminal/events", "addEventListener('slides'", "global_screen", "/terminal/vorgang/", "cachePayload", "nextSlideIndex", "isSwipeLeft", "slideDurationMs", "outageStep(", "location.replace(CARD_ORIGIN + '/start')", "leaveVorgang", "backTarget(failed, CARD_ORIGIN)"} {
 		if !strings.Contains(b, s) {
 			t.Errorf("Skript enthält %q nicht", s)
 		}
@@ -112,14 +112,14 @@ func TestTerminalScriptGlobalPureFunctions(t *testing.T) {
 	}
 	src = bytes.ReplaceAll(src, []byte("\r\n"), []byte("\n"))
 	var fns []string
-	for _, name := range []string{"nextSlideIndex", "slideDurationMs", "isSwipeLeft", "cachePayload"} {
+	for _, name := range []string{"nextSlideIndex", "slideDurationMs", "isSwipeLeft", "cachePayload", "outageStep", "backTarget"} {
 		m := regexp.MustCompile(`(?s)\n  function ` + name + `\(.*?\n  \}\n`).Find(src)
 		if m == nil {
 			t.Fatalf("Funktion %s nicht gefunden", name)
 		}
 		fns = append(fns, string(m))
 	}
-	harness := strings.Join(fns, "\n") + `
+	harness := "var OUTAGE_LIMIT = 3;\n" + strings.Join(fns, "\n") + `
 const out = [];
 const eq = (got, want, what) => { const g = JSON.stringify(got), w = JSON.stringify(want); if (g !== w) out.push(what + ': ' + g + ' statt ' + w); };
 const three = [{id: 'a'}, {id: 'b'}, {id: 'c'}];
@@ -161,6 +161,15 @@ eq(Object.keys(cachePayload({version: 'v'}, many, d).images).length, 10, 'genau 
 many.i10 = mb(1048576);
 eq(cachePayload({version: 'v'}, many, d).images, {}, 'über 50 MB: ohne Bilder');
 eq(cachePayload({version: 'v'}, {a: 5, b: ''}, d).images, {}, 'keine Texte');
+let o = outageStep(0, true); eq(o, {fails: 1, leave: false}, 'erster Fehler');
+o = outageStep(o.fails, true); eq(o, {fails: 2, leave: false}, 'zweiter Fehler');
+o = outageStep(o.fails, true); eq(o, {fails: 3, leave: true}, 'dritter Fehler');
+o = outageStep(o.fails, true); eq(o.leave, true, 'weitere Fehler');
+eq(outageStep(2, false), {fails: 0, leave: false}, 'Antwort setzt zurück');
+eq(outageStep(undefined, true), {fails: 1, leave: false}, 'ohne Zähler');
+eq(outageStep(-5, true), {fails: 1, leave: false}, 'negativer Zähler');
+eq(backTarget(true, 'http://127.0.0.1:8080'), 'http://127.0.0.1:8080/start', 'Zurück bei Netzfehler');
+eq(backTarget(false, 'http://127.0.0.1:8080'), '/terminal', 'Zurück mit PDH');
 if (out.length) { console.log(out.join('\n')); process.exit(1); }
 `
 	f := filepath.Join(t.TempDir(), "t.js")
@@ -181,5 +190,35 @@ func TestTerminalGlobalStageTouchAction(t *testing.T) {
 	}
 	if !regexp.MustCompile(`\.g-stage\{[^}]*touch-action:none`).Match(b) {
 		t.Error(".g-stage braucht touch-action:none")
+	}
+}
+
+// Vorgang-Ansicht: der Zurück-Knopf bleibt ein Link (Rückfall ohne Skript), das Skript prüft vor dem Verlassen PDH.
+func TestTerminalVorgangBackProbe(t *testing.T) {
+	b, err := os.ReadFile("../../web/templates/terminal_vorgang.gohtml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), `class="v-back" href="/terminal"`) {
+		t.Error("Zurück-Link fehlt")
+	}
+	js, err := os.ReadFile("../../web/static/terminal.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := strings.ReplaceAll(string(js), "\r\n", "\n")
+	i := strings.Index(s, "function leaveVorgang()")
+	if i < 0 {
+		t.Fatal("leaveVorgang fehlt")
+	}
+	blk := s[i:]
+	blk = blk[:strings.Index(blk, "// Inaktivität")]
+	for _, want := range []string{"fetch('/terminal/slides.json'", "go(true)", "'.v-back'", "preventDefault"} {
+		if !strings.Contains(blk, want) {
+			t.Errorf("leaveVorgang enthält %q nicht", want)
+		}
+	}
+	if !strings.Contains(s, "if (mode === 'vorgang') leaveVorgang();") {
+		t.Error("Ruhezeit in der Vorgang-Ansicht prüft PDH nicht")
 	}
 }

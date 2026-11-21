@@ -324,3 +324,46 @@ func TestTerminalTemplateManualLogin(t *testing.T) {
 		t.Error("Schoner darf keinen Anmeldeteil haben")
 	}
 }
+
+// Die Seiten tragen data-settings-events nur, wenn das Feld gesetzt ist; auch die Seite „keine Anlage“ kann es tragen.
+func TestTerminalTemplateSettingsEvents(t *testing.T) {
+	h, _ := terminalTestHandler(t)
+	render := func(d terminalPage) string {
+		rec := httptest.NewRecorder()
+		h.renderTerminal(rec, d)
+		return rec.Body.String()
+	}
+	for _, d := range []terminalPage{
+		{Mode: "schoner", Name: "Presse", SettingsEvents: true},
+		{Mode: "info", NoInfra: true, SettingsEvents: true},
+	} {
+		if !strings.Contains(render(d), `data-settings-events="1"`) {
+			t.Errorf("%+v: data-settings-events fehlt", d)
+		}
+	}
+	if strings.Contains(render(terminalPage{Mode: "schoner", Name: "Presse"}), "data-settings-events") {
+		t.Error("ohne Gerätesitzung darf data-settings-events nicht stehen")
+	}
+}
+
+// Das Skript öffnet /terminal/events auch ohne Anmeldeteil (Schoner, Seite „keine Anlage“) und lädt bei global_screen neu.
+func TestTerminalScriptSettingsStreamOnSchoner(t *testing.T) {
+	b, err := os.ReadFile("../../web/static/terminal.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := strings.ReplaceAll(string(b), "\r\n", "\n")
+	i := strings.Index(s, "body.dataset.settingsEvents === '1'")
+	if i < 0 {
+		t.Fatal("Skript prüft data-settings-events nicht")
+	}
+	blk := s[i:]
+	if j := strings.Index(blk, "// Bildschirmschoner"); j > 0 {
+		blk = blk[:j]
+	}
+	for _, want := range []string{"new EventSource('/terminal/events')", "global_screen === true", "location.reload()", "mode === 'schoner'"} {
+		if !strings.Contains(blk, want) {
+			t.Errorf("Block enthält %q nicht", want)
+		}
+	}
+}

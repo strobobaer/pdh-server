@@ -62,6 +62,7 @@ type terminalPage struct {
 	CanFaults      bool
 	CanTickets     bool
 	EasyMode       bool   // Easy-Mode an: „Neu“ darf zur Meldeseite /e/{id} führen
+	SettingsEvents bool   // Gerätesitzung (nicht global): /terminal/events abonnieren (Wechsel zum globalen Terminal)
 	CardEvents     bool   // Gerätesitzung (gekoppelter Pi): Kartenleser-Ereignisse abonnieren
 	ManualLogin    string // Anfangswert: card_pin | password | card_only | none
 	PasswordButton bool   // Anfangswert: Knopf „Mit Benutzer und Passwort“
@@ -277,10 +278,13 @@ func (h *Handler) terminalGate(w http.ResponseWriter, r *http.Request, mode stri
 			return p, false
 		}
 		if g {
-			p.Mode, p.Name = "global", "PDH"
+			p.Mode, p.Name = "global", h.branding().AppName
 			return p, true
 		}
 	}
+	// Gerätesitzung (nicht global): Einstellungsstrom auch auf Schoner und Seite „keine Anlage“, damit ein
+	// später als global gekennzeichnetes Terminal sofort zur Folienschau wechselt.
+	p.SettingsEvents = h.terminalDeviceSession(r)
 	infra, role, err := h.terminalInfraLookup(r.Context(), uid)
 	var name string
 	var ok bool
@@ -339,11 +343,8 @@ func (h *Handler) renderTerminal(w http.ResponseWriter, d terminalPage) {
 // TerminalSchoner: GET /terminal
 func (h *Handler) TerminalSchoner(w http.ResponseWriter, r *http.Request) {
 	if p, ok := h.terminalGate(w, r, "schoner"); ok {
-		if p.Mode == "global" {
-			h.renderTerminal(w, p)
-			return
-		}
-		// Schoner = Ruhezustand: laufende Kartensitzung beenden.
+		// Schoner = Ruhezustand: laufende Kartensitzung beenden (auch beim globalen Terminal: eine Sitzung aus der
+		// Zeit vor der Umstellung darf nicht weiterlaufen).
 		if uid := h.terminalUserID(r); uid != "" && h.db != nil {
 			if err := h.cardSessionEnd(r.Context(), uid); err != nil {
 				componentLog("terminal").Error().Err(err).Msg("kartensitzung beenden")
