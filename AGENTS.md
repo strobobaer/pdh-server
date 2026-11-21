@@ -255,9 +255,9 @@ oder ändern.**
    (19.11.2026; Migrationen 179 bis 181, Rechte `esppdh.view`, `esppdh.edit`,
    `esppdh.admin`; Entwurf `docs/superpowers/specs/2026-11-18-esppdh-design.md`,
    Plan `docs/superpowers/plans/2026-11-18-esppdh-paket1.md`). **0.82.0 bis
-   0.82.9 sind auf dem Testverbund** (zuletzt 21.11.2026, Verbund-Update auf
-   `d244bc4`; beide Server und Zeuge 0.82.9, Migrationen 179–185 da, aktiv
-   jetzt `pdh-server` 10.10.0.17). Offen: am Testverbund auf der Seite „Netzwerk“ den
+   0.82.10 sind auf dem Testverbund** (zuletzt 21.11.2026, Verbund-Update auf
+   `72a0e3e`; beide Server 0.82.10, Migrationen 179–185 da, aktiv
+   jetzt `pdh` 10.10.0.14). Offen: am Testverbund auf der Seite „Netzwerk“ den
    Haken „Für ESPPDH-Geräte nutzbar“ am Geräte-WLAN setzen, auf beiden Servern
    die Umgebung einrichten, ein Gerät bauen, die Rollen umschalten, die
    Firmware am zweiten Server herunterladen und im Browser prüfen. Paket 2 und
@@ -442,7 +442,13 @@ oder ändern.**
    Startseiten-Widget `list_stock` fragte noch `spare_parts.storage_location`
    ab (seit Migration 027 `storage_location_legacy`) und scheiterte überall;
    Lagerort jetzt aus `spare_part_stock` mit Pfad (`storagePaths`). Gefunden
-   im Server-Protokoll von 10.10.0.202 (14× in 3 Tagen). Weitere Befunde dort
+   im Server-Protokoll von 10.10.0.202 (14× in 3 Tagen). Auf `main`
+   (21.11.2026, Merge `72a0e3e`) und dem Testverbund; im Browser geprüft
+   (Katalog „Bestellliste“ hinzufügen ohne Speichern, Testteil mit Pfad
+   „Lager › Fach 7“ und rot; Fiori/Fluent, hell/dunkel, 320–1366 px, am
+   Handy Pfad mit „…“ gekürzt; keine Konsolenfehler, keine Widget-Warnung
+   im Protokoll; Testdaten entfernt, Prüfkonto gesperrt). Offen: 202 per
+   „Update installieren“ (Anwender). Weitere Befunde dort
    (21.11.2026, nur gelesen), nicht behoben: MQTT-Wertübernahme will bei
    jedem Start einen Broker auf `127.0.0.1:1883`, der nicht läuft (PDH-Broker
    lauscht auf 1888 – Einstellung der Verbindung, Anwender); Grafana-Live
