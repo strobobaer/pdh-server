@@ -1025,5 +1025,7 @@
  "Hier siehst du deine Vorschläge – eingereicht, im Team oder als Verantwortliche/r. Alle Vorschläge sieht, wer das Recht „KVP: alle Vorschläge ansehen“ hat.": "Овде ги гледате вашите предлози – поднесени, во тимот или како одговорно лице. Сите предлози ги гледа тој што го има правото „KVP: преглед на сите предлози“.",
  "Jede/r darf Ideen einreichen und sieht die eigenen; alle Vorschläge sieht, wer das Recht „KVP: alle Vorschläge ansehen“ hat. Umsetzungen werden gewürdigt.": "Секој може да поднесува идеи и ги гледа своите; сите предлози ги гледа тој што го има правото „KVP: преглед на сите предлози“. Реализациите се признаваат.",
  "Infobildschirm": "Инфо екран",
- "Terminal": "Терминал"
+ "Terminal": "Терминал",
+ "Terminal-Software herunterladen": "Преземи го софтверот за терминал",
+ "Raspberry-Pi-Abbild, Windows-Setup (EXE/MSI) und Updates": "Слика за Raspberry Pi, Windows-инсталација (EXE/MSI) и ажурирања"
 }

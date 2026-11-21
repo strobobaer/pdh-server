@@ -10,6 +10,12 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.82.14] – 2026-11-21
+
+### Neu
+
+- Auf den Seiten „Kiosk-Terminals“ und beim Systembenutzer (Gekoppelte Geräte) führt der Link „Terminal-Software herunterladen“ zur neuesten Ausgabe der Terminal-Software auf GitHub: Raspberry-Pi-Abbild, Windows-Setup (EXE/MSI) und Updates.
+
 ## [0.82.13] – 2026-11-21
 
 ### Neu

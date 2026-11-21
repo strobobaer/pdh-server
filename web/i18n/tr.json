@@ -1025,5 +1025,7 @@
  "Hier siehst du deine Vorschläge – eingereicht, im Team oder als Verantwortliche/r. Alle Vorschläge sieht, wer das Recht „KVP: alle Vorschläge ansehen“ hat.": "Burada önerilerinizi görürsünüz – gönderilen, ekipteki veya sorumlu olarak. Tüm önerileri “KVP: tüm önerileri görüntüle” yetkisine sahip olan görür.",
  "Jede/r darf Ideen einreichen und sieht die eigenen; alle Vorschläge sieht, wer das Recht „KVP: alle Vorschläge ansehen“ hat. Umsetzungen werden gewürdigt.": "Herkes fikir gönderebilir ve kendi fikirlerini görür; tüm önerileri “KVP: tüm önerileri görüntüle” yetkisine sahip olan görür. Uygulamalar takdir edilir.",
  "Infobildschirm": "Bilgi ekranı",
- "Terminal": "Terminal"
+ "Terminal": "Terminal",
+ "Terminal-Software herunterladen": "Terminal yazılımını indir",
+ "Raspberry-Pi-Abbild, Windows-Setup (EXE/MSI) und Updates": "Raspberry Pi imajı, Windows kurulumu (EXE/MSI) ve güncellemeler"
 }

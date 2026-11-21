@@ -88,6 +88,7 @@
     <div class="card-title"><span><i class="ti ti-device-desktop"></i> Gekoppelte Geräte</span>
       <form method="post" action="/users/{{$u.ID}}/terminal-code" style="margin:0"><button class="btn btn-small" type="submit"><i class="ti ti-link"></i> Gerät koppeln</button></form>
     </div>
+    {{template "terminal-download-link"}}
     {{range .Devices}}
     <div class="rec-row" style="flex-wrap:wrap;gap:8px{{if .Revoked}};opacity:.55{{end}}">
       <i class="ti ti-device-desktop" style="color:var(--muted)"></i>
