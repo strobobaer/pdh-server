@@ -459,7 +459,14 @@ func (h *Handler) sendRawSMTP(from string, to []string, raw []byte) error {
 
 // sendMail verschickt eine HTML-Mail: über Microsoft Graph oder per SMTP
 // (STARTTLS, implizites TLS oder unverschluesselt je nach PDH_SMTP_TLS).
+// Mit Fußzeile der Firma (ohne auslösende Person, siehe sendMailBy).
 func (h *Handler) sendMail(to []string, subject, html string) error {
+	return h.sendMailBy(to, subject, html, "")
+}
+
+// sendMailRaw: Versand ohne Fußzeile; Absendername aus den Firmenstammdaten (nur SMTP –
+// bei Graph bestimmt das Postfach den Namen).
+func (h *Handler) sendMailRaw(to []string, subject, html string) error {
 	c := h.mailConfig()
 	if h.mailViaGraph() {
 		return h.sendMailGraph(context.Background(), to, subject, html)
@@ -469,7 +476,7 @@ func (h *Handler) sendMail(to []string, subject, html string) error {
 	}
 	var msg bytes.Buffer
 	fmt.Fprintf(&msg, "From: %s\r\nTo: %s\r\nSubject: %s\r\nDate: %s\r\nMIME-Version: 1.0\r\n",
-		c.From, strings.Join(to, ", "), mime.QEncoding.Encode("utf-8", subject), time.Now().Format(time.RFC1123Z))
+		mailFromHeader(c.From, h.company(context.Background()).Name), strings.Join(to, ", "), mime.QEncoding.Encode("utf-8", subject), time.Now().Format(time.RFC1123Z))
 	msg.WriteString("Content-Type: text/html; charset=utf-8\r\nContent-Transfer-Encoding: base64\r\n\r\n")
 	enc := base64.StdEncoding.EncodeToString([]byte(html))
 	for len(enc) > 76 {

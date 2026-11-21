@@ -672,7 +672,7 @@ func (h *Handler) ServerConfigTestWeb(w http.ResponseWriter, r *http.Request) {
 			fail(errors.New("dein Benutzerkonto hat keine E-Mail-Adresse"))
 			return
 		}
-		if err := h.sendMail([]string{to}, "PDH – Testnachricht", "<p>Diese Testnachricht bestätigt, dass der E-Mail-Versand des PDH funktioniert.</p><p>Gesendet "+time.Now().Format("02.01.2006 15:04")+"</p>"); err != nil {
+		if err := h.sendMailBy([]string{to}, "PDH – Testnachricht", "<p>Diese Testnachricht bestätigt, dass der E-Mail-Versand des PDH funktioniert.</p><p>Gesendet "+time.Now().Format("02.01.2006 15:04")+"</p>", u.ID); err != nil {
 			fail(err)
 			return
 		}
