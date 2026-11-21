@@ -22,7 +22,7 @@ durch; Geräte mit IPv6 nehmen deshalb den Weg über das Internet (gemessen am
 ## 2. Entscheidungen des Anwenders
 
 - Die Adresse stammt aus dem Präfix des Anbieters und hat ein festes Ende
-  (z. B. `2a02:f90:e198:1700::15`). Keine private Adresse (ULA).
+  (z. B. `2001:db8::15`). Keine private Adresse (ULA).
 - Eingeschaltet wird über ein Feld „IPv6-Ende“ neben der mitwandernden
   IPv4-Adresse. Leer heißt aus. Kein Schalter je Name.
 - Ist das Feld gesetzt, bekommt jeder Name im Haus den IPv6-Eintrag automatisch

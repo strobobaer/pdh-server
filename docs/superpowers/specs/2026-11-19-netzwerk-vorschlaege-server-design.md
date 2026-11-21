@@ -125,10 +125,10 @@ Oben auf der Seite eine Karte je Server – im Verbund beide nebeneinander:
 ```
 pdh-server (aktiv)                       pdh (Spiegel)
 Netzwerkkarte eth0                       Netzwerkkarte eth0
-Adresse     10.10.0.17/24  fest          Adresse  10.10.0.14/24  fest
-Gemeinsame  10.10.0.15  hier             Gemeinsame  –
-Gateway     10.10.0.1                    Gateway  10.10.0.1
-DNS         10.10.0.1, 1.1.1.1           DNS      10.10.0.1, 1.1.1.1
+Adresse     192.0.2.17/24  fest          Adresse  192.0.2.14/24  fest
+Gemeinsame  192.0.2.15  hier             Gemeinsame  –
+Gateway     192.0.2.1                    Gateway  192.0.2.1
+DNS         192.0.2.1, 1.1.1.1           DNS      192.0.2.1, 1.1.1.1
 IPv6        2a02:…::17                   IPv6     2a02:…::14
 [DNS-Server ändern]                      [Auf pdh öffnen ↗]
 ```

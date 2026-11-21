@@ -74,7 +74,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
 
 <section class="hb-ch" id="start" data-title="Erste Schritte" data-pages="dashboard account">
   <h2><i class="ti ti-rocket"></i> Erste Schritte</h2>
-  <p>Der <b>PDH – Prozess Data Hub</b> ist das gemeinsame Werkzeug für Instandhaltung, Lager und Einkauf: Hier werden Störungen gemeldet und gelöst, Wartungen geplant, Ersatzteile verwaltet und im Team gechattet.</p>
+  <p>Der <b>PDH – Pulse Data Hub</b> ist das gemeinsame Werkzeug für Instandhaltung, Lager und Einkauf: Hier werden Störungen gemeldet und gelöst, Wartungen geplant, Ersatzteile verwaltet und im Team gechattet.</p>
   <div class="hb-howto"><b><i class="ti ti-map-2"></i> Rundgang durch PDH</b>Ein geführter Rundgang zeigt dir in zwei Minuten das Wichtigste – Sprechblasen erklären Navigation, Dashboard, Melden, Seitenleiste und dein Konto.
     <ol class="hb-steps">
       <li>Starten: <button type="button" class="btn btn-small btn-primary" onclick="pdhTour.start('basics')"><i class="ti ti-map-2"></i> Rundgang starten</button> – oder oben im Benutzermenü <b>Rundgang durch PDH</b>. Beim ersten Besuch bietet das Dashboard ihn einmal von selbst an.</li>
@@ -845,6 +845,12 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     </ol>
     Dafür brauchst du das Recht „IT-Infrastruktur bearbeiten“ für dieses Asset. Es gilt immer die Reihenfolge: eigener Wert am Gerät, dann Kategorie, dann der allgemeine Wert.</div>
   <p>In der <b>Anlagen-Historie</b>, bei den <b>Prüfnachweisen</b> und bei den <b>HMI-Zugriffen</b> einer Anlage gibt es die Sortier-Leiste (<a href="#sort">mehr</a>). „Häufigste zuerst“ zählt dieselbe Maßnahme auch über verschiedene Störungen der Anlage hinweg; berücksichtigt werden höchstens die neuesten 2000 Einträge. Die Historie einer Anlage sieht, wer die Anlage sehen darf.</p>
+  <div class="hb-howto"><b><i class="ti ti-cpu"></i> Reiter „ESPPDH“ an der Anlage</b>
+    <ol class="hb-steps">
+      <li>Hängt an der Anlage ein ESPPDH-Gerät, gibt es den Reiter <b>ESPPDH</b> – mit dem Recht „ESPPDH: Sensorwerte ansehen“ oder „ESPPDH: Geräte und Zustand ansehen“.</li>
+      <li>Je Gerät: online/offline, Handshake, die letzten Werte nach Gruppen mit Einheit und Alter. Graue Werte sind veraltet. Der Reiter lädt alle 10 Sekunden neu.</li>
+      <li>Der Name führt zur Geräteseite (nur mit „ESPPDH: Geräte und Zustand ansehen“), <b>Webseite des Geräts</b> direkt aufs Gerät (nur im Netz der Geräte).</li>
+    </ol></div>
   {{template "hb-shots" (dict "Ref" (index $s "infrastructure") "Can" $can)}}
 </section>
 
@@ -949,6 +955,12 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   </ul>
   <div class="hb-howto"><b><i class="ti ti-alert-triangle"></i> Vorsicht bei „Jeder“</b>Sobald HMIs am Terminal angezeigt werden, kann bei <b>Bedienen am Terminal</b> „Jeder“ jede Person am Terminal das HMI ohne Karte bedienen – ihre Eingaben wirken direkt auf die Anlage. PDH warnt schon jetzt im Formular in Rot. Nutze das nur, wenn der Bildschirm für Unbefugte nicht erreichbar ist.</div>
   <p>Ist beim HMI <b>Bedienen erlaubt</b> ausgeschaltet, gilt am Terminal beim Bedienen immer „Niemand“, auch wenn etwas anderes gespeichert ist. Das Formular weist darauf hin.</p>
+  <div class="hb-howto"><b><i class="ti ti-cpu"></i> Sensoren am Terminal abfragen (Instandhalter)</b>
+    <ol class="hb-steps">
+      <li>Mit der Karte am Terminal anmelden.</li>
+      <li>Mit dem Recht <b>ESPPDH: Sensorwerte ansehen</b> für diese Anlage erscheint unten der Bereich <b>Sensoren</b>: die ESPPDH-Geräte und Lebenszeichen (Handshake) der Anlage samt Unteranlagen mit ihren letzten Werten. Er lädt alle 10 Sekunden neu.</li>
+      <li>Nach dem Abmelden verschwindet der Bereich sofort.</li>
+    </ol></div>
   {{template "hb-shots" (dict "Ref" (index $s "terminal") "Can" $can)}}
 </section>
 
@@ -1005,6 +1017,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>Mit dem Recht <b>Anlagen-Schnellübersichten einrichten und für Benutzer/Gruppen freigeben</b> (Administratoren, Manager, Anlagenverantwortliche) gibst du Übersichten für Gruppen oder einzelne Personen frei und kannst alle Übersichten bearbeiten und löschen. Wer in einer freigegebenen Gruppe ist, sieht die Übersicht automatisch.</li>
     </ul>
     Löschen entfernt nur die Übersicht – die Anlagen und ihre Daten bleiben unverändert.</div>
+  <p><b>Handshake:</b> Jede Karte zeigt die Lebenszeichen der Anlage samt Unteranlagen – ESPPDH-Geräte und Heartbeats von Steuerungen (z. B. TIA-Baustein) – mit ihrem Zähler, der sichtbar weiterläuft (alle 10 Sekunden). Steht ein Zähler, wird die Karte gelb („Handshake steht“). Den Zähler eines ESPPDH-Geräts siehst du mit dem Recht „ESPPDH: Sensorwerte ansehen“, sonst nur „läuft“ oder „steht“.</p>
   {{template "hb-shots" (dict "Ref" (index $s "watch") "Can" $can)}}
 </section>
 
@@ -2162,7 +2175,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
 
 <section class="hb-ch" id="versions" data-title="Versionen &amp; Updates" data-pages="core-settings">
   <h2><i class="ti ti-versions"></i> Versionen &amp; Updates</h2>
-  <p>Die installierte Version steht links oben unter dem Namen (z. B. <b>v{{.CurrentVersion}}</b>). Jede Version hat eine Nummer <b>Haupt.Neben.Korrektur</b>: Die mittlere Zahl steigt mit neuen Funktionen, die letzte bei reinen Fehlerkorrekturen.</p>
+  <p>PDH steht für <b>Pulse Data Hub</b>. Die installierte Version steht links oben unter dem Namen (z. B. <b>v{{.CurrentVersion}}</b>). Jede Version hat eine Nummer <b>Haupt.Neben.Korrektur</b>: Die mittlere Zahl steigt mit neuen Funktionen, die letzte bei reinen Fehlerkorrekturen.</p>
   {{template "hb-fig-update"}}
   <div class="hb-howto"><b><i class="ti ti-download"></i> So installierst du ein Update</b>
     <ol class="hb-steps">
@@ -2189,6 +2202,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     </ol>
     Ab Version 0.80.9 setzt das Update diese Angabe selbst.</div>
   <p><b>Ohne Versionsnummer auf GitHub:</b> Zeigt <b>Version auf GitHub</b> „nicht angegeben“, stammt der Stand auf GitHub aus der Zeit vor der Versionierung. Ob ein Update da ist, entscheidet dann weiter der Commit-Vergleich.</p>
+  <p><b>Lizenz:</b> PDH steht unter der GNU Affero General Public License, Version 3 oder später (AGPL-3.0-or-later). Den Quellcode gibt es unter <a href="https://github.com/strobobaer/pdh-server" target="_blank" rel="noopener">github.com/strobobaer/pdh-server</a>. Was PDH für dich erzeugt – z. B. SCL-Bausteine, ESPHome-YAML, Berichte und Exporte – gehört dir und fällt nicht unter die AGPL (Ausnahme in <code>LICENSE-EXCEPTION.md</code>).</p>
   <h3>Änderungsprotokoll <i class="ti ti-refresh" title="automatisch aus dem System"></i></h3>
   <p class="rec-sub">Was sich in welcher Version geändert hat – neueste zuerst. {{if .CurrentVersion}}Installiert ist Version {{.CurrentVersion}}.{{end}}</p>
   {{range $i, $r := .Releases}}
@@ -2271,6 +2285,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <div class="hb-howto"><b><i class="ti ti-cpu"></i> Rechte für ESPPDH</b> (Gruppe „Daten &amp; Schnittstellen“)
     <ul>
       <li><b>„ESPPDH: Geräte und Zustand ansehen“</b> (<code>esppdh.view</code>): Liste, Seite des Geräts, Verlauf der Bauten und die Konfiguration ohne Kennwörter.</li>
+      <li><b>„ESPPDH: Sensorwerte ansehen (Anlage und Terminal)“</b> (<code>esppdh.values</code>): Reiter „ESPPDH“ an der Anlage, Sensoren am Anlagenterminal nach Kartenanmeldung und der Zähler auf der Schnellübersicht. Ab 0.82.11 bei Administrator, Manager, Anlagenverantwortlichen und Technikern.</li>
       <li><b>„ESPPDH: Geräte anlegen, ändern, sperren, bauen und flashen“</b> (<code>esppdh.edit</code>): dazu Firmware herunterladen und das Kennwort des Notzugangs sehen.</li>
       <li><b>„ESPPDH: Geräte löschen (Bereichsadministrator)“</b> (<code>esppdh.admin</code>): alle Rechte von ESPPDH und als Einziger Geräte endgültig löschen.</li>
     </ul>
@@ -2562,6 +2577,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <h3>„Steuerung meldet sich nicht“</h3>
   <p>Der Baustein sendet in festem Abstand einen <b>Heartbeat</b> (Vorgabe 60 Sekunden, nie mit Retain). Mit <code>heartbeatInterval := T#0s</code> am Baustein schaltest du den Heartbeat aus; dann darf es die Heartbeat-Zuordnung nicht geben, sonst meldet sie „meldet sich nicht“. Beim Herunterladen mit Heartbeat 0 und „Zuordnungen anlegen“ schaltet das PDH die Überwachung einer vorhandenen Heartbeat-Zuordnung ab. Änderst du das Topic, bleibt die alte Heartbeat-Zuordnung bestehen – lösche sie, sonst meldet sie „meldet sich nicht“. Kommt der letzte Heartbeat vor länger als <b>drei Intervallen</b>, zeigt das PDH „Steuerung meldet sich nicht“: als Hinweis oben auf der Verbindungsseite, als Marke in der Zeile der Zuordnung und in der Übersicht der Zuordnungen. Vor dem ersten Heartbeat zählt der Zeitpunkt, an dem die Zuordnung angelegt wurde. Prüfe dann: Läuft die Steuerung? Ist der Broker erreichbar? Ist <code>enable</code> gesetzt? Was sagt <code>statusText</code>?</p>
   <div class="hb-howto"><b><i class="ti ti-test-pipe"></i> Tipp: Ausprobieren mit PLCSIM</b>Übersetzen, Aufruf und Aufbau der Nachricht kannst du in PLCSIM prüfen. Ob das einfache PLCSIM eine echte TCP-Verbindung ins Netz aufbaut, hängt von der Version ab. Teste das vorher mit einem einfachen <code>TCON</code>. Klappt es nicht, nimm für die Netzprüfung PLCSIM Advanced oder eine echte Steuerung.</div>
+  <p>Der Heartbeat enthält einen Zähler (<code>count</code>). Das PDH zeigt ihn als <b>Handshake</b> auf der Anlagen-Schnellübersicht und am Terminal: Läuft er weiter, ist die Steuerung verbunden.</p>
   {{template "hb-shots" (dict "Ref" (index $s "tiabaustein") "Can" $can)}}
 </section>
 
@@ -2569,6 +2585,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <h2><i class="ti ti-cpu"></i> ESPPDH – eigene Mess- und Zählgeräte</h2>
   <p>Mit <b>ESPPDH</b> baust du kleine Messgeräte selbst: eine ESP-Platine (ESP32 oder ESP8266), daran ein Stromzähler, eine Stromzange, ein Energiemesser oder eine Lichtschranke. Das PDH erstellt die Firmware für das Gerät; danach sendet das Gerät seine Werte an den eingebauten MQTT-Broker des PDH, die meisten alle 10 Sekunden.</p>
   <p>ESPPDH <b>misst für die Betriebsführung, nicht für die Abrechnung</b>. Die Geräte sind nicht geeicht – für Rechnungen gilt weiter der geeichte Zähler. ESPPDH ist ein Zusatz: Ohne es läuft das PDH wie bisher. Im Docker-Betrieb gibt es ESPPDH nicht. ESPPDH baut auf <b>ESPHome</b> auf (Lizenz GPLv3 bzw. MIT).</p>
+  <p>Gibst du Geräte mit ESPPDH-Firmware an Dritte weiter, gilt für die Firmware die Lizenz von ESPHome (GPLv3): die YAML-Konfiguration (ohne Kennwörter, unter <b>Aktionen</b>) und die ESPHome-Version mitgeben.</p>
   <p>Du findest es unter <b>Navigation → Daten → ESPPDH</b> oder auf der Seite <b>Import</b> über den Verweis „ESPPDH – eigene Mess- und Zählgeräte“.</p>
   <div class="hb-howto"><b><i class="ti ti-route"></i> Der Weg zum fertigen Gerät</b>
     <ol class="hb-steps">
@@ -2785,11 +2802,21 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <h3><i class="ti ti-key"></i> Rechte</h3>
   <ul>
     <li><b>ESPPDH: Geräte und Zustand ansehen</b> (<code>esppdh.view</code>) – Liste, Seite des Geräts, Verlauf der Bauten und die Konfiguration ohne Kennwörter.</li>
+    <li><b>ESPPDH: Sensorwerte ansehen (Anlage und Terminal)</b> (<code>esppdh.values</code>) – Reiter „ESPPDH“ an der Anlage, Sensoren am Terminal, Zähler auf der Schnellübersicht.</li>
     <li><b>ESPPDH: Geräte anlegen, ändern, sperren, bauen und flashen</b> (<code>esppdh.edit</code>) – dazu Firmware herunterladen und das Kennwort des Notzugangs sehen.</li>
     <li><b>ESPPDH: Geräte löschen (Bereichsadministrator)</b> (<code>esppdh.admin</code>) – alle Rechte von ESPPDH und als Einziger Geräte löschen.</li>
   </ul>
   <p>Die Rechte gelten überall oder nur in einer Abteilung; maßgeblich ist die Anlage des Geräts. Wer sie mit dem Update bekommen hat, steht unter <a href="#admin">Administration</a>.</p>
   <p>Auch die Liste „Letzte Läufe“ (Bauläufe) hat eine Sortier-Leiste (<a href="#sort">mehr</a>).</p>
+  <h3>Webseite des Geräts, Adresse und Handshake</h3>
+  <div class="hb-howto"><b><i class="ti ti-world-www"></i> So schaust du auf die Webseite eines Geräts</b>
+    <ol class="hb-steps">
+      <li>Beim Anlegen oder unter „Bearbeiten“ ist <b>Webseite des Geräts</b> angekreuzt (Vorgabe). Das Gerät bekommt dann eine eigene Webseite (Port 80) mit Benutzer <code>pdh</code> und eigenem Kennwort.</li>
+      <li>Firmware neu bauen und aufspielen. Erst dann meldet das Gerät seine <b>Adresse</b> und seinen <b>Handshake</b> (Laufzeit in Sekunden, zählt alle 10 Sekunden hoch).</li>
+      <li>Auf der Geräteseite steht im Bereich <b>Werte</b> der Knopf <b>Webseite des Geräts</b>. Er erscheint nur, wenn die gemeldete Adresse zur Verbindung des Geräts passt. Die Seite ist nur im Netz der Geräte erreichbar.</li>
+      <li>Das Kennwort zeigt <b>Kennwort anzeigen</b> (Recht „ESPPDH: Geräte anlegen, ändern, sperren, bauen und flashen“). Jedes Anzeigen steht im Server-Protokoll.</li>
+    </ol></div>
+  <p>Über die Webseite lässt sich weder schalten noch Firmware aufspielen. ESP8266: Die Webseite braucht Internet am Browser (für die eingebaute Seite fehlt der Speicher). Der <b>Handshake</b> zeigt grün „läuft“, solange das Gerät innerhalb von 30 Sekunden einen neuen Zähler schickt, sonst rot „steht seit …“.</p>
   {{template "hb-shots" (dict "Ref" (index $s "esppdh") "Can" $can)}}
 </section>
 
@@ -3252,7 +3279,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <li><b>Nur mit „Nextcloud mitnehmen“</b> kommen dazu: der Nextcloud-Datenordner, der Programmordner (<code>/var/www/nextcloud</code> samt <code>config.php</code>), <code>/etc/nginx</code>, <code>/etc/ssl/pdh-nextcloud</code> und <code>/etc/letsencrypt</code>. Ohne diesen Haken bleiben nginx-Seiten und Zertifikate auf jedem Server, wie sie sind – Änderungen daran dann auf beiden Servern von Hand machen. Was es auf dem Server nicht gibt, entfällt.</li>
     <li><b>Nie gespiegelt</b> werden <code>/etc/pdh/ha/</code> (gehört zum Rechner), die <code>.env</code> (enthält Serverbezogenes – die Karte warnt, wenn sie sich unterscheidet) und <code>cloudflared</code> (das Token verteilt der Ausfallschutz selbst). Vorschaubilder von Nextcloud und unfertige Hochladungen bleiben ebenfalls weg.</li>
     <li><code>/etc/pdh/pdh.env</code> wird mitgespiegelt; die Karte vergleicht sie zusammen mit der <code>.env</code>. Serverbezogene Werte gehören deshalb in die <code>.env</code>, nie in <code>pdh.env</code> – vor allem das Token des Update-Agenten (<code>PDH_UPDATE_AGENT_TOKEN</code>). Steht es noch in <code>pdh.env</code>, am <b>aktiven</b> Server <code>sudo bash scripts/repair-update-agent-token.sh</code> ausführen: Es nimmt das Token dort heraus, der nächste Abgleich bringt die bereinigte Datei auf den passiven Server; danach das Skript auch am passiven Server ausführen. Nur am passiven Server ausgeführt, käme das Token mit dem nächsten Abgleich zurück.</li>
-    <li>Mit „Nextcloud mitnehmen“ wird <code>/etc/nginx</code> <b>ganz</b> gespiegelt, auch die Seite des PDH. Darum in nginx keine serverbezogenen Zeilen wie <code>listen 10.10.0.5:443</code> verwenden, sondern <code>listen 443</code> bzw. die mitwandernde Adresse.</li>
+    <li>Mit „Nextcloud mitnehmen“ wird <code>/etc/nginx</code> <b>ganz</b> gespiegelt, auch die Seite des PDH. Darum in nginx keine serverbezogenen Zeilen wie <code>listen 192.0.2.5:443</code> verwenden, sondern <code>listen 443</code> bzw. die mitwandernde Adresse.</li>
     <li>Die Spiegelung läuft durch den verschlüsselten Kanal des Verbunds (Port 7480, mit den Zertifikaten der Server). Der Zeuge bekommt keine Dateien.</li>
     <li>Sie läuft nur am aktiven Server, auch bei <b>Automatik aus (Wartung)</b>. PDH und Nextcloud arbeiten weiter, wenn die Übertragung einmal scheitert.</li>
   </ul>
@@ -3462,7 +3489,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <h3 id="hb-zugangsweg"><i class="ti ti-route"></i> Zugangsweg: so finden alle den aktiven Server</h3>
   <p>Nach einem Rollentausch oder Ausfall sollen Benutzer, Leitstand, Terminals und Drucker den neuen aktiven Server von selbst erreichen – ohne dass jemand Lesezeichen oder Geräte umstellt. Dafür gibt es drei Wege, die du einzeln einschaltest:</p>
   <ul>
-    <li><b>Mitwandernde Adresse:</b> eine feste Adresse im LAN (z. B. <code>10.10.0.202</code>), die immer der aktive Server hat. Bei einem Wechsel nimmt sie der neue aktive Server innerhalb weniger Sekunden. Sie ist nie auf zwei Servern zugleich. Zusätzlich kann sie eine IPv6-Adresse begleiten (Feld „IPv6-Ende“).</li>
+    <li><b>Mitwandernde Adresse:</b> eine feste Adresse im LAN (z. B. <code>192.0.2.202</code>), die immer der aktive Server hat. Bei einem Wechsel nimmt sie der neue aktive Server innerhalb weniger Sekunden. Sie ist nie auf zwei Servern zugleich. Zusätzlich kann sie eine IPv6-Adresse begleiten (Feld „IPv6-Ende“).</li>
     <li><b>Cloudflare-Tunnel:</b> läuft auf beiden Servern eingerichtet, aber nur auf dem aktiven.</li>
     <li><b>Skripte beim Rollenwechsel:</b> eigene Skripte, z. B. um einen DNS-Eintrag umzustellen – für alles, was die Adresse allein nicht schafft.</li>
   </ul>
@@ -3472,20 +3499,20 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <p>Du brauchst eine <b>freie Adresse</b> im selben Netz wie beide Server – nicht die eigene Adresse eines Servers oder des Zeugen, außerhalb des DHCP-Bereichs. Soll die bisherige Adresse eines Servers mitwandern, lies zuerst „So stellst du die bisherige Adresse um“.</p>
     <ol class="hb-steps">
       <li>Am aktiven Server <b>Server-Einstellungen → Ausfallschutz</b> öffnen, Karte <b>Zugangsweg</b>.</li>
-      <li>Bei <b>Mitwandernde Adresse</b> die Adresse mit Präfix eintragen, z. B. <code>10.10.0.202/24</code>. Den Haken <b>Adresse mitwandern lassen</b> noch nicht setzen. <b>Speichern</b>.</li>
+      <li>Bei <b>Mitwandernde Adresse</b> die Adresse mit Präfix eintragen, z. B. <code>192.0.2.202/24</code>. Den Haken <b>Adresse mitwandern lassen</b> noch nicht setzen. <b>Speichern</b>.</li>
       <li><b>Testen</b> wählen (Testadresse leer lassen). Der Test legt die Adresse nacheinander auf jeden Server. Alle anderen Teilnehmer prüfen, ob sie dort antwortet – auch der <b>Zeuge</b>. Das dauert meist unter einer halben Minute; kommt ein Teilnehmer nicht gleich durch, versucht er es bis zu 15 Sekunden lang weiter, dann kann der Test bis zu zwei Minuten dauern. Jede Richtung erscheint grün oder rot.</li>
       <li>Ist alles grün: Haken <b>Adresse mitwandern lassen</b> setzen und <b>Speichern</b>. Ohne bestandenen Test lässt sich der Haken nicht speichern.</li>
-      <li>Die Karte zeigt jetzt „10.10.0.202/24 liegt auf …“ mit dem Namen des aktiven Servers. Geräte und Lesezeichen auf diese Adresse umstellen – danach musst du sie nie wieder ändern.</li>
+      <li>Die Karte zeigt jetzt „192.0.2.202/24 liegt auf …“ mit dem Namen des aktiven Servers. Geräte und Lesezeichen auf diese Adresse umstellen – danach musst du sie nie wieder ändern.</li>
     </ol>
     <p>Mit <code>ip addr</code> siehst du die Adresse auf der Netzwerkkarte immer als <code>/32</code>, auch wenn du <code>/24</code> eingetragen hast. Das ist Absicht: So bleibt die feste Adresse des Servers der Absender seiner Verbindungen.</p>
-    <p>Ein bestandener Test gilt für jede Adresse im selben Netz, solange beide Server dieselbe Netzwerkkarte benutzen. In einem anderen Netz oder mit einer anderen Karte testest du neu. Auf der Kommandozeile geht dasselbe mit <code>sudo pdh-ha vip test</code> und <code>sudo pdh-ha access --vip 10.10.0.202/24 --vip-on</code>; ausschalten mit <code>sudo pdh-ha access --vip-off</code>.</p>
+    <p>Ein bestandener Test gilt für jede Adresse im selben Netz, solange beide Server dieselbe Netzwerkkarte benutzen. In einem anderen Netz oder mit einer anderen Karte testest du neu. Auf der Kommandozeile geht dasselbe mit <code>sudo pdh-ha vip test</code> und <code>sudo pdh-ha access --vip 192.0.2.202/24 --vip-on</code>; ausschalten mit <code>sudo pdh-ha access --vip-off</code>.</p>
     <p>Ist die Adresse schon eingeschaltet, testest du mit einer <b>freien Testadresse</b> im selben Netz. Mit der eingeschalteten Adresse selbst lehnt der Test ab („Adresse ist eingeschaltet – mit freier Testadresse testen oder vorher ausschalten“), damit er ihr nicht in die Quere kommt.</p></div>
   <div class="hb-howto"><b><i class="ti ti-network"></i> So lässt du zusätzlich eine IPv6-Adresse mitwandern</b>
     <p>Das ist ein Zusatz. Ohne ihn läuft alles wie bisher. Er gilt nur, wenn die mitwandernde Adresse eingeschaltet ist. Setze das Ende erst, wenn beide Server auf derselben Version sind – vorher lehnt das PDH es ab. Das Netz muss die Adressen selbst verteilen (SLAAC) oder der Server eine feste Adresse im aktuellen Präfix haben; ein Netz, das IPv6 nur einzeln zuteilt (DHCPv6), reicht nicht.</p>
     <ol class="hb-steps">
       <li>Am aktiven Server <b>Server-Einstellungen → Ausfallschutz</b> öffnen, Karte <b>Zugangsweg</b>.</li>
       <li>Im Feld <b>IPv6-Ende (Zusatz)</b> das Ende der Adresse eintragen, z. B. <code>15</code>. Leer heißt: aus. <b>Speichern</b>. Die Meldung nennt das Ende („IPv6-Ende 15 gespeichert“). Sagt sie „Der Verbund-Dienst hat das IPv6-Ende nicht übernommen“, erst beide Server aktualisieren.</li>
-      <li>In der Zeile <b>Mitwandernde Adresse</b> die IPv6-Adresse ablesen, z. B. „… · IPv6 2a02:f90:e198:1700::15“. Das PDH baut sie aus dem Präfix, das euer Anbieter gerade vergibt, und dem Ende.</li>
+      <li>In der Zeile <b>Mitwandernde Adresse</b> die IPv6-Adresse ablesen, z. B. „… · IPv6 2001:db8::15“. Das PDH baut sie aus dem Präfix, das euer Anbieter gerade vergibt, und dem Ende.</li>
     </ol>
     <p>Auf der Kommandozeile geht dasselbe mit <code>sudo pdh-ha access --vip6-ende 15</code>; leeren mit <code>sudo pdh-ha access --vip6-ende ""</code>.</p>
     <ul>
@@ -3522,14 +3549,14 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li><b>Zeuge in einem anderen Netz:</b> Der Zeuge prüft mit. Erreicht er das Netz der Server nicht (z. B. hinter einer Firewall oder nur über einen anderen Weg), scheitert seine Richtung. Den Zeugen ins Netz der Server stellen oder ihm den Weg dorthin freigeben.</li>
     </ul></div>
   <div class="hb-howto"><b><i class="ti ti-arrows-right-left"></i> So stellst du die bisherige Adresse um</b>
-    <p>Beispiel: Alle Geräte kennen den Server unter <code>10.10.0.202</code>. Diese Adresse soll mitwandern. Der Server bekommt dafür eine neue eigene Adresse, z. B. <code>10.10.0.203</code>. Das Skript <code>pdh-ha-adresse.sh</code> führt dich in Schritten durch. Jeder Schritt lässt sich einzeln starten, und am Ende steht immer <b>„Zurücknehmen: …“</b> mit den Befehlen, die ihn rückgängig machen. Änderungen am Netz testet es mit <code>netplan try</code>: Bestätigst du nicht mit <b>ENTER</b>, geht nach 120 Sekunden alles von selbst zurück.</p>
+    <p>Beispiel: Alle Geräte kennen den Server unter <code>192.0.2.202</code>. Diese Adresse soll mitwandern. Der Server bekommt dafür eine neue eigene Adresse, z. B. <code>192.0.2.203</code>. Das Skript <code>pdh-ha-adresse.sh</code> führt dich in Schritten durch. Jeder Schritt lässt sich einzeln starten, und am Ende steht immer <b>„Zurücknehmen: …“</b> mit den Befehlen, die ihn rückgängig machen. Änderungen am Netz testet es mit <code>netplan try</code>: Bestätigst du nicht mit <b>ENTER</b>, geht nach 120 Sekunden alles von selbst zurück.</p>
     <p><b>Wo das Skript liegt:</b> am <b>ersten Server</b> (dort, wo der Ausfallschutz eingerichtet wurde) unter <code>/opt/pdh-server/scripts/pdh-ha-adresse.sh</code>, an <b>beigetretenen Servern</b> unter <code>/opt/pdh-ha-src/scripts/pdh-ha-adresse.sh</code>. In den Befehlen unten steht dafür kurz <code>…/pdh-ha-adresse.sh</code>.</p>
     <ol class="hb-steps">
-      <li><b>Neue eigene Adresse dazu</b> – auf dem Server, der heute <code>.202</code> hat:<br><code>sudo bash …/pdh-ha-adresse.sh neu 10.10.0.203/24</code><br><code>.202</code> bleibt, nichts wird unterbrochen. Das Skript setzt die neue Adresse sofort als Absender für Verbindungen zum Partner (<code>ip route replace …</code>) – ein Neustart ist nicht nötig. Stammt die Netzwerkdatei von cloud-init (<code>50-cloud-init.yaml</code>), schaltet das Skript die Netzwerkkonfiguration von cloud-init ab (<code>/etc/cloud/cloud.cfg.d/99-disable-network-config.cfg</code>) und sagt das an. Sonst käme beim nächsten Start die alte Einstellung zurück.</li>
-      <li><b>Verbund umstellen</b> – am <b>ersten Server</b> (dort, wo der Ausfallschutz eingerichtet wurde):<br><code>sudo bash …/pdh-ha-adresse.sh verbund 10.10.0.203</code><br>Herzschlag und Datenbank-Spiegel laufen danach über <code>.203</code>. PostgreSQL startet dabei kurz neu. Auf einem anderen Server führt das Skript nichts aus, sondern zeigt den Befehl für den ersten Server. Geht die Verbindung zum Partner noch von der alten Adresse aus, bricht es ab und zeigt den Befehl, der das richtet.</li>
-      <li><b>Testen</b> – mit einer freien Testadresse, denn <code>.202</code> ist ja noch belegt:<br><code>sudo bash …/pdh-ha-adresse.sh test 10.10.0.15/24</code><br>Der Test gilt danach auch für <code>.202</code> (gleiches Netz, gleiche Karten). Alternativ in der Karte bei <b>Testadresse</b> eintragen und <b>Testen</b>.</li>
-      <li><b>Prüfliste</b> – zeigt, was <code>.202</code> noch als „genau diesen Server“ benutzt:<br><code>sudo bash …/pdh-ha-adresse.sh pruefliste 10.10.0.202</code><br>Auf <code>.203</code> umstellen: SSH-Zugänge, Überwachung, Firewall-Freigaben nur für <code>.202</code> und vor allem die Netzlaufwerk-Freigabe <b>pdhnas</b> – ein Sicherungsziel darf nicht mitwandern.</li>
-      <li><b>Übergabe</b> – zuerst per SSH über die <b>neue</b> Adresse <code>.203</code> anmelden, dann:<br><code>sudo bash …/pdh-ha-adresse.sh uebergabe 10.10.0.202/24</code><br>Das Skript schaltet <code>.202</code> zuerst als mitwandernde Adresse ein – sie liegt dabei noch fest an, <code>pdh-ha</code> übernimmt sie still. Danach nimmt <code>netplan try</code> sie aus der festen Netzwerkkonfiguration, und <code>pdh-ha</code> setzt sie sofort neu. Die Lücke dauert nur wenige Sekunden, egal wie lange du mit dem Bestätigen brauchst. Bestätigst du nicht, schaltet das Skript die mitwandernde Adresse wieder aus, wartet, bis <code>pdh-ha</code> sie abgegeben hat, und trägt <code>.202</code> wieder fest ein. Vorher prüft es die Einstellung <code>promote_secondaries</code> (sonst nähme der Kernel mit <code>.202</code> auch <code>.203</code> weg) und schaltet sie nach Rückfrage ein. Läuft deine SSH-Sitzung noch über <code>.202</code>, lehnt das Skript ab – sie würde abreißen. Zurücknehmen: erst <code>sudo pdh-ha access --vip-off</code>, warten, bis die Adresse bei niemand liegt, dann die Netzwerkdateien zurück, wie das Skript es ausgibt.</li>
+      <li><b>Neue eigene Adresse dazu</b> – auf dem Server, der heute <code>.202</code> hat:<br><code>sudo bash …/pdh-ha-adresse.sh neu 192.0.2.203/24</code><br><code>.202</code> bleibt, nichts wird unterbrochen. Das Skript setzt die neue Adresse sofort als Absender für Verbindungen zum Partner (<code>ip route replace …</code>) – ein Neustart ist nicht nötig. Stammt die Netzwerkdatei von cloud-init (<code>50-cloud-init.yaml</code>), schaltet das Skript die Netzwerkkonfiguration von cloud-init ab (<code>/etc/cloud/cloud.cfg.d/99-disable-network-config.cfg</code>) und sagt das an. Sonst käme beim nächsten Start die alte Einstellung zurück.</li>
+      <li><b>Verbund umstellen</b> – am <b>ersten Server</b> (dort, wo der Ausfallschutz eingerichtet wurde):<br><code>sudo bash …/pdh-ha-adresse.sh verbund 192.0.2.203</code><br>Herzschlag und Datenbank-Spiegel laufen danach über <code>.203</code>. PostgreSQL startet dabei kurz neu. Auf einem anderen Server führt das Skript nichts aus, sondern zeigt den Befehl für den ersten Server. Geht die Verbindung zum Partner noch von der alten Adresse aus, bricht es ab und zeigt den Befehl, der das richtet.</li>
+      <li><b>Testen</b> – mit einer freien Testadresse, denn <code>.202</code> ist ja noch belegt:<br><code>sudo bash …/pdh-ha-adresse.sh test 192.0.2.15/24</code><br>Der Test gilt danach auch für <code>.202</code> (gleiches Netz, gleiche Karten). Alternativ in der Karte bei <b>Testadresse</b> eintragen und <b>Testen</b>.</li>
+      <li><b>Prüfliste</b> – zeigt, was <code>.202</code> noch als „genau diesen Server“ benutzt:<br><code>sudo bash …/pdh-ha-adresse.sh pruefliste 192.0.2.202</code><br>Auf <code>.203</code> umstellen: SSH-Zugänge, Überwachung, Firewall-Freigaben nur für <code>.202</code> und vor allem die Netzlaufwerk-Freigabe <b>pdhnas</b> – ein Sicherungsziel darf nicht mitwandern.</li>
+      <li><b>Übergabe</b> – zuerst per SSH über die <b>neue</b> Adresse <code>.203</code> anmelden, dann:<br><code>sudo bash …/pdh-ha-adresse.sh uebergabe 192.0.2.202/24</code><br>Das Skript schaltet <code>.202</code> zuerst als mitwandernde Adresse ein – sie liegt dabei noch fest an, <code>pdh-ha</code> übernimmt sie still. Danach nimmt <code>netplan try</code> sie aus der festen Netzwerkkonfiguration, und <code>pdh-ha</code> setzt sie sofort neu. Die Lücke dauert nur wenige Sekunden, egal wie lange du mit dem Bestätigen brauchst. Bestätigst du nicht, schaltet das Skript die mitwandernde Adresse wieder aus, wartet, bis <code>pdh-ha</code> sie abgegeben hat, und trägt <code>.202</code> wieder fest ein. Vorher prüft es die Einstellung <code>promote_secondaries</code> (sonst nähme der Kernel mit <code>.202</code> auch <code>.203</code> weg) und schaltet sie nach Rückfrage ein. Läuft deine SSH-Sitzung noch über <code>.202</code>, lehnt das Skript ab – sie würde abreißen. Zurücknehmen: erst <code>sudo pdh-ha access --vip-off</code>, warten, bis die Adresse bei niemand liegt, dann die Netzwerkdateien zurück, wie das Skript es ausgibt.</li>
     </ol>
     <p>Das Skript gibt am Ende jedes Schritts aus, wie es weitergeht. Gesicherte Netzwerkdateien liegen unter <code>/var/backups/pdh-ha-adresse/</code>. Weitere Angaben: <code>--if NAME</code> (Netzwerkkarte, Standard: die mit der Standardroute), <code>--partner IP</code> (Adresse des anderen Servers für die Absender-Prüfung). Das Skript braucht ein echtes Terminal (wegen <code>netplan try</code>).</p></div>
   <div class="hb-howto"><b><i class="ti ti-cloud-lock"></i> Cloudflare-Tunnel auf beiden Servern</b>
@@ -3573,7 +3600,7 @@ ssh -o BatchMode=yes dnsadmin@dc01 "powershell -NoProfile -Command \"\$a = Get-D
 # /etc/pdh/ha-hooks/10-dns-nsupdate
 [ "$PDH_HA_ROLLE" = "aktiv" ] || exit 0
 nsupdate -k /etc/pdh/dns.key &lt;&lt;EOF
-server 10.10.0.2
+server 192.0.2.2
 update delete pdh.firma.local A
 update add pdh.firma.local 60 A $PDH_HA_EIGENE_ADRESSE
 send

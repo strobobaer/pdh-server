@@ -14,6 +14,7 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.buildCommit=${PDH_B
     && CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-s -w -X main.version=$(tr -d '[:space:]' < VERSION)" -o /out/clients/pdh-data-client-windows-amd64.exe ./cmd/pdh-data-client
 
 FROM ubuntu:24.04 AS app
+LABEL org.opencontainers.image.licenses="AGPL-3.0-or-later"
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -31,6 +32,9 @@ COPY --from=build --chown=10001:10001 /out/pdh ./pdh
 COPY --chown=10001:10001 migrations ./migrations
 COPY --chown=10001:10001 web ./web
 COPY --from=build --chown=10001:10001 /out/clients ./clients
+# Lizenz (AGPL-3.0-or-later), Ausnahme für Ausgaben und Lizenzen der Fremdbestandteile
+COPY LICENSE COPYING.md LICENSE-EXCEPTION.md THIRD_PARTY_LICENSES.md ./licenses/
+COPY third_party/notices ./licenses/notices
 ENV PDH_DATA_CLIENT_DIR=/app/clients
 
 USER 10001:10001
@@ -43,12 +47,15 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=45s --retries=3 \
 ENTRYPOINT ["/app/pdh"]
 
 FROM ubuntu:24.04 AS updater
+LABEL org.opencontainers.image.licenses="AGPL-3.0-or-later"
 
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates curl git util-linux docker.io docker-compose-v2 cifs-utils nfs-common \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=build /out/update-agent /usr/local/bin/update-agent
+COPY LICENSE COPYING.md LICENSE-EXCEPTION.md THIRD_PARTY_LICENSES.md /usr/share/licenses/pdh/
+COPY third_party/notices /usr/share/licenses/pdh/notices
 ENV PDH_UPDATE_REPO_DIR=/repo
 EXPOSE 8091
 ENTRYPOINT ["/usr/local/bin/update-agent"]

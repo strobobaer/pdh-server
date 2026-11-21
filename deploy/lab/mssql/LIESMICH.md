@@ -13,7 +13,7 @@ werden nicht berührt.
 | `postgres` | Postgres 16 für die Go-Tests (`pdh_test`)           | nur `127.0.0.1:54330`               |
 
 SQL Server ist absichtlich auch aus dem LAN erreichbar, weil die spätere
-Abnahme von den Testservern 10.10.0.14 und 10.10.0.17 aus verbindet. Die
+Abnahme von den Testservern 192.0.2.14 und 192.0.2.17 aus verbindet. Die
 Windows-Firewall muss Port 14330 dafür zulassen. Den Postgres erreicht nur der
 eigene Rechner.
 

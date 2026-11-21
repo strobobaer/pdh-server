@@ -100,6 +100,10 @@ html[data-style="fiori"] ewt-install-dialog,html[data-style="fiori"] ewt-no-port
 
 <div>
   <div class="card esp-card">
+    <div class="card-title"><span><i class="ti ti-gauge" aria-hidden="true"></i> Werte</span></div>
+    <div hx-get="/import/esppdh/{{.Dev.ID}}/values" hx-trigger="every 10s" hx-swap="innerHTML">{{template "esppdh-values" (dict "V" .Values "Link" false)}}</div>
+  </div>
+  <div class="card esp-card">
     <div class="card-title"><span><i class="ti ti-key" aria-hidden="true"></i> Zugang am Broker</span></div>
     <dl class="esp-dl">
       {{with .Live.Hint}}<dt>Zustand</dt><dd>{{.}}</dd>{{end}}
@@ -120,6 +124,16 @@ html[data-style="fiori"] ewt-install-dialog,html[data-style="fiori"] ewt-no-port
     </dl>
     <p class="esp-note">Findet das Gerät sein WLAN nicht, öffnet es dieses eigene WLAN. Darüber lässt sich ein anderes WLAN eintragen – ohne das Gerät auszubauen.</p>
     {{end}}
+    <div class="card-title" style="margin-top:16px"><span><i class="ti ti-world-www" aria-hidden="true"></i> Webseite des Geräts</span></div>
+    {{if .Dev.WebEnabled}}
+    <dl class="esp-dl">
+      <dt>Benutzer</dt><dd><code class="esp-mono">pdh</code></dd>
+      <dt>Kennwort</dt><dd id="esp-web-pw">{{if .CanEdit}}<button type="button" class="btn btn-small" hx-post="/import/esppdh/{{.Dev.ID}}/web-password" hx-target="#esp-web-pw" hx-swap="innerHTML"><i class="ti ti-eye" aria-hidden="true"></i> Kennwort anzeigen</button>{{else}}<span class="rec-sub">nur mit dem Recht „ESPPDH: Geräte anlegen, ändern, sperren, bauen und flashen“</span>{{end}}</dd>
+    </dl>
+    {{if .CanEdit}}<form method="POST" action="/import/esppdh/{{.Dev.ID}}/web-password/new" onsubmit="return confirm('Neues Kennwort für die Webseite? Es gilt erst nach dem nächsten Bau und Flashen.')"><button type="submit" class="btn btn-small"><i class="ti ti-refresh" aria-hidden="true"></i> Neues Kennwort</button></form>{{end}}
+    <p class="esp-note">Die Webseite läuft auf dem Gerät (Port 80) und ist nur im Netz der Geräte erreichbar. Firmware lässt sich darüber nicht aufspielen.</p>
+    {{if .WebNeedsInternet}}<p class="esp-note" role="note"><i class="ti ti-info-circle" aria-hidden="true"></i> ESP8266: Die Webseite des Geräts braucht Internet am Browser – für die eingebaute Seite fehlt der Speicher.</p>{{end}}
+    {{else}}<p class="rec-sub">Ausgeschaltet – einschalten unter „Bearbeiten“.</p>{{end}}
   </div>
 
   <div class="card esp-card">
@@ -148,7 +162,7 @@ html[data-style="fiori"] ewt-install-dialog,html[data-style="fiori"] ewt-no-port
 {{/* Firmware: bauen, Verlauf, letzte Läufe (esppdh_build.go, widgets/esppdh_build.gohtml) */}}
 <div class="card esp-card" id="esp-firmware">
   <div class="card-title"><span><i class="ti ti-cpu-2" aria-hidden="true"></i> Firmware</span></div>
-  {{if .Changed}}<div class="esp-fw-changed" role="status"><i class="ti ti-refresh-alert" aria-hidden="true"></i> Konfiguration seit dem letzten Bau geändert – die Firmware passt nicht mehr dazu. Bitte neu bauen und aufspielen.</div>
+  {{if .Changed}}<div class="esp-fw-changed" role="status"><i class="ti ti-refresh-alert" aria-hidden="true"></i> Konfiguration seit dem letzten Bau geändert – die Firmware passt nicht mehr dazu. Bitte neu bauen und aufspielen. Webseite, Adresse und Handshake kommen mit dem nächsten Bau und Flashen.</div>
   {{else if .ChangedUnknown}}<div class="esp-fw-changed" role="status"><i class="ti ti-help-circle" aria-hidden="true"></i> Ob die Firmware noch zur gespeicherten Konfiguration passt, lässt sich gerade nicht prüfen – siehe die Hinweise oben. Per USB flashen geht erst wieder, wenn das geklärt ist.</div>
   {{else if not .Dev.BuiltHash}}<p class="esp-note">Noch keine Firmware gebaut.</p>{{end}}
   {{if .CanBuild}}

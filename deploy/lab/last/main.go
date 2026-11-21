@@ -5,11 +5,13 @@
 // Ablauf (Befehle im Verzeichnis des Repositorys):
 //
 //	go run ./deploy/lab/last -setup   -dsn "postgres://…/pdh" -setup-users 40
-//	go run ./deploy/lab/last -base http://10.10.0.15:8090 -dsn "postgres://…/pdh" -users 25 -duration 10m -out lauf25.md
-//	go run ./deploy/lab/last -base http://10.10.0.15:8090 -dsn "postgres://…/pdh" -users 40 -ramp -ssh michael@10.10.0.17 -out lauf40.md
+//	go run ./deploy/lab/last -base http://192.0.2.15:8090 -dsn "postgres://…/pdh" -users 25 -duration 10m -out lauf25.md
+//	go run ./deploy/lab/last -base http://192.0.2.15:8090 -dsn "postgres://…/pdh" -users 40 -ramp -ssh admin@192.0.2.17 -out lauf40.md
 //	go run ./deploy/lab/last -cleanup -dsn "postgres://…/pdh"
 //
-// Die Adresse 10.10.0.202 (Produktion) wird in -base, -dsn und -ssh abgelehnt.
+// Die Adresse des produktiven Servers wird in -base, -dsn und -ssh abgelehnt.
+// Sie steht in PDH_LAST_PRODUCTION (z. B. PDH_LAST_PRODUCTION=192.0.2.202).
+// Ohne diese Angabe sind nur Ziele auf diesem Rechner erlaubt (localhost).
 package main
 
 import (
@@ -30,7 +32,7 @@ func main() { os.Exit(run(os.Args[1:], os.Stdout, os.Stderr)) }
 func run(args []string, out, errw *os.File) int {
 	fs := flag.NewFlagSet("last", flag.ContinueOnError)
 	fs.SetOutput(errw)
-	base := fs.String("base", "", "Adresse des Test-PDH, z. B. http://10.10.0.15:8090")
+	base := fs.String("base", "", "Adresse des Test-PDH, z. B. http://192.0.2.15:8090")
 	dsn := fs.String("dsn", "", "Datenbank des Test-PDH (für -setup, -cleanup, Zielauswahl und Verbindungszählung)")
 	users := fs.Int("users", 25, "gleichzeitige Benutzer (Stufen: 25 und 40)")
 	duration := fs.Duration("duration", 10*time.Minute, "Dauer des Laufs (bei -ramp einschließlich der Zuschaltzeit)")
@@ -41,7 +43,7 @@ func run(args []string, out, errw *os.File) int {
 	timeout := fs.Duration("timeout", 15*time.Second, "Zeitüberschreitung je Anfrage (gilt als Fehler)")
 	mix := fs.String("mix", defaultMix, "Gewichtung der Tätigkeiten: "+fmt.Sprint(mixKeys))
 	sse := fs.Bool("sse", true, "je Benutzer einen Chat-Stream offen halten wie eine geöffnete Seite")
-	sshHost := fs.String("ssh", "", "Serverlast des aktiven Servers messen, z. B. michael@10.10.0.17")
+	sshHost := fs.String("ssh", "", "Serverlast des aktiven Servers messen, z. B. admin@192.0.2.17")
 	sample := fs.Duration("sample", 5*time.Second, "Abstand der Messungen für Datenbank und Serverlast")
 	outFile := fs.String("out", "", "Ergebnis zusätzlich als Markdown-Datei schreiben")
 	setup := fs.Bool("setup", false, "Testdaten anlegen und beenden")

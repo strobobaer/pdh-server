@@ -346,6 +346,7 @@ type Handler struct {
 	msMu               sync.RWMutex // schützt microsoft (Einstellungen ändern sich im Betrieb)
 	microsoftSyncMu    sync.Mutex
 	mqttBrokers        *mqttbroker.Manager
+	topicSrc           topicSource // nur Tests: ersetzt den Broker für die ESPPDH-Werte (esppdh_values.go)
 	mqttImport         *mqttimport.Manager
 	exportCron         *scheduler.CronManager
 	importPoll         *scheduler.IntervalManager
@@ -593,15 +594,17 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/vpn/peers/{id}/toggle", h.VPNToggleWeb) // aktivieren/deaktivieren (vpn_status.go)
 	r.Get("/vpn/status", h.VPNStatusWeb)
 	r.Get("/plant-watch/{id}/cards", h.PlantWatchCardsWeb)
+	r.Get("/plant-watch/{id}/handshakes", h.PlantWatchHandshakesWeb) // nur Handshake-Zeilen (htmx, alle 10 s, out of band)
 	r.Post("/plant-watch", h.PlantWatchSaveWeb)
 	r.Post("/plant-watch/{id}", h.PlantWatchSaveWeb)
 	r.Post("/plant-watch/{id}/delete", h.PlantWatchDeleteWeb)
 	r.Post("/plant-watch/{id}/toggle", h.PlantWatchToggleWeb)
 	r.Get("/infrastructure/{id}", h.InfraDetail)
-	h.hmiRoutes(r)                                     // HMI-Fernzugriff (VNC) aus der Anlage
-	h.kioskRoutes(r)                                   // Kiosk-Terminals: HMI am Terminal zeigen (kiosk_terminals.go)
-	h.terminalRoutes(r)                                // Anlagenterminal: Schoner, Störungsinfo, Neu (terminal_page.go)
-	r.Post("/infrastructure/{id}/edit", h.InfraUpdate) // FIX: war PUT, wird von Cloudflare/Nginx blockiert
+	r.Get("/infrastructure/{id}/esppdh", h.InfraESPPDHWeb) // Reiter „ESPPDH“ (htmx, alle 10 s)
+	h.hmiRoutes(r)                                         // HMI-Fernzugriff (VNC) aus der Anlage
+	h.kioskRoutes(r)                                       // Kiosk-Terminals: HMI am Terminal zeigen (kiosk_terminals.go)
+	h.terminalRoutes(r)                                    // Anlagenterminal: Schoner, Störungsinfo, Neu (terminal_page.go)
+	r.Post("/infrastructure/{id}/edit", h.InfraUpdate)     // FIX: war PUT, wird von Cloudflare/Nginx blockiert
 	r.Get("/infrastructure/{id}/history", h.InfraHistoryWeb)
 	r.Get("/infrastructure/{id}/history.csv", h.InfraHistoryCSV)
 	r.Post("/infrastructure/{id}/comments", h.InfraCommentAddWeb)
@@ -1166,8 +1169,11 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/import/esppdh/{id}", h.EsppdhSaveWeb)
 	r.Post("/import/esppdh/{id}/lock", h.EsppdhLockWeb)
 	r.Post("/import/esppdh/{id}/password", h.EsppdhPasswordWeb)
+	r.Post("/import/esppdh/{id}/web-password", h.EsppdhWebPasswordWeb)        // Kennwort der Webseite anzeigen (protokolliert)
+	r.Post("/import/esppdh/{id}/web-password/new", h.EsppdhWebPasswordNewWeb) // neues Kennwort der Webseite
 	r.Post("/import/esppdh/{id}/delete", h.EsppdhDeleteWeb)
 	r.Get("/import/esppdh/{id}/config.yaml", h.EsppdhConfigWeb)
+	r.Get("/import/esppdh/{id}/values", h.EsppdhValuesWeb)                   // letzte Werte, Handshake, Adresse (htmx, alle 10 s)
 	r.Post("/import/esppdh/{id}/build", h.EsppdhBuildWeb)                    // Firmware bauen (esppdh_build.go)
 	r.Get("/import/esppdh/{id}/build/{bid}", h.EsppdhBuildPartWeb)           // Verlauf eines Laufs (htmx, alle 2 s)
 	r.Post("/import/esppdh/{id}/build/{bid}/cancel", h.EsppdhBuildCancelWeb) // Bau abbrechen

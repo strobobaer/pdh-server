@@ -10,7 +10,7 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
-## [0.82.11] – 2026-11-21
+## [0.82.13] – 2026-11-21
 
 ### Neu
 
@@ -29,6 +29,31 @@ im Kapitel „Versionen & Updates“ an.
 - Meldet das Terminal die Abmeldung per Karte an das lokale Terminalprogramm, gilt sie nur noch dann als gelungen, wenn PDH sie angenommen hat; bei einem Fehler zeigt die Benachrichtigung die Störung statt „Abgemeldet“.
 - Infobildschirm bei Ausfall von PDH: Nach drei fehlgeschlagenen Abrufen der Folien oder des Ereignisstroms in Folge wechselt ein globales Terminal zur Startseite des Terminalprogramms, die die gespeicherte Folienschau zeigt und nach PDH zurückkehrt, sobald es antwortet. Auch „Zurück“ und die Rückkehrzeit der Vorgang-Ansicht prüfen vorher, ob PDH antwortet.
 - Ein Terminal mit Anlage oder ohne Anlage wird sofort zur Folienschau, wenn es als globales Terminal gekennzeichnet wird; bisher galt das nur für die Info- und Neu-Seiten. Eine noch offene Kartensitzung eines globalen Terminals wird beim Wechsel beendet, und die Meldung „Keine Folien eingerichtet“ nennt den Namen der Instanz statt „PDH“.
+
+## [0.82.12] – 2026-11-21
+
+### Geändert
+
+- PDH steht jetzt unter der Lizenz AGPL-3.0-or-later (vorher GPL-3.0-only); was PDH für dich erzeugt (z. B. SCL-Bausteine, ESPHome-YAML, Exporte), gehört dir (Ausnahme in `LICENSE-EXCEPTION.md`), und `THIRD_PARTY_LICENSES.md` nennt die Lizenzen aller Fremdbestandteile.
+- Das PDH heißt jetzt „PDH – Pulse Data Hub“ (vorher „Prozess Data Hub“); der lange Name steht auf der Anmeldeseite, im Handbuch und in der Nextcloud-App, in der Kopfzeile bleibt es beim kurzen „PDH“.
+- Handbuch, Hilfetexte und Eingabefelder zeigen als Beispiel jetzt neutrale Adressen (z. B. 192.0.2.202 und 2001:db8::15) statt Adressen aus einem echten Netz.
+
+## [0.82.11] – 2026-11-21
+
+### Neu
+
+- ESPPDH-Geräte haben eine eigene Webseite (ESPHome-Webserver Version 3) mit eigenem Kennwort; sie lässt sich je Gerät ausschalten und ist nur im Netz der Geräte erreichbar.
+- ESPPDH-Geräte melden ihre Adresse; die Geräteseite zeigt einen Knopf „Webseite des Geräts“, sobald die Adresse zur Verbindung des Geräts passt.
+- Die Geräteseite zeigt die letzten Werte des Geräts nach Gruppen und seinen Handshake (Laufzeit-Zähler: grün „läuft“, rot „steht seit …“).
+- An der Anlage gibt es den neuen Reiter „ESPPDH“ mit den Geräten dieser Anlage, ihren letzten Werten, dem Handshake und Links zum Gerät.
+- Am Anlagenterminal sieht ein Instandhalter nach der Kartenanmeldung die Sensoren und Handshakes der Anlage samt Unteranlagen.
+- Die Anlagen-Schnellübersicht zeigt je Anlage die Handshakes von ESPPDH-Geräten und Steuerungen (z. B. TIA-Baustein) mit laufendem Zähler; steht einer, wird die Karte gelb.
+
+### Sicherheit
+
+- Das Kennwort der Geräte-Webseite steht verschlüsselt im PDH; „Kennwort anzeigen“ braucht das Recht zum Bearbeiten, und jedes Anzeigen steht im Server-Protokoll.
+- Über die Geräte-Webseite lässt sich im Betrieb keine Firmware aufspielen (nur im Notzugang), und nichts schalten.
+- Neues Recht „ESPPDH: Sensorwerte ansehen (Anlage und Terminal)“ für Administrator, Manager, Anlagenverantwortliche und Techniker.
 
 ## [0.82.10] – 2026-11-21
 

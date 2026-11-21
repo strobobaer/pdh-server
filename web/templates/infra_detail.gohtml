@@ -86,6 +86,7 @@
   <a class="rec-tab" data-tab="fields" href="?tab=fields"><i class="ti ti-forms"></i> Feldsätze</a>
   <a class="rec-tab" data-tab="docs" href="?tab=docs"><i class="ti ti-paperclip"></i> Dokumente</a>
   {{if or .HMI.View .HMI.Manage .HMI.Kiosk}}<a class="rec-tab" data-tab="hmi" href="?tab=hmi"><i class="ti ti-device-desktop-analytics"></i> HMI</a>{{end}}
+  {{if .ESPPDHTab}}<a class="rec-tab" data-tab="esppdh" href="?tab=esppdh"><i class="ti ti-cpu"></i> ESPPDH</a>{{end}}
   <a class="rec-tab" data-tab="links" href="?tab=links"><i class="ti ti-link"></i> Verknüpfungen</a>
   <a class="rec-tab" data-tab="history" href="?tab=history"><i class="ti ti-history"></i> Änderungen</a>
 </div>
@@ -405,6 +406,14 @@
 </div>
 
 <!-- ── HMI-Fernzugriff (VNC) ── -->
+{{if .ESPPDHTab}}
+<!-- ── ESPPDH: Geräte dieser Anlage mit Werten und Handshake (infra_esppdh.go) ── -->
+<div class="rec-pane" data-pane="esppdh">
+  <div class="card"><div class="card-title"><span><i class="ti ti-cpu" aria-hidden="true"></i> ESPPDH-Geräte dieser Anlage</span></div>
+  <div hx-get="/infrastructure/{{.Node.ID}}/esppdh" hx-trigger="load, every 10s" hx-swap="innerHTML"><p class="rec-sub">Werte werden geladen …</p></div></div>
+</div>
+{{end}}
+
 {{if or .HMI.View .HMI.Manage .HMI.Kiosk}}
 <div class="rec-pane" data-pane="hmi">
   {{/* Leiste für „Letzte Zugriffe“: das Skript setzt sie in jedes aufgeklappte Protokoll und lädt mit ls_hmi neu */}}

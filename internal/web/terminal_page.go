@@ -86,6 +86,7 @@ func (h *Handler) terminalRoutes(r chi.Router) {
 	r.Get("/terminal/slides.json", h.TerminalSlidesJSON)
 	r.Get("/terminal/slides/{id}/image", h.TerminalSlideImage)
 	r.Get("/terminal/vorgang/{kind}/{id}", h.TerminalVorgang)
+	r.Get("/terminal/sensors.json", h.TerminalSensorsJSON) // ESPPDH-Sensoren nach Kartenanmeldung (terminal_sensors.go)
 	r.Get("/terminal/terminal.js", h.TerminalScript)
 	h.cardRoutes(r)
 }

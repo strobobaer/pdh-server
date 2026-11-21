@@ -345,7 +345,7 @@ func TestValidateDevice(t *testing.T) {
 		{"Port", func(d *Device) { d.BrokerPort = 0 }, []string{"Port"}},
 		{"Benutzer", func(d *Device) { d.MQTTUser = "pdh" }, []string{"MQTT-Benutzer", "esppdh-halle1-s0"}},
 		{"MQTT-Kennwort", func(d *Device) { d.MQTTPassword = "" }, []string{"MQTT-Kennwort"}},
-		{"TLS mit IP", func(d *Device) { d.BrokerTLS, d.BrokerHost = true, "10.10.0.15" }, []string{"TLS", "Namen"}},
+		{"TLS mit IP", func(d *Device) { d.BrokerTLS, d.BrokerHost = true, "192.0.2.15" }, []string{"TLS", "Namen"}},
 		{"TLS am ESP8266", func(d *Device) {
 			d.BrokerTLS, d.BoardKey = true, "d1-mini"
 			d.Blocks = []Block{{Kind: "s0", Nr: 1, Params: map[string]string{"pin": "D5"}}}

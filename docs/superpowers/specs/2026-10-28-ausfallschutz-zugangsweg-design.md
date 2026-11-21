@@ -16,8 +16,8 @@ Samba/Netzlaufwerke.
 
 Entscheidungen des Nutzers:
 
-- Beide Server stehen im **gleichen Netz** (heute 10.10.0.x).
-- Die heutige Adresse der Produktion **10.10.0.202 wird die mitwandernde
+- Beide Server stehen im **gleichen Netz** (heute 192.0.2.x).
+- Die heutige Adresse der Produktion **192.0.2.202 wird die mitwandernde
   Adresse**; der Produktionsserver bekommt beim Einstieg in den Verbund einmalig
   eine neue eigene Adresse (z. B. .203).
 - DNS: **für alle Wege offen** – kein fester Anschluss an einen DNS-Server,
@@ -56,7 +56,7 @@ Erfolgskriterien:
 
 - In der gemeinsamen Verbund-Konfiguration (`clusterConfig`) kommt ein Block
   `access` dazu:
-  `vip` (Adresse mit Präfix, z. B. `10.10.0.202/24`), `vip_on` (Schalter),
+  `vip` (Adresse mit Präfix, z. B. `192.0.2.202/24`), `vip_on` (Schalter),
   `hooks_on` (Schalter, siehe 4). Verteilung wie die übrigen Einstellungen
   (Version hochzählen, Konfigurationsübergabe über Port 7480).
 - Knotenspezifisch in `/etc/pdh/ha/node.json` optional `vip_interface`.
@@ -110,7 +110,7 @@ Sonderregel (siehe 2.5). Ist `vip_on` aus, passiert nichts.
 
 - Vor jedem Übernehmen, sofern der Server die Adresse nicht schon hat:
   `arping -D -c 2 -w 3 -I <karte> <ip>`. Antwortet ein anderes Gerät →
-  **nicht übernehmen**, Alarm „Adresse 10.10.0.202 wird noch von einem anderen
+  **nicht übernehmen**, Alarm „Adresse 192.0.2.202 wird noch von einem anderen
   Gerät benutzt (MAC …)“, neuer Versuch im Abgleich (2.5), Alarm höchstens
   einmal je Stunde (Ereignis-Entprellung wie in Teil 4).
 - Die Datenbank-Übernahme bleibt davon unberührt; der neue aktive Server ist
@@ -235,7 +235,7 @@ Ist-Zustand, unabhängig von einzelnen Aktionen:
      Ergebnis, Schalter.
 - Speichern läuft über die vorhandenen Routen unter
   `/admin/server-config/ha/` (am Spiegel bereits erlaubt).
-- `pdh-ha status` (Text und `--json`): Zeilen „Adresse 10.10.0.202: hier“ bzw.
+- `pdh-ha status` (Text und `--json`): Zeilen „Adresse 192.0.2.202: hier“ bzw.
   „bei pdh-server“, „Tunnel: läuft hier / aus“, „Skripte: 2, gleich, letzter
   Lauf ok“.
 - Spiegel-Hinweis aus Teil 4 („Bitte den aktiven Server verwenden“): Link auf
@@ -273,7 +273,7 @@ Produktion** (die Testserver sichern dorthin – ein Sicherungsziel darf nicht
 mitwandern).
 
 Reihenfolge: zuerst Testverbund .14/.17 mit der freien Testadresse
-**10.10.0.15** (vom Nutzer genannt, außerhalb des DHCP-Bereichs) als
+**192.0.2.15** (vom Nutzer genannt, außerhalb des DHCP-Bereichs) als
 mitwandernder Adresse; Produktion erst, wenn dort ein
 zweiter Server existiert – bis dahin ändert sich an .202 nichts.
 

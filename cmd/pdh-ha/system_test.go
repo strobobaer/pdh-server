@@ -9,10 +9,10 @@ import (
 
 func TestDefaultGateway(t *testing.T) {
 	route := "Iface\tDestination\tGateway \tFlags\tRefCnt\tUse\tMetric\tMask\t\tMTU\tWindow\tIRTT\n" +
-		"eth0\t00000A0A\t00000000\t0001\t0\t0\t0\t0000FFFF\t0\t0\t0\n" +
-		"eth0\t00000000\t01000A0A\t0003\t0\t0\t100\t00000000\t0\t0\t0\n"
+		"eth0\t000200C0\t00000000\t0001\t0\t0\t0\t00FFFFFF\t0\t0\t0\n" +
+		"eth0\t00000000\t010200C0\t0003\t0\t0\t100\t00000000\t0\t0\t0\n"
 	gw, err := defaultGateway(route)
-	if err != nil || gw != "10.10.0.1" {
+	if err != nil || gw != "192.0.2.1" {
 		t.Fatalf("%q %v", gw, err)
 	}
 	if _, err := defaultGateway("Iface\tDestination\tGateway\n"); err == nil {

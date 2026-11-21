@@ -14,9 +14,9 @@ import (
 )
 
 func TestHeartbeatNetField(t *testing.T) {
-	own := &hostnet.Summary{Iface: "eth0", Addr: "10.10.0.17/24", Mode: hostnet.ModeStatic, Gateway: "10.10.0.1",
-		DNS: []string{"10.10.0.1"}, Netplan: true}
-	peer := &hostnet.Summary{Iface: "eth0", Addr: "10.10.0.14/24", Mode: hostnet.ModeDHCP}
+	own := &hostnet.Summary{Iface: "eth0", Addr: "192.0.2.17/24", Mode: hostnet.ModeStatic, Gateway: "192.0.2.1",
+		DNS: []string{"192.0.2.1"}, Netplan: true}
+	peer := &hostnet.Summary{Iface: "eth0", Addr: "192.0.2.14/24", Mode: hostnet.ModeDHCP}
 	fn := newFakeNet()
 	fn.setView("b", seenView(message{Role: "passiv", Term: 1, Ver: "test", Net: peer}))
 	d := fakeDaemon(t, nodeConfig{ID: "a", Kind: "node"}, duoCluster(), ha.Persisted{Role: ha.Active, Term: 1}, fn)
@@ -33,7 +33,7 @@ func TestHeartbeatNetField(t *testing.T) {
 		t.Fatalf("JSON %s (%v)", b, err)
 	}
 	st := d.statusNow()
-	if st.Self.Net == nil || st.Self.Net.Addr != "10.10.0.17/24" || len(st.Peers) != 1 || st.Peers[0].Net == nil || st.Peers[0].Net.Addr != "10.10.0.14/24" {
+	if st.Self.Net == nil || st.Self.Net.Addr != "192.0.2.17/24" || len(st.Peers) != 1 || st.Peers[0].Net == nil || st.Peers[0].Net.Addr != "192.0.2.14/24" {
 		t.Fatalf("self %+v, peers %+v", st.Self.Net, st.Peers)
 	}
 	if sb, _ := json.Marshal(st); !strings.Contains(string(sb), `"net":{`) {
@@ -164,10 +164,10 @@ func TestCollectNetUsesSys(t *testing.T) {
 	d := fakeDaemon(t, nodeConfig{ID: "a", Kind: "node"}, duoCluster(), ha.Persisted{Role: ha.Active, Term: 1}, newFakeNet())
 	d.netCollect = nil
 	f := &fakeRunner{}
-	f.on("ip -4 route show default", "", "default via 10.10.0.1 dev eth0 proto dhcp\n", nil)
+	f.on("ip -4 route show default", "", "default via 192.0.2.1 dev eth0 proto dhcp\n", nil)
 	d.sys = f
 	s := d.collectNet(context.Background())
-	if s.Gateway != "10.10.0.1" || s.Iface != "eth0" {
+	if s.Gateway != "192.0.2.1" || s.Iface != "eth0" {
 		t.Fatalf("%+v", s)
 	}
 }

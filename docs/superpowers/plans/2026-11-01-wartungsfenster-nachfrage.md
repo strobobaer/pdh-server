@@ -25,7 +25,7 @@
 - Farben im PDH nur über Variablen (`--bg`, `--bg2`, `--text`, `--muted`, `--border`, `--accent`, `--amber`, `--red`). Fiori und Fluent, hell und dunkel.
 - Versionierung: Einträge in den obersten CHANGELOG-Abschnitt `0.77.8`, solange `git show origin/main:VERSION` nicht `0.77.8` ist; sonst nächste Korrekturversion.
 - Commits ohne Zuschreibungszeilen. Kein Push, kein Merge ohne ausdrückliche Freigabe.
-- Der Produktionsserver 10.10.0.202 wird nie angefasst.
+- Der Produktionsserver 192.0.2.202 wird nie angefasst.
 
 ## Review Focus
 
@@ -300,5 +300,5 @@
 ### Abschluss (nach Task 5)
 
 - Gesamtprüfung: `go test ./...`, `go build ./...`, `go vet ./...`.
-- Abnahme auf den Testservern nach Spec Abschnitt 9 (5 Fälle). Nie 10.10.0.202.
+- Abnahme auf den Testservern nach Spec Abschnitt 9 (5 Fälle). Nie 192.0.2.202.
 - Prüfung vor dem Merge laut AGENTS.md. Push und Merge nur mit Freigabe.

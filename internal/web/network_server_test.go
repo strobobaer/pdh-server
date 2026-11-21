@@ -27,8 +27,8 @@ import (
 // agentJSON), Ausfallschutz und DNS-Prüfung über Haken. Kein Docker, keine Datenbank.
 
 const (
-	netSrvNet       = `"net":{"if":"eth0","addr":"10.10.0.17/24","mode":"%s","gw":"10.10.0.1","dns":["10.10.0.1","1.1.1.1"],"v6":["2a02:db8::17"],"np":true}`
-	netSrvNoNetplan = `{"ok":true,"net":{"if":"eth0","addr":"10.10.0.17/24","mode":"unknown","gw":"10.10.0.1","dns":["10.10.0.1"]},"running":false}`
+	netSrvNet       = `"net":{"if":"eth0","addr":"192.0.2.17/24","mode":"%s","gw":"192.0.2.1","dns":["192.0.2.1","1.1.1.1"],"v6":["2a02:db8::17"],"np":true}`
+	netSrvNoNetplan = `{"ok":true,"net":{"if":"eth0","addr":"192.0.2.17/24","mode":"unknown","gw":"192.0.2.1","dns":["192.0.2.1"]},"running":false}`
 	netSrvApplyOK   = `{"ok":true,"running":true}`
 	netSrvConfirmOK = `{"ok":true}`
 )
@@ -148,7 +148,7 @@ func netSrvEnv(t *testing.T) *netSrvFix {
 		io.WriteString(w, answer)
 	}))
 	t.Cleanup(srv.Close)
-	f := &netSrvFix{ag: ag, host: "10.10.0.17:8090", haErr: errNetNoHA,
+	f := &netSrvFix{ag: ag, host: "192.0.2.17:8090", haErr: errNetNoHA,
 		perms: map[string]bool{permNetwork: true, "system.server_config": true}, probeBad: map[string]bool{}}
 	f.h = &Handler{tmpl: loadTestTemplates(t), updateAgentURL: srv.URL, updateAgentToken: "tok"}
 	f.h.hasPermHook = func(_ *http.Request, p string) bool { f.mu.Lock(); defer f.mu.Unlock(); return f.perms[p] }
@@ -207,18 +207,18 @@ func (f *netSrvFix) card(t *testing.T) string {
 }
 
 // netSrvCluster: Verbund aus „pdh-server“ (dieser Server, Rolle self) und „pdh“ samt Zeuge;
-// die gemeinsame Adresse 10.10.0.15 hält holder.
+// die gemeinsame Adresse 192.0.2.15 hält holder.
 func netSrvCluster(self, peer, holder string) haStatus {
 	return haStatus{Configured: true, Mode: "duo",
 		Self: haNode{ID: "pdh-server", Kind: "node", Role: self, Seen: true,
-			Net: &hostnet.Summary{Iface: "eth0", Addr: "10.10.0.17/24", Mode: hostnet.ModeDHCP, Gateway: "10.10.0.1", Netplan: true}},
+			Net: &hostnet.Summary{Iface: "eth0", Addr: "192.0.2.17/24", Mode: hostnet.ModeDHCP, Gateway: "192.0.2.1", Netplan: true}},
 		Peers: []haNode{
-			{ID: "pdh", Kind: "node", Role: peer, Seen: true, Paths: []haPath{{Addr: "10.10.0.14:7946", Alive: true}},
-				Net: &hostnet.Summary{Iface: "ens18", Addr: "10.10.0.14/24", Mode: hostnet.ModeStatic, Gateway: "10.10.0.1",
-					DNS: []string{"10.10.0.1", "9.9.9.9"}, IPv6: []string{"2a02:db8::14"}, Netplan: true}},
-			{ID: "zeuge-1", Kind: "witness", Role: "zeuge", Seen: true, Paths: []haPath{{Addr: "10.10.0.231:7946", Alive: true}}},
+			{ID: "pdh", Kind: "node", Role: peer, Seen: true, Paths: []haPath{{Addr: "192.0.2.14:7946", Alive: true}},
+				Net: &hostnet.Summary{Iface: "ens18", Addr: "192.0.2.14/24", Mode: hostnet.ModeStatic, Gateway: "192.0.2.1",
+					DNS: []string{"192.0.2.1", "9.9.9.9"}, IPv6: []string{"2a02:db8::14"}, Netplan: true}},
+			{ID: "zeuge-1", Kind: "witness", Role: "zeuge", Seen: true, Paths: []haPath{{Addr: "192.0.2.231:7946", Alive: true}}},
 		},
-		Access: haAccess{VIP: "10.10.0.15/24", VIPOn: true, Holder: holder}}
+		Access: haAccess{VIP: "192.0.2.15/24", VIPOn: true, Holder: holder}}
 }
 
 // netSrvParts: Karten des Fragments – [0] eigene, danach Partner (Trenner data-nw-card).
@@ -246,7 +246,7 @@ func TestNetServerCardSingle(t *testing.T) {
 	if self == "" || len(peers) != 0 {
 		t.Fatalf("ohne Verbund genau eine Karte erwartet: %d Partner\n%s", len(peers), body)
 	}
-	for _, want := range []string{host, "automatisch (DHCP)", "10.10.0.17/24", "eth0", "10.10.0.1, 1.1.1.1", "2a02:db8::17",
+	for _, want := range []string{host, "automatisch (DHCP)", "192.0.2.17/24", "eth0", "192.0.2.1, 1.1.1.1", "2a02:db8::17",
 		netSrvFixBtn, netSrvDNSBtn, "Jetzige Adresse fest einstellen", "DNS-Server ändern",
 		"Die automatische Konfiguration durch cloud-init wird abgeschaltet.",
 		"Danach 2 Minuten Zeit zum Bestätigen – sonst stellt der Server die vorige Einstellung von selbst wieder her.",
@@ -282,7 +282,7 @@ func TestNetServerCardSingle(t *testing.T) {
 			t.Errorf("%s: Status %d, Knöpfe sichtbar=%v", name, w.Code, strings.Contains(b, "hx-post"))
 		}
 		for _, fn := range []http.HandlerFunc{f.h.NetworkServerFixWeb, f.h.NetworkServerDNSWeb, f.h.NetworkServerConfirmWeb} {
-			if w := f.do(fn, http.MethodPost, role, url.Values{"dns1": {"10.10.0.1"}, "id": {"x1"}}); w.Code != http.StatusForbidden {
+			if w := f.do(fn, http.MethodPost, role, url.Values{"dns1": {"192.0.2.1"}, "id": {"x1"}}); w.Code != http.StatusForbidden {
 				t.Errorf("%s: POST Status %d", name, w.Code)
 			}
 		}
@@ -299,7 +299,7 @@ func TestNetServerCardSingle(t *testing.T) {
 
 func TestNetServerCardCluster(t *testing.T) {
 	f := netSrvEnv(t)
-	f.host = "10.10.0.15:8090" // Seite über die gemeinsame Adresse
+	f.host = "192.0.2.15:8090" // Seite über die gemeinsame Adresse
 	f.setHA(netSrvCluster("aktiv", "passiv", "pdh-server"), nil)
 	body := f.card(t)
 	self, peers := netSrvParts(body)
@@ -310,16 +310,16 @@ func TestNetServerCardCluster(t *testing.T) {
 	if strings.Contains(body, "zeuge-1") {
 		t.Error("Zeuge hat eine Karte")
 	}
-	for _, want := range []string{"pdh-server (aktiv)", "Gemeinsame", "10.10.0.15</span> hier", netSrvFixBtn, netSrvDNSBtn,
+	for _, want := range []string{"pdh-server (aktiv)", "Gemeinsame", "192.0.2.15</span> hier", netSrvFixBtn, netSrvDNSBtn,
 		"Die gemeinsame Adresse ist dabei einige Sekunden weg. Am besten zuerst den Spiegel ändern.",
-		"Diese Seite läuft über 10.10.0.15. Für diese Aktion besser die eigene Adresse des Servers nehmen:",
-		`href="http://10.10.0.17:8090/admin/network"`} {
+		"Diese Seite läuft über 192.0.2.15. Für diese Aktion besser die eigene Adresse des Servers nehmen:",
+		`href="http://192.0.2.17:8090/admin/network"`} {
 		if !strings.Contains(self, want) {
 			t.Errorf("eigene Karte ohne %q", want)
 		}
 	}
-	for _, want := range []string{"pdh (Spiegel)", "ens18", "10.10.0.14/24", "fest", "10.10.0.1, 9.9.9.9", "2a02:db8::14",
-		`href="http://10.10.0.14:8090/admin/network"`, "Auf pdh öffnen ↗"} {
+	for _, want := range []string{"pdh (Spiegel)", "ens18", "192.0.2.14/24", "fest", "192.0.2.1, 9.9.9.9", "2a02:db8::14",
+		`href="http://192.0.2.14:8090/admin/network"`, "Auf pdh öffnen ↗"} {
 		if !strings.Contains(peer, want) {
 			t.Errorf("Partnerkarte ohne %q", want)
 		}
@@ -339,7 +339,7 @@ func TestNetServerCardCluster(t *testing.T) {
 	// Halter ist der Partner: „hier“ steht dort
 	f.setHA(netSrvCluster("passiv", "aktiv", "pdh"), nil)
 	self, peers = netSrvParts(f.card(t))
-	if strings.Contains(self, " hier") || !strings.Contains(peers[0], "10.10.0.15</span> hier") || !strings.Contains(self, "pdh-server (Spiegel)") {
+	if strings.Contains(self, " hier") || !strings.Contains(peers[0], "192.0.2.15</span> hier") || !strings.Contains(self, "pdh-server (Spiegel)") {
 		t.Errorf("Halter beim Partner: eigene %q", self)
 	}
 	if strings.Contains(self, "einige Sekunden weg") {
@@ -355,7 +355,7 @@ func TestNetServerCardDockerAndUnsupported(t *testing.T) {
 		t.Errorf("Docker: %s", body)
 	}
 	for _, fn := range []http.HandlerFunc{f.h.NetworkServerFixWeb, f.h.NetworkServerDNSWeb, f.h.NetworkServerConfirmWeb} {
-		w := f.do(fn, http.MethodPost, users.RoleAdmin, url.Values{"dns1": {"10.10.0.1"}, "id": {"x1"}})
+		w := f.do(fn, http.MethodPost, users.RoleAdmin, url.Values{"dns1": {"192.0.2.1"}, "id": {"x1"}})
 		if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "Im Docker-Testsystem nicht verfügbar") {
 			t.Errorf("Docker POST: %d %s", w.Code, w.Body.String())
 		}
@@ -368,7 +368,7 @@ func TestNetServerCardDockerAndUnsupported(t *testing.T) {
 	esppdhDockerHook = func() bool { return false }
 	f.ag.set(netSrvNoNetplan)
 	body = f.card(t)
-	for _, want := range []string{"unbekannt", "Fest einstellen nur auf Ubuntu-Servern mit netplan", "10.10.0.17/24"} {
+	for _, want := range []string{"unbekannt", "Fest einstellen nur auf Ubuntu-Servern mit netplan", "192.0.2.17/24"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("ohne netplan ohne %q", want)
 		}
@@ -377,7 +377,7 @@ func TestNetServerCardDockerAndUnsupported(t *testing.T) {
 		t.Error("ohne netplan Knöpfe sichtbar")
 	}
 	for _, fn := range []http.HandlerFunc{f.h.NetworkServerFixWeb, f.h.NetworkServerDNSWeb} {
-		if b := f.do(fn, http.MethodPost, users.RoleAdmin, url.Values{"dns1": {"10.10.0.1"}}).Body.String(); !strings.Contains(b, "Fest einstellen nur auf Ubuntu-Servern mit netplan") {
+		if b := f.do(fn, http.MethodPost, users.RoleAdmin, url.Values{"dns1": {"192.0.2.1"}}).Body.String(); !strings.Contains(b, "Fest einstellen nur auf Ubuntu-Servern mit netplan") {
 			t.Errorf("POST ohne netplan: %s", b)
 		}
 	}
@@ -431,7 +431,7 @@ func TestNetServerBlocked(t *testing.T) {
 			t.Errorf("%s: Text %q fehlt oder Knöpfe sichtbar", name, want)
 		}
 		for _, fn := range []http.HandlerFunc{f.h.NetworkServerFixWeb, f.h.NetworkServerDNSWeb} {
-			if b := f.do(fn, http.MethodPost, users.RoleAdmin, url.Values{"dns1": {"10.10.0.1"}}).Body.String(); !strings.Contains(b, want) {
+			if b := f.do(fn, http.MethodPost, users.RoleAdmin, url.Values{"dns1": {"192.0.2.1"}}).Body.String(); !strings.Contains(b, want) {
 				t.Errorf("%s: POST ohne Grund: %s", name, b)
 			}
 		}
@@ -491,7 +491,7 @@ func TestNetServerApply(t *testing.T) {
 	log.Logger = zerolog.New(&buf)
 	t.Cleanup(func() { log.Logger = oldLog })
 
-	form := url.Values{"dns1": {" 10.10.0.1 "}, "dns2": {"1.1.1.1"}, "dns3": {""}}
+	form := url.Values{"dns1": {" 192.0.2.1 "}, "dns2": {"1.1.1.1"}, "dns3": {""}}
 	for _, c := range []struct {
 		name  string
 		st    haStatus
@@ -509,7 +509,7 @@ func TestNetServerApply(t *testing.T) {
 		f.probes = nil
 		f.mu.Unlock()
 		w := f.do(f.h.NetworkServerDNSWeb, http.MethodPost, users.RoleAdmin, form)
-		want := `POST /v1/net/apply {"action":"dns","dns":["10.10.0.1","1.1.1.1"],"by":"Ada Admin","ha_maint":` + strconv.FormatBool(c.maint) + `}`
+		want := `POST /v1/net/apply {"action":"dns","dns":["192.0.2.1","1.1.1.1"],"by":"Ada Admin","ha_maint":` + strconv.FormatBool(c.maint) + `}`
 		var got []string
 		for _, call := range f.ag.log() {
 			if strings.HasPrefix(call, "POST") {
@@ -525,12 +525,12 @@ func TestNetServerApply(t *testing.T) {
 		f.mu.Lock()
 		probes := strings.Join(f.probes, ",")
 		f.mu.Unlock()
-		if !strings.Contains(probes, "10.10.0.1") || !strings.Contains(probes, "1.1.1.1") {
+		if !strings.Contains(probes, "192.0.2.1") || !strings.Contains(probes, "1.1.1.1") {
 			t.Errorf("%s: DNS-Prüfung %q", c.name, probes)
 		}
 	}
 	// Protokoll: Benutzer, Aktion, DNS-Server
-	if l := buf.String(); !strings.Contains(l, `"benutzer":"u-netsrv"`) || !strings.Contains(l, `"aktion":"dns"`) || !strings.Contains(l, `"dns":["10.10.0.1","1.1.1.1"]`) || !strings.Contains(l, `"bereich":"netzwerk"`) {
+	if l := buf.String(); !strings.Contains(l, `"benutzer":"u-netsrv"`) || !strings.Contains(l, `"aktion":"dns"`) || !strings.Contains(l, `"dns":["192.0.2.1","1.1.1.1"]`) || !strings.Contains(l, `"bereich":"netzwerk"`) {
 		t.Errorf("Protokoll: %s", l)
 	}
 
@@ -552,7 +552,7 @@ func TestNetServerApply(t *testing.T) {
 		{"dns1": {"1.1.1.1"}, "dns2": {"dns.google"}},
 	} {
 		b := f.do(f.h.NetworkServerDNSWeb, http.MethodPost, users.RoleAdmin, bad).Body.String()
-		if !strings.Contains(b, "DNS-Server: bitte ein bis drei IPv4-Adressen eingeben, z. B. 10.10.0.1.") {
+		if !strings.Contains(b, "DNS-Server: bitte ein bis drei IPv4-Adressen eingeben, z. B. 192.0.2.1.") {
 			t.Errorf("%v: Hinweis fehlt", bad)
 		}
 	}
@@ -560,7 +560,7 @@ func TestNetServerApply(t *testing.T) {
 	f.mu.Lock()
 	f.probeBad["1.1.1.1"] = true
 	f.mu.Unlock()
-	b := f.do(f.h.NetworkServerDNSWeb, http.MethodPost, users.RoleAdmin, url.Values{"dns1": {"10.10.0.1"}, "dns2": {"1.1.1.1"}}).Body.String()
+	b := f.do(f.h.NetworkServerDNSWeb, http.MethodPost, users.RoleAdmin, url.Values{"dns1": {"192.0.2.1"}, "dns2": {"1.1.1.1"}}).Body.String()
 	if !strings.Contains(b, "Der DNS-Server 1.1.1.1 antwortet nicht – es wurde nichts geändert.") {
 		t.Errorf("DNS-Prüfung gescheitert ohne Hinweis: %s", b)
 	}
@@ -572,21 +572,21 @@ func TestNetServerApply(t *testing.T) {
 	}
 	// der Agent lehnt ab: seine Meldung steht in der Karte
 	f.ag.with(func(a *netSrvAgent) { a.apply = `{"ok":false,"error":"Eine Änderung wartet noch auf Bestätigung"}` })
-	b = f.do(f.h.NetworkServerDNSWeb, http.MethodPost, users.RoleAdmin, url.Values{"dns1": {"10.10.0.1"}}).Body.String()
+	b = f.do(f.h.NetworkServerDNSWeb, http.MethodPost, users.RoleAdmin, url.Values{"dns1": {"192.0.2.1"}}).Body.String()
 	if !strings.Contains(b, "Eine Änderung wartet noch auf Bestätigung") {
 		t.Errorf("Ablehnung des Agenten fehlt: %s", b)
 	}
 }
 
 func TestNetServerDNSForm(t *testing.T) {
-	got, msg := netDNSForm(url.Values{"dns1": {" 10.10.0.1"}, "dns2": {""}, "dns3": {"1.1.1.1 "}})
-	if msg != "" || strings.Join(got, ",") != "10.10.0.1,1.1.1.1" {
+	got, msg := netDNSForm(url.Values{"dns1": {" 192.0.2.1"}, "dns2": {""}, "dns3": {"1.1.1.1 "}})
+	if msg != "" || strings.Join(got, ",") != "192.0.2.1,1.1.1.1" {
 		t.Errorf("gültig: %v %q", got, msg)
 	}
 	if got, msg := netDNSForm(url.Values{"dns1": {"1.1.1.1"}, "dns2": {"1.1.1.1"}}); msg != "" || len(got) != 1 {
 		t.Errorf("doppelt: %v %q", got, msg)
 	}
-	for _, bad := range []url.Values{{}, {"dns1": {"0.0.0.0"}}, {"dns1": {"255.255.255.255"}}, {"dns1": {"169.254.1.1"}}, {"dns1": {"10.10.0.1/24"}}} {
+	for _, bad := range []url.Values{{}, {"dns1": {"0.0.0.0"}}, {"dns1": {"255.255.255.255"}}, {"dns1": {"169.254.1.1"}}, {"dns1": {"192.0.2.1/24"}}} {
 		if _, msg := netDNSForm(bad); msg == "" {
 			t.Errorf("%v gilt als gültig", bad)
 		}
@@ -744,7 +744,7 @@ func TestNetServerConfirmWaitsForVIP(t *testing.T) {
 
 	f.setHA(netSrvCluster("aktiv", "passiv", ""), nil) // Adresse liegt gerade bei niemandem
 	self, _ := netSrvParts(f.card(t))
-	if strings.Contains(self, "Seite erreichbar – Einstellung behalten") || !strings.Contains(self, "gemeinsame Adresse 10.10.0.15 ist noch nicht zurück") {
+	if strings.Contains(self, "Seite erreichbar – Einstellung behalten") || !strings.Contains(self, "gemeinsame Adresse 192.0.2.15 ist noch nicht zurück") {
 		t.Errorf("ohne gemeinsame Adresse: %s", self)
 	}
 	b := f.do(f.h.NetworkServerConfirmWeb, http.MethodPost, users.RoleAdmin, url.Values{"id": {"20261120-4712"}}).Body.String()

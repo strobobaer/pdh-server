@@ -17,8 +17,8 @@ import (
 )
 
 // Aufgezeichnete Ausgaben (Ubuntu 24.04, ip -o addr show dev eth0).
-const addrDHCP = `2: eth0    inet 10.10.0.17/24 metric 100 brd 10.10.0.255 scope global dynamic eth0\       valid_lft 86012sec preferred_lft 86012sec
-2: eth0    inet 10.10.0.15/24 scope global secondary eth0\       valid_lft forever preferred_lft forever
+const addrDHCP = `2: eth0    inet 192.0.2.17/24 metric 100 brd 192.0.2.255 scope global dynamic eth0\       valid_lft 86012sec preferred_lft 86012sec
+2: eth0    inet 192.0.2.15/24 scope global secondary eth0\       valid_lft forever preferred_lft forever
 2: eth0    inet 10.77.1.50/32 scope global eth0\       valid_lft forever preferred_lft forever
 2: eth0    inet6 2a02:810:1::17/64 scope global dynamic mngtmpaddr noprefixroute \       valid_lft 86013sec preferred_lft 14013sec
 2: eth0    inet6 2a02:810:1:0:aa:bb:cc:dd/64 scope global temporary dynamic \       valid_lft 86013sec preferred_lft 14013sec
@@ -32,11 +32,11 @@ const addrStatic = `2: ens18    inet 192.168.5.20/24 brd 192.168.5.255 scope glo
 const addrOnlyVIP = `2: eth0    inet 10.77.1.50/32 scope global eth0\       valid_lft forever preferred_lft forever
 `
 
-const routeDHCP = "default via 10.10.0.1 dev eth0 proto dhcp src 10.10.0.17 metric 100 \n"
+const routeDHCP = "default via 192.0.2.1 dev eth0 proto dhcp src 192.0.2.17 metric 100 \n"
 
 func TestParseDefaultRoute(t *testing.T) {
 	cases := []struct{ in, gw, iface string }{
-		{routeDHCP, "10.10.0.1", "eth0"},
+		{routeDHCP, "192.0.2.1", "eth0"},
 		{"default via 192.168.5.1 dev ens18 proto static\ndefault via 10.0.0.1 dev eth1 metric 200\n", "192.168.5.1", "ens18"},
 		{"default dev tun0 scope link \n", "", "tun0"},
 		{"", "", ""},
@@ -52,7 +52,7 @@ func TestParseDefaultRoute(t *testing.T) {
 
 func TestParseAddrs(t *testing.T) {
 	addr, dyn, v6 := ParseAddrs(addrDHCP, "eth0")
-	if addr != "10.10.0.17/24" || !dyn {
+	if addr != "192.0.2.17/24" || !dyn {
 		t.Errorf("Adresse %q dynamisch %v", addr, dyn)
 	}
 	if !reflect.DeepEqual(v6, []string{"2a02:810:1::17"}) {
@@ -88,7 +88,7 @@ func TestParseAddrsExcludeShared(t *testing.T) {
 		t.Fatalf("mit Ausschluss: %q %v", addr, v6)
 	}
 	// bevorzugt die erste Adresse ohne secondary
-	if addr, _, _ := ParseAddrs(addrDHCP, "eth0", netip.MustParseAddr("10.10.0.99")); addr != "10.10.0.17/24" {
+	if addr, _, _ := ParseAddrs(addrDHCP, "eth0", netip.MustParseAddr("192.0.2.99")); addr != "192.0.2.17/24" {
 		t.Fatalf("%q", addr)
 	}
 	// IPv6 ausdrücklich ausgeschlossen, auch ohne deprecated
@@ -144,7 +144,7 @@ func TestProbeDNSOnlyIPLiterals(t *testing.T) {
 }
 
 func TestParseResolvectl(t *testing.T) {
-	if got := ParseResolvectl("Link 2 (eth0): 10.10.0.1 1.1.1.1 2a02::1\n"); !reflect.DeepEqual(got, []string{"10.10.0.1", "1.1.1.1", "2a02::1"}) {
+	if got := ParseResolvectl("Link 2 (eth0): 192.0.2.1 1.1.1.1 2a02::1\n"); !reflect.DeepEqual(got, []string{"192.0.2.1", "1.1.1.1", "2a02::1"}) {
 		t.Errorf("drei erwartet: %v", got)
 	}
 	if got := ParseResolvectl("Link 2 (eth0):\n"); len(got) != 0 {
@@ -159,8 +159,8 @@ func TestParseResolvectl(t *testing.T) {
 }
 
 func TestParseResolvConf(t *testing.T) {
-	in := "# Kommentar\nnameserver 127.0.0.53\nnameserver 10.10.0.1\nnameserver 1.1.1.1\nsearch lan\n"
-	if got := ParseResolvConf(in); !reflect.DeepEqual(got, []string{"10.10.0.1", "1.1.1.1"}) {
+	in := "# Kommentar\nnameserver 127.0.0.53\nnameserver 192.0.2.1\nnameserver 1.1.1.1\nsearch lan\n"
+	if got := ParseResolvConf(in); !reflect.DeepEqual(got, []string{"192.0.2.1", "1.1.1.1"}) {
 		t.Errorf("%v", got)
 	}
 	if got := ParseResolvConf("nameserver 127.0.0.53\n"); len(got) != 0 {
@@ -206,7 +206,7 @@ func ubuntuDHCP() *fakeSys {
 	return &fakeSys{out: map[string]string{
 		"ip -4 route show default":             routeDHCP,
 		"ip -o addr show dev eth0":             addrDHCP,
-		"resolvectl dns eth0":                  "Link 2 (eth0): 10.10.0.1 1.1.1.1\n",
+		"resolvectl dns eth0":                  "Link 2 (eth0): 192.0.2.1 1.1.1.1\n",
 		"systemctl is-active systemd-networkd": "active\n",
 		"netplan get":                          "network:\n  version: 2\n",
 	}}
@@ -215,8 +215,8 @@ func ubuntuDHCP() *fakeSys {
 func TestCollectUbuntuDHCP(t *testing.T) {
 	f := ubuntuDHCP()
 	got := Collect(context.Background(), f.run, files(map[string]string{"/etc/os-release": osUbuntu}))
-	want := Summary{Iface: "eth0", Addr: "10.10.0.17/24", Mode: ModeDHCP, Gateway: "10.10.0.1",
-		DNS: []string{"10.10.0.1", "1.1.1.1"}, IPv6: []string{"2a02:810:1::17"}, Netplan: true}
+	want := Summary{Iface: "eth0", Addr: "192.0.2.17/24", Mode: ModeDHCP, Gateway: "192.0.2.1",
+		DNS: []string{"192.0.2.1", "1.1.1.1"}, IPv6: []string{"2a02:810:1::17"}, Netplan: true}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("%+v\nerwartet %+v", got, want)
 	}
@@ -226,7 +226,7 @@ func TestCollectStatic(t *testing.T) {
 	f := ubuntuDHCP()
 	f.out["ip -o addr show dev eth0"] = strings.ReplaceAll(addrDHCP, " dynamic eth0", " eth0")
 	got := Collect(context.Background(), f.run, files(map[string]string{"/etc/os-release": osUbuntu}))
-	if got.Mode != ModeStatic || got.Addr != "10.10.0.17/24" {
+	if got.Mode != ModeStatic || got.Addr != "192.0.2.17/24" {
 		t.Fatalf("%+v", got)
 	}
 }
@@ -234,7 +234,7 @@ func TestCollectStatic(t *testing.T) {
 func TestCollectNonUbuntuUnknown(t *testing.T) {
 	rf := files(map[string]string{"/etc/os-release": "ID=debian\n"})
 	got := Collect(context.Background(), ubuntuDHCP().run, rf)
-	if got.Netplan || got.Mode != ModeUnknown || got.Addr != "10.10.0.17/24" || got.Gateway != "10.10.0.1" || len(got.DNS) != 2 {
+	if got.Netplan || got.Mode != ModeUnknown || got.Addr != "192.0.2.17/24" || got.Gateway != "192.0.2.1" || len(got.DNS) != 2 {
 		t.Fatalf("Debian: %+v", got)
 	}
 	// Ubuntu, aber netplan get scheitert
@@ -263,10 +263,10 @@ func TestCollectResolvConfFallback(t *testing.T) {
 	f.fail = map[string]bool{"resolvectl": true}
 	rf := files(map[string]string{
 		"/etc/os-release":                  osUbuntu,
-		"/run/systemd/resolve/resolv.conf": "nameserver 10.10.0.1\nnameserver 8.8.8.8\n",
+		"/run/systemd/resolve/resolv.conf": "nameserver 192.0.2.1\nnameserver 8.8.8.8\n",
 		"/etc/resolv.conf":                 "nameserver 127.0.0.53\n",
 	})
-	if got := Collect(context.Background(), f.run, rf); !reflect.DeepEqual(got.DNS, []string{"10.10.0.1", "8.8.8.8"}) {
+	if got := Collect(context.Background(), f.run, rf); !reflect.DeepEqual(got.DNS, []string{"192.0.2.1", "8.8.8.8"}) {
 		t.Fatalf("run/systemd: %v", got.DNS)
 	}
 	// ohne systemd-resolved: /etc/resolv.conf
@@ -295,7 +295,7 @@ func TestCollectOnlySharedAddr(t *testing.T) {
 	f := ubuntuDHCP()
 	f.out["ip -o addr show dev eth0"] = addrOnlyVIP
 	got := Collect(context.Background(), f.run, files(map[string]string{"/etc/os-release": osUbuntu}))
-	if got.Addr != "" || got.Mode != ModeUnknown || got.Gateway != "10.10.0.1" {
+	if got.Addr != "" || got.Mode != ModeUnknown || got.Gateway != "192.0.2.1" {
 		t.Fatalf("%+v", got)
 	}
 }
@@ -308,7 +308,7 @@ func TestSummaryDNS4(t *testing.T) {
 }
 
 func TestValidDNS(t *testing.T) {
-	for _, s := range []string{"1.1.1.1", "10.10.0.1", "192.168.1.1"} {
+	for _, s := range []string{"1.1.1.1", "192.0.2.1", "192.168.1.1"} {
 		if !ValidDNS(s) {
 			t.Errorf("%q sollte gelten", s)
 		}
@@ -395,8 +395,8 @@ func TestProbeDNS(t *testing.T) {
 }
 
 func TestSummaryJSONSmall(t *testing.T) {
-	s := Summary{Iface: "eth0", Addr: "10.10.0.17/24", Mode: ModeDHCP, Gateway: "10.10.0.1",
-		DNS: []string{"10.10.0.1", "1.1.1.1", "8.8.8.8"}, IPv6: []string{"2a02:810:1::17", "2a02:810:1::18"}, Netplan: true}
+	s := Summary{Iface: "eth0", Addr: "192.0.2.17/24", Mode: ModeDHCP, Gateway: "192.0.2.1",
+		DNS: []string{"192.0.2.1", "1.1.1.1", "8.8.8.8"}, IPv6: []string{"2a02:810:1::17", "2a02:810:1::18"}, Netplan: true}
 	b, err := json.Marshal(s)
 	if err != nil || len(b) >= 512 {
 		t.Fatalf("%d Byte (%v): %s", len(b), err, b)

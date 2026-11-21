@@ -432,10 +432,10 @@ func TestHADoAccessVIP6NotTakenByOldService(t *testing.T) {
 func TestVIPRowShowsVIP6(t *testing.T) {
 	v := accessView(func(v *haView) {
 		a := &v.Status.Access
-		a.VIP, a.VIPOn, a.Holder, a.VIP6, a.VIP6Suffix = "10.77.1.50/24", true, "pdh", "2a02:f90:e198:1700::15", "15"
+		a.VIP, a.VIPOn, a.Holder, a.VIP6, a.VIP6Suffix = "10.77.1.50/24", true, "pdh", "2001:db8::15", "15"
 	})
 	r := rowOf(t, v, "Mitwandernde Adresse")
-	if !strings.Contains(r.State, "2a02:f90:e198:1700::15") || r.Level != "ok" {
+	if !strings.Contains(r.State, "2001:db8::15") || r.Level != "ok" {
 		t.Errorf("Zeile: %+v", r)
 	}
 	v.Status.Access.VIP6 = ""

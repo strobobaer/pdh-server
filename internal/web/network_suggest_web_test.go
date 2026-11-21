@@ -511,13 +511,13 @@ func TestNetSuggMirror(t *testing.T) {
 	f := netSuggEnv(t)
 	f.h.SetMirror(MirrorInfo{On: true})
 	f.h.mirrorPeerFetch = func(context.Context) (haStatus, error) {
-		return haStatus{Configured: true, Peers: []haNode{{Role: "aktiv", Seen: true, Paths: []haPath{{Addr: "10.10.0.17:7946"}}}}}, nil
+		return haStatus{Configured: true, Peers: []haNode{{Role: "aktiv", Seen: true, Paths: []haPath{{Addr: "192.0.2.17:7946"}}}}}, nil
 	}
 	body := itNetDo(f.h.NetworkSuggWeb, "GET", "/x", "", pdhSystemUserID, nil).Body.String()
 	if f.calls.Load() != 0 {
 		t.Fatal("Spiegel fragt den Controller ab")
 	}
-	if !strings.Contains(body, "Vorschläge übernehmen am aktiven Server") || !strings.Contains(body, `href="http://10.10.0.17/admin/network"`) {
+	if !strings.Contains(body, "Vorschläge übernehmen am aktiven Server") || !strings.Contains(body, `href="http://192.0.2.17/admin/network"`) {
 		t.Fatalf("Text oder Verweis fehlt: %s", body)
 	}
 	hd := f.h.MirrorMiddleware(http.HandlerFunc(f.h.NetworkSuggAdoptWeb))

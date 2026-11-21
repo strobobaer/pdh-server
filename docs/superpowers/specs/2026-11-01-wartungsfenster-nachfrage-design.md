@@ -239,7 +239,7 @@ Verwendung.
 - `/wartung/status` mit `can_confirm` und `can_abort` je nach Recht.
 - `TestHelpCoversAllPages` und `TestHelpChaptersMatch` bleiben grün.
 
-**Abnahme auf den Testservern** (nie 10.10.0.202):
+**Abnahme auf den Testservern** (nie 192.0.2.202):
 
 1. Automatik aus, Fensterzeit kurz voraus → Band erscheint → **Durchführen**
    → Update läuft durch.

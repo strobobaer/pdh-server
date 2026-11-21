@@ -5,7 +5,8 @@ set -Eeuo pipefail
 # The sync imports members of the Nextcloud group `pdh` into the PDH users table.
 # Database writes are executed by scripts/import-nextcloud-pdh-users.sh as Linux user postgres.
 
-PDH_DIR="/home/michael/pdh"
+# Default: the PDH directory this script belongs to (parent of scripts/).
+PDH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 GROUP_ID="pdh"
 DEFAULT_ROLE="viewer"
 DEACTIVATE_MISSING="0"
@@ -20,7 +21,7 @@ usage() {
 Install systemd timer for Nextcloud group -> PDH user sync.
 
 Options:
-  --pdh-dir PATH            Default: /home/michael/pdh
+  --pdh-dir PATH            Default: PDH directory of this script (e.g. /home/pdh/pdh)
   --group ID                Default: pdh
   --default-role ROLE       Default: viewer; allowed: admin, manager, technician, worker, viewer
   --deactivate-missing      Deactivate PDH users previously synced from Nextcloud but no longer in group

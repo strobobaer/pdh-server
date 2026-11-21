@@ -150,7 +150,7 @@ func TestDaemonAccessVIP6(t *testing.T) {
 	d.unlock()
 	d.tick(ctx)
 	waitFor(t, 2*time.Second, "neues Ende", func() bool {
-		return f.count("ip -6 addr add 2a02:f90:e198:1700::16/128 dev eth0") == 1 && f.count(vip6Del) == 1
+		return f.count("ip -6 addr add 2001:db8::16/128 dev eth0") == 1 && f.count(vip6Del) == 1
 	})
 	// Ende geleert
 	d.lock()
@@ -158,7 +158,7 @@ func TestDaemonAccessVIP6(t *testing.T) {
 	d.unlock()
 	d.tick(ctx)
 	waitFor(t, 2*time.Second, "Ende geleert", func() bool {
-		return f.count("ip -6 addr del 2a02:f90:e198:1700::16/128 dev eth0") == 1
+		return f.count("ip -6 addr del 2001:db8::16/128 dev eth0") == 1
 	})
 	d.mu.Lock()
 	same := d.access == w

@@ -20,6 +20,14 @@ wifi:
 
 captive_portal:
 
+web_server:
+  port: 80
+  version: 3
+  ota: false
+  auth:
+    username: pdh
+    password: !secret web_password
+
 mqtt:
   broker: !literal "mqtt.werk.example"
   port: 1883
@@ -62,3 +70,14 @@ sensor:
       name: Stückzähler 1 Stückzahl
       unit_of_measurement: Stk
       state_topic: esppdh/linie2-takt/counter-1/stueckzahl
+  - platform: uptime
+    name: Laufzeit
+    update_interval: 10s
+    state_topic: esppdh/linie2-takt/info/laufzeit
+    retain: false
+
+text_sensor:
+  - platform: wifi_info
+    ip_address:
+      name: Adresse
+      state_topic: esppdh/linie2-takt/info/adresse

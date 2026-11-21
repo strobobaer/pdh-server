@@ -1,4 +1,4 @@
--- 187_terminal_global_screen.up.sql
+-- 188_terminal_global_screen.up.sql
 --
 -- Globales Terminal (Infobildschirm, W2+G): Ein Terminal-Benutzer mit
 -- terminal_settings.global_screen zeigt unter /terminal die Folien aus

@@ -193,7 +193,7 @@ func parseAddrs(out, iface string, exclude []netip.Addr) (addr, ifc string, dyna
 	secAddr, secIfc, secDyn := "", "", false // Rückfall: erste Nebenadresse
 	for _, line := range strings.Split(out, "\n") {
 		f := strings.Fields(line)
-		// 2: eth0    inet 10.10.0.17/24 brd … scope global dynamic eth0\ valid_lft …
+		// 2: eth0    inet 192.0.2.17/24 brd … scope global dynamic eth0\ valid_lft …
 		if len(f) < 4 {
 			continue
 		}
@@ -248,7 +248,7 @@ func parseAddrs(out, iface string, exclude []netip.Addr) (addr, ifc string, dyna
 }
 
 // ParseResolvectl wertet `resolvectl dns <karte>` aus
-// („Link 2 (eth0): 10.10.0.1 1.1.1.1“). Ohne Server (leere Liste) bleibt es leer.
+// („Link 2 (eth0): 192.0.2.1 1.1.1.1“). Ohne Server (leere Liste) bleibt es leer.
 func ParseResolvectl(out string) []string {
 	var res []string
 	for _, line := range strings.Split(out, "\n") {

@@ -31,16 +31,16 @@ stub_snap() {
 stub_log() { printf '%s %s\n' "$*" "$(stub_snap)" >>"$NET_LOG"; }
 ip() {
   case "$*" in
-    "-4 route show default") echo "default via 10.10.0.1 dev eth0 proto dhcp src 10.10.0.17 metric 100" ;;
+    "-4 route show default") echo "default via 192.0.2.1 dev eth0 proto dhcp src 192.0.2.17 metric 100" ;;
     "link show eth0") echo "2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 state UP" ;;
     "-4 -o addr show dev eth0 scope global")
-      echo '2: eth0    inet 10.10.0.17/24 metric 100 brd 10.10.0.255 scope global dynamic eth0\       valid_lft 86123sec preferred_lft 86123sec'
-      echo '2: eth0    inet 10.10.0.15/32 scope global eth0\       valid_lft forever preferred_lft forever' ;;
-    "-4 route show default dev eth0") echo "default via 10.10.0.1 proto dhcp src 10.10.0.17 metric 100" ;;
+      echo '2: eth0    inet 192.0.2.17/24 metric 100 brd 192.0.2.255 scope global dynamic eth0\       valid_lft 86123sec preferred_lft 86123sec'
+      echo '2: eth0    inet 192.0.2.15/32 scope global eth0\       valid_lft forever preferred_lft forever' ;;
+    "-4 route show default dev eth0") echo "default via 192.0.2.1 proto dhcp src 192.0.2.17 metric 100" ;;
     *) return 1 ;;
   esac
 }
-resolvectl() { echo "Link 2 (eth0): 10.10.0.1 1.1.1.1"; }
+resolvectl() { echo "Link 2 (eth0): 192.0.2.1 1.1.1.1"; }
 systemd-run() { stub_log "systemd-run $*"; [[ -z "${NET_FAIL_RUN:-}" ]]; }
 systemctl() {
   stub_log "systemctl $*"
@@ -258,7 +258,7 @@ func (e *netSEnv) read(p string) string {
 }
 
 // netAutoArgs: was der Agent übergibt (jetzige Werte aus hostnet.Collect).
-var netAutoArgs = []string{"--auto", "--if", "eth0", "--ip", "10.10.0.17/24", "--gw", "10.10.0.1"}
+var netAutoArgs = []string{"--auto", "--if", "eth0", "--ip", "192.0.2.17/24", "--gw", "192.0.2.1"}
 
 func netArgs(extra ...string) []string { return append(append([]string{}, netAutoArgs...), extra...) }
 
@@ -291,13 +291,13 @@ func TestStaticIPDryRunUnchanged(t *testing.T) {
 	bin := t.TempDir()
 	for name, body := range map[string]string{
 		"ip": `case "$*" in
-  "-4 route show default") echo "default via 10.10.0.1 dev eth0 proto dhcp src 10.10.0.17 metric 100" ;;
+  "-4 route show default") echo "default via 192.0.2.1 dev eth0 proto dhcp src 192.0.2.17 metric 100" ;;
   "link show eth0") echo "2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500" ;;
-  "-4 -o addr show dev eth0 scope global") echo '2: eth0    inet 10.10.0.17/24 metric 100 brd 10.10.0.255 scope global dynamic eth0\       valid_lft 86123sec preferred_lft 86123sec' ;;
-  "-4 route show default dev eth0") echo "default via 10.10.0.1 proto dhcp src 10.10.0.17 metric 100" ;;
+  "-4 -o addr show dev eth0 scope global") echo '2: eth0    inet 192.0.2.17/24 metric 100 brd 192.0.2.255 scope global dynamic eth0\       valid_lft 86123sec preferred_lft 86123sec' ;;
+  "-4 route show default dev eth0") echo "default via 192.0.2.1 proto dhcp src 192.0.2.17 metric 100" ;;
   *) exit 1 ;;
 esac`,
-		"resolvectl": `echo "Link 2 (eth0): 10.10.0.1 1.1.1.1"`,
+		"resolvectl": `echo "Link 2 (eth0): 192.0.2.1 1.1.1.1"`,
 		"netplan":    `if [[ "$1" == get ]]; then printf 'eth0:\n  dhcp4: true\n'; exit 0; fi; echo "netplan $* darf im Testlauf nicht laufen" >&2; exit 1`,
 	} {
 		if err := os.WriteFile(filepath.Join(bin, name), []byte("#!/usr/bin/env bash\n"+body+"\n"), 0o755); err != nil {
@@ -312,9 +312,9 @@ esac`,
 	}
 	out := regexp.MustCompile("\x1b\\[[0-9;]*m").ReplaceAllString(string(b), "")
 	want := `==> Feste Adresse für eth0
-  Adresse:  10.10.0.17/24   (jetzt: 10.10.0.17/24)
-  Gateway:  10.10.0.1
-  DNS:      10.10.0.1,1.1.1.1
+  Adresse:  192.0.2.17/24   (jetzt: 192.0.2.17/24)
+  Gateway:  192.0.2.1
+  DNS:      192.0.2.1,1.1.1.1
   Datei:    /etc/netplan/90-pdh-static.yaml
 # PDH: feste IPv4-Adresse (pdh-static-ip.sh) – entfernen und „netplan apply“ für DHCP
 network:
@@ -322,12 +322,12 @@ network:
   ethernets:
     eth0:
       dhcp4: false
-      addresses: [10.10.0.17/24]
+      addresses: [192.0.2.17/24]
       routes:
         - to: default
-          via: 10.10.0.1
+          via: 192.0.2.1
       nameservers:
-        addresses: [10.10.0.1, 1.1.1.1]
+        addresses: [192.0.2.1, 1.1.1.1]
 `
 	if out != want {
 		t.Errorf("--dry-run:\n%s\nerwartet:\n%s", out, want)
@@ -340,7 +340,7 @@ func TestStaticIPAutoOrder(t *testing.T) {
 	t.Parallel()
 	e := newNetSEnv(t)
 	before := time.Now().Unix()
-	out, code := e.main(nil, netArgs("--ha-maint", "--by", "Anna Admin", "--dns", "10.10.0.1,9.9.9.9")...)
+	out, code := e.main(nil, netArgs("--ha-maint", "--by", "Anna Admin", "--dns", "192.0.2.1,9.9.9.9")...)
 	if code != 0 {
 		t.Fatalf("Ausgang %d: %s\n%s", code, out, e.dump())
 	}
@@ -375,7 +375,7 @@ func TestStaticIPAutoOrder(t *testing.T) {
 		t.Errorf("Wartung: %q", e.ha())
 	}
 	y := e.read(e.yaml)
-	for _, want := range []string{"    eth0:\n      dhcp4: false\n      addresses: [10.10.0.17/24]\n", "via: 10.10.0.1\n", "addresses: [10.10.0.1, 9.9.9.9]\n"} {
+	for _, want := range []string{"    eth0:\n      dhcp4: false\n      addresses: [192.0.2.17/24]\n", "via: 192.0.2.1\n", "addresses: [192.0.2.1, 9.9.9.9]\n"} {
 		if !strings.Contains(y, want) {
 			t.Errorf("YAML ohne %q:\n%s", want, y)
 		}
@@ -391,7 +391,7 @@ func TestStaticIPAutoOrder(t *testing.T) {
 	if out, code := e2.main(nil, netAutoArgs...); code != 0 {
 		t.Fatalf("fix: %d %s", code, out)
 	}
-	if st := e2.stateMap(); st["action"] != "fix" || st["maint"] != "0" || st["applied"] != "1" || !strings.Contains(e2.read(e2.yaml), "addresses: [10.10.0.1, 1.1.1.1]") {
+	if st := e2.stateMap(); st["action"] != "fix" || st["maint"] != "0" || st["applied"] != "1" || !strings.Contains(e2.read(e2.yaml), "addresses: [192.0.2.1, 1.1.1.1]") {
 		t.Errorf("fix: %v\n%s", st, e2.read(e2.yaml))
 	}
 }
@@ -405,10 +405,10 @@ func TestStaticIPAutoRefusesAddressChange(t *testing.T) {
 	}{
 		"andere Adresse":         {[]string{"--auto", "--ha-maint", "--ip", "10.0.0.5/24"}, "ist mit --auto nicht erlaubt"},
 		"ohne --ip":              {[]string{"--auto", "--ha-maint", "--if", "eth0"}, "--auto braucht --ip"},
-		"gemeinsame Adresse":     {[]string{"--auto", "--ha-maint", "--if", "eth0", "--ip", "10.10.0.15/32", "--gw", "10.10.0.1"}, "ist mit --auto nicht erlaubt"},
-		"anderes Präfix":         {[]string{"--auto", "--ha-maint", "--ip", "10.10.0.17/16"}, "ist mit --auto nicht erlaubt"},
-		"anderes Gateway":        {[]string{"--auto", "--ha-maint", "--ip", "10.10.0.17/24", "--gw", "10.10.0.254"}, "ist mit --auto nicht erlaubt"},
-		"Karte ungültig":         {[]string{"--auto", "--if", "eth0;reboot", "--ip", "10.10.0.17/24"}, "Ungültige Netzwerkkarte"},
+		"gemeinsame Adresse":     {[]string{"--auto", "--ha-maint", "--if", "eth0", "--ip", "192.0.2.15/32", "--gw", "192.0.2.1"}, "ist mit --auto nicht erlaubt"},
+		"anderes Präfix":         {[]string{"--auto", "--ha-maint", "--ip", "192.0.2.17/16"}, "ist mit --auto nicht erlaubt"},
+		"anderes Gateway":        {[]string{"--auto", "--ha-maint", "--ip", "192.0.2.17/24", "--gw", "192.0.2.254"}, "ist mit --auto nicht erlaubt"},
+		"Karte ungültig":         {[]string{"--auto", "--if", "eth0;reboot", "--ip", "192.0.2.17/24"}, "Ungültige Netzwerkkarte"},
 		"--force":                {[]string{"--auto", "--ha-maint", "--force"}, "--force ist mit --auto nicht erlaubt"},
 		"--yes":                  {[]string{"--auto", "--ha-maint", "--yes"}, "--yes ist mit --auto nicht erlaubt"},
 		"--dry-run":              {[]string{"--auto", "--ha-maint", "--dry-run"}, "--dry-run ist mit --auto nicht erlaubt"},
@@ -417,7 +417,7 @@ func TestStaticIPAutoRefusesAddressChange(t *testing.T) {
 		"--id mit --restore":     {[]string{"--restore", "--id", "x1"}, "--id nur mit --confirm"},
 		"Kennung ungültig":       {[]string{"--confirm", "--id", "x;1"}, "Ungültige Kennung"},
 		"Frist":                  {[]string{"--auto", "--rollback", "abc"}, "--rollback"},
-		"vier DNS-Server":        {netArgs("--ha-maint", "--dns", "1.1.1.1,8.8.8.8,9.9.9.9,10.10.0.1"), "ein bis drei"},
+		"vier DNS-Server":        {netArgs("--ha-maint", "--dns", "1.1.1.1,8.8.8.8,9.9.9.9,192.0.2.1"), "ein bis drei"},
 		"DNS mit Befehl":         {netArgs("--ha-maint", "--dns", "1.1.1.1;reboot"), "Ungültiger DNS-Server"},
 		"--ha-maint ohne --auto": {[]string{"--ha-maint"}, "nur mit --auto"},
 		"--dns beim Bestätigen":  {[]string{"--confirm", "--dns", "1.1.1.1"}, "--dns ist mit --confirm nicht erlaubt"},

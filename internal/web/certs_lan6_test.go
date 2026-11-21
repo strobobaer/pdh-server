@@ -18,10 +18,10 @@ import (
 	"pdh/internal/integrations/unifi"
 )
 
-// Ziel in allen Tests: V4 "10.10.0.15", V6 "2a02:f90:e198:1700::15", Ende 15.
+// Ziel in allen Tests: V4 "192.0.2.15", V6 "2001:db8::15", Ende 15.
 const (
-	l6V4 = "10.10.0.15"
-	l6V6 = "2a02:f90:e198:1700::15"
+	l6V4 = "192.0.2.15"
+	l6V6 = "2001:db8::15"
 )
 
 func l6Target() lan6Target {
@@ -92,7 +92,7 @@ func TestLAN6SyncCreatesForManualName(t *testing.T) {
 }
 
 func TestLAN6SyncSkipsOtherTargets(t *testing.T) {
-	f, _, d := newLAN6(t, recA("m1", "wiki.firma.de", "10.10.0.99"))
+	f, _, d := newLAN6(t, recA("m1", "wiki.firma.de", "192.0.2.99"))
 	if n := certLAN6Sync(context.Background(), d, l6Target()); n != 0 {
 		t.Fatalf("changed = %d", n)
 	}
@@ -139,16 +139,16 @@ func TestLAN6SyncUpdatesManualWithSuffix(t *testing.T) {
 }
 
 func TestLAN6SyncForeignOtherTargetUntouched(t *testing.T) {
-	f, s, d := newLAN6(t, recA("a1", "nc.firma.de", l6V4), recAAAA("f6", "nc.firma.de", "2a02:f90:e198:1700::99"))
+	f, s, d := newLAN6(t, recA("a1", "nc.firma.de", l6V4), recAAAA("f6", "nc.firma.de", "2001:db8::99"))
 	if n := certLAN6Sync(context.Background(), d, l6Target()); n != 0 {
 		t.Fatalf("changed = %d", n)
 	}
 	wantWrites(t, f)
-	want := "An der UDM Pro steht für nc.firma.de schon ein IPv6-Eintrag auf 2a02:f90:e198:1700::99. Nichts geändert."
+	want := "An der UDM Pro steht für nc.firma.de schon ein IPv6-Eintrag auf 2001:db8::99. Nichts geändert."
 	if got := s[keyUnifiHint6Prefix+"nc.firma.de"]; got != want {
 		t.Fatalf("Hinweis: %q", got)
 	}
-	if s[keyUnifiOther6Prefix+"nc.firma.de"] != "2a02:f90:e198:1700::99" {
+	if s[keyUnifiOther6Prefix+"nc.firma.de"] != "2001:db8::99" {
 		t.Fatalf("Merker für den Knopf: %v", s)
 	}
 	// fremder Eintrag weg → Hinweis und Merker verschwinden, Eintrag wird angelegt
@@ -200,7 +200,7 @@ func TestLAN6SyncRemovesWhenOff(t *testing.T) {
 }
 
 func TestLAN6SyncRemovesWhenANoLongerPoints(t *testing.T) {
-	f, s, d := newLAN6(t, recA("a1", "nc.firma.de", "10.10.0.99"), recAAAA("o6", "nc.firma.de", l6V6),
+	f, s, d := newLAN6(t, recA("a1", "nc.firma.de", "192.0.2.99"), recAAAA("o6", "nc.firma.de", l6V6),
 		recAAAA("o7", "pdh.firma.de", l6V6))
 	s[keyUnifiID6Prefix+"nc.firma.de"] = "o6"  // A zeigt woanders hin
 	s[keyUnifiID6Prefix+"pdh.firma.de"] = "o7" // A-Eintrag ist weg
@@ -492,9 +492,9 @@ func TestLANRemoveKeepsAAAAWhileManualAPoints(t *testing.T) {
 func TestOverwriteLeavesAAAA(t *testing.T) {
 	ctx := context.Background()
 	store := newMemCertStore(certRow{Name: "nc.firma.de", State: certStateGueltig})
-	f := &fakeLAN{recs: []unifi.Record{recA("f1", "nc.firma.de", "192.168.1.20"), recAAAA("f6", "nc.firma.de", "2a02:f90:e198:1700::99")}}
+	f := &fakeLAN{recs: []unifi.Record{recA("f1", "nc.firma.de", "192.168.1.20"), recAAAA("f6", "nc.firma.de", "2001:db8::99")}}
 	l := &certActLog{settings: map[string]string{keyUnifiHint6Prefix + "nc.firma.de": "fremder IPv6-Eintrag",
-		keyUnifiOther6Prefix + "nc.firma.de": "2a02:f90:e198:1700::99"}}
+		keyUnifiOther6Prefix + "nc.firma.de": "2001:db8::99"}}
 	d := testLANAct(store, l, f)
 	d.lan6 = func(context.Context) lan6Target { return l6Target() }
 	if _, err := certDoLAN(ctx, d, "nc.firma.de", true); err != nil {
@@ -743,10 +743,10 @@ func lan6ActEnv(t *testing.T, rows []certRow, recs ...unifi.Record) (*fakeLAN, *
 // (C) Eigene Aktion: genau ein Update des fremden AAAA-Eintrags, nichts anderes.
 func TestLAN6DoUpdatesOneForeign(t *testing.T) {
 	f, l, d := lan6ActEnv(t, []certRow{{Name: "nc.firma.de", State: certStateGueltig}},
-		recA("a1", "nc.firma.de", l6V4), recAAAA("f6", "nc.firma.de", "2a02:f90:e198:1700::99"), recAAAA("x6", "wiki.firma.de", "2a02::1"))
+		recA("a1", "nc.firma.de", l6V4), recAAAA("f6", "nc.firma.de", "2001:db8::99"), recAAAA("x6", "wiki.firma.de", "2a02::1"))
 	l.settings[keyUnifiHint6Prefix+"nc.firma.de"] = "fremd"
-	l.settings[keyUnifiOther6Prefix+"nc.firma.de"] = "2a02:f90:e198:1700::99"
-	msg, err := certDoLAN6(context.Background(), d, "NC.firma.de.", "2a02:f90:e198:1700::99")
+	l.settings[keyUnifiOther6Prefix+"nc.firma.de"] = "2001:db8::99"
+	msg, err := certDoLAN6(context.Background(), d, "NC.firma.de.", "2001:db8::99")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -761,8 +761,8 @@ func TestLAN6DoUpdatesOneForeign(t *testing.T) {
 
 // (C) Name ohne Zertifikat (von Hand an der UDM Pro) geht genauso.
 func TestLAN6DoManualName(t *testing.T) {
-	f, _, d := lan6ActEnv(t, nil, recA("m1", "wiki.firma.de", l6V4), recAAAA("f6", "wiki.firma.de", "2a02:f90:e198:1700::99"))
-	if _, err := certDoLAN6(context.Background(), d, "wiki.firma.de", "2a02:f90:e198:1700::99"); err != nil {
+	f, _, d := lan6ActEnv(t, nil, recA("m1", "wiki.firma.de", l6V4), recAAAA("f6", "wiki.firma.de", "2001:db8::99"))
+	if _, err := certDoLAN6(context.Background(), d, "wiki.firma.de", "2001:db8::99"); err != nil {
 		t.Fatal(err)
 	}
 	wantWrites(t, f, "update f6 wiki.firma.de "+l6V6)
@@ -770,7 +770,7 @@ func TestLAN6DoManualName(t *testing.T) {
 
 // (C) Ein fremder A-Eintrag (zeigt nicht auf V4) → Fehler, nichts geändert – nie ein A-Eintrag.
 func TestLAN6DoRefusesWithoutAPointing(t *testing.T) {
-	f, _, d := lan6ActEnv(t, nil, recA("f1", "nc.firma.de", "192.168.1.20"), recAAAA("f6", "nc.firma.de", "2a02:f90:e198:1700::99"))
+	f, _, d := lan6ActEnv(t, nil, recA("f1", "nc.firma.de", "192.168.1.20"), recAAAA("f6", "nc.firma.de", "2001:db8::99"))
 	_, err := certDoLAN6(context.Background(), d, "nc.firma.de", "")
 	if err == nil || err.Error() != "nc.firma.de zeigt an der UDM Pro nicht auf die mitwandernde Adresse. Nichts geändert." {
 		t.Fatalf("%v", err)
@@ -864,9 +864,9 @@ func TestLAN6Buttons(t *testing.T) {
 	}
 	p := base()
 	p.Lines[0].LANOther = ""
-	p.Lines[0].LAN6Other = "2a02:f90:e198:1700::99"
+	p.Lines[0].LAN6Other = "2001:db8::99"
 	out = renderCertPanel(t, p)
-	confirm := "IPv6-Eintrag von nc.firma.de von 2a02:f90:e198:1700::99 auf " + l6V6 + " ändern?"
+	confirm := "IPv6-Eintrag von nc.firma.de von 2001:db8::99 auf " + l6V6 + " ändern?"
 	if !strings.Contains(out, `hx-post="/admin/server-config/certs/lan6"`) || !strings.Contains(out, confirm) {
 		t.Errorf("IPv6-Knopf fehlt:\n%s", out)
 	}
@@ -1033,8 +1033,8 @@ func TestLAN6SyncDeadlineKeepsRest(t *testing.T) {
 
 // F9: Kurzname ohne Punkt (wie an der UniFi-Anbindung), A auf V4 und ein fremder AAAA → Update.
 func TestLAN6DoShortName(t *testing.T) {
-	f, _, d := lan6ActEnv(t, nil, recA("m1", "nas", l6V4), recAAAA("f6", "nas", "2a02:f90:e198:1700::99"))
-	if _, err := certDoLAN6(context.Background(), d, "nas", "2a02:f90:e198:1700::99"); err != nil {
+	f, _, d := lan6ActEnv(t, nil, recA("m1", "nas", l6V4), recAAAA("f6", "nas", "2001:db8::99"))
+	if _, err := certDoLAN6(context.Background(), d, "nas", "2001:db8::99"); err != nil {
 		t.Fatal(err)
 	}
 	wantWrites(t, f, "update f6 nas "+l6V6)
@@ -1043,16 +1043,16 @@ func TestLAN6DoShortName(t *testing.T) {
 // F9: geändert wird nur, wenn der fremde Eintrag noch die gezeigte Adresse hat; ohne from nichts.
 func TestLAN6DoNeedsShownAddress(t *testing.T) {
 	const changed = "Der IPv6-Eintrag von nc.firma.de hat sich inzwischen geändert. Bitte die Seite neu laden."
-	for _, from := range []string{"", "2a02:f90:e198:1700::98"} {
-		f, _, d := lan6ActEnv(t, nil, recA("a1", "nc.firma.de", l6V4), recAAAA("f6", "nc.firma.de", "2a02:f90:e198:1700::99"))
+	for _, from := range []string{"", "2001:db8::98"} {
+		f, _, d := lan6ActEnv(t, nil, recA("a1", "nc.firma.de", l6V4), recAAAA("f6", "nc.firma.de", "2001:db8::99"))
 		if _, err := certDoLAN6(context.Background(), d, "nc.firma.de", from); err == nil || err.Error() != changed {
 			t.Fatalf("from=%q: %v", from, err)
 		}
 		wantWrites(t, f)
 	}
 	// andere Schreibweise derselben Adresse zählt als gleich
-	f, _, d := lan6ActEnv(t, nil, recA("a1", "nc.firma.de", l6V4), recAAAA("f6", "nc.firma.de", "2a02:f90:e198:1700::99"))
-	if _, err := certDoLAN6(context.Background(), d, "nc.firma.de", "2A02:0F90:E198:1700:0:0:0:99"); err != nil {
+	f, _, d := lan6ActEnv(t, nil, recA("a1", "nc.firma.de", l6V4), recAAAA("f6", "nc.firma.de", "2001:db8::99"))
+	if _, err := certDoLAN6(context.Background(), d, "nc.firma.de", "2001:0DB8:0:0:0:0:0:99"); err != nil {
 		t.Fatal(err)
 	}
 	wantWrites(t, f, "update f6 nc.firma.de "+l6V6)
@@ -1062,10 +1062,10 @@ func TestLAN6DoNeedsShownAddress(t *testing.T) {
 func TestLAN6ButtonSendsFrom(t *testing.T) {
 	p := certPanel{CanManage: true, CanUnifi: true, Zone: "firma.de", AgentOK: true, NginxOK: true, LANTarget: lanTarget, LAN6: l6V6,
 		Unifi: unifiPanel{URL: "https://192.168.1.1", HasKey: true, Confirmed: true, Pin: "AB"},
-		Lines: []certLine{{Name: "nc.firma.de", State: certStateGueltig, LAN6Other: "2a02:f90:e198:1700::99"}},
+		Lines: []certLine{{Name: "nc.firma.de", State: certStateGueltig, LAN6Other: "2001:db8::99"}},
 		Extra6: []lan6Extra{{Name: "wiki.firma.de", Other: "2a02::99"}}}
 	out := renderCertPanel(t, p)
-	for _, want := range []string{`name="from" value="2a02:f90:e198:1700::99"`, `name="from" value="2a02::99"`} {
+	for _, want := range []string{`name="from" value="2001:db8::99"`, `name="from" value="2a02::99"`} {
 		if !strings.Contains(out, want) {
 			t.Errorf("Feld fehlt: %s", want)
 		}

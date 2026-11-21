@@ -100,7 +100,7 @@ func TestAdresseNetplanHelferBond(t *testing.T) {
   bonds:
     bond0:
       interfaces: [eno1, eno2]
-      addresses: [10.10.0.202/24, 10.10.0.20/24]
+      addresses: [192.0.2.202/24, 192.0.2.20/24]
   bridges:
     br0:
       addresses: [192.168.5.2/24]
@@ -108,7 +108,7 @@ func TestAdresseNetplanHelferBond(t *testing.T) {
     vlan10:
       id: 10
       link: bond0
-      addresses: [10.10.0.202/24]
+      addresses: [192.0.2.202/24]
 `
 	if err := os.WriteFile(yml, []byte(doc), 0o644); err != nil {
 		t.Fatal(err)
@@ -128,25 +128,25 @@ func TestAdresseNetplanHelferBond(t *testing.T) {
 	} else if ee, ok := err.(*exec.ExitError); !ok || ee.ExitCode() != 3 {
 		t.Errorf("card ens9: %v", err)
 	}
-	if got, _ := run("count", "10.10.0.202", "bond0", yml); got != "1" {
+	if got, _ := run("count", "192.0.2.202", "bond0", yml); got != "1" {
 		t.Errorf("count bond0 = %q, erwartet 1", got)
 	}
-	if got, _ := run("count", "10.10.0.202", "br0", yml); got != "1" {
+	if got, _ := run("count", "192.0.2.202", "br0", yml); got != "1" {
 		t.Errorf("count br0 = %q, erwartet 1", got)
 	}
-	if got, _ := run("find", "10.10.0.20", yml); got != yml {
+	if got, _ := run("find", "192.0.2.20", yml); got != yml {
 		t.Errorf("find .20 = %q", got)
 	}
-	if out, err := run("remove", "10.10.0.20", yml); err != nil {
+	if out, err := run("remove", "192.0.2.20", yml); err != nil {
 		t.Fatalf("remove: %v %s", err, out)
 	}
 	b, _ := os.ReadFile(yml)
-	if !strings.Contains(string(b), "10.10.0.202/24") || strings.Contains(string(b), "10.10.0.20/24") {
+	if !strings.Contains(string(b), "192.0.2.202/24") || strings.Contains(string(b), "192.0.2.20/24") {
 		t.Errorf("remove .20 traf die falsche Adresse:\n%s", b)
 	}
 }
 
-// TestAdresseGenauerAdressVergleich: ip_re trifft 10.10.0.20, nicht 10.10.0.202.
+// TestAdresseGenauerAdressVergleich: ip_re trifft 192.0.2.20, nicht 192.0.2.202.
 func TestAdresseGenauerAdressVergleich(t *testing.T) {
 	bash := bashOrSkip(t)
 	b, err := os.ReadFile("../../scripts/pdh-ha-adresse.sh")
@@ -163,11 +163,11 @@ func TestAdresseGenauerAdressVergleich(t *testing.T) {
 		t.Fatal("ip_re nicht gefunden")
 	}
 	script := fn + `
-re="$(ip_re 10.10.0.20)"
-for s in "10.10.0.20:22" "x 10.10.0.20/24 y" "10.10.0.20" "10.10.0.20." "server=10.10.0.20,"; do
+re="$(ip_re 192.0.2.20)"
+for s in "192.0.2.20:22" "x 192.0.2.20/24 y" "192.0.2.20" "192.0.2.20." "server=192.0.2.20,"; do
   grep -qE "$re" <<<"$s" || { echo "sollte treffen: $s"; exit 1; }
 done
-for s in "10.10.0.202:22" "110.10.0.20" "10.10.0.20.5" "10.10.0.2"; do
+for s in "192.0.2.202:22" "1192.0.2.20" "192.0.2.20.5" "192.0.2.2"; do
   ! grep -qE "$re" <<<"$s" || { echo "sollte nicht treffen: $s"; exit 1; }
 done
 `
@@ -232,19 +232,19 @@ func TestAdresseUebergabeReihenfolge(t *testing.T) {
 	}
 }
 
-// TestAdresseAddrOn: erkennt die Adresse auf der Karte genau (10.10.0.1 ist
-// nicht 10.10.0.15, der Punkt ist kein Platzhalter).
+// TestAdresseAddrOn: erkennt die Adresse auf der Karte genau (192.0.2.1 ist
+// nicht 192.0.2.15, der Punkt ist kein Platzhalter).
 func TestAdresseAddrOn(t *testing.T) {
 	bash := bashOrSkip(t)
 	ip := "ip() {\n" +
-		"  echo '2: eth0    inet 10.10.0.14/24 brd 10.10.0.255 scope global eth0'\n" +
-		"  echo '2: eth0    inet 10.10.0.15/24 scope global secondary eth0'\n}\n"
+		"  echo '2: eth0    inet 192.0.2.14/24 brd 192.0.2.255 scope global eth0'\n" +
+		"  echo '2: eth0    inet 192.0.2.15/24 scope global secondary eth0'\n}\n"
 	fn := shellFunc(t, "addr_on")
 	on := func(a string) bool {
 		script := ip + "IFACE=eth0\n" + fn + "addr_on " + a + "\n"
 		return exec.Command(bash, "-c", script).Run() == nil
 	}
-	for a, want := range map[string]bool{"10.10.0.15": true, "10.10.0.14": true, "10.10.0.1": false, "10.10.0.150": false, "10x10.0.15": false} {
+	for a, want := range map[string]bool{"192.0.2.15": true, "192.0.2.14": true, "192.0.2.1": false, "192.0.2.150": false, "10x10.0.15": false} {
 		if got := on(a); got != want {
 			t.Errorf("addr_on %s = %v, erwartet %v", a, got, want)
 		}

@@ -20,6 +20,15 @@ wifi:
 
 captive_portal:
 
+web_server:
+  port: 80
+  version: 3
+  ota: false
+  local: true
+  auth:
+    username: pdh
+    password: !secret web_password
+
 mqtt:
   broker: !literal "mqtt.werk.example"
   port: 8883
@@ -117,3 +126,14 @@ sensor:
         - multiply: 0.001
         - heartbeat: 10s
       state_topic: esppdh/halle1-s0/s0-1/zaehlerstand
+  - platform: uptime
+    name: Laufzeit
+    update_interval: 10s
+    state_topic: esppdh/halle1-s0/info/laufzeit
+    retain: false
+
+text_sensor:
+  - platform: wifi_info
+    ip_address:
+      name: Adresse
+      state_topic: esppdh/halle1-s0/info/adresse

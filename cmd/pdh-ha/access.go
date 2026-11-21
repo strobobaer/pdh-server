@@ -14,7 +14,7 @@ import (
 
 // accessConfig ist der Block "access" der gemeinsamen Verbund-Konfiguration.
 type accessConfig struct {
-	VIP     string     `json:"vip,omitempty"`      // Adresse mit Präfix, z. B. 10.10.0.202/24
+	VIP     string     `json:"vip,omitempty"`      // Adresse mit Präfix, z. B. 192.0.2.202/24
 	VIPOn   bool       `json:"vip_on,omitempty"`   // Schalter mitwandernde Adresse
 	HooksOn bool       `json:"hooks_on,omitempty"` // Schalter Skripte beim Rollenwechsel
 	// VIP6Suffix: Ende (untere 64 Bit) der mitwandernden IPv6-Adresse, z. B. "15"; leer = keine
@@ -24,7 +24,7 @@ type accessConfig struct {
 
 // vipTested merkt sich den letzten erfolgreichen Test in beide Richtungen.
 type vipTested struct {
-	Net    string            `json:"net"`    // Netz als Präfix, z. B. 10.10.0.0/24
+	Net    string            `json:"net"`    // Netz als Präfix, z. B. 192.0.2.0/24
 	Ifaces map[string]string `json:"ifaces"` // Knoten → Netzwerkkarte
 	At     time.Time         `json:"at"`
 }
@@ -51,7 +51,7 @@ func (t *vipTested) covers(vip netip.Prefix, ifaces map[string]string) bool {
 func parseVIP(s string) (netip.Prefix, error) {
 	p, err := netip.ParsePrefix(strings.TrimSpace(s))
 	if err != nil {
-		return netip.Prefix{}, fmt.Errorf("Adresse %q ungültig – erwartet z. B. 10.10.0.202/24", s)
+		return netip.Prefix{}, fmt.Errorf("Adresse %q ungültig – erwartet z. B. 192.0.2.202/24", s)
 	}
 	if !p.Addr().Is4() {
 		return netip.Prefix{}, fmt.Errorf("Adresse %s: nur IPv4 wird unterstützt", s)

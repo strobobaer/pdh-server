@@ -72,7 +72,7 @@ const (
 	netSrvMsgMaintOff   = "Die Wartung des Ausfallschutzes aus der vorigen Änderung wird noch ausgeschaltet – bitte danach erneut versuchen."
 	netSrvMsgDocker     = "Im Docker-Testsystem nicht verfügbar"
 	netSrvMsgNetplan    = "Fest einstellen nur auf Ubuntu-Servern mit netplan"
-	netSrvMsgDNSForm    = "DNS-Server: bitte ein bis drei IPv4-Adressen eingeben, z. B. 10.10.0.1."
+	netSrvMsgDNSForm    = "DNS-Server: bitte ein bis drei IPv4-Adressen eingeben, z. B. 192.0.2.1."
 	netSrvMsgFixed      = "Die Adresse ist schon fest eingestellt."
 	netSrvMsgPending    = "Eine Änderung läuft noch oder wartet auf Bestätigung."
 	netSrvMsgNoAgent    = "Der Update-Agent antwortet nicht – es wurde nichts geändert."
