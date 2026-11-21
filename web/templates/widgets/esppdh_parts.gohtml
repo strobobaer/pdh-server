@@ -33,6 +33,10 @@
 {{define "esppdh-live"}}<span class="badge {{.Badge}}" data-live="{{.Key}}"><i class="ti {{.Icon}}" aria-hidden="true"></i>&nbsp;{{.Label}}</span>{{end}}
 
 {{/* Zustand: Docker, ausgeschaltet, Umgebung fehlt (esppdhState) */}}
+{{/* Kennwort der Webseite des Geräts (EsppdhWebPasswordWeb), ersetzt den Knopf „Kennwort anzeigen“ */}}
+{{define "esppdh-web-password"}}<code class="esp-mono esp-copy-text" id="esp-web-pw-text">{{.Password}}</code>
+<button type="button" class="btn btn-small" onclick="espCopy('esp-web-pw-text', this)" title="Kennwort kopieren" aria-label="Kennwort kopieren"><i class="ti ti-copy" aria-hidden="true"></i></button>{{end}}
+
 {{define "esppdh-state"}}
 {{if .Docker}}<div class="card esp-msg esp-warn" role="status"><i class="ti ti-brand-docker" aria-hidden="true"></i> Im Docker-Betrieb gibt es ESPPDH nicht. Geräte lassen sich nur auf einem Server mit systemd anlegen und bauen.</div>
 {{else if not .Enabled}}<div class="card esp-msg esp-warn" role="status"><i class="ti ti-power" aria-hidden="true"></i> ESPPDH ist ausgeschaltet. Neue Geräte lassen sich erst anlegen, wenn es eingeschaltet ist: <a href="/admin/server-config?tab=esppdh" style="color:var(--accent)">Server-Einstellungen → ESPPDH</a>.</div>
@@ -73,6 +77,7 @@
   <div class="form-group"><label class="form-label" for="esp-note-{{.P}}">Notiz <span style="color:var(--muted);font-weight:400">(optional)</span></label>
     <input id="esp-note-{{.P}}" name="note" class="form-input" maxlength="500" value="{{$f.Note}}"></div>
 </div>
+<label class="esp-check"><input type="checkbox" name="web"{{if not $f.WebOff}} checked{{end}}> <span><b>Webseite des Geräts</b> – Webseite auf dem Gerät (Port 80) mit eigenem Kennwort; nur im Netz der Geräte erreichbar.</span></label>
 {{if .PlainPort}}<label class="esp-check"><input type="checkbox" name="plain"{{if $f.Plain}} checked{{end}}> <span><b>ohne TLS (Port {{.PlainPort}})</b> – ESP8266 kann nicht verschlüsselt verbinden; das Gerät sendet dann unverschlüsselt. Besser: eine ESP32-Platine.</span></label>
 {{else if $f.Plain}}<input type="hidden" name="plain" value="on">{{end}}
 {{end}}

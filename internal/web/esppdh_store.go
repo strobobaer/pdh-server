@@ -77,6 +77,7 @@ type esppdhDevice struct {
 	// Netz des Geräts: bei Kabel das gewählte Netz, sonst das Netz seines WLANs
 	NetName, NetSubnet   string
 	UseTLS, Locked       bool
+	WebEnabled           bool // Webseite des Geräts (web_server v3) eingeschaltet
 	BuiltHash, Note      string
 	CreatedAt, UpdatedAt time.Time
 	Blocks               []esppdhBlock
@@ -84,13 +85,15 @@ type esppdhDevice struct {
 
 	mqttEnc, apEnc string
 	mqttHash       string // Prüfwert des MQTT-Kennworts ("" = noch nicht nachgetragen)
+	webEnc         string // Kennwort der Webseite, verschlüsselt ("" = noch keins)
+	webPW          string // Kennwort der Webseite im Klartext, nur solange geladen (esppdhWebPassword)
 }
 
 const esppdhSelect = `SELECT d.id::text, d.slug, d.name, d.infrastructure_id::text, d.connection_id::text, c.name,
 		d.board_key, d.custom_board, d.wired, COALESCE(d.wlan_id::text, ''), COALESCE(w.ssid, ''), COALESCE(w.hidden, false),
 		COALESCE(d.segment_id::text, ''), COALESCE(s.name, ''), COALESCE(s.subnet, ''),
 		d.use_tls, d.locked, d.built_hash, d.note, d.mqtt_password_enc, d.ap_password_enc, d.mqtt_pw_sha256, d.created_at, d.updated_at,
-		(SELECT count(*) FROM esppdh_blocks b WHERE b.device_id = d.id)
+		(SELECT count(*) FROM esppdh_blocks b WHERE b.device_id = d.id), d.web_enabled, d.web_password_enc
 	FROM esppdh_devices d
 	JOIN import_export_connections c ON c.id = d.connection_id
 	LEFT JOIN net_wlans w ON w.id = d.wlan_id
@@ -101,8 +104,53 @@ func esppdhScan(row pgx.Row) (esppdhDevice, error) {
 	err := row.Scan(&d.ID, &d.Slug, &d.Name, &d.InfraID, &d.ConnID, &d.ConnName,
 		&d.BoardKey, &d.CustomBoard, &d.Wired, &d.WLANID, &d.WLANSSID, &d.WLANHidden,
 		&d.SegmentID, &d.NetName, &d.NetSubnet,
-		&d.UseTLS, &d.Locked, &d.BuiltHash, &d.Note, &d.mqttEnc, &d.apEnc, &d.mqttHash, &d.CreatedAt, &d.UpdatedAt, &d.BlockCount)
+		&d.UseTLS, &d.Locked, &d.BuiltHash, &d.Note, &d.mqttEnc, &d.apEnc, &d.mqttHash, &d.CreatedAt, &d.UpdatedAt, &d.BlockCount,
+		&d.WebEnabled, &d.webEnc)
 	return d, err
+}
+
+// esppdhWebPassword: Kennwort der Webseite des Geräts. Fehlt es (Gerät vor 0.82.11) oder ist es
+// nicht mehr lesbar (Schlüssel geändert), entsteht ein neues; ist das Gerät schon gespeichert,
+// wird es verschlüsselt abgelegt (nicht auf dem Spiegel – dort Fehler). Die Firmware muss danach
+// neu gebaut werden; das zeigt die Geräteseite über den geänderten Konfigurations-Prüfwert an.
+func (h *Handler) esppdhWebPassword(ctx context.Context, d *esppdhDevice) (string, error) {
+	if d.webPW != "" {
+		return d.webPW, nil
+	}
+	if d.webEnc != "" {
+		if pw, err := decryptSecret(h.esppdhKey(), d.webEnc); err == nil && pw != "" {
+			d.webPW = pw
+			return pw, nil
+		}
+	}
+	pw, err := esppdhNewPassword()
+	if err != nil {
+		return "", err
+	}
+	if d.ID != "" {
+		if h.Mirror().On {
+			return "", errors.New("Das Gerät hat noch kein Kennwort für seine Webseite – bitte die Geräteseite einmal am aktiven Server öffnen.")
+		}
+		enc, err := encryptSecret(h.esppdhKey(), pw)
+		if err != nil {
+			return "", err
+		}
+		// nur ersetzen, was eben gelesen wurde – ein gleichzeitiger Aufruf gewinnt sonst nicht doppelt
+		var cur string
+		err = h.db.QueryRow(ctx, `UPDATE esppdh_devices SET web_password_enc = CASE WHEN web_password_enc = $2 THEN $3 ELSE web_password_enc END
+			WHERE id = $1::uuid RETURNING web_password_enc`, d.ID, d.webEnc, enc).Scan(&cur)
+		if err != nil {
+			return "", err
+		}
+		if cur != enc {
+			if other, err := decryptSecret(h.esppdhKey(), cur); err == nil && other != "" {
+				pw = other
+			}
+		}
+		d.webEnc = cur
+	}
+	d.webPW = pw
+	return pw, nil
 }
 
 // esppdhLoad liest ein Gerät samt Bausteinen (in ihrer Reihenfolge).
@@ -201,13 +249,20 @@ func (h *Handler) esppdhInsert(ctx context.Context, d esppdhDevice, mqttPW, apPW
 	if !meterUUIDRe.MatchString(by) {
 		by = ""
 	}
+	webEnc := ""
+	if d.webPW != "" {
+		if webEnc, err = encryptSecret(h.esppdhKey(), d.webPW); err != nil {
+			return "", err
+		}
+	}
 	var id string
 	err = h.db.QueryRow(ctx, `INSERT INTO esppdh_devices (slug, name, infrastructure_id, connection_id, board_key, custom_board,
-			wired, wlan_id, segment_id, use_tls, mqtt_password_enc, ap_password_enc, note, created_by, mqtt_pw_sha256)
-		VALUES ($1, $2, $3::uuid, $4::uuid, $5, $6, $7, $8::uuid, $9::uuid, $10, $11, $12, $13, $14::uuid, $15) RETURNING id::text`,
+			wired, wlan_id, segment_id, use_tls, mqtt_password_enc, ap_password_enc, note, created_by, mqtt_pw_sha256,
+			web_enabled, web_password_enc)
+		VALUES ($1, $2, $3::uuid, $4::uuid, $5, $6, $7, $8::uuid, $9::uuid, $10, $11, $12, $13, $14::uuid, $15, $16, $17) RETURNING id::text`,
 		d.Slug, d.Name, d.InfraID, d.ConnID, d.BoardKey, d.CustomBoard,
 		d.Wired, nullIfEmpty(d.WLANID), nullIfEmpty(d.SegmentID), d.UseTLS, mqttEnc, apEnc, d.Note, nullIfEmpty(by),
-		mqttbroker.DevicePasswordSHA256(mqttPW)).Scan(&id)
+		mqttbroker.DevicePasswordSHA256(mqttPW), d.WebEnabled, webEnc).Scan(&id)
 	return id, err
 }
 
@@ -222,9 +277,9 @@ func (h *Handler) esppdhUpdate(ctx context.Context, d esppdhDevice) error {
 	defer func() { _ = tx.Rollback(ctx) }()
 	tag, err := tx.Exec(ctx, `UPDATE esppdh_devices SET name = $2, infrastructure_id = $3::uuid, connection_id = $4::uuid,
 			board_key = $5, custom_board = $6, wired = $7, wlan_id = $8::uuid, segment_id = $9::uuid, use_tls = $10, note = $11,
-			updated_at = now()
+			web_enabled = $12, updated_at = now()
 		WHERE id = $1::uuid`, d.ID, d.Name, d.InfraID, d.ConnID, d.BoardKey, d.CustomBoard,
-		d.Wired, nullIfEmpty(d.WLANID), nullIfEmpty(d.SegmentID), d.UseTLS, d.Note)
+		d.Wired, nullIfEmpty(d.WLANID), nullIfEmpty(d.SegmentID), d.UseTLS, d.Note, d.WebEnabled)
 	if err != nil {
 		return err
 	}

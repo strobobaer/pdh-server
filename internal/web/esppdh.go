@@ -166,6 +166,7 @@ type esppdhForm struct {
 	Net                             string // WLAN-ID, esppdhWired oder ""
 	SegmentID                       string // Netz bei Kabel
 	Plain                           bool   // ESP8266: ohne TLS verbinden
+	WebOff                          bool   // Webseite des Geräts aus (Vorgabe: an)
 	Note                            string
 }
 
@@ -173,13 +174,13 @@ func esppdhFormFrom(r *http.Request) esppdhForm {
 	g := func(k string) string { return strings.TrimSpace(r.PostFormValue(k)) }
 	return esppdhForm{Name: g("name"), Slug: strings.ToLower(g("slug")), InfraID: g("infrastructure_id"), ConnID: g("connection_id"),
 		BoardKey: g("board_key"), CustomBoard: g("custom_board"), Net: g("net"), SegmentID: g("segment_id"),
-		Plain: r.PostFormValue("plain") == "on", Note: g("note")}
+		Plain: r.PostFormValue("plain") == "on", WebOff: r.PostFormValue("web") != "on", Note: g("note")}
 }
 
 // esppdhFormOf: Formular mit den Werten eines gespeicherten Geräts.
 func esppdhFormOf(d esppdhDevice) esppdhForm {
 	f := esppdhForm{Name: d.Name, Slug: d.Slug, InfraID: d.InfraID, InfraLabel: d.InfraPath, ConnID: d.ConnID, BoardKey: d.BoardKey,
-		CustomBoard: d.CustomBoard, Net: d.WLANID, SegmentID: d.SegmentID, Plain: !d.UseTLS, Note: d.Note}
+		CustomBoard: d.CustomBoard, Net: d.WLANID, SegmentID: d.SegmentID, Plain: !d.UseTLS, WebOff: !d.WebEnabled, Note: d.Note}
 	if d.Wired {
 		f.Net = esppdhWired
 	}
@@ -201,6 +202,7 @@ func (f esppdhForm) apply(d *esppdhDevice) {
 		d.WLANID = f.Net
 	}
 	d.UseTLS = !f.Plain
+	d.WebEnabled = !f.WebOff
 }
 
 // esppdhSlugFrom: Kennung aus dem Namen („Presse Halle 1“ → „presse-halle-1“), höchstens 32 Zeichen.
@@ -488,10 +490,12 @@ func (h *Handler) EsppdhCreateWeb(w http.ResponseWriter, r *http.Request) {
 	f.apply(&d)
 	mqttPW, err1 := esppdhNewPassword()
 	apPW, err2 := esppdhNewPassword()
-	if err1 != nil || err2 != nil {
+	webPW, err3 := esppdhNewPassword()
+	if err1 != nil || err2 != nil || err3 != nil {
 		http.Error(w, "Kennwort konnte nicht erzeugt werden", http.StatusInternalServerError)
 		return
 	}
+	d.webPW = webPW // auch bei ausgeschalteter Webseite – Einschalten später braucht keins nachzutragen
 	msgs, plainPort := h.esppdhCheck(ctx, &d, mqttPW, apPW, r.Host, false)
 	var taken bool
 	if esppdh.ValidSlug(d.Slug) {
@@ -580,6 +584,7 @@ type ESPPDHDevicePageData struct {
 	Broker             esppdhBroker
 	MQTTUser, Topic    string
 	APName, APPassword string // Notzugang; das Kennwort nur mit esppdh.edit
+	WebNeedsInternet   bool   // ESP8266 mit Webseite: Seite lädt ihr Programm aus dem Internet
 	Problems           []string
 	Hints              []esppdhHint
 	PlainPort          int
@@ -747,6 +752,7 @@ func (h *Handler) esppdhRenderDevice(w http.ResponseWriter, r *http.Request, d e
 	if pd.CanEdit && !d.Wired {
 		pd.APPassword = apPW
 	}
+	pd.WebNeedsInternet = d.WebEnabled && res.Platform == "esp8266"
 
 	b := res.Broker
 	if pd.PlainPort == 0 && res.Platform == "esp8266" && b.TLSPort > 0 && b.PlainPort > 0 {
@@ -907,6 +913,34 @@ func (h *Handler) EsppdhLockWeb(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, "/import/esppdh/"+id+"?n="+key, http.StatusSeeOther)
+}
+
+// EsppdhWebPasswordWeb: POST /import/esppdh/{id}/web-password – zeigt das Kennwort der Webseite
+// des Geräts (Benutzer „pdh“) als Fragment, nur mit esppdh.edit; jedes Anzeigen steht im
+// Server-Protokoll.
+func (h *Handler) EsppdhWebPasswordWeb(w http.ResponseWriter, r *http.Request) {
+	id, ok := h.esppdhRecordAction(w, r, permESPEdit)
+	if !ok {
+		return
+	}
+	ctx := r.Context()
+	d, err := h.esppdhLoad(ctx, id)
+	if err != nil {
+		h.esppdhLoadFailed(w, r, err)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	if !d.WebEnabled {
+		http.Error(w, "Die Webseite des Geräts ist ausgeschaltet.", http.StatusConflict)
+		return
+	}
+	pw, err := h.esppdhWebPassword(ctx, &d)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusConflict)
+		return
+	}
+	componentLog("esppdh").Info().Str("benutzer", getUser(r).ID).Str("gerät", d.Slug).Msg("webseiten-kennwort angezeigt")
+	h.renderFragment(w, "esppdh-web-password", map[string]string{"User": "pdh", "Password": pw})
 }
 
 // EsppdhPasswordWeb: POST /import/esppdh/{id}/password – neues MQTT-Kennwort. Der Broker trennt

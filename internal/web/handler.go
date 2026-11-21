@@ -1158,6 +1158,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/import/esppdh/{id}", h.EsppdhSaveWeb)
 	r.Post("/import/esppdh/{id}/lock", h.EsppdhLockWeb)
 	r.Post("/import/esppdh/{id}/password", h.EsppdhPasswordWeb)
+	r.Post("/import/esppdh/{id}/web-password", h.EsppdhWebPasswordWeb) // Kennwort der Webseite anzeigen (protokolliert)
 	r.Post("/import/esppdh/{id}/delete", h.EsppdhDeleteWeb)
 	r.Get("/import/esppdh/{id}/config.yaml", h.EsppdhConfigWeb)
 	r.Post("/import/esppdh/{id}/build", h.EsppdhBuildWeb)                    // Firmware bauen (esppdh_build.go)
