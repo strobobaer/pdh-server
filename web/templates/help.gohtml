@@ -3710,16 +3710,16 @@ curl -fsS -X PUT "https://api.cloudflare.com/client/v4/zones/$CF_ZONE/dns_record
   </div>
   <div class="hb-howto"><b><i class="ti ti-list-check"></i> Mit der App arbeiten</b>
     <ol class="hb-steps">
-      <li>Unter <b>Meine Vorgänge</b> siehst du, was dir zugewiesen oder in deinem Bereich offen ist: Störungen, Tickets, Aufgaben und Wartung. Du siehst nur die Arten, die dein Telefon freigegeben hat und für die du auch im Browser das Ansichtsrecht hast.</li>
-      <li>Einen Vorgang antippen. Zur Auswahl stehen: <b>Annehmen</b> (der Vorgang wird dir zugewiesen), eine <b>Maßnahme</b> eintragen, einen <b>Kommentar</b> schreiben, die <b>Checkliste</b> abhaken und <b>Abschließen</b>.</li>
-      <li>Beim <b>Abschließen</b> schreibst du einen Text; er wird als <b>Maßnahme</b> in den Vorgang eingetragen, bevor er geschlossen wird. Ein bereits geschlossener Vorgang lässt sich nicht noch einmal abschließen.</li>
-      <li>Sendet die App eine Eingabe nach einem Verbindungsabbruch noch einmal, wird sie vom Server <b>genau einmal</b> ausgeführt – nichts wird doppelt eingetragen.</li>
+      <li>Im Reiter <b>Vorgänge</b> siehst du, was dir zugewiesen oder in deinem Bereich offen ist: Störungen, Tickets, Aufgaben und Wartung. Du siehst nur die Arten, die dein Telefon freigegeben hat und für die du auch im Browser das Ansichtsrecht hast.</li>
+      <li>Einen Vorgang antippen. Je nach Recht stehen als Knöpfe zur Auswahl: <b>Starten</b> (setzt den Vorgang auf „In Bearbeitung“ und übernimmt ihn, wenn er noch niemandem zugewiesen ist), <b>Maßnahme eintragen</b>, <b>Kommentar</b> und <b>Abschließen</b>; die <b>Checkliste</b> einer Wartung hakst du direkt ab.</li>
+      <li>Beim <b>Abschließen</b> schreibst du einen Text (Pflicht) und kannst <b>Keine Ersatzteile benötigt</b> ankreuzen; bei Störungen gibt es zusätzlich die Ursache. Der Text wird zuerst als <b>Maßnahme</b> in den Vorgang eingetragen, dann wird er geschlossen. Ein bereits geschlossener Vorgang lässt sich nicht noch einmal abschließen.</li>
+      <li>Klappt das Senden nicht, bleibt die Eingabe stehen und du tippst auf <b>Erneut senden</b>. Kommt dieselbe Eingabe nach einem Verbindungsabbruch ein zweites Mal an, wird sie vom Server <b>genau einmal</b> ausgeführt – nichts wird doppelt eingetragen.</li>
     </ol>
     Alles, was die App darf, darfst du auch im Browser: Es gelten die Rechte der Person, eingeschränkt auf das, was das Telefon freigegeben hat.
   </div>
   <div class="hb-howto"><b><i class="ti ti-scan"></i> So scannst du einen QR-Code</b>
     <ol class="hb-steps">
-      <li>In der App <b>Scannen</b> wählen und die Kamera auf den QR-Code einer Anlage, eines IT-Assets, eines Lagerplatzes oder eines Kanban-Etiketts halten.</li>
+      <li>Im Reiter <b>Scannen</b> und die Kamera auf den QR-Code einer Anlage, eines IT-Assets, eines Lagerplatzes oder eines Kanban-Etiketts halten.</li>
       <li>Bei einer <b>Anlage</b> öffnet die App die Anlage mit ihren offenen Vorgängen; von dort kannst du einen Vorgang öffnen oder eine Störung melden.</li>
       <li>Bei <b>Lager</b>- und <b>Kanban</b>-Codes öffnet die App den <b>Browser</b> mit der passenden PDH-Seite; dort meldest du dich wie gewohnt an.</li>
       <li>Eine Anlage <b>außerhalb deines Bereichs</b> (Abteilung) lässt sich nicht per Scan öffnen; die App meldet, dass dir das Recht dafür fehlt. Ein Code, den dieser Server nicht kennt oder der auf eine fremde Adresse zeigt, wird nicht geöffnet.</li>
@@ -3727,16 +3727,18 @@ curl -fsS -X PUT "https://api.cloudflare.com/client/v4/zones/$CF_ZONE/dns_record
   </div>
   <div class="hb-howto"><b><i class="ti ti-alert-triangle"></i> So meldest du eine Störung aus der App</b>
     <ol class="hb-steps">
-      <li>Eine Anlage scannen oder aus der Liste wählen und <b>Störung melden</b> antippen.</li>
-      <li>Titel und Beschreibung eintragen und senden. Die Störung erscheint wie im Browser angelegt, mit dir als Melder.</li>
+      <li>Entweder die Anlage scannen und <b>Störung melden</b> antippen, oder im Reiter <b>Melden</b> auf <b>Anlage scannen</b> tippen. Den Reiter „Melden“ gibt es nur mit der Freigabe unten.</li>
+      <li>Titel (Pflicht) und Beschreibung eintragen, bei Stillstand <b>Anlage steht</b> einschalten und <b>Melden</b> antippen; schlägt das Senden fehl, steht dort <b>Erneut senden</b>. Melden geht nur mit Verbindung zum Server. Die Störung erscheint wie im Browser angelegt, mit dir als Melder.</li>
     </ol>
     Das geht nur, wenn die Freigabe des Telefons <b>„Vorgänge aus der App anlegen“</b> enthält <i>und</i> die Person das Recht „App: Vorgänge anlegen“ hat. Fehlt eines davon, zeigt die App keinen Knopf zum Melden.
   </div>
   <div class="hb-howto"><b><i class="ti ti-lock"></i> Hinweise „Nur lesen“ und „Wartung“</b>
     <ol class="hb-steps">
-      <li><b>Nur lesen (Spiegelserver):</b> Ist die App mit einem Spiegelserver verbunden, kannst du Vorgänge ansehen, aber nichts ändern. Die App zeigt den Hinweis „Nur lesen“; Eingaben werden nicht angenommen, bis du dich mit dem Hauptserver verbindest.</li>
-      <li><b>Wartung:</b> Während einer Wartungssperre des Servers zeigt die App den Hinweis „Wartung“ und ändert nichts. Lesen bleibt möglich; schreibe danach erneut. Die App versucht es von selbst später noch einmal.</li>
+      <li><b>Nur lesen (Spiegelserver):</b> Ist die App mit einem Spiegelserver verbunden, kannst du Vorgänge ansehen, aber nichts ändern. Die App zeigt oben den Balken „Nur lesen (Spiegelserver)“; Knöpfe zum Ändern sind aus, bis du dich mit dem Hauptserver verbindest.</li>
+      <li><b>Wartung:</b> Während einer Wartungssperre des Servers zeigt die App den Balken „Wartung – bitte später erneut versuchen“ und ändert nichts. Lesen bleibt möglich; versuche es später noch einmal (bei einer gescheiterten Eingabe mit <b>Erneut senden</b>).</li>
+      <li><b>Keine Verbindung:</b> Ohne Netz zeigt die App den Balken „Keine Verbindung“; Ändern und Melden sind dann aus.</li>
     </ol>
+    <b>Telefon zurücksetzen:</b> Unter <b>Mehr → App zurücksetzen</b> löscht die App alle Daten und den Geräteschlüssel auf dem Telefon; danach richtest du sie neu ein und fragst den Zugang neu an.
   </div>
   {{template "hb-shots" (dict "Ref" (index $s "pdh-app") "Can" $can)}}
 </section>

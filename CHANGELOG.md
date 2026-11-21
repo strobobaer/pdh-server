@@ -14,7 +14,7 @@ im Kapitel „Versionen & Updates“ an.
 
 ### Neu
 
-- App-Schnittstellen für die PDH-App: „Meine Vorgänge“ mit Annehmen, Maßnahme, Kommentar, Checkliste und Abschließen (der Text beim Abschließen wird als Maßnahme eingetragen).
+- App-Schnittstellen für die PDH-App: Vorgänge mit Starten, Maßnahme, Kommentar, Checkliste und Abschließen (der Text beim Abschließen wird als Maßnahme eingetragen).
 - Scannen: Die App löst QR-Codes von Anlagen und IT-Assets auf und zeigt deren offene Vorgänge; Lager- und Kanban-Codes öffnen die passende Seite im Browser.
 - Störung melden aus der App – nur mit der Freigabe „Vorgänge aus der App anlegen“ am Telefon und dem Recht „App: Vorgänge anlegen“.
 - Handbuch: Kapitel „PDH-App“ um „Mit der App arbeiten“ ergänzt.
