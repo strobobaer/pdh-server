@@ -192,9 +192,13 @@ func (h *Handler) listenMailBridge(ctx context.Context, addr, password string) (
 	return b, nil
 }
 
+// wsaeAddrInUse: Windows meldet einen belegten Port als WSAEADDRINUSE (10048),
+// nicht als syscall.EADDRINUSE, und mit übersetztem Text (z. B. deutsch).
+const wsaeAddrInUse = syscall.Errno(10048)
+
 // isAddrInUse: Listen scheitert, weil die Adresse belegt ist (Linux, Windows).
 func isAddrInUse(err error) bool {
-	if errors.Is(err, syscall.EADDRINUSE) {
+	if errors.Is(err, syscall.EADDRINUSE) || errors.Is(err, wsaeAddrInUse) {
 		return true
 	}
 	low := strings.ToLower(err.Error())

@@ -9,8 +9,10 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -274,6 +276,20 @@ func TestMailBridgePortBusy(t *testing.T) {
 	}
 	if _, err := h.listenMailBridge(context.Background(), "0.0.0.0:2525", bridgePW); errors.Is(err, errMailBridgePortBusy) {
 		t.Error("falsche Adresse ist kein belegter Port")
+	}
+}
+
+// Windows meldet einen belegten Port als WSAEADDRINUSE (10048) und mit
+// übersetztem Text (z. B. deutsch) – beides muss als „belegt“ gelten.
+func TestIsAddrInUseWindowsCode(t *testing.T) {
+	err := &net.OpError{Op: "listen", Net: "tcp", Err: &os.SyscallError{Syscall: "bind",
+		Err: syscall.Errno(10048)}}
+	if !isAddrInUse(err) {
+		t.Errorf("WSAEADDRINUSE nicht als belegt erkannt: %v", err)
+	}
+	if isAddrInUse(&net.OpError{Op: "listen", Net: "tcp", Err: &os.SyscallError{Syscall: "bind",
+		Err: syscall.Errno(10013)}}) {
+		t.Error("WSAEACCES (10013) ist kein belegter Port")
 	}
 }
 
