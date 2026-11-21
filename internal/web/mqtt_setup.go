@@ -111,12 +111,14 @@ func mqttNameSetup(ctx context.Context, d mqttSetupDeps, host string, wsPort int
 		if t := st2.LANTarget; t != "" {
 			entry += " → " + t
 		}
-		note("Name im Haus fehlt – am DNS im Haus eintragen: " + entry + ".")
+		note("Name im Haus fehlt (kein Hindernis) – Geräte im Haus gehen sonst den Weg über das Internet. Am DNS im Haus eintragen: " + entry + ".")
 	}
 	if !st2.FirewallOK {
 		note("Firewall am Server: Ports des Brokers sind noch gesperrt.")
 	}
-	if !(st2.CertOK && st2.LANOK && st2.FirewallOK) {
+	// Pflicht sind Zertifikat und Firewall; der Name im Haus ist es nicht (Entscheidung des
+	// Anwenders vom 21.11.2026: „MQTT ohne DNS ok“ – Anlagen, die nur den Tunnel nutzen).
+	if !(st2.CertOK && st2.FirewallOK) {
 		return res // bleibt vorgemerkt: keine nginx-Seite, keine Tunnel-Zeile
 	}
 

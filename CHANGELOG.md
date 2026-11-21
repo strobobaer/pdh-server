@@ -10,6 +10,12 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.82.16] – 2026-11-21
+
+### Geändert
+
+- Ein MQTT-Name wird auch ohne Eintrag im DNS im Haus scharf geschaltet, sobald Zertifikat und Firewall stehen; der fehlende Eintrag steht in der Prüfliste als Hinweis.
+
 ## [0.82.15] – 2026-11-21
 
 ### Behoben

@@ -478,7 +478,7 @@ func (h *Handler) mqttCheckRows(ctx context.Context, r *http.Request, id string,
 	// Stand: vorgemerkt (noch keine nginx-Seite, keine Tunnel-Zeile) oder scharf
 	stand := mqttCheckRow{Label: "Stand", State: "scharf", Tone: "ok"}
 	if pending {
-		stand.State, stand.Tone = "vorgemerkt – wird scharf, sobald Zertifikat, Name im Haus und Firewall grün sind", "warn"
+		stand.State, stand.Tone = "vorgemerkt – wird scharf, sobald Zertifikat und Firewall grün sind", "warn"
 		stand.Hint = "Bis dahin schreibt das PDH keine nginx-Seite und keine Tunnel-Zeile für den Namen. „Einrichten / erneut prüfen“ holt nach, was das PDH selbst darf."
 	}
 	if h.db != nil {
