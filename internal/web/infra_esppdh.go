@@ -23,7 +23,7 @@ func (h *Handler) esppdhByInfra(ctx context.Context, infraIDs []string) ([]esppd
 		return nil, err
 	}
 	var list []esppdhDevice
-	var ids, infras []string
+	var ids []string
 	for rows.Next() {
 		d, err := esppdhScan(rows)
 		if err != nil {
@@ -31,7 +31,7 @@ func (h *Handler) esppdhByInfra(ctx context.Context, infraIDs []string) ([]esppd
 			return nil, err
 		}
 		list = append(list, d)
-		ids, infras = append(ids, d.ID), append(infras, d.InfraID)
+		ids = append(ids, d.ID)
 	}
 	rows.Close()
 	if err := rows.Err(); err != nil || len(list) == 0 {
@@ -61,10 +61,8 @@ func (h *Handler) esppdhByInfra(ctx context.Context, infraIDs []string) ([]esppd
 			d.Blocks = append(d.Blocks, b)
 		}
 	}
-	paths := h.infraPaths(ctx, infras)
-	for i := range list {
-		list[i].InfraPath = paths[list[i].InfraID]
-	}
+	// kein infraPaths: baut den ganzen Anlagenbaum, die Anzeigen (Reiter, Terminal, Schnellübersicht)
+	// brauchen den Pfad nicht – alle 10 s je Bildschirm wäre das teuer (Schlussprüfung)
 	return list, brows.Err()
 }
 

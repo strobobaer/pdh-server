@@ -50,6 +50,7 @@ type esppdhValuesView struct {
 	Handshake                       handshakeView
 	Address, DirectURL, AddressNote string
 	Groups                          []esppdhGroupView
+	infra                           string // Anlage des Geräts (Verteilung auf Karten)
 }
 
 // esppdhAddressOK: Darf die vom Gerät gemeldete Adresse verlinkt werden? Nur eine IPv4-Adresse,
@@ -112,7 +113,7 @@ func (h *Handler) esppdhValues(ctx context.Context, devs []esppdhDevice, now tim
 	own := ownAddrs()
 	out := make([]esppdhValuesView, 0, len(devs))
 	for _, d := range devs {
-		v := esppdhValuesView{ID: d.ID, Name: d.Name, Slug: d.Slug, Path: d.InfraPath, Live: live[d.ID]}
+		v := esppdhValuesView{ID: d.ID, Name: d.Name, Slug: d.Slug, Path: d.InfraPath, Live: live[d.ID], infra: d.InfraID}
 		v.Online = v.Live.Key == "online"
 		bv, seen := cache[d.ConnID]
 		if !seen {

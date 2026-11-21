@@ -5,7 +5,8 @@ package web
 // Heartbeat-Zuordnungen (z. B. TIA-Baustein). Steht einer, wird die Karte gelb. Der Zähler eines
 // ESPPDH-Geräts erscheint nur mit esppdh.values/esppdh.view für die Karte (watchUnmask); ohne
 // Anfrage (Dashboard-Widget) bleibt er verborgen, „läuft/steht“ ist immer sichtbar. Alle 10 s
-// tauscht /plant-watch/{id}/handshakes nur diese Zeilen (hx-swap-oob).
+// tauscht /plant-watch/{id}/handshakes nur diese Zeilen (hx-swap-oob). Gebündelt: eine Abfrage
+// für alle Unteranlagen, je eine für Geräte und Heartbeats aller Karten.
 
 import (
 	"context"
@@ -16,33 +17,88 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// watchHandshakes: Handshakes einer Karte; counts: verborgene Zähler der ESPPDH-Geräte je ID.
-func (h *Handler) watchHandshakes(ctx context.Context, infraID string) ([]handshakeView, map[string]string) {
-	if h.db == nil {
-		return nil, nil
+// watchSubtrees: je Karte (Anlage) sie selbst und alle Unteranlagen – eine Abfrage für alle.
+func (h *Handler) watchSubtrees(ctx context.Context, roots []string) (map[string][]string, error) {
+	out := map[string][]string{}
+	if h.db == nil || len(roots) == 0 {
+		return out, nil
 	}
-	ids := h.infraSubtreeIDs(ctx, infraID)
-	if len(ids) == 0 {
-		ids = []string{infraID}
+	rows, err := h.db.Query(ctx, `WITH RECURSIVE t AS (
+			SELECT id AS root, id FROM infrastructure WHERE id::text = ANY($1::text[])
+			UNION ALL
+			SELECT t.root, i.id FROM infrastructure i JOIN t ON i.parent_id = t.id
+		) SELECT root::text, id::text FROM t LIMIT 100000`, roots)
+	if err != nil {
+		return out, err
 	}
-	var out []handshakeView
-	counts := map[string]string{}
-	if devs, err := h.esppdhByInfra(ctx, ids); err != nil {
+	defer rows.Close()
+	for rows.Next() {
+		var root, id string
+		if err := rows.Scan(&root, &id); err != nil {
+			return out, err
+		}
+		out[root] = append(out[root], id)
+	}
+	return out, rows.Err()
+}
+
+// cardHandshakes: Handshakes einer Karte; counts: verborgene Zähler der ESPPDH-Geräte je ID.
+type cardHandshakes struct {
+	list   []handshakeView
+	counts map[string]string
+}
+
+// watchHandshakesFor: Handshakes aller Karten roots.
+func (h *Handler) watchHandshakesFor(ctx context.Context, roots []string) map[string]cardHandshakes {
+	out := map[string]cardHandshakes{}
+	if h.db == nil || len(roots) == 0 {
+		return out
+	}
+	trees, err := h.watchSubtrees(ctx, roots)
+	if err != nil {
+		componentLog("watch").Error().Err(err).Msg("unteranlagen der karten")
+		return out
+	}
+	seen := map[string]bool{}
+	var all []string
+	for _, ids := range trees {
+		for _, id := range ids {
+			if !seen[id] {
+				seen[id] = true
+				all = append(all, id)
+			}
+		}
+	}
+	byInfra := map[string][]handshakeView{}
+	if devs, err := h.esppdhByInfra(ctx, all); err != nil {
 		componentLog("watch").Error().Err(err).Msg("esppdh-geräte")
 	} else {
 		for _, v := range h.esppdhValues(ctx, devs, time.Now()) {
 			hs := v.Handshake
-			hs.Label = v.Name
-			counts[hs.ID], hs.Count = hs.Count, "" // erst mit Recht sichtbar (watchUnmask)
-			out = append(out, hs)
+			hs.Label, hs.infra = v.Name, v.infra
+			byInfra[v.infra] = append(byInfra[v.infra], hs)
 		}
 	}
-	if hb, err := h.heartbeatHandshakes(ctx, ids); err != nil {
+	if hb, err := h.heartbeatHandshakes(ctx, all); err != nil {
 		componentLog("watch").Error().Err(err).Msg("heartbeats")
 	} else {
-		out = append(out, hb...)
+		for _, x := range hb {
+			byInfra[x.infra] = append(byInfra[x.infra], x)
+		}
 	}
-	return out, counts
+	for _, root := range roots {
+		c := cardHandshakes{counts: map[string]string{}}
+		for _, id := range trees[root] {
+			for _, hs := range byInfra[id] {
+				if strings.HasPrefix(hs.ID, "esp-") {
+					c.counts[hs.ID], hs.Count = hs.Count, "" // erst mit Recht sichtbar (watchUnmask)
+				}
+				c.list = append(c.list, hs)
+			}
+		}
+		out[root] = c
+	}
+	return out
 }
 
 // watchUnmask: Zähler der ESPPDH-Geräte für Karten zeigen, an denen die Person die Werte sehen darf.
@@ -73,14 +129,17 @@ func (h *Handler) PlantWatchHandshakesWeb(w http.ResponseWriter, r *http.Request
 			continue
 		}
 		h.loadWatchContent(ctx, &b)
-		var body watchCards
+		var roots []string
 		walkInfra(h.infraTreeViews(ctx), "", func(n InfraNodeView, _ string) {
 			if b.Items[n.ID] || b.Types[n.Type] {
-				c := watchCard{ID: n.ID}
-				c.Handshakes, c.hsCounts = h.watchHandshakes(ctx, n.ID)
-				body.Cards = append(body.Cards, c)
+				roots = append(roots, n.ID)
 			}
 		})
+		hs := h.watchHandshakesFor(ctx, roots)
+		var body watchCards
+		for _, root := range roots {
+			body.Cards = append(body.Cards, watchCard{ID: root, Handshakes: hs[root].list, hsCounts: hs[root].counts})
+		}
 		h.watchUnmask(r, &body)
 		w.Header().Set("Cache-Control", "no-store")
 		h.renderFragment(w, "pw-hs-oob", body)

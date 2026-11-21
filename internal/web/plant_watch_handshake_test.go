@@ -108,3 +108,37 @@ func TestWatchHandshakeCountNeedsESPPDHRight(t *testing.T) {
 		t.Error("mit esppdh.values: Zähler fehlt")
 	}
 }
+
+// Eine Abfrage für die Unteranlagen aller Karten (statt je Karte einzeln, Schlussprüfung).
+func TestWatchSubtrees(t *testing.T) {
+	e, _ := watchEnv(t)
+	ctx := context.Background()
+	var kid, grand string
+	if err := e.pool.QueryRow(ctx, `SELECT id::text FROM infrastructure WHERE parent_id = $1::uuid LIMIT 1`, e.infra).Scan(&kid); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.pool.QueryRow(ctx, `INSERT INTO infrastructure (name, type, parent_id) VALUES ($1, 'plant', $2::uuid) RETURNING id::text`, "PW-Enkel "+e.sfx, kid).Scan(&grand); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = e.pool.Exec(context.Background(), `DELETE FROM infrastructure WHERE id = $1::uuid`, grand)
+	})
+	m, err := e.h.watchSubtrees(ctx, []string{e.infra, kid})
+	if err != nil {
+		t.Fatal(err)
+	}
+	has := func(root, id string) bool {
+		for _, x := range m[root] {
+			if x == id {
+				return true
+			}
+		}
+		return false
+	}
+	if !has(e.infra, e.infra) || !has(e.infra, kid) || !has(e.infra, grand) {
+		t.Errorf("Karte %s: %v – erwartet sich selbst, Kind und Enkel", e.infra, m[e.infra])
+	}
+	if !has(kid, grand) || has(kid, e.infra) {
+		t.Errorf("Karte %s: %v – erwartet Enkel, nicht die Eltern", kid, m[kid])
+	}
+}

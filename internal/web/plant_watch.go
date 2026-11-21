@@ -279,11 +279,12 @@ func (h *Handler) watchBody(ctx context.Context, b *watchBoard, only bool, lang 
 	}
 	energy := h.watchEnergyFor(ctx, cardIDs)
 	setupStates := h.setupPlantStates(ctx, cardIDs)
+	handshakes := h.watchHandshakesFor(ctx, cardIDs) // gebündelt für alle Karten (plant_watch_handshake.go)
 	for _, c := range cards {
 		c.watchStats = stats[c.ID]
 		c.Energy = energy[c.ID]
 		c.SetupState = setupStates[c.ID]
-		c.Handshakes, c.hsCounts = h.watchHandshakes(ctx, c.ID)
+		c.Handshakes, c.hsCounts = handshakes[c.ID].list, handshakes[c.ID].counts
 		for _, hs := range c.Handshakes {
 			if hs.Stopped { // „noch kein Lebenszeichen“ färbt die Karte nicht
 				c.HandshakeDown++
