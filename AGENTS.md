@@ -629,12 +629,12 @@ und 3 drückt bis auf Weiteres der Anwender.
     Server (Domain-Abfrage), Flutter, Zugang per APP-Ticket und
     gerätegebundenem Token, Rechte `app.*`, Offline mit Schritten und
     UUIDv7 vom Telefon, zentraler Push-Dienst `pdh-push`, sieben Pakete.
-    **Paket 1 (Server-Grundlage, 0.82.18)** auf `feature/pdh-app`: Migration 189 (`189_app_grundlage`),
+    **Paket 1 (Server-Grundlage, 0.82.18) auf `main`** (21.11.2026, Merge `98d41ff`; Testverbund und 10.10.0.202 noch nicht eingespielt): Migration 189 (`189_app_grundlage`),
     Rechte `app.use`, `app.create`, `app.cockpit`, `app.sensors.view`, `app.admin` (Gruppe
     „App-Administratoren“), Schnittstelle `/api/app/v1`, Seiten
     „App-Konfiguration“ und „App-Geräte“, „App installieren“ im
-    Benutzermenü, Kapitel „PDH-App“ im Handbuch. Nächster Schritt: Freigabe
-    für Push/Merge, dann **Paket 2 (Flutter-App)**. Für Paket 2 merken:
+    Benutzermenü, Kapitel „PDH-App“ im Handbuch. Nächster Schritt: Testverbund aktualisieren und im Browser prüfen,
+    dann **Paket 2 (Flutter-App)**. Für Paket 2 merken:
     Die App erzeugt nach einer Sperre oder dem Zurücksetzen einen neuen
     Schlüssel; die erste schreibende App-Route muss `mirrorGate` und den
     Rückzug der Sitzungen bei Wartung beachten.
