@@ -585,7 +585,13 @@ und 3 drückt bis auf Weiteres der Anwender.
     Wartungsprotokoll, {Firma} der M365-Signaturen; B: Bestellung als PDF an
     den Lieferanten als eigenes Paket); Variante 1: eine Firma, Werke werden
     untergeordnet (eigene Angaben eines Werks später mit B am Werk-Knoten).
-    Nächster Schritt: Entwurf schreiben und bestätigen lassen. Befund: mehrere oberste Knoten
+    M365: {Firma} bleibt `%%Company%%` („B“), neue Platzhalter als fester
+    Text. Entwurf `docs/superpowers/specs/2026-11-21-firmenstammdaten-design.md`,
+    Plan `docs/superpowers/plans/2026-11-21-firmenstammdaten.md` (beide vom
+    Anwender bestätigt), gebaut auf `feature/firmenstammdaten` (Migration 189,
+    Recht `company.edit`, lokal). Offen: Schlussprüfung, Freigabe Push/Merge,
+    Verbund-Update, Browserprüfung (Reiter, Druckkopf, Mail-Fußzeile,
+    Wartungsprotokoll, M365-Seite). Danach Paket B (Bestellung als PDF). Befund: mehrere oberste Knoten
     möglich, kein Typ „Unternehmen“, keine eigenen Adress-, Steuer- oder
     Bankdaten; Firmenname liegt doppelt (`branding.app_name`,
     `m365_company_name`).

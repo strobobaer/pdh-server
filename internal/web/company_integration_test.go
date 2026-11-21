@@ -24,14 +24,18 @@ func TestCompanyProfileRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer pool.Close()
+	t.Cleanup(pool.Close) // nach dem Zurücksetzen (Cleanup läuft rückwärts)
 	if err := database.RunMigrations(ctx, pool, "../../migrations"); err != nil {
 		t.Fatal(err)
 	}
 	var before companyProfile
 	h := &Handler{db: pool}
 	before = h.company(ctx)
-	t.Cleanup(func() { _ = h.saveCompany(context.Background(), before, ""); resetCompanyCache() })
+	t.Cleanup(func() {
+		if err := h.saveCompany(context.Background(), before, ""); err != nil {
+			t.Errorf("zurücksetzen: %v", err)
+		}
+	})
 
 	var uid string
 	if err := pool.QueryRow(ctx, `SELECT id::text FROM users ORDER BY created_at LIMIT 1`).Scan(&uid); err != nil {

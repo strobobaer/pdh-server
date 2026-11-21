@@ -62,23 +62,25 @@ var companyFields = []companyField{
 	{"bic", "BIC", 11, func(p *companyProfile) *string { return &p.BIC }},
 }
 
-var (
-	companyMu    sync.RWMutex
-	companyCache *companyProfile
-)
+// companyCacheState: Zwischenspeicher je Handler (nicht global – sonst sähen Tests und
+// mehrere Handler im selben Prozess die Daten einer anderen Datenbank).
+type companyCacheState struct {
+	mu sync.RWMutex
+	p  *companyProfile
+}
 
-func resetCompanyCache() {
-	companyMu.Lock()
-	companyCache = nil
-	companyMu.Unlock()
+func (h *Handler) resetCompanyCache() {
+	h.companyC.mu.Lock()
+	h.companyC.p = nil
+	h.companyC.mu.Unlock()
 }
 
 // company liefert die Firmenstammdaten (zwischengespeichert); ohne Datenbank oder bei einem
 // Lesefehler ein leeres Profil – dann sieht alles aus wie vor 0.82.18.
 func (h *Handler) company(ctx context.Context) companyProfile {
-	companyMu.RLock()
-	c := companyCache
-	companyMu.RUnlock()
+	h.companyC.mu.RLock()
+	c := h.companyC.p
+	h.companyC.mu.RUnlock()
 	if c != nil {
 		return *c
 	}
@@ -102,9 +104,9 @@ func (h *Handler) company(ctx context.Context) companyProfile {
 	if by != nil {
 		p.UpdatedBy = *by
 	}
-	companyMu.Lock()
-	companyCache = &p
-	companyMu.Unlock()
+	h.companyC.mu.Lock()
+	h.companyC.p = &p
+	h.companyC.mu.Unlock()
 	return p
 }
 
@@ -135,7 +137,7 @@ func (h *Handler) saveCompany(ctx context.Context, p companyProfile, userID stri
 	if err == nil && tag.RowsAffected() == 0 {
 		err = errors.New("Firmenstammdaten fehlen in der Datenbank (Migration 189)")
 	}
-	resetCompanyCache()
+	h.resetCompanyCache()
 	if err != nil {
 		return err
 	}

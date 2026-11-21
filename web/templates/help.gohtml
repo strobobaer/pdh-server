@@ -854,6 +854,28 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   {{template "hb-shots" (dict "Ref" (index $s "infrastructure") "Can" $can)}}
 </section>
 
+<section class="hb-ch" id="firma" data-title="Firmenstammdaten" data-pages="infrastructure">
+  <h2><i class="ti ti-building"></i> Firmenstammdaten</h2>
+  <p>Das PDH kennt eure Firma einmal: Name, Anschrift, Kontakt, Pflichtangaben und Bank. Die Angaben gelten für das ganze Unternehmen und stehen im Reiter <b>Firma</b> an jedem <b>obersten Knoten</b> der Infrastruktur – überall dieselben. Werke hängt ihr unter den obersten Knoten.</p>
+  <div class="hb-howto"><b><i class="ti ti-building"></i> So geht's: Firmenstammdaten pflegen</b>
+    <ol class="hb-steps">
+      <li><b>Infrastruktur</b> öffnen und einen obersten Knoten anklicken (z. B. das Werk oder die Firma).</li>
+      <li>Reiter <b>Firma</b> wählen. Name mit Rechtsform, Anschrift und Kontakt eintragen.</li>
+      <li>Unter <b>Pflichtangaben</b> Sitz, Registergericht und -nummer, Geschäftsführung und USt-IdNr. eintragen – sie gehören in geschäftliche Mails und Briefe.</li>
+      <li><b>Speichern</b>. Rechts zeigt die Vorschau Briefkopf und Mail-Fußzeile.</li>
+    </ol>
+  </div>
+  <h3>Wo die Angaben erscheinen</h3>
+  <ul>
+    <li><b>Mails des PDH</b> – Absender ist der Firmenname (außer in den Server-Einstellungen ist beim Absender schon ein eigener Name eingetragen; beim Versand über Microsoft 365 bestimmt das Postfach den Namen). Darunter steht eine Fußzeile mit Ansprechpartner, Anschrift und Pflichtangaben.</li>
+    <li><b>Ansprechpartner</b> ist, wer die Mail oder den Ausdruck auslöst – mit Name, Funktion, Telefon und E-Mail aus dem Benutzerstamm. Fehlt das Telefon, steht die Firmennummer mit der Durchwahl dahinter. Automatische Mails (Statusmeldungen, Bestellvorschlag, Kennwort vergessen) nennen den allgemeinen Firmenkontakt.</li>
+    <li><b>Druckkopf</b> jeder Seite und <b>Wartungsprotokoll</b> – Firmenname und Anschrift; das Protokoll nennt im Fuß Pflichtangaben und Ansprechpartner.</li>
+    <li><b>M365-Signaturen</b> – {Firma} kommt beim Übertragen der Werte nach Microsoft 365 aus den Stammdaten. {Firmenanschrift}, {Firmentelefon} und {Website} stehen als fester Text in der Signatur-Regel: nach einer Änderung die Regel neu übertragen.</li>
+  </ul>
+  <div class="hb-note"><i class="ti ti-lock"></i> Bearbeiten darf, wer das Recht <b>Firmenstammdaten bearbeiten</b> hat – und zwar für das ganze Unternehmen, nicht nur für eine Abteilung. Ansehen darf jeder, der die Infrastruktur sieht. Ohne eingetragenen Firmennamen sehen Mails und Ausdrucke aus wie bisher.</div>
+  {{template "hb-shots" (dict "Ref" (index $s "firma") "Can" $can)}}
+</section>
+
 <section class="hb-ch" id="kiosk" data-title="Kiosk-Terminals" data-pages="kiosk-terminals">
   <h2><i class="ti ti-device-desktop-share"></i> Kiosk-Terminals</h2>
   <p>Ein <b>Kiosk-Terminal</b> (hmi-kiosk) ist der kleine Rechner mit Bildschirm am Bedienplatz einer Anlage. Ist der Anlage ein Terminal zugeordnet, holst du ein HMI aus PDH direkt auf diesen Bildschirm: Reiter <b>HMI</b> → <b>Am Terminal zeigen</b>. Die Browser-Ansicht (<b>Ansehen</b>/<b>Bedienen</b>) bleibt daneben bestehen.</p>

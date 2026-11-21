@@ -368,6 +368,8 @@ type Handler struct {
 
 	// Austauschbare Quellen (nur Tests; nil = echt): Rechteprüfung und gespeicherter Commit-Vergleich.
 	hasPermHook     func(*http.Request, string) bool
+	companyC        companyCacheState // Firmenstammdaten zwischengespeichert (company.go)
+	companyEditHook func(*http.Request) bool // Tests: company.edit überall?
 	viewDeptErr     error
 	kioskPermHook   func(r *http.Request, perm, infraID string) bool // Tests: Rechte je Anlage ("" = ohne Abteilungsbegrenzung), kiosk_terminals.go
 	updateCheckHook func(context.Context) storedUpdateCheck
@@ -602,6 +604,8 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/plant-watch/{id}/toggle", h.PlantWatchToggleWeb)
 	r.Get("/infrastructure/{id}", h.InfraDetail)
 	r.Get("/infrastructure/{id}/esppdh", h.InfraESPPDHWeb) // Reiter „ESPPDH“ (htmx, alle 10 s)
+	r.Get("/infrastructure/company", h.CompanyPanelWeb)   // Reiter „Firma“: Firmenstammdaten
+	r.Post("/infrastructure/company", h.CompanySaveWeb)
 	h.hmiRoutes(r)                                         // HMI-Fernzugriff (VNC) aus der Anlage
 	h.kioskRoutes(r)                                       // Kiosk-Terminals: HMI am Terminal zeigen (kiosk_terminals.go)
 	h.terminalRoutes(r)                                    // Anlagenterminal: Schoner, Störungsinfo, Neu (terminal_page.go)

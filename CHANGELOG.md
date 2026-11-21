@@ -10,6 +10,23 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.82.18] – 2026-11-21
+
+### Neu
+
+- Firmenstammdaten: Im Reiter „Firma“ an jedem obersten Knoten der Infrastruktur pflegt ihr Name, Anschrift, Kontakt, Pflichtangaben und Bank eurer Firma – einmal für das ganze Unternehmen.
+- Mails des PDH gehen mit dem Firmennamen als Absender hinaus und tragen eine Fußzeile mit Ansprechpartner (wer die Mail auslöst), Anschrift und Pflichtangaben.
+- Druckkopf und Wartungsprotokoll zeigen Firmenname und Anschrift; das Protokoll nennt im Fuß Pflichtangaben und Ansprechpartner.
+- Neue Platzhalter für M365-Signaturen: {Firmenanschrift}, {Firmentelefon} und {Website}; {Firma} kommt aus den Firmenstammdaten.
+
+### Geändert
+
+- Der Firmenname für M365-Signaturen wird nicht mehr auf der M365-Seite gepflegt, sondern in den Firmenstammdaten; ein vorhandener Wert wird übernommen.
+
+### Sicherheit
+
+- Neues Recht „Firmenstammdaten bearbeiten“ (company.edit); es wirkt nur, wenn es für das ganze Unternehmen gilt. Es bekommen die Rollen und Benutzer, die bisher Server-Einstellungen, M365-Vorlagen oder Rollen verwalten durften.
+
 ## [0.82.17] – 2026-11-21
 
 ### Geändert

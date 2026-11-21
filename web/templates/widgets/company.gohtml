@@ -1,0 +1,41 @@
+{{/* Reiter „Firma“ (company_web.go): Firmenstammdaten ansehen oder bearbeiten, mit Vorschau
+     von Mail-Fußzeile und Briefkopf. Farben nur über Variablen (Fiori/Fluent, hell/dunkel). */}}
+{{define "company-panel"}}
+<div id="company-panel">
+<style>
+#company-panel .co-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:14px;align-items:start}
+#company-panel .co-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr));gap:8px 12px}
+#company-panel .co-group{margin-bottom:14px}
+#company-panel .co-group h4{font-size:13px;margin:0 0 6px;color:var(--text)}
+#company-panel dl{margin:0;display:grid;grid-template-columns:minmax(110px,auto) 1fr;gap:4px 12px;font-size:13px}
+#company-panel dt{color:var(--muted)}
+#company-panel dd{margin:0;overflow-wrap:anywhere}
+#company-panel .co-preview{border:1px solid var(--border);border-radius:8px;padding:10px;background:var(--bg);overflow-wrap:anywhere}
+#company-panel .co-note{font-size:12.5px;color:var(--muted);margin:4px 0 12px}
+</style>
+<p class="co-note"><i class="ti ti-info-circle" aria-hidden="true"></i> Gilt für das ganze Unternehmen – an jedem obersten Knoten gleich. Verwendet in Mails, Druckkopf, Wartungsprotokoll und M365-Signaturen.{{if .UpdatedByName}} Zuletzt geändert von {{.UpdatedByName}}{{if not .P.UpdatedAt.IsZero}} am {{.P.UpdatedAt.Format "02.01.2006 15:04"}}{{end}}.{{end}}</p>
+{{with .Message}}<div class="card" role="status" style="border-color:var(--green);margin-bottom:10px"><i class="ti ti-check" aria-hidden="true"></i> {{.}}</div>{{end}}
+{{with .Error}}<div class="card" role="alert" style="border-color:var(--red);color:var(--red);margin-bottom:10px"><i class="ti ti-alert-triangle" aria-hidden="true"></i> {{.}}</div>{{end}}
+<div class="co-grid">
+  <div>
+  {{if .CanEdit}}
+    <form hx-post="/infrastructure/company" hx-target="#company-panel" hx-swap="outerHTML" hx-disabled-elt="find button">
+      {{range .Groups}}<div class="co-group"><h4>{{.Title}}</h4><div class="co-fields">
+        {{range .Fields}}<div class="form-group"><label class="form-label" for="co-{{.Col}}">{{.Label}}</label><input id="co-{{.Col}}" name="{{.Col}}" type="{{.Type}}" class="form-input" value="{{.Value}}"></div>{{end}}
+      </div></div>{{end}}
+      <button type="submit" class="btn btn-primary"><i class="ti ti-device-floppy" aria-hidden="true"></i> Speichern</button>
+    </form>
+  {{else}}
+    {{range .Groups}}<div class="co-group"><h4>{{.Title}}</h4><dl>{{range .Fields}}{{if .Value}}<dt>{{.Label}}</dt><dd>{{.Value}}</dd>{{end}}{{end}}</dl></div>{{end}}
+    {{if not .P.Name}}<p class="co-note">Noch keine Firmenstammdaten eingetragen.</p>{{end}}
+  {{end}}
+  </div>
+  <div>
+    <div class="co-group"><h4>Vorschau Briefkopf</h4><div class="co-preview">{{if .Print.Name}}<b>{{.Print.Name}}</b>{{with .Print.Address}}<div style="font-size:12px;color:var(--muted)">{{.}}</div>{{end}}{{else}}<span style="color:var(--muted)">ohne Firmennamen wie bisher (App-Name)</span>{{end}}</div></div>
+    <div class="co-group"><h4>Vorschau Mail-Fußzeile</h4><div class="co-preview">{{if .Footer}}{{.Footer}}{{else}}<span style="color:var(--muted)">ohne Firmennamen keine Fußzeile</span>{{end}}</div></div>
+    {{if .CanBranding}}<p class="co-note">Das Logo stellst du im <a href="/admin/server-config?tab=branding" style="color:var(--accent)">Erscheinungsbild</a> ein.</p>{{end}}
+    <p class="co-note">Wer M365-Signaturen nutzt: Nach einer Änderung die Signatur-Regel unter M365 neu übertragen ({Firmenanschrift}, {Firmentelefon}, {Website} stehen dort als fester Text).</p>
+  </div>
+</div>
+</div>
+{{end}}
