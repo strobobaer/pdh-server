@@ -132,19 +132,7 @@ func (h *Handler) AppWorkAPI(w http.ResponseWriter, r *http.Request) {
 		appJSONErr(w, http.StatusInternalServerError, "app_unavailable", "app_unavailable")
 		return
 	}
-	items := make([]map[string]any, 0, len(rows))
-	for _, x := range rows {
-		it := map[string]any{
-			"type": x.Type, "id": x.ID, "number": x.Number, "title": x.Title, "status": x.Status, "priority": x.Priority,
-			"asset":      map[string]string{"id": x.AssetID, "name": x.AssetName},
-			"due":        nil,
-			"updated_at": x.UpdatedAt.UTC().Format(time.RFC3339),
-		}
-		if x.Due != nil {
-			it["due"] = x.Due.Format("2006-01-02")
-		}
-		items = append(items, it)
-	}
+	items := appWorkItems(rows)
 	terminalJSON(w, http.StatusOK, map[string]any{"items": items})
 }
 
