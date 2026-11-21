@@ -31,7 +31,32 @@ import (
 const (
 	mqttHostKey    = "int_public_host"
 	mqttTLSPortKey = "int_tls_port"
+	// mqttPendingKey: "1" = Name vorgemerkt – noch keine nginx-Seite und keine Tunnel-Zeile,
+	// bis Zertifikat, Eintrag im Haus und Firewall stehen (mqtt_setup.go). Fehlt der
+	// Schlüssel, ist der Name scharf (so bleiben Namen von vor 0.82.13, wie sie sind).
+	mqttPendingKey = "int_public_pending"
 )
+
+// mqttNormHost: Name klein, ohne Leerzeichen und Punkt am Ende.
+func mqttNormHost(s string) string {
+	return strings.TrimSuffix(strings.ToLower(strings.TrimSpace(s)), ".")
+}
+
+// mqttMarkPending setzt die Vormerkung vor dem Speichern: kein Name → weg; neuer oder
+// geänderter Name → "1"; gleicher Name → wie gespeichert (das Formular trägt sie nicht mit).
+func mqttMarkPending(stored, config map[string]string) {
+	host := mqttNormHost(config[mqttHostKey])
+	switch {
+	case host == "":
+		delete(config, mqttPendingKey)
+	case host != mqttNormHost(stored[mqttHostKey]):
+		config[mqttPendingKey] = "1"
+	case stored[mqttPendingKey] == "1":
+		config[mqttPendingKey] = "1"
+	default:
+		delete(config, mqttPendingKey)
+	}
+}
 
 var mqttLabelRe = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)
 
@@ -137,6 +162,7 @@ type mqttSystem struct {
 	ID, ConnName, Host string
 	WSPort             int
 	Enabled            bool
+	Pending            bool // vorgemerkt: noch nicht scharf (mqttPendingKey)
 }
 
 // Upstream: wohin die nginx-Seite des Namens weiterreicht.
@@ -150,7 +176,8 @@ func (h *Handler) mqttSystems(ctx context.Context) ([]mqttSystem, error) {
 		return nil, nil
 	}
 	rows, err := h.db.Query(ctx, `
-		SELECT id::text, name, enabled, lower(config->>'int_public_host'), COALESCE(config->>'int_websocket_port','')
+		SELECT id::text, name, enabled, lower(config->>'int_public_host'), COALESCE(config->>'int_websocket_port',''),
+		       COALESCE(config->>'int_public_pending','') = '1'
 		FROM import_export_connections
 		WHERE direction='import' AND kind='mqtt' AND config->>'broker_mode'='integrated'
 		  AND COALESCE(config->>'int_public_host','') <> ''
@@ -164,7 +191,7 @@ func (h *Handler) mqttSystems(ctx context.Context) ([]mqttSystem, error) {
 	for rows.Next() {
 		var s mqttSystem
 		var ws string
-		if rows.Scan(&s.ID, &s.ConnName, &s.Enabled, &s.Host, &ws) != nil {
+		if rows.Scan(&s.ID, &s.ConnName, &s.Enabled, &s.Host, &ws, &s.Pending) != nil {
 			continue
 		}
 		p, ok := mqttPort(ws)
@@ -193,12 +220,19 @@ func (h *Handler) mqttUpstreamFor(ctx context.Context, name string) (string, err
 	if err != nil {
 		return "", err
 	}
+	return mqttUpstreamIn(systems, name), nil
+}
+
+// mqttUpstreamIn: Ziel der nginx-Seite für name; vorgemerkte Namen haben (noch) keins –
+// der Agent legt dann nur das Zertifikat ab und räumt eine eigene MQTT-Seite weg.
+func mqttUpstreamIn(systems []mqttSystem, name string) string {
+	name = mqttNormHost(name)
 	for _, s := range systems {
-		if s.Host == name {
-			return s.Upstream(), nil
+		if s.Host == name && !s.Pending {
+			return s.Upstream()
 		}
 	}
-	return "", nil
+	return ""
 }
 
 // mqttTargets: Zeilen „MQTT“ für die Tunnel-Ziele – je aktiver Broker-Verbindung mit Namen
@@ -206,7 +240,7 @@ func (h *Handler) mqttUpstreamFor(ctx context.Context, name string) (string, err
 func mqttTargets(systems []mqttSystem, zone string) []cfTarget {
 	var act []mqttSystem
 	for _, s := range systems {
-		if s.Enabled && zone != "" && (s.Host == zone || strings.HasSuffix(s.Host, "."+zone)) {
+		if s.Enabled && !s.Pending && zone != "" && (s.Host == zone || strings.HasSuffix(s.Host, "."+zone)) {
 			act = append(act, s)
 		}
 	}

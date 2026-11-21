@@ -373,6 +373,9 @@ func (h *Handler) createConnection(w http.ResponseWriter, r *http.Request, direc
 		http.Redirect(w, r, base+"?notice="+url.QueryEscape(err.Error()), http.StatusSeeOther)
 		return
 	}
+	if kind == "mqtt" {
+		mqttMarkPending(map[string]string{}, config)
+	}
 	sealed, err := sealConnConfig(h.connKey(), config)
 	if err != nil {
 		http.Error(w, "Kennwort konnte nicht verschlüsselt werden", http.StatusInternalServerError)
@@ -474,6 +477,9 @@ func (h *Handler) editConnection(w http.ResponseWriter, r *http.Request, directi
 			http.Redirect(w, r, base+"?notice="+url.QueryEscape(err.Error()), http.StatusSeeOther)
 		}
 		return
+	}
+	if kind == "mqtt" {
+		mqttMarkPending(stored, config)
 	}
 	sealed, err := sealConnConfig(h.connKey(), config)
 	if err != nil {
