@@ -808,6 +808,19 @@ func (a *updateAgent) certInstallHandler(w http.ResponseWriter, r *http.Request)
 		}
 	}
 
+	// Vor dem Schreiben merken, welches Zertifikat jeder andere Name bekommt (certs_guard.go).
+	var guardNames []string
+	var guardBefore map[string]string
+	if withNginx && sitePath != "" && (req.Role == "pdh" || req.Role == "mqtt") {
+		skip := certPDHSite
+		if req.Role == "mqtt" {
+			skip = certMQTTSite(req.Name)
+		}
+		if guardNames = a.certOtherNames(skip); len(guardNames) > 0 {
+			guardBefore = certProbeAll(ctx, guardNames, certHasIPv6())
+		}
+	}
+
 	chainFile := a.certPath(certChainPath(req.Name))
 	keyFile := a.certPath(certKeyPath(req.Name))
 	if staleMQTT == "" && note != "" && certSameFile(chainFile, req.ChainPEM) && certSameFile(keyFile, req.KeyPEM) {
@@ -913,6 +926,28 @@ func (a *updateAgent) certInstallHandler(w http.ResponseWriter, r *http.Request)
 		}
 		if usedV4 {
 			note = "nginx nimmt die IPv6-Zeilen nicht an – die Seite hört nur auf IPv4 (Datei " + filepath.Base(sitePath) + ")"
+		}
+		if guardBefore != nil {
+			key, bad := certDisturbed(guardBefore, certProbeAll(ctx, guardNames, certHasIPv6()))
+			if bad && siteV4 != "" && !usedV4 && a.certWriteAtomic(sitePath, []byte(siteV4), 0o644, "") == nil {
+				if _, err := a.certRun(ctx, "nginx", "-t"); err == nil {
+					if _, err := a.certRun(ctx, "systemctl", "reload", "nginx"); err == nil {
+						k2, bad2 := certDisturbed(guardBefore, certProbeAll(ctx, guardNames, certHasIPv6()))
+						if !bad2 {
+							_, name := certProbeKey(key)
+							note = "Die Seite hört nur auf IPv4 – mit IPv6 bekäme " + name + " ein anderes Zertifikat (Datei " + filepath.Base(sitePath) + ")"
+						}
+						key, bad = k2, bad2
+					}
+				}
+			}
+			if bad {
+				failed := rollback()
+				_, _ = a.certRun(ctx, "systemctl", "reload", "nginx")
+				addr, name := certProbeKey(key)
+				certFail(w, http.StatusOK, "Die neue nginx-Seite würde "+name+" stören (über "+addr+" käme ein anderes Zertifikat) – zurückgenommen"+certRollbackNote(failed))
+				return
+			}
 		}
 	}
 	resp := map[string]any{"ok": true, "fingerprint": fingerprint}
