@@ -293,7 +293,7 @@ func (h *Handler) trainingMatrix(ctx context.Context, topics []trainingTopic, f 
 		}
 		rows.Close()
 	}
-	today := time.Now().Truncate(24 * time.Hour)
+	today := localDate(time.Now())
 	out := make([]matrixRow, 0, len(people))
 	for _, p := range people {
 		row := matrixRow{UserID: p.ID, Name: p.Name, Department: p.Department}

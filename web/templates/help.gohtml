@@ -467,6 +467,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <ol class="hb-steps">
       <li>Alle Projekte sieht, wer das Recht <b>„Projekte: ansehen“</b> hat – auch auf eine Abteilung begrenzt. Dann gilt die Abteilung der Anlage oder der zugewiesenen Gruppe.</li>
       <li>Ohne dieses Recht fehlt der Menüpunkt <b>Projekte</b>. Die Projektübersicht zeigt dann nur <b>Meine Projekte</b>: Projekte, die du angelegt hast, für die du verantwortlich oder zugewiesen bist oder die deiner Gruppe zugewiesen sind.</li>
+      <li>Den Knopf <b>Neues Projekt</b> gibt es nur mit dem Recht <b>Projekte bearbeiten</b> (<code>projects.edit</code>).</li>
       <li>Wer an einem Projekt beteiligt ist, sieht es immer. Der Projektname an einer Aufgabe bleibt für alle sichtbar.</li>
       <li>Zähler – die Reiter der Projektübersicht, Kategorien und die Vorgänge eines Partners – zählen nur Projekte, die du sehen darfst.</li>
       <li>Aufgaben, Partner und Anlagen-Kommentare verknüpfst du nur mit Projekten, die du sehen darfst. Ein schon verknüpftes Projekt bleibt beim Speichern erhalten.</li>
@@ -1732,7 +1733,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>Auf der Karte <b>Jetzige Adresse fest einstellen</b> drücken (gibt es nur bei automatischer Adresse) oder <b>DNS-Server ändern</b> (1 bis 3 Adressen). Beim Ändern der DNS-Server wird die jetzige Adresse ebenfalls fest.</li>
       <li>Das PDH zeigt vorab, was passiert. Am aktiven Server ist die gemeinsame Adresse kurz weg, und der Ausfallschutz steht solange in Wartung. Die automatische Netzwerkeinrichtung des Servers (cloud-init) wird abgeschaltet.</li>
       <li>Das PDH prüft, ob jeder DNS-Server antwortet. Antwortet einer nicht, wird <b>nichts</b> geschrieben.</li>
-      <li>Danach läuft ein <b>Countdown von 2 Minuten</b>. Kommt die Seite wieder, drücke <b>Seite erreichbar – Einstellung behalten</b>.</li>
+      <li>Danach läuft ein <b>Countdown von 2 Minuten</b>. Kommt die Seite wieder, drücke <b>Seite erreichbar – Einstellung behalten</b>. Am aktiven Server erscheint der Knopf erst, wenn auch die gemeinsame Adresse wieder da ist – meist nach wenigen Sekunden; bis dahin steht dort „Die gemeinsame Adresse … ist noch nicht zurück“.</li>
     </ol>
     <p><b>Ohne Bestätigung</b> stellt der Server die vorige Einstellung nach den 2 Minuten selbst wieder her – auch wenn zwischendurch das PDH, der Update-Agent oder der ganze Server neu startet. Die Wartung des Ausfallschutzes schaltet er dann ebenfalls wieder aus, auch später, falls es nicht gleich ging. Eine Wartung, die jemand anderes eingeschaltet hat, bleibt unberührt.</p>
     <p>Steht kurz <b>„Stand gerade nicht lesbar – wird weiter abgefragt“</b>, baut der Server gerade seine Verbindung neu auf. Der Countdown läuft weiter, und du kannst trotzdem bestätigen.</p>

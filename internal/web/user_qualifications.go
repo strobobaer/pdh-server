@@ -55,7 +55,7 @@ func (h *Handler) loadUserQualifications(ctx context.Context, userID string, sho
 	}
 	defer rows.Close()
 	warn := 0
-	today := time.Now().Truncate(24 * time.Hour)
+	today := localDate(time.Now())
 	for rows.Next() {
 		var q userQualView
 		var hours float64

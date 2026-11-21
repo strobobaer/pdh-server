@@ -322,9 +322,9 @@ oder ändern.**
    Menü ohne „Projekte“, Liste „Meine Projekte“ ohne das fremde Projekt,
    KVP nur „Meine Vorschläge“ und „Regeln & Vorlagen“ mit „Idee
    einreichen“, Detailseiten und KVP-Druck 403; Fiori/Fluent, hell/dunkel,
-   320–1366 px ohne Überlauf. Testdaten und Testrolle entfernt. Kleinpunkt
-   (Bestand): „Neues Projekt“ steht auch ohne `projects.edit` da – Speichern
-   scheitert dann an der Rechte-Regel; Knopf ausblenden. Geparkt:
+   320–1366 px ohne Überlauf. Testdaten und Testrolle entfernt. Der
+   Kleinpunkt „Neues Projekt“ ohne `projects.edit` ist mit 0.82.9 behoben.
+   Geparkt:
    Copilot-Suche über alle Vorgangsarten scheitert an einem Feld der
    Störungen (Bestand); Partner-Auswahl zeigt höchstens 500 Vorgänge vor dem
    Rechtefilter; KVP-Kennzahlen für Rollen mit Recht nur in einer Abteilung
@@ -363,9 +363,8 @@ oder ändern.**
    nach 2 Minuten zurückgestellt (Dateien wie vorher, Karte meldet es);
    am aktiven Server über die eigene Adresse: Wartung an/aus
    (`maint_seq` 25 → 26 → 27), gemeinsame Adresse rund 2 s weg (IPv4 und
-   IPv6 danach wieder da). Kleinpunkt: Wer sehr schnell bestätigt, schaltet
-   die Wartung aus, während die gemeinsame Adresse noch 2–4 s fehlt (kein
-   Schaden beobachtet; Bestätigen erst anbieten, wenn sie zurück ist).
+   IPv6 danach wieder da). Der Kleinpunkt „schnelles Bestätigen, bevor die
+   gemeinsame Adresse zurück ist“ ist mit 0.82.9 behoben.
    Offen: Vorschläge mit
    echtem UniFi/Omada (Kennwort im Klartext?, Feldnamen, Versionen) – am
    Testverbund sind die Quellen aus. Geparkt: Gemeinsamer Wartungszähler:
@@ -412,13 +411,18 @@ oder ändern.**
    Repository legt die Datei so an – vermutlich von Hand als root neu
    geschrieben. Die beiden Meldungen sind nur im Seitentest gesehen (am
    Testverbund ist die Datei in Ordnung, sie erscheinen dort nicht).
+   (e) **0.82.9 Reste** – Branch `fix/reste-0829`: Tagesgrenzen mit reinem
+   Datum über `localDate` (heutiger Ortstag als Mitternacht UTC, wie pgx
+   DATE liefert), Startseiten-Liste über `localDayStart`, Wächter
+   `TestNoUTCDayTruncate`; „Neues Projekt“ nur mit `projects.edit`
+   (`mayCreateProject` = Rechte-Regel), Migration 185 benennt das Recht in
+   „Projekte bearbeiten“ um; „Einstellung behalten“ am aktiven Server erst,
+   wenn die gemeinsame Adresse zurück ist (`VIPMissing`, auch im Handler).
+   Browser nicht geprüft (Verbund-Update nicht beauftragt).
 7. **0.81.6 Nummern ab 10000** (Rüstzeit, KVP, Bestellung und Partner waren auf
    vier Stellen abgeschnitten) – mit 0.82.0 auf `main`; der lokale Branch
    `fix/ruestzeit-nummer` ist damit erledigt.
-8. **Tagesgrenzen aufräumen (klein):** übrige `Truncate(24*time.Hour)`
-   gegen DATE-Spalten (`kanban.go`, `purchases.go`, `trainings.go`,
-   `user_qualifications.go`, `procurement.go`, `projects_handler.go`,
-   `partners.go`) auf `localDayStart` umstellen.
+8. **Tagesgrenzen aufräumen:** erledigt mit 0.82.9 (siehe 6 (e)).
 9. **Efficio klein:** FTPS ist ungetestet. (Abbruch der Zustellung nach dem
    ersten Fehler ist Absicht – Reihenfolge der Dateien; kein offener Punkt.)
 10. **MQTT klein:** Bei älterem Update-Agenten versucht der tägliche Lauf
