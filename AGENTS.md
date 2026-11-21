@@ -528,6 +528,15 @@ und 3 drückt bis auf Weiteres der Anwender.
     0.82.13 Plausibilität mit Betriebszeiten der Anlage – noch zu besprechen
     (Quelle der Betriebszeiten, „Minimal- und Maximalzeit“). Offen: ob
     „Anlagenstand“ die Anlagen-Schnellübersicht meint.
+17. **Eigenes Projekt: ESPPDH-Vorlagen für Messaufgaben** (Wunsch des
+    Anwenders vom 21.11.2026, vom Anwender ausdrücklich als separates
+    Projekt eingeordnet, noch nicht begonnen): eigene Vorlagen „mit Hilfe“
+    erstellen, z. B. Plattenstärke mit zwei Abstandssensoren (Eingabe
+    Sollstärke und Toleranz, Kalibrierfunktion, Inbetriebnahmeanleitung mit
+    Piktogrammen) oder Längenmessung. Offen: Wer erstellt Vorlagen (ich im
+    Repository / Copilot im PDH mit Editor / beides) und wer darf sie
+    anlegen; Vorschlag: Gerät misst, das PDH rechnet und bewertet (kein
+    `lambda` auf dem Gerät). Baut auf 16 (Teil 1 und 2) auf.
 
 Docker Desktop startet nach einem Neustart des Windows-Rechners nicht von
 selbst – ohne ihn fehlen der Zeuge und die Labor-Datenbank für die Tests.
