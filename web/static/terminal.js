@@ -92,6 +92,71 @@
     setInterval(refresh, 30000);
   }
 
+  // Sensoren (ESPPDH) nach Kartenanmeldung: /terminal/sensors.json alle 10 s; ohne Anmeldung
+  // oder ohne Recht liefert der Server {"show": false} – dann bleibt der Bereich leer und verborgen.
+  var sens = document.querySelector('[data-sensors]');
+  if (sens && mode === 'info') {
+    var sensBody = sens.querySelector('[data-sensors-body]');
+    var hsPrev = {};
+    var mk = function (tag, cls, text) {
+      var e = document.createElement(tag);
+      if (cls) e.className = cls;
+      if (text !== undefined) e.textContent = text;
+      return e;
+    };
+    var hsNode = function (h) {
+      var s = mk('span', 'hs ' + (h.Running ? 'hs-run' : 'hs-stop'));
+      s.appendChild(mk('span', 'hs-label', h.Label));
+      s.appendChild(mk('code', 'hs-count', h.Count));
+      s.appendChild(mk('span', 'hs-state', h.Running ? 'läuft' : (h.Since ? 'steht seit ' + h.Since : 'kein Lebenszeichen')));
+      if (hsPrev[h.ID] !== undefined && hsPrev[h.ID] !== h.Count) s.classList.add('hs-pulse');
+      hsPrev[h.ID] = h.Count;
+      return s;
+    };
+    var hideSensors = function () { sensBody.textContent = ''; sens.hidden = true; };
+    var drawSensors = function (d) {
+      if (!d || !d.show) { hideSensors(); return; }
+      sensBody.textContent = '';
+      sens.hidden = false;
+      if (!d.available) sensBody.appendChild(mk('div', 't-sens', 'Werte gerade nicht verfügbar'));
+      (d.handshakes || []).forEach(function (h) {
+        var c = mk('div', 't-sens');
+        c.appendChild(hsNode(h));
+        sensBody.appendChild(c);
+      });
+      (d.devices || []).forEach(function (v) {
+        var c = mk('div', 't-sens');
+        var head = mk('div', 't-sens-head');
+        head.appendChild(mk('span', null, v.Name));
+        head.appendChild(hsNode(v.Handshake));
+        c.appendChild(head);
+        (v.Groups || []).forEach(function (g) {
+          c.appendChild(mk('div', 't-sens-g', g.Name));
+          (g.Rows || []).forEach(function (r) {
+            var row = mk('div', 't-sens-row' + (r.Stale ? ' stale' : ''));
+            row.appendChild(mk('span', null, r.Name));
+            row.appendChild(mk('span', 'v', r.Value + (r.Unit ? ' ' + r.Unit : '')));
+            c.appendChild(row);
+          });
+        });
+        sensBody.appendChild(c);
+      });
+      if (!(d.devices || []).length && !(d.handshakes || []).length) sensBody.appendChild(mk('div', 't-sens', 'Keine Sensoren an dieser Anlage'));
+    };
+    var pullSensors = function () {
+      fetch('/terminal/sensors.json', { cache: 'no-store', credentials: 'same-origin' })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(drawSensors)
+        .catch(function () { /* offline: alter Stand bleibt */ });
+    };
+    document.addEventListener('pdh-card-login', function (e) {
+      if (!e.detail) hideSensors(); // abgemeldet: sofort weg, nicht erst beim nächsten Abruf
+      pullSensors();
+    });
+    pullSensors();
+    setInterval(pullSensors, 10000);
+  }
+
   // Kartenleser: der Kartendienst auf dem Pi (nur Gerätesitzung, data-card-events) meldet
   // gelesene Karten per Server-Sent Events; die Seite reicht sie an PDH weiter.
   if (body.dataset.cardEvents === '1' && mode !== 'schoner') {
@@ -115,6 +180,8 @@
         nameEl.textContent = name || '';
         bar.hidden = !loggedIn;
         onLoginChange();
+        // Sensoren (unten) sofort neu laden bzw. ausblenden
+        document.dispatchEvent(new CustomEvent('pdh-card-login', { detail: loggedIn }));
       };
       var showMsg = function (text) {
         msgEl.textContent = text;
