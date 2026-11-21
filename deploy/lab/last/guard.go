@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"net/url"
+	"os"
 	"regexp"
 	"strings"
 
@@ -10,16 +11,24 @@ import (
 )
 
 // Der produktive Server wird nie getestet: Jede Angabe, die auf diese Adresse
-// zeigt, bricht das Programm ab.
-const productionIP = "10.10.0.202"
+// zeigt, bricht das Programm ab. Die Adresse steht in der Umgebungsvariablen
+// PDH_LAST_PRODUCTION; ohne sie gilt die Beispieladresse 192.0.2.202.
+const defaultProductionIP = "192.0.2.202"
 
-var productionRe = regexp.MustCompile(`(^|[^0-9])10\.10\.0\.202([^0-9]|$)`)
+func productionIP() string {
+	if v := strings.TrimSpace(os.Getenv("PDH_LAST_PRODUCTION")); v != "" {
+		return v
+	}
+	return defaultProductionIP
+}
 
 // forbidden prüft Adressen (-base, -dsn, -ssh) auf den Produktivserver.
 func forbidden(named map[string]string) error {
+	ip := productionIP()
+	re := regexp.MustCompile(`(^|[^0-9])` + regexp.QuoteMeta(ip) + `([^0-9]|$)`)
 	for _, name := range []string{"-base", "-dsn", "-ssh"} {
-		if v := named[name]; v != "" && productionRe.MatchString(v) {
-			return fmt.Errorf("%s zeigt auf den Produktivserver %s – die Lastprüfung läuft nie gegen die Produktion", name, productionIP)
+		if v := named[name]; v != "" && re.MatchString(v) {
+			return fmt.Errorf("%s zeigt auf den Produktivserver %s – die Lastprüfung läuft nie gegen die Produktion", name, ip)
 		}
 	}
 	return nil

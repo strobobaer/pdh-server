@@ -10,13 +10,13 @@ import (
 	"time"
 )
 
-const card6 = `2: eth0    inet6 2a02:f90:e198:1700:39a7:59a1:40e1:51f5/64 scope global temporary dynamic \       valid_lft 80000sec preferred_lft 10000sec
-2: eth0    inet6 2a02:f90:e198:1700:215:5dff:fe00:b202/64 scope global dynamic mngtmpaddr noprefixroute \       valid_lft 86000sec preferred_lft 14000sec
+const card6 = `2: eth0    inet6 2001:db8::39a7:59a1:40e1:51f5/64 scope global temporary dynamic \       valid_lft 80000sec preferred_lft 10000sec
+2: eth0    inet6 2001:db8::215:5dff:fe00:b202/64 scope global dynamic mngtmpaddr noprefixroute \       valid_lft 86000sec preferred_lft 14000sec
 2: eth0    inet6 fe80::215:5dff:fe00:b202/64 scope link \       valid_lft forever preferred_lft forever`
 
 const (
-	vip6Want    = "2a02:f90:e198:1700::15"
-	vip6Add     = "ip -6 addr add 2a02:f90:e198:1700::15/128 dev eth0 preferred_lft 0"
+	vip6Want    = "2001:db8::15"
+	vip6Add     = "ip -6 addr add 2001:db8::15/128 dev eth0 preferred_lft 0"
 	vip6OldLine = `2: eth0    inet6 2a02:aaaa:0:1::15/128 scope global \       valid_lft forever preferred_lft 0sec`
 )
 
@@ -206,14 +206,14 @@ func TestVIP6StateTwoPrefixes(t *testing.T) {
 		t.Fatalf("Want = %s, erwartet %s (längeres valid_lft)", st.Want, vip6Want)
 	}
 	// Gleichstand (beide forever): die kleinere Adresse gewinnt
-	a := `2: eth0    inet6 2a02:f90:e198:1700::1/64 scope global \       valid_lft forever preferred_lft forever`
+	a := `2: eth0    inet6 2001:db8::1/64 scope global \       valid_lft forever preferred_lft forever`
 	b := `2: eth0    inet6 2a02:aaaa:0:1::1/64 scope global \       valid_lft forever preferred_lft forever`
 	v2, _ := testVIP6(t, newVIP6Fake(b+"\n"+a), nil, "")
 	st, err = v2.State(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if st.Want != mustAddr(t, vip6Want) { // 2a02:0f90… < 2a02:aaaa…
+	if st.Want != mustAddr(t, vip6Want) { // 2001:0db8… < 2a02:aaaa…
 		t.Fatalf("Gleichstand: Want = %s", st.Want)
 	}
 }
@@ -236,7 +236,7 @@ func TestVIP6StatePrefixHoldLimit(t *testing.T) {
 		{"forever", "forever", true},
 	}
 	for _, c := range cases {
-		f := newVIP6Fake(line("2a02:aaaa:0:1", c.held)+"\n"+line("2a02:f90:e198:1700", c.other), vip6OldLine)
+		f := newVIP6Fake(line("2a02:aaaa:0:1", c.held)+"\n"+line("2001:db8:0:0", c.other), vip6OldLine)
 		v, _ := testVIP6(t, f, nil, "")
 		st, err := v.State(context.Background())
 		if err != nil {
@@ -292,7 +292,7 @@ func TestVIP6StateKeepsHeldPrefix(t *testing.T) {
 
 func TestVIP6StateOnlyTemporaryOrDeprecated(t *testing.T) {
 	for _, flag := range []string{"temporary dynamic", "dynamic deprecated", "tentative", "dadfailed tentative"} {
-		line := `2: eth0    inet6 2a02:f90:e198:1700:215:5dff:fe00:b202/64 scope global ` + flag + ` \       valid_lft 86000sec preferred_lft 0sec`
+		line := `2: eth0    inet6 2001:db8::215:5dff:fe00:b202/64 scope global ` + flag + ` \       valid_lft 86000sec preferred_lft 0sec`
 		v, _ := testVIP6(t, newVIP6Fake(line), nil, "")
 		st, err := v.State(context.Background())
 		if err != nil {
@@ -425,7 +425,7 @@ func TestVIP6TakeDADFailed(t *testing.T) {
 	if !errors.As(err, &dad) || dad.Addr != mustAddr(t, vip6Want) {
 		t.Fatalf("Take = %v, erwartet *errDAD6", err)
 	}
-	if f.index("ip -6 addr del 2a02:f90:e198:1700::15/128 dev eth0") < 0 {
+	if f.index("ip -6 addr del 2001:db8::15/128 dev eth0") < 0 {
 		t.Fatalf("del nach dadfailed fehlt: %v", f.calls)
 	}
 	if na.count() != 0 {
@@ -459,14 +459,14 @@ func TestVIP6TakeAnnounceError(t *testing.T) {
 
 func TestVIP6Release(t *testing.T) {
 	f := newVIP6Fake(card6, vip6OldLine,
-		`2: eth0    inet6 2a02:f90:e198:1700::15/128 scope global \       valid_lft forever preferred_lft 0sec`)
+		`2: eth0    inet6 2001:db8::15/128 scope global \       valid_lft forever preferred_lft 0sec`)
 	f.gone = map[string]bool{"2a02:aaaa:0:1::15/128": true}
 	v, _ := testVIP6(t, f, nil, "")
 	if err := v.Release(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	for _, c := range []string{
-		"ip -6 addr del 2a02:f90:e198:1700::15/128 dev eth0",
+		"ip -6 addr del 2001:db8::15/128 dev eth0",
 		"ip -6 addr del 2a02:aaaa:0:1::15/128 dev eth0",
 	} {
 		if f.index(c) < 0 {
@@ -486,7 +486,7 @@ func TestVIP6Release(t *testing.T) {
 
 func TestVIP6ReleaseNeverTouchesNon128(t *testing.T) {
 	f := newVIP6Fake(card6,
-		`2: eth0    inet6 2a02:f90:e198:1700::15/64 scope global \       valid_lft forever preferred_lft forever`)
+		`2: eth0    inet6 2001:db8::15/64 scope global \       valid_lft forever preferred_lft forever`)
 	v, _ := testVIP6(t, f, nil, "")
 	st, err := v.State(context.Background())
 	if err != nil {
@@ -506,7 +506,7 @@ func TestVIP6ReleaseNeverTouchesNon128(t *testing.T) {
 // Adresse aus DHCPv6 (dynamic) gleich Want: gehört dem Server, nicht uns.
 func TestVIP6TakeDHCPv6Address(t *testing.T) {
 	f := newVIP6Fake(card6,
-		`2: eth0    inet6 2a02:f90:e198:1700::15/128 scope global dynamic noprefixroute \       valid_lft 3600sec preferred_lft 3600sec`)
+		`2: eth0    inet6 2001:db8::15/128 scope global dynamic noprefixroute \       valid_lft 3600sec preferred_lft 3600sec`)
 	v, _ := testVIP6(t, f, &fakeNA{}, "")
 	st, err := v.State(context.Background())
 	if err != nil || len(st.Held) != 0 {
@@ -543,7 +543,7 @@ func TestVIP6ForeignAddressesUntouched(t *testing.T) {
 	if err := v.Release(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if n := f.count("ip -6 addr del"); n != 1 || f.index("ip -6 addr del 2a02:f90:e198:1700::15/128 dev eth0") < 0 {
+	if n := f.count("ip -6 addr del"); n != 1 || f.index("ip -6 addr del 2001:db8::15/128 dev eth0") < 0 {
 		t.Fatalf("Release: nur die eigene Adresse löschen: %v", f.calls)
 	}
 	card := f.card()
@@ -594,7 +594,7 @@ func TestVIP6TakeDADFailedDeleteFails(t *testing.T) {
 // Want liegt schon, ist aber noch tentative: DAD abwarten, kein neues add.
 func TestVIP6TakeHeldTentative(t *testing.T) {
 	f := newVIP6Fake(card6,
-		`2: eth0    inet6 2a02:f90:e198:1700::15/128 scope global tentative \       valid_lft forever preferred_lft 0sec`)
+		`2: eth0    inet6 2001:db8::15/128 scope global tentative \       valid_lft forever preferred_lft 0sec`)
 	f.tent = 3 // erster Lesevorgang in Take, dann zwei im DAD-Warten
 	na := &fakeNA{}
 	v, _ := testVIP6(t, f, na, "")
@@ -615,7 +615,7 @@ func TestVIP6TakeHeldTentative(t *testing.T) {
 // Want liegt schon mit dadfailed: entfernen, *errDAD6.
 func TestVIP6TakeHeldDADFailed(t *testing.T) {
 	f := newVIP6Fake(card6,
-		`2: eth0    inet6 2a02:f90:e198:1700::15/128 scope global dadfailed tentative \       valid_lft forever preferred_lft 0sec`)
+		`2: eth0    inet6 2001:db8::15/128 scope global dadfailed tentative \       valid_lft forever preferred_lft 0sec`)
 	na := &fakeNA{}
 	v, _ := testVIP6(t, f, na, "")
 	_, err := v.Take(context.Background())
@@ -623,7 +623,7 @@ func TestVIP6TakeHeldDADFailed(t *testing.T) {
 	if !errors.As(err, &dad) {
 		t.Fatalf("Take = %v, erwartet *errDAD6", err)
 	}
-	if f.count("ip -6 addr add") != 0 || f.index("ip -6 addr del 2a02:f90:e198:1700::15/128 dev eth0") < 0 {
+	if f.count("ip -6 addr add") != 0 || f.index("ip -6 addr del 2001:db8::15/128 dev eth0") < 0 {
 		t.Fatalf("kein add, aber del erwartet: %v", f.calls)
 	}
 	if na.count() != 0 {

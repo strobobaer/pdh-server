@@ -12,14 +12,14 @@
 
 ## Global Constraints
 
-- Mitwandernde Adresse nur IPv4 mit Präfix (`10.10.0.202/24`); nie auf dem Zeugen; nie gleich einer Adresse in `Nodes[].Addrs`.
+- Mitwandernde Adresse nur IPv4 mit Präfix (`192.0.2.202/24`); nie auf dem Zeugen; nie gleich einer Adresse in `Nodes[].Addrs`.
 - Gratuitous ARP: `arping -U -c 3 -I <karte> <ip>` sofort und nach 5 s; Duplikat-Prüfung `arping -D -c 2 -w 3 -I <karte> <ip>` (Ausgang 1 = Antwort = belegt).
 - Alarme zur Adresse höchstens einmal je Stunde je Inhalt (Entprellung wie Teil 4).
 - Skripte: Ordner `/etc/pdh/ha-hooks/`, alphabetisch, je 30 s, Ausgabe höchstens 2 KB im Ereignis; nur Dateien von root, nicht für Gruppe/andere schreibbar.
 - Skript-Variablen exakt: `PDH_HA_ROLLE`, `PDH_HA_AMTSZEIT`, `PDH_HA_KNOTEN`, `PDH_HA_EIGENE_ADRESSE`, `PDH_HA_PARTNER_ADRESSE`, `PDH_HA_VIP` (ohne Präfix, leer wenn keine).
 - Tunnel-Token: `/etc/pdh/ha/cloudflared.env` (root, 0600, Zeile `TUNNEL_TOKEN=…`), Ergänzung `/etc/systemd/system/cloudflared.service.d/pdh-ha.conf`; Autostart bleibt aus.
 - Prüfsummen: SHA-256 hex (Token; Skripte über „Name\0Inhalt\0“ sortiert).
-- Testadresse im Testverbund: **10.10.0.15/24**; Labor: `10.77.1.50/24` (Netz `lan`).
+- Testadresse im Testverbund: **192.0.2.15/24**; Labor: `10.77.1.50/24` (Netz `lan`).
 - Einzelserver ohne Verbund und Verbund mit `vip_on=false`: Verhalten unverändert.
 - Neue Nebenversion `0.78.0` (`VERSION`, `CHANGELOG.md`), Handbuch im selben Schritt; beide Design-Stile hell/dunkel, nur Farbvariablen.
 - Commits ohne Attribution-Zeilen; Code-Kommentare deutsch, Stil wie Umgebung.
@@ -51,7 +51,7 @@
 **Interfaces:**
 - Produces:
   - `type accessConfig struct { VIP string \`json:"vip,omitempty"\`; VIPOn bool \`json:"vip_on,omitempty"\`; HooksOn bool \`json:"hooks_on,omitempty"\`; Tested *vipTested \`json:"vip_tested,omitempty"\` }`
-  - `type vipTested struct { Net string \`json:"net"\`; Ifaces map[string]string \`json:"ifaces"\`; At time.Time \`json:"at"\` }` (Net = Netz als Präfix, z. B. `10.10.0.0/24`; Ifaces = Knoten → Karte)
+  - `type vipTested struct { Net string \`json:"net"\`; Ifaces map[string]string \`json:"ifaces"\`; At time.Time \`json:"at"\` }` (Net = Netz als Präfix, z. B. `192.0.2.0/24`; Ifaces = Knoten → Karte)
   - Feld `Access accessConfig \`json:"access"\`` in `clusterConfig`; Feld `VIPInterface string \`json:"vip_interface,omitempty"\`` in `nodeConfig`
   - `func parseVIP(s string) (netip.Prefix, error)` – nur IPv4, Präfix 8–32, nicht Netz-/Broadcast-Adresse
   - `func validateAccess(cl clusterConfig, a accessConfig) error` – Fehlertexte deutsch: „Adresse … gehört schon zu Knoten …“, „Adresse … liegt in keinem Netz von …“
@@ -61,10 +61,10 @@
   - `func (t *vipTested) covers(vip netip.Prefix, ifaces map[string]string) bool`
 
 - [ ] **Step 1: Tests schreiben** (`access_test.go`)
-  - `TestParseVIP`: `10.10.0.202/24` ok; `10.10.0.202` (ohne Präfix), `fe80::1/64`, `10.10.0.0/24`, `10.10.0.255/24` → Fehler.
+  - `TestParseVIP`: `192.0.2.202/24` ok; `192.0.2.202` (ohne Präfix), `fe80::1/64`, `192.0.2.0/24`, `192.0.2.255/24` → Fehler.
   - `TestValidateAccess`: VIP gleich `Nodes[0].Addrs[0]` (Host-Teil, Port egal) → Fehler mit Knotenname; VIP außerhalb der Netze beider Knoten → Fehler; gültige → nil; `VIPOn` ohne `VIP` → Fehler.
   - `TestPickInterface`: eine passende Karte → Name; Override gesetzt und vorhanden → Override; Override nicht vorhanden → Fehler.
-  - `TestPickInterfaceAmbiguous`: `eth0 10.10.0.14/24` und `docker0 10.10.0.1/24` → Fehler enthält „nicht eindeutig“ und „vip_interface“; keine passende → Fehler „keine Netzwerkkarte im Netz“.
+  - `TestPickInterfaceAmbiguous`: `eth0 192.0.2.14/24` und `docker0 192.0.2.1/24` → Fehler enthält „nicht eindeutig“ und „vip_interface“; keine passende → Fehler „keine Netzwerkkarte im Netz“.
   - `TestVIPTestedCovers`: gleiches Netz und gleiche Karten → true; anderes Netz oder andere Karte → false; nil → false.
   - `TestClusterConfigAccessRoundTrip`: alte JSON ohne `access` lädt mit leerem Block; Speichern/Laden erhält alle Felder.
 - [ ] **Step 2: Laufen lassen** – `go test ./cmd/pdh-ha -run 'VIP|Access|PickInterface'` → FAIL (nicht definiert).
@@ -117,7 +117,7 @@
   - `apiStatus.Access apiAccess`; `type apiAccess struct { VIP string \`json:"vip"\`; VIPOn bool \`json:"vip_on"\`; HooksOn bool \`json:"hooks_on"\`; Iface string \`json:"iface"\`; IfaceErr string \`json:"iface_err"\`; Holder string \`json:"holder"\`; Tested *vipTested \`json:"tested"\`; Hooks apiHooks \`json:"hooks"\`; Tunnel apiTunnel \`json:"tunnel"\` }` (`apiHooks`/`apiTunnel` hier leer anlegen, Task 5/6 füllen)
   - `apiNode.VIPHeld bool \`json:"vip_held"\``, `apiNode.HooksSum string \`json:"hooks_sum"\``, `apiNode.TunnelSum string \`json:"tunnel_sum"\``
   - `Holder` = eigene Kennung, wenn `held()`, sonst Kennung des Partners mit `VIPHeld`, sonst ""
-  - `printStatus` (`cmd/pdh-ha/main.go:310`): bei gesetzter `access.vip` Zeile „Adresse 10.10.0.15: hier“ / „bei <id>“ / „niemand“ (plus „(aus)“ ohne `vip_on`); Task 5 ergänzt „Skripte: <n>, gleich|verschieden, letzter Lauf ok|Fehler“, Task 6 „Tunnel: läuft hier|aus, Token gleich|verschieden“
+  - `printStatus` (`cmd/pdh-ha/main.go:310`): bei gesetzter `access.vip` Zeile „Adresse 192.0.2.15: hier“ / „bei <id>“ / „niemand“ (plus „(aus)“ ohne `vip_on`); Task 5 ergänzt „Skripte: <n>, gleich|verschieden, letzter Lauf ok|Fehler“, Task 6 „Tunnel: läuft hier|aus, Token gleich|verschieden“
 
 - [ ] **Step 1: Tests schreiben**
   - `TestPrintStatusAccess`: Status mit VIP am Partner → Ausgabe enthält „Adresse 10.77.1.50: bei node2“.
@@ -236,7 +236,7 @@
   - `func (d *daemon) setNodeAddrs(id string, addrs []string, restartPG bool) error` – nur am CA-Halter; Adressen wie beim Beitritt geprüft (Port 7480 ergänzt), keine gleich `access.vip` („Die mitwandernde Adresse darf kein Verbindungsweg sein“), mindestens eine; veröffentlicht die Knotenliste
   - `func addrsChanged(old, new clusterConfig, id string) bool`
   - `func (a *pgActor) reapplyAddrs(ctx context.Context, ownListenChanged, restartPrimary bool) error` – `writeAccess` + `reload`; Standby: `standbyConf` neu + `restart`; eigene `Listen` geändert: am Standby `restart`, am aktiven nur mit `restartPrimary` (Ereignis „PostgreSQL wird für neue Adressen neu gestartet (wenige Sekunden)“), sonst Ereignis „Neustart von PostgreSQL nötig: sudo pdh-ha addrs set … --neustart“
-  - Socket `PUT /v1/addrs` `{"node":"node1","addrs":["10.10.0.203"],"restart_pg":true}`; CLI `pdh-ha addrs set <knoten> <adr,…> [--neustart]`
+  - Socket `PUT /v1/addrs` `{"node":"node1","addrs":["192.0.2.203"],"restart_pg":true}`; CLI `pdh-ha addrs set <knoten> <adr,…> [--neustart]`
   - Jeder Knoten mit pgActor ruft nach Übernahme einer Knotenliste mit geänderten Adressen `reapplyAddrs` über `enqueueFnLocked`
 
 - [ ] **Step 1: Tests schreiben**
@@ -334,6 +334,6 @@
 ### Task 12: Abnahme im Testverbund (mit dem Nutzer)
 
 - [ ] **Step 1:** Zweig nach GitHub pushen (nicht main); Befehle an den Nutzer: .17 `pdh-ha-join.sh --update <commit> --voll`; .14 `checkout -B feature/ausfallschutz-zugangsweg` als Besitzer des Repos + `install_update.sh`; Zeuge `deploy/ha-witness` mit `PDH_HA_COMMIT=<commit> docker compose up -d --build` (macht Claude am Windows-PC).
-- [ ] **Step 2:** Nutzer: Karte Zugangsweg – Adresse `10.10.0.15/24`, Testen, einschalten; Tunnel auf .17 eingerichtet (gleiche Prüfsumme).
-- [ ] **Step 3:** Nutzer: Tausch hin und zurück mit `ping -t 10.10.0.15` vom Windows-PC und Browser auf `http://10.10.0.15:8090`; Ausfall (`systemctl stop pdh-ha postgresql` am aktiven); Neustart des passiven; Skript `10-log` auf beiden.
+- [ ] **Step 2:** Nutzer: Karte Zugangsweg – Adresse `192.0.2.15/24`, Testen, einschalten; Tunnel auf .17 eingerichtet (gleiche Prüfsumme).
+- [ ] **Step 3:** Nutzer: Tausch hin und zurück mit `ping -t 192.0.2.15` vom Windows-PC und Browser auf `http://192.0.2.15:8090`; Ausfall (`systemctl stop pdh-ha postgresql` am aktiven); Neustart des passiven; Skript `10-log` auf beiden.
 - [ ] **Step 4:** Ergebnisse festhalten; Merge nach main nur mit ausdrücklicher Freigabe (aktualisiert die Produktion).

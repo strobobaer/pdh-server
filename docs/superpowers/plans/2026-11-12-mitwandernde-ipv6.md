@@ -21,7 +21,7 @@
 - Version 0.80.1 (`VERSION`, `CHANGELOG.md`), Handbuch im selben Schritt.
 - Tests laufen in Git Bash: `go test ./...`. `gofmt -l` meldet wegen CRLF fast alles – stattdessen `go vet`.
 - Commits auf Deutsch, in Anwendersprache, ohne Zusatzzeilen.
-- Produktion 10.10.0.202 wird nie angefasst. Push, Einspielen auf .14/.17 und Merge nur mit Freigabe des Anwenders.
+- Produktion 192.0.2.202 wird nie angefasst. Push, Einspielen auf .14/.17 und Merge nur mit Freigabe des Anwenders.
 
 ## Review Focus
 
@@ -66,7 +66,7 @@ func TestParseVIP6Suffix(t *testing.T) {
 
 func TestVIP6Addr(t *testing.T) {
 	sfx, _ := parseVIP6Suffix("15")
-	if got := vip6Addr(netip.MustParsePrefix("2a02:f90:e198:1700:215:5dff:fe00:b202/64"), sfx); got.String() != "2a02:f90:e198:1700::15" {
+	if got := vip6Addr(netip.MustParsePrefix("2001:db8::215:5dff:fe00:b202/64"), sfx); got.String() != "2001:db8::15" {
 		t.Fatal(got)
 	}
 }
@@ -119,18 +119,18 @@ func TestValidateAccessVIP6(t *testing.T) {
 - [ ] **Step 1: Tests schreiben.** Fake-`runner` wie `vipState` in `access_worker_test.go`: hält die Zeilen von `ip -6 -o addr show`, `ip -6 addr add/del` ändern sie. Testnamen und Kernaussagen:
 
 ```go
-const card6 = `2: eth0    inet6 2a02:f90:e198:1700:39a7:59a1:40e1:51f5/64 scope global temporary dynamic \       valid_lft 80000sec preferred_lft 10000sec
-2: eth0    inet6 2a02:f90:e198:1700:215:5dff:fe00:b202/64 scope global dynamic mngtmpaddr noprefixroute \       valid_lft 86000sec preferred_lft 14000sec
+const card6 = `2: eth0    inet6 2001:db8::39a7:59a1:40e1:51f5/64 scope global temporary dynamic \       valid_lft 80000sec preferred_lft 10000sec
+2: eth0    inet6 2001:db8::215:5dff:fe00:b202/64 scope global dynamic mngtmpaddr noprefixroute \       valid_lft 86000sec preferred_lft 14000sec
 2: eth0    inet6 fe80::215:5dff:fe00:b202/64 scope link \       valid_lft forever preferred_lft forever`
 
-// TestVIP6StateWant: Want == 2a02:f90:e198:1700::15, Held leer, NoPrefix false.
+// TestVIP6StateWant: Want == 2001:db8::15, Held leer, NoPrefix false.
 // TestVIP6StateTwoPrefixes: zweite Zeile 2a02:aaaa:0:1:…/64 mit valid_lft 100sec → das Präfix mit 86000sec gewinnt.
 // TestVIP6StateOnlyTemporaryOrDeprecated: nur "temporary" bzw. "deprecated" bzw. "tentative" → NoPrefix true, Want Null.
 // TestVIP6StateULAIgnored: fd00::/8-Adresse zählt nicht als Präfix (nur 2000::/3).
 // TestVIP6StateNoIPv6: runner meldet für "ip -6 …" den Fehler aus dem Kernel ohne IPv6 → NoIPv6 true, kein Fehler.
-// TestVIP6Take: genau ein "ip -6 addr add 2a02:f90:e198:1700::15/128 dev eth0 preferred_lft 0"; na.Announce einmal sofort.
+// TestVIP6Take: genau ein "ip -6 addr add 2001:db8::15/128 dev eth0 preferred_lft 0"; na.Announce einmal sofort.
 // TestVIP6TakeIdempotent: zweiter Take ohne weiteres add.
-// TestVIP6TakePrefixChanged: Karte hält 2a02:aaaa:0:1::15/128, Präfix ist jetzt 2a02:f90:…: add neu, dann del alt (Reihenfolge prüfen).
+// TestVIP6TakePrefixChanged: Karte hält 2a02:aaaa:0:1::15/128, Präfix ist jetzt 2001:db8:…: add neu, dann del alt (Reihenfolge prüfen).
 // TestVIP6TakeDADFailed: nach add zeigt die Zeile "dadfailed tentative" → del, Rückgabe *errDAD6.
 // TestVIP6TakeOwnFixedAddress: Ende ergibt die Adresse, die schon als /64 auf der Karte liegt → Fehler "gehört fest zu diesem Server", kein add, kein del.
 // TestVIP6Release: del für jede Held-Adresse; "Cannot assign requested address" gilt als Erfolg; die /64-Adressen bleiben unberührt.
@@ -165,11 +165,11 @@ const card6 = `2: eth0    inet6 2a02:f90:e198:1700:39a7:59a1:40e1:51f5/64 scope 
 ```go
 func TestNAPacket(t *testing.T) {
 	mac, _ := net.ParseMAC("00:15:5d:00:b2:02")
-	b := naPacket(netip.MustParseAddr("2a02:f90:e198:1700::15"), mac)
+	b := naPacket(netip.MustParseAddr("2001:db8::15"), mac)
 	if len(b) != 32 || b[0] != 136 || b[1] != 0 || b[4] != 0x20 || b[5] != 0 {
 		t.Fatalf("Kopf: % x", b[:8])
 	}
-	if netip.AddrFrom16([16]byte(b[8:24])).String() != "2a02:f90:e198:1700::15" {
+	if netip.AddrFrom16([16]byte(b[8:24])).String() != "2001:db8::15" {
 		t.Fatal("Ziel")
 	}
 	if b[24] != 2 || b[25] != 1 || !bytes.Equal(b[26:32], mac) {
@@ -248,10 +248,10 @@ func TestNAPacket(t *testing.T) {
 - [ ] **Step 1: Tests schreiben**
 
 ```go
-// TestCreateAAAA: Create(ctx, "nc.firma.de", "2a02:f90:e198:1700::15") sendet {"type":"AAAA_RECORD","enabled":true,"domain":"nc.firma.de","ipv6Address":"2a02:f90:e198:1700::15","ttlSeconds":<ttlSeconds>} und kein Feld ipv4Address.
+// TestCreateAAAA: Create(ctx, "nc.firma.de", "2001:db8::15") sendet {"type":"AAAA_RECORD","enabled":true,"domain":"nc.firma.de","ipv6Address":"2001:db8::15","ttlSeconds":<ttlSeconds>} und kein Feld ipv4Address.
 // TestUpdateAAAA: PUT auf …/policies/<id> mit demselben Körper.
-// TestCreateAAAALegacy: ältere Schnittstelle → {"key":"nc.firma.de","record_type":"AAAA","value":"2a02:f90:e198:1700::15","enabled":true}.
-// TestCheckRecord: abgelehnt werden "fe80::1", "::1", "::", "fd00::1%eth0", "2a02::15/64", "::ffff:10.0.0.1"; angenommen "2a02:f90:e198:1700::15" (v6=true) und "10.10.0.15" (v6=false).
+// TestCreateAAAALegacy: ältere Schnittstelle → {"key":"nc.firma.de","record_type":"AAAA","value":"2001:db8::15","enabled":true}.
+// TestCheckRecord: abgelehnt werden "fe80::1", "::1", "::", "fd00::1%eth0", "2a02::15/64", "::ffff:10.0.0.1"; angenommen "2001:db8::15" (v6=true) und "192.0.2.15" (v6=false).
 ```
 
 - [ ] **Step 2: Fehlschlag prüfen** – `go test ./internal/integrations/unifi/ -run 'AAAA|CheckRecord'` → FAIL.
@@ -281,7 +281,7 @@ func TestNAPacket(t *testing.T) {
 
 ```go
 // TestHADoAccessSendsVIP6Suffix: Formular vip6_suffix=" 15 " → Anfrage an pdh-ha enthält "vip6_suffix":"15"; leeres Feld sendet "".
-// TestVIPRowShowsVIP6: Access{VIP:"10.77.1.50/24",VIPOn:true,Holder:"pdh",VIP6:"2a02:f90:e198:1700::15"} → State enthält "2a02:f90:e198:1700::15".
+// TestVIPRowShowsVIP6: Access{VIP:"10.77.1.50/24",VIPOn:true,Holder:"pdh",VIP6:"2001:db8::15"} → State enthält "2001:db8::15".
 // TestVIPRowVIP6Note: VIP6Note gesetzt → Level mindestens "warn", Text der Zeile enthält die Note.
 // TestHAAccessFormRendersVIP6Field: gerendertes Widget enthält name="vip6_suffix" mit dem gespeicherten Wert und den Hilfetext unten.
 ```
@@ -320,14 +320,14 @@ func TestNAPacket(t *testing.T) {
 - [ ] **Step 1: Tests schreiben** (UniFi im Speicher wie in `certs_lan_test.go`):
 
 ```go
-// Ziel in allen Tests: V4 "10.10.0.15", V6 "2a02:f90:e198:1700::15", Ende 15.
+// Ziel in allen Tests: V4 "192.0.2.15", V6 "2001:db8::15", Ende 15.
 // TestLAN6SyncCreatesForPDHName: A-Eintrag des PDH (Kennung "a1") auf V4 → Create(name, V6) einmal, unifi.id6.<name> gesetzt, changed == 1.
 // TestLAN6SyncCreatesForManualName: von Hand angelegter A-Eintrag "wiki.firma.de" → V4, Name steht in keiner Zertifikatszeile → Create("wiki.firma.de", V6), unifi.id6.wiki.firma.de gesetzt.
-// TestLAN6SyncSkipsOtherTargets: A-Eintrag auf 10.10.0.99 → kein IPv6-Eintrag.
+// TestLAN6SyncSkipsOtherTargets: A-Eintrag auf 192.0.2.99 → kein IPv6-Eintrag.
 // TestLAN6SyncNameNormalised: A-Eintrag "Wiki.Firma.DE." → genau ein Create mit "wiki.firma.de"; zweiter Lauf ohne Create.
 // TestLAN6SyncUpdatesOwnAfterPrefixChange: eigener AAAA-Eintrag auf 2a02:aaaa:0:1::15 → Update auf V6, Protokollzeile "ipv6-eintrag im haus geändert".
 // TestLAN6SyncUpdatesManualWithSuffix: von Hand angelegter AAAA-Eintrag (keine gemerkte Kennung) auf 2a02:aaaa:0:1::15 → Update auf V6; unifi.id6.<name> bleibt leer (nicht übernommen).
-// TestLAN6SyncForeignOtherTargetUntouched: AAAA gleichen Namens auf 2a02:f90:e198:1700::99 → kein Update, kein Create, unifi.hint6.<name> = "An der UDM Pro steht für <name> schon ein IPv6-Eintrag auf <adresse>. Nichts geändert."
+// TestLAN6SyncForeignOtherTargetUntouched: AAAA gleichen Namens auf 2001:db8::99 → kein Update, kein Create, unifi.hint6.<name> = "An der UDM Pro steht für <name> schon ein IPv6-Eintrag auf <adresse>. Nichts geändert."
 // TestLAN6SyncTwoAAAASameName: ein AAAA mit dem Ende und einer ohne → der mit dem Ende wird nachgezogen, der andere bleibt, kein Create.
 // TestLAN6SyncRemovesWhenOff: Wanted=false, unifi.id6.<name> gesetzt → Delete(id), Schlüssel geleert; ein von Hand angelegter AAAA-Eintrag bleibt stehen.
 // TestLAN6SyncRemovesWhenANoLongerPoints: gemerkter AAAA-Eintrag, der A-Eintrag des Namens zeigt nicht mehr auf V4 bzw. ist weg → Delete(id), Schlüssel geleert.
@@ -452,7 +452,7 @@ Braucht die Freigabe des Anwenders für Push und Einspielen. Auf beiden Testserv
 
 - [ ] **Step 1:** Verbund-Update am aktiven Server: `sudo pdh-ha update start <voller Commit> --version 0.80.1`, Verlauf `sudo pdh-ha update status` → „Update auf 0.80.1 abgeschlossen“.
 - [ ] **Step 2:** Im PDH (Reiter Ausfallschutz) „IPv6-Ende“ `15` setzen → `sudo pdh-ha status` zeigt `Adresse 2a02:…::15: hier`; `ip -6 addr show dev eth0` zeigt sie als `/128` mit `preferred_lft 0`.
-- [ ] **Step 3:** Binnen 5 Minuten: `nslookup -type=AAAA nc.strobl-home.net 10.10.0.1` (Windows-PC) → die Adresse aus Schritt 2, nicht mehr `2a06:…`.
+- [ ] **Step 3:** Binnen 5 Minuten: `nslookup -type=AAAA nc.strobl-home.net 192.0.2.1` (Windows-PC) → die Adresse aus Schritt 2, nicht mehr `2a06:…`.
 - [ ] **Step 4:** Vom Windows-PC `curl -6 -s -o NUL -w "%{remote_ip} %{http_code}\n" https://nc.strobl-home.net/` → die Adresse aus Schritt 2 und `302`.
 - [ ] **Step 5:** Rollentausch hin und zurück (`sudo pdh-ha swap` am aktiven Server bzw. Knopf im PDH); nach jedem Tausch Schritt 4 wiederholen und die Zeit messen, bis der Windows-PC wieder Antwort bekommt (Ziel: unter 10 s).
 - [ ] **Step 6:** Absender prüfen: `ip -6 route get 2606:4700:4700::1111` am aktiven Server nennt als `src` die feste Adresse, nicht `…::15`; der Verbund bleibt verbunden.

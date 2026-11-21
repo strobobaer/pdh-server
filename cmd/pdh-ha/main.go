@@ -216,7 +216,7 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 		}
 		return 0
 	case "access":
-		vip := fs.String("vip", "", "mitwandernde Adresse mit Präfix, z. B. 10.10.0.202/24 (leer = entfernen)")
+		vip := fs.String("vip", "", "mitwandernde Adresse mit Präfix, z. B. 192.0.2.202/24 (leer = entfernen)")
 		vip6 := fs.String("vip6-ende", "", "Ende der mitwandernden IPv6-Adresse, z. B. 15 (leer = entfernen)")
 		vipOn := fs.Bool("vip-on", false, "mitwandernde Adresse einschalten")
 		vipOff := fs.Bool("vip-off", false, "mitwandernde Adresse ausschalten")

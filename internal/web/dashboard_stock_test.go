@@ -3,7 +3,7 @@ package web
 // Widget „Lagerbestand“ (list_stock): Seit Migration 027 steht der Lagerort in
 // spare_part_stock/storage_nodes, die alte Spalte spare_parts.storage_location
 // heißt storage_location_legacy. Das Widget fragte noch die alte Spalte ab und
-// scheiterte auf jedem System (gesehen auf 10.10.0.202, 21.11.2026).
+// scheiterte auf jedem System (gesehen auf 192.0.2.202, 21.11.2026).
 
 import (
 	"context"

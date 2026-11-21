@@ -40,9 +40,9 @@ Entscheidungen des Nutzers:
 - `pdh-ha` steuert PostgreSQL selbst (kein Umweg über den Update-Agenten, kein
   Patroni/repmgr).
 
-Testumgebung: Knoten 1 `pdh` (10.10.0.14), Knoten 2 `pdh-server` (10.10.0.17),
-Zeuge Container (10.10.0.231) – alles Testdaten. Der Produktivserver
-10.10.0.202 wird nie Knoten.
+Testumgebung: Knoten 1 `pdh` (192.0.2.14), Knoten 2 `pdh-server` (192.0.2.17),
+Zeuge Container (192.0.2.231) – alles Testdaten. Der Produktivserver
+192.0.2.202 wird nie Knoten.
 
 ## 2. Replikation
 
@@ -287,7 +287,7 @@ Reiter „Ausfallschutz“:
   `asynchron-ohne-zeuge`, `slot-grenze`, `aktiv-weg-echt`, dazu die
   bestehenden, `alle`. Ständiger Wächter: höchstens eine schreibbare
   Datenbank; nach jedem Szenario jede bestätigte Zeile vorhanden.
-- **Echtes Netz:** `--voll` auf 10.10.0.17, Pflicht-Tausch, „Übernahme
+- **Echtes Netz:** `--voll` auf 192.0.2.17, Pflicht-Tausch, „Übernahme
   erzwingen“ mit Rückkehr und `pg_rewind`, optional `real` mit VM-Stopp.
 
 ## 8. Handbuch und Version

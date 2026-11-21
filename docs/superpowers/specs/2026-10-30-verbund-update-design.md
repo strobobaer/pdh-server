@@ -414,8 +414,8 @@ und „Datenbank-Änderung scheitert“):
 Kasten „Wartungsfenster“ – Fiori und Fluent, hell und dunkel, 320/390/768/
 1024/1366 px.
 
-**Abnahme im Echtnetz** (pdh 10.10.0.14, pdh-server 10.10.0.17, Zeuge
-10.10.0.231; nie die Produktion 10.10.0.202):
+**Abnahme im Echtnetz** (pdh 192.0.2.14, pdh-server 192.0.2.17, Zeuge
+192.0.2.231; nie die Produktion 192.0.2.202):
 
 - Testserver mit `PDH_UPDATE_BRANCH=test/verbund-update-probe`; dieser Zweig
   kommt nie nach main und enthält zwei Proben-Commits: harmlose Version mit

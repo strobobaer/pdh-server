@@ -1,6 +1,6 @@
-# PDH – Urheberrecht und Lizenz
+# PDH – Pulse Data Hub: Urheberrecht und Lizenz
 
-PDH – Copyright (C) 2026 Michael Strobl
+PDH – Pulse Data Hub – Copyright (C) 2026 Michael Strobl
 
 SPDX-License-Identifier: AGPL-3.0-or-later
 
@@ -31,7 +31,7 @@ Fassung anbieten.
 
 English notice:
 
-    PDH
+    PDH – Pulse Data Hub
     Copyright (C) 2026 Michael Strobl
 
     This program is free software: you can redistribute it and/or modify

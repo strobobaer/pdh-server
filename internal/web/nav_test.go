@@ -106,7 +106,7 @@ func TestBuildNavNextcloudLink(t *testing.T) {
 func TestNCAddressFrom(t *testing.T) {
 	for in, want := range map[string]string{
 		"https://nc.example/":    "https://nc.example",
-		" http://10.10.0.15 ":    "http://10.10.0.15",
+		" http://192.0.2.15 ":    "http://192.0.2.15",
 		"http://localhost":       "",
 		"https://127.0.0.1:8436": "",
 		"http://[::1]":           "",

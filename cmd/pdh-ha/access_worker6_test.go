@@ -37,12 +37,12 @@ func setCard6(f *dualFake, lines ...string) {
 	f.v6.mu.Unlock()
 }
 
-// switchPrefix6 tauscht das /64 2a02:f90:e198:1700:: gegen 2a02:aaaa:0:1:: (übrige Zeilen bleiben).
+// switchPrefix6 tauscht das /64 2001:db8:: gegen 2a02:aaaa:0:1:: (übrige Zeilen bleiben).
 func switchPrefix6(f *dualFake) {
 	f.v6.mu.Lock()
 	var lines []string
 	for _, l := range f.v6.lines {
-		if strings.Contains(l, "2a02:f90:e198:1700:") && strings.Contains(l, "/64") {
+		if strings.Contains(l, "2001:db8::") && strings.Contains(l, "/64") {
 			continue
 		}
 		lines = append(lines, l)
@@ -90,7 +90,7 @@ func TestAccessVIP6DADPause(t *testing.T) {
 
 // Adresse gehört fest zum Server (DHCPv6): Take höchstens einmal je Minute.
 func TestAccessVIP6OwnFixedPause(t *testing.T) {
-	dhcp := `2: eth0    inet6 2a02:f90:e198:1700::15/128 scope global dynamic noprefixroute \       valid_lft 3600sec preferred_lft 3600sec`
+	dhcp := `2: eth0    inet6 2001:db8::15/128 scope global dynamic noprefixroute \       valid_lft 3600sec preferred_lft 3600sec`
 	w, f, tick := clockWorker6(t, card6, dhcp)
 	ctx := context.Background()
 	w.set(true, ha.Active, 3)

@@ -257,8 +257,8 @@ func TestMirrorLoginAllowed(t *testing.T) {
 // mirrorStatus: pdh-ha-Status mit aktivem Partner (gesehen oder nicht).
 func mirrorStatus(seen bool) haStatus {
 	return haStatus{Configured: true, Peers: []haNode{
-		{Kind: "witness", Role: "aktiv", Seen: true, Paths: []haPath{{Addr: "10.10.0.99:7946"}}},
-		{Kind: "node", Role: "aktiv", Seen: seen, Paths: []haPath{{Addr: "10.10.0.17:7946"}}},
+		{Kind: "witness", Role: "aktiv", Seen: true, Paths: []haPath{{Addr: "192.0.2.99:7946"}}},
+		{Kind: "node", Role: "aktiv", Seen: seen, Paths: []haPath{{Addr: "192.0.2.17:7946"}}},
 	}}
 }
 
@@ -411,10 +411,10 @@ func TestMirrorPeerFromStatus(t *testing.T) {
 	fetches := 0
 	h.mirrorPeerFetch = func(context.Context) (haStatus, error) {
 		fetches++
-		return haStatus{Configured: true, Peers: []haNode{{Role: "aktiv", Seen: true, Paths: []haPath{{Addr: "10.10.0.17:7946"}}}}}, nil
+		return haStatus{Configured: true, Peers: []haNode{{Role: "aktiv", Seen: true, Paths: []haPath{{Addr: "192.0.2.17:7946"}}}}}, nil
 	}
 	p := h.mirrorPeerState(context.Background())
-	if !p.Known || !p.ActiveSeen || p.ActiveAddr != "10.10.0.17" {
+	if !p.Known || !p.ActiveSeen || p.ActiveAddr != "192.0.2.17" {
 		t.Fatalf("Peer: %+v", p)
 	}
 	h.mirrorPeerState(context.Background())
@@ -449,14 +449,14 @@ func TestMirrorPeerFromStatus(t *testing.T) {
 }
 
 func TestMirrorActiveURL(t *testing.T) {
-	p := mirrorPeer{Known: true, ActiveSeen: true, ActiveAddr: "10.10.0.17"}
-	r := httptest.NewRequest(http.MethodGet, "http://10.10.0.18:8080/x", nil)
-	if u := mirrorActiveLink(r, p); u != "http://10.10.0.17:8080/" {
+	p := mirrorPeer{Known: true, ActiveSeen: true, ActiveAddr: "192.0.2.17"}
+	r := httptest.NewRequest(http.MethodGet, "http://192.0.2.18:8080/x", nil)
+	if u := mirrorActiveLink(r, p); u != "http://192.0.2.17:8080/" {
 		t.Fatalf("mit Port: %q", u)
 	}
 	r = httptest.NewRequest(http.MethodGet, "http://pdh2.firma.de/x", nil)
 	r.Header.Set("X-Forwarded-Proto", "https")
-	if u := mirrorActiveLink(r, p); u != "https://10.10.0.17/" {
+	if u := mirrorActiveLink(r, p); u != "https://192.0.2.17/" {
 		t.Fatalf("ohne Port, https: %q", u)
 	}
 	if u := mirrorActiveLink(r, mirrorPeer{Known: true}); u != "" {
@@ -471,8 +471,8 @@ func TestMirrorLoginHint(t *testing.T) {
 	h := &Handler{}
 	h.SetMirror(MirrorInfo{On: true})
 	h.mirrorPeerFetch = func(context.Context) (haStatus, error) { return mirrorStatus(true), nil }
-	d := h.mirrorLoginHint(httptest.NewRequest(http.MethodGet, "http://10.10.0.18:8080/login?spiegel=1", nil), LoginData{})
-	if !d.Mirror || d.MirrorURL != "http://10.10.0.17:8080/" {
+	d := h.mirrorLoginHint(httptest.NewRequest(http.MethodGet, "http://192.0.2.18:8080/login?spiegel=1", nil), LoginData{})
+	if !d.Mirror || d.MirrorURL != "http://192.0.2.17:8080/" {
 		t.Fatalf("Hinweis: %+v", d)
 	}
 	if d := h.mirrorLoginHint(httptest.NewRequest(http.MethodGet, "/login", nil), LoginData{}); d.Mirror {
@@ -524,8 +524,8 @@ func mirrorBannerPage(t *testing.T, m *MirrorBanner) string {
 }
 
 func TestMirrorBannerRendered(t *testing.T) {
-	out := mirrorBannerPage(t, &MirrorBanner{Known: true, ActiveSeen: true, Lag: "3 s", ActiveURL: "http://10.10.0.17:8080/"})
-	for _, want := range []string{"Spiegel – nur lesen", "Datenstand vor 3 s", `href="http://10.10.0.17:8080/"`, ">10.10.0.17:8080<", "mirror-band warn"} {
+	out := mirrorBannerPage(t, &MirrorBanner{Known: true, ActiveSeen: true, Lag: "3 s", ActiveURL: "http://192.0.2.17:8080/"})
+	for _, want := range []string{"Spiegel – nur lesen", "Datenstand vor 3 s", `href="http://192.0.2.17:8080/"`, ">192.0.2.17:8080<", "mirror-band warn"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("aktiv gesehen: %q fehlt", want)
 		}
@@ -579,7 +579,7 @@ func TestMirrorBannerRendered(t *testing.T) {
 }
 
 func TestMirrorBannerData(t *testing.T) {
-	r := httptest.NewRequest(http.MethodGet, "http://10.10.0.18:8080/", nil)
+	r := httptest.NewRequest(http.MethodGet, "http://192.0.2.18:8080/", nil)
 	if (&Handler{}).mirrorBanner(r) != nil {
 		t.Fatal("Spiegel aus: Band")
 	}
@@ -596,7 +596,7 @@ func TestMirrorBannerData(t *testing.T) {
 	curCalls := 0
 	h.mirrorCurFetch = func(context.Context) (bool, error) { curCalls++; return true, nil }
 	b := h.mirrorBanner(r)
-	if b == nil || !b.Known || !b.ActiveSeen || !b.Admin || b.Restricted || !b.Current || b.Lag != "3 s" || b.DataAt != "28.10. 06:49" || b.ActiveURL != "http://10.10.0.17:8080/" {
+	if b == nil || !b.Known || !b.ActiveSeen || !b.Admin || b.Restricted || !b.Current || b.Lag != "3 s" || b.DataAt != "28.10. 06:49" || b.ActiveURL != "http://192.0.2.17:8080/" {
 		t.Fatalf("Band: %+v", b)
 	}
 	h.mirrorBanner(r)
@@ -701,13 +701,13 @@ func TestMirrorPeerStateSingleFlight(t *testing.T) {
 
 func TestMirrorPeerPrefersAlivePath(t *testing.T) {
 	st := haStatus{Configured: true, Peers: []haNode{{Role: "aktiv", Seen: true, Paths: []haPath{
-		{Addr: "10.10.0.17:7946"}, {Addr: "192.168.5.17:7946", Alive: true},
+		{Addr: "192.0.2.17:7946"}, {Addr: "192.168.5.17:7946", Alive: true},
 	}}}}
 	if p := mirrorPeerFrom(st); p.ActiveAddr != "192.168.5.17" {
 		t.Fatalf("lebender Pfad: %+v", p)
 	}
 	st.Peers[0].Paths[1].Alive = false
-	if p := mirrorPeerFrom(st); p.ActiveAddr != "10.10.0.17" {
+	if p := mirrorPeerFrom(st); p.ActiveAddr != "192.0.2.17" {
 		t.Fatalf("Rückfall erster Pfad: %+v", p)
 	}
 }

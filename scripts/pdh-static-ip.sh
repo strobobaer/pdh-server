@@ -5,12 +5,12 @@
 #       übernimmt die jetzige Adresse, das Gateway und die DNS-Server fest
 #       (Vorschlag anzeigen, nachfragen, dann „netplan try“).
 #
-#   sudo bash pdh-static-ip.sh --ip 10.10.0.14/24 --gw 10.10.0.1 --dns 10.10.0.1,1.1.1.1
+#   sudo bash pdh-static-ip.sh --ip 192.0.2.14/24 --gw 192.0.2.1 --dns 192.0.2.1,1.1.1.1
 #       andere Werte vorgeben.
 #
 # Optionen:
 #   --if NAME     Netzwerkschnittstelle (Standard: die mit der Standardroute)
-#   --ip A/P      Adresse mit Präfix, z. B. 10.10.0.14/24 (Standard: jetzige)
+#   --ip A/P      Adresse mit Präfix, z. B. 192.0.2.14/24 (Standard: jetzige)
 #   --gw ADRESSE  Gateway (Standard: jetziges)
 #   --dns LISTE   DNS-Server, mit Komma getrennt (Standard: jetzige, sonst Gateway)
 #   --dry-run     nur anzeigen, was geschrieben würde
@@ -125,7 +125,7 @@ dialog_apply() {
     [[ -n "$DNS" ]] || DNS="$GW"
   fi
 
-  [[ "$IP" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}/[0-9]{1,2}$ ]] || fail "Adresse bitte mit Präfix angeben, z. B. 10.10.0.14/24 (ist: ${IP:-leer})"
+  [[ "$IP" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}/[0-9]{1,2}$ ]] || fail "Adresse bitte mit Präfix angeben, z. B. 192.0.2.14/24 (ist: ${IP:-leer})"
   [[ "$GW" =~ $ipv4_re ]] || fail "Ungültiges Gateway: ${GW:-leer}"
   IFS=, read -r -a DNS_LIST <<<"$DNS"
   for d in "${DNS_LIST[@]}"; do [[ "$d" =~ $ipv4_re ]] || fail "Ungültiger DNS-Server: $d"; done

@@ -81,26 +81,26 @@ func TestMqttFwRow(t *testing.T) {
 
 func TestMqttLANJudge(t *testing.T) {
 	const host = "mqtt.firma.de"
-	own := []string{"10.10.0.17", "10.10.0.15"}
+	own := []string{"192.0.2.17", "192.0.2.15"}
 	a := func(name, value string, on bool) unifi.Record {
 		return unifi.Record{ID: "1", Name: name, Value: value, Type: "A", Enabled: on}
 	}
 	cf4, cf6 := "104.16.1.1", "2606:4700::6810:101"
 
 	// Antwort des Servers ist eine eigene Adresse
-	if s, tone, note := mqttLANJudge(host, []string{"10.10.0.15"}, own, nil); tone != "ok" || s != "zeigt auf diesen Server" || note != "" {
+	if s, tone, note := mqttLANJudge(host, []string{"192.0.2.15"}, own, nil); tone != "ok" || s != "zeigt auf diesen Server" || note != "" {
 		t.Errorf("direkt: %q %q %q", s, tone, note)
 	}
 	// Server sieht Cloudflare, die UDM Pro hat den Eintrag: in Ordnung, mit Erklärung
-	s, tone, note := mqttLANJudge(host, []string{cf4}, own, []unifi.Record{a("MQTT.firma.de.", "10.10.0.15", true)})
-	if tone != "ok" || !strings.Contains(s, "an der UDM Pro eingetragen") || !strings.Contains(s, "10.10.0.15") || !strings.Contains(note, "außerhalb des Hauses") {
+	s, tone, note := mqttLANJudge(host, []string{cf4}, own, []unifi.Record{a("MQTT.firma.de.", "192.0.2.15", true)})
+	if tone != "ok" || !strings.Contains(s, "an der UDM Pro eingetragen") || !strings.Contains(s, "192.0.2.15") || !strings.Contains(note, "außerhalb des Hauses") {
 		t.Errorf("UDM Pro hat den Eintrag: %q %q %q", s, tone, note)
 	}
 	// abgeschalteter Eintrag, fremde Adresse, anderer Name: zählt nicht
 	for name, recs := range map[string][]unifi.Record{
-		"abgeschaltet":   {a(host, "10.10.0.15", false)},
-		"fremde Adresse": {a(host, "10.10.0.99", true)},
-		"anderer Name":   {a("pdh.firma.de", "10.10.0.15", true)},
+		"abgeschaltet":   {a(host, "192.0.2.15", false)},
+		"fremde Adresse": {a(host, "192.0.2.99", true)},
+		"anderer Name":   {a("pdh.firma.de", "192.0.2.15", true)},
 		"UDM Pro stumm":  nil,
 	} {
 		if s, tone, _ := mqttLANJudge(host, []string{cf4}, own, recs); tone != "warn" || s != "zeigt im Haus auf Cloudflare" {
@@ -112,15 +112,15 @@ func TestMqttLANJudge(t *testing.T) {
 	}
 	// IPv6 zeigt nach außen: Hinweis – außer die UDM Pro hat einen IPv6-Eintrag
 	// oder eine eigene IPv6-Adresse kommt zurück
-	_, tone, note = mqttLANJudge(host, []string{"10.10.0.15", cf6}, own, nil)
+	_, tone, note = mqttLANJudge(host, []string{"192.0.2.15", cf6}, own, nil)
 	if tone != "ok" || !strings.Contains(note, "IPv6") {
 		t.Errorf("IPv6 nach außen: %q %q", tone, note)
 	}
 	six := unifi.Record{ID: "2", Name: host, Value: "fd00::15", Type: "AAAA", Enabled: true}
-	if _, _, note = mqttLANJudge(host, []string{"10.10.0.15", cf6}, own, []unifi.Record{six}); note != "" {
+	if _, _, note = mqttLANJudge(host, []string{"192.0.2.15", cf6}, own, []unifi.Record{six}); note != "" {
 		t.Errorf("IPv6-Eintrag an der UDM Pro: %q", note)
 	}
-	if _, _, note = mqttLANJudge(host, []string{"10.10.0.15", "fd00::15"}, append(own, "fd00::15"), nil); note != "" {
+	if _, _, note = mqttLANJudge(host, []string{"192.0.2.15", "fd00::15"}, append(own, "fd00::15"), nil); note != "" {
 		t.Errorf("eigene IPv6-Adresse: %q", note)
 	}
 	// ohne gültigen Namen im Haus kein IPv6-Hinweis (erst das Wichtige)

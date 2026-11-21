@@ -19,7 +19,7 @@
 - Standardwerte (Spec 4): Fenster aus; Beginn „nach dem Abgleich“; Uhrzeit 02:00; spätestens 05:00; einspielen ja; Art „ohne Unterbrechung“; Rollentausch aus; Countdown 2 min (1–15); Höchstdauer Sperre 30 min (10–120); Prüffrist 10 min; Mindestplatz 2 GB; Zeugen-Helfer alle 5 min, Prüffrist 2 min; „Zeuge veraltet“ nach 30 min.
 - Update-Zweig `PDH_UPDATE_BRANCH`, Standard `main`.
 - Docker-Betrieb des PDH (`PDH_UPDATE_MODE=docker`): Verhalten wie bisher, kein Auftrag, keine Sperre (nur Testsysteme).
-- Produktion 10.10.0.202 wird nie als Testknoten benutzt; Merge nach main nur mit Freigabe des Nutzers.
+- Produktion 192.0.2.202 wird nie als Testknoten benutzt; Merge nach main nur mit Freigabe des Nutzers.
 - Version: `VERSION` 0.77.8, oberster `CHANGELOG.md`-Eintrag gleich (`TestChangelogMatchesVersion`).
 - Vor jedem Commit: `go build ./...` und `go test ./<betroffene Pakete>/...` grün; am Ende `go test ./...`.
 
@@ -500,7 +500,7 @@ Hinweis: Spec-Labor-Szenario 9 wird hier als Skript-Test mit Attrappen umgesetzt
 - [ ] **Step 1: Abgleich** (AGENTS.md): `git fetch origin main`, `git merge origin/main`; Dopplungen (`git diff origin/main...HEAD`, grep nach `/v1/update`, `maintenance_`, Migrationsnummer 154, `VERSION`); Nummer/Version ggf. anheben; `go build ./...`, `go test ./...`, Labor `alle`.
 - [ ] **Step 2: Gesamtreview** des Zweigs (frischer Reviewer mit Spec, Plan, Diff); Befunde beheben.
 - [ ] **Step 3: Probe-Zweig** von `feature/verbund-update`: Commit A „Probe: harmlose Version“ (`VERSION` 0.77.8-probe1, Migration `9001_probe.up.sql`: `CREATE TABLE probe_update(x int)`), Commit B „Probe: kaputt“ (`cmd/server/main.go`: `log.Fatal().Msg("Probe: absichtlich kaputt")` direkt nach dem Start, `VERSION` 0.77.8-probe2). Push nur nach Freigabe des Nutzers.
-- [ ] **Step 4: Testserver** (pdh 10.10.0.14, pdh-server 10.10.0.17): Stand `feature/verbund-update` einspielen (passiver Server zuerst), `PDH_UPDATE_BRANCH=test/verbund-update-probe` in `/opt/pdh-server/.env`, Agent neu starten; Zeuge (Windows): neue `compose.yaml` einmalig von Hand (`git pull`, `docker compose up -d --build`).
+- [ ] **Step 4: Testserver** (pdh 192.0.2.14, pdh-server 192.0.2.17): Stand `feature/verbund-update` einspielen (passiver Server zuerst), `PDH_UPDATE_BRANCH=test/verbund-update-probe` in `/opt/pdh-server/.env`, Agent neu starten; Zeuge (Windows): neue `compose.yaml` einmalig von Hand (`git pull`, `docker compose up -d --build`).
 - [ ] **Step 5: Abnahme** (dem Nutzer Befehle, Rechner und erwartetes Ergebnis jeweils vollständig nennen):
   1. Knopf „Update im Verbund installieren“ auf Probe A: Band, Sperre, Fortschritt, Freigabe; danach beide Server auf A, Rollen vertauscht, `probe_update` vorhanden, kein „Versionen unterschiedlich“; Zeuge nach ≤ 10 min auf A.
   2. Fenster „täglich“, Grundsicherung auf die nächste Stunde: Start nach der Grundsicherung (vor/nach Abgleich je Einstellung) mit Probe B → Zurücksetzen, B als fehlerhaft gemerkt, Daten unverändert, Anwender wieder auf Stand A.

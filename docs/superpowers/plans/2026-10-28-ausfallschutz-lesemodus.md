@@ -140,7 +140,7 @@
   - `TestMirrorLoginAllowed` (Tabelle): Admin × {gesehen, nicht gesehen, unbekannt} → true; Nicht-Admin: gesehen → false, nicht gesehen → true, unbekannt → false.
   - `TestMirrorGateExistingSession`: Spiegel an, Peer `ActiveSeen`, Sitzung Nicht-Admin, `GET /` → 302 `/login?spiegel=1`, Cookie `pdh_token` gelöscht.
   - `TestMirrorRestrictedRedirect`: `Restricted`, Admin, `GET /tickets` → 302 `/admin/server-config?tab=ha`; `GET /admin/server-config` → durchgereicht.
-  - `TestMirrorPeerFromStatus`: Status mit Peer `{Role:"aktiv", Seen:true, Paths:[{Addr:"10.10.0.17:7946"}]}` → `ActiveSeen`, `ActiveAddr == "10.10.0.17"`.
+  - `TestMirrorPeerFromStatus`: Status mit Peer `{Role:"aktiv", Seen:true, Paths:[{Addr:"192.0.2.17:7946"}]}` → `ActiveSeen`, `ActiveAddr == "192.0.2.17"`.
 - [ ] **Step 2:** `go test ./internal/web -run Mirror` → FAIL.
 - [ ] **Step 3:** Implementieren.
 - [ ] **Step 4:** → PASS.

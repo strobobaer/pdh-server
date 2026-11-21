@@ -41,7 +41,7 @@ func TestCertSuggested(t *testing.T) {
 	}{
 		{"pdh.firma.de", "https://nc.firma.de/", []string{"pdh.firma.de", "nc.firma.de"}},
 		{"pdh.firma.de", "https://pdh.firma.de:8443/x", []string{"pdh.firma.de"}},
-		{"10.10.0.15", "http://192.168.1.2/", nil},
+		{"192.0.2.15", "http://192.168.1.2/", nil},
 		{"", "", nil},
 		{"PDH.Firma.de:8080", "", []string{"pdh.firma.de"}},
 	}
@@ -57,8 +57,8 @@ func TestCertSuggested(t *testing.T) {
 }
 
 func TestCertLANState(t *testing.T) {
-	own := []string{"10.10.0.17", "10.10.0.15"}
-	if got := certLANState([]string{"10.10.0.15"}, own); got != "direkt" {
+	own := []string{"192.0.2.17", "192.0.2.15"}
+	if got := certLANState([]string{"192.0.2.15"}, own); got != "direkt" {
 		t.Errorf("eigene Adresse: %q", got)
 	}
 	if got := certLANState([]string{"188.114.96.3"}, own); got != "cloudflare" {

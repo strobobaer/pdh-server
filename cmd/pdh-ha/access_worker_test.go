@@ -732,8 +732,8 @@ func testWorker6(t *testing.T, card string, extra ...string) (*accessWorker, *du
 }
 
 const (
-	vip6Del      = "ip -6 addr del 2a02:f90:e198:1700::15/128 dev eth0"
-	vip6HeldLine = `2: eth0    inet6 2a02:f90:e198:1700::15/128 scope global \       valid_lft forever preferred_lft 0sec`
+	vip6Del      = "ip -6 addr del 2001:db8::15/128 dev eth0"
+	vip6HeldLine = `2: eth0    inet6 2001:db8::15/128 scope global \       valid_lft forever preferred_lft 0sec`
 )
 
 func TestAccessVIP6FollowsV4(t *testing.T) {
@@ -842,7 +842,7 @@ func TestAccessVIP6PrefixChange(t *testing.T) {
 	f.v6.mu.Lock()
 	var lines []string
 	for _, l := range f.v6.lines {
-		if strings.Contains(l, "2a02:f90:e198:1700:") && strings.Contains(l, "/64") {
+		if strings.Contains(l, "2001:db8::") && strings.Contains(l, "/64") {
 			continue
 		}
 		lines = append(lines, l)
@@ -853,7 +853,7 @@ func TestAccessVIP6PrefixChange(t *testing.T) {
 	if f.count("ip -6 addr add 2a02:aaaa:0:1::15/128 dev eth0") != 1 || f.count(vip6Del) != 1 {
 		t.Fatalf("Befehle: %q", f.calls)
 	}
-	if n := workerEvents(w, "info", "IPv6-Präfix hat gewechselt: 2a02:f90:e198:1700::/64 → 2a02:aaaa:0:1::/64"); n != 1 {
+	if n := workerEvents(w, "info", "IPv6-Präfix hat gewechselt: 2001:db8::/64 → 2a02:aaaa:0:1::/64"); n != 1 {
 		t.Fatalf("Präfixwechsel %d-mal: %+v", n, w.ev.since(0, 0))
 	}
 	if a, _ := w.held6(); a != "2a02:aaaa:0:1::15" {

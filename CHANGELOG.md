@@ -15,6 +15,8 @@ im Kapitel „Versionen & Updates“ an.
 ### Geändert
 
 - PDH steht jetzt unter der Lizenz AGPL-3.0-or-later (vorher GPL-3.0-only); was PDH für dich erzeugt (z. B. SCL-Bausteine, ESPHome-YAML, Exporte), gehört dir (Ausnahme in `LICENSE-EXCEPTION.md`), und `THIRD_PARTY_LICENSES.md` nennt die Lizenzen aller Fremdbestandteile.
+- Das PDH heißt jetzt „PDH – Pulse Data Hub“ (vorher „Prozess Data Hub“); der lange Name steht auf der Anmeldeseite, im Handbuch und in der Nextcloud-App, in der Kopfzeile bleibt es beim kurzen „PDH“.
+- Handbuch, Hilfetexte und Eingabefelder zeigen als Beispiel jetzt neutrale Adressen (z. B. 192.0.2.202 und 2001:db8::15) statt Adressen aus einem echten Netz.
 
 ## [0.82.11] – 2026-11-21
 

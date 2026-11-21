@@ -80,8 +80,8 @@ func (r *netRec) all() []netCallRec {
 	return append([]netCallRec(nil), r.calls...)
 }
 
-var netTestSummary = hostnet.Summary{Iface: "eth0", Addr: "10.10.0.17/24", Mode: hostnet.ModeDHCP, Gateway: "10.10.0.1",
-	DNS: []string{"10.10.0.1"}, Netplan: true}
+var netTestSummary = hostnet.Summary{Iface: "eth0", Addr: "192.0.2.17/24", Mode: hostnet.ModeDHCP, Gateway: "192.0.2.1",
+	DNS: []string{"192.0.2.1"}, Netplan: true}
 
 // netTestAgent: systemd-Betrieb, Zustand im Temp-Ordner, pdh-ha nicht eingerichtet, alle
 // Befehle ersetzt.
@@ -153,7 +153,7 @@ func TestNetApplyValidation(t *testing.T) {
 		"Aktion":            {`{"action":"x"}`, "Unbekannte Aktion"},
 		"ohne Aktion":       {`{}`, "Unbekannte Aktion"},
 		"kaputt":            {`{"action":`, "ungültiger Rumpf"},
-		"vier DNS":          {`{"action":"dns","dns":["1.1.1.1","8.8.8.8","9.9.9.9","10.10.0.1"]}`, "ein bis drei"},
+		"vier DNS":          {`{"action":"dns","dns":["1.1.1.1","8.8.8.8","9.9.9.9","192.0.2.1"]}`, "ein bis drei"},
 		"kein DNS":          {`{"action":"dns","dns":[]}`, "ein bis drei"},
 		"Befehl":            {`{"action":"dns","dns":["1.1.1.1;reboot"]}`, "Ungültiger DNS-Server"},
 		"Loopback":          {`{"action":"dns","dns":["127.0.0.1"]}`, "Ungültiger DNS-Server"},
@@ -333,9 +333,9 @@ func TestNetHAExclude(t *testing.T) {
 	}
 	haInstalled(t)
 	haFakeSocket(t, `{"ok":true,"configured":true,"self":{"id":"a","role":"aktiv","vip6_held":"2a02:aaaa::15"},
-		"access":{"vip":"10.10.0.15/24","vip6":"2a02:aaaa::15","holder":"a"}}`)
+		"access":{"vip":"192.0.2.15/24","vip6":"2a02:aaaa::15","holder":"a"}}`)
 	info, err := a.netHAInfo(context.Background())
-	want := []netip.Addr{netip.MustParseAddr("10.10.0.15"), netip.MustParseAddr("2a02:aaaa::15")}
+	want := []netip.Addr{netip.MustParseAddr("192.0.2.15"), netip.MustParseAddr("2a02:aaaa::15")}
 	if err != nil || !info.Configured || !info.Active || !reflect.DeepEqual(info.Exclude, want) {
 		t.Errorf("%+v %v", info, err)
 	}
@@ -355,11 +355,11 @@ func TestNetApplyDNSProbe(t *testing.T) {
 		}
 		return nil
 	}
-	ans := netCall(t, a, http.MethodPost, "/v1/net/apply", `{"action":"dns","dns":["10.10.0.1","9.9.9.9"]}`)
+	ans := netCall(t, a, http.MethodPost, "/v1/net/apply", `{"action":"dns","dns":["192.0.2.1","9.9.9.9"]}`)
 	if ans.OK || ans.Error != "Der DNS-Server 9.9.9.9 antwortet nicht – es wurde nichts geändert" {
 		t.Errorf("%+v", ans)
 	}
-	if !reflect.DeepEqual(asked, []string{"10.10.0.1", "9.9.9.9"}) {
+	if !reflect.DeepEqual(asked, []string{"192.0.2.1", "9.9.9.9"}) {
 		t.Errorf("gefragt: %v", asked)
 	}
 	time.Sleep(20 * time.Millisecond)
@@ -377,7 +377,7 @@ func TestNetApplyRunsScript(t *testing.T) {
 		return "Feste Adresse eingestellt\n", nil
 	})
 	start := time.Now()
-	ans := netCall(t, a, http.MethodPost, "/v1/net/apply", `{"action":"dns","dns":[" 10.10.0.1 ","9.9.9.9"],"by":"Anna\nAdmin=x","ha_maint":true}`)
+	ans := netCall(t, a, http.MethodPost, "/v1/net/apply", `{"action":"dns","dns":[" 192.0.2.1 ","9.9.9.9"],"by":"Anna\nAdmin=x","ha_maint":true}`)
 	if !ans.OK || !ans.Running || time.Since(start) > 2*time.Second {
 		t.Fatalf("Start: %+v", ans)
 	}
@@ -396,14 +396,14 @@ func TestNetApplyRunsScript(t *testing.T) {
 		t.Fatalf("%d Läufe", len(calls))
 	}
 	want := map[string]string{
-		"PDH_NET_ACTION": "dns", "PDH_NET_DNS": "10.10.0.1,9.9.9.9", "PDH_NET_BY": "AnnaAdminx", "PDH_NET_HA_MAINT": "1",
+		"PDH_NET_ACTION": "dns", "PDH_NET_DNS": "192.0.2.1,9.9.9.9", "PDH_NET_BY": "AnnaAdminx", "PDH_NET_HA_MAINT": "1",
 		"PDH_NET_ROLLBACK": "120", "PDH_NET_SCRIPT": "/srv/pdh/scripts/pdh-static-ip.sh",
-		"PDH_NET_IF": "eth0", "PDH_NET_IP": "10.10.0.17/24", "PDH_NET_GW": "10.10.0.1",
+		"PDH_NET_IF": "eth0", "PDH_NET_IP": "192.0.2.17/24", "PDH_NET_GW": "192.0.2.1",
 	}
 	if !reflect.DeepEqual(calls[0].env, want) {
 		t.Errorf("Umgebung:\n%v\nerwartet:\n%v", calls[0].env, want)
 	}
-	for _, v := range []string{"10.10.0.1", "9.9.9.9", "10.10.0.17", "eth0", "Anna", "/srv/pdh"} {
+	for _, v := range []string{"192.0.2.1", "9.9.9.9", "192.0.2.17", "eth0", "Anna", "/srv/pdh"} {
 		if strings.Contains(calls[0].script, v) {
 			t.Errorf("Skripttext enthält %q", v)
 		}
@@ -444,19 +444,19 @@ func TestNetApplyWrapperArgs(t *testing.T) {
 		}
 		return strings.Split(strings.TrimRight(string(out), "\n"), "\n")
 	}
-	got := run(netApplyScript, "PDH_NET_ACTION=dns", "PDH_NET_DNS=10.10.0.1,9.9.9.9", "PDH_NET_BY=Anna; rm -rf / $(reboot)",
+	got := run(netApplyScript, "PDH_NET_ACTION=dns", "PDH_NET_DNS=192.0.2.1,9.9.9.9", "PDH_NET_BY=Anna; rm -rf / $(reboot)",
 		"PDH_NET_HA_MAINT=1", "PDH_NET_ROLLBACK=120", "PDH_NET_SCRIPT=/srv/pdh/scripts/pdh-static-ip.sh",
-		"PDH_NET_IF=eth0", "PDH_NET_IP=10.10.0.17/24", "PDH_NET_GW=10.10.0.1")
+		"PDH_NET_IF=eth0", "PDH_NET_IP=192.0.2.17/24", "PDH_NET_GW=192.0.2.1")
 	if len(got) < 5 || got[0] != "--wait" || !strings.HasPrefix(got[4], "--unit=pdh-static-ip-apply-") {
 		t.Fatalf("systemd-run: %q", got)
 	}
 	want := []string{"bash", "/srv/pdh/scripts/pdh-static-ip.sh", "--auto", "--rollback", "120", "--by", "Anna; rm -rf / $(reboot)",
-		"--if", "eth0", "--ip", "10.10.0.17/24", "--gw", "10.10.0.1", "--dns", "10.10.0.1,9.9.9.9", "--ha-maint"}
+		"--if", "eth0", "--ip", "192.0.2.17/24", "--gw", "192.0.2.1", "--dns", "192.0.2.1,9.9.9.9", "--ha-maint"}
 	if !reflect.DeepEqual(got[5:], want) {
 		t.Errorf("Argumente:\n%q\nerwartet:\n%q", got[5:], want)
 	}
 	got = run(netApplyScript, "PDH_NET_ACTION=fix", "PDH_NET_DNS=", "PDH_NET_BY=Anna", "PDH_NET_HA_MAINT=0", "PDH_NET_ROLLBACK=120",
-		"PDH_NET_SCRIPT=/s.sh", "PDH_NET_IF=eth0", "PDH_NET_IP=10.10.0.17/24", "PDH_NET_GW=10.10.0.1")
+		"PDH_NET_SCRIPT=/s.sh", "PDH_NET_IF=eth0", "PDH_NET_IP=192.0.2.17/24", "PDH_NET_GW=192.0.2.1")
 	if strings.Contains(strings.Join(got, " "), "--dns") || strings.Contains(strings.Join(got, " "), "--ha-maint") {
 		t.Errorf("fix: %q", got)
 	}

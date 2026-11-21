@@ -1,6 +1,6 @@
-# PDH Server
+# PDH – Pulse Data Hub
 
-PDH Server ist das Backend und die Web-Oberflaeche fuer den **PDH - Prozess Data Hub**. Das Projekt stellt eine modulare HTTP-API und Web-UI fuer betriebliche Daten bereit, unter anderem fuer Benutzer, Schichten, Lagerorte, Infrastruktur, Tickets, Stoerungen, IT, Checklisten, Anhaenge, Zeiterfassung, Wartung und Inventar.
+PDH Server ist das Backend und die Web-Oberflaeche fuer den **PDH – Pulse Data Hub**. Das Projekt stellt eine modulare HTTP-API und Web-UI fuer betriebliche Daten bereit, unter anderem fuer Benutzer, Schichten, Lagerorte, Infrastruktur, Tickets, Stoerungen, IT, Checklisten, Anhaenge, Zeiterfassung, Wartung und Inventar.
 
 ## Inhalt
 
