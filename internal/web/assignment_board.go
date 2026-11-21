@@ -100,10 +100,7 @@ func (h *Handler) AssignmentBoardAssign(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	free := `assigned_to IS NULL AND assigned_group_id IS NULL`
-	if ref == "task" {
-		free = `assigned_group_id IS NULL AND NOT EXISTS (SELECT 1 FROM task_assignees a WHERE a.task_id = tasks.id)`
-	}
+	free := unassignedSQL(ref == "task")
 	var q string
 	switch {
 	case kind == "g":
@@ -129,6 +126,15 @@ func (h *Handler) AssignmentBoardAssign(w http.ResponseWriter, r *http.Request) 
 	}
 	h.addHistory(ctx, ref, id, "people", field, "", who, msg, u.ID)
 	assignBoardResult(w, true, "Zugewiesen an "+label)
+}
+
+// unassignedSQL: Bedingung „niemand zugewiesen“ (keine Person, keine Gruppe) für
+// UPDATE/INSERT … WHERE; Aufgaben haben mehrere Zuständige in task_assignees.
+func unassignedSQL(task bool) string {
+	if task {
+		return `assigned_group_id IS NULL AND NOT EXISTS (SELECT 1 FROM task_assignees a WHERE a.task_id = tasks.id)`
+	}
+	return `assigned_to IS NULL AND assigned_group_id IS NULL`
 }
 
 // assignBoardResult: Rueckmeldung, die die Zeile auf der Seite ersetzt.

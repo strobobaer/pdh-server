@@ -18,10 +18,21 @@ import (
 //   - läuft die erste Anfrage mit derselben Once noch, oder gehört die Once einem anderen
 //     Benutzer/Pfad → 409 app_conflict (Retry-After 2), Handler läuft nicht
 //   - sonst Once in request_once eintragen und weiterreichen; Status ≥ 400
-//     gibt die Once wieder frei, damit das Telefon es erneut versuchen darf.
+//     gibt die Once wieder frei, damit das Telefon es erneut versuchen darf –
+//     außer der Handler hat schon geschrieben (appKeepOnce).
 
 type appReplayKey struct{}
 type appOnceKey struct{}
+type appKeepKey struct{}
+
+// appKeepOnce: der Handler hat geschrieben – die Once bleibt gültig, auch wenn
+// die Antwort danach doch ein Fehler wird (z. B. Lesen des neuen Stands scheitert).
+// Ein erneuter Versuch des Telefons ist dann ein Replay und schreibt nicht doppelt.
+func appKeepOnce(r *http.Request) {
+	if p, ok := r.Context().Value(appKeepKey{}).(*bool); ok {
+		*p = true
+	}
+}
 
 // appIsReplay: true, wenn dieselbe Once schon einmal angenommen wurde – der
 // Handler darf dann nicht noch einmal schreiben.
@@ -124,10 +135,12 @@ func (h *Handler) appWrite(next http.Handler) http.Handler {
 			_, _ = h.db.Exec(ctx, `DELETE FROM request_once WHERE created_at < NOW() - INTERVAL '2 days'`)
 		}
 		rec := &statusRecorder{ResponseWriter: w}
+		kept := false
+		ctx = context.WithValue(ctx, appKeepKey{}, &kept)
 		// Auch bei Panik: Once freigeben, dann weiterreichen.
 		defer func() {
 			p := recover()
-			if p != nil || rec.status >= 400 {
+			if (p != nil || rec.status >= 400) && !kept {
 				_, _ = h.db.Exec(context.WithoutCancel(ctx), `DELETE FROM request_once WHERE token = $1::uuid`, token)
 			}
 			release()

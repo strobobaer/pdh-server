@@ -518,6 +518,11 @@ func main() {
 	r.With(webHandler.AppAuth).Get("/api/app/v1/me", webHandler.AppMeAPI)
 	r.With(webHandler.AppAuth).Get("/api/app/v1/work", webHandler.AppWorkAPI)
 	r.With(webHandler.AppAuth).Get("/api/app/v1/work/{type}/{id}", webHandler.AppWorkDetailAPI)
+	r.With(webHandler.AppAuth, webHandler.AppWrite).Post("/api/app/v1/work/{type}/{id}/start", webHandler.AppWorkStartAPI)
+	r.With(webHandler.AppAuth, webHandler.AppWrite).Post("/api/app/v1/work/{type}/{id}/actions", webHandler.AppWorkActionAPI)
+	r.With(webHandler.AppAuth, webHandler.AppWrite).Post("/api/app/v1/work/{type}/{id}/comments", webHandler.AppWorkCommentAPI)
+	r.With(webHandler.AppAuth, webHandler.AppWrite).Post("/api/app/v1/work/{type}/{id}/steps/{stepID}", webHandler.AppWorkStepAPI)
+	r.With(webHandler.AppAuth, webHandler.AppWrite).Post("/api/app/v1/work/{type}/{id}/finish", webHandler.AppWorkFinishAPI)
 
 	// Public shop-floor dashboard; its write actions authenticate each operator by RFID.
 	r.Mount("/global", webHandler.GlobalDashboardRoutes())

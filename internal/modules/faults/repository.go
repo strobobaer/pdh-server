@@ -124,7 +124,7 @@ func (r *Repository) AddActionDirect(ctx context.Context, faultID, description, 
 func (r *Repository) GetByID(ctx context.Context, id string) (*Fault, error) {
 	f := &Fault{}
 	var symptoms []byte
-	query := `SELECT fl.id, fl.title, fl.description, fl.symptoms, fl.severity, fl.status,
+	query := `SELECT fl.id, fl.title, COALESCE(fl.description, ''), fl.symptoms, fl.severity, fl.status,
 		fl.infrastructure_id, fl.assigned_to, fl.responsible_to, fl.created_by, fl.record_image_attachment_id, fl.resolution, fl.root_cause,
 		fl.detected_at, fl.due_date, fl.resolved_at, fl.archived_at, fl.created_at, fl.updated_at,
 		fl.cost_center_id, COALESCE(cc.number,''), COALESCE(cc.name,'')
@@ -146,7 +146,7 @@ func (r *Repository) GetByID(ctx context.Context, id string) (*Fault, error) {
 }
 
 func (r *Repository) List(ctx context.Context, status FaultStatus) ([]*Fault, error) {
-	query := `SELECT fl.id, fl.title, fl.description, fl.symptoms, fl.severity, fl.status,
+	query := `SELECT fl.id, fl.title, COALESCE(fl.description, ''), fl.symptoms, fl.severity, fl.status,
 		fl.infrastructure_id, fl.assigned_to, fl.responsible_to, fl.created_by, fl.detected_at, fl.due_date, fl.archived_at, fl.created_at, fl.updated_at,
 		fl.cost_center_id, COALESCE(cc.number,''), COALESCE(cc.name,'')
 		FROM faults fl

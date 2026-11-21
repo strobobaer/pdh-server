@@ -228,7 +228,9 @@ func (h *Handler) appWorkCan(r *http.Request, kind, id string) (appWorkPerms, er
 		return appWorkPerms{Access: appWorkForbidden}, nil
 	}
 	p := appWorkPerms{Access: appWorkOK}
-	if closedStatus[status] || archived {
+	// Abgeschlossen: nur ansehen. Betrachter schreiben in der App nie (strenger als
+	// die Web-Wege Maßnahme/Kommentar, die Beteiligte ohne Rollenprüfung zulassen).
+	if closedStatus[status] || archived || u.Role == "viewer" {
 		return p, nil
 	}
 	involved := h.completionInvolved(r, k, id)
@@ -269,7 +271,9 @@ func derefStr(p *string) string {
 	return *p
 }
 
-// loadAppWorkDetail liest den Vorgang über den Dienst seines Moduls.
+// loadAppWorkDetail liest den Vorgang über den Dienst seines Moduls. Jeder
+// Lesefehler (auch von Maßnahmen, Kommentaren, Schritten) wird zurückgegeben –
+// lieber „vorübergehend nicht verfügbar“ als stillschweigend leere Listen.
 func (h *Handler) loadAppWorkDetail(ctx context.Context, kind, id string) (*appWorkDetail, error) {
 	d := &appWorkDetail{}
 	actions := func(n int, at func(i int) (string, string, time.Time)) {
@@ -278,16 +282,6 @@ func (h *Handler) loadAppWorkDetail(ctx context.Context, kind, id string) (*appW
 			text, by, t := at(i)
 			d.Actions = append(d.Actions, map[string]any{"text": text, "by": by, "at": appTime(t)})
 		}
-	}
-	date := func(t *time.Time, utcDay bool) {
-		if t == nil {
-			return
-		}
-		v := *t
-		if !utcDay {
-			v = v.Local()
-		}
-		d.Due = v.Format("2006-01-02")
 	}
 	switch kind {
 	case "fault":
@@ -300,12 +294,13 @@ func (h *Handler) loadAppWorkDetail(ctx context.Context, kind, id string) (*appW
 		}
 		d.Title, d.Description, d.Status, d.Priority = f.Title, f.Description, string(f.Status), string(f.Severity)
 		d.AssetID = derefStr(f.InfrastructureID)
-		date(f.DueDate, false)
-		if as, err := h.faults.GetActions(ctx, id); err == nil {
-			actions(len(as), func(i int) (string, string, time.Time) {
-				return as[i].Description, as[i].CreatedByName, as[i].CreatedAt
-			})
+		as, err := h.faults.GetActions(ctx, id)
+		if err != nil {
+			return nil, err
 		}
+		actions(len(as), func(i int) (string, string, time.Time) {
+			return as[i].Description, as[i].CreatedByName, as[i].CreatedAt
+		})
 	case "ticket":
 		if h.tickets == nil {
 			return nil, errNoService
@@ -316,17 +311,20 @@ func (h *Handler) loadAppWorkDetail(ctx context.Context, kind, id string) (*appW
 		}
 		d.Title, d.Description, d.Status, d.Priority = t.Title, t.Description, string(t.Status), string(t.Priority)
 		d.AssetID = derefStr(t.InfrastructureID)
-		date(t.DueDate, false)
-		if as, err := h.tickets.GetActions(ctx, id); err == nil {
-			actions(len(as), func(i int) (string, string, time.Time) {
-				return as[i].Description, as[i].CreatedByName, as[i].CreatedAt
-			})
+		as, err := h.tickets.GetActions(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		actions(len(as), func(i int) (string, string, time.Time) {
+			return as[i].Description, as[i].CreatedByName, as[i].CreatedAt
+		})
+		cs, err := h.tickets.ListComments(ctx, id)
+		if err != nil {
+			return nil, err
 		}
 		d.Comments = []map[string]any{}
-		if cs, err := h.tickets.ListComments(ctx, id); err == nil {
-			for _, c := range cs {
-				d.Comments = append(d.Comments, map[string]any{"text": c.Text, "by": c.UserName, "at": appTime(c.CreatedAt)})
-			}
+		for _, c := range cs {
+			d.Comments = append(d.Comments, map[string]any{"text": c.Text, "by": c.UserName, "at": appTime(c.CreatedAt)})
 		}
 	case "task":
 		if h.tasks == nil {
@@ -338,12 +336,13 @@ func (h *Handler) loadAppWorkDetail(ctx context.Context, kind, id string) (*appW
 		}
 		d.Title, d.Description, d.Status, d.Priority = t.Title, t.Description, string(t.Status), string(t.Priority)
 		d.AssetID = derefStr(t.InfrastructureID)
-		date(t.DueDate, true) // DATE
-		if as, err := h.tasks.GetActions(ctx, id); err == nil {
-			actions(len(as), func(i int) (string, string, time.Time) {
-				return as[i].Description, as[i].CreatedByName, as[i].CreatedAt
-			})
+		as, err := h.tasks.GetActions(ctx, id)
+		if err != nil {
+			return nil, err
 		}
+		actions(len(as), func(i int) (string, string, time.Time) {
+			return as[i].Description, as[i].CreatedByName, as[i].CreatedAt
+		})
 	case "maintenance":
 		if h.maint == nil {
 			return nil, errNoService
@@ -354,26 +353,58 @@ func (h *Handler) loadAppWorkDetail(ctx context.Context, kind, id string) (*appW
 		}
 		d.Title, d.Description, d.Status, d.Priority = t.Title, t.Description, string(t.Status), string(t.Priority)
 		d.AssetID = t.InfrastructureID
-		due := t.DueDate
-		date(&due, false)
-		if as, err := h.maint.GetActions(ctx, id); err == nil {
-			actions(len(as), func(i int) (string, string, time.Time) {
-				return as[i].Description, as[i].CreatedByName, as[i].CreatedAt
-			})
+		as, err := h.maint.GetActions(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		actions(len(as), func(i int) (string, string, time.Time) {
+			return as[i].Description, as[i].CreatedByName, as[i].CreatedAt
+		})
+		ss, err := h.maint.Steps(ctx, id)
+		if err != nil {
+			return nil, err
 		}
 		d.Steps = []map[string]any{}
-		if ss, err := h.maint.Steps(ctx, id); err == nil {
-			for _, s := range ss {
-				d.Steps = append(d.Steps, map[string]any{"id": s.ID, "label": s.Label, "kind": s.ItemType, "value": s.Value,
-					"done": s.Done, "required": s.Required, "min": s.MinValue, "max": s.MaxValue})
-			}
+		for _, s := range ss {
+			d.Steps = append(d.Steps, map[string]any{"id": s.ID, "label": s.Label, "kind": s.ItemType, "value": s.Value,
+				"done": s.Done, "required": s.Required, "min": s.MinValue, "max": s.MaxValue, "in_range": s.InRange})
 		}
+	default:
+		return nil, pgx.ErrNoRows
 	}
 	if d.Actions == nil {
 		d.Actions = []map[string]any{}
 	}
+	// Fälligkeit genau wie in der Liste (myOpenWorkSQL: due_date::date in der Zeitzone der Datenbank)
+	var due *time.Time
+	if err := h.db.QueryRow(ctx, `SELECT due_date::date FROM `+completionKinds[kind].Table+` WHERE id = $1::uuid`, id).Scan(&due); err != nil {
+		return nil, err
+	}
+	if due != nil {
+		d.Due = due.Format("2006-01-02")
+	}
 	d.AssetName = h.appAssetName(ctx, d.AssetID)
 	return d, nil
+}
+
+// appWorkDenied antwortet auf einen nicht sichtbaren Vorgang (404 bzw. 403);
+// false heißt: sichtbar, weiter.
+func appWorkDenied(w http.ResponseWriter, p appWorkPerms) bool {
+	switch p.Access {
+	case appWorkOK:
+		return false
+	case appWorkNotFound:
+		appJSONErr(w, http.StatusNotFound, "app_not_found", "app_not_found")
+	default:
+		appJSONErr(w, http.StatusForbidden, "app_no_permission", "app_no_permission")
+	}
+	return true
+}
+
+// appUnavailable: 503 app_unavailable (vorübergehend; die App versucht es später erneut).
+func appUnavailable(w http.ResponseWriter, err error, kind, id, what string) {
+	componentLog("app").Error().Err(err).Str("art", kind).Str("vorgang", id).Msg(what)
+	appJSONErr(w, http.StatusServiceUnavailable, "app_unavailable", "app_unavailable")
 }
 
 // AppWorkDetailAPI: GET /api/app/v1/work/{type}/{id} – ein Vorgang mit den
@@ -382,27 +413,25 @@ func (h *Handler) AppWorkDetailAPI(w http.ResponseWriter, r *http.Request) {
 	kind, id := chi.URLParam(r, "type"), chi.URLParam(r, "id")
 	p, err := h.appWorkCan(r, kind, id)
 	if err != nil {
-		componentLog("app").Error().Err(err).Str("art", kind).Str("vorgang", id).Msg("vorgang prüfen")
-		appJSONErr(w, http.StatusInternalServerError, "app_unavailable", "app_unavailable")
+		appUnavailable(w, err, kind, id, "vorgang prüfen")
 		return
 	}
-	switch p.Access {
-	case appWorkNotFound:
-		appJSONErr(w, http.StatusNotFound, "app_not_found", "app_not_found")
-		return
-	case appWorkOK:
-	default:
-		appJSONErr(w, http.StatusForbidden, "app_no_permission", "app_no_permission")
+	if appWorkDenied(w, p) {
 		return
 	}
+	h.appWorkRespond(w, r, kind, id, p)
+}
+
+// appWorkRespond schreibt die Einzelansicht (gemeinsam für GET und alle
+// schreibenden Wege, die danach den aktuellen Stand liefern).
+func (h *Handler) appWorkRespond(w http.ResponseWriter, r *http.Request, kind, id string, p appWorkPerms) {
 	d, err := h.loadAppWorkDetail(r.Context(), kind, id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			appJSONErr(w, http.StatusNotFound, "app_not_found", "app_not_found")
 			return
 		}
-		componentLog("app").Error().Err(err).Str("art", kind).Str("vorgang", id).Msg("vorgang laden")
-		appJSONErr(w, http.StatusInternalServerError, "app_unavailable", "app_unavailable")
+		appUnavailable(w, err, kind, id, "vorgang laden")
 		return
 	}
 	hist := []map[string]any{}
