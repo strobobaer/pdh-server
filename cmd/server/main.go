@@ -511,6 +511,8 @@ func main() {
 	r.Get("/api/app/v1/server", webHandler.AppServerAPI)
 	r.Get("/api/app/v1/branding", webHandler.AppBrandingAPI)
 	r.Get("/api/app/v1/departments", webHandler.AppDepartmentsAPI)
+	r.Post("/api/app/v1/requests", webHandler.AppRequestCreateAPI)
+	r.Get("/api/app/v1/requests/{id}", webHandler.AppRequestStatusAPI)
 	r.Get("/app/setup", webHandler.AppSetupPage)
 
 	// Public shop-floor dashboard; its write actions authenticate each operator by RFID.
