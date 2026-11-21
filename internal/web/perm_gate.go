@@ -108,6 +108,7 @@ var areaAdminPerm = map[string]string{
 	"snmp":     permSNMPAdmin,    // SNMP-Zugangsprofile: endgültig löschen
 	"network":  permNetworkAdmin, // Seite „Netzwerk“: VLANs und WLANs endgültig löschen
 	esppdhRef:  permESPAdmin,     // ESPPDH: Geräte endgültig löschen
+	appRef:     permAppAdmin,     // PDH-App: Geräte und Anfragen
 }
 
 // isAreaAdmin: Bereichsadministrator für diesen Datensatz?
