@@ -289,6 +289,7 @@ func (h *Handler) terminalGate(w http.ResponseWriter, r *http.Request, mode stri
 		}
 		if g {
 			p.Mode, p.Name = "global", h.branding().AppName
+			w.Header().Set("Content-Security-Policy", h.terminalFrameCSP(r.Context()))
 			return p, true
 		}
 	}

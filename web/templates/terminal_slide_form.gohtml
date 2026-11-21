@@ -33,12 +33,16 @@
           <option value="image"{{if eq .Slide.Kind "image"}} selected{{end}}>Bild</option>
           <option value="text"{{if eq .Slide.Kind "text"}} selected{{end}}>Text</option>
           <option value="vorgaenge"{{if eq .Slide.Kind "vorgaenge"}} selected{{end}}>Vorgänge (Störungen und Tickets)</option>
+          <option value="stats_faults"{{if eq .Slide.Kind "stats_faults"}} selected{{end}}>Statistik Störungen</option>
+          <option value="stats_tickets"{{if eq .Slide.Kind "stats_tickets"}} selected{{end}}>Statistik Tickets</option>
+          <option value="stats_setup"{{if eq .Slide.Kind "stats_setup"}} selected{{end}}>Statistik Rüstzeiten</option>
+          <option value="grafana"{{if eq .Slide.Kind "grafana"}} selected{{end}}>Grafana-Dashboard</option>
         </select></div>
       <div class="form-group"><label class="form-label" for="sf-duration">Dauer in Sekunden</label>
         <input id="sf-duration" name="duration" type="number" min="5" max="600" class="form-input" value="{{.Slide.DurationSeconds}}"></div>
     </div>
 
-    <div class="form-group"><label class="form-label" for="sf-title">Titel <span style="color:var(--muted);font-weight:400" data-sf-kind="image vorgaenge">(optional)</span></label>
+    <div class="form-group"><label class="form-label" for="sf-title">Titel <span style="color:var(--muted);font-weight:400" data-sf-kind="image vorgaenge stats_faults stats_tickets stats_setup grafana">(optional)</span></label>
       <input id="sf-title" name="title" class="form-input" maxlength="{{.MaxTitle}}" value="{{.Slide.Title}}"></div>
 
     <div data-sf-kind="image">
@@ -54,16 +58,30 @@
         <div class="sf-hint">Nur Text, höchstens {{.MaxBody}} Zeichen. Zeilenumbrüche bleiben erhalten.</div></div>
     </div>
 
-    <div data-sf-kind="vorgaenge" id="sf-infra-box">
+    <div data-sf-kind="stats_faults stats_tickets stats_setup" class="form-group"><label class="form-label" for="sf-days">Zeitraum</label>
+      <select id="sf-days" name="stats_days" class="form-input">
+        <option value="7"{{if ne .Slide.StatsDays 30}} selected{{end}}>7 Tage (je Tag)</option>
+        <option value="30"{{if eq .Slide.StatsDays 30}} selected{{end}}>30 Tage (je Woche)</option>
+      </select>
+      <div class="sf-hint">Gezählt wird für die gewählten Anlagen samt Unteranlagen (leer = alle), im Umfang der Rechte des Terminal-Benutzers (Ansehen von Störungen, Tickets bzw. Rüstzeiten). Stillstandszeiten werden nicht erfasst; bei Störungen steht die mittlere Dauer bis zur Lösung.</div></div>
+
+    <div data-sf-kind="grafana">
+      <div class="form-group"><label class="form-label" for="sf-url">Adresse des Dashboards</label>
+        <input id="sf-url" name="url" class="form-input" maxlength="1000" value="{{.Slide.URL}}" placeholder="/grafana/d/pdh-overview/pdh-ubersicht" list="sf-dash-list">
+        {{if .Dashboards}}<datalist id="sf-dash-list">{{range .Dashboards}}<option value="{{.URL}}">{{.Title}}</option>{{end}}</datalist>{{end}}
+        <div class="sf-hint">Ein Dashboard aus der Statistik (Vorschläge) oder eine Adresse: Pfad auf dem PDH wie /grafana/d/… oder volle https-Adresse. Das Terminal bettet nur diese Adresse ein; der Terminal-Benutzer braucht dafür das Recht „Statistik ansehen“.</div></div>
+    </div>
+
+    <div data-sf-kind="vorgaenge stats_faults stats_tickets stats_setup" id="sf-infra-box">
       <div class="form-group"><span class="form-label">Anlagen <span style="color:var(--muted);font-weight:400">(mit Unteranlagen; leer = alle)</span></span>
         <input type="hidden" id="sf-infra-ids" name="infra_ids" value="{{.InfraCSV}}">
         <div id="sf-infra-chips" class="sf-chips"></div>
         {{template "infra-tree-picker" (dict "TargetID" "sf-infra-pick" "SelectedLabelID" "sf-infra-pick-label" "Label" "Anlage wählen" "Name" "sf_infra_pick")}}
         <button type="button" class="btn btn-small" onclick="sfInfraAdd()"><i class="ti ti-plus" aria-hidden="true"></i> Anlage hinzufügen</button>
         <div id="sf-infra-labels" data-labels="{{.InfraLabels}}" hidden></div></div>
-      <label class="sf-check"><input type="checkbox" name="show_faults" value="1"{{if .Slide.ShowFaults}} checked{{end}}><span>Störungen zeigen</span></label>
+      <div data-sf-kind="vorgaenge"><label class="sf-check"><input type="checkbox" name="show_faults" value="1"{{if .Slide.ShowFaults}} checked{{end}}><span>Störungen zeigen</span></label>
       <label class="sf-check"><input type="checkbox" name="show_tickets" value="1"{{if .Slide.ShowTickets}} checked{{end}}><span>Tickets zeigen</span></label>
-      <div class="sf-hint">Das Terminal zeigt bis zu 12 offene Vorgänge je Art, immer in dem Umfang, den die Rechte des Terminal-Benutzers erlauben.</div>
+      <div class="sf-hint">Das Terminal zeigt bis zu 12 offene Vorgänge je Art, immer in dem Umfang, den die Rechte des Terminal-Benutzers erlauben.</div></div>
     </div>
 
     <label class="sf-check"><input type="checkbox" name="active" value="1"{{if .Slide.Active}} checked{{end}}><span>Aktiv (nur aktive Folien laufen auf den Terminals)</span></label>

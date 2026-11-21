@@ -31,6 +31,15 @@ func TestValidateTerminalSlide(t *testing.T) {
 		{"gif", terminalSlide{Kind: "image", Image: append([]byte("GIF89a"), make([]byte, 20)...), DurationSeconds: 15}, true},
 		{"infra keine uuid", terminalSlide{Kind: "vorgaenge", InfraIDs: []string{"x'; --"}, DurationSeconds: 15}, true},
 		{"vorgaenge alle", terminalSlide{Kind: "vorgaenge", DurationSeconds: 15}, false},
+		{"statistik ok", terminalSlide{Kind: "stats_faults", StatsDays: 30, DurationSeconds: 15}, false},
+		{"statistik ohne zeitraum", terminalSlide{Kind: "stats_setup", DurationSeconds: 15}, false},
+		{"statistik zeitraum 14", terminalSlide{Kind: "stats_tickets", StatsDays: 14, DurationSeconds: 15}, true},
+		{"grafana pfad", terminalSlide{Kind: "grafana", URL: "/grafana/d/abc/x", DurationSeconds: 15}, false},
+		{"grafana https", terminalSlide{Kind: "grafana", URL: "https://g.example.org/d/abc", DurationSeconds: 15}, false},
+		{"grafana leer", terminalSlide{Kind: "grafana", DurationSeconds: 15}, true},
+		{"grafana javascript", terminalSlide{Kind: "grafana", URL: "javascript:alert(1)", DurationSeconds: 15}, true},
+		{"grafana protokollrelativ", terminalSlide{Kind: "grafana", URL: "//evil.example/x", DurationSeconds: 15}, true},
+		{"grafana mit zugangsdaten", terminalSlide{Kind: "grafana", URL: "http://a:b@h/x", DurationSeconds: 15}, true},
 	}
 	for _, c := range cases {
 		s := c.s

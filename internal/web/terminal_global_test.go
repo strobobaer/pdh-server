@@ -119,7 +119,11 @@ func TestTerminalScriptGlobalPureFunctions(t *testing.T) {
 		}
 		fns = append(fns, string(m))
 	}
-	harness := "var OUTAGE_LIMIT = 3;\n" + strings.Join(fns, "\n") + `
+	kinds := regexp.MustCompile(`var CACHEABLE_KINDS = [^\n]*`).Find(src)
+	if kinds == nil {
+		t.Fatal("CACHEABLE_KINDS nicht gefunden")
+	}
+	harness := "var OUTAGE_LIMIT = 3;\n" + string(kinds) + "\n" + strings.Join(fns, "\n") + `
 const out = [];
 const eq = (got, want, what) => { const g = JSON.stringify(got), w = JSON.stringify(want); if (g !== w) out.push(what + ': ' + g + ' statt ' + w); };
 const three = [{id: 'a'}, {id: 'b'}, {id: 'c'}];
@@ -152,6 +156,10 @@ const slides = [{id: 'a', kind: 'image'}];
 let p = cachePayload({version: 'v1', idle: 120, slides: slides}, {a: 'QUJD'}, d);
 eq(p, {version: 'v1', saved_at: '2026-11-21T10:00:00.000Z', slides: slides, images: {a: 'QUJD'}}, 'Nutzdaten');
 eq(Object.keys(p), ['version', 'saved_at', 'slides', 'images'], 'Felder');
+// Neue Folienarten (Statistik, Grafana) kommen nicht in den Zwischenspeicher älterer Terminals
+const mixed = [{id: 'a', kind: 'image'}, {id: 's', kind: 'stats_faults'}, {id: 't', kind: 'text'}, {id: 'g', kind: 'grafana'}, {id: 'v', kind: 'vorgaenge'}, {id: 'x', kind: 'stats_setup'}, {id: 'y', kind: 'stats_tickets'}, null, {id: 'u'}];
+eq(cachePayload({version: 'v', slides: mixed}, {}, d).slides.map((s) => s.id), ['a', 't', 'v'], 'neue Arten nicht zwischenspeichern');
+eq(cachePayload({version: 'v', slides: [{id: 's', kind: 'stats_faults'}]}, {}, d).slides, [], 'nur neue Arten: leer');
 eq(cachePayload(null, null, d), {version: '', saved_at: '2026-11-21T10:00:00.000Z', slides: [], images: {}}, 'leer');
 eq(typeof cachePayload({version: 'v'}, {}).saved_at, 'string', 'saved_at ohne Datum');
 const mb = (n) => 'A'.repeat(Math.ceil(n * 4 / 3));

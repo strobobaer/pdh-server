@@ -7,8 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"regexp"
 	"slices"
+	"strings"
 	"time"
 	"unicode/utf8"
 
@@ -32,7 +34,18 @@ const (
 	slideKindImage     = "image"
 	slideKindText      = "text"
 	slideKindVorgaenge = "vorgaenge"
+	// Statistik- und Dashboard-Folien (Migration 190). Ältere Terminals kennen sie nicht;
+	// die PDH-Seite reicht sie deshalb nicht an den Zwischenspeicher weiter.
+	slideKindStatsFaults  = "stats_faults"
+	slideKindStatsTickets = "stats_tickets"
+	slideKindStatsSetup   = "stats_setup"
+	slideKindGrafana      = "grafana"
+	slideMaxURL           = 1000
 )
+
+func slideIsStats(kind string) bool {
+	return kind == slideKindStatsFaults || kind == slideKindStatsTickets || kind == slideKindStatsSetup
+}
 
 // terminalSlide: eine Folie. Image wird nur von saveTerminalSlide gelesen
 // (neues Bild) und nie von Liste oder getTerminalSlide gefüllt.
@@ -42,6 +55,8 @@ type terminalSlide struct {
 	InfraIDs                         []string
 	ShowFaults, ShowTickets, Active  bool
 	Position, DurationSeconds        int
+	StatsDays                        int    // 7 oder 30 (Statistikfolien)
+	URL                              string // Grafana-Adresse (Art grafana)
 	UpdatedAt                        time.Time
 }
 
@@ -50,12 +65,36 @@ var errSlideNeedsImage = errors.New("Die Bildfolie braucht ein Bild")
 
 var slideUUIDRe = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
+// validateGrafanaSlideURL: erlaubt ist ein Pfad auf dem PDH (z. B. /grafana/d/…) oder eine volle
+// http(s)-Adresse ohne Zugangsdaten.
+func validateGrafanaSlideURL(raw string) error {
+	if raw == "" {
+		return errors.New("Die Grafana-Folie braucht eine Adresse")
+	}
+	if len(raw) > slideMaxURL {
+		return fmt.Errorf("Die Adresse darf höchstens %d Zeichen haben", slideMaxURL)
+	}
+	if strings.HasPrefix(raw, "//") || strings.ContainsFunc(raw, func(c rune) bool {
+		return c <= ' ' || c == 0x5c || c == 0x22 || c == 0x27 || c == '<' || c == '>'
+	}) {
+		return errors.New("Ungültige Adresse")
+	}
+	if strings.HasPrefix(raw, "/") {
+		return nil
+	}
+	u, err := url.Parse(raw)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil {
+		return errors.New("Die Adresse muss mit http://, https:// oder / beginnen")
+	}
+	return nil
+}
+
 // validateTerminalSlide prüft die Grenzen. Die Bildart wird aus dem Inhalt
 // bestimmt (http.DetectContentType), nicht aus Dateiname oder Angabe, und in
 // s.ImageType eingetragen. Dauer 0 bedeutet die Vorgabe (15 s).
 func validateTerminalSlide(s *terminalSlide) error {
 	switch s.Kind {
-	case slideKindImage, slideKindText, slideKindVorgaenge:
+	case slideKindImage, slideKindText, slideKindVorgaenge, slideKindStatsFaults, slideKindStatsTickets, slideKindStatsSetup, slideKindGrafana:
 	default:
 		return fmt.Errorf("unbekannte Folienart %q", s.Kind)
 	}
@@ -85,6 +124,20 @@ func validateTerminalSlide(s *terminalSlide) error {
 			return errors.New("Nur Bilder als JPEG, PNG oder WebP sind erlaubt")
 		}
 	}
+	if s.StatsDays == 0 {
+		s.StatsDays = 7
+	}
+	if s.StatsDays != 7 && s.StatsDays != 30 {
+		return errors.New("Der Zeitraum der Statistik ist 7 oder 30 Tage")
+	}
+	s.URL = strings.TrimSpace(s.URL)
+	if s.Kind == slideKindGrafana {
+		if err := validateGrafanaSlideURL(s.URL); err != nil {
+			return err
+		}
+	} else {
+		s.URL = ""
+	}
 	for _, id := range s.InfraIDs {
 		if !slideUUIDRe.MatchString(id) {
 			return errors.New("Ungültige Anlage")
@@ -94,12 +147,12 @@ func validateTerminalSlide(s *terminalSlide) error {
 }
 
 const slideColumns = `id::text, position, kind, title, body, image_type, COALESCE(infra_ids, '{}')::text[],
-	show_faults, show_tickets, duration_seconds, active, updated_at`
+	show_faults, show_tickets, duration_seconds, active, stats_days, url, updated_at`
 
 func scanSlide(row pgx.Row) (terminalSlide, error) {
 	var s terminalSlide
 	err := row.Scan(&s.ID, &s.Position, &s.Kind, &s.Title, &s.Body, &s.ImageType, &s.InfraIDs,
-		&s.ShowFaults, &s.ShowTickets, &s.DurationSeconds, &s.Active, &s.UpdatedAt)
+		&s.ShowFaults, &s.ShowTickets, &s.DurationSeconds, &s.Active, &s.StatsDays, &s.URL, &s.UpdatedAt)
 	return s, err
 }
 
@@ -165,10 +218,10 @@ func (h *Handler) saveTerminalSlide(ctx context.Context, s *terminalSlide) error
 		}
 		err := h.db.QueryRow(ctx, `
 			INSERT INTO terminal_slides (position, kind, title, body, image, image_type, infra_ids,
-				show_faults, show_tickets, duration_seconds, active)
-			VALUES ((SELECT COALESCE(MAX(position), 0) + 1 FROM terminal_slides), $1, $2, $3, $4, $5, $6::uuid[], $7, $8, $9, $10)
+				show_faults, show_tickets, duration_seconds, active, stats_days, url)
+			VALUES ((SELECT COALESCE(MAX(position), 0) + 1 FROM terminal_slides), $1, $2, $3, $4, $5, $6::uuid[], $7, $8, $9, $10, $11, $12)
 			RETURNING id::text, position, updated_at`,
-			s.Kind, s.Title, s.Body, img, imgType, infra, s.ShowFaults, s.ShowTickets, s.DurationSeconds, s.Active).
+			s.Kind, s.Title, s.Body, img, imgType, infra, s.ShowFaults, s.ShowTickets, s.DurationSeconds, s.Active, s.StatsDays, s.URL).
 			Scan(&s.ID, &s.Position, &s.UpdatedAt)
 		if err != nil {
 			return err
@@ -192,9 +245,9 @@ func (h *Handler) saveTerminalSlide(ctx context.Context, s *terminalSlide) error
 				image = CASE WHEN $2 <> 'image' THEN NULL WHEN $5::bytea IS NOT NULL THEN $5::bytea ELSE image END,
 				image_type = CASE WHEN $2 <> 'image' THEN '' WHEN $5::bytea IS NOT NULL THEN $6 ELSE image_type END,
 				infra_ids = $7::uuid[], show_faults = $8, show_tickets = $9, duration_seconds = $10, active = $11,
-				updated_at = NOW()
+				stats_days = $12, url = $13, updated_at = NOW()
 			WHERE id = $1::uuid`,
-			s.ID, s.Kind, s.Title, s.Body, img, imgType, infra, s.ShowFaults, s.ShowTickets, s.DurationSeconds, s.Active)
+			s.ID, s.Kind, s.Title, s.Body, img, imgType, infra, s.ShowFaults, s.ShowTickets, s.DurationSeconds, s.Active, s.StatsDays, s.URL)
 		if err != nil {
 			return err
 		}

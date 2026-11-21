@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -211,6 +212,9 @@ type terminalSlideJSON struct {
 	Tickets      []terminalItem `json:"tickets"`
 	FaultsTotal  int            `json:"faults_total"`
 	TicketsTotal int            `json:"tickets_total"`
+	Stats        *terminalStats `json:"stats,omitempty"`
+	Days         int            `json:"days,omitempty"`
+	URL          string         `json:"url,omitempty"`
 }
 
 type terminalSlidesDoc struct {
@@ -299,6 +303,26 @@ func (h *Handler) buildSlidesDoc(ctx context.Context, uid string) (terminalSlide
 				fmt.Fprintf(sum, "T|%s|%s|%s|%s\n", it.ID, it.Status, it.Title, it.Path)
 			}
 			fmt.Fprintf(sum, "N|%d|%d\n", js.FaultsTotal, js.TicketsTotal)
+		}
+		if slideIsStats(s.Kind) {
+			if gi == nil {
+				if gi, err = h.loadGlobalInfra(ctx); err != nil {
+					return doc, err
+				}
+			}
+			perm := map[string]string{slideKindStatsFaults: "faults.view", slideKindStatsTickets: "tickets.view", slideKindStatsSetup: "setup.view"}[s.Kind]
+			ids := h.terminalPermittedInfra(gi, uid, role, perm, gi.infraSet(s))
+			if js.Stats, err = h.slideStats(ctx, s.Kind, s.StatsDays, ids); err != nil {
+				return doc, err
+			}
+			js.Days = s.StatsDays
+			if b, merr := json.Marshal(js.Stats); merr == nil {
+				fmt.Fprintf(sum, "X|%s|%s\n", s.ID, b)
+			}
+		}
+		if s.Kind == slideKindGrafana {
+			js.URL = h.slideGrafanaSrc(ctx, s.URL)
+			fmt.Fprintf(sum, "G|%s|%s\n", s.ID, js.URL)
 		}
 		doc.Slides = append(doc.Slides, js)
 	}
