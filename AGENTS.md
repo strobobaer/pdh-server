@@ -226,7 +226,7 @@ oder ändern.**
 - Die Liste **im selben Schritt pflegen**: Erledigtes streichen, Neues
   eintragen, Stand und Datum anpassen.
 
-### Offene Punkte (Stand 20.11.2026)
+### Offene Punkte (Stand 21.11.2026)
 
 1. **Netz-Abgleich im Browser mit zwei Quellen:** 0.80.25 ist auf `main`
    und dem Testverbund; die Vorschlagsliste mit zwei eingeschalteten
@@ -418,7 +418,13 @@ oder ändern.**
    (`mayCreateProject` = Rechte-Regel), Migration 185 benennt das Recht in
    „Projekte bearbeiten“ um; „Einstellung behalten“ am aktiven Server erst,
    wenn die gemeinsame Adresse zurück ist (`VIPMissing`, auch im Handler).
-   Browser nicht geprüft (Verbund-Update nicht beauftragt).
+   Lokal committet (21.11.2026), `go vet` und `go test ./...` grün; nicht
+   gepusht. Browser nicht geprüft (Verbund-Update nicht beauftragt).
+   Geparkt (Tests, klein): Laufen alle Pakete gleichzeitig gegen die
+   Labor-Datenbank, kann ein Test ein Gerät `w-test-…` auf den
+   Lasttest-Benutzer `last01` buchen; dann scheitert
+   `TestSetupAndCleanupLab` am Aufräumen (einzeln grün; Reste mit
+   `go run ./deploy/lab/last -dsn "$PDH_TEST_DSN" -cleanup` entfernen).
 7. **0.81.6 Nummern ab 10000** (Rüstzeit, KVP, Bestellung und Partner waren auf
    vier Stellen abgeschnitten) – mit 0.82.0 auf `main`; der lokale Branch
    `fix/ruestzeit-nummer` ist damit erledigt.
