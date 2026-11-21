@@ -11,6 +11,7 @@ import (
 	"crypto/sha256"
 	"crypto/tls"
 	"encoding/hex"
+	"encoding/pem"
 	"errors"
 	"net"
 	"sort"
@@ -100,20 +101,79 @@ func certProbeAll(ctx context.Context, names []string, v6 bool) map[string]strin
 	return out
 }
 
-// certDisturbed: erster Schlüssel (sortiert), der vorher antwortete und jetzt ein anderes
-// oder kein Zertifikat zeigt.
-func certDisturbed(before, after map[string]string) (string, bool) {
+// certDisturbed: erster Schlüssel (sortiert), bei dem die neue Seite einem anderen Namen
+// schadet. own sind die Fingerabdrücke des eigenen Zertifikats (bisher und neu):
+//   - Antwortete der Name vorher mit seinem eigenen Zertifikat und jetzt mit einem anderen
+//     oder gar nicht → Störung.
+//   - Kam vorher schon unser Zertifikat (der Name war fälschlich bei uns, Vorfall 202), ist
+//     jede Änderung die Reparatur → keine Störung.
+//   - Antwortete vorher niemand, jetzt aber unser Zertifikat, während derselbe Name über
+//     127.0.0.1 ein eigenes hat → Störung (so lief der Vorfall über ::1).
+func certDisturbed(before, after map[string]string, own map[string]bool) (string, bool) {
 	keys := make([]string, 0, len(before))
 	for k := range before {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
 	for _, k := range keys {
-		if before[k] != "" && after[k] != before[k] {
+		b, a := before[k], after[k]
+		switch {
+		case b != "" && own[b]:
+			continue
+		case b != "" && a != b:
 			return k, true
+		case b == "" && a != "" && own[a]:
+			_, name := certProbeKey(k)
+			if v4 := before["127.0.0.1:443|"+name]; v4 != "" && !own[v4] {
+				return k, true
+			}
 		}
 	}
 	return "", false
+}
+
+// certSettle: Abstand der Wiederholungen nach dem Neuladen („systemctl reload nginx“ kehrt
+// zurück, bevor die alten Arbeitsprozesse fort sind). Variable für Tests.
+var certSettle = 500 * time.Millisecond
+
+// certProbeSettled: messen, bis zwei Läufe gleich sind (höchstens vier Läufe).
+func certProbeSettled(ctx context.Context, names []string, v6 bool) map[string]string {
+	prev := certProbeAll(ctx, names, v6)
+	for i := 0; i < 3; i++ {
+		select {
+		case <-ctx.Done():
+			return prev
+		case <-time.After(certSettle):
+		}
+		cur := certProbeAll(ctx, names, v6)
+		if certSameProbe(prev, cur) {
+			return cur
+		}
+		prev = cur
+	}
+	return prev
+}
+
+func certSameProbe(a, b map[string]string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k, v := range a {
+		if b[k] != v {
+			return false
+		}
+	}
+	return true
+}
+
+// certChainFP: Fingerabdruck des ersten Zertifikats einer PEM-Kette ("" = nicht lesbar).
+func certChainFP(chain []byte) string {
+	blk, _ := pem.Decode(chain)
+	if blk == nil || blk.Type != "CERTIFICATE" {
+		return ""
+	}
+	sum := sha256.Sum256(blk.Bytes)
+	return hex.EncodeToString(sum[:])
 }
 
 // certProbeKey: „Adresse|Name“ zerlegen.

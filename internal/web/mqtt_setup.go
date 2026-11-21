@@ -8,6 +8,7 @@ package web
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -42,6 +43,23 @@ type mqttSetupDeps struct {
 	cfReady       func(ctx context.Context) bool
 	tunnelService func(ctx context.Context) (string, bool, error)
 	tunnelWrite   func(ctx context.Context, service string) (replace bool, err error)
+	// tunnelTarget: Soll-Ziel im Tunnel (bei Full (strict) das strenge Ziel über nginx).
+	tunnelTarget func(ctx context.Context, wsPort int) string
+	// current: Name, WebSocket-Port und Vormerkung, wie sie jetzt gespeichert sind.
+	current func(ctx context.Context) (host string, wsPort int, pending bool)
+	// saveNotes: Hinweise des Laufs für die Prüfliste ablegen (leer = löschen).
+	saveNotes func(ctx context.Context, notes []string)
+}
+
+// errMqttSetupStale: Name oder Vormerkung haben sich während des Laufs geändert.
+var errMqttSetupStale = errors.New("Der Name wurde inzwischen geändert – dieser Lauf schaltet nichts scharf")
+
+// mqttSetupNoteKey: Einstellung mit den Hinweisen des letzten Laufs je Verbindung.
+func mqttSetupNoteKey(id string) string { return "mqtt.setup_note." + id }
+
+// mqttTunnelByHand: genauer Eintrag, wenn das PDH den Tunnel nicht selbst schreiben darf.
+func mqttTunnelByHand(host, service string) string {
+	return "Eintrag von Hand im Cloudflare-Tunnel: " + host + " → " + service
 }
 
 type mqttSetupResult struct {
@@ -53,8 +71,12 @@ type mqttSetupResult struct {
 func mqttWSService(port int) string { return "http://127.0.0.1:" + strconv.Itoa(port) }
 
 // mqttNameSetup richtet den Namen ein und schaltet ihn scharf, wenn alles grün ist.
-func mqttNameSetup(ctx context.Context, d mqttSetupDeps, host string, wsPort int, pending bool, can mqttSetupRights) mqttSetupResult {
-	var res mqttSetupResult
+func mqttNameSetup(ctx context.Context, d mqttSetupDeps, host string, wsPort int, pending bool, can mqttSetupRights) (res mqttSetupResult) {
+	defer func() {
+		if d.saveNotes != nil {
+			d.saveNotes(ctx, res.Notes)
+		}
+	}()
 	note := func(s string) { res.Notes = append(res.Notes, s) }
 	st := d.state(ctx)
 
@@ -107,11 +129,14 @@ func mqttNameSetup(ctx context.Context, d mqttSetupDeps, host string, wsPort int
 	res.Armed = true
 	d.writeSite()
 	service := mqttWSService(wsPort)
+	if d.tunnelTarget != nil {
+		service = d.tunnelTarget(ctx, wsPort)
+	}
 	switch {
 	case !can.Cloudflare:
-		note("Tunnel: einrichten kann ein Administrator mit dem Recht „Cloudflare“ (system.cloudflare) – Eintrag: " + host + " → " + service + ".")
+		note("Tunnel: einrichten kann ein Administrator mit dem Recht „Cloudflare“ (system.cloudflare). " + mqttTunnelByHand(host, service) + ".")
 	case !d.cfReady(ctx):
-		note("Tunnel: Cloudflare-Tunnel nicht eingerichtet – von Hand eintragen: " + host + " → " + service + ".")
+		note("Tunnel: Cloudflare-Tunnel nicht eingerichtet. " + mqttTunnelByHand(host, service) + ".")
 	default:
 		replace, err := d.tunnelWrite(ctx, service)
 		res.Replace = replace
@@ -131,11 +156,20 @@ func mqttTunnelFollowPort(ctx context.Context, d mqttSetupDeps, oldWS, newWS int
 	if !can.Cloudflare || oldWS == newWS || !d.cfReady(ctx) {
 		return nil
 	}
+	if d.current != nil {
+		if _, ws, pending := d.current(ctx); ws != newWS || pending {
+			return nil // inzwischen anders gespeichert – der neuere Lauf zieht nach
+		}
+	}
 	cur, ok, err := d.tunnelService(ctx)
 	if err != nil || !ok || !cfSameService(cur, mqttWSService(oldWS)) {
 		return err
 	}
-	_, err = d.tunnelWrite(ctx, mqttWSService(newWS))
+	service := mqttWSService(newWS)
+	if d.tunnelTarget != nil {
+		service = d.tunnelTarget(ctx, newWS)
+	}
+	_, err = d.tunnelWrite(ctx, service)
 	return err
 }
 
@@ -208,8 +242,29 @@ func (h *Handler) mqttSetupDepsLive(id, host string, config map[string]string, u
 			return err
 		},
 		arm: func(ctx context.Context) error {
-			_, err := h.db.Exec(ctx, `UPDATE import_export_connections SET config = config - $2::text, updated_at=NOW() WHERE id=$1`, id, mqttPendingKey)
+			// nur, wenn noch genau dieser Name vorgemerkt ist (ein älterer Lauf schaltet nichts scharf)
+			tag, err := h.db.Exec(ctx, `UPDATE import_export_connections SET config = config - $2::text, updated_at=NOW()
+				WHERE id=$1 AND lower(config->>'int_public_host') = $3 AND config->>'int_public_pending' = '1'`, id, mqttPendingKey, host)
+			if err == nil && tag.RowsAffected() == 0 {
+				err = errMqttSetupStale
+			}
 			return err
+		},
+		tunnelTarget: func(ctx context.Context, wsPort int) string {
+			t := cfStrictWanted([]cfTarget{{Host: host, Service: mqttWSService(wsPort)}}, h.cfStrictNames(ctx))
+			return t[0].Service
+		},
+		current: func(ctx context.Context) (string, int, bool) {
+			var hst, ws, pend string
+			if h.db.QueryRow(ctx, `SELECT lower(COALESCE(config->>'int_public_host','')), COALESCE(config->>'int_websocket_port',''),
+				COALESCE(config->>'int_public_pending','') FROM import_export_connections WHERE id=$1`, id).Scan(&hst, &ws, &pend) != nil {
+				return "", 0, true
+			}
+			p, _ := mqttPort(ws)
+			return hst, p, pend == "1"
+		},
+		saveNotes: func(ctx context.Context, notes []string) {
+			_ = h.setAppSetting(ctx, mqttSetupNoteKey(id), strings.Join(notes, "\n"))
 		},
 		writeSite: func() { h.mqttSiteSync(host) },
 		cfReady: func(ctx context.Context) bool {

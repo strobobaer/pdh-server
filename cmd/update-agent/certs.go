@@ -809,14 +809,26 @@ func (a *updateAgent) certInstallHandler(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Vor dem Schreiben merken, welches Zertifikat jeder andere Name bekommt (certs_guard.go).
+	// Der eigene Name zählt nicht; das eigene Zertifikat (bisher und neu) kennt die Prüfung.
 	var guardNames []string
 	var guardBefore map[string]string
+	guardOwn := map[string]bool{fingerprint: true}
 	if withNginx && sitePath != "" && (req.Role == "pdh" || req.Role == "mqtt") {
 		skip := certPDHSite
 		if req.Role == "mqtt" {
 			skip = certMQTTSite(req.Name)
 		}
-		if guardNames = a.certOtherNames(skip); len(guardNames) > 0 {
+		for _, n := range a.certOtherNames(skip) {
+			if n != strings.ToLower(req.Name) {
+				guardNames = append(guardNames, n)
+			}
+		}
+		if len(guardNames) > 0 {
+			if old, err := os.ReadFile(a.certPath(certChainPath(req.Name))); err == nil {
+				if fp := certChainFP(old); fp != "" {
+					guardOwn[fp] = true
+				}
+			}
 			guardBefore = certProbeAll(ctx, guardNames, certHasIPv6())
 		}
 	}
@@ -928,11 +940,11 @@ func (a *updateAgent) certInstallHandler(w http.ResponseWriter, r *http.Request)
 			note = "nginx nimmt die IPv6-Zeilen nicht an – die Seite hört nur auf IPv4 (Datei " + filepath.Base(sitePath) + ")"
 		}
 		if guardBefore != nil {
-			key, bad := certDisturbed(guardBefore, certProbeAll(ctx, guardNames, certHasIPv6()))
+			key, bad := certDisturbed(guardBefore, certProbeSettled(ctx, guardNames, certHasIPv6()), guardOwn)
 			if bad && siteV4 != "" && !usedV4 && a.certWriteAtomic(sitePath, []byte(siteV4), 0o644, "") == nil {
 				if _, err := a.certRun(ctx, "nginx", "-t"); err == nil {
 					if _, err := a.certRun(ctx, "systemctl", "reload", "nginx"); err == nil {
-						k2, bad2 := certDisturbed(guardBefore, certProbeAll(ctx, guardNames, certHasIPv6()))
+						k2, bad2 := certDisturbed(guardBefore, certProbeSettled(ctx, guardNames, certHasIPv6()), guardOwn)
 						if !bad2 {
 							_, name := certProbeKey(key)
 							note = "Die Seite hört nur auf IPv4 – mit IPv6 bekäme " + name + " ein anderes Zertifikat (Datei " + filepath.Base(sitePath) + ")"

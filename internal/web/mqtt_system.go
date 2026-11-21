@@ -481,6 +481,11 @@ func (h *Handler) mqttCheckRows(ctx context.Context, r *http.Request, id string,
 		stand.State, stand.Tone = "vorgemerkt – wird scharf, sobald Zertifikat, Name im Haus und Firewall grün sind", "warn"
 		stand.Hint = "Bis dahin schreibt das PDH keine nginx-Seite und keine Tunnel-Zeile für den Namen. „Einrichten / erneut prüfen“ holt nach, was das PDH selbst darf."
 	}
+	if h.db != nil {
+		if last := strings.TrimSpace(h.appSetting(ctx, mqttSetupNoteKey(id), "")); last != "" {
+			stand.Hint = strings.TrimSpace(stand.Hint + " Letzter Lauf: " + strings.ReplaceAll(last, "\n", " · "))
+		}
+	}
 	rows = append(rows, stand)
 
 	// Zertifikat
@@ -578,7 +583,7 @@ func (h *Handler) mqttCheckRows(ctx context.Context, r *http.Request, id string,
 	switch {
 	case cfErr != nil || a.tunnel == "":
 		tun.State, tun.Tone = "Cloudflare-Tunnel nicht eingerichtet (optional)", "off"
-		tun.Hint = "Von außen ist der Broker dann nur über VPN erreichbar."
+		tun.Hint = "Von außen ist der Broker dann nur über VPN erreichbar. " + mqttTunnelByHand(host, mqttWSService(wsPort)) + "."
 	case !inZone:
 		tun.State = "Name nicht in der Domain " + a.zone
 	default:
@@ -597,7 +602,7 @@ func (h *Handler) mqttCheckRows(ctx context.Context, r *http.Request, id string,
 		} else if h.canCloudflare(r) {
 			tun.Action, tun.Service, tun.NoTLS, tun.Replace = "tunnel", t.Service, t.NoTLS, t.Replace
 		} else {
-			tun.Hint = "Einrichten kann ein Administrator mit dem Recht „Cloudflare“ (system.cloudflare)."
+			tun.Hint = "Einrichten kann ein Administrator mit dem Recht „Cloudflare“ (system.cloudflare). " + mqttTunnelByHand(host, t.Service) + "."
 		}
 	}
 	rows = append(rows, tun)
