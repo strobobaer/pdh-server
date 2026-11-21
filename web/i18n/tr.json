@@ -1114,5 +1114,12 @@
   "Vorige Version Android": "Önceki sürüm Android",
   "Gerät in „App-Geräte“ ansehen": "Cihazı „Uygulama cihazları” içinde göster",
   "Diese Person hat das Recht „App: nutzen“ nicht – die App wird nicht nutzbar sein.": "Bu kişinin „App: kullan” hakkı yok – uygulama kullanılamayacak.",
-  "Die App ist noch nicht verfügbar.": "Uygulama henüz kullanılabilir değil."
+  "Die App ist noch nicht verfügbar.": "Uygulama henüz kullanılabilir değil.",
+  "Bitte Beginn und Ende oder Dauer prüfen: Ende nach Beginn, nicht in der Zukunft, höchstens 14 Tage zurück und höchstens 7 Tage lang.": "Lütfen başlangıcı, bitişi veya süreyi kontrol edin: bitiş başlangıçtan sonra olmalı, gelecekte olmamalı, en fazla 14 gün geriye ve en fazla 7 gün uzunluğunda olmalı.",
+  "Kürzel/Name (freiwillig)": "Kısaltma/ad (isteğe bağlı)",
+  "Nachtragen": "Ekle",
+  "Rüsttaste": "Hazırlık düğmesi",
+  "Rüstzeit nachgetragen.": "Hazırlık süresi eklendi.",
+  "Rüstzeit nachtragen": "Hazırlık süresi ekle",
+  "oder Dauer in Minuten": "veya dakika cinsinden süre"
 }

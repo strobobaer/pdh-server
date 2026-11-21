@@ -1114,5 +1114,12 @@
   "Vorige Version Android": "Претходна верзија Android",
   "Gerät in „App-Geräte“ ansehen": "Прикажи го уредот во „Уреди на апликацијата“",
   "Diese Person hat das Recht „App: nutzen“ nicht – die App wird nicht nutzbar sein.": "Ова лице го нема правото „App: користи“ – апликацијата нема да може да се користи.",
-  "Die App ist noch nicht verfügbar.": "Апликацијата сè уште не е достапна."
+  "Die App ist noch nicht verfügbar.": "Апликацијата сè уште не е достапна.",
+  "Bitte Beginn und Ende oder Dauer prüfen: Ende nach Beginn, nicht in der Zukunft, höchstens 14 Tage zurück und höchstens 7 Tage lang.": "Проверете го почетокот и крајот или траењето: крајот по почетокот, не во иднина, најмногу 14 дена наназад и најмногу 7 дена траење.",
+  "Kürzel/Name (freiwillig)": "Иницијали/име (по желба)",
+  "Nachtragen": "Додади",
+  "Rüsttaste": "Копче за подготовка",
+  "Rüstzeit nachgetragen.": "Времето за подготовка е додадено.",
+  "Rüstzeit nachtragen": "Додади време за подготовка",
+  "oder Dauer in Minuten": "или траење во минути"
 }

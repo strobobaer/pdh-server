@@ -539,6 +539,8 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>QR-Code der Anlage scannen. Unter <b>Rüsten</b> stehen die Rüsttasten der Anlage.</li>
       <li>Passende Rüsttaste <b>einmal antippen</b> – die Rüstzeit läuft. Die Seite zeigt, was gerade gerüstet wird.</li>
       <li>Ist die Anlage fertig, auf <b>Fertig</b> tippen. Eine Notiz ist freiwillig.</li>
+      <li>Im Easy-Modus gibt es über den Tasten das freiwillige Feld <b>Kürzel/Name</b> (darf leer bleiben). Es steht bei der laufenden Rüstzeit und in der Rüstzeit selbst.</li>
+      <li>Vergessen zu tippen? Unter <b>Rüstzeit nachtragen</b> Rüsttaste wählen, <b>Beginn</b> und <b>Ende</b> (oder die Dauer in Minuten) eintragen und auf <b>Nachtragen</b> tippen. Möglich sind höchstens 14 Tage zurück und höchstens 7 Tage Dauer; nicht in der Zukunft. Eine nachgetragene Rüstzeit startet nie ein zweites, paralleles Rüsten.</li>
     </ol>
     Die Taste der laufenden Rüstzeit ist hervorgehoben und lässt sich nicht noch einmal antippen. Eine andere Taste beendet die laufende Rüstzeit und beginnt sofort die neue. Soll mit derselben Taste neu begonnen werden, zuerst auf <b>Fertig</b> tippen und dann die Taste erneut antippen.
     Zu viele Antippen hintereinander bremst PDH: je Anlage sind 30 Vorgänge in 10 Minuten möglich. Je Anlage läuft höchstens eine Rüstzeit.</div>
@@ -1056,7 +1058,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li><b>Anlage läuft</b> oder <b>Anlage steht</b> antippen – fertig, die Meldung ist da.</li>
     </ol>
     Die Meldung wird automatisch ins Deutsche übersetzt (Copilot). In der Störung bzw. im Ticket steht der <b>deutsche Text immer oben</b>, darunter das Original, dann die Art und ob die Anlage steht. „Anlage steht“ bekommt hohe Priorität. Ersteller ist „Service“, in der Historie steht „QR-Code (Easy-Mode)“. Nach dem Namen fragt der Easy-Mode nicht. Mit Meldetext ist dieser der Titel der Meldung, ein eigener Text steht als Ergänzung darunter. Ohne eingerichteten Copilot bleibt der Text in der Originalsprache mit Hinweis.</div>
-  <p><b>Rüsten im Easy-Mode:</b> Sind der Anlage Rüsttasten zugeordnet, stehen sie zusätzlich unter <b>Rüsten</b>. Eine Taste antippen startet die Rüstzeit, <b>Fertig</b> beendet sie (<a href="#ruestzeiten">mehr</a>).</p>
+  <p><b>Rüsten im Easy-Mode:</b> Sind der Anlage Rüsttasten zugeordnet, stehen sie zusätzlich unter <b>Rüsten</b>. Eine Taste antippen startet die Rüstzeit, <b>Fertig</b> beendet sie, <b>Rüstzeit nachtragen</b> erfasst eine schon beendete (<a href="#ruestzeiten">mehr</a>).</p>
   <div class="hb-howto" id="hb-easy-texts"><b><i class="ti ti-message-2"></i> So hinterlegst du Meldetexte für den Easy-Mode</b>
     <ol class="hb-steps">
       <li><b>Infrastruktur</b> öffnen → unten <b>Easy-Mode: Meldetexte</b> → bei <b>Neuer Meldetext</b> den Text auf Deutsch eintragen, z. B. „Band steht“ oder „Öl tritt aus“.</li>

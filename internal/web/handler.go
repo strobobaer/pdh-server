@@ -671,6 +671,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/e/{id}/report", h.EasyReportWeb)
 	r.Post("/e/{id}/setup/start", h.EasySetupStartWeb)   // Rüsten per Easy-Modus (setup_easy.go)
 	r.Post("/e/{id}/setup/finish", h.EasySetupFinishWeb) // öffentlich wie die Meldungen
+	r.Post("/e/{id}/setup/add", h.EasySetupAddWeb)       // Nachtragen einer beendeten Rüstzeit
 	r.Post("/records/{refType}/{id}/it-asset", h.RecordITAssetWeb)
 	r.Post("/it/{id}/edit-web", h.ITEditWeb)
 	r.Post("/it/{id}/status-web", h.ITStatusWeb) // FIX: war PUT, wird von Cloudflare/Nginx blockiert
