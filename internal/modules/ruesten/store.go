@@ -375,7 +375,7 @@ const entrySelect = `SELECT s.id::text, s.number, s.infrastructure_id::text, i.n
 	s.reason_id::text, r.name, COALESCE(s.button_id::text, ''), s.button_name, s.origin, s.status, s.note,
 	s.max_minutes, s.grace_minutes, s.fault_id::text, s.responsible_to::text, s.assigned_to::text,
 	COALESCE(ru.first_name || ' ' || ru.last_name, ''), COALESCE(lu.first_name || ' ' || lu.last_name, ''),
-	COALESCE(s.created_by::text, ''), s.created_at
+	COALESCE(s.created_by::text, ''), s.created_at, s.operator_name
 	FROM setup_times s
 	JOIN infrastructure i ON i.id = s.infrastructure_id
 	JOIN setup_reasons r ON r.id = s.reason_id
@@ -387,7 +387,7 @@ func scanEntry(row pgx.Row) (*Entry, error) {
 	err := row.Scan(&e.ID, &e.Number, &e.InfraID, &e.InfraName, &e.StartedAt, &e.EndedAt,
 		&e.ReasonID, &e.ReasonName, &e.ButtonID, &e.ButtonName, &e.Origin, &e.Status, &e.Note,
 		&e.MaxMinutes, &e.GraceMinutes, &e.FaultID, &e.ResponsibleID, &e.ShiftLeaderID,
-		&e.ResponsibleName, &e.ShiftLeaderName, &e.CreatedBy, &e.CreatedAt)
+		&e.ResponsibleName, &e.ShiftLeaderName, &e.CreatedBy, &e.CreatedAt, &e.Operator)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -421,6 +421,13 @@ func (s *Store) Running(ctx context.Context, infraID string) (*Entry, error) {
 // beginnen geht nur über Finish und erneutes Starten. Höchstdauer,
 // Karenzzeit, Verantwortliche und Tastenname werden festgehalten.
 func (s *Store) Start(ctx context.Context, infraID, buttonID, userID, origin string) (*Entry, error) {
+	return s.StartBy(ctx, infraID, buttonID, userID, origin, "")
+}
+
+// StartBy wie Start; operator ist das freiwillige Kürzel/der Name der Person
+// am Easy-Modus (leer erlaubt, höchstens 80 Zeichen).
+func (s *Store) StartBy(ctx context.Context, infraID, buttonID, userID, origin, operator string) (*Entry, error) {
+	operator = TrimOperator(operator)
 	maxMin, _, err := s.EffectiveMax(ctx, infraID)
 	if err != nil {
 		return nil, err
@@ -486,9 +493,9 @@ func (s *Store) Start(ctx context.Context, infraID, buttonID, userID, origin str
 
 	var id string
 	if err := tx.QueryRow(ctx, `INSERT INTO setup_times (infrastructure_id, started_at, reason_id, button_id, button_name, origin, status,
-			max_minutes, grace_minutes, responsible_to, assigned_to, created_by, updated_by)
-		VALUES ($1, $2, $3, $4, $5, $6, 'running', $7, $8, $9, $10, $11, $11) RETURNING id::text`,
-		infraID, now, reasonID, buttonID, name, origin, maxMin, grace, resp, leader, nilIfEmpty(userID)).Scan(&id); err != nil {
+			max_minutes, grace_minutes, responsible_to, assigned_to, created_by, updated_by, operator_name)
+		VALUES ($1, $2, $3, $4, $5, $6, 'running', $7, $8, $9, $10, $11, $11, $12) RETURNING id::text`,
+		infraID, now, reasonID, buttonID, name, origin, maxMin, grace, resp, leader, nilIfEmpty(userID), operator).Scan(&id); err != nil {
 		if isUnique(err) {
 			return nil, ErrAlreadyRunning
 		}
@@ -536,6 +543,15 @@ func (s *Store) Finish(ctx context.Context, id, userID, note string) error {
 		return err
 	}
 	return tx.Commit(ctx)
+}
+
+// TrimOperator kürzt Kürzel/Name auf 80 Zeichen.
+func TrimOperator(n string) string {
+	n = strings.TrimSpace(n)
+	if r := []rune(n); len(r) > 80 {
+		n = strings.TrimSpace(string(r[:80]))
+	}
+	return n
 }
 
 func trimNote(n string) string {
@@ -601,10 +617,14 @@ func (s *Store) Create(ctx context.Context, in ManualInput, userID string) (*Ent
 	}
 	defer tx.Rollback(ctx)
 	var id string
-	if err := tx.QueryRow(ctx, `INSERT INTO setup_times (infrastructure_id, started_at, ended_at, reason_id, origin, status,
-			max_minutes, grace_minutes, note, responsible_to, assigned_to, created_by, updated_by)
-		VALUES ($1, $2, $3, $4, 'manual', $5, $6, $7, $8, $9, $10, $11, $11) RETURNING id::text`,
-		in.InfraID, in.StartedAt, in.EndedAt, in.ReasonID, status, maxMin, s.Grace(ctx), trimNote(in.Note), resp, leader, nilIfEmpty(userID)).Scan(&id); err != nil {
+	origin := OriginManual
+	if in.Origin == OriginEasy {
+		origin = OriginEasy
+	}
+	if err := tx.QueryRow(ctx, `INSERT INTO setup_times (infrastructure_id, started_at, ended_at, reason_id, button_id, button_name, origin, status,
+			max_minutes, grace_minutes, note, responsible_to, assigned_to, created_by, updated_by, operator_name)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $14, $15) RETURNING id::text`,
+		in.InfraID, in.StartedAt, in.EndedAt, in.ReasonID, nilIfEmpty(in.ButtonID), in.ButtonName, origin, status, maxMin, s.Grace(ctx), trimNote(in.Note), resp, leader, nilIfEmpty(userID), TrimOperator(in.Operator)).Scan(&id); err != nil {
 		if isUnique(err) {
 			return nil, ErrAlreadyRunning
 		}

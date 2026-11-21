@@ -76,6 +76,7 @@ type Entry struct {
 	ResponsibleName, ShiftLeaderName           string
 	CreatedBy                                  string
 	CreatedAt                                  time.Time
+	Operator                                   string // freiwilliges Kürzel/Name (Easy-Modus)
 }
 
 // overdueAt: Beginn plus Höchstdauer plus Karenzzeit ist erreicht.
@@ -85,9 +86,10 @@ func (e Entry) overdueAt(now time.Time) bool {
 
 // ManualInput ist die Eingabe beim manuellen Anlegen und Korrigieren.
 type ManualInput struct {
-	InfraID, ReasonID, Note string
-	StartedAt               time.Time
-	EndedAt                 *time.Time
+	InfraID, ReasonID, Note                string
+	Origin, ButtonID, ButtonName, Operator string // Easy-Modus: Herkunft, Rüsttaste, Kürzel/Name
+	StartedAt                              time.Time
+	EndedAt                                *time.Time
 }
 
 // Filter für List. From ist inklusive, To exklusiv (jeweils auf den Beginn).

@@ -10,6 +10,12 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.82.20] – 2026-11-21
+
+### Neu
+
+- Easy-Modus: beim Rüsten gibt es ein freiwilliges Feld „Kürzel/Name“ (steht bei der laufenden Rüstzeit) und unter „Rüstzeit nachtragen“ lässt sich eine schon beendete Rüstzeit mit Beginn und Ende oder Dauer erfassen – ohne Anmeldung, mit denselben Bremsen wie die Meldungen.
+
 ## [0.82.19] – 2026-11-21
 
 ### Neu

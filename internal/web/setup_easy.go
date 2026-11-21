@@ -58,6 +58,7 @@ type setupBarView struct {
 	Text    string
 	Overrun bool
 	Notice  string
+	Easy    bool // Easy-Modus: Kürzel/Name und „Nachtragen“ anzeigen
 }
 
 // setupNotices: Hinweise nach einer Aktion (Kennung → Text). Der Text ist
@@ -72,6 +73,10 @@ func setupNotice(lang, code string) string {
 		return tr(lang, "Hier läuft gerade kein Rüsten.")
 	case "gone":
 		return tr(lang, "Diese Rüsttaste gibt es hier nicht (mehr).")
+	case "added":
+		return tr(lang, "Rüstzeit nachgetragen.")
+	case "badtime":
+		return tr(lang, "Bitte Beginn und Ende oder Dauer prüfen: Ende nach Beginn, nicht in der Zukunft, höchstens 14 Tage zurück und höchstens 7 Tage lang.")
 	case "err":
 		return tr(lang, "Das hat nicht geklappt – bitte nochmal versuchen.")
 	}
@@ -105,6 +110,9 @@ func (h *Handler) setupBarFor(ctx context.Context, lang, infraID, action, back s
 	if run != nil && kind == setupKindRunning {
 		v.Running = true
 		v.Text = tr(lang, "Rüsten: %s seit %s", setupLabel(labels, run.ButtonName, run.ReasonName), setupSince(run.StartedAt))
+		if run.Operator != "" {
+			v.Text += " · " + run.Operator
+		}
 		v.Overrun = time.Now().After(run.StartedAt.Add(time.Duration(run.MaxMinutes) * time.Minute))
 	} else if kind == setupKindFault {
 		v.Fault = true
@@ -227,7 +235,7 @@ func setupRedirect(w http.ResponseWriter, r *http.Request, back, notice string) 
 
 // setupStartFor / setupFinishFor tun die Arbeit für beide Wege und liefern die
 // Kennung eines Hinweises ("" = gelungen).
-func (h *Handler) setupStartFor(ctx context.Context, infraID, buttonID, userID, origin string) string {
+func (h *Handler) setupStartFor(ctx context.Context, infraID, buttonID, userID, origin, operator string) string {
 	st := h.setupStore()
 	if st == nil {
 		return "err"
@@ -246,7 +254,7 @@ func (h *Handler) setupStartFor(ctx context.Context, infraID, buttonID, userID, 
 	if !setupLimiter.allow("asset:"+infraID, setupLimitMax, setupLimitPer, time.Now()) {
 		return "rate"
 	}
-	e, err := st.Start(ctx, infraID, buttonID, userID, origin)
+	e, err := st.StartBy(ctx, infraID, buttonID, userID, origin, operator)
 	switch {
 	case errors.Is(err, ruesten.ErrSameButton):
 		return "same"
@@ -319,7 +327,7 @@ func (h *Handler) EasySetupStartWeb(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	setupRedirect(w, r, easyBack(id, test), h.setupStartFor(r.Context(), id, r.FormValue("button_id"), pdhSystemUserID, ruesten.OriginEasy))
+	setupRedirect(w, r, easyBack(id, test), h.setupStartFor(r.Context(), id, r.FormValue("button_id"), pdhSystemUserID, ruesten.OriginEasy, r.FormValue("name")))
 }
 
 // EasySetupFinishWeb: POST /e/{id}/setup/finish (note) – beendet die laufende Rüstzeit.
@@ -329,6 +337,67 @@ func (h *Handler) EasySetupFinishWeb(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	setupRedirect(w, r, easyBack(id, test), h.setupFinishFor(r.Context(), id, r.FormValue("note"), pdhSystemUserID))
+}
+
+// Grenzen für das Nachtragen im Easy-Modus (ohne Anmeldung).
+const (
+	easySetupLookback = 14 * 24 * time.Hour
+	easySetupMaxMin   = 7 * 24 * 60
+)
+
+// EasySetupAddWeb: POST /e/{id}/setup/add – eine beendete Rüstzeit nachtragen
+// (Rüsttaste, Beginn, Ende oder Dauer, Kürzel/Name und Notiz freiwillig).
+// Gleiche Hürden wie Start/Ende: Easy-Modus an, Anlage aktiv, Rüsttaste der
+// Anlage, Bremse je Anlage; dazu Zeitgrenzen. Parallel laufende gibt es nicht:
+// nachgetragen wird nur Beendetes.
+func (h *Handler) EasySetupAddWeb(w http.ResponseWriter, r *http.Request) {
+	id, test, ok := h.easySetupGate(w, r)
+	if !ok {
+		return
+	}
+	if r.FormValue("website") != "" { // Honigtopf
+		setupRedirect(w, r, easyBack(id, test), "")
+		return
+	}
+	setupRedirect(w, r, easyBack(id, test), h.setupAddFor(r, id))
+}
+
+// setupAddFor legt die nachgetragene Rüstzeit an; Rückgabe: Kennung des Hinweises.
+func (h *Handler) setupAddFor(r *http.Request, infraID string) string {
+	ctx := r.Context()
+	st := h.setupStore()
+	if st == nil {
+		return "err"
+	}
+	buttons, err := st.InfraButtons(ctx, infraID)
+	if err != nil {
+		return "err"
+	}
+	var btn *ruesten.Button
+	for i := range buttons {
+		if buttons[i].ID == r.FormValue("button_id") {
+			btn = &buttons[i]
+		}
+	}
+	if btn == nil {
+		return "gone"
+	}
+	now := time.Now()
+	start, end, err := setupParseTimes(r, nil, now)
+	if err != nil || end == nil || start.Before(now.Add(-easySetupLookback)) || end.Sub(start) > easySetupMaxMin*time.Minute {
+		return "badtime"
+	}
+	if !setupLimiter.allow("asset:"+infraID, setupLimitMax, setupLimitPer, now) {
+		return "rate"
+	}
+	e, err := st.Create(ctx, ruesten.ManualInput{InfraID: infraID, ReasonID: btn.ReasonID, ButtonID: btn.ID, ButtonName: btn.Name,
+		Note: r.FormValue("note"), StartedAt: start, EndedAt: end, Origin: ruesten.OriginEasy, Operator: r.FormValue("name")}, pdhSystemUserID)
+	if err != nil {
+		componentLog("ruesten").Error().Err(err).Str("anlage", infraID).Msg("rüstzeit nachtragen")
+		return "err"
+	}
+	componentLog("ruesten").Info().Str("anlage", infraID).Str("nr", ruesten.Number(e.Number)).Msg("rüstzeit nachgetragen (easy)")
+	return "added"
 }
 
 // infraSetupGate prüft Kennung und das Recht „Anlage sehen“.
@@ -356,7 +425,7 @@ func (h *Handler) InfraSetupStartWeb(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	setupRedirect(w, r, back, h.setupStartFor(r.Context(), id, r.FormValue("button_id"), uid, ruesten.OriginManual))
+	setupRedirect(w, r, back, h.setupStartFor(r.Context(), id, r.FormValue("button_id"), uid, ruesten.OriginManual, ""))
 }
 
 // InfraSetupFinishWeb: POST /infrastructure/{id}/setup/finish (note).

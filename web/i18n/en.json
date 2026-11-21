@@ -1114,5 +1114,12 @@
   "Vorige Version Android": "Previous version Android",
   "Gerät in „App-Geräte“ ansehen": "View device in “App devices”",
   "Diese Person hat das Recht „App: nutzen“ nicht – die App wird nicht nutzbar sein.": "This person does not have the right “App: use” – the app will not be usable.",
-  "Die App ist noch nicht verfügbar.": "The app is not available yet."
+  "Die App ist noch nicht verfügbar.": "The app is not available yet.",
+  "Bitte Beginn und Ende oder Dauer prüfen: Ende nach Beginn, nicht in der Zukunft, höchstens 14 Tage zurück und höchstens 7 Tage lang.": "Please check start and end or duration: end after start, not in the future, at most 14 days back and at most 7 days long.",
+  "Kürzel/Name (freiwillig)": "Initials/name (optional)",
+  "Nachtragen": "Add",
+  "Rüsttaste": "Set-up button",
+  "Rüstzeit nachgetragen.": "Set-up time added.",
+  "Rüstzeit nachtragen": "Add a set-up time",
+  "oder Dauer in Minuten": "or duration in minutes"
 }
