@@ -11,7 +11,7 @@
 .app-req-facts dt{color:var(--muted)}
 .app-req-facts dd{margin:0;overflow-wrap:anywhere}
 .app-req-list{max-height:320px;overflow:auto;border:1px solid var(--border);border-radius:8px;margin-top:8px}
-.app-req-user{display:flex;gap:10px;align-items:flex-start;padding:8px 12px;border-bottom:1px solid var(--border);cursor:pointer;font-size:13px}
+.app-req-user{display:flex;gap:10px;align-items:flex-start;padding:8px 12px;border-bottom:1px solid var(--border);font-size:13px}
 .app-req-user:last-child{border-bottom:0}
 .app-req-user:hover,.app-req-user:focus-within{background:var(--bg2)}
 .app-req-user input{margin-top:3px}
@@ -62,14 +62,16 @@
       <div class="app-req-list" role="radiogroup" aria-label="{{t "Person zuordnen"}}">
         {{$sel := .SelUser}}
         {{range .Users}}
-        <label class="app-req-user" data-search="{{.Name}} {{.Username}} {{.Dept}}" data-create="{{if .Create}}1{{end}}">
-          <input type="radio" name="user_id" value="{{.ID}}" required {{if eq .ID $sel}}checked{{end}}>
-          <span style="flex:1;min-width:0">
-            <b>{{.Name}}</b> <span class="rec-sub" style="display:inline">· {{.Username}}{{if .Dept}} · {{.Dept}}{{else}} · {{t "keine Abteilung"}}{{end}}</span>{{if .Suggest}} <span class="badge b-green">{{t "Vorschlag"}}</span>{{end}}
-            <span class="rec-sub">{{t "App-Rechte:"}} {{if .Rights}}{{range $i, $r := .Rights}}{{if $i}}, {{end}}{{$r}}{{end}}{{else}}{{t "keine"}}{{end}}</span>
-          </span>
+        <div class="app-req-user" data-search="{{.Name}} {{.Username}} {{.Dept}}" data-create="{{if .Create}}1{{end}}">
+          <label style="display:flex;gap:10px;align-items:flex-start;flex:1;min-width:0;cursor:pointer">
+            <input type="radio" name="user_id" value="{{.ID}}" required {{if eq .ID $sel}}checked{{end}}>
+            <span style="flex:1;min-width:0">
+              <b>{{.Name}}</b> <span class="rec-sub" style="display:inline">· {{.Username}}{{if .Dept}} · {{.Dept}}{{else}} · {{t "keine Abteilung"}}{{end}}</span>{{if .Suggest}} <span class="badge b-green">{{t "Vorschlag"}}</span>{{end}}
+              <span class="rec-sub">{{t "App-Rechte:"}} {{if .Rights}}{{range $i, $r := .Rights}}{{if $i}}, {{end}}{{$r}}{{end}}{{else}}{{t "keine"}}{{end}}</span>
+            </span>
+          </label>
           <a class="btn btn-small" href="/users/{{.ID}}?tab=perms" target="_blank" rel="noopener" title="{{t "Einzelrechte öffnen"}}" aria-label="{{t "Einzelrechte öffnen"}}"><i class="ti ti-shield-lock"></i></a>
-        </label>
+        </div>
         {{else}}
         <p class="rec-sub" style="padding:12px">{{t "Keine Person verfügbar."}}</p>
         {{end}}

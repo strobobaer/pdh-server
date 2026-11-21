@@ -1065,5 +1065,10 @@
   "Der Bestätigungscode stimmt nicht mit dem Telefon überein.": "Кодот за потврда не се совпаѓа со телефонот.",
   "Bitte eine Person wählen.": "Избери личност.",
   "Dieser Benutzer kann nicht gewählt werden (deaktiviert oder Systembenutzer).": "Овој корисник не може да се избере (деактивиран или системски корисник).",
-  "Bitte mindestens eine Vorgangsart wählen.": "Избери барем еден вид запис."
+  "Bitte mindestens eine Vorgangsart wählen.": "Избери барем еден вид запис.",
+  "nutzen": "користи",
+  "Vorgänge anlegen": "креирај записи",
+  "Cockpits": "кокпити",
+  "Sensoren": "сензори",
+  "Administrator": "администратор"
 }

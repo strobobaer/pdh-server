@@ -1065,5 +1065,10 @@
   "Der Bestätigungscode stimmt nicht mit dem Telefon überein.": "Doğrulama kodu telefonla eşleşmiyor.",
   "Bitte eine Person wählen.": "Lütfen bir kişi seç.",
   "Dieser Benutzer kann nicht gewählt werden (deaktiviert oder Systembenutzer).": "Bu kullanıcı seçilemez (devre dışı veya sistem kullanıcısı).",
-  "Bitte mindestens eine Vorgangsart wählen.": "Lütfen en az bir kayıt türü seç."
+  "Bitte mindestens eine Vorgangsart wählen.": "Lütfen en az bir kayıt türü seç.",
+  "nutzen": "kullan",
+  "Vorgänge anlegen": "kayıt oluştur",
+  "Cockpits": "kokpitler",
+  "Sensoren": "sensörler",
+  "Administrator": "yönetici"
 }

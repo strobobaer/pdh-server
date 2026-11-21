@@ -1065,5 +1065,10 @@
   "Der Bestätigungscode stimmt nicht mit dem Telefon überein.": "Codul de confirmare nu se potrivește cu telefonul.",
   "Bitte eine Person wählen.": "Alege o persoană.",
   "Dieser Benutzer kann nicht gewählt werden (deaktiviert oder Systembenutzer).": "Acest utilizator nu poate fi ales (dezactivat sau utilizator de sistem).",
-  "Bitte mindestens eine Vorgangsart wählen.": "Alege cel puțin un tip de înregistrare."
+  "Bitte mindestens eine Vorgangsart wählen.": "Alege cel puțin un tip de înregistrare.",
+  "nutzen": "utilizează",
+  "Vorgänge anlegen": "creează înregistrări",
+  "Cockpits": "cockpituri",
+  "Sensoren": "senzori",
+  "Administrator": "administrator"
 }

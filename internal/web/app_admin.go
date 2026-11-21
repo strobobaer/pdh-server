@@ -213,7 +213,7 @@ func (h *Handler) loadAppCandidates(r *http.Request, rq *appReqRow, d *appReqPag
 		v := appReqUserView{ID: id, Name: strings.TrimSpace(first + " " + lastName), Username: username, Dept: deptName, Role: role}
 		for _, p := range appRightLabels {
 			if h.rbac.HasPermissionForUser(id, role, p.Key) {
-				v.Rights = append(v.Rights, p.Label)
+				v.Rights = append(v.Rights, tr(d.Lang, p.Label))
 				if p.Key == permAppCreate {
 					v.Create = true
 				}
@@ -304,22 +304,6 @@ func appTypesFrom(r *http.Request) (types []string, ok bool) {
 	return types, true
 }
 
-// closeAppTicket schließt das APP-Ticket innerhalb der Transaktion. Der Ticket-Dienst
-// verlangt für „Geschlossen“ den Weg „Ticket lösen“; hier gibt es nichts zu lösen,
-// deshalb dieselben Felder und derselbe Verlaufseintrag wie tickets.Repository.UpdateStatus.
-func closeAppTicket(ctx context.Context, tx pgx.Tx, ticketID, userID string) error {
-	if ticketID == "" {
-		return nil
-	}
-	if _, err := tx.Exec(ctx, `UPDATE tickets SET status = 'closed', updated_at = NOW(), resolved_at = COALESCE(resolved_at, NOW()),
-		archived_at = COALESCE(archived_at, NOW()), archived_by = $2::uuid WHERE id = $1::uuid`, ticketID, userID); err != nil {
-		return err
-	}
-	_, err := tx.Exec(ctx, `INSERT INTO record_history (ref_type, ref_id, action, field_name, new_value, created_by, message)
-		VALUES ('ticket', $1::uuid, 'status', 'status', 'closed', $2::uuid, 'Status geändert')`, ticketID, userID)
-	return err
-}
-
 // AppRequestApproveWeb: POST /app/requests/{id}/approve.
 func (h *Handler) AppRequestApproveWeb(w http.ResponseWriter, r *http.Request) {
 	actor := getUser(r)
@@ -368,6 +352,9 @@ func (h *Handler) AppRequestApproveWeb(w http.ResponseWriter, r *http.Request) {
 	}
 	userID := strings.TrimSpace(r.FormValue("user_id"))
 	types, typesOK := appTypesFrom(r)
+	if types == nil {
+		types = []string{} // „nichts gewählt“ bleibt beim Neuaufbau der Seite leer (nil hieße: alle vorwählen)
+	}
 	mayCreate := r.FormValue("may_create") == "on"
 	lang := h.requestLang(r)
 	again := func(status int, msg string) {
@@ -443,7 +430,7 @@ func (h *Handler) AppRequestApproveWeb(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if ticketID != nil {
-		if err := closeAppTicket(ctx, tx, *ticketID, actor.ID); err != nil {
+		if err := h.tickets.CloseTx(ctx, tx, *ticketID, actor.ID); err != nil {
 			serverErr(err)
 			return
 		}
@@ -457,6 +444,9 @@ func (h *Handler) AppRequestApproveWeb(w http.ResponseWriter, r *http.Request) {
 	if err := tx.Commit(ctx); err != nil {
 		serverErr(err)
 		return
+	}
+	if ticketID != nil {
+		h.tickets.AfterClose(ctx, *ticketID, actor.ID)
 	}
 	componentLog("app").Info().Str("request", id).Str("device", devID).Str("user", userID).Str("von", actor.ID).Msg("app: gerät freigegeben")
 	http.Redirect(w, r, "/app/devices", http.StatusSeeOther)
@@ -510,7 +500,7 @@ func (h *Handler) AppRequestRejectWeb(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if ticketID != nil {
-		if err := closeAppTicket(ctx, tx, *ticketID, actor.ID); err != nil {
+		if err := h.tickets.CloseTx(ctx, tx, *ticketID, actor.ID); err != nil {
 			serverErr(err)
 			return
 		}
@@ -524,6 +514,9 @@ func (h *Handler) AppRequestRejectWeb(w http.ResponseWriter, r *http.Request) {
 	if err := tx.Commit(ctx); err != nil {
 		serverErr(err)
 		return
+	}
+	if ticketID != nil {
+		h.tickets.AfterClose(ctx, *ticketID, actor.ID)
 	}
 	componentLog("app").Info().Str("request", id).Str("von", actor.ID).Msg("app: anfrage abgelehnt")
 	http.Redirect(w, r, "/app/devices", http.StatusSeeOther)

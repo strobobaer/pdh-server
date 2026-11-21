@@ -1065,5 +1065,10 @@
   "Der Bestätigungscode stimmt nicht mit dem Telefon überein.": "The confirmation code does not match the phone.",
   "Bitte eine Person wählen.": "Please choose a person.",
   "Dieser Benutzer kann nicht gewählt werden (deaktiviert oder Systembenutzer).": "This user cannot be chosen (deactivated or system user).",
-  "Bitte mindestens eine Vorgangsart wählen.": "Please choose at least one record type."
+  "Bitte mindestens eine Vorgangsart wählen.": "Please choose at least one record type.",
+  "nutzen": "use",
+  "Vorgänge anlegen": "create records",
+  "Cockpits": "cockpits",
+  "Sensoren": "sensors",
+  "Administrator": "administrator"
 }

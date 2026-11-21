@@ -245,6 +245,17 @@ func TestAppApprove(t *testing.T) {
 		}
 	})
 
+	t.Run("Unterabteilung", func(t *testing.T) {
+		child := e.id(`INSERT INTO departments (name, parent_id) VALUES ($1, $2::uuid) RETURNING id::text`, "AC"+e.sfx, deptA)
+		t.Cleanup(func() { _, _ = e.pool.Exec(context.Background(), `DELETE FROM departments WHERE id = $1::uuid`, child) })
+		tgtChild := e.au("atC", "viewer", child)
+		e.warm() // Rbac kennt die Abteilungsstruktur erst nach dem Neuladen
+		rq := e.request(child)
+		if rec := e.approve(rq, mgrA, rq.Code, tgtChild.ID, allAppTypes, false); rec.Code != 303 || e.devices(rq.ID) != 1 {
+			t.Errorf("Manager in A, Anfrage und Person in Unterabteilung: %d %.300s", rec.Code, rec.Body.String())
+		}
+	})
+
 	t.Run("Benutzer", func(t *testing.T) {
 		sys := e.au("asys", "viewer", "")
 		e.exec(`UPDATE users SET is_system_user = true WHERE id = $1::uuid`, sys.ID)
@@ -272,6 +283,9 @@ func TestAppApprove(t *testing.T) {
 		rec := e.approve(rq, admin, rq.Code, tgtA.ID, nil, false)
 		if rec.Code != 422 || !strings.Contains(rec.Body.String(), "Bitte mindestens eine Vorgangsart wählen.") || e.devices(rq.ID) != 0 {
 			t.Errorf("leer: %d %.300s", rec.Code, rec.Body.String())
+		}
+		if strings.Contains(rec.Body.String(), "checked") && strings.Contains(rec.Body.String(), `name="types[]" value="fault" checked`) {
+			t.Error("leere Auswahl wurde beim Neuaufbau wieder vorgewählt")
 		}
 		if rec = e.approve(rq, admin, rq.Code, tgtA.ID, []string{"fault", "kaffee"}, false); rec.Code != 422 || e.devices(rq.ID) != 0 {
 			t.Errorf("unbekannte Art: %d", rec.Code)
