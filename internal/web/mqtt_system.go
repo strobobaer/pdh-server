@@ -216,7 +216,7 @@ func mqttTargets(systems []mqttSystem, zone string) []cfTarget {
 		if len(act) > 1 {
 			label += " · " + s.ConnName
 		}
-		out = append(out, cfTarget{Label: label, Host: s.Host, Service: "http://localhost:" + strconv.Itoa(s.WSPort)})
+		out = append(out, cfTarget{Label: label, Host: s.Host, Service: "http://127.0.0.1:" + strconv.Itoa(s.WSPort)})
 	}
 	return out
 }
@@ -625,9 +625,9 @@ func (h *Handler) mqttFwCheckRow(ctx context.Context, config map[string]string) 
 }
 
 // mqttTunnelState: Soll und Ist des Tunnel-Ziels für den Namen (wie die Zeile im Reiter
-// Cloudflare-Tunnel; bei Full (strict) ist https://localhost:443 das Soll).
+// Cloudflare-Tunnel; bei Full (strict) ist https://127.0.0.1:443 das Soll).
 func (h *Handler) mqttTunnelState(ctx context.Context, a *cfAccess, host string, wsPort int) (cfTarget, error) {
-	t := cfTarget{Label: "MQTT", Host: host, Service: "http://localhost:" + strconv.Itoa(wsPort)}
+	t := cfTarget{Label: "MQTT", Host: host, Service: "http://127.0.0.1:" + strconv.Itoa(wsPort)}
 	ctx, cancel := context.WithTimeout(ctx, 8*time.Second)
 	defer cancel()
 	zone, err := a.client.ZoneByName(ctx, a.zone)

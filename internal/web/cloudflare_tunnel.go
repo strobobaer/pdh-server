@@ -26,7 +26,7 @@ const (
 	cfTokenKey  = "PDH_CLOUDFLARE_TUNNEL_TOKEN"
 	cfHostKey   = "PDH_CLOUDFLARE_HOSTNAME"
 	cfOriginKey = "PDH_CLOUDFLARE_ORIGIN"
-	cfOriginDef = "http://localhost:8090"
+	cfOriginDef = "http://127.0.0.1:8090"
 )
 
 var (
@@ -112,7 +112,7 @@ type CloudflareView struct {
 
 func (h *Handler) cloudflareView(ctx context.Context) *CloudflareView {
 	s := h.cloudflareSettings(ctx)
-	v := &CloudflareView{TokenSet: s.Token != "", Host: s.Host, Origin: s.Origin, OriginScheme: "HTTP", OriginAddr: "localhost:8090"}
+	v := &CloudflareView{TokenSet: s.Token != "", Host: s.Host, Origin: s.Origin, OriginScheme: "HTTP", OriginAddr: "127.0.0.1:8090"}
 	if u, err := url.Parse(s.Origin); err == nil && u.Host != "" {
 		v.OriginScheme, v.OriginAddr = strings.ToUpper(u.Scheme), u.Host
 	}
