@@ -599,6 +599,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/plant-watch/{id}/delete", h.PlantWatchDeleteWeb)
 	r.Post("/plant-watch/{id}/toggle", h.PlantWatchToggleWeb)
 	r.Get("/infrastructure/{id}", h.InfraDetail)
+	r.Get("/infrastructure/{id}/esppdh", h.InfraESPPDHWeb) // Reiter „ESPPDH“ (htmx, alle 10 s)
 	h.hmiRoutes(r)                                     // HMI-Fernzugriff (VNC) aus der Anlage
 	h.kioskRoutes(r)                                   // Kiosk-Terminals: HMI am Terminal zeigen (kiosk_terminals.go)
 	h.terminalRoutes(r)                                // Anlagenterminal: Schoner, Störungsinfo, Neu (terminal_page.go)

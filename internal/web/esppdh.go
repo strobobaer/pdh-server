@@ -45,6 +45,8 @@ const (
 	permESPView  = "esppdh.view"
 	permESPEdit  = "esppdh.edit"
 	permESPAdmin = "esppdh.admin"
+	// Sensorwerte im Reiter „ESPPDH“ der Anlage und am Anlagenterminal (Migration 186)
+	permESPValues = "esppdh.values"
 )
 
 // esppdhRef: Datensatzart eines Geräts für hasPermRec – die Abteilung kommt über die Anlage.

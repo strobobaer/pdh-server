@@ -25,3 +25,8 @@
   {{else}}<p class="rec-sub">Noch keine Werte.</p>{{end}}{{end}}
 </div>
 {{end}}
+
+{{/* Reiter „ESPPDH“ an der Anlage (InfraESPPDHWeb): .Views []esppdhValuesView, .Link Geräteseite verlinken */}}
+{{define "infra-esppdh"}}{{$link := .Link}}
+{{range .Views}}{{template "esppdh-values" (dict "V" . "Link" $link)}}{{else}}<p class="rec-sub">An dieser Anlage hängt kein ESPPDH-Gerät.</p>{{end}}
+{{end}}
