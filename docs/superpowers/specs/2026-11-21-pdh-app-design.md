@@ -1,6 +1,6 @@
 # PDH-App für Android und iOS – Entwurf
 
-Stand: 21.11.2026 · Status: Entwurf, Prüfer-Rückfragen eingearbeitet, vom Anwender noch nicht freigegeben
+Stand: 21.11.2026 · Status: vom Anwender am 21.11.2026 freigegeben
 
 ## 1. Absicht und Warum
 

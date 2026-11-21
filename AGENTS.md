@@ -582,6 +582,13 @@ und 3 drückt bis auf Weiteres der Anwender.
     möglich, kein Typ „Unternehmen“, keine eigenen Adress-, Steuer- oder
     Bankdaten; Firmenname liegt doppelt (`branding.app_name`,
     `m365_company_name`).
+20. **PDH-App (Android/iOS):** Entwurf
+    `docs/superpowers/specs/2026-11-21-pdh-app-design.md` am 21.11.2026
+    freigegeben (Branch `feature/pdh-app`): eine Installations-App für alle
+    Server (Domain-Abfrage), Flutter, Zugang per APP-Ticket und
+    gerätegebundenem Token, Rechte `app.*`, Offline mit Schritten und
+    UUIDv7 vom Telefon, zentraler Push-Dienst `pdh-push`, sieben Pakete.
+    Nächster Schritt: Plan für Paket 1 (Server-Grundlage).
 
 Docker Desktop startet nach einem Neustart des Windows-Rechners nicht von
 selbst – ohne ihn fehlen der Zeuge und die Labor-Datenbank für die Tests.
