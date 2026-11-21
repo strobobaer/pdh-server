@@ -18,9 +18,12 @@ Startbildschirm und Sensoren des Telefons, die der Mitarbeiter selbst freigibt.
 **Ziele**
 
 - Eine App (Android + iOS) aus **einem** Code, im App Store und bei Google Play.
-- **Eine App je PDH-Server** (vom Anwender festgelegt): die App gehört fest zu
-  einem Server; ein weiterer PDH-Server bekommt eine eigene App (eigener
-  Build aus demselben Code, eigener Store-Eintrag).
+- **Eine Installations-App im Store für alle PDH-Server** (vom Anwender
+  festgelegt). Jeder Server hat seine eigene Firmen-Domain; sie wird bei der
+  Installation abgefragt. Danach gehört die App fest zu diesem Server und
+  übernimmt von ihm Logo, Farben und alle Einstellungen. Neue Funktionen
+  kommen nur per App-Update (Apple 2.5.2: kein nachgeladener Programmcode;
+  der Server liefert Daten und Freischaltungen, keinen Code).
 - Zugang nur nach Freigabe durch einen Administrator; nach der Installation
   ist die App **sofort gesperrt**.
 - Fester, an das Gerät gebundener Zugangstoken; Sperre jederzeit möglich.
@@ -107,12 +110,16 @@ Startbildschirm und Sensoren des Telefons, die der Mitarbeiter selbst freigibt.
  │  / Secure Enclave)        │ ─────────────▶ │ Rechte app.*               │
  │ Token (sicherer Speicher) │  signierte     │ Cockpit-Erzeugung          │
  │ SQLite: Vorgänge, Schritte│  Anfragen      │ Schritt-Annahme + Merge    │
- │ Scanner, Push, Widgets,   │ ◀───────────── │ Push (FCM/APNs)            │
+ │ Scanner, Push, Widgets,   │ ◀───────────── │ Push-Auftrag an Dienst     │
  │ Sensoren                  │                │ APP-Tickets                │
- └───────────────────────────┘                └────────────────────────────┘
+ └───────────────────────────┘                └─────────────┬──────────────┘
+        ▲  Weckruf (nur Kennung)                             │ Server-Schlüssel
+        │                                                    ▼
+   Apple APNs / Google FCM  ◀──────────────  Push-Dienst `pdh-push` (zentral)
 ```
 
-Eigenes Repository **`pdh-app`** für die App; Server-Teile im `pdh-server`.
+Repositories: **`pdh-app`** (Flutter-App), **`pdh-push`** (zentraler
+Push-Dienst, Go), Server-Teile im `pdh-server`.
 
 ## 6. Zugang, Freigabe, Token, Sperre
 
@@ -121,11 +128,17 @@ Eigenes Repository **`pdh-app`** für die App; Server-Teile im `pdh-server`.
 1. Benutzermenü (`base.gohtml`, Benutzermenü) bekommt **„App installieren“**
    (Recht `app.use` oder jeder angemeldete Benutzer – siehe 6.5). Der Eintrag
    zeigt einen QR-Code und Store-Knöpfe.
-2. Der QR-Code führt zum Store-Eintrag der App dieses Servers.
-3. Der **Servername ist in der App fest eingetragen** (beim Bau, Abschnitt 14);
-   nach der Installation muss niemand eine Adresse eingeben. Die
-   Ausweichadressen (IP, von außen) holt die App beim ersten Kontakt vom
-   Server (Abschnitt 10).
+2. Der QR-Code enthält `https://<firmen-domain>/app/setup`. Mit der Kamera
+   gescannt: die Seite führt ohne App zum Store, mit App direkt in die
+   Einrichtung (`pdh://setup?d=<firmen-domain>`).
+3. **Beim ersten Start fragt die App die Firmen-Domain ab:** denselben
+   QR-Code scannen (empfohlen) oder die Domain eintippen. Die App prüft, dass
+   dort ein PDH antwortet (`GET /api/app/v1/server`), zeigt Firmenname und
+   Logo zur Bestätigung und gehört danach **fest zu diesem Server**. Ein
+   Wechsel auf einen anderen Server geht nur über „App zurücksetzen“
+   (löscht Schlüssel, Token und Daten).
+4. Die Ausweichadressen (IP, von außen) holt die App vom Server
+   (Abschnitt 10).
 
 ### 6.2 Sperre ab Installation
 
@@ -332,19 +345,18 @@ Unterabteilungen, `h.hasPermRec`) und nur für Benutzer, deren Rolle er
   `PDH_PUBLIC_URL` (bisher schon, sofern gesetzt). Gedruckte Etiketten mit IP
   bleiben gültig: der Scanner der App erkennt **jede bekannte Adresse** seines
   Servers und wertet nur den Pfad aus.
-- **Direkt mit der Kamera öffnen** (Universal Links / App Links): der fest
-  eingetragene Servername steht beim Bau in der App (iOS „Associated
-  Domains“, Android-Manifest). Ein neuer Name kommt mit einer neuen
-  App-Version. PDH liefert dafür `/.well-known/apple-app-site-association`
-  und `/.well-known/assetlinks.json` (ohne Anmeldung, gültiges Zertifikat
-  nötig).
-- **Eigenes Schema `pdh-<server>://`** (vom Anwender gewünscht, beides wird
-  gebaut): die Webseite eines gescannten Etiketts zeigt am Handy „In der App
-  öffnen“ und springt damit in die App – auch bei Etiketten mit IP, die die
-  Kamera nicht direkt in die App öffnet. Auf Etiketten selbst bleibt die
-  Web-Adresse (ohne App weiter nutzbar).
-- Alte Etiketten mit IP: Scanner der App (erkennt jede bekannte Adresse)
-  oder Kamera → Webseite → „In der App öffnen“.
+- **Mit der normalen Kamera:** fremde Firmen-Domains lassen sich nicht in
+  eine einzige Store-App eintragen (iOS „Associated Domains“ und Android App
+  Links stehen beim Bau fest). Deshalb gibt es **keine** Universal Links /
+  App Links. Stattdessen:
+  - **Eigenes Schema `pdh://`**: die Webseite eines gescannten Etiketts
+    zeigt am Handy oben „In der App öffnen“ und springt mit einem Tipp in
+    die App (`pdh://open?d=<domain>&p=<pfad>`). Die App öffnet nur Ziele
+    ihres eigenen Servers; eine fremde Domain wird abgelehnt.
+  - Auf den Etiketten bleibt die Web-Adresse – sie funktionieren mit und
+    ohne App, auch alte Etiketten mit IP.
+- **Mit dem Scanner der App:** öffnet immer direkt (erkennt jede bekannte
+  Adresse seines Servers).
 - App-Verbindungen nur über HTTPS – Ausnahme: Adresse im eigenen Netz, die der
   Administrator in „Adressen für die App“ ausdrücklich freigibt
   (Gerätebindung schützt die Anfragen auch dann).
@@ -364,16 +376,27 @@ Pfade öffnen die Webseite im Browser.
 
 ## 12. Push-Mitteilungen und Push-Assistent
 
-- **Zustellung:** über Firebase Cloud Messaging (Android) und APNs (iOS),
-  **direkt vom eigenen PDH-Server** (vom Anwender festgelegt, kein zentraler
-  Weiterleitungsdienst). Der Server hält die Schlüssel seiner App
-  (FCM-Dienstkonto, APNs-Schlüssel `.p8`) verschlüsselt in
-  `server_settings` (`enc:v1:`); eingetragen in den Core-Einstellungen.
-  Braucht ausgehend Internet zu Google/Apple. Die Mitteilung enthält nur
-  Kennung und Kurztext, Inhalte holt die App selbst (nichts Vertrauliches
-  über Google/Apple). Für Server ohne Internet: die App
-  holt Mitteilungen im Vordergrund selbst ab (keine Zustellung im
-  Hintergrund – wird im Assistenten gesagt).
+- **Zustellung über einen zentralen Push-Dienst `pdh-push`** (vom Anwender
+  festgelegt, Weg b). Grund: eine Store-App hat genau einen Schlüssel bei
+  Apple (APNs `.p8`) und Google (FCM-Dienstkonto); läge er auf den Servern
+  verschiedener Firmen, könnte jeder Server alle Nutzer aller Firmen
+  erreichen.
+  - Nur `pdh-push` hält die Apple-/Google-Schlüssel.
+  - Jeder PDH-Server meldet sich einmal bei `pdh-push` an und bekommt einen
+    **eigenen Server-Schlüssel** (in `server_settings`, `enc:v1:`). Damit
+    erreicht er **nur die Geräte, die sich bei ihm angemeldet haben**
+    (Zuordnung Gerät ↔ Server im Dienst; die App meldet ihr Push-Kennzeichen
+    über ihren PDH-Server an).
+  - Die Mitteilung enthält **nur eine Kennung** (und ggf. einen neutralen
+    Text wie „Neue Störung“), keine Firmendaten. Inhalte holt die App direkt
+    vom Firmen-Server. `pdh-push` speichert keine Inhalte und protokolliert
+    nur Zähler.
+  - `pdh-push` ist klein (Go, ein Dienst, eine Datenbank), wird vom
+    Herausgeber betrieben (Anwender), braucht HTTPS mit öffentlicher Domain.
+    Fällt er aus, holt die App Neuigkeiten beim Öffnen selbst ab.
+  - Ein PDH-Server braucht dafür ausgehend Internet zu `pdh-push`. Ohne
+    Internet: die App holt Mitteilungen nur bei geöffneter App selbst ab
+    (keine Zustellung im Hintergrund – wird im Assistenten gesagt).
 - Die vorhandenen Benachrichtigungswege (Web-Push, Alarme) bekommen das
   App-Gerät als zusätzliches Ziel; Annehmen direkt aus der Mitteilung wie
   `/alert/{id}/accept`.
@@ -401,10 +424,9 @@ Pfade öffnen die Webseite im Browser.
 
 ## 14. Store und Auslieferung
 
-- **Eine App je PDH-Server**: ein Code, je Server ein Build mit eigener
-  Kennung (Bundle-ID/Paketname), Name, Symbol, fest eingetragenem
-  Servernamen und Schema. Bauvorgabe als Datei je Server im Repository
-  `pdh-app` (z. B. `servers/<name>.yaml`).
+- **Eine Installations-App** mit neutralem PDH-Namen und -Symbol für alle
+  Firmen; Firmenlogo und -farben erst in der App (Abschnitt 14a). Ein
+  Store-Eintrag je System, eine Apple-Prüfung je Version.
 - Im **App Store als „nicht gelistete“ App** (nur über Link auffindbar) und
   bei **Google Play**; zusätzlich APK-Download aus dem PDH für Android ohne
   Play Store.
@@ -423,13 +445,20 @@ Pfade öffnen die Webseite im Browser.
   Version.
 - „Verfügbar“ gilt **je System**: eine Version zählt erst, wenn sie im
   jeweiligen Store freigegeben ist (Apple prüft teils Tage länger als
-  Google). Die neueste Version je System wird beim Veröffentlichen im PDH
-  eingetragen (bzw. automatisch abgefragt, wo der Store das erlaubt – dem
-  Builder überlassen).
-- Damit muss der Server nur die **aktuelle und die vorige** App-Version
+  Google). Die neueste Version je System meldet **`pdh-push`** den
+  PDH-Servern (der Herausgeber trägt sie dort beim Veröffentlichen ein);
+  Rückfall: Eintrag von Hand in den Core-Einstellungen. *(Festlegung des
+  Entwurfs.)*
+- Damit muss ein PDH-Server nur die **aktuelle und die vorige** App-Version
   bedienen; die Schnittstelle wird trotzdem nur hinzufügend erweitert.
+- **Umgekehrt (Firmen aktualisieren ihr PDH unterschiedlich schnell):** der
+  Server nennt seine Schnittstellen-Stufe. Die App unterstützt PDH-Server ab
+  einer festen Mindeststufe; Funktionen, die ein älterer Server noch nicht
+  kann, blendet sie aus. Ist der Server zu alt, zeigt sie „Bitte PDH-Server
+  aktualisieren“ statt Fehlern. *(Festlegung des Entwurfs.)*
 - Vom Anwender selbst anzulegen: Apple-Developer-Konto der Firma (99 $/Jahr),
-  Google-Play-Konto (25 $ einmalig), Firebase-Projekt.
+  Google-Play-Konto (25 $ einmalig), Firebase-Projekt, Betrieb von
+  `pdh-push` (kleiner Server mit öffentlicher Domain und HTTPS).
 - **Vorführ-Server** mit Testdaten und Prüfzugang für die Apple-Prüfung,
   ohne Firmendaten.
 - Datenschutzangaben in beiden Stores (Sensoren!) und Datenschutzerklärung.
@@ -451,12 +480,10 @@ ersten Installation bzw. beim ersten Start nach einem Update.
   Firmenlogo. Ändert sich das Erscheinungsbild im PDH später, holt die App es
   beim nächsten Abgleich (Stand verglichen) *(Festlegung des Entwurfs; sonst
   bliebe ein altes Logo bis zum nächsten Update stehen)*.
-- **Symbol auf dem Startbildschirm und Name im Store** lassen sich nach der
-  Installation nicht mehr ändern (Apple/Google). Sie kommen beim
-  **White-Label-Bau** aus demselben PDH-Erscheinungsbild: das Bauskript holt
-  Logo, Name und Farbe vom Server und erzeugt daraus Symbol und Startbild.
-  Ein neues Logo auf dem Startbildschirm kommt so mit der nächsten
-  App-Version.
+- **Symbol auf dem Startbildschirm und Name im Store** bleiben das neutrale
+  PDH-Symbol bzw. „PDH“ – sie lassen sich nach der Installation nicht ändern
+  und sind bei einer App für alle Firmen für alle gleich. Firmenlogo und
+  -farben erscheinen ab dem Startbild in der App.
 - Fehlt ein eigenes Logo, gilt das PDH-Logo und das Standard-Farbschema.
 
 ## 15. Server-Seite im Überblick (pdh-server)
@@ -471,7 +498,23 @@ ersten Installation bzw. beim ersten Start nach einem Update.
   Signatur + Sperre + Rechte), unabhängig von `/api/v1`.
 - Web: Benutzermenü „App installieren“, Seite „App-Konfiguration“ (aus dem
   APP-Ticket), Seite „App-Geräte“ (Übersicht, sperren), „App-Cockpits“,
-  Einstellung „Adressen für die App“, `.well-known`-Dateien.
+  Einstellung „Adressen für die App“, Seite `/app/setup` (Einrichtung und
+  Store-Weiterleitung), Knopf „In der App öffnen“ auf den QR-Zielseiten am
+  Handy, Anmeldung bei `pdh-push` in den Core-Einstellungen.
+
+## 15a. Zentraler Push-Dienst (pdh-push)
+
+- Eigenes Repository `pdh-push`, Go, eine kleine Datenbank (Postgres oder
+  SQLite), betrieben vom Herausgeber.
+- Hält allein die Apple-/Google-Schlüssel der Store-App.
+- Server-Anmeldung: PDH-Server registriert sich mit seiner Domain, bekommt
+  einen eigenen Server-Schlüssel; der Herausgeber kann Server sperren.
+- Geräte-Anmeldung: läuft über den PDH-Server (die App gibt ihr
+  Push-Kennzeichen an ihren Server, der meldet es bei `pdh-push` für sich
+  an). Ein Server erreicht nur seine eigenen Geräte.
+- Senden: `POST /v1/send` mit Gerät(en) und Kennung; keine Inhalte,
+  Begrenzung je Server, nur Zähler im Protokoll.
+- Meldet die neueste App-Version je System (Abschnitt 14).
 - Handbuch-Kapitel „PDH-App“ mit So-geht's-Schritten; Kapitel
   „Administration“ ergänzen; CHANGELOG je Version.
 - Versionen: nächste Korrekturversionen (Regel in `AGENTS.md`).
@@ -484,14 +527,16 @@ Jedes Paket bekommt einen eigenen Plan und ist für sich einspielbar.
    Freigabe, Token, Gerätebindung, Sperre; APP-Ticket; App-Konfiguration;
    Benutzermenü-Eintrag; Adressen.
 2. **App-Grundgerüst (Flutter):** Repository `pdh-app`, Geräteschlüssel,
-   Sperrbildschirm, Zugang anfragen, Abholen des Tokens, Build je Server
-   (fester Servername, Schema), Pflicht-Aktualisierung, Cockpit online, Scanner mit QR-Zielen, Vorgänge ansehen und bearbeiten.
+   Domain-Abfrage bei der Einrichtung, Logo/Farben vom Server,
+   Sperrbildschirm, Zugang anfragen, Abholen des Tokens, Schema `pdh://`,
+   Pflicht-Aktualisierung, Cockpit online, Scanner mit QR-Zielen, Vorgänge
+   ansehen und bearbeiten.
 3. **Ohne Verbindung:** lokale Datenbank, Schritte, Zusammenführen nach 9.3,
    Hinweisbalken.
 4. **Cockpit-Erzeugung und zentrale Cockpits** (Server + App).
-5. **Push und Push-Assistent.**
+5. **Push:** Dienst `pdh-push`, Anmeldung im PDH, Push-Assistent.
 6. **Sensorik:** (a) Widgets/Kacheln, danach (b) Telefon-Sensoren.
-7. **Store:** Vorführ-Server, Store-Einträge, Universal/App Links, Abgabe.
+7. **Store:** Vorführ-Server, Store-Einträge, Datenschutzangaben, Abgabe.
 
 ## 17. Dem Builder überlassen
 
