@@ -434,6 +434,31 @@ Pfade öffnen die Webseite im Browser.
   ohne Firmendaten.
 - Datenschutzangaben in beiden Stores (Sensoren!) und Datenschutzerklärung.
 
+## 14a. Logo und Farben aus dem PDH
+
+Vom Anwender festgelegt: die App übernimmt Logo und Farben des PDH bei der
+ersten Installation bzw. beim ersten Start nach einem Update.
+
+- Quelle ist das vorhandene Erscheinungsbild (`internal/web/branding.go`):
+  Firmenname (`AppName`), App-Logo (`branding.logo.app`, liegt öffentlich
+  unter `/uploads/branding/`), Farbschema (`Theme`), eigene Firmenfarbe
+  (`ThemeColor`), Design-Stil Fiori/Fluent (`Style`), Schrift.
+- `GET /api/app/v1/branding` (ohne Anmeldung, wie die Anmeldeseite) liefert
+  diese Werte samt Logo-Adresse und einem **Stand** (Prüfsumme).
+- **In der App** (Sperrbildschirm „Zugang anfragen“, Startbild, Kopf,
+  Akzentfarbe, Cockpits): beim ersten Start und beim ersten Start nach jedem
+  Update geholt und gespeichert – damit trägt schon der Sperrbildschirm das
+  Firmenlogo. Ändert sich das Erscheinungsbild im PDH später, holt die App es
+  beim nächsten Abgleich (Stand verglichen) *(Festlegung des Entwurfs; sonst
+  bliebe ein altes Logo bis zum nächsten Update stehen)*.
+- **Symbol auf dem Startbildschirm und Name im Store** lassen sich nach der
+  Installation nicht mehr ändern (Apple/Google). Sie kommen beim
+  **White-Label-Bau** aus demselben PDH-Erscheinungsbild: das Bauskript holt
+  Logo, Name und Farbe vom Server und erzeugt daraus Symbol und Startbild.
+  Ein neues Logo auf dem Startbildschirm kommt so mit der nächsten
+  App-Version.
+- Fehlt ein eigenes Logo, gilt das PDH-Logo und das Standard-Farbschema.
+
 ## 15. Server-Seite im Überblick (pdh-server)
 
 - Migrationen (hinzufügend, UUIDv7): `app_requests`, `app_devices`
