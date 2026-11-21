@@ -429,7 +429,10 @@ oder ändern.**
    zurück“ rund 4,5 s, danach erst „Einstellung behalten“, bestätigt,
    Wartung wieder aus. Testrolle entfernt, Prüfkonto gesperrt. Nicht im
    Browser gesehen: Tagesgrenzen zwischen 0 und 1 Uhr (nur automatisch
-   getestet).
+   getestet). 10.10.0.202 meldet am 21.11.2026 morgens unter `/health`
+   ebenfalls 0.82.9 (`d244bc4`, `migrations_ok`) – nicht von hier
+   eingespielt; SSH an 202 ist in `.claude/settings.local.json` gesperrt.
+   Offen: dort im Browser ansehen (Anwender).
    Geparkt (Tests, klein): Laufen alle Pakete gleichzeitig gegen die
    Labor-Datenbank, kann ein Test ein Gerät `w-test-…` auf den
    Lasttest-Benutzer `last01` buchen; dann scheitert
