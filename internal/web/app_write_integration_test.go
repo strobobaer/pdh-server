@@ -147,6 +147,10 @@ func TestAppWriteGuard(t *testing.T) {
 	if rec.Code != 409 || code(rec) != "app_conflict" || rec.Header().Get("X-PDH-Once-Replay") != "" {
 		t.Errorf("M3 anderer Benutzer: %d %s", rec.Code, rec.Body.String())
 	}
+	// fremde Once ist endgültig: kein Retry-After, eigener Text (die App verwirft die Kennung)
+	if rec.Header().Get("Retry-After") != "" || !strings.Contains(rec.Body.String(), "Diese Kennung gehört zu einer anderen Aktion.") {
+		t.Errorf("M3 anderer Benutzer: Retry-After %q, Text %s", rec.Header().Get("Retry-After"), rec.Body.String())
+	}
 	req3 = httptest.NewRequest("POST", "/api/app/v1/anderer", nil)
 	req3.Header.Set("X-PDH-Once", o3)
 	req3 = req3.WithContext(context.WithValue(req3.Context(), appDeviceKey{}, &appDeviceCtx{ID: "d", UserID: uid}))
@@ -154,6 +158,9 @@ func TestAppWriteGuard(t *testing.T) {
 	guard.ServeHTTP(rec, req3)
 	if rec.Code != 409 || code(rec) != "app_conflict" || runs != rBefore {
 		t.Errorf("M3 anderer Pfad: %d %s runs+=%d", rec.Code, rec.Body.String(), runs-rBefore)
+	}
+	if rec.Header().Get("Retry-After") != "" || !strings.Contains(rec.Body.String(), "Diese Kennung gehört zu einer anderen Aktion.") {
+		t.Errorf("M3 anderer Pfad: Retry-After %q, Text %s", rec.Header().Get("Retry-After"), rec.Body.String())
 	}
 
 	// Datenbankfehler beim Nachsehen der bekannten Once: 503 app_unavailable, kein Konflikt, Handler läuft nicht

@@ -6,11 +6,14 @@ package web
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
 
+	"pdh/internal/core/users"
 	"pdh/internal/modules/faults"
 	"pdh/internal/modules/maintenance"
 	"pdh/internal/modules/tasks"
@@ -211,6 +214,22 @@ func (e *appWorkEnv) can(table, k string) map[string]any {
 		e.t.Fatalf("%s: %d %v", kind, code, m)
 	}
 	return m["can"].(map[string]any)
+}
+
+// Datenbankfehler beim Lesen der Liste: 503 app_unavailable (vorübergehend), nicht 500.
+func TestAppWorkListDBError(t *testing.T) {
+	e := newAppWorkEnv(t)
+	e.h.hasPermHook = func(*http.Request, string) bool { return true }
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // jede Abfrage scheitert
+	req := httptest.NewRequest("GET", "/api/app/v1/work", nil).WithContext(ctx)
+	req = req.WithContext(context.WithValue(req.Context(), appDeviceKey{}, &appDeviceCtx{ID: "d", UserID: e.uid, AllowedTypes: []string{"fault", "ticket"}}))
+	req = req.WithContext(context.WithValue(req.Context(), "user", &users.User{ID: e.uid, Role: "user"}))
+	rec := httptest.NewRecorder()
+	e.h.AppWorkAPI(rec, req)
+	if rec.Code != http.StatusServiceUnavailable || !strings.Contains(rec.Body.String(), `"app_unavailable"`) {
+		t.Errorf("%d %s", rec.Code, rec.Body.String())
+	}
 }
 
 func TestAppWorkDetail(t *testing.T) {

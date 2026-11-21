@@ -129,7 +129,7 @@ func (h *Handler) AppWorkAPI(w http.ResponseWriter, r *http.Request) {
 	rows, err := h.myOpenWork(r.Context(), u.ID, kinds, appWorkLimit)
 	if err != nil {
 		componentLog("app").Error().Err(err).Msg("meine vorgänge")
-		appJSONErr(w, http.StatusInternalServerError, "app_unavailable", "app_unavailable")
+		appJSONErr(w, http.StatusServiceUnavailable, "app_unavailable", "app_unavailable")
 		return
 	}
 	items := appWorkItems(rows)

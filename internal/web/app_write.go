@@ -75,6 +75,12 @@ func appConflict(w http.ResponseWriter) {
 	appJSONErr(w, http.StatusConflict, "app_conflict", "Wird noch ausgeführt – bitte gleich erneut versuchen.")
 }
 
+// appConflictForeign: die Once gehört zu einer anderen Aktion (anderer Benutzer
+// oder Pfad). Endgültig, deshalb ohne Retry-After: die App verwirft die Kennung.
+func appConflictForeign(w http.ResponseWriter) {
+	appJSONErr(w, http.StatusConflict, "app_conflict", "Diese Kennung gehört zu einer anderen Aktion.")
+}
+
 // appWrite muss hinter appAuth hängen (braucht das geprüfte Gerät im Kontext);
 // ohne Gerät antwortet er 401 app_unauthorized.
 func (h *Handler) appWrite(next http.Handler) http.Handler {
@@ -136,7 +142,7 @@ func (h *Handler) appWrite(next http.Handler) http.Handler {
 				appJSONErr(w, http.StatusServiceUnavailable, "app_unavailable", "Vorübergehend nicht verfügbar")
 				return
 			} else if err != nil || owner == nil || *owner != dev.UserID || path == nil || *path != r.URL.Path {
-				appConflict(w)
+				appConflictForeign(w)
 				return
 			}
 			release()
