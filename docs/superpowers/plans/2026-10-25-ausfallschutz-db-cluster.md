@@ -22,7 +22,7 @@
 - `demote`: Frist 60 s für Gleichstand; bei Überschreitung `pdh` wieder starten, nichts gestoppt, Fehler.
 - Abgezweigte Daten: `/var/lib/pdh-ha/abgezweigt/<JJJJMMTT-hhmmss>-amtszeit<T>/` mit `dump.sql.gz` und `summary.json`; nie automatisch gelöscht. Vorher-Sicherung bei `replica-init`: `/var/lib/pdh-ha/vorher/<JJJJMMTT-hhmmss>.sql.gz`.
 - Überschreibbar für Tests/Labor: `PDH_HA_DIVERGED` (Ordner abgezweigt), `PDH_HA_SERVICE_CMD` (Skript `start|stop|is-active|enable|disable` statt systemctl), `PDH_REPO` (Standard `/opt/pdh-server`).
-- Produktiv nie Knoten: 10.10.0.202. Testknoten 10.10.0.14 (pdh) und 10.10.0.17 (pdh-server), Zeuge 10.10.0.231.
+- Produktiv nie Knoten: 192.0.2.202. Testknoten 192.0.2.14 (pdh) und 192.0.2.17 (pdh-server), Zeuge 192.0.2.231.
 - Texte Deutsch, Anwendersprache; Handbuch und `CHANGELOG.md`/`VERSION` laut AGENTS.md, Version 0.76.0.
 
 ## Review Focus
@@ -462,8 +462,8 @@ Dazu Rundlauf-Test: `DefaultSettings()` mit `AutoMode = AutoReal` → Marshal �
 
 Keine Code-Änderung; Ergebnisse im Ledger und im Gedächtnis festhalten.
 
-- [ ] **Step 1:** Nach Freigabe pushen, `pdh` (10.10.0.14) über den Agenten aktualisieren, Zeuge neu bauen.
-- [ ] **Step 2:** Auf `pdh-server` (10.10.0.17): `sudo bash /opt/pdh-ha-src/scripts/pdh-ha-join.sh --update <Commit> --voll`, Hostnamen bestätigen; Reiter zeigt Knoten 2 als Standby, synchron.
+- [ ] **Step 1:** Nach Freigabe pushen, `pdh` (192.0.2.14) über den Agenten aktualisieren, Zeuge neu bauen.
+- [ ] **Step 2:** Auf `pdh-server` (192.0.2.17): `sudo bash /opt/pdh-ha-src/scripts/pdh-ha-join.sh --update <Commit> --voll`, Hostnamen bestätigen; Reiter zeigt Knoten 2 als Standby, synchron.
 - [ ] **Step 3:** Rollen tauschen hin und zurück; PDH jeweils unter der Adresse des aktiven Knotens prüfen (Ticket anlegen, nach dem Tausch vorhanden); „Pflicht-Testumschaltung“ erledigt.
 - [ ] **Step 4:** `pdh-server` stoppen, auf `pdh` speichern (asynchron nach Zeugen-Bestätigung), `pdh` stoppen, auf `pdh-server` „Übernahme erzwingen“, `pdh` starten → Wiedereingliederung, „Abgezweigte Daten“ mit den Einträgen aus der Zwischenzeit.
 - [ ] **Step 5:** Optional `auto_mode = real`, VM `pdh` anhalten → Übernahme nach 30 s, Rückkehr als Standby.

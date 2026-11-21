@@ -167,7 +167,7 @@ func TestMigration157Grants(t *testing.T) // Datei enthält 'system.certs', 'sys
 ```go
 func TestCertNameInZone(t *testing.T) // "NC.Strobl-Home.net." in "strobl-home.net" → "nc.strobl-home.net"; "strobl-home.net" selbst erlaubt; "*.strobl-home.net", "nc.andere.de", "evilstrobl-home.net" → Fehler
 func TestCertSuggested(t *testing.T)  // ("pdh.firma.de","https://nc.firma.de/") → [pdh.firma.de nc.firma.de]; leere und doppelte entfallen; Adresse als IP entfällt
-func TestCertLANState(t *testing.T)   // ["10.10.0.15"] bei own ["10.10.0.17","10.10.0.15"] → "direkt"; ["188.114.96.3"] → "cloudflare"; nil → "unbekannt"
+func TestCertLANState(t *testing.T)   // ["192.0.2.15"] bei own ["192.0.2.17","192.0.2.15"] → "direkt"; ["188.114.96.3"] → "cloudflare"; nil → "unbekannt"
 ```
 
 - [ ] **Step 2–4: Fehlschlag, Umsetzung, grün.**
@@ -399,7 +399,7 @@ func TestUnifiPanelHidesKey(t *testing.T)    // gerenderte Karte enthält den Sc
 Voraussetzungen: Cloudflare-API-Token mit „DNS bearbeiten“ im PDH der Testserver; Zweig gepusht und per Verbund-Update eingespielt (`sudo pdh-ha update start <Commit> --version 0.77.10` am aktiven Server) – beides nur mit Freigabe des Anwenders.
 
 - [ ] **Fall 1:** Schalter „Testumgebung“ an, Zertifikate für den Test-PDH-Namen und `nc.strobl-home.net` holen. Erwartet: beide „gültig bis …“, `sudo nginx -t` ohne Fehler, `openssl s_client -connect 127.0.0.1:443 -servername nc.strobl-home.net` zeigt einen Aussteller mit „STAGING“.
-- [ ] **Fall 2:** UniFi-Adresse und API-Schlüssel eintragen, Fingerabdruck bestätigen, bei beiden Namen „Im Haus eintragen“. Erwartet: in UniFi Network stehen zwei Einträge Typ A auf 10.10.0.15, andere Einträge unverändert; Karte zeigt „im Haus direkt“; Browser im Haus erreicht beide Namen (Warnung wegen Testumgebung erwartet).
+- [ ] **Fall 2:** UniFi-Adresse und API-Schlüssel eintragen, Fingerabdruck bestätigen, bei beiden Namen „Im Haus eintragen“. Erwartet: in UniFi Network stehen zwei Einträge Typ A auf 192.0.2.15, andere Einträge unverändert; Karte zeigt „im Haus direkt“; Browser im Haus erreicht beide Namen (Warnung wegen Testumgebung erwartet).
 - [ ] **Fall 3:** Rollentausch. Erwartet: Dateien unter `/etc/ssl/pdh` auf beiden Servern gleich, beide Namen im Haus und von außen erreichbar.
 - [ ] **Fall 4:** „Jetzt holen/erneuern“ bei gültigem Zertifikat. Erwartet: neuer Fingerabdruck, nginx neu geladen, voriges Zertifikat in der Datenbank als Vorgänger.
 - [ ] **Fall 5:** Token ohne „DNS bearbeiten“. Erwartet: Karte nennt das fehlende Recht, kein Auftrag beginnt.

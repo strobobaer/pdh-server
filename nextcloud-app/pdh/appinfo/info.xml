@@ -2,7 +2,7 @@
 <info xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://apps.nextcloud.com/schema/apps/info.xsd">
     <id>pdh</id>
     <name>PDH</name>
-    <summary>Prozess Data Hub integration for Nextcloud</summary>
+    <summary>PDH – Pulse Data Hub integration for Nextcloud</summary>
     <description>Shows PDH inside Nextcloud and prepares the bridge for files, tickets, faults and maintenance.</description>
     <version>0.1.1</version>
     <licence>agpl</licence>

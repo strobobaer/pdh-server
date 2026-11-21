@@ -8,11 +8,11 @@ import (
 )
 
 func TestParseVIP(t *testing.T) {
-	p, err := parseVIP("10.10.0.202/24")
-	if err != nil || p.Addr().String() != "10.10.0.202" || p.Bits() != 24 {
+	p, err := parseVIP("192.0.2.202/24")
+	if err != nil || p.Addr().String() != "192.0.2.202" || p.Bits() != 24 {
 		t.Fatalf("gültige Adresse abgelehnt: %v %v", p, err)
 	}
-	for _, s := range []string{"10.10.0.202", "fe80::1/64", "10.10.0.0/24", "10.10.0.255/24", "10.10.0.202/7", "", "x/24"} {
+	for _, s := range []string{"192.0.2.202", "fe80::1/64", "192.0.2.0/24", "192.0.2.255/24", "192.0.2.202/7", "", "x/24"} {
 		if _, err := parseVIP(s); err == nil {
 			t.Errorf("%q hätte abgelehnt werden müssen", s)
 		}
@@ -21,25 +21,25 @@ func TestParseVIP(t *testing.T) {
 
 func accessCluster() clusterConfig {
 	return clusterConfig{Nodes: []clusterNode{
-		{ID: "a", Kind: "node", Addrs: []string{"10.10.0.14:7480"}},
-		{ID: "b", Kind: "node", Addrs: []string{"10.10.0.17"}},
-		{ID: "w", Kind: "witness", Addrs: []string{"10.10.0.20:7480"}},
+		{ID: "a", Kind: "node", Addrs: []string{"192.0.2.14:7480"}},
+		{ID: "b", Kind: "node", Addrs: []string{"192.0.2.17"}},
+		{ID: "w", Kind: "witness", Addrs: []string{"192.0.2.20:7480"}},
 	}}
 }
 
 func TestValidateAccess(t *testing.T) {
 	cl := accessCluster()
-	if err := validateAccess(cl, accessConfig{VIP: "10.10.0.15/24", VIPOn: true}); err != nil {
+	if err := validateAccess(cl, accessConfig{VIP: "192.0.2.15/24", VIPOn: true}); err != nil {
 		t.Fatalf("gültige Einstellung abgelehnt: %v", err)
 	}
 	if err := validateAccess(cl, accessConfig{}); err != nil {
 		t.Fatalf("leere Einstellung abgelehnt: %v", err)
 	}
-	err := validateAccess(cl, accessConfig{VIP: "10.10.0.14/24"})
+	err := validateAccess(cl, accessConfig{VIP: "192.0.2.14/24"})
 	if err == nil || !strings.Contains(err.Error(), "gehört schon zu Knoten a") {
 		t.Errorf("eigene Adresse: %v", err)
 	}
-	err = validateAccess(cl, accessConfig{VIP: "10.10.0.20/24"})
+	err = validateAccess(cl, accessConfig{VIP: "192.0.2.20/24"})
 	if err == nil || !strings.Contains(err.Error(), "gehört schon zu Knoten w") {
 		t.Errorf("Adresse des Zeugen: %v", err)
 	}
@@ -50,7 +50,7 @@ func TestValidateAccess(t *testing.T) {
 	// nur ein Knoten im Netz der Adresse genügt nicht
 	cl2 := accessCluster()
 	cl2.Nodes[1].Addrs = []string{"10.20.0.17"}
-	err = validateAccess(cl2, accessConfig{VIP: "10.10.0.15/24"})
+	err = validateAccess(cl2, accessConfig{VIP: "192.0.2.15/24"})
 	if err == nil || !strings.Contains(err.Error(), "liegt in keinem Netz von b") {
 		t.Errorf("Knoten b im anderen Netz: %v", err)
 	}
@@ -78,21 +78,21 @@ func TestParseVIP6Suffix(t *testing.T) {
 
 func TestVIP6Addr(t *testing.T) {
 	sfx, _ := parseVIP6Suffix("15")
-	if got := vip6Addr(netip.MustParsePrefix("2a02:f90:e198:1700:215:5dff:fe00:b202/64"), sfx); got.String() != "2a02:f90:e198:1700::15" {
+	if got := vip6Addr(netip.MustParsePrefix("2001:db8::215:5dff:fe00:b202/64"), sfx); got.String() != "2001:db8::15" {
 		t.Fatal(got)
 	}
 }
 
 func TestValidateAccessVIP6(t *testing.T) {
 	cl := accessCluster()
-	ok := accessConfig{VIP: "10.10.0.15/24", VIPOn: true, VIP6Suffix: "15"}
+	ok := accessConfig{VIP: "192.0.2.15/24", VIPOn: true, VIP6Suffix: "15"}
 	if err := validateAccess(cl, ok); err != nil {
 		t.Fatal(err)
 	}
 	for _, a := range []accessConfig{
-		{VIP: "10.10.0.15/24", VIPOn: false, VIP6Suffix: "15"},
+		{VIP: "192.0.2.15/24", VIPOn: false, VIP6Suffix: "15"},
 		{VIP6Suffix: "15"},
-		{VIP: "10.10.0.15/24", VIPOn: true, VIP6Suffix: "2a02::1"},
+		{VIP: "192.0.2.15/24", VIPOn: true, VIP6Suffix: "2a02::1"},
 	} {
 		if err := validateAccess(cl, a); err == nil {
 			t.Fatalf("%+v angenommen", a)
@@ -101,9 +101,9 @@ func TestValidateAccessVIP6(t *testing.T) {
 }
 
 func TestPickInterface(t *testing.T) {
-	vip := netip.MustParsePrefix("10.10.0.15/24")
+	vip := netip.MustParsePrefix("192.0.2.15/24")
 	addrs := []ifAddr{
-		{"eth0", netip.MustParsePrefix("10.10.0.14/24")},
+		{"eth0", netip.MustParsePrefix("192.0.2.14/24")},
 		{"eth1", netip.MustParsePrefix("192.168.5.2/24")},
 	}
 	if n, err := pickInterface(addrs, vip, ""); err != nil || n != "eth0" {
@@ -118,10 +118,10 @@ func TestPickInterface(t *testing.T) {
 }
 
 func TestPickInterfaceAmbiguous(t *testing.T) {
-	vip := netip.MustParsePrefix("10.10.0.15/24")
+	vip := netip.MustParsePrefix("192.0.2.15/24")
 	addrs := []ifAddr{
-		{"eth0", netip.MustParsePrefix("10.10.0.14/24")},
-		{"docker0", netip.MustParsePrefix("10.10.0.1/24")},
+		{"eth0", netip.MustParsePrefix("192.0.2.14/24")},
+		{"docker0", netip.MustParsePrefix("192.0.2.1/24")},
 	}
 	_, err := pickInterface(addrs, vip, "")
 	if err == nil || !strings.Contains(err.Error(), "nicht eindeutig") || !strings.Contains(err.Error(), "vip_interface") {
@@ -133,8 +133,8 @@ func TestPickInterfaceAmbiguous(t *testing.T) {
 	}
 	// dieselbe Karte mit zwei Adressen im Netz ist eindeutig
 	two := []ifAddr{
-		{"eth0", netip.MustParsePrefix("10.10.0.14/24")},
-		{"eth0", netip.MustParsePrefix("10.10.0.202/24")},
+		{"eth0", netip.MustParsePrefix("192.0.2.14/24")},
+		{"eth0", netip.MustParsePrefix("192.0.2.202/24")},
 	}
 	if n, err := pickInterface(two, vip, ""); err != nil || n != "eth0" {
 		t.Fatalf("eine Karte, zwei Adressen: %q %v", n, err)
@@ -142,8 +142,8 @@ func TestPickInterfaceAmbiguous(t *testing.T) {
 }
 
 func TestVIPTestedCovers(t *testing.T) {
-	ts := &vipTested{Net: "10.10.0.0/24", Ifaces: map[string]string{"a": "eth0", "b": "ens3"}, At: time.Now()}
-	vip := netip.MustParsePrefix("10.10.0.202/24")
+	ts := &vipTested{Net: "192.0.2.0/24", Ifaces: map[string]string{"a": "eth0", "b": "ens3"}, At: time.Now()}
+	vip := netip.MustParsePrefix("192.0.2.202/24")
 	if !ts.covers(vip, map[string]string{"a": "eth0", "b": "ens3"}) {
 		t.Error("gleiches Netz und Karten müssen gelten")
 	}
@@ -175,8 +175,8 @@ func TestClusterConfigAccessRoundTrip(t *testing.T) {
 		t.Fatalf("alte Datei: %+v %v", c.Access, err)
 	}
 	at := time.Date(2026, 10, 28, 12, 0, 0, 0, time.UTC)
-	c.Access = accessConfig{VIP: "10.10.0.15/24", VIPOn: true, HooksOn: true,
-		Tested: &vipTested{Net: "10.10.0.0/24", Ifaces: map[string]string{"a": "eth0"}, At: at}}
+	c.Access = accessConfig{VIP: "192.0.2.15/24", VIPOn: true, HooksOn: true,
+		Tested: &vipTested{Net: "192.0.2.0/24", Ifaces: map[string]string{"a": "eth0"}, At: at}}
 	if err := s.saveCluster(c); err != nil {
 		t.Fatal(err)
 	}
@@ -185,8 +185,8 @@ func TestClusterConfigAccessRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	a := got.Access
-	if a.VIP != "10.10.0.15/24" || !a.VIPOn || !a.HooksOn || a.Tested == nil ||
-		a.Tested.Net != "10.10.0.0/24" || a.Tested.Ifaces["a"] != "eth0" || !a.Tested.At.Equal(at) {
+	if a.VIP != "192.0.2.15/24" || !a.VIPOn || !a.HooksOn || a.Tested == nil ||
+		a.Tested.Net != "192.0.2.0/24" || a.Tested.Ifaces["a"] != "eth0" || !a.Tested.At.Equal(at) {
 		t.Fatalf("Round-Trip verlustbehaftet: %+v", a)
 	}
 }

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# PDH – eine bisherige Server-Adresse (z. B. 10.10.0.202) zur „mitwandernden
+# PDH – eine bisherige Server-Adresse (z. B. 192.0.2.202) zur „mitwandernden
 # Adresse“ des Ausfallschutzes machen. Der Server bekommt dafür eine neue eigene
-# Adresse (z. B. 10.10.0.203). Geführt in fünf Schritten, jeder einzeln
+# Adresse (z. B. 192.0.2.203). Geführt in fünf Schritten, jeder einzeln
 # startbar und zurücknehmbar (am Ende steht „Zurücknehmen: …“):
 #
 #   sudo bash pdh-ha-adresse.sh neu <ip/präfix>
@@ -55,9 +55,9 @@ Schritte (der Reihe nach, jeder zurücknehmbar):
   pdh-ha-adresse.sh pruefliste <alte-ip>     was die alte Adresse noch benutzt
   pdh-ha-adresse.sh uebergabe <alte-ip/präfix>  alte Adresse wird mitwandernd
 
-Beispiel: neu 10.10.0.203/24 → verbund 10.10.0.203 → test 10.10.0.15/24
-          → pruefliste 10.10.0.202 → (per SSH über .203 anmelden)
-          → uebergabe 10.10.0.202/24
+Beispiel: neu 192.0.2.203/24 → verbund 192.0.2.203 → test 192.0.2.15/24
+          → pruefliste 192.0.2.202 → (per SSH über .203 anmelden)
+          → uebergabe 192.0.2.202/24
 EOF
 }
 
@@ -142,7 +142,7 @@ for want_witness in (False, True):
 ' 2>/dev/null || true
 }
 route_src() { ip -4 route get "$1" 2>/dev/null | sed -nE 's/.*[[:space:]]src[[:space:]]+([0-9.]+).*/\1/p' | head -n1; }
-# Netz einer Adresse mit Präfix: 10.10.0.203/24 -> 10.10.0.0/24
+# Netz einer Adresse mit Präfix: 192.0.2.203/24 -> 192.0.2.0/24
 net_of() { python3 -c 'import ipaddress,sys; print(ipaddress.ip_interface(sys.argv[1]).network)' "$1"; }
 # Läuft gerade eine SSH-Sitzung über diese lokale Adresse? „sudo“ löscht SSH_CONNECTION,
 # darum zusätzlich die aufgebauten Verbindungen auf Port 22 ansehen (genauer Vergleich).
@@ -154,7 +154,7 @@ ssh_over() {
     { l=$3; sub(/:[0-9]+$/, "", l); gsub(/[][]/, "", l); sub(/^::ffff:/, "", l); if (l == ip) f=1 }
     END { exit f ? 0 : 1 }'
 }
-# Regulärer Ausdruck für einen genauen Treffer einer IPv4-Adresse (10.10.0.20 trifft nicht 10.10.0.202)
+# Regulärer Ausdruck für einen genauen Treffer einer IPv4-Adresse (192.0.2.20 trifft nicht 192.0.2.202)
 ip_re() { local r="${1//./\\.}"; printf '(^|[^0-9.])%s($|[^0-9.]|\\.($|[^0-9]))' "$r"; }
 
 # ---- netplan-Dateien bearbeiten (Sicherung + Rücknahme) ----------------------
@@ -287,7 +287,7 @@ apply_try() {
 
 step_neu() {
   local new="$ARG" newip="${ARG%/*}" olds=() a f list rc net oldfirst=""
-  [[ "$new" =~ $cidr_re ]] || fail "Adresse bitte mit Präfix angeben, z. B. 10.10.0.203/24 (ist: $new)"
+  [[ "$new" =~ $cidr_re ]] || fail "Adresse bitte mit Präfix angeben, z. B. 192.0.2.203/24 (ist: $new)"
   need_netplan; pick_iface; netplan_id
   mapfile -t olds < <(static_addrs)
   for a in "${olds[@]:-}"; do
@@ -427,7 +427,7 @@ step_verbund() {
 
 step_test() {
   need_pdhha
-  [[ "$ARG" =~ $cidr_re ]] || fail "Adresse bitte mit Präfix angeben, z. B. 10.10.0.15/24"
+  [[ "$ARG" =~ $cidr_re ]] || fail "Adresse bitte mit Präfix angeben, z. B. 192.0.2.15/24"
   info "Teste mitwandernde Adresse $ARG"
   local rc=0
   "$PDHHA" vip test --adresse "$ARG" || rc=$?
@@ -466,7 +466,7 @@ step_pruefliste() {
 
 step_uebergabe() {
   local oldc="$ARG" old="${ARG%/*}" f files=() newcnt
-  [[ "$oldc" =~ $cidr_re ]] || fail "Adresse bitte mit Präfix angeben, z. B. 10.10.0.202/24"
+  [[ "$oldc" =~ $cidr_re ]] || fail "Adresse bitte mit Präfix angeben, z. B. 192.0.2.202/24"
   if ssh_over "$old"; then
     fail "Es läuft eine SSH-Sitzung über die alte Adresse $old (diese oder eine andere) – sie risse ab. Bitte über die neue Adresse anmelden, die Sitzungen über $old beenden und neu starten. Nichts geändert."
   fi

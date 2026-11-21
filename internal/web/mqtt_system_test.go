@@ -32,7 +32,7 @@ func TestMqttCheckSystemRules(t *testing.T) {
 		"mit Schema":              mqttCfg("int_public_host", "mqtt://mqtt.firma.de", "int_websocket_port", "8083"),
 		"mit Port":                mqttCfg("int_public_host", "mqtt.firma.de:8883", "int_websocket_port", "8083"),
 		"mit Pfad":                mqttCfg("int_public_host", "mqtt.firma.de/x", "int_websocket_port", "8083"),
-		"IP-Adresse":              mqttCfg("int_public_host", "10.10.0.15", "int_websocket_port", "8083"),
+		"IP-Adresse":              mqttCfg("int_public_host", "192.0.2.15", "int_websocket_port", "8083"),
 		"ohne Punkt":              mqttCfg("int_public_host", "mqtt", "int_websocket_port", "8083"),
 		"Name des PDH":            mqttCfg("int_public_host", "PDH.firma.de", "int_websocket_port", "8083"),
 		"Name der Nextcloud":      mqttCfg("int_public_host", "nc.firma.de", "int_websocket_port", "8083"),
@@ -220,10 +220,10 @@ func TestMqttCertSource(t *testing.T) {
 }
 
 func TestTIANameHost(t *testing.T) {
-	own := []string{"10.10.0.15", "fd00::1"}
+	own := []string{"192.0.2.15", "fd00::1"}
 	for _, c := range []struct{ resolved, want string }{
 		{"mqtt.firma.de", "mqtt.firma.de"}, // nicht auflösbar: der Name bleibt
-		{"10.10.0.15", "10.10.0.15"},       // zeigt auf diesen Server
+		{"192.0.2.15", "192.0.2.15"},       // zeigt auf diesen Server
 		{"104.16.1.1", "10.1.2.3"},         // zeigt auf Cloudflare: Adresse der Anfrage
 	} {
 		if got := tiaNameHost(c.resolved, "10.1.2.3", own); got != c.want {

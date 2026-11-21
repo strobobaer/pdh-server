@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	testV6       = "2a02:f90:e198:1700::15"
+	testV6       = "2001:db8::15"
 	testPolicies = "/proxy/network/integration/v1/sites/88f7af54-98f8-306a-a1c7-c9349722b1f6/dns/policies"
 )
 
@@ -41,7 +41,7 @@ func TestCreateAAAA(t *testing.T) {
 
 func TestUpdateAAAA(t *testing.T) {
 	f := newFakeUDM(t)
-	if err := f.client().Update(context.Background(), "abc", "nc.firma.de", "2A02:0F90:E198:1700:0:0:0:15"); err != nil {
+	if err := f.client().Update(context.Background(), "abc", "nc.firma.de", "2001:0DB8:0:0:0:0:0:15"); err != nil {
 		t.Fatal(err)
 	}
 	want := `{"type":"AAAA_RECORD","enabled":true,"domain":"nc.firma.de","ipv6Address":"` + testV6 + `","ttlSeconds":300}`
@@ -74,7 +74,7 @@ func TestCheckRecord(t *testing.T) {
 	if v6, err := checkRecord("nc.firma.de", "2001:db8:77:1::15"); err != nil || !v6 {
 		t.Errorf("Laborpräfix: %v %v", v6, err)
 	}
-	if v6, err := checkRecord("nc.firma.de", "10.10.0.15"); err != nil || v6 {
+	if v6, err := checkRecord("nc.firma.de", "192.0.2.15"); err != nil || v6 {
 		t.Errorf("IPv4: %v %v", v6, err)
 	}
 	if _, err := checkRecord("nc.firma.de", "kein-ip"); err == nil || !strings.Contains(err.Error(), "keine IPv4-Adresse") {

@@ -35,7 +35,7 @@ func (f fakeTopics) TopicValues(_, prefix string) ([]mqttbroker.TopicValue, bool
 func (f fakeTopics) ClientRemoteIP(_, _ string) (string, bool) { return f.remote, f.remote != "" }
 
 func TestEsppdhAddressOK(t *testing.T) {
-	own := []net.IP{net.ParseIP("10.10.0.17")}
+	own := []net.IP{net.ParseIP("192.0.2.17")}
 	for _, c := range []struct {
 		reported, remote, subnet string
 		ok                       bool
@@ -47,7 +47,7 @@ func TestEsppdhAddressOK(t *testing.T) {
 		{"169.254.1.1", "169.254.1.1", "", false},
 		{"224.0.0.1", "224.0.0.1", "", false},
 		{"0.0.0.0", "0.0.0.0", "", false},
-		{"10.10.0.17", "10.10.0.17", "", false},
+		{"192.0.2.17", "192.0.2.17", "", false},
 		{"10.30.0.5", "10.30.0.5", "10.20.0.0/24", false},
 		{"fe80::1", "fe80::1", "", false},
 		{"", "10.20.0.5", "", false},

@@ -121,14 +121,47 @@ func TestParseMixAndWeights(t *testing.T) {
 	}
 }
 
-func TestForbiddenProduction(t *testing.T) {
+// Ohne PDH_LAST_PRODUCTION ist nur dieser Rechner erlaubt – sonst liefe die
+// Lastprüfung ungeschützt gegen jeden Server, auch die Produktion.
+func TestForbiddenWithoutProductionOnlyLocal(t *testing.T) {
+	t.Setenv("PDH_LAST_PRODUCTION", "")
 	bad := []map[string]string{
-		{"-base": "http://10.10.0.202:8090"},
-		{"-base": "http://10.10.0.202"},
-		{"-dsn": "postgres://pdh:x@10.10.0.202:5432/pdh"},
-		{"-dsn": "host=10.10.0.202 dbname=pdh user=pdh"},
-		{"-ssh": "michael@10.10.0.202"},
-		{"-base": "https://10.10.0.202/"},
+		{"-base": "http://192.0.2.15:8090"},
+		{"-base": "http://192.0.2.202:8090"},
+		{"-dsn": "postgres://pdh:x@192.0.2.15:5432/pdh"},
+		{"-dsn": "host=db.example dbname=pdh user=pdh"},
+		{"-ssh": "admin@192.0.2.17"},
+		{"-base": "http://127.0.0.1:8097", "-ssh": "admin@192.0.2.17"},
+	}
+	for _, c := range bad {
+		if err := forbidden(c); err == nil || !strings.Contains(err.Error(), "PDH_LAST_PRODUCTION") {
+			t.Errorf("%v hätte ohne PDH_LAST_PRODUCTION abgelehnt werden müssen: %v", c, err)
+		}
+	}
+	good := []map[string]string{
+		{"-base": "http://127.0.0.1:8097"},
+		{"-base": "http://localhost:8090", "-ssh": "admin@localhost"},
+		{"-dsn": "postgres://pdh:x@127.0.0.1:54330/pdh_test?sslmode=disable"},
+		{"-dsn": "host=127.0.0.1 port=54330 dbname=pdh_test user=pdh"},
+		{"-base": "http://[::1]:8090"},
+		{},
+	}
+	for _, c := range good {
+		if err := forbidden(c); err != nil {
+			t.Errorf("%v fälschlich abgelehnt: %v", c, err)
+		}
+	}
+}
+
+func TestForbiddenProduction(t *testing.T) {
+	t.Setenv("PDH_LAST_PRODUCTION", "192.0.2.202")
+	bad := []map[string]string{
+		{"-base": "http://192.0.2.202:8090"},
+		{"-base": "http://192.0.2.202"},
+		{"-dsn": "postgres://pdh:x@192.0.2.202:5432/pdh"},
+		{"-dsn": "host=192.0.2.202 dbname=pdh user=pdh"},
+		{"-ssh": "admin@192.0.2.202"},
+		{"-base": "https://192.0.2.202/"},
 	}
 	for _, c := range bad {
 		if err := forbidden(c); err == nil {
@@ -136,10 +169,10 @@ func TestForbiddenProduction(t *testing.T) {
 		}
 	}
 	good := []map[string]string{
-		{"-base": "http://10.10.0.15:8090", "-ssh": "michael@10.10.0.17", "-dsn": "postgres://pdh:x@10.10.0.15:5432/pdh"},
-		{"-base": "http://10.10.0.20:8090"},
-		{"-base": "http://10.10.0.2020:8090"},
-		{"-base": "http://110.10.0.202:8090"},
+		{"-base": "http://192.0.2.15:8090", "-ssh": "admin@192.0.2.17", "-dsn": "postgres://pdh:x@192.0.2.15:5432/pdh"},
+		{"-base": "http://192.0.2.20:8090"},
+		{"-base": "http://192.0.2.2020:8090"},
+		{"-base": "http://1192.0.2.202:8090"},
 		{"-base": "http://127.0.0.1:8097"},
 		{},
 	}
@@ -150,8 +183,20 @@ func TestForbiddenProduction(t *testing.T) {
 	}
 }
 
+func TestForbiddenProductionFromEnv(t *testing.T) {
+	t.Setenv("PDH_LAST_PRODUCTION", " 198.51.100.7 ")
+	if err := forbidden(map[string]string{"-ssh": "admin@198.51.100.7"}); err == nil || !strings.Contains(err.Error(), "198.51.100.7") {
+		t.Errorf("Adresse aus PDH_LAST_PRODUCTION nicht abgelehnt: %v", err)
+	}
+	for _, ok := range []string{"http://198.51.100.70:8090", "http://192.0.2.15:8090"} {
+		if err := forbidden(map[string]string{"-base": ok}); err != nil {
+			t.Errorf("%s fälschlich abgelehnt: %v", ok, err)
+		}
+	}
+}
+
 func TestCheckSSHHostAndBase(t *testing.T) {
-	for _, h := range []string{"michael@10.10.0.17", "pdh1", "user@host.example"} {
+	for _, h := range []string{"admin@192.0.2.17", "pdh1", "user@host.example"} {
 		if err := checkSSHHost(h); err != nil {
 			t.Errorf("%q: %v", h, err)
 		}
@@ -161,10 +206,10 @@ func TestCheckSSHHostAndBase(t *testing.T) {
 			t.Errorf("%q hätte abgelehnt werden müssen", h)
 		}
 	}
-	if b, err := checkBase("http://10.10.0.15:8090/"); err != nil || b != "http://10.10.0.15:8090" {
+	if b, err := checkBase("http://192.0.2.15:8090/"); err != nil || b != "http://192.0.2.15:8090" {
 		t.Errorf("checkBase: %q %v", b, err)
 	}
-	for _, b := range []string{"", "10.10.0.15:8090", "ftp://x", "http://"} {
+	for _, b := range []string{"", "192.0.2.15:8090", "ftp://x", "http://"} {
 		if _, err := checkBase(b); err == nil {
 			t.Errorf("%q hätte abgelehnt werden müssen", b)
 		}
@@ -172,8 +217,8 @@ func TestCheckSSHHostAndBase(t *testing.T) {
 }
 
 func TestDescribeDSNHidesPassword(t *testing.T) {
-	got := describeDSN("postgres://pdh:geheim@10.10.0.15:5432/pdh?sslmode=disable")
-	if got != "10.10.0.15:5432/pdh" || strings.Contains(got, "geheim") {
+	got := describeDSN("postgres://pdh:geheim@192.0.2.15:5432/pdh?sslmode=disable")
+	if got != "192.0.2.15:5432/pdh" || strings.Contains(got, "geheim") {
 		t.Errorf("describeDSN = %q", got)
 	}
 }

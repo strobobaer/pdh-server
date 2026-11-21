@@ -400,8 +400,8 @@ der inotify-Meldungen, Fälle aus Abschnitt 7, Dienste je Rolle, Prüflauf.
 03.11.; je 44 GB frei, 3,2 GB RAM). Die Abnahme installiert sie über `--verbund`, der Name
 ist ein Parameter. Der Eintrag bei Cloudflare wird erst für die Abnahme angelegt. Geprüft
 wird: Tausch und Ausfall mit Web, Desktop-Client und Handy-App, über den Tunnel und über
-`10.10.0.15`; Freigabe-Link und Kalender nach dem Wechsel; Karten-Test wie bei `/32`.
-**Auf 10.10.0.202 wird nichts getestet.**
+`192.0.2.15`; Freigabe-Link und Kalender nach dem Wechsel; Karten-Test wie bei `/32`.
+**Auf 192.0.2.202 wird nichts getestet.**
 
 ## 13. Handbuch, Änderungsprotokoll, Version
 

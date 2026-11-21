@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="referrer" content="no-referrer">
-<title>PDH – {{t "Anmelden"}}</title>
+<title>PDH – Pulse Data Hub · {{t "Anmelden"}}</title>
 {{if .Brand.AppLogo}}<link rel="icon" href="{{.Brand.AppLogo}}"><link rel="manifest" href="/site.webmanifest">{{else}}<link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="/apple-touch-icon.png"><link rel="manifest" href="/site.webmanifest">{{end}}
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -61,7 +61,7 @@ html[data-style="fiori"] .error{color:#aa0808}
   </form>
   <div class="logo">
     {{if .Brand.AppLogo}}<img src="{{.Brand.AppLogo}}" alt="" style="width:38px;height:38px;object-fit:contain;border-radius:8px">{{else}}<div class="logo-icon">P</div>{{end}}
-    <div><div class="logo-text">{{or .Brand.AppName "PDH"}}</div><div class="logo-sub">Prozess Data Hub</div></div>
+    <div><div class="logo-text">{{or .Brand.AppName "PDH"}}</div><div class="logo-sub">Pulse Data Hub</div></div>
   </div>
   {{if eq .Mode "forgot"}}
   <h2>{{t "Passwort vergessen"}}</h2>

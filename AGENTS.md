@@ -516,7 +516,7 @@ und 3 drückt bis auf Weiteres der Anwender.
     Umstellen per Migration oder in die Ausnahmen des Tests aufnehmen –
     Entscheidung offen.
 15. **Zurückgestellt (kein Auftrag):** Abteilungsfeinheiten Rüstzeiten,
-    Datennetz Paket 2/3, Buchungssystem/Lizenzen, Firmenstammdaten.
+    Datennetz Paket 2/3, Buchungssystem/Lizenzen.
 16. **ESPPDH: alle Sensoren, Webserver, Werte an Anlage und Terminal,
     Handshake, Plausibilität** (Wünsche des Anwenders vom 21.11.2026) –
     Entwurf `docs/superpowers/specs/2026-11-21-esppdh-sensoren-webserver-design.md`
@@ -525,19 +525,24 @@ und 3 drückt bis auf Weiteres der Anwender.
     Teile: 0.82.11 Webserver v3 (ohne Durchreiche – Anmelde-Cookie
     `pdh_token` ist im Browser lesbar), Adressmeldung, Reiter „ESPPDH“,
     Sensorwerte am Anlagenterminal (neues Recht `esppdh.values`),
-    Handshake-Zähler überall; 0.82.12 Sensorkatalog aus ESPHome (Ansatz C);
-    0.82.13 Plausibilität mit Betriebszeiten der Anlage – noch zu besprechen
+    Handshake-Zähler überall; danach Sensorkatalog aus ESPHome (Ansatz C,
+    nicht mehr 0.82.12 – die Nummer ging an Lizenz und Name, siehe 18);
+    danach Plausibilität mit Betriebszeiten der Anlage – noch zu besprechen
     (Quelle der Betriebszeiten, „Minimal- und Maximalzeit“). Bauplan Teil 1:
     `docs/superpowers/plans/2026-11-21-esppdh-teil1.md` (8 Aufgaben,
     Migration 186; Werte-Speicher im Broker statt eigenem Abo, weil
-    `reconcileMqttConsumer` alle Abos löscht). **Teil 1 (0.82.11) gebaut**
-    auf `feature/esppdh-sensoren` (21.11.2026, nicht gepusht; Fortschritt und
-    Entscheidungen im Ledger `.superpowers/sdd/2026-11-21-esppdh-teil1/`).
+    `reconcileMqttConsumer` alle Abos löscht). **Teil 1 (0.82.11) auf
+    `main`** (21.11.2026, Merge `be6f57c`) und dem Testverbund, im Browser
+    geprüft (20 Ansichten: Reiter „ESPPDH“, Terminal mit und ohne Karte,
+    Schnellübersicht; Fiori/Fluent, hell/dunkel). 14 kleine Befunde der
+    Schlussprüfung stehen im Ledger `.superpowers/sdd/2026-11-21-esppdh-teil1/`.
     Wichtig: `web_server` braucht `ota: false` – ESPHome lädt sonst über
     `captive_portal` von selbst `ota.web_server` (mit `esphome config`
     2026.10.2 per Docker geprüft). Terminal-Tests laufen mit
-    `-tags integration`. Offen: Schlussprüfung, Freigabe Push/Merge,
-    Verbund-Update, Browserprüfung; echte Platine (Anwender). Danach Teil 2.
+    `-tags integration`. Offen: Soll der Kasten einer Unteranlage auf der
+    Schnellübersicht gelb werden, wenn ihr Handshake steht? (Anwender);
+    Bestand: Karte bei 320 px, Reiterleiste, Punkt in Fiori bei 768 px;
+    echte Platine (Anwender). Danach Teil 2.
 17. **Eigenes Projekt: ESPPDH-Vorlagen für Messaufgaben** (Wunsch des
     Anwenders vom 21.11.2026, vom Anwender ausdrücklich als separates
     Projekt eingeordnet, noch nicht begonnen): eigene Vorlagen „mit Hilfe“
@@ -548,6 +553,35 @@ und 3 drückt bis auf Weiteres der Anwender.
     Rechnung und Anleitung vor, der Anwender bestätigt – ohne Update.
     Offen: wer Vorlagen anlegen darf; Vorschlag: Gerät misst, das PDH rechnet und bewertet (kein
     `lambda` auf dem Gerät). Baut auf 16 (Teil 1 und 2) auf.
+18. **0.82.12 Lizenz und Name** (Entscheidungen des Anwenders vom
+    21.11.2026: „lizenz A“, „pdh pulse data hub“, „Ip Adressen Xx en“):
+    AGPL-3.0-or-later mit Ausnahme für erzeugte Ausgaben
+    (`LICENSE-EXCEPTION.md`), Lizenzen der Fremdbestandteile in
+    `THIRD_PARTY_LICENSES.md`; Name „PDH – Pulse Data Hub“ (Kurzname „PDH“
+    in der Kopfleiste bleibt); interne Adressen in allen Dateien außer
+    dieser durch Beispieladressen ersetzt (`10.10.0.x` → `192.0.2.x`,
+    IPv6-Präfix → `2001:db8::`, `/home/michael` → `/home/pdh`). Hier in
+    AGENTS.md bleiben die echten Adressen. **Lastprüfung:** vor Läufen
+    gegen den Testverbund `export PDH_LAST_PRODUCTION=10.10.0.202` setzen –
+    ohne die Angabe lässt `deploy/lab/last` nur Ziele auf diesem Rechner zu.
+    Offen vor einer Veröffentlichung: private Domain in 29 Dateien (u. a.
+    Nextcloud-App), Name/Benutzer in Tests, Handbuch-Skizze und
+    `tiamqtt/testdata/Daten.db`, VLAN-Beispiele `10.10.x.0/24` (echte
+    Netze?), Git-Verlauf (ZIPs), AGENTS.md und `docs/superpowers`; vier
+    Lizenzfragen (englischer Text maßgeblich, Link „Quellcode“ in der
+    Oberfläche, `go-modules-licenses.txt` behalten, Test für die
+    Vollständigkeit von `THIRD_PARTY_LICENSES.md`); Markenprüfung
+    „Pulse Data Hub“ angeboten.
+19. **Firmenstammdaten** (Wunsch des Anwenders vom 21.11.2026): Fenster am
+    obersten Knoten der Infrastruktur; die Daten gelten unternehmensweit im
+    Mail- und Postverkehr, der angemeldete Benutzer ist Ansprechpartner. In
+    Besprechung – offen: wo die Daten erscheinen (Vorschlag A: alle Mails mit
+    Absendername und Fußzeile samt Pflichtangaben, Briefkopf in Druck und
+    Wartungsprotokoll, {Firma} der M365-Signaturen; B: Bestellung als PDF an
+    den Lieferanten als eigenes Paket danach). Befund: mehrere oberste Knoten
+    möglich, kein Typ „Unternehmen“, keine eigenen Adress-, Steuer- oder
+    Bankdaten; Firmenname liegt doppelt (`branding.app_name`,
+    `m365_company_name`).
 
 Docker Desktop startet nach einem Neustart des Windows-Rechners nicht von
 selbst – ohne ihn fehlen der Zeuge und die Labor-Datenbank für die Tests.

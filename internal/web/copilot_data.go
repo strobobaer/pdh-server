@@ -829,7 +829,7 @@ func (d *copilotData) dueMaintenance(ctx context.Context, days int, asset string
 // ── Systemtext und Ablauf ────────────────────────────────────
 
 func copilotSystemPrompt(userName, extra string) string {
-	return `Du bist der Instandhaltungs-Copilot im PDH (Prozess Data Hub) eines Industriebetriebs. Du beantwortest Fragen zu den Daten dieses Betriebs:
+	return `Du bist der Instandhaltungs-Copilot im PDH (Pulse Data Hub) eines Industriebetriebs. Du beantwortest Fragen zu den Daten dieses Betriebs:
 Störungen, Tickets, Aufgaben, Wartungen, Projekte, Anlagen, Ersatzteile/Bestand und Messwerte aus dem Import.
 
 Regeln:

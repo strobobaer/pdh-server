@@ -13,13 +13,13 @@ import (
 )
 
 func TestEnvFileOwnerProblem(t *testing.T) {
-	p, fix := envOwnerProblem("root", "michael", "michael", "/home/michael/pdh/.env", "644")
+	p, fix := envOwnerProblem("root", "michael", "michael", "/home/pdh/pdh/.env", "644")
 	for _, want := range []string{"gehört „root“", "PDH läuft als „michael“"} {
 		if !strings.Contains(p, want) {
 			t.Errorf("Problem %q ohne %q", p, want)
 		}
 	}
-	if fix != "sudo chown michael:michael /home/michael/pdh/.env && sudo chmod 600 /home/michael/pdh/.env" {
+	if fix != "sudo chown michael:michael /home/pdh/pdh/.env && sudo chmod 600 /home/pdh/pdh/.env" {
 		t.Errorf("Abhilfe = %q", fix)
 	}
 	// Gleicher Besitzer, aber keine Schreibrechte: Rechte nennen statt Besitzer.
@@ -98,13 +98,13 @@ func TestCheckEnvFileNotWritable(t *testing.T) {
 
 func TestServerConfigShowsEnvFileReason(t *testing.T) {
 	tmpl := loadTestTemplates(t)
-	d := ServerConfigData{EnvFile: "/home/michael/pdh/.env", FileWritable: false,
+	d := ServerConfigData{EnvFile: "/home/pdh/pdh/.env", FileWritable: false,
 		FileProblem:    "Die Datei gehört „root“, PDH läuft als „michael“.",
-		FileFix:        "sudo chown michael:michael /home/michael/pdh/.env && sudo chmod 600 /home/michael/pdh/.env",
+		FileFix:        "sudo chown michael:michael /home/pdh/pdh/.env && sudo chmod 600 /home/pdh/pdh/.env",
 		FileExposed:    "Die Einstellungsdatei ist für andere Benutzer des Servers lesbar (Rechte 644).",
-		FileExposedFix: "sudo chmod 600 /home/michael/pdh/.env"}
+		FileExposedFix: "sudo chmod 600 /home/pdh/pdh/.env"}
 	out := renderPage(t, tmpl, "server_config", d)
-	for _, want := range []string{"nicht beschreibbar", "gehört „root“", "sudo chown michael:michael /home/michael/pdh/.env", "Rechte 644", "sudo chmod 600 /home/michael/pdh/.env"} {
+	for _, want := range []string{"nicht beschreibbar", "gehört „root“", "sudo chown michael:michael /home/pdh/pdh/.env", "Rechte 644", "sudo chmod 600 /home/pdh/pdh/.env"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("Seite ohne %q", want)
 		}

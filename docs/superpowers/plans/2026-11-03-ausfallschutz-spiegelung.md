@@ -26,7 +26,7 @@ Zweig `feature/ausfallschutz-spiegelung` ab `feature/verbund-update` (nach dem M
 - Neue Oberfläche in Fiori und Fluent, hell und dunkel und bei 390 px prüfen; Farben nur über Variablen.
 - Migration 155 (vor dem Merge prüfen, ob die Nummer noch frei ist); Version: nächste Korrekturversion nach `git show origin/main:VERSION`, nie eine Nebenversion. CHANGELOG und Handbuch im selben Zug.
 - Tests: `go test ./...`. Tests mit echtem rsync tragen `//go:build linux` und laufen im Labor-Container. Gezielte `-run`-Läufe von `internal/web` können wegen `i18nDir` falsch fehlschlagen; maßgeblich ist der Paketlauf.
-- Getestet wird nur auf 10.10.0.14/.17, nie auf 10.10.0.202.
+- Getestet wird nur auf 192.0.2.14/.17, nie auf 192.0.2.202.
 
 ## Review Focus
 
@@ -330,12 +330,12 @@ Zweig `feature/ausfallschutz-spiegelung` ab `feature/verbund-update` (nach dem M
 
 ### Task 14: Abnahme im echten Netz
 
-Findet auf 10.10.0.14/.17 mit Zeuge statt. Der Anwender führt die Befehle aus; jede Nachricht nennt sie vollständig, mit Rechner und erwartetem Ergebnis. Erst nach dem Merge von PR #14 und dem Wechsel der Testserver auf `main` beginnen (Updates laufen nur vorwärts: einmal von Hand).
+Findet auf 192.0.2.14/.17 mit Zeuge statt. Der Anwender führt die Befehle aus; jede Nachricht nennt sie vollständig, mit Rechner und erwartetem Ergebnis. Erst nach dem Merge von PR #14 und dem Wechsel der Testserver auf `main` beginnen (Updates laufen nur vorwärts: einmal von Hand).
 
 - [ ] **Fall 1: Spiegelung ohne Nextcloud.** Einschalten, Erstabgleich, PDH-Anhang hochladen: binnen Sekunden auf dem passiven Server; `pdh-ha mirror status`.
 - [ ] **Fall 2: Tausch hin und zurück.** Der Anhang öffnet sich im PDH auf beiden Seiten; Dauer der Sperre notieren.
 - [ ] **Fall 3: Harter Ausfall.** Aktive VM ausschalten, Übernahme, Prüflauf, Rückkehr, Rückkehrer im Papierkorb.
-- [ ] **Fall 4: Nextcloud installieren.** `--verbund aktiv-neu` am aktiven, `--verbund passiv` am passiven Server; den Namen legt der Anwender erst jetzt in Cloudflare an; `10.10.0.15` in `trusted_domains`; Server-Zertifikat aus dem PDH.
-- [ ] **Fall 5: Nextcloud umschalten.** Tausch und Ausfall mit Web, Desktop-Client und Handy-App, über Tunnel und `10.10.0.15`: Clients melden sich neu an, ohne Neuabgleich aller Dateien und ohne Konfliktkopien; Freigabe-Link und Kalender funktionieren.
+- [ ] **Fall 4: Nextcloud installieren.** `--verbund aktiv-neu` am aktiven, `--verbund passiv` am passiven Server; den Namen legt der Anwender erst jetzt in Cloudflare an; `192.0.2.15` in `trusted_domains`; Server-Zertifikat aus dem PDH.
+- [ ] **Fall 5: Nextcloud umschalten.** Tausch und Ausfall mit Web, Desktop-Client und Handy-App, über Tunnel und `192.0.2.15`: Clients melden sich neu an, ohne Neuabgleich aller Dateien und ohne Konfliktkopien; Freigabe-Link und Kalender funktionieren.
 - [ ] **Fall 6: Karten-Test.** `sudo systemd-run --on-active=2 --unit=pdh-netz-test /bin/sh -c 'ip link set eth0 down; sleep 6; ip link set eth0 up'` am aktiven Server: Spiegelung holt selbst auf, Alarm nur nach Überschreiten der Frist.
 - [ ] **Abschluss:** Gesamtreview, Prüfung vor dem Merge nach AGENTS.md, Pull-Request; Merge nur mit Freigabe des Anwenders.

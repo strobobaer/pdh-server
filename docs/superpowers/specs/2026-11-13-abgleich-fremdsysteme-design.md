@@ -246,8 +246,8 @@ Funktionen füllen kann wie die Oberfläche.
 
 **Messergebnisse (Task 1)**
 
-Gemessen am 2026-11-13, nur lesend, am Testverbund (10.10.0.14 = `pdh`,
-passiv; 10.10.0.17 = `pdh-server`, aktiv, Amtszeit 72, Version 0.80.1).
+Gemessen am 2026-11-13, nur lesend, am Testverbund (192.0.2.14 = `pdh`,
+passiv; 192.0.2.17 = `pdh-server`, aktiv, Amtszeit 72, Version 0.80.1).
 
 - **A – Tunnel:** Auf keinem der beiden Server gibt es einen ausgehenden Tunnel.
   `ip -br addr` zeigt nur `lo` und `eth0` (keine `pdhout*`), `ip route` nur
@@ -270,9 +270,9 @@ passiv; 10.10.0.17 = `pdh-server`, aktiv, Amtszeit 72, Version 0.80.1).
   einem Tausch steht ein ausgehender Tunnel am neuen aktiven Server nicht
   sicher. Passt zur Festlegung oben: Lauf überspringen und melden. Kein
   Rollentausch für die Messung.
-- **C – Absenderadresse:** `ip route get 10.10.0.1` liefert auf beiden Servern
-  die **eigene** Adresse als Absender: `10.10.0.17` auf dem aktiven Server,
-  `10.10.0.14` auf dem passiven. Die mitwandernde Adresse `10.10.0.15/32` (am
+- **C – Absenderadresse:** `ip route get 192.0.2.1` liefert auf beiden Servern
+  die **eigene** Adresse als Absender: `192.0.2.17` auf dem aktiven Server,
+  `192.0.2.14` auf dem passiven. Die mitwandernde Adresse `192.0.2.15/32` (am
   aktiven Server als Zweitadresse auf `eth0`) wird nicht verwendet. Folge: Im
   Fremdnetz müssen **beide** Serveradressen (.14 und .17, nicht nur .15) für
   die Datenbank freigegeben werden; die Prüfung der Verbindung nennt die

@@ -17,7 +17,7 @@ To                         Action      From
 22/tcp (OpenSSH)           ALLOW IN    Anywhere
 80/tcp                     ALLOW IN    Anywhere
 1883/tcp                   ALLOW IN    Anywhere                   # pdh-mqtt
-7480/tcp                   ALLOW IN    10.10.0.14                 # pdh-ha
+7480/tcp                   ALLOW IN    192.0.2.14                 # pdh-ha
 9000:9010/tcp              ALLOW IN    Anywhere
 5353/udp                   ALLOW IN    Anywhere
 4000                       ALLOW IN    Anywhere

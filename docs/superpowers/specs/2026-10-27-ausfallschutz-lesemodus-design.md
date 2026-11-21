@@ -128,7 +128,7 @@ der Reiter Ausfallschutz; kurz zwischengespeichert, ca. 5 s).
 ## 6. Anzeige
 
 - Band oben auf jeder Seite, orange: „Spiegel – nur lesen · Datenstand vor 2 s ·
-  Aktiver Server: 10.10.0.17 [öffnen]“; die Adresse kommt aus dem pdh-ha-Status.
+  Aktiver Server: 192.0.2.17 [öffnen]“; die Adresse kommt aus dem pdh-ha-Status.
   **Datenstand:** „aktuell“, wenn der WAL-Empfänger streamt (letzte Nachricht
   höchstens 60 s alt) und Empfangs-LSN = Wiedergabe-LSN; sonst „vor <Dauer>“
   aus `now() - pg_last_xact_replay_timestamp()`.

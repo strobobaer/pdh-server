@@ -212,4 +212,4 @@ Abweichung vom Entwurf (§2 „abonniert per SubscribeTopic“): `reconcileMqttC
 - [ ] **Step 4: AGENTS.md** – Punkt 16 auf „gebaut auf `feature/esppdh-sensoren`, nicht gepusht“ setzen, Stand-Datum.
 - [ ] **Step 5: Commit** – `"ESPPDH Teil 1: Handbuch, Änderungsprotokoll, Version 0.82.11"`
 
-Nach dem Bau (nur mit Freigabe des Anwenders): Merge nach `main` nach der Prüfung aus `AGENTS.md`, Verbund-Update, Browserprüfung (Reiter, Terminal mit/ohne Karte, Schnellübersicht; Fiori/Fluent, hell/dunkel, 320–1366 px), danach 10.10.0.202 nach „10.10.0.202 aktualisieren“.
+Nach dem Bau (nur mit Freigabe des Anwenders): Merge nach `main` nach der Prüfung aus `AGENTS.md`, Verbund-Update, Browserprüfung (Reiter, Terminal mit/ohne Karte, Schnellübersicht; Fiori/Fluent, hell/dunkel, 320–1366 px), danach 192.0.2.202 nach „192.0.2.202 aktualisieren“.

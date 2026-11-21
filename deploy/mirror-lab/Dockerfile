@@ -14,6 +14,7 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags="-X main.buildCommit=mirror-lab" -
     && CGO_ENABLED=0 go test -tags mirrorlab -count=1 -run '^$' ./internal/web >/dev/null
 
 FROM ubuntu:24.04 AS app
+LABEL org.opencontainers.image.licenses="AGPL-3.0-or-later"
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates curl \
@@ -22,6 +23,8 @@ WORKDIR /app
 COPY --from=src /out/pdh /out/fakeha ./
 COPY migrations ./migrations
 COPY web ./web
+COPY LICENSE COPYING.md LICENSE-EXCEPTION.md THIRD_PARTY_LICENSES.md ./licenses/
+COPY third_party/notices ./licenses/notices
 COPY deploy/mirror-lab/pdh-loop.sh /usr/local/bin/pdh-loop
 EXPOSE 8090
 CMD ["bash", "/usr/local/bin/pdh-loop"]
