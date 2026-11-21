@@ -520,14 +520,15 @@ und 3 drückt bis auf Weiteres der Anwender.
 16. **ESPPDH: alle Sensoren, Webserver, Werte an Anlage und Terminal,
     Handshake, Plausibilität** (Wünsche des Anwenders vom 21.11.2026) –
     Entwurf `docs/superpowers/specs/2026-11-21-esppdh-sensoren-webserver-design.md`
-    auf Branch `feature/esppdh-sensoren`, **noch nicht freigegeben**. Drei
+    auf Branch `feature/esppdh-sensoren`, **Teil 1 und 2 freigegeben
+    (21.11.2026)**, Handshake auf der Anlagen-Schnellübersicht. Drei
     Teile: 0.82.11 Webserver v3 (ohne Durchreiche – Anmelde-Cookie
     `pdh_token` ist im Browser lesbar), Adressmeldung, Reiter „ESPPDH“,
     Sensorwerte am Anlagenterminal (neues Recht `esppdh.values`),
     Handshake-Zähler überall; 0.82.12 Sensorkatalog aus ESPHome (Ansatz C);
     0.82.13 Plausibilität mit Betriebszeiten der Anlage – noch zu besprechen
-    (Quelle der Betriebszeiten, „Minimal- und Maximalzeit“). Offen: ob
-    „Anlagenstand“ die Anlagen-Schnellübersicht meint.
+    (Quelle der Betriebszeiten, „Minimal- und Maximalzeit“). Nächster
+    Schritt: Bauplan Teil 1.
 17. **Eigenes Projekt: ESPPDH-Vorlagen für Messaufgaben** (Wunsch des
     Anwenders vom 21.11.2026, vom Anwender ausdrücklich als separates
     Projekt eingeordnet, noch nicht begonnen): eigene Vorlagen „mit Hilfe“

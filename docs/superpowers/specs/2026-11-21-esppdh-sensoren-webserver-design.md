@@ -1,6 +1,7 @@
 # ESPPDH: alle Sensoren, Webserver, Werte an Anlage und Terminal, Handshake
 
-Stand: 21.11.2026 – Entwurf, vom Anwender noch nicht freigegeben.
+Stand: 21.11.2026 – Teil 1 und Teil 2 vom Anwender freigegeben (21.11.2026);
+Teil 3 noch zu besprechen.
 Baut auf `docs/superpowers/specs/2026-11-18-esppdh-design.md` (Paket 1, 0.82.0)
 und `2026-11-19-esphome-aktuell-design.md` (0.82.1) auf.
 
@@ -256,8 +257,8 @@ nicht (Cookies gelten je Rechnername). Neu zur Wahl gestellt:
 - **Orte:** Reiter „ESPPDH“ (je Gerät), Anlagenterminal (je Gerät und je
   Heartbeat-Zuordnung der Anlage), Karte der Anlagen-Schnellübersicht (eine
   Zeile „Handshake“ je Quelle der Anlage samt Unteranlagen; die Karte färbt
-  sich gelb, wenn ein Handshake steht). *Annahme:* „Anlagenstand“ meint die
-  Anlagen-Schnellübersicht – vom Anwender noch zu bestätigen.
+  sich gelb, wenn ein Handshake steht). „Anlagenstand“ meint die
+  Anlagen-Schnellübersicht (vom Anwender bestätigt am 21.11.2026).
 
 ### Rechte Teil 1
 
@@ -377,6 +378,8 @@ Bau von Teil 3 eigens besprochen und hier ergänzt.
    Direktlink (21.11.2026, nach dem Befund zur Anmeldung).
 3. Sensorwerte am Terminal für Instandhalter, Handshake überall,
    Plausibilität als eigener Teil (21.11.2026).
+4. Handshake auf der Anlagen-Schnellübersicht („Anlagenstand“), Teil 1 und 2
+   freigegeben (21.11.2026).
 
 ## Eigene Entscheidungen (zum Gegenlesen)
 
@@ -395,8 +398,8 @@ Bau von Teil 3 eigens besprochen und hier ergänzt.
 
 ## Offen
 
-- „Anlagenstand“ = Anlagen-Schnellübersicht? (Annahme, siehe Teil 1 §6.)
 - Teil 3 vollständig (siehe oben).
+- Vorlagen für Messaufgaben sind ein eigenes Projekt (`AGENTS.md`, Punkt 17).
 
 ## Offen für den Bauer
 
