@@ -12,10 +12,14 @@ import (
 )
 
 // handshakeView: ein Handshake für die Anzeige. ID bleibt je Quelle gleich (Puls beim Weiterzählen).
+// Drei Zustände: läuft (Running), steht (Stopped: es kam schon ein Wert bzw. die Karenz ist um,
+// aber kein neuer) und – beides falsch – noch kein Lebenszeichen (grau, kein Alarm: Gerät noch
+// nicht geflasht, Broker an diesem Server aus, neue Zuordnung in der Karenz).
 type handshakeView struct {
 	ID, Label, Count string
-	Running          bool
+	Running, Stopped bool
 	Since            string // Zeitpunkt des letzten Werts, wenn er steht ("" = nie einer)
+	infra            string // Anlage der Quelle (Verteilung auf Karten der Schnellübersicht)
 }
 
 // handshakeSince: Zeitpunkt für „steht seit …“ – heute nur die Uhrzeit, sonst mit Datum.
@@ -39,7 +43,7 @@ func handshakeFromValue(id, label, count string, at time.Time, interval time.Dur
 	}
 	v.Running = count != "" && now.Sub(at) <= 3*interval
 	if !v.Running {
-		v.Since = handshakeSince(at, now)
+		v.Stopped, v.Since = true, handshakeSince(at, now)
 	}
 	return v
 }
@@ -50,7 +54,7 @@ func (h *Handler) heartbeatHandshakes(ctx context.Context, infraIDs []string) ([
 		return nil, nil
 	}
 	rows, err := h.db.Query(ctx, `SELECT m.id::text, m.name, COALESCE(m.last_value, ''), m.last_received_at,
-			COALESCE(`+heartbeatSilentSQL+`, false)
+			COALESCE(`+heartbeatSilentSQL+`, false), COALESCE(m.infrastructure_id::text, '')
 		FROM import_mappings m
 		WHERE m.heartbeat_seconds IS NOT NULL AND m.infrastructure_id = ANY($1::uuid[])
 		ORDER BY lower(m.name), m.id`, infraIDs)
@@ -61,18 +65,19 @@ func (h *Handler) heartbeatHandshakes(ctx context.Context, infraIDs []string) ([
 	now := time.Now()
 	var out []handshakeView
 	for rows.Next() {
-		var id, name, last string
+		var id, name, last, infra string
 		var at *time.Time
 		var silent bool
-		if err := rows.Scan(&id, &name, &last, &at, &silent); err != nil {
+		if err := rows.Scan(&id, &name, &last, &at, &silent, &infra); err != nil {
 			return nil, err
 		}
-		v := handshakeView{ID: "hb-" + id, Label: name, Count: last}
+		v := handshakeView{ID: "hb-" + id, Label: name, Count: last, infra: infra}
 		if v.Count == "" {
 			v.Count = "–"
 		}
-		v.Running = at != nil && !silent
-		if !v.Running && at != nil {
+		// steht = heartbeatSilentSQL (auch: nie ein Wert und Karenz ab Anlage um); in der Karenz grau
+		v.Running, v.Stopped = at != nil && !silent, silent
+		if v.Stopped && at != nil {
 			v.Since = handshakeSince(*at, now)
 		}
 		out = append(out, v)

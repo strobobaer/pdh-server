@@ -75,7 +75,7 @@ func valuesDevice() esppdhDevice {
 func TestEsppdhValuesBrokerDown(t *testing.T) {
 	h := &Handler{topicSrc: fakeTopics{running: false}}
 	v := h.esppdhValues(t.Context(), []esppdhDevice{valuesDevice()}, time.Now())
-	if len(v) != 1 || v[0].Available || len(v[0].Groups) != 0 {
+	if len(v) != 1 || v[0].Available || len(v[0].Groups) != 0 || v[0].Handshake.Stopped {
 		t.Errorf("Broker aus: %+v, erwartet nicht verfügbar ohne Zeilen", v)
 	}
 }

@@ -137,8 +137,8 @@ func (h *Handler) esppdhValues(ctx context.Context, devs []esppdhDevice, now tim
 			switch {
 			case ti.Handshake:
 				at := time.Time{}
-				if has {
-					at = x.At
+				if has && bv.ok {
+					at = x.At // Broker hier aus (Spiegel): unbekannt statt „steht“
 				}
 				v.Handshake = handshakeFromValue("esp-"+d.ID, ti.Name, x.Payload, at, ti.Interval, now)
 				continue

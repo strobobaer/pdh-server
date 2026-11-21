@@ -15,11 +15,11 @@ func TestHandshakeFromValue(t *testing.T) {
 		t.Errorf("frischer Wert: %+v", run)
 	}
 	stop := handshakeFromValue("x", "Laufzeit", "120", now.Add(-31*time.Second), 10*time.Second, now)
-	if stop.Running || stop.Since == "" {
+	if stop.Running || !stop.Stopped || stop.Since == "" {
 		t.Errorf("Wert vor 31 s bei 10 s Intervall: %+v, erwartet steht mit Zeitpunkt", stop)
 	}
 	none := handshakeFromValue("x", "Laufzeit", "", time.Time{}, 10*time.Second, now)
-	if none.Running || none.Count != "–" || none.Since != "" {
+	if none.Running || none.Stopped || none.Count != "–" || none.Since != "" { // noch kein Lebenszeichen: weder läuft noch steht
 		t.Errorf("ohne Wert: %+v", none)
 	}
 }
@@ -51,7 +51,7 @@ func TestHeartbeatHandshakes(t *testing.T) {
 	if v := got["hb-frisch-"+e.sfx]; !v.Running || v.Count != "17" {
 		t.Errorf("frische Zuordnung: %+v", v)
 	}
-	if v := got["hb-alt-"+e.sfx]; v.Running || v.Since == "" {
+	if v := got["hb-alt-"+e.sfx]; v.Running || !v.Stopped || v.Since == "" {
 		t.Errorf("alte Zuordnung: %+v, erwartet steht", v)
 	}
 }

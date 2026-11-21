@@ -70,14 +70,14 @@ func TestWatchHandshakeRows(t *testing.T) {
 		case "PW-HB " + e.sfx:
 			hb = h.Running && h.Count == "7"
 		case "ESP-Gerät pw-" + e.sfx:
-			esp = !h.Running
+			esp = !h.Running && !h.Stopped // noch nie geflasht: kein Lebenszeichen, kein Alarm
 		}
 	}
 	if !hb || !esp {
 		t.Errorf("Zeilen: %+v", c.Handshakes)
 	}
-	if c.HandshakeDown != 1 || c.State() != "amber" {
-		t.Errorf("Gerät ohne Lebenszeichen: HandshakeDown %d, Ampel %s – erwartet 1, amber", c.HandshakeDown, c.State())
+	if c.HandshakeDown != 0 || c.State() != "green" {
+		t.Errorf("Gerät ohne bisheriges Lebenszeichen: HandshakeDown %d, Ampel %s – erwartet 0, green", c.HandshakeDown, c.State())
 	}
 }
 

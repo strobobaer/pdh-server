@@ -285,7 +285,7 @@ func (h *Handler) watchBody(ctx context.Context, b *watchBoard, only bool, lang 
 		c.SetupState = setupStates[c.ID]
 		c.Handshakes, c.hsCounts = h.watchHandshakes(ctx, c.ID)
 		for _, hs := range c.Handshakes {
-			if !hs.Running {
+			if hs.Stopped { // „noch kein Lebenszeichen“ färbt die Karte nicht
 				c.HandshakeDown++
 			}
 		}

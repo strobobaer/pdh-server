@@ -105,10 +105,10 @@
       return e;
     };
     var hsNode = function (h) {
-      var s = mk('span', 'hs ' + (h.Running ? 'hs-run' : 'hs-stop'));
+      var s = mk('span', 'hs ' + (h.Running ? 'hs-run' : (h.Stopped ? 'hs-stop' : 'hs-none')));
       s.appendChild(mk('span', 'hs-label', h.Label));
       s.appendChild(mk('code', 'hs-count', h.Count));
-      s.appendChild(mk('span', 'hs-state', h.Running ? 'läuft' : (h.Since ? 'steht seit ' + h.Since : 'kein Lebenszeichen')));
+      s.appendChild(mk('span', 'hs-state', h.Running ? 'läuft' : (h.Stopped ? (h.Since ? 'steht seit ' + h.Since : 'kein Lebenszeichen') : 'noch kein Lebenszeichen')));
       if (hsPrev[h.ID] !== undefined && hsPrev[h.ID] !== h.Count) s.classList.add('hs-pulse');
       hsPrev[h.ID] = h.Count;
       return s;
