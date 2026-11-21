@@ -18,6 +18,7 @@ func sampleDevice(board string, blocks ...Block) Device {
 		SSID: "Werk-Produktion", WLANPassword: "wlan-kennwort-1", APPassword: "notzugang-kennwort-1",
 		BrokerHost: "mqtt.werk.example", BrokerPort: 1883,
 		MQTTUser: "esppdh-halle1-s0", MQTTPassword: "mqtt-kennwort-1",
+		WebServer: true, WebPassword: "web-kennwort-1",
 		Blocks: blocks,
 	}
 }

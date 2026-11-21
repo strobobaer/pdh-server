@@ -10,6 +10,23 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.82.11] – 2026-11-21
+
+### Neu
+
+- ESPPDH-Geräte haben eine eigene Webseite (ESPHome-Webserver Version 3) mit eigenem Kennwort; sie lässt sich je Gerät ausschalten und ist nur im Netz der Geräte erreichbar.
+- ESPPDH-Geräte melden ihre Adresse; die Geräteseite zeigt einen Knopf „Webseite des Geräts“, sobald die Adresse zur Verbindung des Geräts passt.
+- Die Geräteseite zeigt die letzten Werte des Geräts nach Gruppen und seinen Handshake (Laufzeit-Zähler: grün „läuft“, rot „steht seit …“).
+- An der Anlage gibt es den neuen Reiter „ESPPDH“ mit den Geräten dieser Anlage, ihren letzten Werten, dem Handshake und Links zum Gerät.
+- Am Anlagenterminal sieht ein Instandhalter nach der Kartenanmeldung die Sensoren und Handshakes der Anlage samt Unteranlagen.
+- Die Anlagen-Schnellübersicht zeigt je Anlage die Handshakes von ESPPDH-Geräten und Steuerungen (z. B. TIA-Baustein) mit laufendem Zähler; steht einer, wird die Karte gelb.
+
+### Sicherheit
+
+- Das Kennwort der Geräte-Webseite steht verschlüsselt im PDH; „Kennwort anzeigen“ braucht das Recht zum Bearbeiten, und jedes Anzeigen steht im Server-Protokoll.
+- Über die Geräte-Webseite lässt sich im Betrieb keine Firmware aufspielen (nur im Notzugang), und nichts schalten.
+- Neues Recht „ESPPDH: Sensorwerte ansehen (Anlage und Terminal)“ für Administrator, Manager, Anlagenverantwortliche und Techniker.
+
 ## [0.82.10] – 2026-11-21
 
 ### Behoben

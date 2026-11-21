@@ -47,6 +47,9 @@ type Device struct {
 	MQTTUser     string // Benutzername am Broker, immer „esppdh-<Slug>“
 	MQTTPassword string
 
+	WebServer   bool   // Webseite des Geräts (web_server v3, Port 80) mit Anmeldung
+	WebPassword string // Kennwort der Webseite (Benutzer „pdh“), nötig bei WebServer
+
 	Blocks []Block
 }
 
@@ -55,6 +58,7 @@ const (
 	secretWiFi = "wifi_password"
 	secretAP   = "ap_password"
 	secretMQTT = "mqtt_password"
+	secretWeb  = "web_password"
 )
 
 // Grenzen von ESPHome: Gerätename (esphome.name) höchstens 31 Zeichen, friendly_name höchstens
@@ -205,6 +209,13 @@ func ValidateDevice(d Device) []string {
 	} else {
 		utf8OK(d.MQTTPassword, "Das MQTT-Kennwort")
 	}
+	if d.WebServer {
+		if d.WebPassword == "" {
+			add("Das Kennwort der Webseite fehlt.")
+		} else {
+			utf8OK(d.WebPassword, "Das Kennwort der Webseite")
+		}
+	}
 	if ok {
 		msgs = append(msgs, ValidateBlocks(b, d.Blocks)...)
 	}
@@ -239,6 +250,9 @@ func Generate(d Device) (config, secrets []byte, err error) {
 	} else {
 		root.add("wifi", wifiNode(d)).add("captive_portal", empty())
 	}
+	if d.WebServer {
+		root.add("web_server", webServerNode(platform))
+	}
 	root.add("mqtt", mqttNode(d))
 
 	var uarts, modbus, sensors []*yaml.Node
@@ -260,7 +274,9 @@ func Generate(d Device) (config, secrets []byte, err error) {
 	if len(uarts) > 0 {
 		root.add("uart", seq(uarts...)).add("modbus", seq(modbus...))
 	}
+	sensors = append(sensors, uptimeNode(d.Slug))
 	root.add("sensor", seq(sensors...))
+	root.add("text_sensor", seq(addressNode(d)))
 
 	sec := newMap()
 	if !d.Wired {
@@ -270,6 +286,9 @@ func Generate(d Device) (config, secrets []byte, err error) {
 		sec.add(secretAP, literal(d.APPassword))
 	}
 	sec.add(secretMQTT, literal(d.MQTTPassword))
+	if d.WebServer {
+		sec.add(secretWeb, literal(d.WebPassword))
+	}
 
 	if config, err = encode(root.Node, "ESPPDH: vom PDH erzeugt – Änderungen gehen beim nächsten Bau verloren.\n"+
 		"Kennwörter stehen nicht hier, sondern als !secret in der Geheimnis-Datei.", true); err != nil {
@@ -318,6 +337,44 @@ func wifiNode(d Device) *yaml.Node {
 	return newMap().
 		add("networks", seq(nw.Node)).
 		add("ap", newMap().add("ssid", plain(deviceName(d.Slug))).add("password", secretRef(secretAP)).Node).Node
+}
+
+// webServerNode: Webseite des Geräts (web_server v3) mit Anmeldung „pdh“. ota: false – sonst
+// lädt ESPHome über captive_portal von selbst ota.web_server, und die Webseite nähme im
+// Betrieb Firmware an (/update); so geht das nur noch im aktiven Notzugang (Captive Portal,
+// mit dem Notzugang-Kennwort), geprüft mit ESPHome 2026.10.2 (ota_web_server.cpp). Auf ESP32
+// ist die Seite eingebettet (local), damit sie ohne Internet am Browser lädt; auf ESP8266
+// fehlt dafür meist der Speicher – die Seite lädt dann ihr Programm von oi.esphome.io.
+func webServerNode(platform string) *yaml.Node {
+	ws := newMap().add("port", plain("80")).add("version", plain("3")).add("ota", plain("false"))
+	if platform == "esp32" {
+		ws.add("local", plain("true"))
+	}
+	return ws.add("auth", newMap().add("username", plain("pdh")).add("password", secretRef(secretWeb)).Node).Node
+}
+
+// uptimeNode: Laufzeit in Sekunden als Handshake. Ohne retain: ein still gewordenes Gerät
+// hinterlässt am Broker keinen Wert, der nach einem Neustart des PDH frisch aussähe.
+func uptimeNode(slug string) *yaml.Node {
+	return newMap().
+		add("platform", plain("uptime")).
+		add("name", plain(nameUptime)).
+		add("update_interval", plain(interval)).
+		add("state_topic", plain(infoTopic(slug, topicUptime))).
+		add("retain", plain("false")).Node
+}
+
+// addressNode: eigene IP-Adresse (wifi_info bzw. ethernet_info), mit retain.
+func addressNode(d Device) *yaml.Node {
+	p := "wifi_info"
+	if d.Wired {
+		p = "ethernet_info"
+	}
+	return newMap().
+		add("platform", plain(p)).
+		add("ip_address", newMap().
+			add("name", plain(nameAddress)).
+			add("state_topic", plain(infoTopic(d.Slug, topicAddress))).Node).Node
 }
 
 func mqttNode(d Device) *yaml.Node {

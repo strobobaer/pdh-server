@@ -787,6 +787,21 @@ html .btn-icon.btn-danger{background:var(--red);border-color:var(--red);color:#f
 html .btn-icon.btn-warning{background:var(--amber);border-color:var(--amber);color:#111827}
 html[data-style="fiori"] .sortbar-b{border-radius:999px;border-color:var(--btn-border);background:var(--bg2);color:var(--accent)}
 html[data-style="fiori"] .sortbar-b.on{background:color-mix(in srgb,var(--accent) 14%,var(--bg2));border-color:var(--accent);border-bottom:1px solid var(--accent);font-weight:700}
+/* Handshake (widgets/handshake.gohtml): Zähler einer Quelle, grün läuft / rot steht, Puls bei neuem Wert */
+.hs{display:inline-flex;align-items:center;gap:5px;flex-wrap:wrap;font-size:12.5px;padding:2px 8px;border-radius:999px;border:1px solid var(--border);background:var(--bg2);color:var(--text);max-width:100%}
+.hs .ti{font-size:15px}.hs-run .ti,.hs-run .hs-state{color:var(--green)}.hs-stop .ti,.hs-stop .hs-state{color:var(--red)}.hs-none .ti,.hs-none .hs-state{color:var(--muted)}
+.hs-count{font-variant-numeric:tabular-nums;font-weight:700;word-break:break-all}
+.hs.hs-pulse .ti{animation:hs-pulse .6s ease-out}
+@keyframes hs-pulse{0%{transform:scale(1)}40%{transform:scale(1.45)}100%{transform:scale(1)}}
+@media (prefers-reduced-motion:reduce){.hs.hs-pulse .ti{animation:none}}
+/* Werte eines ESPPDH-Geräts (widgets/esppdh_values.gohtml) */
+.espv{border:1px solid var(--border);border-radius:10px;padding:10px 12px;background:var(--bg2);margin-bottom:10px;min-width:0}
+.espv-head{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px}.espv-name{font-weight:700;color:var(--text);overflow-wrap:anywhere}
+a.espv-name{color:var(--accent);text-decoration:none}.espv-addr{margin:6px 0;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.espv-gname{font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--muted);margin:8px 0 2px}
+.espv-table{width:100%;border-collapse:collapse;font-size:13px}.espv-table td{padding:3px 4px;border-top:1px solid var(--border);overflow-wrap:anywhere}
+.espv-val{font-variant-numeric:tabular-nums;font-weight:600;white-space:nowrap;text-align:right}.espv-age{color:var(--muted);font-size:11.5px;white-space:nowrap;text-align:right;width:1%}
+.espv-stale td{color:var(--muted)}.espv-stale .espv-val{font-weight:400}
 </style>
 <style id="pdh-mobile">
 /* ── Tablet & Smartphone ──────────────────────────────────────
@@ -2190,6 +2205,17 @@ document.addEventListener('DOMContentLoaded', () => {
   document.addEventListener('DOMContentLoaded', () => prepare());
   document.addEventListener('htmx:afterSwap', e => prepare(e.target));
 })();
+// Handshake: kurzer Puls, wenn ein Zähler seit dem letzten Abruf weitergezählt hat (handshake.gohtml)
+window.pdhHS = window.pdhHS || {};
+function pdhHandshakePulse(root){
+  (root || document).querySelectorAll('[data-hs]').forEach(el => {
+    const id = el.dataset.hs, c = el.dataset.count, prev = window.pdhHS[id];
+    if(prev !== undefined && prev !== c){ el.classList.remove('hs-pulse'); void el.offsetWidth; el.classList.add('hs-pulse'); }
+    window.pdhHS[id] = c;
+  });
+}
+document.addEventListener('DOMContentLoaded', () => pdhHandshakePulse());
+document.addEventListener('htmx:afterSwap', e => pdhHandshakePulse(e.target));
 const pdhNativeFetch = window.fetch ? window.fetch.bind(window) : null;
 if(pdhNativeFetch) {
   window.fetch = async function(input, init) {

@@ -181,7 +181,7 @@ var gateRules = []gateRule{
 	// ESPPDH: Gerät löschen nur Bereichsadministrator; anlegen, ändern, sperren, neues Kennwort,
 	// Firmware bauen und Bau abbrechen mit esppdh.edit (für ein Gerät in der Abteilung seiner Anlage)
 	gr(wPost, permESPAdmin, esppdhRef, false, `^/import/esppdh`+gID+`/delete$`),
-	gr(wPost, permESPEdit, esppdhRef, false, `^/import/esppdh`+gID+`(?:/lock|/password|/build(?:`+gID+`/cancel)?)?$`),
+	gr(wPost, permESPEdit, esppdhRef, false, `^/import/esppdh`+gID+`(?:/lock|/password|/web-password(?:/new)?|/build(?:`+gID+`/cancel)?)?$`),
 	gr(wPost, permESPEdit, "", false, `^/import/esppdh/?$`),
 	// ── Löschvormerkung von Stammdaten über die Schnittstelle ──
 	gr("DELETE", "inventory.edit", "part", false, `^(?:/api/v1)?/inventory`+gID+gEnd),

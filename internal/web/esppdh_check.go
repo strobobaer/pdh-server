@@ -130,6 +130,13 @@ func (h *Handler) esppdhResolve(ctx context.Context, d esppdhDevice, mqttPW, apP
 	res := esppdhResolved{Platform: esppdh.PlatformOf(d.BoardKey, d.CustomBoard)}
 	dev := esppdh.Device{Slug: d.Slug, Name: d.Name, BoardKey: d.BoardKey, CustomBoard: d.CustomBoard, Wired: d.Wired,
 		APPassword: apPW, MQTTUser: esppdhUserOf(d.Slug), MQTTPassword: mqttPW, Blocks: esppdhBlocksOf(d.Blocks)}
+	if d.WebEnabled {
+		pw, err := h.esppdhWebPassword(ctx, &d)
+		if err != nil {
+			msgs = append(msgs, err.Error())
+		}
+		dev.WebServer, dev.WebPassword = true, pw
+	}
 	if !d.Wired && d.WLANID != "" {
 		var name string
 		var hidden, released bool

@@ -45,6 +45,19 @@ a{color:inherit;text-decoration:none}
 .t-list .ti-st{color:var(--muted);font-size:.85em;white-space:nowrap}
 .t-empty{display:flex;align-items:center;justify-content:center;gap:.5em;flex:1;color:var(--green);font-weight:700;font-size:1.1em}
 .t-more{color:var(--muted);text-align:center;padding:1vh 0;font-size:.85em}
+/* Sensoren nach Kartenanmeldung (terminal_sensors.go, terminal.js) */
+.t-sensors{margin-top:1.6vh;background:var(--bg2);border:2px solid var(--border);border-radius:22px;padding:1.4vh 1.4vw;max-height:38vh;overflow-y:auto}
+.t-sensors h2{display:flex;align-items:center;gap:.5em;font-size:1.15em;padding-bottom:.8vh;border-bottom:2px solid var(--border)}
+.t-sens-body{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,22em),1fr));gap:1vh 1.4vw;margin-top:1vh}
+.t-sens{border:1px solid var(--border);border-radius:14px;padding:.8vh .9vw;min-width:0}
+.t-sens-head{display:flex;flex-wrap:wrap;align-items:center;gap:.4em .8em;font-weight:700;overflow-wrap:anywhere}
+.t-sens-g{color:var(--muted);font-size:.75em;font-weight:700;text-transform:uppercase;margin-top:.6vh}
+.t-sens-row{display:flex;justify-content:space-between;gap:1em;padding:.3vh 0;border-top:1px solid var(--border)}
+.t-sens-row .v{font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}.t-sens-row.stale{color:var(--muted)}.t-sens-row.stale .v{font-weight:400}
+.hs{display:inline-flex;align-items:center;gap:.35em;flex-wrap:wrap;font-size:.85em;font-weight:600;padding:.1em .6em;border-radius:999px;border:1px solid var(--border)}
+.hs-run .hs-state{color:var(--green)}.hs-stop .hs-state{color:var(--red)}.hs-none .hs-state{color:var(--muted)}.hs-count{font-variant-numeric:tabular-nums;font-weight:800}
+.hs.hs-pulse{animation:t-hs-pulse .6s ease-out}@keyframes t-hs-pulse{40%{transform:scale(1.08)}}
+@media (prefers-reduced-motion:reduce){.hs.hs-pulse{animation:none}}
 .t-foot{padding-top:1.6vh;display:flex;gap:1.6vw}
 /* Neu */
 .t-new{flex:1;min-height:0;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:minmax(0,1fr) auto;gap:1.6vw}
@@ -123,6 +136,10 @@ a{color:inherit;text-decoration:none}
   </section>{{else}}<section class="t-tile tickets" aria-labelledby="h-tickets"><h2 id="h-tickets"><i class="ti ti-ticket" aria-hidden="true"></i> Offene Tickets</h2><div class="t-empty off"><i class="ti ti-lock" aria-hidden="true"></i> Keine Berechtigung für Tickets</div></section>{{end}}
 </div>
 {{end}}
+<section class="t-sensors" data-sensors hidden aria-labelledby="h-sensors">
+  <h2 id="h-sensors"><i class="ti ti-cpu" aria-hidden="true"></i> Sensoren</h2>
+  <div class="t-sens-body" data-sensors-body></div>
+</section>
 <div class="t-foot">
   <a class="t-btn primary big" href="/terminal/neu"><i class="ti ti-plus" aria-hidden="true"></i> Neu</a>
 </div>

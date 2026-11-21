@@ -110,7 +110,7 @@ func TestGenerateNoSecretsInConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, pw := range []string{d.WLANPassword, d.MQTTPassword, d.APPassword} {
+	for _, pw := range []string{d.WLANPassword, d.MQTTPassword, d.APPassword, d.WebPassword} {
 		if bytes.Contains(cfg, []byte(pw)) {
 			t.Errorf("Konfiguration enthält das Kennwort %q", pw)
 		}
@@ -133,8 +133,8 @@ func TestGenerateNoSecretsInConfig(t *testing.T) {
 			t.Errorf("password ist kein Verweis !secret %s: %+v", c.key, pw)
 		}
 	}
-	// Geheimnis-Datei: genau die drei Schlüssel
-	if got := keys(parseYAML(t, sec)); !slices.Equal(got, []string{"wifi_password", "ap_password", "mqtt_password"}) {
+	// Geheimnis-Datei: genau die vier Schlüssel (mit der Webseite des Geräts)
+	if got := keys(parseYAML(t, sec)); !slices.Equal(got, []string{"wifi_password", "ap_password", "mqtt_password", "web_password"}) {
 		t.Errorf("Schlüssel der Geheimnis-Datei: %v", got)
 	}
 	// verkabelt: nur das MQTT-Kennwort
@@ -144,7 +144,7 @@ func TestGenerateNoSecretsInConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := keys(parseYAML(t, sec)); !slices.Equal(got, []string{"mqtt_password"}) {
+	if got := keys(parseYAML(t, sec)); !slices.Equal(got, []string{"mqtt_password", "web_password"}) {
 		t.Errorf("verkabelt, Schlüssel der Geheimnis-Datei: %v", got)
 	}
 }
@@ -161,7 +161,7 @@ func TestGenerateEscapesInput(t *testing.T) {
 		t.Fatal(err)
 	}
 	root := parseYAML(t, cfg)
-	if got := keys(root); !slices.Equal(got, []string{"esphome", "esp32", "logger", "wifi", "captive_portal", "mqtt", "sensor"}) {
+	if got := keys(root); !slices.Equal(got, []string{"esphome", "esp32", "logger", "wifi", "captive_portal", "web_server", "mqtt", "sensor", "text_sensor"}) {
 		t.Errorf("Hauptabschnitte: %v", got)
 	}
 	esp := get(root, "esphome")
@@ -209,12 +209,13 @@ func TestGenerateEscapesInput(t *testing.T) {
 	str(get(get(parseYAML(t, cfg3), "esp8266"), "board"), o.CustomBoard, "board")
 
 	secRoot := parseYAML(t, sec)
-	if got := keys(secRoot); !slices.Equal(got, []string{"wifi_password", "ap_password", "mqtt_password"}) {
+	if got := keys(secRoot); !slices.Equal(got, []string{"wifi_password", "ap_password", "mqtt_password", "web_password"}) {
 		t.Errorf("Schlüssel der Geheimnis-Datei: %v", got)
 	}
 	str(get(secRoot, "wifi_password"), d.WLANPassword, "wifi_password")
 	str(get(secRoot, "ap_password"), d.APPassword, "ap_password")
 	str(get(secRoot, "mqtt_password"), d.MQTTPassword, "mqtt_password")
+	str(get(secRoot, "web_password"), d.WebPassword, "web_password")
 
 	// auch ein einfacher Leser ohne Baum sieht nur Zeichenketten
 	var flat map[string]any

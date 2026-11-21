@@ -148,8 +148,9 @@ func (e *esppdhEnvT) start(t *testing.T) {
 // buildable: Gerät anlegen und einen Baustein speichern – dann lässt es sich bauen.
 func (e *esppdhEnvT) buildable(t *testing.T, slug string) string {
 	t.Helper()
-	id := e.create(t, slug, nil)
+	id := e.create(t, slug, url.Values{"web": {"on"}}) // Vorgabe im Formular: Webseite an
 	v := e.saveForm("Gerät " + slug)
+	v.Set("web", "on")
 	esppdhAddBlock(v, "0", "", "s0", map[string]string{"pin": "GPIO4", "pulses": "1000"})
 	if w := esppdhDo(e.h.EsppdhSaveWeb, "POST", "/import/esppdh/"+id, id, esppdhUser, v); w.Code != http.StatusSeeOther {
 		t.Fatalf("Baustein speichern: %d %s", w.Code, w.Body.String())
@@ -334,10 +335,13 @@ func TestBuildStoresEncryptedFirmware(t *testing.T) {
 		apPW, _ = decryptSecret(e.h.esppdhKey(), apEnc)
 	}
 	mqttPW := e.mqttPW(t, id)
+	dw, _ := e.h.esppdhLoad(context.Background(), id)
+	webPW, _ := e.h.esppdhWebPassword(context.Background(), &dw)
 	if job.ID != bid || job.Slug != slug || !strings.Contains(string(job.Config), host) || !strings.Contains(string(job.Secrets), e.wlPW) {
 		t.Errorf("Auftrag: %s %s\n%s", job.ID, job.Slug, job.Config)
 	}
-	for _, s := range []string{e.wlPW, mqttPW, apPW} {
+	// alle vier Kennwörter werden im Bau-Protokoll geschwärzt (auch das der Webseite)
+	for _, s := range []string{e.wlPW, mqttPW, apPW, webPW} {
 		var found bool
 		for _, v := range job.SecretValues {
 			found = found || v == s

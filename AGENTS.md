@@ -171,8 +171,11 @@ das Prüfergebnis kommt dann in den Text des Merge-Commits, danach
 
 Testverbund: `pdh` 10.10.0.14 und `pdh-server` 10.10.0.17 (Server, gemeinsame
 Adresse 10.10.0.15), Zeuge als Docker-Container auf dem Windows-Rechner
-(10.10.0.231). **Produktiv ist nur 10.10.0.202 – dort nie etwas einspielen
-oder ändern.**
+(10.10.0.231). **10.10.0.202 ist eine produktive Testversion** (Festlegung
+des Anwenders vom 21.11.2026): Einspielen ist dort erlaubt, aber **nur mit
+einer Sicherung vorher** (siehe „10.10.0.202 aktualisieren“). Andere
+Änderungen an 202 (Einstellungen, Daten, Netz, Dateien am Server) weiterhin
+nur nach Rückfrage.
 
 1. Aktiven Server feststellen (nur lesend):
    `ssh michael@10.10.0.14 'sudo -n pdh-ha status'` bzw. `…@10.10.0.17`.
@@ -189,6 +192,32 @@ oder ändern.**
 5. Der Zeuge (`pdh-ha-witness-witness-1`) zieht über seinen Helfer-Container
    `pdh-ha-witness-updater-1` innerhalb von etwa 5 Minuten selbst nach.
    Kein SSH nötig; Stand: `docker exec pdh-ha-witness-witness-1 pdh-ha status`.
+
+## 10.10.0.202 aktualisieren
+
+202 ist ein Einzelserver (systemd, kein `pdh-ha`). Erst einspielen, wenn die
+neue Version auf `main` und dem Testverbund geprüft ist.
+
+1. Stand lesen: `curl -s http://10.10.0.202:8090/health` (Version, Commit,
+   `migrations_ok`).
+2. **Sicherung vorher:** in der Oberfläche von 202 unter Datensicherung
+   „Jetzt sichern“ und abwarten, bis der Lauf erfolgreich ist. Ohne
+   erfolgreiche Sicherung nicht einspielen. Zusätzlich legt der
+   Update-Agent beim Update selbst eine Rückfallkopie der Datenbank an
+   (Server-Protokoll: „Sicherung vor Update ausgelassen – Rückfallkopie
+   vorhanden“).
+3. Einspielen: Core-Einstellungen → „Update prüfen“, dann „Update
+   installieren“. Der Agent baut, zählt herunter, startet neu, prüft und
+   setzt bei einem Fehler selbst zurück.
+4. Prüfen: `/health` meldet die neue Version und den Commit von `main`;
+   `ssh michael@10.10.0.202 'journalctl -u pdh --since "-15 min" --no-pager | grep -E " (ERR|FTL) "'`
+   zeigt keine neuen Fehler.
+
+Zugang von hier: SSH als `michael` geht, `sudo -n` verlangt dort ein
+Kennwort, das Dienstprotokoll ist ohne `sudo` lesbar. Die Zugangsdaten aus
+der `.env` (Datenbank, Update-Agent) nicht auslesen. Eine Anmeldung an der
+Oberfläche von 202 ist von hier nicht eingerichtet – die Knöpfe in Schritt 2
+und 3 drückt bis auf Weiteres der Anwender.
 
 ## Browserprüfung auf dem Testverbund
 
@@ -255,9 +284,9 @@ oder ändern.**
    (19.11.2026; Migrationen 179 bis 181, Rechte `esppdh.view`, `esppdh.edit`,
    `esppdh.admin`; Entwurf `docs/superpowers/specs/2026-11-18-esppdh-design.md`,
    Plan `docs/superpowers/plans/2026-11-18-esppdh-paket1.md`). **0.82.0 bis
-   0.82.9 sind auf dem Testverbund** (zuletzt 21.11.2026, Verbund-Update auf
-   `d244bc4`; beide Server und Zeuge 0.82.9, Migrationen 179–185 da, aktiv
-   jetzt `pdh-server` 10.10.0.17). Offen: am Testverbund auf der Seite „Netzwerk“ den
+   0.82.10 sind auf dem Testverbund** (zuletzt 21.11.2026, Verbund-Update auf
+   `72a0e3e`; beide Server 0.82.10, Migrationen 179–185 da, aktiv
+   jetzt `pdh` 10.10.0.14). Offen: am Testverbund auf der Seite „Netzwerk“ den
    Haken „Für ESPPDH-Geräte nutzbar“ am Geräte-WLAN setzen, auf beiden Servern
    die Umgebung einrichten, ein Gerät bauen, die Rollen umschalten, die
    Firmware am zweiten Server herunterladen und im Browser prüfen. Paket 2 und
@@ -442,7 +471,13 @@ oder ändern.**
    Startseiten-Widget `list_stock` fragte noch `spare_parts.storage_location`
    ab (seit Migration 027 `storage_location_legacy`) und scheiterte überall;
    Lagerort jetzt aus `spare_part_stock` mit Pfad (`storagePaths`). Gefunden
-   im Server-Protokoll von 10.10.0.202 (14× in 3 Tagen). Weitere Befunde dort
+   im Server-Protokoll von 10.10.0.202 (14× in 3 Tagen). Auf `main`
+   (21.11.2026, Merge `72a0e3e`) und dem Testverbund; im Browser geprüft
+   (Katalog „Bestellliste“ hinzufügen ohne Speichern, Testteil mit Pfad
+   „Lager › Fach 7“ und rot; Fiori/Fluent, hell/dunkel, 320–1366 px, am
+   Handy Pfad mit „…“ gekürzt; keine Konsolenfehler, keine Widget-Warnung
+   im Protokoll; Testdaten entfernt, Prüfkonto gesperrt). Offen: 202 per
+   „Update installieren“ (Anwender). Weitere Befunde dort
    (21.11.2026, nur gelesen), nicht behoben: MQTT-Wertübernahme will bei
    jedem Start einen Broker auf `127.0.0.1:1883`, der nicht läuft (PDH-Broker
    lauscht auf 1888 – Einstellung der Verbindung, Anwender); Grafana-Live
@@ -482,6 +517,37 @@ oder ändern.**
     Entscheidung offen.
 15. **Zurückgestellt (kein Auftrag):** Abteilungsfeinheiten Rüstzeiten,
     Datennetz Paket 2/3, Buchungssystem/Lizenzen, Firmenstammdaten.
+16. **ESPPDH: alle Sensoren, Webserver, Werte an Anlage und Terminal,
+    Handshake, Plausibilität** (Wünsche des Anwenders vom 21.11.2026) –
+    Entwurf `docs/superpowers/specs/2026-11-21-esppdh-sensoren-webserver-design.md`
+    auf Branch `feature/esppdh-sensoren`, **Teil 1 und 2 freigegeben
+    (21.11.2026)**, Handshake auf der Anlagen-Schnellübersicht. Drei
+    Teile: 0.82.11 Webserver v3 (ohne Durchreiche – Anmelde-Cookie
+    `pdh_token` ist im Browser lesbar), Adressmeldung, Reiter „ESPPDH“,
+    Sensorwerte am Anlagenterminal (neues Recht `esppdh.values`),
+    Handshake-Zähler überall; 0.82.12 Sensorkatalog aus ESPHome (Ansatz C);
+    0.82.13 Plausibilität mit Betriebszeiten der Anlage – noch zu besprechen
+    (Quelle der Betriebszeiten, „Minimal- und Maximalzeit“). Bauplan Teil 1:
+    `docs/superpowers/plans/2026-11-21-esppdh-teil1.md` (8 Aufgaben,
+    Migration 186; Werte-Speicher im Broker statt eigenem Abo, weil
+    `reconcileMqttConsumer` alle Abos löscht). **Teil 1 (0.82.11) gebaut**
+    auf `feature/esppdh-sensoren` (21.11.2026, nicht gepusht; Fortschritt und
+    Entscheidungen im Ledger `.superpowers/sdd/2026-11-21-esppdh-teil1/`).
+    Wichtig: `web_server` braucht `ota: false` – ESPHome lädt sonst über
+    `captive_portal` von selbst `ota.web_server` (mit `esphome config`
+    2026.10.2 per Docker geprüft). Terminal-Tests laufen mit
+    `-tags integration`. Offen: Schlussprüfung, Freigabe Push/Merge,
+    Verbund-Update, Browserprüfung; echte Platine (Anwender). Danach Teil 2.
+17. **Eigenes Projekt: ESPPDH-Vorlagen für Messaufgaben** (Wunsch des
+    Anwenders vom 21.11.2026, vom Anwender ausdrücklich als separates
+    Projekt eingeordnet, noch nicht begonnen): eigene Vorlagen „mit Hilfe“
+    erstellen, z. B. Plattenstärke mit zwei Abstandssensoren (Eingabe
+    Sollstärke und Toleranz, Kalibrierfunktion, Inbetriebnahmeanleitung mit
+    Piktogrammen) oder Längenmessung. Entschieden (21.11.2026, „B“):
+    Vorlagen-Editor in ESPPDH, der Copilot im PDH schlägt Sensoren,
+    Rechnung und Anleitung vor, der Anwender bestätigt – ohne Update.
+    Offen: wer Vorlagen anlegen darf; Vorschlag: Gerät misst, das PDH rechnet und bewertet (kein
+    `lambda` auf dem Gerät). Baut auf 16 (Teil 1 und 2) auf.
 
 Docker Desktop startet nach einem Neustart des Windows-Rechners nicht von
 selbst – ohne ihn fehlen der Zeuge und die Labor-Datenbank für die Tests.

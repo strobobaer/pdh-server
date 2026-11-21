@@ -1,0 +1,32 @@
+{{/* Werte eines ESPPDH-Geräts (esppdhValuesView, internal/web/esppdh_values.go).
+     Aufruf: {{template "esppdh-values" (dict "V" $view "Link" true)}} – Link: Name verweist auf die
+     Geräteseite (nur mit esppdh.view). Geräteseite, Reiter „ESPPDH“ an der Anlage. */}}
+{{define "esppdh-values"}}{{$v := .V}}
+<div class="espv" data-esp="{{$v.ID}}">
+  <div class="espv-head">
+    {{if .Link}}<a class="espv-name" href="/import/esppdh/{{$v.ID}}">{{$v.Name}}</a>{{else}}<span class="espv-name">{{$v.Name}}</span>{{end}}
+    {{template "esppdh-live" $v.Live}}
+    {{template "handshake" $v.Handshake}}
+  </div>
+  <div class="espv-addr">
+    {{if $v.DirectURL}}<a href="{{$v.DirectURL}}" target="_blank" rel="noopener" class="btn btn-small"><i class="ti ti-world-www" aria-hidden="true"></i> Webseite des Geräts</a>
+      <span class="rec-sub">{{$v.Address}} – nur im Netz der Geräte erreichbar</span>
+    {{else if $v.Address}}<span class="rec-sub">Adresse {{$v.Address}}{{with $v.AddressNote}} · {{.}}{{end}}</span>
+    {{else}}<span class="rec-sub">{{with $v.AddressNote}}{{.}}{{else}}Adresse noch nicht gemeldet{{end}}</span>{{end}}
+  </div>
+  {{if not $v.Available}}<p class="rec-sub" role="note"><i class="ti ti-plug-x" aria-hidden="true"></i> Werte gerade nicht verfügbar – der Broker läuft an diesem Server nicht.</p>
+  {{else}}{{range $v.Groups}}
+  <div class="espv-group">
+    <div class="espv-gname">{{.Name}}</div>
+    <table class="espv-table">
+      {{range .Rows}}<tr class="{{if .Stale}}espv-stale{{end}}"><td>{{.Name}}</td><td class="espv-val">{{.Value}}{{with .Unit}} {{.}}{{end}}</td><td class="espv-age">{{.Age}}</td></tr>{{end}}
+    </table>
+  </div>
+  {{else}}<p class="rec-sub">Noch keine Werte.</p>{{end}}{{end}}
+</div>
+{{end}}
+
+{{/* Reiter „ESPPDH“ an der Anlage (InfraESPPDHWeb): .Views []esppdhValuesView, .Link Geräteseite verlinken */}}
+{{define "infra-esppdh"}}{{$link := .Link}}
+{{range .Views}}{{template "esppdh-values" (dict "V" . "Link" $link)}}{{else}}<p class="rec-sub">An dieser Anlage hängt kein ESPPDH-Gerät.</p>{{end}}
+{{end}}

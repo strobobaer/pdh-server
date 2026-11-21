@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -79,6 +80,8 @@ type runningBroker struct {
 	inlineTopics map[string]struct{}
 
 	kicking sync.Map // *mqtt.Client → struct{}: Geräte, die gerade getrennt werden (devices.go)
+
+	cache *topicCache // letzte Nachrichten unter CachePrefix (topiccache.go)
 }
 
 func (rb *runningBroker) publish(event ActivityEvent) {
@@ -181,6 +184,7 @@ func (m *Manager) start(id string, cfg Config) error {
 		startedAt:    time.Now(),
 		subscribers:  map[chan ActivityEvent]struct{}{},
 		inlineTopics: map[string]struct{}{},
+		cache:        newTopicCache(),
 	}
 
 	// genau ein Hook für Anmeldung und Themen-Rechte, siehe pdhAuthHook
@@ -486,5 +490,8 @@ func (h *activityHook) OnSubscribed(cl *mqtt.Client, pk packets.Packet, reasonCo
 }
 
 func (h *activityHook) OnPublished(cl *mqtt.Client, pk packets.Packet) {
+	if strings.HasPrefix(pk.TopicName, CachePrefix) {
+		h.rb.cache.put(pk.TopicName, string(pk.Payload), time.Now())
+	}
 	h.rb.publish(ActivityEvent{Time: time.Now().Format("15:04:05"), Kind: "publish", ClientID: cl.ID, Topic: pk.TopicName})
 }
