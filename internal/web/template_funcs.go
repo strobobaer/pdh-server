@@ -9,6 +9,9 @@ import (
 	"pdh"
 )
 
+// TerminalDownloadURL: neueste Ausgabe der Terminal-Software (Pi-Abbild, Windows-Setup).
+const TerminalDownloadURL = "https://github.com/strobobaer/hmi-kiosk-pi/releases/latest"
+
 func TemplateFuncs() template.FuncMap {
 	m := template.FuncMap{
 		"appVersion":   pdh.Version,
@@ -18,6 +21,8 @@ func TemplateFuncs() template.FuncMap {
 		"list":         templateList,
 		"safeJS":       templateJS,
 		"hasPrefix":    strings.HasPrefix,
+		// Download-Seite der Terminal-Software (Link auf Terminal-Seiten)
+		"terminalDownloadURL": func() string { return TerminalDownloadURL },
 		"join":         strings.Join,
 		// Serverzeit beim Ausliefern der Seite (Uhr in der Kopfleiste)
 		"serverNowMs": func() int64 { return time.Now().UnixMilli() },

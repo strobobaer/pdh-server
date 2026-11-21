@@ -16,7 +16,7 @@ func TestTerminalLoginSettingsDefaultAndSave(t *testing.T) {
 
 	got, err := h.terminalLoginSettings(e.ctx, uid)
 	e.must(err)
-	if got != (terminalLoginSettings{ManualLogin: loginCardPIN, PasswordButton: true}) {
+	if got.ManualLogin != loginCardPIN || !got.PasswordButton || len(got.CardNotify) != 0 {
 		t.Fatalf("Standard ohne Zeile: %+v", got)
 	}
 
@@ -28,7 +28,7 @@ func TestTerminalLoginSettingsDefaultAndSave(t *testing.T) {
 			e.must(h.saveTerminalLoginSettings(e.ctx, uid, want))
 			got, err := h.terminalLoginSettings(e.ctx, uid)
 			e.must(err)
-			if got != want {
+			if got.ManualLogin != want.ManualLogin || got.PasswordButton != want.PasswordButton || len(got.CardNotify) != 0 {
 				t.Fatalf("gespeichert %+v, gelesen %+v", want, got)
 			}
 		}

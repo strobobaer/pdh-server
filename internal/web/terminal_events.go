@@ -117,6 +117,8 @@ func (h *Handler) terminalSettingsEvent(r *http.Request, userID string) (string,
 		"manual_login":    s.ManualLogin,
 		"password_button": s.PasswordButton,
 		"idle":            h.terminalIdleSeconds(r.Context(), userID),
+		"card_notify":     effectiveCardNotify(s.CardNotify),
+		"global_screen":   s.GlobalScreen,
 	})
 	if err != nil {
 		return "", err
@@ -164,6 +166,14 @@ func (h *Handler) TerminalEvents(w http.ResponseWriter, r *http.Request) {
 		case ev, open := <-ch:
 			if !open {
 				return
+			}
+			if ev == "slides" {
+				// Folien geändert: das globale Terminal lädt sie neu.
+				if _, err := fmt.Fprint(w, "event: slides\ndata: {}\n\n"); err != nil {
+					return
+				}
+				fl.Flush()
+				continue
 			}
 			if ev != "settings" {
 				continue

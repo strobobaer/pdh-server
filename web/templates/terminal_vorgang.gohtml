@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex">
+<title>Terminal</title>
+<style>
+/* Vorgang-Ansicht des Infobildschirms (terminal_global.go): nur lesen, einziger Knopf „Zurück“. */
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#0f1117;--bg2:#1a1d27;--bg3:#222536;--accent:#4f6ef7;--text:#f1f3fb;--muted:#9aa3b8;--border:#2f3348;--font:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--font);font-size:clamp(18px,1.6vw,28px);line-height:1.35;overflow:hidden;
+  -webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;-webkit-touch-callout:none;touch-action:manipulation;cursor:default}
+body{display:flex;flex-direction:column;padding:max(2vh,12px) max(2vw,16px);gap:1.6vh}
+a{color:inherit;text-decoration:none}
+.v-head{display:flex;align-items:center;gap:1.6vw;min-height:64px}
+.v-back{display:inline-flex;align-items:center;justify-content:center;min-width:64px;min-height:64px;padding:0 1.6em;border-radius:18px;border:2px solid var(--accent);background:var(--accent);color:#fff;font-weight:700}
+.v-back:active{filter:brightness(1.25)}
+.v-kind{color:var(--muted);font-weight:700}
+.v-main{flex:1;min-height:0;display:flex;flex-direction:column;gap:1.4vh;overflow:hidden}
+.v-main h1{font-size:1.6em;line-height:1.15;overflow-wrap:anywhere}
+.v-meta{display:grid;grid-template-columns:auto 1fr;column-gap:1.4em;row-gap:.3em;color:var(--muted)}
+.v-meta b{color:var(--text);font-weight:700}
+.v-desc{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--bg2);border:2px solid var(--border);border-radius:18px;padding:1.2vh 1.2vw;max-height:30vh;overflow:hidden}
+.v-hist h2{font-size:1em;color:var(--muted);padding-bottom:.4vh}
+.v-hist ol{list-style:none}
+.v-hist li{display:grid;grid-template-columns:auto 1fr;column-gap:1.2em;padding:.5vh 0;border-bottom:1px solid var(--border)}
+.v-hist time{color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+.v-none{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;font-weight:700;font-size:1.4em;color:var(--muted)}
+</style>
+</head>
+<body data-mode="vorgang" data-idle="{{.Idle}}">
+<div class="v-head">
+  <a class="v-back" href="/terminal">‹ Zurück</a>
+  {{if not .NotFound}}<span class="v-kind">{{.KindLabel}}</span>{{end}}
+</div>
+{{if .NotFound}}
+<div class="v-none">Dieser Eintrag ist nicht (mehr) verfügbar.</div>
+{{else}}
+<div class="v-main">
+  <h1>{{.Title}}</h1>
+  <div class="v-meta">
+    <span>Status</span><b>{{.StatusLabel}}</b>
+    {{if .Infra}}<span>Anlage</span><b>{{.Infra}}</b>{{end}}
+    <span>Erstellt</span><b>{{.Created}}</b>
+    <span>Zuletzt geändert</span><b>{{.Updated}}</b>
+  </div>
+  {{if .Description}}<div class="v-desc">{{.Description}}</div>{{end}}
+  {{if .History}}<section class="v-hist"><h2>Verlauf</h2><ol>
+    {{range .History}}<li><time>{{.At}}</time><span>{{.Text}}</span></li>{{end}}
+  </ol></section>{{end}}
+</div>
+{{end}}
+<script src="/terminal/terminal.js?v={{appVersion}}"></script>
+</body>
+</html>

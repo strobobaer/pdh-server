@@ -1,4 +1,4 @@
-# MQTT-Name sicher einrichten (0.82.13) – kurzer Entwurf
+# MQTT-Name sicher einrichten (0.82.15) – kurzer Entwurf
 
 Vom Anwender am 21.11.2026 bestätigt („Passt so“).
 

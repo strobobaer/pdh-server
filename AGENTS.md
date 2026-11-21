@@ -577,7 +577,7 @@ und 3 drückt bis auf Weiteres der Anwender.
     Oberfläche, `go-modules-licenses.txt` behalten, Test für die
     Vollständigkeit von `THIRD_PARTY_LICENSES.md`); Markenprüfung
     „Pulse Data Hub“ angeboten.
-19. **Firmenstammdaten = 0.82.14** (Wunsch des Anwenders vom 21.11.2026):
+19. **Firmenstammdaten = 0.82.16** (Wunsch des Anwenders vom 21.11.2026):
     Fenster am obersten Knoten der Infrastruktur; die Daten gelten
     unternehmensweit im Mail- und Postverkehr, der angemeldete Benutzer ist
     Ansprechpartner. Entschieden: „A jetzt, B danach“ (A: alle Mails mit
@@ -589,7 +589,7 @@ und 3 drückt bis auf Weiteres der Anwender.
     möglich, kein Typ „Unternehmen“, keine eigenen Adress-, Steuer- oder
     Bankdaten; Firmenname liegt doppelt (`branding.app_name`,
     `m365_company_name`).
-20. **0.82.13 MQTT-Name sicher einrichten** – Anlass: Störung auf 10.10.0.202
+20. **0.82.15 MQTT-Name sicher einrichten** – Anlass: Störung auf 10.10.0.202
     am 21.11.2026 12:36 (nach Port-Änderung und Name `mqtt.strobl-home.net`:
     MQTT-Seite des Agenten mit `listen [::]:443`, Seite `pdh` nur IPv4, Tunnel
     `https://localhost:443` → `::1` → falsches Zertifikat → 502; Tunnel-Zeile
@@ -610,7 +610,7 @@ und 3 drückt bis auf Weiteres der Anwender.
     Freigabe Push/Merge, Verbund-Update, Browserprüfung, Einspielen auf 202.
 21. **ESPPDH: Update übers Netz (OTA)** – Wunsch des Anwenders vom
     21.11.2026 („Passt“): heute keine OTA-Funktion (kein `ota:`-Baustein,
-    `web_server` mit `ota: false`); geplant als eigenes Paket nach 0.82.14,
+    `web_server` mit `ota: false`); geplant als eigenes Paket nach 0.82.16,
     mit Kennwort je Gerät. Offen: PDH schiebt (Knopf, Server erreicht das
     Gerät) oder Gerät holt (fragt beim PDH, geht auch im abgeschotteten VLAN).
 

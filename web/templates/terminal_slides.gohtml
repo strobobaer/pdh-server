@@ -1,0 +1,63 @@
+{{template "base" .}}
+{{define "content"}}
+{{/* Verwaltungsseite „Infobildschirm“ (terminal_slides.go): Folien für globale Terminals.
+     Farben nur über die Variablen des Farbschemas (Fiori und Fluent, hell und dunkel). */}}
+<style>
+.sl-head{display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap}
+.sl-head h1{font-size:19px;font-weight:600;margin:0}
+.sl-new{display:flex;gap:6px;flex-wrap:wrap;margin-left:auto}
+.sl-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%}
+.sl-scroll table{min-width:640px}
+.sl-thumb{width:96px;height:54px;object-fit:cover;border-radius:6px;border:1px solid var(--border);background:var(--bg3);display:block;flex-shrink:0}
+.sl-thumb-none{width:96px;height:54px;border-radius:6px;border:1px dashed var(--border);display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:20px;flex-shrink:0}
+.sl-what{min-width:0;overflow-wrap:anywhere}
+.sl-sub{font-size:12px;color:var(--muted);margin-top:2px}
+.sl-actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;margin:0}
+.sl-actions form{margin:0}
+.sl-off td{opacity:.6}
+.sl-note{font-size:12px;color:var(--muted);margin-top:10px;max-width:760px}
+</style>
+
+<div class="sl-head">
+  <h1><i class="ti ti-slideshow" aria-hidden="true"></i> Infobildschirm</h1>
+  <div class="sl-new">
+    <a class="btn btn-small btn-primary" href="/terminal-slides/new?kind=image"><i class="ti ti-photo-plus" aria-hidden="true"></i> Bildfolie</a>
+    <a class="btn btn-small btn-primary" href="/terminal-slides/new?kind=text"><i class="ti ti-text-plus" aria-hidden="true"></i> Textfolie</a>
+    <a class="btn btn-small btn-primary" href="/terminal-slides/new?kind=vorgaenge"><i class="ti ti-list-details" aria-hidden="true"></i> Vorgänge</a>
+  </div>
+</div>
+
+{{if .Notice}}<div class="card" role="status" style="margin-bottom:14px;border-color:var(--green)"><i class="ti ti-circle-check" style="color:var(--green)" aria-hidden="true"></i> {{.Notice}}</div>{{end}}
+
+<div class="card">
+  <div class="card-title"><span><i class="ti ti-playlist" aria-hidden="true"></i> Folien in Reihenfolge</span></div>
+  {{if .Slides}}
+  <div class="sl-scroll"><table class="table">
+    <thead><tr><th>Folie</th><th>Art</th><th>Dauer</th><th>Aktiv</th><th></th></tr></thead>
+    <tbody>
+    {{range .Slides}}
+    <tr{{if not .Active}} class="sl-off"{{end}}>
+      <td><div style="display:flex;gap:10px;align-items:center;min-width:0">
+        {{if .HasImage}}<img class="sl-thumb" src="/terminal-slides/{{.ID}}/image?v={{.UpdatedKey}}" alt="Vorschau{{if .Title}}: {{.Title}}{{end}}" loading="lazy">
+        {{else}}<div class="sl-thumb-none" aria-hidden="true"><i class="ti {{if eq .Kind "text"}}ti-article{{else}}ti-list-details{{end}}"></i></div>{{end}}
+        <div class="sl-what"><b>{{if .Title}}{{.Title}}{{else}}<span style="color:var(--muted)">(ohne Titel)</span>{{end}}</b>
+          {{if .Summary}}<div class="sl-sub">{{.Summary}}</div>{{end}}</div>
+      </div></td>
+      <td>{{.KindLabel}}</td>
+      <td>{{.DurationSeconds}} s</td>
+      <td>{{if .Active}}<span class="badge b-green">aktiv</span>{{else}}<span class="badge b-gray">aus</span>{{end}}</td>
+      <td><div class="sl-actions">
+        <form method="POST" action="/terminal-slides/{{.ID}}/move?d=-1"><button type="submit" class="btn btn-small" title="Nach oben" aria-label="Folie nach oben"{{if .First}} disabled{{end}}><i class="ti ti-arrow-up" aria-hidden="true"></i></button></form>
+        <form method="POST" action="/terminal-slides/{{.ID}}/move?d=1"><button type="submit" class="btn btn-small" title="Nach unten" aria-label="Folie nach unten"{{if .Last}} disabled{{end}}><i class="ti ti-arrow-down" aria-hidden="true"></i></button></form>
+        <a class="btn btn-small" href="/terminal-slides/{{.ID}}"><i class="ti ti-edit" aria-hidden="true"></i> Bearbeiten</a>
+        <form method="POST" action="/terminal-slides/{{.ID}}/delete" onsubmit="return confirm('Folie wirklich löschen?')">
+          <button type="submit" class="btn btn-small btn-danger" title="Folie löschen" aria-label="Folie löschen"><i class="ti ti-trash" aria-hidden="true"></i></button></form>
+      </div></td>
+    </tr>
+    {{end}}
+    </tbody>
+  </table></div>
+  {{else}}<div class="rec-sub">Noch keine Folie. Lege oben eine Bildfolie, eine Textfolie oder eine Folie mit aktuellen Vorgängen an.</div>{{end}}
+  <p class="sl-note">Die Folien laufen der Reihe nach auf allen Terminals, die am Systembenutzer als „Globales Terminal (Infobildschirm)“ eingestellt sind. Änderungen erreichen die Terminals sofort.</p>
+</div>
+{{end}}

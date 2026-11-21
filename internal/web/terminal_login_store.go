@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -33,6 +35,53 @@ var terminalPINCompare = bcrypt.CompareHashAndPassword
 type terminalLoginSettings struct {
 	ManualLogin    string
 	PasswordButton bool
+	CardNotify     []string // gespeichert (leer = Vorgabe); wirksam: effectiveCardNotify
+	GlobalScreen   bool     // globales Terminal (Infobildschirm); nur saveTerminalGlobalScreen schreibt es
+}
+
+// Arten der Benachrichtigung beim Kartenlesen am Windows-Terminal
+// (terminal_settings.card_notify), in fester Reihenfolge.
+const cardNotifyOff = "off"
+
+var cardNotifyKinds = []string{"toast", "overlay", "banner", "front"}
+
+var errTerminalCardNotify = errors.New("Unbekannte oder widersprüchliche Benachrichtigungsart")
+
+// normalizeCardNotify prüft die Liste (nur bekannte Arten, „off“ nur allein),
+// entfernt Doppelte und bringt sie in feste Reihenfolge. Leer bleibt leer (= Vorgabe).
+func normalizeCardNotify(in []string) ([]string, error) {
+	out := []string{}
+	if len(in) == 0 {
+		return out, nil
+	}
+	has := map[string]bool{}
+	for _, k := range in {
+		if k != cardNotifyOff && !slices.Contains(cardNotifyKinds, k) {
+			return nil, errTerminalCardNotify
+		}
+		has[k] = true
+	}
+	if has[cardNotifyOff] {
+		if len(has) > 1 {
+			return nil, errTerminalCardNotify
+		}
+		return []string{cardNotifyOff}, nil
+	}
+	for _, k := range cardNotifyKinds {
+		if has[k] {
+			out = append(out, k)
+		}
+	}
+	return out, nil
+}
+
+// effectiveCardNotify: die am Terminal wirksame Liste; leer bedeutet die Vorgabe {overlay}.
+func effectiveCardNotify(stored []string) []string {
+	n, err := normalizeCardNotify(stored)
+	if err != nil || len(n) == 0 {
+		return []string{"overlay"}
+	}
+	return n
 }
 
 func validLoginKind(k string) bool {
@@ -50,8 +99,8 @@ func (h *Handler) terminalLoginSettings(ctx context.Context, userID string) (ter
 		return def, errors.New("keine Datenbank")
 	}
 	var s terminalLoginSettings
-	err := h.db.QueryRow(ctx, `SELECT manual_login, password_button FROM terminal_settings WHERE user_id = $1::uuid`, userID).
-		Scan(&s.ManualLogin, &s.PasswordButton)
+	err := h.db.QueryRow(ctx, `SELECT manual_login, password_button, card_notify, global_screen FROM terminal_settings WHERE user_id = $1::uuid`, userID).
+		Scan(&s.ManualLogin, &s.PasswordButton, &s.CardNotify, &s.GlobalScreen)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return def, nil
 	}
@@ -71,11 +120,67 @@ func (h *Handler) saveTerminalLoginSettings(ctx context.Context, userID string, 
 	if !validLoginKind(s.ManualLogin) {
 		return fmt.Errorf("unbekannte Anmeldeart %q", s.ManualLogin)
 	}
-	_, err := h.db.Exec(ctx, `
-		INSERT INTO terminal_settings (user_id, manual_login, password_button, updated_at)
-		SELECT id, $2, $3, NOW() FROM users WHERE id = $1::uuid AND is_system_user
+	notify, err := normalizeCardNotify(s.CardNotify)
+	if err != nil {
+		return err
+	}
+	_, err = h.db.Exec(ctx, `
+		INSERT INTO terminal_settings (user_id, manual_login, password_button, card_notify, updated_at)
+		SELECT id, $2, $3, $4::text[], NOW() FROM users WHERE id = $1::uuid AND is_system_user
 		ON CONFLICT (user_id) DO UPDATE SET manual_login = EXCLUDED.manual_login,
-			password_button = EXCLUDED.password_button, updated_at = NOW()`, userID, s.ManualLogin, s.PasswordButton)
+			password_button = EXCLUDED.password_button, card_notify = EXCLUDED.card_notify, updated_at = NOW()`,
+		userID, s.ManualLogin, s.PasswordButton, notify)
+	return err
+}
+
+// cardNotifyLabels: Anzeigenamen der Benachrichtigungsarten (für den Verlauf).
+var cardNotifyLabels = map[string]string{
+	"toast": "Windows-Mitteilung", "overlay": "Fenster in der Mitte", "banner": "Leiste oben",
+	"front": "Terminal nach vorn", cardNotifyOff: "Keine Benachrichtigung",
+}
+
+// cardNotifySummary: gespeicherte Liste als Text (für den Verlauf); leer = Vorgabe.
+func cardNotifySummary(stored []string) string {
+	n, err := normalizeCardNotify(stored)
+	if err != nil || len(n) == 0 {
+		return "Vorgabe (Fenster in der Mitte)"
+	}
+	names := make([]string, len(n))
+	for i, k := range n {
+		names[i] = cardNotifyLabels[k]
+	}
+	return strings.Join(names, ", ")
+}
+
+// saveTerminalCardNotify speichert nur die Benachrichtigungsarten eines System-Benutzers
+// (leer = Vorgabe); die übrigen Einstellungen bleiben unverändert. Wie
+// saveTerminalLoginSettings: Bei Nicht-System-Benutzern passiert nichts.
+func (h *Handler) saveTerminalCardNotify(ctx context.Context, userID string, kinds []string) error {
+	if h.db == nil {
+		return errors.New("keine Datenbank")
+	}
+	notify, err := normalizeCardNotify(kinds)
+	if err != nil {
+		return err
+	}
+	_, err = h.db.Exec(ctx, `
+		INSERT INTO terminal_settings (user_id, card_notify, updated_at)
+		SELECT id, $2::text[], NOW() FROM users WHERE id = $1::uuid AND is_system_user
+		ON CONFLICT (user_id) DO UPDATE SET card_notify = EXCLUDED.card_notify, updated_at = NOW()`, userID, notify)
+	return err
+}
+
+// saveTerminalGlobalScreen schaltet nur das globale Terminal (Infobildschirm) eines
+// System-Benutzers; die übrigen Einstellungen bleiben unverändert. Bei
+// Nicht-System-Benutzern passiert nichts.
+func (h *Handler) saveTerminalGlobalScreen(ctx context.Context, userID string, on bool) error {
+	if h.db == nil {
+		return errors.New("keine Datenbank")
+	}
+	_, err := h.db.Exec(ctx, `
+		INSERT INTO terminal_settings (user_id, global_screen, updated_at)
+		SELECT id, $2, NOW() FROM users WHERE id = $1::uuid AND is_system_user
+		ON CONFLICT (user_id) DO UPDATE SET global_screen = EXCLUDED.global_screen, updated_at = NOW()`, userID, on)
 	return err
 }
 

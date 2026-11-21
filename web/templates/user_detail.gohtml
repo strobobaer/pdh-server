@@ -88,6 +88,7 @@
     <div class="card-title"><span><i class="ti ti-device-desktop"></i> Gekoppelte Geräte</span>
       <form method="post" action="/users/{{$u.ID}}/terminal-code" style="margin:0"><button class="btn btn-small" type="submit"><i class="ti ti-link"></i> Gerät koppeln</button></form>
     </div>
+    {{template "terminal-download-link"}}
     {{range .Devices}}
     <div class="rec-row" style="flex-wrap:wrap;gap:8px{{if .Revoked}};opacity:.55{{end}}">
       <i class="ti ti-device-desktop" style="color:var(--muted)"></i>
@@ -183,6 +184,31 @@
       <div id="ud-card-only-warn" class="rec-msg err" style="margin-top:6px;{{if ne $m.TerminalManualLogin "card_only"}}display:none{{end}}"><i class="ti ti-alert-triangle"></i> Wer eine Kartennummer kennt, kann sich als diese Person anmelden</div>
       <label style="font-size:13px;display:flex;gap:8px;align-items:center;margin-top:8px"><input type="checkbox" name="terminal_password_button" {{if $m.TerminalPasswordButton}}checked{{end}}> Knopf „Mit Benutzer und Passwort“</label>
       <div class="rec-sub" style="margin-top:4px">Gilt nur, wenn das Terminal keinen Kartenleser hat oder der Leser ausgefallen ist.</div>
+      <div class="form-label" style="margin-top:8px">Benachrichtigung beim Kartenlesen</div>
+      <input type="hidden" name="terminal_card_notify_sent" value="1">
+      <div id="ud-card-notify">
+        <label style="font-size:13px;display:flex;gap:8px;align-items:center"><input type="checkbox" name="terminal_card_notify" value="toast" {{if index $m.TerminalCardNotify "toast"}}checked{{end}} data-cn="kind"> Windows-Mitteilung</label>
+        <label style="font-size:13px;display:flex;gap:8px;align-items:center;margin-top:4px"><input type="checkbox" name="terminal_card_notify" value="overlay" {{if index $m.TerminalCardNotify "overlay"}}checked{{end}} data-cn="kind"> Fenster in der Mitte</label>
+        <label style="font-size:13px;display:flex;gap:8px;align-items:center;margin-top:4px"><input type="checkbox" name="terminal_card_notify" value="banner" {{if index $m.TerminalCardNotify "banner"}}checked{{end}} data-cn="kind"> Leiste oben</label>
+        <label style="font-size:13px;display:flex;gap:8px;align-items:center;margin-top:4px"><input type="checkbox" name="terminal_card_notify" value="front" {{if index $m.TerminalCardNotify "front"}}checked{{end}} data-cn="kind"> Terminal nach vorn</label>
+        <label style="font-size:13px;display:flex;gap:8px;align-items:center;margin-top:4px"><input type="checkbox" name="terminal_card_notify" value="off" {{if index $m.TerminalCardNotify "off"}}checked{{end}} data-cn="off"> Keine Benachrichtigung</label>
+      </div>
+      <div class="rec-sub" style="margin-top:4px">Wirkt nur an Windows-Terminals in der Betriebsart Zusatz. Nichts angehakt: Vorgabe. (Vorgabe: Fenster in der Mitte)</div>
+      <input type="hidden" name="terminal_global_screen_sent" value="1">
+      <label style="font-size:13px;display:flex;gap:8px;align-items:center;margin-top:8px"><input type="checkbox" name="terminal_global_screen" {{if $m.TerminalGlobalScreen}}checked{{end}}> Globales Terminal (Infobildschirm)</label>
+      <div class="rec-sub" style="margin-top:4px">Zeigt die Folien aus „Infobildschirm“, ohne Anmeldung und ohne Kartenleser.</div>
+      <script>
+      (function () {
+        var box = document.getElementById('ud-card-notify');
+        if (!box) return;
+        box.addEventListener('change', function (e) {
+          var t = e.target, kinds = box.querySelectorAll('[data-cn="kind"]'), off = box.querySelector('[data-cn="off"]');
+          if (!t.checked) return;
+          if (t === off) kinds.forEach(function (k) { k.checked = false; });
+          else off.checked = false;
+        });
+      })();
+      </script>
     </div>{{end}}
 
     <div class="rec-sec">Organisation</div>

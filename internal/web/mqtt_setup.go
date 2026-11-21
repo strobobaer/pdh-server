@@ -1,6 +1,6 @@
 package web
 
-// Einrichten eines Broker-Namens als Ganzes (0.82.13): Ein neuer oder geänderter Name ist
+// Einrichten eines Broker-Namens als Ganzes (0.82.15): Ein neuer oder geänderter Name ist
 // vorgemerkt (mqttPendingKey). Das PDH holt das Zertifikat, trägt den Namen im Haus ein und
 // öffnet die Firewall – soweit der Speichernde das darf. Erst wenn diese drei Punkte grün
 // sind, wird der Name scharf: Vormerkung weg, nginx-Seite, Tunnel-Zeile. Was das PDH nicht

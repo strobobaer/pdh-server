@@ -33,7 +33,7 @@ const (
 	mqttTLSPortKey = "int_tls_port"
 	// mqttPendingKey: "1" = Name vorgemerkt – noch keine nginx-Seite und keine Tunnel-Zeile,
 	// bis Zertifikat, Eintrag im Haus und Firewall stehen (mqtt_setup.go). Fehlt der
-	// Schlüssel, ist der Name scharf (so bleiben Namen von vor 0.82.13, wie sie sind).
+	// Schlüssel, ist der Name scharf (so bleiben Namen von vor 0.82.15, wie sie sind).
 	mqttPendingKey = "int_public_pending"
 )
 
