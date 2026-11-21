@@ -78,6 +78,7 @@ type BaseData struct {
 	CanCleanup             bool       // Nav-Link "Bereinigung"
 	CanServerConfig        bool       // Nav-Link "Server-Einstellungen" (nur Admins)
 	Brand                  Branding   // Name und Logos (Erscheinungsbild)
+	CompanyPrint           companyPrint // Firma im Druckkopf (Firmenstammdaten)
 	CanEditInfra           bool       // Infrastruktur anlegen/bearbeiten (infrastructure.edit)
 	CanViewInfra           bool       // Infrastruktur ansehen: Nav-Link, Stammkarte (infrastructure.view)
 	CanProcurement         bool       // Beschaffung & Einkauf (procurement.view)
@@ -1473,6 +1474,7 @@ func (h *Handler) baseData(r *http.Request, page, title, ctxTitle string) BaseDa
 		CanExport:              h.rbac.HasPermissionForUser(u.ID, string(u.Role), "export.read"),
 		CanChat:                u.ID != "" && h.rbac.HasPermissionForUser(u.ID, string(u.Role), "chat.use"),
 		Brand:                  brand,
+		CompanyPrint:           companyPrintFor(h.company(r.Context())),
 		CanEditInfra:           h.rbac.HasPermissionForUser(u.ID, string(u.Role), "infrastructure.edit"),
 		CanViewInfra:           h.canViewInfra(r),
 		CanProcurement:         h.canProcurement(r),

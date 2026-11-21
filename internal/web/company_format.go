@@ -84,6 +84,28 @@ func (h *Handler) contactPersonFor(ctx context.Context, userID string) *contactP
 		Mobile: strings.TrimSpace(mobile), Email: strings.TrimSpace(email)}
 }
 
+// companyPrint: Firma im Druckkopf jeder Seite (base.gohtml, .print-brand).
+type companyPrint struct{ Name, Address string }
+
+func companyPrintFor(p companyProfile) companyPrint {
+	if strings.TrimSpace(p.Name) == "" {
+		return companyPrint{}
+	}
+	return companyPrint{Name: p.Name, Address: companyAddressLine(p)}
+}
+
+// contactLine: Ansprechpartner in einer Zeile (Wartungsprotokoll).
+func contactLine(c *contactPerson) string {
+	if c == nil {
+		return ""
+	}
+	tel := ""
+	if c.Phone != "" {
+		tel = "Tel. " + c.Phone
+	}
+	return joinDot(c.Name, c.Title, tel, c.Email)
+}
+
 var companyFooterTmpl = template.Must(template.New("company-footer").Parse(
 	`<div style="margin-top:20px;padding-top:10px;border-top:1px solid #ddd;color:#888;font-size:12px;line-height:1.5">` +
 		`{{with .Person}}<div><b>Ansprechpartner:</b> {{.Name}}{{with .Title}} · {{.}}{{end}}{{with .Phone}} · Tel. {{.}}{{end}}{{with .Mobile}} · Mobil {{.}}{{end}}{{with .Email}} · {{.}}{{end}}</div>` +
