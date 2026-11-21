@@ -171,8 +171,11 @@ das Prüfergebnis kommt dann in den Text des Merge-Commits, danach
 
 Testverbund: `pdh` 10.10.0.14 und `pdh-server` 10.10.0.17 (Server, gemeinsame
 Adresse 10.10.0.15), Zeuge als Docker-Container auf dem Windows-Rechner
-(10.10.0.231). **Produktiv ist nur 10.10.0.202 – dort nie etwas einspielen
-oder ändern.**
+(10.10.0.231). **10.10.0.202 ist eine produktive Testversion** (Festlegung
+des Anwenders vom 21.11.2026): Einspielen ist dort erlaubt, aber **nur mit
+einer Sicherung vorher** (siehe „10.10.0.202 aktualisieren“). Andere
+Änderungen an 202 (Einstellungen, Daten, Netz, Dateien am Server) weiterhin
+nur nach Rückfrage.
 
 1. Aktiven Server feststellen (nur lesend):
    `ssh michael@10.10.0.14 'sudo -n pdh-ha status'` bzw. `…@10.10.0.17`.
@@ -189,6 +192,32 @@ oder ändern.**
 5. Der Zeuge (`pdh-ha-witness-witness-1`) zieht über seinen Helfer-Container
    `pdh-ha-witness-updater-1` innerhalb von etwa 5 Minuten selbst nach.
    Kein SSH nötig; Stand: `docker exec pdh-ha-witness-witness-1 pdh-ha status`.
+
+## 10.10.0.202 aktualisieren
+
+202 ist ein Einzelserver (systemd, kein `pdh-ha`). Erst einspielen, wenn die
+neue Version auf `main` und dem Testverbund geprüft ist.
+
+1. Stand lesen: `curl -s http://10.10.0.202:8090/health` (Version, Commit,
+   `migrations_ok`).
+2. **Sicherung vorher:** in der Oberfläche von 202 unter Datensicherung
+   „Jetzt sichern“ und abwarten, bis der Lauf erfolgreich ist. Ohne
+   erfolgreiche Sicherung nicht einspielen. Zusätzlich legt der
+   Update-Agent beim Update selbst eine Rückfallkopie der Datenbank an
+   (Server-Protokoll: „Sicherung vor Update ausgelassen – Rückfallkopie
+   vorhanden“).
+3. Einspielen: Core-Einstellungen → „Update prüfen“, dann „Update
+   installieren“. Der Agent baut, zählt herunter, startet neu, prüft und
+   setzt bei einem Fehler selbst zurück.
+4. Prüfen: `/health` meldet die neue Version und den Commit von `main`;
+   `ssh michael@10.10.0.202 'journalctl -u pdh --since "-15 min" --no-pager | grep -E " (ERR|FTL) "'`
+   zeigt keine neuen Fehler.
+
+Zugang von hier: SSH als `michael` geht, `sudo -n` verlangt dort ein
+Kennwort, das Dienstprotokoll ist ohne `sudo` lesbar. Die Zugangsdaten aus
+der `.env` (Datenbank, Update-Agent) nicht auslesen. Eine Anmeldung an der
+Oberfläche von 202 ist von hier nicht eingerichtet – die Knöpfe in Schritt 2
+und 3 drückt bis auf Weiteres der Anwender.
 
 ## Browserprüfung auf dem Testverbund
 
