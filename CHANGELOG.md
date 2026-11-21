@@ -10,6 +10,12 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.82.16] – 2026-11-21
+
+### Neu
+
+- Am gekoppelten PDH-Terminal öffnet ein kleines Zahnrad oben rechts die Einstellungen des Terminals (in allen Ansichten, auch Schoner und Folienschau).
+
 ## [0.82.15] – 2026-11-21
 
 ### Behoben
