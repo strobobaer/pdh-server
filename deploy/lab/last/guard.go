@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"net"
 	"net/url"
 	"os"
 	"regexp"
@@ -10,28 +11,72 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
-// Der produktive Server wird nie getestet: Jede Angabe, die auf diese Adresse
+// Der produktive Server wird nie getestet: Jede Angabe, die auf seine Adresse
 // zeigt, bricht das Programm ab. Die Adresse steht in der Umgebungsvariablen
-// PDH_LAST_PRODUCTION; ohne sie gilt die Beispieladresse 192.0.2.202.
-const defaultProductionIP = "192.0.2.202"
-
-func productionIP() string {
-	if v := strings.TrimSpace(os.Getenv("PDH_LAST_PRODUCTION")); v != "" {
-		return v
-	}
-	return defaultProductionIP
+// PDH_LAST_PRODUCTION. Fehlt sie, ist nur dieser Rechner (localhost,
+// 127.0.0.1, ::1) als Ziel erlaubt – die Sperre greift also immer.
+func productionIP() (string, bool) {
+	v := strings.TrimSpace(os.Getenv("PDH_LAST_PRODUCTION"))
+	return v, v != ""
 }
 
 // forbidden prüft Adressen (-base, -dsn, -ssh) auf den Produktivserver.
 func forbidden(named map[string]string) error {
-	ip := productionIP()
-	re := regexp.MustCompile(`(^|[^0-9])` + regexp.QuoteMeta(ip) + `([^0-9]|$)`)
+	ip, ok := productionIP()
+	var re *regexp.Regexp
+	if ok {
+		re = regexp.MustCompile(`(^|[^0-9])` + regexp.QuoteMeta(ip) + `([^0-9]|$)`)
+	}
 	for _, name := range []string{"-base", "-dsn", "-ssh"} {
-		if v := named[name]; v != "" && re.MatchString(v) {
+		v := named[name]
+		if v == "" {
+			continue
+		}
+		if !ok {
+			if !targetIsLocal(name, v) {
+				return fmt.Errorf("%s zeigt nicht auf diesen Rechner – für andere Ziele zuerst PDH_LAST_PRODUCTION=<Adresse des Produktivservers> setzen, damit die Lastprüfung ihn sicher auslässt", name)
+			}
+			continue
+		}
+		if re.MatchString(v) {
 			return fmt.Errorf("%s zeigt auf den Produktivserver %s – die Lastprüfung läuft nie gegen die Produktion", name, ip)
 		}
 	}
 	return nil
+}
+
+// targetIsLocal: zeigt die Angabe nur auf diesen Rechner? Nicht lesbare Angaben gelten als fremd.
+func targetIsLocal(name, v string) bool {
+	var hosts []string
+	switch name {
+	case "-base":
+		u, err := url.Parse(v)
+		if err != nil {
+			return false
+		}
+		hosts = []string{u.Hostname()}
+	case "-dsn":
+		cfg, err := pgconn.ParseConfig(v)
+		if err != nil {
+			return false
+		}
+		hosts = []string{cfg.Host}
+		for _, f := range cfg.Fallbacks {
+			hosts = append(hosts, f.Host)
+		}
+	case "-ssh":
+		hosts = []string{v[strings.LastIndex(v, "@")+1:]}
+	default:
+		return false
+	}
+	for _, h := range hosts {
+		if h != "localhost" {
+			if ip := net.ParseIP(h); ip == nil || !ip.IsLoopback() {
+				return false
+			}
+		}
+	}
+	return len(hosts) > 0
 }
 
 // sshHostRe: nur Benutzer@Rechner, nichts, was ssh als Option lesen könnte.

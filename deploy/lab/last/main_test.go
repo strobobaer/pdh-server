@@ -121,8 +121,40 @@ func TestParseMixAndWeights(t *testing.T) {
 	}
 }
 
+// Ohne PDH_LAST_PRODUCTION ist nur dieser Rechner erlaubt – sonst liefe die
+// Lastprüfung ungeschützt gegen jeden Server, auch die Produktion.
+func TestForbiddenWithoutProductionOnlyLocal(t *testing.T) {
+	t.Setenv("PDH_LAST_PRODUCTION", "")
+	bad := []map[string]string{
+		{"-base": "http://192.0.2.15:8090"},
+		{"-base": "http://192.0.2.202:8090"},
+		{"-dsn": "postgres://pdh:x@192.0.2.15:5432/pdh"},
+		{"-dsn": "host=db.example dbname=pdh user=pdh"},
+		{"-ssh": "admin@192.0.2.17"},
+		{"-base": "http://127.0.0.1:8097", "-ssh": "admin@192.0.2.17"},
+	}
+	for _, c := range bad {
+		if err := forbidden(c); err == nil || !strings.Contains(err.Error(), "PDH_LAST_PRODUCTION") {
+			t.Errorf("%v hätte ohne PDH_LAST_PRODUCTION abgelehnt werden müssen: %v", c, err)
+		}
+	}
+	good := []map[string]string{
+		{"-base": "http://127.0.0.1:8097"},
+		{"-base": "http://localhost:8090", "-ssh": "admin@localhost"},
+		{"-dsn": "postgres://pdh:x@127.0.0.1:54330/pdh_test?sslmode=disable"},
+		{"-dsn": "host=127.0.0.1 port=54330 dbname=pdh_test user=pdh"},
+		{"-base": "http://[::1]:8090"},
+		{},
+	}
+	for _, c := range good {
+		if err := forbidden(c); err != nil {
+			t.Errorf("%v fälschlich abgelehnt: %v", c, err)
+		}
+	}
+}
+
 func TestForbiddenProduction(t *testing.T) {
-	t.Setenv("PDH_LAST_PRODUCTION", "") // Standard: Beispieladresse 192.0.2.202
+	t.Setenv("PDH_LAST_PRODUCTION", "192.0.2.202")
 	bad := []map[string]string{
 		{"-base": "http://192.0.2.202:8090"},
 		{"-base": "http://192.0.2.202"},

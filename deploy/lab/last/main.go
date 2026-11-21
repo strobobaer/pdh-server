@@ -10,8 +10,8 @@
 //	go run ./deploy/lab/last -cleanup -dsn "postgres://…/pdh"
 //
 // Die Adresse des produktiven Servers wird in -base, -dsn und -ssh abgelehnt.
-// Sie steht in PDH_LAST_PRODUCTION (z. B. PDH_LAST_PRODUCTION=192.0.2.202);
-// ohne diese Angabe gilt die Beispieladresse 192.0.2.202.
+// Sie steht in PDH_LAST_PRODUCTION (z. B. PDH_LAST_PRODUCTION=192.0.2.202).
+// Ohne diese Angabe sind nur Ziele auf diesem Rechner erlaubt (localhost).
 package main
 
 import (
