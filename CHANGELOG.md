@@ -10,6 +10,17 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.82.22] – 2026-11-21
+
+### Neu
+
+- **Rüsttasten am Anlagenterminal:** Auf der Seite „Neu“ erscheint unterhalb von Störung und Ticket die Kachel **Rüsten**, sobald an der Anlage des Terminals (direkt oder von Halle/Linie darüber geerbt) Rüsttasten vorhanden sind. Eine eigene Terminalseite (`/terminal/rusten`) zeigt die Tasten, das laufende Rüsten mit **Fertig** und **Rüstzeit nachtragen** (Rüsttaste, Beginn und Dauer per Antippen). Es gibt keinen Umweg über die Meldeseite des Easy-Modus. Wer rüstet: die per Karte angemeldete Person, sonst der Terminal-Benutzer; nötig ist das Recht „Rüstzeiten: erfassen …“ (`setup.edit`) für die Abteilung der Anlage, die Rolle Terminal bringt es mit. Gleiche Prüfungen und Bremse wie im Easy-Modus. Keine Migration.
+
+### Behoben
+
+- „Rüsttasten werden nicht angezeigt“: Das Anlagenterminal hatte bisher gar keine Rüsttasten; sie gab es nur auf der Meldeseite des Easy-Modus (und dort nur bei eingeschaltetem Easy-Modus).
+- Die Meldeseite des Easy-Modus (`/e/…`) passt sich jetzt der Bildschirmgröße an (Handy, Terminal 1280×800 und 1920×1080, Hochformat) statt eines festen schmalen Streifens: breiteres Raster, größere Schrift und Tasten für Berührung.
+
 ## [0.82.21] – 2026-11-21
 
 ### Neu

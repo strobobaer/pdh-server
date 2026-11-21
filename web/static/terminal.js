@@ -258,6 +258,11 @@
     } catch (e) { /* kein Kartendienst */ }
   }
 
+  // Rüsten (Neu, Rüsten): wer rüstet und was sichtbar ist, hängt an der Kartenanmeldung – bei Wechsel neu laden.
+  if (mode === 'neu' || mode === 'rusten') {
+    document.addEventListener('pdh-card-login', function (e) { if (!!e.detail !== (body.dataset.cardIn === '1')) location.reload(); });
+  }
+
   // Sensoren (ESPPDH) nach Kartenanmeldung: /terminal/sensors.json alle 10 s; ohne Anmeldung
   // oder ohne Recht liefert der Server {"show": false} – dann bleibt der Bereich leer und verborgen.
   var sens = document.querySelector('[data-sensors]');

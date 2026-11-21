@@ -25,7 +25,7 @@ body{min-height:100vh;display:flex;flex-direction:column}
 .ez-langs button{background:none;border:1px solid transparent;border-radius:6px;padding:4px;cursor:pointer;line-height:0}
 .ez-langs button.on{border-color:var(--accent)}
 .lang-flag{width:26px;height:17px;border-radius:2px;box-shadow:0 0 0 1px rgba(0,0,0,.25)}
-main{flex:1;width:100%;max-width:560px;margin:0 auto;padding:14px 14px 28px}
+main{flex:1;width:100%;max-width:var(--ez-max,560px);margin:0 auto;padding:14px 14px 28px}
 .ez-asset{display:flex;gap:12px;align-items:center;margin:6px 0 18px}
 .ez-asset .ic{font-size:30px;width:52px;height:52px;border-radius:14px;background:var(--bg3);display:flex;align-items:center;justify-content:center;flex-shrink:0}
 .ez-asset h1{font-size:22px;font-weight:700;line-height:1.2}
@@ -99,6 +99,29 @@ html[data-style="fiori"] .ez-in{border:1px solid var(--muted);border-radius:4px}
 html[data-style="fiori"] .ez-in:focus{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
 html[data-style="fiori"] .ez-btn{border-radius:8px;background:var(--bg2);color:var(--accent);border-color:var(--muted)}
 html[data-style="fiori"] .ez-btn.go{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+/* Bildschirmgrößen: Handy (Spalte), Tablet/Terminal 1280×800 und 1920×1080 (breit, große Tasten), Hochformat.
+   Kein fester Handy-Streifen: die Breite folgt dem Bildschirm (--ez-max), die Schrift der Breite (--ez-fs). */
+:root{--ez-max:560px;--ez-fs:16px}
+html,body{font-size:var(--ez-fs)}
+main{max-width:var(--ez-max)}
+@media (min-width:768px){
+:root{--ez-max:min(1100px,94vw);--ez-fs:clamp(17px,1.5vw,24px)}
+.ez-top{padding:12px 24px}.ez-mode{font-size:.8em}.ez-mode b{font-size:1em}
+.ez-asset .ic{width:4em;height:4em;font-size:1.6em}.ez-asset h1{font-size:1.7em}.ez-asset .p{font-size:.85em}
+.ez-actions{gap:2vw}
+.ez-big{font-size:1.35em;min-height:clamp(150px,24vh,280px)}.ez-big i{font-size:2.2em}
+.ez-recent{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,22em),1fr))}
+.ez-item b{font-size:1em}.ez-item small{font-size:.8em}
+.ez-q{font-size:1.5em}.ez-hint{font-size:.95em}.ez-in{font-size:1.1em}
+.ez-choice{grid-template-columns:repeat(auto-fit,minmax(min(100%,18em),1fr))}
+.ez-opt{font-size:1.15em;min-height:72px}.ez-btn{font-size:1.1em;min-height:64px}
+main .rz-btns{grid-template-columns:repeat(auto-fill,minmax(11em,1fr))}
+main .rz-btn,main .rz-in{font-size:1.05em;min-height:64px}.rz-h{font-size:.9em}
+.rz-add form{grid-template-columns:repeat(auto-fit,minmax(14em,1fr))}
+}
+@media (min-width:1600px){:root{--ez-max:min(1500px,92vw)}}
+@media (orientation:portrait) and (min-width:700px){:root{--ez-max:min(900px,94vw);--ez-fs:clamp(18px,2.2vw,26px)}}
+@media (pointer:coarse){.ez-login,.ez-btn,.ez-opt,.rz-btn{min-height:56px}}
 </style>
 <script>document.documentElement.dataset.style = {{.Look.StyleID}};</script>
 </head>
