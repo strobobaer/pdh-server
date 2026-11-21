@@ -429,15 +429,28 @@ oder ändern.**
    zurück“ rund 4,5 s, danach erst „Einstellung behalten“, bestätigt,
    Wartung wieder aus. Testrolle entfernt, Prüfkonto gesperrt. Nicht im
    Browser gesehen: Tagesgrenzen zwischen 0 und 1 Uhr (nur automatisch
-   getestet). 10.10.0.202 meldet am 21.11.2026 morgens unter `/health`
-   ebenfalls 0.82.9 (`d244bc4`, `migrations_ok`) – nicht von hier
-   eingespielt; SSH an 202 ist in `.claude/settings.local.json` gesperrt.
-   Offen: dort im Browser ansehen (Anwender).
+   getestet). 10.10.0.202 hat der Anwender am 21.11.2026 um 07:20 selbst
+   über „Update installieren“ auf 0.82.9 gebracht (`d244bc4`,
+   `migrations_ok`; „Sicherung vor Update ausgelassen – Rückfallkopie
+   vorhanden“, also Sicherung durch den Update-Agenten).
    Geparkt (Tests, klein): Laufen alle Pakete gleichzeitig gegen die
    Labor-Datenbank, kann ein Test ein Gerät `w-test-…` auf den
    Lasttest-Benutzer `last01` buchen; dann scheitert
    `TestSetupAndCleanupLab` am Aufräumen (einzeln grün; Reste mit
    `go run ./deploy/lab/last -dsn "$PDH_TEST_DSN" -cleanup` entfernen).
+   (f) **0.82.10 Bestellliste** – Branch `fix/lagerbestand-widget`: Das
+   Startseiten-Widget `list_stock` fragte noch `spare_parts.storage_location`
+   ab (seit Migration 027 `storage_location_legacy`) und scheiterte überall;
+   Lagerort jetzt aus `spare_part_stock` mit Pfad (`storagePaths`). Gefunden
+   im Server-Protokoll von 10.10.0.202 (14× in 3 Tagen). Weitere Befunde dort
+   (21.11.2026, nur gelesen), nicht behoben: MQTT-Wertübernahme will bei
+   jedem Start einen Broker auf `127.0.0.1:1883`, der nicht läuft (PDH-Broker
+   lauscht auf 1888 – Einstellung der Verbindung, Anwender); Grafana-Live
+   `/grafana/api/live/ws` antwortet 400 (nginx ohne WebSocket-Weiterleitung,
+   vgl. `scripts/configure-pdh-nginx-websockets.sh`); Leitstand meldet
+   abgebrochene Anfragen (`context canceled`) als ERR und 500 (nur
+   Protokoll-Lärm). SSH an 202 geht als `michael` ohne `sudo -n`
+   (Kennwort nötig); Datenbank dort von hier nicht lesbar.
 7. **0.81.6 Nummern ab 10000** (Rüstzeit, KVP, Bestellung und Partner waren auf
    vier Stellen abgeschnitten) – mit 0.82.0 auf `main`; der lokale Branch
    `fix/ruestzeit-nummer` ist damit erledigt.
