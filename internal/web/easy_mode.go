@@ -268,7 +268,7 @@ func easyComposeFrom(in easyReportIn, german, langName string, translated bool, 
 	} else if !translated && langName != "Deutsch" {
 		b.WriteString("\n\n(Automatische Übersetzung nicht verfügbar – Text in " + langName + ")")
 	}
-	b.WriteString("\n\nGemeldet per QR-Code (Easy-Mode)" + easyFrom(in.Name, ": ") + " · " + easyKindDE[in.Kind] + " · " + easyStateDE[in.State])
+	b.WriteString("\n\n" + source + easyFrom(in.Name, ": ") + " · " + easyKindDE[in.Kind] + " · " + easyStateDE[in.State])
 	return title, b.String()
 }
 

@@ -123,16 +123,34 @@ func TestTerminalSetupInheritedButtons(t *testing.T) {
 		t.Errorf("%d Rüstzeiten nicht von der angemeldeten Person erstellt", bad)
 	}
 
-	// angemeldete Person ohne setup.edit: keine Bedienung, keine neue Rüstzeit
+	// Recht hängt am Terminal-Benutzer, nicht an der Person: eine Person ohne eigenes setup.edit darf (als Akteur) rüsten …
 	e.grant(noedit, "setup.edit", "", false)
 	e.warm()
 	e.exec(`UPDATE terminal_card_sessions SET person_id = $2::uuid WHERE terminal_user_id = $1::uuid`, term, noedit)
+	if body := do(tu, "GET", "/terminal/rusten", nil).Body.String(); !strings.Contains(body, `action="/terminal/rusten/start"`) {
+		t.Error("Terminal-Benutzer hat setup.edit, Person nicht: Bedienung fehlt")
+	}
+	// … und ohne setup.edit des Terminal-Benutzers wird nicht gerüstet, auch wenn die Person es hätte
+	e.grant(term, "setup.edit", "", false)
+	e.exec(`UPDATE terminal_card_sessions SET person_id = $2::uuid WHERE terminal_user_id = $1::uuid`, term, person)
+	e.warm()
 	if body := do(tu, "GET", "/terminal/rusten", nil).Body.String(); !strings.Contains(body, "Keine Berechtigung") {
-		t.Error("ohne setup.edit: Hinweis fehlt")
+		t.Error("ohne setup.edit des Terminal-Benutzers: Hinweis fehlt")
 	}
 	do(tu, "POST", "/terminal/rusten/start", url.Values{"button_id": {b.ID}})
 	e.must(e.pool.QueryRow(e.ctx, `SELECT count(*) FROM setup_times WHERE infrastructure_id = $1::uuid`, plant).Scan(&n))
 	if n != 2 {
 		t.Errorf("ohne Recht wurde gerüstet: %d", n)
+	}
+
+	// fremde Seite: POST wird abgewiesen
+	req := httptest.NewRequest("POST", "/terminal/rusten/start", strings.NewReader("button_id="+b.ID))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Sec-Fetch-Site", "cross-site")
+	req = req.WithContext(context.WithValue(req.Context(), "user", tu))
+	rec2 := httptest.NewRecorder()
+	r.ServeHTTP(rec2, req)
+	if rec2.Code != http.StatusForbidden {
+		t.Errorf("cross-site POST: %d", rec2.Code)
 	}
 }

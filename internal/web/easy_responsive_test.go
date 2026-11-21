@@ -16,7 +16,7 @@ func TestEasyPageResponsiveRules(t *testing.T) {
 	s := string(b)
 	for _, want := range []string{
 		"main{max-width:var(--ez-max)}",
-		"html,body{font-size:var(--ez-fs)}",
+		"main{font-size:var(--ez-fs)}",
 		"@media (min-width:768px)",
 		"@media (min-width:1600px)",
 		"@media (orientation:portrait)",
@@ -50,5 +50,17 @@ func TestTerminalSetupResponsiveRules(t *testing.T) {
 		if !strings.Contains(s, want) {
 			t.Errorf("terminal.gohtml ohne %q", want)
 		}
+	}
+}
+
+// Herkunftszeile: Easy-Modus „per QR-Code“, Terminal „am Anlagenterminal“.
+func TestEasyComposeSourceLabel(t *testing.T) {
+	in := easyReportIn{Type: "fault", Name: "Rita", Text: "Band steht", Kind: "mechanical", State: "stopped"}
+	if _, d := easyCompose(in, "Band steht", "Deutsch", true); !strings.Contains(d, "Gemeldet per QR-Code (Easy-Mode) von: Rita") {
+		t.Errorf("Easy-Modus: %q", d)
+	}
+	_, d := easyComposeFrom(in, "Band steht", "Deutsch", true, "Gemeldet am Anlagenterminal")
+	if !strings.Contains(d, "Gemeldet am Anlagenterminal von: Rita") || strings.Contains(d, "QR-Code") {
+		t.Errorf("Terminal: %q", d)
 	}
 }

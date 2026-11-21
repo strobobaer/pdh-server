@@ -21,12 +21,12 @@ import (
 type setupActor struct {
 	ID, Name string
 	Card     bool // per Karte angemeldet
-	Can      bool // setup.edit für die Anlage
+	Can      bool // setup.edit des Terminal-Benutzers (Rolle Terminal) für die Anlage
 }
 
 type terminalChoice struct{ Value, Label string }
 
-// terminalSetupActor bestimmt, wer rüstet und ob sie es darf.
+// terminalSetupActor bestimmt, wer rüstet (angemeldete Person) und ob das Terminal es darf.
 func (h *Handler) terminalSetupActor(r *http.Request, uid, infraID string) setupActor {
 	ctx := r.Context()
 	if h.db != nil {
@@ -34,7 +34,7 @@ func (h *Handler) terminalSetupActor(r *http.Request, uid, infraID string) setup
 			componentLog("terminal").Error().Err(err).Msg("kartensitzung lesen")
 		} else if p != nil {
 			return setupActor{ID: p.ID, Name: strings.TrimSpace(p.FirstName + " " + p.LastName), Card: true,
-				Can: h.cardPersonCan(ctx, p, permSetupEdit, "infrastructure", infraID)}
+				Can: h.terminalUserCan(r, uid, permSetupEdit, infraID)}
 		}
 	}
 	// Ohne Anmeldung (Karte oder manuell am Terminal) rüstet niemand: nie der bloße Terminal-Benutzer.
@@ -78,6 +78,9 @@ func (h *Handler) TerminalRustenPage(w http.ResponseWriter, r *http.Request) {
 
 // terminalSetupAct: gemeinsamer Rahmen der drei POST-Routen. do liefert Hinweiskennung und Rücksprung ("" = Rüsten-Seite).
 func (h *Handler) terminalSetupAct(w http.ResponseWriter, r *http.Request, do func(p terminalPage, a setupActor) (notice, back string)) {
+	if terminalForeignPost(w, r) {
+		return
+	}
 	p, uid, ok := h.terminalSetupGate(w, r, "rusten")
 	if !ok {
 		return
@@ -131,4 +134,24 @@ func (h *Handler) TerminalRustenAdd(w http.ResponseWriter, r *http.Request) {
 		}
 		return n, ""
 	})
+}
+
+// terminalUserCan: Recht des Terminal-Benutzers (Rolle Terminal, auf die Abteilung der Anlage begrenzt) –
+// nicht der angemeldeten Person; sie ist nur Akteur (Ersteller, gestartet von).
+func (h *Handler) terminalUserCan(r *http.Request, uid, perm, infraID string) bool {
+	if h.rbac == nil {
+		return false
+	}
+	_, role, _ := h.terminalInfraLookup(r.Context(), uid)
+	return h.rbac.HasPermissionInDepartment(uid, role, perm, h.recordDepartments(r.Context(), "infrastructure", infraID))
+}
+
+// terminalForeignPost: Formular-POSTs des Terminals wie die übrigen Terminal-Routen nur von der eigenen Seite
+// (SameSite-Cookie plus Sec-Fetch-Site, wie die Wartungsaktionen). true = abgewiesen (403 ist geschrieben).
+func terminalForeignPost(w http.ResponseWriter, r *http.Request) bool {
+	if foreignSite(r) {
+		http.Error(w, "Anfrage von einer fremden Seite", http.StatusForbidden)
+		return true
+	}
+	return false
 }

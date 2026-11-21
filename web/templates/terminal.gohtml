@@ -134,7 +134,7 @@ body.has-gear .g-vorg{padding-top:60px}
 /* Rüsten (terminal_setup.go): Kachel auf „Neu“, Seite /terminal/rusten – Raster folgt der Bildschirmgröße */
 .t-new .t-rzlink{grid-column:1/-1;flex-direction:row;font-size:1.3em;padding:2.2vh 2vw;background:#064e3b;border-color:var(--green)}
 .t-new .t-rzlink i{font-size:1.6em}.t-rzlink small{display:block;font-weight:600;font-size:.6em;color:var(--muted)}
-.t-new{grid-template-rows:minmax(0,1fr) auto auto}
+.t-new.has-rz{grid-template-rows:minmax(0,1fr) auto auto}
 .t-rz{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:1.6vh;padding-bottom:1vh;-webkit-overflow-scrolling:touch}
 .t-rz h3{font-size:.8em;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-top:.6vh}
 .t-rznote{padding:1.2vh 1.6vw;background:var(--bg3);border:2px solid var(--amber);border-radius:18px;font-weight:700}
@@ -152,7 +152,7 @@ body.has-gear .g-vorg{padding-top:60px}
 .t-rzh{font-size:1.3em}
 .t-text{width:100%;min-height:clamp(90px,14vh,200px);padding:1vh 1.2vw;border-radius:18px;border:2px solid var(--border);background:var(--bg2);color:var(--text);font:inherit;-webkit-user-select:text;user-select:text}
 .t-file{color:var(--muted);font:inherit}
-@media (max-width:820px){.g-vorg{grid-template-columns:1fr}.t-cols,.t-new{grid-template-columns:1fr}.t-new{grid-template-rows:auto}}
+@media (max-width:820px){.g-vorg{grid-template-columns:1fr}.t-cols,.t-new{grid-template-columns:1fr}.t-new,.t-new.has-rz{grid-template-rows:auto}}
 </style>
 </head>
 <body{{if .DeviceSession}} class="has-gear"{{end}}{{if .SetupCard}} data-card-in="1"{{end}} data-mode="{{.Mode}}" data-idle="{{.Idle}}"{{if .SettingsEvents}} data-settings-events="1"{{end}}{{if .CardEvents}} data-card-events="1" data-card-notify="{{.CardNotify}}"{{if ne .Mode "schoner"}} data-manual-login="{{.ManualLogin}}" data-password-button="{{if .PasswordButton}}1{{else}}0{{end}}"{{end}}{{end}}>
@@ -278,7 +278,7 @@ body.has-gear .g-vorg{padding-top:60px}
 <div class="t-none"><i class="ti ti-lock" aria-hidden="true"></i><p>Keine Berechtigung</p><small>Dieses Terminal darf hier nichts melden oder anzeigen.</small></div>
 {{else}}
 {{if .Done}}<div class="t-rznote" role="status">{{if eq .Done "fault"}}Störung gemeldet – danke.{{else}}Ticket erstellt – danke.{{end}}</div>{{end}}
-<div class="t-new">
+<div class="t-new{{if .Setup.Show}} has-rz{{end}}">
   <a class="t-tilebtn fault" href="/terminal/stoerung"><i class="ti ti-alert-triangle" aria-hidden="true"></i> Störung</a>
   <a class="t-tilebtn ticket" href="/terminal/ticket"><i class="ti ti-ticket" aria-hidden="true"></i> Ticket</a>
   {{if .Setup.Show}}{{if and .SetupCard .SetupCan}}<a class="t-tilebtn t-rzlink" href="/terminal/rusten"><i class="ti ti-tool" aria-hidden="true"></i><span>Rüsten{{if .Setup.Running}}<small>{{.Setup.Text}}</small>{{else if .Setup.Fault}}<small>{{.Setup.Text}}</small>{{end}}</span></a>{{else}}<span class="t-tilebtn t-rzlink off" aria-disabled="true"><i class="ti ti-tool" aria-hidden="true"></i><span>Rüsten<small>{{if .SetupCard}}Keine Berechtigung zum Rüsten{{else}}Bitte zuerst anmelden{{end}}</small></span></span>{{end}}{{end}}

@@ -123,3 +123,25 @@ func TestTerminalReportFaultAndTicket(t *testing.T) {
 		t.Errorf("Ticket bleibt erlaubt: %s", loc)
 	}
 }
+
+func TestTerminalReportCrossSiteRefused(t *testing.T) {
+	e := newATEnv(t)
+	plant := e.infra("RMCross", "", "")
+	term := e.user("rmcterm", "terminal", true)
+	e.exec(`UPDATE users SET terminal_infrastructure_id = $2::uuid WHERE id = $1::uuid`, term, plant)
+	e.warm()
+	h := &Handler{db: e.pool, rbac: e.rb, jwtSecret: "test-geheim", tmpl: loadTestTemplates(t)}
+	r := chi.NewRouter()
+	h.terminalRoutes(r)
+	for _, p := range []string{"/terminal/stoerung", "/terminal/ticket"} {
+		req := httptest.NewRequest("POST", p, strings.NewReader("text=abc&kind=mechanical&state=running"))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("Sec-Fetch-Site", "cross-site")
+		req = req.WithContext(context.WithValue(req.Context(), "user", &users.User{ID: term, Role: users.Role("terminal"), IsSystemUser: true}))
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, req)
+		if rec.Code != http.StatusForbidden {
+			t.Errorf("%s cross-site: %d", p, rec.Code)
+		}
+	}
+}

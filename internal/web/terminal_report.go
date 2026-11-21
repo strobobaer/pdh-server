@@ -45,15 +45,11 @@ func terminalReportTitle(typ string) string {
 
 // terminalReportPerm: Recht des Terminal-Benutzers (nicht der Person) für die Abteilung der Anlage.
 func (h *Handler) terminalReportPerm(r *http.Request, uid, typ, infraID string) bool {
-	if h.rbac == nil {
-		return false
-	}
-	_, role, _ := h.terminalInfraLookup(r.Context(), uid)
 	perm := "tickets.edit"
 	if typ == "fault" {
 		perm = "faults.edit"
 	}
-	return h.rbac.HasPermissionInDepartment(uid, role, perm, h.recordDepartments(r.Context(), "infrastructure", infraID))
+	return h.terminalUserCan(r, uid, perm, infraID)
 }
 
 // terminalReportPlants: Anlage des Terminals (zuerst) und sichtbare, aktive Unteranlagen.
@@ -122,6 +118,9 @@ func (h *Handler) TerminalReportPage(typ string) http.HandlerFunc {
 // (infra, text_id, text, kind, state, optional files)
 func (h *Handler) TerminalReportSubmit(typ string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if terminalForeignPost(w, r) {
+			return
+		}
 		p, uid, ok := h.terminalReportGate(w, r)
 		if !ok {
 			return
