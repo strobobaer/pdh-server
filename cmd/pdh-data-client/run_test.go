@@ -6,9 +6,9 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"slices"
 	"net/http/httptest"
 	"net/netip"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -152,7 +152,9 @@ func TestRunReportsAndClearsAuthKey(t *testing.T) {
 	ch := make(chan seen, 4)
 	pdh := pdhServer(t, 200, ch)
 	f := &nodetest.Fake{Routes: map[string]string{"100.64.0.1:8443": pdh}}
-	c := runCfg(t, []datanet.Target{{Port: 7001, Addr: echo}, {Port: 7002, Addr: "127.0.0.1:" + strconv.Itoa(closed)}}, "100.64.0.1:8443")
+	// Freie Ports statt fester 7001/7002 – auf manchen Rechnern belegt ein
+	// anderer Dienst diese Ports (z. B. ein Lizenzserver unter Windows).
+	c := runCfg(t, []datanet.Target{{Port: freePort(t), Addr: echo}, {Port: freePort(t), Addr: "127.0.0.1:" + strconv.Itoa(closed)}}, "100.64.0.1:8443")
 	var mu sync.Mutex
 	var saved []Config
 	startRun(t, c, f, func(c Config) error {

@@ -1,0 +1,123 @@
+{{template "base" .}}
+{{define "content"}}
+{{/* PDH-App: Geräteliste, offene Anfragen, Einstellungen (app_devices.go).
+     Nur Farbvariablen – gleiche Seite in Fiori und Fluent, hell und dunkel. */}}
+<style>
+.app-dev{max-width:980px;margin:0 auto}
+.app-dev-head{display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap}
+.app-dev-head h1{font-size:19px;font-weight:600;flex:1;min-width:200px}
+.app-dev-scroll{overflow-x:auto}
+.app-dev table{width:100%;border-collapse:collapse;font-size:13px}
+.app-dev th{text-align:left;font-weight:600;color:var(--muted);padding:6px 10px;border-bottom:1px solid var(--border);white-space:nowrap}
+.app-dev td{padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:top;overflow-wrap:anywhere}
+.app-dev tr:last-child td{border-bottom:0}
+.app-dev tr.is-revoked td{opacity:.55}
+.app-dev-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px 16px}
+.app-dev-form .wide{grid-column:1/-1}
+.app-dev-form textarea{min-height:84px;font-family:inherit}
+</style>
+<div class="app-dev">
+  <div class="app-dev-head">
+    <h1><i class="ti ti-device-mobile"></i> {{t "App-Geräte"}}</h1>
+  </div>
+
+  {{if .Revoked}}<p class="rec-msg" role="status" style="margin-bottom:12px"><i class="ti ti-check"></i> {{t "Das App-Gerät wurde gesperrt."}}</p>{{end}}
+  {{if .Approved}}<p class="rec-msg" role="status" style="margin-bottom:12px"><i class="ti ti-check"></i> {{t "Das App-Gerät wurde freigegeben."}}</p>{{end}}
+  {{if .Rejected}}<p class="rec-msg" role="status" style="margin-bottom:12px"><i class="ti ti-check"></i> {{t "Die Anfrage wurde abgelehnt."}}</p>{{end}}
+  {{if .Saved}}<p class="rec-msg" role="status" style="margin-bottom:12px"><i class="ti ti-check"></i> {{t "Die App-Einstellungen sind gespeichert."}}</p>{{end}}
+  {{if .Error}}<p class="rec-msg err" role="alert" style="margin-bottom:12px"><i class="ti ti-alert-circle"></i> {{.Error}}</p>{{end}}
+
+  {{if .Requests}}
+  <div class="card" style="margin-bottom:14px">
+    <div class="card-title"><span><i class="ti ti-hourglass"></i> {{t "Offene Anfragen"}}</span></div>
+    <div class="app-dev-scroll">
+      <table>
+        <thead><tr><th>{{t "Name"}}</th><th>{{t "Abteilung"}}</th><th>{{t "Gerät"}}</th><th>{{t "System"}}</th><th>{{t "Angefragt"}}</th><th></th></tr></thead>
+        <tbody>
+        {{range .Requests}}
+        <tr>
+          <td><b>{{.Name}}</b></td>
+          <td>{{if .DeptName}}{{.DeptName}}{{else}}–{{end}}</td>
+          <td>{{if .Label}}{{.Label}}{{else}}–{{end}}</td>
+          <td>{{.Platform}} {{.Version}}</td>
+          <td>{{.Created}}</td>
+          <td><a class="btn btn-small" href="/app/requests/{{.ID}}"><i class="ti ti-device-mobile-check"></i> {{t "App-Konfiguration"}}</a></td>
+        </tr>
+        {{end}}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {{end}}
+
+  <div class="card" style="margin-bottom:14px">
+    <div class="card-title"><span><i class="ti ti-devices"></i> {{t "Eingerichtete Geräte"}}</span></div>
+    {{if .Devices}}
+    <div class="app-dev-scroll">
+      <table>
+        <thead><tr><th>{{t "Benutzer"}}</th><th>{{t "Gerät"}}</th><th>{{t "System"}}</th><th>{{t "App-Version"}}</th><th>{{t "zuletzt gesehen"}}</th><th>{{t "Status"}}</th><th></th></tr></thead>
+        <tbody>
+        {{range .Devices}}
+        <tr id="dev-{{.ID}}"{{if .Revoked}} class="is-revoked"{{end}}>
+          <td><a href="/users/{{.UserID}}">{{.UserName}}</a></td>
+          <td>{{if .Label}}{{.Label}}{{else}}–{{end}}</td>
+          <td>{{.Platform}}</td>
+          <td>{{.Version}}</td>
+          <td>{{.LastSeen}}</td>
+          <td>{{if .Revoked}}<span class="badge b-red">{{t "gesperrt"}}</span> <span class="rec-sub">{{.Revoked}}</span>{{else}}<span class="badge b-green">{{t "aktiv"}}</span>{{end}}</td>
+          <td>{{if .CanRevoke}}<form method="post" action="/app/devices/{{.ID}}/revoke" style="margin:0" onsubmit="return confirm({{t "Gerät sperren? Die App wird sofort gesperrt."}})"><button class="btn btn-small" type="submit" style="color:var(--red)"><i class="ti ti-ban"></i> {{t "Sperren"}}</button></form>{{end}}</td>
+        </tr>
+        {{end}}
+        </tbody>
+      </table>
+    </div>
+    {{else}}<p class="rec-sub">{{t "Noch kein App-Gerät eingerichtet."}}</p>{{end}}
+  </div>
+
+  {{if .CanSettings}}
+  <form method="post" action="/app/settings" class="card" autocomplete="off">
+    <div class="card-title"><span><i class="ti ti-settings"></i> {{t "Einstellungen für die App"}}</span></div>
+    <div class="app-dev-form">
+      <div class="wide">
+        <label class="form-label" for="app-addresses">{{t "Adressen für die App"}}</label>
+        <textarea class="form-input" id="app-addresses" name="addresses" rows="3" placeholder="https://pdh.example.org">{{.Form.Addresses}}</textarea>
+        <p class="rec-sub">{{t "Eine Adresse je Zeile, nur mit http:// oder https://. Die Adresse dieses Servers kennt die App von selbst."}}</p>
+      </div>
+      <div class="wide">
+        <label class="form-label" for="app-allow-prev">{{t "Ältere App-Version erlauben"}}</label>
+        <select class="form-input" id="app-allow-prev" name="allow_previous">
+          <option value="1"{{if .Form.AllowPrevious}} selected{{end}}>{{t "Ja – die vorige Version darf weiter arbeiten"}}</option>
+          <option value="0"{{if not .Form.AllowPrevious}} selected{{end}}>{{t "Nein – nur die neueste Version"}}</option>
+        </select>
+      </div>
+      <div>
+        <label class="form-label" for="app-latest-ios">{{t "Neueste Version iOS"}}</label>
+        <input class="form-input" id="app-latest-ios" name="latest_ios" type="text" value="{{.Form.LatestIOS}}" placeholder="1.2.0" inputmode="decimal">
+      </div>
+      <div>
+        <label class="form-label" for="app-latest-android">{{t "Neueste Version Android"}}</label>
+        <input class="form-input" id="app-latest-android" name="latest_android" type="text" value="{{.Form.LatestAndroid}}" placeholder="1.2.0" inputmode="decimal">
+      </div>
+      <div>
+        <span class="form-label">{{t "Vorige Version iOS"}}</span>
+        <p class="rec-sub" id="app-prev-ios">{{if .Form.PrevIOS}}{{.Form.PrevIOS}}{{else}}–{{end}}</p>
+      </div>
+      <div>
+        <span class="form-label">{{t "Vorige Version Android"}}</span>
+        <p class="rec-sub" id="app-prev-android">{{if .Form.PrevAndroid}}{{.Form.PrevAndroid}}{{else}}–{{end}}</p>
+      </div>
+      <div>
+        <label class="form-label" for="app-store-ios">{{t "Store-Adresse iOS"}}</label>
+        <input class="form-input" id="app-store-ios" name="store_ios" type="url" value="{{.Form.StoreIOS}}" placeholder="https://apps.apple.com/…">
+      </div>
+      <div>
+        <label class="form-label" for="app-store-android">{{t "Store-Adresse Android"}}</label>
+        <input class="form-input" id="app-store-android" name="store_android" type="url" value="{{.Form.StoreAndroid}}" placeholder="https://play.google.com/…">
+      </div>
+    </div>
+    <p class="rec-sub" style="margin-top:8px">{{t "Ändert sich die neueste Version, merkt sich der Server die bisherige als vorige Version."}}</p>
+    <div style="display:flex;justify-content:flex-end;margin-top:10px"><button class="btn btn-primary" type="submit"><i class="ti ti-device-floppy"></i> {{t "Speichern"}}</button></div>
+  </form>
+  {{end}}
+</div>
+{{end}}

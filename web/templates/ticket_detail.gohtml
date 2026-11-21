@@ -9,6 +9,7 @@
   </div>
   <span class="badge {{$t.PriorityClass}}" style="font-size:12px;padding:4px 12px">{{$t.Priority}}</span>
   <span class="badge {{$t.StatusClass}}" style="font-size:12px;padding:4px 12px">{{$t.StatusLabel}}</span>
+  {{if .AppRequestID}}<a class="btn btn-primary" href="/app/requests/{{.AppRequestID}}"><i class="ti ti-device-mobile-check"></i> App-Konfiguration öffnen</a>{{end}}
   <button class="btn" type="button" title="Löschen" aria-label="Löschen" hx-delete="/tickets/{{$t.ID}}" hx-confirm="Ticket endgültig löschen?" hx-target="body"><i class="ti ti-trash"></i></button>
 </div>
 <div id="archive-result" style="margin-bottom:10px"></div>

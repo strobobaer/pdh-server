@@ -180,7 +180,8 @@ var historyActionLabels = map[string]string{
 	"terminal_paired": "Terminal gekoppelt", "terminal_revoked": "Terminal getrennt",
 	"tia_download": "TIA-Baustein geladen", "sync": "Abgleich", "sync_out": "Abgleich nach außen",
 	"sync_origin": "Herkunft Abgleich", "credentials_update": "Zugangsdaten geändert",
-	"credentials_view": "Zugangsdaten angezeigt",
+	"credentials_view":    "Zugangsdaten angezeigt",
+	"app_device_approved": "App-Gerät freigegeben", "app_request_rejected": "App-Zugang abgelehnt", "app_device_revoked": "App-Gerät gesperrt",
 }
 
 // historyFieldLabels: deutsche Beschriftung technischer Feldnamen. Felder, die schon

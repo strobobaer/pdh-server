@@ -24,6 +24,22 @@ func TestLoggerPreservesFlusher(t *testing.T) {
 	handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/", nil))
 }
 
+// Ein App-Token (Authorization: PDHApp …) gilt an /api/v1 nicht: kein Bearer,
+// also 401, auch wenn es wie ein JWT aussähe.
+func TestAuthRejectsAppToken(t *testing.T) {
+	called := false
+	h := Auth("geheim")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { called = true }))
+	for _, tok := range []string{"pdha_abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG", "x.y.z"} {
+		req := httptest.NewRequest("GET", "/api/v1/users/me", nil)
+		req.Header.Set("Authorization", "PDHApp "+tok)
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != http.StatusUnauthorized || called {
+			t.Errorf("App-Token %q: %d (Handler aufgerufen: %v)", tok, rec.Code, called)
+		}
+	}
+}
+
 func TestAuthRejectsDeviceToken(t *testing.T) {
 	mk := func(extra jwt.MapClaims) string {
 		claims := jwt.MapClaims{"sub": "u1", "role": "viewer", "exp": time.Now().Add(time.Hour).Unix()}

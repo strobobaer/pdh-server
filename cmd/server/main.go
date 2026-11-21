@@ -507,6 +507,16 @@ func main() {
 	r.Post("/api/terminal/v1/pair", webHandler.TerminalPairAPI)
 	r.Get("/api/terminal/v1/device", webHandler.TerminalDeviceAPI)
 
+	// Öffentliche Einstiegs-Schnittstellen der PDH-App (ohne Anmeldung).
+	r.Get("/api/app/v1/server", webHandler.AppServerAPI)
+	r.Get("/api/app/v1/branding", webHandler.AppBrandingAPI)
+	r.Get("/api/app/v1/departments", webHandler.AppDepartmentsAPI)
+	r.Post("/api/app/v1/requests", webHandler.AppRequestCreateAPI)
+	r.Get("/api/app/v1/requests/{id}", webHandler.AppRequestStatusAPI)
+	r.Get("/app/setup", webHandler.AppSetupPage)
+	// Angemeldete App-Schnittstellen: Token + Signatur + Sperre + Mindestversion + app.use.
+	r.With(webHandler.AppAuth).Get("/api/app/v1/me", webHandler.AppMeAPI)
+
 	// Public shop-floor dashboard; its write actions authenticate each operator by RFID.
 	r.Mount("/global", webHandler.GlobalDashboardRoutes())
 
