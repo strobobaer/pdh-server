@@ -10,6 +10,18 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.82.15] – 2026-11-21
+
+### Behoben
+
+- Ein neuer MQTT-Name kann den Zugang zum PDH nicht mehr unterbrechen: Der Update-Agent prüft nach jeder neuen nginx-Seite, ob alle anderen Namen ihr Zertifikat behalten, und nimmt sie sonst zurück.
+- Eine nginx-Seite des Update-Agenten hört nur noch dann auf IPv6, wenn alle anderen Seiten auf Port 443 das auch tun.
+- Nach einer Änderung des WebSocket-Ports zeigt die Tunnel-Zeile des MQTT-Namens selbst auf den neuen Port.
+
+### Geändert
+
+- Ein neuer oder geänderter MQTT-Name ist zuerst vorgemerkt und wird erst scharf geschaltet, wenn Zertifikat, Eintrag im Haus und Firewall stehen; was das PDH nicht selbst darf, zeigt die Prüfliste mit dem genauen Eintrag.
+- Der Cloudflare-Tunnel erreicht die Dienste über 127.0.0.1 statt localhost; vorhandene Zeilen mit localhost gelten weiter als richtig.
 ## [0.82.14] – 2026-11-21
 
 ### Neu

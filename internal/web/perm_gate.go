@@ -197,6 +197,7 @@ var gateRules = []gateRule{
 	gr("GET", "import.write", "", false, `^/import/connections`+gID+`/broker/checklist$`),
 	// Ports des eingebauten Brokers in der Firewall des Servers öffnen (wer den Broker einrichtet)
 	gr(wPost, "import.write", "", false, `^/import/connections`+gID+`/broker/firewall$`),
+	gr(wPost, "import.write", "", false, `^/import/connections`+gID+`/broker/setup$`),
 	gr(wPost, "export.write", "", false, `^/export/connections/fingerprint$`),
 	// ── Explorer: Testschreiben/Senden wie Verbindung bearbeiten (Erkunden selbst: import/export.execute im Handler) ──
 	gr(wPost, "import.write", "", false, `^/import/connections`+gID+`/explorer/(?:mqtt/publish|opcua/write|modbus/write)$`),

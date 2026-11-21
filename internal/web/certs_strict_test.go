@@ -94,7 +94,7 @@ func TestCertStrictIngress(t *testing.T) {
 		t.Errorf("fremdes Ziel geändert: %+v", out[1])
 	}
 	for _, i := range []int{0, 2} {
-		if out[i].Service != "https://localhost:443" || out[i].NoTLSVerify() {
+		if out[i].Service != certStrictService || out[i].NoTLSVerify() {
 			t.Errorf("Ziel %d nicht umgestellt: %+v", i, out[i])
 		}
 		var o map[string]any
@@ -153,7 +153,7 @@ func TestCertStrictOnRemembersBefore(t *testing.T) {
 		t.Fatalf("gemerkter Stand: %q %v", e.set[keyCertStrictBefore], err)
 	}
 	got := e.tunnelIngress(t)
-	if got[0].Service != "https://localhost:443" || got[2].Service != "https://localhost:443" || got[1].Service != "http://127.0.0.1:9000" {
+	if got[0].Service != certStrictService || got[2].Service != certStrictService || got[1].Service != "http://127.0.0.1:9000" {
 		t.Errorf("Ziele: %+v", got)
 	}
 	if string(e.f.tunnel["warp-routing"]) != `{"enabled":false}` {

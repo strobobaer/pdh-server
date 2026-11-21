@@ -166,6 +166,30 @@ func cfSameHost(a, b string) bool {
 	return strings.EqualFold(strings.TrimSuffix(a, "."), strings.TrimSuffix(b, "."))
 }
 
+// cfSameService: zeigen zwei Tunnel-Ziele auf denselben Dienst? localhost gilt als 127.0.0.1
+// (das PDH schreibt 127.0.0.1 – localhost ist am Server oft zuerst ::1); Schema, Port und
+// Pfad müssen gleich sein. Nicht lesbare Angaben (z. B. http_status:404) nur bei gleichem Text.
+func cfSameService(a, b string) bool {
+	if a == b {
+		return true
+	}
+	ua, ea := url.Parse(a)
+	ub, eb := url.Parse(b)
+	if ea != nil || eb != nil || ua.Host == "" || ub.Host == "" {
+		return false
+	}
+	host := func(u *url.URL) string {
+		if h := strings.ToLower(u.Hostname()); h != "localhost" {
+			return h
+		}
+		return "127.0.0.1"
+	}
+	return strings.EqualFold(ua.Scheme, ub.Scheme) && host(ua) == host(ub) && ua.Port() == ub.Port() && ua.Path == ub.Path
+}
+
+// cfIsStrictService: ist das Ziel das strenge (über nginx, mit Zertifikatsprüfung)?
+func cfIsStrictService(s string) bool { return cfSameService(s, certStrictService) }
+
 // cfCheckTarget vergleicht Soll (Name → Dienst über den Tunnel) mit dem Stand bei Cloudflare.
 func cfCheckTarget(t cfTarget, tunnel string, ingress []cloudflare.Ingress, records []cloudflare.Record) cfTarget {
 	t.TunnelNote = "fehlt"
@@ -173,7 +197,7 @@ func cfCheckTarget(t cfTarget, tunnel string, ingress []cloudflare.Ingress, reco
 		if !cfSameHost(in.Hostname, t.Host) {
 			continue
 		}
-		if in.Service == t.Service {
+		if cfSameService(in.Service, t.Service) {
 			t.TunnelOK, t.TunnelNote = true, "eingerichtet"
 		} else {
 			t.TunnelNote = "zeigt auf " + in.Service
@@ -208,7 +232,7 @@ func (h *Handler) cfWantedTargets(ctx context.Context, zone string, ingress []cl
 		out = append(out, cfTarget{Label: "PDH", Host: host, Service: strings.TrimRight(origin, "/"), NoTLS: strings.HasPrefix(origin, "https://")})
 	}
 	if u, err := url.Parse(strings.TrimSpace(os.Getenv("PDH_NEXTCLOUD_BASEURL"))); err == nil && u.Hostname() != "" && inZone(strings.ToLower(u.Hostname())) {
-		t := cfTarget{Label: "Nextcloud", Host: strings.ToLower(u.Hostname()), Service: "http://localhost:80"}
+		t := cfTarget{Label: "Nextcloud", Host: strings.ToLower(u.Hostname()), Service: "http://127.0.0.1:80"}
 		for _, in := range ingress { // ein vorhandenes Ziel gilt als gewollt
 			if cfSameHost(in.Hostname, t.Host) {
 				t.Service, t.NoTLS = in.Service, in.NoTLSVerify()
@@ -238,7 +262,7 @@ func (h *Handler) cfStrictNames(ctx context.Context) []string {
 }
 
 // cfKeepStrict: Wird bei eingeschaltetem Full (strict) das Ziel eines geführten Namens auf
-// https://localhost:443 gespeichert (Knopf „Einrichten“), gehören die Angaben für die
+// https://127.0.0.1:443 gespeichert (Knopf „Einrichten“), gehören die Angaben für die
 // Zertifikatsprüfung dazu – sonst prüfte der Tunnel gegen „localhost“ und der Name wäre von
 // außen weg. Andere Ziele und andere Namen bleiben, wie sie gespeichert wurden.
 func cfKeepStrict(list []cloudflare.Ingress, host string, strictNames []string) []cloudflare.Ingress {
@@ -246,7 +270,7 @@ func cfKeepStrict(list []cloudflare.Ingress, host string, strictNames []string) 
 		return list
 	}
 	for _, in := range list {
-		if cfSameHost(in.Hostname, host) && in.Service == certStrictService {
+		if cfSameHost(in.Hostname, host) && cfIsStrictService(in.Service) {
 			return certStrictIngress(list, []string{in.Hostname})
 		}
 	}
@@ -254,7 +278,7 @@ func cfKeepStrict(list []cloudflare.Ingress, host string, strictNames []string) 
 }
 
 // cfStrictWanted: Solange Full (strict) eingeschaltet ist, ist für die geführten Namen
-// https://localhost:443 mit Zertifikatsprüfung das gewollte Ziel – kein Hinweis und kein
+// https://127.0.0.1:443 mit Zertifikatsprüfung das gewollte Ziel – kein Hinweis und kein
 // „Einrichten“, das das alte Ziel zurückschreiben würde.
 func cfStrictWanted(targets []cfTarget, names []string) []cfTarget {
 	for i := range targets {
