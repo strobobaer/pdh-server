@@ -10,6 +10,12 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.82.12] – 2026-11-21
+
+### Geändert
+
+- PDH steht jetzt unter der Lizenz AGPL-3.0-or-later (vorher GPL-3.0-only); was PDH für dich erzeugt (z. B. SCL-Bausteine, ESPHome-YAML, Exporte), gehört dir (Ausnahme in `LICENSE-EXCEPTION.md`), und `THIRD_PARTY_LICENSES.md` nennt die Lizenzen aller Fremdbestandteile.
+
 ## [0.82.11] – 2026-11-21
 
 ### Neu

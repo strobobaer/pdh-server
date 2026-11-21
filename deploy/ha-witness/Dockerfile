@@ -17,11 +17,15 @@ RUN v="${VERSION:-$(tr -d '[:space:]' < VERSION)}" \
        -o /out/pdh-ha ./cmd/pdh-ha
 
 FROM debian:bookworm-slim AS base
+LABEL org.opencontainers.image.licenses="AGPL-3.0-or-later"
 RUN apt-get update \
     && apt-get install -y --no-install-recommends iputils-ping \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=build /out/pdh-ha /usr/local/bin/pdh-ha
 COPY deploy/ha-witness/entrypoint.sh /usr/local/bin/pdh-ha-entrypoint
+# Lizenz (AGPL-3.0-or-later), Ausnahme für Ausgaben und Lizenzen der Fremdbestandteile
+COPY LICENSE COPYING.md LICENSE-EXCEPTION.md THIRD_PARTY_LICENSES.md /usr/share/licenses/pdh/
+COPY third_party/notices /usr/share/licenses/pdh/notices
 # Windows-Checkout (CRLF) darf den Start nicht verhindern
 RUN sed -i 's/\r$//' /usr/local/bin/pdh-ha-entrypoint \
     && chmod 0755 /usr/local/bin/pdh-ha-entrypoint \
@@ -41,6 +45,7 @@ RUN apt-get update \
 # iproute2 und iputils-arping für die mitwandernde Adresse (wie in der
 # Produktion; nicht das Paket arping – das hat andere Schalter)
 FROM ubuntu:26.04 AS lab-pg
+LABEL org.opencontainers.image.licenses="AGPL-3.0-or-later"
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
        postgresql postgresql-contrib iputils-ping iputils-arping iproute2 curl ca-certificates socat rsync \
@@ -51,6 +56,8 @@ COPY deploy/ha-lab/nc-dummy.sh /usr/local/bin/nc-dummy
 COPY deploy/ha-lab/lab-agent.sh /usr/local/bin/lab-agent
 COPY deploy/ha-lab/lab-pg-entrypoint.sh /usr/local/bin/pdh-ha-entrypoint
 COPY VERSION /usr/local/share/pdh-lab/VERSION
+COPY LICENSE COPYING.md LICENSE-EXCEPTION.md THIRD_PARTY_LICENSES.md /usr/share/licenses/pdh/
+COPY third_party/notices /usr/share/licenses/pdh/notices
 RUN sed -i 's/\r$//' /usr/local/bin/pdh-dummy /usr/local/bin/nc-dummy /usr/local/bin/lab-agent /usr/local/bin/pdh-ha-entrypoint \
     && chmod 0755 /usr/local/bin/pdh-dummy /usr/local/bin/nc-dummy /usr/local/bin/lab-agent /usr/local/bin/pdh-ha-entrypoint \
     && install -d -m 0700 /etc/pdh/ha /var/lib/pdh-ha \

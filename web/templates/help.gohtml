@@ -2161,6 +2161,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     </ol>
     Ab Version 0.80.9 setzt das Update diese Angabe selbst.</div>
   <p><b>Ohne Versionsnummer auf GitHub:</b> Zeigt <b>Version auf GitHub</b> „nicht angegeben“, stammt der Stand auf GitHub aus der Zeit vor der Versionierung. Ob ein Update da ist, entscheidet dann weiter der Commit-Vergleich.</p>
+  <p><b>Lizenz:</b> PDH steht unter der GNU Affero General Public License, Version 3 oder später (AGPL-3.0-or-later). Den Quellcode gibt es unter <a href="https://github.com/strobobaer/pdh-server" target="_blank" rel="noopener">github.com/strobobaer/pdh-server</a>. Was PDH für dich erzeugt – z. B. SCL-Bausteine, ESPHome-YAML, Berichte und Exporte – gehört dir und fällt nicht unter die AGPL (Ausnahme in <code>LICENSE-EXCEPTION.md</code>).</p>
   <h3>Änderungsprotokoll <i class="ti ti-refresh" title="automatisch aus dem System"></i></h3>
   <p class="rec-sub">Was sich in welcher Version geändert hat – neueste zuerst. {{if .CurrentVersion}}Installiert ist Version {{.CurrentVersion}}.{{end}}</p>
   {{range $i, $r := .Releases}}
@@ -2543,6 +2544,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <h2><i class="ti ti-cpu"></i> ESPPDH – eigene Mess- und Zählgeräte</h2>
   <p>Mit <b>ESPPDH</b> baust du kleine Messgeräte selbst: eine ESP-Platine (ESP32 oder ESP8266), daran ein Stromzähler, eine Stromzange, ein Energiemesser oder eine Lichtschranke. Das PDH erstellt die Firmware für das Gerät; danach sendet das Gerät seine Werte an den eingebauten MQTT-Broker des PDH, die meisten alle 10 Sekunden.</p>
   <p>ESPPDH <b>misst für die Betriebsführung, nicht für die Abrechnung</b>. Die Geräte sind nicht geeicht – für Rechnungen gilt weiter der geeichte Zähler. ESPPDH ist ein Zusatz: Ohne es läuft das PDH wie bisher. Im Docker-Betrieb gibt es ESPPDH nicht. ESPPDH baut auf <b>ESPHome</b> auf (Lizenz GPLv3 bzw. MIT).</p>
+  <p>Gibst du Geräte mit ESPPDH-Firmware an Dritte weiter, gilt für die Firmware die Lizenz von ESPHome (GPLv3): die YAML-Konfiguration (ohne Kennwörter, unter <b>Aktionen</b>) und die ESPHome-Version mitgeben.</p>
   <p>Du findest es unter <b>Navigation → Daten → ESPPDH</b> oder auf der Seite <b>Import</b> über den Verweis „ESPPDH – eigene Mess- und Zählgeräte“.</p>
   <div class="hb-howto"><b><i class="ti ti-route"></i> Der Weg zum fertigen Gerät</b>
     <ol class="hb-steps">

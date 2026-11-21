@@ -492,12 +492,28 @@ Einige Migrationen koennen `CREATE TABLE`-Statements ohne `IF NOT EXISTS` enthal
 
 ## Lizenz
 
-SPDX-License-Identifier: GPL-3.0-only
+PDH steht unter der **GNU Affero General Public License, Version 3 oder später**
+(SPDX: `AGPL-3.0-or-later`).
 
-This project is licensed under the GNU General Public License v3.0 only.
+- [LICENSE](LICENSE) – voller Lizenztext
+- [COPYING.md](COPYING.md) – Urheberrecht und Kurzfassung
+- [LICENSE-EXCEPTION.md](LICENSE-EXCEPTION.md) – Ausgaben, die PDH erzeugt
+  (SCL-Bausteine, ESPHome-YAML, Berichte, Exporte, PDF, Etiketten, E-Mails),
+  gehören dem Anwender; die AGPL gilt für sie nicht
+- [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) – Lizenzen der
+  Fremdbestandteile
 
-The complete license text is available at:
-https://www.gnu.org/licenses/gpl-3.0.txt
+Quellcode: <https://github.com/strobobaer/pdh-server>
+
+**Marken:** SAP Fiori, Microsoft Fluent und Windows, Siemens TIA Portal und
+SIMATIC, Nextcloud, ESPHome, Home Assistant, Grafana, Tailscale, Cloudflare,
+Ubiquiti UniFi, TP-Link Omada, n8n und Anthropic Claude sind Marken ihrer
+Inhaber. PDH ist mit ihnen nicht verbunden. Die Namen stehen hier nur, um zu
+beschreiben, womit PDH zusammenarbeitet oder woran sich die Oberfläche anlehnt.
+
+**n8n** steht unter der *Sustainable Use License* und ist keine
+Open-Source-Software. PDH liefert n8n nicht mit; es leitet nur Anfragen an eine
+getrennt installierte n8n-Instanz weiter.
 
 ## Added an Ubuntu Docker deployment for PDH:
 
