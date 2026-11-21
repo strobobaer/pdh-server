@@ -1109,5 +1109,10 @@
  "Infobildschirm": "Ecran informativ",
  "Terminal": "Terminal",
  "Terminal-Software herunterladen": "Descarcă software-ul terminalului",
- "Raspberry-Pi-Abbild, Windows-Setup (EXE/MSI) und Updates": "Imagine Raspberry Pi, program de instalare Windows (EXE/MSI) și actualizări"
+ "Raspberry-Pi-Abbild, Windows-Setup (EXE/MSI) und Updates": "Imagine Raspberry Pi, program de instalare Windows (EXE/MSI) și actualizări",
+  "Vorige Version iOS": "Versiunea anterioară iOS",
+  "Vorige Version Android": "Versiunea anterioară Android",
+  "Gerät in „App-Geräte“ ansehen": "Vezi dispozitivul în „Dispozitive aplicație”",
+  "Diese Person hat das Recht „App: nutzen“ nicht – die App wird nicht nutzbar sein.": "Această persoană nu are dreptul „App: utilizează” – aplicația nu va putea fi folosită.",
+  "Die App ist noch nicht verfügbar.": "Aplicația nu este încă disponibilă."
 }

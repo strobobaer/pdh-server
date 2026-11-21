@@ -1090,7 +1090,7 @@ table,.li,.act-item,.rec-row{zoom:var(--row-scale,1)}
         <button type="button" class="topbar-user" onclick="toggleMenu('user-menu')" aria-label="{{t "Benutzermenü"}}" title="{{t "Mein Konto, Darstellung und Abmelden"}}">{{if .UserAvatar}}<img class="tu-av" src="{{.UserAvatar}}" alt="">{{else}}<i class="ti ti-user"></i>{{end}}<span class="tu-name">{{.UserName}}</span><i class="ti ti-chevron-down" style="font-size:11px;margin-left:2px;color:var(--muted)"></i></button>
         <div id="user-menu" class="win11-menu" style="display:none;position:absolute;right:0;top:50px;min-width:160px;z-index:200">
           <a href="/users/me" class="menu-item"><i class="ti ti-user-cog"></i>{{t "Mein Konto"}}</a>
-          {{if .CanAppUse}}<a href="/app/install" class="menu-item"><i class="ti ti-device-mobile"></i>{{t "App installieren"}}</a>{{end}}
+          {{if and .CanAppUse .AppStoreSet}}<a href="/app/install" class="menu-item"><i class="ti ti-device-mobile"></i>{{t "App installieren"}}</a>{{end}}
           <a href="/help" class="menu-item"><i class="ti ti-book"></i>{{t "Handbuch"}}</a>
           <a href="#" class="menu-item" onclick="pdhTour.start('basics'); return false;"><i class="ti ti-map-2"></i>{{t "Rundgang durch PDH"}}</a>
           <a href="#" class="menu-item" id="um-dw-edit" onclick="closeMenu('user-menu'); pdhDashboardEdit(); return false;"><i class="ti ti-layout-dashboard"></i>{{t "Dashboard anpassen"}}</a>

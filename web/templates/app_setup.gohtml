@@ -43,11 +43,15 @@ html[data-style="fiori"] .btn{border-radius:8px;font-weight:700}
   {{if .Brand.AppLogo}}<img class="logo" src="{{.Brand.AppLogo}}" alt="{{.Brand.AppName}}">{{end}}
   <p class="name">{{.Brand.AppName}}</p>
   <h1>{{t "PDH-App installieren"}}</h1>
+  {{if or .IOS .Android}}
   <p class="text">{{t "Installiere die App aus dem Store und öffne sie danach hier mit dem Knopf unten – sie verbindet sich dann mit diesem Server."}}</p>
   {{with .IOS}}<a class="btn" href="{{.}}" rel="noopener">{{t "App für iPhone laden"}}</a>{{end}}
   {{with .Android}}<a class="btn" href="{{.}}" rel="noopener">{{t "App für Android laden"}}</a>{{end}}
   <p class="sep">{{t "Schon installiert?"}}</p>
   <a class="btn alt" href="{{.OpenURL}}">{{t "In der App öffnen"}}</a>
+  {{else}}
+  <p class="text">{{t "Die App ist noch nicht verfügbar."}}</p>
+  {{end}}
 </main>
 </body>
 </html>

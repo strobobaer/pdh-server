@@ -110,64 +110,68 @@ func appRequestReply(w http.ResponseWriter, status int, id, fingerprint string) 
 func (h *Handler) AppRequestCreateAPI(w http.ResponseWriter, r *http.Request) {
 	key := limiterKey(easyClient(r))
 	body, err := io.ReadAll(io.LimitReader(r.Body, appRequestMaxBody+1))
-	if err != nil || len(body) > appRequestMaxBody {
-		terminalJSONErr(w, http.StatusUnprocessableEntity, "Eingabe zu groß oder nicht lesbar")
+	if err != nil {
+		appJSONErr(w, http.StatusUnprocessableEntity, "app_invalid_input", "Eingabe nicht lesbar")
+		return
+	}
+	if len(body) > appRequestMaxBody {
+		appJSONErr(w, http.StatusRequestEntityTooLarge, "app_too_large", "Eingabe zu groß")
 		return
 	}
 	var in appRequestInput
 	dec := json.NewDecoder(bytes.NewReader(body))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&in); err != nil || dec.More() {
-		terminalJSONErr(w, http.StatusUnprocessableEntity, "Ungültige Eingabe")
+		appJSONErr(w, http.StatusUnprocessableEntity, "app_invalid_input", "Ungültige Eingabe")
 		return
 	}
 	name := strings.TrimSpace(in.Name)
 	if err := validDeviceName(name); err != nil {
-		terminalJSONErr(w, http.StatusUnprocessableEntity, strings.Replace(err.Error(), "Gerätename", "Name", 1))
+		appJSONErr(w, http.StatusUnprocessableEntity, "app_invalid_input", strings.Replace(err.Error(), "Gerätename", "Name", 1))
 		return
 	}
 	label := strings.TrimSpace(in.DeviceLabel)
 	if label != "" {
 		if err := validDeviceName(label); err != nil {
-			terminalJSONErr(w, http.StatusUnprocessableEntity, "Die Gerätebezeichnung ist ungültig")
+			appJSONErr(w, http.StatusUnprocessableEntity, "app_invalid_input", "Die Gerätebezeichnung ist ungültig")
 			return
 		}
 	}
 	if in.Platform != "ios" && in.Platform != "android" {
-		terminalJSONErr(w, http.StatusUnprocessableEntity, "Plattform muss ios oder android sein")
+		appJSONErr(w, http.StatusUnprocessableEntity, "app_invalid_input", "Plattform muss ios oder android sein")
 		return
 	}
 	if !appVersionRe.MatchString(in.AppVersion) {
-		terminalJSONErr(w, http.StatusUnprocessableEntity, "App-Version ungültig")
+		appJSONErr(w, http.StatusUnprocessableEntity, "app_invalid_input", "App-Version ungültig")
 		return
 	}
 	der, derErr := appDecodeB64(in.PublicKey)
 	if _, err := parseAppPublicKey(in.PublicKey); err != nil || derErr != nil {
-		terminalJSONErr(w, http.StatusUnprocessableEntity, "Geräteschlüssel ungültig")
+		appJSONErr(w, http.StatusUnprocessableEntity, "app_invalid_input", "Geräteschlüssel ungültig")
 		return
 	}
 	pub := base64.RawURLEncoding.EncodeToString(der)
 	fp := appKeyFingerprint(pub)
 	if fp == "" || appConfirmCode(fp) == "" {
-		terminalJSONErr(w, http.StatusUnprocessableEntity, "Geräteschlüssel ungültig")
+		appJSONErr(w, http.StatusUnprocessableEntity, "app_invalid_input", "Geräteschlüssel ungültig")
 		return
 	}
 
 	ctx := r.Context()
 	serverErr := func(err error) {
 		componentLog("app").Error().Err(err).Msg("app: zugang anfragen")
-		terminalJSONErr(w, http.StatusInternalServerError, "Anfrage derzeit nicht möglich")
+		appJSONErr(w, http.StatusServiceUnavailable, "app_unavailable", "Anfrage derzeit nicht möglich")
 	}
 	deptName := ""
 	deptID := strings.TrimSpace(in.DepartmentID)
 	if deptID != "" {
 		if !appUUIDRe.MatchString(deptID) {
-			terminalJSONErr(w, http.StatusUnprocessableEntity, "Abteilung unbekannt")
+			appJSONErr(w, http.StatusUnprocessableEntity, "app_invalid_input", "Abteilung unbekannt")
 			return
 		}
 		err := h.db.QueryRow(ctx, `SELECT name FROM departments WHERE id = $1::uuid AND active`, deptID).Scan(&deptName)
 		if errors.Is(err, pgx.ErrNoRows) {
-			terminalJSONErr(w, http.StatusUnprocessableEntity, "Abteilung unbekannt")
+			appJSONErr(w, http.StatusUnprocessableEntity, "app_invalid_input", "Abteilung unbekannt")
 			return
 		}
 		if err != nil {
@@ -195,10 +199,10 @@ func (h *Handler) AppRequestCreateAPI(w http.ResponseWriter, r *http.Request) {
 	var revoked bool
 	switch err := h.db.QueryRow(ctx, `SELECT revoked_at IS NOT NULL FROM app_devices WHERE key_fingerprint = $1`, fp).Scan(&revoked); {
 	case err == nil && revoked:
-		terminalJSONErr(w, http.StatusConflict, "Dieses Gerät wurde gesperrt. Bitte die App zurücksetzen und den Zugang neu anfragen.")
+		appJSONErr(w, http.StatusConflict, "app_conflict", "Dieses Gerät wurde gesperrt. Bitte die App zurücksetzen und den Zugang neu anfragen.")
 		return
 	case err == nil:
-		terminalJSONErr(w, http.StatusConflict, "Dieses Gerät ist bereits eingerichtet")
+		appJSONErr(w, http.StatusConflict, "app_conflict", "Dieses Gerät ist bereits eingerichtet")
 		return
 	case !errors.Is(err, pgx.ErrNoRows):
 		serverErr(err)
@@ -212,7 +216,7 @@ func (h *Handler) AppRequestCreateAPI(w http.ResponseWriter, r *http.Request) {
 			appRequestReply(w, http.StatusOK, id, fp)
 			return
 		}
-		terminalJSONErr(w, http.StatusTooManyRequests, msgAppBlocked)
+		appJSONErr(w, http.StatusTooManyRequests, "app_rate_limited", msgAppBlocked)
 		return
 	}
 	created := false
@@ -226,8 +230,8 @@ func (h *Handler) AppRequestCreateAPI(w http.ResponseWriter, r *http.Request) {
 	if deptName != "" {
 		title += " (" + deptName + ")"
 	}
-	desc := fmt.Sprintf("Zugang für die PDH-App angefragt.\n\nName: %s\nAbteilung: %s\nGerät: %s\nSystem: %s\nApp-Version: %s\nBestätigungscode: %s\n\nDen Code mit dem Telefon vergleichen, bevor das Gerät freigegeben wird.",
-		name, dashIfEmpty(deptName), dashIfEmpty(label), in.Platform, in.AppVersion, appConfirmCode(fp))
+	desc := fmt.Sprintf("Zugang für die PDH-App angefragt.\n\nName: %s\nAbteilung: %s\nGerät: %s\nSystem: %s\nApp-Version: %s\n\nDas Gerät in der App-Konfiguration freigeben; den Bestätigungscode zeigt nur das Telefon.",
+		name, dashIfEmpty(deptName), dashIfEmpty(label), in.Platform, in.AppVersion)
 	group := appAdminGroupID
 
 	tx, err := h.db.Begin(ctx)
@@ -291,29 +295,36 @@ func dashIfEmpty(s string) string {
 func (h *Handler) AppRequestStatusAPI(w http.ResponseWriter, r *http.Request) {
 	key := limiterKey(easyClient(r))
 	now := time.Now()
-	if appFailLimit.blocked(key, now) {
-		terminalJSONErr(w, http.StatusTooManyRequests, msgAppBlocked)
-		return
-	}
-	deny := func(reason string) {
+	// Die Quellen-Sperre gilt nur für Unbekanntes (ungültige oder unbekannte Anfrage-ID).
+	// Fehler einer bekannten Anfrage (Signatur, Nonce, Zeit) zählen nicht und werden nicht
+	// gesperrt: ein Telefon mit falscher Uhr darf andere Geräte derselben Adresse nicht aussperren.
+	unknown := func(reason string) {
+		if appFailLimit.blocked(key, time.Now()) {
+			appJSONErr(w, http.StatusTooManyRequests, "app_rate_limited", msgAppBlocked)
+			return
+		}
 		appFailLimit.fail(key, time.Now())
 		authLog(r, false, "app-abholung", "", "", "", reason)
-		terminalJSONErr(w, http.StatusUnauthorized, msgAppSigInvalid)
+		appJSONErr(w, http.StatusUnauthorized, "app_unauthorized", msgAppSigInvalid)
+	}
+	deny := func(reason string) {
+		authLog(r, false, "app-abholung", "", "", "", reason)
+		appJSONErr(w, http.StatusUnauthorized, "app_unauthorized", msgAppSigInvalid)
 	}
 	serverErr := func(err error) {
 		componentLog("app").Error().Err(err).Msg("app: abholung")
-		terminalJSONErr(w, http.StatusInternalServerError, "Abfrage derzeit nicht möglich")
+		appJSONErr(w, http.StatusServiceUnavailable, "app_unavailable", "Abfrage derzeit nicht möglich")
 	}
 	id := chi.URLParam(r, "id")
 	if !appUUIDRe.MatchString(id) {
-		deny("Anfrage unbekannt")
+		unknown("Anfrage unbekannt")
 		return
 	}
 	ctx := r.Context()
 	var pubB64, status string
 	err := h.db.QueryRow(ctx, `SELECT public_key, status FROM app_requests WHERE id = $1::uuid`, id).Scan(&pubB64, &status)
 	if errors.Is(err, pgx.ErrNoRows) {
-		deny("Anfrage unbekannt")
+		unknown("Anfrage unbekannt")
 		return
 	}
 	if err != nil {
@@ -354,7 +365,7 @@ func (h *Handler) AppRequestStatusAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if revoked != nil { // gesperrt: nie ein Token, die App muss neu anfragen
-		terminalJSONErr(w, http.StatusUnauthorized, "app_revoked")
+		appJSONErr(w, http.StatusUnauthorized, "app_revoked", "app_revoked")
 		return
 	}
 	if firstUsed != nil {

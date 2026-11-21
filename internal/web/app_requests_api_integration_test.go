@@ -131,8 +131,8 @@ func TestAppRequestCreate(t *testing.T) {
 	if title != "App-Zugang: "+name+" ("+deptName+")" || createdBy != appSystemUserID || group != appAdminGroupID || status != "open" || prio != "medium" {
 		t.Errorf("ticket: %q %s %s %s %s", title, createdBy, group, status, prio)
 	}
-	if !strings.Contains(desc, m.ConfirmCode) || !strings.Contains(desc, "android") || !strings.Contains(desc, "1.0.0") || !strings.Contains(desc, "Pixel") {
-		t.Errorf("beschreibung: %q", desc)
+	if strings.Contains(desc, m.ConfirmCode) || strings.Contains(desc, "Bestätigungscode:") || !strings.Contains(desc, "android") || !strings.Contains(desc, "1.0.0") || !strings.Contains(desc, "Pixel") {
+		t.Errorf("beschreibung (ohne Code, mit System, Version, Gerät): %q", desc)
 	}
 	var tid string
 	e.must(e.pool.QueryRow(e.ctx, `SELECT COALESCE(ticket_id::text, '') FROM app_requests WHERE id = $1::uuid`, m.RequestID).Scan(&tid))
@@ -209,7 +209,12 @@ func TestAppRequestCreateInvalid(t *testing.T) {
 		"Version leer":      strings.Replace(e.body("X "+e.sfx, dept, "ios", pub), `"1.0.0"`, `""`, 1),
 	}
 	for n, b := range cases {
-		if rec := e.post(ip, b); rec.Code != 422 {
+		rec := e.post(ip, b)
+		want, code := 422, "app_invalid_input"
+		if n == "Body zu groß" {
+			want, code = 413, "app_too_large"
+		}
+		if m := decodeAppErr(t, rec); rec.Code != want || m["code"] != code || m["error"] == "" {
 			t.Errorf("%s: %d %s", n, rec.Code, rec.Body.String())
 		}
 	}
@@ -220,6 +225,15 @@ func TestAppRequestCreateInvalid(t *testing.T) {
 			t.Fatalf("gültige %d nach ungültigen: %d", i, rec.Code)
 		}
 	}
+}
+
+func decodeAppErr(t *testing.T, rec *httptest.ResponseRecorder) map[string]string {
+	t.Helper()
+	m := map[string]string{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &m); err != nil {
+		t.Fatalf("antwort: %v: %s", err, rec.Body.String())
+	}
+	return m
 }
 
 func TestAppRequestPickup(t *testing.T) {
@@ -245,7 +259,8 @@ func TestAppRequestPickup(t *testing.T) {
 		t.Errorf("wiederverwendete Nonce: %d", rec.Code)
 	}
 
-	// ohne Signatur / falscher Schlüssel / unbekannte ID -> 401, zählt (eigene Quelle)
+	// Fehler einer BEKANNTEN Anfrage (ohne Signatur, falscher Schlüssel, Nonce, Zeit) -> 401,
+	// zählen nicht gegen die Quelle und werden nicht von ihr gesperrt.
 	ip2 := e.nextIP()
 	other, _ := appTestKey(t)
 	if rec = e.get(ip2, id, nil, ""); rec.Code != 401 {
@@ -253,18 +268,31 @@ func TestAppRequestPickup(t *testing.T) {
 	}
 	if rec = e.get(ip2, id, other, e.nonce("b")); rec.Code != 401 {
 		t.Errorf("fremder Schlüssel: %d", rec.Code)
+	} else if m := decodeAppErr(t, rec); m["code"] != "app_unauthorized" {
+		t.Errorf("code: %v", m)
 	}
-	if rec = e.get(ip2, "00000000-0000-4000-8000-00000000dead", priv, e.nonce("c")); rec.Code != 401 {
-		t.Errorf("unbekannte ID: %d", rec.Code)
-	}
-	if rec = e.get(ip2, "kein-uuid", priv, e.nonce("d")); rec.Code != 401 {
-		t.Errorf("keine UUID: %d", rec.Code)
-	}
-	for i := 0; i < 6; i++ { // bis zur Sperre (10 Fehlversuche)
+	for i := 0; i < 15; i++ {
 		e.get(ip2, id, nil, "")
 	}
-	if rec = e.get(ip2, id, priv, e.nonce("e")); rec.Code != 429 {
-		t.Errorf("nach Fehlversuchen: %d, erwartet 429", rec.Code)
+	if rec = e.get(ip2, id, priv, e.nonce("e")); rec.Code != 200 {
+		t.Errorf("bekannte Anfrage nach Fehlern: %d, erwartet 200", rec.Code)
+	}
+	// Unbekannte oder ungültige IDs zählen und sperren die Quelle (10 Fehlversuche).
+	ip3 := e.nextIP()
+	dead := "00000000-0000-4000-8000-00000000dead"
+	if rec = e.get(ip3, dead, priv, e.nonce("c")); rec.Code != 401 {
+		t.Errorf("unbekannte ID: %d", rec.Code)
+	}
+	if rec = e.get(ip3, "kein-uuid", priv, e.nonce("d")); rec.Code != 401 {
+		t.Errorf("keine UUID: %d", rec.Code)
+	}
+	for i := 0; i < 8; i++ {
+		e.get(ip3, dead, priv, e.nonce(fmt.Sprintf("u%d", i)))
+	}
+	if rec = e.get(ip3, dead, priv, e.nonce("v")); rec.Code != 429 {
+		t.Errorf("nach Fehlversuchen mit unbekannter ID: %d, erwartet 429", rec.Code)
+	} else if m := decodeAppErr(t, rec); m["code"] != "app_rate_limited" {
+		t.Errorf("code: %v", m)
 	}
 
 	// Freigabe wie Task 6

@@ -1109,5 +1109,10 @@
  "Infobildschirm": "Инфо екран",
  "Terminal": "Терминал",
  "Terminal-Software herunterladen": "Преземи го софтверот за терминал",
- "Raspberry-Pi-Abbild, Windows-Setup (EXE/MSI) und Updates": "Слика за Raspberry Pi, Windows-инсталација (EXE/MSI) и ажурирања"
+ "Raspberry-Pi-Abbild, Windows-Setup (EXE/MSI) und Updates": "Слика за Raspberry Pi, Windows-инсталација (EXE/MSI) и ажурирања",
+  "Vorige Version iOS": "Претходна верзија iOS",
+  "Vorige Version Android": "Претходна верзија Android",
+  "Gerät in „App-Geräte“ ansehen": "Прикажи го уредот во „Уреди на апликацијата“",
+  "Diese Person hat das Recht „App: nutzen“ nicht – die App wird nicht nutzbar sein.": "Ова лице го нема правото „App: користи“ – апликацијата нема да може да се користи.",
+  "Die App ist noch nicht verfügbar.": "Апликацијата сè уште не е достапна."
 }

@@ -45,6 +45,7 @@ func newAppAdmEnv(t *testing.T) *appAdmEnv {
 	r.Post("/app/devices/{id}/revoke", e.h.AppDeviceRevokeWeb)
 	r.Post("/app/settings", e.h.AppSettingsSaveWeb)
 	r.Get("/app/install", e.h.AppInstallPage)
+	r.Get("/app/setup", e.h.AppSetupPage)
 	r.With(e.h.AppAuth).Get("/api/app/v1/me", e.h.AppMeAPI)
 	return &appAdmEnv{appReqEnv: e, adm: r}
 }
@@ -343,6 +344,74 @@ func TestAppApprove(t *testing.T) {
 		}
 	})
 
+	t.Run("freigegebene Anfrage: Gerät und Sperren", func(t *testing.T) {
+		rq := e.request(deptA)
+		if rec := e.approve(rq, admin, rq.Code, tgtA.ID, allAppTypes, false); rec.Code != 303 {
+			t.Fatalf("freigeben: %d", rec.Code)
+		}
+		devID := e.id(`SELECT device_id::text FROM app_requests WHERE id = $1::uuid`, rq.ID)
+		link, revoke := "/app/devices#dev-"+devID, `action="/app/devices/`+devID+`/revoke"`
+		body := e.do("GET", "/app/requests/"+rq.ID, admin, nil).Body.String()
+		if !strings.Contains(body, link) || !strings.Contains(body, revoke) {
+			t.Errorf("Administrator: Link %v, Sperren %v", strings.Contains(body, link), strings.Contains(body, revoke))
+		}
+		if body := e.do("GET", "/app/requests/"+rq.ID, mgrA, nil).Body.String(); !strings.Contains(body, link) || !strings.Contains(body, revoke) {
+			t.Error("Abteilungs-Administrator mit höherem Rang: Link oder Sperren fehlt")
+		}
+		// Gerät eines gleichrangigen Managers: Link ja, Sperren nein (wie auf „App-Geräte“).
+		rq2 := e.request(deptA)
+		if rec := e.approve(rq2, admin, rq2.Code, tgtMgr.ID, allAppTypes, false); rec.Code != 303 {
+			t.Fatalf("freigeben 2: %d", rec.Code)
+		}
+		dev2 := e.id(`SELECT device_id::text FROM app_requests WHERE id = $1::uuid`, rq2.ID)
+		body = e.do("GET", "/app/requests/"+rq2.ID, mgrA, nil).Body.String()
+		if !strings.Contains(body, "/app/devices#dev-"+dev2) || strings.Contains(body, `/app/devices/`+dev2+`/revoke`) {
+			t.Error("gleichrangig: Link fehlt oder Sperren sichtbar")
+		}
+		// Nach dem Sperren kein Knopf mehr.
+		if rec := e.do("POST", "/app/devices/"+devID+"/revoke", admin, url.Values{}); rec.Code != 303 {
+			t.Fatalf("sperren: %d", rec.Code)
+		}
+		if body := e.do("GET", "/app/requests/"+rq.ID, admin, nil).Body.String(); strings.Contains(body, revoke) || !strings.Contains(body, link) {
+			t.Error("nach dem Sperren: Knopf sichtbar oder Link fehlt")
+		}
+		// Abgelehnte Anfrage hat kein Gerät.
+		rq3 := e.request(deptA)
+		if rec := e.do("POST", "/app/requests/"+rq3.ID+"/reject", admin, url.Values{}); rec.Code != 303 {
+			t.Fatalf("ablehnen: %d", rec.Code)
+		}
+		if body := e.do("GET", "/app/requests/"+rq3.ID, admin, nil).Body.String(); strings.Contains(body, "/app/devices#dev-") {
+			t.Error("abgelehnt: Geräte-Link")
+		}
+	})
+
+	t.Run("Person ohne app.use: Warnung, Freigabe bleibt möglich", func(t *testing.T) {
+		noUse := e.au("atNU", "viewer", deptA)
+		e.grant(noUse.ID, permAppUse, "", false)
+		e.warm()
+		rq := e.request(deptA)
+		body := e.do("GET", "/app/requests/"+rq.ID, admin, nil).Body.String()
+		if !strings.Contains(body, `id="app-nouse-warn"`) || !strings.Contains(body, "App: nutzen") {
+			t.Error("Warntext fehlt")
+		}
+		row := func(id string) string {
+			i := strings.Index(body, `value="`+id+`"`)
+			if i < 0 {
+				t.Fatalf("Person %s fehlt in der Auswahl", id)
+			}
+			return body[strings.LastIndex(body[:i], `<div class="app-req-user"`):i]
+		}
+		if !strings.Contains(row(noUse.ID), `data-use=""`) {
+			t.Error("Person ohne app.use nicht markiert")
+		}
+		if !strings.Contains(row(tgtA.ID), `data-use="1"`) {
+			t.Error("Person mit app.use falsch markiert")
+		}
+		if rec := e.approve(rq, admin, rq.Code, noUse.ID, allAppTypes, false); rec.Code != 303 {
+			t.Errorf("Freigabe trotz Warnung: %d", rec.Code)
+		}
+	})
+
 	t.Run("gleichzeitig", func(t *testing.T) {
 		rq := e.request(deptA)
 		var wg sync.WaitGroup
@@ -580,12 +649,120 @@ func TestAppRevokeAndSettings(t *testing.T) {
 	})
 
 	t.Run("App installieren", func(t *testing.T) {
+		e.setting(keyAppStorePrefix+"android", "https://play.example.org/x")
 		if rec := e.do("GET", "/app/install", viewer, nil); rec.Code != 403 {
 			t.Errorf("ohne app.use: %d", rec.Code)
 		}
 		rec := e.do("GET", "/app/install", tgtA, nil)
 		if rec.Code != 200 || !strings.Contains(rec.Body.String(), "<svg") || !strings.Contains(rec.Body.String(), "/app/setup") {
 			t.Errorf("mit app.use: %d %.200s", rec.Code, rec.Body.String())
+		}
+	})
+
+	t.Run("Einstellungen nur mit Server-Einstellungen", func(t *testing.T) {
+		mgrG := e.au("vmgrG", "manager", "")
+		e.grant(mgrG.ID, permAppAdmin, "", true) // globaler App-Administrator, aber kein Administrator
+		e.warm()
+		f := url.Values{"addresses": {""}, "allow_previous": {"1"}, "latest_android": {"9.9.9"}, "latest_ios": {""}, "store_android": {""}, "store_ios": {""}}
+		if rec := e.do("POST", "/app/settings", mgrG, f); rec.Code != 403 {
+			t.Errorf("globaler App-Administrator (Manager): %d", rec.Code)
+		}
+		var v string
+		if err := e.pool.QueryRow(e.ctx, `SELECT value FROM app_settings WHERE key = $1`, keyAppLatestPrefix+"android").Scan(&v); err == nil && v == "9.9.9" {
+			t.Error("trotz 403 gespeichert")
+		}
+		page := e.do("GET", "/app/devices", mgrG, nil)
+		if page.Code != 200 || strings.Contains(page.Body.String(), `name="latest_android"`) || strings.Contains(page.Body.String(), `action="/app/settings"`) {
+			t.Errorf("Formular für Manager mit app.admin: %d", page.Code)
+		}
+		if !strings.Contains(e.do("GET", "/app/devices", admin, nil).Body.String(), `action="/app/settings"`) {
+			t.Error("Formular für Administrator fehlt")
+		}
+	})
+
+	t.Run("Versionsrückgang sperrt keine App aus", func(t *testing.T) {
+		for _, k := range []string{keyAppAllowPrevious, keyAppLatestPrefix + "android", keyAppPrevPrefix + "android", keyAppLatestPrefix + "ios", keyAppPrevPrefix + "ios"} {
+			k := k
+			_, _ = e.pool.Exec(e.ctx, `DELETE FROM app_settings WHERE key = $1`, k)
+			e.t.Cleanup(func() { _, _ = e.pool.Exec(context.Background(), `DELETE FROM app_settings WHERE key = $1`, k) })
+		}
+		save := func(latest string) {
+			t.Helper()
+			f := url.Values{"addresses": {""}, "allow_previous": {"1"}, "latest_android": {latest}, "latest_ios": {""}, "store_android": {""}, "store_ios": {""}}
+			if rec := e.do("POST", "/app/settings", admin, f); rec.Code != 303 {
+				t.Fatalf("speichern %s: %d", latest, rec.Code)
+			}
+		}
+		get := func(k string) string {
+			var v string
+			_ = e.pool.QueryRow(e.ctx, `SELECT value FROM app_settings WHERE key = $1`, k).Scan(&v)
+			return v
+		}
+		minV := func() string { return e.h.appMinVersion(e.ctx, "android") }
+		save("1.9.0")
+		save("2.0.0") // Aufstieg: 1.9.0 wird vorige Version
+		if get(keyAppPrevPrefix+"android") != "1.9.0" || minV() != "1.9.0" {
+			t.Fatalf("Aufstieg: vorige %q, min %q", get(keyAppPrevPrefix+"android"), minV())
+		}
+		save("1.2.0") // Rückgang: 2.0.0 wird nicht vorige Version, die höhere vorige 1.9.0 entfällt
+		if p := get(keyAppPrevPrefix + "android"); p != "" {
+			t.Errorf("Rückgang: vorige Version %q, erwartet leer", p)
+		}
+		if m := minV(); m != "1.2.0" {
+			t.Errorf("Rückgang: min %q, erwartet 1.2.0", m)
+		}
+		if less, ok := appVersionLess("1.2.0", minV()); !ok || less {
+			t.Error("App 1.2.0 wäre ausgesperrt")
+		}
+		save("1.3.0") // Aufstieg rotiert weiter
+		if get(keyAppPrevPrefix+"android") != "1.2.0" || minV() != "1.2.0" {
+			t.Errorf("Aufstieg nach Rückgang: vorige %q, min %q", get(keyAppPrevPrefix+"android"), minV())
+		}
+		save("1.2.5") // kleiner Rückgang, vorige 1.2.0 bleibt (kleiner als neue)
+		if get(keyAppPrevPrefix+"android") != "1.2.0" {
+			t.Errorf("kleiner Rückgang: vorige %q", get(keyAppPrevPrefix+"android"))
+		}
+		// Altlast (vorige größer als neueste): min ist die kleinere.
+		e.exec(`INSERT INTO app_settings (key, value, updated_at) VALUES ($1, '3.0.0', NOW()) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, keyAppPrevPrefix+"android")
+		if m := minV(); m != "1.2.5" {
+			t.Errorf("Altlast: min %q, erwartet 1.2.5", m)
+		}
+		if !strings.Contains(e.do("GET", "/app/devices", admin, nil).Body.String(), `id="app-prev-android"`) {
+			t.Error("vorige Version nicht angezeigt")
+		}
+	})
+
+	t.Run("ohne Store-Adresse: Menü und Seiten", func(t *testing.T) {
+		for _, k := range []string{keyAppStorePrefix + "android", keyAppStorePrefix + "ios"} {
+			_, _ = e.pool.Exec(e.ctx, `DELETE FROM app_settings WHERE key = $1`, k)
+		}
+		menu := `href="/app/install" class="menu-item"`
+		const unavailable = "Die App ist noch nicht verfügbar."
+		req := withUser(httptest.NewRequest("GET", "/", nil), tgtA)
+		if b := e.h.baseData(req, "dashboard", "Dashboard", ""); !b.CanAppUse || b.AppStoreSet {
+			t.Errorf("ohne Adresse: CanAppUse %v AppStoreSet %v", b.CanAppUse, b.AppStoreSet)
+		}
+		rec := e.do("GET", "/app/install", tgtA, nil)
+		if rec.Code != 200 || !strings.Contains(rec.Body.String(), unavailable) || strings.Contains(rec.Body.String(), `class="app-inst-qr"`) || strings.Contains(rec.Body.String(), menu) {
+			t.Errorf("Installationsseite ohne Adresse: %d (Hinweis %v, Menü %v)", rec.Code, strings.Contains(rec.Body.String(), unavailable), strings.Contains(rec.Body.String(), menu))
+		}
+		if rec := e.anon("/app/setup"); rec.Code != 200 || !strings.Contains(rec.Body.String(), unavailable) || strings.Contains(rec.Body.String(), "pdh://setup") {
+			t.Errorf("Einrichtungsseite ohne Adresse: %d %.300s", rec.Code, rec.Body.String())
+		}
+		e.setting(keyAppStorePrefix+"ios", "ftp://store.example.org/x") // ungültig zählt nicht
+		if b := e.h.baseData(req, "dashboard", "Dashboard", ""); b.AppStoreSet {
+			t.Error("ungültige Adresse zählt als gesetzt")
+		}
+		e.setting(keyAppStorePrefix+"android", "https://play.example.org/x")
+		if b := e.h.baseData(req, "dashboard", "Dashboard", ""); !b.AppStoreSet {
+			t.Error("mit Adresse: AppStoreSet fehlt")
+		}
+		rec = e.do("GET", "/app/install", tgtA, nil)
+		if !strings.Contains(rec.Body.String(), `class="app-inst-qr"`) || strings.Contains(rec.Body.String(), unavailable) || !strings.Contains(rec.Body.String(), menu) {
+			t.Error("Installationsseite mit Adresse unvollständig")
+		}
+		if rec := e.anon("/app/setup"); !strings.Contains(rec.Body.String(), "https://play.example.org/x") || strings.Contains(rec.Body.String(), unavailable) {
+			t.Error("Einrichtungsseite mit Adresse unvollständig")
 		}
 	})
 
@@ -599,4 +776,11 @@ func TestAppRevokeAndSettings(t *testing.T) {
 			t.Error("CanAppUse mit app.use fehlt")
 		}
 	})
+}
+
+// anon ruft eine Seite ohne Anmeldung auf.
+func (e *appAdmEnv) anon(target string) *httptest.ResponseRecorder {
+	rec := httptest.NewRecorder()
+	e.adm.ServeHTTP(rec, httptest.NewRequest("GET", target, nil))
+	return rec
 }

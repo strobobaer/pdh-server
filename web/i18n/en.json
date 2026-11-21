@@ -1109,5 +1109,10 @@
  "Infobildschirm": "Info screen",
  "Terminal": "Terminal",
  "Terminal-Software herunterladen": "Download terminal software",
- "Raspberry-Pi-Abbild, Windows-Setup (EXE/MSI) und Updates": "Raspberry Pi image, Windows setup (EXE/MSI) and updates"
+ "Raspberry-Pi-Abbild, Windows-Setup (EXE/MSI) und Updates": "Raspberry Pi image, Windows setup (EXE/MSI) and updates",
+  "Vorige Version iOS": "Previous version iOS",
+  "Vorige Version Android": "Previous version Android",
+  "Gerät in „App-Geräte“ ansehen": "View device in “App devices”",
+  "Diese Person hat das Recht „App: nutzen“ nicht – die App wird nicht nutzbar sein.": "This person does not have the right “App: use” – the app will not be usable.",
+  "Die App ist noch nicht verfügbar.": "The app is not available yet."
 }

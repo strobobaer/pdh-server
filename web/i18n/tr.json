@@ -1109,5 +1109,10 @@
  "Infobildschirm": "Bilgi ekranı",
  "Terminal": "Terminal",
  "Terminal-Software herunterladen": "Terminal yazılımını indir",
- "Raspberry-Pi-Abbild, Windows-Setup (EXE/MSI) und Updates": "Raspberry Pi imajı, Windows kurulumu (EXE/MSI) ve güncellemeler"
+ "Raspberry-Pi-Abbild, Windows-Setup (EXE/MSI) und Updates": "Raspberry Pi imajı, Windows kurulumu (EXE/MSI) ve güncellemeler",
+  "Vorige Version iOS": "Önceki sürüm iOS",
+  "Vorige Version Android": "Önceki sürüm Android",
+  "Gerät in „App-Geräte“ ansehen": "Cihazı „Uygulama cihazları” içinde göster",
+  "Diese Person hat das Recht „App: nutzen“ nicht – die App wird nicht nutzbar sein.": "Bu kişinin „App: kullan” hakkı yok – uygulama kullanılamayacak.",
+  "Die App ist noch nicht verfügbar.": "Uygulama henüz kullanılabilir değil."
 }

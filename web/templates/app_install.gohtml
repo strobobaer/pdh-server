@@ -13,6 +13,9 @@
 </style>
 <div class="app-inst">
   <h1><i class="ti ti-device-mobile"></i> {{t "App installieren"}}</h1>
+  {{if not .Available}}
+  <div class="card"><p class="rec-sub" role="status"><i class="ti ti-info-circle"></i> {{t "Die App ist noch nicht verfügbar."}}</p></div>
+  {{else}}
   <div class="card" style="margin-bottom:14px;text-align:center">
     <p class="rec-sub" style="margin-bottom:10px">{{t "Mit der Kamera des Telefons scannen:"}}</p>
     <div class="app-inst-qr" role="img" aria-label="{{t "QR-Code zur Einrichtungsseite der App"}}">{{.QR}}</div>
@@ -31,5 +34,6 @@
       <li>{{t "App öffnen, Zugang anfragen und den angezeigten Code an die App-Administratoren weitergeben. Nach der Freigabe ist die App einsatzbereit."}}</li>
     </ol>
   </div>
+  {{end}}
 </div>
 {{end}}

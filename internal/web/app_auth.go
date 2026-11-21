@@ -30,6 +30,14 @@ const (
 	appAuthTokenScheme = "PDHApp "
 )
 
+// appJSONErr antwortet mit {"error": Text, "code": Code}. Der Code ist stabil und
+// für die App bestimmt (app_unauthorized, app_revoked, app_unavailable, app_outdated,
+// app_no_permission, app_rate_limited, app_invalid_input, app_conflict, app_too_large);
+// der Text darf sich ändern.
+func appJSONErr(w http.ResponseWriter, status int, code, msg string) {
+	terminalJSON(w, status, map[string]string{"error": msg, "code": code})
+}
+
 // appDeviceLoadHook ersetzt in Tests die Datenbankabfrage der Sperrprüfung (sonst nil).
 var appDeviceLoadHook func(ctx context.Context, id string) (string, bool, error)
 
@@ -113,27 +121,34 @@ func (h *Handler) appAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		key := limiterKey(easyClient(r))
 		now := time.Now()
-		if appFailLimit.blocked(key, now) {
-			terminalJSONErr(w, http.StatusTooManyRequests, msgAppBlocked)
-			return
-		}
+		// Die Quellen-Sperre gilt nur für Unbekanntes (fehlender oder unbekannter Token):
+		// Fehler eines bekannten Geräts (Signatur, Nonce, Zeit) zählen nicht und werden
+		// nicht gesperrt – sonst sperrt ein Telefon mit falscher Uhr das ganze Haus aus.
 		// count=false: ein falsch gehender Telefon-Zeitstempel zählt nicht als Angriff.
 		deny := func(reason string, count bool) {
 			if count {
 				appFailLimit.fail(key, time.Now())
 			}
 			authLog(r, false, "app-anfrage", "", "", "", reason)
-			terminalJSONErr(w, http.StatusUnauthorized, "app_unauthorized")
+			appJSONErr(w, http.StatusUnauthorized, "app_unauthorized", "app_unauthorized")
+		}
+		// unknown: Anfrage ohne bekanntes Gerät – gesperrte Quelle bekommt 429, sonst zählt der Fehlversuch.
+		unknown := func(reason string) {
+			if appFailLimit.blocked(key, time.Now()) {
+				appJSONErr(w, http.StatusTooManyRequests, "app_rate_limited", msgAppBlocked)
+				return
+			}
+			deny(reason, true)
 		}
 		// Vorübergehende Fehler nie als app_revoked melden: die App löscht dann Token und Entwürfe.
 		serverErr := func(err error) {
 			componentLog("app").Error().Err(err).Msg("app: anfrage prüfen")
-			terminalJSONErr(w, http.StatusServiceUnavailable, "app_unavailable")
+			appJSONErr(w, http.StatusServiceUnavailable, "app_unavailable", "app_unavailable")
 		}
 		tok, ok := strings.CutPrefix(r.Header.Get("Authorization"), appAuthTokenScheme)
 		tok = strings.TrimSpace(tok)
 		if !ok || !strings.HasPrefix(tok, "pdha_") || len(tok) > appAuthTokenMax {
-			deny("Token fehlt oder ungültig", true)
+			unknown("Token fehlt oder ungültig")
 			return
 		}
 		ctx := r.Context()
@@ -144,7 +159,7 @@ func (h *Handler) appAuth(next http.Handler) http.Handler {
 			FROM app_devices WHERE token_sha256 = $1`, hashAppToken(tok)).
 			Scan(&d.ID, &d.UserID, &pubB64, &d.Platform, &d.AllowedTypes, &d.MayCreate, &firstUsed, &lastSeen)
 		if errors.Is(err, pgx.ErrNoRows) {
-			deny("Token unbekannt", true)
+			unknown("Token unbekannt")
 			return
 		}
 		if err != nil {
@@ -165,16 +180,16 @@ func (h *Handler) appAuth(next http.Handler) http.Handler {
 		if r.Body != nil {
 			body, err = io.ReadAll(io.LimitReader(r.Body, appAuthMaxBody+1))
 			if err != nil {
-				terminalJSONErr(w, http.StatusBadRequest, "Anfrage nicht lesbar")
+				appJSONErr(w, http.StatusBadRequest, "app_invalid_input", "Anfrage nicht lesbar")
 				return
 			}
 			if len(body) > appAuthMaxBody {
-				terminalJSONErr(w, http.StatusRequestEntityTooLarge, "Anfrage zu groß")
+				appJSONErr(w, http.StatusRequestEntityTooLarge, "app_too_large", "Anfrage zu groß")
 				return
 			}
 		}
 		if err := verifyAppSignature(pub, r, body, now); err != nil {
-			deny("Signatur: "+err.Error(), !errors.Is(err, errAppSigStale))
+			deny("Signatur: "+err.Error(), false) // bekanntes Gerät: zählt nicht gegen die Quelle
 			return
 		}
 		r.Body = io.NopCloser(bytes.NewReader(body))
@@ -190,7 +205,7 @@ func (h *Handler) appAuth(next http.Handler) http.Handler {
 		}
 		if !active {
 			authLog(r, false, "app-anfrage", "", d.UserID, "", "Gerät gesperrt oder Benutzer inaktiv")
-			terminalJSONErr(w, http.StatusUnauthorized, "app_revoked")
+			appJSONErr(w, http.StatusUnauthorized, "app_revoked", "app_revoked")
 			return
 		}
 
@@ -207,7 +222,7 @@ func (h *Handler) appAuth(next http.Handler) http.Handler {
 			if _, minOK := appVersionParts(min); minOK { // unlesbare Einstellung sperrt nicht aus
 				if less, ok := appVersionLess(r.Header.Get("X-PDH-App-Version"), min); !ok || less {
 					componentLog("app").Warn().Str("device", d.ID).Str("version", r.Header.Get("X-PDH-App-Version")).Str("min", min).Msg("app: version zu alt")
-					terminalJSON(w, http.StatusUpgradeRequired, map[string]string{"error": "app_outdated", "min": min})
+					terminalJSON(w, http.StatusUpgradeRequired, map[string]string{"error": "app_outdated", "code": "app_outdated", "min": min})
 					return
 				}
 			} else {
@@ -219,7 +234,7 @@ func (h *Handler) appAuth(next http.Handler) http.Handler {
 		if errors.Is(err, pgx.ErrNoRows) { // Benutzer inaktiv oder gelöscht (ungepuffert: wirkt sofort)
 			appDeviceCache.forget(d.ID)
 			authLog(r, false, "app-anfrage", "", d.UserID, "", "Benutzer inaktiv oder gelöscht")
-			terminalJSONErr(w, http.StatusUnauthorized, "app_revoked")
+			appJSONErr(w, http.StatusUnauthorized, "app_revoked", "app_revoked")
 			return
 		}
 		if err != nil || user == nil {
@@ -230,7 +245,7 @@ func (h *Handler) appAuth(next http.Handler) http.Handler {
 		ctx = context.WithValue(ctx, appDeviceKey{}, d)
 		r = r.WithContext(ctx)
 		if !h.hasPerm(r, permAppUse) {
-			terminalJSONErr(w, http.StatusForbidden, "app_no_permission")
+			appJSONErr(w, http.StatusForbidden, "app_no_permission", "app_no_permission")
 			return
 		}
 		next.ServeHTTP(w, r)
@@ -255,7 +270,7 @@ func (h *Handler) AppMeAPI(w http.ResponseWriter, r *http.Request) {
 	u := getUser(r)
 	dev := appDevice(r)
 	if dev == nil || !h.hasPerm(r, permAppUse) {
-		terminalJSONErr(w, http.StatusForbidden, "app_no_permission")
+		appJSONErr(w, http.StatusForbidden, "app_no_permission", "app_no_permission")
 		return
 	}
 	perms := map[string]bool{}

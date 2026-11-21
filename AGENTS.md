@@ -619,7 +619,7 @@ und 3 drückt bis auf Weiteres der Anwender.
     Server (Domain-Abfrage), Flutter, Zugang per APP-Ticket und
     gerätegebundenem Token, Rechte `app.*`, Offline mit Schritten und
     UUIDv7 vom Telefon, zentraler Push-Dienst `pdh-push`, sieben Pakete.
-    **Paket 1 (Server-Grundlage, 0.82.16) gebaut** auf `feature/pdh-app`,
+    **Paket 1 (Server-Grundlage, 0.82.17) gebaut** auf `feature/pdh-app`,
     nicht gepusht und nicht gemergt: Migration 189 (`189_app_grundlage`),
     Rechte `app.use`, `app.create`, `app.cockpit`, `app.sensors.view`, `app.admin` (Gruppe
     „App-Administratoren“), Schnittstelle `/api/app/v1`, Seiten

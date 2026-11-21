@@ -46,6 +46,15 @@
 
   {{if not .Pending}}
   <p class="rec-sub" style="margin-bottom:12px"><i class="ti ti-info-circle"></i> {{t "Die Anfrage ist bereits entschieden."}}</p>
+  {{if .DeviceID}}
+  <div class="app-req-actions" style="margin-bottom:12px">
+    <a class="btn" href="/app/devices#dev-{{.DeviceID}}"><i class="ti ti-devices"></i> {{t "Gerät in „App-Geräte“ ansehen"}}</a>
+    {{if .DeviceRevoked}}<span class="badge b-red">{{t "gesperrt"}}</span>{{end}}
+    {{if .DeviceCanRevoke}}
+    <form method="post" action="/app/devices/{{.DeviceID}}/revoke" style="margin:0" onsubmit="return confirm({{t "Gerät sperren? Die App wird sofort gesperrt."}})"><button class="btn" type="submit" style="color:var(--red)"><i class="ti ti-ban"></i> {{t "Sperren"}}</button></form>
+    {{end}}
+  </div>
+  {{end}}
   {{else}}
   <form method="post" action="/app/requests/{{$q.ID}}/approve" autocomplete="off">
     <div class="card" style="margin-bottom:14px">
@@ -62,7 +71,7 @@
       <div class="app-req-list" role="radiogroup" aria-label="{{t "Person zuordnen"}}">
         {{$sel := .SelUser}}
         {{range .Users}}
-        <div class="app-req-user" data-search="{{.Name}} {{.Username}} {{.Dept}}" data-create="{{if .Create}}1{{end}}">
+        <div class="app-req-user" data-search="{{.Name}} {{.Username}} {{.Dept}}" data-create="{{if .Create}}1{{end}}" data-use="{{if .Use}}1{{end}}">
           <label style="display:flex;gap:10px;align-items:flex-start;flex:1;min-width:0;cursor:pointer">
             <input type="radio" name="user_id" value="{{.ID}}" required {{if eq .ID $sel}}checked{{end}}>
             <span style="flex:1;min-width:0">
@@ -76,6 +85,7 @@
         <p class="rec-sub" style="padding:12px">{{t "Keine Person verfügbar."}}</p>
         {{end}}
       </div>
+      <p class="rec-msg err" id="app-nouse-warn" role="alert" style="margin-top:8px" hidden><i class="ti ti-alert-triangle"></i> {{t "Diese Person hat das Recht „App: nutzen“ nicht – die App wird nicht nutzbar sein."}}</p>
       <p class="rec-sub" style="margin-top:8px">{{t "Die Rechte der Person bleiben maßgeblich; das Gerät kann sie nur einschränken. Einzelrechte änderst du mit dem Schild-Symbol."}}</p>
     </div>
 
@@ -108,6 +118,8 @@
     // Der Haken „Vorgänge anlegen“ erscheint nur, wenn die gewählte Person app.create hat.
     function applyCreate() {
       var on = document.querySelector('.app-req-user input:checked');
+      var warn = document.getElementById('app-nouse-warn');
+      if (warn) warn.hidden = !on || on.closest('.app-req-user').getAttribute('data-use') === '1';
       var may = !!on && on.closest('.app-req-user').getAttribute('data-create') === '1';
       createRow.hidden = !may;
       if (!may) createBox.checked = false;

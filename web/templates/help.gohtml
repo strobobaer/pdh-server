@@ -3634,6 +3634,11 @@ curl -fsS -X PUT "https://api.cloudflare.com/client/v4/zones/$CF_ZONE/dns_record
   <div class="hb-howto"><b><i class="ti ti-info-circle"></i> Stand</b>
     Dieses Paket legt den <b>Zugang</b> an: Telefon anfragen, freigeben, sperren, Einstellungen. Die App selbst mit Störungen, Tickets und Aufgaben folgt mit den nächsten Paketen.</div>
   {{template "hb-fig-app"}}
+  <div class="hb-howto"><b><i class="ti ti-users"></i> Einmal vorbereiten</b>
+    <ol class="hb-steps">
+      <li>Unter <b>Verwaltung → Abteilungen &amp; Gruppen</b> (oder am Benutzer) die Personen, die Telefone freigeben sollen, zur Gruppe <b>„App-Administratoren“</b> hinzufügen. Ohne Mitglieder meldet das APP-Ticket niemanden.</li>
+    </ol>
+  </div>
   <div class="hb-howto"><b><i class="ti ti-device-mobile-check"></i> So gibst du ein Telefon frei</b>
     <ol class="hb-steps">
       <li>Wer die App einrichtet, fragt den Zugang an. Dabei entsteht ein <b>APP-Ticket</b> für die Gruppe „App-Administratoren“; das Telefon zeigt einen sechsstelligen <b>Code</b>.</li>
@@ -3644,14 +3649,13 @@ curl -fsS -X PUT "https://api.cloudflare.com/client/v4/zones/$CF_ZONE/dns_record
       <li><b>Freigeben</b> legt das Gerät an und schließt das Ticket; die App holt ihren Zugang danach selbst ab. <b>Ablehnen</b> schließt das Ticket ohne Gerät.</li>
     </ol>
     Die Rechte vergibst du nicht am Gerät: Es gelten die Rechte der Person; das Gerät kann sie nur einschränken. Einzelrechte änderst du über das Schild-Symbol neben der Person.
-    Danach zeigt die App-Konfiguration „Das App-Gerät wurde freigegeben.“ bzw. nach <b>Ablehnen</b> „Die Anfrage wurde abgelehnt.“
+    Danach öffnet sich die Seite <b>App-Geräte</b> mit der Meldung „Das App-Gerät wurde freigegeben.“ bzw. nach <b>Ablehnen</b> „Die Anfrage wurde abgelehnt.“ Hat die gewählte Person das Recht „App: nutzen“ nicht, warnt die Seite vorher; die Freigabe ist trotzdem möglich, die App ist dann aber nicht nutzbar. Später zeigt die App-Konfiguration einer freigegebenen Anfrage einen Link zum Gerät und, wenn du es darfst, den Knopf <b>Sperren</b>.
   </div>
   <div class="hb-howto"><b><i class="ti ti-devices"></i> So sperrst du ein Telefon und stellst die App ein</b>
     <ol class="hb-steps">
       <li>Unter <b>Verwaltung → App-Geräte</b> stehen die eingerichteten Telefone mit Benutzer, System, App-Version und letztem Zugriff. Du siehst nur Geräte von Personen aus Abteilungen, für die du „App: Geräte freigeben und sperren“ hast; offene Anfragen stehen darüber mit einem Link zur App-Konfiguration.</li>
       <li><b>Sperren</b> trennt das Telefon sofort von diesem Server (spätestens nach 30 Sekunden); gesperrt wird nur, wenn deine Rolle die der Person übertrifft. Dasselbe Knöpfchen steht in der Benutzerverwaltung am Benutzer unter „App-Geräte“. Nach einer Sperre muss die Person die App auf dem Telefon <b>zurücksetzen</b> und den Zugang <b>neu anfragen</b>; dabei entsteht ein neuer Schlüssel, der alte Zugang bleibt gesperrt.</li>
-      <li>Das Formular <b>Einstellungen für die App</b> sehen nur Personen mit diesem Recht für die ganze Firma: zusätzliche Adressen (eine je Zeile, nur http:// oder https://), die neueste App-Version je System, ob die vorige Version weiter arbeiten darf, und die Store-Adressen. Trägst du eine neue „neueste Version“ ein, merkt sich der Server die alte als vorige Version.</li>
-      <li><b>Store-Adressen und Versionen</b> pflegt allein ein <b>globaler App-Administrator</b> (Recht „App: Geräte freigeben und sperren“ für die ganze Firma) auf der Seite <b>App-Geräte</b>.</li>
+      <li>Das Formular <b>Einstellungen für die App</b> (zusätzliche Adressen, eine je Zeile, nur http:// oder https://; neueste App-Version je System; ob die vorige Version weiter arbeiten darf; Store-Adressen) pflegen allein <b>Administratoren mit dem Recht „Server-Einstellungen (.env) bearbeiten &amp; Server neu starten“</b> auf der Seite <b>App-Geräte</b>; „App: Geräte freigeben und sperren“ genügt dafür nicht. Trägst du eine höhere „neueste Version“ ein, merkt sich der Server die alte als <b>vorige Version</b> (nur zur Anzeige); bei einer niedrigeren Version entfällt eine höhere vorige Version, damit keine App ausgesperrt wird.</li>
     </ol>
   </div>
   <div class="hb-howto"><b><i class="ti ti-world"></i> Wichtig für die Einrichtung</b>
@@ -3662,7 +3666,7 @@ curl -fsS -X PUT "https://api.cloudflare.com/client/v4/zones/$CF_ZONE/dns_record
   </div>
   <div class="hb-howto"><b><i class="ti ti-qrcode"></i> So installierst du die App</b>
     <ol class="hb-steps">
-      <li>Oben rechts im Benutzermenü <b>App installieren</b> wählen (nur mit dem Recht „App: nutzen“).</li>
+      <li>Oben rechts im Benutzermenü <b>App installieren</b> wählen (nur mit dem Recht „App: nutzen“ und sobald mindestens eine Store-Adresse eingetragen ist; sonst steht auf der Seite „Die App ist noch nicht verfügbar.“).</li>
       <li>Den QR-Code mit der Kamera des Telefons scannen, die Seite öffnen und die App aus dem Store installieren; bei Bedarf stehen die Store-Knöpfe auch auf der Seite.</li>
       <li>In der App den Zugang anfragen; der Code, den das Telefon zeigt, geht an die App-Administratoren (siehe oben).</li>
     </ol>

@@ -21,11 +21,18 @@ import (
 var appPlatforms = []string{"ios", "android"}
 
 // appMinVersion: kleinste erlaubte App-Version einer Plattform. Ist die vorige
-// Version erlaubt und gesetzt, gilt sie, sonst die neueste.
+// Version erlaubt und gesetzt, gilt die kleinere von vorig und neueste (so sperrt
+// ein Rückgang der neuesten Version die App nie aus), sonst die neueste.
 func (h *Handler) appMinVersion(ctx context.Context, platform string) string {
 	latest := strings.TrimSpace(h.appSetting(ctx, keyAppLatestPrefix+platform, ""))
 	prev := strings.TrimSpace(h.appSetting(ctx, keyAppPrevPrefix+platform, ""))
 	if h.appSetting(ctx, keyAppAllowPrevious, "1") == "1" && prev != "" {
+		if latest == "" {
+			return prev
+		}
+		if less, ok := appVersionLess(latest, prev); ok && less {
+			return latest
+		}
 		return prev
 	}
 	return latest
@@ -84,7 +91,7 @@ func (h *Handler) AppDepartmentsAPI(w http.ResponseWriter, r *http.Request) {
 	rows, err := h.db.Query(r.Context(), `SELECT id::text, name FROM departments WHERE active ORDER BY lower(name), id`)
 	if err != nil {
 		componentLog("app").Error().Err(err).Msg("app: abteilungen")
-		terminalJSONErr(w, http.StatusInternalServerError, "Abteilungen nicht lesbar")
+		appJSONErr(w, http.StatusServiceUnavailable, "app_unavailable", "Abteilungen nicht lesbar")
 		return
 	}
 	defer rows.Close()
@@ -92,13 +99,13 @@ func (h *Handler) AppDepartmentsAPI(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var id, name string
 		if err := rows.Scan(&id, &name); err != nil {
-			terminalJSONErr(w, http.StatusInternalServerError, "Abteilungen nicht lesbar")
+			appJSONErr(w, http.StatusServiceUnavailable, "app_unavailable", "Abteilungen nicht lesbar")
 			return
 		}
 		out = append(out, map[string]string{"id": id, "name": name})
 	}
 	if err := rows.Err(); err != nil {
-		terminalJSONErr(w, http.StatusInternalServerError, "Abteilungen nicht lesbar")
+		appJSONErr(w, http.StatusServiceUnavailable, "app_unavailable", "Abteilungen nicht lesbar")
 		return
 	}
 	terminalJSON(w, http.StatusOK, out)
@@ -122,6 +129,24 @@ func appStoreLink(s string) string {
 		return s
 	}
 	return ""
+}
+
+// appStoreConfigured: ist mindestens eine gültige Store-Adresse (iOS oder Android) eingetragen?
+// Eine Abfrage; ohne Adresse gibt es für die App nichts zu installieren.
+func (h *Handler) appStoreConfigured(ctx context.Context) bool {
+	rows, err := h.db.Query(ctx, `SELECT value FROM app_settings WHERE key = ANY($1)`,
+		[]string{keyAppStorePrefix + "ios", keyAppStorePrefix + "android"})
+	if err != nil {
+		return false
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var v string
+		if rows.Scan(&v) == nil && appStoreLink(v) != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // AppSetupPage: GET /app/setup (ohne Anmeldung).

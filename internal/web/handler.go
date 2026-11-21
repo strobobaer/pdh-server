@@ -74,7 +74,8 @@ type BaseData struct {
 	CanBackup              bool       // Nav-Link "Datensicherung"
 	CanPrinters            bool       // Nav-Link "Drucker" (printers.manage)
 	CanKioskTerminals      bool       // Nav-Link "Kiosk-Terminals" (hmi.manage)
-	CanAppUse              bool       // Benutzermenü „App installieren“ (app.use)
+	CanAppUse              bool       // app.use
+	AppStoreSet            bool       // mindestens eine Store-Adresse der App ist eingetragen (nur bei CanAppUse gefüllt)
 	CanPrint               bool       // direkt auf eingerichtete Drucker drucken (printers.use)
 	CanCleanup             bool       // Nav-Link "Bereinigung"
 	CanServerConfig        bool       // Nav-Link "Server-Einstellungen" (nur Admins)
@@ -753,7 +754,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/admin/server-config/omada", h.OmadaWeb) // Reiter „Omada“ (omada_web.go)
 	r.Post("/admin/server-config/omada/confirm", h.OmadaConfirmWeb)
 	r.Post("/admin/server-config/omada/check", h.OmadaCheckWeb)
-	r.Get("/admin/network", h.NetworkPage) // Server-Seite „Netzwerk“: VLANs und WLANs (network.go)
+	r.Get("/admin/network", h.NetworkPage)          // Server-Seite „Netzwerk“: VLANs und WLANs (network.go)
 	r.Get("/terminal-slides", h.TerminalSlidesPage) // Infobildschirm: Folien für globale Terminals (terminal_slides.go)
 	r.Get("/terminal-slides/new", h.TerminalSlideNewPage)
 	r.Post("/terminal-slides", h.TerminalSlideSaveWeb)
@@ -1507,6 +1508,9 @@ func (h *Handler) baseData(r *http.Request, page, title, ctxTitle string) BaseDa
 	b.Nav = buildNav(&b, h.userNavLayout(r.Context(), u.ID))
 	b.Mirror = h.mirrorBanner(r)
 	b.UserAvatar = h.userAvatarURL(r.Context(), u.ID)
+	if b.CanAppUse && h.db != nil {
+		b.AppStoreSet = h.appStoreConfigured(r.Context())
+	}
 	b.PushEnabled = h.pushEnabledFor(r.Context())
 	if lt := h.liveTranslateFor(r.Context(), u.ID); lt.On {
 		b.LiveTranslateOn = true

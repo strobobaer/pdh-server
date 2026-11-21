@@ -58,7 +58,7 @@
         <thead><tr><th>{{t "Benutzer"}}</th><th>{{t "Gerät"}}</th><th>{{t "System"}}</th><th>{{t "App-Version"}}</th><th>{{t "zuletzt gesehen"}}</th><th>{{t "Status"}}</th><th></th></tr></thead>
         <tbody>
         {{range .Devices}}
-        <tr{{if .Revoked}} class="is-revoked"{{end}}>
+        <tr id="dev-{{.ID}}"{{if .Revoked}} class="is-revoked"{{end}}>
           <td><a href="/users/{{.UserID}}">{{.UserName}}</a></td>
           <td>{{if .Label}}{{.Label}}{{else}}–{{end}}</td>
           <td>{{.Platform}}</td>
@@ -97,6 +97,14 @@
       <div>
         <label class="form-label" for="app-latest-android">{{t "Neueste Version Android"}}</label>
         <input class="form-input" id="app-latest-android" name="latest_android" type="text" value="{{.Form.LatestAndroid}}" placeholder="1.2.0" inputmode="decimal">
+      </div>
+      <div>
+        <span class="form-label">{{t "Vorige Version iOS"}}</span>
+        <p class="rec-sub" id="app-prev-ios">{{if .Form.PrevIOS}}{{.Form.PrevIOS}}{{else}}–{{end}}</p>
+      </div>
+      <div>
+        <span class="form-label">{{t "Vorige Version Android"}}</span>
+        <p class="rec-sub" id="app-prev-android">{{if .Form.PrevAndroid}}{{.Form.PrevAndroid}}{{else}}–{{end}}</p>
       </div>
       <div>
         <label class="form-label" for="app-store-ios">{{t "Store-Adresse iOS"}}</label>

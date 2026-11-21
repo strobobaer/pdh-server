@@ -88,6 +88,7 @@ func loadAppRequest(ctx context.Context, q rowQuerier, id string, lock bool) (*a
 
 type appReqUserView struct {
 	ID, Name, Username, Dept, Role string
+	Use                            bool     // hat app.use (ohne läuft die App nach der Freigabe nicht)
 	Create                         bool     // hat app.create
 	Rights                         []string // wirksame App-Rechte (Beschriftungen)
 	Suggest                        bool     // gleicher Nachname oder gleiche Abteilung wie die Anfrage
@@ -108,6 +109,10 @@ type appReqPageData struct {
 	MayCreate  bool
 	BackHref   string
 	Back       string
+	// Freigegebene Anfrage: das zugehörige Gerät (Link zu „App-Geräte“, Sperren).
+	DeviceID        string
+	DeviceRevoked   bool
+	DeviceCanRevoke bool
 }
 
 type appTypeOption struct {
@@ -176,12 +181,33 @@ func (h *Handler) appRequestPageData(r *http.Request, rq *appReqRow, selUser str
 		d.Types = append(d.Types, appTypeOption{Key: t.Key, Label: tr(lang, t.Label), Checked: pick[t.Key]})
 	}
 	if !d.Pending {
+		if rq.Status == "approved" {
+			h.loadAppRequestDevice(r, rq.ID, d)
+		}
 		return d, nil
 	}
 	if err := h.loadAppCandidates(r, rq, d); err != nil {
 		return nil, err
 	}
 	return d, nil
+}
+
+// loadAppRequestDevice: Gerät einer freigegebenen Anfrage samt Sperrrecht des Betrachters
+// (dieselbe Prüfung wie auf „App-Geräte“). Fehler lassen den Abschnitt einfach weg.
+func (h *Handler) loadAppRequestDevice(r *http.Request, requestID string, d *appReqPageData) {
+	var role, dept string
+	var revoked *time.Time
+	err := h.db.QueryRow(r.Context(), `SELECT d.id::text, d.revoked_at, u.role, COALESCE(u.department_id::text, '')
+		FROM app_devices d JOIN users u ON u.id = d.user_id WHERE d.request_id = $1::uuid`, requestID).Scan(&d.DeviceID, &revoked, &role, &dept)
+	if err != nil {
+		if !errors.Is(err, pgx.ErrNoRows) {
+			componentLog("app").Error().Err(err).Str("request", requestID).Msg("app: gerät der anfrage")
+		}
+		d.DeviceID = ""
+		return
+	}
+	d.DeviceRevoked = revoked != nil
+	d.DeviceCanRevoke = revoked == nil && h.appRevokeAllowed(r, role, dept)
 }
 
 // loadAppCandidates: aktive Personen (keine Systembenutzer), die der Handelnde verwalten darf –
@@ -214,6 +240,9 @@ func (h *Handler) loadAppCandidates(r *http.Request, rq *appReqRow, d *appReqPag
 		for _, p := range appRightLabels {
 			if h.rbac.HasPermissionForUser(id, role, p.Key) {
 				v.Rights = append(v.Rights, tr(d.Lang, p.Label))
+				if p.Key == permAppUse {
+					v.Use = true
+				}
 				if p.Key == permAppCreate {
 					v.Create = true
 				}

@@ -46,6 +46,7 @@ func newAppAuthEnv(t *testing.T) *appAuthEnv {
 	h := &Handler{db: e.pool, rbac: e.rb, users: users.NewService(users.NewRepository(e.pool), "test-geheim", 1)}
 	r := chi.NewRouter()
 	r.With(h.AppAuth).Get("/api/app/v1/me", h.AppMeAPI)
+	r.Get("/api/app/v1/requests/{id}", h.AppRequestStatusAPI)
 	r.With(h.AppAuth).Post("/api/app/v1/echo", func(w http.ResponseWriter, r *http.Request) {
 		b, _ := io.ReadAll(r.Body)
 		_, _ = w.Write(b)
@@ -101,8 +102,9 @@ func appJSON(t *testing.T, rec *httptest.ResponseRecorder) map[string]any {
 
 func (e *appAuthEnv) wantErr(rec *httptest.ResponseRecorder, code int, errKey string) {
 	e.t.Helper()
-	if rec.Code != code || appJSON(e.t, rec)["error"] != errKey {
-		e.t.Fatalf("erwartet %d %s, bekam %d %s", code, errKey, rec.Code, rec.Body.String())
+	m := appJSON(e.t, rec)
+	if rec.Code != code || m["error"] != errKey || m["code"] != errKey {
+		e.t.Fatalf("erwartet %d %s (error und code), bekam %d %s", code, errKey, rec.Code, rec.Body.String())
 	}
 }
 
@@ -257,7 +259,7 @@ func TestAppAuth(t *testing.T) {
 		if rec.Code != 426 {
 			t.Fatalf("%d %s", rec.Code, rec.Body.String())
 		}
-		if m := appJSON(t, rec); m["error"] != "app_outdated" || m["min"] != "1.1.0" {
+		if m := appJSON(t, rec); m["error"] != "app_outdated" || m["code"] != "app_outdated" || m["min"] != "1.1.0" {
 			t.Errorf("antwort: %v", m)
 		}
 		for _, v := range []string{"", "abc", "1.x.0", "1..0"} {
@@ -328,14 +330,81 @@ func TestAppAuth(t *testing.T) {
 		}
 	})
 
-	t.Run("Fehlversuche sperren die Quelle", func(t *testing.T) {
+	t.Run("Fehlversuche mit unbekanntem Token sperren die Quelle", func(t *testing.T) {
+		e := newAppAuthEnv(t)
+		for i := 0; i < 10; i++ {
+			e.call("GET", "/api/app/v1/me", nil, e.key, "pdha_unbekannt", "1.0.0")
+		}
+		rec := e.call("GET", "/api/app/v1/me", nil, e.key, "pdha_unbekannt", "1.0.0")
+		if m := appJSON(t, rec); rec.Code != 429 || m["code"] != "app_rate_limited" || m["error"] == "" {
+			t.Errorf("nach 10 unbekannten Tokens: %d %s", rec.Code, rec.Body.String())
+		}
+	})
+
+	t.Run("Fehler eines bekannten Geräts zählen nicht und werden nicht gesperrt", func(t *testing.T) {
 		e := newAppAuthEnv(t)
 		other, _ := appTestKey(t)
-		for i := 0; i < 10; i++ {
-			e.call("GET", "/api/app/v1/me", nil, other, e.token, "1.0.0")
+		for i := 0; i < 15; i++ { // falscher Schlüssel (Signatur ungültig)
+			e.wantErr(e.call("GET", "/api/app/v1/me", nil, other, e.token, "1.0.0"), 401, "app_unauthorized")
 		}
-		if rec := e.me("1.0.0"); rec.Code != 429 {
-			t.Errorf("nach 10 Fehlern: %d", rec.Code)
+		req := appSignedRequest(t, e.key, "GET", "/api/app/v1/me", nil, time.Now(), e.nonce())
+		req.Header.Set("Authorization", "PDHApp "+e.token)
+		req.RemoteAddr = "192.0.2.77:5000"
+		for i := 0; i < 15; i++ { // Nonce wiederverwendet
+			e.router.ServeHTTP(httptest.NewRecorder(), req.Clone(req.Context()))
+		}
+		if rec := e.me("1.0.0"); rec.Code != 200 {
+			t.Errorf("nach 30 Fehlern des bekannten Geräts: %d %s", rec.Code, rec.Body.String())
+		}
+		// Eine wegen Unbekanntem gesperrte Quelle wird mit gültigem Token trotzdem bedient.
+		for i := 0; i < 10; i++ {
+			e.call("GET", "/api/app/v1/me", nil, e.key, "pdha_unbekannt", "1.0.0")
+		}
+		if rec := e.me("1.0.0"); rec.Code != 200 {
+			t.Errorf("gesperrte Quelle, bekanntes Gerät: %d", rec.Code)
+		}
+	})
+
+	t.Run("Abholung mit falscher Uhr sperrt die Quelle für die App nicht", func(t *testing.T) {
+		e := newAppAuthEnv(t)
+		pk, pub := appTestKey(t)
+		var reqID string
+		e.must(e.pool.QueryRow(e.ctx, `INSERT INTO app_requests (name, device_label, platform, app_version, public_key, key_fingerprint)
+			VALUES ($1, $2, 'android', '1.0.0', $3, $4) RETURNING id::text`, "Uhr "+e.sfx, "uhr "+e.sfx, pub, appKeyFingerprint(pub)).Scan(&reqID))
+		t.Cleanup(func() {
+			_, _ = e.pool.Exec(context.Background(), `DELETE FROM app_requests WHERE id = $1::uuid`, reqID)
+		})
+		for i := 0; i < 15; i++ {
+			req := appSignedRequest(t, pk, "GET", "/api/app/v1/requests/"+reqID, nil, time.Now().Add(-time.Hour), e.nonce())
+			req.RemoteAddr = "192.0.2.77:5000"
+			rec := httptest.NewRecorder()
+			e.router.ServeHTTP(rec, req)
+			if rec.Code != 401 {
+				t.Fatalf("Abholung %d: %d %s", i, rec.Code, rec.Body.String())
+			}
+		}
+		req := appSignedRequest(t, pk, "GET", "/api/app/v1/requests/"+reqID, nil, time.Now(), e.nonce())
+		req.RemoteAddr = "192.0.2.77:5000"
+		rec := httptest.NewRecorder()
+		e.router.ServeHTTP(rec, req)
+		if rec.Code != 200 {
+			t.Errorf("richtige Uhr nach Fehlversuchen: %d %s", rec.Code, rec.Body.String())
+		}
+		if rec := e.me("1.0.0"); rec.Code != 200 {
+			t.Errorf("App-Anfrage derselben Adresse: %d %s", rec.Code, rec.Body.String())
+		}
+	})
+
+	t.Run("Rückgang der neuesten Version sperrt die App nicht aus", func(t *testing.T) {
+		e := newAppAuthEnv(t)
+		e.setting(keyAppAllowPrevious, "1")
+		e.setting(keyAppLatestPrefix+"android", "1.2.0")
+		e.setting(keyAppPrevPrefix+"android", "2.0.0") // Altlast: vorige größer als neueste
+		if rec := e.me("1.2.0"); rec.Code != 200 {
+			t.Errorf("1.2.0 bei neueste 1.2.0, vorige 2.0.0: %d %s", rec.Code, rec.Body.String())
+		}
+		if rec := e.me("1.1.0"); rec.Code != 426 {
+			t.Errorf("1.1.0: %d", rec.Code)
 		}
 	})
 }

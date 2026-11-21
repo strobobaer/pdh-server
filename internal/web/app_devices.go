@@ -19,7 +19,7 @@ import (
 //
 //	GET  /app/devices              Liste, offene Anfragen, Einstellungen (app.admin irgendwo)
 //	POST /app/devices/{id}/revoke  Gerät sperren
-//	POST /app/settings             App-Einstellungen speichern (nur app.admin überall)
+//	POST /app/settings             App-Einstellungen speichern (nur Administrator mit system.server_config)
 //	GET  /app/install              QR-Code und Store-Knöpfe (app.use)
 //
 // Sichtbarkeit: ein Gerät zeigt die Liste nur, wenn der Handelnde app.admin in der
@@ -41,6 +41,8 @@ type appPendingRow struct {
 type appSettingsForm struct {
 	Addresses     string
 	AllowPrevious bool
+	PrevIOS       string // nur Anzeige: vorige Version (wird vom Server geführt)
+	PrevAndroid   string
 	LatestIOS     string
 	LatestAndroid string
 	StoreIOS      string
@@ -141,6 +143,8 @@ func (h *Handler) loadAppSettingsForm(ctx context.Context) appSettingsForm {
 	return appSettingsForm{
 		Addresses:     h.appSetting(ctx, keyAppAddresses, ""),
 		AllowPrevious: h.appSetting(ctx, keyAppAllowPrevious, "1") == "1",
+		PrevIOS:       strings.TrimSpace(h.appSetting(ctx, keyAppPrevPrefix+"ios", "")),
+		PrevAndroid:   strings.TrimSpace(h.appSetting(ctx, keyAppPrevPrefix+"android", "")),
 		LatestIOS:     h.appSetting(ctx, keyAppLatestPrefix+"ios", ""),
 		LatestAndroid: h.appSetting(ctx, keyAppLatestPrefix+"android", ""),
 		StoreIOS:      h.appSetting(ctx, keyAppStorePrefix+"ios", ""),
@@ -151,7 +155,7 @@ func (h *Handler) loadAppSettingsForm(ctx context.Context) appSettingsForm {
 func (h *Handler) renderAppDevices(w http.ResponseWriter, r *http.Request, status int, form *appSettingsForm, msg string) {
 	d := &appDevicesPageData{
 		BaseData:    h.baseData(r, "app_devices", "App-Geräte", ""),
-		CanSettings: h.appAdminIn(r, ""),
+		CanSettings: h.canServerConfig(r),
 		Saved:       r.URL.Query().Get("saved") == "1",
 		Revoked:     r.URL.Query().Get("revoked") == "1",
 		Approved:    r.URL.Query().Get("approved") == "1",
@@ -285,9 +289,10 @@ func appCleanAddresses(raw string) (string, bool) {
 	return strings.Join(out, "\n"), true
 }
 
-// AppSettingsSaveWeb: POST /app/settings (nur app.admin überall).
+// AppSettingsSaveWeb: POST /app/settings (nur Administrator mit system.server_config,
+// wie die Servereinstellungen; app.admin genügt nicht).
 func (h *Handler) AppSettingsSaveWeb(w http.ResponseWriter, r *http.Request) {
-	if !h.hasPerm(r, permAppAdmin) || !h.appAdminIn(r, "") {
+	if !h.canServerConfig(r) {
 		http.Error(w, "Keine Berechtigung", http.StatusForbidden)
 		return
 	}
@@ -360,10 +365,18 @@ func (h *Handler) AppSettingsSaveWeb(w http.ResponseWriter, r *http.Request) {
 		case p.latest == "":
 			err = put(keyAppPrevPrefix+p.platform, "") // „neueste Version“ geleert: auch die vorige entfällt
 		case old != "":
-			a, b := appVersionLess(old, p.latest)
-			c, _ := appVersionLess(p.latest, old)
-			if !b || a || c { // wirklich eine andere Version (1.2 und 1.2.0 sind gleich)
+			// Nur bei einer höheren neuen Version wandert die alte zur vorigen. Bei einer
+			// niedrigeren (Rückgang) entfällt eine vorige, die über der neuen liegt.
+			if up, ok := appVersionLess(old, p.latest); ok && up {
 				err = put(keyAppPrevPrefix+p.platform, old)
+			} else if down, ok := appVersionLess(p.latest, old); ok && down {
+				var prev string
+				perr := tx.QueryRow(ctx, `SELECT value FROM app_settings WHERE key = $1 FOR UPDATE`, keyAppPrevPrefix+p.platform).Scan(&prev)
+				if perr != nil && !errors.Is(perr, pgx.ErrNoRows) {
+					err = perr
+				} else if above, ok := appVersionLess(p.latest, strings.TrimSpace(prev)); ok && above {
+					err = put(keyAppPrevPrefix+p.platform, "")
+				}
 			}
 		}
 		if err == nil {
@@ -387,10 +400,11 @@ func (h *Handler) AppSettingsSaveWeb(w http.ResponseWriter, r *http.Request) {
 
 type appInstallPageData struct {
 	BaseData
-	QR       template.HTML
-	SetupURL string
-	IOS      string
-	Android  string
+	QR        template.HTML
+	SetupURL  string
+	IOS       string
+	Android   string
+	Available bool // mindestens eine Store-Adresse gesetzt
 }
 
 // AppInstallPage: GET /app/install – QR-Code zur Einrichtungsseite, Store-Knöpfe.
@@ -404,6 +418,12 @@ func (h *Handler) AppInstallPage(w http.ResponseWriter, r *http.Request) {
 		SetupURL: h.publicBaseURL(r) + "/app/setup",
 		IOS:      appStoreLink(h.appSetting(r.Context(), keyAppStorePrefix+"ios", "")),
 		Android:  appStoreLink(h.appSetting(r.Context(), keyAppStorePrefix+"android", "")),
+	}
+	d.Available = d.IOS != "" || d.Android != ""
+	if !d.Available {
+		w.Header().Set("Cache-Control", "no-store")
+		h.render(w, "app_install", d)
+		return
 	}
 	qr, err := qrSVG(d.SetupURL)
 	if err != nil {
