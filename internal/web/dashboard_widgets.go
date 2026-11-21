@@ -593,7 +593,7 @@ func loadListMine(h *Handler, ctx context.Context, uid string, _ WidgetInstance,
 	}
 	perm := map[string]string{"ticket": "tickets.view", "fault": "faults.view", "task": "", "maintenance": "maintenance.view", setupRef: permSetupView}
 	var out []listItem
-	today := time.Now().Truncate(24 * time.Hour)
+	today := localDayStart(time.Now())
 	for rows.Next() {
 		var k, id, title, prio, status string
 		var due *time.Time

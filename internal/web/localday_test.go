@@ -57,6 +57,57 @@ func TestLocalDayStartNotUTCMidnight(t *testing.T) {
 	}
 }
 
+// DATE-Spalten kommen als Mitternacht UTC an (pgx, time.Parse("2006-01-02")).
+// localDate liefert den heutigen Ortstag in derselben Darstellung – auch für
+// „kleiner oder gleich“ ohne Versatz um einen Tag (Vorwarnfrist der Schulungen).
+func TestLocalDateMatchesDBDate(t *testing.T) {
+	loc := berlin(t)
+	withLocal(t, loc)
+	for _, now := range []time.Time{
+		time.Date(2026, 11, 18, 0, 30, 0, 0, loc), // UTC noch 17.11.
+		time.Date(2026, 11, 18, 23, 30, 0, 0, loc),
+		time.Date(2026, 7, 18, 1, 45, 0, 0, loc), // Sommerzeit
+	} {
+		today := localDate(now)
+		if want := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC); !today.Equal(want) {
+			t.Fatalf("%v → %v, erwartet %v", now, today, want)
+		}
+		dbToday, _ := time.Parse("2006-01-02", now.Format("2006-01-02"))
+		if dbToday.Before(today) || !dbToday.AddDate(0, 0, -1).Before(today) {
+			t.Errorf("%v: Datum heute/gestern falsch eingeordnet", now)
+		}
+		// Schulung läuft genau am letzten Tag der Vorwarnfrist ab → „soon“.
+		last := dbToday.AddDate(-1, 0, 10)
+		if st, _ := trainingState(true, &last, 12, 10, false, today); st != "soon" {
+			t.Errorf("%v: Ablauf am Fristende = %q, erwartet soon", now, st)
+		}
+		if st, _ := trainingState(true, &last, 12, 9, false, today); st != "ok" {
+			t.Errorf("%v: Ablauf nach der Frist = %q, erwartet ok", now, st)
+		}
+	}
+}
+
+// Keine Tagesgrenze mehr über Truncate(24*time.Hour) – das ist Mitternacht UTC.
+func TestNoUTCDayTruncate(t *testing.T) {
+	files, err := filepath.Glob("*.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range files {
+		if strings.HasSuffix(f, "_test.go") || f == "localday.go" {
+			continue
+		}
+		b, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		s := strings.ReplaceAll(string(b), " ", "")
+		if strings.Contains(s, "Truncate(24*time.Hour)") {
+			t.Errorf("%s: Truncate(24*time.Hour) – localDate (DATE-Spalten) oder localDayStart (Zeitpunkte) nehmen", f)
+		}
+	}
+}
+
 func TestShiftLocalTimeIsLocal(t *testing.T) {
 	withLocal(t, berlin(t))
 	start, err := shiftLocalTime("2026-11-18", "06:00:00")

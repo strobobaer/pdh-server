@@ -9,3 +9,11 @@ import "time"
 func localDayStart(t time.Time) time.Time {
 	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
 }
+
+// localDate: Kalendertag von t (Ortszeit) als Mitternacht UTC – so liefert pgx
+// DATE-Spalten und so liest time.Parse("2006-01-02"). Für Vergleiche mit reinen
+// Datumswerten, auch „kleiner oder gleich“; für Zeitpunkte (timestamptz)
+// localDayStart nehmen.
+func localDate(t time.Time) time.Time {
+	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC)
+}

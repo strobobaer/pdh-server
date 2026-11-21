@@ -93,11 +93,13 @@
   <div role="status">{{if $v.Unread}}<b>Laufende Änderung</b>: {{$v.UnreadText}}{{else}}<b>{{.ActionText}}</b>{{with .By}} ({{.}}){{end}}:
   {{if and .Applied (not $v.Running)}}angewendet. Bitte prüfen, ob die Seite noch erreichbar ist.{{else}}wird angewendet …{{end}}{{end}}</div>
   <div class="nw-srv-count" aria-live="off">Noch <b data-nw-deadline="{{.Deadline.Unix}}" data-nw-now="{{$v.Now}}">{{$v.Remaining}}</b> Min. – ohne Bestätigung stellt der Server danach die vorige Einstellung von selbst wieder her.</div>
-  {{if and $v.Admin .Applied (not $v.Running)}}
+  {{if and $v.Admin .Applied (not $v.Running)}}{{if $v.VIPMissing}}
+  <div class="nw-note" role="status"><i class="ti ti-loader-2" aria-hidden="true"></i> {{$v.VIPWaitText}}</div>
+  {{else}}
   <form hx-post="/admin/network/server/confirm" hx-target="#nw-server" hx-swap="outerHTML" hx-disabled-elt="find button">
     <input type="hidden" name="id" value="{{.ID}}"><input type="hidden" name="dl" value="{{.Deadline.Unix}}">
     <button type="submit" class="btn btn-primary btn-small"><i class="ti ti-check" aria-hidden="true"></i> Seite erreichbar – Einstellung behalten</button>
-  </form>{{end}}
+  </form>{{end}}{{end}}
 </div>
 {{end}}{{else if $v.Running}}
 <div class="nw-srv-state" role="status"><i class="ti ti-loader-2" aria-hidden="true"></i> Die Änderung wird vorbereitet …{{if $v.Unread}} {{$v.UnreadText}}{{end}}</div>

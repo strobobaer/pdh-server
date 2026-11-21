@@ -730,6 +730,48 @@ func TestNetServerConfirm(t *testing.T) {
 	}
 }
 
+// Am aktiven Server fehlt die gemeinsame Adresse nach netplan apply ein paar Sekunden.
+// „Einstellung behalten“ erst, wenn sie zurück ist – sonst ginge die Wartung aus, während
+// sie noch fehlt (Abnahme 0.82.4 am Testverbund, 20.11.2026). Kommt sie nicht zurück,
+// stellt der Server nach der Frist selbst zurück.
+func TestNetServerConfirmWaitsForVIP(t *testing.T) {
+	f := netSrvEnv(t)
+	now := time.Now()
+	dl := now.Add(90 * time.Second)
+	pending := netSrvStatus("static", netSrvPend("20261120-4712", "pending", true, now, dl, ""), false)
+	confirmed := netSrvStatus("static", netSrvPend("20261120-4712", "confirmed", true, now, dl, ""), false)
+	f.ag.with(func(a *netSrvAgent) { a.status, a.afterConfirm = pending, confirmed })
+
+	f.setHA(netSrvCluster("aktiv", "passiv", ""), nil) // Adresse liegt gerade bei niemandem
+	self, _ := netSrvParts(f.card(t))
+	if strings.Contains(self, "Seite erreichbar – Einstellung behalten") || !strings.Contains(self, "gemeinsame Adresse 10.10.0.15 ist noch nicht zurück") {
+		t.Errorf("ohne gemeinsame Adresse: %s", self)
+	}
+	b := f.do(f.h.NetworkServerConfirmWeb, http.MethodPost, users.RoleAdmin, url.Values{"id": {"20261120-4712"}}).Body.String()
+	if n := f.ag.count("POST /v1/net/confirm"); n != 0 {
+		t.Errorf("bestätigt, obwohl die gemeinsame Adresse fehlt: %v", f.ag.log())
+	}
+	if !strings.Contains(b, "noch nicht zurück") || strings.Contains(b, "Einstellung behalten.") {
+		t.Errorf("Antwort ohne gemeinsame Adresse: %s", b)
+	}
+
+	// Am Spiegel gilt das nicht – dort liegt die Adresse ohnehin beim Partner.
+	f.setHA(netSrvCluster("passiv", "aktiv", "pdh"), nil)
+	if self, _ := netSrvParts(f.card(t)); !strings.Contains(self, "Seite erreichbar – Einstellung behalten") {
+		t.Errorf("Spiegel: %s", self)
+	}
+
+	f.setHA(netSrvCluster("aktiv", "passiv", "pdh-server"), nil) // Adresse wieder hier
+	self, _ = netSrvParts(f.card(t))
+	if !strings.Contains(self, "Seite erreichbar – Einstellung behalten") || strings.Contains(self, "noch nicht zurück") {
+		t.Errorf("Adresse zurück: %s", self)
+	}
+	b = f.do(f.h.NetworkServerConfirmWeb, http.MethodPost, users.RoleAdmin, url.Values{"id": {"20261120-4712"}}).Body.String()
+	if n := f.ag.count(`POST /v1/net/confirm {"id":"20261120-4712","by":"Ada Admin"}`); n != 1 || !strings.Contains(b, "Einstellung behalten.") {
+		t.Errorf("Adresse zurück, bestätigen: %v %s", f.ag.log(), b)
+	}
+}
+
 // Ein einzelner gescheiterter Abruf beim Agenten (Neustart, netplan apply) beendet weder
 // Nachfragen noch Countdown noch „behalten“ – sonst käme der Rückfall, obwohl die Seite erreichbar
 // ist. Ohne wait bleibt alles wie bisher.

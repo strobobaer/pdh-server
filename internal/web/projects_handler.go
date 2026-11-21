@@ -60,7 +60,7 @@ func (h *Handler) projectTaskStats(ctx context.Context, views []ProjectView) {
 		return
 	}
 	defer rows.Close()
-	today := time.Now().Truncate(24 * time.Hour)
+	today := localDate(time.Now())
 	for rows.Next() {
 		var id string
 		var done, open, overdue int
@@ -150,6 +150,13 @@ type ProjectsPageData struct {
 	Total    int
 	Users    []UserOption
 	Mine     bool // ohne Ansichtsrecht: nur die Projekte, an denen die Person beteiligt ist
+	// CanCreate: „Neues Projekt“ zeigen – dasselbe Recht wie die Rechte-Regel für POST /api/v1/projects
+	CanCreate bool
+}
+
+// mayCreateProject: darf neue Projekte anlegen (Rechte-Regel in perm_gate.go).
+func (h *Handler) mayCreateProject(r *http.Request) bool {
+	return gatePermOK("projects.edit", func(p string) bool { return h.hasPerm(r, p) })
 }
 
 func (h *Handler) ProjectsPage(w http.ResponseWriter, r *http.Request) {
@@ -164,6 +171,7 @@ func (h *Handler) ProjectsPage(w http.ResponseWriter, r *http.Request) {
 		{"paused", "Pausiert", "ti-player-pause"}, {"completed", "Abgeschlossen", "ti-check"},
 	}, false)
 	data.Mine = !h.mayViewAny(r, "project")
+	data.CanCreate = h.mayCreateProject(r)
 	// Liste und Reiterzähler aus derselben Menge, je einmal geladen: Ansichtsrecht (view_rights.go;
 	// ohne Recht nur die eigenen, „Meine Projekte“) und Abteilungssperre der Rolle (scopeIDs).
 	// Die Kategorie-Auswahl (tagIDs) grenzt nur die Liste ein.
