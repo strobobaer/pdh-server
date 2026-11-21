@@ -1025,5 +1025,7 @@
  "Hier siehst du deine Vorschläge – eingereicht, im Team oder als Verantwortliche/r. Alle Vorschläge sieht, wer das Recht „KVP: alle Vorschläge ansehen“ hat.": "Aici vezi propunerile tale – trimise, în echipă sau ca persoană responsabilă. Toate propunerile le vede cine are dreptul „KVP: vizualizare toate propunerile”.",
  "Jede/r darf Ideen einreichen und sieht die eigenen; alle Vorschläge sieht, wer das Recht „KVP: alle Vorschläge ansehen“ hat. Umsetzungen werden gewürdigt.": "Oricine poate trimite idei și le vede pe ale sale; toate propunerile le vede cine are dreptul „KVP: vizualizare toate propunerile”. Implementările sunt apreciate.",
  "Infobildschirm": "Ecran informativ",
- "Terminal": "Terminal"
+ "Terminal": "Terminal",
+ "Terminal-Software herunterladen": "Descarcă software-ul terminalului",
+ "Raspberry-Pi-Abbild, Windows-Setup (EXE/MSI) und Updates": "Imagine Raspberry Pi, program de instalare Windows (EXE/MSI) și actualizări"
 }
