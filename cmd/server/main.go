@@ -517,6 +517,7 @@ func main() {
 	// Angemeldete App-Schnittstellen: Token + Signatur + Sperre + Mindestversion + app.use.
 	r.With(webHandler.AppAuth).Get("/api/app/v1/me", webHandler.AppMeAPI)
 	r.With(webHandler.AppAuth).Get("/api/app/v1/work", webHandler.AppWorkAPI)
+	r.With(webHandler.AppAuth).Get("/api/app/v1/work/{type}/{id}", webHandler.AppWorkDetailAPI)
 
 	// Public shop-floor dashboard; its write actions authenticate each operator by RFID.
 	r.Mount("/global", webHandler.GlobalDashboardRoutes())

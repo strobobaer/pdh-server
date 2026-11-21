@@ -2,10 +2,14 @@ package web
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5"
 )
 
 // „Meine Vorgänge“: offene Arbeit eines Benutzers über Störungen, Tickets,
@@ -116,14 +120,9 @@ func (h *Handler) AppWorkAPI(w http.ResponseWriter, r *http.Request) {
 		appJSONErr(w, http.StatusForbidden, "app_no_permission", "app_no_permission")
 		return
 	}
-	view := map[string]string{"fault": "faults.view", "ticket": "tickets.view", "task": "", "maintenance": "maintenance.view"}
 	var kinds []string
 	for _, k := range []string{"fault", "ticket", "task", "maintenance"} {
-		allowed := false
-		for _, t := range dev.AllowedTypes {
-			allowed = allowed || t == k
-		}
-		if allowed && h.hasPerm(r, view[k]) {
+		if appKindAllowed(dev, k) && h.hasPerm(r, appViewPerm[k]) {
 			kinds = append(kinds, k)
 		}
 	}
@@ -147,4 +146,283 @@ func (h *Handler) AppWorkAPI(w http.ResponseWriter, r *http.Request) {
 		items = append(items, it)
 	}
 	terminalJSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+// appViewPerm: Ansichtsrecht je Vorgangsart (leer = keines; Aufgaben sieht, wer
+// nicht durch Abteilung oder Beteiligung ausgeschlossen ist). Gemeinsam für die
+// Liste und die Einzelansicht.
+var appViewPerm = map[string]string{"fault": "faults.view", "ticket": "tickets.view", "task": "", "maintenance": "maintenance.view"}
+
+// appKindAllowed: darf das Gerät diese Vorgangsart (allowed_types)?
+func appKindAllowed(dev *appDeviceCtx, kind string) bool {
+	if dev == nil {
+		return false
+	}
+	for _, t := range dev.AllowedTypes {
+		if t == kind {
+			return true
+		}
+	}
+	return false
+}
+
+// appWorkAccess: Ergebnis der Zugriffsprüfung auf einen Vorgang.
+type appWorkAccess int
+
+const (
+	appWorkForbidden appWorkAccess = iota // Art, Recht oder Abteilung verbieten es (403)
+	appWorkNotFound                       // Art oder Vorgang gibt es nicht (404)
+	appWorkOK                             // sichtbar; die can-Flags gelten
+)
+
+// appWorkPerms: was die App an einem Vorgang sehen und tun darf (Benutzer ∩ Gerät,
+// nie mehr als das Web). Außer bei Access == appWorkOK sind alle Flags false.
+//
+//	Start   – Arbeit beginnen (Bearbeiten-Recht oder beteiligt, nicht abgeschlossen)
+//	Action  – Maßnahme eintragen (canWriteAction und die Art/der Status nimmt Maßnahmen an)
+//	Comment – Kommentar schreiben (nur Ticket, nicht abgeschlossen)
+//	Step    – Checklistenschritt erfassen (nur Wartung, Bearbeiten-Recht oder beteiligt, offen)
+//	Finish  – abschließen (canFinish)
+type appWorkPerms struct {
+	Access                               appWorkAccess
+	Start, Action, Comment, Step, Finish bool
+}
+
+// See: Vorgang darf angezeigt werden.
+func (p appWorkPerms) See() bool { return p.Access == appWorkOK }
+
+// appWorkCan prüft, ob das App-Gerät samt Benutzer den Vorgang sehen darf, und
+// bestimmt die erlaubten Aktionen nach den Regeln des Webs. r muss durch AppAuth
+// gelaufen sein. Ein Fehler heißt: Datenbank nicht erreichbar (nichts freigeben).
+func (h *Handler) appWorkCan(r *http.Request, kind, id string) (appWorkPerms, error) {
+	k, ok := completionKinds[kind]
+	if !ok { // „setup“ und alles Unbekannte gibt es in der App-Einzelansicht nicht
+		return appWorkPerms{Access: appWorkNotFound}, nil
+	}
+	dev := appDevice(r)
+	if dev == nil || !h.hasPerm(r, permAppUse) || !appKindAllowed(dev, kind) {
+		return appWorkPerms{Access: appWorkForbidden}, nil
+	}
+	if !bareUUIDRe.MatchString(id) || h.db == nil {
+		return appWorkPerms{Access: appWorkNotFound}, nil
+	}
+	ctx := r.Context()
+	var status string
+	var archived bool
+	switch err := h.db.QueryRow(ctx, `SELECT status::text, archived_at IS NOT NULL FROM `+k.Table+` WHERE id = $1::uuid`, id).Scan(&status, &archived); {
+	case errors.Is(err, pgx.ErrNoRows):
+		return appWorkPerms{Access: appWorkNotFound}, nil
+	case err != nil:
+		return appWorkPerms{}, err
+	}
+	ref := myWorkKind[kind].scopeRef // Bereichsart der Rechte („maintenance_task“)
+	u := getUser(r)
+	if u == nil || u.ID == "" {
+		return appWorkPerms{Access: appWorkForbidden}, nil
+	}
+	// Ansichtsrecht (in der Abteilung des Vorgangs) oder Beteiligung, und Abteilungssperre
+	if !h.hasPermRec(r, appViewPerm[kind], ref, id) && !h.recordInvolved(ctx, u.ID, ref, id) {
+		return appWorkPerms{Access: appWorkForbidden}, nil
+	}
+	if !h.recordInScope(ctx, h.requestScope(r), ref, id) {
+		return appWorkPerms{Access: appWorkForbidden}, nil
+	}
+	p := appWorkPerms{Access: appWorkOK}
+	if closedStatus[status] || archived {
+		return p, nil
+	}
+	involved := h.completionInvolved(r, k, id)
+	p.Start = h.hasPermRec(r, k.EditPerm, ref, id) || involved
+	if am, ok := actionModules[ref]; ok && am.Add != nil && am.Input(status) {
+		p.Action = h.canWriteAction(r, ref, id)
+	}
+	p.Comment = kind == "ticket" && h.tickets != nil
+	p.Step = kind == "maintenance" && (h.hasPermRec(r, k.EditPerm, ref, id) || involved)
+	p.Finish = h.canFinish(r, k, id)
+	return p, nil
+}
+
+// appWorkDetail: Felder der Einzelansicht, art-übergreifend.
+type appWorkDetail struct {
+	Title, Description, Status, Priority, AssetID, AssetName string
+	Due                                                      string
+	Actions                                                  []map[string]any
+	Comments                                                 []map[string]any // nur Ticket
+	Steps                                                    []map[string]any // nur Wartung
+}
+
+func appTime(t time.Time) string { return t.UTC().Format(time.RFC3339) }
+
+func (h *Handler) appAssetName(ctx context.Context, id string) string {
+	if id == "" || !bareUUIDRe.MatchString(id) {
+		return ""
+	}
+	var name string
+	_ = h.db.QueryRow(ctx, `SELECT COALESCE(name, '') FROM infrastructure WHERE id = $1::uuid`, id).Scan(&name)
+	return name
+}
+
+func derefStr(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return *p
+}
+
+// loadAppWorkDetail liest den Vorgang über den Dienst seines Moduls.
+func (h *Handler) loadAppWorkDetail(ctx context.Context, kind, id string) (*appWorkDetail, error) {
+	d := &appWorkDetail{}
+	actions := func(n int, at func(i int) (string, string, time.Time)) {
+		d.Actions = make([]map[string]any, 0, n)
+		for i := 0; i < n; i++ {
+			text, by, t := at(i)
+			d.Actions = append(d.Actions, map[string]any{"text": text, "by": by, "at": appTime(t)})
+		}
+	}
+	date := func(t *time.Time, utcDay bool) {
+		if t == nil {
+			return
+		}
+		v := *t
+		if !utcDay {
+			v = v.Local()
+		}
+		d.Due = v.Format("2006-01-02")
+	}
+	switch kind {
+	case "fault":
+		if h.faults == nil {
+			return nil, errNoService
+		}
+		f, err := h.faults.GetByID(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		d.Title, d.Description, d.Status, d.Priority = f.Title, f.Description, string(f.Status), string(f.Severity)
+		d.AssetID = derefStr(f.InfrastructureID)
+		date(f.DueDate, false)
+		if as, err := h.faults.GetActions(ctx, id); err == nil {
+			actions(len(as), func(i int) (string, string, time.Time) {
+				return as[i].Description, as[i].CreatedByName, as[i].CreatedAt
+			})
+		}
+	case "ticket":
+		if h.tickets == nil {
+			return nil, errNoService
+		}
+		t, err := h.tickets.GetByID(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		d.Title, d.Description, d.Status, d.Priority = t.Title, t.Description, string(t.Status), string(t.Priority)
+		d.AssetID = derefStr(t.InfrastructureID)
+		date(t.DueDate, false)
+		if as, err := h.tickets.GetActions(ctx, id); err == nil {
+			actions(len(as), func(i int) (string, string, time.Time) {
+				return as[i].Description, as[i].CreatedByName, as[i].CreatedAt
+			})
+		}
+		d.Comments = []map[string]any{}
+		if cs, err := h.tickets.ListComments(ctx, id); err == nil {
+			for _, c := range cs {
+				d.Comments = append(d.Comments, map[string]any{"text": c.Text, "by": c.UserName, "at": appTime(c.CreatedAt)})
+			}
+		}
+	case "task":
+		if h.tasks == nil {
+			return nil, errNoService
+		}
+		t, err := h.tasks.GetByID(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		d.Title, d.Description, d.Status, d.Priority = t.Title, t.Description, string(t.Status), string(t.Priority)
+		d.AssetID = derefStr(t.InfrastructureID)
+		date(t.DueDate, true) // DATE
+		if as, err := h.tasks.GetActions(ctx, id); err == nil {
+			actions(len(as), func(i int) (string, string, time.Time) {
+				return as[i].Description, as[i].CreatedByName, as[i].CreatedAt
+			})
+		}
+	case "maintenance":
+		if h.maint == nil {
+			return nil, errNoService
+		}
+		t, err := h.maint.GetTaskByID(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		d.Title, d.Description, d.Status, d.Priority = t.Title, t.Description, string(t.Status), string(t.Priority)
+		d.AssetID = t.InfrastructureID
+		due := t.DueDate
+		date(&due, false)
+		if as, err := h.maint.GetActions(ctx, id); err == nil {
+			actions(len(as), func(i int) (string, string, time.Time) {
+				return as[i].Description, as[i].CreatedByName, as[i].CreatedAt
+			})
+		}
+		d.Steps = []map[string]any{}
+		if ss, err := h.maint.Steps(ctx, id); err == nil {
+			for _, s := range ss {
+				d.Steps = append(d.Steps, map[string]any{"id": s.ID, "label": s.Label, "kind": s.ItemType, "value": s.Value,
+					"done": s.Done, "required": s.Required, "min": s.MinValue, "max": s.MaxValue})
+			}
+		}
+	}
+	if d.Actions == nil {
+		d.Actions = []map[string]any{}
+	}
+	d.AssetName = h.appAssetName(ctx, d.AssetID)
+	return d, nil
+}
+
+// AppWorkDetailAPI: GET /api/app/v1/work/{type}/{id} – ein Vorgang mit den
+// Aktionen, die dieses Gerät und dieser Benutzer daran dürfen.
+func (h *Handler) AppWorkDetailAPI(w http.ResponseWriter, r *http.Request) {
+	kind, id := chi.URLParam(r, "type"), chi.URLParam(r, "id")
+	p, err := h.appWorkCan(r, kind, id)
+	if err != nil {
+		componentLog("app").Error().Err(err).Str("art", kind).Str("vorgang", id).Msg("vorgang prüfen")
+		appJSONErr(w, http.StatusInternalServerError, "app_unavailable", "app_unavailable")
+		return
+	}
+	switch p.Access {
+	case appWorkNotFound:
+		appJSONErr(w, http.StatusNotFound, "app_not_found", "app_not_found")
+		return
+	case appWorkOK:
+	default:
+		appJSONErr(w, http.StatusForbidden, "app_no_permission", "app_no_permission")
+		return
+	}
+	d, err := h.loadAppWorkDetail(r.Context(), kind, id)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			appJSONErr(w, http.StatusNotFound, "app_not_found", "app_not_found")
+			return
+		}
+		componentLog("app").Error().Err(err).Str("art", kind).Str("vorgang", id).Msg("vorgang laden")
+		appJSONErr(w, http.StatusInternalServerError, "app_unavailable", "app_unavailable")
+		return
+	}
+	hist := []map[string]any{}
+	for _, x := range h.queryHistory(r.Context(), historyRef(kind), id, 20) {
+		hist = append(hist, map[string]any{"action": x.Action, "by": x.UserName, "at": appTime(x.At), "message": x.Message})
+	}
+	out := map[string]any{
+		"type": kind, "id": id, "number": "", "title": d.Title, "description": d.Description, "status": d.Status, "priority": d.Priority,
+		"asset": map[string]string{"id": d.AssetID, "name": d.AssetName}, "due": nil,
+		"actions": d.Actions, "history": hist,
+		"can": map[string]bool{"start": p.Start, "action": p.Action, "comment": p.Comment, "step": p.Step, "finish": p.Finish},
+	}
+	if d.Due != "" {
+		out["due"] = d.Due
+	}
+	if d.Comments != nil {
+		out["comments"] = d.Comments
+	}
+	if d.Steps != nil {
+		out["steps"] = d.Steps
+	}
+	terminalJSON(w, http.StatusOK, out)
 }
