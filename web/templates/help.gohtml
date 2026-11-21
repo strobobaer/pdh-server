@@ -3669,7 +3669,7 @@ curl -fsS -X PUT "https://api.cloudflare.com/client/v4/zones/$CF_ZONE/dns_record
   <h2><i class="ti ti-device-mobile"></i> PDH-App</h2>
   <p>Die PDH-App verbindet Handy und Tablet mit diesem Server; die Einrichtungsseite <b>/app/setup</b> führt durch die Installation.</p>
   <div class="hb-howto"><b><i class="ti ti-info-circle"></i> Stand</b>
-    Dieses Paket legt den <b>Zugang</b> an: Telefon anfragen, freigeben, sperren, Einstellungen. Die App selbst mit Störungen, Tickets und Aufgaben folgt mit den nächsten Paketen.</div>
+    Der <b>Zugang</b> (Telefon anfragen, freigeben, sperren, Einstellungen) und die <b>Arbeit mit der App</b> (Vorgänge, Scannen, Störung melden) sind da. Weitere Funktionen (zum Beispiel Mitteilungen aufs Telefon) folgen mit späteren Paketen.</div>
   {{template "hb-fig-app"}}
   <div class="hb-howto"><b><i class="ti ti-users"></i> Einmal vorbereiten</b>
     <ol class="hb-steps">
@@ -3706,6 +3706,36 @@ curl -fsS -X PUT "https://api.cloudflare.com/client/v4/zones/$CF_ZONE/dns_record
       <li>Oben rechts im Benutzermenü <b>App installieren</b> wählen (nur mit dem Recht „App: nutzen“ und sobald mindestens eine Store-Adresse eingetragen ist; sonst steht auf der Seite „Die App ist noch nicht verfügbar.“).</li>
       <li>Den QR-Code mit der Kamera des Telefons scannen, die Seite öffnen und die App aus dem Store installieren; bei Bedarf stehen die Store-Knöpfe auch auf der Seite.</li>
       <li>In der App den Zugang anfragen; der Code, den das Telefon zeigt, geht an die App-Administratoren (siehe oben).</li>
+    </ol>
+  </div>
+  <div class="hb-howto"><b><i class="ti ti-list-check"></i> Mit der App arbeiten</b>
+    <ol class="hb-steps">
+      <li>Unter <b>Meine Vorgänge</b> siehst du, was dir zugewiesen oder in deinem Bereich offen ist: Störungen, Tickets, Aufgaben und Wartung. Du siehst nur die Arten, die dein Telefon freigegeben hat und für die du auch im Browser das Ansichtsrecht hast.</li>
+      <li>Einen Vorgang antippen. Zur Auswahl stehen: <b>Annehmen</b> (der Vorgang wird dir zugewiesen), eine <b>Maßnahme</b> eintragen, einen <b>Kommentar</b> schreiben, die <b>Checkliste</b> abhaken und <b>Abschließen</b>.</li>
+      <li>Beim <b>Abschließen</b> schreibst du einen Text; er wird als <b>Maßnahme</b> in den Vorgang eingetragen, bevor er geschlossen wird. Ein bereits geschlossener Vorgang lässt sich nicht noch einmal abschließen.</li>
+      <li>Sendet die App eine Eingabe nach einem Verbindungsabbruch noch einmal, wird sie vom Server <b>genau einmal</b> ausgeführt – nichts wird doppelt eingetragen.</li>
+    </ol>
+    Alles, was die App darf, darfst du auch im Browser: Es gelten die Rechte der Person, eingeschränkt auf das, was das Telefon freigegeben hat.
+  </div>
+  <div class="hb-howto"><b><i class="ti ti-scan"></i> So scannst du einen QR-Code</b>
+    <ol class="hb-steps">
+      <li>In der App <b>Scannen</b> wählen und die Kamera auf den QR-Code einer Anlage, eines IT-Assets, eines Lagerplatzes oder eines Kanban-Etiketts halten.</li>
+      <li>Bei einer <b>Anlage</b> öffnet die App die Anlage mit ihren offenen Vorgängen; von dort kannst du einen Vorgang öffnen oder eine Störung melden.</li>
+      <li>Bei <b>Lager</b>- und <b>Kanban</b>-Codes öffnet die App den <b>Browser</b> mit der passenden PDH-Seite; dort meldest du dich wie gewohnt an.</li>
+      <li>Eine Anlage <b>außerhalb deines Bereichs</b> (Abteilung) lässt sich nicht per Scan öffnen; die App meldet, dass dir das Recht dafür fehlt. Ein Code, den dieser Server nicht kennt oder der auf eine fremde Adresse zeigt, wird nicht geöffnet.</li>
+    </ol>
+  </div>
+  <div class="hb-howto"><b><i class="ti ti-alert-triangle"></i> So meldest du eine Störung aus der App</b>
+    <ol class="hb-steps">
+      <li>Eine Anlage scannen oder aus der Liste wählen und <b>Störung melden</b> antippen.</li>
+      <li>Titel und Beschreibung eintragen und senden. Die Störung erscheint wie im Browser angelegt, mit dir als Melder.</li>
+    </ol>
+    Das geht nur, wenn die Freigabe des Telefons <b>„Vorgänge aus der App anlegen“</b> enthält <i>und</i> die Person das Recht „App: Vorgänge anlegen“ hat. Fehlt eines davon, zeigt die App keinen Knopf zum Melden.
+  </div>
+  <div class="hb-howto"><b><i class="ti ti-lock"></i> Hinweise „Nur lesen“ und „Wartung“</b>
+    <ol class="hb-steps">
+      <li><b>Nur lesen (Spiegelserver):</b> Ist die App mit einem Spiegelserver verbunden, kannst du Vorgänge ansehen, aber nichts ändern. Die App zeigt den Hinweis „Nur lesen“; Eingaben werden nicht angenommen, bis du dich mit dem Hauptserver verbindest.</li>
+      <li><b>Wartung:</b> Während einer Wartungssperre des Servers zeigt die App den Hinweis „Wartung“ und ändert nichts. Lesen bleibt möglich; schreibe danach erneut. Die App versucht es von selbst später noch einmal.</li>
     </ol>
   </div>
   {{template "hb-shots" (dict "Ref" (index $s "pdh-app") "Can" $can)}}
