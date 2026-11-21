@@ -34,7 +34,7 @@ type maintProtocol struct {
 	Actions                            []maintProtocolLine
 	Parts                              []maintProtocolLine
 	Company                            string
-	CompanyAddress, Legal, Contact     string // Firmenstammdaten und Ansprechpartner (0.82.18)
+	CompanyAddress, Legal, Contact     string // Firmenstammdaten und Ansprechpartner (0.82.21)
 	Logo                               string // Dateipfad oder leer
 }
 
@@ -257,7 +257,7 @@ func (h *Handler) loadMaintProtocol(ctx context.Context, taskID, userID string) 
 	p.Checklist = items
 	b := h.branding()
 	p.Company = b.AppName
-	if cp := h.company(ctx); cp.Name != "" { // Firmenstammdaten (0.82.18)
+	if cp := h.company(ctx); cp.Name != "" { // Firmenstammdaten (0.82.21)
 		p.Company, p.CompanyAddress, p.Legal = cp.Name, companyAddressLine(cp), companyLegalLine(cp)
 	}
 	p.Contact = contactLine(h.contactPersonFor(ctx, userID))

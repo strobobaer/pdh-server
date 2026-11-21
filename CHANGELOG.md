@@ -10,7 +10,7 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
-## [0.82.18] – 2026-11-21
+## [0.82.21] – 2026-11-21
 
 ### Neu
 
@@ -26,6 +26,40 @@ im Kapitel „Versionen & Updates“ an.
 ### Sicherheit
 
 - Neues Recht „Firmenstammdaten bearbeiten“ (company.edit); es wirkt nur, wenn es für das ganze Unternehmen gilt. Es bekommen die Rollen und Benutzer, die bisher Server-Einstellungen, M365-Vorlagen oder Rollen verwalten durften.
+
+## [0.82.20] – 2026-11-21
+
+### Neu
+
+- Easy-Modus: beim Rüsten gibt es ein freiwilliges Feld „Kürzel/Name“ (steht bei der laufenden Rüstzeit) und unter „Rüstzeit nachtragen“ lässt sich eine schon beendete Rüstzeit mit Beginn und Ende oder Dauer erfassen – ohne Anmeldung, mit denselben Bremsen wie die Meldungen.
+
+## [0.82.19] – 2026-11-21
+
+### Neu
+
+- Infobildschirm: neue Folien „Statistik Störungen“, „Statistik Tickets“ und „Statistik Rüstzeiten“ (Kennzahlen und Säulendiagramm für 7 oder 30 Tage, für die gewählten Anlagen samt Unteranlagen) sowie „Grafana-Dashboard“ zum Einbetten eines Dashboards.
+- Neue fertige Rolle „Terminal“: darf Tickets, Störungen und Rüstzeiten ansehen und melden, sonst nichts; über die Abteilung im Rollen-Dialog auf eine Halle begrenzbar (Handbuch „Anlagenterminal“).
+
+### Sicherheit
+
+- Die Folienschau darf per Content-Security-Policy nur PDH selbst und die Adresse der Grafana-Folien einbetten; Statistik und Grafana-Folien zeigen nur, was der Terminal-Benutzer sehen darf.
+
+## [0.82.18] – 2026-11-21
+
+### Neu
+
+- PDH-App, Zugang (Paket 1): Ein Telefon kann den Zugang anfragen; dabei entsteht ein APP-Ticket für die Gruppe „App-Administratoren“ und das Telefon zeigt einen Code.
+- Neue Seite „App-Konfiguration“: Der Administrator gibt den Code ein, wählt die Person und die erlaubten Vorgangsarten und gibt das Telefon frei oder lehnt die Anfrage ab; das Ticket wird dabei geschlossen.
+- Neue Seite „App-Geräte“ unter Verwaltung: eingerichtete Telefone mit Benutzer, System, App-Version und letztem Zugriff, Sperren sowie Einstellungen für die App (zusätzliche Adressen, neueste und vorige App-Version, Store-Adressen).
+- Im Benutzermenü gibt es „App installieren“ mit QR-Code und Store-Knöpfen; am Benutzer stehen seine App-Geräte samt Sperren.
+- Das Handbuch hat ein neues Kapitel „PDH-App“ mit Skizze und Schritt-für-Schritt-Anleitungen. Die App selbst folgt mit den nächsten Paketen.
+
+### Sicherheit
+
+- Neue Rechte „App: nutzen“, „App: Vorgänge anlegen“, „App: Cockpits verwalten“, „App: Telefon-Sensoren ansehen“ und „App: Geräte freigeben und sperren“ (Gruppe „App“); wirksam ist, was die Person und das Gerät gemeinsam dürfen – das Gerät kann nur einschränken.
+- Jedes Telefon hat einen eigenen Schlüssel; Anfragen sind signiert und nur kurz gültig, der Zugangsschlüssel wird nur als Prüfwert gespeichert. Die bisherige Schnittstelle `/api/v1` lehnt App-Zugänge ab.
+- Eine Sperre trennt das Telefon sofort, spätestens nach 30 Sekunden. Danach muss die App zurückgesetzt und der Zugang neu angefragt werden.
+- Die Abteilungsliste für die Anfrage ist ohne Anmeldung lesbar und enthält nur Abteilungsnamen.
 
 ## [0.82.17] – 2026-11-21
 

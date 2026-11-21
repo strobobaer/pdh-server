@@ -1,6 +1,6 @@
 package web
 
-// Firmenstammdaten (0.82.18): eine Firma, ein Datensatz (Tabelle company_profile).
+// Firmenstammdaten (0.82.21): eine Firma, ein Datensatz (Tabelle company_profile).
 // Gepflegt im Reiter „Firma“ an jedem obersten Infrastruktur-Knoten (company_web.go),
 // verwendet in Mails, Druckkopf, Wartungsprotokoll und M365-Signaturen (company_format.go).
 
@@ -76,7 +76,7 @@ func (h *Handler) resetCompanyCache() {
 }
 
 // company liefert die Firmenstammdaten (zwischengespeichert); ohne Datenbank oder bei einem
-// Lesefehler ein leeres Profil – dann sieht alles aus wie vor 0.82.18.
+// Lesefehler ein leeres Profil – dann sieht alles aus wie vor 0.82.21.
 func (h *Handler) company(ctx context.Context) companyProfile {
 	h.companyC.mu.RLock()
 	c := h.companyC.p
@@ -135,7 +135,7 @@ func (h *Handler) saveCompany(ctx context.Context, p companyProfile, userID stri
 	q := `UPDATE company_profile SET ` + strings.Join(sets, ", ") + fmt.Sprintf(`, updated_at=NOW(), updated_by=$%d::uuid WHERE id`, len(args))
 	tag, err := h.db.Exec(ctx, q, args...)
 	if err == nil && tag.RowsAffected() == 0 {
-		err = errors.New("Firmenstammdaten fehlen in der Datenbank (Migration 189)")
+		err = errors.New("Firmenstammdaten fehlen in der Datenbank (Migration 193)")
 	}
 	h.resetCompanyCache()
 	if err != nil {

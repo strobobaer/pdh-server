@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -20,7 +21,7 @@ import (
 // Terminals mit dem Schalter „Globales Terminal“ abspielen (Store: terminal_slides_store.go).
 //
 //	GET  /terminal-slides                  Liste
-//	GET  /terminal-slides/new?kind=…       Formular für eine neue Folie (image, text, vorgaenge)
+//	GET  /terminal-slides/new?kind=…       Formular für eine neue Folie (image, text, vorgaenge, stats_faults, stats_tickets, stats_setup, grafana)
 //	GET  /terminal-slides/{id}             Formular zum Ändern
 //	POST /terminal-slides                  anlegen (multipart wegen des Bildes)
 //	POST /terminal-slides/{id}             ändern
@@ -41,6 +42,8 @@ const (
 
 var slideKindLabels = map[string]string{
 	slideKindImage: "Bild", slideKindText: "Text", slideKindVorgaenge: "Vorgänge",
+	slideKindStatsFaults: "Statistik Störungen", slideKindStatsTickets: "Statistik Tickets",
+	slideKindStatsSetup: "Statistik Rüstzeiten", slideKindGrafana: "Grafana-Dashboard",
 }
 
 var slideNotices = map[string]string{
@@ -59,6 +62,8 @@ type terminalSlideView struct {
 
 type TerminalSlidesPageData struct {
 	BaseData
+	NoStatsUsers []string // Infobildschirm-Benutzer ohne Recht „Statistik ansehen“ (Grafana-Folien bleiben leer)
+	HasGrafana   bool
 	Notice string
 	Slides []terminalSlideView
 }
@@ -74,6 +79,8 @@ type terminalSlideFormData struct {
 	MaxBody     int
 	MaxTitle    int
 	MaxMB       int
+	NoStatsUsers []string
+	Dashboards  []grafanaDashboard // vorhandene Grafana-Dashboards (Statistik-Kacheln) als Vorschläge
 }
 
 func (h *Handler) slidesAllowed(w http.ResponseWriter, r *http.Request) bool {
@@ -107,12 +114,22 @@ func (h *Handler) TerminalSlidesPage(w http.ResponseWriter, r *http.Request) {
 		BaseData: h.baseData(r, "terminal-slides", "Infobildschirm", "Terminal"),
 		Notice:   slideNotices[r.URL.Query().Get("n")],
 	}
+	for _, s := range list {
+		d.HasGrafana = d.HasGrafana || s.Kind == slideKindGrafana
+	}
+	if d.HasGrafana {
+		d.NoStatsUsers = h.globalTerminalsWithoutStatistics(r.Context())
+	}
 	for i, s := range list {
 		v := terminalSlideView{terminalSlide: s, KindLabel: slideKindLabels[s.Kind],
 			HasImage: s.Kind == slideKindImage && s.ImageType != "", First: i == 0, Last: i == len(list)-1}
 		switch s.Kind {
 		case slideKindText:
 			v.Summary = slideExcerpt(s.Body, 80)
+		case slideKindGrafana:
+			v.Summary = s.URL
+		case slideKindStatsFaults, slideKindStatsTickets, slideKindStatsSetup:
+			v.Summary = fmt.Sprintf("%s · %s", statsPeriodLabel(s.StatsDays), slideInfraSummary(len(s.InfraIDs)))
 		case slideKindVorgaenge:
 			switch n := len(s.InfraIDs); {
 			case n == 0:
@@ -138,6 +155,65 @@ func (h *Handler) TerminalSlidesPage(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	h.render(w, "terminal_slides", d)
+}
+
+// statsPeriodLabel: Zeitraum einer Statistikfolie in Worten.
+func statsPeriodLabel(days int) string {
+	if days == 30 {
+		return "letzte 5 Wochen"
+	}
+	return "7 Tage"
+}
+
+// globalTerminalsWithoutStatistics: Benutzernamen der Infobildschirme, die Grafana-Folien nicht sehen dürfen.
+// Das Recht statistics.view gilt überall (Grafana ist nicht nach Anlagen getrennt); die Rolle terminal
+// hat es bewusst nicht.
+func (h *Handler) globalTerminalsWithoutStatistics(ctx context.Context) []string {
+	if h.db == nil || h.rbac == nil {
+		return nil
+	}
+	rows, err := h.db.Query(ctx, `SELECT u.id::text, u.username, u.role::text FROM terminal_settings ts
+		JOIN users u ON u.id = ts.user_id WHERE ts.global_screen ORDER BY u.username`)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var id, name, role string
+		if rows.Scan(&id, &name, &role) == nil && !h.rbac.HasPermissionForUser(id, role, "statistics.view") {
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
+// slideInfraSummary: Kurzinfo zur Anlagenauswahl.
+func slideInfraSummary(n int) string {
+	switch n {
+	case 0:
+		return "alle Anlagen"
+	case 1:
+		return "1 Anlage"
+	}
+	return fmt.Sprintf("%d Anlagen", n)
+}
+
+// slideInfraFromForm liest die Anlagenauswahl (infra_ids, kommagetrennt, ohne Doppelte).
+func slideInfraFromForm(r *http.Request, msg string) ([]string, string) {
+	var out []string
+	seen := map[string]bool{}
+	for _, id := range strings.FieldsFunc(r.FormValue("infra_ids"), func(c rune) bool { return c == 44 || c == 59 || c == 32 || c == 10 || c == 9 }) {
+		id = strings.ToLower(id)
+		if !seen[id] {
+			seen[id] = true
+			out = append(out, id)
+		}
+	}
+	if len(out) > slideMaxInfra && msg == "" {
+		msg = fmt.Sprintf("Bitte höchstens %d Anlagen wählen", slideMaxInfra)
+	}
+	return out, msg
 }
 
 // slideExcerpt: Anfang eines Textes in einer Zeile (für die Liste).
@@ -167,6 +243,22 @@ func (h *Handler) slideFormPage(w http.ResponseWriter, r *http.Request, s termin
 	}
 	b, _ := json.Marshal(labels)
 	d.InfraLabels = string(b)
+	if s.Kind == slideKindGrafana {
+		d.NoStatsUsers = h.globalTerminalsWithoutStatistics(r.Context())
+	}
+	if base, _ := h.grafanaBase(r); h.db != nil {
+		d.Dashboards, _ = h.grafanaDashboards(r.Context(), base, false)
+		for i := range d.Dashboards { // Vorschlag als Adresse, die die Folie annimmt (Pfad unter /grafana/ oder https)
+			u := d.Dashboards[i].URL
+			if strings.HasPrefix(u, "/") && !strings.HasPrefix(u, grafanaProxyPath+"/") {
+				u = grafanaProxyPath + u
+			}
+			if validateGrafanaSlideURL(u) != nil {
+				u = ""
+			}
+			d.Dashboards[i].URL = u
+		}
+	}
 	w.Header().Set("Cache-Control", "no-store")
 	if status != http.StatusOK {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -184,7 +276,7 @@ func (h *Handler) TerminalSlideNewPage(w http.ResponseWriter, r *http.Request) {
 	if _, ok := slideKindLabels[kind]; !ok {
 		kind = slideKindImage
 	}
-	h.slideFormPage(w, r, terminalSlide{Kind: kind, DurationSeconds: slideDefaultSeconds, ShowFaults: true, ShowTickets: true, Active: true},
+	h.slideFormPage(w, r, terminalSlide{Kind: kind, DurationSeconds: slideDefaultSeconds, ShowFaults: true, ShowTickets: true, Active: true, StatsDays: 7},
 		true, false, "", http.StatusOK)
 }
 
@@ -235,6 +327,11 @@ func slideFromRequest(w http.ResponseWriter, r *http.Request) (terminalSlide, st
 	switch s.Kind {
 	case slideKindText:
 		s.Body = strings.TrimSpace(strings.ReplaceAll(r.FormValue("body"), "\r\n", "\n"))
+	case slideKindGrafana:
+		s.URL = strings.TrimSpace(r.FormValue("url"))
+	case slideKindStatsFaults, slideKindStatsTickets, slideKindStatsSetup:
+		s.StatsDays, _ = strconv.Atoi(r.FormValue("stats_days"))
+		s.InfraIDs, msg = slideInfraFromForm(r, msg)
 	case slideKindVorgaenge:
 		s.ShowFaults = r.FormValue("show_faults") != ""
 		s.ShowTickets = r.FormValue("show_tickets") != ""

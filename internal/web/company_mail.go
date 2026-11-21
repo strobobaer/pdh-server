@@ -1,6 +1,6 @@
 package web
 
-// Mails mit Firmenstammdaten (0.82.18): Absendername = Firma (wenn PDH_SMTP_FROM keinen
+// Mails mit Firmenstammdaten (0.82.21): Absendername = Firma (wenn PDH_SMTP_FROM keinen
 // eigenen Namen hat) und Fußzeile mit Ansprechpartner, Anschrift und Pflichtangaben.
 
 import (

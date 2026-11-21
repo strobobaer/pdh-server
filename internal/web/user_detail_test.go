@@ -200,3 +200,31 @@ func TestUserDetailTerminalDevices(t *testing.T) {
 		t.Error("Karte ohne CanDevices sichtbar")
 	}
 }
+
+func TestUserDetailAppDevices(t *testing.T) {
+	tmpl := loadTestTemplates(t)
+	base := UserDetailData{
+		User:          UserView{ID: "u1", FullName: "Erika Muster", Username: "erika", RoleLabel: "Mitarbeiter"},
+		Master:        userMaster{Language: "de"},
+		CanEditMaster: true,
+	}
+	d := base
+	d.ShowAppDevices = true
+	d.AppDevices = []appDeviceRow{
+		{ID: "a1", UserID: "u1", Label: "Pixel 8", Platform: "Android", Version: "1.0.0", Created: "01.11.2026 08:00", LastSeen: "nie", CanRevoke: true},
+		{ID: "a2", UserID: "u1", Label: "Altes iPhone", Platform: "iOS", Version: "0.9.0", Created: "01.10.2026 08:00", LastSeen: "02.10.2026 09:00", Revoked: "03.10.2026 10:00"},
+		{ID: "a3", UserID: "u1", Label: "Fremdes", Platform: "Android", Version: "1.0.0", Created: "01.10.2026 08:00", LastSeen: "nie"},
+	}
+	out := renderPage(t, tmpl, "user_detail", d)
+	for _, want := range []string{"App-Geräte", "Pixel 8", "Altes iPhone", `action="/app/devices/a1/revoke"`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("%q fehlt", want)
+		}
+	}
+	if strings.Contains(out, "devices/a2/revoke") || strings.Contains(out, "devices/a3/revoke") {
+		t.Error("Sperren-Knopf ohne Recht oder am gesperrten Gerät")
+	}
+	if out = renderPage(t, tmpl, "user_detail", base); strings.Contains(out, "App-Geräte") {
+		t.Error("Abschnitt ohne Recht sichtbar")
+	}
+}

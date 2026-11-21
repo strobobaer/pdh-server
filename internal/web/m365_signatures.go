@@ -124,7 +124,7 @@ func (h *Handler) signatureValues(ctx context.Context, userID string) (map[strin
 	if err != nil {
 		return nil, err
 	}
-	cp := h.company(ctx) // Firmenstammdaten (0.82.18) – leer: Firma aus Entra
+	cp := h.company(ctx) // Firmenstammdaten (0.82.21) – leer: Firma aus Entra
 	p[8] = cp.Name
 	vals := mergeSignatureValues(p, m)
 	for k, v := range companyFixedPlaceholders(cp) {
@@ -386,7 +386,7 @@ func (h *Handler) M365PushEntraWeb(w http.ResponseWriter, r *http.Request) {
 		m365Back(w, r, "signatures", "", "", err)
 		return
 	}
-	company := h.company(ctx).Name // Firmenstammdaten (0.82.18)
+	company := h.company(ctx).Name // Firmenstammdaten (0.82.21)
 	rows, err := h.db.Query(ctx, `
 		SELECT d.microsoft_user_id, u.id::text, u.first_name, u.last_name, COALESCE(u.job_title,''), COALESCE(u.department,''),
 		       COALESCE(u.phone,''), COALESCE(u.phone_mobile,''), COALESCE(u.work_location,''),

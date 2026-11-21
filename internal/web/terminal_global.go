@@ -211,11 +211,16 @@ type terminalSlideJSON struct {
 	Tickets      []terminalItem `json:"tickets"`
 	FaultsTotal  int            `json:"faults_total"`
 	TicketsTotal int            `json:"tickets_total"`
+	Stats        *terminalStats `json:"stats,omitempty"`
+	Days         int            `json:"days,omitempty"`
+	URL          string         `json:"url,omitempty"`
 }
 
 type terminalSlidesDoc struct {
 	Version string              `json:"version"`
 	Idle    int                 `json:"idle"`
+	// FrameCSP: frame-src der Seite; weicht er vom Wert der geladenen Seite ab, lädt der Player neu.
+	FrameCSP string `json:"frame_csp"`
 	Slides  []terminalSlideJSON `json:"slides"`
 }
 
@@ -300,8 +305,26 @@ func (h *Handler) buildSlidesDoc(ctx context.Context, uid string) (terminalSlide
 			}
 			fmt.Fprintf(sum, "N|%d|%d\n", js.FaultsTotal, js.TicketsTotal)
 		}
+		if slideIsStats(s.Kind) {
+			if gi == nil {
+				if gi, err = h.loadGlobalInfra(ctx); err != nil {
+					return doc, err
+				}
+			}
+			perm := map[string]string{slideKindStatsFaults: "faults.view", slideKindStatsTickets: "tickets.view", slideKindStatsSetup: "setup.view"}[s.Kind]
+			ids := h.terminalPermittedInfra(gi, uid, role, perm, gi.infraSet(s))
+			if js.Stats, err = h.slideStatsCached(ctx, uid, s.Kind, s.StatsDays, ids); err != nil {
+				return doc, err
+			}
+			js.Days = s.StatsDays
+		}
+		if s.Kind == slideKindGrafana {
+			js.URL = slideGrafanaSrc(s.URL)
+			fmt.Fprintf(sum, "G|%s|%s\n", s.ID, js.URL)
+		}
 		doc.Slides = append(doc.Slides, js)
 	}
+	doc.FrameCSP = frameCSP(slides)
 	doc.Version = hex.EncodeToString(sum.Sum(nil))[:16]
 	return doc, nil
 }

@@ -539,6 +539,8 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>QR-Code der Anlage scannen. Unter <b>Rüsten</b> stehen die Rüsttasten der Anlage.</li>
       <li>Passende Rüsttaste <b>einmal antippen</b> – die Rüstzeit läuft. Die Seite zeigt, was gerade gerüstet wird.</li>
       <li>Ist die Anlage fertig, auf <b>Fertig</b> tippen. Eine Notiz ist freiwillig.</li>
+      <li>Im Easy-Modus gibt es über den Tasten das freiwillige Feld <b>Kürzel/Name</b> (darf leer bleiben). Es steht bei der laufenden Rüstzeit und in der Rüstzeit selbst.</li>
+      <li>Vergessen zu tippen? Unter <b>Rüstzeit nachtragen</b> Rüsttaste wählen, <b>Beginn</b> und <b>Ende</b> (oder die Dauer in Minuten) eintragen und auf <b>Nachtragen</b> tippen. Möglich sind höchstens 14 Tage zurück und höchstens 7 Tage Dauer; nicht in der Zukunft. Eine nachgetragene Rüstzeit startet nie ein zweites, paralleles Rüsten.</li>
     </ol>
     Die Taste der laufenden Rüstzeit ist hervorgehoben und lässt sich nicht noch einmal antippen. Eine andere Taste beendet die laufende Rüstzeit und beginnt sofort die neue. Soll mit derselben Taste neu begonnen werden, zuerst auf <b>Fertig</b> tippen und dann die Taste erneut antippen.
     Zu viele Antippen hintereinander bremst PDH: je Anlage sind 30 Vorgänge in 10 Minuten möglich. Je Anlage läuft höchstens eine Rüstzeit.</div>
@@ -928,6 +930,16 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     </ol>
     Den Code nur an der Admin-Seite des PDH-Terminals eingeben. Die Seite ist nur für Systembenutzer gedacht – andere Benutzer sehen den Hinweis, dass die Seite für Terminal-Benutzer bestimmt ist. Ist dem Benutzer keine Anlage zugeordnet oder die Anlage ausgeblendet, steht auf dem Terminal „Diesem Terminal ist keine Anlage zugeordnet“.</div>
   <p>Am gekoppelten PDH-Terminal gibt es oben rechts ein kleines <b>Zahnrad</b>. Es öffnet die Einstellungen des Terminals (die lokale Admin-Seite) und erscheint in allen Ansichten, auch im Schoner und in der Folienschau. Im Browser an einem normalen PC fehlt es.</p>
+  <h3>Rolle „Terminal“ und Halle begrenzen</h3>
+  <p>Für den Systembenutzer eines Terminals gibt es die fertige Rolle <b>Terminal</b> (Schlüssel <code>terminal</code>). Sie darf <b>Tickets, Störungen und Rüstzeiten ansehen und melden</b> (<code>tickets.view</code>, <code>tickets.edit</code>, <code>faults.view</code>, <code>faults.edit</code>, <code>setup.view</code>, <code>setup.edit</code>) und sonst nichts: kein Löschen, kein Administrieren. Ein eigenes Recht „anlegen“ gibt es nicht, Anlegen hängt am Bearbeiten-Recht. Ohne Begrenzung gilt die Rolle für <b>alle</b> Abteilungen.</p>
+  <div class="hb-howto"><b><i class="ti ti-building-factory"></i> So begrenzt du das Terminal auf eine Halle</b>
+    <p>PDH begrenzt Rechte nach <b>Abteilung</b> (mit Unterabteilungen); die Abteilung einer Anlage kommt von der Anlage oder vom nächsten Elternknoten. Die Halle muss also als Abteilung angelegt und an ihren Anlagen eingetragen sein.</p>
+    <ol class="hb-steps">
+      <li>Den Systembenutzer des Terminals öffnen, Rolle <b>Terminal</b> wählen und speichern.</li>
+      <li><b>Administration → Rollen &amp; Berechtigungen</b> öffnen. In der Berechtigungs-Matrix die Spalte <b>Terminal</b> suchen.</li>
+      <li>Bei jedem der sechs Rechte (Tickets, Störungen und Rüstzeiten: ansehen und bearbeiten) unter dem Häkchen auf das kleine Gebäudesymbol tippen, die Abteilung (z. B. <b>Halle 1</b>) wählen und <b>Übernehmen</b>. Der Knopf zeigt dann den Abteilungsnamen.</li>
+    </ol>
+    Die Begrenzung an der Rolle gilt für alle Terminal-Benutzer mit dieser Rolle. Brauchen zwei Hallen unterschiedliche Terminals, gib dem Terminal-Benutzer die Rechte stattdessen als <b>Einzelrechte</b> mit Abteilung (Benutzerstamm) und lass die Rolle ohne Abteilung. Die Auswahl über den Anlagenbaum gibt es für Rechte nicht, nur über die Abteilung.</div>
   <h3>Gerät sperren</h3>
   <p>Ist ein Terminal verloren gegangen oder soll es nicht mehr angemeldet sein, sperrst du es in der Karte <b>Gekoppelte Geräte</b> auf der Seite des Systembenutzers. Dort steht jedes gekoppelte Gerät mit <b>aktiv</b> oder <b>gesperrt</b> und dem Zeitpunkt, zu dem es zuletzt angemeldet war. Die Karte <b>Gekoppelte Geräte</b> sehen nur Benutzer mit dem Recht zur Benutzerverwaltung. Mit <b>Sperren</b> und einer Bestätigung wird das Gerät gesperrt.</p>
   <ul>
@@ -1001,6 +1013,8 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <li><b>Bild</b> – eine Datei als JPEG, PNG oder WebP, höchstens 5 MB. Der Titel ist freiwillig. Beim Bearbeiten bleibt das jetzige Bild, wenn du keine neue Datei wählst.</li>
     <li><b>Text</b> – Titel und Text, zusammen mindestens eines von beiden. Der Text hat höchstens 2000 Zeichen; Zeilenumbrüche bleiben erhalten. Es ist reiner Text, Formatierungen oder HTML werden nicht ausgeführt.</li>
     <li><b>Vorgänge</b> – die offenen Störungen und Tickets. Wähle eine oder mehrere <b>Anlagen</b> (jeweils mit ihren Unteranlagen); ohne Auswahl gelten alle. Mit den beiden Kästchen schaltest du <b>Störungen</b> und <b>Tickets</b> einzeln ab. Das Terminal zeigt höchstens 12 je Art und nur, was der Terminal-Benutzer sehen darf.</li>
+    <li><b>Statistik Störungen / Tickets / Rüstzeiten</b> – Kennzahlen und ein Säulendiagramm für die gewählten Anlagen samt Unteranlagen (ohne Auswahl alle). Zeitraum <b>7 Tage</b> (je Tag) oder <b>letzte 5 Wochen</b> (je Kalenderwoche, die laufende eingeschlossen). Die Zahlen erneuern sich, wenn die Folie erscheint (höchstens einmal pro Minute neu berechnet). Störungen: offene, neue und erledigte, dazu die mittlere Dauer bis zur Lösung (Stillstandszeiten werden nicht erfasst). Tickets: offene je Status, neue und erledigte. Rüstzeiten: laufende, Anzahl und mittlere Dauer. Gezählt wird nur, was der Terminal-Benutzer ansehen darf (Störungen, Tickets, Rüstzeiten ansehen, je Abteilung der Anlage).</li>
+    <li><b>Grafana-Dashboard</b> – bettet ein Dashboard ein: ein Vorschlag aus der Statistik, ein Pfad unter <code>/grafana/…</code> oder eine volle https-Adresse (http nur für localhost; keine Platzhalter oder Zugangsdaten). Der Bildschirm darf nur PDH selbst und diese Adresse einbetten; kommt eine neue Adresse hinzu, lädt der Bildschirm einmal neu. Der Terminal-Benutzer braucht das Recht <b>Statistik ansehen</b> (die Rolle Terminal hat es nicht, weil Grafana nicht nach Anlagen getrennt ist), sonst bleibt die Fläche leer; die Verwaltung weist darauf hin.</li>
     <li><b>Dauer</b> – 5 bis 600 Sekunden, ohne Eintrag 15.</li>
     <li><b>Aktiv</b> – nur aktive Folien laufen. Mit dem Haken aus bleibt die Folie gespeichert, wird aber nicht gezeigt.</li>
   </ul>
@@ -1013,7 +1027,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li><b>Nicht freigegeben</b> – ein Vorgang, der nicht zu einer Anlage einer aktiven Vorgänge-Folie gehört oder den der Terminal-Benutzer nicht sehen darf, lässt sich nicht öffnen.</li>
       <li><b>Ohne Folien</b> zeigt der Bildschirm „Keine Folien eingerichtet“.</li>
     </ul></div>
-  <p>Ein globales Terminal liest keine Karten und hat keine Anmeldung; die Wege dafür sind gesperrt. Schaltest du das Kästchen am Systembenutzer aus, wird der Bildschirm von selbst wieder zum normalen Anlagenterminal. Ein Terminalprogramm mit Zwischenspeicher bekommt die Folien samt Bildern nach jeder Änderung mitgeschickt (je Bild höchstens 5 MB, insgesamt höchstens 50 MB); ältere Terminalprogramme ignorieren das.</p>
+  <p>Ein globales Terminal liest keine Karten und hat keine Anmeldung; die Wege dafür sind gesperrt. Schaltest du das Kästchen am Systembenutzer aus, wird der Bildschirm von selbst wieder zum normalen Anlagenterminal. Ein Terminalprogramm mit Zwischenspeicher bekommt die Folien samt Bildern nach jeder Änderung mitgeschickt (je Bild höchstens 5 MB, insgesamt höchstens 50 MB); ältere Terminalprogramme ignorieren das. Statistik- und Grafana-Folien laufen nur, solange PDH erreichbar ist: sie kommen nicht in den Zwischenspeicher, ein Terminal ohne Verbindung überspringt sie.</p>
   {{template "hb-shots" (dict "Ref" (index $s "infobildschirm") "Can" $can)}}
 </section>
 
@@ -1066,7 +1080,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li><b>Anlage läuft</b> oder <b>Anlage steht</b> antippen – fertig, die Meldung ist da.</li>
     </ol>
     Die Meldung wird automatisch ins Deutsche übersetzt (Copilot). In der Störung bzw. im Ticket steht der <b>deutsche Text immer oben</b>, darunter das Original, dann die Art und ob die Anlage steht. „Anlage steht“ bekommt hohe Priorität. Ersteller ist „Service“, in der Historie steht „QR-Code (Easy-Mode)“. Nach dem Namen fragt der Easy-Mode nicht. Mit Meldetext ist dieser der Titel der Meldung, ein eigener Text steht als Ergänzung darunter. Ohne eingerichteten Copilot bleibt der Text in der Originalsprache mit Hinweis.</div>
-  <p><b>Rüsten im Easy-Mode:</b> Sind der Anlage Rüsttasten zugeordnet, stehen sie zusätzlich unter <b>Rüsten</b>. Eine Taste antippen startet die Rüstzeit, <b>Fertig</b> beendet sie (<a href="#ruestzeiten">mehr</a>).</p>
+  <p><b>Rüsten im Easy-Mode:</b> Sind der Anlage Rüsttasten zugeordnet, stehen sie zusätzlich unter <b>Rüsten</b>. Eine Taste antippen startet die Rüstzeit, <b>Fertig</b> beendet sie, <b>Rüstzeit nachtragen</b> erfasst eine schon beendete (<a href="#ruestzeiten">mehr</a>).</p>
   <div class="hb-howto" id="hb-easy-texts"><b><i class="ti ti-message-2"></i> So hinterlegst du Meldetexte für den Easy-Mode</b>
     <ol class="hb-steps">
       <li><b>Infrastruktur</b> öffnen → unten <b>Easy-Mode: Meldetexte</b> → bei <b>Neuer Meldetext</b> den Text auf Deutsch eintragen, z. B. „Band steht“ oder „Öl tritt aus“.</li>
@@ -2250,6 +2264,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <li><b>Netz-Abgleich (IT-Assets)</b> – das Recht <code>it.netsync</code> „Netz-Abgleich einrichten und Vorschläge übernehmen“ steht in der Gruppe „IT“ und liegt bei allen Rollen mit „IT-Assets bearbeiten“; die Verbindung zu UniFi braucht <code>system.unifi</code>, die zu Omada <code>system.omada</code>, die SNMP-Zugangsprofile <code>system.snmp</code>. Die SNMP-Geräteliste pflegt, wer <code>it.netsync</code> hat; ein Gerät aus der Liste entfernen darf nur der Bereichsadministrator IT (<code>it.admin</code>) (<a href="#it-net">mehr</a>).</li>
     <li><b>IT-Kategorien</b> – das Recht <code>it.categories</code> „IT-Kategorien pflegen“ steht in der Gruppe „IT“ und liegt bei allen Rollen mit „IT: Bereichsadministrator“ (<code>it.admin</code>), mit deren Abteilung; die Seite ansehen darf, wer „IT-Infrastruktur ansehen“ hat. Eine Kategorie endgültig löschen darf nur der Bereichsadministrator IT (<a href="#it-categories">mehr</a>).</li>
     <li><b>Abgleich</b> – Meldungen aus einer fremden Datenbank als Tickets oder Störmeldungen übernehmen und Änderungen zurückschreiben; Profile löscht nur der Bereichsadministrator des Abgleichs (<a href="#abgleich">mehr</a>).</li>
+    <li><b>App-Zugang</b> – die Rechte <code>app.use</code> „App: nutzen“, <code>app.create</code> „App: Vorgänge anlegen“, <code>app.cockpit</code> „App: Cockpits verwalten“, <code>app.sensors.view</code> „App: Telefon-Sensoren ansehen“ und <code>app.admin</code> „App: Geräte freigeben und sperren (Bereichsadministrator)“ stehen in der Gruppe „App“. „App: nutzen“ haben alle Rollen, <code>app.create</code> und <code>app.admin</code> Administrator und Manager. Die Gruppe <b>App-Administratoren</b> bekommt die APP-Tickets; wer dort Mitglied ist, prüft und gibt Telefone frei (<a href="#pdh-app">mehr</a>).</li>
     <li><b>Drucker</b> – Etiketten- und Netzwerkdrucker einrichten, prüfen und testen (<a href="#printers">mehr</a>).</li>
     <li><b>Datensicherung</b> – Sicherungen, Zeitpläne und Wiederherstellung (<a href="#backup">mehr</a>).</li>
     <li><b>Bereinigung</b> – Löschvormerkungen prüfen und den Bereinigungslauf starten (<a href="#cleanup">mehr</a>).</li>
@@ -3648,6 +3663,52 @@ curl -fsS -X PUT "https://api.cloudflare.com/client/v4/zones/$CF_ZONE/dns_record
   <div class="hb-howto"><b><i class="ti ti-flask"></i> Testlabor</b>
     Für Tests gibt es ein Docker-Testlabor. Es dient nur zum Ausprobieren – im Betrieb laufen die Server mit systemd.</div>
   {{template "hb-shots" (dict "Ref" (index $s "spiegelbetrieb") "Can" $can)}}
+</section>
+
+<section class="hb-ch" id="pdh-app" data-title="PDH-App" data-pages="app_setup app_request app_devices app_install">
+  <h2><i class="ti ti-device-mobile"></i> PDH-App</h2>
+  <p>Die PDH-App verbindet Handy und Tablet mit diesem Server; die Einrichtungsseite <b>/app/setup</b> führt durch die Installation.</p>
+  <div class="hb-howto"><b><i class="ti ti-info-circle"></i> Stand</b>
+    Dieses Paket legt den <b>Zugang</b> an: Telefon anfragen, freigeben, sperren, Einstellungen. Die App selbst mit Störungen, Tickets und Aufgaben folgt mit den nächsten Paketen.</div>
+  {{template "hb-fig-app"}}
+  <div class="hb-howto"><b><i class="ti ti-users"></i> Einmal vorbereiten</b>
+    <ol class="hb-steps">
+      <li>Unter <b>Verwaltung → Abteilungen &amp; Gruppen</b> (oder am Benutzer) die Personen, die Telefone freigeben sollen, zur Gruppe <b>„App-Administratoren“</b> hinzufügen. Ohne Mitglieder meldet das APP-Ticket niemanden.</li>
+    </ol>
+  </div>
+  <div class="hb-howto"><b><i class="ti ti-device-mobile-check"></i> So gibst du ein Telefon frei</b>
+    <ol class="hb-steps">
+      <li>Wer die App einrichtet, fragt den Zugang an. Dabei entsteht ein <b>APP-Ticket</b> für die Gruppe „App-Administratoren“; das Telefon zeigt einen sechsstelligen <b>Code</b>.</li>
+      <li>Im Ticket auf <b>App-Konfiguration öffnen</b> klicken (nur mit dem Recht „App: Geräte freigeben und sperren“).</li>
+      <li>Den Code eingeben, den das Telefon <i>jetzt</i> anzeigt. Stimmt er nicht, wird nichts gespeichert.</li>
+      <li>Die Person wählen, der das Telefon gehört. Vorgeschlagen werden Personen mit gleichem Nachnamen oder aus derselben Abteilung. Du kannst nur Personen wählen, deren Rolle du verwalten darfst und für deren Abteilung du das Recht hast.</li>
+      <li>Die erlaubten Vorgangsarten (Störungen, Tickets, Aufgaben, Wartung) ankreuzen. „Vorgänge aus der App anlegen“ erscheint nur, wenn die Person das Recht „App: Vorgänge anlegen“ hat.</li>
+      <li><b>Freigeben</b> legt das Gerät an und schließt das Ticket; die App holt ihren Zugang danach selbst ab. <b>Ablehnen</b> schließt das Ticket ohne Gerät.</li>
+    </ol>
+    Die Rechte vergibst du nicht am Gerät: Es gelten die Rechte der Person; das Gerät kann sie nur einschränken. Einzelrechte änderst du über das Schild-Symbol neben der Person.
+    Danach öffnet sich die Seite <b>App-Geräte</b> mit der Meldung „Das App-Gerät wurde freigegeben.“ bzw. nach <b>Ablehnen</b> „Die Anfrage wurde abgelehnt.“ Hat die gewählte Person das Recht „App: nutzen“ nicht, warnt die Seite vorher; die Freigabe ist trotzdem möglich, die App ist dann aber nicht nutzbar. Später zeigt die App-Konfiguration einer freigegebenen Anfrage einen Link zum Gerät und, wenn du es darfst, den Knopf <b>Sperren</b>.
+  </div>
+  <div class="hb-howto"><b><i class="ti ti-devices"></i> So sperrst du ein Telefon und stellst die App ein</b>
+    <ol class="hb-steps">
+      <li>Unter <b>Verwaltung → App-Geräte</b> stehen die eingerichteten Telefone mit Benutzer, System, App-Version und letztem Zugriff. Du siehst nur Geräte von Personen aus Abteilungen, für die du „App: Geräte freigeben und sperren“ hast; offene Anfragen stehen darüber mit einem Link zur App-Konfiguration.</li>
+      <li><b>Sperren</b> trennt das Telefon sofort von diesem Server (spätestens nach 30 Sekunden); gesperrt wird nur, wenn deine Rolle die der Person übertrifft. Dasselbe Knöpfchen steht in der Benutzerverwaltung am Benutzer unter „App-Geräte“. Nach einer Sperre muss die Person die App auf dem Telefon <b>zurücksetzen</b> und den Zugang <b>neu anfragen</b>; dabei entsteht ein neuer Schlüssel, der alte Zugang bleibt gesperrt.</li>
+      <li>Das Formular <b>Einstellungen für die App</b> (zusätzliche Adressen, eine je Zeile, nur http:// oder https://; neueste App-Version je System; ob die vorige Version weiter arbeiten darf; Store-Adressen) pflegen allein <b>Administratoren mit dem Recht „Server-Einstellungen (.env) bearbeiten &amp; Server neu starten“</b> auf der Seite <b>App-Geräte</b>; „App: Geräte freigeben und sperren“ genügt dafür nicht. Trägst du eine höhere „neueste Version“ ein, merkt sich der Server die alte als <b>vorige Version</b> (nur zur Anzeige); bei einer niedrigeren Version entfällt eine höhere vorige Version, damit keine App ausgesperrt wird.</li>
+    </ol>
+  </div>
+  <div class="hb-howto"><b><i class="ti ti-world"></i> Wichtig für die Einrichtung</b>
+    <ol class="hb-steps">
+      <li>Die <b>öffentliche Adresse</b> des Servers (Einstellung <code>PDH_PUBLIC_URL</code>) muss gesetzt sein. Nur dann bekommt die App die richtige Serveradresse, auch hinter einem Proxy oder Tunnel.</li>
+      <li>Die <b>Abteilungsliste</b> ist ohne Anmeldung lesbar: Wer den Zugang anfragt, wählt dabei seine Abteilung, bevor er einen Zugang hat. Darin stehen nur Abteilungsnamen.</li>
+    </ol>
+  </div>
+  <div class="hb-howto"><b><i class="ti ti-qrcode"></i> So installierst du die App</b>
+    <ol class="hb-steps">
+      <li>Oben rechts im Benutzermenü <b>App installieren</b> wählen (nur mit dem Recht „App: nutzen“ und sobald mindestens eine Store-Adresse eingetragen ist; sonst steht auf der Seite „Die App ist noch nicht verfügbar.“).</li>
+      <li>Den QR-Code mit der Kamera des Telefons scannen, die Seite öffnen und die App aus dem Store installieren; bei Bedarf stehen die Store-Knöpfe auch auf der Seite.</li>
+      <li>In der App den Zugang anfragen; der Code, den das Telefon zeigt, geht an die App-Administratoren (siehe oben).</li>
+    </ol>
+  </div>
+  {{template "hb-shots" (dict "Ref" (index $s "pdh-app") "Can" $can)}}
 </section>
 
 <section class="hb-ch" id="faq" data-title="Tipps &amp; häufige Fragen" data-pages="">

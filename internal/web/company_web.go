@@ -1,6 +1,6 @@
 package web
 
-// Reiter „Firma“ an jedem obersten Infrastruktur-Knoten (0.82.18): Firmenstammdaten ansehen
+// Reiter „Firma“ an jedem obersten Infrastruktur-Knoten (0.82.21): Firmenstammdaten ansehen
 // (wer die Infrastruktur sieht) und bearbeiten (company.edit, nur wenn es überall gilt).
 // GET/POST /infrastructure/company, Vorlage company-panel (widgets/company.gohtml).
 

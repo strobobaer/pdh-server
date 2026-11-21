@@ -1,4 +1,4 @@
--- Firmenstammdaten (0.82.18): eine Firma, ein Datensatz. Gepflegt im Reiter „Firma“ an
+-- Firmenstammdaten (0.82.21): eine Firma, ein Datensatz. Gepflegt im Reiter „Firma“ an
 -- jedem obersten Knoten der Infrastruktur, verwendet in Mails, Druckkopf,
 -- Wartungsprotokoll und M365-Signaturen.
 

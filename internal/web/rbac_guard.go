@@ -72,7 +72,7 @@ var permCategoryOrder = []string{
 	"Störungen", "Tickets", "Wartung", "Aufgaben & Projekte", "KVP", "Leitstand & Dashboards",
 	"Infrastruktur & Anlagen", "IT", "Lager", "Beschaffung", "Drucker", "Hersteller & Lieferanten",
 	"Schichten & Abwesenheit", "Zeiterfassung", "Personal", "Chat", "Managementsysteme",
-	"Daten & Schnittstellen", "VPN", "Datennetz", "Stammdaten", "System & Sicherheit",
+	"App", "Daten & Schnittstellen", "VPN", "Datennetz", "Stammdaten", "System & Sicherheit",
 }
 
 // groupPermissions: Rechte nach Kategorie in fester Reihenfolge, innerhalb

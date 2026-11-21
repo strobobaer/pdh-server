@@ -1,4 +1,4 @@
-# Firmenstammdaten (0.82.18) – Entwurf
+# Firmenstammdaten (0.82.21) – Entwurf
 
 Stand 21.11.2026, zur Bestätigung durch den Anwender.
 
@@ -66,7 +66,7 @@ druckt. Ansprechpartner ist die Person, die die Mail oder den Ausdruck auslöst.
 ## Daten
 
 Neue Tabelle `company_profile` mit genau einer Zeile (`id boolean PRIMARY KEY
-DEFAULT true CHECK (id)`), Migration 189:
+DEFAULT true CHECK (id)`), Migration 193:
 
 | Feld | Bedeutung | Länge |
 |---|---|---|

@@ -1,6 +1,6 @@
 package web
 
-// Gemeinsame Bausteine der Firmenstammdaten (0.82.18): Anschrift und Pflichtangaben in einer
+// Gemeinsame Bausteine der Firmenstammdaten (0.82.21): Anschrift und Pflichtangaben in einer
 // Zeile, Ansprechpartner aus dem Benutzerstamm, Fußzeile für Mails. Leere Felder entfallen
 // samt Trenner; alle Werte werden als Text maskiert.
 
@@ -121,7 +121,7 @@ var companyFooterTmpl = template.Must(template.New("company-footer").Parse(
 		`{{with .Legal}}<div>{{.}}</div>{{end}}` +
 		`</div>`))
 
-// companyFooterHTML: Fußzeile für Mails; leer ohne Firmennamen (dann wie vor 0.82.18).
+// companyFooterHTML: Fußzeile für Mails; leer ohne Firmennamen (dann wie vor 0.82.21).
 func companyFooterHTML(p companyProfile, c *contactPerson) template.HTML {
 	if strings.TrimSpace(p.Name) == "" {
 		return ""

@@ -14,6 +14,13 @@
 .rz-over{display:inline-block;margin-top:4px;font-size:13px;font-weight:700;color:var(--amber)}
 .rz-fin{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
 .rz-in{flex:1;min-width:140px;font-size:16px;padding:12px;border-radius:10px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-family:inherit}
+.rz-name{grid-column:1/-1;width:100%;box-sizing:border-box}
+.rz-add{margin-top:14px}
+.rz-add summary{cursor:pointer;min-height:48px;display:flex;align-items:center;font-size:16px;font-weight:600;color:var(--text)}
+.rz-add form{display:grid;gap:10px;margin-top:8px}
+.rz-add label{display:grid;gap:4px;font-size:14px;color:var(--muted)}
+.rz-add .rz-in{min-width:0;width:100%;box-sizing:border-box}
+.rz-hp{position:absolute;left:-9999px;width:1px;height:1px;opacity:0}
 .rz-btns{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
 .rz-btn{border:1px solid var(--border);border-radius:12px;padding:16px 10px;min-height:56px;font-size:16px;font-weight:600;background:var(--bg2);color:var(--text);cursor:pointer;font-family:inherit;touch-action:manipulation}
 .rz-btn:active{transform:scale(.98)}
@@ -47,9 +54,27 @@ html[data-style="fiori"] .rz-in{border-radius:4px;border-color:var(--muted)}
   {{if .Buttons}}
   <form class="rz-btns" method="post" action="{{.Action}}/start">
     {{if .Back}}<input type="hidden" name="back" value="{{.Back}}">{{end}}{{if .Test}}<input type="hidden" name="test" value="1">{{end}}
+    {{if .Easy}}<input class="rz-in rz-name" type="text" name="name" maxlength="80" autocomplete="off" placeholder="{{t "Kürzel/Name (freiwillig)"}}" aria-label="{{t "Kürzel/Name (freiwillig)"}}">{{end}}
     {{range .Buttons}}<button type="submit" class="rz-btn{{if .Current}} cur{{end}}" name="button_id" value="{{.ID}}"{{if .Current}} aria-current="true" disabled{{end}}>{{.Name}}</button>
     {{end}}
   </form>
+  {{end}}
+  {{if .Easy}}
+  <details class="rz-add">
+    <summary><i class="ti ti-plus"></i>&nbsp;{{t "Rüstzeit nachtragen"}}</summary>
+    <form method="post" action="{{.Action}}/add">
+      {{if .Test}}<input type="hidden" name="test" value="1">{{end}}
+      <input class="rz-hp" type="text" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">
+      <label>{{t "Rüsttaste"}}
+        <select class="rz-in" name="button_id" required>{{range .Buttons}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select></label>
+      <label>{{t "Beginn"}}<input class="rz-in" type="datetime-local" name="started_at" required></label>
+      <label>{{t "Ende"}}<input class="rz-in" type="datetime-local" name="ended_at"></label>
+      <label>{{t "oder Dauer in Minuten"}}<input class="rz-in" type="number" name="duration_min" min="1" max="10080" inputmode="numeric"></label>
+      <input class="rz-in" type="text" name="name" maxlength="80" autocomplete="off" placeholder="{{t "Kürzel/Name (freiwillig)"}}" aria-label="{{t "Kürzel/Name (freiwillig)"}}">
+      <input class="rz-in" type="text" name="note" maxlength="1000" placeholder="{{t "Notiz (freiwillig)"}}" aria-label="{{t "Notiz (freiwillig)"}}">
+      <button type="submit" class="rz-btn go"><i class="ti ti-check"></i> {{t "Nachtragen"}}</button>
+    </form>
+  </details>
   {{end}}
 </section>
 {{end}}{{end}}

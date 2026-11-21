@@ -1,4 +1,4 @@
-# Firmenstammdaten (0.82.18) Implementation Plan
+# Firmenstammdaten (0.82.21) Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -12,8 +12,8 @@
 
 ## Global Constraints
 
-- Version 0.82.18; CHANGELOG `### Neu` und `### Sicherheit` (neues Recht).
-- Migration 189 (`migrations/189_company_profile.up.sql`), danach `PDH_MIGRATIONS_APPEND=1 go test ./pkg/database -run TestMigrationsFrozen`.
+- Version 0.82.21; CHANGELOG `### Neu` und `### Sicherheit` (neues Recht).
+- Migration 193 (`migrations/193_company_profile.up.sql`), danach `PDH_MIGRATIONS_APPEND=1 go test ./pkg/database -run TestMigrationsFrozen`.
 - Recht `company.edit` „Firmenstammdaten bearbeiten“, Kategorie „Stammdaten“, an Rollen/Benutzer mit `system.server_config`, `m365.templates.manage` oder `system.manage_roles` (mit deren `department_id`, Muster `migrations/179_esppdh.up.sql:71-98`).
 - Bearbeiten nur, wenn `h.rbac.Scope(u.ID, role, "company.edit")` `all == true` liefert.
 - Leere Stammdaten (kein `name`): Mails, Druckkopf, PDF und Signaturen wie heute.
@@ -34,7 +34,7 @@
 ### Task 1: Tabelle, Recht, Speicher und Prüfung
 
 **Files:**
-- Create: `migrations/189_company_profile.up.sql`, `internal/web/company.go`, `internal/web/company_test.go`
+- Create: `migrations/193_company_profile.up.sql`, `internal/web/company.go`, `internal/web/company_test.go`
 - Modify: `migrations/checksums.txt`
 
 **Interfaces:**
@@ -48,7 +48,7 @@
 - [ ] **Step 2:** `go test ./internal/web -run TestValidateCompany` → FAIL (nicht definiert).
 - [ ] **Step 3:** Migration: Tabelle wie im Entwurf (`id boolean PRIMARY KEY DEFAULT true CHECK (id)`, alle Textfelder `text NOT NULL DEFAULT ''`, Land Standard `'Deutschland'`, `updated_at timestamptz`, `updated_by uuid NULL REFERENCES users(id) ON DELETE SET NULL`), `INSERT … VALUES (true)`, Name aus `app_settings` `m365_company_name` übernehmen, Schlüssel löschen, Recht anlegen und vergeben (siehe Global Constraints). Danach `company.go`.
 - [ ] **Step 4:** `go test ./internal/web -run TestValidateCompany` und `go test -tags integration ./internal/web -run TestCompanyProfileRoundTrip` → PASS; `PDH_MIGRATIONS_APPEND=1 go test ./pkg/database -run TestMigrationsFrozen` → PASS.
-- [ ] **Step 5:** Commit `Firmenstammdaten: Tabelle, Recht company.edit, Speicher und Prüfung (0.82.18)`.
+- [ ] **Step 5:** Commit `Firmenstammdaten: Tabelle, Recht company.edit, Speicher und Prüfung (0.82.21)`.
 
 ### Task 2: Gemeinsame Bausteine – Anschrift, Pflichtangaben, Ansprechpartner, Fußzeile
 
@@ -69,7 +69,7 @@
 - [ ] **Step 2:** `go test ./internal/web -run 'TestCompany(Address|Legal|Footer)|TestContactPhone'` → FAIL.
 - [ ] **Step 3:** Implementieren (`html/template` für die Fußzeile, kein Zusammenkleben roher Strings).
 - [ ] **Step 4:** Dieselben Tests → PASS.
-- [ ] **Step 5:** Commit `Firmenstammdaten: Anschrift, Pflichtangaben, Ansprechpartner und Mail-Fußzeile (0.82.18)`.
+- [ ] **Step 5:** Commit `Firmenstammdaten: Anschrift, Pflichtangaben, Ansprechpartner und Mail-Fußzeile (0.82.21)`.
 
 ### Task 3: Mails – Absendername und Fußzeile
 
@@ -86,7 +86,7 @@
 - [ ] **Step 2:** `go test ./internal/web -run 'TestMailFromHeader|TestMailAppendFooter'` → FAIL.
 - [ ] **Step 3:** Implementieren; Aufrufer mit Person: `UserTestMailWeb` (`getUser(r).ID`), Diagnose-Testmail (`u.ID`); ohne Person: Statusmeldungen, Kennwort zurücksetzen, Bestellvorschlag.
 - [ ] **Step 4:** `go test ./internal/web -run 'Mail'` → PASS (bestehende Mail-Tests bleiben grün).
-- [ ] **Step 5:** Commit `Mails: Firmenname als Absender und Fußzeile mit Ansprechpartner (0.82.18)`.
+- [ ] **Step 5:** Commit `Mails: Firmenname als Absender und Fußzeile mit Ansprechpartner (0.82.21)`.
 
 ### Task 4: Druckkopf und Wartungsprotokoll
 
@@ -103,7 +103,7 @@
 - [ ] **Step 2:** `go test ./internal/web -run 'TestMaintFooterLines|TestPrintBrand|TestRenderMaintProtocolPDF'` → FAIL.
 - [ ] **Step 3:** Druckkopf: `{{if .Company.Name}}` Firmenname · Titel, darunter Anschrift klein; sonst wie bisher. PDF: `Company` = Firmenname (sonst App-Name), Anschrift als zweite Unterzeile im Kopf, Fuß zweizeilig über `maintFooterLines` (`SetY(-16)`); `Contact` aus `contactPersonFor(ctx, userID)` in `loadMaintProtocol`.
 - [ ] **Step 4:** Dieselben Tests → PASS.
-- [ ] **Step 5:** Commit `Druckkopf und Wartungsprotokoll mit Firmenstammdaten (0.82.18)`.
+- [ ] **Step 5:** Commit `Druckkopf und Wartungsprotokoll mit Firmenstammdaten (0.82.21)`.
 
 ### Task 5: M365-Signaturen
 
@@ -121,7 +121,7 @@
 - [ ] **Step 2:** `go test ./internal/web -run 'TestSignature|TestMergeSignature|TestM365'` → FAIL.
 - [ ] **Step 3:** `signatureValues` und `M365PushEntraWeb` nehmen `h.company(ctx).Name` statt `m365CompanySetting`; `M365CompanySaveWeb`, Konstante und Route entfallen; M365-Seite: Anzeige + Link `/infrastructure` mit Hinweis „Firmenname, Anschrift, Telefon und Website pflegst du in der Infrastruktur am obersten Knoten (Reiter Firma). Nach einer Änderung die Signatur-Regel neu übertragen.“
 - [ ] **Step 4:** Dieselben Tests → PASS; `grep -rn m365_company_name internal web` → nur die Migration.
-- [ ] **Step 5:** Commit `M365-Signaturen: Firmenname und neue Platzhalter aus den Stammdaten (0.82.18)`.
+- [ ] **Step 5:** Commit `M365-Signaturen: Firmenname und neue Platzhalter aus den Stammdaten (0.82.21)`.
 
 ### Task 6: Reiter „Firma“, Rechte, Handbuch, Version
 
@@ -138,6 +138,6 @@
   - Reiter nur, wenn `node.ParentID == ""` und `canViewInfra(r)`: `<a class="rec-tab" data-tab="firma" href="?tab=firma"><i class="ti ti-building"></i> Firma</a>`, Bereich lädt per `hx-get="/infrastructure/company" hx-trigger="load"`.
 - [ ] **Step 1: Tests:** `TestCompanyPanelRenders` (ohne Recht: keine `<form`, Werte sichtbar; mit Recht: Formular mit `name="vat_id"`; Vorschau enthält Firmenname); `TestCompanySaveNeedsGlobalRight` (Haken liefert false → POST 403; true → 200 und Meldung „gespeichert“); `TestInfraDetailCompanyTabOnlyTopLevel` (Knoten mit `ParentID` → kein `data-tab="firma"`); `TestHelpChaptersMatch`, `TestHelpCoversAllPages`, `TestChangelogMatchesVersion` grün.
 - [ ] **Step 2:** `go test ./internal/web -run 'TestCompanyPanel|TestCompanySave|TestInfraDetailCompanyTab'` → FAIL.
-- [ ] **Step 3:** Bauen; Handbuch-Kapitel „Firmenstammdaten“ mit „So geht's“ (Reiter öffnen → Felder → Speichern → Vorschau), Hinweis Pflichtangaben für geschäftliche Mails und Briefe, Graph-Hinweis zum Absendernamen, Signatur-Regel neu übertragen; CHANGELOG 0.82.18 (`### Neu`: Reiter Firma, Fußzeile, Druckkopf/PDF, Platzhalter; `### Sicherheit`: neues Recht und wer es bekommt); VERSION 0.82.18; AGENTS.md Punkt 19 Stand.
+- [ ] **Step 3:** Bauen; Handbuch-Kapitel „Firmenstammdaten“ mit „So geht's“ (Reiter öffnen → Felder → Speichern → Vorschau), Hinweis Pflichtangaben für geschäftliche Mails und Briefe, Graph-Hinweis zum Absendernamen, Signatur-Regel neu übertragen; CHANGELOG 0.82.21 (`### Neu`: Reiter Firma, Fußzeile, Druckkopf/PDF, Platzhalter; `### Sicherheit`: neues Recht und wer es bekommt); VERSION 0.82.21; AGENTS.md Punkt 19 Stand.
 - [ ] **Step 4:** `go build ./... && go vet ./...`, volle Reihe `go test ./...` mit Labor-DB und `go test -tags integration ./internal/web -run 'Terminal|Anlagenterminal|Company'` → PASS.
-- [ ] **Step 5:** Commit `Firmenstammdaten: Reiter Firma, Handbuch und Änderungsprotokoll (0.82.18)`.
+- [ ] **Step 5:** Commit `Firmenstammdaten: Reiter Firma, Handbuch und Änderungsprotokoll (0.82.21)`.

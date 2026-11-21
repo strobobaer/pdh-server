@@ -189,6 +189,17 @@ var terminalDevices = newDeviceCache(30 * time.Second)
 // active: Gerät id gilt und gehört zum Benutzer userID. Ein Ladefehler zählt
 // als inaktiv und wird nicht gespeichert.
 func (c *deviceCache) active(ctx context.Context, id, userID string, load func(ctx context.Context, id string) (string, bool, error)) bool {
+	ok, err := c.activeErr(ctx, id, userID, load)
+	if err != nil {
+		componentLog("terminal").Error().Err(err).Str("device", id).Msg("sperrprüfung fehlgeschlagen")
+		return false
+	}
+	return ok
+}
+
+// activeErr wie active, unterscheidet aber „gesperrt“ (false, nil) von einem
+// Ladefehler (false, err); ein Fehler wird nicht gespeichert.
+func (c *deviceCache) activeErr(ctx context.Context, id, userID string, load func(ctx context.Context, id string) (string, bool, error)) (bool, error) {
 	now := c.now()
 	c.mu.Lock()
 	e, ok := c.m[id]
@@ -196,8 +207,7 @@ func (c *deviceCache) active(ctx context.Context, id, userID string, load func(c
 	if !ok || now.Sub(e.at) >= c.ttl {
 		uid, act, err := load(ctx, id)
 		if err != nil {
-			componentLog("terminal").Error().Err(err).Str("device", id).Msg("sperrprüfung fehlgeschlagen")
-			return false
+			return false, err
 		}
 		e = deviceCacheEntry{userID: uid, active: act, at: now}
 		c.mu.Lock()
@@ -207,7 +217,7 @@ func (c *deviceCache) active(ctx context.Context, id, userID string, load func(c
 		c.m[id] = e
 		c.mu.Unlock()
 	}
-	return e.active && e.userID == userID
+	return e.active && e.userID == userID, nil
 }
 
 // forget verwirft den gespeicherten Zustand (beim Sperren).

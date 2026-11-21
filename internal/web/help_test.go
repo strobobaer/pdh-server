@@ -61,7 +61,7 @@ func TestHelpChaptersMatch(t *testing.T) {
 		t.Fatal(err)
 	}
 	var ids []string
-	for _, m := range regexp.MustCompile(`<section class="hb-ch" id="([a-z]+)"`).FindAllStringSubmatch(string(tmpl), -1) {
+	for _, m := range regexp.MustCompile(`<section class="hb-ch" id="([a-z-]+)"`).FindAllStringSubmatch(string(tmpl), -1) {
 		ids = append(ids, m[1])
 	}
 	if strings.Join(ids, ",") != strings.Join(helpChapterIDs, ",") {
