@@ -10,6 +10,12 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.82.22] – 2026-11-21
+
+### Behoben
+
+- Nach dem Öffnen des Reiters „Firma“ in der Infrastruktur antworteten fast alle Seiten mit einem Fehler (auch die Anmeldung), bis der Dienst neu startete. Der Reiter zeigt seine Inhalte jetzt so an, dass die übrigen Seiten unberührt bleiben.
+
 ## [0.82.21] – 2026-11-21
 
 ### Neu
