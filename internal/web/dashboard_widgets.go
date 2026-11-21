@@ -684,22 +684,45 @@ func loadListMaintenance(h *Handler, ctx context.Context, uid string, _ WidgetIn
 }
 
 func loadListStock(h *Handler, ctx context.Context, uid string, _ WidgetInstance, _ func(string) bool) (any, error) {
+	// Lagerort: der Platz mit dem größten Bestand (spare_part_stock, seit Migration 027;
+	// die alte Spalte spare_parts.storage_location heißt dort storage_location_legacy).
 	rows, err := h.db.Query(ctx, `
-		SELECT id::text, name, COALESCE(part_number, ''), stock_qty::float8, min_qty::float8, critical_qty::float8, COALESCE(unit, ''), COALESCE(storage_location, '')
-		FROM spare_parts WHERE active AND hidden_at IS NULL AND min_qty > 0 AND stock_qty <= min_qty
-		ORDER BY (critical_qty > 0 AND stock_qty <= critical_qty) DESC, stock_qty - min_qty LIMIT 8`)
+		SELECT sp.id::text, sp.name, COALESCE(sp.part_number, ''), sp.stock_qty::float8, sp.min_qty::float8, sp.critical_qty::float8, COALESCE(sp.unit, ''),
+		       COALESCE((SELECT st.storage_node_id::text FROM spare_part_stock st WHERE st.part_id = sp.id AND st.qty > 0 ORDER BY st.qty DESC LIMIT 1), '')
+		FROM spare_parts sp WHERE sp.active AND sp.hidden_at IS NULL AND sp.min_qty > 0 AND sp.stock_qty <= sp.min_qty
+		ORDER BY (sp.critical_qty > 0 AND sp.stock_qty <= sp.critical_qty) DESC, sp.stock_qty - sp.min_qty LIMIT 8`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []listItem
+	type stockRow struct {
+		id, name, pn, unit, node string
+		stock, min, crit         float64
+	}
+	var list []stockRow
 	for rows.Next() {
-		var id, name, pn, unit, loc string
-		var stock, min, crit float64
-		if err := rows.Scan(&id, &name, &pn, &stock, &min, &crit, &unit, &loc); err != nil {
+		var s stockRow
+		if err := rows.Scan(&s.id, &s.name, &s.pn, &s.stock, &s.min, &s.crit, &s.unit, &s.node); err != nil {
 			return nil, err
 		}
-		sub := strings.Trim(pn+" · "+loc, " ·")
+		list = append(list, s)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	rows.Close()
+	var paths map[string]string
+	for _, s := range list {
+		if s.node != "" {
+			_, paths = h.storagePaths(ctx) // Pfad wie in der Teile-Liste („Lager › Regal › Fach“)
+			break
+		}
+	}
+	var out []listItem
+	for _, s := range list {
+		id, name, pn, unit := s.id, s.name, s.pn, s.unit
+		stock, min, crit := s.stock, s.min, s.crit
+		sub := strings.Trim(pn+" · "+paths[s.node], " ·")
 		it := listItem{Icon: "ti-package", Title: name, Sub: sub, URL: "/inventory/" + id,
 			Badge: fmt.Sprintf("%s / %s %s", formatQty(stock), formatQty(min), unit), BadgeClass: "b-amber"}
 		if crit > 0 && stock <= crit {
@@ -707,7 +730,7 @@ func loadListStock(h *Handler, ctx context.Context, uid string, _ WidgetInstance
 		}
 		out = append(out, it)
 	}
-	return out, rows.Err()
+	return out, nil
 }
 
 // shiftDayView: Schicht an einem Tag.

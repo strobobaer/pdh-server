@@ -10,6 +10,12 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.82.10] – 2026-11-21
+
+### Behoben
+
+- Das Startseiten-Widget „Bestellliste“ (Ersatzteile unter Mindestbestand) blieb leer und schrieb bei jedem Laden eine Warnung ins Server-Protokoll; es zeigt die Teile jetzt wieder, mit dem Lagerplatz, an dem die meisten liegen.
+
 ## [0.82.9] – 2026-11-21
 
 ### Behoben
