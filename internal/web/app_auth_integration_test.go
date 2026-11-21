@@ -6,8 +6,10 @@ package web
 
 import (
 	"bytes"
+	"context"
 	"crypto/ecdsa"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -35,6 +37,8 @@ func newAppAuthEnv(t *testing.T) *appAuthEnv {
 	e := newATEnv(t)
 	appFailLimit = newFailLimiter(10, 5*time.Minute)
 	appDeviceCache = newDeviceCache(30 * time.Second)
+	appDeviceLoadHook = nil
+	t.Cleanup(func() { appDeviceLoadHook = nil })
 	uid := e.user("appu", "worker", false)
 	e.exec(`UPDATE users SET department = 'Fertigung', first_name = 'Erika', last_name = 'Muster' WHERE id = $1::uuid`, uid)
 	e.grant(uid, permAppUse, "", true)
@@ -196,6 +200,51 @@ func TestAppAuth(t *testing.T) {
 		e.exec(`UPDATE users SET active = false WHERE id = $1::uuid`, e.uid)
 		appDeviceCache.forget(e.devID)
 		e.wantErr(e.me("1.0.0"), 401, "app_revoked")
+	})
+
+	t.Run("Benutzer inaktiv ohne forget wirkt sofort", func(t *testing.T) {
+		e := newAppAuthEnv(t)
+		if rec := e.me("1.0.0"); rec.Code != 200 { // Cache ist jetzt „aktiv“ gefüllt
+			t.Fatal(rec.Code)
+		}
+		e.exec(`UPDATE users SET active = false WHERE id = $1::uuid`, e.uid)
+		e.wantErr(e.me("1.0.0"), 401, "app_revoked")
+	})
+
+	t.Run("Ladefehler der Sperrprüfung ist 503, nie app_revoked", func(t *testing.T) {
+		e := newAppAuthEnv(t)
+		appDeviceLoadHook = func(context.Context, string) (string, bool, error) { return "", false, errors.New("db weg") }
+		e.wantErr(e.me("1.0.0"), 503, "app_unavailable")
+		// Fehler wird nicht gespeichert: danach gilt das Gerät wieder
+		appDeviceLoadHook = nil
+		if rec := e.me("1.0.0"); rec.Code != 200 {
+			t.Fatalf("nach Erholung: %d %s", rec.Code, rec.Body.String())
+		}
+	})
+
+	t.Run("Fehler beim Benutzerladen ist 503, nie app_revoked", func(t *testing.T) {
+		e := newAppAuthEnv(t)
+		e.h.userByIDFn = func(context.Context, string) (*users.User, error) { return nil, errors.New("db weg") }
+		e.wantErr(e.me("1.0.0"), 503, "app_unavailable")
+		e.h.userByIDFn = nil
+		if rec := e.me("1.0.0"); rec.Code != 200 {
+			t.Fatalf("nach Erholung: %d %s", rec.Code, rec.Body.String())
+		}
+	})
+
+	t.Run("veralteter Zeitstempel zählt nicht im Limit", func(t *testing.T) {
+		e := newAppAuthEnv(t)
+		for i := 0; i < 12; i++ {
+			req := appSignedRequest(t, e.key, "GET", "/api/app/v1/me", nil, time.Now().Add(-time.Hour), e.nonce())
+			req.Header.Set("Authorization", "PDHApp "+e.token)
+			req.RemoteAddr = "192.0.2.77:5000"
+			rec := httptest.NewRecorder()
+			e.router.ServeHTTP(rec, req)
+			e.wantErr(rec, 401, "app_unauthorized")
+		}
+		if rec := e.me("1.0.0"); rec.Code != 200 {
+			t.Errorf("nach 12 veralteten Zeitstempeln: %d", rec.Code)
+		}
 	})
 
 	t.Run("Mindestversion", func(t *testing.T) {

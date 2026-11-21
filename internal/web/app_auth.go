@@ -30,6 +30,9 @@ const (
 	appAuthTokenScheme = "PDHApp "
 )
 
+// appDeviceLoadHook ersetzt in Tests die Datenbankabfrage der Sperrprüfung (sonst nil).
+var appDeviceLoadHook func(ctx context.Context, id string) (string, bool, error)
+
 // appDeviceCache: Sperr-Zwischenspeicher der App-Geräte (höchstens 30 s alt).
 var appDeviceCache = newDeviceCache(30 * time.Second)
 
@@ -114,19 +117,23 @@ func (h *Handler) appAuth(next http.Handler) http.Handler {
 			terminalJSONErr(w, http.StatusTooManyRequests, msgAppBlocked)
 			return
 		}
-		deny := func(reason string) {
-			appFailLimit.fail(key, time.Now())
+		// count=false: ein falsch gehender Telefon-Zeitstempel zählt nicht als Angriff.
+		deny := func(reason string, count bool) {
+			if count {
+				appFailLimit.fail(key, time.Now())
+			}
 			authLog(r, false, "app-anfrage", "", "", "", reason)
 			terminalJSONErr(w, http.StatusUnauthorized, "app_unauthorized")
 		}
+		// Vorübergehende Fehler nie als app_revoked melden: die App löscht dann Token und Entwürfe.
 		serverErr := func(err error) {
 			componentLog("app").Error().Err(err).Msg("app: anfrage prüfen")
-			terminalJSONErr(w, http.StatusInternalServerError, "Anfrage derzeit nicht möglich")
+			terminalJSONErr(w, http.StatusServiceUnavailable, "app_unavailable")
 		}
 		tok, ok := strings.CutPrefix(r.Header.Get("Authorization"), appAuthTokenScheme)
 		tok = strings.TrimSpace(tok)
 		if !ok || !strings.HasPrefix(tok, "pdha_") || len(tok) > appAuthTokenMax {
-			deny("Token fehlt oder ungültig")
+			deny("Token fehlt oder ungültig", true)
 			return
 		}
 		ctx := r.Context()
@@ -137,7 +144,7 @@ func (h *Handler) appAuth(next http.Handler) http.Handler {
 			FROM app_devices WHERE token_sha256 = $1`, hashAppToken(tok)).
 			Scan(&d.ID, &d.UserID, &pubB64, &d.Platform, &d.AllowedTypes, &d.MayCreate, &firstUsed, &lastSeen)
 		if errors.Is(err, pgx.ErrNoRows) {
-			deny("Token unbekannt")
+			deny("Token unbekannt", true)
 			return
 		}
 		if err != nil {
@@ -167,12 +174,22 @@ func (h *Handler) appAuth(next http.Handler) http.Handler {
 			}
 		}
 		if err := verifyAppSignature(pub, r, body, now); err != nil {
-			deny("Signatur: " + err.Error())
+			deny("Signatur: "+err.Error(), !errors.Is(err, errAppSigStale))
 			return
 		}
 		r.Body = io.NopCloser(bytes.NewReader(body))
 
-		if !appDeviceCache.active(ctx, d.ID, d.UserID, h.appDeviceActive) {
+		load := h.appDeviceActive
+		if appDeviceLoadHook != nil {
+			load = appDeviceLoadHook
+		}
+		active, err := appDeviceCache.activeErr(ctx, d.ID, d.UserID, load)
+		if err != nil {
+			serverErr(err)
+			return
+		}
+		if !active {
+			authLog(r, false, "app-anfrage", "", d.UserID, "", "Gerät gesperrt oder Benutzer inaktiv")
 			terminalJSONErr(w, http.StatusUnauthorized, "app_revoked")
 			return
 		}
@@ -189,19 +206,24 @@ func (h *Handler) appAuth(next http.Handler) http.Handler {
 		if min := h.appMinVersion(ctx, d.Platform); min != "" {
 			if _, minOK := appVersionParts(min); minOK { // unlesbare Einstellung sperrt nicht aus
 				if less, ok := appVersionLess(r.Header.Get("X-PDH-App-Version"), min); !ok || less {
+					componentLog("app").Warn().Str("device", d.ID).Str("version", r.Header.Get("X-PDH-App-Version")).Str("min", min).Msg("app: version zu alt")
 					terminalJSON(w, http.StatusUpgradeRequired, map[string]string{"error": "app_outdated", "min": min})
 					return
 				}
+			} else {
+				componentLog("app").Warn().Str("platform", d.Platform).Str("min", min).Msg("app: einstellung der mindestversion nicht lesbar, keine prüfung")
 			}
 		}
 
 		user, err := h.userByID(ctx, d.UserID)
-		if err != nil || user == nil { // inzwischen gesperrt oder gelöscht
-			if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-				componentLog("app").Debug().Err(err).Str("user", d.UserID).Msg("app: benutzer laden")
-			}
+		if errors.Is(err, pgx.ErrNoRows) { // Benutzer inaktiv oder gelöscht (ungepuffert: wirkt sofort)
 			appDeviceCache.forget(d.ID)
+			authLog(r, false, "app-anfrage", "", d.UserID, "", "Benutzer inaktiv oder gelöscht")
 			terminalJSONErr(w, http.StatusUnauthorized, "app_revoked")
+			return
+		}
+		if err != nil || user == nil {
+			serverErr(errors.Join(errors.New("benutzer laden"), err))
 			return
 		}
 		ctx = context.WithValue(ctx, "user", user)
