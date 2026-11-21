@@ -54,6 +54,7 @@ type appDevicesPageData struct {
 	CanSettings bool
 	Form        appSettingsForm
 	Saved       bool
+	Revoked     bool
 	Error       string
 }
 
@@ -150,6 +151,7 @@ func (h *Handler) renderAppDevices(w http.ResponseWriter, r *http.Request, statu
 		BaseData:    h.baseData(r, "app_devices", "App-Geräte", ""),
 		CanSettings: h.appAdminIn(r, ""),
 		Saved:       r.URL.Query().Get("saved") == "1",
+		Revoked:     r.URL.Query().Get("revoked") == "1",
 		Error:       msg,
 	}
 	var err error
@@ -247,9 +249,9 @@ func (h *Handler) AppDeviceRevokeWeb(w http.ResponseWriter, r *http.Request) {
 	}
 	appDeviceCache.forget(id) // wirkt sofort, ohne die 30 Sekunden des Zwischenspeichers
 	componentLog("app").Info().Str("device", id).Str("user", userID).Str("von", actor.ID).Msg("app: gerät gesperrt")
-	back := "/app/devices"
+	back := "/app/devices?revoked=1"
 	if r.FormValue("back") == "user" {
-		back = "/users/" + userID + "?tab=overview"
+		back = "/users/" + userID + "?tab=overview&msg=" + url.QueryEscape(tr(h.requestLang(r), "Das App-Gerät wurde gesperrt."))
 	}
 	http.Redirect(w, r, back, http.StatusSeeOther)
 }
@@ -265,7 +267,8 @@ func appCleanAddresses(raw string) (string, bool) {
 			continue
 		}
 		u, err := url.Parse(line)
-		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.Hostname() == "" {
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.Hostname() == "" ||
+			u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || strings.Contains(line, "#") {
 			return "", false
 		}
 		line = strings.TrimRight(line, "/")
@@ -349,8 +352,15 @@ func (h *Handler) AppSettingsSaveWeb(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 		old = strings.TrimSpace(old)
-		if old != "" && p.latest != "" && old != p.latest {
-			err = put(keyAppPrevPrefix+p.platform, old)
+		switch {
+		case p.latest == "":
+			err = put(keyAppPrevPrefix+p.platform, "") // „neueste Version“ geleert: auch die vorige entfällt
+		case old != "":
+			a, b := appVersionLess(old, p.latest)
+			c, _ := appVersionLess(p.latest, old)
+			if !b || a || c { // wirklich eine andere Version (1.2 und 1.2.0 sind gleich)
+				err = put(keyAppPrevPrefix+p.platform, old)
+			}
 		}
 		if err == nil {
 			err = put(keyAppLatestPrefix+p.platform, p.latest)

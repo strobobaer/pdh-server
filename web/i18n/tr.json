@@ -1080,7 +1080,7 @@
   "Eine Adresse je Zeile, nur mit http:// oder https://. Die Adresse dieses Servers kennt die App von selbst.": "Satır başına bir adres, yalnızca http:// veya https:// ile. Uygulama bu sunucunun adresini kendisi bilir.",
   "Eingerichtete Geräte": "Kurulu cihazlar",
   "Einstellungen für die App": "Uygulama ayarları",
-  "Gerät sperren? Die App wird innerhalb von 30 Sekunden abgemeldet.": "Cihaz engellensin mi? Uygulamanın oturumu 30 saniye içinde kapatılır.",
+  "Gerät sperren? Die App wird sofort gesperrt.": "Cihaz engellensin mi? Uygulama hemen engellenir.",
   "Google Play (Android)": "Google Play (Android)",
   "Ja – die vorige Version darf weiter arbeiten": "Evet – önceki sürüm çalışmaya devam edebilir",
   "Mit der Kamera des Telefons scannen:": "Telefon kamerasıyla tara:",
@@ -1102,5 +1102,6 @@
   "Ändert sich die neueste Version, merkt sich der Server die bisherige als vorige Version.": "En yeni sürüm değişince sunucu eskisini önceki sürüm olarak hatırlar.",
   "Adressen: eine je Zeile, nur mit http:// oder https:// und Rechnername.": "Adresler: satır başına bir tane, yalnızca http:// veya https:// ve ana bilgisayar adıyla.",
   "Versionen nur als Zahlen mit Punkten, z. B. 1.2.0.": "Sürümler yalnızca noktalı sayılar olarak, örn. 1.2.0.",
-  "Store-Adressen nur mit http:// oder https://.": "Mağaza adresleri yalnızca http:// veya https:// ile."
+  "Store-Adressen nur mit http:// oder https://.": "Mağaza adresleri yalnızca http:// veya https:// ile.",
+  "Das App-Gerät wurde gesperrt.": "Uygulama cihazı engellendi."
 }

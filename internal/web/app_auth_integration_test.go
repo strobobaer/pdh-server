@@ -187,6 +187,8 @@ func TestAppAuth(t *testing.T) {
 
 	t.Run("Sperre wirkt ohne forget nach Ablauf des Caches", func(t *testing.T) {
 		e := newAppAuthEnv(t)
+		old := appDeviceCache
+		t.Cleanup(func() { appDeviceCache = old })
 		appDeviceCache = newDeviceCache(0)
 		if rec := e.me("1.0.0"); rec.Code != 200 {
 			t.Fatal(rec.Code)

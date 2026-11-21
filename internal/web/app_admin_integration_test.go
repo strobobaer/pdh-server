@@ -142,7 +142,7 @@ func TestAppApprove(t *testing.T) {
 	t.Run("Freigeben", func(t *testing.T) {
 		rq := e.request(deptA)
 		rec := e.approve(rq, admin, rq.Code, tgtA.ID, []string{"fault", "task"}, false)
-		if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/app/devices" {
+		if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/app/devices?revoked=1" {
 			t.Fatalf("freigeben: %d %s %.200s", rec.Code, rec.Header().Get("Location"), rec.Body.String())
 		}
 		var uid, types, fp, approvedBy string
@@ -382,7 +382,7 @@ func TestAppReject(t *testing.T) {
 		t.Errorf("Betrachter: %d", rec.Code)
 	}
 	rec := e.do("POST", "/app/requests/"+rq.ID+"/reject", admin, url.Values{})
-	if rec.Code != 303 || rec.Header().Get("Location") != "/app/devices" {
+	if rec.Code != 303 || rec.Header().Get("Location") != "/app/devices?revoked=1" {
 		t.Fatalf("ablehnen: %d %s", rec.Code, rec.Header().Get("Location"))
 	}
 	if e.requestStatus(rq.ID) != "rejected" || e.devices(rq.ID) != 0 {
@@ -429,6 +429,9 @@ func (e *appAdmEnv) me(tok string, k *ecdsa.PrivateKey, n string) *httptest.Resp
 
 func TestAppRevokeAndSettings(t *testing.T) {
 	e := newAppAdmEnv(t)
+	oldCache := appDeviceCache
+	t.Cleanup(func() { appDeviceCache = oldCache })
+	appDeviceCache = newDeviceCache(30 * time.Second) // 30 s: nur forget() lässt die Sperre sofort wirken
 	deptA, deptB := e.dept("A"), e.dept("B")
 	admin := e.au("vadm", "admin", "")
 	mgrA := e.au("vmgrA", "manager", deptA)
@@ -453,7 +456,7 @@ func TestAppRevokeAndSettings(t *testing.T) {
 			t.Errorf("Betrachter: %d", rec.Code)
 		}
 		rec := e.do("POST", "/app/devices/"+devA+"/revoke", mgrA, url.Values{})
-		if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/app/devices" {
+		if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/app/devices?revoked=1" {
 			t.Fatalf("sperren: %d %s", rec.Code, rec.Body.String())
 		}
 		if rec := e.me(tokA, keyA, "2"); rec.Code != 401 || !strings.Contains(rec.Body.String(), "app_revoked") {
@@ -550,8 +553,22 @@ func TestAppRevokeAndSettings(t *testing.T) {
 		if get(keyAppLatestPrefix+"android") != "1.3.0" {
 			t.Error("bei Fehler wurde gespeichert")
 		}
-		if rec := e.do("POST", "/app/settings", admin, form("abc")); rec.Code != http.StatusUnprocessableEntity || get(keyAppLatestPrefix+"android") != "1.3.0" {
+		for _, a := range []string{"https://user:pw@pdh.example.org", "https://pdh.example.org/?x=1", "https://pdh.example.org/#frag"} {
+			b := form("1.4.0")
+			b.Set("addresses", a)
+			if rec := e.do("POST", "/app/settings", admin, b); rec.Code != http.StatusUnprocessableEntity {
+				t.Errorf("Adresse %q: %d", a, rec.Code)
+			}
+		}
+		// 1.3 ist zahlenmäßig 1.3.0: die vorige Version bleibt
+		if rec := e.do("POST", "/app/settings", admin, form("1.3")); rec.Code != 303 || get(keyAppPrevPrefix+"android") != "1.2.0" {
+			t.Errorf("gleiche Version anders geschrieben: %d prev=%q", rec.Code, get(keyAppPrevPrefix+"android"))
+		}
+		if rec := e.do("POST", "/app/settings", admin, form("abc")); rec.Code != http.StatusUnprocessableEntity || get(keyAppLatestPrefix+"android") != "1.3" {
 			t.Errorf("Version abc: %d", rec.Code)
+		}
+		if rec := e.do("POST", "/app/settings", admin, form("")); rec.Code != 303 || get(keyAppPrevPrefix+"android") != "" {
+			t.Errorf("neueste Version geleert: %d prev=%q", rec.Code, get(keyAppPrevPrefix+"android"))
 		}
 		page := e.do("GET", "/app/devices", admin, nil)
 		if !strings.Contains(page.Body.String(), `name="latest_android"`) {

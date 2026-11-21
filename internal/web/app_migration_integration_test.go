@@ -31,15 +31,8 @@ func TestAppMigration(t *testing.T) {
 			WHERE r.key = $1 AND p.key = $2`, role, perm).Scan(&n))
 		return n > 0
 	}
-	var roles []string
-	rows, err := e.pool.Query(e.ctx, `SELECT key FROM roles`)
-	e.must(err)
-	for rows.Next() {
-		var k string
-		e.must(rows.Scan(&k))
-		roles = append(roles, k)
-	}
-	rows.Close()
+	// nur die eingebauten Rollen: andere Tests legen nach der Migration eigene Rollen an
+	roles := []string{"admin", "manager", "technician", "worker", "viewer"}
 	for _, r := range roles {
 		if !has(r, permAppUse) {
 			t.Errorf("Rolle %s hat app.use nicht", r)
@@ -80,7 +73,7 @@ func TestAppMigration(t *testing.T) {
 	if len(id) != 36 || id[14] != '7' {
 		t.Errorf("id %q ist keine UUID Version 7", id)
 	}
-	_, err = e.pool.Exec(e.ctx, `INSERT INTO app_requests (name, platform, app_version, public_key, key_fingerprint)
+	_, err := e.pool.Exec(e.ctx, `INSERT INTO app_requests (name, platform, app_version, public_key, key_fingerprint)
 		VALUES ('Zweite', 'android', '1.0', 'k', $1)`, fp)
 	pg, ok := err.(*pgconn.PgError)
 	if !ok || pg.Code != "23505" {

@@ -58,10 +58,10 @@ func (h *Handler) appAdminIn(r *http.Request, deptID string) bool {
 
 type appReqRow struct {
 	ID, Name, DeptID, DeptName, Label, Platform, Version string
-	Status, PublicKey, Fingerprint, TicketID              string
-	Created                                               time.Time
-	DecidedAt                                             *time.Time
-	DecidedBy                                             string
+	Status, PublicKey, Fingerprint, TicketID             string
+	Created                                              time.Time
+	DecidedAt                                            *time.Time
+	DecidedBy                                            string
 }
 
 type rowQuerier interface {

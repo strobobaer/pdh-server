@@ -1080,7 +1080,7 @@
   "Eine Adresse je Zeile, nur mit http:// oder https://. Die Adresse dieses Servers kennt die App von selbst.": "One address per line, only with http:// or https://. The app already knows this server's own address.",
   "Eingerichtete Geräte": "Set-up devices",
   "Einstellungen für die App": "Settings for the app",
-  "Gerät sperren? Die App wird innerhalb von 30 Sekunden abgemeldet.": "Block this device? The app will be signed out within 30 seconds.",
+  "Gerät sperren? Die App wird sofort gesperrt.": "Block this device? The app is blocked immediately.",
   "Google Play (Android)": "Google Play (Android)",
   "Ja – die vorige Version darf weiter arbeiten": "Yes – the previous version may keep working",
   "Mit der Kamera des Telefons scannen:": "Scan with the phone camera:",
@@ -1102,5 +1102,6 @@
   "Ändert sich die neueste Version, merkt sich der Server die bisherige als vorige Version.": "When the latest version changes, the server remembers the old one as the previous version.",
   "Adressen: eine je Zeile, nur mit http:// oder https:// und Rechnername.": "Addresses: one per line, only with http:// or https:// and a host name.",
   "Versionen nur als Zahlen mit Punkten, z. B. 1.2.0.": "Versions only as numbers with dots, e.g. 1.2.0.",
-  "Store-Adressen nur mit http:// oder https://.": "Store addresses only with http:// or https://."
+  "Store-Adressen nur mit http:// oder https://.": "Store addresses only with http:// or https://.",
+  "Das App-Gerät wurde gesperrt.": "The app device has been blocked."
 }

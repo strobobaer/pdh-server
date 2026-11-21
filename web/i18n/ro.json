@@ -1080,7 +1080,7 @@
   "Eine Adresse je Zeile, nur mit http:// oder https://. Die Adresse dieses Servers kennt die App von selbst.": "O adresă pe rând, doar cu http:// sau https://. Aplicația cunoaște singură adresa acestui server.",
   "Eingerichtete Geräte": "Dispozitive configurate",
   "Einstellungen für die App": "Setări pentru aplicație",
-  "Gerät sperren? Die App wird innerhalb von 30 Sekunden abgemeldet.": "Blochezi dispozitivul? Aplicația va fi deconectată în 30 de secunde.",
+  "Gerät sperren? Die App wird sofort gesperrt.": "Blochezi dispozitivul? Aplicația este blocată imediat.",
   "Google Play (Android)": "Google Play (Android)",
   "Ja – die vorige Version darf weiter arbeiten": "Da – versiunea anterioară poate continua să funcționeze",
   "Mit der Kamera des Telefons scannen:": "Scanează cu camera telefonului:",
@@ -1102,5 +1102,6 @@
   "Ändert sich die neueste Version, merkt sich der Server die bisherige als vorige Version.": "Când se schimbă cea mai nouă versiune, serverul reține versiunea veche ca versiune anterioară.",
   "Adressen: eine je Zeile, nur mit http:// oder https:// und Rechnername.": "Adrese: una pe rând, doar cu http:// sau https:// și nume de gazdă.",
   "Versionen nur als Zahlen mit Punkten, z. B. 1.2.0.": "Versiunile doar ca numere cu puncte, de ex. 1.2.0.",
-  "Store-Adressen nur mit http:// oder https://.": "Adresele magazinului doar cu http:// sau https://."
+  "Store-Adressen nur mit http:// oder https://.": "Adresele magazinului doar cu http:// sau https://.",
+  "Das App-Gerät wurde gesperrt.": "Dispozitivul aplicației a fost blocat."
 }

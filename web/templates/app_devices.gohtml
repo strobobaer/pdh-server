@@ -21,6 +21,7 @@
     <h1><i class="ti ti-device-mobile"></i> {{t "App-Geräte"}}</h1>
   </div>
 
+  {{if .Revoked}}<p class="rec-msg" role="status" style="margin-bottom:12px"><i class="ti ti-check"></i> {{t "Das App-Gerät wurde gesperrt."}}</p>{{end}}
   {{if .Saved}}<p class="rec-msg" role="status" style="margin-bottom:12px"><i class="ti ti-check"></i> {{t "Die App-Einstellungen sind gespeichert."}}</p>{{end}}
   {{if .Error}}<p class="rec-msg err" role="alert" style="margin-bottom:12px"><i class="ti ti-alert-circle"></i> {{.Error}}</p>{{end}}
 
@@ -62,7 +63,7 @@
           <td>{{.Version}}</td>
           <td>{{.LastSeen}}</td>
           <td>{{if .Revoked}}<span class="badge b-red">{{t "gesperrt"}}</span> <span class="rec-sub">{{.Revoked}}</span>{{else}}<span class="badge b-green">{{t "aktiv"}}</span>{{end}}</td>
-          <td>{{if .CanRevoke}}<form method="post" action="/app/devices/{{.ID}}/revoke" style="margin:0" onsubmit="return confirm({{t "Gerät sperren? Die App wird innerhalb von 30 Sekunden abgemeldet."}})"><button class="btn btn-small" type="submit" style="color:var(--red)"><i class="ti ti-ban"></i> {{t "Sperren"}}</button></form>{{end}}</td>
+          <td>{{if .CanRevoke}}<form method="post" action="/app/devices/{{.ID}}/revoke" style="margin:0" onsubmit="return confirm({{t "Gerät sperren? Die App wird sofort gesperrt."}})"><button class="btn btn-small" type="submit" style="color:var(--red)"><i class="ti ti-ban"></i> {{t "Sperren"}}</button></form>{{end}}</td>
         </tr>
         {{end}}
         </tbody>
