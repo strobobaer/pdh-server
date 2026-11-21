@@ -10,7 +10,7 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
-## [0.82.10] – 2026-11-21
+## [0.82.11] – 2026-11-21
 
 ### Neu
 
@@ -29,6 +29,12 @@ im Kapitel „Versionen & Updates“ an.
 - Meldet das Terminal die Abmeldung per Karte an das lokale Terminalprogramm, gilt sie nur noch dann als gelungen, wenn PDH sie angenommen hat; bei einem Fehler zeigt die Benachrichtigung die Störung statt „Abgemeldet“.
 - Infobildschirm bei Ausfall von PDH: Nach drei fehlgeschlagenen Abrufen der Folien oder des Ereignisstroms in Folge wechselt ein globales Terminal zur Startseite des Terminalprogramms, die die gespeicherte Folienschau zeigt und nach PDH zurückkehrt, sobald es antwortet. Auch „Zurück“ und die Rückkehrzeit der Vorgang-Ansicht prüfen vorher, ob PDH antwortet.
 - Ein Terminal mit Anlage oder ohne Anlage wird sofort zur Folienschau, wenn es als globales Terminal gekennzeichnet wird; bisher galt das nur für die Info- und Neu-Seiten. Eine noch offene Kartensitzung eines globalen Terminals wird beim Wechsel beendet, und die Meldung „Keine Folien eingerichtet“ nennt den Namen der Instanz statt „PDH“.
+
+## [0.82.10] – 2026-11-21
+
+### Behoben
+
+- Das Startseiten-Widget „Bestellliste“ (Ersatzteile unter Mindestbestand) blieb leer und schrieb bei jedem Laden eine Warnung ins Server-Protokoll; es zeigt die Teile jetzt wieder, mit dem Lagerplatz, an dem die meisten liegen.
 
 ## [0.82.9] – 2026-11-21
 
