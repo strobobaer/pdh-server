@@ -80,6 +80,7 @@ type BaseData struct {
 	CanCleanup             bool       // Nav-Link "Bereinigung"
 	CanServerConfig        bool       // Nav-Link "Server-Einstellungen" (nur Admins)
 	Brand                  Branding   // Name und Logos (Erscheinungsbild)
+	CompanyPrint           companyPrint // Firma im Druckkopf (Firmenstammdaten)
 	CanEditInfra           bool       // Infrastruktur anlegen/bearbeiten (infrastructure.edit)
 	CanViewInfra           bool       // Infrastruktur ansehen: Nav-Link, Stammkarte (infrastructure.view)
 	CanProcurement         bool       // Beschaffung & Einkauf (procurement.view)
@@ -369,6 +370,8 @@ type Handler struct {
 
 	// Austauschbare Quellen (nur Tests; nil = echt): Rechteprüfung und gespeicherter Commit-Vergleich.
 	hasPermHook     func(*http.Request, string) bool
+	companyC        companyCacheState // Firmenstammdaten zwischengespeichert (company.go)
+	companyEditHook func(*http.Request) bool // Tests: company.edit überall?
 	viewDeptErr     error
 	kioskPermHook   func(r *http.Request, perm, infraID string) bool // Tests: Rechte je Anlage ("" = ohne Abteilungsbegrenzung), kiosk_terminals.go
 	updateCheckHook func(context.Context) storedUpdateCheck
@@ -603,6 +606,8 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/plant-watch/{id}/toggle", h.PlantWatchToggleWeb)
 	r.Get("/infrastructure/{id}", h.InfraDetail)
 	r.Get("/infrastructure/{id}/esppdh", h.InfraESPPDHWeb) // Reiter „ESPPDH“ (htmx, alle 10 s)
+	r.Get("/infrastructure/company", h.CompanyPanelWeb)   // Reiter „Firma“: Firmenstammdaten
+	r.Post("/infrastructure/company", h.CompanySaveWeb)
 	h.hmiRoutes(r)                                         // HMI-Fernzugriff (VNC) aus der Anlage
 	h.kioskRoutes(r)                                       // Kiosk-Terminals: HMI am Terminal zeigen (kiosk_terminals.go)
 	h.terminalRoutes(r)                                    // Anlagenterminal: Schoner, Störungsinfo, Neu (terminal_page.go)
@@ -1064,7 +1069,6 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/m365/signatures/script", h.M365SignatureScriptWeb)
 	r.Post("/m365/signatures/{id}", h.M365SignatureSaveWeb)
 	r.Post("/m365/signatures/{id}/delete", h.M365SignatureDeleteWeb)
-	r.Post("/m365/company", h.M365CompanySaveWeb)
 	r.Post("/m365/sharepoint", h.M365SharePointSaveWeb)
 	r.Post("/m365/sharepoint/sync", h.M365SharePointSyncWeb)
 	r.Post("/core/settings/microsoft/assign", h.MicrosoftDirectoryAssignWeb)
@@ -1483,6 +1487,7 @@ func (h *Handler) baseData(r *http.Request, page, title, ctxTitle string) BaseDa
 		CanExport:              h.rbac.HasPermissionForUser(u.ID, string(u.Role), "export.read"),
 		CanChat:                u.ID != "" && h.rbac.HasPermissionForUser(u.ID, string(u.Role), "chat.use"),
 		Brand:                  brand,
+		CompanyPrint:           companyPrintFor(h.company(r.Context())),
 		CanEditInfra:           h.rbac.HasPermissionForUser(u.ID, string(u.Role), "infrastructure.edit"),
 		CanViewInfra:           h.canViewInfra(r),
 		CanProcurement:         h.canProcurement(r),

@@ -628,6 +628,7 @@ select.form-input option{background:var(--bg2)}
   .print-brand{display:flex;align-items:center;gap:12px;border-bottom:1px solid #999;padding-bottom:6px;margin-bottom:12px;font-size:12px;color:#333}
   .print-brand img{max-height:40px;max-width:180px;object-fit:contain}
   .print-brand .pb-date{margin-left:auto}
+  .print-brand .pb-addr{display:block;font-size:10px;color:#666}
 }
 /* ── Windows-11-Optik (Fluent) ─────────────────────────────────
    Mica: Navigation und Kopfzeile liegen auf dem Fensterhintergrund, der
@@ -1152,7 +1153,7 @@ table,.li,.act-item,.rec-row{zoom:var(--row-scale,1)}
     <span class="mb-act"></span>
   </div>
   <div class="main">
-    <div class="print-brand">{{if .Brand.PrintLogo}}<img src="{{.Brand.PrintLogo}}" alt="">{{end}}<span>{{or .Brand.AppName "PDH"}} · {{.Title}}</span><span class="pb-date" data-print-date></span></div>
+    <div class="print-brand">{{if .Brand.PrintLogo}}<img src="{{.Brand.PrintLogo}}" alt="">{{end}}<span>{{if .CompanyPrint.Name}}{{.CompanyPrint.Name}}{{else}}{{or .Brand.AppName "PDH"}}{{end}} · {{.Title}}{{with .CompanyPrint.Address}}<small class="pb-addr">{{.}}</small>{{end}}</span><span class="pb-date" data-print-date></span></div>
     {{block "content" .}}{{end}}
   </div>
 </div>

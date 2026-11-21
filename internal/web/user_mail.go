@@ -122,7 +122,7 @@ func (h *Handler) UserTestMailWeb(w http.ResponseWriter, r *http.Request) {
 	body := `<div style="font-family:Arial,sans-serif;font-size:14px;color:#222"><p>Hallo ` + html.EscapeString(name) + `,</p>` +
 		`<p>dies ist eine Testmail aus ` + html.EscapeString(app) + `. Der E-Mail-Versand an diese Adresse funktioniert.</p>` +
 		`<p style="color:#888;font-size:12px">Gesendet am ` + time.Now().Format("02.01.2006 15:04") + ` von ` + html.EscapeString(getUser(r).FirstName+" "+getUser(r).LastName) + `.</p></div>`
-	if err := h.sendMail([]string{email}, app+" – Testmail", body); err != nil {
+	if err := h.sendMailBy([]string{email}, app+" – Testmail", body, getUser(r).ID); err != nil {
 		componentLog("benachrichtigung").Warn().Err(err).Str("user", id).Msg("testmail")
 		mailResult(w, false, "Nicht gesendet: "+err.Error())
 		return
