@@ -577,7 +577,7 @@ und 3 drückt bis auf Weiteres der Anwender.
     Oberfläche, `go-modules-licenses.txt` behalten, Test für die
     Vollständigkeit von `THIRD_PARTY_LICENSES.md`); Markenprüfung
     „Pulse Data Hub“ angeboten.
-19. **Firmenstammdaten = 0.82.16** (Wunsch des Anwenders vom 21.11.2026):
+19. **Firmenstammdaten = nächste freie Korrekturversion** (Wunsch des Anwenders vom 21.11.2026; 0.82.16 und 0.82.18 gingen an andere Pakete, zuletzt die PDH-App):
     Fenster am obersten Knoten der Infrastruktur; die Daten gelten
     unternehmensweit im Mail- und Postverkehr, der angemeldete Benutzer ist
     Ansprechpartner. Entschieden: „A jetzt, B danach“ (A: alle Mails mit
@@ -604,13 +604,23 @@ und 3 drückt bis auf Weiteres der Anwender.
     `fix/mqtt-name-sicher` (lokal): Agent prüft Zertifikate anderer Namen
     vor/nach dem Neuladen (Rückfall IPv4, sonst Rücknahme), IPv6 nur wenn alle
     anderen 443-Seiten IPv6 haben, Tunnel-Ziele `127.0.0.1`, neue/geänderte
-    Namen „vorgemerkt“ (`int_public_pending`) bis Zertifikat, Name im Haus und
-    Firewall grün, dann scharf (nginx + Tunnel), Port-Änderung zieht Tunnel
-    nach. Kein neues Recht, keine Migration. Offen: Schlussprüfung,
-    Freigabe Push/Merge, Verbund-Update, Browserprüfung, Einspielen auf 202.
+    Namen „vorgemerkt“ (`int_public_pending`) bis Zertifikat und Firewall
+    grün, dann scharf (nginx + Tunnel), Port-Änderung zieht Tunnel nach. Kein
+    neues Recht, keine Migration. **Auf `main`** (21.11.2026, Merge `a44e091`,
+    Schlussprüfung mit Fix-Welle) und dem Testverbund (beide Server und Zeuge
+    0.82.15, aktiv jetzt `pdh-server` 10.10.0.17; alle nginx-Seiten dort mit
+    IPv6). **0.82.17**: Name im Haus ist keine Pflicht mehr zum Scharfschalten
+    (Anwender: „MQTT ohne DNS ok“), nur Hinweis. Offen: Browserprüfung der
+    Prüfliste, Einspielen auf 202 (Anwender, mit Sicherung). Geparkte kleine
+    Befunde der Schlussprüfung: Seite fehlt bis zum Tageslauf, wenn der
+    Zertifikatsauftrag beim Scharfschalten noch läuft; gleichzeitiges Speichern
+    kann die Vormerkung zurückholen; schon veraltete Tunnel-Zeile wird nicht
+    nachgezogen (Prüfliste zeigt sie); Tunnel-Ziel ohne Sperre; Knopf am
+    Spiegel/in Wartung stumm; IPv6-Erkennung je Datei statt je server-Block;
+    Knopf bis ca. 75 s.
 21. **ESPPDH: Update übers Netz (OTA)** – Wunsch des Anwenders vom
     21.11.2026 („Passt“): heute keine OTA-Funktion (kein `ota:`-Baustein,
-    `web_server` mit `ota: false`); geplant als eigenes Paket nach 0.82.16,
+    `web_server` mit `ota: false`); geplant als eigenes Paket nach den Firmenstammdaten,
     mit Kennwort je Gerät. Offen: PDH schiebt (Knopf, Server erreicht das
     Gerät) oder Gerät holt (fragt beim PDH, geht auch im abgeschotteten VLAN).
 22. **PDH-App (Android/iOS):** Entwurf
@@ -619,8 +629,7 @@ und 3 drückt bis auf Weiteres der Anwender.
     Server (Domain-Abfrage), Flutter, Zugang per APP-Ticket und
     gerätegebundenem Token, Rechte `app.*`, Offline mit Schritten und
     UUIDv7 vom Telefon, zentraler Push-Dienst `pdh-push`, sieben Pakete.
-    **Paket 1 (Server-Grundlage, 0.82.17) gebaut** auf `feature/pdh-app`,
-    nicht gepusht und nicht gemergt: Migration 189 (`189_app_grundlage`),
+    **Paket 1 (Server-Grundlage, 0.82.18)** auf `feature/pdh-app`: Migration 189 (`189_app_grundlage`),
     Rechte `app.use`, `app.create`, `app.cockpit`, `app.sensors.view`, `app.admin` (Gruppe
     „App-Administratoren“), Schnittstelle `/api/app/v1`, Seiten
     „App-Konfiguration“ und „App-Geräte“, „App installieren“ im
@@ -629,9 +638,9 @@ und 3 drückt bis auf Weiteres der Anwender.
     Die App erzeugt nach einer Sperre oder dem Zurücksetzen einen neuen
     Schlüssel; die erste schreibende App-Route muss `mirrorGate` und den
     Rückzug der Sitzungen bei Wartung beachten.
-    Offen zur Entscheidung des Anwenders: Manager haben `app.admin` per
-    Migration in allen Abteilungen (der Entwurf sagt „in ihrer
-    Abteilung“; eine Rolle kann die eigene Abteilung nicht ausdrücken).
+    Entschieden (Anwender, 21.11.2026: „Manager passt“): Manager behalten
+    `app.admin` in allen Abteilungen (Freigabe/Sperre bleibt durch die
+    Rangfolge begrenzt).
     Geparkt aus der Schlussprüfung (klein): Indizes auf
     `tickets.app_request_id`/`app_devices.request_id` (nur per neuer
     Migration); ein freigegebenes Gerät könnte den Nonce-Speicher (100 000 je

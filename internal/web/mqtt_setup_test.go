@@ -93,11 +93,13 @@ func TestMqttSetupArmsWhenAllGreen(t *testing.T) {
 	}
 }
 
-func TestMqttSetupStaysPendingWithoutLAN(t *testing.T) {
+// Ohne Eintrag im Haus wird der Name trotzdem scharf (Entscheidung des Anwenders 21.11.2026:
+// „MQTT ohne DNS ok“) – der fehlende Eintrag steht nur als Hinweis da.
+func TestMqttSetupArmsWithoutLAN(t *testing.T) {
 	f := &setupFake{st: mqttSetupState{CertOK: true, FirewallOK: true, LANTarget: "192.0.2.202"}, cf: true}
 	res := mqttNameSetup(context.Background(), f.deps(), "mqtt.firma.de", 8093, true, mqttSetupRights{Cert: true, Cloudflare: true})
-	if res.Armed || f.armed != 0 || f.site != 0 || len(f.tunnelTo) != 0 {
-		t.Errorf("darf nicht scharf werden: %+v scharf=%d Seite=%d Tunnel=%v", res, f.armed, f.site, f.tunnelTo)
+	if !res.Armed || f.armed != 1 || f.site != 1 || len(f.tunnelTo) != 1 {
+		t.Errorf("soll ohne Eintrag im Haus scharf werden: %+v scharf=%d Seite=%d Tunnel=%v", res, f.armed, f.site, f.tunnelTo)
 	}
 	if !strings.Contains(strings.Join(res.Notes, "\n"), "A mqtt.firma.de → 192.0.2.202") {
 		t.Errorf("Hinweis nennt den Eintrag nicht: %v", res.Notes)

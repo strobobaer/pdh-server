@@ -10,7 +10,7 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
-## [0.82.17] – 2026-11-21
+## [0.82.18] – 2026-11-21
 
 ### Neu
 
@@ -27,6 +27,18 @@ im Kapitel „Versionen & Updates“ an.
 - Eine Sperre trennt das Telefon sofort, spätestens nach 30 Sekunden. Danach muss die App zurückgesetzt und der Zugang neu angefragt werden.
 - Die Abteilungsliste für die Anfrage ist ohne Anmeldung lesbar und enthält nur Abteilungsnamen.
 
+## [0.82.17] – 2026-11-21
+
+### Geändert
+
+- Ein MQTT-Name wird auch ohne Eintrag im DNS im Haus scharf geschaltet, sobald Zertifikat und Firewall stehen; der fehlende Eintrag steht in der Prüfliste als Hinweis.
+
+## [0.82.16] – 2026-11-21
+
+### Neu
+
+- Am gekoppelten PDH-Terminal öffnet ein kleines Zahnrad oben rechts die Einstellungen des Terminals (in allen Ansichten, auch Schoner und Folienschau).
+
 ## [0.82.15] – 2026-11-21
 
 ### Behoben
@@ -39,6 +51,7 @@ im Kapitel „Versionen & Updates“ an.
 
 - Ein neuer oder geänderter MQTT-Name ist zuerst vorgemerkt und wird erst scharf geschaltet, wenn Zertifikat, Eintrag im Haus und Firewall stehen; was das PDH nicht selbst darf, zeigt die Prüfliste mit dem genauen Eintrag.
 - Der Cloudflare-Tunnel erreicht die Dienste über 127.0.0.1 statt localhost; vorhandene Zeilen mit localhost gelten weiter als richtig.
+
 ## [0.82.14] – 2026-11-21
 
 ### Neu
