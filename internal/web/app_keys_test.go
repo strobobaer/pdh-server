@@ -37,8 +37,11 @@ func TestAppConfirmCode(t *testing.T) {
 	if got := appConfirmCode("ffffffff" + strings.Repeat("0", 56)); got != "967295" {
 		t.Errorf("ffffffff → %q", got)
 	}
-	_, b64 := appTestKey(t)
+	if got := appConfirmCode("zz"); got != "" {
+		t.Errorf("ungültig → %q", got)
+	}
 	for i := 0; i < 20; i++ {
+		_, b64 := appTestKey(t)
 		c := appConfirmCode(appKeyFingerprint(b64))
 		if len(c) != 6 {
 			t.Fatalf("Code %q nicht 6-stellig", c)
@@ -96,7 +99,7 @@ func appSignedRequest(t *testing.T, k *ecdsa.PrivateKey, method, target string, 
 
 func TestVerifyAppSignature(t *testing.T) {
 	old := appNonces
-	appNonces = newNonceCache(10*time.Minute, 100000)
+	appNonces = newNonceCache(10*time.Minute+time.Second, 100000)
 	defer func() { appNonces = old }()
 
 	k, _ := appTestKey(t)
@@ -171,12 +174,45 @@ func TestAppNonceCache(t *testing.T) {
 	if c.seen("a", now.Add(11*time.Minute)) {
 		t.Error("a nach Ablauf noch bekannt")
 	}
-	// Grenze: Abgelaufenes zuerst, sonst ältester Eintrag fliegt
+	// genau an der Ablaufgrenze noch bekannt
+	c = newNonceCache(10*time.Minute, 3)
+	c.seen("b", now)
+	if !c.seen("b", now.Add(10*time.Minute)) {
+		t.Error("b an der Grenze nicht erkannt")
+	}
+	// Abgelaufenes wird zuerst entfernt
 	c = newNonceCache(10*time.Minute, 2)
 	c.seen("x", now)
-	c.seen("y", now.Add(time.Second))
-	c.seen("z", now.Add(2*time.Second))
-	if len(c.m) > 2 {
-		t.Errorf("Grenze überschritten: %d", len(c.m))
+	c.seen("y", now.Add(9*time.Minute))
+	if c.seen("z", now.Add(11*time.Minute)) {
+		t.Error("z trotz abgelaufenem x abgelehnt")
+	}
+	if _, ok := c.m["x"]; ok || len(c.m) != 2 {
+		t.Errorf("x nicht entfernt: %v", c.m)
+	}
+	// Voll mit gültigen Einträgen: neue Nonce wird abgelehnt, nichts verdrängt
+	c = newNonceCache(10*time.Minute, 2)
+	c.seen("p", now)
+	c.seen("q", now)
+	if !c.seen("r", now.Add(time.Minute)) {
+		t.Error("volle Liste nahm neue Nonce an")
+	}
+	if len(c.m) != 2 || c.m["p"].IsZero() || c.m["q"].IsZero() {
+		t.Errorf("Eintrag verdrängt: %v", c.m)
+	}
+}
+
+func TestAppNonceReplayAtWindowEdge(t *testing.T) {
+	old := appNonces
+	appNonces = newNonceCache(10*time.Minute+time.Second, 100000)
+	defer func() { appNonces = old }()
+	k, _ := appTestKey(t)
+	ts := time.Now().Truncate(time.Second)
+	r := appSignedRequest(t, k, "GET", "/app/api/x", nil, ts, "edge-nonce-0123456789")
+	if err := verifyAppSignature(&k.PublicKey, r, nil, ts.Add(-5*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if err := verifyAppSignature(&k.PublicKey, r, nil, ts.Add(5*time.Minute)); !errors.Is(err, errAppNonceReused) {
+		t.Errorf("Wiederholung bei ts+5min: %v", err)
 	}
 }

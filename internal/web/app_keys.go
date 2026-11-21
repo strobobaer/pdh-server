@@ -29,7 +29,7 @@ var (
 const appSigWindow = 5 * time.Minute
 
 // appNonces merkt verwendete Nonces je Gerät (Fingerabdruck + Nonce).
-var appNonces = newNonceCache(10*time.Minute, 100000)
+var appNonces = newNonceCache(10*time.Minute+time.Second, 100000)
 
 // appDecodeB64 liest base64url mit oder ohne Auffüllung.
 func appDecodeB64(s string) ([]byte, error) {
@@ -71,7 +71,7 @@ func appDERFingerprint(der []byte) string {
 func appConfirmCode(fingerprint string) string {
 	raw, err := hex.DecodeString(fingerprint)
 	if err != nil || len(raw) < 4 {
-		return "000000"
+		return ""
 	}
 	return fmt.Sprintf("%06d", binary.BigEndian.Uint32(raw[:4])%1_000_000)
 }
@@ -143,31 +143,26 @@ func newNonceCache(ttl time.Duration, max int) *nonceCache {
 	return &nonceCache{ttl: ttl, max: max, m: map[string]time.Time{}}
 }
 
-// seen meldet, ob der Schlüssel schon bekannt (und nicht abgelaufen) ist;
-// andernfalls wird er gemerkt.
+// seen meldet, ob der Schlüssel schon bekannt ist (bis einschließlich zur
+// Ablaufzeit); andernfalls wird er gemerkt. Ist der Speicher nach Entfernen
+// des Abgelaufenen noch voll, wird nie ein gültiger Eintrag verdrängt:
+// seen meldet dann true (Nonce gilt als verbraucht, die Anfrage wird
+// abgelehnt – sicherer Ausfall).
 func (c *nonceCache) seen(key string, now time.Time) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if exp, ok := c.m[key]; ok && now.Before(exp) {
+	if exp, ok := c.m[key]; ok && !now.After(exp) {
 		return true
 	}
 	delete(c.m, key)
 	if len(c.m) >= c.max {
-		for k, exp := range c.m { // Abgelaufenes zuerst
-			if !now.Before(exp) {
+		for k, exp := range c.m {
+			if now.After(exp) {
 				delete(c.m, k)
 			}
 		}
-		for len(c.m) >= c.max && len(c.m) > 0 { // sonst die ältesten
-			var oldK string
-			var oldE time.Time
-			first := true
-			for k, exp := range c.m {
-				if first || exp.Before(oldE) {
-					oldK, oldE, first = k, exp, false
-				}
-			}
-			delete(c.m, oldK)
+		if len(c.m) >= c.max {
+			return true
 		}
 	}
 	c.m[key] = now.Add(c.ttl)
