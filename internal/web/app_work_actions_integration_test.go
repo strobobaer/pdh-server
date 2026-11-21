@@ -93,13 +93,17 @@ func TestAppWorkActions(t *testing.T) {
 			t.Errorf("historie nach zweitem start: %d", n)
 		}
 		// Aufgabe ohne Zuständige: über task_assignees
-		e.exec(`INSERT INTO tasks (title, status, created_by) VALUES ($1, 'open', $2::uuid)`, e.title("FreieAufgabe"), e.other)
+		e.exec(`INSERT INTO tasks (title, status, created_by, updated_at) VALUES ($1, 'open', $2::uuid, now() - interval '2 days')`, e.title("FreieAufgabe"), e.other)
 		kid := e.idOf("tasks", "FreieAufgabe")
+		e.exec(`UPDATE tasks SET status = 'in_progress', updated_at = now() - interval '2 days' WHERE id = $1::uuid`, kid) // Status ändert sich nicht: nur die Übernahme setzt updated_at
 		if rec, m := e.post("/api/app/v1/work/task/"+kid+"/start", nil, ""); rec.Code != 200 || m["status"] != "in_progress" {
 			t.Fatalf("aufgabe: %d %s", rec.Code, rec.Body.String())
 		}
 		if n := e.count(`SELECT COUNT(*) FROM task_assignees WHERE task_id = $1::uuid AND user_id = $2::uuid`, kid, e.uid); n != 1 {
 			t.Errorf("aufgabe zugewiesen: %d", n)
+		}
+		if n := e.count(`SELECT COUNT(*) FROM tasks WHERE id = $1::uuid AND updated_at > now() - interval '1 minute'`, kid); n != 1 {
+			t.Errorf("aufgabe: updated_at nicht gesetzt")
 		}
 		// schon einem anderen zugewiesen (aber über Gruppe beteiligt): bleibt zugewiesen
 		e.seed()
@@ -188,33 +192,38 @@ func TestAppWorkActions(t *testing.T) {
 		}
 		// unbekannter Punkt, kaputte Kennung, Störung
 		rec, m = e.post("/api/app/v1/work/maintenance/"+mid+"/steps/"+e.once(), map[string]any{"value": "2"}, "")
-		e.wantCode(rec, m, 422, "app_invalid_input")
+		e.wantCode(rec, m, 404, "app_not_found")
 		rec, m = e.post("/api/app/v1/work/maintenance/"+mid+"/steps/kaputt", map[string]any{"value": "2"}, "")
 		e.wantCode(rec, m, 404, "app_not_found")
 		rec, m = e.post("/api/app/v1/work/fault/"+e.idOf("faults", "Stoerung")+"/steps/"+sid, map[string]any{"value": "2"}, "")
 		e.wantCode(rec, m, 404, "app_not_found")
 	})
-	t.Run("finish: ohne Maßnahme 422, ohne Material 422, dann gelöst und can false", func(t *testing.T) {
+	t.Run("finish: ohne Text und Maßnahme 422, Text wird Maßnahme, Wiederholung ohne Doppel, dann gelöst", func(t *testing.T) {
 		e := newAppActEnv(t)
 		e.seed()
 		fid := e.idOf("faults", "Stoerung")
-		rec, m := e.post("/api/app/v1/work/fault/"+fid+"/finish", map[string]any{"text": "fertig", "no_parts": true}, "")
+		actions := func() int {
+			return e.count(`SELECT COUNT(*) FROM fault_actions WHERE fault_id = $1::uuid`, fid)
+		}
+		rec, m := e.post("/api/app/v1/work/fault/"+fid+"/finish", map[string]any{"no_parts": true}, "")
 		e.wantCode(rec, m, 422, "app_invalid_input")
-		if !strings.Contains(m["error"].(string), "maßnahme") {
-			t.Errorf("meldung: %v", m["error"])
+		if !strings.Contains(m["error"].(string), "maßnahme") || actions() != 0 {
+			t.Errorf("meldung: %v, maßnahmen %d", m["error"], actions())
 		}
-		if rec, _ := e.post("/api/app/v1/work/fault/"+fid+"/actions", map[string]any{"text": "Sicherung getauscht"}, ""); rec.Code != 200 {
-			t.Fatalf("maßnahme %d", rec.Code)
-		}
-		rec, m = e.post("/api/app/v1/work/fault/"+fid+"/finish", map[string]any{"text": "fertig"}, "")
+		// Text wird Maßnahme, Abschluss scheitert am Material: Maßnahme bleibt (wie Assistent)
+		rec, m = e.post("/api/app/v1/work/fault/"+fid+"/finish", map[string]any{"text": " fertig "}, "")
 		e.wantCode(rec, m, 422, "app_invalid_input")
-		if !strings.Contains(m["error"].(string), "ersatzteile") {
-			t.Errorf("meldung: %v", m["error"])
+		if !strings.Contains(m["error"].(string), "ersatzteile") || actions() != 1 {
+			t.Errorf("meldung: %v, maßnahmen %d", m["error"], actions())
 		}
+		// erneuter Versuch mit demselben Text: keine zweite Maßnahme
 		once := e.once()
 		rec, m = e.post("/api/app/v1/work/fault/"+fid+"/finish", map[string]any{"text": "fertig", "no_parts": true, "root_cause": "Verschleiß"}, once)
 		if rec.Code != 200 || m["status"] != "resolved" {
 			t.Fatalf("%d %s", rec.Code, rec.Body.String())
+		}
+		if n := actions(); n != 1 {
+			t.Errorf("maßnahmen nach Wiederholung: %d", n)
 		}
 		for f, v := range m["can"].(map[string]any) {
 			if v != false {
@@ -226,13 +235,48 @@ func TestAppWorkActions(t *testing.T) {
 		if res != "fertig" || cause != "Verschleiß" {
 			t.Errorf("abschluss: %q %q", res, cause)
 		}
-		// Wiederholung mit derselben Once: nur der Stand
+		// Wiederholung mit derselben Once: nur der Stand (kein 409)
 		if rec, m := e.post("/api/app/v1/work/fault/"+fid+"/finish", map[string]any{"text": "fertig", "no_parts": true}, once); rec.Code != 200 || m["status"] != "resolved" {
 			t.Errorf("replay: %d %s", rec.Code, rec.Body.String())
 		}
-		// danach ist nichts mehr erlaubt
+		// neuer Abschluss auf dem geschlossenen Vorgang: 409, Maßnahme 403
+		rec, m = e.post("/api/app/v1/work/fault/"+fid+"/finish", map[string]any{"text": "nochmal", "no_parts": true}, "")
+		e.wantCode(rec, m, 409, "app_conflict")
+		if !strings.Contains(m["error"].(string), "bereits abgeschlossen") {
+			t.Errorf("meldung: %v", m["error"])
+		}
 		rec, m = e.post("/api/app/v1/work/fault/"+fid+"/actions", map[string]any{"text": "noch was"}, "")
 		e.wantCode(rec, m, 403, "app_no_permission")
+		if n := actions(); n != 1 {
+			t.Errorf("maßnahmen am Ende: %d", n)
+		}
+	})
+	t.Run("finish: Störung mit Text ohne vorherige Maßnahme, Wartung mit erledigter Checkliste", func(t *testing.T) {
+		e := newAppActEnv(t)
+		e.seed()
+		fid := e.idOf("faults", "Stoerung")
+		if rec, m := e.post("/api/app/v1/work/fault/"+fid+"/finish", map[string]any{"text": "Motor getauscht", "no_parts": true}, ""); rec.Code != 200 || m["status"] != "resolved" {
+			t.Fatalf("störung: %d %s", rec.Code, rec.Body.String())
+		} else if acts := m["actions"].([]any); len(acts) != 1 || acts[0].(map[string]any)["text"] != "Motor getauscht" {
+			t.Errorf("maßnahmen: %v", m["actions"])
+		}
+		mid := e.idOf("maintenance_tasks", "Wartung")
+		sid := e.id(`INSERT INTO maintenance_task_steps (task_id, label, item_type, required, sort_order) VALUES ($1::uuid, 'Filter', 'checkbox', true, 1) RETURNING id::text`, mid)
+		if rec, _ := e.post("/api/app/v1/work/maintenance/"+mid+"/steps/"+sid, map[string]any{"done": true}, ""); rec.Code != 200 {
+			t.Fatalf("schritt: %d %s", rec.Code, rec.Body.String())
+		}
+		rec, m := e.post("/api/app/v1/work/maintenance/"+mid+"/finish", map[string]any{"text": "Filter gewechselt", "no_parts": true}, "")
+		if rec.Code != 200 || m["status"] != "done" {
+			t.Fatalf("wartung: %d %s", rec.Code, rec.Body.String())
+		}
+		if n := e.count(`SELECT COUNT(*) FROM maintenance_task_actions WHERE task_id = $1::uuid AND description = 'Filter gewechselt'`, mid); n != 1 {
+			t.Errorf("wartung maßnahmen: %d", n)
+		}
+		for f, v := range m["can"].(map[string]any) {
+			if v != false {
+				t.Errorf("wartung can.%s = %v", f, v)
+			}
+		}
 	})
 	t.Run("finish: Wartung mit offenem Pflichtpunkt, Alarm-Ticket ohne Ursache", func(t *testing.T) {
 		e := newAppActEnv(t)

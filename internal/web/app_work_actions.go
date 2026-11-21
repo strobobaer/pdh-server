@@ -40,6 +40,11 @@ type appInputErr struct{ msg string }
 
 func (e appInputErr) Error() string { return e.msg }
 
+// appNotFoundErr: Teil des Vorgangs (z. B. Checklistenpunkt) gibt es nicht (→ 404 app_not_found).
+type appNotFoundErr struct{}
+
+func (appNotFoundErr) Error() string { return "app_not_found" }
+
 // plainErrType: Typ von errors.New / fmt.Errorf ohne %w – so melden die Module
 // Störung, Ticket und Aufgabe ihre Prüfungen („bitte mindestens eine … maßnahme …“).
 var plainErrType = reflect.TypeOf(errors.New(""))
@@ -78,7 +83,8 @@ func appText(s, empty, tooLong string) (string, error) {
 
 // appWorkWrite ist der gemeinsame Rahmen: Art (only), Sichtbarkeit, Replay,
 // can-Flag, Eingabe, Schreiben, neuer Stand.
-func (h *Handler) appWorkWrite(w http.ResponseWriter, r *http.Request, only string, allowed func(appWorkPerms) bool,
+// openOnly: auf einem abgeschlossenen Vorgang 409 app_conflict statt 403 (Abschließen).
+func (h *Handler) appWorkWrite(w http.ResponseWriter, r *http.Request, only string, openOnly bool, allowed func(appWorkPerms) bool,
 	run func(ctx context.Context, k completionKind, id, uid string, body []byte) error) {
 	kind, id := chi.URLParam(r, "type"), chi.URLParam(r, "id")
 	if only != "" && kind != only {
@@ -97,6 +103,10 @@ func (h *Handler) appWorkWrite(w http.ResponseWriter, r *http.Request, only stri
 		h.appWorkRespond(w, r, kind, id, p)
 		return
 	}
+	if openOnly && p.Closed {
+		appJSONErr(w, http.StatusConflict, "app_conflict", "Der Vorgang ist bereits abgeschlossen.")
+		return
+	}
 	if !allowed(p) {
 		appJSONErr(w, http.StatusForbidden, "app_no_permission", "app_no_permission")
 		return
@@ -112,6 +122,10 @@ func (h *Handler) appWorkWrite(w http.ResponseWriter, r *http.Request, only stri
 	}
 	ctx := r.Context()
 	if err := run(ctx, completionKinds[kind], id, getUser(r).ID, body); err != nil {
+		if errors.As(err, new(appNotFoundErr)) {
+			appJSONErr(w, http.StatusNotFound, "app_not_found", "app_not_found")
+			return
+		}
 		if msg, ok := appModuleInput(err); ok {
 			appJSONErr(w, http.StatusUnprocessableEntity, "app_invalid_input", msg)
 			return
@@ -145,7 +159,7 @@ func appDecode(body []byte, v any) error {
 // Person, keine Gruppe), nimmt der Benutzer ihn an sich (wie „übernehmen“ in
 // completionInvolved); Status „in Bearbeitung“ und Historie „work“ wie der Assistent.
 func (h *Handler) AppWorkStartAPI(w http.ResponseWriter, r *http.Request) {
-	h.appWorkWrite(w, r, "", func(p appWorkPerms) bool { return p.Start },
+	h.appWorkWrite(w, r, "", false, func(p appWorkPerms) bool { return p.Start },
 		func(ctx context.Context, k completionKind, id, uid string, _ []byte) error {
 			q := fmt.Sprintf(`UPDATE %s SET assigned_to = $1::uuid, updated_at = NOW() WHERE id = $2::uuid AND %s`, k.Table, unassignedSQL(false))
 			if k.Type == "task" {
@@ -156,6 +170,11 @@ func (h *Handler) AppWorkStartAPI(w http.ResponseWriter, r *http.Request) {
 				return err
 			}
 			if tag.RowsAffected() > 0 {
+				if k.Type == "task" { // task_assignees ändert die Aufgabe selbst nicht
+					if _, err := h.db.Exec(ctx, `UPDATE tasks SET updated_at = NOW() WHERE id = $1::uuid`, id); err != nil {
+						return err
+					}
+				}
 				h.addHistory(ctx, historyRef(k.Type), id, "people", "assigned_to", "", uid, "In der App übernommen", uid)
 			}
 			// Historie „work“ nur, wenn der Vorgang dadurch begonnen wurde (nicht bei jedem Tippen)
@@ -169,7 +188,7 @@ func (h *Handler) AppWorkStartAPI(w http.ResponseWriter, r *http.Request) {
 
 // AppWorkActionAPI: POST …/actions {"text"} – Maßnahme über den Dienst des Moduls.
 func (h *Handler) AppWorkActionAPI(w http.ResponseWriter, r *http.Request) {
-	h.appWorkWrite(w, r, "", func(p appWorkPerms) bool { return p.Action },
+	h.appWorkWrite(w, r, "", false, func(p appWorkPerms) bool { return p.Action },
 		func(ctx context.Context, k completionKind, id, uid string, body []byte) error {
 			var in struct {
 				Text string `json:"text"`
@@ -191,7 +210,7 @@ func (h *Handler) AppWorkActionAPI(w http.ResponseWriter, r *http.Request) {
 
 // AppWorkCommentAPI: POST …/comments {"text"} – Kommentar (nur Ticket).
 func (h *Handler) AppWorkCommentAPI(w http.ResponseWriter, r *http.Request) {
-	h.appWorkWrite(w, r, "ticket", func(p appWorkPerms) bool { return p.Comment },
+	h.appWorkWrite(w, r, "ticket", false, func(p appWorkPerms) bool { return p.Comment },
 		func(ctx context.Context, _ completionKind, id, uid string, body []byte) error {
 			var in struct {
 				Text string `json:"text"`
@@ -215,7 +234,7 @@ func (h *Handler) AppWorkStepAPI(w http.ResponseWriter, r *http.Request) {
 		appJSONErr(w, http.StatusNotFound, "app_not_found", "app_not_found")
 		return
 	}
-	h.appWorkWrite(w, r, "maintenance", func(p appWorkPerms) bool { return p.Step },
+	h.appWorkWrite(w, r, "maintenance", false, func(p appWorkPerms) bool { return p.Step },
 		func(ctx context.Context, _ completionKind, id, uid string, body []byte) error {
 			var in struct {
 				Value string `json:"value"`
@@ -227,16 +246,27 @@ func (h *Handler) AppWorkStepAPI(w http.ResponseWriter, r *http.Request) {
 			if h.maint == nil {
 				return errNoService
 			}
+			var known bool
+			if err := h.db.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM maintenance_task_steps WHERE id = $1::uuid AND task_id = $2::uuid)`, stepID, id).Scan(&known); err != nil {
+				return err
+			}
+			if !known {
+				return appNotFoundErr{}
+			}
 			_, err := h.maint.SaveStep(ctx, id, stepID, in.Value, in.Done, uid)
 			return err
 		})
 }
 
-// AppWorkFinishAPI: POST …/finish {"text","no_parts","root_cause"} – abschließen
-// über completionFinish (ohne Zeitbuchung). Die Prüfungen des Moduls (Maßnahme,
-// Material, Ursache, Pflichtpunkte) kommen als 422 mit ihrer Meldung zurück.
+// AppWorkFinishAPI: POST …/finish {"text","no_parts","root_cause"} – abschließen wie
+// der Abschluss-Assistent: ein nicht leerer Text wird zuerst als Maßnahme eingetragen
+// (completionAddAction), dann completionFinish (ohne Zeitbuchung). Die Prüfungen des
+// Moduls (Maßnahme, Material, Ursache, Pflichtpunkte) kommen als 422 mit ihrer Meldung.
+// Scheitert der Abschluss, bleibt die Maßnahme stehen (wie im Assistenten) und die
+// Once wird freigegeben; ein erneuter Versuch trägt denselben Text nicht noch einmal
+// ein (appSameActionRecent).
 func (h *Handler) AppWorkFinishAPI(w http.ResponseWriter, r *http.Request) {
-	h.appWorkWrite(w, r, "", func(p appWorkPerms) bool { return p.Finish },
+	h.appWorkWrite(w, r, "", true, func(p appWorkPerms) bool { return p.Finish },
 		func(ctx context.Context, k completionKind, id, uid string, body []byte) error {
 			var in struct {
 				Text      string `json:"text"`
@@ -257,6 +287,17 @@ func (h *Handler) AppWorkFinishAPI(w http.ResponseWriter, r *http.Request) {
 			if !h.completionService(k.Type) {
 				return errNoService
 			}
+			if text != "" {
+				dup, err := h.appSameActionRecent(ctx, k, id, uid, text)
+				if err != nil {
+					return err
+				}
+				if !dup {
+					if err := h.completionAddAction(ctx, k, id, text, uid); err != nil {
+						return err
+					}
+				}
+			}
 			return h.completionFinish(ctx, k, id, &completionRequest{Comment: text, NoParts: in.NoParts, RootCause: cause}, uid, 0)
 		})
 }
@@ -274,4 +315,18 @@ func (h *Handler) completionService(kind string) bool {
 		return h.maint != nil
 	}
 	return false
+}
+
+// appSameActionRecent: hat uid an diesem Vorgang in den letzten 10 Minuten schon eine
+// Maßnahme mit genau diesem Text eingetragen? (Wiederholung eines gescheiterten
+// Abschlusses aus der App – derselbe Text soll nicht zweimal stehen.)
+func (h *Handler) appSameActionRecent(ctx context.Context, k completionKind, id, uid, text string) (bool, error) {
+	am, ok := actionModules[historyRef(k.Type)]
+	if !ok {
+		return false, errNoService
+	}
+	var yes bool
+	err := h.db.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM `+am.ActionsTable+` WHERE `+am.FK+` = $1::uuid
+		AND created_by = $2::uuid AND description = $3 AND created_at > NOW() - INTERVAL '10 minutes')`, id, uid, text).Scan(&yes)
+	return yes, err
 }

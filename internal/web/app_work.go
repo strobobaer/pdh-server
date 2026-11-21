@@ -186,6 +186,7 @@ const (
 type appWorkPerms struct {
 	Access                               appWorkAccess
 	Start, Action, Comment, Step, Finish bool
+	Closed                               bool // abgeschlossen oder archiviert (nur bei appWorkOK)
 }
 
 // See: Vorgang darf angezeigt werden.
@@ -227,10 +228,10 @@ func (h *Handler) appWorkCan(r *http.Request, kind, id string) (appWorkPerms, er
 	if !h.recordInScope(ctx, h.requestScope(r), ref, id) {
 		return appWorkPerms{Access: appWorkForbidden}, nil
 	}
-	p := appWorkPerms{Access: appWorkOK}
+	p := appWorkPerms{Access: appWorkOK, Closed: closedStatus[status] || archived}
 	// Abgeschlossen: nur ansehen. Betrachter schreiben in der App nie (strenger als
 	// die Web-Wege Maßnahme/Kommentar, die Beteiligte ohne Rollenprüfung zulassen).
-	if closedStatus[status] || archived || u.Role == "viewer" {
+	if p.Closed || u.Role == "viewer" {
 		return p, nil
 	}
 	involved := h.completionInvolved(r, k, id)
