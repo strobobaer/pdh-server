@@ -1,0 +1,125 @@
+{{template "base" .}}
+{{define "content"}}
+{{/* Formular einer Folie des Infobildschirms (terminal_slides.go). Die Felder passen sich der Art an.
+     Farben nur über die Variablen des Farbschemas (Fiori und Fluent, hell und dunkel). */}}
+<style>
+.sf-head{display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap}
+.sf-head h1{font-size:19px;font-weight:600;margin:0}
+.sf-form{display:grid;gap:12px;max-width:760px}
+.sf-form [hidden]{display:none}
+.sf-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,190px),1fr));gap:10px;align-items:end}
+.sf-check{display:flex;align-items:flex-start;gap:8px;font-size:13px;margin-top:8px}
+.sf-check input{margin-top:3px;flex-shrink:0}
+.sf-hint{font-size:12px;color:var(--muted);margin-top:4px}
+.sf-preview{max-width:min(100%,320px);max-height:180px;border-radius:6px;border:1px solid var(--border);display:block;margin-bottom:6px}
+.sf-chips{display:flex;gap:6px;flex-wrap:wrap;margin:4px 0}
+.sf-chip{background:var(--bg3);color:var(--text);border:1px solid var(--border);display:inline-flex;gap:6px;align-items:center;max-width:100%;overflow-wrap:anywhere}
+.sf-chip button{border:0;background:none;color:var(--muted);cursor:pointer}
+.sf-acts{display:flex;gap:8px;flex-wrap:wrap}
+</style>
+
+<div class="sf-head">
+  <a class="btn btn-small" href="/terminal-slides"><i class="ti ti-arrow-left" aria-hidden="true"></i> Zur Liste</a>
+  <h1>{{if .IsNew}}Neue Folie{{else}}Folie bearbeiten{{end}}</h1>
+</div>
+
+{{if .Err}}<div class="card" role="alert" style="margin-bottom:14px;border-color:var(--red);color:var(--red)"><i class="ti ti-alert-circle" aria-hidden="true"></i> {{.Err}}</div>{{end}}
+
+<div class="card">
+  <form class="sf-form" method="POST" enctype="multipart/form-data" action="{{if .IsNew}}/terminal-slides{{else}}/terminal-slides/{{.Slide.ID}}{{end}}" autocomplete="off">
+    <div class="sf-row">
+      <div class="form-group"><label class="form-label" for="sf-kind">Art</label>
+        <select id="sf-kind" name="kind" class="form-input" onchange="sfKind()">
+          <option value="image"{{if eq .Slide.Kind "image"}} selected{{end}}>Bild</option>
+          <option value="text"{{if eq .Slide.Kind "text"}} selected{{end}}>Text</option>
+          <option value="vorgaenge"{{if eq .Slide.Kind "vorgaenge"}} selected{{end}}>Vorgänge (Störungen und Tickets)</option>
+        </select></div>
+      <div class="form-group"><label class="form-label" for="sf-duration">Dauer in Sekunden</label>
+        <input id="sf-duration" name="duration" type="number" min="5" max="600" class="form-input" value="{{.Slide.DurationSeconds}}"></div>
+    </div>
+
+    <div class="form-group"><label class="form-label" for="sf-title">Titel <span style="color:var(--muted);font-weight:400" data-sf-kind="image vorgaenge">(optional)</span></label>
+      <input id="sf-title" name="title" class="form-input" maxlength="{{.MaxTitle}}" value="{{.Slide.Title}}"></div>
+
+    <div data-sf-kind="image">
+      <div class="form-group"><label class="form-label" for="sf-image">Bild</label>
+        {{if and .HasImage (not .IsNew)}}<img class="sf-preview" src="/terminal-slides/{{.Slide.ID}}/image?v={{.Slide.UpdatedKey}}" alt="Aktuelles Bild">{{end}}
+        <input id="sf-image" name="image" type="file" accept="image/jpeg,image/png,image/webp" class="form-input">
+        <div class="sf-hint">JPEG, PNG oder WebP, höchstens {{.MaxMB}} MB.{{if and .HasImage (not .IsNew)}} Ohne neue Datei bleibt das jetzige Bild.{{end}}</div></div>
+    </div>
+
+    <div data-sf-kind="text">
+      <div class="form-group"><label class="form-label" for="sf-body">Text</label>
+        <textarea id="sf-body" name="body" class="form-input" rows="8" maxlength="{{.MaxBody}}">{{.Slide.Body}}</textarea>
+        <div class="sf-hint">Nur Text, höchstens {{.MaxBody}} Zeichen. Zeilenumbrüche bleiben erhalten.</div></div>
+    </div>
+
+    <div data-sf-kind="vorgaenge" id="sf-infra-box">
+      <div class="form-group"><span class="form-label">Anlagen <span style="color:var(--muted);font-weight:400">(mit Unteranlagen; leer = alle)</span></span>
+        <input type="hidden" id="sf-infra-ids" name="infra_ids" value="{{.InfraCSV}}">
+        <div id="sf-infra-chips" class="sf-chips"></div>
+        {{template "infra-tree-picker" (dict "TargetID" "sf-infra-pick" "SelectedLabelID" "sf-infra-pick-label" "Label" "Anlage wählen" "Name" "sf_infra_pick")}}
+        <button type="button" class="btn btn-small" onclick="sfInfraAdd()"><i class="ti ti-plus" aria-hidden="true"></i> Anlage hinzufügen</button>
+        <div id="sf-infra-labels" data-labels="{{.InfraLabels}}" hidden></div></div>
+      <label class="sf-check"><input type="checkbox" name="show_faults" value="1"{{if .Slide.ShowFaults}} checked{{end}}><span>Störungen zeigen</span></label>
+      <label class="sf-check"><input type="checkbox" name="show_tickets" value="1"{{if .Slide.ShowTickets}} checked{{end}}><span>Tickets zeigen</span></label>
+      <div class="sf-hint">Das Terminal zeigt bis zu 12 offene Vorgänge je Art, immer in dem Umfang, den die Rechte des Terminal-Benutzers erlauben.</div>
+    </div>
+
+    <label class="sf-check"><input type="checkbox" name="active" value="1"{{if .Slide.Active}} checked{{end}}><span>Aktiv (nur aktive Folien laufen auf den Terminals)</span></label>
+
+    <div class="sf-acts">
+      <button type="submit" class="btn btn-primary"><i class="ti ti-device-floppy" aria-hidden="true"></i> Speichern</button>
+      <a class="btn" href="/terminal-slides">Abbrechen</a>
+    </div>
+  </form>
+</div>
+{{end}}
+
+{{define "scripts"}}
+<script>
+// Felder je nach Art ein- und ausblenden (data-sf-kind = Arten, für die das Feld gilt).
+function sfKind(){
+  const kind = document.getElementById('sf-kind').value;
+  document.querySelectorAll('[data-sf-kind]').forEach(function(el){
+    el.hidden = el.dataset.sfKind.split(' ').indexOf(kind) === -1;
+  });
+}
+// Anlagen: IDs im versteckten Feld (kommagetrennt), Anzeige als Namen.
+const sfInfraNames = {};
+function sfInfraIds(){ return document.getElementById('sf-infra-ids').value.split(/[\s,;]+/).filter(Boolean); }
+function sfInfraRender(){
+  const box = document.getElementById('sf-infra-chips');
+  if(!box) return;
+  try{ Object.assign(sfInfraNames, JSON.parse(document.getElementById('sf-infra-labels').dataset.labels || '{}')); }catch(e){}
+  box.textContent = '';
+  sfInfraIds().forEach(function(id){
+    const chip = document.createElement('span');
+    chip.className = 'badge sf-chip';
+    chip.appendChild(document.createTextNode(sfInfraNames[id] || id));
+    const x = document.createElement('button');
+    x.type = 'button'; x.title = 'Entfernen'; x.setAttribute('aria-label', 'Anlage entfernen');
+    x.innerHTML = '<i class="ti ti-x" aria-hidden="true"></i>';
+    x.onclick = function(){
+      document.getElementById('sf-infra-ids').value = sfInfraIds().filter(function(i){ return i !== id; }).join(',');
+      sfInfraRender();
+    };
+    chip.appendChild(x);
+    box.appendChild(chip);
+  });
+}
+function sfInfraAdd(){
+  const id = document.getElementById('sf-infra-pick').value;
+  if(!id) return;
+  sfInfraNames[id] = document.getElementById('sf-infra-pick-label').textContent.trim();
+  const ids = sfInfraIds();
+  if(ids.indexOf(id) === -1) ids.push(id);
+  document.getElementById('sf-infra-ids').value = ids.join(',');
+  const picker = document.querySelector('#sf-infra-box [data-infra-picker]');
+  if(picker && typeof clearInfraPicker === 'function') clearInfraPicker(picker);
+  sfInfraRender();
+}
+sfKind();
+sfInfraRender();
+</script>
+{{end}}

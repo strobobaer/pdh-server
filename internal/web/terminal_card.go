@@ -58,7 +58,7 @@ func cardFail(w http.ResponseWriter, status int, msg string) {
 
 // TerminalCard: POST /terminal/card {"uid":"…"}
 func (h *Handler) TerminalCard(w http.ResponseWriter, r *http.Request) {
-	term, ok := h.cardTerminal(w, r)
+	term, ok := h.cardTerminalLocked(w, r)
 	if !ok {
 		return
 	}
@@ -109,7 +109,7 @@ func (h *Handler) TerminalCard(w http.ResponseWriter, r *http.Request) {
 
 // TerminalCardPing: POST /terminal/card/ping – verlängert die Sitzung.
 func (h *Handler) TerminalCardPing(w http.ResponseWriter, r *http.Request) {
-	term, ok := h.cardTerminal(w, r)
+	term, ok := h.cardTerminalLocked(w, r)
 	if !ok {
 		return
 	}

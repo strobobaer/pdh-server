@@ -913,7 +913,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   </ul>
   <h3>Was am Terminal passiert</h3>
   <ul>
-    <li><b>Bildschirmschoner</b> – Anlagenname und Uhrzeit. Eine Berührung öffnet die Störungsinfo.</li>
+    <li><b>Bildschirmschoner</b> – Anlagenname und Uhrzeit. Eine Berührung öffnet die Störungsinfo. Wird eine Karte gelesen, öffnet sich die Störungsinfo ebenfalls und die Person ist gleich angemeldet.</li>
     <li><b>Störungsinfo</b> – die offenen Störungen und die offenen Tickets der Anlage und ihrer Unteranlagen, die neuesten zuerst (je höchstens 50, dazu „… und N weitere“). Bei Einträgen aus Unteranlagen steht der Weg dorthin (Pfad unterhalb der Terminal-Anlage) vor dem Alter. Die Seite aktualisiert sich alle 30 Sekunden von selbst. Welche Listen das Terminal zeigt, hängt von den Rechten des <b>Terminal-Benutzers</b> ab (auch wenn sich jemand kurz per Override am Terminal anmeldet): <b>Störungen ansehen</b> für die Störungsliste, <b>Tickets ansehen</b> für die Ticketliste, jeweils für die Abteilung der Anlage. Fehlt eines der Rechte, steht an der Stelle „Keine Berechtigung für Störungen“ bzw. „… für Tickets“; fehlen beide, zeigt das Terminal nur „Keine Berechtigung“. Unten führt <b>Neu</b> weiter.</li>
     <li><b>Neu</b> – <b>Störung</b> und <b>Ticket</b> öffnen vorerst beide die Meldeseite des Easy-Mode der Anlage (eine eigene Ticket-Meldung ist noch nicht verfügbar). Ist der <b>Easy-Mode</b> in den Core-Einstellungen ausgeschaltet, sind <b>Störung</b> und <b>Ticket</b> abgeblendet und das Terminal weist darauf hin („Melden am Terminal ist ausgeschaltet“) – so landet am Wandbildschirm niemand auf der Anmeldeseite. <b>Stillstand</b> ist noch nicht verfügbar. <b>Zurück</b> geht zur Störungsinfo.</li>
   </ul>
@@ -928,6 +928,18 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <li><b>Keine</b> – das Terminal zeigt <b>Kein Kartenleser – Anmeldung nicht möglich</b>; auch der Knopf entfällt.</li>
   </ul>
   <p>Die <b>Terminal-PIN</b> (4 bis 8 Ziffern, nicht lauter gleiche und keine Zahlenfolge wie 1234) setzt jede Person unter <b>Mein Konto</b>; Benutzerverwalter können sie auch am Benutzer setzen oder entfernen. Nach <b>5</b> falschen PINs ist die PIN <b>15 Minuten</b> gesperrt (an allen Terminals); am Terminal erscheint dann nur <b>Anmeldung fehlgeschlagen</b>; die Sperrzeit (<b>PIN gesperrt bis HH:MM</b>) siehst du als Benutzerverwalter beim Benutzer. Ändert sich die Anmeldeart oder der Knopf, übernimmt das Terminal das <b>sofort</b>, ohne Neuladen. Bei Fehlern erscheint kurz <b>Anmeldung fehlgeschlagen</b>, bei zu vielen Versuchen <b>Bitte kurz warten</b>.</p>
+  <h3>Benachrichtigung beim Kartenlesen (Windows-Terminal)</h3>
+  <p>Wird an einem Windows-Terminal eine Karte gelesen, während das Terminalfenster im Hintergrund ist, zeigt das Terminal, wer angemeldet wurde. Welche Art der Benachrichtigung gilt, stellst du am Systembenutzer des Terminals ein (Terminal-Block, <b>Benachrichtigung beim Kartenlesen</b>). Mehrere Arten lassen sich zusammen wählen:</p>
+  <ul>
+    <li><b>Windows-Mitteilung</b> – eine Mitteilung von Windows.</li>
+    <li><b>Fenster in der Mitte</b> (Vorgabe) – ein Fenster in der Bildschirmmitte, das nach 4 Sekunden schließt.</li>
+    <li><b>Leiste oben</b> – eine Leiste am oberen Bildschirmrand, die nach 4 Sekunden schließt.</li>
+    <li><b>Terminal nach vorn</b> – das Terminalfenster kommt in den Vordergrund.</li>
+    <li><b>Keine Benachrichtigung</b> – schließt alle anderen Arten aus.</li>
+  </ul>
+  <p>Ist nichts angehakt, gilt die Vorgabe (Fenster in der Mitte). Die Einstellung wirkt nur an Windows-Terminals in der Betriebsart Zusatz und gilt am Terminal sofort, ohne Neuladen.</p>
+  <h3>Globales Terminal (Infobildschirm)</h3>
+  <p>Ein Terminal lässt sich zum <b>Infobildschirm</b> machen: Am Systembenutzer des Terminals das Kästchen <b>Globales Terminal (Infobildschirm)</b> anhaken und speichern. Das Terminal zeigt dann eine Folienschau, ohne Anmeldung und ohne Kartenleser. Die Folien pflegst du unter <b>Administration → Infobildschirm</b> (siehe Kapitel <a href="#infobildschirm">Infobildschirm</a>); dafür brauchst du das Recht <b>Infobildschirm bearbeiten</b>. Die Umschaltung gilt am Terminal sofort, ohne Neuladen; ältere Terminals zeigen weiter die Störungsinfo.</p>
   <p>Rührt niemand das Terminal an, kehrt es nach der <b>Rückkehrzeit</b> von Störungsinfo und „Neu“ zum Bildschirmschoner zurück.</p>
   <div class="hb-howto"><b><i class="ti ti-clock"></i> So stellst du die Rückkehrzeit ein</b>
     <ol class="hb-steps">
@@ -950,6 +962,35 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>Nach dem Abmelden verschwindet der Bereich sofort.</li>
     </ol></div>
   {{template "hb-shots" (dict "Ref" (index $s "terminal") "Can" $can)}}
+</section>
+
+<section class="hb-ch" id="infobildschirm" data-title="Infobildschirm" data-pages="terminal-slides">
+  <h2><i class="ti ti-slideshow"></i> Infobildschirm</h2>
+  <p>Der <b>Infobildschirm</b> ist ein Terminal, das keine Anlage zeigt, sondern eine <b>Folienschau</b> für den ganzen Betrieb: ein Bild (z. B. ein Aushang), ein Text (z. B. eine Mitteilung) oder die aktuellen Störungen und Tickets ausgewählter Anlagen. Die Folien laufen der Reihe nach, jede so lange, wie ihre Dauer sagt. Das Terminal braucht dafür weder eine Anmeldung noch einen Kartenleser.</p>
+  <div class="hb-howto"><b><i class="ti ti-slideshow"></i> So richtest du den Infobildschirm ein</b>
+    <ol class="hb-steps">
+      <li>Am Systembenutzer des Terminals das Kästchen <b>Globales Terminal (Infobildschirm)</b> anhaken und speichern (siehe <a href="#terminal">Anlagenterminal</a>).</li>
+      <li>In der Navigation <b>Administration → Infobildschirm</b> öffnen. Den Eintrag siehst du nur mit dem Recht <b>Infobildschirm bearbeiten</b> (Vorgabe: Administratoren und Manager).</li>
+      <li>Oben <b>Bildfolie</b>, <b>Textfolie</b> oder <b>Vorgänge</b> wählen und das Formular ausfüllen, dann <b>Speichern</b>.</li>
+    </ol></div>
+  <ul>
+    <li><b>Bild</b> – eine Datei als JPEG, PNG oder WebP, höchstens 5 MB. Der Titel ist freiwillig. Beim Bearbeiten bleibt das jetzige Bild, wenn du keine neue Datei wählst.</li>
+    <li><b>Text</b> – Titel und Text, zusammen mindestens eines von beiden. Der Text hat höchstens 2000 Zeichen; Zeilenumbrüche bleiben erhalten. Es ist reiner Text, Formatierungen oder HTML werden nicht ausgeführt.</li>
+    <li><b>Vorgänge</b> – die offenen Störungen und Tickets. Wähle eine oder mehrere <b>Anlagen</b> (jeweils mit ihren Unteranlagen); ohne Auswahl gelten alle. Mit den beiden Kästchen schaltest du <b>Störungen</b> und <b>Tickets</b> einzeln ab. Das Terminal zeigt höchstens 12 je Art und nur, was der Terminal-Benutzer sehen darf.</li>
+    <li><b>Dauer</b> – 5 bis 600 Sekunden, ohne Eintrag 15.</li>
+    <li><b>Aktiv</b> – nur aktive Folien laufen. Mit dem Haken aus bleibt die Folie gespeichert, wird aber nicht gezeigt.</li>
+  </ul>
+  <p>In der Liste ändern die Pfeile <b>Hoch</b> und <b>Runter</b> die Reihenfolge, <b>Bearbeiten</b> öffnet das Formular, und der Papierkorb löscht die Folie nach einer Rückfrage. Bei Bildfolien zeigt die Liste eine Vorschau. Jede Änderung erreicht alle Infobildschirme sofort, ohne Neuladen.</p>
+  <p>Ungültige Eingaben (zu langer Text, falsche Bildart, ein Bild über 5 MB, eine Dauer außerhalb von 5 bis 600) lehnt PDH mit einer Meldung im Formular ab; gespeichert wird dann nichts.</p>
+  <div class="hb-howto"><b><i class="ti ti-hand-finger"></i> So bedient man den Infobildschirm</b>
+    <ul>
+      <li><b>Weiterblättern</b> – auf eine freie Fläche tippen oder mit dem Finger nach links wischen. Die Dauer der nächsten Folie beginnt dann neu.</li>
+      <li><b>Vorgang ansehen</b> – in einer Vorgänge-Folie einen Eintrag antippen. Die Ansicht zeigt Titel, Status, Anlage, Beschreibung, wann der Vorgang erstellt und zuletzt geändert wurde und die letzten fünf Verlaufseinträge. Sie ist nur zum Lesen: keine Anhänge, keine Knöpfe außer <b>Zurück</b>. Nach der Rückkehrzeit des Terminals geht es von selbst zur Folienschau zurück.</li>
+      <li><b>Nicht freigegeben</b> – ein Vorgang, der nicht zu einer Anlage einer aktiven Vorgänge-Folie gehört oder den der Terminal-Benutzer nicht sehen darf, lässt sich nicht öffnen.</li>
+      <li><b>Ohne Folien</b> zeigt der Bildschirm „Keine Folien eingerichtet“.</li>
+    </ul></div>
+  <p>Ein globales Terminal liest keine Karten und hat keine Anmeldung; die Wege dafür sind gesperrt. Schaltest du das Kästchen am Systembenutzer aus, wird der Bildschirm von selbst wieder zum normalen Anlagenterminal. Ein Terminalprogramm mit Zwischenspeicher bekommt die Folien samt Bildern nach jeder Änderung mitgeschickt (je Bild höchstens 5 MB, insgesamt höchstens 50 MB); ältere Terminalprogramme ignorieren das.</p>
+  {{template "hb-shots" (dict "Ref" (index $s "infobildschirm") "Can" $can)}}
 </section>
 
 <section class="hb-ch" id="watch" data-title="Anlagen-Schnellübersicht" data-pages="plant-watch">

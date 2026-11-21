@@ -39,9 +39,11 @@ func TestTerminalPageInitialLoginSettings(t *testing.T) {
 	}
 	if p := gate(); p.ManualLogin != loginCardPIN || !p.PasswordButton {
 		t.Fatalf("Standard: %q %v", p.ManualLogin, p.PasswordButton)
+	} else if p.CardNotify != `["overlay"]` {
+		t.Fatalf("Standard card_notify: %q", p.CardNotify)
 	}
-	e.must(h.saveTerminalLoginSettings(e.ctx, term, terminalLoginSettings{ManualLogin: loginCardOnly, PasswordButton: false}))
-	if p := gate(); p.ManualLogin != loginCardOnly || p.PasswordButton {
-		t.Fatalf("aus terminal_settings: %q %v", p.ManualLogin, p.PasswordButton)
+	e.must(h.saveTerminalLoginSettings(e.ctx, term, terminalLoginSettings{ManualLogin: loginCardOnly, PasswordButton: false, CardNotify: []string{"banner", "toast"}}))
+	if p := gate(); p.ManualLogin != loginCardOnly || p.PasswordButton || p.CardNotify != `["toast","banner"]` {
+		t.Fatalf("aus terminal_settings: %q %v %q", p.ManualLogin, p.PasswordButton, p.CardNotify)
 	}
 }
