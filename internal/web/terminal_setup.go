@@ -5,7 +5,7 @@ package web
 // die Seite „Neu“ unterhalb von Störung und Ticket. Dieselbe Fachlogik wie Easy-Modus und
 // Anlagenseite (setup_easy.go): Rüsttasten der Anlage samt geerbten, Bremse je Anlage, Prüfung der
 // Zeiten. Wer rüstet: die per Karte angemeldete Person (mit setup.edit für die Abteilung der Anlage),
-// sonst der Terminal-Benutzer selbst (Rolle terminal bringt setup.edit mit).
+// sonst niemand: ohne Anmeldung (Karte oder manuell am Terminal) wird zur Anmeldung aufgefordert.
 
 import (
 	"net/http"
@@ -37,12 +37,8 @@ func (h *Handler) terminalSetupActor(r *http.Request, uid, infraID string) setup
 				Can: h.cardPersonCan(ctx, p, permSetupEdit, "infrastructure", infraID)}
 		}
 	}
-	_, role, _ := h.terminalInfraLookup(ctx, uid)
-	a := setupActor{ID: uid}
-	if h.rbac != nil {
-		a.Can = h.rbac.HasPermissionInDepartment(uid, role, permSetupEdit, h.recordDepartments(ctx, "infrastructure", infraID))
-	}
-	return a
+	// Ohne Anmeldung (Karte oder manuell am Terminal) rüstet niemand: nie der bloße Terminal-Benutzer.
+	return setupActor{ID: uid}
 }
 
 // terminalSetupFill füllt die Rüsten-Angaben der Seite (Neu: Kachel; Rüsten: ganze Seite).

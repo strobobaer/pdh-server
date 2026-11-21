@@ -206,7 +206,9 @@ body.has-gear .g-vorg{padding-top:60px}
   <div class="t-path">{{if .Path}}{{.Path}}{{else}}<b>{{.Name}}</b>{{end}}{{if .SetupCard}} · {{.SetupPerson}}{{end}}</div>
   <div class="t-clock" data-clock>&nbsp;</div>
 </div>
-{{if not .SetupCan}}
+{{if not .SetupCard}}
+<div class="t-none"><i class="ti ti-id-badge-2" aria-hidden="true"></i><p>Bitte zuerst anmelden</p><small>Zum Rüsten per Karte oder mit Benutzer und Passwort am Terminal anmelden.</small></div>
+{{else if not .SetupCan}}
 <div class="t-none"><i class="ti ti-lock" aria-hidden="true"></i><p>Keine Berechtigung</p><small>{{if .SetupPerson}}{{.SetupPerson}} darf an dieser Anlage nicht rüsten.{{else}}Dieses Terminal darf hier nicht rüsten.{{end}}</small></div>
 {{else}}
 <div class="t-rz">
@@ -248,7 +250,7 @@ body.has-gear .g-vorg{padding-top:60px}
   <a class="t-tilebtn ticket" href="/e/{{.InfraID}}"><i class="ti ti-ticket" aria-hidden="true"></i> Ticket</a>{{else}}<span class="t-tilebtn fault off" aria-disabled="true"><i class="ti ti-alert-triangle" aria-hidden="true"></i> Störung</span>
   <span class="t-tilebtn ticket off" aria-disabled="true"><i class="ti ti-ticket" aria-hidden="true"></i> Ticket</span>
   <p class="t-note">Melden am Terminal ist ausgeschaltet – Easy-Mode in den Einstellungen aktivieren</p>{{end}}
-  {{if .Setup.Show}}{{if .SetupCan}}<a class="t-tilebtn t-rzlink" href="/terminal/rusten"><i class="ti ti-tool" aria-hidden="true"></i><span>Rüsten{{if .Setup.Running}}<small>{{.Setup.Text}}</small>{{else if .Setup.Fault}}<small>{{.Setup.Text}}</small>{{end}}</span></a>{{else}}<span class="t-tilebtn t-rzlink off" aria-disabled="true"><i class="ti ti-tool" aria-hidden="true"></i><span>Rüsten<small>Keine Berechtigung zum Rüsten</small></span></span>{{end}}{{end}}
+  {{if .Setup.Show}}{{if and .SetupCard .SetupCan}}<a class="t-tilebtn t-rzlink" href="/terminal/rusten"><i class="ti ti-tool" aria-hidden="true"></i><span>Rüsten{{if .Setup.Running}}<small>{{.Setup.Text}}</small>{{else if .Setup.Fault}}<small>{{.Setup.Text}}</small>{{end}}</span></a>{{else}}<span class="t-tilebtn t-rzlink off" aria-disabled="true"><i class="ti ti-tool" aria-hidden="true"></i><span>Rüsten<small>{{if .SetupCard}}Keine Berechtigung zum Rüsten{{else}}Bitte zuerst anmelden{{end}}</small></span></span>{{end}}{{end}}
   <div class="t-stop">
     <h2><i class="ti ti-player-pause" aria-hidden="true"></i> Stillstand</h2>
     <p>Stillstandsgründe folgen</p>

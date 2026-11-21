@@ -41,9 +41,9 @@ func TestTerminalSetupInheritedButtons(t *testing.T) {
 	e.must(st.SetInfraButtons(e.ctx, hall, []string{b.ID}))
 
 	term := e.user("rtterm", "terminal", true)
-	viewer := e.user("rtview", "viewer", true)
+	person := e.user("rtperson", "terminal", false)
+	noedit := e.user("rtnoedit", "viewer", false)
 	e.exec(`UPDATE users SET terminal_infrastructure_id = $2::uuid WHERE id = $1::uuid`, term, plant)
-	e.exec(`UPDATE users SET terminal_infrastructure_id = $2::uuid WHERE id = $1::uuid`, viewer, plant)
 	e.warm()
 	h := &Handler{db: e.pool, rbac: e.rb, jwtSecret: "test-geheim", tmpl: loadTestTemplates(t)}
 	terminalTemplatePath = "../../web/templates/terminal.gohtml"
@@ -69,6 +69,19 @@ func TestTerminalSetupInheritedButtons(t *testing.T) {
 		return rec
 	}
 	tu := &users.User{ID: term, Role: users.Role("terminal"), IsSystemUser: true}
+
+	// Ohne Anmeldung: Aufforderung zur Anmeldung, keine Bedienung, nie der bloße Terminal-Benutzer
+	if body := do(tu, "GET", "/terminal/rusten", nil).Body.String(); !strings.Contains(body, "Bitte zuerst anmelden") || strings.Contains(body, "/terminal/rusten/start") {
+		t.Error("ohne Anmeldung: Aufforderung fehlt oder Start angeboten")
+	}
+	do(tu, "POST", "/terminal/rusten/start", url.Values{"button_id": {b.ID}})
+	var n int
+	e.must(e.pool.QueryRow(e.ctx, `SELECT count(*) FROM setup_times WHERE infrastructure_id = $1::uuid`, plant).Scan(&n))
+	if n != 0 {
+		t.Fatalf("ohne Anmeldung wurde gerüstet: %d", n)
+	}
+	e.exec(`INSERT INTO terminal_card_sessions (terminal_user_id, person_id) VALUES ($1::uuid, $2::uuid)`, term, person)
+	e.t.Cleanup(func() { e.pool.Exec(context.Background(), `DELETE FROM terminal_card_sessions WHERE terminal_user_id = $1::uuid`, term) })
 
 	// Neu: Kachel „Rüsten“ unterhalb von Störung/Ticket
 	if body := do(tu, "GET", "/terminal/neu", nil).Body.String(); !strings.Contains(body, `href="/terminal/rusten"`) {
@@ -98,20 +111,26 @@ func TestTerminalSetupInheritedButtons(t *testing.T) {
 	if !strings.Contains(rec.Header().Get("Location"), "setup=badtime") {
 		t.Errorf("Dauer länger als Beginn zurück: %s", rec.Header().Get("Location"))
 	}
-	var n int
 	e.must(e.pool.QueryRow(e.ctx, `SELECT count(*) FROM setup_times WHERE infrastructure_id = $1::uuid`, plant).Scan(&n))
 	if n != 2 {
 		t.Errorf("Rüstzeiten: %d, erwartet 2", n)
 	}
 
-	// ohne setup.edit: keine Bedienung, keine neue Rüstzeit
-	e.grant(viewer, "setup.edit", "", false)
+	// Akteur ist die angemeldete Person, nicht der Terminal-Benutzer
+	var bad int
+	e.must(e.pool.QueryRow(e.ctx, `SELECT count(*) FROM setup_times WHERE infrastructure_id = $1::uuid AND created_by <> $2::uuid`, plant, person).Scan(&bad))
+	if bad != 0 {
+		t.Errorf("%d Rüstzeiten nicht von der angemeldeten Person erstellt", bad)
+	}
+
+	// angemeldete Person ohne setup.edit: keine Bedienung, keine neue Rüstzeit
+	e.grant(noedit, "setup.edit", "", false)
 	e.warm()
-	vu := &users.User{ID: viewer, Role: users.Role("viewer"), IsSystemUser: true}
-	if body := do(vu, "GET", "/terminal/rusten", nil).Body.String(); !strings.Contains(body, "Keine Berechtigung") {
+	e.exec(`UPDATE terminal_card_sessions SET person_id = $2::uuid WHERE terminal_user_id = $1::uuid`, term, noedit)
+	if body := do(tu, "GET", "/terminal/rusten", nil).Body.String(); !strings.Contains(body, "Keine Berechtigung") {
 		t.Error("ohne setup.edit: Hinweis fehlt")
 	}
-	do(vu, "POST", "/terminal/rusten/start", url.Values{"button_id": {b.ID}})
+	do(tu, "POST", "/terminal/rusten/start", url.Values{"button_id": {b.ID}})
 	e.must(e.pool.QueryRow(e.ctx, `SELECT count(*) FROM setup_times WHERE infrastructure_id = $1::uuid`, plant).Scan(&n))
 	if n != 2 {
 		t.Errorf("ohne Recht wurde gerüstet: %d", n)
