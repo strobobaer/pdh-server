@@ -5,7 +5,7 @@
 <div style="margin-bottom:18px;display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap">
   <div style="flex:1;min-width:0">
   <h1 style="font-size:19px;font-weight:600;letter-spacing:-.3px">{{if eq .Greeting "Morgen"}}{{t "Guten Morgen"}}{{else if eq .Greeting "Abend"}}{{t "Guten Abend"}}{{else}}{{t "Guten Tag"}}{{end}}, {{.UserFirstName}}</h1>
-  <p style="font-size:12px;color:var(--muted);margin-top:3px">{{.DateStr}} · Werk Augsburg</p>
+  <p style="font-size:12px;color:var(--muted);margin-top:3px">{{.DateStr}}{{with .CompanyLine}} · {{.}}{{end}}</p>
   </div>
 </div>
 

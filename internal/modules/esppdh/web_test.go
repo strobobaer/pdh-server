@@ -53,8 +53,9 @@ func TestGenerateWebServer(t *testing.T) {
 	if pw := get(auth, "password"); pw == nil || pw.Tag != "!secret" || pw.Value != "web_password" {
 		t.Errorf("auth.password ist kein !secret web_password: %+v", pw)
 	}
-	if get(root, "ota") != nil {
-		t.Error("ota darf nicht erzeugt werden (keine Firmware über die Webseite)")
+	// Updates nur über den ESPHome-Baustein (das PDH schiebt sie), nie über die Webseite.
+	if ota := get(root, "ota"); ota == nil || len(ota.Content) != 1 || get(ota.Content[0], "platform").Value != "esphome" {
+		t.Errorf("ota soll genau platform: esphome enthalten: %+v", ota)
 	}
 	if bytes.Contains(cfg, []byte("web-kennwort-x")) {
 		t.Error("Konfiguration enthält das Kennwort der Webseite")

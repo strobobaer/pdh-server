@@ -137,6 +137,11 @@ func (h *Handler) esppdhResolve(ctx context.Context, d esppdhDevice, mqttPW, apP
 		}
 		dev.WebServer, dev.WebPassword = true, pw
 	}
+	if pw, err := h.esppdhOTAPassword(ctx, &d); err != nil {
+		msgs = append(msgs, err.Error())
+	} else {
+		dev.OTAPassword = pw
+	}
 	if !d.Wired && d.WLANID != "" {
 		var name string
 		var hidden, released bool

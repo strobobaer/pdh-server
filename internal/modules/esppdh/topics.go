@@ -20,10 +20,12 @@ const (
 
 // Geräte-Themen unter esppdh/<kennung>/info/.
 const (
-	topicUptime  = "laufzeit"
-	topicAddress = "adresse"
-	nameUptime   = "Laufzeit"
-	nameAddress  = "Adresse"
+	topicUptime   = "laufzeit"
+	topicAddress  = "adresse"
+	topicFirmware = "firmware"
+	nameUptime    = "Laufzeit"
+	nameAddress   = "Adresse"
+	nameFirmware  = "Firmware"
 )
 
 func infoTopic(slug, value string) string { return "esppdh/" + slug + "/info/" + value }
@@ -57,6 +59,7 @@ func Topics(d Device) ([]TopicInfo, error) {
 	info := []TopicInfo{
 		{Topic: infoTopic(d.Slug, topicUptime), Name: nameUptime, Unit: "s", Group: GroupDevice, Interval: 10 * time.Second, Handshake: true},
 		{Topic: infoTopic(d.Slug, topicAddress), Name: nameAddress, Group: GroupDevice},
+		{Topic: infoTopic(d.Slug, topicFirmware), Name: nameFirmware, Group: GroupDevice},
 	}
 	b, ok := BoardByKey(d.BoardKey)
 	if !ok {

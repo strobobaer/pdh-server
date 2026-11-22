@@ -1,0 +1,72 @@
+{{/* ESPPDH – Firmware übers Netz aufspielen (internal/web/esppdh_ota.go). Teil der Karte
+     „Firmware“ auf der Geräteseite (esppdhOTAView, nur mit esppdh.ota) und der Verlauf eines
+     Auftrags als htmx-Teil GET /import/esppdh/{id}/ota/{rid} (alle 2 s, solange er wartet oder
+     läuft). Klassen der Karte „Firmware“ (widgets/esppdh_build.gohtml); Farben nur über die
+     Variablen des Farbschemas (Fiori/Fluent, hell/dunkel). */}}
+
+{{define "esppdh-ota"}}{{if .Show}}
+<div class="esp-ota" id="esp-ota">
+  <div class="esp-runs-title"><i class="ti ti-cloud-upload" aria-hidden="true"></i> Firmware übers Netz</div>
+  <dl class="esp-dl">
+    <dt>Auf dem Gerät</dt><dd>{{if .Installed}}{{with .InstalledWhen}}Bau vom {{.}}{{else}}<code class="esp-mono">{{$.Installed}}</code>{{end}}{{else}}keine Meldung{{end}}</dd>
+    <dt>Zuletzt gebaut</dt><dd>{{with .LatestWhen}}Bau vom {{.}}{{else}}–{{end}}</dd>
+    {{with .Address}}<dt>Adresse</dt><dd><code class="esp-mono">{{.}}</code></dd>{{end}}
+  </dl>
+  {{if .UpToDate}}<p class="esp-note"><i class="ti ti-circle-check" aria-hidden="true"></i> Die zuletzt gebaute Firmware läuft schon auf dem Gerät.</p>{{end}}
+  {{if .CanPush}}
+  <form method="POST" action="/import/esppdh/{{.DeviceID}}/ota" class="esp-fw-build" onsubmit="return confirm('Firmware jetzt übers Netz aufspielen? Das Gerät startet dabei neu und misst einen Moment lang nicht.')">
+    <button type="submit" class="btn btn-primary"><i class="ti ti-cloud-upload" aria-hidden="true"></i> Firmware aufspielen</button>
+  </form>
+  {{else if .Reason}}<p class="esp-note"><i class="ti ti-info-circle" aria-hidden="true"></i> {{.Reason}}</p>{{end}}
+  <p class="esp-note">Der Server muss das Gerät in seinem Netz auf Port {{.PortHint}} (TCP) erreichen – bei getrennten Netzen die Freigabe vom Server zum Netz des Geräts einrichten. Das erste Mal geht nur per USB.</p>
+  {{with .Run}}{{template "esppdh-ota-run" .}}{{end}}
+</div>
+{{end}}{{end}}
+
+{{/* Übersicht: Knopf „Alle veralteten Geräte aktualisieren“ (esppdhBatchView, nur mit esppdh.ota überall) */}}
+{{define "esppdh-ota-all"}}{{if or .CanStart .Running}}
+<div class="esp-ota-all" style="display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;margin:0 0 10px">
+  {{if .Running}}
+  <span class="badge b-blue"><i class="ti ti-loader-2" aria-hidden="true"></i>&nbsp;Sammelaktion läuft</span>
+  <span class="esp-note" style="margin:0">noch {{.Pending}} Gerät(e) – Stand je Gerät unter „Zustand“, Seite neu laden</span>
+  <form method="POST" action="/import/esppdh/ota-all/{{.Running}}/cancel" onsubmit="return confirm('Sammelaktion abbrechen? Das laufende Gerät wird noch fertig.')">
+    <button type="submit" class="btn btn-small"><i class="ti ti-player-stop" aria-hidden="true"></i> Abbrechen</button>
+  </form>
+  {{else}}
+  <button type="button" class="btn" hx-post="/import/esppdh/ota-all" hx-target="#esp-ota-all-box" hx-swap="innerHTML">
+    <i class="ti ti-cloud-upload" aria-hidden="true"></i> Alle veralteten Geräte aktualisieren</button>
+  {{end}}
+</div>
+<div id="esp-ota-all-box"></div>
+{{end}}{{end}}
+
+{{/* Bestätigung der Sammelaktion (htmx-Teil, esppdhBatchConfirm) */}}
+{{define "esppdh-ota-all-confirm"}}
+<div class="esp-build">
+  {{if .Blocked}}<p class="esp-note"><i class="ti ti-info-circle" aria-hidden="true"></i> {{.Blocked}}</p>
+  {{else if not .Items}}<p class="esp-note"><i class="ti ti-circle-check" aria-hidden="true"></i> Kein Gerät ist veraltet – es gibt nichts aufzuspielen.</p>
+  {{else}}
+  <p class="esp-note" style="margin-top:0">Diese Geräte nimmt die Sammelaktion – eines nach dem anderen. Geräte mit Grund werden übersprungen.</p>
+  <ul class="esp-runs">
+    {{range .Items}}<li><span class="esp-wrap" style="font-weight:600">{{.Name}}</span>
+      {{if .Reason}}<span class="badge b-gray">wird übersprungen</span><span class="esp-wrap">{{.Reason}}</span>
+      {{else if .NeedsBuild}}<span class="badge b-blue">wird gebaut und aufgespielt</span>
+      {{else}}<span class="badge b-blue">wird aufgespielt</span>{{end}}</li>{{end}}
+  </ul>
+  <form method="POST" action="/import/esppdh/ota-all/start" class="esp-fw-build" style="margin-top:10px" onsubmit="return confirm('Sammelaktion starten? Die Geräte starten beim Aufspielen nacheinander neu.')">
+    <button type="submit" class="btn btn-primary"><i class="ti ti-cloud-upload" aria-hidden="true"></i> Sammelaktion starten</button>
+  </form>
+  {{end}}
+</div>
+{{end}}
+
+{{define "esppdh-ota-run"}}
+<div id="esp-ota-{{.ID}}" class="esp-build"{{if .Active}} hx-get="/import/esppdh/{{.DeviceID}}/ota/{{.ID}}?poll=1" hx-trigger="every 2s" hx-swap="outerHTML"{{end}}>
+  <div class="esp-build-head">
+    <span class="badge {{.Badge}}">{{if .Active}}<i class="ti ti-loader-2" aria-hidden="true"></i>&nbsp;{{end}}{{.StatusLabel}}</span>
+    <span class="esp-wrap">Update vom {{.When}}{{with .By}} · {{.}}{{end}}{{with .Address}} · an {{.}}{{end}}</span>
+  </div>
+  {{if eq .Status "queued"}}<p class="esp-note"><i class="ti ti-clock" aria-hidden="true"></i> Wartet, bis der laufende Bau oder das laufende Update fertig ist.</p>{{end}}
+  <pre class="esp-log" tabindex="0" aria-label="Verlauf des Updates">{{if .Log}}{{.Log}}{{else if .Active}}Noch keine Ausgabe …{{else}}Kein Verlauf.{{end}}</pre>
+</div>
+{{end}}

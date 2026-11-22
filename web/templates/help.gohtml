@@ -931,7 +931,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     Den Code nur an der Admin-Seite des PDH-Terminals eingeben. Die Seite ist nur für Systembenutzer gedacht – andere Benutzer sehen den Hinweis, dass die Seite für Terminal-Benutzer bestimmt ist. Ist dem Benutzer keine Anlage zugeordnet oder die Anlage ausgeblendet, steht auf dem Terminal „Diesem Terminal ist keine Anlage zugeordnet“.</div>
   <p>Am gekoppelten PDH-Terminal gibt es oben rechts ein kleines <b>Zahnrad</b>. Es öffnet die Einstellungen des Terminals (die lokale Admin-Seite) und erscheint in allen Ansichten, auch im Schoner und in der Folienschau. Im Browser an einem normalen PC fehlt es.</p>
   <h3>Rüsten am Terminal</h3>
-  <p>Hat die Anlage des Terminals <b>Rüsttasten</b> (an der Anlage selbst oder an einer Halle oder Linie darüber zugeordnet, siehe <a href="#ruestzeiten">Rüstzeiten</a>), steht auf der Seite <b>Neu</b> unterhalb von <b>Störung</b> und <b>Ticket</b> die Kachel <b>Rüsten</b>. Sie öffnet eine eigene Terminalseite: Rüsttaste <b>einmal antippen</b> startet das Rüsten, <b>Fertig</b> beendet es, unter <b>Rüstzeit nachtragen</b> wählst du Rüsttaste, <b>Beginn</b> (vor 15 Minuten bis vor 8 Stunden) und <b>Dauer</b> per Antippen. Die Seite füllt den Bildschirm (Querformat, Hochformat) und läuft unabhängig vom Easy-Modus. Es rüstet immer die am Terminal <b>angemeldete Person</b> (Karte oder manuelle Anmeldung); ohne Anmeldung zeigt die Kachel „Bitte zuerst anmelden“. Das Recht „Rüstzeiten: erfassen …“ (<code>setup.edit</code>) für die Abteilung der Anlage braucht der <b>Terminal-Benutzer</b> (Rolle Terminal), die angemeldete Person ist nur die, die rüstet; fehlt es dem Terminal-Benutzer, steht dort „Keine Berechtigung zum Rüsten“. Auch die Meldeseite des Easy-Modus passt sich jetzt der Bildschirmgröße an.</p>
+  <p>Hat die Anlage des Terminals <b>Rüsttasten</b> (an der Anlage selbst oder an einer Halle oder Linie darüber zugeordnet, siehe <a href="#ruestzeiten">Rüstzeiten</a>), steht auf der Seite <b>Neu</b> unterhalb von <b>Störung</b> und <b>Ticket</b> die Kachel <b>Rüsten</b>. Sie öffnet eine eigene Terminalseite: Rüsttaste <b>einmal antippen</b> startet das Rüsten, <b>Fertig</b> beendet es, unter <b>Rüstzeit nachtragen</b> wählst du Rüsttaste, <b>Beginn</b> (vor 15 Minuten bis vor 8 Stunden) und <b>Dauer</b> per Antippen. Die Seite füllt den Bildschirm (Querformat, Hochformat) und läuft unabhängig vom Easy-Modus. Rüsten geht <b>ohne Anmeldung</b>; die Anmeldung ist freiwillig. Ist am Terminal eine Person angemeldet (Karte oder manuell), rüstet diese. Ohne Anmeldung rüstet der Terminal-Benutzer; dort kannst du optional ein <b>Kürzel/Name</b> eintragen (wie im Easy-Modus), das bei der Rüstzeit gespeichert wird, oder es leer lassen. Das Recht „Rüstzeiten: erfassen …“ (<code>setup.edit</code>) für die Abteilung der Anlage braucht immer der <b>Terminal-Benutzer</b> (Rolle Terminal); fehlt es, steht auf der Kachel „Keine Berechtigung zum Rüsten“. Auch die Meldeseite des Easy-Modus passt sich jetzt der Bildschirmgröße an.</p>
   <h3>Störung und Ticket am Terminal</h3>
   <p>Die Kacheln <b>Störung</b> und <b>Ticket</b> auf der Seite <b>Neu</b> öffnen eigene Terminalseiten und brauchen keinen Easy-Modus. Zuerst am Terminal <b>anmelden</b> (Karte oder Benutzer und Passwort) – gemeldet wird immer im Namen dieser Person. Dann Meldetext antippen (die Meldetexte der Anlage, siehe Easy-Modus) oder selbst schreiben, <b>Art</b> und <b>Zustand der Anlage</b> wählen (bei „Anlage steht“ löst PDH den Alarm wie sonst aus), bei Bedarf eine Unteranlage und ein Foto, dann <b>Melden</b>. Der Terminal-Benutzer braucht dafür <code>faults.edit</code> bzw. <code>tickets.edit</code> für die Abteilung der Anlage (die Rolle Terminal bringt beides mit).</p>
   <h3>Rolle „Terminal“ und Halle begrenzen</h3>
@@ -2331,6 +2331,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li><b>„ESPPDH: Geräte und Zustand ansehen“</b> (<code>esppdh.view</code>): Liste, Seite des Geräts, Verlauf der Bauten und die Konfiguration ohne Kennwörter.</li>
       <li><b>„ESPPDH: Sensorwerte ansehen (Anlage und Terminal)“</b> (<code>esppdh.values</code>): Reiter „ESPPDH“ an der Anlage, Sensoren am Anlagenterminal nach Kartenanmeldung und der Zähler auf der Schnellübersicht. Ab 0.82.11 bei Administrator, Manager, Anlagenverantwortlichen und Technikern.</li>
       <li><b>„ESPPDH: Geräte anlegen, ändern, sperren, bauen und flashen“</b> (<code>esppdh.edit</code>): dazu Firmware herunterladen und das Kennwort des Notzugangs sehen.</li>
+      <li><b>„ESPPDH: Firmware übers Netz aufspielen“</b> (<code>esppdh.ota</code>): Knopf „Firmware aufspielen“ am Gerät; gilt es in allen Abteilungen, auch „Alle veralteten Geräte aktualisieren“. Ab 0.82.25 bei allen, die <code>esppdh.edit</code> haben, in derselben Abteilung.</li>
       <li><b>„ESPPDH: Geräte löschen (Bereichsadministrator)“</b> (<code>esppdh.admin</code>): alle Rechte von ESPPDH und als Einziger Geräte endgültig löschen.</li>
     </ul>
     <p>Die Rechte gelten überall oder nur in einer Abteilung; maßgeblich ist die Anlage des Geräts. Beim Update bekamen „ansehen“ und „anlegen, ändern …“ alle Rollen und Personen mit „Import verwalten“ – mit derselben Abteilung. Den Bereichsadministrator bekamen die Rollen, die überall „Import verwalten“ und „Server-Einstellungen (.env) bearbeiten &amp; Server neu starten“ haben. Wem „Import verwalten“ einzeln verboten ist, dem sind alle drei ESPPDH-Rechte verboten; wem nur „Server-Einstellungen (.env) bearbeiten &amp; Server neu starten“ einzeln verboten ist, dem nur der Bereichsadministrator. Den Reiter <b>ESPPDH</b> der Server-Einstellungen bedienen Administratoren mit „Server-Einstellungen (.env) bearbeiten &amp; Server neu starten“ (<a href="#esppdh">mehr</a>).</p></div>
@@ -2639,8 +2640,9 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li><a href="#hb-esp-new">Gerät anlegen</a>.</li>
       <li><a href="#hb-esp-blocks">Bausteine wählen und anschließen</a>.</li>
       <li><a href="#hb-esp-build">Firmware bauen</a>.</li>
-      <li><a href="#hb-esp-flash">Firmware aufspielen (flashen)</a>.</li>
+      <li><a href="#hb-esp-flash">Firmware aufspielen (flashen)</a> – das erste Mal per USB.</li>
       <li><a href="#hb-esp-check">Im Explorer prüfen</a>, ob die Werte ankommen.</li>
+      <li>Spätere Änderungen: neu bauen und <a href="#hb-esp-ota">übers Netz aufspielen</a>.</li>
     </ol></div>
 
   <h3 id="hb-esp-env"><i class="ti ti-tool"></i> Umgebung einrichten</h3>
@@ -2781,10 +2783,41 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <ul>
     <li><b>Ohne Chrome oder Edge oder ohne https</b> steht dort „USB-Flash braucht Chrome oder Edge und eine https-Adresse des PDH“. Dann mit <b>Firmware zum ersten Flashen</b> die Datei herunterladen (<code>esppdh-&lt;kennung&gt;-factory.bin</code>) und mit einem anderen Werkzeug (z. B. esptool) ab Adresse 0 aufspielen.</li>
     <li><b>Andere Platine:</b> kein USB-Flash im Browser, nur herunterladen.</li>
-    <li><b>Update-Datei (über das Netz)</b> (<code>…-ota.bin</code>) ist für spätere Updates über das Netz gedacht. Das kann ESPPDH noch nicht – bis dahin jedes Gerät per USB neu flashen.</li>
+    <li><b>Update-Datei (über das Netz)</b> (<code>…-ota.bin</code>) braucht man nur für eigene Werkzeuge – das PDH spielt sie selbst auf, siehe <a href="#hb-esp-ota">Firmware übers Netz aufspielen</a>.</li>
     <li><b>Nach einer Änderung erst neu bauen.</b> Passt die Firmware nicht mehr zur Konfiguration, fehlt der Knopf „Per USB flashen“; dort steht „Per USB flashen geht erst nach einem neuen Bau“.</li>
     <li>Die Firmware enthält WLAN- und MQTT-Kennwort. Nur für dieses Gerät verwenden und die Datei nicht weitergeben.</li>
   </ul>
+
+  <h3 id="hb-esp-ota"><i class="ti ti-cloud-upload"></i> Firmware übers Netz aufspielen</h3>
+  <p>Ab Version 0.82.25 hat jede Firmware einen <b>Update-Baustein</b> mit eigenem Kennwort je Gerät und den Sicherheitsmodus von ESPHome. Damit spielt das PDH neue Firmware übers Netz auf – ohne USB-Kabel. Das Gerät meldet außerdem, welcher Bau auf ihm läuft.</p>
+  <div class="hb-howto"><b><i class="ti ti-list-check"></i> Einmal vorbereiten</b>
+    <ol class="hb-steps">
+      <li>Das Gerät <b>einmal per USB</b> mit einer Firmware ab 0.82.25 flashen. Ältere Firmware kann keine Updates übers Netz. Nach dem Update auf 0.82.24 gelten deshalb alle Geräte einmal als „neu bauen“.</li>
+      <li>Auf der Seite <a href="#netzwerk">Netzwerk</a> beim Netz des Geräts den <b>Adressbereich</b> eintragen (z. B. <code>10.20.0.0/24</code>). Bei WLAN muss der Haken <b>„Für ESPPDH-Geräte nutzbar“</b> gesetzt sein, bei Kabel am Gerät ein Netz gewählt.</li>
+      <li>Die Firewall muss den Server zum Gerät durchlassen: <b>TCP-Port 3232</b> (ESP32) bzw. <b>8266</b> (ESP8266).</li>
+    </ol></div>
+  <div class="hb-howto"><b><i class="ti ti-cloud-upload"></i> So spielst du ein Gerät übers Netz auf</b>
+    <ol class="hb-steps">
+      <li>Die Seite des Geräts öffnen. Nach einer Änderung zuerst <b>Firmware bauen</b>.</li>
+      <li>In der Karte <b>Firmware</b> unter <b>Firmware übers Netz</b> stehen „Auf dem Gerät“, „Zuletzt gebaut“ und die Adresse des Geräts.</li>
+      <li><b>Firmware aufspielen</b> drücken und bestätigen. Das Gerät startet dabei neu und misst einen Moment lang nicht.</li>
+      <li>Der Verlauf zeigt den Fortschritt. <b>aufgespielt</b> heißt: Das Gerät meldet nach dem Neustart den neuen Bau. <b>aufgespielt, meldet sich nicht</b> heißt: Die Firmware ist drauf, aber das Gerät hat sich nach 3 Minuten noch nicht mit dem neuen Bau gemeldet – Strom und Netz prüfen.</li>
+    </ol></div>
+  <p>Fehlt der Knopf, steht dort der Grund, z. B.:</p>
+  <ul>
+    <li><b>„Das Gerät hat noch keinen Update-Baustein – einmal per USB flashen.“</b> Das Gerät läuft noch mit einer Firmware vor 0.82.25.</li>
+    <li><b>„… liegt in keinem freigegebenen Netz“</b> oder <b>„kein Adressbereich eingetragen“</b>: Netz auf der Seite Netzwerk wie oben einrichten.</li>
+    <li><b>„Das Gerät meldet keine bestätigte Adresse“</b>: Das Gerät ist nicht verbunden, oder seine gemeldete Adresse passt nicht zu seiner Verbindung am Broker.</li>
+    <li><b>„Die zuletzt gebaute Firmware passt nicht mehr zur Konfiguration“</b>: erst neu bauen.</li>
+    <li>Nicht am Spiegel und nicht während der Wartung. Es läuft immer nur ein Bau oder ein Update zur Zeit, weitere warten.</li>
+  </ul>
+  <div class="hb-howto"><b><i class="ti ti-stack-2"></i> So aktualisierst du alle veralteten Geräte</b>
+    <ol class="hb-steps">
+      <li>Auf der Übersicht <b>ESPPDH</b> in der Karte <b>Geräte</b> auf <b>Alle veralteten Geräte aktualisieren</b> drücken. Den Knopf sieht nur, wer das Recht „ESPPDH: Firmware übers Netz aufspielen“ <b>in allen Abteilungen</b> hat.</li>
+      <li>Die Liste zeigt jedes veraltete Gerät: „wird gebaut und aufgespielt“, „wird aufgespielt“ oder „wird übersprungen“ mit Grund. Veraltet ist ein Gerät, wenn seine Konfiguration seit dem letzten Bau geändert ist oder es nicht den letzten Bau meldet. Eine neue ESPHome-Version allein zählt nicht.</li>
+      <li><b>Sammelaktion starten</b> drücken. Die Geräte kommen nacheinander dran; scheitert eines, geht es mit dem nächsten weiter.</li>
+      <li>Den Stand zeigt die Spalte <b>Zustand</b> („Update: …“, Seite neu laden). <b>Abbrechen</b> lässt das laufende Gerät fertig werden und bricht den Rest ab.</li>
+    </ol></div>
 
   <h3 id="hb-esp-check"><i class="ti ti-radar"></i> Im Explorer prüfen</h3>
   <p>Liste und Seite des Geräts zeigen den <b>Zustand</b> am Broker:</p>
@@ -2827,7 +2860,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <p>Unter <b>Aktionen</b> auf der Seite des Geräts:</p>
   <ul>
     <li><b>Sperren</b> – für ein verlorenes oder ausgebautes Gerät. Der Broker trennt es sofort, und es kann sich nicht mehr anmelden. <b>Entsperren</b> lässt es wieder zu.</li>
-    <li><b>Neues MQTT-Kennwort</b> – das Gerät wird sofort getrennt. Danach die Firmware neu bauen und flashen. Das Kennwort des Notzugangs bleibt.</li>
+    <li><b>Neues MQTT-Kennwort</b> – das Gerät wird sofort getrennt. Danach die Firmware neu bauen und <b>per USB</b> flashen (übers Netz geht es nicht, weil sich das Gerät ohne passendes Kennwort nicht mehr meldet). Das Kennwort für Updates übers Netz wird dabei mit erneuert, das Kennwort des Notzugangs bleibt.</li>
     <li><b>Gerät löschen</b> – nur der Bereichsadministrator (<code>esppdh.admin</code>). Der Zugang am Broker endet sofort; Bausteine, Bauten und Firmware sind danach weg. Das lässt sich nicht rückgängig machen.</li>
   </ul>
   <p><b>Warnung „… ließen sich gerade nicht neu lesen“:</b> Die Aktion ist gespeichert, aber der Broker ist noch nicht auf dem neuen Stand. Beim Sperren, beim neuen Kennwort und beim Löschen nimmt das PDH den Zugang des Geräts vorsorglich heraus; ob das Gerät wirklich getrennt ist, steht erst nach einem gelungenen Abgleich fest. Dann die Aktion gleich noch einmal ausführen oder das Gerät einmal speichern – nach dem Löschen ein anderes Gerät derselben Verbindung. Kommt die Warnung immer wieder, steht der Grund im Server-Protokoll.</p>
@@ -2837,8 +2870,9 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <ul>
     <li>Jedes Gerät hat einen <b>eigenen Zugang</b> am Broker (Benutzer <code>esppdh-&lt;kennung&gt;</code>, zugleich Client-ID) und darf nur unter seinem Thema <code>esppdh/&lt;kennung&gt;/</code> senden und lesen. Benutzernamen, die mit <code>esppdh-</code> beginnen, sind am Broker deshalb für Geräte reserviert.</li>
     <li>Die Kennwörter stehen <b>verschlüsselt</b> im PDH. Das MQTT-Kennwort zeigt das PDH nie an, das Kennwort des Notzugangs nur denen, die Geräte ändern dürfen. Der Broker kennt vom MQTT-Kennwort nur einen Prüfwert, nie das Kennwort selbst.</li>
-    <li><b>Wechsel des Schlüssels</b> (Schlüssel für Portal-Passwörter, oder der Anmelde-Schlüssel, wenn jener leer ist): Die Geräte behalten ihren Zugang am Broker, brauchen aber vor dem nächsten Bau der Firmware je ein <b>Neues MQTT-Kennwort</b> – die Seite des Geräts sagt es. Das Kennwort der Verbindung (Broker) und die WLAN-Kennwörter auf der Seite Netzwerk müssen danach neu eingetragen werden.</li>
+    <li><b>Wechsel des Schlüssels</b> (Schlüssel für Portal-Passwörter, oder der Anmelde-Schlüssel, wenn jener leer ist): Die Geräte behalten ihren Zugang am Broker, brauchen aber vor dem nächsten Bau der Firmware je ein <b>Neues MQTT-Kennwort</b> – die Seite des Geräts sagt es. Das Kennwort der Verbindung (Broker) und die WLAN-Kennwörter auf der Seite Netzwerk müssen danach neu eingetragen werden. Auch das Kennwort für <b>Updates übers Netz</b> ist dann nicht mehr lesbar: Die Seite des Geräts sagt es, nach „Neues MQTT-Kennwort“ und neuem Bau ist einmal <b>USB</b> nötig.</li>
     <li>Die <b>Firmware enthält WLAN- und MQTT-Kennwort</b>. Herunterladen und flashen darf deshalb nur, wer Geräte ändern darf (<code>esppdh.edit</code>). Wer welche Firmware geholt hat, steht im Server-Protokoll. Firmware-Dateien nicht weitergeben.</li>
+    <li><b>Updates übers Netz</b> nimmt ein Gerät nur mit seinem eigenen Update-Kennwort an; es steht verschlüsselt im PDH und in der Firmware, nie im Verlauf. Das PDH spielt nur die zuletzt gebaute, zum Gerät passende Firmware auf, nur an die bestätigte Adresse des Geräts und nur in Netze, die auf der Seite Netzwerk für ESPPDH-Geräte freigegeben sind. Der Sicherheitsmodus von ESPHome bleibt an: Startet eine Firmware mehrmals nicht richtig, startet das Gerät nur noch mit dem Update-Baustein und misst nicht. Es meldet sich dann nicht am Broker, deshalb kann das PDH es nicht erreichen – das Gerät per USB neu flashen. Erlaubt der Broker anonyme Verbindungen, könnte jemand im Netz einen Bau vortäuschen; dann zeigt das PDH „aufgespielt“ zu Unrecht (siehe Hinweis an der Verbindung).</li>
     <li><b>WLAN-Kennwort:</b> Wer Geräte bauen darf, kann das Kennwort des gewählten WLANs aus der Firmware lesen. Deshalb stehen nur WLANs zur Wahl, die auf der Seite <a href="#netzwerk">Netzwerk</a> für ESPPDH-Geräte freigegeben sind. Am besten ein eigenes WLAN nur für Geräte verwenden. Wird die Freigabe entfernt, lassen sich Geräte in diesem WLAN nicht mehr speichern und bauen; schon gebaute Firmware bleibt herunterladbar (Per USB flashen im Browser geht erst wieder mit Freigabe).</li>
     <li>Erlaubt der Broker <b>anonyme Verbindungen</b>, kann jeder im Netz auch unter dem Thema eines Geräts senden und dessen Werte vortäuschen – die Themen-Rechte schützen nur vor anderen Geräten. Die Seite des Geräts warnt dann; besser an der Verbindung „Anonyme Verbindungen erlauben“ ausschalten.</li>
     <li>Ohne TLS gehen Werte und Anmeldung <b>unverschlüsselt</b> durchs Netz. Dann das Gerät nur in einem geschützten Netz betreiben – besser eine ESP32-Platine und den Broker mit Namen und TLS-Port.</li>
@@ -2849,6 +2883,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <li><b>ESPPDH: Geräte und Zustand ansehen</b> (<code>esppdh.view</code>) – Liste, Seite des Geräts, Verlauf der Bauten und die Konfiguration ohne Kennwörter.</li>
     <li><b>ESPPDH: Sensorwerte ansehen (Anlage und Terminal)</b> (<code>esppdh.values</code>) – Reiter „ESPPDH“ an der Anlage, Sensoren am Terminal, Zähler auf der Schnellübersicht.</li>
     <li><b>ESPPDH: Geräte anlegen, ändern, sperren, bauen und flashen</b> (<code>esppdh.edit</code>) – dazu Firmware herunterladen und das Kennwort des Notzugangs sehen.</li>
+    <li><b>ESPPDH: Firmware übers Netz aufspielen</b> (<code>esppdh.ota</code>) – am Gerät „Firmware aufspielen“; in allen Abteilungen auch die Sammelaktion.</li>
     <li><b>ESPPDH: Geräte löschen (Bereichsadministrator)</b> (<code>esppdh.admin</code>) – alle Rechte von ESPPDH und als Einziger Geräte löschen.</li>
   </ul>
   <p>Die Rechte gelten überall oder nur in einer Abteilung; maßgeblich ist die Anlage des Geräts. Wer sie mit dem Update bekommen hat, steht unter <a href="#admin">Administration</a>.</p>

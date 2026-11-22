@@ -238,9 +238,7 @@ body.has-gear .g-vorg{padding-top:60px}
   <div class="t-path">{{if .Path}}{{.Path}}{{else}}<b>{{.Name}}</b>{{end}}{{if .SetupCard}} · {{.SetupPerson}}{{end}}</div>
   <div class="t-clock" data-clock>&nbsp;</div>
 </div>
-{{if not .SetupCard}}
-<div class="t-none"><i class="ti ti-id-badge-2" aria-hidden="true"></i><p>Bitte zuerst anmelden</p><small>Zum Rüsten per Karte oder mit Benutzer und Passwort am Terminal anmelden.</small></div>
-{{else if not .SetupCan}}
+{{if not .SetupCan}}
 <div class="t-none"><i class="ti ti-lock" aria-hidden="true"></i><p>Keine Berechtigung</p><small>{{if .SetupPerson}}{{.SetupPerson}} darf an dieser Anlage nicht rüsten.{{else}}Dieses Terminal darf hier nicht rüsten.{{end}}</small></div>
 {{else}}
 <div class="t-rz">
@@ -253,6 +251,7 @@ body.has-gear .g-vorg{padding-top:60px}
     <div class="t-rzgrid">{{range .SetupAgo}}<label class="t-opt"><input type="radio" name="ago" value="{{.Value}}" required><span>{{.Label}}</span></label>{{end}}</div>
     <h3>Dauer</h3>
     <div class="t-rzgrid">{{range .SetupDur}}<label class="t-opt"><input type="radio" name="dur" value="{{.Value}}" required><span>{{.Label}}</span></label>{{end}}</div>
+    {{if not .SetupCard}}<label class="t-rzname">Kürzel/Name (freiwillig)<input type="text" name="name" maxlength="40" autocomplete="off"></label>{{end}}
     <button type="submit" class="t-btn primary big"><i class="ti ti-check" aria-hidden="true"></i> Nachtragen</button>
   </form>
   {{else}}
@@ -261,6 +260,7 @@ body.has-gear .g-vorg{padding-top:60px}
   {{else if .Setup.Fault}}<div class="t-rzrun fault"><b><i class="ti ti-alert-triangle" aria-hidden="true"></i> {{.Setup.Text}}</b></div>{{end}}
   {{if .Setup.Buttons}}
   <form class="t-rzgrid" method="post" action="/terminal/rusten/start">
+    {{if not .SetupCard}}<label class="t-rzname">Kürzel/Name (freiwillig)<input type="text" name="name" maxlength="40" autocomplete="off"></label>{{end}}
     {{range .Setup.Buttons}}<button type="submit" class="t-btn{{if .Current}} cur{{end}}" name="button_id" value="{{.ID}}"{{if .Current}} aria-current="true" disabled{{end}}>{{.Name}}</button>{{end}}
   </form>
   <a class="t-btn" href="/terminal/rusten?nachtragen=1"><i class="ti ti-plus" aria-hidden="true"></i> Rüstzeit nachtragen</a>
@@ -281,7 +281,7 @@ body.has-gear .g-vorg{padding-top:60px}
 <div class="t-new{{if .Setup.Show}} has-rz{{end}}">
   <a class="t-tilebtn fault" href="/terminal/stoerung"><i class="ti ti-alert-triangle" aria-hidden="true"></i> Störung</a>
   <a class="t-tilebtn ticket" href="/terminal/ticket"><i class="ti ti-ticket" aria-hidden="true"></i> Ticket</a>
-  {{if .Setup.Show}}{{if and .SetupCard .SetupCan}}<a class="t-tilebtn t-rzlink" href="/terminal/rusten"><i class="ti ti-tool" aria-hidden="true"></i><span>Rüsten{{if .Setup.Running}}<small>{{.Setup.Text}}</small>{{else if .Setup.Fault}}<small>{{.Setup.Text}}</small>{{end}}</span></a>{{else}}<span class="t-tilebtn t-rzlink off" aria-disabled="true"><i class="ti ti-tool" aria-hidden="true"></i><span>Rüsten<small>{{if .SetupCard}}Keine Berechtigung zum Rüsten{{else}}Bitte zuerst anmelden{{end}}</small></span></span>{{end}}{{end}}
+  {{if .Setup.Show}}{{if .SetupCan}}<a class="t-tilebtn t-rzlink" href="/terminal/rusten"><i class="ti ti-tool" aria-hidden="true"></i><span>Rüsten{{if .Setup.Running}}<small>{{.Setup.Text}}</small>{{else if .Setup.Fault}}<small>{{.Setup.Text}}</small>{{end}}</span></a>{{else}}<span class="t-tilebtn t-rzlink off" aria-disabled="true"><i class="ti ti-tool" aria-hidden="true"></i><span>Rüsten<small>Keine Berechtigung zum Rüsten</small></span></span>{{end}}{{end}}
   <div class="t-stop">
     <h2><i class="ti ti-player-pause" aria-hidden="true"></i> Stillstand</h2>
     <p>Stillstandsgründe folgen</p>

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -173,6 +174,50 @@ func (r *Runner) Config(ctx context.Context, job BuildJob) (log string, err erro
 		return "Der Arbeitsordner lässt sich nicht anlegen: " + perr.Error(), perr
 	}
 	c := r.execute(ctx, dir, job, configTimeout, "Prüfung", []string{"config", "./" + configName}, nil)
+	if !c.started {
+		return c.status, errors.New(c.status)
+	}
+	log = Redact(withNewline(c.out)+c.status+"\n", job.SecretValues)
+	if !c.ok {
+		return log, errors.New(c.status)
+	}
+	return log, nil
+}
+
+// uploadTimeout: Zeitlimit für das Aufspielen übers Netz (ESPHome versucht dreimal).
+var uploadTimeout = 5 * time.Minute
+
+// UploadJob: Firmware übers Netz auf ein Gerät aufspielen. ID ist die Kennung des Auftrags
+// (Arbeitsordner), Address die IPv4-Adresse des Geräts.
+type UploadJob struct {
+	ID, Slug, Address string
+	Config, Secrets   []byte
+	Firmware          []byte // firmware.ota.bin des Baus
+	SecretValues      []string
+}
+
+// Upload spielt die Firmware mit „esphome upload ./esppdh.yaml --device <Adresse>
+// --ota-platform esphome --file firmware.ota.bin“ auf – gleicher Laufordner, gleiche knappe
+// Umgebung, gleiches Aufräumen und Schwärzen wie Build; Zeitlimit 5 min.
+func (r *Runner) Upload(ctx context.Context, job UploadJob, progress func(string)) (log string, err error) {
+	ip := net.ParseIP(strings.TrimSpace(job.Address))
+	if !buildIDRe.MatchString(job.ID) || !ValidSlug(job.Slug) || ip == nil || ip.To4() == nil || job.Address != ip.String() {
+		return "Ungültiger Auftrag oder keine gültige IPv4-Adresse – nichts aufgespielt.", errors.New("ungültiger Auftrag")
+	}
+	if len(job.Firmware) == 0 {
+		return "Keine Firmware für Updates übers Netz – nichts aufgespielt.", errors.New("keine Firmware")
+	}
+	bj := BuildJob{ID: job.ID, Slug: job.Slug, Config: job.Config, Secrets: job.Secrets, SecretValues: job.SecretValues}
+	dir, perr := prepareBuildDir(workDir(), bj)
+	defer func() { log = cleanupRun(dir, log, bj) }()
+	if perr == nil {
+		perr = os.WriteFile(filepath.Join(dir, otaName), job.Firmware, 0o600)
+	}
+	if perr != nil {
+		return "Der Arbeitsordner lässt sich nicht anlegen: " + perr.Error(), perr
+	}
+	args := []string{"upload", "./" + configName, "--device", job.Address, "--ota-platform", "esphome", "--file", otaName}
+	c := r.execute(ctx, dir, bj, uploadTimeout, "Aufspielen", args, progress)
 	if !c.started {
 		return c.status, errors.New(c.status)
 	}

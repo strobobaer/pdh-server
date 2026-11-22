@@ -624,11 +624,39 @@ und 3 drückt bis auf Weiteres der Anwender.
     nachgezogen (Prüfliste zeigt sie); Tunnel-Ziel ohne Sperre; Knopf am
     Spiegel/in Wartung stumm; IPv6-Erkennung je Datei statt je server-Block;
     Knopf bis ca. 75 s.
-21. **ESPPDH: Update übers Netz (OTA)** – Wunsch des Anwenders vom
-    21.11.2026 („Passt“): heute keine OTA-Funktion (kein `ota:`-Baustein,
-    `web_server` mit `ota: false`); geplant als eigenes Paket nach den Firmenstammdaten,
-    mit Kennwort je Gerät. Offen: PDH schiebt (Knopf, Server erreicht das
-    Gerät) oder Gerät holt (fragt beim PDH, geht auch im abgeschotteten VLAN).
+21. **0.82.25 ESPPDH: Firmware übers Netz aufspielen** (Anwender 22.11.2026:
+    „PDH schiebt sie“, „a + b“, „1a 2a“; 0.82.23 und 0.82.24 gingen auf `main` an die
+    Rüsttasten am Terminal und die PDH-App). Entwurf
+    `docs/superpowers/specs/2026-11-22-esppdh-ota-design.md`, Plan
+    `docs/superpowers/plans/2026-11-22-esppdh-ota.md`, Branch
+    `feature/esppdh-ota` (lokal): Firmware mit `ota: platform esphome`
+    (Kennwort je Gerät, `ota_password_enc`), `safe_mode` und Info-Wert
+    `info/firmware` (Kennung des Baus, nicht im `ConfigHash`); Knopf
+    „Firmware aufspielen“ (Recht `esppdh.ota` am Gerät; nur bestätigte
+    Adresse in freigegebenem Netz mit Adressbereich, Erfolg erst bei
+    Meldung der neuen Kennung, bis 3 min); Sammelaktion „Alle veralteten
+    Geräte aktualisieren“ (Recht überall; veraltet = Konfiguration geändert
+    oder andere Kennung gemeldet). Migration 194, Aufträge in
+    `esppdh_ota_runs`, ausgeführt vom Bau-Arbeiter. Dazu: Startseite zeigt
+    Firma und Ort aus den Firmenstammdaten statt fest „Werk Augsburg“. **Auf
+    `main`** (22.11.2026, Merge `cc80dbc`) und dem Testverbund (beide Server
+    und Zeuge 0.82.25, Migration 194, aktiv jetzt `pdh` 10.10.0.14). Im
+    Browser geprüft: Startseite mit und ohne Firmendaten, ESPPDH-Übersicht,
+    Handbuch; Fiori/Fluent, hell/dunkel, 320–1366 px ohne Überlauf und
+    Konsolenfehler; Testdaten entfernt, Prüfkonto gesperrt. Nicht im Browser
+    gesehen (am Testverbund kein ESPPDH-Gerät, ESPPDH aus): Karte „Firmware
+    übers Netz“ und Sammelaktion – nur automatisch getestet. Offen: Abnahme
+    an echter Platine (einmal USB, dann übers Netz, Port 3232/8266 in der
+    Firewall); 10.10.0.202 einspielen (Anwender, mit Sicherung). Hinweis:
+    der oberste Infrastruktur-Knoten heißt am Testverbund noch „Werk
+    Augsburg“ (Beispielknoten aus Migration 005). Geparkt aus der
+    Schlussprüfung: erneutes Aufspielen desselben Baus meldet sofort „ok“;
+    Beenden während des Wartens heißt „nach 3 min nicht gemeldet“;
+    Sammelaktion bei ausgeschaltetem ESPPDH „fehlgeschlagen“ statt
+    „abgebrochen“; Arbeiter-Kontext kann beim Start nil sein; StopESPPDH
+    wartet nicht auf die Sammelaktion; Liste der Sammelaktion langsam;
+    Adresswechsel während des Uploads (Restrisiko); anonymer Broker kann
+    Bau-Kennung vortäuschen.
 22. **PDH-App (Android/iOS):** Entwurf
     `docs/superpowers/specs/2026-11-21-pdh-app-design.md` am 21.11.2026
     freigegeben (Branch `feature/pdh-app`): eine Installations-App für alle

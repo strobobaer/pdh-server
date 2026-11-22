@@ -113,6 +113,7 @@ type DashboardData struct {
 	BaseData
 	Greeting      string
 	DateStr       string
+	CompanyLine   string                // Firma und Ort aus den Firmenstammdaten ("" = keine eingetragen)
 	OpenTickets   []TicketView          // rechte Seitenleiste
 	GanttItems    []GanttItem           // Widgets Tabelle und Zeitstrahl
 	Widgets       []DashboardWidgetView // persoenliche Widgets (dashboard_widgets.go)
@@ -387,6 +388,11 @@ type Handler struct {
 	// (nil = esppdh.NewRunner; Tests setzen eine Attrappe)
 	esppdhQ      esppdhQueue
 	esppdhRunner esppdhBuilder
+	esppdhUpload esppdhUploadFunc // Firmware übers Netz aufspielen (nil = esppdh.Runner.Upload; esppdh_ota.go)
+	// Sammelaktion „Alle veralteten Geräte aktualisieren“ (esppdh_ota_batch.go); der Hook ersetzt
+	// in Tests die Prüfung „esppdh.ota überall“
+	esppdhB          esppdhBatchState
+	esppdhOTAAllHook func(*http.Request) bool
 	// ESPPDH (esppdh_update.go): ESPHome täglich prüfen, proben und umschalten. Adresse der
 	// Versionsliste (leer = pypi.org), Prüfer mit einem bestimmten Programm (nil = esppdh.Runner),
 	// höchstens ein Lauf zur Zeit (Takt und Knopf „Jetzt prüfen“), Uhr (nil = time.Now)
@@ -1192,6 +1198,11 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/import/esppdh/{id}/build", h.EsppdhBuildWeb)                    // Firmware bauen (esppdh_build.go)
 	r.Get("/import/esppdh/{id}/build/{bid}", h.EsppdhBuildPartWeb)           // Verlauf eines Laufs (htmx, alle 2 s)
 	r.Post("/import/esppdh/{id}/build/{bid}/cancel", h.EsppdhBuildCancelWeb) // Bau abbrechen
+	r.Post("/import/esppdh/{id}/ota", h.EsppdhOTAPushWeb)                    // Firmware übers Netz aufspielen (esppdh_ota.go)
+	r.Get("/import/esppdh/{id}/ota/{rid}", h.EsppdhOTAPartWeb)               // Verlauf eines Updates (htmx, alle 2 s)
+	r.Post("/import/esppdh/ota-all", h.EsppdhOTAAllWeb)                      // Sammelaktion: Liste zur Bestätigung (esppdh_ota_batch.go)
+	r.Post("/import/esppdh/ota-all/start", h.EsppdhOTAAllStartWeb)           // … starten
+	r.Post("/import/esppdh/ota-all/{batch}/cancel", h.EsppdhOTAAllCancelWeb) // … abbrechen
 	// Firmware herunterladen und per USB flashen (esppdh_flash.go): nur esppdh.edit am Gerät
 	r.Get("/import/esppdh/{id}/firmware/{bid}/factory.bin", h.EsppdhFactoryWeb)
 	r.Get("/import/esppdh/{id}/firmware/{bid}/ota.bin", h.EsppdhOTAWeb)
@@ -1813,8 +1824,9 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 	// rechte Seitenleiste und die Vorgänge für Tabelle und Zeitstrahl.
 	data := DashboardData{
 		BaseData: h.baseData(r, "dashboard", "Dashboard", "Offene Tickets"),
-		Greeting: greeting(),
-		DateStr:  longDate(h.requestLang(r), now),
+		Greeting:    greeting(),
+		DateStr:     longDate(h.requestLang(r), now),
+		CompanyLine: companyHeadline(h.company(ctx)),
 	}
 	data.Widgets, data.WidgetCatalog, _ = h.dashboardWidgetViews(r)
 	if h.canViewInfra(r) {

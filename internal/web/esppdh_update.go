@@ -817,13 +817,7 @@ func esppdhProbeJob(d esppdh.Device) (esppdh.BuildJob, error) {
 	if err != nil {
 		return esppdh.BuildJob{}, err
 	}
-	var secrets []string
-	for _, s := range []string{d.WLANPassword, d.APPassword, d.MQTTPassword, d.WebPassword} {
-		if s != "" {
-			secrets = append(secrets, s)
-		}
-	}
-	return esppdh.BuildJob{ID: uuid.NewString(), Slug: d.Slug, Config: cfg, Secrets: sec, SecretValues: secrets}, nil
+	return esppdh.BuildJob{ID: uuid.NewString(), Slug: d.Slug, Config: cfg, Secrets: sec, SecretValues: d.SecretValues()}, nil
 }
 
 // esppdhConfigLocked: „esphome config“ unter runMu – nie gleichzeitig mit einem Bau. Am aktiven

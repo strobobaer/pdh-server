@@ -3,6 +3,7 @@
 {{/* ESPPDH – Liste der Geräte und „Neues Gerät“ (esppdh.go). Gemeinsame Teile in
      widgets/esppdh_parts.gohtml. Kennwörter stehen nie auf dieser Seite. */}}
 {{template "esppdh-style"}}
+{{template "esppdh-build-style"}}{{/* Bestätigung der Sammelaktion (widgets/esppdh_ota.gohtml) */}}
 
 <div class="esp-head">
   <div class="rec-sub"><a href="/import" style="color:var(--accent)"><i class="ti ti-arrow-left" aria-hidden="true"></i> Import</a></div>
@@ -40,6 +41,7 @@
 
 <div class="card esp-card">
   <div class="card-title"><span><i class="ti ti-cpu" aria-hidden="true"></i> Geräte</span></div>
+  {{template "esppdh-ota-all" .Batch}}
   {{if .Rows}}
   <div class="esp-scroll"><table class="table">
     <thead><tr><th>Gerät</th><th>Anlage</th><th>Broker</th><th>Platine</th><th>Netz</th><th>Bausteine</th><th>Zustand</th></tr></thead>
@@ -52,7 +54,9 @@
       <td class="esp-wrap">{{.BoardLabel}}</td>
       <td class="esp-wrap">{{.NetLabel}}</td>
       <td>{{.BlockCount}}</td>
-      <td class="esp-wrap">{{template "esppdh-live" .Live}}{{with .Live.Hint}}<div class="esp-help">{{.}}</div>{{end}}</td>
+      <td class="esp-wrap">{{template "esppdh-live" .Live}}{{with .Live.Hint}}<div class="esp-help">{{.}}</div>{{end}}
+        {{if .OTAPending}}<div class="esp-help"><span class="badge b-gray">Update wartet</span></div>
+        {{else}}{{with .OTARun}}<div class="esp-help"><span class="badge {{.Badge}}">Update: {{.StatusLabel}}</span>{{if not .Active}}{{with .LastLine}} <span>{{.}}</span>{{end}}{{end}}</div>{{end}}{{end}}</td>
     </tr>
     {{end}}
     </tbody>
