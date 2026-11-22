@@ -210,6 +210,9 @@ var gateRules = []gateRule{
 	gr(wPost, "import.write", "", false, `^/import/connections`+gID+`/broker/firewall$`),
 	gr(wPost, "import.write", "", false, `^/import/connections`+gID+`/broker/setup$`),
 	gr(wPost, "export.write", "", false, `^/export/connections/fingerprint$`),
+	// ── Zuordnungen: Sammel-Anlage (Vorschläge übernehmen) wie Verbindung bearbeiten; Abteilung je Anlage im Handler ──
+	gr(wPost, "import.write", "", false, `^/import/connections`+gID+`/mappings/bulk$`),
+	gr(wPost, "export.write", "", false, `^/export/connections`+gID+`/mappings/bulk$`),
 	// ── Explorer: Testschreiben/Senden wie Verbindung bearbeiten (Erkunden selbst: import/export.execute im Handler) ──
 	gr(wPost, "import.write", "", false, `^/import/connections`+gID+`/explorer/(?:mqtt/publish|opcua/write|modbus/write)$`),
 	gr(wPost, "export.write", "", false, `^/export/connections`+gID+`/explorer/(?:mqtt/publish|opcua/write|modbus/write)$`),

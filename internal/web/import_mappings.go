@@ -3,10 +3,12 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5"
 )
 
 // Wertzuordnungen: das einheitliche Muster fuer alle Import-Konnektoren -
@@ -87,6 +89,44 @@ type importMappingCreateInput struct {
 	HeartbeatSeconds int    `json:"heartbeat_seconds,omitempty"` // nur Heartbeat-Zuordnungen; 0 = keine (NULL)
 }
 
+// normalize trimmt die Eingabe und prüft sie (gleiche Meldungen für Anlage
+// von Hand, Sammel-Anlage und Copilot-Vorschlag).
+func (in *importMappingCreateInput) normalize() error {
+	in.SourceRef = strings.TrimSpace(in.SourceRef)
+	in.InfrastructureID = strings.TrimSpace(in.InfrastructureID)
+	in.Name = strings.TrimSpace(in.Name)
+	in.Note = strings.TrimSpace(in.Note)
+	switch {
+	case in.SourceRef == "" || len([]rune(in.SourceRef)) > 500:
+		return errors.New("Ungültiger Quellwert")
+	case in.InfrastructureID == "":
+		return errors.New("Bitte eine Infrastruktur auswählen")
+	case len([]rune(in.Name)) < 2 || len([]rune(in.Name)) > 150:
+		return errors.New("Bezeichnung muss 2 bis 150 Zeichen lang sein")
+	case len([]rune(in.Note)) > 500:
+		return errors.New("Zuordnungsnotiz darf höchstens 500 Zeichen lang sein")
+	case in.HeartbeatSeconds < 0 || in.HeartbeatSeconds > 86400:
+		return errors.New("Heartbeat: 0 bis 86400 Sekunden (0 = aus)")
+	}
+	return nil
+}
+
+// insertImportMapping legt eine Zuordnung an; dup: dieselbe Quelle an derselben
+// Anlage gibt es an der Verbindung schon (dann wird nichts angelegt).
+func (h *Handler) insertImportMapping(ctx context.Context, connID, uid string, in importMappingCreateInput) (string, bool, error) {
+	var id string
+	err := h.db.QueryRow(ctx, `
+		INSERT INTO import_mappings (connection_id, source_ref, infrastructure_id, name, note, created_by, heartbeat_seconds)
+		SELECT $1::uuid, $2::text, $3::uuid, $4::text, $5::text, NULLIF($6::text, '')::uuid, NULLIF($7::int, 0)
+		WHERE NOT EXISTS (SELECT 1 FROM import_mappings WHERE connection_id = $1::uuid AND source_ref = $2::text AND infrastructure_id = $3::uuid)
+		RETURNING id::text`,
+		connID, in.SourceRef, in.InfrastructureID, in.Name, in.Note, uid, in.HeartbeatSeconds).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", true, nil
+	}
+	return id, false, err
+}
+
 func (h *Handler) ImportMappingCreateWeb(w http.ResponseWriter, r *http.Request) {
 	if !h.canConnectionWrite(r, "import") {
 		writeGlobalBoardError(w, http.StatusForbidden, "keine Berechtigung")
@@ -100,40 +140,24 @@ func (h *Handler) ImportMappingCreateWeb(w http.ResponseWriter, r *http.Request)
 		writeGlobalBoardError(w, http.StatusBadRequest, "Ungültige Eingabe")
 		return
 	}
-	in.SourceRef = strings.TrimSpace(in.SourceRef)
-	in.InfrastructureID = strings.TrimSpace(in.InfrastructureID)
-	in.Name = strings.TrimSpace(in.Name)
-	in.Note = strings.TrimSpace(in.Note)
-
-	if in.SourceRef == "" || len([]rune(in.SourceRef)) > 500 {
-		writeGlobalBoardError(w, http.StatusBadRequest, "Ungültiger Quellwert")
+	if err := in.normalize(); err != nil {
+		writeGlobalBoardError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if in.InfrastructureID == "" {
-		writeGlobalBoardError(w, http.StatusBadRequest, "Bitte eine Infrastruktur auswählen")
-		return
-	}
-	if l := len([]rune(in.Name)); l < 2 || l > 150 {
-		writeGlobalBoardError(w, http.StatusBadRequest, "Bezeichnung muss 2 bis 150 Zeichen lang sein")
-		return
-	}
-	if len([]rune(in.Note)) > 500 {
-		writeGlobalBoardError(w, http.StatusBadRequest, "Zuordnungsnotiz darf höchstens 500 Zeichen lang sein")
-		return
-	}
-	if in.HeartbeatSeconds < 0 || in.HeartbeatSeconds > 86400 {
-		writeGlobalBoardError(w, http.StatusBadRequest, "Heartbeat: 0 bis 86400 Sekunden (0 = aus)")
+	// Abteilung der Anlage zählt (wie beim Übernehmen von Vorschlägen)
+	if !h.assetGuardFor(r, "import.write")(in.InfrastructureID) {
+		writeGlobalBoardError(w, http.StatusForbidden, errAssetDenied)
 		return
 	}
 
 	u := getUser(r)
-	var id string
-	err := h.db.QueryRow(r.Context(), `
-		INSERT INTO import_mappings (connection_id, source_ref, infrastructure_id, name, note, created_by, heartbeat_seconds)
-		VALUES ($1, $2, $3, $4, $5, $6, NULLIF($7::int, 0)) RETURNING id::text`,
-		connectionID, in.SourceRef, in.InfrastructureID, in.Name, in.Note, u.ID, in.HeartbeatSeconds).Scan(&id)
+	id, dup, err := h.insertImportMapping(r.Context(), connectionID, u.ID, in)
 	if err != nil {
-		writeGlobalBoardError(w, http.StatusInternalServerError, "Zuordnung konnte nicht angelegt werden - existiert die gewählte Infrastruktur?")
+		writeGlobalBoardError(w, http.StatusInternalServerError, errMappingInsert)
+		return
+	}
+	if dup {
+		writeGlobalBoardError(w, http.StatusConflict, "Diese Zuordnung gibt es an der Verbindung schon")
 		return
 	}
 	h.reconcileMqttConsumer(connectionID)
