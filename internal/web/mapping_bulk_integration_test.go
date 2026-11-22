@@ -129,3 +129,23 @@ func TestBulkExportMappings(t *testing.T) {
 		t.Errorf("Zeilen: %d", n)
 	}
 }
+
+func TestMappingSourcesCSV(t *testing.T) {
+	e := newMappingEnv(t)
+	ctx := context.Background()
+	path := t.TempDir() + "/werte.csv"
+	if err := os.WriteFile(path, []byte("Strom;Spannung\n1;230\n2;231\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := e.h.insertImportMapping(ctx, e.imp, e.uid, importMappingCreateInput{SourceRef: "Strom", InfrastructureID: e.assetA, Name: "Strom"}); err != nil {
+		t.Fatal(err)
+	}
+	set := e.h.mappingSources(ctx, e.imp, "csv", map[string]string{"source_path": path, "delimiter": ";", "has_header": "true"})
+	if len(set.Sources) != 1 || set.Sources[0].Ref != "Spannung" || set.Sources[0].Sample != "231" {
+		t.Errorf("nur die offene Spalte mit letztem Wert: %+v (Hinweise %v)", set.Sources, set.Hints)
+	}
+	set = e.h.mappingSources(ctx, e.imp, "csv", map[string]string{"source_path": path + ".fehlt", "delimiter": ";"})
+	if len(set.Sources) != 0 || len(set.Hints) == 0 {
+		t.Errorf("fehlende Datei wird Hinweis: %+v", set)
+	}
+}
