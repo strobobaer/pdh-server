@@ -262,7 +262,7 @@
   }
 
   // Rüsten (Neu, Rüsten): wer rüstet und was sichtbar ist, hängt an der Kartenanmeldung – bei Wechsel neu laden.
-  if (mode === 'neu' || mode === 'rusten' || mode === 'melden') {
+  if (mode === 'neu' || mode === 'rusten' || mode === 'melden' || mode === 'hmi' || mode === 'wartung') {
     document.addEventListener('pdh-card-login', function (e) { if (!!e.detail !== (body.dataset.cardIn === '1')) location.reload(); });
   }
 

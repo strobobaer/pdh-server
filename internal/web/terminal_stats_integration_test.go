@@ -157,7 +157,7 @@ func TestTerminalRolePermissions(t *testing.T) {
 		}
 		got = append(got, k)
 	}
-	want := "faults.edit faults.view setup.edit setup.view tickets.edit tickets.view"
+	want := "faults.edit faults.view hmi.view setup.edit setup.view tickets.edit tickets.view"
 	if strings.Join(got, " ") != want {
 		t.Errorf("Rechte der Rolle terminal: %v", got)
 	}

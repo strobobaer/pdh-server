@@ -10,6 +10,18 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.82.28] – 2026-11-22
+
+### Neu
+
+- **Terminal: Kachel HMI.** Auf der Seite **Neu** steht neben **Rüsten** die Kachel **HMI**. Sie listet die HMIs der Anlage des Terminals und ihrer Unteranlagen und öffnet sie in einer eigenen Terminalseite (nur ansehen oder bedienen). Es gelten die vorhandenen Regeln des HMI-Fernzugriffs je Abteilung der Anlage: **Ansehen am Terminal** und **Bedienen am Terminal** (jeder / nur mit Karte / nie, mit „Bedienen erlaubt“ verrechnet) sowie die Rechte `hmi.view` und `hmi.control` – bei „jeder“ die des Terminal-Benutzers, bei „nur mit Karte“ die der angemeldeten Person. Die Kachel erscheint nur, wenn mindestens ein HMI sichtbar ist. Die Rolle Terminal bringt `hmi.view` mit (Migration 197), `hmi.control` nicht.
+- **Terminal: Wartungen nach der Kartenanmeldung.** Die angemeldete Person sieht die offenen Wartungsaufträge der Anlage des Terminals und ihrer Unteranlagen – nur die, die sie selbst sehen darf (`maintenance.view` je Abteilung). **Öffnen** führt über „PDH öffnen“ in den Auftrag im normalen PDH, wo mit den eigenen Rechten der Person gearbeitet wird (`maintenance.edit`, `maintenance.complete`). Ohne Kartenanmeldung gibt es weder Kachel noch Liste.
+- **Terminal: PDH öffnen.** In der Anmeldeleiste (nur mit angemeldeter Person) öffnet **PDH öffnen** das normale PDH im Browser des Terminals, angemeldet als diese Person mit ihren eigenen Rechten. Migration 196.
+
+### Sicherheit
+
+- **PDH-Sitzung am Terminal.** Das Öffnen verlangt die Gerätesitzung des Terminals **und** die aktive Kartenanmeldung derselben Person. Ein Einmal-Ticket (60 Sekunden, nur als Hash gespeichert, nie in einer Adresse) wird per POST eingelöst und setzt eine Sitzung von höchstens **15 Minuten ohne Verlängerung**. Sie ist serverseitig widerrufbar und an das Gerät gebunden: Ohne die Gerätesitzung desselben Terminals (auch an der Schnittstelle) gilt sie nicht. Sie endet bei Kartenabmeldung, Kartenwechsel, Abmelden in PDH und bei jedem Aufruf einer Terminalseite (Ruhezeit, Zurück); danach ist das Terminal wieder in seiner Gerätesitzung. Der normale PDH-Anmeldeweg bleibt unverändert.
+
 ## [0.82.27] – 2026-11-22
 
 ### Geändert

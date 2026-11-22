@@ -2417,9 +2417,20 @@ func (h *Handler) LoginPage(w http.ResponseWriter, r *http.Request) {
 
 // loginNext: Ziel nach der Anmeldung – nur Pfade im PDH (kein "//host",
 // kein "/\host"), sonst die Startseite.
+// hasControlChar: enthält s ein Steuerzeichen (< 0x20, auch Tabulator) oder DEL? Browser entfernen Tabulator und
+// Zeilenumbruch aus Adressen, "/\t/evil" würde sonst zu "//evil".
+func hasControlChar(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] < 0x20 || s[i] == 0x7f {
+			return true
+		}
+	}
+	return false
+}
+
 func loginNext(next string) string {
 	if next == "" || !strings.HasPrefix(next, "/") || strings.HasPrefix(next, "//") ||
-		strings.ContainsAny(next, "\\\r\n") || strings.HasPrefix(next, "/login") || len(next) > 500 {
+		strings.Contains(next, "\\") || hasControlChar(next) || strings.HasPrefix(next, "/login") || len(next) > 500 {
 		return "/"
 	}
 	return next
@@ -2491,6 +2502,7 @@ func (h *Handler) LoginRFIDWeb(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
+	h.pdhHandoffRevokeCookie(r) // PDH-Sitzung am Terminal serverseitig beenden (terminal_pdh.go)
 	if uid := h.requestActor(r); uid != "" {
 		log.Info().Str("bereich", "auth").Str("user", uid).Str("user_name", h.cachedUserName(r.Context(), uid)).Str("ip", r.RemoteAddr).Msg("abmeldung")
 	}
@@ -2545,6 +2557,10 @@ func (h *Handler) sessionToken(r *http.Request) (string, int64, string) {
 		return "", 0, ""
 	}
 	s := h.parseSessionToken(cookie.Value)
+	if s.problem == "" && s.tsess != "" && !h.pdhHandoffCheck(r, s.tsess, s.sub, s.tdev) {
+		// PDH-Sitzung am Terminal: widerrufen, abgelaufen oder nicht von diesem Gerät
+		s.sub, s.problem = "", "sitzung: terminal-pdh-sitzung beendet oder nicht gültig"
+	}
 	if s.problem != "" {
 		ev := log.Warn()
 		if s.err != nil {
@@ -2564,6 +2580,7 @@ func (h *Handler) sessionToken(r *http.Request) (string, int64, string) {
 // zweckgebundenen Token); sub ist dann leer.
 type sessionTok struct {
 	sub, device, scope, problem string
+	tsess, tdev                 string // PDH-Sitzung am Terminal (terminal_pdh.go): Sitzungs-ID und Geräte-ID
 	iat                         int64
 	err                         error
 }
@@ -2599,6 +2616,8 @@ func (h *Handler) parseSessionToken(raw string) sessionTok {
 	iat, _ := claims["iat"].(float64)
 	s.iat = int64(iat)
 	s.device, _ = claims["device"].(string)
+	s.tsess, _ = claims["tsess"].(string)
+	s.tdev, _ = claims["tdev"].(string)
 	return s
 }
 
@@ -2662,8 +2681,16 @@ func (h *Handler) authMiddleware(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
+		// PDH-Sitzung am Terminal: jede Terminalseite beendet sie (terminal_pdh.go)
+		if h.pdhHandoffLeave(w, r) {
+			return
+		}
 		user := h.sessionUser(r)
 		if user == nil {
+			// Terminal-Gerät hinter einer beendeten PDH-Sitzung: Gerätesitzung wiederherstellen statt abzumelden
+			if h.pdhRestoreDevice(w, r) {
+				return
+			}
 			// Gesperrtes oder entkoppeltes Terminal: Fehlerseite statt Weiterleitung ins Leere
 			if _, _, dev := h.sessionToken(r); dev != "" {
 				clearSessionCookies(w)
@@ -4175,6 +4202,7 @@ func (h *Handler) OverrideLoginWeb(w http.ResponseWriter, r *http.Request) {
 // Ohne aktive Override-Sitzung faellt das Verhalten auf einen normalen
 // Logout zurueck.
 func (h *Handler) OverrideLogoutWeb(w http.ResponseWriter, r *http.Request) {
+	h.pdhHandoffRevokeCookie(r) // PDH-Sitzung am Terminal serverseitig beenden (terminal_pdh.go)
 	returnCookie, err := r.Cookie("pdh_return_token")
 	if err != nil || returnCookie.Value == "" {
 		h.Logout(w, r)
