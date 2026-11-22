@@ -124,7 +124,7 @@
         data-rx-view="{{$k.Detail}}{{.ID}}" data-rx-edit="{{$k.Detail}}{{.ID}}"{{if not $k.NoCompletion}} data-rx-done="{{$k.Key}}:{{.ID}}" data-rx-done-label="{{$k.DoLabel}}" data-rx-done-icon="{{$k.DoIcon}}"{{end}}>
       <td><div class="wa-main">
         <div class="wa-title">{{if not $k.NoPrio}}<span class="act-dot {{.PriorityDot}}"></span>{{end}}{{.Title}}</div>
-        <div class="rec-sub">{{if .InfraName}}<span style="color:var(--accent)">{{.InfraName}}</span> · {{end}}{{if .ProjectName}}<i class="ti ti-timeline"></i> {{.ProjectName}} · {{end}}{{.CreatedAgo}}</div></div></td>
+        <div class="rec-sub">{{with .Origin}}<span class="badge b-gray" style="display:inline-block;max-width:14em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom" title="Herkunft: {{.}}">{{.}}</span> {{end}}{{if .InfraName}}<span style="color:var(--accent)">{{.InfraName}}</span> · {{end}}{{if .ProjectName}}<i class="ti ti-timeline"></i> {{.ProjectName}} · {{end}}{{.CreatedAgo}}</div></div></td>
       <td style="font-size:12px">{{if .Who}}{{.Who}}{{else}}<span style="color:var(--amber)"><i class="ti ti-inbox"></i> niemand</span>{{end}}</td>
       <td><span class="badge {{.StatusClass}}">{{.StatusLabel}}</span></td>
       {{if not $k.NoPrio}}<td><span class="badge {{.PriorityClass}}">{{.PriorityLabel}}</span></td>{{end}}
@@ -196,7 +196,7 @@
     {{range .Cards}}
     <div class="kvp-card wa-card{{if .Overdue}} overdue{{end}}{{if .New}} new{{end}}">
       <a href="{{$k.Detail}}{{.ID}}" class="wa-card-link">
-        <div class="rec-sub">{{if not $k.NoPrio}}<span class="badge {{.PriorityClass}}">{{.PriorityLabel}}</span>{{if .InfraName}} · {{end}}{{end}}{{.InfraName}}</div>
+        <div class="rec-sub">{{if not $k.NoPrio}}<span class="badge {{.PriorityClass}}">{{.PriorityLabel}}</span>{{if .InfraName}} · {{end}}{{end}}{{.InfraName}}{{with .Origin}} <span class="badge b-gray" style="display:inline-block;max-width:14em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom" title="Herkunft: {{.}}">{{.}}</span>{{end}}</div>
         <div class="t">{{.Title}}</div>
         <div class="rec-sub"><i class="ti ti-user"></i> {{if .Who}}{{.Who}}{{else}}<span style="color:var(--amber)">niemand</span>{{end}}{{if .Due}} · <span {{if .Overdue}}style="color:var(--red)"{{end}}>bis {{.Due}}</span>{{end}}</div>
       </a>

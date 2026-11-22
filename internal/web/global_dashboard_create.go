@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	recorigin "pdh/internal/core/origin"
 	"pdh/internal/modules/faults"
 	"pdh/internal/modules/maintenance"
 	"pdh/internal/modules/tasks"
@@ -155,7 +156,7 @@ func (h *Handler) GlobalDashboardCreate(w http.ResponseWriter, r *http.Request) 
 		var t *tickets.Ticket
 		t, err = h.tickets.Create(r.Context(), &tickets.CreateInput{
 			Title: in.Title, Description: description, Priority: tickets.Priority(in.Priority),
-			InfrastructureID: infrastructureID, DueDate: dueDate,
+			InfrastructureID: infrastructureID, DueDate: dueDate, Origin: recorigin.Web,
 		}, reporter.ID)
 		if err == nil {
 			brokerKind, brokerID = "ticket", t.ID
@@ -189,7 +190,7 @@ func (h *Handler) GlobalDashboardCreate(w http.ResponseWriter, r *http.Request) 
 		var f *faults.Fault
 		f, err = h.faults.Create(r.Context(), &faults.CreateFaultInput{
 			Title: in.Title, Description: description, Severity: faults.Severity(in.Priority), Symptoms: symptoms,
-			InfrastructureID: infrastructureID,
+			InfrastructureID: infrastructureID, Origin: recorigin.Web,
 		}, reporter.ID)
 		if err == nil {
 			brokerKind, brokerID = "fault", f.ID

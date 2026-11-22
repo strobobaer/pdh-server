@@ -10,6 +10,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	recorigin "pdh/internal/core/origin"
 	"pdh/internal/modules/faults"
 	"pdh/internal/modules/tickets"
 )
@@ -119,6 +120,7 @@ func NewTicketTarget(db *pgxpool.Pool, svc *tickets.Service) Target {
 				Description: v["description"],
 				Priority:    tickets.Priority(v["priority"]),
 				Tags:        []string{},
+				Origin:      recorigin.Sync,
 			}
 			if due, ok := parseTime(v["due_date"]); ok {
 				in.DueDate = &due
@@ -147,6 +149,7 @@ func NewFaultTarget(db *pgxpool.Pool, svc *faults.Service) Target {
 				Description: v["description"],
 				Symptoms:    []string{},
 				Severity:    faults.Severity(v["severity"]),
+				Origin:      recorigin.Sync,
 			}, user)
 			if err != nil {
 				return "", nil, err

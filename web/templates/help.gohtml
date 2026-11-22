@@ -111,11 +111,12 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>Oben im Benutzermenü <b>Dashboard anpassen</b> (von jeder Seite aus – PDH wechselt dafür aufs Dashboard). Der <b>Widget-Katalog</b> öffnet sich, die Widgets bekommen einen gestrichelten Rahmen.</li>
       <li>Ein Widget aus dem Katalog <b>ins Raster ziehen</b> – oder auf <b>+</b> tippen, dann landet es am Ende.</li>
       <li>Widgets im Raster an die gewünschte Stelle <b>ziehen</b> (am Handy kurz halten, dann ziehen). <i class="ti ti-arrows-horizontal"></i> ändert die Breite (1 bis 4 Spalten), <i class="ti ti-x"></i> entfernt das Widget.</li>
-      <li><i class="ti ti-settings"></i> öffnet die Einstellungen: eigene Überschrift, bei <b>Eigene Links</b> je Zeile <code>Name | Adresse</code>, bei <b>Anlagen-Schnellübersicht</b> welche Übersicht und ob nur Auffälliges erscheint.</li>
+      <li><i class="ti ti-settings"></i> öffnet die Einstellungen: eigene Überschrift, <b>Hintergrund</b> (Standard oder ein heller Ton: Hellblau, Mint, Hellgrün, Hellgelb, Pfirsich, Rosé, Flieder, Hellgrau – im dunklen Modus derselbe Ton gedämpft), bei <b>Eigene Links</b> je Zeile <code>Name | Adresse</code>, bei <b>Anlagen-Schnellübersicht</b> welche Übersicht und ob nur Auffälliges erscheint.</li>
       <li><b>Fertig</b> speichert – deine Zusammenstellung gilt an deinem Konto auf allen Geräten. <b>Abbrechen</b> verwirft die Änderungen, <b>Standard</b> stellt den Firmenstandard wieder her.</li>
     </ol></div>
   <table>
     <tr><td><b>Schnellzugriff</b></td><td><b>Schnellaktionen</b> (große Knöpfe: Neu anlegen, Störung melden, Ticket, Zeit erfassen, Ersatzteil suchen …), <b>Eigene Links</b>, <b>Scannen</b> (QR-Code oder Barcode mit der Handy-Kamera – siehe unten)</td></tr>
+    <tr><td><b>Herkunft</b></td><td><b>Offene Tickets</b> und <b>Aktive Störungen</b> zeigen unter der Zahl, woher die offenen Vorgänge kommen, z. B. „davon 3 aus SAP PM · 2 aus der App · 1 vom Terminal“. <b>Aktuelle Störungen</b> und <b>Mir zugewiesen</b> zeigen die Herkunft als kleines Schild (<a href="#tickets">mehr</a>). Von Hand angelegte Vorgänge zählen dort nicht mit.</td></tr>
     <tr><td><b>Tabelle und Zeitstrahl</b></td><td>Die Widgets <b>Tabelle offener Vorgänge</b> und <b>Zeitstrahl</b> (unter „Listen“) zeigen alle offenen Störungen, Tickets, Wartungen und Aufgaben. Über beiden wählst du wie im Leitstand, was angezeigt wird (Störungen, Tickets, Wartung, Aufgaben, nur überfällige, nur ohne Zuständigen) – dein Browser merkt sich die Auswahl. Eine Zeile antippen öffnet den Vorgang; im Zeitstrahl verschiebst du den Termin per Ziehen. Beide gibt es je einmal – wer sie nicht braucht, nimmt sie unter <b>Dashboard anpassen</b> heraus.</td></tr>
     <tr><td><b>Kennzahlen</b></td><td>Offene Tickets, Aktive Störungen, Wartung fällig, Nachbestellen, Meine Aufgaben, Meine Stunden, Verlauf 14 Tage (Tickets und Störungen pro Tag)</td></tr>
     <tr><td><b>Listen</b></td><td><b>Mir zugewiesen</b> (das Dringendste zuerst, Überfälliges rot), Aktuelle Störungen, Wartungen nächste 7 Tage, Bestellliste (Teile unter Mindestbestand, mit dem Lagerplatz, an dem die meisten liegen), <b>Anlagen-Schnellübersicht</b> (Ampel einer <a href="#watch">Schnellübersicht</a> mit NOK-Bauteilen und Störungen)</td></tr>
@@ -381,6 +382,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <p>Eine Störung ist ein technisches Problem an einer Anlage. Die Seite <b>Störungen</b> ist aufgebaut wie der KVP – mit <b>Dashboard</b>, <b>Störungen</b>, <b>Board</b> und <b>Regeln &amp; Einstellungen</b> (siehe <a href="#work-views">Tickets</a>); frisch gemeldete Störungen sind gelb markiert. Sie durchläuft fünf Schritte:</p>
   {{template "hb-fig-fault"}}
   <p>Eine Störung mit der Kategorie <b>Störung durch Rüsten</b> entsteht von selbst, wenn eine Rüstzeit zu lange dauert (<a href="#ruestzeiten">mehr</a>). Sie hat hohen Schweregrad, die Anlage gilt als stehend.</p>
+  <p>Woher eine Störung kam (Easy-Modus, Terminal, App, Fremdsystem …), zeigt ein graues Schild in der Liste und oben auf ihrer Seite – siehe <a href="#tickets">Herkunft</a>.</p>
   <div class="hb-howto"><b><i class="ti ti-check"></i> So löst du eine Störung</b>
     <ol class="hb-steps">
       <li>Störung öffnen, im Reiter <b>Copilot</b> bei Bedarf eine Analyse starten oder Fragen stellen.</li>
@@ -411,6 +413,17 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
 <section class="hb-ch" id="tickets" data-title="Tickets" data-pages="tickets">
   <h2><i class="ti ti-ticket"></i> Tickets</h2>
   <p>Tickets sind Aufträge und Anfragen, z. B. „Tür klemmt“ oder „Neuer Arbeitsplatz einrichten“. Sie haben Priorität, Status, Termin und Beteiligte. Wie bei Störungen schlägt der Copilot bei offenen Tickets selbst Dopplungen, bewährte Lösungen und Ersatzteile vor – der Copilot-Reiter blinkt dann gelb (siehe <a href="#faults">Störungen → Automatische Vorschläge</a>).</p>
+  <div class="hb-howto"><b><i class="ti ti-route"></i> Woher eine Meldung kommt (Herkunft)</b>
+    <p>Jedes Ticket und jede Störung merkt sich, woher es kam. Das steht als graues Schild in der Liste, oben auf der Seite des Vorgangs (<b>Herkunft: …</b>) und in den Kacheln der Startseite:</p>
+    <ul>
+      <li><b>Easy-Modus</b> – über den QR-Code einer Anlage gemeldet.</li>
+      <li><b>Terminal …</b> – am Anlagenterminal gemeldet, mit der Anlage, an der das Terminal steht (z. B. „Terminal Halle 2“).</li>
+      <li><b>App</b> – aus der PDH-App.</li>
+      <li><b>Name des Fremdsystems</b> (z. B. „SAP PM“) – über den Abgleich übernommen. Den Namen sieht nur, wer den Abgleich in der Abteilung dieses Fremdsystems sehen darf, sonst steht dort <b>Fremdsystem</b>.</li>
+      <li><b>Alarm Energiedaten</b> / <b>Alarm IT-Netz</b> – von einem Wächter angelegt.</li>
+      <li><b>Firewall-Freigabe</b>, <b>Rüstzeit</b> – vom PDH selbst angelegt.</li>
+    </ul>
+    <p>Von Hand im PDH angelegte Vorgänge haben kein Schild. Ältere Vorgänge (vor 0.82.32) haben die Herkunft nur, wenn sie sich nachträglich erkennen ließ.</p></div>
   <p id="work-views">Tickets, Störungen, Aufgaben und Wartungen sind aufgebaut wie der <a href="#kvp">KVP</a> – mit diesen Reitern oben auf der Seite:</p>
   {{template "hb-fig-workboard"}}
   <ul>

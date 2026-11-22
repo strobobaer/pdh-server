@@ -21,6 +21,9 @@ const (
 
 // Störung
 type Fault struct {
+	// Herkunft (Migration 202, Paket origin): web, easy, terminal, app, sync, alarm, system; "" = unbekannt
+	Origin           string      `json:"origin,omitempty"`
+	OriginLabel      string      `json:"origin_label,omitempty"`
 	ID               string      `json:"id"`
 	Title            string      `json:"title"`
 	Description      string      `json:"description"`
@@ -104,6 +107,9 @@ type CreateFaultInput struct {
 	// Gesetzt spart sie newFault die Abfrage der Vorgabe – wichtig für Aufrufer, die
 	// in CreateInTx keine weitere Pool-Verbindung brauchen dürfen.
 	DueDate *time.Time `json:"-"`
+	// Origin, OriginLabel: Herkunft (Paket origin). Nur intern – jeder Anlege-Weg setzt sie.
+	Origin      string `json:"-"`
+	OriginLabel string `json:"-"`
 }
 
 type ResolveInput struct {

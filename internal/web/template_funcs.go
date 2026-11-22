@@ -17,6 +17,7 @@ func TemplateFuncs() template.FuncMap {
 		"appVersion":   pdh.Version,
 		"css":          templateCSS,
 		"grafanaColor": grafanaColorCSS, // Kachelfarbe Statistik (grafana.go)
+		"dwBgColors":   dwBgColorList,   // Hintergrund der Startseiten-Kacheln (dashboard_widgets.go)
 		"dict":         templateDict,
 		"list":         templateList,
 		"safeJS":       templateJS,
