@@ -648,8 +648,9 @@ und 3 drückt bis auf Weiteres der Anwender.
     `feature/pdh-app-paket2` (noch nicht auf `main`): Vorgänge, Scannen,
     Störung melden, Schreibwächter (Spiegel nur lesen, Wartung, einmalige
     Ausführung per `X-PDH-Once`), Handbuch „Mit der App arbeiten“. Die App
-    liegt im lokalen Repository `C:\workplace\pdh-app` (Branch `master`, nicht
-    auf GitHub); iOS ist nicht gebaut (braucht einen Mac). Geparkt: Begrenzung
+    liegt im privaten Repository `strobobaer/pdh-app` (lokal
+    `C:\workplace\pdh-app`, Branch `master`; offene Punkte in
+    `docs/offene-punkte.md`); iOS ist nicht gebaut (braucht einen Mac). Geparkt: Begrenzung
     je Gerät, Aufbewahrung von `request_once` gegen Offline (Paket 3),
     Fehlertypen im App-Modul, doppelter `assetOpenItems`-Code,
     Signierschlüssel für Releases.
