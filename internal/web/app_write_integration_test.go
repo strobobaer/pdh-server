@@ -20,6 +20,7 @@ func TestAppWriteGuard(t *testing.T) {
 	e := newATEnv(t)
 	h := &Handler{db: e.pool}
 	uid := e.user("appw"+e.sfx, "user", false)
+	dev := e.appDevice(uid)
 
 	runs, replays, status := 0, 0, http.StatusOK
 	var lastOnce string
@@ -37,7 +38,7 @@ func TestAppWriteGuard(t *testing.T) {
 		if once != "" {
 			req.Header.Set("X-PDH-Once", once)
 		}
-		req = req.WithContext(context.WithValue(req.Context(), appDeviceKey{}, &appDeviceCtx{ID: "d", UserID: uid}))
+		req = req.WithContext(context.WithValue(req.Context(), appDeviceKey{}, &appDeviceCtx{ID: dev, UserID: uid}))
 		rec := httptest.NewRecorder()
 		guard.ServeHTTP(rec, req)
 		return rec
@@ -141,7 +142,7 @@ func TestAppWriteGuard(t *testing.T) {
 	other := e.user("appx"+e.sfx, "user", false)
 	req3 := httptest.NewRequest("POST", "/api/app/v1/x", nil)
 	req3.Header.Set("X-PDH-Once", o3)
-	req3 = req3.WithContext(context.WithValue(req3.Context(), appDeviceKey{}, &appDeviceCtx{ID: "d2", UserID: other}))
+	req3 = req3.WithContext(context.WithValue(req3.Context(), appDeviceKey{}, &appDeviceCtx{ID: e.appDevice(other), UserID: other}))
 	rec = httptest.NewRecorder()
 	guard.ServeHTTP(rec, req3)
 	if rec.Code != 409 || code(rec) != "app_conflict" || rec.Header().Get("X-PDH-Once-Replay") != "" {
@@ -153,7 +154,7 @@ func TestAppWriteGuard(t *testing.T) {
 	}
 	req3 = httptest.NewRequest("POST", "/api/app/v1/anderer", nil)
 	req3.Header.Set("X-PDH-Once", o3)
-	req3 = req3.WithContext(context.WithValue(req3.Context(), appDeviceKey{}, &appDeviceCtx{ID: "d", UserID: uid}))
+	req3 = req3.WithContext(context.WithValue(req3.Context(), appDeviceKey{}, &appDeviceCtx{ID: dev, UserID: uid}))
 	rec = httptest.NewRecorder()
 	guard.ServeHTTP(rec, req3)
 	if rec.Code != 409 || code(rec) != "app_conflict" || runs != rBefore {
@@ -197,7 +198,7 @@ func TestAppWriteGuard(t *testing.T) {
 	mk := func() *http.Request {
 		q := httptest.NewRequest("POST", "/api/app/v1/x", nil)
 		q.Header.Set("X-PDH-Once", o1)
-		return q.WithContext(context.WithValue(q.Context(), appDeviceKey{}, &appDeviceCtx{ID: "d", UserID: uid}))
+		return q.WithContext(context.WithValue(q.Context(), appDeviceKey{}, &appDeviceCtx{ID: dev, UserID: uid}))
 	}
 	done := make(chan *httptest.ResponseRecorder)
 	go func() {
@@ -234,7 +235,7 @@ func TestAppWriteGuard(t *testing.T) {
 	mkp := func() *http.Request {
 		q := httptest.NewRequest("POST", "/api/app/v1/x", nil)
 		q.Header.Set("X-PDH-Once", o2p)
-		return q.WithContext(context.WithValue(q.Context(), appDeviceKey{}, &appDeviceCtx{ID: "d", UserID: uid}))
+		return q.WithContext(context.WithValue(q.Context(), appDeviceKey{}, &appDeviceCtx{ID: dev, UserID: uid}))
 	}
 	func() {
 		defer func() {
@@ -254,7 +255,7 @@ func TestAppWriteGuard(t *testing.T) {
 	nodb := &Handler{}
 	req := httptest.NewRequest("POST", "/api/app/v1/x", nil)
 	req.Header.Set("X-PDH-Once", once())
-	req = req.WithContext(context.WithValue(req.Context(), appDeviceKey{}, &appDeviceCtx{ID: "d", UserID: uid}))
+	req = req.WithContext(context.WithValue(req.Context(), appDeviceKey{}, &appDeviceCtx{ID: dev, UserID: uid}))
 	rec = httptest.NewRecorder()
 	nodb.appWrite(next).ServeHTTP(rec, req)
 	if rec.Code != 503 || code(rec) != "app_unavailable" {
@@ -306,5 +307,160 @@ func TestAppServerTime(t *testing.T) {
 	e.must(json.Unmarshal(rec.Body.Bytes(), &m))
 	if d := time.Now().Unix() - m.Time; d < -5 || d > 5 {
 		t.Errorf("time weicht ab: %d", d)
+	}
+}
+
+// appDevice legt ein Gerät für den Benutzer an (app_steps.device_id verweist darauf).
+func (e *atEnv) appDevice(uid string) string {
+	e.t.Helper()
+	_, pub := appTestKey(e.t)
+	id := e.id(`INSERT INTO app_devices (user_id, public_key, key_fingerprint, label)
+		VALUES ($1::uuid, $2, $3, 'w') RETURNING id::text`, uid, pub, appKeyFingerprint(pub))
+	e.t.Cleanup(func() { _, _ = e.pool.Exec(context.Background(), `DELETE FROM app_devices WHERE id = $1::uuid`, id) })
+	return id
+}
+
+// Schritte genau einmal: app_steps (90 Tage), Übergang aus request_once, Ergebnis je Schritt.
+func TestAppWriteStepsTable(t *testing.T) {
+	e := newATEnv(t)
+	h := &Handler{db: e.pool}
+	uid := e.user("apps"+e.sfx, "user", false)
+	dev := e.appDevice(uid)
+	other := e.user("appso"+e.sfx, "user", false)
+	otherDev := e.appDevice(other)
+	once := func() string { return e.id(`SELECT pdh_uuid_v7()::text`) }
+
+	status, runs, replays := 200, 0, 0
+	var resType, resID, replayType, replayID string
+	guard := h.appWrite(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		runs++
+		if appIsReplay(r) {
+			replays++
+			replayType, replayID = appStepResult(r)
+		} else if resType != "" {
+			appSetResult(r, resType, resID)
+		}
+		w.WriteHeader(status)
+	}))
+	do := func(o, path, user, device string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest("POST", path, strings.NewReader("{}"))
+		req.Header.Set("X-PDH-Once", o)
+		req = req.WithContext(context.WithValue(req.Context(), appDeviceKey{}, &appDeviceCtx{ID: device, UserID: user}))
+		rec := httptest.NewRecorder()
+		guard.ServeHTTP(rec, req)
+		return rec
+	}
+	t.Cleanup(func() {
+		_, _ = e.pool.Exec(context.Background(), `DELETE FROM app_steps WHERE user_id IN ($1::uuid, $2::uuid)`, uid, other)
+		_, _ = e.pool.Exec(context.Background(), `DELETE FROM request_once WHERE user_id IN ($1::uuid, $2::uuid)`, uid, other)
+	})
+
+	// Eine Once landet in app_steps (mit Gerät) und nicht in request_once.
+	o := once()
+	if rec := do(o, "/api/app/v1/x", uid, dev); rec.Code != 200 {
+		t.Fatalf("erste: %d", rec.Code)
+	}
+	var gotUser, gotDev, gotPath string
+	e.must(e.pool.QueryRow(e.ctx, `SELECT user_id::text, device_id::text, path FROM app_steps WHERE id = $1::uuid`, o).Scan(&gotUser, &gotDev, &gotPath))
+	if gotUser != uid || gotDev != dev || gotPath != "/api/app/v1/x" {
+		t.Errorf("app_steps: %s %s %s", gotUser, gotDev, gotPath)
+	}
+	if n := e.id(`SELECT count(*)::text FROM request_once WHERE token = $1::uuid`, o); n != "0" {
+		t.Errorf("Once steht noch in request_once (%s)", n)
+	}
+
+	// Nach künstlich 3 Tagen noch ein Replay (Aufbewahrung 90 Tage).
+	e.exec(`UPDATE app_steps SET created_at = NOW() - INTERVAL '3 days' WHERE id = $1::uuid`, o)
+	r0 := replays
+	if rec := do(o, "/api/app/v1/x", uid, dev); rec.Header().Get("X-PDH-Once-Replay") != "1" || replays != r0+1 {
+		t.Errorf("Wiederholung nach 3 Tagen kein Replay: %d replay=%q", rec.Code, rec.Header().Get("X-PDH-Once-Replay"))
+	}
+
+	// Übergang aus Paket 2: nur in request_once → Replay (gleicher Benutzer und Pfad).
+	old := once()
+	e.exec(`INSERT INTO request_once (token, user_id, path) VALUES ($1::uuid, $2::uuid, '/api/app/v1/x')`, old, uid)
+	runsBefore, r0 := runs, replays
+	if rec := do(old, "/api/app/v1/x", uid, dev); rec.Header().Get("X-PDH-Once-Replay") != "1" || replays != r0+1 || runs != runsBefore+1 {
+		t.Errorf("request_once-Once kein Replay: %d replay=%q", rec.Code, rec.Header().Get("X-PDH-Once-Replay"))
+	}
+	if n := e.id(`SELECT count(*)::text FROM app_steps WHERE id = $1::uuid`, old); n != "0" {
+		t.Errorf("Replay einer request_once-Once legte app_steps an")
+	}
+	// ... fremder Benutzer oder Pfad: 409 ohne Retry-After
+	runsBefore = runs
+	rec := do(old, "/api/app/v1/x", other, otherDev)
+	if rec.Code != 409 || rec.Header().Get("Retry-After") != "" || runs != runsBefore {
+		t.Errorf("request_once fremder Benutzer: %d retry=%q", rec.Code, rec.Header().Get("Retry-After"))
+	}
+	if rec := do(old, "/api/app/v1/anderer", uid, dev); rec.Code != 409 || rec.Header().Get("Retry-After") != "" {
+		t.Errorf("request_once anderer Pfad: %d", rec.Code)
+	}
+
+	// Fremder Benutzer an einer app_steps-Once: 409 ohne Retry-After, Handler läuft nicht.
+	runsBefore = runs
+	rec = do(o, "/api/app/v1/x", other, otherDev)
+	if rec.Code != 409 || rec.Header().Get("Retry-After") != "" || runs != runsBefore {
+		t.Errorf("fremder Benutzer: %d retry=%q runs+=%d", rec.Code, rec.Header().Get("Retry-After"), runs-runsBefore)
+	}
+
+	// 422 gibt die Once frei: die Zeile ist weg.
+	o422 := once()
+	status = 422
+	if rec := do(o422, "/api/app/v1/x", uid, dev); rec.Code != 422 {
+		t.Fatalf("422: %d", rec.Code)
+	}
+	status = 200
+	if n := e.id(`SELECT count(*)::text FROM app_steps WHERE id = $1::uuid`, o422); n != "0" {
+		t.Errorf("Zeile nach 422 nicht gelöscht (%s)", n)
+	}
+
+	// Ergebnis: appSetResult landet in der Zeile, appStepResult liefert es beim Replay.
+	oRes := once()
+	resType, resID = "fault", once()
+	if rec := do(oRes, "/api/app/v1/x", uid, dev); rec.Code != 200 {
+		t.Fatalf("Ergebnis: %d", rec.Code)
+	}
+	var dbType, dbID string
+	e.must(e.pool.QueryRow(e.ctx, `SELECT result_type, result_id::text FROM app_steps WHERE id = $1::uuid`, oRes).Scan(&dbType, &dbID))
+	if dbType != "fault" || dbID != resID {
+		t.Errorf("Ergebnis in app_steps: %q %q", dbType, dbID)
+	}
+	do(oRes, "/api/app/v1/x", uid, dev)
+	if replayType != "fault" || replayID != resID {
+		t.Errorf("appStepResult beim Replay: %q %q", replayType, replayID)
+	}
+	// ohne gesetztes Ergebnis: leer
+	replayType, replayID = "x", "y"
+	do(o, "/api/app/v1/x", uid, dev)
+	if replayType != "" || replayID != "" {
+		t.Errorf("appStepResult ohne Ergebnis: %q %q", replayType, replayID)
+	}
+
+	// Aufräumen: nur app_steps älter als 90 Tage.
+	oOld, oNew := once(), once()
+	e.exec(`INSERT INTO app_steps (id, user_id, path, created_at) VALUES ($1::uuid, $3::uuid, '/p', NOW() - INTERVAL '91 days'), ($2::uuid, $3::uuid, '/p', NOW() - INTERVAL '89 days')`, oOld, oNew, uid)
+	h.appStepsCleanup(e.ctx)
+	if n := e.id(`SELECT count(*)::text FROM app_steps WHERE id = $1::uuid`, oOld); n != "0" {
+		t.Errorf("91 Tage alter Schritt nicht aufgeräumt")
+	}
+	if n := e.id(`SELECT count(*)::text FROM app_steps WHERE id = $1::uuid`, oNew); n != "1" {
+		t.Errorf("89 Tage alter Schritt aufgeräumt")
+	}
+}
+
+// Migration 194: Tabellen für Schritte und Kennungs-Aliase (Kennungen vom Telefon, UUIDv7).
+func TestMigration194(t *testing.T) {
+	e := newATEnv(t)
+	for _, tb := range []string{"app_steps", "app_id_aliases"} {
+		var def string
+		e.must(e.pool.QueryRow(e.ctx, `SELECT column_default FROM information_schema.columns WHERE table_name = $1 AND column_name = 'id'`, tb).Scan(&def))
+		if !strings.Contains(def, "pdh_uuid_v7") {
+			t.Errorf("%s.id: Vorgabe %q", tb, def)
+		}
+	}
+	var n int
+	e.must(e.pool.QueryRow(e.ctx, `SELECT count(*) FROM pg_indexes WHERE indexname IN ('app_steps_created','app_id_aliases_target')`).Scan(&n))
+	if n != 2 {
+		t.Errorf("Indizes: %d von 2", n)
 	}
 }

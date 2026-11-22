@@ -302,7 +302,8 @@ func (h *Handler) appFaultByOnce(ctx context.Context, once, uid, assetID, title 
 	var id string
 	err := h.db.QueryRow(ctx, `SELECT f.id::text FROM faults f
 		WHERE f.created_by = $2::uuid AND f.infrastructure_id = $3::uuid AND f.title = $4
-		  AND f.created_at >= (SELECT created_at FROM request_once WHERE token = $1::uuid)
+		  AND f.created_at >= COALESCE((SELECT created_at FROM app_steps WHERE id = $1::uuid),
+			(SELECT created_at FROM request_once WHERE token = $1::uuid))
 		ORDER BY f.created_at, f.id LIMIT 1`, once, uid, assetID, title).Scan(&id)
 	if err != nil {
 		return ""

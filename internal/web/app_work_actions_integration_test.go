@@ -385,7 +385,7 @@ func TestAppWriteKeepOnce(t *testing.T) {
 	for i := 0; i < 2; i++ {
 		req := httptest.NewRequest("POST", "/api/app/v1/k", strings.NewReader("{}"))
 		req.Header.Set("X-PDH-Once", once)
-		req = req.WithContext(context.WithValue(req.Context(), appDeviceKey{}, &appDeviceCtx{ID: "d", UserID: uid}))
+		req = req.WithContext(context.WithValue(req.Context(), appDeviceKey{}, &appDeviceCtx{ID: e.appDevice(uid), UserID: uid}))
 		guard.ServeHTTP(httptest.NewRecorder(), req)
 	}
 	if writes != 1 || replays != 1 {
