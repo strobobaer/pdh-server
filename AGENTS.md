@@ -682,6 +682,17 @@ und 3 drückt bis auf Weiteres der Anwender.
     je Gerät, Aufbewahrung von `request_once` gegen Offline (Paket 3),
     Fehlertypen im App-Modul, doppelter `assetOpenItems`-Code,
     Signierschlüssel für Releases.
+    **Paket 3 (Arbeiten ohne Verbindung), Server fertig auf Branch
+    `feature/pdh-app-paket3` (0.82.27, noch nicht auf `main`):** Migration 195
+    (`195_app_offline`, ursprünglich 194, wegen Kollision mit `194_esppdh_ota`
+    umnummeriert), Schritte genau einmal 90 Tage (`app_steps`), Kennungs-Aliase,
+    Störung mit Telefon-`id` und `offline` (an offene Störung der Anlage
+    angehängt), Zusammenführ-Regeln mit Stand (`base`), Hinweis und Nachtrag,
+    `GET /api/app/v1/assets` (Anlagenliste für den Offline-Speicher), Handbuch
+    „Mit der App ohne Verbindung arbeiten“. **Die App (Teil A, Branch
+    `feature/paket3` in `pdh-app`, Version 1.1.0+2) folgt.** Testdatenbank
+    `pdh_test_app` hat 194 noch als `194_app_offline` vermerkt (nicht von Hand
+    geändert); `194_esppdh_ota` ist dort nicht eingespielt.
     Entschieden (Anwender, 21.11.2026: „Manager passt“): Manager behalten
     `app.admin` in allen Abteilungen (Freigabe/Sperre bleibt durch die
     Rangfolge begrenzt).

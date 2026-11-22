@@ -519,6 +519,7 @@ func main() {
 	r.With(webHandler.AppAuth).Get("/api/app/v1/work", webHandler.AppWorkAPI)
 	r.With(webHandler.AppAuth).Get("/api/app/v1/work/{type}/{id}", webHandler.AppWorkDetailAPI)
 	r.With(webHandler.AppAuth).Get("/api/app/v1/scan", webHandler.AppScanAPI)
+	r.With(webHandler.AppAuth).Get("/api/app/v1/assets", webHandler.AppAssetsAPI)
 	r.With(webHandler.AppAuth, webHandler.AppWrite).Post("/api/app/v1/faults", webHandler.AppFaultCreateAPI)
 	r.With(webHandler.AppAuth, webHandler.AppWrite).Post("/api/app/v1/work/{type}/{id}/start", webHandler.AppWorkStartAPI)
 	r.With(webHandler.AppAuth, webHandler.AppWrite).Post("/api/app/v1/work/{type}/{id}/actions", webHandler.AppWorkActionAPI)
