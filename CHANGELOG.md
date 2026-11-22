@@ -10,6 +10,17 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.82.29] – 2026-11-22
+
+### Neu
+
+- **Netzwerk: Freigabe für ESPPDH-Updates in UniFi anlegen.** Beim Netz der ESPPDH-Geräte legt ein Knopf in UniFi die Firewall-Regel an, damit der Server neue Firmware übers Netz aufspielen kann: Erlauben, nur TCP-Port 3232 und 8266, nur von den Servern zum Adressbereich des Netzes. Liegt der Server im selben Netz oder in derselben Firewall-Zone, braucht es keine Regel; das PDH sagt das.
+- **Ticket an die IT, wenn das nicht geht:** Ist UniFi nicht eingerichtet, zu alt (vor UniFi Network 10) oder darf der Schlüssel das nicht, legt das PDH ein Ticket mit Netz, Adressbereich, Server-Adressen, Ports und Grund an – je Netz nur eines, solange es offen ist.
+
+### Sicherheit
+
+- Den Knopf hat nur, wer das Recht „Netzwerk: VLANs und WLANs löschen (Bereichsadministrator)“ hat. Das PDH ändert oder löscht nie eine vorhandene Firewall-Regel.
+
 ## [0.82.28] – 2026-11-22
 
 ### Neu

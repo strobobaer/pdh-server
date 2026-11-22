@@ -647,7 +647,20 @@ und 3 drückt bis auf Weiteres der Anwender.
     gesehen (am Testverbund kein ESPPDH-Gerät, ESPPDH aus): Karte „Firmware
     übers Netz“ und Sammelaktion – nur automatisch getestet. Offen: Abnahme
     an echter Platine (einmal USB, dann übers Netz, Port 3232/8266 in der
-    Firewall); 10.10.0.202 einspielen (Anwender, mit Sicherung). Hinweis:
+    Firewall); 10.10.0.202 einspielen (Anwender, mit Sicherung).
+    **0.82.29 Freigabe in UniFi** (Anwender 22.11.2026: „Auf Knopfdruck“,
+    „Ist kein Eintrag möglich Ticket an it“; Entwurf
+    `docs/superpowers/specs/2026-11-22-esppdh-unifi-freigabe-design.md`,
+    Plan `docs/superpowers/plans/2026-11-22-esppdh-unifi-freigabe.md`,
+    Branch `feature/esppdh-unifi-freigabe`): Knopf beim Netz der Seite
+    „Netzwerk“ legt die Regel „PDH – ESPPDH-Update <Netz>“ über die offizielle
+    UniFi-Schnittstelle an (`firewall/zones`, `firewall/policies`, ab Network
+    10; Felder aus developer.ui.com 10.6.106), sonst Ticket an die IT
+    (Empfänger der IT-Netz-Alarme, Schlagwort `esppdh-freigabe:<netz>`).
+    Recht `system.network_admin`, keine Migration. Offen: Abnahme an einem
+    echten UniFi-Controller (Feldnamen, besonders `protocol.name: tcp`, sind
+    nur nach der Dokumentation gebaut – am Testverbund sind die Quellen aus);
+    Omada nur Ticket. Hinweis:
     der oberste Infrastruktur-Knoten heißt am Testverbund noch „Werk
     Augsburg“ (Beispielknoten aus Migration 005). Geparkt aus der
     Schlussprüfung: erneutes Aufspielen desselben Baus meldet sofort „ok“;
