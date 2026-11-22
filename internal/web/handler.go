@@ -23,6 +23,7 @@ import (
 	"pdh/internal/core/infrastructure"
 	"pdh/internal/core/mqttbroker"
 	"pdh/internal/core/mqttimport"
+	recorigin "pdh/internal/core/origin"
 	"pdh/internal/core/rbac"
 	"pdh/internal/core/scheduler"
 	"pdh/internal/core/shifts"
@@ -2035,6 +2036,7 @@ func (h *Handler) CreateFault(w http.ResponseWriter, r *http.Request) {
 		Severity:      faults.Severity(r.FormValue("severity")),
 		AssignedTo:    optionalID(r.FormValue("assigned_to")),
 		ResponsibleTo: optionalID(r.FormValue("responsible_to")),
+		Origin:        recorigin.Web,
 	}
 	h.faults.Create(r.Context(), in, u.ID)
 	h.Faults(w, r)
@@ -2098,6 +2100,7 @@ func (h *Handler) CreateTicket(w http.ResponseWriter, r *http.Request) {
 		Priority:      tickets.Priority(r.FormValue("priority")),
 		AssignedTo:    optionalID(r.FormValue("assigned_to")),
 		ResponsibleTo: optionalID(r.FormValue("responsible_to")),
+		Origin:        recorigin.Web,
 	}
 	h.tickets.Create(r.Context(), in, u.ID)
 	h.Tickets(w, r)

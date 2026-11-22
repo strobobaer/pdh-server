@@ -13,6 +13,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	recorigin "pdh/internal/core/origin"
 )
 
 // terminalReport: Daten der Meldeseite.
@@ -267,7 +269,7 @@ func (h *Handler) TerminalReportSubmit(typ string) http.HandlerFunc {
 		}
 		title, desc := easyComposeFrom(in, in.Text, "Deutsch", true, "Gemeldet am Anlagenterminal")
 		tags := []string{easyKindDE[in.Kind], easyStateDE[in.State]}
-		recID, err := h.reportCreate(ctx, typ, in.State, title, desc, tags, infra, a.ID)
+		recID, err := h.reportCreate(ctx, typ, in.State, title, desc, tags, infra, a.ID, recorigin.Terminal, p.Name)
 		if err != nil {
 			componentLog("terminal").Error().Err(err).Str("art", typ).Msg("meldung anlegen")
 			back("err")

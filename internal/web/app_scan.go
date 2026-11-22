@@ -15,6 +15,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	recorigin "pdh/internal/core/origin"
 	"pdh/internal/modules/faults"
 )
 
@@ -382,7 +383,7 @@ func (h *Handler) AppFaultCreateAPI(w http.ResponseWriter, r *http.Request) {
 	if in.PlantStopped {
 		sev = "high"
 	}
-	f, err := h.faults.Create(ctx, &faults.CreateFaultInput{Title: title, Description: text, Severity: sev, InfrastructureID: &assetID}, u.ID)
+	f, err := h.faults.Create(ctx, &faults.CreateFaultInput{Title: title, Description: text, Severity: sev, InfrastructureID: &assetID, Origin: recorigin.App}, u.ID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			appJSONErr(w, http.StatusNotFound, "app_not_found", "app_not_found")

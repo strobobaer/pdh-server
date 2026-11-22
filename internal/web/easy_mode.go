@@ -15,6 +15,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	recorigin "pdh/internal/core/origin"
 	"pdh/internal/modules/faults"
 	"pdh/internal/modules/tickets"
 	"pdh/pkg/appsettings"
@@ -372,7 +373,7 @@ func (h *Handler) EasyReportWeb(w http.ResponseWriter, r *http.Request) {
 		desc += "\n\nTestmeldung aus der Easy-Mode-Vorschau (Admin) – kann gelöscht werden."
 	}
 	tags := []string{easyKindDE[in.Kind], easyStateDE[in.State]}
-	recID, err := h.reportCreate(ctx, in.Type, in.State, title, desc, tags, id, pdhSystemUserID)
+	recID, err := h.reportCreate(ctx, in.Type, in.State, title, desc, tags, id, pdhSystemUserID, recorigin.Easy, "")
 	if err != nil {
 		componentLog("easy").Error().Err(err).Str("art", in.Type).Msg("meldung anlegen")
 		fail(http.StatusInternalServerError, "save")
@@ -413,7 +414,8 @@ func (h *Handler) EasyModeSettingsWeb(w http.ResponseWriter, r *http.Request) {
 
 // reportCreate legt Störung oder Ticket an – gemeinsam für Easy-Modus und Anlagenterminal (gleiche
 // Anlage-Logik, Benachrichtigungen des Dienstes und Push-Alarm bei „Anlage steht“). by = Ersteller.
-func (h *Handler) reportCreate(ctx context.Context, typ, state, title, desc string, tags []string, infra, by string) (string, error) {
+// org, orgLabel: Herkunft (recorigin.Easy bzw. recorigin.Terminal mit dem Namen des Terminals).
+func (h *Handler) reportCreate(ctx context.Context, typ, state, title, desc string, tags []string, infra, by, org, orgLabel string) (string, error) {
 	var recID string
 	switch typ {
 	case "fault":
@@ -421,7 +423,8 @@ func (h *Handler) reportCreate(ctx context.Context, typ, state, title, desc stri
 		if state == "stopped" {
 			sev = "high"
 		}
-		f, err := h.faults.Create(ctx, &faults.CreateFaultInput{Title: title, Description: desc, Symptoms: tags, Severity: sev, InfrastructureID: &infra}, by)
+		f, err := h.faults.Create(ctx, &faults.CreateFaultInput{Title: title, Description: desc, Symptoms: tags, Severity: sev, InfrastructureID: &infra,
+			Origin: org, OriginLabel: orgLabel}, by)
 		if err != nil {
 			return "", err
 		}
@@ -431,7 +434,8 @@ func (h *Handler) reportCreate(ctx context.Context, typ, state, title, desc stri
 		if state == "stopped" {
 			prio = "high"
 		}
-		t, err := h.tickets.Create(ctx, &tickets.CreateInput{Title: title, Description: desc, Priority: prio, InfrastructureID: &infra, Tags: tags}, by)
+		t, err := h.tickets.Create(ctx, &tickets.CreateInput{Title: title, Description: desc, Priority: prio, InfrastructureID: &infra, Tags: tags,
+			Origin: org, OriginLabel: orgLabel}, by)
 		if err != nil {
 			return "", err
 		}

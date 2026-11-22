@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	recorigin "pdh/internal/core/origin"
 	"pdh/internal/modules/tickets"
 
 	"github.com/go-chi/chi/v5"
@@ -258,7 +259,7 @@ func (h *Handler) AppRequestCreateAPI(w http.ResponseWriter, r *http.Request) {
 	}
 	t, err := h.tickets.CreateInTx(ctx, tx, &tickets.CreateInput{
 		Title: title, Description: desc, Priority: tickets.PriorityMedium,
-		AssignedGroupID: &group, Tags: []string{},
+		AssignedGroupID: &group, Tags: []string{}, Origin: recorigin.App,
 	}, appSystemUserID)
 	if err != nil {
 		serverErr(err)

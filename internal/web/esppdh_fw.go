@@ -14,6 +14,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
 
+	recorigin "pdh/internal/core/origin"
 	"pdh/internal/integrations/unifi"
 	"pdh/internal/modules/tickets"
 )
@@ -309,7 +310,8 @@ func (h *Handler) esppdhFwTicket(ctx context.Context, seg esppdhFwSeg, ips []str
 	}
 	title, desc := esppdhFwTicketText(seg, ips, reason, by)
 	tk, err := h.tickets.Create(ctx, &tickets.CreateInput{Title: title, Description: desc, Priority: tickets.PriorityMedium,
-		AssignedTo: assignUser, ResponsibleTo: assignUser, AssignedGroupID: assignGroup, Tags: []string{esppdhFwTag(seg.ID)}}, pdhSystemUserID)
+		AssignedTo: assignUser, ResponsibleTo: assignUser, AssignedGroupID: assignGroup, Tags: []string{esppdhFwTag(seg.ID)},
+		Origin: recorigin.System, OriginLabel: "Firewall-Freigabe"}, pdhSystemUserID)
 	if err != nil {
 		return "", err
 	}

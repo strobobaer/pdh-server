@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/rs/zerolog/log"
 
+	recorigin "pdh/internal/core/origin"
 	"pdh/internal/integrations/omada"
 	"pdh/internal/integrations/snmp"
 	"pdh/internal/integrations/unifi"
@@ -735,6 +736,7 @@ func (s itNetAlarmSink) OpenTicket(ctx context.Context, tx pgx.Tx, a netsync.Ala
 		Title: title, Description: desc, Priority: h.itNetPriority(ctx),
 		AssignedTo: assignUser, ResponsibleTo: assignUser, AssignedGroupID: assignGroup,
 		Tags: []string{}, DueDate: due, RequiresRootCause: true,
+		Origin: recorigin.Alarm, OriginLabel: "IT-Netz",
 	}
 	if a.InfrastructureID != "" {
 		infra := a.InfrastructureID

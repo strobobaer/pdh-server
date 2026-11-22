@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog/log"
 	"pdh/internal/core/addins"
+	"pdh/internal/core/origin"
 	"pdh/internal/core/synclink"
 	"pdh/internal/integrations/nextcloud"
 	"pdh/pkg/appsettings"
@@ -71,6 +72,9 @@ type Ticket struct {
 	// der Energiedaten) lassen sich nur mit beschriebener Ursache erledigen.
 	AssignedGroupID   *string `json:"assigned_group_id,omitempty"`
 	RequiresRootCause bool    `json:"requires_root_cause,omitempty"`
+	// Herkunft (Migration 201, Paket origin): web, easy, terminal, app, sync, alarm, system; "" = unbekannt
+	Origin      string `json:"origin,omitempty"`
+	OriginLabel string `json:"origin_label,omitempty"`
 }
 
 // Kommentar zu einem Ticket
@@ -98,6 +102,10 @@ type CreateInput struct {
 	// RequiresRootCause: Alarm-Ticket, Erledigen nur mit Ursache. Nur intern
 	// (Schwellwert-Wächter), nicht über die JSON-Schnittstelle setzbar.
 	RequiresRootCause bool `json:"-"`
+	// Origin, OriginLabel: Herkunft (Paket origin). Nur intern – jeder Anlege-Weg setzt sie,
+	// nie aus der JSON-Schnittstelle.
+	Origin      string `json:"-"`
+	OriginLabel string `json:"-"`
 }
 
 // ErrRootCauseRequired: Ein Alarm-Ticket ohne Ursache soll erledigt,
@@ -131,13 +139,13 @@ func insertTicket(ctx context.Context, q rowQuerier, t *Ticket) error {
 	tags, _ := json.Marshal(t.Tags)
 	query := `
 		INSERT INTO tickets (id, title, description, priority, status, assigned_to, responsible_to, created_by, infrastructure_id, due_date, tags, cost_center_id,
-			assigned_group_id, requires_root_cause)
-		VALUES (pdh_uuid_v7(), $1, $2, $3, 'open', $4, $5, $6, $7, $8, $9, $10, $11, $12)
+			assigned_group_id, requires_root_cause, origin, origin_label)
+		VALUES (pdh_uuid_v7(), $1, $2, $3, 'open', $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 		RETURNING id, created_at, updated_at`
 	return q.QueryRow(ctx, query,
 		t.Title, t.Description, t.Priority,
 		t.AssignedTo, t.ResponsibleTo, t.CreatedBy, t.InfrastructureID, t.DueDate, tags, t.CostCenterID,
-		t.AssignedGroupID, t.RequiresRootCause,
+		t.AssignedGroupID, t.RequiresRootCause, t.Origin, t.OriginLabel,
 	).Scan(&t.ID, &t.CreatedAt, &t.UpdatedAt)
 }
 
@@ -453,6 +461,7 @@ func (s *Service) AfterCreate(t *Ticket) {
 
 // newTicket baut das Ticket aus der Eingabe samt Vorgabe-Fälligkeit.
 func (s *Service) newTicket(ctx context.Context, in *CreateInput, createdBy string) *Ticket {
+	o, label := origin.Clean(in.Origin, in.OriginLabel)
 	dueDate := in.DueDate
 	if dueDate == nil {
 		days := appsettings.GetInt(ctx, s.repo.db, appsettings.KeyDefaultDueDaysTicket, appsettings.DefaultDueDaysFallback)
@@ -473,6 +482,8 @@ func (s *Service) newTicket(ctx context.Context, in *CreateInput, createdBy stri
 
 		AssignedGroupID:   in.AssignedGroupID,
 		RequiresRootCause: in.RequiresRootCause,
+		Origin:            o,
+		OriginLabel:       label,
 	}
 }
 
