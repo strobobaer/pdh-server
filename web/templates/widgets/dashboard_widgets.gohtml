@@ -35,6 +35,21 @@
 .dw-cfg{display:none;padding:0 12px 12px;gap:6px;flex-direction:column}
 .dw-cfg label{font-size:11px;color:var(--muted)}
 .dw-cfg textarea{min-height:80px;font-family:inherit}
+/* Hintergrund je Kachel (Schlüssel bg): im hellen Modus helle Töne mit dunkler Schrift, im
+   dunklen Modus (Grundzustand dieser Seite) derselbe Ton gedämpft – nie hell auf hell */
+.dw{--dwbg:var(--bg2)}
+.dw[class*="dw-bg-"]{background:var(--dwbg)}
+.dw-bg-blue{--dwbg:#1b2a3d}.dw-bg-mint{--dwbg:#183330}.dw-bg-green{--dwbg:#1d3020}.dw-bg-yellow{--dwbg:#33301a}
+.dw-bg-peach{--dwbg:#3a2a20}.dw-bg-rose{--dwbg:#3a2129}.dw-bg-lilac{--dwbg:#2c2540}.dw-bg-gray{--dwbg:#262b33}
+html[data-theme="light"] .dw-bg-blue{--dwbg:#e8f1fd}html[data-theme="light"] .dw-bg-mint{--dwbg:#e4f6f1}html[data-theme="light"] .dw-bg-green{--dwbg:#e9f6e6}
+html[data-theme="light"] .dw-bg-yellow{--dwbg:#fdf6d8}html[data-theme="light"] .dw-bg-peach{--dwbg:#fdebe0}html[data-theme="light"] .dw-bg-rose{--dwbg:#fbe8ee}
+html[data-theme="light"] .dw-bg-lilac{--dwbg:#efe9fa}html[data-theme="light"] .dw-bg-gray{--dwbg:#eef0f3}
+html[data-theme="light"] .dw[class*="dw-bg-"]{color:#1f2937}
+html[data-theme="light"] .dw[class*="dw-bg-"] .dw-head,html[data-theme="light"] .dw[class*="dw-bg-"] .dw-stat .s,html[data-theme="light"] .dw[class*="dw-bg-"] .dw-li .s{color:#4b5563}
+.dw-bgpick{display:flex;flex-direction:column;gap:6px}
+.dw-bgsw{display:flex;flex-wrap:wrap;gap:6px}
+.dw-bgsw button{width:24px;height:24px;border-radius:50%;border:1px solid var(--border);background:var(--dwbg);cursor:pointer;padding:0}
+.dw-bgsw button.on{outline:2px solid var(--accent);outline-offset:2px}
 /* Anpassen-Modus */
 .dw-edit .dw{outline:2px dashed rgba(var(--accent-rgb),.45);outline-offset:-2px;cursor:grab}
 .dw-edit .dw-tools{display:flex}
@@ -181,6 +196,20 @@ html[data-theme="light"] .dw-stat.c-blue .v{color:#2563eb}
     // dann die erste, bevor deren <script> lief (Konsole: „reading 'insertBefore'“).
     if(window.htmx && document.readyState !== 'loading') htmx.process(b);
   }
+  // Hintergrund der Kachel sofort zeigen (Auswahlliste und Farbfelder halten denselben Wert)
+  function dwSetBg(el, key){
+    if(!el) return;
+    [...el.classList].filter(c => c.startsWith('dw-bg-')).forEach(c => el.classList.remove(c));
+    if(key) el.classList.add('dw-bg-' + key);
+    const sel = el.querySelector('select[data-cfg="bg"]'); if(sel) sel.value = key;
+    el.querySelectorAll('.dw-bgsw button').forEach(b => b.classList.toggle('on', b.dataset.bg === key));
+  }
+  document.addEventListener('click', e => {
+    const b = e.target.closest('.dw-bgsw button');
+    if(!b) return;
+    const el = b.closest('.dw'), cur = el.querySelector('select[data-cfg="bg"]');
+    dwSetBg(el, cur && cur.value === b.dataset.bg ? '' : b.dataset.bg);
+  });
   function newId(){ return 'w' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
   function makeCard(item){
     const el = document.getElementById('dw-tpl').content.firstElementChild.cloneNode(true);
@@ -255,6 +284,7 @@ html[data-theme="light"] .dw-stat.c-blue .v{color:#2563eb}
       clearTimeout(ta._t); ta._t = setTimeout(() => { ta._t = null; saveNote(el, ta); }, 800);
       return;
     }
+    if(e.target.matches('[data-cfg="bg"]')) dwSetBg(e.target.closest('.dw'), e.target.value);
     if(e.target.matches('[data-cfg="title"]')){
       const t = e.target.closest('.dw').querySelector('.dw-title');
       t.textContent = e.target.value.trim() || t.dataset.default;
@@ -291,7 +321,7 @@ html[data-theme="light"] .dw-stat.c-blue .v{color:#2563eb}
 {{end}}
 
 {{define "dw-card"}}
-<div class="dw" data-id="{{.ID}}" data-type="{{.Type}}" data-size="{{.Size}}" data-refresh="{{.Def.Refresh}}" data-cfgkind="{{.Def.Config}}" data-saved="1">
+<div class="dw{{with .Bg}} dw-bg-{{.}}{{end}}" data-id="{{.ID}}" data-type="{{.Type}}" data-size="{{.Size}}" data-refresh="{{.Def.Refresh}}" data-cfgkind="{{.Def.Config}}" data-saved="1">
   <div class="dw-head">
     <i class="ti {{.Def.Icon}}"></i><span class="dw-title" data-default="{{.Def.Name}}">{{.Title}}</span>
     <span class="dw-tools">
@@ -302,6 +332,11 @@ html[data-theme="light"] .dw-stat.c-blue .v{color:#2563eb}
   </div>
   <div class="dw-cfg">
     <label>{{t "Überschrift (leer = Standard)"}}</label><input class="form-input" data-cfg="title" maxlength="40" value="{{with .Config}}{{index . "title"}}{{end}}">
+    {{$bg := .Bg}}<label>{{t "Hintergrund"}}</label>
+    <div class="dw-bgpick" role="radiogroup" aria-label="{{t "Hintergrund"}}">
+      <select class="form-input" data-cfg="bg" aria-label="{{t "Hintergrund"}}"><option value="">{{t "Standard"}}</option>{{range dwBgColors}}<option value="{{.Key}}"{{if eq .Key $bg}} selected{{end}}>{{t .Name}}</option>{{end}}</select>
+      <span class="dw-bgsw">{{range dwBgColors}}<button type="button" class="dw-bg-{{.Key}}{{if eq .Key $bg}} on{{end}}" data-bg="{{.Key}}" title="{{t .Name}}" aria-label="{{t .Name}}"></button>{{end}}</span>
+    </div>
     <div data-cfg-kind="links" style="display:flex;flex-direction:column;gap:4px"><label>{{th "Links – je Zeile <code>Name | Adresse</code>, z. B. <code>Presse 2 | /infrastructure/…</code> oder <code>Wetter | https://…</code>"}}</label><textarea class="form-input" data-cfg="links">{{with .Config}}{{index . "links"}}{{end}}</textarea></div>
     <div data-cfg-kind="watch" style="display:flex;flex-direction:column;gap:4px">
       <label>{{t "Übersicht"}}</label><select class="form-input" data-cfg="board" data-val="{{with .Config}}{{index . "board"}}{{end}}"></select>

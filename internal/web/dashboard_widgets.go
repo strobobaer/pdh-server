@@ -175,6 +175,9 @@ func sanitizeWidgets(in []WidgetInstance) ([]WidgetInstance, error) {
 			}
 			cfg["title"] = t
 		}
+		if bg := w.Config["bg"]; widgetBgOK(bg) {
+			cfg["bg"] = bg
+		}
 		if len(cfg) > 0 {
 			w.Config = cfg
 		} else {
@@ -235,6 +238,34 @@ type DashboardWidgetView struct {
 	Def   WidgetDef
 	Title string
 }
+
+// widgetBgColors: helle Hintergründe je Kachel (Schlüssel „bg“ in Config, leer = Standard).
+// Die Farbwerte stehen in widgets/dashboard_widgets.gohtml (.dw-bg-…, hell und gedämpft dunkel).
+var widgetBgColors = []struct{ Key, Name string }{
+	{"blue", "Hellblau"}, {"mint", "Mint"}, {"green", "Hellgrün"}, {"yellow", "Hellgelb"},
+	{"peach", "Pfirsich"}, {"rose", "Rosé"}, {"lilac", "Flieder"}, {"gray", "Hellgrau"},
+}
+
+func widgetBgOK(key string) bool {
+	for _, c := range widgetBgColors {
+		if c.Key == key {
+			return true
+		}
+	}
+	return false
+}
+
+// Bg: gewählte Hintergrundfarbe der Kachel ("" = Standard); nur Werte aus widgetBgColors.
+func (v DashboardWidgetView) Bg() string {
+	if bg := v.Config["bg"]; widgetBgOK(bg) {
+		return bg
+	}
+	return ""
+}
+
+// dwBgColorList: Auswahl im Einstellungsbereich (Vorlagenfunktion dwBgColors – auch für die
+// leere Vorlage neuer Kacheln, die keine DashboardWidgetView bekommt).
+func dwBgColorList() []struct{ Key, Name string } { return widgetBgColors }
 
 // WidgetCatalogGroup: Katalog nach Kategorien (nur erlaubte Widgets).
 type WidgetCatalogGroup struct {
