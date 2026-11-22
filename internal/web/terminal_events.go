@@ -13,7 +13,7 @@ import (
 // Neue Ereignisse sind für ältere Terminalseiten unsichtbar, sie lesen nur
 // die Ereignisse, die sie kennen.
 
-const terminalEventPing = 25 * time.Second
+var terminalEventPing = 25 * time.Second // Variable, damit Tests den Takt verkürzen können
 
 // terminalEventHub verteilt Ereignisse an die offenen Ereigniskanäle je Terminal-Benutzer.
 type terminalEventHub struct {
@@ -139,7 +139,7 @@ func (h *Handler) TerminalEvents(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	h.serveTerminalEvents(w, r, term)
+	h.serveTerminalEvents(w, r, term, "")
 }
 
 // TerminalEventsBearer: GET /terminal/events mit Geräte-Geheimnis (Terminal-Software). Hängt vor der Sitzungsprüfung
@@ -149,10 +149,12 @@ func (h *Handler) TerminalEventsBearer(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	h.serveTerminalEvents(w, r, dev.UserID)
+	h.serveTerminalEvents(w, r, dev.UserID, dev.ID)
 }
 
-func (h *Handler) serveTerminalEvents(w http.ResponseWriter, r *http.Request, term string) {
+// serveTerminalEvents streamt die Ereignisse; devID ist bei Bearer-Anmeldung das Gerät: bei jedem Ping wird geprüft,
+// ob es noch gekoppelt ist (gesperrt = Strom beenden; die Sitzungsvariante prüft die Sperre bei jeder Anfrage).
+func (h *Handler) serveTerminalEvents(w http.ResponseWriter, r *http.Request, term, devID string) {
 	fl, ok := w.(http.Flusher)
 	if !ok {
 		http.Error(w, "Streaming nicht möglich", http.StatusInternalServerError)
@@ -209,6 +211,11 @@ func (h *Handler) serveTerminalEvents(w http.ResponseWriter, r *http.Request, te
 			}
 			fl.Flush()
 		case <-tick.C:
+			if devID != "" {
+				if uid, act, err := h.deviceByID(r.Context(), devID); err == nil && (!act || uid != term) {
+					return
+				}
+			}
 			if _, err := fmt.Fprint(w, ": ping\n\n"); err != nil {
 				return
 			}

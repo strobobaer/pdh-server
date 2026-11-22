@@ -8,8 +8,8 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"os"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -26,7 +26,9 @@ func (g *gtEnv) fnDevice(term string) (id, secret string) {
 	secret, err := newDeviceSecret()
 	g.e.must(err)
 	id = g.e.id(`INSERT INTO terminal_devices (user_id, name, secret_sha256) VALUES ($1::uuid, 'Pi Fn', $2) RETURNING id::text`, term, hashDeviceSecret(secret))
-	g.e.t.Cleanup(func() { _, _ = g.e.pool.Exec(context.Background(), `DELETE FROM terminal_devices WHERE id = $1::uuid`, id) })
+	g.e.t.Cleanup(func() {
+		_, _ = g.e.pool.Exec(context.Background(), `DELETE FROM terminal_devices WHERE id = $1::uuid`, id)
+	})
 	return id, secret
 }
 
@@ -535,5 +537,91 @@ func TestTerminalFnUserDetailForm(t *testing.T) {
 	do("POST", "/users/"+term+"/master", "terminal_scheme=dark")
 	if _, scheme, _ = h.terminalFunctions(e.ctx, term); scheme != "light" {
 		t.Error("Formular ohne Marker änderte das Schema")
+	}
+}
+
+// Verlorene Änderung: Ändert das Terminal einen Schalter, während die Seite offen ist, darf das Speichern der
+// Seite (auch ein Speichern, das nur etwas anderes ändert) ihn nicht zurücksetzen.
+func TestTerminalFnFormKeepsConcurrentChange(t *testing.T) {
+	e := newATEnv(t)
+	mgr := e.user("lumgr", "admin", false)
+	e.grant(mgr, "system.manage_users", "", true)
+	term := e.user("luterm", "viewer", true)
+	e.warm()
+	h := &Handler{db: e.pool, rbac: e.rb, users: users.NewService(users.NewRepository(e.pool), "test-secret", 1), jwtSecret: "test-geheim", tmpl: loadTestTemplates(t)}
+	r := chi.NewRouter()
+	r.Post("/users/{id}/master", h.UserMasterSaveWeb)
+	wd, err := os.Getwd()
+	e.must(err)
+	e.must(os.Chdir("../.."))
+	t.Cleanup(func() { _ = os.Chdir(wd) })
+	post := func(body string) {
+		req := withUser(httptest.NewRequest("POST", "/users/"+term+"/master", strings.NewReader(body)), &users.User{ID: mgr, Role: users.Role("admin")})
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		r.ServeHTTP(httptest.NewRecorder(), req)
+	}
+	// Die Seite wurde mit allen Schaltern an (und Folienschau aus) geöffnet ...
+	const page = "terminal_fn_sent=1&terminal_saver_slides_sent=1" +
+		"&orig_stoerung=1&orig_ticket=1&orig_ruesten=1&orig_stillstand=1&orig_hmi=1&orig_wartungen=1&orig_saver_slides=0" +
+		"&terminal_fn_stoerung=on&terminal_fn_ticket=on&terminal_fn_ruesten=on&terminal_fn_stillstand=on&terminal_fn_hmi=on&terminal_fn_wartungen=on"
+	post("terminal_fn_sent=1") // legt die Zeile an (alle Schalter ohne orig: gelten als geändert, hier aus)
+	e.exec(`UPDATE terminal_settings SET fn_stoerung = true, fn_ticket = true, fn_ruesten = true, fn_stillstand = true, fn_hmi = true, fn_wartungen = true, fn_stoerung_at = NULL, fn_ticket_at = NULL, fn_ruesten_at = NULL, fn_stillstand_at = NULL, fn_hmi_at = NULL, fn_wartungen_at = NULL WHERE user_id = $1::uuid`, term)
+	// ... das Terminal schaltet Ticket aus und die Folienschau an ...
+	now := time.Now().UTC()
+	_, err = h.mergeTerminalFunctions(e.ctx, term, map[string]terminalFnIn{"ticket": {false, now.Add(-time.Second)}, "saver_slides": {true, now.Add(-time.Second)}}, now)
+	e.must(err)
+	// ... die Person speichert die Seite, ohne diese Schalter anzufassen, und schaltet nur HMI aus
+	post(strings.Replace(page, "&terminal_fn_hmi=on", "", 1))
+	set, _, err := h.terminalFunctions(e.ctx, term)
+	e.must(err)
+	if set["ticket"].Enabled || !set["saver_slides"].Enabled {
+		t.Errorf("Änderung des Terminals überschrieben: ticket %v saver %v", set["ticket"].Enabled, set["saver_slides"].Enabled)
+	}
+	if set["hmi"].Enabled || set["hmi"].At.IsZero() {
+		t.Errorf("Änderung der Person fehlt: %+v", set["hmi"])
+	}
+	// ein Speichern ohne jede Änderung (nur Marker und Stände) ändert nichts
+	ticketAt := set["ticket"].At
+	post(page)
+	if s2, _, _ := h.terminalFunctions(e.ctx, term); s2["ticket"].Enabled || !s2["ticket"].At.Equal(ticketAt) || !s2["stoerung"].At.IsZero() {
+		t.Errorf("unverändertes Speichern: %+v", s2["ticket"])
+	}
+	// alt/neu stammen aus der Transaktion
+	cs, err := h.setTerminalFunctionsDetail(e.ctx, term, map[string]bool{"ticket": true})
+	if err != nil || len(cs) != 1 || cs[0].Key != "ticket" || cs[0].Old || !cs[0].New {
+		t.Errorf("fnChange: %+v %v", cs, err)
+	}
+}
+
+// Der Bearer-Ereigniskanal endet, sobald das Gerät gesperrt wird (Prüfung bei jedem Ping).
+func TestTerminalFnEventStreamClosesWhenRevoked(t *testing.T) {
+	terminalFailLimit = newFailLimiter(5, 5*time.Minute)
+	old := terminalEventPing
+	terminalEventPing = 50 * time.Millisecond
+	t.Cleanup(func() { terminalEventPing = old })
+	g := newGTEnv(t)
+	devID, secret := g.fnDevice(g.termNormal)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	req := httptest.NewRequest("GET", "/terminal/events", nil).WithContext(ctx)
+	req.RemoteAddr = "198.51.100.40:1"
+	req.Header.Set("Authorization", "Bearer "+secret)
+	w := &fnSyncRecorder{ResponseRecorder: httptest.NewRecorder()}
+	done := make(chan struct{})
+	go func() { g.h.TerminalEventsBearer(w, req); close(done) }()
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) && !strings.Contains(w.body(), "event: settings") {
+		time.Sleep(20 * time.Millisecond)
+	}
+	select {
+	case <-done:
+		t.Fatal("Strom endete ohne Sperre")
+	case <-time.After(200 * time.Millisecond):
+	}
+	g.e.exec(`UPDATE terminal_devices SET revoked_at = NOW() WHERE id = $1::uuid`, devID)
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("Strom läuft nach der Sperre weiter")
 	}
 }

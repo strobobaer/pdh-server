@@ -623,19 +623,27 @@ func (h *Handler) UserMasterSaveWeb(w http.ResponseWriter, r *http.Request) {
 		h.notifyTerminalSettings(id)
 	}
 	if saverSent {
-		oldLS, _ := h.terminalLoginSettings(ctx, id)
 		on := r.FormValue("terminal_saver_slides") == "on"
-		if err := h.saveTerminalSaverSlides(ctx, id, on); err != nil {
-			componentLog("terminal").Error().Err(err).Str("user", id).Msg("folienschau-schoner speichern")
-			userRedirect(w, r, id, "master", "", errTerminalLoginSave)
-			return
-		}
-		if oldLS.SaverSlides != on {
+		// nur ändern, wenn die Person den Schalter gegenüber dem angezeigten Stand (orig_saver_slides) geändert hat:
+		// sonst würde ein Speichern des Formulars eine zwischenzeitliche Änderung des Terminals überschreiben
+		if fnUnchangedByForm(r, "saver_slides", on) {
+			// nichts zu tun
+		} else {
+			cs, err := h.setTerminalFunctionsDetail(ctx, id, map[string]bool{"saver_slides": on})
+			if err != nil {
+				componentLog("terminal").Error().Err(err).Str("user", id).Msg("folienschau-schoner speichern")
+				userRedirect(w, r, id, "master", "", errTerminalLoginSave)
+				return
+			}
 			yn := map[bool]string{true: "an", false: "aus"}
-			h.addHistory(ctx, "user", id, "update", "Folienschau als Bildschirmschoner", yn[oldLS.SaverSlides], yn[on],
-				"Folienschau als Bildschirmschoner: "+yn[on], getUser(r).ID)
+			for _, c := range cs {
+				h.addHistory(ctx, "user", id, "update", "Folienschau als Bildschirmschoner", yn[c.Old], yn[c.New],
+					"Folienschau als Bildschirmschoner: "+yn[c.New], getUser(r).ID)
+			}
+			if len(cs) > 0 {
+				h.notifyTerminalSettings(id)
+			}
 		}
-		h.notifyTerminalSettings(id)
 	}
 	if fnSent {
 		if err := h.saveTerminalFunctionsForm(ctx, r, id); err != nil {

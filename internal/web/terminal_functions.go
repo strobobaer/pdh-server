@@ -173,9 +173,23 @@ func (h *Handler) terminalFunctions(ctx context.Context, uid string) (terminalFn
 // terminalFnDecide entscheidet je Schalter, ob und womit er überschrieben wird.
 type terminalFnDecide func(d terminalFnDef, cur terminalFn) (next terminalFn, write bool)
 
+// fnChange: ein in der Transaktion geänderter Wert (alt und neu stammen aus der gesperrten Zeile).
+type fnChange struct {
+	Key      string
+	Old, New bool
+}
+
+func fnKeys(cs []fnChange) []string {
+	var out []string
+	for _, c := range cs {
+		out = append(out, c.Key)
+	}
+	return out
+}
+
 // updateTerminalFns wendet decide je Schalter an (Zeile gesperrt), schreibt die Änderungen und liefert die
 // Schlüssel, deren Wert (enabled) sich geändert hat. Nicht-System-Benutzer ohne Zeile: nichts.
-func (h *Handler) updateTerminalFns(ctx context.Context, uid string, decide terminalFnDecide) ([]string, error) {
+func (h *Handler) updateTerminalFns(ctx context.Context, uid string, decide terminalFnDecide) ([]fnChange, error) {
 	if h.db == nil {
 		return nil, errors.New("keine Datenbank")
 	}
@@ -197,7 +211,7 @@ func (h *Handler) updateTerminalFns(ctx context.Context, uid string, decide term
 	}
 	var sets []string
 	var args []any
-	var changed []string
+	var changed []fnChange
 	args = append(args, uid)
 	for _, d := range terminalFnDefs {
 		cur := set[d.Key]
@@ -209,7 +223,7 @@ func (h *Handler) updateTerminalFns(ctx context.Context, uid string, decide term
 		n := len(args)
 		sets = append(sets, d.Col+" = $"+strconv.Itoa(n-1), d.AtCol+" = $"+strconv.Itoa(n))
 		if next.Enabled != cur.Enabled {
-			changed = append(changed, d.Key)
+			changed = append(changed, fnChange{Key: d.Key, Old: cur.Enabled, New: next.Enabled})
 		}
 	}
 	if len(sets) == 0 {
@@ -223,6 +237,12 @@ func (h *Handler) updateTerminalFns(ctx context.Context, uid string, decide term
 
 // setTerminalFunctions: Änderung in PDH (Benutzerdetail): nur geänderte Werte, Zeitpunkt = jetzt.
 func (h *Handler) setTerminalFunctions(ctx context.Context, uid string, vals map[string]bool) ([]string, error) {
+	cs, err := h.setTerminalFunctionsDetail(ctx, uid, vals)
+	return fnKeys(cs), err
+}
+
+// setTerminalFunctionsDetail wie setTerminalFunctions, liefert aber alt und neu je geändertem Schalter.
+func (h *Handler) setTerminalFunctionsDetail(ctx context.Context, uid string, vals map[string]bool) ([]fnChange, error) {
 	now := time.Now().UTC().Truncate(terminalFnPrecison)
 	return h.updateTerminalFns(ctx, uid, func(d terminalFnDef, cur terminalFn) (terminalFn, bool) {
 		v, ok := vals[d.Key]
@@ -247,7 +267,7 @@ type terminalFnIn struct {
 // Zeitpunkte gelten wie gesendet. Angenommen wird Wert und Zeitpunkt so wie (geklemmt) gesendet.
 func (h *Handler) mergeTerminalFunctions(ctx context.Context, uid string, in map[string]terminalFnIn, now time.Time) ([]string, error) {
 	now = now.UTC().Truncate(terminalFnPrecison)
-	return h.updateTerminalFns(ctx, uid, func(d terminalFnDef, cur terminalFn) (terminalFn, bool) {
+	cs, err := h.updateTerminalFns(ctx, uid, func(d terminalFnDef, cur terminalFn) (terminalFn, bool) {
 		v, ok := in[d.Key]
 		if !ok {
 			return cur, false
@@ -261,6 +281,7 @@ func (h *Handler) mergeTerminalFunctions(ctx context.Context, uid string, in map
 		}
 		return terminalFn{Enabled: v.Enabled, At: at}, true
 	})
+	return fnKeys(cs), err
 }
 
 // terminalFnPayload: functions und theme für Statusabfrage, PUT-Antwort und Ereignis.
@@ -464,22 +485,34 @@ func fnBase(t time.Time) time.Time {
 	return t
 }
 
+// fnUnchangedByForm: hat die Person den Schalter gegenüber dem angezeigten Stand (verstecktes Feld
+// orig_<Schlüssel>, „1“ oder „0“) nicht geändert? Ohne das Feld (ältere Formulare) gilt der Wert als geändert.
+func fnUnchangedByForm(r *http.Request, key string, on bool) bool {
+	o := r.FormValue("orig_" + key)
+	return (o == "1" || o == "0") && (o == "1") == on
+}
+
 // saveTerminalFunctionsForm übernimmt die Schalter (ohne Folienschau, die hat ihren eigenen Marker) und das
-// Farbschema aus dem Benutzerdetail: nur geänderte Schalter bekommen den Zeitpunkt „jetzt“, Verlauf und
-// Ereignis settings folgen. Der Aufrufer prüft Recht und Systembenutzer.
+// Farbschema aus dem Benutzerdetail. Nur Schalter, die die Person gegenüber dem angezeigten Stand geändert hat,
+// werden geschrieben (sonst überschriebe ein Speichern die Änderung, die das Terminal inzwischen geschickt hat);
+// sie bekommen den Zeitpunkt „jetzt“, Verlauf (alt/neu aus der Transaktion) und Ereignis settings folgen.
+// Der Aufrufer prüft Recht und Systembenutzer.
 func (h *Handler) saveTerminalFunctionsForm(ctx context.Context, r *http.Request, uid string) error {
-	oldSet, oldScheme, err := h.terminalFunctions(ctx, uid)
-	if err != nil {
-		return err
-	}
 	vals := map[string]bool{}
 	for _, d := range terminalFnDefs {
 		if d.Key == "saver_slides" {
 			continue
 		}
-		vals[d.Key] = r.FormValue("terminal_fn_"+d.Key) == "on"
+		on := r.FormValue("terminal_fn_"+d.Key) == "on"
+		if !fnUnchangedByForm(r, d.Key, on) {
+			vals[d.Key] = on
+		}
 	}
-	changed, err := h.setTerminalFunctions(ctx, uid, vals)
+	changed, err := h.setTerminalFunctionsDetail(ctx, uid, vals)
+	if err != nil {
+		return err
+	}
+	_, oldScheme, err := h.terminalFunctions(ctx, uid)
 	if err != nil {
 		return err
 	}
@@ -495,10 +528,9 @@ func (h *Handler) saveTerminalFunctionsForm(ctx context.Context, r *http.Request
 	}
 	yn := map[bool]string{true: "an", false: "aus"}
 	by := getUser(r).ID
-	for _, k := range changed {
-		d, _ := terminalFnDefByKey(k)
-		nv := !oldSet[k].Enabled
-		h.addHistory(ctx, "user", uid, "update", "Terminal-Funktion "+d.Label, yn[oldSet[k].Enabled], yn[nv], "Terminal-Funktion "+d.Label+": "+yn[nv], by)
+	for _, c := range changed {
+		d, _ := terminalFnDefByKey(c.Key)
+		h.addHistory(ctx, "user", uid, "update", "Terminal-Funktion "+d.Label, yn[c.Old], yn[c.New], "Terminal-Funktion "+d.Label+": "+yn[c.New], by)
 	}
 	if schemeChanged {
 		lbl := map[string]string{"dark": "dunkel", "light": "hell"}
