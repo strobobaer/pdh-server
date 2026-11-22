@@ -10,8 +10,10 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/golang-jwt/jwt/v5"
 
 	"pdh/internal/core/users"
 	"pdh/internal/modules/faults"
@@ -48,6 +50,7 @@ func TestTerminalReportFaultAndTicket(t *testing.T) {
 		} else {
 			req = httptest.NewRequest(method, target, nil)
 		}
+		req.AddCookie(testDeviceCookie(h, term))
 		req = req.WithContext(context.WithValue(req.Context(), "user", tu))
 		rec := httptest.NewRecorder()
 		r.ServeHTTP(rec, req)
@@ -171,5 +174,72 @@ func TestTerminalReportCrossSiteRefused(t *testing.T) {
 		if rec.Code != http.StatusForbidden {
 			t.Errorf("%s cross-site: %d", p, rec.Code)
 		}
+	}
+}
+
+// testDeviceCookie: Sitzungs-Cookie mit Claim device (Gerätesitzung des Terminals).
+func testDeviceCookie(h *Handler, uid string) *http.Cookie {
+	claims := jwt.MapClaims{"sub": uid, "iat": time.Now().Unix(), "exp": time.Now().Add(time.Hour).Unix(), "device": "test-geraet"}
+	s, _ := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(h.jwtSecret))
+	return &http.Cookie{Name: "pdh_token", Value: s}
+}
+
+// Ohne Anmeldung melden und rüsten nur in der Gerätesitzung; jede andere Sitzung des Systembenutzers bekommt 403.
+func TestTerminalNoLoginNeedsDeviceSession(t *testing.T) {
+	e := newATEnv(t)
+	plant := e.infra("RDAnlage", "", "")
+	term := e.user("rdterm", "terminal", true)
+	e.exec(`UPDATE users SET terminal_infrastructure_id = $2::uuid WHERE id = $1::uuid`, term, plant)
+	e.warm()
+	t.Cleanup(func() {
+		e.pool.Exec(context.Background(), `DELETE FROM faults WHERE infrastructure_id = $1::uuid`, plant)
+		e.pool.Exec(context.Background(), `DELETE FROM tickets WHERE infrastructure_id = $1::uuid`, plant)
+	})
+	h := &Handler{db: e.pool, rbac: e.rb, users: users.NewService(users.NewRepository(e.pool), "test-secret", 1), jwtSecret: "test-geheim", tmpl: loadTestTemplates(t),
+		faults: faults.NewService(faults.NewRepository(e.pool), nil), tickets: tickets.NewService(tickets.NewRepository(e.pool))}
+	terminalTemplatePath = "../../web/templates/terminal.gohtml"
+	r := chi.NewRouter()
+	h.terminalRoutes(r)
+	tu := &users.User{ID: term, Role: users.Role("terminal"), IsSystemUser: true}
+	post := func(p string, device bool) *httptest.ResponseRecorder {
+		f := url.Values{"text": {"Test"}, "kind": {"mechanical"}, "state": {"running"}, "name": {"X1"}}
+		req := httptest.NewRequest("POST", p, strings.NewReader(f.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		if device {
+			req.AddCookie(testDeviceCookie(h, term))
+		}
+		req = req.WithContext(context.WithValue(req.Context(), "user", tu))
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, req)
+		return rec
+	}
+	n := func() int {
+		var c int
+		e.must(e.pool.QueryRow(e.ctx, `SELECT (SELECT count(*) FROM faults WHERE infrastructure_id = $1::uuid) + (SELECT count(*) FROM tickets WHERE infrastructure_id = $1::uuid)`, plant).Scan(&c))
+		return c
+	}
+	for _, p := range []string{"/terminal/stoerung", "/terminal/ticket", "/terminal/rusten/start", "/terminal/rusten/finish", "/terminal/rusten/add"} {
+		if rec := post(p, false); rec.Code != http.StatusForbidden {
+			t.Errorf("%s ohne Gerätesitzung: %d", p, rec.Code)
+		}
+	}
+	if n() != 0 {
+		t.Fatal("ohne Gerätesitzung wurde gemeldet")
+	}
+	if loc := post("/terminal/stoerung", true).Header().Get("Location"); !strings.Contains(loc, "done=fault") {
+		t.Errorf("Störung mit Gerätesitzung: %s", loc)
+	}
+	if loc := post("/terminal/ticket", true).Header().Get("Location"); !strings.Contains(loc, "done=ticket") {
+		t.Errorf("Ticket mit Gerätesitzung: %s", loc)
+	}
+	if n() != 2 {
+		t.Errorf("mit Gerätesitzung: %d Meldungen statt 2", n())
+	}
+	req := httptest.NewRequest("GET", "/terminal/stoerung", nil)
+	req = req.WithContext(context.WithValue(req.Context(), "user", tu))
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if b := rec.Body.String(); !strings.Contains(b, "Keine Berechtigung") || strings.Contains(b, `name="kind"`) {
+		t.Error("Seite ohne Gerätesitzung bietet das Formular an")
 	}
 }

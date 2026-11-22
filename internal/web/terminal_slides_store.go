@@ -286,7 +286,7 @@ func (h *Handler) saveTerminalSlide(ctx context.Context, s *terminalSlide) error
 			return pgx.ErrNoRows
 		}
 	}
-	h.notifyGlobalTerminals()
+	h.notifySlideTerminals()
 	return nil
 }
 
@@ -301,7 +301,7 @@ func (h *Handler) deleteTerminalSlide(ctx context.Context, id string) error {
 	if _, err := h.db.Exec(ctx, `DELETE FROM terminal_slides WHERE id = $1::uuid`, id); err != nil {
 		return err
 	}
-	h.notifyGlobalTerminals()
+	h.notifySlideTerminals()
 	return nil
 }
 
@@ -349,7 +349,7 @@ func (h *Handler) moveTerminalSlide(ctx context.Context, id string, delta int) e
 	if err := tx.Commit(ctx); err != nil {
 		return err
 	}
-	h.notifyGlobalTerminals()
+	h.notifySlideTerminals()
 	return nil
 }
 
@@ -384,8 +384,8 @@ func (h *Handler) slidesVersion(ctx context.Context) (string, error) {
 	return hex.EncodeToString(sum.Sum(nil))[:16], nil
 }
 
-// notifyGlobalTerminals meldet allen Terminal-Benutzern mit global_screen oder saver_slides, dass sich die Folien geändert haben.
-func (h *Handler) notifyGlobalTerminals() {
+// notifySlideTerminals meldet allen Terminal-Benutzern mit global_screen oder saver_slides, dass sich die Folien geändert haben.
+func (h *Handler) notifySlideTerminals() {
 	if h.db == nil {
 		return
 	}

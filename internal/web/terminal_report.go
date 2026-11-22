@@ -180,7 +180,7 @@ func (h *Handler) TerminalReportPage(typ string) http.HandlerFunc {
 		}
 		a := h.terminalSetupActor(r, uid, p.InfraID)
 		rep := terminalReport{Type: typ, Title: terminalReportTitle(typ), LoggedIn: a.Card, Person: a.Name,
-			Can: h.terminalReportPerm(r, uid, typ, permInfra), Pick: pk, Notice: terminalReportNotices[r.URL.Query().Get("m")]}
+			Can: (a.Card || h.terminalDeviceSession(r)) && h.terminalReportPerm(r, uid, typ, permInfra), Pick: pk, Notice: terminalReportNotices[r.URL.Query().Get("m")]}
 		if rep.Can && pk.Sel != "" {
 			for _, t := range h.easyTextOptions(r.Context(), "de", h.easyTextsFor(r.Context(), pk.Sel)) {
 				if t.Type == "both" || t.Type == typ {
@@ -222,6 +222,10 @@ func (h *Handler) TerminalReportSubmit(typ string) http.HandlerFunc {
 			_ = r.ParseForm()
 		}
 		a := h.terminalSetupActor(r, uid, p.InfraID)
+		if !a.Card && !h.terminalDeviceSession(r) {
+			http.Error(w, "Diese Seite ist nur für das Terminal selbst bestimmt.", http.StatusForbidden)
+			return
+		}
 		if !a.Card {
 			a.Name = strings.TrimSpace(r.FormValue("name"))
 			if r := []rune(a.Name); len(r) > 40 {

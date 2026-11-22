@@ -31,7 +31,7 @@ import (
 //
 // Alles nur mit dem Recht terminal.slides.edit. Schreib-Routen stehen zusätzlich in gateRules.
 // Das Formular ist ein normales POST wie die anderen Seiten (Schutz vor Fremdaufrufen: Sitzungs-Cookie SameSite=Lax).
-// Jede Änderung meldet den globalen Terminals „slides“ (notifyGlobalTerminals im Store).
+// Jede Änderung meldet den globalen Terminals „slides“ (notifySlideTerminals im Store).
 
 const (
 	permTerminalSlides = "terminal.slides.edit"

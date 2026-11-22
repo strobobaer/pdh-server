@@ -266,13 +266,13 @@ func TestTerminalGlobalScreen(t *testing.T) {
 		}
 	}
 
-	// notifyGlobalTerminals: nur Terminals mit global_screen bekommen „slides“.
+	// notifySlideTerminals: nur Terminals mit global_screen bekommen „slides“.
 	e.must(h.saveTerminalGlobalScreen(e.ctx, term2, false))
 	chG, unG := h.eventHub().subscribe(term)
 	defer unG()
 	chN, unN := h.eventHub().subscribe(term2)
 	defer unN()
-	h.notifyGlobalTerminals()
+	h.notifySlideTerminals()
 	select {
 	case ev := <-chG:
 		if ev != "slides" {

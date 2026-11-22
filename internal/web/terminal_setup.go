@@ -39,7 +39,8 @@ func (h *Handler) terminalSetupActor(r *http.Request, uid, infraID string) setup
 		}
 	}
 	// Ohne Anmeldung rüstet der Terminal-Benutzer; wer es war, steht im freiwilligen Kürzel.
-	return setupActor{ID: uid, Can: can}
+	// Ohne Anmeldung nur in der Gerätesitzung des Terminals (wie die Kartenwege), nicht mit einer anderen Sitzung des Systembenutzers.
+	return setupActor{ID: uid, Can: can && h.terminalDeviceSession(r)}
 }
 
 // terminalSetupFill füllt die Rüsten-Angaben der Seite (Neu: Kachel für die Terminal-Anlage).
@@ -113,6 +114,10 @@ func (h *Handler) terminalSetupAct(w http.ResponseWriter, r *http.Request, do fu
 	}
 	p.InfraID = infra
 	self := "/terminal/rusten?infra=" + url.QueryEscape(infra)
+	if !h.terminalDeviceSession(r) && !h.terminalSetupActor(r, uid, infra).Card {
+		http.Error(w, "Diese Seite ist nur für das Terminal selbst bestimmt.", http.StatusForbidden)
+		return
+	}
 	a := h.terminalSetupActor(r, uid, infra)
 	if !a.Can {
 		http.Redirect(w, r, self, http.StatusSeeOther)
