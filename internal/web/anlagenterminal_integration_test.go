@@ -378,7 +378,7 @@ func TestAnlagenterminalInfo(t *testing.T) {
 	}
 	_, err = pool.Exec(ctx, `INSERT INTO terminal_settings (user_id, idle_seconds) VALUES ($1::uuid, 45)`, term)
 	must(err)
-	if body := get("/terminal/neu").Body.String(); !strings.Contains(body, `data-idle="45"`) || !strings.Contains(body, `href="/e/`+infraA+`"`) {
+	if body := get("/terminal/neu").Body.String(); !strings.Contains(body, `data-idle="45"`) || !strings.Contains(body, `href="/terminal/stoerung"`) {
 		t.Errorf("neu: data-idle=45 bzw. Melde-Link fehlt")
 	}
 	if body := get("/terminal").Body.String(); !strings.Contains(body, `data-idle="0"`) || !strings.Contains(body, "Zum Melden berühren") {

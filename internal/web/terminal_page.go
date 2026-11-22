@@ -74,6 +74,15 @@ type terminalPage struct {
 	Info           terminalInfo
 	DeviceSession  bool   // Gerätesitzung (alle Modi): kleines Zahnrad zur lokalen Admin-Seite des Terminals
 	AdminURL       string // Ziel des Zahnrads (terminalLocalAdminURL)
+	Setup          setupBarView // Rüsten (Neu: Kachel, Rüsten: Seite)
+	SetupCan       bool         // setup.edit für die Anlage (Kartenperson bzw. Terminal-Benutzer)
+	SetupCard      bool         // per Karte angemeldet
+	SetupPerson    string
+	SetupAdd       bool // Ansicht Nachtragen
+	SetupAgo       []terminalChoice
+	SetupDur       []terminalChoice
+	Report         terminalReport // Meldeseiten Störung/Ticket (terminal_report.go)
+	Done           string         // Neu: gerade gemeldet (fault | ticket)
 }
 
 // terminalLocalAdminURL: lokale Admin-Seite des gekoppelten PDH-Terminals (Loopback am Terminal; gleich
@@ -89,6 +98,14 @@ func (h *Handler) terminalRoutes(r chi.Router) {
 	r.Get("/terminal", h.TerminalSchoner)
 	r.Get("/terminal/info", h.TerminalInfoPage)
 	r.Get("/terminal/neu", h.TerminalNeuPage)
+	r.Get("/terminal/rusten", h.TerminalRustenPage)
+	r.Post("/terminal/rusten/start", h.TerminalRustenStart)
+	r.Post("/terminal/rusten/finish", h.TerminalRustenFinish)
+	r.Post("/terminal/rusten/add", h.TerminalRustenAdd)
+	r.Get("/terminal/stoerung", h.TerminalReportPage("fault"))
+	r.Post("/terminal/stoerung", h.TerminalReportSubmit("fault"))
+	r.Get("/terminal/ticket", h.TerminalReportPage("ticket"))
+	r.Post("/terminal/ticket", h.TerminalReportSubmit("ticket"))
 	r.Get("/terminal/info.json", h.TerminalInfoJSON)
 	r.Get("/terminal/slides.json", h.TerminalSlidesJSON)
 	r.Get("/terminal/slides/{id}/image", h.TerminalSlideImage)
@@ -388,6 +405,12 @@ func (h *Handler) TerminalInfoPage(w http.ResponseWriter, r *http.Request) {
 // TerminalNeuPage: GET /terminal/neu
 func (h *Handler) TerminalNeuPage(w http.ResponseWriter, r *http.Request) {
 	if p, ok := h.terminalGate(w, r, "neu"); ok {
+		if !p.NoInfra && p.Mode != "global" {
+			h.terminalSetupFill(r, &p, h.terminalUserID(r))
+		}
+		if d := r.URL.Query().Get("done"); d == "fault" || d == "ticket" {
+			p.Done = d
+		}
 		h.renderTerminal(w, p)
 	}
 }

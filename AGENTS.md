@@ -644,7 +644,7 @@ und 3 drückt bis auf Weiteres der Anwender.
     Die App erzeugt nach einer Sperre oder dem Zurücksetzen einen neuen
     Schlüssel; die erste schreibende App-Route muss `mirrorGate` und den
     Rückzug der Sitzungen bei Wartung beachten.
-    **Paket 2 (Server-Schnittstellen, 0.82.23)** auf Branch
+    **Paket 2 (Server-Schnittstellen, 0.82.24)** auf Branch
     `feature/pdh-app-paket2` (noch nicht auf `main`): Vorgänge, Scannen,
     Störung melden, Schreibwächter (Spiegel nur lesen, Wartung, einmalige
     Ausführung per `X-PDH-Once`), Handbuch „Mit der App arbeiten“. Die App
