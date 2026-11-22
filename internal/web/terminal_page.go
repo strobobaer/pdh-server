@@ -23,7 +23,7 @@ import (
 //
 //	/terminal       Bildschirmschoner (Platzhalter), Berührung → /terminal/info
 //	/terminal/info  offene Störungen und Tickets der Anlage samt Unteranlagen
-//	/terminal/neu   „Neu“: Störung/Ticket melden, Stillstand (folgt)
+//	/terminal/neu   „Neu“: Störung/Ticket melden, Stillstand
 //
 // Eigenes Seitenlayout ohne PDH-Navigation (terminal.gohtml, terminal.js).
 
@@ -83,6 +83,7 @@ type terminalPage struct {
 	SetupAdd       bool // Ansicht Nachtragen
 	SetupAgo       []terminalChoice
 	SetupDur       []terminalChoice
+	Down           terminalDown // Stillstand (Neu: Kachel, Stillstand: Seite; terminal_downtime.go)
 	Report         terminalReport    // Meldeseiten Störung/Ticket (terminal_report.go)
 	Pick           terminalPick      // Rüsten: Anlagenwahl (Meldeseiten: Report.Pick)
 	SaverSlides    bool              // Schoner spielt die Folien (Gerätesitzung, Einstellung saver_slides)
@@ -110,6 +111,9 @@ func (h *Handler) terminalRoutes(r chi.Router) {
 	r.Post("/terminal/rusten/start", h.TerminalRustenStart)
 	r.Post("/terminal/rusten/finish", h.TerminalRustenFinish)
 	r.Post("/terminal/rusten/add", h.TerminalRustenAdd)
+	r.Get("/terminal/stillstand", h.TerminalStillstandPage)
+	r.Post("/terminal/stillstand/start", h.TerminalStillstandStart)
+	r.Post("/terminal/stillstand/finish", h.TerminalStillstandFinish)
 	r.Get("/terminal/stoerung", h.TerminalReportPage("fault"))
 	r.Post("/terminal/stoerung", h.TerminalReportSubmit("fault"))
 	r.Get("/terminal/ticket", h.TerminalReportPage("ticket"))
@@ -434,6 +438,7 @@ func (h *Handler) TerminalNeuPage(w http.ResponseWriter, r *http.Request) {
 		if !p.NoInfra && p.Mode != "global" {
 			uid := h.terminalUserID(r)
 			h.terminalSetupFill(r, &p, uid)
+			h.terminalDowntimeFill(r, &p, uid)
 			var person *users.User
 			if h.db != nil && h.terminalDeviceSession(r) {
 				person, _ = h.cardSessionPerson(r.Context(), uid)

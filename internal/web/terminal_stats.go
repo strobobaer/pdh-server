@@ -207,7 +207,7 @@ func (h *Handler) slideStats(ctx context.Context, kind string, days int, ids []s
 			terminalStatNum{"Neu (" + period + ")", fmt.Sprint(int(cnt))},
 			terminalStatNum{"Erledigt (" + period + ")", fmt.Sprint(int(tot))})
 		if kind == slideKindStatsFaults {
-			// Stillstandszeiten werden an Störungen nicht erfasst; stattdessen die mittlere Zeit bis zur Lösung.
+			// Stillstände stehen in der Folie stats_downtime; hier die mittlere Zeit bis zur Lösung.
 			avg := 0.0
 			if tot > 0 {
 				avg = sum / tot
@@ -216,6 +216,8 @@ func (h *Handler) slideStats(ctx context.Context, kind string, days int, ids []s
 		}
 		st.Labels = labels
 		st.Series = []terminalStatSeries{{Name: "Neu", Values: created}, {Name: "Erledigt", Values: done}}
+	case slideKindStatsDown:
+		return h.downtimeStats(ctx, days, ids)
 	case slideKindStatsSetup:
 		labels, counts, avgs, err := h.statBuckets(ctx, "setup_times", "started_at", "t.ended_at IS NOT NULL AND t.archived_at IS NULL",
 			"EXTRACT(EPOCH FROM (t.ended_at - t.started_at)) / 60", ids, days)

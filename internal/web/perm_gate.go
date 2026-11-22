@@ -283,6 +283,9 @@ var gateRules = []gateRule{
 	gr(wPost, permSetupEdit, "", false, `^/setup/(?:reasons-web|buttons-web|buttons`+gID+`/move-web)$`),
 	// Zuordnung der Rüsttasten und Höchstdauer an der Anlage: Infrastruktur bearbeiten (in der Abteilung der Anlage)
 	gr(wPost, "infrastructure.edit", "infrastructure", false, `^/infrastructure`+gID+`/setup-(?:buttons|max)-web$`),
+	// ── Stillstandsgründe: Katalog pflegen mit downtime.edit (Löschen eines Grundes prüft der Handler: downtime.admin) ──
+	gr(wPost, permDowntimeEdit, "", false, `^/downtime/(?:reasons-web|reasons`+gID+`/move-web)$`),
+	gr(wPost, "infrastructure.edit", "infrastructure", false, `^/infrastructure`+gID+`/downtime-reasons-web$`),
 	gr(wPost, permCompanyEdit, "", false, `^/infrastructure/company$`), // überall: canEditCompany
 	// ── Beteiligte, Gruppe, Archiv an beliebigen Vorgängen ──
 	gr(wPost, "edit", "*", true, `^/records/([a-z_]+)`+gID+`/(?:people|group|parties)(?:/.*)?$`),

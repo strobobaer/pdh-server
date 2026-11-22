@@ -10,6 +10,18 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.82.29] – 2026-11-22
+
+### Neu
+
+- **Stillstandsgründe.** Neuer Katalog der Gründe (**Infrastruktur** → Karte **Stillstandsgründe**) und an jeder Anlage der Reiter **Stillstandsgründe**: Gründe zuordnen; eine Zuordnung an einer Halle oder Linie gilt auch für alle Anlagen darunter (wie die Rüsttasten). Vorgabe-Gründe: Störung / Defekt, Material fehlt, Kein Personal, Geplanter Stillstand. Neue Rechte `downtime.view`, `downtime.edit` (Stillstände erfassen, Katalog pflegen) und `downtime.admin` (Gründe löschen); sie folgen aus „Anlagen sehen/bearbeiten“, die Rolle Terminal bekommt ansehen und erfassen. Migrationen 198 bis 200.
+- **Terminal: Stillstand melden.** Die Kachel **Stillstand** auf der Seite **Neu** (bisher nur ein Platzhalter) öffnet die Seite **Stillstand**: erst die Anlage wählen (Ebene für Ebene), dann den **Grund**; **Ende** beendet den Stillstand. Die Anmeldung per Karte ist freiwillig: ohne Karte meldet der Terminal-Benutzer (nur in der Gerätesitzung des Terminals, mit freiwilligem Kürzel/Name), mit Karte die Person. Es gilt `downtime.edit` des Terminal-Benutzers für die Abteilung der Anlage. An einer Anlage läuft höchstens ein Stillstand.
+- **Auswertung der Stillstände.** Neue Seite **Stillstände** (Arbeitsbereich): Anzahl, Gesamtdauer und mittlere Dauer je Grund für 7 Tage, die letzten 5 Wochen oder 90 Tage, auf Wunsch für eine Anlage samt Unteranlagen; es zählen nur Anlagen, für die das Recht `downtime.view` gilt. Dazu die neue Folienart **Statistik Stillstände** im Infobildschirm (Kennzahlen und Minuten je Grund).
+
+### Geändert
+
+- Ältere Stände und vorhandene Daten bleiben unberührt: der Grund eines Stillstands ist ein freier Verweis (darf leer sein, auch wenn der Grund später gelöscht wird), Migrationen nur hinzufügend.
+
 ## [0.82.28] – 2026-11-22
 
 ### Neu

@@ -43,7 +43,7 @@ const (
 var slideKindLabels = map[string]string{
 	slideKindImage: "Bild", slideKindText: "Text", slideKindVorgaenge: "Vorgänge",
 	slideKindStatsFaults: "Statistik Störungen", slideKindStatsTickets: "Statistik Tickets",
-	slideKindStatsSetup: "Statistik Rüstzeiten", slideKindGrafana: "Grafana-Dashboard",
+	slideKindStatsSetup: "Statistik Rüstzeiten", slideKindStatsDown: "Statistik Stillstände", slideKindGrafana: "Grafana-Dashboard",
 }
 
 var slideNotices = map[string]string{
@@ -128,7 +128,7 @@ func (h *Handler) TerminalSlidesPage(w http.ResponseWriter, r *http.Request) {
 			v.Summary = slideExcerpt(s.Body, 80)
 		case slideKindGrafana:
 			v.Summary = s.URL
-		case slideKindStatsFaults, slideKindStatsTickets, slideKindStatsSetup:
+		case slideKindStatsFaults, slideKindStatsTickets, slideKindStatsSetup, slideKindStatsDown:
 			v.Summary = fmt.Sprintf("%s · %s", statsPeriodLabel(s.StatsDays), slideInfraSummary(len(s.InfraIDs)))
 		case slideKindVorgaenge:
 			switch n := len(s.InfraIDs); {
@@ -329,7 +329,7 @@ func slideFromRequest(w http.ResponseWriter, r *http.Request) (terminalSlide, st
 		s.Body = strings.TrimSpace(strings.ReplaceAll(r.FormValue("body"), "\r\n", "\n"))
 	case slideKindGrafana:
 		s.URL = strings.TrimSpace(r.FormValue("url"))
-	case slideKindStatsFaults, slideKindStatsTickets, slideKindStatsSetup:
+	case slideKindStatsFaults, slideKindStatsTickets, slideKindStatsSetup, slideKindStatsDown:
 		s.StatsDays, _ = strconv.Atoi(r.FormValue("stats_days"))
 		s.InfraIDs, msg = slideInfraFromForm(r, msg)
 	case slideKindVorgaenge:
