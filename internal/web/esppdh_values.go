@@ -148,6 +148,8 @@ func (h *Handler) esppdhValues(ctx context.Context, devs []esppdhDevice, now tim
 					v.Address = strings.TrimSpace(x.Payload)
 				}
 				continue
+			case strings.HasSuffix(ti.Topic, "/info/firmware"):
+				continue // Kennung des Baus, kein Messwert (Updates übers Netz)
 			}
 			if !bv.ok {
 				continue
