@@ -11,7 +11,7 @@ import (
 	"github.com/google/uuid"
 )
 
-// ESPPDH – Sammelaktion „Alle veralteten Geräte aktualisieren“ (0.82.24, zu esppdh_ota.go).
+// ESPPDH – Sammelaktion „Alle veralteten Geräte aktualisieren“ (0.82.25, zu esppdh_ota.go).
 // Nimmt jedes Gerät, dessen Konfiguration sich seit dem letzten gelungenen Bau geändert hat oder
 // das nicht die Kennung des letzten gelungenen Baus meldet (esppdhOutdated; eine neue
 // ESPHome-Version allein zählt nicht), und spielt nacheinander auf – bei Bedarf wird vorher neu

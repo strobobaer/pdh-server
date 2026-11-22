@@ -624,9 +624,9 @@ und 3 drückt bis auf Weiteres der Anwender.
     nachgezogen (Prüfliste zeigt sie); Tunnel-Ziel ohne Sperre; Knopf am
     Spiegel/in Wartung stumm; IPv6-Erkennung je Datei statt je server-Block;
     Knopf bis ca. 75 s.
-21. **0.82.24 ESPPDH: Firmware übers Netz aufspielen** (Anwender 22.11.2026:
-    „PDH schiebt sie“, „a + b“, „1a 2a“; 0.82.23 ging auf `main` an die
-    Rüsttasten am Terminal). Entwurf
+21. **0.82.25 ESPPDH: Firmware übers Netz aufspielen** (Anwender 22.11.2026:
+    „PDH schiebt sie“, „a + b“, „1a 2a“; 0.82.23 und 0.82.24 gingen auf `main` an die
+    Rüsttasten am Terminal und die PDH-App). Entwurf
     `docs/superpowers/specs/2026-11-22-esppdh-ota-design.md`, Plan
     `docs/superpowers/plans/2026-11-22-esppdh-ota.md`, Branch
     `feature/esppdh-ota` (lokal): Firmware mit `ota: platform esphome`
@@ -655,6 +655,16 @@ und 3 drückt bis auf Weiteres der Anwender.
     Die App erzeugt nach einer Sperre oder dem Zurücksetzen einen neuen
     Schlüssel; die erste schreibende App-Route muss `mirrorGate` und den
     Rückzug der Sitzungen bei Wartung beachten.
+    **Paket 2 (Server-Schnittstellen, 0.82.24)** auf Branch
+    `feature/pdh-app-paket2` (noch nicht auf `main`): Vorgänge, Scannen,
+    Störung melden, Schreibwächter (Spiegel nur lesen, Wartung, einmalige
+    Ausführung per `X-PDH-Once`), Handbuch „Mit der App arbeiten“. Die App
+    liegt im privaten Repository `strobobaer/pdh-app` (lokal
+    `C:\workplace\pdh-app`, Branch `master`; offene Punkte in
+    `docs/offene-punkte.md`); iOS ist nicht gebaut (braucht einen Mac). Geparkt: Begrenzung
+    je Gerät, Aufbewahrung von `request_once` gegen Offline (Paket 3),
+    Fehlertypen im App-Modul, doppelter `assetOpenItems`-Code,
+    Signierschlüssel für Releases.
     Entschieden (Anwender, 21.11.2026: „Manager passt“): Manager behalten
     `app.admin` in allen Abteilungen (Freigabe/Sperre bleibt durch die
     Rangfolge begrenzt).

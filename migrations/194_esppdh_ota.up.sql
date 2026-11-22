@@ -1,4 +1,4 @@
--- ESPPDH: Firmware übers Netz aufspielen (0.82.24). Kennwort je Gerät für den Update-Baustein,
+-- ESPPDH: Firmware übers Netz aufspielen (0.82.25). Kennwort je Gerät für den Update-Baustein,
 -- Aufträge zum Aufspielen (einzeln oder als Sammellauf) und das Recht esppdh.ota.
 
 ALTER TABLE esppdh_devices ADD COLUMN IF NOT EXISTS ota_password_enc text NOT NULL DEFAULT '';

@@ -1,6 +1,6 @@
 package web
 
-// Updates übers Netz (0.82.24): Kennwort je Gerät, Recht esppdh.ota (Migration 194),
+// Updates übers Netz (0.82.25): Kennwort je Gerät, Recht esppdh.ota (Migration 194),
 // Firmware-Kennung im Bauauftrag.
 
 import (

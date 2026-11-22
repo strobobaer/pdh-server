@@ -10,7 +10,7 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
-## [0.82.24] – 2026-11-22
+## [0.82.25] – 2026-11-22
 
 ### Neu
 
@@ -28,6 +28,22 @@ im Kapitel „Versionen & Updates“ an.
 
 - **Neues Recht „ESPPDH: Firmware übers Netz aufspielen“** (`esppdh.ota`). Alle, die bisher Geräte bauen und flashen durften (`esppdh.edit`), bekommen es automatisch in derselben Abteilung. Die Sammelaktion braucht das Recht in allen Abteilungen.
 - Updates nimmt ein Gerät nur mit seinem eigenen Kennwort an. Das Kennwort steht verschlüsselt im PDH und erscheint nie im Verlauf.
+
+## [0.82.24] – 2026-11-22
+
+### Neu
+
+- App-Schnittstellen für die PDH-App: Vorgänge mit Starten, Maßnahme, Kommentar, Checkliste und Abschließen (der Text beim Abschließen wird als Maßnahme eingetragen).
+- Scannen: Die App löst QR-Codes von Anlagen und IT-Assets auf und zeigt deren offene Vorgänge; Lager- und Kanban-Codes öffnen die passende Seite im Browser.
+- Störung melden aus der App – nur mit der Freigabe „Vorgänge aus der App anlegen“ am Telefon und dem Recht „App: Vorgänge anlegen“.
+- Handbuch: Kapitel „PDH-App“ um „Mit der App arbeiten“ ergänzt.
+
+### Sicherheit
+
+- Die App darf nie mehr als das Web: Es gelten die Rechte der Person, eingeschränkt auf die Freigabe des Telefons; Anlagen außerhalb des eigenen Abteilungsbereichs lassen sich nicht per Scan öffnen.
+- Jede schreibende App-Eingabe wird genau einmal ausgeführt (Wiederholung nach einem Verbindungsabbruch trägt nichts doppelt ein); ein Fehler beim Prüfen meldet „vorübergehend nicht verfügbar“ statt eines falschen Konflikts.
+- Auf Spiegelservern (nur lesen) und während der Wartungssperre nimmt der Server keine App-Eingaben an.
+- Gescannte Adressen werden streng geprüft: nur Adressen dieses Servers, kein verstecktes „..“ (auch doppelt kodiert oder mit Rückwärtsstrich).
 
 ## [0.82.23] – 2026-11-22
 

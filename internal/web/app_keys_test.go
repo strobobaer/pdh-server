@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -214,5 +215,37 @@ func TestAppNonceReplayAtWindowEdge(t *testing.T) {
 	}
 	if err := verifyAppSignature(&k.PublicKey, r, nil, ts.Add(5*time.Minute)); !errors.Is(err, errAppNonceReused) {
 		t.Errorf("Wiederholung bei ts+5min: %v", err)
+	}
+}
+
+// appCanonicalVectorHex ist der feste Signatur-Vektor, den auch die App prüft
+// (pdh-app test/core/canonical_vector_test.dart). Ändert sich appCanonical,
+// muss die App mitziehen – sonst lehnt der Server jede App-Anfrage ab.
+const appCanonicalVectorHex = "504448415050310a504f53540a2f6170692f6170702f76312f776f726b2f6661756c742f30313930663561322d376331652d376233642d396134662d3263386536643162306139332f616374696f6e733f783d310a313736373232353630300a414141414141414141414141414141414141414141410a37666531376663303865346461303337336636613863643330396666393130326632323663643732323434646531393862356630396436353435653633303436"
+
+func TestAppCanonicalVector(t *testing.T) {
+	got := appCanonical("POST", "/api/app/v1/work/fault/0190f5a2-7c1e-7b3d-9a4f-2c8e6d1b0a93/actions?x=1",
+		"1767225600", "AAAAAAAAAAAAAAAAAAAAAA", []byte(`{"text":"ä"}`))
+	if h := hex.EncodeToString(got); h != appCanonicalVectorHex {
+		t.Fatalf("kanonische Bytes weichen ab:\n got %s\nwant %s", h, appCanonicalVectorHex)
+	}
+	// Gegenprobe über den Weg, den verifyAppSignature nimmt (RequestURI aus der Anfrage).
+	r := httptest.NewRequest("POST", "/api/app/v1/work/fault/0190f5a2-7c1e-7b3d-9a4f-2c8e6d1b0a93/actions?x=1", nil)
+	if h := hex.EncodeToString(appCanonical(r.Method, r.URL.RequestURI(), "1767225600", "AAAAAAAAAAAAAAAAAAAAAA", []byte(`{"text":"ä"}`))); h != appCanonicalVectorHex {
+		t.Fatalf("RequestURI-Weg weicht ab: %s", h)
+	}
+}
+
+// appCanonicalVector2Hex: zweiter fester Vektor mit prozentkodiertem Pfad,
+// abschließendem Schrägstrich und kodierter Abfrage (gleich in der App).
+const appCanonicalVector2Hex = "504448415050310a4745540a2f6170692f6170702f76312f782f2543332541342f3f713d61253230620a313736373232353630300a414141414141414141414141414141414141414141410a65336230633434323938666331633134396166626634633839393666623932343237616534316534363439623933346361343935393931623738353262383535"
+
+func TestAppCanonicalVectorEncodedPath(t *testing.T) {
+	r := httptest.NewRequest("GET", "/api/app/v1/x/%C3%A4/?q=a%20b", nil)
+	if got := r.URL.RequestURI(); got != "/api/app/v1/x/%C3%A4/?q=a%20b" {
+		t.Fatalf("RequestURI = %q", got)
+	}
+	if h := hex.EncodeToString(appCanonical(r.Method, r.URL.RequestURI(), "1767225600", "AAAAAAAAAAAAAAAAAAAAAA", nil)); h != appCanonicalVector2Hex {
+		t.Fatalf("kanonische Bytes weichen ab:\n got %s\nwant %s", h, appCanonicalVector2Hex)
 	}
 }

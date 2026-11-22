@@ -1,6 +1,6 @@
 package web
 
-// Sammelaktion „Alle veralteten Geräte aktualisieren“ (0.82.24).
+// Sammelaktion „Alle veralteten Geräte aktualisieren“ (0.82.25).
 
 import (
 	"context"

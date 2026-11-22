@@ -87,6 +87,8 @@ func (h *Handler) mirrorRefuse(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.WriteHeader(http.StatusConflict)
 		io.WriteString(w, mirrorReadOnlyMsg)
+	case strings.HasPrefix(r.URL.Path, "/api/app/v1"):
+		appJSONErr(w, http.StatusConflict, "app_read_only", mirrorReadOnlyMsg)
 	case strings.HasPrefix(r.URL.Path, "/api/"):
 		response.Error(w, http.StatusConflict, mirrorReadOnlyMsg)
 	default:

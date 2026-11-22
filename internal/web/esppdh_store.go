@@ -120,7 +120,7 @@ func (h *Handler) esppdhWebPassword(ctx context.Context, d *esppdhDevice) (strin
 		"Das Gerät hat noch kein Kennwort für seine Webseite – bitte die Geräteseite einmal am aktiven Server öffnen.", "")
 }
 
-// esppdhOTAPassword: Kennwort für Updates übers Netz (Baustein ota). Fehlt es (Gerät vor 0.82.24
+// esppdhOTAPassword: Kennwort für Updates übers Netz (Baustein ota). Fehlt es (Gerät vor 0.82.25
 // oder nach „Neues MQTT-Kennwort“), entsteht ein neues und wird gespeichert. Ist es nicht mehr
 // lesbar (Schlüssel geändert), entsteht kein neues: Das Gerät nähme es nicht an – „Neues
 // MQTT-Kennwort“ setzt es zurück, danach einmal per USB flashen.

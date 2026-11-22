@@ -484,7 +484,11 @@ func (h *Handler) MaintLockMiddleware(next http.Handler) http.Handler {
 		case maintWantsJSON(r):
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusServiceUnavailable)
-			_ = json.NewEncoder(w).Encode(map[string]any{"error": "Wartung", "retry_after": maintRetryAfter})
+			body := map[string]any{"error": "Wartung", "retry_after": maintRetryAfter}
+			if strings.HasPrefix(p, "/api/app/v1") {
+				body["code"] = "app_maintenance"
+			}
+			_ = json.NewEncoder(w).Encode(body)
 		default:
 			d := maintScreenData{View: v, Admin: admin, Device: device != "", ShowLogin: p == "/wartung/anmelden" && !admin}
 			if r.URL.Query().Get("abgebrochen") == "1" && p == "/wartung" {

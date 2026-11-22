@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"time"
 )
 
 // Öffentliche Einstiegs-Schnittstellen der PDH-App (ohne Anmeldung):
@@ -77,7 +78,7 @@ func (h *Handler) AppServerAPI(w http.ResponseWriter, r *http.Request) {
 	br := h.appBrandingView()
 	terminalJSON(w, http.StatusOK, map[string]any{
 		"name": br["name"], "api_level": appAPILevel, "addresses": h.appAddresses(r),
-		"latest": latest, "min": min, "branding_rev": br["rev"],
+		"latest": latest, "min": min, "branding_rev": br["rev"], "time": time.Now().Unix(),
 	})
 }
 

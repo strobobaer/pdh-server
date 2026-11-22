@@ -17,7 +17,7 @@ import (
 	"pdh/internal/modules/esppdh"
 )
 
-// ESPPDH – Firmware übers Netz aufspielen (0.82.24, zu esppdh_build.go). Das PDH schiebt die
+// ESPPDH – Firmware übers Netz aufspielen (0.82.25, zu esppdh_build.go). Das PDH schiebt die
 // zuletzt gebaute Firmware mit ESPHome (esppdh.Runner.Upload) auf ein Gerät, das schon den
 // Update-Baustein hat (einmal per USB geflasht). Derselbe Arbeiter wie beim Bau führt die
 // Aufträge der Reihe nach aus (runMu: nie zwei ESPHome-Aufrufe zugleich). Erfolg erst, wenn das

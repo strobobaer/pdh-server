@@ -1,6 +1,6 @@
 package web
 
-// Firmware je Gerät übers Netz aufspielen (0.82.24): Netzprüfung, Ablauf eines Laufs,
+// Firmware je Gerät übers Netz aufspielen (0.82.25): Netzprüfung, Ablauf eines Laufs,
 // Voraussetzungen und die Karte auf der Geräteseite.
 
 import (

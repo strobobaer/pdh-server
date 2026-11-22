@@ -389,8 +389,7 @@ func (h *Handler) CompletionWeb(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !in.Finish {
-		_, _ = h.db.Exec(ctx, fmt.Sprintf(`UPDATE %s SET status = 'in_progress', updated_at = NOW()
-			WHERE id = $1::uuid AND status::text IN ('open','detected','analyzing','pending')`, k.Table), id)
+		_, _ = h.completionInProgress(ctx, k, id)
 		h.addHistory(ctx, historyRef(k.Type), id, "work", "", "", "", "Arbeitsschritt erfasst (geht noch weiter)", u.ID)
 		completionJSON(w, http.StatusOK, map[string]any{"success": true, "closed": false, "message": tr(lang, "Arbeitsschritt gespeichert – der Vorgang bleibt in Bearbeitung.")})
 		return
@@ -410,6 +409,17 @@ func (h *Handler) CompletionWeb(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	completionJSON(w, http.StatusOK, map[string]any{"success": true, "closed": true, "message": msg})
+}
+
+// completionInProgress setzt einen offenen Vorgang auf „in Bearbeitung“
+// (Assistent „geht noch weiter“, App „Annehmen“); changed: Status wurde geändert.
+func (h *Handler) completionInProgress(ctx context.Context, k completionKind, id string) (changed bool, err error) {
+	tag, err := h.db.Exec(ctx, fmt.Sprintf(`UPDATE %s SET status = 'in_progress', updated_at = NOW()
+		WHERE id = $1::uuid AND status::text IN ('open','detected','analyzing','pending')`, k.Table), id)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
 }
 
 // completionValidColleagues: nur aktive, echte Benutzer (nicht man selbst).
