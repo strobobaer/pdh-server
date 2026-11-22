@@ -44,7 +44,7 @@ func (h *Handler) TerminalWartungPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var person *users.User
-	if h.db != nil {
+	if h.db != nil && h.terminalDeviceSession(r) { // Kartenrechte nur in der Gerätesitzung
 		var err error
 		if person, err = h.cardSessionPerson(r.Context(), uid); err != nil {
 			componentLog("terminal").Error().Err(err).Msg("kartensitzung lesen")

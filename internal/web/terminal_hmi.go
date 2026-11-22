@@ -12,6 +12,7 @@ package web
 // Die Kachel erscheint nur, wenn mindestens ein HMI sichtbar ist.
 
 import (
+	"context"
 	"net/http"
 	"net/url"
 	"sort"
@@ -45,7 +46,7 @@ func (h *Handler) terminalHMIAccess(r *http.Request, uid string, person *users.U
 	// einmal je Anlage und Recht fragen (Zwischenspeicher des Aufrufers über can)
 	can := func(perm string, card bool) bool {
 		if card {
-			return person != nil && h.cardPersonCan(ctx, person, perm, "infrastructure", infraID)
+			return dev && person != nil && h.cardPersonCan(ctx, person, perm, "infrastructure", infraID)
 		}
 		return dev && h.terminalUserCan(r, uid, perm, infraID)
 	}
@@ -124,7 +125,7 @@ func (h *Handler) terminalHMIGate(w http.ResponseWriter, r *http.Request, mode s
 		return p, "", nil, false
 	}
 	var person *users.User
-	if h.db != nil {
+	if h.db != nil && h.terminalDeviceSession(r) { // Kartenrechte nur in der Gerätesitzung
 		var err error
 		if person, err = h.cardSessionPerson(r.Context(), uid); err != nil {
 			componentLog("terminal").Error().Err(err).Msg("kartensitzung lesen")
@@ -204,7 +205,17 @@ func (h *Handler) TerminalHMIWebSocket(w http.ResponseWriter, r *http.Request) {
 	if person != nil {
 		actor = person.ID // Zugriffsprotokoll: wer vor dem Terminal stand
 	}
-	h.hmiProxy(w, r, t, hmiMode(r.URL.Query().Get("mode"), hmiPerms{View: true, Control: ctl}, t), actor)
+	valid := func() bool {
+		if h.sessionUser(r) == nil || !h.terminalDeviceSession(r) {
+			return false
+		}
+		if person == nil {
+			return true
+		}
+		p, err := h.cardSessionPerson(context.Background(), uid)
+		return err == nil && p != nil && p.ID == person.ID
+	}
+	h.hmiProxy(w, r, t, hmiMode(r.URL.Query().Get("mode"), hmiPerms{View: true, Control: ctl}, t), actor, valid)
 }
 
 // terminalHMIURL: Adresse eines HMI am Terminal.

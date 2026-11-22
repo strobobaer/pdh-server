@@ -76,9 +76,12 @@ func (h *Handler) cardSessionTouch(ctx context.Context, terminalID string) (bool
 // Die Bedingung steht im DELETE selbst: Eine zwischen SELECT und DELETE von einer
 // anderen HA-Instanz neu gestartete Sitzung bleibt so erhalten.
 func (h *Handler) cardSessionExpire(ctx context.Context, terminalID string) error {
-	_, err := h.db.Exec(ctx, `DELETE FROM terminal_card_sessions
+	tag, err := h.db.Exec(ctx, `DELETE FROM terminal_card_sessions
 		WHERE terminal_user_id = $1::uuid AND last_seen_at < now() - make_interval(secs => $2)`,
 		terminalID, cardSessionIdle.Seconds())
+	if err == nil && tag.RowsAffected() > 0 { // Karte durch Ruhezeit abgemeldet: auch die PDH-Sitzungen enden
+		err = h.pdhHandoffRevokeTerminal(ctx, terminalID, "")
+	}
 	return err
 }
 

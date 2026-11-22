@@ -346,3 +346,50 @@ func TestTerminalPDHRevokedOnReturnAndCardLogout(t *testing.T) {
 		t.Errorf("normale Sitzung: %d %s", rec.Code, rec.Body.String())
 	}
 }
+
+func TestTerminalPDHHardening(t *testing.T) {
+	x := newPDHEnv(t)
+	e := x.e
+	// Idle-Ablauf der Kartensitzung beendet auch die PDH-Sitzung
+	cs := x.session(t)
+	e.exec(`UPDATE terminal_card_sessions SET last_seen_at = now() - interval '10 minutes' WHERE terminal_user_id = $1::uuid`, x.term)
+	if p, err := x.h.cardSessionPerson(e.ctx, x.term); err != nil || p != nil {
+		t.Fatalf("Kartensitzung nicht abgelaufen: %v %v", p, err)
+	}
+	if rec := x.do("GET", "/maintenance/tasks/abc", nil, cs...); rec.Code == http.StatusOK {
+		t.Errorf("Sitzung nach Karten-Ruhezeit gilt: %d", rec.Code)
+	}
+	// apiActor prüft tsess
+	cs = x.session(t)
+	req := httptest.NewRequest("GET", "/api/v1/x", nil)
+	req.AddCookie(cs[0])
+	if uid, _ := x.h.apiActor(req); uid != "" {
+		t.Errorf("apiActor ohne Gerät: %q", uid)
+	}
+	req.AddCookie(cs[1])
+	if uid, _ := x.h.apiActor(req); uid != x.person {
+		t.Errorf("apiActor mit Gerät: %q", uid)
+	}
+	x.e.exec(`UPDATE terminal_pdh_sessions SET revoked_at = now() WHERE terminal_user_id = $1::uuid`, x.term)
+	if uid, _ := x.h.apiActor(req); uid != "" {
+		t.Errorf("apiActor nach Widerruf: %q", uid)
+	}
+	// Rolle Terminal: hmi.view ja, hmi.control nein
+	var view, ctl int
+	e.must(e.pool.QueryRow(e.ctx, `SELECT count(*) FILTER (WHERE p.key = 'hmi.view'), count(*) FILTER (WHERE p.key = 'hmi.control')
+		FROM role_permissions rp JOIN roles r ON r.id = rp.role_id JOIN permissions p ON p.id = rp.permission_id WHERE r.key = 'terminal'`).Scan(&view, &ctl))
+	if view != 1 || ctl != 0 {
+		t.Errorf("Rolle Terminal: hmi.view %d, hmi.control %d", view, ctl)
+	}
+}
+
+func TestLoginNextControlChars(t *testing.T) {
+	for _, n := range []string{"/\t/evil.example", "/\n/evil", "/\r/x", "/a\x00b", "/\x1f/x", "/a\x7f"} {
+		if got := loginNext(n); got != "/" {
+			t.Errorf("loginNext(%q) = %q", n, got)
+		}
+	}
+	if got := loginNext("/maintenance?x=1"); got != "/maintenance?x=1" {
+		t.Errorf("normaler Pfad: %q", got)
+	}
+}

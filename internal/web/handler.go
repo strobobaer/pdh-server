@@ -2417,9 +2417,20 @@ func (h *Handler) LoginPage(w http.ResponseWriter, r *http.Request) {
 
 // loginNext: Ziel nach der Anmeldung – nur Pfade im PDH (kein "//host",
 // kein "/\host"), sonst die Startseite.
+// hasControlChar: enthält s ein Steuerzeichen (< 0x20, auch Tabulator) oder DEL? Browser entfernen Tabulator und
+// Zeilenumbruch aus Adressen, "/\t/evil" würde sonst zu "//evil".
+func hasControlChar(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] < 0x20 || s[i] == 0x7f {
+			return true
+		}
+	}
+	return false
+}
+
 func loginNext(next string) string {
 	if next == "" || !strings.HasPrefix(next, "/") || strings.HasPrefix(next, "//") ||
-		strings.ContainsAny(next, "\\\r\n") || strings.HasPrefix(next, "/login") || len(next) > 500 {
+		strings.Contains(next, "\\") || hasControlChar(next) || strings.HasPrefix(next, "/login") || len(next) > 500 {
 		return "/"
 	}
 	return next

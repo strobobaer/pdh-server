@@ -28,10 +28,13 @@ func TestTerminalHMITileAndRules(t *testing.T) {
 	c := x.hmi(x.plant, "HMI-C", "never", "everyone", true)
 	d := x.hmi(x.plant, "HMI-D", "everyone", "everyone", false) // Bedienen nicht erlaubt: am Terminal nur ansehen
 	f := x.hmi(foreign, "HMI-F", "everyone", "everyone", true)
-	// ohne Recht des Terminal-Benutzers ist nichts sichtbar, die Kachel fehlt
+	// ohne Recht des Terminal-Benutzers (hier ausdrücklich entzogen; die Rolle bringt hmi.view mit) ist nichts sichtbar, die Kachel fehlt
+	e.grant(x.term, "hmi.view", "", false)
+	e.warm()
 	if body := x.do("GET", "/terminal/neu", nil, x.devCookie).Body.String(); strings.Contains(body, `href="/terminal/hmi"`) {
 		t.Error("Kachel HMI ohne Recht sichtbar")
 	}
+	e.exec(`DELETE FROM user_permissions WHERE user_id = $1::uuid`, x.term)
 	e.grant(x.term, "hmi.view", "", true)
 	e.grant(x.term, "hmi.control", "", true)
 	e.grant(x.person, "hmi.view", "", true)
@@ -164,5 +167,38 @@ func TestTerminalWartungNeedsCard(t *testing.T) {
 	}
 	if body := x.do("GET", "/terminal/neu", nil, x.devCookie).Body.String(); strings.Contains(body, `href="/terminal/wartung"`) {
 		t.Error("Kachel Wartungen ohne Recht der Person")
+	}
+}
+
+// Kartenrechte gelten nur in der Gerätesitzung: eine andere Sitzung des Terminal-Benutzers (Passwort/Override)
+// sieht weder die HMIs noch die Wartungen der Kartenperson und kann ihr Bedienen-Recht nicht am WebSocket nutzen.
+func TestTerminalCardRightsNeedDeviceSession(t *testing.T) {
+	x := newPDHEnv(t)
+	e := x.e
+	a := x.hmi(x.plant, "HMI-K", "card", "card", true)
+	e.exec(`INSERT INTO maintenance_tasks (title, infrastructure_id, status, due_date, created_by) VALUES ($1, $2::uuid, 'open', now(), $3::uuid)`, "Wartung-K"+e.sfx, x.plant, x.term)
+	t.Cleanup(func() { e.pool.Exec(e.ctx, `DELETE FROM maintenance_tasks WHERE title = $1`, "Wartung-K"+e.sfx) })
+	for _, p := range []string{"hmi.view", "hmi.control", "maintenance.view"} {
+		e.grant(x.person, p, "", true)
+	}
+	e.warm()
+	x.card(x.person)
+	pt, _ := x.h.users.IssueToken(&users.User{ID: x.term, Role: users.Role("terminal"), IsSystemUser: true}, time.Hour, nil)
+	nd := &http.Cookie{Name: "pdh_token", Value: pt}
+	if body := x.do("GET", "/terminal/hmi", nil, nd).Body.String(); strings.Contains(body, "HMI-K") {
+		t.Error("ohne Gerätesitzung: HMI der Kartenperson sichtbar")
+	}
+	if body := x.do("GET", "/terminal/wartung", nil, nd).Body.String(); strings.Contains(body, "Wartung-K") {
+		t.Error("ohne Gerätesitzung: Wartung der Kartenperson sichtbar")
+	}
+	if body := x.do("GET", "/terminal/neu", nil, nd).Body.String(); strings.Contains(body, `href="/terminal/wartung"`) || strings.Contains(body, `href="/terminal/hmi"`) {
+		t.Error("ohne Gerätesitzung: Kacheln der Kartenperson")
+	}
+	if rec := x.do("GET", "/terminal/hmi/"+x.plant+"/"+a+"/ws?mode=control", nil, nd); rec.Code != http.StatusNotFound {
+		t.Errorf("WebSocket ohne Gerätesitzung: %d", rec.Code)
+	}
+	// mit Gerätesitzung geht es
+	if body := x.do("GET", "/terminal/hmi", nil, x.devCookie).Body.String(); !strings.Contains(body, "HMI-K") {
+		t.Error("mit Gerätesitzung: HMI fehlt")
 	}
 }

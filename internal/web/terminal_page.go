@@ -435,7 +435,7 @@ func (h *Handler) TerminalNeuPage(w http.ResponseWriter, r *http.Request) {
 			uid := h.terminalUserID(r)
 			h.terminalSetupFill(r, &p, uid)
 			var person *users.User
-			if h.db != nil {
+			if h.db != nil && h.terminalDeviceSession(r) {
 				person, _ = h.cardSessionPerson(r.Context(), uid)
 			}
 			h.terminalHMIFill(r, &p, uid, person)
