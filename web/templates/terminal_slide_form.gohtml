@@ -36,13 +36,14 @@
           <option value="stats_faults"{{if eq .Slide.Kind "stats_faults"}} selected{{end}}>Statistik Störungen</option>
           <option value="stats_tickets"{{if eq .Slide.Kind "stats_tickets"}} selected{{end}}>Statistik Tickets</option>
           <option value="stats_setup"{{if eq .Slide.Kind "stats_setup"}} selected{{end}}>Statistik Rüstzeiten</option>
+          <option value="stats_downtime"{{if eq .Slide.Kind "stats_downtime"}} selected{{end}}>Statistik Stillstände</option>
           <option value="grafana"{{if eq .Slide.Kind "grafana"}} selected{{end}}>Grafana-Dashboard</option>
         </select></div>
       <div class="form-group"><label class="form-label" for="sf-duration">Dauer in Sekunden</label>
         <input id="sf-duration" name="duration" type="number" min="5" max="600" class="form-input" value="{{.Slide.DurationSeconds}}"></div>
     </div>
 
-    <div class="form-group"><label class="form-label" for="sf-title">Titel <span style="color:var(--muted);font-weight:400" data-sf-kind="image vorgaenge stats_faults stats_tickets stats_setup grafana">(optional)</span></label>
+    <div class="form-group"><label class="form-label" for="sf-title">Titel <span style="color:var(--muted);font-weight:400" data-sf-kind="image vorgaenge stats_faults stats_tickets stats_setup stats_downtime grafana">(optional)</span></label>
       <input id="sf-title" name="title" class="form-input" maxlength="{{.MaxTitle}}" value="{{.Slide.Title}}"></div>
 
     <div data-sf-kind="image">
@@ -58,12 +59,12 @@
         <div class="sf-hint">Nur Text, höchstens {{.MaxBody}} Zeichen. Zeilenumbrüche bleiben erhalten.</div></div>
     </div>
 
-    <div data-sf-kind="stats_faults stats_tickets stats_setup" class="form-group"><label class="form-label" for="sf-days">Zeitraum</label>
+    <div data-sf-kind="stats_faults stats_tickets stats_setup stats_downtime" class="form-group"><label class="form-label" for="sf-days">Zeitraum</label>
       <select id="sf-days" name="stats_days" class="form-input">
         <option value="7"{{if ne .Slide.StatsDays 30}} selected{{end}}>7 Tage (je Tag)</option>
         <option value="30"{{if eq .Slide.StatsDays 30}} selected{{end}}>Letzte 5 Wochen (je Woche)</option>
       </select>
-      <div class="sf-hint">Gezählt wird für die gewählten Anlagen samt Unteranlagen (leer = alle), im Umfang der Rechte des Terminal-Benutzers (Ansehen von Störungen, Tickets bzw. Rüstzeiten). Stillstandszeiten werden nicht erfasst; bei Störungen steht die mittlere Dauer bis zur Lösung.</div></div>
+      <div class="sf-hint">Gezählt wird für die gewählten Anlagen samt Unteranlagen (leer = alle), im Umfang der Rechte des Terminal-Benutzers (Ansehen von Störungen, Tickets bzw. Rüstzeiten bzw. Stillständen). Bei Stillständen zeigt das Diagramm die Minuten je Grund (die acht längsten). Bei Störungen steht die mittlere Dauer bis zur Lösung.</div></div>
 
     <div data-sf-kind="grafana">
       <div class="form-group"><label class="form-label" for="sf-url">Adresse des Dashboards</label>
@@ -73,7 +74,7 @@
         {{if .NoStatsUsers}}<div class="sf-hint" role="alert" style="color:var(--amber)"><i class="ti ti-alert-triangle" aria-hidden="true"></i> Diesen Infobildschirmen fehlt das Recht „Statistik ansehen“, die Folie bliebe dort leer: {{range $i, $n := .NoStatsUsers}}{{if $i}}, {{end}}{{$n}}{{end}}. Grafana ist nicht nach Anlagen getrennt, die Rolle „Terminal“ hat das Recht deshalb nicht; gib es dem Terminal-Benutzer nur bei Bedarf als Einzelrecht.</div>{{end}}</div>
     </div>
 
-    <div data-sf-kind="vorgaenge stats_faults stats_tickets stats_setup" id="sf-infra-box">
+    <div data-sf-kind="vorgaenge stats_faults stats_tickets stats_setup stats_downtime" id="sf-infra-box">
       <div class="form-group"><span class="form-label">Anlagen <span style="color:var(--muted);font-weight:400">(mit Unteranlagen; leer = alle)</span></span>
         <input type="hidden" id="sf-infra-ids" name="infra_ids" value="{{.InfraCSV}}">
         <div id="sf-infra-chips" class="sf-chips"></div>

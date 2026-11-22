@@ -21,17 +21,21 @@ import (
 
 type InfraPageData struct {
 	BaseData
-	Tree           []InfraNodeView
-	AllNodes       []InfraNodeView
-	Stats          map[string]int
-	Types          []infraTypeOption
-	Message, Error string
-	DueObligations []obligationView // fällige Prüfungen & GBU über alle Anlagen
-	EasyTexts      []easyText       // Easy-Mode-Meldetexte (Katalog, easy_texts.go)
-	SetupCatalog   setupCatalogView // Rüstzeiten: Gründe und Rüsttasten (setup_catalog.go)
-	SetupView      bool             // Katalog der Rüstzeiten sichtbar (setup.view)
-	SetupEdit      bool             // … pflegbar (setup.edit)
-	SetupAdmin     bool             // … und löschbar (setup.admin)
+	Tree            []InfraNodeView
+	AllNodes        []InfraNodeView
+	Stats           map[string]int
+	Types           []infraTypeOption
+	Message, Error  string
+	DueObligations  []obligationView    // fällige Prüfungen & GBU über alle Anlagen
+	EasyTexts       []easyText          // Easy-Mode-Meldetexte (Katalog, easy_texts.go)
+	SetupCatalog    setupCatalogView    // Rüstzeiten: Gründe und Rüsttasten (setup_catalog.go)
+	SetupView       bool                // Katalog der Rüstzeiten sichtbar (setup.view)
+	SetupEdit       bool                // … pflegbar (setup.edit)
+	SetupAdmin      bool                // … und löschbar (setup.admin)
+	DowntimeCatalog downtimeCatalogView // Stillstandsgründe (downtime_catalog.go)
+	DowntimeView    bool                // Katalog der Stillstandsgründe sichtbar (downtime.view)
+	DowntimeEdit    bool
+	DowntimeAdmin   bool
 }
 
 type InfraNodeView struct {
@@ -193,6 +197,11 @@ func (h *Handler) Infrastructure(w http.ResponseWriter, r *http.Request) {
 		data.SetupAdmin = h.setupCan(r, permSetupAdmin, "")
 		data.SetupCatalog = h.setupCatalog(ctx)
 	}
+	if data.DowntimeView = h.setupCan(r, permDowntimeView, "") || h.setupCan(r, permDowntimeEdit, ""); data.DowntimeView {
+		data.DowntimeEdit = h.setupCan(r, permDowntimeEdit, "")
+		data.DowntimeAdmin = h.setupCan(r, permDowntimeAdmin, "")
+		data.DowntimeCatalog = h.downtimeCatalog(ctx)
+	}
 	h.render(w, "infrastructure", data)
 }
 
@@ -298,6 +307,7 @@ type InfraDetailData struct {
 	EasyTexts        []easyText          // Reiter „Meldetexte“ (easy_texts.go)
 	EasyTextCount    int                 // davon an dieser Anlage wirksam
 	SetupTab         setupInfraTab       // Reiter „Rüsttasten“ und Höchstdauer (setup_catalog.go)
+	DowntimeTab      downtimeInfraTab    // Reiter „Stillstandsgründe“ (downtime_catalog.go)
 	SetupState       string              // Kennzeichen "running" / "fault" / "" (setup_easy.go)
 	Chamber          []chamberGroup      // Trockenkammer: Reiter „Bauteile“ (chamber.go)
 	ChamberNOK       int                 // davon NOK
@@ -354,6 +364,7 @@ func (h *Handler) InfraDetail(w http.ResponseWriter, r *http.Request) {
 	data.Today = time.Now().Format("2006-01-02")
 	data.EasyTexts = h.infraEasyTexts(ctx, id)
 	data.SetupTab = h.infraSetupTab(ctx, id)
+	data.DowntimeTab = h.infraDowntimeTab(ctx, id)
 	data.SetupState = h.setupPlantState(ctx, id)
 	if string(node.Type) == chamberType {
 		data.Chamber, data.ChamberNOK = h.chamberGroups(ctx, id)

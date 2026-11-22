@@ -1,0 +1,34 @@
+{{template "base" .}}
+{{define "content"}}
+<style>
+.dt-bar{height:8px;border-radius:4px;background:var(--bg3);overflow:hidden;min-width:80px}
+.dt-bar span{display:block;height:100%;background:var(--accent)}
+.dt-kpis{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+.dt-kpi{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:10px 16px;min-width:140px}
+.dt-kpi b{display:block;font-size:20px}.dt-kpi span{font-size:12px;color:var(--muted)}
+</style>
+<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+  <div style="flex:1;min-width:200px">
+    <h1 style="font-size:18px;font-weight:600"><i class="ti ti-player-pause"></i> Stillstände</h1>
+    <p style="font-size:12px;color:var(--muted);margin-top:2px">Anzahl und Dauer je Stillstandsgrund · {{.Period}} · Gründe pflegen unter <a href="/infrastructure#downtime-catalog">Infrastruktur</a></p>
+  </div>
+  <form method="get" action="/downtime" style="display:flex;gap:8px;flex-wrap:wrap">
+    <select name="days" class="form-input" aria-label="Zeitraum" onchange="this.form.submit()">{{range .DayOpts}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}</select>
+    <select name="infra" class="form-input" aria-label="Anlage" onchange="this.form.submit()">{{range .Plants}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}</select>
+    <noscript><button class="btn btn-small" type="submit">Anzeigen</button></noscript>
+  </form>
+</div>
+<div class="dt-kpis">
+  <div class="dt-kpi"><b>{{.Total}}</b><span>Stillstände</span></div>
+  <div class="dt-kpi"><b>{{if .Duration}}{{.Duration}}{{else}}–{{end}}</b><span>Gesamtdauer</span></div>
+  <div class="dt-kpi"><b>{{.Running}}</b><span>laufend</span></div>
+</div>
+<div class="card">
+  {{if .Rows}}
+  <div style="overflow-x:auto"><table class="table">
+    <thead><tr><th>Grund</th><th>Anzahl</th><th>Gesamtdauer</th><th>Ø Dauer</th><th>Anteil</th></tr></thead>
+    <tbody>{{range .Rows}}<tr><td><b>{{.Name}}</b></td><td>{{.Count}}</td><td>{{.Duration}}</td><td>{{.Avg}}</td><td><div class="dt-bar" title="{{.Pct}} %"><span style="width:{{.Pct}}%"></span></div></td></tr>{{end}}</tbody>
+  </table></div>
+  {{else}}<div class="rec-sub" style="padding:8px 0">Im gewählten Zeitraum wurden keine Stillstände erfasst.</div>{{end}}
+</div>
+{{end}}
