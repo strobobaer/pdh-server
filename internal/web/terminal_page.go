@@ -92,6 +92,8 @@ type terminalPage struct {
 	HMITile        bool              // Neu: Kachel HMI (mindestens ein HMI sichtbar)
 	Maint          terminalMaintPage // Wartungen (terminal_wartung.go)
 	MaintTile      bool              // Neu: Kachel Wartungen (nur mit Kartenanmeldung)
+	Fn             terminalFnFlags   // Funktionen-Schalter des Terminal-Benutzers (terminal_functions.go): ausgeschaltet = Kachel und Seite entfallen
+	Scheme         string            // Farbschema: dark | light (Einstellung des Terminal-Benutzers)
 }
 
 // terminalLocalAdminURL: lokale Admin-Seite des gekoppelten PDH-Terminals (Loopback am Terminal; gleich
@@ -107,17 +109,18 @@ func (h *Handler) terminalRoutes(r chi.Router) {
 	r.Get("/terminal", h.TerminalSchoner)
 	r.Get("/terminal/info", h.TerminalInfoPage)
 	r.Get("/terminal/neu", h.TerminalNeuPage)
-	r.Get("/terminal/rusten", h.TerminalRustenPage)
-	r.Post("/terminal/rusten/start", h.TerminalRustenStart)
-	r.Post("/terminal/rusten/finish", h.TerminalRustenFinish)
-	r.Post("/terminal/rusten/add", h.TerminalRustenAdd)
-	r.Get("/terminal/stillstand", h.TerminalStillstandPage)
-	r.Post("/terminal/stillstand/start", h.TerminalStillstandStart)
-	r.Post("/terminal/stillstand/finish", h.TerminalStillstandFinish)
-	r.Get("/terminal/stoerung", h.TerminalReportPage("fault"))
-	r.Post("/terminal/stoerung", h.TerminalReportSubmit("fault"))
-	r.Get("/terminal/ticket", h.TerminalReportPage("ticket"))
-	r.Post("/terminal/ticket", h.TerminalReportSubmit("ticket"))
+	// Funktionen-Schalter (terminal_functions.go): ausgeschaltet = 404, GET und POST
+	r.Get("/terminal/rusten", h.terminalFnRoute("ruesten", h.TerminalRustenPage))
+	r.Post("/terminal/rusten/start", h.terminalFnRoute("ruesten", h.TerminalRustenStart))
+	r.Post("/terminal/rusten/finish", h.terminalFnRoute("ruesten", h.TerminalRustenFinish))
+	r.Post("/terminal/rusten/add", h.terminalFnRoute("ruesten", h.TerminalRustenAdd))
+	r.Get("/terminal/stillstand", h.terminalFnRoute("stillstand", h.TerminalStillstandPage))
+	r.Post("/terminal/stillstand/start", h.terminalFnRoute("stillstand", h.TerminalStillstandStart))
+	r.Post("/terminal/stillstand/finish", h.terminalFnRoute("stillstand", h.TerminalStillstandFinish))
+	r.Get("/terminal/stoerung", h.terminalFnRoute("stoerung", h.TerminalReportPage("fault")))
+	r.Post("/terminal/stoerung", h.terminalFnRoute("stoerung", h.TerminalReportSubmit("fault")))
+	r.Get("/terminal/ticket", h.terminalFnRoute("ticket", h.TerminalReportPage("ticket")))
+	r.Post("/terminal/ticket", h.terminalFnRoute("ticket", h.TerminalReportSubmit("ticket")))
 	r.Get("/terminal/info.json", h.TerminalInfoJSON)
 	r.Get("/terminal/slides.json", h.TerminalSlidesJSON)
 	r.Get("/terminal/slides/{id}/image", h.TerminalSlideImage)
@@ -125,10 +128,10 @@ func (h *Handler) terminalRoutes(r chi.Router) {
 	r.Get("/terminal/sensors.json", h.TerminalSensorsJSON) // ESPPDH-Sensoren nach Kartenanmeldung (terminal_sensors.go)
 	r.Get("/terminal/terminal.js", h.TerminalScript)
 	r.Post("/terminal/pdh", h.TerminalPDHStart) // PDH öffnen (terminal_pdh.go)
-	r.Get("/terminal/hmi", h.TerminalHMIPage)
-	r.Get("/terminal/hmi/{infra}/{id}", h.TerminalHMIView)
-	r.Get("/terminal/hmi/{infra}/{id}/ws", h.TerminalHMIWebSocket)
-	r.Get("/terminal/wartung", h.TerminalWartungPage)
+	r.Get("/terminal/hmi", h.terminalFnRoute("hmi", h.TerminalHMIPage))
+	r.Get("/terminal/hmi/{infra}/{id}", h.terminalFnRoute("hmi", h.TerminalHMIView))
+	r.Get("/terminal/hmi/{infra}/{id}/ws", h.terminalFnRoute("hmi", h.TerminalHMIWebSocket))
+	r.Get("/terminal/wartung", h.terminalFnRoute("wartungen", h.TerminalWartungPage))
 	r.Post("/terminal/pdh/open", h.TerminalPDHOpen)
 	middleware.SetTerminalSessionCheck(func(r *http.Request, sub, tsess, tdev string) bool { return h.pdhHandoffCheck(r, tsess, sub, tdev) })
 	h.cardRoutes(r)
@@ -313,6 +316,7 @@ func (h *Handler) terminalGate(w http.ResponseWriter, r *http.Request, mode stri
 		http.Error(w, "Diese Seite ist nur für Terminal-Benutzer (Systembenutzer) bestimmt.", http.StatusForbidden)
 		return p, false
 	}
+	p.Fn, p.Scheme = h.terminalFnFlagsFor(r.Context(), uid)
 	if h.terminalDeviceSession(r) {
 		p.DeviceSession, p.AdminURL = true, terminalLocalAdminURL
 	}
@@ -437,14 +441,20 @@ func (h *Handler) TerminalNeuPage(w http.ResponseWriter, r *http.Request) {
 	if p, ok := h.terminalGate(w, r, "neu"); ok {
 		if !p.NoInfra && p.Mode != "global" {
 			uid := h.terminalUserID(r)
-			h.terminalSetupFill(r, &p, uid)
-			h.terminalDowntimeFill(r, &p, uid)
+			if p.Fn.Ruesten {
+				h.terminalSetupFill(r, &p, uid)
+			}
+			if p.Fn.Stillstand {
+				h.terminalDowntimeFill(r, &p, uid)
+			}
 			var person *users.User
 			if h.db != nil && h.terminalDeviceSession(r) {
 				person, _ = h.cardSessionPerson(r.Context(), uid)
 			}
-			h.terminalHMIFill(r, &p, uid, person)
-			p.MaintTile = h.terminalMaintTile(person)
+			if p.Fn.HMI {
+				h.terminalHMIFill(r, &p, uid, person)
+			}
+			p.MaintTile = p.Fn.Wartungen && h.terminalMaintTile(person)
 		}
 		if d := r.URL.Query().Get("done"); d == "fault" || d == "ticket" {
 			p.Done = d

@@ -38,6 +38,8 @@ type userMaster struct {
 	TerminalCardNotify                                  map[string]bool // gespeicherte Benachrichtigungsarten (leer = Vorgabe)
 	TerminalGlobalScreen                                bool            // globales Terminal (Infobildschirm)
 	TerminalSaverSlides                                 bool            // Folienschau als Bildschirmschoner
+	TerminalFn                                          map[string]bool // Funktionen-Schalter (terminal_functions.go)
+	TerminalScheme                                      string          // Farbschema der Terminalseiten: dark | light
 }
 
 type userPrivate struct {
@@ -273,6 +275,13 @@ func (h *Handler) loadUserMasterErr(ctx context.Context, id string) (userMaster,
 			m.TerminalManualLogin, m.TerminalPasswordButton = ls.ManualLogin, ls.PasswordButton
 			m.TerminalGlobalScreen = ls.GlobalScreen
 			m.TerminalSaverSlides = ls.SaverSlides
+			if set, scheme, ferr := h.terminalFunctions(ctx, id); ferr == nil {
+				m.TerminalFn = map[string]bool{}
+				for k, v := range set {
+					m.TerminalFn[k] = v.Enabled
+				}
+				m.TerminalScheme = scheme
+			}
 			for _, k := range ls.CardNotify {
 				if m.TerminalCardNotify == nil {
 					m.TerminalCardNotify = map[string]bool{}
@@ -512,6 +521,17 @@ func (h *Handler) UserMasterSaveWeb(w http.ResponseWriter, r *http.Request) {
 		}
 		saverSent = sys
 	}
+	// Funktionen-Schalter und Farbschema (eigener Marker: ein Formular ohne die Felder ändert nichts)
+	fnSent := false
+	if _, sent := r.Form["terminal_fn_sent"]; sent && h.canManageUsers(r) {
+		sys, err := h.isSystemUser(ctx, id)
+		if err != nil {
+			componentLog("terminal").Error().Err(err).Str("user", id).Msg("systembenutzer prüfen")
+			userRedirect(w, r, id, "master", "", errTerminalLoginSave)
+			return
+		}
+		fnSent = sys
+	}
 	old := h.loadUserMaster(ctx, id)
 	brokerT, brokerF, brokerA, brokerM := old.BrokerTickets, old.BrokerFaults, old.BrokerTasks, old.BrokerMaintenance
 	if h.canManageUsers(r) {
@@ -616,6 +636,13 @@ func (h *Handler) UserMasterSaveWeb(w http.ResponseWriter, r *http.Request) {
 				"Folienschau als Bildschirmschoner: "+yn[on], getUser(r).ID)
 		}
 		h.notifyTerminalSettings(id)
+	}
+	if fnSent {
+		if err := h.saveTerminalFunctionsForm(ctx, r, id); err != nil {
+			componentLog("terminal").Error().Err(err).Str("user", id).Msg("funktionen speichern")
+			userRedirect(w, r, id, "master", "", errTerminalLoginSave)
+			return
+		}
 	}
 	// Leitstand des Terminals: direkt gewählt geht vor Gruppe/Abteilung
 	if _, sent := r.Form["leitstand_id"]; sent && h.canManageUsers(r) {

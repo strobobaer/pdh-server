@@ -413,6 +413,7 @@ type terminalVorgangHist struct{ At, Text string }
 // terminalVorgang: Daten für terminal_vorgang.gohtml.
 type terminalVorgang struct {
 	NotFound    bool
+	Scheme      string // dark | light
 	Idle        int
 	KindLabel   string
 	Title       string
@@ -484,7 +485,10 @@ func (h *Handler) TerminalVorgang(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	idle := h.terminalIdleSeconds(r.Context(), uid)
-	missing := func() { h.renderTerminalVorgang(w, http.StatusNotFound, terminalVorgang{NotFound: true, Idle: idle}) }
+	_, scheme := h.terminalFnFlagsFor(r.Context(), uid)
+	missing := func() {
+		h.renderTerminalVorgang(w, http.StatusNotFound, terminalVorgang{NotFound: true, Idle: idle, Scheme: scheme})
+	}
 	kind, id := chi.URLParam(r, "kind"), chi.URLParam(r, "id")
 	table, cond, label := "faults", terminalFaultOpenCond, "Störung"
 	switch kind {
@@ -523,7 +527,7 @@ func (h *Handler) TerminalVorgang(w http.ResponseWriter, r *http.Request) {
 		missing()
 		return
 	}
-	d.Idle, d.KindLabel, d.StatusLabel = idle, label, statusLabel(status)
+	d.Idle, d.Scheme, d.KindLabel, d.StatusLabel = idle, scheme, label, statusLabel(status)
 	d.Infra = h.infraPath(r.Context(), infra)
 	if utf8.RuneCountInString(d.Description) > terminalVorgangDescMax {
 		d.Description = string([]rune(d.Description)[:terminalVorgangDescMax]) + "…"

@@ -10,6 +10,19 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.82.31] – 2026-11-22
+
+### Neu
+
+- **Terminal: Funktionen ein- und ausschalten.** Beim Terminal-Benutzer (Benutzerdetail) lassen sich **Störung, Ticket, Rüsten, Stillstand, HMI, Wartungen** und die **Folienschau als Bildschirmschoner** einzeln abschalten; eine ausgeschaltete Funktion verschwindet von der Seite **Neu**, ihre Seiten antworten mit „nicht gefunden“ (GET und POST). Die Schalter werden mit der Admin-Seite des PDH-Terminals abgeglichen: je Schalter gewinnt die **jüngere Änderung**, bei gleichem Zeitpunkt PDH, Zeitpunkte mehr als 5 Minuten in der Zukunft gelten als Serverzeit. Neue Schnittstelle `PUT /api/terminal/v1/functions`; `GET /api/terminal/v1/device` und das Ereignis `settings` tragen die neuen Felder `functions` und `theme`; der Ereigniskanal `/terminal/events` nimmt auch das Geräte-Geheimnis an. Die Folienschau behält ihr Feld `saver_slides` (ältere Terminals). Migration 201.
+- **Terminalseiten in den PDH-Farben.** Hintergrund und Farben der Terminalseiten entsprechen dem übrigen PDH, **hell oder dunkel** (Einstellung beim Terminal-Benutzer); das Terminal bekommt dieselben Farben für seine eigenen Seiten.
+- **Kiosk-Terminals: PDH-Terminals.** Die Liste zeigt die gekoppelten PDH-Terminals mit Typ, Version, Online-Status und Kopplung und verweist auf ihre Einstellungen.
+- **Bildschirmtastatur am Terminal.** Auf dem Gerät erscheint die Tastatur beim Antippen eines Eingabefelds und verschwindet danach wieder.
+
+### Geändert
+
+- Nur hinzufügend: ältere Terminals und ältere Stände arbeiten in jeder Kombination weiter, vorhandene Werte (auch die Folienschau) bleiben erhalten.
+
 ## [0.82.30] – 2026-11-22
 
 ### Neu

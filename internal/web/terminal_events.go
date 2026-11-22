@@ -113,14 +113,20 @@ func (h *Handler) terminalSettingsEvent(r *http.Request, userID string) (string,
 	if err != nil {
 		return "", err
 	}
-	b, err := json.Marshal(map[string]any{
+	ev := map[string]any{
 		"manual_login":    s.ManualLogin,
 		"password_button": s.PasswordButton,
 		"idle":            h.terminalIdleSeconds(r.Context(), userID),
 		"card_notify":     effectiveCardNotify(s.CardNotify),
 		"global_screen":   s.GlobalScreen,
 		"saver_slides":    s.SaverSlides,
-	})
+	}
+	if fn, theme, ferr := h.terminalFnPayload(r.Context(), userID); ferr == nil {
+		ev["functions"], ev["theme"] = fn, theme
+	} else {
+		componentLog("terminal").Error().Err(ferr).Msg("ereigniskanal: funktionen lesen")
+	}
+	b, err := json.Marshal(ev)
 	if err != nil {
 		return "", err
 	}
@@ -133,6 +139,20 @@ func (h *Handler) TerminalEvents(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	h.serveTerminalEvents(w, r, term)
+}
+
+// TerminalEventsBearer: GET /terminal/events mit Geräte-Geheimnis (Terminal-Software). Hängt vor der Sitzungsprüfung
+// (authMiddleware); jede andere Antwort als 200 text/event-stream lässt das Terminal bei der Statusabfrage.
+func (h *Handler) TerminalEventsBearer(w http.ResponseWriter, r *http.Request) {
+	dev, ok := h.terminalBearer(w, r)
+	if !ok {
+		return
+	}
+	h.serveTerminalEvents(w, r, dev.UserID)
+}
+
+func (h *Handler) serveTerminalEvents(w http.ResponseWriter, r *http.Request, term string) {
 	fl, ok := w.(http.Flusher)
 	if !ok {
 		http.Error(w, "Streaming nicht möglich", http.StatusInternalServerError)
