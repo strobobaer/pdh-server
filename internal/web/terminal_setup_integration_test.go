@@ -63,6 +63,7 @@ func TestTerminalSetupInheritedButtons(t *testing.T) {
 		} else {
 			req = httptest.NewRequest(method, target, nil)
 		}
+		req.AddCookie(testDeviceCookie(h, term))
 		req = req.WithContext(context.WithValue(req.Context(), "user", u))
 		rec := httptest.NewRecorder()
 		r.ServeHTTP(rec, req)

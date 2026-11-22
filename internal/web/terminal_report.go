@@ -1,6 +1,6 @@
 package web
 
-// Störung und Ticket am Anlagenterminal (0.82.22): eigene Terminalseiten /terminal/stoerung und
+// Störung und Ticket am Anlagenterminal (0.82.22; ohne Anmeldung und mit Ebenenwahl der Anlage ab 0.82.27): eigene Terminalseiten /terminal/stoerung und
 // /terminal/ticket im Design des Terminals, unabhängig vom Easy-Modus. Die Anlage des Terminals ist
 // vorgegeben, eine Unteranlage darunter wählbar. Meldetexte der Anlage (wie Easy-Modus) oder freier Text,
 // „Anlage steht“, optional Fotos. Angelegt wird immer durch die am Terminal angemeldete Person (Karte oder
@@ -22,7 +22,7 @@ type terminalReport struct {
 	LoggedIn bool
 	Person   string
 	Can      bool
-	Plants   []terminalChoice // Anlage des Terminals und Unteranlagen (Wert = Kennung)
+	Pick     terminalPick
 	Texts    []easyTextOption
 	Notice   string
 	Photos   int
@@ -30,6 +30,7 @@ type terminalReport struct {
 
 var terminalReportNotices = map[string]string{
 	"login": "Bitte zuerst anmelden.",
+	"plant": "Bitte zuerst die Anlage wählen.",
 	"perm":  "Keine Berechtigung zum Melden.",
 	"input": "Bitte Meldetext wählen oder schreiben, Art und Zustand der Anlage antippen.",
 	"rate":  "Zu viele Meldungen an dieser Anlage – bitte kurz warten.",
@@ -52,57 +53,136 @@ func (h *Handler) terminalReportPerm(r *http.Request, uid, typ, infraID string) 
 	return h.terminalUserCan(r, uid, perm, infraID)
 }
 
-// terminalReportPlants: Anlage des Terminals (zuerst) und sichtbare, aktive Unteranlagen.
-func (h *Handler) terminalReportPlants(r *http.Request, rootID, rootName string) ([]terminalChoice, map[string]bool) {
-	out := []terminalChoice{{rootID, rootName}}
-	ok := map[string]bool{rootID: true}
+// terminalPlantTree: Anlage des Terminals und sichtbare, aktive Unteranlagen als Baum (ab der Wurzel erreichbar).
+type terminalPlantTree struct {
+	Root  string
+	Nodes map[string]terminalNode // Name, Parent
+	Kids  map[string][]string     // Kinder je Knoten, nach Name
+}
+
+func (t terminalPlantTree) ok(id string) bool { _, in := t.Nodes[id]; return in }
+
+func (h *Handler) terminalPlantTree(r *http.Request, rootID, rootName string) terminalPlantTree {
+	t := terminalPlantTree{Root: rootID, Nodes: map[string]terminalNode{rootID: {Name: rootName}}, Kids: map[string][]string{}}
 	ids, err := h.terminalSubtree(r.Context(), rootID)
 	if err != nil {
 		componentLog("terminal").Warn().Err(err).Msg("unteranlagen")
-		return out, ok
+		return t
 	}
-	nodes := map[string]terminalNode{}
-	rows, err := h.db.Query(r.Context(), `SELECT id::text, name, COALESCE(parent_id::text, '') FROM infrastructure WHERE id = ANY($1::uuid[]) AND active AND hidden_at IS NULL`, ids)
+	all := map[string]terminalNode{}
+	rows, err := h.db.Query(r.Context(), `SELECT id::text, name, COALESCE(parent_id::text, '') FROM infrastructure WHERE id = ANY($1::uuid[]) AND active AND hidden_at IS NULL ORDER BY lower(name), id`, ids)
 	if err != nil {
-		return out, ok
+		return t
 	}
+	var order []string
 	for rows.Next() {
 		var id string
 		var n terminalNode
 		if rows.Scan(&id, &n.Name, &n.Parent) == nil {
-			nodes[id] = n
+			all[id] = n
+			order = append(order, id)
 		}
 	}
 	rows.Close()
-	for _, id := range ids {
-		if id == rootID || len(out) >= 40 {
-			continue
-		}
-		if _, in := nodes[id]; in {
-			out = append(out, terminalChoice{id, terminalRelPath(nodes, id, rootID)})
-			ok[id] = true
+	// nur von der Wurzel aus erreichbare Knoten (ein deaktivierter Zwischenknoten schneidet seinen Ast ab)
+	for changed, i := true, 0; changed && i < 50; i++ {
+		changed = false
+		for _, id := range order {
+			n := all[id]
+			if id == rootID || t.ok(id) || !t.ok(n.Parent) || len(t.Nodes) >= 300 {
+				continue
+			}
+			t.Nodes[id] = n
+			t.Kids[n.Parent] = append(t.Kids[n.Parent], id)
+			changed = true
 		}
 	}
-	return out, ok
+	return t
+}
+
+// terminalPickItem: ein Knoten der aktuellen Ebene.
+type terminalPickItem struct {
+	ID, Name string
+	Kids     bool // hat Unteranlagen: Antippen öffnet sie
+}
+
+// terminalPick: Anlagenwahl in Ebenen (serverseitig: ?nav=<Knoten> öffnet, ?infra=<Knoten> wählt).
+type terminalPick struct {
+	Self    string // Seitenpfad
+	Sel     string // gewählte Anlage ("" = noch keine)
+	SelName string
+	Here    terminalChoice   // geöffneter Knoten (hier wählbar)
+	Crumbs  []terminalChoice // Weg von der Terminal-Anlage zum geöffneten Knoten (ohne diesen)
+	Items   []terminalPickItem
+	Single  bool // nur die Anlage des Terminals, keine Wahl nötig
+}
+
+// terminalPickFor liest ?infra und ?nav; ungültige Werte gelten als nicht gesetzt. Ohne Unteranlagen ist die Terminal-Anlage gewählt.
+func terminalPickFor(r *http.Request, t terminalPlantTree, self string) terminalPick {
+	pk := terminalPick{Self: self}
+	if len(t.Kids[t.Root]) == 0 {
+		pk.Single, pk.Sel, pk.SelName = true, t.Root, t.Nodes[t.Root].Name
+		return pk
+	}
+	if id := r.URL.Query().Get("infra"); id != "" && t.ok(id) {
+		pk.Sel, pk.SelName = id, terminalPlantLabel(t, id)
+		return pk
+	}
+	nav := r.URL.Query().Get("nav")
+	if !t.ok(nav) {
+		nav = t.Root
+	}
+	pk.Here = terminalChoice{nav, t.Nodes[nav].Name}
+	var up []terminalChoice
+	for cur, i := t.Nodes[nav].Parent, 0; cur != "" && t.ok(cur) && i < 50; i++ {
+		up = append([]terminalChoice{{cur, t.Nodes[cur].Name}}, up...)
+		if cur == t.Root {
+			break
+		}
+		cur = t.Nodes[cur].Parent
+	}
+	pk.Crumbs = up
+	for _, id := range t.Kids[nav] {
+		pk.Items = append(pk.Items, terminalPickItem{ID: id, Name: t.Nodes[id].Name, Kids: len(t.Kids[id]) > 0})
+	}
+	return pk
+}
+
+func terminalPlantLabel(t terminalPlantTree, id string) string {
+	if id == t.Root {
+		return t.Nodes[id].Name
+	}
+	return terminalRelPath(t.Nodes, id, t.Root)
 }
 
 func (h *Handler) terminalReportGate(w http.ResponseWriter, r *http.Request) (terminalPage, string, bool) {
 	return h.terminalSetupGate(w, r, "melden")
 }
 
-// TerminalReportPage: GET /terminal/stoerung bzw. /terminal/ticket
+// terminalReportSelf: Seitenpfad der Meldeseite.
+func terminalReportSelf(typ string) string {
+	return "/terminal/" + map[string]string{"fault": "stoerung", "ticket": "ticket"}[typ]
+}
+
+// TerminalReportPage: GET /terminal/stoerung bzw. /terminal/ticket[?nav=<Knoten>|?infra=<Anlage>]
+// Zuerst die Anlage wählen (Ebene für Ebene), erst dann erscheinen Meldetexte und Formular.
 func (h *Handler) TerminalReportPage(typ string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		p, uid, ok := h.terminalReportGate(w, r)
 		if !ok {
 			return
 		}
+		tree := h.terminalPlantTree(r, p.InfraID, p.Name)
+		pk := terminalPickFor(r, tree, terminalReportSelf(typ))
+		permInfra := pk.Sel
+		if permInfra == "" {
+			permInfra = p.InfraID
+		}
 		a := h.terminalSetupActor(r, uid, p.InfraID)
 		rep := terminalReport{Type: typ, Title: terminalReportTitle(typ), LoggedIn: a.Card, Person: a.Name,
-			Can: a.Card && h.terminalReportPerm(r, uid, typ, p.InfraID), Notice: terminalReportNotices[r.URL.Query().Get("m")]}
-		if rep.Can {
-			rep.Plants, _ = h.terminalReportPlants(r, p.InfraID, p.Name)
-			for _, t := range h.easyTextOptions(r.Context(), "de", h.easyTextsFor(r.Context(), p.InfraID)) {
+			Can: (a.Card || h.terminalDeviceSession(r)) && h.terminalReportPerm(r, uid, typ, permInfra), Pick: pk, Notice: terminalReportNotices[r.URL.Query().Get("m")]}
+		if rep.Can && pk.Sel != "" {
+			for _, t := range h.easyTextOptions(r.Context(), "de", h.easyTextsFor(r.Context(), pk.Sel)) {
 				if t.Type == "both" || t.Type == typ {
 					rep.Texts = append(rep.Texts, t)
 				}
@@ -115,7 +195,8 @@ func (h *Handler) TerminalReportPage(typ string) http.HandlerFunc {
 }
 
 // TerminalReportSubmit: POST /terminal/stoerung bzw. /terminal/ticket
-// (infra, text_id, text, kind, state, optional files)
+// (infra, name, text_id, text, kind, state, optional files). Ohne Anmeldung legt der Terminal-Benutzer an,
+// wer es war, steht im freiwilligen Kürzel/Name (wie im Easy-Modus in der Beschreibung).
 func (h *Handler) TerminalReportSubmit(typ string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if terminalForeignPost(w, r) {
@@ -125,7 +206,7 @@ func (h *Handler) TerminalReportSubmit(typ string) http.HandlerFunc {
 		if !ok {
 			return
 		}
-		self := "/terminal/" + map[string]string{"fault": "stoerung", "ticket": "ticket"}[typ]
+		self := terminalReportSelf(typ)
 		back := func(code string) { http.Redirect(w, r, self+"?m="+url.QueryEscape(code), http.StatusSeeOther) }
 		ctx := r.Context()
 		if strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
@@ -141,16 +222,26 @@ func (h *Handler) TerminalReportSubmit(typ string) http.HandlerFunc {
 			_ = r.ParseForm()
 		}
 		a := h.terminalSetupActor(r, uid, p.InfraID)
-		if !a.Card {
-			back("login")
+		if !a.Card && !h.terminalDeviceSession(r) {
+			http.Error(w, "Diese Seite ist nur für das Terminal selbst bestimmt.", http.StatusForbidden)
 			return
 		}
-		_, plants := h.terminalReportPlants(r, p.InfraID, p.Name)
+		if !a.Card {
+			a.Name = strings.TrimSpace(r.FormValue("name"))
+			if r := []rune(a.Name); len(r) > 40 {
+				a.Name = string(r[:40])
+			}
+		}
+		tree := h.terminalPlantTree(r, p.InfraID, p.Name)
 		infra := r.FormValue("infra")
-		if infra == "" {
+		if infra == "" && len(tree.Kids[p.InfraID]) == 0 {
 			infra = p.InfraID
 		}
-		if !plants[infra] || !h.terminalReportPerm(r, uid, typ, infra) {
+		if infra == "" {
+			back("plant")
+			return
+		}
+		if !tree.ok(infra) || !h.terminalReportPerm(r, uid, typ, infra) {
 			back("perm")
 			return
 		}
@@ -187,7 +278,11 @@ func (h *Handler) TerminalReportSubmit(typ string) http.HandlerFunc {
 				componentLog("terminal").Warn().Err(err).Str("id", recID).Msg("fotos")
 			}
 		}
-		h.addHistory(ctx, typ, recID, "create", "", "", a.Name, "Gemeldet am Anlagenterminal von "+a.Name, a.ID)
+		who := a.Name
+		if who == "" {
+			who = "Terminal"
+		}
+		h.addHistory(ctx, typ, recID, "create", "", "", who, "Gemeldet am Anlagenterminal von "+who, a.ID)
 		componentLog("terminal").Info().Str("art", typ).Str("id", recID).Str("anlage", infra).Msg("meldung am terminal")
 		http.Redirect(w, r, "/terminal/neu?done="+typ, http.StatusSeeOther)
 	}

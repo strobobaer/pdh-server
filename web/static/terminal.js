@@ -3,6 +3,9 @@
   'use strict';
   var body = document.body;
   var mode = body.dataset.mode;
+  // Folienschau als Bildschirmschoner (normales Terminal): derselbe Player wie beim globalen Terminal, aber
+  // Berührung außerhalb eines Vorgangs und jede Karte wecken das Terminal; kein Zwischenspeicher.
+  var saver = mode === 'schoner' && body.dataset.saverSlides === '1' && !!document.getElementById('g-stage');
 
   // Anmeldung ohne Kartenleser – reine Funktionen (keine DOM-/Netzzugriffe), unabhängig lesbar.
   // readerState: 'ok' | 'none' | 'error'; settings: {manual_login, password_button, idle}.
@@ -228,13 +231,13 @@
 
   // Gerätesitzung ohne Anmeldeteil (Schoner, Seite „keine Anlage“): auf Einstellungen hören. Wird das Terminal
   // zum globalen, lädt die Seite neu und wird zur Folienschau. (Info und Neu tun das im Anmeldeteil.)
-  if (body.dataset.settingsEvents === '1' && mode !== 'global' && (body.dataset.cardEvents !== '1' || mode === 'schoner')) {
+  if (body.dataset.settingsEvents === '1' && mode !== 'global' && !saver && (body.dataset.cardEvents !== '1' || mode === 'schoner')) {
     try {
       var sev = new EventSource('/terminal/events');
       sev.addEventListener('settings', function (ev) {
         var d = null;
         try { d = JSON.parse(ev.data); } catch (e) { /* ungültig */ }
-        if (d && d.global_screen === true) location.reload();
+        if (d && (d.global_screen === true || (mode === 'schoner' && d.saver_slides === true))) location.reload();
       });
       sev.onerror = function () { /* stumm: der EventSource verbindet selbst neu */ };
     } catch (e) { /* kein EventSource */ }
@@ -591,7 +594,7 @@
   if (mode !== 'global' && body.dataset.cardEvents === '1') cacheCall('DELETE', null);
 
   // Infobildschirm: Folienschau.
-  if (mode === 'global') {
+  if (mode === 'global' || saver) {
     var stage = document.getElementById('g-stage');
     var pdhName = (stage && stage.dataset.name) || 'PDH';
     var slides = [], version = '', cur = -1, slideTimer = null, cachedVersion = null, caching = false, again = false;
@@ -744,7 +747,7 @@
       });
     };
     var saveCache = function (json) {
-      if (!cacheOk || json.version === cachedVersion) return;
+      if (saver || !cacheOk || json.version === cachedVersion) return; // nur globale Terminals legen den Zwischenspeicher an
       if (caching) { again = true; return; }
       caching = true;
       var imgs = {}, total = 0;
@@ -774,7 +777,7 @@
     // Netzfehler zählen (slides.json und Ereignisstrom getrennt); ab OUTAGE_LIMIT in Folge zur Startseite des
     // Terminals: sie zeigt offline die zwischengespeicherte Folienschau und kehrt nach PDH zurück, sobald es antwortet.
     var leaveOnOutage = function (st) {
-      if (st.leave && !left) { left = true; location.replace(CARD_ORIGIN + '/start'); }
+      if (!saver && st.leave && !left) { left = true; location.replace(CARD_ORIGIN + '/start'); }
     };
     var load = function (keep) {
       fetch('/terminal/slides.json', { cache: 'no-store', credentials: 'same-origin' })
@@ -812,6 +815,13 @@
     stage.addEventListener('pointerdown', function (ev) { down = { x: ev.clientX, y: ev.clientY }; });
     stage.addEventListener('pointercancel', function () { down = null; });
     stage.addEventListener('pointerup', function (ev) {
+      if (saver) { // Schoner: nur ein Vorgang öffnet seine Ansicht, jede andere Berührung weckt das Terminal
+        var sli = ev.target && ev.target.closest ? ev.target.closest('[data-kind][data-id]') : null;
+        var sk = sli ? sli.getAttribute('data-kind') : '', sid = sli ? sli.getAttribute('data-id') : '';
+        if ((sk === 'fault' || sk === 'ticket') && /^[0-9a-fA-F-]{36}$/.test(sid)) location.href = '/terminal/vorgang/' + sk + '/' + sid;
+        else location.replace('/terminal/info');
+        return;
+      }
       var st = down; down = null;
       if (!st || !slides.length) return;
       var end = { x: ev.clientX, y: ev.clientY };
@@ -833,7 +843,7 @@
       gev.addEventListener('settings', function (ev) {
         var d = null;
         try { d = JSON.parse(ev.data); } catch (e) { /* ungültig */ }
-        if (d && d.global_screen === false) location.reload();
+        if (d && (saver ? (d.global_screen === true || d.saver_slides === false) : d.global_screen === false)) location.reload();
       });
       gev.onopen = function () { streamFails = outageStep(streamFails, false).fails; };
       gev.onerror = function () { // der EventSource verbindet selbst neu; viele Fehler in Folge = PDH nicht erreichbar

@@ -453,3 +453,50 @@ func TestTerminalGlobalSettingsEventsAttribute(t *testing.T) {
 		t.Error("globale Seite: falscher Modus oder unerwartetes Attribut")
 	}
 }
+
+// Folienschau als Bildschirmschoner: Schoner zeigt den Player statt des Platzhalters; Karten wecken weiter,
+// Folienwege sind offen, Anmeldewege nicht gesperrt (anders als beim globalen Terminal).
+func TestTerminalSaverSlidesPage(t *testing.T) {
+	g := newGTEnv(t)
+	cN := g.cookie(g.termNormal, g.devN)
+	g.slide(terminalSlide{Kind: "text", Title: "Hallo", Body: "Willkommen", DurationSeconds: 10, Active: true})
+
+	off := g.do("GET", "/terminal", cN, nil).Body.String()
+	if !strings.Contains(off, `class="t-saver"`) || strings.Contains(off, `id="g-stage"`) || strings.Contains(off, `data-saver-slides="1"`) {
+		t.Error("aus: Platzhalter-Schoner erwartet")
+	}
+	if rec := g.do("GET", "/terminal/slides.json", cN, nil); rec.Code != http.StatusForbidden {
+		t.Errorf("aus: slides.json %d", rec.Code)
+	}
+
+	g.e.must(g.h.saveTerminalSaverSlides(g.e.ctx, g.termNormal, true))
+	rec := g.do("GET", "/terminal", cN, nil)
+	on := rec.Body.String()
+	if rec.Code != 200 || !strings.Contains(on, `data-mode="schoner"`) || !strings.Contains(on, `data-saver-slides="1"`) || !strings.Contains(on, `id="g-stage"`) || strings.Contains(on, `class="t-saver"`) {
+		t.Errorf("an: Player statt Platzhalter erwartet (%d)", rec.Code)
+	}
+	// Kartenereignisse bleiben, das Terminal bleibt ein normales
+	if !strings.Contains(on, `data-card-events="1"`) || !strings.Contains(on, `data-settings-events="1"`) {
+		t.Error("an: Karten- und Einstellungsereignisse fehlen (Karte würde nicht wecken)")
+	}
+	if csp := rec.Header().Get("Content-Security-Policy"); csp == "" {
+		t.Error("an: frame-src-Regel der Folien fehlt")
+	}
+	if d := g.slidesJSON(cN); len(d.Slides) != 1 {
+		t.Errorf("an: Folien %d", len(d.Slides))
+	}
+	if rec := g.do("GET", "/terminal/vorgang/fault/"+g.fA, cN, nil); rec.Code == http.StatusForbidden {
+		t.Error("an: Vorgang-Ansicht gesperrt")
+	}
+	// Info bleibt die normale Info-Seite (Anmeldung per Karte), nicht die Folienschau
+	if b := g.do("GET", "/terminal/info", cN, nil).Body.String(); strings.Contains(b, `id="g-stage"`) || !strings.Contains(b, `data-mode="info"`) {
+		t.Error("an: /terminal/info ist nicht die normale Info-Seite")
+	}
+	if rec := g.do("POST", "/terminal/card/ping", cN, nil); rec.Code != 200 {
+		t.Errorf("an: Kartenweg %d", rec.Code)
+	}
+	// Ohne Gerätesitzung kein Player
+	if b := g.do("GET", "/terminal", g.cookie(g.termNormal, ""), nil).Body.String(); strings.Contains(b, `id="g-stage"`) {
+		t.Error("ohne Gerätesitzung: Player")
+	}
+}

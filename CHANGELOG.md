@@ -10,6 +10,16 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.82.27] – 2026-11-22
+
+### Geändert
+
+- **Terminal: Störung und Ticket ohne Anmeldung.** Wie beim Rüsten ist die Anmeldung freiwillig. Ohne Anmeldung meldet der Terminal-Benutzer; ein freiwilliges **Kürzel/Name** steht in der Beschreibung (wie im Easy-Modus). Mit Anmeldung meldet weiter die Person. Berechtigung bleibt `faults.edit` bzw. `tickets.edit` des Terminal-Benutzers.
+- **Terminal: Anlagenwahl Ebene für Ebene.** Störung, Ticket und Rüsten zeigen zuerst nur die Anlage des Terminals und ihre direkten Unteranlagen; Antippen einer Anlage mit Unteranlagen öffnet deren Ebene, gewählt werden kann auf jeder Ebene.
+- **Terminal: Meldetexte und Rüsttasten erst nach der Anlagenwahl** und die der gewählten Anlage (einschließlich geerbter).
+- **Terminal: Feld Kürzel/Name größer** – volle Breite, große Schrift, fingerfreundlich (Störung, Ticket, Rüsten).
+- **Terminal: Folienschau als Bildschirmschoner.** Neue Einstellung **Folienschau als Bildschirmschoner** neben „Globales Terminal“ auf der Seite des Systembenutzers (aus, wenn nicht gesetzt). Ist sie an, spielt der Schoner des normalen Terminals die Folien des Infobildschirms statt des Platzhalters. Berührung außerhalb eines Vorgangs und jede Karte wecken das Terminal wie bisher; ein Vorgang lässt sich antippen und nur lesen. Der Zwischenspeicher für den Ausfall bleibt dem globalen Terminal vorbehalten.
+
 ## [0.82.26] – 2026-11-22
 
 ### Behoben
