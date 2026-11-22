@@ -72,7 +72,7 @@ type Ticket struct {
 	// der Energiedaten) lassen sich nur mit beschriebener Ursache erledigen.
 	AssignedGroupID   *string `json:"assigned_group_id,omitempty"`
 	RequiresRootCause bool    `json:"requires_root_cause,omitempty"`
-	// Herkunft (Migration 201, Paket origin): web, easy, terminal, app, sync, alarm, system; "" = unbekannt
+	// Herkunft (Migration 202, Paket origin): web, easy, terminal, app, sync, alarm, system; "" = unbekannt
 	Origin      string `json:"origin,omitempty"`
 	OriginLabel string `json:"origin_label,omitempty"`
 }

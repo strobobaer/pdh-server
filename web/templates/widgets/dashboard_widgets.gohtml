@@ -45,7 +45,7 @@ html[data-theme="light"] .dw-bg-blue{--dwbg:#e8f1fd}html[data-theme="light"] .dw
 html[data-theme="light"] .dw-bg-yellow{--dwbg:#fdf6d8}html[data-theme="light"] .dw-bg-peach{--dwbg:#fdebe0}html[data-theme="light"] .dw-bg-rose{--dwbg:#fbe8ee}
 html[data-theme="light"] .dw-bg-lilac{--dwbg:#efe9fa}html[data-theme="light"] .dw-bg-gray{--dwbg:#eef0f3}
 html[data-theme="light"] .dw[class*="dw-bg-"]{color:#1f2937}
-html[data-theme="light"] .dw[class*="dw-bg-"] .dw-head,html[data-theme="light"] .dw[class*="dw-bg-"] .dw-stat .s,html[data-theme="light"] .dw[class*="dw-bg-"] .dw-li .s{color:#4b5563}
+html[data-theme="light"] .dw[class*="dw-bg-"] .dw-head,html[data-theme="light"] .dw[class*="dw-bg-"] .dw-stat .s:not(.alert),html[data-theme="light"] .dw[class*="dw-bg-"] .dw-li .s{color:#4b5563}
 /* Herkunft von Tickets und Störungen (record_origin.go) */
 .dw-org{display:inline-block;max-width:14em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom;
   font-size:10.5px;line-height:1.5;padding:0 6px;border:1px solid var(--border);border-radius:999px;color:var(--muted)}
@@ -206,7 +206,7 @@ html[data-theme="light"] .dw-stat.c-blue .v{color:#2563eb}
     [...el.classList].filter(c => c.startsWith('dw-bg-')).forEach(c => el.classList.remove(c));
     if(key) el.classList.add('dw-bg-' + key);
     const sel = el.querySelector('select[data-cfg="bg"]'); if(sel) sel.value = key;
-    el.querySelectorAll('.dw-bgsw button').forEach(b => b.classList.toggle('on', b.dataset.bg === key));
+    el.querySelectorAll('.dw-bgsw button').forEach(b => { const on = b.dataset.bg === key; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
   }
   document.addEventListener('click', e => {
     const b = e.target.closest('.dw-bgsw button');
@@ -337,9 +337,9 @@ html[data-theme="light"] .dw-stat.c-blue .v{color:#2563eb}
   <div class="dw-cfg">
     <label>{{t "Überschrift (leer = Standard)"}}</label><input class="form-input" data-cfg="title" maxlength="40" value="{{with .Config}}{{index . "title"}}{{end}}">
     {{$bg := .Bg}}<label>{{t "Hintergrund"}}</label>
-    <div class="dw-bgpick" role="radiogroup" aria-label="{{t "Hintergrund"}}">
+    <div class="dw-bgpick">
       <select class="form-input" data-cfg="bg" aria-label="{{t "Hintergrund"}}"><option value="">{{t "Standard"}}</option>{{range dwBgColors}}<option value="{{.Key}}"{{if eq .Key $bg}} selected{{end}}>{{t .Name}}</option>{{end}}</select>
-      <span class="dw-bgsw">{{range dwBgColors}}<button type="button" class="dw-bg-{{.Key}}{{if eq .Key $bg}} on{{end}}" data-bg="{{.Key}}" title="{{t .Name}}" aria-label="{{t .Name}}"></button>{{end}}</span>
+      <span class="dw-bgsw">{{range dwBgColors}}<button type="button" class="dw-bg-{{.Key}}{{if eq .Key $bg}} on{{end}}" data-bg="{{.Key}}" title="{{t .Name}}" aria-label="{{t .Name}}" aria-pressed="{{if eq .Key $bg}}true{{else}}false{{end}}"></button>{{end}}</span>
     </div>
     <div data-cfg-kind="links" style="display:flex;flex-direction:column;gap:4px"><label>{{th "Links – je Zeile <code>Name | Adresse</code>, z. B. <code>Presse 2 | /infrastructure/…</code> oder <code>Wetter | https://…</code>"}}</label><textarea class="form-input" data-cfg="links">{{with .Config}}{{index . "links"}}{{end}}</textarea></div>
     <div data-cfg-kind="watch" style="display:flex;flex-direction:column;gap:4px">

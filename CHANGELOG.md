@@ -14,7 +14,7 @@ im Kapitel „Versionen & Updates“ an.
 
 ### Neu
 
-- **Herkunft von Tickets und Störungen:** Jeder Vorgang merkt sich, woher er kam – Easy-Modus, Anlagenterminal (mit Name), App, Fremdsystem über den Abgleich (z. B. „SAP PM“), Alarm (Energiedaten, IT-Netz) oder das PDH selbst (Firewall-Freigabe, Rüstzeit). Sie steht als Schild in den Listen und oben auf der Seite des Vorgangs.
+- **Herkunft von Tickets und Störungen:** Jeder Vorgang merkt sich, woher er kam – Easy-Modus, Anlagenterminal (mit seiner Anlage), App, Fremdsystem über den Abgleich (z. B. „SAP PM“), Alarm (Energiedaten, IT-Netz) oder das PDH selbst (Firewall-Freigabe, Rüstzeit). Sie steht als Schild in den Listen und oben auf der Seite des Vorgangs.
 - **Startseite:** „Offene Tickets“ und „Aktive Störungen“ zeigen unter der Zahl, woher die offenen Vorgänge kommen („davon 3 aus SAP PM · 2 aus der App · 1 vom Terminal“); „Aktuelle Störungen“ und „Mir zugewiesen“ zeigen die Herkunft als Schild.
 - **Startseite: Hintergrundfarbe je Kachel.** Unter „Dashboard anpassen“ → Einstellungen der Kachel einen hellen Hintergrund wählen (Hellblau, Mint, Hellgrün, Hellgelb, Pfirsich, Rosé, Flieder, Hellgrau); im dunklen Modus erscheint derselbe Ton gedämpft.
 
@@ -24,7 +24,7 @@ im Kapitel „Versionen & Updates“ an.
 
 ### Sicherheit
 
-- Den Namen eines Fremdsystems sieht nur, wer den Abgleich sehen darf; sonst steht dort „Fremdsystem“. Die Zählung in den Kacheln gilt nur für Vorgänge der eigenen Abteilungen.
+- Den Namen eines Fremdsystems sieht nur, wer den Abgleich in der Abteilung dieses Fremdsystems sehen darf; sonst steht dort „Fremdsystem“. Die Zählung in den Kacheln gilt nur für Vorgänge der eigenen Abteilungen.
 
 ## [0.82.31] – 2026-11-22
 

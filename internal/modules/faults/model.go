@@ -21,7 +21,7 @@ const (
 
 // Störung
 type Fault struct {
-	// Herkunft (Migration 201, Paket origin): web, easy, terminal, app, sync, alarm, system; "" = unbekannt
+	// Herkunft (Migration 202, Paket origin): web, easy, terminal, app, sync, alarm, system; "" = unbekannt
 	Origin           string      `json:"origin,omitempty"`
 	OriginLabel      string      `json:"origin_label,omitempty"`
 	ID               string      `json:"id"`

@@ -12,7 +12,36 @@ import (
 // Herkunft von Tickets und Störungen anzeigen (0.82.32, Migration 202): Schild in Listen und
 // Kacheln, Zeile „davon …“ in den Kennzahl-Kacheln, Zeile auf der Detailseite. „Von Hand“ und
 // unbekannt werden nicht angezeigt. Den Namen eines Abgleich-Profils sieht nur, wer den
-// Abgleich sehen darf (sync.view) – sonst steht dort „Fremdsystem“.
+// Abgleich in der Abteilung dieses Profils sehen darf (sync.view wie hasPermRec) – sonst steht
+// dort „Fremdsystem“. visible: Prüfung je Profil-ID (nil = keinen Namen zeigen).
+
+// syncProfileVisible: darf diese Person den Namen des Profils sehen? Je Profil einmal geprüft.
+func (h *Handler) syncProfileVisible(ctx context.Context, uid, role string) func(profileID string) bool {
+	if h.rbac == nil || uid == "" || !h.rbac.HasPermissionForUser(uid, role, permSyncView) {
+		return nil
+	}
+	seen := map[string]bool{}
+	return func(pid string) bool {
+		if pid == "" {
+			return false
+		}
+		v, ok := seen[pid]
+		if !ok {
+			v = h.rbac.HasPermissionInDepartment(uid, role, permSyncView, h.recordDepartments(ctx, syncRef, pid))
+			seen[pid] = v
+		}
+		return v
+	}
+}
+
+// syncVisibleForUID: wie syncProfileVisible, Rolle aus der Datenbank (Kacheln der Startseite).
+func (h *Handler) syncVisibleForUID(ctx context.Context, uid string) func(string) bool {
+	var role string
+	if h.db == nil || uid == "" || h.db.QueryRow(ctx, `SELECT role FROM users WHERE id = $1::uuid`, uid).Scan(&role) != nil {
+		return nil
+	}
+	return h.syncProfileVisible(ctx, uid, role)
+}
 
 // originText: kurzer Text für ein Schild ("" = nichts anzeigen).
 func originText(o, label, syncProfile string, canSync bool) string {
@@ -50,13 +79,13 @@ func originText(o, label, syncProfile string, canSync bool) string {
 
 // originCount: Anzahl offener Vorgänge einer Herkunft (bei Abgleich je Profil).
 type originCount struct {
-	Origin, Profile string
-	N               int
+	Origin, Profile, ProfileID string
+	N                          int
 }
 
 // originCountLine: „davon 3 aus SAP PM · 2 aus der App · 1 vom Terminal“ ("" ohne Herkunft).
 // Ohne sync.view werden alle Fremdsysteme ohne Namen zusammengefasst.
-func originCountLine(cs []originCount, canSync bool) string {
+func originCountLine(cs []originCount, visible func(string) bool) string {
 	sum := map[string]int{}
 	for _, c := range cs {
 		if c.N <= 0 {
@@ -66,7 +95,7 @@ func originCountLine(cs []originCount, canSync bool) string {
 		switch c.Origin {
 		case recorigin.Sync:
 			w = "aus Fremdsystemen"
-			if canSync && c.Profile != "" {
+			if visible != nil && c.Profile != "" && visible(c.ProfileID) {
 				w = "aus " + c.Profile
 			}
 		case recorigin.App:
@@ -110,10 +139,14 @@ var originTables = map[string]struct{ table, open string }{
 	"fault":  {"faults", "'detected','analyzing','in_progress','pending'"},
 }
 
-// originSyncProfile: Profilname eines verknüpften Abgleichs (Unterabfrage, r = Datensatz).
+// originSyncProfile: Name und Kennung des verknüpften Abgleich-Profils (zwei Spalten,
+// r = Datensatz; refType nur aus originTables).
 func originSyncProfile(refType string) string {
-	return `COALESCE((SELECT sp.name FROM sync_links l JOIN sync_profiles sp ON sp.id = l.profile_id
+	q := func(col string) string {
+		return `COALESCE((SELECT ` + col + ` FROM sync_links l JOIN sync_profiles sp ON sp.id = l.profile_id
 		WHERE l.ref_type = '` + refType + `' AND l.ref_id = r.id ORDER BY l.created_at LIMIT 1), '')`
+	}
+	return `CASE WHEN r.origin = 'sync' THEN ` + q("sp.name") + ` ELSE '' END, CASE WHEN r.origin = 'sync' THEN ` + q("sp.id::text") + ` ELSE '' END`
 }
 
 // originCounts zählt offene, nicht archivierte Vorgänge je Herkunft. cond/args: Abteilung wie
@@ -123,9 +156,9 @@ func (h *Handler) originCounts(ctx context.Context, refType, cond string, args [
 	if !ok || h.db == nil {
 		return nil, nil
 	}
-	rows, err := h.db.Query(ctx, `SELECT r.origin, CASE WHEN r.origin = 'sync' THEN `+originSyncProfile(refType)+` ELSE '' END, count(*)
+	rows, err := h.db.Query(ctx, `SELECT r.origin, `+originSyncProfile(refType)+`, count(*)
 		FROM `+t.table+` r WHERE r.status::text IN (`+t.open+`) AND r.archived_at IS NULL AND r.origin NOT IN ('', 'web')`+cond+`
-		GROUP BY 1, 2`, args...)
+		GROUP BY 1, 2, 3`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -133,7 +166,7 @@ func (h *Handler) originCounts(ctx context.Context, refType, cond string, args [
 	var out []originCount
 	for rows.Next() {
 		var c originCount
-		if err := rows.Scan(&c.Origin, &c.Profile, &c.N); err != nil {
+		if err := rows.Scan(&c.Origin, &c.Profile, &c.ProfileID, &c.N); err != nil {
 			return nil, err
 		}
 		out = append(out, c)
@@ -142,13 +175,13 @@ func (h *Handler) originCounts(ctx context.Context, refType, cond string, args [
 }
 
 // originTexts: Schild je Datensatz-ID ("von Hand" und unbekannt fehlen in der Liste).
-func (h *Handler) originTexts(ctx context.Context, refType string, ids []string, canSync bool) map[string]string {
+func (h *Handler) originTexts(ctx context.Context, refType string, ids []string, visible func(string) bool) map[string]string {
 	t, ok := originTables[refType]
 	out := map[string]string{}
 	if !ok || h.db == nil || len(ids) == 0 {
 		return out
 	}
-	rows, err := h.db.Query(ctx, `SELECT r.id::text, r.origin, r.origin_label, CASE WHEN r.origin = 'sync' THEN `+originSyncProfile(refType)+` ELSE '' END
+	rows, err := h.db.Query(ctx, `SELECT r.id::text, r.origin, r.origin_label, `+originSyncProfile(refType)+`
 		FROM `+t.table+` r WHERE r.id = ANY($1::uuid[]) AND r.origin NOT IN ('', 'web')`, ids)
 	if err != nil {
 		componentLog("herkunft").Warn().Err(err).Str("art", refType).Msg("herkunft lesen")
@@ -156,9 +189,9 @@ func (h *Handler) originTexts(ctx context.Context, refType string, ids []string,
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var id, o, label, profile string
-		if rows.Scan(&id, &o, &label, &profile) == nil {
-			if s := originText(o, label, profile, canSync); s != "" {
+		var id, o, label, profile, pid string
+		if rows.Scan(&id, &o, &label, &profile, &pid) == nil {
+			if s := originText(o, label, profile, visible != nil && visible(pid)); s != "" {
 				out[id] = s
 			}
 		}

@@ -38,16 +38,23 @@ func TestOriginText(t *testing.T) {
 }
 
 func TestOriginCountLine(t *testing.T) {
-	line := originCountLine([]originCount{{Origin: "app", N: 2}, {Origin: "sync", Profile: "SAP PM", N: 3}, {Origin: "terminal", N: 1}, {Origin: "sync", Profile: "Navision", N: 3}}, true)
+	yes := func(string) bool { return true }
+	line := originCountLine([]originCount{{Origin: "app", N: 2}, {Origin: "sync", Profile: "SAP PM", ProfileID: "p1", N: 3}, {Origin: "terminal", N: 1}, {Origin: "sync", Profile: "Navision", ProfileID: "p2", N: 3}}, yes)
 	if line != "davon 3 aus Navision · 3 aus SAP PM · 2 aus der App · 1 vom Terminal" {
 		t.Errorf("Zeile: %q", line)
 	}
 	// ohne sync.view: Fremdsysteme zusammengefasst, ohne Namen
-	line = originCountLine([]originCount{{Origin: "sync", Profile: "SAP PM", N: 3}, {Origin: "sync", Profile: "Navision", N: 1}}, false)
+	line = originCountLine([]originCount{{Origin: "sync", Profile: "SAP PM", ProfileID: "p1", N: 3}, {Origin: "sync", Profile: "Navision", ProfileID: "p2", N: 1}}, nil)
 	if line != "davon 4 aus Fremdsystemen" || strings.Contains(line, "SAP") {
 		t.Errorf("ohne Recht: %q", line)
 	}
-	if originCountLine(nil, true) != "" {
+	// Schlussprüfung I2: Recht nur in der Abteilung von Profil p1 – den Namen von p2 nicht zeigen
+	only := func(id string) bool { return id == "p1" }
+	line = originCountLine([]originCount{{Origin: "sync", Profile: "SAP PM", ProfileID: "p1", N: 3}, {Origin: "sync", Profile: "Navision", ProfileID: "p2", N: 1}}, only)
+	if line != "davon 3 aus SAP PM · 1 aus Fremdsystemen" || strings.Contains(line, "Navision") {
+		t.Errorf("Recht nur für ein Profil: %q", line)
+	}
+	if originCountLine(nil, yes) != "" {
 		t.Errorf("ohne Herkunft keine Zeile")
 	}
 }

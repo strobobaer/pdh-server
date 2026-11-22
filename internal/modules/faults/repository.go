@@ -54,8 +54,10 @@ func (r *Repository) CreateTicketFromFault(ctx context.Context, f *Fault, priori
 
 	var id string
 	err := r.db.QueryRow(ctx, `
-		INSERT INTO tickets (id, title, description, priority, status, assigned_to, responsible_to, created_by, infrastructure_id, cost_center_id, linked_fault_id, assigned_group_id)
-		VALUES (pdh_uuid_v7(), $1, $2, $3, 'open', $4, $5, $6, $7, $8, $9, (SELECT assigned_group_id FROM faults WHERE id = $9::uuid))
+		INSERT INTO tickets (id, title, description, priority, status, assigned_to, responsible_to, created_by, infrastructure_id, cost_center_id, linked_fault_id, assigned_group_id,
+			origin, origin_label)
+		VALUES (pdh_uuid_v7(), $1, $2, $3, 'open', $4, $5, $6, $7, $8, $9, (SELECT assigned_group_id FROM faults WHERE id = $9::uuid),
+			COALESCE((SELECT origin FROM faults WHERE id = $9::uuid), ''), COALESCE((SELECT origin_label FROM faults WHERE id = $9::uuid), ''))
 		RETURNING id`,
 		"Störung: "+f.Title, description, priority, f.AssignedTo, f.ResponsibleTo, f.CreatedBy, f.InfrastructureID, f.CostCenterID, f.ID,
 	).Scan(&id)

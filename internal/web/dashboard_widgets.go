@@ -485,7 +485,7 @@ func loadStatTickets(h *Handler, ctx context.Context, uid string, _ WidgetInstan
 	d := statData{Value: fmt.Sprint(open), Sub: tr(ctxLang(ctx), "%d kritisch", crit), Color: "blue", URL: "/tickets?tab=items&chip=open", Alert: crit > 0}
 	if err == nil {
 		if cs, oerr := h.originCounts(ctx, "ticket", cond, args); oerr == nil {
-			d.Origins = originCountLine(cs, can(permSyncView))
+			d.Origins = originCountLine(cs, h.syncVisibleForUID(ctx, uid))
 		}
 	}
 	return d, err
@@ -499,7 +499,7 @@ func loadStatFaults(h *Handler, ctx context.Context, uid string, _ WidgetInstanc
 	d := statData{Value: fmt.Sprint(active), Sub: tr(ctxLang(ctx), "%d neu gemeldet", fresh), Color: "red", URL: "/faults?tab=items&chip=open", Alert: fresh > 0}
 	if err == nil {
 		if cs, oerr := h.originCounts(ctx, "fault", cond, args); oerr == nil {
-			d.Origins = originCountLine(cs, can(permSyncView))
+			d.Origins = originCountLine(cs, h.syncVisibleForUID(ctx, uid))
 		}
 	}
 	return d, err
@@ -612,7 +612,7 @@ type listItem struct {
 }
 
 // listOrigins setzt die Herkunft der Tickets und Störungen einer Liste (eine Abfrage je Art).
-func listOrigins(ctx context.Context, h *Handler, items []listItem, canSync bool) {
+func listOrigins(ctx context.Context, h *Handler, items []listItem, visible func(string) bool) {
 	ids := map[string][]string{}
 	for _, it := range items {
 		if it.refType != "" {
@@ -620,7 +620,7 @@ func listOrigins(ctx context.Context, h *Handler, items []listItem, canSync bool
 		}
 	}
 	for ref, list := range ids {
-		texts := h.originTexts(ctx, ref, list, canSync)
+		texts := h.originTexts(ctx, ref, list, visible)
 		for i := range items {
 			if items[i].refType == ref {
 				items[i].Origin = texts[items[i].id]
@@ -668,7 +668,7 @@ func loadListMine(h *Handler, ctx context.Context, uid string, _ WidgetInstance,
 		}
 		out = append(out, it)
 	}
-	listOrigins(ctx, h, out, can(permSyncView))
+	listOrigins(ctx, h, out, h.syncVisibleForUID(ctx, uid))
 	return out, nil
 }
 
@@ -702,7 +702,7 @@ func loadListFaults(h *Handler, ctx context.Context, uid string, _ WidgetInstanc
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	listOrigins(ctx, h, out, can(permSyncView))
+	listOrigins(ctx, h, out, h.syncVisibleForUID(ctx, uid))
 	return out, nil
 }
 

@@ -2890,7 +2890,7 @@ func (h *Handler) FaultDetail(w http.ResponseWriter, r *http.Request) {
 	_ = h.db.QueryRow(ctx, `SELECT ticket_pending FROM faults WHERE id = $1::uuid`, id).Scan(&data.Fault.TicketPending)
 	data.SyncOrigin = h.syncOrigin(r, extsync.RefFault, id)
 	if data.SyncOrigin == nil { // Abgleich mit Recht: eigene Karte; sonst kurze Herkunft
-		data.OriginText = h.originTexts(ctx, "fault", []string{id}, false)[id]
+		data.OriginText = h.originTexts(ctx, "fault", []string{id}, nil)[id]
 	}
 	h.render(w, "fault_detail", data)
 }
@@ -3037,7 +3037,7 @@ func (h *Handler) TicketDetail(w http.ResponseWriter, r *http.Request) {
 	}
 	data.SyncOrigin = h.syncOrigin(r, extsync.RefTicket, id)
 	if data.SyncOrigin == nil { // Abgleich mit Recht: eigene Karte; sonst kurze Herkunft
-		data.OriginText = h.originTexts(r.Context(), "ticket", []string{id}, false)[id]
+		data.OriginText = h.originTexts(r.Context(), "ticket", []string{id}, nil)[id]
 	}
 	if h.hasPerm(r, permAppAdmin) {
 		var reqID string

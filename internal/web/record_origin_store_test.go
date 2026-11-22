@@ -60,20 +60,42 @@ func TestRecordOriginBackfill(t *testing.T) {
 	alarmIT := mk("tickets", `INSERT INTO tickets (title, description, priority, status, created_by, requires_root_cause) VALUES ('Netzgerät offline: Switch 3', 'x', 'medium', 'open', $1::uuid, true) RETURNING id::text`, sys)
 	alarmE := mk("tickets", `INSERT INTO tickets (title, description, priority, status, created_by, requires_root_cause) VALUES ('Schwellwert „Strom“ überschritten: Presse', 'x', 'medium', 'open', $1::uuid, true) RETURNING id::text`, sys)
 	fw := mk("tickets", `INSERT INTO tickets (title, description, priority, status, created_by, tags) VALUES ('Firewall-Freigabe', 'x', 'medium', 'open', $1::uuid, '["esppdh-freigabe:abc"]'::jsonb) RETURNING id::text`, sys)
+	appF := mk("faults", `INSERT INTO faults (title, description, severity, status, created_by) VALUES ('App-Störung', 'x', 'medium', 'detected', $1::uuid) RETURNING id::text`, sys)
+	if _, err := pool.Exec(ctx, `INSERT INTO record_history (ref_type, ref_id, action, message, created_by) VALUES ('fault', $1::uuid, 'create', 'Gemeldet in der App', $2::uuid)`, appF, sys); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _, _ = pool.Exec(context.Background(), "DEL"+"ETE FROM record_history WHERE ref_id = $1::uuid", appF) })
+	// Ticket aus einer Störung (Deck-/Ticket-Übergabe): erbt die Herkunft der Störung
+	fromFault := mk("tickets", `INSERT INTO tickets (title, description, priority, status, created_by, linked_fault_id) VALUES ('Aus Störung', 'x', 'medium', 'open', $1::uuid, $2::uuid) RETURNING id::text`, sys, easy)
 	// Migration erneut ausführen (wiederholbar) – erst danach steht die Herkunft da
 	if _, err := pool.Exec(ctx, `UPDATE faults SET origin = '' WHERE id = $1::uuid`, easy); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := pool.Exec(ctx, `UPDATE tickets SET origin = '', origin_label = '' WHERE id = ANY($1::uuid[])`, []string{term, alarmIT, alarmE, fw}); err != nil {
+	if _, err := pool.Exec(ctx, `UPDATE tickets SET origin = '', origin_label = '' WHERE id = ANY($1::uuid[])`, []string{term, alarmIT, alarmE, fw, fromFault}); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := pool.Exec(ctx, `UPDATE faults SET origin = '', origin_label = '' WHERE id = $1::uuid`, appF); err != nil {
+		t.Fatal(err)
+	}
+	all := []string{easy, term, alarmIT, alarmE, fw, appF, fromFault}
+	queued := func() int {
+		var n int
+		_ = pool.QueryRow(ctx, `SELECT count(*) FROM record_change_queue WHERE record_id = ANY($1::uuid[]) AND kind <> 'created'`, all).Scan(&n)
+		return n
+	}
+	before := queued()
 	if _, err := pool.Exec(ctx, originMigration(t)); err != nil {
 		t.Fatal(err)
+	}
+	// Schlussprüfung I1: der Nachtrag löst keine Meldungen „geändert“ aus
+	if n := queued() - before; n != 0 {
+		t.Errorf("Nachtrag erzeugt %d Änderungsmeldungen", n)
 	}
 	for _, c := range []struct{ table, id, origin, label string }{
 		{"faults", easy, "easy", ""}, {"tickets", term, "terminal", ""},
 		{"tickets", alarmIT, "alarm", "IT-Netz"}, {"tickets", alarmE, "alarm", "Energiedaten"},
 		{"tickets", fw, "system", "Firewall-Freigabe"},
+		{"faults", appF, "app", ""}, {"tickets", fromFault, "easy", ""},
 	} {
 		if o, l := originOf(t, ctx, h, c.table, c.id); o != c.origin || l != c.label {
 			t.Errorf("%s %s: %q/%q, erwartet %q/%q", c.table, c.id, o, l, c.origin, c.label)
@@ -109,6 +131,29 @@ func TestReportCreateSetsOrigin(t *testing.T) {
 	}
 	if o, l := originOf(t, ctx, h, "tickets", tid); o != "terminal" || l != "Terminal Halle 2" {
 		t.Errorf("Terminal-Ticket: %q/%q", o, l)
+	}
+}
+
+// Schlussprüfung I3: Ein Ticket, das aus einer Störung entsteht, erbt deren Herkunft.
+func TestTicketFromFaultInheritsOrigin(t *testing.T) {
+	pool := dataNetTestPool(t)
+	ctx := context.Background()
+	h := &Handler{db: pool, faults: faults.NewService(faults.NewRepository(pool), nil)}
+	f, err := h.faults.Create(ctx, &faults.CreateFaultInput{Title: "Erbt Herkunft", Severity: "medium", Origin: "terminal", OriginLabel: "Halle 2"}, pdhSystemUserID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		c := context.Background()
+		_, _ = pool.Exec(c, "DEL"+"ETE FROM tickets WHERE linked_fault_id = $1::uuid", f.ID)
+		_, _ = pool.Exec(c, "DEL"+"ETE FROM faults WHERE id = $1::uuid", f.ID)
+	})
+	tid, err := faults.NewRepository(pool).CreateTicketFromFault(ctx, f, "medium")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if o, l := originOf(t, ctx, h, "tickets", tid); o != "terminal" || l != "Halle 2" {
+		t.Errorf("Ticket aus Störung: %q/%q", o, l)
 	}
 }
 

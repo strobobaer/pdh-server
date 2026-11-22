@@ -3,6 +3,10 @@
 -- origin_label ergänzt z. B. den Namen des Terminals oder „Energiedaten“. Leer = unbekannt
 -- (älter als 0.82.32 und nicht erkennbar). Wiederholbar.
 
+-- Der Nachtrag ist keine Änderung durch einen Menschen: keine Meldungen „geändert“
+-- (record_change_queue). Die Migration läuft in einer Transaktion.
+SET LOCAL pdh.sync_silent = '1';
+
 ALTER TABLE tickets ADD COLUMN IF NOT EXISTS origin text NOT NULL DEFAULT ''
     CHECK (origin IN ('', 'web', 'easy', 'terminal', 'app', 'sync', 'alarm', 'system'));
 ALTER TABLE tickets ADD COLUMN IF NOT EXISTS origin_label text NOT NULL DEFAULT '';
@@ -34,6 +38,14 @@ UPDATE faults SET origin = 'terminal' WHERE origin = '' AND description LIKE '%G
 UPDATE tickets SET origin = 'easy' WHERE origin = '' AND description LIKE '%Gemeldet per QR-Code (Easy-Mode)%';
 UPDATE faults SET origin = 'easy' WHERE origin = '' AND description LIKE '%Gemeldet per QR-Code (Easy-Mode)%';
 
+UPDATE faults f SET origin = 'app'
+ WHERE f.origin = '' AND EXISTS (SELECT 1 FROM record_history h
+     WHERE h.ref_type = 'fault' AND h.ref_id = f.id AND h.action = 'create' AND h.message = 'Gemeldet in der App');
+
+-- Tickets aus einer Störung erben deren Herkunft (zuletzt – die Störungen stehen jetzt fest)
+UPDATE tickets t SET origin = f.origin, origin_label = f.origin_label
+  FROM faults f WHERE t.origin = '' AND t.linked_fault_id = f.id AND f.origin <> '';
+
 -- Kacheln der Startseite zählen offene Vorgänge je Herkunft
-CREATE INDEX IF NOT EXISTS idx_tickets_origin ON tickets (origin) WHERE origin <> '';
-CREATE INDEX IF NOT EXISTS idx_faults_origin ON faults (origin) WHERE origin <> '';
+CREATE INDEX IF NOT EXISTS idx_tickets_origin ON tickets (origin) WHERE origin NOT IN ('', 'web');
+CREATE INDEX IF NOT EXISTS idx_faults_origin ON faults (origin) WHERE origin NOT IN ('', 'web');

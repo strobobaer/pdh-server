@@ -461,7 +461,8 @@ func (h *Handler) workOpenCards(r *http.Request, k workKind) []workCard {
 		for i := range out {
 			ids[i] = out[i].ID
 		}
-		texts := h.originTexts(ctx, k.Key, ids, h.syncCan(r, permSyncView, ""))
+		u := getUser(r)
+		texts := h.originTexts(ctx, k.Key, ids, h.syncProfileVisible(ctx, u.ID, string(u.Role)))
 		for i := range out {
 			out[i].Origin = texts[out[i].ID]
 		}
