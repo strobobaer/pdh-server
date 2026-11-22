@@ -667,4 +667,51 @@ func TestAppWorkMerge(t *testing.T) {
 			}
 		}
 	})
+	t.Run("steps: offen gespeichert, inzwischen geschlossen, Replay → kein falscher Hinweis", func(t *testing.T) {
+		e := newAppActEnv(t)
+		e.seed()
+		mid := e.idOf("maintenance_tasks", "Wartung")
+		sid := e.id(`INSERT INTO maintenance_task_steps (task_id, label, item_type, required, sort_order) VALUES ($1::uuid, 'Filter', 'checkbox', true, 1) RETURNING id::text`, mid)
+		once := e.once()
+		body := map[string]any{"done": true, "base": base("open")}
+		if rec, m := e.post("/api/app/v1/work/maintenance/"+mid+"/steps/"+sid, body, once); rec.Code != 200 || m["hint"] != nil {
+			t.Fatalf("erster Lauf: %d %s", rec.Code, rec.Body.String())
+		}
+		e.exec(`UPDATE maintenance_tasks SET status = 'done' WHERE id = $1::uuid`, mid) // im Web abgeschlossen
+		rec, m := e.post("/api/app/v1/work/maintenance/"+mid+"/steps/"+sid, body, once)
+		if rec.Code != 200 || rec.Header().Get("X-PDH-Once-Replay") != "1" || m["hint"] != nil {
+			t.Errorf("replay: %d %v", rec.Code, m["hint"])
+		}
+		if n := e.count(`SELECT COUNT(*) FROM maintenance_task_steps WHERE id = $1::uuid AND done`, sid); n != 1 {
+			t.Errorf("punkt nicht mehr gespeichert")
+		}
+	})
+	t.Run("Nachtrag nicht speicherbar → 503, Once frei, nichts verloren", func(t *testing.T) {
+		e := newAppActEnv(t)
+		e.seed()
+		fid := e.idOf("faults", "Stoerung")
+		e.exec(`UPDATE faults SET status = 'resolved' WHERE id = $1::uuid`, fid)
+		orig := appMergeHistoryWrite
+		t.Cleanup(func() { appMergeHistoryWrite = orig })
+		for _, path := range []string{"/actions", "/finish"} { // Maßnahme und Abschluss am geschlossenen Vorgang
+			appMergeHistoryWrite = func(context.Context, *Handler, string, string, string, []string) error {
+				return context.DeadlineExceeded // Verlauf nicht schreibbar
+			}
+			once := e.once()
+			body := map[string]any{"text": "Lager", "no_parts": true, "base": base("in_progress")}
+			rec, m := e.post("/api/app/v1/work/fault/"+fid+path, body, once)
+			e.wantCode(rec, m, 503, "app_unavailable")
+			if n := e.count(`SELECT COUNT(*) FROM app_steps WHERE id = $1::uuid`, once); n != 0 {
+				t.Errorf("%s: once nicht freigegeben", path)
+			}
+			appMergeHistoryWrite = orig
+			rec, m = e.post("/api/app/v1/work/fault/"+fid+path, body, once)
+			if rec.Code != 200 || rec.Header().Get("X-PDH-Once-Replay") == "1" || m["hint"] == nil {
+				t.Errorf("%s: zweiter Versuch: %d %s", path, rec.Code, rec.Body.String())
+			}
+		}
+		if n := e.count(`SELECT COUNT(*) FROM record_history WHERE ref_type = 'fault' AND ref_id = $1::uuid AND message = 'Nachtrag aus der App: Lager'`, fid); n != 2 {
+			t.Errorf("nachträge: %d", n)
+		}
+	})
 }

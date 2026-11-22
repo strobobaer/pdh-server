@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -89,6 +90,28 @@ const (
 	appHintHistoryAction = "update" // Vorgang im Verlauf für Hinweis und Nachtrag (wie S2)
 )
 
+// appResultStepSkipped: result_type in app_steps, wenn ein Prüfpunkt an einem
+// geschlossenen Vorgang nicht gespeichert wurde (result_id = Kennung des Punkts).
+const appResultStepSkipped = "step_skipped"
+
+// appMergeHistoryWrite schreibt Verlaufseinträge (action appHintHistoryAction) in einer
+// Transaktion mit geprüften Fehlern – anders als addHistory, das Fehler verschluckt.
+// Variable, damit ein Test den Fehlerfall erzwingen kann.
+var appMergeHistoryWrite = func(ctx context.Context, h *Handler, ref, id, uid string, msgs []string) error {
+	tx, err := h.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	for _, m := range msgs {
+		if _, err := tx.Exec(ctx, `INSERT INTO record_history (ref_type, ref_id, action, field_name, old_value, new_value, message, created_by)
+			VALUES ($1, $2, $3, '', '', '', $4, $5)`, ref, id, appHintHistoryAction, m, nullID(uid)); err != nil {
+			return err
+		}
+	}
+	return tx.Commit(ctx)
+}
+
 // appStatusHint: Hinweis „… wurde inzwischen von <Name> auf „<Status>“ gesetzt.“ Der
 // Name stammt aus dem jüngsten Verlaufseintrag, der den Status geändert hat
 // (field_name = 'status'), und nur, wenn dieser auf den aktuellen Status lautet –
@@ -164,7 +187,8 @@ func (h *Handler) appWorkMerge(w http.ResponseWriter, r *http.Request, op, kind,
 		appJSONErr(w, http.StatusForbidden, "app_no_permission", "app_no_permission")
 		return true
 	}
-	if op == appOpStep { // nichts schreiben, nur Hinweis
+	if op == appOpStep { // nichts schreiben, nur Hinweis; das Auslassen merkt sich app_steps
+		appSetResult(r, appResultStepSkipped, chi.URLParam(r, "stepID"))
 		h.appWorkRespondHint(w, r, kind, id, p, fmt.Sprintf(appHintClosedStep, title))
 		return true
 	}
@@ -181,25 +205,38 @@ func (h *Handler) appWorkMerge(w http.ResponseWriter, r *http.Request, op, kind,
 		appUnavailable(w, err, kind, id, "app: hinweis bilden")
 		return true
 	}
-	if text != "" {
-		if !p.Closed && p.Action { // noch offen und nimmt Maßnahmen an: als Maßnahme
-			if !h.completionService(k.Type) {
-				appUnavailable(w, errNoService, kind, id, "app: nachtrag")
-				return true
-			}
-			if err := h.completionAddAction(ctx, k, id, text, uid); err != nil {
-				h.appWorkRunErr(w, err, kind, id)
-				return true
-			}
-		} else {
-			h.addHistory(ctx, historyRef(kind), id, appHintHistoryAction, "", "", "", appHintNachtrag+text, uid)
-		}
-		if op == appOpFinish {
-			hint += appHintAppended
-		}
+	asAction := text != "" && !p.Closed && p.Action // noch offen und nimmt Maßnahmen an: als Maßnahme
+	if text != "" && op == appOpFinish {
+		hint += appHintAppended
 	}
-	h.addHistory(ctx, historyRef(kind), id, appHintHistoryAction, "", "", "", hint, uid)
-	appKeepOnce(r) // geschrieben: ein erneuter Versuch ist ab jetzt ein Replay
+	if asAction {
+		if !h.completionService(k.Type) {
+			appUnavailable(w, errNoService, kind, id, "app: nachtrag")
+			return true
+		}
+		if err := h.completionAddAction(ctx, k, id, text, uid); err != nil {
+			h.appWorkRunErr(w, err, kind, id)
+			return true
+		}
+		appKeepOnce(r) // Text steht als Maßnahme: ab jetzt ein Replay
+		// Der Hinweis ist hier nur Zusatz – scheitert er, bleibt die Maßnahme (kein 503,
+		// sonst würde der Schritt sie beim nächsten Versuch doppelt eintragen).
+		if err := appMergeHistoryWrite(ctx, h, historyRef(kind), id, uid, []string{hint}); err != nil {
+			componentLog("app").Error().Err(err).Str("art", kind).Str("vorgang", id).Msg("app: hinweis in den verlauf")
+		}
+	} else {
+		// Nachtrag (der Text lebt nur im Verlauf) und Hinweis gemeinsam und geprüft: scheitert
+		// es, 503 ohne appKeepOnce – der Schritt bleibt in der Warteschlange des Telefons.
+		msgs := []string{hint}
+		if text != "" {
+			msgs = []string{appHintNachtrag + text, hint}
+		}
+		if err := appMergeHistoryWrite(ctx, h, historyRef(kind), id, uid, msgs); err != nil {
+			appUnavailable(w, err, kind, id, "app: nachtrag in den verlauf")
+			return true
+		}
+		appKeepOnce(r) // geschrieben: ein erneuter Versuch ist ab jetzt ein Replay
+	}
 	if p, err = h.appWorkCan(r, kind, id); err != nil {
 		appUnavailable(w, err, kind, id, "vorgang prüfen")
 		return true
@@ -214,12 +251,14 @@ func (h *Handler) appWorkMerge(w http.ResponseWriter, r *http.Request, op, kind,
 // wie beim ersten Mal. Der Hinweis steht im Verlauf (Eintrag des Benutzers mit „…“
 // am Anfang). Zum Schritt gehört der erste solche Eintrag nach dem Eintrag der Once
 // in app_steps, sofern dazwischen kein anderer Schritt desselben Benutzers begann;
-// sonst kein Hinweis. steps schreiben keinen Verlauf: dort wird der Hinweis aus dem
-// Stand neu gebildet (geschlossen bleibt geschlossen).
-func (h *Handler) appReplayHint(r *http.Request, op, kind, id string, p appWorkPerms) string {
+// sonst kein Hinweis. steps schreiben keinen Verlauf: dort gilt das gespeicherte
+// Ergebnis des ersten Laufs (appResultStepSkipped) – nur dann „nicht mehr
+// gespeichert“; wurde der Punkt damals gespeichert, gibt es keinen Hinweis, auch wenn
+// der Vorgang inzwischen geschlossen ist.
+func (h *Handler) appReplayHint(r *http.Request, op, kind, id string) string {
 	ctx := r.Context()
 	if op == appOpStep {
-		if !p.Closed {
+		if typ, _ := appStepResult(r); typ != appResultStepSkipped {
 			return ""
 		}
 		var title string

@@ -116,7 +116,7 @@ func (h *Handler) appWorkWrite(w http.ResponseWriter, r *http.Request, only, op 
 	if appIsReplay(r) { // schon ausgeführt: nur den Stand liefern (mit base: derselbe Hinweis)
 		hint := ""
 		if base != nil {
-			hint = h.appReplayHint(r, op, kind, id, p)
+			hint = h.appReplayHint(r, op, kind, id)
 		}
 		h.appWorkRespondHint(w, r, kind, id, p, hint)
 		return
