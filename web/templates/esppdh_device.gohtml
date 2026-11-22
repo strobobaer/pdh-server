@@ -172,6 +172,7 @@ html[data-style="fiori"] ewt-install-dialog,html[data-style="fiori"] ewt-no-port
   <p class="esp-note">Es baut immer nur ein Gerät zur Zeit, weitere warten. Der erste Bau je Platinentyp lädt Werkzeuge aus dem Internet (mehrere hundert MB) und dauert deshalb länger.</p>
   {{else if and .CanEdit .BuildNote}}<p class="esp-note"><i class="ti ti-info-circle" aria-hidden="true"></i> {{.BuildNote}}</p>{{end}}
   {{with .Flash}}{{template "esppdh-flash" .}}{{end}}
+  {{template "esppdh-ota" .OTA}}
   {{with .Run}}{{template "esppdh-build" .}}{{end}}
   {{if gt (len .Runs) 1}}
   <div class="esp-runs-title">Letzte Läufe</div>

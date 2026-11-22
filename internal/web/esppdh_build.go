@@ -117,7 +117,12 @@ func (h *Handler) StartESPPDH(ctx context.Context) {
 	case tag.RowsAffected() > 0:
 		lg.Warn().Int64("anzahl", tag.RowsAffected()).Msg("läufe vom letzten start als gescheitert markiert")
 	}
-	go h.esppdhWorker(wctx, runner, wake, done)
+	h.esppdhOTAFailRunning(wctx)
+	up := h.esppdhUpload
+	if up == nil {
+		up = esppdh.NewRunner().Upload
+	}
+	go h.esppdhWorker(wctx, runner, up, wake, done)
 	lg.Info().Msg("bauen gestartet")
 }
 
@@ -153,10 +158,11 @@ func (h *Handler) esppdhWake() {
 	}
 }
 
-func (h *Handler) esppdhWorker(ctx context.Context, runner esppdhBuilder, wake <-chan struct{}, done chan<- struct{}) {
+func (h *Handler) esppdhWorker(ctx context.Context, runner esppdhBuilder, up esppdhUploadFunc, wake <-chan struct{}, done chan<- struct{}) {
 	defer close(done)
 	for ctx.Err() == nil {
-		if h.esppdhRunNext(ctx, runner) {
+		// zuerst bauen, dann aufspielen (esppdh_ota.go) – beides nacheinander unter runMu
+		if h.esppdhRunNext(ctx, runner) || h.esppdhOTANext(ctx, up) {
 			continue
 		}
 		select {
@@ -473,6 +479,7 @@ func (h *Handler) esppdhCancelQueued(ctx context.Context, note string) {
 	}
 	sctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
+	h.esppdhOTACancelQueued(sctx, note) // wartende Updates übers Netz ebenso
 	tag, err := h.db.Exec(sctx, `UPDATE esppdh_builds SET status = 'canceled', finished_at = now(),
 			log = CASE WHEN log = '' THEN $1 ELSE log || E'\n' || $1 END
 		WHERE status = 'queued'`, note)

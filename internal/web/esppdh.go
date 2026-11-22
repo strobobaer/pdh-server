@@ -381,6 +381,7 @@ var esppdhNotices = map[string]string{
 	"deleted":  "Gerät gelöscht.",
 	"build":    "Bau eingereiht. Der Verlauf steht unten bei „Firmware“.",
 	"canceled": "Bau abgebrochen.",
+	"ota":      "Update eingereiht. Der Verlauf steht unten bei „Firmware übers Netz“.",
 }
 
 func esppdhBoardLabel(key, custom string) string {
@@ -617,6 +618,8 @@ type ESPPDHDevicePageData struct {
 
 	// Firmware herunterladen und per USB flashen (esppdh_flash.go), nur mit esppdh.edit
 	Flash *esppdhFlashView
+	// Firmware übers Netz aufspielen (esppdh_ota.go), nur mit esppdh.ota
+	OTA esppdhOTAView
 }
 
 // esppdhBlockViews: Zeilen des Formulars – gespeicherte bzw. eingegebene Bausteine.
@@ -753,6 +756,7 @@ func (h *Handler) esppdhRenderDevice(w http.ResponseWriter, r *http.Request, d e
 	}
 	h.esppdhFirmwareCard(ctx, r, &pd, d, res)
 	h.esppdhFlashCard(&pd, d)
+	pd.OTA = h.esppdhOTAState(ctx, r, d)
 	if pd.CanEdit && !d.Wired {
 		pd.APPassword = apPW
 	}

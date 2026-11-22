@@ -387,6 +387,7 @@ type Handler struct {
 	// (nil = esppdh.NewRunner; Tests setzen eine Attrappe)
 	esppdhQ      esppdhQueue
 	esppdhRunner esppdhBuilder
+	esppdhUpload esppdhUploadFunc // Firmware übers Netz aufspielen (nil = esppdh.Runner.Upload; esppdh_ota.go)
 	// ESPPDH (esppdh_update.go): ESPHome täglich prüfen, proben und umschalten. Adresse der
 	// Versionsliste (leer = pypi.org), Prüfer mit einem bestimmten Programm (nil = esppdh.Runner),
 	// höchstens ein Lauf zur Zeit (Takt und Knopf „Jetzt prüfen“), Uhr (nil = time.Now)
@@ -1192,6 +1193,8 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/import/esppdh/{id}/build", h.EsppdhBuildWeb)                    // Firmware bauen (esppdh_build.go)
 	r.Get("/import/esppdh/{id}/build/{bid}", h.EsppdhBuildPartWeb)           // Verlauf eines Laufs (htmx, alle 2 s)
 	r.Post("/import/esppdh/{id}/build/{bid}/cancel", h.EsppdhBuildCancelWeb) // Bau abbrechen
+	r.Post("/import/esppdh/{id}/ota", h.EsppdhOTAPushWeb)                    // Firmware übers Netz aufspielen (esppdh_ota.go)
+	r.Get("/import/esppdh/{id}/ota/{rid}", h.EsppdhOTAPartWeb)               // Verlauf eines Updates (htmx, alle 2 s)
 	// Firmware herunterladen und per USB flashen (esppdh_flash.go): nur esppdh.edit am Gerät
 	r.Get("/import/esppdh/{id}/firmware/{bid}/factory.bin", h.EsppdhFactoryWeb)
 	r.Get("/import/esppdh/{id}/firmware/{bid}/ota.bin", h.EsppdhOTAWeb)

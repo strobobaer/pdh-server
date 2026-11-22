@@ -1,0 +1,35 @@
+{{/* ESPPDH – Firmware übers Netz aufspielen (internal/web/esppdh_ota.go). Teil der Karte
+     „Firmware“ auf der Geräteseite (esppdhOTAView, nur mit esppdh.ota) und der Verlauf eines
+     Auftrags als htmx-Teil GET /import/esppdh/{id}/ota/{rid} (alle 2 s, solange er wartet oder
+     läuft). Klassen der Karte „Firmware“ (widgets/esppdh_build.gohtml); Farben nur über die
+     Variablen des Farbschemas (Fiori/Fluent, hell/dunkel). */}}
+
+{{define "esppdh-ota"}}{{if .Show}}
+<div class="esp-ota" id="esp-ota">
+  <div class="esp-runs-title"><i class="ti ti-cloud-upload" aria-hidden="true"></i> Firmware übers Netz</div>
+  <dl class="esp-dl">
+    <dt>Auf dem Gerät</dt><dd>{{if .Installed}}{{with .InstalledWhen}}Bau vom {{.}}{{else}}<code class="esp-mono">{{$.Installed}}</code>{{end}}{{else}}keine Meldung{{end}}</dd>
+    <dt>Zuletzt gebaut</dt><dd>{{with .LatestWhen}}Bau vom {{.}}{{else}}–{{end}}</dd>
+    {{with .Address}}<dt>Adresse</dt><dd><code class="esp-mono">{{.}}</code></dd>{{end}}
+  </dl>
+  {{if .UpToDate}}<p class="esp-note"><i class="ti ti-circle-check" aria-hidden="true"></i> Die zuletzt gebaute Firmware läuft schon auf dem Gerät.</p>{{end}}
+  {{if .CanPush}}
+  <form method="POST" action="/import/esppdh/{{.DeviceID}}/ota" class="esp-fw-build" onsubmit="return confirm('Firmware jetzt übers Netz aufspielen? Das Gerät startet dabei neu und misst einen Moment lang nicht.')">
+    <button type="submit" class="btn btn-primary"><i class="ti ti-cloud-upload" aria-hidden="true"></i> Firmware aufspielen</button>
+  </form>
+  {{else if .Reason}}<p class="esp-note"><i class="ti ti-info-circle" aria-hidden="true"></i> {{.Reason}}</p>{{end}}
+  <p class="esp-note">Der Server muss das Gerät in seinem Netz auf Port {{.PortHint}} (TCP) erreichen – bei getrennten Netzen die Freigabe vom Server zum Netz des Geräts einrichten. Das erste Mal geht nur per USB.</p>
+  {{with .Run}}{{template "esppdh-ota-run" .}}{{end}}
+</div>
+{{end}}{{end}}
+
+{{define "esppdh-ota-run"}}
+<div id="esp-ota-{{.ID}}" class="esp-build"{{if .Active}} hx-get="/import/esppdh/{{.DeviceID}}/ota/{{.ID}}?poll=1" hx-trigger="every 2s" hx-swap="outerHTML"{{end}}>
+  <div class="esp-build-head">
+    <span class="badge {{.Badge}}">{{if .Active}}<i class="ti ti-loader-2" aria-hidden="true"></i>&nbsp;{{end}}{{.StatusLabel}}</span>
+    <span class="esp-wrap">Update vom {{.When}}{{with .By}} · {{.}}{{end}}{{with .Address}} · an {{.}}{{end}}</span>
+  </div>
+  {{if eq .Status "queued"}}<p class="esp-note"><i class="ti ti-clock" aria-hidden="true"></i> Wartet, bis der laufende Bau oder das laufende Update fertig ist.</p>{{end}}
+  <pre class="esp-log" tabindex="0" aria-label="Verlauf des Updates">{{if .Log}}{{.Log}}{{else if .Active}}Noch keine Ausgabe …{{else}}Kein Verlauf.{{end}}</pre>
+</div>
+{{end}}

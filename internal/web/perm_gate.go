@@ -190,6 +190,8 @@ var gateRules = []gateRule{
 	gr(wPost, permESPAdmin, esppdhRef, false, `^/import/esppdh`+gID+`/delete$`),
 	gr(wPost, permESPEdit, esppdhRef, false, `^/import/esppdh`+gID+`(?:/lock|/password|/web-password(?:/new)?|/build(?:`+gID+`/cancel)?)?$`),
 	gr(wPost, permESPEdit, "", false, `^/import/esppdh/?$`),
+	// Firmware übers Netz aufspielen mit esppdh.ota am Gerät (esppdh_ota.go)
+	gr(wPost, permESPOTA, esppdhRef, false, `^/import/esppdh`+gID+`/ota$`),
 	// ── Löschvormerkung von Stammdaten über die Schnittstelle ──
 	gr("DELETE", "inventory.edit", "part", false, `^(?:/api/v1)?/inventory`+gID+gEnd),
 	gr("DELETE", "inventory.edit", "storage", false, `^(?:/api/v1)?/storage`+gID+gEnd),
