@@ -657,7 +657,12 @@ und 3 drückt bis auf Weiteres der Anwender.
     UniFi-Schnittstelle an (`firewall/zones`, `firewall/policies`, ab Network
     10; Felder aus developer.ui.com 10.6.106), sonst Ticket an die IT
     (Empfänger der IT-Netz-Alarme, Schlagwort `esppdh-freigabe:<netz>`).
-    Recht `system.network_admin`, keine Migration. Offen: Abnahme an einem
+    Recht `system.network_admin`, keine Migration. **Auf `main`** (22.11.2026,
+    Merge `a9c0e89`) und dem Testverbund (beide Server und Zeuge 0.82.29,
+    aktiv jetzt `pdh-server` 10.10.0.17); Seite „Netzwerk“ mit Testnetz im
+    Browser geprüft (Fiori/Fluent, hell/dunkel, 320–1366 px, kein Überlauf,
+    keine Konsolenfehler; Knopf nicht gedrückt – sonst Mail an die IT;
+    Testdaten entfernt, Prüfkonto gesperrt). Offen: Abnahme an einem
     echten UniFi-Controller (Feldnamen, besonders `protocol.name: tcp`, sind
     nur nach der Dokumentation gebaut – am Testverbund sind die Quellen aus);
     Omada nur Ticket. Hinweis:
