@@ -213,6 +213,9 @@ var gateRules = []gateRule{
 	// ── Zuordnungen: Sammel-Anlage (Vorschläge übernehmen) wie Verbindung bearbeiten; Abteilung je Anlage im Handler ──
 	gr(wPost, "import.write", "", false, `^/import/connections`+gID+`/mappings/bulk$`),
 	gr(wPost, "export.write", "", false, `^/export/connections`+gID+`/mappings/bulk$`),
+	// Vorschläge zum Abhaken lesen Quellwerte (Broker, Datei, Server) – wie Verbindung bearbeiten
+	gr("GET", "import.write", "", false, `^/import/connections`+gID+`/suggestions$`),
+	gr("GET", "export.write", "", false, `^/export/connections`+gID+`/suggestions$`),
 	// ── Explorer: Testschreiben/Senden wie Verbindung bearbeiten (Erkunden selbst: import/export.execute im Handler) ──
 	gr(wPost, "import.write", "", false, `^/import/connections`+gID+`/explorer/(?:mqtt/publish|opcua/write|modbus/write)$`),
 	gr(wPost, "export.write", "", false, `^/export/connections`+gID+`/explorer/(?:mqtt/publish|opcua/write|modbus/write)$`),
