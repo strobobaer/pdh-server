@@ -266,13 +266,13 @@ func TestTerminalGlobalScreen(t *testing.T) {
 		}
 	}
 
-	// notifyGlobalTerminals: nur Terminals mit global_screen bekommen „slides“.
+	// notifySlideTerminals: nur Terminals mit global_screen bekommen „slides“.
 	e.must(h.saveTerminalGlobalScreen(e.ctx, term2, false))
 	chG, unG := h.eventHub().subscribe(term)
 	defer unG()
 	chN, unN := h.eventHub().subscribe(term2)
 	defer unN()
-	h.notifyGlobalTerminals()
+	h.notifySlideTerminals()
 	select {
 	case ev := <-chG:
 		if ev != "slides" {
@@ -296,5 +296,75 @@ func TestTerminalSlidesPermission(t *testing.T) {
 	if n := mustInt(e, `SELECT count(*) FROM role_permissions rp JOIN permissions p ON p.id = rp.permission_id JOIN roles r ON r.id = rp.role_id
 		WHERE p.key = 'terminal.slides.edit' AND r.key = 'admin'`); n < 1 {
 		t.Fatal("Admin ohne Recht")
+	}
+}
+
+// Folienschau als Bildschirmschoner: eigener Marker, wird weder von anderen Formularen noch von global_screen zurückgesetzt.
+func TestTerminalSaverSlidesSetting(t *testing.T) {
+	e := newATEnv(t)
+	mgr := e.user("ssmgr", "admin", false)
+	e.grant(mgr, "system.manage_users", "", true)
+	plain := e.user("ssplain", "viewer", false)
+	term := e.user("ssterm", "viewer", true)
+	e.warm()
+	h := &Handler{db: e.pool, rbac: e.rb, users: users.NewService(users.NewRepository(e.pool), "test-secret", 1), jwtSecret: "test-geheim", tmpl: loadTestTemplates(t)}
+	r := chi.NewRouter()
+	r.Get("/users/{id}", h.UserDetailPage)
+	r.Post("/users/{id}/master", h.UserMasterSaveWeb)
+	wd, err := os.Getwd()
+	e.must(err)
+	e.must(os.Chdir("../.."))
+	t.Cleanup(func() { _ = os.Chdir(wd) })
+	do := func(method, target, body, uid string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(method, target, strings.NewReader(body))
+		role := "viewer"
+		if uid == mgr {
+			role = "admin"
+		}
+		req = withUser(req, &users.User{ID: uid, Role: users.Role(role)})
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, req)
+		return rec
+	}
+	saver := func() bool {
+		ls, err := h.terminalLoginSettings(e.ctx, term)
+		e.must(err)
+		return ls.SaverSlides
+	}
+	const sent = "terminal_saver_slides_sent=1"
+	if saver() {
+		t.Fatal("Vorgabe muss aus sein")
+	}
+	do("POST", "/users/"+term+"/master", sent+"&terminal_saver_slides=on", mgr)
+	if !saver() {
+		t.Fatal("Schalter nicht gesetzt")
+	}
+	if ev, err := h.terminalSettingsEvent(httptest.NewRequest("GET", "/terminal/events", nil), term); err != nil || !strings.Contains(ev, `"saver_slides":true`) {
+		t.Errorf("Ereignis settings ohne saver_slides: %v %s", err, ev)
+	}
+	// ohne Marker, mit anderen Schaltern, mit global_screen: unverändert
+	do("POST", "/users/"+term+"/master", "work_location=Halle", mgr)
+	do("POST", "/users/"+term+"/master", "terminal_global_screen_sent=1", mgr)
+	do("POST", "/users/"+term+"/master", "terminal_card_notify_sent=1&terminal_card_notify=banner", mgr)
+	if !saver() {
+		t.Error("Schalter durch andere Speicherung zurückgesetzt")
+	}
+	do("POST", "/users/"+term+"/master", sent+"&terminal_global_screen_sent=1&terminal_saver_slides=on", plain)
+	do("POST", "/users/"+term+"/master", sent, plain)
+	if !saver() {
+		t.Error("ohne canManageUsers verändert")
+	}
+	if b := do("GET", "/users/"+term+"?tab=master", "", mgr).Body.String(); !strings.Contains(b, `name="terminal_saver_slides" checked`) || !strings.Contains(b, "Folienschau als Bildschirmschoner") {
+		t.Error("Formular ohne Schalter")
+	}
+	do("POST", "/users/"+term+"/master", sent, mgr)
+	if saver() {
+		t.Error("Schalter nicht gelöscht")
+	}
+	// Nicht-System-Benutzer: nichts
+	do("POST", "/users/"+plain+"/master", sent+"&terminal_saver_slides=on", mgr)
+	if n := mustInt(e, `SELECT count(*) FROM terminal_settings WHERE user_id = $1::uuid`, plain); n != 0 {
+		t.Error("Nicht-System-Benutzer bekam Einstellungen")
 	}
 }

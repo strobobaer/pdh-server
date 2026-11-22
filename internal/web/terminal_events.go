@@ -119,6 +119,7 @@ func (h *Handler) terminalSettingsEvent(r *http.Request, userID string) (string,
 		"idle":            h.terminalIdleSeconds(r.Context(), userID),
 		"card_notify":     effectiveCardNotify(s.CardNotify),
 		"global_screen":   s.GlobalScreen,
+		"saver_slides":    s.SaverSlides,
 	})
 	if err != nil {
 		return "", err
