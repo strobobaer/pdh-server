@@ -46,8 +46,31 @@ Programmier-Assistent als Änderungsliste vorschlägt. Copilot im Betrieb:
    aus einem Satz vor („MQTT-Broker 10.10.0.50, Benutzer maschinen“) und
    füllt das Formular – gespeichert wird erst mit dem normalen Speichern.
    Kennwörter fragt er nie ab und schreibt sie nie in den Chat.
-4. **Alle Arten:** MQTT, Excel/CSV, MS SQL, REST, OPC UA, Modbus;
-   Export-Zuordnungen; Feldzuordnung beim Abgleich mit Fremdsystemen.
+4. **Alle Arten:** MQTT, Excel/CSV, MS SQL, **MySQL, SQLite** (gibt es schon),
+   REST, OPC UA, Modbus, **InfluxDB (neu)**; Export-Zuordnungen;
+   Feldzuordnung beim Abgleich mit Fremdsystemen.
+5. **Vorlagen aus dem Internet** (Wunsch 22.11.2026): Der Copilot sucht auf
+   Wunsch im Internet nach Vorlagen – z. B. Modbus-Registertabelle eines
+   Zählers (Hersteller und Typ), MQTT-Themen eines Geräts (Shelly, Tasmota),
+   OPC-UA-Knoten einer Steuerung, Tabellenaufbau einer InfluxDB – und macht
+   daraus einen Vorschlag mit **Quellenangabe** (Link). Übernommen wird wie
+   immer erst nach Prüfung und „Übernehmen“. Nur mit Anthropic (Websuche).
+6. **Berechnete Werte mit Formelgenerator** (Wunsch 22.11.2026): Werte aus
+   mehreren Zuordnungen zusammenführen, z. B.
+   `Gesamtleistung Halle 2 = [Presse 1 Leistung] + [Presse 2 Leistung]` oder
+   `Wirkungsgrad = [Ausgang] / [Eingang] × 100`.
+   - Eine berechnete Zuordnung hat Anlage, Bezeichnung, Einheit und eine
+     **Folge von Formeln mit Gültigkeit**: Formel 1 gilt bis Datum 1, ab
+     Datum 1 gilt Formel 2 bis Datum 2 usw. Lücken und Überschneidungen gibt
+     es nicht – jede neue Fassung beendet die vorige.
+   - Formelgenerator am Formular: Werte aus einer Liste anklicken, Rechenzeichen
+     und Klammern, sofortige Prüfung (Schreibweise, unbekannte Werte,
+     Kreisbezüge) und Probe mit den aktuellen Werten.
+   - Der Copilot kann Formeln vorschlagen („Summe aller Pressen in Halle 2“).
+   - Gleicher Rechenkern wie die berechneten Messstellen der Energiedaten; die
+     bekommen dieselbe Gültigkeit.
+   - Berechnete Werte gibt es überall, wo Zuordnungen verwendet werden
+     (Anzeige, Copilot, Export).
 
 ## Nicht-Ziele
 
@@ -87,10 +110,26 @@ Programmier-Assistent als Änderungsliste vorschlägt. Copilot im Betrieb:
   der Hinweis steht in der Copilot-Seitenleiste.
 - Nicht am Spiegel, nicht in der Wartung (Übernehmen).
 
+## Gültigkeit der Formeln (Vorschlag)
+
+- Gültig ab einem **Datum** (00:00 Uhr Ortszeit); die vorige Fassung gilt bis
+  23:59:59 des Vortags. Eine Uhrzeit ist nicht nötig.
+- **Rückwirkend:** Wo es einen Verlauf gibt (Energiedaten), rechnet das PDH
+  die Werte ab dem neuen Datum mit der neuen Formel neu – auch für Exporte,
+  die noch nicht verschickt sind. Schon verschickte Exporte bleiben, wie sie
+  waren (Hinweis an der Formel). Ohne Verlauf (übrige Zuordnungen, nur der
+  letzte Wert) gilt die neue Formel ab ihrem Datum für den aktuellen Wert.
+- Jede Fassung zeigt, wer sie wann angelegt hat; ändern lässt sich nur eine
+  Fassung, deren Datum noch in der Zukunft liegt.
+
 ## Pakete
 
-1. **Zuordnen (A + B)** für Import- und Export-Zuordnungen aller Arten.
-2. **Anlegen von Verbindungen** und Feldzuordnung beim Abgleich.
+1. **Zuordnen (A + B)** für Import- und Export-Zuordnungen aller Arten,
+   Vorlagen aus dem Internet.
+2. **Berechnete Werte** mit Formelgenerator und Gültigkeit (auch für die
+   berechneten Messstellen der Energiedaten).
+3. **InfluxDB** als neue Verbindungsart.
+4. **Anlegen von Verbindungen** und Feldzuordnung beim Abgleich.
 
 ## Dem Bauenden überlassen
 
