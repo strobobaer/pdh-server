@@ -624,11 +624,22 @@ und 3 drückt bis auf Weiteres der Anwender.
     nachgezogen (Prüfliste zeigt sie); Tunnel-Ziel ohne Sperre; Knopf am
     Spiegel/in Wartung stumm; IPv6-Erkennung je Datei statt je server-Block;
     Knopf bis ca. 75 s.
-21. **ESPPDH: Update übers Netz (OTA)** – Wunsch des Anwenders vom
-    21.11.2026 („Passt“): heute keine OTA-Funktion (kein `ota:`-Baustein,
-    `web_server` mit `ota: false`); geplant als eigenes Paket nach den Firmenstammdaten,
-    mit Kennwort je Gerät. Offen: PDH schiebt (Knopf, Server erreicht das
-    Gerät) oder Gerät holt (fragt beim PDH, geht auch im abgeschotteten VLAN).
+21. **0.82.24 ESPPDH: Firmware übers Netz aufspielen** (Anwender 22.11.2026:
+    „PDH schiebt sie“, „a + b“, „1a 2a“; 0.82.23 ging auf `main` an die
+    Rüsttasten am Terminal). Entwurf
+    `docs/superpowers/specs/2026-11-22-esppdh-ota-design.md`, Plan
+    `docs/superpowers/plans/2026-11-22-esppdh-ota.md`, Branch
+    `feature/esppdh-ota` (lokal): Firmware mit `ota: platform esphome`
+    (Kennwort je Gerät, `ota_password_enc`), `safe_mode` und Info-Wert
+    `info/firmware` (Kennung des Baus, nicht im `ConfigHash`); Knopf
+    „Firmware aufspielen“ (Recht `esppdh.ota` am Gerät; nur bestätigte
+    Adresse in freigegebenem Netz mit Adressbereich, Erfolg erst bei
+    Meldung der neuen Kennung, bis 3 min); Sammelaktion „Alle veralteten
+    Geräte aktualisieren“ (Recht überall; veraltet = Konfiguration geändert
+    oder andere Kennung gemeldet). Migration 194, Aufträge in
+    `esppdh_ota_runs`, ausgeführt vom Bau-Arbeiter. Offen: Schlussprüfung,
+    Freigabe Push/Merge, Verbund-Update, Browserprüfung; Abnahme an echter
+    Platine (einmal USB, dann übers Netz, Port 3232/8266 in der Firewall).
 22. **PDH-App (Android/iOS):** Entwurf
     `docs/superpowers/specs/2026-11-21-pdh-app-design.md` am 21.11.2026
     freigegeben (Branch `feature/pdh-app`): eine Installations-App für alle
