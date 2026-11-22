@@ -205,6 +205,9 @@ func (h *Handler) webActor(r *http.Request) (string, bool) {
 	if s.sub == "" {
 		return "", true
 	}
+	if s.tsess != "" && !h.pdhHandoffCheck(r, s.tsess, s.sub, s.tdev) {
+		return "", true
+	}
 	if s.device != "" && !terminalDevices.active(r.Context(), s.device, s.sub, h.deviceByID) {
 		return "", true // Geraete-Token eines Terminals: nach Sperre/Entkopplung kein Bearbeiter mehr
 	}

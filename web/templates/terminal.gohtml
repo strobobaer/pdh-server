@@ -165,7 +165,24 @@ body.has-gear .g-vorg{padding-top:60px}
 .t-pickgrid .t-btn{justify-content:space-between;text-decoration:none}
 .t-pickgrid .t-btn.primary{grid-column:1/-1;justify-content:center}
 .t-picked{display:flex;align-items:center;justify-content:space-between;gap:2vw;padding:1.2vh 1.6vw;background:var(--bg2);border:2px solid var(--border);border-radius:18px}
-@media (max-width:820px){.g-vorg{grid-template-columns:1fr}.t-cols,.t-new{grid-template-columns:1fr}.t-new,.t-new.has-rz{grid-template-rows:auto}}
+/* HMI und Wartungen (terminal_hmi.go, terminal_wartung.go): Kacheln neben Rüsten, Listen, Viewer */
+.t-xrow{grid-column:1/-1;display:flex;gap:1.6vw}
+.t-new .t-xrow .t-rzlink{flex:1;grid-column:auto;min-width:0}
+.t-new .t-hmilink{background:#1e3a8a;border-color:var(--accent)}
+.t-new .t-mlink{background:#4c1d95;border-color:#8b5cf6}
+.t-mlist li.t-mrow{display:flex;align-items:center;gap:1.2vw;padding:1.1vh 0}
+.t-mrow .m-t{flex:1;min-width:0;display:flex;flex-direction:column}
+.t-mrow .m-t b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.t-mrow form{margin:0}
+.ti-meta.late{color:var(--amber)}
+.t-mcount{display:inline-block;min-width:2.2em;text-align:center;padding:.05em .5em;border-radius:999px;background:var(--bg3);font-size:.8em}
+.t-hmihead{flex-wrap:wrap;gap:1vw}
+.t-hmimode{display:inline-flex;align-items:center;gap:.4em;font-weight:700;color:var(--accent)}
+.t-hmimode.ctl{color:var(--amber)}
+.t-hmistatus{color:var(--muted);font-size:.85em}.t-hmistatus.ok{color:var(--green)}.t-hmistatus.err{color:var(--red)}
+.t-hmiscreen{flex:1;min-height:0;background:#000;border:2px solid var(--border);border-radius:14px;overflow:hidden;position:relative;touch-action:none}
+.t-card form{margin:0}
+@media (max-width:820px){.t-xrow{flex-direction:column}.g-vorg{grid-template-columns:1fr}.t-cols,.t-new{grid-template-columns:1fr}.t-new,.t-new.has-rz{grid-template-rows:auto}}
 </style>
 </head>
 <body{{if .DeviceSession}} class="has-gear"{{end}}{{if .SetupCard}} data-card-in="1"{{end}} data-mode="{{.Mode}}"{{if .SaverSlides}} data-saver-slides="1"{{end}} data-idle="{{.Idle}}"{{if .SettingsEvents}} data-settings-events="1"{{end}}{{if .CardEvents}} data-card-events="1" data-card-notify="{{.CardNotify}}"{{if ne .Mode "schoner"}} data-manual-login="{{.ManualLogin}}" data-password-button="{{if .PasswordButton}}1{{else}}0{{end}}"{{end}}{{end}}>
@@ -294,6 +311,67 @@ body.has-gear .g-vorg{padding-top:60px}
   {{end}}
 </div>
 {{end}}
+{{else if eq .Mode "hmi"}}
+<div class="t-head">
+  <a class="t-btn" href="/terminal/neu"><i class="ti ti-arrow-left" aria-hidden="true"></i> Zurück</a>
+  <div class="t-path">{{if .Path}}{{.Path}}{{else}}<b>{{.Name}}</b>{{end}}{{if .HMI.LoggedIn}} · {{.HMI.Person}}{{end}}</div>
+  <div class="t-clock" data-clock>&nbsp;</div>
+</div>
+<div class="t-rz">
+  <h2 class="t-rzh">HMI</h2>
+  {{if .HMI.Items}}<ul class="t-list t-mlist">
+    {{range .HMI.Items}}<li class="t-mrow"><div class="m-t"><b>{{.Name}}</b>{{if .Path}}<span class="ti-meta">{{.Path}}</span>{{end}}</div>
+      <a class="t-btn" href="{{printf "/terminal/hmi/%s/%s" .InfraID .ID}}"><i class="ti ti-eye" aria-hidden="true"></i> Ansehen</a>{{if .Control}}<a class="t-btn primary" href="{{printf "/terminal/hmi/%s/%s?mode=control" .InfraID .ID}}"><i class="ti ti-hand-click" aria-hidden="true"></i> Bedienen</a>{{end}}</li>{{end}}
+  </ul>{{else}}<div class="t-empty off"><i class="ti ti-lock" aria-hidden="true"></i> Kein HMI verfügbar</div>{{end}}
+</div>
+{{else if eq .Mode "hmiview"}}
+<div class="t-head t-hmihead">
+  <a class="t-btn" href="/terminal/hmi"><i class="ti ti-arrow-left" aria-hidden="true"></i> Zurück</a>
+  <div class="t-path"><b>{{.HMI.Sel.Name}}</b>{{if .HMI.Sel.Path}} · {{.HMI.Sel.Path}}{{end}}</div>
+  {{if eq .HMI.Mode "control"}}<span class="t-hmimode ctl"><i class="ti ti-hand-click" aria-hidden="true"></i> Bedienen</span><a class="t-btn" href="{{printf "/terminal/hmi/%s/%s" .HMI.Sel.InfraID .HMI.Sel.ID}}"><i class="ti ti-eye" aria-hidden="true"></i> Nur ansehen</a>
+  {{else}}<span class="t-hmimode"><i class="ti ti-eye" aria-hidden="true"></i> Nur ansehen</span>{{if .HMI.Sel.Control}}<a class="t-btn" href="{{printf "/terminal/hmi/%s/%s?mode=control" .HMI.Sel.InfraID .HMI.Sel.ID}}"><i class="ti ti-hand-click" aria-hidden="true"></i> Bedienen</a>{{end}}{{end}}
+  <span id="hmi-status" class="t-hmistatus">Verbinde…</span>
+</div>
+<div id="hmi-screen" class="t-hmiscreen" data-infra="{{.HMI.Sel.InfraID}}" data-hmi="{{.HMI.Sel.ID}}" data-hmi-mode="{{.HMI.Mode}}"></div>
+<script type="module">
+import { RFB } from '/vendor/novnc/rfb.min.js';
+const screen = document.getElementById('hmi-screen'), status = document.getElementById('hmi-status');
+const MODE = screen.dataset.hmiMode === 'control' ? 'control' : 'view';
+let rfb = null;
+function setStatus(t, k){ status.textContent = t; status.className = 't-hmistatus' + (k ? ' ' + k : ''); }
+function connect(){
+  if(rfb){ try{ rfb.disconnect(); }catch(e){} }
+  screen.replaceChildren(); setStatus('Verbinde…');
+  const url = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/terminal/hmi/' + screen.dataset.infra + '/' + screen.dataset.hmi + '/ws?mode=' + MODE;
+  rfb = new RFB(screen, url, {shared: true, wsProtocols: ['binary']});
+  rfb.viewOnly = MODE !== 'control'; rfb.showDotCursor = MODE !== 'control'; rfb.scaleViewport = true; rfb.resizeSession = false; rfb.focusOnClick = MODE === 'control';
+  rfb.addEventListener('connect', () => setStatus('Verbunden', 'ok'));
+  rfb.addEventListener('disconnect', e => { setStatus(e.detail && e.detail.clean ? 'Getrennt' : 'Verbindung unterbrochen – zum Neuverbinden berühren', 'err'); screen.addEventListener('pointerdown', connect, {once: true}); });
+  rfb.addEventListener('securityfailure', () => setStatus('Anmeldung am HMI fehlgeschlagen', 'err'));
+}
+window.addEventListener('beforeunload', () => { if(rfb) rfb.disconnect(); });
+connect();
+</script>
+{{else if eq .Mode "wartung"}}
+<div class="t-head">
+  <a class="t-btn" href="/terminal/neu"><i class="ti ti-arrow-left" aria-hidden="true"></i> Zurück</a>
+  <div class="t-path">{{if .Path}}{{.Path}}{{else}}<b>{{.Name}}</b>{{end}}{{if .Maint.LoggedIn}} · {{.Maint.Person}}{{end}}</div>
+  <div class="t-clock" data-clock>&nbsp;</div>
+</div>
+{{if not .Maint.LoggedIn}}
+<div class="t-none"><i class="ti ti-id-badge-2" aria-hidden="true"></i><p>Bitte mit der Karte anmelden</p><small>Die Wartungen zeigt PDH nur angemeldeten Personen – mit deren eigenen Rechten.</small></div>
+{{else}}
+<div class="t-rz">
+  <h2 class="t-rzh">Offene Wartungen <span class="t-mcount">{{.Maint.Total}}</span></h2>
+  {{if .Maint.Items}}<ul class="t-list t-mlist">
+    {{range .Maint.Items}}<li class="t-mrow"><div class="m-t"><b>{{.Title}}</b><span class="ti-meta{{if .Overdue}} late{{end}}">{{if .Path}}{{.Path}} · {{end}}fällig {{.Due}}{{if .Overdue}} (überfällig){{end}} · {{.Status}}</span></div>
+      <form method="post" action="/terminal/pdh"><input type="hidden" name="next" value="/maintenance/tasks/{{.ID}}"><button type="submit" class="t-btn primary"><i class="ti ti-external-link" aria-hidden="true"></i> Öffnen</button></form></li>{{end}}
+  </ul>
+  {{if .Maint.More}}<div class="t-more">… und {{.Maint.More}} weitere – in PDH unter Wartung</div>{{end}}
+  {{else}}<div class="t-empty"><i class="ti ti-circle-check" aria-hidden="true"></i> Keine offenen Wartungen</div>{{end}}
+  <form method="post" action="/terminal/pdh"><input type="hidden" name="next" value="/maintenance"><button type="submit" class="t-btn"><i class="ti ti-external-link" aria-hidden="true"></i> Alle Wartungen in PDH</button></form>
+</div>
+{{end}}
 {{else}}
 <div class="t-head">
   <a class="t-btn" href="/terminal/info"><i class="ti ti-arrow-left" aria-hidden="true"></i> Zurück</a>
@@ -304,10 +382,14 @@ body.has-gear .g-vorg{padding-top:60px}
 <div class="t-none"><i class="ti ti-lock" aria-hidden="true"></i><p>Keine Berechtigung</p><small>Dieses Terminal darf hier nichts melden oder anzeigen.</small></div>
 {{else}}
 {{if .Done}}<div class="t-rznote" role="status">{{if eq .Done "fault"}}Störung gemeldet – danke.{{else}}Ticket erstellt – danke.{{end}}</div>{{end}}
-<div class="t-new{{if .Setup.Show}} has-rz{{end}}">
+<div class="t-new{{if or .Setup.Show .HMITile .MaintTile}} has-rz{{end}}">
   <a class="t-tilebtn fault" href="/terminal/stoerung"><i class="ti ti-alert-triangle" aria-hidden="true"></i> Störung</a>
   <a class="t-tilebtn ticket" href="/terminal/ticket"><i class="ti ti-ticket" aria-hidden="true"></i> Ticket</a>
+  {{if or .Setup.Show .HMITile .MaintTile}}<div class="t-xrow">{{end}}
   {{if .Setup.Show}}{{if .SetupCan}}<a class="t-tilebtn t-rzlink" href="/terminal/rusten"><i class="ti ti-tool" aria-hidden="true"></i><span>Rüsten{{if .Setup.Running}}<small>{{.Setup.Text}}</small>{{else if .Setup.Fault}}<small>{{.Setup.Text}}</small>{{end}}</span></a>{{else}}<span class="t-tilebtn t-rzlink off" aria-disabled="true"><i class="ti ti-tool" aria-hidden="true"></i><span>Rüsten<small>Keine Berechtigung zum Rüsten</small></span></span>{{end}}{{end}}
+  {{if .HMITile}}<a class="t-tilebtn t-rzlink t-hmilink" href="/terminal/hmi"><i class="ti ti-device-desktop-analytics" aria-hidden="true"></i><span>HMI</span></a>{{end}}
+  {{if .MaintTile}}<a class="t-tilebtn t-rzlink t-mlink" href="/terminal/wartung"><i class="ti ti-calendar-check" aria-hidden="true"></i><span>Wartungen</span></a>{{end}}
+  {{if or .Setup.Show .HMITile .MaintTile}}</div>{{end}}
   <div class="t-stop">
     <h2><i class="ti ti-player-pause" aria-hidden="true"></i> Stillstand</h2>
     <p>Stillstandsgründe folgen</p>
@@ -315,7 +397,7 @@ body.has-gear .g-vorg{padding-top:60px}
 </div>
 {{end}}
 {{end}}
-{{if and .CardEvents (ne .Mode "schoner")}}<div class="t-card" data-card-bar hidden><span class="who"><i class="ti ti-id-badge-2" aria-hidden="true"></i> Angemeldet: <span data-card-name></span></span><button type="button" class="t-btn" data-card-logout>Abmelden</button></div>
+{{if and .CardEvents (ne .Mode "schoner")}}<div class="t-card" data-card-bar hidden><span class="who"><i class="ti ti-id-badge-2" aria-hidden="true"></i> Angemeldet: <span data-card-name></span></span><form method="post" action="/terminal/pdh"><button type="submit" class="t-btn" data-pdh-open><i class="ti ti-external-link" aria-hidden="true"></i> PDH öffnen</button></form><button type="button" class="t-btn" data-card-logout>Abmelden</button></div>
 <div class="t-cardmsg" data-card-msg role="status" hidden></div>
 <div class="t-login" id="login-panel" hidden>
   <div class="l-msg" data-login-msg hidden></div>
