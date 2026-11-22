@@ -1,6 +1,6 @@
 package web
 
-// Hintergrundfarbe je Kachel der Startseite (0.82.31).
+// Hintergrundfarbe je Kachel der Startseite (0.82.32).
 
 import (
 	"bytes"

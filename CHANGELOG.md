@@ -10,6 +10,35 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.82.32] – 2026-11-22
+
+### Neu
+
+- **Herkunft von Tickets und Störungen:** Jeder Vorgang merkt sich, woher er kam – Easy-Modus, Anlagenterminal (mit Name), App, Fremdsystem über den Abgleich (z. B. „SAP PM“), Alarm (Energiedaten, IT-Netz) oder das PDH selbst (Firewall-Freigabe, Rüstzeit). Sie steht als Schild in den Listen und oben auf der Seite des Vorgangs.
+- **Startseite:** „Offene Tickets“ und „Aktive Störungen“ zeigen unter der Zahl, woher die offenen Vorgänge kommen („davon 3 aus SAP PM · 2 aus der App · 1 vom Terminal“); „Aktuelle Störungen“ und „Mir zugewiesen“ zeigen die Herkunft als Schild.
+- **Startseite: Hintergrundfarbe je Kachel.** Unter „Dashboard anpassen“ → Einstellungen der Kachel einen hellen Hintergrund wählen (Hellblau, Mint, Hellgrün, Hellgelb, Pfirsich, Rosé, Flieder, Hellgrau); im dunklen Modus erscheint derselbe Ton gedämpft.
+
+### Geändert
+
+- Vorhandene Tickets und Störungen bekommen ihre Herkunft nachträglich, soweit sie sich erkennen lässt (Abgleich, App, Alarm, Terminal, Easy-Modus, Firewall-Freigabe, Rüstzeit). Migration 202.
+
+### Sicherheit
+
+- Den Namen eines Fremdsystems sieht nur, wer den Abgleich sehen darf; sonst steht dort „Fremdsystem“. Die Zählung in den Kacheln gilt nur für Vorgänge der eigenen Abteilungen.
+
+## [0.82.31] – 2026-11-22
+
+### Neu
+
+- **Terminal: Funktionen ein- und ausschalten.** Beim Terminal-Benutzer (Benutzerdetail) lassen sich **Störung, Ticket, Rüsten, Stillstand, HMI, Wartungen** und die **Folienschau als Bildschirmschoner** einzeln abschalten; eine ausgeschaltete Funktion verschwindet von der Seite **Neu**, ihre Seiten antworten mit „nicht gefunden“ (GET und POST). Die Schalter werden mit der Admin-Seite des PDH-Terminals abgeglichen: je Schalter gewinnt die **jüngere Änderung**, bei gleichem Zeitpunkt PDH, Zeitpunkte mehr als 5 Minuten in der Zukunft gelten als Serverzeit. Neue Schnittstelle `PUT /api/terminal/v1/functions`; `GET /api/terminal/v1/device` und das Ereignis `settings` tragen die neuen Felder `functions` und `theme`; der Ereigniskanal `/terminal/events` nimmt auch das Geräte-Geheimnis an. Die Folienschau behält ihr Feld `saver_slides` (ältere Terminals). Migration 201.
+- **Terminalseiten in den PDH-Farben.** Hintergrund und Farben der Terminalseiten entsprechen dem übrigen PDH, **hell oder dunkel** (Einstellung beim Terminal-Benutzer); das Terminal bekommt dieselben Farben für seine eigenen Seiten.
+- **Kiosk-Terminals: PDH-Terminals.** Die Liste zeigt die gekoppelten PDH-Terminals mit Typ, Version, Online-Status und Kopplung und verweist auf ihre Einstellungen.
+- **Bildschirmtastatur am Terminal.** Auf dem Gerät erscheint die Tastatur beim Antippen eines Eingabefelds und verschwindet danach wieder.
+
+### Geändert
+
+- Nur hinzufügend: ältere Terminals und ältere Stände arbeiten in jeder Kombination weiter, vorhandene Werte (auch die Folienschau) bleiben erhalten.
+
 ## [0.82.30] – 2026-11-22
 
 ### Neu

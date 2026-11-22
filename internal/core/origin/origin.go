@@ -1,4 +1,4 @@
-// Package origin: Herkunft von Tickets und Störungen (Migration 201) – woher ein Datensatz kam.
+// Package origin: Herkunft von Tickets und Störungen (Migration 202) – woher ein Datensatz kam.
 package origin
 
 import (
@@ -6,7 +6,7 @@ import (
 	"unicode/utf8"
 )
 
-// Die erlaubten Werte (wie der CHECK der Migration 201). Leer = unbekannt.
+// Die erlaubten Werte (wie der CHECK der Migration 202). Leer = unbekannt.
 const (
 	Web      = "web"      // von Hand im Web (Formular, Leitstand)
 	Easy     = "easy"     // Easy-Modus (QR-Code)

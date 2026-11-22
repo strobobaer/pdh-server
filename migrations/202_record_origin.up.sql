@@ -1,7 +1,7 @@
--- Herkunft von Tickets und Störungen (0.82.31): woher ein Datensatz kam – von Hand im Web,
+-- Herkunft von Tickets und Störungen (0.82.32): woher ein Datensatz kam – von Hand im Web,
 -- Easy-Modus, Anlagenterminal, App, Abgleich mit einem Fremdsystem, Alarm oder System.
 -- origin_label ergänzt z. B. den Namen des Terminals oder „Energiedaten“. Leer = unbekannt
--- (älter als 0.82.31 und nicht erkennbar). Wiederholbar.
+-- (älter als 0.82.32 und nicht erkennbar). Wiederholbar.
 
 ALTER TABLE tickets ADD COLUMN IF NOT EXISTS origin text NOT NULL DEFAULT ''
     CHECK (origin IN ('', 'web', 'easy', 'terminal', 'app', 'sync', 'alarm', 'system'));

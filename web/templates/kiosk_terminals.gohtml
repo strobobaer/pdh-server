@@ -52,6 +52,27 @@
 <div class="card" style="margin-bottom:14px"><div class="rec-sub"><i class="ti ti-info-circle"></i> Noch keine Kiosk-Terminals eingerichtet.</div></div>
 {{end}}
 
+<div style="margin:22px 0 10px">
+  <h2 style="font-size:16px;font-weight:600"><i class="ti ti-device-tablet"></i> PDH-Terminals</h2>
+  <p class="rec-sub" style="margin-top:3px">Gekoppelte Terminals mit der Terminal-Software (Raspberry Pi oder Windows). Die Einstellungen (Anmeldung, Funktionen, Farben) stehen im Benutzerdetail des Terminal-Benutzers.</p>
+</div>
+{{range .PDHTerminals}}
+<div class="kt-card" id="p-{{.DeviceID}}">
+  <div class="kt-head">
+    <div class="ico"><i class="ti ti-device-tablet"></i></div>
+    <div style="min-width:0">
+      <b>{{.Name}}</b>
+      {{if .Revoked}}<span class="badge" style="background:var(--red)">Kopplung gesperrt</span>{{else if .Online}}<span class="badge" style="background:var(--green)">online</span>{{else}}<span class="badge" style="background:var(--muted)">offline</span>{{end}}
+      <div class="sub">{{.Type}} · Version {{.Version}} · Terminal-Benutzer {{.UserName}}</div>
+      <div class="sub">Gekoppelt am {{.Paired}}{{if .Revoked}} · gesperrt am {{.RevokedAt}}{{else}} · zuletzt gemeldet {{.LastSeen}}{{end}}</div>
+    </div>
+    <div class="kt-actions"><a class="btn btn-small" href="{{.Link}}"><i class="ti ti-settings"></i> Einstellungen</a></div>
+  </div>
+</div>
+{{else}}
+<div class="card" style="margin-bottom:14px"><div class="rec-sub"><i class="ti ti-info-circle"></i> Noch kein PDH-Terminal gekoppelt.</div></div>
+{{end}}
+
 <div class="card" id="kt-form-card" hidden>
   <div class="card-title"><span id="kt-form-title">Terminal hinzufügen</span><button class="btn btn-small" type="button" onclick="ktClose()">Abbrechen</button></div>
   <form method="POST" action="/core/settings/kiosk-terminals" id="kt-form" autocomplete="off">

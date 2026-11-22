@@ -177,6 +177,7 @@ func (h *Handler) loadKioskTerminals(ctx context.Context, onlyActive bool) ([]ki
 type KioskTerminalsPageData struct {
 	BaseData
 	Terminals   []kioskTerminalView
+	PDHTerminals []pdhTerminalView // gekoppelte PDH-Terminals (terminal_functions.go)
 	Notice, Err string
 }
 
@@ -194,6 +195,12 @@ func (h *Handler) KioskTerminalsPage(w http.ResponseWriter, r *http.Request) {
 	d.Notice, d.Err = kioskNotices(r.URL.Query())
 	if err != nil {
 		d.Err = kioskMessages["load_failed"]
+	}
+	if pt, perr := h.loadPDHTerminals(r.Context()); perr != nil {
+		componentLog("terminal").Error().Err(perr).Msg("pdh-terminals für die kiosk-liste")
+		d.Err = kioskMessages["load_failed"]
+	} else {
+		d.PDHTerminals = pt
 	}
 	h.render(w, "kiosk_terminals", d)
 }

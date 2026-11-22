@@ -2677,6 +2677,11 @@ func (h *Handler) authMiddleware(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
+		// Ereigniskanal der Terminal-Software: Geräte-Geheimnis statt Sitzung (terminal_functions.go)
+		if r.URL.Path == "/terminal/events" && r.Method == http.MethodGet && hasBearer(r) {
+			h.TerminalEventsBearer(w, r)
+			return
+		}
 		// Fertigmeldung aus dem Leitstand: RFID-Token nur fuer /complete/{type}/{id}
 		// (global_dashboard_complete.go) – hat Vorrang vor einer evtl. Sitzung am Terminal
 		if bu := h.boardCompleteUser(r); bu != nil {

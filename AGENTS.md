@@ -713,6 +713,25 @@ und 3 drückt bis auf Weiteres der Anwender.
     für `/app/setup` ohne Integrations-Tag; Pfad-Präfix im `pdh://`-Link;
     `CloseTx` ohne Prüfung der betroffenen Zeilen; Testlabor: eigene
     Datenbank `pdh_test_app` (in `pdh_test` liegen fremde Migrationen).
+23. **0.82.32 Herkunft und Kachelfarbe** (Wunsch des Anwenders vom 22.11.2026,
+    Entwurf `docs/superpowers/specs/2026-11-22-herkunft-kachelfarbe-design.md`,
+    Plan `docs/superpowers/plans/2026-11-22-herkunft-kachelfarbe.md`, bestätigt
+    „Sonst war alles ok“; Branch `feature/herkunft-kachelfarbe`, lokal):
+    Spalten `origin`/`origin_label` an Tickets und Störungen (Migration 202,
+    vorher 201 – die Nummer ging an die Terminal-Funktionen), Paket
+    `internal/core/origin`, jeder Anlege-Weg setzt sie; Anzeige über
+    `record_origin.go` (Kachelzeile „davon …“, Schilder, Detailseite;
+    Profilname nur mit `sync.view`); Kachelfarbe als `bg` in der
+    Widget-Einstellung (acht helle Töne, dunkel gedämpft). Offen:
+    Schlussprüfung, Freigabe Push/Merge, Verbund-Update, Browserprüfung.
+24. **Copilot beim Anlegen und Zuordnen** (Wunsch 22.11.2026: „C“,
+    „Anthropic“, dazu MySQL, InfluxDB, SQLite, Vorlagen aus dem Internet,
+    berechnete Werte mit Formelgenerator und Gültigkeit von/bis; Entwurf
+    `docs/superpowers/specs/2026-11-22-copilot-zuordnen-design.md`, bestätigt
+    „Sonst war alles ok“). Pakete: 1 Zuordnen (Vorschläge am Formular ohne
+    Sprachmodell + Assistent mit Änderungsliste), 2 berechnete Werte, 3
+    InfluxDB, 4 Anlegen von Verbindungen und Abgleich. Offen: welche
+    InfluxDB-Version (1.x/2.x/3.x) – vor Paket 3 fragen.
 
 Docker Desktop startet nach einem Neustart des Windows-Rechners nicht von
 selbst – ohne ihn fehlen der Zeuge und die Labor-Datenbank für die Tests.

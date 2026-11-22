@@ -4,7 +4,7 @@
 
 **Goal:** Jedes Ticket und jede Störung kennt ihre Herkunft; die Startseiten-Kacheln zeigen sie; jede Kachel bekommt eine helle Hintergrundfarbe zur Auswahl.
 
-**Architecture:** Spalten `origin` und `origin_label` an `tickets` und `faults` (Migration 201, Nachtrag aus Abgleich, App, Alarm, Freigabe-Ticket, Terminal-/Easy-Textzeile). Jeder Anlege-Weg setzt sie über `CreateInput`/`CreateFaultInput`. Anzeige über eine Funktion `originText` (Abgleich-Profilname nur mit `sync.view`). Kachelfarbe als Schlüssel `bg` in `WidgetInstance.Config` (keine Migration).
+**Architecture:** Spalten `origin` und `origin_label` an `tickets` und `faults` (Migration 202, Nachtrag aus Abgleich, App, Alarm, Freigabe-Ticket, Terminal-/Easy-Textzeile). Jeder Anlege-Weg setzt sie über `CreateInput`/`CreateFaultInput`. Anzeige über eine Funktion `originText` (Abgleich-Profilname nur mit `sync.view`). Kachelfarbe als Schlüssel `bg` in `WidgetInstance.Config` (keine Migration).
 
 **Tech Stack:** Go, pgx, html/template, CSS-Variablen (Fiori/Fluent, hell/dunkel).
 
@@ -16,7 +16,7 @@
 - „von Hand“ (`web`) und unbekannt werden nicht angezeigt.
 - Abgleich: Profilname nur mit `sync.view`, sonst „Fremdsystem“.
 - Kachelfarben: `blue mint green yellow peach rose lilac gray` (leer = Standard); hell als heller Ton, dunkel gedämpft; Text-Kontrast ≥ 4,5:1.
-- Version: nächste Korrekturversion über `main` (bei Beginn 0.82.31), Migration 201.
+- Version: nächste Korrekturversion über `main` (bei Beginn 0.82.32), Migration 202.
 
 ## Review Focus
 

@@ -352,9 +352,7 @@ func (h *Handler) saveTerminalSaverSlides(ctx context.Context, userID string, on
 	if h.db == nil {
 		return errors.New("keine Datenbank")
 	}
-	_, err := h.db.Exec(ctx, `
-		INSERT INTO terminal_settings (user_id, saver_slides, updated_at)
-		SELECT id, $2, NOW() FROM users WHERE id = $1::uuid AND is_system_user
-		ON CONFLICT (user_id) DO UPDATE SET saver_slides = EXCLUDED.saver_slides, updated_at = NOW()`, userID, on)
+	// Der Schalter gehört zum Funktionen-Modell (terminal_functions.go): bei geändertem Wert setzt er auch den Zeitpunkt.
+	_, err := h.setTerminalFunctions(ctx, userID, map[string]bool{"saver_slides": on})
 	return err
 }

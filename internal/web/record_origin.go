@@ -9,7 +9,7 @@ import (
 	recorigin "pdh/internal/core/origin"
 )
 
-// Herkunft von Tickets und Störungen anzeigen (0.82.31, Migration 201): Schild in Listen und
+// Herkunft von Tickets und Störungen anzeigen (0.82.32, Migration 202): Schild in Listen und
 // Kacheln, Zeile „davon …“ in den Kennzahl-Kacheln, Zeile auf der Detailseite. „Von Hand“ und
 // unbekannt werden nicht angezeigt. Den Namen eines Abgleich-Profils sieht nur, wer den
 // Abgleich sehen darf (sync.view) – sonst steht dort „Fremdsystem“.

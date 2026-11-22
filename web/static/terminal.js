@@ -77,6 +77,54 @@
   // Kartendienst des lokalen Terminals (Ursprung der Ereignisse und der Rückmeldung).
   var CARD_ORIGIN = 'http://127.0.0.1:8080';
 
+  // Funktionen und Farben (Ereignis settings: functions, theme): ändert sich ein Schalter oder das Farbschema,
+  // lädt die Seite neu, damit Kacheln und Farben stimmen. Das erste Ereignis ist der Ausgangsstand.
+  var fnSig = null;
+  function fnChanged(d) {
+    if (!d || !d.functions || typeof d.functions !== 'object') return false;
+    var s = Object.keys(d.functions).sort().map(function (k) {
+      return k + '=' + (d.functions[k] && d.functions[k].enabled === true);
+    }).join(',') + '|' + (d.theme && d.theme.scheme);
+    if (fnSig === null) { fnSig = s; return false; }
+    return s !== fnSig;
+  }
+
+  // Bildschirmtastatur auf Anforderung (nur auf dem Gerät, Gerätesitzung): focusin auf ein Texteingabefeld zeigt
+  // sie, focusout (150 ms verzögert, wenn nicht gleich das nächste Feld den Fokus bekommt), Absenden und pagehide
+  // verbergen sie. Felder mit inputmode="none" haben ihr eigenes Ziffernfeld. Fehler werden ignoriert
+  // (Windows und ältere Geräte antworten 503 oder gar nicht).
+  var KB_TYPES = { text: 1, password: 1, number: 1, search: 1, email: 1, tel: 1, url: 1 };
+  function wantsKeyboard(el) {
+    if (!el || el.disabled || el.readOnly) return false;
+    var tag = String(el.tagName || '').toLowerCase();
+    if (el.getAttribute && el.getAttribute('inputmode') === 'none') return false;
+    if (tag === 'textarea') return true;
+    if (tag !== 'input') return false;
+    var t = String((el.getAttribute && el.getAttribute('type')) || 'text').toLowerCase();
+    return KB_TYPES[t] === 1;
+  }
+  if (body.classList.contains('has-gear')) {
+    var kbHide = null;
+    var kbCall = function (action) {
+      try { fetch('http://127.0.0.1:8080/api/keyboard/' + action, { method: 'POST', keepalive: action === 'hide' }).catch(function () { /* ignorieren */ }); } catch (e) { /* kein fetch */ }
+    };
+    document.addEventListener('focusin', function (ev) {
+      if (!wantsKeyboard(ev.target)) return;
+      if (kbHide) { clearTimeout(kbHide); kbHide = null; }
+      kbCall('show');
+    });
+    document.addEventListener('focusout', function (ev) {
+      if (!wantsKeyboard(ev.target)) return;
+      if (kbHide) clearTimeout(kbHide);
+      kbHide = setTimeout(function () {
+        kbHide = null;
+        if (!wantsKeyboard(document.activeElement)) kbCall('hide');
+      }, 150);
+    });
+    document.addEventListener('submit', function () { kbCall('hide'); }, true);
+    window.addEventListener('pagehide', function () { kbCall('hide'); });
+  }
+
   // Ausfall des PDH-Servers – reine Funktionen. Im globalen Modus zeigt der Kartendienst des Terminals
   // (CARD_ORIGIN + '/start') die zwischengespeicherte Folienschau, solange PDH nicht erreichbar ist.
   var OUTAGE_LIMIT = 3;
@@ -237,7 +285,7 @@
       sev.addEventListener('settings', function (ev) {
         var d = null;
         try { d = JSON.parse(ev.data); } catch (e) { /* ungültig */ }
-        if (d && (d.global_screen === true || (mode === 'schoner' && d.saver_slides === true))) location.reload();
+        if (d && (d.global_screen === true || (mode === 'schoner' && d.saver_slides === true) || fnChanged(d))) location.reload();
       });
       sev.onerror = function () { /* stumm: der EventSource verbindet selbst neu */ };
     } catch (e) { /* kein EventSource */ }
@@ -537,6 +585,7 @@
             try { d = JSON.parse(ev.data); } catch (e) { /* ungültig */ }
             if (!d) return;
             if (d.global_screen === true) { location.reload(); return; } // jetzt ein globales Terminal: Seite wird zur Folienschau
+            if (fnChanged(d)) { location.reload(); return; } // Funktion oder Farbschema geändert: Kacheln und Farben neu
             if (typeof d.manual_login === 'string') settings.manual_login = d.manual_login;
             if (typeof d.password_button === 'boolean') settings.password_button = d.password_button;
             // neue Rückkehrzeit gilt ab dem nächsten Zurücksetzen des Timers
@@ -843,7 +892,7 @@
       gev.addEventListener('settings', function (ev) {
         var d = null;
         try { d = JSON.parse(ev.data); } catch (e) { /* ungültig */ }
-        if (d && (saver ? (d.global_screen === true || d.saver_slides === false) : d.global_screen === false)) location.reload();
+        if (d && ((saver ? (d.global_screen === true || d.saver_slides === false) : d.global_screen === false) || fnChanged(d))) location.reload();
       });
       gev.onopen = function () { streamFails = outageStep(streamFails, false).fails; };
       gev.onerror = function () { // der EventSource verbindet selbst neu; viele Fehler in Folge = PDH nicht erreichbar
