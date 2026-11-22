@@ -1,6 +1,6 @@
 package web
 
-// Freigabe für ESPPDH-Updates in UniFi (0.82.27): Entscheidung, Knopf, Ticket an die IT.
+// Freigabe für ESPPDH-Updates in UniFi (0.82.29): Entscheidung, Knopf, Ticket an die IT.
 
 import (
 	"context"

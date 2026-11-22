@@ -278,6 +278,9 @@ func (h *Handler) HMISessions(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
+// hmiRevalidateEvery: so oft prüft eine offene HMI-Verbindung, ob ihre Sitzung noch gilt (Tests dürfen kürzen).
+var hmiRevalidateEvery = 30 * time.Second
+
 type hmiTarget struct {
 	ID, InfraID, InfraName, Name, Host, PasswordEnc string
 	Port                                            int
@@ -348,6 +351,13 @@ func (h *Handler) HMIWebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	mode := hmiMode(r.URL.Query().Get("mode"), p, t)
+	h.hmiProxy(w, r, t, mode, getUser(r).ID, func() bool { return h.sessionUser(r) != nil })
+}
+
+// hmiProxy: WebSocket ↔ TCP zum HMI (gemeinsam für PDH und Anlagenterminal). Die Rechte sind vorher geprüft;
+// userID steht im Zugriffsprotokoll. valid wird alle 30 s geprüft (Widerruf der Sitzung, Kartenabmeldung, Ablauf):
+// false beendet die Verbindung.
+func (h *Handler) hmiProxy(w http.ResponseWriter, r *http.Request, t *hmiTarget, mode, userID string, valid func() bool) {
 	password, err := decryptSecret(h.hmiKey(), t.PasswordEnc)
 	if err != nil {
 		http.Error(w, "VNC-Passwort nicht lesbar – bitte am HMI neu eingeben", http.StatusInternalServerError)
@@ -359,11 +369,10 @@ func (h *Handler) HMIWebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 	defer ws.Close()
 
-	user := getUser(r)
-	log := componentLog("hmi").With().Str("hmi", t.ID).Str("infra", t.InfraID).Str("user", user.ID).Str("mode", mode).Logger()
+	log := componentLog("hmi").With().Str("hmi", t.ID).Str("infra", t.InfraID).Str("user", userID).Str("mode", mode).Logger()
 	var sessionID string
 	_ = h.db.QueryRow(context.Background(), `INSERT INTO infrastructure_hmi_sessions (hmi_id, user_id, mode) VALUES ($1::uuid, NULLIF($2,'')::uuid, $3) RETURNING id::text`,
-		t.ID, user.ID, mode).Scan(&sessionID)
+		t.ID, userID, mode).Scan(&sessionID)
 	finish := func(errText string) {
 		if sessionID != "" {
 			_, _ = h.db.Exec(context.Background(), `UPDATE infrastructure_hmi_sessions SET ended_at = NOW(), error = $2 WHERE id = $1::uuid`, sessionID, errText)
@@ -419,6 +428,23 @@ func (h *Handler) HMIWebSocket(w http.ResponseWriter, r *http.Request) {
 		case <-ended:
 		}
 	}()
+	if valid != nil {
+		go func() { // Sitzung widerrufen, abgelaufen oder Karte abgemeldet: Verbindung beenden
+			tk := time.NewTicker(hmiRevalidateEvery)
+			defer tk.Stop()
+			for {
+				select {
+				case <-tk.C:
+					if !valid() {
+						stop("Sitzung beendet")
+						return
+					}
+				case <-ended:
+					return
+				}
+			}
+		}()
+	}
 	reason := <-done
 	finish(reason)
 	log.Info().Str("grund", reason).Msg("hmi-sitzung beendet")

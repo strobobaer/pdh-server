@@ -14,6 +14,8 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"pdh"
+	"pdh/internal/core/users"
+	"pdh/pkg/middleware"
 )
 
 // Anlagenterminal: Vollbildseite für den Wandmonitor (Systembenutzer mit
@@ -72,8 +74,8 @@ type terminalPage struct {
 	Name           string
 	Path           string
 	Info           terminalInfo
-	DeviceSession  bool   // Gerätesitzung (alle Modi): kleines Zahnrad zur lokalen Admin-Seite des Terminals
-	AdminURL       string // Ziel des Zahnrads (terminalLocalAdminURL)
+	DeviceSession  bool         // Gerätesitzung (alle Modi): kleines Zahnrad zur lokalen Admin-Seite des Terminals
+	AdminURL       string       // Ziel des Zahnrads (terminalLocalAdminURL)
 	Setup          setupBarView // Rüsten (Neu: Kachel, Rüsten: Seite)
 	SetupCan       bool         // setup.edit für die Anlage (Kartenperson bzw. Terminal-Benutzer)
 	SetupCard      bool         // per Karte angemeldet
@@ -81,10 +83,14 @@ type terminalPage struct {
 	SetupAdd       bool // Ansicht Nachtragen
 	SetupAgo       []terminalChoice
 	SetupDur       []terminalChoice
-	Report         terminalReport // Meldeseiten Störung/Ticket (terminal_report.go)
-	Pick           terminalPick   // Rüsten: Anlagenwahl (Meldeseiten: Report.Pick)
-	SaverSlides    bool           // Schoner spielt die Folien (Gerätesitzung, Einstellung saver_slides)
-	Done           string         // Neu: gerade gemeldet (fault | ticket)
+	Report         terminalReport    // Meldeseiten Störung/Ticket (terminal_report.go)
+	Pick           terminalPick      // Rüsten: Anlagenwahl (Meldeseiten: Report.Pick)
+	SaverSlides    bool              // Schoner spielt die Folien (Gerätesitzung, Einstellung saver_slides)
+	Done           string            // Neu: gerade gemeldet (fault | ticket)
+	HMI            terminalHMIPage   // HMI: Liste und Viewer (terminal_hmi.go)
+	HMITile        bool              // Neu: Kachel HMI (mindestens ein HMI sichtbar)
+	Maint          terminalMaintPage // Wartungen (terminal_wartung.go)
+	MaintTile      bool              // Neu: Kachel Wartungen (nur mit Kartenanmeldung)
 }
 
 // terminalLocalAdminURL: lokale Admin-Seite des gekoppelten PDH-Terminals (Loopback am Terminal; gleich
@@ -114,6 +120,13 @@ func (h *Handler) terminalRoutes(r chi.Router) {
 	r.Get("/terminal/vorgang/{kind}/{id}", h.TerminalVorgang)
 	r.Get("/terminal/sensors.json", h.TerminalSensorsJSON) // ESPPDH-Sensoren nach Kartenanmeldung (terminal_sensors.go)
 	r.Get("/terminal/terminal.js", h.TerminalScript)
+	r.Post("/terminal/pdh", h.TerminalPDHStart) // PDH öffnen (terminal_pdh.go)
+	r.Get("/terminal/hmi", h.TerminalHMIPage)
+	r.Get("/terminal/hmi/{infra}/{id}", h.TerminalHMIView)
+	r.Get("/terminal/hmi/{infra}/{id}/ws", h.TerminalHMIWebSocket)
+	r.Get("/terminal/wartung", h.TerminalWartungPage)
+	r.Post("/terminal/pdh/open", h.TerminalPDHOpen)
+	middleware.SetTerminalSessionCheck(func(r *http.Request, sub, tsess, tdev string) bool { return h.pdhHandoffCheck(r, tsess, sub, tdev) })
 	h.cardRoutes(r)
 }
 
@@ -419,7 +432,14 @@ func (h *Handler) TerminalInfoPage(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) TerminalNeuPage(w http.ResponseWriter, r *http.Request) {
 	if p, ok := h.terminalGate(w, r, "neu"); ok {
 		if !p.NoInfra && p.Mode != "global" {
-			h.terminalSetupFill(r, &p, h.terminalUserID(r))
+			uid := h.terminalUserID(r)
+			h.terminalSetupFill(r, &p, uid)
+			var person *users.User
+			if h.db != nil && h.terminalDeviceSession(r) {
+				person, _ = h.cardSessionPerson(r.Context(), uid)
+			}
+			h.terminalHMIFill(r, &p, uid, person)
+			p.MaintTile = h.terminalMaintTile(person)
 		}
 		if d := r.URL.Query().Get("done"); d == "fault" || d == "ticket" {
 			p.Done = d

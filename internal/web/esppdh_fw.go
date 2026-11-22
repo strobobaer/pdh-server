@@ -18,7 +18,7 @@ import (
 	"pdh/internal/modules/tickets"
 )
 
-// ESPPDH – Freigabe für Updates übers Netz in UniFi (0.82.27, zu esppdh_ota.go). Auf der Seite
+// ESPPDH – Freigabe für Updates übers Netz in UniFi (0.82.29, zu esppdh_ota.go). Auf der Seite
 // „Netzwerk“ legt der Knopf je Netz eine Firewall-Regel an: nur TCP 3232 und 8266, nur von den
 // Adressen der Server zum Adressbereich des Netzes, nur „Erlauben“. Geht das nicht (keine
 // UniFi-Anbindung, Controller zu alt, kein Schreibrecht, Netz oder Zone nicht zu finden),

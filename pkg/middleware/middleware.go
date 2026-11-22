@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -16,6 +17,16 @@ type contextKey string
 
 const UserIDKey contextKey = "userID"
 const RoleKey contextKey = "role"
+
+// terminalSessionCheck prüft Tokens der PDH-Sitzung am Anlagenterminal (Claim "tsess"):
+// widerrufen, abgelaufen oder nicht von diesem Gerät gelten sie nicht. Ohne gesetzte
+// Prüfung werden solche Tokens abgewiesen (fail closed). Gesetzt von internal/web.
+var terminalSessionCheck atomic.Pointer[func(r *http.Request, sub, tsess, tdev string) bool]
+
+// SetTerminalSessionCheck setzt die Prüfung für Terminal-PDH-Sitzungen.
+func SetTerminalSessionCheck(f func(r *http.Request, sub, tsess, tdev string) bool) {
+	terminalSessionCheck.Store(&f)
+}
 
 // statusRecorder merkt sich den geschriebenen HTTP-Statuscode, damit
 // Logger() ihn mitloggen kann - net/http gibt ihn sonst nicht her.
@@ -114,6 +125,17 @@ func Auth(jwtSecret string) func(http.Handler) http.Handler {
 			if dev, _ := claims["device"].(string); dev != "" {
 				response.Error(w, http.StatusUnauthorized, "ungültiger token")
 				return
+			}
+
+			// PDH-Sitzung am Anlagenterminal: serverseitig widerrufbar, an das Gerät gebunden
+			if ts, _ := claims["tsess"].(string); ts != "" {
+				sub, _ := claims["sub"].(string)
+				tdev, _ := claims["tdev"].(string)
+				chk := terminalSessionCheck.Load()
+				if chk == nil || !(*chk)(r, sub, ts, tdev) {
+					response.Error(w, http.StatusUnauthorized, "ungültiger token")
+					return
+				}
 			}
 
 			if scope, _ := claims["scope"].(string); scope != "" {

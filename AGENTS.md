@@ -648,7 +648,7 @@ und 3 drückt bis auf Weiteres der Anwender.
     übers Netz“ und Sammelaktion – nur automatisch getestet. Offen: Abnahme
     an echter Platine (einmal USB, dann übers Netz, Port 3232/8266 in der
     Firewall); 10.10.0.202 einspielen (Anwender, mit Sicherung).
-    **0.82.28 Freigabe in UniFi** (Anwender 22.11.2026: „Auf Knopfdruck“,
+    **0.82.29 Freigabe in UniFi** (Anwender 22.11.2026: „Auf Knopfdruck“,
     „Ist kein Eintrag möglich Ticket an it“; Entwurf
     `docs/superpowers/specs/2026-11-22-esppdh-unifi-freigabe-design.md`,
     Plan `docs/superpowers/plans/2026-11-22-esppdh-unifi-freigabe.md`,
