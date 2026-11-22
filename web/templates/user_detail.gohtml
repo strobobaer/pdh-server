@@ -211,8 +211,23 @@
       <label style="font-size:13px;display:flex;gap:8px;align-items:center;margin-top:8px"><input type="checkbox" name="terminal_global_screen" {{if $m.TerminalGlobalScreen}}checked{{end}}> Globales Terminal (Infobildschirm)</label>
       <div class="rec-sub" style="margin-top:4px">Zeigt die Folien aus „Infobildschirm“, ohne Anmeldung und ohne Kartenleser.</div>
       <input type="hidden" name="terminal_saver_slides_sent" value="1">
-      <label style="font-size:13px;display:flex;gap:8px;align-items:center;margin-top:8px"><input type="checkbox" name="terminal_saver_slides" {{if $m.TerminalSaverSlides}}checked{{end}}> Folienschau als Bildschirmschoner</label>
+      <label style="font-size:13px;display:flex;gap:8px;align-items:center;margin-top:8px"><input type="hidden" name="orig_saver_slides" value="{{if $m.TerminalSaverSlides}}1{{else}}0{{end}}"><input type="checkbox" name="terminal_saver_slides" {{if $m.TerminalSaverSlides}}checked{{end}}> Folienschau als Bildschirmschoner</label>
       <div class="rec-sub" style="margin-top:4px">Nur für normale Terminals (nicht global): Statt der Uhr spielt der Schoner die Folien aus „Infobildschirm“. Berührung außerhalb eines Vorgangs und jede Karte wecken das Terminal wie sonst.</div>
+      <input type="hidden" name="terminal_fn_sent" value="1">
+      <div class="form-label" style="margin-top:12px">Funktionen am Terminal</div>
+      <label style="font-size:13px;display:flex;gap:8px;align-items:center;margin-top:4px"><input type="hidden" name="orig_stoerung" value="{{if index $m.TerminalFn "stoerung"}}1{{else}}0{{end}}"><input type="checkbox" name="terminal_fn_stoerung" {{if index $m.TerminalFn "stoerung"}}checked{{end}}> Störung</label>
+      <label style="font-size:13px;display:flex;gap:8px;align-items:center;margin-top:4px"><input type="hidden" name="orig_ticket" value="{{if index $m.TerminalFn "ticket"}}1{{else}}0{{end}}"><input type="checkbox" name="terminal_fn_ticket" {{if index $m.TerminalFn "ticket"}}checked{{end}}> Ticket</label>
+      <label style="font-size:13px;display:flex;gap:8px;align-items:center;margin-top:4px"><input type="hidden" name="orig_ruesten" value="{{if index $m.TerminalFn "ruesten"}}1{{else}}0{{end}}"><input type="checkbox" name="terminal_fn_ruesten" {{if index $m.TerminalFn "ruesten"}}checked{{end}}> Rüsten</label>
+      <label style="font-size:13px;display:flex;gap:8px;align-items:center;margin-top:4px"><input type="hidden" name="orig_stillstand" value="{{if index $m.TerminalFn "stillstand"}}1{{else}}0{{end}}"><input type="checkbox" name="terminal_fn_stillstand" {{if index $m.TerminalFn "stillstand"}}checked{{end}}> Stillstand</label>
+      <label style="font-size:13px;display:flex;gap:8px;align-items:center;margin-top:4px"><input type="hidden" name="orig_hmi" value="{{if index $m.TerminalFn "hmi"}}1{{else}}0{{end}}"><input type="checkbox" name="terminal_fn_hmi" {{if index $m.TerminalFn "hmi"}}checked{{end}}> HMI</label>
+      <label style="font-size:13px;display:flex;gap:8px;align-items:center;margin-top:4px"><input type="hidden" name="orig_wartungen" value="{{if index $m.TerminalFn "wartungen"}}1{{else}}0{{end}}"><input type="checkbox" name="terminal_fn_wartungen" {{if index $m.TerminalFn "wartungen"}}checked{{end}}> Wartungen</label>
+      <div class="rec-sub" style="margin-top:4px">Ausgeschaltete Funktionen zeigt die Terminalseite nicht mehr (Kachel und Seite entfallen). Dieselben Schalter gibt es auf der Admin-Seite des Terminals (Reiter „Funktionen“); die jüngere Änderung gewinnt, bei gleichem Zeitpunkt PDH. Die Folienschau steht oben.</div>
+      <label class="form-label" style="margin-top:8px" for="ud-scheme">Farbschema der Terminalseiten</label>
+      <select class="form-input" id="ud-scheme" name="terminal_scheme">
+        <option value="dark" {{if ne $m.TerminalScheme "light"}}selected{{end}}>Dunkel</option>
+        <option value="light" {{if eq $m.TerminalScheme "light"}}selected{{end}}>Hell</option>
+      </select>
+      <div class="rec-sub" style="margin-top:4px">Hintergrund und Farben wie im übrigen PDH (hell oder dunkel); das Terminal übernimmt sie für seine eigenen Seiten.</div>
       <script>
       (function () {
         var box = document.getElementById('ud-card-notify');

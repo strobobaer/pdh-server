@@ -137,9 +137,9 @@ func TestTerminalDeviceAPI(t *testing.T) {
 	if rec.Code != 200 {
 		t.Fatalf("gültig: %d %s", rec.Code, rec.Body.String())
 	}
-	var m map[string]string
+	var m map[string]any // device_id, user, name und die freiwilligen Felder functions und theme (terminal_functions.go)
 	e.must(json.Unmarshal(rec.Body.Bytes(), &m))
-	if m["device_id"] != id || m["name"] != "Pi A" || m["user"] == "" {
+	if m["device_id"] != id || m["name"] != "Pi A" || m["user"] == "" || m["functions"] == nil || m["theme"] == nil {
 		t.Errorf("Antwort: %s", rec.Body.String())
 	}
 	var seen bool
