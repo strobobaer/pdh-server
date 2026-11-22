@@ -577,7 +577,7 @@ und 3 drückt bis auf Weiteres der Anwender.
     Oberfläche, `go-modules-licenses.txt` behalten, Test für die
     Vollständigkeit von `THIRD_PARTY_LICENSES.md`); Markenprüfung
     „Pulse Data Hub“ angeboten.
-19. **Firmenstammdaten = 0.82.21** (Wunsch des Anwenders vom 21.11.2026; 0.82.16 und 0.82.18 gingen an andere Pakete, zuletzt die PDH-App):
+19. **Firmenstammdaten = 0.82.21, Korrektur 0.82.22** (0.82.21 legte nach dem Öffnen des Reiters „Firma“ alle Seiten mit 500 lahm – `h.tmpl` direkt ausgeführt; Wächter `TestNoDirectSharedTemplateExecute`) (Wunsch des Anwenders vom 21.11.2026; 0.82.16 und 0.82.18 gingen an andere Pakete, zuletzt die PDH-App):
     Fenster am obersten Knoten der Infrastruktur; die Daten gelten
     unternehmensweit im Mail- und Postverkehr, der angemeldete Benutzer ist
     Ansprechpartner. Entschieden: „A jetzt, B danach“ (A: alle Mails mit

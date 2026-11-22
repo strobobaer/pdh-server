@@ -102,11 +102,10 @@ func (h *Handler) companyPanel(r *http.Request, p companyProfile, msg, errText s
 	return d
 }
 
+// renderCompanyPanel gibt den Reiter über eine Kopie der Vorlagen aus (renderFragment) –
+// die gemeinsame Vorlage direkt auszuführen sperrt jedes spätere Clone() (Ausfall 0.82.21).
 func (h *Handler) renderCompanyPanel(w http.ResponseWriter, d companyPanelData) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := h.tmpl.ExecuteTemplate(w, "company-panel", d); err != nil {
-		http.Error(w, "Firmenstammdaten: "+err.Error(), http.StatusInternalServerError)
-	}
+	h.renderFragment(w, "company-panel", d)
 }
 
 // CompanyPanelWeb: GET /infrastructure/company

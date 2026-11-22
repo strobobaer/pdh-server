@@ -6,6 +6,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -75,4 +78,39 @@ func TestCompanyTabOnlyTopLevel(t *testing.T) {
 
 func withTestUser(r *http.Request) *http.Request {
 	return r.WithContext(context.WithValue(r.Context(), "user", &users.User{ID: "u1", Role: "admin", FirstName: "Anna", LastName: "Beispiel"})) //nolint:staticcheck // Schlüssel wie getUser
+}
+
+// Vorfall 0.82.21: Der Reiter führte die gemeinsame Vorlage direkt aus – danach ging kein
+// h.tmpl.Clone() mehr, und fast alle Seiten antworteten mit 500.
+func TestCompanyPanelKeepsTemplatesCloneable(t *testing.T) {
+	h := &Handler{tmpl: loadTestTemplates(t)}
+	h.hasPermHook = func(*http.Request, string) bool { return true }
+	w := httptest.NewRecorder()
+	p := companyProfile{Name: "Muster GmbH"}
+	h.renderCompanyPanel(w, companyPanelData{P: p, Groups: companyGroupsFor(p)})
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "Gilt für das ganze Unternehmen") {
+		t.Fatalf("Reiter: %d %s", w.Code, w.Body.String())
+	}
+	if _, err := h.tmpl.Clone(); err != nil {
+		t.Fatalf("gemeinsame Vorlage nach dem Reiter nicht mehr kopierbar: %v", err)
+	}
+}
+
+// Wächter: Die gemeinsame Vorlage h.tmpl wird nie direkt ausgeführt (immer Clone, z. B.
+// renderFragment) – sonst fallen alle Seiten aus, die sie danach kopieren.
+func TestNoDirectSharedTemplateExecute(t *testing.T) {
+	files, _ := filepath.Glob("*.go")
+	re := regexp.MustCompile(`h\.tmpl\.Execute(Template)?\(`)
+	for _, f := range files {
+		if strings.HasSuffix(f, "_test.go") {
+			continue
+		}
+		b, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if loc := re.FindIndex(b); loc != nil {
+			t.Errorf("%s: gemeinsame Vorlage direkt ausgeführt (Zeile %d) – h.renderFragment oder h.tmpl.Clone() verwenden", f, 1+strings.Count(string(b[:loc[0]]), "\n"))
+		}
+	}
 }

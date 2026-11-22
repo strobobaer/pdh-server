@@ -33,7 +33,7 @@ func TestTerminalReportFaultAndTicket(t *testing.T) {
 		e.pool.Exec(bg, `DELETE FROM faults WHERE infrastructure_id = ANY($1::uuid[])`, []string{plant, sub})
 		e.pool.Exec(bg, `DELETE FROM tickets WHERE infrastructure_id = ANY($1::uuid[])`, []string{plant, sub})
 	})
-	h := &Handler{db: e.pool, rbac: e.rb, jwtSecret: "test-geheim", tmpl: loadTestTemplates(t),
+	h := &Handler{db: e.pool, rbac: e.rb, users: users.NewService(users.NewRepository(e.pool), "test-secret", 1), jwtSecret: "test-geheim", tmpl: loadTestTemplates(t),
 		faults: faults.NewService(faults.NewRepository(e.pool), nil), tickets: tickets.NewService(tickets.NewRepository(e.pool))}
 	terminalTemplatePath = "../../web/templates/terminal.gohtml"
 	r := chi.NewRouter()

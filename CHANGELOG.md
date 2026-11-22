@@ -10,7 +10,7 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
-## [0.82.22] – 2026-11-21
+## [0.82.23] – 2026-11-22
 
 ### Neu
 
@@ -21,6 +21,12 @@ im Kapitel „Versionen & Updates“ an.
 
 - „Rüsttasten werden nicht angezeigt“: Das Anlagenterminal hatte bisher gar keine Rüsttasten; sie gab es nur auf der Meldeseite des Easy-Modus (und dort nur bei eingeschaltetem Easy-Modus).
 - Die Meldeseite des Easy-Modus (`/e/…`) passt sich jetzt der Bildschirmgröße an (Handy, Terminal 1280×800 und 1920×1080, Hochformat) statt eines festen schmalen Streifens: breiteres Raster, größere Schrift und Tasten für Berührung.
+
+## [0.82.22] – 2026-11-21
+
+### Behoben
+
+- Nach dem Öffnen des Reiters „Firma“ in der Infrastruktur antworteten fast alle Seiten mit einem Fehler (auch die Anmeldung), bis der Dienst neu startete. Der Reiter zeigt seine Inhalte jetzt so an, dass die übrigen Seiten unberührt bleiben.
 
 ## [0.82.21] – 2026-11-21
 

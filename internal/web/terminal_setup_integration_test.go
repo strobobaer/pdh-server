@@ -45,7 +45,7 @@ func TestTerminalSetupInheritedButtons(t *testing.T) {
 	noedit := e.user("rtnoedit", "viewer", false)
 	e.exec(`UPDATE users SET terminal_infrastructure_id = $2::uuid WHERE id = $1::uuid`, term, plant)
 	e.warm()
-	h := &Handler{db: e.pool, rbac: e.rb, jwtSecret: "test-geheim", tmpl: loadTestTemplates(t)}
+	h := &Handler{db: e.pool, rbac: e.rb, users: users.NewService(users.NewRepository(e.pool), "test-secret", 1), jwtSecret: "test-geheim", tmpl: loadTestTemplates(t)}
 	terminalTemplatePath = "../../web/templates/terminal.gohtml"
 
 	// Easy-Modus-Baustein: an der Halle zugeordnet, an der Anlage darunter sichtbar
