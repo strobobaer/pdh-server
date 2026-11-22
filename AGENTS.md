@@ -637,9 +637,26 @@ und 3 drückt bis auf Weiteres der Anwender.
     Meldung der neuen Kennung, bis 3 min); Sammelaktion „Alle veralteten
     Geräte aktualisieren“ (Recht überall; veraltet = Konfiguration geändert
     oder andere Kennung gemeldet). Migration 194, Aufträge in
-    `esppdh_ota_runs`, ausgeführt vom Bau-Arbeiter. Offen: Schlussprüfung,
-    Freigabe Push/Merge, Verbund-Update, Browserprüfung; Abnahme an echter
-    Platine (einmal USB, dann übers Netz, Port 3232/8266 in der Firewall).
+    `esppdh_ota_runs`, ausgeführt vom Bau-Arbeiter. Dazu: Startseite zeigt
+    Firma und Ort aus den Firmenstammdaten statt fest „Werk Augsburg“. **Auf
+    `main`** (22.11.2026, Merge `cc80dbc`) und dem Testverbund (beide Server
+    und Zeuge 0.82.25, Migration 194, aktiv jetzt `pdh` 10.10.0.14). Im
+    Browser geprüft: Startseite mit und ohne Firmendaten, ESPPDH-Übersicht,
+    Handbuch; Fiori/Fluent, hell/dunkel, 320–1366 px ohne Überlauf und
+    Konsolenfehler; Testdaten entfernt, Prüfkonto gesperrt. Nicht im Browser
+    gesehen (am Testverbund kein ESPPDH-Gerät, ESPPDH aus): Karte „Firmware
+    übers Netz“ und Sammelaktion – nur automatisch getestet. Offen: Abnahme
+    an echter Platine (einmal USB, dann übers Netz, Port 3232/8266 in der
+    Firewall); 10.10.0.202 einspielen (Anwender, mit Sicherung). Hinweis:
+    der oberste Infrastruktur-Knoten heißt am Testverbund noch „Werk
+    Augsburg“ (Beispielknoten aus Migration 005). Geparkt aus der
+    Schlussprüfung: erneutes Aufspielen desselben Baus meldet sofort „ok“;
+    Beenden während des Wartens heißt „nach 3 min nicht gemeldet“;
+    Sammelaktion bei ausgeschaltetem ESPPDH „fehlgeschlagen“ statt
+    „abgebrochen“; Arbeiter-Kontext kann beim Start nil sein; StopESPPDH
+    wartet nicht auf die Sammelaktion; Liste der Sammelaktion langsam;
+    Adresswechsel während des Uploads (Restrisiko); anonymer Broker kann
+    Bau-Kennung vortäuschen.
 22. **PDH-App (Android/iOS):** Entwurf
     `docs/superpowers/specs/2026-11-21-pdh-app-design.md` am 21.11.2026
     freigegeben (Branch `feature/pdh-app`): eine Installations-App für alle
