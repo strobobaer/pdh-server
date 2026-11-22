@@ -448,8 +448,8 @@ func TestAppWriteStepsTable(t *testing.T) {
 	}
 }
 
-// Migration 194: Tabellen für Schritte und Kennungs-Aliase (Kennungen vom Telefon, UUIDv7).
-func TestMigration194(t *testing.T) {
+// Migration 195: Tabellen für Schritte und Kennungs-Aliase (Kennungen vom Telefon, UUIDv7).
+func TestMigration195(t *testing.T) {
 	e := newATEnv(t)
 	for _, tb := range []string{"app_steps", "app_id_aliases"} {
 		var def string
