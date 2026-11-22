@@ -1782,6 +1782,15 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <h2><i class="ti ti-network"></i> Netzwerk (VLANs und WLANs)</h2>
   <p>Unter <b>Administration → Netzwerk</b> stehen die Netze und WLANs eures Betriebs an einer Stelle: welches Netz wofür da ist, welche VLAN-Nummer und welchen Adressbereich es hat und welche WLANs dazugehören. Andere Bereiche wählen daraus, statt WLAN-Namen und Kennwörter selbst zu führen – z. B. ein Messgerät, das in ein bestimmtes WLAN soll. Das PDH richtet damit <b>nichts</b> an Switches, Access Points oder der Firewall ein; die Seite ist ein Verzeichnis. Ist UniFi oder Omada angebunden, liest das PDH die Netze und WLANs von dort und schlägt sie dir vor – du musst sie nicht abtippen.</p>
   {{template "hb-fig-netzwerk"}}
+  <div class="hb-howto"><b><i class="ti ti-shield-check"></i> So gibst du ESPPDH-Updates in der Firewall frei</b>
+    <ol class="hb-steps">
+      <li>Beim Netz der Geräte muss ein <b>Adressbereich</b> stehen, und ESPPDH-Geräte nutzen es (WLAN mit Haken „Für ESPPDH-Geräte nutzbar“ oder ein Gerät am Kabel in diesem Netz).</li>
+      <li>In der Zeile des Netzes <b>Freigabe für ESPPDH-Updates in UniFi anlegen</b> drücken und bestätigen. Den Knopf sieht nur, wer das Recht „Netzwerk: VLANs und WLANs löschen (Bereichsadministrator)“ (<code>system.network_admin</code>) hat.</li>
+      <li>Das PDH trägt in UniFi eine Regel <b>„PDH – ESPPDH-Update &lt;Netz&gt;“</b> ein: Erlauben, nur TCP-Port 3232 und 8266, nur von den Adressen der Server zum Adressbereich des Netzes. Danach liest es die Regel zurück.</li>
+      <li>Liegt der Server im selben Netz oder in derselben Firewall-Zone, braucht es keine Regel – das sagt die Meldung oben. Gibt es die Regel schon, meldet das PDH „vorhanden“.</li>
+      <li><b>Geht das nicht</b> (UniFi nicht eingerichtet, Controller älter als UniFi Network 10, Schlüssel ohne Schreibrecht, Netz in UniFi nicht zu finden): Das PDH legt ein <b>Ticket an die IT</b> an – an dieselben Empfänger wie die Netz-Alarme der IT-Assets. Im Ticket stehen Netz, Adressbereich, Server-Adressen, Ports und der Grund. Solange es offen ist, steht beim Netz „Ticket an die IT offen“; ein zweites entsteht nicht. Ist die Regel von Hand eingetragen, das Ticket erledigen und den Knopf noch einmal drücken.</li>
+    </ol>
+    <p>Das PDH ändert oder löscht nie eine vorhandene Regel. Bei Omada gibt es bis auf Weiteres nur das Ticket.</p></div>
   <div class="hb-howto"><b><i class="ti ti-download"></i> So übernimmst du Netze und WLANs vom Controller</b>
     <ol class="hb-steps">
       <li>Die Seite <b>Netzwerk</b> öffnen. Ist UniFi oder Omada eingerichtet, erscheint oben der Block <b>Vom Controller gefunden</b>. Er lädt nach ein paar Sekunden nach.</li>
@@ -2794,7 +2803,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <ol class="hb-steps">
       <li>Das Gerät <b>einmal per USB</b> mit einer Firmware ab 0.82.25 flashen. Ältere Firmware kann keine Updates übers Netz. Nach dem Update auf 0.82.24 gelten deshalb alle Geräte einmal als „neu bauen“.</li>
       <li>Auf der Seite <a href="#netzwerk">Netzwerk</a> beim Netz des Geräts den <b>Adressbereich</b> eintragen (z. B. <code>10.20.0.0/24</code>). Bei WLAN muss der Haken <b>„Für ESPPDH-Geräte nutzbar“</b> gesetzt sein, bei Kabel am Gerät ein Netz gewählt.</li>
-      <li>Die Firewall muss den Server zum Gerät durchlassen: <b>TCP-Port 3232</b> (ESP32) bzw. <b>8266</b> (ESP8266).</li>
+      <li>Die Firewall muss den Server zum Gerät durchlassen: <b>TCP-Port 3232</b> (ESP32) bzw. <b>8266</b> (ESP8266). Mit UniFi legt das der Knopf auf der Seite <a href="#netzwerk">Netzwerk</a> an, sonst gibt es dort ein Ticket an die IT.</li>
     </ol></div>
   <div class="hb-howto"><b><i class="ti ti-cloud-upload"></i> So spielst du ein Gerät übers Netz auf</b>
     <ol class="hb-steps">

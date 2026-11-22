@@ -18,7 +18,7 @@
     <button type="submit" class="btn btn-primary"><i class="ti ti-cloud-upload" aria-hidden="true"></i> Firmware aufspielen</button>
   </form>
   {{else if .Reason}}<p class="esp-note"><i class="ti ti-info-circle" aria-hidden="true"></i> {{.Reason}}</p>{{end}}
-  <p class="esp-note">Der Server muss das Gerät in seinem Netz auf Port {{.PortHint}} (TCP) erreichen – bei getrennten Netzen die Freigabe vom Server zum Netz des Geräts einrichten. Das erste Mal geht nur per USB.</p>
+  <p class="esp-note">Der Server muss das Gerät in seinem Netz auf Port {{.PortHint}} (TCP) erreichen – bei getrennten Netzen die Freigabe vom Server zum Netz des Geräts einrichten (Seite <a href="/admin/network" style="color:var(--accent)">Netzwerk</a>: „Freigabe für ESPPDH-Updates in UniFi anlegen“). Das erste Mal geht nur per USB.</p>
   {{with .Run}}{{template "esppdh-ota-run" .}}{{end}}
 </div>
 {{end}}{{end}}
