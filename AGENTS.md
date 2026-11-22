@@ -644,6 +644,16 @@ und 3 drückt bis auf Weiteres der Anwender.
     Die App erzeugt nach einer Sperre oder dem Zurücksetzen einen neuen
     Schlüssel; die erste schreibende App-Route muss `mirrorGate` und den
     Rückzug der Sitzungen bei Wartung beachten.
+    **Paket 2 (Server-Schnittstellen, 0.82.24)** auf Branch
+    `feature/pdh-app-paket2` (noch nicht auf `main`): Vorgänge, Scannen,
+    Störung melden, Schreibwächter (Spiegel nur lesen, Wartung, einmalige
+    Ausführung per `X-PDH-Once`), Handbuch „Mit der App arbeiten“. Die App
+    liegt im privaten Repository `strobobaer/pdh-app` (lokal
+    `C:\workplace\pdh-app`, Branch `master`; offene Punkte in
+    `docs/offene-punkte.md`); iOS ist nicht gebaut (braucht einen Mac). Geparkt: Begrenzung
+    je Gerät, Aufbewahrung von `request_once` gegen Offline (Paket 3),
+    Fehlertypen im App-Modul, doppelter `assetOpenItems`-Code,
+    Signierschlüssel für Releases.
     Entschieden (Anwender, 21.11.2026: „Manager passt“): Manager behalten
     `app.admin` in allen Abteilungen (Freigabe/Sperre bleibt durch die
     Rangfolge begrenzt).
