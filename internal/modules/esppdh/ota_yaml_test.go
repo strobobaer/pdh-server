@@ -57,6 +57,23 @@ func TestFirmwareTopic(t *testing.T) {
 	t.Errorf("Firmware-Thema fehlt: %+v", ts)
 }
 
+func TestDeviceSecretValues(t *testing.T) {
+	d := otaSample()
+	d.WebServer, d.WebPassword = true, "web-kennwort-1"
+	got := strings.Join(d.SecretValues(), "|")
+	for _, want := range []string{d.WLANPassword, d.APPassword, d.MQTTPassword, "web-kennwort-1", "ota-kennwort-1"} {
+		if want == "" || !strings.Contains(got, want) {
+			t.Errorf("Kennwort %q fehlt in %q", want, got)
+		}
+	}
+	d.WebPassword = ""
+	for _, s := range d.SecretValues() {
+		if s == "" {
+			t.Errorf("leeres Kennwort in der Liste")
+		}
+	}
+}
+
 func TestValidateDeviceNeedsOTAPassword(t *testing.T) {
 	d := otaSample()
 	d.OTAPassword = ""

@@ -333,17 +333,12 @@ func (h *Handler) esppdhJobFor(ctx context.Context, c esppdhClaim) (esppdh.Build
 		return esppdh.BuildJob{}, "", fmt.Errorf("Die Einstellungen des Brokers haben sich seit dem Einreihen geändert (jetzt %s) – bitte neu bauen.",
 			esppdhAddr(b.Host, b.Port, b.TLS))
 	}
+	res.Dev.FirmwareID = c.ID // das Gerät meldet die Kennung seines Baus (Thema info/firmware)
 	cfg, sec, err := esppdh.Generate(res.Dev)
 	if err != nil {
 		return esppdh.BuildJob{}, "", err
 	}
-	var secrets []string
-	for _, s := range []string{res.Dev.WLANPassword, res.Dev.APPassword, res.Dev.MQTTPassword, res.Dev.WebPassword} {
-		if s != "" {
-			secrets = append(secrets, s)
-		}
-	}
-	return esppdh.BuildJob{ID: c.ID, Slug: d.Slug, Config: cfg, Secrets: sec, SecretValues: secrets}, esppdh.ConfigHash(res.Dev), nil
+	return esppdh.BuildJob{ID: c.ID, Slug: d.Slug, Config: cfg, Secrets: sec, SecretValues: res.Dev.SecretValues()}, esppdh.ConfigHash(res.Dev), nil
 }
 
 // esppdhSaveLog schreibt einen Zwischenstand (schon geschwärzt) in den Lauf.

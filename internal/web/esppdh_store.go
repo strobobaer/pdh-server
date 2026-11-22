@@ -87,13 +87,15 @@ type esppdhDevice struct {
 	mqttHash       string // Prüfwert des MQTT-Kennworts ("" = noch nicht nachgetragen)
 	webEnc         string // Kennwort der Webseite, verschlüsselt ("" = noch keins)
 	webPW          string // Kennwort der Webseite im Klartext, nur solange geladen (esppdhWebPassword)
+	otaEnc         string // Kennwort für Updates übers Netz, verschlüsselt ("" = noch keins)
+	otaPW          string // Kennwort für Updates übers Netz im Klartext, nur solange geladen (esppdhOTAPassword)
 }
 
 const esppdhSelect = `SELECT d.id::text, d.slug, d.name, d.infrastructure_id::text, d.connection_id::text, c.name,
 		d.board_key, d.custom_board, d.wired, COALESCE(d.wlan_id::text, ''), COALESCE(w.ssid, ''), COALESCE(w.hidden, false),
 		COALESCE(d.segment_id::text, ''), COALESCE(s.name, ''), COALESCE(s.subnet, ''),
 		d.use_tls, d.locked, d.built_hash, d.note, d.mqtt_password_enc, d.ap_password_enc, d.mqtt_pw_sha256, d.created_at, d.updated_at,
-		(SELECT count(*) FROM esppdh_blocks b WHERE b.device_id = d.id), d.web_enabled, d.web_password_enc
+		(SELECT count(*) FROM esppdh_blocks b WHERE b.device_id = d.id), d.web_enabled, d.web_password_enc, d.ota_password_enc
 	FROM esppdh_devices d
 	JOIN import_export_connections c ON c.id = d.connection_id
 	LEFT JOIN net_wlans w ON w.id = d.wlan_id
@@ -105,7 +107,7 @@ func esppdhScan(row pgx.Row) (esppdhDevice, error) {
 		&d.BoardKey, &d.CustomBoard, &d.Wired, &d.WLANID, &d.WLANSSID, &d.WLANHidden,
 		&d.SegmentID, &d.NetName, &d.NetSubnet,
 		&d.UseTLS, &d.Locked, &d.BuiltHash, &d.Note, &d.mqttEnc, &d.apEnc, &d.mqttHash, &d.CreatedAt, &d.UpdatedAt, &d.BlockCount,
-		&d.WebEnabled, &d.webEnc)
+		&d.WebEnabled, &d.webEnc, &d.otaEnc)
 	return d, err
 }
 
@@ -114,43 +116,57 @@ func esppdhScan(row pgx.Row) (esppdhDevice, error) {
 // wird es verschlüsselt abgelegt (nicht auf dem Spiegel – dort Fehler). Die Firmware muss danach
 // neu gebaut werden; das zeigt die Geräteseite über den geänderten Konfigurations-Prüfwert an.
 func (h *Handler) esppdhWebPassword(ctx context.Context, d *esppdhDevice) (string, error) {
-	if d.webPW != "" {
-		return d.webPW, nil
+	return h.esppdhLazyPassword(ctx, d.ID, "web_password_enc", &d.webEnc, &d.webPW,
+		"Das Gerät hat noch kein Kennwort für seine Webseite – bitte die Geräteseite einmal am aktiven Server öffnen.")
+}
+
+// esppdhOTAPassword: Kennwort für Updates übers Netz (Baustein ota). Wie esppdhWebPassword: fehlt
+// es (Gerät vor 0.82.24) oder ist es nicht mehr lesbar, entsteht ein neues und wird gespeichert.
+func (h *Handler) esppdhOTAPassword(ctx context.Context, d *esppdhDevice) (string, error) {
+	return h.esppdhLazyPassword(ctx, d.ID, "ota_password_enc", &d.otaEnc, &d.otaPW,
+		"Das Gerät hat noch kein Kennwort für Updates übers Netz – bitte die Geräteseite einmal am aktiven Server öffnen.")
+}
+
+// esppdhLazyPassword liest ein Gerätekennwort aus der Spalte col (fest im Code, nie aus einer
+// Eingabe) oder legt es an. enc/pw: Felder des geladenen Geräts. mirrorMsg: Fehler am Spiegel.
+func (h *Handler) esppdhLazyPassword(ctx context.Context, id, col string, enc, pw *string, mirrorMsg string) (string, error) {
+	if *pw != "" {
+		return *pw, nil
 	}
-	if d.webEnc != "" {
-		if pw, err := decryptSecret(h.esppdhKey(), d.webEnc); err == nil && pw != "" {
-			d.webPW = pw
-			return pw, nil
+	if *enc != "" {
+		if p, err := decryptSecret(h.esppdhKey(), *enc); err == nil && p != "" {
+			*pw = p
+			return p, nil
 		}
 	}
-	pw, err := esppdhNewPassword()
+	p, err := esppdhNewPassword()
 	if err != nil {
 		return "", err
 	}
-	if d.ID != "" {
+	if id != "" {
 		if h.Mirror().On {
-			return "", errors.New("Das Gerät hat noch kein Kennwort für seine Webseite – bitte die Geräteseite einmal am aktiven Server öffnen.")
+			return "", errors.New(mirrorMsg)
 		}
-		enc, err := encryptSecret(h.esppdhKey(), pw)
+		sealed, err := encryptSecret(h.esppdhKey(), p)
 		if err != nil {
 			return "", err
 		}
 		// nur ersetzen, was eben gelesen wurde – ein gleichzeitiger Aufruf gewinnt sonst nicht doppelt
 		var cur string
-		err = h.db.QueryRow(ctx, `UPDATE esppdh_devices SET web_password_enc = CASE WHEN web_password_enc = $2 THEN $3 ELSE web_password_enc END
-			WHERE id = $1::uuid RETURNING web_password_enc`, d.ID, d.webEnc, enc).Scan(&cur)
+		err = h.db.QueryRow(ctx, `UPDATE esppdh_devices SET `+col+` = CASE WHEN `+col+` = $2 THEN $3 ELSE `+col+` END
+			WHERE id = $1::uuid RETURNING `+col, id, *enc, sealed).Scan(&cur)
 		if err != nil {
 			return "", err
 		}
-		if cur != enc {
+		if cur != sealed {
 			if other, err := decryptSecret(h.esppdhKey(), cur); err == nil && other != "" {
-				pw = other
+				p = other
 			}
 		}
-		d.webEnc = cur
+		*enc = cur
 	}
-	d.webPW = pw
-	return pw, nil
+	*pw = p
+	return p, nil
 }
 
 // esppdhLoad liest ein Gerät samt Bausteinen (in ihrer Reihenfolge).
@@ -255,14 +271,24 @@ func (h *Handler) esppdhInsert(ctx context.Context, d esppdhDevice, mqttPW, apPW
 			return "", err
 		}
 	}
+	otaPW := d.otaPW
+	if otaPW == "" {
+		if otaPW, err = esppdhNewPassword(); err != nil {
+			return "", err
+		}
+	}
+	otaEnc, err := encryptSecret(h.esppdhKey(), otaPW)
+	if err != nil {
+		return "", err
+	}
 	var id string
 	err = h.db.QueryRow(ctx, `INSERT INTO esppdh_devices (slug, name, infrastructure_id, connection_id, board_key, custom_board,
 			wired, wlan_id, segment_id, use_tls, mqtt_password_enc, ap_password_enc, note, created_by, mqtt_pw_sha256,
-			web_enabled, web_password_enc)
-		VALUES ($1, $2, $3::uuid, $4::uuid, $5, $6, $7, $8::uuid, $9::uuid, $10, $11, $12, $13, $14::uuid, $15, $16, $17) RETURNING id::text`,
+			web_enabled, web_password_enc, ota_password_enc)
+		VALUES ($1, $2, $3::uuid, $4::uuid, $5, $6, $7, $8::uuid, $9::uuid, $10, $11, $12, $13, $14::uuid, $15, $16, $17, $18) RETURNING id::text`,
 		d.Slug, d.Name, d.InfraID, d.ConnID, d.BoardKey, d.CustomBoard,
 		d.Wired, nullIfEmpty(d.WLANID), nullIfEmpty(d.SegmentID), d.UseTLS, mqttEnc, apEnc, d.Note, nullIfEmpty(by),
-		mqttbroker.DevicePasswordSHA256(mqttPW), d.WebEnabled, webEnc).Scan(&id)
+		mqttbroker.DevicePasswordSHA256(mqttPW), d.WebEnabled, webEnc, otaEnc).Scan(&id)
 	return id, err
 }
 

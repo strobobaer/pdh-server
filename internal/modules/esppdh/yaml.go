@@ -312,6 +312,17 @@ func Generate(d Device) (config, secrets []byte, err error) {
 	return config, secrets, nil
 }
 
+// SecretValues: alle gesetzten Kennwörter des Geräts – sie werden in jedem Verlauf geschwärzt.
+func (d Device) SecretValues() []string {
+	var out []string
+	for _, s := range []string{d.WLANPassword, d.APPassword, d.MQTTPassword, d.WebPassword, d.OTAPassword} {
+		if s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
 // ConfigHash: SHA-256 über Konfiguration und Geheimnis-Datei (hex). Ändert sich etwas davon,
 // passt die gebaute Firmware nicht mehr. Leer bei ungültigem Gerät.
 // Die Firmware-Kennung zählt nicht mit – sie ändert sich mit jedem Bau.
