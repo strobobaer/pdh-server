@@ -6,7 +6,7 @@
   {{template "icon-button" (dict "Action" "back" "Href" "/faults")}}
   <div style="flex:1;min-width:200px">
     <h1 style="font-size:18px;font-weight:600">{{$f.Title}}</h1>
-    <p style="font-size:12px;color:var(--muted);margin-top:2px">Erkannt {{$f.DetectedAgo}}{{if $f.InfraName}} · {{$f.InfraName}}{{end}}</p>
+    <p style="font-size:12px;color:var(--muted);margin-top:2px">Erkannt {{$f.DetectedAgo}}{{if $f.InfraName}} · {{$f.InfraName}}{{end}}{{with $.OriginText}} · Herkunft: <span class="badge b-gray">{{.}}</span>{{end}}</p>
   </div>
   <span class="badge {{$f.SeverityClass}}" style="font-size:12px;padding:4px 12px">{{$f.Severity}}</span>
   <span class="badge {{$f.StatusClass}}" style="font-size:12px;padding:4px 12px">{{$f.StatusLabel}}</span>

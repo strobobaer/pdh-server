@@ -46,6 +46,10 @@ html[data-theme="light"] .dw-bg-yellow{--dwbg:#fdf6d8}html[data-theme="light"] .
 html[data-theme="light"] .dw-bg-lilac{--dwbg:#efe9fa}html[data-theme="light"] .dw-bg-gray{--dwbg:#eef0f3}
 html[data-theme="light"] .dw[class*="dw-bg-"]{color:#1f2937}
 html[data-theme="light"] .dw[class*="dw-bg-"] .dw-head,html[data-theme="light"] .dw[class*="dw-bg-"] .dw-stat .s,html[data-theme="light"] .dw[class*="dw-bg-"] .dw-li .s{color:#4b5563}
+/* Herkunft von Tickets und Störungen (record_origin.go) */
+.dw-org{display:inline-block;max-width:14em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom;
+  font-size:10.5px;line-height:1.5;padding:0 6px;border:1px solid var(--border);border-radius:999px;color:var(--muted)}
+.dw-stat .dw-orgline{font-size:11.5px;overflow-wrap:anywhere}
 .dw-bgpick{display:flex;flex-direction:column;gap:6px}
 .dw-bgsw{display:flex;flex-wrap:wrap;gap:6px}
 .dw-bgsw button{width:24px;height:24px;border-radius:50%;border:1px solid var(--border);background:var(--dwbg);cursor:pointer;padding:0}
@@ -353,10 +357,10 @@ html[data-theme="light"] .dw-stat.c-blue .v{color:#2563eb}
 {{define "dw-body"}}
 {{if .Err}}<div class="dw-none"><i class="ti ti-alert-circle"></i> {{.Err}}</div>
 {{else if eq .Def.Type "stat_tickets" "stat_faults" "stat_maintenance" "stat_stock" "stat_my_tasks" "stat_my_hours" "stat_kvp"}}
-  {{with .Data}}<a class="dw-stat c-{{.Color}}" href="{{.URL}}"><span class="v">{{.Value}}</span><span class="s{{if .Alert}} alert{{end}}">{{.Sub}}</span></a>{{end}}
+  {{with .Data}}<a class="dw-stat c-{{.Color}}" href="{{.URL}}"><span class="v">{{.Value}}</span><span class="s{{if .Alert}} alert{{end}}">{{.Sub}}</span>{{with .Origins}}<span class="s dw-orgline">{{.}}</span>{{end}}</a>{{end}}
 {{else if eq .Def.Type "list_mine" "list_faults" "list_maintenance" "list_stock"}}
   <div class="dw-list">{{range .Data}}
-    <a class="dw-li" href="{{.URL}}"><i class="ti {{.Icon}}"></i><span class="tx"><span class="t">{{.Title}}</span>{{if .Sub}}<span class="s">{{.Sub}}</span>{{end}}</span>{{if .Badge}}<span class="badge {{.BadgeClass}}">{{.Badge}}</span>{{end}}</a>
+    <a class="dw-li" href="{{.URL}}"><i class="ti {{.Icon}}"></i><span class="tx"><span class="t">{{.Title}}</span>{{if or .Sub .Origin}}<span class="s">{{with .Origin}}<span class="dw-org">{{.}}</span> {{end}}{{.Sub}}</span>{{end}}</span>{{if .Badge}}<span class="badge {{.BadgeClass}}">{{.Badge}}</span>{{end}}</a>
   {{else}}<div class="dw-none"><i class="ti ti-circle-check" style="color:var(--green)"></i> {{t "Nichts offen – alles erledigt."}}</div>{{end}}</div>
 {{else if eq .Def.Type "quick_actions"}}
   <div class="dw-qa">{{range .Data}}<a class="q-{{.Color}}" href="{{.URL}}"{{if .Create}} data-create="{{.Create}}"{{end}}><i class="ti {{.Icon}}"></i>{{.Name}}</a>{{end}}</div>

@@ -2756,6 +2756,7 @@ func (h *Handler) userByID(ctx context.Context, id string) (*users.User, error) 
 type FaultDetailData struct {
 	BaseData
 	SyncOrigin    *SyncOriginView // Herkunft aus einem Fremdsystem (sync_ops.go); nil = keine oder kein Recht
+	OriginText    string          // übrige Herkunft (record_origin.go); "" = von Hand oder unbekannt
 	Fault         FaultDetailView
 	Analysis      *faults.CopilotAnalysis
 	TimeEntries   []*timetracking.TimeEntry
@@ -2883,6 +2884,9 @@ func (h *Handler) FaultDetail(w http.ResponseWriter, r *http.Request) {
 
 	_ = h.db.QueryRow(ctx, `SELECT ticket_pending FROM faults WHERE id = $1::uuid`, id).Scan(&data.Fault.TicketPending)
 	data.SyncOrigin = h.syncOrigin(r, extsync.RefFault, id)
+	if data.SyncOrigin == nil { // Abgleich mit Recht: eigene Karte; sonst kurze Herkunft
+		data.OriginText = h.originTexts(ctx, "fault", []string{id}, false)[id]
+	}
 	h.render(w, "fault_detail", data)
 }
 
@@ -2937,6 +2941,7 @@ func (h *Handler) Shifts(w http.ResponseWriter, r *http.Request) {
 type TicketDetailData struct {
 	BaseData
 	SyncOrigin     *SyncOriginView // Herkunft aus einem Fremdsystem (sync_ops.go); nil = keine oder kein Recht
+	OriginText     string          // übrige Herkunft (record_origin.go); "" = von Hand oder unbekannt
 	AppRequestID   string          // APP-Ticket: Anfrage der PDH-App, nur wenn der Benutzer sie bearbeiten darf (app.admin)
 	Ticket         TicketView
 	CommentCount   int
@@ -3026,6 +3031,9 @@ func (h *Handler) TicketDetail(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	data.SyncOrigin = h.syncOrigin(r, extsync.RefTicket, id)
+	if data.SyncOrigin == nil { // Abgleich mit Recht: eigene Karte; sonst kurze Herkunft
+		data.OriginText = h.originTexts(r.Context(), "ticket", []string{id}, false)[id]
+	}
 	if h.hasPerm(r, permAppAdmin) {
 		var reqID string
 		if err := h.db.QueryRow(ctx, `SELECT COALESCE(app_request_id::text, '') FROM tickets WHERE id = $1::uuid`, id).Scan(&reqID); err == nil && reqID != "" && h.appAdminInRequest(r, reqID) {

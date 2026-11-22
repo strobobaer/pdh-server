@@ -151,6 +151,7 @@ type workCard struct {
 	Priority, PriorityLabel, PriorityClass, PriorityDot, Who           string
 	Overdue, DueNow, Unassigned, New, Mine, Upcoming                   bool // DueNow: faellig bis heute
 	CreatedAgo                                                         string
+	Origin                                                             string // Herkunft (Tickets, Störungen; record_origin.go)
 }
 
 type workChip struct {
@@ -454,6 +455,16 @@ func (h *Handler) workOpenCards(r *http.Request, k workKind) []workCard {
 		}
 		c.CreatedAgo = timeAgo(created)
 		out = append(out, c)
+	}
+	if k.Key == "ticket" || k.Key == "fault" {
+		ids := make([]string, len(out))
+		for i := range out {
+			ids[i] = out[i].ID
+		}
+		texts := h.originTexts(ctx, k.Key, ids, h.syncCan(r, permSyncView, ""))
+		for i := range out {
+			out[i].Origin = texts[out[i].ID]
+		}
 	}
 	return out
 }
