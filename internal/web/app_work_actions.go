@@ -81,14 +81,22 @@ func appText(s, empty, tooLong string) (string, error) {
 	return s, nil
 }
 
-// appWorkWrite ist der gemeinsame Rahmen: Art (only), Sichtbarkeit, Replay,
-// can-Flag, Eingabe, Schreiben, neuer Stand.
-// openOnly: auf einem abgeschlossenen Vorgang 409 app_conflict statt 403 (Abschließen).
-func (h *Handler) appWorkWrite(w http.ResponseWriter, r *http.Request, only string, openOnly bool, allowed func(appWorkPerms) bool,
+// appWorkWrite ist der gemeinsame Rahmen: Art (only), Kennung (Alias der App),
+// Sichtbarkeit, Replay, Zusammenführen (base, app_work_merge.go), can-Flag,
+// Eingabe, Schreiben, neuer Stand.
+// op: appOpStart … appOpFinish; bei appOpFinish auf einem abgeschlossenen Vorgang
+// 409 app_conflict statt 403.
+func (h *Handler) appWorkWrite(w http.ResponseWriter, r *http.Request, only, op string, allowed func(appWorkPerms) bool,
 	run func(ctx context.Context, k completionKind, id, uid string, body []byte) error) {
 	kind, id := chi.URLParam(r, "type"), chi.URLParam(r, "id")
 	if only != "" && kind != only {
 		appJSONErr(w, http.StatusNotFound, "app_not_found", "app_not_found")
+		return
+	}
+	ctx := r.Context()
+	id, err := h.appResolveID(ctx, kind, id)
+	if err != nil {
+		appUnavailable(w, err, kind, id, "app: kennung auflösen")
 		return
 	}
 	p, err := h.appWorkCan(r, kind, id)
@@ -99,11 +107,24 @@ func (h *Handler) appWorkWrite(w http.ResponseWriter, r *http.Request, only stri
 	if appWorkDenied(w, p) {
 		return
 	}
-	if appIsReplay(r) { // schon ausgeführt: nur den Stand liefern
-		h.appWorkRespond(w, r, kind, id, p)
+	// Körper schon hier lesen (für base); seine Fehler gelten erst an der Stelle wie in Paket 2.
+	body, bodyErr := io.ReadAll(io.LimitReader(r.Body, appBodyMax+1))
+	var base *appBase
+	if bodyErr == nil && len(body) <= appBodyMax {
+		base = appParseBase(body)
+	}
+	if appIsReplay(r) { // schon ausgeführt: nur den Stand liefern (mit base: derselbe Hinweis)
+		hint := ""
+		if base != nil {
+			hint = h.appReplayHint(r, op, kind, id, p)
+		}
+		h.appWorkRespondHint(w, r, kind, id, p, hint)
 		return
 	}
-	if openOnly && p.Closed {
+	if base != nil && h.appWorkMerge(w, r, op, kind, id, p, base, body) {
+		return
+	}
+	if op == appOpFinish && p.Closed {
 		appJSONErr(w, http.StatusConflict, "app_conflict", "Der Vorgang ist bereits abgeschlossen.")
 		return
 	}
@@ -111,8 +132,7 @@ func (h *Handler) appWorkWrite(w http.ResponseWriter, r *http.Request, only stri
 		appJSONErr(w, http.StatusForbidden, "app_no_permission", "app_no_permission")
 		return
 	}
-	body, err := io.ReadAll(io.LimitReader(r.Body, appBodyMax+1))
-	if err != nil {
+	if bodyErr != nil {
 		appJSONErr(w, http.StatusUnprocessableEntity, "app_invalid_input", "ungültige Daten")
 		return
 	}
@@ -120,17 +140,8 @@ func (h *Handler) appWorkWrite(w http.ResponseWriter, r *http.Request, only stri
 		appJSONErr(w, http.StatusRequestEntityTooLarge, "app_too_large", "app_too_large")
 		return
 	}
-	ctx := r.Context()
 	if err := run(ctx, completionKinds[kind], id, getUser(r).ID, body); err != nil {
-		if errors.As(err, new(appNotFoundErr)) {
-			appJSONErr(w, http.StatusNotFound, "app_not_found", "app_not_found")
-			return
-		}
-		if msg, ok := appModuleInput(err); ok {
-			appJSONErr(w, http.StatusUnprocessableEntity, "app_invalid_input", msg)
-			return
-		}
-		appUnavailable(w, err, kind, id, "app: vorgang schreiben")
+		h.appWorkRunErr(w, err, kind, id)
 		return
 	}
 	appKeepOnce(r) // geschrieben: ein erneuter Versuch ist ab jetzt ein Replay
@@ -142,6 +153,20 @@ func (h *Handler) appWorkWrite(w http.ResponseWriter, r *http.Request, only stri
 		return
 	}
 	h.appWorkRespond(w, r, kind, id, p)
+}
+
+// appWorkRunErr beantwortet einen Fehler beim Schreiben: 404 (Teil fehlt), 422 mit
+// der Meldung des Moduls, sonst 503 (vorübergehend).
+func (h *Handler) appWorkRunErr(w http.ResponseWriter, err error, kind, id string) {
+	if errors.As(err, new(appNotFoundErr)) {
+		appJSONErr(w, http.StatusNotFound, "app_not_found", "app_not_found")
+		return
+	}
+	if msg, ok := appModuleInput(err); ok {
+		appJSONErr(w, http.StatusUnprocessableEntity, "app_invalid_input", msg)
+		return
+	}
+	appUnavailable(w, err, kind, id, "app: vorgang schreiben")
 }
 
 // appDecode liest JSON; ein leerer Körper ist erlaubt (alle Felder leer).
@@ -159,7 +184,7 @@ func appDecode(body []byte, v any) error {
 // Person, keine Gruppe), nimmt der Benutzer ihn an sich (wie „übernehmen“ in
 // completionInvolved); Status „in Bearbeitung“ und Historie „work“ wie der Assistent.
 func (h *Handler) AppWorkStartAPI(w http.ResponseWriter, r *http.Request) {
-	h.appWorkWrite(w, r, "", false, func(p appWorkPerms) bool { return p.Start },
+	h.appWorkWrite(w, r, "", appOpStart, func(p appWorkPerms) bool { return p.Start },
 		func(ctx context.Context, k completionKind, id, uid string, _ []byte) error {
 			q := fmt.Sprintf(`UPDATE %s SET assigned_to = $1::uuid, updated_at = NOW() WHERE id = $2::uuid AND %s`, k.Table, unassignedSQL(false))
 			if k.Type == "task" {
@@ -188,7 +213,7 @@ func (h *Handler) AppWorkStartAPI(w http.ResponseWriter, r *http.Request) {
 
 // AppWorkActionAPI: POST …/actions {"text"} – Maßnahme über den Dienst des Moduls.
 func (h *Handler) AppWorkActionAPI(w http.ResponseWriter, r *http.Request) {
-	h.appWorkWrite(w, r, "", false, func(p appWorkPerms) bool { return p.Action },
+	h.appWorkWrite(w, r, "", appOpAction, func(p appWorkPerms) bool { return p.Action },
 		func(ctx context.Context, k completionKind, id, uid string, body []byte) error {
 			var in struct {
 				Text string `json:"text"`
@@ -210,7 +235,7 @@ func (h *Handler) AppWorkActionAPI(w http.ResponseWriter, r *http.Request) {
 
 // AppWorkCommentAPI: POST …/comments {"text"} – Kommentar (nur Ticket).
 func (h *Handler) AppWorkCommentAPI(w http.ResponseWriter, r *http.Request) {
-	h.appWorkWrite(w, r, "ticket", false, func(p appWorkPerms) bool { return p.Comment },
+	h.appWorkWrite(w, r, "ticket", appOpComment, func(p appWorkPerms) bool { return p.Comment },
 		func(ctx context.Context, _ completionKind, id, uid string, body []byte) error {
 			var in struct {
 				Text string `json:"text"`
@@ -234,7 +259,7 @@ func (h *Handler) AppWorkStepAPI(w http.ResponseWriter, r *http.Request) {
 		appJSONErr(w, http.StatusNotFound, "app_not_found", "app_not_found")
 		return
 	}
-	h.appWorkWrite(w, r, "maintenance", false, func(p appWorkPerms) bool { return p.Step },
+	h.appWorkWrite(w, r, "maintenance", appOpStep, func(p appWorkPerms) bool { return p.Step },
 		func(ctx context.Context, _ completionKind, id, uid string, body []byte) error {
 			var in struct {
 				Value string `json:"value"`
@@ -266,7 +291,7 @@ func (h *Handler) AppWorkStepAPI(w http.ResponseWriter, r *http.Request) {
 // Once wird freigegeben; ein erneuter Versuch trägt denselben Text nicht noch einmal
 // ein (appSameActionRecent).
 func (h *Handler) AppWorkFinishAPI(w http.ResponseWriter, r *http.Request) {
-	h.appWorkWrite(w, r, "", true, func(p appWorkPerms) bool { return p.Finish },
+	h.appWorkWrite(w, r, "", appOpFinish, func(p appWorkPerms) bool { return p.Finish },
 		func(ctx context.Context, k completionKind, id, uid string, body []byte) error {
 			var in struct {
 				Text      string `json:"text"`
