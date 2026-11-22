@@ -42,11 +42,14 @@ func (h *Handler) terminalSetupActor(r *http.Request, uid, infraID string) setup
 	return setupActor{ID: uid, Can: can}
 }
 
-// terminalSetupFill füllt die Rüsten-Angaben der Seite (Neu: Kachel; Rüsten: ganze Seite).
+// terminalSetupFill füllt die Rüsten-Angaben der Seite (Neu: Kachel für die Terminal-Anlage).
 func (h *Handler) terminalSetupFill(r *http.Request, p *terminalPage, uid string) {
 	a := h.terminalSetupActor(r, uid, p.InfraID)
 	p.SetupCan, p.SetupPerson, p.SetupCard = a.Can, a.Name, a.Card
 	p.Setup = h.setupBarFor(r.Context(), "de", p.InfraID, "/terminal/rusten", "", false, r.URL.Query().Get("setup"))
+	if !p.Setup.Show && h.db != nil { // Rüsttasten nur an Unteranlagen: Kachel trotzdem anbieten
+		p.Setup.Show = len(h.terminalPlantTree(r, p.InfraID, p.Name).Kids[p.InfraID]) > 0
+	}
 }
 
 // terminalSetupGate: Systembenutzer, Anlage, kein globales Terminal. ok=false: Antwort ist gegeben.
@@ -62,14 +65,27 @@ func (h *Handler) terminalSetupGate(w http.ResponseWriter, r *http.Request, mode
 	return p, h.terminalUserID(r), true
 }
 
-// TerminalRustenPage: GET /terminal/rusten[?nachtragen=1]
+// TerminalRustenPage: GET /terminal/rusten[?nav=<Knoten>|?infra=<Anlage>][&nachtragen=1]
+// Zuerst die Anlage wählen (Ebene für Ebene); Rüsttasten und Zustand sind die der gewählten Anlage.
 func (h *Handler) TerminalRustenPage(w http.ResponseWriter, r *http.Request) {
 	p, uid, ok := h.terminalSetupGate(w, r, "rusten")
 	if !ok {
 		return
 	}
-	h.terminalSetupFill(r, &p, uid)
-	p.SetupAdd = r.URL.Query().Get("nachtragen") == "1" && p.SetupCan && len(p.Setup.Buttons) > 0
+	pk := terminalPickFor(r, h.terminalPlantTree(r, p.InfraID, p.Name), "/terminal/rusten")
+	p.Pick = pk
+	infra := pk.Sel
+	if infra == "" {
+		infra = p.InfraID
+	}
+	a := h.terminalSetupActor(r, uid, infra)
+	p.SetupCan, p.SetupPerson, p.SetupCard = a.Can, a.Name, a.Card
+	if pk.Sel != "" {
+		p.Setup = h.setupBarFor(r.Context(), "de", pk.Sel, "/terminal/rusten", "", false, r.URL.Query().Get("setup"))
+	} else {
+		p.Setup = setupBarView{Action: "/terminal/rusten", Notice: setupNotice("de", r.URL.Query().Get("setup"))}
+	}
+	p.SetupAdd = pk.Sel != "" && r.URL.Query().Get("nachtragen") == "1" && p.SetupCan && len(p.Setup.Buttons) > 0
 	if p.SetupAdd {
 		p.SetupAgo = []terminalChoice{{"15", "vor 15 min"}, {"30", "vor 30 min"}, {"60", "vor 1 h"}, {"120", "vor 2 h"}, {"240", "vor 4 h"}, {"480", "vor 8 h"}}
 		p.SetupDur = []terminalChoice{{"5", "5 min"}, {"10", "10 min"}, {"15", "15 min"}, {"30", "30 min"}, {"45", "45 min"}, {"60", "1 h"}, {"90", "1,5 h"}, {"120", "2 h"}}
@@ -78,6 +94,7 @@ func (h *Handler) TerminalRustenPage(w http.ResponseWriter, r *http.Request) {
 }
 
 // terminalSetupAct: gemeinsamer Rahmen der drei POST-Routen. do liefert Hinweiskennung und Rücksprung ("" = Rüsten-Seite).
+// Die Anlage kommt aus dem Feld infra (Terminal-Anlage oder Unteranlage); p.InfraID ist dann diese Anlage.
 func (h *Handler) terminalSetupAct(w http.ResponseWriter, r *http.Request, do func(p terminalPage, a setupActor) (notice, back string)) {
 	if terminalForeignPost(w, r) {
 		return
@@ -87,19 +104,31 @@ func (h *Handler) terminalSetupAct(w http.ResponseWriter, r *http.Request, do fu
 		return
 	}
 	_ = r.ParseForm()
-	a := h.terminalSetupActor(r, uid, p.InfraID)
-	if !a.Can {
+	infra := r.FormValue("infra")
+	if infra == "" {
+		infra = p.InfraID
+	} else if !h.terminalPlantTree(r, p.InfraID, p.Name).ok(infra) {
 		http.Redirect(w, r, "/terminal/rusten", http.StatusSeeOther)
+		return
+	}
+	p.InfraID = infra
+	self := "/terminal/rusten?infra=" + url.QueryEscape(infra)
+	a := h.terminalSetupActor(r, uid, infra)
+	if !a.Can {
+		http.Redirect(w, r, self, http.StatusSeeOther)
 		return
 	}
 	if !a.Card {
 		a.Name = strings.TrimSpace(r.FormValue("name")) // Kürzel/Name, freiwillig
+		if rn := []rune(a.Name); len(rn) > 40 {
+			a.Name = string(rn[:40])
+		}
 	}
 	notice, back := do(p, a)
 	if back == "" {
-		back = "/terminal/rusten"
+		back = self
 		if notice != "" {
-			back += "?setup=" + url.QueryEscape(notice)
+			back += "&setup=" + url.QueryEscape(notice)
 		}
 	}
 	http.Redirect(w, r, back, http.StatusSeeOther)
@@ -123,7 +152,7 @@ func (h *Handler) TerminalRustenFinish(w http.ResponseWriter, r *http.Request) {
 // Die Auswahlfelder ersetzen die Zeitfelder der Weboberfläche; geprüft wird wie beim Easy-Modus.
 func (h *Handler) TerminalRustenAdd(w http.ResponseWriter, r *http.Request) {
 	h.terminalSetupAct(w, r, func(p terminalPage, a setupActor) (string, string) {
-		const back = "/terminal/rusten?nachtragen=1&setup="
+		back := "/terminal/rusten?infra=" + url.QueryEscape(p.InfraID) + "&nachtragen=1&setup="
 		ago, err1 := strconv.Atoi(r.FormValue("ago"))
 		dur, err2 := strconv.Atoi(r.FormValue("dur"))
 		if err1 != nil || err2 != nil || ago < 1 || dur < 1 || dur > ago {

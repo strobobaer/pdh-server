@@ -384,14 +384,14 @@ func (h *Handler) slidesVersion(ctx context.Context) (string, error) {
 	return hex.EncodeToString(sum.Sum(nil))[:16], nil
 }
 
-// notifyGlobalTerminals meldet allen Terminal-Benutzern mit global_screen, dass sich die Folien geändert haben.
+// notifyGlobalTerminals meldet allen Terminal-Benutzern mit global_screen oder saver_slides, dass sich die Folien geändert haben.
 func (h *Handler) notifyGlobalTerminals() {
 	if h.db == nil {
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	rows, err := h.db.Query(ctx, `SELECT ts.user_id::text FROM terminal_settings ts WHERE ts.global_screen`)
+	rows, err := h.db.Query(ctx, `SELECT ts.user_id::text FROM terminal_settings ts WHERE ts.global_screen OR ts.saver_slides`)
 	if err != nil {
 		componentLog("terminal").Error().Err(err).Msg("globale terminals lesen")
 		return

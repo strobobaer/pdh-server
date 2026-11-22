@@ -22,6 +22,7 @@ func TestTerminalReportFaultAndTicket(t *testing.T) {
 	e := newATEnv(t)
 	plant := e.infra("RMAnlage", "", "")
 	sub := e.infra("RMUnter", "", plant)
+	deep := e.infra("RMTief", "", sub)
 	term := e.user("rmterm", "terminal", true)
 	person := e.user("rmperson", "terminal", false)
 	e.exec(`UPDATE users SET terminal_infrastructure_id = $2::uuid WHERE id = $1::uuid`, term, plant)
@@ -30,8 +31,8 @@ func TestTerminalReportFaultAndTicket(t *testing.T) {
 		bg := context.Background()
 		e.pool.Exec(bg, `DELETE FROM terminal_card_sessions WHERE terminal_user_id = $1::uuid`, term)
 		e.pool.Exec(bg, `DELETE FROM record_history WHERE created_by = $1::uuid`, person)
-		e.pool.Exec(bg, `DELETE FROM faults WHERE infrastructure_id = ANY($1::uuid[])`, []string{plant, sub})
-		e.pool.Exec(bg, `DELETE FROM tickets WHERE infrastructure_id = ANY($1::uuid[])`, []string{plant, sub})
+		e.pool.Exec(bg, `DELETE FROM faults WHERE infrastructure_id = ANY($1::uuid[])`, []string{plant, sub, deep})
+		e.pool.Exec(bg, `DELETE FROM tickets WHERE infrastructure_id = ANY($1::uuid[])`, []string{plant, sub, deep})
 	})
 	h := &Handler{db: e.pool, rbac: e.rb, users: users.NewService(users.NewRepository(e.pool), "test-secret", 1), jwtSecret: "test-geheim", tmpl: loadTestTemplates(t),
 		faults: faults.NewService(faults.NewRepository(e.pool), nil), tickets: tickets.NewService(tickets.NewRepository(e.pool))}
@@ -58,29 +59,57 @@ func TestTerminalReportFaultAndTicket(t *testing.T) {
 		return n
 	}
 	form := func(extra url.Values) url.Values {
-		v := url.Values{"text": {"Förderband steht still"}, "kind": {"mechanical"}, "state": {"stopped"}}
+		v := url.Values{"infra": {plant}, "text": {"Förderband steht still"}, "kind": {"mechanical"}, "state": {"stopped"}}
 		for k, x := range extra {
 			v[k] = x
 		}
 		return v
 	}
 
-	// ohne Anmeldung: Aufforderung, nichts angelegt
-	if b := do("GET", "/terminal/stoerung", nil).Body.String(); !strings.Contains(b, "Bitte zuerst anmelden") || strings.Contains(b, `name="kind"`) {
-		t.Error("ohne Anmeldung: Aufforderung fehlt oder Formular angeboten")
+	// Anlagenwahl in Ebenen: oben nur Terminal-Anlage und direkte Unteranlagen, Texte erst nach der Wahl
+	var textID string
+	e.must(e.pool.QueryRow(e.ctx, `INSERT INTO easy_report_texts (text, report_type, kind, sort) VALUES ('Lager klemmt', 'both', 'mechanical', 9999) RETURNING id::text`).Scan(&textID))
+	e.exec(`INSERT INTO infra_easy_texts (infrastructure_id, text_id) VALUES ($1::uuid, $2::uuid)`, sub, textID)
+	t.Cleanup(func() { e.pool.Exec(context.Background(), `DELETE FROM easy_report_texts WHERE id = $1::uuid`, textID) })
+
+	top := do("GET", "/terminal/stoerung", nil).Body.String()
+	if !strings.Contains(top, "?nav="+sub) || strings.Contains(top, deep) || strings.Contains(top, `name="kind"`) || strings.Contains(top, "Lager klemmt") || strings.Contains(top, "Bitte zuerst anmelden") {
+		t.Error("Anlagenwahl oben: Ebene falsch, Formular oder Meldetexte schon sichtbar, oder Anmeldung verlangt")
 	}
-	for _, p := range []string{"/terminal/stoerung", "/terminal/ticket"} {
-		if loc := do("POST", p, form(nil)).Header().Get("Location"); !strings.Contains(loc, "m=login") {
-			t.Errorf("%s ohne Anmeldung: %s", p, loc)
-		}
+	if b := do("GET", "/terminal/stoerung?nav="+sub, nil).Body.String(); !strings.Contains(b, "?infra="+deep) || !strings.Contains(b, "?infra="+sub) || strings.Contains(b, "Lager klemmt") {
+		t.Error("Ebene Unteranlage: Wahl der Unteranlage oder der Tiefen-Anlage fehlt")
 	}
-	if count("faults")+count("tickets") != 0 {
-		t.Fatal("ohne Anmeldung wurde gemeldet")
+	if b := do("GET", "/terminal/stoerung?infra="+sub, nil).Body.String(); !strings.Contains(b, `name="kind"`) || !strings.Contains(b, "Lager klemmt") || !strings.Contains(b, `class="t-rzname"`) {
+		t.Error("nach Wahl: Formular, Meldetext oder Namensfeld fehlt")
 	}
+	if b := do("GET", "/terminal/stoerung?infra="+plant, nil).Body.String(); strings.Contains(b, "Lager klemmt") {
+		t.Error("Meldetext der Unteranlage erscheint an der Terminal-Anlage")
+	}
+	// ohne Anmeldung: Terminal-Benutzer meldet, Kürzel steht in der Beschreibung; ohne Anlagenwahl nichts
+	if loc := do("POST", "/terminal/stoerung", form(url.Values{"infra": {""}})).Header().Get("Location"); !strings.Contains(loc, "m=plant") {
+		t.Errorf("ohne Anlagenwahl: %s", loc)
+	}
+	if loc := do("POST", "/terminal/stoerung", form(url.Values{"infra": {plant}, "name": {"MK7"}})).Header().Get("Location"); !strings.Contains(loc, "done=fault") {
+		t.Fatalf("Störung ohne Anmeldung: %s", loc)
+	}
+	if loc := do("POST", "/terminal/ticket", form(url.Values{"infra": {deep}, "name": {"MK7"}, "text_id": {textID}, "state": {"running"}})).Header().Get("Location"); !strings.Contains(loc, "done=ticket") {
+		t.Fatalf("Ticket ohne Anmeldung: %s", loc)
+	}
+	var by, desc string
+	e.must(e.pool.QueryRow(e.ctx, `SELECT created_by::text, description FROM faults WHERE infrastructure_id = $1::uuid`, plant).Scan(&by, &desc))
+	if by != term || !strings.Contains(desc, "MK7") {
+		t.Errorf("Störung ohne Anmeldung: Ersteller %s (erwartet Terminal %s), Beschreibung %q", by, term, desc)
+	}
+	e.must(e.pool.QueryRow(e.ctx, `SELECT created_by::text, description FROM tickets WHERE infrastructure_id = $1::uuid`, deep).Scan(&by, &desc))
+	if by != term || !strings.Contains(desc, "MK7") || !strings.Contains(desc, "Lager klemmt") {
+		t.Errorf("Ticket ohne Anmeldung: Ersteller %s, Beschreibung %q", by, desc)
+	}
+	e.exec(`DELETE FROM faults WHERE infrastructure_id = ANY($1::uuid[])`, []string{plant, sub, deep})
+	e.exec(`DELETE FROM tickets WHERE infrastructure_id = ANY($1::uuid[])`, []string{plant, sub, deep})
 
 	// angemeldet: Seite mit Formular (Anlage und Unteranlage), Störung und Ticket werden von der Person angelegt
 	e.exec(`INSERT INTO terminal_card_sessions (terminal_user_id, person_id) VALUES ($1::uuid, $2::uuid)`, term, person)
-	if b := do("GET", "/terminal/stoerung", nil).Body.String(); !strings.Contains(b, `name="kind"`) || !strings.Contains(b, `value="`+sub+`"`) || strings.Contains(b, "/e/"+plant) {
+	if b := do("GET", "/terminal/stoerung?infra="+sub, nil).Body.String(); !strings.Contains(b, `name="kind"`) || !strings.Contains(b, `value="`+sub+`"`) || strings.Contains(b, "/e/"+plant) {
 		t.Error("Meldeseite: Formular, Unteranlage fehlt oder Verweis auf Easy-Modus")
 	}
 	if loc := do("POST", "/terminal/stoerung", form(nil)).Header().Get("Location"); !strings.Contains(loc, "done=fault") {
@@ -89,7 +118,6 @@ func TestTerminalReportFaultAndTicket(t *testing.T) {
 	if loc := do("POST", "/terminal/ticket", form(url.Values{"infra": {sub}, "state": {"running"}})).Header().Get("Location"); !strings.Contains(loc, "done=ticket") {
 		t.Fatalf("Ticket: %s", loc)
 	}
-	var by string
 	var stopped bool
 	e.must(e.pool.QueryRow(e.ctx, `SELECT created_by::text, plant_stopped FROM faults WHERE infrastructure_id = $1::uuid`, plant).Scan(&by, &stopped))
 	if by != person || !stopped {
@@ -104,7 +132,7 @@ func TestTerminalReportFaultAndTicket(t *testing.T) {
 	if loc := do("POST", "/terminal/stoerung", form(url.Values{"infra": {other}})).Header().Get("Location"); !strings.Contains(loc, "m=perm") {
 		t.Errorf("fremde Anlage: %s", loc)
 	}
-	if loc := do("POST", "/terminal/stoerung", url.Values{"kind": {"mechanical"}, "state": {"running"}}).Header().Get("Location"); !strings.Contains(loc, "m=input") {
+	if loc := do("POST", "/terminal/stoerung", url.Values{"infra": {plant}, "kind": {"mechanical"}, "state": {"running"}}).Header().Get("Location"); !strings.Contains(loc, "m=input") {
 		t.Errorf("ohne Text: %s", loc)
 	}
 

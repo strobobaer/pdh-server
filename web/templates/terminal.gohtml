@@ -1,3 +1,10 @@
+{{define "t-pick"}}<h3>Anlage wählen</h3>
+<nav class="t-crumbs" aria-label="Ebene">{{range .Crumbs}}<a class="t-btn" href="{{$.Self}}?nav={{.Value}}">{{.Label}}</a><span aria-hidden="true">›</span>{{end}}<b>{{.Here.Label}}</b></nav>
+<div class="t-rzgrid t-pickgrid">
+  <a class="t-btn primary" href="{{.Self}}?infra={{.Here.Value}}"><i class="ti ti-check" aria-hidden="true"></i> {{.Here.Label}} wählen</a>
+  {{range .Items}}{{if .Kids}}<a class="t-btn" href="{{$.Self}}?nav={{.ID}}">{{.Name}} <i class="ti ti-chevron-right" aria-hidden="true"></i></a>{{else}}<a class="t-btn" href="{{$.Self}}?infra={{.ID}}">{{.Name}}</a>{{end}}{{end}}
+</div>{{end}}
+{{define "t-picked"}}{{if not .Single}}<div class="t-picked"><span>Anlage: <b>{{.SelName}}</b></span><a class="t-btn" href="{{.Self}}">Ändern</a></div>{{end}}{{end}}
 <!DOCTYPE html>
 <html lang="de">
 <head>
@@ -96,7 +103,7 @@ a{color:inherit;text-decoration:none}
 .t-dialog .l-row{display:flex;gap:1vw}
 .t-dialog .l-row .t-btn{flex:1}
 /* Infobildschirm (Modus global): Folienschau, nur Berührung, nichts verlinkt, kein Markieren */
-body[data-mode="global"]{padding:0;-webkit-touch-callout:none}
+body[data-mode="global"],body[data-saver-slides]{padding:0;-webkit-touch-callout:none}
 .g-stage{touch-action:none;position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--bg);overflow:hidden}
 .g-img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000;pointer-events:none;-webkit-user-drag:none}
 .g-cap{position:absolute;left:0;right:0;bottom:0;padding:2vh 4vw;background:linear-gradient(transparent,rgba(0,0,0,.75));font-size:clamp(24px,3vw,56px);font-weight:800;text-align:center;pointer-events:none}
@@ -152,10 +159,16 @@ body.has-gear .g-vorg{padding-top:60px}
 .t-rzh{font-size:1.3em}
 .t-text{width:100%;min-height:clamp(90px,14vh,200px);padding:1vh 1.2vw;border-radius:18px;border:2px solid var(--border);background:var(--bg2);color:var(--text);font:inherit;-webkit-user-select:text;user-select:text}
 .t-file{color:var(--muted);font:inherit}
+.t-rzname{display:block;width:100%;font-size:1.1em;font-weight:700}
+.t-rzname input{display:block;width:100%;min-height:clamp(72px,11vh,120px);margin-top:.4em;padding:0 1.2vw;font:inherit;font-size:1.5em;border-radius:20px;border:2px solid var(--border);background:var(--bg2);color:var(--text);-webkit-user-select:text;user-select:text}
+.t-crumbs{display:flex;flex-wrap:wrap;align-items:center;gap:.5em;font-size:1.05em}.t-crumbs .t-btn{min-height:52px;padding:0 1em}
+.t-pickgrid .t-btn{justify-content:space-between;text-decoration:none}
+.t-pickgrid .t-btn.primary{grid-column:1/-1;justify-content:center}
+.t-picked{display:flex;align-items:center;justify-content:space-between;gap:2vw;padding:1.2vh 1.6vw;background:var(--bg2);border:2px solid var(--border);border-radius:18px}
 @media (max-width:820px){.g-vorg{grid-template-columns:1fr}.t-cols,.t-new{grid-template-columns:1fr}.t-new,.t-new.has-rz{grid-template-rows:auto}}
 </style>
 </head>
-<body{{if .DeviceSession}} class="has-gear"{{end}}{{if .SetupCard}} data-card-in="1"{{end}} data-mode="{{.Mode}}" data-idle="{{.Idle}}"{{if .SettingsEvents}} data-settings-events="1"{{end}}{{if .CardEvents}} data-card-events="1" data-card-notify="{{.CardNotify}}"{{if ne .Mode "schoner"}} data-manual-login="{{.ManualLogin}}" data-password-button="{{if .PasswordButton}}1{{else}}0{{end}}"{{end}}{{end}}>
+<body{{if .DeviceSession}} class="has-gear"{{end}}{{if .SetupCard}} data-card-in="1"{{end}} data-mode="{{.Mode}}"{{if .SaverSlides}} data-saver-slides="1"{{end}} data-idle="{{.Idle}}"{{if .SettingsEvents}} data-settings-events="1"{{end}}{{if .CardEvents}} data-card-events="1" data-card-notify="{{.CardNotify}}"{{if ne .Mode "schoner"}} data-manual-login="{{.ManualLogin}}" data-password-button="{{if .PasswordButton}}1{{else}}0{{end}}"{{end}}{{end}}>
 {{if .DeviceSession}}<a class="t-gear" href="{{.AdminURL}}" aria-label="Terminal-Einstellungen" title="Terminal-Einstellungen"><i class="ti ti-settings" aria-hidden="true"></i></a>{{end}}
 {{if .NoInfra}}
 <div class="t-none">
@@ -164,6 +177,8 @@ body.has-gear .g-vorg{padding-top:60px}
   <small>Bitte in PDH unter „Benutzer“ eine Anlage für dieses Terminal festlegen.</small>
 </div>
 {{else if eq .Mode "global"}}
+<div class="g-stage" id="g-stage" data-name="{{.Name}}" data-frame-csp="{{.FrameCSP}}" aria-live="off"><div class="g-empty">{{.Name}}<small>Folien werden geladen …</small></div></div>
+{{else if and (eq .Mode "schoner") .SaverSlides}}
 <div class="g-stage" id="g-stage" data-name="{{.Name}}" data-frame-csp="{{.FrameCSP}}" aria-live="off"><div class="g-empty">{{.Name}}<small>Folien werden geladen …</small></div></div>
 {{else if eq .Mode "schoner"}}
 <a class="t-saver" href="/terminal/info" aria-label="Zum Melden berühren">
@@ -209,16 +224,21 @@ body.has-gear .g-vorg{padding-top:60px}
   <div class="t-path">{{if .Path}}{{.Path}}{{else}}<b>{{.Name}}</b>{{end}}{{if .Report.LoggedIn}} · {{.Report.Person}}{{end}}</div>
   <div class="t-clock" data-clock>&nbsp;</div>
 </div>
-{{if not .Report.LoggedIn}}
-<div class="t-none"><i class="ti ti-id-badge-2" aria-hidden="true"></i><p>Bitte zuerst anmelden</p><small>Zum Melden per Karte oder mit Benutzer und Passwort am Terminal anmelden.</small></div>
-{{else if not .Report.Can}}
+{{if not .Report.Can}}
 <div class="t-none"><i class="ti ti-lock" aria-hidden="true"></i><p>Keine Berechtigung</p><small>Dieses Terminal darf hier nichts melden.</small></div>
+{{else if not .Report.Pick.Sel}}
+<div class="t-rz">
+  <h2 class="t-rzh">{{.Report.Title}}</h2>
+  {{if .Report.Notice}}<div class="t-rznote" role="alert">{{.Report.Notice}}</div>{{end}}
+  {{template "t-pick" .Report.Pick}}
+</div>
 {{else}}
 <form class="t-rz t-rzadd" method="post" action="/terminal/{{if eq .Report.Type "fault"}}stoerung{{else}}ticket{{end}}" enctype="multipart/form-data">
   <h2 class="t-rzh">{{.Report.Title}}</h2>
   {{if .Report.Notice}}<div class="t-rznote" role="alert">{{.Report.Notice}}</div>{{end}}
-  {{if gt (len .Report.Plants) 1}}<h3>Anlage</h3>
-  <div class="t-rzgrid">{{range $i, $p := .Report.Plants}}<label class="t-opt"><input type="radio" name="infra" value="{{$p.Value}}"{{if eq $i 0}} checked{{end}}><span>{{$p.Label}}</span></label>{{end}}</div>{{end}}
+  <input type="hidden" name="infra" value="{{.Report.Pick.Sel}}">
+  {{template "t-picked" .Report.Pick}}
+  {{if not .Report.LoggedIn}}<label class="t-rzname">Kürzel/Name (freiwillig)<input type="text" name="name" maxlength="40" autocomplete="off"></label>{{end}}
   {{if .Report.Texts}}<h3>Was ist los?</h3>
   <div class="t-rzgrid">{{range .Report.Texts}}<label class="t-opt"><input type="radio" name="text_id" value="{{.ID}}"><span>{{.Label}}</span></label>{{end}}</div>{{end}}
   <h3>{{if .Report.Texts}}Ergänzung (freiwillig){{else}}Beschreibung{{end}}</h3>
@@ -234,7 +254,6 @@ body.has-gear .g-vorg{padding-top:60px}
 {{end}}
 {{else if eq .Mode "rusten"}}
 <div class="t-head">
-  <a class="t-btn" href="{{if .SetupAdd}}/terminal/rusten{{else}}/terminal/neu{{end}}"><i class="ti ti-arrow-left" aria-hidden="true"></i> Zurück</a>
   <div class="t-path">{{if .Path}}{{.Path}}{{else}}<b>{{.Name}}</b>{{end}}{{if .SetupCard}} · {{.SetupPerson}}{{end}}</div>
   <div class="t-clock" data-clock>&nbsp;</div>
 </div>
@@ -243,8 +262,13 @@ body.has-gear .g-vorg{padding-top:60px}
 {{else}}
 <div class="t-rz">
   {{if .Setup.Notice}}<div class="t-rznote" role="alert">{{.Setup.Notice}}</div>{{end}}
+  {{if not .Pick.Sel}}
+  {{template "t-pick" .Pick}}
+  {{else}}
+  {{template "t-picked" .Pick}}
   {{if .SetupAdd}}
   <form class="t-rzadd" method="post" action="/terminal/rusten/add">
+    <input type="hidden" name="infra" value="{{.Pick.Sel}}">
     <h3>Rüsttaste</h3>
     <div class="t-rzgrid">{{range .Setup.Buttons}}<label class="t-opt"><input type="radio" name="button_id" value="{{.ID}}" required><span>{{.Name}}</span></label>{{end}}</div>
     <h3>Beginn</h3>
@@ -256,15 +280,17 @@ body.has-gear .g-vorg{padding-top:60px}
   </form>
   {{else}}
   {{if .Setup.Running}}<div class="t-rzrun"><b>{{.Setup.Text}}</b>{{if .Setup.Overrun}}<span><i class="ti ti-alert-triangle" aria-hidden="true"></i> Höchstdauer überschritten</span>{{end}}
-    <form method="post" action="/terminal/rusten/finish"><button type="submit" class="t-btn primary big"><i class="ti ti-check" aria-hidden="true"></i> Fertig</button></form></div>
+    <form method="post" action="/terminal/rusten/finish"><input type="hidden" name="infra" value="{{.Pick.Sel}}"><button type="submit" class="t-btn primary big"><i class="ti ti-check" aria-hidden="true"></i> Fertig</button></form></div>
   {{else if .Setup.Fault}}<div class="t-rzrun fault"><b><i class="ti ti-alert-triangle" aria-hidden="true"></i> {{.Setup.Text}}</b></div>{{end}}
   {{if .Setup.Buttons}}
-  <form class="t-rzgrid" method="post" action="/terminal/rusten/start">
+  <form class="t-rzadd" method="post" action="/terminal/rusten/start">
+    <input type="hidden" name="infra" value="{{.Pick.Sel}}">
     {{if not .SetupCard}}<label class="t-rzname">Kürzel/Name (freiwillig)<input type="text" name="name" maxlength="40" autocomplete="off"></label>{{end}}
-    {{range .Setup.Buttons}}<button type="submit" class="t-btn{{if .Current}} cur{{end}}" name="button_id" value="{{.ID}}"{{if .Current}} aria-current="true" disabled{{end}}>{{.Name}}</button>{{end}}
+    <div class="t-rzgrid">{{range .Setup.Buttons}}<button type="submit" class="t-btn{{if .Current}} cur{{end}}" name="button_id" value="{{.ID}}"{{if .Current}} aria-current="true" disabled{{end}}>{{.Name}}</button>{{end}}</div>
   </form>
-  <a class="t-btn" href="/terminal/rusten?nachtragen=1"><i class="ti ti-plus" aria-hidden="true"></i> Rüstzeit nachtragen</a>
+  <a class="t-btn" href="/terminal/rusten?infra={{.Pick.Sel}}&amp;nachtragen=1"><i class="ti ti-plus" aria-hidden="true"></i> Rüstzeit nachtragen</a>
   {{else}}<div class="t-empty"><i class="ti ti-tool-off" aria-hidden="true"></i> Keine Rüsttasten an dieser Anlage</div>{{end}}
+  {{end}}
   {{end}}
 </div>
 {{end}}

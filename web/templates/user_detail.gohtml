@@ -210,6 +210,9 @@
       <input type="hidden" name="terminal_global_screen_sent" value="1">
       <label style="font-size:13px;display:flex;gap:8px;align-items:center;margin-top:8px"><input type="checkbox" name="terminal_global_screen" {{if $m.TerminalGlobalScreen}}checked{{end}}> Globales Terminal (Infobildschirm)</label>
       <div class="rec-sub" style="margin-top:4px">Zeigt die Folien aus „Infobildschirm“, ohne Anmeldung und ohne Kartenleser.</div>
+      <input type="hidden" name="terminal_saver_slides_sent" value="1">
+      <label style="font-size:13px;display:flex;gap:8px;align-items:center;margin-top:8px"><input type="checkbox" name="terminal_saver_slides" {{if $m.TerminalSaverSlides}}checked{{end}}> Folienschau als Bildschirmschoner</label>
+      <div class="rec-sub" style="margin-top:4px">Nur für normale Terminals (nicht global): Statt der Uhr spielt der Schoner die Folien aus „Infobildschirm“. Berührung außerhalb eines Vorgangs und jede Karte wecken das Terminal wie sonst.</div>
       <script>
       (function () {
         var box = document.getElementById('ud-card-notify');

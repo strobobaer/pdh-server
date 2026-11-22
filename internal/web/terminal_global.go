@@ -53,6 +53,19 @@ func (h *Handler) terminalIsGlobal(ctx context.Context, uid string) (bool, error
 	return on, err
 }
 
+// terminalSaverSlides: spielt das (normale) Terminal die Folien als Bildschirmschoner?
+func (h *Handler) terminalSaverSlides(ctx context.Context, uid string) (bool, error) {
+	if h.db == nil || uid == "" {
+		return false, nil
+	}
+	var on bool
+	err := h.db.QueryRow(ctx, `SELECT saver_slides FROM terminal_settings WHERE user_id = $1::uuid`, uid).Scan(&on)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	return on, err
+}
+
 // cardTerminalLocked wie cardTerminal, aber ein globales Terminal darf weder Karten
 // melden noch sich anmelden: 403.
 func (h *Handler) cardTerminalLocked(w http.ResponseWriter, r *http.Request) (string, bool) {
@@ -73,7 +86,7 @@ func (h *Handler) cardTerminalLocked(w http.ResponseWriter, r *http.Request) (st
 	return uid, true
 }
 
-// globalTerminal: Gerätesitzung eines globalen Terminals; sonst 403 (schon geschrieben).
+// globalTerminal: Gerätesitzung eines globalen Terminals (oder mit Folienschau als Schoner); sonst 403 (schon geschrieben).
 func (h *Handler) globalTerminal(w http.ResponseWriter, r *http.Request) (string, bool) {
 	uid, ok := h.cardTerminal(w, r)
 	if !ok {
@@ -86,8 +99,17 @@ func (h *Handler) globalTerminal(w http.ResponseWriter, r *http.Request) (string
 		return "", false
 	}
 	if !g {
-		http.Error(w, "Dieses Terminal ist kein globales Terminal.", http.StatusForbidden)
-		return "", false
+		// Folienschau als Bildschirmschoner eines normalen Terminals nutzt dieselben Wege (Folien, Bilder, Vorgang lesen)
+		s, err := h.terminalSaverSlides(r.Context(), uid)
+		if err != nil {
+			componentLog("terminal").Error().Err(err).Msg("folienschau-schoner prüfen")
+			http.Error(w, "Daten nicht verfügbar", http.StatusInternalServerError)
+			return "", false
+		}
+		if !s {
+			http.Error(w, "Dieses Terminal zeigt keine Folien.", http.StatusForbidden)
+			return "", false
+		}
 	}
 	return uid, true
 }

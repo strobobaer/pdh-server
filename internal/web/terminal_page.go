@@ -82,6 +82,8 @@ type terminalPage struct {
 	SetupAgo       []terminalChoice
 	SetupDur       []terminalChoice
 	Report         terminalReport // Meldeseiten Störung/Ticket (terminal_report.go)
+	Pick           terminalPick   // Rüsten: Anlagenwahl (Meldeseiten: Report.Pick)
+	SaverSlides    bool           // Schoner spielt die Folien (Gerätesitzung, Einstellung saver_slides)
 	Done           string         // Neu: gerade gemeldet (fault | ticket)
 }
 
@@ -315,6 +317,17 @@ func (h *Handler) terminalGate(w http.ResponseWriter, r *http.Request, mode stri
 	// Gerätesitzung (nicht global): Einstellungsstrom auch auf Schoner und Seite „keine Anlage“, damit ein
 	// später als global gekennzeichnetes Terminal sofort zur Folienschau wechselt.
 	p.SettingsEvents = h.terminalDeviceSession(r)
+	// Folienschau als Bildschirmschoner (nur Gerätesitzung, nur die Schonerseite): derselbe Player wie beim globalen Terminal.
+	if mode == "schoner" && p.DeviceSession {
+		s, err := h.terminalSaverSlides(r.Context(), uid)
+		if err != nil {
+			componentLog("terminal").Error().Err(err).Msg("folienschau-schoner prüfen")
+		} else if s {
+			p.SaverSlides = true
+			p.FrameCSP = h.terminalFrameCSP(r.Context())
+			w.Header().Set("Content-Security-Policy", p.FrameCSP)
+		}
+	}
 	infra, role, err := h.terminalInfraLookup(r.Context(), uid)
 	var name string
 	var ok bool
