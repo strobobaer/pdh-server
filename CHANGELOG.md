@@ -29,6 +29,10 @@ im Kapitel „Versionen & Updates“ an.
 - **Neues Recht „ESPPDH: Firmware übers Netz aufspielen“** (`esppdh.ota`). Alle, die bisher Geräte bauen und flashen durften (`esppdh.edit`), bekommen es automatisch in derselben Abteilung. Die Sammelaktion braucht das Recht in allen Abteilungen.
 - Updates nimmt ein Gerät nur mit seinem eigenen Kennwort an. Das Kennwort steht verschlüsselt im PDH und erscheint nie im Verlauf.
 
+### Behoben
+
+- **Startseite:** Unter der Begrüßung stand fest „Werk Augsburg“ (aus den ersten Beispieldaten). Dort stehen jetzt Firma und Ort aus den Firmenstammdaten (Infrastruktur → oberster Knoten → Reiter „Firma“); ohne Eintrag nur das Datum.
+
 ## [0.82.24] – 2026-11-22
 
 ### Neu

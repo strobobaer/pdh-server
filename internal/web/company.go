@@ -75,6 +75,17 @@ func (h *Handler) resetCompanyCache() {
 	h.companyC.mu.Unlock()
 }
 
+// companyHeadline: „Firma · Ort“ für den Kopf der Startseite ("" ohne Angaben).
+func companyHeadline(p companyProfile) string {
+	var parts []string
+	for _, s := range []string{strings.TrimSpace(p.Name), strings.TrimSpace(p.City)} {
+		if s != "" {
+			parts = append(parts, s)
+		}
+	}
+	return strings.Join(parts, " · ")
+}
+
 // company liefert die Firmenstammdaten (zwischengespeichert); ohne Datenbank oder bei einem
 // Lesefehler ein leeres Profil – dann sieht alles aus wie vor 0.82.21.
 func (h *Handler) company(ctx context.Context) companyProfile {

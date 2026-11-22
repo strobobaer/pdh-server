@@ -113,6 +113,7 @@ type DashboardData struct {
 	BaseData
 	Greeting      string
 	DateStr       string
+	CompanyLine   string                // Firma und Ort aus den Firmenstammdaten ("" = keine eingetragen)
 	OpenTickets   []TicketView          // rechte Seitenleiste
 	GanttItems    []GanttItem           // Widgets Tabelle und Zeitstrahl
 	Widgets       []DashboardWidgetView // persoenliche Widgets (dashboard_widgets.go)
@@ -1823,8 +1824,9 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 	// rechte Seitenleiste und die Vorgänge für Tabelle und Zeitstrahl.
 	data := DashboardData{
 		BaseData: h.baseData(r, "dashboard", "Dashboard", "Offene Tickets"),
-		Greeting: greeting(),
-		DateStr:  longDate(h.requestLang(r), now),
+		Greeting:    greeting(),
+		DateStr:     longDate(h.requestLang(r), now),
+		CompanyLine: companyHeadline(h.company(ctx)),
 	}
 	data.Widgets, data.WidgetCatalog, _ = h.dashboardWidgetViews(r)
 	if h.canViewInfra(r) {

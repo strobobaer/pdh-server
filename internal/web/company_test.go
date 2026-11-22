@@ -38,3 +38,32 @@ func TestValidateCompany(t *testing.T) {
 		}
 	}
 }
+
+// Kopf der Startseite: Firma und Ort aus den Firmenstammdaten, nie ein fester Werksname.
+func TestCompanyHeadline(t *testing.T) {
+	for _, c := range []struct {
+		p    companyProfile
+		want string
+	}{
+		{companyProfile{Name: "Muster GmbH", City: "Ulm"}, "Muster GmbH · Ulm"},
+		{companyProfile{Name: "Muster GmbH"}, "Muster GmbH"},
+		{companyProfile{City: "Ulm"}, "Ulm"},
+		{companyProfile{}, ""},
+	} {
+		if got := companyHeadline(c.p); got != c.want {
+			t.Errorf("%+v: %q, erwartet %q", c.p, got, c.want)
+		}
+	}
+}
+
+func TestDashboardHeadShowsCompany(t *testing.T) {
+	tmpl := loadTestTemplates(t)
+	out := renderPage(t, tmpl, "dashboard", DashboardData{DateStr: "Sonntag, 22. November 2026", CompanyLine: "Muster GmbH · Ulm"})
+	if strings.Contains(out, "Augsburg") || !strings.Contains(out, "Sonntag, 22. November 2026 · Muster GmbH · Ulm") {
+		t.Errorf("Kopf der Startseite ohne Firmendaten")
+	}
+	out = renderPage(t, tmpl, "dashboard", DashboardData{DateStr: "Sonntag, 22. November 2026"})
+	if strings.Contains(out, "Augsburg") || strings.Contains(out, "2026 ·") {
+		t.Errorf("ohne Firmendaten steht trotzdem ein Zusatz da")
+	}
+}
