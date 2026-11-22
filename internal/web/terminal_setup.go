@@ -4,8 +4,9 @@ package web
 // Nachtragen) im Design des Terminals – ohne Umweg über die Meldeseite des Easy-Modus. Zugang über
 // die Seite „Neu“ unterhalb von Störung und Ticket. Dieselbe Fachlogik wie Easy-Modus und
 // Anlagenseite (setup_easy.go): Rüsttasten der Anlage samt geerbten, Bremse je Anlage, Prüfung der
-// Zeiten. Wer rüstet: die per Karte angemeldete Person (mit setup.edit für die Abteilung der Anlage),
-// sonst niemand: ohne Anmeldung (Karte oder manuell am Terminal) wird zur Anmeldung aufgefordert.
+// Zeiten. Wer rüstet: die per Karte oder manuell angemeldete Person, ohne Anmeldung der Terminal-Benutzer
+// (optional mit Kürzel/Name wie im Easy-Modus). Das Recht setup.edit für die Abteilung der Anlage hat
+// immer der Terminal-Benutzer.
 
 import (
 	"net/http"
@@ -17,10 +18,10 @@ import (
 	"pdh/internal/modules/ruesten"
 )
 
-// setupActor: Person, die am Terminal rüstet.
+// setupActor: wer am Terminal rüstet (angemeldete Person, sonst der Terminal-Benutzer).
 type setupActor struct {
 	ID, Name string
-	Card     bool // per Karte angemeldet
+	Card     bool // angemeldet (Karte oder manuell)
 	Can      bool // setup.edit des Terminal-Benutzers (Rolle Terminal) für die Anlage
 }
 
@@ -29,16 +30,16 @@ type terminalChoice struct{ Value, Label string }
 // terminalSetupActor bestimmt, wer rüstet (angemeldete Person) und ob das Terminal es darf.
 func (h *Handler) terminalSetupActor(r *http.Request, uid, infraID string) setupActor {
 	ctx := r.Context()
+	can := h.terminalUserCan(r, uid, permSetupEdit, infraID)
 	if h.db != nil {
 		if p, err := h.cardSessionPerson(ctx, uid); err != nil {
 			componentLog("terminal").Error().Err(err).Msg("kartensitzung lesen")
 		} else if p != nil {
-			return setupActor{ID: p.ID, Name: strings.TrimSpace(p.FirstName + " " + p.LastName), Card: true,
-				Can: h.terminalUserCan(r, uid, permSetupEdit, infraID)}
+			return setupActor{ID: p.ID, Name: strings.TrimSpace(p.FirstName + " " + p.LastName), Card: true, Can: can}
 		}
 	}
-	// Ohne Anmeldung (Karte oder manuell am Terminal) rüstet niemand: nie der bloße Terminal-Benutzer.
-	return setupActor{ID: uid}
+	// Ohne Anmeldung rüstet der Terminal-Benutzer; wer es war, steht im freiwilligen Kürzel.
+	return setupActor{ID: uid, Can: can}
 }
 
 // terminalSetupFill füllt die Rüsten-Angaben der Seite (Neu: Kachel; Rüsten: ganze Seite).
@@ -90,6 +91,9 @@ func (h *Handler) terminalSetupAct(w http.ResponseWriter, r *http.Request, do fu
 	if !a.Can {
 		http.Redirect(w, r, "/terminal/rusten", http.StatusSeeOther)
 		return
+	}
+	if !a.Card {
+		a.Name = strings.TrimSpace(r.FormValue("name")) // Kürzel/Name, freiwillig
 	}
 	notice, back := do(p, a)
 	if back == "" {

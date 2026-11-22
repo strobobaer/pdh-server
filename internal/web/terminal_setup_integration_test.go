@@ -70,16 +70,28 @@ func TestTerminalSetupInheritedButtons(t *testing.T) {
 	}
 	tu := &users.User{ID: term, Role: users.Role("terminal"), IsSystemUser: true}
 
-	// Ohne Anmeldung: Aufforderung zur Anmeldung, keine Bedienung, nie der bloße Terminal-Benutzer
-	if body := do(tu, "GET", "/terminal/rusten", nil).Body.String(); !strings.Contains(body, "Bitte zuerst anmelden") || strings.Contains(body, "/terminal/rusten/start") {
-		t.Error("ohne Anmeldung: Aufforderung fehlt oder Start angeboten")
+	// Ohne Anmeldung rüstet der Terminal-Benutzer; Kürzel freiwillig
+	page0 := do(tu, "GET", "/terminal/rusten", nil).Body.String()
+	if strings.Contains(page0, "Bitte zuerst anmelden") || !strings.Contains(page0, `action="/terminal/rusten/start"`) || !strings.Contains(page0, `name="name"`) {
+		t.Error("ohne Anmeldung: Bedienung oder Kürzel-Feld fehlt")
 	}
-	do(tu, "POST", "/terminal/rusten/start", url.Values{"button_id": {b.ID}})
+	if body := do(tu, "GET", "/terminal/neu", nil).Body.String(); !strings.Contains(body, `href="/terminal/rusten"`) || strings.Contains(body, "Bitte zuerst anmelden") {
+		t.Error("ohne Anmeldung: Kachel Rüsten nicht aktiv")
+	}
+	do(tu, "POST", "/terminal/rusten/start", url.Values{"button_id": {b.ID}, "name": {"AB"}})
+	do(tu, "POST", "/terminal/rusten/finish", url.Values{})
+	do(tu, "POST", "/terminal/rusten/add", url.Values{"button_id": {b.ID}, "ago": {"60"}, "dur": {"30"}})
 	var n int
-	e.must(e.pool.QueryRow(e.ctx, `SELECT count(*) FROM setup_times WHERE infrastructure_id = $1::uuid`, plant).Scan(&n))
-	if n != 0 {
-		t.Fatalf("ohne Anmeldung wurde gerüstet: %d", n)
+	e.must(e.pool.QueryRow(e.ctx, `SELECT count(*) FROM setup_times WHERE infrastructure_id = $1::uuid AND created_by = $2::uuid`, plant, term).Scan(&n))
+	if n != 2 {
+		t.Fatalf("ohne Anmeldung: %d Rüstzeiten vom Terminal-Benutzer, erwartet 2", n)
 	}
+	var op1, op2 int
+	e.must(e.pool.QueryRow(e.ctx, `SELECT count(*) FILTER (WHERE operator_name = 'AB'), count(*) FILTER (WHERE COALESCE(operator_name,'') = '') FROM setup_times WHERE infrastructure_id = $1::uuid`, plant).Scan(&op1, &op2))
+	if op1 != 1 || op2 != 1 {
+		t.Errorf("Kürzel gespeichert: %d mit, %d ohne; erwartet 1/1", op1, op2)
+	}
+	e.exec(`DELETE FROM setup_times WHERE infrastructure_id = $1::uuid`, plant)
 	e.exec(`INSERT INTO terminal_card_sessions (terminal_user_id, person_id) VALUES ($1::uuid, $2::uuid)`, term, person)
 	e.t.Cleanup(func() { e.pool.Exec(context.Background(), `DELETE FROM terminal_card_sessions WHERE terminal_user_id = $1::uuid`, term) })
 
@@ -141,6 +153,17 @@ func TestTerminalSetupInheritedButtons(t *testing.T) {
 	e.must(e.pool.QueryRow(e.ctx, `SELECT count(*) FROM setup_times WHERE infrastructure_id = $1::uuid`, plant).Scan(&n))
 	if n != 2 {
 		t.Errorf("ohne Recht wurde gerüstet: %d", n)
+	}
+
+	// ohne Anmeldung und ohne setup.edit des Terminal-Benutzers: verweigert, Kachel inaktiv
+	e.exec(`DELETE FROM terminal_card_sessions WHERE terminal_user_id = $1::uuid`, term)
+	if body := do(tu, "GET", "/terminal/neu", nil).Body.String(); !strings.Contains(body, "Keine Berechtigung zum Rüsten") {
+		t.Error("ohne Anmeldung und Recht: Hinweis auf der Kachel fehlt")
+	}
+	do(tu, "POST", "/terminal/rusten/start", url.Values{"button_id": {b.ID}, "name": {"AB"}})
+	e.must(e.pool.QueryRow(e.ctx, `SELECT count(*) FROM setup_times WHERE infrastructure_id = $1::uuid`, plant).Scan(&n))
+	if n != 2 {
+		t.Errorf("ohne Anmeldung und Recht wurde gerüstet: %d", n)
 	}
 
 	// fremde Seite: POST wird abgewiesen
