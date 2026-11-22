@@ -722,8 +722,20 @@ und 3 drückt bis auf Weiteres der Anwender.
     `internal/core/origin`, jeder Anlege-Weg setzt sie; Anzeige über
     `record_origin.go` (Kachelzeile „davon …“, Schilder, Detailseite;
     Profilname nur mit `sync.view`); Kachelfarbe als `bg` in der
-    Widget-Einstellung (acht helle Töne, dunkel gedämpft). Offen:
-    Schlussprüfung, Freigabe Push/Merge, Verbund-Update, Browserprüfung.
+    Widget-Einstellung (acht helle Töne, dunkel gedämpft). **Auf `main`**
+    (22.11.2026, Merge `6b6524a`) und dem Testverbund (beide Server und Zeuge
+    0.82.32, aktiv jetzt `pdh` 10.10.0.14; Nachtrag: 7 Abgleich-Tickets,
+    keine Änderungsmeldungen). Im Browser geprüft: farbige Kacheln,
+    Herkunftszeile „davon 6 aus Störmeldungen ERP (Abnahme) · 1 aus der App ·
+    1 vom Terminal“, Schilder in der Ticket-Liste, Herkunft auf der
+    Ticket-Seite; Fiori/Fluent, hell/dunkel, 320–1366 px ohne Überlauf und
+    Konsolenfehler; Test-Tickets still entfernt, Startseite des Prüfkontos
+    zurückgesetzt, Prüfkonto gesperrt. Beim Terminal steht dessen Anlage,
+    nicht der Gerätename. Geparkt: REST-Anlage ohne Herkunft, Texte nur
+    deutsch, Herkunft in der JSON-Schnittstelle nur beim Anlegen,
+    Zählabfrage bei vielen Abgleich-Vorgängen, Fehltreffer im Nachtrag bei
+    kopiertem Terminal-Text. Offen: 10.10.0.202 einspielen (Anwender, mit
+    Sicherung).
 24. **Copilot beim Anlegen und Zuordnen** (Wunsch 22.11.2026: „C“,
     „Anthropic“, dazu MySQL, InfluxDB, SQLite, Vorlagen aus dem Internet,
     berechnete Werte mit Formelgenerator und Gültigkeit von/bis; Entwurf
