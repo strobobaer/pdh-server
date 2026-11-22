@@ -341,6 +341,8 @@ type esppdhRow struct {
 	esppdhDevice
 	BoardLabel, NetLabel string
 	Live                 esppdhLive
+	OTARun               *esppdhOTARunView // Eintrag der letzten Sammelaktion (esppdh_ota_batch.go)
+	OTAPending           bool              // kommt in der laufenden Sammelaktion noch dran
 }
 
 type ESPPDHPageData struct {
@@ -354,6 +356,7 @@ type ESPPDHPageData struct {
 	PlainPort int // ESP8266 an einem Broker mit TLS: „ohne TLS (Port …)“ anbieten
 	Notice    string
 	Warn      string // Aktion ausgeführt, aber der Broker ließ sich nicht abgleichen
+	Batch     esppdhBatchView // Sammelaktion „Alle veralteten Geräte aktualisieren“ (nur mit esppdh.ota überall)
 }
 
 // esppdhWarnings: die Aktion ist gespeichert, aber die Zugänge am Broker ließen sich nicht neu
@@ -382,6 +385,9 @@ var esppdhNotices = map[string]string{
 	"build":    "Bau eingereiht. Der Verlauf steht unten bei „Firmware“.",
 	"canceled": "Bau abgebrochen.",
 	"ota":      "Update eingereiht. Der Verlauf steht unten bei „Firmware übers Netz“.",
+	"ota-all":  "Sammelaktion gestartet. Die Geräte werden nacheinander gebaut und aufgespielt – den Stand zeigt die Spalte „Zustand“ (Seite neu laden).",
+	"ota-none": "Kein Gerät ist veraltet – es gibt nichts aufzuspielen.",
+	"ota-all-cancel": "Sammelaktion abgebrochen. Das laufende Gerät wird noch fertig, die übrigen nicht mehr.",
 }
 
 func esppdhBoardLabel(key, custom string) string {
@@ -450,9 +456,11 @@ func (h *Handler) esppdhRenderList(w http.ResponseWriter, r *http.Request, f esp
 		}
 	}
 	live := h.esppdhLiveStates(ctx, visible) // nur für sichtbare Geräte
+	batch, batchRuns, batchPending := h.esppdhBatchOverview(ctx, r)
+	d.Batch = batch
 	for _, dev := range visible {
 		d.Rows = append(d.Rows, esppdhRow{esppdhDevice: dev, BoardLabel: esppdhBoardLabel(dev.BoardKey, dev.CustomBoard),
-			NetLabel: esppdhNetLabel(dev), Live: live[dev.ID]})
+			NetLabel: esppdhNetLabel(dev), Live: live[dev.ID], OTARun: batchRuns[dev.ID], OTAPending: batchPending[dev.ID]})
 	}
 	if d.CanCreate {
 		d.Choices = h.esppdhChoicesOf(ctx)

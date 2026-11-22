@@ -216,15 +216,25 @@ func (h *Handler) esppdhFirmwareCurrent(ctx context.Context, d esppdhDevice, bro
 	if configHash == "" {
 		return false, errors.New("Lauf ohne Prüfsumme der Konfiguration")
 	}
-	mqttPW, apPW, err := h.esppdhSecrets(d)
+	cur, err := h.esppdhConfigHashFor(ctx, d, brokerHost)
 	if err != nil {
 		return false, err
 	}
+	return cur == configHash, nil
+}
+
+// esppdhConfigHashFor: Prüfwert der Konfiguration, wie das Gerät jetzt für diese Broker-Adresse
+// gebaut würde (esppdhJobFor rechnet genauso).
+func (h *Handler) esppdhConfigHashFor(ctx context.Context, d esppdhDevice, brokerHost string) (string, error) {
+	mqttPW, apPW, err := h.esppdhSecrets(d)
+	if err != nil {
+		return "", err
+	}
 	res, msgs := h.esppdhResolve(ctx, d, mqttPW, apPW, brokerHost)
 	if len(msgs) > 0 {
-		return false, errors.New(strings.Join(msgs, " "))
+		return "", errors.New(strings.Join(msgs, " "))
 	}
-	return esppdh.ConfigHash(res.Dev) == configHash, nil
+	return esppdh.ConfigHash(res.Dev), nil
 }
 
 // ── Detailseite ──────────────────────────────────────────────

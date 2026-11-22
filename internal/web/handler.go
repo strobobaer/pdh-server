@@ -388,6 +388,10 @@ type Handler struct {
 	esppdhQ      esppdhQueue
 	esppdhRunner esppdhBuilder
 	esppdhUpload esppdhUploadFunc // Firmware übers Netz aufspielen (nil = esppdh.Runner.Upload; esppdh_ota.go)
+	// Sammelaktion „Alle veralteten Geräte aktualisieren“ (esppdh_ota_batch.go); der Hook ersetzt
+	// in Tests die Prüfung „esppdh.ota überall“
+	esppdhB          esppdhBatchState
+	esppdhOTAAllHook func(*http.Request) bool
 	// ESPPDH (esppdh_update.go): ESPHome täglich prüfen, proben und umschalten. Adresse der
 	// Versionsliste (leer = pypi.org), Prüfer mit einem bestimmten Programm (nil = esppdh.Runner),
 	// höchstens ein Lauf zur Zeit (Takt und Knopf „Jetzt prüfen“), Uhr (nil = time.Now)
@@ -1195,6 +1199,9 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/import/esppdh/{id}/build/{bid}/cancel", h.EsppdhBuildCancelWeb) // Bau abbrechen
 	r.Post("/import/esppdh/{id}/ota", h.EsppdhOTAPushWeb)                    // Firmware übers Netz aufspielen (esppdh_ota.go)
 	r.Get("/import/esppdh/{id}/ota/{rid}", h.EsppdhOTAPartWeb)               // Verlauf eines Updates (htmx, alle 2 s)
+	r.Post("/import/esppdh/ota-all", h.EsppdhOTAAllWeb)                      // Sammelaktion: Liste zur Bestätigung (esppdh_ota_batch.go)
+	r.Post("/import/esppdh/ota-all/start", h.EsppdhOTAAllStartWeb)           // … starten
+	r.Post("/import/esppdh/ota-all/{batch}/cancel", h.EsppdhOTAAllCancelWeb) // … abbrechen
 	// Firmware herunterladen und per USB flashen (esppdh_flash.go): nur esppdh.edit am Gerät
 	r.Get("/import/esppdh/{id}/firmware/{bid}/factory.bin", h.EsppdhFactoryWeb)
 	r.Get("/import/esppdh/{id}/firmware/{bid}/ota.bin", h.EsppdhOTAWeb)

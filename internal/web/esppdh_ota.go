@@ -75,6 +75,7 @@ type esppdhOTAFacts struct {
 	Mirror, Maint, Locked, Active   bool   // Active: ein Auftrag wartet oder läuft schon
 	Blocked                         string // warum hier nicht gebaut werden kann (esppdhBuildBlocked)
 	LatestBuild, LatestWhen         string // jüngster gelungener Bau
+	LatestHash, CfgHash             string // … sein Prüfwert und der des Geräts jetzt ("" = nicht feststellbar)
 	Current, FileOK                 bool   // … passt noch zur Konfiguration, Datei vorhanden
 	BrokerOK                        bool   // Werte des Brokers lesbar
 	Reported, InstalledWhen         string // vom Gerät gemeldete Kennung (und wann gebaut)
@@ -104,6 +105,18 @@ func esppdhOTAReason(f esppdhOTAFacts) string {
 		return "Die zuletzt gebaute Firmware passt nicht mehr zur Konfiguration – erst neu bauen."
 	case !f.FileOK:
 		return "Die Datei der zuletzt gebauten Firmware fehlt – bitte neu bauen."
+	}
+	return esppdhOTADeviceReason(f)
+}
+
+// esppdhOTADeviceReason: Gründe am Gerät selbst – Broker, Update-Baustein, Adresse, Netz (die
+// Sammelaktion prüft sie vor dem Bauen; die Firmware baut sie bei Bedarf neu).
+func esppdhOTADeviceReason(f esppdhOTAFacts) string {
+	switch {
+	case f.Locked:
+		return "Das Gerät ist gesperrt – erst entsperren."
+	case f.Active:
+		return errEsppdhOTAActive.Error()
 	case !f.BrokerOK:
 		return "Der Broker läuft an diesem Server nicht – ob das Gerät erreichbar ist, lässt sich nicht sehen."
 	case f.Reported == "":
@@ -162,9 +175,9 @@ func (h *Handler) esppdhOTACheck(ctx context.Context, d esppdhDevice) esppdhOTAF
 	err := h.db.QueryRow(ctx, `SELECT id::text, broker_host, config_hash, created_at FROM esppdh_builds
 		WHERE device_id = $1::uuid AND status = 'ok' ORDER BY created_at DESC, id DESC LIMIT 1`, d.ID).Scan(&f.LatestBuild, &host, &hash, &created)
 	if err == nil {
-		f.LatestWhen = created.Local().Format("02.01.2006 15:04")
-		cur, cerr := h.esppdhFirmwareCurrent(ctx, d, host, hash)
-		f.Current = cerr == nil && cur
+		f.LatestWhen, f.LatestHash = created.Local().Format("02.01.2006 15:04"), hash
+		f.CfgHash, _ = h.esppdhConfigHashFor(ctx, d, host)
+		f.Current = f.CfgHash != "" && f.CfgHash == hash
 		_, serr := os.Stat(filepath.Join(esppdhFirmwareRoot, d.ID, esppdhFirmwareName(f.LatestBuild, esppdhOTA)))
 		f.FileOK = serr == nil
 	} else if !errors.Is(err, pgx.ErrNoRows) {
@@ -430,6 +443,16 @@ func (o esppdhOTARunView) Badge() string {
 }
 
 func (o esppdhOTARunView) When() string { return o.Created.Local().Format("02.01.2006 15:04") }
+
+// LastLine: letzte nicht leere Zeile des Verlaufs (Ergebnis), höchstens 160 Zeichen.
+func (o esppdhOTARunView) LastLine() string {
+	lines := strings.Split(strings.TrimSpace(o.Log), "\n")
+	l := []rune(strings.TrimSpace(lines[len(lines)-1]))
+	if len(l) > 160 {
+		return string(l[:160]) + "…"
+	}
+	return string(l)
+}
 
 const esppdhOTARunSelect = `SELECT o.id::text, o.device_id::text, o.status, o.address, COALESCE(o.batch_id::text, ''),
 		COALESCE(TRIM(u.first_name || ' ' || u.last_name), ''), o.log, o.created_at, o.started_at, o.finished_at
