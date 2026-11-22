@@ -29,6 +29,12 @@ web_server:
     username: pdh
     password: !secret web_password
 
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+safe_mode:
+
 mqtt:
   broker: !literal "mqtt.werk.example"
   port: 8883
@@ -161,3 +167,9 @@ text_sensor:
     ip_address:
       name: Adresse
       state_topic: esppdh/verteiler-h2/info/adresse
+  - platform: template
+    name: Firmware
+    lambda: return {""};
+    update_interval: 60s
+    state_topic: esppdh/verteiler-h2/info/firmware
+    retain: true

@@ -28,6 +28,12 @@ web_server:
     username: pdh
     password: !secret web_password
 
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+safe_mode:
+
 mqtt:
   broker: !literal "mqtt.werk.example"
   port: 1883
@@ -81,3 +87,9 @@ text_sensor:
     ip_address:
       name: Adresse
       state_topic: esppdh/linie2-takt/info/adresse
+  - platform: template
+    name: Firmware
+    lambda: return {""};
+    update_interval: 60s
+    state_topic: esppdh/linie2-takt/info/firmware
+    retain: true

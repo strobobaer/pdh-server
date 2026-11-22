@@ -49,6 +49,8 @@ type Device struct {
 
 	WebServer   bool   // Webseite des Geräts (web_server v3, Port 80) mit Anmeldung
 	WebPassword string // Kennwort der Webseite (Benutzer „pdh“), nötig bei WebServer
+	OTAPassword string // Kennwort für Updates übers Netz (ota: platform esphome), Pflicht
+	FirmwareID  string // Kennung des Baus, das Gerät meldet sie (info/firmware); nicht im ConfigHash
 
 	Blocks []Block
 }
@@ -59,6 +61,7 @@ const (
 	secretAP   = "ap_password"
 	secretMQTT = "mqtt_password"
 	secretWeb  = "web_password"
+	secretOTA  = "ota_password"
 )
 
 // Grenzen von ESPHome: Gerätename (esphome.name) höchstens 31 Zeichen, friendly_name höchstens
@@ -216,6 +219,11 @@ func ValidateDevice(d Device) []string {
 			utf8OK(d.WebPassword, "Das Kennwort der Webseite")
 		}
 	}
+	if d.OTAPassword == "" {
+		add("Das Kennwort für Updates übers Netz fehlt.")
+	} else {
+		utf8OK(d.OTAPassword, "Das Kennwort für Updates übers Netz")
+	}
 	if ok {
 		msgs = append(msgs, ValidateBlocks(b, d.Blocks)...)
 	}
@@ -253,6 +261,9 @@ func Generate(d Device) (config, secrets []byte, err error) {
 	if d.WebServer {
 		root.add("web_server", webServerNode(platform))
 	}
+	// Updates übers Netz (das PDH schiebt sie, esphome upload) und Sicherheitsmodus nach
+	// wiederholten Abstürzen beim Start – das Gerät bleibt so erreichbar.
+	root.add("ota", seq(otaNode())).add("safe_mode", empty())
 	root.add("mqtt", mqttNode(d))
 
 	var uarts, modbus, sensors []*yaml.Node
@@ -276,7 +287,7 @@ func Generate(d Device) (config, secrets []byte, err error) {
 	}
 	sensors = append(sensors, uptimeNode(d.Slug))
 	root.add("sensor", seq(sensors...))
-	root.add("text_sensor", seq(addressNode(d)))
+	root.add("text_sensor", seq(addressNode(d), firmwareNode(d)))
 
 	sec := newMap()
 	if !d.Wired {
@@ -289,6 +300,7 @@ func Generate(d Device) (config, secrets []byte, err error) {
 	if d.WebServer {
 		sec.add(secretWeb, literal(d.WebPassword))
 	}
+	sec.add(secretOTA, literal(d.OTAPassword))
 
 	if config, err = encode(root.Node, "ESPPDH: vom PDH erzeugt – Änderungen gehen beim nächsten Bau verloren.\n"+
 		"Kennwörter stehen nicht hier, sondern als !secret in der Geheimnis-Datei.", true); err != nil {
@@ -302,7 +314,9 @@ func Generate(d Device) (config, secrets []byte, err error) {
 
 // ConfigHash: SHA-256 über Konfiguration und Geheimnis-Datei (hex). Ändert sich etwas davon,
 // passt die gebaute Firmware nicht mehr. Leer bei ungültigem Gerät.
+// Die Firmware-Kennung zählt nicht mit – sie ändert sich mit jedem Bau.
 func ConfigHash(d Device) string {
+	d.FirmwareID = ""
 	cfg, sec, err := Generate(d)
 	if err != nil {
 		return ""
@@ -362,6 +376,23 @@ func uptimeNode(slug string) *yaml.Node {
 		add("update_interval", plain(interval)).
 		add("state_topic", plain(infoTopic(slug, topicUptime))).
 		add("retain", plain("false")).Node
+}
+
+// otaNode: Update-Baustein von ESPHome mit Kennwort je Gerät (Port nach ESPHome-Standard).
+func otaNode() *yaml.Node {
+	return newMap().add("platform", plain("esphome")).add("password", secretRef(secretOTA)).Node
+}
+
+// firmwareNode: das Gerät meldet die Kennung seines Baus (retain) – so weiß das PDH, welche
+// Firmware läuft, egal ob per USB oder übers Netz aufgespielt.
+func firmwareNode(d Device) *yaml.Node {
+	return newMap().
+		add("platform", plain("template")).
+		add("name", plain(nameFirmware)).
+		add("lambda", plain(`return {"`+d.FirmwareID+`"};`)).
+		add("update_interval", plain("60s")).
+		add("state_topic", plain(infoTopic(d.Slug, topicFirmware))).
+		add("retain", plain("true")).Node
 }
 
 // addressNode: eigene IP-Adresse (wifi_info bzw. ethernet_info), mit retain.
