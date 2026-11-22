@@ -10,6 +10,12 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.82.26] – 2026-11-22
+
+### Behoben
+
+- **Terminal: Rüsten geht ohne Anmeldung.** Die Kachel **Rüsten** verlangt keine Anmeldung mehr. Ohne Anmeldung rüstet der Terminal-Benutzer; beim Starten und Nachtragen kann ein freiwilliges **Kürzel/Name** eingetragen werden (wie im Easy-Modus). Mit Anmeldung rüstet weiter die angemeldete Person. Das Recht `setup.edit` hat weiterhin der Terminal-Benutzer; ohne es steht „Keine Berechtigung zum Rüsten“. Störung und Ticket brauchen weiter die Anmeldung.
+
 ## [0.82.25] – 2026-11-22
 
 ### Neu
