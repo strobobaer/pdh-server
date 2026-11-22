@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -16,6 +17,8 @@ import (
 
 	"pdh/internal/core/users"
 )
+
+var uuidInHTML = regexp.MustCompile(`[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}`)
 
 func TestTerminalLoginUI(t *testing.T) {
 	e := newATEnv(t)
@@ -142,7 +145,8 @@ func TestTerminalLoginUI(t *testing.T) {
 		t.Errorf("alte PIN nicht mehr gültig: %v %v", ok, err)
 	}
 	// Seite: PIN nie im HTML, Sperre sichtbar
-	b := page("/users/"+norm+"?tab=master", mgr)
+	// UUIDs (z. B. in Benutzerlisten der geteilten Test-DB) können die Ziffernfolge zufällig enthalten.
+	b := uuidInHTML.ReplaceAllString(page("/users/"+norm+"?tab=master", mgr), "")
 	if strings.Contains(b, "2580") || !strings.Contains(b, `name="pin"`) {
 		t.Error("PIN im HTML bzw. PIN-Formular fehlt")
 	}
