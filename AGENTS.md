@@ -734,16 +734,17 @@ und 3 drückt bis auf Weiteres der Anwender.
     nicht der Gerätename. Geparkt: REST-Anlage ohne Herkunft, Texte nur
     deutsch, Herkunft in der JSON-Schnittstelle nur beim Anlegen,
     Zählabfrage bei vielen Abgleich-Vorgängen, Fehltreffer im Nachtrag bei
-    kopiertem Terminal-Text. Offen: 10.10.0.202 einspielen (Anwender, mit
-    Sicherung).
+    kopiertem Terminal-Text. 10.10.0.202 hat der Anwender selbst auf 0.82.32
+    gebracht (22.11.2026: „202 ist uptodate“).
 24. **Copilot beim Anlegen und Zuordnen** (Wunsch 22.11.2026: „C“,
     „Anthropic“, dazu MySQL, InfluxDB, SQLite, Vorlagen aus dem Internet,
     berechnete Werte mit Formelgenerator und Gültigkeit von/bis; Entwurf
     `docs/superpowers/specs/2026-11-22-copilot-zuordnen-design.md`, bestätigt
     „Sonst war alles ok“). Pakete: 1 Zuordnen (Vorschläge am Formular ohne
     Sprachmodell + Assistent mit Änderungsliste), 2 berechnete Werte, 3
-    InfluxDB, 4 Anlegen von Verbindungen und Abgleich. Offen: welche
-    InfluxDB-Version (1.x/2.x/3.x) – vor Paket 3 fragen.
+    InfluxDB, 4 Anlegen von Verbindungen und Abgleich. InfluxDB: alle
+    Versionen (1.x InfluxQL, 2.x Flux, 3.x SQL; Anwender 22.11.2026:
+    „influxdb alle möglich“). Paket 1 auf Branch `feature/copilot-zuordnen`.
 
 Docker Desktop startet nach einem Neustart des Windows-Rechners nicht von
 selbst – ohne ihn fehlen der Zeuge und die Labor-Datenbank für die Tests.
