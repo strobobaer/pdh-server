@@ -48,6 +48,56 @@ func TestEsppdhOTAPasswordLazy(t *testing.T) {
 	}
 }
 
+func (e *esppdhEnvT) otaEnc(t *testing.T, id string) string {
+	t.Helper()
+	var enc string
+	if err := e.pool.QueryRow(context.Background(), `SELECT ota_password_enc FROM esppdh_devices WHERE id = $1::uuid`, id).Scan(&enc); err != nil {
+		t.Fatal(err)
+	}
+	return enc
+}
+
+// Nach einem Wechsel des Schlüssels kein stilles neues Kennwort: Das Gerät nähme es nicht an.
+// Der Ausweg ist „Neues MQTT-Kennwort“ (setzt auch das Update-Kennwort zurück) und einmal USB.
+func TestEsppdhOTAPasswordUnreadable(t *testing.T) {
+	e := newEsppdhEnv(t, nil)
+	id := e.create(t, "otakey-"+e.sfx, nil)
+	ctx := context.Background()
+	if _, err := e.pool.Exec(ctx, `UPDATE esppdh_devices SET ota_password_enc = 'kaputt' WHERE id = $1::uuid`, id); err != nil {
+		t.Fatal(err)
+	}
+	d, _ := e.h.esppdhLoad(ctx, id)
+	if _, err := e.h.esppdhOTAPassword(ctx, &d); err == nil || !strings.Contains(err.Error(), "Neues MQTT-Kennwort") {
+		t.Errorf("Fehler: %v", err)
+	}
+	if enc := e.otaEnc(t, id); enc != "kaputt" {
+		t.Errorf("Kennwort still ersetzt: %q", enc)
+	}
+	if _, err := e.h.esppdhSetPasswords(ctx, id, "Neues-MQTT-Kennwort-12345", ""); err != nil {
+		t.Fatal(err)
+	}
+	if enc := e.otaEnc(t, id); enc != "" {
+		t.Errorf("Neues MQTT-Kennwort setzt das Update-Kennwort nicht zurück: %q", enc)
+	}
+}
+
+// In der Wartung schreibt auch eine Seitenansicht nichts (kein neues Kennwort).
+func TestEsppdhOTAPasswordNoWriteInMaintenance(t *testing.T) {
+	e := newEsppdhEnv(t, nil)
+	id := e.create(t, "otamaint-"+e.sfx, nil)
+	ctx := context.Background()
+	if _, err := e.pool.Exec(ctx, `UPDATE esppdh_devices SET ota_password_enc = '' WHERE id = $1::uuid`, id); err != nil {
+		t.Fatal(err)
+	}
+	d, _ := e.h.esppdhLoad(ctx, id)
+	e.h.mlock.locked = true
+	_, err := e.h.esppdhOTAPassword(ctx, &d)
+	e.h.mlock.locked = false
+	if err == nil || e.otaEnc(t, id) != "" {
+		t.Errorf("in der Wartung geschrieben (%v)", err)
+	}
+}
+
 func TestEsppdhOTAPasswordOnCreate(t *testing.T) {
 	e := newEsppdhEnv(t, nil)
 	id := e.create(t, "otanew-"+e.sfx, nil)
@@ -100,6 +150,39 @@ func TestEsppdhOTARightGranted(t *testing.T) {
 	if err := pool.QueryRow(ctx, `SELECT rp.department_id IS NULL FROM role_permissions rp JOIN permissions p ON p.id = rp.permission_id
 		WHERE rp.role_id = $1::uuid AND p.key = 'esppdh.ota'`, role).Scan(&global); err != nil || !global {
 		t.Errorf("esppdh.ota nicht überall vergeben (global=%v, %v)", global, err)
+	}
+}
+
+// Wem esppdh.edit persönlich verboten ist, dem bleibt auch esppdh.ota verboten (sonst gäbe es
+// die Rolle nach dem Update frei).
+func TestEsppdhOTAKeepsDenial(t *testing.T) {
+	pool := dataNetTestPool(t)
+	ctx := context.Background()
+	var uid string
+	if err := pool.QueryRow(ctx, `INSERT INTO users (username, email, password_hash, first_name, last_name, role)
+		VALUES ('ota-verbot', 'ota-verbot@example.invalid', 'x', 'Ota', 'Verbot', 'technician') RETURNING id::text`).Scan(&uid); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = pool.Exec(context.Background(), `DELETE FROM user_permissions WHERE user_id = $1::uuid`, uid)
+		_, _ = pool.Exec(context.Background(), `DELETE FROM users WHERE id = $1::uuid`, uid)
+	})
+	if _, err := pool.Exec(ctx, `INSERT INTO user_permissions (user_id, permission_id, granted)
+		SELECT $1::uuid, id, false FROM permissions WHERE key = 'esppdh.edit'`, uid); err != nil {
+		t.Fatal(err)
+	}
+	m, _ := filepath.Glob("../../migrations/*_esppdh_ota.up.sql")
+	sql, err := os.ReadFile(m[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, string(sql)); err != nil {
+		t.Fatal(err)
+	}
+	var granted bool
+	if err := pool.QueryRow(ctx, `SELECT up.granted FROM user_permissions up JOIN permissions p ON p.id = up.permission_id
+		WHERE up.user_id = $1::uuid AND p.key = 'esppdh.ota'`, uid).Scan(&granted); err != nil || granted {
+		t.Errorf("Verbot nicht übernommen (granted=%v, %v)", granted, err)
 	}
 }
 

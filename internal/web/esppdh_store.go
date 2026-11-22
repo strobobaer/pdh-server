@@ -117,19 +117,25 @@ func esppdhScan(row pgx.Row) (esppdhDevice, error) {
 // neu gebaut werden; das zeigt die Geräteseite über den geänderten Konfigurations-Prüfwert an.
 func (h *Handler) esppdhWebPassword(ctx context.Context, d *esppdhDevice) (string, error) {
 	return h.esppdhLazyPassword(ctx, d.ID, "web_password_enc", &d.webEnc, &d.webPW,
-		"Das Gerät hat noch kein Kennwort für seine Webseite – bitte die Geräteseite einmal am aktiven Server öffnen.")
+		"Das Gerät hat noch kein Kennwort für seine Webseite – bitte die Geräteseite einmal am aktiven Server öffnen.", "")
 }
 
-// esppdhOTAPassword: Kennwort für Updates übers Netz (Baustein ota). Wie esppdhWebPassword: fehlt
-// es (Gerät vor 0.82.24) oder ist es nicht mehr lesbar, entsteht ein neues und wird gespeichert.
+// esppdhOTAPassword: Kennwort für Updates übers Netz (Baustein ota). Fehlt es (Gerät vor 0.82.24
+// oder nach „Neues MQTT-Kennwort“), entsteht ein neues und wird gespeichert. Ist es nicht mehr
+// lesbar (Schlüssel geändert), entsteht kein neues: Das Gerät nähme es nicht an – „Neues
+// MQTT-Kennwort“ setzt es zurück, danach einmal per USB flashen.
 func (h *Handler) esppdhOTAPassword(ctx context.Context, d *esppdhDevice) (string, error) {
 	return h.esppdhLazyPassword(ctx, d.ID, "ota_password_enc", &d.otaEnc, &d.otaPW,
-		"Das Gerät hat noch kein Kennwort für Updates übers Netz – bitte die Geräteseite einmal am aktiven Server öffnen.")
+		"Das Gerät hat noch kein Kennwort für Updates übers Netz – bitte die Geräteseite einmal am aktiven Server öffnen.",
+		"Das Kennwort für Updates übers Netz ist nicht lesbar – der Schlüssel hat sich geändert. Bitte unter Aktionen „Neues MQTT-Kennwort“ wählen "+
+			"(setzt auch dieses Kennwort neu), dann die Firmware neu bauen und einmal per USB flashen.")
 }
 
 // esppdhLazyPassword liest ein Gerätekennwort aus der Spalte col (fest im Code, nie aus einer
-// Eingabe) oder legt es an. enc/pw: Felder des geladenen Geräts. mirrorMsg: Fehler am Spiegel.
-func (h *Handler) esppdhLazyPassword(ctx context.Context, id, col string, enc, pw *string, mirrorMsg string) (string, error) {
+// Eingabe) oder legt es an. enc/pw: Felder des geladenen Geräts. mirrorMsg: Fehler am Spiegel und
+// in der Wartung (dort wird nichts geschrieben). unreadableMsg: ist es nicht lesbar, dieser Fehler
+// statt eines neuen Kennworts ("" = neues Kennwort anlegen).
+func (h *Handler) esppdhLazyPassword(ctx context.Context, id, col string, enc, pw *string, mirrorMsg, unreadableMsg string) (string, error) {
 	if *pw != "" {
 		return *pw, nil
 	}
@@ -138,13 +144,16 @@ func (h *Handler) esppdhLazyPassword(ctx context.Context, id, col string, enc, p
 			*pw = p
 			return p, nil
 		}
+		if unreadableMsg != "" {
+			return "", errors.New(unreadableMsg)
+		}
 	}
 	p, err := esppdhNewPassword()
 	if err != nil {
 		return "", err
 	}
 	if id != "" {
-		if h.Mirror().On {
+		if h.Mirror().On || h.MaintLocked() {
 			return "", errors.New(mirrorMsg)
 		}
 		sealed, err := encryptSecret(h.esppdhKey(), p)
@@ -371,8 +380,11 @@ func (h *Handler) esppdhSetPasswords(ctx context.Context, id, mqttPW, apPW strin
 		}
 	}
 	var conn string
+	// das Update-Kennwort gleich mit zurücksetzen (entsteht beim nächsten Bau neu): Mit neuem
+	// MQTT-Kennwort braucht das Gerät ohnehin einmal USB – so gibt es einen Ausweg, wenn das alte
+	// nach einem Wechsel des Schlüssels nicht mehr lesbar ist (esppdhOTAPassword)
 	err = h.db.QueryRow(ctx, `UPDATE esppdh_devices SET mqtt_password_enc = $2, mqtt_pw_sha256 = $4,
-			ap_password_enc = CASE WHEN $3 = '' THEN ap_password_enc ELSE $3 END, updated_at = now()
+			ap_password_enc = CASE WHEN $3 = '' THEN ap_password_enc ELSE $3 END, ota_password_enc = '', updated_at = now()
 		WHERE id = $1::uuid RETURNING connection_id::text`, id, mqttEnc, apEnc, mqttbroker.DevicePasswordSHA256(mqttPW)).Scan(&conn)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", errEsppdhNotFound

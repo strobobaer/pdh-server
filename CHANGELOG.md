@@ -22,6 +22,7 @@ im Kapitel „Versionen & Updates“ an.
 
 - **ESPPDH:** Die Firmware enthält jetzt einen Update-Baustein mit eigenem Kennwort je Gerät und den Sicherheitsmodus von ESPHome. Nach dem Update gelten deshalb alle ESPPDH-Geräte einmal als „neu bauen“ und brauchen die neue Firmware **einmal per USB**; danach geht es übers Netz.
 - **ESPPDH:** Aufgespielt wird nur in Netze, die auf der Seite „Netzwerk“ für ESPPDH-Geräte freigegeben sind und einen Adressbereich haben. Der Server muss das Gerät auf TCP-Port 3232 (ESP32) bzw. 8266 (ESP8266) erreichen.
+- **ESPPDH:** „Neues MQTT-Kennwort“ erneuert auch das Kennwort für Updates übers Netz. Ist dieses nach einem Wechsel des Schlüssels nicht mehr lesbar, sagt die Seite des Geräts das, statt still ein neues anzulegen.
 
 ### Sicherheit
 

@@ -46,3 +46,13 @@ SELECT DISTINCT ON (up.user_id) up.user_id, p.id, up.granted, up.department_id
  ORDER BY up.user_id, up.department_id NULLS FIRST
 ON CONFLICT (user_id, permission_id) DO UPDATE SET department_id = NULL
  WHERE EXCLUDED.department_id IS NULL;
+
+-- Wem esppdh.edit einzeln verboten ist, dem bleibt auch esppdh.ota verboten (sonst gäbe es die
+-- Rolle frei).
+INSERT INTO user_permissions (user_id, permission_id, granted)
+SELECT DISTINCT up.user_id, p.id, false
+  FROM user_permissions up
+  JOIN permissions o ON o.id = up.permission_id AND o.key = 'esppdh.edit'
+  CROSS JOIN permissions p
+ WHERE p.key = 'esppdh.ota' AND NOT up.granted
+ON CONFLICT (user_id, permission_id) DO NOTHING;
