@@ -49,6 +49,7 @@ type esppdhBuilder interface {
 type esppdhQueue struct {
 	mu        sync.Mutex
 	stop      context.CancelFunc // beendet den Arbeiter (StopESPPDH)
+	ctx       context.Context    // Lebensdauer des Arbeiters (Sammelaktion; nil = kein Arbeiter)
 	done      chan struct{}      // geschlossen, sobald der Arbeiter beendet ist
 	wake      chan struct{}      // neuer Auftrag
 	running   string             // Lauf, der gerade baut
@@ -103,7 +104,7 @@ func (h *Handler) StartESPPDH(ctx context.Context) {
 	done, wake := make(chan struct{}), make(chan struct{}, 1)
 	q := &h.esppdhQ
 	q.mu.Lock()
-	q.stop, q.done, q.wake = stop, done, wake
+	q.stop, q.done, q.wake, q.ctx = stop, done, wake, wctx
 	q.mu.Unlock()
 
 	sctx, cancel := context.WithTimeout(wctx, 10*time.Second)
@@ -117,7 +118,12 @@ func (h *Handler) StartESPPDH(ctx context.Context) {
 	case tag.RowsAffected() > 0:
 		lg.Warn().Int64("anzahl", tag.RowsAffected()).Msg("läufe vom letzten start als gescheitert markiert")
 	}
-	go h.esppdhWorker(wctx, runner, wake, done)
+	h.esppdhOTAFailRunning(wctx)
+	up := h.esppdhUpload
+	if up == nil {
+		up = esppdh.NewRunner().Upload
+	}
+	go h.esppdhWorker(wctx, runner, up, wake, done)
 	lg.Info().Msg("bauen gestartet")
 }
 
@@ -127,7 +133,7 @@ func (h *Handler) StopESPPDH() {
 	q := &h.esppdhQ
 	q.mu.Lock()
 	stop, done := q.stop, q.done
-	q.stop, q.done, q.wake = nil, nil, nil
+	q.stop, q.done, q.wake, q.ctx = nil, nil, nil, nil
 	q.mu.Unlock()
 	if stop == nil {
 		return
@@ -153,10 +159,11 @@ func (h *Handler) esppdhWake() {
 	}
 }
 
-func (h *Handler) esppdhWorker(ctx context.Context, runner esppdhBuilder, wake <-chan struct{}, done chan<- struct{}) {
+func (h *Handler) esppdhWorker(ctx context.Context, runner esppdhBuilder, up esppdhUploadFunc, wake <-chan struct{}, done chan<- struct{}) {
 	defer close(done)
 	for ctx.Err() == nil {
-		if h.esppdhRunNext(ctx, runner) {
+		// zuerst bauen, dann aufspielen (esppdh_ota.go) – beides nacheinander unter runMu
+		if h.esppdhRunNext(ctx, runner) || h.esppdhOTANext(ctx, up) {
 			continue
 		}
 		select {
@@ -333,17 +340,12 @@ func (h *Handler) esppdhJobFor(ctx context.Context, c esppdhClaim) (esppdh.Build
 		return esppdh.BuildJob{}, "", fmt.Errorf("Die Einstellungen des Brokers haben sich seit dem Einreihen geändert (jetzt %s) – bitte neu bauen.",
 			esppdhAddr(b.Host, b.Port, b.TLS))
 	}
+	res.Dev.FirmwareID = c.ID // das Gerät meldet die Kennung seines Baus (Thema info/firmware)
 	cfg, sec, err := esppdh.Generate(res.Dev)
 	if err != nil {
 		return esppdh.BuildJob{}, "", err
 	}
-	var secrets []string
-	for _, s := range []string{res.Dev.WLANPassword, res.Dev.APPassword, res.Dev.MQTTPassword, res.Dev.WebPassword} {
-		if s != "" {
-			secrets = append(secrets, s)
-		}
-	}
-	return esppdh.BuildJob{ID: c.ID, Slug: d.Slug, Config: cfg, Secrets: sec, SecretValues: secrets}, esppdh.ConfigHash(res.Dev), nil
+	return esppdh.BuildJob{ID: c.ID, Slug: d.Slug, Config: cfg, Secrets: sec, SecretValues: res.Dev.SecretValues()}, esppdh.ConfigHash(res.Dev), nil
 }
 
 // esppdhSaveLog schreibt einen Zwischenstand (schon geschwärzt) in den Lauf.
@@ -478,6 +480,7 @@ func (h *Handler) esppdhCancelQueued(ctx context.Context, note string) {
 	}
 	sctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
+	h.esppdhOTACancelQueued(sctx, note) // wartende Updates übers Netz ebenso
 	tag, err := h.db.Exec(sctx, `UPDATE esppdh_builds SET status = 'canceled', finished_at = now(),
 			log = CASE WHEN log = '' THEN $1 ELSE log || E'\n' || $1 END
 		WHERE status = 'queued'`, note)
@@ -508,44 +511,55 @@ func (h *Handler) EsppdhBuildWeb(w http.ResponseWriter, r *http.Request) {
 		h.esppdhLoadFailed(w, r, err)
 		return
 	}
-	mqttPW, apPW, err := h.esppdhSecrets(d)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusConflict)
+	bid, conflict, err := h.esppdhQueueBuild(ctx, d, getUser(r).ID, r.Host)
+	switch {
+	case conflict != "":
+		http.Error(w, conflict, http.StatusConflict)
+		return
+	case err != nil:
+		http.Error(w, "Der Bau ließ sich nicht einreihen. Näheres steht im Server-Protokoll.", http.StatusInternalServerError)
 		return
 	}
-	res, msgs := h.esppdhResolve(ctx, d, mqttPW, apPW, r.Host)
+	componentLog("esppdh").Info().Str("benutzer", getUser(r).ID).Str("gerät", d.Slug).Str("lauf", bid).Msg("bau eingereiht (knopf)")
+	http.Redirect(w, r, "/import/esppdh/"+id+"?n=build#esp-firmware", http.StatusSeeOther)
+}
+
+// esppdhQueueBuild reiht einen Bau des gespeicherten Geräts ein (Knopf und Sammelaktion). Das
+// Gerät muss so, wie es gespeichert ist, baubar sein; die Broker-Adresse wird hier festgelegt
+// (reqHost: Adresse, unter der das PDH aufgerufen ist – zählt nur ohne Namen des Brokers).
+// conflict: Grund für den Anwender; err: interner Fehler (steht im Server-Protokoll).
+func (h *Handler) esppdhQueueBuild(ctx context.Context, d esppdhDevice, by, reqHost string) (bid, conflict string, err error) {
+	mqttPW, apPW, err := h.esppdhSecrets(d)
+	if err != nil {
+		return "", err.Error(), nil
+	}
+	res, msgs := h.esppdhResolve(ctx, d, mqttPW, apPW, reqHost)
 	if len(msgs) == 0 {
 		msgs = esppdh.ValidateDevice(res.Dev)
 	}
 	if len(msgs) > 0 {
-		http.Error(w, "Die Firmware lässt sich noch nicht bauen: "+strings.Join(msgs, " "), http.StatusConflict)
-		return
+		return "", "Die Firmware lässt sich noch nicht bauen: " + strings.Join(msgs, " "), nil
 	}
 	if esppdhLoopbackHost(res.Broker.Host) {
-		http.Error(w, esppdhLoopbackMsg(res.Broker.Host), http.StatusConflict)
-		return
+		return "", esppdhLoopbackMsg(res.Broker.Host), nil
 	}
-	by := getUser(r).ID
 	if !meterUUIDRe.MatchString(by) {
 		by = ""
 	}
-	var bid string
 	err = h.db.QueryRow(ctx, `INSERT INTO esppdh_builds (device_id, status, config_hash, requested_by, broker_host, broker_port, broker_tls)
 		VALUES ($1::uuid, 'queued', $2, $3::uuid, $4, $5, $6) RETURNING id::text`,
-		id, esppdh.ConfigHash(res.Dev), nullIfEmpty(by), res.Broker.Host, res.Broker.Port, res.Broker.TLS).Scan(&bid)
+		d.ID, esppdh.ConfigHash(res.Dev), nullIfEmpty(by), res.Broker.Host, res.Broker.Port, res.Broker.TLS).Scan(&bid)
 	switch {
 	case networkDup(err):
-		http.Error(w, errEsppdhBuildActive.Error(), http.StatusConflict)
-		return
+		return "", errEsppdhBuildActive.Error(), nil
 	case err != nil:
 		componentLog("esppdh").Error().Err(err).Str("gerät", d.Slug).Msg("bau einreihen")
-		http.Error(w, "Der Bau ließ sich nicht einreihen. Näheres steht im Server-Protokoll.", http.StatusInternalServerError)
-		return
+		return "", "", err
 	}
 	h.esppdhWake()
-	componentLog("esppdh").Info().Str("benutzer", getUser(r).ID).Str("gerät", d.Slug).Str("lauf", bid).
+	componentLog("esppdh").Info().Str("gerät", d.Slug).Str("lauf", bid).
 		Str("broker", esppdhAddr(res.Broker.Host, res.Broker.Port, res.Broker.TLS)).Msg("bau eingereiht")
-	http.Redirect(w, r, "/import/esppdh/"+id+"?n=build#esp-firmware", http.StatusSeeOther)
+	return bid, "", nil
 }
 
 // EsppdhBuildCancelWeb: POST /import/esppdh/{id}/build/{bid}/cancel – wartenden oder laufenden

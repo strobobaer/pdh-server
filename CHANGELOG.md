@@ -10,6 +10,29 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.82.25] – 2026-11-22
+
+### Neu
+
+- **ESPPDH: Firmware übers Netz aufspielen.** Auf der Seite eines Geräts spielt der Knopf **Firmware aufspielen** die zuletzt gebaute Firmware ohne USB-Kabel auf. Als gelungen gilt das Update erst, wenn das Gerät nach dem Neustart den neuen Bau meldet; sonst steht dort „aufgespielt, meldet sich nicht“.
+- **ESPPDH: Alle veralteten Geräte aktualisieren.** Auf der Übersicht baut und spielt eine Sammelaktion alle Geräte nacheinander auf, deren Konfiguration geändert ist oder die nicht den letzten Bau melden. Geräte ohne Update-Baustein, ohne bestätigte Adresse oder außerhalb eines freigegebenen Netzes werden mit Grund übersprungen. Abbrechen ist möglich.
+- **ESPPDH: Das Gerät meldet seinen Bau.** Die Seite des Geräts zeigt „Auf dem Gerät“ und „Zuletzt gebaut“.
+
+### Geändert
+
+- **ESPPDH:** Die Firmware enthält jetzt einen Update-Baustein mit eigenem Kennwort je Gerät und den Sicherheitsmodus von ESPHome. Nach dem Update gelten deshalb alle ESPPDH-Geräte einmal als „neu bauen“ und brauchen die neue Firmware **einmal per USB**; danach geht es übers Netz.
+- **ESPPDH:** Aufgespielt wird nur in Netze, die auf der Seite „Netzwerk“ für ESPPDH-Geräte freigegeben sind und einen Adressbereich haben. Der Server muss das Gerät auf TCP-Port 3232 (ESP32) bzw. 8266 (ESP8266) erreichen.
+- **ESPPDH:** „Neues MQTT-Kennwort“ erneuert auch das Kennwort für Updates übers Netz. Ist dieses nach einem Wechsel des Schlüssels nicht mehr lesbar, sagt die Seite des Geräts das, statt still ein neues anzulegen.
+
+### Sicherheit
+
+- **Neues Recht „ESPPDH: Firmware übers Netz aufspielen“** (`esppdh.ota`). Alle, die bisher Geräte bauen und flashen durften (`esppdh.edit`), bekommen es automatisch in derselben Abteilung. Die Sammelaktion braucht das Recht in allen Abteilungen.
+- Updates nimmt ein Gerät nur mit seinem eigenen Kennwort an. Das Kennwort steht verschlüsselt im PDH und erscheint nie im Verlauf.
+
+### Behoben
+
+- **Startseite:** Unter der Begrüßung stand fest „Werk Augsburg“ (aus den ersten Beispieldaten). Dort stehen jetzt Firma und Ort aus den Firmenstammdaten (Infrastruktur → oberster Knoten → Reiter „Firma“); ohne Eintrag nur das Datum.
+
 ## [0.82.24] – 2026-11-22
 
 ### Neu

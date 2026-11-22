@@ -49,6 +49,8 @@ type esppdhValuesView struct {
 	Live                            esppdhLive
 	Handshake                       handshakeView
 	Address, DirectURL, AddressNote string
+	AddressOK                       bool   // Adresse bestätigt (esppdhAddressOK)
+	Firmware                        string // vom Gerät gemeldete Kennung seines Baus ("" = keine, vor 0.82.24)
 	Groups                          []esppdhGroupView
 	infra                           string // Anlage des Geräts (Verteilung auf Karten)
 }
@@ -148,6 +150,11 @@ func (h *Handler) esppdhValues(ctx context.Context, devs []esppdhDevice, now tim
 					v.Address = strings.TrimSpace(x.Payload)
 				}
 				continue
+			case strings.HasSuffix(ti.Topic, "/info/firmware"):
+				if has {
+					v.Firmware = strings.TrimSpace(x.Payload)
+				}
+				continue // Kennung des Baus, kein Messwert (Updates übers Netz)
 			}
 			if !bv.ok {
 				continue
@@ -168,6 +175,7 @@ func (h *Handler) esppdhValues(ctx context.Context, devs []esppdhDevice, now tim
 		if v.Address != "" && src != nil {
 			remote, _ := src.ClientRemoteIP(d.ConnID, esppdhUserOf(d.Slug))
 			ok, note := esppdhAddressOK(v.Address, remote, d.NetSubnet, own)
+			v.AddressOK = ok
 			if ok && d.WebEnabled {
 				v.DirectURL = "http://" + v.Address + "/"
 			}

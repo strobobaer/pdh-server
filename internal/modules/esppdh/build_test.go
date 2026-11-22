@@ -95,6 +95,22 @@ func TestHelperEsphomeBuild(t *testing.T) {
 		fmt.Println(`src/main.cpp:42:3: error: expected ';' before 'mqtt_mqttclientcomponent->set_password("` + testOddCpp + `")'`)
 		fmt.Println("mqtt password " + testOddSecret + " abc")
 		os.Exit(2)
+	case "upload", "uploadfail":
+		// Attrappe von „esphome upload … --file firmware.ota.bin“: merkt Argumente und Datei
+		var fw []byte
+		for i, a := range args {
+			if a == "--file" && i+1 < len(args) {
+				fw, _ = os.ReadFile(args[i+1])
+			}
+		}
+		info, _ := json.Marshal(map[string]any{"args": args, "firmware": string(fw)})
+		_ = os.WriteFile(filepath.Join(out, "upload.json"), info, 0o600)
+		fmt.Println("INFO Connecting to 192.0.2.50 port 3232... auth " + secret)
+		if mode == "uploadfail" {
+			fmt.Println("ERROR Connecting to 192.0.2.50 port 3232 failed: timed out")
+			os.Exit(1)
+		}
+		fmt.Println("INFO OTA successful")
 	case "nofirmware":
 		fmt.Println("INFO ESPHome 2099.1.0")
 	case "hang":
