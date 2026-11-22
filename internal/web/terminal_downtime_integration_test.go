@@ -7,10 +7,14 @@ package web
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -132,7 +136,9 @@ func TestTerminalDowntime(t *testing.T) {
 
 	// Mit Kartenanmeldung ist die Person der Akteur (auch ohne Gerätesitzung-Cookie ist der Weg über die Karte möglich)
 	e.exec(`INSERT INTO terminal_card_sessions (terminal_user_id, person_id) VALUES ($1::uuid, $2::uuid)`, term, person)
-	e.t.Cleanup(func() { e.pool.Exec(context.Background(), `DELETE FROM terminal_card_sessions WHERE terminal_user_id = $1::uuid`, term) })
+	e.t.Cleanup(func() {
+		e.pool.Exec(context.Background(), `DELETE FROM terminal_card_sessions WHERE terminal_user_id = $1::uuid`, term)
+	})
 	do(true, "POST", "/terminal/stillstand/start", url.Values{"infra": {plant}, "reason_id": {rs.ID}, "name": {"ignoriert"}})
 	if n := count(`AND created_by = $2::uuid AND actor_name = '' AND ended_at IS NULL`, person); n != 1 {
 		t.Errorf("Akteur ist nicht die angemeldete Person: %d", n)
@@ -174,4 +180,92 @@ func TestTerminalDowntime(t *testing.T) {
 		t.Errorf("Löschen eines benutzten Grundes: %v", err)
 	}
 	e.must(st.DeleteReason(e.ctx, other.ID))
+}
+
+// Nachträge aus der Prüfung: Abteilungsgrenzen der Auswertung, Anlage außerhalb des Terminals, parallele
+// Starts, zweimal laufende Migration 198.
+func TestDowntimeScopeAndConcurrency(t *testing.T) {
+	e := newATEnv(t)
+	deptA, deptB := e.dept("SGAbtA"), e.dept("SGAbtB")
+	pa := e.infra("SGScopeA", deptA, "")
+	pb := e.infra("SGScopeB", deptB, "")
+	e.t.Cleanup(func() {
+		e.pool.Exec(context.Background(), `DELETE FROM downtimes WHERE infrastructure_id = ANY($1::uuid[])`, []string{pa, pb})
+		e.pool.Exec(context.Background(), `DELETE FROM infra_downtime_reasons WHERE infrastructure_id = ANY($1::uuid[])`, []string{pa, pb})
+		e.pool.Exec(context.Background(), `DELETE FROM downtime_reasons WHERE name LIKE '%'||$1`, e.sfx)
+	})
+	st := stillstand.NewStore(e.pool)
+	rs := &stillstand.Reason{Name: "Konkurrenz" + e.sfx, Active: true}
+	e.must(st.SaveReason(e.ctx, rs))
+	e.must(st.SetInfraReasons(e.ctx, pa, []string{rs.ID}))
+	e.must(st.SetInfraReasons(e.ctx, pb, []string{rs.ID}))
+
+	// Parallele Starts: genau ein laufender Stillstand
+	actor := e.user("sgpar", "viewer", false)
+	var wg sync.WaitGroup
+	var ok, running int32
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, err := st.Start(e.ctx, pa, rs.ID, actor, "", stillstand.OriginTerminal)
+			if err == nil {
+				atomic.AddInt32(&ok, 1)
+			} else if errors.Is(err, stillstand.ErrAlreadyRunning) {
+				atomic.AddInt32(&running, 1)
+			}
+		}()
+	}
+	wg.Wait()
+	var n int
+	e.must(e.pool.QueryRow(e.ctx, `SELECT count(*) FROM downtimes WHERE infrastructure_id = $1::uuid AND ended_at IS NULL`, pa).Scan(&n))
+	if ok != 1 || running != 7 || n != 1 {
+		t.Errorf("parallele Starts: %d erfolgreich, %d abgelehnt, %d laufend", ok, running, n)
+	}
+
+	// Migration 198 zweimal: keine doppelten Gründe
+	sqlb, err := os.ReadFile("../../migrations/198_downtime_reasons.up.sql")
+	e.must(err)
+	e.exec(string(sqlb))
+	e.exec(string(sqlb))
+	e.must(e.pool.QueryRow(e.ctx, `SELECT count(*) - count(DISTINCT key) FROM downtime_reasons`).Scan(&n))
+	if n != 0 {
+		t.Errorf("doppelte Schlüssel nach erneutem Lauf: %d", n)
+	}
+
+	// Auswertung mit abteilungsbegrenztem Recht: nur die eigene Abteilung
+	e.exec(`INSERT INTO downtimes (infrastructure_id, reason_id, reason_name, started_at, ended_at) VALUES
+		($1::uuid, $3::uuid, 'ScopeAX'||$4::text, now() - interval '2 hours', now() - interval '1 hour'),
+		($2::uuid, $3::uuid, 'ScopeBX'||$4::text, now() - interval '2 hours', now() - interval '1 hour')`, pa, pb, rs.ID, e.sfx)
+	viewer := e.user("sgscope", "viewer", false)
+	e.grant(viewer, "downtime.view", deptA, true)
+	e.warm()
+	h := &Handler{db: e.pool, rbac: e.rb, users: users.NewService(users.NewRepository(e.pool), "test-secret", 1), jwtSecret: "test-geheim", tmpl: loadTestTemplates(t)}
+	req := httptest.NewRequest("GET", "/downtime?days=90", nil)
+	req = req.WithContext(context.WithValue(req.Context(), "user", &users.User{ID: viewer, Role: users.Role("viewer")}))
+	rec := httptest.NewRecorder()
+	t.Chdir("../..") // h.render liest die Vorlage relativ zum Projektordner
+	h.DowntimePage(rec, req)
+	body := rec.Body.String()
+	if !strings.Contains(body, "ScopeAX"+e.sfx) || strings.Contains(body, "ScopeBX"+e.sfx) || strings.Contains(body, "SGScopeB"+e.sfx) {
+		t.Errorf("Auswertung ohne Abteilungsgrenze (%d):\n%.600s", rec.Code, body)
+	}
+
+	// POST mit Anlage außerhalb des Terminals: nichts gespeichert
+	term := e.user("sgterm2", "terminal", true)
+	e.exec(`UPDATE users SET terminal_infrastructure_id = $2::uuid WHERE id = $1::uuid`, term, pa)
+	e.warm()
+	r := chi.NewRouter()
+	h.terminalRoutes(r)
+	form := url.Values{"infra": {pb}, "reason_id": {rs.ID}}
+	preq := httptest.NewRequest("POST", "/terminal/stillstand/start", strings.NewReader(form.Encode()))
+	preq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	preq.AddCookie(testDeviceCookie(h, term))
+	preq = preq.WithContext(context.WithValue(preq.Context(), "user", &users.User{ID: term, Role: users.Role("terminal"), IsSystemUser: true}))
+	prec := httptest.NewRecorder()
+	r.ServeHTTP(prec, preq)
+	e.must(e.pool.QueryRow(e.ctx, `SELECT count(*) FROM downtimes WHERE infrastructure_id = $1::uuid AND ended_at IS NULL`, pb).Scan(&n))
+	if n != 0 || prec.Code != http.StatusSeeOther {
+		t.Errorf("Anlage außerhalb des Terminals: %d, %d laufend", prec.Code, n)
+	}
 }

@@ -148,7 +148,7 @@ func (h *Handler) DowntimePage(w http.ResponseWriter, r *http.Request) {
 		set := gi.infraSet(terminalSlide{InfraIDs: roots})
 		var ids []string
 		for id := range set {
-			if h.rbac != nil && h.rbac.HasPermissionInDepartment(u.ID, string(u.Role), permDowntimeView, gi.depts[id]) {
+			if h.rbac != nil && h.downtimeSees(u.ID, string(u.Role), gi.depts[id]) {
 				ids = append(ids, id)
 			}
 		}
@@ -156,7 +156,7 @@ func (h *Handler) DowntimePage(w http.ResponseWriter, r *http.Request) {
 		d.Plants = append(d.Plants, downtimeChoice{"", "Alle Anlagen", sel == ""})
 		var pl []downtimeChoice
 		for id, n := range gi.nodes {
-			if n.Visible && h.rbac != nil && h.rbac.HasPermissionInDepartment(u.ID, string(u.Role), permDowntimeView, gi.depts[id]) {
+			if n.Visible && h.rbac != nil && h.downtimeSees(u.ID, string(u.Role), gi.depts[id]) {
 				pl = append(pl, downtimeChoice{id, gi.path(id), id == sel})
 			}
 		}
@@ -195,4 +195,9 @@ func (h *Handler) setupBaseNamed(r *http.Request, page, title, ctxTitle string) 
 		return none
 	}
 	return h.baseData(r, page, title, ctxTitle)
+}
+
+// downtimeSees: Anlage mit diesen Abteilungen sichtbar – wie der Zugang zur Seite: downtime.view oder downtime.edit.
+func (h *Handler) downtimeSees(uid, role string, depts []string) bool {
+	return h.rbac != nil && (h.rbac.HasPermissionInDepartment(uid, role, permDowntimeView, depts) || h.rbac.HasPermissionInDepartment(uid, role, permDowntimeEdit, depts))
 }

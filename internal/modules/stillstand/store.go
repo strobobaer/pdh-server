@@ -380,15 +380,15 @@ type ReasonStat struct {
 }
 
 // StatsByReason wertet die Stillstände der Anlagen ids, die seit since begonnen haben, je Grund aus
-// (absteigend nach Dauer). Ohne Grund (ältere Datensätze, gelöschter Grund): Name aus reason_name,
-// sonst „ohne Grund“.
+// (absteigend nach Dauer). Ohne Grund (ältere Datensätze): „ohne Grund“. Maßgeblich ist der Name
+// zum Zeitpunkt des Beginns (reason_name), eine spätere Umbenennung ändert die Historie nicht.
 func (s *Store) StatsByReason(ctx context.Context, ids []string, since time.Time) ([]ReasonStat, error) {
 	if len(ids) == 0 {
 		return nil, nil
 	}
-	rows, err := s.DB.Query(ctx, `SELECT COALESCE(NULLIF(r.name, ''), NULLIF(t.reason_name, ''), 'ohne Grund') AS n,
+	rows, err := s.DB.Query(ctx, `SELECT COALESCE(NULLIF(t.reason_name, ''), 'ohne Grund') AS n,
 		       COUNT(*)::int, COALESCE(SUM(EXTRACT(EPOCH FROM (COALESCE(t.ended_at, now()) - t.started_at)) / 60), 0)::float8
-		  FROM downtimes t LEFT JOIN downtime_reasons r ON r.id = t.reason_id
+		  FROM downtimes t
 		 WHERE t.infrastructure_id = ANY($1::uuid[]) AND t.archived_at IS NULL AND t.started_at >= $2
 		 GROUP BY 1 ORDER BY 3 DESC, 1`, ids, since)
 	if err != nil {
