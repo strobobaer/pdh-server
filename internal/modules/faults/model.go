@@ -104,6 +104,8 @@ type CreateFaultInput struct {
 	// Gesetzt spart sie newFault die Abfrage der Vorgabe – wichtig für Aufrufer, die
 	// in CreateInTx keine weitere Pool-Verbindung brauchen dürfen.
 	DueDate *time.Time `json:"-"`
+	// ID: vorgegebene Kennung (UUIDv7), z. B. vom Telefon der PDH-App; leer: der Server vergibt sie.
+	ID *string `json:"-"`
 }
 
 type ResolveInput struct {

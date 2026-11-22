@@ -36,11 +36,11 @@ func insertFault(ctx context.Context, q rowQuerier, f *Fault) error {
 	query := `
 		INSERT INTO faults (id, title, description, symptoms, severity, status,
 			infrastructure_id, assigned_to, responsible_to, created_by, detected_at, due_date, cost_center_id)
-		VALUES (pdh_uuid_v7(), $1, $2, $3, $4, 'detected', $5, $6, $7, $8, NOW(), $9, $10)
+		VALUES (COALESCE(NULLIF($11, '')::uuid, pdh_uuid_v7()), $1, $2, $3, $4, 'detected', $5, $6, $7, $8, NOW(), $9, $10)
 		RETURNING id, status, detected_at, created_at, updated_at`
 	return q.QueryRow(ctx, query,
 		f.Title, f.Description, symptoms, f.Severity,
-		f.InfrastructureID, f.AssignedTo, f.ResponsibleTo, f.CreatedBy, f.DueDate, f.CostCenterID,
+		f.InfrastructureID, f.AssignedTo, f.ResponsibleTo, f.CreatedBy, f.DueDate, f.CostCenterID, f.ID,
 	).Scan(&f.ID, &f.Status, &f.DetectedAt, &f.CreatedAt, &f.UpdatedAt)
 }
 

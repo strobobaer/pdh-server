@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"path"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -283,12 +284,135 @@ func (h *Handler) AppScanAPI(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// appUUIDv7Re: Kennungen vom Telefon sind UUIDv7 (Version 7, Variante 8–b), kleingeschrieben.
+var appUUIDv7Re = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
+
 // appFaultIn: Eingabe von POST /api/app/v1/faults.
+//
+//	id      – UUIDv7 vom Telefon; die neue Störung bekommt genau diese Kennung
+//	offline – die Meldung entstand ohne Verbindung (zusammengeführt wird nur mit id)
 type appFaultIn struct {
 	AssetID      string `json:"asset_id"`
 	Title        string `json:"title"`
 	Text         string `json:"text"`
 	PlantStopped bool   `json:"plant_stopped"`
+	ID           string `json:"id"`
+	Offline      bool   `json:"offline"`
+}
+
+// appFaultMergedHint: Hinweis, wenn eine Meldung an eine offene Störung angehängt wurde.
+func appFaultMergedHint(title string) string {
+	return "An der Anlage ist bereits die Störung „" + title + "“ offen. Deine Meldung wurde dort angehängt."
+}
+
+// appFaultReplayByID beantwortet die Wiederholung einer Meldung mit Kennung: das gespeicherte
+// Ergebnis des ersten Laufs; fehlt es (Speichern scheiterte), die Störung mit dieser Kennung
+// oder der Alias auf die Störung, die die Meldung aufgenommen hat. Zeigt das Ergebnis auf eine
+// andere Störung als die Kennung, wurde damals zusammengeführt: wieder merged und Hinweis
+// (aus dem aktuellen Titel). Nichts gefunden: 409.
+func (h *Handler) appFaultReplayByID(w http.ResponseWriter, r *http.Request, id string) {
+	ctx := r.Context()
+	typ, rid := appStepResult(r)
+	if typ != "fault" {
+		rid = ""
+	}
+	if rid == "" {
+		err := h.db.QueryRow(ctx, `SELECT COALESCE(
+			(SELECT id::text FROM faults WHERE id = $1::uuid),
+			(SELECT target_id::text FROM app_id_aliases WHERE id = $1::uuid AND target_type = 'fault'), '')`, id).Scan(&rid)
+		if err != nil {
+			appUnavailable(w, err, "fault", id, "app: wiederholung auflösen")
+			return
+		}
+	}
+	var title string
+	if rid != "" {
+		switch err := h.db.QueryRow(ctx, `SELECT title FROM faults WHERE id = $1::uuid`, rid).Scan(&title); {
+		case errors.Is(err, pgx.ErrNoRows):
+			rid = ""
+		case err != nil:
+			appUnavailable(w, err, "fault", id, "app: wiederholung titel")
+			return
+		}
+	}
+	if rid == "" {
+		appJSONErr(w, http.StatusConflict, "app_conflict", "Die Meldung ist bereits verarbeitet, die Störung aber nicht mehr auffindbar.")
+		return
+	}
+	if rid == id {
+		terminalJSON(w, http.StatusOK, map[string]any{"type": "fault", "id": rid})
+		return
+	}
+	terminalJSON(w, http.StatusOK, map[string]any{"type": "fault", "id": rid, "merged": true, "hint": appFaultMergedHint(title)})
+}
+
+// appFaultMerge hängt eine offline gemeldete Störung an die zuletzt gemeldete offene Störung
+// derselben Anlage (Spec 9.3.5), wenn der Benutzer sie sehen darf. Rückgabe true: die Antwort
+// ist geschrieben (angehängt oder Fehler); false: nichts zu tun, normal anlegen.
+// Reihenfolge: Alias, dann Maßnahme bzw. Verlauf. Scheitert die Maßnahme, wird der Alias
+// zurückgenommen und 503 geantwortet – die Once wird frei, das Telefon versucht es erneut.
+func (h *Handler) appFaultMerge(w http.ResponseWriter, r *http.Request, assetID, phoneID, title, text string, stopped bool) bool {
+	ctx := r.Context()
+	u := getUser(r)
+	closed := make([]string, 0, len(closedStatus))
+	for st := range closedStatus {
+		closed = append(closed, st)
+	}
+	var cid, ctitle string
+	err := h.db.QueryRow(ctx, `SELECT f.id::text, f.title FROM faults f
+		WHERE f.infrastructure_id = $1::uuid AND f.archived_at IS NULL AND NOT (f.status::text = ANY($2))
+		ORDER BY f.created_at DESC, f.id DESC LIMIT 1`, assetID, closed).Scan(&cid, &ctitle)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false
+	}
+	if err != nil {
+		appUnavailable(w, err, "fault", assetID, "app: offene störung suchen")
+		return true
+	}
+	can, err := h.appWorkCan(r, "fault", cid)
+	if err != nil {
+		appUnavailable(w, err, "fault", cid, "app: offene störung prüfen")
+		return true
+	}
+	if !can.See() || can.Closed {
+		return false
+	}
+	if _, err := h.db.Exec(ctx, `INSERT INTO app_id_aliases (id, target_type, target_id, created_by) VALUES ($1::uuid, 'fault', $2::uuid, $3::uuid)`,
+		phoneID, cid, u.ID); err != nil {
+		appUnavailable(w, err, "fault", cid, "app: alias speichern")
+		return true
+	}
+	msg := "Meldung aus der App: " + title
+	if text != "" {
+		msg += " – " + text
+	}
+	if can.Action {
+		if rs := []rune(msg); len(rs) > actionMaxLen {
+			msg = string(rs[:actionMaxLen])
+		}
+		err = actionModules["fault"].Add(h, ctx, cid, msg, u.ID)
+	} else {
+		err = nil
+	}
+	if err != nil {
+		if _, derr := h.db.Exec(context.WithoutCancel(ctx), `DELETE FROM app_id_aliases WHERE id = $1::uuid`, phoneID); derr != nil {
+			componentLog("app").Error().Err(derr).Msg("app: alias nicht zurücknehmbar")
+		}
+		appUnavailable(w, err, "fault", cid, "app: meldung anhängen")
+		return true
+	}
+	if !can.Action {
+		h.addHistory(ctx, "fault", cid, "update", "", "", "", msg, u.ID)
+	}
+	hint := appFaultMergedHint(ctitle)
+	h.addHistory(ctx, "fault", cid, "update", "", "", "", hint, u.ID)
+	if stopped {
+		h.markPlantStopped(ctx, "fault", cid, u.ID)
+	}
+	appSetResult(r, "fault", cid)
+	appKeepOnce(r) // alles geschrieben: ein erneuter Versuch ist ab jetzt ein Replay
+	terminalJSON(w, http.StatusOK, map[string]any{"type": "fault", "id": cid, "merged": true, "hint": hint})
+	return true
 }
 
 // appFaultByOnce: die Störung, die der erste Aufruf mit dieser Once angelegt hat.
@@ -351,8 +475,17 @@ func (h *Handler) AppFaultCreateAPI(w http.ResponseWriter, r *http.Request) {
 		appJSONErr(w, http.StatusUnprocessableEntity, "app_invalid_input", "Anlage fehlt oder ist ungültig.")
 		return
 	}
+	phoneID := strings.ToLower(strings.TrimSpace(in.ID))
+	if strings.TrimSpace(in.ID) != "" && !appUUIDv7Re.MatchString(phoneID) {
+		appJSONErr(w, http.StatusUnprocessableEntity, "app_invalid_input", "Kennung ist ungültig.")
+		return
+	}
 	ctx := r.Context()
 	u := getUser(r)
+	if appIsReplay(r) && phoneID != "" { // Wiederholung mit Kennung: Ergebnis des ersten Laufs
+		h.appFaultReplayByID(w, r, phoneID)
+		return
+	}
 	if appIsReplay(r) { // schon angelegt: die Störung des ersten Aufrufs melden
 		id := h.appFaultByOnce(ctx, appOnce(r), u.ID, assetID, title)
 		if id == "" {
@@ -379,11 +512,28 @@ func (h *Handler) AppFaultCreateAPI(w http.ResponseWriter, r *http.Request) {
 		appUnavailable(w, errNoService, "fault", assetID, "app: störung anlegen")
 		return
 	}
-	sev := faults.Severity("medium")
-	if in.PlantStopped {
-		sev = "high"
+	create := &faults.CreateFaultInput{Title: title, Description: text, InfrastructureID: &assetID}
+	if phoneID != "" {
+		// Die Kennung darf noch keiner Störung und keinem Alias gehören (sonst eine andere Aktion).
+		var taken bool
+		if err := h.db.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM faults WHERE id = $1::uuid) OR EXISTS (SELECT 1 FROM app_id_aliases WHERE id = $1::uuid)`, phoneID).Scan(&taken); err != nil {
+			appUnavailable(w, err, "fault", assetID, "app: kennung prüfen")
+			return
+		}
+		if taken {
+			appConflictForeign(w)
+			return
+		}
+		if in.Offline && h.appFaultMerge(w, r, assetID, phoneID, title, text, in.PlantStopped) {
+			return
+		}
+		create.ID = &phoneID
 	}
-	f, err := h.faults.Create(ctx, &faults.CreateFaultInput{Title: title, Description: text, Severity: sev, InfrastructureID: &assetID}, u.ID)
+	create.Severity = faults.Severity("medium")
+	if in.PlantStopped {
+		create.Severity = "high"
+	}
+	f, err := h.faults.Create(ctx, create, u.ID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			appJSONErr(w, http.StatusNotFound, "app_not_found", "app_not_found")
@@ -393,6 +543,9 @@ func (h *Handler) AppFaultCreateAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	appKeepOnce(r) // geschrieben: ein erneuter Versuch ist ab jetzt ein Replay
+	if phoneID != "" {
+		appSetResult(r, "fault", f.ID)
+	}
 	if in.PlantStopped {
 		h.markPlantStopped(ctx, "fault", f.ID, u.ID) // Push-Alarm bis zur Annahme (push.go)
 	}
