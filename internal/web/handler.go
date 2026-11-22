@@ -778,6 +778,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/admin/network/segments", h.NetworkSegmentSaveWeb)
 	r.Post("/admin/network/segments/{id}", h.NetworkSegmentSaveWeb)
 	r.Post("/admin/network/segments/{id}/delete", h.NetworkSegmentDeleteWeb)
+	r.Post("/admin/network/segments/{id}/esppdh-fw", h.NetworkESPPDHFwWeb) // Freigabe für ESPPDH-Updates in UniFi, sonst Ticket (esppdh_fw.go)
 	r.Post("/admin/network/wlans", h.NetworkWLANSaveWeb)
 	r.Post("/admin/network/wlans/{id}", h.NetworkWLANSaveWeb)
 	r.Post("/admin/network/wlans/{id}/delete", h.NetworkWLANDeleteWeb)

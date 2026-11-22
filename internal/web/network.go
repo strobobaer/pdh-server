@@ -54,6 +54,8 @@ type NetSegment struct {
 	VLAN                            string // "" = ohne VLAN-Nummer
 	WLANs                           int
 	Source, ExtID                   string // Herkunft: "", "unifi", "omada" und Kennung beim Controller
+	ESPPDH                          bool   // ESPPDH-Geräte nutzen das Netz (freigegebenes WLAN oder Gerät am Kabel)
+	FwTicket                        string // offenes Ticket „Firewall-Freigabe für ESPPDH-Updates“ ("" = keins)
 }
 
 type NetWLAN struct {
@@ -81,6 +83,7 @@ type NetworkPageData struct {
 	BaseData
 	Notice, Err string
 	CanDelete   bool
+	CanFw       bool // Knopf „Freigabe für ESPPDH-Updates in UniFi anlegen“ (system.network_admin, esppdh_fw.go)
 	HasCtl      bool // UniFi oder Omada ist eingerichtet: Block „Vom Controller gefunden“ nachladen
 	Segments    []NetSegment
 	WLANs       []NetWLAN
@@ -90,6 +93,11 @@ var networkNotices = map[string]string{
 	"seg-new": "Netz angelegt.", "seg-saved": "Netz gespeichert.", "seg-deleted": "Netz gelöscht.",
 	"wlan-new": "WLAN angelegt.", "wlan-saved": "WLAN gespeichert.", "wlan-deleted": "WLAN gelöscht.",
 	"sugg-adopted": "Vom Controller übernommen.", "sugg-all": "Alle Vorschläge der Quelle übernommen.", "sugg-hidden": "Vorschlag ausgeblendet.",
+	"fw-created":     "Freigabe für ESPPDH-Updates in UniFi angelegt (Regel „PDH – ESPPDH-Update …“).",
+	"fw-exists":      "Die Freigabe für ESPPDH-Updates ist in UniFi schon vorhanden.",
+	"fw-notneeded":   "Keine Freigabe nötig: Der Server liegt im selben Netz oder in derselben Firewall-Zone wie die Geräte.",
+	"fw-ticket":      "Die Freigabe ließ sich nicht selbst in UniFi eintragen – es gibt jetzt ein Ticket an die IT mit allen Angaben und dem Grund.",
+	"fw-ticket-open": "Für dieses Netz ist schon ein Ticket „Firewall-Freigabe für ESPPDH-Updates“ offen – kein zweites angelegt.",
 }
 
 var networkErrors = map[string]string{
@@ -106,6 +114,9 @@ var networkErrors = map[string]string{
 	"save":       "Der Eintrag konnte nicht gespeichert werden.",
 	"sugg-stale": "Der Vorschlag hat sich inzwischen geändert – bitte die Liste ansehen und erneut wählen. Es wurde nichts übernommen.",
 	"sugg-ctl":   "Der Controller ist gerade nicht erreichbar – es wurde nichts übernommen.",
+	"fw-nosubnet":      "Für die Freigabe braucht das Netz einen Adressbereich – bitte zuerst eintragen.",
+	"fw-ro":            "Am Spiegel und während der Wartung wird keine Freigabe angelegt.",
+	"fw-ticket-failed": "Die Freigabe ließ sich weder eintragen noch als Ticket melden. Näheres steht im Server-Protokoll.",
 }
 
 func networkBack(w http.ResponseWriter, r *http.Request, notice, errKey string) {
@@ -135,6 +146,7 @@ func (h *Handler) NetworkPage(w http.ResponseWriter, r *http.Request) {
 		Notice:    networkNotices[q.Get("n")],
 		Err:       networkErrors[q.Get("e")],
 		CanDelete: h.hasPerm(r, permNetworkAdmin),
+		CanFw:     h.hasPerm(r, permNetworkAdmin),
 		HasCtl:    len(h.netCtlConfigured(r.Context())) > 0,
 	}
 	var err error
@@ -150,14 +162,18 @@ func (h *Handler) NetworkPage(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) networkLists(ctx context.Context) ([]NetSegment, []NetWLAN, error) {
 	var segs []NetSegment
 	rows, err := h.db.Query(ctx, `SELECT s.id::text, s.name, COALESCE(s.vlan_id::text, ''), s.subnet, s.purpose, s.note,
-			(SELECT count(*) FROM net_wlans w WHERE w.segment_id = s.id), s.source, s.ext_id
+			(SELECT count(*) FROM net_wlans w WHERE w.segment_id = s.id), s.source, s.ext_id,
+			EXISTS (SELECT 1 FROM net_wlans w WHERE w.segment_id = s.id AND w.esppdh_ok)
+				OR EXISTS (SELECT 1 FROM esppdh_devices d WHERE d.wired AND d.segment_id = s.id),
+			COALESCE((SELECT t.id::text FROM tickets t WHERE t.tags @> jsonb_build_array('esppdh-freigabe:' || s.id::text)
+				AND t.status IN ('open', 'in_progress', 'pending') AND t.archived_at IS NULL ORDER BY t.created_at DESC LIMIT 1), '')
 		FROM net_segments s ORDER BY s.vlan_id NULLS LAST, lower(s.name)`)
 	if err != nil {
 		return nil, nil, err
 	}
 	for rows.Next() {
 		var s NetSegment
-		if err := rows.Scan(&s.ID, &s.Name, &s.VLAN, &s.Subnet, &s.Purpose, &s.Note, &s.WLANs, &s.Source, &s.ExtID); err != nil {
+		if err := rows.Scan(&s.ID, &s.Name, &s.VLAN, &s.Subnet, &s.Purpose, &s.Note, &s.WLANs, &s.Source, &s.ExtID, &s.ESPPDH, &s.FwTicket); err != nil {
 			rows.Close()
 			return nil, nil, err
 		}

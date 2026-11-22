@@ -90,7 +90,11 @@
       <td><b>{{.Name}}</b>{{if .Source}} <span class="badge b-gray">aus {{.SourceLabel}}</span><span id="nw-gone-{{.ID}}"></span>{{end}}{{if .Note}}<div class="nw-note" style="margin-top:2px">{{.Note}}</div>{{end}}</td>
       <td>{{if .VLAN}}<span class="badge b-blue">{{.VLAN}}</span>{{else}}<span style="color:var(--muted)">–</span>{{end}}</td>
       <td class="nw-mono">{{if .Subnet}}{{.Subnet}}{{else}}<span style="color:var(--muted)">–</span>{{end}}</td>
-      <td>{{.Purpose}}</td>
+      <td>{{.Purpose}}{{if and .ESPPDH .Subnet}}<div class="nw-note" style="margin-top:2px">
+        {{if .FwTicket}}<i class="ti ti-ticket" aria-hidden="true"></i> Freigabe für ESPPDH-Updates: <a href="/tickets/{{.FwTicket}}" style="color:var(--accent)">Ticket an die IT offen</a>
+        {{else if $.CanFw}}<form method="POST" action="/admin/network/segments/{{.ID}}/esppdh-fw" style="display:inline" onsubmit="return confirm('Firewall-Freigabe für ESPPDH-Updates anlegen? Das PDH trägt in UniFi eine Regel ein: TCP 3232 und 8266 vom Server zu {{.Subnet}}. Geht das nicht, entsteht ein Ticket an die IT.')">
+          <button type="submit" class="btn btn-small"><i class="ti ti-shield-check" aria-hidden="true"></i> Freigabe für ESPPDH-Updates in UniFi anlegen</button></form>{{end}}
+      </div>{{end}}</td>
       <td>{{.WLANs}}</td>
       <td><div class="nw-actions">
         <button type="button" class="btn btn-small" onclick="nwToggle('nw-seg-{{.ID}}')"><i class="ti ti-edit" aria-hidden="true"></i> Bearbeiten</button>
