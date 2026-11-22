@@ -10,6 +10,18 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.82.23] – 2026-11-22
+
+### Neu
+
+- **Rüsttasten am Anlagenterminal:** Auf der Seite „Neu“ erscheint unterhalb von Störung und Ticket die Kachel **Rüsten**, sobald an der Anlage des Terminals (direkt oder von Halle/Linie darüber geerbt) Rüsttasten vorhanden sind. Eine eigene Terminalseite (`/terminal/rusten`) zeigt die Tasten, das laufende Rüsten mit **Fertig** und **Rüstzeit nachtragen** (Rüsttaste, Beginn und Dauer per Antippen). Es gibt keinen Umweg über die Meldeseite des Easy-Modus. Rüstzeiten werden immer von der am Terminal angemeldeten Person erstellt (Karte oder manuelle Anmeldung); ohne Anmeldung verlangt die Seite zuerst die Anmeldung. Das Recht „Rüstzeiten: erfassen …“ (`setup.edit`) für die Abteilung der Anlage braucht der Terminal-Benutzer (Rolle Terminal), die angemeldete Person ist nur der Akteur. Gleiche Prüfungen und Bremse wie im Easy-Modus. Keine Migration.
+- **Störung und Ticket am Anlagenterminal:** Die Kacheln auf „Neu“ öffnen jetzt eigene Terminalseiten (`/terminal/stoerung`, `/terminal/ticket`) statt der Meldeseite des Easy-Modus; sie funktionieren auch bei ausgeschaltetem Easy-Modus. Die Anlage des Terminals ist vorgegeben (eine Unteranlage darunter ist wählbar), dazu Meldetexte der Anlage oder freier Text, Art, „Anlage steht“ und optional Fotos. Gemeldet wird immer von der am Terminal angemeldeten Person (Karte oder manuell; ohne Anmeldung steht „Bitte zuerst anmelden“); der Terminal-Benutzer braucht `faults.edit` bzw. `tickets.edit` für die Abteilung der Anlage (Rolle Terminal bringt sie mit). Anlegen, Benachrichtigungen und Alarm bei „Anlage steht“ wie bisher.
+
+### Behoben
+
+- „Rüsttasten werden nicht angezeigt“: Das Anlagenterminal hatte bisher gar keine Rüsttasten; sie gab es nur auf der Meldeseite des Easy-Modus (und dort nur bei eingeschaltetem Easy-Modus).
+- Die Meldeseite des Easy-Modus (`/e/…`) passt sich jetzt der Bildschirmgröße an (Handy, Terminal 1280×800 und 1920×1080, Hochformat) statt eines festen schmalen Streifens: breiteres Raster, größere Schrift und Tasten für Berührung.
+
 ## [0.82.22] – 2026-11-21
 
 ### Behoben

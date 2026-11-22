@@ -285,14 +285,13 @@ func TestAnlagenterminalPermissionsAndEasyMode(t *testing.T) {
 		t.Errorf("Schoner: %d", rec.Code)
 	}
 
-	// I3: Easy-Mode an → Links; aus → deaktiviert mit Hinweis
-	if b := get("/terminal/neu", termBoth, "").Body.String(); !strings.Contains(b, `href="/e/`+infraA+`"`) {
-		t.Error("Easy-Mode an: Melde-Link fehlt")
-	}
-	e.setting(KeyEasyMode, "0")
-	b := get("/terminal/neu", termBoth, "").Body.String()
-	if strings.Contains(b, `href="/e/`) || !strings.Contains(b, "Melden am Terminal ist ausgeschaltet") || !strings.Contains(b, "Easy-Mode") {
-		t.Errorf("Easy-Mode aus: Link noch da bzw. Hinweis fehlt")
+	// I3: Störung/Ticket am Terminal sind eigene Seiten, unabhängig vom Easy-Mode (an wie aus)
+	for _, mode := range []string{"1", "0"} {
+		e.setting(KeyEasyMode, mode)
+		b := get("/terminal/neu", termBoth, "").Body.String()
+		if !strings.Contains(b, `href="/terminal/stoerung"`) || !strings.Contains(b, `href="/terminal/ticket"`) || strings.Contains(b, `href="/e/`) {
+			t.Errorf("Easy-Mode %s: Melde-Links am Terminal", mode)
+		}
 	}
 }
 

@@ -234,6 +234,11 @@ func easyValidate(in *easyReportIn) error {
 // Mit Meldetext steht dieser als Titel und erste Zeile, der selbst
 // geschriebene Text (freiwillig) als Ergänzung darunter.
 func easyCompose(in easyReportIn, german, langName string, translated bool) (title, desc string) {
+	return easyComposeFrom(in, german, langName, translated, "Gemeldet per QR-Code (Easy-Mode)")
+}
+
+// easyComposeFrom: wie easyCompose, mit frei wählbarer Herkunftszeile (Easy-Modus, Terminal).
+func easyComposeFrom(in easyReportIn, german, langName string, translated bool, source string) (title, desc string) {
 	if german == "" {
 		german = in.Text
 	}
@@ -263,7 +268,7 @@ func easyCompose(in easyReportIn, german, langName string, translated bool) (tit
 	} else if !translated && langName != "Deutsch" {
 		b.WriteString("\n\n(Automatische Übersetzung nicht verfügbar – Text in " + langName + ")")
 	}
-	b.WriteString("\n\nGemeldet per QR-Code (Easy-Mode)" + easyFrom(in.Name, ": ") + " · " + easyKindDE[in.Kind] + " · " + easyStateDE[in.State])
+	b.WriteString("\n\n" + source + easyFrom(in.Name, ": ") + " · " + easyKindDE[in.Kind] + " · " + easyStateDE[in.State])
 	return title, b.String()
 }
 
@@ -366,37 +371,12 @@ func (h *Handler) EasyReportWeb(w http.ResponseWriter, r *http.Request) {
 		title = "TEST: " + title
 		desc += "\n\nTestmeldung aus der Easy-Mode-Vorschau (Admin) – kann gelöscht werden."
 	}
-	infra := id
 	tags := []string{easyKindDE[in.Kind], easyStateDE[in.State]}
-	var recID string
-	switch in.Type {
-	case "fault":
-		sev := faults.Severity("medium")
-		if in.State == "stopped" {
-			sev = "high"
-		}
-		f, err := h.faults.Create(ctx, &faults.CreateFaultInput{Title: title, Description: desc, Symptoms: tags, Severity: sev, InfrastructureID: &infra}, pdhSystemUserID)
-		if err != nil {
-			componentLog("easy").Error().Err(err).Msg("störung anlegen")
-			fail(http.StatusInternalServerError, "save")
-			return
-		}
-		recID = f.ID
-	default:
-		prio := tickets.Priority("medium")
-		if in.State == "stopped" {
-			prio = "high"
-		}
-		t, err := h.tickets.Create(ctx, &tickets.CreateInput{Title: title, Description: desc, Priority: prio, InfrastructureID: &infra, Tags: tags}, pdhSystemUserID)
-		if err != nil {
-			componentLog("easy").Error().Err(err).Msg("ticket anlegen")
-			fail(http.StatusInternalServerError, "save")
-			return
-		}
-		recID = t.ID
-	}
-	if in.State == "stopped" {
-		h.markPlantStopped(ctx, in.Type, recID, pdhSystemUserID) // Push-Alarm bis zur Annahme (push.go)
+	recID, err := h.reportCreate(ctx, in.Type, in.State, title, desc, tags, id, pdhSystemUserID)
+	if err != nil {
+		componentLog("easy").Error().Err(err).Str("art", in.Type).Msg("meldung anlegen")
+		fail(http.StatusInternalServerError, "save")
+		return
 	}
 	photos := 0
 	if r.MultipartForm != nil {
@@ -429,4 +409,36 @@ func (h *Handler) EasyModeSettingsWeb(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, "/core/settings?notice="+url.QueryEscape(msg), http.StatusSeeOther)
+}
+
+// reportCreate legt Störung oder Ticket an – gemeinsam für Easy-Modus und Anlagenterminal (gleiche
+// Anlage-Logik, Benachrichtigungen des Dienstes und Push-Alarm bei „Anlage steht“). by = Ersteller.
+func (h *Handler) reportCreate(ctx context.Context, typ, state, title, desc string, tags []string, infra, by string) (string, error) {
+	var recID string
+	switch typ {
+	case "fault":
+		sev := faults.Severity("medium")
+		if state == "stopped" {
+			sev = "high"
+		}
+		f, err := h.faults.Create(ctx, &faults.CreateFaultInput{Title: title, Description: desc, Symptoms: tags, Severity: sev, InfrastructureID: &infra}, by)
+		if err != nil {
+			return "", err
+		}
+		recID = f.ID
+	default:
+		prio := tickets.Priority("medium")
+		if state == "stopped" {
+			prio = "high"
+		}
+		t, err := h.tickets.Create(ctx, &tickets.CreateInput{Title: title, Description: desc, Priority: prio, InfrastructureID: &infra, Tags: tags}, by)
+		if err != nil {
+			return "", err
+		}
+		recID = t.ID
+	}
+	if state == "stopped" {
+		h.markPlantStopped(ctx, typ, recID, by) // Push-Alarm bis zur Annahme (push.go)
+	}
+	return recID, nil
 }

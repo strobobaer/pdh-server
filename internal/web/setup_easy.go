@@ -359,11 +359,11 @@ func (h *Handler) EasySetupAddWeb(w http.ResponseWriter, r *http.Request) {
 		setupRedirect(w, r, easyBack(id, test), "")
 		return
 	}
-	setupRedirect(w, r, easyBack(id, test), h.setupAddFor(r, id))
+	setupRedirect(w, r, easyBack(id, test), h.setupAddFor(r, id, pdhSystemUserID, ruesten.OriginEasy, r.FormValue("name")))
 }
 
 // setupAddFor legt die nachgetragene Rüstzeit an; Rückgabe: Kennung des Hinweises.
-func (h *Handler) setupAddFor(r *http.Request, infraID string) string {
+func (h *Handler) setupAddFor(r *http.Request, infraID, userID, origin, operator string) string {
 	ctx := r.Context()
 	st := h.setupStore()
 	if st == nil {
@@ -391,12 +391,12 @@ func (h *Handler) setupAddFor(r *http.Request, infraID string) string {
 		return "rate"
 	}
 	e, err := st.Create(ctx, ruesten.ManualInput{InfraID: infraID, ReasonID: btn.ReasonID, ButtonID: btn.ID, ButtonName: btn.Name,
-		Note: r.FormValue("note"), StartedAt: start, EndedAt: end, Origin: ruesten.OriginEasy, Operator: r.FormValue("name")}, pdhSystemUserID)
+		Note: r.FormValue("note"), StartedAt: start, EndedAt: end, Origin: origin, Operator: operator}, userID)
 	if err != nil {
 		componentLog("ruesten").Error().Err(err).Str("anlage", infraID).Msg("rüstzeit nachtragen")
 		return "err"
 	}
-	componentLog("ruesten").Info().Str("anlage", infraID).Str("nr", ruesten.Number(e.Number)).Msg("rüstzeit nachgetragen (easy)")
+	componentLog("ruesten").Info().Str("anlage", infraID).Str("nr", ruesten.Number(e.Number)).Msg("rüstzeit nachgetragen")
 	return "added"
 }
 
