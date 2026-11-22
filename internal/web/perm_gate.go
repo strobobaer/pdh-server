@@ -175,6 +175,8 @@ var gateRules = []gateRule{
 	gr(wPost, permOmada, "", false, `^/admin/server-config/omada(?:/confirm|/check)?$`),                    // Reiter „Omada“
 	// Seite „Netzwerk“: löschen nur Bereichsadministrator, anlegen und ändern mit system.network
 	gr(wPost, permNetworkAdmin, "", false, `^/admin/network/(?:segments|wlans)`+gID+`/delete$`),
+	// Freigabe für ESPPDH-Updates: ändert die Firewall (UniFi) oder legt ein Ticket an die IT an
+	gr(wPost, permNetworkAdmin, "", false, `^/admin/network/segments`+gID+`/esppdh-fw$`),
 	gr(wPost, permNetwork, "", false, `^/admin/network/(?:segments|wlans)(?:`+gID+`)?$`),
 	gr(wPost, permNetwork, "", false, `^/admin/network/suggestions/(?:adopt|adopt-all|hide)$`),
 	// Infobildschirm: Folien anlegen, ändern, verschieben, löschen mit terminal.slides.edit

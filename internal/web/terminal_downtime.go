@@ -1,6 +1,6 @@
 package web
 
-// Stillstand am Terminal (0.82.29): Seite /terminal/stillstand. Zuerst die Anlage wählen (Ebene für Ebene wie
+// Stillstand am Terminal (0.82.30): Seite /terminal/stillstand. Zuerst die Anlage wählen (Ebene für Ebene wie
 // beim Rüsten), danach den Stillstandsgrund (Katalog der Anlage samt geerbten, downtime_catalog.go), dann beginnt
 // der Stillstand; „Ende“ beendet ihn. Regeln wie beim Rüsten (terminal_setup.go): die Anmeldung per Karte ist
 // freiwillig; die Person der Karte ist der Akteur, ohne Anmeldung der Terminal-Benutzer (nur in der Gerätesitzung,
