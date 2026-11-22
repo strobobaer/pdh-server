@@ -7,10 +7,12 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
 
+	"pdh/internal/hostnet"
 	"pdh/internal/integrations/unifi"
 	"pdh/internal/modules/tickets"
 )
@@ -81,6 +83,38 @@ func TestEsppdhFwDecideFail(t *testing.T) {
 		if p := esppdhFwDecide(in); p.Action != "fail" || p.Reason == "" {
 			t.Errorf("%s: %+v", name, p)
 		}
+	}
+}
+
+// Schlussprüfung 3: über die UniFi-Kennung gefunden, aber anderer Adressbereich → nicht anlegen.
+func TestEsppdhFwDecideExtIDNeedsSameSubnet(t *testing.T) {
+	in := fwInput()
+	in.Subnet = "10.20.0.0/23"
+	if p := esppdhFwDecide(in); p.Action != "fail" || !strings.Contains(p.Reason, "Adressbereich") {
+		t.Errorf("anderer Adressbereich: %+v", p)
+	}
+}
+
+// Schlussprüfung 2: Adressen der Server – im Verbund alle Server nötig, ohne Verbund nur die
+// Adresse der Standardroute (keine Docker- oder VPN-Adressen).
+func TestEsppdhFwAddrsFrom(t *testing.T) {
+	sum := func(a string) *hostnet.Summary { return &hostnet.Summary{Addr: a} }
+	st := haStatus{Configured: true, Self: haNode{Kind: "server", Net: sum("10.10.0.14/24")},
+		Peers: []haNode{{Kind: "server", Net: sum("10.10.0.17/24")}, {Kind: "witness"}}}
+	st.Access.VIPOn, st.Access.VIP = true, "10.10.0.15/24"
+	ips, reason := esppdhFwAddrsFrom(st, nil, "172.17.0.1")
+	if reason != "" || strings.Join(ips, ",") != "10.10.0.14,10.10.0.17,10.10.0.15" {
+		t.Errorf("Verbund: %v %q", ips, reason)
+	}
+	st.Peers[0].Net = nil
+	if _, reason := esppdhFwAddrsFrom(st, nil, "10.10.0.14"); !strings.Contains(reason, "Partner") {
+		t.Errorf("Partner ohne Adresse: %q", reason)
+	}
+	if ips, reason := esppdhFwAddrsFrom(haStatus{}, nil, "10.10.0.14"); reason != "" || strings.Join(ips, ",") != "10.10.0.14" {
+		t.Errorf("ohne Verbund: %v %q", ips, reason)
+	}
+	if _, reason := esppdhFwAddrsFrom(haStatus{}, nil, ""); reason == "" {
+		t.Errorf("ohne Adresse: kein Grund")
 	}
 }
 
@@ -176,9 +210,68 @@ func TestNetworkPageFwButton(t *testing.T) {
 	}
 	seg.FwTicket = "t-1"
 	out = renderPage(t, tmpl, "network", NetworkPageData{CanFw: true, Segments: []NetSegment{seg}})
-	if strings.Contains(out, "/esppdh-fw") || !strings.Contains(out, `href="/tickets/t-1"`) {
-		t.Errorf("offenes Ticket: Knopf statt Verweis")
+	// Schlussprüfung 1: mit offenem Ticket bleibt der Knopf (erneut prüfen), dazu der Verweis
+	if !strings.Contains(out, "/esppdh-fw") || !strings.Contains(out, `href="/tickets/t-1"`) {
+		t.Errorf("offenes Ticket: Knopf und Verweis erwartet")
 	}
+}
+
+// Schlussprüfung 3, 6, 7: zu weiter Bereich, IPv6, Netz ohne ESPPDH – abgelehnt, kein Ticket.
+func TestEsppdhFwRejectsBadNets(t *testing.T) {
+	e := newEsppdhEnv(t, nil)
+	ctx := context.Background()
+	e.h.hasPermHook = func(*http.Request, string) bool { return true }
+	e.h.tickets = tickets.NewService(tickets.NewRepository(e.pool))
+	fwNoUnifi(t, e.h)
+	for subnet, want := range map[string]string{"10.0.0.0/8": "e=fw-broad", "0.0.0.0/0": "e=fw-broad", "2001:db8::/64": "e=fw-v4"} {
+		seg := e.addSegment(t, "Netz "+subnet+" "+e.sfx, subnet)
+		if _, err := e.pool.Exec(ctx, `UPDATE net_wlans SET segment_id = $2::uuid WHERE id = $1::uuid`, e.wlan, seg); err != nil {
+			t.Fatal(err)
+		}
+		if w := fwPost(e.h, seg); !strings.Contains(w.Header().Get("Location"), want) {
+			t.Errorf("%s: %s, erwartet %s", subnet, w.Header().Get("Location"), want)
+		}
+	}
+	plain := e.addSegment(t, "Büro "+e.sfx, "10.40.0.0/24") // kein ESPPDH-WLAN, kein Gerät
+	if w := fwPost(e.h, plain); !strings.Contains(w.Header().Get("Location"), "e=fw-notesppdh") {
+		t.Errorf("ohne ESPPDH: %s", w.Header().Get("Location"))
+	}
+	var n int
+	_ = e.pool.QueryRow(ctx, `SELECT count(*) FROM tickets WHERE created_at > now() - interval '1 minute' AND title LIKE '%'||$1||'%'`, e.sfx).Scan(&n)
+	if n != 0 {
+		t.Errorf("%d Tickets angelegt", n)
+	}
+}
+
+// Schlussprüfung 4: zweimal gleichzeitig gedrückt – ein Ticket.
+func TestEsppdhFwConcurrentPress(t *testing.T) {
+	e := newEsppdhEnv(t, nil)
+	ctx := context.Background()
+	e.h.hasPermHook = func(*http.Request, string) bool { return true }
+	e.h.tickets = tickets.NewService(tickets.NewRepository(e.pool))
+	fwNoUnifi(t, e.h)
+	seg := e.addSegment(t, "Gleichzeitig "+e.sfx, "10.21.0.0/24")
+	if _, err := e.pool.Exec(ctx, `UPDATE net_wlans SET segment_id = $2::uuid WHERE id = $1::uuid`, e.wlan, seg); err != nil {
+		t.Fatal(err)
+	}
+	tag := "esppdh-freigabe:" + seg
+	t.Cleanup(func() { fwDropTickets(e, tag) })
+	var wg sync.WaitGroup
+	for i := 0; i < 4; i++ {
+		wg.Add(1)
+		go func() { defer wg.Done(); fwPost(e.h, seg) }()
+	}
+	wg.Wait()
+	var n int
+	_ = e.pool.QueryRow(ctx, `SELECT count(*) FROM tickets WHERE tags @> jsonb_build_array($1::text)`, tag).Scan(&n)
+	if n != 1 {
+		t.Errorf("%d Tickets bei gleichzeitigem Drücken", n)
+	}
+}
+
+// fwDropTickets: Test-Tickets dieses Netzes wieder entfernen.
+func fwDropTickets(e *esppdhEnvT, tag string) {
+	_, _ = e.pool.Exec(context.Background(), "DEL"+"ETE FROM tickets WHERE tags @> jsonb_build_array($1::text)", tag)
 }
 
 // Netz ohne Adressbereich: kein Ticket, Hinweis.

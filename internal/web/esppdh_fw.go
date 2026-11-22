@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/netip"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
@@ -27,6 +29,9 @@ import (
 
 // esppdhFwPorts: Update-Ports von ESPHome (ESP32, ESP8266).
 var esppdhFwPorts = []int{3232, 8266}
+
+// esppdhFwMinBits: kürzeste erlaubte Präfixlänge des Ziels – nie mehr als ein /16 freigeben.
+const esppdhFwMinBits = 16
 
 func esppdhFwRuleName(netName string) string { return "PDH – ESPPDH-Update " + netName }
 
@@ -91,6 +96,10 @@ func esppdhFwDecide(in esppdhFwInput) esppdhFwPlan {
 	devNet := ""
 	for _, n := range in.Networks {
 		if in.NetExtID != "" && n.ID == in.NetExtID {
+			if n.Subnet != subnet.String() {
+				return esppdhFwPlan{Action: "fail", Reason: "Der Adressbereich " + subnet.String() + " passt nicht zum Netz in UniFi (" +
+					esppdhFwOr(n.Subnet, "ohne Adressbereich") + ") – bitte auf der Seite Netzwerk angleichen."}
+			}
 			devNet = n.ID
 		}
 	}
@@ -145,37 +154,67 @@ func esppdhFwDecide(in esppdhFwInput) esppdhFwPlan {
 		Description: "Vom PDH angelegt: Updates übers Netz (ESPHome) an ESPPDH-Geräte im Netz " + in.NetName + "."}}
 }
 
-// esppdhFwServerIPs: IPv4-Adressen der Server – beide Server des Verbunds und die gemeinsame
-// Adresse; ohne Verbund die eigenen Adressen.
-func (h *Handler) esppdhFwServerIPs(ctx context.Context) []string {
+func esppdhFwOr(s, alt string) string {
+	if s == "" {
+		return alt
+	}
+	return s
+}
+
+// esppdhFwAddrsFrom: IPv4-Adressen der Server. Im Verbund jeder Server (nicht der Zeuge) und die
+// gemeinsame Adresse – fehlt die Adresse eines Servers, gibt es keine Regel (sonst erreicht der
+// andere Server die Geräte nach einer Umschaltung nicht). Ohne Verbund die Adresse der
+// Standardroute (nie Docker- oder VPN-Adressen). reason: warum es keine Adressen gibt.
+func esppdhFwAddrsFrom(st haStatus, stErr error, defaultAddr string) (ips []string, reason string) {
 	seen := map[string]bool{}
-	var out []string
 	add := func(s string) {
 		if i := strings.IndexByte(s, '/'); i >= 0 {
 			s = s[:i]
 		}
 		ip := net.ParseIP(strings.TrimSpace(s)).To4()
-		if ip == nil || ip.IsLoopback() || seen[ip.String()] {
+		if ip == nil || ip.IsLoopback() || ip.IsUnspecified() || seen[ip.String()] {
 			return
 		}
 		seen[ip.String()] = true
-		out = append(out, ip.String())
+		ips = append(ips, ip.String())
 	}
-	st, err := h.certHAStatus(ctx)
-	if err == nil && st.Configured {
+	if stErr == nil && st.Configured {
 		for _, n := range append([]haNode{st.Self}, st.Peers...) {
-			if n.Kind != "witness" && n.Net != nil {
-				add(n.Net.Addr)
+			if n.Kind == "witness" {
+				continue
 			}
+			if n.Net == nil || n.Net.Addr == "" {
+				return nil, "Die Adresse eines Servers im Verbund (Partner) ist nicht bekannt – bitte prüfen, ob beide Server laufen und auf dem gleichen Stand sind."
+			}
+			add(n.Net.Addr)
 		}
-		add(certVIPFrom(st, err))
+		add(certVIPFrom(st, stErr))
+	} else {
+		add(defaultAddr)
 	}
-	if len(out) == 0 {
-		for _, a := range certOwnAddrs() {
-			add(a)
-		}
+	if len(ips) == 0 {
+		return nil, "Die Adresse des Servers ist nicht bekannt."
 	}
-	return out
+	return ips, ""
+}
+
+// esppdhDefaultAddr: eigene Absenderadresse der Standardroute (UDP ohne Senden), "" = keine.
+func esppdhDefaultAddr() string {
+	c, err := net.Dial("udp4", "192.0.2.1:9")
+	if err != nil {
+		return ""
+	}
+	defer c.Close()
+	if a, ok := c.LocalAddr().(*net.UDPAddr); ok {
+		return a.IP.String()
+	}
+	return ""
+}
+
+// esppdhFwServerIPs: Adressen der Server für die Regel (esppdhFwAddrsFrom).
+func (h *Handler) esppdhFwServerIPs(ctx context.Context) ([]string, string) {
+	st, err := h.certHAStatus(ctx)
+	return esppdhFwAddrsFrom(st, err, esppdhDefaultAddr())
 }
 
 // esppdhFwSeg: ein Netz der Seite „Netzwerk“.
@@ -236,15 +275,7 @@ func (h *Handler) esppdhFwTry(ctx context.Context, seg esppdhFwSeg, ips []string
 	if _, err := api.CreateFirewallAllow(ctx, plan.Rule); err != nil {
 		return fail("Regel anlegen", err)
 	}
-	// zurücklesen: gibt es die Regel jetzt?
-	if pols, err = api.FirewallPolicies(ctx); err == nil {
-		for _, p := range pols {
-			if p.Name == plan.Rule.Name {
-				return plan
-			}
-		}
-	}
-	return esppdhFwPlan{Action: "fail", Reason: "Die Regel war nach dem Anlegen in UniFi nicht zu finden.", Rule: plan.Rule}
+	return plan // UniFi hat die Regel mit Kennung bestätigt
 }
 
 // esppdhFwTicketText: Titel und Beschreibung des Tickets an die IT.
@@ -312,13 +343,32 @@ func (h *Handler) NetworkESPPDHFwWeb(w http.ResponseWriter, r *http.Request) {
 		networkBack(w, r, "", "fw-nosubnet")
 		return
 	}
-	if h.esppdhFwOpenTicket(ctx, seg.ID) != "" {
-		networkBack(w, r, "fw-ticket-open", "")
+	pfx, err := netip.ParsePrefix(seg.Subnet)
+	switch {
+	case err != nil || !pfx.Addr().Is4():
+		networkBack(w, r, "", "fw-v4")
+		return
+	case pfx.Bits() < esppdhFwMinBits:
+		networkBack(w, r, "", "fw-broad")
 		return
 	}
+	var used bool
+	if err := h.db.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM net_wlans w WHERE w.segment_id = $1::uuid AND w.esppdh_ok)
+		OR EXISTS (SELECT 1 FROM esppdh_devices d WHERE d.wired AND d.segment_id = $1::uuid)`, seg.ID).Scan(&used); err != nil || !used {
+		networkBack(w, r, "", "fw-notesppdh")
+		return
+	}
+	// je Netz nur ein Vorgang zur Zeit (zweimal gedrückt, zwei Fenster): keine doppelte Regel,
+	// kein doppeltes Ticket. Am Spiegel wird nichts angelegt, ein Server genügt.
+	mu, _ := h.esppdhFwLocks.LoadOrStore(seg.ID, &sync.Mutex{})
+	mu.(*sync.Mutex).Lock()
+	defer mu.(*sync.Mutex).Unlock()
 	lg := componentLog("netzwerk")
-	ips := h.esppdhFwServerIPs(ctx)
-	plan := h.esppdhFwTry(ctx, seg, ips)
+	ips, reason := h.esppdhFwServerIPs(ctx)
+	plan := esppdhFwPlan{Action: "fail", Reason: reason}
+	if reason == "" {
+		plan = h.esppdhFwTry(ctx, seg, ips)
+	}
 	switch plan.Action {
 	case "notneeded":
 		networkBack(w, r, "fw-notneeded", "")
@@ -327,8 +377,12 @@ func (h *Handler) NetworkESPPDHFwWeb(w http.ResponseWriter, r *http.Request) {
 		networkBack(w, r, "fw-exists", "")
 		return
 	case "create":
-		lg.Info().Str("benutzer", getUser(r).ID).Str("netz", seg.Name).Str("regel", plan.Rule.Name).Msg("firewall-freigabe in unifi angelegt")
+		lg.Info().Str("netz", seg.Name).Str("regel", plan.Rule.Name).Msg("firewall-freigabe in unifi angelegt")
 		networkBack(w, r, "fw-created", "")
+		return
+	}
+	if h.esppdhFwOpenTicket(ctx, seg.ID) != "" {
+		networkBack(w, r, "fw-ticket-open", "")
 		return
 	}
 	by := "PDH"
@@ -344,6 +398,6 @@ func (h *Handler) NetworkESPPDHFwWeb(w http.ResponseWriter, r *http.Request) {
 		networkBack(w, r, "", "fw-ticket-failed")
 		return
 	}
-	lg.Info().Str("benutzer", getUser(r).ID).Str("netz", seg.Name).Str("ticket", tid).Str("grund", plan.Reason).Msg("firewall-freigabe: ticket an die it")
+	lg.Info().Str("netz", seg.Name).Str("ticket", tid).Str("grund", plan.Reason).Msg("firewall-freigabe: ticket an die it")
 	networkBack(w, r, "fw-ticket", "")
 }

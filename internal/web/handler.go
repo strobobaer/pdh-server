@@ -392,6 +392,7 @@ type Handler struct {
 	// Sammelaktion „Alle veralteten Geräte aktualisieren“ (esppdh_ota_batch.go); der Hook ersetzt
 	// in Tests die Prüfung „esppdh.ota überall“
 	esppdhB          esppdhBatchState
+	esppdhFwLocks    sync.Map // je Netz eine Sperre für „Freigabe in UniFi anlegen“ (esppdh_fw.go)
 	esppdhOTAAllHook func(*http.Request) bool
 	// ESPPDH (esppdh_update.go): ESPHome täglich prüfen, proben und umschalten. Adresse der
 	// Versionsliste (leer = pypi.org), Prüfer mit einem bestimmten Programm (nil = esppdh.Runner),

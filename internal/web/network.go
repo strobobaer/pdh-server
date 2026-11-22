@@ -117,6 +117,9 @@ var networkErrors = map[string]string{
 	"fw-nosubnet":      "Für die Freigabe braucht das Netz einen Adressbereich – bitte zuerst eintragen.",
 	"fw-ro":            "Am Spiegel und während der Wartung wird keine Freigabe angelegt.",
 	"fw-ticket-failed": "Die Freigabe ließ sich weder eintragen noch als Ticket melden. Näheres steht im Server-Protokoll.",
+	"fw-v4":            "Die Freigabe für ESPPDH-Updates gibt es nur für IPv4-Netze.",
+	"fw-broad":         "Der Adressbereich ist zu groß für eine Freigabe (höchstens /16) – bitte den Adressbereich des Netzes prüfen.",
+	"fw-notesppdh":     "Dieses Netz nutzen keine ESPPDH-Geräte (kein freigegebenes WLAN, kein Gerät am Kabel) – keine Freigabe nötig.",
 }
 
 func networkBack(w http.ResponseWriter, r *http.Request, notice, errKey string) {
