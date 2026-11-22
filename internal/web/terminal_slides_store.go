@@ -40,12 +40,13 @@ const (
 	slideKindStatsFaults  = "stats_faults"
 	slideKindStatsTickets = "stats_tickets"
 	slideKindStatsSetup   = "stats_setup"
+	slideKindStatsDown    = "stats_downtime" // Stillstände je Grund (Migration 200)
 	slideKindGrafana      = "grafana"
 	slideMaxURL           = 1000
 )
 
 func slideIsStats(kind string) bool {
-	return kind == slideKindStatsFaults || kind == slideKindStatsTickets || kind == slideKindStatsSetup
+	return kind == slideKindStatsFaults || kind == slideKindStatsTickets || kind == slideKindStatsSetup || kind == slideKindStatsDown
 }
 
 // terminalSlide: eine Folie. Image wird nur von saveTerminalSlide gelesen
@@ -125,7 +126,7 @@ func validateGrafanaSlideURL(raw string) error {
 // s.ImageType eingetragen. Dauer 0 bedeutet die Vorgabe (15 s).
 func validateTerminalSlide(s *terminalSlide) error {
 	switch s.Kind {
-	case slideKindImage, slideKindText, slideKindVorgaenge, slideKindStatsFaults, slideKindStatsTickets, slideKindStatsSetup, slideKindGrafana:
+	case slideKindImage, slideKindText, slideKindVorgaenge, slideKindStatsFaults, slideKindStatsTickets, slideKindStatsSetup, slideKindStatsDown, slideKindGrafana:
 	default:
 		return fmt.Errorf("unbekannte Folienart %q", s.Kind)
 	}

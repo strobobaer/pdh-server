@@ -82,6 +82,7 @@
   {{if eq .Node.Type "drying_chamber"}}<a class="rec-tab" data-tab="chamber" href="?tab=chamber"><i class="ti ti-temperature"></i> Bauteile{{if .ChamberNOK}} <b style="background:var(--red);color:#fff">{{.ChamberNOK}} NOK</b>{{end}}</a>{{end}}
   <a class="rec-tab" data-tab="easy" href="?tab=easy"><i class="ti ti-hand-finger"></i> Meldetexte{{if .EasyTextCount}} <b>{{.EasyTextCount}}</b>{{end}}</a>
   <a class="rec-tab" data-tab="setup" href="?tab=setup"><i class="ti ti-player-play"></i> Rüsttasten{{if .SetupTab.Count}} <b>{{.SetupTab.Count}}</b>{{end}}</a>
+  <a class="rec-tab" data-tab="downtime" href="?tab=downtime"><i class="ti ti-player-pause"></i> Stillstandsgründe{{if .DowntimeTab.Count}} <b>{{.DowntimeTab.Count}}</b>{{end}}</a>
   <a class="rec-tab" data-tab="events" href="?tab=events"><i class="ti ti-timeline"></i> Anlagen-Historie</a>
   <a class="rec-tab" data-tab="fields" href="?tab=fields"><i class="ti ti-forms"></i> Feldsätze</a>
   <a class="rec-tab" data-tab="docs" href="?tab=docs"><i class="ti ti-paperclip"></i> Dokumente</a>
@@ -319,6 +320,9 @@
 </div>
 
 <!-- ── Rüsttasten: Zuordnung aus dem Katalog (setup_catalog.go) ── -->
+<div class="rec-pane" data-pane="downtime">
+  {{template "downtime-infra-tab" (dict "T" .DowntimeTab "ID" .Node.ID "CanEdit" .CanEditInfra)}}
+</div>
 <div class="rec-pane" data-pane="setup">
   {{template "setup-infra-tab" (dict "T" .SetupTab "ID" .Node.ID "CanEdit" .CanEditInfra)}}
 </div>

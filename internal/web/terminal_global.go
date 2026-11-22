@@ -333,7 +333,7 @@ func (h *Handler) buildSlidesDoc(ctx context.Context, uid string) (terminalSlide
 					return doc, err
 				}
 			}
-			perm := map[string]string{slideKindStatsFaults: "faults.view", slideKindStatsTickets: "tickets.view", slideKindStatsSetup: "setup.view"}[s.Kind]
+			perm := map[string]string{slideKindStatsFaults: "faults.view", slideKindStatsTickets: "tickets.view", slideKindStatsSetup: "setup.view", slideKindStatsDown: permDowntimeView}[s.Kind]
 			ids := h.terminalPermittedInfra(gi, uid, role, perm, gi.infraSet(s))
 			if js.Stats, err = h.slideStatsCached(ctx, uid, s.Kind, s.StatsDays, ids); err != nil {
 				return doc, err

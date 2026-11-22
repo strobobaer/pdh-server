@@ -1,0 +1,65 @@
+{{/* Stillstandsgründe (downtime_catalog.go): Karte auf /infrastructure und Reiter an der Anlage. */}}
+{{define "downtime-reason-form"}}
+<form class="rec-form et-form" method="post" action="/downtime/reasons-web">
+  <input type="hidden" name="back" value="{{.Back}}">
+  <input type="hidden" name="action" value="save">
+  {{with .R}}<input type="hidden" name="id" value="{{.ID}}">{{end}}
+  <div class="cols">
+    <div class="form-group"><label class="form-label">Name des Grundes *</label>
+      <input name="name" class="form-input" maxlength="80" required value="{{with .R}}{{.Name}}{{end}}" placeholder="z. B. Material fehlt"></div>
+    <div class="form-group"><label class="form-label">Status</label>
+      <select name="active" class="form-input">
+        {{$a := true}}{{with .R}}{{$a = .Active}}{{end}}
+        <option value="1"{{if $a}} selected{{end}}>aktiv</option>
+        <option value="0"{{if not $a}} selected{{end}}>ausgeblendet</option>
+      </select></div>
+  </div>
+  <button class="btn btn-primary btn-small" type="submit"><i class="ti ti-device-floppy"></i> {{.Label}}</button>
+</form>
+{{end}}
+
+{{define "downtime-catalog"}}
+{{$back := .Back}}{{$edit := .Edit}}{{$admin := .Admin}}
+<details class="card" id="downtime-catalog"{{if not .C.Reasons}} open{{end}}>
+  <summary class="card-title" style="cursor:pointer;list-style:none"><span><i class="ti ti-player-pause"></i> Stillstandsgründe <b>{{len .C.Reasons}}</b></span><span class="card-action">auf-/zuklappen</span></summary>
+  <p class="rec-sub" style="margin-bottom:10px">Am Anlagenterminal wird bei einem Stillstand nach der Anlage der Grund gewählt. An der Anlage im Reiter <b>Stillstandsgründe</b> zuordnen – ein Grund an einer Halle oder Linie gilt auch für alle Anlagen darunter. Mit <i class="ti ti-chevron-up"></i>/<i class="ti ti-chevron-down"></i> legst du die Reihenfolge fest. Ausgewertet wird unter <a href="/downtime">Stillstände</a>.</p>
+  {{range $i, $r := .C.Reasons}}
+  <div class="rec-row" data-rx data-rx-title="{{.Name}}">
+    {{if $edit}}<span class="et-move">
+      <form method="post" action="/downtime/reasons/{{.ID}}/move-web"><input type="hidden" name="dir" value="up"><input type="hidden" name="back" value="{{$back}}">
+        <button class="ih-act" title="Nach oben"{{if eq $i 0}} disabled{{end}} aria-label="Nach oben"><i class="ti ti-chevron-up"></i></button></form>
+      <form method="post" action="/downtime/reasons/{{.ID}}/move-web"><input type="hidden" name="dir" value="down"><input type="hidden" name="back" value="{{$back}}">
+        <button class="ih-act" title="Nach unten"{{if .Last}} disabled{{end}} aria-label="Nach unten"><i class="ti ti-chevron-down"></i></button></form>
+    </span>{{else}}<i class="ti ti-player-pause" style="font-size:18px;color:var(--accent)"></i>{{end}}
+    <div class="grow"><b>{{.Name}}</b></div>
+    {{if not .Active}}<span class="badge b-gray">ausgeblendet</span>{{end}}
+    <span class="badge {{if .Uses}}b-blue{{else}}b-gray{{end}}" title="An so vielen Anlagen zugeordnet (Unteranlagen nicht mitgezählt)">{{if .Uses}}{{.Uses}} Anlage{{if ne .Uses 1}}n{{end}}{{else}}nicht zugeordnet{{end}}</span>
+    {{if $edit}}<template class="rx-more">
+      <div style="flex-basis:100%">{{template "downtime-reason-form" (dict "R" . "Back" $back "Label" "Speichern")}}</div>
+      {{if $admin}}<form method="post" action="/downtime/reasons-web" onsubmit="return confirm('Grund „{{.Name}}“ löschen? Ein Grund mit erfassten Stillständen lässt sich nur ausblenden.')"><input type="hidden" name="back" value="{{$back}}"><input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="{{.ID}}"><button class="btn btn-small" style="color:var(--red)"><i class="ti ti-trash"></i> Löschen</button></form>{{end}}
+    </template>{{end}}
+  </div>
+  {{else}}<div class="rec-sub" style="padding:6px 0 10px">Noch keine Stillstandsgründe – z. B. „Material fehlt“, „Kein Personal“.</div>{{end}}
+  {{if $edit}}<div class="ih-section" style="margin-top:14px">Neuer Grund</div>
+  {{template "downtime-reason-form" (dict "R" nil "Back" $back "Label" "Anlegen")}}{{end}}
+</details>
+{{end}}
+
+{{define "downtime-infra-tab"}}
+<div class="card">
+  <div class="card-title"><span><i class="ti ti-player-pause"></i> Stillstandsgründe für das Anlagenterminal</span><a class="card-action" href="/infrastructure#downtime-catalog">Katalog →</a></div>
+  <p class="rec-sub" style="margin-bottom:10px">Angehakte Gründe stehen am Terminal zur Wahl, wenn an dieser Anlage ein Stillstand beginnt. Sie gelten auch für alle Unteranlagen. Gründe mit <span class="badge b-blue">über …</span> gelten hier schon, weil sie an einer übergeordneten Anlage hängen.</p>
+  {{if .T.Reasons}}
+  <form method="post" action="/infrastructure/{{.ID}}/downtime-reasons-web">
+    {{range .T.Reasons}}
+    <label class="rec-row" style="cursor:{{if $.CanEdit}}pointer{{else}}default{{end}}">
+      <input type="checkbox" name="reason_id" value="{{.ID}}"{{if .Assigned}} checked{{end}}{{if not $.CanEdit}} disabled{{end}} style="width:20px;height:20px;flex-shrink:0">
+      <div class="grow"><b>{{.Name}}</b>{{if not .Active}}<div class="rec-sub">ausgeblendet</div>{{end}}</div>
+      {{if .InheritedFrom}}<span class="badge b-blue" title="Gilt hier schon, weil er an „{{.InheritedFrom}}“ zugeordnet ist">über {{.InheritedFrom}}</span>{{end}}
+    </label>
+    {{end}}
+    {{if .CanEdit}}<button class="btn btn-primary btn-small" type="submit" style="margin-top:10px"><i class="ti ti-device-floppy"></i> Zuordnung speichern</button>{{end}}
+  </form>
+  {{else}}<div class="rec-sub" style="padding:6px 0 10px">Im Katalog gibt es noch keine Stillstandsgründe.</div>{{end}}
+</div>
+{{end}}

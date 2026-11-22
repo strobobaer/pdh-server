@@ -262,7 +262,7 @@
   }
 
   // Rüsten (Neu, Rüsten): wer rüstet und was sichtbar ist, hängt an der Kartenanmeldung – bei Wechsel neu laden.
-  if (mode === 'neu' || mode === 'rusten' || mode === 'melden' || mode === 'hmi' || mode === 'wartung') {
+  if (mode === 'neu' || mode === 'rusten' || mode === 'stillstand' || mode === 'melden' || mode === 'hmi' || mode === 'wartung') {
     document.addEventListener('pdh-card-login', function (e) { if (!!e.detail !== (body.dataset.cardIn === '1')) location.reload(); });
   }
 
@@ -709,7 +709,7 @@
           stage.appendChild(fr);
         }
         if (s.title) stage.appendChild(el('div', 'g-cap', s.title));
-      } else if (s.kind === 'stats_faults' || s.kind === 'stats_tickets' || s.kind === 'stats_setup') {
+      } else if (s.kind === 'stats_faults' || s.kind === 'stats_tickets' || s.kind === 'stats_setup' || s.kind === 'stats_downtime') {
         stage.appendChild(drawStats(s));
       } else if (s.kind === 'vorgaenge') {
         var g = el('div', 'g-vorg');

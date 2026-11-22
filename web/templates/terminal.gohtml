@@ -311,6 +311,34 @@ body.has-gear .g-vorg{padding-top:60px}
   {{end}}
 </div>
 {{end}}
+{{else if eq .Mode "stillstand"}}
+<div class="t-head">
+  <a class="t-btn" href="/terminal/neu"><i class="ti ti-arrow-left" aria-hidden="true"></i> Zurück</a>
+  <div class="t-path">{{if .Path}}{{.Path}}{{else}}<b>{{.Name}}</b>{{end}}{{if .Down.Card}} · {{.Down.Person}}{{end}}</div>
+  <div class="t-clock" data-clock>&nbsp;</div>
+</div>
+{{if not .Down.Can}}
+<div class="t-none"><i class="ti ti-lock" aria-hidden="true"></i><p>Keine Berechtigung</p><small>{{if .Down.Person}}{{.Down.Person}} darf an dieser Anlage keinen Stillstand melden.{{else}}Dieses Terminal darf hier keinen Stillstand melden.{{end}}</small></div>
+{{else}}
+<div class="t-rz">
+  {{if .Down.Notice}}<div class="t-rznote" role="alert">{{.Down.Notice}}</div>{{end}}
+  {{if not .Pick.Sel}}
+  {{template "t-pick" .Pick}}
+  {{else}}
+  {{template "t-picked" .Pick}}
+  {{if .Down.Running}}<div class="t-rzrun"><b><i class="ti ti-player-pause" aria-hidden="true"></i> Stillstand{{if .Down.Reason}}: {{.Down.Reason}}{{end}}</b><span>{{.Down.Since}}</span>
+    <form method="post" action="/terminal/stillstand/finish"><input type="hidden" name="infra" value="{{.Pick.Sel}}"><button type="submit" class="t-btn primary big"><i class="ti ti-player-play" aria-hidden="true"></i> Ende</button></form></div>
+  {{else if .Down.Reasons}}
+  <form class="t-rzadd" method="post" action="/terminal/stillstand/start">
+    <input type="hidden" name="infra" value="{{.Pick.Sel}}">
+    {{if not .Down.Card}}<label class="t-rzname">Kürzel/Name (freiwillig)<input type="text" name="name" maxlength="40" autocomplete="off"></label>{{end}}
+    <h3>Grund des Stillstands</h3>
+    <div class="t-rzgrid">{{range .Down.Reasons}}<button type="submit" class="t-btn" name="reason_id" value="{{.ID}}">{{.Name}}</button>{{end}}</div>
+  </form>
+  {{else}}<div class="t-empty"><i class="ti ti-player-pause" aria-hidden="true"></i> Keine Stillstandsgründe an dieser Anlage</div>{{end}}
+  {{end}}
+</div>
+{{end}}
 {{else if eq .Mode "hmi"}}
 <div class="t-head">
   <a class="t-btn" href="/terminal/neu"><i class="ti ti-arrow-left" aria-hidden="true"></i> Zurück</a>
@@ -390,9 +418,10 @@ connect();
   {{if .HMITile}}<a class="t-tilebtn t-rzlink t-hmilink" href="/terminal/hmi"><i class="ti ti-device-desktop-analytics" aria-hidden="true"></i><span>HMI</span></a>{{end}}
   {{if .MaintTile}}<a class="t-tilebtn t-rzlink t-mlink" href="/terminal/wartung"><i class="ti ti-calendar-check" aria-hidden="true"></i><span>Wartungen</span></a>{{end}}
   {{if or .Setup.Show .HMITile .MaintTile}}</div>{{end}}
-  <div class="t-stop">
+  <div class="t-stop{{if .Down.Running}} run{{end}}">
     <h2><i class="ti ti-player-pause" aria-hidden="true"></i> Stillstand</h2>
-    <p>Stillstandsgründe folgen</p>
+    {{if .Down.Can}}<a class="t-btn{{if .Down.Running}} primary{{end}} big" href="/terminal/stillstand">{{if .Down.Running}}<i class="ti ti-player-pause" aria-hidden="true"></i> {{.Down.ToolText}}{{else}}<i class="ti ti-player-pause" aria-hidden="true"></i> Stillstand melden{{end}}</a>
+    {{else}}<p>Keine Berechtigung für Stillstände</p>{{end}}
   </div>
 </div>
 {{end}}
