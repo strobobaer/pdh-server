@@ -10,6 +10,16 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.82.34] – 2026-11-23
+
+### Neu
+
+- **Infobildschirm: Folie „Website“.** Eine Webseite lässt sich als Folie zeigen (Adresse mit http:// oder https://, Anzeigedauer wie bei den anderen Folien, optional alle n Minuten neu laden). Sie läuft in einem abgeschotteten Rahmen ohne Kamera, Mikrofon, Standort, Downloads, Formulare und Fenster, nur solange die Folie zu sehen ist, und ist nicht bedienbar (Tippen blättert weiter). Im Formular zeigt „Vorschau“ die Seite im selben Rahmen; ein Hinweis erinnert, dass viele Websites das Einbetten verbieten. Ohne Verbindung wird die Folie übersprungen. Migration 203.
+
+### Sicherheit
+
+- Website-Folien nehmen nur http- und https-Adressen ohne Zugangsdaten an (höchstens 2048 Zeichen); die eigene PDH-Adresse ist nicht erlaubt. Die Seiten des Infobildschirms dürfen nur PDH, Grafana und die Adressen aktiver Website-Folien einbetten.
+
 ## [0.82.32] – 2026-11-22
 
 ### Neu

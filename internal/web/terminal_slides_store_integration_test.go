@@ -368,3 +368,31 @@ func TestTerminalSaverSlidesSetting(t *testing.T) {
 		t.Error("Nicht-System-Benutzer bekam Einstellungen")
 	}
 }
+
+// Website-Folie: Speichern, Lesen, Ändern und die Adresse bis 2048 Zeichen (Migration 203).
+func TestTerminalSlidesWebsiteStore(t *testing.T) {
+	e := newATEnv(t)
+	h := &Handler{db: e.pool}
+	e.exec(`DELETE FROM terminal_slides`)
+	t.Cleanup(func() { _, _ = e.pool.Exec(e.ctx, `DELETE FROM terminal_slides`) })
+
+	long := "https://example.org/" + strings.Repeat("a", 2048-len("https://example.org/"))
+	s := terminalSlide{Kind: "website", Title: "Tafel", URL: long, ReloadMinutes: 10, Active: true}
+	e.must(h.saveTerminalSlide(e.ctx, &s))
+	got, err := h.getTerminalSlide(e.ctx, s.ID)
+	e.must(err)
+	if got.Kind != "website" || got.URL != long || got.ReloadMinutes != 10 {
+		t.Fatalf("gelesen: %+v", got)
+	}
+	got.URL, got.ReloadMinutes = "http://intranet:8080/x", 0
+	e.must(h.saveTerminalSlide(e.ctx, &got))
+	again, err := h.getTerminalSlide(e.ctx, s.ID)
+	e.must(err)
+	if again.URL != "http://intranet:8080/x" || again.ReloadMinutes != 0 {
+		t.Fatalf("geändert: %+v", again)
+	}
+	bad := terminalSlide{Kind: "website", URL: "javascript:alert(1)", Active: true}
+	if h.saveTerminalSlide(e.ctx, &bad) == nil {
+		t.Error("javascript-Adresse gespeichert")
+	}
+}
