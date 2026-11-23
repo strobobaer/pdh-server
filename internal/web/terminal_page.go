@@ -322,6 +322,7 @@ func (h *Handler) loadTerminalInfo(ctx context.Context, infraID string, canFault
 // geschrieben; sonst ggf. page.NoInfra.
 func (h *Handler) terminalGate(w http.ResponseWriter, r *http.Request, mode string) (terminalPage, bool) {
 	p := terminalPage{Mode: mode}
+	terminalFreeMemoAttach(r)
 	uid := h.terminalUserID(r)
 	if uid == "" {
 		http.Error(w, "Diese Seite ist nur für Terminal-Benutzer (Systembenutzer) bestimmt.", http.StatusForbidden)

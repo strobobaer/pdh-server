@@ -13,7 +13,9 @@ package web
 
 import (
 	"context"
+	"errors"
 	"net/http"
+	"sync"
 )
 
 var terminalFreePerms = map[string]bool{
@@ -37,9 +39,53 @@ func (h *Handler) terminalFree(ctx context.Context, uid string) bool {
 	return on
 }
 
+// terminalFreeMemo: Zwischenspeicher je Anfrage (Flag, Betriebsart, Karte, Anlagenbaum), damit eine Seite die
+// Abfragen nur einmal braucht. Wird in terminalGate an die Anfrage gehängt; ohne Zwischenspeicher wird frisch gelesen.
+type terminalFreeMemo struct {
+	mu                   sync.Mutex
+	uid                  string
+	activeDone, treeDone bool
+	active, treeOK       bool
+	tree                 terminalPlantTree
+}
+
+type terminalFreeMemoKey struct{}
+
+// terminalFreeMemoAttach hängt den Zwischenspeicher an die Anfrage (r wird in place ersetzt, alle Aufrufer teilen den Zeiger).
+func terminalFreeMemoAttach(r *http.Request) {
+	if _, ok := r.Context().Value(terminalFreeMemoKey{}).(*terminalFreeMemo); !ok {
+		*r = *r.WithContext(context.WithValue(r.Context(), terminalFreeMemoKey{}, &terminalFreeMemo{}))
+	}
+}
+
+func terminalFreeMemoOf(r *http.Request, uid string) *terminalFreeMemo {
+	if m, ok := r.Context().Value(terminalFreeMemoKey{}).(*terminalFreeMemo); ok {
+		m.mu.Lock()
+		if m.uid == "" {
+			m.uid = uid
+		}
+		same := m.uid == uid
+		m.mu.Unlock()
+		if same {
+			return m
+		}
+	}
+	return &terminalFreeMemo{uid: uid}
+}
+
 // terminalFreeActive: Flag gesetzt, Gerätesitzung; in „Nur mit Karte“ nur mit Kartenperson. Gilt nur dort, wo die
 // Rechte des Terminal-Benutzers entscheiden; wo die Kartenperson mit eigenen Rechten handelt, wird es nicht gefragt.
 func (h *Handler) terminalFreeActive(r *http.Request, uid string) bool {
+	m := terminalFreeMemoOf(r, uid)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if !m.activeDone {
+		m.active, m.activeDone = h.terminalFreeActiveRead(r, uid), true
+	}
+	return m.active
+}
+
+func (h *Handler) terminalFreeActiveRead(r *http.Request, uid string) bool {
 	if h.db == nil || uid == "" || !h.terminalDeviceSession(r) {
 		return false
 	}
@@ -59,15 +105,29 @@ func (h *Handler) terminalFreeCan(r *http.Request, uid, perm, infraID string) bo
 	if !terminalFreePerms[perm] || infraID == "" || !h.terminalFreeActive(r, uid) {
 		return false
 	}
-	root, _, _ := h.terminalInfraLookup(r.Context(), uid)
-	if root == "" {
-		return false
+	m := terminalFreeMemoOf(r, uid)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if !m.treeDone {
+		m.treeDone = true
+		if root, _, _ := h.terminalInfraLookup(r.Context(), uid); root != "" {
+			if name, ok, err := h.terminalRoot(r.Context(), root); err == nil && ok {
+				m.tree, m.treeOK = h.terminalPlantTree(r, root, name), true
+			}
+		}
 	}
-	name, ok, err := h.terminalRoot(r.Context(), root)
-	if err != nil || !ok {
-		return false
+	return m.treeOK && m.tree.ok(infraID)
+}
+
+// isTerminalUser: Systembenutzer, der ein Terminal ist (Standort gesetzt oder Gerät gekoppelt).
+func (h *Handler) isTerminalUser(ctx context.Context, id string) (bool, error) {
+	if h.db == nil {
+		return false, errors.New("keine Datenbank")
 	}
-	return h.terminalPlantTree(r, root, name).ok(infraID)
+	var yes bool
+	err := h.db.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM users u WHERE u.id = $1::uuid AND u.is_system_user
+		AND (u.terminal_infrastructure_id IS NOT NULL OR EXISTS (SELECT 1 FROM terminal_devices d WHERE d.user_id = u.id)))`, id).Scan(&yes)
+	return yes, err
 }
 
 // saveTerminalFree speichert das Flag (Aufrufer prüft Recht und Systembenutzer) und schreibt den Verlauf.

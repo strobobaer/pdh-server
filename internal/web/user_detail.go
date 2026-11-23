@@ -43,6 +43,7 @@ type userMaster struct {
 	TerminalDepts                                       terminalDeptsView // Abteilungen des Terminals (terminal_departments.go)
 	TerminalVorgModus                                   string            // Bearbeiten am Terminal: ohne_karte | nur_karte
 	TerminalFree                                        bool              // Freier Terminal-Benutzer (terminal_free.go)
+	TerminalIsTerminal                                  bool              // Standort gesetzt oder Gerät gekoppelt: Schalter anbieten
 }
 
 type userPrivate struct {
@@ -288,6 +289,7 @@ func (h *Handler) loadUserMasterErr(ctx context.Context, id string) (userMaster,
 			m.TerminalDepts = h.loadTerminalDeptsView(ctx, id)
 			m.TerminalVorgModus = h.terminalVorgaengeModus(ctx, id)
 			m.TerminalFree = h.terminalFree(ctx, id)
+			m.TerminalIsTerminal, _ = h.isTerminalUser(ctx, id)
 			for _, k := range ls.CardNotify {
 				if m.TerminalCardNotify == nil {
 					m.TerminalCardNotify = map[string]bool{}
@@ -676,7 +678,7 @@ func (h *Handler) UserMasterSaveWeb(w http.ResponseWriter, r *http.Request) {
 	}
 	// Freier Terminal-Benutzer: eigener Marker, nur Benutzerverwaltung, nur Systembenutzer
 	if _, sent := r.Form["terminal_free_sent"]; sent && h.canManageUsers(r) {
-		sys, err := h.isSystemUser(ctx, id)
+		sys, err := h.isTerminalUser(ctx, id)
 		if err == nil && sys {
 			err = h.saveTerminalFree(ctx, id, r.FormValue("terminal_free") == "on", getUser(r).ID)
 		}

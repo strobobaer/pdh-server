@@ -252,6 +252,8 @@ func TestTerminalFreeSpeichern(t *testing.T) {
 	plain := e.user("tfplain", "viewer", false)
 	term := e.user("tfterm", "viewer", true)
 	person := e.user("tfperson", "viewer", false)
+	sysNoTerm := e.user("tfsys", "viewer", true) // Systembenutzer ohne Standort und ohne Gerät
+	e.exec(`UPDATE users SET terminal_infrastructure_id = $2::uuid WHERE id = $1::uuid`, term, e.infra("TFAnlage", "", ""))
 	e.warm()
 	h := &Handler{db: e.pool, rbac: e.rb, users: users.NewService(users.NewRepository(e.pool), "test-secret", 1), jwtSecret: "test-geheim", tmpl: loadTestTemplates(t)}
 	r := chi.NewRouter()
@@ -284,6 +286,10 @@ func TestTerminalFreeSpeichern(t *testing.T) {
 	do(person, mgr, "terminal_free_sent=1&terminal_free=on")
 	if flag(person) != "false" {
 		t.Error("bei normalem Benutzer gesetzt")
+	}
+	do(sysNoTerm, mgr, "terminal_free_sent=1&terminal_free=on")
+	if flag(sysNoTerm) != "false" {
+		t.Error("bei Systembenutzer ohne Terminal gesetzt")
 	}
 	do(term, mgr, "terminal_free_sent=1&terminal_free=on")
 	if flag(term) != "true" {
