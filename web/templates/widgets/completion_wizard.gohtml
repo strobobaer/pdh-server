@@ -208,7 +208,7 @@
   window.pdhComplete = async function(type, id, done, opts){
     opts = opts || {};
     if(opts.token) partsCache = null; // andere Person, andere Sicht
-    S = {type, id, step: 0, info: null, parts: [], picked: '', done: done || null, busy: false, token: opts.token || '', who: opts.who || ''};
+    S = {type, id, step: 0, info: null, parts: [], picked: '', done: done || null, busy: false, token: opts.token || '', who: opts.who || '', pre: opts.pre || []};
     $('cw-msg').textContent = ''; $('cw-msg').className = 'cw-msg';
     $('cw-noparts').checked = false; $('cw-comment').value = ''; $('cw-cause').value = '';
     $('cw-min').value = '0'; $('cw-part-q').value = ''; $('cw-part-sel').textContent = ''; $('cw-people-q').value = ''; $('cw-all-depts').checked = false;
@@ -358,6 +358,7 @@
     const i = S.info; if(!i) return;
     const all = $('cw-all-depts').checked, q = $('cw-people-q').value.trim().toLowerCase();
     const sel = new Set(picked());
+    if(S.pre && S.pre.length){ S.pre.forEach(x => sel.add(x)); S.pre = []; } // am Terminal gewaehlte Personen vorwaehlen
     const list = (i.colleagues || []).filter(c => (all || c.suggested || sel.has(c.id)) && (!deptFilter || c.department === deptFilter) && (!q || c.name.toLowerCase().includes(q)));
     const depts = [...new Set((i.colleagues || []).filter(c => all || c.suggested).map(c => c.department).filter(Boolean))];
     $('cw-depts').innerHTML = depts.length > 1 ? '<button type="button" data-dept="" class="' + (deptFilter ? '' : 'on') + '">' + {{t "Alle"}} + '</button>' + depts.map(d => '<button type="button" data-dept="' + esc(d) + '" class="' + (deptFilter === d ? 'on' : '') + '">' + esc(d) + '</button>').join('') : '';
