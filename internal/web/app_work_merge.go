@@ -112,6 +112,48 @@ var appMergeHistoryWrite = func(ctx context.Context, h *Handler, ref, id, uid st
 	return tx.Commit(ctx)
 }
 
+// appHintStartDropped: PDH-Nachricht an die Zugewiesenen, wenn ein „Annehmen“ aus der
+// App entfällt (wörtlich: Name, Art, Titel).
+const appHintStartDropped = "%s wollte bei %s „%s“ in der App mitarbeiten. Du kannst diese Person beim Abschließen als mitarbeitend eintragen."
+
+// appNotifyStartDropped benachrichtigt die Personen, denen der Vorgang zugewiesen ist
+// (assigned_to; bei Aufgaben alle task_assignees; nur eine Gruppe: niemand), nie den
+// Handelnden selbst. Nur zur Information: Fehler werden protokolliert, die Anfrage
+// gelingt trotzdem.
+func (h *Handler) appNotifyStartDropped(r *http.Request, k completionKind, id, title string) {
+	ctx := r.Context()
+	u := getUser(r)
+	if u == nil || h.db == nil {
+		return
+	}
+	q := `SELECT assigned_to::text FROM ` + k.Table + ` WHERE id = $1::uuid AND assigned_to IS NOT NULL`
+	if k.Type == "task" {
+		q = `SELECT user_id::text FROM task_assignees WHERE task_id = $1::uuid`
+	}
+	rows, err := h.db.Query(ctx, q, id)
+	if err != nil {
+		componentLog("app").Error().Err(err).Str("art", k.Type).Str("vorgang", id).Msg("app: zugewiesene lesen")
+		return
+	}
+	var to []string
+	for rows.Next() {
+		var uid string
+		if rows.Scan(&uid) == nil && uid != u.ID {
+			to = append(to, uid)
+		}
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		componentLog("app").Error().Err(err).Str("art", k.Type).Str("vorgang", id).Msg("app: zugewiesene lesen")
+		return
+	}
+	if len(to) == 0 {
+		return
+	}
+	name := strings.TrimSpace(u.FirstName + " " + u.LastName)
+	h.systemNotify(ctx, to, fmt.Sprintf(appHintStartDropped, name, k.Label, title))
+}
+
 // appStatusHint: Hinweis „… wurde inzwischen von <Name> auf „<Status>“ gesetzt.“ Der
 // Name stammt aus dem jüngsten Verlaufseintrag, der den Status geändert hat
 // (field_name = 'status'), und nur, wenn dieser auf den aktuellen Status lautet –
@@ -235,7 +277,10 @@ func (h *Handler) appWorkMerge(w http.ResponseWriter, r *http.Request, op, kind,
 			appUnavailable(w, err, kind, id, "app: nachtrag in den verlauf")
 			return true
 		}
-		appKeepOnce(r) // geschrieben: ein erneuter Versuch ist ab jetzt ein Replay
+		appKeepOnce(r)        // geschrieben: ein erneuter Versuch ist ab jetzt ein Replay
+		if op == appOpStart { // „Annehmen“ entfällt: die Zugewiesenen erfahren davon (nur hier, nie beim Replay)
+			h.appNotifyStartDropped(r, k, id, title)
+		}
 	}
 	if p, err = h.appWorkCan(r, kind, id); err != nil {
 		appUnavailable(w, err, kind, id, "vorgang prüfen")

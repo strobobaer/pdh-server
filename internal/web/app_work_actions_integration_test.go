@@ -667,6 +667,31 @@ func TestAppWorkMerge(t *testing.T) {
 			}
 		}
 	})
+	t.Run("start mit veraltetem base: Zugewiesene bekommt genau eine PDH-Nachricht, auch nach Replay", func(t *testing.T) {
+		e := newAppActEnv(t)
+		e.exec(`INSERT INTO faults (title, description, severity, status, assigned_to, created_by) VALUES ($1, '', 'low', 'analyzing', $2::uuid, $2::uuid)`, e.title("Kollege"), e.other)
+		fid := e.idOf("faults", "Kollege")
+		e.grant(e.uid, "faults.edit", "", true)
+		e.warm()
+		want := "Erika Muster wollte bei Störung „" + e.title("Kollege") + "“ in der App mitarbeiten. Du kannst diese Person beim Abschließen als mitarbeitend eintragen."
+		msgs := func(uid string) int {
+			return e.count(`SELECT COUNT(*) FROM chat_messages m JOIN chat_members c ON c.conversation_id = m.conversation_id
+				WHERE c.user_id = $1::uuid AND m.body = $2`, uid, want)
+		}
+		once := e.once()
+		for i := 0; i < 2; i++ {
+			rec, m := e.post("/api/app/v1/work/fault/"+fid+"/start", map[string]any{"base": base("detected")}, once)
+			if rec.Code != 200 || m["status"] != "analyzing" || m["hint"] == nil {
+				t.Fatalf("%d: %d %s", i, rec.Code, rec.Body.String())
+			}
+			if n := msgs(e.other); n != 1 {
+				t.Errorf("%d: nachrichten an den Zugewiesenen: %d", i, n)
+			}
+			if n := msgs(e.uid); n != 0 {
+				t.Errorf("%d: nachrichten an den Handelnden: %d", i, n)
+			}
+		}
+	})
 	t.Run("steps: offen gespeichert, inzwischen geschlossen, Replay → kein falscher Hinweis", func(t *testing.T) {
 		e := newAppActEnv(t)
 		e.seed()
