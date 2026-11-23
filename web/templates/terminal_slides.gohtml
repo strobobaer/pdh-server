@@ -34,6 +34,8 @@
     <a class="btn btn-small btn-primary" href="/terminal-slides/new?kind=plan_absences"><i class="ti ti-calendar-off" aria-hidden="true"></i> Abwesenheiten</a>
     <a class="btn btn-small btn-primary" href="/terminal-slides/new?kind=plan_duties"><i class="ti ti-phone-call" aria-hidden="true"></i> Dienste</a>
     <a class="btn btn-small btn-primary" href="/terminal-slides/new?kind=plan_maint"><i class="ti ti-tool" aria-hidden="true"></i> Wartungsplanung</a>
+    <a class="btn btn-small btn-primary" href="/terminal-slides/new?kind=tasks"><i class="ti ti-list-check" aria-hidden="true"></i> Aufgaben</a>
+    <a class="btn btn-small btn-primary" href="/terminal-slides/new?kind=projects_year"><i class="ti ti-timeline" aria-hidden="true"></i> Projekte</a>
   </div>
 </div>
 
@@ -50,7 +52,7 @@
     <tr{{if not .Active}} class="sl-off"{{end}}>
       <td><div style="display:flex;gap:10px;align-items:center;min-width:0">
         {{if .HasImage}}<img class="sl-thumb" src="/terminal-slides/{{.ID}}/image?v={{.UpdatedKey}}" alt="Vorschau{{if .Title}}: {{.Title}}{{end}}" loading="lazy">
-        {{else}}<div class="sl-thumb-none" aria-hidden="true"><i class="ti {{if eq .Kind "text"}}ti-article{{else if eq .Kind "grafana"}}ti-chart-line{{else if eq .Kind "website"}}ti-world{{else if eq .Kind "plan_shifts"}}ti-calendar-week{{else if eq .Kind "plan_absences"}}ti-calendar-off{{else if eq .Kind "plan_duties"}}ti-phone-call{{else if eq .Kind "plan_maint"}}ti-tool{{else if or (eq .Kind "stats_faults") (eq .Kind "stats_tickets") (eq .Kind "stats_setup") (eq .Kind "stats_downtime")}}ti-chart-bar{{else}}ti-list-details{{end}}"></i></div>{{end}}
+        {{else}}<div class="sl-thumb-none" aria-hidden="true"><i class="ti {{if eq .Kind "text"}}ti-article{{else if eq .Kind "grafana"}}ti-chart-line{{else if eq .Kind "website"}}ti-world{{else if eq .Kind "plan_shifts"}}ti-calendar-week{{else if eq .Kind "plan_absences"}}ti-calendar-off{{else if eq .Kind "plan_duties"}}ti-phone-call{{else if eq .Kind "plan_maint"}}ti-tool{{else if eq .Kind "tasks"}}ti-list-check{{else if eq .Kind "projects_year"}}ti-timeline{{else if or (eq .Kind "stats_faults") (eq .Kind "stats_tickets") (eq .Kind "stats_setup") (eq .Kind "stats_downtime")}}ti-chart-bar{{else}}ti-list-details{{end}}"></i></div>{{end}}
         <div class="sl-what"><b>{{if .Title}}{{.Title}}{{else}}<span style="color:var(--muted)">(ohne Titel)</span>{{end}}</b>
           {{if .Summary}}<div class="sl-sub">{{.Summary}}</div>{{end}}</div>
       </div></td>

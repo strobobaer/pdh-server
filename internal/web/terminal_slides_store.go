@@ -65,7 +65,11 @@ type terminalSlide struct {
 	ReloadMinutes                    int      // Art website: alle n Minuten neu laden, 0 = nie
 	PlanRange                        string   // Planungsfolien: today, week, next_week, days
 	PlanDays                         int      // Planungsfolien, Zeitraum days: nächste N Tage (1 bis 31)
-	DepartmentIDs                    []string // Planungsfolien: gewählte Abteilungen (leer = alle)
+	DepartmentIDs                    []string // Planungs-, Aufgaben- und Projektfolien: gewählte Abteilungen (leer = alle)
+	TaskRange                        string   // Aufgabenfolie: week, 2w, 4w, 8w, 12w, date
+	TaskUntil                        string   // Aufgabenfolie, Zeitraum date: letzter Fälligkeitstag (JJJJ-MM-TT)
+	YearMode                         string   // Projektfolie: current, next, rolling
+	OnlyActive                       bool     // Projektfolie: nur Projekte mit Status „aktiv“
 	UpdatedAt                        time.Time
 }
 
@@ -168,7 +172,7 @@ func validateGrafanaSlideURL(raw string) error {
 func validateTerminalSlide(s *terminalSlide) error {
 	switch s.Kind {
 	case slideKindImage, slideKindText, slideKindVorgaenge, slideKindStatsFaults, slideKindStatsTickets, slideKindStatsSetup, slideKindStatsDown, slideKindGrafana, slideKindWebsite,
-		slideKindPlanShifts, slideKindPlanAbsences, slideKindPlanDuties, slideKindPlanMaint:
+		slideKindPlanShifts, slideKindPlanAbsences, slideKindPlanDuties, slideKindPlanMaint, slideKindTasks, slideKindProjectsYear:
 	default:
 		return fmt.Errorf("unbekannte Folienart %q", s.Kind)
 	}
@@ -243,6 +247,13 @@ func validateTerminalSlide(s *terminalSlide) error {
 		} else {
 			s.PlanDays = planDefaultDays
 		}
+	} else {
+		s.PlanRange, s.PlanDays = planRangeToday, planDefaultDays
+	}
+	if err := validateWorkSlide(s); err != nil {
+		return err
+	}
+	if slideIsPlan(s.Kind) || slideIsWork(s.Kind) {
 		if len(s.DepartmentIDs) > planMaxDepts {
 			return fmt.Errorf("Bitte höchstens %d Abteilungen wählen", planMaxDepts)
 		}
@@ -252,19 +263,21 @@ func validateTerminalSlide(s *terminalSlide) error {
 			}
 		}
 	} else {
-		s.PlanRange, s.PlanDays, s.DepartmentIDs = planRangeToday, planDefaultDays, nil
+		s.DepartmentIDs = nil
 	}
 	return nil
 }
 
 const slideColumns = `id::text, position, kind, title, body, image_type, COALESCE(infra_ids, '{}')::text[],
 	show_faults, show_tickets, duration_seconds, active, stats_days, url, reload_minutes,
-	plan_range, plan_days, COALESCE(department_ids, '{}')::text[], updated_at`
+	plan_range, plan_days, COALESCE(department_ids, '{}')::text[],
+	task_range, COALESCE(task_until::text, ''), year_mode, only_active, updated_at`
 
 func scanSlide(row pgx.Row) (terminalSlide, error) {
 	var s terminalSlide
 	err := row.Scan(&s.ID, &s.Position, &s.Kind, &s.Title, &s.Body, &s.ImageType, &s.InfraIDs,
-		&s.ShowFaults, &s.ShowTickets, &s.DurationSeconds, &s.Active, &s.StatsDays, &s.URL, &s.ReloadMinutes, &s.PlanRange, &s.PlanDays, &s.DepartmentIDs, &s.UpdatedAt)
+		&s.ShowFaults, &s.ShowTickets, &s.DurationSeconds, &s.Active, &s.StatsDays, &s.URL, &s.ReloadMinutes, &s.PlanRange, &s.PlanDays, &s.DepartmentIDs,
+		&s.TaskRange, &s.TaskUntil, &s.YearMode, &s.OnlyActive, &s.UpdatedAt)
 	return s, err
 }
 
@@ -334,11 +347,12 @@ func (h *Handler) saveTerminalSlide(ctx context.Context, s *terminalSlide) error
 		}
 		err := h.db.QueryRow(ctx, `
 			INSERT INTO terminal_slides (position, kind, title, body, image, image_type, infra_ids,
-				show_faults, show_tickets, duration_seconds, active, stats_days, url, reload_minutes, plan_range, plan_days, department_ids)
-			VALUES ((SELECT COALESCE(MAX(position), 0) + 1 FROM terminal_slides), $1, $2, $3, $4, $5, $6::uuid[], $7, $8, $9, $10, $11, $12, $13, $14, $15, $16::uuid[])
+				show_faults, show_tickets, duration_seconds, active, stats_days, url, reload_minutes, plan_range, plan_days, department_ids,
+				task_range, task_until, year_mode, only_active)
+			VALUES ((SELECT COALESCE(MAX(position), 0) + 1 FROM terminal_slides), $1, $2, $3, $4, $5, $6::uuid[], $7, $8, $9, $10, $11, $12, $13, $14, $15, $16::uuid[], $17, NULLIF($18, '')::date, $19, $20)
 			RETURNING id::text, position, updated_at`,
 			s.Kind, s.Title, s.Body, img, imgType, infra, s.ShowFaults, s.ShowTickets, s.DurationSeconds, s.Active, s.StatsDays, s.URL, s.ReloadMinutes,
-			s.PlanRange, s.PlanDays, depts).
+			s.PlanRange, s.PlanDays, depts, s.TaskRange, s.TaskUntil, s.YearMode, s.OnlyActive).
 			Scan(&s.ID, &s.Position, &s.UpdatedAt)
 		if err != nil {
 			return err
@@ -362,10 +376,11 @@ func (h *Handler) saveTerminalSlide(ctx context.Context, s *terminalSlide) error
 				image = CASE WHEN $2 <> 'image' THEN NULL WHEN $5::bytea IS NOT NULL THEN $5::bytea ELSE image END,
 				image_type = CASE WHEN $2 <> 'image' THEN '' WHEN $5::bytea IS NOT NULL THEN $6 ELSE image_type END,
 				infra_ids = $7::uuid[], show_faults = $8, show_tickets = $9, duration_seconds = $10, active = $11,
-				stats_days = $12, url = $13, reload_minutes = $14, plan_range = $15, plan_days = $16, department_ids = $17::uuid[], updated_at = NOW()
+				stats_days = $12, url = $13, reload_minutes = $14, plan_range = $15, plan_days = $16, department_ids = $17::uuid[],
+				task_range = $18, task_until = NULLIF($19, '')::date, year_mode = $20, only_active = $21, updated_at = NOW()
 			WHERE id = $1::uuid`,
 			s.ID, s.Kind, s.Title, s.Body, img, imgType, infra, s.ShowFaults, s.ShowTickets, s.DurationSeconds, s.Active, s.StatsDays, s.URL, s.ReloadMinutes,
-			s.PlanRange, s.PlanDays, depts)
+			s.PlanRange, s.PlanDays, depts, s.TaskRange, s.TaskUntil, s.YearMode, s.OnlyActive)
 		if err != nil {
 			return err
 		}

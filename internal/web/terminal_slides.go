@@ -48,6 +48,7 @@ var slideKindLabels = map[string]string{
 	slideKindWebsite:    "Website",
 	slideKindPlanShifts: "Schichtplan", slideKindPlanAbsences: "Abwesenheiten",
 	slideKindPlanDuties: "Dienste und Bereitschaft", slideKindPlanMaint: "Wartungsplanung",
+	slideKindTasks: "Aufgaben", slideKindProjectsYear: "Projekte im Jahresband",
 }
 
 var slideNotices = map[string]string{
@@ -156,6 +157,13 @@ func (h *Handler) TerminalSlidesPage(w http.ResponseWriter, r *http.Request) {
 			default:
 				v.Summary += fmt.Sprintf("%d Abteilungen", n)
 			}
+		case slideKindTasks:
+			v.Summary = taskRangeLabel(time.Now(), s.TaskRange, s.TaskUntil) + " · " + slideDeptSummary(len(s.DepartmentIDs))
+		case slideKindProjectsYear:
+			v.Summary = yearModeLabel(time.Now(), s.YearMode) + " · " + slideDeptSummary(len(s.DepartmentIDs))
+			if s.OnlyActive {
+				v.Summary += " · nur aktive"
+			}
 		case slideKindVorgaenge:
 			switch n := len(s.InfraIDs); {
 			case n == 0:
@@ -232,6 +240,42 @@ func (h *Handler) slideDeptOptions(ctx context.Context, selected []string) []sli
 	return out
 }
 
+// slideDeptSummary: Kurzinfo zur Abteilungsauswahl.
+func slideDeptSummary(n int) string {
+	switch n {
+	case 0:
+		return "alle Abteilungen"
+	case 1:
+		return "1 Abteilung"
+	}
+	return fmt.Sprintf("%d Abteilungen", n)
+}
+
+// slideDeptsFromForm: die gewählten Abteilungen (mehrere Felder, je Feld auch kommagetrennt), ohne Doppelte.
+func slideDeptsFromForm(r *http.Request) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, raw := range r.Form["department_ids"] {
+		for _, id := range strings.FieldsFunc(raw, func(c rune) bool { return c == ',' || c == ';' || c == ' ' || c == '\n' || c == '\t' }) {
+			if id = strings.ToLower(id); !seen[id] {
+				seen[id] = true
+				out = append(out, id)
+			}
+		}
+	}
+	return out
+}
+
+// parseFormDate: Datum aus dem Formular (JJJJ-MM-TT vom Datumsfeld oder TT.MM.JJJJ) als JJJJ-MM-TT; sonst der Text
+// unverändert (die Prüfung meldet ihn).
+func parseFormDate(v string) string {
+	v = strings.TrimSpace(v)
+	if d, err := time.ParseInLocation("02.01.2006", v, time.Local); err == nil {
+		return d.Format(dayISO)
+	}
+	return v
+}
+
 // slideInfraSummary: Kurzinfo zur Anlagenauswahl.
 func slideInfraSummary(n int) string {
 	switch n {
@@ -290,7 +334,7 @@ func (h *Handler) slideFormPage(w http.ResponseWriter, r *http.Request, s termin
 	if s.Kind == slideKindGrafana {
 		d.NoStatsUsers = h.globalTerminalsWithoutStatistics(r.Context())
 	}
-	if slideIsPlan(s.Kind) && h.db != nil {
+	if (slideIsPlan(s.Kind) || slideIsWork(s.Kind)) && h.db != nil {
 		d.Departments = h.slideDeptOptions(r.Context(), s.DepartmentIDs)
 	}
 	if base, _ := h.grafanaBase(r); h.db != nil {
@@ -324,7 +368,7 @@ func (h *Handler) TerminalSlideNewPage(w http.ResponseWriter, r *http.Request) {
 		kind = slideKindImage
 	}
 	h.slideFormPage(w, r, terminalSlide{Kind: kind, DurationSeconds: slideDefaultSeconds, ShowFaults: true, ShowTickets: true, Active: true, StatsDays: 7,
-		PlanRange: planRangeToday, PlanDays: planDefaultDays},
+		PlanRange: planRangeToday, PlanDays: planDefaultDays, TaskRange: taskRangeWeek, YearMode: yearModeCurrent, OnlyActive: true},
 		true, false, "", http.StatusOK)
 }
 
@@ -392,6 +436,15 @@ func slideFromRequest(w http.ResponseWriter, r *http.Request) (terminalSlide, st
 	case slideKindStatsFaults, slideKindStatsTickets, slideKindStatsSetup, slideKindStatsDown:
 		s.StatsDays, _ = strconv.Atoi(r.FormValue("stats_days"))
 		s.InfraIDs, msg = slideInfraFromForm(r, msg)
+	case slideKindTasks, slideKindProjectsYear:
+		s.TaskRange = strings.TrimSpace(r.FormValue("task_range"))
+		s.TaskUntil = parseFormDate(r.FormValue("task_until"))
+		s.YearMode = strings.TrimSpace(r.FormValue("year_mode"))
+		s.OnlyActive = r.FormValue("only_active") != ""
+		s.DepartmentIDs = slideDeptsFromForm(r)
+		if len(s.DepartmentIDs) > planMaxDepts && msg == "" {
+			msg = fmt.Sprintf("Bitte höchstens %d Abteilungen wählen", planMaxDepts)
+		}
 	case slideKindPlanShifts, slideKindPlanAbsences, slideKindPlanDuties, slideKindPlanMaint:
 		s.PlanRange = strings.TrimSpace(r.FormValue("plan_range"))
 		s.PlanDays = planDefaultDays
@@ -405,15 +458,7 @@ func slideFromRequest(w http.ResponseWriter, r *http.Request) (terminalSlide, st
 			}
 			s.PlanDays = n
 		}
-		seenDept := map[string]bool{}
-		for _, raw := range r.Form["department_ids"] { // mehrere Felder (Kästchen), je Feld auch kommagetrennt
-			for _, id := range strings.FieldsFunc(raw, func(c rune) bool { return c == ',' || c == ';' || c == ' ' || c == '\n' || c == '\t' }) {
-				if id = strings.ToLower(id); !seenDept[id] {
-					seenDept[id] = true
-					s.DepartmentIDs = append(s.DepartmentIDs, id)
-				}
-			}
-		}
+		s.DepartmentIDs = slideDeptsFromForm(r)
 		if len(s.DepartmentIDs) > planMaxDepts && msg == "" {
 			msg = fmt.Sprintf("Bitte höchstens %d Abteilungen wählen", planMaxDepts)
 		}
