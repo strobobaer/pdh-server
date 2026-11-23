@@ -14,7 +14,7 @@ import (
 )
 
 // Vorschläge des Copilot zum Zuordnen (Tabelle copilot_proposals, Migration
-// 203). Der Copilot liefert über das Werkzeug propose_mappings eine
+// 204). Der Copilot liefert über das Werkzeug propose_mappings eine
 // Änderungsliste; das PDH prüft jede Zeile (checkProposalRows) und legt den
 // Vorschlag ab. Angelegt oder geändert wird erst mit „Übernehmen“
 // (applyProposal) – über denselben Schreibweg wie von Hand, mit denselben

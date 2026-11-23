@@ -1,4 +1,4 @@
--- 203_copilot_proposals.up.sql
+-- 204_copilot_proposals.up.sql
 --
 -- Vorschläge des Copilot zum Zuordnen (Import- und Export-Verbindungen): Der
 -- Copilot schlägt über das Werkzeug propose_mappings eine Änderungsliste vor,

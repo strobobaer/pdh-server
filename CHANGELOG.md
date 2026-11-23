@@ -10,7 +10,7 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
-## [0.82.33] – 2026-11-23
+## [0.82.35] – 2026-11-23
 
 ### Neu
 
@@ -21,7 +21,7 @@ im Kapitel „Versionen & Updates“ an.
 ### Geändert
 
 - Legt man eine Zuordnung von Hand an, die es an der Verbindung schon gibt (gleiche Quelle, gleiche Anlage), kommt jetzt eine Meldung, statt dass sie doppelt entsteht.
-- Ein Vorschlag des Copilot gehört der Person, die gefragt hat, und gilt 24 Stunden (Migration 203). Auf dem Spiegelserver und während der Wartung wird nichts übernommen.
+- Ein Vorschlag des Copilot gehört der Person, die gefragt hat, und gilt 24 Stunden (Migration 204). Auf dem Spiegelserver und während der Wartung wird nichts übernommen.
 
 ### Behoben
 
@@ -32,6 +32,16 @@ im Kapitel „Versionen & Updates“ an.
 - Zuordnungen lassen sich nur noch an Anlagen der eigenen Abteilung anlegen und löschen: Wer „Import verwalten“ bzw. „Export verwalten“ nur in einer Abteilung hat, kann Werte nicht mehr Anlagen anderer Abteilungen zuordnen – von Hand, über die Vorschlagsliste, über den Copilot, mit dem TIA-Baustein („Zuordnungen anlegen“) und mit „Vorlage anwenden“.
 - Themen, Knoten und Spalten direkt vom Gerät liest der Copilot nur für Personen, die die Verbindung ausführen oder bearbeiten dürfen. Wer sie nur sehen darf, bekommt die Spalten gespeicherter Abfrage-Ergebnisse.
 - Kennwörter, Schlüssel und Tokens einer Verbindung gehen nie an den Copilot – auch nicht, wenn sie in einer Fehlermeldung stehen oder in einer Adresse stecken (Kennwort im Benutzerteil, Parameter wie „apikey“ oder „token“). Quellwerte, Anlagennamen und die übrigen Einstellungen der Verbindung gehen auf dieser Seite an Anthropic; der Hinweis steht unter dem Eingabefeld.
+
+## [0.82.34] – 2026-11-23
+
+### Neu
+
+- **Infobildschirm: Folie „Website“.** Eine Webseite lässt sich als Folie zeigen (Adresse mit http:// oder https://, Anzeigedauer wie bei den anderen Folien, optional alle n Minuten neu laden). Sie läuft in einem abgeschotteten Rahmen ohne Kamera, Mikrofon, Standort, Downloads, Formulare und Fenster, nur solange die Folie zu sehen ist, und ist nicht bedienbar (Tippen blättert weiter). Im Formular zeigt „Vorschau“ die Seite im selben Rahmen; ein Hinweis erinnert, dass viele Websites das Einbetten verbieten. Ohne Verbindung wird die Folie übersprungen. Migration 203.
+
+### Sicherheit
+
+- Website-Folien nehmen nur http- und https-Adressen ohne Zugangsdaten an (höchstens 2048 Zeichen); die eigene PDH-Adresse ist nicht erlaubt. Die Seiten des Infobildschirms dürfen nur PDH, Grafana und die Adressen aktiver Website-Folien einbetten.
 
 ## [0.82.32] – 2026-11-22
 

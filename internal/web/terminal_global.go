@@ -236,14 +236,15 @@ type terminalSlideJSON struct {
 	Stats        *terminalStats `json:"stats,omitempty"`
 	Days         int            `json:"days,omitempty"`
 	URL          string         `json:"url,omitempty"`
+	Reload       int            `json:"reload,omitempty"` // Art website: Minuten bis zum Neuladen
 }
 
 type terminalSlidesDoc struct {
-	Version string              `json:"version"`
-	Idle    int                 `json:"idle"`
+	Version string `json:"version"`
+	Idle    int    `json:"idle"`
 	// FrameCSP: frame-src der Seite; weicht er vom Wert der geladenen Seite ab, lädt der Player neu.
-	FrameCSP string `json:"frame_csp"`
-	Slides  []terminalSlideJSON `json:"slides"`
+	FrameCSP string              `json:"frame_csp"`
+	Slides   []terminalSlideJSON `json:"slides"`
 }
 
 // slideItems: offene Vorgänge einer Tabelle in den erlaubten Anlagen (höchstens terminalSlideItems, neueste zuerst).
@@ -343,6 +344,10 @@ func (h *Handler) buildSlidesDoc(ctx context.Context, uid string) (terminalSlide
 		if s.Kind == slideKindGrafana {
 			js.URL = slideGrafanaSrc(s.URL)
 			fmt.Fprintf(sum, "G|%s|%s\n", s.ID, js.URL)
+		}
+		if s.Kind == slideKindWebsite {
+			js.URL, js.Reload = s.URL, s.ReloadMinutes
+			fmt.Fprintf(sum, "W|%s|%s|%d\n", s.ID, s.URL, s.ReloadMinutes)
 		}
 		doc.Slides = append(doc.Slides, js)
 	}
@@ -548,4 +553,3 @@ func (h *Handler) TerminalVorgang(w http.ResponseWriter, r *http.Request) {
 	}
 	h.renderTerminalVorgang(w, http.StatusOK, d)
 }
-

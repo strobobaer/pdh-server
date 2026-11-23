@@ -744,10 +744,10 @@ und 3 drückt bis auf Weiteres der Anwender.
     Sprachmodell + Assistent mit Änderungsliste), 2 berechnete Werte, 3
     InfluxDB, 4 Anlegen von Verbindungen und Abgleich. InfluxDB: alle
     Versionen (1.x InfluxQL, 2.x Flux, 3.x SQL; Anwender 22.11.2026:
-    „influxdb alle möglich“). **Paket 1 = 0.82.33** auf Branch
+    „influxdb alle möglich“). **Paket 1 = 0.82.35** (geplant als 0.82.33; main hatte inzwischen 0.82.34 „Folie Website“ mit Migration 203) auf Branch
     `feature/copilot-zuordnen` gebaut (23.11.2026, lokal; Plan
     `docs/superpowers/plans/2026-11-22-copilot-zuordnen-paket1.md`, 9 Aufgaben,
-    Migration 203 `copilot_proposals`, kein neues Recht): Knopf „Zuordnungen
+    Migration 204 `copilot_proposals` (vorher 203), kein neues Recht): Knopf „Zuordnungen
     vorschlagen“ im Reiter Zuordnungen/Felder (Rechenkern
     `internal/core/mapsuggest`), Sammel-Anlage `…/mappings/bulk`,
     Copilot-Werkzeuge auf der Verbindungsseite (`copilot_mapping.go`),
