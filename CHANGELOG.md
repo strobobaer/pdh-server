@@ -10,6 +10,12 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.82.43] – 2026-11-23
+
+### Neu
+
+- **Terminal: Zahnrad zur Verwaltungsseite.** In **Gekoppelte Geräte** und in der Liste der Kiosk-Terminals öffnet ein Zahnrad die Verwaltungsseite des Terminals in einem neuen Tab. Das Terminal meldet seine Adresse ab Version 0.4.5 selbst; bei älteren Terminals ist das Zahnrad grau. Die Verwaltungsseite fragt nach ihrem eigenen Administrator-Passwort, und beim ersten Besuch warnt der Browser vor dem selbst signierten Zertifikat.
+
 ## [0.82.39] – 2026-11-23
 
 ### Behoben
