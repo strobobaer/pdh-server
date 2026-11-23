@@ -250,16 +250,21 @@ func (h *Handler) checkCalcRows(ctx context.Context, p *mappingProposal, allow a
 			row.Problem = calcRowErrText(err)
 			continue
 		}
-		// geprüfte Angaben zurück in die Zeile: Anzeige und Übernehmen nutzen dasselbe
-		row.Name, row.Label, row.InfrastructureID, row.Unit, row.Formula = in.Name, in.Name, in.InfraID, in.Unit, in.Formula
+		row.Label, row.Formula = in.Name, in.Formula
 		row.AssetPath = paths[strings.ToLower(in.InfraID)]
-		dec := in.Decimals
-		row.Decimals = &dec
-		age := 0
-		if in.MaxAgeMinutes != nil {
-			age = *in.MaxAgeMinutes
+		if row.Op == proposalOpAdd {
+			// neuer Wert: geprüfte Angaben samt Vorgaben festhalten – Anzeige und Übernehmen nutzen dasselbe
+			row.Name, row.InfrastructureID, row.Unit = in.Name, in.InfraID, in.Unit
+			dec := in.Decimals
+			row.Decimals = &dec
+			age := 0
+			if in.MaxAgeMinutes != nil {
+				age = *in.MaxAgeMinutes
+			}
+			row.MaxAgeMinutes = &age
 		}
-		row.MaxAgeMinutes = &age
+		// neue Fassung: nur, was der Copilot genannt hat, bleibt in der Zeile;
+		// der Rest kommt beim Übernehmen vom Wert, wie er dann ist (Handänderungen bleiben)
 		if value, reason, err := st.Probe(ctx, in.Formula, in.Inputs, in.Decimals, in.MaxAgeMinutes); err == nil {
 			switch {
 			case reason != "":

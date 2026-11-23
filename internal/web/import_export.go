@@ -558,8 +558,8 @@ func (h *Handler) deleteConnection(w http.ResponseWriter, r *http.Request, direc
 			return
 		}
 		// Die Zuordnungen gehen mit der Verbindung weg (Fremdschlüssel) – nicht, wenn ein berechneter Wert sie braucht
-		if users := h.calcInputUsers(r.Context(), "connection", id); len(users) > 0 {
-			http.Redirect(w, r, base+"?notice="+url.QueryEscape("Die Verbindung liefert Eingangswerte für "+quotedNames(users)+" – bitte zuerst dort die Formel ändern."), http.StatusSeeOther)
+		if msg := h.calcBlockText(r.Context(), "Die Verbindung liefert", "connection", id); msg != "" {
+			http.Redirect(w, r, base+"?notice="+url.QueryEscape(msg), http.StatusSeeOther)
 			return
 		}
 	}

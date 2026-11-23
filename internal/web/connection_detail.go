@@ -520,12 +520,16 @@ func (h *Handler) ConnectionQueryDeleteWeb(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	ctx := r.Context()
+	// Kennung prüfen: sie steht unten in einem LIKE – Platzhalter (_ %) würden fremde Zuordnungen treffen
+	if !uuidInPathRe.MatchString(qid) || !uuidInPathRe.MatchString(id) {
+		http.NotFound(w, r)
+		return
+	}
 	withMappings := r.FormValue("with_mappings") == "1"
 	if withMappings {
 		// Spalten der Abfrage, die ein berechneter Wert als Eingangswert braucht: nichts löschen
-		if users := h.calcInputUsers(ctx, "source-prefix", id, queryRefPrefix+qid+":"); len(users) > 0 {
-			http.Redirect(w, r, connectionBackPath("import", id, "queries", "",
-				"Die Abfrage liefert Eingangswerte für "+quotedNames(users)+" – bitte zuerst dort die Formel ändern."), http.StatusSeeOther)
+		if msg := h.calcBlockText(ctx, "Die Abfrage liefert", "source-prefix", id, queryRefPrefix+qid+":"); msg != "" {
+			http.Redirect(w, r, connectionBackPath("import", id, "queries", "", msg), http.StatusSeeOther)
 			return
 		}
 	}
@@ -629,6 +633,10 @@ func (h *Handler) connectionTemplateSaveWeb(w http.ResponseWriter, r *http.Reque
 		http.Error(w, "keine berechtigung", http.StatusForbidden)
 		return
 	}
+	if direction == "import" && h.isCalcConnection(r.Context(), id) {
+		http.Error(w, errCalcBuiltin, http.StatusBadRequest)
+		return
+	}
 	_ = r.ParseForm()
 	name := strings.TrimSpace(r.FormValue("name"))
 	desc := strings.TrimSpace(r.FormValue("description"))
@@ -647,6 +655,10 @@ func (h *Handler) connectionTemplateApplyWeb(w http.ResponseWriter, r *http.Requ
 	id, tid := chi.URLParam(r, "id"), chi.URLParam(r, "tid")
 	if !h.canConnectionWrite(r, direction) {
 		http.Error(w, "keine berechtigung", http.StatusForbidden)
+		return
+	}
+	if direction == "import" && h.isCalcConnection(r.Context(), id) {
+		http.Error(w, errCalcBuiltin, http.StatusBadRequest)
 		return
 	}
 	msg, err := h.applyConnectionTemplate(r.Context(), id, direction, tid, getUser(r).ID, h.assetGuardFor(r, direction+".write"))

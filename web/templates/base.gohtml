@@ -1280,7 +1280,7 @@ table,.li,.act-item,.rec-row{zoom:var(--row-scale,1)}
         onkeydown="if(event.key==='Enter')sendCop()">
       <button class="cop-btn" onclick="sendCop()">{{t "Senden"}}</button>
     </div>
-    {{if and .CopilotConn (not .CopilotNoWeb)}}<label class="cop-web"><input type="checkbox" id="cop-web"> <span>{{t "Im Internet nach einer Vorlage suchen"}}<small>{{t "Dabei geht nur deine Frage ins Internet – keine Daten aus dem PDH."}}</small></span></label>
+    {{if .CopilotConn}}{{if not .CopilotNoWeb}}<label class="cop-web"><input type="checkbox" id="cop-web"> <span>{{t "Im Internet nach einer Vorlage suchen"}}<small>{{t "Dabei geht nur deine Frage ins Internet – keine Daten aus dem PDH."}}</small></span></label>{{end}}
     <div class="cop-privacy"><i class="ti ti-shield-lock"></i> {{t "Auf dieser Seite gehen Quellwerte und Anlagennamen an Anthropic – Kennwörter nie."}}</div>{{end}}
   </div>
 

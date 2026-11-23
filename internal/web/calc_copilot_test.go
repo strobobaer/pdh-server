@@ -65,6 +65,9 @@ func TestCopilotNoWebOnCalcPage(t *testing.T) {
 	d := calcTestPage()
 	d.CopilotConn, d.CopilotNoWeb = "import:"+calcTestConn, true
 	page := renderPage(t, tmpl, "calc_values", d)
+	if !strings.Contains(page, "cop-privacy") || !strings.Contains(page, "an Anthropic") {
+		t.Error("Seite „Berechnete Werte“: der Hinweis zum Datenschutz fehlt")
+	}
 	if strings.Contains(page, `id="cop-web"`) || !strings.Contains(page, "conn: 'import:"+calcTestConn+"'") {
 		t.Error("Seite „Berechnete Werte“: kein Haken für die Internetsuche, aber die Verbindung für den Copilot")
 	}

@@ -323,7 +323,11 @@ func (s *Store) checkFormula(ctx context.Context, q querier, valueID, src string
 // normalize trimmt die Angaben und prüft alles, was ohne Datenbank prüfbar ist.
 func (s *Store) normalize(in *SaveInput) error {
 	in.Name, in.InfraID, in.Unit, in.Formula = strings.TrimSpace(in.Name), strings.TrimSpace(in.InfraID), strings.TrimSpace(in.Unit), strings.TrimSpace(in.Formula)
-	in.ID, in.VersionID = strings.TrimSpace(in.ID), strings.TrimSpace(in.VersionID)
+	// Kennungen klein: die Kreisprüfung vergleicht Kennungen als Text
+	in.ID, in.VersionID = strings.ToLower(strings.TrimSpace(in.ID)), strings.ToLower(strings.TrimSpace(in.VersionID))
+	for i := range in.Inputs {
+		in.Inputs[i].MappingID = strings.ToLower(strings.TrimSpace(in.Inputs[i].MappingID))
+	}
 	today := s.today()
 	if in.ValidFrom.IsZero() {
 		in.ValidFrom = today

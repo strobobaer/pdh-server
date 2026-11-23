@@ -202,8 +202,14 @@ func (h *Handler) ImportMappingDeleteWeb(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Eingangswert einer geltenden oder geplanten Formel: nicht löschen
-	if users := h.calcInputUsers(r.Context(), "mapping", mappingID); len(users) > 0 {
-		msg := inputInUseText(users)
+	// Berechnete Werte löscht man auf ihrer eigenen Seite (Recht, Wartung, Anstoß)
+	msg := ""
+	if h.isCalcConnection(r.Context(), connectionID) {
+		msg = errCalcOwnPage
+	} else {
+		msg = h.calcBlockText(r.Context(), "", "mapping", mappingID)
+	}
+	if msg != "" {
 		if r.FormValue("back") == "page" {
 			http.Redirect(w, r, connectionBackPath("import", connectionID, "mappings", "", msg), http.StatusSeeOther)
 			return

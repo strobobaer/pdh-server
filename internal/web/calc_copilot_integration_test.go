@@ -179,7 +179,7 @@ func TestCalcProposeNewVersion(t *testing.T) {
 	if _, err := d.exec(ctx, "propose_calc", []byte(in)); err != nil {
 		t.Fatal(err)
 	}
-	if r := conn.Proposal.Rows[0]; !r.Valid || r.Name != "Summe "+e.sfx || r.InfrastructureID != e.assetA || r.Label != "Summe "+e.sfx {
+	if r := conn.Proposal.Rows[0]; !r.Valid || r.Name != "" || r.InfrastructureID != "" || r.Label != "Summe "+e.sfx || r.AssetPath != "Presse A "+e.sfx { // neue Fassung: Angaben des Werts gelten beim Übernehmen
 		t.Fatalf("Zeile: %+v", r)
 	}
 	p, _ := e.h.loadProposal(ctx, conn.Proposal.ID, e.uid)

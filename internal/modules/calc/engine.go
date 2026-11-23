@@ -84,6 +84,19 @@ type inputState struct {
 	gone, calc   bool
 	value        *string // nil = an der Zuordnung steht kein Wert
 	at           *time.Time
+	// Für das Höchstalter zählt bei berechneten Eingangswerten der älteste
+	// Wert, den sie selbst benutzt haben (ageSet); nil = fester Wert ohne
+	// Eingangswerte, wird nie zu alt.
+	ageAt  *time.Time
+	ageSet bool
+}
+
+// ageRef: der Zeitpunkt, an dem das Höchstalter gemessen wird.
+func (st *inputState) ageRef() *time.Time {
+	if st.ageSet {
+		return st.ageAt
+	}
+	return st.at
 }
 
 func shorten(s string, max int) string {
@@ -108,8 +121,8 @@ func (st *inputState) number(maxAge *int, now time.Time) (float64, string) {
 	if !ok {
 		return 0, name + " ist keine Zahl („" + shorten(*st.value, 30) + "“)"
 	}
-	if maxAge != nil && st.at != nil && now.Sub(*st.at) > time.Duration(*maxAge)*time.Minute {
-		return 0, fmt.Sprintf("%s ist älter als %d Minuten (letzter Wert %s)", name, *maxAge, st.at.Local().Format("02.01. 15:04"))
+	if ref := st.ageRef(); maxAge != nil && ref != nil && now.Sub(*ref) > time.Duration(*maxAge)*time.Minute {
+		return 0, fmt.Sprintf("%s ist älter als %d Minuten (letzter Wert %s)", name, *maxAge, ref.Local().Format("02.01. 15:04"))
 	}
 	return v, ""
 }
@@ -117,7 +130,7 @@ func (st *inputState) number(maxAge *int, now time.Time) (float64, string) {
 // evaluate rechnet eine Formel mit den Eingangswerten (Schlüssel: Kurzname in
 // Kleinbuchstaben). reason leer = Wert da. Nur Eingangswerte, die die Formel
 // beim Rechnen wirklich anfasst, können den Wert verhindern.
-func evaluate(f *formula.Formula, inputs map[string]*inputState, decimals int, maxAge *int, now time.Time) (value, reason string) {
+func evaluate(f *formula.Formula, inputs map[string]*inputState, decimals int, maxAge *int, now time.Time) (value, reason string, oldest *time.Time) {
 	why := map[string]string{}
 	v, no := f.EvalWhy(func(key string) (float64, bool) {
 		st := inputs[strings.ToLower(key)]
@@ -130,17 +143,20 @@ func evaluate(f *formula.Formula, inputs map[string]*inputState, decimals int, m
 			why[key] = r
 			return 0, false
 		}
+		if ref := st.ageRef(); ref != nil && (oldest == nil || ref.Before(*oldest)) {
+			oldest = ref // nur Werte, die die Formel wirklich angefasst hat
+		}
 		return n, true
 	})
 	switch {
 	case no == nil:
-		return FormatValue(v, decimals), ""
+		return FormatValue(v, decimals), "", oldest
 	case no.Kind == formula.NoValueRef:
-		return "", why[no.Ref]
+		return "", why[no.Ref], nil
 	case no.Kind == formula.NoValueDivZero:
-		return "", "Teilen durch 0"
+		return "", "Teilen durch 0", nil
 	}
-	return "", "Ergebnis ist keine Zahl"
+	return "", "Ergebnis ist keine Zahl", nil
 }
 
 // Pass rechnet alle berechneten Werte einmal durch, in der Reihenfolge ihrer
@@ -194,14 +210,15 @@ func (e *Engine) Pass(ctx context.Context) (changed int, err error) {
 	}
 
 	type result struct {
-		value *string
-		at    *time.Time
+		value  *string
+		at     *time.Time
+		oldest *time.Time // ältester benutzter Eingangswert (Höchstalter der Folgewerte)
 	}
 	fresh := map[string]result{} // Ergebnisse dieses Laufs
 	for _, id := range order {
 		v := byID[id]
 		var value, reason string
-		var youngest *time.Time
+		var youngest, oldest *time.Time
 		switch cur := v.Current(); {
 		case looped[id]:
 			reason = "Kreisbezug"
@@ -225,13 +242,14 @@ func (e *Engine) Pass(ctx context.Context) (changed int, err error) {
 				}
 				if r, ok := fresh[in.MappingID]; ok && in.Calc {
 					st.value, st.at = r.value, r.at
+					st.ageAt, st.ageSet = r.oldest, true
 				}
 				if st.at != nil && !st.gone && (youngest == nil || st.at.After(*youngest)) {
 					youngest = st.at
 				}
 				inputs[strings.ToLower(in.Short)] = st
 			}
-			value, reason = evaluate(f, inputs, v.Decimals, v.MaxAgeMinutes, now)
+			value, reason, oldest = evaluate(f, inputs, v.Decimals, v.MaxAgeMinutes, now)
 		}
 
 		res := result{}
@@ -253,6 +271,7 @@ func (e *Engine) Pass(ctx context.Context) (changed int, err error) {
 				res.at = v.LastAt
 			}
 		}
+		res.oldest = oldest
 		fresh[id] = res
 
 		tag, err := s.DB.Exec(ctx, `
@@ -319,12 +338,15 @@ func (s *Store) Probe(ctx context.Context, formulaSrc string, inputs []InputRef,
 			}
 			for _, st := range byMapping[strings.ToLower(id)] {
 				st.label, st.gone, st.calc, st.value, st.at = label, false, isCalc, val, at
+				if isCalc { // berechnete Eingangswerte prüfen ihr Alter selbst (die Probe kennt deren Eingänge nicht)
+					st.ageSet = true
+				}
 			}
 		}
 		if err := rows.Err(); err != nil {
 			return "", "", err
 		}
 	}
-	value, reason = evaluate(f, states, decimals, maxAge, s.now())
+	value, reason, _ = evaluate(f, states, decimals, maxAge, s.now())
 	return value, reason, nil
 }

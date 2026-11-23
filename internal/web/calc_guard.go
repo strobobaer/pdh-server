@@ -46,10 +46,12 @@ func inputInUseText(users []string) string {
 // einer geltenden oder geplanten Fassung als Eingangswert haben. by:
 // "mapping" (Zuordnung), "connection" (alle Zuordnungen der Verbindung),
 // "source-prefix" (Verbindung, Anfang der Quelle – Spalten einer Abfrage).
-func (h *Handler) calcInputUsers(ctx context.Context, by string, args ...string) []string {
+// Lässt sich das nicht prüfen (Datenbankfehler), kommt ein Fehler – dann wird
+// nicht gelöscht.
+func (h *Handler) calcInputUsers(ctx context.Context, by string, args ...string) ([]string, error) {
 	st := h.calcStore()
 	if st == nil || len(args) == 0 {
-		return nil
+		return nil, nil
 	}
 	var users []string
 	var err error
@@ -65,8 +67,27 @@ func (h *Handler) calcInputUsers(ctx context.Context, by string, args ...string)
 	}
 	if err != nil {
 		componentLog("berechnete-werte").Error().Err(err).Str("art", by).Msg("nutzer eines eingangswerts lesen")
+		return nil, err
 	}
-	return users
+	return users, nil
+}
+
+// errCalcGuardUnknown: der Schutz der Eingangswerte ließ sich nicht prüfen.
+const errCalcGuardUnknown = "Gerade lässt sich nicht prüfen, ob berechnete Werte diesen Wert brauchen – bitte später noch einmal versuchen"
+
+// calcBlockText: Meldung, warum nicht gelöscht wird („" = darf gelöscht werden).
+// what: „Die Verbindung liefert“ / „Die Abfrage liefert“ – leer = einzelner Wert.
+func (h *Handler) calcBlockText(ctx context.Context, what, by string, args ...string) string {
+	users, err := h.calcInputUsers(ctx, by, args...)
+	switch {
+	case err != nil:
+		return errCalcGuardUnknown
+	case len(users) == 0:
+		return ""
+	case what == "":
+		return inputInUseText(users)
+	}
+	return what + " Eingangswerte für " + quotedNames(users) + " – bitte zuerst dort die Formel ändern."
 }
 
 // isCalcConnection: die eingebaute Verbindung „Berechnete Werte“.

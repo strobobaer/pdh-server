@@ -127,7 +127,8 @@ func (p *parser) errf(format string, a ...any) *SyntaxError {
 }
 
 func (p *parser) skip() {
-	for p.pos < len(p.src) && (p.src[p.pos] == ' ' || p.src[p.pos] == '\t') {
+	// auch Zeilenumbruch (mehrzeiliges Formelfeld) und geschütztes Leerzeichen (aus Excel eingefügt)
+	for p.pos < len(p.src) && (p.src[p.pos] == ' ' || p.src[p.pos] == '\t' || p.src[p.pos] == '\n' || p.src[p.pos] == '\r' || p.src[p.pos] == ' ') {
 		p.pos++
 	}
 }

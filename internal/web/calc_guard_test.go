@@ -47,7 +47,7 @@ func TestMappingDeletesGuarded(t *testing.T) {
 			switch {
 			case !allowed[rel]:
 				t.Errorf("%s löscht Zuordnungen oder Verbindungen – Zuordnungen nur mit Schutz der Eingangswerte löschen (calcInputUsers)", rel)
-			case strings.HasPrefix(rel, "internal/web/") && !strings.Contains(src, "calcInputUsers("):
+			case strings.HasPrefix(rel, "internal/web/") && !strings.Contains(src, "calcInputUsers(") && !strings.Contains(src, "calcBlockText("):
 				t.Errorf("%s löscht ohne calcInputUsers – Zuordnungen nur mit Schutz der Eingangswerte löschen (calcInputUsers)", rel)
 			}
 			return nil
