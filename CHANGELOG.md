@@ -10,6 +10,12 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.82.39] – 2026-11-23
+
+### Behoben
+
+- **Terminal: Anmeldedialog nur auf Klick.** Der Dialog **Mit Benutzer und Passwort** öffnet sich nur noch, wenn man den Knopf antippt. Bisher ging er bei Anmeldeart „Benutzer und Passwort“ ohne erkannten Kartenleser von selbst auf und nach jedem Leser- oder Einstellungsereignis wieder, also praktisch bei jeder Berührung.
+
 ## [0.82.38] – 2026-11-23
 
 ### Neu
