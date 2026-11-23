@@ -43,6 +43,7 @@ type proposalRow struct {
 	ImportMappingID  string `json:"import_mapping_id,omitempty"`
 	MappingID        string `json:"mapping_id,omitempty"`
 	InfrastructureID string `json:"infrastructure_id,omitempty"`
+	Label            string `json:"label,omitempty"` // lesbare Quelle für die Anzeige („Abfrage › Spalte“)
 	AssetPath        string `json:"asset_path,omitempty"`
 	Name             string `json:"name,omitempty"`
 	Note             string `json:"note,omitempty"`
@@ -178,6 +179,7 @@ func checkOther(row *proposalRow) bool {
 
 func (h *Handler) checkImportRows(ctx context.Context, p *mappingProposal, config map[string]string, paths map[string]string, allow assetGuard) error {
 	queries := map[string]bool{}
+	queryNames := map[string]string{}
 	if queryKindSupported(p.Kind) {
 		qs, err := h.loadConnQueries(ctx, p.ConnectionID)
 		if err != nil {
@@ -185,7 +187,14 @@ func (h *Handler) checkImportRows(ctx context.Context, p *mappingProposal, confi
 		}
 		for _, q := range qs {
 			queries[q.ID] = true
+			queryNames[q.ID] = q.Name
 		}
+	}
+	label := func(ref string) string {
+		if id, col, ok := parseQueryRef(ref); ok && queryNames[id] != "" {
+			return queryNames[id] + " › " + col
+		}
+		return ref
 	}
 	var columns map[string]bool
 	columnsErr := ""
@@ -248,6 +257,7 @@ func (h *Handler) checkImportRows(ctx context.Context, p *mappingProposal, confi
 			continue
 		}
 		row.SourceRef, row.InfrastructureID, row.Name, row.Note = in.SourceRef, in.InfrastructureID, in.Name, in.Note
+		row.Label = label(in.SourceRef)
 		path, found := paths[strings.ToLower(in.InfrastructureID)]
 		if !found {
 			row.Problem = "Die Anlage gibt es nicht"
@@ -344,7 +354,7 @@ func (h *Handler) checkExportRows(ctx context.Context, p *mappingProposal, paths
 			row.Problem = errExportSourceGone
 			continue
 		}
-		row.InfrastructureID, row.Name, row.SourceRef = value.InfrastructureID, value.Name, value.SourceRef
+		row.InfrastructureID, row.Name, row.SourceRef, row.Label = value.InfrastructureID, value.Name, value.SourceRef, value.Name
 		row.AssetPath = paths[strings.ToLower(value.InfrastructureID)]
 		if !allow(value.InfrastructureID) {
 			row.Problem = errAssetDenied

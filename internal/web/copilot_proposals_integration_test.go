@@ -157,3 +157,60 @@ func TestProposalApplyRoute(t *testing.T) {
 		t.Errorf("nichts angelegt erwartet: %d", n)
 	}
 }
+
+// Werkzeuge der Verbindungsseite über copilotData.exec: propose_mappings legt
+// nur den Vorschlag ab (keine Zuordnung), ohne Schreibrecht gar nichts; das
+// Kennwort der Verbindung steht in keiner Ausgabe.
+func TestCopilotConnPropose(t *testing.T) {
+	e := newMappingEnv(t)
+	ctx := context.Background()
+	mq := e.id(t, `INSERT INTO import_export_connections (direction, kind, name, config) VALUES ('import', 'mqtt', $1, '{}'::jsonb) RETURNING id::text`, "Mq "+e.sfx)
+	t.Cleanup(func() {
+		_, _ = e.pool.Exec(context.Background(), `DELETE FROM import_export_connections WHERE id = $1::uuid`, mq)
+	})
+	conn := &copilotConn{Direction: "import", ID: mq, Kind: "mqtt", Name: "Mq", CanWrite: true,
+		Config: map[string]string{"ext_password": "geheim123", "ext_host": "10.0.0.5"},
+		Allow:  func(id string) bool { return id == e.assetA }}
+	d := &copilotData{h: e.h, userID: e.uid, conn: conn, can: func(string) bool { return true }}
+	in := `{"summary":"Halle A zuordnen","rows":[
+		{"op":"add","source_ref":"halle/a/strom","infrastructure_id":"` + e.assetA + `","name":"Strom","reason":"Thema nennt strom"},
+		{"op":"add","source_ref":"halle/b/geheim123","infrastructure_id":"` + e.assetB + `","name":"Druck"}]}`
+	out, err := d.exec(ctx, "propose_mappings", []byte(in))
+	if err != nil || !strings.Contains(out, `"uebernehmbar": 1`) && !strings.Contains(out, `"uebernehmbar":1`) {
+		t.Fatalf("Vorschlag: %s %v", out, err)
+	}
+	if strings.Contains(out, "geheim123") || !strings.Contains(out, errAssetDenied) {
+		t.Errorf("Ausgabe: %s", out)
+	}
+	if conn.Proposal == nil || conn.Proposal.ID == "" || !conn.Proposal.Rows[0].Valid || conn.Proposal.Rows[1].Valid {
+		t.Fatalf("Vorschlag am Kontext: %+v", conn.Proposal)
+	}
+	if got, err := e.h.loadProposal(ctx, conn.Proposal.ID, e.uid); err != nil || got.Summary != "Halle A zuordnen" || len(got.Rows) != 2 {
+		t.Errorf("gespeichert: %+v %v", got, err)
+	}
+	if n := e.count(t, "import_mappings", mq); n != 0 {
+		t.Errorf("Vorschlag darf nichts anlegen: %d", n)
+	}
+	view := proposalView(conn.Proposal)
+	if rows := view["rows"].([]map[string]any); len(rows) != 2 || rows[0]["asset"] == "" || rows[1]["problem"] != errAssetDenied {
+		t.Errorf("Ansicht: %+v", view)
+	}
+	for _, tool := range []string{"connection_info", "mappings", "asset_tree"} {
+		res, err := d.exec(ctx, tool, []byte(`{"query":"`+e.sfx+`"}`))
+		if err != nil || res == "" || strings.Contains(res, "geheim123") {
+			t.Errorf("%s: %s %v", tool, res, err)
+		}
+	}
+	if res, _ := d.exec(ctx, "asset_tree", []byte(`{"query":"Presse A `+e.sfx+`"}`)); !strings.Contains(res, e.assetA) || strings.Contains(res, e.assetB) {
+		t.Errorf("Anlagenbaum gefiltert: %s", res)
+	}
+
+	conn.CanWrite, conn.Proposal = false, nil
+	if _, err := d.exec(ctx, "propose_mappings", []byte(in)); err == nil || conn.Proposal != nil {
+		t.Errorf("ohne Schreibrecht: %v %+v", err, conn.Proposal)
+	}
+	d.conn = nil
+	if _, err := d.exec(ctx, "mappings", []byte(`{}`)); err == nil {
+		t.Error("ohne Verbindungsseite darf es das Werkzeug nicht geben")
+	}
+}

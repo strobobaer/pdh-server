@@ -55,6 +55,7 @@ type BaseData struct {
 	UserLastName  string
 	FaultID       string
 	CopilotRef    string // "fault:<id>" / "ticket:<id>": Seitenleiste lädt Copilot-Vorschläge (copilot_suggest.go)
+	CopilotConn   string // "import:<id>" / "export:<id>": Copilot kennt die Verbindung der Seite (copilot_mapping.go)
 	UserAvatar    string // eigenes Profilbild (avatar.go), "" = Symbol
 
 	// Auto-Logout / Systemnutzer-Override (siehe base.gohtml Script-Block)
@@ -2076,6 +2077,27 @@ func (h *Handler) CopilotAskWeb(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 290*time.Second)
 	defer cancel()
 	u := getUser(r)
+	// Frage von einer Verbindungsseite: Format und Leserecht zuerst
+	var conn *copilotConn
+	if ref := strings.TrimSpace(r.FormValue("conn")); ref != "" {
+		m := copilotConnRe.FindStringSubmatch(ref)
+		if m == nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Ungültige Verbindung."})
+			return
+		}
+		if !h.canConnectionRead(r, m[1]) {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "Kein Zugriff auf diese Verbindung."})
+			return
+		}
+		name, kind, enabled, config, err := h.connectionRow(ctx, m[2], m[1])
+		if err != nil && !isConnSecretErr(err) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "Die Verbindung gibt es nicht mehr."})
+			return
+		}
+		conn = &copilotConn{Direction: m[1], ID: m[2], Kind: kind, Name: name, Enabled: enabled, Config: config,
+			CanWrite: h.canConnectionWrite(r, m[1]) && !(m[1] == "export" && kind == efficioKind),
+			Allow:    h.assetGuardFor(r, m[1]+".write")}
+	}
 	scope := h.requestScope(r)
 	fid := strings.TrimSpace(r.FormValue("fault"))
 	if fid != "" && (!uuidInPathRe.MatchString(fid) || (scope != nil && !h.recordInScope(ctx, scope, "fault", fid))) {
@@ -2083,7 +2105,7 @@ func (h *Handler) CopilotAskWeb(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Copilot mit PDH-Daten (copilot_data.go): liest mit den Rechten der fragenden Person
-	d := &copilotData{h: h, userID: u.ID, scope: scope, can: func(p string) bool { return h.hasPerm(r, p) }}
+	d := &copilotData{h: h, userID: u.ID, scope: scope, conn: conn, can: func(p string) bool { return h.hasPerm(r, p) }}
 	d.limitProjects(r) // Projekte nur mit Ansichtsrecht oder als Beteiligte
 	reply, sources, err := h.askCopilot(ctx, d, strings.TrimSpace(u.FirstName+" "+u.LastName), q, fid)
 	if err != nil {
@@ -2093,7 +2115,11 @@ func (h *Handler) CopilotAskWeb(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"error": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"reply": reply, "sources": sources})
+	out := map[string]any{"reply": reply, "sources": sources}
+	if conn != nil && conn.Proposal != nil {
+		out["proposal"] = proposalView(conn.Proposal)
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 func (h *Handler) CreateTicket(w http.ResponseWriter, r *http.Request) {

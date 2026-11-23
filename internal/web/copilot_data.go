@@ -45,6 +45,7 @@ type copilotData struct {
 	userID string
 	scope  *deptScope
 	can    func(string) bool
+	conn   *copilotConn // Frage von einer Verbindungsseite: zusätzliche Werkzeuge (copilot_mapping.go)
 	// Ansichtsrecht für Projekte (limitProjects): Ohne Aufruf sieht der Copilot
 	// keine Projekte (sicherer Ausgangszustand).
 	projAll bool            // Recht überall: nichts zu filtern
@@ -229,6 +230,11 @@ func (d *copilotData) exec(ctx context.Context, name string, raw json.RawMessage
 		return d.importValues(ctx, str("query"))
 	case "due_maintenance":
 		return d.dueMaintenance(ctx, num("days", 14, 0, 365), str("asset"))
+	}
+	if d.conn != nil {
+		if out, known, err := d.conn.exec(ctx, d, name, in); known {
+			return out, err
+		}
 	}
 	return "", fmt.Errorf("unbekanntes Werkzeug %s", name)
 }
@@ -846,6 +852,8 @@ Fragende Person: ` + userName + `.` + extra
 var copilotToolLabels = map[string]string{
 	"search": "Suche", "get_record": "Datensätze", "list_records": "Listen", "asset_overview": "Anlagen", "part_stock": "Ersatzteile",
 	"statistics": "Auswertungen", "import_values": "Messwerte", "due_maintenance": "Wartungen",
+	"connection_info": "Verbindung", "source_values": "Quellwerte", "asset_tree": "Anlagenbaum", "mappings": "Zuordnungen",
+	"export_sources": "Importwerte", "propose_mappings": "Vorschlag",
 }
 
 // askCopilot: Frage mit PDH-Daten. Claude ruft die Werkzeuge selbst; Ollama
@@ -859,9 +867,14 @@ func (h *Handler) askCopilot(ctx context.Context, d *copilotData, userName, ques
 	if faultID != "" {
 		extra = "\n" + h.faults.FaultContext(ctx, faultID)
 	}
+	tools := copilotTools()
+	if d.conn != nil && cp.CanUseTools() {
+		extra += copilotConnPrompt(d.conn, false)
+		tools = append(tools, copilotConnTools(d.conn.Direction, d.conn.CanWrite)...)
+	}
 	system := copilotSystemPrompt(userName, extra)
 	if cp.CanUseTools() {
-		answer, used, err := cp.AskWithTools(ctx, system, question, copilotTools(), d.exec)
+		answer, used, err := cp.AskWithTools(ctx, system, question, tools, d.exec)
 		var labels []string
 		for _, u := range used {
 			labels = append(labels, firstNonEmpty(copilotToolLabels[u], u))
