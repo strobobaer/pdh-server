@@ -46,14 +46,15 @@
     if (ownOrigin && u.origin === ownOrigin) return '';
     return u.href;
   }
-  // Erste zeigbare Folie ab Index i (reihum). Website-Folien entfallen ohne Verbindung (offline); -1 = keine.
+  // Erste zeigbare Folie ab Index i (reihum). Website- und Planungsfolien (plan_*) entfallen ohne Verbindung
+  // (offline); -1 = keine.
   function showableIndex(slides, i, offline) {
     var n = Array.isArray(slides) ? slides.length : 0;
     if (n < 1) return -1;
     var start = typeof i === 'number' && i >= 0 && i < n ? i : 0;
     for (var k = 0; k < n; k++) {
       var j = (start + k) % n;
-      if (!(offline && slides[j] && slides[j].kind === 'website')) return j;
+      if (!(offline && slides[j] && (slides[j].kind === 'website' || /^plan_/.test(String(slides[j].kind))))) return j;
     }
     return -1;
   }
@@ -63,7 +64,7 @@
     var dx = start.x - end.x, dy = Math.abs(start.y - end.y);
     return dx >= 60 && dy < 40;
   }
-  // Folienarten, die ältere Terminals kennen. Neuere Arten (Statistik, Grafana, Website) bleiben aus dem
+  // Folienarten, die ältere Terminals kennen. Neuere Arten (Statistik, Grafana, Website, Planung) bleiben aus dem
   // Zwischenspeicher: ein Terminal mit älterem Stand lehnt unbekannte Arten ab und würde alles verwerfen.
   var CACHEABLE_KINDS = ['image', 'text', 'vorgaenge'];
 
@@ -758,6 +759,39 @@
       box.appendChild(wrap);
       return box;
     };
+    // Planungsfolie (Schichtplan, Abwesenheiten, Dienste, Wartung): je Tag eine Spalte mit Gruppen und Einträgen.
+    // Alles über textContent; die Farbe einer Gruppe nur, wenn sie ein Hexwert ist.
+    var PLAN_TITLES = { plan_shifts: 'Schichtplan', plan_absences: 'Abwesenheiten', plan_duties: 'Dienste und Bereitschaft', plan_maint: 'Wartungsplanung' };
+    var drawPlan = function (s) {
+      var pl = s.plan || { days: [] };
+      var box = el('div', 'g-plan');
+      box.appendChild(el('h1', null, (s.title || PLAN_TITLES[s.kind] || 'Planung') + (pl.label ? ' – ' + pl.label : '')));
+      var days = Array.isArray(pl.days) ? pl.days : [];
+      var any = days.some(function (d) { return d && Array.isArray(d.groups) && d.groups.length > 0; });
+      if (!any) {
+        box.appendChild(el('div', 'g-plan-empty', 'Keine Einträge'));
+        return box;
+      }
+      var grid = el('div', 'g-plan-days' + (days.length === 1 ? ' one' : ''));
+      days.forEach(function (d) {
+        var col = el('section', 'g-plan-day' + (d.today ? ' today' : ''));
+        col.appendChild(el('h2', null, String(d.label || '')));
+        var groups = Array.isArray(d.groups) ? d.groups : [];
+        if (!groups.length) col.appendChild(el('div', 'g-plan-none', '–'));
+        groups.forEach(function (g) {
+          var gr = el('div', 'g-plan-group');
+          var gh = el('h3', null, String(g.name || ''));
+          if (typeof g.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(g.color)) gh.style.borderLeftColor = g.color;
+          gr.appendChild(gh);
+          (Array.isArray(g.items) ? g.items : []).forEach(function (it) { gr.appendChild(el('div', 'g-plan-item', String(it))); });
+          if (g.more > 0) gr.appendChild(el('div', 'g-plan-item more', '+ ' + g.more + ' weitere'));
+          col.appendChild(gr);
+        });
+        grid.appendChild(col);
+      });
+      box.appendChild(grid);
+      return box;
+    };
     // Eine Folie anzeigen (nur textContent, nie HTML aus den Daten).
     var draw = function (s) {
       if (reloadTimer) { clearInterval(reloadTimer); reloadTimer = null; }
@@ -796,6 +830,8 @@
         if (s.title) stage.appendChild(el('div', 'g-cap', s.title));
       } else if (s.kind === 'stats_faults' || s.kind === 'stats_tickets' || s.kind === 'stats_setup' || s.kind === 'stats_downtime') {
         stage.appendChild(drawStats(s));
+      } else if (typeof s.kind === 'string' && /^plan_/.test(s.kind)) {
+        stage.appendChild(drawPlan(s));
       } else if (s.kind === 'vorgaenge') {
         var g = el('div', 'g-vorg');
         var f = s.faults || [], t = s.tickets || [];
@@ -815,7 +851,7 @@
     // Keine Verbindung zu PDH (oder zum Netz): Website-Folien werden übersprungen statt als Fehler gezeigt.
     var isOffline = function () { return navigator.onLine === false || loadFails > 0 || streamFails > 0; };
     var skipWebsiteIfOffline = function () {
-      if (cur >= 0 && slides[cur] && slides[cur].kind === 'website' && isOffline()) show(nextSlideIndex(slides, cur));
+      if (cur >= 0 && slides[cur] && (slides[cur].kind === 'website' || /^plan_/.test(String(slides[cur].kind))) && isOffline()) show(nextSlideIndex(slides, cur));
     };
     var show = function (i) {
       if (slideTimer) { clearTimeout(slideTimer); slideTimer = null; }
@@ -833,7 +869,7 @@
       draw(slides.length ? slides[cur] : null);
       if (slides.length) {
         slideTimer = setTimeout(function () { show(nextSlideIndex(slides, cur)); }, slideDurationMs(slides[cur]));
-        if (slides[cur].kind === 'vorgaenge' || /^stats_/.test(slides[cur].kind)) load(true); // Liste beim Erscheinen neu holen
+        if (slides[cur].kind === 'vorgaenge' || /^(stats|plan)_/.test(slides[cur].kind)) load(true); // Liste beim Erscheinen neu holen
       }
     };
 
@@ -900,8 +936,8 @@
             if (keep && curId) for (var k = 0; k < slides.length; k++) if (slides[k].id === curId) { idx = k; break; }
             if (keep && idx >= 0) { cur = idx; draw(slides[cur]); } // gleiche Folie weiter, nur neu zeichnen
             else show(0);
-          } else if (cur >= 0 && slides[cur] && /^stats_/.test(slides[cur].kind)) {
-            draw(slides[cur]); // Zahlen der laufenden Statistikfolie erneuern; die Reihenfolge bleibt
+          } else if (cur >= 0 && slides[cur] && /^(stats|plan)_/.test(slides[cur].kind)) {
+            draw(slides[cur]); // Zahlen der laufenden Statistik- bzw. Planungsfolie erneuern; die Reihenfolge bleibt
           }
           saveCache(d);
         })

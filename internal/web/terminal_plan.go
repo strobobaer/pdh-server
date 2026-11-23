@@ -1,0 +1,316 @@
+package web
+
+import (
+	"context"
+	"fmt"
+	"slices"
+	"strings"
+	"time"
+)
+
+// Planungsfolien des Infobildschirms (Migration 208): Schichtplan, Abwesenheiten, Dienste/Bereitschaft und
+// Wartungsplanung aus dem Planer. Jede Folie hat einen Zeitraum (heute, diese Woche, nächste Woche, nächste N Tage)
+// und eine Auswahl von Abteilungen. Auf Terminals gilt zusätzlich die Abteilungsgrenze des Terminals
+// (terminalDepartments): angezeigt wird die Schnittmenge. Sichtbar ist nur, wofür der Terminal-Benutzer in der
+// Abteilung das Recht hat (shifts.view bzw. maintenance.view). Abwesenheiten zeigen nur „abwesend“ – Art und Grund
+// der Abwesenheit werden nicht einmal gelesen und verlassen den Server nie. Die Folien sind dem Zwischenspeicher des
+// Geräts unbekannt (nicht in CACHEABLE_KINDS) und entfallen ohne Verbindung.
+
+const (
+	slideKindPlanShifts   = "plan_shifts"   // Schichtplan je Schicht
+	slideKindPlanAbsences = "plan_absences" // Abwesenheiten („abwesend“)
+	slideKindPlanDuties   = "plan_duties"   // Dienste und Bereitschaft (Sonderdienste)
+	slideKindPlanMaint    = "plan_maint"    // fällige Wartungen
+
+	planRangeToday    = "today"
+	planRangeWeek     = "week"
+	planRangeNextWeek = "next_week"
+	planRangeDays     = "days"
+
+	planMinDays      = 1
+	planMaxDays      = 31
+	planDefaultDays  = 7
+	planMaxDepts     = 100
+	planMaxPerGroup  = 30         // Einträge je Gruppe und Tag, der Rest als „+ n weitere“
+	absentLabelPlain = "abwesend" // das Einzige, was zu einer Abwesenheit hinausgeht
+)
+
+func slideIsPlan(kind string) bool {
+	return kind == slideKindPlanShifts || kind == slideKindPlanAbsences || kind == slideKindPlanDuties || kind == slideKindPlanMaint
+}
+
+func validPlanRange(r string) bool {
+	return r == planRangeToday || r == planRangeWeek || r == planRangeNextWeek || r == planRangeDays
+}
+
+// planRangeBounds: erster und letzter Tag (einschließlich) des Zeitraums, auf Mitternacht (Ortszeit).
+func planRangeBounds(now time.Time, rng string, n int) (time.Time, time.Time) {
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	switch rng {
+	case planRangeWeek:
+		m := mondayOf(today)
+		return m, m.AddDate(0, 0, 6)
+	case planRangeNextWeek:
+		m := mondayOf(today).AddDate(0, 0, 7)
+		return m, m.AddDate(0, 0, 6)
+	case planRangeDays:
+		if n < planMinDays || n > planMaxDays {
+			n = planDefaultDays
+		}
+		return today, today.AddDate(0, 0, n-1)
+	}
+	return today, today
+}
+
+// planRangeLabel: der Zeitraum in Worten (Liste und Folie).
+func planRangeLabel(rng string, n int) string {
+	switch rng {
+	case planRangeWeek:
+		return "diese Woche"
+	case planRangeNextWeek:
+		return "nächste Woche"
+	case planRangeDays:
+		if n == 1 {
+			return "nächster Tag"
+		}
+		return fmt.Sprintf("nächste %d Tage", n)
+	}
+	return "heute"
+}
+
+// Inhalt einer Planungsfolie. Die Gruppen eines Tages sind je nach Art Schichten, Dienstarten, „abwesend“ oder
+// „Fällig“; Items sind Namen bzw. Wartungstitel (nur Text, der Player nimmt textContent).
+type terminalPlanGroup struct {
+	Name  string   `json:"name"`
+	Color string   `json:"color,omitempty"`
+	Items []string `json:"items"`
+	More  int      `json:"more,omitempty"`
+}
+
+type terminalPlanDay struct {
+	Date   string              `json:"date"`
+	Label  string              `json:"label"`
+	Today  bool                `json:"today,omitempty"`
+	Groups []terminalPlanGroup `json:"groups"`
+}
+
+type terminalPlan struct {
+	Range string            `json:"range"`
+	Label string            `json:"label"`
+	From  string            `json:"from"`
+	To    string            `json:"to"`
+	Days  []terminalPlanDay `json:"days"`
+}
+
+// planScope: die Abteilungen, deren Daten die Folie für diesen Terminal-Benutzer zeigen darf.
+type planScope struct {
+	Depts  []string // Abteilungen (IDs), für die das Recht gilt
+	NoDept bool     // auch Personen/Anlagen ohne Abteilung (nur ohne Auswahl und ohne Terminal-Grenze)
+}
+
+func (p planScope) empty() bool { return len(p.Depts) == 0 && !p.NoDept }
+
+// planSlideScope bestimmt die Abteilungen einer Folie: Auswahl der Folie (leer = alle) geschnitten mit den
+// Abteilungen des Terminals (leer = keine Grenze bekannt), davon die, in denen der Terminal-Benutzer perm hat.
+func (h *Handler) planSlideScope(ctx context.Context, uid, role, perm string, selected []string) (planScope, error) {
+	if h.rbac == nil || uid == "" {
+		return planScope{}, nil
+	}
+	all, err := h.queryStrings(ctx, `SELECT id::text FROM departments WHERE active`)
+	if err != nil {
+		return planScope{}, err
+	}
+	term, err := h.terminalDepartments(ctx, uid)
+	if err != nil {
+		return planScope{}, err
+	}
+	var sc planScope
+	for _, d := range all {
+		if len(selected) > 0 && !slices.Contains(selected, d) {
+			continue
+		}
+		if len(term) > 0 && !slices.Contains(term, d) {
+			continue
+		}
+		if h.rbac.HasPermissionInDepartment(uid, role, perm, []string{d}) {
+			sc.Depts = append(sc.Depts, d)
+		}
+	}
+	if len(selected) == 0 && len(term) == 0 && h.rbac.HasPermissionInDepartment(uid, role, perm, nil) {
+		sc.NoDept = true
+	}
+	return sc, nil
+}
+
+type planAdder func(day, key, name, color, item string)
+
+// planSlide baut den Inhalt einer Planungsfolie für den Terminal-Benutzer uid.
+func (h *Handler) planSlide(ctx context.Context, uid, role string, s terminalSlide, now time.Time) (*terminalPlan, error) {
+	from, to := planRangeBounds(now, s.PlanRange, s.PlanDays)
+	pl := &terminalPlan{Range: s.PlanRange, Label: planRangeLabel(s.PlanRange, s.PlanDays), From: from.Format(dayISO), To: to.Format(dayISO), Days: []terminalPlanDay{}}
+	perm := "shifts.view"
+	if s.Kind == slideKindPlanMaint {
+		perm = "maintenance.view"
+	}
+	sc, err := h.planSlideScope(ctx, uid, role, perm, s.DepartmentIDs)
+	if err != nil {
+		return nil, err
+	}
+	byDay := map[string]map[string]*terminalPlanGroup{} // Tag → Gruppenschlüssel
+	order := map[string][]string{}                      // Tag → Reihenfolge der Gruppen
+	add := func(day, key, name, color, item string) {
+		if byDay[day] == nil {
+			byDay[day] = map[string]*terminalPlanGroup{}
+		}
+		g := byDay[day][key]
+		if g == nil {
+			g = &terminalPlanGroup{Name: name, Color: color, Items: []string{}}
+			byDay[day][key] = g
+			order[day] = append(order[day], key)
+		}
+		if len(g.Items) < planMaxPerGroup {
+			g.Items = append(g.Items, item)
+		} else {
+			g.More++
+		}
+	}
+	if !sc.empty() {
+		depts := sc.Depts
+		if depts == nil {
+			depts = []string{}
+		}
+		switch s.Kind {
+		case slideKindPlanShifts:
+			err = h.planShiftRows(ctx, from, to, depts, sc.NoDept, add)
+		case slideKindPlanAbsences:
+			err = h.planAbsenceRows(ctx, from, to, depts, sc.NoDept, add)
+		case slideKindPlanDuties:
+			err = h.planDutyRows(ctx, from, to, depts, sc.NoDept, add)
+		case slideKindPlanMaint:
+			err = h.planMaintRows(ctx, from, to, depts, sc.NoDept, add)
+		}
+		if err != nil {
+			return nil, err
+		}
+	}
+	today := now.Format(dayISO)
+	for d := from; !d.After(to); d = d.AddDate(0, 0, 1) {
+		k := d.Format(dayISO)
+		if len(byDay[k]) == 0 && to.Sub(from) > 6*24*time.Hour {
+			continue // lange Zeiträume: nur Tage mit Einträgen
+		}
+		day := terminalPlanDay{Date: k, Label: shortWeekday("de", d.Weekday()) + " " + d.Format("02.01."), Today: k == today, Groups: []terminalPlanGroup{}}
+		for _, key := range order[k] {
+			day.Groups = append(day.Groups, *byDay[k][key])
+		}
+		pl.Days = append(pl.Days, day)
+	}
+	return pl, nil
+}
+
+// personInDept: SQL-Bedingung für die Abteilung einer Person (u.department_id) mit den Parametern $a (Abteilungen)
+// und $b (auch ohne Abteilung).
+func personInDept(a, b int) string {
+	return fmt.Sprintf(`(u.department_id = ANY($%d::uuid[]) OR ($%d::boolean AND u.department_id IS NULL))`, a, b)
+}
+
+func (h *Handler) planShiftRows(ctx context.Context, from, to time.Time, depts []string, noDept bool, add planAdder) error {
+	rows, err := h.db.Query(ctx, `SELECT sa.date::text, sd.id::text, sd.name, COALESCE(sd.color, ''), TRIM(u.first_name || ' ' || u.last_name)
+		FROM shift_assignments sa
+		JOIN shift_definitions sd ON sd.id = sa.shift_id
+		JOIN users u ON u.id = sa.user_id
+		LEFT JOIN shift_plans sp ON sp.id = sa.plan_id
+		WHERE sa.date BETWEEN $1::date AND $2::date AND (sa.plan_id IS NULL OR sp.status = 'published')
+		  AND u.active AND NOT u.is_system_user AND `+personInDept(3, 4)+`
+		ORDER BY sa.date, sd.sort_order, sd.start_time, sd.name, lower(u.last_name), lower(u.first_name)`, from, to, depts, noDept)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var day, id, name, color, person string
+		if err := rows.Scan(&day, &id, &name, &color, &person); err != nil {
+			return err
+		}
+		if !hexColorRe.MatchString(color) {
+			color = ""
+		}
+		add(day, id, name, color, person)
+	}
+	return rows.Err()
+}
+
+// planAbsenceRows: genehmigte Abwesenheiten je Tag. Art und Notiz stehen nicht in der Abfrage.
+func (h *Handler) planAbsenceRows(ctx context.Context, from, to time.Time, depts []string, noDept bool, add planAdder) error {
+	rows, err := h.db.Query(ctx, `SELECT TRIM(u.first_name || ' ' || u.last_name), GREATEST(a.start_date, $1::date), LEAST(a.end_date, $2::date)
+		FROM absences a JOIN users u ON u.id = a.user_id
+		WHERE a.status = 'approved' AND a.start_date <= $2::date AND a.end_date >= $1::date
+		  AND u.active AND NOT u.is_system_user AND `+personInDept(3, 4)+`
+		ORDER BY lower(u.last_name), lower(u.first_name)`, from, to, depts, noDept)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var person string
+		var a, b time.Time
+		if err := rows.Scan(&person, &a, &b); err != nil {
+			return err
+		}
+		for d := a; !d.After(b); d = d.AddDate(0, 0, 1) {
+			add(d.Format(dayISO), "absent", absentLabelPlain, "", person)
+		}
+	}
+	return rows.Err()
+}
+
+func (h *Handler) planDutyRows(ctx context.Context, from, to time.Time, depts []string, noDept bool, add planAdder) error {
+	rows, err := h.db.Query(ctx, `SELECT da.date::text, dt.id::text, dt.name, COALESCE(dt.color, ''), TRIM(u.first_name || ' ' || u.last_name)
+		FROM duty_assignments da
+		JOIN duty_types dt ON dt.id = da.duty_type_id AND dt.active
+		JOIN users u ON u.id = da.user_id
+		WHERE da.date BETWEEN $1::date AND $2::date AND u.active AND NOT u.is_system_user AND `+personInDept(3, 4)+`
+		ORDER BY da.date, dt.sort_order, dt.name, lower(u.last_name), lower(u.first_name)`, from, to, depts, noDept)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var day, id, name, color, person string
+		if err := rows.Scan(&day, &id, &name, &color, &person); err != nil {
+			return err
+		}
+		if !hexColorRe.MatchString(color) {
+			color = ""
+		}
+		add(day, id, name, color, person)
+	}
+	return rows.Err()
+}
+
+// planMaintRows: offene Wartungsaufträge, die im Zeitraum fällig sind, in Anlagen der erlaubten Abteilungen.
+func (h *Handler) planMaintRows(ctx context.Context, from, to time.Time, depts []string, noDept bool, add planAdder) error {
+	rows, err := h.db.Query(ctx, `SELECT t.due_date::date::text, t.title, i.name
+		FROM maintenance_tasks t JOIN infrastructure i ON i.id = t.infrastructure_id
+		WHERE t.status::text IN ('open', 'in_progress', 'pending') AND t.archived_at IS NULL
+		  AND i.active AND i.hidden_at IS NULL AND t.due_date::date BETWEEN $1::date AND $2::date
+		  AND (EXISTS (SELECT 1 FROM infrastructure_department x WHERE x.infrastructure_id = t.infrastructure_id AND x.department_id = ANY($3::uuid[]))
+		       OR ($4::boolean AND NOT EXISTS (SELECT 1 FROM infrastructure_department x WHERE x.infrastructure_id = t.infrastructure_id)))
+		ORDER BY t.due_date, lower(i.name), lower(t.title)`, from, to, depts, noDept)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var day, title, infra string
+		if err := rows.Scan(&day, &title, &infra); err != nil {
+			return err
+		}
+		item := title
+		if strings.TrimSpace(infra) != "" {
+			item += " · " + infra
+		}
+		add(day, "due", "Fällig", "", item)
+	}
+	return rows.Err()
+}
