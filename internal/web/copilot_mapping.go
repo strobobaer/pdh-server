@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"regexp"
 	"sort"
 	"strings"
@@ -28,6 +29,7 @@ type copilotConn struct {
 	Enabled                   bool
 	Config                    map[string]string // entschlüsselt – nur zum Lesen der Quellen, nie ausgeben
 	CanWrite                  bool
+	CanExecute                bool // darf die Verbindung ausführen: Gerät live abfragen (wie Explorer)
 	Allow                     assetGuard
 	Proposal                  *mappingProposal // Ergebnis von propose_mappings
 }
@@ -74,20 +76,63 @@ func copilotConnTools(direction string, canWrite bool) []faults.CopilotTool {
 	return tools
 }
 
+const redacted = "••••"
+
+var (
+	// Kennwort im Benutzerteil einer Adresse: schema://benutzer:kennwort@host
+	urlUserPassRe = regexp.MustCompile(`(?i)\b([a-z][a-z0-9+.-]*://[^/\s:@"']+):[^@\s/"']+@`)
+	// Wert eines Adress-Parameters, dessen Name nach Geheimnis klingt (?apikey=…, &token=…)
+	urlSecretParamRe = regexp.MustCompile(`(?i)((?:[?&]|\\u0026)[a-z0-9_.-]*(?:pass|pwd|token|secret|key|auth|sig)[a-z0-9_.-]*=)[^&\s#"'\\]+`)
+	// Anmeldekopf in Meldungen: „Bearer …“, „Basic …“
+	authHeaderRe = regexp.MustCompile(`(?i)\b(bearer|basic)\s+[a-z0-9._~+/=-]{8,}`)
+)
+
 // redactSecrets ersetzt jedes Geheimnis der Verbindung im Text – auch wenn es
-// in einer Fehlermeldung oder Adresse steckt.
+// in einer Fehlermeldung oder Adresse steckt, in JSON oder in einer Adresse
+// kodiert ist. Dazu fallen Kennwörter und Tokens weg, die gar nicht in einem
+// Geheimfeld stehen: im Benutzerteil einer Adresse, als Adress-Parameter mit
+// verdächtigem Namen und in Anmeldeköpfen.
 func redactSecrets(text string, config map[string]string) string {
-	var secrets []string
-	for k, v := range config {
-		if connSecretFields[strings.TrimSuffix(k, "_enc")] && len(strings.TrimSpace(v)) >= 4 {
-			secrets = append(secrets, v, strings.TrimSpace(v))
+	seen := map[string]bool{}
+	var long, short []string
+	add := func(v string) {
+		if v == "" || seen[v] {
+			return
+		}
+		seen[v] = true
+		if len([]rune(v)) >= 4 {
+			long = append(long, v)
+		} else {
+			short = append(short, v)
 		}
 	}
-	sort.Slice(secrets, func(i, j int) bool { return len(secrets[i]) > len(secrets[j]) })
-	for _, s := range secrets {
-		text = strings.ReplaceAll(text, s, "••••")
+	for k, v := range config {
+		if !connSecretFields[strings.TrimSuffix(k, "_enc")] || strings.TrimSpace(v) == "" {
+			continue
+		}
+		for _, form := range []string{v, strings.TrimSpace(v)} {
+			add(form)
+			if b, err := json.Marshal(form); err == nil && len(b) >= 2 {
+				add(string(b[1 : len(b)-1])) // wie es in einer JSON-Ausgabe steht
+			}
+			add(url.QueryEscape(form))
+			add(url.PathEscape(form))
+		}
 	}
-	return text
+	sort.Slice(long, func(i, j int) bool { return len(long[i]) > len(long[j]) })
+	for _, s := range long {
+		text = strings.ReplaceAll(text, s, redacted)
+	}
+	// kurze Kennwörter nur als eigenes Wort – sonst zerfiele jeder Text
+	for _, s := range short {
+		re := regexp.MustCompile(`(^|[^\pL\pN])` + regexp.QuoteMeta(s) + `($|[^\pL\pN])`)
+		for n := 0; n < 2; n++ { // zweimal: Treffer direkt hintereinander teilen sich das Trennzeichen
+			text = re.ReplaceAllString(text, "${1}"+redacted+"${2}")
+		}
+	}
+	text = urlUserPassRe.ReplaceAllString(text, "${1}:"+redacted+"@")
+	text = urlSecretParamRe.ReplaceAllString(text, "${1}"+redacted)
+	return authHeaderRe.ReplaceAllString(text, "${1} "+redacted)
 }
 
 // secretLikeKey: Schlüssel einer Abfrage, deren Wert nicht gezeigt wird.
@@ -345,7 +390,15 @@ func (c *copilotConn) run(ctx context.Context, d *copilotData, name string, in m
 		if c.Direction != "import" {
 			return "", true, errors.New("Quellwerte gibt es nur bei Import-Verbindungen – für den Export export_sources nutzen")
 		}
-		set := h.mappingSources(ctx, c.ID, c.Kind, c.Config)
+		// Live am Gerät lesen (MQTT-Mitschnitt, OPC-UA-Knoten, Datei) darf nur,
+		// wer das auch von Hand darf: ausführen (Explorer) oder bearbeiten
+		// (Vorschlagsliste). Sonst nur die gespeicherten Abfrage-Ergebnisse.
+		var set sourceSet
+		if c.CanWrite || c.CanExecute {
+			set = h.mappingSources(ctx, c.ID, c.Kind, c.Config)
+		} else {
+			set = h.storedQuerySources(ctx, c.ID, c.Kind)
+		}
 		type row struct {
 			Ref      string `json:"ref"`
 			Name     string `json:"name"`
@@ -448,6 +501,28 @@ func (c *copilotConn) run(ctx context.Context, d *copilotData, name string, in m
 		return out, true, err
 	}
 	return "", false, nil
+}
+
+// storedQuerySources: offene Quellwerte nur aus gespeicherten
+// Abfrage-Ergebnissen – ohne Zugriff auf Gerät, Broker oder Datei.
+func (h *Handler) storedQuerySources(ctx context.Context, connID, kind string) sourceSet {
+	set := sourceSet{Hints: []string{"Themen, Knoten und Spalten direkt vom Gerät sieht nur, wer das Recht „Import ausführen“ oder „Import verwalten“ hat. Hier stehen nur Spalten gespeicherter Abfrage-Ergebnisse."}}
+	if !queryKindSupported(kind) {
+		return set
+	}
+	qs, err := h.loadConnQueries(ctx, connID)
+	if err != nil {
+		set.Hints = append(set.Hints, "Abfragen nicht lesbar: "+err.Error())
+		return set
+	}
+	mapped := map[string]bool{}
+	if ms, err := h.importMappings(ctx, connID); err == nil {
+		for _, m := range ms {
+			mapped[m.SourceRef] = true
+		}
+	}
+	set.Sources = filterSources(querySources(qs), mapped, maxBulkMappings)
+	return set
 }
 
 // copilotConnPrompt: Regeln für den Copilot auf einer Verbindungsseite.

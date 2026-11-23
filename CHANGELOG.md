@@ -23,10 +23,15 @@ im Kapitel „Versionen & Updates“ an.
 - Legt man eine Zuordnung von Hand an, die es an der Verbindung schon gibt (gleiche Quelle, gleiche Anlage), kommt jetzt eine Meldung, statt dass sie doppelt entsteht.
 - Ein Vorschlag des Copilot gehört der Person, die gefragt hat, und gilt 24 Stunden (Migration 203). Auf dem Spiegelserver und während der Wartung wird nichts übernommen.
 
+### Behoben
+
+- „Vorlage anwenden“ legte die Zuordnungen bzw. Felder einer Vorlage nicht an (nur die Abfragen kamen an). Jetzt werden sie übernommen; die Meldung nennt, was übersprungen wurde.
+
 ### Sicherheit
 
-- Zuordnungen lassen sich nur noch an Anlagen der eigenen Abteilung anlegen: Wer „Import verwalten“ bzw. „Export verwalten“ nur in einer Abteilung hat, kann Werte nicht mehr Anlagen anderer Abteilungen zuordnen – von Hand, über die Vorschlagsliste und über den Copilot.
-- Kennwörter, Schlüssel und Tokens einer Verbindung gehen nie an den Copilot – auch nicht, wenn sie in einer Fehlermeldung oder Adresse stehen. Quellwerte, Anlagennamen und die übrigen Einstellungen der Verbindung gehen auf dieser Seite an Anthropic; der Hinweis steht unter dem Eingabefeld.
+- Zuordnungen lassen sich nur noch an Anlagen der eigenen Abteilung anlegen und löschen: Wer „Import verwalten“ bzw. „Export verwalten“ nur in einer Abteilung hat, kann Werte nicht mehr Anlagen anderer Abteilungen zuordnen – von Hand, über die Vorschlagsliste, über den Copilot, mit dem TIA-Baustein („Zuordnungen anlegen“) und mit „Vorlage anwenden“.
+- Themen, Knoten und Spalten direkt vom Gerät liest der Copilot nur für Personen, die die Verbindung ausführen oder bearbeiten dürfen. Wer sie nur sehen darf, bekommt die Spalten gespeicherter Abfrage-Ergebnisse.
+- Kennwörter, Schlüssel und Tokens einer Verbindung gehen nie an den Copilot – auch nicht, wenn sie in einer Fehlermeldung stehen oder in einer Adresse stecken (Kennwort im Benutzerteil, Parameter wie „apikey“ oder „token“). Quellwerte, Anlagennamen und die übrigen Einstellungen der Verbindung gehen auf dieser Seite an Anthropic; der Hinweis steht unter dem Eingabefeld.
 
 ## [0.82.32] – 2026-11-22
 

@@ -88,3 +88,24 @@ func TestConnectionDetailHasSuggestButton(t *testing.T) {
 		t.Error("Efficio hat keine Felder")
 	}
 }
+
+// Schlussprüfung M3: Übernommen und gezählt werden nur sichtbare Zeilen –
+// was der Filter ausblendet, bleibt liegen, auch wenn es angehakt ist.
+func TestSuggestApplyOnlyVisibleRows(t *testing.T) {
+	tmpl := loadTestTemplates(t)
+	d := ConnectionDetailData{Direction: "import", ID: "11111111-1111-1111-1111-111111111111", Name: "Broker", Kind: "mqtt", KindLabel: "MQTT", CanWrite: true, Tab: "mappings"}
+	page := renderPage(t, tmpl, "connection_detail", d)
+	for _, want := range []string{
+		"const chosenRows = () => rows().filter(r => !r.hidden && pick(r).checked);",
+		"const chosen = chosenRows();",
+		"ausgeblendet – werden nicht übernommen",
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("%q fehlt", want)
+		}
+	}
+	if strings.Contains(page, "const chosen = rows().filter(r => pick(r).checked);") {
+		t.Error("Übernehmen nimmt noch ausgeblendete Zeilen mit")
+	}
+	checkScripts(t, "mapping-suggest-visible", page)
+}

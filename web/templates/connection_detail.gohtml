@@ -314,14 +314,19 @@
 (function(){
   const rows = () => Array.from(document.querySelectorAll('#cd-suggest [data-sugg-row]'));
   const pick = r => r.querySelector('[data-sugg-pick]');
+  // übernommen wird nur, was sichtbar und angehakt ist – der Filter blendet aus
+  const chosenRows = () => rows().filter(r => !r.hidden && pick(r).checked);
   window.cdSuggCount = function(){
     const box = document.querySelector('#cd-suggest [data-sugg-count]');
-    if(box) box.textContent = rows().filter(r => pick(r).checked).length + ' ausgewählt';
+    if(!box) return;
+    const off = rows().filter(r => r.hidden && pick(r).checked).length;
+    box.textContent = chosenRows().length + ' ausgewählt' + (off ? ' (' + off + ' angehakte ausgeblendet – werden nicht übernommen)' : '');
   };
   window.cdSuggAll = function(cb){ rows().forEach(r => { if(!r.hidden) pick(r).checked = cb.checked; }); cdSuggCount(); };
   window.cdSuggFilter = function(q){
     q = q.trim().toLowerCase();
     rows().forEach(r => { r.hidden = !!q && !r.textContent.toLowerCase().includes(q) && !r.querySelector('[data-sugg-name]').value.toLowerCase().includes(q); });
+    cdSuggCount();
   };
   let current = null;
   window.cdSuggPick = function(btn){
@@ -345,7 +350,7 @@
     const box = document.getElementById('cd-suggest');
     const dir = box.dataset.dir, err = box.querySelector('[data-sugg-err]');
     err.textContent = '';
-    const chosen = rows().filter(r => pick(r).checked);
+    const chosen = chosenRows();
     if(!chosen.length){ err.textContent = 'Bitte mindestens eine Zeile auswählen.'; return; }
     const missing = dir === 'import' ? chosen.findIndex(r => !r.dataset.asset) : -1;
     if(missing >= 0){ err.textContent = '„' + chosen[missing].querySelector('b').textContent + '“: bitte eine Anlage wählen (Ändern).'; return; }

@@ -214,3 +214,28 @@ func TestCopilotConnPropose(t *testing.T) {
 		t.Error("ohne Verbindungsseite darf es das Werkzeug nicht geben")
 	}
 }
+
+// Schlussprüfung I2: Ohne „ausführen“ oder „verwalten“ fragt der Copilot das
+// Gerät nicht live ab (kein Mitschnitt am Broker) – er zeigt nur Spalten
+// gespeicherter Abfrage-Ergebnisse und nennt das fehlende Recht.
+func TestCopilotConnSourceValuesNeedsRight(t *testing.T) {
+	e := newMappingEnv(t)
+	ctx := context.Background()
+	mq := e.id(t, `INSERT INTO import_export_connections (direction, kind, name, config) VALUES ('import', 'mqtt', $1, '{}'::jsonb) RETURNING id::text`, "Mq "+e.sfx)
+	t.Cleanup(func() {
+		_, _ = e.pool.Exec(context.Background(), `DELETE FROM import_export_connections WHERE id = $1::uuid`, mq)
+	})
+	conn := &copilotConn{Direction: "import", ID: mq, Kind: "mqtt", Name: "Mq",
+		Config: map[string]string{"broker_mode": "external", "ext_host": "127.0.0.1", "ext_port": "1"}, Allow: func(string) bool { return true }}
+	d := &copilotData{h: e.h, userID: e.uid, conn: conn, can: func(string) bool { return true }}
+
+	out, err := d.exec(ctx, "source_values", []byte(`{}`))
+	if err != nil || strings.Contains(out, "Broker nicht erreichbar") || !strings.Contains(out, "Import ausführen") {
+		t.Errorf("nur lesen: kein Zugriff auf das Gerät, Hinweis auf das Recht erwartet: %s %v", out, err)
+	}
+	conn.CanExecute = true
+	out, err = d.exec(ctx, "source_values", []byte(`{}`))
+	if err != nil || !strings.Contains(out, "Broker nicht erreichbar") {
+		t.Errorf("mit Ausführen-Recht wird der Broker gefragt (hier nicht erreichbar): %s %v", out, err)
+	}
+}

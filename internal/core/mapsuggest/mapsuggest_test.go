@@ -99,3 +99,34 @@ func TestExportFieldName(t *testing.T) {
 		}
 	}
 }
+
+// Schlussprüfung I1: Die Nummer gehört zum Wort davor – „presse30“ unter
+// „linie3“ ist nicht „Presse 3“, „halle3/presse2“ nicht „Halle 2 › Presse 3“.
+// Gleich gute Anlagen (gleicher Name in zwei Hallen) ergeben keinen Vorschlag.
+func TestSuggestAssetNumberBelongsToWord(t *testing.T) {
+	assets := []Asset{
+		{"l3p3", "Presse 3", "Werk › Linie 3 › Presse 3"},
+		{"l5p30", "Presse 30", "Werk › Linie 5 › Presse 30"},
+		{"h2p3", "Presse 3", "Werk › Halle 2 › Presse 3"},
+		{"h3p2", "Presse 2", "Werk › Halle 3 › Presse 2"},
+		{"h4p3", "Presse 3", "Werk › Halle 4 › Presse 3"},
+	}
+	got := Suggest([]Source{
+		{Label: "linie3/presse30/strom"},
+		{Label: "halle3/presse2/strom"},
+		{Label: "presse3/strom"},
+		{Label: "halle4/presse_03/strom"},
+	}, assets)
+	if got[0].AssetID == "l3p3" {
+		t.Errorf("presse30 darf nicht Presse 3 treffen: %+v", got[0])
+	}
+	if got[1].AssetID != "h3p2" {
+		t.Errorf("halle3/presse2 → Halle 3 › Presse 2 erwartet: %+v", got[1])
+	}
+	if got[2].AssetID != "" || got[2].Score != 0 {
+		t.Errorf("mehrdeutig (Presse 3 gibt es dreimal) → kein Vorschlag: %+v", got[2])
+	}
+	if got[3].AssetID != "h4p3" {
+		t.Errorf("halle4/presse_03 → Halle 4 › Presse 3 erwartet: %+v", got[3])
+	}
+}

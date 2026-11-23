@@ -101,37 +101,71 @@ func isDigits(s string) bool {
 }
 
 type assetWords struct {
-	a       Asset
-	name    []string
-	nums    []string
-	path    map[string]bool // Wörter des Pfads ohne die des Namens
-	covered map[string]bool // Name und Pfad zusammen
-	depth   int
+	a         Asset
+	name      []string
+	nums      []string
+	path      map[string]bool // Wörter des Pfads ohne die des Namens
+	covered   map[string]bool // Name und Pfad zusammen
+	depth     int
+	pairs     [][2]string // Zahl des Namens mit dem Wort davor
+	pathPairs [][2]string // dasselbe für die Ebenen darüber
 }
+
+const scoreEps = 1e-9
+
+func same(a, b float64) bool { return a-b < scoreEps && b-a < scoreEps }
 
 func prepare(assets []Asset) []assetWords {
 	out := make([]assetWords, 0, len(assets))
 	for _, a := range assets {
-		name := uniq(Tokens(a.Name))
+		raw := Tokens(a.Name)
+		name := uniq(raw)
 		if len(name) == 0 {
 			continue
 		}
 		w := assetWords{a: a, name: name, path: map[string]bool{}, covered: map[string]bool{}, depth: strings.Count(a.Path, "›")}
 		for _, t := range name {
 			w.covered[t] = true
-			if isDigits(t) {
-				w.nums = append(w.nums, t)
-			}
 		}
-		for _, t := range Tokens(a.Path) {
-			w.covered[t] = true
-			if !contains(name, t) {
-				w.path[t] = true
+		w.nums, w.pairs = numberPairs(raw)
+		// Ebenen über der Anlage: Wörter zählen einzeln, Zahlen nur zusammen
+		// mit dem Wort davor („Halle 2“ ≠ „halle3/presse2“)
+		segs := strings.Split(a.Path, "›")
+		for n, seg := range segs {
+			ts := Tokens(seg)
+			for _, t := range ts {
+				w.covered[t] = true
+			}
+			if n == len(segs)-1 {
+				break // die Anlage selbst steht in name
+			}
+			_, pairs := numberPairs(ts)
+			w.pathPairs = append(w.pathPairs, pairs...)
+			for _, t := range ts {
+				if !isDigits(t) && !contains(name, t) {
+					w.path[t] = true
+				}
 			}
 		}
 		out = append(out, w)
 	}
 	return out
+}
+
+// numberPairs: Zahlen eines Namens – mit dem Wort davor als Paar, ohne Wort
+// davor einzeln.
+func numberPairs(ts []string) (single []string, pairs [][2]string) {
+	for i, t := range ts {
+		if !isDigits(t) {
+			continue
+		}
+		if i == 0 || isDigits(ts[i-1]) {
+			single = append(single, t)
+			continue
+		}
+		pairs = append(pairs, [2]string{ts[i-1], t})
+	}
+	return single, pairs
 }
 
 func uniq(ts []string) []string {
@@ -155,11 +189,18 @@ func contains(ts []string, t string) bool {
 	return false
 }
 
-// score: Anteil der Namenswörter in der Quelle plus 0,1 je Pfadwort; jede Zahl
-// des Anlagennamens muss als eigenes Wort vorkommen („Presse 3“ ≠ „presse30“).
-func (w assetWords) score(src map[string]bool) float64 {
+// score: Anteil der Namenswörter in der Quelle plus 0,1 je Wort der Ebenen
+// darüber. Eine Zahl des Anlagennamens zählt nur direkt hinter ihrem Wort
+// („Presse 3“ ≠ „presse30“, ≠ „linie3/presse30“); fehlt sie, ist es kein
+// Treffer.
+func (w assetWords) score(src map[string]bool, next map[[2]string]bool) float64 {
 	for _, n := range w.nums {
 		if !src[n] {
+			return 0
+		}
+	}
+	for _, p := range w.pairs {
+		if !next[p] {
 			return 0
 		}
 	}
@@ -172,6 +213,11 @@ func (w assetWords) score(src map[string]bool) float64 {
 	s := float64(hit) / float64(len(w.name))
 	for t := range w.path {
 		if src[t] {
+			s += pathBonus
+		}
+	}
+	for _, p := range w.pathPairs {
+		if next[p] {
 			s += pathBonus
 		}
 	}
@@ -188,18 +234,29 @@ func Suggest(sources []Source, assets []Asset) []Suggestion {
 	out := make([]Suggestion, 0, len(sources))
 	for _, s := range sources {
 		words := map[string]bool{}
-		for _, t := range Tokens(s.Label) {
+		next := map[[2]string]bool{} // Wortpaare, die direkt hintereinander stehen
+		ts := Tokens(s.Label)
+		for i, t := range ts {
 			words[t] = true
+			if i > 0 {
+				next[[2]string{ts[i-1], t}] = true
+			}
 		}
-		best, bestScore := -1, 0.0
+		best, bestScore, tie := -1, 0.0, false
 		for i, w := range prepared {
-			sc := w.score(words)
+			sc := w.score(words, next)
 			if sc < minScore {
 				continue
 			}
-			if best < 0 || sc > bestScore || (sc == bestScore && w.depth > prepared[best].depth) {
-				best, bestScore = i, sc
+			switch {
+			case best < 0 || sc > bestScore+scoreEps || (same(sc, bestScore) && w.depth > prepared[best].depth):
+				best, bestScore, tie = i, sc, false
+			case same(sc, bestScore) && w.depth == prepared[best].depth:
+				tie = true // zwei gleich gute Anlagen: lieber keinen Vorschlag
 			}
+		}
+		if tie {
+			best, bestScore = -1, 0
 		}
 		sg := Suggestion{Source: s}
 		var covered map[string]bool

@@ -150,3 +150,38 @@ func TestCopilotSidebarConn(t *testing.T) {
 		t.Error("ohne Verbindung: kein Hinweis, leere Kennung")
 	}
 }
+
+// Schlussprüfung I3: Geheimnisse außerhalb der Geheimfelder (Kennwort oder
+// Token in einer Adresse, Token in einer Abfrage), kurze Kennwörter und
+// Kennwörter mit Sonderzeichen in JSON-Ausgaben dürfen nicht durchrutschen.
+func TestRedactSecretsBeyondFields(t *testing.T) {
+	cfg := map[string]string{
+		"password": `p"a<ss&1`, "ext_password": "abc",
+		"base_url": "https://benutzer:AnderesKennwort@api.example.org/v1?apikey=tok-12345&seite=2",
+	}
+	queries := []connQuery{{ID: "Q1", Name: "Werte", Spec: map[string]string{"path": "/daten?token=abc999&von=heute"}}}
+	info := connectionInfoText("API", "rest_api", true, cfg, nil, queries)
+	for _, leak := range []string{"AnderesKennwort", "tok-12345", "abc999"} {
+		if strings.Contains(info, leak) {
+			t.Errorf("%q steht im Text:\n%s", leak, info)
+		}
+	}
+	for _, keep := range []string{"api.example.org", "seite=2", "von=heute", "benutzer"} {
+		if !strings.Contains(info, keep) {
+			t.Errorf("%q fehlt (zu viel entfernt):\n%s", keep, info)
+		}
+	}
+	out, err := jsonOut(map[string]any{"hinweise": []string{`Anmeldung mit p"a<ss&1 abgelehnt`, "Kennwort abc falsch", "Fabcd bleibt", "Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.abc"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := redactSecrets(out, cfg)
+	for _, leak := range []string{`a<ss`, `a<ss`, "Kennwort abc falsch", "eyJhbGciOiJIUzI1NiJ9"} {
+		if strings.Contains(got, leak) {
+			t.Errorf("%q steht in der Ausgabe: %s", leak, got)
+		}
+	}
+	if !strings.Contains(got, "Fabcd bleibt") {
+		t.Errorf("kurzes Kennwort darf nur als eigenes Wort ersetzt werden: %s", got)
+	}
+}

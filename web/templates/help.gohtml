@@ -2511,9 +2511,9 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <ol class="hb-steps">
       <li>Verbindung öffnen, Reiter <b>Zuordnungen</b> (beim Export <b>Felder</b>) und <b>Zuordnungen vorschlagen</b> bzw. <b>Felder vorschlagen</b> drücken.</li>
       <li>Das PDH listet alle Quellwerte, die noch nicht zugeordnet sind: MQTT-Themen (es hört dafür 3 Sekunden mit), Spalten aus Excel/CSV und aus den Abfragen, OPC-UA-Knoten. Für Modbus erst eine Abfrage anlegen und ausführen.</li>
-      <li>Je Zeile steht ein Vorschlag: die <b>Anlage</b> (aus der Ähnlichkeit von Name und Pfad, z. B. <code>halle2/presse3/strom</code> → „Halle 2 › Presse 3“), die <b>Bezeichnung</b> und als Notiz die vermutete <b>Einheit</b> (Strom → A, Temp → °C, 0/1 → Zustand). Zeilen mit gefundener Anlage stehen oben und sind angehakt.</li>
+      <li>Je Zeile steht ein Vorschlag: die <b>Anlage</b> (aus der Ähnlichkeit von Name und Pfad, z. B. <code>halle2/presse3/strom</code> → „Halle 2 › Presse 3“), die <b>Bezeichnung</b> und als Notiz die vermutete <b>Einheit</b> (Strom → A, Temp → °C, 0/1 → Zustand). Zeilen mit gefundener Anlage stehen oben und sind angehakt. Passen zwei Anlagen gleich gut (z. B. „Presse 3“ in zwei Hallen), bleibt die Anlage leer – dann über <b>Ändern</b> wählen. Ausgeblendete Anlagen werden nicht vorgeschlagen.</li>
       <li>Prüfen und bei Bedarf ändern: Anlage über <b>Ändern</b>, Bezeichnung und Notiz direkt im Feld. Was nicht passt, abwählen.</li>
-      <li><b>Ausgewählte übernehmen</b>. Erst jetzt legt das PDH die Zuordnungen an; was es schon gibt, wird übersprungen.</li>
+      <li><b>Ausgewählte übernehmen</b>. Erst jetzt legt das PDH die Zuordnungen an; was es schon gibt, wird übersprungen. Übernommen wird nur, was sichtbar und angehakt ist – was der Filter ausblendet, bleibt liegen.</li>
     </ol>
     <p>Die Vorschläge rechnet das PDH selbst aus – ohne Copilot und ohne Internet. Erreicht es den Broker oder den OPC-UA-Server nicht, steht der Grund über der Liste.</p></div>
   <div class="hb-howto"><b><i class="ti ti-brain"></i> So ordnest du mit dem Copilot zu</b>
@@ -2525,7 +2525,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     </ol>
     <ul>
       <li><b>Vorlagen aus dem Internet:</b> Auf Wunsch sucht der Copilot z. B. die Registertabelle eines Zählers oder die Themen eines Geräts („Such die Modbus-Register für den Zähler Typ … und schlag Zuordnungen vor“). Die <b>Quellen</b> stehen als Links unter der Antwort und an der Zeile – bitte vor dem Übernehmen prüfen.</li>
-      <li><b>Rechte:</b> Fragen darf, wer die Verbindung sehen darf. Einen Vorschlag bekommt und übernimmt nur, wer die Verbindung bearbeiten darf (<b>Import verwalten</b> bzw. <b>Export verwalten</b>). Zusätzlich zählt je Zeile die <b>Abteilung der Anlage</b>: Gilt dein Recht nur in einer Abteilung, werden Zeilen für Anlagen anderer Abteilungen abgelehnt – das gilt genauso beim Anlegen von Hand.</li>
+      <li><b>Rechte:</b> Fragen darf, wer die Verbindung sehen darf. Einen Vorschlag bekommt und übernimmt nur, wer die Verbindung bearbeiten darf (<b>Import verwalten</b> bzw. <b>Export verwalten</b>). Zusätzlich zählt je Zeile die <b>Abteilung der Anlage</b>: Gilt dein Recht nur in einer Abteilung, werden Zeilen für Anlagen anderer Abteilungen abgelehnt – das gilt genauso beim Anlegen und Löschen von Hand, beim TIA-Baustein und bei „Vorlage anwenden“. Themen und Knoten direkt vom Gerät zeigt der Copilot nur, wenn du die Verbindung <b>ausführen</b> oder <b>bearbeiten</b> darfst; sonst nur Spalten gespeicherter Abfrage-Ergebnisse.</li>
       <li><b>Grenzen:</b> höchstens 500 Zeilen je Vorschlag. Ein Vorschlag gehört dir und gilt 24 Stunden. Auf dem Spiegelserver und während der Wartung wird nichts übernommen.</li>
       <li><b>Datenschutz:</b> Auf einer Verbindungsseite gehen Quellwerte, Anlagennamen und die Einstellungen der Verbindung an Anthropic – <b>Kennwörter, Schlüssel und Tokens nie</b>. Der Hinweis steht unter dem Eingabefeld.</li>
       <li>Der Assistent braucht Claude (Anthropic-Schlüssel unter Server-Einstellungen → Copilot). Ohne ihn bleiben die Vorschläge am Formular.</li>

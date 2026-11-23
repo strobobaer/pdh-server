@@ -209,6 +209,16 @@ func (h *Handler) ExportMappingDeleteWeb(w http.ResponseWriter, r *http.Request)
 	}
 	connectionID := chi.URLParam(r, "id")
 	mappingID := chi.URLParam(r, "mappingId")
+	// Abteilung der Anlage des Werts zählt auch beim Löschen
+	var asset string
+	if uuidInPathRe.MatchString(mappingID) && uuidInPathRe.MatchString(connectionID) &&
+		h.db.QueryRow(r.Context(), `
+			SELECT im.infrastructure_id::text FROM export_mappings e JOIN import_mappings im ON im.id = e.import_mapping_id
+			WHERE e.id = $1::uuid AND e.connection_id = $2::uuid`, mappingID, connectionID).Scan(&asset) == nil &&
+		!h.assetGuardFor(r, "export.write")(asset) {
+		http.Error(w, errAssetDenied, http.StatusForbidden)
+		return
+	}
 	if _, err := h.db.Exec(r.Context(),
 		`DELETE FROM export_mappings WHERE id=$1 AND connection_id=$2`, mappingID, connectionID); err != nil {
 		http.Error(w, "Zuordnung konnte nicht gelöscht werden", http.StatusInternalServerError)

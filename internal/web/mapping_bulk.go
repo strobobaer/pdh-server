@@ -27,7 +27,12 @@ type assetGuard func(infraID string) bool
 
 // assetGuardFor prüft das Recht für die Abteilung der Anlage (hasPermRec).
 func (h *Handler) assetGuardFor(r *http.Request, perm string) assetGuard {
-	return func(infraID string) bool { return h.hasPermRec(r, perm, "infrastructure", infraID) }
+	return func(infraID string) bool {
+		if h.assetGuardHook != nil {
+			return h.assetGuardHook(r, perm, infraID)
+		}
+		return h.hasPermRec(r, perm, "infrastructure", infraID)
+	}
 }
 
 type bulkError struct {

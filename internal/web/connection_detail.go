@@ -631,7 +631,7 @@ func (h *Handler) connectionTemplateApplyWeb(w http.ResponseWriter, r *http.Requ
 		http.Error(w, "keine berechtigung", http.StatusForbidden)
 		return
 	}
-	msg, err := h.applyConnectionTemplate(r.Context(), id, direction, tid, getUser(r).ID)
+	msg, err := h.applyConnectionTemplate(r.Context(), id, direction, tid, getUser(r).ID, h.assetGuardFor(r, direction+".write"))
 	if err != nil {
 		http.Redirect(w, r, connectionBackPath(direction, id, "templates", "", err.Error()), http.StatusSeeOther)
 		return

@@ -188,6 +188,15 @@ func (h *Handler) ImportMappingDeleteWeb(w http.ResponseWriter, r *http.Request)
 	var kind string
 	_ = h.db.QueryRow(r.Context(), `SELECT kind FROM import_export_connections WHERE id=$1`, connectionID).Scan(&kind)
 
+	// Abteilung der Anlage zählt auch beim Löschen
+	var asset string
+	if uuidInPathRe.MatchString(mappingID) && uuidInPathRe.MatchString(connectionID) &&
+		h.db.QueryRow(r.Context(), `SELECT infrastructure_id::text FROM import_mappings WHERE id = $1::uuid AND connection_id = $2::uuid`, mappingID, connectionID).Scan(&asset) == nil &&
+		!h.assetGuardFor(r, "import.write")(asset) {
+		http.Error(w, errAssetDenied, http.StatusForbidden)
+		return
+	}
+
 	if _, err := h.db.Exec(r.Context(),
 		`DELETE FROM import_mappings WHERE id=$1 AND connection_id=$2`, mappingID, connectionID); err != nil {
 		http.Error(w, "Zuordnung konnte nicht gelöscht werden", http.StatusInternalServerError)

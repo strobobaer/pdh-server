@@ -249,13 +249,15 @@ func (h *Handler) mappingSources(ctx context.Context, connID, kind string, confi
 	return set
 }
 
-// assetList: alle Anlagen mit Pfad („Werk › Halle 2 › Presse 3“).
+// assetList: alle sichtbaren Anlagen (ausgeblendete und was darunter hängt
+// fehlen) mit Pfad („Werk › Halle 2 › Presse 3“).
 func (h *Handler) assetList(ctx context.Context) ([]mapsuggest.Asset, error) {
 	rows, err := h.db.Query(ctx, `
 		WITH RECURSIVE tree AS (
-			SELECT id, name::text AS name, name::text AS path FROM infrastructure WHERE parent_id IS NULL
+			SELECT id, name::text AS name, name::text AS path FROM infrastructure WHERE parent_id IS NULL AND hidden_at IS NULL
 			UNION ALL
 			SELECT i.id, i.name::text, tree.path || ' › ' || i.name FROM infrastructure i JOIN tree ON i.parent_id = tree.id
+			WHERE i.hidden_at IS NULL
 		)
 		SELECT id::text, name, path FROM tree ORDER BY path`)
 	if err != nil {

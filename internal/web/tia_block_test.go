@@ -430,6 +430,8 @@ func newTIAEnv(t *testing.T, kind string, cfg map[string]string) *tiaEnv {
 	}
 	env.h = &Handler{db: pool, rbac: rb, jwtSecret: "t", mqttBrokers: mqttbroker.NewManager(), mqttImport: mqttimport.NewManager(),
 		hasPermHook: func(_ *http.Request, p string) bool { return env.allow[p] }}
+	// Abteilung der Anlage: in dieser Umgebung wie das Recht selbst (eigene Prüfung in mapping_asset_guard_test.go)
+	env.h.assetGuardHook = func(_ *http.Request, p, _ string) bool { return env.allow[p] }
 	sealed, err := sealConnConfig(env.h.connKey(), cfg)
 	if err != nil {
 		t.Fatal(err)

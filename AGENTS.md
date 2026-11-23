@@ -752,8 +752,15 @@ und 3 drückt bis auf Weiteres der Anwender.
     `internal/core/mapsuggest`), Sammel-Anlage `…/mappings/bulk`,
     Copilot-Werkzeuge auf der Verbindungsseite (`copilot_mapping.go`),
     Änderungsliste mit „Übernehmen“ (`POST /copilot/proposals/{id}/apply`),
-    Websuche nach Vorlagen. Neu für alle Wege: Zuordnen nur an Anlagen der
-    eigenen Abteilung; doppelte Zuordnung von Hand wird gemeldet. Offen:
+    Websuche nach Vorlagen. Neu für alle Wege (von Hand, Vorschlagsliste,
+    Copilot, TIA-Baustein, „Vorlage anwenden“, Löschen): Zuordnen nur an
+    Anlagen der eigenen Abteilung (`assetGuardFor`); doppelte Zuordnung von
+    Hand wird gemeldet. Mit behoben: „Vorlage anwenden“ legte keine
+    Zuordnungen an (Abfrage ohne Typangaben). Schlussprüfung mit Fix-Welle
+    erledigt (23.11.2026); geparkte kleine Befunde im Bericht
+    `.superpowers/sdd/2026-11-22-copilot-zuordnen-paket1/final-review.md`
+    (u. a. Websuche auf Verbindungsseiten ohne Schalter, Datenschutz-Hinweis
+    auch ohne Anthropic, Einheit „kW“ nur geraten, MQTT-Mitschnitt 3 s). Offen:
     Freigabe Push/Merge, Verbund-Update, Browserprüfung (Vorschlagsliste,
     Änderungsliste in Fiori/Fluent, hell/dunkel, 320–1366 px; Copilot mit
     echtem Anthropic-Schlüssel samt Websuche; OPC-UA-Breitensuche an einem

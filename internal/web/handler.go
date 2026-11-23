@@ -373,6 +373,7 @@ type Handler struct {
 
 	// Austauschbare Quellen (nur Tests; nil = echt): Rechteprüfung und gespeicherter Commit-Vergleich.
 	hasPermHook     func(*http.Request, string) bool
+	assetGuardHook  func(r *http.Request, perm, infraID string) bool // nur Tests: Abteilungsprüfung der Anlage (assetGuardFor)
 	companyC        companyCacheState // Firmenstammdaten zwischengespeichert (company.go)
 	companyEditHook func(*http.Request) bool // Tests: company.edit überall?
 	viewDeptErr     error
@@ -2095,8 +2096,9 @@ func (h *Handler) CopilotAskWeb(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		conn = &copilotConn{Direction: m[1], ID: m[2], Kind: kind, Name: name, Enabled: enabled, Config: config,
-			CanWrite: h.canConnectionWrite(r, m[1]) && !(m[1] == "export" && kind == efficioKind),
-			Allow:    h.assetGuardFor(r, m[1]+".write")}
+			CanWrite:   h.canConnectionWrite(r, m[1]) && !(m[1] == "export" && kind == efficioKind),
+			CanExecute: h.canConnectionExecute(r, m[1]),
+			Allow:      h.assetGuardFor(r, m[1]+".write")}
 	}
 	scope := h.requestScope(r)
 	fid := strings.TrimSpace(r.FormValue("fault"))
