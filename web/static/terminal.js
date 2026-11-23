@@ -501,13 +501,14 @@
         };
         // Ältere Geräte senden kein „reader“: dann bleibt es beim Standard „ok“ (= nach 3 s ohne Ereignis).
         var reader = 'ok';
-        var activeIn = cardIn, dialogOpen = false, dismissed = false;
+        var activeIn = cardIn, dialogOpen = false;
 
         var render = function () {
           var view = loginView(reader, settings);
-          if (loggedIn || view === 'card') { dialogOpen = false; dismissed = false; }
+          if (loggedIn || view === 'card') dialogOpen = false;
           if (loggedIn) clearInputs(); // Karte hat angemeldet: halb getippte Eingaben verwerfen
-          var open = !loggedIn && (dialogOpen || (view === 'password' && !dismissed));
+          // Der Dialog Benutzer/Passwort öffnet nur auf ausdrücklichen Klick auf den Knopf, nie von selbst.
+          var open = !loggedIn && dialogOpen;
           var noReader = !loggedIn && view === 'none';
           var fields = !loggedIn && (view === 'card_pin' || view === 'card_only');
           var btn = !loggedIn && (showPasswordButton(reader, settings) || view === 'password');
@@ -581,9 +582,9 @@
         });
 
         // Dialog Benutzer/Passwort
-        pwBtn.addEventListener('click', function () { dialogOpen = true; dismissed = false; render(); userIn.focus(); });
+        pwBtn.addEventListener('click', function () { dialogOpen = true; render(); userIn.focus(); });
         dialog.querySelector('[data-login-cancel]').addEventListener('click', function () {
-          dialogOpen = false; dismissed = true; clearInputs(); render();
+          dialogOpen = false; clearInputs(); render();
         });
         dForm.addEventListener('submit', function (ev) {
           ev.preventDefault();
@@ -594,7 +595,6 @@
 
         onReader = function (state) {
           reader = (state === 'none' || state === 'error') ? state : 'ok';
-          dismissed = false;
           render();
         };
 
@@ -612,7 +612,6 @@
             // neue Rückkehrzeit gilt ab dem nächsten Zurücksetzen des Timers
             if (typeof d.idle === 'number' && d.idle > 0) { idle = d.idle; settings.idle = d.idle; }
             if (Array.isArray(d.card_notify)) notify = parseNotify(JSON.stringify(d.card_notify));
-            dismissed = false;
             render();
           });
           sset.onerror = function () { /* stumm: der EventSource verbindet selbst neu */ };
