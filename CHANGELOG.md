@@ -10,6 +10,17 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.82.36] – 2026-11-23
+
+### Behoben
+
+- **Zuordnungen vorschlagen am Handy und Tablet:** Die Liste war eine breite Tabelle – neben der Quelle musste man weit zur Seite rollen, um Anlage, Bezeichnung und Notiz zu sehen. Bis 900 px Breite stehen die Angaben einer Zeile jetzt untereinander; lange Quellnamen brechen um.
+- Der Hinweis „Auf dieser Seite gehen Quellwerte und Anlagennamen an Anthropic“ in der Copilot-Leiste einer Verbindung erscheint nur noch, wenn der Copilot mit Claude (Anthropic) läuft. Mit Ollama oder ohne Copilot stimmte er nicht.
+
+### Sicherheit
+
+- **Internetsuche des Copilot getrennt von den Betriebsdaten:** Auf der Seite einer Verbindung sucht der Copilot nur noch im Internet, wenn man unter dem Eingabefeld „Im Internet nach einer Vorlage suchen“ anhakt. Die Suche läuft als eigener Schritt und kennt nur die gestellte Frage und die Art der Verbindung – keine Quellwerte, Anlagennamen oder Einstellungen. Der Schritt, der die PDH-Daten liest und den Vorschlag baut, hat keinen Internetzugang. Bisher hielt den Copilot nur eine Anweisung davon ab, Betriebsdaten in eine Suche zu schreiben.
+
 ## [0.82.35] – 2026-11-23
 
 ### Neu

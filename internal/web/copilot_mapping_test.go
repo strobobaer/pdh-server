@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"pdh/internal/core/users"
+	"pdh/internal/modules/faults"
 )
 
 func TestConnectionInfoNoSecrets(t *testing.T) {
@@ -183,5 +184,50 @@ func TestRedactSecretsBeyondFields(t *testing.T) {
 	}
 	if !strings.Contains(got, "Fabcd bleibt") {
 		t.Errorf("kurzes Kennwort darf nur als eigenes Wort ersetzt werden: %s", got)
+	}
+}
+
+// Die Seitenleiste kennt die Verbindung nur, wenn der Copilot Werkzeuge kann
+// (Claude). Mit Ollama oder ohne Copilot gibt es weder die Werkzeuge noch den
+// Hinweis „gehen an Anthropic“.
+func TestCopilotConnRef(t *testing.T) {
+	const id = "11111111-1111-1111-1111-111111111111"
+	if got := copilotConnRef(nil, "import", id); got != "" {
+		t.Errorf("ohne Copilot: %q", got)
+	}
+	if got := copilotConnRef(faults.NewCopilot("", "", "", "", nil), "import", id); got != "" {
+		t.Errorf("Ollama: %q", got)
+	}
+	if got := copilotConnRef(faults.NewCopilot("sk-ant-test-0000000000", "", "", "", nil), "export", id); got != "export:"+id {
+		t.Errorf("Claude: %q", got)
+	}
+}
+
+// Der Such-Aufruf im Internet kennt nur die Art der Verbindung – keinen Namen,
+// keine Adresse, keine Werte. In der Seitenleiste ist die Suche ein Haken, der
+// nur auf Verbindungsseiten erscheint.
+func TestCopilotWebSearchIsOptIn(t *testing.T) {
+	p := copilotWebSearchPrompt("modbus")
+	if !strings.Contains(p, "modbus") || !strings.Contains(p, "Vorlage") {
+		t.Errorf("Systemtext der Suche: %s", p)
+	}
+	tmpl := loadTestTemplates(t)
+	const id = "11111111-1111-1111-1111-111111111111"
+	d := ConnectionDetailData{Direction: "import", ID: id, Name: "Broker", Kind: "mqtt", KindLabel: "MQTT", CanWrite: true, Tab: "mappings"}
+	d.CopilotConn = "import:" + id
+	page := renderPage(t, tmpl, "connection_detail", d)
+	for _, want := range []string{`id="cop-web"`, "Im Internet nach einer Vorlage suchen", "Dabei geht nur deine Frage ins Internet", "web: (document.getElementById('cop-web') || {}).checked ? '1' : ''"} {
+		if !strings.Contains(page, want) {
+			t.Errorf("%q fehlt", want)
+		}
+	}
+	checkScripts(t, "copilot-web", page)
+	d.CopilotConn = ""
+	if strings.Contains(renderPage(t, tmpl, "connection_detail", d), `id="cop-web"`) {
+		t.Error("ohne Verbindung darf es den Haken nicht geben")
+	}
+	c := &copilotConn{Direction: "import", ID: "c1", Kind: "mqtt", Name: "Halle 2", CanWrite: true}
+	if off := copilotConnPrompt(c, false); !strings.Contains(off, "keinen Internetzugang") {
+		t.Errorf("ohne Haken muss der Systemtext sagen, dass es kein Internet gibt: %s", off)
 	}
 }

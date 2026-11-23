@@ -18,15 +18,19 @@ func TestToolParamsWeb(t *testing.T) {
 	if strings.Contains(string(raw), "web_search") || strings.Contains(string(raw), "web_fetch") {
 		t.Errorf("ohne Web darf es keine Websuche geben: %s", raw)
 	}
+	// mit Internet nur die Internet-Werkzeuge – nie die eigenen (Betriebsdaten)
 	web := toolParams("claude-test", "System", "Frage", tools, AskOptions{Web: true})
-	if len(web.Tools) != 3 {
+	if len(web.Tools) != 2 {
 		t.Fatalf("mit Web: %d Werkzeuge", len(web.Tools))
 	}
 	raw, _ = json.Marshal(web.Tools)
-	for _, want := range []string{`"web_search"`, `"web_fetch"`, `"search"`} {
+	for _, want := range []string{`"web_search"`, `"web_fetch"`} {
 		if !strings.Contains(string(raw), want) {
 			t.Errorf("%s fehlt: %s", want, raw)
 		}
+	}
+	if strings.Contains(string(raw), `"search"`) {
+		t.Errorf("eigenes Werkzeug neben der Websuche: %s", raw)
 	}
 	if len(web.Messages) != 1 || len(web.System) != 1 || web.System[0].Text != "System" {
 		t.Errorf("Frage/Systemtext: %+v", web)

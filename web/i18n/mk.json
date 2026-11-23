@@ -221,6 +221,8 @@
  "Infrastruktur": "Инфраструктура",
  "Inspektion": "Инспекција",
  "Instandhaltung": "Одржување и поправки",
+ "Im Internet nach einer Vorlage suchen": "Побарај шаблон на интернет",
+ "Dabei geht nur deine Frage ins Internet – keine Daten aus dem PDH.": "На интернет оди само вашето прашање – никакви податоци од PDH.",
  "Auf dieser Seite gehen Quellwerte und Anlagennamen an Anthropic – Kennwörter nie.": "На оваа страница изворните вредности и имињата на постројките се испраќаат до Anthropic – лозинките никогаш.",
  "Frag nach Störungen, Anlagen, Wartungen oder Ersatzteilen – der Copilot sucht in euren PDH-Daten …": "Прашајте за дефекти, постројки, одржување или резервни делови – копилотот пребарува во вашите PDH-податоци …",
  "Kalibrierung": "Калибрација",

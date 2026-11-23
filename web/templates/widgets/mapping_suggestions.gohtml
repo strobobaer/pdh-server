@@ -21,10 +21,10 @@
   {{range .Rows}}<tr data-sugg-row data-ref="{{.Ref}}" data-mapping="{{.ImportMappingID}}" data-asset="{{.AssetID}}">
     <td><input type="checkbox" data-sugg-pick aria-label="Übernehmen: {{.Label}}"{{if .Checked}} checked{{end}} onchange="cdSuggCount()"></td>
     <td class="cd-sugg-src"><b>{{.Label}}</b>{{with .From}} <span class="rec-sub">aus {{.}}</span>{{end}}{{if .Sample}}<div class="cd-sugg-sample">{{.Sample}}</div>{{end}}</td>
-    <td class="cd-sugg-asset">{{if eq $.Direction "import"}}<span data-sugg-path>{{if .AssetPath}}{{.AssetPath}}{{else}}<span style="color:var(--amber)">keine passende Anlage</span>{{end}}</span>
+    <td class="cd-sugg-asset" data-label="Anlage">{{if eq $.Direction "import"}}<span data-sugg-path>{{if .AssetPath}}{{.AssetPath}}{{else}}<span style="color:var(--amber)">keine passende Anlage</span>{{end}}</span>
       <button type="button" class="btn btn-small" onclick="cdSuggPick(this)">Ändern</button>{{else}}{{.AssetPath}}{{end}}</td>
-    <td><input class="form-input" data-sugg-name maxlength="150" value="{{if eq $.Direction "import"}}{{.Name}}{{else}}{{.FieldName}}{{end}}" aria-label="{{if eq $.Direction "import"}}Bezeichnung{{else}}Feldname{{end}}"></td>
-    <td><input class="form-input" data-sugg-note maxlength="500" value="{{.Note}}" aria-label="Notiz"></td>
+    <td data-label="{{if eq $.Direction "import"}}Bezeichnung{{else}}Feldname{{end}}"><input class="form-input" data-sugg-name maxlength="150" value="{{if eq $.Direction "import"}}{{.Name}}{{else}}{{.FieldName}}{{end}}" aria-label="{{if eq $.Direction "import"}}Bezeichnung{{else}}Feldname{{end}}"></td>
+    <td data-label="Notiz"><input class="form-input" data-sugg-note maxlength="500" value="{{.Note}}" aria-label="Notiz"></td>
   </tr>{{end}}
   </tbody></table></div>
   <div class="cd-sugg-foot">
