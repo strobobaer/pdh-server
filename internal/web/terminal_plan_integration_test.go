@@ -14,7 +14,7 @@ import (
 
 type gtPlanSlide struct {
 	Kind string        `json:"kind"`
-	Plan *terminalPlan `json:"plan"`
+	Plan *planSlideData `json:"plan"`
 }
 
 // planEnv: zwei Abteilungen mit je einer Person, Daten für jede Planungsart heute, morgen und in 10 Tagen.
@@ -100,7 +100,7 @@ func (p *planEnv) plans(term, dev string) []gtPlanSlide {
 }
 
 // flat: "Datum|Gruppe|Eintrag" aller Tage einer Folie.
-func flatPlan(pl *terminalPlan) []string {
+func flatPlan(pl *planSlideData) []string {
 	var out []string
 	if pl == nil {
 		return []string{"<keine Folie>"}
@@ -117,7 +117,7 @@ func flatPlan(pl *terminalPlan) []string {
 
 func (p *planEnv) day(d time.Time) string { return d.Format(dayISO) }
 
-func wantPlan(t *testing.T, what string, pl *terminalPlan, want ...string) {
+func wantPlan(t *testing.T, what string, pl *planSlideData, want ...string) {
 	t.Helper()
 	got := flatPlan(pl)
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
@@ -141,7 +141,7 @@ func (p *planEnv) clear() { p.e.exec(`DELETE FROM terminal_slides`) }
 func TestTerminalPlanShifts(t *testing.T) {
 	p := newPlanEnv(t)
 	to, tm, far := p.day(p.today), p.day(p.tomorrow), p.day(p.far)
-	slide := func(s terminalSlide) *terminalPlan {
+	slide := func(s terminalSlide) *planSlideData {
 		p.clear()
 		s.Kind, s.DurationSeconds, s.Active = slideKindPlanShifts, 10, true
 		p.slide(s)

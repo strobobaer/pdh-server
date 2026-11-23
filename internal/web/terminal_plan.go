@@ -80,26 +80,26 @@ func planRangeLabel(rng string, n int) string {
 
 // Inhalt einer Planungsfolie. Die Gruppen eines Tages sind je nach Art Schichten, Dienstarten, „abwesend“ oder
 // „Fällig“; Items sind Namen bzw. Wartungstitel (nur Text, der Player nimmt textContent).
-type terminalPlanGroup struct {
+type planSlideGroup struct {
 	Name  string   `json:"name"`
 	Color string   `json:"color,omitempty"`
 	Items []string `json:"items"`
 	More  int      `json:"more,omitempty"`
 }
 
-type terminalPlanDay struct {
+type planSlideDay struct {
 	Date   string              `json:"date"`
 	Label  string              `json:"label"`
 	Today  bool                `json:"today,omitempty"`
-	Groups []terminalPlanGroup `json:"groups"`
+	Groups []planSlideGroup `json:"groups"`
 }
 
-type terminalPlan struct {
+type planSlideData struct {
 	Range string            `json:"range"`
 	Label string            `json:"label"`
 	From  string            `json:"from"`
 	To    string            `json:"to"`
-	Days  []terminalPlanDay `json:"days"`
+	Days  []planSlideDay `json:"days"`
 }
 
 // planScope: die Abteilungen, deren Daten die Folie für diesen Terminal-Benutzer zeigen darf.
@@ -148,9 +148,9 @@ func (h *Handler) planSlideScope(ctx context.Context, uid, role, perm string, se
 type planAdder func(day, key, name, color, item string)
 
 // planSlide baut den Inhalt einer Planungsfolie für den Terminal-Benutzer uid.
-func (h *Handler) planSlide(ctx context.Context, uid, role string, s terminalSlide, now time.Time) (*terminalPlan, error) {
+func (h *Handler) planSlide(ctx context.Context, uid, role string, s terminalSlide, now time.Time) (*planSlideData, error) {
 	from, to := planRangeBounds(now, s.PlanRange, s.PlanDays)
-	pl := &terminalPlan{Range: s.PlanRange, Label: planRangeLabel(s.PlanRange, s.PlanDays), From: from.Format(dayISO), To: to.Format(dayISO), Days: []terminalPlanDay{}}
+	pl := &planSlideData{Range: s.PlanRange, Label: planRangeLabel(s.PlanRange, s.PlanDays), From: from.Format(dayISO), To: to.Format(dayISO), Days: []planSlideDay{}}
 	perm := "shifts.view"
 	if s.Kind == slideKindPlanMaint {
 		perm = "maintenance.view"
@@ -159,15 +159,15 @@ func (h *Handler) planSlide(ctx context.Context, uid, role string, s terminalSli
 	if err != nil {
 		return nil, err
 	}
-	byDay := map[string]map[string]*terminalPlanGroup{} // Tag → Gruppenschlüssel
+	byDay := map[string]map[string]*planSlideGroup{} // Tag → Gruppenschlüssel
 	order := map[string][]string{}                      // Tag → Reihenfolge der Gruppen
 	add := func(day, key, name, color, item string) {
 		if byDay[day] == nil {
-			byDay[day] = map[string]*terminalPlanGroup{}
+			byDay[day] = map[string]*planSlideGroup{}
 		}
 		g := byDay[day][key]
 		if g == nil {
-			g = &terminalPlanGroup{Name: name, Color: color, Items: []string{}}
+			g = &planSlideGroup{Name: name, Color: color, Items: []string{}}
 			byDay[day][key] = g
 			order[day] = append(order[day], key)
 		}
@@ -202,7 +202,7 @@ func (h *Handler) planSlide(ctx context.Context, uid, role string, s terminalSli
 		if len(byDay[k]) == 0 && to.Sub(from) > 6*24*time.Hour {
 			continue // lange Zeiträume: nur Tage mit Einträgen
 		}
-		day := terminalPlanDay{Date: k, Label: shortWeekday("de", d.Weekday()) + " " + d.Format("02.01."), Today: k == today, Groups: []terminalPlanGroup{}}
+		day := planSlideDay{Date: k, Label: shortWeekday("de", d.Weekday()) + " " + d.Format("02.01."), Today: k == today, Groups: []planSlideGroup{}}
 		for _, key := range order[k] {
 			day.Groups = append(day.Groups, *byDay[k][key])
 		}

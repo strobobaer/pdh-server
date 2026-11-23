@@ -237,7 +237,7 @@ type terminalSlideJSON struct {
 	Days         int            `json:"days,omitempty"`
 	URL          string         `json:"url,omitempty"`
 	Reload       int            `json:"reload,omitempty"` // Art website: Minuten bis zum Neuladen
-	Plan         *terminalPlan  `json:"plan,omitempty"`   // Planungsfolien (plan_*)
+	Plan         *planSlideData  `json:"plan,omitempty"`   // Planungsfolien (plan_*)
 }
 
 type terminalSlidesDoc struct {
