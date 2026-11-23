@@ -242,36 +242,41 @@ func (r *Repository) UpdatePlan(ctx context.Context, id string, in *PlanInput) e
 	if tag.RowsAffected() == 0 {
 		return inputErr("Wartungsplan nicht gefunden")
 	}
-	// geplante Termine: neuer Rhythmus → neu rechnen; nur neue Besetzung → übernehmen, wo nicht von Hand besetzt
-	if yearPlan {
-		rhythm := oldUnit != in.IntervalUnit || oldCount != in.IntervalCount || oldMode != in.ScheduleMode ||
-			(next != nil && !dayStart(*next).Equal(dayStart(oldNext.Local())))
-		switch {
-		case rhythm:
-			if err := r.RecalcVisits(ctx, id, time.Now()); err != nil {
-				return err
-			}
-		case !sameID(oldAssignee, nullID(in.AssignedTo)) || !sameID(oldGroup, nullID(in.AssignedGroupID)):
-			if _, err := r.db.Exec(ctx, `UPDATE maintenance_visits SET assigned_to = $2::uuid, assigned_group_id = $3::uuid, updated_at = NOW()
-				WHERE plan_id = $1::uuid AND state = 'planned' AND NOT staff_manual`, id, nullID(in.AssignedTo), nullID(in.AssignedGroupID)); err != nil {
-				return err
-			}
-		}
-	}
-	// Stammdaten und Termin auf den offenen, noch nicht begonnenen Auftrag uebertragen
+	// Stammdaten und Termin auf den offenen, noch nicht begonnenen Auftrag uebertragen –
+	// vor dem Neurechnen der geplanten Termine, damit der neue Tag als beauftragt gilt
+	// (sonst entstünde dort zusätzlich ein geplanter Termin und später ein zweiter Auftrag).
 	// Fälligkeit und Besetzung nur, wenn sie sich am Plan geändert haben und am Auftrag nicht von Hand gesetzt sind
 	dueChanged := next != nil && !dayStart(*next).Equal(dayStart(oldNext.Local()))
 	staffChanged := !sameID(oldAssignee, nullID(in.AssignedTo)) || !sameID(oldGroup, nullID(in.AssignedGroupID))
+	nextDay := ""
+	if next != nil {
+		nextDay = next.Format("2006-01-02") // Kalendertag in Ortszeit, nicht ::date in der Zone der DB-Sitzung
+	}
 	if _, err := r.db.Exec(ctx, `UPDATE maintenance_tasks mt SET title = mp.name, description = COALESCE(mp.description,''),
 			type = mp.type, infrastructure_id = mp.infrastructure_id, priority = mp.priority,
 			assigned_to = CASE WHEN $2 AND NOT mt.staff_manual THEN mp.assigned_to ELSE mt.assigned_to END,
 			assigned_group_id = CASE WHEN $2 AND NOT mt.staff_manual THEN mp.assigned_group_id ELSE mt.assigned_group_id END,
 			responsible_to = mp.responsible_to, cost_center_id = mp.cost_center_id,
 			due_date = CASE WHEN $3 AND NOT mt.due_manual THEN mp.next_due_at ELSE mt.due_date END,
-			planned_for = CASE WHEN $3 AND NOT mt.due_manual THEN mp.next_due_at::date ELSE mt.planned_for END,
+			planned_for = CASE WHEN $3 AND NOT mt.due_manual THEN NULLIF($4, '')::date ELSE mt.planned_for END,
 			updated_at = NOW()
-		FROM maintenance_plans mp WHERE mp.id = $1::uuid AND mt.plan_id = mp.id AND mt.status = 'open'`, id, staffChanged, dueChanged); err != nil {
+		FROM maintenance_plans mp WHERE mp.id = $1::uuid AND mt.plan_id = mp.id AND mt.status = 'open'`, id, staffChanged, dueChanged, nextDay); err != nil {
 		return err
+	}
+	// geplante Termine: neuer Rhythmus → neu rechnen; nur neue Besetzung → übernehmen, wo nicht von Hand besetzt
+	if yearPlan {
+		rhythm := oldUnit != in.IntervalUnit || oldCount != in.IntervalCount || oldMode != in.ScheduleMode || dueChanged
+		switch {
+		case rhythm:
+			if err := r.RecalcVisits(ctx, id, time.Now()); err != nil {
+				return err
+			}
+		case staffChanged:
+			if _, err := r.db.Exec(ctx, `UPDATE maintenance_visits SET assigned_to = $2::uuid, assigned_group_id = $3::uuid, updated_at = NOW()
+				WHERE plan_id = $1::uuid AND state = 'planned' AND NOT staff_manual`, id, nullID(in.AssignedTo), nullID(in.AssignedGroupID)); err != nil {
+				return err
+			}
+		}
 	}
 	if dueChanged { // „anstehend ab“ zum neuen Tag
 		var taskID string
@@ -309,8 +314,10 @@ func (r *Repository) SetPlanActive(ctx context.Context, id string, active bool) 
 		if err != nil {
 			return err
 		}
-		// ruhender Plan: keine geplanten Termine (beauftragte und entfallene bleiben)
-		_, err = r.db.Exec(ctx, `DELETE FROM maintenance_visits WHERE plan_id = $1::uuid AND state = 'planned'`, id)
+		// ruhender Plan: keine geplanten Termine; beauftragte mit noch vorhandenem Auftrag und
+		// entfallene bleiben. Termine, deren Auftrag eben entfernt wurde, entstehen beim Aktivieren neu.
+		_, err = r.db.Exec(ctx, `DELETE FROM maintenance_visits WHERE plan_id = $1::uuid
+			AND (state = 'planned' OR (state = 'ordered' AND task_id IS NULL))`, id)
 		return err
 	}
 	// wieder eingeschaltet: ein früher erzeugter Jahresplan entsteht von selbst neu

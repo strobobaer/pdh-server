@@ -26,7 +26,8 @@ type maintItem struct {
 	Warn, WarnClass             string
 	Overdue                     bool
 	Date                        string
-	Planned, OffPlan            bool // geplanter Termin aus dem Jahresplan (noch kein Auftrag)
+	Planned, OffPlan            bool   // geplanter Termin aus dem Jahresplan (noch kein Auftrag)
+	StaffID                     string // tatsächlich besetzte Person (Vorbelegung im Dialog); AssigneeID fällt auf die Verantwortliche zurück
 }
 
 type maintDay struct {
@@ -173,7 +174,7 @@ func (h *Handler) maintTab(r *http.Request) *maintTabData {
 			}
 			it := maintItem{ID: v.ID, Kind: "planned", Title: v.PlanName, Infra: v.InfraName, URL: "/maintenance/plans/" + v.PlanID,
 				AssigneeID: derefOr(v.AssignedTo, derefOr(v.ResponsibleTo, "")), Group: v.GroupName, Minutes: v.EstimatedMin,
-				Date: v.Day.Format(dayISO), Planned: true, OffPlan: v.OffPlan}
+				Date: v.Day.Format(dayISO), Planned: true, OffPlan: v.OffPlan, StaffID: derefOr(v.AssignedTo, "")}
 			it.Assignee = names[it.AssigneeID]
 			check(&it)
 			byDay[it.Date] = append(byDay[it.Date], it)
@@ -334,8 +335,9 @@ func (h *Handler) PlannerVisitSaveWeb(w http.ResponseWriter, r *http.Request) {
 		}
 		h.addHistory(ctx, "maintenance_plan", v.PlanID, "update", "Termin", v.Day.Format("02.01.2006"), due.Format("02.01.2006"), "Wartungstermin im Planer verschoben", uid)
 	}
+	current := derefOr(v.AssignedTo, "")
 	switch assignee := r.FormValue("assigned_to"); {
-	case assignee == "":
+	case assignee == "", assignee == current, assignee == "-" && current == "": // unverändert
 	case assignee == "-" || uuidInPathRe.MatchString(assignee):
 		var person *string
 		if assignee != "-" {

@@ -152,7 +152,8 @@ func (r *Repository) fillVisits(ctx context.Context, tx pgx.Tx, planID, userID s
 		SELECT mp.id, d::date, d::date, mp.assigned_to, mp.assigned_group_id, NULLIF($3, '')::uuid, NULLIF($3, '')::uuid
 		FROM maintenance_plans mp, unnest($2::text[]) AS d
 		WHERE mp.id = $1::uuid
-		  AND NOT EXISTS (SELECT 1 FROM maintenance_visits v WHERE v.plan_id = mp.id AND v.calc_day = d::date)
+		  AND NOT EXISTS (SELECT 1 FROM maintenance_visits v WHERE v.plan_id = mp.id AND v.calc_day = d::date
+		                  AND NOT (v.state = 'ordered' AND v.task_id IS NULL)) -- Auftrag gelöscht: Tag wieder planen
 		  AND NOT EXISTS (SELECT 1 FROM maintenance_tasks mt WHERE mt.plan_id = mp.id
 		                  AND mt.status IN ('open', 'in_progress', 'pending')
 		                  AND COALESCE(mt.planned_for, mt.due_date::date) = d::date)`, planID, list, validUserID(userID))

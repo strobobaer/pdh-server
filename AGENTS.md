@@ -858,7 +858,9 @@ und 3 drückt bis auf Weiteres der Anwender.
     `internal/core/workdays`. Der Folgeauftrag entsteht erst mit dem Vorlauf
     (Test `TestBoardMaintenanceFlowIntegration` angepasst). Ledger mit allen
     Entscheidungen: `.superpowers/sdd/2026-11-23-wartung-jahresplan/`.
-    Offen: Schlussprüfung, Freigabe Push/Merge, Verbund-Update,
+    Schlussprüfung erledigt (1 kritisch, 3 wichtig – behoben mit Tests;
+    13 kleine im Ledger zurückgestellt, Bericht `final-review.md`).
+    Offen: Freigabe Push/Merge, Verbund-Update,
     Browserprüfung (Wartungsseite mit Jahresplan-Knöpfen und
     Wartungsregeln, Kalender mit Ziehen und Besetzen-Fenster, Planer,
     Leitstand-Kalender und Zeitstrahl; Fiori/Fluent, hell/dunkel,

@@ -307,9 +307,22 @@ func (r *Repository) markSkipped(ctx context.Context, id string) error {
 	return nil
 }
 
+// DeleteTask löscht einen Auftrag. War er aus einem geplanten Termin entstanden,
+// ist dieser wieder geplant – sonst ginge der Termin verloren.
 func (r *Repository) DeleteTask(ctx context.Context, id string) error {
-	_, err := r.db.Exec(ctx, `DELETE FROM maintenance_tasks WHERE id=$1::uuid`, id)
-	return err
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	if _, err := tx.Exec(ctx, `UPDATE maintenance_visits SET state = 'planned', task_id = NULL, updated_at = NOW()
+		WHERE task_id = $1::uuid AND state = 'ordered'`, id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM maintenance_tasks WHERE id=$1::uuid`, id); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 // ── Massnahmen ───────────────────────────────────────────────

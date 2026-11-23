@@ -145,3 +145,41 @@ func TestGanttVisits(t *testing.T) {
 		t.Error("Leitstand mit Wartungen zeigt keine Termine")
 	}
 }
+
+// Schlussprüfung I2: Nur verschieben besetzt den Termin nicht still mit der
+// verantwortlichen Person; dieselbe Person erneut gewählt setzt nichts „von Hand“.
+func TestPlannerVisitDateOnlyKeepsStaff(t *testing.T) {
+	f := newCVFx(t)
+	ctx := context.Background()
+	base := time.Now().AddDate(0, 2, 0)
+	resp := f.user("vf_pvr", f.role("vf_pvrr", nil))
+	pr := f.mk("PVRESP", f.infraA, base, nil, &resp, nil)
+	pp := f.mk("PVPERS", f.infraA, base, &f.person, nil, nil)
+	d := f.h.maintTab(f.asUser(f.editA, f.roleEditA, "/planner?tab=maintenance&month="+base.Format("2006-01")))
+	for _, w := range d.Weeks {
+		for _, day := range w {
+			for _, it := range day.Items {
+				if it.Planned && strings.HasPrefix(it.Title, "PVRESP") && (it.AssigneeID != resp || it.StaffID != "") {
+					t.Errorf("Termin ohne Person: Zeile %q, Vorbelegung %q", it.AssigneeID, it.StaffID)
+				}
+			}
+		}
+	}
+	post := func(id, due, who string) {
+		form := url.Values{"due_date": {due}, "assigned_to": {who}}
+		r := httptest.NewRequest(http.MethodPost, "/planner/maintenance-visits/"+id, strings.NewReader(form.Encode()))
+		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		r = r.WithContext(context.WithValue(r.Context(), "user", &users.User{ID: f.editA, Role: users.Role(f.roleEditA)}))
+		w := httptest.NewRecorder()
+		f.h.PlannerVisitSaveWeb(w, withChiParam(r, "id", id))
+		if w.Code != http.StatusSeeOther {
+			t.Fatalf("speichern: %d", w.Code)
+		}
+	}
+	v := f.visits(pp)[1]
+	post(v.ID, v.Day.AddDate(0, 0, 1).Format(dayISO), f.person) // dieselbe Person wie bisher
+	if got, _ := f.h.maint.GetVisit(ctx, v.ID); got == nil || got.StaffManual {
+		t.Errorf("gleiche Person gewählt: staff_manual gesetzt: %+v", got)
+	}
+	_ = pr
+}

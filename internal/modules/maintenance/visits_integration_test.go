@@ -278,7 +278,12 @@ func TestDeactivateRemovesPlanned(t *testing.T) {
 	_, err := e.repo.GenerateYearPlan(e.ctx, id, e.userA, e.now)
 	e.must(err)
 	ordered := e.visits(id)[5]
-	_, err = e.repo.db.Exec(e.ctx, `UPDATE maintenance_visits SET state = 'ordered' WHERE id = $1::uuid`, ordered.ID)
+	// beauftragt mit einem begonnenen Auftrag (der beim Ruhen bleibt)
+	var taskID string
+	e.must(e.repo.db.QueryRow(e.ctx, `INSERT INTO maintenance_tasks (plan_id, title, type, infrastructure_id, priority, status, due_date, created_by)
+		VALUES ($1::uuid, 'begonnen', 'inspection', $2::uuid, 'medium', 'in_progress', $3, $4::uuid) RETURNING id::text`,
+		id, e.infra, ordered.Day, e.userA).Scan(&taskID))
+	_, err = e.repo.db.Exec(e.ctx, `UPDATE maintenance_visits SET state = 'ordered', task_id = $2::uuid WHERE id = $1::uuid`, ordered.ID, taskID)
 	e.must(err)
 	e.must(e.repo.SetPlanActive(e.ctx, id, false))
 	if vs := e.visits(id); len(vs) != 1 || vs[0].ID != ordered.ID {
