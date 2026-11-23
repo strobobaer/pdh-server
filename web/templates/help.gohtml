@@ -2577,7 +2577,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <p>Das PDH rechnet nie mit einem fehlenden oder veralteten Wert weiter. Dann bleibt der berechnete Wert leer und nennt den Grund – zum Beispiel:</p>
     <ul>
       <li>Ein Eingangswert hat noch nie einen Wert geliefert oder ist keine Zahl (z. B. „12,5 kW“ mit Einheit).</li>
-      <li>Ein Eingangswert ist älter als das <b>Höchstalter</b> (vorbelegt mit 10 Minuten).</li>
+      <li>Ein Eingangswert ist älter als das <b>Höchstalter</b> (vorbelegt mit 10 Minuten). Ist der Eingangswert selbst ein berechneter Wert, zählt das Alter der Werte, aus denen er gerechnet wurde. Ein fester Wert ohne Eingangswerte (z. B. ein Tarif <code>0,32</code>) wird nie zu alt.</li>
       <li>Einen Eingangswert gibt es nicht mehr, oder er ist selbst ein berechneter Wert ohne Wert.</li>
       <li>Es würde durch 0 geteilt.</li>
     </ul>
