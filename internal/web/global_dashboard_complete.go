@@ -122,6 +122,10 @@ func (h *Handler) boardCompleteClaims(r *http.Request) jwt.MapClaims {
 	if !ok || (r.URL.Path != base && !strings.HasPrefix(r.URL.Path, base+"/steps/")) {
 		return nil
 	}
+	// Token eines Terminals (Vorgaenge): nur an dessen Geraetesitzung (und Kartenperson), einmalig
+	if tv, _ := claims["tv"].(string); tv != "" && !h.terminalTokenValid(r, claims) {
+		return nil
+	}
 	return claims
 }
 

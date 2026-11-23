@@ -140,6 +140,7 @@ func (h *Handler) terminalRoutes(r chi.Router) {
 	r.Post("/terminal/vorgaenge/warten", h.terminalFnRoute("vorgaenge", h.TerminalVorgaengeWarten))
 	r.Post("/terminal/vorgaenge/beenden", h.terminalFnRoute("vorgaenge", h.TerminalVorgaengeBeenden))
 	middleware.SetTerminalSessionCheck(func(r *http.Request, sub, tsess, tdev string) bool { return h.pdhHandoffCheck(r, tsess, sub, tdev) })
+	middleware.SetTerminalTokenCheck(func(r *http.Request, claims map[string]interface{}) bool { return h.terminalTokenValid(r, claims) })
 	h.cardRoutes(r)
 }
 

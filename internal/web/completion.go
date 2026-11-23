@@ -341,6 +341,10 @@ func (h *Handler) CompletionWeb(w http.ResponseWriter, r *http.Request) {
 	// ── Zeit: laufenden Timer stoppen oder neuen Eintrag anlegen ──
 	var start, end time.Time
 	desc := k.Label + ": " + title
+	viaNote := h.terminalViaNote(r) // am Terminal gewählt, nicht selbst angemeldet (terminal_vorgaenge.go)
+	if viaNote != "" {
+		desc += " – " + viaNote
+	}
 	switch {
 	case runID != "":
 		start, end = runStart, time.Now()
@@ -380,6 +384,9 @@ func (h *Handler) CompletionWeb(w http.ResponseWriter, r *http.Request) {
 
 	// ── Kommentar als Massnahme ──
 	action := in.Comment
+	if viaNote != "" {
+		action += "\n\n" + viaNote
+	}
 	if len(names) > 0 {
 		action += "\n\nBeteiligt: " + strings.Join(names, ", ")
 	}

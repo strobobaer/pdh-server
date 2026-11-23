@@ -19,6 +19,8 @@ im Kapitel „Versionen & Updates“ an.
 - **Einstellung „Abteilungen des Terminals“** beim Systembenutzer: aus diesen Abteilungen stammen die wählbaren Mitarbeitenden (Vorgabe: Abteilung der Terminal-Anlage). Auch für weitere Terminalfunktionen gedacht.
 - **Schalter „Vorgänge“** in den Funktionen des Terminals (Grundwert an). Der Schalter steht im Funktionen-Abgleich; ältere Terminals kennen ihn nicht und schicken ihn nicht, unbekannte Schlüssel in der Anfrage werden wie bisher übergangen.
 - **Verlauf mit Herkunft.** Jeder Schritt am Terminal steht im Verlauf des Vorgangs mit den gewählten Personen, dem Terminal als Ort und der Herkunft „am Terminal gewählt“ oder „mit Karte“ (neue Felder `origin_via`, `place`, `people_ids` im Verlauf, für Auswertungen filterbar).
+- **Handeln im Namen anderer ist gekennzeichnet.** Bei „Ohne Karte“ steht im Verlauf, in der Maßnahme und in den Zeiteinträgen des Abschluss-Assistenten ausdrücklich „am Terminal gewählt, nicht selbst angemeldet“. Wird ein Vorgang am Terminal neu gestartet und fallen früher gewählte Personen weg, nennt der Verlauf sie („nicht mehr dabei“).
+- **Abschluss-Token des Terminals** (Sicherheit): Laufzeit 5 Minuten, gilt nur zusammen mit der Gerätesitzung dieses Terminals (auch für die Material-Schnittstelle), bei „mit Karte“ nur bei weiterhin angemeldeter Kartenperson, ist einmalig (nach dem Abschluss verbraucht) und es gilt nur das jeweils neueste Token je Vorgang. Die Kennung liegt in `app_settings` (Schlüssel `tcomplete:…`), ohne neues Schema.
 - Migration 206 (nur hinzufügend). Handbuch, Kapitel „Anlagenterminal“, um „Vorgänge am Terminal“ ergänzt.
 
 ## [0.82.39] – 2026-11-23
