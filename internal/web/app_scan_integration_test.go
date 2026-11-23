@@ -6,6 +6,7 @@ package web
 
 import (
 	"context"
+	"errors"
 	"net/url"
 	"strings"
 	"testing"
@@ -544,6 +545,75 @@ func TestAppReportFaultOffline(t *testing.T) {
 		status, m := report(e, "", map[string]any{"asset_id": e.infra, "title": "Neu " + e.sfx, "id": id, "offline": true})
 		if status != 201 || m["id"] != id {
 			t.Fatalf("%d %v", status, m)
+		}
+	})
+	// fremdFault: offene Störung eines anderen, nicht zugewiesen – sichtbar (faults.view),
+	// aber ohne Recht, Maßnahmen einzutragen.
+	fremdFault := func(e *appWorkEnv, k string) string {
+		return e.id(`INSERT INTO faults (title, description, severity, status, infrastructure_id, created_by)
+			VALUES ($1, 'Alt', 'low', 'detected', $2::uuid, $3::uuid) RETURNING id::text`, e.title(k), e.infra, e.other)
+	}
+	t.Run("Zusammenführen ohne Maßnahmerecht: Meldung und Hinweis im Verlauf, Fehler → 503 ohne Alias", func(t *testing.T) {
+		e := env(t)
+		fid := fremdFault(e, "Fremd")
+		e.exec(`DELETE FROM user_permissions WHERE user_id = $1::uuid AND permission_id = (SELECT id FROM permissions WHERE key = 'faults.edit')`, e.uid)
+		e.grant(e.uid, "faults.edit", "", false) // Rolle „worker“ hat es sonst
+		e.warm()
+		appDeviceCache.forget(e.devID)
+		if code, d := e.detail("fault", fid); code != 200 || d["can"].(map[string]any)["action"] != false {
+			t.Fatalf("Vorbedingung (sichtbar, keine Maßnahme): %d %v", code, d["can"])
+		}
+		id, once := e.once(), e.once()
+		in := map[string]any{"asset_id": e.infra, "title": "Meldung " + e.sfx, "text": "Lager heult", "id": id, "offline": true}
+		orig := appMergeHistoryWrite
+		t.Cleanup(func() { appMergeHistoryWrite = orig })
+		appMergeHistoryWrite = func(context.Context, *Handler, string, string, string, []string) error {
+			return errors.New("db weg")
+		}
+		status, m := report(e, once, in)
+		if status != 503 || m["code"] != "app_unavailable" {
+			t.Fatalf("fehlerfall: %d %v", status, m)
+		}
+		if n := e.count(`SELECT COUNT(*) FROM app_id_aliases WHERE id = $1::uuid`, id); n != 0 {
+			t.Errorf("alias nach fehler: %d", n)
+		}
+		if n := e.count(`SELECT COUNT(*) FROM app_steps WHERE id = $1::uuid`, once); n != 0 {
+			t.Errorf("once nach fehler behalten: %d", n)
+		}
+		appMergeHistoryWrite = orig
+		status, m = report(e, once, in) // dieselbe Once: der Schritt kommt erneut aus der Warteschlange
+		hint := "An der Anlage ist bereits die Störung „" + e.title("Fremd") + "“ offen. Deine Meldung wurde dort angehängt."
+		if status != 200 || m["id"] != fid || m["merged"] != true || m["hint"] != hint {
+			t.Fatalf("%d %v", status, m)
+		}
+		if n := e.count(`SELECT COUNT(*) FROM fault_actions WHERE fault_id = $1::uuid`, fid); n != 0 {
+			t.Errorf("maßnahme ohne recht: %d", n)
+		}
+		msg := "Meldung aus der App: Meldung " + e.sfx + " – Lager heult"
+		for _, want := range []string{msg, hint} {
+			if n := e.count(`SELECT COUNT(*) FROM record_history WHERE ref_type = 'fault' AND ref_id = $1::uuid AND message = $2`, fid, want); n != 1 {
+				t.Errorf("verlauf %q: %d", want, n)
+			}
+		}
+		if n := faultCount(e); n != 1 {
+			t.Errorf("störungen: %d", n)
+		}
+	})
+	t.Run("Wiederholung ohne Ergebnis: fremder Alias zählt nicht", func(t *testing.T) {
+		e := env(t)
+		fid := openFault(e, "Fremd", "detected")
+		id, once := e.once(), e.once()
+		e.exec(`INSERT INTO app_steps (id, user_id, device_id, path) VALUES ($1::uuid, $2::uuid, $3::uuid, '/api/app/v1/faults')`, once, e.uid, e.devID)
+		e.exec(`INSERT INTO app_id_aliases (id, target_type, target_id, created_by) VALUES ($1::uuid, 'fault', $2::uuid, $3::uuid)`, id, fid, e.other)
+		t.Cleanup(func() { _, _ = e.pool.Exec(context.Background(), `DELETE FROM app_id_aliases WHERE id = $1::uuid`, id) })
+		status, m := report(e, once, map[string]any{"asset_id": e.infra, "title": "Meldung " + e.sfx, "id": id, "offline": true})
+		if status != 409 || m["code"] != "app_conflict" {
+			t.Fatalf("fremder alias: %d %v", status, m)
+		}
+		e.exec(`UPDATE app_id_aliases SET created_by = $2::uuid WHERE id = $1::uuid`, id, e.uid)
+		status, m = report(e, once, map[string]any{"asset_id": e.infra, "title": "Meldung " + e.sfx, "id": id, "offline": true})
+		if status != 200 || m["id"] != fid || m["merged"] != true {
+			t.Fatalf("eigener alias: %d %v", status, m)
 		}
 	})
 }

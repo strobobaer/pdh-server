@@ -308,7 +308,7 @@ func appFaultMergedHint(title string) string {
 
 // appFaultReplayByID beantwortet die Wiederholung einer Meldung mit Kennung: das gespeicherte
 // Ergebnis des ersten Laufs; fehlt es (Speichern scheiterte), die Störung mit dieser Kennung
-// oder der Alias auf die Störung, die die Meldung aufgenommen hat. Zeigt das Ergebnis auf eine
+// oder der eigene Alias (created_by = Benutzer) auf die Störung, die die Meldung aufgenommen hat. Zeigt das Ergebnis auf eine
 // andere Störung als die Kennung, wurde damals zusammengeführt: wieder merged und Hinweis
 // (aus dem aktuellen Titel). Nichts gefunden: 409.
 func (h *Handler) appFaultReplayByID(w http.ResponseWriter, r *http.Request, id string) {
@@ -320,7 +320,7 @@ func (h *Handler) appFaultReplayByID(w http.ResponseWriter, r *http.Request, id 
 	if rid == "" {
 		err := h.db.QueryRow(ctx, `SELECT COALESCE(
 			(SELECT id::text FROM faults WHERE id = $1::uuid),
-			(SELECT target_id::text FROM app_id_aliases WHERE id = $1::uuid AND target_type = 'fault'), '')`, id).Scan(&rid)
+			(SELECT target_id::text FROM app_id_aliases WHERE id = $1::uuid AND target_type = 'fault' AND created_by = $2::uuid), '')`, id, getUser(r).ID).Scan(&rid)
 		if err != nil {
 			appUnavailable(w, err, "fault", id, "app: wiederholung auflösen")
 			return
@@ -387,26 +387,31 @@ func (h *Handler) appFaultMerge(w http.ResponseWriter, r *http.Request, assetID,
 	if text != "" {
 		msg += " – " + text
 	}
+	hint := appFaultMergedHint(ctitle)
+	undo := func(err error, what string) bool {
+		if _, derr := h.db.Exec(context.WithoutCancel(ctx), `DELETE FROM app_id_aliases WHERE id = $1::uuid`, phoneID); derr != nil {
+			componentLog("app").Error().Err(derr).Msg("app: alias nicht zurücknehmbar")
+		}
+		appUnavailable(w, err, "fault", cid, what)
+		return true
+	}
 	if can.Action {
 		if rs := []rune(msg); len(rs) > actionMaxLen {
 			msg = string(rs[:actionMaxLen])
 		}
-		err = actionModules["fault"].Add(h, ctx, cid, msg, u.ID)
-	} else {
-		err = nil
-	}
-	if err != nil {
-		if _, derr := h.db.Exec(context.WithoutCancel(ctx), `DELETE FROM app_id_aliases WHERE id = $1::uuid`, phoneID); derr != nil {
-			componentLog("app").Error().Err(derr).Msg("app: alias nicht zurücknehmbar")
+		if err := actionModules["fault"].Add(h, ctx, cid, msg, u.ID); err != nil {
+			return undo(err, "app: meldung anhängen")
 		}
-		appUnavailable(w, err, "fault", cid, "app: meldung anhängen")
-		return true
+		// Der Hinweis ist nur Zusatz – scheitert er, bleibt die Maßnahme (kein 503, sonst
+		// stünde sie beim nächsten Versuch doppelt da).
+		if err := appMergeHistoryWrite(ctx, h, "fault", cid, u.ID, []string{hint}); err != nil {
+			componentLog("app").Error().Err(err).Str("vorgang", cid).Msg("app: hinweis in den verlauf")
+		}
+	} else if err := appMergeHistoryWrite(ctx, h, "fault", cid, u.ID, []string{msg, hint}); err != nil {
+		// Ohne Maßnahmerecht lebt der Text nur im Verlauf: geprüft schreiben, sonst 503
+		// ohne appKeepOnce – der Schritt bleibt in der Warteschlange des Telefons.
+		return undo(err, "app: meldung in den verlauf")
 	}
-	if !can.Action {
-		h.addHistory(ctx, "fault", cid, "update", "", "", "", msg, u.ID)
-	}
-	hint := appFaultMergedHint(ctitle)
-	h.addHistory(ctx, "fault", cid, "update", "", "", "", hint, u.ID)
 	if stopped {
 		h.markPlantStopped(ctx, "fault", cid, u.ID)
 	}
