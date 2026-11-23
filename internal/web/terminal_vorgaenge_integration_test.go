@@ -6,6 +6,7 @@ package web
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -376,19 +377,27 @@ func TestVorgaengeBeendenStoerungMitAssistent(t *testing.T) {
 		t.Errorf("Assistent: Akteur %q, vorgewählt %v", out.Who, out.Pre)
 	}
 	auth := map[string]string{"Authorization": "Bearer " + out.Token}
-	// der Assistent läuft mit dem Token (ohne Sitzung): Daten laden …
-	if rec := v.req("GET", "/complete/ticket/"+v.ticket, nil, nil, auth); rec.Code != 200 || !strings.Contains(rec.Body.String(), `"success":true`) {
+	// der Assistent läuft mit dem Token an der Gerätesitzung des Terminals: Daten laden …
+	if rec := v.req("GET", "/complete/ticket/"+v.ticket, nil, v.devCookie, auth); rec.Code != 200 || !strings.Contains(rec.Body.String(), `"success":true`) {
 		t.Fatalf("assistent laden: %d %s", rec.Code, rec.Body.String())
 	}
+	// … ohne Gerätesitzung (anderer Client) oder mit Sitzung ohne Gerät gilt das Token nicht
+	if v.tokenOK(out.Token, "/complete/ticket/"+v.ticket, nil) || v.tokenOK(out.Token, "/complete/ticket/"+v.ticket, v.plainCookie) {
+		t.Error("Token gilt ohne Gerätesitzung des Terminals")
+	}
+	if rec := v.req("GET", "/complete/ticket/"+v.ticket, nil, nil, auth); rec.Code == 200 {
+		t.Error("Assistent ohne Sitzung erreichbar")
+	}
 	// … das Token gilt nur für diesen Vorgang
-	if rec := v.req("GET", "/complete/fault/"+v.fault, nil, nil, auth); rec.Code == 200 {
+	if v.tokenOK(out.Token, "/complete/fault/"+v.fault, v.devCookie) {
 		t.Error("Token gilt für einen anderen Vorgang")
 	}
-	// … und abschließen
+	// … und abschließen (Zeit, Maßnahme und Verlauf tragen den Hinweis „nicht selbst angemeldet“)
 	body := `{"no_parts":true,"minutes":15,"comment":"Lager getauscht","finish":true,"colleagues":[]}`
 	req := httptest.NewRequest("POST", "/complete/ticket/"+v.ticket, strings.NewReader(body))
 	req.Header.Set("Authorization", "Bearer "+out.Token)
 	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(v.devCookie)
 	done := httptest.NewRecorder()
 	v.mux2.ServeHTTP(done, req)
 	if done.Code != 200 || !strings.Contains(done.Body.String(), `"closed":true`) {
@@ -398,11 +407,21 @@ func TestVorgaengeBeendenStoerungMitAssistent(t *testing.T) {
 		t.Errorf("Status %s", v.status("tickets", v.ticket))
 	}
 	h := v.lastHistory("ticket", v.ticket)
-	if h.Via != vorgViaGewaehlt || h.People != 2 || h.Place != v.termName || !strings.Contains(h.Msg, "abgeschlossen") {
+	if h.Via != vorgViaGewaehlt || h.People != 2 || h.Place != v.termName || !strings.Contains(h.Msg, "abgeschlossen") || !strings.Contains(h.Msg, "nicht selbst angemeldet") {
 		t.Errorf("Verlauf: %+v", h)
+	}
+	if d := v.e.id(`SELECT description FROM time_entries WHERE ref_id = $1::uuid ORDER BY started_at DESC LIMIT 1`, v.ticket); !strings.Contains(d, "nicht selbst angemeldet") {
+		t.Errorf("Zeiteintrag ohne Hinweis: %q", d)
+	}
+	if d := v.e.id(`SELECT string_agg(description, ' | ') FROM ticket_actions WHERE ticket_id = $1::uuid`, v.ticket); !strings.Contains(d, "nicht selbst angemeldet") {
+		t.Errorf("Maßnahme ohne Hinweis: %q", d)
 	}
 	if n := v.e.id(`SELECT COUNT(*)::text FROM global_dashboard_actions WHERE ref_id = $1::uuid`, v.ticket); n != "0" {
 		t.Errorf("Terminal-Abschluss steht als Leitstand-Aktion: %s", n)
+	}
+	// einmalig: nach dem Abschluss ist das Token verbraucht
+	if v.tokenOK(out.Token, "/complete/ticket/"+v.ticket, v.devCookie) {
+		t.Error("Token nach dem Abschluss noch gültig")
 	}
 	// mit Karte: Herkunft „mit Karte“, die Person ist der Akteur
 	v.pdhEnv.card(v.card)
@@ -410,6 +429,96 @@ func TestVorgaengeBeendenStoerungMitAssistent(t *testing.T) {
 	rec = v.post("/terminal/vorgaenge/beenden", "fault", v.fault)
 	if rec.Code != 200 || !strings.Contains(rec.Body.String(), `"who":"Karla VGKarte"`) {
 		t.Errorf("beenden mit Karte: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+// tokenOK: erkennt der Server das Abschluss-Token für diesen Pfad und diese Sitzung an?
+func (v *vgEnv) tokenOK(token, path string, c *http.Cookie) bool {
+	req := httptest.NewRequest("GET", path, nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	if c != nil {
+		req.AddCookie(c)
+	}
+	return v.h.boardCompleteClaims(req) != nil
+}
+
+func (v *vgEnv) issue(t *testing.T, typ, id string) string {
+	t.Helper()
+	rec := v.post("/terminal/vorgaenge/beenden", typ, id)
+	var out struct{ Token string }
+	if rec.Code != 200 || json.Unmarshal(rec.Body.Bytes(), &out) != nil || out.Token == "" {
+		t.Fatalf("kein Token: %d %s", rec.Code, rec.Body.String())
+	}
+	return out.Token
+}
+
+func TestVorgaengeTokenGrenzen(t *testing.T) {
+	v := newVgEnv(t, true)
+	// nur das neueste Token je Vorgang gilt
+	v.post("/terminal/vorgaenge/start", "ticket", v.ticket, v.anna)
+	t1 := v.issue(t, "ticket", v.ticket)
+	path := "/complete/ticket/" + v.ticket
+	if !v.tokenOK(t1, path, v.devCookie) {
+		t.Fatal("frisches Token gilt nicht")
+	}
+	t2 := v.issue(t, "ticket", v.ticket)
+	if v.tokenOK(t1, path, v.devCookie) || !v.tokenOK(t2, path, v.devCookie) {
+		t.Error("nur das neueste Token darf gelten")
+	}
+	// Laufzeit 5 Minuten
+	parts := strings.Split(t2, ".")
+	raw, _ := base64URLDecode(parts[1])
+	var cl struct{ Exp, Iat int64 }
+	_ = json.Unmarshal(raw, &cl)
+	if d := cl.Exp - cl.Iat; d != int64(terminalCompleteTTL.Seconds()) {
+		t.Errorf("Laufzeit %d s", d)
+	}
+	// mit Karte: nach der Kartenabmeldung (oder anderer Karte) gilt das Token nicht mehr
+	v.pdhEnv.card(v.card)
+	v.post("/terminal/vorgaenge/start", "fault", v.fault, v.card)
+	tk := v.issue(t, "fault", v.fault)
+	fpath := "/complete/fault/" + v.fault
+	if !v.tokenOK(tk, fpath, v.devCookie) {
+		t.Fatal("Kartentoken gilt nicht")
+	}
+	v.pdhEnv.card(v.anna)
+	if v.tokenOK(tk, fpath, v.devCookie) {
+		t.Error("Token gilt bei anderer Kartenperson")
+	}
+	v.pdhEnv.card(v.card)
+	if !v.tokenOK(tk, fpath, v.devCookie) {
+		t.Fatal("Kartentoken gilt nach erneuter Karte nicht")
+	}
+	v.e.must(v.h.cardSessionEnd(v.e.ctx, v.term))
+	if v.tokenOK(tk, fpath, v.devCookie) {
+		t.Error("Token gilt nach der Kartenabmeldung")
+	}
+	// das Gerät eines anderen Terminals reicht nicht
+	if v.tokenOK(tk, fpath, v.otherCookieForeign(t)) {
+		t.Error("Token gilt an einem fremden Terminal")
+	}
+}
+
+// otherCookieForeign: Gerätesitzung eines anderen Terminal-Benutzers.
+func (v *vgEnv) otherCookieForeign(t *testing.T) *http.Cookie {
+	t.Helper()
+	e := v.e
+	term2 := e.user("vgterm2", "terminal", true)
+	dev := e.id(`INSERT INTO terminal_devices (user_id, name, secret_sha256) VALUES ($1::uuid, 'Pi3', $2) RETURNING id::text`, term2, hashDeviceSecret("pdht_c"+e.sfx))
+	t.Cleanup(func() { e.pool.Exec(context.Background(), `DELETE FROM terminal_devices WHERE id = $1::uuid`, dev) })
+	tok, err := v.h.users.IssueToken(&users.User{ID: term2, Role: users.Role("terminal"), IsSystemUser: true}, time.Hour, map[string]interface{}{"device": dev})
+	e.must(err)
+	return &http.Cookie{Name: "pdh_token", Value: tok}
+}
+
+func TestVorgaengeNeustartMeldetEntfernte(t *testing.T) {
+	v := newVgEnv(t, true)
+	v.post("/terminal/vorgaenge/start", "fault", v.fault, v.anna, v.berta)
+	v.post("/terminal/vorgaenge/warten", "fault", v.fault)
+	v.post("/terminal/vorgaenge/start", "fault", v.fault, v.anna)
+	h := v.lastHistory("fault", v.fault)
+	if !strings.Contains(h.Msg, "nicht mehr dabei: Berta VGTest") {
+		t.Errorf("Verlauf nennt entfernte Person nicht: %s", h.Msg)
 	}
 }
 
@@ -477,3 +586,5 @@ func TestTerminalDepartmentsHelper(t *testing.T) {
 		t.Errorf("Betriebsart: %s", m)
 	}
 }
+
+func base64URLDecode(s string) ([]byte, error) { return base64.RawURLEncoding.DecodeString(s) }

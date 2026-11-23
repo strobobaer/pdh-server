@@ -25,6 +25,9 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
+
+	"github.com/google/uuid"
 
 	"pdh/internal/core/users"
 )
@@ -36,7 +39,12 @@ const (
 	vorgMineMax     = 20
 )
 
-var vorgViaLabel = map[string]string{vorgViaGewaehlt: "am Terminal gewählt", vorgViaKarte: "mit Karte"}
+// terminalCompleteTTL: Laufzeit des Abschluss-Tokens eines Terminals.
+const terminalCompleteTTL = 5 * time.Minute
+
+// Herkunft in Klartext. „am Terminal gewählt“ heißt: Die Person hat sich nicht selbst angemeldet, sondern wurde am
+// Terminal gewählt – das steht so in Verlauf, Maßnahmen und Zeiteinträgen.
+var vorgViaLabel = map[string]string{vorgViaGewaehlt: "am Terminal gewählt, nicht selbst angemeldet", vorgViaKarte: "mit Karte"}
 
 type vorgKind struct {
 	Type, Table, Label, Plural, Icon, Active, ViewPerm, EditPerm string
@@ -535,10 +543,19 @@ func (h *Handler) TerminalVorgaengeStart(w http.ResponseWriter, r *http.Request)
 		vorgBack(w, r, "gone")
 		return
 	}
-	if _, err := tx.Exec(ctx, `DELETE FROM terminal_vorgang_people WHERE ref_type = $1 AND ref_id = $2::uuid AND NOT (user_id = ANY($3::uuid[]))`, k.Type, c.Item.ID, ids); err != nil {
+	var dropped []string
+	drows, err := tx.Query(ctx, `DELETE FROM terminal_vorgang_people WHERE ref_type = $1 AND ref_id = $2::uuid AND NOT (user_id = ANY($3::uuid[])) RETURNING user_id::text`, k.Type, c.Item.ID, ids)
+	if err != nil {
 		vorgBack(w, r, "err")
 		return
 	}
+	for drows.Next() {
+		var d string
+		if drows.Scan(&d) == nil {
+			dropped = append(dropped, d)
+		}
+	}
+	drows.Close()
 	for _, id := range ids {
 		if _, err := tx.Exec(ctx, `INSERT INTO terminal_vorgang_people (ref_type, ref_id, user_id, terminal_user_id, origin_via)
 			VALUES ($1, $2::uuid, $3::uuid, $4::uuid, $5) ON CONFLICT (ref_type, ref_id, user_id) DO UPDATE SET origin_via = EXCLUDED.origin_via, terminal_user_id = EXCLUDED.terminal_user_id`,
@@ -552,8 +569,21 @@ func (h *Handler) TerminalVorgaengeStart(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	old := map[string]string{"open": "open", "wait": "pending"}[c.Item.Group]
-	h.vorgHistory(ctx, k.Type, c.Item.ID, "status", "status", old, "in_progress",
-		"Am Terminal gestartet: "+c.note(vorgNames(chosen)), c.actorID(), c.Act.via(), c.TermName, ids)
+	msg := "Am Terminal gestartet: " + c.note(vorgNames(chosen))
+	if len(dropped) > 0 { // früher am Terminal gewählte Personen, die jetzt nicht mehr dabei sind
+		var gone []string
+		for _, pe := range c.Item.People {
+			for _, d := range dropped {
+				if pe.ID == d {
+					gone = append(gone, pe.Name)
+				}
+			}
+		}
+		if len(gone) > 0 {
+			msg += "; nicht mehr dabei: " + strings.Join(gone, ", ")
+		}
+	}
+	h.vorgHistory(ctx, k.Type, c.Item.ID, "status", "status", old, "in_progress", msg, c.actorID(), c.Act.via(), c.TermName, ids)
 	vorgBack(w, r, "start")
 }
 
@@ -643,8 +673,14 @@ func (h *Handler) TerminalVorgaengeBeenden(w http.ResponseWriter, r *http.Reques
 			pre = append(pre, pe.ID)
 		}
 	}
-	token, err := h.users.IssueToken(actor, boardCompleteTTL, map[string]interface{}{
-		"scope": boardCompleteScope, "ref": c.Item.Type + ":" + c.Item.ID,
+	// nur das neueste Token je Vorgang gilt (die Kennung steht in app_settings, kein neues Schema nötig)
+	jti := uuid.NewString()
+	if err := h.vorgTokenStore(ctx, c.Item.Type, c.Item.ID, jti); err != nil {
+		http.Error(w, "Abschluss konnte nicht gestartet werden", http.StatusInternalServerError)
+		return
+	}
+	token, err := h.users.IssueToken(actor, terminalCompleteTTL, map[string]interface{}{
+		"scope": boardCompleteScope, "ref": c.Item.Type + ":" + c.Item.ID, "jti": jti,
 		"tv": c.Act.via(), "tt": c.Act.TermUID, "tp": vorgIDs(c.Item.People),
 	})
 	if err != nil {
@@ -652,6 +688,58 @@ func (h *Handler) TerminalVorgaengeBeenden(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"token": token, "who": strings.TrimSpace(actor.FirstName + " " + actor.LastName), "pre": pre, "type": c.Item.Type, "id": c.Item.ID})
+}
+
+// terminalTokenValid prüft ein Abschluss-Token des Terminals (Claim tv): Die Anfrage muss die Gerätesitzung genau
+// dieses Terminals tragen (tt), bei „mit Karte“ muss die Kartenperson noch angemeldet sein, und die Einmal-Kennung
+// (jti) muss die neueste, unverbrauchte dieses Vorgangs sein. Prüft nur, verbraucht nicht.
+func (h *Handler) terminalTokenValid(r *http.Request, claims map[string]interface{}) bool {
+	if h.db == nil {
+		return false
+	}
+	via, _ := claims["tv"].(string)
+	tt, _ := claims["tt"].(string)
+	sub, _ := claims["sub"].(string)
+	jti, _ := claims["jti"].(string)
+	ref, _ := claims["ref"].(string)
+	typ, id, okRef := strings.Cut(ref, ":")
+	if (via != vorgViaGewaehlt && via != vorgViaKarte) || tt == "" || len(jti) != 36 || !okRef || !uuidInPathRe.MatchString(jti) {
+		return false
+	}
+	uid, _, dev := h.sessionToken(r)
+	if uid == "" || uid != tt || dev == "" || !terminalDevices.active(r.Context(), dev, uid, h.deviceByID) {
+		return false
+	}
+	if via == vorgViaKarte {
+		p, err := h.cardSessionPerson(r.Context(), tt)
+		if err != nil || p == nil || p.ID != sub {
+			return false
+		}
+	}
+	var cur string
+	err := h.db.QueryRow(r.Context(), `SELECT value FROM app_settings WHERE key = $1`, vorgTokenKey(typ, id)).Scan(&cur)
+	return err == nil && cur == jti
+}
+
+func vorgTokenKey(typ, id string) string { return "tcomplete:" + typ + ":" + id }
+
+// vorgTokenStore merkt sich die Kennung des neuesten Abschluss-Tokens eines Vorgangs (ältere gelten nicht mehr)
+// und räumt alte Reste auf.
+func (h *Handler) vorgTokenStore(ctx context.Context, typ, id, jti string) error {
+	_, _ = h.db.Exec(ctx, `DELETE FROM app_settings WHERE key LIKE 'tcomplete:%' AND updated_at < NOW() - INTERVAL '1 day'`)
+	_, err := h.db.Exec(ctx, `INSERT INTO app_settings (key, value, updated_at) VALUES ($1, $2, NOW())
+		ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`, vorgTokenKey(typ, id), jti)
+	return err
+}
+
+// terminalViaNote: Hinweis für Zeiteinträge und Maßnahmen des Assistenten, wenn die Person am Terminal nur gewählt
+// wurde und sich nicht selbst angemeldet hat; sonst "".
+func (h *Handler) terminalViaNote(r *http.Request) string {
+	c := h.boardCompleteClaims(r)
+	if via, _ := c["tv"].(string); c != nil && via == vorgViaGewaehlt {
+		return vorgViaLabel[via]
+	}
+	return ""
 }
 
 // terminalCompletionNote: schreibt den Schritt des Abschluss-Assistenten, der mit dem Token eines Terminals
@@ -691,6 +779,9 @@ func (h *Handler) terminalCompletionNote(r *http.Request, k completionKind, id s
 	}
 	msg += " – " + place + " (" + vorgViaLabel[via] + ")"
 	sub, _ := c["sub"].(string)
+	if jti, _ := c["jti"].(string); jti != "" { // Einmal-Token verbraucht
+		_, _ = h.db.Exec(ctx, `DELETE FROM app_settings WHERE key = $1 AND value = $2`, vorgTokenKey(k.Type, id), jti)
+	}
 	h.vorgHistory(ctx, historyRef(k.Type), id, "status", "status", "in_progress", newV, msg, sub, via, place, people)
 	return true
 }

@@ -92,6 +92,8 @@ type terminalPage struct {
 	HMITile        bool              // Neu: Kachel HMI (mindestens ein HMI sichtbar)
 	Maint          terminalMaintPage // Wartungen (terminal_wartung.go)
 	MaintTile      bool              // Neu: Kachel Wartungen (nur mit Kartenanmeldung)
+	Plan           terminalPlan      // Schichtplan (terminal_schichtplan.go)
+	PlanTile       bool              // Neu: Kachel Schichtplan
 	Vorg           terminalVorgPage  // Vorgänge: Liste, Fenster, Betriebsart (terminal_vorgaenge.go)
 	VorgTile       bool              // Neu: Kachel Vorgänge
 	Fn             terminalFnFlags   // Funktionen-Schalter des Terminal-Benutzers (terminal_functions.go): ausgeschaltet = Kachel und Seite entfallen
@@ -134,12 +136,14 @@ func (h *Handler) terminalRoutes(r chi.Router) {
 	r.Get("/terminal/hmi/{infra}/{id}", h.terminalFnRoute("hmi", h.TerminalHMIView))
 	r.Get("/terminal/hmi/{infra}/{id}/ws", h.terminalFnRoute("hmi", h.TerminalHMIWebSocket))
 	r.Get("/terminal/wartung", h.terminalFnRoute("wartungen", h.TerminalWartungPage))
+	r.Get("/terminal/schichtplan", h.terminalFnRoute("schichtplan", h.TerminalSchichtplanPage))
 	r.Post("/terminal/pdh/open", h.TerminalPDHOpen)
 	r.Get("/terminal/vorgaenge", h.terminalFnRoute("vorgaenge", h.TerminalVorgaengePage))
 	r.Post("/terminal/vorgaenge/start", h.terminalFnRoute("vorgaenge", h.TerminalVorgaengeStart))
 	r.Post("/terminal/vorgaenge/warten", h.terminalFnRoute("vorgaenge", h.TerminalVorgaengeWarten))
 	r.Post("/terminal/vorgaenge/beenden", h.terminalFnRoute("vorgaenge", h.TerminalVorgaengeBeenden))
 	middleware.SetTerminalSessionCheck(func(r *http.Request, sub, tsess, tdev string) bool { return h.pdhHandoffCheck(r, tsess, sub, tdev) })
+	middleware.SetTerminalTokenCheck(func(r *http.Request, claims map[string]interface{}) bool { return h.terminalTokenValid(r, claims) })
 	h.cardRoutes(r)
 }
 
@@ -461,6 +465,13 @@ func (h *Handler) TerminalNeuPage(w http.ResponseWriter, r *http.Request) {
 				h.terminalHMIFill(r, &p, uid, person)
 			}
 			p.MaintTile = p.Fn.Wartungen && h.terminalMaintTile(person)
+			if p.Fn.Schichtplan {
+				ds, err := h.terminalPlanDepts(r.Context(), uid)
+				if err != nil {
+					componentLog("terminal").Error().Err(err).Msg("schichtplan-abteilungen")
+				}
+				p.PlanTile = len(ds) > 0
+			}
 			p.VorgTile = p.Fn.Vorgaenge
 		}
 		if d := r.URL.Query().Get("done"); d == "fault" || d == "ticket" {

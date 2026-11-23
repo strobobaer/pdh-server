@@ -16,7 +16,7 @@ func TestTerminalFnVorgaengeInContract(t *testing.T) {
 	if !ok || m["enabled"] != true || m["updated_at"] == "" {
 		t.Errorf("functions.vorgaenge fehlt oder ist unvollständig: %v", m)
 	}
-	in, err := parseTerminalFnBody([]byte(`{"functions":{"stoerung":{"enabled":false,"updated_at":"2026-01-01T00:00:00.000Z"},"schichtplan":{"enabled":true,"updated_at":"2026-01-01T00:00:00.000Z"}}}`))
+	in, err := parseTerminalFnBody([]byte(`{"functions":{"stoerung":{"enabled":false,"updated_at":"2026-01-01T00:00:00.000Z"},"zukunft":{"enabled":true,"updated_at":"2026-01-01T00:00:00.000Z"}}}`))
 	if err != nil {
 		t.Fatalf("unbekannter Schlüssel lehnt die Anfrage ab: %v", err)
 	}

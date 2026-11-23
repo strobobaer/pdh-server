@@ -231,6 +231,20 @@ a.v-row:active{filter:brightness(1.2)}
 .t-hmistatus{color:var(--muted);font-size:.85em}.t-hmistatus.ok{color:var(--green)}.t-hmistatus.err{color:var(--red)}
 .t-hmiscreen{flex:1;min-height:0;background:#000;border:2px solid var(--border);border-radius:14px;overflow:hidden;position:relative;touch-action:none}
 .t-card form{margin:0}
+/* Schichtplan (terminal_schichtplan.go) */
+.t-new .t-plink{background:#134e4a;border-color:#14b8a6;color:#fff}
+.t-pdepts,.t-pweek{display:flex;flex-wrap:wrap;gap:1vw;align-items:center}
+.t-pdepts .t-btn.sel,.t-pweek .t-btn.sel{background:var(--accent);border-color:var(--accent);color:#fff}
+.t-pgroup{padding:1vh 1.4vw;background:var(--bg2);border:2px solid var(--border);border-radius:18px}
+.t-pgroup h3{margin:0 0 .4vh}.t-pgroup .tm{color:var(--muted);font-weight:400;font-size:.85em}
+.t-pgroup.abs{border-style:dashed}
+.t-ptable{width:100%;border-collapse:collapse;font-size:.9em}
+.t-ptable th,.t-ptable td{padding:.9vh .6vw;border-bottom:1px solid var(--border);text-align:left;vertical-align:top}
+.t-ptable th small{display:block;color:var(--muted);font-weight:400}
+.t-ptable .today{background:var(--bg3)}.t-ptable .we{color:var(--muted)}
+.t-ptable .abs{color:var(--muted);font-style:italic}.t-ptable .du{display:block;color:var(--accent);font-size:.85em}
+.t-ptable .sh small{display:block;color:var(--muted)}
+.t-pscroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
 @media (max-width:820px){.t-xrow{flex-direction:column}.g-vorg{grid-template-columns:1fr}.t-cols,.t-new{grid-template-columns:1fr}.t-new,.t-new.has-rz{grid-template-rows:auto}}
 </style>
 </head>
@@ -429,6 +443,36 @@ function connect(){
 window.addEventListener('beforeunload', () => { if(rfb) rfb.disconnect(); });
 connect();
 </script>
+{{else if eq .Mode "schichtplan"}}
+<div class="t-head">
+  <a class="t-btn" href="/terminal/neu"><i class="ti ti-arrow-left" aria-hidden="true"></i> Zurück</a>
+  <div class="t-path">{{if .Path}}{{.Path}}{{else}}<b>{{.Name}}</b>{{end}}</div>
+  <div class="t-clock" data-clock>&nbsp;</div>
+</div>
+{{if .Plan.Denied}}
+<div class="t-none"><i class="ti ti-lock" aria-hidden="true"></i><p>Keine Berechtigung</p><small>Für die Abteilungen dieses Terminals darf der Schichtplan hier nicht angezeigt werden.</small></div>
+{{else}}
+<div class="t-rz">
+  <h2 class="t-rzh"><i class="ti ti-calendar-week" aria-hidden="true"></i> Schichtplan {{.Plan.DeptName}}</h2>
+  {{if gt (len .Plan.Depts) 1}}<div class="t-pdepts">{{range .Plan.Depts}}<a class="t-btn{{if .Sel}} sel{{end}}" href="/terminal/schichtplan?abt={{.ID}}{{if $.Plan.Next}}&amp;woche=naechste{{end}}">{{.Name}}</a>{{end}}</div>{{end}}
+  <div class="t-pweek">
+    <a class="t-btn{{if not .Plan.Next}} sel{{end}}" href="/terminal/schichtplan?abt={{.Plan.Dept}}">Diese Woche</a>
+    <a class="t-btn{{if .Plan.Next}} sel{{end}}" href="/terminal/schichtplan?abt={{.Plan.Dept}}&amp;woche=naechste">Nächste Woche</a>
+    <span class="t-mcount">{{.Plan.WeekLabel}}</span>
+  </div>
+  {{if .Plan.ShowToday}}
+  <h3>Heute</h3>
+  {{range .Plan.Today}}<div class="t-pgroup{{if .Absent}} abs{{end}}"><h3>{{.Title}}{{if .Time}} <span class="tm">{{.Time}}</span>{{end}}</h3>{{range $i, $n := .Names}}{{if $i}}, {{end}}{{$n}}{{end}}</div>
+  {{else}}<div class="t-empty off">Heute ist niemand eingeteilt</div>{{end}}
+  {{end}}
+  <h3>Woche</h3>
+  {{if .Plan.Rows}}<div class="t-pscroll"><table class="t-ptable">
+    <thead><tr><th></th>{{range .Plan.Days}}<th class="{{if .Today}}today{{end}}{{if .Weekend}} we{{end}}">{{.Short}}<small>{{.Label}}</small>{{if .Holiday}}<small>{{.Holiday}}</small>{{end}}</th>{{end}}</tr></thead>
+    <tbody>{{range .Plan.Rows}}<tr><th>{{.Name}}</th>{{range $i, $c := .Cells}}<td class="{{if (index $.Plan.Days $i).Today}}today{{end}}">{{if $c.Absent}}<span class="abs">abwesend</span>{{else if $c.Shift}}<span class="sh">{{$c.Shift}}<small>{{$c.Time}}</small></span>{{end}}{{range $c.Duties}}<span class="du">{{.}}</span>{{end}}</td>{{end}}</tr>{{end}}</tbody>
+  </table></div>
+  {{else}}<div class="t-empty off">Für diese Woche ist nichts eingeteilt</div>{{end}}
+</div>
+{{end}}
 {{else if eq .Mode "vorgaenge"}}
 <div class="t-head">
   <a class="t-btn" href="/terminal/neu"><i class="ti ti-arrow-left" aria-hidden="true"></i> Zurück</a>
@@ -522,15 +566,16 @@ connect();
 <div class="t-none"><i class="ti ti-lock" aria-hidden="true"></i><p>Keine Berechtigung</p><small>Dieses Terminal darf hier nichts melden oder anzeigen.</small></div>
 {{else}}
 {{if .Done}}<div class="t-rznote" role="status">{{if eq .Done "fault"}}Störung gemeldet – danke.{{else}}Ticket erstellt – danke.{{end}}</div>{{end}}
-<div class="t-new{{if or .Setup.Show .HMITile .MaintTile .VorgTile}} has-rz{{end}}{{if and .Fn.Stoerung (not .Fn.Ticket)}} one{{else if and .Fn.Ticket (not .Fn.Stoerung)}} one{{else if not .Fn.Stoerung}} nof{{end}}">
+<div class="t-new{{if or .Setup.Show .HMITile .MaintTile .VorgTile .PlanTile}} has-rz{{end}}{{if and .Fn.Stoerung (not .Fn.Ticket)}} one{{else if and .Fn.Ticket (not .Fn.Stoerung)}} one{{else if not .Fn.Stoerung}} nof{{end}}">
   {{if .Fn.Stoerung}}<a class="t-tilebtn fault" href="/terminal/stoerung"><i class="ti ti-alert-triangle" aria-hidden="true"></i> Störung</a>{{end}}
   {{if .Fn.Ticket}}<a class="t-tilebtn ticket" href="/terminal/ticket"><i class="ti ti-ticket" aria-hidden="true"></i> Ticket</a>{{end}}
-  {{if or .Setup.Show .HMITile .MaintTile .VorgTile}}<div class="t-xrow">{{end}}
+  {{if or .Setup.Show .HMITile .MaintTile .VorgTile .PlanTile}}<div class="t-xrow">{{end}}
   {{if .Setup.Show}}{{if .SetupCan}}<a class="t-tilebtn t-rzlink" href="/terminal/rusten"><i class="ti ti-tool" aria-hidden="true"></i><span>Rüsten{{if .Setup.Running}}<small>{{.Setup.Text}}</small>{{else if .Setup.Fault}}<small>{{.Setup.Text}}</small>{{end}}</span></a>{{else}}<span class="t-tilebtn t-rzlink off" aria-disabled="true"><i class="ti ti-tool" aria-hidden="true"></i><span>Rüsten<small>Keine Berechtigung zum Rüsten</small></span></span>{{end}}{{end}}
   {{if .HMITile}}<a class="t-tilebtn t-rzlink t-hmilink" href="/terminal/hmi"><i class="ti ti-device-desktop-analytics" aria-hidden="true"></i><span>HMI</span></a>{{end}}
   {{if .MaintTile}}<a class="t-tilebtn t-rzlink t-mlink" href="/terminal/wartung"><i class="ti ti-calendar-check" aria-hidden="true"></i><span>Wartungen</span></a>{{end}}
   {{if .VorgTile}}<a class="t-tilebtn t-rzlink t-vlink" href="/terminal/vorgaenge"><i class="ti ti-list-check" aria-hidden="true"></i><span>Vorgänge</span></a>{{end}}
-  {{if or .Setup.Show .HMITile .MaintTile .VorgTile}}</div>{{end}}
+  {{if .PlanTile}}<a class="t-tilebtn t-rzlink t-plink" href="/terminal/schichtplan"><i class="ti ti-calendar-week" aria-hidden="true"></i><span>Schichtplan</span></a>{{end}}
+  {{if or .Setup.Show .HMITile .MaintTile .VorgTile .PlanTile}}</div>{{end}}
   {{if .Fn.Stillstand}}
   <div class="t-stop{{if .Down.Running}} run{{end}}">
     <h2><i class="ti ti-player-pause" aria-hidden="true"></i> Stillstand</h2>
