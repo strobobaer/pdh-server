@@ -794,14 +794,18 @@ und 3 drückt bis auf Weiteres der Anwender.
     Quelle „Berechnete Werte“). Entwurf
     `docs/superpowers/specs/2026-11-23-berechnete-werte-design.md` auf Branch
     `feature/berechnete-werte` (lokal, geprüft von einem unabhängigen
-    Prüfer) – **wartet auf die Bestätigung des Anwenders**, noch nichts
-    gebaut. Darin vorgeschlagen und mit zu bestätigen: Schnitt 2a (jetzt)
-    und 2b (Gültigkeit und rückwirkendes Neurechnen für die berechneten
-    Energie-Messstellen danach); Schnellübersicht bleibt bei der heutigen
-    Regel; kein neues Recht; Energie-Messstellen behalten in 2a ihren
-    Rechenumfang. Nach der Bestätigung: Bauplan
-    (`docs/superpowers/plans/`), dann Bau (voraussichtlich 0.82.37,
-    Migration 205 – vor dem Merge gegen `main` prüfen).
+    Prüfer) – **vom Anwender am 23.11.2026 bestätigt („passt“)**. Damit
+    entschieden: Schnitt 2a (jetzt) und 2b (Gültigkeit und rückwirkendes
+    Neurechnen für die berechneten Energie-Messstellen danach, eigener
+    kurzer Entwurf); Schnellübersicht bleibt bei der heutigen Regel; kein
+    neues Recht; Energie-Messstellen behalten in 2a ihren Rechenumfang.
+    Bauplan `docs/superpowers/plans/2026-11-23-berechnete-werte.md`
+    (9 Aufgaben: Rechenkern nach `internal/core/formula`, Erweiterung,
+    Migration 205 mit Modul `internal/modules/calc`, Rechenwerk, Anstoß
+    über `storeMappingValue`, Seite, Schutz der Eingangswerte, Copilot,
+    Handbuch; voraussichtlich 0.82.37 – Nummern vor dem Merge gegen `main`
+    prüfen). Noch nichts gebaut; offen: Wahl der Ausführung (je Aufgabe ein
+    Unterauftrag mit Prüfer oder alles in einer Sitzung), dann Bau.
 
 Docker Desktop startet nach einem Neustart des Windows-Rechners nicht von
 selbst – ohne ihn fehlen der Zeuge und die Labor-Datenbank für die Tests.
