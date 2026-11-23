@@ -146,6 +146,35 @@ body[data-mode="global"],body[data-saver-slides]{padding:0;-webkit-touch-callout
 .g-plan-item{font-size:clamp(18px,2.2vw,40px);line-height:1.25;overflow-wrap:anywhere}
 .g-plan-item.more,.g-plan-none{color:var(--muted)}
 .g-plan-empty{flex:1;display:flex;align-items:center;justify-content:center;font-size:clamp(28px,4vw,72px);color:var(--muted)}
+.g-tk,.g-yr{position:absolute;inset:0;padding:max(2vh,12px) max(2vw,16px);display:flex;flex-direction:column;gap:2vh;min-height:0}
+.g-tk h1,.g-yr h1{font-size:clamp(28px,3.6vw,64px);line-height:1.1;text-align:center;overflow-wrap:anywhere}
+.g-tk-cols{flex:1;min-height:0;column-width:26vw;column-gap:1.4vw;overflow:hidden}
+.g-tk-block{break-inside:avoid-column;background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:1.2vh 1.2vw;margin-bottom:1.2vh}
+.g-tk-block.late{border-color:#d13438}
+.g-tk-block h2{font-size:clamp(20px,2.2vw,40px);margin-bottom:.8vh;overflow-wrap:anywhere}
+.g-tk-block.late h2{color:#d13438}
+.g-tk-block h3{font-size:clamp(16px,1.8vw,32px);color:var(--muted);margin:.8vh 0 .3vh}
+.g-tk-block h3.today{color:var(--accent)}
+.g-tk-item{border-left:6px solid var(--accent);padding-left:.6em;margin-bottom:.8vh;break-inside:avoid-column}
+.g-tk-item.late{border-left-color:#d13438}
+.g-tk-title{font-size:clamp(18px,2vw,36px);line-height:1.2;overflow-wrap:anywhere}
+.g-tk-badge{display:inline-block;background:#d13438;color:#fff;border-radius:6px;padding:0 .4em;margin-right:.4em;font-size:.7em;font-weight:800;vertical-align:.1em}
+.g-tk-meta{font-size:clamp(14px,1.5vw,26px);color:var(--muted);overflow-wrap:anywhere}
+.g-yr-body{flex:1;min-height:0;display:grid;grid-template-columns:minmax(14vw,22vw) minmax(0,1fr);column-gap:1vw;overflow:hidden}
+.g-yr-months{position:relative;height:clamp(24px,3.4vh,48px);border-bottom:2px solid var(--border)}
+.g-yr-month{position:absolute;top:0;bottom:0;box-sizing:border-box;text-align:center;font-size:clamp(13px,1.5vw,26px);color:var(--muted);overflow:hidden;white-space:nowrap;border-left:1px solid var(--border)}
+.g-yr-plot{position:relative;pointer-events:none}
+.g-yr-line{position:absolute;top:0;bottom:0;width:1px;background:var(--border)}
+.g-yr-today{position:absolute;top:0;bottom:0;width:3px;margin-left:-1px;background:#d13438;z-index:2}
+.g-yr-name{display:flex;flex-direction:column;justify-content:center;min-width:0;overflow:hidden}
+.g-yr-name b{font-size:clamp(15px,1.7vw,30px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.g-yr-name small{font-size:clamp(12px,1.2vw,21px);color:var(--muted)}
+.g-yr-track{position:relative;min-width:0}
+.g-yr-bar{position:absolute;top:18%;bottom:18%;box-sizing:border-box;border-radius:8px;background:#8a94a6;color:#fff;font-size:clamp(12px,1.3vw,22px);font-weight:700;line-height:1;display:flex;align-items:center;padding:0 .5em;white-space:nowrap;overflow:hidden;min-width:3px}
+.g-yr-bar.cl{border-top-left-radius:0;border-bottom-left-radius:0}
+.g-yr-bar.cr{border-top-right-radius:0;border-bottom-right-radius:0}
+.g-yr-info{display:flex;gap:2vw;justify-content:center;font-size:clamp(14px,1.5vw,26px);color:var(--muted)}
+.g-yr-info .k::before{content:"";display:inline-block;width:.9em;height:.9em;border-radius:3px;margin-right:.4em;vertical-align:-.1em;background:var(--k,var(--accent))}
 .g-empty{font-size:clamp(32px,5vw,90px);font-weight:800;text-align:center}
 .g-empty small{display:block;margin-top:2vh;font-size:.4em;color:var(--muted);font-weight:700}
 /* Zahnrad zur Terminal-Einstellung (nur Gerätesitzung), oben rechts über allem; Trefferfläche 48 px */

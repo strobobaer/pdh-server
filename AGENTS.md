@@ -813,11 +813,11 @@ und 3 drückt bis auf Weiteres der Anwender.
     kurzer Entwurf); Schnellübersicht bleibt bei der heutigen Regel; kein
     neues Recht; Energie-Messstellen behalten in 2a ihren Rechenumfang.
     Bauplan `docs/superpowers/plans/2026-11-23-berechnete-werte.md`
-    (9 Aufgaben). **Paket 2a = 0.82.44** auf Branch
-    `feature/berechnete-werte` gebaut (23.11.2026, lokal; geplant als
-    0.82.37 mit Migration 205 – `main` hatte inzwischen 0.82.43 und die
-    Migrationen 205 bis 209, deshalb **Migration 210** `210_calc_values`
-    und `main` in den Branch gemergt): Rechenkern in `internal/core/formula`
+    (9 Aufgaben). **Paket 2a = 0.82.45** auf Branch
+    `feature/berechnete-werte` gebaut (23.11.2026; geplant als 0.82.37 mit
+    Migration 205 – `main` hatte inzwischen 0.82.44 und die Migrationen 205
+    bis 210, deshalb **Migration 211** `211_calc_values`; Push und Merge vom
+    Anwender für 0.82.45 freigegeben): Rechenkern in `internal/core/formula`
     (Namen ohne Klammern, Vergleiche, `^`, Funktionen; die Energie-Messstellen
     lehnen den neuen Umfang ab, `ErrFormulaScope`); Modul
     `internal/modules/calc` (Speicher mit Fassungen, Rechenwerk alle 10 s und

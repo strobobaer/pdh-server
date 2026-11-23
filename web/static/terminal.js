@@ -54,7 +54,7 @@
     var start = typeof i === 'number' && i >= 0 && i < n ? i : 0;
     for (var k = 0; k < n; k++) {
       var j = (start + k) % n;
-      if (!(offline && slides[j] && (slides[j].kind === 'website' || /^plan_/.test(String(slides[j].kind))))) return j;
+      if (!(offline && slides[j] && (slides[j].kind === 'website' || /^(plan_.*|tasks|projects_year)$/.test(String(slides[j].kind))))) return j;
     }
     return -1;
   }
@@ -64,7 +64,7 @@
     var dx = start.x - end.x, dy = Math.abs(start.y - end.y);
     return dx >= 60 && dy < 40;
   }
-  // Folienarten, die ältere Terminals kennen. Neuere Arten (Statistik, Grafana, Website, Planung) bleiben aus dem
+  // Folienarten, die ältere Terminals kennen. Neuere Arten (Statistik, Grafana, Website, Planung, Aufgaben, Projekte) bleiben aus dem
   // Zwischenspeicher: ein Terminal mit älterem Stand lehnt unbekannte Arten ab und würde alles verwerfen.
   var CACHEABLE_KINDS = ['image', 'text', 'vorgaenge'];
 
@@ -843,6 +843,136 @@
       box.appendChild(grid);
       return box;
     };
+    // Aufgabenfolie: überfällige offene Aufgaben oben, darunter je Woche und Tag. Nur textContent; die Farbe einer
+    // Aufgabe nur, wenn sie ein Hexwert ist.
+    var drawTasks = function (s) {
+      var tk = s.tasks || {};
+      var box = el('div', 'g-tk');
+      box.appendChild(el('h1', null, (s.title || 'Aufgaben') + (tk.label ? ' – ' + tk.label : '')));
+      var overdue = Array.isArray(tk.overdue) ? tk.overdue : [];
+      var weeks = Array.isArray(tk.weeks) ? tk.weeks : [];
+      var any = overdue.length > 0 || weeks.some(function (w) { return w && Array.isArray(w.days) && w.days.length > 0; });
+      if (!any) {
+        box.appendChild(el('div', 'g-plan-empty', 'Keine offenen Aufgaben'));
+        return box;
+      }
+      var item = function (it, late) {
+        var row = el('div', 'g-tk-item' + (late ? ' late' : ''));
+        if (typeof it.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(it.color)) row.style.borderLeftColor = it.color;
+        var head = el('div', 'g-tk-title');
+        if (late) head.appendChild(el('span', 'g-tk-badge', 'überfällig'));
+        head.appendChild(document.createTextNode(String(it.title || '')));
+        row.appendChild(head);
+        var meta = [];
+        if (it.plant) meta.push(String(it.plant));
+        if (Array.isArray(it.assignees) && it.assignees.length) meta.push(it.assignees.map(String).join(', '));
+        if (late && it.due) meta.push('fällig ' + String(it.due));
+        if (it.status_label) meta.push(String(it.status_label));
+        if (meta.length) row.appendChild(el('div', 'g-tk-meta', meta.join(' · ')));
+        return row;
+      };
+      var cols = el('div', 'g-tk-cols');
+      if (overdue.length) {
+        var ob = el('section', 'g-tk-block late');
+        ob.appendChild(el('h2', null, 'Überfällig'));
+        overdue.forEach(function (it) { ob.appendChild(item(it, true)); });
+        if (tk.overdue_more > 0) ob.appendChild(el('div', 'g-tk-meta', '+ ' + tk.overdue_more + ' weitere'));
+        cols.appendChild(ob);
+      }
+      weeks.forEach(function (w) {
+        var wb = el('section', 'g-tk-block');
+        wb.appendChild(el('h2', null, String(w.label || '')));
+        (Array.isArray(w.days) ? w.days : []).forEach(function (d) {
+          wb.appendChild(el('h3', d.today ? 'today' : null, String(d.label || '')));
+          (Array.isArray(d.items) ? d.items : []).forEach(function (it) { wb.appendChild(item(it, false)); });
+        });
+        cols.appendChild(wb);
+      });
+      if (tk.more > 0) cols.appendChild(el('div', 'g-tk-meta', '+ ' + tk.more + ' weitere'));
+      box.appendChild(cols);
+      return box;
+    };
+    // Projektfolie: Jahresband mit Monatsspalten, je Projekt ein Balken von Start bis Ende, Linie für heute. Die Seiten
+    // (höchstens 14 Balken) wechseln innerhalb der Anzeigedauer der Folie; die Seite bleibt beim Neuzeichnen erhalten.
+    // Alles über textContent; Zahlen werden auf 0 bis 100 begrenzt, Farben nur als Hexwert.
+    var yearState = { id: null, page: 0 };
+    var pct = function (v) { v = Number(v); return isFinite(v) ? Math.max(0, Math.min(100, v)) : 0; };
+    var drawYear = function (s) {
+      var yr = s.year || {};
+      var box = el('div', 'g-yr');
+      box.appendChild(el('h1', null, (s.title || 'Projekte') + (yr.label ? ' – ' + yr.label : '')));
+      var pages = Array.isArray(yr.pages) ? yr.pages : [];
+      if (!pages.length) {
+        box.appendChild(el('div', 'g-plan-empty', 'Keine Projekte'));
+        return box;
+      }
+      if (yearState.id !== s.id) { yearState.id = s.id; yearState.page = 0; }
+      var body = el('div', 'g-yr-body');
+      var info = el('div', 'g-yr-info');
+      box.appendChild(body);
+      box.appendChild(info);
+      var months = Array.isArray(yr.months) ? yr.months : [];
+      var paint = function () {
+        body.textContent = '';
+        var page = pages[yearState.page % pages.length] || { bars: [] };
+        var bars = Array.isArray(page.bars) ? page.bars.slice(0, 14) : [];
+        body.style.gridTemplateRows = 'auto repeat(' + Math.max(bars.length, 1) + ', minmax(0, 1fr))';
+        var head = el('div', 'g-yr-months');
+        head.style.gridColumn = '2';
+        head.style.gridRow = '1';
+        months.forEach(function (m) {
+          var c = el('span', 'g-yr-month', String(m.label || ''));
+          c.style.left = pct(m.l) + '%';
+          c.style.width = pct(m.w) + '%';
+          head.appendChild(c);
+        });
+        body.appendChild(head);
+        var plot = el('div', 'g-yr-plot');
+        plot.style.gridColumn = '2';
+        plot.style.gridRow = '2 / -1';
+        months.forEach(function (m) {
+          var ln = el('i', 'g-yr-line');
+          ln.style.left = pct(m.l) + '%';
+          plot.appendChild(ln);
+        });
+        if (typeof yr.today === 'number') {
+          var td = el('i', 'g-yr-today');
+          td.style.left = pct(yr.today) + '%';
+          plot.appendChild(td);
+        }
+        body.appendChild(plot);
+        bars.forEach(function (b, i) {
+          var nm = el('div', 'g-yr-name');
+          nm.style.gridColumn = '1';
+          nm.style.gridRow = String(i + 2);
+          nm.appendChild(el('b', null, String(b.name || '')));
+          nm.appendChild(el('small', null, String(b.status_label || '')));
+          body.appendChild(nm);
+          var tr = el('div', 'g-yr-track');
+          tr.style.gridColumn = '2';
+          tr.style.gridRow = String(i + 2);
+          var bar = el('div', 'g-yr-bar' + (b.clip_l ? ' cl' : '') + (b.clip_r ? ' cr' : ''), String(b.start || '') + ' – ' + String(b.end || ''));
+          bar.style.left = pct(b.l) + '%';
+          bar.style.width = pct(b.w) + '%';
+          if (typeof b.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(b.color)) bar.style.background = b.color;
+          tr.appendChild(bar);
+          body.appendChild(tr);
+        });
+        info.textContent = '';
+        (Array.isArray(yr.legend) ? yr.legend : []).forEach(function (l) {
+          var k = el('span', 'k', String(l.label || ''));
+          if (typeof l.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(l.color)) k.style.setProperty('--k', l.color);
+          info.appendChild(k);
+        });
+        if (pages.length > 1) info.appendChild(el('span', 'pg', 'Seite ' + ((yearState.page % pages.length) + 1) + ' von ' + pages.length));
+      };
+      paint();
+      if (pages.length > 1) {
+        var sec = typeof yr.page_seconds === 'number' && yr.page_seconds >= 1 ? yr.page_seconds : 5;
+        reloadTimer = setInterval(function () { yearState.page = (yearState.page + 1) % pages.length; paint(); }, sec * 1000);
+      }
+      return box;
+    };
     // Eine Folie anzeigen (nur textContent, nie HTML aus den Daten).
     var draw = function (s) {
       if (reloadTimer) { clearInterval(reloadTimer); reloadTimer = null; }
@@ -883,6 +1013,10 @@
         stage.appendChild(drawStats(s));
       } else if (typeof s.kind === 'string' && /^plan_/.test(s.kind)) {
         stage.appendChild(drawPlan(s));
+      } else if (s.kind === 'tasks') {
+        stage.appendChild(drawTasks(s));
+      } else if (s.kind === 'projects_year') {
+        stage.appendChild(drawYear(s));
       } else if (s.kind === 'vorgaenge') {
         var g = el('div', 'g-vorg');
         var f = s.faults || [], t = s.tickets || [];
@@ -902,7 +1036,7 @@
     // Keine Verbindung zu PDH (oder zum Netz): Website-Folien werden übersprungen statt als Fehler gezeigt.
     var isOffline = function () { return navigator.onLine === false || loadFails > 0 || streamFails > 0; };
     var skipWebsiteIfOffline = function () {
-      if (cur >= 0 && slides[cur] && (slides[cur].kind === 'website' || /^plan_/.test(String(slides[cur].kind))) && isOffline()) show(nextSlideIndex(slides, cur));
+      if (cur >= 0 && slides[cur] && (slides[cur].kind === 'website' || /^(plan_.*|tasks|projects_year)$/.test(String(slides[cur].kind))) && isOffline()) show(nextSlideIndex(slides, cur));
     };
     var show = function (i) {
       if (slideTimer) { clearTimeout(slideTimer); slideTimer = null; }
@@ -917,10 +1051,11 @@
         i = ok;
       }
       cur = slides.length ? i : -1;
+      yearState.id = null; // Projektfolie beginnt beim Erscheinen mit der ersten Seite
       draw(slides.length ? slides[cur] : null);
       if (slides.length) {
         slideTimer = setTimeout(function () { show(nextSlideIndex(slides, cur)); }, slideDurationMs(slides[cur]));
-        if (slides[cur].kind === 'vorgaenge' || /^(stats|plan)_/.test(slides[cur].kind)) load(true); // Liste beim Erscheinen neu holen
+        if (slides[cur].kind === 'vorgaenge' || /^(stats_|plan_)/.test(slides[cur].kind) || slides[cur].kind === 'tasks' || slides[cur].kind === 'projects_year') load(true); // Liste beim Erscheinen neu holen
       }
     };
 
@@ -987,8 +1122,8 @@
             if (keep && curId) for (var k = 0; k < slides.length; k++) if (slides[k].id === curId) { idx = k; break; }
             if (keep && idx >= 0) { cur = idx; draw(slides[cur]); } // gleiche Folie weiter, nur neu zeichnen
             else show(0);
-          } else if (cur >= 0 && slides[cur] && /^(stats|plan)_/.test(slides[cur].kind)) {
-            draw(slides[cur]); // Zahlen der laufenden Statistik- bzw. Planungsfolie erneuern; die Reihenfolge bleibt
+          } else if (cur >= 0 && slides[cur] && (/^(stats|plan)_/.test(slides[cur].kind) || slides[cur].kind === 'tasks' || slides[cur].kind === 'projects_year')) {
+            draw(slides[cur]); // Zahlen der laufenden Statistik-, Planungs-, Aufgaben- bzw. Projektfolie erneuern; die Reihenfolge bleibt
           }
           saveCache(d);
         })
