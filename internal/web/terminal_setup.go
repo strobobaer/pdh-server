@@ -177,6 +177,12 @@ func (h *Handler) TerminalRustenAdd(w http.ResponseWriter, r *http.Request) {
 // terminalUserCan: Recht des Terminal-Benutzers (Rolle Terminal, auf die Abteilung der Anlage begrenzt) –
 // nicht der angemeldeten Person; sie ist nur Akteur (Ersteller, gestartet von).
 func (h *Handler) terminalUserCan(r *http.Request, uid, perm, infraID string) bool {
+	return h.terminalRoleCan(r, uid, perm, infraID) ||
+		h.terminalFreeCan(r, uid, perm, infraID) // Flag „Freier Terminal-Benutzer“ (terminal_free.go)
+}
+
+// terminalRoleCan: nur das Rollenrecht des Terminal-Benutzers (ohne Flag „Freier Terminal-Benutzer“).
+func (h *Handler) terminalRoleCan(r *http.Request, uid, perm, infraID string) bool {
 	if h.rbac == nil {
 		return false
 	}

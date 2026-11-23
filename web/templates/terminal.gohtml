@@ -220,6 +220,7 @@ body[data-mode="vorgaenge"]{--accent-rgb:79,142,247}
 .v-row{display:flex;align-items:center;gap:1.2vw;min-height:64px;padding:1vh 1.4vw;background:var(--bg2);border:2px solid var(--border);border-radius:18px}
 .v-row.work{border-left:10px solid var(--accent)}.v-row.wait{border-left:10px solid var(--amber)}
 a.v-row:active{filter:brightness(1.2)}
+a.v-row.v-nope{opacity:.7}
 .v-t{flex:1;min-width:0;display:flex;flex-direction:column}
 .v-t b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .v-t small{color:var(--muted);font-size:.8em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -530,7 +531,7 @@ connect();
   <section class="v-sec" aria-label="{{.Kind.Plural}}">
     <h2><i class="ti {{.Kind.Icon}}" aria-hidden="true"></i> {{.Kind.Plural}} <span class="t-mcount">{{.Total}}</span></h2>
     {{if .Items}}<ul class="v-list">
-    {{range .Items}}{{if .CanAct}}<li><a class="v-row {{.Group}}" href="/terminal/vorgaenge?sel={{.Sel}}">{{else}}<li class="v-row {{.Group}}">{{end}}<div class="v-t"><b>{{.Title}}</b><small>{{if .Path}}{{.Path}}{{end}}{{if and .Path .PeopleNames}} · {{end}}{{.PeopleNames}}</small></div><span class="v-st {{.Group}}">{{.StatusLabel}}</span>{{if .CanAct}}<i class="ti ti-chevron-right" aria-hidden="true"></i></a>{{end}}</li>{{end}}
+    {{range .Items}}<li><a class="v-row {{.Group}}{{if not .CanAct}} v-nope{{end}}" href="/terminal/vorgaenge?sel={{.Sel}}"><div class="v-t"><b>{{.Title}}</b><small>{{if .Path}}{{.Path}}{{end}}{{if and .Path .PeopleNames}} · {{end}}{{.PeopleNames}}</small></div><span class="v-st {{.Group}}">{{.StatusLabel}}</span>{{if .CanAct}}<i class="ti ti-chevron-right" aria-hidden="true"></i>{{else}}<i class="ti ti-lock" aria-hidden="true"></i>{{end}}</a></li>{{end}}
     </ul>{{if .More}}<div class="t-more">… und {{.More}} weitere</div>{{end}}
     {{else}}<div class="t-empty"><i class="ti ti-circle-check" aria-hidden="true"></i> Keine offenen {{.Kind.Plural}}</div>{{end}}
   </section>
