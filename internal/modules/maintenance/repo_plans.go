@@ -217,6 +217,15 @@ func (r *Repository) UpdatePlan(ctx context.Context, id string, in *PlanInput) e
 	if d, err := time.ParseInLocation("2006-01-02", in.NextDueAt, time.Local); err == nil {
 		next = &d
 	}
+	// alter Stand: Rhythmus und Besetzung, um geplante Termine nachzuziehen
+	var oldUnit, oldMode string
+	var oldCount int
+	var oldNext time.Time
+	var oldAssignee, oldGroup *string
+	var yearPlan bool
+	_ = r.db.QueryRow(ctx, `SELECT interval_unit, interval_count, schedule_mode, next_due_at, assigned_to::text, assigned_group_id::text,
+		year_plan_at IS NOT NULL FROM maintenance_plans WHERE id = $1::uuid`, id).
+		Scan(&oldUnit, &oldCount, &oldMode, &oldNext, &oldAssignee, &oldGroup, &yearPlan)
 	tag, err := r.db.Exec(ctx, `
 		UPDATE maintenance_plans SET name=$2, description=$3, type=$4::maintenance_type, infrastructure_id=$5::uuid,
 			interval_type=$6::maintenance_interval, interval_days=$7, interval_unit=$8, interval_count=$9,
@@ -232,6 +241,22 @@ func (r *Repository) UpdatePlan(ctx context.Context, id string, in *PlanInput) e
 	}
 	if tag.RowsAffected() == 0 {
 		return inputErr("Wartungsplan nicht gefunden")
+	}
+	// geplante Termine: neuer Rhythmus → neu rechnen; nur neue Besetzung → übernehmen, wo nicht von Hand besetzt
+	if yearPlan {
+		rhythm := oldUnit != in.IntervalUnit || oldCount != in.IntervalCount || oldMode != in.ScheduleMode ||
+			(next != nil && !dayStart(*next).Equal(dayStart(oldNext.Local())))
+		switch {
+		case rhythm:
+			if err := r.RecalcVisits(ctx, id, time.Now()); err != nil {
+				return err
+			}
+		case !sameID(oldAssignee, nullID(in.AssignedTo)) || !sameID(oldGroup, nullID(in.AssignedGroupID)):
+			if _, err := r.db.Exec(ctx, `UPDATE maintenance_visits SET assigned_to = $2::uuid, assigned_group_id = $3::uuid, updated_at = NOW()
+				WHERE plan_id = $1::uuid AND state = 'planned' AND NOT staff_manual`, id, nullID(in.AssignedTo), nullID(in.AssignedGroupID)); err != nil {
+				return err
+			}
+		}
 	}
 	// Stammdaten und Termin auf den offenen, noch nicht begonnenen Auftrag uebertragen
 	if _, err := r.db.Exec(ctx, `UPDATE maintenance_tasks mt SET title = mp.name, description = COALESCE(mp.description,''),
@@ -263,10 +288,31 @@ func (r *Repository) SetPlanActive(ctx context.Context, id string, active bool) 
 			AND NOT EXISTS (SELECT 1 FROM maintenance_task_steps s WHERE s.task_id = mt.id AND (s.done OR s.value <> ''))
 			AND NOT EXISTS (SELECT 1 FROM maintenance_task_pending_parts p WHERE p.task_id = mt.id)
 			AND NOT EXISTS (SELECT 1 FROM maintenance_task_actions a WHERE a.task_id = mt.id)`, id)
+		if err != nil {
+			return err
+		}
+		// ruhender Plan: keine geplanten Termine (beauftragte und entfallene bleiben)
+		_, err = r.db.Exec(ctx, `DELETE FROM maintenance_visits WHERE plan_id = $1::uuid AND state = 'planned'`, id)
 		return err
+	}
+	// wieder eingeschaltet: ein früher erzeugter Jahresplan entsteht von selbst neu
+	var yearPlan bool
+	_ = r.db.QueryRow(ctx, `SELECT year_plan_at IS NOT NULL FROM maintenance_plans WHERE id = $1::uuid`, id).Scan(&yearPlan)
+	if yearPlan {
+		if _, err := r.GenerateYearPlan(ctx, id, "", time.Now()); err != nil {
+			return err
+		}
 	}
 	_, err := r.ensureTaskForPlan(ctx, id, "")
 	return err
+}
+
+// sameID: beide nil oder gleiche Kennung.
+func sameID(a, b *string) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return *a == *b
 }
 
 // DuplicatePlan: Kopie eines Plans (inkl. Checklisten) als „… Kopie“.
