@@ -223,21 +223,23 @@ func (h *Handler) terminalPermittedInfra(gi *globalInfra, uid, role, perm string
 // ---- slides.json ----
 
 type terminalSlideJSON struct {
-	ID           string         `json:"id"`
-	Kind         string         `json:"kind"`
-	Title        string         `json:"title"`
-	Body         string         `json:"body"`
-	Duration     int            `json:"duration"`
-	ImageURL     string         `json:"image_url"`
-	Faults       []terminalItem `json:"faults"`
-	Tickets      []terminalItem `json:"tickets"`
-	FaultsTotal  int            `json:"faults_total"`
-	TicketsTotal int            `json:"tickets_total"`
-	Stats        *terminalStats `json:"stats,omitempty"`
-	Days         int            `json:"days,omitempty"`
-	URL          string         `json:"url,omitempty"`
-	Reload       int            `json:"reload,omitempty"` // Art website: Minuten bis zum Neuladen
-	Plan         *planSlideData  `json:"plan,omitempty"`   // Planungsfolien (plan_*)
+	ID           string            `json:"id"`
+	Kind         string            `json:"kind"`
+	Title        string            `json:"title"`
+	Body         string            `json:"body"`
+	Duration     int               `json:"duration"`
+	ImageURL     string            `json:"image_url"`
+	Faults       []terminalItem    `json:"faults"`
+	Tickets      []terminalItem    `json:"tickets"`
+	FaultsTotal  int               `json:"faults_total"`
+	TicketsTotal int               `json:"tickets_total"`
+	Stats        *terminalStats    `json:"stats,omitempty"`
+	Days         int               `json:"days,omitempty"`
+	URL          string            `json:"url,omitempty"`
+	Reload       int               `json:"reload,omitempty"` // Art website: Minuten bis zum Neuladen
+	Plan         *planSlideData    `json:"plan,omitempty"`   // Planungsfolien (plan_*)
+	Tasks        *tasksSlideData   `json:"tasks,omitempty"`  // Aufgabenfolie
+	Year         *projectsYearData `json:"year,omitempty"`   // Projekt-Jahresband
 }
 
 type terminalSlidesDoc struct {
@@ -345,6 +347,16 @@ func (h *Handler) buildSlidesDoc(ctx context.Context, uid string) (terminalSlide
 		if slideIsPlan(s.Kind) {
 			// Wie bei den Statistikfolien nicht in der Version: die Folie holt ihre Daten beim Erscheinen neu.
 			if js.Plan, err = h.planSlide(ctx, uid, role, s, time.Now()); err != nil {
+				return doc, err
+			}
+		}
+		if s.Kind == slideKindTasks {
+			if js.Tasks, err = h.tasksSlide(ctx, uid, role, s, time.Now()); err != nil {
+				return doc, err
+			}
+		}
+		if s.Kind == slideKindProjectsYear {
+			if js.Year, err = h.projectsYearSlide(ctx, uid, role, s, time.Now()); err != nil {
 				return doc, err
 			}
 		}

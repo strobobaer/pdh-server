@@ -43,12 +43,14 @@
           <option value="plan_absences"{{if eq .Slide.Kind "plan_absences"}} selected{{end}}>Abwesenheiten</option>
           <option value="plan_duties"{{if eq .Slide.Kind "plan_duties"}} selected{{end}}>Dienste und Bereitschaft</option>
           <option value="plan_maint"{{if eq .Slide.Kind "plan_maint"}} selected{{end}}>Wartungsplanung</option>
+          <option value="tasks"{{if eq .Slide.Kind "tasks"}} selected{{end}}>Aufgaben</option>
+          <option value="projects_year"{{if eq .Slide.Kind "projects_year"}} selected{{end}}>Projekte im Jahresband</option>
         </select></div>
       <div class="form-group"><label class="form-label" for="sf-duration">Dauer in Sekunden</label>
         <input id="sf-duration" name="duration" type="number" min="5" max="600" class="form-input" value="{{.Slide.DurationSeconds}}"></div>
     </div>
 
-    <div class="form-group"><label class="form-label" for="sf-title">Titel <span style="color:var(--muted);font-weight:400" data-sf-kind="image vorgaenge stats_faults stats_tickets stats_setup stats_downtime grafana website plan_shifts plan_absences plan_duties plan_maint">(optional)</span></label>
+    <div class="form-group"><label class="form-label" for="sf-title">Titel <span style="color:var(--muted);font-weight:400" data-sf-kind="image vorgaenge stats_faults stats_tickets stats_setup stats_downtime grafana website plan_shifts plan_absences plan_duties plan_maint tasks projects_year">(optional)</span></label>
       <input id="sf-title" name="title" class="form-input" maxlength="{{.MaxTitle}}" value="{{.Slide.Title}}"></div>
 
     <div data-sf-kind="image">
@@ -83,10 +85,44 @@
         <div class="form-group" id="sf-plan-days-box"><label class="form-label" for="sf-plan-days">Anzahl Tage (1 bis 31)</label>
           <input id="sf-plan-days" name="plan_days" type="number" min="1" max="31" class="form-input" value="{{.Slide.PlanDays}}"></div>
       </div>
+    </div>
+
+    <div data-sf-kind="tasks">
+      <div class="sf-row">
+        <div class="form-group"><label class="form-label" for="sf-task-range">Zeitraum (überfällige offene Aufgaben stehen immer oben)</label>
+          <select id="sf-task-range" name="task_range" class="form-input" onchange="sfTaskRange()">
+            <option value="week"{{if or (eq .Slide.TaskRange "week") (eq .Slide.TaskRange "")}} selected{{end}}>Bis Ende dieser Woche</option>
+            <option value="2w"{{if eq .Slide.TaskRange "2w"}} selected{{end}}>Bis Ende der nächsten Woche (2 Wochen)</option>
+            <option value="4w"{{if eq .Slide.TaskRange "4w"}} selected{{end}}>4 Wochen</option>
+            <option value="8w"{{if eq .Slide.TaskRange "8w"}} selected{{end}}>8 Wochen</option>
+            <option value="12w"{{if eq .Slide.TaskRange "12w"}} selected{{end}}>12 Wochen</option>
+            <option value="date"{{if eq .Slide.TaskRange "date"}} selected{{end}}>Bis zu einem Datum</option>
+          </select></div>
+        <div class="form-group" id="sf-task-until-box"><label class="form-label" for="sf-task-until">Letzter Fälligkeitstag</label>
+          <input id="sf-task-until" name="task_until" type="date" class="form-input" value="{{.Slide.TaskUntil}}"></div>
+      </div>
+      <div class="sf-hint">Die Wochen zählen ab dieser Woche (Montag bis Sonntag). Gezeigt werden offene, laufende und wartende Aufgaben mit Fälligkeit; Aufgaben ohne Fälligkeit fehlen. Der Terminal-Benutzer braucht das Recht Aufgaben ansehen (<code>tasks.view</code>); die Abteilung einer Aufgabe ist die ihrer Anlage, Aufgaben ohne Anlage erscheinen nur bei einem Recht ohne Abteilungsgrenze.</div>
+    </div>
+
+    <div data-sf-kind="projects_year">
+      <div class="sf-row">
+        <div class="form-group"><label class="form-label" for="sf-year-mode">Jahresband</label>
+          <select id="sf-year-mode" name="year_mode" class="form-input">
+            <option value="current"{{if or (eq .Slide.YearMode "current") (eq .Slide.YearMode "")}} selected{{end}}>Aktuelles Jahr (Januar bis Dezember)</option>
+            <option value="next"{{if eq .Slide.YearMode "next"}} selected{{end}}>Nächstes Jahr</option>
+            <option value="rolling"{{if eq .Slide.YearMode "rolling"}} selected{{end}}>Ab heute 12 Monate</option>
+          </select></div>
+        <div class="form-group"><span class="form-label">Auswahl</span>
+          <label class="sf-check"><input type="checkbox" name="only_active" value="1"{{if .Slide.OnlyActive}} checked{{end}}><span>Nur aktive Projekte (Status „Aktiv“)</span></label></div>
+      </div>
+      <div class="sf-hint">Je Projekt ein Balken von Start bis Ende, Farbe nach Status, rote Linie für heute. Projekte ohne Datum fehlen. Höchstens 14 Balken je Seite; weitere Seiten wechseln automatisch innerhalb der Anzeigedauer (rund 5 Sekunden je Seite, mindestens 4). Der Terminal-Benutzer braucht das Recht Projekte ansehen (<code>projects.view</code>), die Abteilung eines Projekts ist die seiner Anlage.</div>
+    </div>
+
+    <div data-sf-kind="plan_shifts plan_absences plan_duties plan_maint tasks projects_year">
       <div class="form-group"><span class="form-label">Abteilungen <span style="color:var(--muted);font-weight:400">(leer = alle)</span></span>
         {{range .Departments}}<label class="sf-check"><input type="checkbox" name="department_ids" value="{{.ID}}"{{if .On}} checked{{end}}><span>{{.Name}}</span></label>
         {{else}}<div class="sf-hint">Keine Abteilungen angelegt.</div>{{end}}
-        <div class="sf-hint">Am Terminal erscheinen nur Abteilungen, die auch zu den Abteilungen des Terminals gehören (Schnittmenge), und nur, wenn der Terminal-Benutzer dort das Recht hat: Planer ansehen (Schichtplan, Abwesenheiten, Dienste) bzw. Wartung ansehen (Wartungsplanung). Bei Abwesenheiten steht nur „abwesend“, nie die Art oder der Grund. Ohne Verbindung zu PDH wird die Folie übersprungen.</div></div>
+        <div class="sf-hint">Am Terminal erscheinen nur Abteilungen, die auch zu den Abteilungen des Terminals gehören (Schnittmenge), und nur, wenn der Terminal-Benutzer dort das Recht hat: Planer ansehen (Schichtplan, Abwesenheiten, Dienste), Wartung ansehen (Wartungsplanung), Aufgaben ansehen (Aufgaben) bzw. Projekte ansehen (Projekte im Jahresband). Bei Abwesenheiten steht nur „abwesend“, nie die Art oder der Grund. Ohne Verbindung zu PDH wird die Folie übersprungen.</div></div>
     </div>
 
     <div data-sf-kind="grafana">
@@ -146,11 +182,17 @@ function sfKind(){
     el.hidden = el.dataset.sfKind.split(' ').indexOf(kind) === -1;
   });
   sfPlanRange();
+  sfTaskRange();
 }
 // Anzahl Tage nur bei „Nächste N Tage“
 function sfPlanRange(){
   const r = document.getElementById('sf-plan-range'), box = document.getElementById('sf-plan-days-box');
   if(r && box) box.hidden = r.value !== 'days';
+}
+// Enddatum nur bei „Bis zu einem Datum“
+function sfTaskRange(){
+  const r = document.getElementById('sf-task-range'), box = document.getElementById('sf-task-until-box');
+  if(r && box) box.hidden = r.value !== 'date';
 }
 // Anlagen: IDs im versteckten Feld (kommagetrennt), Anzeige als Namen.
 const sfInfraNames = {};

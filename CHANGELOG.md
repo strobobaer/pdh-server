@@ -10,6 +10,15 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.82.44] – 2026-11-23
+
+### Neu
+
+- **Infobildschirm: Folien „Aufgaben“ und „Projekte im Jahresband“.** Die **Aufgabenfolie** zeigt offene Aufgaben mit Fälligkeit von dieser Woche bis zu einem Ende, das du wählst (Ende dieser Woche, 2, 4, 8 oder 12 Wochen oder ein festes Datum), nach Woche und Tag gruppiert, je Aufgabe mit Titel, Anlage, Zuständigen, Fälligkeit und Status. **Überfällige** offene Aufgaben stehen oben und sind als „überfällig“ gekennzeichnet. Die **Projektfolie** zeigt ein Jahresband mit Monatsspalten und je Projekt einem Balken von Start bis Ende (Farbe nach Status, rote Linie für heute). Du wählst das aktuelle Jahr, das nächste Jahr oder „ab heute 12 Monate“ (kann zwei Kalenderjahre überspannen) und ob nur aktive Projekte erscheinen. Je Seite stehen höchstens 14 Balken; weitere Seiten wechseln automatisch innerhalb der Anzeigedauer.
+- Wie bei den Planungsfolien wählst du die **Abteilungen** (leer = alle); am Terminal gilt die Schnittmenge mit den Abteilungen des Terminals, und gezeigt wird nur, wofür der Terminal-Benutzer in der Abteilung **Aufgaben ansehen** bzw. **Projekte ansehen** hat. Die Abteilung eines Datensatzes ist die seiner Anlage; ohne Anlage erscheint er nur bei einem Recht ohne Abteilungsgrenze. Die Folien stehen nicht im Zwischenspeicher des Geräts und entfallen ohne Verbindung wie Website-Folien.
+- Migration 210: Spalten `task_range`, `task_until`, `year_mode` und `only_active` an `terminal_slides`, erweiterte Folienart-Prüfung (alle bisherigen Arten bleiben). Nur hinzufügend; vorhandene Folien und ältere Stände bleiben gültig.
+- Handbuch, Kapitel „Infobildschirm“: die neuen Folienarten beschrieben.
+
 ## [0.82.43] – 2026-11-23
 
 ### Neu
