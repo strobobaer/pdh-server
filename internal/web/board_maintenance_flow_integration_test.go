@@ -163,14 +163,15 @@ func TestBoardMaintenanceFlowIntegration(t *testing.T) {
 
 	// 5) Fertig
 	code, out = call("POST", `{`+base+`}`)
-	if code != 200 || out["closed"] != true || !strings.Contains(out["message"].(string), "Nächster Termin") {
+	if code != 200 || out["closed"] != true || !strings.Contains(out["message"].(string), "Nächster Termin") || !strings.Contains(out["message"].(string), "Auftrag entsteht am") {
 		t.Fatalf("Fertig: %d %v", code, out)
 	}
-	// Folgeauftrag und automatische Rueckmeldung an die Verantwortliche
+	// Monatlicher Plan: der Folgeauftrag entsteht erst mit dem Vorlauf vor dem
+	// nächsten Termin, bis dahin keiner; Rückmeldung an die Verantwortliche
 	var followUps int
 	must(pool.QueryRow(ctx, `SELECT COUNT(*) FROM maintenance_tasks WHERE plan_id=$1::uuid AND status='open'`, plan.ID).Scan(&followUps))
-	if followUps != 1 {
-		t.Fatalf("Folgeaufträge: %d", followUps)
+	if followUps != 0 {
+		t.Fatalf("Folgeaufträge vor dem Vorlauf: %d", followUps)
 	}
 	var feedback string
 	_ = pool.QueryRow(ctx, `SELECT m.body FROM chat_messages m JOIN chat_members cm ON cm.conversation_id = m.conversation_id

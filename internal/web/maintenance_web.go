@@ -604,6 +604,8 @@ type MaintenanceTaskDetailData struct {
 	Users       []UserOption
 	NextTaskID  string
 	NextTaskDue string
+	NextDay     string // geplanter nächster Termin ohne Auftrag
+	NextOrderOn string // Tag, an dem sein Auftrag entsteht
 	ProtocolURL string
 }
 
@@ -676,11 +678,7 @@ func (h *Handler) MaintenanceTaskDetail(w http.ResponseWriter, r *http.Request) 
 	}
 	data.PartsUsed, _ = h.maint.GetPartsUsage(ctx, id)
 	if !v.IsOpen && t.PlanID != nil {
-		var due time.Time
-		if h.db.QueryRow(ctx, `SELECT id::text, due_date FROM maintenance_tasks WHERE plan_id=$1::uuid AND id<>$2::uuid
-			AND status IN ('open','in_progress','pending') ORDER BY due_date LIMIT 1`, *t.PlanID, id).Scan(&data.NextTaskID, &due) == nil {
-			data.NextTaskDue = deDate(due)
-		}
+		h.maintDetailNext(ctx, &data, id)
 	}
 	data.ProtocolURL = h.maintProtocolURLs(ctx, []string{id})[id]
 	data.CanDelete = h.isAreaAdmin(r, "maintenance_task", id)

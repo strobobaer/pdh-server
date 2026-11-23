@@ -355,14 +355,6 @@ func (r *Repository) EnsurePlanTasksAt(ctx context.Context, now time.Time) (int,
 	return created, nil
 }
 
-// NextDueForTask: aktueller naechster Termin des Plans eines Auftrags.
-func (r *Repository) NextDueForTask(ctx context.Context, taskID string) *time.Time {
-	var next *time.Time
-	_ = r.db.QueryRow(ctx, `SELECT mp.next_due_at FROM maintenance_tasks mt JOIN maintenance_plans mp ON mp.id = mt.plan_id
-		WHERE mt.id = $1::uuid AND mp.active`, taskID).Scan(&next)
-	return next
-}
-
 // StartScheduler gleicht beim Start und danach stuendlich ab, dass jeder
 // aktive Plan seinen naechsten Auftrag hat. skip (darf nil sein) lässt einen
 // Lauf aus, z. B. während der Wartungssperre eines Updates.

@@ -267,7 +267,7 @@ func (h *Handler) PlannerMaintSaveWeb(w http.ResponseWriter, r *http.Request) {
 	if uuidInPathRe.MatchString(assignee) {
 		h.addHistory(ctx, "maintenance_task", id, "update", "Zugewiesen", "", assignee, "Im Planer zugewiesen", uid)
 		if assignee != uid {
-			h.systemNotify(ctx, []string{assignee}, fmt.Sprintf("🔧 Dir wurde die Wartung **%s** am %s zugewiesen. [Öffnen](/maintenance/tasks/%s)", title, due.Format("02.01.2006"), id))
+			h.systemNotify(ctx, []string{assignee}, maintAssignedText(title, due, id))
 		}
 	}
 	back(fmt.Sprintf("„%s“ auf %s geplant", title, due.Format("02.01.2006")), nil)

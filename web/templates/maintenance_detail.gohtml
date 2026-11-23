@@ -64,7 +64,7 @@
     <div class="card md-done">
       <div class="md-done-head"><i class="ti ti-{{if eq .Task.Status "skipped"}}player-skip-forward{{else}}circle-check{{end}}"></i>
         <div><b>{{if eq .Task.Status "skipped"}}Übersprungen{{else}}Erledigt {{.Task.CompletedAt}}{{end}}</b>
-        <span>{{if .Task.DurationStr}}Dauer {{.Task.DurationStr}}{{end}}{{if .NextTaskID}}{{if .Task.DurationStr}} · {{end}}nächster Termin <a href="/maintenance/tasks/{{.NextTaskID}}">{{.NextTaskDue}}</a>{{end}}</span></div>
+        <span>{{if .Task.DurationStr}}Dauer {{.Task.DurationStr}}{{end}}{{if .NextTaskID}}{{if .Task.DurationStr}} · {{end}}nächster Termin <a href="/maintenance/tasks/{{.NextTaskID}}">{{.NextTaskDue}}</a>{{else if .NextDay}}{{if .Task.DurationStr}} · {{end}}nächster Termin {{.NextDay}} (geplant) · Auftrag entsteht am {{.NextOrderOn}}{{end}}</span></div>
         {{if .ProtocolURL}}<a class="btn" href="{{.ProtocolURL}}" target="_blank" rel="noopener"><i class="ti ti-file-type-pdf"></i> Protokoll</a>{{end}}
       </div>
       {{if .Task.Notes}}<p class="md-notes">{{.Task.Notes}}</p>{{end}}

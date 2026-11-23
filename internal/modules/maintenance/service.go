@@ -222,8 +222,9 @@ func (s *Service) TaskSkipped(ctx context.Context, taskID, userID string) (*time
 	return s.repo.ScheduleNext(ctx, taskID, userID, false)
 }
 
-func (s *Service) NextDueForTask(ctx context.Context, taskID string) *time.Time {
-	return s.repo.NextDueForTask(ctx, taskID)
+// NextTermForTask: nächster Termin des Plans (geplant oder als Auftrag).
+func (s *Service) NextTermForTask(ctx context.Context, taskID string) *NextTerm {
+	return s.repo.NextTermForTask(ctx, taskID, time.Now())
 }
 
 // ── Schritte ─────────────────────────────────────────────────
