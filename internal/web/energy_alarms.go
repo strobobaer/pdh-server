@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/rs/zerolog/log"
 
+	recorigin "pdh/internal/core/origin"
 	"pdh/internal/modules/energie"
 	"pdh/internal/modules/tickets"
 	"pdh/pkg/appsettings"
@@ -184,6 +185,7 @@ func (s energyAlarmSink) OpenTicket(ctx context.Context, tx pgx.Tx, ev energie.A
 		Title: title, Description: desc, Priority: tickets.Priority(t.Priority),
 		AssignedTo: assignUser, ResponsibleTo: assignUser, AssignedGroupID: assignGroup,
 		Tags: []string{}, DueDate: due, RequiresRootCause: true,
+		Origin: recorigin.Alarm, OriginLabel: "Energiedaten",
 	}
 	if t.InfrastructureID != "" {
 		infra := t.InfrastructureID

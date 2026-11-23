@@ -11,7 +11,8 @@
 <style>
 /* Fehlerseite der Geräteanmeldung (terminal_devices.go): Vollbild, große Schrift, nur Anzeige. */
 *{box-sizing:border-box;margin:0;padding:0}
-:root{--bg:#0f1117;--bg2:#1a1d27;--text:#f1f3fb;--muted:#9aa3b8;--border:#2f3348;--red:#ef4444;--font:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+:root{--bg:#202020;--bg2:#2b2b2b;--bg3:#323232;--accent:#4f8ef7;--text:#f3f3f3;--muted:#a3a3a3;--border:#3b3b3b;--red:#ef4444;--font:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+html[data-theme="light"]{--bg:#f3f3f3;--bg2:#ffffff;--bg3:#f9f9f9;--accent:#005fb8;--text:#1b1b1b;--muted:#5f5f5f;--border:#e2e2e2;--red:#dc2626}
 html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--font);font-size:clamp(20px,2.2vw,34px);line-height:1.4;-webkit-user-select:none;user-select:none}
 body{display:flex;align-items:center;justify-content:center;padding:4vh 4vw}
 .t-err{max-width:30em;text-align:center;background:var(--bg2);border:2px solid var(--border);border-radius:24px;padding:6vh 4vw}

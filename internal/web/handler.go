@@ -23,6 +23,7 @@ import (
 	"pdh/internal/core/infrastructure"
 	"pdh/internal/core/mqttbroker"
 	"pdh/internal/core/mqttimport"
+	recorigin "pdh/internal/core/origin"
 	"pdh/internal/core/rbac"
 	"pdh/internal/core/scheduler"
 	"pdh/internal/core/shifts"
@@ -54,6 +55,7 @@ type BaseData struct {
 	UserLastName  string
 	FaultID       string
 	CopilotRef    string // "fault:<id>" / "ticket:<id>": Seitenleiste lädt Copilot-Vorschläge (copilot_suggest.go)
+	CopilotConn   string // "import:<id>" / "export:<id>": Copilot kennt die Verbindung der Seite (copilot_mapping.go)
 	UserAvatar    string // eigenes Profilbild (avatar.go), "" = Symbol
 
 	// Auto-Logout / Systemnutzer-Override (siehe base.gohtml Script-Block)
@@ -371,6 +373,7 @@ type Handler struct {
 
 	// Austauschbare Quellen (nur Tests; nil = echt): Rechteprüfung und gespeicherter Commit-Vergleich.
 	hasPermHook     func(*http.Request, string) bool
+	assetGuardHook  func(r *http.Request, perm, infraID string) bool // nur Tests: Abteilungsprüfung der Anlage (assetGuardFor)
 	companyC        companyCacheState // Firmenstammdaten zwischengespeichert (company.go)
 	companyEditHook func(*http.Request) bool // Tests: company.edit überall?
 	viewDeptErr     error
@@ -392,6 +395,7 @@ type Handler struct {
 	// Sammelaktion „Alle veralteten Geräte aktualisieren“ (esppdh_ota_batch.go); der Hook ersetzt
 	// in Tests die Prüfung „esppdh.ota überall“
 	esppdhB          esppdhBatchState
+	esppdhFwLocks    sync.Map // je Netz eine Sperre für „Freigabe in UniFi anlegen“ (esppdh_fw.go)
 	esppdhOTAAllHook func(*http.Request) bool
 	// ESPPDH (esppdh_update.go): ESPHome täglich prüfen, proben und umschalten. Adresse der
 	// Versionsliste (leer = pypi.org), Prüfer mit einem bestimmten Programm (nil = esppdh.Runner),
@@ -643,6 +647,11 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/infrastructure/{id}/setup-buttons-web", h.InfraSetupButtonsWeb)
 	r.Post("/infrastructure/{id}/setup-max-web", h.InfraSetupMaxWeb)
 	r.Post("/core/settings/setup-web", h.SetupSettingsWeb)
+	// Stillstandsgründe: Katalog und Zuordnung (downtime_catalog.go), Auswertung (downtime_report.go)
+	r.Post("/downtime/reasons-web", h.DowntimeReasonsWeb)
+	r.Post("/downtime/reasons/{id}/move-web", h.DowntimeReasonMoveWeb)
+	r.Post("/infrastructure/{id}/downtime-reasons-web", h.InfraDowntimeReasonsWeb)
+	r.Get("/downtime", h.DowntimePage)
 	// Trockenkammer: Bauteile je Gruppe (chamber.go)
 	r.Post("/infrastructure/{id}/components/{kind}", h.ChamberSaveWeb)
 	r.Post("/infrastructure/{id}/components/{kind}/count", h.ChamberCountWeb)
@@ -778,6 +787,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/admin/network/segments", h.NetworkSegmentSaveWeb)
 	r.Post("/admin/network/segments/{id}", h.NetworkSegmentSaveWeb)
 	r.Post("/admin/network/segments/{id}/delete", h.NetworkSegmentDeleteWeb)
+	r.Post("/admin/network/segments/{id}/esppdh-fw", h.NetworkESPPDHFwWeb) // Freigabe für ESPPDH-Updates in UniFi, sonst Ticket (esppdh_fw.go)
 	r.Post("/admin/network/wlans", h.NetworkWLANSaveWeb)
 	r.Post("/admin/network/wlans/{id}", h.NetworkWLANSaveWeb)
 	r.Post("/admin/network/wlans/{id}/delete", h.NetworkWLANDeleteWeb)
@@ -951,6 +961,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/suggest", h.SuggestWeb)
 	r.Post("/copilot/ask", h.CopilotAskWeb)
 	r.Get("/copilot/suggest", h.CopilotSuggestWeb)
+	r.Post("/copilot/proposals/{id}/apply", h.CopilotProposalApplyWeb) // Änderungsliste übernehmen (copilot_proposals.go)
 	r.Post("/translate/live", h.LiveTranslateWeb)
 	r.Post("/translate/live/toggle", h.LiveTranslateToggleWeb)
 	r.Post("/reservations/{kind}/{ref}/{id}/return", h.ReservationReturnWeb)
@@ -1173,6 +1184,8 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/import/connections/{id}/broker/setup", h.MqttBrokerSetupWeb)
 	r.Get("/import/connections/{id}/broker/stream", h.MqttBrokerStream)
 	r.Post("/import/connections/{id}/mappings", h.ImportMappingCreateWeb)
+	r.Post("/import/connections/{id}/mappings/bulk", h.ImportMappingBulkWeb)
+	r.Get("/import/connections/{id}/suggestions", h.ImportSuggestionsWeb)
 	r.Post("/import/connections/{id}/mappings/{mappingId}/delete-web", h.ImportMappingDeleteWeb)
 	r.Get("/import/connections/{id}/preview", h.ExcelPreviewPage)
 	r.Post("/import/connections/{id}/preview/refresh", h.ExcelRefreshValuesWeb)
@@ -1238,6 +1251,8 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/export/connections/{id}/efficio/test-web", h.EfficioTestWeb)
 	r.Post("/export/connections/{id}/efficio/key-web", h.EfficioKeyWeb)
 	r.Post("/export/connections/{id}/mappings", h.ExportMappingCreateWeb)
+	r.Post("/export/connections/{id}/mappings/bulk", h.ExportMappingBulkWeb)
+	r.Get("/export/connections/{id}/suggestions", h.ExportSuggestionsWeb)
 	r.Post("/export/connections/{id}/mappings/{mappingId}/delete-web", h.ExportMappingDeleteWeb)
 	r.Get("/export/templates", h.ExportTemplatesPage)
 	r.Post("/export/templates", h.ExportTemplateCreateWeb)
@@ -2028,6 +2043,7 @@ func (h *Handler) CreateFault(w http.ResponseWriter, r *http.Request) {
 		Severity:      faults.Severity(r.FormValue("severity")),
 		AssignedTo:    optionalID(r.FormValue("assigned_to")),
 		ResponsibleTo: optionalID(r.FormValue("responsible_to")),
+		Origin:        recorigin.Web,
 	}
 	h.faults.Create(r.Context(), in, u.ID)
 	h.Faults(w, r)
@@ -2062,6 +2078,28 @@ func (h *Handler) CopilotAskWeb(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 290*time.Second)
 	defer cancel()
 	u := getUser(r)
+	// Frage von einer Verbindungsseite: Format und Leserecht zuerst
+	var conn *copilotConn
+	if ref := strings.TrimSpace(r.FormValue("conn")); ref != "" {
+		m := copilotConnRe.FindStringSubmatch(ref)
+		if m == nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Ungültige Verbindung."})
+			return
+		}
+		if !h.canConnectionRead(r, m[1]) {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "Kein Zugriff auf diese Verbindung."})
+			return
+		}
+		name, kind, enabled, config, err := h.connectionRow(ctx, m[2], m[1])
+		if err != nil && !isConnSecretErr(err) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "Die Verbindung gibt es nicht mehr."})
+			return
+		}
+		conn = &copilotConn{Direction: m[1], ID: m[2], Kind: kind, Name: name, Enabled: enabled, Config: config,
+			CanWrite:   h.canConnectionWrite(r, m[1]) && !(m[1] == "export" && kind == efficioKind),
+			CanExecute: h.canConnectionExecute(r, m[1]),
+			Allow:      h.assetGuardFor(r, m[1]+".write")}
+	}
 	scope := h.requestScope(r)
 	fid := strings.TrimSpace(r.FormValue("fault"))
 	if fid != "" && (!uuidInPathRe.MatchString(fid) || (scope != nil && !h.recordInScope(ctx, scope, "fault", fid))) {
@@ -2069,9 +2107,10 @@ func (h *Handler) CopilotAskWeb(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Copilot mit PDH-Daten (copilot_data.go): liest mit den Rechten der fragenden Person
-	d := &copilotData{h: h, userID: u.ID, scope: scope, can: func(p string) bool { return h.hasPerm(r, p) }}
+	d := &copilotData{h: h, userID: u.ID, scope: scope, conn: conn, can: func(p string) bool { return h.hasPerm(r, p) }}
+	d.web = conn != nil && r.FormValue("web") == "1" // Vorlage aus dem Internet nur auf Wunsch
 	d.limitProjects(r) // Projekte nur mit Ansichtsrecht oder als Beteiligte
-	reply, sources, err := h.askCopilot(ctx, d, strings.TrimSpace(u.FirstName+" "+u.LastName), q, fid)
+	reply, sources, links, err := h.askCopilot(ctx, d, strings.TrimSpace(u.FirstName+" "+u.LastName), q, fid)
 	if err != nil {
 		componentLog("copilot").Error().Err(err).Msg("frage fehlgeschlagen")
 		// bewusst 200: Reverse-Proxys (Cloudflare, Nginx) ersetzen 502-Antworten
@@ -2079,7 +2118,14 @@ func (h *Handler) CopilotAskWeb(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"error": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"reply": reply, "sources": sources})
+	out := map[string]any{"reply": reply, "sources": sources}
+	if len(links) > 0 {
+		out["links"] = links // Quellen aus dem Internet (nur Verbindungsseiten)
+	}
+	if conn != nil && conn.Proposal != nil {
+		out["proposal"] = proposalView(conn.Proposal)
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 func (h *Handler) CreateTicket(w http.ResponseWriter, r *http.Request) {
@@ -2091,6 +2137,7 @@ func (h *Handler) CreateTicket(w http.ResponseWriter, r *http.Request) {
 		Priority:      tickets.Priority(r.FormValue("priority")),
 		AssignedTo:    optionalID(r.FormValue("assigned_to")),
 		ResponsibleTo: optionalID(r.FormValue("responsible_to")),
+		Origin:        recorigin.Web,
 	}
 	h.tickets.Create(r.Context(), in, u.ID)
 	h.Tickets(w, r)
@@ -2417,9 +2464,20 @@ func (h *Handler) LoginPage(w http.ResponseWriter, r *http.Request) {
 
 // loginNext: Ziel nach der Anmeldung – nur Pfade im PDH (kein "//host",
 // kein "/\host"), sonst die Startseite.
+// hasControlChar: enthält s ein Steuerzeichen (< 0x20, auch Tabulator) oder DEL? Browser entfernen Tabulator und
+// Zeilenumbruch aus Adressen, "/\t/evil" würde sonst zu "//evil".
+func hasControlChar(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] < 0x20 || s[i] == 0x7f {
+			return true
+		}
+	}
+	return false
+}
+
 func loginNext(next string) string {
 	if next == "" || !strings.HasPrefix(next, "/") || strings.HasPrefix(next, "//") ||
-		strings.ContainsAny(next, "\\\r\n") || strings.HasPrefix(next, "/login") || len(next) > 500 {
+		strings.Contains(next, "\\") || hasControlChar(next) || strings.HasPrefix(next, "/login") || len(next) > 500 {
 		return "/"
 	}
 	return next
@@ -2491,6 +2549,7 @@ func (h *Handler) LoginRFIDWeb(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
+	h.pdhHandoffRevokeCookie(r) // PDH-Sitzung am Terminal serverseitig beenden (terminal_pdh.go)
 	if uid := h.requestActor(r); uid != "" {
 		log.Info().Str("bereich", "auth").Str("user", uid).Str("user_name", h.cachedUserName(r.Context(), uid)).Str("ip", r.RemoteAddr).Msg("abmeldung")
 	}
@@ -2545,6 +2604,10 @@ func (h *Handler) sessionToken(r *http.Request) (string, int64, string) {
 		return "", 0, ""
 	}
 	s := h.parseSessionToken(cookie.Value)
+	if s.problem == "" && s.tsess != "" && !h.pdhHandoffCheck(r, s.tsess, s.sub, s.tdev) {
+		// PDH-Sitzung am Terminal: widerrufen, abgelaufen oder nicht von diesem Gerät
+		s.sub, s.problem = "", "sitzung: terminal-pdh-sitzung beendet oder nicht gültig"
+	}
 	if s.problem != "" {
 		ev := log.Warn()
 		if s.err != nil {
@@ -2564,6 +2627,7 @@ func (h *Handler) sessionToken(r *http.Request) (string, int64, string) {
 // zweckgebundenen Token); sub ist dann leer.
 type sessionTok struct {
 	sub, device, scope, problem string
+	tsess, tdev                 string // PDH-Sitzung am Terminal (terminal_pdh.go): Sitzungs-ID und Geräte-ID
 	iat                         int64
 	err                         error
 }
@@ -2599,6 +2663,8 @@ func (h *Handler) parseSessionToken(raw string) sessionTok {
 	iat, _ := claims["iat"].(float64)
 	s.iat = int64(iat)
 	s.device, _ = claims["device"].(string)
+	s.tsess, _ = claims["tsess"].(string)
+	s.tdev, _ = claims["tdev"].(string)
 	return s
 }
 
@@ -2648,6 +2714,11 @@ func (h *Handler) authMiddleware(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
+		// Ereigniskanal der Terminal-Software: Geräte-Geheimnis statt Sitzung (terminal_functions.go)
+		if r.URL.Path == "/terminal/events" && r.Method == http.MethodGet && hasBearer(r) {
+			h.TerminalEventsBearer(w, r)
+			return
+		}
 		// Fertigmeldung aus dem Leitstand: RFID-Token nur fuer /complete/{type}/{id}
 		// (global_dashboard_complete.go) – hat Vorrang vor einer evtl. Sitzung am Terminal
 		if bu := h.boardCompleteUser(r); bu != nil {
@@ -2662,8 +2733,16 @@ func (h *Handler) authMiddleware(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
+		// PDH-Sitzung am Terminal: jede Terminalseite beendet sie (terminal_pdh.go)
+		if h.pdhHandoffLeave(w, r) {
+			return
+		}
 		user := h.sessionUser(r)
 		if user == nil {
+			// Terminal-Gerät hinter einer beendeten PDH-Sitzung: Gerätesitzung wiederherstellen statt abzumelden
+			if h.pdhRestoreDevice(w, r) {
+				return
+			}
 			// Gesperrtes oder entkoppeltes Terminal: Fehlerseite statt Weiterleitung ins Leere
 			if _, _, dev := h.sessionToken(r); dev != "" {
 				clearSessionCookies(w)
@@ -2719,6 +2798,7 @@ func (h *Handler) userByID(ctx context.Context, id string) (*users.User, error) 
 type FaultDetailData struct {
 	BaseData
 	SyncOrigin    *SyncOriginView // Herkunft aus einem Fremdsystem (sync_ops.go); nil = keine oder kein Recht
+	OriginText    string          // übrige Herkunft (record_origin.go); "" = von Hand oder unbekannt
 	Fault         FaultDetailView
 	Analysis      *faults.CopilotAnalysis
 	TimeEntries   []*timetracking.TimeEntry
@@ -2846,6 +2926,9 @@ func (h *Handler) FaultDetail(w http.ResponseWriter, r *http.Request) {
 
 	_ = h.db.QueryRow(ctx, `SELECT ticket_pending FROM faults WHERE id = $1::uuid`, id).Scan(&data.Fault.TicketPending)
 	data.SyncOrigin = h.syncOrigin(r, extsync.RefFault, id)
+	if data.SyncOrigin == nil { // Abgleich mit Recht: eigene Karte; sonst kurze Herkunft
+		data.OriginText = h.originTexts(ctx, "fault", []string{id}, nil)[id]
+	}
 	h.render(w, "fault_detail", data)
 }
 
@@ -2900,6 +2983,7 @@ func (h *Handler) Shifts(w http.ResponseWriter, r *http.Request) {
 type TicketDetailData struct {
 	BaseData
 	SyncOrigin     *SyncOriginView // Herkunft aus einem Fremdsystem (sync_ops.go); nil = keine oder kein Recht
+	OriginText     string          // übrige Herkunft (record_origin.go); "" = von Hand oder unbekannt
 	AppRequestID   string          // APP-Ticket: Anfrage der PDH-App, nur wenn der Benutzer sie bearbeiten darf (app.admin)
 	Ticket         TicketView
 	CommentCount   int
@@ -2989,6 +3073,9 @@ func (h *Handler) TicketDetail(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	data.SyncOrigin = h.syncOrigin(r, extsync.RefTicket, id)
+	if data.SyncOrigin == nil { // Abgleich mit Recht: eigene Karte; sonst kurze Herkunft
+		data.OriginText = h.originTexts(r.Context(), "ticket", []string{id}, nil)[id]
+	}
 	if h.hasPerm(r, permAppAdmin) {
 		var reqID string
 		if err := h.db.QueryRow(ctx, `SELECT COALESCE(app_request_id::text, '') FROM tickets WHERE id = $1::uuid`, id).Scan(&reqID); err == nil && reqID != "" && h.appAdminInRequest(r, reqID) {
@@ -4175,6 +4262,7 @@ func (h *Handler) OverrideLoginWeb(w http.ResponseWriter, r *http.Request) {
 // Ohne aktive Override-Sitzung faellt das Verhalten auf einen normalen
 // Logout zurueck.
 func (h *Handler) OverrideLogoutWeb(w http.ResponseWriter, r *http.Request) {
+	h.pdhHandoffRevokeCookie(r) // PDH-Sitzung am Terminal serverseitig beenden (terminal_pdh.go)
 	returnCookie, err := r.Cookie("pdh_return_token")
 	if err != nil || returnCookie.Value == "" {
 		h.Logout(w, r)

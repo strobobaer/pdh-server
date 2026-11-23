@@ -221,6 +221,9 @@
  "Infrastruktur": "Altyapı",
  "Inspektion": "Muayene",
  "Instandhaltung": "Bakım ve onarım",
+ "Im Internet nach einer Vorlage suchen": "İnternette bir şablon ara",
+ "Dabei geht nur deine Frage ins Internet – keine Daten aus dem PDH.": "İnternete yalnızca sorunuz gider – PDH’den hiçbir veri gitmez.",
+ "Auf dieser Seite gehen Quellwerte und Anlagennamen an Anthropic – Kennwörter nie.": "Bu sayfada kaynak değerler ve tesis adları Anthropic’e gönderilir – parolalar asla.",
  "Frag nach Störungen, Anlagen, Wartungen oder Ersatzteilen – der Copilot sucht in euren PDH-Daten …": "Arızalar, tesisler, bakımlar veya yedek parçalar hakkında sorun – copilot PDH verilerinizde arar …",
  "Kalibrierung": "Kalibrasyon",
  "Kapitel": "Bölüm",
@@ -959,6 +962,7 @@
  "Rüstzeit erfassen": "Hazırlık süresi kaydet",
  "Rüstzeit gelöscht.": "Hazırlık süresi silindi.",
  "Rüstzeit nicht gefunden.": "Hazırlık süresi bulunamadı.",
+ "Stillstände": "Duruşlar",
  "Rüstzeiten": "Hazırlık süreleri",
  "Rüsten": "Hazırlık",
  "Höchstdauer überschritten": "En uzun süre aşıldı",
@@ -1121,5 +1125,14 @@
   "Rüsttaste": "Hazırlık düğmesi",
   "Rüstzeit nachgetragen.": "Hazırlık süresi eklendi.",
   "Rüstzeit nachtragen": "Hazırlık süresi ekle",
-  "oder Dauer in Minuten": "veya dakika cinsinden süre"
+  "oder Dauer in Minuten": "veya dakika cinsinden süre",
+  "Hintergrund": "Arka plan",
+  "Hellblau": "Açık mavi",
+  "Mint": "Nane",
+  "Hellgrün": "Açık yeşil",
+  "Hellgelb": "Açık sarı",
+  "Pfirsich": "Şeftali",
+  "Rosé": "Pembe",
+  "Flieder": "Leylak",
+  "Hellgrau": "Açık gri"
 }

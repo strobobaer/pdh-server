@@ -25,6 +25,9 @@ import (
 // Kommentar in migrations/056_import_export.up.sql.
 
 func (h *Handler) canConnectionRead(r *http.Request, direction string) bool {
+	if h.rbac == nil { // nur in Tests mit hasPermHook
+		return h.hasPermHook != nil && h.hasPerm(r, direction+".read")
+	}
 	u := getUser(r)
 	return h.rbac.HasPermissionForUser(u.ID, string(u.Role), direction+".read")
 }

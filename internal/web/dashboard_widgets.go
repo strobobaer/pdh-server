@@ -175,6 +175,9 @@ func sanitizeWidgets(in []WidgetInstance) ([]WidgetInstance, error) {
 			}
 			cfg["title"] = t
 		}
+		if bg := w.Config["bg"]; widgetBgOK(bg) {
+			cfg["bg"] = bg
+		}
 		if len(cfg) > 0 {
 			w.Config = cfg
 		} else {
@@ -235,6 +238,34 @@ type DashboardWidgetView struct {
 	Def   WidgetDef
 	Title string
 }
+
+// widgetBgColors: helle Hintergründe je Kachel (Schlüssel „bg“ in Config, leer = Standard).
+// Die Farbwerte stehen in widgets/dashboard_widgets.gohtml (.dw-bg-…, hell und gedämpft dunkel).
+var widgetBgColors = []struct{ Key, Name string }{
+	{"blue", "Hellblau"}, {"mint", "Mint"}, {"green", "Hellgrün"}, {"yellow", "Hellgelb"},
+	{"peach", "Pfirsich"}, {"rose", "Rosé"}, {"lilac", "Flieder"}, {"gray", "Hellgrau"},
+}
+
+func widgetBgOK(key string) bool {
+	for _, c := range widgetBgColors {
+		if c.Key == key {
+			return true
+		}
+	}
+	return false
+}
+
+// Bg: gewählte Hintergrundfarbe der Kachel ("" = Standard); nur Werte aus widgetBgColors.
+func (v DashboardWidgetView) Bg() string {
+	if bg := v.Config["bg"]; widgetBgOK(bg) {
+		return bg
+	}
+	return ""
+}
+
+// dwBgColorList: Auswahl im Einstellungsbereich (Vorlagenfunktion dwBgColors – auch für die
+// leere Vorlage neuer Kacheln, die keine DashboardWidgetView bekommt).
+func dwBgColorList() []struct{ Key, Name string } { return widgetBgColors }
 
 // WidgetCatalogGroup: Katalog nach Kategorien (nur erlaubte Widgets).
 type WidgetCatalogGroup struct {
@@ -436,6 +467,8 @@ type statData struct {
 	Color string // blue|red|amber|green|accent
 	URL   string
 	Alert bool // Zusatzwert > 0 hervorheben
+	// Origins: „davon 3 aus SAP PM · 2 aus der App“ (Herkunft, record_origin.go; "" = keine)
+	Origins string
 }
 
 func count(ctx context.Context, h *Handler, q string, args ...any) int {
@@ -444,20 +477,32 @@ func count(ctx context.Context, h *Handler, q string, args ...any) int {
 	return n
 }
 
-func loadStatTickets(h *Handler, ctx context.Context, uid string, _ WidgetInstance, _ func(string) bool) (any, error) {
+func loadStatTickets(h *Handler, ctx context.Context, uid string, _ WidgetInstance, can func(string) bool) (any, error) {
 	var open, crit int
 	cond, args := scopeSQL(h.scopeForUserID(ctx, uid), "ticket", "r", 0)
 	err := h.db.QueryRow(ctx, `SELECT COUNT(*), COUNT(*) FILTER (WHERE priority = 'critical') FROM tickets r
 		WHERE status IN ('open','in_progress','pending') AND archived_at IS NULL`+cond, args...).Scan(&open, &crit)
-	return statData{Value: fmt.Sprint(open), Sub: tr(ctxLang(ctx), "%d kritisch", crit), Color: "blue", URL: "/tickets?tab=items&chip=open", Alert: crit > 0}, err
+	d := statData{Value: fmt.Sprint(open), Sub: tr(ctxLang(ctx), "%d kritisch", crit), Color: "blue", URL: "/tickets?tab=items&chip=open", Alert: crit > 0}
+	if err == nil {
+		if cs, oerr := h.originCounts(ctx, "ticket", cond, args); oerr == nil {
+			d.Origins = originCountLine(cs, h.syncVisibleForUID(ctx, uid))
+		}
+	}
+	return d, err
 }
 
-func loadStatFaults(h *Handler, ctx context.Context, uid string, _ WidgetInstance, _ func(string) bool) (any, error) {
+func loadStatFaults(h *Handler, ctx context.Context, uid string, _ WidgetInstance, can func(string) bool) (any, error) {
 	var active, fresh int
 	cond, args := scopeSQL(h.scopeForUserID(ctx, uid), "fault", "r", 0)
 	err := h.db.QueryRow(ctx, `SELECT COUNT(*), COUNT(*) FILTER (WHERE status = 'detected') FROM faults r
 		WHERE status IN ('detected','analyzing','in_progress','pending') AND archived_at IS NULL`+cond, args...).Scan(&active, &fresh)
-	return statData{Value: fmt.Sprint(active), Sub: tr(ctxLang(ctx), "%d neu gemeldet", fresh), Color: "red", URL: "/faults?tab=items&chip=open", Alert: fresh > 0}, err
+	d := statData{Value: fmt.Sprint(active), Sub: tr(ctxLang(ctx), "%d neu gemeldet", fresh), Color: "red", URL: "/faults?tab=items&chip=open", Alert: fresh > 0}
+	if err == nil {
+		if cs, oerr := h.originCounts(ctx, "fault", cond, args); oerr == nil {
+			d.Origins = originCountLine(cs, h.syncVisibleForUID(ctx, uid))
+		}
+	}
+	return d, err
 }
 
 func loadStatMaintenance(h *Handler, ctx context.Context, uid string, _ WidgetInstance, _ func(string) bool) (any, error) {
@@ -562,6 +607,26 @@ func loadChartTrend(h *Handler, ctx context.Context, uid string, _ WidgetInstanc
 // listItem: Zeile in Listen-Widgets.
 type listItem struct {
 	Icon, Kind, Title, Sub, URL, Badge, BadgeClass string
+	Origin                                         string // Herkunft als Schild (record_origin.go; "" = keins)
+	refType, id                                    string // für die Herkunft (ticket/fault)
+}
+
+// listOrigins setzt die Herkunft der Tickets und Störungen einer Liste (eine Abfrage je Art).
+func listOrigins(ctx context.Context, h *Handler, items []listItem, visible func(string) bool) {
+	ids := map[string][]string{}
+	for _, it := range items {
+		if it.refType != "" {
+			ids[it.refType] = append(ids[it.refType], it.id)
+		}
+	}
+	for ref, list := range ids {
+		texts := h.originTexts(ctx, ref, list, visible)
+		for i := range items {
+			if items[i].refType == ref {
+				items[i].Origin = texts[items[i].id]
+			}
+		}
+	}
 }
 
 func loadListMine(h *Handler, ctx context.Context, uid string, _ WidgetInstance, can func(string) bool) (any, error) {
@@ -589,6 +654,9 @@ func loadListMine(h *Handler, ctx context.Context, uid string, _ WidgetInstance,
 			stat = setupStatusText(status)
 		}
 		it := listItem{Icon: m[0], Kind: tr(lang, m[1]), Title: title, URL: m[2] + id, Sub: tr(lang, m[1]) + " · " + tr(lang, stat)}
+		if k == "ticket" || k == "fault" {
+			it.refType, it.id = k, id
+		}
 		if due != nil {
 			it.Badge = due.Format("02.01.")
 			it.BadgeClass = "b-gray"
@@ -600,10 +668,11 @@ func loadListMine(h *Handler, ctx context.Context, uid string, _ WidgetInstance,
 		}
 		out = append(out, it)
 	}
+	listOrigins(ctx, h, out, h.syncVisibleForUID(ctx, uid))
 	return out, nil
 }
 
-func loadListFaults(h *Handler, ctx context.Context, uid string, _ WidgetInstance, _ func(string) bool) (any, error) {
+func loadListFaults(h *Handler, ctx context.Context, uid string, _ WidgetInstance, can func(string) bool) (any, error) {
 	cond, args := scopeSQL(h.scopeForUserID(ctx, uid), "fault", "f", 0)
 	rows, err := h.db.Query(ctx, `
 		SELECT f.id::text, f.title, f.severity::text, f.status::text, COALESCE(i.name, ''), COALESCE(f.detected_at, f.created_at)
@@ -627,9 +696,14 @@ func loadListFaults(h *Handler, ctx context.Context, uid string, _ WidgetInstanc
 		if infra != "" {
 			sub = infra + " · " + sub
 		}
-		out = append(out, listItem{Icon: "ti-alert-triangle", Title: title, Sub: sub, URL: "/faults/" + id, Badge: sev, BadgeClass: severityClass(sev)})
+		out = append(out, listItem{Icon: "ti-alert-triangle", Title: title, Sub: sub, URL: "/faults/" + id, Badge: sev, BadgeClass: severityClass(sev),
+			refType: "fault", id: id})
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	listOrigins(ctx, h, out, h.syncVisibleForUID(ctx, uid))
+	return out, nil
 }
 
 func loadListMaintenance(h *Handler, ctx context.Context, uid string, _ WidgetInstance, _ func(string) bool) (any, error) {

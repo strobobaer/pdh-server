@@ -10,7 +10,7 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
-## [0.82.27] – 2026-11-22
+## [0.82.37] – 2026-11-23
 
 ### Neu
 
@@ -23,6 +23,124 @@ im Kapitel „Versionen & Updates“ an.
 ### Sicherheit
 
 - Schritte aus dem Offline-Speicher prüfen die Rechte **beim Eintreffen**, nicht zum Zeitpunkt der Eingabe: Ist ein Recht entzogen oder das Telefon gesperrt, wird der Schritt abgelehnt und mit Grund angezeigt. Die Anlagenliste hält die Abteilungsgrenzen ein.
+
+## [0.82.36] – 2026-11-23
+
+### Behoben
+
+- **Zuordnungen vorschlagen am Handy und Tablet:** Die Liste war eine breite Tabelle – neben der Quelle musste man weit zur Seite rollen, um Anlage, Bezeichnung und Notiz zu sehen. Bis 900 px Breite stehen die Angaben einer Zeile jetzt untereinander; lange Quellnamen brechen um.
+- Der Hinweis „Auf dieser Seite gehen Quellwerte und Anlagennamen an Anthropic“ in der Copilot-Leiste einer Verbindung erscheint nur noch, wenn der Copilot mit Claude (Anthropic) läuft. Mit Ollama oder ohne Copilot stimmte er nicht.
+
+### Sicherheit
+
+- **Internetsuche des Copilot getrennt von den Betriebsdaten:** Auf der Seite einer Verbindung sucht der Copilot nur noch im Internet, wenn man unter dem Eingabefeld „Im Internet nach einer Vorlage suchen“ anhakt. Die Suche läuft als eigener Schritt und kennt nur die gestellte Frage und die Art der Verbindung – keine Quellwerte, Anlagennamen oder Einstellungen. Der Schritt, der die PDH-Daten liest und den Vorschlag baut, hat keinen Internetzugang. Bisher hielt den Copilot nur eine Anweisung davon ab, Betriebsdaten in eine Suche zu schreiben.
+
+## [0.82.35] – 2026-11-23
+
+### Neu
+
+- **Zuordnungen vorschlagen:** Im Reiter „Zuordnungen“ (beim Export „Felder“) einer Verbindung listet der Knopf „Zuordnungen vorschlagen“ alle noch offenen Quellwerte – MQTT-Themen, Spalten aus Excel/CSV und Abfragen, OPC-UA-Knoten – und schlägt je Zeile Anlage, Bezeichnung und Einheit vor. Ändern, abwählen, „Ausgewählte übernehmen“. Das geht ohne Copilot und ohne Internet.
+- **Copilot ordnet zu:** Auf der Seite einer Verbindung versteht der Copilot Aufträge wie „Ordne alle Themen von Halle 2 den Pressen zu“ oder „Warum kommt hier nichts an?“. Er antwortet mit einer Änderungsliste (+ neu, ~ geändert, = unverändert, – wird nicht angefasst) samt Begründung; angelegt wird erst mit „Übernehmen“. Löschen schlägt er nur vor – gelöscht wird von Hand. Nur mit Claude (Anthropic-Schlüssel).
+- **Vorlagen aus dem Internet:** Auf einer Verbindungsseite sucht der Copilot auf Wunsch z. B. die Modbus-Registertabelle eines Zählers oder die MQTT-Themen eines Geräts und macht daraus einen Vorschlag. Die Quellen stehen als Links dabei.
+
+### Geändert
+
+- Legt man eine Zuordnung von Hand an, die es an der Verbindung schon gibt (gleiche Quelle, gleiche Anlage), kommt jetzt eine Meldung, statt dass sie doppelt entsteht.
+- Ein Vorschlag des Copilot gehört der Person, die gefragt hat, und gilt 24 Stunden (Migration 204). Auf dem Spiegelserver und während der Wartung wird nichts übernommen.
+
+### Behoben
+
+- „Vorlage anwenden“ legte die Zuordnungen bzw. Felder einer Vorlage nicht an (nur die Abfragen kamen an). Jetzt werden sie übernommen; die Meldung nennt, was übersprungen wurde.
+
+### Sicherheit
+
+- Zuordnungen lassen sich nur noch an Anlagen der eigenen Abteilung anlegen und löschen: Wer „Import verwalten“ bzw. „Export verwalten“ nur in einer Abteilung hat, kann Werte nicht mehr Anlagen anderer Abteilungen zuordnen – von Hand, über die Vorschlagsliste, über den Copilot, mit dem TIA-Baustein („Zuordnungen anlegen“) und mit „Vorlage anwenden“.
+- Themen, Knoten und Spalten direkt vom Gerät liest der Copilot nur für Personen, die die Verbindung ausführen oder bearbeiten dürfen. Wer sie nur sehen darf, bekommt die Spalten gespeicherter Abfrage-Ergebnisse.
+- Kennwörter, Schlüssel und Tokens einer Verbindung gehen nie an den Copilot – auch nicht, wenn sie in einer Fehlermeldung stehen oder in einer Adresse stecken (Kennwort im Benutzerteil, Parameter wie „apikey“ oder „token“). Quellwerte, Anlagennamen und die übrigen Einstellungen der Verbindung gehen auf dieser Seite an Anthropic; der Hinweis steht unter dem Eingabefeld.
+
+## [0.82.34] – 2026-11-23
+
+### Neu
+
+- **Infobildschirm: Folie „Website“.** Eine Webseite lässt sich als Folie zeigen (Adresse mit http:// oder https://, Anzeigedauer wie bei den anderen Folien, optional alle n Minuten neu laden). Sie läuft in einem abgeschotteten Rahmen ohne Kamera, Mikrofon, Standort, Downloads, Formulare und Fenster, nur solange die Folie zu sehen ist, und ist nicht bedienbar (Tippen blättert weiter). Im Formular zeigt „Vorschau“ die Seite im selben Rahmen; ein Hinweis erinnert, dass viele Websites das Einbetten verbieten. Ohne Verbindung wird die Folie übersprungen. Migration 203.
+
+### Sicherheit
+
+- Website-Folien nehmen nur http- und https-Adressen ohne Zugangsdaten an (höchstens 2048 Zeichen); die eigene PDH-Adresse ist nicht erlaubt. Die Seiten des Infobildschirms dürfen nur PDH, Grafana und die Adressen aktiver Website-Folien einbetten.
+
+## [0.82.32] – 2026-11-22
+
+### Neu
+
+- **Herkunft von Tickets und Störungen:** Jeder Vorgang merkt sich, woher er kam – Easy-Modus, Anlagenterminal (mit seiner Anlage), App, Fremdsystem über den Abgleich (z. B. „SAP PM“), Alarm (Energiedaten, IT-Netz) oder das PDH selbst (Firewall-Freigabe, Rüstzeit). Sie steht als Schild in den Listen und oben auf der Seite des Vorgangs.
+- **Startseite:** „Offene Tickets“ und „Aktive Störungen“ zeigen unter der Zahl, woher die offenen Vorgänge kommen („davon 3 aus SAP PM · 2 aus der App · 1 vom Terminal“); „Aktuelle Störungen“ und „Mir zugewiesen“ zeigen die Herkunft als Schild.
+- **Startseite: Hintergrundfarbe je Kachel.** Unter „Dashboard anpassen“ → Einstellungen der Kachel einen hellen Hintergrund wählen (Hellblau, Mint, Hellgrün, Hellgelb, Pfirsich, Rosé, Flieder, Hellgrau); im dunklen Modus erscheint derselbe Ton gedämpft.
+
+### Geändert
+
+- Vorhandene Tickets und Störungen bekommen ihre Herkunft nachträglich, soweit sie sich erkennen lässt (Abgleich, App, Alarm, Terminal, Easy-Modus, Firewall-Freigabe, Rüstzeit). Migration 202.
+
+### Sicherheit
+
+- Den Namen eines Fremdsystems sieht nur, wer den Abgleich in der Abteilung dieses Fremdsystems sehen darf; sonst steht dort „Fremdsystem“. Die Zählung in den Kacheln gilt nur für Vorgänge der eigenen Abteilungen.
+
+## [0.82.31] – 2026-11-22
+
+### Neu
+
+- **Terminal: Funktionen ein- und ausschalten.** Beim Terminal-Benutzer (Benutzerdetail) lassen sich **Störung, Ticket, Rüsten, Stillstand, HMI, Wartungen** und die **Folienschau als Bildschirmschoner** einzeln abschalten; eine ausgeschaltete Funktion verschwindet von der Seite **Neu**, ihre Seiten antworten mit „nicht gefunden“ (GET und POST). Die Schalter werden mit der Admin-Seite des PDH-Terminals abgeglichen: je Schalter gewinnt die **jüngere Änderung**, bei gleichem Zeitpunkt PDH, Zeitpunkte mehr als 5 Minuten in der Zukunft gelten als Serverzeit. Neue Schnittstelle `PUT /api/terminal/v1/functions`; `GET /api/terminal/v1/device` und das Ereignis `settings` tragen die neuen Felder `functions` und `theme`; der Ereigniskanal `/terminal/events` nimmt auch das Geräte-Geheimnis an. Die Folienschau behält ihr Feld `saver_slides` (ältere Terminals). Migration 201.
+- **Terminalseiten in den PDH-Farben.** Hintergrund und Farben der Terminalseiten entsprechen dem übrigen PDH, **hell oder dunkel** (Einstellung beim Terminal-Benutzer); das Terminal bekommt dieselben Farben für seine eigenen Seiten.
+- **Kiosk-Terminals: PDH-Terminals.** Die Liste zeigt die gekoppelten PDH-Terminals mit Typ, Version, Online-Status und Kopplung und verweist auf ihre Einstellungen.
+- **Bildschirmtastatur am Terminal.** Auf dem Gerät erscheint die Tastatur beim Antippen eines Eingabefelds und verschwindet danach wieder.
+
+### Geändert
+
+- Nur hinzufügend: ältere Terminals und ältere Stände arbeiten in jeder Kombination weiter, vorhandene Werte (auch die Folienschau) bleiben erhalten.
+
+## [0.82.30] – 2026-11-22
+
+### Neu
+
+- **Stillstandsgründe.** Neuer Katalog der Gründe (**Infrastruktur** → Karte **Stillstandsgründe**) und an jeder Anlage der Reiter **Stillstandsgründe**: Gründe zuordnen; eine Zuordnung an einer Halle oder Linie gilt auch für alle Anlagen darunter (wie die Rüsttasten). Vorgabe-Gründe: Störung / Defekt, Material fehlt, Kein Personal, Geplanter Stillstand – sie müssen erst Anlagen zugeordnet werden (Karte im Katalog oder Reiter an der Anlage), vorher zeigt das Terminal sie nicht. Neue Rechte `downtime.view`, `downtime.edit` (Stillstände erfassen, Katalog pflegen) und `downtime.admin` (Gründe löschen); sie folgen aus „Anlagen sehen/bearbeiten“, die Rolle Terminal bekommt ansehen und erfassen. Migrationen 198 bis 200.
+- **Terminal: Stillstand melden.** Die Kachel **Stillstand** auf der Seite **Neu** (bisher nur ein Platzhalter) öffnet die Seite **Stillstand**: erst die Anlage wählen (Ebene für Ebene), dann den **Grund**; **Ende** beendet den Stillstand. Die Anmeldung per Karte ist freiwillig: ohne Karte meldet der Terminal-Benutzer (nur in der Gerätesitzung des Terminals, mit freiwilligem Kürzel/Name), mit Karte die Person. Es gilt `downtime.edit` des Terminal-Benutzers für die Abteilung der Anlage. An einer Anlage läuft höchstens ein Stillstand.
+- **Auswertung der Stillstände.** Neue Seite **Stillstände** (Arbeitsbereich): Anzahl, Gesamtdauer und mittlere Dauer je Grund für 7 Tage, die letzten 5 Wochen oder 90 Tage, auf Wunsch für eine Anlage samt Unteranlagen; es zählen nur Anlagen, für die das Recht `downtime.view` gilt. Dazu die neue Folienart **Statistik Stillstände** im Infobildschirm (Kennzahlen und Minuten je Grund).
+
+### Geändert
+
+- Ältere Stände und vorhandene Daten bleiben unberührt: der Grund eines Stillstands ist ein freier Verweis (darf leer sein, auch wenn der Grund später gelöscht wird), Migrationen nur hinzufügend.
+
+## [0.82.29] – 2026-11-22
+
+### Neu
+
+- **Netzwerk: Freigabe für ESPPDH-Updates in UniFi anlegen.** Beim Netz der ESPPDH-Geräte legt ein Knopf in UniFi die Firewall-Regel an, damit der Server neue Firmware übers Netz aufspielen kann: Erlauben, nur TCP-Port 3232 und 8266, nur von den Servern zum Adressbereich des Netzes. Liegt der Server im selben Netz oder in derselben Firewall-Zone, braucht es keine Regel; das PDH sagt das.
+- **Ticket an die IT, wenn das nicht geht:** Ist UniFi nicht eingerichtet, zu alt (vor UniFi Network 10) oder darf der Schlüssel das nicht, legt das PDH ein Ticket mit Netz, Adressbereich, Server-Adressen, Ports und Grund an – je Netz nur eines, solange es offen ist.
+
+### Sicherheit
+
+- Den Knopf hat nur, wer das Recht „Netzwerk: VLANs und WLANs löschen (Bereichsadministrator)“ hat. Das PDH ändert oder löscht nie eine vorhandene Firewall-Regel.
+
+## [0.82.28] – 2026-11-22
+
+### Neu
+
+- **Terminal: Kachel HMI.** Auf der Seite **Neu** steht neben **Rüsten** die Kachel **HMI**. Sie listet die HMIs der Anlage des Terminals und ihrer Unteranlagen und öffnet sie in einer eigenen Terminalseite (nur ansehen oder bedienen). Es gelten die vorhandenen Regeln des HMI-Fernzugriffs je Abteilung der Anlage: **Ansehen am Terminal** und **Bedienen am Terminal** (jeder / nur mit Karte / nie, mit „Bedienen erlaubt“ verrechnet) sowie die Rechte `hmi.view` und `hmi.control` – bei „jeder“ die des Terminal-Benutzers, bei „nur mit Karte“ die der angemeldeten Person. Die Kachel erscheint nur, wenn mindestens ein HMI sichtbar ist. Die Rolle Terminal bringt `hmi.view` mit (Migration 197), `hmi.control` nicht.
+- **Terminal: Wartungen nach der Kartenanmeldung.** Die angemeldete Person sieht die offenen Wartungsaufträge der Anlage des Terminals und ihrer Unteranlagen – nur die, die sie selbst sehen darf (`maintenance.view` je Abteilung). **Öffnen** führt über „PDH öffnen“ in den Auftrag im normalen PDH, wo mit den eigenen Rechten der Person gearbeitet wird (`maintenance.edit`, `maintenance.complete`). Ohne Kartenanmeldung gibt es weder Kachel noch Liste.
+- **Terminal: PDH öffnen.** In der Anmeldeleiste (nur mit angemeldeter Person) öffnet **PDH öffnen** das normale PDH im Browser des Terminals, angemeldet als diese Person mit ihren eigenen Rechten. Migration 196.
+
+### Sicherheit
+
+- **PDH-Sitzung am Terminal.** Das Öffnen verlangt die Gerätesitzung des Terminals **und** die aktive Kartenanmeldung derselben Person. Ein Einmal-Ticket (60 Sekunden, nur als Hash gespeichert, nie in einer Adresse) wird per POST eingelöst und setzt eine Sitzung von höchstens **15 Minuten ohne Verlängerung**. Sie ist serverseitig widerrufbar und an das Gerät gebunden: Ohne die Gerätesitzung desselben Terminals (auch an der Schnittstelle) gilt sie nicht. Sie endet bei Kartenabmeldung, Kartenwechsel, Abmelden in PDH und bei jedem Aufruf einer Terminalseite (Ruhezeit, Zurück); danach ist das Terminal wieder in seiner Gerätesitzung. Der normale PDH-Anmeldeweg bleibt unverändert.
+
+## [0.82.27] – 2026-11-22
+
+### Geändert
+
+- **Terminal: Störung und Ticket ohne Anmeldung.** Wie beim Rüsten ist die Anmeldung freiwillig. Ohne Anmeldung meldet der Terminal-Benutzer; ein freiwilliges **Kürzel/Name** steht in der Beschreibung (wie im Easy-Modus). Mit Anmeldung meldet weiter die Person. Berechtigung bleibt `faults.edit` bzw. `tickets.edit` des Terminal-Benutzers.
+- **Terminal: Anlagenwahl Ebene für Ebene.** Störung, Ticket und Rüsten zeigen zuerst nur die Anlage des Terminals und ihre direkten Unteranlagen; Antippen einer Anlage mit Unteranlagen öffnet deren Ebene, gewählt werden kann auf jeder Ebene.
+- **Terminal: Meldetexte und Rüsttasten erst nach der Anlagenwahl** und die der gewählten Anlage (einschließlich geerbter).
+- **Terminal: Feld Kürzel/Name größer** – volle Breite, große Schrift, fingerfreundlich (Störung, Ticket, Rüsten).
+- **Terminal: Folienschau als Bildschirmschoner.** Neue Einstellung **Folienschau als Bildschirmschoner** neben „Globales Terminal“ auf der Seite des Systembenutzers (aus, wenn nicht gesetzt). Ist sie an, spielt der Schoner des normalen Terminals die Folien des Infobildschirms statt des Platzhalters. Berührung außerhalb eines Vorgangs und jede Karte wecken das Terminal wie bisher; ein Vorgang lässt sich antippen und nur lesen. Der Zwischenspeicher für den Ausfall bleibt dem globalen Terminal vorbehalten.
 
 ## [0.82.26] – 2026-11-22
 

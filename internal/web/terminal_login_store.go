@@ -37,6 +37,7 @@ type terminalLoginSettings struct {
 	PasswordButton bool
 	CardNotify     []string // gespeichert (leer = Vorgabe); wirksam: effectiveCardNotify
 	GlobalScreen   bool     // globales Terminal (Infobildschirm); nur saveTerminalGlobalScreen schreibt es
+	SaverSlides    bool     // Folienschau als Bildschirmschoner (normales Terminal); nur saveTerminalSaverSlides schreibt es
 }
 
 // Arten der Benachrichtigung beim Kartenlesen am Windows-Terminal
@@ -99,8 +100,8 @@ func (h *Handler) terminalLoginSettings(ctx context.Context, userID string) (ter
 		return def, errors.New("keine Datenbank")
 	}
 	var s terminalLoginSettings
-	err := h.db.QueryRow(ctx, `SELECT manual_login, password_button, card_notify, global_screen FROM terminal_settings WHERE user_id = $1::uuid`, userID).
-		Scan(&s.ManualLogin, &s.PasswordButton, &s.CardNotify, &s.GlobalScreen)
+	err := h.db.QueryRow(ctx, `SELECT manual_login, password_button, card_notify, global_screen, saver_slides FROM terminal_settings WHERE user_id = $1::uuid`, userID).
+		Scan(&s.ManualLogin, &s.PasswordButton, &s.CardNotify, &s.GlobalScreen, &s.SaverSlides)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return def, nil
 	}
@@ -343,4 +344,15 @@ func loginSummary(s terminalLoginSettings) string {
 		btn = "Knopf an"
 	}
 	return loginKindLabel(s.ManualLogin) + ", " + btn
+}
+
+// saveTerminalSaverSlides schaltet nur die Folienschau als Bildschirmschoner eines System-Benutzers;
+// die übrigen Einstellungen bleiben unverändert. Bei Nicht-System-Benutzern passiert nichts.
+func (h *Handler) saveTerminalSaverSlides(ctx context.Context, userID string, on bool) error {
+	if h.db == nil {
+		return errors.New("keine Datenbank")
+	}
+	// Der Schalter gehört zum Funktionen-Modell (terminal_functions.go): bei geändertem Wert setzt er auch den Zeitpunkt.
+	_, err := h.setTerminalFunctions(ctx, userID, map[string]bool{"saver_slides": on})
+	return err
 }

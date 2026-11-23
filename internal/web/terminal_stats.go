@@ -4,12 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strconv"
 	"net/url"
 	"slices"
 	"sort"
-	"sync"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -207,7 +207,7 @@ func (h *Handler) slideStats(ctx context.Context, kind string, days int, ids []s
 			terminalStatNum{"Neu (" + period + ")", fmt.Sprint(int(cnt))},
 			terminalStatNum{"Erledigt (" + period + ")", fmt.Sprint(int(tot))})
 		if kind == slideKindStatsFaults {
-			// Stillstandszeiten werden an Störungen nicht erfasst; stattdessen die mittlere Zeit bis zur Lösung.
+			// Stillstände stehen in der Folie stats_downtime; hier die mittlere Zeit bis zur Lösung.
 			avg := 0.0
 			if tot > 0 {
 				avg = sum / tot
@@ -216,6 +216,8 @@ func (h *Handler) slideStats(ctx context.Context, kind string, days int, ids []s
 		}
 		st.Labels = labels
 		st.Series = []terminalStatSeries{{Name: "Neu", Values: created}, {Name: "Erledigt", Values: done}}
+	case slideKindStatsDown:
+		return h.downtimeStats(ctx, days, ids)
 	case slideKindStatsSetup:
 		labels, counts, avgs, err := h.statBuckets(ctx, "setup_times", "started_at", "t.ended_at IS NOT NULL AND t.archived_at IS NULL",
 			"EXTRACT(EPOCH FROM (t.ended_at - t.started_at)) / 60", ids, days)
@@ -270,15 +272,25 @@ func slideGrafanaSrc(raw string) string {
 
 // frameCSP: Content-Security-Policy der Folienschau aus allen aktiven Grafana-Folien. Es steht nur frame-src
 // darin (alles andere bleibt wie bisher): eingebettet werden darf das PDH selbst und der Ursprung der
-// Grafana-Folien, sonst nichts. Der Wert steht auch in slides.json (frame_csp); ändert er sich, lädt der
+// Grafana- und Website-Folien, sonst nichts. Der Wert steht auch in slides.json (frame_csp); ändert er sich, lädt der
 // Player die Seite neu, damit der Kopf zu den Folien passt.
 func frameCSP(slides []terminalSlide) string {
 	src := []string{"'self'"}
 	for _, s := range slides {
-		if s.Kind != slideKindGrafana || !s.Active {
+		if !s.Active {
 			continue
 		}
-		if o, err := parseGrafanaSlideURL(s.URL); err == nil && o != "" && !slices.Contains(src, o) {
+		var o string
+		var err error
+		switch s.Kind {
+		case slideKindGrafana:
+			o, err = parseGrafanaSlideURL(s.URL)
+		case slideKindWebsite:
+			o, err = validateWebsiteSlideURL(s.URL)
+		default:
+			continue
+		}
+		if err == nil && o != "" && !slices.Contains(src, o) {
 			src = append(src, o)
 		}
 	}
@@ -293,4 +305,3 @@ func (h *Handler) terminalFrameCSP(ctx context.Context) string {
 	}
 	return frameCSP(slides)
 }
-

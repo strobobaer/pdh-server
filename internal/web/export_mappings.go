@@ -3,11 +3,13 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5"
 )
 
 // Export-Zuordnungen: dasselbe Prinzip wie beim Import, nur umgekehrt.
@@ -103,6 +105,61 @@ type exportMappingCreateInput struct {
 	Note            string `json:"note"`
 }
 
+// normalize trimmt die Eingabe und prüft sie (Anlage von Hand, Sammel-Anlage,
+// Copilot-Vorschlag).
+func (in *exportMappingCreateInput) normalize() error {
+	in.ImportMappingID = strings.TrimSpace(in.ImportMappingID)
+	in.FieldName = strings.TrimSpace(in.FieldName)
+	in.Note = strings.TrimSpace(in.Note)
+	switch {
+	case in.ImportMappingID == "":
+		return errors.New("Bitte einen Wert auswählen")
+	case len([]rune(in.FieldName)) < 2 || len([]rune(in.FieldName)) > 150:
+		return errors.New("Zielfeldname muss 2 bis 150 Zeichen lang sein")
+	case len([]rune(in.Note)) > 500:
+		return errors.New("Zuordnungsnotiz darf höchstens 500 Zeichen lang sein")
+	}
+	return nil
+}
+
+// insertExportMapping legt ein Feld an; dup: der Wert ist in diesem Export
+// schon ein Feld (dann wird nichts angelegt).
+func (h *Handler) insertExportMapping(ctx context.Context, connID, uid string, in exportMappingCreateInput) (string, bool, error) {
+	var id string
+	err := h.db.QueryRow(ctx, `
+		INSERT INTO export_mappings (connection_id, import_mapping_id, field_name, note, created_by)
+		SELECT $1::uuid, $2::uuid, $3::text, $4::text, NULLIF($5::text, '')::uuid
+		WHERE NOT EXISTS (SELECT 1 FROM export_mappings WHERE connection_id = $1::uuid AND import_mapping_id = $2::uuid)
+		RETURNING id::text`,
+		connID, in.ImportMappingID, in.FieldName, in.Note, uid).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", true, nil
+	}
+	return id, false, err
+}
+
+// exportSourceAsset: Anlage des Import-Werts (für die Abteilungsprüfung).
+func (h *Handler) exportSourceAsset(ctx context.Context, importMappingID string) (string, error) {
+	if !uuidInPathRe.MatchString(importMappingID) {
+		return "", errors.New(errExportSourceGone)
+	}
+	var id string
+	err := h.db.QueryRow(ctx, `SELECT infrastructure_id::text FROM import_mappings WHERE id = $1::uuid`, importMappingID).Scan(&id)
+	return id, err
+}
+
+// updateExportMapping ändert Feldname und Notiz eines Felds der Verbindung
+// (Copilot-Vorschlag „ändern“); der Wert dahinter bleibt.
+func (h *Handler) updateExportMapping(ctx context.Context, connID, mappingID string, in exportMappingCreateInput) error {
+	tag, err := h.db.Exec(ctx, `
+		UPDATE export_mappings SET field_name = $3, note = $4, updated_at = NOW()
+		WHERE id = $1::uuid AND connection_id = $2::uuid`, mappingID, connID, in.FieldName, in.Note)
+	if err == nil && tag.RowsAffected() == 0 {
+		err = pgx.ErrNoRows
+	}
+	return err
+}
+
 func (h *Handler) ExportMappingCreateWeb(w http.ResponseWriter, r *http.Request) {
 	if !h.canConnectionWrite(r, "export") {
 		writeGlobalBoardError(w, http.StatusForbidden, "keine Berechtigung")
@@ -116,31 +173,29 @@ func (h *Handler) ExportMappingCreateWeb(w http.ResponseWriter, r *http.Request)
 		writeGlobalBoardError(w, http.StatusBadRequest, "Ungültige Eingabe")
 		return
 	}
-	in.ImportMappingID = strings.TrimSpace(in.ImportMappingID)
-	in.FieldName = strings.TrimSpace(in.FieldName)
-	in.Note = strings.TrimSpace(in.Note)
-
-	if in.ImportMappingID == "" {
-		writeGlobalBoardError(w, http.StatusBadRequest, "Bitte einen Wert auswählen")
+	if err := in.normalize(); err != nil {
+		writeGlobalBoardError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if l := len([]rune(in.FieldName)); l < 2 || l > 150 {
-		writeGlobalBoardError(w, http.StatusBadRequest, "Zielfeldname muss 2 bis 150 Zeichen lang sein")
+	// Abteilung der Anlage des Werts zählt (wie beim Übernehmen von Vorschlägen)
+	asset, err := h.exportSourceAsset(r.Context(), in.ImportMappingID)
+	if err != nil {
+		writeGlobalBoardError(w, http.StatusBadRequest, errExportSourceGone)
 		return
 	}
-	if len([]rune(in.Note)) > 500 {
-		writeGlobalBoardError(w, http.StatusBadRequest, "Zuordnungsnotiz darf höchstens 500 Zeichen lang sein")
+	if !h.assetGuardFor(r, "export.write")(asset) {
+		writeGlobalBoardError(w, http.StatusForbidden, errAssetDenied)
 		return
 	}
 
 	u := getUser(r)
-	var id string
-	err := h.db.QueryRow(r.Context(), `
-		INSERT INTO export_mappings (connection_id, import_mapping_id, field_name, note, created_by)
-		VALUES ($1, $2, $3, $4, $5) RETURNING id::text`,
-		connectionID, in.ImportMappingID, in.FieldName, in.Note, u.ID).Scan(&id)
+	id, dup, err := h.insertExportMapping(r.Context(), connectionID, u.ID, in)
 	if err != nil {
 		writeGlobalBoardError(w, http.StatusInternalServerError, "Zuordnung konnte nicht angelegt werden - existiert der gewählte Wert noch?")
+		return
+	}
+	if dup {
+		writeGlobalBoardError(w, http.StatusConflict, "Dieser Wert ist in diesem Export schon ein Feld")
 		return
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
@@ -154,6 +209,16 @@ func (h *Handler) ExportMappingDeleteWeb(w http.ResponseWriter, r *http.Request)
 	}
 	connectionID := chi.URLParam(r, "id")
 	mappingID := chi.URLParam(r, "mappingId")
+	// Abteilung der Anlage des Werts zählt auch beim Löschen
+	var asset string
+	if uuidInPathRe.MatchString(mappingID) && uuidInPathRe.MatchString(connectionID) &&
+		h.db.QueryRow(r.Context(), `
+			SELECT im.infrastructure_id::text FROM export_mappings e JOIN import_mappings im ON im.id = e.import_mapping_id
+			WHERE e.id = $1::uuid AND e.connection_id = $2::uuid`, mappingID, connectionID).Scan(&asset) == nil &&
+		!h.assetGuardFor(r, "export.write")(asset) {
+		http.Error(w, errAssetDenied, http.StatusForbidden)
+		return
+	}
 	if _, err := h.db.Exec(r.Context(),
 		`DELETE FROM export_mappings WHERE id=$1 AND connection_id=$2`, mappingID, connectionID); err != nil {
 		http.Error(w, "Zuordnung konnte nicht gelöscht werden", http.StatusInternalServerError)

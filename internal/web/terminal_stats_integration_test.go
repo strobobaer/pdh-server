@@ -139,7 +139,7 @@ func TestTerminalStatsGrafanaSlide(t *testing.T) {
 	}
 }
 
-// Rolle „Terminal“ (Migration 189): genau Ansehen und Bearbeiten (Anlegen) von Tickets, Störungen, Rüstzeiten.
+// Rolle „Terminal“ (Migration 189): genau Ansehen und Bearbeiten (Anlegen) von Tickets, Störungen, Rüstzeiten, Stillständen (Migration 199), dazu HMIs ansehen.
 func TestTerminalRolePermissions(t *testing.T) {
 	e := newATEnv(t)
 	rows, err := e.pool.Query(e.ctx, `SELECT p.key, rp.department_id IS NULL FROM roles r
@@ -157,7 +157,7 @@ func TestTerminalRolePermissions(t *testing.T) {
 		}
 		got = append(got, k)
 	}
-	want := "faults.edit faults.view setup.edit setup.view tickets.edit tickets.view"
+	want := "downtime.edit downtime.view faults.edit faults.view hmi.view setup.edit setup.view tickets.edit tickets.view"
 	if strings.Join(got, " ") != want {
 		t.Errorf("Rechte der Rolle terminal: %v", got)
 	}

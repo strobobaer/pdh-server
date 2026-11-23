@@ -11,6 +11,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
 	"pdh/internal/core/addins"
+	"pdh/internal/core/origin"
 	"pdh/internal/core/synclink"
 	"pdh/internal/modules/inventory"
 	"pdh/pkg/appsettings"
@@ -111,6 +112,7 @@ func (s *Service) newFault(ctx context.Context, in *CreateFaultInput, userID str
 		CreatedBy:        userID,
 		CostCenterID:     in.CostCenterID,
 	}
+	f.Origin, f.OriginLabel = origin.Clean(in.Origin, in.OriginLabel)
 	if in.ID != nil { // vorgegebene Kennung (insertFault nimmt sie statt pdh_uuid_v7())
 		f.ID = *in.ID
 	}

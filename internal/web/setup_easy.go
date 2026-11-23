@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/rs/zerolog/log"
 
+	recorigin "pdh/internal/core/origin"
 	"pdh/internal/modules/faults"
 	"pdh/internal/modules/ruesten"
 	"pdh/pkg/appsettings"
@@ -529,7 +530,8 @@ func (h *Handler) createSetupFault(ctx context.Context, e ruesten.Entry) (string
 			return "", err
 		}
 		defer tx.Rollback(ctx)
-		f, err := h.faults.CreateInTx(ctx, tx, &faults.CreateFaultInput{Title: title, Description: desc, Severity: "high", InfrastructureID: &infra, DueDate: &due}, pdhSystemUserID)
+		f, err := h.faults.CreateInTx(ctx, tx, &faults.CreateFaultInput{Title: title, Description: desc, Severity: "high", InfrastructureID: &infra, DueDate: &due,
+			Origin: recorigin.System, OriginLabel: "Rüstzeit"}, pdhSystemUserID)
 		if err != nil {
 			return "", err
 		}

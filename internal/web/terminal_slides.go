@@ -31,7 +31,7 @@ import (
 //
 // Alles nur mit dem Recht terminal.slides.edit. Schreib-Routen stehen zusätzlich in gateRules.
 // Das Formular ist ein normales POST wie die anderen Seiten (Schutz vor Fremdaufrufen: Sitzungs-Cookie SameSite=Lax).
-// Jede Änderung meldet den globalen Terminals „slides“ (notifyGlobalTerminals im Store).
+// Jede Änderung meldet den globalen Terminals „slides“ (notifySlideTerminals im Store).
 
 const (
 	permTerminalSlides = "terminal.slides.edit"
@@ -43,7 +43,8 @@ const (
 var slideKindLabels = map[string]string{
 	slideKindImage: "Bild", slideKindText: "Text", slideKindVorgaenge: "Vorgänge",
 	slideKindStatsFaults: "Statistik Störungen", slideKindStatsTickets: "Statistik Tickets",
-	slideKindStatsSetup: "Statistik Rüstzeiten", slideKindGrafana: "Grafana-Dashboard",
+	slideKindStatsSetup: "Statistik Rüstzeiten", slideKindStatsDown: "Statistik Stillstände", slideKindGrafana: "Grafana-Dashboard",
+	slideKindWebsite: "Website",
 }
 
 var slideNotices = map[string]string{
@@ -64,23 +65,23 @@ type TerminalSlidesPageData struct {
 	BaseData
 	NoStatsUsers []string // Infobildschirm-Benutzer ohne Recht „Statistik ansehen“ (Grafana-Folien bleiben leer)
 	HasGrafana   bool
-	Notice string
-	Slides []terminalSlideView
+	Notice       string
+	Slides       []terminalSlideView
 }
 
 type terminalSlideFormData struct {
 	BaseData
-	IsNew       bool
-	Slide       terminalSlide
-	HasImage    bool
-	Err         string
-	InfraCSV    string // gewählte Anlagen (IDs, kommagetrennt)
-	InfraLabels string // JSON: ID → Pfad, für die Anzeige im Formular
-	MaxBody     int
-	MaxTitle    int
-	MaxMB       int
+	IsNew        bool
+	Slide        terminalSlide
+	HasImage     bool
+	Err          string
+	InfraCSV     string // gewählte Anlagen (IDs, kommagetrennt)
+	InfraLabels  string // JSON: ID → Pfad, für die Anzeige im Formular
+	MaxBody      int
+	MaxTitle     int
+	MaxMB        int
 	NoStatsUsers []string
-	Dashboards  []grafanaDashboard // vorhandene Grafana-Dashboards (Statistik-Kacheln) als Vorschläge
+	Dashboards   []grafanaDashboard // vorhandene Grafana-Dashboards (Statistik-Kacheln) als Vorschläge
 }
 
 func (h *Handler) slidesAllowed(w http.ResponseWriter, r *http.Request) bool {
@@ -128,7 +129,12 @@ func (h *Handler) TerminalSlidesPage(w http.ResponseWriter, r *http.Request) {
 			v.Summary = slideExcerpt(s.Body, 80)
 		case slideKindGrafana:
 			v.Summary = s.URL
-		case slideKindStatsFaults, slideKindStatsTickets, slideKindStatsSetup:
+		case slideKindWebsite:
+			v.Summary = s.URL
+			if s.ReloadMinutes > 0 {
+				v.Summary += fmt.Sprintf(" · Neuladen alle %d Min.", s.ReloadMinutes)
+			}
+		case slideKindStatsFaults, slideKindStatsTickets, slideKindStatsSetup, slideKindStatsDown:
 			v.Summary = fmt.Sprintf("%s · %s", statsPeriodLabel(s.StatsDays), slideInfraSummary(len(s.InfraIDs)))
 		case slideKindVorgaenge:
 			switch n := len(s.InfraIDs); {
@@ -329,7 +335,19 @@ func slideFromRequest(w http.ResponseWriter, r *http.Request) (terminalSlide, st
 		s.Body = strings.TrimSpace(strings.ReplaceAll(r.FormValue("body"), "\r\n", "\n"))
 	case slideKindGrafana:
 		s.URL = strings.TrimSpace(r.FormValue("url"))
-	case slideKindStatsFaults, slideKindStatsTickets, slideKindStatsSetup:
+	case slideKindWebsite:
+		s.URL = strings.TrimSpace(r.FormValue("web_url")) // eigener Feldname: das Grafana-Feld „url“ steht im selben Formular
+		if v := strings.TrimSpace(r.FormValue("reload_minutes")); v != "" {
+			n, err := strconv.Atoi(v)
+			if err != nil || n < 0 || n > slideMaxReloadMinutes {
+				if msg == "" {
+					msg = fmt.Sprintf("Das Neuladen alle n Minuten ist eine ganze Zahl von 0 (nie) bis %d", slideMaxReloadMinutes)
+				}
+				n = 0
+			}
+			s.ReloadMinutes = n
+		}
+	case slideKindStatsFaults, slideKindStatsTickets, slideKindStatsSetup, slideKindStatsDown:
 		s.StatsDays, _ = strconv.Atoi(r.FormValue("stats_days"))
 		s.InfraIDs, msg = slideInfraFromForm(r, msg)
 	case slideKindVorgaenge:
@@ -391,6 +409,8 @@ func (h *Handler) TerminalSlideSaveWeb(w http.ResponseWriter, r *http.Request) {
 			msg = err.Error()
 		} else if chk.Kind == slideKindImage && len(chk.Image) == 0 && !hasImage {
 			msg = errSlideNeedsImage.Error()
+		} else if chk.Kind == slideKindWebsite && websiteIsOwnHost(chk.URL, r.Host) {
+			msg = "Die eigene PDH-Adresse lässt sich nicht als Website einbetten (für Grafana gibt es die Grafana-Folie)"
 		}
 	}
 	if msg != "" {
@@ -479,6 +499,20 @@ func (h *Handler) TerminalSlideImageWeb(w http.ResponseWriter, r *http.Request) 
 	w.Header().Set("Cache-Control", "private, max-age=300")
 	w.Header().Set("Content-Length", strconv.Itoa(len(data)))
 	_, _ = w.Write(data)
+}
+
+// websiteIsOwnHost: zeigt die Adresse auf denselben Rechner wie die Anfrage (PDH selbst)? Ein eingebettetes PDH wäre
+// im Rahmen nicht von der Folienschau getrennt (gleicher Ursprung); der Player lehnt es ebenfalls ab.
+func websiteIsOwnHost(raw, reqHost string) bool {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return false
+	}
+	h := strings.ToLower(reqHost)
+	if i := strings.LastIndex(h, ":"); i >= 0 && !strings.HasSuffix(h, "]") {
+		h = h[:i]
+	}
+	return h != "" && strings.EqualFold(u.Hostname(), h)
 }
 
 // slideUpdatedKey: Zusatz für die Bildadresse, damit die Vorschau nach einer Änderung neu geladen wird.

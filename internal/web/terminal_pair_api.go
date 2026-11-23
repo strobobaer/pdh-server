@@ -231,46 +231,22 @@ func (h *Handler) deviceByID(ctx context.Context, id string) (userID string, act
 	return userID, active, nil
 }
 
-// TerminalDeviceAPI: GET /api/terminal/v1/device mit Bearer-Geheimnis.
+// TerminalDeviceAPI: GET /api/terminal/v1/device mit Bearer-Geheimnis. Die freiwilligen Felder functions
+// und theme (terminal_functions.go) sind hinzugefügt; ältere Terminals ignorieren sie.
 func (h *Handler) TerminalDeviceAPI(w http.ResponseWriter, r *http.Request) {
-	key := limiterKey(clientIP(r))
-	if terminalFailLimit.blocked(key, time.Now()) {
-		terminalJSONErr(w, http.StatusTooManyRequests, msgPairBlocked)
-		return
-	}
-	auth := r.Header.Get("Authorization")
-	secret := ""
-	if len(auth) > 7 && strings.EqualFold(auth[:7], "bearer ") {
-		secret = strings.TrimSpace(auth[7:])
-	}
-	deny := func(count bool) {
-		if count {
-			terminalFailLimit.fail(key, time.Now())
-			authLog(r, false, "terminal-kopplung", "", "", "", "Geheimnis unbekannt oder Gerät gesperrt")
-		}
-		terminalJSONErr(w, http.StatusUnauthorized, msgDeviceInvalid)
-	}
-	if secret == "" {
-		deny(false)
+	dev, ok := h.terminalBearer(w, r)
+	if !ok {
 		return
 	}
 	ctx := r.Context()
-	var devID, name, first, last, username string
-	err := h.db.QueryRow(ctx, `SELECT d.id::text, d.name, u.first_name, u.last_name, u.username
-		FROM terminal_devices d JOIN users u ON u.id = d.user_id
-		WHERE d.secret_sha256 = $1 AND `+deviceActiveSQL,
-		hashDeviceSecret(secret)).Scan(&devID, &name, &first, &last, &username)
-	if errors.Is(err, pgx.ErrNoRows) {
-		deny(true)
-		return
-	}
+	_, _ = h.db.Exec(ctx, `UPDATE terminal_devices SET last_seen_at = NOW(),
+		client_version = CASE WHEN $2 <> '' THEN $2 ELSE client_version END WHERE id = $1::uuid`, dev.ID, terminalClientVersion(r))
+	out := map[string]any{"device_id": dev.ID, "user": displayUserName(dev.First, dev.Last, dev.Username), "name": dev.Name}
+	fn, theme, err := h.terminalFnPayload(ctx, dev.UserID)
 	if err != nil {
-		componentLog("terminal").Error().Err(err).Msg("gerätezustand fehlgeschlagen")
-		terminalJSONErr(w, http.StatusInternalServerError, "Gerätezustand derzeit nicht abrufbar")
-		return
+		componentLog("terminal").Error().Err(err).Msg("funktionen für die statusabfrage")
+	} else {
+		out["functions"], out["theme"] = fn, theme
 	}
-	_, _ = h.db.Exec(ctx, `UPDATE terminal_devices SET last_seen_at = NOW() WHERE id = $1::uuid`, devID)
-	terminalJSON(w, http.StatusOK, map[string]string{
-		"device_id": devID, "user": displayUserName(first, last, username), "name": name,
-	})
+	terminalJSON(w, http.StatusOK, out)
 }

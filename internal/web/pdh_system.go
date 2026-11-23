@@ -176,6 +176,13 @@ func (h *Handler) apiActor(r *http.Request) (string, bool) {
 	if dev, _ := claims["device"].(string); dev != "" {
 		return "", true
 	}
+	if ts, _ := claims["tsess"].(string); ts != "" { // PDH-Sitzung am Terminal: widerrufen oder fremdes Gerät → kein Benutzer
+		sub, _ := claims["sub"].(string)
+		tdev, _ := claims["tdev"].(string)
+		if !h.pdhHandoffCheck(r, ts, sub, tdev) {
+			return "", true
+		}
+	}
 	if scope, _ := claims["scope"].(string); scope != "" {
 		ref, _ := claims["ref"].(string)
 		if !middleware.ScopedTokenAllows(scope, ref, r.Method, r.URL.Path) {
@@ -203,6 +210,9 @@ func (h *Handler) webActor(r *http.Request) (string, bool) {
 	}
 	s := h.parseSessionToken(c.Value)
 	if s.sub == "" {
+		return "", true
+	}
+	if s.tsess != "" && !h.pdhHandoffCheck(r, s.tsess, s.sub, s.tdev) {
 		return "", true
 	}
 	if s.device != "" && !terminalDevices.active(r.Context(), s.device, s.sub, h.deviceByID) {

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="de">
+<html lang="de"{{if .Scheme}} data-theme="{{.Scheme}}"{{end}}>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
@@ -9,7 +9,8 @@
 <style>
 /* Vorgang-Ansicht des Infobildschirms (terminal_global.go): nur lesen, einziger Knopf „Zurück“. */
 *{box-sizing:border-box;margin:0;padding:0}
-:root{--bg:#0f1117;--bg2:#1a1d27;--bg3:#222536;--accent:#4f6ef7;--text:#f1f3fb;--muted:#9aa3b8;--border:#2f3348;--font:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+:root{--bg:#202020;--bg2:#2b2b2b;--bg3:#323232;--accent:#4f8ef7;--text:#f3f3f3;--muted:#a3a3a3;--border:#3b3b3b;--red:#ef4444;--font:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+html[data-theme="light"]{--bg:#f3f3f3;--bg2:#ffffff;--bg3:#f9f9f9;--accent:#005fb8;--text:#1b1b1b;--muted:#5f5f5f;--border:#e2e2e2;--red:#dc2626}
 html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--font);font-size:clamp(18px,1.6vw,28px);line-height:1.35;overflow:hidden;
   -webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;-webkit-touch-callout:none;touch-action:manipulation;cursor:default}
 body{display:flex;flex-direction:column;padding:max(2vh,12px) max(2vw,16px);gap:1.6vh}

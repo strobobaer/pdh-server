@@ -1,0 +1,36 @@
+{{/* Reiter „Zuordnungen“/„Felder“ einer Verbindung: vorgeschlagene Zuordnungen zum
+     Abhaken (internal/web/mapping_suggest_web.go). Übernommen wird über
+     POST …/mappings/bulk (cdSuggApply in connection_detail.gohtml). Farben über die
+     Variablen des Farbschemas. */}}
+{{define "mapping-suggestions"}}
+<div id="cd-suggest" class="card cd-sugg" data-dir="{{.Direction}}" data-conn="{{.ConnectionID}}" style="margin-top:14px">
+  <div class="card-title"><span><i class="ti ti-wand" aria-hidden="true"></i> {{if eq .Direction "import"}}Vorgeschlagene Zuordnungen{{else}}Vorgeschlagene Felder{{end}}</span>
+    <button type="button" class="btn btn-small" hx-get="/{{.Direction}}/connections/{{.ConnectionID}}/suggestions" hx-target="#cd-suggest" hx-swap="outerHTML"><i class="ti ti-refresh" aria-hidden="true"></i> Neu suchen</button></div>
+  {{if .Err}}<div class="rec-sub" role="alert" style="color:var(--red)">{{.Err}}</div>{{end}}
+  {{range .Hints}}<div class="cd-sugg-hint" role="status"><i class="ti ti-info-circle" aria-hidden="true"></i> {{.}}</div>{{end}}
+  {{if .Rows}}
+  <div class="rec-sub" style="font-size:12px;margin-bottom:8px">{{if eq .Direction "import"}}Anlage, Bezeichnung und Einheit sind aus den Namen geraten – bitte prüfen. Angehakt ist, wo eine passende Anlage gefunden wurde.{{else}}Wähle die Werte, die in diesen Export kommen sollen. Der Feldname ist ein Vorschlag aus Anlage und Bezeichnung.{{end}}</div>
+  <div class="cd-sugg-tools">
+    <label class="cd-sugg-all"><input type="checkbox" data-sugg-all onchange="cdSuggAll(this)"> Alle sichtbaren</label>
+    <input class="form-input" type="search" placeholder="Filtern …" oninput="cdSuggFilter(this.value)" aria-label="Vorschläge filtern">
+    <span class="rec-sub" data-sugg-count></span>
+  </div>
+  <div style="overflow-x:auto">
+  <table class="cd-tbl cd-sugg-tbl"><thead><tr><th><span class="sr-only">Auswahl</span></th><th>Quelle</th><th>Anlage</th><th>{{if eq .Direction "import"}}Bezeichnung{{else}}Feldname{{end}}</th><th>Notiz</th></tr></thead>
+  <tbody>
+  {{range .Rows}}<tr data-sugg-row data-ref="{{.Ref}}" data-mapping="{{.ImportMappingID}}" data-asset="{{.AssetID}}">
+    <td><input type="checkbox" data-sugg-pick aria-label="Übernehmen: {{.Label}}"{{if .Checked}} checked{{end}} onchange="cdSuggCount()"></td>
+    <td class="cd-sugg-src"><b>{{.Label}}</b>{{with .From}} <span class="rec-sub">aus {{.}}</span>{{end}}{{if .Sample}}<div class="cd-sugg-sample">{{.Sample}}</div>{{end}}</td>
+    <td class="cd-sugg-asset" data-label="Anlage">{{if eq $.Direction "import"}}<span data-sugg-path>{{if .AssetPath}}{{.AssetPath}}{{else}}<span style="color:var(--amber)">keine passende Anlage</span>{{end}}</span>
+      <button type="button" class="btn btn-small" onclick="cdSuggPick(this)">Ändern</button>{{else}}{{.AssetPath}}{{end}}</td>
+    <td data-label="{{if eq $.Direction "import"}}Bezeichnung{{else}}Feldname{{end}}"><input class="form-input" data-sugg-name maxlength="150" value="{{if eq $.Direction "import"}}{{.Name}}{{else}}{{.FieldName}}{{end}}" aria-label="{{if eq $.Direction "import"}}Bezeichnung{{else}}Feldname{{end}}"></td>
+    <td data-label="Notiz"><input class="form-input" data-sugg-note maxlength="500" value="{{.Note}}" aria-label="Notiz"></td>
+  </tr>{{end}}
+  </tbody></table></div>
+  <div class="cd-sugg-foot">
+    <button type="button" class="btn btn-primary" onclick="cdSuggApply(this)"><i class="ti ti-check" aria-hidden="true"></i> Ausgewählte übernehmen</button>
+    <p class="cd-sugg-err" role="alert" data-sugg-err></p>
+  </div>
+  {{else if not .Err}}<div class="rec-sub">{{if eq .Direction "import"}}Keine offenen Quellwerte – alles ist zugeordnet oder es kam noch nichts an.{{else}}Alle importierten Werte sind schon Felder dieses Exports.{{end}}</div>{{end}}
+</div>
+{{end}}

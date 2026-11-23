@@ -162,6 +162,7 @@
   {{if .CanEditInfra}}<div class="ih-section" style="margin-top:14px">Neuer Meldetext</div>
   {{template "easy-text-form" (dict "T" nil "Action" "/infrastructure/easy-texts" "Back" "/infrastructure#easy-texts" "Label" "Anlegen")}}{{end}}
 </details>
+{{if .DowntimeView}}{{template "downtime-catalog" (dict "C" .DowntimeCatalog "Edit" .DowntimeEdit "Admin" .DowntimeAdmin "Back" "/infrastructure#downtime-catalog")}}{{end}}
 {{if .SetupView}}{{template "setup-catalog" (dict "C" .SetupCatalog "Edit" .SetupEdit "Admin" .SetupAdmin "Back" "/infrastructure#setup-catalog")}}{{end}}
 <style>
 .et-move{display:flex;flex-direction:column;gap:0;flex-shrink:0}
@@ -173,6 +174,7 @@
 <script>
 // Ruecksprung auf den Katalog (#easy-texts): Karte aufgeklappt zeigen
 if(location.hash === '#easy-texts'){ const d = document.getElementById('easy-texts'); if(d){ d.open = true; d.scrollIntoView({block: 'start'}); } }
+if(location.hash === '#downtime-catalog'){ const d = document.getElementById('downtime-catalog'); if(d){ d.open = true; d.scrollIntoView({block: 'start'}); } }
 if(location.hash === '#setup-catalog'){ const d = document.getElementById('setup-catalog'); if(d){ d.open = true; d.scrollIntoView({block: 'start'}); } }
 </script>
 {{end}}

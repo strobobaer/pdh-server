@@ -3,6 +3,9 @@
   'use strict';
   var body = document.body;
   var mode = body.dataset.mode;
+  // Folienschau als Bildschirmschoner (normales Terminal): derselbe Player wie beim globalen Terminal, aber
+  // Berührung außerhalb eines Vorgangs und jede Karte wecken das Terminal; kein Zwischenspeicher.
+  var saver = mode === 'schoner' && body.dataset.saverSlides === '1' && !!document.getElementById('g-stage');
 
   // Anmeldung ohne Kartenleser – reine Funktionen (keine DOM-/Netzzugriffe), unabhängig lesbar.
   // readerState: 'ok' | 'none' | 'error'; settings: {manual_login, password_button, idle}.
@@ -33,13 +36,34 @@
     if (!(s >= 5 && s <= 600)) s = 15;
     return Math.round(s * 1000);
   }
+  // Adresse einer Website-Folie für den Rahmen: nur http(s), nie der eigene Ursprung (das PDH im Rahmen wäre nicht
+  // abgeschottet). Sonst ''.
+  function websiteFrameUrl(url, ownOrigin) {
+    if (typeof url !== 'string' || url.length > 2048 || !/^https?:\/\//i.test(url)) return '';
+    var u;
+    try { u = new URL(url); } catch (e) { return ''; }
+    if (u.username || u.password || (u.protocol !== 'http:' && u.protocol !== 'https:')) return '';
+    if (ownOrigin && u.origin === ownOrigin) return '';
+    return u.href;
+  }
+  // Erste zeigbare Folie ab Index i (reihum). Website-Folien entfallen ohne Verbindung (offline); -1 = keine.
+  function showableIndex(slides, i, offline) {
+    var n = Array.isArray(slides) ? slides.length : 0;
+    if (n < 1) return -1;
+    var start = typeof i === 'number' && i >= 0 && i < n ? i : 0;
+    for (var k = 0; k < n; k++) {
+      var j = (start + k) % n;
+      if (!(offline && slides[j] && slides[j].kind === 'website')) return j;
+    }
+    return -1;
+  }
   // Wischgeste nach links: mindestens 60 px waagerecht, weniger als 40 px senkrecht.
   function isSwipeLeft(start, end) {
     if (!start || !end) return false;
     var dx = start.x - end.x, dy = Math.abs(start.y - end.y);
     return dx >= 60 && dy < 40;
   }
-  // Folienarten, die ältere Terminals kennen. Neuere Arten (Statistik, Grafana) bleiben aus dem
+  // Folienarten, die ältere Terminals kennen. Neuere Arten (Statistik, Grafana, Website) bleiben aus dem
   // Zwischenspeicher: ein Terminal mit älterem Stand lehnt unbekannte Arten ab und würde alles verwerfen.
   var CACHEABLE_KINDS = ['image', 'text', 'vorgaenge'];
 
@@ -73,6 +97,54 @@
 
   // Kartendienst des lokalen Terminals (Ursprung der Ereignisse und der Rückmeldung).
   var CARD_ORIGIN = 'http://127.0.0.1:8080';
+
+  // Funktionen und Farben (Ereignis settings: functions, theme): ändert sich ein Schalter oder das Farbschema,
+  // lädt die Seite neu, damit Kacheln und Farben stimmen. Das erste Ereignis ist der Ausgangsstand.
+  var fnSig = null;
+  function fnChanged(d) {
+    if (!d || !d.functions || typeof d.functions !== 'object') return false;
+    var s = Object.keys(d.functions).sort().map(function (k) {
+      return k + '=' + (d.functions[k] && d.functions[k].enabled === true);
+    }).join(',') + '|' + (d.theme && d.theme.scheme);
+    if (fnSig === null) { fnSig = s; return false; }
+    return s !== fnSig;
+  }
+
+  // Bildschirmtastatur auf Anforderung (nur auf dem Gerät, Gerätesitzung): focusin auf ein Texteingabefeld zeigt
+  // sie, focusout (150 ms verzögert, wenn nicht gleich das nächste Feld den Fokus bekommt), Absenden und pagehide
+  // verbergen sie. Felder mit inputmode="none" haben ihr eigenes Ziffernfeld. Fehler werden ignoriert
+  // (Windows und ältere Geräte antworten 503 oder gar nicht).
+  var KB_TYPES = { text: 1, password: 1, number: 1, search: 1, email: 1, tel: 1, url: 1 };
+  function wantsKeyboard(el) {
+    if (!el || el.disabled || el.readOnly) return false;
+    var tag = String(el.tagName || '').toLowerCase();
+    if (el.getAttribute && el.getAttribute('inputmode') === 'none') return false;
+    if (tag === 'textarea') return true;
+    if (tag !== 'input') return false;
+    var t = String((el.getAttribute && el.getAttribute('type')) || 'text').toLowerCase();
+    return KB_TYPES[t] === 1;
+  }
+  if (body.classList.contains('has-gear')) {
+    var kbHide = null;
+    var kbCall = function (action) {
+      try { fetch('http://127.0.0.1:8080/api/keyboard/' + action, { method: 'POST', keepalive: action === 'hide' }).catch(function () { /* ignorieren */ }); } catch (e) { /* kein fetch */ }
+    };
+    document.addEventListener('focusin', function (ev) {
+      if (!wantsKeyboard(ev.target)) return;
+      if (kbHide) { clearTimeout(kbHide); kbHide = null; }
+      kbCall('show');
+    });
+    document.addEventListener('focusout', function (ev) {
+      if (!wantsKeyboard(ev.target)) return;
+      if (kbHide) clearTimeout(kbHide);
+      kbHide = setTimeout(function () {
+        kbHide = null;
+        if (!wantsKeyboard(document.activeElement)) kbCall('hide');
+      }, 150);
+    });
+    document.addEventListener('submit', function () { kbCall('hide'); }, true);
+    window.addEventListener('pagehide', function () { kbCall('hide'); });
+  }
 
   // Ausfall des PDH-Servers – reine Funktionen. Im globalen Modus zeigt der Kartendienst des Terminals
   // (CARD_ORIGIN + '/start') die zwischengespeicherte Folienschau, solange PDH nicht erreichbar ist.
@@ -228,13 +300,13 @@
 
   // Gerätesitzung ohne Anmeldeteil (Schoner, Seite „keine Anlage“): auf Einstellungen hören. Wird das Terminal
   // zum globalen, lädt die Seite neu und wird zur Folienschau. (Info und Neu tun das im Anmeldeteil.)
-  if (body.dataset.settingsEvents === '1' && mode !== 'global' && (body.dataset.cardEvents !== '1' || mode === 'schoner')) {
+  if (body.dataset.settingsEvents === '1' && mode !== 'global' && !saver && (body.dataset.cardEvents !== '1' || mode === 'schoner')) {
     try {
       var sev = new EventSource('/terminal/events');
       sev.addEventListener('settings', function (ev) {
         var d = null;
         try { d = JSON.parse(ev.data); } catch (e) { /* ungültig */ }
-        if (d && d.global_screen === true) location.reload();
+        if (d && (d.global_screen === true || (mode === 'schoner' && d.saver_slides === true) || fnChanged(d))) location.reload();
       });
       sev.onerror = function () { /* stumm: der EventSource verbindet selbst neu */ };
     } catch (e) { /* kein EventSource */ }
@@ -259,7 +331,7 @@
   }
 
   // Rüsten (Neu, Rüsten): wer rüstet und was sichtbar ist, hängt an der Kartenanmeldung – bei Wechsel neu laden.
-  if (mode === 'neu' || mode === 'rusten' || mode === 'melden') {
+  if (mode === 'neu' || mode === 'rusten' || mode === 'stillstand' || mode === 'melden' || mode === 'hmi' || mode === 'wartung') {
     document.addEventListener('pdh-card-login', function (e) { if (!!e.detail !== (body.dataset.cardIn === '1')) location.reload(); });
   }
 
@@ -534,6 +606,7 @@
             try { d = JSON.parse(ev.data); } catch (e) { /* ungültig */ }
             if (!d) return;
             if (d.global_screen === true) { location.reload(); return; } // jetzt ein globales Terminal: Seite wird zur Folienschau
+            if (fnChanged(d)) { location.reload(); return; } // Funktion oder Farbschema geändert: Kacheln und Farben neu
             if (typeof d.manual_login === 'string') settings.manual_login = d.manual_login;
             if (typeof d.password_button === 'boolean') settings.password_button = d.password_button;
             // neue Rückkehrzeit gilt ab dem nächsten Zurücksetzen des Timers
@@ -591,9 +664,10 @@
   if (mode !== 'global' && body.dataset.cardEvents === '1') cacheCall('DELETE', null);
 
   // Infobildschirm: Folienschau.
-  if (mode === 'global') {
+  if (mode === 'global' || saver) {
     var stage = document.getElementById('g-stage');
     var pdhName = (stage && stage.dataset.name) || 'PDH';
+    var reloadTimer = null; // Website-Folie: regelmäßiges Neuladen des Rahmens
     var slides = [], version = '', cur = -1, slideTimer = null, cachedVersion = null, caching = false, again = false;
     document.addEventListener('contextmenu', function (ev) { ev.preventDefault(); });
     document.addEventListener('selectstart', function (ev) { ev.preventDefault(); });
@@ -687,7 +761,8 @@
     };
     // Eine Folie anzeigen (nur textContent, nie HTML aus den Daten).
     var draw = function (s) {
-      stage.textContent = '';
+      if (reloadTimer) { clearInterval(reloadTimer); reloadTimer = null; }
+      stage.textContent = ''; // entfernt auch einen Website-Rahmen: er lädt nur, solange seine Folie läuft
       if (!s) {
         var e = el('div', 'g-empty', 'Keine Folien eingerichtet');
         e.appendChild(el('small', null, pdhName));
@@ -706,7 +781,21 @@
           stage.appendChild(fr);
         }
         if (s.title) stage.appendChild(el('div', 'g-cap', s.title));
-      } else if (s.kind === 'stats_faults' || s.kind === 'stats_tickets' || s.kind === 'stats_setup') {
+      } else if (s.kind === 'website') {
+        var wu = websiteFrameUrl(s.url, location.origin);
+        if (wu) {
+          var wf = el('iframe', 'g-frame g-web');
+          wf.title = s.title || 'Website';
+          wf.setAttribute('sandbox', 'allow-scripts allow-same-origin');
+          wf.setAttribute('referrerpolicy', 'no-referrer');
+          wf.setAttribute('allow', '');
+          wf.src = wu;
+          stage.appendChild(wf);
+          stage.appendChild(el('div', 'g-shield')); // fängt Berührungen: die Website ist nicht bedienbar, Tippen blättert weiter
+          if (typeof s.reload === 'number' && s.reload > 0) reloadTimer = setInterval(function () { wf.src = wu; }, s.reload * 60000);
+        }
+        if (s.title) stage.appendChild(el('div', 'g-cap', s.title));
+      } else if (s.kind === 'stats_faults' || s.kind === 'stats_tickets' || s.kind === 'stats_setup' || s.kind === 'stats_downtime') {
         stage.appendChild(drawStats(s));
       } else if (s.kind === 'vorgaenge') {
         var g = el('div', 'g-vorg');
@@ -724,8 +813,23 @@
         stage.appendChild(box);
       }
     };
+    // Keine Verbindung zu PDH (oder zum Netz): Website-Folien werden übersprungen statt als Fehler gezeigt.
+    var isOffline = function () { return navigator.onLine === false || loadFails > 0 || streamFails > 0; };
+    var skipWebsiteIfOffline = function () {
+      if (cur >= 0 && slides[cur] && slides[cur].kind === 'website' && isOffline()) show(nextSlideIndex(slides, cur));
+    };
     var show = function (i) {
       if (slideTimer) { clearTimeout(slideTimer); slideTimer = null; }
+      if (slides.length) {
+        var ok = showableIndex(slides, i, isOffline());
+        if (ok < 0) { // nur Website-Folien und keine Verbindung: ruhiger Bildschirm, später erneut versuchen
+          cur = -1;
+          draw({ kind: 'text', title: pdhName });
+          slideTimer = setTimeout(function () { show(0); }, 10000);
+          return;
+        }
+        i = ok;
+      }
       cur = slides.length ? i : -1;
       draw(slides.length ? slides[cur] : null);
       if (slides.length) {
@@ -744,7 +848,7 @@
       });
     };
     var saveCache = function (json) {
-      if (!cacheOk || json.version === cachedVersion) return;
+      if (saver || !cacheOk || json.version === cachedVersion) return; // nur globale Terminals legen den Zwischenspeicher an
       if (caching) { again = true; return; }
       caching = true;
       var imgs = {}, total = 0;
@@ -774,7 +878,7 @@
     // Netzfehler zählen (slides.json und Ereignisstrom getrennt); ab OUTAGE_LIMIT in Folge zur Startseite des
     // Terminals: sie zeigt offline die zwischengespeicherte Folienschau und kehrt nach PDH zurück, sobald es antwortet.
     var leaveOnOutage = function (st) {
-      if (st.leave && !left) { left = true; location.replace(CARD_ORIGIN + '/start'); }
+      if (!saver && st.leave && !left) { left = true; location.replace(CARD_ORIGIN + '/start'); }
     };
     var load = function (keep) {
       fetch('/terminal/slides.json', { cache: 'no-store', credentials: 'same-origin' })
@@ -804,6 +908,7 @@
         })
         .catch(function () { // offline: alter Stand bleibt, nach mehreren Fehlern in Folge Folienschau des Terminals
           var st = outageStep(loadFails, true); loadFails = st.fails; leaveOnOutage(st);
+          skipWebsiteIfOffline();
         });
     };
 
@@ -812,6 +917,13 @@
     stage.addEventListener('pointerdown', function (ev) { down = { x: ev.clientX, y: ev.clientY }; });
     stage.addEventListener('pointercancel', function () { down = null; });
     stage.addEventListener('pointerup', function (ev) {
+      if (saver) { // Schoner: nur ein Vorgang öffnet seine Ansicht, jede andere Berührung weckt das Terminal
+        var sli = ev.target && ev.target.closest ? ev.target.closest('[data-kind][data-id]') : null;
+        var sk = sli ? sli.getAttribute('data-kind') : '', sid = sli ? sli.getAttribute('data-id') : '';
+        if ((sk === 'fault' || sk === 'ticket') && /^[0-9a-fA-F-]{36}$/.test(sid)) location.href = '/terminal/vorgang/' + sk + '/' + sid;
+        else location.replace('/terminal/info');
+        return;
+      }
       var st = down; down = null;
       if (!st || !slides.length) return;
       var end = { x: ev.clientX, y: ev.clientY };
@@ -833,13 +945,15 @@
       gev.addEventListener('settings', function (ev) {
         var d = null;
         try { d = JSON.parse(ev.data); } catch (e) { /* ungültig */ }
-        if (d && d.global_screen === false) location.reload();
+        if (d && ((saver ? (d.global_screen === true || d.saver_slides === false) : d.global_screen === false) || fnChanged(d))) location.reload();
       });
       gev.onopen = function () { streamFails = outageStep(streamFails, false).fails; };
       gev.onerror = function () { // der EventSource verbindet selbst neu; viele Fehler in Folge = PDH nicht erreichbar
         var st = outageStep(streamFails, true); streamFails = st.fails; leaveOnOutage(st);
+        skipWebsiteIfOffline();
       };
     } catch (e) { /* kein EventSource */ }
+    window.addEventListener('offline', skipWebsiteIfOffline);
     setInterval(function () { load(true); }, 60000); // Vorgänge und Version auch ohne Ereignis aktuell halten
     load(false);
   }

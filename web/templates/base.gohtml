@@ -352,6 +352,33 @@ html.cop-raise .pdh-frame{z-index:700} /* Vorschlag aus der Seitenleiste öffnet
 @media (prefers-reduced-motion:reduce){.cw-cop{animation:none}}
 .copilot-input input{flex:1;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 9px;color:var(--text);font-size:11px;outline:0;font-family:var(--font)}
 .cop-btn{background:var(--accent);border:0;border-radius:6px;padding:5px 10px;color:var(--on-accent);font-size:11px;cursor:pointer;font-family:var(--font);white-space:nowrap}
+.cop-btn:disabled{opacity:.5;cursor:default}
+/* Änderungsliste des Copilot auf Verbindungsseiten (copilot_mapping.go) */
+.copilot-msgs:has(.cop-diff){max-height:62vh}
+.cop-diff{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin:6px 0;white-space:normal}
+.cop-diff-head{font-weight:600;color:var(--text);overflow-wrap:anywhere}
+.cop-diff-count{color:var(--muted);font-size:11px;margin-bottom:4px}
+.cop-diff-row{display:flex;gap:6px;align-items:flex-start;padding:5px 0;border-top:1px solid var(--border)}
+.cop-diff-row input{margin:2px 0 0;flex-shrink:0;width:14px;height:14px}
+.cop-diff-row .nobox{width:14px;flex-shrink:0}
+.cop-diff-sign{width:14px;flex-shrink:0;text-align:center;font-weight:700;font-family:ui-monospace,Consolas,monospace;color:var(--muted)}
+.cop-diff-sign.add{color:var(--green)}
+.cop-diff-sign.chg{color:var(--accent)}
+.cop-diff-body{min-width:0;flex:1;overflow-wrap:anywhere}
+.cop-diff-body .m{color:var(--muted);font-size:11px}
+.cop-diff-body .p{color:var(--red);font-size:11px}
+.cop-diff-body a{color:var(--accent)}
+.cop-diff-row.off .cop-diff-body>div:first-child{color:var(--muted)}
+.cop-diff-foot{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;padding-top:8px;border-top:1px solid var(--border)}
+.cop-diff-res{font-size:11px;color:var(--muted);flex-basis:100%}
+.cop-diff-res .p{color:var(--red)}
+.cop-diff-res a{color:var(--accent);cursor:pointer}
+.cop-links{font-size:11px;color:var(--muted);margin-bottom:6px;white-space:normal;overflow-wrap:anywhere}
+.cop-links a{color:var(--accent);display:block}
+.cop-privacy{color:var(--muted);font-size:10.5px;margin-top:6px;line-height:1.4}
+.cop-web{display:flex;gap:6px;align-items:flex-start;margin-top:8px;font-size:11.5px;color:var(--text);cursor:pointer;line-height:1.35}
+.cop-web input{margin:2px 0 0;flex-shrink:0}
+.cop-web small{display:block;color:var(--muted);font-size:10.5px}
 /* ── Activity ── */
 .act-item{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);font-size:12px}
 .act-item:last-child{border:0;padding-bottom:0}
@@ -1253,6 +1280,8 @@ table,.li,.act-item,.rec-row{zoom:var(--row-scale,1)}
         onkeydown="if(event.key==='Enter')sendCop()">
       <button class="cop-btn" onclick="sendCop()">{{t "Senden"}}</button>
     </div>
+    {{if .CopilotConn}}<label class="cop-web"><input type="checkbox" id="cop-web"> <span>{{t "Im Internet nach einer Vorlage suchen"}}<small>{{t "Dabei geht nur deine Frage ins Internet – keine Daten aus dem PDH."}}</small></span></label>
+    <div class="cop-privacy"><i class="ti ti-shield-lock"></i> {{t "Auf dieser Seite gehen Quellwerte und Anlagennamen an Anthropic – Kennwörter nie."}}</div>{{end}}
   </div>
 
   <!-- Aktivität -->
@@ -2287,7 +2316,7 @@ async function sendCop() {
   input.value = '';
   const wait = add('cop-a', 'Copilot denkt nach …', 'color:var(--muted)');
   try{
-    const res = await fetch('/copilot/ask', {method: 'POST', credentials: 'same-origin', body: new URLSearchParams({q, fault: '{{.FaultID}}'})});
+    const res = await fetch('/copilot/ask', {method: 'POST', credentials: 'same-origin', body: new URLSearchParams({q, fault: '{{.FaultID}}', conn: '{{.CopilotConn}}', web: (document.getElementById('cop-web') || {}).checked ? '1' : ''})});
     const raw = await res.text();
     let j = {};
     try{ j = JSON.parse(raw); }catch(e){}
@@ -2308,8 +2337,103 @@ async function sendCop() {
         else a.appendChild(document.createTextNode(part));
       });
       if(j.sources && j.sources.length) add('cop-a', 'Aus dem PDH: ' + j.sources.filter((s, i, all) => all.indexOf(s) === i).join(', '), 'color:var(--muted);font-size:11px');
+      if(j.links && j.links.length) copRenderLinks(msgs, j.links);
+      if(j.proposal) copRenderProposal(msgs, j.proposal);
     }
   }catch(e){ wait.remove(); add('cop-a', 'Copilot nicht erreichbar: ' + e.message, 'color:var(--red)'); }
+}
+
+// Quellen aus dem Internet (Websuche des Copilot auf Verbindungsseiten)
+function copRenderLinks(msgs, links) {
+  const box = document.createElement('div');
+  box.className = 'cop-links';
+  box.appendChild(document.createTextNode('Quellen aus dem Internet:'));
+  links.forEach(function(l){
+    if(!l || !/^https?:\/\//i.test(l.url || '')) return;
+    const a = document.createElement('a');
+    a.href = l.url; a.target = '_blank'; a.rel = 'noopener noreferrer';
+    a.textContent = l.title || l.url;
+    box.appendChild(a);
+  });
+  msgs.appendChild(box);
+}
+
+// Änderungsliste des Copilot (copilot_mapping.go): Zeilen mit Haken, angelegt
+// wird erst mit „Übernehmen“ (POST /copilot/proposals/{id}/apply).
+function copRenderProposal(msgs, p) {
+  const el = (tag, cls, text) => { const e = document.createElement(tag); if(cls) e.className = cls; if(text) e.textContent = text; return e; };
+  const card = el('div', 'cop-diff');
+  card.appendChild(el('div', 'cop-diff-head', p.summary || 'Vorschlag'));
+  const rows = p.rows || [];
+  const usable = r => r.valid && !r.applied && (r.op === 'add' || r.op === 'change');
+  const nAdd = rows.filter(r => usable(r) && r.op === 'add').length;
+  const nChg = rows.filter(r => usable(r) && r.op === 'change').length;
+  card.appendChild(el('div', 'cop-diff-count', '+' + nAdd + ' neu · ~' + nChg + ' geändert'));
+  const boxes = [];
+  rows.forEach(function(r, i){
+    const row = el('div', 'cop-diff-row');
+    let sign = '–', cls = '', state = '';
+    if(r.op === 'keep'){ sign = '='; state = 'unverändert'; }
+    else if(r.op === 'delete'){ sign = '✕'; state = 'löschen – bitte von Hand'; }
+    else if(!r.valid && !r.applied){ state = 'wird nicht angefasst'; }
+    else if(r.op === 'add'){ sign = '+'; cls = 'add'; }
+    else { sign = '~'; cls = 'chg'; }
+    if(usable(r)){
+      const cb = document.createElement('input');
+      cb.type = 'checkbox'; cb.checked = true; cb.dataset.i = i;
+      cb.setAttribute('aria-label', 'Zeile ' + (i + 1) + ' übernehmen');
+      row.appendChild(cb); boxes.push(cb);
+    } else { row.classList.add('off'); row.appendChild(el('span', 'nobox')); }
+    row.appendChild(el('span', 'cop-diff-sign' + (cls ? ' ' + cls : ''), sign));
+    const body = el('div', 'cop-diff-body');
+    const what = p.direction === 'export' ? (r.field || '') : (r.name || '');
+    body.appendChild(el('div', '', (r.label || '') + (r.asset ? ' → ' + r.asset : '') + (what ? ' · ' + what : '')));
+    if(r.note) body.appendChild(el('div', 'm', r.note));
+    if(r.reason) body.appendChild(el('div', 'm', r.reason));
+    if(state) body.appendChild(el('div', 'm', state));
+    if(r.applied) body.appendChild(el('div', 'm', 'schon übernommen'));
+    if(r.problem && r.op !== 'delete') body.appendChild(el('div', 'p', r.problem));
+    if(r.url && /^https?:\/\//i.test(r.url)){
+      const a = el('a', '', 'Quelle'); a.href = r.url; a.target = '_blank'; a.rel = 'noopener noreferrer';
+      body.appendChild(a);
+    }
+    row.appendChild(body);
+    card.appendChild(row);
+  });
+  const foot = el('div', 'cop-diff-foot');
+  const btn = el('button', 'cop-btn', 'Übernehmen');
+  btn.type = 'button';
+  btn.disabled = !boxes.length;
+  const res = el('div', 'cop-diff-res', boxes.length ? 'Noch ist nichts angelegt.' : 'Nichts zu übernehmen.');
+  btn.addEventListener('click', async function(){
+    const picked = boxes.filter(b => b.checked && !b.disabled).map(b => b.dataset.i);
+    if(!picked.length){ res.textContent = 'Bitte mindestens eine Zeile auswählen.'; return; }
+    btn.disabled = true;
+    res.textContent = 'Wird übernommen …';
+    try{
+      const r = await fetch('/copilot/proposals/' + encodeURIComponent(p.id) + '/apply', {method: 'POST', credentials: 'same-origin', headers: csrfHeaders(), body: new URLSearchParams({rows: picked.join(',')})});
+      let j = {};
+      try{ j = await r.json(); }catch(e){}
+      res.replaceChildren();
+      if(!r.ok || j.error){ res.appendChild(el('div', 'p', j.error || ('HTTP ' + r.status))); btn.disabled = false; return; }
+      const parts = [(j.created || 0) + ' angelegt', (j.changed || 0) + ' geändert'];
+      if(j.skipped) parts.push(j.skipped + ' schon vorhanden');
+      res.appendChild(el('div', '', parts.join(', ') + '.'));
+      const failed = {};
+      (j.errors || []).forEach(function(e){ failed[e.index] = true; res.appendChild(el('div', 'p', (e.index >= 0 ? 'Zeile ' + (e.index + 1) + ': ' : '') + e.error)); });
+      boxes.forEach(function(b){ if(picked.indexOf(b.dataset.i) >= 0 && !failed[b.dataset.i]){ b.checked = false; b.disabled = true; } });
+      const again = el('a', '', 'Seite neu laden');
+      again.href = '#';
+      again.addEventListener('click', function(ev){ ev.preventDefault(); location.reload(); });
+      res.appendChild(again);
+      btn.disabled = !boxes.some(b => !b.disabled);
+    }catch(e){ res.replaceChildren(el('div', 'p', 'Nicht erreichbar: ' + e.message)); btn.disabled = false; }
+  });
+  foot.appendChild(btn);
+  foot.appendChild(res);
+  card.appendChild(foot);
+  msgs.appendChild(card);
+  msgs.scrollTop = Math.max(0, card.offsetTop - msgs.offsetTop - 4); // Anfang der Liste zeigen, nicht das Ende
 }
 
 // ── Copilot-Vorschläge zu aktiven Störungen und Tickets (copilot_suggest.go) ──

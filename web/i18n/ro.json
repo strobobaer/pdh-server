@@ -221,6 +221,9 @@
  "Infrastruktur": "Infrastructură",
  "Inspektion": "Inspecție",
  "Instandhaltung": "Mentenanță și reparații",
+ "Im Internet nach einer Vorlage suchen": "Caută un șablon pe internet",
+ "Dabei geht nur deine Frage ins Internet – keine Daten aus dem PDH.": "Pe internet ajunge doar întrebarea ta – nicio dată din PDH.",
+ "Auf dieser Seite gehen Quellwerte und Anlagennamen an Anthropic – Kennwörter nie.": "Pe această pagină, valorile sursă și numele instalațiilor sunt trimise către Anthropic – parolele niciodată.",
  "Frag nach Störungen, Anlagen, Wartungen oder Ersatzteilen – der Copilot sucht in euren PDH-Daten …": "Întreabă despre defecte, instalații, mentenanță sau piese de schimb – copilotul caută în datele voastre PDH …",
  "Kalibrierung": "Calibrare",
  "Kapitel": "Capitol",
@@ -959,6 +962,7 @@
  "Rüstzeit erfassen": "Înregistrează timp de pregătire",
  "Rüstzeit gelöscht.": "Timp de pregătire șters.",
  "Rüstzeit nicht gefunden.": "Timpul de pregătire nu a fost găsit.",
+ "Stillstände": "Opriri",
  "Rüstzeiten": "Timpi de pregătire",
  "Rüsten": "Pregătire",
  "Höchstdauer überschritten": "Durata maximă depășită",
@@ -1121,5 +1125,14 @@
   "Rüsttaste": "Buton de pregătire",
   "Rüstzeit nachgetragen.": "Timp de pregătire adăugat.",
   "Rüstzeit nachtragen": "Adaugă un timp de pregătire",
-  "oder Dauer in Minuten": "sau durata în minute"
+  "oder Dauer in Minuten": "sau durata în minute",
+  "Hintergrund": "Fundal",
+  "Hellblau": "Albastru deschis",
+  "Mint": "Mentă",
+  "Hellgrün": "Verde deschis",
+  "Hellgelb": "Galben deschis",
+  "Pfirsich": "Piersică",
+  "Rosé": "Roz",
+  "Flieder": "Liliac",
+  "Hellgrau": "Gri deschis"
 }

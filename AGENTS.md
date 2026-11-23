@@ -255,7 +255,7 @@ und 3 drückt bis auf Weiteres der Anwender.
 - Die Liste **im selben Schritt pflegen**: Erledigtes streichen, Neues
   eintragen, Stand und Datum anpassen.
 
-### Offene Punkte (Stand 21.11.2026)
+### Offene Punkte (Stand 23.11.2026)
 
 1. **Netz-Abgleich im Browser mit zwei Quellen:** 0.80.25 ist auf `main`
    und dem Testverbund; die Vorschlagsliste mit zwei eingeschalteten
@@ -647,7 +647,25 @@ und 3 drückt bis auf Weiteres der Anwender.
     gesehen (am Testverbund kein ESPPDH-Gerät, ESPPDH aus): Karte „Firmware
     übers Netz“ und Sammelaktion – nur automatisch getestet. Offen: Abnahme
     an echter Platine (einmal USB, dann übers Netz, Port 3232/8266 in der
-    Firewall); 10.10.0.202 einspielen (Anwender, mit Sicherung). Hinweis:
+    Firewall); 10.10.0.202 einspielen (Anwender, mit Sicherung).
+    **0.82.29 Freigabe in UniFi** (Anwender 22.11.2026: „Auf Knopfdruck“,
+    „Ist kein Eintrag möglich Ticket an it“; Entwurf
+    `docs/superpowers/specs/2026-11-22-esppdh-unifi-freigabe-design.md`,
+    Plan `docs/superpowers/plans/2026-11-22-esppdh-unifi-freigabe.md`,
+    Branch `feature/esppdh-unifi-freigabe`): Knopf beim Netz der Seite
+    „Netzwerk“ legt die Regel „PDH – ESPPDH-Update <Netz>“ über die offizielle
+    UniFi-Schnittstelle an (`firewall/zones`, `firewall/policies`, ab Network
+    10; Felder aus developer.ui.com 10.6.106), sonst Ticket an die IT
+    (Empfänger der IT-Netz-Alarme, Schlagwort `esppdh-freigabe:<netz>`).
+    Recht `system.network_admin`, keine Migration. **Auf `main`** (22.11.2026,
+    Merge `a9c0e89`) und dem Testverbund (beide Server und Zeuge 0.82.29,
+    aktiv jetzt `pdh-server` 10.10.0.17); Seite „Netzwerk“ mit Testnetz im
+    Browser geprüft (Fiori/Fluent, hell/dunkel, 320–1366 px, kein Überlauf,
+    keine Konsolenfehler; Knopf nicht gedrückt – sonst Mail an die IT;
+    Testdaten entfernt, Prüfkonto gesperrt). Offen: Abnahme an einem
+    echten UniFi-Controller (Feldnamen, besonders `protocol.name: tcp`, sind
+    nur nach der Dokumentation gebaut – am Testverbund sind die Quellen aus);
+    Omada nur Ticket. Hinweis:
     der oberste Infrastruktur-Knoten heißt am Testverbund noch „Werk
     Augsburg“ (Beispielknoten aus Migration 005). Geparkt aus der
     Schlussprüfung: erneutes Aufspielen desselben Baus meldet sofort „ok“;
@@ -706,6 +724,74 @@ und 3 drückt bis auf Weiteres der Anwender.
     für `/app/setup` ohne Integrations-Tag; Pfad-Präfix im `pdh://`-Link;
     `CloseTx` ohne Prüfung der betroffenen Zeilen; Testlabor: eigene
     Datenbank `pdh_test_app` (in `pdh_test` liegen fremde Migrationen).
+23. **0.82.32 Herkunft und Kachelfarbe** (Wunsch des Anwenders vom 22.11.2026,
+    Entwurf `docs/superpowers/specs/2026-11-22-herkunft-kachelfarbe-design.md`,
+    Plan `docs/superpowers/plans/2026-11-22-herkunft-kachelfarbe.md`, bestätigt
+    „Sonst war alles ok“; Branch `feature/herkunft-kachelfarbe`, lokal):
+    Spalten `origin`/`origin_label` an Tickets und Störungen (Migration 202,
+    vorher 201 – die Nummer ging an die Terminal-Funktionen), Paket
+    `internal/core/origin`, jeder Anlege-Weg setzt sie; Anzeige über
+    `record_origin.go` (Kachelzeile „davon …“, Schilder, Detailseite;
+    Profilname nur mit `sync.view`); Kachelfarbe als `bg` in der
+    Widget-Einstellung (acht helle Töne, dunkel gedämpft). **Auf `main`**
+    (22.11.2026, Merge `6b6524a`) und dem Testverbund (beide Server und Zeuge
+    0.82.32, aktiv jetzt `pdh` 10.10.0.14; Nachtrag: 7 Abgleich-Tickets,
+    keine Änderungsmeldungen). Im Browser geprüft: farbige Kacheln,
+    Herkunftszeile „davon 6 aus Störmeldungen ERP (Abnahme) · 1 aus der App ·
+    1 vom Terminal“, Schilder in der Ticket-Liste, Herkunft auf der
+    Ticket-Seite; Fiori/Fluent, hell/dunkel, 320–1366 px ohne Überlauf und
+    Konsolenfehler; Test-Tickets still entfernt, Startseite des Prüfkontos
+    zurückgesetzt, Prüfkonto gesperrt. Beim Terminal steht dessen Anlage,
+    nicht der Gerätename. Geparkt: REST-Anlage ohne Herkunft, Texte nur
+    deutsch, Herkunft in der JSON-Schnittstelle nur beim Anlegen,
+    Zählabfrage bei vielen Abgleich-Vorgängen, Fehltreffer im Nachtrag bei
+    kopiertem Terminal-Text. 10.10.0.202 hat der Anwender selbst auf 0.82.32
+    gebracht (22.11.2026: „202 ist uptodate“).
+24. **Copilot beim Anlegen und Zuordnen** (Wunsch 22.11.2026: „C“,
+    „Anthropic“, dazu MySQL, InfluxDB, SQLite, Vorlagen aus dem Internet,
+    berechnete Werte mit Formelgenerator und Gültigkeit von/bis; Entwurf
+    `docs/superpowers/specs/2026-11-22-copilot-zuordnen-design.md`, bestätigt
+    „Sonst war alles ok“). Pakete: 1 Zuordnen (Vorschläge am Formular ohne
+    Sprachmodell + Assistent mit Änderungsliste), 2 berechnete Werte, 3
+    InfluxDB, 4 Anlegen von Verbindungen und Abgleich. InfluxDB: alle
+    Versionen (1.x InfluxQL, 2.x Flux, 3.x SQL; Anwender 22.11.2026:
+    „influxdb alle möglich“). **Paket 1 = 0.82.35** (geplant als 0.82.33; main hatte inzwischen 0.82.34 „Folie Website“ mit Migration 203) auf Branch
+    `feature/copilot-zuordnen` gebaut (23.11.2026, lokal; Plan
+    `docs/superpowers/plans/2026-11-22-copilot-zuordnen-paket1.md`, 9 Aufgaben,
+    Migration 204 `copilot_proposals` (vorher 203), kein neues Recht): Knopf „Zuordnungen
+    vorschlagen“ im Reiter Zuordnungen/Felder (Rechenkern
+    `internal/core/mapsuggest`), Sammel-Anlage `…/mappings/bulk`,
+    Copilot-Werkzeuge auf der Verbindungsseite (`copilot_mapping.go`),
+    Änderungsliste mit „Übernehmen“ (`POST /copilot/proposals/{id}/apply`),
+    Websuche nach Vorlagen. Neu für alle Wege (von Hand, Vorschlagsliste,
+    Copilot, TIA-Baustein, „Vorlage anwenden“, Löschen): Zuordnen nur an
+    Anlagen der eigenen Abteilung (`assetGuardFor`); doppelte Zuordnung von
+    Hand wird gemeldet. Mit behoben: „Vorlage anwenden“ legte keine
+    Zuordnungen an (Abfrage ohne Typangaben). Schlussprüfung mit Fix-Welle
+    erledigt (23.11.2026); geparkte kleine Befunde im Bericht
+    `.superpowers/sdd/2026-11-22-copilot-zuordnen-paket1/final-review.md`
+    (u. a. Einheit „kW“ nur geraten, MQTT-Mitschnitt 3 s).
+    **0.82.35 auf `main`** (23.11.2026, Merge `3034875a`) und dem Testverbund
+    (beide Server und Zeuge 0.82.35, Migrationen 203 und 204 da, aktiv jetzt
+    `pdh-server` 10.10.0.17, Spiegelung läuft). Am Testverbund im Browser
+    geprüft (23.11.2026): Knopf „Zuordnungen vorschlagen“ an „MQTT-Broker
+    Test“ liefert den Hinweis „In 3 Sekunden kam keine Nachricht“ (dort
+    sendet nichts), 20 Ansichten ohne Überlauf und Konsolenfehler; Prüfkonto
+    gesperrt, keine Testdaten. **Der Copilot läuft am Testverbund mit Ollama
+    (nicht erreichbar)** – Änderungsliste, „Übernehmen“ und Websuche sind dort
+    nicht echt gelaufen, nur automatisch getestet und an einer lokal
+    gerenderten Seite angesehen (20 Ansichten). **0.82.36** (Branch
+    `fix/vorschlagsliste-handy`, lokal): Vorschlagsliste bis 900 px Breite
+    untereinander statt breiter Tabelle; Anthropic-Hinweis nur mit Claude
+    (`copilotConnRef`); **Internetsuche technisch getrennt**: nur mit Haken
+    „Im Internet nach einer Vorlage suchen“, als eigener Aufruf ohne
+    PDH-Werkzeuge (`faults.AskWithWebTemplate`; Websuche zusammen mit eigenen
+    Werkzeugen lehnt `AskWithToolsOpts` ab). Offen: Freigabe 0.82.36 (Push/Merge/Verbund-Update);
+    Abnahme des Copilot mit echtem Anthropic-Schlüssel (Anwender, z. B. auf
+    10.10.0.202: Auftrag „Ordne … zu“, Änderungsliste, „Übernehmen“,
+    Vorlage aus dem Internet); Vorschlagsliste mit echten MQTT-Themen und
+    OPC-UA-Knoten; 10.10.0.202 einspielen (Anwender, mit Sicherung).
+    Danach Paket 2 (berechnete Werte).
 
 Docker Desktop startet nach einem Neustart des Windows-Rechners nicht von
 selbst – ohne ihn fehlen der Zeuge und die Labor-Datenbank für die Tests.

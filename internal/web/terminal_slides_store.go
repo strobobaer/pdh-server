@@ -40,12 +40,16 @@ const (
 	slideKindStatsFaults  = "stats_faults"
 	slideKindStatsTickets = "stats_tickets"
 	slideKindStatsSetup   = "stats_setup"
+	slideKindStatsDown    = "stats_downtime" // Stillstände je Grund (Migration 200)
 	slideKindGrafana      = "grafana"
+	slideKindWebsite      = "website" // Webseite im abgeschotteten Rahmen (Migration 203)
 	slideMaxURL           = 1000
+	slideMaxWebsiteURL    = 2048
+	slideMaxReloadMinutes = 1440
 )
 
 func slideIsStats(kind string) bool {
-	return kind == slideKindStatsFaults || kind == slideKindStatsTickets || kind == slideKindStatsSetup
+	return kind == slideKindStatsFaults || kind == slideKindStatsTickets || kind == slideKindStatsSetup || kind == slideKindStatsDown
 }
 
 // terminalSlide: eine Folie. Image wird nur von saveTerminalSlide gelesen
@@ -57,7 +61,8 @@ type terminalSlide struct {
 	ShowFaults, ShowTickets, Active  bool
 	Position, DurationSeconds        int
 	StatsDays                        int    // 7 oder 30 (Statistikfolien)
-	URL                              string // Grafana-Adresse (Art grafana)
+	URL                              string // Grafana-Adresse (Art grafana) bzw. Webadresse (Art website)
+	ReloadMinutes                    int    // Art website: alle n Minuten neu laden, 0 = nie
 	UpdatedAt                        time.Time
 }
 
@@ -115,6 +120,40 @@ func parseGrafanaSlideURL(raw string) (origin string, err error) {
 	return origin, nil
 }
 
+// validateWebsiteSlideURL prüft die Adresse einer Website-Folie: nur http:// oder https://, höchstens 2048 Zeichen,
+// keine Zugangsdaten, keine Steuer- oder Leerzeichen. Gibt den Ursprung für die Content-Security-Policy zurück.
+func validateWebsiteSlideURL(raw string) (origin string, err error) {
+	if raw == "" {
+		return "", errors.New("Die Website-Folie braucht eine Adresse")
+	}
+	if len(raw) > slideMaxWebsiteURL {
+		return "", fmt.Errorf("Die Adresse darf höchstens %d Zeichen haben", slideMaxWebsiteURL)
+	}
+	if strings.ContainsFunc(raw, func(c rune) bool {
+		return c <= ' ' || c == 0x7f || c == 0x5c || c == 0x22 || c == '<' || c == '>'
+	}) {
+		return "", errors.New("Ungültige Adresse")
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u.Opaque != "" {
+		return "", errors.New("Ungültige Adresse")
+	}
+	if u.User != nil {
+		return "", errors.New("Die Adresse darf keine Zugangsdaten enthalten")
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return "", errors.New("Die Adresse muss mit http:// oder https:// beginnen")
+	}
+	if !grafanaHostRe.MatchString(u.Host) || u.Hostname() == "" {
+		return "", errors.New("Ungültiger Rechnername in der Adresse")
+	}
+	origin = u.Scheme + "://" + u.Hostname()
+	if p := u.Port(); p != "" {
+		origin += ":" + p
+	}
+	return origin, nil
+}
+
 func validateGrafanaSlideURL(raw string) error {
 	_, err := parseGrafanaSlideURL(raw)
 	return err
@@ -125,7 +164,7 @@ func validateGrafanaSlideURL(raw string) error {
 // s.ImageType eingetragen. Dauer 0 bedeutet die Vorgabe (15 s).
 func validateTerminalSlide(s *terminalSlide) error {
 	switch s.Kind {
-	case slideKindImage, slideKindText, slideKindVorgaenge, slideKindStatsFaults, slideKindStatsTickets, slideKindStatsSetup, slideKindGrafana:
+	case slideKindImage, slideKindText, slideKindVorgaenge, slideKindStatsFaults, slideKindStatsTickets, slideKindStatsSetup, slideKindStatsDown, slideKindGrafana, slideKindWebsite:
 	default:
 		return fmt.Errorf("unbekannte Folienart %q", s.Kind)
 	}
@@ -166,8 +205,17 @@ func validateTerminalSlide(s *terminalSlide) error {
 		if err := validateGrafanaSlideURL(s.URL); err != nil {
 			return err
 		}
+	} else if s.Kind == slideKindWebsite {
+		if _, err := validateWebsiteSlideURL(s.URL); err != nil {
+			return err
+		}
 	} else {
 		s.URL = ""
+	}
+	if s.Kind != slideKindWebsite {
+		s.ReloadMinutes = 0
+	} else if s.ReloadMinutes < 0 || s.ReloadMinutes > slideMaxReloadMinutes {
+		return fmt.Errorf("Das Neuladen alle n Minuten liegt zwischen 0 (nie) und %d", slideMaxReloadMinutes)
 	}
 	for _, id := range s.InfraIDs {
 		if !slideUUIDRe.MatchString(id) {
@@ -178,12 +226,12 @@ func validateTerminalSlide(s *terminalSlide) error {
 }
 
 const slideColumns = `id::text, position, kind, title, body, image_type, COALESCE(infra_ids, '{}')::text[],
-	show_faults, show_tickets, duration_seconds, active, stats_days, url, updated_at`
+	show_faults, show_tickets, duration_seconds, active, stats_days, url, reload_minutes, updated_at`
 
 func scanSlide(row pgx.Row) (terminalSlide, error) {
 	var s terminalSlide
 	err := row.Scan(&s.ID, &s.Position, &s.Kind, &s.Title, &s.Body, &s.ImageType, &s.InfraIDs,
-		&s.ShowFaults, &s.ShowTickets, &s.DurationSeconds, &s.Active, &s.StatsDays, &s.URL, &s.UpdatedAt)
+		&s.ShowFaults, &s.ShowTickets, &s.DurationSeconds, &s.Active, &s.StatsDays, &s.URL, &s.ReloadMinutes, &s.UpdatedAt)
 	return s, err
 }
 
@@ -249,10 +297,10 @@ func (h *Handler) saveTerminalSlide(ctx context.Context, s *terminalSlide) error
 		}
 		err := h.db.QueryRow(ctx, `
 			INSERT INTO terminal_slides (position, kind, title, body, image, image_type, infra_ids,
-				show_faults, show_tickets, duration_seconds, active, stats_days, url)
-			VALUES ((SELECT COALESCE(MAX(position), 0) + 1 FROM terminal_slides), $1, $2, $3, $4, $5, $6::uuid[], $7, $8, $9, $10, $11, $12)
+				show_faults, show_tickets, duration_seconds, active, stats_days, url, reload_minutes)
+			VALUES ((SELECT COALESCE(MAX(position), 0) + 1 FROM terminal_slides), $1, $2, $3, $4, $5, $6::uuid[], $7, $8, $9, $10, $11, $12, $13)
 			RETURNING id::text, position, updated_at`,
-			s.Kind, s.Title, s.Body, img, imgType, infra, s.ShowFaults, s.ShowTickets, s.DurationSeconds, s.Active, s.StatsDays, s.URL).
+			s.Kind, s.Title, s.Body, img, imgType, infra, s.ShowFaults, s.ShowTickets, s.DurationSeconds, s.Active, s.StatsDays, s.URL, s.ReloadMinutes).
 			Scan(&s.ID, &s.Position, &s.UpdatedAt)
 		if err != nil {
 			return err
@@ -276,9 +324,9 @@ func (h *Handler) saveTerminalSlide(ctx context.Context, s *terminalSlide) error
 				image = CASE WHEN $2 <> 'image' THEN NULL WHEN $5::bytea IS NOT NULL THEN $5::bytea ELSE image END,
 				image_type = CASE WHEN $2 <> 'image' THEN '' WHEN $5::bytea IS NOT NULL THEN $6 ELSE image_type END,
 				infra_ids = $7::uuid[], show_faults = $8, show_tickets = $9, duration_seconds = $10, active = $11,
-				stats_days = $12, url = $13, updated_at = NOW()
+				stats_days = $12, url = $13, reload_minutes = $14, updated_at = NOW()
 			WHERE id = $1::uuid`,
-			s.ID, s.Kind, s.Title, s.Body, img, imgType, infra, s.ShowFaults, s.ShowTickets, s.DurationSeconds, s.Active, s.StatsDays, s.URL)
+			s.ID, s.Kind, s.Title, s.Body, img, imgType, infra, s.ShowFaults, s.ShowTickets, s.DurationSeconds, s.Active, s.StatsDays, s.URL, s.ReloadMinutes)
 		if err != nil {
 			return err
 		}
@@ -286,7 +334,7 @@ func (h *Handler) saveTerminalSlide(ctx context.Context, s *terminalSlide) error
 			return pgx.ErrNoRows
 		}
 	}
-	h.notifyGlobalTerminals()
+	h.notifySlideTerminals()
 	return nil
 }
 
@@ -301,7 +349,7 @@ func (h *Handler) deleteTerminalSlide(ctx context.Context, id string) error {
 	if _, err := h.db.Exec(ctx, `DELETE FROM terminal_slides WHERE id = $1::uuid`, id); err != nil {
 		return err
 	}
-	h.notifyGlobalTerminals()
+	h.notifySlideTerminals()
 	return nil
 }
 
@@ -349,7 +397,7 @@ func (h *Handler) moveTerminalSlide(ctx context.Context, id string, delta int) e
 	if err := tx.Commit(ctx); err != nil {
 		return err
 	}
-	h.notifyGlobalTerminals()
+	h.notifySlideTerminals()
 	return nil
 }
 
@@ -384,14 +432,14 @@ func (h *Handler) slidesVersion(ctx context.Context) (string, error) {
 	return hex.EncodeToString(sum.Sum(nil))[:16], nil
 }
 
-// notifyGlobalTerminals meldet allen Terminal-Benutzern mit global_screen, dass sich die Folien geändert haben.
-func (h *Handler) notifyGlobalTerminals() {
+// notifySlideTerminals meldet allen Terminal-Benutzern mit global_screen oder saver_slides, dass sich die Folien geändert haben.
+func (h *Handler) notifySlideTerminals() {
 	if h.db == nil {
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	rows, err := h.db.Query(ctx, `SELECT ts.user_id::text FROM terminal_settings ts WHERE ts.global_screen`)
+	rows, err := h.db.Query(ctx, `SELECT ts.user_id::text FROM terminal_settings ts WHERE ts.global_screen OR ts.saver_slides`)
 	if err != nil {
 		componentLog("terminal").Error().Err(err).Msg("globale terminals lesen")
 		return

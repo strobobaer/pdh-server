@@ -221,6 +221,9 @@
  "Infrastruktur": "Инфраструктура",
  "Inspektion": "Инспекција",
  "Instandhaltung": "Одржување и поправки",
+ "Im Internet nach einer Vorlage suchen": "Побарај шаблон на интернет",
+ "Dabei geht nur deine Frage ins Internet – keine Daten aus dem PDH.": "На интернет оди само вашето прашање – никакви податоци од PDH.",
+ "Auf dieser Seite gehen Quellwerte und Anlagennamen an Anthropic – Kennwörter nie.": "На оваа страница изворните вредности и имињата на постројките се испраќаат до Anthropic – лозинките никогаш.",
  "Frag nach Störungen, Anlagen, Wartungen oder Ersatzteilen – der Copilot sucht in euren PDH-Daten …": "Прашајте за дефекти, постројки, одржување или резервни делови – копилотот пребарува во вашите PDH-податоци …",
  "Kalibrierung": "Калибрација",
  "Kapitel": "Поглавје",
@@ -959,6 +962,7 @@
  "Rüstzeit erfassen": "Евидентирај време за подготовка",
  "Rüstzeit gelöscht.": "Времето за подготовка е избришано.",
  "Rüstzeit nicht gefunden.": "Времето за подготовка не е пронајдено.",
+ "Stillstände": "Застои",
  "Rüstzeiten": "Времиња за подготовка",
  "Rüsten": "Подготовка",
  "Höchstdauer überschritten": "Надминато е максималното траење",
@@ -1121,5 +1125,14 @@
   "Rüsttaste": "Копче за подготовка",
   "Rüstzeit nachgetragen.": "Времето за подготовка е додадено.",
   "Rüstzeit nachtragen": "Додади време за подготовка",
-  "oder Dauer in Minuten": "или траење во минути"
+  "oder Dauer in Minuten": "или траење во минути",
+  "Hintergrund": "Позадина",
+  "Hellblau": "Светлосина",
+  "Mint": "Нане",
+  "Hellgrün": "Светлозелена",
+  "Hellgelb": "Светложолта",
+  "Pfirsich": "Праска",
+  "Rosé": "Розова",
+  "Flieder": "Јоргован",
+  "Hellgrau": "Светлосива"
 }

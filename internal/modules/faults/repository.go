@@ -35,12 +35,12 @@ func insertFault(ctx context.Context, q rowQuerier, f *Fault) error {
 	symptoms, _ := json.Marshal(f.Symptoms)
 	query := `
 		INSERT INTO faults (id, title, description, symptoms, severity, status,
-			infrastructure_id, assigned_to, responsible_to, created_by, detected_at, due_date, cost_center_id)
-		VALUES (COALESCE(NULLIF($11, '')::uuid, pdh_uuid_v7()), $1, $2, $3, $4, 'detected', $5, $6, $7, $8, NOW(), $9, $10)
+			infrastructure_id, assigned_to, responsible_to, created_by, detected_at, due_date, cost_center_id, origin, origin_label)
+		VALUES (COALESCE(NULLIF($13, '')::uuid, pdh_uuid_v7()), $1, $2, $3, $4, 'detected', $5, $6, $7, $8, NOW(), $9, $10, $11, $12)
 		RETURNING id, status, detected_at, created_at, updated_at`
 	return q.QueryRow(ctx, query,
 		f.Title, f.Description, symptoms, f.Severity,
-		f.InfrastructureID, f.AssignedTo, f.ResponsibleTo, f.CreatedBy, f.DueDate, f.CostCenterID, f.ID,
+		f.InfrastructureID, f.AssignedTo, f.ResponsibleTo, f.CreatedBy, f.DueDate, f.CostCenterID, f.Origin, f.OriginLabel, f.ID,
 	).Scan(&f.ID, &f.Status, &f.DetectedAt, &f.CreatedAt, &f.UpdatedAt)
 }
 
@@ -54,8 +54,10 @@ func (r *Repository) CreateTicketFromFault(ctx context.Context, f *Fault, priori
 
 	var id string
 	err := r.db.QueryRow(ctx, `
-		INSERT INTO tickets (id, title, description, priority, status, assigned_to, responsible_to, created_by, infrastructure_id, cost_center_id, linked_fault_id, assigned_group_id)
-		VALUES (pdh_uuid_v7(), $1, $2, $3, 'open', $4, $5, $6, $7, $8, $9, (SELECT assigned_group_id FROM faults WHERE id = $9::uuid))
+		INSERT INTO tickets (id, title, description, priority, status, assigned_to, responsible_to, created_by, infrastructure_id, cost_center_id, linked_fault_id, assigned_group_id,
+			origin, origin_label)
+		VALUES (pdh_uuid_v7(), $1, $2, $3, 'open', $4, $5, $6, $7, $8, $9, (SELECT assigned_group_id FROM faults WHERE id = $9::uuid),
+			COALESCE((SELECT origin FROM faults WHERE id = $9::uuid), ''), COALESCE((SELECT origin_label FROM faults WHERE id = $9::uuid), ''))
 		RETURNING id`,
 		"Störung: "+f.Title, description, priority, f.AssignedTo, f.ResponsibleTo, f.CreatedBy, f.InfrastructureID, f.CostCenterID, f.ID,
 	).Scan(&id)

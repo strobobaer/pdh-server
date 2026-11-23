@@ -506,6 +506,7 @@ func main() {
 	// Öffentliche Kopplungs-API der PDH-Terminals (Einmalcode / Geräte-Geheimnis).
 	r.Post("/api/terminal/v1/pair", webHandler.TerminalPairAPI)
 	r.Get("/api/terminal/v1/device", webHandler.TerminalDeviceAPI)
+	r.Put("/api/terminal/v1/functions", webHandler.TerminalFunctionsAPI)
 
 	// Öffentliche Einstiegs-Schnittstellen der PDH-App (ohne Anmeldung).
 	r.Get("/api/app/v1/server", webHandler.AppServerAPI)

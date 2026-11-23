@@ -53,6 +53,19 @@ func (h *Handler) terminalIsGlobal(ctx context.Context, uid string) (bool, error
 	return on, err
 }
 
+// terminalSaverSlides: spielt das (normale) Terminal die Folien als Bildschirmschoner?
+func (h *Handler) terminalSaverSlides(ctx context.Context, uid string) (bool, error) {
+	if h.db == nil || uid == "" {
+		return false, nil
+	}
+	var on bool
+	err := h.db.QueryRow(ctx, `SELECT saver_slides FROM terminal_settings WHERE user_id = $1::uuid`, uid).Scan(&on)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	return on, err
+}
+
 // cardTerminalLocked wie cardTerminal, aber ein globales Terminal darf weder Karten
 // melden noch sich anmelden: 403.
 func (h *Handler) cardTerminalLocked(w http.ResponseWriter, r *http.Request) (string, bool) {
@@ -73,7 +86,7 @@ func (h *Handler) cardTerminalLocked(w http.ResponseWriter, r *http.Request) (st
 	return uid, true
 }
 
-// globalTerminal: Gerätesitzung eines globalen Terminals; sonst 403 (schon geschrieben).
+// globalTerminal: Gerätesitzung eines globalen Terminals (oder mit Folienschau als Schoner); sonst 403 (schon geschrieben).
 func (h *Handler) globalTerminal(w http.ResponseWriter, r *http.Request) (string, bool) {
 	uid, ok := h.cardTerminal(w, r)
 	if !ok {
@@ -86,8 +99,17 @@ func (h *Handler) globalTerminal(w http.ResponseWriter, r *http.Request) (string
 		return "", false
 	}
 	if !g {
-		http.Error(w, "Dieses Terminal ist kein globales Terminal.", http.StatusForbidden)
-		return "", false
+		// Folienschau als Bildschirmschoner eines normalen Terminals nutzt dieselben Wege (Folien, Bilder, Vorgang lesen)
+		s, err := h.terminalSaverSlides(r.Context(), uid)
+		if err != nil {
+			componentLog("terminal").Error().Err(err).Msg("folienschau-schoner prüfen")
+			http.Error(w, "Daten nicht verfügbar", http.StatusInternalServerError)
+			return "", false
+		}
+		if !s {
+			http.Error(w, "Dieses Terminal zeigt keine Folien.", http.StatusForbidden)
+			return "", false
+		}
 	}
 	return uid, true
 }
@@ -214,14 +236,15 @@ type terminalSlideJSON struct {
 	Stats        *terminalStats `json:"stats,omitempty"`
 	Days         int            `json:"days,omitempty"`
 	URL          string         `json:"url,omitempty"`
+	Reload       int            `json:"reload,omitempty"` // Art website: Minuten bis zum Neuladen
 }
 
 type terminalSlidesDoc struct {
-	Version string              `json:"version"`
-	Idle    int                 `json:"idle"`
+	Version string `json:"version"`
+	Idle    int    `json:"idle"`
 	// FrameCSP: frame-src der Seite; weicht er vom Wert der geladenen Seite ab, lädt der Player neu.
-	FrameCSP string `json:"frame_csp"`
-	Slides  []terminalSlideJSON `json:"slides"`
+	FrameCSP string              `json:"frame_csp"`
+	Slides   []terminalSlideJSON `json:"slides"`
 }
 
 // slideItems: offene Vorgänge einer Tabelle in den erlaubten Anlagen (höchstens terminalSlideItems, neueste zuerst).
@@ -311,7 +334,7 @@ func (h *Handler) buildSlidesDoc(ctx context.Context, uid string) (terminalSlide
 					return doc, err
 				}
 			}
-			perm := map[string]string{slideKindStatsFaults: "faults.view", slideKindStatsTickets: "tickets.view", slideKindStatsSetup: "setup.view"}[s.Kind]
+			perm := map[string]string{slideKindStatsFaults: "faults.view", slideKindStatsTickets: "tickets.view", slideKindStatsSetup: "setup.view", slideKindStatsDown: permDowntimeView}[s.Kind]
 			ids := h.terminalPermittedInfra(gi, uid, role, perm, gi.infraSet(s))
 			if js.Stats, err = h.slideStatsCached(ctx, uid, s.Kind, s.StatsDays, ids); err != nil {
 				return doc, err
@@ -321,6 +344,10 @@ func (h *Handler) buildSlidesDoc(ctx context.Context, uid string) (terminalSlide
 		if s.Kind == slideKindGrafana {
 			js.URL = slideGrafanaSrc(s.URL)
 			fmt.Fprintf(sum, "G|%s|%s\n", s.ID, js.URL)
+		}
+		if s.Kind == slideKindWebsite {
+			js.URL, js.Reload = s.URL, s.ReloadMinutes
+			fmt.Fprintf(sum, "W|%s|%s|%d\n", s.ID, s.URL, s.ReloadMinutes)
 		}
 		doc.Slides = append(doc.Slides, js)
 	}
@@ -391,6 +418,7 @@ type terminalVorgangHist struct{ At, Text string }
 // terminalVorgang: Daten für terminal_vorgang.gohtml.
 type terminalVorgang struct {
 	NotFound    bool
+	Scheme      string // dark | light
 	Idle        int
 	KindLabel   string
 	Title       string
@@ -462,7 +490,10 @@ func (h *Handler) TerminalVorgang(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	idle := h.terminalIdleSeconds(r.Context(), uid)
-	missing := func() { h.renderTerminalVorgang(w, http.StatusNotFound, terminalVorgang{NotFound: true, Idle: idle}) }
+	_, scheme := h.terminalFnFlagsFor(r.Context(), uid)
+	missing := func() {
+		h.renderTerminalVorgang(w, http.StatusNotFound, terminalVorgang{NotFound: true, Idle: idle, Scheme: scheme})
+	}
 	kind, id := chi.URLParam(r, "kind"), chi.URLParam(r, "id")
 	table, cond, label := "faults", terminalFaultOpenCond, "Störung"
 	switch kind {
@@ -501,7 +532,7 @@ func (h *Handler) TerminalVorgang(w http.ResponseWriter, r *http.Request) {
 		missing()
 		return
 	}
-	d.Idle, d.KindLabel, d.StatusLabel = idle, label, statusLabel(status)
+	d.Idle, d.Scheme, d.KindLabel, d.StatusLabel = idle, scheme, label, statusLabel(status)
 	d.Infra = h.infraPath(r.Context(), infra)
 	if utf8.RuneCountInString(d.Description) > terminalVorgangDescMax {
 		d.Description = string([]rune(d.Description)[:terminalVorgangDescMax]) + "…"
@@ -522,4 +553,3 @@ func (h *Handler) TerminalVorgang(w http.ResponseWriter, r *http.Request) {
 	}
 	h.renderTerminalVorgang(w, http.StatusOK, d)
 }
-

@@ -175,6 +175,8 @@ var gateRules = []gateRule{
 	gr(wPost, permOmada, "", false, `^/admin/server-config/omada(?:/confirm|/check)?$`),                    // Reiter „Omada“
 	// Seite „Netzwerk“: löschen nur Bereichsadministrator, anlegen und ändern mit system.network
 	gr(wPost, permNetworkAdmin, "", false, `^/admin/network/(?:segments|wlans)`+gID+`/delete$`),
+	// Freigabe für ESPPDH-Updates: ändert die Firewall (UniFi) oder legt ein Ticket an die IT an
+	gr(wPost, permNetworkAdmin, "", false, `^/admin/network/segments`+gID+`/esppdh-fw$`),
 	gr(wPost, permNetwork, "", false, `^/admin/network/(?:segments|wlans)(?:`+gID+`)?$`),
 	gr(wPost, permNetwork, "", false, `^/admin/network/suggestions/(?:adopt|adopt-all|hide)$`),
 	// Infobildschirm: Folien anlegen, ändern, verschieben, löschen mit terminal.slides.edit
@@ -208,6 +210,12 @@ var gateRules = []gateRule{
 	gr(wPost, "import.write", "", false, `^/import/connections`+gID+`/broker/firewall$`),
 	gr(wPost, "import.write", "", false, `^/import/connections`+gID+`/broker/setup$`),
 	gr(wPost, "export.write", "", false, `^/export/connections/fingerprint$`),
+	// ── Zuordnungen: Sammel-Anlage (Vorschläge übernehmen) wie Verbindung bearbeiten; Abteilung je Anlage im Handler ──
+	gr(wPost, "import.write", "", false, `^/import/connections`+gID+`/mappings/bulk$`),
+	gr(wPost, "export.write", "", false, `^/export/connections`+gID+`/mappings/bulk$`),
+	// Vorschläge zum Abhaken lesen Quellwerte (Broker, Datei, Server) – wie Verbindung bearbeiten
+	gr("GET", "import.write", "", false, `^/import/connections`+gID+`/suggestions$`),
+	gr("GET", "export.write", "", false, `^/export/connections`+gID+`/suggestions$`),
 	// ── Explorer: Testschreiben/Senden wie Verbindung bearbeiten (Erkunden selbst: import/export.execute im Handler) ──
 	gr(wPost, "import.write", "", false, `^/import/connections`+gID+`/explorer/(?:mqtt/publish|opcua/write|modbus/write)$`),
 	gr(wPost, "export.write", "", false, `^/export/connections`+gID+`/explorer/(?:mqtt/publish|opcua/write|modbus/write)$`),
@@ -283,6 +291,9 @@ var gateRules = []gateRule{
 	gr(wPost, permSetupEdit, "", false, `^/setup/(?:reasons-web|buttons-web|buttons`+gID+`/move-web)$`),
 	// Zuordnung der Rüsttasten und Höchstdauer an der Anlage: Infrastruktur bearbeiten (in der Abteilung der Anlage)
 	gr(wPost, "infrastructure.edit", "infrastructure", false, `^/infrastructure`+gID+`/setup-(?:buttons|max)-web$`),
+	// ── Stillstandsgründe: Katalog pflegen mit downtime.edit (Löschen eines Grundes prüft der Handler: downtime.admin) ──
+	gr(wPost, permDowntimeEdit, "", false, `^/downtime/(?:reasons-web|reasons`+gID+`/move-web)$`),
+	gr(wPost, "infrastructure.edit", "infrastructure", false, `^/infrastructure`+gID+`/downtime-reasons-web$`),
 	gr(wPost, permCompanyEdit, "", false, `^/infrastructure/company$`), // überall: canEditCompany
 	// ── Beteiligte, Gruppe, Archiv an beliebigen Vorgängen ──
 	gr(wPost, "edit", "*", true, `^/records/([a-z_]+)`+gID+`/(?:people|group|parties)(?:/.*)?$`),

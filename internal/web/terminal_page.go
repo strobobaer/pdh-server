@@ -14,6 +14,8 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"pdh"
+	"pdh/internal/core/users"
+	"pdh/pkg/middleware"
 )
 
 // Anlagenterminal: Vollbildseite für den Wandmonitor (Systembenutzer mit
@@ -21,7 +23,7 @@ import (
 //
 //	/terminal       Bildschirmschoner (Platzhalter), Berührung → /terminal/info
 //	/terminal/info  offene Störungen und Tickets der Anlage samt Unteranlagen
-//	/terminal/neu   „Neu“: Störung/Ticket melden, Stillstand (folgt)
+//	/terminal/neu   „Neu“: Störung/Ticket melden, Stillstand
 //
 // Eigenes Seitenlayout ohne PDH-Navigation (terminal.gohtml, terminal.js).
 
@@ -72,8 +74,8 @@ type terminalPage struct {
 	Name           string
 	Path           string
 	Info           terminalInfo
-	DeviceSession  bool   // Gerätesitzung (alle Modi): kleines Zahnrad zur lokalen Admin-Seite des Terminals
-	AdminURL       string // Ziel des Zahnrads (terminalLocalAdminURL)
+	DeviceSession  bool         // Gerätesitzung (alle Modi): kleines Zahnrad zur lokalen Admin-Seite des Terminals
+	AdminURL       string       // Ziel des Zahnrads (terminalLocalAdminURL)
 	Setup          setupBarView // Rüsten (Neu: Kachel, Rüsten: Seite)
 	SetupCan       bool         // setup.edit für die Anlage (Kartenperson bzw. Terminal-Benutzer)
 	SetupCard      bool         // per Karte angemeldet
@@ -81,8 +83,17 @@ type terminalPage struct {
 	SetupAdd       bool // Ansicht Nachtragen
 	SetupAgo       []terminalChoice
 	SetupDur       []terminalChoice
-	Report         terminalReport // Meldeseiten Störung/Ticket (terminal_report.go)
-	Done           string         // Neu: gerade gemeldet (fault | ticket)
+	Down           terminalDown // Stillstand (Neu: Kachel, Stillstand: Seite; terminal_downtime.go)
+	Report         terminalReport    // Meldeseiten Störung/Ticket (terminal_report.go)
+	Pick           terminalPick      // Rüsten: Anlagenwahl (Meldeseiten: Report.Pick)
+	SaverSlides    bool              // Schoner spielt die Folien (Gerätesitzung, Einstellung saver_slides)
+	Done           string            // Neu: gerade gemeldet (fault | ticket)
+	HMI            terminalHMIPage   // HMI: Liste und Viewer (terminal_hmi.go)
+	HMITile        bool              // Neu: Kachel HMI (mindestens ein HMI sichtbar)
+	Maint          terminalMaintPage // Wartungen (terminal_wartung.go)
+	MaintTile      bool              // Neu: Kachel Wartungen (nur mit Kartenanmeldung)
+	Fn             terminalFnFlags   // Funktionen-Schalter des Terminal-Benutzers (terminal_functions.go): ausgeschaltet = Kachel und Seite entfallen
+	Scheme         string            // Farbschema: dark | light (Einstellung des Terminal-Benutzers)
 }
 
 // terminalLocalAdminURL: lokale Admin-Seite des gekoppelten PDH-Terminals (Loopback am Terminal; gleich
@@ -98,20 +109,31 @@ func (h *Handler) terminalRoutes(r chi.Router) {
 	r.Get("/terminal", h.TerminalSchoner)
 	r.Get("/terminal/info", h.TerminalInfoPage)
 	r.Get("/terminal/neu", h.TerminalNeuPage)
-	r.Get("/terminal/rusten", h.TerminalRustenPage)
-	r.Post("/terminal/rusten/start", h.TerminalRustenStart)
-	r.Post("/terminal/rusten/finish", h.TerminalRustenFinish)
-	r.Post("/terminal/rusten/add", h.TerminalRustenAdd)
-	r.Get("/terminal/stoerung", h.TerminalReportPage("fault"))
-	r.Post("/terminal/stoerung", h.TerminalReportSubmit("fault"))
-	r.Get("/terminal/ticket", h.TerminalReportPage("ticket"))
-	r.Post("/terminal/ticket", h.TerminalReportSubmit("ticket"))
+	// Funktionen-Schalter (terminal_functions.go): ausgeschaltet = 404, GET und POST
+	r.Get("/terminal/rusten", h.terminalFnRoute("ruesten", h.TerminalRustenPage))
+	r.Post("/terminal/rusten/start", h.terminalFnRoute("ruesten", h.TerminalRustenStart))
+	r.Post("/terminal/rusten/finish", h.terminalFnRoute("ruesten", h.TerminalRustenFinish))
+	r.Post("/terminal/rusten/add", h.terminalFnRoute("ruesten", h.TerminalRustenAdd))
+	r.Get("/terminal/stillstand", h.terminalFnRoute("stillstand", h.TerminalStillstandPage))
+	r.Post("/terminal/stillstand/start", h.terminalFnRoute("stillstand", h.TerminalStillstandStart))
+	r.Post("/terminal/stillstand/finish", h.terminalFnRoute("stillstand", h.TerminalStillstandFinish))
+	r.Get("/terminal/stoerung", h.terminalFnRoute("stoerung", h.TerminalReportPage("fault")))
+	r.Post("/terminal/stoerung", h.terminalFnRoute("stoerung", h.TerminalReportSubmit("fault")))
+	r.Get("/terminal/ticket", h.terminalFnRoute("ticket", h.TerminalReportPage("ticket")))
+	r.Post("/terminal/ticket", h.terminalFnRoute("ticket", h.TerminalReportSubmit("ticket")))
 	r.Get("/terminal/info.json", h.TerminalInfoJSON)
 	r.Get("/terminal/slides.json", h.TerminalSlidesJSON)
 	r.Get("/terminal/slides/{id}/image", h.TerminalSlideImage)
 	r.Get("/terminal/vorgang/{kind}/{id}", h.TerminalVorgang)
 	r.Get("/terminal/sensors.json", h.TerminalSensorsJSON) // ESPPDH-Sensoren nach Kartenanmeldung (terminal_sensors.go)
 	r.Get("/terminal/terminal.js", h.TerminalScript)
+	r.Post("/terminal/pdh", h.TerminalPDHStart) // PDH öffnen (terminal_pdh.go)
+	r.Get("/terminal/hmi", h.terminalFnRoute("hmi", h.TerminalHMIPage))
+	r.Get("/terminal/hmi/{infra}/{id}", h.terminalFnRoute("hmi", h.TerminalHMIView))
+	r.Get("/terminal/hmi/{infra}/{id}/ws", h.terminalFnRoute("hmi", h.TerminalHMIWebSocket))
+	r.Get("/terminal/wartung", h.terminalFnRoute("wartungen", h.TerminalWartungPage))
+	r.Post("/terminal/pdh/open", h.TerminalPDHOpen)
+	middleware.SetTerminalSessionCheck(func(r *http.Request, sub, tsess, tdev string) bool { return h.pdhHandoffCheck(r, tsess, sub, tdev) })
 	h.cardRoutes(r)
 }
 
@@ -294,6 +316,7 @@ func (h *Handler) terminalGate(w http.ResponseWriter, r *http.Request, mode stri
 		http.Error(w, "Diese Seite ist nur für Terminal-Benutzer (Systembenutzer) bestimmt.", http.StatusForbidden)
 		return p, false
 	}
+	p.Fn, p.Scheme = h.terminalFnFlagsFor(r.Context(), uid)
 	if h.terminalDeviceSession(r) {
 		p.DeviceSession, p.AdminURL = true, terminalLocalAdminURL
 	}
@@ -315,6 +338,17 @@ func (h *Handler) terminalGate(w http.ResponseWriter, r *http.Request, mode stri
 	// Gerätesitzung (nicht global): Einstellungsstrom auch auf Schoner und Seite „keine Anlage“, damit ein
 	// später als global gekennzeichnetes Terminal sofort zur Folienschau wechselt.
 	p.SettingsEvents = h.terminalDeviceSession(r)
+	// Folienschau als Bildschirmschoner (nur Gerätesitzung, nur die Schonerseite): derselbe Player wie beim globalen Terminal.
+	if mode == "schoner" && p.DeviceSession {
+		s, err := h.terminalSaverSlides(r.Context(), uid)
+		if err != nil {
+			componentLog("terminal").Error().Err(err).Msg("folienschau-schoner prüfen")
+		} else if s {
+			p.SaverSlides = true
+			p.FrameCSP = h.terminalFrameCSP(r.Context())
+			w.Header().Set("Content-Security-Policy", p.FrameCSP)
+		}
+	}
 	infra, role, err := h.terminalInfraLookup(r.Context(), uid)
 	var name string
 	var ok bool
@@ -406,7 +440,21 @@ func (h *Handler) TerminalInfoPage(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) TerminalNeuPage(w http.ResponseWriter, r *http.Request) {
 	if p, ok := h.terminalGate(w, r, "neu"); ok {
 		if !p.NoInfra && p.Mode != "global" {
-			h.terminalSetupFill(r, &p, h.terminalUserID(r))
+			uid := h.terminalUserID(r)
+			if p.Fn.Ruesten {
+				h.terminalSetupFill(r, &p, uid)
+			}
+			if p.Fn.Stillstand {
+				h.terminalDowntimeFill(r, &p, uid)
+			}
+			var person *users.User
+			if h.db != nil && h.terminalDeviceSession(r) {
+				person, _ = h.cardSessionPerson(r.Context(), uid)
+			}
+			if p.Fn.HMI {
+				h.terminalHMIFill(r, &p, uid, person)
+			}
+			p.MaintTile = p.Fn.Wartungen && h.terminalMaintTile(person)
 		}
 		if d := r.URL.Query().Get("done"); d == "fault" || d == "ticket" {
 			p.Done = d

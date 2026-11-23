@@ -16,6 +16,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	recorigin "pdh/internal/core/origin"
 	"pdh/internal/modules/faults"
 )
 
@@ -512,7 +513,7 @@ func (h *Handler) AppFaultCreateAPI(w http.ResponseWriter, r *http.Request) {
 		appUnavailable(w, errNoService, "fault", assetID, "app: störung anlegen")
 		return
 	}
-	create := &faults.CreateFaultInput{Title: title, Description: text, InfrastructureID: &assetID}
+	create := &faults.CreateFaultInput{Title: title, Description: text, InfrastructureID: &assetID, Origin: recorigin.App}
 	if phoneID != "" {
 		// Die Kennung darf noch keiner Störung und keinem Alias gehören (sonst eine andere Aktion).
 		var taken bool
