@@ -813,12 +813,28 @@ und 3 drückt bis auf Weiteres der Anwender.
     kurzer Entwurf); Schnellübersicht bleibt bei der heutigen Regel; kein
     neues Recht; Energie-Messstellen behalten in 2a ihren Rechenumfang.
     Bauplan `docs/superpowers/plans/2026-11-23-berechnete-werte.md`
-    (9 Aufgaben: Rechenkern nach `internal/core/formula`, Erweiterung,
-    Migration 205 mit Modul `internal/modules/calc`, Rechenwerk, Anstoß
-    über `storeMappingValue`, Seite, Schutz der Eingangswerte, Copilot,
-    Handbuch; voraussichtlich 0.82.37 – Nummern vor dem Merge gegen `main`
-    prüfen). Noch nichts gebaut; offen: Wahl der Ausführung (je Aufgabe ein
-    Unterauftrag mit Prüfer oder alles in einer Sitzung), dann Bau.
+    (9 Aufgaben). **Paket 2a = 0.82.44** auf Branch
+    `feature/berechnete-werte` gebaut (23.11.2026, lokal; geplant als
+    0.82.37 mit Migration 205 – `main` hatte inzwischen 0.82.43 und die
+    Migrationen 205 bis 209, deshalb **Migration 210** `210_calc_values`
+    und `main` in den Branch gemergt): Rechenkern in `internal/core/formula`
+    (Namen ohne Klammern, Vergleiche, `^`, Funktionen; die Energie-Messstellen
+    lehnen den neuen Umfang ab, `ErrFormulaScope`); Modul
+    `internal/modules/calc` (Speicher mit Fassungen, Rechenwerk alle 10 s und
+    nach jedem Anstoß); alle Konnektoren schreiben Werte nur noch über
+    `storeMappingValue` (Wächter `TestMappingValueSingleWriter`); Seite der
+    eingebauten Verbindung „Berechnete Werte“ (`calc_values.go`, Wege
+    `/import/calc/…`); genutzte Eingangswerte sind auf allen drei Löschwegen
+    geschützt (Wächter `TestMappingDeletesGuarded`); Copilot-Werkzeuge
+    `calc_values`, `calc_inputs`, `propose_calc` (`calc_copilot.go`). Kein
+    neues Recht. Offen: Freigabe Push/Merge, Verbund-Update, Browserprüfung
+    am Testverbund (Seite, Formular am Handy, Änderungsliste des Copilot –
+    dort läuft der Copilot mit Ollama, also wieder nur lokal ansehbar),
+    10.10.0.202 (Anwender). Danach Paket 2b (Gültigkeit und rückwirkendes
+    Neurechnen für die berechneten Energie-Messstellen, eigener kurzer
+    Entwurf; dort auch klären, ob Messstellen den neuen Rechenumfang
+    bekommen). Kleine Befunde der Schlussprüfung stehen im Ledger
+    `.superpowers/sdd/2026-11-23-berechnete-werte/`.
 
 Docker Desktop startet nach einem Neustart des Windows-Rechners nicht von
 selbst – ohne ihn fehlen der Zeuge und die Labor-Datenbank für die Tests.
