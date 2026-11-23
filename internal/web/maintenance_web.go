@@ -482,11 +482,11 @@ func (h *Handler) MaintenancePlanPage(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	id := chi.URLParam(r, "id")
 	data := MaintenancePlanPageData{
-		BaseData:   h.baseData(r, "maintenance", "Wartungsplan", "Plan"),
-		IsNew:      id == "",
-		Users:      h.userOptions(ctx),
-		Today:      time.Now().Format("2006-01-02"),
-		TypeLabels: maintTypeShort,
+		BaseData:    h.baseData(r, "maintenance", "Wartungsplan", "Plan"),
+		IsNew:       id == "",
+		Users:       h.userOptions(ctx),
+		Today:       time.Now().Format("2006-01-02"),
+		TypeLabels:  maintTypeShort,
 		DefaultLead: h.maint.Repo().DefaultLead(ctx),
 	}
 	plan := &maintenance.MaintenancePlan{IntervalUnit: maintenance.UnitMonth, IntervalCount: 1, ScheduleMode: maintenance.ScheduleFromCompletion,
