@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+
+	"pdh/internal/modules/maintenance"
 )
 
 // Wartungsplanung im Planer: Monatskalender mit offenen Wartungsaufträgen
@@ -24,6 +26,7 @@ type maintItem struct {
 	Warn, WarnClass             string
 	Overdue                     bool
 	Date                        string
+	Planned, OffPlan            bool // geplanter Termin aus dem Jahresplan (noch kein Auftrag)
 }
 
 type maintDay struct {
@@ -156,6 +159,26 @@ func (h *Handler) maintTab(r *http.Request) *maintTabData {
 	} else {
 		componentLog("planer").Warn().Err(err).Msg("wartungskalender")
 	}
+	// geplante Wartungstermine (Jahresplan): wie Aufträge geprüft und mitgezählt;
+	// vergangene stehen an ihrem Tag, nicht unter „Überfällig“ (sie werden beauftragt)
+	if h.maint != nil {
+		visits, err := h.maint.Repo().VisitsInRange(ctx, first, end, maintenance.VisitPlanned)
+		if err != nil {
+			componentLog("planer").Warn().Err(err).Msg("wartungstermine")
+		}
+		access := h.visitAccess(r)
+		for _, v := range visits {
+			if view, _ := access(v.PlanID); !view {
+				continue
+			}
+			it := maintItem{ID: v.ID, Kind: "planned", Title: v.PlanName, Infra: v.InfraName, URL: "/maintenance/plans/" + v.PlanID,
+				AssigneeID: derefOr(v.AssignedTo, derefOr(v.ResponsibleTo, "")), Group: v.GroupName, Minutes: v.EstimatedMin,
+				Date: v.Day.Format(dayISO), Planned: true, OffPlan: v.OffPlan}
+			it.Assignee = names[it.AssigneeID]
+			check(&it)
+			byDay[it.Date] = append(byDay[it.Date], it)
+		}
+	}
 	// Prüfpflichten der Anlagen
 	if h.hasPerm(r, "infrastructure.view") || h.hasPerm(r, "infrastructure.obligations") {
 		if rows, err := h.db.Query(ctx, `SELECT o.infrastructure_id::text, o.title, COALESCE(i.name, ''), COALESCE(o.responsible_to::text, ''), o.next_due
@@ -271,4 +294,72 @@ func (h *Handler) PlannerMaintSaveWeb(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	back(fmt.Sprintf("„%s“ auf %s geplant", title, due.Format("02.01.2006")), nil)
+}
+
+// PlannerVisitSaveWeb: POST /planner/maintenance-visits/{id} – geplanten
+// Wartungstermin verschieben und/oder besetzen (wie PlannerMaintSaveWeb).
+func (h *Handler) PlannerVisitSaveWeb(w http.ResponseWriter, r *http.Request) {
+	_ = r.ParseForm()
+	month := r.FormValue("month")
+	back := func(msg string, err error) { plannerBack(w, r, "maintenance", "&month="+month, msg, err) }
+	id := chi.URLParam(r, "id")
+	if !uuidInPathRe.MatchString(id) || h.maint == nil {
+		back("", errors.New("Termin ungültig"))
+		return
+	}
+	if h.MaintLocked() {
+		back("", errors.New(errMaintLater))
+		return
+	}
+	ctx := r.Context()
+	v, err := h.maint.GetVisit(ctx, id)
+	if err != nil {
+		back("", err)
+		return
+	}
+	if !h.visitAllowed(r, v) {
+		http.Error(w, "keine berechtigung", http.StatusForbidden)
+		return
+	}
+	due, err := time.ParseInLocation(dayISO, r.FormValue("due_date"), time.Local)
+	if err != nil {
+		back("", errors.New("Datum ungültig"))
+		return
+	}
+	uid := getUser(r).ID
+	if !due.Equal(v.Day) {
+		if err := h.maint.MoveVisit(ctx, id, due, uid); err != nil {
+			back("", plannerVisitErr(err))
+			return
+		}
+		h.addHistory(ctx, "maintenance_plan", v.PlanID, "update", "Termin", v.Day.Format("02.01.2006"), due.Format("02.01.2006"), "Wartungstermin im Planer verschoben", uid)
+	}
+	switch assignee := r.FormValue("assigned_to"); {
+	case assignee == "":
+	case assignee == "-" || uuidInPathRe.MatchString(assignee):
+		var person *string
+		if assignee != "-" {
+			person = &assignee
+		}
+		if err := h.maint.StaffVisit(ctx, id, person, v.GroupID, uid); err != nil {
+			back("", plannerVisitErr(err))
+			return
+		}
+		h.addHistory(ctx, "maintenance_plan", v.PlanID, "update", "Zugewiesen", derefOr(v.AssignedTo, ""), assignee, "Wartungstermin im Planer besetzt", uid)
+	default:
+		back("", errors.New("Mitarbeiter ungültig"))
+		return
+	}
+	if err := h.maint.EnsurePlanTask(ctx, v.PlanID, uid); err != nil { // im Vorlauf: Auftrag gleich anlegen
+		componentLog("wartung").Warn().Err(err).Str("plan", v.PlanID).Msg("auftrag nach änderung des termins")
+	}
+	back(fmt.Sprintf("„%s“ geplant am %s", v.PlanName, due.Format("02.01.2006")), nil)
+}
+
+// plannerVisitErr: Eingabefehler des Wartungsmoduls ohne technisches Präfix.
+func plannerVisitErr(err error) error {
+	if maintenance.IsInputError(err) {
+		return errors.New(maintenance.InputMessage(err))
+	}
+	return err
 }

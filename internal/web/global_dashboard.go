@@ -405,12 +405,7 @@ func (h *Handler) GlobalDashboardData(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	boardIDs := h.boardAllowedIDs(ctx, board)
-	boardShows := func(kind, id string) bool {
-		if !board.HasType(kind) {
-			return false
-		}
-		return boardIDs == nil || boardIDs[kind][id]
-	}
+	boardShows := func(kind, id string) bool { return boardShowsKind(board, boardIDs, kind, id) }
 	gantt := data.GanttItems[:0]
 	for _, g := range data.GanttItems {
 		if boardShows(g.RefType, g.ID) {

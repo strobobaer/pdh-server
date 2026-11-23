@@ -747,6 +747,7 @@ var LS_ROTATE = {seconds: {{.RotateSeconds}}, href: {{$.RotateHref}}, name: {{$.
       const barProgress = wrapper.querySelector('.bar-progress');
       if(bar){ bar.style.fill = colors.fill; bar.style.stroke = colors.fill; }
       if(barProgress) barProgress.style.fill = colors.fill;
+      if(t.planned && bar){ bar.style.fillOpacity = '0.15'; bar.style.strokeDasharray = '4 3'; bar.style.strokeWidth = '1.5'; } // geplanter Wartungstermin
       const state = pdhTimelineApply(wrapper, t);
       wrapper.style.opacity = colors.opacity;
       wrapper.style.cursor = 'pointer';
@@ -872,7 +873,8 @@ var LS_ROTATE = {seconds: {{.RotateSeconds}}, href: {{$.RotateHref}}, name: {{$.
       dashGanttInstance = new Gantt('#dash-gantt-target', tasks, {
         on_date_change: function(task, start, end){
           const item = byId[task.id];
-          if(item) saveDashGanttDate(item, end);
+          if(item && item.dueEndpoint) saveDashGanttDate(item, end);
+          else renderDashGantt(); // geplante Termine verschiebt man im Kalender
         },
         view_mode: viewMode,
         bar_height: PDH_TL.barHeight
@@ -1320,7 +1322,8 @@ var LS_ROTATE = {seconds: {{.RotateSeconds}}, href: {{$.RotateHref}}, name: {{$.
     setActors(data.actors || []);
     document.getElementById('item-count').textContent = data.items.length + (data.items.length === 1 ? ' Eintrag' : ' Einträge');
     dashGanttItems = (data.gantt_items || []).map(function(t){
-      return {id: t.id, refType: t.ref_type, name: t.title, start: t.start_iso, end: t.end_iso,
+      return {id: t.id, refType: t.is_planned ? 'maintenance' : t.ref_type, name: (t.is_planned ? 'geplant · ' : '') + t.title, start: t.start_iso, end: t.end_iso,
+        planned: !!t.is_planned,
         provisional: !!t.is_provisional, done: !!t.is_done, running: !!t.is_running, unassigned: !!t.is_unassigned,
         color: t.color, url: t.detail_url, dueEndpoint: t.due_date_endpoint};
     });

@@ -522,25 +522,18 @@ func (h *Handler) buildCalendar(r *http.Request, board *leitstand) CalendarData 
 			componentLog("kalender").Warn().Err(err).Msg("wartungstermine laden")
 			d.LoadErrors = append(d.LoadErrors, calKindByKey("maintenance_planned").Label+": "+friendlyDBError(err))
 		}
-		planScope := h.scopeAllowedIDs(r, "maintenance_plan")
-		canView, canEdit := map[string]bool{}, map[string]bool{}
+		access := h.visitAccess(r)
 		for _, v := range visits {
 			if boardIDs != nil && !boardIDs["maintenance_planned"][v.ID] {
 				continue // Gast: nur, was zu Abteilung/Gruppe des Leitstands gehört
 			}
+			canEdit := false
 			if !guest {
-				if planScope != nil && !planScope[v.PlanID] {
+				view, edit := access(v.PlanID)
+				if !view {
 					continue
 				}
-				ok, seen := canView[v.PlanID]
-				if !seen {
-					ok = h.hasPermRec(r, "maintenance.view", "maintenance_plan", v.PlanID)
-					canView[v.PlanID] = ok
-					canEdit[v.PlanID] = ok && me.ID != "" && h.hasPermRec(r, "maintenance.edit", "maintenance_plan", v.PlanID)
-				}
-				if !ok {
-					continue
-				}
+				canEdit = edit
 			}
 			uid := derefOr(v.AssignedTo, derefOr(v.ResponsibleTo, ""))
 			c := cellOf(uid, v.Day)
@@ -548,7 +541,7 @@ func (h *Handler) buildCalendar(r *http.Request, board *leitstand) CalendarData 
 				continue
 			}
 			ch := calVisitChip(v)
-			if !ch.Dropped && canEdit[v.PlanID] {
+			if !ch.Dropped && canEdit {
 				ch.Drag, ch.ID = "visit", v.ID
 			}
 			c.Items = append(c.Items, ch)

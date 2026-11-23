@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -265,4 +266,66 @@ func (h *Handler) MaintenanceVisitResetWeb(w http.ResponseWriter, r *http.Reques
 	}
 	err := h.maint.ResetVisit(r.Context(), v.ID, getUser(r).ID)
 	h.visitDone(w, r, v, err, "Termin", v.Day.Format("02.01.2006"), v.CalcDay.Format("02.01.2006"), "zurückgesetzt")
+}
+
+// visitAccess: je Plan (zwischengespeichert), ob die Person seine geplanten
+// Termine sehen (maintenance.view) und ändern (maintenance.edit) darf –
+// Abteilungssperre der Rolle und Abteilung des Rechts zählen.
+func (h *Handler) visitAccess(r *http.Request) func(planID string) (view, edit bool) {
+	scope := h.scopeAllowedIDs(r, "maintenance_plan")
+	type acc struct{ view, edit bool }
+	memo := map[string]acc{}
+	signedIn := getUser(r) != nil && getUser(r).ID != ""
+	return func(planID string) (bool, bool) {
+		if a, ok := memo[planID]; ok {
+			return a.view, a.edit
+		}
+		var a acc
+		if scope == nil || scope[planID] {
+			a.view = h.hasPermRec(r, "maintenance.view", "maintenance_plan", planID)
+			a.edit = a.view && signedIn && h.hasPermRec(r, "maintenance.edit", "maintenance_plan", planID)
+		}
+		memo[planID] = a
+		return a.view, a.edit
+	}
+}
+
+// visitAllowed: darf die Person diesen Termin ändern (Formulare im Planer)?
+func (h *Handler) visitAllowed(r *http.Request, v *maintenance.Visit) bool {
+	return h.hasPermRec(r, "maintenance.edit", "maintenance_plan", v.PlanID)
+}
+
+// ganttVisits: geplante Wartungstermine der nächsten 12 Monate als Balken
+// (ein Tag, nicht ziehbar). DetailURL ist die Plan-Seite – so prüft
+// scopeGantt die Abteilung des Plans.
+func (h *Handler) ganttVisits(ctx context.Context, now time.Time) []GanttItem {
+	if h.maint == nil {
+		return nil
+	}
+	from := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
+	visits, err := h.maint.Repo().VisitsInRange(ctx, from, from.AddDate(1, 0, 0), maintenance.VisitPlanned)
+	if err != nil {
+		componentLog("wartung").Warn().Err(err).Msg("gantt: wartungstermine")
+		return nil
+	}
+	items := make([]GanttItem, 0, len(visits))
+	for _, v := range visits {
+		day := v.Day.Format("2006-01-02")
+		items = append(items, GanttItem{ID: v.ID, RefType: "maintenance_planned", Title: v.PlanName, StartISO: day, EndISO: day,
+			IsPlanned: true, IsUpcoming: true, Color: "#c99a3c", DetailURL: "/maintenance/plans/" + v.PlanID})
+	}
+	return items
+}
+
+// boardShowsKind: zeigt der Leitstand diese Art (geplante Wartungstermine
+// gehören zur Art „maintenance“) und – bei Zuordnung – diesen Eintrag?
+func boardShowsKind(board *leitstand, boardIDs map[string]map[string]bool, kind, id string) bool {
+	typ := kind
+	if kind == "maintenance_planned" {
+		typ = "maintenance"
+	}
+	if !board.HasType(typ) {
+		return false
+	}
+	return boardIDs == nil || boardIDs[kind][id]
 }

@@ -330,5 +330,39 @@ func (h *Handler) planMaintRows(ctx context.Context, from, to, now time.Time, de
 		}
 		add(d.Format(dayISO), "due", "Fällig", "", item)
 	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	rows.Close()
+	return h.planVisitRows(ctx, from, to, depts, noDept, add)
+}
+
+// planVisitRows: geplante Wartungstermine (Jahresplan, noch kein Auftrag) im
+// Zeitraum als „Geplant“ – gleiche Abteilungsregel wie bei den Aufträgen,
+// nie „Überfällig“.
+func (h *Handler) planVisitRows(ctx context.Context, from, to time.Time, depts []string, noDept bool, add planAdder) error {
+	rows, err := h.db.Query(ctx, `SELECT v.day, mp.name, i.name
+		FROM maintenance_visits v JOIN maintenance_plans mp ON mp.id = v.plan_id JOIN infrastructure i ON i.id = mp.infrastructure_id
+		WHERE v.state = 'planned' AND mp.active AND i.active AND i.hidden_at IS NULL
+		  AND v.day BETWEEN $1::date AND $2::date
+		  AND (EXISTS (SELECT 1 FROM infrastructure_department x WHERE x.infrastructure_id = mp.infrastructure_id AND x.department_id = ANY($3::uuid[]))
+		       OR ($4::boolean AND NOT EXISTS (SELECT 1 FROM infrastructure_department x WHERE x.infrastructure_id = mp.infrastructure_id)))
+		ORDER BY v.day, lower(i.name), lower(mp.name)`, from.Format(dayISO), to.Format(dayISO), depts, noDept)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var day time.Time
+		var plan, infra string
+		if err := rows.Scan(&day, &plan, &infra); err != nil {
+			return err
+		}
+		item := plan
+		if strings.TrimSpace(infra) != "" {
+			item += " · " + infra
+		}
+		add(time.Date(day.Year(), day.Month(), day.Day(), 0, 0, 0, 0, from.Location()).Format(dayISO), "planned", "Geplant", "", item)
+	}
 	return rows.Err()
 }
