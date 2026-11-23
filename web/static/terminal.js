@@ -125,15 +125,36 @@
     var t = String((el.getAttribute && el.getAttribute('type')) || 'text').toLowerCase();
     return KB_TYPES[t] === 1;
   }
+  // Tastatur nur nach echter Berührung: Zeigen nur, wenn kurz zuvor ein Zeiger/Touch auf dem Feld (oder seinem
+  // Etikett) begann. Programmatischer Fokus, autofocus und vom Browser wiederhergestellter Fokus zeigen sie nie.
+  var KB_POINTER_MS = 800;
+  function kbShowDecision(pointerAt, now) {
+    if (typeof pointerAt !== 'number' || typeof now !== 'number' || pointerAt <= 0) return false;
+    var d = now - pointerAt;
+    return d >= 0 && d <= KB_POINTER_MS;
+  }
   if (body.classList.contains('has-gear')) {
     var kbHide = null;
+    var kbPointerAt = 0, kbPointerEl = null;
+    var kbPointer = function (ev) { kbPointerAt = Date.now(); kbPointerEl = ev.target || null; };
+    document.addEventListener('pointerdown', kbPointer, true);
+    document.addEventListener('touchstart', kbPointer, true);
+    // Knopf, der ein Feld absichtlich öffnet und fokussiert (z. B. „Benutzer/Passwort“)
+    var kbUserGesture = function () { kbPointerAt = Date.now(); kbPointerEl = null; };
+    var kbFromPointer = function (el) {
+      var t = kbPointerEl;
+      if (!t) return true; // ausdrückliche Geste (Knopf), kein Zielfeld
+      if (t === el || (t.contains && t.contains(el)) || (el.contains && el.contains(t))) return true;
+      var lab = t.closest ? t.closest('label') : null;
+      return !!(lab && lab.control === el);
+    };
     var kbCall = function (action) {
       try { fetch('http://127.0.0.1:8080/api/keyboard/' + action, { method: 'POST', keepalive: action === 'hide' }).catch(function () { /* ignorieren */ }); } catch (e) { /* kein fetch */ }
     };
     document.addEventListener('focusin', function (ev) {
       if (!wantsKeyboard(ev.target)) return;
       if (kbHide) { clearTimeout(kbHide); kbHide = null; }
-      kbCall('show');
+      if (kbShowDecision(kbPointerAt, Date.now()) && kbFromPointer(ev.target)) kbCall('show');
     });
     document.addEventListener('focusout', function (ev) {
       if (!wantsKeyboard(ev.target)) return;
@@ -143,6 +164,7 @@
         if (!wantsKeyboard(document.activeElement)) kbCall('hide');
       }, 150);
     });
+    window.pdhKbGesture = kbUserGesture;
     document.addEventListener('submit', function () { kbCall('hide'); }, true);
     window.addEventListener('pagehide', function () { kbCall('hide'); });
   }
@@ -634,7 +656,7 @@
         });
 
         // Dialog Benutzer/Passwort
-        pwBtn.addEventListener('click', function () { dialogOpen = true; render(); userIn.focus(); });
+        pwBtn.addEventListener('click', function () { dialogOpen = true; render(); if (window.pdhKbGesture) window.pdhKbGesture(); userIn.focus(); });
         dialog.querySelector('[data-login-cancel]').addEventListener('click', function () {
           dialogOpen = false; clearInputs(); render();
         });

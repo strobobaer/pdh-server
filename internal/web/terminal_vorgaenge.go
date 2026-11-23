@@ -120,6 +120,7 @@ type terminalVorgPage struct {
 	Groups                     []vorgGroup
 	Sel                        *vorgItem
 	Pick                       []vorgPick
+	PickFallback               bool // Personen der Instandhaltung, weil die Abteilungen des Terminals keine haben
 }
 
 var vorgNotices = map[string]string{
@@ -136,6 +137,7 @@ type vorgActor struct {
 	TermUID string
 	Card    *users.User
 	Modus   string
+	Free    bool // Flag „Freier Terminal-Benutzer“ wirkt (terminal_free.go): Gerätesitzung, keine Karte, ohne_karte
 }
 
 func (a vorgActor) via() string {
@@ -150,6 +152,7 @@ func (h *Handler) vorgActorFor(r *http.Request, uid string) (vorgActor, error) {
 	if h.db != nil && h.terminalDeviceSession(r) { // Kartenrechte nur in der Gerätesitzung
 		var err error
 		a.Card, err = h.cardSessionPerson(r.Context(), uid)
+		a.Free = err == nil && a.Card == nil && h.terminalFreeActive(r, uid) // ohne Karte
 		return a, err
 	}
 	return a, nil
@@ -166,7 +169,11 @@ func (h *Handler) vorgCan(r *http.Request, a vorgActor, perm string, it vorgItem
 	if a.Card != nil {
 		return h.cardPersonCan(r.Context(), a.Card, perm, it.Type, it.ID)
 	}
-	return a.Modus == vorgModusOhneKarte && h.terminalUserCan(r, a.TermUID, perm, it.Infra)
+	if a.Modus != vorgModusOhneKarte {
+		return false
+	}
+	// it.Infra stammt immer aus dem Anlagenbaum des Terminals (vorgLoad, vorgLoadOne)
+	return h.terminalRoleCan(r, a.TermUID, perm, it.Infra) || (a.Free && terminalFreePerms[perm])
 }
 
 // vorgLoad: offene Vorgänge einer Art im Anlagenbaum (neueste/laufende zuerst).
@@ -320,15 +327,20 @@ func (h *Handler) TerminalVorgaengePage(w http.ResponseWriter, r *http.Request) 
 	}
 	v.NoView = len(v.Groups) == 0
 	// Fenster zum gewählten Vorgang
-	if typ, id, found := strings.Cut(r.URL.Query().Get("sel"), ":"); found && !v.ReadOnly {
+	if typ, id, found := strings.Cut(r.URL.Query().Get("sel"), ":"); found {
 		it, okSel, err := h.vorgLoadOne(ctx, tree, typ, id)
 		if err != nil {
 			componentLog("terminal").Error().Err(err).Msg("vorgang lesen")
-		} else if okSel && h.vorgCan(r, act, vorgMustKind(typ).EditPerm, it) {
+		} else if !okSel {
+			v.Notice = vorgNotices["gone"]
+		} else if v.ReadOnly || !h.vorgCan(r, act, vorgMustKind(typ).EditPerm, it) {
+			// nicht bearbeitbar: Zeile bleibt antippbar, der Grund steht oben (nur Anzeige, kein Schreibweg)
+			v.Notice = h.vorgReason(r, v.ReadOnly, device, vorgMustKind(typ).EditPerm, it)
+		} else {
 			it.CanAct = true
 			v.Sel = &it
 			if it.Group != "work" {
-				people, err := h.terminalDepartmentPeople(ctx, uid)
+				people, fallback, err := h.terminalPickPeople(ctx, uid)
 				if err != nil {
 					componentLog("terminal").Error().Err(err).Msg("mitarbeitende lesen")
 				}
@@ -339,6 +351,7 @@ func (h *Handler) TerminalVorgaengePage(w http.ResponseWriter, r *http.Request) 
 				if act.Card != nil {
 					on[act.Card.ID] = true
 				}
+				v.PickFallback = fallback
 				for _, pe := range people {
 					v.Pick = append(v.Pick, vorgPick{ID: pe.ID, Name: pe.Name, Dept: pe.Department, On: on[pe.ID]})
 				}
@@ -347,6 +360,23 @@ func (h *Handler) TerminalVorgaengePage(w http.ResponseWriter, r *http.Request) 
 	}
 	p.Vorg = v
 	h.renderTerminal(w, p)
+}
+
+// vorgReason: Grund, warum ein Vorgang am Terminal nicht bearbeitet werden kann (nur Text für die Anzeige).
+func (h *Handler) vorgReason(r *http.Request, readOnly, device bool, perm string, it vorgItem) string {
+	if !device {
+		return "Vorgänge bearbeitet nur das Terminal selbst."
+	}
+	if readOnly {
+		return "Nur mit Karte – bitte Karte vorhalten."
+	}
+	msg := "Keine Berechtigung: " + h.permLabel(r, perm)
+	if h.db != nil {
+		if names, err := h.queryStrings(r.Context(), `SELECT d.name FROM departments d WHERE d.id = ANY($1::uuid[]) ORDER BY lower(d.name)`, h.recordDepartments(r.Context(), "infrastructure", it.Infra)); err == nil && len(names) > 0 {
+			msg += " in Abteilung " + strings.Join(names, ", ")
+		}
+	}
+	return msg
 }
 
 func vorgMustKind(typ string) vorgKind { k, _ := vorgKindOf(typ); return k }

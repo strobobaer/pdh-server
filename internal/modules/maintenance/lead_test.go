@@ -9,7 +9,7 @@ import (
 func ptr(n int) *int { return &n }
 
 // Ältere Aufrufe nennen den Vorlauf noch in Kalendertagen (lead_days); er wird
-// wie in Migration 212 in Arbeitstage umgerechnet: ceil(Tage × 5 / 7), höchstens 60.
+// wie in Migration 213 in Arbeitstage umgerechnet: ceil(Tage × 5 / 7), höchstens 60.
 func TestNormalizeLeadAltform(t *testing.T) {
 	base := func(in PlanInput) *PlanInput {
 		in.Name, in.InfrastructureID = "Presse", "x"

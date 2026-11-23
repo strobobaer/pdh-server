@@ -14,7 +14,7 @@ import (
 	"pdh/pkg/database"
 )
 
-// Migration 212 auf Altdaten: Vorlauf in Arbeitstage umgerechnet, „anstehend ab“
+// Migration 213 auf Altdaten: Vorlauf in Arbeitstage umgerechnet, „anstehend ab“
 // für offene Aufträge, neue Outlook-Art, ein geplanter Termin je Plan und Tag.
 func TestYearplanMigration(t *testing.T) {
 	admin := testPool(t)
@@ -33,7 +33,7 @@ func TestYearplanMigration(t *testing.T) {
 	}()
 
 	dir := t.TempDir()
-	copyMigrations(t, dir, 211)
+	copyMigrations(t, dir, 212)
 	must(database.RunMigrations(ctx, pool, dir))
 	id := func(q string, args ...any) string {
 		t.Helper()
@@ -54,7 +54,7 @@ func TestYearplanMigration(t *testing.T) {
 	done := id(`INSERT INTO maintenance_tasks (plan_id, title, type, infrastructure_id, priority, status, due_date, created_by)
 		VALUES ($1::uuid, 'B erledigt', 'inspection', $2::uuid, 'medium', 'done', '2026-11-20', $3::uuid) RETURNING id::text`, pb, infra, user)
 
-	copyMigrations(t, dir, 212)
+	copyMigrations(t, dir, 213)
 	must(database.RunMigrations(ctx, pool, dir))
 
 	lead := func(p string) *int {

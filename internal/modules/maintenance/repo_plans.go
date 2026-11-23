@@ -111,7 +111,7 @@ func normalizePlan(in *PlanInput) error {
 	if in.ScheduleMode != ScheduleFixed {
 		in.ScheduleMode = ScheduleFromCompletion
 	}
-	if in.LeadWorkdays == nil && in.LeadDays > 0 { // Altform: Kalendertage wie Migration 212 umrechnen
+	if in.LeadWorkdays == nil && in.LeadDays > 0 { // Altform: Kalendertage wie Migration 213 umrechnen
 		n := (in.LeadDays*5 + 6) / 7
 		if n > 60 {
 			n = 60

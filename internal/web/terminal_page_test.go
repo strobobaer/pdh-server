@@ -408,3 +408,40 @@ func CSSMinTouch(t *testing.T) string {
 	}
 	return s[i : i+400]
 }
+
+// Bildschirmtastatur: nur nach echter Berührung zeigen, nie bei programmatischem Fokus oder autofocus.
+func TestTerminalKeyboardShowDecision(t *testing.T) {
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("node fehlt")
+	}
+	src, err := os.ReadFile("../../web/static/terminal.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	src = bytes.ReplaceAll(src, []byte("\r\n"), []byte("\n"))
+	fn := regexp.MustCompile(`(?s)\n  function kbShowDecision\(.*?\n  \}\n`).Find(src)
+	win := regexp.MustCompile(`\n  var KB_POINTER_MS = \d+;`).Find(src)
+	if fn == nil || win == nil {
+		t.Fatal("kbShowDecision nicht gefunden")
+	}
+	harness := string(win) + string(fn) + `
+const out = [];
+const eq = (got, want, what) => { if (got !== want) out.push(what + ': ' + got + ' statt ' + want); };
+eq(kbShowDecision(0, 5000), false, 'programmatischer Fokus ohne Berührung');
+eq(kbShowDecision(undefined, 5000), false, 'kein Zeitpunkt');
+eq(kbShowDecision(null, 5000), false, 'null');
+eq(kbShowDecision(4800, 5000), true, 'Berührung, dann Fokus');
+eq(kbShowDecision(4200, 5000), true, 'genau 800 ms');
+eq(kbShowDecision(4199, 5000), false, 'zu lange her');
+eq(kbShowDecision(5100, 5000), false, 'Zeit läuft nicht rückwärts');
+if (out.length) { console.log(out.join('\n')); process.exit(1); }
+`
+	f := filepath.Join(t.TempDir(), "kb.js")
+	if err := os.WriteFile(f, []byte(harness), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if b, err := exec.Command(node, f).CombinedOutput(); err != nil {
+		t.Errorf("kbShowDecision: %s", b)
+	}
+}

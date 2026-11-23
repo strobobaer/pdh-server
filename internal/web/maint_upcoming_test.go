@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-// Der Vorlauf eines Wartungsplans steht seit Migration 212 in Arbeitstagen
+// Der Vorlauf eines Wartungsplans steht seit Migration 213 in Arbeitstagen
 // (lead_workdays); „anstehend“ liest nur noch upcoming_from am Auftrag.
 // Die alte Spalte lead_days (Kalendertage) bleibt nur als Rückweg.
 func TestNoPlanLeadDaysReaders(t *testing.T) {

@@ -245,7 +245,7 @@ func TestVorgaengeNurKarte(t *testing.T) {
 	v.e.must(v.h.saveTerminalVorgaengeModus(v.e.ctx, v.term, vorgModusNurKarte, v.term))
 	// ohne Karte: nur Ansicht, kein Schreiben
 	page := v.req("GET", "/terminal/vorgaenge", nil, v.devCookie, nil).Body.String()
-	if !strings.Contains(page, "Nur Ansicht") || strings.Contains(page, "?sel=") || !strings.Contains(page, "VG-Störung") {
+	if !strings.Contains(page, "Nur Ansicht") || strings.Contains(page, `name="people"`) || !strings.Contains(page, "VG-Störung") {
 		t.Error("nur_karte ohne Karte: erwartet Ansicht ohne Bedienung")
 	}
 	for _, p := range []string{"start", "warten", "beenden"} {
@@ -588,3 +588,69 @@ func TestTerminalDepartmentsHelper(t *testing.T) {
 }
 
 func base64URLDecode(s string) ([]byte, error) { return base64.RawURLEncoding.DecodeString(s) }
+
+// Auswahl der Personen: Hat keine Abteilung des Terminals wählbare Personen, gelten ersatzweise die Personen der
+// Abteilung „Instandhaltung“ – und genau diese sind auch die erlaubten Zuweisungen.
+func TestVorgaengeAuswahlErsatzInstandhaltung(t *testing.T) {
+	v := newVgEnv(t, true)
+	e := v.e
+	ctx := context.Background()
+	// vorhandene Instandhaltungs-Abteilungen der Testdatenbank für diesen Test ausblenden
+	old, err := v.h.queryStrings(ctx, `SELECT id::text FROM departments WHERE active AND lower(btrim(name)) = 'instandhaltung'`)
+	e.must(err)
+	e.exec(`UPDATE departments SET active = false WHERE id = ANY($1::uuid[])`, old)
+	t.Cleanup(func() { _, _ = e.pool.Exec(ctx, `UPDATE departments SET active = true WHERE id = ANY($1::uuid[])`, old) })
+
+	sel := "fault:" + v.fault
+	pick := func() (ids map[string]bool, body string) {
+		body = v.req("GET", "/terminal/vorgaenge?sel="+sel, nil, v.devCookie, nil).Body.String()
+		ids = map[string]bool{}
+		for _, id := range []string{v.anna, v.berta, v.carla} {
+			ids[id] = strings.Contains(body, `name="people" value="`+id+`"`)
+		}
+		return
+	}
+	const hint = "Keine Personen in den Abteilungen des Terminals – Instandhaltung"
+
+	// Abteilung des Terminals hat Personen: kein Ersatz, auch wenn es eine Instandhaltung gibt
+	maint := e.id(`INSERT INTO departments (name) VALUES ('  INSTANDHALTUNG ') RETURNING id::text`)
+	t.Cleanup(func() { _, _ = e.pool.Exec(ctx, `DELETE FROM departments WHERE id = $1::uuid`, maint) })
+	mp := e.user("Ina", "technician", false)
+	e.exec(`UPDATE users SET first_name = 'Ina', last_name = 'VGTest', department_id = $2::uuid WHERE id = $1::uuid`, mp, maint)
+	ids, body := pick()
+	if !ids[v.anna] || !ids[v.berta] || strings.Contains(body, `value="`+mp+`"`) || strings.Contains(body, hint) {
+		t.Errorf("mit Personen im Terminal: %v, Hinweis %v", ids, strings.Contains(body, hint))
+	}
+
+	// Keine Personen in den Abteilungen des Terminals: Instandhaltung
+	e.exec(`UPDATE users SET active = false WHERE id = ANY($1::uuid[])`, []string{v.anna, v.berta, v.card})
+	_, body = pick()
+	if !strings.Contains(body, `name="people" value="`+mp+`"`) || !strings.Contains(body, hint) {
+		t.Errorf("Ersatz fehlt: Person %v, Hinweis %v", strings.Contains(body, mp), strings.Contains(body, hint))
+	}
+	if strings.Contains(body, v.carla) {
+		t.Error("Ersatz zeigt Person einer anderen Abteilung")
+	}
+	// Zuweisung: Person aus dem Ersatz erlaubt, andere abgelehnt
+	if rec := v.post("/terminal/vorgaenge/start", "fault", v.fault, v.carla); rec.Code != http.StatusForbidden {
+		t.Errorf("Person anderer Abteilung: %d", rec.Code)
+	}
+	if rec := v.post("/terminal/vorgaenge/start", "fault", v.fault, v.anna); rec.Code != http.StatusForbidden {
+		t.Errorf("Person der (leeren) Terminal-Abteilung: %d", rec.Code)
+	}
+	if rec := v.post("/terminal/vorgaenge/start", "fault", v.fault, mp); rec.Code != http.StatusSeeOther {
+		t.Errorf("Person aus Instandhaltung: %d %s", rec.Code, rec.Body.String())
+	}
+
+	// Keine Abteilung Instandhaltung: leere Auswahl mit Meldung, niemand erlaubt (die Störung ist nun in Arbeit)
+	sel = "ticket:" + v.ticket
+	e.exec(`UPDATE departments SET active = false WHERE id = $1::uuid`, maint)
+	e.exec(`UPDATE users SET active = true WHERE id = $1::uuid`, v.carla)
+	ids, body = pick()
+	if ids[v.anna] || ids[v.berta] || ids[v.carla] || strings.Contains(body, hint) || !strings.Contains(body, "Keine Mitarbeitenden in den Abteilungen dieses Terminals") {
+		t.Errorf("ohne Instandhaltung: %v hint=%v msg=%v", ids, strings.Contains(body, hint), strings.Contains(body, "Keine Mitarbeitenden in den Abteilungen dieses Terminals"))
+	}
+	if rec := v.post("/terminal/vorgaenge/start", "task", v.task, mp); rec.Code != http.StatusForbidden {
+		t.Errorf("ohne Instandhaltung erlaubt: %d", rec.Code)
+	}
+}
