@@ -120,6 +120,7 @@ type terminalVorgPage struct {
 	Groups                     []vorgGroup
 	Sel                        *vorgItem
 	Pick                       []vorgPick
+	PickFallback               bool // Personen der Instandhaltung, weil die Abteilungen des Terminals keine haben
 }
 
 var vorgNotices = map[string]string{
@@ -328,7 +329,7 @@ func (h *Handler) TerminalVorgaengePage(w http.ResponseWriter, r *http.Request) 
 			it.CanAct = true
 			v.Sel = &it
 			if it.Group != "work" {
-				people, err := h.terminalDepartmentPeople(ctx, uid)
+				people, fallback, err := h.terminalPickPeople(ctx, uid)
 				if err != nil {
 					componentLog("terminal").Error().Err(err).Msg("mitarbeitende lesen")
 				}
@@ -339,6 +340,7 @@ func (h *Handler) TerminalVorgaengePage(w http.ResponseWriter, r *http.Request) 
 				if act.Card != nil {
 					on[act.Card.ID] = true
 				}
+				v.PickFallback = fallback
 				for _, pe := range people {
 					v.Pick = append(v.Pick, vorgPick{ID: pe.ID, Name: pe.Name, Dept: pe.Department, On: on[pe.ID]})
 				}

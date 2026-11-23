@@ -54,13 +54,39 @@ type terminalPerson struct {
 	ID, Name, Department string
 }
 
-// terminalDepartmentPeople: aktive Mitarbeitende (keine Systembenutzer, keine Bots, keine Betrachter) der
-// Abteilungen des Terminals, nach Name.
+// terminalMaintenanceDeptName: Name der Instandhaltungs-Abteilung. Eine Einstellung dafür gibt es im Kern nicht;
+// sie wird am Namen erkannt (ohne Groß-/Kleinschreibung und Randleerraum).
+const terminalMaintenanceDeptName = "instandhaltung"
+
+// terminalDepartmentPeople: die am Terminal wählbaren Personen (zugleich die erlaubten Zuweisungen), nach Name.
+// Siehe terminalPickPeople.
 func (h *Handler) terminalDepartmentPeople(ctx context.Context, termUserID string) ([]terminalPerson, error) {
+	people, _, err := h.terminalPickPeople(ctx, termUserID)
+	return people, err
+}
+
+// terminalPickPeople: aktive Mitarbeitende (keine Systembenutzer, keine Bots, keine Betrachter) der Abteilungen des
+// Terminals. Hat keine dieser Abteilungen wählbare Personen, gelten ersatzweise die Personen der Abteilung
+// „Instandhaltung“ (fallback=true). Gibt es diese Abteilung nicht, bleibt die Liste leer.
+func (h *Handler) terminalPickPeople(ctx context.Context, termUserID string) (people []terminalPerson, fallback bool, err error) {
 	depts, err := h.terminalDepartments(ctx, termUserID)
-	if err != nil || len(depts) == 0 {
-		return nil, err
+	if err != nil {
+		return nil, false, err
 	}
+	if len(depts) > 0 {
+		if people, err = h.departmentPeople(ctx, depts); err != nil || len(people) > 0 {
+			return people, false, err
+		}
+	}
+	maint, err := h.queryStrings(ctx, `SELECT id::text FROM departments WHERE active AND lower(btrim(name)) = $1 ORDER BY id`, terminalMaintenanceDeptName)
+	if err != nil || len(maint) == 0 {
+		return nil, false, err
+	}
+	people, err = h.departmentPeople(ctx, maint)
+	return people, err == nil && len(people) > 0, err
+}
+
+func (h *Handler) departmentPeople(ctx context.Context, depts []string) ([]terminalPerson, error) {
 	rows, err := h.db.Query(ctx, `SELECT id::text, TRIM(first_name || ' ' || last_name), COALESCE(department, '')
 		FROM users WHERE active AND NOT is_bot AND NOT is_system_user AND role::text <> 'viewer'
 		AND department_id = ANY($1::uuid[]) ORDER BY lower(last_name), lower(first_name), id`, depts)

@@ -553,8 +553,9 @@ connect();
     <div class="v-meta">{{if .Path}}{{.Path}} · {{end}}{{.StatusLabel}}</div>
     <input type="hidden" name="type" value="{{.Type}}"><input type="hidden" name="id" value="{{.ID}}">
     <h3>Wer arbeitet daran?</h3>
+    {{if $.Vorg.PickFallback}}<div class="v-meta"><i class="ti ti-info-circle" aria-hidden="true"></i> Keine Personen in den Abteilungen des Terminals – Instandhaltung</div>{{end}}
     {{if $.Vorg.Pick}}<div class="v-people">{{range $.Vorg.Pick}}<label class="t-opt"><input type="checkbox" name="people" value="{{.ID}}"{{if .On}} checked{{end}}><span>{{.Name}}{{if .Dept}}<small>{{.Dept}}</small>{{end}}</span></label>{{end}}</div>
-    {{else}}<div class="t-empty off"><i class="ti ti-users-minus" aria-hidden="true"></i> Keine Mitarbeitenden in den Abteilungen dieses Terminals</div>{{end}}
+    {{else}}<div class="t-empty off"><i class="ti ti-users-minus" aria-hidden="true"></i> Keine Mitarbeitenden in den Abteilungen dieses Terminals und keine Abteilung „Instandhaltung“ mit Personen</div>{{end}}
     <div class="l-row">
       <a class="t-btn" href="/terminal/vorgaenge">Abbrechen</a>
       <button type="submit" class="t-btn primary"{{if not $.Vorg.Pick}} disabled{{end}}><i class="ti ti-player-play" aria-hidden="true"></i> Starten</button>
