@@ -2429,7 +2429,7 @@ function copRenderProposal(msgs, p) {
   foot.appendChild(res);
   card.appendChild(foot);
   msgs.appendChild(card);
-  msgs.scrollTop = msgs.scrollHeight;
+  msgs.scrollTop = Math.max(0, card.offsetTop - msgs.offsetTop - 4); // Anfang der Liste zeigen, nicht das Ende
 }
 
 // ── Copilot-Vorschläge zu aktiven Störungen und Tickets (copilot_suggest.go) ──
