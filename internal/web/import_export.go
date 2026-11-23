@@ -442,6 +442,10 @@ func (h *Handler) editConnection(w http.ResponseWriter, r *http.Request, directi
 		http.Error(w, "Verbindung nicht gefunden", http.StatusNotFound)
 		return
 	}
+	if kind == calc.Kind {
+		http.Error(w, errCalcBuiltin, http.StatusBadRequest)
+		return
+	}
 	fields, ok := connectionKindFields(direction, kind)
 	if !ok {
 		http.Error(w, "Unbekannter Verbindungstyp", http.StatusInternalServerError)
@@ -548,6 +552,17 @@ func (h *Handler) deleteConnection(w http.ResponseWriter, r *http.Request, direc
 		return
 	}
 	id := chi.URLParam(r, "id")
+	if direction == "import" {
+		if h.isCalcConnection(r.Context(), id) {
+			http.Redirect(w, r, base+"?notice="+url.QueryEscape(errCalcBuiltin), http.StatusSeeOther)
+			return
+		}
+		// Die Zuordnungen gehen mit der Verbindung weg (Fremdschlüssel) – nicht, wenn ein berechneter Wert sie braucht
+		if users := h.calcInputUsers(r.Context(), "connection", id); len(users) > 0 {
+			http.Redirect(w, r, base+"?notice="+url.QueryEscape("Die Verbindung liefert Eingangswerte für "+quotedNames(users)+" – bitte zuerst dort die Formel ändern."), http.StatusSeeOther)
+			return
+		}
+	}
 	if qs, err := h.loadConnQueries(r.Context(), id); err == nil {
 		for _, q := range qs {
 			h.importPoll.Stop(queryPollID(q.ID))
@@ -557,7 +572,7 @@ func (h *Handler) deleteConnection(w http.ResponseWriter, r *http.Request, direc
 	_ = h.db.QueryRow(r.Context(),
 		`SELECT COALESCE(config->>'int_public_host','') FROM import_export_connections WHERE id=$1 AND direction=$2`, id, direction).Scan(&brokerHost)
 	if _, err := h.db.Exec(r.Context(),
-		`DELETE FROM import_export_connections WHERE id=$1 AND direction=$2`, id, direction); err != nil {
+		`DELETE FROM import_export_connections WHERE id=$1 AND direction=$2 AND kind <> 'calc'`, id, direction); err != nil {
 		if strings.Contains(err.Error(), "23503") && strings.Contains(err.Error(), "esppdh_devices") {
 			// ESPPDH-Geräte hängen am Broker dieser Verbindung (ON DELETE RESTRICT)
 			http.Redirect(w, r, base+"?notice="+url.QueryEscape("Die Verbindung wird noch von ESPPDH-Geräten genutzt – erst die Geräte löschen oder einer anderen Verbindung zuordnen (Import → ESPPDH)."), http.StatusSeeOther)
@@ -580,12 +595,16 @@ func (h *Handler) toggleConnection(w http.ResponseWriter, r *http.Request, direc
 		return
 	}
 	id := chi.URLParam(r, "id")
+	if h.isCalcConnection(r.Context(), id) {
+		http.Error(w, errCalcBuiltin, http.StatusBadRequest)
+		return
+	}
 	var kind string
 	var enabled bool
 	var configBytes []byte
 	if err := h.db.QueryRow(r.Context(), `
 		UPDATE import_export_connections SET enabled = NOT enabled, updated_at=NOW()
-		WHERE id=$1 AND direction=$2 RETURNING kind, enabled, config`, id, direction).
+		WHERE id=$1 AND direction=$2 AND kind <> 'calc' RETURNING kind, enabled, config`, id, direction).
 		Scan(&kind, &enabled, &configBytes); err != nil {
 		http.Error(w, "Verbindung konnte nicht geändert werden", http.StatusInternalServerError)
 		return

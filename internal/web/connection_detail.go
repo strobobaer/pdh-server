@@ -520,13 +520,25 @@ func (h *Handler) ConnectionQueryDeleteWeb(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	ctx := r.Context()
+	withMappings := r.FormValue("with_mappings") == "1"
+	if withMappings {
+		// Spalten der Abfrage, die ein berechneter Wert als Eingangswert braucht: nichts löschen
+		if users := h.calcInputUsers(ctx, "source-prefix", id, queryRefPrefix+qid+":"); len(users) > 0 {
+			http.Redirect(w, r, connectionBackPath("import", id, "queries", "",
+				"Die Abfrage liefert Eingangswerte für "+quotedNames(users)+" – bitte zuerst dort die Formel ändern."), http.StatusSeeOther)
+			return
+		}
+	}
 	if h.importPoll != nil {
 		h.importPoll.Stop(queryPollID(qid))
 	}
 	var n int
 	_ = h.db.QueryRow(ctx, `SELECT COUNT(*) FROM import_mappings WHERE connection_id = $1 AND source_ref LIKE $2`, id, queryRefPrefix+qid+":%").Scan(&n)
-	if r.FormValue("with_mappings") == "1" {
-		_, _ = h.db.Exec(ctx, `DELETE FROM import_mappings WHERE connection_id = $1 AND source_ref LIKE $2`, id, queryRefPrefix+qid+":%")
+	if withMappings {
+		if _, err := h.db.Exec(ctx, `DELETE FROM import_mappings WHERE connection_id = $1 AND source_ref LIKE $2`, id, queryRefPrefix+qid+":%"); err != nil {
+			http.Redirect(w, r, connectionBackPath("import", id, "queries", "", "Die Zuordnungen der Abfrage konnten nicht gelöscht werden – die Abfrage bleibt stehen"), http.StatusSeeOther)
+			return
+		}
 		n = 0
 	}
 	if _, err := h.db.Exec(ctx, `DELETE FROM connection_queries WHERE id::text = $1 AND connection_id = $2`, qid, id); err != nil {

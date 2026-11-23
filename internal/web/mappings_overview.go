@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"net/http"
+	"strings"
 )
 
 // Zentrale Uebersichtsseiten: statt jede Zuordnung nur auf der jeweiligen
@@ -100,7 +101,22 @@ func (h *Handler) allImportMappings(ctx context.Context) ([]ImportMappingOvervie
 		v.ConnectionPath = importConnectionDetailPath(kind)
 		list = append(list, v)
 	}
-	return list, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	var labels map[string]string // berechnete Werte: „berechnet: Formel“ statt der internen Quelle
+	for i := range list {
+		if strings.HasPrefix(list[i].SourceRef, "calc:") {
+			if labels == nil {
+				labels = h.calcSourceLabels(ctx)
+				if labels == nil {
+					labels = map[string]string{}
+				}
+			}
+			list[i].SourceRef = calcSourceLabel(labels, list[i].ID, list[i].SourceRef)
+		}
+	}
+	return list, nil
 }
 
 func (h *Handler) allExportMappings(ctx context.Context) ([]ExportMappingOverviewView, error) {

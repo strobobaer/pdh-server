@@ -86,6 +86,10 @@ func (h *Handler) suggestionsWeb(w http.ResponseWriter, r *http.Request, directi
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 	defer cancel()
+	if direction == "import" && h.isCalcConnection(ctx, id) {
+		http.Error(w, errCalcOwnPage, http.StatusBadRequest)
+		return
+	}
 	_, kind, _, config, err := h.connectionRow(ctx, id, direction)
 	var secretErr *connSecretError
 	if errors.As(err, &secretErr) {

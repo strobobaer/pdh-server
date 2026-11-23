@@ -56,15 +56,26 @@ func (h *Handler) availableExportSources(ctx context.Context) ([]ImportMappingVi
 	}
 	defer rows.Close()
 	list := make([]ImportMappingView, 0)
+	calcRows := false
 	for rows.Next() {
 		var v ImportMappingView
 		if err := rows.Scan(&v.ID, &v.SourceRef, &v.InfrastructureID, &v.InfrastructureName, &v.Name, &v.Note,
 			&v.LastValue, &v.LastReceivedAt, &v.CreatedAt, &v.ConnectionID, &v.ConnectionName); err != nil {
 			return nil, err
 		}
+		calcRows = calcRows || strings.HasPrefix(v.SourceRef, "calc:")
 		list = append(list, v)
 	}
-	return list, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if calcRows { // berechnete Werte: „berechnet: Formel“ statt der internen Quelle
+		labels := h.calcSourceLabels(ctx)
+		for i := range list {
+			list[i].SourceRef = calcSourceLabel(labels, list[i].ID, list[i].SourceRef)
+		}
+	}
+	return list, nil
 }
 
 func (h *Handler) exportMappings(ctx context.Context, connectionID string) ([]ExportMappingView, error) {
