@@ -551,6 +551,8 @@
  "„%s“: bitte eine Zahl eingeben.": "“%s”: please enter a number.",
  "Wartet": "Waiting",
  "Nächster Termin: %s": "Next due date: %s",
+ "Auftrag entsteht am %s": "Work order is created on %s",
+ "geplant": "planned",
  "Anstehend": "Due",
  "Wartungsplan": "Maintenance plan",
  "Plan": "Plan",

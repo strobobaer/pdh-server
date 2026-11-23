@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"pdh/internal/core/users"
+	"pdh/internal/modules/maintenance"
 )
 
 // Kalender-Dashboard (/calendar): Zeilen = Mitarbeiter, Spalten = Tage
@@ -29,6 +30,7 @@ var calKinds = []calKind{
 	{"absence", "Urlaub & Abwesenheit", "ti-beach", "#10B981"},
 	{"shift", "Schichten", "ti-calendar-time", "#3B82F6"},
 	{"maintenance", "Wartungen", "ti-tool", "#C99A3C"},
+	{"maintenance_planned", "Wartungstermine", "ti-calendar-repeat", "#C99A3C"}, // Jahresplan, noch kein Auftrag
 	{"obligation", "Prüfpflichten", "ti-clipboard-check", "#6366F1"},
 	{"ticket", "Tickets", "ti-ticket", "#0EA5E9"},
 	{"fault", "Störungen", "ti-alert-triangle", "#F97316"},
@@ -44,7 +46,10 @@ type calChip struct {
 	Pending                                   bool // beantragt / Entwurf
 	SpanStart, SpanMid                        bool // Projektbalken
 	// Ziehen im Kalender (widgets/grid_drag.gohtml): Art, Datensatz, Zeile
-	Drag, ID, Row string // Drag: shift | duty | absence | item ("" = fest)
+	Drag, ID, Row string // Drag: shift | duty | absence | item | visit ("" = fest)
+	// Wartungstermin aus dem Jahresplan (maintenance_planned)
+	Planned, OffPlan, Dropped   bool
+	AssigneeID, GroupID, PlanURL string
 }
 
 type calCell struct {
@@ -178,6 +183,9 @@ func (h *Handler) buildCalendar(r *http.Request, board *leitstand) CalendarData 
 				q.Set("group", board.GroupID)
 			}
 			q["show"] = append([]string{"shift", "duty", "absence"}, board.Types...)
+			if board.HasType("maintenance") { // geplante Wartungstermine gehören zu den Wartungen
+				q.Add("show", "maintenance_planned")
+			}
 			if q.Get("days") == "" {
 				q.Set("days", "7")
 			}
@@ -185,6 +193,7 @@ func (h *Handler) buildCalendar(r *http.Request, board *leitstand) CalendarData 
 	} else if q.Get("set") == "" && q.Get("reset") == "" {
 		if saved := h.userPref(ctx, me.ID, "calendar"); saved != "" {
 			if sv, err := url.ParseQuery(saved); err == nil {
+				calPrefAddPlanned(sv)
 				for k, v := range sv {
 					if _, ok := q[k]; !ok {
 						q[k] = v
@@ -244,6 +253,7 @@ func (h *Handler) buildCalendar(r *http.Request, board *leitstand) CalendarData 
 		for s := range d.Show {
 			keep.Add("show", s)
 		}
+		keep.Set("pv", calPrefVersion) // Auswahl kennt die Ebene „Wartungstermine“
 		h.setUserPref(ctx, me.ID, "calendar", keep.Encode())
 	}
 	// Rechte – am Leitstand sind Schichten, Dienste und Abwesenheit (ohne Grund) für alle sichtbar
@@ -254,6 +264,9 @@ func (h *Handler) buildCalendar(r *http.Request, board *leitstand) CalendarData 
 	}
 	if !h.hasPerm(r, "infrastructure.view") && !h.hasPerm(r, "infrastructure.obligations") {
 		delete(d.Show, "obligation")
+	}
+	if !guest && !h.hasPerm(r, "maintenance.view") {
+		delete(d.Show, "maintenance_planned")
 	}
 	viewAll := h.canAbsenceViewAll(r)
 
@@ -501,6 +514,47 @@ func (h *Handler) buildCalendar(r *http.Request, board *leitstand) CalendarData 
 		}
 		rs.Close()
 	}
+	if d.Show["maintenance_planned"] && h.maint != nil {
+		// geplante Wartungstermine (Jahresplan): Person des Termins, sonst die
+		// verantwortliche des Plans; beauftragte stehen schon unter „Wartungen“
+		visits, err := h.maint.Repo().VisitsInRange(ctx, from, to)
+		if err != nil {
+			componentLog("kalender").Warn().Err(err).Msg("wartungstermine laden")
+			d.LoadErrors = append(d.LoadErrors, calKindByKey("maintenance_planned").Label+": "+friendlyDBError(err))
+		}
+		planScope := h.scopeAllowedIDs(r, "maintenance_plan")
+		canView, canEdit := map[string]bool{}, map[string]bool{}
+		for _, v := range visits {
+			if boardIDs != nil && !boardIDs["maintenance_planned"][v.ID] {
+				continue // Gast: nur, was zu Abteilung/Gruppe des Leitstands gehört
+			}
+			if !guest {
+				if planScope != nil && !planScope[v.PlanID] {
+					continue
+				}
+				ok, seen := canView[v.PlanID]
+				if !seen {
+					ok = h.hasPermRec(r, "maintenance.view", "maintenance_plan", v.PlanID)
+					canView[v.PlanID] = ok
+					canEdit[v.PlanID] = ok && me.ID != "" && h.hasPermRec(r, "maintenance.edit", "maintenance_plan", v.PlanID)
+				}
+				if !ok {
+					continue
+				}
+			}
+			uid := derefOr(v.AssignedTo, derefOr(v.ResponsibleTo, ""))
+			c := cellOf(uid, v.Day)
+			if c == nil {
+				continue
+			}
+			ch := calVisitChip(v)
+			if !ch.Dropped && canEdit[v.PlanID] {
+				ch.Drag, ch.ID = "visit", v.ID
+			}
+			c.Items = append(c.Items, ch)
+			d.Counts["maintenance_planned"]++
+		}
+	}
 	if d.Show["obligation"] {
 		if rs, err := h.db.Query(ctx, `SELECT o.infrastructure_id::text, o.title, COALESCE(i.name, ''), COALESCE(o.responsible_to::text, ''), o.next_due
 			FROM infra_obligations o JOIN infrastructure i ON i.id = o.infrastructure_id WHERE o.next_due BETWEEN $1 AND $2`, from, to); err == nil {
@@ -571,7 +625,7 @@ func (h *Handler) buildCalendar(r *http.Request, board *leitstand) CalendarData 
 			c := &row.Cells[i]
 			due := 0
 			for _, it := range c.Items {
-				if it.Kind != "project" && it.Kind != "duty" {
+				if it.Kind != "project" && it.Kind != "duty" && !it.Dropped { // geplante Termine zählen mit (Personalplanung)
 					due++
 				}
 			}
@@ -627,6 +681,48 @@ func (h *Handler) buildCalendar(r *http.Request, board *leitstand) CalendarData 
 		d.Rows = append(d.Rows, *nobody)
 	}
 	return d
+}
+
+// calPrefVersion: Stand der gemerkten Kalender-Auswahl. Ab „2“ kennt sie die
+// Ebene „Wartungstermine“ – wer sie dann abwählt, bekommt sie nicht zurück.
+const calPrefVersion = "2"
+
+// calPrefAddPlanned: ältere gemerkte Auswahl mit „Wartungen“ bekommt die
+// geplanten Wartungstermine dazu.
+func calPrefAddPlanned(sv url.Values) {
+	if sv.Get("pv") == calPrefVersion {
+		return
+	}
+	for _, s := range sv["show"] {
+		if s == "maintenance" {
+			sv.Add("show", "maintenance_planned")
+			return
+		}
+	}
+}
+
+// calVisitChip: Chip eines geplanten Wartungstermins (gestrichelt).
+func calVisitChip(v maintenance.Visit) calChip {
+	ch := calChipFor(calKindByKey("maintenance_planned"))
+	ch.Planned, ch.OffPlan, ch.Dropped = true, v.OffPlan, v.State == maintenance.VisitDropped
+	ch.PlanURL = "/maintenance/plans/" + v.PlanID
+	ch.URL = ch.PlanURL
+	ch.AssigneeID, ch.GroupID = derefOr(v.AssignedTo, ""), derefOr(v.GroupID, "")
+	if ch.Dropped {
+		ch.Title, ch.Tip = "entfallen · "+v.PlanName, "Wartungstermin entfallen: "+v.PlanName
+	} else {
+		ch.Title, ch.Tip = "geplant · "+v.PlanName, "Wartungstermin (geplant): "+v.PlanName
+	}
+	if v.InfraName != "" {
+		ch.Tip += " · " + v.InfraName
+	}
+	if v.GroupName != "" {
+		ch.Tip += " · Gruppe " + v.GroupName
+	}
+	if v.OffPlan {
+		ch.Tip += " · weicht vom Plan ab"
+	}
+	return ch
 }
 
 // calMovable: Vorgänge, deren Fälligkeit sich im Kalender per Ziehen verschieben lässt.

@@ -551,6 +551,8 @@
  "„%s“: bitte eine Zahl eingeben.": "“%s”: lütfen bir sayı girin.",
  "Wartet": "Bekliyor",
  "Nächster Termin: %s": "Sonraki tarih: %s",
+ "Auftrag entsteht am %s": "İş emri %s tarihinde oluşturulur",
+ "geplant": "planlandı",
  "Anstehend": "Yaklaşan",
  "Wartungsplan": "Bakım planı",
  "Plan": "Plan",
