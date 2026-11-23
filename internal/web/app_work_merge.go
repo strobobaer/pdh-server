@@ -215,13 +215,12 @@ func (h *Handler) appWorkMerge(w http.ResponseWriter, r *http.Request, op, kind,
 			return false
 		}
 	}
-	// Abweichung. Offen: das Recht des Wegs gilt (Regel 6). Geschlossen: wer den
-	// Vorgang sieht (p.See, schon geprüft) und kein Betrachter ist, darf anhängen.
+	// Abweichung. Das Recht des Wegs gilt (Regel 6), offen wie geschlossen; auf einem
+	// geschlossenen Vorgang prüft appClosedMayAppend es (appWorkCan gibt dort nichts frei).
 	var ok bool
 	switch {
 	case p.Closed:
-		u := getUser(r)
-		ok = u != nil && u.Role != "viewer"
+		ok = h.appClosedMayAppend(r, op, kind, id)
 	case op == appOpStart:
 		ok = p.Start
 	case op == appOpFinish:
@@ -279,8 +278,10 @@ func (h *Handler) appWorkMerge(w http.ResponseWriter, r *http.Request, op, kind,
 			appUnavailable(w, err, kind, id, "app: nachtrag in den verlauf")
 			return true
 		}
-		appKeepOnce(r)        // geschrieben: ein erneuter Versuch ist ab jetzt ein Replay
-		if op == appOpStart { // „Annehmen“ entfällt: die Zugewiesenen erfahren davon (nur hier, nie beim Replay)
+		appKeepOnce(r) // geschrieben: ein erneuter Versuch ist ab jetzt ein Replay
+		// „Annehmen“ entfällt: die Zugewiesenen erfahren davon (nur hier, nie beim Replay,
+		// nicht bei geschlossenem Vorgang).
+		if op == appOpStart && !p.Closed {
 			h.appNotifyStartDropped(r, k, id, title)
 		}
 	}
@@ -290,6 +291,28 @@ func (h *Handler) appWorkMerge(w http.ResponseWriter, r *http.Request, op, kind,
 	}
 	if !appWorkDenied(w, p) {
 		h.appWorkRespondHint(w, r, kind, id, p, hint)
+	}
+	return true
+}
+
+// appClosedMayAppend: darf der Benutzer auf einem geschlossenen Vorgang (Sicht schon
+// geprüft) anhängen? Wie auf einem offenen: Maßnahme canWriteAction, Abschluss canFinish,
+// Annehmen Bearbeiten-Recht oder Beteiligung. Kommentare und Prüfpunkte (es wird nichts
+// gespeichert, nur der Hinweis) wie in Paket 2: jeder Nicht-Betrachter.
+func (h *Handler) appClosedMayAppend(r *http.Request, op, kind, id string) bool {
+	u := getUser(r)
+	if u == nil || u.ID == "" || u.Role == "viewer" {
+		return false
+	}
+	k := completionKinds[kind]
+	ref := myWorkKind[kind].scopeRef
+	switch op {
+	case appOpAction:
+		return h.canWriteAction(r, ref, id)
+	case appOpFinish:
+		return h.canFinish(r, k, id)
+	case appOpStart:
+		return h.hasPermRec(r, k.EditPerm, ref, id) || h.completionInvolved(r, k, id)
 	}
 	return true
 }

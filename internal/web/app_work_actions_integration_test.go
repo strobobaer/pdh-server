@@ -667,6 +667,42 @@ func TestAppWorkMerge(t *testing.T) {
 			}
 		}
 	})
+	t.Run("geschlossener Vorgang, ohne Recht → 403, nichts im Verlauf (Regel 6)", func(t *testing.T) {
+		e := newAppActEnv(t)
+		third := e.user("third", "worker", false)
+		e.exec(`INSERT INTO faults (title, description, severity, status, assigned_to, created_by) VALUES ($1, '', 'low', 'resolved', $2::uuid, $2::uuid)`, e.title("Zu"), third)
+		e.grant(e.uid, "faults.edit", "", false)
+		e.grant(e.uid, "faults.resolve", "", false)
+		e.warm()
+		fid := e.idOf("faults", "Zu")
+		if code, _ := e.detail("fault", fid); code != 200 {
+			t.Fatalf("Vorbedingung sichtbar: %d", code)
+		}
+		for _, p := range []string{"/actions", "/finish", "/start"} {
+			rec, m := e.post("/api/app/v1/work/fault/"+fid+p, map[string]any{"text": "x", "no_parts": true, "base": base("in_progress")}, "")
+			if rec.Code != 403 || m["code"] != "app_no_permission" {
+				t.Errorf("%s: %d %s", p, rec.Code, rec.Body.String())
+			}
+		}
+		if h := hints(e, "fault", fid); len(h) != 0 {
+			t.Errorf("verlauf: %q", h)
+		}
+	})
+	t.Run("start auf geschlossenem Vorgang mit Recht: Hinweis, keine PDH-Nachricht", func(t *testing.T) {
+		e := newAppActEnv(t)
+		e.exec(`INSERT INTO faults (title, description, severity, status, assigned_to, created_by) VALUES ($1, '', 'low', 'resolved', $2::uuid, $2::uuid)`, e.title("Kollege"), e.other)
+		fid := e.idOf("faults", "Kollege")
+		e.grant(e.uid, "faults.edit", "", true)
+		e.warm()
+		rec, m := e.post("/api/app/v1/work/fault/"+fid+"/start", map[string]any{"base": base("detected")}, "")
+		if rec.Code != 200 || m["hint"] == nil {
+			t.Fatalf("%d %s", rec.Code, rec.Body.String())
+		}
+		if n := e.count(`SELECT COUNT(*) FROM chat_messages m JOIN chat_members c ON c.conversation_id = m.conversation_id
+			WHERE c.user_id = $1::uuid AND m.body LIKE '%'||$2||'%'`, e.other, e.title("Kollege")); n != 0 {
+			t.Errorf("nachrichten an den Zugewiesenen: %d", n)
+		}
+	})
 	t.Run("start mit veraltetem base: Zugewiesene bekommt genau eine PDH-Nachricht, auch nach Replay", func(t *testing.T) {
 		e := newAppActEnv(t)
 		e.exec(`INSERT INTO faults (title, description, severity, status, assigned_to, created_by) VALUES ($1, '', 'low', 'analyzing', $2::uuid, $2::uuid)`, e.title("Kollege"), e.other)
