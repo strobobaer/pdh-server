@@ -39,10 +39,10 @@ const (
 
 	taskMaxOverdue   = 30  // überfällige Aufgaben auf der Folie, der Rest als „+ n weitere“
 	taskMaxItems     = 60  // Aufgaben im Zeitraum auf der Folie
-	taskFetchLimit   = 500 // Obergrenze der gelesenen Zeilen
 	projYearPageSize = 14  // Balken je Seite
 	projYearMaxBars  = 140 // Balken insgesamt (10 Seiten)
 	projYearMinPage  = 4   // Sekunden je Seite, mindestens
+	projFetchLimit   = 500 // Obergrenze der gelesenen Projekte
 )
 
 func slideIsWork(kind string) bool { return kind == slideKindTasks || kind == slideKindProjectsYear }
@@ -238,68 +238,90 @@ func (h *Handler) tasksSlide(ctx context.Context, uid, role string, s terminalSl
 		return nil, err
 	}
 	var rows []taskRow
+	var overdueTotal, rangeTotal int
 	if !sc.empty() {
-		bound := to // überfällige Aufgaben gehören immer dazu, auch wenn das gewählte Ende vor heute liegt
-		if today.After(bound) {
-			bound = today
-		}
-		if rows, err = h.taskRows(ctx, bound, sc); err != nil {
+		if rows, overdueTotal, rangeTotal, err = h.taskRows(ctx, today, to, sc); err != nil {
 			return nil, err
 		}
 	}
 	out := groupTaskRows(rows, today, to)
+	// „+ n weitere“ aus den Zählungen der Abfragen, nicht aus der Zahl der gelesenen Zeilen
+	out.OverdueMore = max(out.OverdueMore, overdueTotal-len(out.Overdue))
+	out.More = max(out.More, rangeTotal-taskShown(out))
 	out.Label = taskRangeLabel(now, s.TaskRange, s.TaskUntil)
 	out.From, out.To = mondayOf(today).Format(dayISO), to.Format(dayISO)
 	return out, nil
 }
 
-// taskRows: offene Aufgaben mit Fälligkeit bis to (überfällige eingeschlossen) in Anlagen der erlaubten Abteilungen
-// bzw. – mit globalem Recht – ohne Anlage oder Abteilung.
-func (h *Handler) taskRows(ctx context.Context, to time.Time, sc planScope) ([]taskRow, error) {
+// taskShown: Zahl der Aufgaben in den Wochen einer Folie.
+func taskShown(d *tasksSlideData) int {
+	n := 0
+	for _, w := range d.Weeks {
+		for _, day := range w.Days {
+			n += len(day.Items)
+		}
+	}
+	return n
+}
+
+// taskRows: offene Aufgaben mit Fälligkeit in Anlagen der erlaubten Abteilungen bzw. – mit globalem Recht – ohne
+// Anlage oder Abteilung. Überfällige (vor heute) und Aufgaben im Zeitraum (heute bis to) haben je eigene Grenzen
+// und Zählungen, damit viele überfällige Aufgaben die des Zeitraums nicht verdrängen.
+func (h *Handler) taskRows(ctx context.Context, today, to time.Time, sc planScope) (rows []taskRow, overdueTotal, rangeTotal int, err error) {
 	depts := sc.Depts
 	if depts == nil {
 		depts = []string{}
 	}
-	rows, err := h.db.Query(ctx, `SELECT t.due_date::text, t.title, t.status::text, COALESCE(t.color, ''), COALESCE(i.name, ''),
+	const q = `SELECT t.due_date::text, t.title, t.status::text, COALESCE(t.color, ''), COALESCE(i.name, ''),
 			COALESCE((SELECT array_agg(TRIM(u.first_name || ' ' || u.last_name) ORDER BY lower(u.last_name), lower(u.first_name))
-			          FROM task_assignees ta JOIN users u ON u.id = ta.user_id WHERE ta.task_id = t.id), '{}')::text[]
+			          FROM task_assignees ta JOIN users u ON u.id = ta.user_id WHERE ta.task_id = t.id), '{}')::text[],
+			COUNT(*) OVER ()
 		FROM tasks t LEFT JOIN infrastructure i ON i.id = t.infrastructure_id
 		WHERE t.status::text IN ('open', 'in_progress', 'pending') AND t.archived_at IS NULL
-		  AND t.due_date IS NOT NULL AND t.due_date <= $1::date
-		  AND (EXISTS (SELECT 1 FROM infrastructure_department x WHERE x.infrastructure_id = t.infrastructure_id AND x.department_id = ANY($2::uuid[]))
-		       OR ($3::boolean AND NOT EXISTS (SELECT 1 FROM infrastructure_department x WHERE x.infrastructure_id = t.infrastructure_id)))
+		  AND t.due_date IS NOT NULL AND t.due_date >= $1::date AND t.due_date <= $2::date
+		  AND (EXISTS (SELECT 1 FROM infrastructure_department x WHERE x.infrastructure_id = t.infrastructure_id AND x.department_id = ANY($3::uuid[]))
+		       OR ($4::boolean AND NOT EXISTS (SELECT 1 FROM infrastructure_department x WHERE x.infrastructure_id = t.infrastructure_id)))
 		ORDER BY t.due_date, lower(t.title)
-		LIMIT $4`, to, depts, sc.NoDept, taskFetchLimit)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []taskRow
-	for rows.Next() {
-		var due, title, status, color, plant string
-		var who []string
-		if err := rows.Scan(&due, &title, &status, &color, &plant, &who); err != nil {
-			return nil, err
-		}
-		d, err := time.ParseInLocation(dayISO, due, time.Local)
+		LIMIT $5`
+	scan := func(lo, hi time.Time, limit int) (int, error) {
+		r, err := h.db.Query(ctx, q, lo, hi, depts, sc.NoDept, limit)
 		if err != nil {
-			continue
+			return 0, err
 		}
-		if !hexColorRe.MatchString(color) {
-			color = ""
-		}
-		var names []string
-		for _, n := range who {
-			if n = strings.TrimSpace(n); n != "" {
-				names = append(names, n)
+		defer r.Close()
+		total := 0
+		for r.Next() {
+			var due, title, status, color, plant string
+			var who []string
+			if err := r.Scan(&due, &title, &status, &color, &plant, &who, &total); err != nil {
+				return 0, err
 			}
+			d, err := time.ParseInLocation(dayISO, due, time.Local)
+			if err != nil {
+				continue
+			}
+			if !hexColorRe.MatchString(color) {
+				color = ""
+			}
+			names := []string{}
+			for _, n := range who {
+				if n = strings.TrimSpace(n); n != "" {
+					names = append(names, n)
+				}
+			}
+			rows = append(rows, taskRow{Due: d, Item: taskSlideItem{Title: title, Plant: plant, Assignees: names, Status: status, StatusLabel: statusLabel(status), Color: color}})
 		}
-		if names == nil {
-			names = []string{}
-		}
-		out = append(out, taskRow{Due: d, Item: taskSlideItem{Title: title, Plant: plant, Assignees: names, Status: status, StatusLabel: statusLabel(status), Color: color}})
+		return total, r.Err()
 	}
-	return out, rows.Err()
+	if overdueTotal, err = scan(time.Date(1970, 1, 1, 0, 0, 0, 0, today.Location()), today.AddDate(0, 0, -1), taskMaxOverdue); err != nil {
+		return nil, 0, 0, err
+	}
+	if !to.Before(today) {
+		if rangeTotal, err = scan(today, to, taskMaxItems); err != nil {
+			return nil, 0, 0, err
+		}
+	}
+	return rows, overdueTotal, rangeTotal, nil
 }
 
 // ── Projekt-Jahresband ────────────────────────────────────────────────────────────────────────────────────────────
@@ -382,6 +404,7 @@ type projectsYearData struct {
 	Months      []projMonth    `json:"months"`
 	Today       *float64       `json:"today,omitempty"` // Lage der Heute-Linie in %, fehlt außerhalb des Bandes
 	Total       int            `json:"total"`
+	Seconds     int            `json:"seconds"` // tatsächliche Anzeigedauer der Folie
 	PageSeconds int            `json:"page_seconds"`
 	More        int            `json:"more,omitempty"` // Projekte über projYearMaxBars hinaus
 	Legend      []projLegend   `json:"legend"`
@@ -452,13 +475,19 @@ func pageProjectBars(bars []projBar, size int) []projYearPage {
 	return pages
 }
 
-// projPageSeconds: Sekunden je Seite, damit alle Seiten in die Anzeigedauer der Folie passen (mindestens
-// projYearMinPage; bei zu kurzer Dauer wird nicht jede Seite gezeigt).
+// projEffectiveSeconds: Anzeigedauer der Projektfolie. Die Seitenzahl hängt von den Daten ab und lässt sich beim
+// Speichern nicht prüfen; deshalb verlängert sich die Anzeige auf mindestens projYearMinPage Sekunden je Seite
+// (höchstens bis zur Obergrenze der Foliendauer), sodass jede Seite zu sehen ist.
+func projEffectiveSeconds(duration, pages int) int {
+	return min(max(duration, pages*projYearMinPage), slideMaxSeconds)
+}
+
+// projPageSeconds: Sekunden je Seite bei der tatsächlichen Anzeigedauer, mindestens projYearMinPage.
 func projPageSeconds(duration, pages int) int {
 	if pages < 1 {
 		return duration
 	}
-	return max(projYearMinPage, duration/pages)
+	return max(projYearMinPage, projEffectiveSeconds(duration, pages)/pages)
 }
 
 // projectsYearSlide baut den Inhalt einer Projektfolie für den Terminal-Benutzer uid.
@@ -492,6 +521,7 @@ func (h *Handler) projectsYearSlide(ctx context.Context, uid, role string, s ter
 		}
 	}
 	out.Pages = pageProjectBars(bars, projYearPageSize)
+	out.Seconds = projEffectiveSeconds(s.DurationSeconds, len(out.Pages))
 	out.PageSeconds = projPageSeconds(s.DurationSeconds, len(out.Pages))
 	return out, nil
 }
@@ -511,7 +541,7 @@ func (h *Handler) projectBars(ctx context.Context, from, to time.Time, onlyActiv
 		  AND (EXISTS (SELECT 1 FROM infrastructure_department x WHERE x.infrastructure_id = p.infrastructure_id AND x.department_id = ANY($3::uuid[]))
 		       OR ($4::boolean AND NOT EXISTS (SELECT 1 FROM infrastructure_department x WHERE x.infrastructure_id = p.infrastructure_id)))
 		ORDER BY LEAST(COALESCE(p.start_date, p.end_date), COALESCE(p.end_date, p.start_date)), lower(p.name)
-		LIMIT $6`, from, to, depts, sc.NoDept, onlyActive, taskFetchLimit)
+		LIMIT $6`, from, to, depts, sc.NoDept, onlyActive, projFetchLimit)
 	if err != nil {
 		return nil, 0, err
 	}

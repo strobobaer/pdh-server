@@ -359,6 +359,7 @@ func (h *Handler) buildSlidesDoc(ctx context.Context, uid string) (terminalSlide
 			if js.Year, err = h.projectsYearSlide(ctx, uid, role, s, time.Now()); err != nil {
 				return doc, err
 			}
+			js.Duration = js.Year.Seconds
 		}
 		if s.Kind == slideKindGrafana {
 			js.URL = slideGrafanaSrc(s.URL)

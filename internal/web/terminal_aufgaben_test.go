@@ -346,6 +346,28 @@ func TestPageProjectBars(t *testing.T) {
 	}
 }
 
+// Die Seitenzahl hängt von den Daten ab: die Anzeige verlängert sich auf mindestens 4 s je Seite (höchstens bis zur
+// Obergrenze), und jede Seite bekommt mindestens 4 s.
+func TestProjEffectiveSeconds(t *testing.T) {
+	for _, c := range []struct{ dur, pages, eff, per int }{
+		{15, 0, 15, 15}, {15, 1, 15, 15}, {15, 3, 15, 5}, {15, 4, 16, 4}, {15, 10, 40, 4}, {5, 10, 40, 4},
+		{60, 3, 60, 20}, {300, 10, 300, 30}, {slideMaxSeconds, 10, slideMaxSeconds, 60},
+	} {
+		if got := projEffectiveSeconds(c.dur, c.pages); got != c.eff {
+			t.Errorf("Dauer %d s, %d Seiten: %d s statt %d", c.dur, c.pages, got, c.eff)
+		}
+		if got := projPageSeconds(c.dur, c.pages); got != c.per {
+			t.Errorf("Dauer %d s, %d Seiten: %d s je Seite statt %d", c.dur, c.pages, got, c.per)
+		}
+		if c.pages > 0 && projPageSeconds(c.dur, c.pages)*c.pages > projEffectiveSeconds(c.dur, c.pages)+c.pages {
+			t.Errorf("Seiten passen nicht in die Dauer: %d/%d", c.dur, c.pages)
+		}
+	}
+	if !strings.Contains(readStatic(t, "../../web/templates/terminal_slide_form.gohtml"), "verlängert sich die Anzeige auf mindestens 4 s je Seite") {
+		t.Error("Formularhinweis fehlt")
+	}
+}
+
 func TestWorkKindsLabelled(t *testing.T) {
 	for _, k := range aufgabenKinds {
 		if slideKindLabels[k] == "" || !slideIsWork(k) || slideIsPlan(k) {

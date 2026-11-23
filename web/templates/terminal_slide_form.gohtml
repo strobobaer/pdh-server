@@ -115,7 +115,7 @@
         <div class="form-group"><span class="form-label">Auswahl</span>
           <label class="sf-check"><input type="checkbox" name="only_active" value="1"{{if .Slide.OnlyActive}} checked{{end}}><span>Nur aktive Projekte (Status „Aktiv“)</span></label></div>
       </div>
-      <div class="sf-hint">Je Projekt ein Balken von Start bis Ende, Farbe nach Status, rote Linie für heute. Projekte ohne Datum fehlen. Höchstens 14 Balken je Seite; weitere Seiten wechseln automatisch innerhalb der Anzeigedauer (rund 5 Sekunden je Seite, mindestens 4). Der Terminal-Benutzer braucht das Recht Projekte ansehen (<code>projects.view</code>), die Abteilung eines Projekts ist die seiner Anlage.</div>
+      <div class="sf-hint">Je Projekt ein Balken von Start bis Ende, Farbe nach Status, rote Linie für heute. Projekte ohne Datum fehlen. Höchstens 14 Balken je Seite; weitere Seiten wechseln automatisch; bei mehreren Seiten verlängert sich die Anzeige auf mindestens 4 s je Seite. Der Terminal-Benutzer braucht das Recht Projekte ansehen (<code>projects.view</code>), die Abteilung eines Projekts ist die seiner Anlage.</div>
     </div>
 
     <div data-sf-kind="plan_shifts plan_absences plan_duties plan_maint tasks projects_year">

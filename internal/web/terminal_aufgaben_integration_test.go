@@ -416,12 +416,48 @@ func TestTerminalWorkProjectsPaging(t *testing.T) {
 	if y.Pages[0].Bars[0].Name != "PJ-00" || y.Pages[1].Bars[0].Name != "PJ-14" || y.Pages[2].Bars[2].Name != "PJ-30" {
 		t.Errorf("Reihenfolge: %s %s %s", y.Pages[0].Bars[0].Name, y.Pages[1].Bars[0].Name, y.Pages[2].Bars[2].Name)
 	}
+	// 3 Seiten brauchen mindestens 12 s: eine Folie mit 5 s Dauer wird auf 12 s verlängert, 60 s bleiben 60 s
+	w.clear()
+	w.slide(terminalSlide{Kind: slideKindProjectsYear, YearMode: "current", DepartmentIDs: []string{w.deptA}, DurationSeconds: 5, Active: true})
+	w.slide(terminalSlide{Kind: slideKindProjectsYear, YearMode: "current", DepartmentIDs: []string{w.deptA}, DurationSeconds: 60, Active: true})
+	var dd struct {
+		Slides []struct {
+			Duration int               `json:"duration"`
+			Year     *projectsYearData `json:"year"`
+		} `json:"slides"`
+	}
+	w.e.must(json.Unmarshal(w.do("GET", "/terminal/slides.json", w.cookie(w.termG, w.devG), nil).Body.Bytes(), &dd))
+	if len(dd.Slides) != 2 || dd.Slides[0].Duration != 12 || dd.Slides[0].Year.PageSeconds != 4 || dd.Slides[1].Duration != 60 || dd.Slides[1].Year.PageSeconds != 20 {
+		t.Errorf("Anzeigedauer: %+v", dd.Slides)
+	}
+	w.clear()
+	w.slide(terminalSlide{Kind: slideKindProjectsYear, YearMode: "current", DepartmentIDs: []string{w.deptB}, DurationSeconds: 60, Active: true})
+	got = w.docs(w.termG, w.devG)
 	// keine Projekte: keine Seite, leere Liste (nicht null) im JSON
-	if e := got[1].Year; e == nil || len(e.Pages) != 0 || e.Pages == nil {
+	if e := got[0].Year; e == nil || len(e.Pages) != 0 || e.Pages == nil {
 		t.Errorf("leer: %+v", e)
 	}
 	raw := w.do("GET", "/terminal/slides.json", w.cookie(w.termG, w.devG), nil).Body.String()
 	if !strings.Contains(raw, `"pages":[]`) {
 		t.Error(`leere Seiten nicht als "pages":[] im JSON`)
+	}
+}
+
+// Viele überfällige Aufgaben verdrängen die des Zeitraums nicht, und beide „+ n weitere“ stammen aus Zählungen.
+func TestTerminalWorkTasksSeparateLimits(t *testing.T) {
+	w := newWorkEnv(t)
+	for i := 0; i < taskMaxOverdue+5; i++ {
+		w.e.exec(`INSERT INTO tasks (title, status, due_date, infrastructure_id, created_by) VALUES ($1::varchar, 'open', $2, $3::uuid, $4::uuid)`,
+			fmt.Sprintf("T-Viel-%03d", i), w.today.AddDate(0, 0, -10), w.iB, w.pA)
+	}
+	for i := 0; i < taskMaxItems+3; i++ {
+		w.e.exec(`INSERT INTO tasks (title, status, due_date, infrastructure_id, created_by) VALUES ($1::varchar, 'open', $2, $3::uuid, $4::uuid)`,
+			fmt.Sprintf("T-Zeit-%03d", i), w.today, w.iB, w.pA)
+	}
+	w.clear()
+	w.slide(terminalSlide{Kind: slideKindTasks, TaskRange: "date", TaskUntil: w.today.Format(dayISO), DepartmentIDs: []string{w.deptB}, DurationSeconds: 10, Active: true})
+	tk := w.docs(w.termG, w.devG)[0].Tasks
+	if len(tk.Overdue) != taskMaxOverdue || tk.OverdueMore != 5 || taskShown(tk) != taskMaxItems || tk.More != 3 {
+		t.Errorf("überfällig %d (+%d), im Zeitraum %d (+%d)", len(tk.Overdue), tk.OverdueMore, taskShown(tk), tk.More)
 	}
 }
