@@ -492,6 +492,11 @@ func (h *Handler) TIABlockDownload(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "keine berechtigung", http.StatusForbidden)
 		return
 	}
+	// Zuordnungen nur an einer Anlage, an der die Person arbeiten darf (Abteilung)
+	if f.CreateMappings && uuidInPathRe.MatchString(f.InfraID) && !h.assetGuardFor(r, "import.write")(f.InfraID) {
+		http.Error(w, errAssetDenied, http.StatusForbidden)
+		return
+	}
 	ctx := r.Context()
 	name, config, secretErr, err := h.tiaConn(ctx, id)
 	if err != nil {

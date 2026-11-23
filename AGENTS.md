@@ -255,7 +255,7 @@ und 3 drückt bis auf Weiteres der Anwender.
 - Die Liste **im selben Schritt pflegen**: Erledigtes streichen, Neues
   eintragen, Stand und Datum anpassen.
 
-### Offene Punkte (Stand 21.11.2026)
+### Offene Punkte (Stand 23.11.2026)
 
 1. **Netz-Abgleich im Browser mit zwei Quellen:** 0.80.25 ist auf `main`
    und dem Testverbund; die Vorschlagsliste mit zwei eingeschalteten
@@ -734,16 +734,37 @@ und 3 drückt bis auf Weiteres der Anwender.
     nicht der Gerätename. Geparkt: REST-Anlage ohne Herkunft, Texte nur
     deutsch, Herkunft in der JSON-Schnittstelle nur beim Anlegen,
     Zählabfrage bei vielen Abgleich-Vorgängen, Fehltreffer im Nachtrag bei
-    kopiertem Terminal-Text. Offen: 10.10.0.202 einspielen (Anwender, mit
-    Sicherung).
+    kopiertem Terminal-Text. 10.10.0.202 hat der Anwender selbst auf 0.82.32
+    gebracht (22.11.2026: „202 ist uptodate“).
 24. **Copilot beim Anlegen und Zuordnen** (Wunsch 22.11.2026: „C“,
     „Anthropic“, dazu MySQL, InfluxDB, SQLite, Vorlagen aus dem Internet,
     berechnete Werte mit Formelgenerator und Gültigkeit von/bis; Entwurf
     `docs/superpowers/specs/2026-11-22-copilot-zuordnen-design.md`, bestätigt
     „Sonst war alles ok“). Pakete: 1 Zuordnen (Vorschläge am Formular ohne
     Sprachmodell + Assistent mit Änderungsliste), 2 berechnete Werte, 3
-    InfluxDB, 4 Anlegen von Verbindungen und Abgleich. Offen: welche
-    InfluxDB-Version (1.x/2.x/3.x) – vor Paket 3 fragen.
+    InfluxDB, 4 Anlegen von Verbindungen und Abgleich. InfluxDB: alle
+    Versionen (1.x InfluxQL, 2.x Flux, 3.x SQL; Anwender 22.11.2026:
+    „influxdb alle möglich“). **Paket 1 = 0.82.35** (geplant als 0.82.33; main hatte inzwischen 0.82.34 „Folie Website“ mit Migration 203) auf Branch
+    `feature/copilot-zuordnen` gebaut (23.11.2026, lokal; Plan
+    `docs/superpowers/plans/2026-11-22-copilot-zuordnen-paket1.md`, 9 Aufgaben,
+    Migration 204 `copilot_proposals` (vorher 203), kein neues Recht): Knopf „Zuordnungen
+    vorschlagen“ im Reiter Zuordnungen/Felder (Rechenkern
+    `internal/core/mapsuggest`), Sammel-Anlage `…/mappings/bulk`,
+    Copilot-Werkzeuge auf der Verbindungsseite (`copilot_mapping.go`),
+    Änderungsliste mit „Übernehmen“ (`POST /copilot/proposals/{id}/apply`),
+    Websuche nach Vorlagen. Neu für alle Wege (von Hand, Vorschlagsliste,
+    Copilot, TIA-Baustein, „Vorlage anwenden“, Löschen): Zuordnen nur an
+    Anlagen der eigenen Abteilung (`assetGuardFor`); doppelte Zuordnung von
+    Hand wird gemeldet. Mit behoben: „Vorlage anwenden“ legte keine
+    Zuordnungen an (Abfrage ohne Typangaben). Schlussprüfung mit Fix-Welle
+    erledigt (23.11.2026); geparkte kleine Befunde im Bericht
+    `.superpowers/sdd/2026-11-22-copilot-zuordnen-paket1/final-review.md`
+    (u. a. Websuche auf Verbindungsseiten ohne Schalter, Datenschutz-Hinweis
+    auch ohne Anthropic, Einheit „kW“ nur geraten, MQTT-Mitschnitt 3 s). Offen:
+    Freigabe Push/Merge, Verbund-Update, Browserprüfung (Vorschlagsliste,
+    Änderungsliste in Fiori/Fluent, hell/dunkel, 320–1366 px; Copilot mit
+    echtem Anthropic-Schlüssel samt Websuche; OPC-UA-Breitensuche an einem
+    echten Server). Danach Paket 2 (berechnete Werte).
 
 Docker Desktop startet nach einem Neustart des Windows-Rechners nicht von
 selbst – ohne ihn fehlen der Zeuge und die Labor-Datenbank für die Tests.

@@ -862,6 +862,30 @@
 {{end}}
 
 {{/* Explorer-Reiter einer Verbindung */}}
+{{/* Zuordnungen vorschlagen: Liste am Formular und Änderungsliste des Copilot */}}
+{{define "hb-fig-zuordnen"}}
+<figure class="hb-fig">
+<svg viewBox="0 0 640 200" role="img" aria-label="Vorgeschlagene Zuordnungen und Änderungsliste des Copilot">
+  <rect class="win" x="10" y="10" width="620" height="180" rx="8"/>
+  <rect class="bg3" x="20" y="20" width="70" height="20" rx="4"/><text x="55" y="34" class="t-c t-m">Abfragen</text>
+  <rect class="acl" x="98" y="20" width="84" height="20" rx="4"/><text x="140" y="34" class="t-c t-b">Zuordnungen</text>
+  <rect class="ac" x="20" y="50" width="150" height="22" rx="4"/><text x="95" y="65" class="t-w t-c">1 Zuordnungen vorschlagen</text>
+  <rect class="bg" x="20" y="80" width="380" height="100" rx="6"/>
+  <text x="30" y="98" class="t-b">☑ halle2/presse3/strom</text><text x="200" y="98" class="t-m">→ Halle 2 › Presse 3 · Strom</text>
+  <text x="30" y="118" class="t-b">☑ halle2/presse3/oel_temp</text><text x="200" y="118" class="t-m">→ Halle 2 › Presse 3 · Oel Temp</text>
+  <text x="30" y="138" class="t-m">☐ lager/tor</text><text x="200" y="138" class="t-m">→ Anlage wählen</text>
+  <rect class="acl" x="30" y="150" width="150" height="22" rx="4"/><text x="105" y="165" class="t-c">2 Ausgewählte übernehmen</text>
+  <rect class="am" x="412" y="20" width="208" height="160" rx="6"/><text x="516" y="38" class="t-c t-b">Copilot: Änderungsliste</text>
+  <text x="424" y="60" class="t-m">☑ + strom → Presse 3</text>
+  <text x="424" y="78" class="t-m">☑ ~ Notiz: Einheit °C</text>
+  <text x="424" y="96" class="t-m">   = druck (bleibt)</text>
+  <text x="424" y="114" class="t-m">   – tor: keine Berechtigung</text>
+  <rect class="ac" x="424" y="140" width="96" height="22" rx="4"/><text x="472" y="155" class="t-w t-c">3 Übernehmen</text>
+</svg>
+<figcaption>Links schlägt das PDH selbst vor (1) und legt mit „Ausgewählte übernehmen“ an (2). Rechts die Änderungsliste des Copilot – auch hier passiert erst etwas mit „Übernehmen“ (3).</figcaption>
+</figure>
+{{end}}
+
 {{define "hb-fig-explorer"}}
 <figure class="hb-fig">
 <svg viewBox="0 0 640 190" role="img" aria-label="Reiter Explorer einer Verbindung">

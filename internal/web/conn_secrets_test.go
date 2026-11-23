@@ -223,7 +223,7 @@ func TestUndecryptableRowMetadataVsSecretPaths(t *testing.T) {
 		t.Errorf("Fehlerfall liefert nur öffentliche Felder: %v", cfg)
 	}
 	// Metadaten-Aufrufer (Vorlage anwenden): kommt bis zur Vorlagen-Suche
-	_, err = h.applyConnectionTemplate(ctx, id, "import", "00000000-0000-0000-0000-000000000000", "")
+	_, err = h.applyConnectionTemplate(ctx, id, "import", "00000000-0000-0000-0000-000000000000", "", func(string) bool { return true })
 	if err == nil || err.Error() != "Vorlage nicht gefunden" {
 		t.Errorf("applyConnectionTemplate: %v", err)
 	}

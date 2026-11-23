@@ -45,6 +45,7 @@ type copilotData struct {
 	userID string
 	scope  *deptScope
 	can    func(string) bool
+	conn   *copilotConn // Frage von einer Verbindungsseite: zusätzliche Werkzeuge (copilot_mapping.go)
 	// Ansichtsrecht für Projekte (limitProjects): Ohne Aufruf sieht der Copilot
 	// keine Projekte (sicherer Ausgangszustand).
 	projAll bool            // Recht überall: nichts zu filtern
@@ -229,6 +230,11 @@ func (d *copilotData) exec(ctx context.Context, name string, raw json.RawMessage
 		return d.importValues(ctx, str("query"))
 	case "due_maintenance":
 		return d.dueMaintenance(ctx, num("days", 14, 0, 365), str("asset"))
+	}
+	if d.conn != nil {
+		if out, known, err := d.conn.exec(ctx, d, name, in); known {
+			return out, err
+		}
 	}
 	return "", fmt.Errorf("unbekanntes Werkzeug %s", name)
 }
@@ -846,27 +852,32 @@ Fragende Person: ` + userName + `.` + extra
 var copilotToolLabels = map[string]string{
 	"search": "Suche", "get_record": "Datensätze", "list_records": "Listen", "asset_overview": "Anlagen", "part_stock": "Ersatzteile",
 	"statistics": "Auswertungen", "import_values": "Messwerte", "due_maintenance": "Wartungen",
+	"connection_info": "Verbindung", "source_values": "Quellwerte", "asset_tree": "Anlagenbaum", "mappings": "Zuordnungen",
+	"export_sources": "Importwerte", "propose_mappings": "Vorschlag", "web_search": "Internet", "web_fetch": "Internet",
 }
 
 // askCopilot: Frage mit PDH-Daten. Claude ruft die Werkzeuge selbst; Ollama
-// (ohne Werkzeuge) bekommt vorab die Suchtreffer zur Frage.
-func (h *Handler) askCopilot(ctx context.Context, d *copilotData, userName, question, faultID string) (string, []string, error) {
+// (ohne Werkzeuge) bekommt vorab die Suchtreffer zur Frage. links: Quellen aus
+// dem Internet – Websuche gibt es nur auf einer Verbindungsseite (Vorlagen).
+func (h *Handler) askCopilot(ctx context.Context, d *copilotData, userName, question, faultID string) (string, []string, []faults.Link, error) {
 	cp := h.faults.Copilot()
 	if cp == nil {
-		return "", nil, errors.New("Copilot ist nicht eingerichtet")
+		return "", nil, nil, errors.New("Copilot ist nicht eingerichtet")
 	}
 	extra := ""
 	if faultID != "" {
 		extra = "\n" + h.faults.FaultContext(ctx, faultID)
 	}
+	tools := copilotTools()
+	web := d.conn != nil && cp.CanSearchWeb()
+	if d.conn != nil && cp.CanUseTools() {
+		extra += copilotConnPrompt(d.conn, web)
+		tools = append(tools, copilotConnTools(d.conn.Direction, d.conn.CanWrite)...)
+	}
 	system := copilotSystemPrompt(userName, extra)
 	if cp.CanUseTools() {
-		answer, used, err := cp.AskWithTools(ctx, system, question, copilotTools(), d.exec)
-		var labels []string
-		for _, u := range used {
-			labels = append(labels, firstNonEmpty(copilotToolLabels[u], u))
-		}
-		return answer, labels, err
+		answer, used, links, err := cp.AskWithToolsOpts(ctx, system, question, tools, d.exec, faults.AskOptions{Web: web})
+		return answer, copilotSourceLabels(used), links, err
 	}
 	data, _ := d.search(ctx, question, nil, 5)
 	if faultID != "" {
@@ -875,5 +886,18 @@ func (h *Handler) askCopilot(ctx context.Context, d *copilotData, userName, ques
 		}
 	}
 	answer, err := cp.AskWithContext(ctx, system, question, data)
-	return answer, []string{"Suche"}, err
+	return answer, []string{"Suche"}, nil, err
+}
+
+// copilotSourceLabels: lesbare Namen der benutzten Werkzeuge, jeder einmal.
+func copilotSourceLabels(used []string) []string {
+	var labels []string
+	seen := map[string]bool{}
+	for _, u := range used {
+		if l := firstNonEmpty(copilotToolLabels[u], u); !seen[l] {
+			seen[l] = true
+			labels = append(labels, l)
+		}
+	}
+	return labels
 }

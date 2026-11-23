@@ -10,6 +10,29 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.82.35] – 2026-11-23
+
+### Neu
+
+- **Zuordnungen vorschlagen:** Im Reiter „Zuordnungen“ (beim Export „Felder“) einer Verbindung listet der Knopf „Zuordnungen vorschlagen“ alle noch offenen Quellwerte – MQTT-Themen, Spalten aus Excel/CSV und Abfragen, OPC-UA-Knoten – und schlägt je Zeile Anlage, Bezeichnung und Einheit vor. Ändern, abwählen, „Ausgewählte übernehmen“. Das geht ohne Copilot und ohne Internet.
+- **Copilot ordnet zu:** Auf der Seite einer Verbindung versteht der Copilot Aufträge wie „Ordne alle Themen von Halle 2 den Pressen zu“ oder „Warum kommt hier nichts an?“. Er antwortet mit einer Änderungsliste (+ neu, ~ geändert, = unverändert, – wird nicht angefasst) samt Begründung; angelegt wird erst mit „Übernehmen“. Löschen schlägt er nur vor – gelöscht wird von Hand. Nur mit Claude (Anthropic-Schlüssel).
+- **Vorlagen aus dem Internet:** Auf einer Verbindungsseite sucht der Copilot auf Wunsch z. B. die Modbus-Registertabelle eines Zählers oder die MQTT-Themen eines Geräts und macht daraus einen Vorschlag. Die Quellen stehen als Links dabei.
+
+### Geändert
+
+- Legt man eine Zuordnung von Hand an, die es an der Verbindung schon gibt (gleiche Quelle, gleiche Anlage), kommt jetzt eine Meldung, statt dass sie doppelt entsteht.
+- Ein Vorschlag des Copilot gehört der Person, die gefragt hat, und gilt 24 Stunden (Migration 204). Auf dem Spiegelserver und während der Wartung wird nichts übernommen.
+
+### Behoben
+
+- „Vorlage anwenden“ legte die Zuordnungen bzw. Felder einer Vorlage nicht an (nur die Abfragen kamen an). Jetzt werden sie übernommen; die Meldung nennt, was übersprungen wurde.
+
+### Sicherheit
+
+- Zuordnungen lassen sich nur noch an Anlagen der eigenen Abteilung anlegen und löschen: Wer „Import verwalten“ bzw. „Export verwalten“ nur in einer Abteilung hat, kann Werte nicht mehr Anlagen anderer Abteilungen zuordnen – von Hand, über die Vorschlagsliste, über den Copilot, mit dem TIA-Baustein („Zuordnungen anlegen“) und mit „Vorlage anwenden“.
+- Themen, Knoten und Spalten direkt vom Gerät liest der Copilot nur für Personen, die die Verbindung ausführen oder bearbeiten dürfen. Wer sie nur sehen darf, bekommt die Spalten gespeicherter Abfrage-Ergebnisse.
+- Kennwörter, Schlüssel und Tokens einer Verbindung gehen nie an den Copilot – auch nicht, wenn sie in einer Fehlermeldung stehen oder in einer Adresse stecken (Kennwort im Benutzerteil, Parameter wie „apikey“ oder „token“). Quellwerte, Anlagennamen und die übrigen Einstellungen der Verbindung gehen auf dieser Seite an Anthropic; der Hinweis steht unter dem Eingabefeld.
+
 ## [0.82.34] – 2026-11-23
 
 ### Neu

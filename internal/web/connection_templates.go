@@ -208,7 +208,9 @@ func (h *Handler) saveConnectionTemplate(ctx context.Context, id, direction, nam
 // applyConnectionTemplate uebertraegt eine Vorlage auf eine Verbindung
 // desselben Typs. Bereits vorhandene Abfragen (gleicher Name) und
 // Zuordnungen (gleicher Quellwert und Name) werden nicht doppelt angelegt.
-func (h *Handler) applyConnectionTemplate(ctx context.Context, id, direction, templateID, userID string) (string, error) {
+// Zuordnungen an Anlagen, an denen die Person nicht arbeiten darf (allow,
+// Abteilung der Anlage), werden übersprungen und gezählt.
+func (h *Handler) applyConnectionTemplate(ctx context.Context, id, direction, templateID, userID string, allow assetGuard) (string, error) {
 	_, kind, _, _, err := h.connectionRow(ctx, id, direction)
 	if err != nil && !isConnSecretErr(err) { // nur Metadaten nötig
 		return "", errors.New("Verbindung nicht gefunden")
@@ -226,18 +228,21 @@ func (h *Handler) applyConnectionTemplate(ctx context.Context, id, direction, te
 		return "", err
 	}
 	if direction == "export" {
-		added, skipped := 0, 0
+		added, skipped, denied := 0, 0, 0
 		for _, m := range p.Mappings {
-			var exists bool
-			_ = h.db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM import_mappings WHERE id::text = $1)`, m.ImportMappingID).Scan(&exists)
-			if !exists {
+			asset, err := h.exportSourceAsset(ctx, m.ImportMappingID)
+			if err != nil {
 				skipped++
+				continue
+			}
+			if !allow(asset) {
+				denied++
 				continue
 			}
 			tag, err := h.db.Exec(ctx, `
 				INSERT INTO export_mappings (connection_id, import_mapping_id, field_name, note, created_by)
-				SELECT $1, $2::uuid, $3, $4, $5
-				WHERE NOT EXISTS (SELECT 1 FROM export_mappings WHERE connection_id = $1 AND import_mapping_id = $2::uuid AND field_name = $3)`,
+				SELECT $1::uuid, $2::uuid, $3::text, $4::text, $5::uuid
+				WHERE NOT EXISTS (SELECT 1 FROM export_mappings WHERE connection_id = $1::uuid AND import_mapping_id = $2::uuid AND field_name = $3::text)`,
 				id, m.ImportMappingID, m.FieldName, m.Note, nullID(userID))
 			if err == nil && tag.RowsAffected() > 0 {
 				added++
@@ -246,6 +251,9 @@ func (h *Handler) applyConnectionTemplate(ctx context.Context, id, direction, te
 		msg := fmt.Sprintf("%d Feld(er) übernommen", added)
 		if skipped > 0 {
 			msg += fmt.Sprintf(", %d übersprungen (Quellwert gibt es nicht mehr)", skipped)
+		}
+		if denied > 0 {
+			msg += fmt.Sprintf(", %d ohne Berechtigung für die Anlage übersprungen", denied)
 		}
 		return msg, nil
 	}
@@ -274,8 +282,12 @@ func (h *Handler) applyConnectionTemplate(ctx context.Context, id, direction, te
 			qAdded++
 		}
 	}
-	mAdded, mSkipped := 0, 0
+	mAdded, mSkipped, mDenied := 0, 0, 0
 	for _, m := range p.Mappings {
+		if !uuidInPathRe.MatchString(m.InfrastructureID) || !allow(m.InfrastructureID) {
+			mDenied++
+			continue
+		}
 		ref := m.SourceRef
 		if m.Query >= 0 {
 			if m.Query >= len(newIDs) || newIDs[m.Query] == "" {
@@ -286,9 +298,9 @@ func (h *Handler) applyConnectionTemplate(ctx context.Context, id, direction, te
 		}
 		tag, err := h.db.Exec(ctx, `
 			INSERT INTO import_mappings (connection_id, source_ref, infrastructure_id, name, note, created_by)
-			SELECT $1, $2, i.id, $4, $5, $6 FROM infrastructure i
-			WHERE i.id::text = $3
-			  AND NOT EXISTS (SELECT 1 FROM import_mappings WHERE connection_id = $1 AND source_ref = $2 AND name = $4)`,
+			SELECT $1::uuid, $2::text, i.id, $4::text, $5::text, $6::uuid FROM infrastructure i
+			WHERE i.id::text = $3::text
+			  AND NOT EXISTS (SELECT 1 FROM import_mappings WHERE connection_id = $1::uuid AND source_ref = $2::text AND name = $4::text)`,
 			id, ref, m.InfrastructureID, m.Name, m.Note, nullID(userID))
 		if err != nil || tag.RowsAffected() == 0 {
 			mSkipped++
@@ -301,6 +313,9 @@ func (h *Handler) applyConnectionTemplate(ctx context.Context, id, direction, te
 	msg := fmt.Sprintf("%d Abfrage(n) und %d Zuordnung(en) übernommen", qAdded, mAdded)
 	if mSkipped > 0 {
 		msg += fmt.Sprintf(", %d Zuordnung(en) übersprungen (schon vorhanden oder Anlage gelöscht)", mSkipped)
+	}
+	if mDenied > 0 {
+		msg += fmt.Sprintf(", %d ohne Berechtigung für die Anlage übersprungen", mDenied)
 	}
 	return msg, nil
 }

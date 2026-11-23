@@ -32,6 +32,17 @@
 .cd-modal{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:500;display:none;align-items:center;justify-content:center;padding:16px}
 .cd-modal.open{display:flex}
 .cd-modal > div{background:var(--bg2);border:1px solid var(--border);border-radius:12px;width:min(560px,100%);max-height:calc(100dvh - 32px);overflow:auto;padding:16px}
+/* Vorschläge zum Abhaken (widgets/mapping_suggestions.gohtml) */
+.cd-sugg-hint{font-size:12px;color:var(--text);background:color-mix(in srgb, var(--amber) 14%, transparent);border:1px solid color-mix(in srgb, var(--amber) 40%, var(--border));border-radius:8px;padding:6px 10px;margin-bottom:8px}
+.cd-sugg-tools{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;margin-bottom:8px}
+.cd-sugg-tools .form-input{max-width:260px}
+.cd-sugg-all{font-size:12.5px;display:flex;gap:6px;align-items:center}
+.cd-sugg-sample{font-family:monospace;font-size:11.5px;color:var(--muted);max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cd-sugg-tbl .form-input{min-width:140px;padding:5px 8px;font-size:12.5px}
+.cd-sugg-asset{min-width:170px}
+.cd-sugg-foot{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:10px}
+.cd-sugg-err{color:var(--red);font-size:12px;margin:0}
+@media (max-width:600px){.cd-sugg-tools .form-input{max-width:none;flex:1 1 100%}}
 </style>
 
 <div class="cd-head">
@@ -213,7 +224,7 @@
 <div class="rec-pane" data-pane="mappings">
   <div class="card" style="overflow-x:auto">
   {{if eq .Direction "import"}}
-    <div class="card-title"><span><i class="ti ti-map-pin"></i> Zuordnungen</span>{{if and .CanWrite .Mappings (or (eq .Kind "modbus") (eq .Kind "opcua"))}}<form method="POST" action="/import/connections/{{.ID}}/{{if eq .Kind "modbus"}}read{{else}}nodes{{end}}/refresh" style="margin:0"><button class="btn btn-small" type="submit"><i class="ti ti-refresh"></i> Werte jetzt aktualisieren</button></form>{{end}}{{if .QueriesSupported}}<a class="btn btn-small" href="?tab=queries"><i class="ti ti-plus"></i> Aus einer Abfrage zuordnen</a>{{end}}</div>
+    <div class="card-title"><span><i class="ti ti-map-pin"></i> Zuordnungen</span>{{if and .CanWrite .Mappings (or (eq .Kind "modbus") (eq .Kind "opcua"))}}<form method="POST" action="/import/connections/{{.ID}}/{{if eq .Kind "modbus"}}read{{else}}nodes{{end}}/refresh" style="margin:0"><button class="btn btn-small" type="submit"><i class="ti ti-refresh"></i> Werte jetzt aktualisieren</button></form>{{end}}{{if .QueriesSupported}}<a class="btn btn-small" href="?tab=queries"><i class="ti ti-plus"></i> Aus einer Abfrage zuordnen</a>{{end}}{{if .CanWrite}}<button type="button" class="btn btn-small" hx-get="/import/connections/{{.ID}}/suggestions" hx-target="#cd-suggest" hx-swap="outerHTML"><i class="ti ti-wand"></i> Zuordnungen vorschlagen</button>{{end}}</div>
     {{if .Mappings}}
     <table class="cd-tbl"><thead><tr><th>Quelle</th><th>Bezeichnung</th><th>Anlage</th><th>Notiz</th><th>Letzter Wert</th><th>Aktualisiert</th><th></th></tr></thead>
     <tbody>{{range .Mappings}}<tr>
@@ -225,7 +236,7 @@
     </tr>{{end}}</tbody></table>
     {{else}}<div class="rec-sub">Noch keine Zuordnungen. Eine Zuordnung verbindet einen Wert (Spalte einer Abfrage, Topic, Register …) mit einer Anlage – erst dann übernimmt PDH ihn.</div>{{end}}
   {{else}}
-    <div class="card-title"><span><i class="ti ti-map-pin"></i> Felder im Export</span><a class="btn btn-small" href="/export/connections/{{.ID}}/preview"><i class="ti ti-plus"></i> Felder auswählen</a></div>
+    <div class="card-title"><span><i class="ti ti-map-pin"></i> Felder im Export</span><a class="btn btn-small" href="/export/connections/{{.ID}}/preview"><i class="ti ti-plus"></i> Felder auswählen</a>{{if and .CanWrite (ne .Kind "efficio")}}<button type="button" class="btn btn-small" hx-get="/export/connections/{{.ID}}/suggestions" hx-target="#cd-suggest" hx-swap="outerHTML"><i class="ti ti-wand"></i> Felder vorschlagen</button>{{end}}</div>
     {{if .ExportMappings}}
     <table class="cd-tbl"><thead><tr><th>Zielfeld</th><th>Quelle</th><th>Anlage</th><th>Aktueller Wert</th><th>Zuletzt exportiert</th><th>Notiz</th></tr></thead>
     <tbody>{{range .ExportMappings}}<tr><td><b>{{.FieldName}}</b></td><td>{{.SourceName}}</td><td>{{.InfrastructureName}}</td>
@@ -234,6 +245,7 @@
     {{else}}<div class="rec-sub">Noch keine Felder. Unter „Felder auswählen“ legst du fest, welche importierten Werte in den Export kommen und wie die Spalte heißt.</div>{{end}}
   {{end}}
   </div>
+  {{if .CanWrite}}<div id="cd-suggest"></div>{{end}}
 </div>
 
 <!-- Vorlagen -->
@@ -272,6 +284,14 @@
 </div>
 
 {{if and (eq .Direction "import") .CanWrite}}
+<div class="cd-modal" id="cd-sg-pick" onclick="if(event.target===this)cdSuggPickClose()">
+  <div>
+    <h3 style="font-size:15px;margin-bottom:10px"><i class="ti ti-map-pin" style="color:var(--accent)"></i> Anlage für den Vorschlag</h3>
+    {{template "infra-tree-picker" (dict "TargetID" "sg-infra-id" "SelectedLabelID" "sg-infra-selected" "Label" "Anlage" "Required" true)}}
+    <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" type="button" onclick="cdSuggPickClose()">Abbrechen</button><button class="btn btn-primary" type="button" onclick="cdSuggPickTake()"><i class="ti ti-check"></i> Übernehmen</button></div>
+    <p id="sg-pick-err" role="alert" style="color:var(--red);font-size:12px;margin-top:8px"></p>
+  </div>
+</div>
 <div class="cd-modal" id="cd-map" onclick="if(event.target===this)cdMapClose()">
   <div>
     <h3 style="font-size:15px;margin-bottom:10px"><i class="ti ti-map-pin" style="color:var(--accent)"></i> Spalte zuordnen</h3>
@@ -288,6 +308,76 @@
 
 {{define "scripts"}}
 {{if .Explorer}}{{template "conn-explorer-js" .}}{{end}}
+{{if .CanWrite}}
+<script>
+// Vorschläge zum Abhaken (widgets/mapping_suggestions.gohtml) – übernehmen über …/mappings/bulk
+(function(){
+  const rows = () => Array.from(document.querySelectorAll('#cd-suggest [data-sugg-row]'));
+  const pick = r => r.querySelector('[data-sugg-pick]');
+  // übernommen wird nur, was sichtbar und angehakt ist – der Filter blendet aus
+  const chosenRows = () => rows().filter(r => !r.hidden && pick(r).checked);
+  window.cdSuggCount = function(){
+    const box = document.querySelector('#cd-suggest [data-sugg-count]');
+    if(!box) return;
+    const off = rows().filter(r => r.hidden && pick(r).checked).length;
+    box.textContent = chosenRows().length + ' ausgewählt' + (off ? ' (' + off + ' angehakte ausgeblendet – werden nicht übernommen)' : '');
+  };
+  window.cdSuggAll = function(cb){ rows().forEach(r => { if(!r.hidden) pick(r).checked = cb.checked; }); cdSuggCount(); };
+  window.cdSuggFilter = function(q){
+    q = q.trim().toLowerCase();
+    rows().forEach(r => { r.hidden = !!q && !r.textContent.toLowerCase().includes(q) && !r.querySelector('[data-sugg-name]').value.toLowerCase().includes(q); });
+    cdSuggCount();
+  };
+  let current = null;
+  window.cdSuggPick = function(btn){
+    current = btn.closest('[data-sugg-row]');
+    const picker = document.querySelector('.infra-picker[data-target="sg-infra-id"]');
+    if(picker && typeof clearInfraPicker === 'function') clearInfraPicker(picker);
+    document.getElementById('sg-pick-err').textContent = '';
+    document.getElementById('cd-sg-pick').classList.add('open');
+  };
+  window.cdSuggPickClose = function(){ const m = document.getElementById('cd-sg-pick'); if(m) m.classList.remove('open'); };
+  window.cdSuggPickTake = function(){
+    const id = document.getElementById('sg-infra-id').value;
+    if(!id || !current){ document.getElementById('sg-pick-err').textContent = 'Bitte eine Anlage wählen.'; return; }
+    current.dataset.asset = id;
+    current.querySelector('[data-sugg-path]').textContent = document.getElementById('sg-infra-selected').textContent.trim();
+    pick(current).checked = true;
+    cdSuggCount();
+    cdSuggPickClose();
+  };
+  window.cdSuggApply = async function(btn){
+    const box = document.getElementById('cd-suggest');
+    const dir = box.dataset.dir, err = box.querySelector('[data-sugg-err]');
+    err.textContent = '';
+    const chosen = chosenRows();
+    if(!chosen.length){ err.textContent = 'Bitte mindestens eine Zeile auswählen.'; return; }
+    const missing = dir === 'import' ? chosen.findIndex(r => !r.dataset.asset) : -1;
+    if(missing >= 0){ err.textContent = '„' + chosen[missing].querySelector('b').textContent + '“: bitte eine Anlage wählen (Ändern).'; return; }
+    const val = (r, sel) => r.querySelector(sel).value.trim();
+    const items = chosen.map(r => dir === 'import'
+      ? {source_ref: r.dataset.ref, infrastructure_id: r.dataset.asset, name: val(r, '[data-sugg-name]'), note: val(r, '[data-sugg-note]')}
+      : {import_mapping_id: r.dataset.mapping, field_name: val(r, '[data-sugg-name]'), note: val(r, '[data-sugg-note]')});
+    btn.disabled = true;
+    try{
+      const res = await fetch('/' + dir + '/connections/' + box.dataset.conn + '/mappings/bulk', {method: 'POST', credentials: 'same-origin', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({items})});
+      const j = await res.json().catch(() => ({}));
+      if(!res.ok) throw new Error(j.error || ('HTTP ' + res.status));
+      let msg = j.created + ' angelegt';
+      if(j.skipped) msg += ', ' + j.skipped + ' schon vorhanden';
+      if(j.errors && j.errors.length){
+        err.textContent = msg + ' – nicht übernommen: ' + j.errors.map(e => (chosen[e.index] ? '„' + chosen[e.index].querySelector('b').textContent + '“' : 'Zeile ' + (e.index + 1)) + ': ' + e.error).join('; ');
+        btn.disabled = false;
+        return;
+      }
+      location.href = '/' + dir + '/connections/' + box.dataset.conn + '?tab=mappings&notice=' + encodeURIComponent(msg);
+    }catch(e){ err.textContent = e.message; btn.disabled = false; }
+  };
+  document.addEventListener('htmx:afterSwap', e => { if(e.target && e.target.id === 'cd-suggest') cdSuggCount(); });
+  document.addEventListener('keydown', e => { if(e.key === 'Escape') cdSuggPickClose(); });
+})();
+</script>
+{{end}}
 {{if and .Explorer .ExplorerWrite (eq .Direction "import")}}{{template "import-mapping-js" (dict "ConnectionID" .ID "NoReload" true)}}{{end}}
 <script>
 (function(){

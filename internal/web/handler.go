@@ -55,6 +55,7 @@ type BaseData struct {
 	UserLastName  string
 	FaultID       string
 	CopilotRef    string // "fault:<id>" / "ticket:<id>": Seitenleiste lädt Copilot-Vorschläge (copilot_suggest.go)
+	CopilotConn   string // "import:<id>" / "export:<id>": Copilot kennt die Verbindung der Seite (copilot_mapping.go)
 	UserAvatar    string // eigenes Profilbild (avatar.go), "" = Symbol
 
 	// Auto-Logout / Systemnutzer-Override (siehe base.gohtml Script-Block)
@@ -372,6 +373,7 @@ type Handler struct {
 
 	// Austauschbare Quellen (nur Tests; nil = echt): Rechteprüfung und gespeicherter Commit-Vergleich.
 	hasPermHook     func(*http.Request, string) bool
+	assetGuardHook  func(r *http.Request, perm, infraID string) bool // nur Tests: Abteilungsprüfung der Anlage (assetGuardFor)
 	companyC        companyCacheState // Firmenstammdaten zwischengespeichert (company.go)
 	companyEditHook func(*http.Request) bool // Tests: company.edit überall?
 	viewDeptErr     error
@@ -959,6 +961,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/suggest", h.SuggestWeb)
 	r.Post("/copilot/ask", h.CopilotAskWeb)
 	r.Get("/copilot/suggest", h.CopilotSuggestWeb)
+	r.Post("/copilot/proposals/{id}/apply", h.CopilotProposalApplyWeb) // Änderungsliste übernehmen (copilot_proposals.go)
 	r.Post("/translate/live", h.LiveTranslateWeb)
 	r.Post("/translate/live/toggle", h.LiveTranslateToggleWeb)
 	r.Post("/reservations/{kind}/{ref}/{id}/return", h.ReservationReturnWeb)
@@ -1181,6 +1184,8 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/import/connections/{id}/broker/setup", h.MqttBrokerSetupWeb)
 	r.Get("/import/connections/{id}/broker/stream", h.MqttBrokerStream)
 	r.Post("/import/connections/{id}/mappings", h.ImportMappingCreateWeb)
+	r.Post("/import/connections/{id}/mappings/bulk", h.ImportMappingBulkWeb)
+	r.Get("/import/connections/{id}/suggestions", h.ImportSuggestionsWeb)
 	r.Post("/import/connections/{id}/mappings/{mappingId}/delete-web", h.ImportMappingDeleteWeb)
 	r.Get("/import/connections/{id}/preview", h.ExcelPreviewPage)
 	r.Post("/import/connections/{id}/preview/refresh", h.ExcelRefreshValuesWeb)
@@ -1246,6 +1251,8 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/export/connections/{id}/efficio/test-web", h.EfficioTestWeb)
 	r.Post("/export/connections/{id}/efficio/key-web", h.EfficioKeyWeb)
 	r.Post("/export/connections/{id}/mappings", h.ExportMappingCreateWeb)
+	r.Post("/export/connections/{id}/mappings/bulk", h.ExportMappingBulkWeb)
+	r.Get("/export/connections/{id}/suggestions", h.ExportSuggestionsWeb)
 	r.Post("/export/connections/{id}/mappings/{mappingId}/delete-web", h.ExportMappingDeleteWeb)
 	r.Get("/export/templates", h.ExportTemplatesPage)
 	r.Post("/export/templates", h.ExportTemplateCreateWeb)
@@ -2071,6 +2078,28 @@ func (h *Handler) CopilotAskWeb(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 290*time.Second)
 	defer cancel()
 	u := getUser(r)
+	// Frage von einer Verbindungsseite: Format und Leserecht zuerst
+	var conn *copilotConn
+	if ref := strings.TrimSpace(r.FormValue("conn")); ref != "" {
+		m := copilotConnRe.FindStringSubmatch(ref)
+		if m == nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Ungültige Verbindung."})
+			return
+		}
+		if !h.canConnectionRead(r, m[1]) {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "Kein Zugriff auf diese Verbindung."})
+			return
+		}
+		name, kind, enabled, config, err := h.connectionRow(ctx, m[2], m[1])
+		if err != nil && !isConnSecretErr(err) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "Die Verbindung gibt es nicht mehr."})
+			return
+		}
+		conn = &copilotConn{Direction: m[1], ID: m[2], Kind: kind, Name: name, Enabled: enabled, Config: config,
+			CanWrite:   h.canConnectionWrite(r, m[1]) && !(m[1] == "export" && kind == efficioKind),
+			CanExecute: h.canConnectionExecute(r, m[1]),
+			Allow:      h.assetGuardFor(r, m[1]+".write")}
+	}
 	scope := h.requestScope(r)
 	fid := strings.TrimSpace(r.FormValue("fault"))
 	if fid != "" && (!uuidInPathRe.MatchString(fid) || (scope != nil && !h.recordInScope(ctx, scope, "fault", fid))) {
@@ -2078,9 +2107,9 @@ func (h *Handler) CopilotAskWeb(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Copilot mit PDH-Daten (copilot_data.go): liest mit den Rechten der fragenden Person
-	d := &copilotData{h: h, userID: u.ID, scope: scope, can: func(p string) bool { return h.hasPerm(r, p) }}
+	d := &copilotData{h: h, userID: u.ID, scope: scope, conn: conn, can: func(p string) bool { return h.hasPerm(r, p) }}
 	d.limitProjects(r) // Projekte nur mit Ansichtsrecht oder als Beteiligte
-	reply, sources, err := h.askCopilot(ctx, d, strings.TrimSpace(u.FirstName+" "+u.LastName), q, fid)
+	reply, sources, links, err := h.askCopilot(ctx, d, strings.TrimSpace(u.FirstName+" "+u.LastName), q, fid)
 	if err != nil {
 		componentLog("copilot").Error().Err(err).Msg("frage fehlgeschlagen")
 		// bewusst 200: Reverse-Proxys (Cloudflare, Nginx) ersetzen 502-Antworten
@@ -2088,7 +2117,14 @@ func (h *Handler) CopilotAskWeb(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"error": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"reply": reply, "sources": sources})
+	out := map[string]any{"reply": reply, "sources": sources}
+	if len(links) > 0 {
+		out["links"] = links // Quellen aus dem Internet (nur Verbindungsseiten)
+	}
+	if conn != nil && conn.Proposal != nil {
+		out["proposal"] = proposalView(conn.Proposal)
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 func (h *Handler) CreateTicket(w http.ResponseWriter, r *http.Request) {
