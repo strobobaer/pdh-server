@@ -4,7 +4,7 @@
 
 **Goal:** Die App arbeitet ohne Verbindung weiter (Vorgänge ansehen und bearbeiten, Störung melden), merkt sich jede Handlung als Schritt mit Telefon-Kennung und führt beim Wiederverbinden nach den Regeln aus Spec 9.3 zusammen: Status im PDH gilt, nur Hinweise, alles andere wird angehängt, nie ein neuer Datensatz.
 
-**Architecture:** Teil S (pdh-server, Branch `feature/pdh-app-paket3`): Migration 195 mit `app_steps` (Schritt genau einmal, lange aufbewahrt, Ergebnis-Kennung) und `app_id_aliases` (Telefon-Kennung → bestehender Datensatz). Der Wächter `appWrite` schreibt in `app_steps` statt `request_once`. Störungen nehmen die Telefon-Kennung als `id`. Schreibende Wege kennen einen „Stand“ (`base`) im Körper; ist er da, gelten die Zusammenführ-Regeln, sonst bleibt alles wie in Paket 2 (alte App N-1). Teil A (`C:\workplace\pdh-app`): verschlüsselte lokale SQLite (`LocalDb`), Warteschlange (`Outbox`) und Abgleich (`SyncEngine`). Alle Bildschirme lesen aus dem lokalen Speicher und schreiben über die Warteschlange, auch mit Verbindung (ein Weg, kein Sonderfall).
+**Architecture:** Teil S (pdh-server, Branch `feature/pdh-app-paket3`): Migration 205 (ursprünglich 195, nach dem Merge mit main umnummeriert) mit `app_steps` (Schritt genau einmal, lange aufbewahrt, Ergebnis-Kennung) und `app_id_aliases` (Telefon-Kennung → bestehender Datensatz). Der Wächter `appWrite` schreibt in `app_steps` statt `request_once`. Störungen nehmen die Telefon-Kennung als `id`. Schreibende Wege kennen einen „Stand“ (`base`) im Körper; ist er da, gelten die Zusammenführ-Regeln, sonst bleibt alles wie in Paket 2 (alte App N-1). Teil A (`C:\workplace\pdh-app`): verschlüsselte lokale SQLite (`LocalDb`), Warteschlange (`Outbox`) und Abgleich (`SyncEngine`). Alle Bildschirme lesen aus dem lokalen Speicher und schreiben über die Warteschlange, auch mit Verbindung (ein Weg, kein Sonderfall).
 
 **Tech Stack:** Go/chi/pgx/PostgreSQL 16; Flutter 3.50.1 / Dart 3.14, neu `sqflite_sqlcipher` (Gerät), `sqflite_common_ffi` (nur Tests), `connectivity_plus`.
 
@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Migrationen nur hinzufügend, nie bestehende ändern; nächste freie Nummer auf `origin/main` (heute **195**); `migrations/checksums.txt` mit `PDH_MIGRATIONS_APPEND=1 go test ./pkg/database -run TestMigrationsFrozen` fortschreiben.
+- Migrationen nur hinzufügend, nie bestehende ändern; nächste freie Nummer auf `origin/main` (heute **205**); `migrations/checksums.txt` mit `PDH_MIGRATIONS_APPEND=1 go test ./pkg/database -run TestMigrationsFrozen` fortschreiben.
 - Jede Datensatz-`id` ist `UUID … DEFAULT pdh_uuid_v7()`. Kennungen vom Telefon sind UUIDv7: Versions-Nibble `7`, Variante `8–b`. Prüfung serverseitig mit `appUUIDv7Re = ^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`.
 - Rückwärtskompatibel: Eine App von Paket 2 (ohne `base`, ohne `id` im Meldekörper) verhält sich exakt wie bisher. Neue Antwortfelder sind nur Ergänzungen.
 - Zusammenführ-Regeln (Spec 9.3, verbindlich):
@@ -54,7 +54,7 @@ DB für Integrationstests: `pdh_test_app` (wie Paket 2). `go test -tags integrat
 ### Task S1: Schritte genau einmal – `app_steps` und `app_id_aliases`
 
 **Files:**
-- Create: `migrations/195_app_offline.up.sql`
+- Create: `migrations/205_app_offline.up.sql`
 - Modify: `migrations/checksums.txt`, `internal/web/app_write.go`
 - Test: `internal/web/app_write_test.go` / `app_write_integration_test.go` (vorhandene erweitern)
 
@@ -91,7 +91,7 @@ DB für Integrationstests: `pdh_test_app` (wie Paket 2). `go test -tags integrat
   - `appOnceLookup` liest beide Tabellen. Der Test-Haken bleibt austauschbar.
 
 - [ ] **Step 1: Failing tests**
-  - `TestMigration195` / `TestUUIDv7Policy` deckt die neuen Tabellen ab (die Policy-Prüfung soll für 195 grün sein).
+  - `TestMigration205` / `TestUUIDv7Policy` deckt die neuen Tabellen ab (die Policy-Prüfung soll für 205 grün sein).
   - `TestAppWriteStepsTable`:
     - Eine Once landet in `app_steps` mit `device_id`.
     - Eine Wiederholung nach künstlich 3 Tagen (`UPDATE app_steps SET created_at = NOW() - INTERVAL '3 days'`) ist ein Replay.
@@ -101,8 +101,8 @@ DB für Integrationstests: `pdh_test_app` (wie Paket 2). `go test -tags integrat
     - `appSetResult` landet in der Zeile, und `appStepResult` gibt das Ergebnis beim Replay zurück.
 - [ ] **Step 2:** Run `go test -tags integration ./internal/web -run 'AppWrite|Migration'` → FAIL.
 - [ ] **Step 3:** Migration schreiben, Checksumme fortschreiben, `appWrite` umbauen.
-- [ ] **Step 4:** Run the same tests plus `go test ./pkg/database -run 'TestMigrationsFrozen'` → PASS. `TestUUIDv7Policy` meldet für 195 nichts. Die vorbestehenden Befunde auf main sind bekannt und bleiben unberührt.
-- [ ] **Step 5:** Commit `feat(app): Schritte aus der App genau einmal, 90 Tage aufbewahrt (Migration 195)`.
+- [ ] **Step 4:** Run the same tests plus `go test ./pkg/database -run 'TestMigrationsFrozen'` → PASS. `TestUUIDv7Policy` meldet für 205 nichts. Die vorbestehenden Befunde auf main sind bekannt und bleiben unberührt.
+- [ ] **Step 5:** Commit `feat(app): Schritte aus der App genau einmal, 90 Tage aufbewahrt (Migration 205)`.
 
 ### Task S2: Störung mit Telefon-Kennung und Zusammenführen an offener Störung
 
