@@ -548,9 +548,33 @@
   <text x="314" y="166" class="t-m">Punkt 3 von 3</text>
   <path class="ar" d="M494 104 H520"/>
   <rect class="gr" x="524" y="70" width="104" height="34" rx="8"/><text x="576" y="92" class="t-c t-b">✔ Fertig</text>
-  <text x="576" y="122" class="t-c t-m">Protokoll (PDF)</text><text x="576" y="137" class="t-c t-m">+ Folgeauftrag 20.10.</text>
+  <text x="576" y="122" class="t-c t-m">Protokoll (PDF)</text><text x="576" y="137" class="t-c t-m">nächster Termin 20.10.</text>
 </svg>
 <figcaption>Jede Checkliste hat ihren eigenen Takt. Fällige Checklisten werden beim Termin zu einer Liste zusammengeführt – mit Foto je Punkt.</figcaption>
+</figure>
+{{end}}
+
+{{define "hb-fig-jahresplan"}}
+<figure class="hb-fig">
+<svg viewBox="0 0 640 200" role="img" aria-label="Kalender mit geplantem Wartungstermin, einem Auftrag und dem Fenster zum Besetzen">
+  <rect class="bg" x="1" y="1" width="638" height="198" rx="8"/>
+  <text x="16" y="24" class="t-b">Kalender · Ebene „Wartungstermine“</text>
+  <rect class="bg3" x="16" y="36" width="120" height="26" rx="5"/><text x="26" y="53" class="t-b">Mitarbeiter</text>
+  <text x="170" y="53" class="t-m">Mo 08.03.</text><text x="270" y="53" class="t-m">Di 09.03.</text><text x="370" y="53" class="t-m">Mi 10.03.</text>
+  <text x="26" y="88" class="t-b">Anna Beispiel</text>
+  <rect class="am" x="160" y="72" width="92" height="24" rx="5"/><text x="168" y="88">🔧 Pumpe</text>
+  <rect class="bg" x="360" y="72" width="104" height="24" rx="5" stroke-dasharray="4 3"/><text x="368" y="88">geplant · Filter</text>
+  <text x="160" y="116" class="t-m">Auftrag (mit Vorlauf entstanden)</text>
+  <text x="360" y="116" class="t-m">gestrichelt = noch kein Auftrag</text>
+  <path class="ar" d="M412 98 C 412 140, 470 140, 488 140"/>
+  <rect class="bg3" x="492" y="36" width="136" height="150" rx="8"/>
+  <text x="502" y="56" class="t-b">Wartungstermin</text>
+  <text x="502" y="78" class="t-m">Person</text><rect class="bg" x="502" y="84" width="116" height="18" rx="4"/><text x="508" y="97">Anna Beispiel</text>
+  <text x="502" y="118" class="t-m">Gruppe</text><rect class="bg" x="502" y="124" width="116" height="18" rx="4"/><text x="508" y="137">Schlosser</text>
+  <rect class="gr" x="502" y="152" width="56" height="22" rx="5"/><text x="530" y="167" class="t-c t-b">Speichern</text>
+  <rect class="acl" x="562" y="152" width="58" height="22" rx="5"/><text x="591" y="167" class="t-c">Zum Plan</text>
+</svg>
+<figcaption>Geplante Termine stehen gestrichelt im Kalender. Ziehen verschiebt sie, ein Klick öffnet das Fenster zum Besetzen – „Zurück zum Plan“ stellt Tag und Besetzung wieder her.</figcaption>
 </figure>
 {{end}}
 

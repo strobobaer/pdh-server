@@ -10,6 +10,23 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.82.48] – 2026-11-23
+
+### Neu
+
+- **Wartung, Jahresplan erzeugen:** Am Wartungsplan (und für alle aktiven Pläne auf einmal) plant der Knopf „Jahresplan erzeugen“ die Termine der nächsten 12 Monate; PDH verlängert den Jahresplan jeden Tag selbst.
+- **Kalender, Ebene „Wartungstermine“:** Geplante Termine stehen gestrichelt im Kalender und im Leitstand-Kalender; mit „Wartung bearbeiten“ lassen sie sich per Ziehen verschieben, per Klick mit Person und Gruppe besetzen und mit „Zurück zum Plan“ zurücksetzen.
+- **Wartungsregeln:** Unter „Regeln & Einstellungen“ der Wartung steht der Vorlauf für den Durchführungsauftrag in Arbeitstagen (Vorgabe 5); jeder Plan kann einen eigenen Vorlauf haben.
+- **Geplante Termine überall:** Planer-Reiter „Wartung“, Infobildschirm-Folie „Wartungsplanung“ („Geplant“), Zeitstrahl, „Mein Kalender“ und Outlook zeigen die geplanten Wartungstermine; im Kalender und Planer zählen sie bei Abwesenheit und „ohne Schicht“ mit.
+- **Nachricht beim automatischen Auftrag:** Entsteht ein Wartungsauftrag mit dem Vorlauf, bekommen die zugewiesene Person bzw. die Mitglieder der Gruppe eine Nachricht.
+
+### Geändert
+
+- **Wartung, Folgeauftrag:** Der nächste Durchführungsauftrag entsteht erst mit dem Vorlauf vor dem Termin, nicht mehr sofort nach dem Abschluss.
+- **Wartung, Vorlauf in Arbeitstagen:** Der Vorlauf eines Plans zählt Arbeitstage (ohne Wochenende, Feiertage und Betriebsruhe) statt Kalendertage; vorhandene Werte wurden umgerechnet.
+- **Nach dem Abschluss:** Assistent, Rückmeldung und Auftragsseite nennen den nächsten Termin und „Auftrag entsteht am …“.
+- **Wartung bei verspätetem Abschluss:** Dabei übersprungene geplante Termine gelten als „entfallen“ und stehen so im Jahresplan.
+
 ## [0.82.47] – 2026-11-23
 
 ### Neu

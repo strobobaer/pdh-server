@@ -836,18 +836,34 @@ und 3 drückt bis auf Weiteres der Anwender.
     bekommen). Kleine Befunde der Schlussprüfung stehen im Ledger
     `.superpowers/sdd/2026-11-23-berechnete-werte/`.
     **0.82.45 ist auf `main`** (23.11.2026, Merge `d935c5e9`, vom Anwender
-    freigegeben); Verbund-Update und Browserprüfung noch offen (Freigabe
-    zum Einspielen erfragt).
-25. **Wartung: Jahresplan im Kalender, Auftrag mit Vorlauf** (Wunsch des
+    freigegeben) und dem Testverbund (beide Server 0.82.45, Migration 211);
+    im Browser geprüft (23.11.2026, 40 Ansichten ohne Überlauf und
+    Konsolenfehler; Prüfkonto gesperrt, keine Testdaten). Offen: 10.10.0.202
+    (Anwender, mit Sicherung), Copilot-Abnahme mit Anthropic-Schlüssel.
+25. **0.82.48 Wartung: Jahresplan im Kalender, Auftrag mit Vorlauf** (Wunsch des
     Anwenders vom 23.11.2026: Personalplanung; Knopf „Jahresplan erzeugen“,
     nur der nächste Termin wird 5 Arbeitstage vorher automatisch zum
     Durchführungsauftrag, einstellbar unter „Wartungsregeln“; geplante
     Termine verschieb- und besetzbar „Ja“; Einzelheiten „Passt“; Weg A
     eigene Tabelle; nach der Prüfung „1a 2a 3a 4a“). Entwurf
     `docs/superpowers/specs/2026-11-23-wartung-jahresplan-design.md` auf
-    Branch `feature/wartung-jahresplan` (lokal, vom Prüfer gegengelesen) –
-    **wartet auf die Bestätigung des Anwenders**, nichts gebaut.
-    Voraussichtlich 0.82.46, Migration 212 (vor dem Merge prüfen).
+    Branch `feature/wartung-jahresplan` (vom Anwender bestätigt „Passt“), Plan
+    `docs/superpowers/plans/2026-11-23-wartung-jahresplan.md` (11 Aufgaben),
+    gebaut (23.11.2026, lokal). Geplant als 0.82.46 mit Migration 212 –
+    `main` hatte inzwischen 0.82.47 und `212_terminal_free_user`, deshalb
+    **0.82.48, Migration 213** (`213_maintenance_yearplan`; Tabelle
+    `maintenance_visits`, `lead_workdays`, `upcoming_from` u. a.; kein neues
+    Recht – Jahresplan und Termine mit `maintenance.edit` am Plan,
+    Wartungsregeln mit `maintenance.admin` überall). Eine Feiertagsliste
+    `internal/core/workdays`. Der Folgeauftrag entsteht erst mit dem Vorlauf
+    (Test `TestBoardMaintenanceFlowIntegration` angepasst). Ledger mit allen
+    Entscheidungen: `.superpowers/sdd/2026-11-23-wartung-jahresplan/`.
+    Offen: Schlussprüfung, Freigabe Push/Merge, Verbund-Update,
+    Browserprüfung (Wartungsseite mit Jahresplan-Knöpfen und
+    Wartungsregeln, Kalender mit Ziehen und Besetzen-Fenster, Planer,
+    Leitstand-Kalender und Zeitstrahl; Fiori/Fluent, hell/dunkel,
+    320–1366 px), 10.10.0.202 (Anwender, mit Sicherung). Labor-Datenbank
+    `pdh_test`: Eintrag 212 → 213 umgeschrieben (Schema war schon da).
 
 Docker Desktop startet nach einem Neustart des Windows-Rechners nicht von
 selbst – ohne ihn fehlen der Zeuge und die Labor-Datenbank für die Tests.
