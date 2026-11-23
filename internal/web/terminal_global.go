@@ -237,6 +237,7 @@ type terminalSlideJSON struct {
 	Days         int            `json:"days,omitempty"`
 	URL          string         `json:"url,omitempty"`
 	Reload       int            `json:"reload,omitempty"` // Art website: Minuten bis zum Neuladen
+	Plan         *planSlideData  `json:"plan,omitempty"`   // Planungsfolien (plan_*)
 }
 
 type terminalSlidesDoc struct {
@@ -340,6 +341,12 @@ func (h *Handler) buildSlidesDoc(ctx context.Context, uid string) (terminalSlide
 				return doc, err
 			}
 			js.Days = s.StatsDays
+		}
+		if slideIsPlan(s.Kind) {
+			// Wie bei den Statistikfolien nicht in der Version: die Folie holt ihre Daten beim Erscheinen neu.
+			if js.Plan, err = h.planSlide(ctx, uid, role, s, time.Now()); err != nil {
+				return doc, err
+			}
 		}
 		if s.Kind == slideKindGrafana {
 			js.URL = slideGrafanaSrc(s.URL)

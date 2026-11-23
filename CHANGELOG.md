@@ -10,6 +10,14 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.82.42] – 2026-11-23
+
+### Neu
+
+- **Infobildschirm: Planungsfolien.** Vier neue Folienarten aus dem Planer, jede eine eigene Folie: **Schichtplan** (Personen je Schicht und Tag), **Abwesenheiten**, **Dienste und Bereitschaft** (Sonderdienste je Dienstart) und **Wartungsplanung** (offene Wartungsaufträge nach Fälligkeit). Je Folie wählst du den **Zeitraum** (heute, diese Woche, nächste Woche oder die nächsten N Tage, N von 1 bis 31) und die **Abteilungen** (mehrere möglich, leer = alle). Am Terminal gilt zusätzlich die Abteilungsgrenze des Terminals (Schnittmenge), und gezeigt wird nur, wofür der Terminal-Benutzer in der Abteilung das Recht hat (Planer ansehen bzw. Wartung ansehen). Bei Abwesenheiten steht nur „abwesend“, Art und Grund verlassen den Server nie. Hat ein globales Terminal weder Anlage noch Abteilungs-Einstellung, zeigt die Folie alle Abteilungen, die der Terminal-Benutzer sehen darf (Personen und Anlagen ohne Abteilung nur, wenn das Recht überall gilt). Die Wartungsplanung zeigt auch überfällige offene Aufträge, als „Überfällig“ markiert. Die Folien stehen nicht im Zwischenspeicher des Geräts und entfallen ohne Verbindung wie Website-Folien.
+- Migration 208: Spalten `plan_range`, `plan_days` und `department_ids` an `terminal_slides`, erweiterte Folienart-Prüfung. Nur hinzufügend; vorhandene Folien und ältere Stände bleiben gültig.
+- Handbuch, Kapitel „Infobildschirm“: die neuen Folienarten beschrieben.
+
 ## [0.82.41] – 2026-11-23
 
 ### Neu

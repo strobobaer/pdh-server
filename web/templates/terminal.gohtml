@@ -134,6 +134,18 @@ body[data-mode="global"],body[data-saver-slides]{padding:0;-webkit-touch-callout
 .g-legend{display:flex;gap:2vw;justify-content:center;font-size:clamp(16px,1.8vw,32px);color:var(--muted)}
 .g-legend .k::before{content:"";display:inline-block;width:.9em;height:.9em;border-radius:3px;margin-right:.4em;vertical-align:-.1em;background:var(--accent)}
 .g-legend .k.s1::before{background:var(--green)}
+.g-plan{position:absolute;inset:0;padding:max(2vh,12px) max(2vw,16px);display:flex;flex-direction:column;gap:2vh;min-height:0}
+.g-plan h1{font-size:clamp(28px,3.6vw,64px);line-height:1.1;text-align:center;overflow-wrap:anywhere}
+.g-plan-days{flex:1;min-height:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,22vw),1fr));gap:1.2vw;align-content:start;overflow:hidden}
+.g-plan-days.one{grid-template-columns:minmax(0,60vw);justify-content:center}
+.g-plan-day{background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:1.2vh 1.2vw;min-width:0;overflow:hidden}
+.g-plan-day.today{border-color:var(--accent)}
+.g-plan-day h2{font-size:clamp(20px,2.4vw,44px);margin-bottom:1vh;overflow-wrap:anywhere}
+.g-plan-group{margin-bottom:1vh}
+.g-plan-group h3{font-size:clamp(16px,1.9vw,34px);color:var(--muted);border-left:6px solid var(--accent);padding-left:.5em;overflow-wrap:anywhere}
+.g-plan-item{font-size:clamp(18px,2.2vw,40px);line-height:1.25;overflow-wrap:anywhere}
+.g-plan-item.more,.g-plan-none{color:var(--muted)}
+.g-plan-empty{flex:1;display:flex;align-items:center;justify-content:center;font-size:clamp(28px,4vw,72px);color:var(--muted)}
 .g-empty{font-size:clamp(32px,5vw,90px);font-weight:800;text-align:center}
 .g-empty small{display:block;margin-top:2vh;font-size:.4em;color:var(--muted);font-weight:700}
 /* Zahnrad zur Terminal-Einstellung (nur Gerätesitzung), oben rechts über allem; Trefferfläche 48 px */

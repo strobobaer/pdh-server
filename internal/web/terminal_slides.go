@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -44,7 +45,9 @@ var slideKindLabels = map[string]string{
 	slideKindImage: "Bild", slideKindText: "Text", slideKindVorgaenge: "Vorgänge",
 	slideKindStatsFaults: "Statistik Störungen", slideKindStatsTickets: "Statistik Tickets",
 	slideKindStatsSetup: "Statistik Rüstzeiten", slideKindStatsDown: "Statistik Stillstände", slideKindGrafana: "Grafana-Dashboard",
-	slideKindWebsite: "Website",
+	slideKindWebsite:    "Website",
+	slideKindPlanShifts: "Schichtplan", slideKindPlanAbsences: "Abwesenheiten",
+	slideKindPlanDuties: "Dienste und Bereitschaft", slideKindPlanMaint: "Wartungsplanung",
 }
 
 var slideNotices = map[string]string{
@@ -82,6 +85,13 @@ type terminalSlideFormData struct {
 	MaxMB        int
 	NoStatsUsers []string
 	Dashboards   []grafanaDashboard // vorhandene Grafana-Dashboards (Statistik-Kacheln) als Vorschläge
+	Departments  []slideDeptOption  // Abteilungen zur Auswahl (Planungsfolien)
+}
+
+// slideDeptOption: eine Abteilung in der Auswahl einer Planungsfolie.
+type slideDeptOption struct {
+	ID, Name string
+	On       bool
 }
 
 func (h *Handler) slidesAllowed(w http.ResponseWriter, r *http.Request) bool {
@@ -136,6 +146,16 @@ func (h *Handler) TerminalSlidesPage(w http.ResponseWriter, r *http.Request) {
 			}
 		case slideKindStatsFaults, slideKindStatsTickets, slideKindStatsSetup, slideKindStatsDown:
 			v.Summary = fmt.Sprintf("%s · %s", statsPeriodLabel(s.StatsDays), slideInfraSummary(len(s.InfraIDs)))
+		case slideKindPlanShifts, slideKindPlanAbsences, slideKindPlanDuties, slideKindPlanMaint:
+			v.Summary = planRangeLabel(s.PlanRange, s.PlanDays) + " · "
+			switch n := len(s.DepartmentIDs); n {
+			case 0:
+				v.Summary += "alle Abteilungen"
+			case 1:
+				v.Summary += "1 Abteilung"
+			default:
+				v.Summary += fmt.Sprintf("%d Abteilungen", n)
+			}
 		case slideKindVorgaenge:
 			switch n := len(s.InfraIDs); {
 			case n == 0:
@@ -189,6 +209,24 @@ func (h *Handler) globalTerminalsWithoutStatistics(ctx context.Context) []string
 		var id, name, role string
 		if rows.Scan(&id, &name, &role) == nil && !h.rbac.HasPermissionForUser(id, role, "statistics.view") {
 			out = append(out, name)
+		}
+	}
+	return out
+}
+
+// slideDeptOptions: alle aktiven Abteilungen, die gewählten angehakt (eine gewählte, inzwischen gelöschte fällt weg).
+func (h *Handler) slideDeptOptions(ctx context.Context, selected []string) []slideDeptOption {
+	rows, err := h.db.Query(ctx, `SELECT id::text, name FROM departments WHERE active ORDER BY lower(name)`)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var out []slideDeptOption
+	for rows.Next() {
+		var o slideDeptOption
+		if rows.Scan(&o.ID, &o.Name) == nil {
+			o.On = slices.Contains(selected, o.ID)
+			out = append(out, o)
 		}
 	}
 	return out
@@ -252,6 +290,9 @@ func (h *Handler) slideFormPage(w http.ResponseWriter, r *http.Request, s termin
 	if s.Kind == slideKindGrafana {
 		d.NoStatsUsers = h.globalTerminalsWithoutStatistics(r.Context())
 	}
+	if slideIsPlan(s.Kind) && h.db != nil {
+		d.Departments = h.slideDeptOptions(r.Context(), s.DepartmentIDs)
+	}
 	if base, _ := h.grafanaBase(r); h.db != nil {
 		d.Dashboards, _ = h.grafanaDashboards(r.Context(), base, false)
 		for i := range d.Dashboards { // Vorschlag als Adresse, die die Folie annimmt (Pfad unter /grafana/ oder https)
@@ -282,7 +323,8 @@ func (h *Handler) TerminalSlideNewPage(w http.ResponseWriter, r *http.Request) {
 	if _, ok := slideKindLabels[kind]; !ok {
 		kind = slideKindImage
 	}
-	h.slideFormPage(w, r, terminalSlide{Kind: kind, DurationSeconds: slideDefaultSeconds, ShowFaults: true, ShowTickets: true, Active: true, StatsDays: 7},
+	h.slideFormPage(w, r, terminalSlide{Kind: kind, DurationSeconds: slideDefaultSeconds, ShowFaults: true, ShowTickets: true, Active: true, StatsDays: 7,
+		PlanRange: planRangeToday, PlanDays: planDefaultDays},
 		true, false, "", http.StatusOK)
 }
 
@@ -350,6 +392,31 @@ func slideFromRequest(w http.ResponseWriter, r *http.Request) (terminalSlide, st
 	case slideKindStatsFaults, slideKindStatsTickets, slideKindStatsSetup, slideKindStatsDown:
 		s.StatsDays, _ = strconv.Atoi(r.FormValue("stats_days"))
 		s.InfraIDs, msg = slideInfraFromForm(r, msg)
+	case slideKindPlanShifts, slideKindPlanAbsences, slideKindPlanDuties, slideKindPlanMaint:
+		s.PlanRange = strings.TrimSpace(r.FormValue("plan_range"))
+		s.PlanDays = planDefaultDays
+		if v := strings.TrimSpace(r.FormValue("plan_days")); v != "" {
+			n, err := strconv.Atoi(v)
+			if err != nil || n < planMinDays || n > planMaxDays {
+				if msg == "" && s.PlanRange == planRangeDays {
+					msg = fmt.Sprintf("Die Anzahl der Tage ist eine ganze Zahl von %d bis %d", planMinDays, planMaxDays)
+				}
+				n = planDefaultDays
+			}
+			s.PlanDays = n
+		}
+		seenDept := map[string]bool{}
+		for _, raw := range r.Form["department_ids"] { // mehrere Felder (Kästchen), je Feld auch kommagetrennt
+			for _, id := range strings.FieldsFunc(raw, func(c rune) bool { return c == ',' || c == ';' || c == ' ' || c == '\n' || c == '\t' }) {
+				if id = strings.ToLower(id); !seenDept[id] {
+					seenDept[id] = true
+					s.DepartmentIDs = append(s.DepartmentIDs, id)
+				}
+			}
+		}
+		if len(s.DepartmentIDs) > planMaxDepts && msg == "" {
+			msg = fmt.Sprintf("Bitte höchstens %d Abteilungen wählen", planMaxDepts)
+		}
 	case slideKindVorgaenge:
 		s.ShowFaults = r.FormValue("show_faults") != ""
 		s.ShowTickets = r.FormValue("show_tickets") != ""
