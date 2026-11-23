@@ -238,7 +238,7 @@ func TestUpdatePlanKeepsManual(t *testing.T) {
 	lead := 5
 	in.LeadWorkdays = &lead
 	e.must(e.svc.UpdatePlan(e.ctx, id, in, e.userA))
-	tk, err := e.repo.GetTask(e.ctx, ts[0].ID)
+	tk, err := e.repo.GetTaskByID(e.ctx, ts[0].ID)
 	e.must(err)
 	if tk.Title != "Neuer Name" || !tk.DueDate.Local().Equal(soon.AddDate(0, 0, 1)) || tk.AssignedTo == nil || *tk.AssignedTo != e.userB {
 		t.Errorf("Handänderungen überschrieben: Titel %q, fällig %v, Person %v", tk.Title, tk.DueDate.Local(), tk.AssignedTo)

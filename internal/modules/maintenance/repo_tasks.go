@@ -147,6 +147,42 @@ func (r *Repository) GetDueToday(ctx context.Context) ([]*MaintenanceTask, error
 
 // CreateTask: Auftrag anlegen (Verantwortliche/Gruppe vom Plan, falls vorhanden).
 func (r *Repository) CreateTask(ctx context.Context, t *MaintenanceTask) error {
+	if err := r.createTaskRow(ctx, t); err != nil {
+		return err
+	}
+	if t.PlanID == nil || *t.PlanID == "" {
+		return nil
+	}
+	// Auftrag zu einem Plan von Hand: „anstehend ab“ aus dem Vorlauf; ein geplanter Termin am selben Tag wird damit erledigt
+	var lead *int
+	_ = r.db.QueryRow(ctx, `SELECT lead_workdays FROM maintenance_plans WHERE id = $1::uuid`, *t.PlanID).Scan(&lead)
+	due := dayStart(t.DueDate)
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	if err := lockPlan(ctx, tx, *t.PlanID); err != nil {
+		return err
+	}
+	var visitID string
+	var calc time.Time
+	if tx.QueryRow(ctx, `SELECT id::text, calc_day FROM maintenance_visits WHERE plan_id = $1::uuid AND state = 'planned' AND day = $2::date
+		ORDER BY calc_day LIMIT 1`, *t.PlanID, due.Format("2006-01-02")).Scan(&visitID, &calc) == nil {
+		if _, err := tx.Exec(ctx, `UPDATE maintenance_visits SET state = 'ordered', task_id = $2::uuid, updated_at = NOW() WHERE id = $1::uuid`, visitID, t.ID); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `UPDATE maintenance_tasks SET planned_for = $2::date WHERE id = $1::uuid`, t.ID, civil(calc).Format("2006-01-02")); err != nil {
+			return err
+		}
+	}
+	if _, err := tx.Exec(ctx, `UPDATE maintenance_tasks SET upcoming_from = $2::date WHERE id = $1::uuid`, t.ID, r.OrderDay(ctx, due, lead).Format("2006-01-02")); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+func (r *Repository) createTaskRow(ctx context.Context, t *MaintenanceTask) error {
 	return r.db.QueryRow(ctx, `
 		INSERT INTO maintenance_tasks
 		  (plan_id, title, description, type, infrastructure_id, priority, status, assigned_to, due_date, created_by, cost_center_id,

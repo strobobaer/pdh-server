@@ -259,12 +259,30 @@ func (r *Repository) UpdatePlan(ctx context.Context, id string, in *PlanInput) e
 		}
 	}
 	// Stammdaten und Termin auf den offenen, noch nicht begonnenen Auftrag uebertragen
+	// Fälligkeit und Besetzung nur, wenn sie sich am Plan geändert haben und am Auftrag nicht von Hand gesetzt sind
+	dueChanged := next != nil && !dayStart(*next).Equal(dayStart(oldNext.Local()))
+	staffChanged := !sameID(oldAssignee, nullID(in.AssignedTo)) || !sameID(oldGroup, nullID(in.AssignedGroupID))
 	if _, err := r.db.Exec(ctx, `UPDATE maintenance_tasks mt SET title = mp.name, description = COALESCE(mp.description,''),
-			type = mp.type, infrastructure_id = mp.infrastructure_id, priority = mp.priority, assigned_to = mp.assigned_to,
-			responsible_to = mp.responsible_to, assigned_group_id = mp.assigned_group_id, cost_center_id = mp.cost_center_id,
-			due_date = mp.next_due_at, updated_at = NOW()
-		FROM maintenance_plans mp WHERE mp.id = $1::uuid AND mt.plan_id = mp.id AND mt.status = 'open'`, id); err != nil {
+			type = mp.type, infrastructure_id = mp.infrastructure_id, priority = mp.priority,
+			assigned_to = CASE WHEN $2 AND NOT mt.staff_manual THEN mp.assigned_to ELSE mt.assigned_to END,
+			assigned_group_id = CASE WHEN $2 AND NOT mt.staff_manual THEN mp.assigned_group_id ELSE mt.assigned_group_id END,
+			responsible_to = mp.responsible_to, cost_center_id = mp.cost_center_id,
+			due_date = CASE WHEN $3 AND NOT mt.due_manual THEN mp.next_due_at ELSE mt.due_date END,
+			planned_for = CASE WHEN $3 AND NOT mt.due_manual THEN mp.next_due_at::date ELSE mt.planned_for END,
+			updated_at = NOW()
+		FROM maintenance_plans mp WHERE mp.id = $1::uuid AND mt.plan_id = mp.id AND mt.status = 'open'`, id, staffChanged, dueChanged); err != nil {
 		return err
+	}
+	if dueChanged { // „anstehend ab“ zum neuen Tag
+		var taskID string
+		if r.db.QueryRow(ctx, `SELECT id::text FROM maintenance_tasks WHERE plan_id = $1::uuid AND status = 'open' AND NOT due_manual LIMIT 1`, id).Scan(&taskID) == nil {
+			var lead *int
+			_ = r.db.QueryRow(ctx, `SELECT lead_workdays FROM maintenance_plans WHERE id = $1::uuid`, id).Scan(&lead)
+			if _, err := r.db.Exec(ctx, `UPDATE maintenance_tasks SET upcoming_from = $2::date WHERE id = $1::uuid`,
+				taskID, r.OrderDay(ctx, dayStart(*next), lead).Format("2006-01-02")); err != nil {
+				return err
+			}
+		}
 	}
 	if err := r.SetPlanChecklists(ctx, id, in.Checklists); err != nil {
 		return err
@@ -303,7 +321,7 @@ func (r *Repository) SetPlanActive(ctx context.Context, id string, active bool) 
 			return err
 		}
 	}
-	_, err := r.ensureTaskForPlan(ctx, id, "")
+	_, err := r.ensureTaskForPlan(ctx, id, "", time.Now())
 	return err
 }
 
