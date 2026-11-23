@@ -43,7 +43,7 @@ func TestTerminalFnJSONDefaults(t *testing.T) {
 	if len(m) != len(terminalFnDefs) {
 		t.Fatalf("alle Schlüssel erwartet: %v", m)
 	}
-	for _, k := range []string{"stoerung", "ticket", "ruesten", "stillstand", "hmi", "wartungen", "vorgaenge", "saver_slides"} {
+	for _, k := range []string{"stoerung", "ticket", "ruesten", "stillstand", "hmi", "wartungen", "vorgaenge", "schichtplan", "saver_slides"} {
 		e, ok := m[k].(map[string]any)
 		if !ok {
 			t.Fatalf("%s fehlt", k)

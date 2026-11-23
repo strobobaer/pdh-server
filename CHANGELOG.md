@@ -10,6 +10,14 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.82.41] – 2026-11-23
+
+### Neu
+
+- **Terminal: Schichtplan.** Neue Funktion **Schichtplan** (Schalter beim Systembenutzer und am Terminal, Grundwert an; Migration 207) mit Kachel auf der Seite „Neu“ und der Seite `/terminal/schichtplan`: heute und die Woche (diese oder nächste) je Abteilung des Terminals, mit Name und Schicht je Tag aus dem Planer (nur veröffentlichte Pläne) sowie den Sonderdiensten. Wählbar sind nur Abteilungen des Terminals, für die der Terminal-Benutzer `shifts.view` hat; eine andere Abteilung wird abgewiesen. Nur lesend, ohne Anmeldung.
+- **Datenschutz:** Abwesende erscheinen am Terminal nur als „abwesend“. Die Art der Abwesenheit (Urlaub, Krank, Schulung …) und Notizen werden nicht gelesen und verlassen den Server nicht.
+- Handbuch, Kapitel „Anlagenterminal“: Schichtplan ergänzt.
+
 ## [0.82.40] – 2026-11-23
 
 ### Neu
