@@ -835,6 +835,19 @@ und 3 drückt bis auf Weiteres der Anwender.
     Entwurf; dort auch klären, ob Messstellen den neuen Rechenumfang
     bekommen). Kleine Befunde der Schlussprüfung stehen im Ledger
     `.superpowers/sdd/2026-11-23-berechnete-werte/`.
+    **0.82.45 ist auf `main`** (23.11.2026, Merge `d935c5e9`, vom Anwender
+    freigegeben); Verbund-Update und Browserprüfung noch offen (Freigabe
+    zum Einspielen erfragt).
+25. **Wartung: Jahresplan im Kalender, Auftrag mit Vorlauf** (Wunsch des
+    Anwenders vom 23.11.2026: Personalplanung; Knopf „Jahresplan erzeugen“,
+    nur der nächste Termin wird 5 Arbeitstage vorher automatisch zum
+    Durchführungsauftrag, einstellbar unter „Wartungsregeln“; geplante
+    Termine verschieb- und besetzbar „Ja“; Einzelheiten „Passt“; Weg A
+    eigene Tabelle; nach der Prüfung „1a 2a 3a 4a“). Entwurf
+    `docs/superpowers/specs/2026-11-23-wartung-jahresplan-design.md` auf
+    Branch `feature/wartung-jahresplan` (lokal, vom Prüfer gegengelesen) –
+    **wartet auf die Bestätigung des Anwenders**, nichts gebaut.
+    Voraussichtlich 0.82.46, Migration 212 (vor dem Merge prüfen).
 
 Docker Desktop startet nach einem Neustart des Windows-Rechners nicht von
 selbst – ohne ihn fehlen der Zeuge und die Labor-Datenbank für die Tests.
