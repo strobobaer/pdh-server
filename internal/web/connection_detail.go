@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+
+	"pdh/internal/modules/calc"
 )
 
 // Eigene Seite je Import-/Export-Verbindung: Uebersicht, Pruefungen,
@@ -209,6 +211,10 @@ func (h *Handler) connectionDetailPage(w http.ResponseWriter, r *http.Request, d
 	}
 	if err != nil {
 		http.Error(w, "Verbindung nicht gefunden", http.StatusNotFound)
+		return
+	}
+	if direction == "import" && kind == calc.Kind { // eingebaute Verbindung „Berechnete Werte“: eigene Seite
+		h.calcPage(w, r, id)
 		return
 	}
 	page := direction
@@ -514,13 +520,29 @@ func (h *Handler) ConnectionQueryDeleteWeb(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	ctx := r.Context()
+	// Kennung prüfen: sie steht unten in einem LIKE – Platzhalter (_ %) würden fremde Zuordnungen treffen
+	if !uuidInPathRe.MatchString(qid) || !uuidInPathRe.MatchString(id) {
+		http.NotFound(w, r)
+		return
+	}
+	withMappings := r.FormValue("with_mappings") == "1"
+	if withMappings {
+		// Spalten der Abfrage, die ein berechneter Wert als Eingangswert braucht: nichts löschen
+		if msg := h.calcBlockText(ctx, "Die Abfrage liefert", "source-prefix", id, queryRefPrefix+qid+":"); msg != "" {
+			http.Redirect(w, r, connectionBackPath("import", id, "queries", "", msg), http.StatusSeeOther)
+			return
+		}
+	}
 	if h.importPoll != nil {
 		h.importPoll.Stop(queryPollID(qid))
 	}
 	var n int
 	_ = h.db.QueryRow(ctx, `SELECT COUNT(*) FROM import_mappings WHERE connection_id = $1 AND source_ref LIKE $2`, id, queryRefPrefix+qid+":%").Scan(&n)
-	if r.FormValue("with_mappings") == "1" {
-		_, _ = h.db.Exec(ctx, `DELETE FROM import_mappings WHERE connection_id = $1 AND source_ref LIKE $2`, id, queryRefPrefix+qid+":%")
+	if withMappings {
+		if _, err := h.db.Exec(ctx, `DELETE FROM import_mappings WHERE connection_id = $1 AND source_ref LIKE $2`, id, queryRefPrefix+qid+":%"); err != nil {
+			http.Redirect(w, r, connectionBackPath("import", id, "queries", "", "Die Zuordnungen der Abfrage konnten nicht gelöscht werden – die Abfrage bleibt stehen"), http.StatusSeeOther)
+			return
+		}
 		n = 0
 	}
 	if _, err := h.db.Exec(ctx, `DELETE FROM connection_queries WHERE id::text = $1 AND connection_id = $2`, qid, id); err != nil {
@@ -611,6 +633,10 @@ func (h *Handler) connectionTemplateSaveWeb(w http.ResponseWriter, r *http.Reque
 		http.Error(w, "keine berechtigung", http.StatusForbidden)
 		return
 	}
+	if direction == "import" && h.isCalcConnection(r.Context(), id) {
+		http.Error(w, errCalcBuiltin, http.StatusBadRequest)
+		return
+	}
 	_ = r.ParseForm()
 	name := strings.TrimSpace(r.FormValue("name"))
 	desc := strings.TrimSpace(r.FormValue("description"))
@@ -629,6 +655,10 @@ func (h *Handler) connectionTemplateApplyWeb(w http.ResponseWriter, r *http.Requ
 	id, tid := chi.URLParam(r, "id"), chi.URLParam(r, "tid")
 	if !h.canConnectionWrite(r, direction) {
 		http.Error(w, "keine berechtigung", http.StatusForbidden)
+		return
+	}
+	if direction == "import" && h.isCalcConnection(r.Context(), id) {
+		http.Error(w, errCalcBuiltin, http.StatusBadRequest)
 		return
 	}
 	msg, err := h.applyConnectionTemplate(r.Context(), id, direction, tid, getUser(r).ID, h.assetGuardFor(r, direction+".write"))

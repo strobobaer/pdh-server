@@ -156,6 +156,10 @@ func (h *Handler) ImportMappingCreateWeb(w http.ResponseWriter, r *http.Request)
 		writeGlobalBoardError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	if h.isCalcConnection(r.Context(), connectionID) {
+		writeGlobalBoardError(w, http.StatusBadRequest, errCalcOwnPage)
+		return
+	}
 	// Abteilung der Anlage zählt (wie beim Übernehmen von Vorschlägen)
 	if !h.assetGuardFor(r, "import.write")(in.InfrastructureID) {
 		writeGlobalBoardError(w, http.StatusForbidden, errAssetDenied)
@@ -194,6 +198,23 @@ func (h *Handler) ImportMappingDeleteWeb(w http.ResponseWriter, r *http.Request)
 		h.db.QueryRow(r.Context(), `SELECT infrastructure_id::text FROM import_mappings WHERE id = $1::uuid AND connection_id = $2::uuid`, mappingID, connectionID).Scan(&asset) == nil &&
 		!h.assetGuardFor(r, "import.write")(asset) {
 		http.Error(w, errAssetDenied, http.StatusForbidden)
+		return
+	}
+
+	// Eingangswert einer geltenden oder geplanten Formel: nicht löschen
+	// Berechnete Werte löscht man auf ihrer eigenen Seite (Recht, Wartung, Anstoß)
+	msg := ""
+	if h.isCalcConnection(r.Context(), connectionID) {
+		msg = errCalcOwnPage
+	} else {
+		msg = h.calcBlockText(r.Context(), "", "mapping", mappingID)
+	}
+	if msg != "" {
+		if r.FormValue("back") == "page" {
+			http.Redirect(w, r, connectionBackPath("import", connectionID, "mappings", "", msg), http.StatusSeeOther)
+			return
+		}
+		http.Error(w, msg, http.StatusConflict)
 		return
 	}
 

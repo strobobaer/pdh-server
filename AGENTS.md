@@ -782,18 +782,59 @@ und 3 drückt bis auf Weiteres der Anwender.
     gesperrt, keine Testdaten. **Der Copilot läuft am Testverbund mit Ollama
     (nicht erreichbar)** – Änderungsliste, „Übernehmen“ und Websuche sind dort
     nicht echt gelaufen, nur automatisch getestet und an einer lokal
-    gerenderten Seite angesehen (20 Ansichten). **0.82.36** (Branch
-    `fix/vorschlagsliste-handy`, lokal): Vorschlagsliste bis 900 px Breite
-    untereinander statt breiter Tabelle; Anthropic-Hinweis nur mit Claude
-    (`copilotConnRef`); **Internetsuche technisch getrennt**: nur mit Haken
-    „Im Internet nach einer Vorlage suchen“, als eigener Aufruf ohne
-    PDH-Werkzeuge (`faults.AskWithWebTemplate`; Websuche zusammen mit eigenen
-    Werkzeugen lehnt `AskWithToolsOpts` ab). Offen: Freigabe 0.82.36 (Push/Merge/Verbund-Update);
-    Abnahme des Copilot mit echtem Anthropic-Schlüssel (Anwender, z. B. auf
-    10.10.0.202: Auftrag „Ordne … zu“, Änderungsliste, „Übernehmen“,
-    Vorlage aus dem Internet); Vorschlagsliste mit echten MQTT-Themen und
-    OPC-UA-Knoten; 10.10.0.202 einspielen (Anwender, mit Sicherung).
-    Danach Paket 2 (berechnete Werte).
+    gerenderten Seite angesehen (20 Ansichten). **0.82.36 auf `main`**
+    (23.11.2026, Merge `e111380f`) und dem Testverbund (beide Server und
+    Zeuge 0.82.36, aktiv jetzt `pdh` 10.10.0.14, Spiegelung läuft):
+    Vorschlagsliste bis 900 px Breite untereinander statt breiter Tabelle;
+    Anthropic-Hinweis nur mit Claude (`copilotConnRef`); **Internetsuche
+    technisch getrennt**: nur mit Haken „Im Internet nach einer Vorlage
+    suchen“, als eigener Aufruf ohne PDH-Werkzeuge
+    (`faults.AskWithWebTemplate`; Websuche zusammen mit eigenen Werkzeugen
+    lehnt `AskWithToolsOpts` ab). Am Testverbund im Browser geprüft
+    (23.11.2026): Vorschlagsliste in 20 Ansichten ohne Überlauf und
+    Konsolenfehler, Hinweis und Haken fehlen dort richtig (Ollama); Prüfkonto
+    gesperrt, keine Testdaten. Offen: Abnahme des Copilot mit echtem
+    Anthropic-Schlüssel (Anwender, z. B. auf 10.10.0.202: Auftrag „Ordne … zu“,
+    Änderungsliste, „Übernehmen“, Haken für die Vorlage aus dem Internet);
+    Vorschlagsliste mit echten MQTT-Themen und OPC-UA-Knoten; 10.10.0.202
+    einspielen (Anwender, mit Sicherung – erst ab 0.82.36). Geparkt (Tests):
+    `go run ./deploy/lab/last -cleanup` scheitert an
+    `it_assets_created_by_fkey`, Reste des Lasttests liegen in der
+    Labor-Datenbank.
+    **Paket 2 (berechnete Werte = virtuelle Messwerte):** Anwender
+    23.11.2026: „verschiedenste Berechnungen … als virtuellen Messwert“,
+    „A passt“ (Weg A: berechneter Wert ist eine Zuordnung an der eingebauten
+    Quelle „Berechnete Werte“). Entwurf
+    `docs/superpowers/specs/2026-11-23-berechnete-werte-design.md` auf Branch
+    `feature/berechnete-werte` (lokal, geprüft von einem unabhängigen
+    Prüfer) – **vom Anwender am 23.11.2026 bestätigt („passt“)**. Damit
+    entschieden: Schnitt 2a (jetzt) und 2b (Gültigkeit und rückwirkendes
+    Neurechnen für die berechneten Energie-Messstellen danach, eigener
+    kurzer Entwurf); Schnellübersicht bleibt bei der heutigen Regel; kein
+    neues Recht; Energie-Messstellen behalten in 2a ihren Rechenumfang.
+    Bauplan `docs/superpowers/plans/2026-11-23-berechnete-werte.md`
+    (9 Aufgaben). **Paket 2a = 0.82.45** auf Branch
+    `feature/berechnete-werte` gebaut (23.11.2026; geplant als 0.82.37 mit
+    Migration 205 – `main` hatte inzwischen 0.82.44 und die Migrationen 205
+    bis 210, deshalb **Migration 211** `211_calc_values`; Push und Merge vom
+    Anwender für 0.82.45 freigegeben): Rechenkern in `internal/core/formula`
+    (Namen ohne Klammern, Vergleiche, `^`, Funktionen; die Energie-Messstellen
+    lehnen den neuen Umfang ab, `ErrFormulaScope`); Modul
+    `internal/modules/calc` (Speicher mit Fassungen, Rechenwerk alle 10 s und
+    nach jedem Anstoß); alle Konnektoren schreiben Werte nur noch über
+    `storeMappingValue` (Wächter `TestMappingValueSingleWriter`); Seite der
+    eingebauten Verbindung „Berechnete Werte“ (`calc_values.go`, Wege
+    `/import/calc/…`); genutzte Eingangswerte sind auf allen drei Löschwegen
+    geschützt (Wächter `TestMappingDeletesGuarded`); Copilot-Werkzeuge
+    `calc_values`, `calc_inputs`, `propose_calc` (`calc_copilot.go`). Kein
+    neues Recht. Offen: Freigabe Push/Merge, Verbund-Update, Browserprüfung
+    am Testverbund (Seite, Formular am Handy, Änderungsliste des Copilot –
+    dort läuft der Copilot mit Ollama, also wieder nur lokal ansehbar),
+    10.10.0.202 (Anwender). Danach Paket 2b (Gültigkeit und rückwirkendes
+    Neurechnen für die berechneten Energie-Messstellen, eigener kurzer
+    Entwurf; dort auch klären, ob Messstellen den neuen Rechenumfang
+    bekommen). Kleine Befunde der Schlussprüfung stehen im Ledger
+    `.superpowers/sdd/2026-11-23-berechnete-werte/`.
 
 Docker Desktop startet nach einem Neustart des Windows-Rechners nicht von
 selbst – ohne ihn fehlen der Zeuge und die Labor-Datenbank für die Tests.

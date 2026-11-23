@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"pdh"
+	"pdh/internal/core/formula"
 )
 
 // Handbuch (/help): redaktionelle Kapitel in web/templates/help.gohtml plus
@@ -40,6 +41,7 @@ type HelpPageData struct {
 	CanShots       bool              // darf Bildschirmfotos hochladen
 	SampleQR       template.HTML     // QR-Code fuer das Muster-Etikett
 	SampleURL      string
+	CalcFunctions  []formula.FuncInfo // Funktionen der Formeln (berechnete Werte) – direkt aus dem Rechenkern
 }
 
 // helpChapterIDs muss mit den section-IDs in help.gohtml uebereinstimmen
@@ -65,6 +67,7 @@ func (h *Handler) helpData(r *http.Request) HelpPageData {
 		Releases:       installedChangelog(),
 		FieldTypes:     fieldTypeOrder,
 		TypeLabels:     fieldTypeLabels,
+		CalcFunctions:  formula.Functions(),
 	}
 	d.Shots = map[string]string{}
 	for _, id := range helpChapterIDs {

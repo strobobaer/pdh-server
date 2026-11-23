@@ -200,8 +200,7 @@ func (h *Handler) recordMqttValue(connectionID, topic string, payload []byte) {
 		if !ok {
 			continue // Pfad nicht vorhanden oder kein JSON: der bisherige Wert bleibt
 		}
-		if _, err := h.db.Exec(context.Background(), `
-			UPDATE import_mappings SET last_value=$1, last_received_at=NOW() WHERE id = $2::uuid`, value, t.id); err != nil {
+		if err := h.storeMappingValue(context.Background(), t.id, value); err != nil {
 			log.Error().Err(err).Str("connection_id", connectionID).Str("topic", topic).Msg("mqtt-wert konnte nicht gespeichert werden")
 		}
 	}

@@ -10,6 +10,30 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.82.45] – 2026-11-23
+
+### Neu
+
+- **Berechnete Werte (virtuelle Messwerte):** Unter Import gibt es die eingebaute Verbindung „Berechnete Werte“. Dort rechnest du einen Wert aus anderen Werten – z. B. die Gesamtleistung einer Halle, einen Wirkungsgrad oder „Anlage läuft“. Der berechnete Wert lässt sich danach nutzen wie jeder andere: als Export-Feld, als Quelle einer Messstelle und im Copilot.
+- **Formelgenerator:** Eingangswerte suchen und anklicken (in der Formel heißen sie A, B, C …), Rechenzeichen und Funktionen per Knopf einsetzen. Unter der Formel steht sofort, ob sie stimmt, und die Probe mit den Werten von jetzt.
+- **Mehr Rechenumfang:** Vergleiche, Potenz und die Funktionen MIN, MAX, SUMME, MITTELWERT, BETRAG, RUNDEN, WURZEL, WENN, UND, ODER und NICHT. Englische Namen wie in Excel gelten auch.
+- **Formel zu einem Stichtag ändern:** Eine geänderte Formel gilt sofort oder ab einem Datum („gültig ab“). Jede Fassung zeigt, wer sie wann angelegt hat; geplante Fassungen lassen sich ändern und löschen.
+- **Kein Wert statt falscher Zahl:** Fehlt ein Eingangswert, ist er keine Zahl oder älter als das Höchstalter (vorbelegt mit 10 Minuten), bleibt der berechnete Wert leer und nennt den Grund.
+- **Copilot:** Auf der Seite „Berechnete Werte“ schlägt der Copilot berechnete Werte und neue Formeln vor – mit Formel und Probe in der Änderungsliste. Angelegt wird erst mit „Übernehmen“; löschen macht er nie.
+
+### Geändert
+
+- Ein Wert, der in einer geltenden oder geplanten Formel als Eingangswert steht, lässt sich nicht mehr löschen – auch nicht zusammen mit seiner Verbindung oder einer gespeicherten Abfrage. Das PDH nennt die berechneten Werte, die ihn brauchen.
+- Energiedaten: Ein berechneter Wert ist als Quelle einer Messstelle wählbar (Momentanwert und Zählerstand, nicht Verbrauch). Die Formeln der Messstellen selbst bleiben bei + − × ÷.
+
+### Behoben
+
+- Beim Löschen einer gespeicherten Abfrage „samt Zuordnungen“ ging ein Fehler beim Löschen der Zuordnungen unter. Jetzt bleibt die Abfrage stehen und das PDH meldet den Fehler.
+
+### Sicherheit
+
+- Berechnete Werte anlegen, ändern und löschen darf, wer „Import verwalten“ hat – und zwar an der Anlage des Werts. Gilt das Recht nur in einer Abteilung, sind Werte an Anlagen anderer Abteilungen gesperrt, auch das Verschieben dorthin. Es gibt kein neues Recht.
+
 ## [0.82.44] – 2026-11-23
 
 ### Neu

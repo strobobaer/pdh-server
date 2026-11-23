@@ -1145,3 +1145,32 @@
 <figcaption>So kommt ein Telefon an den Server: anfragen, im APP-Ticket freigeben, abholen. Gesperrte Geräte fragen neu an.</figcaption>
 </figure>
 {{end}}
+
+{{/* Berechneter Wert: Eingangswerte mit Kurznamen, Formel, Prüfung mit Probe, Fassungen */}}
+{{define "hb-fig-calc"}}
+<figure class="hb-fig">
+<svg viewBox="0 0 640 262" role="img" aria-label="Formular für einen berechneten Wert">
+  <rect class="win" x="6" y="6" width="628" height="250" rx="8"/>
+  <text x="20" y="28" class="t-b">Gesamtleistung Halle 2</text><text x="620" y="28" class="t-m" text-anchor="end">Anlage: Halle 2 · Einheit kW</text>
+  <text x="20" y="50" class="t-m">Eingangswerte</text>
+  <rect class="acl" x="20" y="56" width="26" height="20" rx="4"/><text x="33" y="70" class="t-c t-b">A</text><text x="56" y="70">Halle 2 › Presse 1 › Leistung</text><text x="500" y="70" text-anchor="end">12,4</text><text x="620" y="70" class="t-m" text-anchor="end">vor 2 s</text>
+  <rect class="acl" x="20" y="80" width="26" height="20" rx="4"/><text x="33" y="94" class="t-c t-b">B</text><text x="56" y="94">Halle 2 › Presse 2 › Leistung</text><text x="500" y="94" text-anchor="end">11,9</text><text x="620" y="94" class="t-m" text-anchor="end">vor 3 s</text>
+  <rect class="acl" x="20" y="104" width="26" height="20" rx="4"/><text x="33" y="118" class="t-c t-b">C</text><text x="56" y="118">Halle 2 › Presse 3 › Leistung</text><text x="500" y="118" text-anchor="end">13,3</text><text x="620" y="118" class="t-m" text-anchor="end">vor 2 s</text>
+  <text x="20" y="144" class="t-m">Formel</text>
+  <rect class="ctl" x="20" y="150" width="600" height="24" rx="4"/><text x="30" y="166" class="t-b">A + B + C</text>
+  <rect class="bg3" x="20" y="180" width="26" height="18" rx="4"/><text x="33" y="193" class="t-c">+</text>
+  <rect class="bg3" x="50" y="180" width="26" height="18" rx="4"/><text x="63" y="193" class="t-c">−</text>
+  <rect class="bg3" x="80" y="180" width="26" height="18" rx="4"/><text x="93" y="193" class="t-c">×</text>
+  <rect class="bg3" x="110" y="180" width="26" height="18" rx="4"/><text x="123" y="193" class="t-c">÷</text>
+  <rect class="bg3" x="146" y="180" width="40" height="18" rx="4"/><text x="166" y="193" class="t-c">MIN</text>
+  <rect class="bg3" x="190" y="180" width="40" height="18" rx="4"/><text x="210" y="193" class="t-c">MAX</text>
+  <rect class="bg3" x="234" y="180" width="58" height="18" rx="4"/><text x="263" y="193" class="t-c">RUNDEN</text>
+  <rect class="bg3" x="296" y="180" width="48" height="18" rx="4"/><text x="320" y="193" class="t-c">WENN</text>
+  <rect class="gr" x="356" y="178" width="264" height="22" rx="4"/><text x="488" y="193" class="t-c">✓ in Ordnung · Probe jetzt: 37,6 kW</text>
+  <text x="20" y="222" class="t-m">Fassungen</text>
+  <rect class="am" x="20" y="228" width="58" height="18" rx="4"/><text x="49" y="241" class="t-c">geplant</text><text x="88" y="241">01.12.2026 · A + B + C + D</text>
+  <rect class="gr" x="330" y="228" width="40" height="18" rx="4"/><text x="350" y="241" class="t-c">gilt</text><text x="380" y="241">23.11.2026 · A + B + C</text>
+</svg>
+<figcaption>Eingangswerte bekommen Kurznamen (A, B, C). Unter der Formel steht sofort die Prüfung mit der Probe; neue Formeln lassen sich zu einem Stichtag einplanen.</figcaption>
+</figure>
+{{end}}

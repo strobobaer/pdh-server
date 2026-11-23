@@ -2548,6 +2548,49 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li><b>Datenschutz:</b> Auf einer Verbindungsseite gehen Quellwerte, Anlagennamen und die Einstellungen der Verbindung an Anthropic – <b>Kennwörter, Schlüssel und Tokens nie</b>. Der Hinweis steht unter dem Eingabefeld, wenn der Copilot mit Claude läuft.</li>
       <li>Der Assistent braucht Claude (Anthropic-Schlüssel unter Server-Einstellungen → Copilot). Ohne ihn bleiben die Vorschläge am Formular.</li>
     </ul></div>
+
+  <h3 id="berechnete-werte"><i class="ti ti-math-function"></i> Berechnete Werte</h3>
+  <p>Ein <b>berechneter Wert</b> ist ein Wert, den das PDH aus anderen Werten rechnet – zum Beispiel die Gesamtleistung einer Halle (Summe der Pressen), ein Wirkungsgrad oder „Anlage läuft“ (Leistung über einer Schwelle). Danach verhält er sich wie jeder andere Wert: Du kannst ihn als Export-Feld wählen, als Quelle einer <a href="#energiedaten">Messstelle</a> nehmen (dann hat er auch einen Verlauf) und den Copilot danach fragen. Alle berechneten Werte stehen unter <b>Import</b> an der eingebauten Verbindung <b>Berechnete Werte</b>; auch der Knopf <b>Berechneter Wert</b> in der Zuordnungs-Übersicht führt dorthin.</p>
+  {{template "hb-fig-calc"}}
+  <div class="hb-howto"><b><i class="ti ti-math-function"></i> So legst du einen berechneten Wert an</b>
+    <ol class="hb-steps">
+      <li><b>Import</b> öffnen, die Verbindung <b>Berechnete Werte</b> anklicken und <b>Berechneter Wert</b> drücken.</li>
+      <li><b>Bezeichnung</b>, <b>Anlage</b>, <b>Einheit</b> und <b>Nachkommastellen</b> eintragen.</li>
+      <li>Unter <b>Eingangswerte</b> im Feld <b>Wert suchen</b> nach Bezeichnung, Anlage oder Verbindung suchen und die Werte anklicken, mit denen gerechnet wird. Jeder bekommt einen Kurznamen (A, B, C …), den du ändern kannst. Daneben stehen der Wert von jetzt und sein Alter.</li>
+      <li>Die <b>Formel</b> schreiben, z. B. <code>A + B + C</code>. Ein Klick auf einen Eingangswert setzt seinen Kurznamen ein, die Knöpfe darunter setzen Rechenzeichen und Funktionen ein.</li>
+      <li>Unter der Formel steht sofort, ob sie in Ordnung ist, und die <b>Probe</b> mit den Werten von jetzt. Bei einem Schreibfehler nennt das PDH die Stelle.</li>
+      <li><b>Speichern</b>. Der Wert wird von nun an neu gerechnet, sobald sich ein Eingangswert ändert.</li>
+    </ol></div>
+  <div class="hb-howto"><b><i class="ti ti-calendar-event"></i> So änderst du eine Formel zu einem Stichtag</b>
+    <ol class="hb-steps">
+      <li>Den berechneten Wert in der Liste anklicken.</li>
+      <li>Formel und Eingangswerte ändern und bei <b>Gültig ab</b> den Stichtag wählen. Heute heißt: gilt sofort.</li>
+      <li><b>Speichern</b>. Unter <b>Fassungen</b> steht die neue Formel als <b>geplant</b>; sie gilt ab 0 Uhr des Stichtags. Geplante Fassungen lassen sich ändern und löschen.</li>
+    </ol>
+    <p>Jede Fassung zeigt, wer sie wann angelegt hat. Die geltende und ältere Fassungen bleiben, wie sie sind – einen Tippfehler behebst du mit einer weiteren Fassung „gültig ab heute“. Ein Datum in der Vergangenheit geht nicht: Berechnete Werte haben keinen Verlauf, es gäbe nichts neu zu rechnen. Bezeichnung, Anlage, Einheit, Nachkommastellen und das Höchstalter gelten immer sofort.</p></div>
+  <p><b>Das geht in einer Formel:</b> <code>+</code> <code>−</code> <code>×</code> <code>÷</code> (auch <code>*</code> und <code>/</code>), Potenz <code>^</code>, Klammern, Zahlen mit Komma oder Punkt und Vergleiche (<code>&lt;</code> <code>&lt;=</code> <code>&gt;</code> <code>&gt;=</code> <code>=</code> <code>&lt;&gt;</code>; das Ergebnis ist 1 für wahr und 0 für falsch). Die Angaben einer Funktion trennt ein <b>Strichpunkt</b>, weil das Komma das Dezimalzeichen ist. Im Zweifel Klammern setzen: <code>-2 ^ 2</code> ist −4.</p>
+  <table>
+    <tr><th>Funktion</th><th>Bedeutung und Beispiel</th></tr>
+    {{range .CalcFunctions}}<tr><td><code>{{.Name}}</code></td><td>{{.Help}}</td></tr>
+    {{end}}
+  </table>
+  <p>Englische Namen wie in Excel gelten auch (<code>IF</code>, <code>SUM</code>, <code>AVERAGE</code>, <code>ABS</code>, <code>ROUND</code>, <code>SQRT</code>, <code>AND</code>, <code>OR</code>, <code>NOT</code>). <code>WENN</code> rechnet nur den gewählten Zweig – so fängst du Teilen durch 0 ab: <code>WENN(B &gt; 0; A / B; 0)</code>. Liefert eine Maschine Texte wie „true/false“, „ein/aus“, „on/off“ oder „ja/nein“, zählen sie als 1 und 0.</p>
+  <div class="hb-howto"><b><i class="ti ti-alert-triangle"></i> Warum steht dort „kein Wert“?</b>
+    <p>Das PDH rechnet nie mit einem fehlenden oder veralteten Wert weiter. Dann bleibt der berechnete Wert leer und nennt den Grund – zum Beispiel:</p>
+    <ul>
+      <li>Ein Eingangswert hat noch nie einen Wert geliefert oder ist keine Zahl (z. B. „12,5 kW“ mit Einheit).</li>
+      <li>Ein Eingangswert ist älter als das <b>Höchstalter</b> (vorbelegt mit 10 Minuten). Ist der Eingangswert selbst ein berechneter Wert, zählt das Alter der Werte, aus denen er gerechnet wurde. Ein fester Wert ohne Eingangswerte (z. B. ein Tarif <code>0,32</code>) wird nie zu alt.</li>
+      <li>Einen Eingangswert gibt es nicht mehr, oder er ist selbst ein berechneter Wert ohne Wert.</li>
+      <li>Es würde durch 0 geteilt.</li>
+    </ul>
+    <p>Für langsame Quellen (z. B. eine Excel-Datei, die einmal am Tag kommt) das Feld <b>Eingangswerte höchstens … Minuten alt</b> leeren. Dann steht am Wert dauerhaft „Alter der Eingangswerte wird nicht geprüft“.</p></div>
+  <ul>
+    <li><b>Schutz:</b> Ein Wert, der in einer geltenden oder geplanten Formel steht, lässt sich nicht löschen – auch nicht zusammen mit seiner Verbindung oder einer Abfrage. Das PDH nennt die berechneten Werte, die ihn brauchen. Die Verbindung „Berechnete Werte“ gehört zum PDH und lässt sich nicht ändern, abschalten oder löschen.</li>
+    <li><b>Rechte:</b> Ansehen darf, wer <b>Import ansehen</b> darf. Anlegen, ändern und löschen darf, wer <b>Import verwalten</b> darf – und zwar an der <b>Anlage</b> des berechneten Werts: Gilt dein Recht nur in einer Abteilung, kannst du Werte an Anlagen anderer Abteilungen nicht ändern und keinen Wert dorthin verschieben. Als Eingangswert ist jeder Wert wählbar, wie bei den Export-Feldern.</li>
+    <li><b>Mit dem Copilot:</b> Auf der Seite kennt der Copilot die berechneten Werte und die wählbaren Eingangswerte. Schreib z. B. „Lege die Gesamtleistung von Halle 2 aus den drei Pressen an“. Unter der Antwort steht die Änderungsliste mit Formel und Probe; angelegt wird erst mit <b>Übernehmen</b>. Löschen macht der Copilot nie. Bezeichnungen, Anlagennamen und Werte gehen dabei an den Anbieter des Copilot, Kennwörter nie. Die Internetsuche gibt es auf dieser Seite nicht.</li>
+    <li><b>Schnellübersicht der Anlage:</b> Sie zeigt wie bisher höchstens acht Werte je Anlage, deren Bezeichnung nach einem Energiewert klingt (z. B. „Leistung“ oder „Strom“). Ein berechneter Wert „Gesamtleistung“ erscheint dort, „Wirkungsgrad“ nicht.</li>
+    <li>Auf dem Spiegelserver und während der Wartung wird nicht gerechnet und nichts gespeichert.</li>
+  </ul>
   {{template "hb-fig-explorer"}}
   <div class="hb-howto"><b><i class="ti ti-radar"></i> So findest du einen MQTT-Wert</b>
     <ol class="hb-steps">
@@ -3009,6 +3052,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>Die Formel mit den Messstellen-IDs in eckigen Klammern schreiben, z. B. <code>[GESAMT] - [LINIE-A] - [LINIE-B]</code>. Erlaubt sind <code>+</code>, <code>-</code>, <code>*</code>, <code>/</code> (auch <code>−</code> <code>×</code> <code>÷</code>), Klammern und Zahlen.</li>
       <li>Speichern. Unbekannte IDs und Zirkelbezüge (A rechnet mit B, B mit A) weist das PDH mit einer Meldung ab, z. B. „Zirkelbezug: [A] → [B] → [A]“. Zählerstände und Verbräuche lassen sich nur untereinander verrechnen, Momentanwerte nur mit Momentanwerten.</li>
     </ol>
+    <p>Funktionen und Vergleiche (<code>MIN</code>, <code>RUNDEN</code>, <code>WENN</code> …) gibt es in den Formeln der Messstellen nicht – bei Zählern würden sie die Zuwächse verfälschen. Brauchst du sie, leg einen <a href="#berechnete-werte">berechneten Wert</a> an und wähl ihn als <b>Quelle</b> der Messstelle. Das geht für die Arten Momentanwert und Zählerstand, nicht für Verbrauch.</p>
     <p>Berechnete Messstellen sind in der Tabelle mit <b>berechnet</b> gekennzeichnet, ihre Formel steht in der Spalte <b>Quelle</b>. Sie werden jede Minute mitberechnet und wie echte Messwerte abgelegt. Fehlt ein Bezugswert, gibt es für diese Minute keinen Wert. Änderst du bei einer Messstelle Quelle, Faktor oder Art oder die Formel einer berechneten Messstelle, haben die berechneten Messstellen, die sie nutzen, in dieser einen Minute keinen Wert. Danach rechnen sie normal weiter. So wird der Sprung vom alten zum neuen Wert nicht als Verbrauch gezählt. Eine Messstelle, die in der Formel einer anderen steht, lässt sich weder löschen noch umbenennen – die Meldung nennt die Messstellen, in denen sie verwendet wird.</p></div>
   <div class="hb-howto"><b><i class="ti ti-filter"></i> So findest du Messstellen</b>
     <p>Über der Tabelle filterst du nach <b>Anlage</b> (mit Unteranlagen), echt oder berechnet, exportieren, aktiv, Einheit, Art, Verbindung und Suchtext. <b>Nur ohne aktuellen Wert</b> zeigt Messstellen, deren letzter Wert älter als die eingestellte Frist (Vorgabe 15 Minuten) ist oder fehlt – der schnelle Weg zu Messstellen, deren Quelle nicht mehr liefert. Ein Klick auf eine Spaltenüberschrift sortiert, ein zweiter dreht die Reihenfolge um. Filter und Sortierung stehen in der Adresse; du kannst die Seite so als Lesezeichen speichern oder weitergeben.</p></div>

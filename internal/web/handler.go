@@ -30,6 +30,7 @@ import (
 	"pdh/internal/core/storage"
 	"pdh/internal/core/users"
 	"pdh/internal/datanet"
+	"pdh/internal/modules/calc"
 	"pdh/internal/modules/checklists"
 	"pdh/internal/modules/extsync"
 	"pdh/internal/modules/faults"
@@ -56,6 +57,7 @@ type BaseData struct {
 	FaultID       string
 	CopilotRef    string // "fault:<id>" / "ticket:<id>": Seitenleiste lädt Copilot-Vorschläge (copilot_suggest.go)
 	CopilotConn   string // "import:<id>" / "export:<id>": Copilot kennt die Verbindung der Seite (copilot_mapping.go)
+	CopilotNoWeb  bool   // Seite ohne den Haken „Im Internet nach einer Vorlage suchen“ (Berechnete Werte)
 	UserAvatar    string // eigenes Profilbild (avatar.go), "" = Symbol
 
 	// Auto-Logout / Systemnutzer-Override (siehe base.gohtml Script-Block)
@@ -354,6 +356,7 @@ type Handler struct {
 	mqttBrokers        *mqttbroker.Manager
 	topicSrc           topicSource // nur Tests: ersetzt den Broker für die ESPPDH-Werte (esppdh_values.go)
 	mqttImport         *mqttimport.Manager
+	calcEngine         atomic.Pointer[calc.Engine] // Rechenwerk der berechneten Werte (calc_wire.go); leer am Spiegel und in Tests
 	exportCron         *scheduler.CronManager
 	importPoll         *scheduler.IntervalManager
 	syncRunner         *extsync.Runner // Abgleich mit Fremdsystemen; nil am Spiegel und in Tests (sync_wire.go)
@@ -1197,6 +1200,13 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/import/connections/{id}/read/refresh", h.ModbusRefreshValuesWeb)
 	r.Post("/import/connections/{id}/nodes/refresh", h.OPCUARefreshValuesWeb)
 	r.Get("/import/mappings", h.ImportMappingsOverviewPage)
+	// Berechnete Werte (virtuelle Messwerte) an der eingebauten Verbindung (calc_values.go)
+	r.Get("/import/calc", h.CalcRedirectWeb)
+	r.Get("/import/calc/inputs", h.CalcInputsWeb)                                // wählbare Eingangswerte (Suche)
+	r.Post("/import/calc/check", h.CalcCheckWeb)                                 // Formel prüfen, Probe mit den Werten von jetzt
+	r.Post("/import/calc/values", h.CalcSaveWeb)                                 // anlegen oder ändern (JSON)
+	r.Post("/import/calc/values/{id}/delete", h.CalcDeleteWeb)                   // berechneten Wert löschen
+	r.Post("/import/calc/values/{id}/versions/{vid}/delete", h.CalcVersionDeleteWeb) // geplante Fassung löschen
 	// ESPPDH: eigene Mess- und Zählgeräte auf ESP-Basis (esppdh.go)
 	r.Get("/import/esppdh", h.EsppdhPage)
 	r.Post("/import/esppdh", h.EsppdhCreateWeb)
@@ -2109,7 +2119,7 @@ func (h *Handler) CopilotAskWeb(w http.ResponseWriter, r *http.Request) {
 	}
 	// Copilot mit PDH-Daten (copilot_data.go): liest mit den Rechten der fragenden Person
 	d := &copilotData{h: h, userID: u.ID, scope: scope, conn: conn, can: func(p string) bool { return h.hasPerm(r, p) }}
-	d.web = conn != nil && r.FormValue("web") == "1" // Vorlage aus dem Internet nur auf Wunsch
+	d.web = conn != nil && conn.Kind != calc.Kind && r.FormValue("web") == "1" // Vorlage aus dem Internet nur auf Wunsch, nie auf „Berechnete Werte“
 	d.limitProjects(r) // Projekte nur mit Ansichtsrecht oder als Beteiligte
 	reply, sources, links, err := h.askCopilot(ctx, d, strings.TrimSpace(u.FirstName+" "+u.LastName), q, fid)
 	if err != nil {

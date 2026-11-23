@@ -31,9 +31,9 @@ Die Seite liefert davor im eigenen <script>:
     <tbody>
       {{range .Connections}}
       <tr data-conn-id="{{.ID}}" data-conn-kind="{{.Kind}}" data-conn-name="{{.Name}}" {{if $d.CanWrite}}data-conn-config='{{.ConfigJSON}}'{{end}} data-conn-can-write="{{$d.CanWrite}}"{{if eq $d.Direction "import"}} data-conn-broker-integrated="{{.IsIntegratedBroker}}"{{end}}
-          {{if or $d.CanWrite $d.CanExecute}}oncontextmenu="showContextMenu(event, connContextItems(this, '{{$d.Direction}}')); return false;"{{end}}>
+          {{if and (or $d.CanWrite $d.CanExecute) (not .Builtin)}}oncontextmenu="showContextMenu(event, connContextItems(this, '{{$d.Direction}}')); return false;"{{end}}>
         <td style="{{css $td}}"><a href="/{{$d.Direction}}/connections/{{.ID}}" style="color:var(--accent);font-weight:600"><i class="ti ti-chevron-right"></i> {{.Name}}</a></td>
-        <td style="{{css $td}}">{{.KindLabel}}</td>
+        <td style="{{css $td}}">{{.KindLabel}}{{if .Builtin}} <span class="badge" style="background:var(--bg2);color:var(--muted);border:1px solid var(--border)" title="Diese Verbindung gehört zum PDH und lässt sich nicht ändern, abschalten oder löschen">eingebaut</span>{{end}}</td>
         <td style="{{css $td}}">{{if .Enabled}}<span class="badge" style="background:var(--green)">Aktiv</span>{{else}}<span class="badge" style="background:var(--muted)">Deaktiviert</span>{{end}}</td>
         <td style="{{css $td}}">{{.CreatedBy}}</td>
         <td style="{{css $td}}">{{.CreatedAt}}</td>

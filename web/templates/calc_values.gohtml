@@ -1,0 +1,401 @@
+{{template "base" .}}
+{{define "content"}}
+<style>
+.cv-list{display:flex;flex-direction:column}
+.cv-row{display:block;padding:10px 4px;border-bottom:1px solid var(--border);color:var(--text);text-decoration:none}
+.cv-row:last-child{border-bottom:0}
+.cv-row:hover{background:var(--bg2)}
+.cv-row-head{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:baseline}
+.cv-row-head b{font-size:13.5px;overflow-wrap:anywhere}
+.cv-path{color:var(--muted);font-size:12px;overflow-wrap:anywhere}
+.cv-val{margin-left:auto;font-weight:600;font-size:13.5px;white-space:nowrap}
+.cv-val small{font-weight:400;color:var(--muted);margin-left:6px}
+.cv-none{color:var(--muted);font-weight:400}
+.cv-row-sub{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:4px;font-size:12px;color:var(--muted)}
+.cv-row-sub code,.cv-version code{font-family:monospace;color:var(--text);overflow-wrap:anywhere}
+.cv-reason{margin-top:4px;font-size:12px;color:var(--text);overflow-wrap:anywhere}
+.cv-reason i{color:var(--accent)}
+.cv-hint,.cv-muted{font-size:12px;color:var(--muted)}
+.cv-hint{margin-top:4px}
+.cv-grid{display:grid;grid-template-columns:2fr 1fr 1fr;gap:10px}
+.cv-sub{font-size:12px;font-weight:600;margin:16px 0 6px;color:var(--text)}
+.cv-age{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:10px;font-size:12.5px}
+.cv-age .form-label,.cv-from .form-label{margin:0}
+.cv-num{width:90px}
+.cv-date{width:170px}
+.cv-input{display:grid;grid-template-columns:90px minmax(0,1fr) auto auto auto;gap:8px;align-items:center;padding:5px 0;border-bottom:1px solid var(--border);font-size:12.5px}
+.cv-input-label{background:none;border:0;padding:0;text-align:left;color:var(--text);cursor:pointer;font:inherit;overflow-wrap:anywhere}
+.cv-input-label:hover{color:var(--accent)}
+.cv-input-val{font-family:monospace;overflow-wrap:anywhere}
+.cv-input-age{color:var(--muted);white-space:nowrap}
+.cv-input[data-gone] .cv-input-val{color:var(--muted);font-family:inherit}
+.cv-search{position:relative;margin-top:8px}
+.cv-results{border:1px solid var(--border);border-radius:8px;background:var(--bg);box-shadow:var(--shadow-card);max-height:260px;overflow:auto;margin-top:4px}
+.cv-result{display:block;width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--border);padding:7px 10px;color:var(--text);font:inherit;font-size:12.5px;cursor:pointer;overflow-wrap:anywhere}
+.cv-result:last-child{border-bottom:0}
+.cv-result:hover,.cv-result:focus{background:var(--bg2)}
+.cv-result small{display:block;color:var(--muted)}
+.cv-formula{font-family:monospace;width:100%;resize:vertical;min-height:44px}
+.cv-keys{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
+.cv-key{font-family:monospace;min-width:34px}
+.cv-check{margin-top:8px;font-size:12.5px;min-height:18px;overflow-wrap:anywhere}
+.cv-check .cv-ok{color:var(--text)}
+.cv-check .cv-bad{color:var(--text);font-weight:600}
+.cv-check .cv-note{color:var(--muted);display:block}
+.cv-from{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:14px;font-size:12.5px}
+.cv-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+.cv-error{margin-top:10px;padding:8px 10px;border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:6px;font-size:12.5px;overflow-wrap:anywhere}
+.cv-version{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);font-size:12.5px}
+.cv-version:last-child{border-bottom:0}
+.cv-state{display:inline-block;min-width:66px;font-weight:600}
+.cv-state.is-old{color:var(--muted);font-weight:400}
+.cv-state.is-plan{color:var(--accent)}
+.cv-danger{margin-top:18px;padding-top:12px;border-top:1px solid var(--border)}
+@media (max-width:900px){
+  .cv-grid{grid-template-columns:1fr}
+  .cv-val{margin-left:0;width:100%}
+  .cv-input{grid-template-columns:80px minmax(0,1fr)}
+  .cv-input .cv-input-val,.cv-input .cv-input-age,.cv-input .cv-remove{grid-column:2}
+  .cv-num,.cv-date{width:100%}
+  .cv-actions .btn{width:100%;justify-content:center}
+  .cv-key{flex:1 0 auto}
+}
+</style>
+
+<div style="margin-bottom:18px">
+  <h1 style="font-size:19px;font-weight:600">Berechnete Werte</h1>
+  <p style="font-size:12px;color:var(--muted);margin-top:3px"><a href="/import">← zurück zu Import</a> · Werte, die das PDH aus anderen Werten rechnet. Sie lassen sich nutzen wie jeder andere Wert: als Export-Feld, als Quelle einer Messstelle und im Copilot.</p>
+</div>
+
+{{if .Notice}}<div class="card" role="status" style="margin-bottom:14px;border-color:var(--green)"><i class="ti ti-circle-check" style="color:var(--green)"></i> {{.Notice}}</div>{{end}}
+{{if .Err}}<div class="card" role="alert" style="margin-bottom:14px;border-color:var(--red);color:var(--red)"><i class="ti ti-alert-circle"></i> {{.Err}}</div>{{end}}
+
+<div class="card" style="margin-bottom:14px">
+  <div class="card-title"><span><i class="ti ti-math-function" aria-hidden="true"></i> Berechnete Werte · {{len .Values}}</span>{{if .CanWrite}}<a class="btn btn-small btn-primary" href="?new=1#cv-form"><i class="ti ti-plus" aria-hidden="true"></i> Berechneter Wert</a>{{end}}</div>
+  {{if .Values}}
+  <div class="cv-list">
+    {{range .Values}}
+    <a class="cv-row" href="?edit={{.ID}}#cv-form">
+      <div class="cv-row-head"><b>{{.Name}}</b><span class="cv-path">{{.InfraPath}}</span>
+        <span class="cv-val">{{if .Value}}{{.Value}}{{if .Unit}} {{.Unit}}{{end}}<small>{{.Age}}</small>{{else}}<span class="cv-none">kein Wert</span>{{end}}</span></div>
+      <div class="cv-row-sub"><code>= {{.Formula}}</code><span>{{.Since}}{{if .Planned}} · {{.Planned}} geplant{{end}}</span></div>
+      {{if .Reason}}<div class="cv-reason"><i class="ti ti-alert-triangle" aria-hidden="true"></i> {{.Reason}}</div>{{end}}
+      {{if .NoAgeCheck}}<div class="cv-hint"><i class="ti ti-clock-off" aria-hidden="true"></i> Alter der Eingangswerte wird nicht geprüft</div>{{end}}
+    </a>
+    {{end}}
+  </div>
+  {{else}}
+  <div style="font-size:12.5px;color:var(--muted);padding:8px 0">Noch kein berechneter Wert angelegt.{{if .CanWrite}} Mit „Berechneter Wert“ legst du den ersten an – zum Beispiel die Summe mehrerer Leistungen.{{end}}</div>
+  {{end}}
+</div>
+
+{{with .Form}}
+<div class="card" id="cv-form" data-id="{{.ID}}" data-version="{{.VersionID}}" data-conn="{{$.ConnectionID}}">
+  <div class="card-title"><span><i class="ti ti-edit" aria-hidden="true"></i> {{if .ID}}{{.Name}}{{else}}Neuer berechneter Wert{{end}}</span></div>
+
+  <div class="cv-grid">
+    <div class="form-group"><label class="form-label" for="cv-name">Bezeichnung</label>
+      <input id="cv-name" class="form-input" maxlength="150" value="{{.Name}}" placeholder="z. B. Gesamtleistung Halle 2"{{if not $.CanWrite}} disabled{{end}}></div>
+    <div class="form-group"><label class="form-label" for="cv-unit">Einheit</label>
+      <input id="cv-unit" class="form-input" maxlength="20" value="{{.Unit}}" placeholder="z. B. kW"{{if not $.CanWrite}} disabled{{end}}></div>
+    <div class="form-group"><label class="form-label" for="cv-decimals">Nachkommastellen</label>
+      <input id="cv-decimals" class="form-input" type="number" min="0" max="6" value="{{.Decimals}}"{{if not $.CanWrite}} disabled{{end}}></div>
+  </div>
+  {{template "infra-tree-picker" (dict "TargetID" "cv-infra-id" "SelectedLabelID" "cv-infra-selected" "Label" "Anlage" "Required" true "Value" .InfraID "SelectedLabel" .InfraPath)}}
+  <div class="cv-age"><label class="form-label" for="cv-maxage">Eingangswerte höchstens</label>
+    <input id="cv-maxage" class="form-input cv-num" type="number" min="1" max="44640" value="{{.MaxAge}}"{{if not $.CanWrite}} disabled{{end}}>
+    <span>Minuten alt</span> <span class="cv-muted">(leer = Alter wird nicht geprüft)</span></div>
+
+  <div class="cv-sub">Eingangswerte</div>
+  <div id="cv-inputs">
+    {{range .Inputs}}
+    <div class="cv-input" data-mapping="{{.MappingID}}"{{if .Gone}} data-gone="1"{{end}}>
+      <input class="form-input cv-short" maxlength="20" value="{{.Short}}" aria-label="Kurzname in der Formel"{{if not $.CanWrite}} disabled{{end}}>
+      <button type="button" class="cv-input-label" title="Kurzname in die Formel setzen">{{.Label}}</button>
+      <span class="cv-input-val">{{if .Gone}}gibt es nicht mehr{{else}}{{.Value}}{{end}}</span>
+      <span class="cv-input-age">{{.Age}}</span>
+      {{if $.CanWrite}}<button type="button" class="btn btn-small cv-remove">entfernen</button>{{end}}
+    </div>
+    {{end}}
+  </div>
+  {{if $.CanWrite}}
+  <div class="cv-search">
+    <input id="cv-search" class="form-input" placeholder="Wert suchen … (Bezeichnung, Anlage oder Verbindung)" autocomplete="off" aria-label="Eingangswert suchen">
+    <div id="cv-results" class="cv-results" hidden></div>
+  </div>
+  {{end}}
+
+  <div class="cv-sub">Formel</div>
+  <textarea id="cv-formula" class="form-input cv-formula" maxlength="2000" rows="2" spellcheck="false" aria-label="Formel"{{if not $.CanWrite}} disabled{{end}}>{{.Formula}}</textarea>
+  {{if $.CanWrite}}
+  <div class="cv-keys">
+    <button type="button" class="btn btn-small cv-key" data-insert=" + " title="plus">+</button>
+    <button type="button" class="btn btn-small cv-key" data-insert=" − " title="minus">−</button>
+    <button type="button" class="btn btn-small cv-key" data-insert=" × " title="mal">×</button>
+    <button type="button" class="btn btn-small cv-key" data-insert=" ÷ " title="geteilt durch">÷</button>
+    <button type="button" class="btn btn-small cv-key" data-insert="(" title="Klammer auf">(</button>
+    <button type="button" class="btn btn-small cv-key" data-insert=")" title="Klammer zu">)</button>
+    <button type="button" class="btn btn-small cv-key" data-insert=" &lt; " title="kleiner als">&lt;</button>
+    <button type="button" class="btn btn-small cv-key" data-insert=" &gt; " title="größer als">&gt;</button>
+    <button type="button" class="btn btn-small cv-key" data-insert=" = " title="gleich">=</button>
+    {{range $.Functions}}<button type="button" class="btn btn-small cv-key" data-insert="{{.Insert}}" title="{{.Help}}">{{.Name}}</button>
+    {{end}}
+  </div>
+  {{end}}
+  <div id="cv-check" class="cv-check" aria-live="polite"></div>
+
+  <div class="cv-from"><label class="form-label" for="cv-from">Gültig ab</label>
+    <input id="cv-from" class="form-input cv-date" type="date" min="{{.Today}}" value="{{.ValidFrom}}"{{if not $.CanWrite}} disabled{{end}}>
+    <span class="cv-muted">heute = gilt sofort{{if .VersionID}} · du änderst die geplante Fassung{{end}}</span></div>
+
+  {{if $.CanWrite}}
+  <div class="cv-actions">
+    <button type="button" id="cv-save" class="btn btn-primary"><i class="ti ti-device-floppy" aria-hidden="true"></i> Speichern</button>
+    <a class="btn" href="/import/connections/{{$.ConnectionID}}">Abbrechen</a>
+  </div>
+  <div id="cv-error" class="cv-error" role="alert" hidden></div>
+  {{end}}
+
+  {{if .Versions}}
+  <div class="cv-sub">Fassungen</div>
+  <div>
+    {{range .Versions}}
+    <div class="cv-version">
+      <span class="cv-state{{if eq .Status "geplant"}} is-plan{{else if ne .Status "gilt"}} is-old{{end}}">{{.Status}}</span>
+      <span>{{.ValidFrom}}</span>
+      <code>{{.Formula}}</code>
+      <span class="cv-muted">{{if .By}}{{.By}}, {{end}}{{.At}}</span>
+      {{if and .Editable $.CanWrite}}
+      <a class="btn btn-small" href="?edit={{$.Form.ID}}&version={{.ID}}#cv-form">Ändern</a>
+      <form method="POST" action="/import/calc/values/{{$.Form.ID}}/versions/{{.ID}}/delete" style="margin:0" onsubmit="return confirm('Geplante Fassung löschen?')"><button class="btn btn-small" type="submit">Löschen</button></form>
+      {{end}}
+    </div>
+    {{end}}
+  </div>
+  {{end}}
+
+  {{if and .ID $.CanWrite}}
+  <div class="cv-danger">
+    {{if .InUse}}
+    <p class="cv-muted"><i class="ti ti-lock" aria-hidden="true"></i> {{.InUse}}</p>
+    {{else}}
+    {{if or .Usage.ExportFields .Usage.Meters}}<p class="cv-muted" style="margin-bottom:8px">Wird gebraucht von:{{range .Usage.ExportFields}} Export-Feld „{{.}}“ ·{{end}}{{range .Usage.Meters}} Messstelle „{{.}}“ ·{{end}} beim Löschen verlieren diese Stellen ihre Quelle.</p>{{end}}
+    <form method="POST" action="/import/calc/values/{{.ID}}/delete" style="margin:0" onsubmit="return confirm('Berechneten Wert mit allen Fassungen löschen?')">
+      <button class="btn btn-small" type="submit"><i class="ti ti-trash" aria-hidden="true"></i> Berechneten Wert löschen</button></form>
+    {{end}}
+  </div>
+  {{end}}
+</div>
+{{end}}
+{{end}}
+
+{{define "scripts"}}
+{{if .Form}}
+<script>
+(function () {
+  const form = document.getElementById('cv-form');
+  if (!form) return;
+  const byId = (id) => document.getElementById(id);
+  const formula = byId('cv-formula'), inputsBox = byId('cv-inputs'), check = byId('cv-check');
+  const unit = () => (byId('cv-unit').value || '').trim();
+
+  // Eingangswerte der Formel (ohne solche, die es nicht mehr gibt)
+  function inputs() {
+    return Array.from(inputsBox.querySelectorAll('.cv-input')).filter((r) => !r.dataset.gone)
+      .map((r) => ({short: r.querySelector('.cv-short').value.trim(), mapping_id: r.dataset.mapping}));
+  }
+  function maxAge() {
+    const v = byId('cv-maxage').value.trim();
+    return v === '' ? null : parseInt(v, 10);
+  }
+  function decimals() {
+    const n = parseInt(byId('cv-decimals').value, 10);
+    return isNaN(n) ? 2 : n;
+  }
+
+  // Text an der Schreibmarke in die Formel setzen; bei Funktionen steht die Marke danach in der Klammer
+  function insert(text) {
+    const s = formula.selectionStart == null ? formula.value.length : formula.selectionStart;
+    const e = formula.selectionEnd == null ? s : formula.selectionEnd;
+    formula.value = formula.value.slice(0, s) + text + formula.value.slice(e);
+    const open = text.indexOf('(');
+    const pos = s + (open > 0 ? open + 1 : text.length);
+    formula.focus();
+    formula.setSelectionRange(pos, pos);
+    schedule();
+  }
+
+  function nextShort() {
+    const used = new Set(inputs().map((i) => i.short.toLowerCase()));
+    for (let n = 0; n < 20; n++) {
+      for (let c = 65; c <= 90; c++) {
+        const s = String.fromCharCode(c) + (n ? String(n) : '');
+        if (!used.has(s.toLowerCase())) return s;
+      }
+    }
+    return 'W' + inputsBox.children.length;
+  }
+
+  function el(tag, cls, text) {
+    const n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = text;
+    return n;
+  }
+
+  function addInput(c) {
+    if (inputsBox.querySelectorAll('.cv-input').length >= 50) {
+      showError('Höchstens 50 Eingangswerte je Formel');
+      return;
+    }
+    const row = el('div', 'cv-input');
+    row.dataset.mapping = c.id;
+    const short = el('input', 'form-input cv-short');
+    short.maxLength = 20;
+    short.value = nextShort();
+    short.setAttribute('aria-label', 'Kurzname in der Formel');
+    const label = el('button', 'cv-input-label', (c.path ? c.path + ' › ' : '') + c.name);
+    label.type = 'button';
+    label.title = 'Kurzname in die Formel setzen';
+    const remove = el('button', 'btn btn-small cv-remove', 'entfernen');
+    remove.type = 'button';
+    row.append(short, label, el('span', 'cv-input-val', c.value), el('span', 'cv-input-age', c.age), remove);
+    inputsBox.append(row);
+    schedule();
+  }
+
+  inputsBox.addEventListener('click', (ev) => {
+    const row = ev.target.closest('.cv-input');
+    if (!row) return;
+    if (ev.target.closest('.cv-remove')) {
+      row.remove();
+      schedule();
+    } else if (ev.target.closest('.cv-input-label') && !formula.disabled) {
+      insert(row.querySelector('.cv-short').value.trim());
+    }
+  });
+  inputsBox.addEventListener('input', schedule);
+  form.querySelectorAll('.cv-key').forEach((b) => b.addEventListener('click', () => insert(b.dataset.insert)));
+  formula.addEventListener('input', schedule);
+  ['cv-decimals', 'cv-maxage', 'cv-unit'].forEach((id) => byId(id).addEventListener('input', schedule));
+
+  // Suche nach Eingangswerten
+  const search = byId('cv-search'), results = byId('cv-results');
+  let searchTimer = 0, searchSeq = 0;
+  if (search) {
+    search.addEventListener('input', () => {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(runSearch, 250);
+    });
+    search.addEventListener('focus', runSearch);
+    document.addEventListener('click', (ev) => {
+      if (!ev.target.closest('.cv-search')) results.hidden = true;
+    });
+  }
+  async function runSearch() {
+    const seq = ++searchSeq;
+    const q = new URLSearchParams({q: search.value, exclude: form.dataset.id || ''});
+    let list = [];
+    try {
+      const res = await fetch('/import/calc/inputs?' + q, {credentials: 'same-origin'});
+      if (res.ok) list = await res.json();
+    } catch (e) { /* Netz weg: leere Liste */ }
+    if (seq !== searchSeq) return;
+    results.replaceChildren();
+    if (!list.length) {
+      results.append(el('div', 'cv-result', 'Kein Wert gefunden'));
+    }
+    list.forEach((c) => {
+      const b = el('button', 'cv-result', c.name + (c.calc ? ' (berechnet)' : ''));
+      b.type = 'button';
+      b.append(el('small', '', [c.path, c.connection, c.value === '' ? 'kein Wert' : c.value + ' · ' + c.age].filter(Boolean).join(' · ')));
+      b.addEventListener('click', () => {
+        addInput(c);
+        results.hidden = true;
+        search.value = '';
+      });
+      results.append(b);
+    });
+    results.hidden = false;
+  }
+
+  // Prüfung beim Tippen und Probe mit den Werten von jetzt
+  let checkTimer = 0, checkSeq = 0;
+  function schedule() {
+    clearTimeout(checkTimer);
+    checkTimer = setTimeout(runCheck, 400);
+  }
+  async function runCheck() {
+    const seq = ++checkSeq;
+    if (!formula.value.trim()) {
+      check.replaceChildren();
+      return;
+    }
+    let j = null;
+    try {
+      const res = await fetch('/import/calc/check', {
+        method: 'POST', credentials: 'same-origin', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({id: form.dataset.id || '', formula: formula.value, inputs: inputs(), decimals: decimals(), max_age_minutes: maxAge()}),
+      });
+      j = await res.json();
+    } catch (e) { /* Netz weg */ }
+    if (seq !== checkSeq) return;
+    check.replaceChildren();
+    if (!j || (j.error && j.ok === undefined)) {
+      check.append(el('span', 'cv-note', (j && j.error) || 'Die Formel konnte gerade nicht geprüft werden'));
+      return;
+    }
+    if (!j.ok) {
+      check.append(el('span', 'cv-bad', '✗ ' + j.error));
+      return;
+    }
+    let text = '✓ Formel ist in Ordnung';
+    if (j.probe) {
+      text += ' · Probe mit den Werten von jetzt: ' + j.probe + (unit() ? ' ' + unit() : '');
+    } else if (j.probe_reason) {
+      text += ' · Probe mit den Werten von jetzt: kein Wert – ' + j.probe_reason;
+    }
+    check.append(el('span', 'cv-ok', text));
+    (j.hints || []).forEach((h) => check.append(el('span', 'cv-note', h)));
+  }
+
+  function showError(msg) {
+    const box = byId('cv-error');
+    if (!box) return;
+    box.textContent = msg;
+    box.hidden = !msg;
+  }
+
+  const save = byId('cv-save');
+  if (save) {
+    save.addEventListener('click', async () => {
+      showError('');
+      save.disabled = true;
+      const body = {
+        id: form.dataset.id || '', version_id: form.dataset.version || '',
+        name: byId('cv-name').value, infrastructure_id: byId('cv-infra-id').value, unit: byId('cv-unit').value,
+        decimals: decimals(), max_age_minutes: maxAge(), formula: formula.value, inputs: inputs(), valid_from: byId('cv-from').value,
+      };
+      try {
+        const res = await fetch('/import/calc/values', {
+          method: 'POST', credentials: 'same-origin', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body),
+        });
+        const j = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          showError(j.error || 'Der berechnete Wert konnte nicht gespeichert werden');
+          return;
+        }
+        const notice = j.version === 'unchanged' ? 'Gespeichert – die Formel ist unverändert' : 'Gespeichert';
+        location.href = '/import/connections/' + form.dataset.conn + '?' + new URLSearchParams({edit: j.id, notice: notice});
+      } catch (e) {
+        showError('Keine Verbindung zum Server');
+      } finally {
+        save.disabled = false;
+      }
+    });
+  }
+  if (formula.value.trim()) runCheck();
+})();
+</script>
+{{end}}
+{{end}}

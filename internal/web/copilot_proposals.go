@@ -11,6 +11,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
+
+	"pdh/internal/modules/calc"
 )
 
 // Vorschläge des Copilot zum Zuordnen (Tabelle copilot_proposals, Migration
@@ -53,6 +55,16 @@ type proposalRow struct {
 	Problem          string `json:"problem,omitempty"`
 	Valid            bool   `json:"valid"`
 	Applied          bool   `json:"applied,omitempty"`
+
+	// Berechnete Werte (calc_copilot.go): add = anlegen, change = neue Fassung
+	// der Formel am Wert MappingID.
+	Unit          string              `json:"unit,omitempty"`
+	Decimals      *int                `json:"decimals,omitempty"`
+	MaxAgeMinutes *int                `json:"max_age_minutes,omitempty"` // 0 = Alter der Eingangswerte nicht prüfen
+	Formula       string              `json:"formula,omitempty"`
+	ValidFrom     string              `json:"valid_from,omitempty"` // JJJJ-MM-TT, leer = heute beim Übernehmen
+	Inputs        []calcProposalInput `json:"inputs,omitempty"`
+	Probe         string              `json:"probe,omitempty"` // Ergebnis mit den Werten beim Prüfen
 }
 
 // open: die Zeile kann noch übernommen werden.
@@ -148,6 +160,9 @@ func (h *Handler) checkProposalRows(ctx context.Context, p *mappingProposal, all
 		return errProposalGone
 	}
 	p.Kind = kind
+	if p.Direction == "import" && kind == calc.Kind { // Seite „Berechnete Werte“
+		return h.checkCalcRows(ctx, p, allow)
+	}
 	assets, err := h.assetList(ctx)
 	if err != nil {
 		return err
@@ -461,6 +476,20 @@ func (h *Handler) applyProposal(ctx context.Context, p *mappingProposal, rows []
 			res.fail(i, "Nichts zu übernehmen")
 			continue
 		}
+		if p.Kind == calc.Kind { // berechneter Wert: derselbe Schreibweg wie das Formular
+			created, err := h.applyCalcRow(ctx, row, uid)
+			if err != nil {
+				res.fail(i, calcRowErrText(err))
+				continue
+			}
+			if created {
+				res.Created++
+			} else {
+				res.Changed++
+			}
+			row.Applied = true
+			continue
+		}
 		var dup bool
 		var err error
 		failText := errMappingInsert
@@ -492,6 +521,9 @@ func (h *Handler) applyProposal(ctx context.Context, p *mappingProposal, rows []
 			res.Changed++
 		}
 		row.Applied = true
+	}
+	if p.Kind == calc.Kind && res.Created+res.Changed > 0 {
+		h.calcNudge() // gleich rechnen, nicht erst beim nächsten Takt
 	}
 	if p.ID != "" {
 		open := false

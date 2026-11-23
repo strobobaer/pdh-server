@@ -138,6 +138,10 @@ func (h *Handler) bulkPreamble(w http.ResponseWriter, r *http.Request, direction
 		writeGlobalBoardError(w, http.StatusNotFound, "Verbindung nicht gefunden")
 		return false
 	}
+	if direction == "import" && h.isCalcConnection(r.Context(), id) {
+		writeGlobalBoardError(w, http.StatusBadRequest, errCalcOwnPage)
+		return false
+	}
 	return true
 }
 

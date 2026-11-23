@@ -9,7 +9,9 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 
+	"pdh/internal/modules/calc"
 	"pdh/internal/modules/faults"
 )
 
@@ -300,6 +302,14 @@ func (c *copilotConn) exec(ctx context.Context, d *copilotData, name string, in 
 }
 
 func (c *copilotConn) run(ctx context.Context, d *copilotData, name string, in map[string]any) (string, bool, error) {
+	if c.Kind == calc.Kind { // Seite „Berechnete Werte“: eigene Werkzeuge (calc_copilot.go)
+		switch {
+		case calcPageTools[name]:
+			return c.runCalc(ctx, d, name, in)
+		case connToolNames[name]:
+			return "", true, errors.New("Dieses Werkzeug gibt es auf der Seite „Berechnete Werte“ nicht – nimm calc_values, calc_inputs und propose_calc")
+		}
+	}
 	h := d.h
 	query, _ := in["query"].(string)
 	ws := strings.Fields(query)
@@ -582,10 +592,19 @@ func copilotConnPrompt(c *copilotConn, web bool) string {
 func proposalView(p *mappingProposal) map[string]any {
 	rows := make([]map[string]any, 0, len(p.Rows))
 	for _, r := range p.Rows {
-		rows = append(rows, map[string]any{
+		row := map[string]any{
 			"op": r.Op, "label": firstNonEmpty(r.Label, r.SourceRef, r.MappingID), "asset": r.AssetPath, "name": r.Name, "note": r.Note,
 			"field": r.FieldName, "reason": r.Reason, "url": safeHTTPURL(r.SourceURL), "valid": r.Valid, "problem": r.Problem, "applied": r.Applied,
-		})
+		}
+		if p.Kind == calc.Kind { // berechneter Wert: Formel und Probe statt Quelle; nie eine Kennung
+			row["label"], row["name"] = firstNonEmpty(r.Label, r.Name, "berechneter Wert"), ""
+			row["formula"], row["probe"], row["unit"] = r.Formula, r.Probe, r.Unit
+			row["valid_from"] = ""
+			if t, err := time.Parse("2006-01-02", r.ValidFrom); err == nil {
+				row["valid_from"] = t.Format("02.01.2006")
+			}
+		}
+		rows = append(rows, row)
 	}
 	return map[string]any{"id": p.ID, "direction": p.Direction, "summary": p.Summary, "rows": rows}
 }

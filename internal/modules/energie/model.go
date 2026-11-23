@@ -27,6 +27,12 @@ var (
 	ErrBadKind  = errors.New("unbekannte Art der Messstelle")
 	ErrKindMix  = errors.New("Momentanwerte lassen sich nur mit Momentanwerten verrechnen, Zählerstände und Verbräuche nur untereinander")
 	ErrNoInfra  = errors.New("bitte eine Anlage wählen")
+	// ErrFormulaScope: Messstellen rechnen bei Zählern auf Zuwächsen – Funktionen,
+	// Vergleiche und Potenz würden sie verfälschen (Rechenkern: Formula.Extended).
+	// ErrCalcConsumption: ein berechneter Wert wird zusammengefasst geschrieben;
+	// eine Verbrauchs-Messstelle addiert aber jede Lesung.
+	ErrCalcConsumption = errors.New("ein berechneter Wert kann nicht Quelle einer Messstelle der Art Verbrauch sein – er wird zusammengefasst geschrieben, die Summe wäre falsch. Bitte Momentanwert oder Zählerstand wählen")
+	ErrFormulaScope    = errors.New("in der Formel einer Messstelle sind nur + − × ÷, Klammern und [Messstellen-ID] erlaubt – für Funktionen und Vergleiche einen berechneten Wert anlegen und als Quelle wählen")
 )
 
 // InUseError: die Messstelle steht in der Formel anderer Messstellen.

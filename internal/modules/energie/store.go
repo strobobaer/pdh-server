@@ -47,6 +47,19 @@ func ParseValue(raw string) (float64, bool) {
 	return v, true
 }
 
+// formulaScopeErr: Schreibfehler der Formel oder ErrFormulaScope, wenn sie mehr
+// nutzt als + − × ÷, Klammern und [Messstellen-ID].
+func formulaScopeErr(src string) error {
+	f, err := ParseFormula(src)
+	if err != nil {
+		return err
+	}
+	if f.Extended() {
+		return ErrFormulaScope
+	}
+	return nil
+}
+
 func validKey(k string) bool {
 	n := utf8.RuneCountInString(k)
 	return n >= 1 && n <= 64 && !strings.ContainsAny(k, "[];\"\r\n")
@@ -328,6 +341,18 @@ func (s *Store) Save(ctx context.Context, m *Meter, userID string) (created bool
 	if !exists {
 		return false, ErrNoInfra
 	}
+	if m.SourceID != "" && m.Kind == KindConsumption {
+		// Berechnete Werte (eingebaute Verbindung „calc“) schreiben zusammengefasst.
+		var calc bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM import_mappings im
+				JOIN import_export_connections c ON c.id = im.connection_id
+				WHERE im.id = $1::uuid AND c.kind = 'calc')`, m.SourceID).Scan(&calc); err != nil {
+			return false, err
+		}
+		if calc {
+			return false, ErrCalcConsumption
+		}
+	}
 
 	var cur *meterRow
 	byKey := map[string]*meterRow{}
@@ -360,6 +385,9 @@ func (s *Store) Save(ctx context.Context, m *Meter, userID string) (created bool
 	}
 
 	if m.Formula != "" {
+		if err := formulaScopeErr(m.Formula); err != nil {
+			return false, err
+		}
 		f, err := ParseFormula(m.Formula)
 		if err != nil {
 			return false, err
