@@ -255,7 +255,7 @@ und 3 drückt bis auf Weiteres der Anwender.
 - Die Liste **im selben Schritt pflegen**: Erledigtes streichen, Neues
   eintragen, Stand und Datum anpassen.
 
-### Offene Punkte (Stand 21.11.2026)
+### Offene Punkte (Stand 23.11.2026)
 
 1. **Netz-Abgleich im Browser mit zwei Quellen:** 0.80.25 ist auf `main`
    und dem Testverbund; die Vorschlagsliste mit zwei eingeschalteten
@@ -744,7 +744,20 @@ und 3 drückt bis auf Weiteres der Anwender.
     Sprachmodell + Assistent mit Änderungsliste), 2 berechnete Werte, 3
     InfluxDB, 4 Anlegen von Verbindungen und Abgleich. InfluxDB: alle
     Versionen (1.x InfluxQL, 2.x Flux, 3.x SQL; Anwender 22.11.2026:
-    „influxdb alle möglich“). Paket 1 auf Branch `feature/copilot-zuordnen`.
+    „influxdb alle möglich“). **Paket 1 = 0.82.33** auf Branch
+    `feature/copilot-zuordnen` gebaut (23.11.2026, lokal; Plan
+    `docs/superpowers/plans/2026-11-22-copilot-zuordnen-paket1.md`, 9 Aufgaben,
+    Migration 203 `copilot_proposals`, kein neues Recht): Knopf „Zuordnungen
+    vorschlagen“ im Reiter Zuordnungen/Felder (Rechenkern
+    `internal/core/mapsuggest`), Sammel-Anlage `…/mappings/bulk`,
+    Copilot-Werkzeuge auf der Verbindungsseite (`copilot_mapping.go`),
+    Änderungsliste mit „Übernehmen“ (`POST /copilot/proposals/{id}/apply`),
+    Websuche nach Vorlagen. Neu für alle Wege: Zuordnen nur an Anlagen der
+    eigenen Abteilung; doppelte Zuordnung von Hand wird gemeldet. Offen:
+    Freigabe Push/Merge, Verbund-Update, Browserprüfung (Vorschlagsliste,
+    Änderungsliste in Fiori/Fluent, hell/dunkel, 320–1366 px; Copilot mit
+    echtem Anthropic-Schlüssel samt Websuche; OPC-UA-Breitensuche an einem
+    echten Server). Danach Paket 2 (berechnete Werte).
 
 Docker Desktop startet nach einem Neustart des Windows-Rechners nicht von
 selbst – ohne ihn fehlen der Zeuge und die Labor-Datenbank für die Tests.
