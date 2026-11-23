@@ -18,14 +18,14 @@
 
 {{template "wa-nav" .Area}}
 
-{{if eq .View "area"}}{{template "wa-pane" .Area}}{{end}}
+{{if eq .View "area"}}{{template "wa-pane" .Area}}{{if eq .Area.Tab "rules"}}{{template "mt-lead-rules" .}}{{end}}{{end}}
 
 {{if eq .View "year"}}
 <div class="mt-yearnav">
   <a class="btn" href="/maintenance?view=year&year={{.PrevYear}}"><i class="ti ti-chevron-left"></i> {{.PrevYear}}</a>
   <b>{{.Year}}</b>
   <a class="btn" href="/maintenance?view=year&year={{.NextYear}}">{{.NextYear}} <i class="ti ti-chevron-right"></i></a>
-  <span class="mt-legend"><i class="mk done"></i> erledigt <i class="mk open"></i> offen <i class="mk overdue"></i> überfällig <i class="mk planned"></i> geplant <i class="mk skipped"></i> übersprungen</span>
+  <span class="mt-legend"><i class="mk done"></i> erledigt <i class="mk open"></i> offen <i class="mk overdue"></i> überfällig <i class="mk planned"></i> geplant <i class="mk skipped"></i> übersprungen <i class="mk dropped"></i> entfallen</span>
 </div>
 {{if .YearRows}}
 <div class="mt-year-wrap">
@@ -35,7 +35,7 @@
   {{range .YearRows}}
   <tr>
     <th><a href="/maintenance/plans/{{.PlanID}}">{{.Name}}</a><small>{{.InfraName}} · {{.IntervalLabel}}</small></th>
-    {{range .Months}}<td>{{range .}}{{if .TaskID}}<a class="mk {{.Kind}}" href="/maintenance/tasks/{{.TaskID}}" title="{{.Date}}"></a>{{else}}<i class="mk {{.Kind}}" title="{{.Date}} (geplant)"></i>{{end}}{{end}}</td>{{end}}
+    {{range .Months}}<td>{{range .}}{{if .TaskID}}<a class="mk {{.Kind}}" href="/maintenance/tasks/{{.TaskID}}" title="{{.Date}}"></a>{{else}}<i class="mk {{.Kind}}" title="{{.Date}} ({{if eq .Kind "dropped"}}entfallen{{else}}geplant{{end}}){{with .Note}} ({{.}}){{end}}"></i>{{end}}{{end}}</td>{{end}}
   </tr>
   {{end}}
   </tbody>
@@ -47,7 +47,8 @@
 {{if eq .View "plans"}}
 <div class="mt-filter">
   <a class="mt-chip {{if .ShowInactive}}on{{end}}" href="/maintenance?view=plans{{if not .ShowInactive}}&inactive=1{{end}}"><i class="ti ti-eye"></i> Ruhende Pläne zeigen</a>
-  <button type="button" class="btn" hx-post="/maintenance/generate" hx-target="#generate-result" title="Normalerweise unnötig – PDH legt Aufträge selbst an"><i class="ti ti-refresh"></i> Fehlende Aufträge anlegen</button>
+  {{if .CanYearPlan}}<button type="button" class="btn" hx-post="/maintenance/yearplan" hx-target="#generate-result" title="Plant die Termine der nächsten 12 Monate für alle aktiven Pläne – für Personalplanung und Kalender"><i class="ti ti-calendar-month"></i> Jahresplan für alle aktiven Pläne erzeugen</button>{{end}}
+  <button type="button" class="btn" hx-post="/maintenance/generate" hx-target="#generate-result" title="Legt Aufträge an, deren Vorlauf erreicht ist – normalerweise unnötig, PDH macht das selbst"><i class="ti ti-refresh"></i> Fehlende Aufträge anlegen</button>
   <span id="generate-result"></span>
 </div>
 {{if .Plans}}
@@ -58,7 +59,7 @@
     <div class="mt-card-sub"><i class="ti ti-building-factory-2"></i> {{.Plan.InfraName}}</div>
     <div class="mt-card-meta">
       <span><i class="ti ti-repeat"></i> {{.IntervalLabel}} · {{.ModeLabel}}</span>
-      <span class="{{if .Overdue}}mt-red{{end}}"><i class="ti ti-calendar"></i> nächste {{.NextDue}}</span>
+      <span class="{{if .Overdue}}mt-red{{end}}"><i class="ti ti-calendar"></i> nächste {{.NextDue}}{{if .Plan.VisitCount}} · {{.Plan.VisitCount}} geplant{{end}}</span>
       {{if .Plan.AssigneeName}}<span><i class="ti ti-user"></i> {{.Plan.AssigneeName}}</span>{{else if .Plan.GroupName}}<span><i class="ti ti-users"></i> {{.Plan.GroupName}}</span>{{end}}
     </div>
     {{if .Checklists}}<div class="mt-plan-lists"><i class="ti ti-list-check"></i> {{.Checklists}}</div>{{else}}<div class="mt-plan-lists mt-muted">ohne Checkliste</div>{{end}}
@@ -211,6 +212,21 @@ async function mtArchToggle(btn){
 
 {{define "context-list"}}{{end}}
 
+{{/* Wartungsregeln (Reiter „Regeln“): Vorlauf des Durchführungsauftrags, maintenance_visits.go */}}
+{{define "mt-lead-rules"}}
+<div class="card" style="margin-top:14px">
+  <div class="card-title"><span><i class="ti ti-calendar-time"></i> Wartungsregeln</span></div>
+  {{if .CanMaintRules}}
+  <form method="post" action="/maintenance/rules" class="mt-lead-form">
+    <div class="form-group" style="margin:0"><label class="form-label">Vorlauf für den Durchführungsauftrag (Arbeitstage)</label>
+      <input type="number" name="lead_workdays" min="0" max="60" class="form-input" value="{{.LeadWorkdays}}" style="width:120px"></div>
+    <button class="btn btn-primary" type="submit"><i class="ti ti-device-floppy"></i> Speichern</button>
+  </form>
+  {{else}}<p style="font-size:13px">Vorlauf für den Durchführungsauftrag: <b>{{.LeadWorkdays}} Arbeitstage</b></p>{{end}}
+  <p class="rec-sub" style="margin-top:8px">Gilt für alle Pläne ohne eigenen Vorlauf. Der Auftrag entsteht so viele Arbeitstage vor dem Termin (Mo–Fr ohne Feiertage und Betriebsruhe). Ändern dürfen Wartungs-Administratoren mit Recht in allen Abteilungen.</p>
+</div>
+{{end}}
+
 {{block "scripts" .}}
 {{template "kvp-style"}}
 {{template "work-style"}}
@@ -256,6 +272,8 @@ async function mtArchToggle(btn){
 .mk.overdue{background:var(--red)}
 .mk.planned{border-color:var(--accent);background:transparent}
 .mk.skipped{background:var(--bg3);border-color:var(--border)}
+.mk.dropped{background:transparent;border:2px dashed var(--muted)}
+.mt-lead-form{display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap}
 .mt-plans{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:10px}
 .mt-plan{border:1px solid var(--border);border-radius:12px;background:var(--bg2);padding:12px 14px;color:var(--text);text-decoration:none}
 .mt-plan:hover,.mt-card-main:hover{background:var(--bg3)}
