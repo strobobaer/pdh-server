@@ -10,6 +10,13 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.82.46] – 2026-11-23
+
+### Behoben
+
+- **Terminal, Vorgänge:** Hat keine Abteilung des Terminals wählbare Personen, zeigt die Auswahl „Wer arbeitet daran?“ ersatzweise die Personen der Abteilung „Instandhaltung“ (erkannt am Namen) und weist darauf hin. Nur die gezeigten Personen sind auch als Zuweisung erlaubt. Gibt es keine solche Abteilung, bleibt die Auswahl leer, mit klarer Meldung.
+- **Terminal, Bildschirmtastatur:** Die Tastatur ging beim Öffnen von Seiten (z. B. Stillstand) kurz auf und wieder zu, obwohl niemand ein Feld berührt hatte. Sie erscheint jetzt nur noch, wenn ein Feld tatsächlich angetippt wurde – nicht mehr bei Fokus, den die Seite oder der Browser selbst setzt.
+
 ## [0.82.45] – 2026-11-23
 
 ### Neu
