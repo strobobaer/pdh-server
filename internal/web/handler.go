@@ -30,6 +30,7 @@ import (
 	"pdh/internal/core/storage"
 	"pdh/internal/core/users"
 	"pdh/internal/datanet"
+	"pdh/internal/modules/calc"
 	"pdh/internal/modules/checklists"
 	"pdh/internal/modules/extsync"
 	"pdh/internal/modules/faults"
@@ -354,6 +355,7 @@ type Handler struct {
 	mqttBrokers        *mqttbroker.Manager
 	topicSrc           topicSource // nur Tests: ersetzt den Broker für die ESPPDH-Werte (esppdh_values.go)
 	mqttImport         *mqttimport.Manager
+	calcEngine         atomic.Pointer[calc.Engine] // Rechenwerk der berechneten Werte (calc_wire.go); leer am Spiegel und in Tests
 	exportCron         *scheduler.CronManager
 	importPoll         *scheduler.IntervalManager
 	syncRunner         *extsync.Runner // Abgleich mit Fremdsystemen; nil am Spiegel und in Tests (sync_wire.go)

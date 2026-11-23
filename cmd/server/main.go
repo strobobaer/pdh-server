@@ -361,6 +361,7 @@ func main() {
 		webHandler.StartKVPScheduler(context.Background())
 		webHandler.StartSetupMonitor(context.Background())   // Rüstzeiten: nach Höchstdauer plus Karenz eine Störmeldung
 		webHandler.StartEnergySampler(context.Background())  // Energiedaten: Minutenwerte der Messstellen
+		webHandler.StartCalcEngine(context.Background())     // Berechnete Werte: rechnet bei jedem neuen Eingangswert und alle 10 s
 		webHandler.StartEnergyAlarms(context.Background())   // Energiedaten: Schwellwerte prüfen, Alarm-Tickets
 		webHandler.StartITNetsync(context.Background())      // IT-Assets: Netzabgleich mit UniFi, Ausfall-Tickets
 		webHandler.StartEnergyExporter(context.Background()) // Energiedaten: Efficio-CSV erzeugen und ablegen

@@ -652,7 +652,7 @@ func (h *Handler) executeConnQuery(ctx context.Context, kind string, config map[
 		if !ok {
 			continue
 		}
-		if _, err := h.db.Exec(ctx, `UPDATE import_mappings SET last_value = $1, last_received_at = NOW() WHERE id = $2`, v, m.id); err == nil {
+		if err := h.storeMappingValue(ctx, m.id, v); err == nil {
 			updated++
 		}
 	}

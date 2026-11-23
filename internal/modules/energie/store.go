@@ -341,6 +341,18 @@ func (s *Store) Save(ctx context.Context, m *Meter, userID string) (created bool
 	if !exists {
 		return false, ErrNoInfra
 	}
+	if m.SourceID != "" && m.Kind == KindConsumption {
+		// Berechnete Werte (eingebaute Verbindung „calc“) schreiben zusammengefasst.
+		var calc bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM import_mappings im
+				JOIN import_export_connections c ON c.id = im.connection_id
+				WHERE im.id = $1::uuid AND c.kind = 'calc')`, m.SourceID).Scan(&calc); err != nil {
+			return false, err
+		}
+		if calc {
+			return false, ErrCalcConsumption
+		}
+	}
 
 	var cur *meterRow
 	byKey := map[string]*meterRow{}

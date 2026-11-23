@@ -326,8 +326,7 @@ func (h *Handler) ExcelRefreshValuesWeb(w http.ResponseWriter, r *http.Request) 
 		if !ok || idx >= len(lastRow) {
 			continue
 		}
-		if _, err := h.db.Exec(r.Context(), `
-			UPDATE import_mappings SET last_value=$1, last_received_at=NOW() WHERE id=$2`, lastRow[idx], mp.ID); err != nil {
+		if err := h.storeMappingValue(r.Context(), mp.ID, lastRow[idx]); err != nil {
 			log.Error().Err(err).Str("mapping_id", mp.ID).Msg("excel-wert konnte nicht gespeichert werden")
 			continue
 		}

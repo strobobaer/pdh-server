@@ -98,8 +98,7 @@ func (h *Handler) OPCUARefreshValuesWeb(w http.ResponseWriter, r *http.Request) 
 			continue
 		}
 		value := fmt.Sprintf("%v", v.Value())
-		if _, err := h.db.Exec(r.Context(), `
-			UPDATE import_mappings SET last_value=$1, last_received_at=NOW() WHERE id=$2`, value, mp.ID); err != nil {
+		if err := h.storeMappingValue(r.Context(), mp.ID, value); err != nil {
 			log.Error().Err(err).Str("mapping_id", mp.ID).Msg("opcua-wert konnte nicht gespeichert werden")
 			continue
 		}
