@@ -473,7 +473,7 @@ func copilotConnPrompt(c *copilotConn, web bool) string {
 	b.WriteString("- Ist etwas mehrdeutig (zwei passende Anlagen, unklare Einheit), frag zurück, statt zu raten.\n")
 	b.WriteString("- Kennwörter, Schlüssel und Tokens erfragst und nennst du nie. Fehlt ein Kennwort, verweise auf „Verbindung bearbeiten“.\n")
 	if web {
-		b.WriteString("- Für Vorlagen (z. B. Registertabelle eines Zählers, Themen eines Geräts) darfst du hier die Websuche nutzen. Nenne die Quelle als Link und trage sie bei den Zeilen in source_url ein. Angaben aus dem Internet sind Vorschläge – die Person prüft sie vor dem Übernehmen.\n")
+		b.WriteString("- Abweichend von oben hast du auf dieser Seite Internetzugang: Für Vorlagen (z. B. Registertabelle eines Zählers, Themen eines Geräts) darfst du die Websuche nutzen. Schicke dabei nur Hersteller und Typ in die Suche, keine Anlagennamen, Adressen oder Werte dieses Betriebs. Nenne die Quelle als Link und trage sie bei den Zeilen in source_url ein. Angaben aus dem Internet sind Vorschläge – die Person prüft sie vor dem Übernehmen.\n")
 	}
 	return b.String()
 }

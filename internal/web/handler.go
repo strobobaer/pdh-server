@@ -2107,7 +2107,7 @@ func (h *Handler) CopilotAskWeb(w http.ResponseWriter, r *http.Request) {
 	// Copilot mit PDH-Daten (copilot_data.go): liest mit den Rechten der fragenden Person
 	d := &copilotData{h: h, userID: u.ID, scope: scope, conn: conn, can: func(p string) bool { return h.hasPerm(r, p) }}
 	d.limitProjects(r) // Projekte nur mit Ansichtsrecht oder als Beteiligte
-	reply, sources, err := h.askCopilot(ctx, d, strings.TrimSpace(u.FirstName+" "+u.LastName), q, fid)
+	reply, sources, links, err := h.askCopilot(ctx, d, strings.TrimSpace(u.FirstName+" "+u.LastName), q, fid)
 	if err != nil {
 		componentLog("copilot").Error().Err(err).Msg("frage fehlgeschlagen")
 		// bewusst 200: Reverse-Proxys (Cloudflare, Nginx) ersetzen 502-Antworten
@@ -2116,6 +2116,9 @@ func (h *Handler) CopilotAskWeb(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out := map[string]any{"reply": reply, "sources": sources}
+	if len(links) > 0 {
+		out["links"] = links // Quellen aus dem Internet (nur Verbindungsseiten)
+	}
 	if conn != nil && conn.Proposal != nil {
 		out["proposal"] = proposalView(conn.Proposal)
 	}

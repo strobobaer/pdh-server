@@ -120,3 +120,11 @@ func TestCopilotAskConnParam(t *testing.T) {
 		t.Errorf("ohne Leserecht: %d %s", w.Code, w.Body.String())
 	}
 }
+
+func TestCopilotSourceLabels(t *testing.T) {
+	got := copilotSourceLabels([]string{"connection_info", "web_search", "web_fetch", "propose_mappings", "fremd"})
+	want := []string{"Verbindung", "Internet", "Vorschlag", "fremd"}
+	if strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Errorf("%v", got)
+	}
+}
