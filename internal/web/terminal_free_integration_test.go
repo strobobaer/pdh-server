@@ -119,17 +119,73 @@ func TestTerminalFreeGrenzen(t *testing.T) {
 	if rec := v.req("POST", "/terminal/vorgaenge/start", f, v.plainCookie, nil); rec.Code != http.StatusForbidden {
 		t.Errorf("ohne Gerät: %d", rec.Code)
 	}
-	// Karte: eigene Rechte der Person, nicht die des Flags
+	// Karte: Vorgänge laufen mit den eigenen Rechten der Person, nicht mit denen des Flags
 	v.pdhEnv.card(v.person)
-	if v.h.terminalFreeCan(req, v.term, "tasks.edit", v.plant) {
-		t.Error("mit Karte gewährt")
-	}
 	if rec := v.post("/terminal/vorgaenge/start", "task", v.task, v.anna); rec.Code != http.StatusForbidden {
 		t.Errorf("Karte ohne Recht: %d", rec.Code)
 	}
 	v.pdhEnv.card(v.card)
 	if rec := v.post("/terminal/vorgaenge/start", "task", v.task, v.card); rec.Code != http.StatusSeeOther {
 		t.Errorf("Karte mit eigenem Recht: %d", rec.Code)
+	}
+}
+
+func TestTerminalFreeMitKarte(t *testing.T) {
+	for _, nurKarte := range []bool{false, true} {
+		v := newFreeEnv(t, true)
+		if nurKarte {
+			v.e.must(v.h.saveTerminalVorgaengeModus(v.e.ctx, v.term, vorgModusNurKarte, v.term))
+		}
+		v.pdhEnv.card(v.person) // Person ohne eigene Rechte
+		req := v.freeReq(v.devCookie)
+		if !v.h.terminalFreeCan(req, v.term, "setup.edit", v.plant) || v.h.terminalFreeCan(req, v.term, "hmi.control", v.plant) || v.h.terminalFreeCan(req, v.term, "setup.edit", v.foreign) {
+			t.Errorf("nurKarte=%v: Terminal-Rechte mit Karte", nurKarte)
+		}
+		if a := v.h.terminalSetupActor(req, v.term, v.plant); !a.Card || !a.Can {
+			t.Errorf("nurKarte=%v: Rüsten mit Karte %+v", nurKarte, a)
+		}
+		if a := v.h.terminalDowntimeActor(req, v.term, v.plant); !a.Card || !a.Can {
+			t.Errorf("nurKarte=%v: Stillstand mit Karte %+v", nurKarte, a)
+		}
+		if !v.h.terminalReportPerm(req, v.term, "fault", v.plant) || !v.h.terminalReportPerm(req, v.term, "ticket", v.sub) {
+			t.Errorf("nurKarte=%v: Melden mit Karte", nurKarte)
+		}
+		view, ctl := v.h.terminalHMIAccess(req, v.term, nil, v.plant, true, hmiTermEveryone, hmiTermEveryone)
+		if !view || ctl {
+			t.Errorf("nurKarte=%v: HMI jeder: %v/%v", nurKarte, view, ctl)
+		}
+		// Vorgänge mit Karte: eigene Rechte der Person, das Flag zählt nicht
+		if rec := v.post("/terminal/vorgaenge/start", "task", v.task, v.anna); rec.Code != http.StatusForbidden {
+			t.Errorf("nurKarte=%v: Vorgang mit Karte ohne Recht: %d", nurKarte, rec.Code)
+		}
+		// HMI „nur mit Karte“: die Person entscheidet
+		person := &users.User{ID: v.person, Role: users.Role("viewer")}
+		if view, _ := v.h.terminalHMIAccess(req, v.term, person, v.plant, true, hmiTermCard, hmiTermCard); view {
+			t.Errorf("nurKarte=%v: HMI Karte ohne Recht der Person sichtbar", nurKarte)
+		}
+	}
+}
+
+func TestTerminalFreeVollerAbschluss(t *testing.T) {
+	v := newFreeEnv(t, true)
+	v.post("/terminal/vorgaenge/start", "task", v.task, v.anna)
+	if rec := v.post("/terminal/vorgaenge/beenden", "task", v.task); rec.Code != http.StatusSeeOther || v.status("tasks", v.task) != "resolved" {
+		t.Fatalf("Aufgabe beenden: %d %s", rec.Code, v.status("tasks", v.task))
+	}
+	v.post("/terminal/vorgaenge/start", "fault", v.fault, v.anna)
+	tok := v.issue(t, "fault", v.fault)
+	body := `{"no_parts":true,"minutes":10,"comment":"behoben","finish":true,"colleagues":[]}`
+	req := httptest.NewRequest("POST", "/complete/fault/"+v.fault, strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+tok)
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(v.devCookie)
+	rec := httptest.NewRecorder()
+	v.mux2.ServeHTTP(rec, req)
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), `"closed":true`) {
+		t.Fatalf("Abschluss: %d %s", rec.Code, rec.Body.String())
+	}
+	if st := v.status("faults", v.fault); st != "resolved" {
+		t.Errorf("Störung: %s", st)
 	}
 }
 

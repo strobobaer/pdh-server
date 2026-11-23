@@ -152,7 +152,7 @@ func (h *Handler) vorgActorFor(r *http.Request, uid string) (vorgActor, error) {
 	if h.db != nil && h.terminalDeviceSession(r) { // Kartenrechte nur in der Gerätesitzung
 		var err error
 		a.Card, err = h.cardSessionPerson(r.Context(), uid)
-		a.Free = err == nil && a.Card == nil && h.terminalFreeActive(r, uid)
+		a.Free = err == nil && a.Card == nil && h.terminalFreeActive(r, uid) // ohne Karte
 		return a, err
 	}
 	return a, nil

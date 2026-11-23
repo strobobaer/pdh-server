@@ -4,8 +4,8 @@ package web
 // gelten für die Terminalfunktionen die unten genannten Rechte als vorhanden – ohne dass die Rolle sie einzeln
 // bringt. Bewusst eng gefasst:
 //   - nur in der Gerätesitzung des Terminals,
-//   - nicht, wenn eine Person per Karte angemeldet ist (sie handelt mit ihren eigenen Rechten),
-//   - nicht in der Betriebsart „Nur mit Karte“,
+//   - nicht in der Betriebsart „Nur mit Karte“, solange keine Person per Karte angemeldet ist,
+//   - nie dort, wo die Kartenperson mit ihren eigenen Rechten entscheidet (Vorgänge mit Karte, HMI „nur mit Karte“),
 //   - nur für Anlagen im Anlagenbaum des Terminals,
 //   - nur die Rechte aus terminalFreePerms (kein hmi.control, nichts außerhalb der Terminalfunktionen).
 // Das Recht des Systembenutzers im übrigen PDH bleibt unverändert; terminalFreeCan wird nur von den Terminalwegen
@@ -37,7 +37,8 @@ func (h *Handler) terminalFree(ctx context.Context, uid string) bool {
 	return on
 }
 
-// terminalFreeActive: Flag gesetzt, Gerätesitzung, keine Kartenperson, nicht „Nur mit Karte“.
+// terminalFreeActive: Flag gesetzt, Gerätesitzung; in „Nur mit Karte“ nur mit Kartenperson. Gilt nur dort, wo die
+// Rechte des Terminal-Benutzers entscheiden; wo die Kartenperson mit eigenen Rechten handelt, wird es nicht gefragt.
 func (h *Handler) terminalFreeActive(r *http.Request, uid string) bool {
 	if h.db == nil || uid == "" || !h.terminalDeviceSession(r) {
 		return false
@@ -45,11 +46,10 @@ func (h *Handler) terminalFreeActive(r *http.Request, uid string) bool {
 	if !h.terminalFree(r.Context(), uid) {
 		return false
 	}
+	// „Nur mit Karte“: ohne Karte gilt das Flag nicht, mit Karte schon (Terminal-Rechte, Person nur Akteur)
 	if h.terminalVorgaengeModus(r.Context(), uid) == vorgModusNurKarte {
-		return false
-	}
-	if p, err := h.cardSessionPerson(r.Context(), uid); err != nil || p != nil {
-		return false
+		p, err := h.cardSessionPerson(r.Context(), uid)
+		return err == nil && p != nil
 	}
 	return true
 }
