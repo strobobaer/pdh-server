@@ -10,8 +10,8 @@ var appAssetsMax = 5000
 
 // AppAssetsAPI: GET /api/app/v1/assets – Anlagen für den Offline-Speicher der App
 // (Auswahl beim Melden einer Störung ohne Verbindung). Es kommen nur sichtbare
-// Anlagen im Abteilungsbereich des Benutzers (Anlagen ohne Abteilung für alle,
-// wie appInfraInScope) und nur, wenn das Gerät samt Benutzer melden darf; sonst bleibt
+// Anlagen (eine ausgeblendete fehlt samt Unterbaum) im Abteilungsbereich des
+// Benutzers (Anlagen ohne Abteilung für alle, wie appInfraInScope) und nur, wenn das Gerät samt Benutzer melden darf; sonst bleibt
 // die Liste leer. Der Pfad ist derselbe wie bei /scan (assetPathExpr: Wurzel › … › Name).
 // Eine einzige Abfrage: der Pfad wird von der Wurzel her aufgebaut, der Bereich über die
 // wirksame Abteilung (infrastructure_department) einmal für alle Zeilen geprüft.
@@ -25,14 +25,14 @@ func (h *Handler) AppAssetsAPI(w http.ResponseWriter, r *http.Request) {
 		}
 		rows, err := h.db.Query(r.Context(), `
 			WITH RECURSIVE tree AS (
-				SELECT id, name::text AS name, name::text AS path, hidden_at FROM infrastructure WHERE parent_id IS NULL
+				SELECT id, name::text AS name, name::text AS path FROM infrastructure WHERE parent_id IS NULL AND hidden_at IS NULL
 				UNION ALL
-				SELECT c.id, c.name::text, tree.path || ' › ' || c.name, c.hidden_at
+				SELECT c.id, c.name::text, tree.path || ' › ' || c.name
 				  FROM infrastructure c JOIN tree ON c.parent_id = tree.id
+				 WHERE c.hidden_at IS NULL
 			)
 			SELECT t.id::text, t.name, t.path FROM tree t
-			 WHERE t.hidden_at IS NULL
-			   AND ($1::bool
+			 WHERE ($1::bool
 			        OR NOT EXISTS (SELECT 1 FROM infrastructure_department d WHERE d.infrastructure_id = t.id)
 			        OR t.id IN (SELECT d.infrastructure_id FROM infrastructure_department d WHERE d.department_id::text = ANY($2)))
 			 ORDER BY t.path, t.name, t.id

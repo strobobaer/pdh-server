@@ -41,7 +41,7 @@ func (e *appWorkEnv) assets() (int, map[string]any, []string) {
 }
 
 func TestAppAssets(t *testing.T) {
-	t.Run("im Bereich, ohne ausgeblendete, mit Pfad, sortiert", func(t *testing.T) {
+	t.Run("im Bereich, ohne ausgeblendete samt Unterbaum, mit Pfad, sortiert", func(t *testing.T) {
 		e := newAppAssetsEnv(t)
 		e.grant(e.uid, permAppCreate, "", true)
 		e.warm()
@@ -49,6 +49,10 @@ func TestAppAssets(t *testing.T) {
 		e.atEnv.infra("Presse ", "", root)
 		hidden := e.atEnv.infra("Weg ", "", root)
 		e.exec(`UPDATE infrastructure SET hidden_at = now() WHERE id = $1::uuid`, hidden)
+		e.atEnv.infra("Kind ", "", hidden) // unter einer ausgeblendeten Anlage: fehlt mit ihr
+		hiddenRoot := e.atEnv.infra("Alt ", "", "")
+		e.exec(`UPDATE infrastructure SET hidden_at = now() WHERE id = $1::uuid`, hiddenRoot)
+		e.atEnv.infra("AltKind ", "", hiddenRoot)
 		status, m, paths := e.assets()
 		if status != 200 || m["truncated"] != false {
 			t.Fatalf("%d %v", status, m["truncated"])
