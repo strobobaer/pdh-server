@@ -769,18 +769,25 @@ und 3 drückt bis auf Weiteres der Anwender.
     gesperrt, keine Testdaten. **Der Copilot läuft am Testverbund mit Ollama
     (nicht erreichbar)** – Änderungsliste, „Übernehmen“ und Websuche sind dort
     nicht echt gelaufen, nur automatisch getestet und an einer lokal
-    gerenderten Seite angesehen (20 Ansichten). **0.82.36** (Branch
-    `fix/vorschlagsliste-handy`, lokal): Vorschlagsliste bis 900 px Breite
-    untereinander statt breiter Tabelle; Anthropic-Hinweis nur mit Claude
-    (`copilotConnRef`); **Internetsuche technisch getrennt**: nur mit Haken
-    „Im Internet nach einer Vorlage suchen“, als eigener Aufruf ohne
-    PDH-Werkzeuge (`faults.AskWithWebTemplate`; Websuche zusammen mit eigenen
-    Werkzeugen lehnt `AskWithToolsOpts` ab). Offen: Freigabe 0.82.36 (Push/Merge/Verbund-Update);
-    Abnahme des Copilot mit echtem Anthropic-Schlüssel (Anwender, z. B. auf
-    10.10.0.202: Auftrag „Ordne … zu“, Änderungsliste, „Übernehmen“,
-    Vorlage aus dem Internet); Vorschlagsliste mit echten MQTT-Themen und
-    OPC-UA-Knoten; 10.10.0.202 einspielen (Anwender, mit Sicherung).
-    Danach Paket 2 (berechnete Werte).
+    gerenderten Seite angesehen (20 Ansichten). **0.82.36 auf `main`**
+    (23.11.2026, Merge `e111380f`) und dem Testverbund (beide Server und
+    Zeuge 0.82.36, aktiv jetzt `pdh` 10.10.0.14, Spiegelung läuft):
+    Vorschlagsliste bis 900 px Breite untereinander statt breiter Tabelle;
+    Anthropic-Hinweis nur mit Claude (`copilotConnRef`); **Internetsuche
+    technisch getrennt**: nur mit Haken „Im Internet nach einer Vorlage
+    suchen“, als eigener Aufruf ohne PDH-Werkzeuge
+    (`faults.AskWithWebTemplate`; Websuche zusammen mit eigenen Werkzeugen
+    lehnt `AskWithToolsOpts` ab). Am Testverbund im Browser geprüft
+    (23.11.2026): Vorschlagsliste in 20 Ansichten ohne Überlauf und
+    Konsolenfehler, Hinweis und Haken fehlen dort richtig (Ollama); Prüfkonto
+    gesperrt, keine Testdaten. Offen: Abnahme des Copilot mit echtem
+    Anthropic-Schlüssel (Anwender, z. B. auf 10.10.0.202: Auftrag „Ordne … zu“,
+    Änderungsliste, „Übernehmen“, Haken für die Vorlage aus dem Internet);
+    Vorschlagsliste mit echten MQTT-Themen und OPC-UA-Knoten; 10.10.0.202
+    einspielen (Anwender, mit Sicherung – erst ab 0.82.36). Geparkt (Tests):
+    `go run ./deploy/lab/last -cleanup` scheitert an
+    `it_assets_created_by_fkey`, Reste des Lasttests liegen in der
+    Labor-Datenbank. Danach Paket 2 (berechnete Werte).
 
 Docker Desktop startet nach einem Neustart des Windows-Rechners nicht von
 selbst – ohne ihn fehlen der Zeuge und die Labor-Datenbank für die Tests.
