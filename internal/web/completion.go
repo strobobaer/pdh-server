@@ -391,6 +391,7 @@ func (h *Handler) CompletionWeb(w http.ResponseWriter, r *http.Request) {
 	if !in.Finish {
 		_, _ = h.completionInProgress(ctx, k, id)
 		h.addHistory(ctx, historyRef(k.Type), id, "work", "", "", "", "Arbeitsschritt erfasst (geht noch weiter)", u.ID)
+		h.terminalCompletionNote(r, k, id, false)
 		completionJSON(w, http.StatusOK, map[string]any{"success": true, "closed": false, "message": tr(lang, "Arbeitsschritt gespeichert – der Vorgang bleibt in Bearbeitung.")})
 		return
 	}
@@ -399,7 +400,7 @@ func (h *Handler) CompletionWeb(w http.ResponseWriter, r *http.Request) {
 		completionJSON(w, http.StatusOK, map[string]any{"success": true, "closed": false, "warning": tr(lang, "Gespeichert, aber noch nicht abgeschlossen: %s", tr(lang, err.Error()))})
 		return
 	}
-	if boardCompleteFrom(ctx) {
+	if boardCompleteFrom(ctx) && !h.terminalCompletionNote(r, k, id, true) {
 		h.logBoardCompletion(context.WithoutCancel(ctx), k.Type, id, in.Comment, u.ID)
 	}
 	msg := tr(lang, "%s abgeschlossen.", tr(lang, k.Label))
