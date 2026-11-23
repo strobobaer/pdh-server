@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+
+	"pdh/internal/modules/calc"
 )
 
 // Eigene Seite je Import-/Export-Verbindung: Uebersicht, Pruefungen,
@@ -209,6 +211,10 @@ func (h *Handler) connectionDetailPage(w http.ResponseWriter, r *http.Request, d
 	}
 	if err != nil {
 		http.Error(w, "Verbindung nicht gefunden", http.StatusNotFound)
+		return
+	}
+	if direction == "import" && kind == calc.Kind { // eingebaute Verbindung „Berechnete Werte“: eigene Seite
+		h.calcPage(w, r, id)
 		return
 	}
 	page := direction

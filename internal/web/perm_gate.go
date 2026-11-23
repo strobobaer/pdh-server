@@ -216,6 +216,10 @@ var gateRules = []gateRule{
 	// Vorschläge zum Abhaken lesen Quellwerte (Broker, Datei, Server) – wie Verbindung bearbeiten
 	gr("GET", "import.write", "", false, `^/import/connections`+gID+`/suggestions$`),
 	gr("GET", "export.write", "", false, `^/export/connections`+gID+`/suggestions$`),
+	// ── Berechnete Werte (calc_values.go): lesen und Formel prüfen wie Import ansehen, schreiben wie Verbindung bearbeiten; Abteilung der Anlage im Handler ──
+	gr("GET", "import.read", "", false, `^/import/calc(?:/inputs)?$`),
+	gr(wPost, "import.read", "", false, `^/import/calc/check$`),
+	gr(wPost, "import.write", "", false, `^/import/calc/values(?:/.*)?$`),
 	// ── Explorer: Testschreiben/Senden wie Verbindung bearbeiten (Erkunden selbst: import/export.execute im Handler) ──
 	gr(wPost, "import.write", "", false, `^/import/connections`+gID+`/explorer/(?:mqtt/publish|opcua/write|modbus/write)$`),
 	gr(wPost, "export.write", "", false, `^/export/connections`+gID+`/explorer/(?:mqtt/publish|opcua/write|modbus/write)$`),

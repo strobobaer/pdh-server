@@ -12,6 +12,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"pdh/internal/core/scheduler"
+	"pdh/internal/modules/calc"
 	"pdh/internal/modules/energie"
 )
 
@@ -135,6 +136,9 @@ func connectionKindFields(direction, kind string) ([]string, bool) {
 }
 
 func connectionKindLabel(direction, kind string) string {
+	if direction == "import" && kind == calc.Kind {
+		return "Berechnete Werte" // eingebaut, steht nicht in „Neue Verbindung“
+	}
 	for _, opt := range connectionKindOptions(direction) {
 		if opt.Value == kind {
 			return opt.Label
@@ -153,6 +157,7 @@ type ConnectionView struct {
 	Enabled            bool
 	ConfigJSON         string
 	IsIntegratedBroker bool
+	Builtin            bool // eingebaute Verbindung „Berechnete Werte“: nicht zu ändern, abzuschalten oder zu löschen
 	CreatedBy          string
 	CreatedAt          string
 }
@@ -195,6 +200,7 @@ func (h *Handler) importExportConnections(ctx context.Context, direction string)
 			return nil, err
 		}
 		v.KindLabel = connectionKindLabel(direction, v.Kind)
+		v.Builtin = direction == "import" && v.Kind == calc.Kind
 		// Kennwörter und verschlüsselte Felder gehen nie in den Browser
 		var config map[string]string
 		if json.Unmarshal(configBytes, &config) == nil {

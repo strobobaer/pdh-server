@@ -1198,6 +1198,13 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/import/connections/{id}/read/refresh", h.ModbusRefreshValuesWeb)
 	r.Post("/import/connections/{id}/nodes/refresh", h.OPCUARefreshValuesWeb)
 	r.Get("/import/mappings", h.ImportMappingsOverviewPage)
+	// Berechnete Werte (virtuelle Messwerte) an der eingebauten Verbindung (calc_values.go)
+	r.Get("/import/calc", h.CalcRedirectWeb)
+	r.Get("/import/calc/inputs", h.CalcInputsWeb)                                // wählbare Eingangswerte (Suche)
+	r.Post("/import/calc/check", h.CalcCheckWeb)                                 // Formel prüfen, Probe mit den Werten von jetzt
+	r.Post("/import/calc/values", h.CalcSaveWeb)                                 // anlegen oder ändern (JSON)
+	r.Post("/import/calc/values/{id}/delete", h.CalcDeleteWeb)                   // berechneten Wert löschen
+	r.Post("/import/calc/values/{id}/versions/{vid}/delete", h.CalcVersionDeleteWeb) // geplante Fassung löschen
 	// ESPPDH: eigene Mess- und Zählgeräte auf ESP-Basis (esppdh.go)
 	r.Get("/import/esppdh", h.EsppdhPage)
 	r.Post("/import/esppdh", h.EsppdhCreateWeb)
