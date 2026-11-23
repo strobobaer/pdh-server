@@ -759,8 +759,7 @@ und 3 drückt bis auf Weiteres der Anwender.
     Zuordnungen an (Abfrage ohne Typangaben). Schlussprüfung mit Fix-Welle
     erledigt (23.11.2026); geparkte kleine Befunde im Bericht
     `.superpowers/sdd/2026-11-22-copilot-zuordnen-paket1/final-review.md`
-    (u. a. Websuche auf Verbindungsseiten ohne Schalter, Einheit „kW“ nur
-    geraten, MQTT-Mitschnitt 3 s).
+    (u. a. Einheit „kW“ nur geraten, MQTT-Mitschnitt 3 s).
     **0.82.35 auf `main`** (23.11.2026, Merge `3034875a`) und dem Testverbund
     (beide Server und Zeuge 0.82.35, Migrationen 203 und 204 da, aktiv jetzt
     `pdh-server` 10.10.0.17, Spiegelung läuft). Am Testverbund im Browser
@@ -773,7 +772,10 @@ und 3 drückt bis auf Weiteres der Anwender.
     gerenderten Seite angesehen (20 Ansichten). **0.82.36** (Branch
     `fix/vorschlagsliste-handy`, lokal): Vorschlagsliste bis 900 px Breite
     untereinander statt breiter Tabelle; Anthropic-Hinweis nur mit Claude
-    (`copilotConnRef`). Offen: Freigabe 0.82.36 (Push/Merge/Verbund-Update);
+    (`copilotConnRef`); **Internetsuche technisch getrennt**: nur mit Haken
+    „Im Internet nach einer Vorlage suchen“, als eigener Aufruf ohne
+    PDH-Werkzeuge (`faults.AskWithWebTemplate`; Websuche zusammen mit eigenen
+    Werkzeugen lehnt `AskWithToolsOpts` ab). Offen: Freigabe 0.82.36 (Push/Merge/Verbund-Update);
     Abnahme des Copilot mit echtem Anthropic-Schlüssel (Anwender, z. B. auf
     10.10.0.202: Auftrag „Ordne … zu“, Änderungsliste, „Übernehmen“,
     Vorlage aus dem Internet); Vorschlagsliste mit echten MQTT-Themen und

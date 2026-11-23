@@ -2108,6 +2108,7 @@ func (h *Handler) CopilotAskWeb(w http.ResponseWriter, r *http.Request) {
 	}
 	// Copilot mit PDH-Daten (copilot_data.go): liest mit den Rechten der fragenden Person
 	d := &copilotData{h: h, userID: u.ID, scope: scope, conn: conn, can: func(p string) bool { return h.hasPerm(r, p) }}
+	d.web = conn != nil && r.FormValue("web") == "1" // Vorlage aus dem Internet nur auf Wunsch
 	d.limitProjects(r) // Projekte nur mit Ansichtsrecht oder als Beteiligte
 	reply, sources, links, err := h.askCopilot(ctx, d, strings.TrimSpace(u.FirstName+" "+u.LastName), q, fid)
 	if err != nil {

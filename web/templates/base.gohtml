@@ -376,6 +376,9 @@ html.cop-raise .pdh-frame{z-index:700} /* Vorschlag aus der Seitenleiste öffnet
 .cop-links{font-size:11px;color:var(--muted);margin-bottom:6px;white-space:normal;overflow-wrap:anywhere}
 .cop-links a{color:var(--accent);display:block}
 .cop-privacy{color:var(--muted);font-size:10.5px;margin-top:6px;line-height:1.4}
+.cop-web{display:flex;gap:6px;align-items:flex-start;margin-top:8px;font-size:11.5px;color:var(--text);cursor:pointer;line-height:1.35}
+.cop-web input{margin:2px 0 0;flex-shrink:0}
+.cop-web small{display:block;color:var(--muted);font-size:10.5px}
 /* ── Activity ── */
 .act-item{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);font-size:12px}
 .act-item:last-child{border:0;padding-bottom:0}
@@ -1277,7 +1280,8 @@ table,.li,.act-item,.rec-row{zoom:var(--row-scale,1)}
         onkeydown="if(event.key==='Enter')sendCop()">
       <button class="cop-btn" onclick="sendCop()">{{t "Senden"}}</button>
     </div>
-    {{if .CopilotConn}}<div class="cop-privacy"><i class="ti ti-shield-lock"></i> {{t "Auf dieser Seite gehen Quellwerte und Anlagennamen an Anthropic – Kennwörter nie."}}</div>{{end}}
+    {{if .CopilotConn}}<label class="cop-web"><input type="checkbox" id="cop-web"> <span>{{t "Im Internet nach einer Vorlage suchen"}}<small>{{t "Dabei geht nur deine Frage ins Internet – keine Daten aus dem PDH."}}</small></span></label>
+    <div class="cop-privacy"><i class="ti ti-shield-lock"></i> {{t "Auf dieser Seite gehen Quellwerte und Anlagennamen an Anthropic – Kennwörter nie."}}</div>{{end}}
   </div>
 
   <!-- Aktivität -->
@@ -2312,7 +2316,7 @@ async function sendCop() {
   input.value = '';
   const wait = add('cop-a', 'Copilot denkt nach …', 'color:var(--muted)');
   try{
-    const res = await fetch('/copilot/ask', {method: 'POST', credentials: 'same-origin', body: new URLSearchParams({q, fault: '{{.FaultID}}', conn: '{{.CopilotConn}}'})});
+    const res = await fetch('/copilot/ask', {method: 'POST', credentials: 'same-origin', body: new URLSearchParams({q, fault: '{{.FaultID}}', conn: '{{.CopilotConn}}', web: (document.getElementById('cop-web') || {}).checked ? '1' : ''})});
     const raw = await res.text();
     let j = {};
     try{ j = JSON.parse(raw); }catch(e){}

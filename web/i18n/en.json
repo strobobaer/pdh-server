@@ -221,6 +221,8 @@
  "Infrastruktur": "Infrastructure",
  "Inspektion": "Inspection",
  "Instandhaltung": "Maintenance & repair",
+ "Im Internet nach einer Vorlage suchen": "Search the internet for a template",
+ "Dabei geht nur deine Frage ins Internet – keine Daten aus dem PDH.": "Only your question goes to the internet – no data from the PDH.",
  "Auf dieser Seite gehen Quellwerte und Anlagennamen an Anthropic – Kennwörter nie.": "On this page, source values and asset names are sent to Anthropic – passwords never.",
  "Frag nach Störungen, Anlagen, Wartungen oder Ersatzteilen – der Copilot sucht in euren PDH-Daten …": "Ask about faults, assets, maintenance or spare parts – the copilot searches your PDH data …",
  "Kalibrierung": "Calibration",

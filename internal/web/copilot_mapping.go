@@ -535,6 +535,19 @@ func (h *Handler) storedQuerySources(ctx context.Context, connID, kind string) s
 	return set
 }
 
+// copilotWebSearchPrompt: Systemtext für die Suche im Internet. Er nennt nur
+// die Art der Verbindung – keinen Namen, keine Adresse, keine Werte. Der
+// Aufruf hat keine PDH-Werkzeuge (faults.AskWithWebTemplate).
+func copilotWebSearchPrompt(kind string) string {
+	return `Du suchst im Internet nach einer technischen Vorlage für die Anbindung eines Geräts oder Systems (Art der Verbindung: ` + kind + `):
+z. B. die Modbus-Registertabelle eines Zählers, die MQTT-Themen eines Geräts, OPC-UA-Knoten einer Steuerung oder den Tabellenaufbau einer Datenbank.
+Regeln:
+- Suche zuerst beim Hersteller. Nimm nur Angaben, die du in Suchergebnissen oder abgerufenen Seiten tatsächlich gesehen hast; erfinde nichts.
+- Du kennst keine Daten des Betriebs und brauchst keine. Suche nur nach Hersteller, Typ und Begriffen aus der Frage.
+- Antworte auf Deutsch mit einer knappen Tabelle (Kennung/Register/Thema, Bedeutung, Datentyp, Einheit) und der Quelle je Angabe als Link.
+- Nennt die Frage weder Hersteller noch Typ oder findest du nichts Passendes, sag das in einem Satz.`
+}
+
 // copilotConnPrompt: Regeln für den Copilot auf einer Verbindungsseite.
 func copilotConnPrompt(c *copilotConn, web bool) string {
 	what := map[string]string{"import": "Import-Verbindung", "export": "Export-Verbindung"}[c.Direction]
@@ -558,7 +571,9 @@ func copilotConnPrompt(c *copilotConn, web bool) string {
 	b.WriteString("- Ist etwas mehrdeutig (zwei passende Anlagen, unklare Einheit), frag zurück, statt zu raten.\n")
 	b.WriteString("- Kennwörter, Schlüssel und Tokens erfragst und nennst du nie. Fehlt ein Kennwort, verweise auf „Verbindung bearbeiten“.\n")
 	if web {
-		b.WriteString("- Abweichend von oben hast du auf dieser Seite Internetzugang: Für Vorlagen (z. B. Registertabelle eines Zählers, Themen eines Geräts) darfst du die Websuche nutzen. Schicke dabei nur Hersteller und Typ in die Suche, keine Anlagennamen, Adressen oder Werte dieses Betriebs. Nenne die Quelle als Link und trage sie bei den Zeilen in source_url ein. Angaben aus dem Internet sind Vorschläge – die Person prüft sie vor dem Übernehmen.\n")
+		b.WriteString("- Zu dieser Frage wurde vorab eine Websuche nach einer Vorlage gemacht (Registertabelle, Themen eines Geräts); das Ergebnis steht in der Frage. Nenne die Quelle als Link und trage sie bei den Zeilen in source_url ein. Angaben aus dem Internet sind Vorschläge – die Person prüft sie vor dem Übernehmen.\n")
+	} else {
+		b.WriteString("- Du hast auch hier keinen Internetzugang. Braucht es eine Vorlage aus dem Internet (z. B. die Registertabelle eines Zählers), sag der Person: unter dem Eingabefeld „Im Internet nach einer Vorlage suchen“ anhaken und die Frage mit Hersteller und Typ noch einmal stellen.\n")
 	}
 	return b.String()
 }

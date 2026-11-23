@@ -46,6 +46,7 @@ type copilotData struct {
 	scope  *deptScope
 	can    func(string) bool
 	conn   *copilotConn // Frage von einer Verbindungsseite: zusätzliche Werkzeuge (copilot_mapping.go)
+	web    bool         // Person hat „Im Internet nach einer Vorlage suchen“ angehakt (nur mit conn)
 	// Ansichtsrecht für Projekte (limitProjects): Ohne Aufruf sieht der Copilot
 	// keine Projekte (sicherer Ausgangszustand).
 	projAll bool            // Recht überall: nichts zu filtern
@@ -858,7 +859,8 @@ var copilotToolLabels = map[string]string{
 
 // askCopilot: Frage mit PDH-Daten. Claude ruft die Werkzeuge selbst; Ollama
 // (ohne Werkzeuge) bekommt vorab die Suchtreffer zur Frage. links: Quellen aus
-// dem Internet – Websuche gibt es nur auf einer Verbindungsseite (Vorlagen).
+// dem Internet – gesucht wird nur auf einer Verbindungsseite und nur, wenn die
+// Person es anhakt; die Suche läuft getrennt von den PDH-Daten.
 func (h *Handler) askCopilot(ctx context.Context, d *copilotData, userName, question, faultID string) (string, []string, []faults.Link, error) {
 	cp := h.faults.Copilot()
 	if cp == nil {
@@ -869,15 +871,21 @@ func (h *Handler) askCopilot(ctx context.Context, d *copilotData, userName, ques
 		extra = "\n" + h.faults.FaultContext(ctx, faultID)
 	}
 	tools := copilotTools()
-	web := d.conn != nil && cp.CanSearchWeb()
+	web := d.conn != nil && d.web && cp.CanSearchWeb()
 	if d.conn != nil && cp.CanUseTools() {
 		extra += copilotConnPrompt(d.conn, web)
 		tools = append(tools, copilotConnTools(d.conn.Direction, d.conn.CanWrite)...)
 	}
 	system := copilotSystemPrompt(userName, extra)
 	if cp.CanUseTools() {
-		answer, used, links, err := cp.AskWithToolsOpts(ctx, system, question, tools, d.exec, faults.AskOptions{Web: web})
-		return answer, copilotSourceLabels(used), links, err
+		if web {
+			// zwei getrennte Aufrufe: die Suche im Internet kennt nur die Frage,
+			// der Aufruf mit den PDH-Daten hat kein Internet
+			answer, used, links, err := cp.AskWithWebTemplate(ctx, copilotWebSearchPrompt(d.conn.Kind), system, question, tools, d.exec)
+			return answer, copilotSourceLabels(used), links, err
+		}
+		answer, used, err := cp.AskWithTools(ctx, system, question, tools, d.exec)
+		return answer, copilotSourceLabels(used), nil, err
 	}
 	data, _ := d.search(ctx, question, nil, 5)
 	if faultID != "" {
