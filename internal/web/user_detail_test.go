@@ -174,8 +174,11 @@ func TestUserDetailTerminalDevices(t *testing.T) {
 			t.Errorf("%q fehlt", want)
 		}
 	}
-	if n := strings.Count(out, `action="/users/u1/devices/`); n != 1 {
-		t.Errorf("Sperren-Formulare: %d, erwartet 1", n)
+	if n := strings.Count(out, `action="/users/u1/devices/`); n != 2 {
+		t.Errorf("Geräte-Formulare: %d, erwartet 2 (Sperren, Löschen)", n)
+	}
+	if !strings.Contains(out, `action="/users/u1/devices/d2/delete"`) || strings.Contains(out, `devices/d1/delete`) {
+		t.Error("Löschen-Knopf nur beim gesperrten Gerät erwartet")
 	}
 	if !strings.Contains(out, `action="/users/u1/devices/d1/revoke"`) || strings.Contains(out, `devices/d2/revoke`) {
 		t.Error("Sperren-Knopf am falschen Gerät")

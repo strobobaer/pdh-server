@@ -178,6 +178,7 @@ var historyActionLabels = map[string]string{
 	"attachment": "Anhang geändert", "record_image": "Bild geändert", "broker": "Vermittlung",
 	"push": "Benachrichtigung", "state": "Zustand geändert", "delete": "Gelöscht",
 	"terminal_paired": "Terminal gekoppelt", "terminal_revoked": "Terminal getrennt",
+	"terminal_deleted": "Terminal gelöscht", "terminal_moved": "Terminal umgezogen", "terminal_taken_over": "Terminal übernommen",
 	"tia_download": "TIA-Baustein geladen", "sync": "Abgleich", "sync_out": "Abgleich nach außen",
 	"sync_origin": "Herkunft Abgleich", "credentials_update": "Zugangsdaten geändert",
 	"credentials_view":    "Zugangsdaten angezeigt",

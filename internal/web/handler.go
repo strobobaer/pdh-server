@@ -956,6 +956,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/app/settings", h.AppSettingsSaveWeb)
 	r.Get("/app/install", h.AppInstallPage)
 	r.Post("/users/{id}/devices/{dev}/revoke", h.TerminalDeviceRevokeWeb)
+	r.Post("/users/{id}/devices/{dev}/delete", h.TerminalDeviceDeleteWeb)
 	r.Get("/admin/org-units", h.OrgUnitsPage)
 	r.Get("/trainings", h.TrainingsPage)
 	r.Get("/suggest", h.SuggestWeb)
