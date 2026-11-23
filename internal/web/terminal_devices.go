@@ -308,14 +308,14 @@ func (h *Handler) TerminalDeviceLogin(w http.ResponseWriter, r *http.Request) {
 // terminalDeviceRow ist eine Zeile der Karte „Gekoppelte Geräte“ (Zeiten
 // deutsch formatiert; LastSeen „nie“, Revoked leer = nicht gesperrt).
 type terminalDeviceRow struct {
-	ID, Name                   string
+	ID, Name, AdminURL         string
 	Created, LastSeen, Revoked string
 }
 
 // loadTerminalDevices listet die Geräte eines Benutzers: aktive zuerst, dann
 // neueste zuerst.
 func (h *Handler) loadTerminalDevices(ctx context.Context, userID string) ([]terminalDeviceRow, error) {
-	rows, err := h.db.Query(ctx, `SELECT id::text, name, created_at, last_seen_at, revoked_at
+	rows, err := h.db.Query(ctx, `SELECT id::text, name, admin_url, created_at, last_seen_at, revoked_at
 		FROM terminal_devices WHERE user_id = $1::uuid
 		ORDER BY (revoked_at IS NOT NULL), created_at DESC`, userID)
 	if err != nil {
@@ -328,7 +328,7 @@ func (h *Handler) loadTerminalDevices(ctx context.Context, userID string) ([]ter
 		var d terminalDeviceRow
 		var created time.Time
 		var seen, revoked *time.Time
-		if err := rows.Scan(&d.ID, &d.Name, &created, &seen, &revoked); err != nil {
+		if err := rows.Scan(&d.ID, &d.Name, &d.AdminURL, &created, &seen, &revoked); err != nil {
 			return nil, err
 		}
 		d.Created = created.Local().Format(layout)

@@ -323,7 +323,8 @@ func (h *Handler) TerminalDeviceAPI(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 	_, _ = h.db.Exec(ctx, `UPDATE terminal_devices SET last_seen_at = NOW(),
-		client_version = CASE WHEN $2 <> '' THEN $2 ELSE client_version END WHERE id = $1::uuid`, dev.ID, terminalClientVersion(r))
+		client_version = CASE WHEN $2 <> '' THEN $2 ELSE client_version END,
+		admin_url = CASE WHEN $3 <> '' THEN $3 ELSE admin_url END WHERE id = $1::uuid`, dev.ID, terminalClientVersion(r), terminalAdminURL(r))
 	out := map[string]any{"device_id": dev.ID, "user": displayUserName(dev.First, dev.Last, dev.Username), "name": dev.Name}
 	fn, theme, err := h.terminalFnPayload(ctx, dev.UserID)
 	if err != nil {
