@@ -237,6 +237,9 @@
         <option value="nur_karte" {{if eq $m.TerminalVorgModus "nur_karte"}}selected{{end}}>Nur mit Karte</option>
       </select>
       <div class="rec-sub" style="margin-top:4px">Ohne Karte: Am Terminal darf jede Person Vorgänge starten, warten lassen und beenden, indem sie die Mitarbeitenden auswählt (Rechte: das Terminal). Nur mit Karte: Ohne Karte ist die Liste nur zur Ansicht; mit Karte handelt die Person mit ihren eigenen Rechten. Vorgabe für bestehende Terminals: ohne Karte.</div>
+      <input type="hidden" name="terminal_free_sent" value="1">
+      <label style="font-size:13px;display:flex;gap:8px;align-items:center;margin-top:8px"><input type="checkbox" name="terminal_free" {{if $m.TerminalFree}}checked{{end}}> Freier Terminal-Benutzer</label>
+      <div class="rec-sub" style="margin-top:4px">Das Terminal darf in seiner Anlage und darunter Störungen, Tickets und Aufgaben ansehen und bearbeiten, rüsten, Stillstände melden und HMIs ansehen – ohne dass die Rolle diese Rechte einzeln mitbringt. Gilt nur für die Terminalfunktionen, nur am gekoppelten Gerät, nicht in der Betriebsart „Nur mit Karte“ und nie für das Bedienen von HMIs; mit angemeldeter Karte gelten die Rechte der Person. Vorgabe: aus.</div>
       <label class="form-label" style="margin-top:8px" for="ud-scheme">Farbschema der Terminalseiten</label>
       <select class="form-input" id="ud-scheme" name="terminal_scheme">
         <option value="dark" {{if ne $m.TerminalScheme "light"}}selected{{end}}>Dunkel</option>

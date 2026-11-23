@@ -210,13 +210,14 @@ func (h *Handler) terminalInfraLookup(ctx context.Context, uid string) (infra, r
 // terminalPerms: darf der Terminal-Benutzer (nicht die angemeldete Person – bei einer
 // Override-Sitzung ist das jemand anderes) Störungen bzw. Tickets dieser Anlage ansehen?
 // Das Recht gilt mit Abteilungsbezug der Anlage.
-func (h *Handler) terminalPerms(ctx context.Context, uid, role, infraID string) (faults, tickets bool) {
+func (h *Handler) terminalPerms(r *http.Request, uid, role, infraID string) (faults, tickets bool) {
+	ctx := r.Context()
 	if h.rbac == nil || uid == "" {
 		return false, false
 	}
 	depts := h.recordDepartments(ctx, "infrastructure", infraID)
-	return h.rbac.HasPermissionInDepartment(uid, role, "faults.view", depts),
-		h.rbac.HasPermissionInDepartment(uid, role, "tickets.view", depts)
+	return h.rbac.HasPermissionInDepartment(uid, role, "faults.view", depts) || h.terminalFreeCan(r, uid, "faults.view", infraID),
+		h.rbac.HasPermissionInDepartment(uid, role, "tickets.view", depts) || h.terminalFreeCan(r, uid, "tickets.view", infraID)
 }
 
 // terminalSubtree: Anlage samt sichtbaren Unteranlagen (wie infraSubtreeIDs, aber mit Fehlern).
@@ -375,7 +376,7 @@ func (h *Handler) terminalGate(w http.ResponseWriter, r *http.Request, mode stri
 		return p, true
 	}
 	p.InfraID, p.Name, p.Path = infra, name, h.infraPath(r.Context(), infra)
-	p.CanFaults, p.CanTickets = h.terminalPerms(r.Context(), uid, role, infra)
+	p.CanFaults, p.CanTickets = h.terminalPerms(r, uid, role, infra)
 	p.NoPerm = !p.CanFaults && !p.CanTickets
 	if mode == "neu" {
 		p.EasyMode = h.easyModeEnabled(r.Context())

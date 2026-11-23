@@ -245,7 +245,7 @@ func TestVorgaengeNurKarte(t *testing.T) {
 	v.e.must(v.h.saveTerminalVorgaengeModus(v.e.ctx, v.term, vorgModusNurKarte, v.term))
 	// ohne Karte: nur Ansicht, kein Schreiben
 	page := v.req("GET", "/terminal/vorgaenge", nil, v.devCookie, nil).Body.String()
-	if !strings.Contains(page, "Nur Ansicht") || strings.Contains(page, "?sel=") || !strings.Contains(page, "VG-Störung") {
+	if !strings.Contains(page, "Nur Ansicht") || strings.Contains(page, `name="people"`) || !strings.Contains(page, "VG-Störung") {
 		t.Error("nur_karte ohne Karte: erwartet Ansicht ohne Bedienung")
 	}
 	for _, p := range []string{"start", "warten", "beenden"} {

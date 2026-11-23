@@ -42,6 +42,7 @@ type userMaster struct {
 	TerminalScheme                                      string            // Farbschema der Terminalseiten: dark | light
 	TerminalDepts                                       terminalDeptsView // Abteilungen des Terminals (terminal_departments.go)
 	TerminalVorgModus                                   string            // Bearbeiten am Terminal: ohne_karte | nur_karte
+	TerminalFree                                        bool              // Freier Terminal-Benutzer (terminal_free.go)
 }
 
 type userPrivate struct {
@@ -286,6 +287,7 @@ func (h *Handler) loadUserMasterErr(ctx context.Context, id string) (userMaster,
 			}
 			m.TerminalDepts = h.loadTerminalDeptsView(ctx, id)
 			m.TerminalVorgModus = h.terminalVorgaengeModus(ctx, id)
+			m.TerminalFree = h.terminalFree(ctx, id)
 			for _, k := range ls.CardNotify {
 				if m.TerminalCardNotify == nil {
 					m.TerminalCardNotify = map[string]bool{}
@@ -671,6 +673,18 @@ func (h *Handler) UserMasterSaveWeb(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		h.notifyTerminalSettings(id)
+	}
+	// Freier Terminal-Benutzer: eigener Marker, nur Benutzerverwaltung, nur Systembenutzer
+	if _, sent := r.Form["terminal_free_sent"]; sent && h.canManageUsers(r) {
+		sys, err := h.isSystemUser(ctx, id)
+		if err == nil && sys {
+			err = h.saveTerminalFree(ctx, id, r.FormValue("terminal_free") == "on", getUser(r).ID)
+		}
+		if err != nil {
+			componentLog("terminal").Error().Err(err).Str("user", id).Msg("freien terminal-benutzer speichern")
+			userRedirect(w, r, id, "master", "", errTerminalLoginSave)
+			return
+		}
 	}
 	// Leitstand des Terminals: direkt gewählt geht vor Gruppe/Abteilung
 	if _, sent := r.Form["leitstand_id"]; sent && h.canManageUsers(r) {
