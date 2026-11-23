@@ -91,7 +91,7 @@ func TestNormalizePlan(t *testing.T) {
 		{Name: "", InfrastructureID: "x"},
 		{Name: "A"},
 		{Name: "A", InfrastructureID: "x", IntervalUnit: "hour"},
-		{Name: "A", InfrastructureID: "x", LeadDays: 400},
+		{Name: "A", InfrastructureID: "x", LeadWorkdays: ptr(61)},
 		{Name: "A", InfrastructureID: "x", Checklists: []PlanChecklistInput{{TemplateID: "a", RhythmUnit: "sometimes"}}},
 	} {
 		if err := normalizePlan(bad); !IsInputError(err) {

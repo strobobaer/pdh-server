@@ -12,6 +12,7 @@ const taskSelect = `
 	       mt.priority, mt.status, mt.assigned_to::text, mt.responsible_to::text, mt.assigned_group_id::text,
 	       mt.due_date, mt.started_at, mt.completed_at, mt.duration_min, COALESCE(mt.notes,''),
 	       mt.created_by::text, mt.created_at, mt.cost_center_id::text,
+	       mt.planned_for, mt.upcoming_from, mt.due_manual, mt.staff_manual,
 	       COALESCE(i.name,''), COALESCE(u.first_name||' '||u.last_name,''), COALESCE(ru.first_name||' '||ru.last_name,''),
 	       COALESCE(g.name,''), COALESCE(mp.name,''), COALESCE(mp.lead_days,0), COALESCE(cc.number,''), COALESCE(cc.name,'')
 	FROM maintenance_tasks mt
@@ -28,6 +29,7 @@ func scanTask(row interface{ Scan(...interface{}) error }) (*MaintenanceTask, er
 		&t.Priority, &t.Status, &t.AssignedTo, &t.ResponsibleTo, &t.AssignedGroupID,
 		&t.DueDate, &t.StartedAt, &t.CompletedAt, &t.DurationMin, &t.Notes,
 		&t.CreatedBy, &t.CreatedAt, &t.CostCenterID,
+		&t.PlannedFor, &t.UpcomingFrom, &t.DueManual, &t.StaffManual,
 		&t.InfraName, &t.AssigneeName, &t.ResponsibleName, &t.GroupName, &t.PlanName, &t.LeadDays,
 		&t.CostCenterNumber, &t.CostCenterName)
 	return t, err

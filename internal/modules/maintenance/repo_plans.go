@@ -21,7 +21,9 @@ func inputErr(msg string) error { return fmt.Errorf("%w: %s", ErrInput, msg) }
 
 const planSelect = `
 	SELECT mp.id::text, mp.name, COALESCE(mp.description,''), mp.type, mp.infrastructure_id::text,
-	       mp.interval_unit, mp.interval_count, mp.schedule_mode, mp.lead_days, mp.estimated_min, mp.priority,
+	       mp.interval_unit, mp.interval_count, mp.schedule_mode, mp.lead_days, mp.lead_workdays, mp.year_plan_at,
+	       (SELECT count(*) FROM maintenance_visits v WHERE v.plan_id = mp.id AND v.state = 'planned'),
+	       mp.estimated_min, mp.priority,
 	       mp.assigned_to::text, mp.responsible_to::text, mp.assigned_group_id::text, mp.cost_center_id::text,
 	       mp.active, mp.last_executed_at, mp.next_due_at, mp.created_by::text, mp.created_at,
 	       mp.interval_type, mp.interval_days,
@@ -40,7 +42,8 @@ const planSelect = `
 func scanPlan(row interface{ Scan(...interface{}) error }) (*MaintenancePlan, error) {
 	p := &MaintenancePlan{}
 	err := row.Scan(&p.ID, &p.Name, &p.Description, &p.Type, &p.InfrastructureID,
-		&p.IntervalUnit, &p.IntervalCount, &p.ScheduleMode, &p.LeadDays, &p.EstimatedMin, &p.Priority,
+		&p.IntervalUnit, &p.IntervalCount, &p.ScheduleMode, &p.LeadDays, &p.LeadWorkdays, &p.YearPlanAt, &p.VisitCount,
+		&p.EstimatedMin, &p.Priority,
 		&p.AssignedTo, &p.ResponsibleTo, &p.AssignedGroupID, &p.CostCenterID,
 		&p.Active, &p.LastExecutedAt, &p.NextDueAt, &p.CreatedBy, &p.CreatedAt,
 		&p.Interval, &p.IntervalDays,
@@ -108,8 +111,15 @@ func normalizePlan(in *PlanInput) error {
 	if in.ScheduleMode != ScheduleFixed {
 		in.ScheduleMode = ScheduleFromCompletion
 	}
-	if in.LeadDays < 0 || in.LeadDays > 365 {
-		return inputErr("Vorlauf: 0 bis 365 Tage")
+	if in.LeadWorkdays == nil && in.LeadDays > 0 { // Altform: Kalendertage wie Migration 212 umrechnen
+		n := (in.LeadDays*5 + 6) / 7
+		if n > 60 {
+			n = 60
+		}
+		in.LeadWorkdays = &n
+	}
+	if in.LeadWorkdays != nil && (*in.LeadWorkdays < 0 || *in.LeadWorkdays > 60) {
+		return inputErr("Vorlauf: 0 bis 60 Arbeitstage")
 	}
 	if in.EstimatedMin < 0 || in.EstimatedMin > 24*60*7 {
 		return inputErr("Geplante Dauer ungültig")
@@ -181,14 +191,14 @@ func (r *Repository) CreatePlan(ctx context.Context, in *PlanInput, userID strin
 	var id string
 	err := r.db.QueryRow(ctx, `
 		INSERT INTO maintenance_plans (name, description, type, infrastructure_id, interval_type, interval_days,
-			interval_unit, interval_count, schedule_mode, lead_days, estimated_min, priority,
+			interval_unit, interval_count, schedule_mode, lead_workdays, estimated_min, priority,
 			assigned_to, responsible_to, assigned_group_id, cost_center_id, active, next_due_at, created_by, is_round)
 		VALUES ($1, $2, $3::maintenance_type, $4::uuid, $5::maintenance_interval, $6,
 			$7, $8, $9, $10, $11, $12::maintenance_priority,
 			$13::uuid, $14::uuid, $15::uuid, $16::uuid, true, $17, $18::uuid, $19)
 		RETURNING id::text`,
 		in.Name, in.Description, in.Type, in.InfrastructureID, iv, days,
-		in.IntervalUnit, in.IntervalCount, in.ScheduleMode, in.LeadDays, in.EstimatedMin, in.Priority,
+		in.IntervalUnit, in.IntervalCount, in.ScheduleMode, in.LeadWorkdays, in.EstimatedMin, in.Priority,
 		nullID(in.AssignedTo), nullID(in.ResponsibleTo), nullID(in.AssignedGroupID), nullID(in.CostCenterID), next, userID, in.IsRound).Scan(&id)
 	if err != nil {
 		return "", err
@@ -210,12 +220,12 @@ func (r *Repository) UpdatePlan(ctx context.Context, id string, in *PlanInput) e
 	tag, err := r.db.Exec(ctx, `
 		UPDATE maintenance_plans SET name=$2, description=$3, type=$4::maintenance_type, infrastructure_id=$5::uuid,
 			interval_type=$6::maintenance_interval, interval_days=$7, interval_unit=$8, interval_count=$9,
-			schedule_mode=$10, lead_days=$11, estimated_min=$12, priority=$13::maintenance_priority,
+			schedule_mode=$10, lead_workdays=$11, estimated_min=$12, priority=$13::maintenance_priority,
 			assigned_to=$14::uuid, responsible_to=$15::uuid, assigned_group_id=$16::uuid, cost_center_id=$17::uuid,
 			next_due_at=COALESCE($18, next_due_at), is_round=$19
 		WHERE id=$1::uuid`,
 		id, in.Name, in.Description, in.Type, in.InfrastructureID, iv, days, in.IntervalUnit, in.IntervalCount,
-		in.ScheduleMode, in.LeadDays, in.EstimatedMin, in.Priority,
+		in.ScheduleMode, in.LeadWorkdays, in.EstimatedMin, in.Priority,
 		nullID(in.AssignedTo), nullID(in.ResponsibleTo), nullID(in.AssignedGroupID), nullID(in.CostCenterID), next, in.IsRound)
 	if err != nil {
 		return err
@@ -266,7 +276,7 @@ func (r *Repository) DuplicatePlan(ctx context.Context, id, userID string) (stri
 		return "", err
 	}
 	in := &PlanInput{Name: p.Name + " Kopie", Description: p.Description, Type: p.Type, InfrastructureID: p.InfrastructureID,
-		IntervalUnit: p.IntervalUnit, IntervalCount: p.IntervalCount, ScheduleMode: p.ScheduleMode, LeadDays: p.LeadDays,
+		IntervalUnit: p.IntervalUnit, IntervalCount: p.IntervalCount, ScheduleMode: p.ScheduleMode, LeadWorkdays: p.LeadWorkdays,
 		EstimatedMin: p.EstimatedMin, Priority: p.Priority, AssignedTo: p.AssignedTo, ResponsibleTo: p.ResponsibleTo,
 		AssignedGroupID: p.AssignedGroupID, CostCenterID: p.CostCenterID, NextDueAt: p.NextDueAt.Local().Format("2006-01-02"),
 		IsRound: p.IsRound}

@@ -79,7 +79,10 @@ type MaintenancePlan struct {
 	IntervalUnit     string     `json:"interval_unit"`  // day | week | month | year
 	IntervalCount    int        `json:"interval_count"` // alle N Einheiten
 	ScheduleMode     string     `json:"schedule_mode"`  // completion | fixed
-	LeadDays         int        `json:"lead_days"`      // Vorlauf: so viele Tage vor Faelligkeit „anstehend“
+	LeadDays         int        `json:"lead_days"`      // Altfeld, entfaellt mit seinen Lesern
+	LeadWorkdays     *int       `json:"lead_workdays"`  // Vorlauf des Auftrags in Arbeitstagen (nil = Vorgabe der Wartungsregeln)
+	YearPlanAt       *time.Time `json:"year_plan_at,omitempty"`
+	VisitCount       int        `json:"visit_count"`    // geplante Termine (Zustand „geplant“)
 	EstimatedMin     int        `json:"estimated_min"`  // geplante Dauer
 	Priority         Priority   `json:"priority"`
 	AssignedTo       *string    `json:"assigned_to,omitempty"`
@@ -129,6 +132,10 @@ type MaintenanceTask struct {
 	CreatedBy        string     `json:"created_by"`
 	CreatedAt        time.Time  `json:"created_at"`
 	CostCenterID     *string    `json:"cost_center_id,omitempty"`
+	PlannedFor       *time.Time `json:"planned_for,omitempty"`   // gerechneter Tag (nil = Fälligkeit)
+	UpcomingFrom     *time.Time `json:"upcoming_from,omitempty"` // „anstehend ab“ (nil = ab Fälligkeit)
+	DueManual        bool       `json:"due_manual"`              // Fälligkeit von Hand geändert
+	StaffManual      bool       `json:"staff_manual"`            // Person/Gruppe von Hand geändert
 
 	// Joined
 	InfraName        string `json:"infra_name,omitempty"`
@@ -297,7 +304,8 @@ type PlanInput struct {
 	IntervalUnit     string               `json:"interval_unit"`
 	IntervalCount    int                  `json:"interval_count"`
 	ScheduleMode     string               `json:"schedule_mode"`
-	LeadDays         int                  `json:"lead_days"`
+	LeadDays         int                  `json:"lead_days,omitempty"` // Altform (Kalendertage), wird umgerechnet
+	LeadWorkdays     *int                 `json:"lead_workdays"`       // Arbeitstage, nil = Vorgabe
 	EstimatedMin     int                  `json:"estimated_min"`
 	Priority         Priority             `json:"priority"`
 	AssignedTo       *string              `json:"assigned_to,omitempty"`
