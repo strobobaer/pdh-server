@@ -128,3 +128,25 @@ func TestCopilotSourceLabels(t *testing.T) {
 		t.Errorf("%v", got)
 	}
 }
+
+// Seitenleiste auf einer Verbindungsseite: die Frage nennt die Verbindung, die
+// Änderungsliste kann gezeichnet und übernommen werden, der Hinweis zum
+// Datenschutz steht da – auf anderen Seiten nicht.
+func TestCopilotSidebarConn(t *testing.T) {
+	tmpl := loadTestTemplates(t)
+	const id = "11111111-1111-1111-1111-111111111111"
+	const hint = "Auf dieser Seite gehen Quellwerte und Anlagennamen an Anthropic – Kennwörter nie."
+	d := ConnectionDetailData{Direction: "import", ID: id, Name: "Broker", Kind: "mqtt", KindLabel: "MQTT", CanWrite: true, Tab: "mappings"}
+	d.CopilotConn = "import:" + id
+	page := renderPage(t, tmpl, "connection_detail", d)
+	for _, want := range []string{"conn: 'import:" + id + "'", "function copRenderProposal", "/copilot/proposals/", "/apply", hint, "Seite neu laden", "Quellen aus dem Internet"} {
+		if !strings.Contains(page, want) {
+			t.Errorf("%q fehlt", want)
+		}
+	}
+	checkScripts(t, "copilot-sidebar", page)
+	d.CopilotConn = ""
+	if page := renderPage(t, tmpl, "connection_detail", d); strings.Contains(page, hint) || !strings.Contains(page, "conn: ''") {
+		t.Error("ohne Verbindung: kein Hinweis, leere Kennung")
+	}
+}
