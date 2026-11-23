@@ -28,7 +28,9 @@ func (e *jpEnv) openTasks(planID string) []*MaintenanceTask {
 	return ts
 }
 
-func at(y int, m time.Month, d, h, min int) time.Time { return time.Date(y, m, d, h, min, 0, 0, time.Local) }
+func at(y int, m time.Month, d, h, min int) time.Time {
+	return time.Date(y, m, d, h, min, 0, 0, time.Local)
+}
 
 func TestOrderOnLeadDay(t *testing.T) {
 	e := jpNew(t)
