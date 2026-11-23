@@ -237,6 +237,11 @@ func (h *Handler) syncPDHEventsToMicrosoft(ctx context.Context, userID, kind, ac
 	for _, source := range sources {
 		key := source.Type + ":" + source.ID
 		active[key] = true
+		if source.Type == "maintenance" { // aus einem geplanten Termin entstanden: dessen Outlook-Termin weiterführen
+			if err := h.adoptPlannedCalendarLink(ctx, userID, kind, source.ID); err != nil {
+				return 0, err
+			}
+		}
 		var eventID string
 		err := h.db.QueryRow(ctx, `SELECT microsoft_event_id FROM microsoft_calendar_links WHERE user_id=$1::uuid AND account_kind=$4 AND source_type=$2 AND source_id=$3::uuid`, userID, source.Type, source.ID, kind).Scan(&eventID)
 		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
@@ -357,6 +362,23 @@ func (h *Handler) microsoftCalendarSources(ctx context.Context, userID string, p
 			sources = append(sources, timedCalendarSource("maintenance", id, title, due))
 		}
 		rows.Close()
+		// geplante Wartungstermine (Jahresplan), mir zugewiesen; nur mit Gruppe nicht
+		rows, err = h.db.Query(ctx, `
+			SELECT v.id::text, mp.name, v.day FROM maintenance_visits v JOIN maintenance_plans mp ON mp.id = v.plan_id
+			WHERE v.assigned_to=$1::uuid AND v.state = 'planned' AND mp.active AND v.day BETWEEN CURRENT_DATE-30 AND CURRENT_DATE+365`, userID)
+		if err != nil {
+			return nil, err
+		}
+		for rows.Next() {
+			var id, plan string
+			var day time.Time
+			if err := rows.Scan(&id, &plan, &day); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			sources = append(sources, plannedCalendarSource(id, plan, day))
+		}
+		rows.Close()
 	}
 	if preferences.TicketsFaults {
 		rows, err := h.db.Query(ctx, `
@@ -404,6 +426,41 @@ func allDayCalendarSource(sourceType, id, title, date string) (microsoftCalendar
 	return microsoftCalendarSource{Type: sourceType, ID: id, Title: "PDH · " + sourceType + " · " + title, Start: start, End: start.Add(24 * time.Hour), AllDay: true}, true
 }
 
+// plannedCalendarSource: geplanter Wartungstermin als ganztägiger Termin.
+func plannedCalendarSource(id, plan string, day time.Time) microsoftCalendarSource {
+	start := time.Date(day.Year(), day.Month(), day.Day(), 0, 0, 0, 0, time.UTC)
+	return microsoftCalendarSource{Type: "maintenance_planned", ID: id, Title: "PDH · Wartung (geplant) · " + plan, Start: start, End: start.Add(24 * time.Hour), AllDay: true}
+}
+
+// microsoftSourceSelected: gehört die Art zu einer eingeschalteten Auswahl?
+func microsoftSourceSelected(sourceType string, p microsoftCalendarPreferences) bool {
+	switch sourceType {
+	case "shift":
+		return p.Shifts
+	case "task":
+		return p.Tasks
+	case "maintenance", "maintenance_planned":
+		return p.Maintenance
+	case "ticket", "fault":
+		return p.TicketsFaults
+	}
+	return false
+}
+
+// adoptPlannedCalendarLink: wird aus einem geplanten Termin ein Auftrag, übernimmt
+// der Auftrag dessen Outlook-Termin (PATCH statt löschen und neu anlegen).
+// Hat der Auftrag schon eine Verknüpfung, bleibt alles unverändert.
+func (h *Handler) adoptPlannedCalendarLink(ctx context.Context, userID, kind, taskID string) error {
+	_, err := h.db.Exec(ctx, `
+		UPDATE microsoft_calendar_links l SET source_type = 'maintenance', source_id = v.task_id, updated_at = NOW()
+		FROM maintenance_visits v
+		WHERE l.user_id = $1::uuid AND l.account_kind = $2 AND l.source_type = 'maintenance_planned' AND l.source_id = v.id
+		  AND v.task_id = $3::uuid
+		  AND NOT EXISTS (SELECT 1 FROM microsoft_calendar_links x WHERE x.user_id = l.user_id AND x.account_kind = l.account_kind
+		                  AND x.source_type = 'maintenance' AND x.source_id = v.task_id)`, userID, kind, taskID)
+	return err
+}
+
 func timedCalendarSource(sourceType, id, title string, due time.Time) microsoftCalendarSource {
 	return microsoftCalendarSource{Type: sourceType, ID: id, Title: "PDH · " + sourceType + " · " + title, Start: due.UTC(), End: due.UTC().Add(time.Hour)}
 }
@@ -421,11 +478,7 @@ func (h *Handler) removeStaleMicrosoftEvents(ctx context.Context, userID, kind, 
 			rows.Close()
 			return 0, err
 		}
-		selected := (item.sourceType == "shift" && preferences.Shifts) ||
-			(item.sourceType == "task" && preferences.Tasks) ||
-			(item.sourceType == "maintenance" && preferences.Maintenance) ||
-			((item.sourceType == "ticket" || item.sourceType == "fault") && preferences.TicketsFaults)
-		if !selected || !active[item.sourceType+":"+item.sourceID] {
+		if !microsoftSourceSelected(item.sourceType, preferences) || !active[item.sourceType+":"+item.sourceID] {
 			stale = append(stale, item)
 		}
 	}
