@@ -27,6 +27,9 @@ var (
 	ErrBadKind  = errors.New("unbekannte Art der Messstelle")
 	ErrKindMix  = errors.New("Momentanwerte lassen sich nur mit Momentanwerten verrechnen, Zählerstände und Verbräuche nur untereinander")
 	ErrNoInfra  = errors.New("bitte eine Anlage wählen")
+	// ErrFormulaScope: Messstellen rechnen bei Zählern auf Zuwächsen – Funktionen,
+	// Vergleiche und Potenz würden sie verfälschen (Rechenkern: Formula.Extended).
+	ErrFormulaScope = errors.New("in der Formel einer Messstelle sind nur + − × ÷, Klammern und [Messstellen-ID] erlaubt – für Funktionen und Vergleiche einen berechneten Wert anlegen und als Quelle wählen")
 )
 
 // InUseError: die Messstelle steht in der Formel anderer Messstellen.

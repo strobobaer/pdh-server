@@ -1,3 +1,5 @@
+// Package formula ist der gemeinsame Rechenkern für Formeln: berechnete
+// Messstellen der Energiedaten und berechnete Werte (virtuelle Messwerte).
 package formula
 
 import (
@@ -6,10 +8,14 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode"
 )
 
 // MaxLen ist die größte erlaubte Formellänge in Zeichen.
 const MaxLen = 2000
+
+// maxArgs ist die größte Anzahl Angaben einer Funktion.
+const maxArgs = 50
 
 // SyntaxError beschreibt einen Fehler in der Schreibweise einer Formel.
 // Pos zählt Zeichen ab 1.
@@ -41,6 +47,24 @@ func (e *CycleError) Error() string {
 	return "Zirkelbezug: " + strings.Join(parts, " → ")
 }
 
+// NoValueKind sagt, warum eine Formel keinen Wert liefert.
+type NoValueKind int
+
+const (
+	// NoValueRef: ein Bezug hat keinen Wert (Ref nennt ihn).
+	NoValueRef NoValueKind = iota + 1
+	// NoValueDivZero: Teilen durch 0.
+	NoValueDivZero
+	// NoValueNotFinite: das Ergebnis ist keine endliche Zahl.
+	NoValueNotFinite
+)
+
+// NoValue ist der Grund für „kein Wert“.
+type NoValue struct {
+	Kind NoValueKind
+	Ref  string
+}
+
 type nodeKind int
 
 const (
@@ -48,14 +72,21 @@ const (
 	nodeRef
 	nodeNeg
 	nodeBin
+	nodeCmp
+	nodePow
+	nodeFunc
 )
 
 type node struct {
 	kind nodeKind
 	num  float64
 	ref  string
-	op   rune
+	bare bool   // Bezug ohne eckige Klammern
+	op   rune   // nodeBin: + - * /
+	cmp  string // nodeCmp: < <= > >= = <>
+	fn   string // nodeFunc: deutscher Name
 	l, r *node
+	args []*node
 }
 
 // Formula ist eine geprüfte, auswertbare Formel.
@@ -67,7 +98,9 @@ type parser struct {
 }
 
 // Parse liest eine Formel. Erlaubt sind Zahlen (Punkt oder Komma),
-// + - * / (auch − × ÷), Klammern, einstelliges Minus und Bezüge [ID].
+// + - * / (auch − × ÷), ^, Vergleiche (< <= > >= = <>), Klammern,
+// einstelliges Minus, Bezüge ([ID] oder ein Name) und Funktionen mit „;“
+// zwischen den Angaben.
 func Parse(src string) (*Formula, error) {
 	rs := []rune(src)
 	if len(rs) > MaxLen {
@@ -78,7 +111,7 @@ func Parse(src string) (*Formula, error) {
 	if p.pos >= len(rs) {
 		return nil, &SyntaxError{Pos: 1, Msg: "Formel ist leer"}
 	}
-	n, err := p.expr()
+	n, err := p.compare()
 	if err != nil {
 		return nil, err
 	}
@@ -97,6 +130,61 @@ func (p *parser) skip() {
 	for p.pos < len(p.src) && (p.src[p.pos] == ' ' || p.src[p.pos] == '\t') {
 		p.pos++
 	}
+}
+
+// cmpOp liest einen Vergleich an der Schreibmarke (ohne sie zu bewegen).
+func (p *parser) cmpOp() (op string, width int) {
+	if p.pos >= len(p.src) {
+		return "", 0
+	}
+	c := p.src[p.pos]
+	next := rune(0)
+	if p.pos+1 < len(p.src) {
+		next = p.src[p.pos+1]
+	}
+	switch {
+	case c == '<' && next == '=':
+		return "<=", 2
+	case c == '>' && next == '=':
+		return ">=", 2
+	case c == '<' && next == '>':
+		return "<>", 2
+	case c == '<':
+		return "<", 1
+	case c == '>':
+		return ">", 1
+	case c == '=':
+		return "=", 1
+	case c == '≤':
+		return "<=", 1
+	case c == '≥':
+		return ">=", 1
+	case c == '≠':
+		return "<>", 1
+	}
+	return "", 0
+}
+
+func (p *parser) compare() (*node, error) {
+	l, err := p.expr()
+	if err != nil {
+		return nil, err
+	}
+	p.skip()
+	op, w := p.cmpOp()
+	if w == 0 {
+		return l, nil
+	}
+	p.pos += w
+	r, err := p.expr()
+	if err != nil {
+		return nil, err
+	}
+	p.skip()
+	if _, again := p.cmpOp(); again > 0 {
+		return nil, p.errf("Vergleiche bitte klammern")
+	}
+	return &node{kind: nodeCmp, cmp: op, l: l, r: r}, nil
 }
 
 func (p *parser) expr() (*node, error) {
@@ -157,14 +245,36 @@ func (p *parser) unary() (*node, error) {
 	p.skip()
 	if p.pos < len(p.src) && (p.src[p.pos] == '-' || p.src[p.pos] == '−') {
 		p.pos++
-		n, err := p.primary()
+		n, err := p.unary()
 		if err != nil {
 			return nil, err
 		}
 		return &node{kind: nodeNeg, l: n}, nil
 	}
-	return p.primary()
+	return p.power()
 }
+
+// power: Potenz bindet stärker als das Vorzeichen davor und ist rechts
+// gebunden (2 ^ 3 ^ 2 = 512, -2 ^ 2 = -4).
+func (p *parser) power() (*node, error) {
+	base, err := p.primary()
+	if err != nil {
+		return nil, err
+	}
+	p.skip()
+	if p.pos >= len(p.src) || p.src[p.pos] != '^' {
+		return base, nil
+	}
+	p.pos++
+	exp, err := p.unary()
+	if err != nil {
+		return nil, err
+	}
+	return &node{kind: nodePow, l: base, r: exp}, nil
+}
+
+func identStart(c rune) bool { return unicode.IsLetter(c) }
+func identPart(c rune) bool  { return unicode.IsLetter(c) || unicode.IsDigit(c) || c == '_' }
 
 func (p *parser) primary() (*node, error) {
 	p.skip()
@@ -175,7 +285,7 @@ func (p *parser) primary() (*node, error) {
 	switch {
 	case c == '(':
 		p.pos++
-		n, err := p.expr()
+		n, err := p.compare()
 		if err != nil {
 			return nil, err
 		}
@@ -221,7 +331,7 @@ func (p *parser) primary() (*node, error) {
 				p.pos++
 			}
 			if p.pos == d {
-				return nil, p.errf("Ziffer nach dem Komma fehlt")
+				return nil, p.errf("Ziffer nach dem Komma fehlt – Angaben einer Funktion trennt „;“")
 			}
 		}
 		txt := strings.Replace(string(p.src[start:p.pos]), ",", ".", 1)
@@ -231,25 +341,90 @@ func (p *parser) primary() (*node, error) {
 			return nil, p.errf("ungültige Zahl")
 		}
 		return &node{kind: nodeNum, num: v}, nil
+	case identStart(c):
+		start := p.pos
+		for p.pos < len(p.src) && identPart(p.src[p.pos]) {
+			p.pos++
+		}
+		name := string(p.src[start:p.pos])
+		p.skip()
+		if p.pos >= len(p.src) || p.src[p.pos] != '(' {
+			return &node{kind: nodeRef, ref: name, bare: true}, nil
+		}
+		return p.call(name, start)
 	}
 	return nil, p.errf("unerwartetes Zeichen „%c“", c)
 }
 
-// Refs liefert die genannten Bezüge, sortiert und ohne Doppelte.
+// call liest die Angaben einer Funktion; die Schreibmarke steht auf „(“.
+func (p *parser) call(name string, start int) (*node, error) {
+	fail := func(msg string) (*node, error) {
+		return nil, &SyntaxError{Pos: start + 1, Msg: msg}
+	}
+	def := lookupFunc(name)
+	if def == nil {
+		return fail("unbekannte Funktion „" + name + "“")
+	}
+	p.pos++ // (
+	var args []*node
+	p.skip()
+	if p.pos < len(p.src) && p.src[p.pos] == ')' {
+		p.pos++
+	} else {
+		for {
+			a, err := p.compare()
+			if err != nil {
+				return nil, err
+			}
+			args = append(args, a)
+			p.skip()
+			if p.pos < len(p.src) && p.src[p.pos] == ';' {
+				p.pos++
+				continue
+			}
+			if p.pos < len(p.src) && p.src[p.pos] == ')' {
+				p.pos++
+				break
+			}
+			if p.pos >= len(p.src) {
+				return nil, p.errf("Klammer fehlt")
+			}
+			return nil, p.errf("unerwartetes Zeichen „%c“", p.src[p.pos])
+		}
+	}
+	if msg := def.arity(len(args)); msg != "" {
+		return fail(msg)
+	}
+	if def.name == "RUNDEN" && len(args) == 2 {
+		d := args[1]
+		if d.kind != nodeNum || d.num != math.Trunc(d.num) || d.num < 0 || d.num > 6 {
+			return fail("RUNDEN: Stellen als Zahl von 0 bis 6 angeben")
+		}
+	}
+	return &node{kind: nodeFunc, fn: def.name, args: args}, nil
+}
+
+func walk(n *node, visit func(*node)) {
+	if n == nil {
+		return
+	}
+	visit(n)
+	walk(n.l, visit)
+	walk(n.r, visit)
+	for _, a := range n.args {
+		walk(a, visit)
+	}
+}
+
+// Refs liefert die genannten Bezüge, sortiert und ohne Doppelte – auch die
+// aus Zweigen, die beim Rechnen nicht angefasst werden.
 func (f *Formula) Refs() []string {
 	set := map[string]bool{}
-	var walk func(n *node)
-	walk = func(n *node) {
-		if n == nil {
-			return
-		}
+	walk(f.root, func(n *node) {
 		if n.kind == nodeRef {
 			set[n.ref] = true
 		}
-		walk(n.l)
-		walk(n.r)
-	}
-	walk(f.root)
+	})
 	out := make([]string, 0, len(set))
 	for k := range set {
 		out = append(out, k)
@@ -258,56 +433,109 @@ func (f *Formula) Refs() []string {
 	return out
 }
 
+// Extended: die Formel nutzt mehr als + − × ÷, Klammern und [ID] – einen
+// Namen ohne Klammern, einen Vergleich, eine Potenz oder eine Funktion.
+func (f *Formula) Extended() bool {
+	ext := false
+	walk(f.root, func(n *node) {
+		switch {
+		case n.kind == nodeRef && n.bare, n.kind == nodeCmp, n.kind == nodePow, n.kind == nodeFunc:
+			ext = true
+		}
+	})
+	return ext
+}
+
 // Eval rechnet die Formel aus. false, wenn ein Bezug keinen Wert hat, durch
 // 0 geteilt wird oder das Ergebnis keine endliche Zahl ist.
 func (f *Formula) Eval(get func(key string) (float64, bool)) (float64, bool) {
-	v, ok := evalNode(f.root, get)
-	if !ok || math.IsNaN(v) || math.IsInf(v, 0) {
-		return 0, false
-	}
-	return v, true
+	v, why := f.EvalWhy(get)
+	return v, why == nil
 }
 
-func evalNode(n *node, get func(string) (float64, bool)) (float64, bool) {
+// EvalWhy rechnet die Formel aus und nennt den Grund, wenn es keinen Wert
+// gibt (nil = Wert da).
+func (f *Formula) EvalWhy(get func(key string) (float64, bool)) (float64, *NoValue) {
+	v, why := evalNode(f.root, get)
+	if why != nil {
+		return 0, why
+	}
+	if !finite(v) {
+		return 0, &NoValue{Kind: NoValueNotFinite}
+	}
+	return v, nil
+}
+
+func finite(v float64) bool { return !math.IsNaN(v) && !math.IsInf(v, 0) }
+
+func truth(b bool) float64 {
+	if b {
+		return 1
+	}
+	return 0
+}
+
+func evalNode(n *node, get func(string) (float64, bool)) (float64, *NoValue) {
 	switch n.kind {
 	case nodeNum:
-		return n.num, true
+		return n.num, nil
 	case nodeRef:
 		v, ok := get(n.ref)
-		if !ok || math.IsNaN(v) || math.IsInf(v, 0) {
-			return 0, false
+		if !ok || !finite(v) {
+			return 0, &NoValue{Kind: NoValueRef, Ref: n.ref}
 		}
-		return v, true
+		return v, nil
 	case nodeNeg:
-		v, ok := evalNode(n.l, get)
-		return -v, ok
+		v, why := evalNode(n.l, get)
+		return -v, why
+	case nodeFunc:
+		return evalFunc(n, get)
 	}
-	a, ok := evalNode(n.l, get)
-	if !ok {
-		return 0, false
+	a, why := evalNode(n.l, get)
+	if why != nil {
+		return 0, why
 	}
-	b, ok := evalNode(n.r, get)
-	if !ok {
-		return 0, false
+	b, why := evalNode(n.r, get)
+	if why != nil {
+		return 0, why
 	}
 	var v float64
-	switch n.op {
-	case '+':
-		v = a + b
-	case '-':
-		v = a - b
-	case '*':
-		v = a * b
-	default:
-		if b == 0 {
-			return 0, false
+	switch n.kind {
+	case nodeCmp:
+		switch n.cmp {
+		case "<":
+			return truth(a < b), nil
+		case "<=":
+			return truth(a <= b), nil
+		case ">":
+			return truth(a > b), nil
+		case ">=":
+			return truth(a >= b), nil
+		case "=":
+			return truth(a == b), nil
 		}
-		v = a / b
+		return truth(a != b), nil
+	case nodePow:
+		v = math.Pow(a, b)
+	default:
+		switch n.op {
+		case '+':
+			v = a + b
+		case '-':
+			v = a - b
+		case '*':
+			v = a * b
+		default:
+			if b == 0 {
+				return 0, &NoValue{Kind: NoValueDivZero}
+			}
+			v = a / b
+		}
 	}
-	if math.IsNaN(v) || math.IsInf(v, 0) {
-		return 0, false
+	if !finite(v) {
+		return 0, &NoValue{Kind: NoValueNotFinite}
 	}
-	return v, true
+	return v, nil
 }
 
 func sortedKeys(m map[string]string) []string {

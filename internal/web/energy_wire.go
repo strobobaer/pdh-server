@@ -150,7 +150,8 @@ func meterUserError(err error) bool {
 	var ce *energie.CycleError
 	return errors.As(err, &fe) || errors.As(err, &ue) || errors.As(err, &ce) ||
 		errors.Is(err, energie.ErrBadKey) || errors.Is(err, energie.ErrKeyTaken) || errors.Is(err, energie.ErrBadKind) ||
-		errors.Is(err, energie.ErrKindMix) || errors.Is(err, energie.ErrNoInfra) || errors.Is(err, energie.ErrNotFound)
+		errors.Is(err, energie.ErrKindMix) || errors.Is(err, energie.ErrNoInfra) || errors.Is(err, energie.ErrNotFound) ||
+		errors.Is(err, energie.ErrFormulaScope)
 }
 
 // meterSaveStatus: HTTP-Status zum Fehler von meterSaveMessage.

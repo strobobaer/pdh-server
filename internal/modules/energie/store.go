@@ -47,6 +47,19 @@ func ParseValue(raw string) (float64, bool) {
 	return v, true
 }
 
+// formulaScopeErr: Schreibfehler der Formel oder ErrFormulaScope, wenn sie mehr
+// nutzt als + − × ÷, Klammern und [Messstellen-ID].
+func formulaScopeErr(src string) error {
+	f, err := ParseFormula(src)
+	if err != nil {
+		return err
+	}
+	if f.Extended() {
+		return ErrFormulaScope
+	}
+	return nil
+}
+
 func validKey(k string) bool {
 	n := utf8.RuneCountInString(k)
 	return n >= 1 && n <= 64 && !strings.ContainsAny(k, "[];\"\r\n")
@@ -360,6 +373,9 @@ func (s *Store) Save(ctx context.Context, m *Meter, userID string) (created bool
 	}
 
 	if m.Formula != "" {
+		if err := formulaScopeErr(m.Formula); err != nil {
+			return false, err
+		}
 		f, err := ParseFormula(m.Formula)
 		if err != nil {
 			return false, err
