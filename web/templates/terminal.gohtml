@@ -134,6 +134,18 @@ body[data-mode="global"],body[data-saver-slides]{padding:0;-webkit-touch-callout
 .g-legend{display:flex;gap:2vw;justify-content:center;font-size:clamp(16px,1.8vw,32px);color:var(--muted)}
 .g-legend .k::before{content:"";display:inline-block;width:.9em;height:.9em;border-radius:3px;margin-right:.4em;vertical-align:-.1em;background:var(--accent)}
 .g-legend .k.s1::before{background:var(--green)}
+.g-plan{position:absolute;inset:0;padding:max(2vh,12px) max(2vw,16px);display:flex;flex-direction:column;gap:2vh;min-height:0}
+.g-plan h1{font-size:clamp(28px,3.6vw,64px);line-height:1.1;text-align:center;overflow-wrap:anywhere}
+.g-plan-days{flex:1;min-height:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,22vw),1fr));gap:1.2vw;align-content:start;overflow:hidden}
+.g-plan-days.one{grid-template-columns:minmax(0,60vw);justify-content:center}
+.g-plan-day{background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:1.2vh 1.2vw;min-width:0;overflow:hidden}
+.g-plan-day.today{border-color:var(--accent)}
+.g-plan-day h2{font-size:clamp(20px,2.4vw,44px);margin-bottom:1vh;overflow-wrap:anywhere}
+.g-plan-group{margin-bottom:1vh}
+.g-plan-group h3{font-size:clamp(16px,1.9vw,34px);color:var(--muted);border-left:6px solid var(--accent);padding-left:.5em;overflow-wrap:anywhere}
+.g-plan-item{font-size:clamp(18px,2.2vw,40px);line-height:1.25;overflow-wrap:anywhere}
+.g-plan-item.more,.g-plan-none{color:var(--muted)}
+.g-plan-empty{flex:1;display:flex;align-items:center;justify-content:center;font-size:clamp(28px,4vw,72px);color:var(--muted)}
 .g-empty{font-size:clamp(32px,5vw,90px);font-weight:800;text-align:center}
 .g-empty small{display:block;margin-top:2vh;font-size:.4em;color:var(--muted);font-weight:700}
 /* Zahnrad zur Terminal-Einstellung (nur Gerätesitzung), oben rechts über allem; Trefferfläche 48 px */
@@ -170,6 +182,38 @@ body.has-gear .g-vorg{padding-top:60px}
 .t-pickgrid .t-btn{justify-content:space-between;text-decoration:none}
 .t-pickgrid .t-btn.primary{grid-column:1/-1;justify-content:center}
 .t-picked{display:flex;align-items:center;justify-content:space-between;gap:2vw;padding:1.2vh 1.6vw;background:var(--bg2);border:2px solid var(--border);border-radius:18px}
+/* Vorgänge (terminal_vorgaenge.go): Liste, Fenster zum Vorgang, Abschluss-Assistent */
+.t-new .t-vlink{background:#14532d;border-color:#22c55e;color:#fff}
+body[data-mode="vorgaenge"]{--accent-rgb:79,142,247}
+.v-sec{display:flex;flex-direction:column;gap:.4vh}
+.v-sec h2{font-size:1.15em;display:flex;align-items:center;gap:.5em}
+.v-list{list-style:none;display:flex;flex-direction:column;gap:1vh}
+.v-row{display:flex;align-items:center;gap:1.2vw;min-height:64px;padding:1vh 1.4vw;background:var(--bg2);border:2px solid var(--border);border-radius:18px}
+.v-row.work{border-left:10px solid var(--accent)}.v-row.wait{border-left:10px solid var(--amber)}
+a.v-row:active{filter:brightness(1.2)}
+.v-t{flex:1;min-width:0;display:flex;flex-direction:column}
+.v-t b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.v-t small{color:var(--muted);font-size:.8em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.v-st{font-weight:700;white-space:nowrap}
+.v-st.work{color:var(--accent)}.v-st.wait{color:var(--amber)}
+.v-act{display:flex;gap:1vw;margin:0}
+.v-act form{margin:0}
+.t-dialog .v-dlg{width:min(94vw,44em);max-height:92vh;overflow-y:auto}
+.v-dlg h2{font-size:1.2em}
+.v-dlg .v-meta{color:var(--muted);font-size:.85em}
+.v-people{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,11em),1fr));gap:1vw}
+.v-people .t-opt span{min-height:64px;font-size:1em;flex-direction:column;gap:.1em}
+.v-people .t-opt span small{font-weight:400;font-size:.7em;opacity:.8}
+.v-dlg .l-row{display:flex;gap:1vw}.v-dlg .l-row .t-btn{flex:1}
+.t-btn.warn{background:var(--amber);border-color:var(--amber);color:#1b1b1b}
+.t-btn.ok{background:var(--green);border-color:var(--green);color:#fff}
+.cw .btn{display:inline-flex;align-items:center;justify-content:center;gap:.5em;min-height:64px;padding:0 1.4em;border-radius:16px;border:2px solid var(--border);background:var(--bg3);color:var(--text);font:inherit;font-weight:700}
+.cw .btn-primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.cw .form-input,.cw select,.cw textarea{width:100%;min-height:56px;padding:.4em .8em;border-radius:14px;border:2px solid var(--border);background:var(--bg);color:var(--text);font:inherit;-webkit-user-select:text;user-select:text}
+.cw .form-label{display:block;font-weight:700;margin:.6em 0 .2em}
+.cw{font-size:.95em}.cw-body{font-size:1em}
+.cw-check input,.cw-people input{width:28px;height:28px}
+.cw-people label{min-height:56px}
 /* HMI und Wartungen (terminal_hmi.go, terminal_wartung.go): Kacheln neben Rüsten, Listen, Viewer */
 .t-xrow{grid-column:1/-1;display:flex;gap:1.6vw}
 .t-new .t-xrow .t-rzlink{flex:1;grid-column:auto;min-width:0}
@@ -187,10 +231,24 @@ body.has-gear .g-vorg{padding-top:60px}
 .t-hmistatus{color:var(--muted);font-size:.85em}.t-hmistatus.ok{color:var(--green)}.t-hmistatus.err{color:var(--red)}
 .t-hmiscreen{flex:1;min-height:0;background:#000;border:2px solid var(--border);border-radius:14px;overflow:hidden;position:relative;touch-action:none}
 .t-card form{margin:0}
+/* Schichtplan (terminal_schichtplan.go) */
+.t-new .t-plink{background:#134e4a;border-color:#14b8a6;color:#fff}
+.t-pdepts,.t-pweek{display:flex;flex-wrap:wrap;gap:1vw;align-items:center}
+.t-pdepts .t-btn.sel,.t-pweek .t-btn.sel{background:var(--accent);border-color:var(--accent);color:#fff}
+.t-pgroup{padding:1vh 1.4vw;background:var(--bg2);border:2px solid var(--border);border-radius:18px}
+.t-pgroup h3{margin:0 0 .4vh}.t-pgroup .tm{color:var(--muted);font-weight:400;font-size:.85em}
+.t-pgroup.abs{border-style:dashed}
+.t-ptable{width:100%;border-collapse:collapse;font-size:.9em}
+.t-ptable th,.t-ptable td{padding:.9vh .6vw;border-bottom:1px solid var(--border);text-align:left;vertical-align:top}
+.t-ptable th small{display:block;color:var(--muted);font-weight:400}
+.t-ptable .today{background:var(--bg3)}.t-ptable .we{color:var(--muted)}
+.t-ptable .abs{color:var(--muted);font-style:italic}.t-ptable .du{display:block;color:var(--accent);font-size:.85em}
+.t-ptable .sh small{display:block;color:var(--muted)}
+.t-pscroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
 @media (max-width:820px){.t-xrow{flex-direction:column}.g-vorg{grid-template-columns:1fr}.t-cols,.t-new{grid-template-columns:1fr}.t-new,.t-new.has-rz{grid-template-rows:auto}}
 </style>
 </head>
-<body{{if .DeviceSession}} class="has-gear"{{end}}{{if .SetupCard}} data-card-in="1"{{end}} data-mode="{{.Mode}}"{{if .SaverSlides}} data-saver-slides="1"{{end}} data-idle="{{.Idle}}"{{if .SettingsEvents}} data-settings-events="1"{{end}}{{if .CardEvents}} data-card-events="1" data-card-notify="{{.CardNotify}}"{{if ne .Mode "schoner"}} data-manual-login="{{.ManualLogin}}" data-password-button="{{if .PasswordButton}}1{{else}}0{{end}}"{{end}}{{end}}>
+<body{{if .DeviceSession}} class="has-gear"{{end}}{{if .Fn.Vorgaenge}} data-vorgaenge="1"{{end}}{{if .SetupCard}} data-card-in="1"{{end}} data-mode="{{.Mode}}"{{if .SaverSlides}} data-saver-slides="1"{{end}} data-idle="{{.Idle}}"{{if .SettingsEvents}} data-settings-events="1"{{end}}{{if .CardEvents}} data-card-events="1" data-card-notify="{{.CardNotify}}"{{if ne .Mode "schoner"}} data-manual-login="{{.ManualLogin}}" data-password-button="{{if .PasswordButton}}1{{else}}0{{end}}"{{end}}{{end}}>
 {{if .DeviceSession}}<a class="t-gear" href="{{.AdminURL}}" aria-label="Terminal-Einstellungen" title="Terminal-Einstellungen"><i class="ti ti-settings" aria-hidden="true"></i></a>{{end}}
 {{if .NoInfra}}
 <div class="t-none">
@@ -385,6 +443,99 @@ function connect(){
 window.addEventListener('beforeunload', () => { if(rfb) rfb.disconnect(); });
 connect();
 </script>
+{{else if eq .Mode "schichtplan"}}
+<div class="t-head">
+  <a class="t-btn" href="/terminal/neu"><i class="ti ti-arrow-left" aria-hidden="true"></i> Zurück</a>
+  <div class="t-path">{{if .Path}}{{.Path}}{{else}}<b>{{.Name}}</b>{{end}}</div>
+  <div class="t-clock" data-clock>&nbsp;</div>
+</div>
+{{if .Plan.Denied}}
+<div class="t-none"><i class="ti ti-lock" aria-hidden="true"></i><p>Keine Berechtigung</p><small>Für die Abteilungen dieses Terminals darf der Schichtplan hier nicht angezeigt werden.</small></div>
+{{else}}
+<div class="t-rz">
+  <h2 class="t-rzh"><i class="ti ti-calendar-week" aria-hidden="true"></i> Schichtplan {{.Plan.DeptName}}</h2>
+  {{if gt (len .Plan.Depts) 1}}<div class="t-pdepts">{{range .Plan.Depts}}<a class="t-btn{{if .Sel}} sel{{end}}" href="/terminal/schichtplan?abt={{.ID}}{{if $.Plan.Next}}&amp;woche=naechste{{end}}">{{.Name}}</a>{{end}}</div>{{end}}
+  <div class="t-pweek">
+    <a class="t-btn{{if not .Plan.Next}} sel{{end}}" href="/terminal/schichtplan?abt={{.Plan.Dept}}">Diese Woche</a>
+    <a class="t-btn{{if .Plan.Next}} sel{{end}}" href="/terminal/schichtplan?abt={{.Plan.Dept}}&amp;woche=naechste">Nächste Woche</a>
+    <span class="t-mcount">{{.Plan.WeekLabel}}</span>
+  </div>
+  {{if .Plan.ShowToday}}
+  <h3>Heute</h3>
+  {{range .Plan.Today}}<div class="t-pgroup{{if .Absent}} abs{{end}}"><h3>{{.Title}}{{if .Time}} <span class="tm">{{.Time}}</span>{{end}}</h3>{{range $i, $n := .Names}}{{if $i}}, {{end}}{{$n}}{{end}}</div>
+  {{else}}<div class="t-empty off">Heute ist niemand eingeteilt</div>{{end}}
+  {{end}}
+  <h3>Woche</h3>
+  {{if .Plan.Rows}}<div class="t-pscroll"><table class="t-ptable">
+    <thead><tr><th></th>{{range .Plan.Days}}<th class="{{if .Today}}today{{end}}{{if .Weekend}} we{{end}}">{{.Short}}<small>{{.Label}}</small>{{if .Holiday}}<small>{{.Holiday}}</small>{{end}}</th>{{end}}</tr></thead>
+    <tbody>{{range .Plan.Rows}}<tr><th>{{.Name}}</th>{{range $i, $c := .Cells}}<td class="{{if (index $.Plan.Days $i).Today}}today{{end}}">{{if $c.Absent}}<span class="abs">abwesend</span>{{else if $c.Shift}}<span class="sh">{{$c.Shift}}<small>{{$c.Time}}</small></span>{{end}}{{range $c.Duties}}<span class="du">{{.}}</span>{{end}}</td>{{end}}</tr>{{end}}</tbody>
+  </table></div>
+  {{else}}<div class="t-empty off">Für diese Woche ist nichts eingeteilt</div>{{end}}
+</div>
+{{end}}
+{{else if eq .Mode "vorgaenge"}}
+<div class="t-head">
+  <a class="t-btn" href="/terminal/neu"><i class="ti ti-arrow-left" aria-hidden="true"></i> Zurück</a>
+  <div class="t-path">{{if .Path}}{{.Path}}{{else}}<b>{{.Name}}</b>{{end}}{{if .Vorg.LoggedIn}} · {{.Vorg.Person}}{{end}}</div>
+  <div class="t-clock" data-clock>&nbsp;</div>
+</div>
+{{if .Vorg.NoView}}
+<div class="t-none"><i class="ti ti-lock" aria-hidden="true"></i><p>Keine Berechtigung</p><small>Dieses Terminal darf hier keine Vorgänge anzeigen.</small></div>
+{{else}}
+<div class="t-rz" id="v-root">
+  <div class="t-rznote" id="v-note" role="alert"{{if not .Vorg.Notice}} hidden{{end}}>{{.Vorg.Notice}}</div>
+  {{if .Vorg.ReadOnly}}<div class="t-rznote" role="status"><i class="ti ti-id-badge-2" aria-hidden="true"></i> Nur Ansicht{{if eq .Vorg.Modus "nur_karte"}} – zum Bearbeiten bitte mit der Karte anmelden{{else}} an diesem Gerät{{end}}.</div>{{end}}
+  {{if .Vorg.Mine}}
+  <section class="v-sec" aria-label="Meine Vorgänge">
+    <h2><i class="ti ti-user-check" aria-hidden="true"></i> Meine Vorgänge · {{.Vorg.Person}}</h2>
+    <ul class="v-list">
+    {{range .Vorg.Mine}}<li class="v-row {{.Group}}"><div class="v-t"><b>{{.TypeLabel}}: {{.Title}}</b><small>{{if .Path}}{{.Path}} · {{end}}{{.PeopleNames}}</small></div><span class="v-st {{.Group}}">{{.StatusLabel}}</span>
+      {{if .Started}}<div class="v-act">
+        <form method="post" action="/terminal/vorgaenge/warten"><input type="hidden" name="type" value="{{.Type}}"><input type="hidden" name="id" value="{{.ID}}"><button type="submit" class="t-btn warn"><i class="ti ti-player-pause" aria-hidden="true"></i> Warten</button></form>
+        <form method="post" action="/terminal/vorgaenge/beenden" data-fin><input type="hidden" name="type" value="{{.Type}}"><input type="hidden" name="id" value="{{.ID}}"><button type="submit" class="t-btn ok"><i class="ti ti-check" aria-hidden="true"></i> Beenden</button></form>
+      </div>{{else}}<a class="t-btn primary" href="/terminal/vorgaenge?sel={{.Sel}}">Starten</a>{{end}}</li>{{end}}
+    </ul>
+  </section>
+  {{end}}
+  {{range .Vorg.Groups}}{{$g := .}}
+  <section class="v-sec" aria-label="{{.Kind.Plural}}">
+    <h2><i class="ti {{.Kind.Icon}}" aria-hidden="true"></i> {{.Kind.Plural}} <span class="t-mcount">{{.Total}}</span></h2>
+    {{if .Items}}<ul class="v-list">
+    {{range .Items}}{{if .CanAct}}<li><a class="v-row {{.Group}}" href="/terminal/vorgaenge?sel={{.Sel}}">{{else}}<li class="v-row {{.Group}}">{{end}}<div class="v-t"><b>{{.Title}}</b><small>{{if .Path}}{{.Path}}{{end}}{{if and .Path .PeopleNames}} · {{end}}{{.PeopleNames}}</small></div><span class="v-st {{.Group}}">{{.StatusLabel}}</span>{{if .CanAct}}<i class="ti ti-chevron-right" aria-hidden="true"></i></a>{{end}}</li>{{end}}
+    </ul>{{if .More}}<div class="t-more">… und {{.More}} weitere</div>{{end}}
+    {{else}}<div class="t-empty"><i class="ti ti-circle-check" aria-hidden="true"></i> Keine offenen {{.Kind.Plural}}</div>{{end}}
+  </section>
+  {{end}}
+</div>
+{{with .Vorg.Sel}}
+<div class="t-dialog" role="dialog" aria-modal="true" aria-label="{{.TypeLabel}}">
+{{if .Started}}
+  <form class="v-dlg" method="post" action="/terminal/vorgaenge/beenden" data-fin>
+    <h2>{{.TypeLabel}}: {{.Title}}</h2>
+    <div class="v-meta">{{if .Path}}{{.Path}} · {{end}}{{.StatusLabel}}{{if .PeopleNames}} · {{.PeopleNames}}{{end}}</div>
+    <input type="hidden" name="type" value="{{.Type}}"><input type="hidden" name="id" value="{{.ID}}">
+    <button type="submit" class="t-btn ok big"><i class="ti ti-check" aria-hidden="true"></i> Beenden</button>
+    <button type="submit" class="t-btn warn big" formaction="/terminal/vorgaenge/warten"><i class="ti ti-player-pause" aria-hidden="true"></i> Warten (geht noch weiter)</button>
+    <a class="t-btn" href="/terminal/vorgaenge">Abbrechen</a>
+  </form>
+{{else}}
+  <form class="v-dlg" method="post" action="/terminal/vorgaenge/start">
+    <h2>{{.TypeLabel}}: {{.Title}}</h2>
+    <div class="v-meta">{{if .Path}}{{.Path}} · {{end}}{{.StatusLabel}}</div>
+    <input type="hidden" name="type" value="{{.Type}}"><input type="hidden" name="id" value="{{.ID}}">
+    <h3>Wer arbeitet daran?</h3>
+    {{if $.Vorg.Pick}}<div class="v-people">{{range $.Vorg.Pick}}<label class="t-opt"><input type="checkbox" name="people" value="{{.ID}}"{{if .On}} checked{{end}}><span>{{.Name}}{{if .Dept}}<small>{{.Dept}}</small>{{end}}</span></label>{{end}}</div>
+    {{else}}<div class="t-empty off"><i class="ti ti-users-minus" aria-hidden="true"></i> Keine Mitarbeitenden in den Abteilungen dieses Terminals</div>{{end}}
+    <div class="l-row">
+      <a class="t-btn" href="/terminal/vorgaenge">Abbrechen</a>
+      <button type="submit" class="t-btn primary"{{if not $.Vorg.Pick}} disabled{{end}}><i class="ti ti-player-play" aria-hidden="true"></i> Starten</button>
+    </div>
+  </form>
+{{end}}
+</div>
+{{end}}
+{{template "completion-wizard"}}
+{{end}}
 {{else if eq .Mode "wartung"}}
 <div class="t-head">
   <a class="t-btn" href="/terminal/neu"><i class="ti ti-arrow-left" aria-hidden="true"></i> Zurück</a>
@@ -415,14 +566,16 @@ connect();
 <div class="t-none"><i class="ti ti-lock" aria-hidden="true"></i><p>Keine Berechtigung</p><small>Dieses Terminal darf hier nichts melden oder anzeigen.</small></div>
 {{else}}
 {{if .Done}}<div class="t-rznote" role="status">{{if eq .Done "fault"}}Störung gemeldet – danke.{{else}}Ticket erstellt – danke.{{end}}</div>{{end}}
-<div class="t-new{{if or .Setup.Show .HMITile .MaintTile}} has-rz{{end}}{{if and .Fn.Stoerung (not .Fn.Ticket)}} one{{else if and .Fn.Ticket (not .Fn.Stoerung)}} one{{else if not .Fn.Stoerung}} nof{{end}}">
+<div class="t-new{{if or .Setup.Show .HMITile .MaintTile .VorgTile .PlanTile}} has-rz{{end}}{{if and .Fn.Stoerung (not .Fn.Ticket)}} one{{else if and .Fn.Ticket (not .Fn.Stoerung)}} one{{else if not .Fn.Stoerung}} nof{{end}}">
   {{if .Fn.Stoerung}}<a class="t-tilebtn fault" href="/terminal/stoerung"><i class="ti ti-alert-triangle" aria-hidden="true"></i> Störung</a>{{end}}
   {{if .Fn.Ticket}}<a class="t-tilebtn ticket" href="/terminal/ticket"><i class="ti ti-ticket" aria-hidden="true"></i> Ticket</a>{{end}}
-  {{if or .Setup.Show .HMITile .MaintTile}}<div class="t-xrow">{{end}}
+  {{if or .Setup.Show .HMITile .MaintTile .VorgTile .PlanTile}}<div class="t-xrow">{{end}}
   {{if .Setup.Show}}{{if .SetupCan}}<a class="t-tilebtn t-rzlink" href="/terminal/rusten"><i class="ti ti-tool" aria-hidden="true"></i><span>Rüsten{{if .Setup.Running}}<small>{{.Setup.Text}}</small>{{else if .Setup.Fault}}<small>{{.Setup.Text}}</small>{{end}}</span></a>{{else}}<span class="t-tilebtn t-rzlink off" aria-disabled="true"><i class="ti ti-tool" aria-hidden="true"></i><span>Rüsten<small>Keine Berechtigung zum Rüsten</small></span></span>{{end}}{{end}}
   {{if .HMITile}}<a class="t-tilebtn t-rzlink t-hmilink" href="/terminal/hmi"><i class="ti ti-device-desktop-analytics" aria-hidden="true"></i><span>HMI</span></a>{{end}}
   {{if .MaintTile}}<a class="t-tilebtn t-rzlink t-mlink" href="/terminal/wartung"><i class="ti ti-calendar-check" aria-hidden="true"></i><span>Wartungen</span></a>{{end}}
-  {{if or .Setup.Show .HMITile .MaintTile}}</div>{{end}}
+  {{if .VorgTile}}<a class="t-tilebtn t-rzlink t-vlink" href="/terminal/vorgaenge"><i class="ti ti-list-check" aria-hidden="true"></i><span>Vorgänge</span></a>{{end}}
+  {{if .PlanTile}}<a class="t-tilebtn t-rzlink t-plink" href="/terminal/schichtplan"><i class="ti ti-calendar-week" aria-hidden="true"></i><span>Schichtplan</span></a>{{end}}
+  {{if or .Setup.Show .HMITile .MaintTile .VorgTile .PlanTile}}</div>{{end}}
   {{if .Fn.Stillstand}}
   <div class="t-stop{{if .Down.Running}} run{{end}}">
     <h2><i class="ti ti-player-pause" aria-hidden="true"></i> Stillstand</h2>

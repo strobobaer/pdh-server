@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/netip"
 	"strconv"
 	"strings"
 	"time"
@@ -41,6 +42,8 @@ var terminalFnDefs = []terminalFnDef{
 	{"stillstand", "Stillstand", "fn_stillstand", "fn_stillstand_at", true},
 	{"hmi", "HMI", "fn_hmi", "fn_hmi_at", true},
 	{"wartungen", "Wartungen", "fn_wartungen", "fn_wartungen_at", true},
+	{"vorgaenge", "Vorgänge", "fn_vorgaenge", "fn_vorgaenge_at", true},
+	{"schichtplan", "Schichtplan", "fn_schichtplan", "fn_schichtplan_at", true},
 	{"saver_slides", "Folienschau als Bildschirmschoner", "saver_slides", "saver_slides_at", false},
 }
 
@@ -318,6 +321,72 @@ func terminalClientVersion(r *http.Request) string {
 	return v
 }
 
+// terminalAdminURL: Adresse der Verwaltungsseite aus X-Terminal-Admin-URL (ab Terminal 0.4.5). Gültig ist
+// nur https://<IPv4 | [IPv6] | DNS-Name>:<Port 1–65535>/admin/ ohne Zugangsdaten, Abfrage und Fragment,
+// höchstens 255 Zeichen, nur ASCII. Alles andere liefert "" (der gespeicherte Wert bleibt dann stehen).
+func terminalAdminURL(r *http.Request) string {
+	v := r.Header.Get("X-Terminal-Admin-URL")
+	if v == "" || len(v) > 255 {
+		return ""
+	}
+	for _, c := range v {
+		if c <= ' ' || c >= 0x7f || strings.ContainsRune(`\%?#@"'<>`+"`", c) {
+			return ""
+		}
+	}
+	rest, ok := strings.CutPrefix(v, "https://")
+	if !ok || !strings.HasSuffix(rest, "/admin/") {
+		return ""
+	}
+	hostport := strings.TrimSuffix(rest, "/admin/")
+	i := strings.LastIndex(hostport, ":")
+	if i < 1 {
+		return ""
+	}
+	host, port := hostport[:i], hostport[i+1:]
+	if len(port) == 0 || len(port) > 5 {
+		return ""
+	}
+	for _, c := range port {
+		if c < '0' || c > '9' {
+			return ""
+		}
+	}
+	if n, _ := strconv.Atoi(port); n < 1 || n > 65535 {
+		return ""
+	}
+	if strings.HasPrefix(host, "[") {
+		if !strings.HasSuffix(host, "]") {
+			return ""
+		}
+		ip, err := netip.ParseAddr(host[1 : len(host)-1])
+		if err != nil || !ip.Is6() || ip.Zone() != "" {
+			return ""
+		}
+		return v
+	}
+	if ip, err := netip.ParseAddr(host); err == nil {
+		if !ip.Is4() {
+			return ""
+		}
+		return v
+	}
+	if len(host) > 253 || strings.ContainsAny(host, ":[]/") {
+		return ""
+	}
+	for _, label := range strings.Split(host, ".") {
+		if label == "" || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' {
+			return ""
+		}
+		for _, c := range label {
+			if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '-' || c == '_') {
+				return ""
+			}
+		}
+	}
+	return v
+}
+
 func hasBearer(r *http.Request) bool {
 	a := r.Header.Get("Authorization")
 	return len(a) > 7 && strings.EqualFold(a[:7], "bearer ")
@@ -444,13 +513,13 @@ func parseTerminalFnBody(body []byte) (map[string]terminalFnIn, error) {
 
 // terminalFnFlags: welche Funktionen die Terminalseiten zeigen.
 type terminalFnFlags struct {
-	Stoerung, Ticket, Ruesten, Stillstand, HMI, Wartungen bool
+	Stoerung, Ticket, Ruesten, Stillstand, HMI, Wartungen, Vorgaenge, Schichtplan bool
 }
 
 func (s terminalFnSet) flags() terminalFnFlags {
 	return terminalFnFlags{
 		Stoerung: s["stoerung"].Enabled, Ticket: s["ticket"].Enabled, Ruesten: s["ruesten"].Enabled,
-		Stillstand: s["stillstand"].Enabled, HMI: s["hmi"].Enabled, Wartungen: s["wartungen"].Enabled,
+		Stillstand: s["stillstand"].Enabled, HMI: s["hmi"].Enabled, Wartungen: s["wartungen"].Enabled, Vorgaenge: s["vorgaenge"].Enabled, Schichtplan: s["schichtplan"].Enabled,
 	}
 }
 
@@ -561,6 +630,7 @@ const terminalOnlineWindow = 2 * time.Minute
 // pdhTerminalView: eine Zeile „PDH-Terminal“ in Core-Einstellungen → Kiosk-Terminals.
 type pdhTerminalView struct {
 	DeviceID, Name, UserID, UserName, Type, Version string
+	AdminURL                                        string // Verwaltungsseite des Terminals, leer = nicht gemeldet
 	Online, Revoked                                 bool
 	LastSeen, Paired, RevokedAt, Link               string
 }
@@ -568,7 +638,7 @@ type pdhTerminalView struct {
 // loadPDHTerminals listet die gekoppelten Geräte der Terminal-Benutzer (aktive zuerst, dann nach Name).
 func (h *Handler) loadPDHTerminals(ctx context.Context) ([]pdhTerminalView, error) {
 	rows, err := h.db.Query(ctx, `SELECT d.id::text, d.name, u.id::text, u.first_name, u.last_name, u.username,
-			d.client_version, d.created_at, d.last_seen_at, d.revoked_at
+			d.client_version, d.admin_url, d.created_at, d.last_seen_at, d.revoked_at
 		FROM terminal_devices d JOIN users u ON u.id = d.user_id
 		ORDER BY (d.revoked_at IS NOT NULL), lower(d.name), d.created_at LIMIT 500`)
 	if err != nil {
@@ -582,7 +652,7 @@ func (h *Handler) loadPDHTerminals(ctx context.Context) ([]pdhTerminalView, erro
 		var first, last, uname string
 		var created time.Time
 		var seen, revoked *time.Time
-		if err := rows.Scan(&v.DeviceID, &v.Name, &v.UserID, &first, &last, &uname, &v.Version, &created, &seen, &revoked); err != nil {
+		if err := rows.Scan(&v.DeviceID, &v.Name, &v.UserID, &first, &last, &uname, &v.Version, &v.AdminURL, &created, &seen, &revoked); err != nil {
 			return nil, err
 		}
 		v.UserName = displayUserName(first, last, uname)

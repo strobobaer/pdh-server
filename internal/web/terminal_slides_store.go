@@ -60,9 +60,12 @@ type terminalSlide struct {
 	InfraIDs                         []string
 	ShowFaults, ShowTickets, Active  bool
 	Position, DurationSeconds        int
-	StatsDays                        int    // 7 oder 30 (Statistikfolien)
-	URL                              string // Grafana-Adresse (Art grafana) bzw. Webadresse (Art website)
-	ReloadMinutes                    int    // Art website: alle n Minuten neu laden, 0 = nie
+	StatsDays                        int      // 7 oder 30 (Statistikfolien)
+	URL                              string   // Grafana-Adresse (Art grafana) bzw. Webadresse (Art website)
+	ReloadMinutes                    int      // Art website: alle n Minuten neu laden, 0 = nie
+	PlanRange                        string   // Planungsfolien: today, week, next_week, days
+	PlanDays                         int      // Planungsfolien, Zeitraum days: nächste N Tage (1 bis 31)
+	DepartmentIDs                    []string // Planungsfolien: gewählte Abteilungen (leer = alle)
 	UpdatedAt                        time.Time
 }
 
@@ -164,7 +167,8 @@ func validateGrafanaSlideURL(raw string) error {
 // s.ImageType eingetragen. Dauer 0 bedeutet die Vorgabe (15 s).
 func validateTerminalSlide(s *terminalSlide) error {
 	switch s.Kind {
-	case slideKindImage, slideKindText, slideKindVorgaenge, slideKindStatsFaults, slideKindStatsTickets, slideKindStatsSetup, slideKindStatsDown, slideKindGrafana, slideKindWebsite:
+	case slideKindImage, slideKindText, slideKindVorgaenge, slideKindStatsFaults, slideKindStatsTickets, slideKindStatsSetup, slideKindStatsDown, slideKindGrafana, slideKindWebsite,
+		slideKindPlanShifts, slideKindPlanAbsences, slideKindPlanDuties, slideKindPlanMaint:
 	default:
 		return fmt.Errorf("unbekannte Folienart %q", s.Kind)
 	}
@@ -222,16 +226,45 @@ func validateTerminalSlide(s *terminalSlide) error {
 			return errors.New("Ungültige Anlage")
 		}
 	}
+	if slideIsPlan(s.Kind) {
+		if s.PlanRange == "" {
+			s.PlanRange = planRangeToday
+		}
+		if !validPlanRange(s.PlanRange) {
+			return errors.New("Ungültiger Zeitraum")
+		}
+		if s.PlanRange == planRangeDays {
+			if s.PlanDays == 0 {
+				s.PlanDays = planDefaultDays
+			}
+			if s.PlanDays < planMinDays || s.PlanDays > planMaxDays {
+				return fmt.Errorf("Die Anzahl der Tage liegt zwischen %d und %d", planMinDays, planMaxDays)
+			}
+		} else {
+			s.PlanDays = planDefaultDays
+		}
+		if len(s.DepartmentIDs) > planMaxDepts {
+			return fmt.Errorf("Bitte höchstens %d Abteilungen wählen", planMaxDepts)
+		}
+		for _, id := range s.DepartmentIDs {
+			if !slideUUIDRe.MatchString(id) {
+				return errors.New("Ungültige Abteilung")
+			}
+		}
+	} else {
+		s.PlanRange, s.PlanDays, s.DepartmentIDs = planRangeToday, planDefaultDays, nil
+	}
 	return nil
 }
 
 const slideColumns = `id::text, position, kind, title, body, image_type, COALESCE(infra_ids, '{}')::text[],
-	show_faults, show_tickets, duration_seconds, active, stats_days, url, reload_minutes, updated_at`
+	show_faults, show_tickets, duration_seconds, active, stats_days, url, reload_minutes,
+	plan_range, plan_days, COALESCE(department_ids, '{}')::text[], updated_at`
 
 func scanSlide(row pgx.Row) (terminalSlide, error) {
 	var s terminalSlide
 	err := row.Scan(&s.ID, &s.Position, &s.Kind, &s.Title, &s.Body, &s.ImageType, &s.InfraIDs,
-		&s.ShowFaults, &s.ShowTickets, &s.DurationSeconds, &s.Active, &s.StatsDays, &s.URL, &s.ReloadMinutes, &s.UpdatedAt)
+		&s.ShowFaults, &s.ShowTickets, &s.DurationSeconds, &s.Active, &s.StatsDays, &s.URL, &s.ReloadMinutes, &s.PlanRange, &s.PlanDays, &s.DepartmentIDs, &s.UpdatedAt)
 	return s, err
 }
 
@@ -286,6 +319,10 @@ func (h *Handler) saveTerminalSlide(ctx context.Context, s *terminalSlide) error
 	if infra == nil {
 		infra = []string{}
 	}
+	depts := s.DepartmentIDs
+	if depts == nil {
+		depts = []string{}
+	}
 	var img any
 	imgType := s.ImageType
 	if s.Kind == slideKindImage && len(s.Image) > 0 {
@@ -297,10 +334,11 @@ func (h *Handler) saveTerminalSlide(ctx context.Context, s *terminalSlide) error
 		}
 		err := h.db.QueryRow(ctx, `
 			INSERT INTO terminal_slides (position, kind, title, body, image, image_type, infra_ids,
-				show_faults, show_tickets, duration_seconds, active, stats_days, url, reload_minutes)
-			VALUES ((SELECT COALESCE(MAX(position), 0) + 1 FROM terminal_slides), $1, $2, $3, $4, $5, $6::uuid[], $7, $8, $9, $10, $11, $12, $13)
+				show_faults, show_tickets, duration_seconds, active, stats_days, url, reload_minutes, plan_range, plan_days, department_ids)
+			VALUES ((SELECT COALESCE(MAX(position), 0) + 1 FROM terminal_slides), $1, $2, $3, $4, $5, $6::uuid[], $7, $8, $9, $10, $11, $12, $13, $14, $15, $16::uuid[])
 			RETURNING id::text, position, updated_at`,
-			s.Kind, s.Title, s.Body, img, imgType, infra, s.ShowFaults, s.ShowTickets, s.DurationSeconds, s.Active, s.StatsDays, s.URL, s.ReloadMinutes).
+			s.Kind, s.Title, s.Body, img, imgType, infra, s.ShowFaults, s.ShowTickets, s.DurationSeconds, s.Active, s.StatsDays, s.URL, s.ReloadMinutes,
+			s.PlanRange, s.PlanDays, depts).
 			Scan(&s.ID, &s.Position, &s.UpdatedAt)
 		if err != nil {
 			return err
@@ -324,9 +362,10 @@ func (h *Handler) saveTerminalSlide(ctx context.Context, s *terminalSlide) error
 				image = CASE WHEN $2 <> 'image' THEN NULL WHEN $5::bytea IS NOT NULL THEN $5::bytea ELSE image END,
 				image_type = CASE WHEN $2 <> 'image' THEN '' WHEN $5::bytea IS NOT NULL THEN $6 ELSE image_type END,
 				infra_ids = $7::uuid[], show_faults = $8, show_tickets = $9, duration_seconds = $10, active = $11,
-				stats_days = $12, url = $13, reload_minutes = $14, updated_at = NOW()
+				stats_days = $12, url = $13, reload_minutes = $14, plan_range = $15, plan_days = $16, department_ids = $17::uuid[], updated_at = NOW()
 			WHERE id = $1::uuid`,
-			s.ID, s.Kind, s.Title, s.Body, img, imgType, infra, s.ShowFaults, s.ShowTickets, s.DurationSeconds, s.Active, s.StatsDays, s.URL, s.ReloadMinutes)
+			s.ID, s.Kind, s.Title, s.Body, img, imgType, infra, s.ShowFaults, s.ShowTickets, s.DurationSeconds, s.Active, s.StatsDays, s.URL, s.ReloadMinutes,
+			s.PlanRange, s.PlanDays, depts)
 		if err != nil {
 			return err
 		}

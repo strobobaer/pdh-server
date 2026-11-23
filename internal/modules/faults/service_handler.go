@@ -113,6 +113,9 @@ func (s *Service) newFault(ctx context.Context, in *CreateFaultInput, userID str
 		CostCenterID:     in.CostCenterID,
 	}
 	f.Origin, f.OriginLabel = origin.Clean(in.Origin, in.OriginLabel)
+	if in.ID != nil { // vorgegebene Kennung (insertFault nimmt sie statt pdh_uuid_v7())
+		f.ID = *in.ID
+	}
 	if in.DueDate != nil {
 		f.DueDate = in.DueDate
 		return f

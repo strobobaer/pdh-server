@@ -94,7 +94,7 @@
       <i class="ti ti-device-desktop" style="color:var(--muted)"></i>
       <div class="grow"><b>{{.Name}}</b> {{if .Revoked}}<span class="badge b-red">gesperrt</span>{{else}}<span class="badge b-green">aktiv</span>{{end}}
         <div class="rec-sub">gekoppelt {{.Created}} · zuletzt angemeldet {{.LastSeen}}{{if .Revoked}} · gesperrt {{.Revoked}}{{end}}</div></div>
-      {{if not .Revoked}}<form method="post" action="/users/{{$u.ID}}/devices/{{.ID}}/revoke" style="margin:0" onsubmit="return confirm('Gerät sperren? Das Terminal wird innerhalb von 30 Sekunden abgemeldet.')"><button class="btn btn-small" type="submit" style="color:var(--red)"><i class="ti ti-ban"></i> Sperren</button></form>{{end}}
+      {{template "terminal-gear" .}}{{if not .Revoked}}<form method="post" action="/users/{{$u.ID}}/devices/{{.ID}}/revoke" style="margin:0" onsubmit="return confirm('Gerät sperren? Das Terminal wird innerhalb von 30 Sekunden abgemeldet.')"><button class="btn btn-small" type="submit" style="color:var(--red)"><i class="ti ti-ban"></i> Sperren</button></form>{{else}}<form method="post" action="/users/{{$u.ID}}/devices/{{.ID}}/delete" style="margin:0" onsubmit="return confirm('Gerät endgültig löschen? Der Eintrag und die zugehörigen Terminal-Sitzungen werden entfernt. Das kann nicht rückgängig gemacht werden.')"><button class="btn btn-small" type="submit" style="color:var(--red)"><i class="ti ti-trash"></i> Löschen</button></form>{{end}}
     </div>
     {{else}}<p class="rec-sub">Noch kein Gerät gekoppelt.</p>{{end}}
   </div>
@@ -221,7 +221,22 @@
       <label style="font-size:13px;display:flex;gap:8px;align-items:center;margin-top:4px"><input type="hidden" name="orig_stillstand" value="{{if index $m.TerminalFn "stillstand"}}1{{else}}0{{end}}"><input type="checkbox" name="terminal_fn_stillstand" {{if index $m.TerminalFn "stillstand"}}checked{{end}}> Stillstand</label>
       <label style="font-size:13px;display:flex;gap:8px;align-items:center;margin-top:4px"><input type="hidden" name="orig_hmi" value="{{if index $m.TerminalFn "hmi"}}1{{else}}0{{end}}"><input type="checkbox" name="terminal_fn_hmi" {{if index $m.TerminalFn "hmi"}}checked{{end}}> HMI</label>
       <label style="font-size:13px;display:flex;gap:8px;align-items:center;margin-top:4px"><input type="hidden" name="orig_wartungen" value="{{if index $m.TerminalFn "wartungen"}}1{{else}}0{{end}}"><input type="checkbox" name="terminal_fn_wartungen" {{if index $m.TerminalFn "wartungen"}}checked{{end}}> Wartungen</label>
+      <label style="font-size:13px;display:flex;gap:8px;align-items:center;margin-top:4px"><input type="hidden" name="orig_vorgaenge" value="{{if index $m.TerminalFn "vorgaenge"}}1{{else}}0{{end}}"><input type="checkbox" name="terminal_fn_vorgaenge" {{if index $m.TerminalFn "vorgaenge"}}checked{{end}}> Vorgänge</label>
+      <label style="font-size:13px;display:flex;gap:8px;align-items:center;margin-top:4px"><input type="hidden" name="orig_schichtplan" value="{{if index $m.TerminalFn "schichtplan"}}1{{else}}0{{end}}"><input type="checkbox" name="terminal_fn_schichtplan" {{if index $m.TerminalFn "schichtplan"}}checked{{end}}> Schichtplan</label>
       <div class="rec-sub" style="margin-top:4px">Ausgeschaltete Funktionen zeigt die Terminalseite nicht mehr (Kachel und Seite entfallen). Dieselben Schalter gibt es auf der Admin-Seite des Terminals (Reiter „Funktionen“); die jüngere Änderung gewinnt, bei gleichem Zeitpunkt PDH. Die Folienschau steht oben.</div>
+      <div class="form-label" style="margin-top:12px">Abteilungen des Terminals</div>
+      <input type="hidden" name="terminal_depts_sent" value="1">
+      <div id="ud-terminal-depts">
+        {{range $m.TerminalDepts.Options}}<label style="font-size:13px;display:flex;gap:8px;align-items:center;margin-top:4px"><input type="checkbox" name="terminal_depts" value="{{.ID}}" {{if .On}}checked{{end}}> {{.Name}}</label>
+        {{end}}
+      </div>
+      <div class="rec-sub" style="margin-top:4px">Aus diesen Abteilungen wählt man am Terminal die Mitarbeitenden (Vorgänge und weitere Funktionen). Nichts angehakt: Vorgabe = Abteilung der Terminal-Anlage{{if $m.TerminalDepts.Default}} (aktuell: {{$m.TerminalDepts.Default}}){{end}}.</div>
+      <label class="form-label" style="margin-top:8px" for="ud-vorg-modus">Bearbeiten am Terminal (Vorgänge)</label>
+      <select class="form-input" id="ud-vorg-modus" name="terminal_vorg_modus">
+        <option value="ohne_karte" {{if ne $m.TerminalVorgModus "nur_karte"}}selected{{end}}>Ohne Karte (Eingewöhnung)</option>
+        <option value="nur_karte" {{if eq $m.TerminalVorgModus "nur_karte"}}selected{{end}}>Nur mit Karte</option>
+      </select>
+      <div class="rec-sub" style="margin-top:4px">Ohne Karte: Am Terminal darf jede Person Vorgänge starten, warten lassen und beenden, indem sie die Mitarbeitenden auswählt (Rechte: das Terminal). Nur mit Karte: Ohne Karte ist die Liste nur zur Ansicht; mit Karte handelt die Person mit ihren eigenen Rechten. Vorgabe für bestehende Terminals: ohne Karte.</div>
       <label class="form-label" style="margin-top:8px" for="ud-scheme">Farbschema der Terminalseiten</label>
       <select class="form-input" id="ud-scheme" name="terminal_scheme">
         <option value="dark" {{if ne $m.TerminalScheme "light"}}selected{{end}}>Dunkel</option>

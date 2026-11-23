@@ -236,7 +236,7 @@ func (h *Handler) appWorkCan(r *http.Request, kind, id string) (appWorkPerms, er
 // appWorkDetail: Felder der Einzelansicht, art-übergreifend.
 type appWorkDetail struct {
 	Title, Description, Status, Priority, AssetID, AssetName string
-	Due                                                      string
+	Due, UpdatedAt                                           string
 	Actions                                                  []map[string]any
 	Comments                                                 []map[string]any // nur Ticket
 	Steps                                                    []map[string]any // nur Wartung
@@ -366,9 +366,11 @@ func (h *Handler) loadAppWorkDetail(ctx context.Context, kind, id string) (*appW
 	}
 	// Fälligkeit genau wie in der Liste (myOpenWorkSQL: due_date::date in der Zeitzone der Datenbank)
 	var due *time.Time
-	if err := h.db.QueryRow(ctx, `SELECT due_date::date FROM `+completionKinds[kind].Table+` WHERE id = $1::uuid`, id).Scan(&due); err != nil {
+	var updated time.Time
+	if err := h.db.QueryRow(ctx, `SELECT due_date::date, updated_at FROM `+completionKinds[kind].Table+` WHERE id = $1::uuid`, id).Scan(&due, &updated); err != nil {
 		return nil, err
 	}
+	d.UpdatedAt = appTime(updated)
 	if due != nil {
 		d.Due = due.Format("2006-01-02")
 	}
@@ -397,9 +399,16 @@ func appUnavailable(w http.ResponseWriter, err error, kind, id, what string) {
 }
 
 // AppWorkDetailAPI: GET /api/app/v1/work/{type}/{id} – ein Vorgang mit den
-// Aktionen, die dieses Gerät und dieser Benutzer daran dürfen.
+// Aktionen, die dieses Gerät und dieser Benutzer daran dürfen. Eine Kennung vom
+// Telefon, die per Alias (app_id_aliases) auf einen bestehenden Vorgang zeigt,
+// liefert diesen – mit seiner id.
 func (h *Handler) AppWorkDetailAPI(w http.ResponseWriter, r *http.Request) {
 	kind, id := chi.URLParam(r, "type"), chi.URLParam(r, "id")
+	id, err := h.appResolveID(r.Context(), kind, id)
+	if err != nil {
+		appUnavailable(w, err, kind, id, "app: kennung auflösen")
+		return
+	}
 	p, err := h.appWorkCan(r, kind, id)
 	if err != nil {
 		appUnavailable(w, err, kind, id, "vorgang prüfen")
@@ -414,6 +423,12 @@ func (h *Handler) AppWorkDetailAPI(w http.ResponseWriter, r *http.Request) {
 // appWorkRespond schreibt die Einzelansicht (gemeinsam für GET und alle
 // schreibenden Wege, die danach den aktuellen Stand liefern).
 func (h *Handler) appWorkRespond(w http.ResponseWriter, r *http.Request, kind, id string, p appWorkPerms) {
+	h.appWorkRespondHint(w, r, kind, id, p, "")
+}
+
+// appWorkRespondHint: wie appWorkRespond, zusätzlich mit Hinweis "hint" (nur wenn
+// nicht leer; siehe app_work_merge.go). "updated_at" ist der Stand für "base".
+func (h *Handler) appWorkRespondHint(w http.ResponseWriter, r *http.Request, kind, id string, p appWorkPerms, hint string) {
 	d, err := h.loadAppWorkDetail(r.Context(), kind, id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -430,7 +445,7 @@ func (h *Handler) appWorkRespond(w http.ResponseWriter, r *http.Request, kind, i
 	out := map[string]any{
 		"type": kind, "id": id, "number": "", "title": d.Title, "description": d.Description, "status": d.Status, "priority": d.Priority,
 		"asset": map[string]string{"id": d.AssetID, "name": d.AssetName}, "due": nil,
-		"actions": d.Actions, "history": hist,
+		"actions": d.Actions, "history": hist, "updated_at": d.UpdatedAt,
 		"can": map[string]bool{"start": p.Start, "action": p.Action, "comment": p.Comment, "step": p.Step, "finish": p.Finish},
 	}
 	if d.Due != "" {
@@ -441,6 +456,9 @@ func (h *Handler) appWorkRespond(w http.ResponseWriter, r *http.Request, kind, i
 	}
 	if d.Steps != nil {
 		out["steps"] = d.Steps
+	}
+	if hint != "" {
+		out["hint"] = hint
 	}
 	terminalJSON(w, http.StatusOK, out)
 }

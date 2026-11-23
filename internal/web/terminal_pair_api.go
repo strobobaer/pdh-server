@@ -3,11 +3,13 @@ package web
 import (
 	"bytes"
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"io"
 	"net"
 	"net/http"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -134,6 +136,9 @@ func (h *Handler) TerminalPairAPI(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Code string `json:"code"`
 		Name string `json:"name"`
+		// Previous: freiwillig, Umzug eines schon gekoppelten Geräts (siehe movePreviousDevice).
+		// Als Rohwert gelesen, damit eine falsch geformte Angabe die Kopplung nie verhindert.
+		Previous json.RawMessage `json:"previous"`
 	}
 	dec := json.NewDecoder(bytes.NewReader(body))
 	dec.DisallowUnknownFields()
@@ -198,6 +203,11 @@ func (h *Handler) TerminalPairAPI(w http.ResponseWriter, r *http.Request) {
 		serverErr(err)
 		return
 	}
+	moved, err := movePreviousDevice(ctx, tx, in.Previous)
+	if err != nil {
+		serverErr(err)
+		return
+	}
 	var devID string
 	if err = tx.QueryRow(ctx, `INSERT INTO terminal_devices (user_id, name, secret_sha256)
 		VALUES ($1::uuid, $2, $3) RETURNING id::text`, userID, name, hashDeviceSecret(secret)).Scan(&devID); err != nil {
@@ -212,7 +222,80 @@ func (h *Handler) TerminalPairAPI(w http.ResponseWriter, r *http.Request) {
 	authLog(r, true, "terminal-kopplung", username, userID, display, "")
 	h.addHistory(ctx, "user", userID, "terminal_paired", "", "", name, "", "")
 	componentLog("terminal").Info().Str("device", devID).Str("user", userID).Msg("gerät gekoppelt")
-	terminalJSON(w, http.StatusOK, map[string]string{"device_id": devID, "secret": secret, "user": display})
+	out := map[string]any{"device_id": devID, "secret": secret, "user": display}
+	if moved != nil {
+		out["moved"] = true
+		h.finishTerminalMove(ctx, moved, userID, display)
+	}
+	terminalJSON(w, http.StatusOK, out)
+}
+
+// previousDevice ist der alte Eintrag eines umgezogenen Terminals.
+type previousDevice struct {
+	ID, UserID, Name, UserName string
+}
+
+var prevDeviceUUIDRe = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+
+// movePreviousDevice löscht in der Transaktion der Kopplung den alten Gerätesatz, wenn
+// die freiwillige Angabe previous {"device_id","secret"} passt (Kennung und Geheimnis,
+// gesperrt oder aktiv, beliebiger Benutzer). Fehlt die Angabe, ist sie falsch geformt
+// oder passt sie nicht, geschieht nichts, ohne Fehler und ohne Unterschied in der
+// Antwort: Es läuft immer dieselbe Abfolge von Anweisungen und der Hash wird in
+// konstanter Zeit verglichen, damit die Angabe kein Orakel für vorhandene Kennungen ist.
+func movePreviousDevice(ctx context.Context, tx pgx.Tx, raw json.RawMessage) (*previousDevice, error) {
+	var p struct {
+		DeviceID string `json:"device_id"`
+		Secret   string `json:"secret"`
+	}
+	valid := len(raw) > 0 && json.Unmarshal(raw, &p) == nil && prevDeviceUUIDRe.MatchString(p.DeviceID) &&
+		p.Secret != "" && len(p.Secret) <= 256
+	id := "00000000-0000-0000-0000-000000000000"
+	want := hashDeviceSecret("")
+	if valid {
+		id, want = strings.ToLower(p.DeviceID), hashDeviceSecret(p.Secret)
+	}
+	var old previousDevice
+	var stored, first, last, username string
+	found := true
+	err := tx.QueryRow(ctx, `SELECT d.id::text, d.user_id::text, d.name, d.secret_sha256,
+		COALESCE(u.first_name, ''), COALESCE(u.last_name, ''), COALESCE(u.username, '')
+		FROM terminal_devices d LEFT JOIN users u ON u.id = d.user_id
+		WHERE d.id = $1::uuid FOR UPDATE OF d`, id).Scan(&old.ID, &old.UserID, &old.Name, &stored, &first, &last, &username)
+	if errors.Is(err, pgx.ErrNoRows) {
+		found, stored = false, hashDeviceSecret("unbekannt")
+	} else if err != nil {
+		return nil, err
+	}
+	match := valid && found && subtle.ConstantTimeCompare([]byte(stored), []byte(want)) == 1
+	if !match {
+		// gleiche Anweisungen wie beim Löschen, ohne Wirkung
+		if _, err := tx.Exec(ctx, `DELETE FROM terminal_pdh_sessions WHERE false`); err != nil {
+			return nil, err
+		}
+		if _, err := tx.Exec(ctx, `DELETE FROM terminal_devices WHERE false`); err != nil {
+			return nil, err
+		}
+		return nil, nil
+	}
+	if err := deleteTerminalDeviceTx(ctx, tx, old.ID); err != nil {
+		return nil, err
+	}
+	old.UserName = displayUserName(first, last, username)
+	return &old, nil
+}
+
+// finishTerminalMove schreibt nach dem Commit den Verlauf an beiden Benutzern und
+// beendet die offenen Kanäle des alten (das alte Gerät erhält danach 403).
+func (h *Handler) finishTerminalMove(ctx context.Context, old *previousDevice, newUserID, newUserName string) {
+	if old.UserID == newUserID {
+		h.addHistory(ctx, "user", newUserID, "terminal_taken_over", "", old.Name, "", "Terminal "+old.Name+" neu gekoppelt (ersetzt das bisherige Gerät)", "")
+	} else {
+		h.addHistory(ctx, "user", old.UserID, "terminal_moved", "", old.Name, newUserName, "Terminal "+old.Name+" umgezogen zu "+newUserName, "")
+		h.addHistory(ctx, "user", newUserID, "terminal_taken_over", "", "", old.Name, "Terminal "+old.Name+" übernommen von "+old.UserName, "")
+	}
+	h.forgetTerminalDevice(old.ID, old.UserID)
+	componentLog("terminal").Info().Str("device", old.ID).Str("von", old.UserID).Str("nach", newUserID).Msg("gerät umgezogen")
 }
 
 // deviceByID liefert den Benutzer eines Geräts und ob die Kopplung noch gilt
@@ -240,7 +323,8 @@ func (h *Handler) TerminalDeviceAPI(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 	_, _ = h.db.Exec(ctx, `UPDATE terminal_devices SET last_seen_at = NOW(),
-		client_version = CASE WHEN $2 <> '' THEN $2 ELSE client_version END WHERE id = $1::uuid`, dev.ID, terminalClientVersion(r))
+		client_version = CASE WHEN $2 <> '' THEN $2 ELSE client_version END,
+		admin_url = CASE WHEN $3 <> '' THEN $3 ELSE admin_url END WHERE id = $1::uuid`, dev.ID, terminalClientVersion(r), terminalAdminURL(r))
 	out := map[string]any{"device_id": dev.ID, "user": displayUserName(dev.First, dev.Last, dev.Username), "name": dev.Name}
 	fn, theme, err := h.terminalFnPayload(ctx, dev.UserID)
 	if err != nil {

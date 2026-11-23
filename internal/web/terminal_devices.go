@@ -308,14 +308,14 @@ func (h *Handler) TerminalDeviceLogin(w http.ResponseWriter, r *http.Request) {
 // terminalDeviceRow ist eine Zeile der Karte „Gekoppelte Geräte“ (Zeiten
 // deutsch formatiert; LastSeen „nie“, Revoked leer = nicht gesperrt).
 type terminalDeviceRow struct {
-	ID, Name                   string
+	ID, Name, AdminURL         string
 	Created, LastSeen, Revoked string
 }
 
 // loadTerminalDevices listet die Geräte eines Benutzers: aktive zuerst, dann
 // neueste zuerst.
 func (h *Handler) loadTerminalDevices(ctx context.Context, userID string) ([]terminalDeviceRow, error) {
-	rows, err := h.db.Query(ctx, `SELECT id::text, name, created_at, last_seen_at, revoked_at
+	rows, err := h.db.Query(ctx, `SELECT id::text, name, admin_url, created_at, last_seen_at, revoked_at
 		FROM terminal_devices WHERE user_id = $1::uuid
 		ORDER BY (revoked_at IS NOT NULL), created_at DESC`, userID)
 	if err != nil {
@@ -328,7 +328,7 @@ func (h *Handler) loadTerminalDevices(ctx context.Context, userID string) ([]ter
 		var d terminalDeviceRow
 		var created time.Time
 		var seen, revoked *time.Time
-		if err := rows.Scan(&d.ID, &d.Name, &created, &seen, &revoked); err != nil {
+		if err := rows.Scan(&d.ID, &d.Name, &d.AdminURL, &created, &seen, &revoked); err != nil {
 			return nil, err
 		}
 		d.Created = created.Local().Format(layout)
@@ -378,4 +378,78 @@ func (h *Handler) TerminalDeviceRevokeWeb(w http.ResponseWriter, r *http.Request
 	h.addHistory(ctx, "user", id, "terminal_revoked", "", name, "", "", getUser(r).ID)
 	componentLog("terminal").Info().Str("user", id).Str("device", dev).Str("von", getUser(r).ID).Msg("gerät gesperrt")
 	userRedirect(w, r, id, "", "Gerät gesperrt", nil)
+}
+
+// deleteTerminalDeviceTx löscht ein Gerät samt allem, was an seiner Kennung hängt:
+// die PDH-Sitzungen am Terminal (terminal_pdh_sessions.device_id, ohne Fremdschlüssel)
+// und die Zeile selbst. Die Kartensitzung hängt am Terminal-Benutzer, nicht am Gerät,
+// und bleibt unberührt. Der Aufrufer sorgt nach dem Commit für Zwischenspeicher und Kanäle.
+func deleteTerminalDeviceTx(ctx context.Context, tx pgx.Tx, devID string) error {
+	if _, err := tx.Exec(ctx, `DELETE FROM terminal_pdh_sessions WHERE device_id = $1::uuid`, devID); err != nil {
+		return err
+	}
+	_, err := tx.Exec(ctx, `DELETE FROM terminal_devices WHERE id = $1::uuid`, devID)
+	return err
+}
+
+// forgetTerminalDevice verwirft den Sperr-Zwischenspeicher und beendet die offenen
+// Ereigniskanäle des Terminal-Benutzers (andere Geräte verbinden sich von selbst neu;
+// das gelöschte erhält 403).
+func (h *Handler) forgetTerminalDevice(devID, userID string) {
+	terminalDevices.forget(devID)
+	h.eventHub().closeUser(userID)
+}
+
+// TerminalDeviceDeleteWeb löscht ein gesperrtes Gerät (POST /users/{id}/devices/{dev}/delete).
+// Dieselbe Berechtigung wie „Sperren“; ein aktives Gerät wird mit 409 abgelehnt.
+func (h *Handler) TerminalDeviceDeleteWeb(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	id := chi.URLParam(r, "id")
+	dev := chi.URLParam(r, "dev")
+	u, err := h.users.GetByID(ctx, id)
+	if err != nil || u == nil {
+		http.Error(w, "Benutzer nicht gefunden", http.StatusNotFound)
+		return
+	}
+	if !h.canManageUsers(r) || !h.outranksRole(r, string(u.Role)) {
+		http.Error(w, "keine berechtigung", http.StatusForbidden)
+		return
+	}
+	fail := func(err error) {
+		componentLog("terminal").Error().Err(err).Str("device", dev).Msg("gerät löschen fehlgeschlagen")
+		userRedirect(w, r, id, "", "", errors.New("Das Gerät konnte nicht gelöscht werden"))
+	}
+	tx, err := h.db.Begin(ctx)
+	if err != nil {
+		fail(err)
+		return
+	}
+	defer tx.Rollback(ctx)
+	var name string
+	var revoked *time.Time
+	err = tx.QueryRow(ctx, `SELECT name, revoked_at FROM terminal_devices
+		WHERE id::text = $1 AND user_id = $2::uuid FOR UPDATE`, dev, id).Scan(&name, &revoked)
+	if errors.Is(err, pgx.ErrNoRows) {
+		http.Error(w, "Gerät nicht gefunden", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		fail(err)
+		return
+	}
+	if revoked == nil {
+		http.Error(w, "Nur gesperrte Geräte können gelöscht werden", http.StatusConflict)
+		return
+	}
+	if err = deleteTerminalDeviceTx(ctx, tx, dev); err == nil {
+		err = tx.Commit(ctx)
+	}
+	if err != nil {
+		fail(err)
+		return
+	}
+	h.forgetTerminalDevice(dev, id)
+	h.addHistory(ctx, "user", id, "terminal_deleted", "", name, "", "Terminal "+name+" gelöscht", getUser(r).ID)
+	componentLog("terminal").Info().Str("user", id).Str("device", dev).Str("von", getUser(r).ID).Msg("gerät gelöscht")
+	userRedirect(w, r, id, "", "Gerät gelöscht", nil)
 }
