@@ -28,6 +28,15 @@ func SetTerminalSessionCheck(f func(r *http.Request, sub, tsess, tdev string) bo
 	terminalSessionCheck.Store(&f)
 }
 
+// terminalTokenCheck prueft Abschluss-Token, die ein Terminal ausstellt (Claim "tv"): Geraetesitzung des
+// Terminals, Kartenperson, Einmal-Kennung. Ohne gesetzte Pruefung werden sie abgewiesen (fail closed).
+var terminalTokenCheck atomic.Pointer[func(r *http.Request, claims map[string]interface{}) bool]
+
+// SetTerminalTokenCheck setzt die Pruefung fuer Terminal-Abschluss-Token.
+func SetTerminalTokenCheck(f func(r *http.Request, claims map[string]interface{}) bool) {
+	terminalTokenCheck.Store(&f)
+}
+
 // statusRecorder merkt sich den geschriebenen HTTP-Statuscode, damit
 // Logger() ihn mitloggen kann - net/http gibt ihn sonst nicht her.
 type statusRecorder struct {
@@ -143,6 +152,13 @@ func Auth(jwtSecret string) func(http.Handler) http.Handler {
 				if !ScopedTokenAllows(scope, ref, r.Method, r.URL.Path) {
 					response.Error(w, http.StatusForbidden, "token nur für einen bestimmten vorgang gültig")
 					return
+				}
+				if tv, _ := claims["tv"].(string); tv != "" {
+					chk := terminalTokenCheck.Load()
+					if chk == nil || !(*chk)(r, claims) {
+						response.Error(w, http.StatusUnauthorized, "ungültiger token")
+						return
+					}
 				}
 			}
 

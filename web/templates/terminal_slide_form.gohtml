@@ -39,12 +39,16 @@
           <option value="stats_downtime"{{if eq .Slide.Kind "stats_downtime"}} selected{{end}}>Statistik Stillstände</option>
           <option value="grafana"{{if eq .Slide.Kind "grafana"}} selected{{end}}>Grafana-Dashboard</option>
           <option value="website"{{if eq .Slide.Kind "website"}} selected{{end}}>Website</option>
+          <option value="plan_shifts"{{if eq .Slide.Kind "plan_shifts"}} selected{{end}}>Schichtplan</option>
+          <option value="plan_absences"{{if eq .Slide.Kind "plan_absences"}} selected{{end}}>Abwesenheiten</option>
+          <option value="plan_duties"{{if eq .Slide.Kind "plan_duties"}} selected{{end}}>Dienste und Bereitschaft</option>
+          <option value="plan_maint"{{if eq .Slide.Kind "plan_maint"}} selected{{end}}>Wartungsplanung</option>
         </select></div>
       <div class="form-group"><label class="form-label" for="sf-duration">Dauer in Sekunden</label>
         <input id="sf-duration" name="duration" type="number" min="5" max="600" class="form-input" value="{{.Slide.DurationSeconds}}"></div>
     </div>
 
-    <div class="form-group"><label class="form-label" for="sf-title">Titel <span style="color:var(--muted);font-weight:400" data-sf-kind="image vorgaenge stats_faults stats_tickets stats_setup stats_downtime grafana website">(optional)</span></label>
+    <div class="form-group"><label class="form-label" for="sf-title">Titel <span style="color:var(--muted);font-weight:400" data-sf-kind="image vorgaenge stats_faults stats_tickets stats_setup stats_downtime grafana website plan_shifts plan_absences plan_duties plan_maint">(optional)</span></label>
       <input id="sf-title" name="title" class="form-input" maxlength="{{.MaxTitle}}" value="{{.Slide.Title}}"></div>
 
     <div data-sf-kind="image">
@@ -66,6 +70,24 @@
         <option value="30"{{if eq .Slide.StatsDays 30}} selected{{end}}>Letzte 5 Wochen (je Woche)</option>
       </select>
       <div class="sf-hint">Gezählt wird für die gewählten Anlagen samt Unteranlagen (leer = alle), im Umfang der Rechte des Terminal-Benutzers (Ansehen von Störungen, Tickets bzw. Rüstzeiten bzw. Stillständen). Bei Stillständen zeigt das Diagramm die Minuten je Grund (die acht längsten). Bei Störungen steht die mittlere Dauer bis zur Lösung.</div></div>
+
+    <div data-sf-kind="plan_shifts plan_absences plan_duties plan_maint">
+      <div class="sf-row">
+        <div class="form-group"><label class="form-label" for="sf-plan-range">Zeitraum</label>
+          <select id="sf-plan-range" name="plan_range" class="form-input" onchange="sfPlanRange()">
+            <option value="today"{{if or (eq .Slide.PlanRange "today") (eq .Slide.PlanRange "")}} selected{{end}}>Heute</option>
+            <option value="week"{{if eq .Slide.PlanRange "week"}} selected{{end}}>Diese Woche</option>
+            <option value="next_week"{{if eq .Slide.PlanRange "next_week"}} selected{{end}}>Nächste Woche</option>
+            <option value="days"{{if eq .Slide.PlanRange "days"}} selected{{end}}>Nächste N Tage</option>
+          </select></div>
+        <div class="form-group" id="sf-plan-days-box"><label class="form-label" for="sf-plan-days">Anzahl Tage (1 bis 31)</label>
+          <input id="sf-plan-days" name="plan_days" type="number" min="1" max="31" class="form-input" value="{{.Slide.PlanDays}}"></div>
+      </div>
+      <div class="form-group"><span class="form-label">Abteilungen <span style="color:var(--muted);font-weight:400">(leer = alle)</span></span>
+        {{range .Departments}}<label class="sf-check"><input type="checkbox" name="department_ids" value="{{.ID}}"{{if .On}} checked{{end}}><span>{{.Name}}</span></label>
+        {{else}}<div class="sf-hint">Keine Abteilungen angelegt.</div>{{end}}
+        <div class="sf-hint">Am Terminal erscheinen nur Abteilungen, die auch zu den Abteilungen des Terminals gehören (Schnittmenge), und nur, wenn der Terminal-Benutzer dort das Recht hat: Planer ansehen (Schichtplan, Abwesenheiten, Dienste) bzw. Wartung ansehen (Wartungsplanung). Bei Abwesenheiten steht nur „abwesend“, nie die Art oder der Grund. Ohne Verbindung zu PDH wird die Folie übersprungen.</div></div>
+    </div>
 
     <div data-sf-kind="grafana">
       <div class="form-group"><label class="form-label" for="sf-url">Adresse des Dashboards</label>
@@ -123,6 +145,12 @@ function sfKind(){
   document.querySelectorAll('[data-sf-kind]').forEach(function(el){
     el.hidden = el.dataset.sfKind.split(' ').indexOf(kind) === -1;
   });
+  sfPlanRange();
+}
+// Anzahl Tage nur bei „Nächste N Tage“
+function sfPlanRange(){
+  const r = document.getElementById('sf-plan-range'), box = document.getElementById('sf-plan-days-box');
+  if(r && box) box.hidden = r.value !== 'days';
 }
 // Anlagen: IDs im versteckten Feld (kommagetrennt), Anzeige als Namen.
 const sfInfraNames = {};

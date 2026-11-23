@@ -341,6 +341,10 @@ func (h *Handler) CompletionWeb(w http.ResponseWriter, r *http.Request) {
 	// ── Zeit: laufenden Timer stoppen oder neuen Eintrag anlegen ──
 	var start, end time.Time
 	desc := k.Label + ": " + title
+	viaNote := h.terminalViaNote(r) // am Terminal gewählt, nicht selbst angemeldet (terminal_vorgaenge.go)
+	if viaNote != "" {
+		desc += " – " + viaNote
+	}
 	switch {
 	case runID != "":
 		start, end = runStart, time.Now()
@@ -380,6 +384,9 @@ func (h *Handler) CompletionWeb(w http.ResponseWriter, r *http.Request) {
 
 	// ── Kommentar als Massnahme ──
 	action := in.Comment
+	if viaNote != "" {
+		action += "\n\n" + viaNote
+	}
 	if len(names) > 0 {
 		action += "\n\nBeteiligt: " + strings.Join(names, ", ")
 	}
@@ -391,6 +398,7 @@ func (h *Handler) CompletionWeb(w http.ResponseWriter, r *http.Request) {
 	if !in.Finish {
 		_, _ = h.completionInProgress(ctx, k, id)
 		h.addHistory(ctx, historyRef(k.Type), id, "work", "", "", "", "Arbeitsschritt erfasst (geht noch weiter)", u.ID)
+		h.terminalCompletionNote(r, k, id, false)
 		completionJSON(w, http.StatusOK, map[string]any{"success": true, "closed": false, "message": tr(lang, "Arbeitsschritt gespeichert – der Vorgang bleibt in Bearbeitung.")})
 		return
 	}
@@ -399,7 +407,7 @@ func (h *Handler) CompletionWeb(w http.ResponseWriter, r *http.Request) {
 		completionJSON(w, http.StatusOK, map[string]any{"success": true, "closed": false, "warning": tr(lang, "Gespeichert, aber noch nicht abgeschlossen: %s", tr(lang, err.Error()))})
 		return
 	}
-	if boardCompleteFrom(ctx) {
+	if boardCompleteFrom(ctx) && !h.terminalCompletionNote(r, k, id, true) {
 		h.logBoardCompletion(context.WithoutCancel(ctx), k.Type, id, in.Comment, u.ID)
 	}
 	msg := tr(lang, "%s abgeschlossen.", tr(lang, k.Label))

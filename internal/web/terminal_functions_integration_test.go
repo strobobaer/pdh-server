@@ -196,7 +196,7 @@ func TestTerminalFnPutAPI(t *testing.T) {
 		t.Fatalf("PUT: %d %s", rec.Code, rec.Body.String())
 	}
 	st := fnDecode(t, rec)
-	if len(st) != 7 || st["ticket"].Enabled || st["ticket"].UpdatedAt != fnWire(at) || !st["hmi"].Enabled || st["hmi"].UpdatedAt != "1970-01-01T00:00:00.000Z" {
+	if len(st) != len(terminalFnDefs) || st["ticket"].Enabled || st["ticket"].UpdatedAt != fnWire(at) || !st["hmi"].Enabled || st["hmi"].UpdatedAt != "1970-01-01T00:00:00.000Z" {
 		t.Errorf("Stand: %+v", st)
 	}
 	select {
@@ -250,7 +250,7 @@ func TestTerminalFnDeviceAndEvent(t *testing.T) {
 	m := dev()
 	fn, _ := m["functions"].(map[string]any)
 	th, _ := m["theme"].(map[string]any)
-	if len(fn) != 7 || th["scheme"] != "dark" || th["bg"] != "#202020" || m["device_id"] != devID {
+	if len(fn) != len(terminalFnDefs) || th["scheme"] != "dark" || th["bg"] != "#202020" || m["device_id"] != devID {
 		t.Fatalf("device-Antwort: %v", m)
 	}
 

@@ -16,6 +16,35 @@ im Kapitel „Versionen & Updates“ an.
 
 - **Terminal: Zahnrad zur Verwaltungsseite.** In **Gekoppelte Geräte** und in der Liste der Kiosk-Terminals öffnet ein Zahnrad die Verwaltungsseite des Terminals in einem neuen Tab. Das Terminal meldet seine Adresse ab Version 0.4.5 selbst; bei älteren Terminals ist das Zahnrad grau. Die Verwaltungsseite fragt nach ihrem eigenen Administrator-Passwort, und beim ersten Besuch warnt der Browser vor dem selbst signierten Zertifikat.
 
+## [0.82.42] – 2026-11-23
+
+### Neu
+
+- **Infobildschirm: Planungsfolien.** Vier neue Folienarten aus dem Planer, jede eine eigene Folie: **Schichtplan** (Personen je Schicht und Tag), **Abwesenheiten**, **Dienste und Bereitschaft** (Sonderdienste je Dienstart) und **Wartungsplanung** (offene Wartungsaufträge nach Fälligkeit). Je Folie wählst du den **Zeitraum** (heute, diese Woche, nächste Woche oder die nächsten N Tage, N von 1 bis 31) und die **Abteilungen** (mehrere möglich, leer = alle). Am Terminal gilt zusätzlich die Abteilungsgrenze des Terminals (Schnittmenge), und gezeigt wird nur, wofür der Terminal-Benutzer in der Abteilung das Recht hat (Planer ansehen bzw. Wartung ansehen). Bei Abwesenheiten steht nur „abwesend“, Art und Grund verlassen den Server nie. Hat ein globales Terminal weder Anlage noch Abteilungs-Einstellung, zeigt die Folie alle Abteilungen, die der Terminal-Benutzer sehen darf (Personen und Anlagen ohne Abteilung nur, wenn das Recht überall gilt). Die Wartungsplanung zeigt auch überfällige offene Aufträge, als „Überfällig“ markiert. Die Folien stehen nicht im Zwischenspeicher des Geräts und entfallen ohne Verbindung wie Website-Folien.
+- Migration 208: Spalten `plan_range`, `plan_days` und `department_ids` an `terminal_slides`, erweiterte Folienart-Prüfung. Nur hinzufügend; vorhandene Folien und ältere Stände bleiben gültig.
+- Handbuch, Kapitel „Infobildschirm“: die neuen Folienarten beschrieben.
+
+## [0.82.41] – 2026-11-23
+
+### Neu
+
+- **Terminal: Schichtplan.** Neue Funktion **Schichtplan** (Schalter beim Systembenutzer und am Terminal, Grundwert an; Migration 207) mit Kachel auf der Seite „Neu“ und der Seite `/terminal/schichtplan`: heute und die Woche (diese oder nächste) je Abteilung des Terminals, mit Name und Schicht je Tag aus dem Planer (nur veröffentlichte Pläne) sowie den Sonderdiensten. Wählbar sind nur Abteilungen des Terminals, für die der Terminal-Benutzer `shifts.view` hat; eine andere Abteilung wird abgewiesen. Nur lesend, ohne Anmeldung.
+- **Datenschutz:** Abwesende erscheinen am Terminal nur als „abwesend“. Die Art der Abwesenheit (Urlaub, Krank, Schulung …) und Notizen werden nicht gelesen und verlassen den Server nicht.
+- Handbuch, Kapitel „Anlagenterminal“: Schichtplan ergänzt.
+
+## [0.82.40] – 2026-11-23
+
+### Neu
+
+- **Terminal: Vorgänge.** Neue Kachel und Seite **Vorgänge** am Anlagenterminal: offene Störungen, Tickets und Aufgaben der Anlage und ihrer Unteranlagen mit Stand (offen, in Arbeit, wartet). Einen offenen Vorgang antippen, Mitarbeitende wählen (mehrere), **Starten** – der Vorgang geht auf „In Arbeit“ und die Personen werden zugewiesen. Einen laufenden Vorgang antippen: **Warten (geht noch weiter)** setzt ihn auf „Wartet“ (Zuweisung bleibt), **Beenden** öffnet bei Störungen und Tickets den Abschluss-Assistenten (wie im Leitstand), bei Aufgaben ist sie danach erledigt. Eine vorgehaltene Karte öffnet den Stand der Person mit ihren laufenden Vorgängen (Beenden, Warten) und wählt sie in der Auswahl vor.
+- **Einstellung „Bearbeiten am Terminal“** beim Systembenutzer: **Ohne Karte (Eingewöhnung)**, Vorgabe für alle bestehenden Terminals – am Terminal darf jede Person durch Wählen der Mitarbeitenden starten, warten lassen und beenden (Rechte des Terminal-Benutzers in der Abteilung der Anlage, nur in der Gerätesitzung) – oder **Nur mit Karte** (ohne Karte nur Ansicht; mit Karte handelt die Person mit ihren eigenen Rechten). Die Rolle „Terminal“ hat die Rechte zum Beenden und für Aufgaben nicht von Haus aus; der Betreiber vergibt sie bei Bedarf.
+- **Einstellung „Abteilungen des Terminals“** beim Systembenutzer: aus diesen Abteilungen stammen die wählbaren Mitarbeitenden (Vorgabe: Abteilung der Terminal-Anlage). Auch für weitere Terminalfunktionen gedacht.
+- **Schalter „Vorgänge“** in den Funktionen des Terminals (Grundwert an). Der Schalter steht im Funktionen-Abgleich; ältere Terminals kennen ihn nicht und schicken ihn nicht, unbekannte Schlüssel in der Anfrage werden wie bisher übergangen.
+- **Verlauf mit Herkunft.** Jeder Schritt am Terminal steht im Verlauf des Vorgangs mit den gewählten Personen, dem Terminal als Ort und der Herkunft „am Terminal gewählt“ oder „mit Karte“ (neue Felder `origin_via`, `place`, `people_ids` im Verlauf, für Auswertungen filterbar).
+- **Handeln im Namen anderer ist gekennzeichnet.** Bei „Ohne Karte“ steht im Verlauf, in der Maßnahme und in den Zeiteinträgen des Abschluss-Assistenten ausdrücklich „am Terminal gewählt, nicht selbst angemeldet“. Wird ein Vorgang am Terminal neu gestartet und fallen früher gewählte Personen weg, nennt der Verlauf sie („nicht mehr dabei“).
+- **Abschluss-Token des Terminals** (Sicherheit): Laufzeit 5 Minuten, gilt nur zusammen mit der Gerätesitzung dieses Terminals (auch für die Material-Schnittstelle), bei „mit Karte“ nur bei weiterhin angemeldeter Kartenperson, ist einmalig (nach dem Abschluss verbraucht) und es gilt nur das jeweils neueste Token je Vorgang. Die Kennung liegt in `app_settings` (Schlüssel `tcomplete:…`), ohne neues Schema.
+- Migration 206 (nur hinzufügend). Handbuch, Kapitel „Anlagenterminal“, um „Vorgänge am Terminal“ ergänzt.
+
 ## [0.82.39] – 2026-11-23
 
 ### Behoben
