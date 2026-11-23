@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"pdh/internal/core/users"
+	"pdh/internal/modules/faults"
 )
 
 func TestConnectionInfoNoSecrets(t *testing.T) {
@@ -183,5 +184,21 @@ func TestRedactSecretsBeyondFields(t *testing.T) {
 	}
 	if !strings.Contains(got, "Fabcd bleibt") {
 		t.Errorf("kurzes Kennwort darf nur als eigenes Wort ersetzt werden: %s", got)
+	}
+}
+
+// Die Seitenleiste kennt die Verbindung nur, wenn der Copilot Werkzeuge kann
+// (Claude). Mit Ollama oder ohne Copilot gibt es weder die Werkzeuge noch den
+// Hinweis „gehen an Anthropic“.
+func TestCopilotConnRef(t *testing.T) {
+	const id = "11111111-1111-1111-1111-111111111111"
+	if got := copilotConnRef(nil, "import", id); got != "" {
+		t.Errorf("ohne Copilot: %q", got)
+	}
+	if got := copilotConnRef(faults.NewCopilot("", "", "", "", nil), "import", id); got != "" {
+		t.Errorf("Ollama: %q", got)
+	}
+	if got := copilotConnRef(faults.NewCopilot("sk-ant-test-0000000000", "", "", "", nil), "export", id); got != "export:"+id {
+		t.Errorf("Claude: %q", got)
 	}
 }

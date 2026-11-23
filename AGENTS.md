@@ -759,12 +759,26 @@ und 3 drückt bis auf Weiteres der Anwender.
     Zuordnungen an (Abfrage ohne Typangaben). Schlussprüfung mit Fix-Welle
     erledigt (23.11.2026); geparkte kleine Befunde im Bericht
     `.superpowers/sdd/2026-11-22-copilot-zuordnen-paket1/final-review.md`
-    (u. a. Websuche auf Verbindungsseiten ohne Schalter, Datenschutz-Hinweis
-    auch ohne Anthropic, Einheit „kW“ nur geraten, MQTT-Mitschnitt 3 s). Offen:
-    Freigabe Push/Merge, Verbund-Update, Browserprüfung (Vorschlagsliste,
-    Änderungsliste in Fiori/Fluent, hell/dunkel, 320–1366 px; Copilot mit
-    echtem Anthropic-Schlüssel samt Websuche; OPC-UA-Breitensuche an einem
-    echten Server). Danach Paket 2 (berechnete Werte).
+    (u. a. Websuche auf Verbindungsseiten ohne Schalter, Einheit „kW“ nur
+    geraten, MQTT-Mitschnitt 3 s).
+    **0.82.35 auf `main`** (23.11.2026, Merge `3034875a`) und dem Testverbund
+    (beide Server und Zeuge 0.82.35, Migrationen 203 und 204 da, aktiv jetzt
+    `pdh-server` 10.10.0.17, Spiegelung läuft). Am Testverbund im Browser
+    geprüft (23.11.2026): Knopf „Zuordnungen vorschlagen“ an „MQTT-Broker
+    Test“ liefert den Hinweis „In 3 Sekunden kam keine Nachricht“ (dort
+    sendet nichts), 20 Ansichten ohne Überlauf und Konsolenfehler; Prüfkonto
+    gesperrt, keine Testdaten. **Der Copilot läuft am Testverbund mit Ollama
+    (nicht erreichbar)** – Änderungsliste, „Übernehmen“ und Websuche sind dort
+    nicht echt gelaufen, nur automatisch getestet und an einer lokal
+    gerenderten Seite angesehen (20 Ansichten). **0.82.36** (Branch
+    `fix/vorschlagsliste-handy`, lokal): Vorschlagsliste bis 900 px Breite
+    untereinander statt breiter Tabelle; Anthropic-Hinweis nur mit Claude
+    (`copilotConnRef`). Offen: Freigabe 0.82.36 (Push/Merge/Verbund-Update);
+    Abnahme des Copilot mit echtem Anthropic-Schlüssel (Anwender, z. B. auf
+    10.10.0.202: Auftrag „Ordne … zu“, Änderungsliste, „Übernehmen“,
+    Vorlage aus dem Internet); Vorschlagsliste mit echten MQTT-Themen und
+    OPC-UA-Knoten; 10.10.0.202 einspielen (Anwender, mit Sicherung).
+    Danach Paket 2 (berechnete Werte).
 
 Docker Desktop startet nach einem Neustart des Windows-Rechners nicht von
 selbst – ohne ihn fehlen der Zeuge und die Labor-Datenbank für die Tests.

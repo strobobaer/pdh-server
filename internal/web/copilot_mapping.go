@@ -23,6 +23,16 @@ import (
 // copilotConnRe: Feld conn von /copilot/ask – "import:<uuid>" oder "export:<uuid>".
 var copilotConnRe = regexp.MustCompile(`^(import|export):([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$`)
 
+// copilotConnRef: Kennung der Verbindung für die Seitenleiste ("import:<id>").
+// Leer, wenn der Copilot keine Werkzeuge kann (Ollama, nicht eingerichtet) –
+// dann gibt es dort weder Änderungsliste noch den Hinweis auf Anthropic.
+func copilotConnRef(cp *faults.Copilot, direction, id string) string {
+	if !cp.CanUseTools() {
+		return ""
+	}
+	return direction + ":" + id
+}
+
 // copilotConn ist die Verbindung, auf deren Seite gefragt wird.
 type copilotConn struct {
 	Direction, ID, Kind, Name string

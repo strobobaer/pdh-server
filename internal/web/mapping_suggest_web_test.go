@@ -109,3 +109,30 @@ func TestSuggestApplyOnlyVisibleRows(t *testing.T) {
 	}
 	checkScripts(t, "mapping-suggest-visible", page)
 }
+
+// Am Handy stehen die Angaben einer Zeile untereinander (keine breite Tabelle
+// zum Seitwärtsrollen), lange Quellnamen brechen um.
+func TestSuggestListPhoneLayout(t *testing.T) {
+	tmpl := loadTestTemplates(t)
+	d := ConnectionDetailData{Direction: "import", ID: "11111111-1111-1111-1111-111111111111", Name: "Broker", Kind: "mqtt", KindLabel: "MQTT", CanWrite: true, Tab: "mappings"}
+	page := renderPage(t, tmpl, "connection_detail", d)
+	for _, want := range []string{
+		".cd-sugg-src{max-width:340px;overflow-wrap:anywhere}",
+		"@media (max-width:900px){.cd-sugg-tbl thead{display:none}",
+		".cd-sugg-tbl td[data-label]::before{content:attr(data-label)",
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("%q fehlt", want)
+		}
+	}
+	var buf strings.Builder
+	v := SuggestionsView{Direction: "import", ConnectionID: d.ID, Rows: []suggestRow{{Ref: "a/b", Label: "a/b", Name: "Strom"}}}
+	if err := tmpl.ExecuteTemplate(&buf, "mapping-suggestions", v); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`data-label="Anlage"`, `data-label="Bezeichnung"`, `data-label="Notiz"`} {
+		if !strings.Contains(buf.String(), want) {
+			t.Errorf("%s fehlt in der Zeile", want)
+		}
+	}
+}

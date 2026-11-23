@@ -222,7 +222,7 @@ func (h *Handler) connectionDetailPage(w http.ResponseWriter, r *http.Request, d
 	if d.Tab == "" {
 		d.Tab = "overview"
 	}
-	d.CopilotConn = direction + ":" + id // Copilot-Seitenleiste kennt die Verbindung
+	d.CopilotConn = copilotConnRef(h.faults.Copilot(), direction, id) // Copilot-Seitenleiste kennt die Verbindung
 	if secretErr != nil {
 		d.Err = secretErr.Error()
 	}

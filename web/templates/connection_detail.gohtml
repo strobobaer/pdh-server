@@ -43,6 +43,17 @@
 .cd-sugg-foot{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:10px}
 .cd-sugg-err{color:var(--red);font-size:12px;margin:0}
 @media (max-width:600px){.cd-sugg-tools .form-input{max-width:none;flex:1 1 100%}}
+.cd-sugg-src{max-width:340px;overflow-wrap:anywhere}
+/* Handy und Tablet: die Angaben einer Zeile untereinander statt einer breiten Tabelle */
+@media (max-width:900px){.cd-sugg-tbl thead{display:none}
+.cd-sugg-tbl,.cd-sugg-tbl tbody{display:block;overflow:visible}
+.cd-sugg-tbl tr{display:grid;grid-template-columns:26px minmax(0,1fr);gap:6px 8px;padding:10px 0;border-bottom:1px solid var(--border)}
+.cd-sugg-tbl td{display:block;border:0;padding:0;grid-column:2;min-width:0}
+.cd-sugg-tbl td:first-child{grid-column:1;grid-row:1 / span 4}
+.cd-sugg-tbl td[data-label]::before{content:attr(data-label);display:block;font-size:11px;color:var(--muted);margin-bottom:2px}
+.cd-sugg-tbl .form-input{width:100%;min-width:0}
+.cd-sugg-src,.cd-sugg-sample{max-width:none}
+.cd-sugg-asset{min-width:0}}
 </style>
 
 <div class="cd-head">
