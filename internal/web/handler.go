@@ -959,6 +959,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/suggest", h.SuggestWeb)
 	r.Post("/copilot/ask", h.CopilotAskWeb)
 	r.Get("/copilot/suggest", h.CopilotSuggestWeb)
+	r.Post("/copilot/proposals/{id}/apply", h.CopilotProposalApplyWeb) // Änderungsliste übernehmen (copilot_proposals.go)
 	r.Post("/translate/live", h.LiveTranslateWeb)
 	r.Post("/translate/live/toggle", h.LiveTranslateToggleWeb)
 	r.Post("/reservations/{kind}/{ref}/{id}/return", h.ReservationReturnWeb)

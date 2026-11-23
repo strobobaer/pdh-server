@@ -127,6 +127,18 @@ func (h *Handler) insertImportMapping(ctx context.Context, connID, uid string, i
 	return id, false, err
 }
 
+// updateImportMapping ändert Bezeichnung, Notiz und Anlage einer Zuordnung der
+// Verbindung (Copilot-Vorschlag „ändern“); die Quelle bleibt.
+func (h *Handler) updateImportMapping(ctx context.Context, connID, mappingID string, in importMappingCreateInput) error {
+	tag, err := h.db.Exec(ctx, `
+		UPDATE import_mappings SET name = $3, note = $4, infrastructure_id = $5::uuid, updated_at = NOW()
+		WHERE id = $1::uuid AND connection_id = $2::uuid`, mappingID, connID, in.Name, in.Note, in.InfrastructureID)
+	if err == nil && tag.RowsAffected() == 0 {
+		err = pgx.ErrNoRows
+	}
+	return err
+}
+
 func (h *Handler) ImportMappingCreateWeb(w http.ResponseWriter, r *http.Request) {
 	if !h.canConnectionWrite(r, "import") {
 		writeGlobalBoardError(w, http.StatusForbidden, "keine Berechtigung")

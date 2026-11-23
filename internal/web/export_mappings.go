@@ -148,6 +148,18 @@ func (h *Handler) exportSourceAsset(ctx context.Context, importMappingID string)
 	return id, err
 }
 
+// updateExportMapping ändert Feldname und Notiz eines Felds der Verbindung
+// (Copilot-Vorschlag „ändern“); der Wert dahinter bleibt.
+func (h *Handler) updateExportMapping(ctx context.Context, connID, mappingID string, in exportMappingCreateInput) error {
+	tag, err := h.db.Exec(ctx, `
+		UPDATE export_mappings SET field_name = $3, note = $4, updated_at = NOW()
+		WHERE id = $1::uuid AND connection_id = $2::uuid`, mappingID, connID, in.FieldName, in.Note)
+	if err == nil && tag.RowsAffected() == 0 {
+		err = pgx.ErrNoRows
+	}
+	return err
+}
+
 func (h *Handler) ExportMappingCreateWeb(w http.ResponseWriter, r *http.Request) {
 	if !h.canConnectionWrite(r, "export") {
 		writeGlobalBoardError(w, http.StatusForbidden, "keine Berechtigung")
