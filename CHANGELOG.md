@@ -10,6 +10,14 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.82.38] – 2026-11-23
+
+### Neu
+
+- **Gekoppelte Terminals löschen.** Beim Systembenutzer gibt es in der Karte „Gekoppelte Geräte“ bei **gesperrten** Geräten den Knopf **Löschen** (mit Bestätigung, gleiches Recht wie „Sperren“). Das Gerät und alles, was an ihm hängt (PDH-Sitzungen am Terminal), wird entfernt; ein aktives Gerät lässt sich nicht löschen. Im Verlauf des Systembenutzers steht „Terminal gelöscht“ mit Name und Person.
+- **Umzug beim erneuten Koppeln.** Die Kopplungsschnittstelle nimmt die freiwillige Angabe `previous` (`device_id` und altes `secret`) an. Passen beide, wird der alte Eintrag des Terminals – aktiv oder gesperrt, bei jedem Systembenutzer – in derselben Transaktion durch den neuen ersetzt; die Antwort enthält dann zusätzlich `"moved": true`. Beide Systembenutzer bekommen einen Verlaufseintrag („umgezogen zu …“, „übernommen von …“). Fehlt die Angabe oder passt sie nicht, wird ganz normal gekoppelt, ohne Fehler und ohne Unterschied in der Antwort. Ältere Terminals ohne `previous` arbeiten unverändert.
+- Handbuch, Kapitel „Anlagenterminal“: Abschnitt „Gerät sperren“ um Löschen und Umzug ergänzt.
+
 ## [0.82.37] – 2026-11-23
 
 ### Neu

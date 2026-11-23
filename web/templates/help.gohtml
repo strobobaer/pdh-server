@@ -980,6 +980,8 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <li>Die Sperre wirkt <b>innerhalb von 30 Sekunden</b>; danach ist das Terminal abgemeldet.</li>
     <li>Soll dasselbe Terminal wieder angemeldet werden, klicke <b>Gerät koppeln</b>, und gib den neuen Code am Terminal ein (wie oben).</li>
     <li>Eine Wartung von PDH meldet gekoppelte Geräte nicht ab.</li>
+    <li><b>Löschen:</b> Bei einem <b>gesperrten</b> Gerät steht neben der Bezeichnung der Knopf <b>Löschen</b> (mit Bestätigung, gleiches Recht wie <b>Sperren</b>). Er entfernt das Gerät mit seinen PDH-Sitzungen am Terminal endgültig; im Verlauf des Systembenutzers steht „Terminal gelöscht“ mit Name und Person. Ein aktives Gerät lässt sich nicht löschen – zuerst sperren.</li>
+    <li><b>Umzug:</b> Wird ein Terminal an einen anderen Systembenutzer (oder neu an denselben) gekoppelt, meldet es dabei sein altes Gerät mit. PDH ersetzt dann den alten Eintrag – egal ob aktiv oder gesperrt – durch den neuen, und beide Systembenutzer bekommen einen Verlaufseintrag („umgezogen zu …“ bzw. „übernommen von …“). Das Terminal muss dafür nichts weiter tun. Ältere Terminals legen weiter einen neuen Eintrag an; den alten sperrst und löschst du dann von Hand.</li>
   </ul>
   <h3>Was am Terminal passiert</h3>
   <ul>
