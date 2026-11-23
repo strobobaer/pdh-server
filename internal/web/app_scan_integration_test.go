@@ -6,6 +6,7 @@ package web
 
 import (
 	"context"
+	"errors"
 	"net/url"
 	"strings"
 	"testing"
@@ -22,6 +23,7 @@ func newAppScanEnv(t *testing.T) *appWorkEnv {
 	e.h.mailCfg.PublicURL = appScanBase
 	r := chi.NewRouter()
 	r.With(e.h.AppAuth).Get("/api/app/v1/scan", e.h.AppScanAPI)
+	r.With(e.h.AppAuth).Get("/api/app/v1/work/{type}/{id}", e.h.AppWorkDetailAPI)
 	r.With(e.h.AppAuth, e.h.AppWrite).Post("/api/app/v1/faults", e.h.AppFaultCreateAPI)
 	e.router = r
 	return e
@@ -387,6 +389,231 @@ func TestAppReportFault(t *testing.T) {
 		status, m := report(e, "", map[string]any{"asset_id": e.infra, "title": "Spiegel " + e.sfx})
 		if status != 409 || m["code"] != "app_read_only" {
 			t.Errorf("spiegel: %d %v", status, m)
+		}
+	})
+}
+
+// TestAppReportFaultOffline: Kennung vom Telefon und Zusammenführen an eine offene Störung
+// (Spec 9.3.5).
+func TestAppReportFaultOffline(t *testing.T) {
+	report := func(e *appWorkEnv, once string, in map[string]any) (int, map[string]any) {
+		rec, m := e.post("/api/app/v1/faults", in, once)
+		return rec.Code, m
+	}
+	env := func(t *testing.T) *appWorkEnv {
+		e := newAppScanEnv(t)
+		e.grant(e.uid, permAppCreate, "", true)
+		e.warm()
+		t.Cleanup(func() {
+			_, _ = e.pool.Exec(context.Background(), `DELETE FROM app_id_aliases WHERE created_by = $1::uuid`, e.uid)
+		})
+		return e
+	}
+	// openFault: Störung an der Anlage, dem Benutzer zugewiesen (sichtbar, Maßnahme erlaubt).
+	openFault := func(e *appWorkEnv, k, status string) string {
+		return e.id(`INSERT INTO faults (title, description, severity, status, infrastructure_id, assigned_to, created_by)
+			VALUES ($1, 'Alt', 'low', $2, $3::uuid, $4::uuid, $5::uuid) RETURNING id::text`, e.title(k), status, e.infra, e.uid, e.other)
+	}
+	faultCount := func(e *appWorkEnv) int {
+		return e.count(`SELECT COUNT(*) FROM faults WHERE title LIKE '%'||$1`, e.sfx)
+	}
+
+	t.Run("mit Kennung: Störung hat genau diese Kennung, Wiederholung nach 3 Tagen", func(t *testing.T) {
+		e := env(t)
+		id, once := e.once(), e.once()
+		in := map[string]any{"asset_id": e.infra, "title": "Mit Id " + e.sfx, "text": "x", "id": id}
+		status, m := report(e, once, in)
+		if status != 201 || m["id"] != id || m["type"] != "fault" || m["merged"] != nil {
+			t.Fatalf("%d %v", status, m)
+		}
+		e.exec(`UPDATE app_steps SET created_at = now() - interval '3 days' WHERE id = $1::uuid`, once)
+		status, again := report(e, once, in)
+		if status != 200 || again["id"] != id || again["merged"] != nil {
+			t.Fatalf("wiederholung: %d %v", status, again)
+		}
+		if n := faultCount(e); n != 1 {
+			t.Errorf("störungen: %d", n)
+		}
+	})
+	t.Run("Kennung ungültig: 422", func(t *testing.T) {
+		e := env(t)
+		for _, id := range []string{"kein-uuid", "00000000-0000-4000-8000-000000000001", "00000000-0000-7000-c000-000000000001"} {
+			status, m := report(e, "", map[string]any{"asset_id": e.infra, "title": "Bad " + e.sfx, "id": id})
+			if status != 422 || m["code"] != "app_invalid_input" || m["error"] != "Kennung ist ungültig." {
+				t.Errorf("%s: %d %v", id, status, m)
+			}
+		}
+		if n := faultCount(e); n != 0 {
+			t.Errorf("störungen: %d", n)
+		}
+	})
+	t.Run("Kennung einer vorhandenen Störung oder eines Alias: 409 ohne Retry-After", func(t *testing.T) {
+		e := env(t)
+		fid := openFault(e, "Fremd", "detected")
+		rec, m := e.post("/api/app/v1/faults", map[string]any{"asset_id": e.infra, "title": "Neu " + e.sfx, "id": fid}, "")
+		if rec.Code != 409 || m["code"] != "app_conflict" || rec.Header().Get("Retry-After") != "" {
+			t.Fatalf("störung: %d %v", rec.Code, m)
+		}
+		alias := e.once()
+		e.exec(`INSERT INTO app_id_aliases (id, target_type, target_id, created_by) VALUES ($1::uuid, 'fault', $2::uuid, $3::uuid)`, alias, fid, e.uid)
+		rec, m = e.post("/api/app/v1/faults", map[string]any{"asset_id": e.infra, "title": "Neu " + e.sfx, "id": alias}, "")
+		if rec.Code != 409 || m["code"] != "app_conflict" {
+			t.Fatalf("alias: %d %v", rec.Code, m)
+		}
+		if n := faultCount(e); n != 1 {
+			t.Errorf("störungen: %d", n)
+		}
+	})
+	t.Run("offline bei offener Störung: angehängt, Alias, Replay wieder merged", func(t *testing.T) {
+		e := env(t)
+		fid := openFault(e, "Offen", "in_progress")
+		id, once := e.once(), e.once()
+		in := map[string]any{"asset_id": e.infra, "title": "Meldung " + e.sfx, "text": "Lager heult", "id": id, "offline": true, "plant_stopped": true}
+		status, m := report(e, once, in)
+		hint := "An der Anlage ist bereits die Störung „" + e.title("Offen") + "“ offen. Deine Meldung wurde dort angehängt."
+		if status != 200 || m["id"] != fid || m["type"] != "fault" || m["merged"] != true || m["hint"] != hint {
+			t.Fatalf("%d %v", status, m)
+		}
+		if n := faultCount(e); n != 1 {
+			t.Errorf("störungen: %d", n)
+		}
+		if n := e.count(`SELECT COUNT(*) FROM fault_actions WHERE fault_id = $1::uuid AND description LIKE '%Lager heult%'`, fid); n != 1 {
+			t.Errorf("maßnahme: %d", n)
+		}
+		if n := e.count(`SELECT COUNT(*) FROM app_id_aliases WHERE id = $1::uuid AND target_type = 'fault' AND target_id = $2::uuid AND created_by = $3::uuid`, id, fid, e.uid); n != 1 {
+			t.Errorf("alias: %d", n)
+		}
+		if n := e.count(`SELECT COUNT(*) FROM record_history WHERE ref_type = 'fault' AND ref_id = $1::uuid AND message = $2`, fid, hint); n != 1 {
+			t.Errorf("historie hinweis: %d", n)
+		}
+		if n := e.count(`SELECT COUNT(*) FROM faults WHERE id = $1::uuid AND plant_stopped`, fid); n != 1 {
+			t.Errorf("anlage steht: %d", n)
+		}
+		status, again := report(e, once, in)
+		if status != 200 || again["id"] != fid || again["merged"] != true || again["hint"] != hint {
+			t.Fatalf("replay: %d %v", status, again)
+		}
+		if n := e.count(`SELECT COUNT(*) FROM fault_actions WHERE fault_id = $1::uuid`, fid); n != 1 {
+			t.Errorf("maßnahmen nach replay: %d", n)
+		}
+		// Replay auch nach Tagen
+		e.exec(`UPDATE app_steps SET created_at = now() - interval '5 days' WHERE id = $1::uuid`, once)
+		if status, again := report(e, once, in); status != 200 || again["id"] != fid || again["merged"] != true {
+			t.Fatalf("replay nach tagen: %d %v", status, again)
+		}
+		// Die Kennung gehört nun zum Alias: mit neuer Once ist sie vergeben.
+		if status, _ := report(e, "", in); status != 409 {
+			t.Errorf("alias vergeben: %d", status)
+		}
+	})
+	t.Run("offline bei geschlossener Störung: neue Störung mit der Telefon-Kennung", func(t *testing.T) {
+		e := env(t)
+		openFault(e, "Zu", "closed")
+		id := e.once()
+		status, m := report(e, "", map[string]any{"asset_id": e.infra, "title": "Neu " + e.sfx, "id": id, "offline": true})
+		if status != 201 || m["id"] != id || m["merged"] != nil {
+			t.Fatalf("%d %v", status, m)
+		}
+		if n := faultCount(e); n != 2 {
+			t.Errorf("störungen: %d", n)
+		}
+	})
+	t.Run("offline false bei offener Störung: neue Störung", func(t *testing.T) {
+		e := env(t)
+		openFault(e, "Offen", "detected")
+		id := e.once()
+		status, m := report(e, "", map[string]any{"asset_id": e.infra, "title": "Neu " + e.sfx, "id": id, "offline": false})
+		if status != 201 || m["id"] != id {
+			t.Fatalf("%d %v", status, m)
+		}
+		if n := faultCount(e); n != 2 {
+			t.Errorf("störungen: %d", n)
+		}
+	})
+	t.Run("offline bei nicht sichtbarer offener Störung: neue Störung", func(t *testing.T) {
+		e := env(t)
+		fid := e.id(`INSERT INTO faults (title, description, severity, status, infrastructure_id, created_by) VALUES ($1, '', 'low', 'detected', $2::uuid, $3::uuid) RETURNING id::text`,
+			e.title("Unsichtbar"), e.infra, e.other)
+		e.exec(`DELETE FROM user_permissions WHERE user_id = $1::uuid AND permission_id = (SELECT id FROM permissions WHERE key = 'faults.view')`, e.uid)
+		e.grant(e.uid, "faults.view", "", false)
+		e.warm()
+		appDeviceCache.forget(e.devID)
+		if code, _ := e.detail("fault", fid); code != 403 {
+			t.Skipf("Störung ist trotz Entzug sichtbar (%d): Test nicht aussagekräftig", code)
+		}
+		id := e.once()
+		status, m := report(e, "", map[string]any{"asset_id": e.infra, "title": "Neu " + e.sfx, "id": id, "offline": true})
+		if status != 201 || m["id"] != id {
+			t.Fatalf("%d %v", status, m)
+		}
+	})
+	// fremdFault: offene Störung eines anderen, nicht zugewiesen – sichtbar (faults.view),
+	// aber ohne Recht, Maßnahmen einzutragen.
+	fremdFault := func(e *appWorkEnv, k string) string {
+		return e.id(`INSERT INTO faults (title, description, severity, status, infrastructure_id, created_by)
+			VALUES ($1, 'Alt', 'low', 'detected', $2::uuid, $3::uuid) RETURNING id::text`, e.title(k), e.infra, e.other)
+	}
+	t.Run("Zusammenführen ohne Maßnahmerecht: Meldung und Hinweis im Verlauf, Fehler → 503 ohne Alias", func(t *testing.T) {
+		e := env(t)
+		fid := fremdFault(e, "Fremd")
+		e.exec(`DELETE FROM user_permissions WHERE user_id = $1::uuid AND permission_id = (SELECT id FROM permissions WHERE key = 'faults.edit')`, e.uid)
+		e.grant(e.uid, "faults.edit", "", false) // Rolle „worker“ hat es sonst
+		e.warm()
+		appDeviceCache.forget(e.devID)
+		if code, d := e.detail("fault", fid); code != 200 || d["can"].(map[string]any)["action"] != false {
+			t.Fatalf("Vorbedingung (sichtbar, keine Maßnahme): %d %v", code, d["can"])
+		}
+		id, once := e.once(), e.once()
+		in := map[string]any{"asset_id": e.infra, "title": "Meldung " + e.sfx, "text": "Lager heult", "id": id, "offline": true}
+		orig := appMergeHistoryWrite
+		t.Cleanup(func() { appMergeHistoryWrite = orig })
+		appMergeHistoryWrite = func(context.Context, *Handler, string, string, string, []string) error {
+			return errors.New("db weg")
+		}
+		status, m := report(e, once, in)
+		if status != 503 || m["code"] != "app_unavailable" {
+			t.Fatalf("fehlerfall: %d %v", status, m)
+		}
+		if n := e.count(`SELECT COUNT(*) FROM app_id_aliases WHERE id = $1::uuid`, id); n != 0 {
+			t.Errorf("alias nach fehler: %d", n)
+		}
+		if n := e.count(`SELECT COUNT(*) FROM app_steps WHERE id = $1::uuid`, once); n != 0 {
+			t.Errorf("once nach fehler behalten: %d", n)
+		}
+		appMergeHistoryWrite = orig
+		status, m = report(e, once, in) // dieselbe Once: der Schritt kommt erneut aus der Warteschlange
+		hint := "An der Anlage ist bereits die Störung „" + e.title("Fremd") + "“ offen. Deine Meldung wurde dort angehängt."
+		if status != 200 || m["id"] != fid || m["merged"] != true || m["hint"] != hint {
+			t.Fatalf("%d %v", status, m)
+		}
+		if n := e.count(`SELECT COUNT(*) FROM fault_actions WHERE fault_id = $1::uuid`, fid); n != 0 {
+			t.Errorf("maßnahme ohne recht: %d", n)
+		}
+		msg := "Meldung aus der App: Meldung " + e.sfx + " – Lager heult"
+		for _, want := range []string{msg, hint} {
+			if n := e.count(`SELECT COUNT(*) FROM record_history WHERE ref_type = 'fault' AND ref_id = $1::uuid AND message = $2`, fid, want); n != 1 {
+				t.Errorf("verlauf %q: %d", want, n)
+			}
+		}
+		if n := faultCount(e); n != 1 {
+			t.Errorf("störungen: %d", n)
+		}
+	})
+	t.Run("Wiederholung ohne Ergebnis: fremder Alias zählt nicht", func(t *testing.T) {
+		e := env(t)
+		fid := openFault(e, "Fremd", "detected")
+		id, once := e.once(), e.once()
+		e.exec(`INSERT INTO app_steps (id, user_id, device_id, path) VALUES ($1::uuid, $2::uuid, $3::uuid, '/api/app/v1/faults')`, once, e.uid, e.devID)
+		e.exec(`INSERT INTO app_id_aliases (id, target_type, target_id, created_by) VALUES ($1::uuid, 'fault', $2::uuid, $3::uuid)`, id, fid, e.other)
+		t.Cleanup(func() { _, _ = e.pool.Exec(context.Background(), `DELETE FROM app_id_aliases WHERE id = $1::uuid`, id) })
+		status, m := report(e, once, map[string]any{"asset_id": e.infra, "title": "Meldung " + e.sfx, "id": id, "offline": true})
+		if status != 409 || m["code"] != "app_conflict" {
+			t.Fatalf("fremder alias: %d %v", status, m)
+		}
+		e.exec(`UPDATE app_id_aliases SET created_by = $2::uuid WHERE id = $1::uuid`, id, e.uid)
+		status, m = report(e, once, map[string]any{"asset_id": e.infra, "title": "Meldung " + e.sfx, "id": id, "offline": true})
+		if status != 200 || m["id"] != fid || m["merged"] != true {
+			t.Fatalf("eigener alias: %d %v", status, m)
 		}
 	})
 }

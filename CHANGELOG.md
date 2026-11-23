@@ -10,6 +10,20 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.82.37] – 2026-11-23
+
+### Neu
+
+- **PDH-App: Arbeiten ohne Verbindung (Server-Seite).** Jeder schreibende Schritt der App trägt eine vom Telefon vergebene Kennung und wird **genau einmal** ausgeführt; der Merkzettel dazu wird jetzt **90 Tage** aufbewahrt statt 10 Minuten. Reißt die Verbindung nach dem Senden ab, kann die App den Schritt auch nach Tagen wiederholen, ohne dass etwas doppelt entsteht.
+- **Zusammenführen bei Änderungen im Web.** Der Status im PDH gilt: Ein offline gedrücktes „Starten“ oder „Abschließen“ entfällt, wenn der Vorgang inzwischen anders steht; die App bekommt einen Hinweis, der auch im Verlauf des Vorgangs steht. Kommentare, Maßnahmen und Abschlusstexte werden an den Vorgang angehängt, auch an geschlossene. Eine offline gemeldete Störung wird an eine beim Eintreffen offene Störung derselben Anlage angehängt, statt eine zweite anzulegen.
+- **Anlagenliste für die App** (`GET /api/app/v1/assets`): Die App lädt die Anlagen ihres Bereichs (höchstens 5000, mit Pfad) in den Offline-Speicher, damit Störungen auch ohne Verbindung gemeldet werden können. Ausgeblendete Anlagen fehlen samt Unteranlagen. Ohne Recht zum Melden bleibt die Liste leer.
+- Entfällt ein offline gedrücktes „Starten“, weil ein noch offener Vorgang inzwischen anders steht, bekommen die zugewiesenen Personen (bei Aufgaben alle Zugewiesenen) eine PDH-Nachricht und je nach Einstellung eine E-Mail, dass jemand in der App mitarbeiten wollte, und können diese Person beim Abschließen als mitarbeitend eintragen.
+- Handbuch, Kapitel „PDH-App“: neuer Abschnitt „Mit der App ohne Verbindung arbeiten“.
+
+### Sicherheit
+
+- Schritte aus dem Offline-Speicher prüfen die Rechte **beim Eintreffen**, nicht zum Zeitpunkt der Eingabe: Ist ein Recht entzogen oder das Telefon gesperrt, wird der Schritt abgelehnt und mit Grund angezeigt – auch beim Nachtrag auf einem inzwischen geschlossenen Vorgang (Maßnahme, Abschluss und Annehmen brauchen dasselbe Recht wie am offenen). Die Anlagenliste hält die Abteilungsgrenzen ein.
+
 ## [0.82.36] – 2026-11-23
 
 ### Behoben

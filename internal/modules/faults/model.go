@@ -110,6 +110,8 @@ type CreateFaultInput struct {
 	// Origin, OriginLabel: Herkunft (Paket origin). Nur intern – jeder Anlege-Weg setzt sie.
 	Origin      string `json:"-"`
 	OriginLabel string `json:"-"`
+	// ID: vorgegebene Kennung (UUIDv7), z. B. vom Telefon der PDH-App; leer: der Server vergibt sie.
+	ID *string `json:"-"`
 }
 
 type ResolveInput struct {

@@ -3774,7 +3774,7 @@ curl -fsS -X PUT "https://api.cloudflare.com/client/v4/zones/$CF_ZONE/dns_record
   <h2><i class="ti ti-device-mobile"></i> PDH-App</h2>
   <p>Die PDH-App verbindet Handy und Tablet mit diesem Server; die Einrichtungsseite <b>/app/setup</b> führt durch die Installation.</p>
   <div class="hb-howto"><b><i class="ti ti-info-circle"></i> Stand</b>
-    Der <b>Zugang</b> (Telefon anfragen, freigeben, sperren, Einstellungen) und die <b>Arbeit mit der App</b> (Vorgänge, Scannen, Störung melden) sind da. Weitere Funktionen (zum Beispiel Mitteilungen aufs Telefon) folgen mit späteren Paketen.</div>
+    Der <b>Zugang</b> (Telefon anfragen, freigeben, sperren, Einstellungen) und die <b>Arbeit mit der App</b> (Vorgänge, Scannen, Störung melden, auch ohne Verbindung) sind da. Weitere Funktionen (zum Beispiel Mitteilungen aufs Telefon) folgen mit späteren Paketen.</div>
   {{template "hb-fig-app"}}
   <div class="hb-howto"><b><i class="ti ti-users"></i> Einmal vorbereiten</b>
     <ol class="hb-steps">
@@ -3818,9 +3818,26 @@ curl -fsS -X PUT "https://api.cloudflare.com/client/v4/zones/$CF_ZONE/dns_record
       <li>Im Reiter <b>Vorgänge</b> siehst du, was dir zugewiesen oder in deinem Bereich offen ist: Störungen, Tickets, Aufgaben und Wartung. Du siehst nur die Arten, die dein Telefon freigegeben hat und für die du auch im Browser das Ansichtsrecht hast.</li>
       <li>Einen Vorgang antippen. Je nach Recht stehen als Knöpfe zur Auswahl: <b>Starten</b> (setzt den Vorgang auf „In Arbeit“ und übernimmt ihn, wenn er noch niemandem zugewiesen ist), <b>Maßnahme eintragen</b>, <b>Kommentar</b> und <b>Abschließen</b>; die <b>Checkliste</b> einer Wartung hakst du direkt ab.</li>
       <li>Beim <b>Abschließen</b> schreibst du einen Text (Pflicht) und kannst <b>Keine Ersatzteile benötigt</b> ankreuzen; bei Störungen gibt es zusätzlich die Ursache. Der Text wird zuerst als <b>Maßnahme</b> in den Vorgang eingetragen, dann wird er geschlossen. Ein bereits geschlossener Vorgang lässt sich nicht noch einmal abschließen.</li>
-      <li>Klappt das Senden nicht, bleibt die Eingabe stehen und du tippst auf <b>Erneut senden</b>. Kommt dieselbe Eingabe nach einem Verbindungsabbruch ein zweites Mal an, wird sie vom Server <b>genau einmal</b> ausgeführt – nichts wird doppelt eingetragen.</li>
+      <li>Ab App-Version 1.1 geht das auch ohne Verbindung (siehe „Mit der App ohne Verbindung arbeiten“). Kommt dieselbe Eingabe nach einem Verbindungsabbruch ein zweites Mal an, wird sie vom Server <b>genau einmal</b> ausgeführt – nichts wird doppelt eingetragen.</li>
     </ol>
     Alles, was die App darf, darfst du auch im Browser: Es gelten die Rechte der Person, eingeschränkt auf das, was das Telefon freigegeben hat.
+  </div>
+  <div class="hb-howto" id="hb-app-offline"><b><i class="ti ti-wifi-off"></i> Mit der App ohne Verbindung arbeiten</b>
+    Ab App-Version 1.1 arbeitet die App auch dort weiter, wo kein Netz ist (Keller, Halle, Aufzug). Die App speichert deine zuletzt geladenen Vorgänge und die Anlagenliste verschlüsselt auf dem Telefon und merkt sich, was du tust. Sobald wieder Verbindung da ist, überträgt sie es von selbst, ein Schritt nach dem anderen.
+    <ol class="hb-steps">
+      <li><b>Der Balken oben:</b> Ohne Verbindung steht dort „Keine Verbindung – n Änderungen warten“ (bei null wartenden Änderungen nur „Keine Verbindung“). Mit Verbindung und wartenden Änderungen steht dort „n Änderungen werden übertragen“. Der Balken verschwindet erst, wenn alles übertragen ist. Bei genau einer Änderung heißt es „1 Änderung wartet“ bzw. „1 Änderung wird übertragen“.</li>
+      <li><b>Das geht ohne Verbindung:</b> Vorgänge ansehen (so, wie sie beim letzten Laden waren), einen Vorgang <b>starten</b>, <b>Maßnahme eintragen</b>, <b>kommentieren</b>, Schritte abhaken, <b>abschließen</b> und eine <b>Störung melden</b> (die Anlage wählst du aus der gespeicherten Anlagenliste; nur Anlagen deines Bereichs stehen darin, und nur wenn du Störungen melden darfst).</li>
+      <li><b>Das geht nur mit Verbindung:</b> Lagerbuchungen und Kanban sowie das Öffnen von Lager- und Kanban-Codes. Offline zeigt die App dort „Nur mit Verbindung möglich“.</li>
+      <li><b>Jeder Schritt wird genau einmal ausgeführt.</b> Reißt die Verbindung nach dem Senden ab und die Antwort kommt nie an, wiederholt die App den Schritt später (auch nach Tagen). Der Server erkennt ihn wieder und trägt nichts doppelt ein; der Merkzettel dazu wird 90 Tage aufbewahrt. Bei der Übertragung gelten deine Rechte <i>von jetzt</i>, nicht die vom Zeitpunkt der Eingabe.</li>
+    </ol>
+    <b>Was beim Zusammenführen passiert, wenn inzwischen jemand anderes am selben Vorgang gearbeitet hat:</b>
+    <ol class="hb-steps">
+      <li><b>Der Stand im PDH gilt.</b> Hast du offline „Starten“ oder „Abschließen“ gedrückt, im PDH hat aber inzwischen jemand den Status geändert, entfällt dein Statusschritt ohne Rückfrage. Du bekommst stattdessen einen <b>Hinweis</b>, zum Beispiel „„Pumpe defekt“ wurde inzwischen von Erika Muster auf „Erledigt“ gesetzt.“ Der Hinweis steht außerdem im Verlauf des Vorgangs. Entfällt dein „Starten“ an einem noch offenen Vorgang, bekommen die Personen, denen er zugewiesen ist (bei Aufgaben alle Zugewiesenen), eine PDH-Nachricht und – je nach ihrer Einstellung – eine E-Mail, dass du mitarbeiten wolltest; sie können dich beim Abschließen als mitarbeitend eintragen.</li>
+      <li><b>Dein Text geht nicht verloren (Nachtrag).</b> Kommentare, Maßnahmen und der Text beim Abschließen werden an den Vorgang <b>angehängt</b>, auch wenn er inzwischen geschlossen ist – sofern du das jeweilige Recht noch hast. Ist dein „Abschließen“ entfallen, steht im Hinweis zusätzlich „Dein Eintrag wurde angehängt.“ Bei einem Kommentar oder einer Maßnahme auf einem inzwischen geschlossenen Vorgang lautet der Hinweis „„Pumpe defekt“ ist inzwischen abgeschlossen. Dein Eintrag wurde im Verlauf angehängt.“ Ein Ersatz-Vorgang entsteht nie.</li>
+      <li><b>Prüfpunkte einer inzwischen abgeschlossenen Wartung</b> werden nicht mehr gespeichert. Der Hinweis lautet dann „„Ölwechsel Presse“ ist inzwischen abgeschlossen. Der Prüfpunkt wurde nicht mehr gespeichert.“</li>
+      <li><b>Offline gemeldete Störung an einer Anlage mit offener Störung:</b> Ist beim Eintreffen an derselben Anlage schon eine Störung offen, legt der Server keine zweite an. Deine Meldung wird an die offene Störung <b>angehängt</b>; die App zeigt „An der Anlage ist bereits die Störung „…“ offen. Deine Meldung wurde dort angehängt.“ Maßnahmen und Kommentare, die du schon zur neuen Störung erfasst hattest, landen ebenfalls dort.</li>
+    </ol>
+    <b>Abgelehnte Schritte:</b> Wurde dir während der Offline-Zeit ein Recht entzogen, lehnt der Server den Schritt ab. Die App zeigt ihn unter <b>Hinweise</b> mit dem Grund; die übrigen wartenden Schritte werden trotzdem weiter übertragen. Nur wenn das Telefon <b>gesperrt</b> wurde, löscht die App alle Daten auf dem Telefon. Vorübergehende Störungen (Netzfehler, Wartung, „Nur lesen“) löschen nichts; der Schritt wartet und geht beim nächsten Versuch hinaus.
   </div>
   <div class="hb-howto"><b><i class="ti ti-scan"></i> So scannst du einen QR-Code</b>
     <ol class="hb-steps">
@@ -3833,7 +3850,7 @@ curl -fsS -X PUT "https://api.cloudflare.com/client/v4/zones/$CF_ZONE/dns_record
   <div class="hb-howto"><b><i class="ti ti-alert-triangle"></i> So meldest du eine Störung aus der App</b>
     <ol class="hb-steps">
       <li>Entweder die Anlage scannen und <b>Störung melden</b> antippen, oder im Reiter <b>Melden</b> auf <b>Anlage scannen</b> tippen. Den Reiter „Melden“ gibt es nur mit der Freigabe unten.</li>
-      <li>Titel (Pflicht) und Beschreibung eintragen, bei Stillstand <b>Anlage steht</b> einschalten und <b>Melden</b> antippen; schlägt das Senden fehl, steht dort <b>Erneut senden</b>. Melden geht nur mit Verbindung zum Server. Die Störung erscheint wie im Browser angelegt, mit dir als Melder.</li>
+      <li>Titel (Pflicht) und Beschreibung eintragen, bei Stillstand <b>Anlage steht</b> einschalten und <b>Melden</b> antippen; das Handy merkt sich die Meldung und überträgt sie, sobald es wieder Verbindung hat (ab App-Version 1.1; ältere Versionen melden nur mit Verbindung). Die Störung erscheint wie im Browser angelegt, mit dir als Melder.</li>
     </ol>
     Das geht nur, wenn die Freigabe des Telefons <b>„Vorgänge aus der App anlegen“</b> enthält <i>und</i> die Person das Recht „App: Vorgänge anlegen“ hat. Fehlt eines davon, zeigt die App keinen Knopf zum Melden.
   </div>
@@ -3841,7 +3858,7 @@ curl -fsS -X PUT "https://api.cloudflare.com/client/v4/zones/$CF_ZONE/dns_record
     <ol class="hb-steps">
       <li><b>Nur lesen (Spiegelserver):</b> Ist die App mit einem Spiegelserver verbunden, kannst du Vorgänge ansehen, aber nichts ändern. Die App zeigt oben den Balken „Nur lesen (Spiegelserver)“; Knöpfe zum Ändern sind aus, bis du dich mit dem Hauptserver verbindest.</li>
       <li><b>Wartung:</b> Während einer Wartungssperre des Servers zeigt die App den Balken „Wartung – bitte später erneut versuchen“ und ändert nichts. Lesen bleibt möglich; versuche es später noch einmal (bei einer gescheiterten Eingabe mit <b>Erneut senden</b>).</li>
-      <li><b>Keine Verbindung:</b> Ohne Netz zeigt die App den Balken „Keine Verbindung“; Ändern und Melden sind dann aus.</li>
+      <li><b>Keine Verbindung:</b> Ohne Netz zeigt die App oben den Balken „Keine Verbindung“; ab App-Version 1.1 kannst du trotzdem weiterarbeiten (siehe „Mit der App ohne Verbindung arbeiten“).</li>
     </ol>
     <b>Telefon zurücksetzen:</b> Unter <b>Mehr → App zurücksetzen</b> löscht die App alle Daten und den Geräteschlüssel auf dem Telefon; danach richtest du sie neu ein und fragst den Zugang neu an.
   </div>
