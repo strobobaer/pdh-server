@@ -104,8 +104,10 @@ var appMergeHistoryWrite = func(ctx context.Context, h *Handler, ref, id, uid st
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	for _, m := range msgs {
-		if _, err := tx.Exec(ctx, `INSERT INTO record_history (ref_type, ref_id, action, field_name, old_value, new_value, message, created_by)
-			VALUES ($1, $2, $3, '', '', '', $4, $5)`, ref, id, appHintHistoryAction, m, nullID(uid)); err != nil {
+		// clock_timestamp(): jede Zeile eine eigene Zeit, damit die Reihenfolge (Nachtrag vor
+		// Hinweis) im Verlauf feststeht – NOW() wäre in der Transaktion für alle gleich.
+		if _, err := tx.Exec(ctx, `INSERT INTO record_history (ref_type, ref_id, action, field_name, old_value, new_value, message, created_by, created_at)
+			VALUES ($1, $2, $3, '', '', '', $4, $5, clock_timestamp())`, ref, id, appHintHistoryAction, m, nullID(uid)); err != nil {
 			return err
 		}
 	}
