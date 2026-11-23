@@ -136,8 +136,11 @@ func (h *Handler) planSlideScope(ctx context.Context, uid, role, perm string, se
 			sc.Depts = append(sc.Depts, d)
 		}
 	}
-	if len(selected) == 0 && len(term) == 0 && h.rbac.HasPermissionInDepartment(uid, role, perm, nil) {
-		sc.NoDept = true
+	if len(selected) == 0 && len(term) == 0 {
+		// Ohne Abteilung nur, wenn das Recht überall gilt (nicht nur in einzelnen Abteilungen)
+		if all, _ := h.rbac.Scope(uid, role, perm); all {
+			sc.NoDept = true
+		}
 	}
 	return sc, nil
 }
@@ -187,7 +190,7 @@ func (h *Handler) planSlide(ctx context.Context, uid, role string, s terminalSli
 		case slideKindPlanDuties:
 			err = h.planDutyRows(ctx, from, to, depts, sc.NoDept, add)
 		case slideKindPlanMaint:
-			err = h.planMaintRows(ctx, from, to, depts, sc.NoDept, add)
+			err = h.planMaintRows(ctx, from, to, now, depts, sc.NoDept, add)
 		}
 		if err != nil {
 			return nil, err
@@ -289,28 +292,43 @@ func (h *Handler) planDutyRows(ctx context.Context, from, to time.Time, depts []
 }
 
 // planMaintRows: offene Wartungsaufträge, die im Zeitraum fällig sind, in Anlagen der erlaubten Abteilungen.
-func (h *Handler) planMaintRows(ctx context.Context, from, to time.Time, depts []string, noDept bool, add planAdder) error {
-	rows, err := h.db.Query(ctx, `SELECT t.due_date::date::text, t.title, i.name
+// Enthält der Zeitraum heute, erscheinen überfällige (früher fällige, noch offene) unter heute als „Überfällig“.
+// Fälligkeitstage zählen in der Ortszeit des Servers, nicht der Sitzungs-Zeitzone der Datenbank.
+func (h *Handler) planMaintRows(ctx context.Context, from, to, now time.Time, depts []string, noDept bool, add planAdder) error {
+	loc := from.Location()
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
+	lower := from
+	withOverdue := !today.Before(from) && !today.After(to)
+	if withOverdue {
+		lower = time.Date(1970, 1, 1, 0, 0, 0, 0, loc)
+	}
+	rows, err := h.db.Query(ctx, `SELECT t.due_date, t.title, i.name
 		FROM maintenance_tasks t JOIN infrastructure i ON i.id = t.infrastructure_id
 		WHERE t.status::text IN ('open', 'in_progress', 'pending') AND t.archived_at IS NULL
-		  AND i.active AND i.hidden_at IS NULL AND t.due_date::date BETWEEN $1::date AND $2::date
+		  AND i.active AND i.hidden_at IS NULL AND t.due_date >= $1 AND t.due_date < $2
 		  AND (EXISTS (SELECT 1 FROM infrastructure_department x WHERE x.infrastructure_id = t.infrastructure_id AND x.department_id = ANY($3::uuid[]))
 		       OR ($4::boolean AND NOT EXISTS (SELECT 1 FROM infrastructure_department x WHERE x.infrastructure_id = t.infrastructure_id)))
-		ORDER BY t.due_date, lower(i.name), lower(t.title)`, from, to, depts, noDept)
+		ORDER BY t.due_date, lower(i.name), lower(t.title)`, lower, to.AddDate(0, 0, 1), depts, noDept)
 	if err != nil {
 		return err
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var day, title, infra string
-		if err := rows.Scan(&day, &title, &infra); err != nil {
+		var due time.Time
+		var title, infra string
+		if err := rows.Scan(&due, &title, &infra); err != nil {
 			return err
 		}
 		item := title
 		if strings.TrimSpace(infra) != "" {
 			item += " · " + infra
 		}
-		add(day, "due", "Fällig", "", item)
+		d := due.In(loc)
+		if withOverdue && d.Before(today) { // überfällig
+			add(today.Format(dayISO), "overdue", "Überfällig", "#d13438", item+" (fällig "+d.Format("02.01.")+")")
+			continue
+		}
+		add(d.Format(dayISO), "due", "Fällig", "", item)
 	}
 	return rows.Err()
 }

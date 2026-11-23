@@ -313,7 +313,7 @@ func TestTerminalPlanMaintenance(t *testing.T) {
 	// Terminal auf Abteilung A begrenzt: Schnittmenge mit B ist leer
 	p.e.exec(`UPDATE terminal_settings SET abteilungen = ARRAY[$2::uuid] WHERE user_id = $1::uuid`, p.termG, p.deptA)
 	got = p.plans(p.termG, p.devG)
-	if f := onlyMine(flatPlan(got[1].Plan)); len(f) != 0 {
+	if f := onlyMine(flatPlan(got[1].Plan)); strings.Contains(strings.Join(f, ","), "Überfällig") {
 		t.Errorf("Terminal nur A, Folie B: %q", f)
 	}
 	if f := onlyMine(flatPlan(got[0].Plan)); len(f) != 1 || !strings.HasPrefix(f[0], to+"|Fällig|W-Heute-A") {
@@ -356,5 +356,47 @@ func TestTerminalPlanSlidesJSONKinds(t *testing.T) {
 		if got[i].Kind != k || got[i].Plan == nil || len(got[i].Plan.Days) != 7 || got[i].Plan.Label != "diese Woche" {
 			t.Errorf("%s: %+v", k, got[i])
 		}
+	}
+}
+
+// Überfällige offene Wartungen erscheinen unter heute als „Überfällig“, sofern der Zeitraum heute enthält.
+func TestTerminalPlanMaintenanceOverdue(t *testing.T) {
+	p := newPlanEnv(t)
+	iA := p.e.infra("POverA ", p.deptA, "")
+	p.e.exec(`INSERT INTO maintenance_tasks (title, infrastructure_id, status, due_date, created_by) VALUES ('W-Alt', $1::uuid, 'open', $2, $3::uuid)`, iA, p.today.AddDate(0, 0, -3).Add(10*time.Hour), p.pA)
+	t.Cleanup(func() { p.e.exec(`DELETE FROM maintenance_tasks WHERE created_by = $1::uuid`, p.pA) })
+	p.clear()
+	p.slide(terminalSlide{Kind: slideKindPlanMaint, PlanRange: "today", DurationSeconds: 10, Active: true})
+	p.slide(terminalSlide{Kind: slideKindPlanMaint, PlanRange: "next_week", DurationSeconds: 10, Active: true})
+	got := p.plans(p.termG, p.devG)
+	f := onlyMine(flatPlan(got[0].Plan))
+	if len(f) != 2 || !strings.HasPrefix(f[0], p.day(p.today)+"|Überfällig|W-Alt · POverA") || !strings.Contains(f[0], "(fällig ") || !strings.HasPrefix(f[1], p.day(p.today)+"|Fällig|W-Heute-A") {
+		t.Errorf("heute: %q", f)
+	}
+	if f := onlyMine(flatPlan(got[1].Plan)); strings.Contains(strings.Join(f, ","), "Überfällig") {
+		t.Errorf("nächste Woche ohne Überfälliges: %q", f)
+	}
+}
+
+// Recht nur in einer Abteilung: Personen ohne Abteilung erscheinen nicht.
+func TestTerminalPlanNoDeptNeedsGlobalRight(t *testing.T) {
+	p := newPlanEnv(t)
+	u := p.e.user("Carl", "employee", false)
+	p.e.exec(`UPDATE users SET first_name = 'Carl', last_name = 'Plan', department_id = NULL WHERE id = $1::uuid`, u)
+	def := p.e.id(`SELECT id::text FROM shift_definitions WHERE model_id = $1::uuid LIMIT 1`, p.model)
+	p.e.exec(`INSERT INTO shift_assignments (user_id, shift_id, date, note, created_by) VALUES ($1::uuid, $2::uuid, $3, '', $1::uuid)`, u, def, p.today)
+	t.Cleanup(func() { p.e.exec(`DELETE FROM shift_assignments WHERE user_id = $1::uuid`, u) })
+	p.clear()
+	p.slide(terminalSlide{Kind: slideKindPlanShifts, PlanRange: "today", DurationSeconds: 10, Active: true})
+	has := func(term, dev string) bool {
+		return strings.Contains(strings.Join(flatPlan(p.plans(term, dev)[0].Plan), ","), "Carl Plan")
+	}
+	if !has(p.termG, p.devG) {
+		t.Error("globales Recht: Person ohne Abteilung fehlt")
+	}
+	p.e.grant(p.termNoTickets, "shifts.view", p.deptA, true)
+	p.e.warm()
+	if has(p.termNoTickets, p.devNT) {
+		t.Error("Recht nur in Abteilung A: Person ohne Abteilung erscheint")
 	}
 }
