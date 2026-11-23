@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"pdh/internal/modules/calc"
 	"pdh/internal/modules/faults"
 )
 
@@ -855,6 +856,7 @@ var copilotToolLabels = map[string]string{
 	"statistics": "Auswertungen", "import_values": "Messwerte", "due_maintenance": "Wartungen",
 	"connection_info": "Verbindung", "source_values": "Quellwerte", "asset_tree": "Anlagenbaum", "mappings": "Zuordnungen",
 	"export_sources": "Importwerte", "propose_mappings": "Vorschlag", "web_search": "Internet", "web_fetch": "Internet",
+	"calc_values": "Berechnete Werte", "calc_inputs": "Eingangswerte", "propose_calc": "Vorschlag",
 }
 
 // askCopilot: Frage mit PDH-Daten. Claude ruft die Werkzeuge selbst; Ollama
@@ -873,8 +875,14 @@ func (h *Handler) askCopilot(ctx context.Context, d *copilotData, userName, ques
 	tools := copilotTools()
 	web := d.conn != nil && d.web && cp.CanSearchWeb()
 	if d.conn != nil && cp.CanUseTools() {
-		extra += copilotConnPrompt(d.conn, web)
-		tools = append(tools, copilotConnTools(d.conn.Direction, d.conn.CanWrite)...)
+		if d.conn.Kind == calc.Kind { // Seite „Berechnete Werte“: eigene Werkzeuge, nie Internet
+			web = false
+			extra += calcCopilotPrompt(d.conn)
+			tools = append(tools, calcCopilotTools(d.conn.CanWrite)...)
+		} else {
+			extra += copilotConnPrompt(d.conn, web)
+			tools = append(tools, copilotConnTools(d.conn.Direction, d.conn.CanWrite)...)
+		}
 	}
 	system := copilotSystemPrompt(userName, extra)
 	if cp.CanUseTools() {

@@ -57,6 +57,7 @@ type BaseData struct {
 	FaultID       string
 	CopilotRef    string // "fault:<id>" / "ticket:<id>": Seitenleiste lädt Copilot-Vorschläge (copilot_suggest.go)
 	CopilotConn   string // "import:<id>" / "export:<id>": Copilot kennt die Verbindung der Seite (copilot_mapping.go)
+	CopilotNoWeb  bool   // Seite ohne den Haken „Im Internet nach einer Vorlage suchen“ (Berechnete Werte)
 	UserAvatar    string // eigenes Profilbild (avatar.go), "" = Symbol
 
 	// Auto-Logout / Systemnutzer-Override (siehe base.gohtml Script-Block)
@@ -2117,7 +2118,7 @@ func (h *Handler) CopilotAskWeb(w http.ResponseWriter, r *http.Request) {
 	}
 	// Copilot mit PDH-Daten (copilot_data.go): liest mit den Rechten der fragenden Person
 	d := &copilotData{h: h, userID: u.ID, scope: scope, conn: conn, can: func(p string) bool { return h.hasPerm(r, p) }}
-	d.web = conn != nil && r.FormValue("web") == "1" // Vorlage aus dem Internet nur auf Wunsch
+	d.web = conn != nil && conn.Kind != calc.Kind && r.FormValue("web") == "1" // Vorlage aus dem Internet nur auf Wunsch, nie auf „Berechnete Werte“
 	d.limitProjects(r) // Projekte nur mit Ansichtsrecht oder als Beteiligte
 	reply, sources, links, err := h.askCopilot(ctx, d, strings.TrimSpace(u.FirstName+" "+u.LastName), q, fid)
 	if err != nil {

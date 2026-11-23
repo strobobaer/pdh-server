@@ -1280,7 +1280,7 @@ table,.li,.act-item,.rec-row{zoom:var(--row-scale,1)}
         onkeydown="if(event.key==='Enter')sendCop()">
       <button class="cop-btn" onclick="sendCop()">{{t "Senden"}}</button>
     </div>
-    {{if .CopilotConn}}<label class="cop-web"><input type="checkbox" id="cop-web"> <span>{{t "Im Internet nach einer Vorlage suchen"}}<small>{{t "Dabei geht nur deine Frage ins Internet – keine Daten aus dem PDH."}}</small></span></label>
+    {{if and .CopilotConn (not .CopilotNoWeb)}}<label class="cop-web"><input type="checkbox" id="cop-web"> <span>{{t "Im Internet nach einer Vorlage suchen"}}<small>{{t "Dabei geht nur deine Frage ins Internet – keine Daten aus dem PDH."}}</small></span></label>
     <div class="cop-privacy"><i class="ti ti-shield-lock"></i> {{t "Auf dieser Seite gehen Quellwerte und Anlagennamen an Anthropic – Kennwörter nie."}}</div>{{end}}
   </div>
 
@@ -2388,6 +2388,9 @@ function copRenderProposal(msgs, p) {
     const body = el('div', 'cop-diff-body');
     const what = p.direction === 'export' ? (r.field || '') : (r.name || '');
     body.appendChild(el('div', '', (r.label || '') + (r.asset ? ' → ' + r.asset : '') + (what ? ' · ' + what : '')));
+    if(r.formula) body.appendChild(el('div', 'm', '= ' + r.formula));
+    if(r.probe) body.appendChild(el('div', 'm', 'Probe mit den Werten von jetzt: ' + r.probe));
+    if(r.valid_from) body.appendChild(el('div', 'm', 'gültig ab ' + r.valid_from));
     if(r.note) body.appendChild(el('div', 'm', r.note));
     if(r.reason) body.appendChild(el('div', 'm', r.reason));
     if(state) body.appendChild(el('div', 'm', state));

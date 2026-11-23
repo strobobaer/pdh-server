@@ -199,6 +199,8 @@ func (h *Handler) calcPage(w http.ResponseWriter, r *http.Request, connID string
 		Values: calcListRows(values, now), Functions: formula.Functions(),
 		Notice: q.Get("notice"), Err: q.Get("err"),
 	}
+	// Copilot-Seitenleiste kennt die Seite (eigene Werkzeuge, calc_copilot.go); keine Internetsuche
+	d.CopilotConn, d.CopilotNoWeb = copilotConnRef(h.faults.Copilot(), "import", connID), true
 	today := localDate(now)
 	switch edit := q.Get("edit"); {
 	case edit != "":
