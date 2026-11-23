@@ -38,12 +38,13 @@
           <option value="stats_setup"{{if eq .Slide.Kind "stats_setup"}} selected{{end}}>Statistik Rüstzeiten</option>
           <option value="stats_downtime"{{if eq .Slide.Kind "stats_downtime"}} selected{{end}}>Statistik Stillstände</option>
           <option value="grafana"{{if eq .Slide.Kind "grafana"}} selected{{end}}>Grafana-Dashboard</option>
+          <option value="website"{{if eq .Slide.Kind "website"}} selected{{end}}>Website</option>
         </select></div>
       <div class="form-group"><label class="form-label" for="sf-duration">Dauer in Sekunden</label>
         <input id="sf-duration" name="duration" type="number" min="5" max="600" class="form-input" value="{{.Slide.DurationSeconds}}"></div>
     </div>
 
-    <div class="form-group"><label class="form-label" for="sf-title">Titel <span style="color:var(--muted);font-weight:400" data-sf-kind="image vorgaenge stats_faults stats_tickets stats_setup stats_downtime grafana">(optional)</span></label>
+    <div class="form-group"><label class="form-label" for="sf-title">Titel <span style="color:var(--muted);font-weight:400" data-sf-kind="image vorgaenge stats_faults stats_tickets stats_setup stats_downtime grafana website">(optional)</span></label>
       <input id="sf-title" name="title" class="form-input" maxlength="{{.MaxTitle}}" value="{{.Slide.Title}}"></div>
 
     <div data-sf-kind="image">
@@ -72,6 +73,24 @@
         {{if .Dashboards}}<datalist id="sf-dash-list">{{range .Dashboards}}{{if .URL}}<option value="{{.URL}}">{{.Title}}</option>{{end}}{{end}}</datalist>{{end}}
         <div class="sf-hint">Ein Dashboard aus der Statistik (Vorschläge) oder eine Adresse: Pfad auf dem PDH wie /grafana/d/… oder volle https-Adresse. Erlaubt sind nur Pfade unter /grafana/ und https-Adressen (http nur für localhost). Das Terminal bettet nur diese Adresse ein; der Terminal-Benutzer braucht dafür das Recht „Statistik ansehen“.</div>
         {{if .NoStatsUsers}}<div class="sf-hint" role="alert" style="color:var(--amber)"><i class="ti ti-alert-triangle" aria-hidden="true"></i> Diesen Infobildschirmen fehlt das Recht „Statistik ansehen“, die Folie bliebe dort leer: {{range $i, $n := .NoStatsUsers}}{{if $i}}, {{end}}{{$n}}{{end}}. Grafana ist nicht nach Anlagen getrennt, die Rolle „Terminal“ hat das Recht deshalb nicht; gib es dem Terminal-Benutzer nur bei Bedarf als Einzelrecht.</div>{{end}}</div>
+    </div>
+
+    <div data-sf-kind="website">
+      <div class="form-group"><label class="form-label" for="sf-web-url">Adresse der Website</label>
+        <input id="sf-web-url" name="web_url" type="url" class="form-input" maxlength="2048" value="{{if eq .Slide.Kind "website"}}{{.Slide.URL}}{{end}}" placeholder="https://www.example.org/anzeige">
+        <div class="sf-hint">Nur http:// oder https://, höchstens 2048 Zeichen, ohne Benutzer und Passwort in der Adresse. Die Website erscheint in einem abgeschotteten Rahmen und ist am Bildschirm nicht bedienbar; Tippen blättert weiter.</div>
+        <div class="sf-hint" role="note"><i class="ti ti-info-circle" aria-hidden="true"></i> Viele Websites verbieten das Einbetten in fremde Seiten. Dann bleibt der Rahmen leer – prüfe das mit „Vorschau“. Leitet die Website auf eine andere Adresse um, muss auch dieser Rechner einbettbar sein; PDH gibt dem Bildschirm nur die hier eingetragene Adresse frei. Ohne Verbindung zu PDH wird die Folie übersprungen.</div></div>
+      <div class="sf-row">
+        <div class="form-group"><label class="form-label" for="sf-reload">Neu laden alle … Minuten</label>
+          <input id="sf-reload" name="reload_minutes" type="number" min="0" max="1440" class="form-input" value="{{.Slide.ReloadMinutes}}">
+          <div class="sf-hint">0 = nie neu laden (nur beim Erscheinen der Folie).</div></div>
+        <div class="form-group"><button type="button" class="btn" onclick="sfPreview()"><i class="ti ti-eye" aria-hidden="true"></i> Vorschau</button></div>
+      </div>
+      <div id="sf-preview-box" hidden>
+        <div class="sf-hint" id="sf-preview-msg"></div>
+        <div style="position:relative;max-width:760px;aspect-ratio:16/9;border:1px solid var(--border);border-radius:6px;overflow:hidden;background:#fff" id="sf-preview-wrap"></div>
+        <button type="button" class="btn btn-small" style="margin-top:6px" onclick="sfPreviewClose()">Vorschau schließen</button>
+      </div>
     </div>
 
     <div data-sf-kind="vorgaenge stats_faults stats_tickets stats_setup stats_downtime" id="sf-infra-box">
@@ -138,6 +157,36 @@ function sfInfraAdd(){
   const picker = document.querySelector('#sf-infra-box [data-infra-picker]');
   if(picker && typeof clearInfraPicker === 'function') clearInfraPicker(picker);
   sfInfraRender();
+}
+// Vorschau: dieselben Rahmen-Einstellungen wie am Bildschirm (abgeschottet, ohne Referrer, keine Geräterechte).
+function sfPreviewClose(){
+  document.getElementById('sf-preview-wrap').textContent = '';
+  document.getElementById('sf-preview-box').hidden = true;
+}
+function sfPreview(){
+  const box = document.getElementById('sf-preview-box'), wrap = document.getElementById('sf-preview-wrap'), msg = document.getElementById('sf-preview-msg');
+  const raw = document.getElementById('sf-web-url').value.trim();
+  wrap.textContent = '';
+  let u = null;
+  try{ u = new URL(raw); }catch(e){}
+  box.hidden = false;
+  if(!u || (u.protocol !== 'http:' && u.protocol !== 'https:') || u.username || u.password || raw.length > 2048){
+    msg.textContent = 'Keine gültige Adresse (nur http:// oder https://, ohne Zugangsdaten).';
+    return;
+  }
+  if(u.origin === location.origin){
+    msg.textContent = 'Die eigene PDH-Adresse lässt sich nicht einbetten.';
+    return;
+  }
+  msg.textContent = 'Bleibt der Rahmen leer, verbietet die Website das Einbetten.';
+  const f = document.createElement('iframe');
+  f.title = 'Vorschau der Website';
+  f.setAttribute('sandbox', 'allow-scripts allow-same-origin');
+  f.setAttribute('referrerpolicy', 'no-referrer');
+  f.setAttribute('allow', '');
+  f.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border:0';
+  f.src = u.href;
+  wrap.appendChild(f);
 }
 sfKind();
 sfInfraRender();

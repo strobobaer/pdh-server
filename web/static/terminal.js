@@ -36,13 +36,34 @@
     if (!(s >= 5 && s <= 600)) s = 15;
     return Math.round(s * 1000);
   }
+  // Adresse einer Website-Folie für den Rahmen: nur http(s), nie der eigene Ursprung (das PDH im Rahmen wäre nicht
+  // abgeschottet). Sonst ''.
+  function websiteFrameUrl(url, ownOrigin) {
+    if (typeof url !== 'string' || url.length > 2048 || !/^https?:\/\//i.test(url)) return '';
+    var u;
+    try { u = new URL(url); } catch (e) { return ''; }
+    if (u.username || u.password || (u.protocol !== 'http:' && u.protocol !== 'https:')) return '';
+    if (ownOrigin && u.origin === ownOrigin) return '';
+    return u.href;
+  }
+  // Erste zeigbare Folie ab Index i (reihum). Website-Folien entfallen ohne Verbindung (offline); -1 = keine.
+  function showableIndex(slides, i, offline) {
+    var n = Array.isArray(slides) ? slides.length : 0;
+    if (n < 1) return -1;
+    var start = typeof i === 'number' && i >= 0 && i < n ? i : 0;
+    for (var k = 0; k < n; k++) {
+      var j = (start + k) % n;
+      if (!(offline && slides[j] && slides[j].kind === 'website')) return j;
+    }
+    return -1;
+  }
   // Wischgeste nach links: mindestens 60 px waagerecht, weniger als 40 px senkrecht.
   function isSwipeLeft(start, end) {
     if (!start || !end) return false;
     var dx = start.x - end.x, dy = Math.abs(start.y - end.y);
     return dx >= 60 && dy < 40;
   }
-  // Folienarten, die ältere Terminals kennen. Neuere Arten (Statistik, Grafana) bleiben aus dem
+  // Folienarten, die ältere Terminals kennen. Neuere Arten (Statistik, Grafana, Website) bleiben aus dem
   // Zwischenspeicher: ein Terminal mit älterem Stand lehnt unbekannte Arten ab und würde alles verwerfen.
   var CACHEABLE_KINDS = ['image', 'text', 'vorgaenge'];
 
@@ -646,6 +667,7 @@
   if (mode === 'global' || saver) {
     var stage = document.getElementById('g-stage');
     var pdhName = (stage && stage.dataset.name) || 'PDH';
+    var reloadTimer = null; // Website-Folie: regelmäßiges Neuladen des Rahmens
     var slides = [], version = '', cur = -1, slideTimer = null, cachedVersion = null, caching = false, again = false;
     document.addEventListener('contextmenu', function (ev) { ev.preventDefault(); });
     document.addEventListener('selectstart', function (ev) { ev.preventDefault(); });
@@ -739,7 +761,8 @@
     };
     // Eine Folie anzeigen (nur textContent, nie HTML aus den Daten).
     var draw = function (s) {
-      stage.textContent = '';
+      if (reloadTimer) { clearInterval(reloadTimer); reloadTimer = null; }
+      stage.textContent = ''; // entfernt auch einen Website-Rahmen: er lädt nur, solange seine Folie läuft
       if (!s) {
         var e = el('div', 'g-empty', 'Keine Folien eingerichtet');
         e.appendChild(el('small', null, pdhName));
@@ -756,6 +779,20 @@
           fr.setAttribute('referrerpolicy', 'no-referrer');
           fr.src = s.url;
           stage.appendChild(fr);
+        }
+        if (s.title) stage.appendChild(el('div', 'g-cap', s.title));
+      } else if (s.kind === 'website') {
+        var wu = websiteFrameUrl(s.url, location.origin);
+        if (wu) {
+          var wf = el('iframe', 'g-frame g-web');
+          wf.title = s.title || 'Website';
+          wf.setAttribute('sandbox', 'allow-scripts allow-same-origin');
+          wf.setAttribute('referrerpolicy', 'no-referrer');
+          wf.setAttribute('allow', '');
+          wf.src = wu;
+          stage.appendChild(wf);
+          stage.appendChild(el('div', 'g-shield')); // fängt Berührungen: die Website ist nicht bedienbar, Tippen blättert weiter
+          if (typeof s.reload === 'number' && s.reload > 0) reloadTimer = setInterval(function () { wf.src = wu; }, s.reload * 60000);
         }
         if (s.title) stage.appendChild(el('div', 'g-cap', s.title));
       } else if (s.kind === 'stats_faults' || s.kind === 'stats_tickets' || s.kind === 'stats_setup' || s.kind === 'stats_downtime') {
@@ -776,8 +813,23 @@
         stage.appendChild(box);
       }
     };
+    // Keine Verbindung zu PDH (oder zum Netz): Website-Folien werden übersprungen statt als Fehler gezeigt.
+    var isOffline = function () { return navigator.onLine === false || loadFails > 0 || streamFails > 0; };
+    var skipWebsiteIfOffline = function () {
+      if (cur >= 0 && slides[cur] && slides[cur].kind === 'website' && isOffline()) show(nextSlideIndex(slides, cur));
+    };
     var show = function (i) {
       if (slideTimer) { clearTimeout(slideTimer); slideTimer = null; }
+      if (slides.length) {
+        var ok = showableIndex(slides, i, isOffline());
+        if (ok < 0) { // nur Website-Folien und keine Verbindung: ruhiger Bildschirm, später erneut versuchen
+          cur = -1;
+          draw({ kind: 'text', title: pdhName });
+          slideTimer = setTimeout(function () { show(0); }, 10000);
+          return;
+        }
+        i = ok;
+      }
       cur = slides.length ? i : -1;
       draw(slides.length ? slides[cur] : null);
       if (slides.length) {
@@ -856,6 +908,7 @@
         })
         .catch(function () { // offline: alter Stand bleibt, nach mehreren Fehlern in Folge Folienschau des Terminals
           var st = outageStep(loadFails, true); loadFails = st.fails; leaveOnOutage(st);
+          skipWebsiteIfOffline();
         });
     };
 
@@ -897,8 +950,10 @@
       gev.onopen = function () { streamFails = outageStep(streamFails, false).fails; };
       gev.onerror = function () { // der EventSource verbindet selbst neu; viele Fehler in Folge = PDH nicht erreichbar
         var st = outageStep(streamFails, true); streamFails = st.fails; leaveOnOutage(st);
+        skipWebsiteIfOffline();
       };
     } catch (e) { /* kein EventSource */ }
+    window.addEventListener('offline', skipWebsiteIfOffline);
     setInterval(function () { load(true); }, 60000); // Vorgänge und Version auch ohne Ereignis aktuell halten
     load(false);
   }

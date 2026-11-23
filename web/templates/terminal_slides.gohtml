@@ -29,6 +29,7 @@
     <a class="btn btn-small btn-primary" href="/terminal-slides/new?kind=stats_setup"><i class="ti ti-chart-bar" aria-hidden="true"></i> Statistik Rüstzeiten</a>
     <a class="btn btn-small btn-primary" href="/terminal-slides/new?kind=stats_downtime"><i class="ti ti-chart-bar" aria-hidden="true"></i> Statistik Stillstände</a>
     <a class="btn btn-small btn-primary" href="/terminal-slides/new?kind=grafana"><i class="ti ti-chart-line" aria-hidden="true"></i> Grafana</a>
+    <a class="btn btn-small btn-primary" href="/terminal-slides/new?kind=website"><i class="ti ti-world" aria-hidden="true"></i> Website</a>
   </div>
 </div>
 
@@ -45,7 +46,7 @@
     <tr{{if not .Active}} class="sl-off"{{end}}>
       <td><div style="display:flex;gap:10px;align-items:center;min-width:0">
         {{if .HasImage}}<img class="sl-thumb" src="/terminal-slides/{{.ID}}/image?v={{.UpdatedKey}}" alt="Vorschau{{if .Title}}: {{.Title}}{{end}}" loading="lazy">
-        {{else}}<div class="sl-thumb-none" aria-hidden="true"><i class="ti {{if eq .Kind "text"}}ti-article{{else if eq .Kind "grafana"}}ti-chart-line{{else if or (eq .Kind "stats_faults") (eq .Kind "stats_tickets") (eq .Kind "stats_setup") (eq .Kind "stats_downtime")}}ti-chart-bar{{else}}ti-list-details{{end}}"></i></div>{{end}}
+        {{else}}<div class="sl-thumb-none" aria-hidden="true"><i class="ti {{if eq .Kind "text"}}ti-article{{else if eq .Kind "grafana"}}ti-chart-line{{else if eq .Kind "website"}}ti-world{{else if or (eq .Kind "stats_faults") (eq .Kind "stats_tickets") (eq .Kind "stats_setup") (eq .Kind "stats_downtime")}}ti-chart-bar{{else}}ti-list-details{{end}}"></i></div>{{end}}
         <div class="sl-what"><b>{{if .Title}}{{.Title}}{{else}}<span style="color:var(--muted)">(ohne Titel)</span>{{end}}</b>
           {{if .Summary}}<div class="sl-sub">{{.Summary}}</div>{{end}}</div>
       </div></td>
