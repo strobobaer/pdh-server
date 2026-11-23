@@ -10,6 +10,19 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.82.40] – 2026-11-23
+
+### Neu
+
+- **Terminal: Vorgänge.** Neue Kachel und Seite **Vorgänge** am Anlagenterminal: offene Störungen, Tickets und Aufgaben der Anlage und ihrer Unteranlagen mit Stand (offen, in Arbeit, wartet). Einen offenen Vorgang antippen, Mitarbeitende wählen (mehrere), **Starten** – der Vorgang geht auf „In Arbeit“ und die Personen werden zugewiesen. Einen laufenden Vorgang antippen: **Warten (geht noch weiter)** setzt ihn auf „Wartet“ (Zuweisung bleibt), **Beenden** öffnet bei Störungen und Tickets den Abschluss-Assistenten (wie im Leitstand), bei Aufgaben ist sie danach erledigt. Eine vorgehaltene Karte öffnet den Stand der Person mit ihren laufenden Vorgängen (Beenden, Warten) und wählt sie in der Auswahl vor.
+- **Einstellung „Bearbeiten am Terminal“** beim Systembenutzer: **Ohne Karte (Eingewöhnung)**, Vorgabe für alle bestehenden Terminals – am Terminal darf jede Person durch Wählen der Mitarbeitenden starten, warten lassen und beenden (Rechte des Terminal-Benutzers in der Abteilung der Anlage, nur in der Gerätesitzung) – oder **Nur mit Karte** (ohne Karte nur Ansicht; mit Karte handelt die Person mit ihren eigenen Rechten). Die Rolle „Terminal“ hat die Rechte zum Beenden und für Aufgaben nicht von Haus aus; der Betreiber vergibt sie bei Bedarf.
+- **Einstellung „Abteilungen des Terminals“** beim Systembenutzer: aus diesen Abteilungen stammen die wählbaren Mitarbeitenden (Vorgabe: Abteilung der Terminal-Anlage). Auch für weitere Terminalfunktionen gedacht.
+- **Schalter „Vorgänge“** in den Funktionen des Terminals (Grundwert an). Der Schalter steht im Funktionen-Abgleich; ältere Terminals kennen ihn nicht und schicken ihn nicht, unbekannte Schlüssel in der Anfrage werden wie bisher übergangen.
+- **Verlauf mit Herkunft.** Jeder Schritt am Terminal steht im Verlauf des Vorgangs mit den gewählten Personen, dem Terminal als Ort und der Herkunft „am Terminal gewählt“ oder „mit Karte“ (neue Felder `origin_via`, `place`, `people_ids` im Verlauf, für Auswertungen filterbar).
+- **Handeln im Namen anderer ist gekennzeichnet.** Bei „Ohne Karte“ steht im Verlauf, in der Maßnahme und in den Zeiteinträgen des Abschluss-Assistenten ausdrücklich „am Terminal gewählt, nicht selbst angemeldet“. Wird ein Vorgang am Terminal neu gestartet und fallen früher gewählte Personen weg, nennt der Verlauf sie („nicht mehr dabei“).
+- **Abschluss-Token des Terminals** (Sicherheit): Laufzeit 5 Minuten, gilt nur zusammen mit der Gerätesitzung dieses Terminals (auch für die Material-Schnittstelle), bei „mit Karte“ nur bei weiterhin angemeldeter Kartenperson, ist einmalig (nach dem Abschluss verbraucht) und es gilt nur das jeweils neueste Token je Vorgang. Die Kennung liegt in `app_settings` (Schlüssel `tcomplete:…`), ohne neues Schema.
+- Migration 206 (nur hinzufügend). Handbuch, Kapitel „Anlagenterminal“, um „Vorgänge am Terminal“ ergänzt.
+
 ## [0.82.39] – 2026-11-23
 
 ### Behoben

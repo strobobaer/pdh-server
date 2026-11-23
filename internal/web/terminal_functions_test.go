@@ -40,10 +40,10 @@ func TestParseTerminalFnBody(t *testing.T) {
 
 func TestTerminalFnJSONDefaults(t *testing.T) {
 	m := terminalFnJSON(defaultTerminalFns())
-	if len(m) != 7 {
-		t.Fatalf("sieben Schlüssel erwartet: %v", m)
+	if len(m) != len(terminalFnDefs) {
+		t.Fatalf("alle Schlüssel erwartet: %v", m)
 	}
-	for _, k := range []string{"stoerung", "ticket", "ruesten", "stillstand", "hmi", "wartungen", "saver_slides"} {
+	for _, k := range []string{"stoerung", "ticket", "ruesten", "stillstand", "hmi", "wartungen", "vorgaenge", "saver_slides"} {
 		e, ok := m[k].(map[string]any)
 		if !ok {
 			t.Fatalf("%s fehlt", k)

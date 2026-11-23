@@ -28,18 +28,20 @@ type userMaster struct {
 	EntryDate, ExitDate, Notes                          string
 	BrokerTickets, BrokerFaults                         bool
 	BrokerTasks, BrokerMaintenance                      bool
-	TerminalInfraID, TerminalInfraPath                  string          // Standort des Terminals (Systembenutzer)
-	LeitstandID, LeitstandName                          string          // direkt gewählter Leitstand des Terminals
-	LiveTranslate                                       bool            // Live-Übersetzung (live_translate.go)
-	TerminalIdle                                        string          // eigene Rückkehrzeit des Terminals in Sekunden, "" = globaler Wert
-	TranslateLang                                       string          // Zielsprache, "" = Sprache der Oberfläche
-	TerminalManualLogin                                 string          // Anmeldeart ohne Kartenleser (Systembenutzer)
-	TerminalPasswordButton                              bool            // Knopf „Mit Benutzer und Passwort“
-	TerminalCardNotify                                  map[string]bool // gespeicherte Benachrichtigungsarten (leer = Vorgabe)
-	TerminalGlobalScreen                                bool            // globales Terminal (Infobildschirm)
-	TerminalSaverSlides                                 bool            // Folienschau als Bildschirmschoner
-	TerminalFn                                          map[string]bool // Funktionen-Schalter (terminal_functions.go)
-	TerminalScheme                                      string          // Farbschema der Terminalseiten: dark | light
+	TerminalInfraID, TerminalInfraPath                  string            // Standort des Terminals (Systembenutzer)
+	LeitstandID, LeitstandName                          string            // direkt gewählter Leitstand des Terminals
+	LiveTranslate                                       bool              // Live-Übersetzung (live_translate.go)
+	TerminalIdle                                        string            // eigene Rückkehrzeit des Terminals in Sekunden, "" = globaler Wert
+	TranslateLang                                       string            // Zielsprache, "" = Sprache der Oberfläche
+	TerminalManualLogin                                 string            // Anmeldeart ohne Kartenleser (Systembenutzer)
+	TerminalPasswordButton                              bool              // Knopf „Mit Benutzer und Passwort“
+	TerminalCardNotify                                  map[string]bool   // gespeicherte Benachrichtigungsarten (leer = Vorgabe)
+	TerminalGlobalScreen                                bool              // globales Terminal (Infobildschirm)
+	TerminalSaverSlides                                 bool              // Folienschau als Bildschirmschoner
+	TerminalFn                                          map[string]bool   // Funktionen-Schalter (terminal_functions.go)
+	TerminalScheme                                      string            // Farbschema der Terminalseiten: dark | light
+	TerminalDepts                                       terminalDeptsView // Abteilungen des Terminals (terminal_departments.go)
+	TerminalVorgModus                                   string            // Bearbeiten am Terminal: ohne_karte | nur_karte
 }
 
 type userPrivate struct {
@@ -282,6 +284,8 @@ func (h *Handler) loadUserMasterErr(ctx context.Context, id string) (userMaster,
 				}
 				m.TerminalScheme = scheme
 			}
+			m.TerminalDepts = h.loadTerminalDeptsView(ctx, id)
+			m.TerminalVorgModus = h.terminalVorgaengeModus(ctx, id)
 			for _, k := range ls.CardNotify {
 				if m.TerminalCardNotify == nil {
 					m.TerminalCardNotify = map[string]bool{}
@@ -651,6 +655,22 @@ func (h *Handler) UserMasterSaveWeb(w http.ResponseWriter, r *http.Request) {
 			userRedirect(w, r, id, "master", "", errTerminalLoginSave)
 			return
 		}
+		// Abteilungen und Bearbeiten am Terminal (eigene Marker, damit ältere Formulare nichts zurücksetzen)
+		if _, sent := r.Form["terminal_depts_sent"]; sent {
+			if err := h.saveTerminalDepartmentsForm(ctx, r.Form["terminal_depts"], id, getUser(r).ID); err != nil {
+				componentLog("terminal").Error().Err(err).Str("user", id).Msg("abteilungen des terminals speichern")
+				userRedirect(w, r, id, "master", "", errTerminalLoginSave)
+				return
+			}
+		}
+		if _, sent := r.Form["terminal_vorg_modus"]; sent {
+			if err := h.saveTerminalVorgaengeModus(ctx, id, r.FormValue("terminal_vorg_modus"), getUser(r).ID); err != nil {
+				componentLog("terminal").Error().Err(err).Str("user", id).Msg("bearbeiten am terminal speichern")
+				userRedirect(w, r, id, "master", "", errTerminalLoginSave)
+				return
+			}
+		}
+		h.notifyTerminalSettings(id)
 	}
 	// Leitstand des Terminals: direkt gewählt geht vor Gruppe/Abteilung
 	if _, sent := r.Form["leitstand_id"]; sent && h.canManageUsers(r) {

@@ -41,6 +41,7 @@ var terminalFnDefs = []terminalFnDef{
 	{"stillstand", "Stillstand", "fn_stillstand", "fn_stillstand_at", true},
 	{"hmi", "HMI", "fn_hmi", "fn_hmi_at", true},
 	{"wartungen", "Wartungen", "fn_wartungen", "fn_wartungen_at", true},
+	{"vorgaenge", "Vorgänge", "fn_vorgaenge", "fn_vorgaenge_at", true},
 	{"saver_slides", "Folienschau als Bildschirmschoner", "saver_slides", "saver_slides_at", false},
 }
 
@@ -444,13 +445,13 @@ func parseTerminalFnBody(body []byte) (map[string]terminalFnIn, error) {
 
 // terminalFnFlags: welche Funktionen die Terminalseiten zeigen.
 type terminalFnFlags struct {
-	Stoerung, Ticket, Ruesten, Stillstand, HMI, Wartungen bool
+	Stoerung, Ticket, Ruesten, Stillstand, HMI, Wartungen, Vorgaenge bool
 }
 
 func (s terminalFnSet) flags() terminalFnFlags {
 	return terminalFnFlags{
 		Stoerung: s["stoerung"].Enabled, Ticket: s["ticket"].Enabled, Ruesten: s["ruesten"].Enabled,
-		Stillstand: s["stillstand"].Enabled, HMI: s["hmi"].Enabled, Wartungen: s["wartungen"].Enabled,
+		Stillstand: s["stillstand"].Enabled, HMI: s["hmi"].Enabled, Wartungen: s["wartungen"].Enabled, Vorgaenge: s["vorgaenge"].Enabled,
 	}
 }
 

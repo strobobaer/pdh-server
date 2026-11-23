@@ -331,8 +331,59 @@
   }
 
   // Rüsten (Neu, Rüsten): wer rüstet und was sichtbar ist, hängt an der Kartenanmeldung – bei Wechsel neu laden.
-  if (mode === 'neu' || mode === 'rusten' || mode === 'stillstand' || mode === 'melden' || mode === 'hmi' || mode === 'wartung') {
+  if (mode === 'neu' || mode === 'rusten' || mode === 'stillstand' || mode === 'melden' || mode === 'hmi' || mode === 'wartung' || mode === 'vorgaenge') {
     document.addEventListener('pdh-card-login', function (e) { if (!!e.detail !== (body.dataset.cardIn === '1')) location.reload(); });
+  }
+
+  // Vorgänge (terminal_vorgaenge.go): Eine vorgehaltene Karte öffnet den Stand der Person – von der Info-Seite aus
+  // einmal je Anmeldung (Marker im Sitzungsspeicher, damit Zurück nicht gleich wieder dorthin führt).
+  if (mode === 'info' && body.dataset.vorgaenge === '1') {
+    document.addEventListener('pdh-card-login', function (e) {
+      var seen = false;
+      try { seen = sessionStorage.getItem('pdh.vorgShown') === '1'; } catch (err) { /* kein Speicher */ }
+      if (!e.detail) { try { sessionStorage.removeItem('pdh.vorgShown'); } catch (err) { /* ok */ } return; }
+      if (seen) return;
+      try { sessionStorage.setItem('pdh.vorgShown', '1'); } catch (err) { /* ok */ }
+      location.href = '/terminal/vorgaenge';
+    });
+  }
+
+  // Vorgänge: Beenden einer Störung/eines Tickets öffnet den Abschluss-Assistenten (Token nur für diesen Vorgang);
+  // bei einer Aufgabe antwortet der Server mit der Liste.
+  if (mode === 'vorgaenge') {
+    var vNote = document.getElementById('v-note');
+    var vShow = function (t) { if (!vNote) { alert(t); return; } vNote.textContent = t; vNote.hidden = false; };
+    document.addEventListener('submit', function (ev) {
+      var f = ev.target;
+      if (!f || !f.hasAttribute || !f.hasAttribute('data-fin')) return;
+      var sub = ev.submitter;
+      if (sub && sub.getAttribute('formaction')) return; // „Warten“ im selben Formular: normal absenden
+      ev.preventDefault();
+      var btns = f.querySelectorAll('button');
+      btns.forEach(function (b) { b.disabled = true; });
+      fetch(f.action, {
+        method: 'POST', credentials: 'same-origin', cache: 'no-store',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Accept': 'application/json' },
+        body: new URLSearchParams(new FormData(f)).toString()
+      }).then(function (r) {
+        var ct = r.headers.get('Content-Type') || '';
+        if (ct.indexOf('application/json') >= 0) return r.json().then(function (d) { return { ok: r.ok, d: d }; });
+        if (r.redirected) { location.href = r.url; return null; }
+        return r.text().then(function (t) { return { ok: false, text: t }; });
+      }).then(function (x) {
+        if (!x) return;
+        if (!x.ok || !x.d || !x.d.token) {
+          btns.forEach(function (b) { b.disabled = false; });
+          vShow((x.text || 'Das hat nicht geklappt – bitte nochmal versuchen.').slice(0, 200));
+          return;
+        }
+        if (typeof window.pdhComplete !== 'function') { location.reload(); return; }
+        window.pdhComplete(x.d.type, x.d.id, function () { location.href = '/terminal/vorgaenge'; }, { token: x.d.token, who: x.d.who, pre: x.d.pre || [] });
+      }).catch(function () {
+        btns.forEach(function (b) { b.disabled = false; });
+        vShow('Keine Verbindung – bitte nochmal versuchen.');
+      });
+    });
   }
 
   // Sensoren (ESPPDH) nach Kartenanmeldung: /terminal/sensors.json alle 10 s; ohne Anmeldung
