@@ -21,7 +21,7 @@ func inputErr(msg string) error { return fmt.Errorf("%w: %s", ErrInput, msg) }
 
 const planSelect = `
 	SELECT mp.id::text, mp.name, COALESCE(mp.description,''), mp.type, mp.infrastructure_id::text,
-	       mp.interval_unit, mp.interval_count, mp.schedule_mode, mp.lead_days, mp.lead_workdays, mp.year_plan_at,
+	       mp.interval_unit, mp.interval_count, mp.schedule_mode, mp.lead_workdays, mp.year_plan_at,
 	       (SELECT count(*) FROM maintenance_visits v WHERE v.plan_id = mp.id AND v.state = 'planned'),
 	       mp.estimated_min, mp.priority,
 	       mp.assigned_to::text, mp.responsible_to::text, mp.assigned_group_id::text, mp.cost_center_id::text,
@@ -42,7 +42,7 @@ const planSelect = `
 func scanPlan(row interface{ Scan(...interface{}) error }) (*MaintenancePlan, error) {
 	p := &MaintenancePlan{}
 	err := row.Scan(&p.ID, &p.Name, &p.Description, &p.Type, &p.InfrastructureID,
-		&p.IntervalUnit, &p.IntervalCount, &p.ScheduleMode, &p.LeadDays, &p.LeadWorkdays, &p.YearPlanAt, &p.VisitCount,
+		&p.IntervalUnit, &p.IntervalCount, &p.ScheduleMode, &p.LeadWorkdays, &p.YearPlanAt, &p.VisitCount,
 		&p.EstimatedMin, &p.Priority,
 		&p.AssignedTo, &p.ResponsibleTo, &p.AssignedGroupID, &p.CostCenterID,
 		&p.Active, &p.LastExecutedAt, &p.NextDueAt, &p.CreatedBy, &p.CreatedAt,

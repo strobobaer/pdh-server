@@ -245,9 +245,9 @@ func (h *Handler) PlannerMaintSaveWeb(w http.ResponseWriter, r *http.Request) {
 	case assignee == "":
 		_, err = h.db.Exec(ctx, `UPDATE maintenance_tasks SET due_date = $2 WHERE id = $1::uuid`, id, due)
 	case assignee == "-":
-		_, err = h.db.Exec(ctx, `UPDATE maintenance_tasks SET due_date = $2, assigned_to = NULL WHERE id = $1::uuid`, id, due)
+		_, err = h.db.Exec(ctx, `UPDATE maintenance_tasks SET due_date = $2, assigned_to = NULL, staff_manual = true WHERE id = $1::uuid`, id, due)
 	case uuidInPathRe.MatchString(assignee):
-		_, err = h.db.Exec(ctx, `UPDATE maintenance_tasks SET due_date = $2, assigned_to = $3::uuid WHERE id = $1::uuid`, id, due, assignee)
+		_, err = h.db.Exec(ctx, `UPDATE maintenance_tasks SET due_date = $2, assigned_to = $3::uuid, staff_manual = true WHERE id = $1::uuid`, id, due, assignee)
 	default:
 		err = errors.New("Mitarbeiter ungültig")
 	}
@@ -258,6 +258,11 @@ func (h *Handler) PlannerMaintSaveWeb(w http.ResponseWriter, r *http.Request) {
 	uid := getUser(r).ID
 	if newDue := due.Format("02.01.2006"); newDue != oldDue {
 		h.addHistory(ctx, "maintenance_task", id, "update", "Fälligkeit", oldDue, newDue, "Im Planer verschoben", uid)
+		if h.maint != nil { // von Hand verschoben: merken, „anstehend ab“ neu
+			if err := h.maint.Repo().AfterDueChange(ctx, id); err != nil {
+				componentLog("wartung").Warn().Err(err).Str("auftrag", id).Msg("fälligkeit von hand: merken fehlgeschlagen")
+			}
+		}
 	}
 	if uuidInPathRe.MatchString(assignee) {
 		h.addHistory(ctx, "maintenance_task", id, "update", "Zugewiesen", "", assignee, "Im Planer zugewiesen", uid)

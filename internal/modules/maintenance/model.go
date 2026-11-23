@@ -79,7 +79,6 @@ type MaintenancePlan struct {
 	IntervalUnit     string     `json:"interval_unit"`  // day | week | month | year
 	IntervalCount    int        `json:"interval_count"` // alle N Einheiten
 	ScheduleMode     string     `json:"schedule_mode"`  // completion | fixed
-	LeadDays         int        `json:"lead_days"`      // Altfeld, entfaellt mit seinen Lesern
 	LeadWorkdays     *int       `json:"lead_workdays"`  // Vorlauf des Auftrags in Arbeitstagen (nil = Vorgabe der Wartungsregeln)
 	YearPlanAt       *time.Time `json:"year_plan_at,omitempty"`
 	VisitCount       int        `json:"visit_count"`    // geplante Termine (Zustand „geplant“)
@@ -143,7 +142,6 @@ type MaintenanceTask struct {
 	ResponsibleName  string `json:"responsible_name,omitempty"`
 	GroupName        string `json:"group_name,omitempty"`
 	PlanName         string `json:"plan_name,omitempty"`
-	LeadDays         int    `json:"lead_days"`
 	CostCenterNumber string `json:"cost_center_number,omitempty"`
 	CostCenterName   string `json:"cost_center_name,omitempty"`
 }

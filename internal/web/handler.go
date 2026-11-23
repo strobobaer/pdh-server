@@ -4724,5 +4724,10 @@ func maintUpcoming(m *maintenance.MaintenanceTask, now time.Time) bool {
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
 	due := m.DueDate.Local()
 	due = time.Date(due.Year(), due.Month(), due.Day(), 0, 0, 0, 0, time.Local)
-	return due.After(today.AddDate(0, 0, 7)) && due.AddDate(0, 0, -m.LeadDays).After(today)
+	upFrom := due // „anstehend ab“ steht am Auftrag (Vorlauf in Arbeitstagen), sonst ab Fälligkeit
+	if m.UpcomingFrom != nil {
+		u := *m.UpcomingFrom // DATE-Spalte: Kalendertag als Mitternacht UTC
+		upFrom = time.Date(u.Year(), u.Month(), u.Day(), 0, 0, 0, 0, time.Local)
+	}
+	return due.After(today.AddDate(0, 0, 7)) && upFrom.After(today)
 }

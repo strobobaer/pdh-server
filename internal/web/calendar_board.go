@@ -671,6 +671,11 @@ func (h *Handler) CalendarMoveWeb(w http.ResponseWriter, r *http.Request) {
 		completionJSON(w, http.StatusBadRequest, map[string]any{"error": friendlyDBError(err)})
 		return
 	}
+	if m.table == "maintenance_tasks" && h.maint != nil { // von Hand verschoben: merken, „anstehend ab“ neu
+		if err := h.maint.Repo().AfterDueChange(ctx, in.ID); err != nil {
+			componentLog("wartung").Warn().Err(err).Str("auftrag", in.ID).Msg("fälligkeit von hand: merken fehlgeschlagen")
+		}
+	}
 	h.addHistory(ctx, m.ref, in.ID, "update", "due_date", old, to.Format("02.01.2006"), "Fälligkeit im Kalender verschoben", u.ID)
 	completionJSON(w, http.StatusOK, map[string]any{"success": true})
 }
