@@ -787,7 +787,21 @@ und 3 drückt bis auf Weiteres der Anwender.
     einspielen (Anwender, mit Sicherung – erst ab 0.82.36). Geparkt (Tests):
     `go run ./deploy/lab/last -cleanup` scheitert an
     `it_assets_created_by_fkey`, Reste des Lasttests liegen in der
-    Labor-Datenbank. Danach Paket 2 (berechnete Werte).
+    Labor-Datenbank.
+    **Paket 2 (berechnete Werte = virtuelle Messwerte):** Anwender
+    23.11.2026: „verschiedenste Berechnungen … als virtuellen Messwert“,
+    „A passt“ (Weg A: berechneter Wert ist eine Zuordnung an der eingebauten
+    Quelle „Berechnete Werte“). Entwurf
+    `docs/superpowers/specs/2026-11-23-berechnete-werte-design.md` auf Branch
+    `feature/berechnete-werte` (lokal, geprüft von einem unabhängigen
+    Prüfer) – **wartet auf die Bestätigung des Anwenders**, noch nichts
+    gebaut. Darin vorgeschlagen und mit zu bestätigen: Schnitt 2a (jetzt)
+    und 2b (Gültigkeit und rückwirkendes Neurechnen für die berechneten
+    Energie-Messstellen danach); Schnellübersicht bleibt bei der heutigen
+    Regel; kein neues Recht; Energie-Messstellen behalten in 2a ihren
+    Rechenumfang. Nach der Bestätigung: Bauplan
+    (`docs/superpowers/plans/`), dann Bau (voraussichtlich 0.82.37,
+    Migration 205 – vor dem Merge gegen `main` prüfen).
 
 Docker Desktop startet nach einem Neustart des Windows-Rechners nicht von
 selbst – ohne ihn fehlen der Zeuge und die Labor-Datenbank für die Tests.
