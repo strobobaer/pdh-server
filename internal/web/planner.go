@@ -11,6 +11,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"pdh/internal/core/workdays"
 )
 
 // Planer (/planner, migrations/133): Schichtplan, Urlaub & Abwesenheit,
@@ -55,100 +57,15 @@ var germanStates = []struct{ Code, Name string }{
 	{"SH", "Schleswig-Holstein"}, {"TH", "Thüringen"},
 }
 
-// easterSunday: Gaußsche Osterformel (gregorianisch, Anonymer Algorithmus).
-func easterSunday(y int) time.Time {
-	a := y % 19
-	b, c := y/100, y%100
-	d, e := b/4, b%4
-	f := (b + 8) / 25
-	g := (b - f + 1) / 3
-	hh := (19*a + b - d - g + 15) % 30
-	i, k := c/4, c%4
-	l := (32 + 2*e + 2*i - hh - k) % 7
-	m := (a + 11*hh + 22*l) / 451
-	month := (hh + l - 7*m + 114) / 31
-	day := (hh+l-7*m+114)%31 + 1
-	return time.Date(y, time.Month(month), day, 0, 0, 0, 0, time.Local)
-}
+// easterSunday und germanHolidays: Hüllen um das gemeinsame Paket workdays.
+func easterSunday(y int) time.Time { return workdays.EasterSunday(y) }
 
-// germanHolidays: gesetzliche Feiertage eines Jahres (Bund + Bundesland).
-func germanHolidays(y int, state string) map[string]string {
-	out := map[string]string{}
-	add := func(t time.Time, name string) { out[t.Format(dayISO)] = name }
-	fix := func(m time.Month, d int) time.Time { return time.Date(y, m, d, 0, 0, 0, 0, time.Local) }
-	in := func(states ...string) bool {
-		for _, s := range states {
-			if s == state {
-				return true
-			}
-		}
-		return false
-	}
-	e := easterSunday(y)
-	add(fix(time.January, 1), "Neujahr")
-	add(e.AddDate(0, 0, -2), "Karfreitag")
-	add(e.AddDate(0, 0, 1), "Ostermontag")
-	add(fix(time.May, 1), "Tag der Arbeit")
-	add(e.AddDate(0, 0, 39), "Christi Himmelfahrt")
-	add(e.AddDate(0, 0, 50), "Pfingstmontag")
-	add(fix(time.October, 3), "Tag der Deutschen Einheit")
-	add(fix(time.December, 25), "1. Weihnachtstag")
-	add(fix(time.December, 26), "2. Weihnachtstag")
-	if in("BW", "BY", "ST") {
-		add(fix(time.January, 6), "Heilige Drei Könige")
-	}
-	if in("BE", "MV") {
-		add(fix(time.March, 8), "Internationaler Frauentag")
-	}
-	if in("BB") {
-		add(e, "Ostersonntag")
-		add(e.AddDate(0, 0, 49), "Pfingstsonntag")
-	}
-	if in("BW", "BY", "HE", "NW", "RP", "SL") {
-		add(e.AddDate(0, 0, 60), "Fronleichnam")
-	}
-	if in("SL") {
-		add(fix(time.August, 15), "Mariä Himmelfahrt")
-	}
-	if in("TH") {
-		add(fix(time.September, 20), "Weltkindertag")
-	}
-	if in("BB", "HB", "HH", "MV", "NI", "SN", "ST", "SH", "TH") {
-		add(fix(time.October, 31), "Reformationstag")
-	}
-	if in("BW", "BY", "NW", "RP", "SL") {
-		add(fix(time.November, 1), "Allerheiligen")
-	}
-	if in("SN") { // Mittwoch vor dem 23. November
-		d := fix(time.November, 22)
-		for d.Weekday() != time.Wednesday {
-			d = d.AddDate(0, 0, -1)
-		}
-		add(d, "Buß- und Bettag")
-	}
-	return out
-}
+func germanHolidays(y int, state string) map[string]string { return workdays.GermanHolidays(y, state) }
 
 // freeDays: Feiertage (Bundesland aus den Einstellungen) und Betriebsruhe
 // im Zeitraum, Datum → Bezeichnung.
 func (h *Handler) freeDays(ctx context.Context, from, to time.Time) map[string]string {
-	state := h.appSetting(ctx, "planner_holiday_state", "")
-	out := map[string]string{}
-	for y := from.Year(); y <= to.Year(); y++ {
-		for d, n := range germanHolidays(y, state) {
-			out[d] = n
-		}
-	}
-	if rows, err := h.db.Query(ctx, `SELECT day::text, name FROM planner_closures WHERE day BETWEEN $1 AND $2`, from, to); err == nil {
-		for rows.Next() {
-			var d, n string
-			if rows.Scan(&d, &n) == nil {
-				out[d] = n
-			}
-		}
-		rows.Close()
-	}
-	return out
+	return workdays.FreeDays(ctx, h.db, from, to)
 }
 
 // ── Schichtplan ───────────────────────────────────────────────
