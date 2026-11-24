@@ -76,7 +76,8 @@ window.pdhGridDrag = function(o){
   root.addEventListener('click', e => { if(swallow){ e.stopPropagation(); e.preventDefault(); } }, true);
   return {setCopy(v){ copyMode = !!v; }};
 };
-// pdhGridPost: Änderung speichern, Hinweise zeigen, Seite neu laden
+// pdhGridPost: Änderung speichern, Hinweise zeigen, Seite neu laden.
+// Liefert true (gespeichert) oder false (Fehler gemeldet, nichts geändert).
 window.pdhGridPost = async function(url, body){
   try{
     const res = await fetch(url, {method: 'POST', credentials: 'same-origin', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
@@ -84,7 +85,8 @@ window.pdhGridPost = async function(url, body){
     if(!res.ok || j.success === false) throw new Error(j.error || ('HTTP ' + res.status));
     if(j.skipped && j.skipped.length) alert((j.added ? j.added + ' Tag(e) eingetragen.\n' : '') + 'Übersprungen:\n• ' + j.skipped.join('\n• '));
     location.reload();
-  }catch(err){ alert('Nicht gespeichert: ' + err.message); }
+    return true;
+  }catch(err){ alert('Nicht gespeichert: ' + err.message); return false; }
 };
 </script>
 {{end}}

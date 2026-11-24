@@ -10,6 +10,17 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.82.49] – 2026-11-24
+
+### Behoben
+
+- **Planer, Reiter „Wartung“:** Wer an einem Wartungsauftrag nur den Tag ändert, merkt die Person nicht mehr als „von Hand besetzt“ – eine geänderte Besetzung des Plans kommt wieder am Auftrag an, und die Person bekommt keine zweite Nachricht „zugewiesen“.
+- **Verlauf der Wartung:** Beim Besetzen im Kalender und im Planer stehen im Verlauf Namen von Person und Gruppe statt Kennungen.
+- **Kalender, Fenster zum Besetzen:** Das Fenster öffnet mittig, sein Titel enthält den Zieh-Hinweis nicht mehr, und nach einer Fehlermeldung bleibt es offen.
+- **Geplante Wartungstermine:** Wird aus einem Termin ein Auftrag, während ihn jemand verschiebt oder besetzt, meldet PDH das, statt „gespeichert“ zu zeigen.
+- **Wartung, stündlicher Abgleich:** Ein einzelner Plan mit Fehler hält die Aufträge und Jahrespläne der übrigen Pläne nicht mehr auf; das Server-Protokoll nennt den Plan.
+- **Leitstand am Handy und Tablet:** Die Knöpfe der Kopfzeile brechen bis 1050 px Breite um, die Seite läuft nicht mehr über den Rand.
+
 ## [0.82.48] – 2026-11-23
 
 ### Neu
