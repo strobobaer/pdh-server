@@ -155,10 +155,17 @@ func (a *updateAgent) esppdhInstallHandler(w http.ResponseWriter, r *http.Reques
 			return
 		}
 	}
+	// gemeinsame Sperre für die Dauer der Einrichtung (os_update.go)
+	release, busy := a.lockAcquire(lockESPHome)
+	if busy != "" {
+		writeMountJSON(w, http.StatusOK, map[string]any{"ok": false, "error": lockBusyMsg(busy)})
+		return
+	}
 	j := &a.esppdh
 	j.mu.Lock()
 	if j.running {
 		j.mu.Unlock()
+		release()
 		writeMountJSON(w, http.StatusOK, map[string]any{"ok": true, "running": true})
 		return
 	}
@@ -175,6 +182,7 @@ func (a *updateAgent) esppdhInstallHandler(w http.ResponseWriter, r *http.Reques
 		a.pruneVersionOrphans(ctx) // verwaiste Kandidaten weg, der eigene Auftrag ist geschützt
 		out, err := run(ctx, esppdhInstallScript, env)
 		v, msg := esppdhResult(out, err)
+		release()
 		j.mu.Lock()
 		j.running, j.done, j.version, j.err = false, true, v, msg
 		j.mu.Unlock()

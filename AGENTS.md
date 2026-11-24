@@ -1097,9 +1097,14 @@ und 3 drückt bis auf Weiteres der Anwender.
     ein; neues Recht `system.os_update`. Entwurf
     `docs/superpowers/specs/2026-11-24-betriebssystem-updates-design.md` auf
     Branch `feature/os-update` im Arbeitsordner `D:/pdh-os-update` (ab
-    `main` 0.82.56). Teil A (Einzelserver, Karte, Recht) zuerst, Teil B
-    (Verbund) danach; Bauplan Teil A in Arbeit, Bau durch Codex
-    (`gpt-6.2-sol`), Prüfung Claude. Version voraussichtlich 0.82.58.
+    `main` 0.82.56). **Teil A (Einzelserver, Karte, Recht) gebaut als
+    0.82.59** (24.11.2026, lokal auf `feature/os-update`, noch nicht auf
+    `main`; Migration 222, Recht `system.os_update`; Handbuch „Versionen &
+    Updates“ und „Administration“ nachgezogen). Offen: Schlussprüfung,
+    Freigabe Push/Merge (vorher `origin/main`, Version und Migrationsnummer
+    prüfen), Verbund-Update, Abnahme am Testverbund (Docker-Testsystem: Karte
+    „nicht verfügbar“), 10.10.0.202 (Anwender, mit Sicherung). **Teil B
+    (Verbund: nur am passiven Server mit Rollentausch) ist nicht begonnen.**
 
 Docker Desktop startet nach einem Neustart des Windows-Rechners nicht von
 selbst – ohne ihn fehlen der Zeuge und die Labor-Datenbank für die Tests.

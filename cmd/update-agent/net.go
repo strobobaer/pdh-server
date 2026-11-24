@@ -466,10 +466,26 @@ func (a *updateAgent) netApplyHandler(w http.ResponseWriter, r *http.Request) {
 	a.mu.RLock()
 	updating := a.status.Running
 	a.mu.RUnlock()
-	if updating || a.singleJobActive() {
-		netRefuse(w, "Ein PDH-Update läuft – bitte danach erneut versuchen")
+	if a.osJobOpen() {
+		netRefuse(w, lockBusyMsg(lockOS)) // der Besitzer beim Namen nennen
 		return
 	}
+	if updating || a.singleJobActive() {
+		netRefuse(w, lockBusyMsg(lockPDH))
+		return
+	}
+	// gemeinsame Sperre für die Laufzeit des Skripts; bei jeder Ablehnung wieder frei
+	release, busy := a.lockAcquire(lockNet)
+	if busy != "" {
+		netRefuse(w, lockBusyMsg(busy))
+		return
+	}
+	held := true
+	defer func() {
+		if held {
+			release()
+		}
+	}()
 
 	j := &a.netJob
 	j.start.Lock()
@@ -531,6 +547,7 @@ func (a *updateAgent) netApplyHandler(w http.ResponseWriter, r *http.Request) {
 	j.mu.Unlock()
 	log.Printf("netzwerk: %s von %q gestartet (%s über %s, DNS %v, Wartung %v)", req.Action, by, sum.Addr, sum.Iface, dns, maint)
 	run := a.netRunFn()
+	held = false // das Skript gibt die Sperre am Ende frei
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), netApplyTimeout)
 		defer cancel()
@@ -542,6 +559,7 @@ func (a *updateAgent) netApplyHandler(w http.ResponseWriter, r *http.Request) {
 		} else {
 			log.Printf("netzwerk: %s angewendet, wartet auf Bestätigung", req.Action)
 		}
+		release()
 		j.mu.Lock()
 		j.running, j.err = false, msg
 		j.mu.Unlock()

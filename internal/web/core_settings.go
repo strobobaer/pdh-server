@@ -65,6 +65,7 @@ type CoreSettingsPageData struct {
 	UpdateAskToken      string   // Einmal-Token für „Trotzdem aktualisieren“
 	AgentOutput         string
 	NC                  *ncUpdateView // Kachel „Nextcloud-Updates“ (nextcloud_updates.go)
+	OS                  *osView       // Karte „Betriebssystem“ (os_updates.go)
 	Notice              string
 
 	DefaultDueDaysFault       int
@@ -242,6 +243,7 @@ func (h *Handler) CoreSettingsPage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	data.NC = h.ncUpdateViewFor(r.Context())
+	data.OS = h.osUpdateViewFor(r.Context(), r)
 	data.CanCode = h.actorIsAdmin(r)
 	data.CanPKI = h.canPKI(r)
 	if data.CanCode {
@@ -388,6 +390,14 @@ func (h *Handler) installUpdateLegacy(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) getUpdateSetting(ctx context.Context, key, fallback string) string {
+	if h.db == nil { // nur Tests ohne Datenbank
+		h.memSettings.mu.Lock()
+		defer h.memSettings.mu.Unlock()
+		if v, ok := h.memSettings.m[key]; ok {
+			return v
+		}
+		return fallback
+	}
 	var value string
 	if err := h.db.QueryRow(ctx, `SELECT value FROM app_settings WHERE key=$1`, key).Scan(&value); err != nil {
 		return fallback
@@ -396,6 +406,15 @@ func (h *Handler) getUpdateSetting(ctx context.Context, key, fallback string) st
 }
 
 func (h *Handler) setUpdateSetting(ctx context.Context, key, value string) error {
+	if h.db == nil { // nur Tests ohne Datenbank
+		h.memSettings.mu.Lock()
+		defer h.memSettings.mu.Unlock()
+		if h.memSettings.m == nil {
+			h.memSettings.m = map[string]string{}
+		}
+		h.memSettings.m[key] = value
+		return nil
+	}
 	_, err := h.db.Exec(ctx, `
 		INSERT INTO app_settings (key, value, updated_at) VALUES ($1, $2, NOW())
 		ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_at=NOW()`, key, value)
@@ -410,10 +429,17 @@ func (h *Handler) checkUpdateIfDue(ctx context.Context) {
 	}
 	last, _ := time.Parse(time.RFC3339, h.getUpdateSetting(ctx, "update_last_checked_at", ""))
 	stale := !h.loadUpdateCheck(ctx).current(h.buildCommit, updateBranch())
+	// Betriebssystem: eigene Fälligkeit, unabhängig vom GitHub-Ergebnis (ohne Internet scheitert GitHub
+	// bei jedem Takt; apt update darf trotzdem höchstens einmal je Intervall laufen)
+	defer h.osAutoCheckIfDue(ctx, enabled, interval)
 	if !updateCheckDue(enabled, stale, last, interval, time.Now()) {
 		return
 	}
-	if err := h.checkGitHubUpdate(ctx); err != nil {
+	check := h.checkGitHubUpdate
+	if h.githubCheckHook != nil {
+		check = h.githubCheckHook
+	}
+	if err := check(ctx); err != nil {
 		fmt.Printf("update check failed: %v\n", err)
 	}
 }

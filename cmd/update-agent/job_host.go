@@ -58,6 +58,8 @@ const (
 	jobStopScript     = `systemctl stop pdh`
 	jobStartScript    = `systemctl start pdh`
 	jobIsActiveScript = `systemctl is-active --quiet pdh`
+	// Neustart des Rechners nach Betriebssystem-Paketen (os_steps.go)
+	jobRebootScript = `systemctl reboot`
 )
 
 // Zurückspielen der Datenbank (R17): in eine frische Datenbank <db>_rueckweg
@@ -148,10 +150,13 @@ func (a *updateAgent) updateTarget(ctx context.Context) (target, current string,
 		return "", "", errors.New("Installierter Stand unbekannt")
 	}
 	if current == target {
-		return "", "", errors.New("Keine neue Version im Update-Zweig")
+		return "", "", errNoNewVersion
 	}
 	return target, current, nil
 }
+
+// errNoNewVersion: der Update-Zweig steht auf dem installierten Stand (kein Fehler, nur nichts zu tun).
+var errNoNewVersion = errors.New("Keine neue Version im Update-Zweig")
 
 // pdhEnv: Wert aus <repoDir>/.env (der letzte Eintrag gilt), sonst aus der
 // Umgebung des Agenten (systemd lädt dieselbe Datei).

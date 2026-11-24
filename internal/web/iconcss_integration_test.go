@@ -77,8 +77,12 @@ func TestIconCSSChosen(t *testing.T) {
 	h := &Handler{db: e.pool}
 	resetIconCSSCache()
 	css0, key0 := h.iconCSS(e.ctx)
-	if !strings.Contains(string(css0), "\n.ti-ad-2{--ti:url(/vendor/") {
-		t.Fatal("ti-ad-2 soll vor der Wahl als Adresse stehen")
+	// seit 0.82.58: Verweise stehen in der Restdatei, die Hauptdatei enthält nur Eingebettetes
+	if strings.Contains(string(css0), ".ti-ad-2{") {
+		t.Fatal("ti-ad-2 soll vor der Wahl nicht in der Hauptdatei stehen")
+	}
+	if !strings.Contains(string(iconRestFile().raw), ":where(.ti-ad-2){--ti:url(/vendor/") {
+		t.Fatal("ti-ad-2 soll vor der Wahl als Adresse in der Restdatei stehen")
 	}
 	name := "Symboltest " + e.sfx
 	if _, err := e.pool.Exec(e.ctx, `INSERT INTO categories (name, icon) VALUES ($1, 'ti-ad-2')`, name); err != nil {

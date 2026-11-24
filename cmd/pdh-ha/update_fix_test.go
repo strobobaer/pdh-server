@@ -595,3 +595,26 @@ func TestUpdatePrepareRefusalNotMarkedFaulty(t *testing.T) {
 		t.Fatalf("MarkFaulty %v Faulty %v Ergebnis %q", d.up.job.MarkFaulty, d.cl.Faulty, d.up.job.Result)
 	}
 }
+
+// F7: eine fremde Sperre beim Agenten (423) wird als klare Meldung gemeldet – nie als eigener Lauf
+// mit altem Ergebnis.
+func TestAgentClient423ForeignLockClearError(t *testing.T) {
+	statusAsked := false
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/update":
+			w.WriteHeader(http.StatusLocked)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "Eine Netzwerk-Änderung läuft – bitte danach erneut versuchen"})
+		case "/v1/status":
+			statusAsked = true // ein alter, erfolgreicher Stand dürfte nie als Ergebnis gelten
+			_ = json.NewEncoder(w).Encode(agentRun{Success: true, Commit: "o1", Op: "rollback"})
+		}
+	}))
+	defer srv.Close()
+	writeEnvFile(t, "PDH_UPDATE_AGENT_URL="+srv.URL, "PDH_UPDATE_AGENT_TOKEN=t")
+	h := &httpAgent{poll: time.Millisecond, wait: time.Second}
+	err := h.Rollback(context.Background(), "o1", false)
+	if err == nil || !strings.Contains(err.Error(), "Eine Netzwerk-Änderung läuft") || strings.Contains(err.Error(), "{") || statusAsked {
+		t.Fatalf("Fehler: %v (Status abgefragt: %v)", err, statusAsked)
+	}
+}

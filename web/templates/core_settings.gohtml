@@ -103,7 +103,7 @@
       <form method="POST" action="/core/settings/check-update">
         {{template "icon-button" (dict "Action" "refresh" "ShowLabel" true "Type" "submit" "Label" (t "Commit-Vergleich"))}}
       </form>
-      <form method="POST" action="/core/settings/install-update" onsubmit="return confirm({{if .UpdateCluster}}{{t "Update im Verbund installieren? Die Anwender werden dabei kurz abgemeldet."}}{{else}}{{t "Update vom GitHub-Branch main herunterladen und installieren? Der Dienst wird dabei neu gestartet."}}{{end}})">
+      <form method="POST" action="/core/settings/install-update" onsubmit="return confirm({{if .UpdateCluster}}{{t "Update im Verbund installieren? Die Anwender werden dabei kurz abgemeldet."}}{{else if and .OS .OS.Available .OS.WithPDHUpdate (or .OS.PackageCount .OS.RebootRequired)}}{{t "Update vom GitHub-Branch main herunterladen und installieren? Der Dienst wird dabei neu gestartet. Die offenen Betriebssystem-Pakete werden mit eingespielt, der Server startet bei Bedarf neu."}}{{else}}{{t "Update vom GitHub-Branch main herunterladen und installieren? Der Dienst wird dabei neu gestartet."}}{{end}})">
         <button class="btn btn-primary" type="submit" {{if or (not .AgentConfigured) (not .AgentReachable) (not .UpdateAvailable) .UpdatePassive}}disabled title="{{if .UpdatePassive}}{{t "Das Update wird vom aktiven Server gesteuert."}}{{else}}{{t "Update-Agent nicht bereit oder kein Update verfügbar"}}{{end}}"{{end}}><i class="ti ti-download"></i> {{if .UpdateCluster}}{{t "Update im Verbund installieren"}}{{else}}{{t "Update installieren"}}{{end}}</button>
       </form>
     </div>
@@ -125,6 +125,8 @@
     {{end}}
     {{if not .AgentConfigured}}<p style="font-size:12px;color:var(--muted);margin-bottom:0">{{t "Der Update-Agent ist nicht erreichbar oder nicht konfiguriert. Installationsskript und Agent-Konfiguration prüfen."}}</p>{{end}}
   </div>
+
+  {{with .OS}}{{template "os-update-card" .}}{{end}}
 
   {{with .NC}}
   <div class="card" id="nextcloud-updates">

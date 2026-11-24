@@ -54,6 +54,8 @@ func (j UpdateJob) View(now time.Time, lockMax time.Duration, faulty []string) U
 	}
 	swap := j.Kind == UpdateSwap
 	switch {
+	case j.Kind == UpdateOS:
+		v.Steps = []string{"Abmelden", "Pakete einspielen", "Neustart", "Prüfen", "Freigabe"}
 	case swap:
 		v.Steps = []string{"Abmelden", "Rollentausch", "Prüfen", "Freigabe"}
 	case j.Kind == UpdateSequential:
@@ -77,6 +79,9 @@ func (j UpdateJob) View(now time.Time, lockMax time.Duration, faulty []string) U
 
 // viewStep: Schritt (in der Fünferliste), Prozent und Text je Phase.
 func (j UpdateJob) viewStep() (step, percent int, text string) {
+	if j.Kind == UpdateOS {
+		return j.viewStepOS()
+	}
 	seq, swap := j.Kind == UpdateSequential, j.Kind == UpdateSwap
 	what := "Update"
 	if swap {
@@ -108,6 +113,9 @@ func (j UpdateJob) viewStep() (step, percent int, text string) {
 		}
 		return 3, 60, "Neue Version wird geprüft"
 	case UpRelease:
+		if j.OSStep != "" { // PDH-Auftrag mit Betriebssystem-Teil
+			return 4, 92, osStepText(j.OSStep)
+		}
 		return 4, 90, "Freigabe – Spiegel holt auf"
 	case UpFollow:
 		return 4, 100, "Partner zieht die neue Version nach"

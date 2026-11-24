@@ -22,6 +22,7 @@ const (
 	UpdateRolling    UpdateKind = "rolling"    // ohne Unterbrechung (mit Rollentausch)
 	UpdateSequential UpdateKind = "sequential" // alle nacheinander (Neustart des aktiven)
 	UpdateSwap       UpdateKind = "swap"       // nur Rollentausch, keine neue Version
+	UpdateOS         UpdateKind = "os"         // Betriebssystem-Pakete (nur Einzelserver, Teil A)
 )
 
 // UpdatePhase ist der Schritt des Auftrags; der Text steht so in JSON.
@@ -129,6 +130,9 @@ type UpdateJob struct {
 	// FreezeSent (sequential): der Auftrag zum Einfrieren ging schon raus –
 	// B kann eingefroren sein und muss auf jedem Rückweg aufgetaut werden.
 	FreezeSent bool
+	// OSStep (nur UpdateOS): aktueller Schritt der Betriebssystem-Pakete
+	// (stop, install, reboot, boot, start, verify, done) – nur für die Anzeige.
+	OSStep string
 }
 
 // UpdateAck ist das Ergebnis eines node_op (vom Partner) oder local_op
@@ -234,6 +238,9 @@ func (j UpdateJob) Name() string { return j.name() }
 func (j UpdateJob) name() string {
 	if j.Kind == UpdateSwap {
 		return "Rollentausch"
+	}
+	if j.Kind == UpdateOS {
+		return "Betriebssystem-Update"
 	}
 	v := j.TargetVersion
 	if v == "" {

@@ -264,6 +264,16 @@ func (h *httpAgent) run(ctx context.Context, r agentUpdateReq) error {
 			}
 			return fmt.Errorf("Update-Agent nicht erreichbar: %w", err)
 		}
+		if code == http.StatusLocked {
+			// fremde Sperre beim Agenten (Prüfung, ESPHome, Netz, Betriebssystem-Update): der Agent hat
+			// kurz gewartet und nennt den Besitzer – klare Meldung statt eines alten Ergebnisses
+			var e struct {
+				Error string `json:"error"`
+			}
+			if json.Unmarshal(b, &e) == nil && e.Error != "" {
+				return fmt.Errorf("Update-Agent: %s", e.Error)
+			}
+		}
 		if code != http.StatusAccepted && code != http.StatusOK && code != http.StatusConflict {
 			return fmt.Errorf("Update-Agent: HTTP %d: %s", code, strings.TrimSpace(string(b)))
 		}

@@ -522,10 +522,16 @@ func (h *Handler) maintStatus(w http.ResponseWriter, r *http.Request) {
 // maintStatusExtra: Zusatzfelder für Sitzungen mit Recht zum Durchführen oder
 // Absagen – Phase, Frist der Nachfrage und Zielversion. Alle anderen sehen sie nicht.
 func (h *Handler) maintStatusExtra(r *http.Request, v ha.UpdateView, out map[string]any) {
-	if !v.Active || !h.maintCluster() { // Einzelserver unverändert: keine Nachfrage, keine Zusatzfelder
+	// Einzelserver: keine Nachfrage, keine Zusatzfelder – außer beim Betriebssystem-Auftrag,
+	// den man vor dem Einspielen abbrechen darf (nur Abbrechen, nie Durchführen)
+	osAbort := v.Kind == string(ha.UpdateOS) && osAbortPhase(v.Phase)
+	if !v.Active || (!h.maintCluster() && !osAbort) {
 		return
 	}
 	canConfirm, canAbort := h.maintMayAct(h.sessionUser(r))
+	if osAbort && !h.maintCluster() {
+		canConfirm = false
+	}
 	if !canConfirm && !canAbort {
 		return
 	}
@@ -593,6 +599,14 @@ func (h *Handler) maintActionPost(w http.ResponseWriter, r *http.Request, confir
 			return
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "msg": msg})
+		return
+	}
+	// Karte „Betriebssystem“ der Core-Einstellungen: dorthin zurück (nur dieses eine lokale Ziel erlaubt)
+	if r.FormValue("return") == "/core/settings" {
+		if err != nil {
+			msg = err.Error()
+		}
+		http.Redirect(w, r, "/core/settings?"+url.Values{"notice": {msg}}.Encode()+"#os-update", http.StatusSeeOther)
 		return
 	}
 	drRedirect(w, r, msg, err)
@@ -844,6 +858,21 @@ func maintText(lang, s string) string {
 		return tr(lang, "Update nicht durchgeführt")
 	case "Rollentausch abgebrochen":
 		return tr(lang, "Rollentausch abgebrochen")
+	// Betriebssystem-Auftrag (internal/ha/update_view_os.go)
+	case "Pakete einspielen":
+		return tr(lang, "Pakete einspielen")
+	case "Betriebssystem wird geprüft":
+		return tr(lang, "Betriebssystem wird geprüft")
+	case "Betriebssystem-Pakete werden eingespielt":
+		return tr(lang, "Betriebssystem-Pakete werden eingespielt")
+	case "Server startet neu":
+		return tr(lang, "Server startet neu")
+	case "Server wird geprüft":
+		return tr(lang, "Server wird geprüft")
+	case "Betriebssystem-Update abgeschlossen":
+		return tr(lang, "Betriebssystem-Update abgeschlossen")
+	case "Betriebssystem-Update abgebrochen":
+		return tr(lang, "Betriebssystem-Update abgebrochen")
 	}
 	return s
 }
@@ -889,6 +918,9 @@ func (h *Handler) renderMaintScreen(w http.ResponseWriter, r *http.Request, stat
 			p.AbortNote = tr(lang, "Zurücksetzen läuft bereits – Abbrechen ist nicht mehr nötig.")
 		case maintPastRelease(v.Phase):
 			p.AbortNote = tr(lang, "Das Update ist schon freigegeben – Abbrechen ist nicht mehr möglich.")
+		case v.Kind == string(ha.UpdateOS):
+			// in der Sperre werden die Pakete schon eingespielt – der Agent lehnt den Abbruch ab
+			p.AbortNote = tr(lang, "Die Betriebssystem-Pakete werden eingespielt – Abbrechen ist nicht mehr möglich.")
 		default:
 			p.CanAbort = true
 		}

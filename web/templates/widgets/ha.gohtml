@@ -55,7 +55,7 @@
 {{/* Fortschritt eines laufenden Auftrags (Daten: ha.UpdateView). Lädt sich alle 5 s selbst nach. */}}
 {{define "maint-progress"}}
 <div id="ha-update-progress" class="vp-msg" role="status" hx-get="/admin/server-config?tab=dr" hx-trigger="every 5s" hx-select="#ha-update-progress" hx-target="this" hx-swap="outerHTML">
-  <i class="ti ti-loader"></i> <b>{{if .RollingBack}}{{t "Update wird zurückgesetzt"}}{{else if eq .Phase "nachfrage"}}{{t "Update wartet auf Bestätigung"}}{{else}}{{t "Update läuft"}}{{end}}</b>{{if and .ToVersion (ne .Phase "nachfrage")}} – {{.FromVersion}} → {{.ToVersion}}{{end}}
+  <i class="ti ti-loader"></i> <b>{{if .RollingBack}}{{t "Update wird zurückgesetzt"}}{{else if eq .Phase "nachfrage"}}{{t "Update wartet auf Bestätigung"}}{{else if eq .Kind "os"}}{{t "Betriebssystem-Update läuft"}}{{else}}{{t "Update läuft"}}{{end}}</b>{{if and .ToVersion (ne .Phase "nachfrage")}} – {{.FromVersion}} → {{.ToVersion}}{{end}}
   <div class="vp-meta">{{.Text}}</div>
   <progress value="{{.Percent}}" max="100" style="width:100%;accent-color:var(--accent)">{{.Percent}} %</progress>
   {{if .Steps}}<ol class="vp-hint" style="padding-left:18px;margin:6px 0 0">{{$s := .Step}}{{range $i, $n := .Steps}}<li{{if eq $i $s}} style="font-weight:600;color:var(--text)"{{end}}>{{$n}}</li>{{end}}</ol>{{end}}

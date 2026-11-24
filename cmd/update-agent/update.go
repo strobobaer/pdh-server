@@ -160,23 +160,72 @@ func writeUpdateJSON(w http.ResponseWriter, code int, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
+const (
+	updateLockTries = 20          // POST /v1/update: so oft neu versuchen …
+	updateLockStep  = time.Second // … im Abstand (pdh-ha fragt mit 30 s Frist)
+)
+
 // startUpdate setzt den Status auf „läuft“, bevor der Aufrufer 202 bekommt
 // (die erste Statusabfrage darf nie das alte Ergebnis sehen). false = läuft
 // schon; dann ist running der laufende Stand.
+//
+// Geschachtelt (jobScript): innerhalb eines Einzelserver-Auftrags, der die Sperre schon hält,
+// darf derselbe Besitzer sie noch einmal nehmen.
 func (a *updateAgent) startUpdate(commit, op string) (running jobStatus, ok bool) {
+	return a.startUpdateLock(commit, op, false)
+}
+
+// startUpdateNew: neuer, unabhängiger Start (POST /v1/update) – die Sperre muss ganz frei sein;
+// sonst könnte er neben der Paket-Einheit eines beendeten kombinierten Auftrags (gleicher
+// Besitzer) starten.
+func (a *updateAgent) startUpdateNew(commit, op string) (running jobStatus, ok bool) {
+	return a.startUpdateLock(commit, op, true)
+}
+
+func (a *updateAgent) startUpdateLock(commit, op string, exclusive bool) (running jobStatus, ok bool) {
+	// gemeinsame Sperre: nie neben einem Betriebssystem-Update, einer ESPHome-Einrichtung
+	// oder einer Netzwerk-Änderung.
+	release, busy := a.lockTake(lockPDH, exclusive)
+	if busy != "" {
+		if busy == lockPDH {
+			a.mu.RLock()
+			st := a.status
+			a.mu.RUnlock()
+			if st.Running {
+				return st, false // der laufende Lauf selbst (pdh-ha wartet auf sein Ergebnis)
+			}
+		}
+		return jobStatus{}, false
+	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.status.Running {
+		release()
 		return a.status, false
 	}
 	a.status = jobStatus{Running: true, Commit: commit, Op: op, StartedAt: time.Now().UTC()}
+	a.updRelease = release // gibt runUpdate frei, wenn Running endet
 	a.saveUpdateStatus()
 	return a.status, true
+}
+
+// takeUpdateRelease: die Sperre des laufenden Updates (a.mu muss gehalten sein) zum Freigeben.
+func (a *updateAgent) takeUpdateRelease() func() {
+	r := a.updRelease
+	a.updRelease = nil
+	if r == nil {
+		return func() {}
+	}
+	return r
 }
 
 func (a *updateAgent) runUpdateHook(args []string) {
 	if a.updateRun != nil {
 		a.updateRun(args)
+		a.mu.Lock()
+		release := a.takeUpdateRelease()
+		a.mu.Unlock()
+		release()
 		return
 	}
 	a.runUpdate(args)
@@ -201,7 +250,9 @@ func (a *updateAgent) runUpdate(args []string) {
 	a.status.Output = output.String()
 	a.status.FinishedAt = time.Now().UTC()
 	a.saveUpdateStatus()
+	release := a.takeUpdateRelease() // zugleich mit „läuft nicht mehr“
 	a.mu.Unlock()
+	release()
 }
 
 // updateEnv: Umgebung für install_update.sh. Der systemd-Dienst läuft ohne HOME

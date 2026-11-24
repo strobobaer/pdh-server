@@ -8,6 +8,8 @@ internal/modules/tiamqtt/testdata/** -text
 internal/modules/esppdh/testdata/** text eol=lf
 # ESP Web Tools (USB-Flash im Browser) Byte für Byte wie im npm-Paket – SHA256SUMS prüft das
 web/static/vendor/esp-web-tools/** -text
+# Betriebssystem-Skript läuft als root unter Linux: immer LF
+scripts/pdh-os-update text eol=lf
 # Bibliotheken der Seiten (htmx, Sortable, Gantt, Chart.js, Excel, Word) unverändert wie von der Quelle
 web/static/vendor/htmx/** -text
 web/static/vendor/sortablejs/** -text

@@ -264,12 +264,13 @@ func newFinishEnv(t *testing.T) *finishEnv {
 	}
 	w(filepath.Join(repo, "install_update.sh"), readRepoFile(t, "../../install_update.sh"))
 	w(filepath.Join(repo, "scripts", "install-pdh-ha.sh"), "#!/usr/bin/env bash\necho \"install-pdh-ha $*\" >> \"$PDH_TEST_LOG\"\n")
+	w(filepath.Join(repo, "scripts", "pdh-os-update"), readRepoFile(t, "../../scripts/pdh-os-update"))
 	w(filepath.Join(repo, ".gitignore"), "bin/\n")
 	stub := func(name, body string) { w(filepath.Join(dir, "stubs", name), "#!/usr/bin/env bash\n"+body+"\n") }
 	// is-enabled/is-active (nginx): PDH_TEST_NGINX_RC steuert den Ausgang (0 = läuft); ohne: wahr erst nach enable
 	stub("systemctl", `echo "systemctl $*" >> "$PDH_TEST_LOG"; case "$1" in enable) : > "$PWD/nginx-an";; is-enabled|is-active) [ -n "${PDH_TEST_NGINX_RC:-}" ] && exit "$PDH_TEST_NGINX_RC"; [ -f "$PWD/nginx-an" ]; exit $?;; esac`)
 	// apt-get läuft über systemd-run: PDH_TEST_APT_RC steuert nur dessen Ausgang
-	stub("systemd-run", `echo "systemd-run $*" >> "$PDH_TEST_LOG"; case "$*" in *"install -y nginx"*) [ "${PDH_TEST_APT_RC:-0}" = 0 ] && { printf "#!/bin/sh\n" > "$PWD/stubs/nginx-neu"; chmod +x "$PWD/stubs/nginx-neu"; };; esac; case "$*" in *apt-get*) exit "${PDH_TEST_APT_RC:-0}";; esac; exit "${PDH_TEST_SD_RC:-0}"`)
+	stub("systemd-run", `echo "systemd-run $*" >> "$PDH_TEST_LOG"; case "$*" in *"install -y nginx"*) [ "${PDH_TEST_APT_RC:-0}" = 0 ] && { printf "#!/bin/sh\n" > "$PWD/stubs/nginx-neu"; chmod +x "$PWD/stubs/nginx-neu"; };; esac; case "$*" in *apt-get*) exit "${PDH_TEST_APT_RC:-0}";; *pdh-os-script-*) exit "${PDH_TEST_OS_RC:-0}";; esac; exit "${PDH_TEST_SD_RC:-0}"`)
 	stub("go", `echo "go $*" >> "$PDH_TEST_LOG"; exit 1`)
 	stub("nginx", `exit 0`) // nur gefunden, wenn ein Test PDH_NGINX_BIN=nginx setzt
 	w(filepath.Join(dir, "pdh-ha"), "#!/usr/bin/env bash\nif [ \"$1\" = status ]; then echo \"$PDH_TEST_HA_STATUS\"; fi\nexit 0\n")
