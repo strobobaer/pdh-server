@@ -15,7 +15,7 @@ import (
 // web/static/vendor und kein Go-Code (ohne Tests) verweist auf die drei
 // Bibliotheks-Hosts. (Schrift-Hosts: Task 5.)
 func TestNoExternalAssets(t *testing.T) {
-	hosts := []string{"unpkg.com", "cdn.jsdelivr.net", "cdnjs.cloudflare.com"}
+	hosts := []string{"unpkg.com", "cdn.jsdelivr.net", "cdnjs.cloudflare.com", "fonts.googleapis.com", "fonts.gstatic.com"}
 	root := filepath.Join("..", "..")
 	scanned := 0
 	for _, dir := range []string{"web/templates", "web/static", "internal", "cmd", "pkg"} {

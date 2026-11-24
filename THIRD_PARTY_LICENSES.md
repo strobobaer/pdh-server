@@ -195,17 +195,17 @@ aus dem Internet. Die Adresse enthält die Programmversion (`vendorURL`).
 
 ## 4. Schriften (Google Fonts)
 
-Die Schriften lädt der Browser von fonts.googleapis.com, wenn sie als
-Schriftart (Erscheinungsbild) gewählt sind (Standard: DM Sans). PDH liefert sie
-nicht mit.
+Die Schriften liegen unverändert (WOFF2-Dateien, wie Google Fonts sie ausliefert) in `web/static/vendor/fonts/` und kommen vom PDH-Server, nicht aus dem Internet; sie werden geladen, wenn sie als
+Schriftart (Erscheinungsbild) gewählt sind (Standard: DM Sans). Die Lizenztexte
+liegen daneben.
 
-| Schrift | Lizenz |
-| --- | --- |
-| DM Sans | SIL Open Font License 1.1 |
-| Inter | SIL Open Font License 1.1 |
-| Roboto | SIL Open Font License 1.1 (laut Google Fonts) |
-| Atkinson Hyperlegible | SIL Open Font License 1.1 |
-| Source Sans 3 | SIL Open Font License 1.1 |
+| Schrift | Lizenz | Lizenztext | Quelle |
+| --- | --- | --- | --- |
+| DM Sans | SIL Open Font License 1.1 | `web/static/vendor/fonts/OFL-dm-sans.txt` | <https://github.com/google/fonts/tree/main/ofl/dmsans> (Google Fonts, v17) |
+| Inter | SIL Open Font License 1.1 | `web/static/vendor/fonts/OFL-inter.txt` | <https://github.com/google/fonts/tree/main/ofl/inter> (Google Fonts, v20) |
+| Roboto | SIL Open Font License 1.1 | `web/static/vendor/fonts/OFL-roboto.txt` | <https://github.com/google/fonts/tree/main/ofl/roboto> (Google Fonts, v51) |
+| Atkinson Hyperlegible | SIL Open Font License 1.1 | `web/static/vendor/fonts/OFL-atkinson.txt` | <https://github.com/google/fonts/tree/main/ofl/atkinsonhyperlegible> (Google Fonts, v12) |
+| Source Sans 3 | SIL Open Font License 1.1 | `web/static/vendor/fonts/OFL-source-sans.txt` | <https://github.com/google/fonts/tree/main/ofl/sourcesans3> (Google Fonts, v20) |
 
 ## 5. Programme, die PDH nicht mitliefert
 

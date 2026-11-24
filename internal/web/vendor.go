@@ -19,7 +19,7 @@ import (
 // nicht esp-web-tools, nicht novnc – die haben eigene Wege).
 var vendorLibs = map[string]bool{
 	"htmx": true, "sortablejs": true, "frappe-gantt": true,
-	"chartjs": true, "xlsx": true, "mammoth": true,
+	"chartjs": true, "xlsx": true, "mammoth": true, "fonts": true,
 }
 
 var vendorFileRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
@@ -27,7 +27,8 @@ var vendorFileRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 // vendorTypes: ausgelieferte Dateitypen (Lizenztexte u. a. bleiben unter der Adresse unerreichbar).
 var vendorTypes = map[string]string{
 	".js":  "text/javascript; charset=utf-8",
-	".css": "text/css; charset=utf-8",
+	".css":   "text/css; charset=utf-8",
+	".woff2": "font/woff2",
 }
 
 // VendorLibWeb: GET /vendor/{ver}/{lib}/{file} – oeffentlich. Nur laufende

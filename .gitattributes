@@ -15,3 +15,4 @@ web/static/vendor/frappe-gantt/** -text
 web/static/vendor/chartjs/** -text
 web/static/vendor/xlsx/** -text
 web/static/vendor/mammoth/** -text
+web/static/vendor/fonts/** -text
