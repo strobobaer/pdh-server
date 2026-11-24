@@ -68,6 +68,23 @@ func (h *Handler) StartEnergyExporter(ctx context.Context) {
 	go ex.Start(ctx)
 }
 
+// StartEnergyRecalc startet die rückwirkende Neurechnung (Fassungen der
+// Formel): nur am aktiven Server, in der Wartungssperre ruht sie.
+func (h *Handler) StartEnergyRecalc(ctx context.Context) {
+	if h.Mirror().On {
+		log.Info().Msg("energiedaten: neurechnung nicht gestartet (spiegelserver)")
+		return
+	}
+	st := h.energyStore()
+	if st == nil {
+		log.Warn().Msg("energiedaten: neurechnung nicht gestartet (keine datenbank)")
+		return
+	}
+	rc := energie.NewRecalculator(st, &energie.Exporter{Store: st, Configs: h.efficioConfigs}, h.MaintLocked)
+	h.energyRecalc.Store(rc)
+	go rc.Start(ctx)
+}
+
 // meterFilterFromQuery liest Filter und Sortierung aus der Adresse
 // (infra, virtual, export, active, unit, kind, conn, q, stale, sort, dir).
 // Ja/Nein-Felder: "1" = ja, "0" = nein, sonst nicht filtern. Ungültige IDs und
@@ -148,10 +165,15 @@ func meterUserError(err error) bool {
 	var fe *energie.FormulaError
 	var ue *energie.UnknownRefError
 	var ce *energie.CycleError
+	var pe *energie.PlannedExistsError
+	var te *energie.TooEarlyError
 	return errors.As(err, &fe) || errors.As(err, &ue) || errors.As(err, &ce) ||
 		errors.Is(err, energie.ErrBadKey) || errors.Is(err, energie.ErrKeyTaken) || errors.Is(err, energie.ErrBadKind) ||
 		errors.Is(err, energie.ErrKindMix) || errors.Is(err, energie.ErrNoInfra) || errors.Is(err, energie.ErrNotFound) ||
-		errors.Is(err, energie.ErrFormulaScope) || errors.Is(err, energie.ErrCalcConsumption)
+		errors.Is(err, energie.ErrFormulaScope) || errors.Is(err, energie.ErrCalcConsumption) ||
+		// Fassungen und Neurechnung (Paket 2b)
+		errors.As(err, &pe) || errors.As(err, &te) || errors.Is(err, energie.ErrPastDate) ||
+		errors.Is(err, energie.ErrVersionFixed) || errors.Is(err, energie.ErrNotCalc) || errors.Is(err, energie.ErrRecalcBusy)
 }
 
 // meterSaveStatus: HTTP-Status zum Fehler von meterSaveMessage.
@@ -161,7 +183,7 @@ func meterSaveStatus(err error) int {
 	switch {
 	case errors.Is(err, energie.ErrNotFound):
 		return http.StatusNotFound
-	case errors.Is(err, energie.ErrKeyTaken), errors.As(err, &inUse):
+	case errors.Is(err, energie.ErrKeyTaken), errors.As(err, &inUse), errors.Is(err, energie.ErrRecalcBusy):
 		return http.StatusConflict
 	case errors.As(err, &pe) && pe.Code == "23503", meterUserError(err):
 		return http.StatusBadRequest

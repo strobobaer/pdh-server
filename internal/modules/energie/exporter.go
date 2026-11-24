@@ -131,6 +131,18 @@ func (e *Exporter) Run(ctx context.Context, c ExportConfig) (RunResult, error) {
 func (e *Exporter) run(ctx context.Context, c ExportConfig, logNothing bool) (res RunResult, err error) {
 	c = c.normalized()
 	started := e.Store.now()
+	// Während einer Neurechnung bleibt jede Datei, wie sie ist: danach erzeugt
+	// die Neurechnung die nicht verschickten neu, und der Export macht weiter.
+	if _, active, aerr := activeRun(ctx, e.Store.DB); aerr != nil {
+		return res, aerr
+	} else if active {
+		res.Result = "nothing"
+		res.Notes = []string{"Neurechnung läuft – der Export folgt, sobald sie fertig ist."}
+		if logNothing { // nur der von Hand gestartete Lauf steht im Protokoll
+			err = e.logRun(ctx, c, started, res, nil)
+		}
+		return res, err
+	}
 	defer func() {
 		if err != nil {
 			res.Result = "error"
@@ -379,17 +391,19 @@ func (e *Exporter) block(ctx context.Context, c ExportConfig, meters []Meter, tm
 		} else if qerr != nil {
 			return false, qerr
 		}
+		// first_end/last_end: erstes und letztes Intervallende in der Datei
+		// (für das Neuerzeugen nach einer Neurechnung).
 		if existing {
 			_, err = tx.Exec(ctx, `UPDATE energy_export_files
-				SET content = content || $3, rows = rows + $4, version = version + 1, updated_at = now()
-				WHERE connection_id = $1::uuid AND name = $2`, c.ConnectionID, name, buf, rows)
+				SET content = content || $3, rows = rows + $4, version = version + 1, last_end = $5, updated_at = now()
+				WHERE connection_id = $1::uuid AND name = $2`, c.ConnectionID, name, buf, rows, steps[n-1].End)
 		} else {
 			content := buf
 			if c.CSV.Header {
 				content = joinCSV(HeaderLine(c.CSV), buf)
 			}
-			_, err = tx.Exec(ctx, `INSERT INTO energy_export_files (connection_id, name, period_start, period_end, content, rows, time_base)
-				VALUES ($1::uuid, $2, $3, $4, $5, $6, $7)`, c.ConnectionID, name, ps, pe, content, rows, tb)
+			_, err = tx.Exec(ctx, `INSERT INTO energy_export_files (connection_id, name, period_start, period_end, content, rows, time_base, first_end, last_end)
+				VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9)`, c.ConnectionID, name, ps, pe, content, rows, tb, steps[0].End, steps[n-1].End)
 		}
 		if err != nil {
 			return false, err
@@ -435,6 +449,7 @@ func freeName(ctx context.Context, tx pgx.Tx, connID, name, timeBase string) (st
 // querier: Pool oder einzelne Verbindung.
 type querier interface {
 	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
 }
 

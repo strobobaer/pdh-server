@@ -840,6 +840,67 @@ und 3 drückt bis auf Weiteres der Anwender.
     im Browser geprüft (23.11.2026, 40 Ansichten ohne Überlauf und
     Konsolenfehler; Prüfkonto gesperrt, keine Testdaten). Offen: 10.10.0.202
     (Anwender, mit Sicherung), Copilot-Abnahme mit Anthropic-Schlüssel.
+    **Paket 2b (Fassungen der Messstellen-Formel, rückwirkendes Neurechnen):**
+    Entwurf `docs/superpowers/specs/2026-11-24-energie-fassungen-design.md`
+    auf Branch `feature/energie-fassungen`, vom Anwender am 24.11.2026
+    bestätigt („2b: 1 Vorschlag, 2a, 3–5 passt“): rückwirkend bis zum
+    ältesten gespeicherten Wert; nicht verschickte Efficio-Dateien neu
+    erzeugen, verschickte bleiben und werden gelistet; geplante Fassungen mit
+    `energy.edit`, vergangene nur `energy.admin`; erweiterter Rechenumfang
+    nur für Momentanwerte; Copilot schlägt nur vor, nie eine vergangene
+    Fassung. Bauplan `docs/superpowers/plans/2026-11-24-energie-fassungen.md`
+    (8 Aufgaben; geplant als Migration 214, Version 0.82.50 – `main` hatte
+    inzwischen 0.82.53 und die Migrationen 214 bis 217 der Terminal-Teile,
+    deshalb **0.82.54, Migrationen 218 und 219**). **Gebaut** (24.11.2026,
+    Anwender: „Selbst“; Freigabe Push/Merge erteilt):
+    Migrationen 218 (`energy_formula_versions`, `energy_recalc_runs`,
+    `first_end`/`last_end`/`fetched_at` an den Efficio-Dateien) und 219
+    (`energy_rebases`, Zeitpunkte der Basis-Verschiebung); kein neues Recht.
+    Labor-Datenbank `pdh_test`: Einträge 214/215 → 218/219 umgeschrieben (Schema war da).
+    Ein Rechenweg je Minute (`evalMinute`), Sperre `minuteLock` für Minutentakt
+    und Schlussschritt, Neurechnung Tag für Tag (`recalc.go`), Efficio-Dateien
+    neu erzeugen (`rebuild.go`), Oberfläche „Fassungen“ an der Messstelle
+    (`energy_versions.go`, `widgets/energy_meter_versions.gohtml`).
+    Schlussprüfung mit Korrekturrunde erledigt (W1 Übergabe unter der Sperre,
+    W2 Basis-Verschiebungen, W3 Warnung bei späten Bezügen, K4 Formular behält
+    geltende Formel, K5 Werte vor der ersten Fassung bleiben); kleine Befunde
+    K1–K3, K6–K10 und alle Rulings im Ledger
+    `.superpowers/sdd/2026-11-24-energie-fassungen/` (`final-review.md`).
+    Fragment lokal gerendert in 20 Ansichten geprüft (Fiori/Fluent, hell/dunkel,
+    320–1366 px, kein Seitenüberlauf). **Auf `main`** (24.11.2026, Merge
+    `c2352abe`; Prüfung: main stand bei 0.82.53, eingearbeitet, Nummern
+    umgestellt) und dem Testverbund (Verbund-Update auf `c2352abe`; beide Server
+    und Zeuge 0.82.54, Migrationen 214–219, aktiv jetzt `pdh-server` 10.10.0.17,
+    Spiegelung läuft). Damit sind auch die Terminal-Teile 0.82.50–0.82.53 der
+    anderen Sitzung am Testverbund. Im Browser geprüft (Testmessstellen
+    EVTEST-A/-V per SQL): Fragment „Fassungen“ in 20 Ansichten ohne Überlauf,
+    geplante Fassung anlegen und löschen, „Prüfen“ (Vorschau 3 Tage, 1 Messstelle),
+    „Neu rechnen“ nach 10 s fertig, Werte stimmen (V = 1 + 2 × Zuwachs A);
+    Testdaten entfernt, Prüfkonto gesperrt. Offen: 10.10.0.202 (Anwender, mit
+    Sicherung).
+    **Danach (Anwender 24.11.2026):** (1) „Copilot soll das können ja“ –
+    Copilot schlägt Fassungen vor (Änderungsliste, „Übernehmen“, nie in der
+    Vergangenheit); eigenes Paket, erst Entwurf. (2) „Es muss schneller Seiten
+    aufbauen, vielleicht die Icons nicht immer laden, sondern erst ohne und im
+    laufenden Betrieb nachladen“ – Befund: `tabler-icons.min.css` 1,4 MB mit
+    eingebetteter Schrift blockiert das Zeichnen, dazu htmx von unpkg.com und
+    die Schrift von Google Fonts (siehe Punkt 13). Gemessen am Testverbund
+    (24.11.2026, Edge, angemeldet): im Zwischenspeicher 0,06–0,1 s (4× gedrosselt
+    0,35–0,4 s); **erster Aufruf mit Symbolen 6,7–7,0 s, 4× gedrosselt 29–33 s**;
+    erster Aufruf ohne Symbole 0,14–0,2 s (0,46–0,53 s). Die Datei lädt in
+    0,04 s – die Zeit geht ins Entpacken der eingebetteten Schrift (5 918 Symbole,
+    genutzt werden einige Hundert). Nächster Schritt: Entwurf Teil 1.
+    (3) **Einheitliche Oberfläche** (Anwender 24.11.2026, auf den Vorschlag
+    „kein Menüband wie Word/Excel, sondern Fiori-Muster plus Schnellstart“):
+    „Zusammenfassen was zusammen gehört und trennen was getrennt werden muss,
+    überall gleich. Gleiche Funktionen und Buttons. Mit Ingress-Funktion für
+    Addons und Optionalem wie Nextcloud … das wäre dann Stand 0.9.0“. Inhalt:
+    Suchzeile „Was möchtest du tun?“ (Strg+K), Schnellstart-Kacheln je Rolle,
+    gleiche Seitenmuster (Liste mit Filterleiste, Detailseite mit Kopf und
+    Reitern, Aktionen immer an derselben Stelle), Ingress für Zusatzdienste
+    (Nextcloud, Grafana … im PDH-Rahmen hinter der PDH-Anmeldung). Großes
+    Paket: erst Entwurf, in Teilpakete geschnitten. Versionsnummer beim
+    Anwender klären: 0.9.0 läge unter 0.82.x (gemeint vermutlich 0.90.0).
 25. **0.82.48 Wartung: Jahresplan im Kalender, Auftrag mit Vorlauf** (Wunsch des
     Anwenders vom 23.11.2026: Personalplanung; Knopf „Jahresplan erzeugen“,
     nur der nächste Termin wird 5 Arbeitstage vorher automatisch zum
@@ -886,10 +947,18 @@ und 3 drückt bis auf Weiteres der Anwender.
     (Termin inzwischen beauftragt wird gemeldet, `visitChanged`), M4
     (`pdhGridPost` liefert true/false, Fenster bleibt nach Fehler offen), M9
     (ein Plan mit Fehler hält den stündlichen Abgleich nicht auf) und M13
-    (Verlauf mit Namen, `staffText`). Offen: Freigabe Push/Merge,
-    Verbund-Update, Browserprüfung (Besetzen-Fenster im Kalender, Leitstand
-    angemeldet bei 320–1024 px). Weiter zurückgestellt (Ledger): M1, M5 bis
-    M8, M10 bis M12.
+    (Verlauf mit Namen, `staffText`). **Auf `main`** (24.11.2026, vom
+    Anwender freigegeben, Merge `1da297fe`; Prüfung: origin/main unverändert,
+    keine Dopplungen) und dem Testverbund (beide Server und Zeuge 0.82.49,
+    aktiv jetzt `pdh` 10.10.0.14, Spiegelung läuft). Im Browser geprüft
+    (angemeldet): Leitstand in 20 Ansichten (Fiori/Fluent, hell/dunkel,
+    320–1366 px) ohne Überlauf; Besetzen-Fenster im Kalender bei 390 und
+    1366 px mittig, Titel ohne Zieh-Hinweis, bleibt bei einem Fehler offen
+    („Nicht gespeichert – das Fenster bleibt offen.“), schließt nach dem
+    Speichern; keine Konsolenfehler außer dem absichtlich erzeugten.
+    Testplan entfernt, Prüfkonto gesperrt. Offen: 10.10.0.202 (Anwender,
+    mit Sicherung). Weiter zurückgestellt (Ledger): M1, M5 bis M8, M10 bis
+    M12.
 
 Docker Desktop startet nach einem Neustart des Windows-Rechners nicht von
 selbst – ohne ihn fehlen der Zeuge und die Labor-Datenbank für die Tests.

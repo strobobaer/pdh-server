@@ -10,7 +10,7 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
-## [0.82.54] – 2026-11-24
+## [0.82.55] – 2026-11-24
 
 ### Neu
 
@@ -18,7 +18,24 @@ im Kapitel „Versionen & Updates“ an.
 
 ### Geändert
 
-- Datenbank (Migration 218, nur hinzufügend): Spalte `terminal_devices.local_port` (leer = 8080, erlaubt 1024–65534).
+- Datenbank (Migration 220, nur hinzufügend): Spalte `terminal_devices.local_port` (leer = 8080, erlaubt 1024–65534).
+
+## [0.82.54] – 2026-11-24
+
+### Neu
+
+- **Messstellen, Fassungen der Formel:** Eine berechnete Messstelle bekommt mit „Fassungen“ eine neue Formel ab einem Tag – sie gilt ab 00:00 Uhr dieses Tages; die Liste zeigt geplant, gilt und abgelöst mit Person und Zeitpunkt.
+- **Rückwirkend neu rechnen:** Mit einem Tag bis heute rechnet das PDH die gespeicherten Minutenwerte der Messstelle und aller, die auf ihr aufbauen, Tag für Tag neu; vorher zeigt „Prüfen“ Zeitraum, Messstellen und Efficio-Dateien.
+- **Efficio nach einer Neurechnung:** Dateien, von denen noch nichts verschickt ist, erzeugt das PDH mit den neuen Werten neu; schon verschickte bleiben und werden im Ergebnis genannt.
+
+### Geändert
+
+- **Formeln der Momentanwerte:** Berechnete Messstellen der Art Momentanwert können jetzt Funktionen und Vergleiche nutzen (z. B. `MAX`, `WENN`); Zählerstände und Verbräuche bleiben bei + − × ÷.
+- **Zum Abholen im PDH:** Eine Efficio-Datei gilt nach dem ersten Herunterladen als verschickt.
+
+### Sicherheit
+
+- **Rückwirkend neu rechnen** darf nur der Bereichsadministrator der Energiedaten (`energy.admin`); geplante Fassungen pflegt, wer Messstellen pflegen darf (`energy.edit`).
 
 ## [0.82.53] – 2026-11-24
 

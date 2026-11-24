@@ -1,4 +1,4 @@
--- 218_terminal_local_port.up.sql
+-- 220_terminal_local_port.up.sql
 --
 -- Lokaler Port der Startseite des PDH-Terminals (ab Terminal 0.4.6 im Header X-Terminal-Local-Port bei der
 -- Statusabfrage, nur wenn er vom Grundwert 8080 abweicht; die lokale Admin-Seite liegt dann auf Port + 1).

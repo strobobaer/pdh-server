@@ -365,6 +365,7 @@ func main() {
 		webHandler.StartEnergyAlarms(context.Background())   // Energiedaten: Schwellwerte prüfen, Alarm-Tickets
 		webHandler.StartITNetsync(context.Background())      // IT-Assets: Netzabgleich mit UniFi, Ausfall-Tickets
 		webHandler.StartEnergyExporter(context.Background()) // Energiedaten: Efficio-CSV erzeugen und ablegen
+		webHandler.StartEnergyRecalc(context.Background())   // Energiedaten: rückwirkende Neurechnung nach einer Fassung bis heute
 		webHandler.StartDriveMonitor(context.Background())
 		webHandler.StartEnabledImportPolls(context.Background())
 		webHandler.StartEnabledQueryPolls(context.Background())

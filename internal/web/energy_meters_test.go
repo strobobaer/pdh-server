@@ -234,7 +234,7 @@ func TestMeterSaveMessage(t *testing.T) {
 		{energie.ErrNoInfra, "Bitte eine Anlage wählen", 400},
 		{energie.ErrNotFound, "Messstelle nicht gefunden", 404},
 		{perr, "Formel, Zeichen", 400},
-		{energie.ErrFormulaScope, "In der Formel einer Messstelle sind nur", 400},
+		{energie.ErrFormulaScope, "Bei Zählerständen und Verbräuchen sind in der Formel nur", 400},
 		{&energie.InUseError{Users: []string{"A", "B"}}, "wird verwendet in [A], [B]", 409},
 		{&pgconn.PgError{Code: "23503"}, "gibt es nicht mehr", 400},
 		{errors.New("connection refused: 10.0.0.1"), "konnte nicht gespeichert werden", 500},

@@ -14,6 +14,7 @@ import (
 	"unicode"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/rs/zerolog/log"
 )
 
 // Funktionen-Schalter je Terminal-Benutzer (Vertrag: Funktionen-Abgleich zwischen PDH-Terminal und
@@ -462,6 +463,9 @@ func (h *Handler) terminalDeviceLocalPort(r *http.Request) int {
 	}
 	var p *int
 	if err := h.db.QueryRow(r.Context(), `SELECT local_port FROM terminal_devices WHERE id = $1::uuid`, dev).Scan(&p); err != nil {
+		if !errors.Is(err, pgx.ErrNoRows) {
+			log.Warn().Err(err).Msg("terminal: lokaler Port nicht lesbar, Grundwert 8080")
+		}
 		return terminalDefaultLocalPort
 	}
 	return terminalLocalPortOrDefault(p)

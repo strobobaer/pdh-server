@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/rs/zerolog/log"
 
 	"pdh/internal/modules/energie"
 )
@@ -851,6 +852,13 @@ func (h *Handler) EfficioDownload(w http.ResponseWriter, r *http.Request) {
 		WHERE f.id = $2::uuid AND f.connection_id = $1::uuid AND c.kind = 'efficio'`, id, fid).Scan(&name, &content, &cfgRaw); err != nil {
 		http.NotFound(w, r)
 		return
+	}
+	// Der erste Download zählt als „verschickt“: eine spätere Neurechnung
+	// erzeugt die Datei dann nicht mehr neu. Am Spiegel (nur lesend) geht das
+	// nicht – die Datei kommt trotzdem.
+	if _, err := h.db.Exec(r.Context(), `UPDATE energy_export_files SET fetched_at = COALESCE(fetched_at, now())
+		WHERE id = $1::uuid AND fetched_at IS NULL`, fid); err != nil {
+		log.Debug().Err(err).Msg("efficio: download nicht vermerkt")
 	}
 	charset := "utf-8"
 	var cfg map[string]string

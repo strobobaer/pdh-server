@@ -108,10 +108,10 @@ type terminalPage struct {
 // web.LocalAdminURL im Terminal-Repository).
 const terminalLocalAdminURL = "http://127.0.0.1:8081/admin/"
 
-// FaultsMore/TicketsMore: nicht angezeigte offene Einträge.
 // LocalPortAttr: Wert für data-local-port, leer beim Grundwert 8080 (das Skript nimmt dann 8080).
 func (p terminalPage) LocalPortAttr() string { return localPortAttr(p.LocalPort) }
 
+// FaultsMore/TicketsMore: nicht angezeigte offene Einträge.
 func (p terminalPage) FaultsMore() int  { return max(0, p.Info.FaultsTotal-len(p.Info.Faults)) }
 func (p terminalPage) TicketsMore() int { return max(0, p.Info.TicketsTotal-len(p.Info.Tickets)) }
 
