@@ -161,7 +161,15 @@ ob es Dopplungen oder Abweichungen zum aktuellen Stand gibt:
 6. Im Pull-Request-Text kurz festhalten, was die Prüfung ergeben hat
    (z. B. „keine Dopplungen“ oder „Migration 152 → 154 umnummeriert“).
 
-Push, Merge und Einspielen nur mit ausdrücklicher Freigabe des Anwenders.
+Push, Merge und Einspielen nur mit ausdrücklicher Freigabe des Anwenders –
+mit einer **Dauerfreigabe für `main` und den Testverbund** (Anwender
+24.11.2026): Ist die Schlussprüfung eines Pakets grün (keine offenen
+kritischen oder wichtigen Befunde, auch nicht aus der Codex-Prüfung) und
+laufen `go vet ./...`, `go test ./...` und die Integrationstests bis auf die
+bekannten roten, darf ohne weitere Rückfrage gemergt, gepusht und der
+Testverbund aktualisiert werden. **Nicht davon gedeckt:** 10.10.0.202
+(Einspielen nur mit dem Anwender und mit Sicherung), Force-Push, Löschen
+von Migrationen.
 Ist `gh` nicht verfügbar, wird wie bisher lokal gemergt:
 `git checkout main && git merge --ff-only origin/main && git merge --no-ff <branch> -m "Merge: <Thema> (x.y.z)"`,
 das Prüfergebnis kommt dann in den Text des Merge-Commits, danach
@@ -179,6 +187,8 @@ nur nach Rückfrage.
 
 1. Aktiven Server feststellen (nur lesend):
    `ssh michael@10.10.0.14 'sudo -n pdh-ha status'` bzw. `…@10.10.0.17`.
+   Vorher mit `sudo -n pdh-ha update status` prüfen, dass kein Auftrag einer
+   anderen Sitzung läuft – das gilt auch vor jedem Neustart eines Servers.
 2. Am **aktiven** Server das Verbund-Update starten:
    `sudo -n pdh-ha update start <voller Commit von main> --version x.y.z`.
 3. Verlauf mit `sudo -n pdh-ha update status` verfolgen, bis
@@ -254,6 +264,23 @@ und 3 drückt bis auf Weiteres der Anwender.
   bestätigen lassen, dann Plan und Bau.
 - Die Liste **im selben Schritt pflegen**: Erledigtes streichen, Neues
   eintragen, Stand und Datum anpassen.
+- **Codex** (Anwender 24.11.2026: „Prüfer + zweite Sitzung“, sparsames
+  Modell): zusätzlicher Prüfer jedes Pakets vor dem Merge und Bauender
+  abgegrenzter Pakete in einem eigenen Arbeitsordner (Entwurf und Auftrag
+  schreibt Claude, Claude prüft). Modell `gpt-6.2-sol` (`spark` geht mit
+  dem ChatGPT-Konto nicht). Die Sandbox von Codex kann hier weder Dateien
+  lesen noch `git` ausführen – den Diff deshalb in den Auftrag legen
+  (`codex-companion.mjs task --model gpt-6.2-sol --prompt-file <datei>`).
+  Code geht dabei an OpenAI; nie Zugangsdaten, nie 10.10.0.202.
+- **Betriebssystem-Updates (apt):** Auf 10.10.0.14, 10.10.0.17 und
+  10.10.0.202 liegt `/usr/local/sbin/pdh-os-update` (nur `check` und
+  `install`, Protokoll `/var/log/pdh-os-update.log`, startet keine Dienste
+  neu, meldet „NEUSTART NÖTIG“). Auf 202 erlaubt
+  `/etc/sudoers.d/91-pdh-os-update` beide Aktionen ohne Kennwort;
+  `install` dort nur mit Freigabe des Anwenders und Sicherung. Im
+  Testverbund erst der passive Server (Pakete, Neustart, warten bis die
+  Übernahmesperre weg ist), dann der aktive (Pakete, Neustart → der
+  andere übernimmt) – vorher `pdh-ha update status`.
 
 ### Offene Punkte (Stand 24.11.2026)
 
@@ -603,8 +630,8 @@ und 3 drückt bis auf Weiteres der Anwender.
     MQTT blieb auf Port 8083). Sofort-Hilfe auf 202 erledigt (Zeile
     `listen [::]:443 ssl;` in `/etc/nginx/sites-enabled/pdh`, Sicherung
     `/root/nginx-pdh.bak-20261121`); vorübergehende sudo-Regel
-    `/etc/sudoers.d/90-claude-wartung` – löscht der Anwender
-    (`sudo rm /etc/sudoers.d/90-claude-wartung`). Offen auf 202: Tunnel-Zeile
+    `/etc/sudoers.d/90-claude-wartung` – vom Anwender am 24.11.2026
+    gelöscht. Offen auf 202: Tunnel-Zeile
     MQTT im Reiter Cloudflare-Tunnel nachziehen (Anwender). Entwurf
     `docs/superpowers/specs/2026-11-21-mqtt-name-sicher-design.md`, Plan
     `docs/superpowers/plans/2026-11-21-mqtt-name-sicher.md`, Branch
@@ -894,11 +921,25 @@ und 3 drückt bis auf Weiteres der Anwender.
     gebaut auf Branch `feature/seitenaufbau` (24.11.2026, lokal; keine
     Migration, kein neues Recht): Symbole als SVG-Masken statt der
     Symbolschrift (`internal/web/iconcss.go`), Bibliotheken und Schriften
-    mitgeliefert, Messskript `deploy/lab/seitenaufbau/messung.js`. Offen:
-    Freigabe Push/Merge, Verbund-Update, Messung am Testverbund (Ziel 0,5 s
-    / 1,5 s bei 4× CPU), Netzprotokoll ohne fremde Adressen,
-    Browserprüfung; 10.10.0.202 über die Cloudflare-Adresse (Anwender).
-    Danach Teil 2 „gleiche Bausteine“.
+    mitgeliefert, Messskript `deploy/lab/seitenaufbau/messung.js`.
+    Schlussprüfung (Claude Opus, dann Korrekturrunde: Rückfall-Maske gegen
+    gefüllte Quadrate, gewählte Symbole sofort eingebettet, fremde Version
+    302 `no-store` statt 404, `/vendor/` leise im Protokoll) und
+    Codex-Prüfung erledigt; kleine Befunde im Ledger
+    `.superpowers/sdd/2026-11-24-seitenaufbau/` bzw. hier: HEAD für
+    `/vendor` 405, `gzip;q=0` nicht beachtet, Infoleiste lädt Einzel-SVG,
+    `adoptGrafana` ohne `iconChoicesChanged`. Offen: Messung am Testverbund
+    (Ziel 0,5 s / 1,5 s bei 4× CPU), Netzprotokoll ohne fremde Adressen,
+    Browserprüfung echter Seiten (Terminal „Keine Rüsttasten“, Symbolauswahl,
+    Kontrastmodus); 10.10.0.202 über die Cloudflare-Adresse (Anwender;
+    nach dem Einspielen offene Seiten einmal neu laden).
+    **Tempo (Anwender 24.11.2026):** Dauerfreigabe Testverbund (siehe
+    „Prüfung vor jedem Merge“); **ein** gemeinsamer Entwurf für die Teile
+    Gestaltungsgrundlage, gleiche Bausteine und Navigation mit klickbarer
+    Vorschau; Stammdaten und Betriebssystem-Updates parallel (Codex, eigener
+    Arbeitsordner); Folien wie PowerPoint erst nach 0.90.0 (0.90.x).
+    Bestandsaufnahme für „Stammdaten zusammenführen“:
+    `docs/superpowers/notes/2026-11-24-stammdaten-bestandsaufnahme.md`.
     (3) **Einheitliche Oberfläche** (Anwender 24.11.2026, auf den Vorschlag
     „kein Menüband wie Word/Excel, sondern Fiori-Muster plus Schnellstart“):
     „Zusammenfassen was zusammen gehört und trennen was getrennt werden muss,
@@ -1021,6 +1062,20 @@ und 3 drückt bis auf Weiteres der Anwender.
     Testplan entfernt, Prüfkonto gesperrt. Offen: 10.10.0.202 (Anwender,
     mit Sicherung). Weiter zurückgestellt (Ledger): M1, M5 bis M8, M10 bis
     M12.
+26. **Betriebssystem-Updates im PDH** (Anwender 24.11.2026: „Eigener Knopf +
+    Haken“, „Wie beim PDH-Update“, „Ja, bei Sicherheitsupdates“, Entwurf
+    „Passt“): Karte „Betriebssystem“ in den Core-Einstellungen, Knopf
+    „Betriebssystem aktualisieren“ und Haken „beim PDH-Update mit
+    aktualisieren“; Einzelserver wie das PDH-Update (Countdown, Sperre,
+    Rückfallkopie, Pakete, Neustart nur bei `/var/run/reboot-required`,
+    `/health`), im Verbund nur am passiven Server mit Rollentausch;
+    Wartungsfenster spielt mit Haken Sicherheitsupdates auch ohne PDH-Update
+    ein; neues Recht `system.os_update`. Entwurf
+    `docs/superpowers/specs/2026-11-24-betriebssystem-updates-design.md` auf
+    Branch `feature/os-update` im Arbeitsordner `D:/pdh-os-update` (ab
+    `main` 0.82.56). Teil A (Einzelserver, Karte, Recht) zuerst, Teil B
+    (Verbund) danach; Bauplan Teil A in Arbeit, Bau durch Codex
+    (`gpt-6.2-sol`), Prüfung Claude. Version voraussichtlich 0.82.58.
 
 Docker Desktop startet nach einem Neustart des Windows-Rechners nicht von
 selbst – ohne ihn fehlen der Zeuge und die Labor-Datenbank für die Tests.
