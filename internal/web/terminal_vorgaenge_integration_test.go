@@ -229,7 +229,7 @@ func TestVorgaengeGrenzen(t *testing.T) {
 		t.Errorf("ohne Person: %d %s", rec.Code, rec.Header().Get("Location"))
 	}
 	// unbekannte Art
-	if rec := v.post("/terminal/vorgaenge/start", "maintenance", v.fault, v.anna); rec.Code != http.StatusBadRequest {
+	if rec := v.post("/terminal/vorgaenge/start", "unbekannt", v.fault, v.anna); rec.Code != http.StatusBadRequest {
 		t.Errorf("unbekannte Art: %d", rec.Code)
 	}
 	// Terminal darf nicht beenden, wenn ihm das Recht fehlt (Rolle Terminal hat kein *.resolve)
@@ -573,7 +573,13 @@ func TestTerminalDepartmentsHelper(t *testing.T) {
 	}
 	people, err := v.h.terminalDepartmentPeople(ctx, v.term)
 	v.e.must(err)
-	if len(people) != 1 || people[0].ID != v.carla {
+	// Carla (eingestellte Abteilung) ist dabei, Anna und Berta (nicht mehr eingestellt) nicht; die Instandhaltung
+	// der Testdatenbank kommt immer dazu
+	got := map[string]bool{}
+	for _, p := range people {
+		got[p.ID] = true
+	}
+	if !got[v.carla] || got[v.anna] || got[v.berta] {
 		t.Errorf("Personen: %v", people)
 	}
 	// nichts angehakt = Vorgabe
@@ -589,9 +595,9 @@ func TestTerminalDepartmentsHelper(t *testing.T) {
 
 func base64URLDecode(s string) ([]byte, error) { return base64.RawURLEncoding.DecodeString(s) }
 
-// Auswahl der Personen: Hat keine Abteilung des Terminals wählbare Personen, gelten ersatzweise die Personen der
-// Abteilung „Instandhaltung“ – und genau diese sind auch die erlaubten Zuweisungen.
-func TestVorgaengeAuswahlErsatzInstandhaltung(t *testing.T) {
+// Auswahl der Personen: Die Personen der Abteilung „Instandhaltung“ stehen immer in der Liste – nicht nur ersatzweise –
+// und sind (wie jede Person der Auswahl) auch die erlaubten Zuweisungen.
+func TestVorgaengeAuswahlInstandhaltungImmer(t *testing.T) {
 	v := newVgEnv(t, true)
 	e := v.e
 	ctx := context.Background()
@@ -601,56 +607,41 @@ func TestVorgaengeAuswahlErsatzInstandhaltung(t *testing.T) {
 	e.exec(`UPDATE departments SET active = false WHERE id = ANY($1::uuid[])`, old)
 	t.Cleanup(func() { _, _ = e.pool.Exec(ctx, `UPDATE departments SET active = true WHERE id = ANY($1::uuid[])`, old) })
 
-	sel := "fault:" + v.fault
-	pick := func() (ids map[string]bool, body string) {
-		body = v.req("GET", "/terminal/vorgaenge?sel="+sel, nil, v.devCookie, nil).Body.String()
-		ids = map[string]bool{}
-		for _, id := range []string{v.anna, v.berta, v.carla} {
-			ids[id] = strings.Contains(body, `name="people" value="`+id+`"`)
+	pick := func() map[string]bool {
+		ids := map[string]bool{}
+		people, err := v.h.terminalPickPeople(ctx, v.term)
+		e.must(err)
+		for _, p := range people {
+			ids[p.ID] = true
 		}
-		return
+		return ids
 	}
-	const hint = "Keine Personen in den Abteilungen des Terminals – Instandhaltung"
-
-	// Abteilung des Terminals hat Personen: kein Ersatz, auch wenn es eine Instandhaltung gibt
+	// ohne Abteilung Instandhaltung: nur die Abteilung des Terminals
+	if ids := pick(); !ids[v.anna] || !ids[v.berta] || ids[v.carla] {
+		t.Errorf("ohne Instandhaltung: %v", ids)
+	}
+	// mit Instandhaltung: die Personen kommen dazu, obwohl die Abteilung des Terminals Personen hat
 	maint := e.id(`INSERT INTO departments (name) VALUES ('  INSTANDHALTUNG ') RETURNING id::text`)
 	t.Cleanup(func() { _, _ = e.pool.Exec(ctx, `DELETE FROM departments WHERE id = $1::uuid`, maint) })
 	mp := e.user("Ina", "technician", false)
 	e.exec(`UPDATE users SET first_name = 'Ina', last_name = 'VGTest', department_id = $2::uuid WHERE id = $1::uuid`, mp, maint)
-	ids, body := pick()
-	if !ids[v.anna] || !ids[v.berta] || strings.Contains(body, `value="`+mp+`"`) || strings.Contains(body, hint) {
-		t.Errorf("mit Personen im Terminal: %v, Hinweis %v", ids, strings.Contains(body, hint))
+	if ids := pick(); !ids[v.anna] || !ids[v.berta] || !ids[mp] || ids[v.carla] {
+		t.Errorf("mit Instandhaltung: %v", ids)
 	}
-
-	// Keine Personen in den Abteilungen des Terminals: Instandhaltung
-	e.exec(`UPDATE users SET active = false WHERE id = ANY($1::uuid[])`, []string{v.anna, v.berta, v.card})
-	_, body = pick()
-	if !strings.Contains(body, `name="people" value="`+mp+`"`) || !strings.Contains(body, hint) {
-		t.Errorf("Ersatz fehlt: Person %v, Hinweis %v", strings.Contains(body, mp), strings.Contains(body, hint))
+	win := v.req("GET", "/terminal/vorgaenge?sel=fault:"+v.fault, nil, v.devCookie, nil).Body.String()
+	if !strings.Contains(win, `name="people" value="`+mp+`"`) || !strings.Contains(win, `value="`+v.anna+`"`) {
+		t.Error("Fenster ohne Instandhaltung oder ohne Abteilung des Terminals")
 	}
-	if strings.Contains(body, v.carla) {
-		t.Error("Ersatz zeigt Person einer anderen Abteilung")
-	}
-	// Zuweisung: Person aus dem Ersatz erlaubt, andere abgelehnt
+	// Zuweisung: genau die Auswahl ist erlaubt
 	if rec := v.post("/terminal/vorgaenge/start", "fault", v.fault, v.carla); rec.Code != http.StatusForbidden {
 		t.Errorf("Person anderer Abteilung: %d", rec.Code)
 	}
-	if rec := v.post("/terminal/vorgaenge/start", "fault", v.fault, v.anna); rec.Code != http.StatusForbidden {
-		t.Errorf("Person der (leeren) Terminal-Abteilung: %d", rec.Code)
-	}
-	if rec := v.post("/terminal/vorgaenge/start", "fault", v.fault, mp); rec.Code != http.StatusSeeOther {
+	if rec := v.post("/terminal/vorgaenge/start", "fault", v.fault, mp, v.anna); rec.Code != http.StatusSeeOther {
 		t.Errorf("Person aus Instandhaltung: %d %s", rec.Code, rec.Body.String())
 	}
-
-	// Keine Abteilung Instandhaltung: leere Auswahl mit Meldung, niemand erlaubt (die Störung ist nun in Arbeit)
-	sel = "ticket:" + v.ticket
-	e.exec(`UPDATE departments SET active = false WHERE id = $1::uuid`, maint)
-	e.exec(`UPDATE users SET active = true WHERE id = $1::uuid`, v.carla)
-	ids, body = pick()
-	if ids[v.anna] || ids[v.berta] || ids[v.carla] || strings.Contains(body, hint) || !strings.Contains(body, "Keine Mitarbeitenden in den Abteilungen dieses Terminals") {
-		t.Errorf("ohne Instandhaltung: %v hint=%v msg=%v", ids, strings.Contains(body, hint), strings.Contains(body, "Keine Mitarbeitenden in den Abteilungen dieses Terminals"))
-	}
-	if rec := v.post("/terminal/vorgaenge/start", "task", v.task, mp); rec.Code != http.StatusForbidden {
-		t.Errorf("ohne Instandhaltung erlaubt: %d", rec.Code)
+	// ist die Person inaktiv, fällt sie aus der Auswahl
+	e.exec(`UPDATE users SET active = false WHERE id = $1::uuid`, mp)
+	if ids := pick(); ids[mp] {
+		t.Error("inaktive Person der Instandhaltung in der Auswahl")
 	}
 }

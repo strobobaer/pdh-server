@@ -96,6 +96,7 @@ type terminalPage struct {
 	PlanTile       bool              // Neu: Kachel Schichtplan
 	Vorg           terminalVorgPage  // Vorgänge: Liste, Fenster, Betriebsart (terminal_vorgaenge.go)
 	VorgTile       bool              // Neu: Kachel Vorgänge
+	Bar            leisteView        // Vorgangsleiste auf der Info-Seite (terminal_leiste.go)
 	Fn             terminalFnFlags   // Funktionen-Schalter des Terminal-Benutzers (terminal_functions.go): ausgeschaltet = Kachel und Seite entfallen
 	Scheme         string            // Farbschema: dark | light (Einstellung des Terminal-Benutzers)
 }
@@ -142,6 +143,7 @@ func (h *Handler) terminalRoutes(r chi.Router) {
 	r.Post("/terminal/vorgaenge/start", h.terminalFnRoute("vorgaenge", h.TerminalVorgaengeStart))
 	r.Post("/terminal/vorgaenge/warten", h.terminalFnRoute("vorgaenge", h.TerminalVorgaengeWarten))
 	r.Post("/terminal/vorgaenge/beenden", h.terminalFnRoute("vorgaenge", h.TerminalVorgaengeBeenden))
+	r.Post("/terminal/vorgaenge/ergaenzen", h.terminalFnRoute("vorgaenge", h.TerminalVorgaengeErgaenzen))
 	middleware.SetTerminalSessionCheck(func(r *http.Request, sub, tsess, tdev string) bool { return h.pdhHandoffCheck(r, tsess, sub, tdev) })
 	middleware.SetTerminalTokenCheck(func(r *http.Request, claims map[string]interface{}) bool { return h.terminalTokenValid(r, claims) })
 	h.cardRoutes(r)
@@ -416,6 +418,22 @@ func (h *Handler) renderTerminal(w http.ResponseWriter, d terminalPage) {
 	}
 }
 
+// renderTerminalPart: ein Teil der Terminalvorlage (define-Block) ohne den Rahmen der Seite.
+func (h *Handler) renderTerminalPart(w http.ResponseWriter, d terminalPage, name string) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	t, err := h.tmpl.Clone()
+	if err == nil {
+		t = bindLang(t, "de")
+		if _, err = t.ParseFiles(terminalTemplatePath); err == nil {
+			err = t.ExecuteTemplate(w, name, d)
+		}
+	}
+	if err != nil {
+		componentLog("terminal").Error().Err(err).Msg("seitenteil")
+	}
+}
+
 // TerminalSchoner: GET /terminal
 func (h *Handler) TerminalSchoner(w http.ResponseWriter, r *http.Request) {
 	if p, ok := h.terminalGate(w, r, "schoner"); ok {
@@ -444,6 +462,17 @@ func (h *Handler) TerminalInfoPage(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		p.Info = info
+	}
+	if !p.NoInfra && p.Mode != "global" {
+		h.terminalLeisteFill(r, &p, h.terminalUserID(r))
+	}
+	if r.URL.Query().Get("fragment") == "bar" { // nur die Leiste (Aktualisierung im Hintergrund)
+		if !p.Bar.Show {
+			http.NotFound(w, r)
+			return
+		}
+		h.renderTerminalPart(w, p, "vbar")
+		return
 	}
 	h.renderTerminal(w, p)
 }

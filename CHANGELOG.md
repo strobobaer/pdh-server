@@ -10,6 +10,22 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.82.50] – 2026-11-24
+
+### Neu
+
+- **Terminal, Vorgangsleiste:** Beim Aufwecken aus dem Bildschirmschoner und auf der Startseite (`/terminal/info`) zeigt das Terminal die offenen **Störungen, Tickets und fälligen Wartungen** (heute fällig oder überfällig, dazu laufende und wartende) seiner Anlage und der Unteranlagen. Auf schmalen Bildschirmen steht die Leiste oben (höchstens die halbe Höhe, blätterbar), auf breiten (ab 1200 px oder quer mit genug Breite) als linke Spalte. Je Eintrag: **Details** öffnen, **Ergänzen** (Kommentar oder Maßnahme), **Starten** bzw. **Warten** und **Fertig melden**. Die Leiste hängt am Schalter **Vorgänge** (kein neuer Schalter) und nutzt die Schreibwege der Vorgänge: nur in der Gerätesitzung, Betriebsart „Ohne Karte“ / „Nur mit Karte“, Flag „Freier Terminal-Benutzer“, mit Karte die eigenen Rechte der Person. Jeder Schritt steht mit Herkunftsmarke („am Terminal gewählt“ bzw. „mit Karte“) im Verlauf. **Fertig melden** verlangt immer eine Person – die Kartenperson oder eine Person aus der Auswahl; anonym geht es nicht. Danach läuft der gewohnte Abschluss-Assistent mit Einmal-Token, bei Wartungen mit der Checkliste. Die Leiste aktualisiert sich alle 30 Sekunden.
+- **Terminal, Personenauswahl:** Wer am Terminal gewählt werden kann (Vorgänge und Vorgangsleiste), ist jetzt die Vereinigung aus den Abteilungen des Terminals, den im Abschnitt „Freier Terminal-Benutzer“ eingestellten **Gruppen, Abteilungen und einzelnen Personen**, den Inhabern des Rechts **„Am Terminal auswählbar“** (in der Abteilung der Terminal-Anlage) und – immer – den Personen der Abteilung **„Instandhaltung“** (bisher nur als Ersatz, wenn die Abteilungen des Terminals niemanden hatten). Es zählen nur aktive Mitarbeitende, keine Systembenutzer, Bots oder Betrachter. Der Server nimmt als Zuweisung genau diese Menge an.
+
+### Geändert
+
+- **Terminal, Freier Terminal-Benutzer:** Zu den Terminalfunktionen des Flags gehören nun auch Wartungen für die Vorgangsleiste (`maintenance.view`, `maintenance.edit`, `maintenance.complete`), mit denselben Grenzen wie bisher (Gerätesitzung, Anlagenbaum, keine Wirkung im übrigen PDH).
+- **Terminal, Vorgänge:** Der Hinweis „Keine Personen in den Abteilungen des Terminals – Instandhaltung“ entfällt, weil die Instandhaltung immer zur Auswahl gehört.
+
+### Sicherheit
+
+- Neues Recht **„Am Terminal auswählbar“** (`terminal.selectable`, Kategorie „Infrastruktur & Anlagen“, in Rollen und als Einzelberechtigung abteilungsbezogen vergebbar, keiner Rolle vorbelegt): Es macht eine Person nur in der Personenauswahl der Terminals sichtbar, deren Anlage in der Abteilung des Rechts liegt. Es gibt keine weiteren Rechte, zeigt keine zusätzlichen Daten und ändert nichts an den Rechten der Person.
+
 ## [0.82.48] – 2026-11-24
 
 ### Neu

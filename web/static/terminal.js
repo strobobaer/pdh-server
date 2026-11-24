@@ -448,6 +448,25 @@
         .catch(function () { /* offline: alter Stand bleibt */ });
     };
     setInterval(refresh, 30000);
+
+    // Vorgangsleiste: alle 30 s nur die Leiste neu holen (kein Seitenwechsel, Ruhezeit bleibt unberührt); nicht
+    // während ein Fenster oder der Abschluss-Assistent offen ist.
+    if (body.dataset.vbar === '1') {
+      setInterval(function () {
+        var bar = document.getElementById('vbar'), cw = document.getElementById('cw');
+        if (!bar || document.querySelector('[data-bar-dialog]') || (cw && cw.classList.contains('open'))) return;
+        fetch('/terminal/info?fragment=bar', { cache: 'no-store', credentials: 'same-origin' })
+          .then(function (r) { return r.ok ? r.text() : null; })
+          .then(function (html) {
+            var cur = document.getElementById('vbar');
+            if (!html || !cur || document.querySelector('[data-bar-dialog]')) return;
+            var doc = new DOMParser().parseFromString(html, 'text/html');
+            var next = doc.getElementById('vbar');
+            if (next) { next = document.importNode(next, true); var st = cur.scrollTop; cur.replaceWith(next); next.scrollTop = st; }
+          })
+          .catch(function () { /* offline: alter Stand bleibt */ });
+      }, 30000);
+    }
   }
 
   // Gerätesitzung ohne Anmeldeteil (Schoner, Seite „keine Anlage“): auf Einstellungen hören. Wird das Terminal
@@ -483,13 +502,15 @@
   }
 
   // Rüsten (Neu, Rüsten): wer rüstet und was sichtbar ist, hängt an der Kartenanmeldung – bei Wechsel neu laden.
-  if (mode === 'neu' || mode === 'rusten' || mode === 'stillstand' || mode === 'melden' || mode === 'hmi' || mode === 'wartung' || mode === 'vorgaenge') {
+  // (Info-Seite mit Vorgangsleiste ebenfalls: Fertigmelden und Ergänzen hängen an der Anmeldung)
+  if (mode === 'neu' || mode === 'rusten' || mode === 'stillstand' || mode === 'melden' || mode === 'hmi' || mode === 'wartung' || mode === 'vorgaenge' || (mode === 'info' && body.dataset.vbar === '1')) {
     document.addEventListener('pdh-card-login', function (e) { if (!!e.detail !== (body.dataset.cardIn === '1')) location.reload(); });
   }
 
   // Vorgänge (terminal_vorgaenge.go): Eine vorgehaltene Karte öffnet den Stand der Person – von der Info-Seite aus
   // einmal je Anmeldung (Marker im Sitzungsspeicher, damit Zurück nicht gleich wieder dorthin führt).
-  if (mode === 'info' && body.dataset.vorgaenge === '1') {
+  // Mit Vorgangsleiste entfällt der Sprung: die Leiste zeigt die Vorgänge der Person selbst.
+  if (mode === 'info' && body.dataset.vorgaenge === '1' && body.dataset.vbar !== '1') {
     document.addEventListener('pdh-card-login', function (e) {
       var seen = false;
       try { seen = sessionStorage.getItem('pdh.vorgShown') === '1'; } catch (err) { /* kein Speicher */ }
@@ -502,9 +523,9 @@
 
   // Vorgänge: Beenden einer Störung/eines Tickets öffnet den Abschluss-Assistenten (Token nur für diesen Vorgang);
   // bei einer Aufgabe antwortet der Server mit der Liste.
-  if (mode === 'vorgaenge') {
+  if (mode === 'vorgaenge' || (mode === 'info' && body.dataset.vbar === '1')) {
     var vNote = document.getElementById('v-note');
-    var vShow = function (t) { if (!vNote) { alert(t); return; } vNote.textContent = t; vNote.hidden = false; };
+    var vShow = function (t) { vNote = document.getElementById('v-note') || vNote; if (!vNote) { alert(t); return; } vNote.textContent = t; vNote.hidden = false; };
     document.addEventListener('submit', function (ev) {
       var f = ev.target;
       if (!f || !f.hasAttribute || !f.hasAttribute('data-fin')) return;
@@ -530,7 +551,8 @@
           return;
         }
         if (typeof window.pdhComplete !== 'function') { location.reload(); return; }
-        window.pdhComplete(x.d.type, x.d.id, function () { location.href = '/terminal/vorgaenge'; }, { token: x.d.token, who: x.d.who, pre: x.d.pre || [] });
+        var back = f.getAttribute('data-back') || '/terminal/vorgaenge';
+        window.pdhComplete(x.d.type, x.d.id, function () { location.href = back; }, { token: x.d.token, who: x.d.who, pre: x.d.pre || [] });
       }).catch(function () {
         btns.forEach(function (b) { b.disabled = false; });
         vShow('Keine Verbindung – bitte nochmal versuchen.');

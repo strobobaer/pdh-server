@@ -43,6 +43,7 @@ type userMaster struct {
 	TerminalDepts                                       terminalDeptsView // Abteilungen des Terminals (terminal_departments.go)
 	TerminalVorgModus                                   string            // Bearbeiten am Terminal: ohne_karte | nur_karte
 	TerminalFree                                        bool              // Freier Terminal-Benutzer (terminal_free.go)
+	TerminalPick                                        terminalPickView  // zusätzliche Quellen der Personenauswahl (terminal_pick.go)
 	TerminalIsTerminal                                  bool              // Standort gesetzt oder Gerät gekoppelt: Schalter anbieten
 }
 
@@ -289,6 +290,7 @@ func (h *Handler) loadUserMasterErr(ctx context.Context, id string) (userMaster,
 			m.TerminalDepts = h.loadTerminalDeptsView(ctx, id)
 			m.TerminalVorgModus = h.terminalVorgaengeModus(ctx, id)
 			m.TerminalFree = h.terminalFree(ctx, id)
+			m.TerminalPick = h.loadTerminalPickView(ctx, id)
 			m.TerminalIsTerminal, _ = h.isTerminalUser(ctx, id)
 			for _, k := range ls.CardNotify {
 				if m.TerminalCardNotify == nil {
@@ -684,6 +686,18 @@ func (h *Handler) UserMasterSaveWeb(w http.ResponseWriter, r *http.Request) {
 		}
 		if err != nil {
 			componentLog("terminal").Error().Err(err).Str("user", id).Msg("freien terminal-benutzer speichern")
+			userRedirect(w, r, id, "master", "", errTerminalLoginSave)
+			return
+		}
+	}
+	// Personenauswahl am Terminal (zusätzliche Quellen): eigener Marker, nur Benutzerverwaltung, nur Terminals
+	if _, sent := r.Form["terminal_pick_sent"]; sent && h.canManageUsers(r) {
+		sys, err := h.isTerminalUser(ctx, id)
+		if err == nil && sys {
+			err = h.saveTerminalPickSources(ctx, id, r.Form["terminal_pick_groups"], r.Form["terminal_pick_depts"], r.Form["terminal_pick_people"], getUser(r).ID)
+		}
+		if err != nil {
+			componentLog("terminal").Error().Err(err).Str("user", id).Msg("auswahl am terminal speichern")
 			userRedirect(w, r, id, "master", "", errTerminalLoginSave)
 			return
 		}
