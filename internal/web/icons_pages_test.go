@@ -104,10 +104,11 @@ var (
 // (font-family tabler …) oder Zeichen aus ihr (content:"\eac5").
 func TestNoIconFontUse(t *testing.T) {
 	root := filepath.Join("..", "..", "web")
+	scanned := 0
 	for _, sub := range []string{"templates", "static"} {
-		_ = filepath.WalkDir(filepath.Join(root, sub), func(p string, d fs.DirEntry, err error) error {
+		err := filepath.WalkDir(filepath.Join(root, sub), func(p string, d fs.DirEntry, err error) error {
 			if err != nil {
-				return nil
+				return err
 			}
 			if d.IsDir() {
 				if d.Name() == "vendor" {
@@ -122,8 +123,9 @@ func TestNoIconFontUse(t *testing.T) {
 			}
 			b, err := os.ReadFile(p)
 			if err != nil {
-				return nil
+				return err
 			}
+			scanned++
 			if m := iconFontFamilyRe.Find(b); m != nil {
 				t.Errorf("%s: Symbolschrift %q", p, m)
 			}
@@ -132,6 +134,12 @@ func TestNoIconFontUse(t *testing.T) {
 			}
 			return nil
 		})
+		if err != nil {
+			t.Fatalf("%s: %v", sub, err)
+		}
+	}
+	if scanned < 50 {
+		t.Fatalf("nur %d Dateien geprueft – Pfad falsch oder Suche leer", scanned)
 	}
 }
 
@@ -142,6 +150,11 @@ func TestInfobarUsesIconMask(t *testing.T) {
 		if !strings.Contains(b, want) {
 			t.Errorf("work_board.gohtml: %s fehlt", want)
 		}
+	}
+	// Kontrastmodus: Systemfarbe statt Akzent-/Statusfarbe, sonst ist das Symbol unsichtbar
+	fc := regexp.MustCompile(`@media \(forced-colors:\s*active\)\{[^@]*\.w11-infobar::before[^@]*\.w11-infobar\.success::before[^@]*\.w11-infobar\.warning::before[^@]*\.w11-infobar\.error::before\{[^}]*background-color:CanvasText`)
+	if !fc.MatchString(b) {
+		t.Error("work_board.gohtml: Kontrastmodus-Regel (forced-colors, CanvasText) fuer die Infoleiste fehlt")
 	}
 	used := map[string]bool{}
 	for _, n := range usedIconNames() {

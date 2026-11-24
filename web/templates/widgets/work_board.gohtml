@@ -427,6 +427,7 @@
 .w11-infobar.warning::before{background-color:var(--amber);-webkit-mask-image:url(/vendor/{{appVersion}}/icons/ti-alert-triangle.svg);mask-image:url(/vendor/{{appVersion}}/icons/ti-alert-triangle.svg)}
 .w11-infobar.error{background:color-mix(in srgb,var(--red) 12%,var(--bg2))}
 .w11-infobar.error::before{background-color:var(--red);-webkit-mask-image:url(/vendor/{{appVersion}}/icons/ti-alert-circle.svg);mask-image:url(/vendor/{{appVersion}}/icons/ti-alert-circle.svg)}
+@media (forced-colors:active){.w11-infobar::before,.w11-infobar.success::before,.w11-infobar.warning::before,.w11-infobar.error::before{background-color:CanvasText}}
 .w11-infobar small{display:block;color:var(--muted);font-size:12px}
 .w11-props{display:grid;grid-template-columns:auto 1fr;margin:0}
 .w11-props dt,.w11-props dd{padding:9px 0;border-top:1px solid var(--stroke);margin:0}
