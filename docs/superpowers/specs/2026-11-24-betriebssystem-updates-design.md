@@ -108,7 +108,7 @@ letzter Lauf: 24.11.2026 16:41 – 19 Pakete, Neustart, ok
 ### Wartungsfenster
 
 - Ist der Haken gesetzt und spielt das Wartungsfenster ein PDH-Update ein, kommen die Pakete mit (wie Knopf mit Haken).
-- **Offene Frage an den Anwender (siehe unten):** Betriebssystem-Updates im Wartungsfenster auch ohne PDH-Update.
+- Ist der Haken gesetzt, steht **kein** PDH-Update an und sind **Sicherheitsupdates** offen, startet das Wartungsfenster einen Auftrag „Betriebssystem“ (Entscheidung des Anwenders, siehe „Bestätigung“). Gehört zu Teil A (Einzelserver) bzw. Teil B (Verbund).
 
 ## Tests
 
@@ -142,6 +142,6 @@ Namen der Go-Typen und Dateien (Vorschlag: `cmd/update-agent/os_update.go`, `int
 - Zeitlimit für den Neustart eines Knotens 15 min.
 - Nur die beiden Server, nie der Zeuge.
 
-## Offene Frage an den Anwender
+## Bestätigung
 
-1. Sollen Betriebssystem-Updates im Wartungsfenster auch laufen, **wenn kein PDH-Update ansteht** (z. B. wöchentlich die Sicherheitsupdates)? Vorschlag: ja, wenn der Haken gesetzt ist und Sicherheitsupdates offen sind.
+Vom Anwender am 24.11.2026 bestätigt („Passt“). Frage zum Wartungsfenster entschieden: **„Ja, bei Sicherheitsupdates“** – ist der Haken gesetzt und sind Sicherheitsupdates offen, spielt das Wartungsfenster sie auch ohne PDH-Update ein (Einzelserver: Auftrag „Betriebssystem“; Verbund: Art „Betriebssystem“), mit Neustart nach denselben Regeln. Andere offene Pakete ohne Sicherheitsupdate warten auf das nächste PDH-Update oder den Knopf.
