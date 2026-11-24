@@ -503,8 +503,24 @@
 
   // Rüsten (Neu, Rüsten): wer rüstet und was sichtbar ist, hängt an der Kartenanmeldung – bei Wechsel neu laden.
   // (Info-Seite mit Vorgangsleiste ebenfalls: Fertigmelden und Ergänzen hängen an der Anmeldung)
-  if (mode === 'neu' || mode === 'rusten' || mode === 'stillstand' || mode === 'melden' || mode === 'hmi' || mode === 'wartung' || mode === 'vorgaenge' || (mode === 'info' && body.dataset.vbar === '1')) {
+  if (mode === 'neu' || mode === 'rusten' || mode === 'stillstand' || mode === 'melden' || mode === 'hmi' || mode === 'wartung' || mode === 'vorgaenge' || mode === 'zeit' || (mode === 'info' && body.dataset.vbar === '1')) {
     document.addEventListener('pdh-card-login', function (e) { if (!!e.detail !== (body.dataset.cardIn === '1')) location.reload(); });
+  }
+
+  // Zeiterfassung (terminal_zeit.go): Stand (wer ist da, wer arbeitet woran) alle 30 s neu holen, solange kein Fenster offen ist.
+  if (mode === 'zeit') {
+    setInterval(function () {
+      if (document.querySelector('.t-dialog')) return;
+      fetch('/terminal/zeit?fragment=status', { cache: 'no-store', credentials: 'same-origin' })
+        .then(function (r) { return r.ok ? r.text() : null; })
+        .then(function (html) {
+          var cur = document.getElementById('z-status');
+          if (!html || !cur || document.querySelector('.t-dialog')) return;
+          var next = new DOMParser().parseFromString(html, 'text/html').getElementById('z-status');
+          if (next) cur.replaceWith(document.importNode(next, true));
+        })
+        .catch(function () { /* offline: alter Stand bleibt */ });
+    }, 30000);
   }
 
   // Vorgänge (terminal_vorgaenge.go): Eine vorgehaltene Karte öffnet den Stand der Person – von der Info-Seite aus

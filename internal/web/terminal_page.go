@@ -96,6 +96,8 @@ type terminalPage struct {
 	PlanTile       bool              // Neu: Kachel Schichtplan
 	Vorg           terminalVorgPage  // Vorgänge: Liste, Fenster, Betriebsart (terminal_vorgaenge.go)
 	VorgTile       bool              // Neu: Kachel Vorgänge
+	Zeit           terminalZeitPage  // Zeiterfassung (terminal_zeit.go)
+	ZeitTile       bool              // Neu: Kachel Zeiterfassung
 	Bar            leisteView        // Vorgangsleiste auf der Info-Seite (terminal_leiste.go)
 	Fn             terminalFnFlags   // Funktionen-Schalter des Terminal-Benutzers (terminal_functions.go): ausgeschaltet = Kachel und Seite entfallen
 	Scheme         string            // Farbschema: dark | light (Einstellung des Terminal-Benutzers)
@@ -144,6 +146,10 @@ func (h *Handler) terminalRoutes(r chi.Router) {
 	r.Post("/terminal/vorgaenge/warten", h.terminalFnRoute("vorgaenge", h.TerminalVorgaengeWarten))
 	r.Post("/terminal/vorgaenge/beenden", h.terminalFnRoute("vorgaenge", h.TerminalVorgaengeBeenden))
 	r.Post("/terminal/vorgaenge/ergaenzen", h.terminalFnRoute("vorgaenge", h.TerminalVorgaengeErgaenzen))
+	r.Get("/terminal/zeit", h.terminalFnRoute("zeiterfassung", h.TerminalZeitPage))
+	r.Post("/terminal/zeit/buchen", h.terminalFnRoute("zeiterfassung", h.TerminalZeitBuchen))
+	r.Post("/terminal/zeit/arbeit/start", h.terminalFnRoute("zeiterfassung", h.TerminalZeitArbeitStart))
+	r.Post("/terminal/zeit/arbeit/stop", h.terminalFnRoute("zeiterfassung", h.TerminalZeitArbeitStop))
 	middleware.SetTerminalSessionCheck(func(r *http.Request, sub, tsess, tdev string) bool { return h.pdhHandoffCheck(r, tsess, sub, tdev) })
 	middleware.SetTerminalTokenCheck(func(r *http.Request, claims map[string]interface{}) bool { return h.terminalTokenValid(r, claims) })
 	h.cardRoutes(r)
@@ -504,6 +510,7 @@ func (h *Handler) TerminalNeuPage(w http.ResponseWriter, r *http.Request) {
 				p.PlanTile = len(ds) > 0
 			}
 			p.VorgTile = p.Fn.Vorgaenge
+			p.ZeitTile = p.Fn.Zeiterfassung
 		}
 		if d := r.URL.Query().Get("done"); d == "fault" || d == "ticket" {
 			p.Done = d

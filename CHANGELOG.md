@@ -10,6 +10,21 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.82.51] – 2026-11-24
+
+### Neu
+
+- **Terminal, Zeiterfassung:** Neue Terminalseite **Zeiterfassung** (Funktionsschalter `zeiterfassung`, nur in PDH einstellbar und für alle Terminals **standardmäßig aus**; Kachel auf der Seite Neu, wenn an). Anwesenheit mit **Kommen, Gehen, Pause Beginn, Pause Ende** je Person – per Karte oder (Betriebsart „ohne Karte“) durch Wählen aus der Personenauswahl des Terminals, dann mit der Herkunft „am Terminal gewählt“. Unsinnige Folgen (Gehen ohne Kommen, doppeltes Kommen, Pause ohne Anwesenheit, Gehen in der Pause) lehnt der Server mit einer deutschen Meldung ab. **Arbeit beginnen/beenden** an einem Vorgang (Störung, Ticket, Aufgabe, Wartung) oder an einer Anlage, auch für mehrere Personen gleichzeitig; je Person läuft höchstens eine Arbeit (eine neue beendet die vorherige, Gehen und Pause Beginn beenden sie mit Meldung). Beim Beenden entsteht ein Zeiteintrag am Vorgang mit Herkunftsmarke (bei am Terminal gewählten Personen unbestätigt) und ein Verlaufseintrag. Der öffentliche Stand zeigt nur anwesend, in Pause und „arbeitet an …“ – **ohne Uhrzeiten einzelner Personen**; die eigenen Zeiten sieht nur die Person nach der Kartenanmeldung. Ohne Karte ohne Person oder mit Person außerhalb der Auswahl: 422, „nur mit Karte“ ohne Karte: 403, ohne Gerätesitzung: 403.
+- **Anwesenheit & Arbeitszeit (PDH):** Neue Seite `/attendance` (Bereich Personen) mit Anwesenheit und Arbeitszeit je Person und Tag (Kommen, Gehen, Pausen, Anwesenheit netto, Arbeit, Vergleich mit der geplanten Arbeitszeit der Anlage, wo die Person gearbeitet hat und Arbeitszeiten hinterlegt sind), **Korrekturen** (ändern, nachtragen, löschen; Begründung Pflicht, Verlauf mit alt und neu, Ablaufprüfung wie am Terminal) und **CSV-Export**.
+
+### Sicherheit
+
+- Neue Rechte **„Anwesenheit & Arbeitszeit ansehen“** (`attendance.view`) und **„… korrigieren“** (`attendance.edit`), beide abteilungsbezogen nach der Abteilung der Person; vorbelegt für Administrator und Manager. Personenbezogene Daten: vor dem Einschalten mit Betriebsrat und Datenschutz abstimmen.
+
+### Geändert
+
+- Datenbank (Migration 215, nur hinzufügend): Tabellen `attendance_events`, `work_sessions`, `attendance_history`, Spalte `time_entries.origin_via`, Schalter `terminal_settings.fn_zeiterfassung`.
+
 ## [0.82.50] – 2026-11-24
 
 ### Neu

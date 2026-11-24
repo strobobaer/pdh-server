@@ -43,7 +43,7 @@ func TestTerminalFnJSONDefaults(t *testing.T) {
 	if len(m) != len(terminalFnDefs) {
 		t.Fatalf("alle Schlüssel erwartet: %v", m)
 	}
-	for _, k := range []string{"stoerung", "ticket", "ruesten", "stillstand", "hmi", "wartungen", "vorgaenge", "schichtplan", "saver_slides"} {
+	for _, k := range []string{"stoerung", "ticket", "ruesten", "stillstand", "hmi", "wartungen", "vorgaenge", "schichtplan", "zeiterfassung", "saver_slides"} {
 		e, ok := m[k].(map[string]any)
 		if !ok {
 			t.Fatalf("%s fehlt", k)
@@ -51,7 +51,7 @@ func TestTerminalFnJSONDefaults(t *testing.T) {
 		if e["updated_at"] != "1970-01-01T00:00:00.000Z" {
 			t.Errorf("%s: nie geändert = Epoche, war %v", k, e["updated_at"])
 		}
-		if want := k != "saver_slides"; e["enabled"] != want {
+		if want := k != "saver_slides" && k != "zeiterfassung"; e["enabled"] != want {
 			t.Errorf("%s: Grundwert %v", k, e["enabled"])
 		}
 	}

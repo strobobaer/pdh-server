@@ -71,6 +71,14 @@
 {{else if .Bar.Pick}}<div class="v-meta">Person wählen – oder die Karte vorhalten</div>
 <div class="v-people">{{range .Bar.Pick}}<label class="t-opt"><input type="radio" name="who" value="{{.ID}}" required><span>{{.Name}}{{if .Dept}}<small>{{.Dept}}</small>{{end}}</span></label>{{end}}</div>
 {{else}}<div class="t-empty off"><i class="ti ti-users-minus" aria-hidden="true"></i> Keine Mitarbeitenden zur Auswahl – bitte die Karte vorhalten</div>{{end}}{{end}}
+{{define "zeit-status"}}<div id="z-status" class="z-status">
+  <section class="v-sec" aria-label="Anwesend"><h2><i class="ti ti-user-check" aria-hidden="true"></i> Anwesend <span class="t-mcount">{{len .Zeit.Present}}</span></h2>
+    {{if .Zeit.Present}}<div class="z-names">{{range .Zeit.Present}}<span class="z-chip">{{.}}</span>{{end}}</div>{{else}}<div class="t-empty off">Niemand angemeldet</div>{{end}}</section>
+  {{if .Zeit.Pause}}<section class="v-sec" aria-label="In Pause"><h2><i class="ti ti-cup" aria-hidden="true"></i> In Pause <span class="t-mcount">{{len .Zeit.Pause}}</span></h2>
+    <div class="z-names">{{range .Zeit.Pause}}<span class="z-chip">{{.}}</span>{{end}}</div></section>{{end}}
+  <section class="v-sec" aria-label="Arbeitet"><h2><i class="ti ti-tool" aria-hidden="true"></i> Arbeitet an <span class="t-mcount">{{len .Zeit.Working}}</span></h2>
+    {{if .Zeit.Working}}<ul class="v-list">{{range .Zeit.Working}}<li class="v-row work"><div class="v-t"><b>{{.Name}}</b><small>{{.What}}</small></div></li>{{end}}</ul>{{else}}<div class="t-empty off">Niemand arbeitet gerade an einem Vorgang</div>{{end}}</section>
+</div>{{end}}
 {{define "t-picked"}}{{if not .Single}}<div class="t-picked"><span>Anlage: <b>{{.SelName}}</b></span><a class="t-btn" href="{{.Self}}">Ändern</a></div>{{end}}{{end}}
 <!DOCTYPE html>
 <html lang="de" data-theme="{{if eq .Scheme "light"}}light{{else}}dark{{end}}">
@@ -369,6 +377,9 @@ a.v-row.v-nope{opacity:.7}
 .t-card form{margin:0}
 /* Schichtplan (terminal_schichtplan.go) */
 .t-new .t-plink{background:#134e4a;border-color:#14b8a6;color:#fff}
+.t-new .t-zlink{background:#3b0764;border-color:#a855f7;color:#fff}
+.z-btns{display:grid;grid-template-columns:repeat(auto-fit,minmax(10em,1fr));gap:1vw}.z-btns form{margin:0}.z-btns .t-btn{width:100%}.z-work{display:flex;gap:1vw;align-items:center;flex-wrap:wrap;margin:1vh 0}.z-work form{margin:0}.z-names{display:flex;flex-wrap:wrap;gap:.6vw}.z-chip{padding:.4em .9em;border-radius:999px;background:var(--bg3);border:2px solid var(--border);font-weight:700}.t-rznote.bad{border-color:#ef4444}.z-btns .t-btn[disabled]{opacity:.35}
+body[data-mode="zeit"]{--accent-rgb:168,85,247}
 .t-pdepts,.t-pweek{display:flex;flex-wrap:wrap;gap:1vw;align-items:center}
 .t-pdepts .t-btn.sel,.t-pweek .t-btn.sel{background:var(--accent);border-color:var(--accent);color:#fff}
 .t-pgroup{padding:1vh 1.4vw;background:var(--bg2);border:2px solid var(--border);border-radius:18px}
@@ -681,6 +692,61 @@ connect();
 {{end}}
 {{template "completion-wizard"}}
 {{end}}
+{{else if eq .Mode "zeit"}}
+<div class="t-head">
+  <a class="t-btn" href="/terminal/neu"><i class="ti ti-arrow-left" aria-hidden="true"></i> Zurück</a>
+  <div class="t-path">{{if .Path}}{{.Path}}{{else}}<b>{{.Name}}</b>{{end}}{{if .Zeit.Card}} · {{.Zeit.Person}}{{end}}</div>
+  <div class="t-clock" data-clock>&nbsp;</div>
+</div>
+<div class="t-rz" id="z-root">
+  {{if .Zeit.Notice}}<div class="t-rznote{{if .Zeit.NoticeBad}} bad{{end}}" id="z-note" role="alert">{{.Zeit.Notice}}</div>{{end}}
+  {{if not .Zeit.Device}}<div class="t-rznote" role="status">Nur Ansicht – gebucht wird am Terminal selbst.</div>{{end}}
+  {{if .Zeit.NeedCard}}<div class="t-rznote" role="status"><i class="ti ti-id-badge-2" aria-hidden="true"></i> Dieses Terminal erfasst Zeiten nur mit Karte – bitte Karte vorhalten.</div>{{end}}
+  {{if .Zeit.PersonID}}
+  <section class="v-sec z-me" aria-label="Meine Zeiterfassung">
+    <h2><i class="ti ti-id-badge-2" aria-hidden="true"></i> {{.Zeit.Person}} · {{.Zeit.StateLabel}}{{if .Zeit.Picked}} <small>(am Terminal gewählt)</small>{{end}}</h2>
+    <div class="z-btns">
+      <form method="post" action="/terminal/zeit/buchen"><input type="hidden" name="kind" value="kommen">{{if .Zeit.Picked}}<input type="hidden" name="who" value="{{.Zeit.PersonID}}">{{end}}<button type="submit" class="t-btn ok big"{{if not (index .Zeit.Can "kommen")}} disabled{{end}}><i class="ti ti-login" aria-hidden="true"></i> Kommen</button></form>
+      <form method="post" action="/terminal/zeit/buchen"><input type="hidden" name="kind" value="gehen">{{if .Zeit.Picked}}<input type="hidden" name="who" value="{{.Zeit.PersonID}}">{{end}}<button type="submit" class="t-btn warn big"{{if not (index .Zeit.Can "gehen")}} disabled{{end}}><i class="ti ti-logout" aria-hidden="true"></i> Gehen</button></form>
+      <form method="post" action="/terminal/zeit/buchen"><input type="hidden" name="kind" value="pause_beginn">{{if .Zeit.Picked}}<input type="hidden" name="who" value="{{.Zeit.PersonID}}">{{end}}<button type="submit" class="t-btn big"{{if not (index .Zeit.Can "pause_beginn")}} disabled{{end}}><i class="ti ti-cup" aria-hidden="true"></i> Pause Beginn</button></form>
+      <form method="post" action="/terminal/zeit/buchen"><input type="hidden" name="kind" value="pause_ende">{{if .Zeit.Picked}}<input type="hidden" name="who" value="{{.Zeit.PersonID}}">{{end}}<button type="submit" class="t-btn big"{{if not (index .Zeit.Can "pause_ende")}} disabled{{end}}><i class="ti ti-player-play" aria-hidden="true"></i> Pause Ende</button></form>
+    </div>
+    <div class="z-work">
+      {{if .Zeit.Running}}<div class="v-meta"><i class="ti ti-tool" aria-hidden="true"></i> Läuft: {{.Zeit.Running}}</div>
+      <form method="post" action="/terminal/zeit/arbeit/stop">{{if .Zeit.Picked}}<input type="hidden" name="who" value="{{.Zeit.PersonID}}">{{end}}<button type="submit" class="t-btn ok big"><i class="ti ti-player-stop" aria-hidden="true"></i> Arbeit beenden</button></form>{{end}}
+      <a class="t-btn primary big" href="/terminal/zeit?arbeit=1{{if .Zeit.Picked}}&amp;wer={{.Zeit.PersonID}}{{end}}"><i class="ti ti-player-play" aria-hidden="true"></i> Arbeit beginnen</a>
+      {{if .Zeit.Picked}}<a class="t-btn" href="/terminal/zeit">Andere Person</a>{{end}}
+    </div>
+    {{if .Zeit.Card}}<div class="v-meta">Heute: {{range $i, $r := .Zeit.Mine}}{{if $i}} · {{end}}{{$r.Label}} {{$r.Time}}{{else}}noch keine Buchung{{end}}{{if .Zeit.MineWork}} · Arbeit {{.Zeit.MineWork}}{{end}}</div>{{end}}
+  </section>
+  {{else if .Zeit.Pick}}
+  <section class="v-sec" aria-label="Person wählen">
+    <h2><i class="ti ti-users" aria-hidden="true"></i> Wer bist du?</h2>
+    <div class="v-people">{{range .Zeit.Pick}}<a class="t-opt" href="/terminal/zeit?wer={{.ID}}"><span>{{.Name}}{{if .Department}}<small>{{.Department}}</small>{{end}}</span></a>{{end}}</div>
+    <div class="v-meta">Oder Karte vorhalten. Ohne Karte gebuchte Zeiten sind als „am Terminal gewählt“ gekennzeichnet.</div>
+  </section>
+  {{end}}
+  {{template "zeit-status" .}}
+  <div class="v-meta">Hier steht nur der Stand, keine Uhrzeiten einzelner Personen. Die eigenen Zeiten zeigt das Terminal nur nach der Kartenanmeldung.</div>
+</div>
+{{if .Zeit.WorkDlg}}
+<div class="t-dialog" role="dialog" aria-modal="true" aria-label="Arbeit beginnen">
+  <form class="v-dlg" method="post" action="/terminal/zeit/arbeit/start">
+    <h2>Arbeit beginnen</h2>
+    <h3>Wer arbeitet?</h3>
+    <div class="v-people">{{range .Zeit.WorkPeople}}{{$id := .ID}}<label class="t-opt"><input type="checkbox" name="who" value="{{.ID}}"{{if index $.Zeit.WorkOn $id}} checked{{end}}><span>{{.Name}}</span></label>{{end}}</div>
+    <h3>Woran?</h3>
+    <div class="v-people">
+      {{range .Zeit.Items}}<label class="t-opt"><input type="radio" name="sel" value="{{.Sel}}" required><span>{{.Label}}: {{.Title}}{{if .Path}}<small>{{.Path}}</small>{{end}}</span></label>{{end}}
+      {{range .Zeit.Plants}}<label class="t-opt"><input type="radio" name="sel" value="{{.Sel}}" required><span>Arbeit an Anlage<small>{{.Title}}</small></span></label>{{end}}
+    </div>
+    <div class="l-row">
+      <a class="t-btn" href="/terminal/zeit{{if .Zeit.Picked}}?wer={{.Zeit.PersonID}}{{end}}">Abbrechen</a>
+      <button type="submit" class="t-btn primary"><i class="ti ti-player-play" aria-hidden="true"></i> Starten</button>
+    </div>
+  </form>
+</div>
+{{end}}
 {{else if eq .Mode "wartung"}}
 <div class="t-head">
   <a class="t-btn" href="/terminal/neu"><i class="ti ti-arrow-left" aria-hidden="true"></i> Zurück</a>
@@ -711,16 +777,17 @@ connect();
 <div class="t-none"><i class="ti ti-lock" aria-hidden="true"></i><p>Keine Berechtigung</p><small>Dieses Terminal darf hier nichts melden oder anzeigen.</small></div>
 {{else}}
 {{if .Done}}<div class="t-rznote" role="status">{{if eq .Done "fault"}}Störung gemeldet – danke.{{else}}Ticket erstellt – danke.{{end}}</div>{{end}}
-<div class="t-new{{if or .Setup.Show .HMITile .MaintTile .VorgTile .PlanTile}} has-rz{{end}}{{if and .Fn.Stoerung (not .Fn.Ticket)}} one{{else if and .Fn.Ticket (not .Fn.Stoerung)}} one{{else if not .Fn.Stoerung}} nof{{end}}">
+<div class="t-new{{if or .Setup.Show .HMITile .MaintTile .VorgTile .PlanTile .ZeitTile}} has-rz{{end}}{{if and .Fn.Stoerung (not .Fn.Ticket)}} one{{else if and .Fn.Ticket (not .Fn.Stoerung)}} one{{else if not .Fn.Stoerung}} nof{{end}}">
   {{if .Fn.Stoerung}}<a class="t-tilebtn fault" href="/terminal/stoerung"><i class="ti ti-alert-triangle" aria-hidden="true"></i> Störung</a>{{end}}
   {{if .Fn.Ticket}}<a class="t-tilebtn ticket" href="/terminal/ticket"><i class="ti ti-ticket" aria-hidden="true"></i> Ticket</a>{{end}}
-  {{if or .Setup.Show .HMITile .MaintTile .VorgTile .PlanTile}}<div class="t-xrow">{{end}}
+  {{if or .Setup.Show .HMITile .MaintTile .VorgTile .PlanTile .ZeitTile}}<div class="t-xrow">{{end}}
   {{if .Setup.Show}}{{if .SetupCan}}<a class="t-tilebtn t-rzlink" href="/terminal/rusten"><i class="ti ti-tool" aria-hidden="true"></i><span>Rüsten{{if .Setup.Running}}<small>{{.Setup.Text}}</small>{{else if .Setup.Fault}}<small>{{.Setup.Text}}</small>{{end}}</span></a>{{else}}<span class="t-tilebtn t-rzlink off" aria-disabled="true"><i class="ti ti-tool" aria-hidden="true"></i><span>Rüsten<small>Keine Berechtigung zum Rüsten</small></span></span>{{end}}{{end}}
   {{if .HMITile}}<a class="t-tilebtn t-rzlink t-hmilink" href="/terminal/hmi"><i class="ti ti-device-desktop-analytics" aria-hidden="true"></i><span>HMI</span></a>{{end}}
   {{if .MaintTile}}<a class="t-tilebtn t-rzlink t-mlink" href="/terminal/wartung"><i class="ti ti-calendar-check" aria-hidden="true"></i><span>Wartungen</span></a>{{end}}
   {{if .VorgTile}}<a class="t-tilebtn t-rzlink t-vlink" href="/terminal/vorgaenge"><i class="ti ti-list-check" aria-hidden="true"></i><span>Vorgänge</span></a>{{end}}
   {{if .PlanTile}}<a class="t-tilebtn t-rzlink t-plink" href="/terminal/schichtplan"><i class="ti ti-calendar-week" aria-hidden="true"></i><span>Schichtplan</span></a>{{end}}
-  {{if or .Setup.Show .HMITile .MaintTile .VorgTile .PlanTile}}</div>{{end}}
+  {{if .ZeitTile}}<a class="t-tilebtn t-rzlink t-zlink" href="/terminal/zeit"><i class="ti ti-clock-play" aria-hidden="true"></i><span>Zeiterfassung</span></a>{{end}}
+  {{if or .Setup.Show .HMITile .MaintTile .VorgTile .PlanTile .ZeitTile}}</div>{{end}}
   {{if .Fn.Stillstand}}
   <div class="t-stop{{if .Down.Running}} run{{end}}">
     <h2><i class="ti ti-player-pause" aria-hidden="true"></i> Stillstand</h2>
