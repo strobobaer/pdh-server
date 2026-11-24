@@ -938,6 +938,16 @@ und 3 drückt bis auf Weiteres der Anwender.
     Klartext mit echtem Fortschritt bei langen Läufen und dauerhafte Warnungen
     (Wartung, Spiegel, Verbindung); Text auch am Handy/Terminal, Tippen zeigt die
     letzten Meldungen. Gehört zu Teil „gleiche Bausteine“.
+    Gestaltung (Anwender 24.11.2026): „Mache die Gestaltung so, dass es nicht
+    nach KI aussieht, sondern einfach nur besser als SAP und Microsoft, aber
+    trotzdem echt, und das fixiert, dass alles neu aufgebaut werden kann.“ –
+    eigener Teil **Gestaltungsgrundlage** vor den Bausteinen: Gestaltungswerte
+    als Datei im Repository (Farben Fiori/Fluent × hell/dunkel, Abstände 4/8 px,
+    eine Schrift mit wenigen Größen, Rundungen, Schatten nur für Schwebendes),
+    Bausteinkatalog mit Regeln, Tests erzwingen „nur Werte und Bausteine aus
+    der Grundlage“; zum Ansehen auch im Design System des Anwenders in Claude.
+    Kein KI-Look: keine Verläufe, Glas, bunten Schatten, Deko, Emojis,
+    Seitenstreifen-Karten, Fülltexte; Farbe nur mit Bedeutung; echte Dichte.
 25. **0.82.48 Wartung: Jahresplan im Kalender, Auftrag mit Vorlauf** (Wunsch des
     Anwenders vom 23.11.2026: Personalplanung; Knopf „Jahresplan erzeugen“,
     nur der nächste Termin wird 5 Arbeitstage vorher automatisch zum
