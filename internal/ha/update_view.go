@@ -113,6 +113,9 @@ func (j UpdateJob) viewStep() (step, percent int, text string) {
 		}
 		return 3, 60, "Neue Version wird geprüft"
 	case UpRelease:
+		if j.OSStep != "" { // PDH-Auftrag mit Betriebssystem-Teil
+			return 4, 92, osStepText(j.OSStep)
+		}
 		return 4, 90, "Freigabe – Spiegel holt auf"
 	case UpFollow:
 		return 4, 100, "Partner zieht die neue Version nach"

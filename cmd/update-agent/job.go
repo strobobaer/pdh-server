@@ -58,6 +58,9 @@ type singleJob struct {
 	Finishing    bool         `json:"finishing"` // --finish gestartet: Programm und Datenbank evtl. schon neu
 	RbStep       string       `json:"rb_step"`   // nächster Schritt im Zurücksetzen
 	RbAt         time.Time    `json:"rb_at"`     // Beginn der Prüfung nach dem Zurücksetzen
+	// WithOS: Haken „Betriebssystem mit einspielen“ beim Start (Wert bleibt, auch wenn der Haken später fällt)
+	WithOS bool    `json:"with_os"`
+	OS     osSteps `json:"os"` // Pakete nach dem Neustart mit der neuen Version (Phase UpRelease)
 }
 
 type jobRuntime struct {
@@ -72,6 +75,7 @@ type jobRuntime struct {
 type jobNotReady struct {
 	reason string
 	hints  []string
+	faulty bool // Ziel ist als fehlerhaft gemerkt (Zeitplan überspringt es)
 }
 
 func (e jobNotReady) Error() string { return e.reason }
@@ -112,6 +116,16 @@ func (a *updateAgent) loadSingleJob() {
 		a.sj.release = release
 		a.sj.mu.Unlock()
 		a.jobKick()
+	} else if s.OS.Unit != "" {
+		// Einheit der Pakete läuft noch (z. B. nach „dauert zu lange“): Sperre halten, bis sie endet
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		active := a.osUnitIsActive(ctx, s.OS.Unit)
+		cancel()
+		if active {
+			if release, busy := a.lockTryExclusive(lockPDH); busy == "" {
+				a.osWaitUnit(s.OS.Unit, release)
+			}
+		}
 	}
 }
 
@@ -187,7 +201,7 @@ func (a *updateAgent) startSingleJob(ctx context.Context, source string, force b
 	}
 	ws := a.windowSnapshot()
 	if source == srcWindow && commitIn(ws.Faulty, target) {
-		return nil, jobNotReady{reason: "Neue Version " + shortSHA(target) + " ist als fehlerhaft gemerkt"}
+		return nil, jobNotReady{reason: "Neue Version " + shortSHA(target) + " ist als fehlerhaft gemerkt", faulty: true}
 	}
 	var hints []string
 	configured, baseOK, _ := a.drBackupReport()
@@ -221,6 +235,7 @@ func (a *updateAgent) startSingleJob(ctx context.Context, source string, force b
 			Target: target, OldVersion: oldVersion, Old: map[string]string{jobSelf: old},
 			Phase: ha.UpPrepare, PhaseAt: now, StartedAt: now},
 		CountdownMin: win.CountdownMin, LockMaxMin: win.LockMaxMin,
+		WithOS: a.osWithUpdate(), // Haken gilt, wie er beim Start steht
 		Dump: filepath.Join(drStateDir(), "vor-update-"+target+".dump"),
 	}
 	a.sj.mu.Lock()
@@ -313,8 +328,17 @@ func (a *updateAgent) jobStep(ctx context.Context) bool {
 			a.jobRollback(&s, "Neue Version antwortet nicht: "+herr.Error(), true)
 		}
 	case ha.UpRelease:
+		if s.WithOS && s.OS.Step != "done" {
+			// Haken „Betriebssystem mit einspielen“: erst die Pakete, die Datenbank-Sperre bleibt bis zum Ende
+			if !a.jobOSStep(ctx, &s) {
+				return false // Agent wird beendet: der gesicherte Stand gilt
+			}
+			if s.OS.Step != "done" {
+				break
+			}
+		}
 		a.jobUnlock(ctx, &s)
-		a.jobFinish(&s, ha.UpDone, jobName(*j)+" abgeschlossen", false)
+		a.jobFinish(&s, ha.UpDone, jobName(*j)+" abgeschlossen"+jobOSSuffix(s), false)
 	case ha.UpRollback:
 		a.jobRollbackStep(ctx, &s)
 	default:
@@ -553,18 +577,53 @@ func (a *updateAgent) jobFinish(s *singleJob, p ha.UpdatePhase, result string, f
 		}
 	})
 	log.Printf("update: %s", summary)
-	a.jobReleaseLock()
+	a.jobReleaseLock(s.OS.Unit)
 }
 
-// jobReleaseLock gibt die gemeinsame Sperre des Auftrags frei (einmal).
-func (a *updateAgent) jobReleaseLock() {
+// jobReleaseLock gibt die gemeinsame Sperre des Auftrags frei (einmal). Läuft die Einheit der
+// Betriebssystem-Pakete (unit) noch, erst wenn sie beendet ist.
+func (a *updateAgent) jobReleaseLock(unit string) {
 	a.sj.mu.Lock()
 	r := a.sj.release
 	a.sj.release = nil
 	a.sj.mu.Unlock()
 	if r != nil {
-		r()
+		a.osReleaseAfterUnit(r, unit)
 	}
+}
+
+// jobOSStep führt den Betriebssystem-Teil (Haken) einen Schritt weiter. false = der Agent wird
+// beendet; der gesicherte Stand bleibt und wird nach dem Neustart wieder aufgenommen.
+func (a *updateAgent) jobOSStep(ctx context.Context, s *singleJob) bool {
+	persist := func() {
+		s.Job.OSStep = s.OS.Step
+		a.jobPut(*s)
+	}
+	a.osAdvance(ctx, &s.OS, persist)
+	if ctx.Err() != nil {
+		// Beenden des Agenten ist kein Fehler beim Prüfen oder Einspielen
+		a.sj.mu.Lock()
+		*s = a.sj.job
+		a.sj.mu.Unlock()
+		return false
+	}
+	s.Job.OSStep = s.OS.Step
+	s.Job.Result = s.OS.Hold // wartet der Neustart auf eine Netz-Änderung, steht der Grund hier
+	return true
+}
+
+// jobOSSuffix: Ergebnistext des Betriebssystem-Teils, hinter „Update auf X abgeschlossen“. Ein Fehler
+// hier setzt das PDH-Update nie zurück und merkt den Stand nicht als fehlerhaft.
+func jobOSSuffix(s singleJob) string {
+	switch {
+	case !s.WithOS:
+		return ""
+	case s.OS.Failed:
+		return "; Betriebssystem nicht aktualisiert: " + s.OS.Msg
+	case s.OS.Pending > 0:
+		return "; Betriebssystem: " + s.OS.Msg
+	}
+	return ""
 }
 
 func jobName(j ha.UpdateJob) string {

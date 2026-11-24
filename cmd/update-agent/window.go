@@ -247,14 +247,60 @@ func (a *updateAgent) windowTick(ctx context.Context, now time.Time) {
 }
 
 // windowSingle: Einzelserver – das Update selbst ausführen.
+// Mit dem Haken „Betriebssystem mit einspielen“ fährt der PDH-Auftrag die Pakete mit; gibt es kein
+// PDH-Update (aus, keine neue Version oder als fehlerhaft gemerkt), startet das Fenster bei
+// offenen Sicherheitsupdates den Betriebssystem-Auftrag allein.
 func (a *updateAgent) windowSingle(ctx context.Context, w ha.Window) (string, bool) {
-	if !w.Install {
-		return "Nichts zu tun: „Neue Version einspielen“ ist ausgeschaltet", false
+	skipped := "Nichts zu tun: „Neue Version einspielen“ ist ausgeschaltet"
+	if w.Install {
+		_, err := a.startSingleJob(ctx, srcWindow, false)
+		if err == nil {
+			return "Update gestartet", true
+		}
+		var nr jobNotReady
+		if !errors.Is(err, errNoNewVersion) && !(errors.As(err, &nr) && nr.faulty) {
+			return err.Error(), false
+		}
+		skipped = err.Error()
 	}
-	if _, err := a.startSingleJob(ctx, srcWindow, false); err != nil {
-		return err.Error(), false
+	if !a.osWithUpdate() {
+		return skipped, false
 	}
-	return "Update gestartet", true
+	return a.windowOS(ctx)
+}
+
+// windowOS: Betriebssystem-Fenster ohne PDH-Update – bei offenen Sicherheitsupdates den Auftrag starten.
+func (a *updateAgent) windowOS(ctx context.Context) (string, bool) {
+	if ok, reason, _ := a.osAvailable(ctx); !ok {
+		return reason, false
+	}
+	// wie „Prüfen“ im Browser: nie parallel zu apt oder neben einem anderen Auftrag
+	release, busy := a.lockTryExclusive(lockOS)
+	if busy != "" {
+		return lockBusyMsg(busy), false
+	}
+	_, err := a.osExec(ctx, "check")
+	a.osClearCache()
+	var ur *osUnitRunning
+	if errors.As(err, &ur) {
+		a.osWaitUnit(ur.Unit, release) // die Sperre bleibt, bis die Einheit endet
+		return "Betriebssystem: " + err.Error(), false
+	}
+	release()
+	if err != nil {
+		return "Betriebssystem: Prüfen fehlgeschlagen: " + err.Error(), false
+	}
+	ss, err := a.osStatus(ctx)
+	if err != nil {
+		return "Betriebssystem: Status nicht lesbar: " + err.Error(), false
+	}
+	if ss.SecurityCount == 0 {
+		return "Keine Sicherheitsupdates offen", false
+	}
+	if _, err := a.startOSJob(ctx, srcWindow, false); err != nil {
+		return "Betriebssystem-Update nicht gestartet: " + err.Error(), false
+	}
+	return fmt.Sprintf("Betriebssystem-Update gestartet (%d Sicherheitsupdates)", ss.SecurityCount), true
 }
 
 // windowToHA: Verbund – Fenster an pdh-ha übergeben (Spec 4: ein Update

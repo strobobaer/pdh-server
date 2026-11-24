@@ -1,5 +1,16 @@
 package ha
 
+// osStepText: Text zum Schritt der Betriebssystem-Pakete (auch im PDH-Auftrag mit Haken, Phase UpRelease).
+func osStepText(osStep string) string {
+	switch osStep {
+	case "reboot", "boot":
+		return "Server startet neu"
+	case "start", "verify", "done":
+		return "Server wird geprüft"
+	}
+	return "Betriebssystem-Pakete werden eingespielt"
+}
+
 // viewStepOS: Schritt, Prozent und Text des Betriebssystem-Auftrags (Kind UpdateOS).
 func (j UpdateJob) viewStepOS() (step, percent int, text string) {
 	switch j.Phase {
@@ -10,11 +21,11 @@ func (j UpdateJob) viewStepOS() (step, percent int, text string) {
 	case UpLocked:
 		switch j.OSStep {
 		case "reboot", "boot":
-			return 2, 55, "Server startet neu"
+			return 2, 55, osStepText(j.OSStep)
 		case "start", "verify", "done":
-			return 3, 75, "Server wird geprüft"
+			return 3, 75, osStepText(j.OSStep)
 		}
-		return 1, 25, "Betriebssystem-Pakete werden eingespielt"
+		return 1, 25, osStepText(j.OSStep)
 	case UpRelease:
 		return 4, 90, "Freigabe"
 	case UpDone:

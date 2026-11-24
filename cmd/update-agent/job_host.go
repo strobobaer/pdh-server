@@ -150,10 +150,13 @@ func (a *updateAgent) updateTarget(ctx context.Context) (target, current string,
 		return "", "", errors.New("Installierter Stand unbekannt")
 	}
 	if current == target {
-		return "", "", errors.New("Keine neue Version im Update-Zweig")
+		return "", "", errNoNewVersion
 	}
 	return target, current, nil
 }
+
+// errNoNewVersion: der Update-Zweig steht auf dem installierten Stand (kein Fehler, nur nichts zu tun).
+var errNoNewVersion = errors.New("Keine neue Version im Update-Zweig")
 
 // pdhEnv: Wert aus <repoDir>/.env (der letzte Eintrag gilt), sonst aus der
 // Umgebung des Agenten (systemd lädt dieselbe Datei).

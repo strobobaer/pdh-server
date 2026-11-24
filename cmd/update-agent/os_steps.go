@@ -29,6 +29,10 @@ type osSteps struct {
 	Failed   bool      `json:"failed"`
 	Msg      string    `json:"msg"`  // Fehlertext bzw. Ergebnis („3 Pakete, Neustart ja“)
 	Unit     string    `json:"unit"` // Name der Einheit von „install“ (Wiederaufnahme)
+
+	// Neustart wartet auf eine Netz-Änderung: seit wann, und der Grund für die Anzeige
+	NetHoldAt time.Time `json:"net_hold_at,omitzero"`
+	Hold      string    `json:"hold,omitempty"`
 }
 
 func (st osSteps) installing() bool { return st.Step == "install" }
@@ -166,6 +170,23 @@ func (a *updateAgent) osAdvance(ctx context.Context, st *osSteps, persist func()
 		st.Msg = fmt.Sprintf("%d Pakete, Neustart %s", st.Pending, reboot)
 
 	case "reboot":
+		// nie neu starten, solange eine Netz-Änderung auf Bestätigung oder Rücknahme wartet
+		// (gilt für den Betriebssystem-Auftrag und den PDH-Auftrag mit Haken); die Frist zählt ab dem ersten Warten
+		if a.osNetBusy() {
+			now := a.now()
+			if st.NetHoldAt.IsZero() {
+				st.NetHoldAt = now
+			}
+			if now.Sub(st.NetHoldAt) < osBootWait {
+				st.Hold = osNetPendingMsg
+				return false
+			}
+			st.NetHoldAt, st.Hold = time.Time{}, ""
+			st.failAfterInstall(osNetPendingMsg)
+			st.Step = "start"
+			return false
+		}
+		st.NetHoldAt, st.Hold = time.Time{}, ""
 		id := a.osBootID()
 		if id == "" {
 			st.failAfterInstall("Neustart nicht möglich: boot_id nicht lesbar")

@@ -44,7 +44,6 @@ type osJob struct {
 	Dump         string       `json:"dump"` // Sicherung vor dem Einspielen (pg_dump -Fc)
 	OS           osSteps      `json:"os"`
 	Source       string       `json:"source"`
-	NetHoldAt    time.Time    `json:"net_hold_at,omitzero"` // seit wann der Neustart auf eine Netz-Änderung wartet
 }
 
 type osJobRuntime struct {
@@ -351,27 +350,12 @@ func (a *updateAgent) osJobLocked(ctx context.Context, s *osJob) {
 			a.osJobAbandon(ctx, s, "Abgebrochen von "+aborted)
 		}
 		return
-	case "reboot":
-		// nie neu starten, solange eine Netz-Änderung auf Bestätigung oder Rücknahme wartet
-		if a.osNetBusy() {
-			now := a.now()
-			if s.NetHoldAt.IsZero() {
-				s.NetHoldAt = now
-			}
-			if now.Sub(s.NetHoldAt) < osBootWait {
-				j.Result = osNetPendingMsg
-				return
-			}
-			s.NetHoldAt, j.Result = time.Time{}, ""
-			s.OS.failAfterInstall(osNetPendingMsg)
-			s.OS.Step = "start"
-			return
-		}
-		s.NetHoldAt, j.Result = time.Time{}, ""
 	}
 	before := s.OS.Step
 	persist := func() { a.osJobPut(*s) }
-	if a.osAdvance(ctx, &s.OS, persist) {
+	done := a.osAdvance(ctx, &s.OS, persist) // wartet der Neustart auf eine Netz-Änderung, steht der Grund in OS.Hold
+	j.Result = s.OS.Hold
+	if done {
 		j.Phase, j.PhaseAt = ha.UpRelease, a.now()
 		return
 	}
@@ -453,9 +437,14 @@ func (a *updateAgent) osJobReleaseLock(unit string) {
 	r := a.osj.release
 	a.osj.release = nil
 	a.osj.mu.Unlock()
-	if r == nil {
-		return
+	if r != nil {
+		a.osReleaseAfterUnit(r, unit)
 	}
+}
+
+// osReleaseAfterUnit gibt die Sperre r frei – läuft die Einheit unit noch, erst wenn sie beendet ist
+// (gilt für den Betriebssystem-Auftrag und den PDH-Auftrag mit Haken).
+func (a *updateAgent) osReleaseAfterUnit(r func(), unit string) {
 	if unit != "" {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		active := a.osUnitIsActive(ctx, unit)
