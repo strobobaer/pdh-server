@@ -126,8 +126,8 @@ func TestIconRoutesCaching(t *testing.T) {
 		}
 	}
 
-	href := iconCSSHref()
 	_, key := (&Handler{}).iconCSS(t.Context())
+	href := iconCSSHref()
 	if href != v+"/icons-"+key+".css" {
 		t.Errorf("iconCSSHref = %s, key %s", href, key)
 	}

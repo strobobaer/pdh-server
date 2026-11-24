@@ -33,9 +33,8 @@ func AppIconHandler() http.Handler {
 		case ".webmanifest":
 			w.Header().Set("Content-Type", "application/manifest+json")
 		case ".css":
-			// Symbol-Bibliothek (vendor/tabler-icons): 1,4 MB mit eingebetteter
-			// Schrift, blockiert das Rendern – komprimiert, mit ETag und lange
-			// zwischengespeichert ausliefern
+			// Stildateien aus web/static – komprimiert, mit ETag und lange
+			// zwischengespeichert ausliefern (Symbole: iconcss.go)
 			if serveStaticAsset(w, r, strings.TrimPrefix(r.URL.Path, "/")) {
 				return
 			}

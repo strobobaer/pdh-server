@@ -171,7 +171,7 @@ Diese Dateien liegen im Repository und werden mit PDH ausgeliefert.
 | --- | --- | --- | --- | --- |
 | ESP Web Tools (USB-Flash im Browser), darin @material/web, esptool-js, @improv-wifi/serial-sdk (Apache-2.0), lit (BSD-3-Clause), pako, atob-lite (MIT), tslib (0BSD) | 10.5.2 | Apache-2.0 | `web/static/vendor/esp-web-tools/LICENSE.txt`, `THIRD-PARTY-LICENSES.txt` | <https://github.com/esphome/esp-web-tools> |
 | noVNC (VNC-Client für den HMI-Fernzugriff, gebündelt als `rfb.min.js`) | 1.6.0 | MPL-2.0 (Teile BSD und MIT) | `web/static/vendor/novnc/LICENSE.txt` | <https://github.com/novnc/noVNC/tree/v1.6.0> |
-| Tabler Icons (Symbolschrift, als WOFF2 eingebettet) | 3.30.0 | MIT | `web/static/vendor/tabler-icons/LICENSE.txt` | <https://github.com/tabler/tabler-icons> |
+| Tabler Icons (Symbole als SVG, zur Laufzeit als Stildatei mit Masken) | 3.30.0 | MIT | `web/static/vendor/tabler-icons/LICENSE.txt` | <https://github.com/tabler/tabler-icons> |
 
 noVNC: `rfb.min.js` ist aus den unveränderten Quellen gebündelt (Bauanleitung in
 `web/static/vendor/novnc/README.md`). Die MPL-2.0 gilt je Datei; der Quellcode

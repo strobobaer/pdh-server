@@ -265,3 +265,16 @@ func (h *Handler) IconSVGWeb(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "image/svg+xml")
 	serveAsset(w, r, "icon.svg", plainAsset(svg), "public, max-age=31536000, immutable")
 }
+
+// LegacyIconVendorWeb: alter Pfad /vendor/tabler-icons/*. Nur die frueher
+// verlinkte tabler-icons.min.css (beliebiges ?v=) bleibt erreichbar – als
+// Weiterleitung auf die aktuelle Stildatei, damit alte Seiten im
+// Zwischenspeicher weiter Symbole zeigen. Alles andere: 404.
+func LegacyIconVendorWeb(w http.ResponseWriter, r *http.Request) {
+	if strings.TrimPrefix(r.URL.Path, "/vendor/tabler-icons/") == "tabler-icons.min.css" {
+		w.Header().Set("Cache-Control", "no-store")
+		http.Redirect(w, r, iconCSSHref(), http.StatusFound)
+		return
+	}
+	noStore(w, http.StatusNotFound)
+}

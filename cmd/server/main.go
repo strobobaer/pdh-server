@@ -483,8 +483,8 @@ func main() {
 	for _, name := range web.AppIconFiles {
 		r.Handle("/"+name, icons)
 	}
-	// Symbol-Bibliothek (Tabler Icons) lokal statt aus dem Internet
-	r.Handle("/vendor/tabler-icons/*", icons)
+	// Alter Pfad der Symbolschrift: nur tabler-icons.min.css, als Weiterleitung
+	r.Handle("/vendor/tabler-icons/*", http.HandlerFunc(web.LegacyIconVendorWeb))
 	// Symbole als Stildatei mit eingebetteten und einzelnen SVG (Version in der Adresse)
 	r.Get("/vendor/{ver}/icons-{key}.css", webHandler.IconCSSWeb)
 	r.Get("/vendor/{ver}/icons/{name}.svg", webHandler.IconSVGWeb)

@@ -3,15 +3,12 @@ package web
 import (
 	"context"
 	"encoding/json"
-	"io/fs"
 	"net/http"
 	"net/url"
-	"regexp"
-	"sort"
 	"strings"
 	"sync"
 
-	"pdh"
+	"pdh/internal/web/tablericons"
 )
 
 // Symbole: Tabler Icons liegen lokal unter /vendor/tabler-icons (web/static,
@@ -165,22 +162,15 @@ var (
 	iconNameSet   map[string]bool
 )
 
-var tablerClassRe = regexp.MustCompile(`\.(ti-[a-z0-9-]+):before`)
-
+// loadIconNames: alle Klassen der lokalen Bibliothek (sortiert) aus den
+// SVG-Quellen in tablericons.
 func loadIconNames() {
 	iconNamesOnce.Do(func() {
 		iconNameSet = map[string]bool{}
-		css, err := fs.ReadFile(pdh.Static, "web/static/vendor/tabler-icons/tabler-icons.min.css")
-		if err != nil {
-			return
+		for _, n := range tablericons.Default().Names() {
+			iconNameSet[n] = true
+			iconNames = append(iconNames, n)
 		}
-		for _, m := range tablerClassRe.FindAllStringSubmatch(string(css), -1) {
-			if !iconNameSet[m[1]] {
-				iconNameSet[m[1]] = true
-				iconNames = append(iconNames, m[1])
-			}
-		}
-		sort.Strings(iconNames)
 	})
 }
 
