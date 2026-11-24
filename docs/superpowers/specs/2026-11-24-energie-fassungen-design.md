@@ -3,7 +3,8 @@
 Stand: 24.11.2026 · Paket 2b aus
 `docs/superpowers/specs/2026-11-23-berechnete-werte-design.md` (Abschnitt
 „Schnitt“) und `docs/superpowers/specs/2026-11-22-copilot-zuordnen-design.md`
-(Abschnitt „Gültigkeit der Formeln“) · noch nicht bestätigt
+(Abschnitt „Gültigkeit der Formeln“) · vom Anwender am 24.11.2026 bestätigt
+(„2b: 1 Vorschlag, 2a, 3–5 passt“)
 
 ## Worum es geht
 
@@ -83,7 +84,14 @@ Vergangenheit die gespeicherten Minutenwerte **neu**.
   bleiben; ab dem Ende des Laufs prüft er mit den neuen Werten weiter.
 - **Efficio-Export:** siehe Entscheidung 2.
 
-## Entscheidungen, die dem Anwender gehören
+## Entscheidungen (Anwender, 24.11.2026)
+
+Entschieden: **1 Vorschlag, 2 a, 3 bis 5 wie vorgeschlagen.** Damit gilt:
+rückwirkend bis zum ältesten gespeicherten Wert; nicht verschickte
+Tagesdateien werden neu erzeugt, verschickte bleiben und werden gelistet;
+geplante Fassungen mit `energy.edit`, vergangene nur mit `energy.admin`;
+erweiterter Rechenumfang nur für Momentanwerte; der Copilot schlägt nur vor,
+nie eine Fassung in der Vergangenheit.
 
 1. **Wie weit zurück?** Vorschlag: bis zum ältesten gespeicherten Wert
    (400 Tage). Alternative: höchstens bis zum Ersten des Vormonats – das
