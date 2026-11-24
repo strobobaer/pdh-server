@@ -16,15 +16,8 @@ import (
 	"pdh/internal/web/tablericons"
 )
 
-func TestIconCSSHasRuleForEveryName(t *testing.T) {
-	set := tablericons.Default()
-	css := string(buildIconCSS(set, usedIconNames(), "9.9.9"))
-	for _, n := range set.Names() {
-		if c := strings.Count(css, "\n."+n+"{--ti:"); c != 1 {
-			t.Errorf("%s: %d Regeln, erwartet 1", n, c)
-		}
-	}
-}
+// Ersatz fuer TestIconCSSHasRuleForEveryName: iconcss_rest_test.go
+// (TestIconCSSSplitCoversEveryName).
 
 func TestIconCSSEmbedsUsed(t *testing.T) {
 	set := tablericons.Default()
@@ -33,13 +26,14 @@ func TestIconCSSEmbedsUsed(t *testing.T) {
 		t.Fatalf("nur %d genutzte Symbole", len(used))
 	}
 	css := string(buildIconCSS(set, used, "9.9.9"))
+	restCSS := buildIconRestCSS(set, "9.9.9")
 	for _, n := range used {
 		if !strings.Contains(css, "\n."+n+`{--ti:url("data:image/svg+xml,`) {
 			t.Errorf("%s nicht eingebettet", n)
 		}
 	}
-	if !strings.Contains(css, "\n.ti-ad-2{--ti:url(/vendor/9.9.9/icons/ti-ad-2.svg)}") {
-		t.Error("ti-ad-2 soll als Adresse stehen")
+	if !strings.Contains(string(restCSS), ":where(.ti-ad-2){--ti:url(/vendor/9.9.9/icons/ti-ad-2.svg)}") {
+		t.Error("ti-ad-2 soll als Adresse in der Rest-Datei stehen")
 	}
 }
 
@@ -121,7 +115,7 @@ func TestIconCSSPrintAndContrast(t *testing.T) {
 // TestVendorRequestsQuiet: erfolgreiche Anfragen an /vendor/ werden nicht auf
 // Stufe Info protokolliert (die Symbolauswahl holt bis zu 300 Symbole je Suche).
 func TestVendorRequestsQuiet(t *testing.T) {
-	for _, p := range []string{"/vendor/0.82.57/icons/ti-plus.svg", "/vendor/0.82.57/htmx/htmx.min.js", "/vendor/0.82.57/icons-abc.css"} {
+	for _, p := range []string{"/vendor/0.82.57/icons/ti-plus.svg", "/vendor/0.82.57/htmx/htmx.min.js", "/vendor/0.82.57/icons-abc.css", "/vendor/0.82.57/icons-rest.css"} {
 		if !quietPath(p) {
 			t.Errorf("%s soll leise protokolliert werden", p)
 		}

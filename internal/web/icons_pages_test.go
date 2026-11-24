@@ -50,6 +50,16 @@ func TestPagesUseIconCSS(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Errorf("%s: Stildatei %q fehlt", name, want)
 		}
+		// Hauptdatei, Nachlade-Skript und Rest-Datei als Rueckfall ohne Skript
+		for _, w := range []string{
+			`<link rel="stylesheet" href="` + iconCSSHref() + `">`,
+			`readyState`,
+			`<noscript><link rel="stylesheet" href="` + iconCSSRestHref() + `"></noscript>`,
+		} {
+			if !strings.Contains(out, w) {
+				t.Errorf("%s: %q fehlt im Seitenkopf", name, w)
+			}
+		}
 		if strings.Contains(out, "tabler-icons.min.css") {
 			t.Errorf("%s: verweist noch auf tabler-icons.min.css", name)
 		}

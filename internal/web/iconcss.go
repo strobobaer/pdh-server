@@ -7,6 +7,8 @@ import (
 	_ "embed"
 	"encoding/hex"
 	"encoding/json"
+	"html"
+	"html/template"
 	"net/http"
 	"sort"
 	"strings"
@@ -74,25 +76,43 @@ func iconDataURI(svg []byte) string {
 	return "data:image/svg+xml," + r.Replace(s)
 }
 
-// buildIconCSS erzeugt die Stildatei: Grundregeln, dann je Klasse eine Regel –
-// eingebettet (embedded) oder als Adresse /vendor/<version>/icons/<name>.svg.
+// buildIconCSS erzeugt die beiden Stildateien: die Hauptdatei (Grundregeln und
+// die eingebetteten Symbole, blockiert das Zeichnen) und die Rest-Datei (je
+// uebrigem Symbol eine Adress-Regel /vendor/<version>/icons/<name>.svg, wird
+// erst nach dem Laden der Seite geholt).
 func buildIconCSS(set *tablericons.Set, embedded []string, version string) []byte {
-	emb := make(map[string]bool, len(embedded))
-	for _, n := range embedded {
-		emb[n] = true
-	}
 	var b bytes.Buffer
 	b.WriteString(iconCSSBase)
-	for _, n := range set.Names() {
-		if emb[n] {
-			if svg, ok := set.SVG(n); ok {
-				b.WriteString("." + n + `{--ti:url("` + iconDataURI(svg) + `")}` + "\n")
-				continue
-			}
+	for _, n := range embedded {
+		if svg, ok := set.SVG(n); ok {
+			b.WriteString("." + n + `{--ti:url("` + iconDataURI(svg) + `")}` + "\n")
 		}
-		b.WriteString("." + n + "{--ti:url(/vendor/" + version + "/icons/" + n + ".svg)}\n")
 	}
 	return b.Bytes()
+}
+
+// buildIconRestCSS: die Rest-Datei – eine Adress-Regel fuer jeden Namen, unabhaengig
+// von der Auswahl. :where() gibt ihr die Spezifitaet 0: eine eingebettete Regel
+// .ti-x der Hauptdatei (0,1,0) gewinnt immer, gleich welche Datei zuerst kommt.
+func buildIconRestCSS(set *tablericons.Set, version string) []byte {
+	var b bytes.Buffer
+	for _, n := range set.Names() {
+		b.WriteString(":where(." + n + "){--ti:url(/vendor/" + version + "/icons/" + n + ".svg)}\n")
+	}
+	return b.Bytes()
+}
+
+var (
+	iconRestOnce  sync.Once
+	iconRestAsset *staticAsset
+)
+
+// iconRestFile: die Rest-Datei der laufenden Version, einmal je Prozess gebaut.
+func iconRestFile() *staticAsset {
+	iconRestOnce.Do(func() {
+		iconRestAsset = newStaticAsset(buildIconRestCSS(tablericons.Default(), pdh.Version()))
+	})
+	return iconRestAsset
 }
 
 // iconCSSKey: kurze Kennung der eingebetteten Namen (Teil der Adresse).
@@ -306,6 +326,27 @@ func iconCSSHref() string {
 	return "/vendor/" + pdh.Version() + "/icons-" + key + ".css"
 }
 
+// iconCSSRestHref: Adresse der Rest-Datei (/vendor/<Version>/icons-rest.css) –
+// ohne Kennung, sie haengt nur von der Version ab.
+func iconCSSRestHref() string {
+	return "/vendor/" + pdh.Version() + "/icons-rest.css"
+}
+
+// iconCSSLinks: Symbol-Stildateien fuer den Seitenkopf. Die Hauptdatei blockiert
+// das Zeichnen (nur Grundregeln und eingebettete Symbole); die Rest-Datei haengt
+// ein kleines Skript erst nach dem load-Ereignis an, damit sie weder das Zeichnen
+// noch load verzoegert. Ohne Skript laedt sie ueber <noscript>.
+func iconCSSLinks() template.HTML {
+	main := html.EscapeString(iconCSSHref())
+	rest := html.EscapeString(iconCSSRestHref())
+	// JS-Zeichenkette: eigenes Maskieren (json.Marshal escapt <, >, & als \u…)
+	js, _ := json.Marshal(iconCSSRestHref())
+	return template.HTML(`<link rel="stylesheet" href="` + main + `">` +
+		`<script>(function(){function f(){var l=document.createElement("link");l.rel="stylesheet";l.href=` + string(js) +
+		`;document.head.appendChild(l)}if(document.readyState==="complete")f();else addEventListener("load",f)})()</script>` +
+		`<noscript><link rel="stylesheet" href="` + rest + `"></noscript>`)
+}
+
 func noStore(w http.ResponseWriter, code int) {
 	w.Header().Set("Cache-Control", "no-store")
 	http.Error(w, http.StatusText(code), code)
@@ -333,6 +374,18 @@ func (h *Handler) IconCSSWeb(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/css; charset=utf-8")
 	serveAsset(w, r, "icons.css", e.asset, cc)
+}
+
+// IconCSSRestWeb: GET /vendor/{ver}/icons-rest.css – oeffentlich. Die Rest-Datei
+// haengt nur von der Version ab (keine Kennung, keine Datenbank): laufende
+// Version immutable, fremde Version Weiterleitung no-store.
+func (h *Handler) IconCSSRestWeb(w http.ResponseWriter, r *http.Request) {
+	if chi.URLParam(r, "ver") != pdh.Version() {
+		redirectNoStore(w, r, iconCSSRestHref())
+		return
+	}
+	w.Header().Set("Content-Type", "text/css; charset=utf-8")
+	serveAsset(w, r, "icons-rest.css", iconRestFile(), "public, max-age=31536000, immutable")
 }
 
 // IconSVGWeb: GET /vendor/{ver}/icons/{name}.svg – oeffentlich, ein Symbol.

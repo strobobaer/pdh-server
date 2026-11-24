@@ -73,7 +73,7 @@ function readPassword(o) {
 const IN_PAGE = () => new Promise(resolve => {
   const sheetReady = () => {
     for (const s of document.styleSheets) {
-      if (s.href && /\/vendor\/[^/]+\/icons-[^/]+\.css/.test(s.href)) {
+      if (s.href && /\/vendor\/[^/]+\/icons-[0-9a-f]{10}\.css/.test(s.href)) {
         try { return s.cssRules.length > 0; } catch (e) { return false; }
       }
     }
