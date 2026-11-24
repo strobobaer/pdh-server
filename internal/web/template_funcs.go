@@ -17,6 +17,8 @@ func TemplateFuncs() template.FuncMap {
 		"appVersion":   pdh.Version,
 		// Adresse der Symbol-Stildatei mit Version und Kennung (iconcss.go)
 		"iconCSSHref": iconCSSHref,
+		// mitgelieferte Bibliothek: /vendor/<Version>/<Baustein>/<Datei> (vendor.go)
+		"vendorURL": vendorURL,
 		"css":          templateCSS,
 		"grafanaColor": grafanaColorCSS, // Kachelfarbe Statistik (grafana.go)
 		"dwBgColors":   dwBgColorList,   // Hintergrund der Startseiten-Kacheln (dashboard_widgets.go)

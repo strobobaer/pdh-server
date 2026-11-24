@@ -179,19 +179,19 @@ liegt unter der genannten Quelle. Den vollen Text der MPL-2.0 enthält
 `third_party/notices/go-modules-licenses.txt` (bei `github.com/go-sql-driver/mysql`)
 und <https://www.mozilla.org/MPL/2.0/>.
 
-## 3. Aus dem Internet geladene Bausteine (CDN)
+## 3. Bibliotheken der Seiten (mitgeliefert, unter `/vendor/<Version>/…`)
 
-Diese Dateien liefert PDH **nicht** mit. Der Browser lädt sie beim Aufruf der
-Seite direkt vom Anbieter.
+Diese Dateien liegen unverändert im Repository und kommen vom PDH-Server, nicht
+aus dem Internet. Die Adresse enthält die Programmversion (`vendorURL`).
 
-| Baustein | Version | Lizenz | Geladen von | Verwendet in |
-| --- | --- | --- | --- | --- |
-| htmx | 1.9.12 | 0BSD | unpkg.com | allen Seiten |
-| SortableJS | 1.15.2 | MIT | cdn.jsdelivr.net | Navigation (Menü ordnen), Leitstände, Dashboard-Widgets |
-| Chart.js | 4.4.0 | MIT | cdnjs.cloudflare.com | Zeiterfassung |
-| Frappe Gantt | 0.6.1 | MIT | cdn.jsdelivr.net | Dashboard, Leitstand-Dashboard, Projekt |
-| mammoth | 1.8.0 | BSD-2-Clause | cdn.jsdelivr.net | Dokumentansicht (Word) |
-| SheetJS Community Edition (xlsx) | 0.18.5 | Apache-2.0 | cdn.jsdelivr.net | Dokumentansicht (Excel) |
+| Baustein | Version | Lizenz | Lizenztext | Quelle | Verwendet in |
+| --- | --- | --- | --- | --- | --- |
+| htmx | 1.9.12 | 0BSD | `web/static/vendor/htmx/LICENSE.txt` | <https://www.npmjs.com/package/htmx.org/v/1.9.12> | allen Seiten |
+| SortableJS | 1.15.2 | MIT | `web/static/vendor/sortablejs/LICENSE.txt` | <https://www.npmjs.com/package/sortablejs/v/1.15.2> | Navigation (Menü ordnen), Leitstände, Dashboard-Widgets |
+| Chart.js | 4.4.0 | MIT | `web/static/vendor/chartjs/LICENSE.txt` | <https://cdnjs.com/libraries/Chart.js/4.4.0> | Zeiterfassung |
+| Frappe Gantt | 0.6.1 | MIT | `web/static/vendor/frappe-gantt/LICENSE.txt` | <https://www.npmjs.com/package/frappe-gantt/v/0.6.1> | Dashboard, Leitstand-Dashboard, Projekt |
+| mammoth | 1.8.0 | BSD-2-Clause | `web/static/vendor/mammoth/LICENSE.txt` | <https://www.npmjs.com/package/mammoth/v/1.8.0> | Dokumentansicht (Word) |
+| SheetJS Community Edition (xlsx) | 0.18.5 | Apache-2.0 | `web/static/vendor/xlsx/LICENSE.txt` | <https://www.npmjs.com/package/xlsx/v/0.18.5> | Dokumentansicht (Excel) |
 
 ## 4. Schriften (Google Fonts)
 

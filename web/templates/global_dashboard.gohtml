@@ -26,7 +26,7 @@
   if(localStorage.getItem('pdh_leitstand_timeline') === 'off') document.documentElement.classList.add('timeline-off');
 })();
 </script>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.css">
+<link rel="stylesheet" href="{{vendorURL "frappe-gantt/frappe-gantt.css"}}">
 <link rel="stylesheet" href="{{iconCSSHref}}">
 {{template "wizard-styles"}}
 {{template "timeline-style" .Timeline}}
@@ -557,7 +557,7 @@ html.timeline-off #entries-table-wrap,html.timeline-off #entries-table-wrap.expa
     </div>
   </form>
 </div>
-<script src="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.min.js"></script>
+<script src="{{vendorURL "frappe-gantt/frappe-gantt.min.js"}}"></script>
 <script>
 (function(){
   const THEME_MODES = ['system','light','dark'];

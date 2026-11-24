@@ -93,10 +93,8 @@ func TestIconCSSPrintAndContrast(t *testing.T) {
 }
 
 func iconTestRouter() http.Handler {
-	h := &Handler{}
 	r := chi.NewRouter()
-	r.Get("/vendor/{ver}/icons-{key}.css", h.IconCSSWeb)
-	r.Get("/vendor/{ver}/icons/{name}.svg", h.IconSVGWeb)
+	RegisterVendorRoutes(r, &Handler{})
 	return r
 }
 

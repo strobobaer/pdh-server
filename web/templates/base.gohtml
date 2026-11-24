@@ -41,7 +41,7 @@ window.PDH_LOCALE = ({de:'de-DE', en:'en-GB', ro:'ro-RO', tr:'tr-TR', mk:'mk-MK'
   if(window.name === 'pdh-embed' || /[?&]embed=1(&|$)/.test(location.search)) document.documentElement.classList.add('pdh-embedded');
 })();
 </script>
-<script src="https://unpkg.com/htmx.org@1.9.12/dist/htmx.min.js"></script>
+<script src="{{vendorURL "htmx/htmx.min.js"}}"></script>
 {{template "request-once-script"}}
 <link rel="stylesheet" href="{{iconCSSHref}}">
 <style>
@@ -949,7 +949,7 @@ table,.li,.act-item,.rec-row{zoom:var(--row-scale,1)}
     document.querySelectorAll('#pdh-nav .nav-fold').forEach(pdhNavHeaderEdit);
     const start = () => document.querySelectorAll('#pdh-nav .nav-group').forEach(g => pdhNavSortables.push(Sortable.create(g, {group: 'pdh-nav', animation: 150, ghostClass: 'nav-ghost', draggable: '.nav-item'})));
     if(window.Sortable) start();
-    else { const sc = document.createElement('script'); sc.src = 'https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js'; sc.onload = start; document.head.appendChild(sc); }
+    else { const sc = document.createElement('script'); sc.src = '{{vendorURL "sortablejs/Sortable.min.js"}}'; sc.onload = start; document.head.appendChild(sc); }
     document.querySelectorAll('#pdh-nav .nav-item').forEach(a => a.addEventListener('click', pdhNavNoClick));
   }
   // Dashboard anpassen (Benutzermenue): auf dem Dashboard direkt, sonst dorthin wechseln

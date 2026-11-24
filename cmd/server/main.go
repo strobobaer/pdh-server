@@ -483,11 +483,9 @@ func main() {
 	for _, name := range web.AppIconFiles {
 		r.Handle("/"+name, icons)
 	}
-	// Alter Pfad der Symbolschrift: nur tabler-icons.min.css, als Weiterleitung
-	r.Handle("/vendor/tabler-icons/*", http.HandlerFunc(web.LegacyIconVendorWeb))
-	// Symbole als Stildatei mit eingebetteten und einzelnen SVG (Version in der Adresse)
-	r.Get("/vendor/{ver}/icons-{key}.css", webHandler.IconCSSWeb)
-	r.Get("/vendor/{ver}/icons/{name}.svg", webHandler.IconSVGWeb)
+	// /vendor/…: alter Symbol-Pfad, Symbol-Stildatei und -SVG, mitgelieferte
+	// Bibliotheken (htmx, Sortable, Gantt, Chart.js …) – Version in der Adresse
+	web.RegisterVendorRoutes(r, webHandler)
 
 	// Static uploads – ohne uploads/esppdh (Firmware nur über die Seiten mit Recht)
 	r.Handle("/uploads/*", web.UploadsHandler(attachments.UploadDir))
