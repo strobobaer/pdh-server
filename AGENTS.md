@@ -948,6 +948,12 @@ und 3 drückt bis auf Weiteres der Anwender.
     der Grundlage“; zum Ansehen auch im Design System des Anwenders in Claude.
     Kein KI-Look: keine Verläufe, Glas, bunten Schatten, Deko, Emojis,
     Seitenstreifen-Karten, Fülltexte; Farbe nur mit Bedeutung; echte Dichte.
+    Listen (Anwender 24.11.2026: „ganz wichtig, bei der Sortierung sollte auch
+    die Infrastruktur erscheinen“): jede Vorgangsliste sortiert und gruppiert
+    nach Infrastruktur in Reihenfolge des Anlagenbaums (Unteranlagen unter
+    ihrer Anlage), Gruppenköpfe mit Anlagenpfad und Anzahl, aufklappbar; jede
+    Zeile zeigt die Anlage mit Pfad (am Handy gekürzt); Infrastruktur auch als
+    Filter-Reiter/Ordner, immer mit Unteranlagen. Gehört zu „gleiche Bausteine“.
 25. **0.82.48 Wartung: Jahresplan im Kalender, Auftrag mit Vorlauf** (Wunsch des
     Anwenders vom 23.11.2026: Personalplanung; Knopf „Jahresplan erzeugen“,
     nur der nächste Termin wird 5 Arbeitstage vorher automatisch zum
