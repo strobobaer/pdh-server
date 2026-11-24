@@ -899,8 +899,20 @@ und 3 drückt bis auf Weiteres der Anwender.
     gleiche Seitenmuster (Liste mit Filterleiste, Detailseite mit Kopf und
     Reitern, Aktionen immer an derselben Stelle), Ingress für Zusatzdienste
     (Nextcloud, Grafana … im PDH-Rahmen hinter der PDH-Anmeldung). Großes
-    Paket: erst Entwurf, in Teilpakete geschnitten. Versionsnummer beim
-    Anwender klären: 0.9.0 läge unter 0.82.x (gemeint vermutlich 0.90.0).
+    Paket: erst Entwurf, in Teilpakete geschnitten. Version: **0.90.0**
+    (Anwender 24.11.2026: „2 ja 0.90.0“); die Teile kommen vorher als
+    Korrekturversionen. Mitliefern statt Internet: ja („1 ja mitliefern“).
+    Vorschau (Entwurfsfläche „PDH – neue Oberfläche: Vorschau Fiori und
+    Outlook“, A Fiori-Muster, B Outlook-Aufbau). **Richtung entschieden**
+    (24.11.2026): „SAP Grundgerüst und Outlook Listen usw. In SAP viele Widgets
+    die einfach zu kombinieren sind“ – Rahmen und Seitenmuster nach Fiori,
+    Vorgangslisten am breiten Bildschirm mit Ordnern links und Detail rechts
+    (Handy/Terminal: Detailseite), Start- und Übersichtsseiten aus
+    gleich gebauten, frei kombinierbaren Widgets im Raster, je Rolle vorbelegt.
+    Teile: 1 schneller Seitenaufbau (Entwurf
+    `docs/superpowers/specs/2026-11-24-seitenaufbau-design.md`, Weg 1 „Symbole
+    als SVG“ gewählt), 2 gleiche Bausteine, 3 Ordnung der Navigation,
+    4 Schnellstart und Widgets, 5 Ingress für Zusatzdienste.
 25. **0.82.48 Wartung: Jahresplan im Kalender, Auftrag mit Vorlauf** (Wunsch des
     Anwenders vom 23.11.2026: Personalplanung; Knopf „Jahresplan erzeugen“,
     nur der nächste Termin wird 5 Arbeitstage vorher automatisch zum
