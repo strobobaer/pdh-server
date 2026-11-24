@@ -56,7 +56,13 @@ func (st *osSteps) failAfterInstall(msg string) {
 // osInstallWait: weiter auf die Einheit von „install“ warten (false) – höchstens
 // osInstallTimeout plus 15 Minuten; danach Fehler und pdh wird wieder gestartet. Die Einheit
 // bleibt in st.Unit vermerkt (die Sperre bleibt, bis sie endet).
-func (a *updateAgent) osInstallWait(st *osSteps) bool {
+func (a *updateAgent) osInstallWait(st *osSteps, persist func()) bool {
+	if st.StepAt.IsZero() {
+		// gesicherter Stand ohne Beginn (ältere Datei): ab jetzt zählen, nicht sofort abbrechen
+		st.StepAt = a.now()
+		persist()
+		return false
+	}
 	if a.now().Sub(st.StepAt) >= osInstallTimeout+15*time.Minute {
 		st.fail("Einspielen dauert zu lange – Einheit " + st.Unit + " läuft noch")
 		st.Step = "start"
@@ -111,7 +117,7 @@ func (a *updateAgent) osAdvance(ctx context.Context, st *osSteps, persist func()
 		// Einheit läuft noch (Agent oder Rechner wurde zwischendurch neu gestartet): warten,
 		// nie ein zweites apt daneben starten
 		if st.Unit != "" && a.osUnitIsActive(ctx, st.Unit) {
-			return a.osInstallWait(st)
+			return a.osInstallWait(st, persist)
 		}
 		st.Unit = a.osNewUnit("install")
 		st.StepAt = a.now() // Beginn der Frist für das Warten auf die Einheit
@@ -120,7 +126,7 @@ func (a *updateAgent) osAdvance(ctx context.Context, st *osSteps, persist func()
 		if err != nil {
 			var ur *osUnitRunning
 			if errors.As(err, &ur) {
-				return a.osInstallWait(st) // läuft noch: Step bleibt „install“
+				return a.osInstallWait(st, persist) // läuft noch: Step bleibt „install“
 			}
 			msg := osLastLines(string(out), 3)
 			if msg == "" {

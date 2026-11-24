@@ -72,6 +72,7 @@ type updateAgent struct {
 	certs certRuntime // Zertifikate (certs.go); ohne Nutzung läuft nichts
 
 	os           osRuntime                                                // Betriebssystem-Updates und gemeinsame Sperre (os_update.go)
+	osj          osJobRuntime                                             // Auftrag „Betriebssystem“ des Einzelservers (os_job.go)
 	osRun        func(ctx context.Context, action string) ([]byte, error) // nil = systemd-run; Test-Haken
 	osCmd        func(name string, args ...string) *exec.Cmd              // nil = exec.Command; Test-Haken
 	osUnitActive func(ctx context.Context, unit string) bool              // nil = systemctl is-active; Test-Haken
@@ -124,6 +125,7 @@ func main() {
 		agent.windowLoad()
 		agent.loadOSState()                                // Haken „beim PDH-Update mit aktualisieren“ (os_update.go)
 		agent.loadSingleJob()                              // offener Auftrag (Einzelserver) läuft weiter
+		agent.loadOSJob()                                  // offener Auftrag „Betriebssystem“ läuft weiter (os_job.go)
 		go agent.pruneVersionOrphans(context.Background()) // verwaiste ESPHome-Kandidaten (esppdh_versions.go)
 		go agent.netResume(context.Background())           // wartende Netzwerk-Änderung nach Neustart (net.go)
 	}
@@ -177,6 +179,7 @@ func main() {
 	mux.Handle("GET /v1/update/job", agent.authorized(http.HandlerFunc(agent.jobHandler)))
 	mux.Handle("POST /v1/update/job/start", agent.authorized(http.HandlerFunc(agent.jobStartHandler)))
 	mux.Handle("POST /v1/update/job/abort", agent.authorized(http.HandlerFunc(agent.jobAbortHandler)))
+	mux.Handle("POST /v1/os/job/start", agent.authorized(http.HandlerFunc(agent.osJobStartHandler)))
 	// Betriebssystem-Updates: Status, Prüfen, Haken (os_update.go)
 	mux.Handle("GET /v1/os/status", agent.authorized(http.HandlerFunc(agent.osStatusHandler)))
 	mux.Handle("POST /v1/os/check", agent.authorized(http.HandlerFunc(agent.osCheckHandler)))

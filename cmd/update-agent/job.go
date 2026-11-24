@@ -82,10 +82,12 @@ func jobEnded(j ha.UpdateJob) bool {
 	return j.Phase == ha.UpNone || j.Phase == ha.UpDone || j.Phase == ha.UpFailed
 }
 
+// singleJobActive: ist ein Auftrag (PDH-Update oder Betriebssystem) offen?
 func (a *updateAgent) singleJobActive() bool {
 	a.sj.mu.Lock()
-	defer a.sj.mu.Unlock()
-	return !jobEnded(a.sj.job.Job)
+	open := !jobEnded(a.sj.job.Job)
+	a.sj.mu.Unlock()
+	return open || a.osJobOpen()
 }
 
 // loadSingleJob: beim Start des Agenten; ein offener Auftrag läuft weiter.
@@ -132,6 +134,9 @@ func (a *updateAgent) jobPut(s singleJob) {
 }
 
 func (a *updateAgent) jobView() ha.UpdateView {
+	if a.osJobPreferred() {
+		return a.osJobView() // Auftrag „Betriebssystem“ (os_job.go)
+	}
 	a.sj.mu.Lock()
 	s := a.sj.job
 	a.sj.mu.Unlock()
@@ -148,6 +153,9 @@ func (a *updateAgent) startSingleJob(ctx context.Context, source string, force b
 		return nil, fmt.Errorf("pdh-ha nicht erreichbar: %w", err)
 	} else if cluster {
 		return nil, errors.New("Im Verbund startet pdh-ha das Update")
+	}
+	if a.osJobOpen() {
+		return nil, errors.New("Ein Betriebssystem-Update läuft bereits")
 	}
 	if a.singleJobActive() {
 		return nil, errors.New("Ein Update-Auftrag läuft bereits")
@@ -248,7 +256,7 @@ func (a *updateAgent) jobKick() {
 		for {
 			if a.jobStep(context.Background()) {
 				a.sj.mu.Lock()
-				if jobEnded(a.sj.job.Job) {
+				if jobEnded(a.sj.job.Job) && !a.osJobOpen() {
 					a.sj.looping = false
 					a.sj.mu.Unlock()
 					return
@@ -262,6 +270,9 @@ func (a *updateAgent) jobKick() {
 
 // jobStep führt den Auftrag einen Schritt weiter; true = beendet.
 func (a *updateAgent) jobStep(ctx context.Context) bool {
+	if a.osJobOpen() {
+		return a.osJobStep(ctx) // Auftrag „Betriebssystem“ (os_job.go)
+	}
 	a.sj.mu.Lock()
 	s := a.sj.job
 	a.sj.mu.Unlock()
@@ -572,6 +583,9 @@ func (a *updateAgent) abortSingleJob(by string) error {
 	}
 	if by == "" {
 		by = "Administrator"
+	}
+	if a.osJobOpen() {
+		return a.abortOSJob(by) // Auftrag „Betriebssystem“ (os_job.go)
 	}
 	a.sj.saveMu.Lock()
 	defer a.sj.saveMu.Unlock()
