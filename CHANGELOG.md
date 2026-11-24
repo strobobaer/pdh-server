@@ -10,6 +10,14 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.82.57] – 2026-11-24
+
+### Geändert
+
+- **Seiten bauen beim ersten Aufruf deutlich schneller auf:** Die Symbole kommen jetzt als kleine Grafiken statt als eine große Schrift (1,4 MB); alle rund 5.900 Symbole bleiben wählbar und sehen aus wie vorher, auch beim Drucken.
+- **Das PDH lädt nichts mehr aus dem Internet:** Bedienbibliotheken, Diagramme, Excel- und Word-Vorschau sowie die Schriften der Darstellung werden mitgeliefert, die Seiten funktionieren auch ohne Internetzugang.
+- **Infoleisten bleiben im Windows-Kontrastmodus sichtbar:** Ihr Symbol nimmt dort die Systemfarbe an.
+
 ## [0.82.56] – 2026-11-24
 
 ### Neu

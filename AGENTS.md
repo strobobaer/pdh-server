@@ -504,10 +504,11 @@ und 3 drückt bis auf Weiteres der Anwender.
     Paket: `TZ` für app und updater in `compose.yaml`, `time/tzdata` in
     `cmd/server` und `cmd/update-agent`, Postgres-Sitzungszone über pgx
     `RuntimeParams["timezone"]`; nie nur `TZ` an der App, kein `PGTZ`.
-13. **Internet-Abhängigkeit der Oberfläche (klein):** Jede PDH-Seite lädt htmx
-    von unpkg.com und die Schrift DM Sans von Google Fonts, eine
-    Content-Security-Policy fehlt. Das widerspricht „läuft ohne Internet“;
-    Entscheidung offen (Dateien mitliefern oder so lassen).
+13. **Internet-Abhängigkeit der Oberfläche (klein):** Mit 0.82.57 (Branch
+    `feature/seitenaufbau`, noch nicht auf `main`) sind htmx, Sortable,
+    Gantt, Chart.js, Excel-/Word-Vorschau und alle Schriften der Darstellung
+    mitgeliefert (`web/static/vendor/`, `/vendor/<Version>/…`; Wächter
+    `TestNoExternalAssets`). Offen bleibt die Content-Security-Policy.
 14. **UUID-Regel (klein):** `go test -tags integration ./pkg/database -run
     TestUUIDv7Policy` schlägt auf `main` fehl für `energy_readings`,
     `energy_export_runs`, `datanet_events`, `sync_outbox` (Zahlenfolge) und
@@ -889,7 +890,15 @@ und 3 drückt bis auf Weiteres der Anwender.
     0,35–0,4 s); **erster Aufruf mit Symbolen 6,7–7,0 s, 4× gedrosselt 29–33 s**;
     erster Aufruf ohne Symbole 0,14–0,2 s (0,46–0,53 s). Die Datei lädt in
     0,04 s – die Zeit geht ins Entpacken der eingebetteten Schrift (5 918 Symbole,
-    genutzt werden einige Hundert). Nächster Schritt: Entwurf Teil 1.
+    genutzt werden einige Hundert). **Teil 1 (Seitenaufbau) = 0.82.57**
+    gebaut auf Branch `feature/seitenaufbau` (24.11.2026, lokal; keine
+    Migration, kein neues Recht): Symbole als SVG-Masken statt der
+    Symbolschrift (`internal/web/iconcss.go`), Bibliotheken und Schriften
+    mitgeliefert, Messskript `deploy/lab/seitenaufbau/messung.js`. Offen:
+    Freigabe Push/Merge, Verbund-Update, Messung am Testverbund (Ziel 0,5 s
+    / 1,5 s bei 4× CPU), Netzprotokoll ohne fremde Adressen,
+    Browserprüfung; 10.10.0.202 über die Cloudflare-Adresse (Anwender).
+    Danach Teil 2 „gleiche Bausteine“.
     (3) **Einheitliche Oberfläche** (Anwender 24.11.2026, auf den Vorschlag
     „kein Menüband wie Word/Excel, sondern Fiori-Muster plus Schnellstart“):
     „Zusammenfassen was zusammen gehört und trennen was getrennt werden muss,

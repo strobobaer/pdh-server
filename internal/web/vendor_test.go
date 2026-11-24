@@ -12,8 +12,8 @@ import (
 )
 
 // TestNoExternalAssets: keine Vorlage, kein statisches Skript ausserhalb von
-// web/static/vendor und kein Go-Code (ohne Tests) verweist auf die drei
-// Bibliotheks-Hosts. (Schrift-Hosts: Task 5.)
+// web/static/vendor und kein Go-Code (ohne Tests) verweist auf die fünf
+// Hosts (Bibliotheken und Schriften).
 func TestNoExternalAssets(t *testing.T) {
 	hosts := []string{"unpkg.com", "cdn.jsdelivr.net", "cdnjs.cloudflare.com", "fonts.googleapis.com", "fonts.gstatic.com"}
 	root := filepath.Join("..", "..")
