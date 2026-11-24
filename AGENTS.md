@@ -849,9 +849,26 @@ und 3 drückt bis auf Weiteres der Anwender.
     `energy.edit`, vergangene nur `energy.admin`; erweiterter Rechenumfang
     nur für Momentanwerte; Copilot schlägt nur vor, nie eine vergangene
     Fassung. Bauplan `docs/superpowers/plans/2026-11-24-energie-fassungen.md`
-    (8 Aufgaben, Migration 214, Version 0.82.50) – wartet auf Durchsicht und
-    die Wahl der Ausführung. Nicht enthalten: Copilot-Werkzeuge für
-    Messstellen (gibt es heute nicht; Frage an den Anwender, ob er sie will).
+    (8 Aufgaben, Migration 214, Version 0.82.50). **Gebaut** (24.11.2026,
+    Anwender: „Selbst“; lokal auf `feature/energie-fassungen`, nicht gepusht):
+    Migrationen 214 (`energy_formula_versions`, `energy_recalc_runs`,
+    `first_end`/`last_end`/`fetched_at` an den Efficio-Dateien) und 215
+    (`energy_rebases`, Zeitpunkte der Basis-Verschiebung); kein neues Recht.
+    Ein Rechenweg je Minute (`evalMinute`), Sperre `minuteLock` für Minutentakt
+    und Schlussschritt, Neurechnung Tag für Tag (`recalc.go`), Efficio-Dateien
+    neu erzeugen (`rebuild.go`), Oberfläche „Fassungen“ an der Messstelle
+    (`energy_versions.go`, `widgets/energy_meter_versions.gohtml`).
+    Schlussprüfung mit Korrekturrunde erledigt (W1 Übergabe unter der Sperre,
+    W2 Basis-Verschiebungen, W3 Warnung bei späten Bezügen, K4 Formular behält
+    geltende Formel, K5 Werte vor der ersten Fassung bleiben); kleine Befunde
+    K1–K3, K6–K10 und alle Rulings im Ledger
+    `.superpowers/sdd/2026-11-24-energie-fassungen/` (`final-review.md`).
+    Fragment lokal gerendert in 20 Ansichten geprüft (Fiori/Fluent, hell/dunkel,
+    320–1366 px, kein Seitenüberlauf). Offen: Freigabe Push/Merge, Verbund-Update,
+    Browserprüfung am Testverbund (Fassung planen, „Prüfen“, „Neu rechnen“ an einer
+    Testmessstelle), 10.10.0.202 (Anwender, mit Sicherung). Nicht enthalten:
+    Copilot-Werkzeuge für Messstellen (gibt es heute nicht; Frage an den
+    Anwender, ob er sie will – noch nicht beantwortet).
 25. **0.82.48 Wartung: Jahresplan im Kalender, Auftrag mit Vorlauf** (Wunsch des
     Anwenders vom 23.11.2026: Personalplanung; Knopf „Jahresplan erzeugen“,
     nur der nächste Termin wird 5 Arbeitstage vorher automatisch zum
