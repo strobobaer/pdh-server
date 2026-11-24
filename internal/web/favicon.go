@@ -32,16 +32,6 @@ func AppIconHandler() http.Handler {
 		switch path.Ext(r.URL.Path) {
 		case ".webmanifest":
 			w.Header().Set("Content-Type", "application/manifest+json")
-		case ".css":
-			// Stildateien aus web/static – komprimiert, mit ETag und lange
-			// zwischengespeichert ausliefern (Symbole: iconcss.go)
-			if serveStaticAsset(w, r, strings.TrimPrefix(r.URL.Path, "/")) {
-				return
-			}
-		case ".woff2":
-			w.Header().Set("Content-Type", "font/woff2")
-		case ".woff":
-			w.Header().Set("Content-Type", "font/woff")
 		case ".js":
 			// Service Worker: immer frisch pruefen, gilt fuer die ganze Seite
 			w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
@@ -91,22 +81,6 @@ func newStaticAsset(raw []byte) *staticAsset {
 	zw.Close()
 	a.gz = buf.Bytes()
 	return a
-}
-
-// serveStaticAsset liefert name komprimiert (falls der Browser gzip kann) mit
-// ETag aus. Adressen mit ?v= (Programmversion) ändern sich mit jeder Version
-// und dürfen daher dauerhaft zwischengespeichert werden.
-func serveStaticAsset(w http.ResponseWriter, r *http.Request, name string) bool {
-	a := loadStaticAsset(name)
-	if a == nil {
-		return false
-	}
-	cc := "public, max-age=86400"
-	if r.URL.Query().Get("v") != "" {
-		cc = "public, max-age=31536000, immutable"
-	}
-	serveAsset(w, r, name, a, cc)
-	return true
 }
 
 // serveAsset liefert a komprimiert (falls vorhanden und der Browser gzip kann)

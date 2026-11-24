@@ -402,6 +402,7 @@ ti-timeline
 ti-toggle-right
 ti-tool
 ti-tools
+ti-tools-off
 ti-topology-star-3
 ti-transfer
 ti-trash

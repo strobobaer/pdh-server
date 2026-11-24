@@ -7,11 +7,13 @@
 // Jeweils bei voller (1x) und gedrosselter (4x) CPU-Leistung.
 //
 // "Alle Symbole sichtbar" (messbar definiert): die Symbol-Stildatei
-// (/vendor/<ver>/icons-<kennung>.css) ist geladen und angewendet, alle
-// Einzel-SVGs unter /vendor/<ver>/icons/ ausserdem fertig geladen, und das ist
-// zwei Bildwiederholungen lang unveraendert geblieben. Gemessen wird die Zeit
-// seit Navigationsbeginn (performance.now()). Eingebettete Symbole brauchen
-// keine eigene Anfrage und zaehlen mit, sobald die Stildatei angewendet ist.
+// (/vendor/<ver>/icons-<kennung>.css) ist geladen und angewendet, und alle
+// nachgeladenen Einzel-SVGs unter /vendor/<ver>/icons/ sind fertig (Zaehlung der
+// Anfragen ueber das Netzwerkprotokoll CDP: Beginn und Ende je Anfrage; danach
+// 200 ms lang keine neue). Gemessen wird die Zeit seit Navigationsbeginn
+// (die Zeiten der Seite und die Zeitstempel des Skripts werden ueber
+// performance.timeOrigin abgeglichen). Eingebettete Symbole brauchen keine
+// eigene Anfrage und zaehlen mit, sobald die Stildatei angewendet ist.
 //
 // Aufruf siehe README.md. Kein Kennwort im Skript: nur per Datei oder Umgebung.
 'use strict';
@@ -65,45 +67,39 @@ function readPassword(o) {
   return '';
 }
 
-// Laeuft im Browser: wartet, bis die Symbole sichtbar sind, und liefert die Zeiten.
+// Laeuft im Browser: wartet auf das load-Ereignis und darauf, dass die
+// Symbol-Stildatei angewendet ist (Regeln lesbar); liefert die Zeiten und den
+// Beginn der Zeitrechnung der Seite (zum Abgleich mit den Netzwerk-Ereignissen).
 const IN_PAGE = () => new Promise(resolve => {
-  const iconSheet = () => {
-    for (const s of document.styleSheets) {
-      if (s.href && /\/vendor\/[^/]+\/icons-[^/]+\.css/.test(s.href)) return s;
-    }
-    return null;
-  };
   const sheetReady = () => {
-    const s = iconSheet();
-    if (!s) return false;
-    try { return s.cssRules.length > 0; } catch (e) { return false; }
+    for (const s of document.styleSheets) {
+      if (s.href && /\/vendor\/[^/]+\/icons-[^/]+\.css/.test(s.href)) {
+        try { return s.cssRules.length > 0; } catch (e) { return false; }
+      }
+    }
+    return false;
   };
-  const pending = () => performance.getEntriesByType('resource')
-    .filter(r => /\/vendor\/[^/]+\/icons\/[^/]+\.svg/.test(r.name))
-    .filter(r => !(r.responseEnd > 0)).length;
-  const count = () => performance.getEntriesByType('resource')
-    .filter(r => /\/vendor\/[^/]+\/icons\/[^/]+\.svg/.test(r.name)).length;
-  let stable = 0, last = -1;
   const t0 = performance.now();
+  const done = ok => {
+    const e = performance.getEntriesByType('navigation')[0];
+    // zwei Bildwiederholungen abwarten, damit die Regeln gezeichnet sind
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve({
+      dcl: Math.round(e.domContentLoadedEventEnd), load: Math.round(e.loadEventEnd),
+      sheet: ok ? Math.round(performance.now()) : null, origin: performance.timeOrigin,
+    })));
+  };
   const tick = () => {
-    const c = count();
-    if (sheetReady() && pending() === 0 && c === last) stable++; else stable = 0;
-    last = c;
-    if (stable >= 2) {
-      const e = performance.getEntriesByType('navigation')[0];
-      resolve({
-        dcl: Math.round(e.domContentLoadedEventEnd), load: Math.round(e.loadEventEnd),
-        icons: Math.round(performance.now()), svgs: c, sheet: true,
-      });
-    } else if (performance.now() - t0 > 60000) {
-      const e = performance.getEntriesByType('navigation')[0];
-      resolve({ dcl: Math.round(e.domContentLoadedEventEnd), load: Math.round(e.loadEventEnd), icons: null, svgs: c, sheet: sheetReady() });
-    } else requestAnimationFrame(tick);
+    if (sheetReady()) done(true);
+    else if (performance.now() - t0 > 60000) done(false);
+    else requestAnimationFrame(tick);
   };
   // erst nach dem load-Ereignis beginnen
   if (document.readyState === 'complete') requestAnimationFrame(tick);
   else window.addEventListener('load', () => requestAnimationFrame(tick));
 });
+
+const SVG_RE = /\/vendor\/[^/]+\/icons\/[^/]+\.svg/;
+const pause = ms => new Promise(r => setTimeout(r, ms));
 
 function median(a) {
   const b = a.filter(x => x !== null && x !== undefined).sort((x, y) => x - y);
@@ -141,9 +137,31 @@ async function main() {
     const state = await lc.storageState();
     await lc.close();
 
+    // Symbole sichtbar = Stildatei angewendet UND alle nachgeladenen Einzel-SVGs
+    // (/vendor/<Version>/icons/*.svg) fertig. Die SVG-Anfragen werden ueber das
+    // Netzwerkprotokoll des Browsers (CDP) gezaehlt, je Anfrage Beginn und Ende –
+    // unabhaengig vom Puffer der Ressourcen-Zeiten (250 Eintraege, Eintrag erst
+    // bei fertiger Antwort).
     const measure = async (page, cdp, url) => {
+      const inflight = new Set();
+      let total = 0, lastEnd = 0, lastStart = 0;
+      cdp.on('Network.requestWillBeSent', e => {
+        if (SVG_RE.test(e.request.url)) { total++; inflight.add(e.requestId); lastStart = Date.now(); }
+      });
+      const end = e => { if (inflight.delete(e.requestId)) lastEnd = Date.now(); };
+      cdp.on('Network.loadingFinished', end);
+      cdp.on('Network.loadingFailed', end);
+      await cdp.send('Network.enable');
       await page.goto(url, { waitUntil: 'load', timeout: 120000 });
-      return page.evaluate(IN_PAGE);
+      const r = await page.evaluate(IN_PAGE);
+      // warten, bis keine SVG-Anfrage mehr offen ist und 200 ms lang keine neue kam
+      const t1 = Date.now();
+      while (Date.now() - t1 < 60000 && (inflight.size > 0 || Date.now() - lastStart < 200)) await pause(50);
+      const lastSvg = lastEnd ? Math.round(lastEnd - r.origin) : 0;
+      return {
+        dcl: r.dcl, load: r.load, svgs: total,
+        icons: r.sheet !== null && inflight.size === 0 ? Math.max(r.sheet, lastSvg) : null,
+      };
     };
 
     for (const rate of o.cpu) {

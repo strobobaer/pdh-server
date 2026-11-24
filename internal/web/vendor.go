@@ -31,19 +31,24 @@ var vendorTypes = map[string]string{
 	".woff2": "font/woff2",
 }
 
-// VendorLibWeb: GET /vendor/{ver}/{lib}/{file} – oeffentlich. Nur laufende
-// Version, nur Bausteine der Liste, nur Dateien direkt darunter.
+// VendorLibWeb: GET /vendor/{ver}/{lib}/{file} – oeffentlich. Nur Bausteine der
+// Liste, nur Dateien direkt darunter; eine fremde Version wird bei bekannter
+// Datei auf die laufende weitergeleitet (nie zwischengespeichert), sonst 404.
 func (h *Handler) VendorLibWeb(w http.ResponseWriter, r *http.Request) {
 	lib, file := chi.URLParam(r, "lib"), chi.URLParam(r, "file")
 	ct := vendorTypes[strings.ToLower(path.Ext(file))]
-	if chi.URLParam(r, "ver") != pdh.Version() || !vendorLibs[lib] || !vendorFileRe.MatchString(file) ||
-		strings.Contains(file, "..") || ct == "" {
+	if !vendorLibs[lib] || !vendorFileRe.MatchString(file) || strings.Contains(file, "..") || ct == "" {
 		noStore(w, http.StatusNotFound)
 		return
 	}
 	a := loadStaticAsset("vendor/" + lib + "/" + file)
 	if a == nil {
 		noStore(w, http.StatusNotFound)
+		return
+	}
+	if chi.URLParam(r, "ver") != pdh.Version() {
+		// bekannte Datei einer fremden Version (Seite blieb ueber ein Update offen)
+		redirectNoStore(w, r, vendorURL(lib+"/"+file))
 		return
 	}
 	w.Header().Set("Content-Type", ct)

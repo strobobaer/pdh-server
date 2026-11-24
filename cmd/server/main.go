@@ -359,6 +359,7 @@ func main() {
 		webHandler.StartPushNotifier(context.Background())                               // Push aufs Handy bei neuen Störungen/Tickets
 		faultSvc.StartPendingTicketWatcher(context.Background(), webHandler.MaintLocked) // Ticket aus Störung erst nach Zuweisung
 		webHandler.StartKVPScheduler(context.Background())
+		webHandler.StartIconCSSRefresh(context.Background()) // Symbol-Stildatei: gewählte Symbole jede Minute abgleichen (Netz unter den Speicherwegen)
 		webHandler.StartSetupMonitor(context.Background())   // Rüstzeiten: nach Höchstdauer plus Karenz eine Störmeldung
 		webHandler.StartEnergySampler(context.Background())  // Energiedaten: Minutenwerte der Messstellen
 		webHandler.StartCalcEngine(context.Background())     // Berechnete Werte: rechnet bei jedem neuen Eingangswert und alle 10 s

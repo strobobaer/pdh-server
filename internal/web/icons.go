@@ -11,8 +11,8 @@ import (
 	"pdh/internal/web/tablericons"
 )
 
-// Symbole: Tabler Icons liegen lokal unter /vendor/tabler-icons (web/static,
-// eingebettet). Jedes änderbare Symbol hat einen Schlüssel („nav.tickets“,
+// Symbole: Tabler Icons sind als SVG eingebettet (internal/web/tablericons) und
+// kommen über die Symbol-Stildatei /vendor/<Version>/icons-….css (iconcss.go). Jedes änderbare Symbol hat einen Schlüssel („nav.tickets“,
 // „record.fault“, „infra.plant“, „action.save“ …) mit Vorgabe; Admins ändern
 // es unter /admin/icons, gespeichert in app_settings (KeyIcons) als JSON.
 // Vorlagen holen das Symbol mit {{icon "schlüssel"}}, Go-Code mit iconClass.
@@ -268,8 +268,7 @@ func (h *Handler) IconsSaveWeb(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.loadIconOverrides(r.Context())
-	resetIconCSSCache() // neu gewähltes Symbol sofort in die Stildatei einbetten
-	h.iconCSSEntry(r.Context())
+	h.iconChoicesChanged() // neu gewähltes Symbol sofort in die Stildatei einbetten
 	msg := "Symbole gespeichert"
 	if len(out) == 0 {
 		msg = "Alle Symbole auf die Vorgabe gesetzt"

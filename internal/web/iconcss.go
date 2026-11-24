@@ -30,8 +30,8 @@ import (
 var iconsUsedTxt string
 
 // iconCSSBase: Grundregeln fuer alle Symbole.
-const iconCSSBase = `.ti{display:inline-block;line-height:1}` +
-	`.ti::before{content:"";display:inline-block;width:1em;height:1em;vertical-align:-.125em;background-color:currentColor;-webkit-mask:var(--ti) center/contain no-repeat;mask:var(--ti) center/contain no-repeat;-webkit-print-color-adjust:exact;print-color-adjust:exact}` +
+const iconCSSBase = `.ti{display:inline-block;line-height:1}.ti[hidden]{display:none}` +
+	`.ti::before{content:"";display:inline-block;width:1em;height:1em;vertical-align:-.125em;background-color:currentColor;-webkit-mask:var(--ti,linear-gradient(transparent,transparent)) center/contain no-repeat;mask:var(--ti,linear-gradient(transparent,transparent)) center/contain no-repeat;-webkit-print-color-adjust:exact;print-color-adjust:exact}` +
 	`@media (forced-colors:active){.ti::before{background-color:CanvasText}}` + "\n"
 
 var (
@@ -168,33 +168,74 @@ const (
 )
 
 var (
-	iconCSSMu    sync.Mutex
+	iconCSSMu    sync.Mutex // schuetzt iconCSSCache (nie ueber Datenbank oder gzip gehalten)
 	iconCSSCache *iconCSSEntry
+	// iconCSSBuildMu: ein Neubau zur Zeit (Datenbankabfrage und gzip ausserhalb von iconCSSMu).
+	iconCSSBuildMu sync.Mutex
 	// iconCSSCurKey: Kennung der zuletzt gebauten Stildatei (fuer iconCSSHref).
 	iconCSSCurKey atomic.Value
 )
 
-// resetIconCSSCache leert den Zwischenspeicher (nach Symbolwahl; Tests).
+// resetIconCSSCache leert den Zwischenspeicher (Tests).
 func resetIconCSSCache() {
 	iconCSSMu.Lock()
 	iconCSSCache = nil
 	iconCSSMu.Unlock()
 }
 
-func (h *Handler) iconCSSEntry(ctx context.Context) *iconCSSEntry {
+// iconCSSFresh: der gespeicherte Eintrag, solange er noch gilt (sonst nil).
+func iconCSSFresh() *iconCSSEntry {
 	iconCSSMu.Lock()
 	defer iconCSSMu.Unlock()
-	if e := iconCSSCache; e != nil {
-		ttl := iconCSSTTL
-		if !e.ok {
-			ttl = iconCSSErrTTL
-		}
-		if time.Since(e.at) < ttl {
+	e := iconCSSCache
+	if e == nil {
+		return nil
+	}
+	ttl := iconCSSTTL
+	if !e.ok {
+		ttl = iconCSSErrTTL
+	}
+	if time.Since(e.at) < ttl {
+		return e
+	}
+	return nil
+}
+
+// iconCSSEntry liefert den Eintrag; ist er abgelaufen, wird neu gelesen. Die
+// Abfragen laufen mit eigenem, kurzem Zeitlimit (nicht im Kontext der Anfrage).
+func (h *Handler) iconCSSEntry(_ context.Context) *iconCSSEntry {
+	if e := iconCSSFresh(); e != nil {
+		return e
+	}
+	return h.rebuildIconCSS(false)
+}
+
+// rebuildIconCSS liest die gewaehlten Symbole und baut die Stildatei nur dann neu,
+// wenn sich die Kennung geaendert hat; sonst wird nur der Zeitstempel erneuert.
+// Ein Lesefehler behaelt die bisherige Datei (und versucht es nach 5 s wieder).
+func (h *Handler) rebuildIconCSS(force bool) *iconCSSEntry {
+	iconCSSBuildMu.Lock()
+	defer iconCSSBuildMu.Unlock()
+	if !force {
+		if e := iconCSSFresh(); e != nil {
 			return e
 		}
 	}
-	names := usedIconNames()
+	iconCSSMu.Lock()
+	old := iconCSSCache
+	iconCSSMu.Unlock()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	chosen, err := h.chosenIconNames(ctx)
+	cancel()
+	if err != nil && old != nil {
+		e := &iconCSSEntry{key: old.key, asset: old.asset, at: time.Now(), ok: false}
+		iconCSSMu.Lock()
+		iconCSSCache = e
+		iconCSSMu.Unlock()
+		return e
+	}
+	names := usedIconNames()
 	if err == nil {
 		seen := map[string]bool{}
 		for _, n := range names {
@@ -207,11 +248,47 @@ func (h *Handler) iconCSSEntry(ctx context.Context) *iconCSSEntry {
 		}
 		sort.Strings(names)
 	}
-	css := buildIconCSS(tablericons.Default(), names, pdh.Version())
-	e := &iconCSSEntry{key: iconCSSKey(names), asset: newStaticAsset(css), at: time.Now(), ok: err == nil}
+	key := iconCSSKey(names)
+	e := &iconCSSEntry{key: key, at: time.Now(), ok: err == nil}
+	if old != nil && old.key == key {
+		e.asset = old.asset
+	} else {
+		e.asset = newStaticAsset(buildIconCSS(tablericons.Default(), names, pdh.Version()))
+	}
+	iconCSSMu.Lock()
 	iconCSSCache = e
+	iconCSSMu.Unlock()
 	iconCSSCurKey.Store(e.key)
 	return e
+}
+
+// iconChoicesChanged: nach jedem Speichern oder Loeschen eines gewaehlten Symbols
+// (Symbol-Verwaltung, Kategorien, Grafana-Kacheln, Anlagen-Beobachtung, IT-Kategorien)
+// sofort neu lesen, damit das Symbol eingebettet wird und sich die Adresse aendert.
+func (h *Handler) iconChoicesChanged() { h.rebuildIconCSS(true) }
+
+// refreshIconCSS: Netz unter den Speicherwegen (andere Server des Verbunds,
+// Eintraege per Datenbank) – baut nur bei geaenderter Kennung neu.
+func (h *Handler) refreshIconCSS() { h.rebuildIconCSS(true) }
+
+// StartIconCSSRefresh prueft jede Minute, ob sich die gewaehlten Symbole geaendert
+// haben; endet mit ctx.
+func (h *Handler) StartIconCSSRefresh(ctx context.Context) {
+	if h == nil || h.db == nil {
+		return
+	}
+	go func() {
+		t := time.NewTicker(iconCSSTTL)
+		defer t.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+				h.refreshIconCSS()
+			}
+		}
+	}()
 }
 
 // iconCSS liefert die Stildatei und ihre Kennung; hoechstens 60 s alt.
@@ -234,15 +311,22 @@ func noStore(w http.ResponseWriter, code int) {
 	http.Error(w, http.StatusText(code), code)
 }
 
+// redirectNoStore: Weiterleitung auf die Adresse der laufenden Version, nie zwischengespeichert.
+func redirectNoStore(w http.ResponseWriter, r *http.Request, to string) {
+	w.Header().Set("Cache-Control", "no-store")
+	http.Redirect(w, r, to, http.StatusFound)
+}
+
 // IconCSSWeb: GET /vendor/{ver}/icons-{key}.css – oeffentlich. Fremde Version:
-// 404; fremde Kennung der laufenden Version: die aktuelle Datei, nicht
+// Weiterleitung auf die aktuelle Stildatei (Seiten, die ueber ein Update offen
+// blieben); fremde Kennung der laufenden Version: die aktuelle Datei, nicht
 // zwischenspeichern (sonst bliebe nach einer Symbolwahl ein leeres Kaestchen).
 func (h *Handler) IconCSSWeb(w http.ResponseWriter, r *http.Request) {
+	e := h.iconCSSEntry(r.Context())
 	if chi.URLParam(r, "ver") != pdh.Version() {
-		noStore(w, http.StatusNotFound)
+		redirectNoStore(w, r, iconCSSHref())
 		return
 	}
-	e := h.iconCSSEntry(r.Context())
 	cc := "public, max-age=31536000, immutable"
 	if chi.URLParam(r, "key") != e.key {
 		cc = "no-store"
@@ -253,13 +337,13 @@ func (h *Handler) IconCSSWeb(w http.ResponseWriter, r *http.Request) {
 
 // IconSVGWeb: GET /vendor/{ver}/icons/{name}.svg – oeffentlich, ein Symbol.
 func (h *Handler) IconSVGWeb(w http.ResponseWriter, r *http.Request) {
-	if chi.URLParam(r, "ver") != pdh.Version() {
-		noStore(w, http.StatusNotFound)
-		return
-	}
 	svg, ok := tablericons.Default().SVG(chi.URLParam(r, "name"))
 	if !ok {
 		noStore(w, http.StatusNotFound)
+		return
+	}
+	if chi.URLParam(r, "ver") != pdh.Version() {
+		redirectNoStore(w, r, "/vendor/"+pdh.Version()+"/icons/"+chi.URLParam(r, "name")+".svg")
 		return
 	}
 	w.Header().Set("Content-Type", "image/svg+xml")

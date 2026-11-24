@@ -45,6 +45,13 @@ func TestIconCSSEmbedsUsed(t *testing.T) {
 
 var iconRefRe = regexp.MustCompile(`(?:^|[^a-zA-Z0-9_-])(ti-[a-z0-9-]+)`)
 
+// iconUseRe: „ti ti-name“ in Klassenlisten und Zeichenketten (Namen mit nachfolgender
+// Vorlagenaktion oder Verkettung, z. B. „ti ti-{{…}}“, werden nicht erfasst).
+var iconUseRe = regexp.MustCompile(`\bti (ti-[a-z0-9]+(?:-[a-z0-9]+)*)(?:["'\s}]|$)`)
+
+// notIcons: Klassen mit Praefix ti-, die keine Symbole sind.
+var notIcons = map[string]bool{}
+
 // TestIconsUsedListComplete: jede im Quelltext vorkommende, bekannte Symbolklasse
 // steht in icons_used.txt (sonst wuerde sie erst beim Anzeigen nachgeladen).
 func TestIconsUsedListComplete(t *testing.T) {
@@ -62,6 +69,13 @@ func TestIconsUsedListComplete(t *testing.T) {
 		for _, m := range iconRefRe.FindAllStringSubmatch(string(b), -1) {
 			if set.Has(m[1]) && !listed[m[1]] {
 				t.Errorf("%s: %s fehlt in icons_used.txt", file, m[1])
+			}
+		}
+		// als Symbol verwendet („ti ti-…“), aber die Bibliothek kennt es nicht:
+		// es bliebe unsichtbar (Tippfehler wie ti-tool-off statt ti-tools-off)
+		for _, m := range iconUseRe.FindAllStringSubmatch(string(b), -1) {
+			if !set.Has(m[1]) && !notIcons[m[1]] {
+				t.Errorf("%s: %s ist als Symbol verwendet, steht aber nicht in der Bibliothek", file, m[1])
 			}
 		}
 	}
@@ -83,11 +97,33 @@ func TestIconsUsedListComplete(t *testing.T) {
 	}
 }
 
+// TestIconCSSFallbackAndHidden: ohne passende ti-…-Klasse (unbekannter oder leerer
+// Name) darf kein gefuelltes Quadrat erscheinen, und das hidden-Attribut gilt weiter.
+func TestIconCSSFallbackAndHidden(t *testing.T) {
+	css := string(buildIconCSS(tablericons.Default(), nil, "9.9.9"))
+	fb := "var(--ti,linear-gradient(transparent,transparent)) center/contain no-repeat"
+	for _, want := range []string{"-webkit-mask:" + fb, ";mask:" + fb, ".ti[hidden]{display:none}"} {
+		if !strings.Contains(css, want) {
+			t.Errorf("Stildatei ohne %q", want)
+		}
+	}
+}
+
 func TestIconCSSPrintAndContrast(t *testing.T) {
 	css := string(buildIconCSS(tablericons.Default(), nil, "9.9.9"))
 	for _, want := range []string{"print-color-adjust:exact", "forced-colors"} {
 		if !strings.Contains(css, want) {
 			t.Errorf("Stildatei ohne %q", want)
+		}
+	}
+}
+
+// TestVendorRequestsQuiet: erfolgreiche Anfragen an /vendor/ werden nicht auf
+// Stufe Info protokolliert (die Symbolauswahl holt bis zu 300 Symbole je Suche).
+func TestVendorRequestsQuiet(t *testing.T) {
+	for _, p := range []string{"/vendor/0.82.57/icons/ti-plus.svg", "/vendor/0.82.57/htmx/htmx.min.js", "/vendor/0.82.57/icons-abc.css"} {
+		if !quietPath(p) {
+			t.Errorf("%s soll leise protokolliert werden", p)
 		}
 	}
 }
@@ -117,10 +153,21 @@ func TestIconRoutesCaching(t *testing.T) {
 	if rec.Code != 200 || rec.Header().Get("Content-Type") != "image/svg+xml" || !strings.Contains(rec.Header().Get("Cache-Control"), "immutable") {
 		t.Errorf("SVG: %d %q %q", rec.Code, rec.Header().Get("Content-Type"), rec.Header().Get("Cache-Control"))
 	}
-	for _, p := range []string{v + "/icons/ti-gibt-es-nicht.svg", "/vendor/0.0.1/icons/ti-plus.svg", "/vendor/0.0.1/icons-abc.css"} {
+	for _, p := range []string{v + "/icons/ti-gibt-es-nicht.svg", "/vendor/0.0.1/icons/ti-gibt-es-nicht.svg"} {
 		rec = iconGet(r, p, nil)
 		if rec.Code != 404 || rec.Header().Get("Cache-Control") != "no-store" {
 			t.Errorf("%s: %d %q", p, rec.Code, rec.Header().Get("Cache-Control"))
+		}
+	}
+	// fremde Version, bekannter Name: Weiterleitung auf die laufende Version, nie zwischenspeichern
+	_, _ = (&Handler{}).iconCSS(t.Context()) // Kennung festlegen, bevor die Zieladresse gelesen wird
+	for p, want := range map[string]string{
+		"/vendor/0.0.1/icons/ti-plus.svg": v + "/icons/ti-plus.svg",
+		"/vendor/0.0.1/icons-abc.css":     iconCSSHref(),
+	} {
+		rec = iconGet(r, p, nil)
+		if rec.Code != http.StatusFound || rec.Header().Get("Cache-Control") != "no-store" || rec.Header().Get("Location") != want {
+			t.Errorf("%s: %d %q -> %q, erwartet %q", p, rec.Code, rec.Header().Get("Cache-Control"), rec.Header().Get("Location"), want)
 		}
 	}
 

@@ -20,7 +20,7 @@
 ## Aufruf
 
     node deploy/lab/seitenaufbau/messung.js \
-      --base http://10.10.0.15:8090 --user abnahme-abgleich \
+      --base http://192.0.2.15:8090 --user abnahme-abgleich \
       --password-file /pfad/zur/kennwortdatei \
       --playwright /pfad/zu/node_modules/playwright-core
 
@@ -41,10 +41,13 @@ einer Meldung und dem Code 2 bzw. 1.
 - **DCL / load:** `domContentLoadedEventEnd` und `loadEventEnd` der Navigation.
 - **Symbole (alle Symbole sichtbar):** Zeit seit Navigationsbeginn, zu der
   (1) die Symbol-Stildatei `/vendor/<Version>/icons-<Kennung>.css` geladen und
-  angewendet ist, (2) alle Einzel-SVGs unter `/vendor/<Version>/icons/` fertig
-  geladen sind und (3) das zwei Bildwiederholungen lang unverändert blieb.
-  Eingebettete Symbole brauchen keine eigene Anfrage. „SVGs“ in der Tabelle
-  ist die Zahl der nachgeladenen Einzel-SVGs.
+  angewendet ist (nach zwei Bildwiederholungen) und (2) alle nachgeladenen
+  Einzel-SVGs unter `/vendor/<Version>/icons/` fertig sind. Die SVG-Anfragen
+  werden über das Netzwerkprotokoll des Browsers (CDP) gezählt – Beginn und
+  Ende je Anfrage –, danach darf 200 ms lang keine neue kommen. Der Puffer der
+  Ressourcen-Zeiten (250 Einträge) spielt keine Rolle. Eingebettete Symbole
+  brauchen keine eigene Anfrage. „SVGs“ in der Tabelle ist die Zahl der
+  nachgeladenen Einzel-SVGs.
 - Es wird auf das Laden der Seite gewartet, nicht auf „networkidle“ (die
   Live-Verbindungen bleiben offen). Playwright-Anfragefilter (`page.route`)
   werden nicht benutzt, weil sie den HTTP-Zwischenspeicher abschalten würden.

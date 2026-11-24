@@ -3,6 +3,7 @@ package web
 import (
 	"html/template"
 	"io/fs"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -102,12 +103,20 @@ func TestVendorRoute(t *testing.T) {
 		v + "novnc/rfb.min.js",
 		v + "esp-web-tools/SHA256SUMS",
 		v + "unbekannt/x.js",
-		"/vendor/0.0.1/htmx/htmx.min.js",
+		"/vendor/0.0.1/htmx/nicht-da.js",
+		"/vendor/0.0.1/unbekannt/x.js",
 	} {
 		rec := iconGet(r, p, nil)
 		if rec.Code != 404 || rec.Header().Get("Cache-Control") != "no-store" {
 			t.Errorf("%s: HTTP %d, Cache-Control %q", p, rec.Code, rec.Header().Get("Cache-Control"))
 		}
+	}
+	// fremde Version, bekannte Datei: Weiterleitung auf die laufende Version,
+	// nie zwischenspeichern (Seiten, die ueber ein Update offen blieben)
+	rec0 := iconGet(r, "/vendor/0.0.1/htmx/htmx.min.js", nil)
+	if rec0.Code != http.StatusFound || rec0.Header().Get("Cache-Control") != "no-store" ||
+		rec0.Header().Get("Location") != v+"htmx/htmx.min.js" {
+		t.Errorf("fremde Version: HTTP %d, Cache-Control %q, Location %q", rec0.Code, rec0.Header().Get("Cache-Control"), rec0.Header().Get("Location"))
 	}
 	// zu viele Pfadteile passen zu keiner Route: 404 (vom Router, ohne Datei)
 	if rec := iconGet(r, v+"htmx/../../x", nil); rec.Code != 404 {

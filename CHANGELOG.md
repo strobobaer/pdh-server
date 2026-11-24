@@ -14,9 +14,12 @@ im Kapitel „Versionen & Updates“ an.
 
 ### Geändert
 
-- **Seiten bauen beim ersten Aufruf deutlich schneller auf:** Die Symbole kommen jetzt als kleine Grafiken statt als eine große Schrift (1,4 MB); alle rund 5.900 Symbole bleiben wählbar und sehen aus wie vorher, auch beim Drucken.
+- **Seiten bauen beim ersten Aufruf deutlich schneller auf:** Die Symbole kommen jetzt als kleine Grafiken statt als eine große Schrift (1,4 MB); alle rund 5.900 Symbole bleiben wählbar und sehen aus wie vorher, auch beim Drucken und im Windows-Kontrastmodus.
 - **Das PDH lädt nichts mehr aus dem Internet:** Bedienbibliotheken, Diagramme, Excel- und Word-Vorschau sowie die Schriften der Darstellung werden mitgeliefert, die Seiten funktionieren auch ohne Internetzugang.
-- **Infoleisten bleiben im Windows-Kontrastmodus sichtbar:** Ihr Symbol nimmt dort die Systemfarbe an.
+
+### Behoben
+
+- **Terminal: Symbol bei „Keine Rüsttasten an dieser Anlage“:** Dort fehlte bisher das Symbol, weil der Name falsch geschrieben war.
 
 ## [0.82.56] – 2026-11-24
 

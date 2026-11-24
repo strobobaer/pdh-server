@@ -323,6 +323,9 @@ func (h *Handler) GrafanaSaveWeb(w http.ResponseWriter, r *http.Request) {
 		_, err = h.db.Exec(ctx, `UPDATE grafana_dashboards SET title=$1, url=$2, description=$3, icon=$4, color=$5, kiosk=$6,
 			open_mode=$7, refresh=$8, updated_at=NOW() WHERE id=$9::uuid`, title, link, desc, icon, color, kiosk, mode, refresh, id)
 	}
+	if err == nil {
+		h.iconChoicesChanged() // gewähltes Symbol sofort in die Symbol-Stildatei einbetten
+	}
 	grafanaBack(w, r, "Dashboard „"+title+"“ gespeichert", err)
 }
 
@@ -352,6 +355,9 @@ func (h *Handler) GrafanaActionWeb(w http.ResponseWriter, r *http.Request) {
 		grafanaBack(w, r, map[bool]string{true: "Kachel wieder sichtbar", false: "Kachel ausgeblendet"}[action == "on"], err)
 	case "delete":
 		_, err := h.db.Exec(ctx, `DELETE FROM grafana_dashboards WHERE id=$1::uuid`, id)
+		if err == nil {
+			h.iconChoicesChanged()
+		}
 		grafanaBack(w, r, "Kachel gelöscht", err)
 	case "up", "down":
 		dir := 1
