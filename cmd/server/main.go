@@ -485,6 +485,9 @@ func main() {
 	}
 	// Symbol-Bibliothek (Tabler Icons) lokal statt aus dem Internet
 	r.Handle("/vendor/tabler-icons/*", icons)
+	// Symbole als Stildatei mit eingebetteten und einzelnen SVG (Version in der Adresse)
+	r.Get("/vendor/{ver}/icons-{key}.css", webHandler.IconCSSWeb)
+	r.Get("/vendor/{ver}/icons/{name}.svg", webHandler.IconSVGWeb)
 
 	// Static uploads – ohne uploads/esppdh (Firmware nur über die Seiten mit Recht)
 	r.Handle("/uploads/*", web.UploadsHandler(attachments.UploadDir))

@@ -4,8 +4,12 @@ import (
 	"bytes"
 	"encoding/xml"
 	"io"
+	"io/fs"
 	"math/rand"
 	"testing"
+	"testing/fstest"
+
+	pdh "pdh"
 )
 
 func TestSetHasAllNames(t *testing.T) {
@@ -66,6 +70,53 @@ func TestSVGFilled(t *testing.T) {
 	o, ok := s.SVG("ti-star")
 	if !ok || !bytes.Contains(o, []byte(`fill="none"`)) {
 		t.Errorf("ti-star: %s", o)
+	}
+}
+
+func TestAliasPath(t *testing.T) {
+	s := Default()
+	a, ok := s.SVG("ti-box-seam")
+	p, ok2 := s.SVG("ti-package")
+	if !ok || !ok2 || !bytes.Equal(a, p) {
+		t.Errorf("ti-box-seam soll die SVG von package liefern")
+	}
+	f, ok := s.SVG("ti-seeding-filled")
+	sf, ok2 := s.SVG("ti-seedling-filled")
+	if !ok || !bytes.Contains(f, []byte(`fill="currentColor"`)) {
+		t.Errorf("ti-seeding-filled: %s", f)
+	}
+	if ok2 && !bytes.Equal(f, sf) {
+		t.Errorf("ti-seeding-filled weicht von ti-seedling-filled ab")
+	}
+}
+
+func TestLoadAliasErrors(t *testing.T) {
+	base := func(alias string) fstest.MapFS {
+		real := pdh.Static
+		m := fstest.MapFS{}
+		for _, f := range []string{"tabler-nodes-outline.json", "tabler-nodes-filled.json", "names.txt"} {
+			b, err := fs.ReadFile(real, dir+f)
+			if err != nil {
+				t.Fatal(err)
+			}
+			m[dir+f] = &fstest.MapFile{Data: b}
+		}
+		if alias != "" {
+			m[dir+"aliases.txt"] = &fstest.MapFile{Data: []byte(alias)}
+		}
+		return m
+	}
+	if _, err := Load(base("")); err != nil {
+		t.Errorf("fehlende aliases.txt ist erlaubt: %v", err)
+	}
+	for name, txt := range map[string]string{
+		"unbekannte Klasse": "ti-gibt-es-nicht package\n",
+		"fehlendes Ziel":    "ti-box-seam gibt-es-nicht\n",
+		"falsches Format":   "ti-box-seam\n",
+	} {
+		if _, err := Load(base(txt)); err == nil {
+			t.Errorf("%s: Fehler erwartet", name)
+		}
 	}
 }
 

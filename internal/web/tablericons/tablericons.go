@@ -7,11 +7,13 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html"
 	"io/fs"
 	"sort"
 	"strings"
+	"sync"
 
 	pdh "pdh"
 )
@@ -90,27 +92,50 @@ func Load(fsys fs.FS) (*Set, error) {
 	sort.Strings(s.names)
 	// aliases.txt: "ti-altname paketname" – Klassen der alten Schrift, deren
 	// Glyph im Paket unter neuem Namen steht (gleicher Codepunkt).
-	if ab, err := fs.ReadFile(fsys, dir+"aliases.txt"); err == nil {
-		for _, ln := range strings.Split(string(ab), "\n") {
-			if f := strings.Fields(ln); len(f) == 2 {
-				s.alias[f[0]] = f[1]
-			}
+	// Nur eine fehlende Datei heisst „keine Altnamen“; jeder andere Fehler zaehlt.
+	ab, err := fs.ReadFile(fsys, dir+"aliases.txt")
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return nil, err
+	}
+	for i, ln := range strings.Split(string(ab), "\n") {
+		ln = strings.TrimSpace(ln)
+		if ln == "" {
+			continue
 		}
+		f := strings.Fields(ln)
+		if len(f) != 2 {
+			return nil, fmt.Errorf("aliases.txt Zeile %d: erwartet „ti-altname paketname“", i+1)
+		}
+		if !s.known[f[0]] {
+			return nil, fmt.Errorf("aliases.txt Zeile %d: %s steht nicht in names.txt", i+1, f[0])
+		}
+		set := s.outline
+		if strings.HasSuffix(f[0], "-filled") {
+			set = s.filled
+		}
+		if len(set[f[1]]) == 0 {
+			return nil, fmt.Errorf("aliases.txt Zeile %d: Ziel %s fehlt im Paket", i+1, f[1])
+		}
+		s.alias[f[0]] = f[1]
 	}
 	return s, nil
 }
 
-var def *Set
+var (
+	defOnce sync.Once
+	def     *Set
+)
 
-// Default liefert den eingebetteten Satz; Fehler fuehren zur Panik beim Start.
+// Default liefert den eingebetteten Satz (einmal geladen, nebenlaeufig nutzbar);
+// Fehler fuehren zur Panik beim Start.
 func Default() *Set {
-	if def == nil {
+	defOnce.Do(func() {
 		s, err := Load(pdh.Static)
 		if err != nil {
 			panic("tablericons: " + err.Error())
 		}
 		def = s
-	}
+	})
 	return def
 }
 

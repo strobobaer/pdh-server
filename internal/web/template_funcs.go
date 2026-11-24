@@ -15,6 +15,8 @@ const TerminalDownloadURL = "https://github.com/strobobaer/hmi-kiosk-pi/releases
 func TemplateFuncs() template.FuncMap {
 	m := template.FuncMap{
 		"appVersion":   pdh.Version,
+		// Adresse der Symbol-Stildatei mit Version und Kennung (iconcss.go)
+		"iconCSSHref": iconCSSHref,
 		"css":          templateCSS,
 		"grafanaColor": grafanaColorCSS, // Kachelfarbe Statistik (grafana.go)
 		"dwBgColors":   dwBgColorList,   // Hintergrund der Startseiten-Kacheln (dashboard_widgets.go)

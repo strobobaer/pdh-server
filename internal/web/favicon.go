@@ -72,13 +72,25 @@ func loadStaticAsset(name string) *staticAsset {
 	if err != nil {
 		return nil
 	}
+	a := newStaticAsset(raw)
+	staticAssets.Store(name, a)
+	return a
+}
+
+// plainAsset: kleine Datei ohne Komprimierung (nur ETag).
+func plainAsset(raw []byte) *staticAsset {
+	sum := sha256.Sum256(raw)
+	return &staticAsset{raw: raw, etag: hex.EncodeToString(sum[:8])}
+}
+
+// newStaticAsset: Bytes mit ETag und vorab gzip-komprimierter Fassung.
+func newStaticAsset(raw []byte) *staticAsset {
+	a := plainAsset(raw)
 	var buf bytes.Buffer
 	zw, _ := gzip.NewWriterLevel(&buf, gzip.BestCompression)
 	zw.Write(raw)
 	zw.Close()
-	sum := sha256.Sum256(raw)
-	a := &staticAsset{raw: raw, gz: buf.Bytes(), etag: hex.EncodeToString(sum[:8])}
-	staticAssets.Store(name, a)
+	a.gz = buf.Bytes()
 	return a
 }
 
@@ -90,19 +102,25 @@ func serveStaticAsset(w http.ResponseWriter, r *http.Request, name string) bool 
 	if a == nil {
 		return false
 	}
+	cc := "public, max-age=86400"
+	if r.URL.Query().Get("v") != "" {
+		cc = "public, max-age=31536000, immutable"
+	}
+	serveAsset(w, r, name, a, cc)
+	return true
+}
+
+// serveAsset liefert a komprimiert (falls vorhanden und der Browser gzip kann)
+// mit ETag und dem gegebenen Cache-Control aus; name bestimmt den Dateityp.
+func serveAsset(w http.ResponseWriter, r *http.Request, name string, a *staticAsset, cacheControl string) {
 	h := w.Header()
 	h.Add("Vary", "Accept-Encoding")
-	if r.URL.Query().Get("v") != "" {
-		h.Set("Cache-Control", "public, max-age=31536000, immutable")
-	} else {
-		h.Set("Cache-Control", "public, max-age=86400")
-	}
+	h.Set("Cache-Control", cacheControl)
 	body, etag := a.raw, `"`+a.etag+`"`
-	if strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
+	if a.gz != nil && strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
 		body, etag = a.gz, `"`+a.etag+`-gz"`
 		h.Set("Content-Encoding", "gzip")
 	}
 	h.Set("ETag", etag)
 	http.ServeContent(w, r, path.Base(name), time.Time{}, bytes.NewReader(body))
-	return true
 }

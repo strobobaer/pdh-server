@@ -278,6 +278,8 @@ func (h *Handler) IconsSaveWeb(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.loadIconOverrides(r.Context())
+	resetIconCSSCache() // neu gewähltes Symbol sofort in die Stildatei einbetten
+	h.iconCSSEntry(r.Context())
 	msg := "Symbole gespeichert"
 	if len(out) == 0 {
 		msg = "Alle Symbole auf die Vorgabe gesetzt"
@@ -323,4 +325,7 @@ func linkRecordKey(url string) string {
 }
 
 // LoadIconOverrides: beim Serverstart die Symbol-Änderungen laden.
-func (h *Handler) LoadIconOverrides(ctx context.Context) { h.loadIconOverrides(ctx) }
+func (h *Handler) LoadIconOverrides(ctx context.Context) {
+	h.loadIconOverrides(ctx)
+	h.iconCSSEntry(ctx) // Stildatei mit den gewählten Symbolen vorbereiten (Adresse für die Seiten)
+}
