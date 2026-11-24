@@ -10,7 +10,7 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
-## [0.82.47] – 2026-11-24
+## [0.82.48] – 2026-11-24
 
 ### Neu
 
@@ -20,6 +20,13 @@ im Kapitel „Versionen & Updates“ an.
 ### Geändert
 
 - **Terminal, Anmeldung ohne Kartenleser:** Das Ziffernfeld (0–F) ist eingeklappt. Zu sehen sind nur das Feld „Kartennummer eingeben“ und der Knopf „Mit Benutzer und Passwort“. Das Ziffernfeld (bei „Karte und PIN“ mit PIN-Feld) klappt erst auf, wenn das Kartenfeld angetippt wird, und wieder zu nach **OK**, mit **Schließen**, nach erfolgreicher Anmeldung und bei der Rückkehr zum Schoner. Die Bildschirmtastatur erscheint weiter nur nach einer echten Berührung.
+
+## [0.82.47] – 2026-11-23
+
+### Neu
+
+- **Terminal, „Freier Terminal-Benutzer“:** Bei den Stammdaten des Terminal-Benutzers gibt es den Schalter „Freier Terminal-Benutzer“ (nur Benutzerverwaltung, nur für Terminal-Systembenutzer, Änderung steht im Verlauf). Ist er an, darf das Terminal in seiner Anlage und darunter Störungen, Tickets und Aufgaben ansehen und bearbeiten (starten, warten, beenden, Abschluss-Assistent), rüsten, Stillstände melden und HMIs ansehen – ohne dass die Rolle diese Rechte einzeln bringt. Grenzen: nur Terminalfunktionen, nur im Anlagenbaum des Terminals, nur am gekoppelten Gerät, in „Nur mit Karte“ nur mit angemeldeter Karte, nie Bedienen von HMIs. Wo die Kartenperson mit ihren eigenen Rechten handelt (Vorgänge mit Karte, HMI „nur mit Karte“), zählt das Flag nicht; eine Karte nimmt dem Terminal aber nie Rechte (Rüsten, Stillstand, Melden, HMI „jeder“). Im übrigen PDH ändert sich nichts. Vorgabe: aus.
+- **Terminal, Vorgänge:** Vorgänge, die man nicht bearbeiten darf, bleiben antippbar und nennen den Grund („Keine Berechtigung: <Recht> in Abteilung <Name>“ bzw. „Nur mit Karte – bitte Karte vorhalten“), statt nichts zu tun.
 
 ## [0.82.46] – 2026-11-23
 
