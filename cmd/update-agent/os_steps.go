@@ -82,6 +82,7 @@ func (a *updateAgent) osAdvance(ctx context.Context, st *osSteps, persist func()
 			a.osClearCache()
 			var ur *osUnitRunning
 			if errors.As(err, &ur) {
+				st.Unit = ur.Unit // die Sperre bleibt, bis die Einheit endet
 				st.fail(err.Error())
 			} else if msg := osLastLines(string(out), 3); msg != "" {
 				st.fail("Prüfen fehlgeschlagen: " + msg)
@@ -94,6 +95,10 @@ func (a *updateAgent) osAdvance(ctx context.Context, st *osSteps, persist func()
 		a.osClearCache()
 		ss, err := a.osStatus(ctx)
 		if err != nil {
+			var ur *osUnitRunning
+			if errors.As(err, &ur) {
+				st.Unit = ur.Unit
+			}
 			st.fail("Status nicht lesbar: " + err.Error())
 			st.Step = "done"
 			return true
@@ -118,6 +123,14 @@ func (a *updateAgent) osAdvance(ctx context.Context, st *osSteps, persist func()
 		// nie ein zweites apt daneben starten
 		if st.Unit != "" && a.osUnitIsActive(ctx, st.Unit) {
 			return a.osInstallWait(st, persist)
+		}
+		// frischer Lauf: pdh darf nicht laufen (nach einem Neustart des Rechners startet es von selbst wieder)
+		if a.pdhActive(ctx) {
+			if err := a.jobStopPDH(ctx); err != nil {
+				st.fail("pdh nicht gestoppt: " + err.Error())
+				st.Step = "start"
+				return false
+			}
 		}
 		st.Unit = a.osNewUnit("install")
 		st.StepAt = a.now() // Beginn der Frist für das Warten auf die Einheit

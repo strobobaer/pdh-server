@@ -73,6 +73,7 @@ type updateAgent struct {
 
 	os           osRuntime                                                // Betriebssystem-Updates und gemeinsame Sperre (os_update.go)
 	osj          osJobRuntime                                             // Auftrag „Betriebssystem“ des Einzelservers (os_job.go)
+	osBeforeInstall func()                                                // Test-Haken: vor dem Umschalten auf „install“ (os_job.go)
 	osRun        func(ctx context.Context, action string) ([]byte, error) // nil = systemd-run; Test-Haken
 	osCmd        func(name string, args ...string) *exec.Cmd              // nil = exec.Command; Test-Haken
 	osUnitActive func(ctx context.Context, unit string) bool              // nil = systemctl is-active; Test-Haken

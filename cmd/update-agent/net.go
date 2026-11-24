@@ -466,8 +466,12 @@ func (a *updateAgent) netApplyHandler(w http.ResponseWriter, r *http.Request) {
 	a.mu.RLock()
 	updating := a.status.Running
 	a.mu.RUnlock()
+	if a.osJobOpen() {
+		netRefuse(w, lockBusyMsg(lockOS)) // der Besitzer beim Namen nennen
+		return
+	}
 	if updating || a.singleJobActive() {
-		netRefuse(w, "Ein PDH-Update läuft – bitte danach erneut versuchen")
+		netRefuse(w, lockBusyMsg(lockPDH))
 		return
 	}
 	// gemeinsame Sperre für die Laufzeit des Skripts; bei jeder Ablehnung wieder frei

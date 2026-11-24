@@ -465,3 +465,137 @@ func TestOSJobHandlers(t *testing.T) {
 		t.Fatalf("Auftrag: %d %v", code, m)
 	}
 }
+
+// ── Korrekturrunde 1 ──────────────────────────────────────────────────────
+
+func osWaitLockFree(t *testing.T, a *updateAgent) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if rel, busy := a.lockAcquire(lockPDH); busy == "" {
+			rel()
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("Sperre nach Ende der Einheit nicht frei")
+}
+
+func TestOSJobCheckTimeoutHoldsLock(t *testing.T) {
+	e := osJobEnv(t, 4, false)
+	a := e.a
+	var active atomic.Bool
+	active.Store(true)
+	a.osUnitActive = func(context.Context, string) bool { return active.Load() }
+	inner := e.fake.run
+	a.osRun = func(ctx context.Context, action string) ([]byte, error) {
+		if action == "check" {
+			return nil, &osUnitRunning{Unit: "pdh-os-check-x", Action: "check"}
+		}
+		return inner(ctx, action)
+	}
+	if _, err := a.startOSJob(context.Background(), srcButton, false); err != nil {
+		t.Fatal(err)
+	}
+	runOSJob(t, a, e.clk, 10)
+	if v := a.jobView(); v.Phase != string(ha.UpFailed) {
+		t.Fatalf("Ende: %+v", v)
+	}
+	if _, busy := a.lockAcquire(lockPDH); busy != lockOS {
+		t.Fatalf("Sperre muss bleiben, solange die Prüf-Einheit läuft: %q", busy)
+	}
+	active.Store(false)
+	osWaitLockFree(t, a)
+}
+
+func TestOSJobResumeInstallStopsPDH(t *testing.T) {
+	e := osJobEnv(t, 3, false)
+	e.rec.mu.Lock()
+	e.rec.fail["pdh-active"] = false // pdh läuft (nach dem Hochfahren wieder gestartet)
+	e.rec.mu.Unlock()
+	e.rec.on["stop-pdh"] = func() {
+		e.rec.mu.Lock()
+		e.rec.fail["pdh-active"] = true
+		e.rec.mu.Unlock()
+	}
+	osWriteJob(t, e, osLockedJob(e, osSteps{Step: "install", Pending: 3, StepAt: e.clk.now()}))
+	e.a.loadOSJob()
+	runOSJob(t, e.a, e.clk, 20)
+	assertOrder(t, e.rec.all(), "stop-pdh", "os install", "start-pdh")
+	if v := e.a.jobView(); v.Phase != string(ha.UpDone) {
+		t.Fatalf("Ende: %+v", v)
+	}
+}
+
+func TestLoadOSJobHoldsLockForRunningUnit(t *testing.T) {
+	for _, ended := range []bool{false, true} {
+		e := osJobEnv(t, 3, false)
+		var active atomic.Bool
+		active.Store(true)
+		e.a.osUnitActive = func(_ context.Context, u string) bool { return u == "pdh-os-install-x" && active.Load() }
+		j := osLockedJob(e, osSteps{Step: "install", Pending: 3, Unit: "pdh-os-install-x", StepAt: e.clk.now()})
+		if ended {
+			j.Job.Phase, j.OS.Step, j.OS.Failed, j.OS.Msg = ha.UpFailed, "done", true, "Einspielen dauert zu lange"
+		}
+		osWriteJob(t, e, j)
+		e.a.loadOSJob()
+		if _, busy := e.a.lockAcquire(lockPDH); busy != lockOS {
+			t.Fatalf("beendet=%v: Sperre muss gehalten werden: %q", ended, busy)
+		}
+		active.Store(false)
+		if ended {
+			osWaitLockFree(t, e.a)
+		}
+	}
+}
+
+func TestOSJobAbortWinsBeforeInstall(t *testing.T) {
+	e := osJobEnv(t, 4, false)
+	a := e.a
+	var abortErr error
+	a.osBeforeInstall = func() { abortErr = a.abortSingleJob("Anna") } // Fenster zwischen Sicherung und Umschalten
+	if _, err := a.startOSJob(context.Background(), srcButton, false); err != nil {
+		t.Fatal(err)
+	}
+	runOSJob(t, a, e.clk, 40)
+	v := a.jobView()
+	all := e.rec.all()
+	installed := strings.Contains(all, "os install")
+	if abortErr == nil {
+		if installed || v.Phase != string(ha.UpFailed) || v.Result != "Abgebrochen von Anna" || !strings.Contains(all, "start-pdh") {
+			t.Fatalf("Abbruch angenommen, aber: %+v / %s", v, all)
+		}
+	} else if !installed || !strings.Contains(abortErr.Error(), "Die Pakete werden bereits eingespielt") {
+		t.Fatalf("Abbruch abgelehnt (%v), aber installed=%v", abortErr, installed)
+	}
+}
+
+func TestNetApplyNamesOSHolder(t *testing.T) {
+	e := osJobEnv(t, 4, false)
+	if _, err := e.a.startOSJob(context.Background(), srcButton, false); err != nil {
+		t.Fatal(err)
+	}
+	ans := netCall(t, e.a, http.MethodPost, "/v1/net/apply", `{"action":"fix"}`)
+	if ans.OK || !strings.Contains(ans.Error, "Betriebssystem-Update") || strings.Contains(ans.Error, "PDH-Update") {
+		t.Fatalf("%+v", ans)
+	}
+}
+
+func TestOSJobNoPackagesAfterCheckIsDone(t *testing.T) {
+	e := osJobEnv(t, 4, false)
+	a := e.a
+	if _, err := a.startOSJob(context.Background(), srcButton, false); err != nil {
+		t.Fatal(err)
+	}
+	e.fake.mu.Lock()
+	e.fake.statusOut = osStepsStatus(0, false) // zwischen Start und Prüfen erledigt
+	e.fake.mu.Unlock()
+	runOSJob(t, a, e.clk, 10)
+	v := a.jobView()
+	if v.Phase != string(ha.UpDone) || v.Result != "Keine Pakete zu aktualisieren" {
+		t.Fatalf("Ende: %+v", v)
+	}
+	if lr := a.osState().LastRun; lr == nil || !lr.OK || lr.Packages != 0 {
+		t.Fatalf("last_run: %+v", lr)
+	}
+}

@@ -102,6 +102,17 @@ func (a *updateAgent) loadOSJob() {
 	a.osj.job = s
 	a.osj.mu.Unlock()
 	if jobEnded(s.Job) {
+		// Einheit von „install“ läuft noch (z. B. nach „dauert zu lange“): Sperre halten, bis sie endet
+		if s.OS.Unit != "" {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			active := a.osUnitIsActive(ctx, s.OS.Unit)
+			cancel()
+			if active {
+				if release, busy := a.lockTryExclusive(lockOS); busy == "" {
+					a.osWaitUnit(s.OS.Unit, release)
+				}
+			}
+		}
 		return
 	}
 	log.Printf("betriebssystem: Auftrag %s wird in Phase %s fortgesetzt", s.Job.ID, s.Job.Phase)
@@ -293,7 +304,11 @@ func (a *updateAgent) osJobPrepare(ctx context.Context, s *osJob) {
 		return
 	}
 	if s.OS.Step == "done" {
-		a.osJobFinish(s, ha.UpFailed, s.OS.Msg, true)
+		if s.OS.Failed {
+			a.osJobFinish(s, ha.UpFailed, s.OS.Msg, true)
+		} else { // nichts zu tun: Ziel erreicht
+			a.osJobFinish(s, ha.UpDone, s.OS.Msg, true)
+		}
 		return
 	}
 	j.Phase, j.PhaseAt = ha.UpCountdown, a.now()
@@ -329,14 +344,12 @@ func (a *updateAgent) osJobLocked(ctx context.Context, s *osJob) {
 			a.osJobAbandon(ctx, s, "Sicherung vor dem Update fehlgeschlagen: "+err.Error())
 			return
 		}
-		a.osj.mu.Lock()
-		aborted := a.osj.job.Job.AbortedBy
-		a.osj.mu.Unlock()
-		if aborted != "" {
-			a.osJobAbandon(ctx, s, "Abgebrochen von "+aborted)
-			return
+		if h := a.osBeforeInstall; h != nil {
+			h()
 		}
-		s.OS.Step = "install" // pdh steht schon
+		if aborted := a.osJobBeginInstall(s); aborted != "" {
+			a.osJobAbandon(ctx, s, "Abgebrochen von "+aborted)
+		}
 		return
 	case "reboot":
 		// nie neu starten, solange eine Netz-Änderung auf Bestätigung oder Rücknahme wartet
@@ -369,6 +382,30 @@ func (a *updateAgent) osJobLocked(ctx context.Context, s *osJob) {
 		*s = a.osj.job
 		a.osj.mu.Unlock()
 	}
+}
+
+// osJobBeginInstall schaltet auf „install“ um und entscheidet dabei unteilbar über einen
+// Abbruch (abortOSJob nimmt dieselbe Sperre): entweder gewinnt der Abbruch (Rückgabe: Name,
+// es wird nicht eingespielt) oder er wird danach mit „Abbruch nicht mehr möglich“ abgelehnt.
+func (a *updateAgent) osJobBeginInstall(s *osJob) (abortedBy string) {
+	a.osj.saveMu.Lock()
+	defer a.osj.saveMu.Unlock()
+	a.osj.mu.Lock()
+	cur := a.osj.job
+	if cur.Job.ID == s.Job.ID && cur.Job.AbortedBy != "" {
+		a.osj.mu.Unlock()
+		s.Job.AbortedBy = cur.Job.AbortedBy
+		return cur.Job.AbortedBy
+	}
+	s.OS.Step = "install" // pdh steht schon
+	s.Job.OSStep = "install"
+	s.Job.Seq = max(cur.Job.Seq, s.Job.Seq) + 1
+	a.osj.job = *s
+	a.osj.mu.Unlock()
+	if err := writeStateJSON(osJobFile(), *s); err != nil {
+		log.Printf("betriebssystem: os-job.json nicht gespeichert: %v", err)
+	}
+	return ""
 }
 
 // osJobAbandon: Fehler vor dem Einspielen – Datenbank unverändert, Sperr-Vermerk weg, pdh wieder an.
