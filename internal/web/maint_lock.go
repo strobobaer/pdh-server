@@ -601,6 +601,14 @@ func (h *Handler) maintActionPost(w http.ResponseWriter, r *http.Request, confir
 		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "msg": msg})
 		return
 	}
+	// Karte „Betriebssystem“ der Core-Einstellungen: dorthin zurück (nur dieses eine lokale Ziel erlaubt)
+	if r.FormValue("return") == "/core/settings" {
+		if err != nil {
+			msg = err.Error()
+		}
+		http.Redirect(w, r, "/core/settings?"+url.Values{"notice": {msg}}.Encode()+"#os-update", http.StatusSeeOther)
+		return
+	}
 	drRedirect(w, r, msg, err)
 }
 

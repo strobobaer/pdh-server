@@ -44,7 +44,7 @@
   </div>
   {{if $.CanAbort}}
   <div class="os-acts">
-    <form method="post" action="/wartung/abbrechen" onsubmit="return confirm({{t "Betriebssystem-Update abbrechen?"}})"><button class="btn btn-small" type="submit"><i class="ti ti-player-stop"></i> {{t "Abbrechen"}}</button></form>
+    <form method="post" action="/wartung/abbrechen" onsubmit="return confirm({{t "Betriebssystem-Update abbrechen?"}})"><input type="hidden" name="return" value="/core/settings"><button class="btn btn-small" type="submit"><i class="ti ti-player-stop"></i> {{t "Abbrechen"}}</button></form>
   </div>
   {{end}}
   {{end}}

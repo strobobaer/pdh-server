@@ -22,6 +22,12 @@ const (
 	keyOSLastLogged = "os_update_last_logged" // letzter protokollierter Lauf (Zeitstempel des Agenten)
 )
 
+// Zeitgrenzen der Agent-Anfragen (Tests verkürzen sie)
+var (
+	osStatusTimeout  = 3 * time.Second
+	osInstallTimeout = 30 * time.Second
+)
+
 type osPackageView struct {
 	Name, Old, New string
 	Security       bool
@@ -103,7 +109,7 @@ func (h *Handler) osUpdateViewFor(ctx context.Context, r *http.Request) *osView 
 		v.Err = tr(lang, "Der Update-Agent ist nicht eingerichtet.")
 		return v
 	}
-	ctx, cancel := context.WithTimeout(ctx, 8*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, osStatusTimeout)
 	defer cancel()
 	code, body, err := h.agentRaw(ctx, http.MethodGet, "/v1/os/status", nil)
 	switch {
@@ -197,7 +203,8 @@ func osNotice(w http.ResponseWriter, r *http.Request, msg string) {
 // osGuard: Recht prüfen (die Gate-Regel tut dasselbe vor dem Handler) und Agent verlangen.
 func (h *Handler) osGuard(w http.ResponseWriter, r *http.Request) (lang string, ok bool) {
 	lang = h.requestLang(r)
-	if !h.hasPerm(r, permOSUpdate) {
+	// wie die Seite (system.manage_roles) und zusätzlich das eigene Recht
+	if !h.canManageRoles(r) || !h.hasPerm(r, permOSUpdate) {
 		http.Error(w, tr(lang, "Keine Berechtigung"), http.StatusForbidden)
 		return lang, false
 	}
@@ -237,8 +244,14 @@ func (h *Handler) OSUpdateInstallWeb(w http.ResponseWriter, r *http.Request) {
 	_ = r.ParseForm()
 	// erzwingen nur mit dem Einmal-Token der Rückfrage desselben Benutzers
 	force := r.FormValue("force") == "1" && updateAskConsume(getUser(r).ID, r.FormValue("token"))
-	code, body, err := h.agentRaw(r.Context(), http.MethodPost, "/v1/os/job/start", map[string]bool{"force": force})
+	ctx, cancel := context.WithTimeout(r.Context(), osInstallTimeout)
+	defer cancel()
+	code, body, err := h.agentRaw(ctx, http.MethodPost, "/v1/os/job/start", map[string]bool{"force": force})
 	if err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			osNotice(w, r, tr(lang, "Der Update-Agent hat nicht rechtzeitig geantwortet – bitte die Seite neu laden und den Stand prüfen."))
+			return
+		}
 		osNotice(w, r, err.Error())
 		return
 	}

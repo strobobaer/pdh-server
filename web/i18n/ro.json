@@ -1183,5 +1183,6 @@
  "aktuell": "la zi",
  "beim PDH-Update mit aktualisieren": "actualizează și la actualizarea PDH",
  "davon %d Sicherheit": "dintre care %d de securitate",
- "ok": "ok"
+ "ok": "ok",
+ "Der Update-Agent hat nicht rechtzeitig geantwortet – bitte die Seite neu laden und den Stand prüfen.": "Agentul de actualizare nu a răspuns la timp – reîncarcă pagina și verifică starea."
 }

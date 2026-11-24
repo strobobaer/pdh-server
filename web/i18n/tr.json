@@ -1183,5 +1183,6 @@
  "aktuell": "güncel",
  "beim PDH-Update mit aktualisieren": "PDH güncellemesinde birlikte güncelle",
  "davon %d Sicherheit": "bunlardan %d güvenlik",
- "ok": "tamam"
+ "ok": "tamam",
+ "Der Update-Agent hat nicht rechtzeitig geantwortet – bitte die Seite neu laden und den Stand prüfen.": "Güncelleme aracısı zamanında yanıt vermedi – lütfen sayfayı yenileyin ve durumu kontrol edin."
 }

@@ -394,3 +394,62 @@ func TestOSProgressTitle(t *testing.T) {
 		t.Errorf("Titel: %s", sb.String())
 	}
 }
+
+// Fix 1: nur system.os_update genügt nicht – die Seite verlangt system.manage_roles, die Routen auch.
+func TestOSRoutesNeedManageRoles(t *testing.T) {
+	h, a := osHandler(t, osStatusBody(""), "system.manage_roles")
+	routes := []string{"/core/settings/os-update/check", "/core/settings/os-update/install", "/core/settings/os-update/config"}
+	for i, fn := range []http.HandlerFunc{h.OSUpdateCheckWeb, h.OSUpdateInstallWeb, h.OSUpdateConfigWeb} {
+		rec := httptest.NewRecorder()
+		fn(rec, osReq(routes[i], url.Values{"with_pdh_update": {"1"}}))
+		if rec.Code != http.StatusForbidden {
+			t.Errorf("%s ohne Rollenverwaltung: %d", routes[i], rec.Code)
+		}
+	}
+	if len(a.calls) != 0 {
+		t.Errorf("Agent gerufen: %v", a.calls)
+	}
+}
+
+// Fix 2: Abbrechen von der Karte führt zurück auf die Core-Einstellungen; fremde Ziele werden ignoriert.
+func TestOSAbortReturnsToCoreSettings(t *testing.T) {
+	h, _ := maintTestHandler(t, osAbortView("countdown"))
+	h.mlock.abort = func(context.Context, string) error { return nil }
+	hd, _ := maintPlain(h)
+	tok := maintToken(t, "admin", time.Now())
+	for ret, want := range map[string]string{"/core/settings": "/core/settings?", "https://evil.example/": "/admin/server-config", "//evil.example": "/admin/server-config"} {
+		rec := maintDo(hd, maintReq{method: "POST", path: "/wartung/abbrechen", body: "return=" + url.QueryEscape(ret), tok: tok, hdr: htmlAccept})
+		loc := rec.Header().Get("Location")
+		if rec.Code != http.StatusSeeOther || !strings.HasPrefix(loc, want) {
+			t.Errorf("return=%q: %d %q, erwartet Präfix %q", ret, rec.Code, loc, want)
+		}
+		if ret == "/core/settings" && !strings.Contains(loc, "notice=") {
+			t.Errorf("Hinweis fehlt: %q", loc)
+		}
+	}
+}
+
+// Fix 3 und 4: Zeitgrenzen – Seite rendert trotz langsamem Agenten, Installieren meldet Zeitüberschreitung lesbar.
+func TestOSSlowAgent(t *testing.T) {
+	old := osStatusTimeout
+	osStatusTimeout = 100 * time.Millisecond
+	defer func() { osStatusTimeout = old }()
+	h := mwHandler()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { time.Sleep(600 * time.Millisecond) }))
+	defer srv.Close()
+	h.updateAgentURL, h.updateAgentToken = srv.URL, "tok"
+	start := time.Now()
+	v := h.osUpdateViewFor(context.Background(), mwReq("/core/settings", nil))
+	if time.Since(start) > 500*time.Millisecond || v.Err == "" {
+		t.Errorf("Status wartet zu lange (%v) oder ohne Hinweis: %q", time.Since(start), v.Err)
+	}
+	oldI := osInstallTimeout
+	osInstallTimeout = 100 * time.Millisecond
+	defer func() { osInstallTimeout = oldI }()
+	rec := httptest.NewRecorder()
+	h.OSUpdateInstallWeb(rec, osReq("/core/settings/os-update/install", nil))
+	loc, _ := url.Parse(rec.Header().Get("Location"))
+	if rec.Code != http.StatusSeeOther || !strings.Contains(loc.Query().Get("notice"), "nicht rechtzeitig") {
+		t.Errorf("Installieren: %d %q", rec.Code, rec.Header().Get("Location"))
+	}
+}
