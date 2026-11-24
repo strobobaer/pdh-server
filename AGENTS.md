@@ -912,7 +912,18 @@ und 3 drückt bis auf Weiteres der Anwender.
     Teile: 1 schneller Seitenaufbau (Entwurf
     `docs/superpowers/specs/2026-11-24-seitenaufbau-design.md`, Weg 1 „Symbole
     als SVG“ gewählt), 2 gleiche Bausteine, 3 Ordnung der Navigation,
-    4 Schnellstart und Widgets, 5 Ingress für Zusatzdienste.
+    4 Schnellstart und Widgets, 5 Ingress für Zusatzdienste, 6 Folien wie
+    PowerPoint. Weitere Vorgaben (Anwender 24.11.2026): „Copilot wie in
+    Microsoft rechte Seitenleiste. Reiter für Untermenüs wie die Tabs von Edge.
+    Navigation wie die Nennleistung in Microsoft, Ingress als Mittelframe,
+    Filter wie Tabs und Folien wie PowerPoint-Präsentation und erstellen wie in
+    PowerPoint mit viel Schnickschnack zum Einblenden und Überblenden, bedienbar
+    per Touch und herkömmlich“. Nachgefragt und entschieden: Navigation
+    „Beides – Menüband für Funktionen wie Speichern, Öffnen, Einstellungen,
+    Ansichten, Anpassung, Darstellungsbearbeitung“ (links Navigationsleiste für
+    die Bereiche, oben Menüband mit den Funktionen der Seite); Reiter wie Edge
+    „Beides“ (Unterseiten als feste Reiter, geöffnete Vorgänge als eigene,
+    schließbare Reiter).
 25. **0.82.48 Wartung: Jahresplan im Kalender, Auftrag mit Vorlauf** (Wunsch des
     Anwenders vom 23.11.2026: Personalplanung; Knopf „Jahresplan erzeugen“,
     nur der nächste Termin wird 5 Arbeitstage vorher automatisch zum
