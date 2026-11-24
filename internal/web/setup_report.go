@@ -218,7 +218,11 @@ func setupShares(sums []setupReasonSum, color func(key string) string) []setupPi
 	var other setupPieSlice
 	for i, s := range rs {
 		if i < setupPieMax {
-			out = append(out, setupPieSlice{Label: s.Name, Value: val(s), Count: s.Count, Color: color(s.Key)})
+			c := setupPiePalette[i%len(setupPiePalette)] // ohne feste Zuordnung: nach Rang im Diagramm
+			if color != nil {
+				c = color(s.Key)
+			}
+			out = append(out, setupPieSlice{Label: s.Name, Value: val(s), Count: s.Count, Color: c})
 			continue
 		}
 		other.Value += val(s)
@@ -249,8 +253,11 @@ func setupPies(groups []setupPlantGroup) []setupPie {
 	for i, t := range totals {
 		rank[t.Key] = i
 	}
-	color := func(key string) string {
-		return setupPiePalette[rank[key]%len(setupPiePalette)]
+	// Bis acht Gründe insgesamt hat jeder Grund in allen Diagrammen dieselbe Farbe; bei mehr Gründen
+	// bekommt jedes Diagramm die Farben nach Rang darin, damit nie zwei Stücke einer Torte gleich sind.
+	var color func(string) string
+	if len(totals) <= len(setupPiePalette) {
+		color = func(key string) string { return setupPiePalette[rank[key]] }
 	}
 	all := setupShares(totals, color)
 	if len(all) == 0 {

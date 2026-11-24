@@ -753,7 +753,7 @@
               else showMsg((d && d.message) || 'Anmeldung fehlgeschlagen');
             })
             .catch(function () { if (g === gen) showMsg('Anmeldung fehlgeschlagen'); }) // Netzfehler
-            .then(function () { clearInputs(!good); render(); }); // Eingaben nach jedem Versuch leeren; blurren nur nach Erfolg
+            .then(function () { clearInputs(!good); if (!good) padEvent('open'); render(); }); // Eingaben nach jedem Versuch leeren; blurren nur nach Erfolg
         };
 
         // Ziffernfeld: 0–9, A–F, Löschen, OK (Tasten mindestens 64 px, siehe .t-keypad)
