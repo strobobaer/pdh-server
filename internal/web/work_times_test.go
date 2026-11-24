@@ -321,12 +321,12 @@ func TestWorkTimesRender(t *testing.T) {
 		t.Errorf("schreibgeschützt/geerbt falsch: %s", s)
 	}
 
-	d := DowntimePageData{WorkTime: true, Days: 7, Total: 2, Duration: "2 Std.", Planned: "15 Std.", Share: "13,3 %", NoPlan: 1,
+	d := DowntimePageData{WorkTime: true, Days: 7, Total: 2, Duration: "2 Std.", Planned: "15 Std.", Share: "13,3 %", NoPlan: 1, OutsideCount: 3, Outside: "2 Std.",
 		BasisOpts: []downtimeChoice{{"1", "Nur Arbeitszeit", true}, {"0", "Gesamte Zeit (Rohsummen)", false}},
 		Rows:      []downtimeRow{{Name: "Material fehlt", Count: 2, Duration: "2 Std.", Avg: "1 Std.", Pct: 100, Share: "13,3 %"}},
 		PlantRows: []downtimePlantRow{{Plant: "Halle / Linie", Reason: "Material fehlt", Count: 2, Duration: "2 Std.", Share: "13,3 %"}}}
 	page := renderPage(t, tmpl, "downtime", d)
-	for _, want := range []string{"Anteil an der Arbeitszeit", "13,3 %", "Je Anlage und Grund", "Gesamte Zeit (Rohsummen)", "ganzen Dauer"} {
+	for _, want := range []string{"Anteil an der Arbeitszeit", "13,3 %", "Je Anlage und Grund", "Gesamte Zeit (Rohsummen)", "ganzen Dauer", "3 Stillstände / 2 Std. außerhalb der Arbeitszeit nicht gezählt"} {
 		if !strings.Contains(page, want) {
 			t.Errorf("Stillstandsseite enthält %q nicht", want)
 		}
@@ -334,5 +334,49 @@ func TestWorkTimesRender(t *testing.T) {
 	d.WorkTime = false
 	if page := renderPage(t, tmpl, "downtime", d); strings.Contains(page, "<th>Anteil an der Arbeitszeit") || strings.Contains(page, "ganzen Dauer") {
 		t.Error("Rohsummen zeigen Arbeitszeit-Spalte")
+	}
+}
+
+// Überlappende Pausen werden nicht doppelt abgezogen; neue überlappende Pausen werden abgelehnt.
+func TestWorkOverlappingBreaks(t *testing.T) {
+	s := shift(1, "06:00", "14:00", "09:00", "10:00", "09:30", "10:30")
+	if m := s.netMinutes(); m != 8*60-90 {
+		t.Errorf("Netto %d Minuten, erwartet 390", m)
+	}
+	if !s.breakOverlaps(hm("10:15"), hm("11:00")) || s.breakOverlaps(hm("10:30"), hm("11:00")) {
+		t.Error("Überschneidung falsch erkannt")
+	}
+	p := &workPlan{Defined: true, Shifts: []workShift{s}}
+	iv := p.intervals(wtAt(2026, 11, 23, 0, 0), wtAt(2026, 11, 24, 0, 0), workLocation)
+	if m := plannedWorkMinutes(iv); !near(m, 390) {
+		t.Errorf("Arbeitszeit %v", m)
+	}
+}
+
+// Eine Nachtschicht vom Vortag wird an einem als geschlossen markierten Tag um Mitternacht beendet.
+func TestWorkClosedNextDayCutsNightShift(t *testing.T) {
+	p := &workPlan{Defined: true, Shifts: []workShift{shift(5, "22:00", "06:00")}, Exceptions: []workException{{Day: "2026-11-28", Closed: true}}}
+	iv := p.intervals(wtAt(2026, 11, 27, 0, 0), wtAt(2026, 11, 29, 0, 0), workLocation)
+	if m := plannedWorkMinutes(iv); !near(m, 120) {
+		t.Errorf("%v Minuten, erwartet 120", m)
+	}
+}
+
+// Stillstand ganz oder teilweise außerhalb der Arbeitszeit wird mitgezählt (Hinweiszeile), nicht verschluckt.
+func TestDowntimeOutsideTracked(t *testing.T) {
+	plan := &workPlan{Defined: true, Shifts: []workShift{shift(1, "06:00", "14:00")}}
+	iv := plan.intervals(wtAt(2026, 11, 23, 0, 0), wtAt(2026, 11, 24, 0, 0), workLocation)
+	work := map[string]plantWork{"a": {true, iv}, "n": {false, nil}}
+	ivs := []stillstand.Interval{
+		{InfraID: "a", Reason: "X", Start: wtAt(2026, 11, 23, 15, 0), End: wtAt(2026, 11, 23, 16, 0)},
+		{InfraID: "a", Reason: "X", Start: wtAt(2026, 11, 23, 13, 0), End: wtAt(2026, 11, 23, 15, 0)},
+		{InfraID: "n", Reason: "X", Start: wtAt(2026, 11, 23, 15, 0), End: wtAt(2026, 11, 23, 16, 0)},
+	}
+	a := aggregateDowntime(ivs, work, true)
+	if a.OutsideCount != 1 || !near(a.OutsideMinutes, 60+60) || a.Count != 2 {
+		t.Errorf("%+v", a)
+	}
+	if r := aggregateDowntime(ivs, work, false); r.OutsideCount != 0 {
+		t.Error("Rohsumme zählt außerhalb")
 	}
 }

@@ -119,12 +119,14 @@ type DowntimePageData struct {
 	Running  int
 	Period   string
 
-	WorkTime  bool               // nur Stillstand innerhalb der Arbeitszeit zählen (sonst Rohsummen)
-	BasisOpts []downtimeChoice   // Auswahl „Zeitbasis“
-	Planned   string             // geplante Arbeitszeit der gewählten Anlagen im Zeitraum
-	Share     string             // Anteil des Stillstands an der geplanten Arbeitszeit
-	NoPlan    int                // Anlagen ohne Arbeitszeiten (zählen mit der ganzen Zeit)
-	PlantRows []downtimePlantRow // je Anlage und Grund
+	WorkTime     bool               // nur Stillstand innerhalb der Arbeitszeit zählen (sonst Rohsummen)
+	BasisOpts    []downtimeChoice   // Auswahl „Zeitbasis“
+	Planned      string             // geplante Arbeitszeit der gewählten Anlagen im Zeitraum
+	Share        string             // Anteil des Stillstands an der geplanten Arbeitszeit
+	OutsideCount int                // Stillstände ganz außerhalb der Arbeitszeit (nicht gezählt)
+	Outside      string             // Dauer außerhalb der Arbeitszeit (nicht gezählt)
+	NoPlan       int                // Anlagen ohne Arbeitszeiten (zählen mit der ganzen Zeit)
+	PlantRows    []downtimePlantRow // je Anlage und Grund
 }
 
 // DowntimePage: GET /downtime[?days=7|30|90][&infra=<Anlage>] – Stillstände je Grund.
@@ -195,13 +197,14 @@ func (h *Handler) DowntimePage(w http.ResponseWriter, r *http.Request) {
 			d.Running, _ = ds.RunningCount(ctx, ids)
 			// Arbeitszeit je Anlage (wie plantWorkIntervals, mit dem Wissen, ob es überhaupt Zeiten gibt)
 			work := map[string]plantWork{}
+			plans, err := h.loadWorkPlans(ctx, ids)
+			if err != nil {
+				componentLog("stillstand").Error().Err(err).Msg("arbeitszeiten laden")
+				http.Error(w, "Die Daten konnten nicht geladen werden.", http.StatusInternalServerError)
+				return
+			}
 			for _, id := range ids {
-				p, err := h.loadWorkPlan(ctx, id)
-				if err != nil {
-					componentLog("stillstand").Error().Err(err).Str("anlage", id).Msg("arbeitszeiten laden")
-					http.Error(w, "Die Daten konnten nicht geladen werden.", http.StatusInternalServerError)
-					return
-				}
+				p := plans[id]
 				work[id] = plantWork{Has: p.Defined, Iv: p.intervals(since, now, workLocation)}
 				if !p.Defined {
 					d.NoPlan++
@@ -209,6 +212,9 @@ func (h *Handler) DowntimePage(w http.ResponseWriter, r *http.Request) {
 			}
 			a := aggregateDowntime(ivs, work, d.WorkTime)
 			d.Total = a.Count
+			if d.WorkTime && (a.OutsideCount > 0 || a.OutsideMinutes > 0) {
+				d.OutsideCount, d.Outside = a.OutsideCount, downtimeDuration(a.OutsideMinutes)
+			}
 			d.Duration = downtimeDuration(a.Minutes)
 			d.Planned = downtimeDuration(a.Planned)
 			if d.WorkTime && a.Planned > 0 {
@@ -272,8 +278,11 @@ type downtimeAgg struct {
 	Minutes     float64
 	WorkMinutes float64
 	Planned     float64
-	Reasons     []downtimeAggRow // je Grund, längste zuerst
-	Plants      []downtimeAggRow // je Anlage und Grund, längste zuerst
+
+	OutsideCount   int              // Arbeitszeit-Modus: Stillstände, die ganz außerhalb der Arbeitszeit lagen (nicht gezählt)
+	OutsideMinutes float64          // Arbeitszeit-Modus: Dauer außerhalb der Arbeitszeit (Anlagen mit Arbeitszeiten), nicht gezählt
+	Reasons        []downtimeAggRow // je Grund, längste zuerst
+	Plants         []downtimeAggRow // je Anlage und Grund, längste zuerst
 }
 
 type downtimeAggRow struct {
@@ -314,7 +323,9 @@ func aggregateDowntime(ivs []stillstand.Interval, work map[string]plantWork, wor
 		}
 		m := full
 		if workTime && pw.Has {
+			a.OutsideMinutes += full - inWork
 			if inWork <= 0 {
+				a.OutsideCount++
 				continue
 			}
 			m = inWork

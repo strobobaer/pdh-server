@@ -7,6 +7,7 @@ package web
 
 import (
 	"context"
+	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
@@ -33,7 +34,7 @@ func TestWorkTimesInheritance(t *testing.T) {
 	line := e.infra("AZLinie", "", hall)
 	plant := e.infra("AZAnlage", "", line)
 	e.t.Cleanup(func() { e.pool.Exec(context.Background(), `DELETE FROM infrastructure WHERE id = $1::uuid`, hall) })
-	h := &Handler{db: e.pool}
+	h := &Handler{db: e.pool, hasPermHook: func(*http.Request, string) bool { return true }}
 	ctx := e.ctx
 	mon := time.Date(2026, 11, 23, 0, 0, 0, 0, workLocation)
 	week := mon.AddDate(0, 0, 7)
@@ -88,7 +89,7 @@ func TestWorkTimesInheritance(t *testing.T) {
 	if !p.Defined || p.Own || p.SourceID != hall || p.SourceName != "AZHalle"+e.sfx {
 		t.Errorf("Herkunft: %+v", p)
 	}
-	tab := h.infraWorkTab(ctx, plant)
+	tab := h.infraWorkTab(ctx, plant, true)
 	if !tab.Defined || tab.Own || tab.SourceName != "AZHalle"+e.sfx || tab.Count != 5 {
 		t.Errorf("Reiter geerbt: %+v", tab)
 	}
@@ -197,7 +198,7 @@ func TestWorkTimesFromShiftModel(t *testing.T) {
 	model := e.id(`INSERT INTO shift_models (name, description, active) VALUES ($1, '', true) RETURNING id::text`, "AZ Modell"+e.sfx)
 	e.t.Cleanup(func() { e.pool.Exec(context.Background(), `DELETE FROM shift_models WHERE id = $1::uuid`, model) })
 	e.exec(`INSERT INTO shift_definitions (model_id, name, short_name, start_time, end_time) VALUES ($1::uuid, 'Früh', 'F', '06:00', '14:00'), ($1::uuid, 'Nacht', 'N', '22:00', '06:00')`, model)
-	h := &Handler{db: e.pool}
+	h := &Handler{db: e.pool, hasPermHook: func(*http.Request, string) bool { return true }}
 	e.must(workAct(t, h, plant, "own_on"))
 	e.must(workAct(t, h, plant, "model_copy", "model_id", model, "weekday", "1", "weekday", "2"))
 	p, err := h.loadWorkPlan(e.ctx, plant)
@@ -225,7 +226,7 @@ func TestWorkTimesDowntimeAggregate(t *testing.T) {
 		e.pool.Exec(bg, `DELETE FROM downtimes WHERE infrastructure_id = $1::uuid`, plant)
 		e.pool.Exec(bg, `DELETE FROM infrastructure WHERE id = $1::uuid`, hall)
 	})
-	h := &Handler{db: e.pool}
+	h := &Handler{db: e.pool, hasPermHook: func(*http.Request, string) bool { return true }}
 	e.must(workAct(t, h, hall, "own_on"))
 	e.must(workAct(t, h, hall, "shift_add", "day", "1", "start", "06:00", "end", "14:00"))
 	var sid string
@@ -251,5 +252,59 @@ func TestWorkTimesDowntimeAggregate(t *testing.T) {
 	}
 	if raw := aggregateDowntime(ivs, work, false); raw.Count != 3 || !near(raw.Minutes, 120+30+90) {
 		t.Errorf("Rohsumme: %+v", raw)
+	}
+}
+
+func TestWorkTimesLimitsAndBulk(t *testing.T) {
+	e := newATEnv(t)
+	hall := e.id(`INSERT INTO infrastructure (name, type) VALUES ($1, 'building') RETURNING id::text`, "AZLHalle"+e.sfx)
+	plant := e.infra("AZLAnlage", "", hall)
+	other := e.infra("AZLOhne", "", "")
+	e.t.Cleanup(func() { e.pool.Exec(context.Background(), `DELETE FROM infrastructure WHERE id = $1::uuid`, hall) })
+	h := &Handler{db: e.pool, hasPermHook: func(*http.Request, string) bool { return true }}
+	e.must(workAct(t, h, hall, "own_on"))
+	for i := 0; i < workMaxShiftsPerDay; i++ {
+		e.must(workAct(t, h, hall, "shift_add", "day", "2", "start", fmtMin(i*60), "end", fmtMin(i*60+30)))
+	}
+	if err := workAct(t, h, hall, "shift_add", "day", "2", "start", "20:00", "end", "21:00"); err == nil || !strings.Contains(err.Error(), "höchstens") {
+		t.Errorf("Schichtgrenze: %v", err)
+	}
+	var sid string
+	e.must(e.pool.QueryRow(e.ctx, `SELECT id::text FROM plant_shifts WHERE infrastructure_id = $1::uuid AND start_time = '00:00'`, hall).Scan(&sid))
+	e.must(workAct(t, h, hall, "break_add", "shift_id", sid, "start", "00:05", "end", "00:10"))
+	if err := workAct(t, h, hall, "break_add", "shift_id", sid, "start", "00:08", "end", "00:12"); err == nil {
+		t.Error("überlappende Pause angenommen")
+	}
+	for i := 1; i < workMaxBreaksPerShift; i++ {
+		e.must(workAct(t, h, hall, "break_add", "shift_id", sid, "start", fmtMin(10+i*2), "end", fmtMin(11+i*2)))
+	}
+	if err := workAct(t, h, hall, "break_add", "shift_id", sid, "start", "00:28", "end", "00:29"); err == nil {
+		t.Error("Pausengrenze nicht geprüft")
+	}
+	e.exec(`INSERT INTO plant_work_exceptions (infrastructure_id, day) SELECT $1::uuid, date '2030-01-01' + g FROM generate_series(1, $2::int) g`, hall, workMaxExceptions)
+	if err := workAct(t, h, hall, "exc_add", "day", "2031-01-01", "mode", "closed"); err == nil {
+		t.Error("Ausnahmegrenze nicht geprüft")
+	}
+	plans, err := h.loadWorkPlans(e.ctx, []string{plant, other, hall})
+	e.must(err)
+	if !plans[plant].Defined || plans[plant].Own || plans[plant].SourceID != hall || !plans[hall].Own || plans[other].Defined {
+		t.Errorf("Sammelladen: %+v %+v %+v", plans[plant], plans[hall], plans[other])
+	}
+	model := e.id(`INSERT INTO shift_models (name, description, active) VALUES ($1, '', true) RETURNING id::text`, "AZL Modell"+e.sfx)
+	e.t.Cleanup(func() { e.pool.Exec(context.Background(), `DELETE FROM shift_models WHERE id = $1::uuid`, model) })
+	e.exec(`INSERT INTO shift_definitions (model_id, name, short_name, start_time, end_time) VALUES ($1::uuid, 'F', 'F', '06:00', '14:00')`, model)
+	e.must(workAct(t, h, plant, "own_on"))
+	e.must(workAct(t, h, plant, "model_copy", "model_id", model, "weekday", "1"))
+	if err := workAct(t, h, plant, "model_copy", "model_id", model, "weekday", "1"); err == nil {
+		t.Error("doppelte Übernahme angenommen")
+	}
+	var n int
+	e.must(e.pool.QueryRow(e.ctx, `SELECT count(*) FROM plant_shifts WHERE infrastructure_id = $1::uuid AND weekday = 1 AND start_time = '06:00'`, plant).Scan(&n))
+	if n != 1 {
+		t.Errorf("%d Schichten statt 1", n)
+	}
+	h2 := &Handler{db: e.pool, hasPermHook: func(*http.Request, string) bool { return false }}
+	if err := workAct(t, h2, plant, "model_copy", "model_id", model, "weekday", "3"); err == nil {
+		t.Error("Übernahme ohne Recht")
 	}
 }

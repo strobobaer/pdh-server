@@ -208,6 +208,59 @@ func (p *workPlan) shiftsFor(y int, m time.Month, d int, loc *time.Location) []w
 	return out
 }
 
+// closedDay: der Kalendertag ist als Ausnahme „geschlossen“ eingetragen.
+func (p *workPlan) closedDay(y int, m time.Month, d int, loc *time.Location) bool {
+	key := time.Date(y, m, d, 12, 0, 0, 0, loc).Format("2006-01-02")
+	for _, e := range p.Exceptions {
+		if e.Day == key {
+			return e.Closed
+		}
+	}
+	return false
+}
+
+// breakRanges: die Pausen als zusammengefasste Bereiche in Minuten ab Schichtbeginn (auf die Schicht begrenzt).
+func (s workShift) breakRanges() [][2]int {
+	l := shiftLen(s.StartMin, s.EndMin)
+	var r [][2]int
+	for _, b := range s.Breaks {
+		off := ((b.StartMin-s.StartMin)%1440 + 1440) % 1440
+		end := off + shiftLen(b.StartMin, b.EndMin)
+		if end > l {
+			end = l
+		}
+		if end > off {
+			r = append(r, [2]int{off, end})
+		}
+	}
+	sort.Slice(r, func(i, j int) bool { return r[i][0] < r[j][0] })
+	var out [][2]int
+	for _, x := range r {
+		if n := len(out); n > 0 && x[0] <= out[n-1][1] {
+			if x[1] > out[n-1][1] {
+				out[n-1][1] = x[1]
+			}
+			continue
+		}
+		out = append(out, x)
+	}
+	return out
+}
+
+// breakOverlaps: überschneidet die neue Pause bs–be eine vorhandene Pause der Schicht?
+func (s workShift) breakOverlaps(bs, be int) bool {
+	off := ((bs-s.StartMin)%1440 + 1440) % 1440
+	end := off + shiftLen(bs, be)
+	for _, b := range s.Breaks {
+		o := ((b.StartMin-s.StartMin)%1440 + 1440) % 1440
+		e := o + shiftLen(b.StartMin, b.EndMin)
+		if off < e && o < end {
+			return true
+		}
+	}
+	return false
+}
+
 // intervals: geplante Arbeitszeit ohne Pausen im Zeitraum [from, to], sortiert und zusammengefasst.
 func (p *workPlan) intervals(from, to time.Time, loc *time.Location) []workInterval {
 	if p == nil || !p.Defined || !to.After(from) {
@@ -221,7 +274,20 @@ func (p *workPlan) intervals(from, to time.Time, loc *time.Location) []workInter
 	for n := 0; !day.After(last) && n < 4000; n++ {
 		y, m, d := day.Date()
 		for _, s := range p.shiftsFor(y, m, d, loc) {
+			// Eine Schicht über Mitternacht endet an einem als „geschlossen“ markierten Folgetag um Mitternacht.
+			cut := time.Time{}
+			if s.EndMin <= s.StartMin && p.closedDay(y, m, d+1, loc) {
+				cut = time.Date(y, m, d+1, 0, 0, 0, 0, loc)
+			}
 			for _, w := range s.segments(y, m, d, loc) {
+				if !cut.IsZero() {
+					if !w.Start.Before(cut) {
+						continue
+					}
+					if w.End.After(cut) {
+						w.End = cut
+					}
+				}
 				if w.Start.Before(from) {
 					w.Start = from
 				}
@@ -291,6 +357,56 @@ func (h *Handler) loadWorkPlan(ctx context.Context, infraID string) (*workPlan, 
 	}
 	p.Defined, p.Own = true, depth == 0
 	return p, h.fillWorkPlan(ctx, p)
+}
+
+// loadWorkPlans lädt die wirksamen Zeiten mehrerer Anlagen mit wenigen Abfragen (je Quelle einmal).
+func (h *Handler) loadWorkPlans(ctx context.Context, ids []string) (map[string]*workPlan, error) {
+	out := map[string]*workPlan{}
+	for _, id := range ids {
+		out[id] = &workPlan{}
+	}
+	if h.db == nil || len(ids) == 0 {
+		return out, nil
+	}
+	rows, err := h.db.Query(ctx, `WITH RECURSIVE up AS (
+			SELECT id AS origin, id, parent_id, 0 AS d FROM infrastructure WHERE id = ANY($1::uuid[])
+			UNION ALL SELECT up.origin, i.id, i.parent_id, up.d + 1 FROM infrastructure i JOIN up ON i.id = up.parent_id WHERE up.d < 50)
+		SELECT DISTINCT ON (up.origin) up.origin::text, up.id::text, inf.name FROM up
+		  JOIN plant_work_times w ON w.infrastructure_id = up.id JOIN infrastructure inf ON inf.id = up.id
+		 ORDER BY up.origin, up.d`, ids)
+	if err != nil {
+		return nil, err
+	}
+	type src struct{ id, name string }
+	of := map[string]src{}
+	for rows.Next() {
+		var o string
+		var x src
+		if err := rows.Scan(&o, &x.id, &x.name); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		of[o] = x
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	loaded := map[string]*workPlan{}
+	for o, x := range of {
+		base := loaded[x.id]
+		if base == nil {
+			base = &workPlan{Defined: true, SourceID: x.id, SourceName: x.name}
+			if err := h.fillWorkPlan(ctx, base); err != nil {
+				return nil, err
+			}
+			loaded[x.id] = base
+		}
+		c := *base
+		c.Own = o == x.id
+		out[o] = &c
+	}
+	return out, nil
 }
 
 func workMinExpr(col string) string {

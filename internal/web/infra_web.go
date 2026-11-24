@@ -366,7 +366,7 @@ func (h *Handler) InfraDetail(w http.ResponseWriter, r *http.Request) {
 	data.EasyTexts = h.infraEasyTexts(ctx, id)
 	data.SetupTab = h.infraSetupTab(ctx, id)
 	data.DowntimeTab = h.infraDowntimeTab(ctx, id)
-	data.WorkTab = h.infraWorkTab(ctx, id)
+	data.WorkTab = h.infraWorkTab(ctx, id, h.canPlannerView(r))
 	data.SetupState = h.setupPlantState(ctx, id)
 	if string(node.Type) == chamberType {
 		data.Chamber, data.ChamberNOK = h.chamberGroups(ctx, id)
