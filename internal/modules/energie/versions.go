@@ -357,7 +357,22 @@ func findMeter(rows []meterRow, id string) *meterRow {
 // Messstelle; dann legt SaveVersion auch den Lauf an, der die Messstelle und
 // alle, die auf ihr aufbauen, ab dem Datum neu rechnet.
 func (s *Store) SaveVersion(ctx context.Context, in VersionInput, userID string) (VersionResult, error) {
+	res, _, err := s.saveVersion(ctx, in, userID, false)
+	return res, err
+}
+
+// saveInfo: was eine Neurechnung beträfe (für die Vorschau).
+type saveInfo struct {
+	from, today time.Time
+	days        int
+	keys        []string   // Messstellen in Rechenreihenfolge
+	nextFrom    *time.Time // ab hier gilt eine spätere Fassung
+}
+
+// saveVersion ist SaveVersion; dry prüft nur und schreibt nichts.
+func (s *Store) saveVersion(ctx context.Context, in VersionInput, userID string, dry bool) (VersionResult, saveInfo, error) {
 	var res VersionResult
+	var info saveInfo
 	src := strings.TrimSpace(in.Formula)
 	from := asDay(in.ValidFrom)
 	today := s.today()
@@ -365,26 +380,26 @@ func (s *Store) SaveVersion(ctx context.Context, in VersionInput, userID string)
 
 	tx, err := s.DB.Begin(ctx)
 	if err != nil {
-		return res, err
+		return res, info, err
 	}
 	defer tx.Rollback(ctx)
 	rows, err := lockAndLoad(ctx, tx)
 	if err != nil {
-		return res, err
+		return res, info, err
 	}
 	cur := findMeter(rows, in.MeterID)
 	if cur == nil {
-		return res, ErrNotFound
+		return res, info, ErrNotFound
 	}
 	if cur.formula == "" {
-		return res, ErrNotCalc
+		return res, info, ErrNotCalc
 	}
 	runIDs, active, err := activeRun(ctx, tx)
 	if err != nil {
-		return res, err
+		return res, info, err
 	}
 	if active && (runIDs[cur.id] || (in.Recalc && !planned)) {
-		return res, ErrRecalcBusy
+		return res, info, ErrRecalcBusy
 	}
 
 	var edit *verRow
@@ -399,32 +414,32 @@ func (s *Store) SaveVersion(ctx context.Context, in VersionInput, userID string)
 	if in.VersionID != "" {
 		switch {
 		case edit == nil:
-			return res, ErrNotFound
+			return res, info, ErrNotFound
 		case !edit.validFrom.After(today):
-			return res, ErrVersionFixed
+			return res, info, ErrVersionFixed
 		case !planned: // eine geplante Fassung wandert nur auf einen anderen künftigen Tag
-			return res, ErrPastDate
+			return res, info, ErrPastDate
 		}
 	}
 	if planned {
 		for _, v := range others {
 			if v.validFrom.Equal(from) {
-				return res, &PlannedExistsError{Date: from}
+				return res, info, &PlannedExistsError{Date: from}
 			}
 		}
 	} else {
 		if !in.Recalc {
-			return res, ErrPastDate
+			return res, info, ErrPastDate
 		}
 		first, ok, err := earliestDay(ctx, tx, cur.id, s.loc())
 		if err != nil {
-			return res, err
+			return res, info, err
 		}
 		if !ok {
 			first = today
 		}
 		if from.Before(first) {
-			return res, &TooEarlyError{First: first}
+			return res, info, &TooEarlyError{First: first}
 		}
 	}
 
@@ -436,7 +451,14 @@ func (s *Store) SaveVersion(ctx context.Context, in VersionInput, userID string)
 		}
 	}
 	if err := checkFormulaSet(rows, cur.id, cur.key, cur.kind, fs, from); err != nil {
-		return res, err
+		return res, info, err
+	}
+	info.from, info.today = from, today
+	for _, v := range others {
+		if v.validFrom.After(from) && (info.nextFrom == nil || v.validFrom.Before(*info.nextFrom)) {
+			d := v.validFrom
+			info.nextFrom = &d
+		}
 	}
 
 	if planned || !in.Recalc {
@@ -450,7 +472,7 @@ func (s *Store) SaveVersion(ctx context.Context, in VersionInput, userID string)
 			res.Unchanged = true
 			vs, err := s.Versions(ctx, cur.id)
 			if err != nil {
-				return res, err
+				return res, info, err
 			}
 			id := in.VersionID
 			if id == "" {
@@ -461,7 +483,7 @@ func (s *Store) SaveVersion(ctx context.Context, in VersionInput, userID string)
 					res.Version = v
 				}
 			}
-			return res, nil
+			return res, info, nil
 		}
 	}
 
@@ -472,18 +494,18 @@ func (s *Store) SaveVersion(ctx context.Context, in VersionInput, userID string)
 		if _, err := tx.Exec(ctx, `UPDATE energy_formula_versions SET valid_from = $2::date, formula = $3,
 				created_by = NULLIF($4, '')::uuid, created_by_name = $5, created_at = clock_timestamp()
 			WHERE id = $1::uuid`, vid, sqlDay(from), src, userID, byName); err != nil {
-			return res, err
+			return res, info, err
 		}
 	} else if err := tx.QueryRow(ctx, `INSERT INTO energy_formula_versions (meter_id, valid_from, formula, created_by, created_by_name, created_at)
 			VALUES ($1::uuid, $2::date, $3, NULLIF($4, '')::uuid, $5, clock_timestamp()) RETURNING id::text`,
 		cur.id, sqlDay(from), src, userID, byName).Scan(&vid); err != nil {
-		return res, err
+		return res, info, err
 	}
 
 	if !planned {
 		// Die geltende Formel sofort auf heute stellen; die Werte rechnet der Lauf.
 		if _, err := applyVersions(ctx, tx, today); err != nil {
-			return res, err
+			return res, info, err
 		}
 		list := affected(rows, cur.key, from)
 		ids := make([]string, len(list))
@@ -492,26 +514,30 @@ func (s *Store) SaveVersion(ctx context.Context, in VersionInput, userID string)
 			ids[i], keys[i] = r.id, r.key
 		}
 		days := int(today.Sub(from).Hours()/24) + 1
+		info.days, info.keys = days, keys
 		if err := tx.QueryRow(ctx, `INSERT INTO energy_recalc_runs (meter_id, meter_ids, meter_keys, from_date, days_total,
 				state, created_by, created_by_name)
 			VALUES ($1::uuid, $2::uuid[], $3, $4::date, $5, 'running', NULLIF($6, '')::uuid, $7) RETURNING id::text`,
 			cur.id, ids, keys, sqlDay(from), days, userID, byName).Scan(&res.RunID); err != nil {
-			return res, err
+			return res, info, err
 		}
 	}
+	if dry {
+		return res, info, nil // die Transaktion wird verworfen
+	}
 	if err := tx.Commit(ctx); err != nil {
-		return res, err
+		return res, info, err
 	}
 	vs, err := s.Versions(ctx, cur.id)
 	if err != nil {
-		return res, err
+		return res, info, err
 	}
 	for _, v := range vs {
 		if v.ID == vid {
 			res.Version = v
 		}
 	}
-	return res, nil
+	return res, info, nil
 }
 
 // DeleteVersion löscht eine geplante Fassung.
