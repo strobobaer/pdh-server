@@ -16,10 +16,12 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// Store speichert Messstellen.
+// Store speichert Messstellen. Loc ist die Ortszeit der Kalendertage
+// (Fassungen, Neurechnung); nil = time.Local.
 type Store struct {
 	DB  *pgxpool.Pool
 	Now func() time.Time
+	Loc *time.Location
 }
 
 func NewStore(db *pgxpool.Pool) *Store { return &Store{DB: db, Now: time.Now} }
@@ -47,14 +49,17 @@ func ParseValue(raw string) (float64, bool) {
 	return v, true
 }
 
-// formulaScopeErr: Schreibfehler der Formel oder ErrFormulaScope, wenn sie mehr
-// nutzt als + − × ÷, Klammern und [Messstellen-ID].
-func formulaScopeErr(src string) error {
+// formulaScopeErr: Schreibfehler der Formel oder ErrFormulaScope, wenn eine
+// Messstelle der Art Zählerstand oder Verbrauch mehr nutzt als + − × ÷,
+// Klammern und [Messstellen-ID]. Momentanwerte dürfen den ganzen Rechenkern
+// nutzen (Funktionen, Vergleiche, Potenz) – bei ihnen gibt es keinen Zuwachs,
+// den das verfälschen könnte.
+func formulaScopeErr(src, kind string) error {
 	f, err := ParseFormula(src)
 	if err != nil {
 		return err
 	}
-	if f.Extended() {
+	if kind != KindInstant && f.Extended() {
 		return ErrFormulaScope
 	}
 	return nil
@@ -214,10 +219,11 @@ func (s *Store) Units(ctx context.Context) ([]string, error) {
 type meterRow struct {
 	id, key, infra, kind, formula, mapping string
 	factor                                 float64
+	vers                                   []verRow // Fassungen, aufsteigend
 }
 
 // lockAndLoad sperrt die Tabelle (Formeln dürfen nicht gleichzeitig einen
-// Zirkel bilden) und liest alle Messstellen.
+// Zirkel bilden) und liest alle Messstellen samt Fassungen.
 func lockAndLoad(ctx context.Context, tx pgx.Tx) ([]meterRow, error) {
 	if _, err := tx.Exec(ctx, `LOCK TABLE energy_meters IN SHARE ROW EXCLUSIVE MODE`); err != nil {
 		return nil, err
@@ -227,16 +233,39 @@ func lockAndLoad(ctx context.Context, tx pgx.Tx) ([]meterRow, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	var out []meterRow
+	idx := map[string]int{}
 	for rows.Next() {
 		var r meterRow
 		if err := rows.Scan(&r.id, &r.key, &r.infra, &r.kind, &r.formula, &r.mapping, &r.factor); err != nil {
+			rows.Close()
 			return nil, err
 		}
+		idx[r.id] = len(out)
 		out = append(out, r)
 	}
-	return out, rows.Err()
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	vr, err := tx.Query(ctx, `SELECT meter_id::text, id::text, valid_from, formula, created_at
+		FROM energy_formula_versions ORDER BY meter_id, valid_from, created_at, id`)
+	if err != nil {
+		return nil, err
+	}
+	defer vr.Close()
+	for vr.Next() {
+		var mid string
+		var v verRow
+		if err := vr.Scan(&mid, &v.id, &v.validFrom, &v.formula, &v.createdAt); err != nil {
+			return nil, err
+		}
+		v.validFrom = asDay(v.validFrom)
+		if i, ok := idx[mid]; ok {
+			out[i].vers = append(out[i].vers, v)
+		}
+	}
+	return out, vr.Err()
 }
 
 // dependents nennt die IDs aller berechneten Messstellen, die key direkt oder
@@ -269,22 +298,16 @@ func dependents(rows []meterRow, key string) []string {
 	return out
 }
 
-// usersOf nennt die Messstellen (außer id), in deren Formel key vorkommt.
-func usersOf(rows []meterRow, id, key string) []string {
+// usersOf nennt die Messstellen (außer id), in deren geltender oder geplanter
+// Formel (Fassungen ab today) key vorkommt.
+func usersOf(rows []meterRow, id, key string, today time.Time) []string {
 	var users []string
 	for _, r := range rows {
-		if r.id == id || r.formula == "" {
+		if r.id == id {
 			continue
 		}
-		f, err := ParseFormula(r.formula)
-		if err != nil {
-			continue
-		}
-		for _, ref := range f.Refs() {
-			if ref == key {
-				users = append(users, r.key)
-				break
-			}
+		if containsStr(refsOf(r.formulasFrom(today)), key) {
+			users = append(users, r.key)
 		}
 	}
 	sort.Strings(users)
@@ -378,38 +401,38 @@ func (s *Store) Save(ctx context.Context, m *Meter, userID string) (created bool
 			return false, ErrKeyTaken
 		}
 	}
+	if cur != nil {
+		// Messstellen einer laufenden Neurechnung bleiben, wie sie sind.
+		runIDs, active, err := activeRun(ctx, tx)
+		if err != nil {
+			return false, err
+		}
+		if active && (runIDs[cur.id] || usedByRun(rows, runIDs, cur.key)) {
+			return false, ErrRecalcBusy
+		}
+	}
+	today := s.today()
 	if cur != nil && (cur.key != key || cur.kind != m.Kind) {
-		if users := usersOf(rows, cur.id, cur.key); len(users) > 0 {
+		if users := usersOf(rows, cur.id, cur.key, today); len(users) > 0 {
 			return false, &InUseError{Users: users}
 		}
 	}
 
 	if m.Formula != "" {
-		if err := formulaScopeErr(m.Formula); err != nil {
-			return false, err
-		}
-		f, err := ParseFormula(m.Formula)
-		if err != nil {
-			return false, err
-		}
-		formulas := map[string]string{key: m.Formula}
-		known := map[string]bool{key: true}
-		for _, r := range rows {
-			if cur != nil && r.id == cur.id {
-				continue
-			}
-			known[r.key] = true
-			if r.formula != "" {
-				formulas[r.key] = r.formula
+		// Die neue Formel gilt ab heute; geplante Fassungen müssen zu Art und
+		// Bezügen weiter passen.
+		fs := []string{m.Formula}
+		curID := ""
+		if cur != nil {
+			curID = cur.id
+			for _, v := range cur.vers {
+				if v.validFrom.After(today) {
+					fs = append(fs, v.formula)
+				}
 			}
 		}
-		if err := CheckFormulas(formulas, known); err != nil {
+		if err := checkFormulaSet(rows, curID, key, m.Kind, fs, today); err != nil {
 			return false, err
-		}
-		for _, ref := range f.Refs() {
-			if r := byKey[ref]; r != nil && !kindsCompatible(m.Kind, r.kind) {
-				return false, ErrKindMix
-			}
 		}
 	}
 
@@ -433,6 +456,20 @@ func (s *Store) Save(ctx context.Context, m *Meter, userID string) (created bool
 	}
 	if err != nil {
 		return false, err
+	}
+	switch {
+	case m.Formula != "" && (cur == nil || cur.formula != m.Formula):
+		// Neue oder geänderte Formel: Fassung ab heute (gilt ab sofort).
+		if _, err := tx.Exec(ctx, `INSERT INTO energy_formula_versions (meter_id, valid_from, formula, created_by, created_by_name, created_at)
+				VALUES ($1::uuid, $2::date, $3, NULLIF($4, '')::uuid, $5, clock_timestamp())`,
+			m.ID, sqlDay(today), m.Formula, userID, userName(ctx, tx, userID)); err != nil {
+			return false, err
+		}
+	case m.Formula == "" && cur != nil && len(cur.vers) > 0:
+		// Auf eine Quelle umgestellt: die Fassungen gelten nicht mehr.
+		if _, err := tx.Exec(ctx, `DELETE FROM energy_formula_versions WHERE meter_id = $1::uuid`, cur.id); err != nil {
+			return false, err
+		}
 	}
 	m.Key = key
 	return created, tx.Commit(ctx)
@@ -459,8 +496,13 @@ func rebaseDependents(ctx context.Context, tx pgx.Tx, rows []meterRow, cur *mete
 	}
 	// Basis ist der erste Minutenwert, der schon mit der neuen Einstellung
 	// entsteht: das Ende der laufenden Minute (Werte liegen unter dem Minutenende).
-	_, err := tx.Exec(ctx, `UPDATE energy_meters SET base_at = $2 WHERE id = ANY($1::uuid[]) AND formula <> ''`,
-		ids, now.Truncate(time.Minute).Add(time.Minute))
+	at := now.Truncate(time.Minute).Add(time.Minute)
+	if _, err := tx.Exec(ctx, `UPDATE energy_meters SET base_at = $2 WHERE id = ANY($1::uuid[]) AND formula <> ''`, ids, at); err != nil {
+		return err
+	}
+	// Den Zeitpunkt festhalten: eine spätere Neurechnung hält ihn ebenso ein.
+	_, err := tx.Exec(ctx, `INSERT INTO energy_rebases (meter_id, at)
+		SELECT id, $2 FROM energy_meters WHERE id = ANY($1::uuid[]) AND formula <> '' ON CONFLICT DO NOTHING`, ids, at)
 	return err
 }
 
@@ -485,7 +527,14 @@ func (s *Store) Delete(ctx context.Context, id string) error {
 	if cur == nil {
 		return ErrNotFound
 	}
-	if users := usersOf(rows, id, cur.key); len(users) > 0 {
+	runIDs, active, err := activeRun(ctx, tx)
+	if err != nil {
+		return err
+	}
+	if active && runIDs[id] {
+		return ErrRecalcBusy
+	}
+	if users := usersOf(rows, id, cur.key, s.today()); len(users) > 0 {
 		return &InUseError{Users: users}
 	}
 	if _, err := tx.Exec(ctx, `DELETE FROM energy_meters WHERE id = $1::uuid`, id); err != nil {

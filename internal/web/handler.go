@@ -32,6 +32,7 @@ import (
 	"pdh/internal/datanet"
 	"pdh/internal/modules/calc"
 	"pdh/internal/modules/checklists"
+	"pdh/internal/modules/energie"
 	"pdh/internal/modules/extsync"
 	"pdh/internal/modules/faults"
 	"pdh/internal/modules/inventory"
@@ -358,6 +359,7 @@ type Handler struct {
 	topicSrc           topicSource // nur Tests: ersetzt den Broker für die ESPPDH-Werte (esppdh_values.go)
 	mqttImport         *mqttimport.Manager
 	calcEngine         atomic.Pointer[calc.Engine] // Rechenwerk der berechneten Werte (calc_wire.go); leer am Spiegel und in Tests
+	energyRecalc       atomic.Pointer[energie.Recalculator] // Neurechnung der Energie-Messstellen (energy_wire.go); leer am Spiegel und in Tests
 	exportCron         *scheduler.CronManager
 	importPoll         *scheduler.IntervalManager
 	syncRunner         *extsync.Runner // Abgleich mit Fremdsystemen; nil am Spiegel und in Tests (sync_wire.go)
@@ -1146,6 +1148,10 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/energy/meters/save-web", h.EnergyMeterSaveWeb)
 	r.Post("/energy/settings-web", h.EnergySettingsWeb)
 	r.Post("/energy/meters/{id}/delete-web", h.EnergyMeterDeleteWeb)
+	r.Get("/energy/meters/{id}/versions", h.EnergyMeterVersionsWeb)                       // Fassungen der Formel (Fragment)
+	r.Post("/energy/meters/{id}/versions/preview", h.EnergyMeterVersionPreviewWeb)         // was „Neu rechnen“ bewirkt
+	r.Post("/energy/meters/{id}/versions/save-web", h.EnergyMeterVersionSaveWeb)           // Fassung anlegen/ändern (JSON)
+	r.Post("/energy/meters/{id}/versions/{vid}/delete-web", h.EnergyMeterVersionDeleteWeb) // geplante Fassung löschen
 	r.Get("/energy/meters/{id}/thresholds", h.EnergyThresholdsWeb)
 	r.Post("/energy/meters/{id}/thresholds/save-web", h.EnergyThresholdSaveWeb)
 	r.Post("/energy/thresholds/{tid}/delete-web", h.EnergyThresholdDeleteWeb)

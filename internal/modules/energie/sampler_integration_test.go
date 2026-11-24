@@ -16,6 +16,13 @@ var m0 = time.Date(2026, 11, 15, 10, 0, 0, 0, time.UTC)
 func samplerEnv(t *testing.T) (*pgxpool.Pool, *Store, *Sampler, string) {
 	t.Helper()
 	pool := testPool(t)
+	// Laufende Neurechnungen hielten den Minutentakt an und sperrten neue Läufe.
+	clearRuns := func() error {
+		_, err := pool.Exec(context.Background(), `DELETE FROM energy_recalc_runs WHERE state IN ('running', 'exporting')`)
+		return err
+	}
+	must(t, clearRuns())
+	t.Cleanup(func() { _ = clearRuns() })
 	_, err := pool.Exec(context.Background(), `DELETE FROM energy_meters WHERE infrastructure_id IN
 		(SELECT id FROM infrastructure WHERE name LIKE 'EnergieTest-%')`)
 	must(t, err)

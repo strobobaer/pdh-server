@@ -37,6 +37,9 @@ dieselbe Eingabezeile (#em-edit) mit dem Infra-Picker der Anlagen.
         <td data-label="Anlage">{{.InfraPath}}</td>
         <td data-label="Quelle" class="em-src">
           {{if .Calc}}<span class="badge b-blue">berechnet</span> <code class="em-formula">{{.Formula}}</code>
+          {{if .Recalculating}}<span class="badge b-amber">wird neu gerechnet</span>{{end}}
+          <button type="button" class="btn em-ver-btn" aria-expanded="false" aria-controls="em-ver-{{.ID}}" onclick="emVer(this)" title="Fassungen der Formel mit „gültig ab“"
+            hx-get="/energy/meters/{{.ID}}/versions" hx-target="#em-ver-{{.ID}}" hx-swap="innerHTML" hx-trigger="click once"><i class="ti ti-history" aria-hidden="true"></i> Fassungen</button>
           {{else if .SourceID}}{{if .ConnectionName}}{{.ConnectionName}} · {{end}}{{.SourceLabel}}
           {{else}}<span class="em-muted">keine Quelle</span>{{end}}
         </td>
@@ -59,6 +62,7 @@ dieselbe Eingabezeile (#em-edit) mit dem Infra-Picker der Anlagen.
         </td>
       </tr>
       <tr class="em-thr-row" id="em-thr-row-{{.ID}}" hidden><td colspan="12"><div id="em-thr-{{.ID}}" class="em-thr-box"></div></td></tr>
+      {{if .Calc}}<tr class="em-thr-row" id="em-ver-row-{{.ID}}" hidden><td colspan="12"><div id="em-ver-{{.ID}}" class="em-thr-box"></div></td></tr>{{end}}
       {{else}}
       <tr><td colspan="12" class="em-empty">{{if .FilterOn}}Keine Messstelle passt zu den Filtern.{{else}}Noch keine Messstelle angelegt.{{end}}</td></tr>
       {{end}}
@@ -99,7 +103,7 @@ dieselbe Eingabezeile (#em-edit) mit dem Infra-Picker der Anlagen.
             </select>
             <div id="em-formula-box" hidden>
               <input id="em-formula" class="form-input" maxlength="2000" autocomplete="off" aria-label="Formel" placeholder="[GESAMT] - [LINIE-A] - [LINIE-B]">
-              <p class="em-hint">Bezüge stehen in eckigen Klammern. Erlaubt: + − × ÷, Klammern und Zahlen. Eine Quelle darf mehreren Messstellen zugewiesen sein.</p>
+              <p class="em-hint">Bezüge stehen in eckigen Klammern. Erlaubt: + − × ÷, Klammern und Zahlen; bei Momentanwerten auch Funktionen und Vergleiche (z. B. MAX, WENN). Ändern gilt ab sofort. Für ein anderes Datum: „Fassungen“ in der Zeile der Messstelle. Eine Quelle darf mehreren Messstellen zugewiesen sein.</p>
             </div>
           </div>
           <div class="em-checks">

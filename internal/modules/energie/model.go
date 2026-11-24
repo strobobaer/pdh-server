@@ -32,8 +32,28 @@ var (
 	// ErrCalcConsumption: ein berechneter Wert wird zusammengefasst geschrieben;
 	// eine Verbrauchs-Messstelle addiert aber jede Lesung.
 	ErrCalcConsumption = errors.New("ein berechneter Wert kann nicht Quelle einer Messstelle der Art Verbrauch sein – er wird zusammengefasst geschrieben, die Summe wäre falsch. Bitte Momentanwert oder Zählerstand wählen")
-	ErrFormulaScope    = errors.New("in der Formel einer Messstelle sind nur + − × ÷, Klammern und [Messstellen-ID] erlaubt – für Funktionen und Vergleiche einen berechneten Wert anlegen und als Quelle wählen")
+	ErrFormulaScope    = errors.New("bei Zählerständen und Verbräuchen sind in der Formel nur + − × ÷, Klammern und [Messstellen-ID] erlaubt – Funktionen und Vergleiche gehen bei Momentanwerten; sonst einen berechneten Wert anlegen und als Quelle wählen")
+
+	// Fassungen der Formel und Neurechnung.
+	ErrPastDate     = errors.New("ein Datum bis heute geht nur mit „Neu rechnen“ – ab sofort ohne Neurechnung ändert der Stift in der Zeile die Formel")
+	ErrVersionFixed = errors.New("nur eine geplante Fassung lässt sich ändern oder löschen")
+	ErrNotCalc      = errors.New("nur berechnete Messstellen haben Fassungen")
+	ErrRecalcBusy   = errors.New("es läuft gerade eine Neurechnung – bitte warten, bis sie fertig ist")
 )
+
+// PlannedExistsError: für den Tag gibt es schon eine geplante Fassung.
+type PlannedExistsError struct{ Date time.Time }
+
+func (e *PlannedExistsError) Error() string {
+	return "für den " + e.Date.Format("02.01.2006") + " ist schon eine Fassung geplant"
+}
+
+// TooEarlyError: so weit zurück gibt es keine Werte der Messstelle.
+type TooEarlyError struct{ First time.Time }
+
+func (e *TooEarlyError) Error() string {
+	return "Werte dieser Messstelle gibt es erst ab dem " + e.First.Format("02.01.2006")
+}
 
 // InUseError: die Messstelle steht in der Formel anderer Messstellen.
 type InUseError struct{ Users []string }
