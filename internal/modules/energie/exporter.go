@@ -435,6 +435,7 @@ func freeName(ctx context.Context, tx pgx.Tx, connID, name, timeBase string) (st
 // querier: Pool oder einzelne Verbindung.
 type querier interface {
 	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
 }
 

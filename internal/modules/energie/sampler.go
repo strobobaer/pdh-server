@@ -109,7 +109,12 @@ func (sm *Sampler) Pass(ctx context.Context, now time.Time) (stored, missing int
 	}
 	var orderErr error
 	for m := from; !m.After(target); m = m.Add(time.Minute) {
-		if !m.Equal(from) {
+		// Formeln auf die Fassungen stellen, die am Tag dieser Minute gelten.
+		changed, err := sm.Store.ApplyVersions(ctx, m)
+		if err != nil {
+			return stored, missing, err
+		}
+		if !m.Equal(from) || changed > 0 {
 			if meters, err = sm.load(ctx); err != nil {
 				return stored, missing, err
 			}
