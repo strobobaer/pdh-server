@@ -23,7 +23,8 @@ im Kapitel „Versionen & Updates“ an.
 
 ### Geändert
 
-- Datenbank (Migration 215, nur hinzufügend): Tabellen `attendance_events`, `work_sessions`, `attendance_history`, Spalte `time_entries.origin_via`, Schalter `terminal_settings.fn_zeiterfassung`.
+- Datenbank (Migrationen 215 und 216, nur hinzufügend): Tabellen `attendance_events`, `work_sessions`, `attendance_history`, Spalte `time_entries.origin_via`, Schalter `terminal_settings.fn_zeiterfassung`., `work_sessions.forgotten` und ein Namensfeld im Verlauf der Korrekturen (der Verlauf bleibt nach dem Löschen einer Person erhalten).
+- **Zeiterfassung, Grenzen:** Eine am Terminal vergessene, länger als 18 Stunden laufende Arbeit wird nicht mit der ganzen Dauer gebucht, sondern ohne Zeiteintrag geschlossen und in PDH als „vergessen – bitte prüfen“ angezeigt. Korrekturen der Arbeitszeit in PDH: Zeiteinträge am Vorgang ändert man nur, solange sie unbestätigt sind oder mit dem Bearbeitungsrecht am Vorgang; höchstens 24 Stunden, keine Überschneidung mit anderer Arbeit der Person, Eintrag im Verlauf des Vorgangs. Inaktive Personen sind korrigierbar; fremde und unbekannte Einträge antworten gleich (403).
 
 ## [0.82.50] – 2026-11-24
 

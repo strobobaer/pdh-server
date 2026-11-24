@@ -35,6 +35,7 @@ const (
 	permAttendanceEdit = "attendance.edit"
 	attMaxDays         = 62
 	attHistoryShow     = 100
+	attWorkMax         = 24 * time.Hour
 	attTimeFmt         = "02.01.2006 15:04"
 	attInputFmt        = "2006-01-02T15:04"
 )
@@ -179,7 +180,7 @@ type attEventView struct {
 type attWorkView struct {
 	ID, What, Start, End, StartIn, EndIn, Via string
 	Minutes                                   int
-	Running                                   bool
+	Running, Forgotten                        bool
 }
 
 // attRow: eine Person an einem Tag.
@@ -187,7 +188,7 @@ type attRow struct {
 	PersonID, Person, Day, DayKey string
 	Kommen, Gehen                 string
 	PauseMin, PresentMin, WorkMin int
-	Open                          bool
+	Open, Forgotten               bool
 	Planned                       string // Soll laut Arbeitszeiten der Anlage, "" = keine Angabe
 	Diff                          string
 	Events                        []attEventView
@@ -218,7 +219,7 @@ var attNotices = map[string]string{
 	"ok": "Gespeichert – die Korrektur steht im Verlauf.", "reason": "Bitte eine Begründung eingeben.",
 	"time": "Bitte eine gültige Zeit eingeben.", "kind": "Unbekannte Buchung.", "future": "Die Zeit liegt in der Zukunft.",
 	"gone": "Der Eintrag existiert nicht mehr.", "running": "Laufende Arbeit kann erst nach dem Beenden korrigiert werden.",
-	"order": "Das Ende liegt vor dem Beginn.", "err": "Das hat nicht geklappt.",
+	"order": "Das Ende liegt vor dem Beginn.", "long": "Eine Arbeitszeit darf höchstens 24 Stunden dauern.", "overlap": "Die Zeit überschneidet sich mit einer anderen Arbeit der Person.", "err": "Das hat nicht geklappt.",
 }
 
 func attRange(r *http.Request) (from, to time.Time) {
@@ -302,7 +303,7 @@ func (h *Handler) attLoad(r *http.Request, people []attPerson, from, to time.Tim
 		}
 	}
 	// Arbeit
-	ws, err := h.db.Query(ctx, `SELECT id::text, user_id::text, ref_type, title, COALESCE(infrastructure_id::text, ''), started_at, ended_at, origin_via
+	ws, err := h.db.Query(ctx, `SELECT id::text, user_id::text, ref_type, title, COALESCE(infrastructure_id::text, ''), started_at, ended_at, origin_via, forgotten
 		FROM work_sessions WHERE user_id = ANY($1::uuid[]) AND started_at >= $2 AND started_at < $3 ORDER BY started_at, id`, ids, from, end)
 	if err != nil {
 		return nil, err
@@ -311,14 +312,19 @@ func (h *Handler) attLoad(r *http.Request, people []attPerson, from, to time.Tim
 	for ws.Next() {
 		var id, pid, rt, title, infra, via string
 		var st time.Time
+		var forg bool
 		var en *time.Time
-		if err := ws.Scan(&id, &pid, &rt, &title, &infra, &st, &en, &via); err != nil {
+		if err := ws.Scan(&id, &pid, &rt, &title, &infra, &st, &en, &via, &forg); err != nil {
 			ws.Close()
 			return nil, err
 		}
 		row := get(pid, st)
 		wv := attWorkView{ID: id, What: zeitKindLabelWhat(rt, title), Start: st.In(workLocation).Format("15:04"), StartIn: st.In(workLocation).Format(attInputFmt), Via: attViaLabel[via], Running: en == nil}
-		if en != nil {
+		wv.Forgotten = forg
+		row.Forgotten = row.Forgotten || forg
+		if en != nil && forg {
+			wv.End, wv.EndIn = en.In(workLocation).Format("15:04"), en.In(workLocation).Format(attInputFmt)
+		} else if en != nil {
 			wv.End, wv.EndIn = en.In(workLocation).Format("15:04"), en.In(workLocation).Format(attInputFmt)
 			wv.Minutes = max(1, int(en.Sub(st).Minutes()))
 			row.WorkMin += wv.Minutes
@@ -404,9 +410,9 @@ func (h *Handler) attHistory(ctx context.Context, people []attPerson) ([]attHist
 	for i, p := range people {
 		ids[i] = p.ID
 	}
-	rs, err := h.db.Query(ctx, `SELECT TRIM(u.first_name || ' ' || u.last_name), a.subject, a.action, a.old_text, a.new_text, a.reason,
+	rs, err := h.db.Query(ctx, `SELECT COALESCE(NULLIF(a.person_name, ''), TRIM(u.first_name || ' ' || u.last_name), ''), a.subject, a.action, a.old_text, a.new_text, a.reason,
 			COALESCE(TRIM(b.first_name || ' ' || b.last_name), ''), a.changed_at
-		FROM attendance_history a JOIN users u ON u.id = a.user_id LEFT JOIN users b ON b.id = a.changed_by
+		FROM attendance_history a LEFT JOIN users u ON u.id = a.user_id LEFT JOIN users b ON b.id = a.changed_by
 		WHERE a.user_id = ANY($1::uuid[]) ORDER BY a.changed_at DESC, a.id DESC LIMIT $2`, ids, attHistoryShow)
 	if err != nil {
 		return nil, err
@@ -542,8 +548,8 @@ func attParseTime(s string) (time.Time, bool) {
 }
 
 func (h *Handler) attHist(ctx context.Context, tx pgx.Tx, user, subject, action, ref, oldT, newT, reason, by string) error {
-	_, err := tx.Exec(ctx, `INSERT INTO attendance_history (user_id, subject, action, ref_id, old_text, new_text, reason, changed_by)
-		VALUES ($1::uuid, $2, $3, NULLIF($4, '')::uuid, $5, $6, $7, $8::uuid)`, user, subject, action, ref, oldT, newT, reason, by)
+	_, err := tx.Exec(ctx, `INSERT INTO attendance_history (user_id, person_name, subject, action, ref_id, old_text, new_text, reason, changed_by)
+		VALUES ($1::uuid, COALESCE((SELECT TRIM(first_name || ' ' || last_name) FROM users WHERE id = $1::uuid), ''), $2, $3, NULLIF($4, '')::uuid, $5, $6, $7, $8::uuid)`, user, subject, action, ref, oldT, newT, reason, by)
 	return err
 }
 
@@ -554,7 +560,7 @@ func attEvText(kind string, at time.Time) string {
 // attDeptOf: Abteilung der Person.
 func (h *Handler) attDeptOf(ctx context.Context, uid string) (string, bool) {
 	var d string
-	if err := h.db.QueryRow(ctx, `SELECT COALESCE(department_id::text, '') FROM users WHERE id = $1::uuid AND active AND NOT is_bot AND NOT is_system_user`, uid).Scan(&d); err != nil {
+	if err := h.db.QueryRow(ctx, `SELECT COALESCE(department_id::text, '') FROM users WHERE id = $1::uuid AND NOT is_bot AND NOT is_system_user`, uid).Scan(&d); err != nil {
 		return "", false
 	}
 	return d, true
@@ -617,11 +623,11 @@ func (h *Handler) attGate(w http.ResponseWriter, r *http.Request, uid string) (r
 	_ = r.ParseForm()
 	dept, found := h.attDeptOf(r.Context(), uid)
 	if !found {
-		attBack(w, r, "gone")
+		attDenied(w, r)
 		return "", false
 	}
 	if !h.attCan(r, permAttendanceEdit, dept) {
-		http.Error(w, "keine berechtigung für diese Person", http.StatusForbidden)
+		attDenied(w, r)
 		return "", false
 	}
 	rs, okR := attReason(r)
@@ -719,11 +725,7 @@ func (h *Handler) attEventChange(w http.ResponseWriter, r *http.Request, del boo
 	}
 	var owner string
 	if err := h.db.QueryRow(r.Context(), `SELECT user_id::text FROM attendance_events WHERE id = $1::uuid`, id).Scan(&owner); err != nil {
-		if !h.hasPerm(r, permAttendanceEdit) {
-			attDenied(w, r)
-			return
-		}
-		attBack(w, r, "gone")
+		attDenied(w, r) // gleiche Antwort, ob der Eintrag existiert oder nicht
 		return
 	}
 	reason, ok := h.attGate(w, r, owner)
@@ -815,11 +817,7 @@ func (h *Handler) attWorkChange(w http.ResponseWriter, r *http.Request, del bool
 	ctx := r.Context()
 	var owner string
 	if err := h.db.QueryRow(ctx, `SELECT user_id::text FROM work_sessions WHERE id = $1::uuid`, id).Scan(&owner); err != nil {
-		if !h.hasPerm(r, permAttendanceEdit) {
-			attDenied(w, r)
-			return
-		}
-		attBack(w, r, "gone")
+		attDenied(w, r) // gleiche Antwort, ob der Eintrag existiert oder nicht
 		return
 	}
 	reason, ok := h.attGate(w, r, owner)
@@ -832,21 +830,46 @@ func (h *Handler) attWorkChange(w http.ResponseWriter, r *http.Request, del bool
 		return
 	}
 	defer tx.Rollback(ctx)
-	var rt, title string
+	var rt, title, refID, infra, via string
 	var st time.Time
 	var en *time.Time
 	var entry *string
-	if err := tx.QueryRow(ctx, `SELECT ref_type, title, started_at, ended_at, time_entry_id::text FROM work_sessions WHERE id = $1::uuid FOR UPDATE`, id).Scan(&rt, &title, &st, &en, &entry); err != nil {
+	var forgotten, pending bool
+	if err := tx.QueryRow(ctx, `SELECT w.ref_type, w.title, w.ref_id::text, COALESCE(w.infrastructure_id::text, ''), w.started_at, w.ended_at, w.time_entry_id::text, w.forgotten, w.origin_via,
+			COALESCE((SELECT t.pending FROM time_entries t WHERE t.id = w.time_entry_id), false)
+		FROM work_sessions w WHERE w.id = $1::uuid FOR UPDATE OF w`, id).Scan(&rt, &title, &refID, &infra, &st, &en, &entry, &forgotten, &via, &pending); err != nil {
 		attBack(w, r, "gone")
 		return
 	}
+	_ = via
 	if en == nil {
 		attBack(w, r, "running")
 		return
 	}
+	// Zeiteintrag am Vorgang: nur solange unbestätigt oder mit dem Recht am Vorgang (Abteilung der Anlage) änderbar
+	if rt != "plant" && (entry == nil || !pending) {
+		u := getUser(r)
+		if h.rbac == nil || u == nil || !h.rbac.HasPermissionInDepartment(u.ID, string(u.Role), zeitKindOf(rt).EditPerm, h.recordDepartments(ctx, rt, refID)) {
+			http.Error(w, "Diese Zeit gehört zu einem Vorgang und ist bestätigt – bitte direkt am Vorgang korrigieren (dort braucht es das Bearbeitungsrecht für den Vorgang).", http.StatusForbidden)
+			return
+		}
+	}
 	what := zeitKindLabelWhat(rt, title)
 	oldT := fmt.Sprintf("%s, %s–%s", what, st.In(workLocation).Format(attTimeFmt), en.In(workLocation).Format("15:04"))
+	if forgotten {
+		oldT += " (vergessen)"
+	}
 	by := getUser(r).ID
+	itemHist := func(action, newT string) {
+		if rt == "plant" {
+			return
+		}
+		msg := "Arbeitszeit in PDH " + action + ": " + oldT
+		if newT != "" {
+			msg += " → " + newT
+		}
+		h.vorgHistory(ctx, historyRef(rt), refID, "time", "Arbeitszeit", oldT, newT, msg+" – "+reason, by, zeitViaPDH, "PDH", []string{owner})
+	}
 	if del {
 		if entry != nil {
 			if _, err := tx.Exec(ctx, `DELETE FROM time_entries WHERE id = $1::uuid`, *entry); err != nil {
@@ -862,6 +885,7 @@ func (h *Handler) attWorkChange(w http.ResponseWriter, r *http.Request, del bool
 			attBack(w, r, "err")
 			return
 		}
+		itemHist("gelöscht", "")
 		attBack(w, r, "ok")
 		return
 	}
@@ -875,16 +899,44 @@ func (h *Handler) attWorkChange(w http.ResponseWriter, r *http.Request, del bool
 		attBack(w, r, "order")
 		return
 	}
+	if ne.Sub(ns) > attWorkMax {
+		attBack(w, r, "long")
+		return
+	}
 	if ne.After(time.Now().Add(5 * time.Minute)) {
 		attBack(w, r, "future")
 		return
 	}
-	if _, err := tx.Exec(ctx, `UPDATE work_sessions SET started_at = $2, ended_at = $3 WHERE id = $1::uuid`, id, ns, ne); err != nil {
+	var clash bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM work_sessions WHERE user_id = $1::uuid AND id <> $2::uuid AND started_at < $4 AND COALESCE(ended_at, 'infinity'::timestamptz) > $3)`, owner, id, ns, ne).Scan(&clash); err != nil {
+		attBack(w, r, "err")
+		return
+	}
+	if clash {
+		attBack(w, r, "overlap")
+		return
+	}
+	mins := max(1, int(ne.Sub(ns).Minutes()))
+	if _, err := tx.Exec(ctx, `UPDATE work_sessions SET started_at = $2, ended_at = $3, forgotten = false WHERE id = $1::uuid`, id, ns, ne); err != nil {
 		attBack(w, r, "err")
 		return
 	}
 	if entry != nil {
-		if _, err := tx.Exec(ctx, `UPDATE time_entries SET started_at = $2, ended_at = $3, duration_min = GREATEST(1, $4::int) WHERE id = $1::uuid`, *entry, ns, ne, int(ne.Sub(ns).Minutes())); err != nil {
+		if _, err := tx.Exec(ctx, `UPDATE time_entries SET started_at = $2, ended_at = $3, duration_min = $4 WHERE id = $1::uuid`, *entry, ns, ne, mins); err != nil {
+			attBack(w, r, "err")
+			return
+		}
+	} else if rt != "plant" {
+		// vergessene Arbeit, nun geprüft: der Zeiteintrag am Vorgang entsteht jetzt
+		desc := "Arbeit am Terminal: " + zeitKindOf(rt).Label + ": " + title + " – in PDH geprüft und korrigiert"
+		var eid string
+		if err := tx.QueryRow(ctx, `INSERT INTO time_entries (id, user_id, ref_type, ref_id, description, started_at, ended_at, duration_min, pending, infrastructure_id, origin_via)
+			VALUES (pdh_uuid_v7(), $1::uuid, $2::time_ref_type, $3::uuid, $4, $5, $6, $7, false, NULLIF($8, '')::uuid, $9) RETURNING id::text`,
+			owner, rt, refID, desc, ns, ne, mins, infra, zeitViaPDH).Scan(&eid); err != nil {
+			attBack(w, r, "err")
+			return
+		}
+		if _, err := tx.Exec(ctx, `UPDATE work_sessions SET time_entry_id = $2::uuid WHERE id = $1::uuid`, id, eid); err != nil {
 			attBack(w, r, "err")
 			return
 		}
@@ -894,5 +946,6 @@ func (h *Handler) attWorkChange(w http.ResponseWriter, r *http.Request, del bool
 		attBack(w, r, "err")
 		return
 	}
+	itemHist("geändert", newT)
 	attBack(w, r, "ok")
 }

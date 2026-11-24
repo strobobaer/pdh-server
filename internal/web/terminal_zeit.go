@@ -164,6 +164,7 @@ type zeitStopped struct {
 	RefType, RefID, Title, Via, Name string
 	Minutes                          int
 	Infra                            string
+	Forgotten                        bool
 }
 
 // workStopTx beendet die laufende Arbeit der Person (falls vorhanden) und schreibt den Zeiteintrag am Vorgang.
@@ -188,6 +189,14 @@ func (h *Handler) workStopTx(ctx context.Context, tx pgx.Tx, uid string, now tim
 	s.Via = via
 	if now.Before(started) {
 		now = started
+	}
+	if now.Sub(started) > attStaleAfter {
+		// vergessene Arbeit: nicht mit der ganzen Dauer buchen, ohne Zeiteintrag schließen und zur Prüfung kennzeichnen
+		s.Forgotten = true
+		if _, err := tx.Exec(ctx, `UPDATE work_sessions SET ended_at = started_at, forgotten = true WHERE id = $1::uuid`, id); err != nil {
+			return nil, err
+		}
+		return s, nil
 	}
 	s.Minutes = max(1, int(now.Sub(started).Minutes()))
 	var entryID *string
@@ -220,6 +229,12 @@ func zeitKindOf(refType string) vorgKind {
 // zeitStoppedHistory schreibt den Verlauf des Vorgangs zur beendeten Arbeit.
 func (h *Handler) zeitStoppedHistory(ctx context.Context, s *zeitStopped, personID, by, place string) {
 	if s == nil || s.RefType == "plant" {
+		return
+	}
+	if s.Forgotten {
+		h.vorgHistory(ctx, historyRef(s.RefType), s.RefID, "time", "Arbeitszeit", "", "vergessen",
+			fmt.Sprintf("Arbeit am Terminal war vergessen (länger als %d Stunden offen) und wurde ohne Zeiteintrag beendet – bitte in PDH prüfen: %s – %s", int(attStaleAfter.Hours()), s.Name, place),
+			by, s.Via, place, []string{personID})
 		return
 	}
 	h.vorgHistory(ctx, historyRef(s.RefType), s.RefID, "time", "Arbeitszeit", "", fmt.Sprintf("%d min", s.Minutes),

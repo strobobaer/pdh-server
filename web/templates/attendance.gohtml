@@ -29,7 +29,7 @@ details.at-more summary{cursor:pointer;color:var(--muted);font-size:12px}
     <tbody>
     {{range .Rows}}{{$row := .}}
     <tr class="at-day">
-      <td>{{.Day}}</td><td>{{.Person}}</td><td>{{if .Kommen}}{{.Kommen}}{{else}}–{{end}}</td>
+      <td>{{.Day}}</td><td>{{.Person}}{{if .Forgotten}} <span class="at-flag">Arbeit vergessen – bitte prüfen</span>{{end}}</td><td>{{if .Kommen}}{{.Kommen}}{{else}}–{{end}}</td>
       <td>{{if .Gehen}}{{.Gehen}}{{else if .Open}}<span class="at-flag">Gehen fehlt</span>{{else}}–{{end}}</td>
       <td>{{.PauseText}}</td><td>{{.PresentText}}</td><td>{{.WorkText}}</td>
       <td>{{if .Planned}}{{.Planned}} <small>({{.Diff}})</small>{{else}}–{{end}}</td>
@@ -44,7 +44,7 @@ details.at-more summary{cursor:pointer;color:var(--muted);font-size:12px}
               <button class="btn btn-small" type="submit">Ändern</button>
               <button class="btn btn-small" type="submit" formaction="/attendance/event/{{.ID}}/delete">Löschen</button>
             </form>{{end}}</div>{{end}}
-          {{range .Works}}<div class="at-ev"><b>Arbeit</b> {{.What}} {{.Start}}{{if .End}}–{{.End}} ({{.Minutes}} Min.){{else}} läuft{{end}} <small>({{.Via}})</small>
+          {{range .Works}}<div class="at-ev"><b>Arbeit</b> {{.What}} {{.Start}}{{if .Forgotten}} <span class="at-flag">vergessen – bitte prüfen</span>{{else if .End}}–{{.End}} ({{.Minutes}} Min.){{else}} läuft{{end}} <small>({{.Via}})</small>
             {{if and $row.CanEdit .End}}<form method="post" action="/attendance/work/{{.ID}}/edit">
               <input class="form-input" type="datetime-local" name="start" value="{{.StartIn}}" required>
               <input class="form-input" type="datetime-local" name="end" value="{{.EndIn}}" required>
