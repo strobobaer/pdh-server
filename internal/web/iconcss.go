@@ -10,7 +10,6 @@ import (
 	"html"
 	"html/template"
 	"net/http"
-	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -81,23 +80,39 @@ func iconDataURI(svg []byte) string {
 // die eingebetteten Symbole, blockiert das Zeichnen) und die Rest-Datei (je
 // uebrigem Symbol eine Adress-Regel /vendor/<version>/icons/<name>.svg, wird
 // erst nach dem Laden der Seite geholt).
-func buildIconCSS(set *tablericons.Set, embedded []string, version string) (mainCSS, restCSS []byte) {
-	emb := make(map[string]bool, len(embedded))
-	for _, n := range embedded {
-		emb[n] = true
-	}
-	var b, rest bytes.Buffer
+func buildIconCSS(set *tablericons.Set, embedded []string, version string) []byte {
+	var b bytes.Buffer
 	b.WriteString(iconCSSBase)
-	for _, n := range set.Names() {
-		if emb[n] {
-			if svg, ok := set.SVG(n); ok {
-				b.WriteString("." + n + `{--ti:url("` + iconDataURI(svg) + `")}` + "\n")
-				continue
-			}
+	for _, n := range embedded {
+		if svg, ok := set.SVG(n); ok {
+			b.WriteString("." + n + `{--ti:url("` + iconDataURI(svg) + `")}` + "\n")
 		}
-		rest.WriteString("." + n + "{--ti:url(/vendor/" + version + "/icons/" + n + ".svg)}\n")
 	}
-	return b.Bytes(), rest.Bytes()
+	return b.Bytes()
+}
+
+// buildIconRestCSS: die Rest-Datei – eine Adress-Regel fuer jeden Namen, unabhaengig
+// von der Auswahl. :where() gibt ihr die Spezifitaet 0: eine eingebettete Regel
+// .ti-x der Hauptdatei (0,1,0) gewinnt immer, gleich welche Datei zuerst kommt.
+func buildIconRestCSS(set *tablericons.Set, version string) []byte {
+	var b bytes.Buffer
+	for _, n := range set.Names() {
+		b.WriteString(":where(." + n + "){--ti:url(/vendor/" + version + "/icons/" + n + ".svg)}\n")
+	}
+	return b.Bytes()
+}
+
+var (
+	iconRestOnce  sync.Once
+	iconRestAsset *staticAsset
+)
+
+// iconRestFile: die Rest-Datei der laufenden Version, einmal je Prozess gebaut.
+func iconRestFile() *staticAsset {
+	iconRestOnce.Do(func() {
+		iconRestAsset = newStaticAsset(buildIconRestCSS(tablericons.Default(), pdh.Version()))
+	})
+	return iconRestAsset
 }
 
 // iconCSSKey: kurze Kennung der eingebetteten Namen (Teil der Adresse).
@@ -162,8 +177,7 @@ func (h *Handler) chosenIconNames(ctx context.Context) ([]string, error) {
 // iconCSSEntry: fertige Stildatei, einmal gzip-komprimiert.
 type iconCSSEntry struct {
 	key   string
-	asset *staticAsset // Hauptdatei
-	rest  *staticAsset // Rest-Datei (Adress-Regeln der uebrigen Symbole)
+	asset *staticAsset
 	at    time.Time
 	ok    bool // Auswahl aus der Datenbank gelesen (sonst nur kurz behalten)
 }
@@ -235,7 +249,7 @@ func (h *Handler) rebuildIconCSS(force bool) *iconCSSEntry {
 	chosen, err := h.chosenIconNames(ctx)
 	cancel()
 	if err != nil && old != nil {
-		e := &iconCSSEntry{key: old.key, asset: old.asset, rest: old.rest, at: time.Now(), ok: false}
+		e := &iconCSSEntry{key: old.key, asset: old.asset, at: time.Now(), ok: false}
 		iconCSSMu.Lock()
 		iconCSSCache = e
 		iconCSSMu.Unlock()
@@ -257,10 +271,9 @@ func (h *Handler) rebuildIconCSS(force bool) *iconCSSEntry {
 	key := iconCSSKey(names)
 	e := &iconCSSEntry{key: key, at: time.Now(), ok: err == nil}
 	if old != nil && old.key == key {
-		e.asset, e.rest = old.asset, old.rest
+		e.asset = old.asset
 	} else {
-		mainCSS, restCSS := buildIconCSS(tablericons.Default(), names, pdh.Version())
-		e.asset, e.rest = newStaticAsset(mainCSS), newStaticAsset(restCSS)
+		e.asset = newStaticAsset(buildIconCSS(tablericons.Default(), names, pdh.Version()))
 	}
 	iconCSSMu.Lock()
 	iconCSSCache = e
@@ -313,13 +326,10 @@ func iconCSSHref() string {
 	return "/vendor/" + pdh.Version() + "/icons-" + key + ".css"
 }
 
-// iconCSSRestHref: Adresse der Rest-Datei (/vendor/<Version>/icons-rest-<key>.css).
+// iconCSSRestHref: Adresse der Rest-Datei (/vendor/<Version>/icons-rest.css) –
+// ohne Kennung, sie haengt nur von der Version ab.
 func iconCSSRestHref() string {
-	key, _ := iconCSSCurKey.Load().(string)
-	if key == "" {
-		key = iconCSSKey(usedIconNames())
-	}
-	return "/vendor/" + pdh.Version() + "/icons-rest-" + key + ".css"
+	return "/vendor/" + pdh.Version() + "/icons-rest.css"
 }
 
 // iconCSSLinks: Symbol-Stildateien fuer den Seitenkopf. Die Hauptdatei blockiert
@@ -329,7 +339,8 @@ func iconCSSRestHref() string {
 func iconCSSLinks() template.HTML {
 	main := html.EscapeString(iconCSSHref())
 	rest := html.EscapeString(iconCSSRestHref())
-	js, _ := json.Marshal(rest)
+	// JS-Zeichenkette: eigenes Maskieren (json.Marshal escapt <, >, & als \u…)
+	js, _ := json.Marshal(iconCSSRestHref())
 	return template.HTML(`<link rel="stylesheet" href="` + main + `">` +
 		`<script>(function(){function f(){var l=document.createElement("link");l.rel="stylesheet";l.href=` + string(js) +
 		`;document.head.appendChild(l)}if(document.readyState==="complete")f();else addEventListener("load",f)})()</script>` +
@@ -365,27 +376,16 @@ func (h *Handler) IconCSSWeb(w http.ResponseWriter, r *http.Request) {
 	serveAsset(w, r, "icons.css", e.asset, cc)
 }
 
-// iconKeyRe: gueltige Kennung (10 Hexzeichen).
-var iconKeyRe = regexp.MustCompile(`^[0-9a-f]{10}$`)
-
-// IconCSSRestWeb: GET /vendor/{ver}/icons-rest-{key}.css – wie IconCSSWeb, aber
-// die Rest-Datei. Ungueltige Kennung: 404.
+// IconCSSRestWeb: GET /vendor/{ver}/icons-rest.css – oeffentlich. Die Rest-Datei
+// haengt nur von der Version ab (keine Kennung, keine Datenbank): laufende
+// Version immutable, fremde Version Weiterleitung no-store.
 func (h *Handler) IconCSSRestWeb(w http.ResponseWriter, r *http.Request) {
-	if !iconKeyRe.MatchString(chi.URLParam(r, "key")) {
-		noStore(w, http.StatusNotFound)
-		return
-	}
-	e := h.iconCSSEntry(r.Context())
 	if chi.URLParam(r, "ver") != pdh.Version() {
 		redirectNoStore(w, r, iconCSSRestHref())
 		return
 	}
-	cc := "public, max-age=31536000, immutable"
-	if chi.URLParam(r, "key") != e.key {
-		cc = "no-store"
-	}
 	w.Header().Set("Content-Type", "text/css; charset=utf-8")
-	serveAsset(w, r, "icons-rest.css", e.rest, cc)
+	serveAsset(w, r, "icons-rest.css", iconRestFile(), "public, max-age=31536000, immutable")
 }
 
 // IconSVGWeb: GET /vendor/{ver}/icons/{name}.svg – oeffentlich, ein Symbol.

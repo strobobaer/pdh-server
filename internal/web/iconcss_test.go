@@ -25,14 +25,14 @@ func TestIconCSSEmbedsUsed(t *testing.T) {
 	if len(used) < 300 {
 		t.Fatalf("nur %d genutzte Symbole", len(used))
 	}
-	mainCSS, restCSS := buildIconCSS(set, used, "9.9.9")
-	css := string(mainCSS)
+	css := string(buildIconCSS(set, used, "9.9.9"))
+	restCSS := buildIconRestCSS(set, "9.9.9")
 	for _, n := range used {
 		if !strings.Contains(css, "\n."+n+`{--ti:url("data:image/svg+xml,`) {
 			t.Errorf("%s nicht eingebettet", n)
 		}
 	}
-	if !strings.Contains(string(restCSS), ".ti-ad-2{--ti:url(/vendor/9.9.9/icons/ti-ad-2.svg)}") {
+	if !strings.Contains(string(restCSS), ":where(.ti-ad-2){--ti:url(/vendor/9.9.9/icons/ti-ad-2.svg)}") {
 		t.Error("ti-ad-2 soll als Adresse in der Rest-Datei stehen")
 	}
 }
@@ -94,8 +94,7 @@ func TestIconsUsedListComplete(t *testing.T) {
 // TestIconCSSFallbackAndHidden: ohne passende ti-…-Klasse (unbekannter oder leerer
 // Name) darf kein gefuelltes Quadrat erscheinen, und das hidden-Attribut gilt weiter.
 func TestIconCSSFallbackAndHidden(t *testing.T) {
-	mainCSS, _ := buildIconCSS(tablericons.Default(), nil, "9.9.9")
-	css := string(mainCSS)
+	css := string(buildIconCSS(tablericons.Default(), nil, "9.9.9"))
 	fb := "var(--ti,linear-gradient(transparent,transparent)) center/contain no-repeat"
 	for _, want := range []string{"-webkit-mask:" + fb, ";mask:" + fb, ".ti[hidden]{display:none}"} {
 		if !strings.Contains(css, want) {
@@ -105,8 +104,7 @@ func TestIconCSSFallbackAndHidden(t *testing.T) {
 }
 
 func TestIconCSSPrintAndContrast(t *testing.T) {
-	mainCSS, _ := buildIconCSS(tablericons.Default(), nil, "9.9.9")
-	css := string(mainCSS)
+	css := string(buildIconCSS(tablericons.Default(), nil, "9.9.9"))
 	for _, want := range []string{"print-color-adjust:exact", "forced-colors"} {
 		if !strings.Contains(css, want) {
 			t.Errorf("Stildatei ohne %q", want)
@@ -117,7 +115,7 @@ func TestIconCSSPrintAndContrast(t *testing.T) {
 // TestVendorRequestsQuiet: erfolgreiche Anfragen an /vendor/ werden nicht auf
 // Stufe Info protokolliert (die Symbolauswahl holt bis zu 300 Symbole je Suche).
 func TestVendorRequestsQuiet(t *testing.T) {
-	for _, p := range []string{"/vendor/0.82.57/icons/ti-plus.svg", "/vendor/0.82.57/htmx/htmx.min.js", "/vendor/0.82.57/icons-abc.css", "/vendor/0.82.57/icons-rest-abc.css"} {
+	for _, p := range []string{"/vendor/0.82.57/icons/ti-plus.svg", "/vendor/0.82.57/htmx/htmx.min.js", "/vendor/0.82.57/icons-abc.css", "/vendor/0.82.57/icons-rest.css"} {
 		if !quietPath(p) {
 			t.Errorf("%s soll leise protokolliert werden", p)
 		}
