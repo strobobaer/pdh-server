@@ -923,7 +923,13 @@ und 3 drückt bis auf Weiteres der Anwender.
     Ansichten, Anpassung, Darstellungsbearbeitung“ (links Navigationsleiste für
     die Bereiche, oben Menüband mit den Funktionen der Seite); Reiter wie Edge
     „Beides“ (Unterseiten als feste Reiter, geöffnete Vorgänge als eigene,
-    schließbare Reiter).
+    schließbare Reiter). Vorschau C „So wird es“ auf der Entwurfsfläche.
+    Weitere Vorgaben (Anwender 24.11.2026): „Alle Bremsklötze und Doubletten in
+    Datenbank und Ansicht ausmerzen, zusammenführen und so weiter – Lieferant
+    und Hersteller nur einmal, Kostenstelle nur einmal usw. Alle Auswahlfelder
+    sollen über einen Menübandeintrag erweitert/gefüllt werden können.
+    Berechtigung blendet ein oder aus. Designauswahl verfeinern.“ Bestandsaufnahme
+    der Doppelungen läuft (Lese-Agent), daraus Teil „Stammdaten zusammenführen“.
 25. **0.82.48 Wartung: Jahresplan im Kalender, Auftrag mit Vorlauf** (Wunsch des
     Anwenders vom 23.11.2026: Personalplanung; Knopf „Jahresplan erzeugen“,
     nur der nächste Termin wird 5 Arbeitstage vorher automatisch zum
