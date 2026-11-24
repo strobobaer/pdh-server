@@ -1,0 +1,98 @@
+{{/*
+Fragment „Fassungen“ einer berechneten Messstelle (energy_versions.go): Liste
+der Fassungen (geplant · gilt · abgelöst), Formular „Neue Fassung“ und die
+letzten Neurechnungen. Eingefügt in #em-ver-<ID> der Messstellen-Tabelle; die
+Knöpfe rufen evDate/evCheck/evSave/evEdit/evDelete aus energy_meters.gohtml.
+
+  {{template "energy-meter-versions" .}}   – Datenmodell EnergyVersionsData
+  {{template "energy-version-preview" .}}  – Datenmodell VersionPreviewView
+*/}}
+
+{{define "energy-meter-versions"}}
+<div class="et-box ev-box" data-meter="{{.Meter.ID}}" data-today="{{.Today}}" data-tomorrow="{{.Tomorrow}}">
+  <div class="et-head">
+    <strong>Fassungen der Formel</strong>
+    <span class="et-muted">{{if .Meter.Name}}{{.Meter.Name}}{{else}}{{.Meter.Key}}{{end}}</span>
+    <span class="et-spacer"></span>
+    {{if .Running}}<span class="badge b-amber" hx-get="/energy/meters/{{.Meter.ID}}/versions" hx-trigger="every 5s" hx-target="closest .em-thr-box" hx-swap="innerHTML">wird neu gerechnet ({{.Running.Progress}} %)</span>{{end}}
+  </div>
+  {{if .Notice}}<p class="ev-notice" role="status">{{.Notice}}</p>{{end}}
+  {{if .Err}}<p class="em-error" role="alert">{{.Err}}</p>{{end}}
+
+  {{if .Versions}}
+  <div class="et-scroll">
+    <table class="et-table">
+      <thead><tr><th>Status</th><th>Gültig ab</th><th>Formel</th><th>Angelegt</th><th><span class="sr-only">Aktionen</span></th></tr></thead>
+      <tbody>
+        {{range .Versions}}
+        <tr class="et-row{{if eq .Status "superseded"}} is-off{{end}}" data-vid="{{.ID}}" data-from="{{.ValidInput}}" data-formula="{{.Formula}}">
+          <td data-label="Status"><span class="badge {{.StatusClass}}">{{.StatusText}}</span></td>
+          <td data-label="Gültig ab" class="et-num">{{.ValidText}}</td>
+          <td data-label="Formel"><code class="em-formula">{{.Formula}}</code></td>
+          <td data-label="Angelegt"><span class="et-muted">{{.CreatedText}}</span></td>
+          <td class="et-actions">{{if and $.CanEdit (eq .Status "planned")}}
+            {{template "icon-button" (dict "Action" "edit" "OnClick" "evEdit(this)")}}
+            {{template "icon-button" (dict "Action" "delete" "OnClick" "evDelete(this)")}}{{end}}</td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+  {{else}}<p class="et-empty">Noch keine Fassung.</p>{{end}}
+
+  {{if .CanEdit}}
+  <div class="et-form ev-form">
+    <strong class="ev-form-title">Neue Fassung</strong>
+    <input type="hidden" class="ev-vid" value="">
+    <div class="et-grid">
+      <div class="form-group"><label class="form-label">Gültig ab
+        <input type="date" class="form-input ev-date" value="{{.Tomorrow}}" min="{{if .CanAdmin}}{{.Earliest}}{{else}}{{.Tomorrow}}{{end}}" onchange="evDate(this)"></label></div>
+      <div class="form-group ev-formula-group"><label class="form-label">Formel
+        <input class="form-input ev-formula" maxlength="2000" autocomplete="off" value="{{.Meter.Formula}}"></label></div>
+    </div>
+    <p class="et-hint ev-hint-plan">Gilt ab 00:00 Uhr dieses Tages; bis dahin rechnet die Messstelle mit der jetzigen Formel.</p>
+    {{if .CanAdmin}}<p class="et-hint ev-hint-past" hidden>Ein Datum bis heute rechnet die gespeicherten Werte dieser Messstelle und aller, die auf ihr aufbauen, neu – frühestens ab dem {{.EarliestText}}. Erst „Prüfen“, dann „Neu rechnen“.</p>{{end}}
+    {{if .OtherRunning}}<p class="et-hint">Gerade läuft eine Neurechnung anderer Messstellen – eine neue startet erst, wenn sie fertig ist.</p>{{end}}
+    <div class="ev-preview" hidden></div>
+    <p class="em-error ev-error" role="alert"></p>
+    <div class="et-buttons">
+      <button type="button" class="btn ev-cancel" onclick="evReset(this)" hidden>Abbrechen</button>
+      <button type="button" class="btn ev-check" onclick="evCheck(this)" hidden><i class="ti ti-list-check" aria-hidden="true"></i> Prüfen</button>
+      <button type="button" class="btn btn-primary ev-save" onclick="evSave(this, false)"><i class="ti ti-device-floppy" aria-hidden="true"></i> Speichern</button>
+    </div>
+  </div>
+  {{end}}
+
+  {{if .Runs}}
+  <div class="ev-runs">
+    <strong>Letzte Neurechnungen</strong>
+    <ul class="ev-run-list">
+      {{range .Runs}}
+      <li><span class="badge {{.StateClass}}">{{.StateText}}</span> {{.RangeText}} · {{if .CreatedBy}}{{.CreatedBy}} · {{end}}{{.WhenText}}
+        {{if eq .State "failed"}}<span class="et-sub">Die Neurechnung wurde abgebrochen; die Messstellen rechnen wieder mit dem Minutentakt. Einzelheiten stehen im Server-Protokoll.</span>{{end}}
+        {{if .FilesRebuilt}}<span class="et-sub">Efficio neu erzeugt: {{range $i, $f := .FilesRebuilt}}{{if $i}}, {{end}}{{$f}}{{end}}</span>{{end}}
+        {{if .FilesKept}}<span class="et-sub">Efficio unverändert: {{range $i, $f := .FilesKept}}{{if $i}}; {{end}}{{$f}}{{end}}</span>{{end}}
+      </li>
+      {{end}}
+    </ul>
+  </div>
+  {{end}}
+</div>
+{{end}}
+
+{{define "energy-version-preview"}}
+<div class="ev-pv">
+  <p><strong>Neu gerechnet wird vom {{.FromText}} bis heute ({{.Days}} {{if eq .Days 1}}Tag{{else}}Tage{{end}})</strong>
+    für {{len .Meters}} {{if eq (len .Meters) 1}}Messstelle{{else}}Messstellen{{end}}: {{range $i, $m := .Meters}}{{if $i}}, {{end}}[{{$m}}]{{end}}.</p>
+  {{if .NextText}}<p>Die neue Formel gilt bis zum {{.LastText}} – ab dem {{.NextText}} gilt die nächste Fassung.</p>{{end}}
+  {{if or .Rebuild .Keep}}
+  <p>Efficio-Dateien:</p>
+  <ul>
+    {{range .Rebuild}}<li>{{.Name}} ({{.Connection}}) – wird neu erzeugt</li>{{end}}
+    {{range .Keep}}<li>{{.Name}} ({{.Connection}}) – bleibt, {{.Reason}}</li>{{end}}
+  </ul>
+  {{else}}<p>Keine Efficio-Datei betroffen.</p>{{end}}
+  <p class="et-hint">Alarme werden für die Vergangenheit nicht neu bewertet. Während der Neurechnung setzen die Messstellen und der Efficio-Export kurz aus.</p>
+  <div class="et-buttons"><button type="button" class="btn btn-primary" onclick="evSave(this, true)"><i class="ti ti-calculator" aria-hidden="true"></i> Neu rechnen</button></div>
+</div>
+{{end}}

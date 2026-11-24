@@ -72,6 +72,7 @@ type MeterRow struct {
 	ThrText              string // „2 · 1 Alarm“ (Schwellwerte der Messstelle)
 	ThrAlarms            int
 	EditJSON             string // Vorbelegung des Bearbeiten-Formulars
+	Recalculating        bool   // in einer laufenden Neurechnung (Fassungen)
 }
 
 // MeterFilterView: Filter so, wie das Formular sie wieder anzeigt.
@@ -240,6 +241,10 @@ func (h *Handler) EnergyMetersPage(w http.ResponseWriter, r *http.Request) {
 		componentLog("energiedaten").Error().Err(err).Msg("schwellwerte zählen")
 	}
 	canEdit, canDel := map[string]bool{}, map[string]bool{}
+	running, err := st.RunningRecalc(ctx)
+	if err != nil {
+		componentLog("energiedaten").Error().Err(err).Msg("laufende neurechnung laden")
+	}
 	now := time.Now()
 	for _, m := range list {
 		row := newMeterRow(m, now)
@@ -250,6 +255,7 @@ func (h *Handler) EnergyMetersPage(w http.ResponseWriter, r *http.Request) {
 		}
 		row.CanEdit, row.CanDelete = canEdit[m.InfraID], canDel[m.InfraID]
 		row.ThrText, row.ThrAlarms = thresholdCountText(counts[m.ID])
+		row.Recalculating = running != nil && slicesContains(running.MeterKeys, m.Key)
 		d.Rows = append(d.Rows, row)
 	}
 	d.Total = len(d.Rows)

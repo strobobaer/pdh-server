@@ -66,6 +66,9 @@ func (s *Store) loc() *time.Location {
 // today ist der heutige Ortstag als Mitternacht UTC.
 func (s *Store) today() time.Time { return localDay(s.now(), s.loc()) }
 
+// Today ist der heutige Ortstag als Mitternacht UTC (für die Oberfläche).
+func (s *Store) Today() time.Time { return s.today() }
+
 // localDay ist der Ortstag von t als Mitternacht UTC.
 func localDay(t time.Time, loc *time.Location) time.Time {
 	l := t.In(loc)

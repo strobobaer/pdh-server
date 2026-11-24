@@ -126,6 +126,21 @@
   .em-table tr.em-row td::before{content:attr(data-label);color:var(--muted);font-size:11px;text-align:left}
   .em-table tr.em-row td.em-actions{justify-content:flex-end}
 }
+.em-ver-btn{margin-top:4px;font-size:12px;padding:2px 8px}
+.ev-box [hidden]{display:none!important}
+.ev-form-title{display:block;font-size:13px;margin-bottom:6px}
+.ev-formula-group{grid-column:span 2}
+.ev-notice{font-size:12.5px;color:var(--text);margin:0 0 8px}
+.ev-preview{margin:8px 0;padding:8px 10px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius,6px);font-size:13px;color:var(--text)}
+.ev-pv p{margin:4px 0}
+.ev-pv ul{margin:4px 0 4px 18px}
+.ev-runs{margin-top:10px;font-size:13px}
+.ev-run-list{list-style:none;margin:4px 0 0;padding:0}
+.ev-run-list li{padding:5px 0;border-bottom:1px solid var(--border)}
+@media (max-width:760px){
+  .ev-formula-group{grid-column:auto}
+  .em-table tr.em-row td.em-src{flex-wrap:wrap;justify-content:flex-end}
+}
 .em-thr-btn:has(.has-alarm){color:var(--red);border-color:var(--red)}
 .em-thr-box{background:var(--bg2);border-radius:var(--radius,6px)}
 .et-box{padding:10px 12px;text-align:left}
@@ -242,6 +257,85 @@
     const row = document.getElementById('em-thr-row-' + btn.closest('tr').dataset.id);
     row.hidden = !row.hidden;
     btn.setAttribute('aria-expanded', row.hidden ? 'false' : 'true');
+  };
+  // Fassungen der Formel (widgets/energy_meter_versions.gohtml)
+  window.emVer = function(btn){
+    const row = document.getElementById('em-ver-row-' + btn.closest('tr').dataset.id);
+    row.hidden = !row.hidden;
+    btn.setAttribute('aria-expanded', row.hidden ? 'false' : 'true');
+  };
+  const evBox = el => el.closest('.ev-box');
+  function evReload(box, notice){
+    htmx.ajax('GET', '/energy/meters/' + box.dataset.meter + '/versions' + (notice ? '?notice=' + encodeURIComponent(notice) : ''),
+      {target: box.parentElement, swap: 'innerHTML'});
+  }
+  function evInput(box, recalc){
+    return {valid_from: box.querySelector('.ev-date').value, formula: box.querySelector('.ev-formula').value.trim(),
+      version_id: box.querySelector('.ev-vid').value, recalc: !!recalc};
+  }
+  window.evDate = function(input){
+    const box = evBox(input), past = !!input.value && input.value <= box.dataset.today;
+    box.querySelector('.ev-check').hidden = !past;
+    box.querySelector('.ev-save').hidden = past;
+    const hp = box.querySelector('.ev-hint-past');
+    if(hp) hp.hidden = !past;
+    box.querySelector('.ev-hint-plan').hidden = past;
+    box.querySelector('.ev-preview').hidden = true;
+    box.querySelector('.ev-error').textContent = '';
+  };
+  window.evCheck = async function(btn){
+    const box = evBox(btn), err = box.querySelector('.ev-error'), pv = box.querySelector('.ev-preview');
+    err.textContent = '';
+    pv.hidden = true;
+    btn.disabled = true;
+    try{
+      const res = await fetch('/energy/meters/' + box.dataset.meter + '/versions/preview',
+        {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(evInput(box))});
+      if(!res.ok){
+        const j = await res.json().catch(() => ({}));
+        throw new Error(j.error || 'Das hat nicht geklappt.');
+      }
+      pv.innerHTML = await res.text();
+      pv.hidden = false;
+    }catch(e){
+      err.textContent = e.message;
+    }
+    btn.disabled = false;
+  };
+  window.evSave = async function(btn, recalc){
+    const box = evBox(btn), err = box.querySelector('.ev-error');
+    err.textContent = '';
+    if(!box.querySelector('.ev-formula').value.trim()){ err.textContent = 'Bitte eine Formel eintragen.'; return; }
+    btn.disabled = true;
+    try{
+      const j = await post('/energy/meters/' + box.dataset.meter + '/versions/save-web', evInput(box, recalc));
+      evReload(box, recalc ? 'Neurechnung gestartet.' : (j.status === 'unchanged' ? 'Diese Formel gilt an dem Tag schon – nichts geändert.' : 'Fassung gespeichert.'));
+    }catch(e){
+      err.textContent = e.message;
+      btn.disabled = false;
+    }
+  };
+  window.evEdit = function(btn){
+    const tr = btn.closest('tr'), box = evBox(btn), date = box.querySelector('.ev-date');
+    box.querySelector('.ev-vid').value = tr.dataset.vid;
+    date.min = box.dataset.tomorrow; // eine geplante Fassung bleibt in der Zukunft
+    date.value = tr.dataset.from;
+    box.querySelector('.ev-formula').value = tr.dataset.formula;
+    box.querySelector('.ev-form-title').textContent = 'Geplante Fassung ändern';
+    box.querySelector('.ev-cancel').hidden = false;
+    evDate(date);
+    box.querySelector('.ev-formula').focus();
+  };
+  window.evReset = btn => evReload(evBox(btn));
+  window.evDelete = async function(btn){
+    const tr = btn.closest('tr'), box = evBox(btn);
+    if(!confirm('Geplante Fassung ab ' + tr.querySelector('[data-label="Gültig ab"]').textContent.trim() + ' löschen?')) return;
+    try{
+      await post('/energy/meters/' + box.dataset.meter + '/versions/' + tr.dataset.vid + '/delete-web');
+      evReload(box, 'Geplante Fassung gelöscht.');
+    }catch(e){
+      box.querySelector('.ev-error').textContent = e.message;
+    }
   };
   if(!edit) return;
   window.emSave = async function(){
