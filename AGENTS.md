@@ -255,7 +255,7 @@ und 3 drückt bis auf Weiteres der Anwender.
 - Die Liste **im selben Schritt pflegen**: Erledigtes streichen, Neues
   eintragen, Stand und Datum anpassen.
 
-### Offene Punkte (Stand 23.11.2026)
+### Offene Punkte (Stand 24.11.2026)
 
 1. **Netz-Abgleich im Browser mit zwei Quellen:** 0.80.25 ist auf `main`
    und dem Testverbund; die Vorschlagsliste mit zwei eingeschalteten
@@ -835,6 +835,61 @@ und 3 drückt bis auf Weiteres der Anwender.
     Entwurf; dort auch klären, ob Messstellen den neuen Rechenumfang
     bekommen). Kleine Befunde der Schlussprüfung stehen im Ledger
     `.superpowers/sdd/2026-11-23-berechnete-werte/`.
+    **0.82.45 ist auf `main`** (23.11.2026, Merge `d935c5e9`, vom Anwender
+    freigegeben) und dem Testverbund (beide Server 0.82.45, Migration 211);
+    im Browser geprüft (23.11.2026, 40 Ansichten ohne Überlauf und
+    Konsolenfehler; Prüfkonto gesperrt, keine Testdaten). Offen: 10.10.0.202
+    (Anwender, mit Sicherung), Copilot-Abnahme mit Anthropic-Schlüssel.
+25. **0.82.48 Wartung: Jahresplan im Kalender, Auftrag mit Vorlauf** (Wunsch des
+    Anwenders vom 23.11.2026: Personalplanung; Knopf „Jahresplan erzeugen“,
+    nur der nächste Termin wird 5 Arbeitstage vorher automatisch zum
+    Durchführungsauftrag, einstellbar unter „Wartungsregeln“; geplante
+    Termine verschieb- und besetzbar „Ja“; Einzelheiten „Passt“; Weg A
+    eigene Tabelle; nach der Prüfung „1a 2a 3a 4a“). Entwurf
+    `docs/superpowers/specs/2026-11-23-wartung-jahresplan-design.md` auf
+    Branch `feature/wartung-jahresplan` (vom Anwender bestätigt „Passt“), Plan
+    `docs/superpowers/plans/2026-11-23-wartung-jahresplan.md` (11 Aufgaben),
+    gebaut (23.11.2026, lokal). Geplant als 0.82.46 mit Migration 212 –
+    `main` hatte inzwischen 0.82.47 und `212_terminal_free_user`, deshalb
+    **0.82.48, Migration 213** (`213_maintenance_yearplan`; Tabelle
+    `maintenance_visits`, `lead_workdays`, `upcoming_from` u. a.; kein neues
+    Recht – Jahresplan und Termine mit `maintenance.edit` am Plan,
+    Wartungsregeln mit `maintenance.admin` überall). Eine Feiertagsliste
+    `internal/core/workdays`. Der Folgeauftrag entsteht erst mit dem Vorlauf
+    (Test `TestBoardMaintenanceFlowIntegration` angepasst). Ledger mit allen
+    Entscheidungen: `.superpowers/sdd/2026-11-23-wartung-jahresplan/`.
+    Schlussprüfung erledigt (1 kritisch, 3 wichtig – behoben mit Tests;
+    13 kleine im Ledger zurückgestellt, Bericht `final-review.md`).
+    **Auf `main`** (24.11.2026, vom Anwender freigegeben, Merge `859d2db9`).
+    Der Merge-Commit trägt versehentlich die Nachricht des Merges von
+    0.82.36 (alte Nachrichtendatei); Inhalt und Eltern stimmen, nicht per
+    Force-Push berichtigt. Richtiges Prüfergebnis: origin/main 0.82.47
+    eingearbeitet, Migration 212 → 213, Version → 0.82.48, keine Dopplungen,
+    Tests grün. Künftig die Nachrichtendatei vor dem Merge neu schreiben.
+    Auf dem Testverbund (24.11.2026, Verbund-Update auf `859d2db9`; beide
+    Server und Zeuge 0.82.48, Migrationen 212 und 213, aktiv jetzt
+    `pdh-server` 10.10.0.17, Spiegelung läuft). Im Browser geprüft:
+    Plan anlegen, „Jahresplan erzeugen“ („12 Termine geplant“), Plan-Editor,
+    Pläne, Wartungsregeln, Jahresplan, Kalender, Planer – je 20 Ansichten
+    (Fiori/Fluent, hell/dunkel, 320–1366 px) ohne Überlauf, keine
+    Konsolenfehler; Fenster zum Besetzen öffnet bei 1366 und 390 px und passt;
+    Zeitstrahl am Leitstand zeigt die Termine. Testplan entfernt, Prüfkonto
+    gesperrt. Offen: 10.10.0.202 (Anwender, mit Sicherung). Labor-Datenbank
+    `pdh_test`: Eintrag 212 → 213 umgeschrieben (Schema war schon da).
+    **0.82.49 Nacharbeit** auf Branch `fix/wartung-nacharbeit` (24.11.2026,
+    lokal; keine Migration, kein neues Recht): die drei Befunde der
+    Browserprüfung (Titel des Besetzen-Fensters ohne Zieh-Hinweis über
+    `data-tip`; Fenster mittig – `base.gohtml` setzt alle Ränder auf 0,
+    deshalb `margin:auto`; Leitstand `/global` bricht die Kopfzeile bis
+    1050 px um) und aus der Schlussprüfung M2 (Planer merkt „von Hand
+    besetzt“ nur bei wirklich anderer Person, keine zweite Nachricht), M3
+    (Termin inzwischen beauftragt wird gemeldet, `visitChanged`), M4
+    (`pdhGridPost` liefert true/false, Fenster bleibt nach Fehler offen), M9
+    (ein Plan mit Fehler hält den stündlichen Abgleich nicht auf) und M13
+    (Verlauf mit Namen, `staffText`). Offen: Freigabe Push/Merge,
+    Verbund-Update, Browserprüfung (Besetzen-Fenster im Kalender, Leitstand
+    angemeldet bei 320–1024 px). Weiter zurückgestellt (Ledger): M1, M5 bis
+    M8, M10 bis M12.
 
 Docker Desktop startet nach einem Neustart des Windows-Rechners nicht von
 selbst – ohne ihn fehlen der Zeuge und die Labor-Datenbank für die Tests.

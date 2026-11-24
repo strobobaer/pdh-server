@@ -1,4 +1,4 @@
--- 215_terminal_zeiterfassung.up.sql
+-- 216_terminal_zeiterfassung.up.sql
 --
 -- Zeiterfassung am Terminal (Seite /terminal/zeit, Funktionsschalter „zeiterfassung“) und die PDH-Seite
 -- „Anwesenheit & Arbeitszeit“. Alles nur hinzufügend; ältere Server ignorieren Tabellen, Spalten und Rechte.

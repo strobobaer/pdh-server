@@ -1,12 +1,12 @@
 package web
 
-// Personenauswahl am Terminal (0.82.50): Wer am Terminal gewählt werden kann (Vorgänge, Vorgangsleiste), ist die
+// Personenauswahl am Terminal (0.82.52): Wer am Terminal gewählt werden kann (Vorgänge, Vorgangsleiste), ist die
 // Vereinigung mehrerer Quellen. Dieselbe Menge ist die Menge der erlaubten Zuweisungen – der Server prüft sie bei
 // jedem Schreibweg selbst.
 //
 //   - die Abteilungen des Terminals (terminal_departments.go),
 //   - die eingestellten Quellen des Terminal-Benutzers (Stammdaten, Abschnitt „Freier Terminal-Benutzer“):
-//     Gruppen, Abteilungen und einzelne Personen (Tabelle terminal_pick_sources, Migration 214),
+//     Gruppen, Abteilungen und einzelne Personen (Tabelle terminal_pick_sources, Migration 215),
 //   - die Inhaber des Rechts „Am Terminal auswählbar“ (terminal.selectable, abteilungsbezogen: gilt an Terminals,
 //     deren Anlage zur Abteilung des Rechts gehört),
 //   - immer die Personen der Abteilung „Instandhaltung“.

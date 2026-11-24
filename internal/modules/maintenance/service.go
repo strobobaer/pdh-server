@@ -91,7 +91,7 @@ func (s *Service) CreatePlan(ctx context.Context, in *PlanInput, userID string) 
 	if err != nil {
 		return "", err
 	}
-	_, err = s.repo.ensureTaskForPlan(ctx, id, userID)
+	_, err = s.repo.ensureTaskForPlan(ctx, id, userID, time.Now())
 	return id, err
 }
 
@@ -99,7 +99,7 @@ func (s *Service) UpdatePlan(ctx context.Context, id string, in *PlanInput, user
 	if err := s.repo.UpdatePlan(ctx, id, in); err != nil {
 		return err
 	}
-	_, err := s.repo.ensureTaskForPlan(ctx, id, userID)
+	_, err := s.repo.ensureTaskForPlan(ctx, id, userID, time.Now())
 	return err
 }
 
@@ -110,14 +110,14 @@ func (s *Service) SetPlanActive(ctx context.Context, id string, active bool) err
 func (s *Service) DuplicatePlan(ctx context.Context, id, userID string) (string, error) {
 	newID, err := s.repo.DuplicatePlan(ctx, id, userID)
 	if err == nil {
-		_, err = s.repo.ensureTaskForPlan(ctx, newID, userID)
+		_, err = s.repo.ensureTaskForPlan(ctx, newID, userID, time.Now())
 	}
 	return newID, err
 }
 
 // EnsurePlanTask: Auftrag zum Plan anlegen, falls keiner offen ist.
 func (s *Service) EnsurePlanTask(ctx context.Context, planID, userID string) error {
-	_, err := s.repo.ensureTaskForPlan(ctx, planID, userID)
+	_, err := s.repo.ensureTaskForPlan(ctx, planID, userID, time.Now())
 	return err
 }
 
@@ -222,8 +222,9 @@ func (s *Service) TaskSkipped(ctx context.Context, taskID, userID string) (*time
 	return s.repo.ScheduleNext(ctx, taskID, userID, false)
 }
 
-func (s *Service) NextDueForTask(ctx context.Context, taskID string) *time.Time {
-	return s.repo.NextDueForTask(ctx, taskID)
+// NextTermForTask: nächster Termin des Plans (geplant oder als Auftrag).
+func (s *Service) NextTermForTask(ctx context.Context, taskID string) *NextTerm {
+	return s.repo.NextTermForTask(ctx, taskID, time.Now())
 }
 
 // ── Schritte ─────────────────────────────────────────────────

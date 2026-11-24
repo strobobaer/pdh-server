@@ -10,7 +10,7 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
-## [0.82.51] – 2026-11-24
+## [0.82.53] – 2026-11-24
 
 ### Neu
 
@@ -23,10 +23,10 @@ im Kapitel „Versionen & Updates“ an.
 
 ### Geändert
 
-- Datenbank (Migrationen 215 und 216, nur hinzufügend): Tabellen `attendance_events`, `work_sessions`, `attendance_history`, Spalte `time_entries.origin_via`, Schalter `terminal_settings.fn_zeiterfassung`., `work_sessions.forgotten` und ein Namensfeld im Verlauf der Korrekturen (der Verlauf bleibt nach dem Löschen einer Person erhalten).
+- Datenbank (Migrationen 216 und 217, nur hinzufügend): Tabellen `attendance_events`, `work_sessions`, `attendance_history`, Spalte `time_entries.origin_via`, Schalter `terminal_settings.fn_zeiterfassung`., `work_sessions.forgotten` und ein Namensfeld im Verlauf der Korrekturen (der Verlauf bleibt nach dem Löschen einer Person erhalten).
 - **Zeiterfassung, Grenzen:** Eine am Terminal vergessene, länger als 18 Stunden laufende Arbeit wird nicht mit der ganzen Dauer gebucht, sondern ohne Zeiteintrag geschlossen und in PDH als „vergessen – bitte prüfen“ angezeigt. Korrekturen der Arbeitszeit in PDH: Zeiteinträge am Vorgang ändert man nur, solange sie unbestätigt sind oder mit dem Bearbeitungsrecht am Vorgang; höchstens 24 Stunden, keine Überschneidung mit anderer Arbeit der Person, Eintrag im Verlauf des Vorgangs. Inaktive Personen sind korrigierbar; fremde und unbekannte Einträge antworten gleich (403).
 
-## [0.82.50] – 2026-11-24
+## [0.82.52] – 2026-11-24
 
 ### Neu
 
@@ -42,14 +42,14 @@ im Kapitel „Versionen & Updates“ an.
 
 - Neues Recht **„Am Terminal auswählbar“** (`terminal.selectable`, Kategorie „Infrastruktur & Anlagen“, in Rollen und als Einzelberechtigung abteilungsbezogen vergebbar, keiner Rolle vorbelegt): Es macht eine Person nur in der Personenauswahl der Terminals sichtbar, deren Anlage in der Abteilung des Rechts liegt. Es gibt keine weiteren Rechte, zeigt keine zusätzlichen Daten und ändert nichts an den Rechten der Person.
 
-## [0.82.49] – 2026-11-24
+## [0.82.51] – 2026-11-24
 
 ### Neu
 
 - **Anlagen, Arbeitszeiten:** Jede Anlage hat den neuen Reiter **Arbeitszeiten**. Je Wochentag legst du eine oder mehrere Schichten an (Name, Beginn, Ende – das Ende darf nach Mitternacht liegen), jede mit beliebig vielen Pausen. **Ausnahmen** je Datum: geschlossen (Feiertag, Betriebsferien) oder mit anderen Schichten. Die Zeiten gelten wie die Rüsttasten auch für alle Unteranlagen; mit **Eigene Arbeitszeiten** überschreibt eine Anlage sie. Optional übernimmst du die Schichten eines Schichtmodells aus der Schichtplanung. Ändern darf, wer Infrastruktur bearbeiten darf (in der Abteilung der Anlage).
 - **Stillstände, Anteil an der Arbeitszeit:** Die Seite Stillstände zählt jetzt nur Stillstand innerhalb der Arbeitszeit der Anlage (ohne Pausen und Zeit außerhalb der Schichten) und zeigt je Grund sowie je Anlage und Grund den **Anteil an der Arbeitszeit**. Mit **Zeitbasis: Gesamte Zeit (Rohsummen)** siehst du alle Stillstände ungekürzt wie bisher. Anlagen ohne Arbeitszeiten zählen mit der ganzen Dauer.
 
-## [0.82.48] – 2026-11-24
+## [0.82.50] – 2026-11-24
 
 ### Neu
 
@@ -59,6 +59,34 @@ im Kapitel „Versionen & Updates“ an.
 ### Geändert
 
 - **Terminal, Anmeldung ohne Kartenleser:** Das Ziffernfeld (0–F) ist eingeklappt. Zu sehen sind nur das Feld „Kartennummer eingeben“ und der Knopf „Mit Benutzer und Passwort“. Das Ziffernfeld (bei „Karte und PIN“ mit PIN-Feld) klappt erst auf, wenn das Kartenfeld angetippt wird, und wieder zu nach **OK**, mit **Schließen**, nach erfolgreicher Anmeldung und bei der Rückkehr zum Schoner. Die Bildschirmtastatur erscheint weiter nur nach einer echten Berührung.
+
+## [0.82.49] – 2026-11-24
+
+### Behoben
+
+- **Planer, Reiter „Wartung“:** Wer an einem Wartungsauftrag nur den Tag ändert, merkt die Person nicht mehr als „von Hand besetzt“ – eine geänderte Besetzung des Plans kommt wieder am Auftrag an, und die Person bekommt keine zweite Nachricht „zugewiesen“.
+- **Verlauf der Wartung:** Beim Besetzen im Kalender und im Planer stehen im Verlauf Namen von Person und Gruppe statt Kennungen.
+- **Kalender, Fenster zum Besetzen:** Das Fenster öffnet mittig, sein Titel enthält den Zieh-Hinweis nicht mehr, und nach einer Fehlermeldung bleibt es offen.
+- **Geplante Wartungstermine:** Wird aus einem Termin ein Auftrag, während ihn jemand verschiebt oder besetzt, meldet PDH das, statt „gespeichert“ zu zeigen.
+- **Wartung, stündlicher Abgleich:** Ein einzelner Plan mit Fehler hält die Aufträge und Jahrespläne der übrigen Pläne nicht mehr auf; das Server-Protokoll nennt den Plan.
+- **Leitstand am Handy und Tablet:** Die Knöpfe der Kopfzeile brechen bis 1050 px Breite um, die Seite läuft nicht mehr über den Rand.
+
+## [0.82.48] – 2026-11-23
+
+### Neu
+
+- **Wartung, Jahresplan erzeugen:** Am Wartungsplan (und für alle aktiven Pläne auf einmal) plant der Knopf „Jahresplan erzeugen“ die Termine der nächsten 12 Monate; PDH verlängert den Jahresplan jeden Tag selbst.
+- **Kalender, Ebene „Wartungstermine“:** Geplante Termine stehen gestrichelt im Kalender und im Leitstand-Kalender; mit „Wartung bearbeiten“ lassen sie sich per Ziehen verschieben, per Klick mit Person und Gruppe besetzen und mit „Zurück zum Plan“ zurücksetzen.
+- **Wartungsregeln:** Unter „Regeln & Einstellungen“ der Wartung steht der Vorlauf für den Durchführungsauftrag in Arbeitstagen (Vorgabe 5); jeder Plan kann einen eigenen Vorlauf haben.
+- **Geplante Termine überall:** Planer-Reiter „Wartung“, Infobildschirm-Folie „Wartungsplanung“ („Geplant“), Zeitstrahl, „Mein Kalender“ und Outlook zeigen die geplanten Wartungstermine; im Kalender und Planer zählen sie bei Abwesenheit und „ohne Schicht“ mit.
+- **Nachricht beim automatischen Auftrag:** Entsteht ein Wartungsauftrag mit dem Vorlauf, bekommen die zugewiesene Person bzw. die Mitglieder der Gruppe eine Nachricht.
+
+### Geändert
+
+- **Wartung, Folgeauftrag:** Der nächste Durchführungsauftrag entsteht erst mit dem Vorlauf vor dem Termin, nicht mehr sofort nach dem Abschluss.
+- **Wartung, Vorlauf in Arbeitstagen:** Der Vorlauf eines Plans zählt Arbeitstage (ohne Wochenende, Feiertage und Betriebsruhe) statt Kalendertage; vorhandene Werte wurden umgerechnet.
+- **Nach dem Abschluss:** Assistent, Rückmeldung und Auftragsseite nennen den nächsten Termin und „Auftrag entsteht am …“.
+- **Wartung bei verspätetem Abschluss:** Dabei übersprungene geplante Termine gelten als „entfallen“ und stehen so im Jahresplan.
 
 ## [0.82.47] – 2026-11-23
 

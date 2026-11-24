@@ -5,6 +5,8 @@ import (
 	"errors"
 	"strings"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 )
 
 const taskSelect = `
@@ -12,8 +14,9 @@ const taskSelect = `
 	       mt.priority, mt.status, mt.assigned_to::text, mt.responsible_to::text, mt.assigned_group_id::text,
 	       mt.due_date, mt.started_at, mt.completed_at, mt.duration_min, COALESCE(mt.notes,''),
 	       mt.created_by::text, mt.created_at, mt.cost_center_id::text,
+	       mt.planned_for, mt.upcoming_from, mt.due_manual, mt.staff_manual,
 	       COALESCE(i.name,''), COALESCE(u.first_name||' '||u.last_name,''), COALESCE(ru.first_name||' '||ru.last_name,''),
-	       COALESCE(g.name,''), COALESCE(mp.name,''), COALESCE(mp.lead_days,0), COALESCE(cc.number,''), COALESCE(cc.name,'')
+	       COALESCE(g.name,''), COALESCE(mp.name,''), COALESCE(cc.number,''), COALESCE(cc.name,'')
 	FROM maintenance_tasks mt
 	LEFT JOIN infrastructure i ON i.id = mt.infrastructure_id
 	LEFT JOIN users u ON u.id = mt.assigned_to
@@ -28,7 +31,8 @@ func scanTask(row interface{ Scan(...interface{}) error }) (*MaintenanceTask, er
 		&t.Priority, &t.Status, &t.AssignedTo, &t.ResponsibleTo, &t.AssignedGroupID,
 		&t.DueDate, &t.StartedAt, &t.CompletedAt, &t.DurationMin, &t.Notes,
 		&t.CreatedBy, &t.CreatedAt, &t.CostCenterID,
-		&t.InfraName, &t.AssigneeName, &t.ResponsibleName, &t.GroupName, &t.PlanName, &t.LeadDays,
+		&t.PlannedFor, &t.UpcomingFrom, &t.DueManual, &t.StaffManual,
+		&t.InfraName, &t.AssigneeName, &t.ResponsibleName, &t.GroupName, &t.PlanName,
 		&t.CostCenterNumber, &t.CostCenterName)
 	return t, err
 }
@@ -143,6 +147,42 @@ func (r *Repository) GetDueToday(ctx context.Context) ([]*MaintenanceTask, error
 
 // CreateTask: Auftrag anlegen (Verantwortliche/Gruppe vom Plan, falls vorhanden).
 func (r *Repository) CreateTask(ctx context.Context, t *MaintenanceTask) error {
+	if err := r.createTaskRow(ctx, t); err != nil {
+		return err
+	}
+	if t.PlanID == nil || *t.PlanID == "" {
+		return nil
+	}
+	// Auftrag zu einem Plan von Hand: „anstehend ab“ aus dem Vorlauf; ein geplanter Termin am selben Tag wird damit erledigt
+	var lead *int
+	_ = r.db.QueryRow(ctx, `SELECT lead_workdays FROM maintenance_plans WHERE id = $1::uuid`, *t.PlanID).Scan(&lead)
+	due := dayStart(t.DueDate)
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	if err := lockPlan(ctx, tx, *t.PlanID); err != nil {
+		return err
+	}
+	var visitID string
+	var calc time.Time
+	if tx.QueryRow(ctx, `SELECT id::text, calc_day FROM maintenance_visits WHERE plan_id = $1::uuid AND state = 'planned' AND day = $2::date
+		ORDER BY calc_day LIMIT 1`, *t.PlanID, due.Format("2006-01-02")).Scan(&visitID, &calc) == nil {
+		if _, err := tx.Exec(ctx, `UPDATE maintenance_visits SET state = 'ordered', task_id = $2::uuid, updated_at = NOW() WHERE id = $1::uuid`, visitID, t.ID); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `UPDATE maintenance_tasks SET planned_for = $2::date WHERE id = $1::uuid`, t.ID, civil(calc).Format("2006-01-02")); err != nil {
+			return err
+		}
+	}
+	if _, err := tx.Exec(ctx, `UPDATE maintenance_tasks SET upcoming_from = $2::date WHERE id = $1::uuid`, t.ID, r.OrderDay(ctx, due, lead).Format("2006-01-02")); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+func (r *Repository) createTaskRow(ctx context.Context, t *MaintenanceTask) error {
 	return r.db.QueryRow(ctx, `
 		INSERT INTO maintenance_tasks
 		  (plan_id, title, description, type, infrastructure_id, priority, status, assigned_to, due_date, created_by, cost_center_id,
@@ -161,16 +201,53 @@ func (r *Repository) UpdateTask(ctx context.Context, id string, in *UpdateTaskIn
 	if d, err := time.ParseInLocation("2006-01-02", in.DueDate, time.Local); err == nil {
 		due = &d
 	}
-	_, err := r.db.Exec(ctx, `UPDATE maintenance_tasks SET title=$2, description=$3,
+	var changed bool
+	err := r.db.QueryRow(ctx, `WITH old AS (SELECT due_date::date AS d FROM maintenance_tasks WHERE id=$1::uuid)
+		UPDATE maintenance_tasks SET title=$2, description=$3,
 			infrastructure_id=COALESCE(NULLIF($4,'')::uuid, infrastructure_id), priority=$5, due_date=COALESCE($6, due_date),
 			notes=$7, cost_center_id=$8::uuid, updated_at=NOW()
-		WHERE id=$1::uuid`, id, in.Title, in.Description, in.InfrastructureID, in.Priority, due, in.Notes, nullID(in.CostCenterID))
-	return err
+		WHERE id=$1::uuid RETURNING due_date::date IS DISTINCT FROM (SELECT d FROM old)`,
+		id, in.Title, in.Description, in.InfrastructureID, in.Priority, due, in.Notes, nullID(in.CostCenterID)).Scan(&changed)
+	if err != nil || !changed {
+		return ignoreNoRows(err)
+	}
+	return r.AfterDueChange(ctx, id)
 }
 
 // UpdateDueDate setzt ausschliesslich den Termin (z. B. per Ziehen im Zeitstrahl).
 func (r *Repository) UpdateDueDate(ctx context.Context, id string, due time.Time) error {
-	_, err := r.db.Exec(ctx, `UPDATE maintenance_tasks SET due_date=$2, updated_at=NOW() WHERE id=$1::uuid`, id, due)
+	if _, err := r.db.Exec(ctx, `UPDATE maintenance_tasks SET due_date=$2, updated_at=NOW() WHERE id=$1::uuid`, id, due); err != nil {
+		return err
+	}
+	return r.AfterDueChange(ctx, id)
+}
+
+// AfterDueChange: Die Fälligkeit wurde von Hand geändert – merken (eine
+// Planänderung überschreibt sie dann nicht mehr) und „anstehend ab“ aus dem
+// Vorlauf des Plans neu setzen (ohne Plan: ab Fälligkeit).
+func (r *Repository) AfterDueChange(ctx context.Context, taskID string) error {
+	var due time.Time
+	var hasPlan bool
+	var lead *int
+	err := r.db.QueryRow(ctx, `SELECT mt.due_date, mt.plan_id IS NOT NULL, mp.lead_workdays
+		FROM maintenance_tasks mt LEFT JOIN maintenance_plans mp ON mp.id = mt.plan_id WHERE mt.id = $1::uuid`, taskID).Scan(&due, &hasPlan, &lead)
+	if err != nil {
+		return ignoreNoRows(err)
+	}
+	var upFrom *time.Time
+	if hasPlan {
+		d := r.OrderDay(ctx, due.Local(), lead)
+		upFrom = &d
+	}
+	_, err = r.db.Exec(ctx, `UPDATE maintenance_tasks SET due_manual = true, upcoming_from = $2::date WHERE id = $1::uuid`, taskID, upFrom)
+	return err
+}
+
+// ignoreNoRows: kein Datensatz ist hier kein Fehler (wie Exec ohne Treffer).
+func ignoreNoRows(err error) error {
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
 	return err
 }
 
@@ -230,9 +307,22 @@ func (r *Repository) markSkipped(ctx context.Context, id string) error {
 	return nil
 }
 
+// DeleteTask löscht einen Auftrag. War er aus einem geplanten Termin entstanden,
+// ist dieser wieder geplant – sonst ginge der Termin verloren.
 func (r *Repository) DeleteTask(ctx context.Context, id string) error {
-	_, err := r.db.Exec(ctx, `DELETE FROM maintenance_tasks WHERE id=$1::uuid`, id)
-	return err
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	if _, err := tx.Exec(ctx, `UPDATE maintenance_visits SET state = 'planned', task_id = NULL, updated_at = NOW()
+		WHERE task_id = $1::uuid AND state = 'ordered'`, id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM maintenance_tasks WHERE id=$1::uuid`, id); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 // ── Massnahmen ───────────────────────────────────────────────

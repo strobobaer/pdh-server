@@ -179,21 +179,25 @@ func TestMaintenanceWorkArea(t *testing.T) {
 
 func TestDashboardCountersMatchLists(t *testing.T) {
 	now := time.Date(2026, 10, 8, 9, 0, 0, 0, time.Local)
-	mk := func(status maintenance.TaskStatus, dueInDays, lead int) *maintenance.MaintenanceTask {
-		return &maintenance.MaintenanceTask{Status: status, DueDate: now.AddDate(0, 0, dueInDays), LeadDays: lead}
+	// „anstehend ab“ steht am Auftrag (upcoming_from, beim Anlegen aus dem Vorlauf in Arbeitstagen)
+	mk := func(status maintenance.TaskStatus, dueInDays, upInDays int) *maintenance.MaintenanceTask {
+		up := time.Date(now.Year(), now.Month(), now.Day()+upInDays, 0, 0, 0, 0, time.UTC) // DATE-Spalte wie von pgx
+		return &maintenance.MaintenanceTask{Status: status, DueDate: now.AddDate(0, 0, dueInDays), UpcomingFrom: &up}
 	}
+	noUp := &maintenance.MaintenanceTask{Status: maintenance.TaskOpen, DueDate: now.AddDate(0, 0, 30)}
 	for _, c := range []struct {
 		m    *maintenance.MaintenanceTask
 		want bool
 	}{
-		{mk(maintenance.TaskOpen, 30, 0), true},        // weit weg, kein Vorlauf
-		{mk(maintenance.TaskOpen, 30, 30), false},      // Vorlauf hat begonnen
-		{mk(maintenance.TaskOpen, 5, 0), false},        // naechste 7 Tage
-		{mk(maintenance.TaskInProgress, 30, 0), false}, // begonnen
-		{mk(maintenance.TaskOpen, -2, 0), false},       // ueberfaellig
+		{mk(maintenance.TaskOpen, 30, 20), true},        // weit weg, Vorlauf noch nicht erreicht
+		{mk(maintenance.TaskOpen, 30, 0), false},        // Vorlauf hat begonnen
+		{mk(maintenance.TaskOpen, 5, 3), false},         // naechste 7 Tage
+		{mk(maintenance.TaskInProgress, 30, 20), false}, // begonnen
+		{mk(maintenance.TaskOpen, -2, -5), false},       // ueberfaellig
+		{noUp, true},                                    // ohne Wert: ab Faelligkeit
 	} {
 		if got := maintUpcoming(c.m, now); got != c.want {
-			t.Errorf("maintUpcoming(Status %s, in %v Tagen, Vorlauf %d) = %v", c.m.Status, c.m.DueDate.Sub(now).Hours()/24, c.m.LeadDays, got)
+			t.Errorf("maintUpcoming(Status %s, in %v Tagen, anstehend ab %v) = %v", c.m.Status, c.m.DueDate.Sub(now).Hours()/24, c.m.UpcomingFrom, got)
 		}
 	}
 	// Chip „Fällig“ = Kachel „Wartung fällig“: bis einschliesslich heute

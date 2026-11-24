@@ -385,7 +385,7 @@ func (h *Handler) workBaseSQL(k workKind) string {
 	case "maintenance":
 		// wie „Anstehend“ frueher: noch nicht begonnen, Termin nach 7 Tagen und Vorlauf noch nicht erreicht
 		upcoming = `(r.status = 'open' AND r.due_date::date > CURRENT_DATE + 7
-		   AND r.due_date::date - COALESCE((SELECT mp.lead_days FROM maintenance_plans mp WHERE mp.id = r.plan_id), 0) > CURRENT_DATE)`
+		   AND COALESCE(r.upcoming_from, r.due_date::date) > CURRENT_DATE)`
 	}
 	mine += `)`
 	// „meine“ und „noch nicht im Vorlauf“ mit COALESCE: bei leeren Spalten

@@ -412,8 +412,8 @@ func (h *Handler) CompletionWeb(w http.ResponseWriter, r *http.Request) {
 	}
 	msg := tr(lang, "%s abgeschlossen.", tr(lang, k.Label))
 	if k.Type == "maintenance" {
-		if next := h.maintNextDue(ctx, id); next != nil {
-			msg += " " + tr(lang, "Nächster Termin: %s", next.Local().Format("02.01.2006"))
+		if next := h.maintNextTerm(ctx, id); next != nil {
+			msg += " " + nextTermText(lang, next)
 		}
 	}
 	completionJSON(w, http.StatusOK, map[string]any{"success": true, "closed": true, "message": msg})
@@ -592,14 +592,6 @@ func (h *Handler) completionInvolved(r *http.Request, k completionKind, id strin
 	}
 	var ok bool
 	return h.db.QueryRow(r.Context(), q, id, u.ID).Scan(&ok) == nil && ok
-}
-
-// maintNextDue: naechster Termin des Plans (nil ohne Plan oder ohne Wartungsdienst).
-func (h *Handler) maintNextDue(ctx context.Context, taskID string) *time.Time {
-	if h.maint == nil {
-		return nil
-	}
-	return h.maint.NextDueForTask(ctx, taskID)
 }
 
 // historyRef: ref_type im Verlauf (Wartungsauftraege stehen unter maintenance_task).

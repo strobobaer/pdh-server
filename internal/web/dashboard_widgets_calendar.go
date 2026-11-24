@@ -121,6 +121,27 @@ func loadMyCalendar(h *Handler, ctx context.Context, uid string, _ WidgetInstanc
 		}
 		rs.Close()
 	}
+	// geplante Wartungstermine (Jahresplan, noch kein Auftrag), mir zugewiesen
+	if can("maintenance.view") {
+		if rs, err := h.db.Query(ctx, `SELECT v.plan_id::text, mp.name, v.day FROM maintenance_visits v
+			JOIN maintenance_plans mp ON mp.id = v.plan_id
+			WHERE mp.active AND v.state = 'planned' AND v.assigned_to = $1::uuid AND v.day BETWEEN $2::date AND $3::date
+			ORDER BY v.day LIMIT 50`, uid, today.Format(dayISO), to.Format(dayISO)); err == nil {
+			k := calKindByKey("maintenance_planned")
+			for rs.Next() {
+				var planID, name string
+				var day time.Time
+				if rs.Scan(&planID, &name, &day) == nil {
+					day = time.Date(day.Year(), day.Month(), day.Day(), 0, 0, 0, 0, time.Local) // DATE: Kalendertag
+					add(day, calWidgetItem{Icon: k.Icon, Color: k.Color, Title: tr(lang, "geplant") + " · " + name, Tip: tr(lang, k.Label),
+						URL: "/maintenance/plans/" + planID, sort: 2})
+				}
+			}
+			rs.Close()
+		} else {
+			componentLog("dashboard").Warn().Err(err).Msg("kalender-widget: wartungstermine")
+		}
+	}
 	// Prüfpflichten, für die ich verantwortlich bin
 	if can("infrastructure.view") {
 		if rs, err := h.db.Query(ctx, `SELECT o.infrastructure_id::text, o.title, COALESCE(i.name, ''), o.next_due

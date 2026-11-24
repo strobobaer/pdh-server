@@ -246,6 +246,10 @@ var gateRules = []gateRule{
 	gr(wAll, "tickets.edit", "ticket", true, apiV1+`/tickets`+gID+`/(?:status|cost-center|due-date|actions|pending-parts)`+gAny),
 	// ── Wartung ──
 	gr(wPost, "maintenance.edit", "", false, `^/maintenance/(?:generate|plans`+gID+`/duplicate-web)$`),
+	gr(wPost, "maintenance.edit", "maintenance_plan", false, `^/maintenance/plans`+gID+`/yearplan$`),
+	gr(wPost, "maintenance.edit", "", false, `^/maintenance/yearplan$`),
+	gr(wPost, "maintenance.admin", "", false, `^/maintenance/rules$`),
+	gr(wPost, "maintenance.edit", "", false, `^/maintenance/visits`+gID+`/(?:move|staff|reset)$`), // Plan-Recht prüft visitGuard
 	gr(wPost, "maintenance.edit", "maintenance_task", true, `^/maintenance/tasks`+gID+`/(?:start-web|edit-web)$`),
 	gr(wAll, "maintenance.edit", "", false, apiV1+`/maintenance/(?:plans|checklists|checklist-items)(?:/.*)?$`),
 	gr(wPost, "maintenance.edit", "", false, apiV1+`/maintenance/tasks(?:/generate)?/?$`),

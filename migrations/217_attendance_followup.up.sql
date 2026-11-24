@@ -1,6 +1,6 @@
--- 216_attendance_followup.up.sql
+-- 217_attendance_followup.up.sql
 --
--- Nachtrag zu 215 (nur hinzufügend bzw. lockernd):
+-- Nachtrag zu 216 (nur hinzufügend bzw. lockernd):
 -- work_sessions.forgotten
 --   Eine vergessene laufende Arbeit (länger als 18 Stunden offen) wird am Terminal ohne Zeiteintrag geschlossen und
 --   so gekennzeichnet; in PDH wird sie zur Prüfung angezeigt und kann korrigiert werden.

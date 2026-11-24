@@ -1,6 +1,6 @@
 package web
 
-// Vorgangsleiste am Terminal (0.82.50): Beim Aufwecken aus dem Bildschirmschoner und auf der Startseite
+// Vorgangsleiste am Terminal (0.82.52): Beim Aufwecken aus dem Bildschirmschoner und auf der Startseite
 // (/terminal/info) zeigt das Terminal die offenen Störungen, Tickets und fälligen Wartungen seiner Anlage und der
 // Unteranlagen zum direkten Bearbeiten – auf schmalen Bildschirmen oben (höchstens halbe Höhe, blätterbar), auf
 // breiten als linke Spalte.

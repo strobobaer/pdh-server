@@ -125,11 +125,11 @@ func (h *Handler) notifyMaintenanceDone(ctx context.Context, p *maintProtocol, t
 	if len(to) == 0 {
 		return
 	}
-	h.systemNotify(ctx, to, maintDoneMessage(p, taskID, pdfURL, h.maintNextDue(ctx, taskID)))
+	h.systemNotify(ctx, to, maintDoneMessage(p, taskID, pdfURL, h.maintNextTerm(ctx, taskID)))
 }
 
 // maintDoneMessage: Text der Rueckmeldung.
-func maintDoneMessage(p *maintProtocol, taskID, pdfURL string, next *time.Time) string {
+func maintDoneMessage(p *maintProtocol, taskID, pdfURL string, next *maintenance.NextTerm) string {
 	var b strings.Builder
 	b.WriteString("✅ Wartung erledigt: „" + p.Title + "“")
 	if p.InfraPath != "" {
@@ -168,7 +168,10 @@ func maintDoneMessage(p *maintProtocol, taskID, pdfURL string, next *time.Time) 
 		b.WriteString("\nBemerkung: " + strings.TrimSpace(p.Notes))
 	}
 	if next != nil {
-		b.WriteString("\n📅 Nächster Termin: " + next.Local().Format("02.01.2006"))
+		b.WriteString("\n📅 Nächster Termin: " + next.Day.Format("02.01.2006"))
+		if next.TaskID == "" {
+			b.WriteString(" (Auftrag entsteht am " + next.OrderOn.Format("02.01.2006") + ")")
+		}
 	}
 	if pdfURL != "" {
 		b.WriteString("\nProtokoll: " + pdfURL)
@@ -626,6 +629,7 @@ func renderMaintProtocolPDF(p *maintProtocol) ([]byte, error) {
 // RegisterMaintenanceProtocol haengt das Protokoll an jeden Wartungsabschluss (main.go).
 func (h *Handler) RegisterMaintenanceProtocol() {
 	maintenance.OnTaskCompleted(h.saveMaintenanceProtocol)
+	maintenance.OnPlanTaskCreated(h.notifyPlanTaskCreated) // Auftrag mit dem Vorlauf entstanden
 }
 
 // pdfImage bettet ein Bild ein. Beschaedigte Dateien (z. B. abgebrochener

@@ -7,7 +7,7 @@ package web
 //   - nicht in der Betriebsart „Nur mit Karte“, solange keine Person per Karte angemeldet ist,
 //   - nie dort, wo die Kartenperson mit ihren eigenen Rechten entscheidet (Vorgänge mit Karte, HMI „nur mit Karte“),
 //   - nur für Anlagen im Anlagenbaum des Terminals,
-//   - nur die Rechte aus terminalFreePerms (kein hmi.control, nichts außerhalb der Terminalfunktionen); seit 0.82.50
+//   - nur die Rechte aus terminalFreePerms (kein hmi.control, nichts außerhalb der Terminalfunktionen); seit 0.82.52
 //     gehören die Wartungen der Vorgangsleiste dazu (maintenance.view/edit/complete).
 // Das Recht des Systembenutzers im übrigen PDH bleibt unverändert; terminalFreeCan wird nur von den Terminalwegen
 // (terminalUserCan, terminalPerms) benutzt.
@@ -26,7 +26,7 @@ var terminalFreePerms = map[string]bool{
 	"setup.view": true, "setup.edit": true,
 	"downtime.view": true, "downtime.edit": true,
 	"hmi.view":         true,
-	"maintenance.view": true, "maintenance.edit": true, "maintenance.complete": true, // Wartungen der Vorgangsleiste (0.82.50)
+	"maintenance.view": true, "maintenance.edit": true, "maintenance.complete": true, // Wartungen der Vorgangsleiste (0.82.52)
 }
 
 // terminalFree liest das Flag des Systembenutzers.

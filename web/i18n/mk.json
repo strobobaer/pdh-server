@@ -551,6 +551,8 @@
  "„%s“: bitte eine Zahl eingeben.": "„%s“: внесете број.",
  "Wartet": "Чека",
  "Nächster Termin: %s": "Следен термин: %s",
+ "Auftrag entsteht am %s": "Работниот налог се креира на %s",
+ "geplant": "планирано",
  "Anstehend": "Претстојни",
  "Wartungsplan": "План за одржување",
  "Plan": "План",

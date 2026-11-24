@@ -1,6 +1,6 @@
 package web
 
-// Zeiterfassung am Terminal (0.82.51): Seite „Zeiterfassung“ mit Funktionsschalter zeiterfassung (Grundwert aus).
+// Zeiterfassung am Terminal (0.82.53): Seite „Zeiterfassung“ mit Funktionsschalter zeiterfassung (Grundwert aus).
 //
 //	GET  /terminal/zeit                 Stand (wer ist da / in Pause / arbeitet woran) und Bedienung
 //	                                    ?wer=<id> Person aus der Auswahl (ohne Karte), ?arbeit=1 Fenster „Arbeit beginnen“

@@ -551,6 +551,8 @@
  "„%s“: bitte eine Zahl eingeben.": "„%s”: introduceți un număr.",
  "Wartet": "În așteptare",
  "Nächster Termin: %s": "Următorul termen: %s",
+ "Auftrag entsteht am %s": "Comanda de lucru se creează pe %s",
+ "geplant": "planificat",
  "Anstehend": "Scadente",
  "Wartungsplan": "Plan de mentenanță",
  "Plan": "Plan",

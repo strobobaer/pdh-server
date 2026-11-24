@@ -44,7 +44,7 @@ var terminalFnDefs = []terminalFnDef{
 	{"wartungen", "Wartungen", "fn_wartungen", "fn_wartungen_at", true},
 	{"vorgaenge", "Vorgänge", "fn_vorgaenge", "fn_vorgaenge_at", true},
 	{"schichtplan", "Schichtplan", "fn_schichtplan", "fn_schichtplan_at", true},
-	{"zeiterfassung", "Zeiterfassung", "fn_zeiterfassung", "fn_zeiterfassung_at", false}, // nur PDH (0.82.51); das Terminal-Gerät kennt den Schlüssel nicht
+	{"zeiterfassung", "Zeiterfassung", "fn_zeiterfassung", "fn_zeiterfassung_at", false}, // nur PDH (0.82.53); das Terminal-Gerät kennt den Schlüssel nicht
 	{"saver_slides", "Folienschau als Bildschirmschoner", "saver_slides", "saver_slides_at", false},
 }
 

@@ -1,6 +1,6 @@
 package web
 
-// PDH-Seite „Anwesenheit & Arbeitszeit“ (0.82.51): Anwesenheit (Kommen, Gehen, Pausen) und Arbeitszeit (Arbeit an
+// PDH-Seite „Anwesenheit & Arbeitszeit“ (0.82.53): Anwesenheit (Kommen, Gehen, Pausen) und Arbeitszeit (Arbeit an
 // Vorgängen und Anlagen) je Person und Tag, Korrekturen mit Verlauf und CSV-Export.
 //
 //	GET  /attendance                        Liste (?von=, ?bis=, ?person=)

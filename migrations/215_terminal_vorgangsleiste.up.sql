@@ -1,4 +1,4 @@
--- 214_terminal_vorgangsleiste.up.sql
+-- 215_terminal_vorgangsleiste.up.sql
 --
 -- Terminal „Vorgangsleiste“: Auswahl der Mitarbeitenden am Terminal aus mehreren Quellen und Wartungen in der Leiste.
 -- Alles nur hinzufügend bzw. lockernd; ältere Server ignorieren die neue Tabelle und das neue Recht.
