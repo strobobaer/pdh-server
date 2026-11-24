@@ -10,6 +10,12 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.82.56] – 2026-11-24
+
+### Neu
+
+- **Terminal, Verbindungsweg:** PDH merkt sich, ob ein PDH-Terminal den Server direkt im Haus (LAN) oder über das Tailnet als Rückfall erreicht (Kopfzeile `X-Terminal-Route`). In der Liste **Kiosk-Terminals** und in **Gekoppelte Geräte** steht „Weg LAN“ bzw. „Weg Tailnet“; ältere Terminals ohne Kopfzeile gelten als LAN. Kopplung, Statusabfrage und Ereigniskanal funktionieren über den Tailnet-Namen genauso wie über die Adresse im Haus.
+
 ## [0.82.55] – 2026-11-24
 
 ### Neu

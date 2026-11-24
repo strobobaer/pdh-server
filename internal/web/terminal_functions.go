@@ -429,6 +429,36 @@ func terminalLocalPortUpdate(r *http.Request) (port any, set bool) {
 	}
 }
 
+// terminalRoute: Verbindungsweg aus X-Terminal-Route. Gültig sind nur genau „lan“ und „tailnet“
+// (Kleinschreibung, ohne Leerzeichen); alles andere, auch eine fehlende Kopfzeile, liefert "".
+func terminalRoute(r *http.Request) string {
+	switch v := r.Header.Get("X-Terminal-Route"); v {
+	case "lan", "tailnet":
+		return v
+	}
+	return ""
+}
+
+// terminalRouteUpdate: was die Statusabfrage mit der Spalte route tut. set=true: Wert schreiben (route nil = NULL =
+// „LAN“, wenn die Kopfzeile fehlt, also ein altes Terminal). set=false: stehen lassen (Kopfzeile vorhanden, aber ungültig).
+func terminalRouteUpdate(r *http.Request) (route any, set bool) {
+	if _, present := r.Header["X-Terminal-Route"]; !present {
+		return nil, true
+	}
+	if v := terminalRoute(r); v != "" {
+		return v, true
+	}
+	return nil, false
+}
+
+// terminalRouteLabel: Anzeige in den Listen; leer (alte Terminals) heißt „LAN“.
+func terminalRouteLabel(route *string) string {
+	if route != nil && *route == "tailnet" {
+		return "Tailnet"
+	}
+	return "LAN"
+}
+
 // terminalLocalPortOrDefault: gespeicherter Port (NULL oder ungültig = 8080).
 func terminalLocalPortOrDefault(p *int) int {
 	if p == nil || *p < 1024 || *p > 65534 {
@@ -716,6 +746,7 @@ type pdhTerminalView struct {
 	DeviceID, Name, UserID, UserName, Type, Version string
 	AdminURL                                        string // Verwaltungsseite des Terminals, leer = nicht gemeldet
 	LocalPort                                       int    // lokaler Port der Startseite, nur gesetzt wenn er von 8080 abweicht
+	Route                                           string // Verbindungsweg: „LAN“ oder „Tailnet“
 	Online, Revoked                                 bool
 	LastSeen, Paired, RevokedAt, Link               string
 }
@@ -723,7 +754,7 @@ type pdhTerminalView struct {
 // loadPDHTerminals listet die gekoppelten Geräte der Terminal-Benutzer (aktive zuerst, dann nach Name).
 func (h *Handler) loadPDHTerminals(ctx context.Context) ([]pdhTerminalView, error) {
 	rows, err := h.db.Query(ctx, `SELECT d.id::text, d.name, u.id::text, u.first_name, u.last_name, u.username,
-			d.client_version, d.admin_url, d.local_port, d.created_at, d.last_seen_at, d.revoked_at
+			d.client_version, d.admin_url, d.local_port, d.route, d.created_at, d.last_seen_at, d.revoked_at
 		FROM terminal_devices d JOIN users u ON u.id = d.user_id
 		ORDER BY (d.revoked_at IS NOT NULL), lower(d.name), d.created_at LIMIT 500`)
 	if err != nil {
@@ -738,12 +769,14 @@ func (h *Handler) loadPDHTerminals(ctx context.Context) ([]pdhTerminalView, erro
 		var created time.Time
 		var seen, revoked *time.Time
 		var lport *int
-		if err := rows.Scan(&v.DeviceID, &v.Name, &v.UserID, &first, &last, &uname, &v.Version, &v.AdminURL, &lport, &created, &seen, &revoked); err != nil {
+		var route *string
+		if err := rows.Scan(&v.DeviceID, &v.Name, &v.UserID, &first, &last, &uname, &v.Version, &v.AdminURL, &lport, &route, &created, &seen, &revoked); err != nil {
 			return nil, err
 		}
 		if p := terminalLocalPortOrDefault(lport); p != terminalDefaultLocalPort {
 			v.LocalPort = p
 		}
+		v.Route = terminalRouteLabel(route)
 		v.UserName = displayUserName(first, last, uname)
 		v.Type = "PDH-Terminal"
 		if v.Version == "" {
