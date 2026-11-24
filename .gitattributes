@@ -8,3 +8,4 @@ internal/modules/tiamqtt/testdata/** -text
 internal/modules/esppdh/testdata/** text eol=lf
 # ESP Web Tools (USB-Flash im Browser) Byte für Byte wie im npm-Paket – SHA256SUMS prüft das
 web/static/vendor/esp-web-tools/** -text
+scripts/pdh-os-update text eol=lf
