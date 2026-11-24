@@ -1006,6 +1006,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/setup", h.SetupPage)
 	r.Post("/setup", h.SetupCreateWeb)
 	r.Get("/setup/new", h.SetupNewPage)
+	r.Get("/setup/report", h.SetupReportPage)
 	r.Get("/setup/{id}", h.SetupDetailPage)
 	r.Post("/setup/{id}/edit-web", h.SetupEditWeb)
 	r.Post("/setup/{id}/finish-web", h.SetupFinishWeb)

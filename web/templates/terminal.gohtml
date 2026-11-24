@@ -134,6 +134,18 @@ body[data-mode="global"],body[data-saver-slides]{padding:0;-webkit-touch-callout
 .g-legend{display:flex;gap:2vw;justify-content:center;font-size:clamp(16px,1.8vw,32px);color:var(--muted)}
 .g-legend .k::before{content:"";display:inline-block;width:.9em;height:.9em;border-radius:3px;margin-right:.4em;vertical-align:-.1em;background:var(--accent)}
 .g-legend .k.s1::before{background:var(--green)}
+.g-statrow{flex:1;min-height:0;display:flex;gap:2vw}
+.g-statrow .g-chartbox{flex:3;min-width:0}
+.pie-set{flex:2;min-width:0;min-height:0;display:flex;flex-direction:column;gap:1vh}
+.pie-sel{min-height:48px;padding:0 .6em;border-radius:12px;border:2px solid var(--border);background:var(--bg2);color:var(--text);font:inherit;font-size:clamp(16px,1.8vw,30px)}
+.pie-holder{flex:1;min-height:0;display:flex}
+.pie-box{flex:1;min-height:0;display:flex;flex-direction:column;align-items:center;gap:1vh}
+.pie-svg{flex:1;min-height:0;max-width:100%}
+.pie-slice{stroke:var(--bg);stroke-width:2}
+.pie-pct{fill:#fff;font-size:22px;font-weight:700;text-anchor:middle;paint-order:stroke;stroke:rgba(0,0,0,.6);stroke-width:4px}
+.pie-legend{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:.4vh 1.4vw;justify-content:center;font-size:clamp(14px,1.5vw,26px);color:var(--muted)}
+.pie-legend .sw{display:inline-block;width:.9em;height:.9em;border-radius:3px;margin-right:.4em;vertical-align:-.1em}
+.pie-none{color:var(--muted);font-size:clamp(16px,1.8vw,30px);padding:2vh 0}
 .g-plan{position:absolute;inset:0;padding:max(2vh,12px) max(2vw,16px);display:flex;flex-direction:column;gap:2vh;min-height:0}
 .g-plan h1{font-size:clamp(28px,3.6vw,64px);line-height:1.1;text-align:center;overflow-wrap:anywhere}
 .g-plan-days{flex:1;min-height:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,22vw),1fr));gap:1.2vw;align-content:start;overflow:hidden}
@@ -622,10 +634,15 @@ connect();
   <div class="l-msg" data-login-msg hidden></div>
   <div data-login-fields hidden>
     <div class="l-row">
-      <input type="text" id="login-card" inputmode="none" autocomplete="off" autocapitalize="characters" maxlength="32" placeholder="Kartennummer" aria-label="Kartennummer">
-      <input type="password" id="login-pin" inputmode="none" autocomplete="off" maxlength="8" placeholder="PIN" aria-label="PIN">
+      <input type="text" id="login-card" inputmode="none" autocomplete="off" autocapitalize="characters" maxlength="32" placeholder="Kartennummer eingeben" aria-label="Kartennummer" aria-controls="login-pad" aria-expanded="false">
     </div>
-    <div class="t-keypad" id="login-keypad" aria-label="Ziffernfeld"></div>
+    <div class="l-pad" id="login-pad" data-login-pad hidden>
+      <div class="l-row">
+        <input type="password" id="login-pin" inputmode="none" autocomplete="off" maxlength="8" placeholder="PIN" aria-label="PIN">
+        <button type="button" class="t-btn" data-login-collapse aria-label="Ziffernfeld schließen"><i class="ti ti-chevron-up" aria-hidden="true"></i> Schließen</button>
+      </div>
+      <div class="t-keypad" id="login-keypad" aria-label="Ziffernfeld"></div>
+    </div>
   </div>
   <button type="button" class="t-btn" id="login-password-btn" hidden><i class="ti ti-user" aria-hidden="true"></i> Mit Benutzer und Passwort</button>
 </div>

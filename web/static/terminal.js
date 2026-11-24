@@ -22,6 +22,135 @@
     return !!(settings && settings.password_button && settings.manual_login !== 'none');
   }
 
+  // Ziffernfeld der Anmeldung: eingeklappt (nur Kartenfeld) bis das Kartenfeld angetippt wird. Zustand true = ausgeklappt.
+  // Ereignisse: 'open' (Kartenfeld angetippt), 'ok' (OK gedrückt), 'cancel' (Schließen), 'login' (angemeldet),
+  // 'idle' (Rückkehr zum Schoner). Alles außer 'open' klappt zu; Unbekanntes lässt den Zustand.
+  function keypadState(open, event) {
+    if (event === 'open') return true;
+    if (event === 'ok' || event === 'cancel' || event === 'login' || event === 'idle') return false;
+    return !!open;
+  }
+
+  // Kreisdiagramm der Rüstgründe (Statistikfolie und Seite „Rüstzeiten – Auswertung“; derselbe Text steht in
+  // setup_report.gohtml). Geometrie rein; Zeichnen nur über DOM-Methoden und textContent, nie HTML aus Daten.
+  // slices: [{label, value, percent, color}]. Rückgabe je Stück mit value > 0: {d: Pfad, x, y: Ort der Prozentangabe, slice}.
+  function pieGeometry(slices, cx, cy, r) {
+    var out = [], total = 0;
+    var list = Array.isArray(slices) ? slices : [];
+    list.forEach(function (s) { var v = Number(s && s.value); if (v > 0) total += v; });
+    if (!(total > 0)) return out;
+    var rnd = function (n) { return Math.round(n * 10) / 10; };
+    var pt = function (a, rr) { return rnd(cx + rr * Math.cos(a)) + ' ' + rnd(cy + rr * Math.sin(a)); };
+    var a0 = -Math.PI / 2;
+    list.forEach(function (s) {
+      var v = Number(s && s.value);
+      if (!(v > 0)) return;
+      var a1 = a0 + 2 * Math.PI * v / total, mid = (a0 + a1) / 2, d;
+      if (v >= total) {
+        d = 'M ' + (cx - r) + ' ' + cy + ' A ' + r + ' ' + r + ' 0 1 1 ' + (cx + r) + ' ' + cy + ' A ' + r + ' ' + r + ' 0 1 1 ' + (cx - r) + ' ' + cy + ' Z';
+      } else {
+        d = 'M ' + cx + ' ' + cy + ' L ' + pt(a0, r) + ' A ' + r + ' ' + r + ' 0 ' + (a1 - a0 > Math.PI ? 1 : 0) + ' 1 ' + pt(a1, r) + ' Z';
+      }
+      out.push({ d: d, x: rnd(cx + r * 0.62 * Math.cos(mid)), y: rnd(cy + r * 0.62 * Math.sin(mid)), slice: s });
+      a0 = a1;
+    });
+    return out;
+  }
+  // Text für den barrierefreien Titel: „Grund A 60 %, Grund B 40 %“.
+  function pieText(pie) {
+    var sl = pie && Array.isArray(pie.slices) ? pie.slices : [];
+    return sl.map(function (s) { return String(s.label) + ' ' + Number(s.percent) + ' %'; }).join(', ');
+  }
+  // Farbe nur als Hexwert, sonst Grau.
+  function pieColor(c) {
+    return typeof c === 'string' && /^#[0-9a-fA-F]{6}$/.test(c) ? c : '#94a3b8';
+  }
+  var pieSeq = 0;
+  // Ein Kreisdiagramm samt Legende als DOM-Baum (div.pie-box).
+  function drawPie(pie) {
+    var NS = 'http://www.w3.org/2000/svg', n = ++pieSeq;
+    var box = document.createElement('div');
+    box.className = 'pie-box';
+    var geo = pieGeometry(pie && pie.slices, 150, 150, 140);
+    if (!geo.length) {
+      var none = document.createElement('div');
+      none.className = 'pie-none';
+      none.textContent = 'Keine abgeschlossenen Rüstzeiten';
+      box.appendChild(none);
+      return box;
+    }
+    var svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('viewBox', '0 0 300 300');
+    svg.setAttribute('class', 'pie-svg');
+    svg.setAttribute('role', 'img');
+    svg.setAttribute('aria-labelledby', 'pie-t' + n + ' pie-d' + n);
+    var t = document.createElementNS(NS, 'title');
+    t.setAttribute('id', 'pie-t' + n);
+    t.textContent = 'Anteil der Rüstgründe – ' + String((pie && pie.title) || '');
+    var ds = document.createElementNS(NS, 'desc');
+    ds.setAttribute('id', 'pie-d' + n);
+    ds.textContent = pieText(pie);
+    svg.appendChild(t);
+    svg.appendChild(ds);
+    geo.forEach(function (g) {
+      var p = document.createElementNS(NS, 'path');
+      p.setAttribute('d', g.d);
+      p.setAttribute('fill', pieColor(g.slice.color));
+      p.setAttribute('class', 'pie-slice');
+      svg.appendChild(p);
+    });
+    geo.forEach(function (g) {
+      if (!(Number(g.slice.percent) >= 4)) return; // kleine Stücke nur in der Legende
+      var tx = document.createElementNS(NS, 'text');
+      tx.setAttribute('x', g.x);
+      tx.setAttribute('y', g.y + 7);
+      tx.setAttribute('class', 'pie-pct');
+      tx.textContent = Number(g.slice.percent) + ' %';
+      svg.appendChild(tx);
+    });
+    box.appendChild(svg);
+    var ul = document.createElement('ul');
+    ul.className = 'pie-legend';
+    geo.forEach(function (g) {
+      var li = document.createElement('li');
+      var sw = document.createElement('span');
+      sw.className = 'sw';
+      sw.style.backgroundColor = pieColor(g.slice.color);
+      li.appendChild(sw);
+      li.appendChild(document.createTextNode(String(g.slice.label) + ' – ' + Number(g.slice.percent) + ' %'));
+      ul.appendChild(li);
+    });
+    box.appendChild(ul);
+    return box;
+  }
+  // Auswahl „Alle Anlagen“ / je Anlage und das gewählte Kreisdiagramm (div.pie-set); ohne Diagramme leer.
+  function drawPieSet(pies) {
+    var set = document.createElement('div');
+    set.className = 'pie-set';
+    var list = Array.isArray(pies) ? pies : [];
+    if (!list.length) return set;
+    var sel = document.createElement('select');
+    sel.className = 'pie-sel';
+    sel.setAttribute('aria-label', 'Anlage für das Kreisdiagramm');
+    list.forEach(function (p, i) {
+      var o = document.createElement('option');
+      o.value = String(i);
+      o.textContent = String(p.title || '');
+      sel.appendChild(o);
+    });
+    var holder = document.createElement('div');
+    holder.className = 'pie-holder';
+    var show = function () {
+      while (holder.firstChild) holder.removeChild(holder.firstChild);
+      holder.appendChild(drawPie(list[Number(sel.value)] || list[0]));
+    };
+    sel.addEventListener('change', show);
+    set.appendChild(sel);
+    set.appendChild(holder);
+    show();
+    return set;
+  }
+
   // Folienschau des Infobildschirms (Modus global) – reine Funktionen.
   // Nächste Folie (reihum); ohne Folien 0.
   function nextSlideIndex(slides, i) {
@@ -263,7 +392,7 @@
     var timer = null;
     var reset = function () {
       if (timer) clearTimeout(timer);
-      timer = setTimeout(function () { if (mode === 'vorgang') leaveVorgang(); else location.replace('/terminal'); }, idle * 1000);
+      timer = setTimeout(function () { document.dispatchEvent(new CustomEvent('pdh-idle')); if (mode === 'vorgang') leaveVorgang(); else location.replace('/terminal'); }, idle * 1000);
     };
     document.addEventListener('pointerdown', reset, true);
     document.addEventListener('keydown', reset, true);
@@ -576,11 +705,14 @@
         // Ältere Geräte senden kein „reader“: dann bleibt es beim Standard „ok“ (= nach 3 s ohne Ereignis).
         var reader = 'ok';
         var activeIn = cardIn, dialogOpen = false;
+        var padEl = panel.querySelector('[data-login-pad]');
+        var padOpen = false;
+        var padEvent = function (ev) { padOpen = keypadState(padOpen, ev); };
 
         var render = function () {
           var view = loginView(reader, settings);
           if (loggedIn || view === 'card') dialogOpen = false;
-          if (loggedIn) clearInputs(); // Karte hat angemeldet: halb getippte Eingaben verwerfen
+          if (loggedIn) { padEvent('login'); clearInputs(); } // Karte hat angemeldet: halb getippte Eingaben verwerfen
           // Der Dialog Benutzer/Passwort öffnet nur auf ausdrücklichen Klick auf den Knopf, nie von selbst.
           var open = !loggedIn && dialogOpen;
           var noReader = !loggedIn && view === 'none';
@@ -589,6 +721,9 @@
           loginMsg.textContent = noReader ? 'Kein Kartenleser – Anmeldung nicht möglich' : '';
           loginMsg.hidden = !noReader;
           fieldsEl.hidden = !fields;
+          if (!fields) padEvent('cancel');
+          padEl.hidden = !padOpen;
+          cardIn.setAttribute('aria-expanded', padOpen ? 'true' : 'false');
           pinIn.hidden = view !== 'card_pin';
           if (pinIn.hidden && activeIn === pinIn) activeIn = cardIn;
           pwBtn.hidden = !btn;
@@ -613,7 +748,7 @@
             .then(function (x) {
               if (g !== gen) return;
               var d = x.d;
-              if (d && d.ok) { good = true; msgEl.hidden = true; dialogOpen = false; showBar(d.name); lastPing = Date.now(); }
+              if (d && d.ok) { good = true; msgEl.hidden = true; dialogOpen = false; padEvent('login'); showBar(d.name); lastPing = Date.now(); }
               else if (x.s === 429) showMsg((d && d.message) || 'Bitte kurz warten');
               else showMsg((d && d.message) || 'Anmeldung fehlgeschlagen');
             })
@@ -633,6 +768,10 @@
         keypad.appendChild(mkKey('⌫', 'del', 'Löschen'));
         keypad.appendChild(mkKey('OK', 'ok', 'OK', true));
         cardIn.addEventListener('focus', function () { activeIn = cardIn; });
+        // Nur ein Antippen des Kartenfeldes klappt das Ziffernfeld aus (Fokus allein nicht).
+        cardIn.addEventListener('click', function () { activeIn = cardIn; padEvent('open'); render(); });
+        panel.querySelector('[data-login-collapse]').addEventListener('click', function () { padEvent('cancel'); render(); });
+        document.addEventListener('pdh-idle', function () { padEvent('idle'); render(); });
         pinIn.addEventListener('focus', function () { activeIn = pinIn; });
         keypad.addEventListener('pointerdown', function (ev) { ev.preventDefault(); }); // Fokus im Feld lassen
         keypad.addEventListener('click', function (ev) {
@@ -645,8 +784,10 @@
             if (!card) { cardIn.focus(); return; }
             if (view === 'card_pin') {
               if (!pinIn.value) { pinIn.focus(); return; }
+              padEvent('ok'); render();
               submit({ kind: 'card_pin', card: card, pin: pinIn.value });
             } else if (view === 'card_only') {
+              padEvent('ok'); render();
               submit({ kind: 'card_only', card: card });
             }
             return;
@@ -829,7 +970,15 @@
       var legSeries = st.unit === 'min' ? (st.series || []).slice(0, 1) : (st.series || []);
       legSeries.forEach(function (se, i) { leg.appendChild(el('span', 'k s' + i, se.name)); });
       wrap.appendChild(leg);
-      box.appendChild(wrap);
+      if (Array.isArray(st.pies) && st.pies.length) {
+        // Rüstzeiten: Säulen und Kreisdiagramm nebeneinander
+        var row = el('div', 'g-statrow');
+        row.appendChild(wrap);
+        row.appendChild(drawPieSet(st.pies));
+        box.appendChild(row);
+      } else {
+        box.appendChild(wrap);
+      }
       return box;
     };
     // Planungsfolie (Schichtplan, Abwesenheiten, Dienste, Wartung): je Tag eine Spalte mit Gruppen und Einträgen.

@@ -99,6 +99,10 @@ func TestTerminalStatsSlides(t *testing.T) {
 	if su == nil || statNum(su, "Rüstzeiten (7 Tage)") != "1" || statNum(su, "Ø Dauer") != "30 min" || sumSeries(su, "Anzahl") != 1 {
 		t.Errorf("Rüstzeiten mit Recht: %+v", su)
 	}
+	// Kreisdiagramme der Rüstgründe: „Alle Anlagen“ und die Anlage mit der Rüstzeit, Anteile 100 %
+	if len(su.Pies) != 2 || su.Pies[0].Key != "all" || su.Pies[1].Key != g.infraA1 || sumPercent(su.Pies[0].Slices) != 100 || len(su.Pies[1].Slices) != 1 {
+		t.Errorf("Kreisdiagramme: %+v", su.Pies)
+	}
 	if v1 != v2 {
 		t.Error("Version ändert sich mit den Zahlen; sie soll nur Änderungen an den Folien folgen")
 	}

@@ -1,0 +1,183 @@
+{{template "base" .}}
+{{define "content"}}
+<style>
+.sr-kpis{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+.sr-kpi{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:10px 16px;min-width:140px}
+.sr-kpi b{display:block;font-size:20px}.sr-kpi span{font-size:12px;color:var(--muted)}
+.sr-grid{display:grid;grid-template-columns:minmax(0,3fr) minmax(260px,2fr);gap:14px;align-items:start}
+@media(max-width:900px){.sr-grid{grid-template-columns:minmax(0,1fr)}}
+.sr-plant td{background:var(--bg3);font-weight:600}
+.sr-bar{height:8px;border-radius:4px;background:var(--bg3);overflow:hidden;min-width:60px;display:inline-block;width:70px;vertical-align:middle;margin-right:6px}
+.sr-bar span{display:block;height:100%;background:var(--accent)}
+.pie-set{display:flex;flex-direction:column;gap:10px}
+.pie-sel{max-width:100%}
+.pie-box{display:flex;flex-direction:column;align-items:center;gap:8px}
+.pie-svg{width:100%;max-width:320px;height:auto}
+.pie-slice{stroke:var(--bg2);stroke-width:2}
+.pie-pct{fill:#fff;font-size:20px;font-weight:700;text-anchor:middle;paint-order:stroke;stroke:rgba(0,0,0,.6);stroke-width:4px}
+.pie-legend{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:4px 14px;font-size:13px;color:var(--muted)}
+.pie-legend .sw{display:inline-block;width:.9em;height:.9em;border-radius:3px;margin-right:.4em;vertical-align:-.1em}
+.pie-none{color:var(--muted);padding:8px 0}
+</style>
+<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+  <div style="flex:1;min-width:200px">
+    <h1 style="font-size:18px;font-weight:600"><i class="ti ti-chart-pie"></i> Rüstzeiten – Auswertung</h1>
+    <p style="font-size:12px;color:var(--muted);margin-top:2px">Abgeschlossene Rüstzeiten je Anlage und Grund · {{.Period}} · <a href="/setup">zurück zu den Rüstzeiten</a></p>
+  </div>
+  <form method="get" action="/setup/report" style="display:flex;gap:8px;flex-wrap:wrap">
+    <select name="days" class="form-input" aria-label="Zeitraum" onchange="this.form.submit()">{{range .DayOpts}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}</select>
+    <noscript><button class="btn btn-small" type="submit">Anzeigen</button></noscript>
+  </form>
+</div>
+<div class="sr-kpis">
+  <div class="sr-kpi"><b>{{.Total}}</b><span>Rüstzeiten</span></div>
+  <div class="sr-kpi"><b>{{if .Duration}}{{.Duration}}{{else}}–{{end}}</b><span>Gesamtdauer</span></div>
+  <div class="sr-kpi"><b>{{.Running}}</b><span>laufend</span></div>
+</div>
+<div class="sr-grid">
+  <div class="card">
+    {{if .Plants}}
+    <div style="overflow-x:auto"><table class="table">
+      <thead><tr><th>Anlage / Grund</th><th>Anzahl</th><th>Gesamtdauer</th><th>Ø Dauer</th><th>Anteil</th></tr></thead>
+      {{range .Plants}}<tbody>
+        <tr class="sr-plant"><td>{{.Path}}</td><td>{{.Count}}</td><td>{{.Duration}}</td><td></td><td></td></tr>
+        {{range .Reasons}}<tr><td style="padding-left:24px">{{.Name}}</td><td>{{.Count}}</td><td>{{.Duration}}</td><td>{{.Avg}}</td><td><span class="sr-bar" title="{{.Pct}} %"><span style="width:{{.Pct}}%"></span></span>{{.Pct}} %</td></tr>{{end}}
+      </tbody>{{end}}
+    </table></div>
+    {{else}}<div class="rec-sub" style="padding:8px 0">Im gewählten Zeitraum wurden keine abgeschlossenen Rüstzeiten erfasst.</div>{{end}}
+  </div>
+  <div class="card" id="sr-pies" data-pies="{{.PiesJSON}}">
+    <h2 style="font-size:14px;font-weight:600;margin-bottom:8px">Anteil der Rüstgründe</h2>
+    {{if not .HasPies}}<div class="pie-none">Keine abgeschlossenen Rüstzeiten</div>{{end}}
+  </div>
+</div>
+<script>
+(function () {
+  'use strict';
+  // Kreisdiagramm der Rüstgründe (Statistikfolie und Seite „Rüstzeiten – Auswertung“; derselbe Text steht in
+  // setup_report.gohtml). Geometrie rein; Zeichnen nur über DOM-Methoden und textContent, nie HTML aus Daten.
+  // slices: [{label, value, percent, color}]. Rückgabe je Stück mit value > 0: {d: Pfad, x, y: Ort der Prozentangabe, slice}.
+  function pieGeometry(slices, cx, cy, r) {
+    var out = [], total = 0;
+    var list = Array.isArray(slices) ? slices : [];
+    list.forEach(function (s) { var v = Number(s && s.value); if (v > 0) total += v; });
+    if (!(total > 0)) return out;
+    var rnd = function (n) { return Math.round(n * 10) / 10; };
+    var pt = function (a, rr) { return rnd(cx + rr * Math.cos(a)) + ' ' + rnd(cy + rr * Math.sin(a)); };
+    var a0 = -Math.PI / 2;
+    list.forEach(function (s) {
+      var v = Number(s && s.value);
+      if (!(v > 0)) return;
+      var a1 = a0 + 2 * Math.PI * v / total, mid = (a0 + a1) / 2, d;
+      if (v >= total) {
+        d = 'M ' + (cx - r) + ' ' + cy + ' A ' + r + ' ' + r + ' 0 1 1 ' + (cx + r) + ' ' + cy + ' A ' + r + ' ' + r + ' 0 1 1 ' + (cx - r) + ' ' + cy + ' Z';
+      } else {
+        d = 'M ' + cx + ' ' + cy + ' L ' + pt(a0, r) + ' A ' + r + ' ' + r + ' 0 ' + (a1 - a0 > Math.PI ? 1 : 0) + ' 1 ' + pt(a1, r) + ' Z';
+      }
+      out.push({ d: d, x: rnd(cx + r * 0.62 * Math.cos(mid)), y: rnd(cy + r * 0.62 * Math.sin(mid)), slice: s });
+      a0 = a1;
+    });
+    return out;
+  }
+  // Text für den barrierefreien Titel: „Grund A 60 %, Grund B 40 %“.
+  function pieText(pie) {
+    var sl = pie && Array.isArray(pie.slices) ? pie.slices : [];
+    return sl.map(function (s) { return String(s.label) + ' ' + Number(s.percent) + ' %'; }).join(', ');
+  }
+  // Farbe nur als Hexwert, sonst Grau.
+  function pieColor(c) {
+    return typeof c === 'string' && /^#[0-9a-fA-F]{6}$/.test(c) ? c : '#94a3b8';
+  }
+  var pieSeq = 0;
+  // Ein Kreisdiagramm samt Legende als DOM-Baum (div.pie-box).
+  function drawPie(pie) {
+    var NS = 'http://www.w3.org/2000/svg', n = ++pieSeq;
+    var box = document.createElement('div');
+    box.className = 'pie-box';
+    var geo = pieGeometry(pie && pie.slices, 150, 150, 140);
+    if (!geo.length) {
+      var none = document.createElement('div');
+      none.className = 'pie-none';
+      none.textContent = 'Keine abgeschlossenen Rüstzeiten';
+      box.appendChild(none);
+      return box;
+    }
+    var svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('viewBox', '0 0 300 300');
+    svg.setAttribute('class', 'pie-svg');
+    svg.setAttribute('role', 'img');
+    svg.setAttribute('aria-labelledby', 'pie-t' + n + ' pie-d' + n);
+    var t = document.createElementNS(NS, 'title');
+    t.setAttribute('id', 'pie-t' + n);
+    t.textContent = 'Anteil der Rüstgründe – ' + String((pie && pie.title) || '');
+    var ds = document.createElementNS(NS, 'desc');
+    ds.setAttribute('id', 'pie-d' + n);
+    ds.textContent = pieText(pie);
+    svg.appendChild(t);
+    svg.appendChild(ds);
+    geo.forEach(function (g) {
+      var p = document.createElementNS(NS, 'path');
+      p.setAttribute('d', g.d);
+      p.setAttribute('fill', pieColor(g.slice.color));
+      p.setAttribute('class', 'pie-slice');
+      svg.appendChild(p);
+    });
+    geo.forEach(function (g) {
+      if (!(Number(g.slice.percent) >= 4)) return; // kleine Stücke nur in der Legende
+      var tx = document.createElementNS(NS, 'text');
+      tx.setAttribute('x', g.x);
+      tx.setAttribute('y', g.y + 7);
+      tx.setAttribute('class', 'pie-pct');
+      tx.textContent = Number(g.slice.percent) + ' %';
+      svg.appendChild(tx);
+    });
+    box.appendChild(svg);
+    var ul = document.createElement('ul');
+    ul.className = 'pie-legend';
+    geo.forEach(function (g) {
+      var li = document.createElement('li');
+      var sw = document.createElement('span');
+      sw.className = 'sw';
+      sw.style.backgroundColor = pieColor(g.slice.color);
+      li.appendChild(sw);
+      li.appendChild(document.createTextNode(String(g.slice.label) + ' – ' + Number(g.slice.percent) + ' %'));
+      ul.appendChild(li);
+    });
+    box.appendChild(ul);
+    return box;
+  }
+  // Auswahl „Alle Anlagen“ / je Anlage und das gewählte Kreisdiagramm (div.pie-set); ohne Diagramme leer.
+  function drawPieSet(pies) {
+    var set = document.createElement('div');
+    set.className = 'pie-set';
+    var list = Array.isArray(pies) ? pies : [];
+    if (!list.length) return set;
+    var sel = document.createElement('select');
+    sel.className = 'pie-sel';
+    sel.setAttribute('aria-label', 'Anlage für das Kreisdiagramm');
+    list.forEach(function (p, i) {
+      var o = document.createElement('option');
+      o.value = String(i);
+      o.textContent = String(p.title || '');
+      sel.appendChild(o);
+    });
+    var holder = document.createElement('div');
+    holder.className = 'pie-holder';
+    var show = function () {
+      while (holder.firstChild) holder.removeChild(holder.firstChild);
+      holder.appendChild(drawPie(list[Number(sel.value)] || list[0]));
+    };
+    sel.addEventListener('change', show);
+    set.appendChild(sel);
+    set.appendChild(holder);
+    show();
+    return set;
+  }
+  var host = document.getElementById('sr-pies');
+  if (!host) return;
+  var pies = [];
+  try { pies = JSON.parse(host.getAttribute('data-pies') || '[]'); } catch (e) { pies = []; }
+  if (Array.isArray(pies) && pies.length) host.appendChild(drawPieSet(pies));
+})();
+</script>
+{{end}}

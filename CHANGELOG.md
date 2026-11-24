@@ -10,6 +10,17 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.82.47] – 2026-11-24
+
+### Neu
+
+- **Rüstzeiten, Auswertung:** Im Arbeitsbereich Rüstzeiten öffnet **Auswertung** (`/setup/report`) die abgeschlossenen Rüstzeiten je Anlage und Grund (Anzahl, Gesamtdauer, Ø Dauer, Anteil), geordnet nach dem Anlagenpfad. Ein **Kreisdiagramm** zeigt den Anteil der Rüstgründe an der Gesamtdauer, für alle Anlagen und – per Auswahl – für jede einzelne Anlage; die Prozentwerte ergeben immer 100 %. Es zählen nur Anlagen, für die das Recht „Rüstzeiten: ansehen“ in der Abteilung der Anlage besteht.
+- **Infobildschirm, Statistik Rüstzeiten:** Die Folie zeigt neben dem Säulendiagramm dasselbe Kreisdiagramm mit Auswahl „Alle Anlagen“ / je Anlage. Berechtigung und Abteilungsgrenzen bleiben wie bisher.
+
+### Geändert
+
+- **Terminal, Anmeldung ohne Kartenleser:** Das Ziffernfeld (0–F) ist eingeklappt. Zu sehen sind nur das Feld „Kartennummer eingeben“ und der Knopf „Mit Benutzer und Passwort“. Das Ziffernfeld (bei „Karte und PIN“ mit PIN-Feld) klappt erst auf, wenn das Kartenfeld angetippt wird, und wieder zu nach **OK**, mit **Schließen**, nach erfolgreicher Anmeldung und bei der Rückkehr zum Schoner. Die Bildschirmtastatur erscheint weiter nur nach einer echten Berührung.
+
 ## [0.82.46] – 2026-11-23
 
 ### Behoben
