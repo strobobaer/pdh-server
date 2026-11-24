@@ -58,6 +58,8 @@ const (
 	jobStopScript     = `systemctl stop pdh`
 	jobStartScript    = `systemctl start pdh`
 	jobIsActiveScript = `systemctl is-active --quiet pdh`
+	// Neustart des Rechners nach Betriebssystem-Paketen (os_steps.go)
+	jobRebootScript = `systemctl reboot`
 )
 
 // Zurückspielen der Datenbank (R17): in eine frische Datenbank <db>_rueckweg

@@ -31,12 +31,28 @@ type osFake struct {
 	statusOut string
 	statusErr error
 	checkErr  error
+	installErr error
+	installOut string
+	onInstall  func() // läuft beim „install“ (z. B. Status ändern); ohne Sperre von f.mu
+	rec        *jobRec // optional: Aufrufe als „os <aktion>“ ins gemeinsame Protokoll
 }
 
 func (f *osFake) run(_ context.Context, action string) ([]byte, error) {
 	f.mu.Lock()
-	defer f.mu.Unlock()
 	f.calls = append(f.calls, action)
+	rec, hook := f.rec, f.onInstall
+	f.mu.Unlock()
+	if rec != nil {
+		rec.add("os "+action, nil)
+	}
+	if action == "install" {
+		if hook != nil {
+			hook()
+		}
+		return []byte(f.installOut), f.installErr
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	switch action {
 	case "status":
 		return []byte(f.statusOut), f.statusErr

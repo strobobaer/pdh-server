@@ -103,6 +103,8 @@ func jobHostLabel(script string) string {
 		return "start-pdh"
 	case jobIsActiveScript:
 		return "pdh-active"
+	case jobRebootScript:
+		return "reboot"
 	}
 	return "unbekannt"
 }
@@ -124,9 +126,28 @@ func (c *jobClock) add(d time.Duration) {
 type jobHealth struct {
 	mu      sync.Mutex
 	version string
+	code    int // 0 = 200
 }
 
 func (h *jobHealth) set(v string) { h.mu.Lock(); h.version = v; h.mu.Unlock() }
+
+// setCode: HTTP-Status von /health (z. B. 503); 0 = 200.
+func (h *jobHealth) setCode(c int) { h.mu.Lock(); h.code = c; h.mu.Unlock() }
+
+// assertOrder: die Marken kommen in dieser Reihenfolge im Protokoll vor (andere dazwischen sind erlaubt).
+func assertOrder(t *testing.T, all string, want ...string) {
+	t.Helper()
+	parts := strings.Split(all, " | ")
+	i := 0
+	for _, p := range parts {
+		if i < len(want) && p == want[i] {
+			i++
+		}
+	}
+	if i != len(want) {
+		t.Fatalf("Reihenfolge %v nicht gefunden in: %s", want, all)
+	}
+}
 
 // jobFakeGit: ls-remote, rev-parse, show <sha>:VERSION.
 func jobFakeGit(remoteErr bool, remote string) func(context.Context, ...string) (string, error) {
@@ -163,8 +184,12 @@ func jobTestAgent(t *testing.T) (*updateAgent, *jobRec, *jobClock, *jobHealth) {
 			return
 		}
 		health.mu.Lock()
-		v := health.version
+		v, code := health.version, health.code
 		health.mu.Unlock()
+		if code != 0 {
+			w.WriteHeader(code)
+			return
+		}
 		_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok", "version": v})
 	}))
 	t.Cleanup(srv.Close)

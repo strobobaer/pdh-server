@@ -258,6 +258,17 @@ func (a *updateAgent) osCommand(name string, args ...string) *exec.Cmd {
 // osExec führt das Skript aus (nur check, install, status) – über systemd-run außerhalb der
 // Sandbox des Agenten. Rückgabe: Ausgabe (stdout und stderr) und Fehler.
 func (a *updateAgent) osExec(ctx context.Context, action string) ([]byte, error) {
+	return a.osExecUnit(ctx, action, "")
+}
+
+// osNewUnit: eindeutiger Name je Aufruf (Sekunde und Zähler): zwei Aufrufe in derselben Sekunde kollidieren nicht.
+func (a *updateAgent) osNewUnit(action string) string {
+	return fmt.Sprintf("pdh-os-%s-%d-%d", action, time.Now().Unix(), a.os.unitSeq.Add(1))
+}
+
+// osExecUnit wie osExec, aber mit vorgegebenem Namen der Einheit (leer = neuer Name); die
+// Schrittmaschine merkt sich den Namen, um nach einem Neustart des Agenten zu warten.
+func (a *updateAgent) osExecUnit(ctx context.Context, action, unit string) ([]byte, error) {
 	if !osActions[action] {
 		return nil, fmt.Errorf("unbekannte Aktion %q", action)
 	}
@@ -267,8 +278,9 @@ func (a *updateAgent) osExec(ctx context.Context, action string) ([]byte, error)
 	if a.osRun != nil {
 		return a.osRun(ctx, action)
 	}
-	// eindeutiger Name je Aufruf (Sekunde und Zähler): zwei Aufrufe in derselben Sekunde kollidieren nicht
-	unit := fmt.Sprintf("pdh-os-%s-%d-%d", action, time.Now().Unix(), a.os.unitSeq.Add(1))
+	if unit == "" {
+		unit = a.osNewUnit(action)
+	}
 	cmd := a.osCommand("systemd-run", "--wait", "--pipe", "--collect", "--quiet",
 		"--unit="+unit, osScriptPath, action)
 	out := &limitedBuffer{}
