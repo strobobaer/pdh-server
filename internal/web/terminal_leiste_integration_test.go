@@ -374,7 +374,7 @@ func TestLeisteErgaenzen(t *testing.T) {
 		t.Errorf("anonym: %d", rec.Code)
 	}
 	// Person außerhalb der Auswahl
-	if rec := x.postBar("/terminal/vorgaenge/ergaenzen", "fault", x.fault, url.Values{"text": {"x"}, "who": {x.carla}}); rec.Code != http.StatusForbidden {
+	if rec := x.postBar("/terminal/vorgaenge/ergaenzen", "fault", x.fault, url.Values{"text": {"x"}, "who": {x.carla}}); rec.Code != http.StatusUnprocessableEntity {
 		t.Errorf("fremde Person: %d", rec.Code)
 	}
 	// ohne Text
@@ -437,8 +437,15 @@ func TestLeisteFertigMeldenBrauchtPerson(t *testing.T) {
 		t.Errorf("anonym: %d %s", rec.Code, rec.Body.String())
 	}
 	// Person außerhalb der Auswahl
-	if rec := x.postBar("/terminal/vorgaenge/beenden", "fault", x.fault, url.Values{"who": {x.carla}}); rec.Code != http.StatusForbidden {
+	if rec := x.postBar("/terminal/vorgaenge/beenden", "fault", x.fault, url.Values{"who": {x.carla}}); rec.Code != http.StatusUnprocessableEntity {
 		t.Errorf("fremde Person: %d", rec.Code)
+	}
+	// ohne back (Seite „Vorgänge“) gilt dieselbe Regel
+	if rec := x.req("POST", "/terminal/vorgaenge/beenden", url.Values{"type": {"fault"}, "id": {x.fault}}, x.devCookie, nil); rec.Code != http.StatusUnprocessableEntity || strings.Contains(rec.Body.String(), "token") {
+		t.Errorf("Liste anonym: %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := x.req("POST", "/terminal/vorgaenge/beenden", url.Values{"type": {"fault"}, "id": {x.fault}, "who": {x.carla}}, x.devCookie, nil); rec.Code != http.StatusUnprocessableEntity {
+		t.Errorf("Liste fremde Person: %d", rec.Code)
 	}
 	if tokens() != "0" || x.status("faults", x.fault) != "in_progress" {
 		t.Fatal("abgewiesene Fertigmeldung hat Spuren hinterlassen")

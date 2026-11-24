@@ -217,7 +217,7 @@ func (h *Handler) vorgBarActor(ctx context.Context, c *vorgCtx, who string) (*us
 		}
 		return u, 0, nil
 	}
-	return nil, http.StatusForbidden, errors.New("Diese Person steht an diesem Terminal nicht zur Auswahl.")
+	return nil, http.StatusUnprocessableEntity, errors.New("Diese Person steht an diesem Terminal nicht zur Auswahl.")
 }
 
 // TerminalVorgaengeErgaenzen: POST /terminal/vorgaenge/ergaenzen (type, id, text, who, back)
