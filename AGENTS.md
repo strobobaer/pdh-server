@@ -848,8 +848,10 @@ und 3 drückt bis auf Weiteres der Anwender.
     erzeugen, verschickte bleiben und werden gelistet; geplante Fassungen mit
     `energy.edit`, vergangene nur `energy.admin`; erweiterter Rechenumfang
     nur für Momentanwerte; Copilot schlägt nur vor, nie eine vergangene
-    Fassung. Nächster Schritt: Bauplan, dann Bau (Migration 214, nächste
-    Korrekturversion).
+    Fassung. Bauplan `docs/superpowers/plans/2026-11-24-energie-fassungen.md`
+    (8 Aufgaben, Migration 214, Version 0.82.50) – wartet auf Durchsicht und
+    die Wahl der Ausführung. Nicht enthalten: Copilot-Werkzeuge für
+    Messstellen (gibt es heute nicht; Frage an den Anwender, ob er sie will).
 25. **0.82.48 Wartung: Jahresplan im Kalender, Auftrag mit Vorlauf** (Wunsch des
     Anwenders vom 23.11.2026: Personalplanung; Knopf „Jahresplan erzeugen“,
     nur der nächste Termin wird 5 Arbeitstage vorher automatisch zum
