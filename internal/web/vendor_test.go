@@ -130,6 +130,11 @@ func TestVendorRoute(t *testing.T) {
 	if iconGet(r, v+"icons-abc.css", nil).Header().Get("Content-Type") != "text/css; charset=utf-8" {
 		t.Errorf("icons-{key}.css wird nicht als Stildatei geliefert")
 	}
+	// icons-rest-{key}.css geht an die Rest-Datei, nicht an die Hauptdatei (Kennung „rest-…“)
+	rest := iconGet(r, v+"icons-rest-"+iconCSSKey(usedIconNames())+".css", nil)
+	if rest.Code != 200 || strings.Contains(rest.Body.String(), ".ti::before") || !strings.Contains(rest.Body.String(), "/icons/ti-") {
+		t.Errorf("icons-rest-{key}.css wird nicht als Rest-Datei geliefert: HTTP %d", rest.Code)
+	}
 }
 
 func TestVendorURLFunc(t *testing.T) {

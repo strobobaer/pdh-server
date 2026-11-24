@@ -10,6 +10,12 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.82.58] – 2026-11-24
+
+### Geändert
+
+- **Seiten zeichnen noch schneller:** Selten genutzte Symbole werden erst nach dem Laden der Seite nachgeladen; alle Symbole bleiben wie bisher nutzbar.
+
 ## [0.82.57] – 2026-11-24
 
 ### Geändert

@@ -65,6 +65,7 @@ func vendorURL(name string) string {
 // /icons/ gewinnt gegen {lib}.
 func RegisterVendorRoutes(r chi.Router, h *Handler) {
 	r.Handle("/vendor/tabler-icons/*", http.HandlerFunc(LegacyIconVendorWeb))
+	r.Get("/vendor/{ver}/icons-rest-{key}.css", h.IconCSSRestWeb)
 	r.Get("/vendor/{ver}/icons-{key}.css", h.IconCSSWeb)
 	r.Get("/vendor/{ver}/icons/{name}.svg", h.IconSVGWeb)
 	r.Get("/vendor/{ver}/{lib}/{file}", h.VendorLibWeb)

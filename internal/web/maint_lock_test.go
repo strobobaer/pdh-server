@@ -216,7 +216,7 @@ func TestLockRefusesWrites(t *testing.T) {
 func TestLockAllowsStatusAndStatic(t *testing.T) {
 	h, f := maintTestHandler(t, lockedView())
 	hd, calls := maintPlain(h)
-	for _, p := range []string{"/static/app.css", "/vendor/tabler-icons/tabler-icons.min.css", "/vendor/" + pdh.Version() + "/icons-0123456789.css", "/vendor/" + pdh.Version() + "/icons/ti-plus.svg", "/favicon.ico", "/site.webmanifest", "/health"} {
+	for _, p := range []string{"/static/app.css", "/vendor/tabler-icons/tabler-icons.min.css", "/vendor/" + pdh.Version() + "/icons-0123456789.css", "/vendor/" + pdh.Version() + "/icons-rest-0123456789.css","/vendor/" + pdh.Version() + "/icons/ti-plus.svg", "/favicon.ico", "/site.webmanifest", "/health"} {
 		before := *calls
 		if rec := maintDo(hd, maintReq{method: "GET", path: p}); rec.Code != http.StatusOK || *calls != before+1 {
 			t.Errorf("%s: %d, Handler nicht erreicht", p, rec.Code)

@@ -17,6 +17,8 @@ func TemplateFuncs() template.FuncMap {
 		"appVersion": pdh.Version,
 		// Adresse der Symbol-Stildatei mit Version und Kennung (iconcss.go)
 		"iconCSSHref": iconCSSHref,
+		// Hauptdatei, Nachlade-Skript und Rest-Datei fuer den Seitenkopf (iconcss.go)
+		"iconCSSLinks": iconCSSLinks,
 		// mitgelieferte Bibliothek: /vendor/<Version>/<Baustein>/<Datei> (vendor.go)
 		"vendorURL":    vendorURL,
 		"css":          templateCSS,
