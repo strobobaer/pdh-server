@@ -423,11 +423,15 @@ func (a *updateAgent) osJobFinish(s *osJob, p ha.UpdatePhase, result string, rec
 	j.Phase, j.PhaseAt, j.Result = p, now, result
 	j.OSStep = s.OS.Step
 	if record {
-		lr := osLastRun{At: now.UTC().Format(time.RFC3339), Packages: s.OS.Pending, Rebooted: s.OS.Rebooted,
-			OK: p == ha.UpDone, Message: result}
-		a.osUpdateState(func(st *osState) { st.LastRun = &lr })
+		a.osRecordLastRun(now, s.OS, p == ha.UpDone, result)
 	}
 	log.Printf("betriebssystem: %s", fmt.Sprintf("%s: %s", p, result))
+}
+
+// osRecordLastRun trägt den letzten Lauf der Pakete ein (Betriebssystem-Auftrag und PDH-Auftrag mit Haken).
+func (a *updateAgent) osRecordLastRun(now time.Time, st osSteps, ok bool, msg string) {
+	lr := osLastRun{At: now.UTC().Format(time.RFC3339), Packages: st.Pending, Rebooted: st.Rebooted, OK: ok, Message: msg}
+	a.osUpdateState(func(s *osState) { s.LastRun = &lr })
 }
 
 // osJobReleaseLock gibt die Sperre frei (einmal). Läuft die Einheit von „install“ noch (z. B.

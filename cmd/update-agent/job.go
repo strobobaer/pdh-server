@@ -235,7 +235,7 @@ func (a *updateAgent) startSingleJob(ctx context.Context, source string, force b
 			Target: target, OldVersion: oldVersion, Old: map[string]string{jobSelf: old},
 			Phase: ha.UpPrepare, PhaseAt: now, StartedAt: now},
 		CountdownMin: win.CountdownMin, LockMaxMin: win.LockMaxMin,
-		WithOS: a.osWithUpdate(), // Haken gilt, wie er beim Start steht
+		WithOS: a.osPlanned(ctx), // Haken gilt, wie er beim Start steht
 		Dump: filepath.Join(drStateDir(), "vor-update-"+target+".dump"),
 	}
 	a.sj.mu.Lock()
@@ -577,6 +577,9 @@ func (a *updateAgent) jobFinish(s *singleJob, p ha.UpdatePhase, result string, f
 		}
 	})
 	log.Printf("update: %s", summary)
+	if s.WithOS && s.OS.Step == "done" {
+		a.osRecordLastRun(now, s.OS, !s.OS.Failed, s.OS.Msg) // Anzeige „letzter Lauf“ der Pakete
+	}
 	a.jobReleaseLock(s.OS.Unit)
 }
 
@@ -590,6 +593,16 @@ func (a *updateAgent) jobReleaseLock(unit string) {
 	if r != nil {
 		a.osReleaseAfterUnit(r, unit)
 	}
+}
+
+// osPlanned: Betriebssystem-Teil im PDH-Auftrag – nur mit Haken und wenn Pakete hier möglich sind
+// (nicht im Docker-Betrieb, nicht im Verbund).
+func (a *updateAgent) osPlanned(ctx context.Context) bool {
+	if !a.osWithUpdate() {
+		return false
+	}
+	ok, _, _ := a.osAvailable(ctx)
+	return ok
 }
 
 // jobOSStep führt den Betriebssystem-Teil (Haken) einen Schritt weiter. false = der Agent wird

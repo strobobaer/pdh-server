@@ -67,6 +67,9 @@ func TestSingleJobWithOS(t *testing.T) {
 	if a.lockHolder() != "" {
 		t.Fatalf("Sperre nicht frei: %s", a.lockHolder())
 	}
+	if lr := a.osState().LastRun; lr == nil || lr.Packages != 3 || lr.Rebooted || !lr.OK || !strings.Contains(lr.Message, "3 Pakete, Neustart nein") {
+		t.Fatalf("last_run: %+v", lr)
+	}
 }
 
 func TestSingleJobWithOSReboot(t *testing.T) {
@@ -116,6 +119,9 @@ func TestSingleJobWithOSReboot(t *testing.T) {
 	if v := b.jobView(); v.Phase != string(ha.UpDone) || !strings.Contains(v.Result, "Neustart ja") {
 		t.Fatalf("Ende: %+v", v)
 	}
+	if lr := b.osState().LastRun; lr == nil || lr.Packages != 3 || !lr.Rebooted || !lr.OK {
+		t.Fatalf("last_run: %+v", lr)
+	}
 }
 
 func TestSingleJobWithOSNoPending(t *testing.T) {
@@ -131,6 +137,39 @@ func TestSingleJobWithOSNoPending(t *testing.T) {
 	v := e.a.jobView()
 	if v.Phase != string(ha.UpDone) || strings.Contains(v.Result, "Betriebssystem") || v.Result != "Update auf 0.77.9 abgeschlossen" {
 		t.Fatalf("Ende: %+v", v)
+	}
+	if lr := e.a.osState().LastRun; lr == nil || lr.Packages != 0 || !lr.OK || lr.Message != "Keine Pakete zu aktualisieren" {
+		t.Fatalf("last_run: %+v", lr)
+	}
+}
+
+// Ohne Haken bleibt „letzter Lauf“ unberührt; ohne verfügbare Pakete (Docker, Verbund) wird der Teil nicht geplant.
+func TestSingleJobWithoutOSLeavesLastRun(t *testing.T) {
+	e := pdhOSEnv(t, 3, false)
+	e.a.osUpdateState(func(st *osState) { st.WithPDHUpdate = false })
+	if _, err := e.a.startSingleJob(context.Background(), srcButton, false); err != nil {
+		t.Fatal(err)
+	}
+	runPDHJob(t, e, 60)
+	if lr := e.a.osState().LastRun; lr != nil {
+		t.Fatalf("last_run ohne Haken: %+v", lr)
+	}
+}
+
+func TestOSPlannedNeedsAvailability(t *testing.T) {
+	e := pdhOSEnv(t, 3, false)
+	if !e.a.osPlanned(context.Background()) {
+		t.Fatal("Haken an, Einzelserver: geplant")
+	}
+	e.a.mode = "docker"
+	if e.a.osPlanned(context.Background()) {
+		t.Fatal("Docker-Betrieb: nicht geplant")
+	}
+	e.a.mode = "systemd"
+	haInstalled(t)
+	haFakeSocket(t, `{"ok":true,"configured":true,"mode":"duo","self":{"id":"a","role":"aktiv"}}`)
+	if e.a.osPlanned(context.Background()) {
+		t.Fatal("Verbund: nicht geplant")
 	}
 }
 
@@ -148,6 +187,9 @@ func TestSingleJobWithOSInstallFails(t *testing.T) {
 	}
 	if f := e.a.windowSnapshot().Faulty; len(f) != 0 {
 		t.Fatalf("fehlerhaft gemerkt: %v", f)
+	}
+	if lr := e.a.osState().LastRun; lr == nil || lr.OK || !strings.Contains(lr.Message, "Einspielen fehlgeschlagen") {
+		t.Fatalf("last_run: %+v", lr)
 	}
 	all := e.rec.all()
 	if strings.Contains(all, "script --rollback") || strings.Contains(all, "pg_restore") {
