@@ -31,7 +31,7 @@ a{color:inherit;text-decoration:none}
 .v-none{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;font-weight:700;font-size:1.4em;color:var(--muted)}
 </style>
 </head>
-<body data-mode="vorgang" data-idle="{{.Idle}}">
+<body data-mode="vorgang" data-idle="{{.Idle}}"{{if .LocalPortAttr}} data-local-port="{{.LocalPortAttr}}"{{end}}>
 <div class="v-head">
   <a class="v-back" href="/terminal">‹ Zurück</a>
   {{if not .NotFound}}<span class="v-kind">{{.KindLabel}}</span>{{end}}

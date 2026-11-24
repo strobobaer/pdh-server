@@ -440,6 +440,7 @@ type terminalVorgang struct {
 	NotFound    bool
 	Scheme      string // dark | light
 	Idle        int
+	LocalPort   int // lokaler Port des Geräts (0 = 8080), siehe terminalPage.LocalPortAttr
 	KindLabel   string
 	Title       string
 	StatusLabel string
@@ -449,6 +450,9 @@ type terminalVorgang struct {
 	Updated     string
 	History     []terminalVorgangHist
 }
+
+// LocalPortAttr: siehe terminalPage.LocalPortAttr.
+func (d terminalVorgang) LocalPortAttr() string { return localPortAttr(d.LocalPort) }
 
 // vorgangAllowed: gehört der Vorgang (Anlage infraID) zu einer aktiven Vorgänge-Folie, die diese Art zeigt,
 // und hat der Terminal-Benutzer das Ansichtsrecht für die Anlage?
@@ -511,8 +515,9 @@ func (h *Handler) TerminalVorgang(w http.ResponseWriter, r *http.Request) {
 	}
 	idle := h.terminalIdleSeconds(r.Context(), uid)
 	_, scheme := h.terminalFnFlagsFor(r.Context(), uid)
+	lport := h.terminalDeviceLocalPort(r)
 	missing := func() {
-		h.renderTerminalVorgang(w, http.StatusNotFound, terminalVorgang{NotFound: true, Idle: idle, Scheme: scheme})
+		h.renderTerminalVorgang(w, http.StatusNotFound, terminalVorgang{NotFound: true, Idle: idle, Scheme: scheme, LocalPort: lport})
 	}
 	kind, id := chi.URLParam(r, "kind"), chi.URLParam(r, "id")
 	table, cond, label := "faults", terminalFaultOpenCond, "Störung"
@@ -553,6 +558,7 @@ func (h *Handler) TerminalVorgang(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	d.Idle, d.Scheme, d.KindLabel, d.StatusLabel = idle, scheme, label, statusLabel(status)
+	d.LocalPort = lport
 	d.Infra = h.infraPath(r.Context(), infra)
 	if utf8.RuneCountInString(d.Description) > terminalVorgangDescMax {
 		d.Description = string([]rune(d.Description)[:terminalVorgangDescMax]) + "…"

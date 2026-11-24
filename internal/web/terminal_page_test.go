@@ -282,7 +282,7 @@ func TestTerminalScriptCardReader(t *testing.T) {
 		t.Fatalf("status %d", rec.Code)
 	}
 	b := rec.Body.String()
-	for _, s := range []string{"127.0.0.1:8080", "/api/card/events", "/terminal/card/ping", "/terminal/card/abmelden", "/terminal/card"} {
+	for _, s := range []string{"127.0.0.1:", "data-local-port", "CARD_ORIGIN + '/api/keyboard/'", "/api/card/events", "/terminal/card/ping", "/terminal/card/abmelden", "/terminal/card"} {
 		if !strings.Contains(b, s) {
 			t.Errorf("Skript enthält %q nicht", s)
 		}

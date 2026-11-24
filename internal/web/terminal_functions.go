@@ -388,6 +388,85 @@ func terminalAdminURL(r *http.Request) string {
 	return v
 }
 
+// terminalDefaultLocalPort: Port der lokalen Startseite des Terminals, wenn es nichts anderes meldet.
+const terminalDefaultLocalPort = 8080
+
+// terminalLocalPort: lokaler Port aus X-Terminal-Local-Port (ab Terminal 0.4.6, nur gesendet wenn er von 8080
+// abweicht). Gültig sind nur Ziffern (ohne Leerzeichen) im Bereich 1024–65534 (die lokale Admin-Seite liegt auf
+// Port + 1); alles andere liefert 0 = nichts ändern.
+func terminalLocalPort(r *http.Request) int {
+	v := r.Header.Get("X-Terminal-Local-Port")
+	if len(v) < 4 || len(v) > 5 {
+		return 0
+	}
+	for _, c := range v {
+		if c < '0' || c > '9' {
+			return 0
+		}
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n < 1024 || n > 65534 {
+		return 0
+	}
+	return n
+}
+
+// terminalLocalPortUpdate: was die Statusabfrage mit der Spalte local_port tut. set=true: Wert schreiben
+// (port nil = NULL = Grundwert 8080, wenn die Kopfzeile fehlt oder 8080 meldet). set=false: stehen lassen
+// (Kopfzeile vorhanden, aber ungültig).
+func terminalLocalPortUpdate(r *http.Request) (port any, set bool) {
+	if r.Header.Get("X-Terminal-Local-Port") == "" {
+		return nil, true
+	}
+	switch n := terminalLocalPort(r); n {
+	case 0:
+		return nil, false
+	case terminalDefaultLocalPort:
+		return nil, true
+	default:
+		return n, true
+	}
+}
+
+// terminalLocalPortOrDefault: gespeicherter Port (NULL oder ungültig = 8080).
+func terminalLocalPortOrDefault(p *int) int {
+	if p == nil || *p < 1024 || *p > 65534 {
+		return terminalDefaultLocalPort
+	}
+	return *p
+}
+
+// localPortAttr: Wert für data-local-port; leer beim Grundwert 8080 (terminal.js nimmt dann 8080).
+func localPortAttr(port int) string {
+	if port < 1024 || port > 65534 || port == terminalDefaultLocalPort {
+		return ""
+	}
+	return strconv.Itoa(port)
+}
+
+// terminalLocalOrigin: Ursprung des lokalen Kartendienstes am Terminal (Loopback, Port des Geräts).
+func terminalLocalOrigin(port int) string {
+	return "http://127.0.0.1:" + strconv.Itoa(port)
+}
+
+// terminalLocalAdminURLFor: lokale Admin-Seite des Terminals; sie liegt auf dem Port der Startseite + 1.
+func terminalLocalAdminURLFor(port int) string {
+	return terminalLocalOrigin(port+1) + "/admin/"
+}
+
+// terminalDeviceLocalPort: lokaler Port des Geräts dieser Sitzung (kein Gerät, keine Datenbank, NULL: 8080).
+func (h *Handler) terminalDeviceLocalPort(r *http.Request) int {
+	_, _, dev := h.sessionToken(r)
+	if dev == "" || h.db == nil {
+		return terminalDefaultLocalPort
+	}
+	var p *int
+	if err := h.db.QueryRow(r.Context(), `SELECT local_port FROM terminal_devices WHERE id = $1::uuid`, dev).Scan(&p); err != nil {
+		return terminalDefaultLocalPort
+	}
+	return terminalLocalPortOrDefault(p)
+}
+
 func hasBearer(r *http.Request) bool {
 	a := r.Header.Get("Authorization")
 	return len(a) > 7 && strings.EqualFold(a[:7], "bearer ")
@@ -632,6 +711,7 @@ const terminalOnlineWindow = 2 * time.Minute
 type pdhTerminalView struct {
 	DeviceID, Name, UserID, UserName, Type, Version string
 	AdminURL                                        string // Verwaltungsseite des Terminals, leer = nicht gemeldet
+	LocalPort                                       int    // lokaler Port der Startseite, nur gesetzt wenn er von 8080 abweicht
 	Online, Revoked                                 bool
 	LastSeen, Paired, RevokedAt, Link               string
 }
@@ -639,7 +719,7 @@ type pdhTerminalView struct {
 // loadPDHTerminals listet die gekoppelten Geräte der Terminal-Benutzer (aktive zuerst, dann nach Name).
 func (h *Handler) loadPDHTerminals(ctx context.Context) ([]pdhTerminalView, error) {
 	rows, err := h.db.Query(ctx, `SELECT d.id::text, d.name, u.id::text, u.first_name, u.last_name, u.username,
-			d.client_version, d.admin_url, d.created_at, d.last_seen_at, d.revoked_at
+			d.client_version, d.admin_url, d.local_port, d.created_at, d.last_seen_at, d.revoked_at
 		FROM terminal_devices d JOIN users u ON u.id = d.user_id
 		ORDER BY (d.revoked_at IS NOT NULL), lower(d.name), d.created_at LIMIT 500`)
 	if err != nil {
@@ -653,8 +733,12 @@ func (h *Handler) loadPDHTerminals(ctx context.Context) ([]pdhTerminalView, erro
 		var first, last, uname string
 		var created time.Time
 		var seen, revoked *time.Time
-		if err := rows.Scan(&v.DeviceID, &v.Name, &v.UserID, &first, &last, &uname, &v.Version, &v.AdminURL, &created, &seen, &revoked); err != nil {
+		var lport *int
+		if err := rows.Scan(&v.DeviceID, &v.Name, &v.UserID, &first, &last, &uname, &v.Version, &v.AdminURL, &lport, &created, &seen, &revoked); err != nil {
 			return nil, err
+		}
+		if p := terminalLocalPortOrDefault(lport); p != terminalDefaultLocalPort {
+			v.LocalPort = p
 		}
 		v.UserName = displayUserName(first, last, uname)
 		v.Type = "PDH-Terminal"
