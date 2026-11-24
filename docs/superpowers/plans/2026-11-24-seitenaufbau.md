@@ -91,6 +91,7 @@
   - `TestOldIconCSSRedirects`: `GET /vendor/tabler-icons/tabler-icons.min.css?v=0.82.55` → 302 auf die aktuelle Stildatei, `no-store`.
   - `TestIconsServedLocally` angepasst: erwartet die neue Adresse; die Prüfung „Schrift in der CSS-Datei“ entfällt, stattdessen „keine Schriftdatei für Symbole“ (`@font-face` mit `tabler` kommt nicht vor).
   - `TestNoIconFontFallback`: `base.gohtml` enthält weder `ensureIconFont` noch `icons-fallback`.
+  - `TestIconPickerLazy`: die Symbolauswahl auf `/admin/icons` (und jede weitere Auswahl mit der ganzen Liste, `/admin/icons/names`) setzt auf ihre Kacheln `content-visibility:auto` mit `contain-intrinsic-size`, damit der Browser nur sichtbare Symbole lädt.
 - [ ] **Step 2:** `go test ./internal/web -run 'TestPagesUseIconCSS|TestOldIconCSS|TestIcons|TestNoIconFont|TestIconCSSCompressed'` → FAIL.
 - [ ] **Step 3:** Umstellen; alte CSS-Datei löschen.
 - [ ] **Step 4:** `go test ./internal/web` → PASS.
