@@ -47,6 +47,23 @@ func (st *osSteps) fail(msg string) {
 	}
 }
 
+// failAfterInstall: Fehler nach erfolgreichem Einspielen; das Paketergebnis bleibt stehen.
+func (st *osSteps) failAfterInstall(msg string) {
+	st.Failed = true
+	st.Msg = fmt.Sprintf("%d Pakete eingespielt; %s", st.Pending, msg)
+}
+
+// osInstallWait: weiter auf die Einheit von „install“ warten (false) – höchstens
+// osInstallTimeout plus 15 Minuten; danach Fehler und pdh wird wieder gestartet. Die Einheit
+// bleibt in st.Unit vermerkt (die Sperre bleibt, bis sie endet).
+func (a *updateAgent) osInstallWait(st *osSteps) bool {
+	if a.now().Sub(st.StepAt) >= osInstallTimeout+15*time.Minute {
+		st.fail("Einspielen dauert zu lange – Einheit " + st.Unit + " läuft noch")
+		st.Step = "start"
+	}
+	return false
+}
+
 // osAdvance führt höchstens einen Schritt aus. true = beendet (Step=="done"; bei Failed ist
 // pdh wieder gestartet).
 func (a *updateAgent) osAdvance(ctx context.Context, st *osSteps, persist func()) (done bool) {
@@ -94,15 +111,16 @@ func (a *updateAgent) osAdvance(ctx context.Context, st *osSteps, persist func()
 		// Einheit läuft noch (Agent oder Rechner wurde zwischendurch neu gestartet): warten,
 		// nie ein zweites apt daneben starten
 		if st.Unit != "" && a.osUnitIsActive(ctx, st.Unit) {
-			return false
+			return a.osInstallWait(st)
 		}
 		st.Unit = a.osNewUnit("install")
+		st.StepAt = a.now() // Beginn der Frist für das Warten auf die Einheit
 		persist()
 		out, err := a.osExecUnit(ctx, "install", st.Unit)
 		if err != nil {
 			var ur *osUnitRunning
 			if errors.As(err, &ur) {
-				return false // läuft noch: Step bleibt „install“
+				return a.osInstallWait(st) // läuft noch: Step bleibt „install“
 			}
 			msg := osLastLines(string(out), 3)
 			if msg == "" {
@@ -117,7 +135,7 @@ func (a *updateAgent) osAdvance(ctx context.Context, st *osSteps, persist func()
 		a.osClearCache()
 		ss, err := a.osStatus(ctx)
 		if err != nil {
-			st.fail("Status nach dem Einspielen nicht lesbar: " + err.Error())
+			st.failAfterInstall("Neustart nicht geprüft: Status nicht lesbar: " + err.Error())
 			st.Step = "start"
 			return false
 		}
@@ -131,14 +149,14 @@ func (a *updateAgent) osAdvance(ctx context.Context, st *osSteps, persist func()
 	case "reboot":
 		id := a.osBootID()
 		if id == "" {
-			st.fail("boot_id nicht lesbar – kein Neustart")
+			st.failAfterInstall("Neustart nicht möglich: boot_id nicht lesbar")
 			st.Step = "start"
 			return false
 		}
 		st.BootID, st.StepAt, st.Step = id, a.now(), "boot"
 		persist() // vor dem Neustart: danach gibt es den Agenten nicht mehr
 		if err := a.jobHost(ctx, jobRebootScript, nil); err != nil {
-			st.fail("Neustart fehlgeschlagen: " + err.Error())
+			st.failAfterInstall("Neustart fehlgeschlagen: " + err.Error())
 			st.Step = "start"
 		}
 
@@ -150,7 +168,7 @@ func (a *updateAgent) osAdvance(ctx context.Context, st *osSteps, persist func()
 		case a.now().Sub(st.StepAt) < osBootWait:
 			return false
 		default:
-			st.fail("Neustart hat nicht stattgefunden – bitte Konsole prüfen")
+			st.failAfterInstall("Neustart hat nicht stattgefunden – bitte Konsole prüfen")
 			st.Step = "start"
 		}
 

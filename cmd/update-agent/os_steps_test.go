@@ -239,7 +239,7 @@ func TestOSStepsResumeWaitsForUnit(t *testing.T) {
 	var active atomic.Bool
 	active.Store(true)
 	e.a.osUnitActive = func(_ context.Context, u string) bool { return u == "pdh-os-install-alt" && active.Load() }
-	st := osSteps{Step: "install", Pending: 3, Unit: "pdh-os-install-alt"}
+	st := osSteps{Step: "install", Pending: 3, Unit: "pdh-os-install-alt", StepAt: e.clk.now()}
 	for i := 0; i < 3; i++ {
 		if e.a.osAdvance(context.Background(), &st, e.persist) {
 			t.Fatalf("fertig: %+v", st)
@@ -259,4 +259,56 @@ func TestOSStepsInstalling(t *testing.T) {
 	if !(osSteps{Step: "install"}).installing() || (osSteps{Step: "stop"}).installing() {
 		t.Fatal("installing()")
 	}
+}
+
+func TestOSStepsInstallWaitBounded(t *testing.T) {
+	e := osStepsAgent(t, 3, false)
+	e.a.osUnitActive = func(context.Context, string) bool { return true }
+	inner := e.fake.run
+	e.a.osRun = func(ctx context.Context, action string) ([]byte, error) {
+		if action == "install" {
+			e.rec.add("os install", nil)
+			return nil, &osUnitRunning{Unit: "pdh-os-install-x", Action: "install"}
+		}
+		return inner(ctx, action)
+	}
+	var st osSteps
+	e.run(t, &st, nil)
+	all := e.rec.all()
+	if !st.Failed || !strings.Contains(st.Msg, "dauert zu lange") || st.Unit == "" || st.Step != "done" {
+		t.Fatalf("st=%+v", st)
+	}
+	if strings.Count(all, "os install") != 1 {
+		t.Fatalf("zweites install: %s", all)
+	}
+	assertOrder(t, all, "os install", "start-pdh")
+}
+
+func TestOSStepsStatusUnreadableAfterInstall(t *testing.T) {
+	e := osStepsAgent(t, 3, true)
+	e.fake.onInstall = func() {
+		e.fake.mu.Lock()
+		e.fake.statusOut = "kaputt"
+		e.fake.mu.Unlock()
+	}
+	var st osSteps
+	e.run(t, &st, nil)
+	all := e.rec.all()
+	if !st.Failed || !strings.Contains(st.Msg, "3 Pakete eingespielt") || strings.Contains(all, "reboot") {
+		t.Fatalf("st=%+v ablauf=%s", st, all)
+	}
+	assertOrder(t, all, "os install", "start-pdh")
+}
+
+func TestOSStepsRebootCommandFails(t *testing.T) {
+	e := osStepsAgent(t, 3, true)
+	e.rec.mu.Lock()
+	e.rec.fail["reboot"] = true
+	e.rec.mu.Unlock()
+	var st osSteps
+	e.run(t, &st, nil)
+	if !st.Failed || !strings.Contains(st.Msg, "Neustart fehlgeschlagen") || strings.Contains(st.Msg, "nicht stattgefunden") || !strings.Contains(st.Msg, "3 Pakete eingespielt") {
+		t.Fatalf("st=%+v", st)
+	}
+	assertOrder(t, e.rec.all(), "reboot", "start-pdh")
 }
