@@ -599,3 +599,65 @@ func TestOSJobNoPackagesAfterCheckIsDone(t *testing.T) {
 		t.Fatalf("last_run: %+v", lr)
 	}
 }
+
+// ── Korrekturrunde 2 ──────────────────────────────────────────────────────
+
+func TestOSJobAbandonPaths(t *testing.T) {
+	cases := []struct {
+		name   string
+		setup  func(e *osStepsEnv)
+		before string // Marke, nach der pdh wieder gestartet werden muss
+		result string
+		abort  bool
+	}{
+		{"Sperre scheitert", func(e *osStepsEnv) { e.rec.fail["psql-lock"] = true }, "psql-lock", "Sperre nicht gesetzt", false},
+		{"pdh nicht zu stoppen", func(e *osStepsEnv) { e.rec.fail["pdh-active"] = false }, "stop-pdh", "pdh vor der Sicherung nicht gestoppt", false},
+		{"Sicherung scheitert", func(e *osStepsEnv) { e.rec.fail["pg_dump"] = true }, "pg_dump", "Sicherung vor dem Update fehlgeschlagen", false},
+		{"Abbruch während der Sicherung", func(e *osStepsEnv) {
+			e.rec.on["pg_dump"] = func() { _ = e.a.abortSingleJob("Anna") }
+		}, "pg_dump", "Abgebrochen von Anna", true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			e := osJobEnv(t, 4, false)
+			c.setup(e)
+			if _, err := e.a.startOSJob(context.Background(), srcButton, false); err != nil {
+				t.Fatal(err)
+			}
+			runOSJob(t, e.a, e.clk, 40)
+			v, all := e.a.jobView(), e.rec.all()
+			if v.Phase != string(ha.UpFailed) || !strings.Contains(v.Result, c.result) {
+				t.Fatalf("Ende: %+v", v)
+			}
+			assertOrder(t, all, c.before, "start-pdh")
+			if !strings.Contains(all, "psql-unlock") || strings.Contains(all, "os install") {
+				t.Fatalf("Ablauf: %s", all)
+			}
+			if lr := e.a.osState().LastRun; lr != nil && lr.OK {
+				t.Fatalf("last_run: %+v", lr)
+			} else if lr == nil && !c.abort {
+				t.Fatal("last_run fehlt")
+			}
+			if rel, busy := e.a.lockAcquire(lockPDH); busy != "" {
+				t.Fatalf("Sperre nicht frei: %s", busy)
+			} else {
+				rel()
+			}
+		})
+	}
+}
+
+func TestOSJobStartNeedsExclusiveLock(t *testing.T) {
+	for _, force := range []bool{false, true} {
+		e := osJobEnv(t, 4, false)
+		rel, _ := e.a.lockAcquire(lockOS) // z. B. eine laufende Prüfung
+		_, err := e.a.startOSJob(context.Background(), srcButton, force)
+		rel()
+		if err == nil || err.Error() != lockBusyMsg(lockOS) {
+			t.Fatalf("force=%v: %v", force, err)
+		}
+		if e.a.osJobOpen() || strings.Contains(e.rec.all(), "os check") {
+			t.Fatalf("force=%v: Auftrag offen oder Prüfung gelaufen: %s", force, e.rec.all())
+		}
+	}
+}
