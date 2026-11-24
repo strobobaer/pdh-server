@@ -379,6 +379,36 @@ type ReasonStat struct {
 	Minutes float64
 }
 
+// Interval: ein Stillstand mit Anlage und Grund für Auswertungen (laufende: End = jetzt).
+type Interval struct {
+	InfraID, Reason string
+	Start, End      time.Time
+}
+
+// IntervalsSince liefert die Stillstände der Anlagen ids, die seit since begonnen haben (laufende bis jetzt),
+// Grundlage der Auswertung mit Arbeitszeiten. Der Grund ist der Name zum Zeitpunkt des Beginns.
+func (s *Store) IntervalsSince(ctx context.Context, ids []string, since time.Time) ([]Interval, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	rows, err := s.DB.Query(ctx, `SELECT t.infrastructure_id::text, COALESCE(NULLIF(t.reason_name, ''), 'ohne Grund'), t.started_at, COALESCE(t.ended_at, now())
+		  FROM downtimes t WHERE t.infrastructure_id = ANY($1::uuid[]) AND t.archived_at IS NULL AND t.started_at >= $2
+		 ORDER BY t.started_at`, ids, since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Interval
+	for rows.Next() {
+		var x Interval
+		if err := rows.Scan(&x.InfraID, &x.Reason, &x.Start, &x.End); err != nil {
+			return nil, err
+		}
+		out = append(out, x)
+	}
+	return out, rows.Err()
+}
+
 // StatsByReason wertet die Stillstände der Anlagen ids, die seit since begonnen haben, je Grund aus
 // (absteigend nach Dauer). Ohne Grund (ältere Datensätze): „ohne Grund“. Maßgeblich ist der Name
 // zum Zeitpunkt des Beginns (reason_name), eine spätere Umbenennung ändert die Historie nicht.

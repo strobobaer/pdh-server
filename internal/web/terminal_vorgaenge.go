@@ -15,15 +15,15 @@ package web
 //
 // Ist eine Person per Karte angemeldet, handelt sie in beiden Betriebsarten mit ihren eigenen Rechten und ist in der
 // Auswahl vorbelegt; die Karte zeigt außerdem ihre laufenden Vorgänge mit Beenden und Warten. Alle Schreibwege
-// verlangen die Gerätesitzung des Terminals (sonst 403). Mitarbeitende müssen aus den Abteilungen des Terminals
+// verlangen die Gerätesitzung des Terminals (sonst 403). Mitarbeitende müssen aus der Personenauswahl des Terminals (terminal_pick.go: Abteilungen, eingestellte Quellen, Recht „auswählbar“, Instandhaltung)
 // stammen (terminal_departments.go), der Vorgang aus der Anlage des Terminals. Jeder Schritt steht im Verlauf des
 // Vorgangs mit den gewählten Personen, dem Terminal als Ort und der Herkunft (record_history.origin_via).
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -56,11 +56,18 @@ var vorgKinds = []vorgKind{
 	{"task", "tasks", "Aufgabe", "Aufgaben", "ti-checkbox", "'open','in_progress','pending'", "tasks.view", "tasks.edit"},
 }
 
+// vorgMaintKind: Wartungsauftrag. Steht nicht in vorgKinds (die Seite „Vorgänge“ zeigt keine Wartungen), wird aber
+// von den Schreibwegen und der Vorgangsleiste (terminal_leiste.go) wie die anderen Arten behandelt.
+var vorgMaintKind = vorgKind{"maintenance", "maintenance_tasks", "Wartung", "Wartungen", "ti-calendar-check", "'open','in_progress','pending'", "maintenance.view", "maintenance.edit"}
+
 func vorgKindOf(typ string) (vorgKind, bool) {
 	for _, k := range vorgKinds {
 		if k.Type == typ {
 			return k, true
 		}
+	}
+	if typ == vorgMaintKind.Type {
+		return vorgMaintKind, true
 	}
 	return vorgKind{}, false
 }
@@ -69,7 +76,10 @@ type vorgItem struct {
 	Type, ID, Title, Path, Infra string
 	Group                        string // open | work | wait
 	People                       []terminalPerson
-	Mine, CanAct                 bool
+	Mine, CanAct, CanDone        bool
+	Due                          string // Wartung: fällig am (Anzeige)
+	Overdue                      bool   // Wartung: überfällig
+	Desc                         string // Beschreibung (nur Vorgangsleiste, Einzelansicht)
 }
 
 func (it vorgItem) Sel() string         { return it.Type + ":" + it.ID }
@@ -120,16 +130,18 @@ type terminalVorgPage struct {
 	Groups                     []vorgGroup
 	Sel                        *vorgItem
 	Pick                       []vorgPick
-	PickFallback               bool // Personen der Instandhaltung, weil die Abteilungen des Terminals keine haben
 }
 
 var vorgNotices = map[string]string{
-	"start":   "Vorgang gestartet.",
-	"warten":  "Vorgang wartet – die Zuweisung bleibt.",
-	"beendet": "Aufgabe erledigt.",
-	"person":  "Bitte mindestens eine Person wählen.",
-	"gone":    "Der Vorgang hat sich inzwischen geändert.",
-	"err":     "Das hat nicht geklappt – bitte nochmal versuchen.",
+	"start":    "Vorgang gestartet.",
+	"warten":   "Vorgang wartet – die Zuweisung bleibt.",
+	"beendet":  "Aufgabe erledigt.",
+	"person":   "Bitte mindestens eine Person wählen.",
+	"gone":     "Der Vorgang hat sich inzwischen geändert.",
+	"ergaenzt": "Ergänzt.",
+	"who":      "Bitte eine Person wählen oder die Karte vorhalten.",
+	"text":     "Bitte einen Text eingeben.",
+	"err":      "Das hat nicht geklappt – bitte nochmal versuchen.",
 }
 
 // vorgActor: wer handelt und womit.
@@ -184,23 +196,38 @@ func (h *Handler) vorgLoad(ctx context.Context, tree terminalPlantTree, k vorgKi
 		ids = append(ids, id)
 	}
 	cond := `infrastructure_id = ANY($1::uuid[]) AND archived_at IS NULL AND status::text IN (` + k.Active + `)`
+	cols, order := `id::text, title, status::text, infrastructure_id::text`, `created_at DESC, id`
+	if k.Type == vorgMaintKind.Type {
+		// Wartungen: laufende und wartende immer, offene erst ab Fälligkeit (heute fällig oder überfällig)
+		cond += ` AND (status::text <> 'open' OR due_date < '` + localDayStart(time.Now()).AddDate(0, 0, 1).Format(time.RFC3339) + `'::timestamptz)`
+		cols, order = cols+`, due_date`, `due_date, id`
+	}
 	if err := h.db.QueryRow(ctx, `SELECT COUNT(*) FROM `+k.Table+` WHERE `+cond, ids).Scan(&g.Total); err != nil {
 		return g, err
 	}
-	rows, err := h.db.Query(ctx, `SELECT id::text, title, status::text, infrastructure_id::text FROM `+k.Table+` WHERE `+cond+`
-		ORDER BY CASE status::text WHEN 'in_progress' THEN 0 WHEN 'pending' THEN 2 ELSE 1 END, created_at DESC, id LIMIT $2`, ids, vorgShow)
+	rows, err := h.db.Query(ctx, `SELECT `+cols+` FROM `+k.Table+` WHERE `+cond+`
+		ORDER BY CASE status::text WHEN 'in_progress' THEN 0 WHEN 'pending' THEN 2 ELSE 1 END, `+order+` LIMIT $2`, ids, vorgShow)
 	if err != nil {
 		return g, err
 	}
+	today := localDayStart(time.Now())
 	for rows.Next() {
 		it := vorgItem{Type: k.Type}
 		var st string
-		if err := rows.Scan(&it.ID, &it.Title, &st, &it.Infra); err != nil {
+		var due time.Time
+		dst := []any{&it.ID, &it.Title, &st, &it.Infra}
+		if k.Type == vorgMaintKind.Type {
+			dst = append(dst, &due)
+		}
+		if err := rows.Scan(dst...); err != nil {
 			rows.Close()
 			return g, err
 		}
 		it.Group = vorgGroupOf(st)
 		it.Path = terminalPlantLabel(tree, it.Infra)
+		if k.Type == vorgMaintKind.Type {
+			it.Due, it.Overdue = deDate(due), due.Before(today)
+		}
 		g.Items = append(g.Items, it)
 	}
 	rows.Close()
@@ -339,8 +366,8 @@ func (h *Handler) TerminalVorgaengePage(w http.ResponseWriter, r *http.Request) 
 		} else {
 			it.CanAct = true
 			v.Sel = &it
-			if it.Group != "work" {
-				people, fallback, err := h.terminalPickPeople(ctx, uid)
+			{
+				people, err := h.terminalPickPeople(ctx, uid)
 				if err != nil {
 					componentLog("terminal").Error().Err(err).Msg("mitarbeitende lesen")
 				}
@@ -351,7 +378,6 @@ func (h *Handler) TerminalVorgaengePage(w http.ResponseWriter, r *http.Request) 
 				if act.Card != nil {
 					on[act.Card.ID] = true
 				}
-				v.PickFallback = fallback
 				for _, pe := range people {
 					v.Pick = append(v.Pick, vorgPick{ID: pe.ID, Name: pe.Name, Dept: pe.Department, On: on[pe.ID]})
 				}
@@ -440,8 +466,15 @@ func (h *Handler) vorgGate(w http.ResponseWriter, r *http.Request, perm func(vor
 	return &vorgCtx{P: p, Act: act, Tree: tree, Item: it, TermName: displayUserName(first, last, uname)}, true
 }
 
+// vorgBackInfo: Rückkehrziel der Vorgangsleiste (Formularfeld back) – nur diese Seite, sonst die Liste.
+const vorgBackInfo = "/terminal/info"
+
 func vorgBack(w http.ResponseWriter, r *http.Request, code string) {
-	http.Redirect(w, r, "/terminal/vorgaenge?n="+url.QueryEscape(code), http.StatusSeeOther)
+	dst := "/terminal/vorgaenge"
+	if r.FormValue("back") == vorgBackInfo {
+		dst = vorgBackInfo
+	}
+	http.Redirect(w, r, dst+"?n="+url.QueryEscape(code), http.StatusSeeOther)
 }
 
 func vorgEditPerm(k vorgKind) string { return k.EditPerm }
@@ -561,7 +594,11 @@ func (h *Handler) TerminalVorgaengeStart(w http.ResponseWriter, r *http.Request)
 			}
 		}
 	} else {
-		t, err := tx.Exec(ctx, `UPDATE `+k.Table+` SET assigned_to = $1::uuid, status = 'in_progress', updated_at = NOW() WHERE id = $2::uuid AND status::text IN (`+k.Active+`)`, ids[0], c.Item.ID)
+		started := ""
+		if k.Type == vorgMaintKind.Type {
+			started = ", started_at = COALESCE(started_at, NOW())"
+		}
+		t, err := tx.Exec(ctx, `UPDATE `+k.Table+` SET assigned_to = $1::uuid, status = 'in_progress'`+started+`, updated_at = NOW() WHERE id = $2::uuid AND status::text IN (`+k.Active+`)`, ids[0], c.Item.ID)
 		if err != nil {
 			componentLog("terminal").Error().Err(err).Msg("vorgang starten")
 			vorgBack(w, r, "err")
@@ -613,7 +650,7 @@ func (h *Handler) TerminalVorgaengeStart(w http.ResponseWriter, r *http.Request)
 			msg += "; nicht mehr dabei: " + strings.Join(gone, ", ")
 		}
 	}
-	h.vorgHistory(ctx, k.Type, c.Item.ID, "status", "status", old, "in_progress", msg, c.actorID(), c.Act.via(), c.TermName, ids)
+	h.vorgHistory(ctx, historyRef(k.Type), c.Item.ID, "status", "status", old, "in_progress", msg, c.actorID(), c.Act.via(), c.TermName, ids)
 	vorgBack(w, r, "start")
 }
 
@@ -638,28 +675,15 @@ func (h *Handler) TerminalVorgaengeWarten(w http.ResponseWriter, r *http.Request
 		vorgBack(w, r, "gone")
 		return
 	}
-	h.vorgHistory(r.Context(), k.Type, c.Item.ID, "status", "status", "in_progress", "pending",
+	h.vorgHistory(r.Context(), historyRef(k.Type), c.Item.ID, "status", "status", "in_progress", "pending",
 		"Am Terminal auf „wartet“ gesetzt (geht noch weiter): "+c.note(c.Item.PeopleNames()), c.actorID(), c.Act.via(), c.TermName, vorgIDs(c.Item.People))
 	vorgBack(w, r, "warten")
-}
-
-// vorgFinishActor: Person, in deren Namen der Abschluss läuft – die Kartenperson, sonst die erste Person am Vorgang.
-func (h *Handler) vorgFinishActor(ctx context.Context, c *vorgCtx) (*users.User, error) {
-	if c.Act.Card != nil {
-		return c.Act.Card, nil
-	}
-	for _, pe := range c.Item.People {
-		u, err := h.users.GetByID(ctx, pe.ID)
-		if err == nil && u != nil && u.Active && !u.IsSystemUser {
-			return u, nil
-		}
-	}
-	return nil, fmt.Errorf("keine Person am Vorgang")
 }
 
 // TerminalVorgaengeBeenden: POST /terminal/vorgaenge/beenden (type, id)
 //
 //	Aufgabe: wird erledigt (Weiterleitung zur Liste).
+//	Immer mit Person: Kartenperson oder who aus der Auswahl (422 ohne, 422 außerhalb der Auswahl).
 //	Störung/Ticket: JSON {token, who, pre, type, id} für den Abschluss-Assistenten (Token nur für diesen Vorgang).
 func (h *Handler) TerminalVorgaengeBeenden(w http.ResponseWriter, r *http.Request) {
 	c, ok := h.vorgGate(w, r, func(k vorgKind) string { return completionKinds[k.Type].DonePerm })
@@ -671,9 +695,10 @@ func (h *Handler) TerminalVorgaengeBeenden(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	ctx := r.Context()
-	actor, err := h.vorgFinishActor(ctx, c)
+	// keine anonyme Fertigmeldung (Liste und Leiste): Kartenperson oder eine gewählte Person der Auswahl
+	actor, code, err := h.vorgBarActor(ctx, c, r.FormValue("who"))
 	if err != nil {
-		http.Error(w, "Der Vorgang hat keine zugewiesene Person – bitte zuerst starten.", http.StatusConflict)
+		http.Error(w, err.Error(), code)
 		return
 	}
 	if c.Item.Type == "task" {
@@ -698,10 +723,14 @@ func (h *Handler) TerminalVorgaengeBeenden(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	pre := []string{}
+	people := vorgIDs(c.Item.People)
 	for _, pe := range c.Item.People {
 		if pe.ID != actor.ID {
 			pre = append(pre, pe.ID)
 		}
+	}
+	if !slices.Contains(people, actor.ID) { // die Person, in deren Namen abgeschlossen wird, steht beim Vorgang
+		people = append(people, actor.ID)
 	}
 	// nur das neueste Token je Vorgang gilt (die Kennung steht in app_settings, kein neues Schema nötig)
 	jti := uuid.NewString()
@@ -711,7 +740,7 @@ func (h *Handler) TerminalVorgaengeBeenden(w http.ResponseWriter, r *http.Reques
 	}
 	token, err := h.users.IssueToken(actor, terminalCompleteTTL, map[string]interface{}{
 		"scope": boardCompleteScope, "ref": c.Item.Type + ":" + c.Item.ID, "jti": jti,
-		"tv": c.Act.via(), "tt": c.Act.TermUID, "tp": vorgIDs(c.Item.People),
+		"tv": c.Act.via(), "tt": c.Act.TermUID, "tp": people,
 	})
 	if err != nil {
 		http.Error(w, "Abschluss konnte nicht gestartet werden", http.StatusInternalServerError)

@@ -10,7 +10,7 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
-## [0.82.50] – 2026-11-24
+## [0.82.54] – 2026-11-24
 
 ### Neu
 
@@ -26,6 +26,56 @@ im Kapitel „Versionen & Updates“ an.
 ### Sicherheit
 
 - **Rückwirkend neu rechnen** darf nur der Bereichsadministrator der Energiedaten (`energy.admin`); geplante Fassungen pflegt, wer Messstellen pflegen darf (`energy.edit`).
+
+## [0.82.53] – 2026-11-24
+
+### Neu
+
+- **Terminal, Zeiterfassung:** Neue Terminalseite **Zeiterfassung** (Funktionsschalter `zeiterfassung`, nur in PDH einstellbar und für alle Terminals **standardmäßig aus**; Kachel auf der Seite Neu, wenn an). Anwesenheit mit **Kommen, Gehen, Pause Beginn, Pause Ende** je Person – per Karte oder (Betriebsart „ohne Karte“) durch Wählen aus der Personenauswahl des Terminals, dann mit der Herkunft „am Terminal gewählt“. Unsinnige Folgen (Gehen ohne Kommen, doppeltes Kommen, Pause ohne Anwesenheit, Gehen in der Pause) lehnt der Server mit einer deutschen Meldung ab. **Arbeit beginnen/beenden** an einem Vorgang (Störung, Ticket, Aufgabe, Wartung) oder an einer Anlage, auch für mehrere Personen gleichzeitig; je Person läuft höchstens eine Arbeit (eine neue beendet die vorherige, Gehen und Pause Beginn beenden sie mit Meldung). Beim Beenden entsteht ein Zeiteintrag am Vorgang mit Herkunftsmarke (bei am Terminal gewählten Personen unbestätigt) und ein Verlaufseintrag. Der öffentliche Stand zeigt nur anwesend, in Pause und „arbeitet an …“ – **ohne Uhrzeiten einzelner Personen**; die eigenen Zeiten sieht nur die Person nach der Kartenanmeldung. Ohne Karte ohne Person oder mit Person außerhalb der Auswahl: 422, „nur mit Karte“ ohne Karte: 403, ohne Gerätesitzung: 403.
+- **Anwesenheit & Arbeitszeit (PDH):** Neue Seite `/attendance` (Bereich Personen) mit Anwesenheit und Arbeitszeit je Person und Tag (Kommen, Gehen, Pausen, Anwesenheit netto, Arbeit, Vergleich mit der geplanten Arbeitszeit der Anlage, wo die Person gearbeitet hat und Arbeitszeiten hinterlegt sind), **Korrekturen** (ändern, nachtragen, löschen; Begründung Pflicht, Verlauf mit alt und neu, Ablaufprüfung wie am Terminal) und **CSV-Export**.
+
+### Sicherheit
+
+- Neue Rechte **„Anwesenheit & Arbeitszeit ansehen“** (`attendance.view`) und **„… korrigieren“** (`attendance.edit`), beide abteilungsbezogen nach der Abteilung der Person; vorbelegt für Administrator und Manager. Personenbezogene Daten: vor dem Einschalten mit Betriebsrat und Datenschutz abstimmen.
+
+### Geändert
+
+- Datenbank (Migrationen 216 und 217, nur hinzufügend): Tabellen `attendance_events`, `work_sessions`, `attendance_history`, Spalte `time_entries.origin_via`, Schalter `terminal_settings.fn_zeiterfassung`., `work_sessions.forgotten` und ein Namensfeld im Verlauf der Korrekturen (der Verlauf bleibt nach dem Löschen einer Person erhalten).
+- **Zeiterfassung, Grenzen:** Eine am Terminal vergessene, länger als 18 Stunden laufende Arbeit wird nicht mit der ganzen Dauer gebucht, sondern ohne Zeiteintrag geschlossen und in PDH als „vergessen – bitte prüfen“ angezeigt. Korrekturen der Arbeitszeit in PDH: Zeiteinträge am Vorgang ändert man nur, solange sie unbestätigt sind oder mit dem Bearbeitungsrecht am Vorgang; höchstens 24 Stunden, keine Überschneidung mit anderer Arbeit der Person, Eintrag im Verlauf des Vorgangs. Inaktive Personen sind korrigierbar; fremde und unbekannte Einträge antworten gleich (403).
+
+## [0.82.52] – 2026-11-24
+
+### Neu
+
+- **Terminal, Vorgangsleiste:** Beim Aufwecken aus dem Bildschirmschoner und auf der Startseite (`/terminal/info`) zeigt das Terminal die offenen **Störungen, Tickets und fälligen Wartungen** (heute fällig oder überfällig, dazu laufende und wartende) seiner Anlage und der Unteranlagen. Auf schmalen Bildschirmen steht die Leiste oben (höchstens die halbe Höhe, blätterbar), auf breiten (ab 1200 px oder quer mit genug Breite) als linke Spalte. Je Eintrag: **Details** öffnen, **Ergänzen** (Kommentar oder Maßnahme), **Starten** bzw. **Warten** und **Fertig melden**. Die Leiste hängt am Schalter **Vorgänge** (kein neuer Schalter) und nutzt die Schreibwege der Vorgänge: nur in der Gerätesitzung, Betriebsart „Ohne Karte“ / „Nur mit Karte“, Flag „Freier Terminal-Benutzer“, mit Karte die eigenen Rechte der Person. Jeder Schritt steht mit Herkunftsmarke („am Terminal gewählt“ bzw. „mit Karte“) im Verlauf. **Fertig melden** verlangt immer eine Person – die Kartenperson oder eine Person aus der Auswahl; anonym geht es nicht. Danach läuft der gewohnte Abschluss-Assistent mit Einmal-Token, bei Wartungen mit der Checkliste. Die Leiste aktualisiert sich alle 30 Sekunden.
+- **Terminal, Personenauswahl:** Wer am Terminal gewählt werden kann (Vorgänge und Vorgangsleiste), ist jetzt die Vereinigung aus den Abteilungen des Terminals, den im Abschnitt „Freier Terminal-Benutzer“ eingestellten **Gruppen, Abteilungen und einzelnen Personen**, den Inhabern des Rechts **„Am Terminal auswählbar“** (in der Abteilung der Terminal-Anlage) und – immer – den Personen der Abteilung **„Instandhaltung“** (bisher nur als Ersatz, wenn die Abteilungen des Terminals niemanden hatten). Es zählen nur aktive Mitarbeitende, keine Systembenutzer, Bots oder Betrachter. Der Server nimmt als Zuweisung genau diese Menge an.
+
+### Geändert
+
+- **Terminal, Freier Terminal-Benutzer:** Zu den Terminalfunktionen des Flags gehören nun auch Wartungen für die Vorgangsleiste (`maintenance.view`, `maintenance.edit`, `maintenance.complete`), mit denselben Grenzen wie bisher (Gerätesitzung, Anlagenbaum, keine Wirkung im übrigen PDH).
+- **Terminal, Vorgänge:** Der Hinweis „Keine Personen in den Abteilungen des Terminals – Instandhaltung“ entfällt, weil die Instandhaltung immer zur Auswahl gehört.
+
+### Sicherheit
+
+- Neues Recht **„Am Terminal auswählbar“** (`terminal.selectable`, Kategorie „Infrastruktur & Anlagen“, in Rollen und als Einzelberechtigung abteilungsbezogen vergebbar, keiner Rolle vorbelegt): Es macht eine Person nur in der Personenauswahl der Terminals sichtbar, deren Anlage in der Abteilung des Rechts liegt. Es gibt keine weiteren Rechte, zeigt keine zusätzlichen Daten und ändert nichts an den Rechten der Person.
+
+## [0.82.51] – 2026-11-24
+
+### Neu
+
+- **Anlagen, Arbeitszeiten:** Jede Anlage hat den neuen Reiter **Arbeitszeiten**. Je Wochentag legst du eine oder mehrere Schichten an (Name, Beginn, Ende – das Ende darf nach Mitternacht liegen), jede mit beliebig vielen Pausen. **Ausnahmen** je Datum: geschlossen (Feiertag, Betriebsferien) oder mit anderen Schichten. Die Zeiten gelten wie die Rüsttasten auch für alle Unteranlagen; mit **Eigene Arbeitszeiten** überschreibt eine Anlage sie. Optional übernimmst du die Schichten eines Schichtmodells aus der Schichtplanung. Ändern darf, wer Infrastruktur bearbeiten darf (in der Abteilung der Anlage).
+- **Stillstände, Anteil an der Arbeitszeit:** Die Seite Stillstände zählt jetzt nur Stillstand innerhalb der Arbeitszeit der Anlage (ohne Pausen und Zeit außerhalb der Schichten) und zeigt je Grund sowie je Anlage und Grund den **Anteil an der Arbeitszeit**. Mit **Zeitbasis: Gesamte Zeit (Rohsummen)** siehst du alle Stillstände ungekürzt wie bisher. Anlagen ohne Arbeitszeiten zählen mit der ganzen Dauer.
+
+## [0.82.50] – 2026-11-24
+
+### Neu
+
+- **Rüstzeiten, Auswertung:** Im Arbeitsbereich Rüstzeiten öffnet **Auswertung** (`/setup/report`) die abgeschlossenen Rüstzeiten je Anlage und Grund (Anzahl, Gesamtdauer, Ø Dauer, Anteil), geordnet nach dem Anlagenpfad. Ein **Kreisdiagramm** zeigt den Anteil der Rüstgründe an der Gesamtdauer, für alle Anlagen und – per Auswahl – für jede einzelne Anlage; die Prozentwerte ergeben immer 100 %. Es zählen nur Anlagen, für die das Recht „Rüstzeiten: ansehen“ in der Abteilung der Anlage besteht.
+- **Infobildschirm, Statistik Rüstzeiten:** Die Folie zeigt neben dem Säulendiagramm dasselbe Kreisdiagramm mit Auswahl „Alle Anlagen“ / je Anlage. Berechtigung und Abteilungsgrenzen bleiben wie bisher.
+
+### Geändert
+
+- **Terminal, Anmeldung ohne Kartenleser:** Das Ziffernfeld (0–F) ist eingeklappt. Zu sehen sind nur das Feld „Kartennummer eingeben“ und der Knopf „Mit Benutzer und Passwort“. Das Ziffernfeld (bei „Karte und PIN“ mit PIN-Feld) klappt erst auf, wenn das Kartenfeld angetippt wird, und wieder zu nach **OK**, mit **Schließen**, nach erfolgreicher Anmeldung und bei der Rückkehr zum Schoner. Die Bildschirmtastatur erscheint weiter nur nach einer echten Berührung.
 
 ## [0.82.49] – 2026-11-24
 

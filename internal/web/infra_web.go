@@ -308,6 +308,7 @@ type InfraDetailData struct {
 	EasyTextCount    int                 // davon an dieser Anlage wirksam
 	SetupTab         setupInfraTab       // Reiter „Rüsttasten“ und Höchstdauer (setup_catalog.go)
 	DowntimeTab      downtimeInfraTab    // Reiter „Stillstandsgründe“ (downtime_catalog.go)
+	WorkTab          workInfraTab        // Reiter „Arbeitszeiten“ (work_times_web.go)
 	SetupState       string              // Kennzeichen "running" / "fault" / "" (setup_easy.go)
 	Chamber          []chamberGroup      // Trockenkammer: Reiter „Bauteile“ (chamber.go)
 	ChamberNOK       int                 // davon NOK
@@ -365,6 +366,7 @@ func (h *Handler) InfraDetail(w http.ResponseWriter, r *http.Request) {
 	data.EasyTexts = h.infraEasyTexts(ctx, id)
 	data.SetupTab = h.infraSetupTab(ctx, id)
 	data.DowntimeTab = h.infraDowntimeTab(ctx, id)
+	data.WorkTab = h.infraWorkTab(ctx, id, h.canPlannerView(r))
 	data.SetupState = h.setupPlantState(ctx, id)
 	if string(node.Type) == chamberType {
 		data.Chamber, data.ChamberNOK = h.chamberGroups(ctx, id)

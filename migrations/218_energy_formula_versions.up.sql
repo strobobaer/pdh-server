@@ -1,5 +1,5 @@
--- 214_energy_formula_versions.up.sql
--- Energiedaten (0.82.50): Fassungen der Formel berechneter Messstellen mit
+-- 218_energy_formula_versions.up.sql
+-- Energiedaten (0.82.54): Fassungen der Formel berechneter Messstellen mit
 -- „gültig ab“, rückwirkende Neurechnungen und der Zeitbereich der Efficio-Dateien.
 
 -- ── Fassungen der Formel ──────────────────────────────────────────────────

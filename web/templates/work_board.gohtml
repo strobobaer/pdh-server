@@ -11,6 +11,7 @@
     <p>{{$a.OpenCount}} offen{{if $a.OverdueCount}} · <span class="mt-red">{{$a.OverdueCount}} überfällig</span>{{end}}{{if $a.UnassignedCount}} · {{$a.UnassignedCount}} ohne Zuweisung{{end}}</p>
   </div>
   <div class="widget-icon-toolbar compact">
+    {{if eq $k.Key "setup"}}<a class="btn" href="/setup/report"><i class="ti ti-chart-pie"></i> Auswertung</a>{{end}}
     {{if .NoNew}}{{else if eq $k.Key "setup"}}<a class="btn btn-primary" href="/setup/new"><i class="ti ti-plus"></i> Neu</a>
     {{else}}<button type="button" class="btn btn-primary" onclick="pdhCreate('{{$k.Key}}')"><i class="ti ti-plus"></i> {{if eq $k.Key "fault"}}Störung melden{{else}}Neu{{end}}</button>{{end}}
   </div>

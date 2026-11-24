@@ -1,5 +1,5 @@
--- 215_energy_rebases.up.sql
--- Energiedaten (0.82.50): Zeitpunkte, an denen beim Speichern die Basis
+-- 219_energy_rebases.up.sql
+-- Energiedaten (0.82.54): Zeitpunkte, an denen beim Speichern die Basis
 -- berechneter Messstellen neu gesetzt wurde (Quelle, Faktor, Art oder Formel
 -- eines Bezugs geändert). Der Minutentakt gibt in dieser Minute keinen Wert,
 -- damit der Sprung zwischen altem und neuem Wert nicht als Verbrauch zählt –

@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"pdh/internal/modules/stillstand"
 )
 
 // Stillstände – Auswertung je Grund (Anzahl und Dauer): Seite /downtime (Recht downtime.view, je Anlage mit der
@@ -86,7 +88,17 @@ type downtimeRow struct {
 	Count    int
 	Duration string
 	Avg      string
-	Pct      int // Anteil an der Gesamtdauer (für den Balken)
+	Pct      int    // Anteil an der Gesamtdauer (für den Balken)
+	Share    string // Anteil an der geplanten Arbeitszeit („–“ ohne Arbeitszeiten)
+}
+
+// downtimePlantRow: Stillstand je Anlage und Grund.
+type downtimePlantRow struct {
+	Plant, Reason string
+	Count         int
+	Duration      string
+	Share         string // Anteil an der geplanten Arbeitszeit der Anlage
+	Raw           bool   // Anlage ohne Arbeitszeiten: ganze Zeit gezählt
 }
 
 type downtimeChoice struct {
@@ -106,6 +118,15 @@ type DowntimePageData struct {
 	Duration string
 	Running  int
 	Period   string
+
+	WorkTime     bool               // nur Stillstand innerhalb der Arbeitszeit zählen (sonst Rohsummen)
+	BasisOpts    []downtimeChoice   // Auswahl „Zeitbasis“
+	Planned      string             // geplante Arbeitszeit der gewählten Anlagen im Zeitraum
+	Share        string             // Anteil des Stillstands an der geplanten Arbeitszeit
+	OutsideCount int                // Stillstände ganz außerhalb der Arbeitszeit (nicht gezählt)
+	Outside      string             // Dauer außerhalb der Arbeitszeit (nicht gezählt)
+	NoPlan       int                // Anlagen ohne Arbeitszeiten (zählen mit der ganzen Zeit)
+	PlantRows    []downtimePlantRow // je Anlage und Grund
 }
 
 // DowntimePage: GET /downtime[?days=7|30|90][&infra=<Anlage>] – Stillstände je Grund.
@@ -125,6 +146,8 @@ func (h *Handler) DowntimePage(w http.ResponseWriter, r *http.Request) {
 	}{{7, "7 Tage"}, {30, "Letzte 5 Wochen"}, {90, "90 Tage"}} {
 		d.DayOpts = append(d.DayOpts, downtimeChoice{strconv.Itoa(o.v), o.l, o.v == d.Days})
 	}
+	d.WorkTime = r.URL.Query().Get("work") != "0"
+	d.BasisOpts = []downtimeChoice{{"1", "Nur Arbeitszeit", d.WorkTime}, {"0", "Gesamte Zeit (Rohsummen)", !d.WorkTime}}
 	d.Period = d.DayOpts[0].Label
 	for _, o := range d.DayOpts {
 		if o.Selected {
@@ -163,26 +186,60 @@ func (h *Handler) DowntimePage(w http.ResponseWriter, r *http.Request) {
 		sort.Slice(pl, func(i, j int) bool { return pl[i].Label < pl[j].Label })
 		d.Plants = append(d.Plants, pl...)
 		if ds := h.downtimeStore(); ds != nil && len(ids) > 0 {
-			stats, err := ds.StatsByReason(ctx, ids, downtimeSince(d.Days, time.Now()))
+			now := time.Now()
+			since := downtimeSince(d.Days, now)
+			ivs, err := ds.IntervalsSince(ctx, ids, since)
 			if err != nil {
 				componentLog("stillstand").Error().Err(err).Msg("auswertung")
 				http.Error(w, "Die Daten konnten nicht geladen werden.", http.StatusInternalServerError)
 				return
 			}
 			d.Running, _ = ds.RunningCount(ctx, ids)
-			var total float64
-			for _, x := range stats {
-				total += x.Minutes
-				d.Total += x.Count
+			// Arbeitszeit je Anlage (wie plantWorkIntervals, mit dem Wissen, ob es überhaupt Zeiten gibt)
+			work := map[string]plantWork{}
+			plans, err := h.loadWorkPlans(ctx, ids)
+			if err != nil {
+				componentLog("stillstand").Error().Err(err).Msg("arbeitszeiten laden")
+				http.Error(w, "Die Daten konnten nicht geladen werden.", http.StatusInternalServerError)
+				return
 			}
-			for _, x := range stats {
-				row := downtimeRow{Name: x.Name, Count: x.Count, Duration: downtimeDuration(x.Minutes), Avg: downtimeDuration(x.Minutes / float64(x.Count))}
-				if total > 0 {
-					row.Pct = int(x.Minutes/total*100 + 0.5)
+			for _, id := range ids {
+				p := plans[id]
+				work[id] = plantWork{Has: p.Defined, Iv: p.intervals(since, now, workLocation)}
+				if !p.Defined {
+					d.NoPlan++
+				}
+			}
+			a := aggregateDowntime(ivs, work, d.WorkTime)
+			d.Total = a.Count
+			if d.WorkTime && (a.OutsideCount > 0 || a.OutsideMinutes > 0) {
+				d.OutsideCount, d.Outside = a.OutsideCount, downtimeDuration(a.OutsideMinutes)
+			}
+			d.Duration = downtimeDuration(a.Minutes)
+			d.Planned = downtimeDuration(a.Planned)
+			if d.WorkTime && a.Planned > 0 {
+				d.Share = downtimeShare(a.WorkMinutes, a.Planned)
+			}
+			for _, x := range a.Reasons {
+				row := downtimeRow{Name: x.Name, Count: x.Count, Duration: downtimeDuration(x.Minutes), Avg: downtimeDuration(x.Minutes / float64(x.Count)), Share: "–"}
+				if a.Minutes > 0 {
+					row.Pct = int(x.Minutes/a.Minutes*100 + 0.5)
+				}
+				if d.WorkTime && a.Planned > 0 {
+					row.Share = downtimeShare(x.WorkMinutes, a.Planned)
 				}
 				d.Rows = append(d.Rows, row)
 			}
-			d.Duration = downtimeDuration(total)
+			for i, x := range a.Plants {
+				if i >= 200 {
+					break
+				}
+				row := downtimePlantRow{Plant: gi.path(x.Infra), Reason: x.Name, Count: x.Count, Duration: downtimeDuration(x.Minutes), Share: "–", Raw: !work[x.Infra].Has}
+				if d.WorkTime && !row.Raw {
+					row.Share = downtimeShare(x.WorkMinutes, work[x.Infra].Planned())
+				}
+				d.PlantRows = append(d.PlantRows, row)
+			}
 		}
 	}
 	h.render(w, "downtime", d)
@@ -200,4 +257,109 @@ func (h *Handler) setupBaseNamed(r *http.Request, page, title, ctxTitle string) 
 // downtimeSees: Anlage mit diesen Abteilungen sichtbar – wie der Zugang zur Seite: downtime.view oder downtime.edit.
 func (h *Handler) downtimeSees(uid, role string, depts []string) bool {
 	return h.rbac != nil && (h.rbac.HasPermissionInDepartment(uid, role, permDowntimeView, depts) || h.rbac.HasPermissionInDepartment(uid, role, permDowntimeEdit, depts))
+}
+
+// ── Auswertung mit Arbeitszeiten ─────────────────────────────────────────
+
+// plantWork: geplante Arbeitszeit einer Anlage im Auswertungszeitraum; Has = es gibt Arbeitszeiten.
+type plantWork struct {
+	Has bool
+	Iv  []workInterval
+}
+
+// Planned: geplante Minuten (ohne Pausen).
+func (p plantWork) Planned() float64 { return plannedWorkMinutes(p.Iv) }
+
+// downtimeAgg: ausgewertete Stillstände. Minutes zählt in der Arbeitszeit-Auswertung nur Zeit innerhalb der
+// Arbeitszeit (ohne Pausen), in der Rohsumme die ganze Dauer; WorkMinutes ist immer der Teil innerhalb der
+// Arbeitszeit (Anlagen ohne Arbeitszeiten haben keinen Bezug: 0); Planned die geplante Arbeitszeit.
+type downtimeAgg struct {
+	Count       int
+	Minutes     float64
+	WorkMinutes float64
+	Planned     float64
+
+	OutsideCount   int              // Arbeitszeit-Modus: Stillstände, die ganz außerhalb der Arbeitszeit lagen (nicht gezählt)
+	OutsideMinutes float64          // Arbeitszeit-Modus: Dauer außerhalb der Arbeitszeit (Anlagen mit Arbeitszeiten), nicht gezählt
+	Reasons        []downtimeAggRow // je Grund, längste zuerst
+	Plants         []downtimeAggRow // je Anlage und Grund, längste zuerst
+}
+
+type downtimeAggRow struct {
+	Infra, Name string
+	Count       int
+	Minutes     float64
+	WorkMinutes float64
+}
+
+// aggregateDowntime rechnet die Stillstände je Grund sowie je Anlage und Grund. Im Arbeitszeit-Modus
+// zählt ein Stillstand nur mit der Zeit, die in die Arbeitszeit der Anlage fällt; liegt nichts davon in
+// der Arbeitszeit, zählt er nicht. Anlagen ohne Arbeitszeiten zählen mit der ganzen Dauer.
+func aggregateDowntime(ivs []stillstand.Interval, work map[string]plantWork, workTime bool) downtimeAgg {
+	var a downtimeAgg
+	byReason := map[string]*downtimeAggRow{}
+	byPlant := map[string]*downtimeAggRow{}
+	for _, w := range work {
+		if w.Has {
+			a.Planned += w.Planned()
+		}
+	}
+	add := func(m map[string]*downtimeAggRow, key string, proto downtimeAggRow, minutes, inWork float64) {
+		row := m[key]
+		if row == nil {
+			row = &proto
+			m[key] = row
+		}
+		row.Count++
+		row.Minutes += minutes
+		row.WorkMinutes += inWork
+	}
+	for _, x := range ivs {
+		pw := work[x.InfraID]
+		full := x.End.Sub(x.Start).Minutes()
+		inWork := 0.0
+		if pw.Has {
+			inWork = workOverlapMinutes(pw.Iv, x.Start, x.End)
+		}
+		m := full
+		if workTime && pw.Has {
+			a.OutsideMinutes += full - inWork
+			if inWork <= 0 {
+				a.OutsideCount++
+				continue
+			}
+			m = inWork
+		}
+		a.Count++
+		a.Minutes += m
+		a.WorkMinutes += inWork
+		add(byReason, x.Reason, downtimeAggRow{Name: x.Reason}, m, inWork)
+		add(byPlant, x.InfraID+"|"+x.Reason, downtimeAggRow{Infra: x.InfraID, Name: x.Reason}, m, inWork)
+	}
+	collect := func(m map[string]*downtimeAggRow) []downtimeAggRow {
+		var out []downtimeAggRow
+		for _, r := range m {
+			out = append(out, *r)
+		}
+		sort.Slice(out, func(i, j int) bool {
+			if out[i].Minutes != out[j].Minutes {
+				return out[i].Minutes > out[j].Minutes
+			}
+			if out[i].Name != out[j].Name {
+				return out[i].Name < out[j].Name
+			}
+			return out[i].Infra < out[j].Infra
+		})
+		return out
+	}
+	a.Reasons, a.Plants = collect(byReason), collect(byPlant)
+	return a
+}
+
+// downtimeShare: Anteil in Prozent mit einer Nachkommastelle und Komma, z. B. „2,4 %“.
+func downtimeShare(part, whole float64) string {
+	if whole <= 0 {
+		return "–"
+	}
+	return strings.Replace(fmt.Sprintf("%.1f", part/whole*100), ".", ",", 1) + " %"
 }

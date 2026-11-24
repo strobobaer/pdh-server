@@ -44,6 +44,7 @@ var terminalFnDefs = []terminalFnDef{
 	{"wartungen", "Wartungen", "fn_wartungen", "fn_wartungen_at", true},
 	{"vorgaenge", "Vorgänge", "fn_vorgaenge", "fn_vorgaenge_at", true},
 	{"schichtplan", "Schichtplan", "fn_schichtplan", "fn_schichtplan_at", true},
+	{"zeiterfassung", "Zeiterfassung", "fn_zeiterfassung", "fn_zeiterfassung_at", false}, // nur PDH (0.82.53); das Terminal-Gerät kennt den Schlüssel nicht
 	{"saver_slides", "Folienschau als Bildschirmschoner", "saver_slides", "saver_slides_at", false},
 }
 
@@ -513,13 +514,13 @@ func parseTerminalFnBody(body []byte) (map[string]terminalFnIn, error) {
 
 // terminalFnFlags: welche Funktionen die Terminalseiten zeigen.
 type terminalFnFlags struct {
-	Stoerung, Ticket, Ruesten, Stillstand, HMI, Wartungen, Vorgaenge, Schichtplan bool
+	Stoerung, Ticket, Ruesten, Stillstand, HMI, Wartungen, Vorgaenge, Schichtplan, Zeiterfassung bool
 }
 
 func (s terminalFnSet) flags() terminalFnFlags {
 	return terminalFnFlags{
 		Stoerung: s["stoerung"].Enabled, Ticket: s["ticket"].Enabled, Ruesten: s["ruesten"].Enabled,
-		Stillstand: s["stillstand"].Enabled, HMI: s["hmi"].Enabled, Wartungen: s["wartungen"].Enabled, Vorgaenge: s["vorgaenge"].Enabled, Schichtplan: s["schichtplan"].Enabled,
+		Stillstand: s["stillstand"].Enabled, HMI: s["hmi"].Enabled, Wartungen: s["wartungen"].Enabled, Vorgaenge: s["vorgaenge"].Enabled, Schichtplan: s["schichtplan"].Enabled, Zeiterfassung: s["zeiterfassung"].Enabled,
 	}
 }
 

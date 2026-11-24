@@ -8,13 +8,13 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
-// seedVersions wiederholt den Satz aus Migration 214, der jeder berechneten
+// seedVersions wiederholt den Satz aus Migration 218, der jeder berechneten
 // Messstelle ihre erste Fassung gibt.
 const seedVersions = `INSERT INTO energy_formula_versions (meter_id, valid_from, formula, created_by_name, created_at)
 SELECT id, created_at::date, formula, 'Stand beim Update', created_at FROM energy_meters m
  WHERE formula <> '' AND NOT EXISTS (SELECT 1 FROM energy_formula_versions v WHERE v.meter_id = m.id)`
 
-func TestMigration214Versions(t *testing.T) {
+func TestMigration218Versions(t *testing.T) {
 	pool := testPool(t)
 	ctx := context.Background()
 

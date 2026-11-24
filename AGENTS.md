@@ -849,11 +849,14 @@ und 3 drückt bis auf Weiteres der Anwender.
     `energy.edit`, vergangene nur `energy.admin`; erweiterter Rechenumfang
     nur für Momentanwerte; Copilot schlägt nur vor, nie eine vergangene
     Fassung. Bauplan `docs/superpowers/plans/2026-11-24-energie-fassungen.md`
-    (8 Aufgaben, Migration 214, Version 0.82.50). **Gebaut** (24.11.2026,
-    Anwender: „Selbst“; lokal auf `feature/energie-fassungen`, nicht gepusht):
-    Migrationen 214 (`energy_formula_versions`, `energy_recalc_runs`,
-    `first_end`/`last_end`/`fetched_at` an den Efficio-Dateien) und 215
+    (8 Aufgaben; geplant als Migration 214, Version 0.82.50 – `main` hatte
+    inzwischen 0.82.53 und die Migrationen 214 bis 217 der Terminal-Teile,
+    deshalb **0.82.54, Migrationen 218 und 219**). **Gebaut** (24.11.2026,
+    Anwender: „Selbst“; Freigabe Push/Merge erteilt):
+    Migrationen 218 (`energy_formula_versions`, `energy_recalc_runs`,
+    `first_end`/`last_end`/`fetched_at` an den Efficio-Dateien) und 219
     (`energy_rebases`, Zeitpunkte der Basis-Verschiebung); kein neues Recht.
+    Labor-Datenbank `pdh_test`: Einträge 214/215 → 218/219 umgeschrieben (Schema war da).
     Ein Rechenweg je Minute (`evalMinute`), Sperre `minuteLock` für Minutentakt
     und Schlussschritt, Neurechnung Tag für Tag (`recalc.go`), Efficio-Dateien
     neu erzeugen (`rebuild.go`), Oberfläche „Fassungen“ an der Messstelle
@@ -864,11 +867,16 @@ und 3 drückt bis auf Weiteres der Anwender.
     K1–K3, K6–K10 und alle Rulings im Ledger
     `.superpowers/sdd/2026-11-24-energie-fassungen/` (`final-review.md`).
     Fragment lokal gerendert in 20 Ansichten geprüft (Fiori/Fluent, hell/dunkel,
-    320–1366 px, kein Seitenüberlauf). Offen: Freigabe Push/Merge, Verbund-Update,
+    320–1366 px, kein Seitenüberlauf). Offen: Merge, Verbund-Update,
     Browserprüfung am Testverbund (Fassung planen, „Prüfen“, „Neu rechnen“ an einer
-    Testmessstelle), 10.10.0.202 (Anwender, mit Sicherung). Nicht enthalten:
-    Copilot-Werkzeuge für Messstellen (gibt es heute nicht; Frage an den
-    Anwender, ob er sie will – noch nicht beantwortet).
+    Testmessstelle), 10.10.0.202 (Anwender, mit Sicherung).
+    **Danach (Anwender 24.11.2026):** (1) „Copilot soll das können ja“ –
+    Copilot schlägt Fassungen vor (Änderungsliste, „Übernehmen“, nie in der
+    Vergangenheit); eigenes Paket, erst Entwurf. (2) „Es muss schneller Seiten
+    aufbauen, vielleicht die Icons nicht immer laden, sondern erst ohne und im
+    laufenden Betrieb nachladen“ – Befund: `tabler-icons.min.css` 1,4 MB mit
+    eingebetteter Schrift blockiert das Zeichnen, dazu htmx von unpkg.com und
+    die Schrift von Google Fonts (siehe Punkt 13); erst messen, dann Entwurf.
 25. **0.82.48 Wartung: Jahresplan im Kalender, Auftrag mit Vorlauf** (Wunsch des
     Anwenders vom 23.11.2026: Personalplanung; Knopf „Jahresplan erzeugen“,
     nur der nächste Termin wird 5 Arbeitstage vorher automatisch zum
