@@ -941,9 +941,21 @@ und 3 drückt bis auf Weiteres der Anwender.
     Symbolauswahl ohne Quadrat; Kontrastmodus und Druck mit Symbolen; alte
     Adressen 302 `no-store`. Stildatei 590 KB roh, 64 KB gzip. Offen:
     10.10.0.202 über die Cloudflare-Adresse (Anwender; nach dem Einspielen
-    offene Seiten einmal neu laden); 4×-Ziel (Vorschlag: Stildatei teilen –
-    eingebettete Symbole sofort, Verweise auf die übrigen 5 474 Symbole
-    nachgeladen).
+    offene Seiten einmal neu laden).
+    **0.82.58 Symbole nachladen** (Anwender „Ja“; Entwurf
+    `docs/superpowers/specs/2026-11-24-symbole-nachladen-design.md`): Hauptdatei
+    `icons-<key>.css` nur Grundregeln + eingebettete Symbole (187 KB roh,
+    22 KB gzip), Restdatei `/vendor/<ver>/icons-rest.css` mit
+    `:where(.ti-x)`-Verweisen für alle 5 918 Symbole (unabhängig von der
+    Auswahl, nach `load` nachgeladen, `<noscript>`-Rückfall). Auf `main`
+    (24.11.2026, Merge `63682850`) und dem Testverbund (aktiv jetzt `pdh`
+    10.10.0.14). Messung danach (Median aus 3, erster Aufruf): 1× load
+    0,26–0,46 s, Symbole 0,34–0,53 s; 4× load 1,06–1,46 s (alle ≤ 1,5 s),
+    Symbole 1,25–1,66 s (enthält 200 ms Ruhefenster des Messskripts). Der
+    Rest liegt nicht mehr an den Symbolen: `base.gohtml` schickt bei jedem
+    Aufruf rund 72 KB CSS und 130 KB JavaScript inline mit, nicht
+    zwischenspeicherbar – Auslagern in versionierte Dateien gehört zur
+    Gestaltungsgrundlage (0.90.0 Teil 2).
     **Tempo (Anwender 24.11.2026):** Dauerfreigabe Testverbund (siehe
     „Prüfung vor jedem Merge“); **ein** gemeinsamer Entwurf für die Teile
     Gestaltungsgrundlage, gleiche Bausteine und Navigation mit klickbarer
