@@ -60,14 +60,14 @@ func (e *osScriptEnvT) aptLog() string {
 	return string(b)
 }
 
-func osScriptPath() string {
+func osScriptFile() string {
 	p, _ := filepath.Abs(filepath.Join("..", "..", "scripts", "pdh-os-update"))
 	return filepath.ToSlash(p)
 }
 
 func (e *osScriptEnvT) run(extraEnv []string, args ...string) (stdout, stderr string, code int) {
 	e.t.Helper()
-	cmd := exec.Command("bash", append([]string{osScriptPath()}, args...)...)
+	cmd := exec.Command("bash", append([]string{osScriptFile()}, args...)...)
 	cmd.Env = append(os.Environ(),
 		"PATH="+filepath.ToSlash(e.stubs)+string(os.PathListSeparator)+os.Getenv("PATH"),
 		"PDH_OS_TEST=1", "PDH_OS_ROOT="+filepath.ToSlash(e.root), "LOG="+filepath.ToSlash(e.log))
@@ -104,7 +104,7 @@ type osScriptJSON struct {
 
 func TestOSScriptSyntax(t *testing.T) {
 	osScriptEnv(t)
-	if out, err := exec.Command("bash", "-n", osScriptPath()).CombinedOutput(); err != nil {
+	if out, err := exec.Command("bash", "-n", osScriptFile()).CombinedOutput(); err != nil {
 		t.Fatalf("bash -n: %v %s", err, out)
 	}
 }

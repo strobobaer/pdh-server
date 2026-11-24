@@ -70,6 +70,12 @@ type updateAgent struct {
 	jobManual bool                                                      // Tests: Schritte des Auftrags von Hand
 
 	certs certRuntime // Zertifikate (certs.go); ohne Nutzung läuft nichts
+
+	os         osRuntime                                                // Betriebssystem-Updates und gemeinsame Sperre (os_update.go)
+	osRun      func(ctx context.Context, action string) ([]byte, error) // nil = systemd-run; Test-Haken
+	osCmd      func(name string, args ...string) *exec.Cmd              // nil = exec.Command; Test-Haken
+	bootID     func() string                                            // nil = /proc/sys/kernel/random/boot_id; Test-Haken
+	updRelease func()                                                   // Sperre des laufenden PDH-Updates (a.mu)
 }
 
 type limitedBuffer struct {
@@ -115,6 +121,7 @@ func main() {
 	if mode == "systemd" {
 		agent.loadUpdateStatus() // Ergebnis des letzten Laufs überlebt den Neustart des Agenten
 		agent.windowLoad()
+		agent.loadOSState()                                // Haken „beim PDH-Update mit aktualisieren“ (os_update.go)
 		agent.loadSingleJob()                              // offener Auftrag (Einzelserver) läuft weiter
 		go agent.pruneVersionOrphans(context.Background()) // verwaiste ESPHome-Kandidaten (esppdh_versions.go)
 		go agent.netResume(context.Background())           // wartende Netzwerk-Änderung nach Neustart (net.go)
@@ -169,6 +176,10 @@ func main() {
 	mux.Handle("GET /v1/update/job", agent.authorized(http.HandlerFunc(agent.jobHandler)))
 	mux.Handle("POST /v1/update/job/start", agent.authorized(http.HandlerFunc(agent.jobStartHandler)))
 	mux.Handle("POST /v1/update/job/abort", agent.authorized(http.HandlerFunc(agent.jobAbortHandler)))
+	// Betriebssystem-Updates: Status, Prüfen, Haken (os_update.go)
+	mux.Handle("GET /v1/os/status", agent.authorized(http.HandlerFunc(agent.osStatusHandler)))
+	mux.Handle("POST /v1/os/check", agent.authorized(http.HandlerFunc(agent.osCheckHandler)))
+	mux.Handle("POST /v1/os/config", agent.authorized(http.HandlerFunc(agent.osConfigHandler)))
 	mux.Handle("GET /v1/window", agent.authorized(http.HandlerFunc(agent.windowGetHandler)))
 	mux.Handle("POST /v1/window", agent.authorized(http.HandlerFunc(agent.windowPostHandler)))
 	mux.Handle("DELETE /v1/window/faulty/{commit}", agent.authorized(http.HandlerFunc(agent.windowFaultyDeleteHandler)))
@@ -262,6 +273,11 @@ func (a *updateAgent) updateHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if running, ok := a.startUpdate(req.target(), req.op()); !ok {
+			if !running.Running {
+				// nicht der Lauf selbst, sondern ein anderer Auftrag hält die gemeinsame Sperre
+				writeUpdateJSON(w, http.StatusConflict, map[string]string{"error": lockBusyMsg(a.lockHolder())})
+				return
+			}
 			// Art und Ziel des laufenden Laufs: pdh-ha wartet nur auf das eigene Ergebnis
 			writeUpdateJSON(w, http.StatusConflict, map[string]string{"error": "Update läuft bereits", "commit": running.Commit, "op": running.Op})
 			return

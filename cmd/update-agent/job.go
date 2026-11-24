@@ -65,6 +65,7 @@ type jobRuntime struct {
 	job     singleJob // Phase leer = kein Auftrag
 	looping bool
 	saveMu  sync.Mutex
+	release func() // gemeinsame Sperre des Auftrags (os_update.go), von jobFinish freigegeben; mu
 }
 
 // jobNotReady: Prüfung „alles grün“ nicht bestanden (HTTP 409).
@@ -103,6 +104,11 @@ func (a *updateAgent) loadSingleJob() {
 	a.sj.mu.Unlock()
 	if !jobEnded(s.Job) {
 		log.Printf("update: Auftrag %s wird in Phase %s fortgesetzt", s.Job.ID, s.Job.Phase)
+		// der Auftrag hält die gemeinsame Sperre auch nach dem Neustart des Agenten
+		release, _ := a.lockAcquire(lockPDH)
+		a.sj.mu.Lock()
+		a.sj.release = release
+		a.sj.mu.Unlock()
 		a.jobKick()
 	}
 }
@@ -152,6 +158,21 @@ func (a *updateAgent) startSingleJob(ctx context.Context, source string, force b
 	if running {
 		return nil, errors.New("Ein Update läuft bereits")
 	}
+	// gemeinsame Sperre bis zum Ende des Auftrags (jobFinish); bei jedem Fehler wieder frei
+	release, busy := a.lockAcquire(lockPDH)
+	switch busy {
+	case "":
+	case lockOS:
+		return nil, errors.New("Ein Betriebssystem-Update läuft bereits")
+	default:
+		return nil, errors.New(lockBusyMsg(busy))
+	}
+	held := true
+	defer func() {
+		if held {
+			release()
+		}
+	}()
 	target, old, err := a.updateTarget(ctx)
 	if err != nil {
 		return nil, err
@@ -200,6 +221,10 @@ func (a *updateAgent) startSingleJob(ctx context.Context, source string, force b
 		return nil, errors.New("Ein Update-Auftrag läuft bereits")
 	}
 	a.sj.job = singleJob{}
+	if a.sj.release != nil {
+		a.sj.release() // Rest eines früheren Auftrags
+	}
+	a.sj.release, held = release, false
 	a.sj.mu.Unlock()
 	jobRemoveOldDumps()
 	a.jobPut(s)
@@ -517,6 +542,18 @@ func (a *updateAgent) jobFinish(s *singleJob, p ha.UpdatePhase, result string, f
 		}
 	})
 	log.Printf("update: %s", summary)
+	a.jobReleaseLock()
+}
+
+// jobReleaseLock gibt die gemeinsame Sperre des Auftrags frei (einmal).
+func (a *updateAgent) jobReleaseLock() {
+	a.sj.mu.Lock()
+	r := a.sj.release
+	a.sj.release = nil
+	a.sj.mu.Unlock()
+	if r != nil {
+		r()
+	}
 }
 
 func jobName(j ha.UpdateJob) string {
