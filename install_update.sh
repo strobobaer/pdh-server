@@ -259,6 +259,20 @@ else
     else
         echo "pdh bleibt aus (passiver Server, Datenbank-Spiegel läuft nicht)."
     fi
+    # Betriebssystem-Updates (Karte in den Core-Einstellungen): Hilfsskript pdh-os-update nach
+    # /usr/local/sbin, per systemd-run außerhalb der Agent-Sandbox (ProtectSystem=full). Ein
+    # Fehler ist nur eine Warnung, das PDH-Update bleibt erfolgreich.
+    os_bin="${PDH_OS_UPDATE_BIN:-/usr/local/sbin/pdh-os-update}"
+    os_install() {
+        if command -v systemd-run >/dev/null 2>&1; then
+            systemd-run --wait --pipe --collect --quiet --unit=pdh-os-script-$(date +%s) install -D -m 0755 -o root -g root "$repo_dir/scripts/pdh-os-update" "$os_bin"
+        else
+            install -D -m 0755 -o root -g root "$repo_dir/scripts/pdh-os-update" "$os_bin"
+        fi
+    }
+    if [[ ! -f "$repo_dir/scripts/pdh-os-update" ]] || ! os_install; then
+        echo "WARNING: pdh-os-update konnte nicht installiert werden – siehe Ausgabe oben" >&2
+    fi
     # nginx für die Zertifikate (Let's Encrypt, Karte "Zertifikate"): nur wenn unter /etc/ssl/pdh
     # schon ein Zertifikat liegt. Fehlt nginx, wird es eingerichtet; ist es da, aber nicht
     # eingeschaltet oder nicht gestartet, wird es eingeschaltet und gestartet. Auf jedem Server,

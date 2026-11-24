@@ -289,3 +289,47 @@ func TestOSScriptStatusPkgsWithoutNewline(t *testing.T) {
 		t.Errorf("reboot_pkgs: %v", s.RebootPkgs)
 	}
 }
+
+// Das Update installiert scripts/pdh-os-update nach /usr/local/sbin – über systemd-run, weil der
+// Agent mit ProtectSystem=full dort nicht schreiben darf. Ein Fehler ist nur eine Warnung.
+func TestFinishInstallsOSScript(t *testing.T) {
+	e := newFinishEnv(t)
+	e.ready(t)
+	// einzelner Server (kein pdh-ha), damit ein systemd-run-Fehler nur das Skript betrifft
+	e.env = `PDH_HA_BIN="$PWD/gibt-es-nicht" PDH_OS_UPDATE_BIN="$PWD/ziel/pdh-os-update" `
+
+	log, out, code := e.run(t, "0", "--finish")
+	if code != 0 {
+		t.Fatalf("code %d: %s\n%s", code, out, log)
+	}
+	const want = "systemd-run --wait --pipe --collect --quiet --unit=pdh-os-script-"
+	i := strings.Index(log, want)
+	if i < 0 {
+		t.Fatalf("Skript nicht über systemd-run installiert:\n%s", log)
+	}
+	line := log[i:]
+	if j := strings.Index(line, "\n"); j >= 0 {
+		line = line[:j]
+	}
+	if !strings.Contains(line, "install -D -m 0755 -o root -g root ") ||
+		!strings.Contains(line, "/scripts/pdh-os-update ") || !strings.HasSuffix(line, "/ziel/pdh-os-update") {
+		t.Errorf("falsche Installationszeile: %s", line)
+	}
+	if r := strings.Index(log, "systemctl restart pdh\n"); r < 0 || r > i {
+		t.Errorf("Skript muss nach dem Neustart von pdh installiert werden:\n%s", log)
+	}
+
+	// Fehler: nur eine Warnung, das Update bleibt erfolgreich
+	e.env += `PDH_TEST_OS_RC=1 `
+	_, out, code = e.run(t, "0", "--finish")
+	if code != 0 || !strings.Contains(out, "WARNING: pdh-os-update konnte nicht installiert werden") {
+		t.Fatalf("Fehler nicht als Warnung gemeldet: code %d: %s", code, out)
+	}
+
+	// --no-restart: nichts installieren
+	_ = os.Remove(filepath.Join(e.dir, "log"))
+	log, _, _ = e.run(t, "0", "--no-restart")
+	if strings.Contains(log, "pdh-os-script") {
+		t.Errorf("--no-restart installiert das Skript:\n%s", log)
+	}
+}
