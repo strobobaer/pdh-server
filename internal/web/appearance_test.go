@@ -61,7 +61,7 @@ func TestGalleryOnServerConfig(t *testing.T) {
 	d.Look = d.Brand.DefaultLook()
 	out := renderPage(t, tmpl, "server_config", d)
 	for _, want := range []string{"Theme-Galerie aus Home Assistant", "Metro &amp; Fluent", "Bas Nijholt", `action="/admin/branding/gallery/ha-metro-blue"`,
-		"--da:#8fbcbb", `name="font"`, `<option value="atkinson" selected>`, `<option value="120" selected>`, "--ui-scale:1.20", "Atkinson+Hyperlegible", "übernommen"} {
+		"--da:#8fbcbb", `name="font"`, `<option value="atkinson" selected>`, `<option value="120" selected>`, "--ui-scale:1.20", "/fonts/atkinson.css", "übernommen"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("Seite enthält %q nicht", want)
 		}

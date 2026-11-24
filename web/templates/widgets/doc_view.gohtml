@@ -60,14 +60,14 @@
       if(kind === 'image'){ const i = document.createElement('img'); i.src = src; i.alt = it.dataset.name; it.appendChild(i); return; }
       if(kind === 'pdf'){ const f = document.createElement('iframe'); f.src = src + '#view=FitH&toolbar=0'; f.title = it.dataset.name; it.appendChild(f); return; }
       if(kind === 'docx'){
-        const [m, buf] = await Promise.all([lib('https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js', 'mammoth'), fetch(src).then(r => r.arrayBuffer())]);
+        const [m, buf] = await Promise.all([lib('{{vendorURL "mammoth/mammoth.browser.min.js"}}', 'mammoth'), fetch(src).then(r => r.arrayBuffer())]);
         const res = await m.convertToHtml({arrayBuffer: buf});
         const d = document.createElement('div'); d.className = 'dv-doc'; d.innerHTML = res.value; // mammoth erzeugt nur einfaches HTML ohne Skripte
         d.querySelectorAll('script,iframe,object').forEach(x => x.remove());
         it.appendChild(d); return;
       }
       if(kind === 'sheet'){
-        const [X, buf] = await Promise.all([lib('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js', 'XLSX'), fetch(src).then(r => r.arrayBuffer())]);
+        const [X, buf] = await Promise.all([lib('{{vendorURL "xlsx/xlsx.full.min.js"}}', 'XLSX'), fetch(src).then(r => r.arrayBuffer())]);
         const wb = X.read(buf, {type: 'array'});
         const d = document.createElement('div'); d.className = 'dv-sheet';
         d.innerHTML = X.utils.sheet_to_html(wb.Sheets[wb.SheetNames[0]], {header: '', footer: ''});

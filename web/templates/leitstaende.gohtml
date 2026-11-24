@@ -172,7 +172,7 @@
 
 {{define "scripts"}}{{if .Edit}}
 {{template "doc-view-js"}}
-<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+<script src="{{vendorURL "sortablejs/Sortable.min.js"}}"></script>
 <script>
 const LSM_DEFS = {{.BlockDefs}};
 const LSM_BOARDS = [{{range .Boards}}{{if ne .ID $.Edit.ID}}{slug: {{.Slug}}, name: {{.Name}}},{{end}}{{end}}];

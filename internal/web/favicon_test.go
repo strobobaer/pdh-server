@@ -25,17 +25,17 @@ func TestAppIconsServed(t *testing.T) {
 }
 
 func TestIconCSSCompressedAndCached(t *testing.T) {
-	h := AppIconHandler()
-	const url = "/vendor/tabler-icons/tabler-icons.min.css?v=1.2.3"
-	req := httptest.NewRequest(http.MethodGet, url, nil)
-	req.Header.Set("Accept-Encoding", "gzip, deflate, br")
-	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, req)
+	resetIconCSSCache()
+	r := iconTestRouter()
+	_, _ = (&Handler{}).iconCSS(t.Context())
+	url := iconCSSHref()
+	rec := iconGet(r, url, map[string]string{"Accept-Encoding": "gzip, deflate, br"})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("HTTP %d", rec.Code)
 	}
-	if rec.Header().Get("Content-Encoding") != "gzip" || rec.Body.Len() > 1200000 {
-		t.Errorf("nicht komprimiert: %q, %d Bytes", rec.Header().Get("Content-Encoding"), rec.Body.Len())
+	// 5 918 Regeln, die meisten nur als Adresse: klein genug fuer den ersten Aufruf
+	if rec.Header().Get("Content-Encoding") != "gzip" || rec.Body.Len() > 300000 {
+		t.Errorf("nicht komprimiert oder zu gross: %q, %d Bytes", rec.Header().Get("Content-Encoding"), rec.Body.Len())
 	}
 	if ct := rec.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/css") {
 		t.Errorf("Content-Type %q", ct)
@@ -47,19 +47,14 @@ func TestIconCSSCompressedAndCached(t *testing.T) {
 	if etag == "" {
 		t.Fatal("kein ETag")
 	}
-	// Erneute Anfrage mit ETag: 304 ohne Inhalt statt 1,4 MB
-	req = httptest.NewRequest(http.MethodGet, url, nil)
-	req.Header.Set("Accept-Encoding", "gzip")
-	req.Header.Set("If-None-Match", etag)
-	rec = httptest.NewRecorder()
-	h.ServeHTTP(rec, req)
+	// Erneute Anfrage mit ETag: 304 ohne Inhalt
+	rec = iconGet(r, url, map[string]string{"Accept-Encoding": "gzip", "If-None-Match": etag})
 	if rec.Code != http.StatusNotModified || rec.Body.Len() != 0 {
 		t.Errorf("Revalidierung: HTTP %d, %d Bytes", rec.Code, rec.Body.Len())
 	}
-	// Ohne gzip: Rohdatei
-	rec = httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, url, nil))
-	if rec.Header().Get("Content-Encoding") != "" || !strings.Contains(rec.Body.String(), "tabler-icons") {
+	// Ohne gzip: Rohdatei mit den Symbolregeln
+	rec = iconGet(r, url, nil)
+	if rec.Header().Get("Content-Encoding") != "" || !strings.Contains(rec.Body.String(), ".ti::before") {
 		t.Errorf("unkomprimierte Auslieferung fehlerhaft")
 	}
 }

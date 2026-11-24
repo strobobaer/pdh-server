@@ -31,19 +31,29 @@ const (
 	maxRow       = 150
 )
 
-// UIFont: waehlbare Schrift. Href leer = auf dem Geraet vorhanden.
+// UIFont: waehlbare Schrift. Href leer = auf dem Geraet vorhanden; sonst die
+// mitgelieferte Stildatei (web/static/vendor/fonts/), siehe URL().
 type UIFont struct {
 	ID, Name, Stack, Href string
 }
 
 var uiFonts = []UIFont{
-	{"dm-sans", "DM Sans (Standard)", "'DM Sans',system-ui,sans-serif", "https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap"},
+	{"dm-sans", "DM Sans (Standard)", "'DM Sans',system-ui,sans-serif", "fonts/dm-sans.css"},
 	{"system", "System (wie das Gerät)", "system-ui,-apple-system,'Segoe UI',Roboto,sans-serif", ""},
-	{"inter", "Inter", "'Inter',system-ui,sans-serif", "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"},
-	{"roboto", "Roboto (wie Home Assistant)", "'Roboto',system-ui,sans-serif", "https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap"},
-	{"atkinson", "Atkinson Hyperlegible (besonders gut lesbar)", "'Atkinson Hyperlegible',system-ui,sans-serif", "https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap"},
-	{"source-sans", "Source Sans 3", "'Source Sans 3',system-ui,sans-serif", "https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600;700&display=swap"},
+	{"inter", "Inter", "'Inter',system-ui,sans-serif", "fonts/inter.css"},
+	{"roboto", "Roboto (wie Home Assistant)", "'Roboto',system-ui,sans-serif", "fonts/roboto.css"},
+	{"atkinson", "Atkinson Hyperlegible (besonders gut lesbar)", "'Atkinson Hyperlegible',system-ui,sans-serif", "fonts/atkinson.css"},
+	{"source-sans", "Source Sans 3", "'Source Sans 3',system-ui,sans-serif", "fonts/source-sans.css"},
 	{"verdana", "Verdana (breit, klar)", "Verdana,Tahoma,'DejaVu Sans',sans-serif", ""},
+}
+
+// URL: Adresse der Stildatei (leer = keine Webschrift).
+// Href ist der Name unter /vendor/<Version>/ (die Version kommt erst hier dazu).
+func (f UIFont) URL() string {
+	if f.Href == "" {
+		return ""
+	}
+	return vendorURL(f.Href)
 }
 
 func uiFont(id string) (UIFont, bool) {
@@ -146,7 +156,7 @@ func (a Appearance) FontHref() string {
 	if !ok {
 		f, _ = uiFont(defaultFont)
 	}
-	return f.Href
+	return f.URL()
 }
 
 // DefaultLook: Firmenstandard ohne Benutzer (z. B. Anmeldeseite).
@@ -158,7 +168,7 @@ func (b Branding) DefaultLook() Appearance {
 func (a Appearance) FontsJS() template.JS {
 	m := map[string][2]string{}
 	for _, f := range uiFonts {
-		m[f.ID] = [2]string{f.Stack, f.Href}
+		m[f.ID] = [2]string{f.Stack, f.URL()}
 	}
 	data, _ := json.Marshal(m)
 	return template.JS(data)

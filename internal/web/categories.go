@@ -233,6 +233,7 @@ func (h *Handler) CategorySaveWeb(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/categories?c="+url.QueryEscape(id)+"&err="+url.QueryEscape(msg), http.StatusSeeOther)
 		return
 	}
+	h.iconChoicesChanged() // gewähltes Symbol sofort in die Symbol-Stildatei einbetten
 	http.Redirect(w, r, "/categories?c="+url.QueryEscape(id)+"&msg="+url.QueryEscape("Kategorie #"+name+" gespeichert."), http.StatusSeeOther)
 }
 

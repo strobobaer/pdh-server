@@ -41,9 +41,9 @@ window.PDH_LOCALE = ({de:'de-DE', en:'en-GB', ro:'ro-RO', tr:'tr-TR', mk:'mk-MK'
   if(window.name === 'pdh-embed' || /[?&]embed=1(&|$)/.test(location.search)) document.documentElement.classList.add('pdh-embedded');
 })();
 </script>
-<script src="https://unpkg.com/htmx.org@1.9.12/dist/htmx.min.js"></script>
+<script src="{{vendorURL "htmx/htmx.min.js"}}"></script>
 {{template "request-once-script"}}
-<link rel="stylesheet" href="/vendor/tabler-icons/tabler-icons.min.css?v={{appVersion}}">
+<link rel="stylesheet" href="{{iconCSSHref}}">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 /* Farben im Stil von Windows 11 (Fluent): neutrale Grautöne, Akzent aus dem
@@ -469,35 +469,6 @@ tr:last-child td{border:0}
 .topbar .theme-toggle > span:not(.ctx-badge){display:none}
 .topbar .theme-toggle i{font-size:18px}
 .tb-sep{width:1px;height:22px;background:var(--border);margin:0 4px;flex-shrink:0}
-html.icons-fallback .ti::before{font-family:var(--font);font-weight:700;display:inline-block;line-height:1}
-html.icons-fallback .ti-plus::before{content:"+"}
-html.icons-fallback .ti-refresh::before{content:"R"}
-html.icons-fallback .ti-x::before{content:"x"}
-html.icons-fallback .ti-device-floppy::before{content:"S"}
-html.icons-fallback .ti-arrow-left::before{content:"<"}
-html.icons-fallback .ti-send::before{content:">"}
-html.icons-fallback .ti-filter::before{content:"F"}
-html.icons-fallback .ti-eye::before{content:"O"}
-html.icons-fallback .ti-brain::before{content:"AI";font-size:.72em}
-html.icons-fallback .ti-pencil::before{content:"E"}
-html.icons-fallback .ti-copy::before{content:"C"}
-html.icons-fallback .ti-circle-arrow-up::before{content:"^"}
-html.icons-fallback .ti-circle-arrow-down::before{content:"v"}
-html.icons-fallback .ti-check::before{content:"✓"}
-html.icons-fallback .ti-circle-check::before{content:"✓"}
-html.icons-fallback .ti-trash::before{content:"D"}
-html.icons-fallback .ti-trash-x::before{content:"Dx";font-size:.72em}
-html.icons-fallback .ti-player-play::before{content:">"}
-html.icons-fallback .ti-player-stop::before{content:"[]";font-size:.72em}
-html.icons-fallback .ti-device-desktop::before{content:"[]";font-size:.72em}
-html.icons-fallback .ti-sun::before{content:"*"}
-html.icons-fallback .ti-moon::before{content:"("}
-html.icons-fallback .ti-menu-2::before{content:"="}
-html.icons-fallback .ti-help::before{content:"?"}
-html.icons-fallback .ti-photo-check::before{content:"P"}
-html.icons-fallback .ti-file-description::before{content:"F"}
-html.icons-fallback .btn .ti{display:none}
-html.icons-fallback .btn-icon-glyph{display:inline-flex;align-items:center;justify-content:center}
 .widget-icon-toolbar{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap}
 .widget-icon-toolbar.end{justify-content:flex-end}
 .widget-icon-toolbar.compact{gap:4px}
@@ -978,7 +949,7 @@ table,.li,.act-item,.rec-row{zoom:var(--row-scale,1)}
     document.querySelectorAll('#pdh-nav .nav-fold').forEach(pdhNavHeaderEdit);
     const start = () => document.querySelectorAll('#pdh-nav .nav-group').forEach(g => pdhNavSortables.push(Sortable.create(g, {group: 'pdh-nav', animation: 150, ghostClass: 'nav-ghost', draggable: '.nav-item'})));
     if(window.Sortable) start();
-    else { const sc = document.createElement('script'); sc.src = 'https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js'; sc.onload = start; document.head.appendChild(sc); }
+    else { const sc = document.createElement('script'); sc.src = '{{vendorURL "sortablejs/Sortable.min.js"}}'; sc.onload = start; document.head.appendChild(sc); }
     document.querySelectorAll('#pdh-nav .nav-item').forEach(a => a.addEventListener('click', pdhNavNoClick));
   }
   // Dashboard anpassen (Benutzermenue): auf dem Dashboard direkt, sonst dorthin wechseln
@@ -1480,29 +1451,6 @@ function cycleThemeMode() {
   applyThemeMode(THEME_MODES[(index + 1) % THEME_MODES.length]);
 }
 document.addEventListener('DOMContentLoaded', () => applyThemeMode(localStorage.getItem('pdh_theme') || 'system'));
-function ensureIconFont() {
-  const probe = document.createElement('i');
-  probe.className = 'ti ti-plus';
-  probe.style.position = 'absolute';
-  probe.style.left = '-9999px';
-  document.body.appendChild(probe);
-  const pseudo = getComputedStyle(probe, '::before');
-  const content = pseudo.content;
-  const family = (pseudo.fontFamily || '').toLowerCase();
-  probe.remove();
-  const hasIconCss = !!content && content !== 'none' && content !== 'normal' && content !== '""';
-  let fontReady = true;
-  if(document.fonts && family.includes('tabler')) {
-    fontReady = document.fonts.check('16px "tabler-icons"') || document.fonts.check('16px tabler-icons');
-  }
-  if(!hasIconCss || !fontReady) {
-    document.documentElement.classList.add('icons-fallback');
-  } else {
-    document.documentElement.classList.remove('icons-fallback');
-  }
-}
-window.addEventListener('load', () => setTimeout(ensureIconFont, 300));
-if(document.fonts && document.fonts.ready) document.fonts.ready.then(ensureIconFont);
 if(window.matchMedia) {
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
     if((localStorage.getItem('pdh_theme') || 'system') === 'system') applyThemeMode('system');

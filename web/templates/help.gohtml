@@ -2346,7 +2346,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
 
 <section class="hb-ch" id="versions" data-title="Versionen &amp; Updates" data-pages="core-settings">
   <h2><i class="ti ti-versions"></i> Versionen &amp; Updates</h2>
-  <p>PDH steht für <b>Pulse Data Hub</b>. Die installierte Version steht links oben unter dem Namen (z. B. <b>v{{.CurrentVersion}}</b>). Jede Version hat eine Nummer <b>Haupt.Neben.Korrektur</b>: Die mittlere Zahl steigt mit neuen Funktionen, die letzte bei reinen Fehlerkorrekturen.</p>
+  <p>PDH steht für <b>Pulse Data Hub</b>. Die installierte Version steht links oben unter dem Namen (z. B. <b>v{{.CurrentVersion}}</b>). Jede Version hat eine Nummer <b>Haupt.Neben.Korrektur</b>: Die mittlere Zahl steigt mit neuen Funktionen, die letzte bei reinen Fehlerkorrekturen. PDH lädt für die Oberfläche nichts mehr aus dem Internet; alle Bestandteile werden mitgeliefert, und die Seiten bauen sich schneller auf.</p>
   {{template "hb-fig-update"}}
   <div class="hb-howto"><b><i class="ti ti-download"></i> So installierst du ein Update</b>
     <ol class="hb-steps">
@@ -2510,7 +2510,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   {{else}}<p class="rec-sub">Berechtigungen konnten nicht geladen werden.</p>{{end}}
   {{if $can}}<p class="rec-sub hb-shot-tools"><i class="ti ti-photo-plus"></i> Als Administrator kannst du unter jedem Kapitel eigene Bildschirmfotos hinzufügen – so wird das Handbuch zu eurem Handbuch.</p>{{end}}
   <h3 id="icons"><i class="ti ti-icons"></i> Symbole anpassen</h3>
-  <p>Alle Symbole kommen aus einer Bibliothek mit rund 5.900 Symbolen (Tabler Icons), die der PDH-Server selbst ausliefert – es wird nichts aus dem Internet nachgeladen, PDH sieht also auch ohne Internetzugang vollständig aus. Unter <b>Verwaltung → Symbole</b> legst du fest, welches Symbol wofür steht: Navigation, Vorgangsarten und Datensätze, Anlagentypen, Lagertypen, IT-Typen und Knöpfe.</p>
+  <p>Alle Symbole kommen aus einer Bibliothek mit rund 5.900 Symbolen (Tabler Icons), die der PDH-Server selbst ausliefert – es wird nichts aus dem Internet nachgeladen, PDH sieht also auch ohne Internetzugang vollständig aus. Die Symbole kommen als kleine Grafiken statt als große Schrift, deshalb baut sich jede Seite beim ersten Aufruf schneller auf. Unter <b>Verwaltung → Symbole</b> legst du fest, welches Symbol wofür steht: Navigation, Vorgangsarten und Datensätze, Anlagentypen, Lagertypen, IT-Typen und Knöpfe.</p>
   <div class="hb-howto"><b><i class="ti ti-icons"></i> So tauschst du ein Symbol aus</b>
     <ol class="hb-steps">
       <li><b>Verwaltung → Symbole</b> öffnen (nur Administratoren).</li>

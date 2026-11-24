@@ -498,6 +498,7 @@ func (h *Handler) PlantWatchSaveWeb(w http.ResponseWriter, r *http.Request) {
 		fail(errors.New(friendlyDBError(err)))
 		return
 	}
+	h.iconChoicesChanged() // gewähltes Symbol sofort in die Symbol-Stildatei einbetten
 	http.Redirect(w, r, watchBack(id, "Übersicht „"+name+"“ gespeichert", nil), http.StatusSeeOther)
 }
 
@@ -513,6 +514,7 @@ func (h *Handler) PlantWatchDeleteWeb(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, watchBack(id, "", errors.New(friendlyDBError(err))), http.StatusSeeOther)
 		return
 	}
+	h.iconChoicesChanged()
 	http.Redirect(w, r, watchBack("", "Übersicht gelöscht", nil), http.StatusSeeOther)
 }
 

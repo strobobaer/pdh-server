@@ -183,6 +183,7 @@ func itCategoryErrKey(err error) (key string, notFound bool) {
 // itCategoryDone beantwortet das Ergebnis einer Schreibaktion (PRG).
 func (h *Handler) itCategoryDone(w http.ResponseWriter, r *http.Request, err error, notice string) {
 	if err == nil {
+		h.iconChoicesChanged() // gewähltes Symbol sofort in die Symbol-Stildatei einbetten
 		itCategoriesBack(w, r, notice, "")
 		return
 	}

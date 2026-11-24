@@ -14,7 +14,11 @@ const TerminalDownloadURL = "https://github.com/strobobaer/hmi-kiosk-pi/releases
 
 func TemplateFuncs() template.FuncMap {
 	m := template.FuncMap{
-		"appVersion":   pdh.Version,
+		"appVersion": pdh.Version,
+		// Adresse der Symbol-Stildatei mit Version und Kennung (iconcss.go)
+		"iconCSSHref": iconCSSHref,
+		// mitgelieferte Bibliothek: /vendor/<Version>/<Baustein>/<Datei> (vendor.go)
+		"vendorURL":    vendorURL,
 		"css":          templateCSS,
 		"grafanaColor": grafanaColorCSS, // Kachelfarbe Statistik (grafana.go)
 		"dwBgColors":   dwBgColorList,   // Hintergrund der Startseiten-Kacheln (dashboard_widgets.go)
@@ -24,7 +28,7 @@ func TemplateFuncs() template.FuncMap {
 		"hasPrefix":    strings.HasPrefix,
 		// Download-Seite der Terminal-Software (Link auf Terminal-Seiten)
 		"terminalDownloadURL": func() string { return TerminalDownloadURL },
-		"join":         strings.Join,
+		"join":                strings.Join,
 		// Serverzeit beim Ausliefern der Seite (Uhr in der Kopfleiste)
 		"serverNowMs": func() int64 { return time.Now().UnixMilli() },
 		// Symbol zum Schlüssel (icons.go): Vorgabe oder Änderung des Admins
