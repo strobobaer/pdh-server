@@ -407,7 +407,7 @@ func (s *Store) Save(ctx context.Context, m *Meter, userID string) (created bool
 		if err != nil {
 			return false, err
 		}
-		if active && runIDs[cur.id] {
+		if active && (runIDs[cur.id] || usedByRun(rows, runIDs, cur.key)) {
 			return false, ErrRecalcBusy
 		}
 	}
@@ -496,8 +496,13 @@ func rebaseDependents(ctx context.Context, tx pgx.Tx, rows []meterRow, cur *mete
 	}
 	// Basis ist der erste Minutenwert, der schon mit der neuen Einstellung
 	// entsteht: das Ende der laufenden Minute (Werte liegen unter dem Minutenende).
-	_, err := tx.Exec(ctx, `UPDATE energy_meters SET base_at = $2 WHERE id = ANY($1::uuid[]) AND formula <> ''`,
-		ids, now.Truncate(time.Minute).Add(time.Minute))
+	at := now.Truncate(time.Minute).Add(time.Minute)
+	if _, err := tx.Exec(ctx, `UPDATE energy_meters SET base_at = $2 WHERE id = ANY($1::uuid[]) AND formula <> ''`, ids, at); err != nil {
+		return err
+	}
+	// Den Zeitpunkt festhalten: eine spätere Neurechnung hält ihn ebenso ein.
+	_, err := tx.Exec(ctx, `INSERT INTO energy_rebases (meter_id, at)
+		SELECT id, $2 FROM energy_meters WHERE id = ANY($1::uuid[]) AND formula <> '' ON CONFLICT DO NOTHING`, ids, at)
 	return err
 }
 

@@ -28,7 +28,7 @@ type versionWebEnv struct {
 	st            *energie.Store
 	perms         map[string]bool
 	a, ak, v, vk  string
-	uid           string
+	uid, infra    string
 	today, before time.Time
 }
 
@@ -78,7 +78,7 @@ func newVersionWebEnv(t *testing.T) *versionWebEnv {
 	if _, err := e.st.Save(ctx, v, ""); err != nil {
 		t.Fatal(err)
 	}
-	e.a, e.ak, e.v, e.vk = a.ID, a.Key, v.ID, v.Key
+	e.a, e.ak, e.v, e.vk, e.infra = a.ID, a.Key, v.ID, v.Key, infra
 	now := time.Now()
 	e.today = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
 	e.before = e.today.AddDate(0, 0, -3)
@@ -122,6 +122,10 @@ func TestEnergyVersionSaveRights(t *testing.T) {
 	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "4 Tage") || !strings.Contains(w.Body.String(), e.vk) ||
 		!strings.Contains(w.Body.String(), "Alarme werden für die Vergangenheit nicht neu bewertet") {
 		t.Errorf("Vorschau: %d %s", w.Code, w.Body.String())
+	}
+	// A hat keine Werte: die Vorschau warnt (W3).
+	if !strings.Contains(w.Body.String(), "["+e.ak+"] hat noch keine Werte") {
+		t.Errorf("Vorschau ohne Warnung zum Bezug ohne Werte: %s", w.Body.String())
 	}
 	w = e.save(t, map[string]any{"valid_from": day(e.before), "formula": "[" + e.ak + "]*3", "recalc": true})
 	var res struct {
@@ -194,5 +198,38 @@ func TestEnergyMeterVersionsFragment(t *testing.T) {
 	body = meterDo(e.h.EnergyMeterVersionsWeb, "GET", "/energy/meters/"+e.v+"/versions", e.v, e.uid, nil).Body.String()
 	if !strings.Contains(body, ">gilt<") || strings.Contains(body, "Neue Fassung") || strings.Contains(body, "evDelete(") {
 		t.Error("ohne energy.edit: Liste ohne Formular und ohne Löschen erwartet")
+	}
+}
+
+// Ein Bearbeiten-Formular von gestern nimmt eine inzwischen geltende geplante
+// Formel nicht still zurück (Befund K4): unveränderte Formel bleibt die geltende.
+func TestEnergyMeterSaveKeepsAppliedFormula(t *testing.T) {
+	e := newVersionWebEnv(t)
+	e.perms = map[string]bool{permEnergyView: true, permEnergyEdit: true}
+	ctx := context.Background()
+	applied := "[" + e.ak + "]*2"
+	if _, err := e.pool.Exec(ctx, `UPDATE energy_meters SET formula = $2 WHERE id = $1::uuid`, e.v, applied); err != nil {
+		t.Fatal(err)
+	}
+	body := map[string]any{"id": e.v, "key": e.vk, "name": "Neuer Name", "infrastructure_id": e.infra, "kind": "counter",
+		"factor": 1, "formula": "[" + e.ak + "]", "formula_orig": "[" + e.ak + "]", "export": true, "active": true}
+	w := meterDo(e.h.EnergyMeterSaveWeb, "POST", "/energy/meters/save-web", "", e.uid, body)
+	if w.Code != http.StatusOK {
+		t.Fatalf("Speichern: %d %s", w.Code, w.Body.String())
+	}
+	m, err := e.st.Get(ctx, e.v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Formula != applied || m.Name != "Neuer Name" {
+		t.Errorf("nach dem Speichern: Formel %q Name %q, erwartet %q und den neuen Namen", m.Formula, m.Name, applied)
+	}
+	// Wer die Formel im Formular ändert, ändert sie.
+	body["formula"] = "[" + e.ak + "]*3"
+	if w := meterDo(e.h.EnergyMeterSaveWeb, "POST", "/energy/meters/save-web", "", e.uid, body); w.Code != http.StatusOK {
+		t.Fatalf("Speichern mit neuer Formel: %d %s", w.Code, w.Body.String())
+	}
+	if m, _ := e.st.Get(ctx, e.v); m == nil || m.Formula != "["+e.ak+"]*3" {
+		t.Errorf("geänderte Formel nicht übernommen: %+v", m)
 	}
 }

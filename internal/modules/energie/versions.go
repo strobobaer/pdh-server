@@ -236,6 +236,25 @@ func affected(rows []meterRow, key string, from time.Time) []meterRow {
 	return out
 }
 
+// usedByRun: steht key in einer Formel (geltend oder Fassung) einer Messstelle
+// des laufenden Laufs? Ein solcher Bezug bleibt während des Laufs, wie er ist –
+// sein Wechsel würde die Basis der Laufmessstellen verschieben.
+func usedByRun(rows []meterRow, runIDs map[string]bool, key string) bool {
+	for _, r := range rows {
+		if !runIDs[r.id] {
+			continue
+		}
+		fs := []string{r.formula}
+		for _, v := range r.vers {
+			fs = append(fs, v.formula)
+		}
+		if containsStr(refsOf(fs), key) {
+			return true
+		}
+	}
+	return false
+}
+
 // activeRun liest den Lauf, der gerade läuft oder exportiert: seine
 // Messstellen (IDs); ok false, wenn keiner läuft.
 func activeRun(ctx context.Context, q querier) (ids map[string]bool, ok bool, err error) {
@@ -372,6 +391,7 @@ type saveInfo struct {
 	days        int
 	keys        []string   // Messstellen in Rechenreihenfolge
 	nextFrom    *time.Time // ab hier gilt eine spätere Fassung
+	lateRefs    []LateRef  // Bezüge der neuen Formel ohne Werte ab from
 }
 
 // saveVersion ist SaveVersion; dry prüft nur und schreibt nichts.
@@ -459,6 +479,32 @@ func (s *Store) saveVersion(ctx context.Context, in VersionInput, userID string,
 		return res, info, err
 	}
 	info.from, info.today = from, today
+	if !planned {
+		// Bezüge der neuen Formel, die erst später (oder gar keine) Werte haben:
+		// davor haben die neu gerechneten Messstellen keine Werte.
+		byKey := map[string]string{}
+		for _, r := range rows {
+			byKey[r.key] = r.id
+		}
+		seen := map[string]bool{}
+		for _, ref := range refsOf([]string{src}) {
+			id, ok := byKey[ref]
+			if !ok || seen[ref] {
+				continue
+			}
+			seen[ref] = true
+			first, has, err := earliestDay(ctx, tx, id, s.loc())
+			if err != nil {
+				return res, info, err
+			}
+			switch {
+			case !has:
+				info.lateRefs = append(info.lateRefs, LateRef{Key: ref, None: true})
+			case first.After(from):
+				info.lateRefs = append(info.lateRefs, LateRef{Key: ref, First: first})
+			}
+		}
+	}
 	for _, v := range others {
 		if v.validFrom.After(from) && (info.nextFrom == nil || v.validFrom.Before(*info.nextFrom)) {
 			d := v.validFrom

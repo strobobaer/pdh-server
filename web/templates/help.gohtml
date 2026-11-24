@@ -3109,11 +3109,13 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <ul>
       <li>Frühestens geht es bis zum Tag des <b>ältesten gespeicherten Werts</b> der Messstelle (Minutenwerte bleiben 400 Tage).</li>
       <li>Gibt es nach dem gewählten Tag schon eine spätere Fassung, gilt die neue nur bis dahin. Die Vorschau sagt das.</li>
-      <li>Gerechnet wird mit denselben Regeln wie jede Minute: fehlt ein Bezugswert, hat die Minute keinen Wert.</li>
+      <li>Gerechnet wird mit denselben Regeln wie jede Minute: fehlt ein Bezugswert, hat die Minute keinen Wert. Wurde an einem Bezug Quelle, Faktor oder Art geändert, hat auch in der Neurechnung die Minute der Änderung keinen Wert – der Sprung zählt nicht als Verbrauch. Für Änderungen vor dem Update auf 0.82.50 kennt das PDH diese Zeitpunkte nicht; rechne über einen solchen Tag nicht rückwirkend.</li>
+      <li>Hat ein Bezug der neuen Formel erst später oder noch gar keine Werte, warnt die Vorschau: davor haben die neu gerechneten Messstellen keine Werte.</li>
       <li>Während der Neurechnung setzen die betroffenen Messstellen und der Efficio-Export kurz aus. Danach holt der Export nach.</li>
       <li><b>Efficio-Dateien</b>, von denen noch nichts verschickt ist, erzeugt das PDH mit den neuen Werten neu. Schon verschickte bleiben, wie sie sind, und stehen im Ergebnis als „schon verschickt, nicht geändert“. Beim Ziel <b>Zum Abholen im PDH</b> gilt eine Datei als verschickt, sobald sie einmal heruntergeladen wurde.</li>
       <li><b>Alarme</b> werden für die Vergangenheit nicht neu bewertet; Tickets bleiben. Ab dem Ende der Neurechnung prüft das PDH mit den neuen Werten weiter.</li>
-      <li>Es läuft höchstens eine Neurechnung gleichzeitig. Solange sie läuft, lassen sich die betroffenen Messstellen nicht ändern oder löschen. Am Spiegelserver und während einer Wartung startet keine Neurechnung.</li>
+      <li>Eine Messstelle, die bisher eine Quelle hatte, behält ihre gemessenen Werte bis zum Tag, ab dem sie mit einer Formel rechnet.</li>
+      <li>Es läuft höchstens eine Neurechnung gleichzeitig. Solange sie läuft, lassen sich die betroffenen Messstellen und die Messstellen, die in ihren Formeln stehen, nicht ändern oder löschen. Am Spiegelserver und während einer Wartung startet keine Neurechnung.</li>
       <li>Bricht ein Lauf ab (Neustart), macht er am ersten nicht fertig gerechneten Tag weiter; jeder Tag steht ganz alt oder ganz neu da. Nach fünf Fehlversuchen steht er als <b>abgebrochen</b> in der Liste und die Messstellen rechnen wieder wie gewohnt.</li>
     </ul></div>
   <div class="hb-howto"><b><i class="ti ti-filter"></i> So findest du Messstellen</b>

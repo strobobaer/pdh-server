@@ -31,6 +31,8 @@ const (
 type Sampler struct {
 	Store *Store
 	Skip  func() bool // wahr: nichts ablegen (z. B. Standby-Server)
+
+	beforeMinute func() // nur für Tests: vor der Minuten-Transaktion
 }
 
 type sampleMeter struct {
@@ -55,8 +57,11 @@ type reading struct {
 }
 
 // load liest alle aktiven Messstellen samt letzter Lesung ihrer Quelle.
-func (sm *Sampler) load(ctx context.Context) ([]*sampleMeter, error) {
-	rows, err := sm.Store.DB.Query(ctx, `
+func (sm *Sampler) load(ctx context.Context) ([]*sampleMeter, error) { return sm.loadQ(ctx, sm.Store.DB) }
+
+// loadQ ist load über q (in sampleMinute: die Transaktion unter minuteLock).
+func (sm *Sampler) loadQ(ctx context.Context, q querier) ([]*sampleMeter, error) {
+	rows, err := q.Query(ctx, `
 		SELECT m.id::text, m.meter_key, m.kind, m.formula, m.factor, COALESCE(m.import_mapping_id::text, ''),
 		       im.last_value, im.last_received_at, m.base_at, m.last_at
 		  FROM energy_meters m
@@ -110,16 +115,10 @@ func (sm *Sampler) Pass(ctx context.Context, now time.Time) (stored, missing int
 	var orderErr error
 	for m := from; !m.After(target); m = m.Add(time.Minute) {
 		// Formeln auf die Fassungen stellen, die am Tag dieser Minute gelten.
-		changed, err := sm.Store.ApplyVersions(ctx, m)
-		if err != nil {
+		if _, err := sm.Store.ApplyVersions(ctx, m); err != nil {
 			return stored, missing, err
 		}
-		if !m.Equal(from) || changed > 0 {
-			if meters, err = sm.load(ctx); err != nil {
-				return stored, missing, err
-			}
-		}
-		s, mi, oerr, err := sm.sampleMinute(ctx, meters, m, stale)
+		s, mi, oerr, err := sm.sampleMinute(ctx, m, stale)
 		stored += s
 		missing += mi
 		if err != nil {
@@ -140,15 +139,24 @@ func (sm *Sampler) Pass(ctx context.Context, now time.Time) (stored, missing int
 // echten Werte werden trotzdem abgelegt.
 //
 // Die Transaktion beginnt vor dem ersten Lesen und nimmt minuteLock: der
-// Schlussschritt einer Neurechnung schreibt so nie gleichzeitig. Messstellen
-// einer laufenden Neurechnung (pausedMeters) bleiben ganz außen vor.
-func (sm *Sampler) sampleMinute(ctx context.Context, meters []*sampleMeter, minute time.Time, stale time.Duration) (stored, missing int, orderErr, err error) {
+// Schlussschritt einer Neurechnung schreibt so nie gleichzeitig. Die
+// Messstellen (Formel, Basis, letzter Wert) liest sie erst unter der Sperre –
+// eine vorher gelesene Liste hätte nach dem Schlussschritt die alte Basis.
+// Messstellen einer laufenden Neurechnung (pausedMeters) bleiben ganz außen vor.
+func (sm *Sampler) sampleMinute(ctx context.Context, minute time.Time, stale time.Duration) (stored, missing int, orderErr, err error) {
+	if sm.beforeMinute != nil {
+		sm.beforeMinute()
+	}
 	tx, err := sm.Store.DB.Begin(ctx)
 	if err != nil {
 		return 0, 0, nil, err
 	}
 	defer tx.Rollback(ctx)
 	if err := lockMinute(ctx, tx); err != nil {
+		return 0, 0, nil, err
+	}
+	meters, err := sm.loadQ(ctx, tx)
+	if err != nil {
 		return 0, 0, nil, err
 	}
 	paused, err := pausedMeters(ctx, tx)
@@ -481,8 +489,12 @@ func (sm *Sampler) purgeReadings(ctx context.Context, now time.Time) error {
 
 // purge löscht Minutenwerte, die älter als ValueRetentionDays sind.
 func (sm *Sampler) purge(ctx context.Context) error {
-	_, err := sm.Store.DB.Exec(ctx, `DELETE FROM energy_values WHERE ts < $1`,
-		sm.Store.now().AddDate(0, 0, -sm.Store.settingsOrDefault(ctx).ValueRetentionDays))
+	cut := sm.Store.now().AddDate(0, 0, -sm.Store.settingsOrDefault(ctx).ValueRetentionDays)
+	if _, err := sm.Store.DB.Exec(ctx, `DELETE FROM energy_values WHERE ts < $1`, cut); err != nil {
+		return err
+	}
+	// Basis-Verschiebungen braucht nur die Neurechnung – höchstens so weit zurück wie die Werte.
+	_, err := sm.Store.DB.Exec(ctx, `DELETE FROM energy_rebases WHERE at < $1`, cut)
 	return err
 }
 

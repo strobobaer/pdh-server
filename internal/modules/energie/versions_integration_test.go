@@ -175,6 +175,13 @@ func TestVersionBusy(t *testing.T) {
 	if err := s.Delete(ctx, w); !errors.Is(err, ErrRecalcBusy) {
 		t.Errorf("Messstelle im Lauf löschen: %v", err)
 	}
+	// Ein Bezug einer Messstelle im Lauf bleibt ebenfalls, wie er ist (W2).
+	ma, err := s.Get(ctx, a)
+	must(t, err)
+	ma.Factor = 2
+	if _, err := s.Save(ctx, ma, ""); !errors.Is(err, ErrRecalcBusy) {
+		t.Errorf("Bezug einer Messstelle im Lauf ändern: %v", err)
+	}
 	// Eine Messstelle außerhalb des Laufs bleibt bearbeitbar.
 	m2 := &Meter{ID: v, Key: vk, InfraID: infra, Kind: KindCounter, Formula: "[" + ak + "]*5", Active: true, Export: true}
 	if _, err := s.Save(ctx, m2, ""); err != nil {

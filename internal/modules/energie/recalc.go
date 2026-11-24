@@ -59,6 +59,15 @@ type RecalcPreview struct {
 	Meters        []string
 	NextFrom      *time.Time
 	Rebuild, Keep []FileImpact
+	LateRefs      []LateRef // Bezüge der neuen Formel ohne Werte ab From
+}
+
+// LateRef: ein Bezug der neuen Formel, der erst ab First Werte hat (None: gar
+// keine). Davor haben die neu gerechneten Messstellen keine Werte.
+type LateRef struct {
+	Key   string
+	First time.Time
+	None  bool
 }
 
 // FileImpact: eine Efficio-Datei und was mit ihr geschieht.
@@ -197,7 +206,7 @@ func (rc *Recalculator) Preview(ctx context.Context, in VersionInput) (RecalcPre
 	if err != nil {
 		return RecalcPreview{}, err
 	}
-	p := RecalcPreview{From: info.from, To: info.today, Days: info.days, Meters: info.keys, NextFrom: info.nextFrom}
+	p := RecalcPreview{From: info.from, To: info.today, Days: info.days, Meters: info.keys, NextFrom: info.nextFrom, LateRefs: info.lateRefs}
 	if p.Days > 0 {
 		if p.Rebuild, p.Keep, err = rc.rebuildAll(ctx, info.from, info.keys, true); err != nil {
 			return RecalcPreview{}, err
@@ -404,7 +413,7 @@ func (rc *Recalculator) finish(ctx context.Context, run *RecalcRun, data *recDat
 		written, missing, states = written+w, missing+m, st
 	}
 	if states == nil {
-		if states, err = startStates(ctx, tx, data, end); err != nil {
+		if states, err = startStates(ctx, tx, data.activeRunOn(s.today()), end); err != nil {
 			return err
 		}
 	}
@@ -501,12 +510,30 @@ type recState struct {
 	base    time.Time
 }
 
-// startStates liest je Laufmessstelle den letzten Wert bis at; sein
-// Zeitpunkt ist die Basis.
-func startStates(ctx context.Context, q querier, data *recData, at time.Time) (map[string]*recState, error) {
-	ids := make([]string, len(data.run))
+// activeOn: rechnet die Messstelle am Tag day schon mit einer Formel? Vor
+// ihrer ersten Fassung (z. B. mit Quelle, oder noch nicht angelegt) bleiben
+// ihre Werte, wie sie sind.
+func (m *recMeter) activeOn(day time.Time) bool {
+	return len(m.vers) == 0 || !day.Before(m.vers[0].validFrom)
+}
+
+// activeRunOn: die Laufmessstellen, die am Tag day neu gerechnet werden.
+func (d *recData) activeRunOn(day time.Time) []*recMeter {
+	var out []*recMeter
+	for _, m := range d.run {
+		if m.activeOn(day) {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+// startStates liest je Messstelle den letzten Wert bis at; sein Zeitpunkt
+// ist die Basis.
+func startStates(ctx context.Context, q querier, meters []*recMeter, at time.Time) (map[string]*recState, error) {
+	ids := make([]string, len(meters))
 	out := map[string]*recState{}
-	for i, m := range data.run {
+	for i, m := range meters {
 		ids[i] = m.id
 		out[m.id] = &recState{}
 	}
@@ -534,10 +561,15 @@ func startStates(ctx context.Context, q querier, data *recData, at time.Time) (m
 // mit den Formeln des Tages day neu und ersetzt ihre Werte in diesem Bereich.
 // Ausgangslage ist der Stand in der Datenbank (letzter Wert bis lo).
 func (rc *Recalculator) compute(ctx context.Context, tx pgx.Tx, data *recData, day, lo, hi time.Time) (written, missing int64, states map[string]*recState, err error) {
-	// Formeln des Tages und ihre Reihenfolge.
+	// Messstellen dieses Tages, ihre Formeln und deren Reihenfolge.
+	active := data.activeRunOn(day)
+	dayIn := map[string]bool{}
+	for _, m := range active {
+		dayIn[m.id] = true
+	}
 	formulas := map[string]string{}
 	parsed := map[string]*Formula{}
-	for _, m := range data.run {
+	for _, m := range active {
 		src := m.formulaOn(day)
 		if src == "" {
 			continue
@@ -553,19 +585,19 @@ func (rc *Recalculator) compute(ctx context.Context, tx pgx.Tx, data *recData, d
 		return 0, 0, nil, err
 	}
 
-	// Werte der Bezüge außerhalb des Laufs in (lo, hi].
+	// Werte der Bezüge, die an diesem Tag nicht neu gerechnet werden, in (lo, hi].
 	series := map[string]map[int64]float64{}
 	var refIDs []string
 	idKey := map[string]string{}
 	for _, f := range parsed {
 		for _, ref := range f.Refs() {
-			if r := data.byKey[ref]; r != nil && !data.inRun[r.id] && idKey[r.id] == "" {
+			if r := data.byKey[ref]; r != nil && !dayIn[r.id] && idKey[r.id] == "" {
 				idKey[r.id] = r.key
 				refIDs = append(refIDs, r.id)
 			}
 		}
 	}
-	for _, m := range data.run {
+	for _, m := range active {
 		series[m.key] = map[int64]float64{}
 	}
 	if len(refIDs) > 0 {
@@ -594,8 +626,36 @@ func (rc *Recalculator) compute(ctx context.Context, tx pgx.Tx, data *recData, d
 		}
 	}
 
-	states, err = startStates(ctx, tx, data, lo)
+	states, err = startStates(ctx, tx, active, lo)
 	if err != nil {
+		return 0, 0, nil, err
+	}
+	ids := make([]string, len(active))
+	for i, m := range active {
+		ids[i] = m.id
+	}
+	// Basis-Verschiebungen beim Speichern (Quelle, Faktor, Art oder Formel eines
+	// Bezugs geändert): diese Minute hat keinen Wert, ab hier zählt der Zuwachs.
+	rebases := map[string]map[int64]bool{}
+	rr, err := tx.Query(ctx, `SELECT meter_id::text, at FROM energy_rebases
+		WHERE meter_id = ANY($1::uuid[]) AND at > $2 AND at <= $3`, ids, lo, hi)
+	if err != nil {
+		return 0, 0, nil, err
+	}
+	for rr.Next() {
+		var id string
+		var at time.Time
+		if err := rr.Scan(&id, &at); err != nil {
+			rr.Close()
+			return 0, 0, nil, err
+		}
+		if rebases[id] == nil {
+			rebases[id] = map[int64]bool{}
+		}
+		rebases[id][at.Unix()] = true
+	}
+	rr.Close()
+	if err := rr.Err(); err != nil {
 		return 0, 0, nil, err
 	}
 	// Werte zur Basis: im Bereich aus series, davor aus der Datenbank.
@@ -638,6 +698,11 @@ func (rc *Recalculator) compute(ctx context.Context, tx pgx.Tx, data *recData, d
 		for _, key := range order {
 			m := data.byKey[key]
 			st := states[m.id]
+			if rebases[m.id][u] {
+				st.base = ts
+				missing++
+				continue
+			}
 			hasBase := !st.base.IsZero()
 			v, ok, rebase := evalMinute(parsed[key], m.kind, func(ref string) (refValue, bool) {
 				r := data.byKey[ref]
@@ -672,10 +737,6 @@ func (rc *Recalculator) compute(ctx context.Context, tx pgx.Tx, data *recData, d
 		}
 	}
 
-	ids := make([]string, len(data.run))
-	for i, m := range data.run {
-		ids[i] = m.id
-	}
 	if _, err := tx.Exec(ctx, `DELETE FROM energy_values WHERE meter_id = ANY($1::uuid[]) AND ts > $2 AND ts <= $3`, ids, lo, hi); err != nil {
 		return 0, 0, nil, err
 	}

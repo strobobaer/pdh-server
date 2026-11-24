@@ -134,6 +134,7 @@
 .ev-preview{margin:8px 0;padding:8px 10px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius,6px);font-size:13px;color:var(--text)}
 .ev-pv p{margin:4px 0}
 .ev-pv ul{margin:4px 0 4px 18px}
+.ev-warn{border-left:3px solid var(--red);padding:4px 10px;margin:6px 0;color:var(--text)}
 .ev-runs{margin-top:10px;font-size:13px}
 .ev-run-list{list-style:none;margin:4px 0 0;padding:0}
 .ev-run-list li{padding:5px 0;border-bottom:1px solid var(--border)}
@@ -199,6 +200,7 @@
     $('em-factor').value = String(d.factor === undefined || d.factor === null ? 1 : d.factor).replace('.', ',');
     $('em-source').value = d.source_id || '';
     $('em-formula').value = d.formula || '';
+    $('em-formula').dataset.orig = d.formula || ''; // so geöffnet: unverändert lässt die geltende Formel stehen
     $('em-export').checked = d.export !== false;
     $('em-active').checked = d.active !== false;
     document.querySelector('input[name="em-mode"][value="' + (d.formula ? 'formula' : 'source') + '"]').checked = true;
@@ -349,6 +351,7 @@
       id: $('em-id').value, key: $('em-key-in').value.trim(), name: $('em-name').value.trim(),
       infrastructure_id: $('em-infra-id').value, unit: $('em-unit').value.trim(), kind: $('em-kind').value, factor: factor,
       source_id: formula ? '' : $('em-source').value, formula: formula ? $('em-formula').value.trim() : '',
+      formula_orig: ($('em-formula').dataset.orig || '').trim(),
       export: $('em-export').checked, active: $('em-active').checked
     };
     if(formula && !payload.formula){ err.textContent = 'Bitte eine Formel eintragen.'; return; }

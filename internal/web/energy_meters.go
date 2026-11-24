@@ -272,7 +272,11 @@ type meterSaveInput struct {
 	InfraID  string  `json:"infrastructure_id"`
 	SourceID string  `json:"source_id"`
 	Formula  string  `json:"formula"`
-	Unit     string  `json:"unit"`
+	// FormulaOrig: Formel, wie das Formular sie beim Öffnen zeigte. Ist die
+	// Formel unverändert, bleibt die jetzt geltende – auch wenn inzwischen eine
+	// geplante Fassung gegriffen hat.
+	FormulaOrig *string `json:"formula_orig"`
+	Unit        string  `json:"unit"`
 	Kind     string  `json:"kind"`
 	Factor   float64 `json:"factor"`
 	Export   bool    `json:"export"`
@@ -325,6 +329,12 @@ func (h *Handler) EnergyMeterSaveWeb(w http.ResponseWriter, r *http.Request) {
 	if st == nil {
 		writeGlobalBoardError(w, http.StatusServiceUnavailable, "Keine Datenbank.")
 		return
+	}
+	if in.ID != "" && in.Formula != "" && in.FormulaOrig != nil && in.Formula == strings.TrimSpace(*in.FormulaOrig) {
+		// Formel nicht angefasst: die geltende behalten (Formular von vor einer Fassung).
+		if cur, err := st.Get(r.Context(), in.ID); err == nil && cur.Formula != "" {
+			in.Formula = cur.Formula
+		}
 	}
 	m := &energie.Meter{ID: in.ID, Key: in.Key, Name: in.Name, InfraID: in.InfraID, SourceID: in.SourceID,
 		Formula: in.Formula, Unit: in.Unit, Kind: in.Kind, Factor: in.Factor, Export: in.Export, Active: in.Active}

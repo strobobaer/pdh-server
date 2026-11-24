@@ -52,6 +52,7 @@ type VersionPreviewView struct {
 	Days                                 int
 	Meters                               []string
 	Rebuild, Keep                        []energie.FileImpact
+	Late                                 []string // Warnungen zu Bezügen ohne Werte im Zeitraum
 }
 
 func dmy(t time.Time) string { return t.Format("02.01.2006") }
@@ -259,6 +260,13 @@ func (h *Handler) EnergyMeterVersionPreviewWeb(w http.ResponseWriter, r *http.Re
 	v := VersionPreviewView{FromText: dmy(p.From), ToText: dmy(p.To), Days: p.Days, Meters: p.Meters, Rebuild: p.Rebuild, Keep: p.Keep}
 	if p.NextFrom != nil {
 		v.NextText, v.LastText = dmy(*p.NextFrom), dmy(p.NextFrom.AddDate(0, 0, -1))
+	}
+	for _, l := range p.LateRefs {
+		if l.None {
+			v.Late = append(v.Late, "["+l.Key+"] hat noch keine Werte – solange haben die neu gerechneten Messstellen keine Werte.")
+		} else {
+			v.Late = append(v.Late, "["+l.Key+"] hat erst ab dem "+dmy(l.First)+" Werte – davor haben die neu gerechneten Messstellen keine Werte.")
+		}
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")

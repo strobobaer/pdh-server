@@ -85,6 +85,7 @@ Knöpfe rufen evDate/evCheck/evSave/evEdit/evDelete aus energy_meters.gohtml.
   <p><strong>Neu gerechnet wird vom {{.FromText}} bis heute ({{.Days}} {{if eq .Days 1}}Tag{{else}}Tage{{end}})</strong>
     für {{len .Meters}} {{if eq (len .Meters) 1}}Messstelle{{else}}Messstellen{{end}}: {{range $i, $m := .Meters}}{{if $i}}, {{end}}[{{$m}}]{{end}}.</p>
   {{if .NextText}}<p>Die neue Formel gilt bis zum {{.LastText}} – ab dem {{.NextText}} gilt die nächste Fassung.</p>{{end}}
+  {{if .Late}}<div class="ev-warn" role="alert"><b>Achtung:</b><ul>{{range .Late}}<li>{{.}}</li>{{end}}</ul></div>{{end}}
   {{if or .Rebuild .Keep}}
   <p>Efficio-Dateien:</p>
   <ul>

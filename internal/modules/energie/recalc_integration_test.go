@@ -229,6 +229,98 @@ func TestRecalcHandoverNoJump(t *testing.T) {
 	wantAt(t, e.pool, e.v, "V", e.last.Add(time.Minute), vLast+3)
 }
 
+// Lädt der Minutentakt seine Liste, während der Schlussschritt noch läuft,
+// rechnet er trotzdem mit der neuen Basis weiter (Befund W1 der Schlussprüfung).
+func TestRecalcHandoverStaleList(t *testing.T) {
+	e := recalcEnv(t, recNow, time.UTC, time.Date(2026, 11, 12, 0, 0, 0, 0, time.UTC))
+	_, err := e.pool.Exec(context.Background(), `UPDATE energy_meters SET base_at = $2 WHERE id = ANY($1::uuid[])`,
+		[]string{e.v, e.w}, time.Date(2026, 11, 12, 6, 0, 0, 0, time.UTC))
+	must(t, err)
+	id := e.saveRecalc(t, "["+e.k1+"]+["+e.k2+"]", ymd(2026, 11, 13))
+	r1 := minutesSince(e.last, e.seriesFrom)
+	setReading(t, e.pool, e.r1Map, fmt.Sprint(r1+1), e.last.Add(30*time.Second))
+	setReading(t, e.pool, e.r2Map, fmt.Sprint(2*r1+2), e.last.Add(30*time.Second))
+	rc := NewRecalculator(e.s, nil, nil)
+	sm := &Sampler{Store: e.s}
+	sm.beforeMinute = func() { // die Liste ist geladen, jetzt endet der Lauf
+		sm.beforeMinute = nil
+		e.passUntilDone(t, rc, id)
+	}
+	run(t, sm, e.last)
+	vLast, ok := valueAt(t, e.pool, e.v, e.last)
+	if !ok {
+		t.Fatal("V hat zur Übergabe keinen Wert")
+	}
+	wantAt(t, e.pool, e.v, "V", e.last.Add(time.Minute), vLast+3)
+}
+
+// Eine Basis-Verschiebung beim Speichern (hier: Faktor eines Bezugs geändert)
+// hält auch die Neurechnung ein – der Sprung zählt nicht als Verbrauch (W2).
+func TestRecalcHonorsRebase(t *testing.T) {
+	e := recalcEnv(t, recNow, time.UTC, time.Date(2026, 11, 12, 0, 0, 0, 0, time.UTC))
+	ctx := context.Background()
+	change := time.Date(2026, 11, 14, 9, 0, 0, 0, time.UTC)
+	e.s.Now = func() time.Time { return change.Add(-30 * time.Second) }
+	m, err := e.s.Get(ctx, e.r1)
+	must(t, err)
+	m.Factor = 1000
+	_, err = e.s.Save(ctx, m, "")
+	must(t, err)
+	e.s.Now = func() time.Time { return recNow }
+	// Ab der Änderung liefert R1 im neuen Maßstab.
+	_, err = e.pool.Exec(ctx, `UPDATE energy_values SET value = value + 1000000 WHERE meter_id = $1::uuid AND ts >= $2`, e.r1, change)
+	must(t, err)
+
+	id := e.saveRecalc(t, "["+e.k1+"]+["+e.k2+"]", ymd(2026, 11, 13))
+	e.passUntilDone(t, NewRecalculator(e.s, nil, nil), id)
+	before, ok := valueAt(t, e.pool, e.v, change.Add(-time.Minute))
+	if !ok {
+		t.Fatal("V hat vor der Änderung keinen Wert")
+	}
+	wantNoneAt(t, e.pool, e.v, "V", change)
+	wantAt(t, e.pool, e.v, "V", change.Add(time.Minute), before+3)
+}
+
+// Hat ein Bezug der neuen Formel erst später Werte, sagt die Vorschau das (W3).
+func TestRecalcPreviewWarnsLateRef(t *testing.T) {
+	e := recalcEnv(t, recNow, time.UTC, time.Date(2026, 11, 12, 0, 0, 0, 0, time.UTC))
+	p, _ := source(t, e.pool, e.s, e.infra, KindCounter, 1, "0", e.seriesFrom)
+	q, _ := source(t, e.pool, e.s, e.infra, KindCounter, 1, "0", e.seriesFrom)
+	pk, qk := keyOf(t, e.s, p), keyOf(t, e.s, q)
+	fillSeries(t, e.pool, p, time.Date(2026, 11, 14, 0, 1, 0, 0, time.UTC), e.last, time.Minute)
+	rc := NewRecalculator(e.s, nil, nil)
+	pv, err := rc.Preview(context.Background(), VersionInput{MeterID: e.v, Formula: "[" + e.k1 + "]+[" + pk + "]+[" + qk + "]", ValidFrom: ymd(2026, 11, 13)})
+	must(t, err)
+	late := map[string]LateRef{}
+	for _, l := range pv.LateRefs {
+		late[l.Key] = l
+	}
+	if l, ok := late[pk]; !ok || l.None || !l.First.Equal(ymd(2026, 11, 14)) {
+		t.Errorf("späterer Bezug: %+v", pv.LateRefs)
+	}
+	if l, ok := late[qk]; !ok || !l.None {
+		t.Errorf("Bezug ohne Werte: %+v", pv.LateRefs)
+	}
+	if _, ok := late[e.k1]; ok || len(pv.LateRefs) != 2 {
+		t.Errorf("Bezug mit allen Werten gemeldet: %+v", pv.LateRefs)
+	}
+}
+
+// Eine Messstelle, die erst ab ihrer ersten Fassung rechnet (vorher z. B. mit
+// Quelle), behält ihre Werte davor (Befund K5).
+func TestRecalcSkipsBeforeFirstVersion(t *testing.T) {
+	e := recalcEnv(t, recNow, time.UTC, time.Date(2026, 11, 12, 0, 0, 0, 0, time.UTC))
+	_, err := e.pool.Exec(context.Background(), `UPDATE energy_formula_versions SET valid_from = '2026-11-14' WHERE meter_id = $1::uuid`, e.w)
+	must(t, err)
+	id := e.saveRecalc(t, "["+e.k1+"]+["+e.k2+"]", ymd(2026, 11, 13))
+	e.passUntilDone(t, NewRecalculator(e.s, nil, nil), id)
+	d13, d14 := time.Date(2026, 11, 13, 0, 0, 0, 0, time.UTC), time.Date(2026, 11, 14, 0, 0, 0, 0, time.UTC)
+	wantAt(t, e.pool, e.w, "W", d13.Add(12*time.Hour), 1) // gemessener Wert bleibt
+	wantAt(t, e.pool, e.w, "W", d14, 1)
+	// ab dem 14.11. rechnet W aus V weiter, angeschlossen an den letzten Wert
+	wantAt(t, e.pool, e.w, "W", d14.Add(time.Minute), 1+2*3)
+}
+
 func TestRecalcFailsAfterAttempts(t *testing.T) {
 	e := recalcEnv(t, recNow, time.UTC, time.Date(2026, 11, 12, 0, 0, 0, 0, time.UTC))
 	ctx := context.Background()
