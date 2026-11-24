@@ -1097,13 +1097,30 @@ und 3 drückt bis auf Weiteres der Anwender.
     ein; neues Recht `system.os_update`. Entwurf
     `docs/superpowers/specs/2026-11-24-betriebssystem-updates-design.md` auf
     Branch `feature/os-update` im Arbeitsordner `D:/pdh-os-update` (ab
-    `main` 0.82.56). **Teil A (Einzelserver, Karte, Recht) gebaut als
-    0.82.59** (24.11.2026, lokal auf `feature/os-update`, noch nicht auf
-    `main`; Migration 222, Recht `system.os_update`; Handbuch „Versionen &
-    Updates“ und „Administration“ nachgezogen). Offen: Schlussprüfung,
-    Freigabe Push/Merge (vorher `origin/main`, Version und Migrationsnummer
-    prüfen), Verbund-Update, Abnahme am Testverbund (Docker-Testsystem: Karte
-    „nicht verfügbar“), 10.10.0.202 (Anwender, mit Sicherung). **Teil B
+    `main` 0.82.56). **Teil A (Einzelserver, Karte, Recht) = 0.82.59 auf
+    `main`** (24.11.2026, Merge `a2d61851`, Dauerfreigabe) und dem
+    Testverbund (beide Server 0.82.59, Migration 222, Recht da, aktiv jetzt
+    `pdh-server` 10.10.0.17). Wartungsfenster (Anwender 24.11.2026: „Dann alle
+    offenen Pakete“): sind Sicherheitsupdates offen, spielt es mit Haken alle
+    offenen Pakete ein. „Neustart nötig“ ohne offene Pakete: der Knopf startet
+    geordnet neu. apt läuft entkoppelt vom Agenten (Ausgabe nach
+    `/run/pdh-os/`, kein `--pipe`). Schlussprüfung: Codex + Claude-Gegenprüfung,
+    Schlusskorrektur nachgeprüft; Ledger
+    `docs/superpowers/notes/2026-11-24-betriebssystem-updates-teil-a-ledger.md`.
+    **Wichtig:** Das erste Update auf 0.82.59 läuft noch mit dem alten
+    `install_update.sh` und installiert `/usr/local/sbin/pdh-os-update` noch
+    nicht (erst ab dem nächsten Update von selbst; bis dahin meldet die Karte
+    „veraltet“). Am Testverbund am 24.11.2026 von Hand eingespielt
+    (`sudo install -m 0755 -o root -g root /opt/pdh-server/scripts/pdh-os-update
+    /usr/local/sbin/pdh-os-update`). Auf 10.10.0.202 nach dem Update auf
+    0.82.59 (Anwender, mit Sicherung):
+    `sudo install -m 0755 -o root -g root /home/michael/pdh/scripts/pdh-os-update
+    /usr/local/sbin/pdh-os-update`. Im Verbund zeigt die Karte nur den Hinweis
+    „kommt mit einer späteren Version“ (noch kein Paketstand) – mit Teil B
+    nachziehen. Zurückgestellt (Ledger): Einmal-Token nicht an die Art
+    gebunden, Migration ohne Einzelrechte, „Letzter Lauf: 0 Pakete … ok“ nach
+    jedem PDH-Update mit Haken, Warten im Wartungsfenster hält `drTick` bis
+    15 min, `StandardOutput=append:` braucht systemd ≥ 240. **Teil B
     (Verbund: nur am passiven Server mit Rollentausch) ist nicht begonnen.**
 
 Docker Desktop startet nach einem Neustart des Windows-Rechners nicht von
