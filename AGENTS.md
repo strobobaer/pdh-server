@@ -930,6 +930,14 @@ und 3 drückt bis auf Weiteres der Anwender.
     sollen über einen Menübandeintrag erweitert/gefüllt werden können.
     Berechtigung blendet ein oder aus. Designauswahl verfeinern.“ Bestandsaufnahme
     der Doppelungen läuft (Lese-Agent), daraus Teil „Stammdaten zusammenführen“.
+    Statusleiste (Anwender 24.11.2026): „Den Fortschrittsbalken weiterhin
+    verwenden, nur soll er auch beim Update den Status anzeigen, Bearbeitungen
+    und Warnungen als Text ausgeben“ – die vorhandene Fußleiste
+    (`global-status-footer` in `base.gohtml`) zeigt künftig Update-Stand
+    (Einzelserver und Verbund, Neustart ohne „Netzwerkfehler“), jede Aktion in
+    Klartext mit echtem Fortschritt bei langen Läufen und dauerhafte Warnungen
+    (Wartung, Spiegel, Verbindung); Text auch am Handy/Terminal, Tippen zeigt die
+    letzten Meldungen. Gehört zu Teil „gleiche Bausteine“.
 25. **0.82.48 Wartung: Jahresplan im Kalender, Auftrag mit Vorlauf** (Wunsch des
     Anwenders vom 23.11.2026: Personalplanung; Knopf „Jahresplan erzeugen“,
     nur der nächste Termin wird 5 Arbeitstage vorher automatisch zum
