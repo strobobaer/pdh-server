@@ -271,6 +271,16 @@ func TestEfficioDownload(t *testing.T) {
 	if cd := w.Header().Get("Content-Disposition"); !strings.Contains(cd, "attachment") || !strings.Contains(cd, `filename=efficio_20261115_0000.csv`) {
 		t.Errorf("Content-Disposition %q", cd)
 	}
+	// Der erste Download macht die Datei zu einer verschickten (eine Neurechnung lässt sie dann stehen).
+	var first *time.Time
+	if err := env.pool.QueryRow(context.Background(), `SELECT fetched_at FROM energy_export_files WHERE id = $1::uuid`, fid).Scan(&first); err != nil || first == nil {
+		t.Fatalf("fetched_at nach dem Download: %v %v", first, err)
+	}
+	env.h.EfficioDownload(httptest.NewRecorder(), efficioReq("GET", "/x", env.id, fid, nil))
+	var again *time.Time
+	if err := env.pool.QueryRow(context.Background(), `SELECT fetched_at FROM energy_export_files WHERE id = $1::uuid`, fid).Scan(&again); err != nil || again == nil || !again.Equal(*first) {
+		t.Errorf("fetched_at nach dem zweiten Download: %v, erwartet %v", again, first)
+	}
 	// eine fremde Datei-ID unter dieser Verbindung gibt es nicht
 	w = httptest.NewRecorder()
 	env.h.EfficioDownload(w, efficioReq("GET", "/x", env.id, "22222222-2222-4222-8222-222222222222", nil))

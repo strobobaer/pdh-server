@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strings"
 	"testing"
 	"time"
 
@@ -257,6 +258,41 @@ func TestRecalcFailsAfterAttempts(t *testing.T) {
 	}
 	if p, err := pausedMeters(ctx, e.pool); err != nil || len(p) != 0 {
 		t.Errorf("nach dem Abbruch angehalten: %v %v", p, err)
+	}
+}
+
+func TestRecalcRebuildsExport(t *testing.T) {
+	e := recalcEnv(t, recNow, time.UTC, time.Date(2026, 11, 12, 0, 0, 0, 0, time.UTC))
+	ctx := context.Background()
+	var conn string
+	must(t, e.pool.QueryRow(ctx, `INSERT INTO import_export_connections (direction, kind, name)
+		VALUES ('export', 'efficio', $1) RETURNING id::text`, uniq("efficio-test")).Scan(&conn))
+	t.Cleanup(func() {
+		_, _ = e.pool.Exec(context.Background(), `DELETE FROM import_export_connections WHERE id = $1::uuid`, conn)
+	})
+	cfg := ExportConfig{ConnectionID: conn, Prefix: "efficio", Mode: ModeEnd, Interval: 15 * time.Minute,
+		FileDays: 1, RetentionDays: 30, MeterKeys: []string{e.vk}, Target: PickupTarget{},
+		CSV: CSVOptions{TimeFormat: "dmy", DecimalComma: true, Header: true, Encoding: "utf-8", Loc: time.UTC}}
+	ex := &Exporter{Store: e.s, Delay: 2 * time.Minute, MaxCatchUp: 7 * 24 * time.Hour,
+		Configs: func(context.Context) ([]ExportConfig, error) { return []ExportConfig{cfg}, nil }}
+	_, err := e.pool.Exec(ctx, `INSERT INTO energy_export_state (connection_id, last_interval_end) VALUES ($1::uuid, $2)`,
+		conn, time.Date(2026, 11, 15, 0, 0, 0, 0, time.UTC))
+	must(t, err)
+	_, err = ex.Run(ctx, cfg)
+	must(t, err)
+
+	id := e.saveRecalc(t, "["+e.k1+"]+["+e.k2+"]", ymd(2026, 11, 13))
+	e.passUntilDone(t, NewRecalculator(e.s, ex, nil), id)
+
+	var rebuilt, content string
+	must(t, e.pool.QueryRow(ctx, `SELECT files_rebuilt FROM energy_recalc_runs WHERE id = $1::uuid`, id).Scan(&rebuilt))
+	if !strings.Contains(rebuilt, "efficio_20261115_0000.csv") {
+		t.Errorf("neu erzeugt: %q", rebuilt)
+	}
+	must(t, e.pool.QueryRow(ctx, `SELECT convert_from(content, 'UTF8') FROM energy_export_files WHERE connection_id = $1::uuid`, conn).Scan(&content))
+	at := time.Date(2026, 11, 15, 10, 15, 0, 0, time.UTC)
+	if want := fmt.Sprintf("15.11.2026 10:15;%s;%d\r\n", e.vk, int(1+3*minutesSince(at, time.Date(2026, 11, 13, 0, 0, 0, 0, time.UTC)))); !strings.Contains(content, want) {
+		t.Errorf("Datei enthält %q nicht:\n%s", want, content)
 	}
 }
 

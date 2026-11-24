@@ -17,7 +17,9 @@ func TestSamplerSkipsPausedMeters(t *testing.T) {
 	var runID string
 	must(t, pool.QueryRow(ctx, `INSERT INTO energy_recalc_runs (meter_id, meter_ids, meter_keys, from_date, days_total, state)
 		VALUES ($1::uuid, ARRAY[$1::uuid], ARRAY['V'], '2026-11-13', 3, 'running') RETURNING id::text`, v).Scan(&runID))
-	t.Cleanup(func() { _, _ = pool.Exec(context.Background(), `DELETE FROM energy_recalc_runs WHERE id = $1::uuid`, runID) })
+	t.Cleanup(func() {
+		_, _ = pool.Exec(context.Background(), `DELETE FROM energy_recalc_runs WHERE id = $1::uuid`, runID)
+	})
 
 	run(t, sm, m0)
 	wantValue(t, pool, r, m0, 100)

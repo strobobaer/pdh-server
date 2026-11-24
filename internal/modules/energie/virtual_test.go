@@ -36,7 +36,7 @@ func TestEvalMinuteCounterIncrement(t *testing.T) {
 func TestEvalMinuteMissingRef(t *testing.T) {
 	f := mustFormula(t, "[A]+[B]")
 	for name, b := range map[string]map[string]refValue{
-		"ohne Wert":  {"A": {Kind: KindCounter, Now: 110, HasNow: true, Base: 100, HasBase: true}, "B": {Kind: KindCounter, Base: 50, HasBase: true}},
+		"ohne Wert": {"A": {Kind: KindCounter, Now: 110, HasNow: true, Base: 100, HasBase: true}, "B": {Kind: KindCounter, Base: 50, HasBase: true}},
 		"unbekannt": {"A": {Kind: KindCounter, Now: 110, HasNow: true, Base: 100, HasBase: true}},
 	} {
 		_, ok, rebase := evalMinute(f, KindCounter, refs(b), true, 1000)

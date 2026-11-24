@@ -73,7 +73,9 @@ func localDay(t time.Time, loc *time.Location) time.Time {
 }
 
 // asDay macht aus einem Datum den Kalendertag als Mitternacht UTC.
-func asDay(t time.Time) time.Time { return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC) }
+func asDay(t time.Time) time.Time {
+	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC)
+}
 
 // dayStart ist die Ortsmitternacht des Kalendertags day.
 func dayStart(day time.Time, loc *time.Location) time.Time {

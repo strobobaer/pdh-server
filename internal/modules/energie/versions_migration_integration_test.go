@@ -53,7 +53,9 @@ func TestMigration214Versions(t *testing.T) {
 		VALUES ($1::uuid, ARRAY[$1::uuid], ARRAY['V'], '2026-11-13', 3, $2) RETURNING id::text`
 	var first string
 	must(t, pool.QueryRow(ctx, ins, vID, "running").Scan(&first))
-	t.Cleanup(func() { _, _ = pool.Exec(context.Background(), `DELETE FROM energy_recalc_runs WHERE meter_id = $1::uuid`, vID) })
+	t.Cleanup(func() {
+		_, _ = pool.Exec(context.Background(), `DELETE FROM energy_recalc_runs WHERE meter_id = $1::uuid`, vID)
+	})
 	var second string
 	err = pool.QueryRow(ctx, ins, vID, "running").Scan(&second)
 	var pe *pgconn.PgError

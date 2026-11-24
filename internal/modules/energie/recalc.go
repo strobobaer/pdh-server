@@ -198,6 +198,11 @@ func (rc *Recalculator) Preview(ctx context.Context, in VersionInput) (RecalcPre
 		return RecalcPreview{}, err
 	}
 	p := RecalcPreview{From: info.from, To: info.today, Days: info.days, Meters: info.keys, NextFrom: info.nextFrom}
+	if p.Days > 0 {
+		if p.Rebuild, p.Keep, err = rc.rebuildAll(ctx, info.from, info.keys, true); err != nil {
+			return RecalcPreview{}, err
+		}
+	}
 	return p, nil
 }
 
@@ -464,10 +469,29 @@ func impactLines(l []FileImpact) []string {
 	return out
 }
 
-// rebuildAll: Efficio-Dateien aller Exporte, die eine der Messstellen keys
-// enthalten, ab dem Tag from (Task 5 füllt das).
+// rebuildAll erzeugt die Efficio-Dateien aller Exporte, die eine der
+// Messstellen keys enthalten, ab dem Tag from neu (dry: nur ansagen).
 func (rc *Recalculator) rebuildAll(ctx context.Context, from time.Time, keys []string, dry bool) (rebuilt, kept []FileImpact, err error) {
-	return nil, nil, nil
+	if rc.Exporter == nil || rc.Exporter.Configs == nil {
+		return nil, nil, nil
+	}
+	cfgs, err := rc.Exporter.Configs(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	set := map[string]bool{}
+	for _, k := range keys {
+		set[k] = true
+	}
+	start := dayStart(from, rc.Store.loc())
+	for _, c := range cfgs {
+		r, k, err := rc.Exporter.Rebuild(ctx, c, start, set, dry)
+		if err != nil {
+			return nil, nil, err
+		}
+		rebuilt, kept = append(rebuilt, r...), append(kept, k...)
+	}
+	return rebuilt, kept, nil
 }
 
 // recState: Stand einer Laufmessstelle – letzter Wert und Basiszeitpunkt.
