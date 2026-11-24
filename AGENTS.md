@@ -860,11 +860,25 @@ und 3 drückt bis auf Weiteres der Anwender.
     Entscheidungen: `.superpowers/sdd/2026-11-23-wartung-jahresplan/`.
     Schlussprüfung erledigt (1 kritisch, 3 wichtig – behoben mit Tests;
     13 kleine im Ledger zurückgestellt, Bericht `final-review.md`).
-    Offen: Freigabe Push/Merge, Verbund-Update,
-    Browserprüfung (Wartungsseite mit Jahresplan-Knöpfen und
-    Wartungsregeln, Kalender mit Ziehen und Besetzen-Fenster, Planer,
-    Leitstand-Kalender und Zeitstrahl; Fiori/Fluent, hell/dunkel,
-    320–1366 px), 10.10.0.202 (Anwender, mit Sicherung). Labor-Datenbank
+    **Auf `main`** (24.11.2026, vom Anwender freigegeben, Merge `859d2db9`).
+    Der Merge-Commit trägt versehentlich die Nachricht des Merges von
+    0.82.36 (alte Nachrichtendatei); Inhalt und Eltern stimmen, nicht per
+    Force-Push berichtigt. Richtiges Prüfergebnis: origin/main 0.82.47
+    eingearbeitet, Migration 212 → 213, Version → 0.82.48, keine Dopplungen,
+    Tests grün. Künftig die Nachrichtendatei vor dem Merge neu schreiben.
+    Auf dem Testverbund (24.11.2026, Verbund-Update auf `859d2db9`; beide
+    Server und Zeuge 0.82.48, Migrationen 212 und 213, aktiv jetzt
+    `pdh-server` 10.10.0.17, Spiegelung läuft). Im Browser geprüft:
+    Plan anlegen, „Jahresplan erzeugen“ („12 Termine geplant“), Plan-Editor,
+    Pläne, Wartungsregeln, Jahresplan, Kalender, Planer – je 20 Ansichten
+    (Fiori/Fluent, hell/dunkel, 320–1366 px) ohne Überlauf, keine
+    Konsolenfehler; Fenster zum Besetzen öffnet bei 1366 und 390 px und passt;
+    Zeitstrahl am Leitstand zeigt die Termine. Testplan entfernt, Prüfkonto
+    gesperrt. Befunde (klein, offen): Titel im Besetzen-Fenster enthält den
+    Ziehen-Hinweis des Chips; Fenster öffnet links oben statt mittig;
+    Leitstand `/global` läuft bis 768 px über (Kopfleiste `.header-meta`,
+    unabhängig vom Paket, Bestand). Offen: 10.10.0.202 (Anwender, mit
+    Sicherung). Labor-Datenbank
     `pdh_test`: Eintrag 212 → 213 umgeschrieben (Schema war schon da).
 
 Docker Desktop startet nach einem Neustart des Windows-Rechners nicht von
