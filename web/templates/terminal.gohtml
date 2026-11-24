@@ -395,7 +395,7 @@ body[data-mode="zeit"]{--accent-rgb:168,85,247}
 @media (max-width:820px){.t-xrow{flex-direction:column}.g-vorg{grid-template-columns:1fr}.t-cols,.t-new{grid-template-columns:1fr}.t-new,.t-new.has-rz{grid-template-rows:auto}}
 </style>
 </head>
-<body{{if .DeviceSession}} class="has-gear"{{end}}{{if .Fn.Vorgaenge}} data-vorgaenge="1"{{end}}{{if .Bar.Show}} data-vbar="1"{{end}}{{if .SetupCard}} data-card-in="1"{{end}} data-mode="{{.Mode}}"{{if .SaverSlides}} data-saver-slides="1"{{end}} data-idle="{{.Idle}}"{{if .SettingsEvents}} data-settings-events="1"{{end}}{{if .CardEvents}} data-card-events="1" data-card-notify="{{.CardNotify}}"{{if ne .Mode "schoner"}} data-manual-login="{{.ManualLogin}}" data-password-button="{{if .PasswordButton}}1{{else}}0{{end}}"{{end}}{{end}}>
+<body{{if .DeviceSession}} class="has-gear"{{end}}{{if .LocalPortAttr}} data-local-port="{{.LocalPortAttr}}"{{end}}{{if .Fn.Vorgaenge}} data-vorgaenge="1"{{end}}{{if .Bar.Show}} data-vbar="1"{{end}}{{if .SetupCard}} data-card-in="1"{{end}} data-mode="{{.Mode}}"{{if .SaverSlides}} data-saver-slides="1"{{end}} data-idle="{{.Idle}}"{{if .SettingsEvents}} data-settings-events="1"{{end}}{{if .CardEvents}} data-card-events="1" data-card-notify="{{.CardNotify}}"{{if ne .Mode "schoner"}} data-manual-login="{{.ManualLogin}}" data-password-button="{{if .PasswordButton}}1{{else}}0{{end}}"{{end}}{{end}}>
 {{if .DeviceSession}}<a class="t-gear" href="{{.AdminURL}}" aria-label="Terminal-Einstellungen" title="Terminal-Einstellungen"><i class="ti ti-settings" aria-hidden="true"></i></a>{{end}}
 {{if .NoInfra}}
 <div class="t-none">

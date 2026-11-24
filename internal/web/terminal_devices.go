@@ -310,12 +310,13 @@ func (h *Handler) TerminalDeviceLogin(w http.ResponseWriter, r *http.Request) {
 type terminalDeviceRow struct {
 	ID, Name, AdminURL         string
 	Created, LastSeen, Revoked string
+	LocalPort                  int // lokaler Port der Startseite, nur gesetzt wenn er von 8080 abweicht
 }
 
 // loadTerminalDevices listet die Geräte eines Benutzers: aktive zuerst, dann
 // neueste zuerst.
 func (h *Handler) loadTerminalDevices(ctx context.Context, userID string) ([]terminalDeviceRow, error) {
-	rows, err := h.db.Query(ctx, `SELECT id::text, name, admin_url, created_at, last_seen_at, revoked_at
+	rows, err := h.db.Query(ctx, `SELECT id::text, name, admin_url, local_port, created_at, last_seen_at, revoked_at
 		FROM terminal_devices WHERE user_id = $1::uuid
 		ORDER BY (revoked_at IS NOT NULL), created_at DESC`, userID)
 	if err != nil {
@@ -328,8 +329,12 @@ func (h *Handler) loadTerminalDevices(ctx context.Context, userID string) ([]ter
 		var d terminalDeviceRow
 		var created time.Time
 		var seen, revoked *time.Time
-		if err := rows.Scan(&d.ID, &d.Name, &d.AdminURL, &created, &seen, &revoked); err != nil {
+		var lport *int
+		if err := rows.Scan(&d.ID, &d.Name, &d.AdminURL, &lport, &created, &seen, &revoked); err != nil {
 			return nil, err
+		}
+		if p := terminalLocalPortOrDefault(lport); p != terminalDefaultLocalPort {
+			d.LocalPort = p
 		}
 		d.Created = created.Local().Format(layout)
 		d.LastSeen = "nie"

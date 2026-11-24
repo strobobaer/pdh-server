@@ -112,7 +112,7 @@ func TestTerminalScriptGlobalPureFunctions(t *testing.T) {
 	}
 	src = bytes.ReplaceAll(src, []byte("\r\n"), []byte("\n"))
 	var fns []string
-	for _, name := range []string{"nextSlideIndex", "slideDurationMs", "isSwipeLeft", "cachePayload", "outageStep", "backTarget"} {
+	for _, name := range []string{"nextSlideIndex", "slideDurationMs", "isSwipeLeft", "cachePayload", "outageStep", "backTarget", "localOrigin"} {
 		m := regexp.MustCompile(`(?s)\n  function ` + name + `\(.*?\n  \}\n`).Find(src)
 		if m == nil {
 			t.Fatalf("Funktion %s nicht gefunden", name)
@@ -178,6 +178,17 @@ eq(outageStep(undefined, true), {fails: 1, leave: false}, 'ohne Zähler');
 eq(outageStep(-5, true), {fails: 1, leave: false}, 'negativer Zähler');
 eq(backTarget(true, 'http://127.0.0.1:8080'), 'http://127.0.0.1:8080/start', 'Zurück bei Netzfehler');
 eq(backTarget(false, 'http://127.0.0.1:8080'), '/terminal', 'Zurück mit PDH');
+// Lokaler Port des Geräts (data-local-port): nur 1024–65534 in Ziffern, sonst 8080
+eq(localOrigin(null), 'http://127.0.0.1:8080', 'ohne Attribut');
+eq(localOrigin(''), 'http://127.0.0.1:8080', 'leeres Attribut');
+eq(localOrigin('18080'), 'http://127.0.0.1:18080', 'Port 18080');
+eq(localOrigin('1024'), 'http://127.0.0.1:1024', 'untere Grenze');
+eq(localOrigin('65534'), 'http://127.0.0.1:65534', 'obere Grenze');
+eq(localOrigin('1023'), 'http://127.0.0.1:8080', 'zu klein');
+eq(localOrigin('65535'), 'http://127.0.0.1:8080', 'zu groß');
+eq(localOrigin('abc'), 'http://127.0.0.1:8080', 'Buchstaben');
+eq(localOrigin(' 18080'), 'http://127.0.0.1:8080', 'Leerzeichen');
+eq(localOrigin('18080/x@evil'), 'http://127.0.0.1:8080', 'Anhang');
 if (out.length) { console.log(out.join('\n')); process.exit(1); }
 `
 	f := filepath.Join(t.TempDir(), "t.js")

@@ -10,6 +10,16 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.82.55] – 2026-11-24
+
+### Neu
+
+- **Terminal, anderer lokaler Port:** Läuft die lokale Startseite eines PDH-Terminals (ab Terminal 0.4.6) auf einem anderen Port als 8080, weil 8080 am Windows-PC gesperrt ist, merkt sich PDH den Port des Geräts (Kopfzeile `X-Terminal-Local-Port`). Kartenleser, Bildschirmtastatur, Rückkehr zur Startseite und das Zahnrad (Port + 1) der Terminalseiten nutzen dann genau diesen Port. In der Liste **Kiosk-Terminals** und in **Gekoppelte Geräte** steht „lokaler Port 18080“, wenn er von 8080 abweicht. Ältere Terminals ohne Kopfzeile laufen unverändert auf 8080.
+
+### Geändert
+
+- Datenbank (Migration 220, nur hinzufügend): Spalte `terminal_devices.local_port` (leer = 8080, erlaubt 1024–65534).
+
 ## [0.82.54] – 2026-11-24
 
 ### Neu

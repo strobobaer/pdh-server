@@ -225,8 +225,17 @@
     };
   }
 
-  // Kartendienst des lokalen Terminals (Ursprung der Ereignisse und der Rückmeldung).
-  var CARD_ORIGIN = 'http://127.0.0.1:8080';
+  // Kartendienst des lokalen Terminals (Ursprung der Ereignisse und der Rückmeldung). Der Port kommt vom Gerät
+  // (data-local-port am body, ab Terminal 0.4.6 auch ein anderer als 8080); ohne gültiges Attribut gilt 8080.
+  function localOrigin(attr) {
+    var p = 8080;
+    if (typeof attr === 'string' && /^[0-9]{4,5}$/.test(attr)) {
+      var n = parseInt(attr, 10);
+      if (n >= 1024 && n <= 65534) p = n;
+    }
+    return 'http://127.0.0.1:' + p;
+  }
+  var CARD_ORIGIN = localOrigin(body.getAttribute('data-local-port'));
 
   // Funktionen und Farben (Ereignis settings: functions, theme): ändert sich ein Schalter oder das Farbschema,
   // lädt die Seite neu, damit Kacheln und Farben stimmen. Das erste Ereignis ist der Ausgangsstand.
@@ -278,7 +287,7 @@
       return !!(lab && lab.control === el);
     };
     var kbCall = function (action) {
-      try { fetch('http://127.0.0.1:8080/api/keyboard/' + action, { method: 'POST', keepalive: action === 'hide' }).catch(function () { /* ignorieren */ }); } catch (e) { /* kein fetch */ }
+      try { fetch(CARD_ORIGIN + '/api/keyboard/' + action, { method: 'POST', keepalive: action === 'hide' }).catch(function () { /* ignorieren */ }); } catch (e) { /* kein fetch */ }
     };
     document.addEventListener('focusin', function (ev) {
       if (!wantsKeyboard(ev.target)) return;
