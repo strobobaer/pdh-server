@@ -133,8 +133,32 @@ func (sm *Sampler) Pass(ctx context.Context, now time.Time) (stored, missing int
 // sampleMinute legt die Werte der Minute [minute, minute + 1 min) unter ihrem
 // Ende ab, in einer eigenen Transaktion. orderErr meldet einen Zirkel in den Formeln; die
 // echten Werte werden trotzdem abgelegt.
+//
+// Die Transaktion beginnt vor dem ersten Lesen und nimmt minuteLock: der
+// Schlussschritt einer Neurechnung schreibt so nie gleichzeitig. Messstellen
+// einer laufenden Neurechnung (pausedMeters) bleiben ganz außen vor.
 func (sm *Sampler) sampleMinute(ctx context.Context, meters []*sampleMeter, minute time.Time, stale time.Duration) (stored, missing int, orderErr, err error) {
-	db := sm.Store.DB
+	tx, err := sm.Store.DB.Begin(ctx)
+	if err != nil {
+		return 0, 0, nil, err
+	}
+	defer tx.Rollback(ctx)
+	if err := lockMinute(ctx, tx); err != nil {
+		return 0, 0, nil, err
+	}
+	paused, err := pausedMeters(ctx, tx)
+	if err != nil {
+		return 0, 0, nil, err
+	}
+	if len(paused) > 0 {
+		kept := make([]*sampleMeter, 0, len(meters))
+		for _, x := range meters {
+			if !paused[x.id] {
+				kept = append(kept, x)
+			}
+		}
+		meters = kept
+	}
 	end := minute.Add(time.Minute)
 	ids := make([]string, len(meters))
 	for i, x := range meters {
@@ -144,7 +168,7 @@ func (sm *Sampler) sampleMinute(ctx context.Context, meters []*sampleMeter, minu
 	// Vorhandene Werte dieser Minute und je Messstelle der letzte frühere Wert.
 	existing := map[string]float64{}
 	prev := map[string]stamped{}
-	vr, err := db.Query(ctx, `
+	vr, err := tx.Query(ctx, `
 		SELECT u.id::text, v.ts, v.value
 		  FROM unnest($1::uuid[]) u(id)
 		  JOIN LATERAL (SELECT ts, value FROM energy_values
@@ -165,7 +189,7 @@ func (sm *Sampler) sampleMinute(ctx context.Context, meters []*sampleMeter, minu
 	if err := vr.Err(); err != nil {
 		return 0, 0, nil, err
 	}
-	er, err := db.Query(ctx, `SELECT meter_id::text, value FROM energy_values
+	er, err := tx.Query(ctx, `SELECT meter_id::text, value FROM energy_values
 		WHERE meter_id = ANY($1::uuid[]) AND ts = $2`, ids, end)
 	if err != nil {
 		return 0, 0, nil, err
@@ -204,7 +228,7 @@ func (sm *Sampler) sampleMinute(ctx context.Context, meters []*sampleMeter, minu
 	}
 	cons := map[string][]reading{}
 	if len(consMaps) > 0 {
-		rr, err := db.Query(ctx, `SELECT id, mapping_id::text, received_at, raw FROM energy_readings
+		rr, err := tx.Query(ctx, `SELECT id, mapping_id::text, received_at, raw FROM energy_readings
 			WHERE mapping_id = ANY($1::uuid[]) AND NOT counted AND received_at >= $2 AND received_at < $3
 			ORDER BY received_at, id`, consMaps, minute.Add(-lateGrace), end)
 		if err != nil {
@@ -226,7 +250,7 @@ func (sm *Sampler) sampleMinute(ctx context.Context, meters []*sampleMeter, minu
 	}
 	latest := map[string]reading{}
 	if len(lastMaps) > 0 {
-		rr, err := db.Query(ctx, `
+		rr, err := tx.Query(ctx, `
 			SELECT u.id::text, r.received_at, r.raw
 			  FROM unnest($1::uuid[]) u(id)
 			  JOIN LATERAL (SELECT received_at, raw FROM energy_readings
@@ -323,7 +347,7 @@ func (sm *Sampler) sampleMinute(ctx context.Context, meters []*sampleMeter, minu
 			cur[key] = old
 			continue
 		}
-		v, ok, rebase := sm.evalVirtual(ctx, x, byKey, cur, prev[x.id], end)
+		v, ok, rebase := evalVirtual(ctx, tx, x, byKey, cur, prev[x.id], end)
 		if !ok {
 			missing++
 			if rebase {
@@ -334,11 +358,6 @@ func (sm *Sampler) sampleMinute(ctx context.Context, meters []*sampleMeter, minu
 		set(x, v)
 	}
 
-	tx, err := db.Begin(ctx)
-	if err != nil {
-		return 0, 0, nil, err
-	}
-	defer tx.Rollback(ctx)
 	var counted []int64
 	countedMap := map[string]bool{}
 	for _, r := range fresh {
@@ -381,21 +400,12 @@ func (sm *Sampler) sampleMinute(ctx context.Context, meters []*sampleMeter, minu
 // evalVirtual berechnet den Wert einer berechneten Messstelle für die Minute,
 // die bei end endet (abgelegt unter end).
 //
-// Bezüge der Art Zähler tragen ihren Zuwachs seit dem Basiszeitpunkt der
-// Messstelle bei (base_at, sonst Zeitpunkt ihres letzten Werts). Bezüge der
-// Art Verbrauch und Momentanwert haben keine eigene Basis: sie tragen ihren
-// Minutenwert dieser Minute bei. Ohne eigenen früheren Wert ist der Start 0.
-//
-// Kein Wert gibt es, wenn ein Bezugswert jetzt fehlt, der Formelwert eines
-// Zählers kleiner 0 ist oder die Formel nichts ergibt; die Basis bleibt dann
-// stehen und eine spätere Minute holt den Zuwachs nach. Springt ein
-// Zählerbezug zurück (Zählertausch) oder hat er zur Basis keinen Wert
-// (neu aufgenommen, Quelle oder Faktor geändert), gibt es für diese Minute
-// ebenfalls keinen Wert, aber die Basis rückt auf jetzt (rebase): der
-// Verbrauch dieser einen Minute ist nicht bekannt und wird nicht erfunden, ab
-// der nächsten wird wieder gerechnet. Liegt die Basis erst nach end
-// (Änderung beim Speichern), gibt es keinen Wert und die Basis bleibt.
-func (sm *Sampler) evalVirtual(ctx context.Context, x *sampleMeter, byKey map[string]*sampleMeter,
+// Basiszeitpunkt ist base_at, sonst der Zeitpunkt ihres letzten Werts; die
+// Werte der Zählerbezüge dazu liest q (die Transaktion der Minute). Die Regeln
+// stehen bei evalMinute (ein Rechenweg für Minutentakt und Neurechnung). Liegt
+// die Basis erst nach end (Änderung beim Speichern), gibt es keinen Wert und
+// die Basis bleibt.
+func evalVirtual(ctx context.Context, q querier, x *sampleMeter, byKey map[string]*sampleMeter,
 	cur map[string]float64, last stamped, end time.Time) (v float64, ok, rebase bool) {
 	f, err := ParseFormula(x.formula)
 	if err != nil {
@@ -418,7 +428,7 @@ func (sm *Sampler) evalVirtual(ctx context.Context, x *sampleMeter, byKey map[st
 			}
 		}
 		if len(ids) > 0 {
-			rows, err := sm.Store.DB.Query(ctx, `SELECT meter_id::text, value FROM energy_values
+			rows, err := q.Query(ctx, `SELECT meter_id::text, value FROM energy_values
 				WHERE ts = $1 AND meter_id = ANY($2::uuid[])`, baseTS, ids)
 			if err != nil {
 				return 0, false, false
@@ -439,42 +449,15 @@ func (sm *Sampler) evalVirtual(ctx context.Context, x *sampleMeter, byKey map[st
 			}
 		}
 	}
-	missingNow, reset := false, false
-	v, ok = f.Eval(func(ref string) (float64, bool) {
-		r := byKey[ref]
-		now, have := cur[ref]
-		if r == nil || !have {
-			missingNow = true
-			return 0, true // weiter prüfen, damit alle Bezüge erfasst werden
+	return evalMinute(f, x.kind, func(key string) (refValue, bool) {
+		r := byKey[key]
+		if r == nil {
+			return refValue{}, false
 		}
-		if r.kind != KindCounter {
-			return now, true
-		}
-		if !hasBase {
-			return 0, true
-		}
+		now, have := cur[key]
 		b, had := baseVals[r.id]
-		if !had || now < b {
-			reset = true
-			return 0, true
-		}
-		return now - b, true
-	})
-	switch {
-	case missingNow:
-		return 0, false, false
-	case reset:
-		return 0, false, true
-	case !ok:
-		return 0, false, false
-	}
-	if x.kind == KindCounter {
-		if v < 0 {
-			return 0, false, false
-		}
-		v += last.v
-	}
-	return v, true, false
+		return refValue{Kind: r.kind, Now: now, HasNow: have, Base: b, HasBase: had}, true
+	}, hasBase, last.v)
 }
 
 // purgeReadings löscht Lesungen, die kein Lauf mehr braucht: älter als das
