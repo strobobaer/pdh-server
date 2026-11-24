@@ -654,6 +654,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/downtime/reasons-web", h.DowntimeReasonsWeb)
 	r.Post("/downtime/reasons/{id}/move-web", h.DowntimeReasonMoveWeb)
 	r.Post("/infrastructure/{id}/downtime-reasons-web", h.InfraDowntimeReasonsWeb)
+	r.Post("/infrastructure/{id}/work-times-web", h.InfraWorkTimesWeb) // Arbeitszeiten (work_times_web.go)
 	r.Get("/downtime", h.DowntimePage)
 	// Trockenkammer: Bauteile je Gruppe (chamber.go)
 	r.Post("/infrastructure/{id}/components/{kind}", h.ChamberSaveWeb)

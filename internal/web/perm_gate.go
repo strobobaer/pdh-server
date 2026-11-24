@@ -298,6 +298,8 @@ var gateRules = []gateRule{
 	// ── Stillstandsgründe: Katalog pflegen mit downtime.edit (Löschen eines Grundes prüft der Handler: downtime.admin) ──
 	gr(wPost, permDowntimeEdit, "", false, `^/downtime/(?:reasons-web|reasons`+gID+`/move-web)$`),
 	gr(wPost, "infrastructure.edit", "infrastructure", false, `^/infrastructure`+gID+`/downtime-reasons-web$`),
+	// Arbeitszeiten der Anlage (Schichten, Pausen, Ausnahmen): Infrastruktur bearbeiten in der Abteilung der Anlage
+	gr(wPost, "infrastructure.edit", "infrastructure", false, `^/infrastructure`+gID+`/work-times-web$`),
 	gr(wPost, permCompanyEdit, "", false, `^/infrastructure/company$`), // überall: canEditCompany
 	// ── Beteiligte, Gruppe, Archiv an beliebigen Vorgängen ──
 	gr(wPost, "edit", "*", true, `^/records/([a-z_]+)`+gID+`/(?:people|group|parties)(?:/.*)?$`),
