@@ -107,6 +107,14 @@ func TestSetupSharesAndPies(t *testing.T) {
 	if sumPercent(sl) != 100 {
 		t.Errorf("Summe der Prozente %d", sumPercent(sl))
 	}
+	// Farben innerhalb eines Diagramms nie doppelt (nil = Rang im Diagramm)
+	seen := map[string]bool{}
+	for _, s := range setupShares(sums, nil) {
+		if seen[s.Color] {
+			t.Errorf("Farbe doppelt: %s", s.Color)
+		}
+		seen[s.Color] = true
+	}
 	// ohne Dauer zählt die Anzahl
 	sl = setupShares([]setupReasonSum{{Key: "a", Name: "A", Count: 3}, {Key: "b", Name: "B", Count: 1}}, color)
 	if len(sl) != 2 || sl[0].Percent != 75 || sl[1].Percent != 25 {
