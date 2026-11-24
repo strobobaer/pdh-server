@@ -2,6 +2,8 @@ package maintenance
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -343,16 +345,21 @@ func (r *Repository) EnsurePlanTasksAt(ctx context.Context, now time.Time) (int,
 	}
 	rows.Close()
 	created := 0
+	var errs []error // ein Plan mit Fehler hält die übrigen nicht auf
 	for _, id := range ids {
+		if err := ctx.Err(); err != nil {
+			return created, errors.Join(append(errs, err)...)
+		}
 		tid, err := r.ensureTaskForPlan(ctx, id, "", now)
 		if err != nil {
-			return created, err
+			errs = append(errs, fmt.Errorf("plan %s: %w", id, err))
+			continue
 		}
 		if tid != "" {
 			created++
 		}
 	}
-	return created, nil
+	return created, errors.Join(errs...)
 }
 
 // StartScheduler gleicht beim Start und danach stuendlich ab, dass jeder
@@ -373,9 +380,8 @@ func (s *Service) StartScheduler(ctx context.Context, skip func() bool) {
 			}
 		}
 		n, err := s.repo.EnsurePlanTasksAt(ctx, now)
-		if err != nil {
+		if err != nil { // nennt die Pläne mit Fehler; die übrigen sind abgeglichen
 			log.Warn().Err(err).Str("bereich", "wartung").Msg("wartungsplaene: abgleich fehlgeschlagen")
-			return
 		}
 		if n > 0 {
 			log.Info().Str("bereich", "wartung").Int("angelegt", n).Msg("wartungsplaene: naechste auftraege angelegt")

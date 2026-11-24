@@ -255,7 +255,7 @@ und 3 drückt bis auf Weiteres der Anwender.
 - Die Liste **im selben Schritt pflegen**: Erledigtes streichen, Neues
   eintragen, Stand und Datum anpassen.
 
-### Offene Punkte (Stand 23.11.2026)
+### Offene Punkte (Stand 24.11.2026)
 
 1. **Netz-Abgleich im Browser mit zwei Quellen:** 0.80.25 ist auf `main`
    und dem Testverbund; die Vorschlagsliste mit zwei eingeschalteten
@@ -874,12 +874,22 @@ und 3 drückt bis auf Weiteres der Anwender.
     (Fiori/Fluent, hell/dunkel, 320–1366 px) ohne Überlauf, keine
     Konsolenfehler; Fenster zum Besetzen öffnet bei 1366 und 390 px und passt;
     Zeitstrahl am Leitstand zeigt die Termine. Testplan entfernt, Prüfkonto
-    gesperrt. Befunde (klein, offen): Titel im Besetzen-Fenster enthält den
-    Ziehen-Hinweis des Chips; Fenster öffnet links oben statt mittig;
-    Leitstand `/global` läuft bis 768 px über (Kopfleiste `.header-meta`,
-    unabhängig vom Paket, Bestand). Offen: 10.10.0.202 (Anwender, mit
-    Sicherung). Labor-Datenbank
+    gesperrt. Offen: 10.10.0.202 (Anwender, mit Sicherung). Labor-Datenbank
     `pdh_test`: Eintrag 212 → 213 umgeschrieben (Schema war schon da).
+    **0.82.49 Nacharbeit** auf Branch `fix/wartung-nacharbeit` (24.11.2026,
+    lokal; keine Migration, kein neues Recht): die drei Befunde der
+    Browserprüfung (Titel des Besetzen-Fensters ohne Zieh-Hinweis über
+    `data-tip`; Fenster mittig – `base.gohtml` setzt alle Ränder auf 0,
+    deshalb `margin:auto`; Leitstand `/global` bricht die Kopfzeile bis
+    1050 px um) und aus der Schlussprüfung M2 (Planer merkt „von Hand
+    besetzt“ nur bei wirklich anderer Person, keine zweite Nachricht), M3
+    (Termin inzwischen beauftragt wird gemeldet, `visitChanged`), M4
+    (`pdhGridPost` liefert true/false, Fenster bleibt nach Fehler offen), M9
+    (ein Plan mit Fehler hält den stündlichen Abgleich nicht auf) und M13
+    (Verlauf mit Namen, `staffText`). Offen: Freigabe Push/Merge,
+    Verbund-Update, Browserprüfung (Besetzen-Fenster im Kalender, Leitstand
+    angemeldet bei 320–1024 px). Weiter zurückgestellt (Ledger): M1, M5 bis
+    M8, M10 bis M12.
 
 Docker Desktop startet nach einem Neustart des Windows-Rechners nicht von
 selbst – ohne ihn fehlen der Zeuge und die Labor-Datenbank für die Tests.

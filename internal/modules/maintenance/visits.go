@@ -3,9 +3,11 @@ package maintenance
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 // Geplante Termine (Jahresplan): Termine eines Plans für die nächsten 12
@@ -21,6 +23,9 @@ const (
 
 // ErrVisitNotFound: den geplanten Termin gibt es nicht.
 var ErrVisitNotFound = errors.New("Geplanter Termin nicht gefunden")
+
+// msgVisitOrdered: der Termin ist kein geplanter mehr (Auftrag angelegt).
+const msgVisitOrdered = "Aus diesem Termin ist schon ein Auftrag geworden"
 
 // Visit ist ein geplanter Termin; Tage als 0 Uhr Ortszeit.
 type Visit struct {
@@ -194,12 +199,16 @@ func (r *Repository) ExtendYearPlans(ctx context.Context, now time.Time) (int, e
 	if err := rows.Err(); err != nil {
 		return 0, err
 	}
+	var errs []error // ein Plan mit Fehler hält die übrigen nicht auf
 	for _, id := range ids {
+		if err := ctx.Err(); err != nil {
+			return len(ids), errors.Join(append(errs, err)...)
+		}
 		if _, err := r.GenerateYearPlan(ctx, id, "", now); err != nil && !IsInputError(err) {
-			return 0, err
+			errs = append(errs, fmt.Errorf("plan %s: %w", id, err))
 		}
 	}
-	return len(ids), nil
+	return len(ids), errors.Join(errs...)
 }
 
 // recalcVisits: geplante Termine ohne Handänderung neu aus dem Rhythmus; von
@@ -249,7 +258,7 @@ func (r *Repository) plannedVisit(ctx context.Context, id string) (*Visit, error
 		return nil, err
 	}
 	if v.State != VisitPlanned {
-		return nil, inputErr("Aus diesem Termin ist schon ein Auftrag geworden")
+		return nil, inputErr(msgVisitOrdered)
 	}
 	return v, nil
 }
@@ -262,9 +271,18 @@ func (r *Repository) MoveVisit(ctx context.Context, visitID string, day time.Tim
 	if civil(day).Before(dayStart(now)) {
 		return inputErr("Ein geplanter Termin lässt sich nicht in die Vergangenheit legen")
 	}
-	_, err := r.db.Exec(ctx, `UPDATE maintenance_visits SET day = $2::date, date_manual = true,
+	tag, err := r.db.Exec(ctx, `UPDATE maintenance_visits SET day = $2::date, date_manual = true,
 		updated_by = NULLIF($3, '')::uuid, updated_at = NOW() WHERE id = $1::uuid AND state = 'planned'`,
 		visitID, civil(day).Format("2006-01-02"), validUserID(userID))
+	return visitChanged(tag, err)
+}
+
+// visitChanged: Hat die Änderung keinen geplanten Termin mehr getroffen, ist
+// inzwischen ein Auftrag daraus geworden – das gilt nicht als gespeichert.
+func visitChanged(tag pgconn.CommandTag, err error) error {
+	if err == nil && tag.RowsAffected() == 0 {
+		return inputErr(msgVisitOrdered)
+	}
 	return err
 }
 
@@ -273,10 +291,10 @@ func (r *Repository) StaffVisit(ctx context.Context, visitID string, assignedTo,
 	if _, err := r.plannedVisit(ctx, visitID); err != nil {
 		return err
 	}
-	_, err := r.db.Exec(ctx, `UPDATE maintenance_visits SET assigned_to = $2::uuid, assigned_group_id = $3::uuid,
+	tag, err := r.db.Exec(ctx, `UPDATE maintenance_visits SET assigned_to = $2::uuid, assigned_group_id = $3::uuid,
 		staff_manual = true, updated_by = NULLIF($4, '')::uuid, updated_at = NOW() WHERE id = $1::uuid AND state = 'planned'`,
 		visitID, nullID(assignedTo), nullID(groupID), validUserID(userID))
-	return err
+	return visitChanged(tag, err)
 }
 
 // ResetVisit: „Zurück zum Plan“ – Handänderungen aufheben und den Plan neu

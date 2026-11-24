@@ -75,6 +75,38 @@ func TestCalendarRenderVisit(t *testing.T) {
 	}
 }
 
+// Fenster zum Besetzen: Titel ohne den Zieh-Hinweis des Chips, mittig, und
+// nach einem Fehler bleibt es offen (pdhGridPost meldet den Fehlschlag).
+func TestCalendarVisitDialogDetails(t *testing.T) {
+	tmpl := loadTestTemplates(t)
+	c := calChipFor(calKindByKey("maintenance_planned"))
+	c.Title, c.Tip, c.URL, c.Planned, c.Drag, c.ID = "geplant · Kompressor", "Wartungstermin (geplant): Kompressor · Halle 1", "/maintenance/plans/p1", true, "visit", "v1"
+	d := CalendarData{Show: map[string]bool{}, Counts: map[string]int{}, Days: []plannerDay{{Date: "2027-03-01"}},
+		Rows: []calRow{{UserID: "u1", Name: "Anna", Cells: []calCell{{Date: "2027-03-01", Items: []calChip{c}}}}}}
+	render := func(name string, data any) string {
+		var b bytes.Buffer
+		if err := tmpl.ExecuteTemplate(&b, name, data); err != nil {
+			t.Fatal(err)
+		}
+		return b.String()
+	}
+	if out := render("calendar-board", d); !strings.Contains(out, `data-tip="Wartungstermin (geplant): Kompressor · Halle 1"`) {
+		t.Error("Chip ohne data-tip – das Fenster hätte nur den Tooltip samt Zieh-Hinweis")
+	}
+	js := render("calendar-js", nil)
+	if !strings.Contains(js, "ch.dataset.tip") || strings.Contains(js, "ch.getAttribute('title')") {
+		t.Error("Fenstertitel muss aus data-tip kommen, nicht aus dem Tooltip")
+	}
+	if !strings.Contains(render("cal-plan-style", nil), ".cal-visit-dlg{margin:auto;") {
+		t.Error("Fenster ohne margin:auto – base.gohtml setzt alle Ränder auf 0, es stünde links oben")
+	}
+	post := render("grid-drag", nil)
+	post = post[strings.Index(post, "window.pdhGridPost"):]
+	if !strings.Contains(post, "return false") || !strings.Contains(post, "return true") {
+		t.Error("pdhGridPost muss Erfolg (true) und Fehlschlag (false) melden")
+	}
+}
+
 func TestVisitGateRules(t *testing.T) {
 	id := "01a1f566-b4d2-783f-b0f7-e6e42ee3deae"
 	for _, a := range []string{"move", "staff", "reset"} {

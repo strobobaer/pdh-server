@@ -260,10 +260,16 @@ func (h *Handler) PlannerMaintSaveWeb(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	assignee := r.FormValue("assigned_to")
-	var title, oldDue string
-	if err := h.db.QueryRow(ctx, `SELECT title, to_char(due_date, 'DD.MM.YYYY') FROM maintenance_tasks WHERE id = $1::uuid`, id).Scan(&title, &oldDue); err != nil {
+	var title, oldDue, current string
+	if err := h.db.QueryRow(ctx, `SELECT title, to_char(due_date, 'DD.MM.YYYY'), COALESCE(assigned_to::text, '') FROM maintenance_tasks WHERE id = $1::uuid`, id).Scan(&title, &oldDue, &current); err != nil {
 		back("", errors.New("Wartungsauftrag nicht gefunden"))
 		return
+	}
+	// Das Fenster schickt die jetzige Person immer mit: nur eine wirklich
+	// andere Besetzung gilt als „von Hand besetzt“ (sonst käme eine geänderte
+	// Besetzung des Plans nie mehr am Auftrag an).
+	if assignee == current || (assignee == "-" && current == "") {
+		assignee = ""
 	}
 	switch {
 	case assignee == "":
@@ -288,9 +294,9 @@ func (h *Handler) PlannerMaintSaveWeb(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	if uuidInPathRe.MatchString(assignee) {
-		h.addHistory(ctx, "maintenance_task", id, "update", "Zugewiesen", "", assignee, "Im Planer zugewiesen", uid)
-		if assignee != uid {
+	if assignee != "" {
+		h.addHistory(ctx, "maintenance_task", id, "update", "Zugewiesen", h.staffText(ctx, current, ""), h.staffText(ctx, assignee, ""), "Im Planer zugewiesen", uid)
+		if assignee != "-" && assignee != uid {
 			h.systemNotify(ctx, []string{assignee}, maintAssignedText(title, due, id))
 		}
 	}
@@ -347,7 +353,7 @@ func (h *Handler) PlannerVisitSaveWeb(w http.ResponseWriter, r *http.Request) {
 			back("", plannerVisitErr(err))
 			return
 		}
-		h.addHistory(ctx, "maintenance_plan", v.PlanID, "update", "Zugewiesen", derefOr(v.AssignedTo, ""), assignee, "Wartungstermin im Planer besetzt", uid)
+		h.addHistory(ctx, "maintenance_plan", v.PlanID, "update", "Zugewiesen", h.staffText(ctx, current, ""), h.staffText(ctx, assignee, ""), "Wartungstermin im Planer besetzt", uid)
 	default:
 		back("", errors.New("Mitarbeiter ungültig"))
 		return

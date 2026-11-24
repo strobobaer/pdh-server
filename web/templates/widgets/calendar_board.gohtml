@@ -40,7 +40,7 @@
       <td data-date="{{.Date}}" class="{{if .Weekend}}we{{end}}{{if .Holiday}} hol{{end}}{{if .Conflict}} clash{{else if .Warn}} warn{{end}}" title="{{if .Conflict}}⚠ {{.Conflict}}{{else if .Warn}}{{.Warn}}{{end}}">
         {{with .Absence}}<a class="cc abs{{if .Pending}} pend{{end}}" href="{{.URL}}"{{if .Drag}} data-drag="{{.Drag}}" data-id="{{.ID}}"{{end}} style="--kc:{{css .Color}}" title="{{.Tip}}"><i class="ti ti-beach"></i> {{.Short}}</a>{{end}}
         {{with .Shift}}<a class="cc sh{{if .Pending}} pend{{end}}" href="{{.URL}}"{{if .Drag}} data-drag="{{.Drag}}" data-row="{{.Row}}"{{end}} style="--kc:{{css .Color}}" title="{{.Tip}}{{if .Pending}} (Entwurf){{end}}">{{.Short}}</a>{{end}}
-        {{range .Items}}{{if .Planned}}<a class="cc it plan{{if .OffPlan}} off{{end}}{{if .Dropped}} drop{{end}}" href="{{.URL}}"{{if .Drag}} data-drag="{{.Drag}}" data-kind="{{.Kind}}" data-id="{{.ID}}" data-assignee="{{.AssigneeID}}" data-group="{{.GroupID}}" data-plan="{{.PlanURL}}"{{end}} style="--kc:{{css .Color}}" title="{{.Tip}}"><i class="ti {{if .OffPlan}}ti-alert-triangle{{else}}{{.Icon}}{{end}}"></i> {{.Title}}</a>{{else}}<a class="cc it{{if .SpanMid}} mid{{end}}{{if eq .Kind "project"}} proj{{end}}" href="{{.URL}}"{{if .Drag}} data-drag="{{.Drag}}" data-kind="{{.Kind}}" data-id="{{.ID}}" data-row="{{.Row}}"{{end}} style="--kc:{{css .Color}}" title="{{.Tip}}"><i class="ti {{.Icon}}"></i>{{if not .SpanMid}} {{.Title}}{{end}}</a>{{end}}{{end}}
+        {{range .Items}}{{if .Planned}}<a class="cc it plan{{if .OffPlan}} off{{end}}{{if .Dropped}} drop{{end}}" href="{{.URL}}"{{if .Drag}} data-drag="{{.Drag}}" data-kind="{{.Kind}}" data-id="{{.ID}}" data-assignee="{{.AssigneeID}}" data-group="{{.GroupID}}" data-plan="{{.PlanURL}}" data-tip="{{.Tip}}"{{end}} style="--kc:{{css .Color}}" title="{{.Tip}}"><i class="ti {{if .OffPlan}}ti-alert-triangle{{else}}{{.Icon}}{{end}}"></i> {{.Title}}</a>{{else}}<a class="cc it{{if .SpanMid}} mid{{end}}{{if eq .Kind "project"}} proj{{end}}" href="{{.URL}}"{{if .Drag}} data-drag="{{.Drag}}" data-kind="{{.Kind}}" data-id="{{.ID}}" data-row="{{.Row}}"{{end}} style="--kc:{{css .Color}}" title="{{.Tip}}"><i class="ti {{.Icon}}"></i>{{if not .SpanMid}} {{.Title}}{{end}}</a>{{end}}{{end}}
       </td>
       {{end}}
     </tr>
@@ -129,7 +129,7 @@
 .cc.it.plan.drop{text-decoration:line-through;color:var(--muted);border-color:var(--muted)}
 .cc.it.plan.off i{color:var(--amber)}
 .cal-grid .cc.it[data-drag="visit"] .dg-end{display:none}
-.cal-visit-dlg{width:min(420px, calc(100vw - 32px));border:1px solid var(--border);border-radius:12px;background:var(--bg2);color:var(--text);padding:16px;box-shadow:var(--shadow-card)}
+.cal-visit-dlg{margin:auto;width:min(420px, calc(100vw - 32px));border:1px solid var(--border);border-radius:12px;background:var(--bg2);color:var(--text);padding:16px;box-shadow:var(--shadow-card)}
 .cal-visit-dlg::backdrop{background:rgba(0,0,0,.35)}
 .cal-visit-form{display:flex;flex-direction:column;gap:6px}
 .cal-visit-form h3{margin:0 0 6px;font-size:15px}
@@ -168,10 +168,13 @@ window.pdhCalInit = function(box){
   if(dlg && !dlg.dataset.ready){
     dlg.dataset.ready = '1';
     const f = n => dlg.querySelector('[data-f="' + n + '"]');
+    const btns = dlg.querySelectorAll('button[data-act]');
     const send = async (url, body) => {
       f('msg').textContent = 'Speichere…';
-      const ok = await pdhGridPost(url, body);
-      if(ok === false){ f('msg').textContent = 'Nicht gespeichert.'; return; }
+      btns.forEach(b => b.disabled = true);
+      const ok = await pdhGridPost(url, body); // bei Erfolg lädt die Seite neu
+      btns.forEach(b => b.disabled = false);
+      if(!ok){ f('msg').textContent = 'Nicht gespeichert – das Fenster bleibt offen.'; return; }
       dlg.close();
     };
     dlg.querySelector('[data-act="staff"]').addEventListener('click', () => send(dlg.dataset.base + dlg.dataset.id + '/staff',
@@ -182,7 +185,8 @@ window.pdhCalInit = function(box){
     const ch = e.target.closest('.cc[data-drag="visit"]'); if(!ch || !dlg) return;
     e.preventDefault();
     dlg.dataset.id = ch.dataset.id;
-    dlg.querySelector('[data-f="title"]').textContent = ch.getAttribute('title') || 'Wartungstermin';
+    // data-tip: der Tooltip trägt zusätzlich den Zieh-Hinweis (grid_drag)
+    dlg.querySelector('[data-f="title"]').textContent = ch.dataset.tip || 'Wartungstermin';
     dlg.querySelector('#cal-visit-user').value = ch.dataset.assignee || '';
     dlg.querySelector('#cal-visit-group').value = ch.dataset.group || '';
     dlg.querySelector('[data-f="plan"]').setAttribute('href', ch.dataset.plan || '/maintenance');

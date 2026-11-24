@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -255,7 +256,30 @@ func (h *Handler) MaintenanceVisitStaffWeb(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	err := h.maint.StaffVisit(r.Context(), v.ID, person, group, getUser(r).ID)
-	h.visitDone(w, r, v, err, "Besetzung", derefOr(v.AssignedTo, "")+" "+derefOr(v.GroupID, ""), in.AssignedTo+" "+in.GroupID, "besetzt")
+	ctx := r.Context()
+	h.visitDone(w, r, v, err, "Besetzung", h.staffText(ctx, derefOr(v.AssignedTo, ""), derefOr(v.GroupID, "")), h.staffText(ctx, in.AssignedTo, in.GroupID), "besetzt")
+}
+
+// staffText: Besetzung für den Verlauf – Namen statt Kennungen
+// (person "" oder "-" = niemand; ohne Person und Gruppe „niemand“).
+func (h *Handler) staffText(ctx context.Context, person, group string) string {
+	var parts []string
+	if uuidInPathRe.MatchString(person) {
+		name := h.chatUserName(ctx, person)
+		if name == "" {
+			name = "unbekannte Person"
+		}
+		parts = append(parts, name)
+	}
+	if uuidInPathRe.MatchString(group) {
+		var name string
+		_ = h.db.QueryRow(ctx, `SELECT name FROM user_groups WHERE id = $1::uuid`, group).Scan(&name)
+		parts = append(parts, strings.TrimSpace("Gruppe "+name))
+	}
+	if len(parts) == 0 {
+		return "niemand"
+	}
+	return strings.Join(parts, " · ")
 }
 
 // MaintenanceVisitResetWeb: POST /maintenance/visits/{id}/reset – Tag und Besetzung aus dem Plan.
