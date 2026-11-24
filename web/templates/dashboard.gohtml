@@ -43,8 +43,8 @@
 {{end}}
 
 {{define "scripts"}}
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.css">
-<script src="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.min.js"></script>
+<link rel="stylesheet" href="{{vendorURL "frappe-gantt/frappe-gantt.css"}}">
+<script src="{{vendorURL "frappe-gantt/frappe-gantt.min.js"}}"></script>
 <script>
 var dashGanttItems = [
 {{range .GanttItems}}

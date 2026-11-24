@@ -89,7 +89,7 @@ func redactQuery(q url.Values) string {
 
 // quietPath: Routinen, die nur auf Stufe debug protokolliert werden.
 func quietPath(p string) bool {
-	for _, pre := range []string{"/static/", "/uploads/", "/health", "/favicon", "/chat/stream", "/chat/api/presence", "/admin/server-config/logs/rows"} {
+	for _, pre := range []string{"/static/", "/vendor/", "/uploads/", "/health", "/favicon", "/chat/stream", "/chat/api/presence", "/admin/server-config/logs/rows"} {
 		if strings.HasPrefix(p, pre) {
 			return true
 		}

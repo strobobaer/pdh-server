@@ -179,7 +179,7 @@ html[data-theme="light"] .dw-stat.c-blue .v{color:#2563eb}
 <template id="dw-watch-opts"><option value="">{{t "Erste verfügbare"}}</option>{{range .WatchBoards}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</template>
 <template id="dw-tpl">{{template "dw-card" (dict "ID" "" "Type" "" "Size" 1 "Title" "" "Def" (dict "Name" "" "Icon" "" "Refresh" 0 "Config" "") "Config" nil)}}</template>
 
-<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+<script src="{{vendorURL "sortablejs/Sortable.min.js"}}"></script>
 <script>
 (function(){
   const root = document.getElementById('dw-root');

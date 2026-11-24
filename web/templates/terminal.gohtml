@@ -89,7 +89,7 @@
 <meta name="robots" content="noindex">
 <title>{{if .NoInfra}}Terminal{{else}}{{.Name}} – Terminal{{end}}</title>
 <link rel="icon" href="/favicon.ico">
-<link rel="stylesheet" href="/vendor/tabler-icons/tabler-icons.min.css?v={{appVersion}}">
+{{iconCSSLinks}}
 <style>
 /* Anlagenterminal (terminal_page.go): Vollbild für den Wandmonitor, nur Berührung.
    Trefferflächen mindestens 64 px, keine Hover-Bedienung, wenig Text. */
@@ -522,7 +522,7 @@ body[data-mode="zeit"]{--accent-rgb:168,85,247}
     <div class="t-rzgrid">{{range .Setup.Buttons}}<button type="submit" class="t-btn{{if .Current}} cur{{end}}" name="button_id" value="{{.ID}}"{{if .Current}} aria-current="true" disabled{{end}}>{{.Name}}</button>{{end}}</div>
   </form>
   <a class="t-btn" href="/terminal/rusten?infra={{.Pick.Sel}}&amp;nachtragen=1"><i class="ti ti-plus" aria-hidden="true"></i> Rüstzeit nachtragen</a>
-  {{else}}<div class="t-empty"><i class="ti ti-tool-off" aria-hidden="true"></i> Keine Rüsttasten an dieser Anlage</div>{{end}}
+  {{else}}<div class="t-empty"><i class="ti ti-tools-off" aria-hidden="true"></i> Keine Rüsttasten an dieser Anlage</div>{{end}}
   {{end}}
   {{end}}
 </div>

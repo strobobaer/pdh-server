@@ -3,19 +3,16 @@ package web
 import (
 	"context"
 	"encoding/json"
-	"io/fs"
 	"net/http"
 	"net/url"
-	"regexp"
-	"sort"
 	"strings"
 	"sync"
 
-	"pdh"
+	"pdh/internal/web/tablericons"
 )
 
-// Symbole: Tabler Icons liegen lokal unter /vendor/tabler-icons (web/static,
-// eingebettet). Jedes änderbare Symbol hat einen Schlüssel („nav.tickets“,
+// Symbole: Tabler Icons sind als SVG eingebettet (internal/web/tablericons) und
+// kommen über die Symbol-Stildatei /vendor/<Version>/icons-….css (iconcss.go). Jedes änderbare Symbol hat einen Schlüssel („nav.tickets“,
 // „record.fault“, „infra.plant“, „action.save“ …) mit Vorgabe; Admins ändern
 // es unter /admin/icons, gespeichert in app_settings (KeyIcons) als JSON.
 // Vorlagen holen das Symbol mit {{icon "schlüssel"}}, Go-Code mit iconClass.
@@ -165,22 +162,15 @@ var (
 	iconNameSet   map[string]bool
 )
 
-var tablerClassRe = regexp.MustCompile(`\.(ti-[a-z0-9-]+):before`)
-
+// loadIconNames: alle Klassen der lokalen Bibliothek (sortiert) aus den
+// SVG-Quellen in tablericons.
 func loadIconNames() {
 	iconNamesOnce.Do(func() {
 		iconNameSet = map[string]bool{}
-		css, err := fs.ReadFile(pdh.Static, "web/static/vendor/tabler-icons/tabler-icons.min.css")
-		if err != nil {
-			return
+		for _, n := range tablericons.Default().Names() {
+			iconNameSet[n] = true
+			iconNames = append(iconNames, n)
 		}
-		for _, m := range tablerClassRe.FindAllStringSubmatch(string(css), -1) {
-			if !iconNameSet[m[1]] {
-				iconNameSet[m[1]] = true
-				iconNames = append(iconNames, m[1])
-			}
-		}
-		sort.Strings(iconNames)
 	})
 }
 
@@ -278,6 +268,7 @@ func (h *Handler) IconsSaveWeb(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.loadIconOverrides(r.Context())
+	h.iconChoicesChanged() // neu gewähltes Symbol sofort in die Stildatei einbetten
 	msg := "Symbole gespeichert"
 	if len(out) == 0 {
 		msg = "Alle Symbole auf die Vorgabe gesetzt"
@@ -323,4 +314,7 @@ func linkRecordKey(url string) string {
 }
 
 // LoadIconOverrides: beim Serverstart die Symbol-Änderungen laden.
-func (h *Handler) LoadIconOverrides(ctx context.Context) { h.loadIconOverrides(ctx) }
+func (h *Handler) LoadIconOverrides(ctx context.Context) {
+	h.loadIconOverrides(ctx)
+	h.iconCSSEntry(ctx) // Stildatei mit den gewählten Symbolen vorbereiten (Adresse für die Seiten)
+}

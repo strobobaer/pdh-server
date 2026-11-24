@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"pdh"
 )
 
 func TestIconDefaultsExistLocally(t *testing.T) {
@@ -75,7 +77,7 @@ func TestIconsServedLocally(t *testing.T) {
 	d := IconsPageData{Groups: []iconRowGroup{{Key: "infra", Label: "Anlagentypen", Rows: []iconRow{{iconDef: iconDef{"infra.plant", "Anlage", "ti-settings"}, Current: "ti-engine", Changed: true}}}}, Changed: 1}
 	out := renderPage(t, tmpl, "icons", d)
 	checkScripts(t, "icons", out)
-	for _, want := range []string{`/vendor/tabler-icons/tabler-icons.min.css`, `name="icon.infra.plant" value="ti-engine"`, `data-default="ti-settings"`,
+	for _, want := range []string{`href="/vendor/` + pdh.Version() + `/icons-`, `name="icon.infra.plant" value="ti-engine"`, `data-default="ti-settings"`,
 		`<i class="ti ti-engine">`, "/admin/icons/names", "Alles zurücksetzen"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("Symbol-Seite ohne %q", want)
@@ -86,17 +88,16 @@ func TestIconsServedLocally(t *testing.T) {
 	if !strings.Contains(infra, `<i class="ti ti-arrows-maximize" aria-hidden="true"></i>`) {
 		t.Error("Knopf „Alle aufklappen“ ohne Symbol aus der Tabelle")
 	}
-	// Schrift steckt in der CSS-Datei (keine separate Schriftdatei, die ein
-	// Zwischenspeicher wie Cloudflare falsch vorhalten kann)
-	css, err := os.ReadFile(filepath.Join("..", "..", "web", "static", "vendor", "tabler-icons", "tabler-icons.min.css"))
-	if err != nil {
-		t.Fatal(err)
+	// Keine Symbolschrift mehr: die Stildatei zeichnet Masken aus SVG
+	css, _ := (&Handler{}).iconCSS(t.Context())
+	if strings.Contains(string(css), "@font-face") || strings.Contains(strings.ToLower(string(css)), "font/woff") {
+		t.Error("Symbol-Stildatei darf keine Schriftdatei enthalten")
 	}
-	if !strings.Contains(string(css), "src:url(data:font/woff2;base64,") || strings.Contains(string(css), "./fonts/") {
-		t.Error("Symbol-Schrift muss in die CSS-Datei eingebettet sein")
+	if _, err := os.Stat(filepath.Join("..", "..", "web", "static", "vendor", "tabler-icons", "tabler-icons.min.css")); err == nil {
+		t.Error("die alte Symbolschrift-Datei (1,4 MB) muss entfallen sein")
 	}
 	// Adresse mit Version: neue Version = neue Adresse (kein alter Zwischenstand)
-	if !strings.Contains(out, "/vendor/tabler-icons/tabler-icons.min.css?v=") {
+	if !strings.Contains(out, `href="/vendor/`+pdh.Version()+`/icons-`) {
 		t.Error("CSS-Adresse ohne Version")
 	}
 }
