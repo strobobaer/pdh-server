@@ -250,3 +250,42 @@ func TestOSScriptCheckWritesStamp(t *testing.T) {
 		t.Errorf("checked_at leer")
 	}
 }
+
+func TestOSScriptStatusAptFails(t *testing.T) {
+	e := osScriptEnv(t)
+	e.write(filepath.Join(e.stubs, "apt"), "#!/bin/bash\nexit 100\n", 0o755)
+	out, _, code := e.run(nil, "status")
+	if code == 0 {
+		t.Errorf("Exit 0 trotz apt-Fehler")
+	}
+	var s struct {
+		OK    bool   `json:"ok"`
+		Error string `json:"error"`
+	}
+	if err := json.Unmarshal([]byte(out), &s); err != nil {
+		t.Fatalf("kein JSON: %v\n%s", err, out)
+	}
+	if s.OK || s.Error == "" {
+		t.Errorf("erwartet ok=false mit error: %+v", s)
+	}
+	if l := e.aptLog(); l != "" {
+		t.Errorf("apt-get aufgerufen: %q", l)
+	}
+}
+
+func TestOSScriptStatusPkgsWithoutNewline(t *testing.T) {
+	e := osScriptEnv(t)
+	e.write(filepath.Join(e.root, "var", "run", "reboot-required"), "x\n", 0o644)
+	e.write(filepath.Join(e.root, "var", "run", "reboot-required.pkgs"), "linux-image-a\nlinux-image-b", 0o644)
+	out, _, code := e.run(nil, "status")
+	if code != 0 {
+		t.Fatalf("Exit %d", code)
+	}
+	var s osScriptJSON
+	if err := json.Unmarshal([]byte(out), &s); err != nil {
+		t.Fatal(err)
+	}
+	if len(s.RebootPkgs) != 2 || s.RebootPkgs[1] != "linux-image-b" {
+		t.Errorf("reboot_pkgs: %v", s.RebootPkgs)
+	}
+}

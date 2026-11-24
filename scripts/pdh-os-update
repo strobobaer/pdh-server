@@ -14,7 +14,9 @@ case "${1:-}" in check|install|status) ;; *) usage ;; esac
 
 # Testschalter: nur mit PDH_OS_TEST=1 gilt ein Pfad-Präfix (sonst feste Pfade)
 ROOT=""
-if [ "${PDH_OS_TEST:-}" = "1" ]; then ROOT="${PDH_OS_ROOT:-}"; fi
+# nie als root: sudo/systemd-run setzen die Umgebung heute zurück, ein späteres env_keep/SETENV
+# könnte sonst Protokoll- und Stempelpfade auf root-eigene Dateien umlenken
+if [ "${PDH_OS_TEST:-}" = "1" ] && [ "$(id -u)" != 0 ]; then ROOT="${PDH_OS_ROOT:-}"; fi
 PROTO="$ROOT/var/log/pdh-os-update.log"
 STAMP="$ROOT/var/lib/pdh-os-update.checked"
 REBOOT="$ROOT/var/run/reboot-required"
@@ -37,7 +39,11 @@ status_json() {
   fi
   kernel=$(uname -r)
   if [ -r "$STAMP" ]; then checked=$(head -n 1 "$STAMP"); fi
-  local pkgs=""
+  local pkgs="" listing
+  if ! listing=$(apt list --upgradable 2>/dev/null); then
+    echo '{"ok":false,"error":"Paketliste nicht lesbar"}'
+    return 1
+  fi
   while IFS= read -r line; do
     if [[ $line =~ ^([A-Za-z0-9.+_-]+)/([^[:space:]]+)[[:space:]]+([A-Za-z0-9.+:~_-]+)[[:space:]]+[^[:space:]]+[[:space:]]+\[upgradable\ from:\ ([A-Za-z0-9.+:~_-]+)\] ]]; then
       name=${BASH_REMATCH[1]}; suites=${BASH_REMATCH[2]}; new=${BASH_REMATCH[3]}; old=${BASH_REMATCH[4]}
@@ -47,12 +53,12 @@ status_json() {
       first=0
       pkgs+="{\"name\":\"$name\",\"old\":\"$old\",\"new\":\"$new\",\"security\":$sec}"
     fi
-  done < <(apt list --upgradable 2>/dev/null | tail -n +2)
+  done < <(echo "$listing" | tail -n +2)
   local reboot=false rp="" f=1
   if [ -f "$REBOOT" ]; then
     reboot=true
     if [ -r "$REBOOT.pkgs" ]; then
-      while IFS= read -r pk; do
+      while IFS= read -r pk || [ -n "$pk" ]; do
         [ -n "$pk" ] || continue
         [ $f = 1 ] || rp+=","
         f=0
