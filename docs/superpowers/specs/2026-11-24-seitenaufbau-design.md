@@ -1,7 +1,9 @@
 # Schneller Seitenaufbau (Teil 1 der einheitlichen Oberfläche 0.90.0) – Entwurf
 
 Stand: 24.11.2026 · Wunsch des Anwenders: „es muss schneller seiten aufbauen“
-(„unbedingt“) · Entscheidungen: „1 ja mitliefern, 2 ja 0.90.0“, „Weg 1, passt so“
+(„unbedingt“) · Entscheidungen: „1 ja mitliefern, 2 ja 0.90.0“, „Weg 1, passt so“ ·
+**vom Anwender bestätigt** („Passt ja“); die Prüfung über Cloudflare auf
+10.10.0.202 übernimmt der Anwender nach dem Einspielen („ja das mach ich dann“)
 
 ## Worum es geht
 
