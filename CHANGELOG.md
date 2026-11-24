@@ -15,12 +15,21 @@ im Kapitel „Versionen & Updates“ an.
 ### Neu
 
 - **Betriebssystem-Updates im PDH:** Die Karte „Betriebssystem“ in den Core-Einstellungen zeigt offene Pakete, Sicherheitsupdates, „Neustart nötig“ und den letzten Lauf.
-- **Betriebssystem aktualisieren:** Der Knopf spielt die Pakete wie das PDH-Update ein – mit Countdown, Sperre, Sicherung, Neustart nur bei Bedarf und Prüfung danach (bei einem einzelnen Server; im Verbund folgt das später).
-- **Haken „beim PDH-Update mit aktualisieren“:** Das PDH-Update spielt dann die Betriebssystem-Pakete im selben Durchgang ein, und das Wartungsfenster spielt offene Sicherheitsupdates auch ohne PDH-Update ein.
+- **Betriebssystem aktualisieren:** Der Knopf spielt die Pakete wie das PDH-Update ein – mit Countdown, Sperre, Sicherung, Neustart nur bei Bedarf und Prüfung danach (bei einem einzelnen Server; im Verbund kommt das mit einer späteren Version).
+- **Neustart ohne offene Pakete:** Steht nur „Neustart nötig“ da, startet „Betriebssystem aktualisieren“ den Server geordnet neu.
+- **Haken „beim PDH-Update mit aktualisieren“:** Das PDH-Update spielt dann die Betriebssystem-Pakete im selben Durchgang ein, und das Wartungsfenster spielt bei offenen Sicherheitsupdates alle offenen Pakete auch ohne PDH-Update ein; die Rückfrage bei „Update installieren“ weist darauf hin.
+- **Klare Ergebnisse:** Scheitert der Betriebssystem-Teil, steht im Ergebnis „Update auf X abgeschlossen. Achtung: Betriebssystem-Teil fehlgeschlagen – Grund“; wartet eine Netz-Änderung oder fehlt Platz, bleibt das System unverändert und das PDH läuft weiter.
+- **Wartungsfenster und Verbund-Update warten auf kurze Sperren** (Prüfung, ESPHome-Einrichtung, Netz-Änderung) und nennen sonst den Besitzer der Sperre.
+
+### Geändert
+
+- Die Betriebssystem-Prüfung läuft von selbst höchstens einmal je Prüfintervall, auch ohne Internetverbindung, und meldet „aktuell“ nur nach einer gelungenen Prüfung; ohne Prüfung steht „noch nicht geprüft“.
+- Das Einspielen der Pakete hängt nicht mehr am Update-Agenten: Ein Neustart oder Absturz des Agenten unterbricht apt nicht, und die Zeitgrenzen greifen.
 
 ### Sicherheit
 
-- Neues Recht „Betriebssystem aktualisieren“ (`system.os_update`); es bekommen alle Rollen, die Rollen verwalten dürfen.
+- Neues Recht „Betriebssystem aktualisieren“ (`system.os_update`); es bekommen alle Rollen, die Rollen verwalten dürfen. Dieses Recht und „Rollen & Berechtigungen verwalten“ müssen überall gelten – ein nur für eine Abteilung vergebenes Recht reicht für die Karte nicht.
+- Ein neuer PDH-Update-Auftrag startet nie neben den noch laufenden Paketen eines beendeten Auftrags.
 
 ## [0.82.58] – 2026-11-24
 

@@ -160,15 +160,41 @@ func writeUpdateJSON(w http.ResponseWriter, code int, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
+const (
+	updateLockTries = 20          // POST /v1/update: so oft neu versuchen …
+	updateLockStep  = time.Second // … im Abstand (pdh-ha fragt mit 30 s Frist)
+)
+
 // startUpdate setzt den Status auf „läuft“, bevor der Aufrufer 202 bekommt
 // (die erste Statusabfrage darf nie das alte Ergebnis sehen). false = läuft
 // schon; dann ist running der laufende Stand.
+//
+// Geschachtelt (jobScript): innerhalb eines Einzelserver-Auftrags, der die Sperre schon hält,
+// darf derselbe Besitzer sie noch einmal nehmen.
 func (a *updateAgent) startUpdate(commit, op string) (running jobStatus, ok bool) {
+	return a.startUpdateLock(commit, op, false)
+}
+
+// startUpdateNew: neuer, unabhängiger Start (POST /v1/update) – die Sperre muss ganz frei sein;
+// sonst könnte er neben der Paket-Einheit eines beendeten kombinierten Auftrags (gleicher
+// Besitzer) starten.
+func (a *updateAgent) startUpdateNew(commit, op string) (running jobStatus, ok bool) {
+	return a.startUpdateLock(commit, op, true)
+}
+
+func (a *updateAgent) startUpdateLock(commit, op string, exclusive bool) (running jobStatus, ok bool) {
 	// gemeinsame Sperre: nie neben einem Betriebssystem-Update, einer ESPHome-Einrichtung
-	// oder einer Netzwerk-Änderung; der Einzelserver-Auftrag (job.go) hält sie selbst mit
-	// (derselbe Besitzer darf mehrfach).
-	release, busy := a.lockAcquire(lockPDH)
+	// oder einer Netzwerk-Änderung.
+	release, busy := a.lockTake(lockPDH, exclusive)
 	if busy != "" {
+		if busy == lockPDH {
+			a.mu.RLock()
+			st := a.status
+			a.mu.RUnlock()
+			if st.Running {
+				return st, false // der laufende Lauf selbst (pdh-ha wartet auf sein Ergebnis)
+			}
+		}
 		return jobStatus{}, false
 	}
 	a.mu.Lock()

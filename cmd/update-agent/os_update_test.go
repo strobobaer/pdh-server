@@ -75,6 +75,7 @@ func osTestAgent(t *testing.T) (*updateAgent, *osFake) {
 	f := &osFake{statusOut: osStatusJSON}
 	a := &updateAgent{mode: "systemd", repoDir: t.TempDir(), token: strings.Repeat("x", 32)}
 	a.osRun = f.run
+	a.osOutDir = t.TempDir()
 	return a, f
 }
 
@@ -134,12 +135,12 @@ func TestOSStatusCluster(t *testing.T) {
 	haInstalled(t)
 	haFakeSocket(t, `{"ok":true,"configured":true,"mode":"duo","self":{"id":"a","role":"aktiv"}}`)
 	code, m := osServe(t, a, http.MethodGet, "/v1/os/status", "", true)
-	if code != 200 || m["available"] != false || m["cluster"] != true || !strings.Contains(m["reason"].(string), "Teil B") ||
+	if code != 200 || m["available"] != false || m["cluster"] != true || !strings.Contains(m["reason"].(string), "späteren Version") ||
 		m["package_count"] != float64(2) {
 		t.Fatalf("Antwort %d: %v", code, m)
 	}
 	code, m = osServe(t, a, http.MethodPost, "/v1/os/config", `{"with_pdh_update":true}`, true)
-	if code != 400 || m["ok"] != false || !strings.Contains(m["error"].(string), "Teil B") {
+	if code != 400 || m["ok"] != false || !strings.Contains(m["error"].(string), "späteren Version") {
 		t.Fatalf("config im Verbund: %d %v", code, m)
 	}
 	if code, _ := osServe(t, a, http.MethodPost, "/v1/os/check", "", true); code != 400 {
@@ -185,13 +186,15 @@ func TestOSExecUsesSystemdRun(t *testing.T) {
 		return exec.Command(os.Args[0], "-test.run=NONE")
 	}
 	_, _ = a.osExec(context.Background(), "install")
-	if name != "systemd-run" || len(args) != 7 {
+	if name != "systemd-run" || len(args) != 10 {
 		t.Fatalf("Aufruf: %s %v", name, args)
 	}
-	want := []string{"--wait", "--pipe", "--collect", "--quiet"}
-	if !reflect.DeepEqual(args[:4], want) || !strings.HasPrefix(args[4], "--unit=pdh-os-install-") ||
-		strings.Trim(strings.TrimPrefix(args[4], "--unit=pdh-os-install-"), "0123456789-") != "" ||
-		args[5] != "/usr/local/sbin/pdh-os-update" || args[6] != "install" {
+	want := []string{"--wait", "--collect", "--quiet"}
+	if !reflect.DeepEqual(args[:3], want) || !strings.HasPrefix(args[3], "--unit=pdh-os-install-") ||
+		strings.Trim(strings.TrimPrefix(args[3], "--unit=pdh-os-install-"), "0123456789-") != "" ||
+		args[4] != "-p" || !strings.HasPrefix(args[5], "StandardOutput=append:") ||
+		args[6] != "-p" || args[7] != "StandardError=inherit" ||
+		args[8] != "/usr/local/sbin/pdh-os-update" || args[9] != "install" {
 		t.Fatalf("Argumente: %v", args)
 	}
 	for _, bad := range []string{"full-upgrade", "install -y", ""} {

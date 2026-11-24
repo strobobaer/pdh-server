@@ -131,7 +131,7 @@ func (a *updateAgent) loadSingleJob() {
 
 // jobPut übernimmt den Stand eines Schritts und speichert ihn. Ein
 // inzwischen eingegangener Abbruch bleibt erhalten.
-func (a *updateAgent) jobPut(s singleJob) {
+func (a *updateAgent) jobPut(s singleJob) error {
 	a.sj.saveMu.Lock()
 	defer a.sj.saveMu.Unlock()
 	a.sj.mu.Lock()
@@ -142,9 +142,11 @@ func (a *updateAgent) jobPut(s singleJob) {
 	s.Job.Seq = max(cur.Seq, s.Job.Seq) + 1
 	a.sj.job = s
 	a.sj.mu.Unlock()
-	if err := writeStateJSON(singleJobFile(), s); err != nil {
+	err := a.writeState(singleJobFile(), s)
+	if err != nil {
 		log.Printf("update: update-job.json nicht gespeichert: %v", err)
 	}
+	return err
 }
 
 func (a *updateAgent) jobView() ha.UpdateView {
@@ -181,13 +183,15 @@ func (a *updateAgent) startSingleJob(ctx context.Context, source string, force b
 		return nil, errors.New("Ein Update läuft bereits")
 	}
 	// gemeinsame Sperre bis zum Ende des Auftrags (jobFinish); bei jedem Fehler wieder frei
-	release, busy := a.lockAcquire(lockPDH)
+	// Neuer Start: die Sperre muss ganz frei sein (auch nicht vom beendeten kombinierten Auftrag,
+	// dessen Paket-Einheit noch läuft); nur der geschachtelte Aufruf in jobScript teilt sie.
+	release, busy := a.lockTryExclusive(lockPDH)
 	switch busy {
 	case "":
 	case lockOS:
-		return nil, errors.New("Ein Betriebssystem-Update läuft bereits")
+		return nil, &lockBusyError{Owner: lockOS, Msg: "Ein Betriebssystem-Update läuft bereits"}
 	default:
-		return nil, errors.New(lockBusyMsg(busy))
+		return nil, newLockBusy(busy)
 	}
 	held := true
 	defer func() {
@@ -608,9 +612,9 @@ func (a *updateAgent) osPlanned(ctx context.Context) bool {
 // jobOSStep führt den Betriebssystem-Teil (Haken) einen Schritt weiter. false = der Agent wird
 // beendet; der gesicherte Stand bleibt und wird nach dem Neustart wieder aufgenommen.
 func (a *updateAgent) jobOSStep(ctx context.Context, s *singleJob) bool {
-	persist := func() {
+	persist := func() error {
 		s.Job.OSStep = s.OS.Step
-		a.jobPut(*s)
+		return a.jobPut(*s)
 	}
 	a.osAdvance(ctx, &s.OS, persist)
 	if ctx.Err() != nil {
@@ -631,9 +635,13 @@ func jobOSSuffix(s singleJob) string {
 	switch {
 	case !s.WithOS:
 		return ""
+	case s.OS.Failed && s.OS.Touched:
+		// pdh war gestoppt bzw. Pakete wurden angefasst: eindeutig melden, dass das System in einem
+		// ungewissen Zustand sein kann (das PDH-Update selbst gilt)
+		return ". Achtung: Betriebssystem-Teil fehlgeschlagen – " + s.OS.Msg
 	case s.OS.Failed:
 		return "; Betriebssystem nicht aktualisiert: " + s.OS.Msg
-	case s.OS.Pending > 0:
+	case s.OS.Pending > 0 || s.OS.Rebooted:
 		return "; Betriebssystem: " + s.OS.Msg
 	}
 	return ""

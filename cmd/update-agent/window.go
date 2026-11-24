@@ -246,6 +246,37 @@ func (a *updateAgent) windowTick(ctx context.Context, now time.Time) {
 	}
 }
 
+const (
+	windowLockTries = 30               // höchstens so oft neu versuchen …
+	windowLockStep  = 30 * time.Second // … im Abstand (zusammen 15 Minuten)
+)
+
+// windowWaitLock führt try aus; gehört die gemeinsame Sperre einem kurzen Besitzer (Prüfung,
+// ESPHome-Einrichtung, Netz-Änderung), wird alle 30 s bis zu 15 Minuten lang neu versucht, danach
+// mit dem Besitzer in der Meldung aufgegeben. Ein laufender Auftrag (PDH- oder Betriebssystem-Update)
+// wird nicht abgewartet – der Fehler kommt sofort zurück.
+func (a *updateAgent) windowWaitLock(ctx context.Context, try func() error) error {
+	err := a.waitShortLock(ctx, windowLockTries, windowLockStep, try)
+	var lb *lockBusyError
+	if errors.As(err, &lb) && lockShort(lb.Owner) {
+		return fmt.Errorf("%s hält die Sperre seit über 15 Minuten – Wartungsfenster ausgelassen", lb.Owner)
+	}
+	return err
+}
+
+// waitShortLock führt try bis zu tries+1 Mal aus, solange die Sperre einem kurzen Besitzer gehört
+// (Pause step dazwischen). Bleibt sie belegt, kommt der letzte lockBusyError zurück.
+func (a *updateAgent) waitShortLock(ctx context.Context, tries int, step time.Duration, try func() error) error {
+	for i := 0; ; i++ {
+		err := try()
+		var lb *lockBusyError
+		if err == nil || !errors.As(err, &lb) || !lockShort(lb.Owner) || i >= tries || ctx.Err() != nil {
+			return err
+		}
+		a.sleepFn()(step)
+	}
+}
+
 // windowSingle: Einzelserver – das Update selbst ausführen.
 // Mit dem Haken „Betriebssystem mit einspielen“ fährt der PDH-Auftrag die Pakete mit; gibt es kein
 // PDH-Update (aus, keine neue Version oder als fehlerhaft gemerkt), startet das Fenster bei
@@ -253,7 +284,7 @@ func (a *updateAgent) windowTick(ctx context.Context, now time.Time) {
 func (a *updateAgent) windowSingle(ctx context.Context, w ha.Window) (string, bool) {
 	skipped := "Nichts zu tun: „Neue Version einspielen“ ist ausgeschaltet"
 	if w.Install {
-		_, err := a.startSingleJob(ctx, srcWindow, false)
+		err := a.windowWaitLock(ctx, func() error { _, e := a.startSingleJob(ctx, srcWindow, false); return e })
 		if err == nil {
 			return "Update gestartet", true
 		}
@@ -275,9 +306,16 @@ func (a *updateAgent) windowOS(ctx context.Context) (string, bool) {
 		return reason, false
 	}
 	// wie „Prüfen“ im Browser: nie parallel zu apt oder neben einem anderen Auftrag
-	release, busy := a.lockTryExclusive(lockOS)
-	if busy != "" {
-		return lockBusyMsg(busy), false
+	var release func()
+	if err := a.windowWaitLock(ctx, func() error {
+		r, busy := a.lockTryExclusive(lockOSCheck)
+		if busy != "" {
+			return newLockBusy(busy)
+		}
+		release = r
+		return nil
+	}); err != nil {
+		return err.Error(), false
 	}
 	_, err := a.osExec(ctx, "check")
 	a.osClearCache()
@@ -297,7 +335,7 @@ func (a *updateAgent) windowOS(ctx context.Context) (string, bool) {
 	if ss.SecurityCount == 0 {
 		return "Keine Sicherheitsupdates offen", false
 	}
-	if _, err := a.startOSJob(ctx, srcWindow, false); err != nil {
+	if err := a.windowWaitLock(ctx, func() error { _, e := a.startOSJob(ctx, srcWindow, false); return e }); err != nil {
 		return "Betriebssystem-Update nicht gestartet: " + err.Error(), false
 	}
 	return fmt.Sprintf("Betriebssystem-Update gestartet (%d Sicherheitsupdates)", ss.SecurityCount), true

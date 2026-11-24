@@ -67,9 +67,30 @@ func (a *updateAgent) osNetBusy() bool {
 	return p != nil && (p.State == "pending" || p.MaintOffPending)
 }
 
+// osSpaceProblem: reicht der Platz für die Pakete (/var/cache/apt) und den Kernel (/boot)? Leer = ja.
+func (a *updateAgent) osSpaceProblem() string {
+	if n, known := a.freeSpaceFn()("/var/cache/apt"); known && n < osMinFreeApt {
+		return "Zu wenig freier Platz in /var/cache/apt (mindestens 1 GB)"
+	}
+	if n, known := a.freeSpaceFn()("/boot"); known && n < osMinFreeBoot {
+		return "Zu wenig freier Platz in /boot (mindestens 200 MB)"
+	}
+	return ""
+}
+
+// osPreflight: dieselben Hindernisse wie beim Start des Betriebssystem-Auftrags – wartet eine
+// Netz-Änderung auf Bestätigung oder fehlt der Platz? Leer = frei. Der PDH-Auftrag mit Haken prüft
+// das unmittelbar vor dem Stoppen von pdh.
+func (a *updateAgent) osPreflight() string {
+	if a.osNetBusy() {
+		return osNetPendingMsg
+	}
+	return a.osSpaceProblem()
+}
+
 // osJobPut übernimmt den Stand eines Schritts und speichert ihn; ein inzwischen eingegangener
 // Abbruch bleibt erhalten.
-func (a *updateAgent) osJobPut(s osJob) {
+func (a *updateAgent) osJobPut(s osJob) error {
 	a.osj.saveMu.Lock()
 	defer a.osj.saveMu.Unlock()
 	a.osj.mu.Lock()
@@ -81,9 +102,19 @@ func (a *updateAgent) osJobPut(s osJob) {
 	s.Job.Seq = max(cur.Seq, s.Job.Seq) + 1
 	a.osj.job = s
 	a.osj.mu.Unlock()
-	if err := writeStateJSON(osJobFile(), s); err != nil {
+	err := a.writeState(osJobFile(), s)
+	if err != nil {
 		log.Printf("betriebssystem: %s nicht gespeichert: %v", "os-job.json", err)
 	}
+	return err
+}
+
+// writeState schreibt eine Zustandsdatei (Test-Haken stateWrite).
+func (a *updateAgent) writeState(path string, v any) error {
+	if a.stateWrite != nil {
+		return a.stateWrite(path, v)
+	}
+	return writeStateJSON(path, v)
 }
 
 // loadOSJob: beim Start des Agenten; ein offener Auftrag hält die Sperre wieder und läuft weiter.
@@ -169,9 +200,9 @@ func (a *updateAgent) startOSJob(ctx context.Context, source string, force bool)
 	switch busy {
 	case "":
 	case lockPDH:
-		return nil, errors.New("Ein PDH-Update läuft bereits")
+		return nil, &lockBusyError{Owner: lockPDH, Msg: "Ein PDH-Update läuft bereits"}
 	default:
-		return nil, errors.New(lockBusyMsg(busy))
+		return nil, newLockBusy(busy)
 	}
 	held := true
 	defer func() {
@@ -186,14 +217,11 @@ func (a *updateAgent) startOSJob(ctx context.Context, source string, force bool)
 	if err != nil {
 		return nil, err
 	}
-	if len(ss.Upgradable) == 0 {
+	if len(ss.Upgradable) == 0 && !ss.RebootRequired {
 		return nil, errors.New("Keine Pakete zu aktualisieren")
 	}
-	if n, known := a.freeSpaceFn()("/var/cache/apt"); known && n < osMinFreeApt {
-		return nil, errors.New("Zu wenig freier Platz in /var/cache/apt (mindestens 1 GB)")
-	}
-	if n, known := a.freeSpaceFn()("/boot"); known && n < osMinFreeBoot {
-		return nil, errors.New("Zu wenig freier Platz in /boot (mindestens 200 MB)")
+	if msg := a.osSpaceProblem(); msg != "" {
+		return nil, errors.New(msg)
 	}
 	var hints []string
 	configured, baseOK, _ := a.drBackupReport()
@@ -297,7 +325,7 @@ func (a *updateAgent) osJobPrepare(ctx context.Context, s *osJob) {
 		a.osJobFinish(s, ha.UpFailed, "Abgebrochen von "+j.AbortedBy, false)
 		return
 	}
-	persist := func() { a.osJobPut(*s) }
+	persist := func() error { return a.osJobPut(*s) }
 	a.osAdvance(ctx, &s.OS, persist)
 	if ctx.Err() != nil {
 		return
@@ -346,13 +374,18 @@ func (a *updateAgent) osJobLocked(ctx context.Context, s *osJob) {
 		if h := a.osBeforeInstall; h != nil {
 			h()
 		}
-		if aborted := a.osJobBeginInstall(s); aborted != "" {
+		aborted, err := a.osJobBeginInstall(s)
+		switch {
+		case aborted != "":
 			a.osJobAbandon(ctx, s, "Abgebrochen von "+aborted)
+		case err != nil:
+			// ohne gesicherten Stand nichts einspielen: ein Neustart des Agenten würde die Einheit übersehen
+			a.osJobAbandon(ctx, s, osNotSavedMsg+" – nichts eingespielt: "+err.Error())
 		}
 		return
 	}
 	before := s.OS.Step
-	persist := func() { a.osJobPut(*s) }
+	persist := func() error { return a.osJobPut(*s) }
 	done := a.osAdvance(ctx, &s.OS, persist) // wartet der Neustart auf eine Netz-Änderung, steht der Grund in OS.Hold
 	j.Result = s.OS.Hold
 	if done {
@@ -371,7 +404,7 @@ func (a *updateAgent) osJobLocked(ctx context.Context, s *osJob) {
 // osJobBeginInstall schaltet auf „install“ um und entscheidet dabei unteilbar über einen
 // Abbruch (abortOSJob nimmt dieselbe Sperre): entweder gewinnt der Abbruch (Rückgabe: Name,
 // es wird nicht eingespielt) oder er wird danach mit „Abbruch nicht mehr möglich“ abgelehnt.
-func (a *updateAgent) osJobBeginInstall(s *osJob) (abortedBy string) {
+func (a *updateAgent) osJobBeginInstall(s *osJob) (abortedBy string, err error) {
 	a.osj.saveMu.Lock()
 	defer a.osj.saveMu.Unlock()
 	a.osj.mu.Lock()
@@ -379,17 +412,18 @@ func (a *updateAgent) osJobBeginInstall(s *osJob) (abortedBy string) {
 	if cur.Job.ID == s.Job.ID && cur.Job.AbortedBy != "" {
 		a.osj.mu.Unlock()
 		s.Job.AbortedBy = cur.Job.AbortedBy
-		return cur.Job.AbortedBy
+		return cur.Job.AbortedBy, nil
 	}
 	s.OS.Step = "install" // pdh steht schon
 	s.Job.OSStep = "install"
 	s.Job.Seq = max(cur.Job.Seq, s.Job.Seq) + 1
 	a.osj.job = *s
 	a.osj.mu.Unlock()
-	if err := writeStateJSON(osJobFile(), *s); err != nil {
+	if err := a.writeState(osJobFile(), *s); err != nil {
 		log.Printf("betriebssystem: os-job.json nicht gespeichert: %v", err)
+		return "", err
 	}
-	return ""
+	return "", nil
 }
 
 // osJobAbandon: Fehler vor dem Einspielen – Datenbank unverändert, Sperr-Vermerk weg, pdh wieder an.

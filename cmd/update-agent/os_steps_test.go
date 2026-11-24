@@ -32,6 +32,8 @@ type osStepsEnv struct {
 	fake   *osFake
 	boot   atomic.Value // string
 	pers   int
+	// persErr: schlägt das n-te Speichern (ab 1) fehl? nil = nie
+	persErr func(n int) error
 }
 
 // osStepsAgent: 3 Pakete; nach „install“ meldet „status“ rebootAfter.
@@ -52,7 +54,14 @@ func osStepsAgent(t *testing.T, pkgs int, rebootAfter bool) *osStepsEnv {
 	return e
 }
 
-func (e *osStepsEnv) persist() { e.pers++; e.rec.add("persist", nil) }
+func (e *osStepsEnv) persist() error {
+	e.pers++
+	e.rec.add("persist", nil)
+	if e.persErr != nil {
+		return e.persErr(e.pers)
+	}
+	return nil
+}
 
 // run: Schleife mit Obergrenze; Uhr +1 min je Runde; hook je Runde (optional).
 func (e *osStepsEnv) run(t *testing.T, st *osSteps, each func(round int)) {

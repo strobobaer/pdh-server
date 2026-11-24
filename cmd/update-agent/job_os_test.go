@@ -181,7 +181,7 @@ func TestSingleJobWithOSInstallFails(t *testing.T) {
 	}
 	runPDHJob(t, e, 60)
 	v := e.a.jobView()
-	if v.Phase != string(ha.UpDone) || !strings.Contains(v.Result, "Betriebssystem nicht aktualisiert") ||
+	if v.Phase != string(ha.UpDone) || !strings.Contains(v.Result, "Achtung: Betriebssystem-Teil fehlgeschlagen") ||
 		!strings.Contains(v.Result, "Update auf 0.77.9 abgeschlossen") {
 		t.Fatalf("Ende: %+v", v)
 	}
@@ -245,7 +245,9 @@ func TestSingleJobAbortDuringOS(t *testing.T) {
 func TestSingleJobWithOSRebootWaitsForNet(t *testing.T) {
 	e := pdhOSEnv(t, 3, true)
 	a := e.a
-	netWriteState(t, a, "state=pending\nid=x\n")
+	// die Netz-Änderung kommt erst während des Einspielens (vorher hält der PDH-Auftrag den OS-Teil an, siehe F4)
+	inner := e.fake.onInstall
+	e.fake.onInstall = func() { inner(); netWriteState(t, a, "state=pending\nid=x\n") }
 	if _, err := a.startSingleJob(context.Background(), srcButton, false); err != nil {
 		t.Fatal(err)
 	}
@@ -282,14 +284,15 @@ func TestSingleJobWithOSRebootWaitsForNet(t *testing.T) {
 
 	// Frist: bleibt die Änderung offen, endet der Auftrag ohne Neustart; das PDH-Update bleibt gültig
 	e2 := pdhOSEnv(t, 3, true)
-	netWriteState(t, e2.a, "state=pending\nid=x\n")
+	inner2 := e2.fake.onInstall
+	e2.fake.onInstall = func() { inner2(); netWriteState(t, e2.a, "state=pending\nid=x\n") }
 	if _, err := e2.a.startSingleJob(context.Background(), srcButton, false); err != nil {
 		t.Fatal(err)
 	}
 	runPDHJob(t, e2, 120)
 	v := e2.a.jobView()
 	all := e2.rec.all()
-	if v.Phase != string(ha.UpDone) || !strings.Contains(v.Result, "Betriebssystem nicht aktualisiert") ||
+	if v.Phase != string(ha.UpDone) || !strings.Contains(v.Result, "Achtung: Betriebssystem-Teil fehlgeschlagen") ||
 		!strings.Contains(v.Result, "Eine Netz-Änderung wartet auf Bestätigung") ||
 		strings.Contains(all, "| reboot") || !strings.Contains(all, "start-pdh") || len(e2.a.windowSnapshot().Faulty) != 0 {
 		t.Fatalf("Frist: %+v / %s", v, all)

@@ -114,7 +114,7 @@ func TestOSCardRender(t *testing.T) {
 	// Verbund
 	h, _ = osHandler(t, `{"ok":true,"available":false,"reason":"Verbund","cluster":true,"packages":[],"reboot_pkgs":[]}`)
 	out = osRender(t, h)
-	if !strings.Contains(out, "Im Verbund folgt das Betriebssystem-Update mit Teil B") || strings.Contains(out, "os-update/install") {
+	if !strings.Contains(out, "Im Verbund kommt das Betriebssystem-Update mit einer späteren Version") || strings.Contains(out, "os-update/install") {
 		t.Errorf("Verbund: Hinweis oder Knöpfe falsch")
 	}
 	// Agent zu alt (404): Hinweis, Seite rendert

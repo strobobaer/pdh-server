@@ -429,6 +429,9 @@ func (h *Handler) checkUpdateIfDue(ctx context.Context) {
 	}
 	last, _ := time.Parse(time.RFC3339, h.getUpdateSetting(ctx, "update_last_checked_at", ""))
 	stale := !h.loadUpdateCheck(ctx).current(h.buildCommit, updateBranch())
+	// Betriebssystem: eigene Fälligkeit, unabhängig vom GitHub-Ergebnis (ohne Internet scheitert GitHub
+	// bei jedem Takt; apt update darf trotzdem höchstens einmal je Intervall laufen)
+	defer h.osAutoCheckIfDue(ctx, enabled, interval)
 	if !updateCheckDue(enabled, stale, last, interval, time.Now()) {
 		return
 	}
@@ -439,8 +442,6 @@ func (h *Handler) checkUpdateIfDue(ctx context.Context) {
 	if err := check(ctx); err != nil {
 		fmt.Printf("update check failed: %v\n", err)
 	}
-	// Betriebssystem im selben Takt prüfen (Fehler nur ins Protokoll; ein GitHub-Fehler hält nicht auf)
-	h.osAutoCheck(ctx)
 }
 
 // updateCheckDue: automatische Prüfung jetzt fällig? Nach einem Update (anderer

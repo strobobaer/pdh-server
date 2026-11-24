@@ -20,6 +20,7 @@ import (
 const (
 	permOSUpdate    = "system.os_update"
 	keyOSLastLogged = "os_update_last_logged" // letzter protokollierter Lauf (Zeitstempel des Agenten)
+	keyOSCheckAt    = "os_check_last_at"      // letzter Versuch der automatischen Betriebssystem-Prüfung (RFC 3339)
 )
 
 // Zeitgrenzen der Agent-Anfragen (Tests verkürzen sie)
@@ -104,7 +105,7 @@ func osAbortPhase(phase string) bool {
 // osUpdateViewFor stellt die Karte zusammen. Fehler des Agenten stehen in Err – die Seite rendert immer.
 func (h *Handler) osUpdateViewFor(ctx context.Context, r *http.Request) *osView {
 	lang := h.requestLang(r)
-	v := &osView{CanAct: h.hasPerm(r, permOSUpdate)}
+	v := &osView{CanAct: h.osMayAct(r)}
 	if !h.driveAgentConfigured() {
 		v.Err = tr(lang, "Der Update-Agent ist nicht eingerichtet.")
 		return v
@@ -126,6 +127,10 @@ func (h *Handler) osUpdateViewFor(ctx context.Context, r *http.Request) *osView 
 		return v
 	}
 	v.Available, v.Reason, v.Cluster, v.Docker, v.ScriptOutdated = st.Available, st.Reason, st.Cluster, st.Docker, st.ScriptOutdated
+	if st.Cluster {
+		// Text der Karte in der Sprache der Sitzung (der Agent liefert nur deutschen Text)
+		v.Reason = tr(lang, "Im Verbund kommt das Betriebssystem-Update mit einer späteren Version.")
+	}
 	v.System, v.Kernel, v.CheckedAt = st.System, st.Kernel, osShowTime(st.CheckedAt)
 	v.PackageCount, v.SecurityCount = st.PackageCount, st.SecurityCount
 	v.RebootRequired, v.RebootPkgs, v.WithPDHUpdate = st.RebootRequired, st.RebootPkgs, st.WithPDHUpdate
@@ -149,6 +154,21 @@ func (h *Handler) osUpdateViewFor(ctx context.Context, r *http.Request) *osView 
 		}
 	}
 	return v
+}
+
+// osEverywhere: das Recht gilt überall. Ein nur in einer Abteilung vergebenes Recht zählt nicht – das
+// Betriebssystem-Update wirkt auf den ganzen Server (meldet alle ab, stoppt pdh, startet neu).
+func (h *Handler) osEverywhere(r *http.Request, perm string) bool {
+	if h.osAllHook != nil {
+		return h.osAllHook(r, perm)
+	}
+	return h.maintMayWindow(r, perm)
+}
+
+// osMayAct: Betriebssystem prüfen, aktualisieren, Haken setzen – Rollenverwaltung (wie die Seite) und
+// system.os_update, beide überall.
+func (h *Handler) osMayAct(r *http.Request) bool {
+	return h.osEverywhere(r, "system.manage_roles") && h.osEverywhere(r, permOSUpdate)
 }
 
 // osMayAbort: Recht „Automatische Wartung abbrechen“ (überall) – wie der Abbruch-Knopf im Band.
@@ -179,7 +199,24 @@ func (h *Handler) osLogLastRun(ctx context.Context, lr *osAgentLastRun) {
 		Msg("Betriebssystem aktualisiert: " + strconv.Itoa(lr.Packages) + " Pakete, Neustart " + neustart)
 }
 
-// osAutoCheck: tägliche Prüfung im Takt der GitHub-Prüfung; Fehler nur ins Protokoll.
+// osAutoCheckIfDue: höchstens eine automatische Prüfung je Intervall; der Versuch zählt auch bei einem
+// Fehler (der Stempel steht vor dem Aufruf).
+func (h *Handler) osAutoCheckIfDue(ctx context.Context, enabled bool, intervalHours int) {
+	if !enabled {
+		return
+	}
+	last, _ := time.Parse(time.RFC3339, h.getUpdateSetting(ctx, keyOSCheckAt, ""))
+	now := time.Now()
+	if !last.IsZero() && now.Sub(last) < time.Duration(intervalHours)*time.Hour {
+		return
+	}
+	if err := h.setUpdateSetting(ctx, keyOSCheckAt, now.UTC().Format(time.RFC3339)); err != nil {
+		return // ohne gemerkten Versuch nicht in jedem Takt wiederholen
+	}
+	h.osAutoCheck(ctx)
+}
+
+// osAutoCheck: automatische Prüfung (osAutoCheckIfDue); Fehler nur ins Protokoll.
 func (h *Handler) osAutoCheck(ctx context.Context) {
 	if !h.driveAgentConfigured() {
 		return
@@ -203,8 +240,8 @@ func osNotice(w http.ResponseWriter, r *http.Request, msg string) {
 // osGuard: Recht prüfen (die Gate-Regel tut dasselbe vor dem Handler) und Agent verlangen.
 func (h *Handler) osGuard(w http.ResponseWriter, r *http.Request) (lang string, ok bool) {
 	lang = h.requestLang(r)
-	// wie die Seite (system.manage_roles) und zusätzlich das eigene Recht
-	if !h.canManageRoles(r) || !h.hasPerm(r, permOSUpdate) {
+	// wie die Seite (system.manage_roles) und zusätzlich das eigene Recht – beide gelten für den ganzen Server
+	if !h.osMayAct(r) {
 		http.Error(w, tr(lang, "Keine Berechtigung"), http.StatusForbidden)
 		return lang, false
 	}
@@ -228,7 +265,20 @@ func (h *Handler) OSUpdateCheckWeb(w http.ResponseWriter, r *http.Request) {
 		osNotice(w, r, tr(lang, "Betriebssystem-Prüfung fehlgeschlagen: %s", err.Error()))
 		return
 	}
-	if st.PackageCount == 0 {
+	// „aktuell“ nur nach einer wirklich ausgewerteten Prüfung: der Agent antwortet auch bei veraltetem
+	// Skript oder unlesbarem Status mit 200 und leerer Paketliste
+	switch {
+	case !st.Available || st.ScriptOutdated:
+		reason := strings.TrimSpace(st.Reason)
+		if reason == "" {
+			reason = tr(lang, "Der Stand konnte nicht gelesen werden.")
+		}
+		osNotice(w, r, tr(lang, "Betriebssystem-Prüfung nicht ausgewertet: %s", reason))
+		return
+	case strings.TrimSpace(st.CheckedAt) == "":
+		osNotice(w, r, tr(lang, "Betriebssystem-Prüfung nicht bestätigt: Es gibt keinen Zeitpunkt der letzten Prüfung. Bitte später noch einmal prüfen."))
+		return
+	case st.PackageCount == 0:
 		osNotice(w, r, tr(lang, "Das Betriebssystem ist aktuell."))
 		return
 	}

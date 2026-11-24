@@ -409,6 +409,8 @@ type Handler struct {
 	esppdhB          esppdhBatchState
 	esppdhFwLocks    sync.Map // je Netz eine Sperre für „Freigabe in UniFi anlegen“ (esppdh_fw.go)
 	esppdhOTAAllHook func(*http.Request) bool
+	// Betriebssystem-Update (os_updates.go): ersetzt in Tests die Prüfung „Recht gilt überall“
+	osAllHook func(r *http.Request, perm string) bool
 	// ESPPDH (esppdh_update.go): ESPHome täglich prüfen, proben und umschalten. Adresse der
 	// Versionsliste (leer = pypi.org), Prüfer mit einem bestimmten Programm (nil = esppdh.Runner),
 	// höchstens ein Lauf zur Zeit (Takt und Knopf „Jetzt prüfen“), Uhr (nil = time.Now)

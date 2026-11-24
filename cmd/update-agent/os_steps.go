@@ -19,6 +19,8 @@ import (
 
 const osBootWait = 20 * time.Minute // Warten auf das Hochfahren nach dem Neustart
 
+const osNotSavedMsg = "Zustand konnte nicht gespeichert werden"
+
 // osSteps: Zustand des Auftrags (wird als JSON gesichert).
 type osSteps struct {
 	Step     string    `json:"step"`
@@ -29,6 +31,9 @@ type osSteps struct {
 	Failed   bool      `json:"failed"`
 	Msg      string    `json:"msg"`  // Fehlertext bzw. Ergebnis („3 Pakete, Neustart ja“)
 	Unit     string    `json:"unit"` // Name der Einheit von „install“ (Wiederaufnahme)
+	// Touched: der Betriebssystem-Teil hat pdh gestoppt bzw. am System etwas getan; ein Fehler danach
+	// ist „fehlgeschlagen“, davor „nicht aktualisiert“ (Ergebnistext des PDH-Auftrags)
+	Touched bool `json:"touched,omitempty"`
 
 	// Neustart wartet auf eine Netz-Änderung: seit wann, und der Grund für die Anzeige
 	NetHoldAt time.Time `json:"net_hold_at,omitzero"`
@@ -53,18 +58,18 @@ func (st *osSteps) fail(msg string) {
 
 // failAfterInstall: Fehler nach erfolgreichem Einspielen; das Paketergebnis bleibt stehen.
 func (st *osSteps) failAfterInstall(msg string) {
-	st.Failed = true
+	st.Failed, st.Touched = true, true
 	st.Msg = fmt.Sprintf("%d Pakete eingespielt; %s", st.Pending, msg)
 }
 
 // osInstallWait: weiter auf die Einheit von „install“ warten (false) – höchstens
 // osInstallTimeout plus 15 Minuten; danach Fehler und pdh wird wieder gestartet. Die Einheit
 // bleibt in st.Unit vermerkt (die Sperre bleibt, bis sie endet).
-func (a *updateAgent) osInstallWait(st *osSteps, persist func()) bool {
+func (a *updateAgent) osInstallWait(st *osSteps, persist func() error) bool {
 	if st.StepAt.IsZero() {
 		// gesicherter Stand ohne Beginn (ältere Datei): ab jetzt zählen, nicht sofort abbrechen
 		st.StepAt = a.now()
-		persist()
+		_ = persist() // nur die Frist; ein Fehler ist protokolliert, das Warten bleibt unverändert
 		return false
 	}
 	if a.now().Sub(st.StepAt) >= osInstallTimeout+15*time.Minute {
@@ -76,7 +81,7 @@ func (a *updateAgent) osInstallWait(st *osSteps, persist func()) bool {
 
 // osAdvance führt höchstens einen Schritt aus. true = beendet (Step=="done"; bei Failed ist
 // pdh wieder gestartet).
-func (a *updateAgent) osAdvance(ctx context.Context, st *osSteps, persist func()) (done bool) {
+func (a *updateAgent) osAdvance(ctx context.Context, st *osSteps, persist func() error) (done bool) {
 	switch st.Step {
 	case "done":
 		return true
@@ -108,18 +113,29 @@ func (a *updateAgent) osAdvance(ctx context.Context, st *osSteps, persist func()
 			return true
 		}
 		st.Pending = len(ss.Upgradable)
-		if st.Pending == 0 {
+		if st.Pending == 0 && !ss.RebootRequired {
 			st.Msg, st.Step = "Keine Pakete zu aktualisieren", "done"
 			return true
 		}
+		// auch „Neustart nötig“ ohne offene Pakete ist Arbeit (z. B. nach einem Einspielen von Hand):
+		// geordnet pdh stoppen, neu starten, prüfen – ohne „install“
 		st.Step = "stop"
 
 	case "stop":
+		// nur der PDH-Auftrag mit Haken kommt hierher (der Betriebssystem-Auftrag stoppt pdh selbst und
+		// hat Netz und Platz beim Start geprüft): ohne diese Prüfung bliebe pdh bei einer wartenden
+		// Netz-Änderung (Bestätigen geht dann nicht) oder zu wenig Platz mitten im Einspielen gestoppt
+		if why := a.osPreflight(); why != "" {
+			st.fail(why)
+			st.Step = "done" // pdh läuft weiter, nichts gestoppt
+			return true
+		}
 		if err := a.jobStopPDH(ctx); err != nil {
 			st.fail("pdh nicht gestoppt: " + err.Error())
 			st.Step = "start"
 			return false
 		}
+		st.Touched = true
 		st.Step = "install"
 
 	case "install":
@@ -136,9 +152,21 @@ func (a *updateAgent) osAdvance(ctx context.Context, st *osSteps, persist func()
 				return false
 			}
 		}
+		st.Touched = true
+		if st.Pending == 0 {
+			// nur ein Neustart ist offen: keine Pakete einspielen
+			st.Msg, st.Step = "0 Pakete, Neustart ja", "reboot"
+			return false
+		}
 		st.Unit = a.osNewUnit("install")
 		st.StepAt = a.now() // Beginn der Frist für das Warten auf die Einheit
-		persist()
+		if err := persist(); err != nil {
+			// ohne gesicherten Stand würde ein Neustart des Agenten die laufende Einheit übersehen
+			st.Unit = ""
+			st.fail(osNotSavedMsg + " – kein Einspielen: " + err.Error())
+			st.Step = "start"
+			return false
+		}
 		out, err := a.osExecUnit(ctx, "install", st.Unit)
 		if err != nil {
 			var ur *osUnitRunning
@@ -194,7 +222,13 @@ func (a *updateAgent) osAdvance(ctx context.Context, st *osSteps, persist func()
 			return false
 		}
 		st.BootID, st.StepAt, st.Step = id, a.now(), "boot"
-		persist() // vor dem Neustart: danach gibt es den Agenten nicht mehr
+		// vor dem Neustart sichern: danach gibt es den Agenten nicht mehr; sonst folgt nach dem Start ein zweiter Neustart
+		if err := persist(); err != nil {
+			st.BootID = ""
+			st.failAfterInstall(osNotSavedMsg + " – kein Neustart: " + err.Error())
+			st.Step = "start"
+			return false
+		}
 		if err := a.jobHost(ctx, jobRebootScript, nil); err != nil {
 			st.failAfterInstall("Neustart fehlgeschlagen: " + err.Error())
 			st.Step = "start"

@@ -79,6 +79,8 @@ type updateAgent struct {
 	osUnitActive    func(ctx context.Context, unit string) bool              // nil = systemctl is-active; Test-Haken
 	bootID          func() string                                            // nil = /proc/sys/kernel/random/boot_id; Test-Haken
 	updRelease      func()                                                   // Sperre des laufenden PDH-Updates (a.mu)
+	osOutDir        string                                                   // Ausgabeordner der Einheiten; leer = /run/pdh-os; Test-Haken
+	stateWrite      func(path string, v any) error                           // nil = writeStateJSON; Test-Haken
 }
 
 type limitedBuffer struct {
@@ -277,12 +279,23 @@ func (a *updateAgent) updateHandler(w http.ResponseWriter, r *http.Request) {
 			writeUpdateJSON(w, http.StatusConflict, map[string]string{"error": "Ein Update-Auftrag läuft bereits"})
 			return
 		}
-		if running, ok := a.startUpdate(req.target(), req.op()); !ok {
-			if !running.Running {
-				// nicht der Lauf selbst, sondern ein anderer Auftrag hält die gemeinsame Sperre
-				writeUpdateJSON(w, http.StatusConflict, map[string]string{"error": lockBusyMsg(a.lockHolder())})
-				return
+		// Hält ein anderer Auftrag die gemeinsame Sperre kurz (Prüfung, ESPHome, Netz), wird bis zu
+		// 20 s abgewartet (pdh-ha fragt mit 30 s Frist); danach kommt 423 mit dem Besitzer in der Meldung
+		// – nie ein 409 ohne Stand, das pdh-ha als eigenen Lauf missdeuten würde.
+		var running jobStatus
+		var ok bool
+		err := a.waitShortLock(r.Context(), updateLockTries, updateLockStep, func() error {
+			running, ok = a.startUpdateNew(req.target(), req.op())
+			if ok || running.Running {
+				return nil
 			}
+			return newLockBusy(a.lockHolder())
+		})
+		if err != nil {
+			writeUpdateJSON(w, http.StatusLocked, map[string]string{"error": err.Error()})
+			return
+		}
+		if !ok {
 			// Art und Ziel des laufenden Laufs: pdh-ha wartet nur auf das eigene Ergebnis
 			writeUpdateJSON(w, http.StatusConflict, map[string]string{"error": "Update läuft bereits", "commit": running.Commit, "op": running.Op})
 			return

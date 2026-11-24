@@ -108,7 +108,7 @@ letzter Lauf: 24.11.2026 16:41 – 19 Pakete, Neustart, ok
 ### Wartungsfenster
 
 - Ist der Haken gesetzt und spielt das Wartungsfenster ein PDH-Update ein, kommen die Pakete mit (wie Knopf mit Haken).
-- Ist der Haken gesetzt, steht **kein** PDH-Update an und sind **Sicherheitsupdates** offen, startet das Wartungsfenster einen Auftrag „Betriebssystem“ (Entscheidung des Anwenders, siehe „Bestätigung“). Gehört zu Teil A (Einzelserver) bzw. Teil B (Verbund).
+- Ist der Haken gesetzt, steht **kein** PDH-Update an und sind **Sicherheitsupdates** offen, startet das Wartungsfenster einen Auftrag „Betriebssystem“ (Entscheidung des Anwenders, siehe „Bestätigung“). Gehört zu Teil A (Einzelserver) bzw. Teil B (Verbund). **Umfang (Anwender, 24.11.2026, Schlussprüfung: „Dann alle offenen Pakete“):** Sind Sicherheitsupdates offen, spielt das Fenster **alle offenen Pakete** ein (`upgrade --with-new-pkgs`), nicht nur die Sicherheitsupdates; die Sicherheitsupdates sind nur der Auslöser.
 
 ## Tests
 
@@ -144,4 +144,6 @@ Namen der Go-Typen und Dateien (Vorschlag: `cmd/update-agent/os_update.go`, `int
 
 ## Bestätigung
 
-Vom Anwender am 24.11.2026 bestätigt („Passt“). Frage zum Wartungsfenster entschieden: **„Ja, bei Sicherheitsupdates“** – ist der Haken gesetzt und sind Sicherheitsupdates offen, spielt das Wartungsfenster sie auch ohne PDH-Update ein (Einzelserver: Auftrag „Betriebssystem“; Verbund: Art „Betriebssystem“), mit Neustart nach denselben Regeln. Andere offene Pakete ohne Sicherheitsupdate warten auf das nächste PDH-Update oder den Knopf.
+Vom Anwender am 24.11.2026 bestätigt („Passt“). Frage zum Wartungsfenster entschieden: **„Ja, bei Sicherheitsupdates“** – ist der Haken gesetzt und sind Sicherheitsupdates offen, spielt das Wartungsfenster sie auch ohne PDH-Update ein (Einzelserver: Auftrag „Betriebssystem“; Verbund: Art „Betriebssystem“), mit Neustart nach denselben Regeln. ~~Andere offene Pakete ohne Sicherheitsupdate warten auf das nächste PDH-Update oder den Knopf.~~
+
+**Geändert am 24.11.2026 (Entscheidung des Anwenders in der Schlussprüfung, Zitat: „Dann alle offenen Pakete“):** Sind Sicherheitsupdates offen, spielt das Wartungsfenster mit Haken **alle offenen Pakete** ein; ohne offene Sicherheitsupdates startet das Fenster keinen Betriebssystem-Auftrag. Weitere Festlegungen der Schlussprüfung: „Neustart nötig“ ohne offene Pakete ist Arbeit für Knopf und Haken (geordneter Neustart; das Fenster startet weiter nur bei Sicherheitsupdates); der PDH-Auftrag mit Haken prüft Netz-Änderung und Platz, bevor er pdh stoppt; `system.os_update` und `system.manage_roles` müssen für die Karte überall gelten; ein neuer PDH-Auftrag nimmt die gemeinsame Sperre exklusiv.

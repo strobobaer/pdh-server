@@ -195,7 +195,7 @@ func TestOSJobRefusals(t *testing.T) {
 		{"Verbund", func(t *testing.T, e *osStepsEnv) {
 			haInstalled(t)
 			haFakeSocket(t, `{"ok":true,"configured":true,"mode":"duo","self":{"id":"a","role":"aktiv"}}`)
-		}, "Teil B", true},
+		}, "späteren Version", true},
 		{"keine Pakete", func(t *testing.T, e *osStepsEnv) { e.fake.statusOut = osStepsStatus(0, false) }, "Keine Pakete zu aktualisieren", true},
 		{"Platz apt", func(t *testing.T, e *osStepsEnv) {
 			e.a.freeSpace = func(p string) (int64, bool) {

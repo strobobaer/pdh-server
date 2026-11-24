@@ -4,7 +4,8 @@ package main
 // mit aktualisieren“ und die gemeinsame Sperre aller Aufträge des Agenten.
 //
 // apt, das Skript und der Neustart laufen nie im Agenten selbst, sondern über
-// „systemd-run --wait --pipe --collect --quiet“ außerhalb der Sandbox des Agenten
+// „systemd-run --wait --collect --quiet“ (Ausgabe in eine Datei unter /run/pdh-os, nie über eine
+// Pipe an den Agenten) außerhalb der Sandbox des Agenten
 // (/usr/local/sbin/pdh-os-update, scripts/pdh-os-update, von install_update.sh installiert).
 
 import (
@@ -12,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -30,6 +32,7 @@ import (
 // Besitzer der gemeinsamen Sperre; die Meldung an den Anwender nennt den Besitzer.
 const (
 	lockOS      = "Betriebssystem-Update"
+	lockOSCheck = "Betriebssystem-Prüfung"
 	lockPDH     = "PDH-Update"
 	lockESPHome = "ESPHome-Einrichtung"
 	lockNet     = "Netzwerk-Änderung"
@@ -45,7 +48,7 @@ const (
 	osInstallTimeout  = 45 * time.Minute
 	osStatusCacheTTL  = 20 * time.Second
 	osMaxPackages     = 200
-	osClusterMsg      = "Im Verbund folgt das Betriebssystem-Update mit Teil B"
+	osClusterMsg      = "Im Verbund kommt das Betriebssystem-Update mit einer späteren Version"
 	osOutdatedMsg     = "Das Betriebssystem-Skript ist veraltet oder fehlt – es wird mit dem nächsten PDH-Update erneuert"
 	osBusyOSMsg       = "Ein Betriebssystem-Update läuft – bitte danach erneut versuchen"
 	osStateFileName   = "os-state.json"
@@ -178,12 +181,30 @@ func lockBusyMsg(owner string) string {
 		return "Ein PDH-Update läuft – bitte danach erneut versuchen"
 	case lockOS:
 		return osBusyOSMsg
+	case lockOSCheck:
+		return "Eine Betriebssystem-Prüfung läuft gerade – bitte kurz warten"
 	case lockESPHome:
 		return "Die ESPHome-Einrichtung läuft – bitte danach erneut versuchen"
 	case lockNet:
 		return "Eine Netzwerk-Änderung läuft – bitte danach erneut versuchen"
 	}
 	return "Ein anderer Auftrag läuft – bitte danach erneut versuchen"
+}
+
+// lockBusyError: die gemeinsame Sperre gehört einem anderen Besitzer (Meldung = lockBusyMsg bzw. eine
+// genauere Fassung). Das Wartungsfenster unterscheidet kurze von langen Besitzern (lockShort).
+type lockBusyError struct{ Owner, Msg string }
+
+func (e *lockBusyError) Error() string { return e.Msg }
+
+func newLockBusy(owner string) *lockBusyError {
+	return &lockBusyError{Owner: owner, Msg: lockBusyMsg(owner)}
+}
+
+// lockShort: Besitzer, die die Sperre nur kurz halten (Prüfung, ESPHome-Einrichtung, Netz-Änderung) –
+// das Wartungsfenster und das Verbund-Update warten darauf; ein laufender Auftrag dauert zu lange.
+func lockShort(owner string) bool {
+	return owner == "" || owner == lockOSCheck || owner == lockESPHome || owner == lockNet
 }
 
 // ── Zustand ───────────────────────────────────────────────────────────────
@@ -255,6 +276,21 @@ func (a *updateAgent) osCommand(name string, args ...string) *exec.Cmd {
 	return exec.Command(name, args...)
 }
 
+// osOutDirDefault: Ausgabeordner der Einheiten (in /run, für den Agenten beschreibbar: ReadWritePaths).
+const osOutDirDefault = "/run/pdh-os"
+
+func (a *updateAgent) osOutDirPath() string {
+	if a.osOutDir != "" {
+		return a.osOutDir
+	}
+	return osOutDirDefault
+}
+
+// osOutFile: Ausgabedatei der Einheit unit.
+func (a *updateAgent) osOutFile(unit string) string {
+	return filepath.Join(a.osOutDirPath(), unit+".out")
+}
+
 // osExec führt das Skript aus (nur check, install, status) – über systemd-run außerhalb der
 // Sandbox des Agenten. Rückgabe: Ausgabe (stdout und stderr) und Fehler.
 func (a *updateAgent) osExec(ctx context.Context, action string) ([]byte, error) {
@@ -281,10 +317,23 @@ func (a *updateAgent) osExecUnit(ctx context.Context, action, unit string) ([]by
 	if unit == "" {
 		unit = a.osNewUnit(action)
 	}
-	cmd := a.osCommand("systemd-run", "--wait", "--pipe", "--collect", "--quiet",
-		"--unit="+unit, osScriptPath, action)
-	out := &limitedBuffer{}
-	cmd.Stdout, cmd.Stderr = out, out
+	// Kein „--pipe“: die Ausgabe der Einheit geht in eine Datei, nie über eine Pipe an den Agenten.
+	// So hängt apt nicht am Agenten (Neustart oder Absturz des Agenten kappt keine Pipe, SIGPIPE
+	// trifft apt/dpkg nie) und eine Frist des Aufrufs wird nicht von offenen Pipes aufgehalten.
+	dir := a.osOutDirPath()
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return nil, fmt.Errorf("Ausgabeordner %s: %w", dir, err)
+	}
+	_ = os.Chmod(dir, 0o700)
+	a.osCleanOutDir(dir)
+	outFile := a.osOutFile(unit)
+	_ = os.Remove(outFile)
+	cmd := a.osCommand("systemd-run", "--wait", "--collect", "--quiet",
+		"--unit="+unit,
+		"-p", "StandardOutput=append:"+outFile, "-p", "StandardError=inherit",
+		osScriptPath, action)
+	cmd.Stdout, cmd.Stderr = nil, nil
+	cmd.WaitDelay = osWaitDelay
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}
@@ -292,17 +341,64 @@ func (a *updateAgent) osExecUnit(ctx context.Context, action, unit string) ([]by
 	go func() { done <- cmd.Wait() }()
 	select {
 	case err := <-done:
-		return out.Bytes(), err
+		return a.osTakeOutput(outFile), err
 	case <-ctx.Done():
 		// nur der systemd-run-Aufruf endet; die Einheit läuft zu Ende (apt nie halb abbrechen)
 		_ = cmd.Process.Kill()
-		<-done
+		select {
+		case <-done:
+		case <-time.After(osWaitDelay + 5*time.Second):
+			// der Aufruf kehrt nicht zurück: nicht darauf warten, die Einheit entscheidet
+		}
 		actx, acancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer acancel()
 		if a.osUnitIsActive(actx, unit) {
-			return out.Bytes(), &osUnitRunning{Unit: unit, Action: action}
+			return osReadTail(outFile), &osUnitRunning{Unit: unit, Action: action} // Datei bleibt: die Einheit schreibt noch
 		}
-		return out.Bytes(), fmt.Errorf("Zeitüberschreitung: %w", ctx.Err())
+		return a.osTakeOutput(outFile), fmt.Errorf("Zeitüberschreitung: %w", ctx.Err())
+	}
+}
+
+const (
+	osWaitDelay   = 5 * time.Second // nach dem Ende des Aufrufs: höchstens so lange auf Reste warten
+	osOutMax      = 1 << 20         // so viel der Ausgabedatei lesen (der Schluss zählt)
+	osOutKeepTime = 24 * time.Hour  // Ausgabedateien älter als das werden aufgeräumt
+)
+
+// osReadTail liest höchstens die letzten osOutMax Byte der Ausgabedatei (leer, wenn es sie nicht gibt).
+func osReadTail(path string) []byte {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil
+	}
+	defer f.Close()
+	if fi, err := f.Stat(); err == nil && fi.Size() > osOutMax {
+		_, _ = f.Seek(fi.Size()-osOutMax, io.SeekStart)
+	}
+	b, _ := io.ReadAll(io.LimitReader(f, osOutMax))
+	return b
+}
+
+// osTakeOutput liest die Ausgabedatei einer beendeten Einheit und räumt sie auf.
+func (a *updateAgent) osTakeOutput(path string) []byte {
+	b := osReadTail(path)
+	_ = os.Remove(path)
+	return b
+}
+
+// osCleanOutDir entfernt alte Ausgabedateien (Reste von Einheiten, die ohne Aufräumen endeten).
+func (a *updateAgent) osCleanOutDir(dir string) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasPrefix(e.Name(), "pdh-os-") || !strings.HasSuffix(e.Name(), ".out") {
+			continue
+		}
+		if fi, err := e.Info(); err == nil && time.Since(fi.ModTime()) > osOutKeepTime {
+			_ = os.Remove(filepath.Join(dir, e.Name()))
+		}
 	}
 }
 
@@ -331,6 +427,7 @@ func (a *updateAgent) osWaitUnit(unit string, release func()) {
 			active := a.osUnitIsActive(ctx, unit)
 			cancel()
 			if !active {
+				_ = os.Remove(a.osOutFile(unit))
 				return
 			}
 		}
@@ -509,7 +606,7 @@ func (a *updateAgent) osCheckHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	// nicht wiederholbar: ein zweites Prüfen (oder ein Prüfen neben dem Betriebssystem-Auftrag)
 	// darf nie parallel zu apt laufen
-	release, busy := a.lockTryExclusive(lockOS)
+	release, busy := a.lockTryExclusive(lockOSCheck)
 	if busy != "" {
 		osRefuse(w, http.StatusConflict, lockBusyMsg(busy))
 		return

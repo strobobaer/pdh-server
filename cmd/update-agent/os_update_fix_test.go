@@ -132,7 +132,7 @@ func TestOSCheckKeepsLockWhileUnitActive(t *testing.T) {
 	if code != http.StatusBadGateway || !strings.Contains(m["error"].(string), "läuft noch") {
 		t.Fatalf("%d %v", code, m)
 	}
-	if h := a.lockHolder(); h != lockOS {
+	if h := a.lockHolder(); h != lockOSCheck {
 		t.Fatalf("Sperre muss bleiben, Besitzer %q", h)
 	}
 	if c, _ := osServe(t, a, http.MethodPost, "/v1/os/check", "", true); c != http.StatusConflict {
@@ -192,7 +192,11 @@ func TestOSUnitNamesUnique(t *testing.T) {
 	a.osRun = nil
 	seen := map[string]bool{}
 	a.osCmd = func(name string, args ...string) *exec.Cmd {
-		seen[args[4]] = true
+		for _, x := range args {
+			if strings.HasPrefix(x, "--unit=") {
+				seen[x] = true
+			}
+		}
 		return exec.Command(os.Args[0], "-test.run=NONE")
 	}
 	for i := 0; i < 5; i++ {
