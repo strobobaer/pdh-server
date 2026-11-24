@@ -17,9 +17,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"pdh/internal/ha"
@@ -101,6 +103,8 @@ type osRuntime struct {
 	cacheOK bool
 	state   osState
 	saveMu  sync.Mutex
+
+	unitSeq atomic.Uint64 // Zähler für eindeutige Einheitsnamen
 }
 
 func osStateFile() string { return filepath.Join(drStateDir(), osStateFileName) }
@@ -110,10 +114,14 @@ func osStateFile() string { return filepath.Join(drStateDir(), osStateFileName) 
 // lockAcquire nimmt die gemeinsame Sperre. Derselbe Besitzer darf mehrfach (Zähler); ein
 // anderer bekommt busyBy = Name des Besitzers. release ist mehrfach rufbar, zählt aber einmal.
 func (a *updateAgent) lockAcquire(owner string) (release func(), busyBy string) {
+	return a.lockTake(owner, false)
+}
+
+func (a *updateAgent) lockTake(owner string, exclusive bool) (release func(), busyBy string) {
 	r := &a.os
 	r.lockMu.Lock()
 	defer r.lockMu.Unlock()
-	if r.lockN > 0 && r.lockOwner != owner {
+	if r.lockN > 0 && (exclusive || r.lockOwner != owner) {
 		return func() {}, r.lockOwner
 	}
 	r.lockOwner = owner
@@ -131,6 +139,26 @@ func (a *updateAgent) lockAcquire(owner string) (release func(), busyBy string) 
 			}
 		})
 	}, ""
+}
+
+// lockTryExclusive nimmt die Sperre nur, wenn sie ganz frei ist (auch derselbe Besitzer
+// bekommt sie nicht ein zweites Mal); atomar unter demselben Mutex.
+func (a *updateAgent) lockTryExclusive(owner string) (release func(), busyBy string) {
+	return a.lockTake(owner, true)
+}
+
+// osLastLines: die letzten n nicht leeren Zeilen, durch „ / “ verbunden.
+func osLastLines(s string, n int) string {
+	var lines []string
+	for _, l := range strings.Split(s, "\n") {
+		if l = strings.TrimSpace(l); l != "" {
+			lines = append(lines, l)
+		}
+	}
+	if len(lines) > n {
+		lines = lines[len(lines)-n:]
+	}
+	return strings.Join(lines, " / ")
 }
 
 // lockHolder: aktueller Besitzer der Sperre, leer = frei.
@@ -239,8 +267,10 @@ func (a *updateAgent) osExec(ctx context.Context, action string) ([]byte, error)
 	if a.osRun != nil {
 		return a.osRun(ctx, action)
 	}
+	// eindeutiger Name je Aufruf (Sekunde und Zähler): zwei Aufrufe in derselben Sekunde kollidieren nicht
+	unit := fmt.Sprintf("pdh-os-%s-%d-%d", action, time.Now().Unix(), a.os.unitSeq.Add(1))
 	cmd := a.osCommand("systemd-run", "--wait", "--pipe", "--collect", "--quiet",
-		"--unit=pdh-os-"+action+"-"+strconv.FormatInt(time.Now().Unix(), 10), osScriptPath, action)
+		"--unit="+unit, osScriptPath, action)
 	out := &limitedBuffer{}
 	cmd.Stdout, cmd.Stderr = out, out
 	if err := cmd.Start(); err != nil {
@@ -255,8 +285,71 @@ func (a *updateAgent) osExec(ctx context.Context, action string) ([]byte, error)
 		// nur der systemd-run-Aufruf endet; die Einheit läuft zu Ende (apt nie halb abbrechen)
 		_ = cmd.Process.Kill()
 		<-done
+		actx, acancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer acancel()
+		if a.osUnitIsActive(actx, unit) {
+			return out.Bytes(), &osUnitRunning{Unit: unit, Action: action}
+		}
 		return out.Bytes(), fmt.Errorf("Zeitüberschreitung: %w", ctx.Err())
 	}
+}
+
+// osUnitRunning: der Aufruf wurde abgebrochen (Zeit, Abbruch), die Einheit läuft aber noch.
+// Wer die Sperre hält, gibt sie erst frei, wenn die Einheit beendet ist (osWaitUnit).
+type osUnitRunning struct{ Unit, Action string }
+
+func (e *osUnitRunning) Error() string {
+	return "Die Einheit " + e.Unit + " läuft noch – bitte später erneut versuchen"
+}
+
+func (a *updateAgent) osUnitIsActive(ctx context.Context, unit string) bool {
+	if a.osUnitActive != nil {
+		return a.osUnitActive(ctx, unit)
+	}
+	return exec.CommandContext(ctx, "systemctl", "is-active", "--quiet", unit).Run() == nil
+}
+
+// osWaitUnit gibt die Sperre erst frei, wenn die Einheit nicht mehr läuft (im Hintergrund).
+func (a *updateAgent) osWaitUnit(unit string, release func()) {
+	go func() {
+		defer release()
+		for {
+			a.sleepFn()(10 * time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			active := a.osUnitIsActive(ctx, unit)
+			cancel()
+			if !active {
+				return
+			}
+		}
+	}()
+}
+
+var osExitRe = regexp.MustCompile(`exit status (\d+)`)
+
+func osExitCode(err error) int {
+	var ee *exec.ExitError
+	if errors.As(err, &ee) {
+		return ee.ExitCode()
+	}
+	if err != nil {
+		if m := osExitRe.FindStringSubmatch(err.Error()); m != nil {
+			n, _ := strconv.Atoi(m[1])
+			return n
+		}
+	}
+	return -1
+}
+
+// osOutdated: ist das Skript veraltet oder fehlt es? Nur (a) Aufrufhinweis mit Exit 2 oder
+// (b) die Skriptdatei selbst fehlt (Exit 127 oder „No such file“ mit dem Skriptpfad).
+// Alles andere (z. B. „Release file … not found“ von apt) ist ein echter Fehler.
+func osOutdated(out []byte, err error) bool {
+	text := string(out)
+	if osExitCode(err) == 2 && strings.Contains(text, "Aufruf:") {
+		return true
+	}
+	return strings.Contains(text, osScriptPath) && (osExitCode(err) == 127 || strings.Contains(text, "No such file"))
 }
 
 // osStatus liest den Stand des Skripts (Zwischenspeicher 20 s, nach „check“ geleert).
@@ -280,8 +373,11 @@ func (a *updateAgent) osStatus(ctx context.Context) (osScriptStatus, error) {
 		return osScriptStatus{}, errors.New(msg)
 	} else if jerr != nil || err != nil {
 		text := string(out)
-		if strings.Contains(text, "Aufruf:") || strings.Contains(text, "No such file") ||
-			strings.Contains(text, "not found") || strings.Contains(text, "Failed to start transient service") {
+		var ur *osUnitRunning
+		if errors.As(err, &ur) {
+			return osScriptStatus{}, err
+		}
+		if osOutdated(out, err) {
 			return osScriptStatus{}, ErrScriptOutdated
 		}
 		if err != nil {
@@ -399,21 +495,35 @@ func (a *updateAgent) osCheckHandler(w http.ResponseWriter, r *http.Request) {
 		osRefuse(w, http.StatusBadRequest, reason)
 		return
 	}
-	release, busy := a.lockAcquire(lockOS)
+	// nicht wiederholbar: ein zweites Prüfen (oder ein Prüfen neben dem Betriebssystem-Auftrag)
+	// darf nie parallel zu apt laufen
+	release, busy := a.lockTryExclusive(lockOS)
 	if busy != "" {
 		osRefuse(w, http.StatusConflict, lockBusyMsg(busy))
 		return
 	}
-	defer release()
-	out, err := a.osExec(r.Context(), "check")
+	keep := false
+	defer func() {
+		if !keep {
+			release()
+		}
+	}()
+	// unabhängig vom Browser: ein geschlossener Tab darf apt nicht abbrechen
+	out, err := a.osExec(context.Background(), "check")
 	a.osClearCache()
 	if err != nil {
-		text := string(out)
-		if strings.Contains(text, "Aufruf:") || strings.Contains(text, "No such file") || strings.Contains(text, "not found") {
+		var ur *osUnitRunning
+		if errors.As(err, &ur) {
+			keep = true
+			a.osWaitUnit(ur.Unit, release)
+			osRefuse(w, http.StatusBadGateway, err.Error())
+			return
+		}
+		if osOutdated(out, err) {
 			writeUpdateJSON(w, http.StatusOK, a.osBuildStatus(r.Context()))
 			return
 		}
-		msg := lastLine(text)
+		msg := osLastLines(string(out), 3)
 		if msg == "" {
 			msg = err.Error()
 		}

@@ -71,11 +71,12 @@ type updateAgent struct {
 
 	certs certRuntime // Zertifikate (certs.go); ohne Nutzung läuft nichts
 
-	os         osRuntime                                                // Betriebssystem-Updates und gemeinsame Sperre (os_update.go)
-	osRun      func(ctx context.Context, action string) ([]byte, error) // nil = systemd-run; Test-Haken
-	osCmd      func(name string, args ...string) *exec.Cmd              // nil = exec.Command; Test-Haken
-	bootID     func() string                                            // nil = /proc/sys/kernel/random/boot_id; Test-Haken
-	updRelease func()                                                   // Sperre des laufenden PDH-Updates (a.mu)
+	os           osRuntime                                                // Betriebssystem-Updates und gemeinsame Sperre (os_update.go)
+	osRun        func(ctx context.Context, action string) ([]byte, error) // nil = systemd-run; Test-Haken
+	osCmd        func(name string, args ...string) *exec.Cmd              // nil = exec.Command; Test-Haken
+	osUnitActive func(ctx context.Context, unit string) bool              // nil = systemctl is-active; Test-Haken
+	bootID       func() string                                            // nil = /proc/sys/kernel/random/boot_id; Test-Haken
+	updRelease   func()                                                   // Sperre des laufenden PDH-Updates (a.mu)
 }
 
 type limitedBuffer struct {

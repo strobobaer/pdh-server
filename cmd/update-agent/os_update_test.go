@@ -174,7 +174,7 @@ func TestOSExecUsesSystemdRun(t *testing.T) {
 	}
 	want := []string{"--wait", "--pipe", "--collect", "--quiet"}
 	if !reflect.DeepEqual(args[:4], want) || !strings.HasPrefix(args[4], "--unit=pdh-os-install-") ||
-		strings.Trim(strings.TrimPrefix(args[4], "--unit=pdh-os-install-"), "0123456789") != "" ||
+		strings.Trim(strings.TrimPrefix(args[4], "--unit=pdh-os-install-"), "0123456789-") != "" ||
 		args[5] != "/usr/local/sbin/pdh-os-update" || args[6] != "install" {
 		t.Fatalf("Argumente: %v", args)
 	}
