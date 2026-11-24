@@ -1,0 +1,96 @@
+{{/* Arbeitszeiten der Anlage (work_times_web.go): Reiter „Arbeitszeiten“.
+     dict: T (workInfraTab), ID (Anlage), CanEdit (infrastructure.edit) */}}
+{{define "work-times-shift"}}
+<div class="rec-row" style="align-items:flex-start;flex-wrap:wrap;gap:8px">
+  <div class="grow" style="min-width:200px">
+    <b>{{if .S.Name}}{{.S.Name}} · {{end}}{{.S.Start}}–{{.S.End}}</b>{{if .S.Overnight}} <span class="badge b-blue" title="Die Schicht endet am Folgetag">bis Folgetag</span>{{end}}
+    <span class="rec-sub" style="display:inline"> · {{.S.Len}} ohne Pausen</span>
+    {{range .S.Breaks}}<div class="rec-sub" style="display:flex;align-items:center;gap:6px"><i class="ti ti-coffee"></i> Pause {{.Start}}–{{.End}}
+      {{if $.Edit}}<form method="post" action="/infrastructure/{{$.ID}}/work-times-web" style="display:inline"><input type="hidden" name="action" value="break_del"><input type="hidden" name="break_id" value="{{.ID}}"><button class="btn btn-small" type="submit" title="Pause löschen" aria-label="Pause löschen"><i class="ti ti-x"></i></button></form>{{end}}</div>{{end}}
+    {{if $.Edit}}<form method="post" action="/infrastructure/{{$.ID}}/work-times-web" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:4px">
+      <input type="hidden" name="action" value="break_add"><input type="hidden" name="shift_id" value="{{.S.ID}}">
+      <span class="rec-sub">Pause</span>
+      <input type="time" name="start" class="form-input" style="width:110px" required aria-label="Beginn der Pause">
+      <input type="time" name="end" class="form-input" style="width:110px" required aria-label="Ende der Pause">
+      <button class="btn btn-small" type="submit"><i class="ti ti-plus"></i> Pause</button>
+    </form>{{end}}
+  </div>
+  {{if $.Edit}}<form method="post" action="/infrastructure/{{$.ID}}/work-times-web"><input type="hidden" name="action" value="shift_del"><input type="hidden" name="shift_id" value="{{.S.ID}}"><button class="btn btn-small" type="submit" title="Schicht löschen" aria-label="Schicht löschen"><i class="ti ti-trash"></i></button></form>{{end}}
+</div>
+{{end}}
+
+{{define "work-times-add"}}
+<form method="post" action="/infrastructure/{{.ID}}/work-times-web" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:6px">
+  <input type="hidden" name="action" value="shift_add"><input type="hidden" name="day" value="{{.Day}}">
+  <input type="text" name="name" class="form-input" style="width:140px" maxlength="60" placeholder="Name (z. B. Früh)" aria-label="Name der Schicht">
+  <input type="time" name="start" class="form-input" style="width:110px" required aria-label="Beginn">
+  <input type="time" name="end" class="form-input" style="width:110px" required aria-label="Ende">
+  <button class="btn btn-small" type="submit"><i class="ti ti-plus"></i> Schicht</button>
+</form>
+{{end}}
+
+{{define "work-times-tab"}}
+{{$id := .ID}}{{$edit := .CanEdit}}
+<div class="card">
+  <div class="card-title"><span><i class="ti ti-clock-hour-4"></i> Arbeitszeiten der Anlage</span></div>
+  <p class="rec-sub" style="margin-bottom:10px">Geplante Arbeitszeit je Wochentag: eine oder mehrere Schichten, jede mit beliebig vielen Pausen. Endet eine Schicht nach Mitternacht (z. B. 22:00–06:00), gehört sie zum Tag ihres Beginns. Die Zeiten gelten auch für alle Unteranlagen ohne eigene Zeiten. Auswertungen wie die der Stillstände zählen nur Zeit innerhalb der Arbeitszeit, ohne Pausen.</p>
+  {{if .T.Own}}
+    <div class="rec-row"><div class="grow"><b>Eigene Arbeitszeiten</b><div class="rec-sub">{{.T.Count}} Schichten je Woche · {{.T.Week}} je Woche ohne Pausen</div></div>
+      {{if $edit}}<form method="post" action="/infrastructure/{{$id}}/work-times-web" onsubmit="return confirm('Eigene Arbeitszeiten dieser Anlage löschen? Es gelten dann wieder die Zeiten der übergeordneten Anlage.')"><input type="hidden" name="action" value="own_off"><button class="btn btn-small" type="submit"><i class="ti ti-arrow-back-up"></i> Zeiten von oben erben</button></form>{{end}}</div>
+  {{else}}
+    <div class="rec-row"><div class="grow">{{if .T.Defined}}<b>Geerbt von „{{.T.SourceName}}“</b><div class="rec-sub">{{.T.Count}} Schichten je Woche · {{.T.Week}} je Woche ohne Pausen. Zum Ändern „Eigene Arbeitszeiten“ einschalten (die geerbten Zeiten dienen als Ausgangspunkt).</div>
+      {{else}}<b>Noch keine Arbeitszeiten</b><div class="rec-sub">Weder diese Anlage noch eine übergeordnete hat Arbeitszeiten. Auswertungen rechnen dann mit der ganzen Zeit.</div>{{end}}</div>
+      {{if $edit}}<form method="post" action="/infrastructure/{{$id}}/work-times-web"><input type="hidden" name="action" value="own_on"><button class="btn btn-primary btn-small" type="submit"><i class="ti ti-pencil"></i> Eigene Arbeitszeiten</button></form>{{end}}</div>
+  {{end}}
+</div>
+
+{{if .T.Defined}}
+{{$own := .T.Own}}
+<div class="card" style="margin-top:12px">
+  <div class="card-title"><span><i class="ti ti-calendar-week"></i> Woche</span></div>
+  {{range .T.Days}}
+  <div class="ih-section" style="margin-top:10px">{{.Name}}</div>
+  {{range .Shifts}}{{template "work-times-shift" (dict "S" . "ID" $id "Edit" (and $edit $own))}}{{else}}<div class="rec-sub" style="padding:2px 0">keine Arbeitszeit</div>{{end}}
+  {{if and $edit $own}}{{template "work-times-add" (dict "ID" $id "Day" .Weekday)}}{{end}}
+  {{end}}
+</div>
+
+<div class="card" style="margin-top:12px">
+  <div class="card-title"><span><i class="ti ti-calendar-event"></i> Ausnahmen</span></div>
+  <p class="rec-sub" style="margin-bottom:8px">Ein Datum, an dem die Anlage geschlossen ist (Feiertag, Betriebsferien) oder mit anderen Schichten läuft. Die Ausnahme ersetzt an diesem Tag die Wochenzeiten.</p>
+  {{range .T.Exceptions}}
+  <div class="ih-section" style="margin-top:10px;display:flex;gap:8px;align-items:center">{{.Label}}{{if .Note}} · {{.Note}}{{end}} {{if .Closed}}<span class="badge b-blue">geschlossen</span>{{else}}<span class="badge b-blue">abweichende Zeiten</span>{{end}}
+    {{if and $edit $own}}<form method="post" action="/infrastructure/{{$id}}/work-times-web" style="margin-left:auto"><input type="hidden" name="action" value="exc_del"><input type="hidden" name="exception_id" value="{{.ID}}"><button class="btn btn-small" type="submit" title="Ausnahme löschen" aria-label="Ausnahme löschen"><i class="ti ti-trash"></i></button></form>{{end}}</div>
+  {{if not .Closed}}{{range .Shifts}}{{template "work-times-shift" (dict "S" . "ID" $id "Edit" (and $edit $own))}}{{else}}<div class="rec-sub" style="padding:2px 0">noch keine Schicht – an diesem Tag keine Arbeitszeit</div>{{end}}
+  {{if and $edit $own}}{{template "work-times-add" (dict "ID" $id "Day" .Day)}}{{end}}{{end}}
+  {{else}}<div class="rec-sub" style="padding:2px 0">Keine Ausnahmen.</div>{{end}}
+  {{if and $edit $own}}
+  <form method="post" action="/infrastructure/{{$id}}/work-times-web" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:12px">
+    <input type="hidden" name="action" value="exc_add">
+    <input type="date" name="day" class="form-input" style="width:150px" required aria-label="Datum">
+    <input type="text" name="note" class="form-input" style="width:180px" maxlength="80" placeholder="Bemerkung (z. B. Feiertag)" aria-label="Bemerkung">
+    <select name="mode" class="form-input" style="width:190px" aria-label="Art"><option value="closed">geschlossen</option><option value="times">abweichende Schichten</option></select>
+    <button class="btn btn-small" type="submit"><i class="ti ti-plus"></i> Ausnahme</button>
+  </form>{{end}}
+</div>
+
+{{if and $edit $own .T.Models}}
+<div class="card" style="margin-top:12px">
+  <div class="card-title"><span><i class="ti ti-copy"></i> Aus einem Schichtmodell übernehmen</span></div>
+  <p class="rec-sub" style="margin-bottom:8px">Fügt die Schichten (Beginn und Ende) eines Schichtmodells aus der Schichtplanung an den gewählten Wochentagen hinzu. Das Modell kennt nur die Pausendauer, keine Pausenzeiten – Pausen bitte oben ergänzen.</p>
+  <form method="post" action="/infrastructure/{{$id}}/work-times-web" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+    <input type="hidden" name="action" value="model_copy">
+    <select name="model_id" class="form-input" style="width:220px" aria-label="Schichtmodell">{{range .T.Models}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select>
+    <label><input type="checkbox" name="weekday" value="1" checked> Mo</label>
+    <label><input type="checkbox" name="weekday" value="2" checked> Di</label>
+    <label><input type="checkbox" name="weekday" value="3" checked> Mi</label>
+    <label><input type="checkbox" name="weekday" value="4" checked> Do</label>
+    <label><input type="checkbox" name="weekday" value="5" checked> Fr</label>
+    <label><input type="checkbox" name="weekday" value="6"> Sa</label>
+    <label><input type="checkbox" name="weekday" value="7"> So</label>
+    <button class="btn btn-small" type="submit"><i class="ti ti-copy"></i> Übernehmen</button>
+  </form>
+</div>
+{{end}}
+{{end}}
+{{end}}

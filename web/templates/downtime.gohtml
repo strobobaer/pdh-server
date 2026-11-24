@@ -10,11 +10,12 @@
 <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
   <div style="flex:1;min-width:200px">
     <h1 style="font-size:18px;font-weight:600"><i class="ti ti-player-pause"></i> Stillstände</h1>
-    <p style="font-size:12px;color:var(--muted);margin-top:2px">Anzahl und Dauer je Stillstandsgrund · {{.Period}} · Gründe pflegen unter <a href="/infrastructure#downtime-catalog">Infrastruktur</a></p>
+    <p style="font-size:12px;color:var(--muted);margin-top:2px">Anzahl und Dauer je Stillstandsgrund · {{.Period}} · {{if .WorkTime}}nur innerhalb der Arbeitszeit, ohne Pausen{{else}}gesamte Zeit{{end}} · Gründe pflegen unter <a href="/infrastructure#downtime-catalog">Infrastruktur</a></p>
   </div>
   <form method="get" action="/downtime" style="display:flex;gap:8px;flex-wrap:wrap">
     <select name="days" class="form-input" aria-label="Zeitraum" onchange="this.form.submit()">{{range .DayOpts}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}</select>
     <select name="infra" class="form-input" aria-label="Anlage" onchange="this.form.submit()">{{range .Plants}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}</select>
+    <select name="work" class="form-input" aria-label="Zeitbasis" title="Zeitbasis: nur Stillstand innerhalb der Arbeitszeit (Reiter Arbeitszeiten an der Anlage) oder die ganze Zeit" onchange="this.form.submit()">{{range .BasisOpts}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}</select>
     <noscript><button class="btn btn-small" type="submit">Anzeigen</button></noscript>
   </form>
 </div>
@@ -22,13 +23,24 @@
   <div class="dt-kpi"><b>{{.Total}}</b><span>Stillstände</span></div>
   <div class="dt-kpi"><b>{{if .Duration}}{{.Duration}}{{else}}–{{end}}</b><span>Gesamtdauer</span></div>
   <div class="dt-kpi"><b>{{.Running}}</b><span>laufend</span></div>
+  {{if .WorkTime}}<div class="dt-kpi"><b>{{if .Share}}{{.Share}}{{else}}–{{end}}</b><span>Anteil an der Arbeitszeit ({{.Planned}} geplant)</span></div>{{end}}
 </div>
+{{if and .WorkTime .NoPlan}}<p class="rec-sub" style="margin-bottom:10px">Für {{.NoPlan}} Anlage(n) sind noch keine Arbeitszeiten hinterlegt (Anlage → Reiter Arbeitszeiten): Ihre Stillstände zählen mit der ganzen Dauer und ohne Anteil.</p>{{end}}
 <div class="card">
   {{if .Rows}}
   <div style="overflow-x:auto"><table class="table">
-    <thead><tr><th>Grund</th><th>Anzahl</th><th>Gesamtdauer</th><th>Ø Dauer</th><th>Anteil</th></tr></thead>
-    <tbody>{{range .Rows}}<tr><td><b>{{.Name}}</b></td><td>{{.Count}}</td><td>{{.Duration}}</td><td>{{.Avg}}</td><td><div class="dt-bar" title="{{.Pct}} %"><span style="width:{{.Pct}}%"></span></div></td></tr>{{end}}</tbody>
+    <thead><tr><th>Grund</th><th>Anzahl</th><th>Gesamtdauer</th><th>Ø Dauer</th>{{if .WorkTime}}<th title="Dauer im Verhältnis zur geplanten Arbeitszeit der gewählten Anlagen">Anteil an der Arbeitszeit</th>{{end}}<th>Anteil</th></tr></thead>
+    <tbody>{{range .Rows}}<tr><td><b>{{.Name}}</b></td><td>{{.Count}}</td><td>{{.Duration}}</td><td>{{.Avg}}</td>{{if $.WorkTime}}<td>{{.Share}}</td>{{end}}<td><div class="dt-bar" title="{{.Pct}} %"><span style="width:{{.Pct}}%"></span></div></td></tr>{{end}}</tbody>
   </table></div>
   {{else}}<div class="rec-sub" style="padding:8px 0">Im gewählten Zeitraum wurden keine Stillstände erfasst.</div>{{end}}
 </div>
+{{if .PlantRows}}
+<div class="card" style="margin-top:14px">
+  <div class="card-title"><span><i class="ti ti-building-factory-2"></i> Je Anlage und Grund</span></div>
+  <div style="overflow-x:auto"><table class="table">
+    <thead><tr><th>Anlage</th><th>Grund</th><th>Anzahl</th><th>Dauer</th>{{if .WorkTime}}<th>Anteil an der Arbeitszeit</th>{{end}}</tr></thead>
+    <tbody>{{range .PlantRows}}<tr><td>{{.Plant}}</td><td><b>{{.Reason}}</b></td><td>{{.Count}}</td><td>{{.Duration}}</td>{{if $.WorkTime}}<td>{{.Share}}{{if .Raw}} <span class="rec-sub" title="Keine Arbeitszeiten hinterlegt: ganze Dauer gezählt">(ohne Arbeitszeiten)</span>{{end}}</td>{{end}}</tr>{{end}}</tbody>
+  </table></div>
+</div>
+{{end}}
 {{end}}

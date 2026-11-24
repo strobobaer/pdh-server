@@ -10,6 +10,13 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.82.49] – 2026-11-24
+
+### Neu
+
+- **Anlagen, Arbeitszeiten:** Jede Anlage hat den neuen Reiter **Arbeitszeiten**. Je Wochentag legst du eine oder mehrere Schichten an (Name, Beginn, Ende – das Ende darf nach Mitternacht liegen), jede mit beliebig vielen Pausen. **Ausnahmen** je Datum: geschlossen (Feiertag, Betriebsferien) oder mit anderen Schichten. Die Zeiten gelten wie die Rüsttasten auch für alle Unteranlagen; mit **Eigene Arbeitszeiten** überschreibt eine Anlage sie. Optional übernimmst du die Schichten eines Schichtmodells aus der Schichtplanung. Ändern darf, wer Infrastruktur bearbeiten darf (in der Abteilung der Anlage).
+- **Stillstände, Anteil an der Arbeitszeit:** Die Seite Stillstände zählt jetzt nur Stillstand innerhalb der Arbeitszeit der Anlage (ohne Pausen und Zeit außerhalb der Schichten) und zeigt je Grund sowie je Anlage und Grund den **Anteil an der Arbeitszeit**. Mit **Zeitbasis: Gesamte Zeit (Rohsummen)** siehst du alle Stillstände ungekürzt wie bisher. Anlagen ohne Arbeitszeiten zählen mit der ganzen Dauer.
+
 ## [0.82.47] – 2026-11-23
 
 ### Neu
