@@ -867,16 +867,40 @@ und 3 drückt bis auf Weiteres der Anwender.
     K1–K3, K6–K10 und alle Rulings im Ledger
     `.superpowers/sdd/2026-11-24-energie-fassungen/` (`final-review.md`).
     Fragment lokal gerendert in 20 Ansichten geprüft (Fiori/Fluent, hell/dunkel,
-    320–1366 px, kein Seitenüberlauf). Offen: Merge, Verbund-Update,
-    Browserprüfung am Testverbund (Fassung planen, „Prüfen“, „Neu rechnen“ an einer
-    Testmessstelle), 10.10.0.202 (Anwender, mit Sicherung).
+    320–1366 px, kein Seitenüberlauf). **Auf `main`** (24.11.2026, Merge
+    `c2352abe`; Prüfung: main stand bei 0.82.53, eingearbeitet, Nummern
+    umgestellt) und dem Testverbund (Verbund-Update auf `c2352abe`; beide Server
+    und Zeuge 0.82.54, Migrationen 214–219, aktiv jetzt `pdh-server` 10.10.0.17,
+    Spiegelung läuft). Damit sind auch die Terminal-Teile 0.82.50–0.82.53 der
+    anderen Sitzung am Testverbund. Im Browser geprüft (Testmessstellen
+    EVTEST-A/-V per SQL): Fragment „Fassungen“ in 20 Ansichten ohne Überlauf,
+    geplante Fassung anlegen und löschen, „Prüfen“ (Vorschau 3 Tage, 1 Messstelle),
+    „Neu rechnen“ nach 10 s fertig, Werte stimmen (V = 1 + 2 × Zuwachs A);
+    Testdaten entfernt, Prüfkonto gesperrt. Offen: 10.10.0.202 (Anwender, mit
+    Sicherung).
     **Danach (Anwender 24.11.2026):** (1) „Copilot soll das können ja“ –
     Copilot schlägt Fassungen vor (Änderungsliste, „Übernehmen“, nie in der
     Vergangenheit); eigenes Paket, erst Entwurf. (2) „Es muss schneller Seiten
     aufbauen, vielleicht die Icons nicht immer laden, sondern erst ohne und im
     laufenden Betrieb nachladen“ – Befund: `tabler-icons.min.css` 1,4 MB mit
     eingebetteter Schrift blockiert das Zeichnen, dazu htmx von unpkg.com und
-    die Schrift von Google Fonts (siehe Punkt 13); erst messen, dann Entwurf.
+    die Schrift von Google Fonts (siehe Punkt 13). Gemessen am Testverbund
+    (24.11.2026, Edge, angemeldet): im Zwischenspeicher 0,06–0,1 s (4× gedrosselt
+    0,35–0,4 s); **erster Aufruf mit Symbolen 6,7–7,0 s, 4× gedrosselt 29–33 s**;
+    erster Aufruf ohne Symbole 0,14–0,2 s (0,46–0,53 s). Die Datei lädt in
+    0,04 s – die Zeit geht ins Entpacken der eingebetteten Schrift (5 918 Symbole,
+    genutzt werden einige Hundert). Nächster Schritt: Entwurf Teil 1.
+    (3) **Einheitliche Oberfläche** (Anwender 24.11.2026, auf den Vorschlag
+    „kein Menüband wie Word/Excel, sondern Fiori-Muster plus Schnellstart“):
+    „Zusammenfassen was zusammen gehört und trennen was getrennt werden muss,
+    überall gleich. Gleiche Funktionen und Buttons. Mit Ingress-Funktion für
+    Addons und Optionalem wie Nextcloud … das wäre dann Stand 0.9.0“. Inhalt:
+    Suchzeile „Was möchtest du tun?“ (Strg+K), Schnellstart-Kacheln je Rolle,
+    gleiche Seitenmuster (Liste mit Filterleiste, Detailseite mit Kopf und
+    Reitern, Aktionen immer an derselben Stelle), Ingress für Zusatzdienste
+    (Nextcloud, Grafana … im PDH-Rahmen hinter der PDH-Anmeldung). Großes
+    Paket: erst Entwurf, in Teilpakete geschnitten. Versionsnummer beim
+    Anwender klären: 0.9.0 läge unter 0.82.x (gemeint vermutlich 0.90.0).
 25. **0.82.48 Wartung: Jahresplan im Kalender, Auftrag mit Vorlauf** (Wunsch des
     Anwenders vom 23.11.2026: Personalplanung; Knopf „Jahresplan erzeugen“,
     nur der nächste Termin wird 5 Arbeitstage vorher automatisch zum
