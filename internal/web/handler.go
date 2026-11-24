@@ -315,6 +315,12 @@ type Handler struct {
 	netCtlFetchHook func(ctx context.Context) []netCtlResult      // nur Tests; nil = echter Abruf
 	netUnifiOpen    func(context.Context) (netUnifiReader, error) // nur Tests: Leser statt unifiAPI
 	netOmadaOpen    func(context.Context) (netOmadaReader, error) // nur Tests: Leser statt omadaAPI
+	// Karte „Betriebssystem“ (os_updates.go) und Einstellungen ohne Datenbank (nur Tests)
+	githubCheckHook func(context.Context) error // nur Tests: statt checkGitHubUpdate
+	memSettings     struct {                    // nur Tests ohne Datenbank: Einstellungen im Speicher
+		mu sync.Mutex
+		m  map[string]string
+	}
 	// Karte „Dieser Server“ (network_server.go)
 	netAgentHook func(ctx context.Context, method, path string, body, out any) error // nur Tests; nil = agentJSON
 	netHAHook    func(ctx context.Context) (haStatus, error)                         // nur Tests; nil = haStatusFetch (ohne Socket errNetNoHA)
@@ -1123,6 +1129,9 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/core/settings/push", h.PushSettingsWeb)
 	r.Post("/core/settings/check-update", h.CheckUpdateWeb)
 	r.Post("/core/settings/install-update", h.InstallUpdateWeb)
+	r.Post("/core/settings/os-update/check", h.OSUpdateCheckWeb)
+	r.Post("/core/settings/os-update/install", h.OSUpdateInstallWeb)
+	r.Post("/core/settings/os-update/config", h.OSUpdateConfigWeb)
 	r.Post("/core/settings/nextcloud/check", h.NextcloudCheckWeb)
 	r.Post("/core/settings/nextcloud/update", h.NextcloudUpdateWeb)
 	r.Post("/core/settings/nextcloud/dir", h.NextcloudDirWeb)

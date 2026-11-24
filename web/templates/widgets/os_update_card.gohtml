@@ -1,0 +1,87 @@
+{{/* Core-Einstellungen: Karte „Betriebssystem“ (Daten: osView, internal/web/os_updates.go). Farben und Ränder nur über Variablen. */}}
+{{define "os-update-card"}}
+<div class="card os-card" id="os-update"{{if .Job}} hx-get="/core/settings" hx-trigger="every 5s" hx-select="#os-update" hx-target="this" hx-swap="outerHTML"{{end}}>
+  <style>
+    #os-update dl{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:8px 12px;font-size:13px;margin:0}
+    #os-update dt{color:var(--muted)}
+    #os-update dd{margin:0;min-width:0;overflow-wrap:anywhere}
+    #os-update .os-note{font-size:13px;margin:10px 0 0}
+    #os-update .os-muted{color:var(--muted)}
+    #os-update .os-acts{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:14px}
+    #os-update .os-acts form{margin:0}
+    #os-update .os-with{display:flex;align-items:flex-start;gap:6px;font-size:13px;margin-top:12px}
+    #os-update .os-with input{margin-top:3px;flex:none}
+    #os-update .os-pkgs{margin-top:10px;font-size:12px}
+    #os-update .os-pkgs summary{cursor:pointer;color:var(--accent)}
+    #os-update .os-pkgs ul{list-style:none;margin:6px 0 0;padding:0;max-height:220px;overflow:auto;border:1px solid var(--border);border-radius:8px}
+    #os-update .os-pkgs li{display:flex;flex-wrap:wrap;gap:2px 8px;padding:5px 10px;border-top:1px solid var(--border);overflow-wrap:anywhere}
+    #os-update .os-pkgs li:first-child{border-top:0}
+    #os-update .os-pkgs .os-ver{color:var(--muted)}
+    #os-update progress{width:100%;accent-color:var(--accent)}
+  </style>
+  <div class="card-title"><span><i class="ti ti-cpu"></i> {{t "Betriebssystem"}}</span>
+    {{if and .Available (not .Job)}}{{if .PackageCount}}<span class="badge b-amber">{{if eq .PackageCount 1}}{{t "1 Paket offen"}}{{else}}{{t "%d Pakete offen" .PackageCount}}{{end}}</span>{{else}}<span class="badge b-green">{{t "aktuell"}}</span>{{end}}{{end}}</div>
+
+  {{if .Err}}
+  <p role="alert" class="os-note" style="color:var(--red)"><i class="ti ti-alert-circle"></i> {{.Err}}</p>
+  {{else if not .Available}}
+  <p role="status" class="os-note os-muted"><i class="ti ti-info-circle"></i> {{.Reason}}</p>
+  {{if .Cluster}}<p role="status" class="os-note os-muted">{{t "Im Verbund folgt das Betriebssystem-Update mit Teil B."}}</p>{{end}}
+  {{else}}
+  <dl>
+    <dt>{{t "System"}}</dt><dd>{{if .System}}{{.System}}{{else}}–{{end}}</dd>
+    <dt>{{t "Kernel"}}</dt><dd>{{if .Kernel}}{{.Kernel}}{{else}}–{{end}}</dd>
+    <dt>{{t "Pakete"}}</dt><dd>{{if .PackageCount}}<b style="color:var(--amber)">{{if eq .PackageCount 1}}{{t "1 Paket offen"}}{{else}}{{t "%d Pakete offen" .PackageCount}}{{end}}</b>{{if .SecurityCount}} ({{t "davon %d Sicherheit" .SecurityCount}}){{end}}{{else}}<span style="color:var(--green)">{{t "Das Betriebssystem ist aktuell."}}</span>{{end}}</dd>
+    <dt>{{t "Geprüft"}}</dt><dd>{{if .CheckedAt}}{{.CheckedAt}}{{else}}{{t "Noch nicht geprüft"}}{{end}}</dd>
+    {{with .LastRun}}<dt>{{t "Letzter Lauf"}}</dt><dd>{{.At}} – {{if eq .Packages 1}}{{t "1 Paket"}}{{else}}{{t "%d Pakete" .Packages}}{{end}}, {{if .Rebooted}}{{t "Neustart ja"}}{{else}}{{t "Neustart nein"}}{{end}}, {{if .OK}}<span style="color:var(--green)">{{t "ok"}}</span>{{else}}<span style="color:var(--red)">{{t "Fehler"}}</span>{{if .Message}}: {{.Message}}{{end}}{{end}}</dd>{{end}}
+  </dl>
+  {{if .RebootRequired}}<p role="status" class="os-note" style="color:var(--amber)"><i class="ti ti-refresh-alert"></i> <b>{{t "Neustart nötig"}}</b>{{if .RebootPkgs}} <span class="os-muted">({{range $i, $p := .RebootPkgs}}{{if $i}}, {{end}}{{$p}}{{end}})</span>{{end}}</p>{{end}}
+
+  {{with .Job}}
+  <div role="status" style="margin-top:12px">
+    <div class="os-note" style="margin-top:0"><i class="ti ti-loader"></i> <b>{{t "Betriebssystem-Update läuft"}}</b> – {{$.JobText}}</div>
+    <progress value="{{.Percent}}" max="100" aria-label="{{t "Fortschritt"}}">{{.Percent}} %</progress>
+  </div>
+  {{if $.CanAbort}}
+  <div class="os-acts">
+    <form method="post" action="/wartung/abbrechen" onsubmit="return confirm({{t "Betriebssystem-Update abbrechen?"}})"><button class="btn btn-small" type="submit"><i class="ti ti-player-stop"></i> {{t "Abbrechen"}}</button></form>
+  </div>
+  {{end}}
+  {{end}}
+
+  {{if .Packages}}
+  <details class="os-pkgs"><summary>{{t "Offene Pakete anzeigen"}}</summary>
+    <ul>{{range .Packages}}<li><b>{{.Name}}</b><span class="os-ver">{{.Old}} → {{.New}}</span>{{if .Security}}<span class="badge b-red">{{t "Sicherheit"}}</span>{{end}}</li>{{end}}</ul>
+    {{if gt .PackageCount (len .Packages)}}<p class="os-muted" style="margin:6px 0 0">{{t "Es werden nur die ersten %d Pakete gezeigt." (len .Packages)}}</p>{{end}}
+  </details>
+  {{end}}
+
+  {{if and .CanAct (not .Job)}}
+  <div class="os-acts">
+    <form method="post" action="/core/settings/os-update/check">
+      <button class="btn" type="submit"><i class="ti ti-refresh"></i> {{t "Betriebssystem prüfen"}}</button>
+    </form>
+    <form method="post" action="/core/settings/os-update/install" onsubmit="return confirm({{t "Betriebssystem jetzt aktualisieren? Die Anwender werden dabei abgemeldet, der Server startet bei Bedarf neu."}})">
+      <button class="btn btn-primary" type="submit"><i class="ti ti-download"></i> {{t "Betriebssystem aktualisieren"}}</button>
+    </form>
+  </div>
+  <form method="post" action="/core/settings/os-update/config" class="os-with">
+    <input type="checkbox" id="os-with-pdh" name="with_pdh_update" value="1"{{if .WithPDHUpdate}} checked{{end}} onchange="this.form.submit()">
+    <label for="os-with-pdh">{{t "beim PDH-Update mit aktualisieren"}}</label>
+  </form>
+  {{end}}
+
+  {{if .Ask}}
+  <div class="card" role="alert" style="margin-top:12px;border-color:var(--amber)">
+    <p style="margin:0 0 8px;font-size:13px"><i class="ti ti-alert-triangle" style="color:var(--amber)"></i> {{.Ask}}</p>
+    {{if .AskHints}}<ul style="margin:0 0 8px 18px;padding:0;font-size:12px;color:var(--muted)">{{range .AskHints}}<li>{{.}}</li>{{end}}</ul>{{end}}
+    <form method="post" action="/core/settings/os-update/install" style="display:flex;gap:8px;flex-wrap:wrap">
+      <input type="hidden" name="force" value="1"><input type="hidden" name="token" value="{{.AskToken}}">
+      <button class="btn btn-primary btn-small" type="submit"><i class="ti ti-download"></i> {{t "Trotzdem aktualisieren"}}</button>
+      <a class="btn btn-small" href="/core/settings#os-update">{{t "Abbrechen"}}</a>
+    </form>
+  </div>
+  {{end}}
+  {{end}}
+</div>
+{{end}}

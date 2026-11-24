@@ -179,6 +179,8 @@ var gateRules = []gateRule{
 	gr(wPost, permNetworkAdmin, "", false, `^/admin/network/segments`+gID+`/esppdh-fw$`),
 	gr(wPost, permNetwork, "", false, `^/admin/network/(?:segments|wlans)(?:`+gID+`)?$`),
 	gr(wPost, permNetwork, "", false, `^/admin/network/suggestions/(?:adopt|adopt-all|hide)$`),
+	// Core-Einstellungen → Karte „Betriebssystem“: prüfen, aktualisieren, Haken beim PDH-Update (os_updates.go)
+	gr(wPost, permOSUpdate, "", false, `^/core/settings/os-update/(?:check|install|config)$`),
 	// Infobildschirm: Folien anlegen, ändern, verschieben, löschen mit terminal.slides.edit
 	gr(wPost, permTerminalSlides, "", false, `^/terminal-slides(?:`+gID+`(?:/delete|/move)?)?/?$`),
 	// Karte „Dieser Server“: Adresse fest einstellen, DNS ändern, bestätigen nur mit system.server_config

@@ -126,6 +126,8 @@
     {{if not .AgentConfigured}}<p style="font-size:12px;color:var(--muted);margin-bottom:0">{{t "Der Update-Agent ist nicht erreichbar oder nicht konfiguriert. Installationsskript und Agent-Konfiguration prüfen."}}</p>{{end}}
   </div>
 
+  {{with .OS}}{{template "os-update-card" .}}{{end}}
+
   {{with .NC}}
   <div class="card" id="nextcloud-updates">
     <div class="card-title"><span><i class="ti ti-cloud"></i> Nextcloud-Updates</span>{{if and .Check (not .Check.Error)}}{{if .Check.UpToDate}}<span class="badge b-green">aktuell</span>{{else if .UpdateCount}}<span class="badge b-amber">{{.UpdateCount}} Update(s)</span>{{end}}{{end}}</div>
