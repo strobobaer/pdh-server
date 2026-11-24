@@ -11,6 +11,8 @@
   {{if not .IsNew}}
   <div class="widget-icon-toolbar compact">
     {{if .OpenTask}}<a class="btn" href="/maintenance/tasks/{{.OpenTask.ID}}"><i class="ti ti-clipboard-check"></i> Nächster Auftrag</a>{{end}}
+    {{if and .CanEdit .Plan.Active}}<button type="button" class="btn" hx-post="/maintenance/plans/{{.Plan.ID}}/yearplan" hx-target="#mp-yearplan" title="Plant die Termine der nächsten 12 Monate – für Personalplanung und Kalender"><i class="ti ti-calendar-month"></i> {{if .YearPlanDone}}Jahresplan aktualisieren{{else}}Jahresplan erzeugen{{end}}</button>
+    <span id="mp-yearplan" class="mp-yearplan">{{if .VisitCount}}{{.VisitCount}} geplante Termine{{end}}</span>{{end}}
     <form method="post" action="/maintenance/plans/{{.Plan.ID}}/duplicate-web" style="display:inline"><button type="submit" class="btn" title="Plan kopieren"><i class="ti ti-copy"></i></button></form>
     <button type="button" class="btn" onclick="mpActive({{if .Plan.Active}}false{{else}}true{{end}})">{{if .Plan.Active}}<i class="ti ti-player-pause"></i> Ruhen lassen{{else}}<i class="ti ti-player-play"></i> Aktivieren{{end}}</button>
   </div>
@@ -56,7 +58,7 @@
     </div>
     <div class="grid2">
       <div class="form-group"><label class="form-label">Nächster Termin</label><input id="mp-next" type="date" class="form-input" value="{{.NextDueISO}}" oninput="mpPreview()"></div>
-      <div class="form-group"><label class="form-label">Vorlauf (Tage)</label><input id="mp-lead" type="number" min="0" max="365" class="form-input" value="{{.Plan.LeadDays}}" title="So viele Tage vor dem Termin erscheint der Auftrag als anstehend"></div>
+      <div class="form-group"><label class="form-label">Vorlauf (Arbeitstage)</label><input id="mp-lead" type="number" min="0" max="60" class="form-input" value="{{with .Plan.LeadWorkdays}}{{.}}{{end}}" placeholder="Vorgabe: {{.DefaultLead}}" title="So viele Arbeitstage vor dem Termin entsteht der Auftrag – leer = Vorgabe aus den Wartungsregeln"></div>
     </div>
     <div class="form-group"><label class="form-label">Nach der Durchführung</label>
       <label class="mp-radio"><input type="radio" name="mp-mode" value="completion" {{if ne .Plan.ScheduleMode "fixed"}}checked{{end}}> <span><b>ab Durchführung</b> – nächster Termin = Erledigt-Datum + Intervall</span></label>
@@ -242,7 +244,7 @@ async function mpSave(){
     name: $('mp-name').value, description: $('mp-desc').value, type: $('mp-type').value, priority: $('mp-priority').value,
     infrastructure_id: $('mp-infra').value, interval_unit: $('mp-unit').value, interval_count: +$('mp-count').value || 1,
     schedule_mode: (document.querySelector('input[name="mp-mode"]:checked') || {}).value || 'completion',
-    lead_days: +$('mp-lead').value || 0, estimated_min: +$('mp-minutes').value || 0, next_due_at: $('mp-next').value,
+    lead_workdays: $('mp-lead').value === '' ? null : +$('mp-lead').value, estimated_min: +$('mp-minutes').value || 0, next_due_at: $('mp-next').value,
     assigned_to: $('mp-assigned').value, responsible_to: $('mp-responsible').value, assigned_group_id: $('mp-group').value,
     cost_center_id: $('mp-cost').value,
     checklists: mpLists.map(c => ({template_id: c.template_id, infrastructure_id: c.infrastructure_id || '', rhythm_unit: c.rhythm_unit, rhythm_count: +c.rhythm_count || 1})),

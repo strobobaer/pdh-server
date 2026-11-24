@@ -23,6 +23,10 @@ const (
 	KeyDefaultDueDaysMaintenance = "default_due_days_maintenance"
 
 	DefaultDueDaysFallback = 14
+
+	// Wartungsregeln: Vorlauf des Durchführungsauftrags in Arbeitstagen
+	KeyMaintenanceLeadWorkdays     = "maintenance_lead_workdays"
+	DefaultMaintenanceLeadWorkdays = 5
 )
 
 // GetInt liest den Ganzzahlwert der Einstellung key - fehlt der

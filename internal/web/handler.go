@@ -141,6 +141,7 @@ type GanttItem struct {
 	Color           string `json:"color"`
 	DetailURL       string `json:"detail_url"`
 	DueDateEndpoint string `json:"due_date_endpoint"` // API-Pfad zum Setzen des Fälligkeitsdatums per Drag
+	IsPlanned       bool   `json:"is_planned"`        // geplanter Wartungstermin (noch kein Auftrag), nicht ziehbar
 }
 
 type DashStats struct {
@@ -590,6 +591,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/planner/absences/{id}/cancel", h.PlannerAbsenceCancelWeb)
 	r.Post("/planner/entitlements", h.PlannerEntitlementWeb)
 	r.Post("/planner/maintenance/{id}", h.PlannerMaintSaveWeb)
+	r.Post("/planner/maintenance-visits/{id}", h.PlannerVisitSaveWeb) // geplanter Termin (maintenance.edit am Plan)
 	r.Post("/planner/templates/{key}/apply", h.PlannerTemplateApplyWeb)
 	r.Post("/planner/models/{id}", h.PlannerModelSaveWeb)
 	r.Post("/planner/models/{id}/delete", h.PlannerModelDeleteWeb)
@@ -2017,6 +2019,9 @@ func (h *Handler) buildDashboardGantt(ctx context.Context, now time.Time) []Gant
 			})
 		}
 	}
+
+	// geplante Wartungstermine (Jahresplan) der nächsten 12 Monate
+	items = append(items, h.ganttVisits(ctx, now)...)
 
 	// nicht zugewiesen: weder Person noch Gruppe (Aufgaben: keine Beteiligten)
 	if open := h.unassignedRecords(ctx); len(open) > 0 {
@@ -4724,5 +4729,10 @@ func maintUpcoming(m *maintenance.MaintenanceTask, now time.Time) bool {
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
 	due := m.DueDate.Local()
 	due = time.Date(due.Year(), due.Month(), due.Day(), 0, 0, 0, 0, time.Local)
-	return due.After(today.AddDate(0, 0, 7)) && due.AddDate(0, 0, -m.LeadDays).After(today)
+	upFrom := due // „anstehend ab“ steht am Auftrag (Vorlauf in Arbeitstagen), sonst ab Fälligkeit
+	if m.UpcomingFrom != nil {
+		u := *m.UpcomingFrom // DATE-Spalte: Kalendertag als Mitternacht UTC
+		upFrom = time.Date(u.Year(), u.Month(), u.Day(), 0, 0, 0, 0, time.Local)
+	}
+	return due.After(today.AddDate(0, 0, 7)) && upFrom.After(today)
 }

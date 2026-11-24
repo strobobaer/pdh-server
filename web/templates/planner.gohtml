@@ -82,6 +82,7 @@
 .mt-cal .dh b{color:var(--text,inherit);font-size:13px}
 .mt-item{display:block;font-size:11px;padding:3px 5px;border-radius:6px;margin-bottom:3px;background:color-mix(in srgb,#c99a3c 18%,transparent);border-left:3px solid #c99a3c;text-align:left;width:100%;border-top:0;border-right:0;border-bottom:0;color:inherit;cursor:pointer;font-family:inherit}
 .mt-item.obl{background:color-mix(in srgb,#6366F1 16%,transparent);border-left-color:#6366F1}
+.mt-item.plan{background:transparent;border:1px dashed #c99a3c;border-left:3px solid #c99a3c}
 .mt-item.warn-b-red{box-shadow:inset 0 0 0 1px var(--red)}
 .mt-item .w{display:block;color:var(--red);font-size:10px}
 .mt-item .w.a{color:var(--amber)}
@@ -411,8 +412,8 @@
       {{range .}}<td class="{{if not .InMonth}}out{{end}}{{if .Weekend}} wkend{{end}}" style="{{if .Holiday}}background:color-mix(in srgb,var(--red) 6%,transparent);{{end}}{{if .Today}}box-shadow:inset 0 0 0 2px var(--accent){{end}}">
         <div class="dh"><b>{{.Label}}</b><span title="im Dienst (Schichtplan, ohne Abwesende)">{{if .OnDuty}}<i class="ti ti-users"></i> {{.OnDuty}}{{end}}{{if .Hours}} · {{.Hours}}{{end}}</span></div>
         {{if .Holiday}}<div style="font-size:10px;color:var(--red);font-weight:600">{{.Holiday}}</div>{{end}}
-        {{range .Items}}<button type="button" class="mt-item{{if eq .Kind "obligation"}} obl{{end}}{{if .Warn}} warn-{{.WarnClass}}{{end}}" data-id="{{.ID}}" data-kind="{{.Kind}}" data-title="{{.Title}}" data-date="{{.Date}}" data-assignee="{{.AssigneeID}}" data-url="{{.URL}}" title="{{.Title}} · {{.Infra}}{{if .Assignee}} · {{.Assignee}}{{end}}{{if .Group}} · {{.Group}}{{end}}">
-          {{.Title}}{{if .Assignee}} <span class="rec-sub">· {{.Assignee}}</span>{{else if .Group}} <span class="rec-sub">· {{.Group}}</span>{{end}}
+        {{range .Items}}<button type="button" class="mt-item{{if eq .Kind "obligation"}} obl{{end}}{{if .Planned}} plan{{end}}{{if .Warn}} warn-{{.WarnClass}}{{end}}" data-id="{{.ID}}" data-kind="{{.Kind}}" data-title="{{.Title}}" data-date="{{.Date}}" data-assignee="{{if .Planned}}{{.StaffID}}{{else}}{{.AssigneeID}}{{end}}" data-url="{{.URL}}" title="{{if .Planned}}Wartungstermin (geplant): {{end}}{{.Title}} · {{.Infra}}{{if .Assignee}} · {{.Assignee}}{{end}}{{if .Group}} · {{.Group}}{{end}}{{if .OffPlan}} · weicht vom Plan ab{{end}}">
+          {{if .Planned}}<span class="rec-sub">geplant ·</span> {{end}}{{.Title}}{{if .Assignee}} <span class="rec-sub">· {{.Assignee}}</span>{{else if .Group}} <span class="rec-sub">· {{.Group}}</span>{{end}}
           {{if .Warn}}<span class="w{{if eq .WarnClass "b-amber"}} a{{end}}"><i class="ti ti-alert-triangle"></i> {{.Warn}}</span>{{end}}</button>{{end}}
       </td>{{end}}
     </tr>{{end}}
@@ -447,9 +448,10 @@
     document.getElementById('mt-user').innerHTML = h;
   }
   document.querySelectorAll('.mt-item').forEach(b => b.addEventListener('click', () => {
-    if(!CAN || b.dataset.kind !== 'maintenance'){ location.href = b.dataset.url; return; }
-    document.getElementById('mt-title').textContent = b.dataset.title;
-    document.getElementById('mt-form').action = '/planner/maintenance/' + b.dataset.id;
+    const planned = b.dataset.kind === 'planned';
+    if(!CAN || (b.dataset.kind !== 'maintenance' && !planned)){ location.href = b.dataset.url; return; }
+    document.getElementById('mt-title').textContent = (planned ? 'Geplant: ' : '') + b.dataset.title;
+    document.getElementById('mt-form').action = (planned ? '/planner/maintenance-visits/' : '/planner/maintenance/') + b.dataset.id;
     document.getElementById('mt-date').value = b.dataset.date;
     document.getElementById('mt-open').href = b.dataset.url;
     fill(b.dataset.date, b.dataset.assignee);

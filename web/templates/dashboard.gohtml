@@ -48,7 +48,8 @@
 <script>
 var dashGanttItems = [
 {{range .GanttItems}}
-  {id:'{{.ID}}', refType:'{{.RefType}}', name:'{{.Title}}', start:'{{.StartISO}}', end:'{{.EndISO}}',
+  {id:'{{.ID}}', refType:'{{if .IsPlanned}}maintenance{{else}}{{.RefType}}{{end}}', name:'{{if .IsPlanned}}geplant · {{end}}{{.Title}}', start:'{{.StartISO}}', end:'{{.EndISO}}',
+   planned: {{if .IsPlanned}}true{{else}}false{{end}},
    provisional: {{if .IsProvisional}}true{{else}}false{{end}}, done: {{if .IsDone}}true{{else}}false{{end}},
    running: {{if .IsRunning}}true{{else}}false{{end}}, unassigned: {{if .IsUnassigned}}true{{else}}false{{end}},
    upcoming: {{if .IsUpcoming}}true{{else}}false{{end}},
@@ -71,6 +72,7 @@ function applyDashGanttStyling(){
     var barProgress = wrapper.querySelector('.bar-progress');
     if(bar){ bar.style.fill = colors.fill; bar.style.stroke = colors.fill; }
     if(barProgress) barProgress.style.fill = colors.fill;
+    if(t.planned && bar){ bar.style.fillOpacity = '0.15'; bar.style.strokeDasharray = '4 3'; bar.style.strokeWidth = '1.5'; } // geplanter Wartungstermin
     var state = pdhTimelineApply(wrapper, t);
     wrapper.style.opacity = colors.opacity;
     wrapper.style.cursor = 'pointer';
@@ -218,7 +220,8 @@ function renderDashGantt(){
     new Gantt('#dash-gantt-target', tasks, {
       on_date_change: function(task, start, end){
         var item = byId[task.id];
-        if(item) saveDashGanttDate(item, end);
+        if(item && item.dueEndpoint) saveDashGanttDate(item, end);
+        else renderDashGantt(); // geplante Termine verschiebt man im Kalender
       },
       view_mode: 'Week',
       bar_height: PDH_TL.barHeight

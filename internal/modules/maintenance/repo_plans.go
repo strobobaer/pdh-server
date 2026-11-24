@@ -21,7 +21,9 @@ func inputErr(msg string) error { return fmt.Errorf("%w: %s", ErrInput, msg) }
 
 const planSelect = `
 	SELECT mp.id::text, mp.name, COALESCE(mp.description,''), mp.type, mp.infrastructure_id::text,
-	       mp.interval_unit, mp.interval_count, mp.schedule_mode, mp.lead_days, mp.estimated_min, mp.priority,
+	       mp.interval_unit, mp.interval_count, mp.schedule_mode, mp.lead_workdays, mp.year_plan_at,
+	       (SELECT count(*) FROM maintenance_visits v WHERE v.plan_id = mp.id AND v.state = 'planned'),
+	       mp.estimated_min, mp.priority,
 	       mp.assigned_to::text, mp.responsible_to::text, mp.assigned_group_id::text, mp.cost_center_id::text,
 	       mp.active, mp.last_executed_at, mp.next_due_at, mp.created_by::text, mp.created_at,
 	       mp.interval_type, mp.interval_days,
@@ -40,7 +42,8 @@ const planSelect = `
 func scanPlan(row interface{ Scan(...interface{}) error }) (*MaintenancePlan, error) {
 	p := &MaintenancePlan{}
 	err := row.Scan(&p.ID, &p.Name, &p.Description, &p.Type, &p.InfrastructureID,
-		&p.IntervalUnit, &p.IntervalCount, &p.ScheduleMode, &p.LeadDays, &p.EstimatedMin, &p.Priority,
+		&p.IntervalUnit, &p.IntervalCount, &p.ScheduleMode, &p.LeadWorkdays, &p.YearPlanAt, &p.VisitCount,
+		&p.EstimatedMin, &p.Priority,
 		&p.AssignedTo, &p.ResponsibleTo, &p.AssignedGroupID, &p.CostCenterID,
 		&p.Active, &p.LastExecutedAt, &p.NextDueAt, &p.CreatedBy, &p.CreatedAt,
 		&p.Interval, &p.IntervalDays,
@@ -108,8 +111,15 @@ func normalizePlan(in *PlanInput) error {
 	if in.ScheduleMode != ScheduleFixed {
 		in.ScheduleMode = ScheduleFromCompletion
 	}
-	if in.LeadDays < 0 || in.LeadDays > 365 {
-		return inputErr("Vorlauf: 0 bis 365 Tage")
+	if in.LeadWorkdays == nil && in.LeadDays > 0 { // Altform: Kalendertage wie Migration 213 umrechnen
+		n := (in.LeadDays*5 + 6) / 7
+		if n > 60 {
+			n = 60
+		}
+		in.LeadWorkdays = &n
+	}
+	if in.LeadWorkdays != nil && (*in.LeadWorkdays < 0 || *in.LeadWorkdays > 60) {
+		return inputErr("Vorlauf: 0 bis 60 Arbeitstage")
 	}
 	if in.EstimatedMin < 0 || in.EstimatedMin > 24*60*7 {
 		return inputErr("Geplante Dauer ungültig")
@@ -181,14 +191,14 @@ func (r *Repository) CreatePlan(ctx context.Context, in *PlanInput, userID strin
 	var id string
 	err := r.db.QueryRow(ctx, `
 		INSERT INTO maintenance_plans (name, description, type, infrastructure_id, interval_type, interval_days,
-			interval_unit, interval_count, schedule_mode, lead_days, estimated_min, priority,
+			interval_unit, interval_count, schedule_mode, lead_workdays, estimated_min, priority,
 			assigned_to, responsible_to, assigned_group_id, cost_center_id, active, next_due_at, created_by, is_round)
 		VALUES ($1, $2, $3::maintenance_type, $4::uuid, $5::maintenance_interval, $6,
 			$7, $8, $9, $10, $11, $12::maintenance_priority,
 			$13::uuid, $14::uuid, $15::uuid, $16::uuid, true, $17, $18::uuid, $19)
 		RETURNING id::text`,
 		in.Name, in.Description, in.Type, in.InfrastructureID, iv, days,
-		in.IntervalUnit, in.IntervalCount, in.ScheduleMode, in.LeadDays, in.EstimatedMin, in.Priority,
+		in.IntervalUnit, in.IntervalCount, in.ScheduleMode, in.LeadWorkdays, in.EstimatedMin, in.Priority,
 		nullID(in.AssignedTo), nullID(in.ResponsibleTo), nullID(in.AssignedGroupID), nullID(in.CostCenterID), next, userID, in.IsRound).Scan(&id)
 	if err != nil {
 		return "", err
@@ -207,15 +217,24 @@ func (r *Repository) UpdatePlan(ctx context.Context, id string, in *PlanInput) e
 	if d, err := time.ParseInLocation("2006-01-02", in.NextDueAt, time.Local); err == nil {
 		next = &d
 	}
+	// alter Stand: Rhythmus und Besetzung, um geplante Termine nachzuziehen
+	var oldUnit, oldMode string
+	var oldCount int
+	var oldNext time.Time
+	var oldAssignee, oldGroup *string
+	var yearPlan bool
+	_ = r.db.QueryRow(ctx, `SELECT interval_unit, interval_count, schedule_mode, next_due_at, assigned_to::text, assigned_group_id::text,
+		year_plan_at IS NOT NULL FROM maintenance_plans WHERE id = $1::uuid`, id).
+		Scan(&oldUnit, &oldCount, &oldMode, &oldNext, &oldAssignee, &oldGroup, &yearPlan)
 	tag, err := r.db.Exec(ctx, `
 		UPDATE maintenance_plans SET name=$2, description=$3, type=$4::maintenance_type, infrastructure_id=$5::uuid,
 			interval_type=$6::maintenance_interval, interval_days=$7, interval_unit=$8, interval_count=$9,
-			schedule_mode=$10, lead_days=$11, estimated_min=$12, priority=$13::maintenance_priority,
+			schedule_mode=$10, lead_workdays=$11, estimated_min=$12, priority=$13::maintenance_priority,
 			assigned_to=$14::uuid, responsible_to=$15::uuid, assigned_group_id=$16::uuid, cost_center_id=$17::uuid,
 			next_due_at=COALESCE($18, next_due_at), is_round=$19
 		WHERE id=$1::uuid`,
 		id, in.Name, in.Description, in.Type, in.InfrastructureID, iv, days, in.IntervalUnit, in.IntervalCount,
-		in.ScheduleMode, in.LeadDays, in.EstimatedMin, in.Priority,
+		in.ScheduleMode, in.LeadWorkdays, in.EstimatedMin, in.Priority,
 		nullID(in.AssignedTo), nullID(in.ResponsibleTo), nullID(in.AssignedGroupID), nullID(in.CostCenterID), next, in.IsRound)
 	if err != nil {
 		return err
@@ -223,13 +242,52 @@ func (r *Repository) UpdatePlan(ctx context.Context, id string, in *PlanInput) e
 	if tag.RowsAffected() == 0 {
 		return inputErr("Wartungsplan nicht gefunden")
 	}
-	// Stammdaten und Termin auf den offenen, noch nicht begonnenen Auftrag uebertragen
+	// Stammdaten und Termin auf den offenen, noch nicht begonnenen Auftrag uebertragen –
+	// vor dem Neurechnen der geplanten Termine, damit der neue Tag als beauftragt gilt
+	// (sonst entstünde dort zusätzlich ein geplanter Termin und später ein zweiter Auftrag).
+	// Fälligkeit und Besetzung nur, wenn sie sich am Plan geändert haben und am Auftrag nicht von Hand gesetzt sind
+	dueChanged := next != nil && !dayStart(*next).Equal(dayStart(oldNext.Local()))
+	staffChanged := !sameID(oldAssignee, nullID(in.AssignedTo)) || !sameID(oldGroup, nullID(in.AssignedGroupID))
+	nextDay := ""
+	if next != nil {
+		nextDay = next.Format("2006-01-02") // Kalendertag in Ortszeit, nicht ::date in der Zone der DB-Sitzung
+	}
 	if _, err := r.db.Exec(ctx, `UPDATE maintenance_tasks mt SET title = mp.name, description = COALESCE(mp.description,''),
-			type = mp.type, infrastructure_id = mp.infrastructure_id, priority = mp.priority, assigned_to = mp.assigned_to,
-			responsible_to = mp.responsible_to, assigned_group_id = mp.assigned_group_id, cost_center_id = mp.cost_center_id,
-			due_date = mp.next_due_at, updated_at = NOW()
-		FROM maintenance_plans mp WHERE mp.id = $1::uuid AND mt.plan_id = mp.id AND mt.status = 'open'`, id); err != nil {
+			type = mp.type, infrastructure_id = mp.infrastructure_id, priority = mp.priority,
+			assigned_to = CASE WHEN $2 AND NOT mt.staff_manual THEN mp.assigned_to ELSE mt.assigned_to END,
+			assigned_group_id = CASE WHEN $2 AND NOT mt.staff_manual THEN mp.assigned_group_id ELSE mt.assigned_group_id END,
+			responsible_to = mp.responsible_to, cost_center_id = mp.cost_center_id,
+			due_date = CASE WHEN $3 AND NOT mt.due_manual THEN mp.next_due_at ELSE mt.due_date END,
+			planned_for = CASE WHEN $3 AND NOT mt.due_manual THEN NULLIF($4, '')::date ELSE mt.planned_for END,
+			updated_at = NOW()
+		FROM maintenance_plans mp WHERE mp.id = $1::uuid AND mt.plan_id = mp.id AND mt.status = 'open'`, id, staffChanged, dueChanged, nextDay); err != nil {
 		return err
+	}
+	// geplante Termine: neuer Rhythmus → neu rechnen; nur neue Besetzung → übernehmen, wo nicht von Hand besetzt
+	if yearPlan {
+		rhythm := oldUnit != in.IntervalUnit || oldCount != in.IntervalCount || oldMode != in.ScheduleMode || dueChanged
+		switch {
+		case rhythm:
+			if err := r.RecalcVisits(ctx, id, time.Now()); err != nil {
+				return err
+			}
+		case staffChanged:
+			if _, err := r.db.Exec(ctx, `UPDATE maintenance_visits SET assigned_to = $2::uuid, assigned_group_id = $3::uuid, updated_at = NOW()
+				WHERE plan_id = $1::uuid AND state = 'planned' AND NOT staff_manual`, id, nullID(in.AssignedTo), nullID(in.AssignedGroupID)); err != nil {
+				return err
+			}
+		}
+	}
+	if dueChanged { // „anstehend ab“ zum neuen Tag
+		var taskID string
+		if r.db.QueryRow(ctx, `SELECT id::text FROM maintenance_tasks WHERE plan_id = $1::uuid AND status = 'open' AND NOT due_manual LIMIT 1`, id).Scan(&taskID) == nil {
+			var lead *int
+			_ = r.db.QueryRow(ctx, `SELECT lead_workdays FROM maintenance_plans WHERE id = $1::uuid`, id).Scan(&lead)
+			if _, err := r.db.Exec(ctx, `UPDATE maintenance_tasks SET upcoming_from = $2::date WHERE id = $1::uuid`,
+				taskID, r.OrderDay(ctx, dayStart(*next), lead).Format("2006-01-02")); err != nil {
+				return err
+			}
+		}
 	}
 	if err := r.SetPlanChecklists(ctx, id, in.Checklists); err != nil {
 		return err
@@ -253,10 +311,33 @@ func (r *Repository) SetPlanActive(ctx context.Context, id string, active bool) 
 			AND NOT EXISTS (SELECT 1 FROM maintenance_task_steps s WHERE s.task_id = mt.id AND (s.done OR s.value <> ''))
 			AND NOT EXISTS (SELECT 1 FROM maintenance_task_pending_parts p WHERE p.task_id = mt.id)
 			AND NOT EXISTS (SELECT 1 FROM maintenance_task_actions a WHERE a.task_id = mt.id)`, id)
+		if err != nil {
+			return err
+		}
+		// ruhender Plan: keine geplanten Termine; beauftragte mit noch vorhandenem Auftrag und
+		// entfallene bleiben. Termine, deren Auftrag eben entfernt wurde, entstehen beim Aktivieren neu.
+		_, err = r.db.Exec(ctx, `DELETE FROM maintenance_visits WHERE plan_id = $1::uuid
+			AND (state = 'planned' OR (state = 'ordered' AND task_id IS NULL))`, id)
 		return err
 	}
-	_, err := r.ensureTaskForPlan(ctx, id, "")
+	// wieder eingeschaltet: ein früher erzeugter Jahresplan entsteht von selbst neu
+	var yearPlan bool
+	_ = r.db.QueryRow(ctx, `SELECT year_plan_at IS NOT NULL FROM maintenance_plans WHERE id = $1::uuid`, id).Scan(&yearPlan)
+	if yearPlan {
+		if _, err := r.GenerateYearPlan(ctx, id, "", time.Now()); err != nil {
+			return err
+		}
+	}
+	_, err := r.ensureTaskForPlan(ctx, id, "", time.Now())
 	return err
+}
+
+// sameID: beide nil oder gleiche Kennung.
+func sameID(a, b *string) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return *a == *b
 }
 
 // DuplicatePlan: Kopie eines Plans (inkl. Checklisten) als „… Kopie“.
@@ -266,7 +347,7 @@ func (r *Repository) DuplicatePlan(ctx context.Context, id, userID string) (stri
 		return "", err
 	}
 	in := &PlanInput{Name: p.Name + " Kopie", Description: p.Description, Type: p.Type, InfrastructureID: p.InfrastructureID,
-		IntervalUnit: p.IntervalUnit, IntervalCount: p.IntervalCount, ScheduleMode: p.ScheduleMode, LeadDays: p.LeadDays,
+		IntervalUnit: p.IntervalUnit, IntervalCount: p.IntervalCount, ScheduleMode: p.ScheduleMode, LeadWorkdays: p.LeadWorkdays,
 		EstimatedMin: p.EstimatedMin, Priority: p.Priority, AssignedTo: p.AssignedTo, ResponsibleTo: p.ResponsibleTo,
 		AssignedGroupID: p.AssignedGroupID, CostCenterID: p.CostCenterID, NextDueAt: p.NextDueAt.Local().Format("2006-01-02"),
 		IsRound: p.IsRound}

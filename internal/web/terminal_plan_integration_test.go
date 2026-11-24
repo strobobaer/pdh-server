@@ -400,3 +400,39 @@ func TestTerminalPlanNoDeptNeedsGlobalRight(t *testing.T) {
 		t.Error("Recht nur in Abteilung A: Person ohne Abteilung erscheint")
 	}
 }
+
+// Geplante Wartungstermine (Jahresplan) erscheinen als „Geplant“; beauftragte nur als „Fällig“.
+func TestTerminalPlanMaintenanceVisits(t *testing.T) {
+	p := newPlanEnv(t)
+	e := p.e
+	to, tm := p.day(p.today), p.day(p.tomorrow)
+	iA := e.id(`SELECT id::text FROM infrastructure WHERE name = 'PWartA ' || $1`, e.sfx)
+	plan := func(name string) string {
+		id := e.id(`INSERT INTO maintenance_plans (name, infrastructure_id, created_by) VALUES ($1, $2::uuid, $3::uuid) RETURNING id::text`, name, iA, p.pA)
+		e.t.Cleanup(func() { e.exec(`DELETE FROM maintenance_plans WHERE id = $1::uuid`, id) })
+		return id
+	}
+	planned, ordered := plan("W-Plan-A"), plan("W-Auftrag-A")
+	e.exec(`INSERT INTO maintenance_visits (plan_id, calc_day, day, state) VALUES ($1::uuid, $2, $2, 'planned')`, planned, p.tomorrow.Format(dayISO))
+	e.exec(`INSERT INTO maintenance_visits (plan_id, calc_day, day, state) VALUES ($1::uuid, $2, $2, 'ordered')`, ordered, p.today.Format(dayISO))
+	p.clear()
+	p.slide(terminalSlide{Kind: slideKindPlanMaint, PlanRange: "days", PlanDays: 3, DurationSeconds: 10, Active: true})
+	p.slide(terminalSlide{Kind: slideKindPlanMaint, PlanRange: "days", PlanDays: 3, DepartmentIDs: []string{p.deptB}, DurationSeconds: 10, Active: true})
+	got := p.plans(p.termG, p.devG)
+	if len(got) != 2 {
+		t.Fatalf("Folien: %d", len(got))
+	}
+	all := strings.Join(onlyMine(flatPlan(got[0].Plan)), ",")
+	if !strings.Contains(all, tm+"|Geplant|W-Plan-A · PWartA") {
+		t.Errorf("geplanter Termin fehlt: %q", all)
+	}
+	if strings.Contains(all, "W-Auftrag-A") {
+		t.Errorf("beauftragter Termin doppelt: %q", all)
+	}
+	if !strings.Contains(all, to+"|Fällig|W-Heute-A") {
+		t.Errorf("Aufträge fehlen: %q", all)
+	}
+	if b := strings.Join(onlyMine(flatPlan(got[1].Plan)), ","); strings.Contains(b, "W-Plan-A") {
+		t.Errorf("Folie Abteilung B zeigt Termin aus A: %q", b)
+	}
+}

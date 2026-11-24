@@ -32,6 +32,12 @@ func (h *Handler) maintenanceRoutes(r chi.Router) {
 	r.Get("/maintenance/plans/{id}", h.MaintenancePlanPage)
 	r.Post("/maintenance/plans/{id}/duplicate-web", h.MaintenancePlanDuplicateWeb)
 	r.Post("/maintenance/generate", h.MaintenanceGenerate)
+	r.Post("/maintenance/plans/{id}/yearplan", h.MaintenanceYearPlanWeb)
+	r.Post("/maintenance/yearplan", h.MaintenanceYearPlanAllWeb)
+	r.Post("/maintenance/rules", h.MaintenanceRulesWeb)
+	r.Post("/maintenance/visits/{id}/move", h.MaintenanceVisitMoveWeb)
+	r.Post("/maintenance/visits/{id}/staff", h.MaintenanceVisitStaffWeb)
+	r.Post("/maintenance/visits/{id}/reset", h.MaintenanceVisitResetWeb)
 	r.Get("/maintenance/tasks/{id}", h.MaintenanceTaskDetail)
 	r.Post("/maintenance/tasks/{id}/start-web", h.MaintenanceTaskStartWeb)
 	r.Post("/maintenance/tasks/{id}/edit-web", h.MaintenanceTaskEditWeb)
@@ -90,9 +96,10 @@ type maintPlanRow struct {
 }
 
 type yearMark struct {
-	Kind   string // done | skipped | open | overdue | planned
+	Kind   string // done | skipped | open | overdue | planned | dropped
 	Date   string
 	TaskID string
+	Note   string // z. B. „weicht vom Plan ab“
 }
 
 type yearRow struct {
@@ -136,6 +143,10 @@ type MaintenancePageData struct {
 	YearRows     []yearRow
 	Done         []doneRow
 	Archive      maintArchive
+	// Wartungsregeln (Reiter „Regeln“) und Jahresplan-Knopf (Reiter „Pläne“)
+	LeadWorkdays  int
+	CanMaintRules bool
+	CanYearPlan   bool
 }
 
 func (h *Handler) MaintenancePage(w http.ResponseWriter, r *http.Request) {
@@ -179,6 +190,11 @@ func (h *Handler) MaintenancePage(w http.ResponseWriter, r *http.Request) {
 	if tab == "extra" {
 		data.Area.ExtraActive = view
 	}
+	if view == "area" && data.Area.Tab == "rules" {
+		data.LeadWorkdays = h.maint.Repo().DefaultLead(ctx)
+		data.CanMaintRules = h.canMaintRules(r)
+	}
+	data.CanYearPlan = h.hasPerm(r, "maintenance.edit")
 	repo := h.maint.Repo()
 	taskScope := h.scopeAllowedIDs(r, "maintenance_task")
 	planScope := h.scopeAllowedIDs(r, "maintenance_plan")
@@ -370,6 +386,28 @@ func (h *Handler) maintYearRows(ctx context.Context, data *MaintenancePageData, 
 				add(m.Due, yearMark{Kind: kind, TaskID: m.TaskID})
 			}
 		}
+		if p.YearPlanAt != nil {
+			// Jahresplan: die gespeicherten Termine (verschoben, entfallen);
+			// beauftragte stehen schon als Auftrag in der Zeile.
+			visits, err := repo.PlanVisits(ctx, p.ID)
+			if err != nil {
+				componentLog("wartung").Warn().Err(err).Str("plan", p.ID).Msg("termine des jahresplans nicht ladbar")
+			}
+			for _, v := range visits {
+				switch v.State {
+				case maintenance.VisitPlanned:
+					m := yearMark{Kind: "planned"}
+					if v.OffPlan {
+						m.Note = "weicht vom Plan ab"
+					}
+					add(v.Day, m)
+				case maintenance.VisitDropped:
+					add(v.Day, yearMark{Kind: "dropped"})
+				}
+			}
+			data.YearRows = append(data.YearRows, row)
+			continue
+		}
 		// Prognose der weiteren Termine
 		start := p.NextDueAt
 		if openDue != nil {
@@ -434,6 +472,11 @@ type MaintenancePlanPageData struct {
 	Today        string
 	TypeLabels   map[maintenance.PlanType]string
 	Infras       template.JS // Rundgang: Anlagen fuer die Stationen {id,name,parent_id,path}
+	// Jahresplan und Vorlauf
+	CanEdit      bool
+	VisitCount   int
+	YearPlanDone bool
+	DefaultLead  int
 	// Vorbelegung der Auswahlfelder
 	AssignedID, ResponsibleID, CostCenterID, NextDueISO string
 }
@@ -442,11 +485,12 @@ func (h *Handler) MaintenancePlanPage(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	id := chi.URLParam(r, "id")
 	data := MaintenancePlanPageData{
-		BaseData:   h.baseData(r, "maintenance", "Wartungsplan", "Plan"),
-		IsNew:      id == "",
-		Users:      h.userOptions(ctx),
-		Today:      time.Now().Format("2006-01-02"),
-		TypeLabels: maintTypeShort,
+		BaseData:    h.baseData(r, "maintenance", "Wartungsplan", "Plan"),
+		IsNew:       id == "",
+		Users:       h.userOptions(ctx),
+		Today:       time.Now().Format("2006-01-02"),
+		TypeLabels:  maintTypeShort,
+		DefaultLead: h.maint.Repo().DefaultLead(ctx),
 	}
 	plan := &maintenance.MaintenancePlan{IntervalUnit: maintenance.UnitMonth, IntervalCount: 1, ScheduleMode: maintenance.ScheduleFromCompletion,
 		Priority: maintenance.PrioMedium, Type: maintenance.PlanPreventive, Active: true, NextDueAt: time.Now(), EstimatedMin: 60}
@@ -458,6 +502,8 @@ func (h *Handler) MaintenancePlanPage(w http.ResponseWriter, r *http.Request) {
 		}
 		plan = p
 		data.Title = p.Name
+		data.CanEdit = h.hasPermRec(r, "maintenance.edit", "maintenance_plan", p.ID)
+		data.VisitCount, data.YearPlanDone = p.VisitCount, p.YearPlanAt != nil
 		if p.OpenTaskID != "" {
 			data.OpenTask, _ = h.maint.GetTaskByID(ctx, p.OpenTaskID)
 		}
@@ -561,6 +607,8 @@ type MaintenanceTaskDetailData struct {
 	Users       []UserOption
 	NextTaskID  string
 	NextTaskDue string
+	NextDay     string // geplanter nächster Termin ohne Auftrag
+	NextOrderOn string // Tag, an dem sein Auftrag entsteht
 	ProtocolURL string
 }
 
@@ -633,11 +681,7 @@ func (h *Handler) MaintenanceTaskDetail(w http.ResponseWriter, r *http.Request) 
 	}
 	data.PartsUsed, _ = h.maint.GetPartsUsage(ctx, id)
 	if !v.IsOpen && t.PlanID != nil {
-		var due time.Time
-		if h.db.QueryRow(ctx, `SELECT id::text, due_date FROM maintenance_tasks WHERE plan_id=$1::uuid AND id<>$2::uuid
-			AND status IN ('open','in_progress','pending') ORDER BY due_date LIMIT 1`, *t.PlanID, id).Scan(&data.NextTaskID, &due) == nil {
-			data.NextTaskDue = deDate(due)
-		}
+		h.maintDetailNext(ctx, &data, id)
 	}
 	data.ProtocolURL = h.maintProtocolURLs(ctx, []string{id})[id]
 	data.CanDelete = h.isAreaAdmin(r, "maintenance_task", id)

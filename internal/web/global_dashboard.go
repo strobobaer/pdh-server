@@ -405,12 +405,7 @@ func (h *Handler) GlobalDashboardData(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	boardIDs := h.boardAllowedIDs(ctx, board)
-	boardShows := func(kind, id string) bool {
-		if !board.HasType(kind) {
-			return false
-		}
-		return boardIDs == nil || boardIDs[kind][id]
-	}
+	boardShows := func(kind, id string) bool { return boardShowsKind(board, boardIDs, kind, id) }
 	gantt := data.GanttItems[:0]
 	for _, g := range data.GanttItems {
 		if boardShows(g.RefType, g.ID) {
@@ -430,15 +425,15 @@ func (h *Handler) GlobalDashboardData(w http.ResponseWriter, r *http.Request) {
 			data.GanttItems = h.scopeGantt(ctx, sc, data.GanttItems)
 		}
 	}
-	// Vorlauf der Plaene: eine Wartung gilt ab (Faelligkeit − Vorlauf) als anstehend
-	leadDays := map[string]int{}
-	if lrows, err := h.db.Query(ctx, `SELECT mt.id::text, COALESCE(mp.lead_days, 0) FROM maintenance_tasks mt
-		LEFT JOIN maintenance_plans mp ON mp.id = mt.plan_id WHERE mt.status = 'open'`); err == nil {
+	// Vorlauf: eine Wartung gilt ab „anstehend ab“ (am Auftrag, Vorlauf in Arbeitstagen) als anstehend
+	upcomingFrom := map[string]time.Time{}
+	if lrows, err := h.db.Query(ctx, `SELECT mt.id::text, COALESCE(mt.upcoming_from, mt.due_date::date) FROM maintenance_tasks mt
+		WHERE mt.status = 'open'`); err == nil {
 		for lrows.Next() {
 			var id string
-			var d int
+			var d time.Time
 			if lrows.Scan(&id, &d) == nil {
-				leadDays[id] = d
+				upcomingFrom[id] = time.Date(d.Year(), d.Month(), d.Day(), 0, 0, 0, 0, time.Local)
 			}
 		}
 		lrows.Close()
@@ -465,8 +460,8 @@ func (h *Handler) GlobalDashboardData(w http.ResponseWriter, r *http.Request) {
 		item.Status = globalStatusLabel(item.Status)
 		item.Type = globalTypeLabel(item.TypeKey)
 		if item.TypeKey == "maintenance" && item.StatusKey == "open" {
-			if due, err := time.ParseInLocation("2006-01-02", item.DueDate, time.Local); err == nil {
-				item.Upcoming = due.AddDate(0, 0, -leadDays[item.ID]).After(today)
+			if up, ok := upcomingFrom[item.ID]; ok {
+				item.Upcoming = up.After(today)
 			}
 		}
 		data.Items = append(data.Items, item)

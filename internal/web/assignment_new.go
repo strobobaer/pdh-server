@@ -70,7 +70,7 @@ var unassignedKinds = []struct {
 		`SELECT m.id::text, m.title, m.priority::text, COALESCE(i.name,''), m.created_at, `+unassignedCreator+` FROM maintenance_tasks m
 		LEFT JOIN infrastructure i ON i.id = m.infrastructure_id LEFT JOIN users cu ON cu.id = m.created_by
 		WHERE m.assigned_to IS NULL AND m.assigned_group_id IS NULL AND m.status IN ('open','in_progress','pending') AND m.archived_at IS NULL
-		AND m.due_date - make_interval(days => COALESCE((SELECT p.lead_days FROM maintenance_plans p WHERE p.id = m.plan_id), 0)) < NOW() + INTERVAL '1 day'
+		AND COALESCE(m.upcoming_from, m.due_date::date) <= CURRENT_DATE
 		ORDER BY m.due_date`},
 }
 
