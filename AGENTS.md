@@ -925,19 +925,31 @@ und 3 drückt bis auf Weiteres der Anwender.
     Schlussprüfung (Claude Opus, dann Korrekturrunde: Rückfall-Maske gegen
     gefüllte Quadrate, gewählte Symbole sofort eingebettet, fremde Version
     302 `no-store` statt 404, `/vendor/` leise im Protokoll) und
-    Codex-Prüfung erledigt; kleine Befunde im Ledger
-    `.superpowers/sdd/2026-11-24-seitenaufbau/` bzw. hier: HEAD für
-    `/vendor` 405, `gzip;q=0` nicht beachtet, Infoleiste lädt Einzel-SVG,
-    `adoptGrafana` ohne `iconChoicesChanged`. Offen: Messung am Testverbund
-    (Ziel 0,5 s / 1,5 s bei 4× CPU), Netzprotokoll ohne fremde Adressen,
-    Browserprüfung echter Seiten (Terminal „Keine Rüsttasten“, Symbolauswahl,
-    Kontrastmodus); 10.10.0.202 über die Cloudflare-Adresse (Anwender;
-    nach dem Einspielen offene Seiten einmal neu laden).
+    Codex-Prüfung erledigt; kleine Befunde und alle Entscheidungen im
+    Ledger `docs/superpowers/notes/2026-11-24-seitenaufbau-ledger.md`
+    (u. a. HEAD für `/vendor` 405, `gzip;q=0` nicht beachtet, Infoleiste
+    lädt Einzel-SVG, `adoptGrafana` ohne `iconChoicesChanged`). **Auf
+    `main`** (24.11.2026, Merge `f808cecf`, Dauerfreigabe) und dem
+    Testverbund (beide Server und Zeuge 0.82.57, aktiv jetzt `pdh-server`
+    10.10.0.17). Abnahme am Testverbund (Bericht
+    `docs/superpowers/notes/2026-11-24-seitenaufbau-abnahme.md`): erster
+    Aufruf 1× CPU load 0,23–0,28 s, Symbole 0,29–0,44 s (vorher 6,7–7,0 s)
+    – Ziel erfüllt; 4× CPU Symbole 1,32–1,83 s (vorher 29–33 s) – Ziel
+    1,5 s auf `/`, `/energy/meters`, `/tickets` knapp verfehlt; nur Host
+    10.10.0.15:8090, 605 `/vendor`-Antworten alle 200; 120 Ansichten ohne
+    Überlauf, Konsolenfehler oder Symbol ohne Maske; unbekannter Name in der
+    Symbolauswahl ohne Quadrat; Kontrastmodus und Druck mit Symbolen; alte
+    Adressen 302 `no-store`. Stildatei 590 KB roh, 64 KB gzip. Offen:
+    10.10.0.202 über die Cloudflare-Adresse (Anwender; nach dem Einspielen
+    offene Seiten einmal neu laden); 4×-Ziel (Vorschlag: Stildatei teilen –
+    eingebettete Symbole sofort, Verweise auf die übrigen 5 474 Symbole
+    nachgeladen).
     **Tempo (Anwender 24.11.2026):** Dauerfreigabe Testverbund (siehe
     „Prüfung vor jedem Merge“); **ein** gemeinsamer Entwurf für die Teile
     Gestaltungsgrundlage, gleiche Bausteine und Navigation mit klickbarer
-    Vorschau; Stammdaten und Betriebssystem-Updates parallel (Codex, eigener
-    Arbeitsordner); Folien wie PowerPoint erst nach 0.90.0 (0.90.x).
+    Vorschau; Stammdaten und Betriebssystem-Updates parallel (eigener
+    Arbeitsordner; Codex kann hier nicht bauen, Claude baut, Codex prüft);
+    Folien wie PowerPoint erst nach 0.90.0 (0.90.x).
     Bestandsaufnahme für „Stammdaten zusammenführen“:
     `docs/superpowers/notes/2026-11-24-stammdaten-bestandsaufnahme.md`.
     (3) **Einheitliche Oberfläche** (Anwender 24.11.2026, auf den Vorschlag
