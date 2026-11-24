@@ -65,7 +65,7 @@ func TestTerminalFreeAufgabeStartenUndBeenden(t *testing.T) {
 	if st := v.status("tasks", v.task); st != "in_progress" {
 		t.Errorf("Status %s", st)
 	}
-	if rec := v.post("/terminal/vorgaenge/beenden", "task", v.task); rec.Code != http.StatusSeeOther {
+	if rec := v.finish("task", v.task); rec.Code != http.StatusSeeOther {
 		t.Fatalf("beenden: %d %s", rec.Code, rec.Body.String())
 	}
 	if st := v.status("tasks", v.task); st != "resolved" {
@@ -95,7 +95,7 @@ func TestTerminalFreeStoerungAbschlussToken(t *testing.T) {
 func TestTerminalFreeGrenzen(t *testing.T) {
 	v := newFreeEnv(t, true)
 	req := v.freeReq(v.devCookie)
-	for _, perm := range []string{"faults.view", "faults.edit", "faults.resolve", "tickets.view", "tickets.edit", "tickets.resolve", "tasks.view", "tasks.edit", "setup.view", "setup.edit", "downtime.view", "downtime.edit", "hmi.view"} {
+	for _, perm := range []string{"faults.view", "faults.edit", "faults.resolve", "tickets.view", "tickets.edit", "tickets.resolve", "tasks.view", "tasks.edit", "setup.view", "setup.edit", "downtime.view", "downtime.edit", "hmi.view", "maintenance.view", "maintenance.edit", "maintenance.complete"} {
 		if !v.h.terminalFreeCan(req, v.term, perm, v.plant) || !v.h.terminalFreeCan(req, v.term, perm, v.sub) {
 			t.Errorf("%s nicht gewährt", perm)
 		}
@@ -103,7 +103,7 @@ func TestTerminalFreeGrenzen(t *testing.T) {
 			t.Errorf("%s außerhalb des Anlagenbaums gewährt", perm)
 		}
 	}
-	for _, perm := range []string{"hmi.control", "hmi.manage", "setup.admin", "downtime.admin", "system.manage_users", "maintenance.edit", "parts.edit"} {
+	for _, perm := range []string{"hmi.control", "hmi.manage", "setup.admin", "downtime.admin", "system.manage_users", "maintenance.admin", "parts.edit"} {
 		if v.h.terminalFreeCan(req, v.term, perm, v.plant) || v.h.terminalUserCan(req, v.term, perm, v.plant) {
 			t.Errorf("%s gewährt", perm)
 		}
@@ -169,7 +169,7 @@ func TestTerminalFreeMitKarte(t *testing.T) {
 func TestTerminalFreeVollerAbschluss(t *testing.T) {
 	v := newFreeEnv(t, true)
 	v.post("/terminal/vorgaenge/start", "task", v.task, v.anna)
-	if rec := v.post("/terminal/vorgaenge/beenden", "task", v.task); rec.Code != http.StatusSeeOther || v.status("tasks", v.task) != "resolved" {
+	if rec := v.finish("task", v.task); rec.Code != http.StatusSeeOther || v.status("tasks", v.task) != "resolved" {
 		t.Fatalf("Aufgabe beenden: %d %s", rec.Code, v.status("tasks", v.task))
 	}
 	v.post("/terminal/vorgaenge/start", "fault", v.fault, v.anna)

@@ -38,6 +38,8 @@ type terminalStats struct {
 	Labels  []string             `json:"labels"`
 	Series  []terminalStatSeries `json:"series"`
 	Unit    string               `json:"unit"` // Einheit der Reihen, z. B. "" (Anzahl) oder "min"
+	// Pies: Kreisdiagramme (Rüstzeiten: Anteil der Gründe, „Alle Anlagen“ und je Anlage); ältere Terminals ignorieren sie.
+	Pies []setupPie `json:"pies,omitempty"`
 }
 
 // countedCond: welche Vorgänge in Neu/Erledigt zählen. "Offen" zählt nur nicht archivierte; erledigte Vorgänge
@@ -244,6 +246,9 @@ func (h *Handler) slideStats(ctx context.Context, kind string, days int, ids []s
 		st.Labels = labels
 		st.Series = []terminalStatSeries{{Name: "Anzahl", Values: counts}, {Name: "Ø Minuten", Values: avgs}}
 		st.Unit = "min"
+		if st.Pies, err = h.setupSlidePies(ctx, days, ids); err != nil {
+			return nil, err
+		}
 	default:
 		return nil, errors.New("keine Statistikfolie")
 	}

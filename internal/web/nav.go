@@ -88,6 +88,7 @@ var navDefs = []navDef{
 
 	{navItem{"users", "/users", "ti-users", "Benutzer", "users", false}, "people", func(b *BaseData) bool { return b.CanManageUsers }},
 	{navItem{"trainings", "/trainings", "ti-school", "Schulungen", "trainings", false}, "people", always},
+	{navItem{"attendance", "/attendance", "ti-clock-check", "Anwesenheit & Arbeitszeit", "attendance", false}, "people", needs(permAttendanceView, permAttendanceEdit)},
 	{navItem{"orgunits", "/admin/org-units", "ti-users-group", "Abteilungen & Gruppen", "org_units", false}, "people", func(b *BaseData) bool { return b.CanManageUsers }},
 	{navItem{"orgchart", "/admin/orgchart", "ti-sitemap", "Organigramm", "orgchart", false}, "people", func(b *BaseData) bool { return b.CanManageRoles }},
 

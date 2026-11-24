@@ -1,6 +1,6 @@
 package web
 
-// Abteilungen eines Terminals: Aus diesen Abteilungen stammen die Mitarbeitenden, die man am Terminal
+// Abteilungen eines Terminals: Aus diesen Abteilungen (und den weiteren Quellen, terminal_pick.go) stammen die Mitarbeitenden, die man am Terminal
 // auswählen kann (Vorgänge, weitere Terminalfunktionen). Einstellung je Terminal-Benutzer in
 // terminal_settings.abteilungen (Migration 206); NULL = Vorgabe: die Abteilung(en) der Anlage des Terminals.
 
@@ -58,52 +58,6 @@ type terminalPerson struct {
 // sie wird am Namen erkannt (ohne Groß-/Kleinschreibung und Randleerraum).
 const terminalMaintenanceDeptName = "instandhaltung"
 
-// terminalDepartmentPeople: die am Terminal wählbaren Personen (zugleich die erlaubten Zuweisungen), nach Name.
-// Siehe terminalPickPeople.
-func (h *Handler) terminalDepartmentPeople(ctx context.Context, termUserID string) ([]terminalPerson, error) {
-	people, _, err := h.terminalPickPeople(ctx, termUserID)
-	return people, err
-}
-
-// terminalPickPeople: aktive Mitarbeitende (keine Systembenutzer, keine Bots, keine Betrachter) der Abteilungen des
-// Terminals. Hat keine dieser Abteilungen wählbare Personen, gelten ersatzweise die Personen der Abteilung
-// „Instandhaltung“ (fallback=true). Gibt es diese Abteilung nicht, bleibt die Liste leer.
-func (h *Handler) terminalPickPeople(ctx context.Context, termUserID string) (people []terminalPerson, fallback bool, err error) {
-	depts, err := h.terminalDepartments(ctx, termUserID)
-	if err != nil {
-		return nil, false, err
-	}
-	if len(depts) > 0 {
-		if people, err = h.departmentPeople(ctx, depts); err != nil || len(people) > 0 {
-			return people, false, err
-		}
-	}
-	maint, err := h.queryStrings(ctx, `SELECT id::text FROM departments WHERE active AND lower(btrim(name)) = $1 ORDER BY id`, terminalMaintenanceDeptName)
-	if err != nil || len(maint) == 0 {
-		return nil, false, err
-	}
-	people, err = h.departmentPeople(ctx, maint)
-	return people, err == nil && len(people) > 0, err
-}
-
-func (h *Handler) departmentPeople(ctx context.Context, depts []string) ([]terminalPerson, error) {
-	rows, err := h.db.Query(ctx, `SELECT id::text, TRIM(first_name || ' ' || last_name), COALESCE(department, '')
-		FROM users WHERE active AND NOT is_bot AND NOT is_system_user AND role::text <> 'viewer'
-		AND department_id = ANY($1::uuid[]) ORDER BY lower(last_name), lower(first_name), id`, depts)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []terminalPerson
-	for rows.Next() {
-		var p terminalPerson
-		if err := rows.Scan(&p.ID, &p.Name, &p.Department); err != nil {
-			return nil, err
-		}
-		out = append(out, p)
-	}
-	return out, rows.Err()
-}
 
 // ---- Einstellung auf der Benutzerseite des Terminals (Stammdaten) ----
 
