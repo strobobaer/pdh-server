@@ -63,7 +63,7 @@
     <div style="min-width:0">
       <b>{{.Name}}</b>
       {{if .Revoked}}<span class="badge" style="background:var(--red)">Kopplung gesperrt</span>{{else if .Online}}<span class="badge" style="background:var(--green)">online</span>{{else}}<span class="badge" style="background:var(--muted)">offline</span>{{end}}
-      <div class="sub">{{.Type}} · Version {{.Version}} · Terminal-Benutzer {{.UserName}}{{if .LocalPort}} · lokaler Port {{.LocalPort}}{{end}}</div>
+      <div class="sub">{{.Type}} · Version {{.Version}} · Terminal-Benutzer {{.UserName}}{{if .LocalPort}} · lokaler Port {{.LocalPort}}{{end}} · Weg {{.Route}}</div>
       <div class="sub">Gekoppelt am {{.Paired}}{{if .Revoked}} · gesperrt am {{.RevokedAt}}{{else}} · zuletzt gemeldet {{.LastSeen}}{{end}}</div>
     </div>
     <div class="kt-actions">{{template "terminal-gear" .}} <a class="btn btn-small" href="{{.Link}}"><i class="ti ti-settings"></i> Einstellungen</a></div>
