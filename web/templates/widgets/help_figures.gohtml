@@ -516,15 +516,17 @@
 {{/* Versionen & Updates */}}
 {{define "hb-fig-update"}}
 <figure class="hb-fig">
-<svg viewBox="0 0 640 120" role="img" aria-label="Ablauf eines Updates">
+<svg viewBox="0 0 640 156" role="img" aria-label="Ablauf eines Updates">
   <rect class="acl" x="6" y="30" width="112" height="56" rx="8"/><text x="62" y="53" class="t-c t-b">🔍 Prüfen</text><text x="62" y="70" class="t-c t-m">GitHub main</text>
   <rect class="am" x="134" y="30" width="112" height="56" rx="8"/><text x="190" y="53" class="t-c t-b">✨ Neu in 0.x</text><text x="190" y="70" class="t-c t-m">Änderungen lesen</text>
   <rect class="acl" x="262" y="30" width="112" height="56" rx="8"/><text x="318" y="53" class="t-c t-b">⬇ Installieren</text><text x="318" y="70" class="t-c t-m">Update-Agent</text>
   <rect class="bg3" x="390" y="30" width="112" height="56" rx="8"/><text x="446" y="53" class="t-c t-b">🗄 Vollsicherung</text><text x="446" y="70" class="t-c t-m">„Vor Update“</text>
   <rect class="gr" x="518" y="30" width="116" height="56" rx="8"/><text x="576" y="53" class="t-c t-b">✔ Neue Version</text><text x="576" y="70" class="t-c t-m">läuft, Kopfzeile v…</text>
   <path class="ar" d="M118 58 H132"/><path class="ar" d="M246 58 H260"/><path class="ar" d="M374 58 H388"/><path class="ar" d="M502 58 H516"/>
+  <rect class="bg3" x="262" y="98" width="240" height="48" rx="8"/><text x="274" y="116" class="t-b">🖥 Betriebssystem</text><text x="274" y="134" class="t-m">Pakete · Neustart nötig · Aktualisieren</text>
+  <path class="ln" d="M318 86 V98" stroke-dasharray="4 3"/>
 </svg>
-<figcaption>Erst lesen, was neu ist, dann installieren. Vor den Datenbank-Änderungen sichert PDH automatisch den bisherigen Stand.</figcaption>
+<figcaption>Erst lesen, was neu ist, dann installieren. Vor den Datenbank-Änderungen sichert PDH automatisch den bisherigen Stand. Darunter steht die Karte „Betriebssystem“ mit eigenem Knopf.</figcaption>
 </figure>
 {{end}}
 

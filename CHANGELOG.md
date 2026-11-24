@@ -10,6 +10,18 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.82.59] – 2026-11-24
+
+### Neu
+
+- **Betriebssystem-Updates im PDH:** Die Karte „Betriebssystem“ in den Core-Einstellungen zeigt offene Pakete, Sicherheitsupdates, „Neustart nötig“ und den letzten Lauf.
+- **Betriebssystem aktualisieren:** Der Knopf spielt die Pakete wie das PDH-Update ein – mit Countdown, Sperre, Sicherung, Neustart nur bei Bedarf und Prüfung danach (bei einem einzelnen Server; im Verbund folgt das später).
+- **Haken „beim PDH-Update mit aktualisieren“:** Das PDH-Update spielt dann die Betriebssystem-Pakete im selben Durchgang ein, und das Wartungsfenster spielt offene Sicherheitsupdates auch ohne PDH-Update ein.
+
+### Sicherheit
+
+- Neues Recht „Betriebssystem aktualisieren“ (`system.os_update`); es bekommen alle Rollen, die Rollen verwalten dürfen.
+
 ## [0.82.58] – 2026-11-24
 
 ### Geändert
