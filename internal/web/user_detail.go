@@ -695,6 +695,9 @@ func (h *Handler) UserMasterSaveWeb(w http.ResponseWriter, r *http.Request) {
 		sys, err := h.isTerminalUser(ctx, id)
 		if err == nil && sys {
 			err = h.saveTerminalPickSources(ctx, id, r.Form["terminal_pick_groups"], r.Form["terminal_pick_depts"], r.Form["terminal_pick_people"], getUser(r).ID)
+			if err == nil {
+				h.notifyTerminalSettings(id)
+			}
 		}
 		if err != nil {
 			componentLog("terminal").Error().Err(err).Str("user", id).Msg("auswahl am terminal speichern")

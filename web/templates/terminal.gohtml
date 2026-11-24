@@ -656,6 +656,9 @@ connect();
     <h2>{{.TypeLabel}}: {{.Title}}</h2>
     <div class="v-meta">{{if .Path}}{{.Path}} · {{end}}{{.StatusLabel}}{{if .PeopleNames}} · {{.PeopleNames}}{{end}}</div>
     <input type="hidden" name="type" value="{{.Type}}"><input type="hidden" name="id" value="{{.ID}}">
+    {{if $.Vorg.LoggedIn}}<div class="v-meta"><i class="ti ti-id-badge-2" aria-hidden="true"></i> Mit Karte angemeldet: {{$.Vorg.Person}}</div>
+    {{else if $.Vorg.Pick}}<div class="v-meta">Wer beendet? Person wählen</div>
+    <div class="v-people">{{range $.Vorg.Pick}}<label class="t-opt"><input type="radio" name="who" value="{{.ID}}" required><span>{{.Name}}{{if .Dept}}<small>{{.Dept}}</small>{{end}}</span></label>{{end}}</div>{{end}}
     <button type="submit" class="t-btn ok big"><i class="ti ti-check" aria-hidden="true"></i> Beenden</button>
     <button type="submit" class="t-btn warn big" formaction="/terminal/vorgaenge/warten"><i class="ti ti-player-pause" aria-hidden="true"></i> Warten (geht noch weiter)</button>
     <a class="t-btn" href="/terminal/vorgaenge">Abbrechen</a>

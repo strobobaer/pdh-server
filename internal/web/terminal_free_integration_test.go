@@ -65,7 +65,7 @@ func TestTerminalFreeAufgabeStartenUndBeenden(t *testing.T) {
 	if st := v.status("tasks", v.task); st != "in_progress" {
 		t.Errorf("Status %s", st)
 	}
-	if rec := v.post("/terminal/vorgaenge/beenden", "task", v.task); rec.Code != http.StatusSeeOther {
+	if rec := v.finish("task", v.task); rec.Code != http.StatusSeeOther {
 		t.Fatalf("beenden: %d %s", rec.Code, rec.Body.String())
 	}
 	if st := v.status("tasks", v.task); st != "resolved" {
@@ -169,7 +169,7 @@ func TestTerminalFreeMitKarte(t *testing.T) {
 func TestTerminalFreeVollerAbschluss(t *testing.T) {
 	v := newFreeEnv(t, true)
 	v.post("/terminal/vorgaenge/start", "task", v.task, v.anna)
-	if rec := v.post("/terminal/vorgaenge/beenden", "task", v.task); rec.Code != http.StatusSeeOther || v.status("tasks", v.task) != "resolved" {
+	if rec := v.finish("task", v.task); rec.Code != http.StatusSeeOther || v.status("tasks", v.task) != "resolved" {
 		t.Fatalf("Aufgabe beenden: %d %s", rec.Code, v.status("tasks", v.task))
 	}
 	v.post("/terminal/vorgaenge/start", "fault", v.fault, v.anna)

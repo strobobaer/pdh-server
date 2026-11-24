@@ -21,7 +21,6 @@ package web
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"net/url"
 	"slices"
@@ -367,7 +366,7 @@ func (h *Handler) TerminalVorgaengePage(w http.ResponseWriter, r *http.Request) 
 		} else {
 			it.CanAct = true
 			v.Sel = &it
-			if it.Group != "work" {
+			{
 				people, err := h.terminalPickPeople(ctx, uid)
 				if err != nil {
 					componentLog("terminal").Error().Err(err).Msg("mitarbeitende lesen")
@@ -681,23 +680,10 @@ func (h *Handler) TerminalVorgaengeWarten(w http.ResponseWriter, r *http.Request
 	vorgBack(w, r, "warten")
 }
 
-// vorgFinishActor: Person, in deren Namen der Abschluss läuft – die Kartenperson, sonst die erste Person am Vorgang.
-func (h *Handler) vorgFinishActor(ctx context.Context, c *vorgCtx) (*users.User, error) {
-	if c.Act.Card != nil {
-		return c.Act.Card, nil
-	}
-	for _, pe := range c.Item.People {
-		u, err := h.users.GetByID(ctx, pe.ID)
-		if err == nil && u != nil && u.Active && !u.IsSystemUser {
-			return u, nil
-		}
-	}
-	return nil, fmt.Errorf("keine Person am Vorgang")
-}
-
 // TerminalVorgaengeBeenden: POST /terminal/vorgaenge/beenden (type, id)
 //
 //	Aufgabe: wird erledigt (Weiterleitung zur Liste).
+//	Immer mit Person: Kartenperson oder who aus der Auswahl (422 ohne, 422 außerhalb der Auswahl).
 //	Störung/Ticket: JSON {token, who, pre, type, id} für den Abschluss-Assistenten (Token nur für diesen Vorgang).
 func (h *Handler) TerminalVorgaengeBeenden(w http.ResponseWriter, r *http.Request) {
 	c, ok := h.vorgGate(w, r, func(k vorgKind) string { return completionKinds[k.Type].DonePerm })
@@ -709,17 +695,10 @@ func (h *Handler) TerminalVorgaengeBeenden(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	ctx := r.Context()
-	var actor *users.User
-	var err error
-	if r.FormValue("back") == vorgBackInfo {
-		// Vorgangsleiste: keine anonyme Fertigmeldung – Kartenperson oder eine gewählte Person der Auswahl
-		var code int
-		if actor, code, err = h.vorgBarActor(ctx, c, r.FormValue("who")); err != nil {
-			http.Error(w, err.Error(), code)
-			return
-		}
-	} else if actor, err = h.vorgFinishActor(ctx, c); err != nil {
-		http.Error(w, "Der Vorgang hat keine zugewiesene Person – bitte zuerst starten.", http.StatusConflict)
+	// keine anonyme Fertigmeldung (Liste und Leiste): Kartenperson oder eine gewählte Person der Auswahl
+	actor, code, err := h.vorgBarActor(ctx, c, r.FormValue("who"))
+	if err != nil {
+		http.Error(w, err.Error(), code)
 		return
 	}
 	if c.Item.Type == "task" {

@@ -118,6 +118,11 @@ func (v *vgEnv) req(method, target string, form url.Values, c *http.Cookie, hdr 
 	return rec
 }
 
+// finish: Fertigmelden mit gewählter Person (ohne Karte nie anonym).
+func (v *vgEnv) finish(typ, id string) *httptest.ResponseRecorder {
+	return v.req("POST", "/terminal/vorgaenge/beenden", url.Values{"type": {typ}, "id": {id}, "who": {v.anna}}, v.devCookie, nil)
+}
+
 func (v *vgEnv) post(path, typ, id string, people ...string) *httptest.ResponseRecorder {
 	f := url.Values{"type": {typ}, "id": {id}}
 	for _, p := range people {
@@ -342,11 +347,11 @@ func TestVorgaengeWartenBehaeltZuweisung(t *testing.T) {
 
 func TestVorgaengeBeendenAufgabe(t *testing.T) {
 	v := newVgEnv(t, true)
-	if rec := v.post("/terminal/vorgaenge/beenden", "task", v.task); rec.Code != http.StatusConflict {
+	if rec := v.finish("task", v.task); rec.Code != http.StatusConflict {
 		t.Errorf("beenden ohne Start: %d", rec.Code)
 	}
 	v.post("/terminal/vorgaenge/start", "task", v.task, v.anna, v.berta)
-	rec := v.post("/terminal/vorgaenge/beenden", "task", v.task)
+	rec := v.finish("task", v.task)
 	if rec.Code != http.StatusSeeOther || !strings.Contains(rec.Header().Get("Location"), "n=beendet") {
 		t.Fatalf("beenden: %d %s %s", rec.Code, rec.Header().Get("Location"), rec.Body.String())
 	}
@@ -362,7 +367,7 @@ func TestVorgaengeBeendenAufgabe(t *testing.T) {
 func TestVorgaengeBeendenStoerungMitAssistent(t *testing.T) {
 	v := newVgEnv(t, true)
 	v.post("/terminal/vorgaenge/start", "ticket", v.ticket, v.anna, v.berta)
-	rec := v.post("/terminal/vorgaenge/beenden", "ticket", v.ticket)
+	rec := v.finish("ticket", v.ticket)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("beenden: %d %s", rec.Code, rec.Body.String())
 	}
@@ -444,7 +449,7 @@ func (v *vgEnv) tokenOK(token, path string, c *http.Cookie) bool {
 
 func (v *vgEnv) issue(t *testing.T, typ, id string) string {
 	t.Helper()
-	rec := v.post("/terminal/vorgaenge/beenden", typ, id)
+	rec := v.finish(typ, id)
 	var out struct{ Token string }
 	if rec.Code != 200 || json.Unmarshal(rec.Body.Bytes(), &out) != nil || out.Token == "" {
 		t.Fatalf("kein Token: %d %s", rec.Code, rec.Body.String())
