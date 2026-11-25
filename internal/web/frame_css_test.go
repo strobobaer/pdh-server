@@ -120,8 +120,22 @@ func TestFrameTopbarFits(t *testing.T) {
 		".frame-dialog-bar{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:var(--sp-2);margin-top:var(--sp-3);position:sticky;bottom:calc(-1 * var(--sp-4));",
 		".frame-order li span{flex:1;min-width:0;overflow-wrap:anywhere}",
 		// Statusleiste bei 768 px und Größe 130–160 %: Mindestbreiten als Anteil der Leiste
-		"grid-template-columns:minmax(min(180px,30%),1fr) minmax(0,420px) auto minmax(min(140px,25%),1fr)",
-		"grid-template-columns:minmax(min(120px,22%),1fr) minmax(0,320px) minmax(min(160px,28%),auto) minmax(min(120px,22%),1fr)",
+		"grid-template-columns:minmax(min(140px,25%),1fr) minmax(0,1fr) auto minmax(min(180px,30%),1.2fr)",
+		"grid-template-columns:minmax(min(110px,20%),1fr) minmax(0,.8fr) minmax(min(150px,26%),auto) minmax(min(140px,26%),1.2fr)",
+		// Texte kürzen sich mit „…“ (am Flex-Behälter greift text-overflow nicht)
+		"@media (min-width:761px){html.frame-ui #footer-status-error{display:block;text-align:right}}",
+		"html.frame-ui #footer-status-text{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
+		"html.frame-ui .footer-progress{max-width:420px;justify-self:center;width:100%}",
+		"html.frame-ui .footer-progress-label{display:block;line-height:22px;text-align:center}",
+	} {
+		if !strings.Contains(css, want) {
+			t.Errorf("frame.css ohne %q", want)
+		}
+	}
+	if !strings.Contains(uiFile(t, "pdh-frame.js"), "statusTitles()") {
+		t.Error("gekürzte Status- und Fehlertexte ohne Tooltip")
+	}
+	for _, want := range []string{
 	} {
 		if !strings.Contains(css, want) {
 			t.Errorf("frame.css ohne %q", want)

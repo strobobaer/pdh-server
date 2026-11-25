@@ -73,13 +73,19 @@ html.frame-ui .topbar{container-type:inline-size}
 /* An der Kennung, nicht an einer Klasse: setGlobalStatus setzt className neu */
 html.frame-ui #global-status-footer{cursor:pointer}
 html.frame-ui #global-status-footer:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+/* Texte kürzen sich mit „…“ (am Flex-Behälter greift text-overflow nicht); der Fehler
+   bekommt mehr Platz als der Balken, der volle Text steht im Tooltip (pdh-frame.js) */
+@media (min-width:761px){html.frame-ui #footer-status-error{display:block;text-align:right}} /* am Handy blendet pdh.css es aus */
+html.frame-ui #footer-status-text{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+html.frame-ui .footer-progress{max-width:420px;justify-self:center;width:100%}
+html.frame-ui .footer-progress-label{display:block;line-height:22px;text-align:center} /* Block statt Flex: „…“ am Ende statt beidseitig abgeschnitten */
 /* Fenster hängen am Body mit zoom (Größe): vw/vh durch --ui-scale teilen wie pdh.css */
 /* breiter Bildschirm: Warnfeld als eigene dritte Spalte vor den Fehlern (pdh.css hat 3 Spalten);
    Mindestbreiten als Anteil, damit die Leiste auch bei 768 px und Größe 160 % passt */
-@media (min-width:761px){html.frame-ui #global-status-footer{grid-template-columns:minmax(min(180px,30%),1fr) minmax(0,420px) auto minmax(min(140px,25%),1fr)}
+@media (min-width:761px){html.frame-ui #global-status-footer{grid-template-columns:minmax(min(140px,25%),1fr) minmax(0,1fr) auto minmax(min(180px,30%),1.2fr)}
 html.frame-ui #frame-warn{grid-column:3}html.frame-ui #footer-status-error{grid-column:4}
 /* Warnfeld sichtbar: es bekommt Platz vor Balken und Fehlertext */
-html.frame-ui #global-status-footer:has(#frame-warn:not([hidden])){grid-template-columns:minmax(min(120px,22%),1fr) minmax(0,320px) minmax(min(160px,28%),auto) minmax(min(120px,22%),1fr)}}
+html.frame-ui #global-status-footer:has(#frame-warn:not([hidden])){grid-template-columns:minmax(min(110px,20%),1fr) minmax(0,.8fr) minmax(min(150px,26%),auto) minmax(min(140px,26%),1.2fr)}}
 .frame-warn{color:var(--warn);font-weight:600;font-size:var(--fs-xs);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .frame-log{position:fixed;z-index:850;right:var(--sp-3);bottom:50px;width:min(420px,calc(100vw / var(--ui-scale, 1) - 24px));max-height:calc(50vh / var(--ui-scale, 1));overflow:auto;padding:var(--sp-2);background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:var(--r-m);box-shadow:var(--shadow-float)}
 .frame-log ol{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:var(--sp-1);font-size:var(--fs-sm)}

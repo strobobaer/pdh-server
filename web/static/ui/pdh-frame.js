@@ -224,9 +224,16 @@
     var origStatus = window.setGlobalStatus;
     window.setGlobalStatus = function (state, message, progress, errorText) {
       logAdd(state, message, errorText);
-      return origStatus.apply(this, arguments);
+      var r = origStatus.apply(this, arguments);
+      statusTitles();
+      return r;
     };
   }
+  // statusTitles: gekürzte Texte der Statusleiste ganz im Tooltip
+  function statusTitles() {
+    ['#footer-status-text', '#footer-status-error'].forEach(function (s) { var el = $(s); if (el) el.title = el.textContent; });
+  }
+  statusTitles();
   function logToggle(open) {
     var box = $('#frame-log'), foot = $('#global-status-footer');
     if (!box || !foot) return;
