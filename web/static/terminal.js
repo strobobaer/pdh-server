@@ -31,9 +31,10 @@
     return !!open;
   }
 
-  // Kreisdiagramm der Rüstgründe (Statistikfolie und Seite „Rüstzeiten – Auswertung“; derselbe Text steht in
-  // setup_report.gohtml). Geometrie rein; Zeichnen nur über DOM-Methoden und textContent, nie HTML aus Daten.
-  // slices: [{label, value, percent, color}]. Rückgabe je Stück mit value > 0: {d: Pfad, x, y: Ort der Prozentangabe, slice}.
+  // Kreisdiagramm der Rüstzeiten nach Anlagen (Statistikfolie und Seite „Rüstzeiten – Auswertung“; derselbe Text steht
+  // in setup_report.gohtml). Geometrie rein; Zeichnen nur über DOM-Methoden und textContent, nie HTML aus Daten.
+  // slices: [{label, value, count, percent, color, duration, reasons}]. Rückgabe je Stück mit value > 0:
+  // {d: Pfad, x, y: Ort der Prozentangabe, slice}.
   function pieGeometry(slices, cx, cy, r) {
     var out = [], total = 0;
     var list = Array.isArray(slices) ? slices : [];
@@ -56,7 +57,7 @@
     });
     return out;
   }
-  // Text für den barrierefreien Titel: „Grund A 60 %, Grund B 40 %“.
+  // Text für den barrierefreien Titel: „Anlage A 60 %, Anlage B 40 %“.
   function pieText(pie) {
     var sl = pie && Array.isArray(pie.slices) ? pie.slices : [];
     return sl.map(function (s) { return String(s.label) + ' ' + Number(s.percent) + ' %'; }).join(', ');
@@ -65,9 +66,33 @@
   function pieColor(c) {
     return typeof c === 'string' && /^#[0-9a-fA-F]{6}$/.test(c) ? c : '#94a3b8';
   }
+  // Eine Zeile der Legende: „Anlage – Dauer – Anteil % – Anzahl Rüstvorgänge“ (Dauer und Anzahl nur, wenn vorhanden).
+  function pieLine(s) {
+    var parts = [String(s.label)];
+    if (s.duration) parts.push(String(s.duration));
+    parts.push(Number(s.percent) + ' %');
+    var n = Number(s.count);
+    if (n > 0) parts.push(n === 1 ? '1 Rüstvorgang' : n + ' Rüstvorgänge');
+    return parts.join(' – ');
+  }
+  // Ein Stück oder ein Legendeneintrag zum Antippen: Tastatur (Enter, Leertaste) und Maus/Finger.
+  function pieBindPick(el, text, fn) {
+    el.setAttribute('tabindex', '0');
+    el.setAttribute('role', 'button');
+    el.setAttribute('aria-pressed', 'false');
+    el.setAttribute('aria-label', text);
+    el.addEventListener('click', fn);
+    el.addEventListener('keydown', function (ev) {
+      if (ev && (ev.key === 'Enter' || ev.key === ' ')) {
+        if (ev.preventDefault) ev.preventDefault();
+        fn();
+      }
+    });
+  }
   var pieSeq = 0;
-  // Ein Kreisdiagramm samt Legende als DOM-Baum (div.pie-box).
-  function drawPie(pie) {
+  // Ein Kreisdiagramm samt Legende als DOM-Baum (div.pie-box). Mit onPick(Stück, Nummer) sind Stücke und
+  // Legendeneinträge antippbar; box.setPicked(Nummer oder -1) markiert das gewählte Stück.
+  function drawPie(pie, onPick) {
     var NS = 'http://www.w3.org/2000/svg', n = ++pieSeq;
     var box = document.createElement('div');
     box.className = 'pie-box';
@@ -79,6 +104,8 @@
       box.appendChild(none);
       return box;
     }
+    var pick = typeof onPick === 'function' ? onPick : null;
+    var paths = [], items = [];
     var svg = document.createElementNS(NS, 'svg');
     svg.setAttribute('viewBox', '0 0 300 300');
     svg.setAttribute('class', 'pie-svg');
@@ -86,17 +113,22 @@
     svg.setAttribute('aria-labelledby', 'pie-t' + n + ' pie-d' + n);
     var t = document.createElementNS(NS, 'title');
     t.setAttribute('id', 'pie-t' + n);
-    t.textContent = 'Anteil der Rüstgründe – ' + String((pie && pie.title) || '');
+    t.textContent = 'Anteil der Anlagen an der Rüstdauer – ' + String((pie && pie.title) || '');
     var ds = document.createElementNS(NS, 'desc');
     ds.setAttribute('id', 'pie-d' + n);
     ds.textContent = pieText(pie);
     svg.appendChild(t);
     svg.appendChild(ds);
-    geo.forEach(function (g) {
+    geo.forEach(function (g, k) {
       var p = document.createElementNS(NS, 'path');
       p.setAttribute('d', g.d);
       p.setAttribute('fill', pieColor(g.slice.color));
       p.setAttribute('class', 'pie-slice');
+      if (pick) {
+        pieBindPick(p, pieLine(g.slice), function () { pick(g.slice, k); });
+        p.setAttribute('class', 'pie-slice pie-pick');
+      }
+      paths.push(p);
       svg.appendChild(p);
     });
     geo.forEach(function (g) {
@@ -105,49 +137,98 @@
       tx.setAttribute('x', g.x);
       tx.setAttribute('y', g.y + 7);
       tx.setAttribute('class', 'pie-pct');
+      tx.setAttribute('pointer-events', 'none');
       tx.textContent = Number(g.slice.percent) + ' %';
       svg.appendChild(tx);
     });
     box.appendChild(svg);
     var ul = document.createElement('ul');
     ul.className = 'pie-legend';
-    geo.forEach(function (g) {
+    geo.forEach(function (g, k) {
       var li = document.createElement('li');
       var sw = document.createElement('span');
       sw.className = 'sw';
       sw.style.backgroundColor = pieColor(g.slice.color);
       li.appendChild(sw);
-      li.appendChild(document.createTextNode(String(g.slice.label) + ' – ' + Number(g.slice.percent) + ' %'));
+      li.appendChild(document.createTextNode(pieLine(g.slice)));
+      if (pick) {
+        pieBindPick(li, pieLine(g.slice), function () { pick(g.slice, k); });
+        li.setAttribute('class', 'pie-pick');
+      }
+      items.push(li);
       ul.appendChild(li);
     });
     box.appendChild(ul);
+    box.setPicked = function (k) {
+      paths.forEach(function (p, i) {
+        p.setAttribute('class', 'pie-slice' + (pick ? ' pie-pick' : '') + (i === k ? ' pie-on' : ''));
+        p.setAttribute('aria-pressed', i === k ? 'true' : 'false');
+      });
+      items.forEach(function (li, i) {
+        li.setAttribute('class', (pick ? 'pie-pick' : '') + (i === k ? ' pie-on' : ''));
+        li.setAttribute('aria-pressed', i === k ? 'true' : 'false');
+      });
+    };
     return box;
   }
-  // Auswahl „Alle Anlagen“ / je Anlage und das gewählte Kreisdiagramm (div.pie-set); ohne Diagramme leer.
+  // Die Rüstgründe einer Anlage als Liste mit Balken in der Farbe der Anlage (div.pie-detail-body).
+  function drawPieReasons(slice) {
+    var wrap = document.createElement('div');
+    wrap.className = 'pie-detail-body';
+    var h = document.createElement('div');
+    h.className = 'pie-detail-h';
+    h.textContent = 'Rüstgründe – ' + String(slice.label);
+    wrap.appendChild(h);
+    var ul = document.createElement('ul');
+    ul.className = 'pie-reasons';
+    (Array.isArray(slice.reasons) ? slice.reasons : []).forEach(function (r) {
+      var li = document.createElement('li');
+      var bar = document.createElement('span');
+      bar.className = 'pie-rbar';
+      var fill = document.createElement('span');
+      fill.className = 'pie-rfill';
+      fill.style.width = Math.max(0, Math.min(100, Number(r.percent) || 0)) + '%';
+      fill.style.backgroundColor = pieColor(slice.color);
+      bar.appendChild(fill);
+      li.appendChild(bar);
+      li.appendChild(document.createTextNode(pieLine(r)));
+      ul.appendChild(li);
+    });
+    wrap.appendChild(ul);
+    return wrap;
+  }
+  // Das Kreisdiagramm nach Anlagen (div.pie-set); ohne Diagramm leer. Enthalten die Stücke Gründe (Seite), zeigt
+  // Antippen eines Stücks oder Legendeneintrags darunter die Gründe der Anlage, nochmal Antippen blendet sie aus;
+  // ohne Gründe (Folie) ist nichts antippbar.
   function drawPieSet(pies) {
     var set = document.createElement('div');
     set.className = 'pie-set';
     var list = Array.isArray(pies) ? pies : [];
     if (!list.length) return set;
-    var sel = document.createElement('select');
-    sel.className = 'pie-sel';
-    sel.setAttribute('aria-label', 'Anlage für das Kreisdiagramm');
-    list.forEach(function (p, i) {
-      var o = document.createElement('option');
-      o.value = String(i);
-      o.textContent = String(p.title || '');
-      sel.appendChild(o);
-    });
+    var pie = list[0];
+    var slices = Array.isArray(pie.slices) ? pie.slices : [];
+    var interactive = slices.some(function (s) { return Array.isArray(s.reasons) && s.reasons.length > 0; });
     var holder = document.createElement('div');
     holder.className = 'pie-holder';
-    var show = function () {
-      while (holder.firstChild) holder.removeChild(holder.firstChild);
-      holder.appendChild(drawPie(list[Number(sel.value)] || list[0]));
+    var detail = document.createElement('div');
+    detail.className = 'pie-detail';
+    var cur = -1, box = null;
+    var onPick = function (slice, k) {
+      while (detail.firstChild) detail.removeChild(detail.firstChild);
+      cur = cur === k ? -1 : k;
+      box.setPicked(cur);
+      if (cur >= 0) detail.appendChild(drawPieReasons(slice));
     };
-    sel.addEventListener('change', show);
-    set.appendChild(sel);
+    box = drawPie(pie, interactive ? onPick : null);
+    holder.appendChild(box);
     set.appendChild(holder);
-    show();
+    if (interactive && typeof box.setPicked === 'function') {
+      var hint = document.createElement('div');
+      hint.className = 'pie-hint';
+      hint.textContent = 'Anlage antippen: Rüstgründe anzeigen';
+      set.appendChild(hint);
+      set.appendChild(detail);
+    }
     return set;
   }
 

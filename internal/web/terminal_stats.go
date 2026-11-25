@@ -38,7 +38,7 @@ type terminalStats struct {
 	Labels  []string             `json:"labels"`
 	Series  []terminalStatSeries `json:"series"`
 	Unit    string               `json:"unit"` // Einheit der Reihen, z. B. "" (Anzahl) oder "min"
-	// Pies: Kreisdiagramme (Rüstzeiten: Anteil der Gründe, „Alle Anlagen“ und je Anlage); ältere Terminals ignorieren sie.
+	// Pies: Kreisdiagramm (Rüstzeiten: Anteil der Anlagen an der Rüstdauer, jede Anlage mit eigener Farbe); ältere Terminals zeigen es mit der alten Auswahl.
 	Pies []setupPie `json:"pies,omitempty"`
 }
 

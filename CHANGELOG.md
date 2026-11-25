@@ -10,6 +10,12 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.82.61] – 2026-11-25
+
+### Geändert
+
+- **Rüstzeiten: alle Anlagen in einem Diagramm:** Die Auswertung (Seite „Rüstzeiten – Auswertung“ und Infobildschirm-Folie „Statistik Rüstzeiten“) zeigt einen Kreis, dessen Stücke die Anlagen sind – mit ihrem Anteil an der gesamten Rüstdauer. Jede Anlage hat ihre eigene Farbe, die immer gleich bleibt; die Legende nennt Dauer, Anteil und Anzahl der Rüstvorgänge. Auf der Seite zeigt Antippen eines Stücks oder Legendeneintrags die Rüstgründe dieser Anlage. Alle Anlagen erscheinen (keine „Sonstige“). Die Einzeldiagramme je Anlage entfallen.
+
 ## [0.82.60] – 2026-11-25
 
 ### Behoben
