@@ -62,12 +62,12 @@ web/templates/roles.gohtml 1
 web/templates/server_config.gohtml 41
 web/templates/server_logs.gohtml 9
 web/templates/setup.gohtml 22
-web/templates/setup_report.gohtml 3
+web/templates/setup_report.gohtml 5
 web/templates/statistics.gohtml 5
 web/templates/storage.gohtml 6
 web/templates/sync_profile.gohtml 1
 web/templates/task_detail.gohtml 3
-web/templates/terminal.gohtml 63
+web/templates/terminal.gohtml 95
 web/templates/terminal_device_error.gohtml 16
 web/templates/terminal_slide_form.gohtml 1
 web/templates/terminal_vorgang.gohtml 17

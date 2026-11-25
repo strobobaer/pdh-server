@@ -27,7 +27,7 @@ function applyThemeMode(mode) {
 // Darstellung (Farbschema, Schrift, Groesse, Zeilenhoehe): sofort sichtbar, mit
 // „Speichern“ am Konto abgelegt. Leer/0 = Firmenstandard.
 const lookDraft = Object.assign({}, window.PDH_LOOK_SAVED);
-const PDH_FONTS = JSON.parse(PDH_BOOT.fonts);
+const PDH_FONTS = PDH_BOOT.fonts || {};
 function lookEffective(k) { return lookDraft[k] || window.PDH_LOOK_DEFAULT[k]; }
 function lookApply() {
   const root = document.documentElement;

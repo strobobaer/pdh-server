@@ -10,7 +10,7 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
-## [0.82.61] – 2026-11-25
+## [0.82.62] – 2026-11-25
 
 ### Neu
 
@@ -22,7 +22,23 @@ im Kapitel „Versionen & Updates“ an.
 
 ### Sicherheit
 
-- **Neues Recht „Oberfläche: Vorgaben für Firma und Rollen“:** Es öffnet die Seite „Gestaltung“; alle Rollen, die Rollen und Rechte verwalten dürfen, haben es.
+- **Neues Recht „Oberfläche: Vorgaben für Firma und Rollen“:** Es öffnet die Seite „Gestaltung“; es bekommen alle Rollen, die Rollen und Rechte überall verwalten dürfen (nicht nur in einer Abteilung).
+
+## [0.82.61] – 2026-11-25
+
+### Neu
+
+- **Schichtplan am Terminal: Plan wählen:** Gelten in der Woche mehrere veröffentlichte Pläne, erscheinen auf der Terminalseite Knöpfe für jeden Plan und „Alle“; gezeigt werden nur die Einteilungen des gewählten Plans. Entwürfe zeigt das Terminal nie.
+- **Schichtplan beim Öffnen:** In den Terminal-Einstellungen (Stammdaten des Terminal-Benutzers) legst du fest, welchen Plan die Seite zuerst zeigt – „Alle“ ist die Vorgabe. Gilt der Plan in der Woche nicht, erscheinen alle Pläne. Die Folie „Schichtplan“ im Infobildschirm hat dieselbe Auswahl.
+- **HMI: Maus mit dem Finger bedienen:** Beim Bedienen eines HMI (am Anlagenterminal und im Web-Viewer) steht über dem Bild eine Leiste mit **Links**, **Rechts**, **Doppel**, **Ziehen** und **Scrollen**. Antippen gilt für den nächsten Tipp, langes Drücken hält die Art fest. Der **Touchpad-Modus** zeigt einen Mauszeiger, den der Finger wie auf einem Laptop bewegt; zwei Finger scrollen. Beim reinen Ansehen und mit angeschlossener Maus ändert sich nichts.
+
+### Geändert
+
+- **Rüstzeiten: alle Anlagen in einem Diagramm:** Die Auswertung (Seite „Rüstzeiten – Auswertung“ und Infobildschirm-Folie „Statistik Rüstzeiten“) zeigt einen Kreis, dessen Stücke die Anlagen sind – mit ihrem Anteil an der gesamten Rüstdauer. Jede Anlage hat ihre eigene Farbe, die immer gleich bleibt; die Legende nennt Dauer, Anteil und Anzahl der Rüstvorgänge. Auf der Seite zeigt Antippen eines Stücks oder Legendeneintrags die Rüstgründe dieser Anlage. Alle Anlagen erscheinen (keine „Sonstige“). Die Einzeldiagramme je Anlage entfallen.
+
+### Behoben
+
+- **Terminal im hellen Schema:** Die farbigen Kacheln (Störung, Ticket, Rüsten, Vorgänge, Wartungen, HMI, Schichtplan, Zeiterfassung) und die Balken des Jahresbands sind jetzt hell mit dunkler Schrift (Kontrast mindestens 4,5:1); im dunklen Schema bleibt alles wie bisher. Der grüne Knopf „ok“ ist im hellen Schema dunkler, damit die weiße Schrift lesbar bleibt.
 
 ## [0.82.60] – 2026-11-25
 

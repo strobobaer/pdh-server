@@ -87,6 +87,7 @@ type terminalSlideFormData struct {
 	NoStatsUsers []string
 	Dashboards   []grafanaDashboard // vorhandene Grafana-Dashboards (Statistik-Kacheln) als Vorschläge
 	Departments  []slideDeptOption  // Abteilungen zur Auswahl (Planungsfolien)
+	ShiftPlans   []shiftPlanChoice  // Pläne zur Auswahl (Folie Schichtplan)
 }
 
 // slideDeptOption: eine Abteilung in der Auswahl einer Planungsfolie.
@@ -156,6 +157,14 @@ func (h *Handler) TerminalSlidesPage(w http.ResponseWriter, r *http.Request) {
 				v.Summary += "1 Abteilung"
 			default:
 				v.Summary += fmt.Sprintf("%d Abteilungen", n)
+			}
+			if s.Kind == slideKindPlanShifts && s.ShiftPlanID != "" {
+				var pn string
+				if h.db != nil && h.db.QueryRow(r.Context(), "SELECT name FROM shift_plans WHERE id = $1::uuid", s.ShiftPlanID).Scan(&pn) == nil {
+					v.Summary += " · Plan " + pn
+				} else {
+					v.Summary += " · ein Plan"
+				}
 			}
 		case slideKindTasks:
 			v.Summary = taskRangeLabel(time.Now(), s.TaskRange, s.TaskUntil) + " · " + slideDeptSummary(len(s.DepartmentIDs))
@@ -337,6 +346,9 @@ func (h *Handler) slideFormPage(w http.ResponseWriter, r *http.Request, s termin
 	if (slideIsPlan(s.Kind) || slideIsWork(s.Kind)) && h.db != nil {
 		d.Departments = h.slideDeptOptions(r.Context(), s.DepartmentIDs)
 	}
+	if h.db != nil {
+		d.ShiftPlans = h.shiftPlanOptions(r.Context(), normShiftPlanID(s.ShiftPlanID))
+	}
 	if base, _ := h.grafanaBase(r); h.db != nil {
 		d.Dashboards, _ = h.grafanaDashboards(r.Context(), base, false)
 		for i := range d.Dashboards { // Vorschlag als Adresse, die die Folie annimmt (Pfad unter /grafana/ oder https)
@@ -462,6 +474,9 @@ func slideFromRequest(w http.ResponseWriter, r *http.Request) (terminalSlide, st
 		if len(s.DepartmentIDs) > planMaxDepts && msg == "" {
 			msg = fmt.Sprintf("Bitte höchstens %d Abteilungen wählen", planMaxDepts)
 		}
+		if s.Kind == slideKindPlanShifts {
+			s.ShiftPlanID = strings.TrimSpace(r.FormValue("shift_plan_id"))
+		}
 	case slideKindVorgaenge:
 		s.ShowFaults = r.FormValue("show_faults") != ""
 		s.ShowTickets = r.FormValue("show_tickets") != ""
@@ -540,6 +555,10 @@ func (h *Handler) TerminalSlideSaveWeb(w http.ResponseWriter, r *http.Request) {
 			http.NotFound(w, r)
 		case errors.Is(err, errSlideNeedsImage):
 			s.Image = nil
+			h.slideFormPage(w, r, s, isNew, false, err.Error(), http.StatusUnprocessableEntity)
+		case errors.Is(err, errShiftPlanGone):
+			s.Image = nil
+			s.ShiftPlanID = ""
 			h.slideFormPage(w, r, s, isNew, false, err.Error(), http.StatusUnprocessableEntity)
 		default:
 			componentLog("terminal").Error().Err(err).Msg("folie speichern")

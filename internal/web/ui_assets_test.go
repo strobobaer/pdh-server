@@ -121,6 +121,13 @@ func TestBootDataJSON(t *testing.T) {
 	if boot["version"] != pdh.Version() || boot["isAdmin"] != true || boot["idleMinutes"] != float64(17) || boot["copilotRef"] != `a</script><b>"x'` {
 		t.Errorf("Werte: version=%v isAdmin=%v idleMinutes=%v copilotRef=%v", boot["version"], boot["isAdmin"], boot["idleMinutes"], boot["copilotRef"])
 	}
+	// Schriften als Objekt (kein doppelt kodierter Text), das Skript hat einen Rückfall
+	if f, ok := boot["fonts"].(map[string]any); !ok || len(f) == 0 {
+		t.Errorf("fonts ist kein Objekt mit Schriften: %T %v", boot["fonts"], boot["fonts"])
+	}
+	if !strings.Contains(uiFile(t, "pdh-app.js"), "const PDH_FONTS = PDH_BOOT.fonts || {};") {
+		t.Error("pdh-app.js liest die Schriften nicht mit Rückfall")
+	}
 	if tr, ok := boot["t"].(map[string]any); !ok || tr["Gruppe nach oben"] == nil {
 		t.Errorf("Übersetzungen fehlen: %v", boot["t"])
 	}
@@ -145,6 +152,22 @@ func bootValue(t *testing.T, page, key string) string {
 	}
 	s, _ := boot[key].(string)
 	return s
+}
+
+// Dateien unter web/static/ui/ gehen roh an den Browser: Vorlagen-Syntax darin
+// würde nie ausgeführt und das Skript brechen. Werte kommen über PDH_BOOT, Texte
+// über pdhT (Eintrag im Datenblock von base.gohtml).
+func TestUIFilesNoTemplateSyntax(t *testing.T) {
+	files, _ := filepath.Glob(filepath.Join("..", "..", "web", "static", "ui", "*"))
+	for _, f := range files {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if i := strings.Index(string(b), "{{"); i >= 0 {
+			t.Errorf("%s enthält Vorlagen-Syntax: %.60q – Werte über PDH_BOOT, Texte über pdhT", filepath.Base(f), string(b[i:]))
+		}
+	}
 }
 
 // Der Rahmen schickt kaum noch Stil und Skript direkt in der Seite mit.

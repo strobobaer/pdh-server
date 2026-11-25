@@ -96,6 +96,28 @@ allein in CSS über `html[data-style="fiori"]` bzw. `"fluent"`.
   ihrer Regeln haben.
 - Der Akzent kommt immer aus dem Farbschema (`--accent`), nie aus dem Stil.
 
+## Gestaltungsgrundlage (seit 0.82.62)
+
+- Stil und Skripte des Rahmens liegen in `web/static/ui/`
+  (`tokens.css` = Gestaltungswerte, `pdh.css`, `pdh-*.js`) und kommen über
+  `uiURL` als `/vendor/<Version>/ui/<Datei>` (ein Jahr zwischengespeichert).
+  Neue Regeln und Skripte dorthin, **nicht** inline in `base.gohtml`
+  (`TestBaseInlineBudget`, höchstens 16 KB inline).
+- **Keine Vorlagen-Syntax in `web/static/ui/`** (`TestUIFilesNoTemplateSyntax`):
+  Werte kommen aus dem Datenblock `pdh-boot` im Kopf von `base.gohtml`
+  (`window.PDH_BOOT`, Eintrag im `dict` ergänzen), Texte über `pdhT("…")`
+  mit Eintrag im `"t"`-Teil desselben Blocks.
+- Farben, Abstände, Schriftgrößen, Ecken und Schatten nur aus `tokens.css`
+  (`--sp-*`, `--fs-*`, `--r-*`, `--ok/--warn/--err/--info` samt `-soft`).
+  `TestColorLiteralsRatchet`: feste Farbwerte je Datei dürfen nur sinken
+  (`internal/web/testdata/color_literals.txt`; nach dem Entfernen senken mit
+  `PDH_COLOR_BASELINE_UPDATE=1 go test ./internal/web -run TestColorLiteralsRatchet`).
+  Ausnahmen: E-Mails, Druckblätter, Handbuch-Skizzen. Übersicht im PDH unter
+  Verwaltung → Gestaltung.
+- Tests, die Code des Rahmens suchen: `baseWithUI(t)` (Quelltext samt
+  `web/static/ui/`), `withUIScripts(t, seite)` (Seite samt eingebundener
+  Skripte), `bootValue(t, seite, schlüssel)` (Wert aus `pdh-boot`).
+
 ## Kopfleiste
 
 - **Uhr und Benutzermenü müssen immer ganz sichtbar sein** – auf jedem

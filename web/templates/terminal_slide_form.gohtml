@@ -87,6 +87,16 @@
       </div>
     </div>
 
+    <div data-sf-kind="plan_shifts">
+      <div class="form-group"><label class="form-label" for="sf-shift-plan">Schichtplan</label>
+        <select id="sf-shift-plan" name="shift_plan_id" class="form-input">
+          <option value="">Alle veröffentlichten Pläne</option>
+          {{range .ShiftPlans}}<option value="{{.ID}}"{{if .Sel}} selected{{end}}>{{.Label}}</option>
+          {{end}}
+        </select>
+        <div class="sf-hint">Zeigt nur die Einteilungen dieses Plans. Gilt der Plan im gezeigten Zeitraum nicht (nicht veröffentlicht oder außerhalb), zeigt die Folie alle Pläne. Entwürfe erscheinen nie am Terminal.</div></div>
+    </div>
+
     <div data-sf-kind="tasks">
       <div class="sf-row">
         <div class="form-group"><label class="form-label" for="sf-task-range">Zeitraum (überfällige offene Aufgaben stehen immer oben)</label>

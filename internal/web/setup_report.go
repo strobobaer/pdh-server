@@ -11,12 +11,13 @@ import (
 )
 
 // Rüstzeiten – Auswertung: abgeschlossene Rüstzeiten je Anlage (in der Reihenfolge des Anlagenpfads) und je
-// Rüstgrund, dazu Kreisdiagramme mit dem Anteil der Gründe (gesamt und je Anlage). Seite /setup/report (Recht
+// Rüstgrund, dazu ein Kreisdiagramm mit dem Anteil der Anlagen an der gesamten Rüstdauer (jede Anlage mit eigener
+// Farbe, plantColors); die Gründe einer Anlage stehen an ihrem Stück. Seite /setup/report (Recht
 // setup.view, je Anlage mit der Abteilung der Anlage) und Statistikfolie stats_setup des Infobildschirms
 // (terminal_stats.go) rechnen mit denselben Funktionen. Der Anteil richtet sich nach der Dauer; sind alle
 // Dauern 0, nach der Anzahl.
 
-// setupPiePalette: feste Farben der Rüstgründe (nach Rang der Gründe insgesamt); setupPieOther für „Sonstige“.
+// setupPiePalette: Farben der Rüstgründe (nach Rang innerhalb einer Anlage); setupPieOther für „Sonstige“.
 var setupPiePalette = []string{"#3b82f6", "#f59e0b", "#10b981", "#ef4444", "#8b5cf6", "#06b6d4", "#ec4899", "#84cc16"}
 
 const (
@@ -48,11 +49,14 @@ type setupPlantGroup struct {
 
 // setupPieSlice / setupPie: Kreisdiagramm für Seite und Folie (JSON).
 type setupPieSlice struct {
-	Label   string  `json:"label"`
-	Value   float64 `json:"value"`
-	Count   int     `json:"count"`
-	Percent int     `json:"percent"`
-	Color   string  `json:"color"`
+	Key      string          `json:"key,omitempty"` // Anlagen-ID (Stück einer Anlage)
+	Label    string          `json:"label"`
+	Value    float64         `json:"value"`
+	Count    int             `json:"count"`
+	Percent  int             `json:"percent"`
+	Color    string          `json:"color"`
+	Duration string          `json:"duration,omitempty"` // Dauer als Text („1 Std. 5 Min.“)
+	Reasons  []setupPieSlice `json:"reasons,omitempty"`  // Gründe der Anlage (nur auf der Seite)
 }
 
 type setupPie struct {
@@ -216,20 +220,22 @@ func setupShares(sums []setupReasonSum, color func(key string) string) []setupPi
 	setupSortReasons(rs)
 	var out []setupPieSlice
 	var other setupPieSlice
+	var otherMin float64
 	for i, s := range rs {
 		if i < setupPieMax {
 			c := setupPiePalette[i%len(setupPiePalette)] // ohne feste Zuordnung: nach Rang im Diagramm
 			if color != nil {
 				c = color(s.Key)
 			}
-			out = append(out, setupPieSlice{Label: s.Name, Value: val(s), Count: s.Count, Color: c})
+			out = append(out, setupPieSlice{Label: s.Name, Value: val(s), Count: s.Count, Color: c, Duration: downtimeDuration(s.Minutes)})
 			continue
 		}
 		other.Value += val(s)
 		other.Count += s.Count
+		otherMin += s.Minutes
 	}
 	if other.Value > 0 {
-		other.Label, other.Color = "Sonstige", setupPieOther
+		other.Label, other.Color, other.Duration = "Sonstige", setupPieOther, downtimeDuration(otherMin)
 		out = append(out, other)
 	}
 	vals := make([]float64, len(out))
@@ -242,38 +248,65 @@ func setupShares(sums []setupReasonSum, color func(key string) string) []setupPi
 	return out
 }
 
-// setupPies: das Kreisdiagramm „Alle Anlagen“, dann eines je Anlage in der Reihenfolge der Anlagenpfade.
-// Anlagen ohne Rüstzeit gibt es nicht (sie kommen nicht in groups vor). Ohne Daten: nil.
-func setupPies(groups []setupPlantGroup) []setupPie {
-	if len(groups) == 0 {
-		return nil
-	}
-	totals := setupTotals(groups)
-	rank := map[string]int{}
-	for i, t := range totals {
-		rank[t.Key] = i
-	}
-	// Bis acht Gründe insgesamt hat jeder Grund in allen Diagrammen dieselbe Farbe; bei mehr Gründen
-	// bekommt jedes Diagramm die Farben nach Rang darin, damit nie zwei Stücke einer Torte gleich sind.
-	var color func(string) string
-	if len(totals) <= len(setupPiePalette) {
-		color = func(key string) string { return setupPiePalette[rank[key]] }
-	}
-	all := setupShares(totals, color)
-	if len(all) == 0 {
-		return nil
-	}
-	out := []setupPie{{Key: "all", Title: "Alle Anlagen", Slices: all}}
+// setupPlantSlices: die Stücke des Kreisdiagramms „Alle Anlagen“, eines je Anlage mit Rüstzeit. Anteil an der gesamten
+// Rüstdauer (sind alle Dauern 0, an der Anzahl), größte Anlage zuerst; die Farbe je Anlage kommt aus plantColors,
+// die Gründe der Anlage (setupShares) hängen am Stück. Alle Anlagen erscheinen, nie als „Sonstige“.
+func setupPlantSlices(groups []setupPlantGroup, colors map[string]string) []setupPieSlice {
+	var byMinutes bool
 	for _, g := range groups {
-		if sl := setupShares(g.Reasons, color); len(sl) > 0 {
-			title := g.Path
-			if title == "" {
-				title = "Unbekannte Anlage"
-			}
-			out = append(out, setupPie{Key: g.InfraID, Title: title, Slices: sl})
+		if g.Minutes > 0 {
+			byMinutes = true
 		}
 	}
+	val := func(g setupPlantGroup) float64 {
+		if byMinutes {
+			return g.Minutes
+		}
+		return float64(g.Count)
+	}
+	// Alle Anlagen kommen vor; solche ohne Dauer (z. B. sofort beendete Rüstzeiten) stehen mit 0 % hinter den anderen
+	// und haben kein Stück im Kreis.
+	gs := append([]setupPlantGroup(nil), groups...)
+	if len(gs) == 0 {
+		return nil
+	}
+	sort.SliceStable(gs, func(i, j int) bool { return val(gs[i]) > val(gs[j]) }) // gleiche Werte: Reihenfolge der Pfade
+	out := make([]setupPieSlice, 0, len(gs))
+	vals := make([]float64, 0, len(gs))
+	for _, g := range gs {
+		label := g.Path
+		if label == "" {
+			label = "Unbekannte Anlage"
+		}
+		out = append(out, setupPieSlice{Key: g.InfraID, Label: label, Value: val(g), Count: g.Count, Color: colorOf(colors, g.InfraID),
+			Duration: downtimeDuration(g.Minutes), Reasons: setupShares(g.Reasons, nil)})
+		vals = append(vals, val(g))
+	}
+	for i, p := range setupPercents(vals) {
+		out[i].Percent = p
+	}
 	return out
+}
+
+// setupPies: das eine Kreisdiagramm „Alle Anlagen“ (ein Stück je Anlage, mit den Gründen jeder Anlage) als Liste
+// mit einem Eintrag, damit das Format der Folie für ältere Terminals gleich bleibt. Ohne Daten: nil.
+func setupPies(groups []setupPlantGroup, colors map[string]string) []setupPie {
+	sl := setupPlantSlices(groups, colors)
+	if len(sl) == 0 {
+		return nil
+	}
+	return []setupPie{{Key: "plants", Title: "Alle Anlagen", Slices: sl}}
+}
+
+// setupSlidePiesFrom: dasselbe Kreisdiagramm für die Statistikfolie, ohne die Gründe (die Folie klappt nicht auf).
+func setupSlidePiesFrom(groups []setupPlantGroup, colors map[string]string) []setupPie {
+	pies := setupPies(groups, colors)
+	for i := range pies {
+		for k := range pies[i].Slices {
+			pies[i].Slices[k].Reasons = nil
+		}
+	}
+	return pies
 }
 
 // setupAggregate liest die abgeschlossenen, nicht archivierten Rüstzeiten der Anlagen ids ab since.
@@ -310,7 +343,7 @@ func (h *Handler) setupGroupsFor(ctx context.Context, gi *globalInfra, ids []str
 	return setupGroupByPlant(aggs, gi.path), nil
 }
 
-// setupSlidePies: Kreisdiagramme der Statistikfolie stats_setup (ids sind schon auf das Recht beschränkt).
+// setupSlidePies: Kreisdiagramm der Statistikfolie stats_setup (ids sind schon auf das Recht beschränkt).
 func (h *Handler) setupSlidePies(ctx context.Context, days int, ids []string) ([]setupPie, error) {
 	if len(ids) == 0 || h.db == nil {
 		return nil, nil
@@ -323,7 +356,7 @@ func (h *Handler) setupSlidePies(ctx context.Context, days int, ids []string) ([
 	if err != nil {
 		return nil, err
 	}
-	return setupPies(groups), nil
+	return setupSlidePiesFrom(groups, gi.plantColors()), nil
 }
 
 // ── Seite /setup/report ──────────────────────────────────────────────────
@@ -401,7 +434,7 @@ func (h *Handler) SetupReportPage(w http.ResponseWriter, r *http.Request) {
 				componentLog("rüstzeiten").Error().Err(err).Msg("laufende zählen")
 			}
 			d.Plants, d.Total, d.Duration = setupReportRows(groups)
-			pies := setupPies(groups)
+			pies := setupPies(groups, gi.plantColors())
 			d.HasPies = len(pies) > 0
 			if b, err := json.Marshal(pies); err == nil && d.HasPies {
 				d.PiesJSON = string(b)

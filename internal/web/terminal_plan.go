@@ -159,6 +159,20 @@ func (h *Handler) planSlide(ctx context.Context, uid, role string, s terminalSli
 	if err != nil {
 		return nil, err
 	}
+	// Schichtplan: nur ein veröffentlichter Plan, der den Zeitraum schneidet; sonst alle (terminal_shiftplan.go)
+	shiftPlan := ""
+	if s.Kind == slideKindPlanShifts && s.ShiftPlanID != "" {
+		plans, err := h.publishedShiftPlans(ctx, from, to, sc.Depts, sc.NoDept)
+		if err != nil {
+			return nil, err
+		}
+		for _, p := range plans {
+			if p.ID == normShiftPlanID(s.ShiftPlanID) {
+				shiftPlan = p.ID
+				pl.Label += " · " + p.Name
+			}
+		}
+	}
 	byDay := map[string]map[string]*planSlideGroup{} // Tag → Gruppenschlüssel
 	order := map[string][]string{}                      // Tag → Reihenfolge der Gruppen
 	add := func(day, key, name, color, item string) {
@@ -184,7 +198,7 @@ func (h *Handler) planSlide(ctx context.Context, uid, role string, s terminalSli
 		}
 		switch s.Kind {
 		case slideKindPlanShifts:
-			err = h.planShiftRows(ctx, from, to, depts, sc.NoDept, add)
+			err = h.planShiftRows(ctx, from, to, depts, sc.NoDept, shiftPlan, add)
 		case slideKindPlanAbsences:
 			err = h.planAbsenceRows(ctx, from, to, depts, sc.NoDept, add)
 		case slideKindPlanDuties:
@@ -217,7 +231,7 @@ func personInDept(a, b int) string {
 	return fmt.Sprintf(`(u.department_id = ANY($%d::uuid[]) OR ($%d::boolean AND u.department_id IS NULL))`, a, b)
 }
 
-func (h *Handler) planShiftRows(ctx context.Context, from, to time.Time, depts []string, noDept bool, add planAdder) error {
+func (h *Handler) planShiftRows(ctx context.Context, from, to time.Time, depts []string, noDept bool, planID string, add planAdder) error {
 	rows, err := h.db.Query(ctx, `SELECT sa.date::text, sd.id::text, sd.name, COALESCE(sd.color, ''), TRIM(u.first_name || ' ' || u.last_name)
 		FROM shift_assignments sa
 		JOIN shift_definitions sd ON sd.id = sa.shift_id
@@ -225,7 +239,8 @@ func (h *Handler) planShiftRows(ctx context.Context, from, to time.Time, depts [
 		LEFT JOIN shift_plans sp ON sp.id = sa.plan_id
 		WHERE sa.date BETWEEN $1::date AND $2::date AND (sa.plan_id IS NULL OR sp.status = 'published')
 		  AND u.active AND NOT u.is_system_user AND `+personInDept(3, 4)+`
-		ORDER BY sa.date, sd.sort_order, sd.start_time, sd.name, lower(u.last_name), lower(u.first_name)`, from, to, depts, noDept)
+		  AND ($5::text = '' OR sa.plan_id = NULLIF($5::text, '')::uuid)
+		ORDER BY sa.date, sd.sort_order, sd.start_time, sd.name, lower(u.last_name), lower(u.first_name)`, from, to, depts, noDept, planID)
 	if err != nil {
 		return err
 	}

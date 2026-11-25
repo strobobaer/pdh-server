@@ -164,13 +164,19 @@ func (b Branding) DefaultLook() Appearance {
 	return Appearance{Brand: b, Allow: b.ThemeUserChoice, FontID: b.FontID(), Scale: b.ScaleValue(), Row: defaultRow}
 }
 
-// FontsJS: Schriften fuer die Live-Vorschau im Benutzermenue.
-func (a Appearance) FontsJS() template.JS {
+// FontsMap: Schriften fuer die Live-Vorschau im Benutzermenue (Kennung →
+// Schriftstapel, Stildatei); im Datenblock pdh-boot als Objekt.
+func (a Appearance) FontsMap() map[string][2]string {
 	m := map[string][2]string{}
 	for _, f := range uiFonts {
 		m[f.ID] = [2]string{f.Stack, f.URL()}
 	}
-	data, _ := json.Marshal(m)
+	return m
+}
+
+// FontsJS: dieselben Schriften als JavaScript-Literal.
+func (a Appearance) FontsJS() template.JS {
+	data, _ := json.Marshal(a.FontsMap())
 	return template.JS(data)
 }
 
