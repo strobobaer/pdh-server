@@ -1,6 +1,7 @@
 package web
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -93,6 +94,71 @@ func TestBaseScriptsExternal(t *testing.T) {
 		if len(m[2]) > 1500 && !strings.Contains(m[2], "{{") {
 			t.Errorf("Inline-Skript ohne Platzhalter mit %d Byte: %.60q", len(m[2]), strings.TrimSpace(m[2]))
 		}
+	}
+}
+
+var bootBlockRe = regexp.MustCompile(`(?s)<script id="pdh-boot" type="application/json">(.*?)</script>`)
+
+// Seitendaten der Grundseite stehen als JSON im Kopf (pdh-boot); die ausgelagerten
+// Skripte lesen sie über window.PDH_BOOT. Sonderzeichen bleiben gültiges JSON und
+// beenden den Block nicht.
+func TestBootDataJSON(t *testing.T) {
+	d := ServerConfigData{EnvFile: ".env", FileWritable: true}
+	d.Title = "Server-Einstellungen"
+	d.Look = d.Brand.DefaultLook()
+	d.IsAdmin = true
+	d.IdleTimeoutMinutes = 17
+	d.CopilotRef = `a</script><b>"x'`
+	out := renderPage(t, loadTestTemplates(t), "server_config", d)
+	all := bootBlockRe.FindAllStringSubmatch(out, -1)
+	if len(all) != 1 {
+		t.Fatalf("%d pdh-boot-Blöcke", len(all))
+	}
+	var boot map[string]any
+	if err := json.Unmarshal([]byte(all[0][1]), &boot); err != nil {
+		t.Fatalf("pdh-boot ist kein JSON: %v\n%.300s", err, all[0][1])
+	}
+	if boot["version"] != pdh.Version() || boot["isAdmin"] != true || boot["idleMinutes"] != float64(17) || boot["copilotRef"] != `a</script><b>"x'` {
+		t.Errorf("Werte: version=%v isAdmin=%v idleMinutes=%v copilotRef=%v", boot["version"], boot["isAdmin"], boot["idleMinutes"], boot["copilotRef"])
+	}
+	if tr, ok := boot["t"].(map[string]any); !ok || tr["Gruppe nach oben"] == nil {
+		t.Errorf("Übersetzungen fehlen: %v", boot["t"])
+	}
+	if strings.Contains(all[0][1], "</script") || strings.Contains(all[0][1], "<b>") {
+		t.Error("Sonderzeichen nicht maskiert")
+	}
+	if i, j := strings.Index(out, `id="pdh-boot"`), strings.Index(out, "PDH_BOOT"); i < 0 || j < i {
+		t.Error("pdh-boot steht nicht vor dem ersten Skript, das ihn liest")
+	}
+}
+
+// bootValue: Wert eines Schlüssels aus dem Datenblock pdh-boot der Seite als Text.
+func bootValue(t *testing.T, page, key string) string {
+	t.Helper()
+	m := bootBlockRe.FindStringSubmatch(page)
+	if m == nil {
+		t.Fatal("Seite ohne pdh-boot")
+	}
+	var boot map[string]any
+	if err := json.Unmarshal([]byte(m[1]), &boot); err != nil {
+		t.Fatalf("pdh-boot: %v", err)
+	}
+	s, _ := boot[key].(string)
+	return s
+}
+
+// Der Rahmen schickt kaum noch Stil und Skript direkt in der Seite mit.
+func TestBaseInlineBudget(t *testing.T) {
+	src := bootBlockRe.ReplaceAllString(baseSource(t), "")
+	n := 0
+	for _, m := range styleBlockRe.FindAllStringSubmatch(src, -1) {
+		n += len(m[2])
+	}
+	for _, m := range scriptBlockRe.FindAllStringSubmatch(src, -1) {
+		n += len(m[2])
+	}
+	if n > 16384 {
+		t.Errorf("Inline-Stil und -Skript in base.gohtml: %d Byte (höchstens 16384)", n)
 	}
 }
 

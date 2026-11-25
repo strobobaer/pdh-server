@@ -30,6 +30,7 @@ func TestTerminalInfraInLayout(t *testing.T) {
 	d := UserDetailData{User: UserView{ID: "u1"}}
 	d.TerminalInfraID = "i-7"
 	out := renderPage(t, tmpl, "user_detail", d)
+	out = withUIScripts(t, out) // findInfraPath steht seit 0.82.61 in pdh-app.js
 	if !strings.Contains(out, `window.PDH_TERMINAL_INFRA = "i-7"`) || !strings.Contains(out, "findInfraPath") {
 		t.Error("Terminal-Standort fehlt im Seitenkopf")
 	}

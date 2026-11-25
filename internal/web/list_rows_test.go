@@ -36,7 +36,7 @@ func TestListsUseExpandableRows(t *testing.T) {
 			}
 		}
 	}
-	base := read("base.gohtml")
+	base := baseWithUI(t) // Rahmen samt ausgelagerter Skripte
 	for _, want := range []string{"[data-rx]", "data-rx-view", "rx-panel", "openPdhFrame(d.rxView", "window.pdhComplete(kind, id)", "template.rx-more"} {
 		if !strings.Contains(base, want) {
 			t.Errorf("base.gohtml: Aufklapp-Funktion ohne %q", want)

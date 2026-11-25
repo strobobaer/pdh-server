@@ -206,6 +206,7 @@ func TestThemeInLayout(t *testing.T) {
 func TestTopbarClock(t *testing.T) {
 	tmpl := loadTestTemplates(t)
 	out := renderPage(t, tmpl, "user_detail", UserDetailData{User: UserView{ID: "u1"}})
+	out = withUIScripts(t, out) // Uhr-Skript seit 0.82.61 in pdh-app.js
 	for _, want := range []string{`href="/time" class="topbar-clock" id="pdh-clock" data-server-ms="1`, `class="clk-time"`, "Zeiterfassung öffnen", "function kw(d)"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("Kopfleiste enthält %q nicht", want)

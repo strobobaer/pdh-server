@@ -118,7 +118,7 @@ func TestNoBypassCompletion(t *testing.T) {
 	if !strings.Contains(read("widgets/work_board.gohtml"), `onclick="pdhComplete('{{.Kind}}','{{.ID}}')"`) {
 		t.Error("„Durchführen“-Karte (work-do) öffnet den Assistenten nicht")
 	}
-	if !regexp.MustCompile(`action === 'done' && item\.dataset\.complete`).MatchString(read("base.gohtml")) {
+	if !regexp.MustCompile(`action === 'done' && item\.dataset\.complete`).MatchString(baseWithUI(t)) {
 		t.Error("„Auswahl erledigen“ öffnet den Assistenten nicht")
 	}
 }
