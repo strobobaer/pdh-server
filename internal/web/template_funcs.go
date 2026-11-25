@@ -21,6 +21,7 @@ func TemplateFuncs() template.FuncMap {
 		"iconCSSLinks": iconCSSLinks,
 		// mitgelieferte Bibliothek: /vendor/<Version>/<Baustein>/<Datei> (vendor.go)
 		"vendorURL":    vendorURL,
+		"uiURL":        uiURL, // eigene Oberfläche: /vendor/<Version>/ui/<Datei> (ui_assets.go)
 		"css":          templateCSS,
 		"grafanaColor": grafanaColorCSS, // Kachelfarbe Statistik (grafana.go)
 		"dwBgColors":   dwBgColorList,   // Hintergrund der Startseiten-Kacheln (dashboard_widgets.go)

@@ -466,7 +466,7 @@ func TestHistorySlotQuietDenied(t *testing.T) {
 	if !strings.Contains(sb.String(), `data-quiet-denied="Keine Berechtigung für die Historie"`) {
 		t.Errorf("Platzhalter ohne Hinweis: %s", sb.String())
 	}
-	b, _ := os.ReadFile(filepath.Join("..", "..", "web", "templates", "base.gohtml"))
+	b := []byte(baseWithUI(t)) // Rahmen samt ausgelagerter Stil- und Skriptdateien
 	if !strings.Contains(string(b), "data-quiet-denied") {
 		t.Errorf("base.gohtml behandelt data-quiet-denied nicht")
 	}

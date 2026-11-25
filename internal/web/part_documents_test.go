@@ -75,10 +75,14 @@ func TestPartDocumentsUI(t *testing.T) {
 // Seitenleisten in der Breite ziehbar: Griffe, Variablen, frueh geladene Breite.
 func TestSidebarResizers(t *testing.T) {
 	page := renderPage(t, loadTestTemplates(t), "work_board", WorkBoardData{Area: workArea{Kind: workKinds["ticket"], Tab: "dashboard"}})
-	for _, want := range []string{`class="pdh-resizer left"`, `class="pdh-resizer right"`, `role="separator"`, "--left-open-w", "pdh_sidebar_left_w", "pdh_sidebar_right_w", "max(380px, var(--right-open-w))"} {
+	for _, want := range []string{`class="pdh-resizer left"`, `class="pdh-resizer right"`, `role="separator"`, "--left-open-w", "pdh_sidebar_left_w", "pdh_sidebar_right_w"} {
 		if !strings.Contains(page, want) {
 			t.Errorf("Seite enthält %q nicht", want)
 		}
+	}
+	// Breitenregel steht seit 0.82.61 in der ausgelagerten Stildatei des Rahmens
+	if !strings.Contains(baseWithUI(t), "max(380px, var(--right-open-w))") {
+		t.Error("Rahmen ohne Breitenregel der rechten Leiste")
 	}
 	checkScripts(t, "resizer", page)
 }
