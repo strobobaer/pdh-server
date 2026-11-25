@@ -245,9 +245,14 @@ func (h *Handler) setOwnAreaPrefs(ctx context.Context, uid string, p uiAreaPrefs
 
 // UIAreasSaveWeb: POST /account/ui-areas – eigene Favoriten und Reihenfolge.
 func (h *Handler) UIAreasSaveWeb(w http.ResponseWriter, r *http.Request) {
-	uid := getUser(r).ID
+	u := getUser(r)
+	uid := u.ID
 	if uid == "" {
 		writeJSON(w, http.StatusUnauthorized, map[string]any{"success": false, "error": "nicht angemeldet"})
+		return
+	}
+	if u.IsSystemUser { // Terminal: Bereiche gelten für alle (wie der Schalter, ui_frame.go)
+		writeJSON(w, http.StatusForbidden, map[string]any{"success": false, "error": "am Terminal gilt die Firmenvorgabe"})
 		return
 	}
 	req, ok := readAreaPrefs(r)
@@ -276,11 +281,10 @@ func (h *Handler) UIAreasSaveWeb(w http.ResponseWriter, r *http.Request) {
 			favs = append(favs, k)
 		}
 		if !found {
-			if len(favs) >= maxAreaFavorites {
-				writeJSON(w, http.StatusBadRequest, map[string]any{"success": false, "error": "zu viele Favoriten"})
-				return
-			}
 			favs = append(favs, req.Fav)
+			if len(favs) > maxAreaFavorites { // der älteste fällt heraus – auch ein ausgeblendeter, keine Sackgasse
+				favs = favs[len(favs)-maxAreaFavorites:]
+			}
 		}
 		p.Favorites = favs
 	case len(req.Order) > 0:

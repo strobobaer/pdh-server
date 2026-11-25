@@ -49,7 +49,7 @@
     <div class="footer-progress-fill" id="footer-progress-fill"></div>
     <span class="footer-progress-label" id="footer-progress-label"></span>
   </div>
-  <span class="frame-warn" id="frame-warn"{{if not .Mirror}} hidden{{end}}>{{if .Mirror}}{{t "Spiegelserver – nur lesen"}}{{end}}</span>
+  <span class="frame-warn" id="frame-warn"{{if .Mirror}} title="{{t "Spiegelserver – nur lesen"}}"{{else}} hidden{{end}}>{{if .Mirror}}{{t "Spiegelserver – nur lesen"}}{{end}}</span>
   <div class="footer-status-error" id="footer-status-error">Keine Fehler</div>
 </footer>
 <div class="frame-log" id="frame-log" role="log" aria-label="{{t "Letzte Meldungen"}}" hidden><ol></ol></div>

@@ -65,13 +65,55 @@ func TestFrameJSFixes(t *testing.T) {
 	}
 }
 
+// Zweite Runde (Gegenprüfung und Browser).
+func TestFrameCSSRound2(t *testing.T) {
+	css := uiFile(t, "frame.css")
+	for _, want := range []string{
+		// Suchzeile nimmt nur den Restplatz – Uhr und Benutzermenü bleiben ganz sichtbar
+		".frame-search{flex:1 1 0;min-width:34px;max-width:480px;",
+		// Größe ≠ 100 %: vw/vh durch --ui-scale teilen wie pdh.css
+		"width:min(640px,calc(100vw / var(--ui-scale, 1) - 24px))",
+		"top:calc(12vh / var(--ui-scale, 1))",
+		"max-height:calc(50vh / var(--ui-scale, 1))",
+		"width:min(420px,calc(100vw / var(--ui-scale, 1) - 24px))",
+		"width:min(420px,calc(100vw / var(--ui-scale, 1) - 32px))",
+		// Knopfleiste im Dialog bricht um, „Wie Firmenvorgabe“ links
+		".frame-dialog-bar{display:flex;flex-wrap:wrap;",
+		".frame-dialog-bar .fd-firm{margin-right:auto}",
+		// Leiste: lange Beschriftung ohne Bildlauf, Handy-Leiste verteilt die Breite
+		".rail{display:flex;flex-direction:column;align-items:center;gap:var(--sp-1);padding:var(--sp-2) 0;background:var(--bg2);border-right:1px solid var(--border);overflow-y:auto;overflow-x:hidden}",
+		".rail:not(.open) .rail-area{flex:1 1 0;min-width:0;width:auto}",
+		// Statusleiste: Warnfeld bekommt Platz, wenn es sichtbar ist
+		"#global-status-footer:has(#frame-warn:not([hidden]))",
+		// eingebettet am Handy kein Platz für die ausgeblendete Leiste
+		"html.pdh-embedded.frame-ui body.frame-body{padding-bottom:0}",
+	} {
+		if !strings.Contains(css, want) {
+			t.Errorf("frame.css ohne %q", want)
+		}
+	}
+	js := uiFile(t, "pdh-frame.js")
+	for _, want := range []string{
+		"e.stopPropagation(); palClose();",          // Esc schließt nicht den Assistenten dahinter
+		"pal.contains(a)",                            // Fokus nur zurück, wenn er noch in der Befehlszeile war
+		"typeof q === 'string' ? q : ''",             // pdhFrame.palette(event) sucht nicht nach „[object …]“
+		"getModifierState('AltGraph')",               // AltGr-Zeichen öffnen die Befehlszeile
+		"warn.title = warn.textContent",              // gekürzter Hinweis bleibt lesbar
+		"'fd-firm'",
+	} {
+		if !strings.Contains(js, want) {
+			t.Errorf("pdh-frame.js ohne %q", want)
+		}
+	}
+}
+
 // K9: Der Rundgang durch PDH zeigt im neuen Rahmen auf Bereichsleiste und Menüband.
 func TestTourKnowsNewFrame(t *testing.T) {
 	b, err := os.ReadFile(filepath.Join("..", "..", "web", "templates", "widgets", "tour.gohtml"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"'.rail'", `'[data-ribbon-action="create"]'`, "frame-ui"} {
+	for _, want := range []string{"'.rail'", `'[data-ribbon-action="create"]'`, "frame-ui", `p: NEWF ? {{t "Hier findest du „Mein Konto“`} {
 		if !strings.Contains(string(b), want) {
 			t.Errorf("Rundgang ohne %s", want)
 		}

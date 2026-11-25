@@ -67,7 +67,7 @@
       });
       box.appendChild(ul);
       var bar = document.createElement('div'); bar.className = 'frame-dialog-bar';
-      var firm = document.createElement('button'); firm.type = 'button'; firm.className = 'btn'; firm.textContent = T('Wie Firmenvorgabe');
+      var firm = document.createElement('button'); firm.type = 'button'; firm.className = 'btn'; firm.classList.add('fd-firm'); firm.textContent = T('Wie Firmenvorgabe');
       firm.onclick = function () { save('/account/ui-areas', { reset_order: true }, true); };
       var cancel = document.createElement('button'); cancel.type = 'button'; cancel.className = 'btn'; cancel.textContent = T('Abbrechen'); cancel.onclick = close;
       var ok = document.createElement('button'); ok.type = 'button'; ok.className = 'btn btn-primary'; ok.textContent = T('Speichern');
@@ -111,8 +111,11 @@
   var pal = null, palTimer = 0, palItems = [], palSel = 0, palSeq = 0, palLoading = false, palReturn = null;
   function palClose() {
     clearTimeout(palTimer); palSeq++; palItems = []; palSel = 0; palLoading = false;
+    // Fokus nur zurückgeben, wenn er noch in der Befehlszeile steht (nicht, wenn jemand
+    // daneben in ein Feld der Seite geklickt hat)
+    var a = document.activeElement, back = !a || a === document.body || (pal && pal.contains(a));
     if (pal) { pal.remove(); pal = null; }
-    if (palReturn && document.contains(palReturn) && typeof palReturn.focus === 'function') palReturn.focus();
+    if (back && palReturn && document.contains(palReturn) && typeof palReturn.focus === 'function') palReturn.focus();
     palReturn = null;
   }
   function palRender() {
@@ -155,7 +158,8 @@
     location.href = it.href;
   }
   function palKey(e) {
-    if (e.key === 'Escape') { e.preventDefault(); palClose(); return; }
+    // Esc nicht weiterreichen: ein offener Assistent dahinter (Fertigstellen) bliebe sonst nicht offen
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); palClose(); return; }
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault();
       if (!palItems.length) return;
@@ -188,7 +192,7 @@
     palLoading = true;
     palQuery(inp.value);
   }
-  window.pdhFrame.palette = palOpen;
+  window.pdhFrame.palette = function (q) { palOpen(typeof q === 'string' ? q : ''); };
 
   // ── Statusleiste ───────────────────────────────────────────────
   // Meldungen von setGlobalStatus merken (letzte 20, nur diese Sitzung); Tippen auf die
@@ -253,6 +257,7 @@
     }
     if (mirrorText) parts.push(mirrorText);
     warn.textContent = parts.join(' · ');
+    warn.title = warn.textContent; // gekürzt am schmalen Bildschirm – ganz im Tooltip
     warn.hidden = !parts.length;
   });
 
@@ -286,7 +291,8 @@
     if (e.key === 'Escape') { railToggle(false); logToggle(false); }
     if ((e.key === 'Enter' || e.key === ' ') && e.target.id === 'global-status-footer') { e.preventDefault(); logToggle($('#frame-log').hidden); }
     // Suchzeile: Tab geht vorbei; Enter, Leertaste oder ein Buchstabe öffnet die Befehlszeile
-    if (e.target.matches && e.target.matches('[data-palette-open]') && !e.ctrlKey && !e.metaKey && !e.altKey &&
+    var altGr = e.getModifierState && e.getModifierState('AltGraph'); // @, € usw. auf deutscher Tastatur
+    if (e.target.matches && e.target.matches('[data-palette-open]') && (altGr || (!e.ctrlKey && !e.metaKey && !e.altKey)) &&
         (e.key === 'Enter' || e.key === ' ' || e.key.length === 1)) {
       e.preventDefault();
       palOpen(e.key.length === 1 && e.key !== ' ' ? e.key : '');

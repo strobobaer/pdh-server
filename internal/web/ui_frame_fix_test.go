@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"pdh/internal/core/infrastructure"
+	"pdh/internal/core/users"
 )
 
 // Korrekturen aus der Schlussprüfung von 0.82.63 (Codex und Claude).
@@ -197,5 +198,71 @@ func TestPaletteAssetsAndActions(t *testing.T) {
 	short := paletteItems(none, buildAreas(none, uiAreaPrefs{}), "", nil)
 	if !paletteHas(short, "action", "Störung melden") || !paletteHas(short, "action", "Ticket anlegen") || paletteHas(short, "action", "Aufgabe anlegen") {
 		t.Errorf("Aktionen ohne Rechte: %+v", short)
+	}
+}
+
+// Zweite Runde (Gegenprüfung des Korrekturdurchgangs).
+
+// Backslash in der Abfrage ist harmlos (Browser lesen ihn nur im Pfad als „/“).
+func TestBackToKeepsBackslashInQuery(t *testing.T) {
+	if got, ok := localPath(`/storage?q=C:\Lager`); !ok || got != `/storage?q=C:\Lager` {
+		t.Errorf("Abfrage mit Backslash: %q %v", got, ok)
+	}
+	for _, bad := range []string{`/\fremd`, `/a\b?q=1`, "/a?q=\t", "/a?q=\x7f"} {
+		if _, ok := localPath(bad); ok {
+			t.Errorf("%q angenommen", bad)
+		}
+	}
+}
+
+// Terminal des Systembenutzers: keine eigene Oberfläche, keine eigenen Bereiche –
+// dort gilt immer die Firmenvorgabe.
+func TestSystemUserCannotChangeFrame(t *testing.T) {
+	sysReq := func(path, body, ct string) *http.Request {
+		req := httptest.NewRequest("POST", path, strings.NewReader(body))
+		req.Header.Set("Content-Type", ct)
+		return req.WithContext(context.WithValue(req.Context(), "user", &users.User{ID: "sys1", Role: "viewer", IsSystemUser: true})) //nolint:staticcheck // Schlüssel wie getUser
+	}
+	h := &Handler{}
+	rec := httptest.NewRecorder()
+	h.UIFrameSaveWeb(rec, sysReq("/account/ui-frame", "frame=new", "application/x-www-form-urlencoded"))
+	if rec.Code != http.StatusForbidden || h.userUIFrame(context.Background(), "sys1") != "" {
+		t.Errorf("Schalter als Systembenutzer: HTTP %d", rec.Code)
+	}
+	rec = httptest.NewRecorder()
+	h.UIAreasSaveWeb(rec, sysReq("/account/ui-areas", `{"fav":"faults"}`, "application/json"))
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("Bereiche als Systembenutzer: HTTP %d", rec.Code)
+	}
+	b := &BaseData{Page: "faults", IsSystemUser: true, navCan: func(string) bool { return true }}
+	for _, tab := range ribbonFor(b) {
+		for _, g := range tab.Groups {
+			for _, it := range g.Items {
+				if it.Action == "fav" || it.Action == "areas-order" || it.Action == "areas-firm" {
+					t.Errorf("Menüband am Terminal mit %q", it.Action)
+				}
+			}
+		}
+	}
+	sys := frameTestData(true)
+	sys.IsSystemUser, sys.IsOverrideSession = true, true
+	if strings.Contains(renderFrameForTest(t, "server_config", sys), `action="/account/ui-frame"`) {
+		t.Error("Schalter am Terminal mit Rückkehr-Cookie")
+	}
+}
+
+// Höchstzahl der Favoriten: der 13. verdrängt den ältesten (auch einen ausgeblendeten),
+// statt in einer Sackgasse „zu viele Favoriten“ zu enden.
+func TestFavoritesRollOver(t *testing.T) {
+	ctx := context.Background()
+	h := &Handler{}
+	keys := []string{"backup", "faults", "tickets", "tasks", "maintenance", "inventory", "storage", "calendar", "users", "roles", "network", "printers"}
+	_ = h.setUpdateSetting(ctx, "users.u1.ui_areas", `{"favorites":["`+strings.Join(keys, `","`)+`"]}`)
+	if rec := jsonPost(t, h.UIAreasSaveWeb, "/account/ui-areas", `{"fav":"kvp"}`, true); rec.Code != http.StatusOK {
+		t.Fatalf("13. Favorit: HTTP %d %s", rec.Code, rec.Body.String())
+	}
+	p := h.areaPrefs(ctx, "u1")
+	if len(p.Favorites) != maxAreaFavorites || p.Favorites[0] != "faults" || p.Favorites[len(p.Favorites)-1] != "kvp" {
+		t.Errorf("Favoriten: %v", p.Favorites)
 	}
 }

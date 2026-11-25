@@ -55,14 +55,17 @@ func ribbonFor(b *BaseData) []ribbonTab {
 			act("fullscreen", "Vollbild", "ti-arrows-maximize", "fullscreen", ""),
 		}},
 	}}
-	areas := []ribbonItem{act("areas-order", "Bereiche ordnen", "ti-arrows-sort", "areas-order", "")}
-	if k := navKeyForPage(b.Page); k != "" {
-		areas = append([]ribbonItem{act("fav", "Favorit", "ti-star", "fav", k)}, areas...)
+	adjust := ribbonTab{Key: "anpassen", Label: l("Anpassen")}
+	if !b.IsSystemUser { // Terminal: Bereiche gelten für alle, dort nicht anpassbar
+		areas := []ribbonItem{act("areas-order", "Bereiche ordnen", "ti-arrows-sort", "areas-order", "")}
+		if k := navKeyForPage(b.Page); k != "" {
+			areas = append([]ribbonItem{act("fav", "Favorit", "ti-star", "fav", k)}, areas...)
+		}
+		if b.navCan != nil && b.navCan(permUIDefaults) {
+			areas = append(areas, act("areas-firm", "Als Firmenvorgabe speichern", "ti-building", "areas-firm", ""))
+		}
+		adjust.Groups = append(adjust.Groups, ribbonGroup{Label: l("Bereiche"), Items: areas})
 	}
-	if b.navCan != nil && b.navCan(permUIDefaults) {
-		areas = append(areas, act("areas-firm", "Als Firmenvorgabe speichern", "ti-building", "areas-firm", ""))
-	}
-	adjust := ribbonTab{Key: "anpassen", Label: l("Anpassen"), Groups: []ribbonGroup{{Label: l("Bereiche"), Items: areas}}}
 	if b.Page == "dashboard" {
 		adjust.Groups = append(adjust.Groups, ribbonGroup{Label: l("Startseite"), Items: []ribbonItem{
 			act("dashboard-edit", "Startseite anpassen", "ti-layout-dashboard", "dashboard-edit", ""),
@@ -88,7 +91,11 @@ func ribbonFor(b *BaseData) []ribbonTab {
 			act("density-normal", "Normal", "ti-line-height", "density", "100"),
 			act("density-touch", "Berührung", "ti-hand-finger", "density", "115"),
 		}})
-	return []ribbonTab{start, view, adjust, look}
+	tabs := []ribbonTab{start, view}
+	if len(adjust.Groups) > 0 { // am Terminal ohne Startseite leer
+		tabs = append(tabs, adjust)
+	}
+	return append(tabs, look)
 }
 
 // OrderKeys: aktuelle Reihenfolge als Liste mit Leerzeichen (data-order an der Leiste,

@@ -5,9 +5,10 @@ html.frame-ui body.frame-body{display:flex;flex-direction:column;overflow:hidden
 .frame-app{display:grid;grid-template-columns:64px minmax(0,1fr) var(--right-sidebar-w);flex:1;min-height:0;overflow:hidden}
 .frame-main{display:flex;flex-direction:column;min-width:0;min-height:0;overflow:hidden}
 .frame-main .main{flex:1;min-height:0;overflow:auto}
-.rail{display:flex;flex-direction:column;align-items:center;gap:var(--sp-1);padding:var(--sp-2) 0;background:var(--bg2);border-right:1px solid var(--border);overflow-y:auto}
+.rail{display:flex;flex-direction:column;align-items:center;gap:var(--sp-1);padding:var(--sp-2) 0;background:var(--bg2);border-right:1px solid var(--border);overflow-y:auto;overflow-x:hidden}
 .rail-area,.rail-fav{width:56px;min-height:44px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:var(--sp-1) 0;border-radius:var(--r-m);color:var(--muted);text-decoration:none;font-size:var(--fs-xs);background:none;border:0;cursor:pointer;font-family:inherit}
 .rail-area i,.rail-fav i{font-size:var(--fs-xl)}
+.rail-area span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap} /* lange Namen wie „Verwaltung“ */
 .rail-area:hover,.rail-fav:hover{background:var(--fill-hover);color:var(--text)}
 .rail-area.on{background:color-mix(in srgb,var(--accent) 12%,transparent);color:var(--accent);font-weight:600}
 .rail-area:focus-visible,.rail-fav:focus-visible,.frame-tabs a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
@@ -45,14 +46,15 @@ html.rail-narrow .rail-area span{display:none}}
 html.pdh-embedded .ribbon{display:none}
 /* Klassische Navigation gibt es hier nicht: „Navigation anpassen“ ausblenden */
 html.frame-ui #um-nav-edit{display:none}
-/* Suchzeile in der Kopfleiste und Befehlszeile Strg+K */
-.frame-search{flex:1 1 220px;max-width:480px;min-width:0;margin:0 var(--sp-3);display:flex;align-items:center;gap:var(--sp-2);height:34px;padding:0 var(--sp-3);border:1px solid var(--border);border-radius:17px;background:var(--bg);color:var(--muted);cursor:text}
+/* Suchzeile in der Kopfleiste und Befehlszeile Strg+K. Sie nimmt nur den Restplatz
+   (Grundbreite 0): Uhr und Benutzermenü bleiben immer ganz sichtbar (AGENTS.md). */
+.frame-search{flex:1 1 0;min-width:34px;max-width:480px;margin:0 var(--sp-3);display:flex;align-items:center;gap:var(--sp-2);height:34px;padding:0 var(--sp-3);border:1px solid var(--border);border-radius:17px;background:var(--bg);color:var(--muted);cursor:text}
 .frame-search input{flex:1;min-width:0;border:0;background:transparent;color:var(--text);font:inherit;font-size:var(--fs-sm);outline:none;cursor:text}
 .frame-search:focus-within{border-color:var(--accent)}
 @media (max-width:760px){.frame-search{flex:0 0 34px;padding:0;justify-content:center;margin:0 var(--sp-1)}.frame-search input{position:absolute;width:34px;opacity:0}}
-.frame-palette{position:fixed;z-index:950;top:12vh;left:50%;transform:translateX(-50%);width:min(640px,calc(100vw - 24px));background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:var(--r-m);box-shadow:var(--shadow-float);overflow:hidden}
+.frame-palette{position:fixed;z-index:950;top:calc(12vh / var(--ui-scale, 1));left:50%;transform:translateX(-50%);width:min(640px,calc(100vw / var(--ui-scale, 1) - 24px));background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:var(--r-m);box-shadow:var(--shadow-float);overflow:hidden}
 .fp-input{width:100%;padding:var(--sp-3) var(--sp-4);border:0;border-bottom:1px solid var(--border);background:transparent;color:var(--text);font:inherit;font-size:var(--fs-lg);outline:none}
-.fp-list{list-style:none;margin:0;padding:var(--sp-1);max-height:50vh;overflow:auto}
+.fp-list{list-style:none;margin:0;padding:var(--sp-1);max-height:calc(50vh / var(--ui-scale, 1));overflow:auto}
 .fp-item{display:flex;align-items:center;gap:var(--sp-3);min-height:40px;padding:var(--sp-2) var(--sp-3);border-radius:var(--r-s);cursor:pointer}
 .fp-item.on,.fp-item:hover{background:var(--fill-hover)}
 .fp-item.on{box-shadow:inset 2px 0 0 var(--accent)}
@@ -64,22 +66,26 @@ html.frame-ui #um-nav-edit{display:none}
 /* An der Kennung, nicht an einer Klasse: setGlobalStatus setzt className neu */
 html.frame-ui #global-status-footer{cursor:pointer}
 html.frame-ui #global-status-footer:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+/* Fenster hängen am Body mit zoom (Größe): vw/vh durch --ui-scale teilen wie pdh.css */
 /* breiter Bildschirm: Warnfeld als eigene dritte Spalte vor den Fehlern (pdh.css hat 3 Spalten) */
 @media (min-width:761px){html.frame-ui #global-status-footer{grid-template-columns:minmax(180px,1fr) minmax(220px,420px) auto minmax(140px,1fr)}
-html.frame-ui #frame-warn{grid-column:3}html.frame-ui #footer-status-error{grid-column:4}}
+html.frame-ui #frame-warn{grid-column:3}html.frame-ui #footer-status-error{grid-column:4}
+/* Warnfeld sichtbar: es bekommt Platz vor Balken und Fehlertext */
+html.frame-ui #global-status-footer:has(#frame-warn:not([hidden])){grid-template-columns:minmax(120px,1fr) minmax(120px,320px) minmax(160px,auto) minmax(120px,1fr)}}
 .frame-warn{color:var(--warn);font-weight:600;font-size:var(--fs-xs);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
-.frame-log{position:fixed;z-index:850;right:var(--sp-3);bottom:40px;width:min(420px,calc(100vw - 24px));max-height:50vh;overflow:auto;padding:var(--sp-2);background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:var(--r-m);box-shadow:var(--shadow-float)}
+.frame-log{position:fixed;z-index:850;right:var(--sp-3);bottom:40px;width:min(420px,calc(100vw / var(--ui-scale, 1) - 24px));max-height:calc(50vh / var(--ui-scale, 1));overflow:auto;padding:var(--sp-2);background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:var(--r-m);box-shadow:var(--shadow-float)}
 .frame-log ol{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:var(--sp-1);font-size:var(--fs-sm)}
 .frame-log li{padding:var(--sp-1) var(--sp-2);border-radius:var(--r-s)}
 .frame-log .fl-error{color:var(--err)}
 @media (max-width:760px){.frame-log{bottom:100px}}
 /* Dialog „Bereiche ordnen“ */
-.frame-dialog{position:fixed;z-index:900;top:50%;left:50%;transform:translate(-50%,-50%);width:min(420px,calc(100vw - 32px));max-height:80vh;overflow:auto;padding:var(--sp-4);background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:var(--r-m);box-shadow:var(--shadow-float)}
+.frame-dialog{position:fixed;z-index:900;top:50%;left:50%;transform:translate(-50%,-50%);width:min(420px,calc(100vw / var(--ui-scale, 1) - 32px));max-height:calc(80vh / var(--ui-scale, 1));overflow:auto;padding:var(--sp-4);background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:var(--r-m);box-shadow:var(--shadow-float)}
 .frame-dialog h2{font-size:var(--fs-lg);margin:0 0 var(--sp-3)}
 .frame-order{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:var(--sp-1)}
 .frame-order li{display:flex;align-items:center;gap:var(--sp-2);padding:var(--sp-1) var(--sp-2);border:1px solid var(--border);border-radius:var(--r-s)}
 .frame-order li span{flex:1}
-.frame-dialog-bar{display:flex;justify-content:flex-end;gap:var(--sp-2);margin-top:var(--sp-3)}
+.frame-dialog-bar{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:var(--sp-2);margin-top:var(--sp-3)}
+.frame-dialog-bar .fd-firm{margin-right:auto}
 /* Navigation des klassischen Rahmens gibt es hier nicht */
 html.frame-ui .topbar-burger{display:none}
 html.pdh-embedded .rail{display:none}
@@ -88,11 +94,13 @@ html.pdh-embedded .frame-app{grid-template-columns:minmax(0,1fr)}
   /* Handy: Bereichsleiste unten – die ersten 4 Bereiche und „Mehr“ */
   .frame-app{grid-template-columns:minmax(0,1fr)}
   html.frame-ui body.frame-body{padding-bottom:60px} /* Statusleiste über der unteren Leiste */
+  html.pdh-embedded.frame-ui body.frame-body{padding-bottom:0} /* eingebettet: keine Leiste */
   .rail{position:fixed;left:0;right:0;bottom:0;z-index:80;flex-direction:row;justify-content:space-around;height:60px;padding:0 var(--sp-1);border-right:0;border-top:1px solid var(--border);overflow:visible}
   /* zu: die ersten 4 und „Mehr“; offen: Favoriten und alle Bereiche */
   .rail:not(.open) .rail-fav,.rail:not(.open) .rail-sep{display:none}
   .rail:not(.open) .rail-area:not(.rail-top):not(.rail-more){display:none}
   .rail .rail-more{display:flex}
+  .rail:not(.open) .rail-area{flex:1 1 0;min-width:0;width:auto} /* 4 + „Mehr“ passen auch bei 320 px und 160 % */
   .rail.open{height:auto;flex-wrap:wrap;padding:var(--sp-2);box-shadow:var(--shadow-float);background:var(--bg2)}
   .rail.open .rail-area{display:flex}
   /* Menüband am Handy: die ersten 3 Funktionen von „Start“ und „…“ für alles Weitere */

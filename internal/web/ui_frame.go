@@ -82,10 +82,15 @@ func (h *Handler) setUserUIFrame(ctx context.Context, uid, v string) error {
 	return err
 }
 
-// localPath: s ist ein Pfad dieser Adresse („/…“ samt Abfrage) – ohne Backslash und
-// Steuerzeichen, die Browser zu „//fremd“ umdeuten, ohne Schema und ohne Rechner.
+// localPath: s ist ein Pfad dieser Adresse („/…“ samt Abfrage) – ohne Steuerzeichen
+// und ohne Backslash im Pfad (beides deuten Browser zu „//fremd“ um; in der Abfrage
+// ist ein Backslash harmlos), ohne Schema und ohne Rechner.
 func localPath(s string) (string, bool) {
-	if !strings.HasPrefix(s, "/") || strings.HasPrefix(s, "//") || strings.ContainsRune(s, '\\') {
+	p := s
+	if i := strings.IndexByte(p, '?'); i >= 0 {
+		p = p[:i]
+	}
+	if !strings.HasPrefix(p, "/") || strings.HasPrefix(p, "//") || strings.ContainsRune(p, '\\') {
 		return "", false
 	}
 	for i := 0; i < len(s); i++ {
@@ -122,9 +127,14 @@ func backTo(r *http.Request) string {
 
 // UIFrameSaveWeb: POST /account/ui-frame – eigene Wahl (Formular frame=default|classic|new).
 func (h *Handler) UIFrameSaveWeb(w http.ResponseWriter, r *http.Request) {
-	uid := getUser(r).ID
+	u := getUser(r)
+	uid := u.ID
 	if uid == "" {
 		http.Error(w, "nicht angemeldet", http.StatusUnauthorized)
+		return
+	}
+	if u.IsSystemUser { // Terminal: eine Person schaltet nicht für alle um
+		http.Error(w, "am Terminal gilt die Firmenvorgabe", http.StatusForbidden)
 		return
 	}
 	v, ok := uiFrameChoice(r.FormValue("frame"))

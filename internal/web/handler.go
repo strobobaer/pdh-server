@@ -1590,10 +1590,15 @@ func (h *Handler) baseData(r *http.Request, page, title, ctxTitle string) BaseDa
 	b.navCan = func(perm string) bool { return h.rbac.HasPermissionForUser(u.ID, string(u.Role), perm) } // Navigation: Einträge ohne Recht fehlen
 	b.Nav = buildNav(&b, h.userNavLayout(r.Context(), u.ID))
 	b.Mirror = h.mirrorBanner(r)
-	b.UIFrame = h.userUIFrame(r.Context(), u.ID)
+	areasUID := u.ID
+	if u.IsSystemUser { // Terminal des Systembenutzers: immer die Firmenvorgabe (ui_frame.go)
+		areasUID = ""
+	} else {
+		b.UIFrame = h.userUIFrame(r.Context(), u.ID)
+	}
 	b.NewFrame = h.frameFor(r.Context(), b.UIFrame)
 	if b.NewFrame {
-		b.Rail = buildAreas(&b, h.areaPrefs(r.Context(), u.ID))
+		b.Rail = buildAreas(&b, h.areaPrefs(r.Context(), areasUID))
 		b.Ribbon = ribbonFor(&b)
 	}
 	b.UserAvatar = h.userAvatarURL(r.Context(), u.ID)
