@@ -529,7 +529,12 @@ func (h *Handler) activityGroups(ctx context.Context) []activityGroup {
 // setTimeActivity: Tätigkeit an der Zeitbuchung setzen; die Kostenstelle kommt
 // von der Tätigkeit, sonst von der gebuchten Anlage.
 func (h *Handler) setTimeActivity(ctx context.Context, entryID, activityID string) error {
-	_, err := h.db.Exec(ctx, `UPDATE time_entries te SET activity_id = $2::uuid,
+	return setTimeActivityQ(ctx, h.db, entryID, activityID)
+}
+
+// setTimeActivityQ: wie setTimeActivity, auch innerhalb einer Transaktion (Terminal).
+func setTimeActivityQ(ctx context.Context, q execQ, entryID, activityID string) error {
+	_, err := q.Exec(ctx, `UPDATE time_entries te SET activity_id = $2::uuid,
 		cost_center_id = COALESCE((SELECT cost_center_id FROM cost_activities WHERE id = $2::uuid),
 		                          (SELECT cost_center_id FROM infrastructure WHERE id = te.infrastructure_id))
 		WHERE te.id = $1::uuid`, entryID, nullIfEmpty(activityID))

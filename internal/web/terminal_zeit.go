@@ -33,6 +33,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"pdh/internal/modules/timetracking"
 )
 
 // Buchungsarten.
@@ -167,16 +168,32 @@ type zeitStopped struct {
 	Forgotten                        bool
 }
 
-// workStopTx beendet die laufende Arbeit der Person (falls vorhanden) und schreibt den Zeiteintrag am Vorgang.
+// zeitTargetKind: Zielart einer Arbeitssitzung ohne Vorgang ("" = Vorgang). plant gehört dazu, seit 0.82.64 auch
+// it_asset und other.
+func zeitTargetKind(refType string) string {
+	switch refType {
+	case "plant":
+		return timetracking.TargetPlant
+	case "it_asset":
+		return timetracking.TargetITAsset
+	case "other":
+		return timetracking.TargetOther
+	}
+	return ""
+}
+
+// workStopTx beendet die laufende Arbeit der Person (falls vorhanden) und schreibt den Zeiteintrag: am Vorgang oder,
+// bei Anlage, IT-Asset und Sonstiges, als Zeit ohne Vorgang (ref_type production mit target_kind).
 func (h *Handler) workStopTx(ctx context.Context, tx pgx.Tx, uid string, now time.Time) (*zeitStopped, error) {
-	var id, via, termUID string
+	var id, via, termUID, assetID, activityID, text string
 	s := &zeitStopped{}
 	var started time.Time
 	var infra *string
 	err := tx.QueryRow(ctx, `SELECT w.id::text, w.ref_type, w.ref_id::text, w.title, w.origin_via, w.started_at, COALESCE(w.terminal_user_id::text, ''), w.infrastructure_id::text,
-			(SELECT TRIM(u.first_name || ' ' || u.last_name) FROM users u WHERE u.id = w.user_id)
+			(SELECT TRIM(u.first_name || ' ' || u.last_name) FROM users u WHERE u.id = w.user_id),
+			COALESCE(w.it_asset_id::text, ''), COALESCE(w.activity_id::text, ''), COALESCE(w.description, '')
 		FROM work_sessions w WHERE w.user_id = $1::uuid AND w.ended_at IS NULL FOR UPDATE`, uid).
-		Scan(&id, &s.RefType, &s.RefID, &s.Title, &via, &started, &termUID, &infra, &s.Name)
+		Scan(&id, &s.RefType, &s.RefID, &s.Title, &via, &started, &termUID, &infra, &s.Name, &assetID, &activityID, &text)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
@@ -200,17 +217,27 @@ func (h *Handler) workStopTx(ctx context.Context, tx pgx.Tx, uid string, now tim
 	}
 	s.Minutes = max(1, int(now.Sub(started).Minutes()))
 	var entryID *string
-	if s.RefType != "plant" {
+	var eid string
+	if tk := zeitTargetKind(s.RefType); tk != "" {
+		desc := h.zeitSessionDescription(ctx, tk, s.RefID, s.Title, text)
+		if err := tx.QueryRow(ctx, `INSERT INTO time_entries (id, user_id, ref_type, ref_id, description, started_at, ended_at, duration_min, pending, pending_from, infrastructure_id, origin_via, target_kind, it_asset_id)
+			VALUES (pdh_uuid_v7(), $1::uuid, 'production'::time_ref_type, $2::uuid, $3, $4, $5, $6, $7, NULLIF($8, '')::uuid, NULLIF($9, '')::uuid, $10, $11, NULLIF($12, '')::uuid) RETURNING id::text`,
+			uid, s.RefID, desc, started, now, s.Minutes, via == vorgViaGewaehlt, termUID, s.Infra, via, tk, assetID).Scan(&eid); err != nil {
+			return nil, err
+		}
+		if err := setTimeActivityQ(ctx, tx, eid, activityID); err != nil { // Kostenstelle von der Tätigkeit, sonst von der Anlage
+			return nil, err
+		}
+		entryID = &eid
+	} else {
 		kind := zeitKindOf(s.RefType)
 		desc := "Arbeit am Terminal: " + kind.Label + ": " + s.Title
 		if n := vorgViaLabel[via]; n != "" {
 			desc += " – " + n
 		}
-		var eid string
-		err := tx.QueryRow(ctx, `INSERT INTO time_entries (id, user_id, ref_type, ref_id, description, started_at, ended_at, duration_min, pending, pending_from, infrastructure_id, origin_via)
+		if err := tx.QueryRow(ctx, `INSERT INTO time_entries (id, user_id, ref_type, ref_id, description, started_at, ended_at, duration_min, pending, pending_from, infrastructure_id, origin_via)
 			VALUES (pdh_uuid_v7(), $1::uuid, $2::time_ref_type, $3::uuid, $4, $5, $6, $7, $8, NULLIF($9, '')::uuid, NULLIF($10, '')::uuid, $11) RETURNING id::text`,
-			uid, s.RefType, s.RefID, desc, started, now, s.Minutes, via == vorgViaGewaehlt, termUID, s.Infra, via).Scan(&eid)
-		if err != nil {
+			uid, s.RefType, s.RefID, desc, started, now, s.Minutes, via == vorgViaGewaehlt, termUID, s.Infra, via).Scan(&eid); err != nil {
 			return nil, err
 		}
 		entryID = &eid
@@ -221,6 +248,22 @@ func (h *Handler) workStopTx(ctx context.Context, tx pgx.Tx, uid string, now tim
 	return s, nil
 }
 
+// zeitSessionDescription: Beschreibung der Zeitbuchung zu einer Sitzung ohne Vorgang. Anlage: „Anlage: <Pfad>“, mit
+// dem vollen Pfad (Rückfall: der gespeicherte Titel); IT-Asset: „IT-Asset: <Name>“; Sonstiges: der Freitext (Titel).
+func (h *Handler) zeitSessionDescription(ctx context.Context, kind, refID, title, text string) string {
+	switch kind {
+	case timetracking.TargetPlant:
+		label := h.infraPath(ctx, refID)
+		if label == "" {
+			label = title
+		}
+		return zeitDescription(kind, label, text)
+	case timetracking.TargetITAsset:
+		return zeitDescription(kind, title, text)
+	}
+	return title
+}
+
 func zeitKindOf(refType string) vorgKind {
 	k, _ := vorgKindOf(refType)
 	return k
@@ -228,7 +271,7 @@ func zeitKindOf(refType string) vorgKind {
 
 // zeitStoppedHistory schreibt den Verlauf des Vorgangs zur beendeten Arbeit.
 func (h *Handler) zeitStoppedHistory(ctx context.Context, s *zeitStopped, personID, by, place string) {
-	if s == nil || s.RefType == "plant" {
+	if s == nil || zeitTargetKind(s.RefType) != "" {
 		return
 	}
 	if s.Forgotten {
@@ -377,7 +420,7 @@ func (h *Handler) zeitBook(ctx context.Context, c *zeitCtx, p terminalPerson, ki
 }
 
 // zeitWorkStart beginnt die Arbeit; eine laufende andere Arbeit der Person wird beendet.
-func (h *Handler) zeitWorkStart(ctx context.Context, c *zeitCtx, p terminalPerson, refType, refID, infra, title string, now time.Time) (string, *zeitErr) {
+func (h *Handler) zeitWorkStart(ctx context.Context, c *zeitCtx, p terminalPerson, st zeitStart, now time.Time) (string, *zeitErr) {
 	tx, err := h.db.Begin(ctx)
 	if err != nil {
 		return "", &zeitErr{http.StatusInternalServerError, "Daten nicht verfügbar"}
@@ -393,9 +436,9 @@ func (h *Handler) zeitWorkStart(ctx context.Context, c *zeitCtx, p terminalPerso
 	if cur == attPause {
 		return "", &zeitErr{http.StatusConflict, "In der Pause beginnt keine Arbeit – bitte zuerst Pause Ende buchen."}
 	}
-	var runRef string
-	err = tx.QueryRow(ctx, `SELECT ref_type || ':' || ref_id::text FROM work_sessions WHERE user_id = $1::uuid AND ended_at IS NULL`, p.ID).Scan(&runRef)
-	if err == nil && runRef == refType+":"+refID {
+	var runRef, runType, runTitle string
+	err = tx.QueryRow(ctx, `SELECT ref_type || ':' || ref_id::text, ref_type, title FROM work_sessions WHERE user_id = $1::uuid AND ended_at IS NULL`, p.ID).Scan(&runRef, &runType, &runTitle)
+	if err == nil && (runRef == st.RefType+":"+st.RefID || (st.RefType == "other" && runType == "other" && runTitle == st.Title)) {
 		return "", &zeitErr{http.StatusConflict, "Die Arbeit läuft schon."}
 	}
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
@@ -406,8 +449,9 @@ func (h *Handler) zeitWorkStart(ctx context.Context, c *zeitCtx, p terminalPerso
 		componentLog("terminal").Error().Err(err).Msg("arbeit beenden")
 		return "", &zeitErr{http.StatusInternalServerError, "Daten nicht verfügbar"}
 	}
-	if _, err := tx.Exec(ctx, `INSERT INTO work_sessions (user_id, ref_type, ref_id, infrastructure_id, title, terminal_user_id, origin_via, started_at)
-		VALUES ($1::uuid, $2, $3::uuid, NULLIF($4, '')::uuid, $5, $6::uuid, $7, $8)`, p.ID, refType, refID, infra, title, c.Act.TermUID, c.via(), now); err != nil {
+	if _, err := tx.Exec(ctx, `INSERT INTO work_sessions (user_id, ref_type, ref_id, infrastructure_id, title, terminal_user_id, origin_via, started_at, it_asset_id, activity_id, description)
+		VALUES ($1::uuid, $2, $3::uuid, NULLIF($4, '')::uuid, $5, $6::uuid, $7, $8, NULLIF($9, '')::uuid, NULLIF($10, '')::uuid, NULLIF($11, ''))`,
+		p.ID, st.RefType, st.RefID, st.Infra, st.Title, c.Act.TermUID, c.via(), now, st.AssetID, st.ActivityID, st.Text); err != nil {
 		componentLog("terminal").Error().Err(err).Msg("arbeit beginnen")
 		return "", &zeitErr{http.StatusConflict, "Es läuft schon eine Arbeit – bitte zuerst beenden."}
 	}
@@ -475,7 +519,7 @@ type terminalZeitPage struct {
 	WorkPeople           []terminalPerson
 	WorkOn               map[string]bool
 	Items                []zeitItem
-	Plants               []zeitItem
+	Ziel                 zeitZielView // Schritt „Arbeit ohne Vorgang“ (Anlage, IT-Asset, Sonstiges) im Fenster
 }
 
 func (p terminalZeitPage) CanKommen() bool { return p.Can[attKommen] }
@@ -599,13 +643,16 @@ func (h *Handler) zeitFill(r *http.Request, c *zeitCtx, v *terminalZeitPage) err
 		}
 		if r.URL.Query().Get("arbeit") == "1" {
 			v.WorkDlg = true
-			v.WorkOn = map[string]bool{who.ID: true}
 			if c.Act.Card != nil {
 				v.WorkPeople = []terminalPerson{*who}
 			} else {
 				v.WorkPeople = people
 			}
+			v.WorkOn = zeitWorkOn(r, v.WorkPeople, who.ID)
 			if err := h.zeitItems(r, c, v); err != nil {
+				return err
+			}
+			if err := h.zeitZielFill(r, c, v); err != nil {
 				return err
 			}
 		}
@@ -614,11 +661,16 @@ func (h *Handler) zeitFill(r *http.Request, c *zeitCtx, v *terminalZeitPage) err
 }
 
 func zeitWhat(t terminalPlantTree, rt, title, infra string) string {
-	if rt == "plant" {
+	switch rt {
+	case "plant":
 		if infra != "" && t.ok(infra) {
 			return "Anlage " + terminalPlantLabel(t, infra)
 		}
 		return "Anlage " + title
+	case "it_asset":
+		return "IT-Asset " + title
+	case "other":
+		return "Sonstiges: " + title
 	}
 	return zeitKindOf(rt).Label + ": " + title
 }
@@ -680,23 +732,6 @@ func (h *Handler) zeitItems(r *http.Request, c *zeitCtx, v *terminalZeitPage) er
 				v.Items = append(v.Items, zeitItem{Sel: it.Sel(), Label: k.Label, Title: it.Title, Path: it.Path})
 			}
 		}
-	}
-	ids := make([]string, 0, len(c.Tree.Nodes))
-	for id := range c.Tree.Nodes {
-		ids = append(ids, id)
-	}
-	sort.Slice(ids, func(i, j int) bool {
-		a, b := terminalPlantLabel(c.Tree, ids[i]), terminalPlantLabel(c.Tree, ids[j])
-		if ids[i] == c.Tree.Root || ids[j] == c.Tree.Root {
-			return ids[i] == c.Tree.Root
-		}
-		return setupPathLess(a, b)
-	})
-	for _, id := range ids {
-		if len(v.Plants) >= zeitPlantsMax {
-			break
-		}
-		v.Plants = append(v.Plants, zeitItem{Sel: "plant:" + id, Label: "Anlage", Title: terminalPlantLabel(c.Tree, id)})
 	}
 	return nil
 }
@@ -803,40 +838,20 @@ func (h *Handler) TerminalZeitArbeitStart(w http.ResponseWriter, r *http.Request
 	if sel := r.FormValue("sel"); sel != "" { // Auswahl im Fenster: "<Art>:<Kennung>"
 		typ, id, _ = strings.Cut(sel, ":")
 	}
-	var infra, title string
-	if typ == "plant" {
-		if !c.Tree.ok(id) || !uuidInPathRe.MatchString(id) {
-			http.Error(w, "Anlage nicht gefunden oder nicht in der Anlage dieses Terminals", http.StatusNotFound)
+	st, e2 := h.zeitStartFor(r, c, typ, id)
+	if e2 != nil {
+		if e2.Code == http.StatusUnprocessableEntity {
+			h.zeitFail(w, r, c, e2)
 			return
 		}
-		infra, title = id, terminalPlantLabel(c.Tree, id)
-	} else {
-		k, known := vorgKindOf(typ)
-		if !known {
-			http.Error(w, "Unbekannter Vorgang", http.StatusBadRequest)
-			return
-		}
-		it, found, err := h.vorgLoadOne(ctx, c.Tree, k.Type, id)
-		if err != nil {
-			componentLog("terminal").Error().Err(err).Msg("vorgang lesen")
-			http.Error(w, "Daten nicht verfügbar", http.StatusInternalServerError)
-			return
-		}
-		if !found {
-			http.Error(w, "Vorgang nicht gefunden oder nicht in der Anlage dieses Terminals", http.StatusNotFound)
-			return
-		}
-		if !h.vorgCan(r, c.Act, k.EditPerm, it) {
-			http.Error(w, "Keine Berechtigung für diesen Vorgang.", http.StatusForbidden)
-			return
-		}
-		infra, title = it.Infra, it.Title
+		http.Error(w, e2.Msg, e2.Code)
+		return
 	}
 	now := time.Now()
 	var errs []string
 	changed := false
 	for _, p := range people {
-		msg, e := h.zeitWorkStart(ctx, c, p, typ, id, infra, title, now)
+		msg, e := h.zeitWorkStart(ctx, c, p, *st, now)
 		if e != nil {
 			errs = append(errs, p.Name+": "+e.Msg)
 			continue
@@ -851,6 +866,97 @@ func (h *Handler) TerminalZeitArbeitStart(w http.ResponseWriter, r *http.Request
 	if changed {
 		zeitBack(w, r, "start", "")
 	}
+}
+
+// zeitStart: eine zu beginnende Arbeit (geprüft, mit Titel, Anlage und Zusätzen).
+type zeitStart struct {
+	RefType, RefID, Infra, Title string
+	AssetID, ActivityID, Text    string // IT-Asset, Tätigkeit (optional) und Freitext (Sonstiges: Pflicht)
+}
+
+// zeitStartFor prüft die gewählte Arbeit gegen Terminalbaum und Rechte. Anlage und IT-Asset außerhalb der Anlage
+// dieses Terminals: 403; unbekannt oder ungültig: 400/404; Sonstiges ohne Text: 422.
+func (h *Handler) zeitStartFor(r *http.Request, c *zeitCtx, typ, id string) (*zeitStart, *zeitErr) {
+	ctx := r.Context()
+	st := &zeitStart{RefType: typ, RefID: id}
+	text, okText := zeitText(firstFormValue(r, "text", "description", "freitext"))
+	if !okText {
+		return nil, &zeitErr{http.StatusBadRequest, "Der Text ist zu lang (höchstens 200 Zeichen)."}
+	}
+	if a := strings.TrimSpace(firstFormValue(r, "activity_id", "activity")); a != "" {
+		if !h.activityActive(ctx, a) {
+			return nil, &zeitErr{http.StatusBadRequest, "Tätigkeit nicht gefunden oder nicht mehr aktiv."}
+		}
+		st.ActivityID = a
+	}
+	switch typ {
+	case "plant":
+		if !isUUIDString(id) {
+			return nil, &zeitErr{http.StatusBadRequest, "Anlage ungültig"}
+		}
+		if !c.Tree.ok(id) {
+			return nil, &zeitErr{http.StatusForbidden, "Diese Anlage gehört nicht zur Anlage dieses Terminals."}
+		}
+		st.Infra, st.Text = id, text
+		st.Title = h.infraPath(ctx, id)
+		if st.Title == "" {
+			st.Title = terminalPlantLabel(c.Tree, id)
+		}
+	case "it_asset":
+		if !isUUIDString(id) {
+			return nil, &zeitErr{http.StatusBadRequest, "IT-Asset ungültig"}
+		}
+		name, infra, found := h.zeitAssetLookup(ctx, id)
+		if !found {
+			return nil, &zeitErr{http.StatusNotFound, "IT-Asset nicht gefunden."}
+		}
+		if infra == "" || !c.Tree.ok(infra) {
+			return nil, &zeitErr{http.StatusForbidden, "Dieses IT-Asset gehört nicht zur Anlage dieses Terminals."}
+		}
+		st.Infra, st.AssetID, st.Title, st.Text = infra, id, name, text
+	case "other":
+		if text == "" {
+			return nil, &zeitErr{http.StatusUnprocessableEntity, "Bitte eintragen, woran gearbeitet wird."}
+		}
+		st.RefID, st.Title = newRefUUID(), text
+	default:
+		k, known := vorgKindOf(typ)
+		if !known {
+			return nil, &zeitErr{http.StatusBadRequest, "Unbekannter Vorgang"}
+		}
+		it, found, err := h.vorgLoadOne(ctx, c.Tree, k.Type, id)
+		if err != nil {
+			componentLog("terminal").Error().Err(err).Msg("vorgang lesen")
+			return nil, &zeitErr{http.StatusInternalServerError, "Daten nicht verfügbar"}
+		}
+		if !found {
+			return nil, &zeitErr{http.StatusNotFound, "Vorgang nicht gefunden oder nicht in der Anlage dieses Terminals"}
+		}
+		if !h.vorgCan(r, c.Act, k.EditPerm, it) {
+			return nil, &zeitErr{http.StatusForbidden, "Keine Berechtigung für diesen Vorgang."}
+		}
+		st.Infra, st.Title, st.ActivityID, st.Text = it.Infra, it.Title, "", ""
+	}
+	return st, nil
+}
+
+// firstFormValue: der erste nicht leere Wert unter den genannten Feldnamen.
+func firstFormValue(r *http.Request, names ...string) string {
+	for _, n := range names {
+		if v := r.FormValue(n); strings.TrimSpace(v) != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+// activityActive: gibt es die Tätigkeit und ist sie aktiv?
+func (h *Handler) activityActive(ctx context.Context, id string) bool {
+	if h.db == nil || !isUUIDString(id) {
+		return false
+	}
+	var ok bool
+	return h.db.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM cost_activities WHERE id = $1::uuid AND active AND (cost_center_id IS NULL OR EXISTS (SELECT 1 FROM cost_centers c WHERE c.id = cost_activities.cost_center_id AND c.active)))`, id).Scan(&ok) == nil && ok
 }
 
 // TerminalZeitArbeitStop: POST /terminal/zeit/arbeit/stop (who[])
@@ -878,4 +984,3 @@ func (h *Handler) TerminalZeitArbeitStop(w http.ResponseWriter, r *http.Request)
 	}
 	zeitBack(w, r, "stop", "")
 }
-
