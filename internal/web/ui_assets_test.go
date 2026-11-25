@@ -96,6 +96,26 @@ func TestBaseScriptsExternal(t *testing.T) {
 	}
 }
 
+var uiScriptSrcRe = regexp.MustCompile(`<script src="/vendor/[^/"]+/ui/([^"]+)"></script>`)
+
+// withUIScripts: gerenderte Seite plus Inhalt der Oberflächen-Skripte, die sie
+// einbindet – so, wie der Browser sie lädt. Für Tests, die nach Funktionen der
+// Seite suchen, die seit 0.82.61 in web/static/ui/ stehen.
+func withUIScripts(t *testing.T, page string) string {
+	t.Helper()
+	var sb strings.Builder
+	sb.WriteString(page)
+	for _, m := range uiScriptSrcRe.FindAllStringSubmatch(page, -1) {
+		b, err := os.ReadFile(filepath.Join("..", "..", "web", "static", "ui", m[1]))
+		if err != nil {
+			t.Fatalf("eingebundenes Skript %s fehlt: %v", m[1], err)
+		}
+		sb.WriteString("\n")
+		sb.Write(b)
+	}
+	return sb.String()
+}
+
 // baseWithUI: Quelltext von base.gohtml und aller ausgelagerten Dateien der
 // Oberfläche (web/static/ui/*.css, *.js, sortiert) – für Tests, die prüfen, ob
 // eine Regel oder Funktion im Rahmen vorhanden ist, egal ob inline oder ausgelagert.

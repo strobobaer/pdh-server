@@ -169,7 +169,7 @@ func TestPushPagesRender(t *testing.T) {
 	}
 	me := UserDetailData{User: UserView{ID: "u1"}, IsSelf: true}
 	me.PushEnabled = true
-	out := renderPage(t, tmpl, "user_detail", me)
+	out := withUIScripts(t, renderPage(t, tmpl, "user_detail", me)) // Push-Skript seit 0.82.61 als Datei
 	checkScripts(t, "konto-push", out)
 	for _, want := range []string{`id="push-card"`, "pdhPush.enable", `id="push-on"`, `id="pdh-alarm"`, "/push/alerts/open", "navigator.serviceWorker.register('/sw.js'"} {
 		if !strings.Contains(out, want) {

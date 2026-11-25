@@ -117,7 +117,7 @@ func TestChatPageRenders(t *testing.T) {
 	if strings.Contains(out, "pdhShareToChat()\" title") {
 		t.Error("Teilen-Button auf der Chat-Seite")
 	}
-	other := renderPage(t, tmpl, "purchase_report", PurchaseReportData{BaseData: BaseData{Page: "directory", CanChat: true}})
+	other := withUIScripts(t, renderPage(t, tmpl, "purchase_report", PurchaseReportData{BaseData: BaseData{Page: "directory", CanChat: true}}))
 	if !strings.Contains(other, "chat-nav-badge") || !strings.Contains(other, `data-context-panel="chat"`) || !strings.Contains(other, "pdhSideChat") || !strings.Contains(other, "Im Chat teilen") {
 		t.Error("Chat-Einbindung (Zähler/Teilen) fehlt auf anderen Seiten")
 	}
@@ -138,7 +138,7 @@ func TestChatDeleteControls(t *testing.T) {
 			t.Errorf("Chat-Seite enthält %q nicht", want)
 		}
 	}
-	side := renderPage(t, tmpl, "purchase_report", PurchaseReportData{BaseData: BaseData{Page: "directory", CanChat: true}})
+	side := withUIScripts(t, renderPage(t, tmpl, "purchase_report", PurchaseReportData{BaseData: BaseData{Page: "directory", CanChat: true}}))
 	for _, want := range []string{`class="sc-del"`, `title="Nachricht löschen"`, `aria-label="Nachricht löschen"`, "d.is_admin", "/delete'", "Nachricht gelöscht"} {
 		if !strings.Contains(side, want) {
 			t.Errorf("Seitenleiste enthält %q nicht", want)

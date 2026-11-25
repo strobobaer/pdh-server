@@ -59,7 +59,7 @@ func TestPartDocHelpers(t *testing.T) {
 func TestPartDocumentsUI(t *testing.T) {
 	tmpl := loadTestTemplates(t)
 	p := PartMaster{ID: "s1", Name: "Zylinder", ManufacturerName: "Festo", ManufacturerPart: "DSBC-32", Unit: "Stk", StatusKey: "ok", StatusClass: "b-green", StatusLabel: "OK"}
-	page := renderPage(t, tmpl, "inventory_detail", PartDetailData{Part: p, CanEdit: true, Tab: "docs"})
+	page := withUIScripts(t, renderPage(t, tmpl, "inventory_detail", PartDetailData{Part: p, CanEdit: true, Tab: "docs"})) // Anhang-Skript seit 0.82.61 als Datei
 	for _, want := range []string{"Datenblatt &amp; Handbuch suchen", `id="pd-modal"`, `value="Festo DSBC-32"`, "/doc-search?q=", "pdhRefreshDoc('s1','all',this)", "function pdhRefreshDoc", "attachment-badge doc"} {
 		if !strings.Contains(page, want) {
 			t.Errorf("Teileseite enthält %q nicht", want)
