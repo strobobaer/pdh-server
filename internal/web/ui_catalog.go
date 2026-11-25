@@ -15,6 +15,7 @@ const permUIDefaults = "system.ui_defaults"
 // UICatalogData: die Seite braucht nur den Rahmen; Werte kommen live aus var(--…).
 type UICatalogData struct {
 	BaseData
+	FirmFrame string // Firmenvorgabe des Rahmens: classic oder new (ui_frame.go)
 }
 
 // uiToken: ein Gestaltungswert für die Anzeige. html/template lässt „--“ in
@@ -53,5 +54,5 @@ func (h *Handler) UICatalogPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "keine berechtigung", http.StatusForbidden)
 		return
 	}
-	h.render(w, "ui_catalog", UICatalogData{BaseData: h.baseData(r, "ui-catalog", "Gestaltung", "Gestaltung")})
+	h.render(w, "ui_catalog", UICatalogData{BaseData: h.baseData(r, "ui-catalog", "Gestaltung", "Gestaltung"), FirmFrame: h.firmUIFrame(r.Context())})
 }

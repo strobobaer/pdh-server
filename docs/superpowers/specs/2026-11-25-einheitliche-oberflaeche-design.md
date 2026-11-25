@@ -348,3 +348,11 @@ Punkte hat Claude festgelegt; der Anwender kann sie beim Lesen korrigieren.
 10. **Untere Leiste am Handy:** die ersten vier Bereiche in der Reihenfolge des
     Benutzers (die aus der Vorgabe kommt; Vorgabe Start, Vorgänge, Anlagen,
     Material), der Rest unter „Mehr“.
+11. **Assistenten (Vorgabe des Anwenders, 25.11.2026):** Der Neu-anlegen- und
+    der Fertigstellen-Assistent (dazu der KVP-Assistent) dürfen in keinem Teil
+    fehlen. Heute über `ui-overlays`; „Neu“ im Menüband und Strg+K öffnen den
+    Neu-anlegen-Assistenten. Wandern die Seitenaktionen mit Teil 3 ins
+    Menüband, bekommt die Detailseite dort „Fertigstellen“ (`pdhComplete`) –
+    am Terminal und in den Listen bleiben die vorhandenen Knöpfe. Jeder Teil
+    hält das mit einem Test fest (`TestFrameHasWizards`), und jede
+    Browserprüfung öffnet beide Assistenten.

@@ -60,17 +60,19 @@
   const openHelp = () => { if(typeof activateContextTab === 'function') activateContextTab('help', {keepOpen: true}); };
   const userMenu = on => { const m = $('user-menu'); if(m) m.style.display = on ? 'block' : 'none'; };
 
-  // Touren – Texte laufen ueber die Uebersetzung (t)
+  // Touren – Texte laufen ueber die Uebersetzung (t). NEWF: neuer Rahmen (frame.gohtml,
+  // html.frame-ui) – Bereichsleiste und Menüband statt Navigation links.
+  const NEWF = document.documentElement.classList.contains('frame-ui');
   const TOURS = {
     basics: {title: {{t "Rundgang durch PDH"}}, steps: [
       {url: '/', h: {{t "Willkommen im PDH"}}, p: {{t "In zwei Minuten zeigen wir dir das Wichtigste. „Weiter“ geht Schritt für Schritt, Esc beendet den Rundgang jederzeit."}}},
-      {url: '/', sel: ['#pdh-nav', '.topbar-burger'], h: {{t "Navigation"}}, p: {{t "Links findest du alle Bereiche – Störungen, Tickets, Aufgaben, Wartung, Ersatzteile, Infrastruktur und mehr. Mit „Navigation anpassen“ im Benutzermenü sortierst du sie nach deinem Bedarf."}}},
+      {url: '/', sel: ['#pdh-nav', '.rail', '.topbar-burger'], h: {{t "Navigation"}}, p: NEWF ? {{t "In der Bereichsleiste findest du die Bereiche – Vorgänge, Anlagen, Material, Planung und mehr (am Handy unten, der Rest unter „Mehr“). Oben stehen die Unterseiten als Reiter. Mit „Anpassen“ im Menüband heftest du Favoriten an und ordnest die Bereiche."}} : {{t "Links findest du alle Bereiche – Störungen, Tickets, Aufgaben, Wartung, Ersatzteile, Infrastruktur und mehr. Mit „Navigation anpassen“ im Benutzermenü sortierst du sie nach deinem Bedarf."}}},
       {url: '/', sel: ['#dw-root'], h: {{t "Dein Dashboard"}}, p: {{t "Kennzahlen und Listen auf einen Blick. „Mir zugewiesen“ zeigt, was als Nächstes zu tun ist. Mit „Dashboard anpassen“ im Benutzermenü stellst du dir die Kacheln selbst zusammen."}}},
-      {url: '/', sel: ['[data-nav="faults"]', '.topbar-burger'], h: {{t "Etwas melden"}}, p: {{t "Eine Störung meldest du unter „Störungen“ mit „Neu“. Ein Assistent fragt Schritt für Schritt: Was? Wo? Wer? – und zeigt ähnliche, schon gelöste Fälle."}}},
+      {url: '/', sel: ['[data-nav="faults"]', '[data-ribbon-action="create"]', '.topbar-burger'], h: {{t "Etwas melden"}}, p: NEWF ? {{t "Eine Störung meldest du mit „Neu“ im Menüband oder mit Strg+K und „Störung melden“. Ein Assistent fragt Schritt für Schritt: Was? Wo? Wer? – und zeigt ähnliche, schon gelöste Fälle."}} : {{t "Eine Störung meldest du unter „Störungen“ mit „Neu“. Ein Assistent fragt Schritt für Schritt: Was? Wo? Wer? – und zeigt ähnliche, schon gelöste Fälle."}}},
       {url: '/', sel: ['.ctx-tabs', '.topbar-ctx'], h: {{t "Die Seitenleiste"}}, p: {{t "Rechts liegen Chat, Suche, Copilot, Aktivität und Hilfe. Den Copilot kannst du alles zu euren Daten fragen, z. B. „Welche Wartungen sind diese Woche fällig?“"}}},
       {url: '/', sel: ['[data-context-tab="help"]', '.topbar-ctx'], h: {{t "Hilfe auf jeder Seite"}}, p: {{t "Der Hilfe-Reiter zeigt das passende Kapitel aus dem Handbuch – und startet den Rundgang für die Seite, auf der du gerade bist."}}},
       {url: '/', sel: ['#pdh-clock'], h: {{t "Uhr und Zeiterfassung"}}, p: {{t "Ein Klick auf die Uhr öffnet deine Zeiterfassung."}}},
-      {url: '/', sel: ['#user-menu'], before: () => userMenu(true), after: () => userMenu(false), h: {{t "Dein Konto"}}, p: {{t "Hier findest du „Mein Konto“, das Handbuch, die Darstellung (Farben, Schrift, Größe), „Dashboard anpassen“, „Navigation anpassen“ und diesen Rundgang zum erneuten Starten."}}},
+      {url: '/', sel: ['#user-menu'], before: () => userMenu(true), after: () => userMenu(false), h: {{t "Dein Konto"}}, p: NEWF ? {{t "Hier findest du „Mein Konto“, das Handbuch, die Darstellung (Farben, Schrift, Größe), „Dashboard anpassen“, den Wechsel zur klassischen Oberfläche und diesen Rundgang zum erneuten Starten. Bereiche und Favoriten passt du im Menüband unter „Anpassen“ an."}} : {{t "Hier findest du „Mein Konto“, das Handbuch, die Darstellung (Farben, Schrift, Größe), „Dashboard anpassen“, „Navigation anpassen“ und diesen Rundgang zum erneuten Starten."}}},
       {url: '/', h: {{t "Geschafft!"}}, p: {{t "Auf vielen Seiten gibt es einen eigenen Rundgang: rechts im Hilfe-Reiter „Rundgang für diese Seite“. Alles Weitere steht im Handbuch."}}}
     ]},
     dashboard: {title: {{t "Rundgang: Dashboard"}}, steps: [

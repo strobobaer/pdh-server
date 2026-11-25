@@ -1,0 +1,127 @@
+/* Neuer Rahmen (0.90.0 Teil 2) – nur von frame.gohtml geladen. Werte nur aus
+   tokens.css; der klassische Rahmen (base.gohtml) bleibt unberührt. */
+/* Höhe kommt aus dem Kopf (ui-head: Ausgleich für „Größe“ über zoom), hier nicht setzen */
+html.frame-ui body.frame-body{display:flex;flex-direction:column;overflow:hidden}
+.frame-app{display:grid;grid-template-columns:64px minmax(0,1fr) var(--right-sidebar-w);flex:1;min-height:0;overflow:hidden}
+.frame-main{display:flex;flex-direction:column;min-width:0;min-height:0;overflow:hidden}
+.frame-main .main{flex:1;min-height:0;overflow:auto}
+.rail{display:flex;flex-direction:column;align-items:center;gap:var(--sp-1);padding:var(--sp-2) 0;background:var(--bg2);border-right:1px solid var(--border);overflow-y:auto;overflow-x:hidden}
+.rail-area,.rail-fav{width:56px;min-height:44px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:var(--sp-1) 0;border-radius:var(--r-m);color:var(--muted);text-decoration:none;font-size:var(--fs-xs);background:none;border:0;cursor:pointer;font-family:inherit}
+.rail-area i,.rail-fav i{font-size:var(--fs-xl)}
+.rail-area span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap} /* lange Namen wie „Verwaltung“ */
+.rail-area:hover,.rail-fav:hover{background:var(--fill-hover);color:var(--text)}
+.rail-area.on{background:color-mix(in srgb,var(--accent) 12%,transparent);color:var(--accent);font-weight:600}
+.rail-area:focus-visible,.rail-fav:focus-visible,.frame-tabs a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.rail-sep{width:32px;height:1px;background:var(--border);margin:var(--sp-1) 0}
+.rail-more{display:none}
+/* Reiter der Unterseiten wie in Edge, über dem Menüband */
+.frame-tabs{display:flex;gap:2px;padding:var(--sp-1) var(--sp-3) 0;background:var(--bg);border-bottom:1px solid var(--border);overflow-x:auto;scrollbar-width:thin}
+.frame-tabs a{flex:0 0 auto;padding:var(--sp-2) var(--sp-3);border-radius:var(--r-m) var(--r-m) 0 0;color:var(--muted);text-decoration:none;font-size:var(--fs-sm);white-space:nowrap}
+.frame-tabs a:hover{background:var(--fill-hover);color:var(--text)}
+.frame-tabs a[aria-selected="true"]{background:var(--bg2);color:var(--text);font-weight:600;box-shadow:inset 0 -2px 0 var(--accent)}
+html.pdh-embedded .frame-tabs{display:none}
+/* Schmale Leiste (Menüband → Ansicht): nur Symbole – nur am breiten Bildschirm, am
+   Handy liegt die Leiste unten */
+@media (min-width:761px){html.rail-narrow .frame-app{grid-template-columns:48px minmax(0,1fr) var(--right-sidebar-w)}
+html.rail-narrow .rail-area,html.rail-narrow .rail-fav{width:40px}
+html.rail-narrow .rail-area span{display:none}}
+/* 761–1180 px: rechte Leiste schwebt über dem Inhalt (pdh.css .context) – keine eigene Spalte */
+@media (min-width:761px) and (max-width:1180px){.frame-app{grid-template-columns:64px minmax(0,1fr)}html.rail-narrow .frame-app{grid-template-columns:48px minmax(0,1fr)}}
+/* Menüband: Reiter, beschriftete Gruppen, Knöpfe mit Symbol und Text */
+.ribbon{background:var(--bg2);border-bottom:1px solid var(--border)}
+.ribbon-tabs{display:flex;align-items:center;gap:2px;padding:0 var(--sp-3)}
+.ribbon-tab{padding:var(--sp-2) var(--sp-3);border:0;background:none;color:var(--muted);font:inherit;font-size:var(--fs-sm);cursor:pointer;box-shadow:inset 0 -2px 0 transparent}
+.ribbon-tab[aria-selected="true"]{color:var(--text);font-weight:600;box-shadow:inset 0 -2px 0 var(--accent)}
+.ribbon-more{display:none;margin-left:auto;border:0;background:none;color:var(--text);min-width:44px;min-height:40px;cursor:pointer}
+.ribbon-panel{display:flex;flex-wrap:wrap;gap:var(--sp-1) 0;padding:var(--sp-1) var(--sp-2)}
+.ribbon-panel[hidden]{display:none}
+.ribbon-group{display:flex;flex-direction:column;align-items:center;gap:2px;padding:0 var(--sp-2);border-right:1px solid var(--border)}
+.ribbon-group:last-child{border-right:0}
+.ribbon-items{display:flex;gap:2px}
+.ribbon-item{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-width:60px;min-height:44px;padding:var(--sp-1) var(--sp-2);border:0;border-radius:var(--r-m);background:none;color:var(--text);font:inherit;font-size:var(--fs-xs);text-decoration:none;cursor:pointer}
+.ribbon-item i{font-size:var(--fs-xl);color:var(--accent)}
+.ribbon-item:hover{background:var(--fill-hover)}
+.ribbon-item:focus-visible,.ribbon-tab:focus-visible,.ribbon-more:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.ribbon-glabel{font-size:var(--fs-xs);color:var(--muted)}
+html.pdh-embedded .ribbon{display:none}
+/* Klassische Navigation gibt es hier nicht: „Navigation anpassen“ ausblenden */
+html.frame-ui #um-nav-edit{display:none}
+/* Suchzeile in der Kopfleiste und Befehlszeile Strg+K. Sie nimmt nur den Restplatz
+   (Grundbreite 0): Uhr und Benutzermenü bleiben immer ganz sichtbar (AGENTS.md). */
+.frame-search{flex:1 1 0;min-width:34px;max-width:480px;margin:0 var(--sp-3);display:flex;align-items:center;gap:var(--sp-2);height:34px;padding:0 var(--sp-3);border:1px solid var(--border);border-radius:17px;background:var(--bg);color:var(--muted);cursor:text}
+.frame-search input{flex:1;min-width:0;border:0;background:transparent;color:var(--text);font:inherit;font-size:var(--fs-sm);outline:none;cursor:text}
+.frame-search:focus-within{border-color:var(--accent)}
+@media (max-width:760px){.frame-search{flex:0 0 34px;padding:0;justify-content:center;margin:0 var(--sp-1)}.frame-search input{position:absolute;width:34px;opacity:0}}
+/* Kopfleiste: Uhr und Benutzermenü schrumpfen nie (AGENTS.md), Titel und Suchzeile geben
+   nach. Die Abfragen messen die Kopfleiste selbst – sie greifen auch bei Größe über 100 %,
+   wo die Medienabfragen nach Fensterbreite nicht greifen. */
+html.frame-ui .topbar > div:last-child{flex-shrink:0}
+html.frame-ui .topbar{container-type:inline-size}
+@container (max-width:900px){html.frame-ui .topbar-clock .clk-day,html.frame-ui .topbar-clock .clk-date{display:none}}
+@container (max-width:640px){html.frame-ui .topbar-path{display:none}html.frame-ui .frame-search{flex:0 0 34px;padding:0;justify-content:center;margin:0 var(--sp-1)}html.frame-ui .frame-search input{position:absolute;width:34px;opacity:0}}
+.frame-palette{position:fixed;z-index:950;top:calc(12vh / var(--ui-scale, 1));left:50%;transform:translateX(-50%);width:min(640px,calc(100vw / var(--ui-scale, 1) - 24px));background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:var(--r-m);box-shadow:var(--shadow-float);overflow:hidden}
+.fp-input{width:100%;padding:var(--sp-3) var(--sp-4);border:0;border-bottom:1px solid var(--border);background:transparent;color:var(--text);font:inherit;font-size:var(--fs-lg);outline:none}
+.fp-list{list-style:none;margin:0;padding:var(--sp-1);max-height:calc(50vh / var(--ui-scale, 1));overflow:auto}
+.fp-item{display:flex;align-items:center;gap:var(--sp-3);min-height:40px;padding:var(--sp-2) var(--sp-3);border-radius:var(--r-s);cursor:pointer}
+.fp-item.on,.fp-item:hover{background:var(--fill-hover)}
+.fp-item.on{box-shadow:inset 2px 0 0 var(--accent)}
+.fp-label{flex:1}
+.fp-hint{font-size:var(--fs-xs);color:var(--muted)}
+.fp-action .fp-label{font-weight:600}
+.fp-empty{padding:var(--sp-3);color:var(--muted)}
+/* Statusleiste: antippbar, Warnfeld, Liste der letzten Meldungen */
+/* An der Kennung, nicht an einer Klasse: setGlobalStatus setzt className neu */
+html.frame-ui #global-status-footer{cursor:pointer}
+html.frame-ui #global-status-footer:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+/* Texte kürzen sich mit „…“ (am Flex-Behälter greift text-overflow nicht); der Fehler
+   bekommt mehr Platz als der Balken, der volle Text steht im Tooltip (pdh-frame.js) */
+@media (min-width:761px){html.frame-ui #footer-status-error{display:block;text-align:right}} /* am Handy blendet pdh.css es aus */
+html.frame-ui #footer-status-text{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+html.frame-ui .footer-progress{max-width:420px;justify-self:center;width:100%}
+html.frame-ui .footer-progress-label{display:block;line-height:22px;text-align:center} /* Block statt Flex: „…“ am Ende statt beidseitig abgeschnitten */
+/* Fenster hängen am Body mit zoom (Größe): vw/vh durch --ui-scale teilen wie pdh.css */
+/* breiter Bildschirm: Warnfeld als eigene dritte Spalte vor den Fehlern (pdh.css hat 3 Spalten);
+   Mindestbreiten als Anteil, damit die Leiste auch bei 768 px und Größe 160 % passt */
+@media (min-width:761px){html.frame-ui #global-status-footer{grid-template-columns:minmax(min(140px,25%),1fr) minmax(0,1fr) auto minmax(min(180px,30%),1.2fr)}
+html.frame-ui #frame-warn{grid-column:3}html.frame-ui #footer-status-error{grid-column:4}
+/* Warnfeld sichtbar: es bekommt Platz vor Balken und Fehlertext */
+html.frame-ui #global-status-footer:has(#frame-warn:not([hidden])){grid-template-columns:minmax(min(110px,20%),1fr) minmax(0,.8fr) minmax(min(150px,26%),auto) minmax(min(140px,26%),1.2fr)}}
+.frame-warn{color:var(--warn);font-weight:600;font-size:var(--fs-xs);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.frame-log{position:fixed;z-index:850;right:var(--sp-3);bottom:50px;width:min(420px,calc(100vw / var(--ui-scale, 1) - 24px));max-height:calc(50vh / var(--ui-scale, 1));overflow:auto;padding:var(--sp-2);background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:var(--r-m);box-shadow:var(--shadow-float)}
+.frame-log ol{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:var(--sp-1);font-size:var(--fs-sm)}
+.frame-log li{padding:var(--sp-1) var(--sp-2);border-radius:var(--r-s)}
+.frame-log .fl-error{color:var(--err)}
+@media (max-width:760px){.frame-log{bottom:100px}}
+/* Dialog „Bereiche ordnen“ */
+.frame-dialog{position:fixed;z-index:900;top:50%;left:50%;transform:translate(-50%,-50%);width:min(420px,calc(100vw / var(--ui-scale, 1) - 32px));max-height:calc(80vh / var(--ui-scale, 1));overflow:auto;padding:var(--sp-4);background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:var(--r-m);box-shadow:var(--shadow-float)}
+.frame-dialog h2{font-size:var(--fs-lg);margin:0 0 var(--sp-3)}
+.frame-order{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:var(--sp-1)}
+.frame-order li{display:flex;align-items:center;gap:var(--sp-2);padding:var(--sp-1) var(--sp-2);border:1px solid var(--border);border-radius:var(--r-s)}
+.frame-order li span{flex:1;min-width:0;overflow-wrap:anywhere}
+.frame-dialog-bar{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:var(--sp-2);margin-top:var(--sp-3);position:sticky;bottom:calc(-1 * var(--sp-4));padding:var(--sp-2) 0 var(--sp-4);background:var(--bg2)} /* Knöpfe bleiben sichtbar, auch bei 160 % */
+.frame-dialog-bar .fd-firm{margin-right:auto}
+/* Navigation des klassischen Rahmens gibt es hier nicht */
+html.frame-ui .topbar-burger{display:none}
+html.pdh-embedded .rail{display:none}
+html.pdh-embedded .frame-app{grid-template-columns:minmax(0,1fr)}
+@media (max-width:760px){
+  /* Handy: Bereichsleiste unten – die ersten 4 Bereiche und „Mehr“ */
+  .frame-app{grid-template-columns:minmax(0,1fr)}
+  html.frame-ui body.frame-body{padding-bottom:60px} /* Statusleiste über der unteren Leiste */
+  html.pdh-embedded.frame-ui body.frame-body{padding-bottom:0} /* eingebettet: keine Leiste */
+  .rail{position:fixed;left:0;right:0;bottom:0;z-index:80;flex-direction:row;justify-content:space-around;height:60px;padding:0 var(--sp-1);border-right:0;border-top:1px solid var(--border);overflow:visible}
+  /* zu: die ersten 4 und „Mehr“; offen: Favoriten und alle Bereiche */
+  .rail:not(.open) .rail-fav,.rail:not(.open) .rail-sep{display:none}
+  .rail:not(.open) .rail-area:not(.rail-top):not(.rail-more){display:none}
+  .rail .rail-more{display:flex}
+  .rail:not(.open) .rail-area{flex:1 1 0;min-width:0;width:auto} /* 4 + „Mehr“ passen auch bei 320 px und 160 % */
+  .rail.open{height:auto;flex-wrap:wrap;padding:var(--sp-2);box-shadow:var(--shadow-float);background:var(--bg2)}
+  .rail.open .rail-area{display:flex}
+  /* Menüband am Handy: die ersten 3 Funktionen von „Start“ und „…“ für alles Weitere */
+  .ribbon:not(.open) .ribbon-tab{display:none}
+  .ribbon-more{display:flex;align-items:center;justify-content:center}
+  .ribbon:not(.open) .ribbon-panel:not([data-ribbon-panel="start"]){display:none}
+  .ribbon:not(.open) .ribbon-panel[data-ribbon-panel="start"]{display:flex}
+  .ribbon:not(.open) .ribbon-item:nth-child(n+4){display:none}
+  .ribbon:not(.open) .ribbon-glabel{display:none}
+}

@@ -21,6 +21,15 @@
 </div>
 <div class="uc">
   <section class="card">
+    <h2>Oberfläche für alle</h2>
+    <p class="rule">Vorgabe für alle, die im Benutzermenü nichts Eigenes gewählt haben. Bis 0.90.0 kann jeder selbst zwischen klassisch und neu umschalten.</p>
+    <form method="post" action="/admin/gestaltung/frame" class="uc-demo">
+      <label><input type="radio" name="frame" value="classic"{{if ne .FirmFrame "new"}} checked{{end}}> Klassisch</label>
+      <label><input type="radio" name="frame" value="new"{{if eq .FirmFrame "new"}} checked{{end}}> Neu (Bereiche, Menüband, Strg+K)</label>
+      <button type="submit" class="btn btn-primary">Speichern</button>
+    </form>
+  </section>
+  <section class="card">
     <h2>Farben</h2>
     <p class="rule">Farbe nur mit Bedeutung: Akzent für Auswahl und Hauptknopf, Statusfarben nur für Zustände. Flächen und Linien bleiben neutral.</p>
     <div class="uc-grid">

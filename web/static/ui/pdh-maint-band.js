@@ -56,6 +56,8 @@
     try {
       const r = await fetch('/wartung/status', {credentials: 'same-origin', cache: 'no-store', pdhQuiet: true});
       const v = await r.json();
+      // neuer Rahmen: Statusleiste zeigt den Stand mit (pdh-frame.js); klassisch hört niemand zu
+      try { document.dispatchEvent(new CustomEvent('pdh:maint', {detail: v})); } catch(e) {}
       if(v.locked){ location.href='/wartung'; return; }
       const d = Date.parse(r.headers.get('Date') || '');
       skew = isNaN(d) ? 0 : d - Date.now();

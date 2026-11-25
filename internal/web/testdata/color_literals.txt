@@ -6,7 +6,7 @@ web/templates/app_setup.gohtml 33
 web/templates/asset_info.gohtml 3
 web/templates/attendance.gohtml 1
 web/templates/backup.gohtml 8
-web/templates/base.gohtml 19
+web/templates/base.gohtml 1
 web/templates/calendar.gohtml 4
 web/templates/categories.gohtml 4
 web/templates/chat.gohtml 26
@@ -85,6 +85,7 @@ web/templates/widgets/create_wizard.gohtml 5
 web/templates/widgets/dashboard_widgets.gohtml 32
 web/templates/widgets/directory_picker.gohtml 3
 web/templates/widgets/doc_view.gohtml 5
+web/templates/widgets/frame_shared.gohtml 18
 web/templates/widgets/grid_drag.gohtml 2
 web/templates/widgets/kvp_wizard.gohtml 1
 web/templates/widgets/lang_switch.gohtml 20

@@ -24,6 +24,8 @@ type userRow struct {
 	broker                  [4]bool // faults, tickets, tasks, maintenance
 	active                  bool
 	ListSort                map[string]string // gemerkte Sortierwahl je Listenart (users.list_sort)
+	uiFrame                 string            // Rahmen: '' wie Firma, classic, new (users.ui_frame, Migration 226)
+	uiAreas                 []byte            // Reihenfolge und Favoriten der Bereiche (users.ui_areas)
 }
 
 type userRowKey struct{}
@@ -36,10 +38,12 @@ func (h *Handler) withUserRow(ctx context.Context, uid string) context.Context {
 	u := &userRow{id: uid}
 	var listSort []byte
 	err := h.db.QueryRow(ctx, `SELECT ui_palette, ui_font, ui_style, ui_scale, ui_row, avatar_path, nav_layout,
-			live_translate, translate_lang, language, broker_faults, broker_tickets, broker_tasks, broker_maintenance, active, list_sort
+			live_translate, translate_lang, language, broker_faults, broker_tickets, broker_tasks, broker_maintenance, active, list_sort,
+			ui_frame, ui_areas
 		FROM users WHERE id = $1::uuid`, uid).
 		Scan(&u.palette, &u.font, &u.style, &u.scale, &u.row, &u.avatarPath, &u.navLayout,
-			&u.liveTranslate, &u.translateLang, &u.language, &u.broker[0], &u.broker[1], &u.broker[2], &u.broker[3], &u.active, &listSort)
+			&u.liveTranslate, &u.translateLang, &u.language, &u.broker[0], &u.broker[1], &u.broker[2], &u.broker[3], &u.active, &listSort,
+			&u.uiFrame, &u.uiAreas)
 	if err != nil {
 		return ctx // Hilfsfunktionen fragen dann wie bisher einzeln
 	}

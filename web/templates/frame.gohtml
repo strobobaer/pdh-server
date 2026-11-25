@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="{{lang}}" class="frame-ui">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black">
+<title>{{or .Brand.AppName "PDH"}} – {{.Title}}</title>
+{{if .Brand.AppLogo}}<link rel="icon" href="{{.Brand.AppLogo}}"><link rel="manifest" href="/site.webmanifest">{{else}}<link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="/apple-touch-icon.png"><link rel="manifest" href="/site.webmanifest">{{end}}
+{{template "ui-head" .}}
+<link rel="stylesheet" href="{{uiURL "frame.css"}}">
+{{template "head" .}}
+</head>
+{{/* Neuer Rahmen (0.90.0 Teil 2): Bereichsleiste, Reiter, Menüband, Strg+K, Statusleiste.
+     Inhalte der Seiten wie im klassischen Rahmen (base.gohtml); gemeinsame Bausteine in
+     widgets/frame_shared.gohtml. Wahl im Benutzermenü (ui_frame.go). */}}
+<body class="frame-body"{{if and (eq .Page "dashboard") (not .IsSystemUser) (not .IsBoardVisit) (not .IsOverrideSession)}} data-tour-offer="1"{{end}}{{if .LiveTranslate}} data-live-translate="{{.LiveTranslate}}"{{end}}>
+<div class="frame-app">
+  <nav class="rail" aria-label="{{t "Bereiche"}}" data-order="{{.Rail.OrderKeys}}">
+    {{range .Rail.Favorites}}<a class="rail-fav" href="{{.Href}}" title="{{.Label}}" aria-label="{{.Label}}"{{if .External}} target="_blank" rel="noopener"{{end}}><i class="ti {{.Icon}}"></i></a>{{end}}
+    {{if .Rail.Favorites}}<span class="rail-sep" aria-hidden="true"></span>{{end}}
+    {{range $i, $a := .Rail.Areas}}{{with $a}}<a class="rail-area{{if lt $i 4}} rail-top{{end}}{{if eq .Key $.Rail.Current}} on{{end}}" href="{{(index .Items 0).Href}}" data-area="{{.Key}}" title="{{.Label}}"{{if eq .Key $.Rail.Current}} aria-current="page"{{end}}{{if (index .Items 0).External}} target="_blank" rel="noopener"{{end}}><i class="ti {{.Icon}}"></i><span>{{.Label}}</span></a>{{end}}{{end}}
+    <button type="button" class="rail-area rail-more" data-rail-more aria-expanded="false" title="{{t "Alle Bereiche"}}"><i class="ti ti-dots"></i><span>{{t "Mehr"}}</span></button>
+  </nav>
+  <script src="{{uiURL "pdh-nav.js"}}"></script>
+  <div class="frame-main">
+{{template "ui-topbar" .}}
+    {{if .Rail.Tabs}}<div class="frame-tabs" role="tablist" aria-label="{{t "Unterseiten"}}">{{range .Rail.Tabs}}<a role="tab" href="{{.Href}}" aria-selected="{{if eq .Page $.Page}}true{{else}}false{{end}}"{{if .External}} target="_blank" rel="noopener"{{end}}>{{.Label}}</a>{{end}}</div>{{end}}
+    {{if .Ribbon}}<section class="ribbon" aria-label="{{t "Menüband"}}">
+      <div class="ribbon-tabs" role="tablist" aria-label="{{t "Menüband"}}">{{range $i, $tab := .Ribbon}}<button type="button" role="tab" class="ribbon-tab" data-ribbon-tab="{{$tab.Key}}" aria-selected="{{if eq $i 0}}true{{else}}false{{end}}">{{$tab.Label}}</button>{{end}}<button type="button" class="ribbon-more" data-ribbon-more aria-expanded="false" title="{{t "Weitere Funktionen"}}" aria-label="{{t "Weitere Funktionen"}}"><i class="ti ti-dots"></i></button></div>
+      {{range $i, $tab := .Ribbon}}<div class="ribbon-panel" role="tabpanel" data-ribbon-panel="{{$tab.Key}}"{{if ne $i 0}} hidden{{end}}>{{range .Groups}}<div class="ribbon-group" role="group" aria-label="{{.Label}}"><div class="ribbon-items">{{range .Items}}{{if .Href}}<a class="ribbon-item" href="{{.Href}}" title="{{.Label}}" aria-label="{{.Label}}"><i class="ti {{.Icon}}"></i><span>{{.Label}}</span></a>{{else}}<button type="button" class="ribbon-item" data-ribbon-action="{{.Action}}"{{if .Arg}} data-ribbon-arg="{{.Arg}}"{{end}} title="{{.Label}}" aria-label="{{.Label}}"><i class="ti {{.Icon}}"></i><span>{{.Label}}</span></button>{{end}}{{end}}</div><span class="ribbon-glabel">{{.Label}}</span></div>{{end}}</div>{{end}}
+    </section>{{end}}
+{{template "ui-bands" .}}
+    <main class="main">
+      <div class="print-brand">{{if .Brand.PrintLogo}}<img src="{{.Brand.PrintLogo}}" alt="">{{end}}<span>{{if .CompanyPrint.Name}}{{.CompanyPrint.Name}}{{else}}{{or .Brand.AppName "PDH"}}{{end}} · {{.Title}}{{with .CompanyPrint.Address}}<small class="pb-addr">{{.}}</small>{{end}}</span><span class="pb-date" data-print-date></span></div>
+      {{template "content" .}}
+    </main>
+  </div>
+{{template "ui-context" .}}
+</div>
+{{template "ui-overlays" .}}
+{{/* Statusleiste des neuen Rahmens: dieselben Kennungen wie ui-footer (setGlobalStatus),
+     dazu Warnfeld (Spiegelserver, Update) und die Liste der letzten Meldungen (pdh-frame.js) */}}
+<footer class="global-footer ok" id="global-status-footer" aria-live="polite" role="button" tabindex="0" aria-label="{{t "Letzte Meldungen"}}" aria-controls="frame-log" aria-expanded="false">
+  <div class="footer-status-left">
+    <span class="footer-status-dot" id="footer-status-dot"></span>
+    <span id="footer-status-text">Bereit</span>
+  </div>
+  <div class="footer-progress" role="progressbar" aria-label="Statusfortschritt" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="footer-progress">
+    <div class="footer-progress-fill" id="footer-progress-fill"></div>
+    <span class="footer-progress-label" id="footer-progress-label"></span>
+  </div>
+  <span class="frame-warn" id="frame-warn"{{if .Mirror}} title="{{t "Spiegelserver – nur lesen"}}"{{else}} hidden{{end}}>{{if .Mirror}}{{t "Spiegelserver – nur lesen"}}{{end}}</span>
+  <div class="footer-status-error" id="footer-status-error">Keine Fehler</div>
+</footer>
+<div class="frame-log" id="frame-log" role="log" aria-label="{{t "Letzte Meldungen"}}" hidden><ol></ol></div>
+{{template "ui-scripts" .}}
+<script src="{{uiURL "pdh-frame.js"}}"></script>
+</body>
+</html>
+{{template "ui-tail" .}}

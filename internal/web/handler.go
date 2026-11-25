@@ -109,6 +109,11 @@ type BaseData struct {
 	Nav                    []navGroup // linke Navigation (nav.go)
 
 	Mirror *MirrorBanner // Band „Spiegel – nur lesen“, nil außerhalb des Spiegels (mirror.go)
+	// Neuer Rahmen (ui_frame.go): eigene Wahl ('' wie Firma, classic, new) und Ergebnis
+	UIFrame  string
+	NewFrame bool
+	Rail     areaView    // Bereiche, Reiter, Favoriten – nur im neuen Rahmen gefüllt (nav_areas.go)
+	Ribbon   []ribbonTab // Menüband – nur im neuen Rahmen (ribbon.go)
 }
 
 // Language: Sprache fuer die Template-Funktion t (siehe bindLang).
@@ -493,6 +498,8 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/account/appearance", h.AppearanceSaveWeb)
 	r.Post("/account/terminal-pin", h.AccountTerminalPINWeb)
 	r.Post("/account/nav-layout", h.NavLayoutSaveWeb)
+	r.Post("/account/ui-frame", h.UIFrameSaveWeb) // Schalter „Neue Oberfläche“ (ui_frame.go)
+	r.Post("/account/ui-areas", h.UIAreasSaveWeb) // Bereiche ordnen, Favoriten (nav_areas.go)
 	r.Post("/account/microsoft/connect", h.MicrosoftConnectStart)
 	r.Post("/account/microsoft/connect-teams", h.MicrosoftTeamsConnectStart)
 	r.Get("/account/microsoft/callback", h.MicrosoftConnectCallback)
@@ -1062,6 +1069,8 @@ func (h *Handler) Routes() chi.Router {
 	// Symbole (icons.go)
 	r.Get("/admin/icons", h.IconsPage)
 	r.Get("/admin/gestaltung", h.UICatalogPage) // Bausteinkatalog (ui_catalog.go)
+	r.Post("/admin/gestaltung/frame", h.UIFrameDefaultSaveWeb) // Firmenvorgabe des Rahmens (ui_frame.go)
+	r.Post("/admin/gestaltung/areas", h.UIAreasDefaultSaveWeb) // Firmenvorgabe der Bereiche (nav_areas.go)
 	r.Get("/admin/icons/names", h.IconNamesWeb)
 	r.Post("/admin/icons", h.IconsSaveWeb)
 	r.Get("/core/settings/microsoft", h.MicrosoftAdminPage)
@@ -1311,6 +1320,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/api/activity", h.ActivityFeed)
 	r.Get("/api/presence", h.PresenceWeb)
 	r.Get("/api/search", h.Search)
+	r.Get("/api/palette", h.PaletteWeb) // Befehlszeile Strg+K des neuen Rahmens (palette.go)
 
 	// Auth
 	r.Get("/login", h.LoginPage)
@@ -1351,7 +1361,7 @@ func (h *Handler) render(w http.ResponseWriter, tmpl string, data interface{}) {
 		http.Error(w, "Parse: "+err2.Error(), 500)
 		return
 	}
-	if err3 := t.ExecuteTemplate(w, "base.gohtml", data); err3 != nil {
+	if err3 := t.ExecuteTemplate(w, frameTemplateName(data), data); err3 != nil { // klassisch oder neuer Rahmen (ui_frame.go)
 		if renderStale(err3) {
 			renderUpdating(w)
 			return
@@ -1581,6 +1591,17 @@ func (h *Handler) baseData(r *http.Request, page, title, ctxTitle string) BaseDa
 	b.navCan = func(perm string) bool { return h.rbac.HasPermissionForUser(u.ID, string(u.Role), perm) } // Navigation: Einträge ohne Recht fehlen
 	b.Nav = buildNav(&b, h.userNavLayout(r.Context(), u.ID))
 	b.Mirror = h.mirrorBanner(r)
+	areasUID := u.ID
+	if u.IsSystemUser { // Terminal des Systembenutzers: immer die Firmenvorgabe (ui_frame.go)
+		areasUID = ""
+	} else {
+		b.UIFrame = h.userUIFrame(r.Context(), u.ID)
+	}
+	b.NewFrame = h.frameFor(r.Context(), b.UIFrame)
+	if b.NewFrame {
+		b.Rail = buildAreas(&b, h.areaPrefs(r.Context(), areasUID))
+		b.Ribbon = ribbonFor(&b)
+	}
 	b.UserAvatar = h.userAvatarURL(r.Context(), u.ID)
 	if b.CanAppUse && h.db != nil {
 		b.AppStoreSet = h.appStoreConfigured(r.Context())

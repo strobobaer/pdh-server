@@ -427,7 +427,7 @@ func (h *Handler) InfraDetail(w http.ResponseWriter, r *http.Request) {
 	t, _ := h.tmpl.Clone()
 	t = bindLang(t, data.Lang)
 	t.ParseFiles("web/templates/infra_detail.gohtml")
-	t.ExecuteTemplate(w, "base.gohtml", data)
+	t.ExecuteTemplate(w, frameTemplateName(data), data) // klassisch oder neuer Rahmen
 }
 
 // InfraUpdate: POST /infrastructure/{id}/edit – alle Stammdaten aus dem

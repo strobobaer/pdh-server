@@ -133,6 +133,12 @@ allein in CSS über `html[data-style="fiori"]` bzw. `"fluent"`.
   der rechten Seitenleiste).
 - Änderungen an der Kopfleiste bei 320, 390, 768, 1024 und 1366 px Breite
   sowie mit 120–160 % Größe prüfen.
+- **Neuer Rahmen** (`frame.gohtml`, seit 0.82.65, Schalter im Benutzermenü):
+  dieselbe Kopfleiste (`ui-topbar` in `widgets/frame_shared.gohtml`), dazu
+  zwischen Titel und Uhr die Suchzeile „Was möchtest du tun?“ – sie
+  schrumpft vor allen Knöpfen, bis 760 px nur noch Symbol. Gemeinsame Teile
+  beider Rahmen nur in `frame_shared.gohtml` ändern; der klassische Rahmen
+  (`base.gohtml`) muss dabei unverändert aussehen.
 
 ## Rechte mitpflegen
 
@@ -1217,9 +1223,53 @@ und 3 drückt bis auf Weiteres der Anwender.
     alte Seite + neue Skripte während eines Updates (ein Seitenaufruf).
     „Darstellung verfeinern“ (Dichte, Modus wie System) kommt mit Teil 2.
     Nicht gemessen: 4×-Drosselung mit `deploy/lab/seitenaufbau/messung.js`.
-    **Nächster Schritt: Teil 2 „Neuer Rahmen hinter dem Schalter“** (Bauplan
-    schreiben). Offen: 10.10.0.202 auf 0.82.62 (Anwender, mit Sicherung; bringt
-    0.82.60 und 0.82.61 mit).
+    **Teil 2 „Neuer Rahmen hinter dem Schalter“ = 0.82.65** (gebaut als 0.82.63; main hatte inzwischen 0.82.64 mit Migration 225, deshalb 0.82.65 und Migration 226) (Plan
+    `docs/superpowers/plans/2026-11-25-rahmen-neu.md`, Ledger
+    `.superpowers/sdd/2026-11-25-rahmen-neu/`; Migration 226 `users.ui_frame`,
+    `users.ui_areas`; kein neues Recht, Firmenvorgabe mit `system.ui_defaults`):
+    zweite Wurzelvorlage `frame.gohtml` (Auswahl `frameTemplateName`, Wächter
+    `TestNoDirectBaseRender`), gemeinsame Teile `widgets/frame_shared.gohtml`;
+    Bereichsleiste mit 9 Bereichen (`nav_areas.go`, Vorgabe Start, Vorgänge,
+    Anlagen, Material …), Favoriten und Reihenfolge je Benutzer (Firmenvorgabe nur
+    Reihenfolge), Reiter, Menüband (`ribbon.go`), Strg+K (`/api/palette`,
+    Anlagen mit `hasPermRec`), Statusleiste mit Meldungen und Update-Stand
+    (`pdh:maint`). Schalter im Benutzermenü (klassisch / neu / wie
+    Firmenvorgabe), nicht am Terminal des Systembenutzers (auch am Server
+    gesperrt); Firmenvorgabe unter Verwaltung → Gestaltung. Schlussprüfung durch
+    Claude und Codex, danach vier Korrekturrunden mit Gegenprüfung (Sicherheit, CSS, JS)
+    und Browser-Nachmessung (lokal gerendert, Edge: rund 500 Ansichten, 320–1366
+    px, 70–160 %, Fiori/Fluent, hell/dunkel; Kopfleiste: Uhr und Benutzermenü
+    immer ganz sichtbar; klassischer Rahmen pixelgleich). Zurückgestellt
+    (Ledger): Version/Logo fehlen im neuen Rahmen, feste Ecken/Abstände in
+    `frame.css`, Strg+K ohne „Lädt …“/Zeitlimit und mit Rechteabfrage je
+    Treffer, gleiche Fehler in „Letzte Meldungen“ nicht zusammengefasst,
+    „Update läuft“ schon in der Nachfrage-Phase, Strg+K im eingebetteten
+    iframe. Bestand (auch klassisch): Statusleiste und Kopfleiste mit langem
+    Titel bei 768 px und Größe 130–160 %. **Nächster Schritt: Teil 3** (Listen
+    mit Detail, Vorgangs-Reiter, Vorgänge in Strg+K, „Fertigstellen“ im
+    Menüband – Punkt 10.11 des Entwurfs). Offen: 10.10.0.202 auf 0.82.65
+    (Anwender, mit Sicherung; bringt 0.82.60 und 0.82.61 mit).
+
+29. **Rundgang/Wartung pausieren und auf anderem Gerät fortsetzen** (Wunsch des
+    Anwenders vom 25.11.2026: „wenn dieses aus mehreren Stationen besteht
+    zwischendurch zu pausieren und an einem anderen Terminal, App, Smartphone
+    oder in pdh selbst weiter zu machen bis zum Ende“). Erst Entwurf. Bestand
+    (Erkundung 25.11.2026): Rundgang = Plan mit `is_round`, Stationen an
+    `maintenance_plan_checklists.infrastructure_id`/`maintenance_task_steps.station_infra_id`;
+    jeder Punkt, Foto und Material wird sofort gespeichert, der
+    Fertigstellen-Assistent springt beim Wiederöffnen zum ersten offenen Punkt.
+    Lücken: kein Zustand „pausiert“ („Geht noch weiter“ verlangt Kommentar und
+    legt eine Maßnahme an), Zeit/Team/Kommentar nur im Browser bis zum Absenden,
+    Terminal findet Rundgänge nur über die Bereichs-Anlage (nicht die Station),
+    Terminal-Token 5 min und Kartenwechsel verwirft den Assistenten, App ohne
+    Stationen und ohne Zeitbuchung, Schritte werden bis zum ersten Wert bei
+    jedem Öffnen neu angelegt (zweites Gerät, Spiegel), keine Sperre (letzter
+    Schreiber gewinnt), Zeit an drei Stellen (Timer, `work_sessions`, App).
+    Offene Frage an den Anwender: macht nach der Pause nur dieselbe Person
+    weiter oder auch ein Kollege (Schichtwechsel)?
+30. **Vorgabe Assistenten (Anwender 25.11.2026):** Neu-anlegen- und
+    Fertigstellen-Assistent dürfen in keinem Teil der neuen Oberfläche fehlen
+    (Entwurf 0.90.0 Abschnitt 10.11, `TestFrameHasWizards`).
 
 Docker Desktop startet nach einem Neustart des Windows-Rechners nicht von
 selbst – ohne ihn fehlen der Zeuge und die Labor-Datenbank für die Tests.

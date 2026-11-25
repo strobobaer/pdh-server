@@ -75,7 +75,7 @@ func TestBaseScriptsExternal(t *testing.T) {
 	}
 	// Quelltext statt gerenderter Seite: manche Skripte stehen wie vorher in
 	// Bedingungen (Chat nur mit Chat-Recht, Push nur angemeldet).
-	src := baseSource(t)
+	src := baseSource(t) + frameSource(t) // Skripte des neuen Rahmens stehen nur in frame.gohtml
 	if out := renderBaseForTest(t); !strings.Contains(out, `<script src="`+uiURL("pdh-viewer.js")+`"></script>`) {
 		t.Error("gerenderte Grundseite bindet pdh-viewer.js nicht ein")
 	}
@@ -227,14 +227,30 @@ func baseWithUI(t *testing.T) string {
 	return sb.String()
 }
 
-// baseSource: Quelltext von base.gohtml ohne CR (Zeilenenden je nach Arbeitskopie).
-func baseSource(t *testing.T) string {
+// frameSource: Quelltext des neuen Rahmens (frame.gohtml) ohne CR.
+func frameSource(t *testing.T) string {
 	t.Helper()
-	b, err := os.ReadFile(filepath.Join("..", "..", "web", "templates", "base.gohtml"))
+	b, err := os.ReadFile(filepath.Join("..", "..", "web", "templates", "frame.gohtml"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	return strings.ReplaceAll(string(b), "\r", "")
+	return strings.ReplaceAll(string(b), "\r", "") + "\n"
+}
+
+// baseSource: Quelltext des klassischen Rahmens ohne CR – base.gohtml samt der
+// gemeinsamen Bausteine aus widgets/frame_shared.gohtml (seit 0.82.65).
+func baseSource(t *testing.T) string {
+	t.Helper()
+	var sb strings.Builder
+	for _, f := range []string{"base.gohtml", filepath.Join("widgets", "frame_shared.gohtml")} {
+		b, err := os.ReadFile(filepath.Join("..", "..", "web", "templates", f))
+		if err != nil {
+			t.Fatal(err)
+		}
+		sb.WriteString(strings.ReplaceAll(string(b), "\r", ""))
+		sb.WriteString("\n")
+	}
+	return sb.String()
 }
 
 func TestUICSSComplete(t *testing.T) {

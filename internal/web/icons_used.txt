@@ -255,6 +255,7 @@ ti-layout-grid
 ti-layout-grid-add
 ti-layout-kanban
 ti-layout-rows
+ti-layout-sidebar
 ti-layout-sidebar-right
 ti-leaf
 ti-lifebuoy

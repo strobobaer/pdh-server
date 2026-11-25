@@ -286,16 +286,7 @@ func buildNav(b *BaseData, layout []navLayoutGroup) []navGroup {
 			if !ok || !d.show(b) {
 				continue
 			}
-			it := d.navItem
-			it.Icon = iconClass("nav." + key) // änderbar unter /admin/icons
-			it.Label = tr(b.Lang, it.Label)
-			if key == "nextcloud" {
-				it.Href = nextcloudLink()
-			}
-			if key == "trainings" && !b.CanTrainings {
-				it.Label = tr(b.Lang, "Meine Schulungen")
-			}
-			ng.Items = append(ng.Items, it)
+			ng.Items = append(ng.Items, navItemFor(b, d))
 		}
 		// leere Gruppen nur zeigen, wenn sie selbst angelegt sind (zum Befuellen)
 		if len(ng.Items) > 0 || (custom && g.Key != navTopKey && !isDefaultNavGroup(g.Key)) {
@@ -303,6 +294,21 @@ func buildNav(b *BaseData, layout []navLayoutGroup) []navGroup {
 		}
 	}
 	return out
+}
+
+// navItemFor: Eintrag so, wie ihn Menü und Bereichsleiste zeigen – Symbol aus
+// /admin/icons, übersetzte Beschriftung, Nextcloud-Adresse, „Meine Schulungen“.
+func navItemFor(b *BaseData, d navDef) navItem {
+	it := d.navItem
+	it.Icon = iconClass("nav." + d.Key) // änderbar unter /admin/icons
+	it.Label = tr(b.Lang, it.Label)
+	if d.Key == "nextcloud" {
+		it.Href = nextcloudLink()
+	}
+	if d.Key == "trainings" && !b.CanTrainings {
+		it.Label = tr(b.Lang, "Meine Schulungen")
+	}
+	return it
 }
 
 func isDefaultNavGroup(key string) bool {
