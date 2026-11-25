@@ -10,6 +10,19 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.82.63] – 2026-11-25
+
+### Neu
+
+- **Neue Oberfläche zum Ausprobieren:** Im Benutzermenü „Neue Oberfläche ausprobieren“ – links neun Bereiche mit eigenen Favoriten, oben Reiter für die Unterseiten und ein Menüband mit den Funktionen der Seite; „Klassische Oberfläche“ führt zurück.
+- **Befehlszeile Strg+K:** In der neuen Oberfläche findet „Was möchtest du tun?“ Seiten, Anlagen und Aktionen wie „Störung melden“ – nur was du darfst.
+- **Statusleiste mit Meldungen:** In der neuen Oberfläche zeigt die Statusleiste unten laufende Updates, die nächste automatische Wartung und den Spiegelserver; antippen öffnet die letzten Meldungen.
+- **Neue Oberfläche für alle:** Unter Verwaltung → Gestaltung schaltet ein Administrator die neue Oberfläche und die Reihenfolge der Bereiche für alle ein; die eigene Wahl jedes Benutzers bleibt.
+
+### Sicherheit
+
+- **Keine neuen Rechte:** Die Vorgaben für alle brauchen das vorhandene Recht „Oberfläche: Vorgaben für Firma und Rollen“.
+
 ## [0.82.62] – 2026-11-25
 
 ### Neu

@@ -133,6 +133,12 @@ allein in CSS über `html[data-style="fiori"]` bzw. `"fluent"`.
   der rechten Seitenleiste).
 - Änderungen an der Kopfleiste bei 320, 390, 768, 1024 und 1366 px Breite
   sowie mit 120–160 % Größe prüfen.
+- **Neuer Rahmen** (`frame.gohtml`, seit 0.82.63, Schalter im Benutzermenü):
+  dieselbe Kopfleiste (`ui-topbar` in `widgets/frame_shared.gohtml`), dazu
+  zwischen Titel und Uhr die Suchzeile „Was möchtest du tun?“ – sie
+  schrumpft vor allen Knöpfen, bis 760 px nur noch Symbol. Gemeinsame Teile
+  beider Rahmen nur in `frame_shared.gohtml` ändern; der klassische Rahmen
+  (`base.gohtml`) muss dabei unverändert aussehen.
 
 ## Rechte mitpflegen
 

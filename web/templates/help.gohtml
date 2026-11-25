@@ -93,6 +93,21 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <li><b>Breite ändern:</b> Mit der Maus an den Innenrand der Navigation oder der aufgeklappten rechten Seitenleiste fahren – der Rand färbt sich, der Mauszeiger wird zu <b>↔</b>. Dann ziehen. Dein Browser merkt sich die Breite. <b>Doppelklick</b> auf den Rand stellt die Standardbreite wieder her. Mit der Tastatur: Rand mit Tab anwählen, dann Pfeiltasten. Auf Smartphone und Tablet entfällt das, dort fahren die Leisten über den Inhalt.</li>
     <li>Der <b>Hilfe-Reiter</b> rechts zeigt dir immer das passende Kapitel zur Seite, auf der du gerade bist.</li>
   </ul>
+  <h3 id="neue-oberflaeche"><i class="ti ti-layout-sidebar"></i> Die neue Oberfläche ausprobieren</h3>
+  <p>PDH bekommt eine neue Oberfläche: links neun <b>Bereiche</b>, oben <b>Reiter</b> für die Unterseiten und ein <b>Menüband</b> mit den Funktionen der Seite, dazu eine <b>Befehlszeile</b> und eine <b>Statusleiste</b> mit den letzten Meldungen. Die Seiten selbst bleiben gleich. Bis alles fertig ist, kannst du jederzeit zwischen klassischer und neuer Oberfläche wechseln.</p>
+  {{template "hb-fig-frame"}}
+  <div class="hb-howto"><b><i class="ti ti-layout-sidebar"></i> So probierst du die neue Oberfläche aus</b>
+    <ol class="hb-steps">
+      <li>Oben rechts auf deinen Namen → <b>Neue Oberfläche ausprobieren</b>. Die Seite lädt neu, du bleibst auf derselben Seite.</li>
+      <li><b>Bereich wählen:</b> links auf einen Bereich tippen, z. B. <b>Vorgänge</b>. Oben erscheinen seine Unterseiten als Reiter. Am Handy liegt die Leiste unten; die übrigen Bereiche findest du unter <b>Mehr</b>.</li>
+      <li><b>Etwas suchen oder anlegen:</b> <b>Strg+K</b> drücken (am Mac ⌘K) oder oben in die Suchzeile <b>Was möchtest du tun?</b> tippen. Ein paar Buchstaben eingeben, mit den Pfeiltasten wählen, <b>Enter</b> öffnet. Du findest Seiten, Anlagen und Aktionen wie „Störung melden“ – nur was du darfst.</li>
+      <li><b>Favorit anheften:</b> Menüband → <b>Anpassen</b> → <b>Favorit</b>. Die Seite steht dann ganz oben in der Bereichsleiste; ein zweiter Klick nimmt sie wieder heraus.</li>
+      <li><b>Bereiche ordnen:</b> Menüband → <b>Anpassen</b> → <b>Bereiche ordnen</b>, mit den Pfeilen verschieben, <b>Speichern</b>. Die Reihenfolge gilt an deinem Konto auf jedem Gerät.</li>
+      <li><b>Darstellung:</b> Menüband → <b>Darstellung</b>: Stil (Fiori oder Fluent), Farbschema, <b>Hell</b>, <b>Dunkel</b> oder <b>Wie System</b> und die <b>Dichte</b> (Kompakt, Normal, Berührung). Unter <b>Ansicht</b> blendest du die rechte Leiste ein und aus, machst die Bereichsleiste schmal oder schaltest auf Vollbild.</li>
+      <li><b>Statusleiste:</b> unten zeigt PDH, was gerade passiert. Antippen öffnet die letzten Meldungen. Rechts steht, wenn ein Update läuft oder eine automatische Wartung kommt, und am Spiegelserver „Spiegelserver – nur lesen“.</li>
+      <li><b>Zurück:</b> Benutzermenü → <b>Klassische Oberfläche</b>.</li>
+    </ol>
+    Ein Administrator kann die neue Oberfläche für alle einschalten (<a href="#ui-catalog">Gestaltung ansehen</a>). Wer selbst gewählt hat, behält seine Wahl.</div>
   <div class="hb-howto"><b><i class="ti ti-palette"></i> So stellst du Farben, Design-Stil, Schrift, Größe, Zeilenhöhe und Hell/Dunkel ein</b>
     {{template "hb-fig-look"}}
     <ol class="hb-steps">
@@ -2552,6 +2567,13 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li><b>Verwaltung → Gestaltung</b> öffnen (Recht „Oberfläche: Vorgaben für Firma und Rollen“).</li>
       <li>Hell/dunkel über die Kopfleiste umschalten, den Stil im Benutzermenü (das geht, wenn die Firma die eigene Wahl erlaubt; sonst gilt der Firmenstil) – die Seite zeigt sofort die Werte des neuen Stils.</li>
     </ol></div>
+  <div class="hb-howto"><b><i class="ti ti-layout-sidebar"></i> So schaltest du die neue Oberfläche für alle ein</b>
+    <ol class="hb-steps">
+      <li><b>Verwaltung → Gestaltung</b> öffnen, Karte <b>Oberfläche für alle</b>.</li>
+      <li><b>Neu (Bereiche, Menüband, Strg+K)</b> wählen und speichern. Ab dem nächsten Seitenaufruf sehen alle die neue Oberfläche – außer denen, die im Benutzermenü selbst <b>Klassische Oberfläche</b> gewählt haben.</li>
+      <li><b>Reihenfolge der Bereiche für alle:</b> in der neuen Oberfläche die Bereiche so ordnen, wie sie alle sehen sollen, dann Menüband → <b>Anpassen</b> → <b>Als Firmenvorgabe speichern</b>. Wer selbst geordnet hat, behält seine Reihenfolge.</li>
+    </ol>
+    Beides braucht das Recht „Oberfläche: Vorgaben für Firma und Rollen“.</div>
   <div class="hb-howto"><b><i class="ti ti-code"></i> Für Administratoren: Code-Editor (code-server)</b>Unter <b>Core-Einstellungen → Code-Editor</b> öffnet sich VS Code im Browser mit dem PDH-Quellcode, unter derselben Adresse wie das PDH: <code>…/code/</code>, z. B. <code>https://pdh.strobl-home.net/code/</code>.
     <ol class="hb-steps">
       <li>Als Administrator im PDH anmelden. Ein eigenes Passwort für den Editor gibt es nicht – die PDH-Anmeldung gilt.</li>
