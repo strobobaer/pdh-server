@@ -347,7 +347,7 @@ func (h *Handler) slideFormPage(w http.ResponseWriter, r *http.Request, s termin
 		d.Departments = h.slideDeptOptions(r.Context(), s.DepartmentIDs)
 	}
 	if h.db != nil {
-		d.ShiftPlans = h.shiftPlanOptions(r.Context(), s.ShiftPlanID)
+		d.ShiftPlans = h.shiftPlanOptions(r.Context(), normShiftPlanID(s.ShiftPlanID))
 	}
 	if base, _ := h.grafanaBase(r); h.db != nil {
 		d.Dashboards, _ = h.grafanaDashboards(r.Context(), base, false)

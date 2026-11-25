@@ -41,6 +41,7 @@ func TestTerminalSchichtplanPlanChoice(t *testing.T) {
 	p2 := plan("PlanZwei", "published", -30, 30)
 	draft := plan("PlanEntwurf", "draft", -30, 30)
 	old := plan("PlanAlt", "published", -60, -40)
+	pf := plan("PlanFremd", "published", -30, 30) // nur Einteilung in Abteilung B
 	t.Cleanup(func() {
 		bg := context.Background()
 		e.pool.Exec(bg, `DELETE FROM shift_assignments WHERE shift_id = $1::uuid`, frueh)
@@ -56,6 +57,7 @@ func TestTerminalSchichtplanPlanChoice(t *testing.T) {
 	assign(fritz, p2)
 	assign(gunnar, draft)
 	assign(dora, p1) // andere Abteilung: nie am Terminal dieser Abteilung
+	assign(mk("Henrywahl", deptB), pf)
 	e.grant(x.term, "shifts.view", deptA, true)
 	e.warm()
 
@@ -88,6 +90,13 @@ func TestTerminalSchichtplanPlanChoice(t *testing.T) {
 	if strings.Count(body, `t-pplans`) < 1 {
 		t.Error("Planknöpfe fehlen")
 	}
+	// Plan nur mit Einteilung außerhalb der Abteilung des Terminals: weder Name noch Knopf, Auswahl wirkt wie „Alle“
+	for _, s := range []string{"PlanFremd", "plan=" + pf} {
+		if strings.Contains(body, s) {
+			t.Errorf("fremder Plan sichtbar: %q", s)
+		}
+	}
+	want("fremder Plan als Parameter", get("/terminal/schichtplan?plan="+pf), []string{"Egonwahl", "Fritzwahl"}, []string{"PlanFremd", "Dorawahl"})
 	// ein Plan
 	body = get("/terminal/schichtplan?plan=" + p1)
 	want("Plan 1", body, []string{"Egonwahl", "· PlanEins"}, append([]string{"Fritzwahl"}, never[:3]...))
@@ -138,6 +147,9 @@ func TestTerminalSchichtplanPlanChoice(t *testing.T) {
 		t.Error("Planknöpfe bei nur einem Plan")
 	}
 	want("ein Plan", body, []string{"Egonwahl"}, never[:3])
+	// ist ein bestimmter Plan aktiv, gibt es „Alle“ auch bei nur einem Plan
+	body = get("/terminal/schichtplan?plan=" + p1)
+	want("Alle bei aktivem Plan", body, []string{"t-pplans", ">Alle</a>"}, nil)
 }
 
 // Benutzerseite des Terminals: Auswahl „Schichtplan beim Öffnen“ mit eigenem Marker.
@@ -203,8 +215,13 @@ func TestTerminalShiftPlanUserDetailForm(t *testing.T) {
 	if got := h.terminalShiftPlan(e.ctx, term); got != pub {
 		t.Errorf("fälschlich verändert: %q", got)
 	}
-	// Plan im Formular ohne Entwurf-Prüfung: unbekannte Plan-ID wird nicht übernommen
-	do("POST", "/users/"+term+"/master", sent+"&terminal_shift_plan=00000000-0000-0000-0000-000000000000", mgr)
+	// unbekannte Plan-ID wird nicht übernommen und nichts sonst gespeichert (keine Teilspeicherung)
+	do("POST", "/users/"+term+"/master", sent+"&work_location=Teilstand&terminal_shift_plan=00000000-0000-0000-0000-000000000000", mgr)
+	var loc string
+	e.must(e.pool.QueryRow(e.ctx, `SELECT work_location FROM users WHERE id = $1::uuid`, term).Scan(&loc))
+	if loc == "Teilstand" {
+		t.Error("Feld trotz unbekanntem Plan gespeichert")
+	}
 	if got := h.terminalShiftPlan(e.ctx, term); got != pub {
 		t.Errorf("unbekannter Plan übernommen: %q", got)
 	}
@@ -213,7 +230,7 @@ func TestTerminalShiftPlanUserDetailForm(t *testing.T) {
 	if got := h.terminalShiftPlan(e.ctx, term); got != "" {
 		t.Errorf("zurück auf Alle: %q", got)
 	}
-	_ = dr
+	_ = dr // der Entwurf dient nur dem Nachweis, dass er nicht in der Auswahl steht
 }
 
 // Folie „Schichtplan“ mit Plan.
@@ -256,6 +273,14 @@ func TestTerminalPlanShiftsPlanChoice(t *testing.T) {
 	p.e.exec(`UPDATE shift_assignments SET plan_id = $1::uuid WHERE user_id = $2::uuid AND date = $3`, dr, p.pB, p.today)
 	wantPlan(t, "Entwurf als Plan", slide(dr), to+"|Frühschicht|Anton Plan")
 	wantPlan(t, "Plan außerhalb", slide(far), to+"|Frühschicht|Anton Plan")
+	// Plan mit Einteilungen nur außerhalb der Abteilungsauswahl: zeigt die Folie alle (Name nicht im Bereich)
+	p.clear()
+	p.slide(terminalSlide{Kind: slideKindPlanShifts, PlanRange: "today", DurationSeconds: 10, Active: true, ShiftPlanID: p2, DepartmentIDs: []string{p.deptA}})
+	pl = p.plans(p.termG, p.devG)[0].Plan
+	wantPlan(t, "Plan nur in Abteilung B, Folie nur A", pl, to+"|Frühschicht|Anton Plan")
+	if pl.Label != "heute" {
+		t.Errorf("Name eines fremden Plans in der Beschriftung: %q", pl.Label)
+	}
 	// Abteilungsauswahl bleibt wirksam
 	p.clear()
 	p.slide(terminalSlide{Kind: slideKindPlanShifts, PlanRange: "today", DurationSeconds: 10, Active: true, ShiftPlanID: p1, DepartmentIDs: []string{p.deptB}})

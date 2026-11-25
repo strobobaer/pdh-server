@@ -170,7 +170,7 @@ func (h *Handler) terminalPlanFill(ctx context.Context, pl *terminalPlan) error 
 	pl.WeekLabel = fmt.Sprintf("KW %d · %s – %s", wk, start.Format("02.01."), end.Format("02.01.2006"))
 	pl.ShowToday = !pl.Next
 	// Plan: Anfrage vor Grundeinstellung; gilt der Plan in dieser Woche nicht (oder ist er kein veröffentlichter), alle.
-	plans, err := h.publishedShiftPlans(ctx, start, end)
+	plans, err := h.publishedShiftPlans(ctx, start, end, []string{pl.Dept}, false)
 	if err != nil {
 		return err
 	}

@@ -546,7 +546,8 @@ func (h *Handler) UserMasterSaveWeb(w http.ResponseWriter, r *http.Request) {
 		}
 		fnSent = sys
 	}
-	// Schichtplan beim Öffnen: eigener Marker, nur Benutzerverwaltung, nur Systembenutzer
+	// Schichtplan beim Öffnen: eigener Marker, nur Benutzerverwaltung, nur Systembenutzer; der Plan wird geprüft,
+	// bevor irgendein Feld gespeichert wird (kein Teilstand)
 	shiftPlanSent := false
 	if _, sent := r.Form["terminal_shift_plan_sent"]; sent && h.canManageUsers(r) {
 		sys, err := h.isSystemUser(ctx, id)
@@ -556,6 +557,23 @@ func (h *Handler) UserMasterSaveWeb(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		shiftPlanSent = sys
+		if sys {
+			if raw := strings.TrimSpace(r.FormValue("terminal_shift_plan")); raw != "" {
+				ok := false
+				if pid := normShiftPlanID(raw); pid != "" {
+					var err error
+					if ok, err = h.shiftPlanExists(ctx, pid); err != nil {
+						componentLog("terminal").Error().Err(err).Str("user", id).Msg("schichtplan prüfen")
+						userRedirect(w, r, id, "master", "", errTerminalLoginSave)
+						return
+					}
+				}
+				if !ok {
+					userRedirect(w, r, id, "master", "", errShiftPlanGone)
+					return
+				}
+			}
+		}
 	}
 	old := h.loadUserMaster(ctx, id)
 	brokerT, brokerF, brokerA, brokerM := old.BrokerTickets, old.BrokerFaults, old.BrokerTasks, old.BrokerMaintenance

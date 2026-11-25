@@ -40,14 +40,23 @@ func shiftPlanPeriod(a, b time.Time) string {
 
 var errShiftPlanGone = errors.New("Der gewählte Schichtplan ist nicht mehr vorhanden")
 
-// publishedShiftPlans: veröffentlichte Pläne, die den Zeitraum schneiden (Entwürfe nie).
-func (h *Handler) publishedShiftPlans(ctx context.Context, from, to time.Time) ([]shiftPlanChoice, error) {
+// publishedShiftPlans: veröffentlichte Pläne, die den Zeitraum schneiden (Entwürfe nie) und im Zeitraum mindestens
+// eine Einteilung einer Person aus den erlaubten Abteilungen haben (depts, noDept wie planSlideScope). Pläne ohne
+// Einteilung im Bereich des Terminals bleiben unsichtbar – auch ihr Name verlässt den Bereich nicht.
+func (h *Handler) publishedShiftPlans(ctx context.Context, from, to time.Time, depts []string, noDept bool) ([]shiftPlanChoice, error) {
 	if h.db == nil {
 		return nil, nil
 	}
-	rows, err := h.db.Query(ctx, `SELECT id::text, name, start_date, end_date FROM shift_plans
-		WHERE status = 'published' AND start_date <= $2::date AND end_date >= $1::date
-		ORDER BY start_date, lower(name), id`, from, to)
+	if depts == nil {
+		depts = []string{}
+	}
+	rows, err := h.db.Query(ctx, `SELECT p.id::text, p.name, p.start_date, p.end_date FROM shift_plans p
+		WHERE p.status = 'published' AND p.start_date <= $2::date AND p.end_date >= $1::date
+		  AND EXISTS (SELECT 1 FROM shift_assignments sa JOIN users u ON u.id = sa.user_id
+		       WHERE sa.plan_id = p.id AND sa.date BETWEEN $1::date AND $2::date
+		         AND u.active AND NOT u.is_bot AND NOT u.is_system_user
+		         AND (u.department_id = ANY($3::uuid[]) OR ($4::boolean AND u.department_id IS NULL)))
+		ORDER BY p.start_date, lower(p.name), p.id`, from, to, depts, noDept)
 	if err != nil {
 		return nil, err
 	}
@@ -67,6 +76,7 @@ func (h *Handler) publishedShiftPlans(ctx context.Context, from, to time.Time) (
 
 // shiftPlanOptions: Pläne für die Einstellung in Formularen – veröffentlichte, die noch laufen oder kommen, und der
 // gerade eingestellte Plan (damit eine gespeicherte Auswahl sichtbar bleibt, auch wenn der Plan abgelaufen ist).
+// Nur für Formulare der Administration; selected muss eine gültige UUID oder leer sein (normShiftPlanID).
 func (h *Handler) shiftPlanOptions(ctx context.Context, selected string) []shiftPlanChoice {
 	if h.db == nil {
 		return nil

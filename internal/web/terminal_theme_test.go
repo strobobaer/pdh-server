@@ -1,9 +1,13 @@
 package web
 
-// Helles Farbschema der Terminalseiten: farbige Kacheln haben in web/templates/terminal.gohtml je Kachelart
-// Variablen (--tile-<art>-bg/-bd/-fg) – dunkel eine feste dunkle Fläche mit heller Schrift, hell eine helle Fläche
-// derselben Farbfamilie mit dunkler Schrift (Kontrast mindestens 4,5:1, WCAG AA). Die Regeln der Kacheln benutzen nur
-// die Variablen; eine feste dunkle Fläche mit weißer Schrift ohne ausreichenden Kontrast darf es nirgends geben.
+// Helles Farbschema der Terminalseiten (web/templates/terminal.gohtml, terminal_vorgang.gohtml). Geprüft wird genau:
+//   - jede Kachelart hat in beiden Schemata die Variablen --tile-<art>-bg/-bd/-fg; im hellen Schema ist die Fläche hell und
+//     der Kontrast Schrift/Fläche mindestens 4,5:1 (WCAG AA); im dunklen Schema wird der Kontrast nicht geprüft;
+//   - die Regeln der Kacheln benutzen nur diese Variablen, keine festen Farben;
+//   - die Textfarben --green-text/--amber-text/--red-text erreichen im hellen Schema auf --bg, --bg2 und --bg3 mindestens
+//     4,5:1, und in terminal.gohtml steht kein Text mehr in color:var(--green|amber|red);
+//   - in beiden Templates gibt es keine Regel mit fester #hex-Fläche und color:#fff unter 4,5:1.
+// Nicht geprüft: die Kaskade im Browser, andere Schreibweisen (white, rgb(), var-Flächen), terminal.js und die übrigen Vorlagen.
 
 import (
 	"math"
@@ -138,6 +142,30 @@ func TestTerminalTileThemes(t *testing.T) {
 				t.Errorf("%s: %s hat Fläche %s mit weißer Schrift (Kontrast %.2f:1)", f, strings.TrimSpace(m[1]), bg[1], c)
 			}
 		}
+	}
+	// Textfarben im hellen Schema auf allen Flächen lesbar
+	lightVars := map[string]string{}
+	for _, m := range cssBlockRe.FindAllStringSubmatch(css, -1) {
+		if strings.HasSuffix(strings.TrimSpace(m[1]), `html[data-theme="light"]`) {
+			for _, v := range regexp.MustCompile(`--([a-z0-9-]+):(#[0-9a-fA-F]{3,6})`).FindAllStringSubmatch(m[2], -1) {
+				lightVars[v[1]] = v[2]
+			}
+		}
+	}
+	for _, tv := range []string{"green-text", "amber-text", "red-text"} {
+		fg := lightVars[tv]
+		if fg == "" {
+			t.Errorf("helle Textfarbe --%s fehlt", tv)
+			continue
+		}
+		for _, bg := range []string{"bg", "bg2", "bg3"} {
+			if c := cssContrast(fg, lightVars[bg]); c < 4.5 {
+				t.Errorf("--%s auf --%s hell: %.2f:1", tv, bg, c)
+			}
+		}
+	}
+	if m := regexp.MustCompile(`(?:^|[^-\w])color:var\(--(green|amber|red)\)`).FindStringSubmatch(css); m != nil {
+		t.Errorf("Text in color:var(--%s): bitte --%s-text nehmen", m[1], m[1])
 	}
 	// der grüne Knopf bleibt im hellen Schema lesbar
 	if c := cssContrast("#047857", "#ffffff"); c < 4.5 {

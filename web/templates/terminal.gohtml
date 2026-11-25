@@ -102,6 +102,9 @@ html[data-theme="light"]{--bg:#f3f3f3;--bg2:#ffffff;--bg3:#f9f9f9;--accent:#005f
 :root{--tile-fault-bg:#7f1d1d;--tile-fault-bd:var(--red);--tile-fault-fg:#fff;--tile-ticket-bg:#78350f;--tile-ticket-bd:var(--amber);--tile-ticket-fg:#fff;--tile-rz-bg:#064e3b;--tile-rz-bd:var(--green);--tile-rz-fg:#fff;--tile-v-bg:#14532d;--tile-v-bd:#22c55e;--tile-v-fg:#fff;--tile-hmi-bg:#1e3a8a;--tile-hmi-bd:var(--accent);--tile-hmi-fg:#fff;--tile-m-bg:#4c1d95;--tile-m-bd:#8b5cf6;--tile-m-fg:#fff;--tile-p-bg:#134e4a;--tile-p-bd:#14b8a6;--tile-p-fg:#fff;--tile-z-bg:#3b0764;--tile-z-bd:#a855f7;--tile-z-fg:#fff;--tile-yr-bg:#8a94a6;--tile-yr-bd:#8a94a6;--tile-yr-fg:#fff}
 html[data-theme="light"]{--tile-fault-bg:#fee2e2;--tile-fault-bd:#dc2626;--tile-fault-fg:#7f1d1d;--tile-ticket-bg:#fef3c7;--tile-ticket-bd:#b45309;--tile-ticket-fg:#78350f;--tile-rz-bg:#d1fae5;--tile-rz-bd:#047857;--tile-rz-fg:#064e3b;--tile-v-bg:#dcfce7;--tile-v-bd:#15803d;--tile-v-fg:#14532d;--tile-hmi-bg:#dbeafe;--tile-hmi-bd:#005fb8;--tile-hmi-fg:#1e3a8a;--tile-m-bg:#ede9fe;--tile-m-bd:#6d28d9;--tile-m-fg:#4c1d95;--tile-p-bg:#ccfbf1;--tile-p-bd:#0f766e;--tile-p-fg:#134e4a;--tile-z-bg:#f3e8ff;--tile-z-bd:#7e22ce;--tile-z-fg:#3b0764;--tile-yr-bg:#d5dbe6;--tile-yr-bd:#d5dbe6;--tile-yr-fg:#1f2937}
 html[data-theme="light"] .t-btn.ok{background:#047857;border-color:#047857}
+/* Textfarben: im hellen Schema dunklere Töne, damit Text auf --bg/--bg2/--bg3 mindestens 4,5:1 erreicht (dunkel unverändert) */
+:root{--green-text:var(--green);--amber-text:var(--amber);--red-text:var(--red)}
+html[data-theme="light"]{--green-text:#047857;--amber-text:#b45309;--red-text:#b91c1c}
 html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--font);font-size:clamp(18px,1.6vw,28px);line-height:1.3;overflow:hidden;
   -webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;touch-action:manipulation;cursor:default}
 body{display:flex;flex-direction:column;padding:max(2vh,12px) max(2vw,16px)}
@@ -132,7 +135,7 @@ a{color:inherit;text-decoration:none}
 .t-list .ti-title{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .t-list .ti-meta{grid-column:1/-1;color:var(--muted);font-size:.8em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .t-list .ti-st{color:var(--muted);font-size:.85em;white-space:nowrap}
-.t-empty{display:flex;align-items:center;justify-content:center;gap:.5em;flex:1;color:var(--green);font-weight:700;font-size:1.1em}
+.t-empty{display:flex;align-items:center;justify-content:center;gap:.5em;flex:1;color:var(--green-text);font-weight:700;font-size:1.1em}
 .t-more{color:var(--muted);text-align:center;padding:1vh 0;font-size:.85em}
 /* Sensoren nach Kartenanmeldung (terminal_sensors.go, terminal.js) */
 .t-sensors{margin-top:1.6vh;background:var(--bg2);border:2px solid var(--border);border-radius:22px;padding:1.4vh 1.4vw;max-height:38vh;overflow-y:auto}
@@ -144,7 +147,7 @@ a{color:inherit;text-decoration:none}
 .t-sens-row{display:flex;justify-content:space-between;gap:1em;padding:.3vh 0;border-top:1px solid var(--border)}
 .t-sens-row .v{font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}.t-sens-row.stale{color:var(--muted)}.t-sens-row.stale .v{font-weight:400}
 .hs{display:inline-flex;align-items:center;gap:.35em;flex-wrap:wrap;font-size:.85em;font-weight:600;padding:.1em .6em;border-radius:999px;border:1px solid var(--border)}
-.hs-run .hs-state{color:var(--green)}.hs-stop .hs-state{color:var(--red)}.hs-none .hs-state{color:var(--muted)}.hs-count{font-variant-numeric:tabular-nums;font-weight:800}
+.hs-run .hs-state{color:var(--green-text)}.hs-stop .hs-state{color:var(--red-text)}.hs-none .hs-state{color:var(--muted)}.hs-count{font-variant-numeric:tabular-nums;font-weight:800}
 .hs.hs-pulse{animation:t-hs-pulse .6s ease-out}@keyframes t-hs-pulse{40%{transform:scale(1.08)}}
 @media (prefers-reduced-motion:reduce){.hs.hs-pulse{animation:none}}
 .t-foot{padding-top:1.6vh;display:flex;gap:1.6vw}
@@ -164,7 +167,7 @@ a{color:inherit;text-decoration:none}
 .t-stop p{color:var(--muted);margin-top:.5vh}
 /* Hinweis ohne Anlage */
 .t-none{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2vh;text-align:center}
-.t-none i{font-size:4em;color:var(--amber)}
+.t-none i{font-size:4em;color:var(--amber-text)}
 .t-none p{font-size:1.6em;font-weight:700;max-width:30em}
 .t-none small{color:var(--muted);font-size:.9em}
 /* Kartensitzung: Leiste unten, Hinweis bei unbekannter Karte */
@@ -174,7 +177,7 @@ a{color:inherit;text-decoration:none}
 .t-cardmsg{position:fixed;left:50%;transform:translateX(-50%);bottom:max(2vh,12px);max-width:90vw;padding:1.2vh 2vw;background:var(--bg3);border:2px solid var(--amber);border-radius:22px;font-weight:700;text-align:center;z-index:8}
 /* Anmeldung ohne Kartenleser: Ziffernfeld, Knopf, Dialog (Tasten mindestens 64 px) */
 .t-login{flex-shrink:0;margin-top:1.4vh;padding:1vh 1.4vw;background:var(--bg2);border:2px solid var(--border);border-radius:22px;display:flex;flex-direction:column;gap:1vh}
-.t-login .l-msg{color:var(--amber);font-weight:700;text-align:center}
+.t-login .l-msg{color:var(--amber-text);font-weight:700;text-align:center}
 .t-login .l-row{display:flex;gap:1vw;align-items:center;flex-wrap:wrap;margin-bottom:1vh}
 .t-login input,.t-dialog input{min-height:64px;flex:1;min-width:8em;padding:0 .8em;border-radius:14px;border:2px solid var(--border);background:var(--bg);color:var(--text);font:inherit;-webkit-user-select:text;user-select:text}
 .t-login input:focus,.t-dialog input:focus{border-color:var(--accent);outline:none}
@@ -284,7 +287,7 @@ body.has-gear .g-vorg{padding-top:60px}
 .t-rz h3{font-size:.8em;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-top:.6vh}
 .t-rznote{padding:1.2vh 1.6vw;background:var(--bg3);border:2px solid var(--amber);border-radius:18px;font-weight:700}
 .t-rzrun{padding:1.6vh 2vw;background:var(--bg2);border:2px solid var(--border);border-left:10px solid var(--amber);border-radius:22px;display:flex;align-items:center;gap:2vw;flex-wrap:wrap}
-.t-rzrun.fault{border-left-color:var(--red)}.t-rzrun b{flex:1;min-width:12em}.t-rzrun span{color:var(--amber);font-weight:700}
+.t-rzrun.fault{border-left-color:var(--red)}.t-rzrun b{flex:1;min-width:12em}.t-rzrun span{color:var(--amber-text);font-weight:700}
 .t-rzrun .t-btn{min-width:10em}
 .t-rzgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,13em),1fr));gap:1.4vw}
 .t-rzgrid .t-btn,.t-opt span{min-height:clamp(72px,11vh,120px);font-size:1.1em;border-radius:20px;text-align:center;padding:.4em 1em}
@@ -317,7 +320,7 @@ a.v-row.v-nope{opacity:.7}
 .v-t b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .v-t small{color:var(--muted);font-size:.8em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .v-st{font-weight:700;white-space:nowrap}
-.v-st.work{color:var(--accent)}.v-st.wait{color:var(--amber)}
+.v-st.work{color:var(--accent)}.v-st.wait{color:var(--amber-text)}
 .v-act{display:flex;gap:1vw;margin:0}
 .v-act form{margin:0}
 .t-dialog .v-dlg{width:min(94vw,44em);max-height:92vh;overflow-y:auto}
@@ -372,12 +375,12 @@ a.v-row.v-nope{opacity:.7}
 .t-mrow .m-t{flex:1;min-width:0;display:flex;flex-direction:column}
 .t-mrow .m-t b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .t-mrow form{margin:0}
-.ti-meta.late{color:var(--amber)}
+.ti-meta.late{color:var(--amber-text)}
 .t-mcount{display:inline-block;min-width:2.2em;text-align:center;padding:.05em .5em;border-radius:999px;background:var(--bg3);font-size:.8em}
 .t-hmihead{flex-wrap:wrap;gap:1vw}
 .t-hmimode{display:inline-flex;align-items:center;gap:.4em;font-weight:700;color:var(--accent)}
-.t-hmimode.ctl{color:var(--amber)}
-.t-hmistatus{color:var(--muted);font-size:.85em}.t-hmistatus.ok{color:var(--green)}.t-hmistatus.err{color:var(--red)}
+.t-hmimode.ctl{color:var(--amber-text)}
+.t-hmistatus{color:var(--muted);font-size:.85em}.t-hmistatus.ok{color:var(--green-text)}.t-hmistatus.err{color:var(--red-text)}
 .t-hmiscreen{flex:1;min-height:0;background:#000;border:2px solid var(--border);border-radius:14px;overflow:hidden;position:relative;touch-action:none}
 .t-card form{margin:0}
 /* Schichtplan (terminal_schichtplan.go) */
@@ -613,7 +616,7 @@ connect();
 <div class="t-rz">
   <h2 class="t-rzh"><i class="ti ti-calendar-week" aria-hidden="true"></i> Schichtplan {{.Plan.DeptName}}{{if .Plan.PlanName}} · {{.Plan.PlanName}}{{end}}</h2>
   {{if gt (len .Plan.Depts) 1}}<div class="t-pdepts">{{range .Plan.Depts}}<a class="t-btn{{if .Sel}} sel{{end}}" href="{{$.Plan.Href .ID $.Plan.Next $.Plan.PlanSel}}">{{.Name}}</a>{{end}}</div>{{end}}
-  {{if gt (len .Plan.Plans) 1}}<div class="t-pdepts t-pplans" role="group" aria-label="Schichtplan">
+  {{if or (gt (len .Plan.Plans) 1) .Plan.PlanSel}}<div class="t-pdepts t-pplans" role="group" aria-label="Schichtplan">
     <a class="t-btn{{if not .Plan.PlanSel}} sel{{end}}" href="{{.Plan.Href .Plan.Dept .Plan.Next ""}}">Alle</a>{{range .Plan.Plans}}<a class="t-btn{{if .Sel}} sel{{end}}" href="{{$.Plan.Href $.Plan.Dept $.Plan.Next .ID}}">{{.Name}}</a>{{end}}</div>{{end}}
   <div class="t-pweek">
     <a class="t-btn{{if not .Plan.Next}} sel{{end}}" href="{{.Plan.Href .Plan.Dept false .Plan.PlanSel}}">Diese Woche</a>

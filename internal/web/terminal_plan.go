@@ -162,7 +162,7 @@ func (h *Handler) planSlide(ctx context.Context, uid, role string, s terminalSli
 	// Schichtplan: nur ein veröffentlichter Plan, der den Zeitraum schneidet; sonst alle (terminal_shiftplan.go)
 	shiftPlan := ""
 	if s.Kind == slideKindPlanShifts && s.ShiftPlanID != "" {
-		plans, err := h.publishedShiftPlans(ctx, from, to)
+		plans, err := h.publishedShiftPlans(ctx, from, to, sc.Depts, sc.NoDept)
 		if err != nil {
 			return nil, err
 		}
