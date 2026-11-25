@@ -1183,6 +1183,43 @@ und 3 drückt bis auf Weiteres der Anwender.
     **Tests:** `TestITNetRunOnceNotConfigured` und
     `TestTerminalGlobalSlidesJSON` sind auf `main` rot (auch einzeln, gegen die
     Labor-Datenbank `pdh_test`; vermutlich Testdaten) – noch nicht untersucht.
+    `TestITNetRecipientsFallback` ist im vollen Lauf ab und zu rot (einzeln
+    grün; parallele Tests legen `it.admin`-Benutzer in `pdh_test` an).
+    Labor-Datenbank: Am 25.11.2026 stand dort eine alte `223_ui_defaults_permission`
+    (abgebrochener Testlauf vor dem Umnummerieren) – Eintrag gelöscht, danach
+    `223_terminal_shift_plan` und `224` eingespielt.
+28. **0.90.0 Einheitliche Oberfläche** (Anwender 25.11.2026: Übergang „A und
+    beides bleibt“ – „bis alles fertig ist“, Menüs „Bereiche gleich,
+    Favoriten“, Entwurf „OK“, Plan „passt“): Entwurf
+    `docs/superpowers/specs/2026-11-25-einheitliche-oberflaeche-design.md`
+    (9 Bereiche, Menüband, Reiter wie Edge, Strg+K, Statusleiste, Listen nach
+    Infrastruktur, Startseite je Rolle, Dienste im Mittelrahmen; Festlegungen
+    in Abschnitt 10), klickbare Vorschau
+    `docs/superpowers/specs/2026-11-25-oberflaeche-vorschau.html` („Das sieht
+    doch spitze aus“), sieben Teilpakete. **Teil 1 Gestaltungsgrundlage =
+    0.82.62** (Plan `docs/superpowers/plans/2026-11-25-gestaltungsgrundlage.md`,
+    Ledger `.superpowers/sdd/2026-11-25-gestaltungsgrundlage/`; geplant als
+    0.82.61 mit Migration 223 – `main` hatte inzwischen 0.82.61 Terminal mit
+    `223_terminal_shift_plan`, deshalb Migration 224, Recht
+    `system.ui_defaults`): **auf `main`** (25.11.2026, Merge `52633bb3`) und dem
+    Testverbund (beide Server und Zeuge 0.82.62, aktiv jetzt `pdh-server`
+    10.10.0.17, Spiegelung läuft). Abnahme: 4 gerenderte Seiten alt/neu
+    verglichen, 8640 berechnete Stilwerte in Fiori/Fluent × hell/dunkel ×
+    390/1366 px ohne Unterschied (nur die Uhrzeit beim Rendern); HTML je Seite
+    rund 164 KB kleiner; am Testverbund 58 Menüseiten × 2 Breiten ohne
+    Konsolen- oder Skriptfehler und ohne Überlauf; Seite „Gestaltung“ geprüft;
+    Prüfkonto wieder gesperrt. Regeln siehe Abschnitt „Gestaltungsgrundlage
+    (seit 0.82.62)“. Zurückgestellt (Ledger): `pdh-boot` ohne try/catch,
+    Cache-Schlüssel nur die Version (einmalig beim Rollentausch 404 auf
+    `/vendor/…/ui/` möglich), Farben-Wächter zählt `ui/*.js` nicht,
+    Inline-Budget 16 KB großzügig, Katalog-Test ohne Route mit Recht,
+    `color-mix()` erst ab Chromium 111, `widgets/kvp.gohtml` ganz ausgenommen,
+    alte Seite + neue Skripte während eines Updates (ein Seitenaufruf).
+    „Darstellung verfeinern“ (Dichte, Modus wie System) kommt mit Teil 2.
+    Nicht gemessen: 4×-Drosselung mit `deploy/lab/seitenaufbau/messung.js`.
+    **Nächster Schritt: Teil 2 „Neuer Rahmen hinter dem Schalter“** (Bauplan
+    schreiben). Offen: 10.10.0.202 auf 0.82.62 (Anwender, mit Sicherung; bringt
+    0.82.60 und 0.82.61 mit).
 
 Docker Desktop startet nach einem Neustart des Windows-Rechners nicht von
 selbst – ohne ihn fehlen der Zeuge und die Labor-Datenbank für die Tests.
