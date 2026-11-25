@@ -24,6 +24,8 @@
       "Nach unten" (t "Nach unten")
       "Nicht gespeichert" (t "Nicht gespeichert")
       "Speichern" (t "Speichern")
+      "Was möchtest du tun?" (t "Was möchtest du tun?")
+      "Keine Treffer" (t "Keine Treffer")
       "Aktion nicht möglich" (t "Aktion nicht möglich")
       "Ansehen" (t "Ansehen")
       "Automatische Wartung in %s min – bitte Eingaben speichern" (t "Automatische Wartung in %s min – bitte Eingaben speichern")
@@ -350,7 +352,7 @@ document.addEventListener('submit', function (e) {
 {{define "ui-topbar"}}  <div class="topbar">
     <button type="button" class="sidebar-toggle topbar-burger" onclick="pdhNav()" aria-label="{{t "Navigation öffnen"}}" title="{{t "Navigation"}}"><i class="ti ti-menu-2"></i></button>
     <span class="topbar-path">PDH /</span>
-    <span class="topbar-cur">{{.Title}}</span>
+    <span class="topbar-cur">{{.Title}}</span>{{if .NewFrame}}<label class="frame-search"><i class="ti ti-search" aria-hidden="true"></i><input type="search" data-palette-open readonly placeholder="{{t "Was möchtest du tun?  (Strg+K)"}}" aria-label="{{t "Was möchtest du tun?"}}" aria-haspopup="dialog"></label>{{end}}
     <div style="margin-left:auto;display:flex;align-items:center;gap:6px">
       <a href="/time" class="topbar-clock" id="pdh-clock" data-server-ms="{{serverNowMs}}" title="{{t "Zeiterfassung öffnen"}}" aria-label="{{t "Uhrzeit – Zeiterfassung öffnen"}}">
         <i class="ti ti-clock"></i><span class="clk-day"></span><span class="clk-date"></span><span class="clk-time">--:--:--</span>

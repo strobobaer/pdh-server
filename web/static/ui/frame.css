@@ -41,6 +41,21 @@ html.rail-narrow .rail-area span{display:none}
 html.pdh-embedded .ribbon{display:none}
 /* Klassische Navigation gibt es hier nicht: „Navigation anpassen“ ausblenden */
 html.frame-ui #um-nav-edit{display:none}
+/* Suchzeile in der Kopfleiste und Befehlszeile Strg+K */
+.frame-search{flex:1 1 220px;max-width:480px;min-width:0;margin:0 var(--sp-3);display:flex;align-items:center;gap:var(--sp-2);height:34px;padding:0 var(--sp-3);border:1px solid var(--border);border-radius:17px;background:var(--bg);color:var(--muted);cursor:text}
+.frame-search input{flex:1;min-width:0;border:0;background:transparent;color:var(--text);font:inherit;font-size:var(--fs-sm);outline:none;cursor:text}
+.frame-search:focus-within{border-color:var(--accent)}
+@media (max-width:760px){.frame-search{flex:0 0 34px;padding:0;justify-content:center;margin:0 var(--sp-1)}.frame-search input{position:absolute;width:34px;opacity:0}}
+.frame-palette{position:fixed;z-index:950;top:12vh;left:50%;transform:translateX(-50%);width:min(640px,calc(100vw - 24px));background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:var(--r-m);box-shadow:var(--shadow-float);overflow:hidden}
+.fp-input{width:100%;padding:var(--sp-3) var(--sp-4);border:0;border-bottom:1px solid var(--border);background:transparent;color:var(--text);font:inherit;font-size:var(--fs-lg);outline:none}
+.fp-list{list-style:none;margin:0;padding:var(--sp-1);max-height:50vh;overflow:auto}
+.fp-item{display:flex;align-items:center;gap:var(--sp-3);min-height:40px;padding:var(--sp-2) var(--sp-3);border-radius:var(--r-s);cursor:pointer}
+.fp-item.on,.fp-item:hover{background:var(--fill-hover)}
+.fp-item.on{box-shadow:inset 2px 0 0 var(--accent)}
+.fp-label{flex:1}
+.fp-hint{font-size:var(--fs-xs);color:var(--muted)}
+.fp-action .fp-label{font-weight:600}
+.fp-empty{padding:var(--sp-3);color:var(--muted)}
 /* Dialog „Bereiche ordnen“ */
 .frame-dialog{position:fixed;z-index:900;top:50%;left:50%;transform:translate(-50%,-50%);width:min(420px,calc(100vw - 32px));max-height:80vh;overflow:auto;padding:var(--sp-4);background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:var(--r-m);box-shadow:var(--shadow-float)}
 .frame-dialog h2{font-size:var(--fs-lg);margin:0 0 var(--sp-3)}

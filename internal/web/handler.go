@@ -1319,6 +1319,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/api/activity", h.ActivityFeed)
 	r.Get("/api/presence", h.PresenceWeb)
 	r.Get("/api/search", h.Search)
+	r.Get("/api/palette", h.PaletteWeb) // Befehlszeile Strg+K des neuen Rahmens (palette.go)
 
 	// Auth
 	r.Get("/login", h.LoginPage)
