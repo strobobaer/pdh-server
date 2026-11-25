@@ -107,6 +107,25 @@ func TestFrameCSSRound2(t *testing.T) {
 	}
 }
 
+// Dritte Runde (Nachprüfung im Browser): Kopfleiste bei 768 px mit langem Titel und
+// bei Größe 130–160 % – Uhr und Benutzermenü schrumpfen nie (AGENTS.md).
+func TestFrameTopbarFits(t *testing.T) {
+	css := uiFile(t, "frame.css")
+	for _, want := range []string{
+		"html.frame-ui .topbar > div:last-child{flex-shrink:0}",
+		"html.frame-ui .topbar{container-type:inline-size}",
+		"@container (max-width:640px){",
+		"@container (max-width:900px){html.frame-ui .topbar-clock .clk-day,html.frame-ui .topbar-clock .clk-date{display:none}}",
+		".frame-log{position:fixed;z-index:850;right:var(--sp-3);bottom:50px;",
+		".frame-dialog-bar{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:var(--sp-2);margin-top:var(--sp-3);position:sticky;bottom:calc(-1 * var(--sp-4));",
+		".frame-order li span{flex:1;min-width:0;overflow-wrap:anywhere}",
+	} {
+		if !strings.Contains(css, want) {
+			t.Errorf("frame.css ohne %q", want)
+		}
+	}
+}
+
 // K9: Der Rundgang durch PDH zeigt im neuen Rahmen auf Bereichsleiste und Menüband.
 func TestTourKnowsNewFrame(t *testing.T) {
 	b, err := os.ReadFile(filepath.Join("..", "..", "web", "templates", "widgets", "tour.gohtml"))

@@ -52,6 +52,13 @@ html.frame-ui #um-nav-edit{display:none}
 .frame-search input{flex:1;min-width:0;border:0;background:transparent;color:var(--text);font:inherit;font-size:var(--fs-sm);outline:none;cursor:text}
 .frame-search:focus-within{border-color:var(--accent)}
 @media (max-width:760px){.frame-search{flex:0 0 34px;padding:0;justify-content:center;margin:0 var(--sp-1)}.frame-search input{position:absolute;width:34px;opacity:0}}
+/* Kopfleiste: Uhr und Benutzermenü schrumpfen nie (AGENTS.md), Titel und Suchzeile geben
+   nach. Die Abfragen messen die Kopfleiste selbst – sie greifen auch bei Größe über 100 %,
+   wo die Medienabfragen nach Fensterbreite nicht greifen. */
+html.frame-ui .topbar > div:last-child{flex-shrink:0}
+html.frame-ui .topbar{container-type:inline-size}
+@container (max-width:900px){html.frame-ui .topbar-clock .clk-day,html.frame-ui .topbar-clock .clk-date{display:none}}
+@container (max-width:640px){html.frame-ui .topbar-path{display:none}html.frame-ui .frame-search{flex:0 0 34px;padding:0;justify-content:center;margin:0 var(--sp-1)}html.frame-ui .frame-search input{position:absolute;width:34px;opacity:0}}
 .frame-palette{position:fixed;z-index:950;top:calc(12vh / var(--ui-scale, 1));left:50%;transform:translateX(-50%);width:min(640px,calc(100vw / var(--ui-scale, 1) - 24px));background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:var(--r-m);box-shadow:var(--shadow-float);overflow:hidden}
 .fp-input{width:100%;padding:var(--sp-3) var(--sp-4);border:0;border-bottom:1px solid var(--border);background:transparent;color:var(--text);font:inherit;font-size:var(--fs-lg);outline:none}
 .fp-list{list-style:none;margin:0;padding:var(--sp-1);max-height:calc(50vh / var(--ui-scale, 1));overflow:auto}
@@ -73,7 +80,7 @@ html.frame-ui #frame-warn{grid-column:3}html.frame-ui #footer-status-error{grid-
 /* Warnfeld sichtbar: es bekommt Platz vor Balken und Fehlertext */
 html.frame-ui #global-status-footer:has(#frame-warn:not([hidden])){grid-template-columns:minmax(120px,1fr) minmax(120px,320px) minmax(160px,auto) minmax(120px,1fr)}}
 .frame-warn{color:var(--warn);font-weight:600;font-size:var(--fs-xs);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
-.frame-log{position:fixed;z-index:850;right:var(--sp-3);bottom:40px;width:min(420px,calc(100vw / var(--ui-scale, 1) - 24px));max-height:calc(50vh / var(--ui-scale, 1));overflow:auto;padding:var(--sp-2);background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:var(--r-m);box-shadow:var(--shadow-float)}
+.frame-log{position:fixed;z-index:850;right:var(--sp-3);bottom:50px;width:min(420px,calc(100vw / var(--ui-scale, 1) - 24px));max-height:calc(50vh / var(--ui-scale, 1));overflow:auto;padding:var(--sp-2);background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:var(--r-m);box-shadow:var(--shadow-float)}
 .frame-log ol{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:var(--sp-1);font-size:var(--fs-sm)}
 .frame-log li{padding:var(--sp-1) var(--sp-2);border-radius:var(--r-s)}
 .frame-log .fl-error{color:var(--err)}
@@ -83,8 +90,8 @@ html.frame-ui #global-status-footer:has(#frame-warn:not([hidden])){grid-template
 .frame-dialog h2{font-size:var(--fs-lg);margin:0 0 var(--sp-3)}
 .frame-order{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:var(--sp-1)}
 .frame-order li{display:flex;align-items:center;gap:var(--sp-2);padding:var(--sp-1) var(--sp-2);border:1px solid var(--border);border-radius:var(--r-s)}
-.frame-order li span{flex:1}
-.frame-dialog-bar{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:var(--sp-2);margin-top:var(--sp-3)}
+.frame-order li span{flex:1;min-width:0;overflow-wrap:anywhere}
+.frame-dialog-bar{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:var(--sp-2);margin-top:var(--sp-3);position:sticky;bottom:calc(-1 * var(--sp-4));padding:var(--sp-2) 0 var(--sp-4);background:var(--bg2)} /* Knöpfe bleiben sichtbar, auch bei 160 % */
 .frame-dialog-bar .fd-firm{margin-right:auto}
 /* Navigation des klassischen Rahmens gibt es hier nicht */
 html.frame-ui .topbar-burger{display:none}
