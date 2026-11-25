@@ -7,7 +7,7 @@ import (
 
 // Bausteinkatalog (0.90.0 Teil 1): zeigt die Gestaltungswerte aus
 // web/static/ui/tokens.css und die Grundbausteine der Oberfläche – nur ansehen.
-// Das Recht system.ui_defaults (Migration 223) gilt später auch für die Vorgaben
+// Das Recht system.ui_defaults (Migration 224) gilt später auch für die Vorgaben
 // der Oberfläche für Firma und Rollen.
 
 const permUIDefaults = "system.ui_defaults"

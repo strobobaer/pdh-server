@@ -1,4 +1,4 @@
--- 223_ui_defaults_permission.up.sql
+-- 224_ui_defaults_permission.up.sql
 -- Einheitliche Oberfläche (0.90.0 Teil 1): Recht für die Seite „Gestaltung“ und später für die
 -- Vorgaben der Oberfläche für Firma und Rollen (Kategorie System & Sicherheit). Es gilt systemweit:
 -- nur Rollen, deren Rollenverwaltung überall gilt (department_id IS NULL), bekommen es – so
