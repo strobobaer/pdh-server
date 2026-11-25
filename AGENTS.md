@@ -1245,7 +1245,22 @@ und 3 drückt bis auf Weiteres der Anwender.
     Treffer, gleiche Fehler in „Letzte Meldungen“ nicht zusammengefasst,
     „Update läuft“ schon in der Nachfrage-Phase, Strg+K im eingebetteten
     iframe. Bestand (auch klassisch): Statusleiste und Kopfleiste mit langem
-    Titel bei 768 px und Größe 130–160 %. **Nächster Schritt: Teil 3** (Listen
+    Titel bei 768 px und Größe 130–160 %. **Auf `main`** (25.11.2026, Merge
+    `0943c7f8`) und dem Testverbund (beide Server und Zeuge 0.82.65, Migrationen
+    225 und 226, aktiv jetzt `pdh` 10.10.0.14, Spiegelung läuft). Am Testverbund
+    im Browser geprüft (246 Ansichten): klassisch → neu → klassisch → wie
+    Firmenvorgabe; alle 55 Unterseiten der Bereichsleiste bei 390/1366 px ohne
+    Fehler und Überlauf; Startseite, Störungen, Anlagen-Detail, Server-Einstellungen
+    bei 320–1366 px in Fiori/Fluent, hell/dunkel, dazu 130/160 %; Strg+K mit
+    Anlagenpfad, Favorit, Bereiche ordnen, „Wie System“, Statusleiste und
+    simulierter Countdown; Neu-anlegen- und Fertigstellen-Assistent geöffnet;
+    Prüfkonto zurückgestellt und gesperrt, keine Testdaten. Kleinbefunde (mit Teil 3
+    beheben): Balkenbeschriftung „Fertig100 %“ ohne Abstand (frame.css
+    `display:block` nimmt das `gap`), „Verwaltung“ in der Leiste gekürzt,
+    Statusleiste am Handy ohne Text (pdh.css blendet Status und Fehler aus –
+    Entwurf 5.2 verlangt Text), Neu-anlegen-Assistent schließt nach Öffnen über
+    „Neu“ nicht per Esc (Fokus außerhalb, Bestand), Schatten der eingeklappten
+    rechten Leiste ragt bis 1024 px in den Rand (Bestand). **Nächster Schritt: Teil 3** (Listen
     mit Detail, Vorgangs-Reiter, Vorgänge in Strg+K, „Fertigstellen“ im
     Menüband – Punkt 10.11 des Entwurfs). Offen: 10.10.0.202 auf 0.82.65
     (Anwender, mit Sicherung; bringt 0.82.60 und 0.82.61 mit).
@@ -1267,6 +1282,11 @@ und 3 drückt bis auf Weiteres der Anwender.
     Schreiber gewinnt), Zeit an drei Stellen (Timer, `work_sessions`, App).
     Offene Frage an den Anwender: macht nach der Pause nur dieselbe Person
     weiter oder auch ein Kollege (Schichtwechsel)?
+31. **Abmelden beendet die Sitzung nicht am Server (Bestand, Sicherheit):** Bei
+    der Abnahme von 0.82.65 gefunden: `/logout` löscht nur die Cookies; ein vorher
+    kopiertes Sitzungs-Token gilt weiter bis zum Ablauf (`GET /users/me` → 200).
+    Es verfällt nur, wenn das Konto gesperrt wird. Vorschlag: Token beim Abmelden
+    serverseitig zurückziehen (wie der Rückzug bei Wartung). Noch nicht besprochen.
 30. **Vorgabe Assistenten (Anwender 25.11.2026):** Neu-anlegen- und
     Fertigstellen-Assistent dürfen in keinem Teil der neuen Oberfläche fehlen
     (Entwurf 0.90.0 Abschnitt 10.11, `TestFrameHasWizards`).
