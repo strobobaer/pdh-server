@@ -1,0 +1,342 @@
+{{/* Gemeinsame Bausteine beider Rahmen (base.gohtml klassisch, frame.gohtml neu) – 0.90.0 Teil 2.
+     Änderungen hier wirken in beiden Rahmen. */}}
+{{/* Kopf: Datenblock pdh-boot, Kopfskript, htmx, Symbole, Gestaltungswerte, Stile */}}
+{{define "ui-head"}}<script id="pdh-boot" type="application/json">{{dict
+    "version" appVersion
+    "sortableURL" (vendorURL "sortablejs/Sortable.min.js")
+    "fonts" .Look.FontsMap
+    "isSystemUser" .IsSystemUser
+    "isOverride" (or .IsOverrideSession .IsBoardVisit)
+    "idleMinutes" .IdleTimeoutMinutes
+    "overrideMinutes" .OverrideTimeoutMinutes
+    "isAdmin" .IsAdmin
+    "icons" iconMap
+    "faultID" .FaultID
+    "copilotConn" .CopilotConn
+    "copilotRef" .CopilotRef
+    "t" (dict
+      " · Doppelklick öffnet" (t " · Doppelklick öffnet")
+      "Abbrechen" (t "Abbrechen")
+      "Absagen" (t "Absagen")
+      "Aktion nicht möglich" (t "Aktion nicht möglich")
+      "Ansehen" (t "Ansehen")
+      "Automatische Wartung in %s min – bitte Eingaben speichern" (t "Automatische Wartung in %s min – bitte Eingaben speichern")
+      "Bearbeiten" (t "Bearbeiten")
+      "bereits vom Lager abgebucht" (t "bereits vom Lager abgebucht")
+      "Bitte eine Menge größer 0 angeben." (t "Bitte eine Menge größer 0 angeben.")
+      "Durchführen" (t "Durchführen")
+      "Eigene Anordnung verwerfen und die Vorgabe wiederherstellen?" (t "Eigene Anordnung verwerfen und die Vorgabe wiederherstellen?")
+      "Fehler" (t "Fehler")
+      "Fertigstellen" (t "Fertigstellen")
+      "Gruppe löschen (Einträge wandern nach oben)" (t "Gruppe löschen (Einträge wandern nach oben)")
+      "Gruppe nach oben" (t "Gruppe nach oben")
+      "Gruppe nach unten" (t "Gruppe nach unten")
+      "Klicken zum Aufklappen" (t "Klicken zum Aufklappen")
+      "Navigation konnte nicht gespeichert werden:" (t "Navigation konnte nicht gespeichert werden:")
+      "Neue Gruppe" (t "Neue Gruppe")
+      "Nicht benötigte Menge zurück an den Lagerplatz buchen" (t "Nicht benötigte Menge zurück an den Lagerplatz buchen")
+      "reserviert" (t "reserviert")
+      "Reservierte Menge als verbraucht buchen?" (t "Reservierte Menge als verbraucht buchen?")
+      "Update abbrechen und zurücksetzen?" (t "Update abbrechen und zurücksetzen?")
+      "Update absagen?" (t "Update absagen?")
+      "Update jetzt durchführen?" (t "Update jetzt durchführen?")
+      "Wartungsfenster: Update auf %v durchführen? Noch %s min" (t "Wartungsfenster: Update auf %v durchführen? Noch %s min")
+      "Wie viel zurückbuchen? (reserviert: %s)" (t "Wie viel zurückbuchen? (reserviert: %s)" "#")
+      "Zurückbuchen" (t "Zurückbuchen")
+    )}}</script>
+<script>
+window.PDH_BOOT = JSON.parse(document.getElementById('pdh-boot').textContent);
+window.pdhT = function(k){ var t = window.PDH_BOOT.t || {}; return t[k] != null ? t[k] : k; }; // Übersetzung für die ausgelagerten Skripte
+// Logo dreht sich einmal beim Laden der Seite (Spielerei)
+document.documentElement.classList.add('pdh-loading');
+window.addEventListener('load', function(){ setTimeout(function(){ document.documentElement.classList.remove('pdh-loading'); }, 800); });
+window.PDH_LOCALE = ({de:'de-DE', en:'en-GB', ro:'ro-RO', tr:'tr-TR', mk:'mk-MK'})[document.documentElement.lang] || 'de-DE';
+(function(){
+  const mode = localStorage.getItem('pdh_theme') || 'system';
+  const systemDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  document.documentElement.dataset.theme = mode === 'system' ? (systemDark ? 'dark' : 'light') : mode;
+  document.documentElement.dataset.themeMode = mode;
+  window.PDH_TERMINAL_INFRA = {{.TerminalInfraID}}; // Standort dieses Terminals (Infra-Picker)
+  // Darstellung: am Benutzerkonto gespeichert (leer/0 = Firmenstandard)
+  window.PDH_LOOK_DEFAULT = {palette: {{.Brand.ThemeID}}, font: {{.Brand.FontID}}, style: {{.Brand.StyleID}}, scale: {{.Brand.ScaleValue}}, row: 100};
+  window.PDH_LOOK_SAVED = {palette: {{.Look.User.Palette}}, font: {{.Look.User.Font}}, style: {{.Look.User.Style}}, scale: {{.Look.User.Scale}}, row: {{.Look.User.Row}}};
+  window.PDH_LOOK_ALLOW = {{.Look.Allow}};
+  window.PDH_PALETTES = {{.Brand.PaletteIDs}};
+  document.documentElement.dataset.palette = {{.Look.PaletteID}};
+  document.documentElement.dataset.style = {{.Look.StyleID}};
+  try { localStorage.removeItem('pdh_palette'); } catch(e) {} // frueher im Browser gespeichert
+  if(localStorage.getItem('pdh_sidebar_left') !== 'expanded' && !window.matchMedia('(max-width:760px)').matches) document.documentElement.classList.add('sidebar-left-collapsed');
+  // per Ziehen eingestellte Breiten der Seitenleisten (pdhResizer)
+  try {
+    const wl = parseInt(localStorage.getItem('pdh_sidebar_left_w'), 10), wr = parseInt(localStorage.getItem('pdh_sidebar_right_w'), 10);
+    if(wl >= 160 && wl <= 480) document.documentElement.style.setProperty('--left-open-w', wl + 'px');
+    if(wr >= 220 && wr <= 760) document.documentElement.style.setProperty('--right-open-w', wr + 'px');
+  } catch(e) {}
+  // Rechte Seitenleiste startet immer eingeklappt (nur die senkrechten Reiter
+  // sind sichtbar); sie oeffnet sich per Reiter, Chat-Anforderung oder neuer Nachricht.
+  document.documentElement.classList.add('sidebar-right-collapsed');
+  // Eingebettete Ansicht (PDH-Viewer): window.name bleibt bei Navigation
+  // im iframe erhalten, daher bleiben auch Folgeseiten ohne Navigation.
+  if(window.name === 'pdh-embed' || /[?&]embed=1(&|$)/.test(location.search)) document.documentElement.classList.add('pdh-embedded');
+})();
+</script>
+<script src="{{vendorURL "htmx/htmx.min.js"}}"></script>
+{{template "request-once-script"}}
+{{iconCSSLinks}}
+<link rel="stylesheet" href="{{uiURL "tokens.css"}}">
+<link rel="stylesheet" href="{{uiURL "pdh.css"}}">
+<style id="pdh-theme">{{.Brand.ThemeCSS}}</style>
+{{template "timeline-style" .Brand.Timeline}}
+{{with .Look.FontHref}}<link rel="stylesheet" id="pdh-font" href="{{.}}">{{end}}
+<style id="pdh-ui">{{.Look.CSS}}
+/* Groesse: zoom auf die ganze Seite; Hoehe ausgleichen, damit 100vh passt */
+body{zoom:var(--ui-scale);height:calc(100vh / var(--ui-scale));height:calc(100dvh / var(--ui-scale))}
+/* Zeilenhoehe: zoom auf Tabellen und Listenzeilen, Schrift und Abstaende
+   wachsen gemeinsam (Handbuch und Kontexthilfe bleiben unveraendert) */
+table,.li,.act-item,.rec-row{zoom:var(--row-scale,1)}
+.ctx-help table,.hb-ch table{zoom:1}</style>{{end}}
+{{/* Spiegelhinweis und Wartungsband */}}
+{{define "ui-bands"}}  {{with .Mirror}}{{$m := .}}{{$ok := or .ActiveSeen .Restricted (not .Known)}}
+  <div class="mirror-band {{if $ok}}warn{{else}}err{{end}}" role="status">
+    <i class="ti {{if $ok}}ti-eye{{else}}ti-alert-triangle{{end}}"></i>
+    <b>{{t "Spiegel – nur lesen"}}</b>
+    {{- if .Restricted}}<span>· {{if .Reason}}{{t .Reason}}{{else}}{{t "Spiegel wartet auf das Update des aktiven Servers"}}{{end}}</span>
+    {{- else if .ActiveSeen}}<span>· {{if .Current}}{{t "Datenstand aktuell"}}{{else if .Lag}}{{t "Datenstand vor %s" .Lag}}{{else}}{{t "Datenstand unbekannt"}}{{end}}</span>
+      {{- with .ActiveURL}}<span>· {{t "Aktiver Server:"}} <span class="mb-host" translate="no">{{$m.ActiveHost}}</span></span> <a class="btn btn-small" href="{{.}}">{{t "öffnen"}}</a>{{end}}
+    {{- else if not .Known}}<span>· {{t "Status des aktiven Servers unbekannt"}}</span><span>· {{if .Current}}{{t "Datenstand aktuell"}}{{else if .Lag}}{{t "Datenstand vor %s" .Lag}}{{else}}{{t "Datenstand unbekannt"}}{{end}}</span>
+    {{- else}}<span>· {{if .DataAt}}{{t "Aktiver Server nicht erreichbar – Daten vom %s" .DataAt}}{{else}}{{t "Aktiver Server nicht erreichbar"}} · {{t "Datenstand unbekannt"}}{{end}}</span>{{end}}
+    {{- if and .Admin (not .ActiveSeen)}}<a class="btn btn-small mb-ha" href="/admin/server-config?tab=dr"><i class="ti ti-shield-check"></i> {{t "Ausfallschutz"}}</a>{{end}}
+  </div>
+  {{end}}
+  <div class="maint-band" id="maint-band" role="status" hidden>
+    <i class="ti ti-tool"></i>
+    <b id="maint-band-text"></b>
+    <span class="mb-act"></span>
+  </div>{{end}}
+{{/* Override-Anmeldung, Hintergrund der Überlagerungen, Assistenten, Rundgang */}}
+{{define "ui-overlays"}}{{if .IsSystemUser}}{{if not .IsOverrideSession}}
+<!-- Override-Anmeldung: kurzzeitig mit eigenem Konto an einem Systemnutzer-Terminal anmelden -->
+<div id="override-login-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:300;align-items:center;justify-content:center">
+  <div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:24px;width:100%;max-width:380px;margin:20px;box-shadow:0 20px 60px rgba(0,0,0,.4)">
+    <div style="font-size:15px;font-weight:600;margin-bottom:6px">{{t "Anmelden zur Erledigung"}}</div>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:16px">{{t "Du meldest dich kurz mit deinem eigenen Konto an diesem Systemnutzer-Terminal an. Nach %d Minuten Inaktivität (oder per Klick auf „Zurück“) kehrt das Terminal automatisch zum Systemnutzer zurück." .OverrideTimeoutMinutes}}</p>
+    <form method="POST" action="/override-login">
+      <div class="form-group">
+        <label class="form-label">{{t "E-Mail oder Benutzername"}}</label>
+        <input type="text" name="email" class="form-input" required autofocus>
+      </div>
+      <div class="form-group">
+        <label class="form-label">{{t "Passwort"}}</label>
+        <input type="password" name="password" class="form-input" required>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
+        <button type="button" class="btn" onclick="document.getElementById('override-login-modal').style.display='none'">{{t "Abbrechen"}}</button>
+        <button type="submit" class="btn btn-primary">{{t "Anmelden"}}</button>
+      </div>
+    </form>
+    <div style="display:flex;align-items:center;gap:10px;margin:16px 0;color:var(--muted);font-size:11px">
+      <div style="flex:1;height:1px;background:var(--border)"></div>{{t "ODER"}}<div style="flex:1;height:1px;background:var(--border)"></div>
+    </div>
+    <form method="POST" action="/override-login/rfid">
+      <div class="form-group">
+        <label class="form-label">{{t "RFID-Karte"}}</label>
+        <input type="text" name="uid" class="form-input" placeholder="{{t "Karte an den Leser halten …"}}" autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();this.form.submit();}">
+      </div>
+    </form>
+  </div>
+</div>
+{{end}}{{end}}
+
+<!-- ── Kontext-Spalte ── -->
+<div class="pdh-backdrop" onclick="pdhCloseOverlays()" aria-hidden="true"></div>
+{{template "completion-wizard"}}
+{{template "create-wizard" (dict "Board" false)}}
+{{template "kvp-wizard"}}
+{{template "app-tour"}}{{end}}
+{{/* Rechte Leiste: Chat, Suche, Copilot, Aktivität, Liste, Hilfe; Block "context-list" der Seiten */}}
+{{define "ui-context"}}<aside class="context">
+  <div class="ctx-tabs" aria-label="Kontextauswahl">
+    {{if and .CanChat (ne .Page "chat")}}<button type="button" class="ctx-tab" data-context-tab="chat" onclick="activateContextTab('chat')" title="{{t "Chat"}}" aria-label="{{t "Chat"}}"><i class="ti ti-messages"></i><span class="ctx-vlabel">{{t "Chat"}}</span><span class="ctx-badge" id="ctx-chat-badge" style="display:none"></span></button>{{end}}
+    <button type="button" class="ctx-tab" data-context-tab="search" onclick="activateContextTab('search')" title="{{t "Suche"}}" aria-label="{{t "Suche"}}"><i class="ti ti-search"></i><span class="ctx-vlabel">{{t "Suche"}}</span></button>
+    <button type="button" class="ctx-tab" data-context-tab="copilot" onclick="activateContextTab('copilot')" title="{{t "Copilot"}}" aria-label="{{t "Copilot"}}"><i class="ti ti-brain"></i><span class="ctx-vlabel">{{t "Copilot"}}</span></button>
+    <button type="button" class="ctx-tab" data-context-tab="activity" onclick="activateContextTab('activity')" title="{{t "Aktivität"}}" aria-label="{{t "Aktivität"}}"><i class="ti ti-bell"></i><span class="ctx-vlabel">{{t "Aktivität"}}</span></button>
+    <button type="button" class="ctx-tab" data-context-tab="list" onclick="activateContextTab('list')" title="{{t "Auswahl"}}" aria-label="{{t "Auswahl"}}"><i class="ti ti-list"></i><span class="ctx-vlabel">{{if .ContextTitle}}{{.ContextTitle}}{{else}}{{t "Auswahl"}}{{end}}</span></button>
+    <button type="button" class="ctx-tab" data-context-tab="help" onclick="activateContextTab('help')" title="{{t "Hilfe"}}" aria-label="{{t "Hilfe"}}"><i class="ti ti-help"></i><span class="ctx-vlabel">{{t "Hilfe"}}</span></button>
+    <button type="button" class="sidebar-toggle" onclick="toggleSidebar('right')" aria-label="{{t "Kontext einklappen"}}" title="{{t "Kontext einklappen"}}" style="margin-top:auto"><i class="ti ti-menu-2"></i></button>
+  </div>
+  <div class="ctx-panel-wrap">
+  {{if and .CanChat (ne .Page "chat")}}
+  <!-- Chat -->
+  <div class="ctx-section sc-panel" data-context-panel="chat">
+    <div class="sc-head">
+      <button type="button" class="sc-btn" id="sc-back" title="{{t "Alle Chats"}}" style="display:none"><i class="ti ti-arrow-left"></i></button>
+      <div class="sc-htitle" id="sc-title">{{t "Chat"}}</div>
+      <a class="sc-btn" id="sc-full" href="/chat" title="{{t "Im Vollbild öffnen"}}"><i class="ti ti-arrows-maximize"></i></a>
+      <button type="button" class="sc-btn" onclick="setRightSidebar(false)" title="{{t "Seitenleiste schließen"}}"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="sc-share" id="sc-share" style="display:none"></div>
+    <div class="sc-body" id="sc-body"><div class="sc-empty">{{t "Wird geladen …"}}</div></div>
+    <div class="sc-compose" id="sc-compose" style="display:none">
+      <textarea id="sc-input" rows="2" placeholder="{{t "Nachricht … (Enter = senden)"}}"></textarea>
+      <button type="button" class="sc-btn sc-send" id="sc-send" title="{{t "Senden"}}"><i class="ti ti-send"></i></button>
+    </div>
+  </div>
+  {{end}}
+  <!-- Suche -->
+  <div class="ctx-section active" data-context-panel="search">
+    <div class="ctx-title"><i class="ti ti-search"></i>{{t "Suche"}}</div>
+    <div class="search-box">
+      <i class="ti ti-search"></i>
+      <input placeholder="{{t "Anlage, Ticket, Teil …"}}"
+        hx-get="/api/search"
+        hx-trigger="keyup changed delay:400ms"
+        hx-target="#search-results"
+        hx-include="this"
+        name="q"
+        id="search-input">
+    </div>
+    <div id="search-results" style="margin-top:8px;font-size:12px;color:var(--muted)"></div>
+  </div>
+
+  <!-- Copilot -->
+  <div class="ctx-section" data-context-panel="copilot">
+    <div class="ctx-title"><i class="ti ti-brain"></i>{{t "Copilot"}}</div>
+    <div class="cop-sug" id="cop-suggest" hidden></div>
+    <div class="copilot-msgs" id="cop-msgs">
+      <div class="cop-hint">{{t "Frag nach Störungen, Anlagen, Wartungen oder Ersatzteilen – der Copilot sucht in euren PDH-Daten …"}}</div>
+    </div>
+    <div class="copilot-input">
+      <input placeholder="{{t "Frage stellen …"}}" id="cop-in"
+        onkeydown="if(event.key==='Enter')sendCop()">
+      <button class="cop-btn" onclick="sendCop()">{{t "Senden"}}</button>
+    </div>
+    {{if .CopilotConn}}{{if not .CopilotNoWeb}}<label class="cop-web"><input type="checkbox" id="cop-web"> <span>{{t "Im Internet nach einer Vorlage suchen"}}<small>{{t "Dabei geht nur deine Frage ins Internet – keine Daten aus dem PDH."}}</small></span></label>{{end}}
+    <div class="cop-privacy"><i class="ti ti-shield-lock"></i> {{t "Auf dieser Seite gehen Quellwerte und Anlagennamen an Anthropic – Kennwörter nie."}}</div>{{end}}
+  </div>
+
+  <!-- Aktivität -->
+  <div class="ctx-section grow" data-context-panel="activity">
+    <div class="ctx-title"><i class="ti ti-bell"></i>{{t "Aktivität"}}</div>
+    {{template "presence-style"}}
+    <div id="pres-box" hx-get="/api/presence" hx-trigger="load, every 30s [document.visibilityState === 'visible'], visibilitychange[document.visibilityState === 'visible'] from:document" aria-live="polite">
+      <div style="font-size:11px;color:var(--muted)">{{t "Lädt …"}}</div>
+    </div>
+    <div id="activity-feed"
+      hx-get="/api/activity"
+      hx-trigger="load, every 30s [document.visibilityState === 'visible'], visibilitychange[document.visibilityState === 'visible'] from:document">
+      <div style="font-size:11px;color:var(--muted)">{{t "Lädt …"}}</div>
+    </div>
+  </div>
+
+  <!-- Kontext-Liste (seitenabhängig) -->
+  <div class="ctx-section" data-context-panel="list">
+    <div class="ctx-title"><i class="ti ti-list"></i>{{.ContextTitle}}</div>
+    <div id="ctx-list">
+      {{block "context-list" .}}
+      <div style="font-size:11px;color:var(--muted)">{{t "Keine Einträge"}}</div>
+      {{end}}
+    </div>
+  </div>
+  <div class="ctx-section" data-context-panel="help">
+    <div class="ctx-title"><i class="ti ti-help"></i>{{t "Hilfe"}}</div>
+    <!-- Kontexthilfe: passendes Handbuchkapitel zur aktuellen Seite (geladen aus /help) -->
+    <div id="ctx-help" class="ctx-help" data-page="{{.Page}}"><div style="color:var(--muted)">{{t "Hilfe wird geladen …"}}</div></div>
+    <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">
+      <button type="button" class="btn btn-small btn-primary" id="ctx-help-tour" onclick="pdhTour.startPage()"><i class="ti ti-map-2"></i> {{t "Rundgang für diese Seite"}}</button>
+      <a class="btn btn-small" id="ctx-help-chapter" href="/help"><i class="ti ti-book"></i> {{t "Im Handbuch öffnen"}}</a>
+      <a class="btn btn-small" href="/help"><i class="ti ti-list"></i> Inhalt</a>
+    </div>
+  </div>
+  </div>
+</aside>{{end}}
+{{/* Statusleiste (global-status-footer) */}}
+{{define "ui-footer"}}<footer class="global-footer ok" id="global-status-footer" aria-live="polite">
+  <div class="footer-status-left">
+    <span class="footer-status-dot" id="footer-status-dot"></span>
+    <span id="footer-status-text">Bereit</span>
+  </div>
+  <div class="footer-progress" role="progressbar" aria-label="Statusfortschritt" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="footer-progress">
+    <div class="footer-progress-fill" id="footer-progress-fill"></div>
+    <span class="footer-progress-label" id="footer-progress-label"></span>
+  </div>
+  <div class="footer-status-error" id="footer-status-error">Keine Fehler</div>
+</footer>{{end}}
+{{/* Skripte am Seitenende samt Block "scripts" der Seiten */}}
+{{define "ui-scripts"}}<script src="{{uiURL "pdh-app.js"}}"></script>
+<script src="{{uiURL "pdh-viewer.js"}}"></script>
+{{if and .CanChat (ne .Page "chat")}}
+<script src="{{uiURL "pdh-chat-sidebar.js"}}"></script>
+{{end}}
+<script>
+document.addEventListener('click', function(e){
+  const a = e.target.closest('[data-frame],[data-frame-external]');
+  if(!a || e.ctrlKey || e.metaKey || e.shiftKey || e.button !== 0) return;
+  // Innerhalb einer eingebetteten Ansicht normal navigieren (kein Overlay im Overlay)
+  if(document.documentElement.classList.contains('pdh-embedded') && a.hasAttribute('data-frame')) return;
+  e.preventDefault();
+  e.stopPropagation();
+  openPdhFrame(a.getAttribute('href') || a.dataset.href, a.dataset.frameTitle || a.textContent.trim(), a.hasAttribute('data-frame-external'));
+}, true);
+</script>
+<script src="{{uiURL "pdh-reservation.js"}}"></script>
+{{block "scripts" .}}{{end}}
+<script src="{{uiURL "pdh-live-translate.js"}}"></script>
+
+<script src="{{uiURL "pdh-maint-band.js"}}"></script>
+
+{{if .PushEnabled}}
+<!-- Push-Benachrichtigungen (push.go, /sw.js): Geraet anmelden und „Anlage steht“-Alarm im Vollbild -->
+<div id="pdh-alarm" hidden role="alertdialog" aria-modal="true" aria-labelledby="pdh-alarm-title">
+  <div class="pa-box">
+    <div class="pa-kind"><i class="ti ti-alert-octagon"></i> <span id="pdh-alarm-kind"></span> · Anlage steht</div>
+    <h2 id="pdh-alarm-title"></h2>
+    <div class="pa-body" id="pdh-alarm-body"></div>
+    <div class="pa-more" id="pdh-alarm-more"></div>
+    <button type="button" class="pa-accept" id="pdh-alarm-accept"><i class="ti ti-hand-grab"></i> Annehmen</button>
+    <div class="pa-row"><a class="pa-btn" id="pdh-alarm-open" href="#"><i class="ti ti-eye"></i> Ansehen</a><button type="button" class="pa-btn" id="pdh-alarm-snooze">2 Min. ausblenden</button></div>
+    <div class="pa-msg" id="pdh-alarm-msg" role="alert"></div>
+  </div>
+</div>
+<style>
+#pdh-alarm{position:fixed;inset:0;z-index:2000;display:flex;align-items:center;justify-content:center;padding:18px;background:linear-gradient(170deg,#7f1d1d,#b91c1c 55%,#450a0a);color:#fff;animation:pa-pulse 1.6s ease-in-out infinite}
+@keyframes pa-pulse{50%{filter:brightness(1.18)}}
+#pdh-alarm[hidden]{display:none}
+.pa-box{width:min(560px,100%);display:flex;flex-direction:column;gap:12px}
+.pa-kind{font-size:15px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;display:flex;gap:8px;align-items:center}
+.pa-kind i{font-size:24px}
+#pdh-alarm h2{font-size:clamp(24px,6vw,36px);line-height:1.15;overflow-wrap:anywhere}
+.pa-body{font-size:17px;line-height:1.45;white-space:pre-wrap;opacity:.9;overflow-wrap:anywhere;max-height:40vh;overflow:auto}
+.pa-more{font-size:13px;opacity:.8}
+.pa-accept{min-height:90px;border:0;border-radius:16px;background:#10b981;color:#fff;font:inherit;font-size:25px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:10px;cursor:pointer;box-shadow:0 10px 30px rgba(0,0,0,.35)}
+.pa-accept i{font-size:32px}
+.pa-accept:disabled{opacity:.6}
+.pa-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.pa-btn{min-height:54px;border:0;border-radius:14px;background:rgba(255,255,255,.16);color:#fff;font:inherit;font-size:16px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:8px;text-decoration:none;cursor:pointer}
+.pa-msg{min-height:20px;text-align:center;font-size:14px}
+</style>
+<script src="{{uiURL "pdh-push.js"}}"></script>
+{{end}}
+
+<script>
+// Microsoft (und andere Anbieter) verbieten ihre Anmeldeseite im Frame
+// („login.microsoftonline.com hat die Verbindung verweigert“). Läuft das PDH
+// eingebettet (Nextcloud-App, Frame-Overlay), Anmeldung im neuen Tab öffnen.
+document.addEventListener('submit', function (e) {
+  var f = e.target;
+  if (!f.matches || !f.matches('form[data-oauth]')) return;
+  var framed = false;
+  try { framed = window.top !== window.self; } catch (err) { framed = true; }
+  if (framed) f.target = '_blank';
+}, true);
+</script>{{end}}
+{{/* Skripte und Stil nach </html> (Stand vor 0.90.0, unverändert übernommen) */}}
+{{define "ui-tail"}}<script src="{{uiURL "pdh-upload.js"}}"></script>
+<script src="{{uiURL "pdh-attachments.js"}}"></script>
+<style>
+.pdh-sg{position:fixed;z-index:7000;background:var(--bg2);border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.3);font-size:12.5px;max-width:min(560px,calc(100vw - 16px));overflow:hidden}
+.pdh-sg div{padding:6px 10px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pdh-sg div.on{background:var(--bg3)}
+.pdh-sg .g{color:var(--muted)}
+.pdh-sg .hint{font-size:10.5px;color:var(--muted);padding:4px 10px;border-top:1px solid var(--border);cursor:default}
+</style>
+<script src="{{uiURL "pdh-suggest.js"}}"></script>{{end}}

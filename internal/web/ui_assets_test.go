@@ -227,14 +227,20 @@ func baseWithUI(t *testing.T) string {
 	return sb.String()
 }
 
-// baseSource: Quelltext von base.gohtml ohne CR (Zeilenenden je nach Arbeitskopie).
+// baseSource: Quelltext des klassischen Rahmens ohne CR – base.gohtml samt der
+// gemeinsamen Bausteine aus widgets/frame_shared.gohtml (seit 0.82.63).
 func baseSource(t *testing.T) string {
 	t.Helper()
-	b, err := os.ReadFile(filepath.Join("..", "..", "web", "templates", "base.gohtml"))
-	if err != nil {
-		t.Fatal(err)
+	var sb strings.Builder
+	for _, f := range []string{"base.gohtml", filepath.Join("widgets", "frame_shared.gohtml")} {
+		b, err := os.ReadFile(filepath.Join("..", "..", "web", "templates", f))
+		if err != nil {
+			t.Fatal(err)
+		}
+		sb.WriteString(strings.ReplaceAll(string(b), "\r", ""))
+		sb.WriteString("\n")
 	}
-	return strings.ReplaceAll(string(b), "\r", "")
+	return sb.String()
 }
 
 func TestUICSSComplete(t *testing.T) {
