@@ -1,0 +1,57 @@
+/* Gestaltungswerte des PDH (0.90.0 Teil 1). Einzige Stelle für Farben, Abstände,
+   Schrift, Ecken und Schatten; Seiten nehmen nur var(--…). Übersicht im PDH unter
+   Verwaltung → Gestaltung. Reihenfolge der Blöcke = Reihenfolge der Kaskade. */
+/* Farben im Stil von Windows 11 (Fluent): neutrale Grautöne, Akzent aus dem
+   Erscheinungsbild (pdh-theme) überschreibt --accent */
+:root{
+  --bg:#202020;--bg2:#2b2b2b;--bg3:#323232;
+  --accent:#4f8ef7;--accent2:#7c3aed;--accent-rgb:79,142,247;--on-accent:#fff;
+  --text:#f3f3f3;--muted:#a3a3a3;--border:#3b3b3b;
+  --green:#10b981;--amber:#f59e0b;--red:#ef4444;
+  --font:'Segoe UI Variable Text','Segoe UI Variable','Segoe UI','DM Sans',system-ui,sans-serif
+}
+html[data-theme="light"]{
+  --bg:#f3f3f3;--bg2:#ffffff;--bg3:#f9f9f9;
+  --accent:#005fb8;--accent2:#6d28d9;--accent-rgb:0,95,184;--on-accent:#fff;
+  --text:#1b1b1b;--muted:#5f5f5f;--border:#e2e2e2;
+  --green:#059669;--amber:#d97706;--red:#dc2626
+}
+/* ── Windows-11-Optik (Fluent) ─────────────────────────────────
+   Mica: Navigation und Kopfzeile liegen auf dem Fensterhintergrund, der
+   Inhalt ist eine hellere Ebene mit runder Ecke. Steuerelemente mit 4 px,
+   Karten mit 8 px Radius, feine Linien statt kräftiger Rahmen. */
+:root{--stroke:rgba(255,255,255,.07);--stroke-strong:rgba(255,255,255,.14);--fill-hover:rgba(255,255,255,.06);--fill-press:rgba(255,255,255,.04);
+  --shadow-card:0 1px 2px rgba(0,0,0,.25);--shadow-flyout:0 8px 24px rgba(0,0,0,.35);--layer:#272727}
+html[data-theme="light"]{--stroke:rgba(0,0,0,.07);--stroke-strong:rgba(0,0,0,.16);--fill-hover:rgba(0,0,0,.04);--fill-press:rgba(0,0,0,.025);
+  --shadow-card:0 1px 2px rgba(0,0,0,.05);--shadow-flyout:0 8px 24px rgba(0,0,0,.14);--layer:#fafafa}
+/* ── SAP-Fiori-Optik (Horizon), Design-Stil „fiori“ (ui_style.go) ──────
+   Weiße Kopfleiste und Navigation mit Schatten auf grauem Grund, Karten
+   ohne Rahmen mit 12 px Ecke, Knöpfe mit 8 px Ecke (Standard: weiß mit
+   blauer Schrift, hervorgehoben: Akzentfläche), Reiter mit durchgehender
+   Unterstreichung. Der Akzent bleibt beim Farbschema. */
+html[data-style="fiori"]{
+  --bg:#12171c;--bg2:#1d232a;--bg3:#242c35;--layer:#12171c;
+  --text:#eaecee;--muted:#a9b4be;--border:#3a4552;
+  --stroke:rgba(234,236,238,.12);--stroke-strong:rgba(234,236,238,.24);--fill-hover:rgba(234,236,238,.07);--fill-press:rgba(234,236,238,.04);
+  --shadow-card:0 0 2px rgba(0,0,0,.5),0 2px 4px rgba(0,0,0,.5);--shadow-flyout:0 0 2px rgba(0,0,0,.6),0 8px 16px rgba(0,0,0,.6);
+  --field-border:#8396a8;--btn-border:#8396a8
+}
+html[data-style="fiori"][data-theme="light"]{
+  --bg:#f5f6f7;--bg2:#ffffff;--bg3:#eff1f2;--layer:#f5f6f7;
+  --text:#1d2d3e;--muted:#556b82;--border:#d9d9d9;
+  --stroke:rgba(34,53,72,.12);--stroke-strong:rgba(34,53,72,.24);--fill-hover:rgba(34,53,72,.05);--fill-press:rgba(34,53,72,.08);
+  --shadow-card:0 0 2px rgba(34,53,72,.2),0 2px 4px rgba(34,53,72,.2);--shadow-flyout:0 0 2px rgba(34,53,72,.2),0 8px 16px rgba(34,53,72,.15);
+  --field-border:#556b82;--btn-border:#bcc3ca
+}
+/* Neue Gestaltungswerte (0.90.0): Abstände im 4/8-px-Raster, wenige Schriftgrößen,
+   kleine Ecken, Schatten nur für Schwebendes. Statusfarben folgen Stil und
+   Helligkeit über die Grundfarben – kein eigener fester Wert. */
+:root{
+  --sp-1:4px;--sp-2:8px;--sp-3:12px;--sp-4:16px;--sp-6:24px;
+  --fs-xs:12px;--fs-sm:13px;--fs-md:14px;--fs-lg:16px;--fs-xl:20px;
+  --r-s:4px;--r-m:8px;
+  --shadow-float:var(--shadow-flyout);
+  --ok:var(--green);--warn:var(--amber);--err:var(--red);--info:var(--accent);
+  --ok-soft:color-mix(in srgb,var(--ok) 14%,transparent);--warn-soft:color-mix(in srgb,var(--warn) 16%,transparent);
+  --err-soft:color-mix(in srgb,var(--err) 14%,transparent);--info-soft:color-mix(in srgb,var(--info) 12%,transparent)
+}

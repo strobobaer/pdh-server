@@ -1,20 +1,8 @@
 *{box-sizing:border-box;margin:0;padding:0}
-/* Farben im Stil von Windows 11 (Fluent): neutrale Grautöne, Akzent aus dem
-   Erscheinungsbild (pdh-theme) überschreibt --accent */
+/* Breite der Seitenleisten (Layout, keine Gestaltungswerte) */
 :root{
-  --bg:#202020;--bg2:#2b2b2b;--bg3:#323232;
-  --accent:#4f8ef7;--accent2:#7c3aed;--accent-rgb:79,142,247;--on-accent:#fff;
-  --text:#f3f3f3;--muted:#a3a3a3;--border:#3b3b3b;
-  --green:#10b981;--amber:#f59e0b;--red:#ef4444;
-  --font:'Segoe UI Variable Text','Segoe UI Variable','Segoe UI','DM Sans',system-ui,sans-serif;
   --left-open-w:200px;--right-open-w:260px;
   --left-sidebar-w:var(--left-open-w);--right-sidebar-w:var(--right-open-w)
-}
-html[data-theme="light"]{
-  --bg:#f3f3f3;--bg2:#ffffff;--bg3:#f9f9f9;
-  --accent:#005fb8;--accent2:#6d28d9;--accent-rgb:0,95,184;--on-accent:#fff;
-  --text:#1b1b1b;--muted:#5f5f5f;--border:#e2e2e2;
-  --green:#059669;--amber:#d97706;--red:#dc2626
 }
 body{background:var(--bg);color:var(--text);font-family:var(--font);display:flex;flex-direction:column;height:100vh;overflow:hidden}
 a{color:inherit;text-decoration:none}
@@ -581,14 +569,6 @@ select.form-input option{background:var(--bg2)}
   .print-brand .pb-date{margin-left:auto}
   .print-brand .pb-addr{display:block;font-size:10px;color:#666}
 }
-/* ── Windows-11-Optik (Fluent) ─────────────────────────────────
-   Mica: Navigation und Kopfzeile liegen auf dem Fensterhintergrund, der
-   Inhalt ist eine hellere Ebene mit runder Ecke. Steuerelemente mit 4 px,
-   Karten mit 8 px Radius, feine Linien statt kräftiger Rahmen. */
-:root{--stroke:rgba(255,255,255,.07);--stroke-strong:rgba(255,255,255,.14);--fill-hover:rgba(255,255,255,.06);--fill-press:rgba(255,255,255,.04);
-  --shadow-card:0 1px 2px rgba(0,0,0,.25);--shadow-flyout:0 8px 24px rgba(0,0,0,.35);--layer:#272727}
-html[data-theme="light"]{--stroke:rgba(0,0,0,.07);--stroke-strong:rgba(0,0,0,.16);--fill-hover:rgba(0,0,0,.04);--fill-press:rgba(0,0,0,.025);
-  --shadow-card:0 1px 2px rgba(0,0,0,.05);--shadow-flyout:0 8px 24px rgba(0,0,0,.14);--layer:#fafafa}
 body{background:var(--bg);-webkit-font-smoothing:antialiased}
 .sidebar,.context,.ctx-tabs{background:var(--bg);border-color:transparent}
 .logo{border-bottom-color:transparent}
@@ -655,25 +635,6 @@ tr:hover td{background:var(--fill-hover)}
 @media (max-width:760px){.main{border-radius:0;border-left:0}}
 /* Touch (Tablet an der Anlage): Ziele groß genug lassen */
 @media (pointer:coarse){.btn{min-height:42px}.btn-small{min-height:40px}.btn-icon{width:42px;min-width:42px;height:42px}}
-/* ── SAP-Fiori-Optik (Horizon), Design-Stil „fiori“ (ui_style.go) ──────
-   Weiße Kopfleiste und Navigation mit Schatten auf grauem Grund, Karten
-   ohne Rahmen mit 12 px Ecke, Knöpfe mit 8 px Ecke (Standard: weiß mit
-   blauer Schrift, hervorgehoben: Akzentfläche), Reiter mit durchgehender
-   Unterstreichung. Der Akzent bleibt beim Farbschema. */
-html[data-style="fiori"]{
-  --bg:#12171c;--bg2:#1d232a;--bg3:#242c35;--layer:#12171c;
-  --text:#eaecee;--muted:#a9b4be;--border:#3a4552;
-  --stroke:rgba(234,236,238,.12);--stroke-strong:rgba(234,236,238,.24);--fill-hover:rgba(234,236,238,.07);--fill-press:rgba(234,236,238,.04);
-  --shadow-card:0 0 2px rgba(0,0,0,.5),0 2px 4px rgba(0,0,0,.5);--shadow-flyout:0 0 2px rgba(0,0,0,.6),0 8px 16px rgba(0,0,0,.6);
-  --field-border:#8396a8;--btn-border:#8396a8
-}
-html[data-style="fiori"][data-theme="light"]{
-  --bg:#f5f6f7;--bg2:#ffffff;--bg3:#eff1f2;--layer:#f5f6f7;
-  --text:#1d2d3e;--muted:#556b82;--border:#d9d9d9;
-  --stroke:rgba(34,53,72,.12);--stroke-strong:rgba(34,53,72,.24);--fill-hover:rgba(34,53,72,.05);--fill-press:rgba(34,53,72,.08);
-  --shadow-card:0 0 2px rgba(34,53,72,.2),0 2px 4px rgba(34,53,72,.2);--shadow-flyout:0 0 2px rgba(34,53,72,.2),0 8px 16px rgba(34,53,72,.15);
-  --field-border:#556b82;--btn-border:#bcc3ca
-}
 /* Kopfleiste und Navigation: weiße Flächen mit Schatten */
 html[data-style="fiori"] .topbar{background:var(--bg2);height:52px;box-shadow:var(--shadow-card);position:relative;z-index:30}
 html[data-style="fiori"] .sidebar,html[data-style="fiori"] .context,html[data-style="fiori"] .ctx-tabs{background:var(--bg2)}
