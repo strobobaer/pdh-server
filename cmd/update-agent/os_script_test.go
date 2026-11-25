@@ -40,7 +40,7 @@ func osScriptEnv(t *testing.T) *osScriptEnvT {
 	e.write(filepath.Join(e.stubs, "apt-get"), "#!/bin/bash\necho \"$*\" >> \"$LOG\"\necho \"DEBIAN_FRONTEND=$DEBIAN_FRONTEND NEEDRESTART_MODE=$NEEDRESTART_MODE\" >> \"$LOG\"\nexit \"${APT_RC:-0}\"\n", 0o755)
 	e.write(filepath.Join(e.stubs, "apt"), osListStub, 0o755)
 	e.write(filepath.Join(e.stubs, "uname"), "#!/bin/bash\necho 6.12.0-test\n", 0o755)
-	e.write(filepath.Join(e.stubs, "dpkg"), "#!/bin/bash\necho \"dpkg $*\" >> \"$LOG\"\n", 0o755)
+	e.write(filepath.Join(e.stubs, "dpkg"), "#!/bin/bash\n[ \"$1\" = --print-architecture ] && { echo amd64; exit 0; }\necho \"dpkg $*\" >> \"$LOG\"\n", 0o755)
 	e.write(filepath.Join(e.root, "etc", "os-release"), "PRETTY_NAME=\"Debian GNU/Linux 13 (trixie)\"\n", 0o644)
 	if err := os.WriteFile(e.log, nil, 0o644); err != nil {
 		t.Fatal(err)
@@ -373,7 +373,8 @@ func TestOSScriptRebootRunningNewerOrOlderInstalled(t *testing.T) {
 // Der Kernelname aus /boot muss einfache Zeichen haben, sonst wird die Datei ignoriert.
 func TestOSScriptRebootIgnoresOddKernelName(t *testing.T) {
 	e := osScriptEnv(t)
-	e.osKernels("6.12.118+deb13-amd64", "6.12.118+deb13-amd64", "6.12.200 x;y")
+	// gleiche Variante (amd64) und neuer: nur die Zeichenprüfung schließt die Datei aus
+	e.osKernels("6.12.118+deb13-amd64", "6.12.118+deb13-amd64", "6.12.200;x+deb13-amd64")
 	s := e.status()
 	if s.RebootRequired || len(s.RebootPkgs) != 0 {
 		t.Errorf("Datei mit ungültigem Namen darf nicht zählen: %+v", s)
@@ -438,10 +439,27 @@ func TestOSScriptHeldPackages(t *testing.T) {
 	if s.HeldCount != 1 || len(s.Upgradable) != 3 {
 		t.Errorf("libfoo:i386: held %d, upgradable %d", s.HeldCount, len(s.Upgradable))
 	}
+	// Ein Hold gilt nur für seine Architektur: „libfoo:i386“ hält libfoo amd64 nicht zurück,
+	// ein Hold ohne Zusatz gilt für die eigene Architektur (amd64) und „all“, nicht für i386.
+	e.write(filepath.Join(e.stubs, "apt"), osListStub+
+		"echo \"libfoo/stable 1.1 i386 [upgradable from: 1.0]\"\n"+
+		"echo \"libfoo/stable 1.1 amd64 [upgradable from: 1.0]\"\n"+
+		"echo \"libbar/stable 2.1 amd64 [upgradable from: 2.0]\"\n"+
+		"echo \"libbaz/stable 3.1 i386 [upgradable from: 3.0]\"\n"+
+		"echo \"docs/stable 4.1 all [upgradable from: 4.0]\"\n", 0o755)
+	e.write(filepath.Join(e.stubs, "apt-mark"), "#!/bin/bash\n[ \"$1\" = showhold ] || exit 1\nprintf 'libfoo:i386\\nlibbar:amd64\\nlibbaz\\ndocs\\n'\n", 0o755)
+	s = e.status()
+	got := map[string]bool{}
+	for _, p := range s.Upgradable {
+		got[p.Name] = true
+	}
+	if s.HeldCount != 3 || len(s.Upgradable) != 5 || !got["libfoo"] || !got["libbaz"] || got["libbar"] || got["docs"] {
+		t.Errorf("Architektur: held %d, upgradable %+v", s.HeldCount, s.Upgradable)
+	}
 	// apt-mark scheitert: held_count 0, Rest unverändert
 	e.write(filepath.Join(e.stubs, "apt-mark"), "#!/bin/bash\nexit 1\n", 0o755)
 	s = e.status()
-	if s.HeldCount != 0 || len(s.Upgradable) != 4 || s.SecurityCount != 2 {
+	if s.HeldCount != 0 || len(s.Upgradable) != 8 || s.SecurityCount != 2 {
 		t.Errorf("apt-mark-Fehler: held %d, upgradable %d, security %d", s.HeldCount, len(s.Upgradable), s.SecurityCount)
 	}
 }
