@@ -238,7 +238,7 @@ func frameSource(t *testing.T) string {
 }
 
 // baseSource: Quelltext des klassischen Rahmens ohne CR – base.gohtml samt der
-// gemeinsamen Bausteine aus widgets/frame_shared.gohtml (seit 0.82.63).
+// gemeinsamen Bausteine aus widgets/frame_shared.gohtml (seit 0.82.65).
 func baseSource(t *testing.T) string {
 	t.Helper()
 	var sb strings.Builder

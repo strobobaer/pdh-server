@@ -728,6 +728,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/storage/{id}/delete-web", h.StorageDeleteWeb) // löschen bzw. ausblenden
 	r.Get("/checklists", h.ChecklistsPage)
 	r.Post("/faults/{id}/chat-web", h.FaultChatWeb)
+	r.Get("/time/it-assets", h.TimeITAssets) // IT-Assets zum Buchen (zeit_ziele.go)
 	r.Post("/time/start-web", h.TimeStartWeb)
 	r.Post("/time/manual-web", h.TimeManualWeb)
 	r.Post("/time/{id}/stop-web", h.TimeStopWeb)
@@ -2274,6 +2275,8 @@ type TimePageData struct {
 type TimeEntryView struct {
 	ID           string
 	Description  string
+	Title        string // Anzeigetext: „Anlage: …“, „IT-Asset: …“, „Sonstiges: …“ bei Zielen ohne Vorgang, sonst die Beschreibung
+	TargetKind   string // plant, it_asset, other oder leer
 	RefTypeLabel string
 	RefTypeDot   string
 	StartedStr   string
@@ -2308,6 +2311,21 @@ func timeRefLabel(t timetracking.RefType) string {
 	}
 }
 
+// timeEntryTypeLabel: Typ einer Buchung – bei Zielen ohne Vorgang „Anlage“, „IT-Asset“ oder „Sonstiges“.
+func timeEntryTypeLabel(e *timetracking.TimeEntry) string {
+	if e.TargetKind != nil && timetracking.ValidTarget(*e.TargetKind) {
+		return timetracking.TargetLabel(*e.TargetKind)
+	}
+	return timeRefLabel(e.RefType)
+}
+
+func targetKindText(e *timetracking.TimeEntry) string {
+	if e.TargetKind != nil {
+		return *e.TargetKind
+	}
+	return ""
+}
+
 func timeRefDot(t timetracking.RefType) string {
 	switch t {
 	case timetracking.RefFault:
@@ -2335,7 +2353,9 @@ func timeEntryView(e *timetracking.TimeEntry) TimeEntryView {
 	v := TimeEntryView{
 		ID:           e.ID,
 		Description:  e.Description,
-		RefTypeLabel: timeRefLabel(e.RefType),
+		Title:        e.DisplayTitle(),
+		TargetKind:   targetKindText(e),
+		RefTypeLabel: timeEntryTypeLabel(e),
 		RefTypeDot:   timeRefDot(e.RefType),
 		StartedStr:   startedLocal.Format("15:04 02.01."),
 		StartedISO:   startedLocal.Format("2006-01-02T15:04"),
@@ -4410,25 +4430,61 @@ func (h *Handler) TimeStartWeb(w http.ResponseWriter, r *http.Request) {
 	if infraID := r.FormValue("infrastructure_id"); infraID != "" {
 		in.InfrastructureID = &infraID
 	}
-	if in.RefType == "" || in.RefID == "" {
-		http.Error(w, "Typ und Bezug fehlen", http.StatusBadRequest)
+	if !h.timeTargetInput(w, r, in) {
 		return
-	}
-	if in.Description == "" {
-		in.Description = timeRefLabel(in.RefType)
 	}
 	e, err := h.time.Start(r.Context(), in, u.ID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	if a := r.FormValue("activity_id"); a != "" && e != nil {
-		if err := h.setTimeActivity(r.Context(), e.ID, a); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
+	if !h.timeAfterStart(w, r, e, in) {
+		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// timeTargetInput liest und prüft Ziel und Bezug einer Buchung aus dem Formular (Start und manuell). Bei Ablehnung
+// ist die Antwort schon geschrieben (false).
+func (h *Handler) timeTargetInput(w http.ResponseWriter, r *http.Request, in *timetracking.CreateEntryInput) bool {
+	if a := r.FormValue("activity_id"); a != "" && !h.activityExists(r.Context(), a) {
+		http.Error(w, "Tätigkeit nicht gefunden", http.StatusBadRequest)
+		return false
+	}
+	if k := r.FormValue("target_kind"); k != "" { // Zeit ohne Vorgang: Anlage, IT-Asset, Sonstiges
+		in.TargetKind = k
+		if a := r.FormValue("it_asset_id"); a != "" {
+			in.ITAssetID = &a
+		}
+		u := getUser(r)
+		if code, msg := h.ResolveTimeTarget(r, u.ID, string(u.Role), in); code != 0 {
+			http.Error(w, msg, code)
+			return false
+		}
+		return true
+	}
+	if in.RefType == "" || in.RefID == "" {
+		http.Error(w, "Typ und Bezug fehlen", http.StatusBadRequest)
+		return false
+	}
+	if in.Description == "" {
+		in.Description = timeRefLabel(in.RefType)
+	}
+	return true
+}
+
+// timeAfterStart setzt die Tätigkeit der neuen Buchung. Bei Zielen ohne Vorgang auch ohne Tätigkeit: die
+// Kostenstelle kommt dann von der Anlage.
+func (h *Handler) timeAfterStart(w http.ResponseWriter, r *http.Request, e *timetracking.TimeEntry, in *timetracking.CreateEntryInput) bool {
+	a := r.FormValue("activity_id")
+	if e == nil || (a == "" && in.TargetKind == "") {
+		return true
+	}
+	if err := h.setTimeActivity(r.Context(), e.ID, a); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return false
+	}
+	return true
 }
 
 func (h *Handler) TimeManualWeb(w http.ResponseWriter, r *http.Request) {
@@ -4454,23 +4510,16 @@ func (h *Handler) TimeManualWeb(w http.ResponseWriter, r *http.Request) {
 	if infraID := r.FormValue("infrastructure_id"); infraID != "" {
 		in.InfrastructureID = &infraID
 	}
-	if in.RefType == "" || in.RefID == "" {
-		http.Error(w, "Typ und Bezug fehlen", http.StatusBadRequest)
+	if !h.timeTargetInput(w, r, in) {
 		return
-	}
-	if in.Description == "" {
-		in.Description = timeRefLabel(in.RefType)
 	}
 	e, err := h.time.Start(r.Context(), in, u.ID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	if a := r.FormValue("activity_id"); a != "" && e != nil {
-		if err := h.setTimeActivity(r.Context(), e.ID, a); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
+	if !h.timeAfterStart(w, r, e, in) {
+		return
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

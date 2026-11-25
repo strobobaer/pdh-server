@@ -24,7 +24,7 @@ type userRow struct {
 	broker                  [4]bool // faults, tickets, tasks, maintenance
 	active                  bool
 	ListSort                map[string]string // gemerkte Sortierwahl je Listenart (users.list_sort)
-	uiFrame                 string            // Rahmen: '' wie Firma, classic, new (users.ui_frame, Migration 225)
+	uiFrame                 string            // Rahmen: '' wie Firma, classic, new (users.ui_frame, Migration 226)
 	uiAreas                 []byte            // Reihenfolge und Favoriten der Bereiche (users.ui_areas)
 }
 

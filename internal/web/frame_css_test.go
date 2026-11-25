@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-// Regeln von frame.css und pdh-frame.js aus der Schlussprüfung von 0.82.63. Die
+// Regeln von frame.css und pdh-frame.js aus der Schlussprüfung von 0.82.65 (gebaut als 0.82.63). Die
 // Zeichenketten stehen für das Verhalten; geprüft wird es zusätzlich im Browser.
 
 func TestFrameCSSFixes(t *testing.T) {

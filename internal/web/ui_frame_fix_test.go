@@ -14,7 +14,7 @@ import (
 	"pdh/internal/core/users"
 )
 
-// Korrekturen aus der Schlussprüfung von 0.82.63 (Codex und Claude).
+// Korrekturen aus der Schlussprüfung von 0.82.65 (gebaut als 0.82.63) (Codex und Claude).
 
 // Rücksprung nach dem Umschalten: nur eigene, saubere Pfade (kein „/\“, keine
 // Steuerzeichen, die Browser zu „//fremd“ machen).

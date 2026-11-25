@@ -133,7 +133,7 @@ allein in CSS über `html[data-style="fiori"]` bzw. `"fluent"`.
   der rechten Seitenleiste).
 - Änderungen an der Kopfleiste bei 320, 390, 768, 1024 und 1366 px Breite
   sowie mit 120–160 % Größe prüfen.
-- **Neuer Rahmen** (`frame.gohtml`, seit 0.82.63, Schalter im Benutzermenü):
+- **Neuer Rahmen** (`frame.gohtml`, seit 0.82.65, Schalter im Benutzermenü):
   dieselbe Kopfleiste (`ui-topbar` in `widgets/frame_shared.gohtml`), dazu
   zwischen Titel und Uhr die Suchzeile „Was möchtest du tun?“ – sie
   schrumpft vor allen Knöpfen, bis 760 px nur noch Symbol. Gemeinsame Teile
@@ -1223,9 +1223,9 @@ und 3 drückt bis auf Weiteres der Anwender.
     alte Seite + neue Skripte während eines Updates (ein Seitenaufruf).
     „Darstellung verfeinern“ (Dichte, Modus wie System) kommt mit Teil 2.
     Nicht gemessen: 4×-Drosselung mit `deploy/lab/seitenaufbau/messung.js`.
-    **Teil 2 „Neuer Rahmen hinter dem Schalter“ = 0.82.63** (Plan
+    **Teil 2 „Neuer Rahmen hinter dem Schalter“ = 0.82.65** (gebaut als 0.82.63; main hatte inzwischen 0.82.64 mit Migration 225, deshalb 0.82.65 und Migration 226) (Plan
     `docs/superpowers/plans/2026-11-25-rahmen-neu.md`, Ledger
-    `.superpowers/sdd/2026-11-25-rahmen-neu/`; Migration 225 `users.ui_frame`,
+    `.superpowers/sdd/2026-11-25-rahmen-neu/`; Migration 226 `users.ui_frame`,
     `users.ui_areas`; kein neues Recht, Firmenvorgabe mit `system.ui_defaults`):
     zweite Wurzelvorlage `frame.gohtml` (Auswahl `frameTemplateName`, Wächter
     `TestNoDirectBaseRender`), gemeinsame Teile `widgets/frame_shared.gohtml`;
@@ -1247,7 +1247,7 @@ und 3 drückt bis auf Weiteres der Anwender.
     iframe. Bestand (auch klassisch): Statusleiste und Kopfleiste mit langem
     Titel bei 768 px und Größe 130–160 %. **Nächster Schritt: Teil 3** (Listen
     mit Detail, Vorgangs-Reiter, Vorgänge in Strg+K, „Fertigstellen“ im
-    Menüband – Punkt 10.11 des Entwurfs). Offen: 10.10.0.202 auf 0.82.62/0.82.63
+    Menüband – Punkt 10.11 des Entwurfs). Offen: 10.10.0.202 auf 0.82.65
     (Anwender, mit Sicherung; bringt 0.82.60 und 0.82.61 mit).
 
 29. **Rundgang/Wartung pausieren und auf anderem Gerät fortsetzen** (Wunsch des
