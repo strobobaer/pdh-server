@@ -181,6 +181,8 @@ var gateRules = []gateRule{
 	gr(wPost, permNetwork, "", false, `^/admin/network/suggestions/(?:adopt|adopt-all|hide)$`),
 	// Core-Einstellungen → Karte „Betriebssystem“: prüfen, aktualisieren, Haken beim PDH-Update (os_updates.go)
 	gr(wPost, permOSUpdate, "", false, `^/core/settings/os-update/(?:check|install|config)$`),
+	// Seite „Gestaltung“: Firmenvorgaben des neuen Rahmens (ui_frame.go, nav_areas.go)
+	gr(wPost, permUIDefaults, "", false, `^/admin/gestaltung/(?:frame|areas)$`),
 	// Infobildschirm: Folien anlegen, ändern, verschieben, löschen mit terminal.slides.edit
 	gr(wPost, permTerminalSlides, "", false, `^/terminal-slides(?:`+gID+`(?:/delete|/move)?)?/?$`),
 	// Karte „Dieser Server“: Adresse fest einstellen, DNS ändern, bestätigen nur mit system.server_config

@@ -311,6 +311,10 @@ func main() {
 	if _, err := tmpl.ParseGlob(filepath.Join("web", "templates", "widgets", "*.gohtml")); err != nil {
 		log.Fatal().Err(err).Msg("widget-templates laden fehlgeschlagen")
 	}
+	// Neuer Rahmen (0.90.0 Teil 2): zweite Wurzelvorlage neben base.gohtml (ui_frame.go)
+	if _, err := tmpl.ParseFiles(filepath.Join("web", "templates", "frame.gohtml")); err != nil {
+		log.Fatal().Err(err).Msg("frame.gohtml laden fehlgeschlagen")
+	}
 	log.Info().Int("count", len(tmpl.Templates())).Msg("templates geladen")
 
 	// Web Handler

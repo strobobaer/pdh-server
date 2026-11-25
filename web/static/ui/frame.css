@@ -1,0 +1,14 @@
+/* Neuer Rahmen (0.90.0 Teil 2) – nur von frame.gohtml geladen. Werte nur aus
+   tokens.css; der klassische Rahmen (base.gohtml) bleibt unberührt. */
+html.frame-ui body.frame-body{display:flex;flex-direction:column;height:100vh;overflow:hidden}
+.frame-app{display:grid;grid-template-columns:64px minmax(0,1fr) var(--right-sidebar-w);flex:1;min-height:0;overflow:hidden}
+.frame-main{display:flex;flex-direction:column;min-width:0;min-height:0;overflow:hidden}
+.frame-main .main{flex:1;min-height:0;overflow:auto}
+.rail{display:flex;flex-direction:column;align-items:center;gap:var(--sp-1);padding:var(--sp-2) 0;background:var(--bg2);border-right:1px solid var(--border);overflow-y:auto}
+/* Navigation des klassischen Rahmens gibt es hier nicht */
+html.frame-ui .topbar-burger{display:none}
+html.pdh-embedded .rail{display:none}
+html.pdh-embedded .frame-app{grid-template-columns:minmax(0,1fr)}
+@media (max-width:760px){
+  .frame-app{grid-template-columns:minmax(0,1fr)}
+}

@@ -75,7 +75,7 @@ func TestBaseScriptsExternal(t *testing.T) {
 	}
 	// Quelltext statt gerenderter Seite: manche Skripte stehen wie vorher in
 	// Bedingungen (Chat nur mit Chat-Recht, Push nur angemeldet).
-	src := baseSource(t)
+	src := baseSource(t) + frameSource(t) // Skripte des neuen Rahmens stehen nur in frame.gohtml
 	if out := renderBaseForTest(t); !strings.Contains(out, `<script src="`+uiURL("pdh-viewer.js")+`"></script>`) {
 		t.Error("gerenderte Grundseite bindet pdh-viewer.js nicht ein")
 	}
@@ -225,6 +225,16 @@ func baseWithUI(t *testing.T) string {
 		sb.WriteString(strings.ReplaceAll(string(b), "\r", ""))
 	}
 	return sb.String()
+}
+
+// frameSource: Quelltext des neuen Rahmens (frame.gohtml) ohne CR.
+func frameSource(t *testing.T) string {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join("..", "..", "web", "templates", "frame.gohtml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return strings.ReplaceAll(string(b), "\r", "") + "\n"
 }
 
 // baseSource: Quelltext des klassischen Rahmens ohne CR – base.gohtml samt der

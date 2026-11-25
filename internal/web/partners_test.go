@@ -93,6 +93,9 @@ func loadTestTemplates(t *testing.T) *template.Template {
 	if _, err := tmpl.ParseGlob(filepath.Join(root, "widgets", "*.gohtml")); err != nil {
 		t.Fatalf("widgets: %v", err)
 	}
+	if _, err := tmpl.ParseFiles(filepath.Join(root, "frame.gohtml")); err != nil { // neuer Rahmen wie im Betrieb (cmd/server)
+		t.Fatalf("frame: %v", err)
+	}
 	return tmpl
 }
 

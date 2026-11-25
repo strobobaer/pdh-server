@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="{{lang}}" class="frame-ui">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black">
+<title>{{or .Brand.AppName "PDH"}} – {{.Title}}</title>
+{{if .Brand.AppLogo}}<link rel="icon" href="{{.Brand.AppLogo}}"><link rel="manifest" href="/site.webmanifest">{{else}}<link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="/apple-touch-icon.png"><link rel="manifest" href="/site.webmanifest">{{end}}
+{{template "ui-head" .}}
+<link rel="stylesheet" href="{{uiURL "frame.css"}}">
+{{template "head" .}}
+</head>
+{{/* Neuer Rahmen (0.90.0 Teil 2): Bereichsleiste, Reiter, Menüband, Strg+K, Statusleiste.
+     Inhalte der Seiten wie im klassischen Rahmen (base.gohtml); gemeinsame Bausteine in
+     widgets/frame_shared.gohtml. Wahl im Benutzermenü (ui_frame.go). */}}
+<body class="frame-body"{{if and (eq .Page "dashboard") (not .IsSystemUser) (not .IsBoardVisit) (not .IsOverrideSession)}} data-tour-offer="1"{{end}}{{if .LiveTranslate}} data-live-translate="{{.LiveTranslate}}"{{end}}>
+<div class="frame-app">
+  <nav class="rail" aria-label="{{t "Bereiche"}}"></nav>
+  <div class="frame-main">
+{{template "ui-topbar" .}}
+{{template "ui-bands" .}}
+    <main class="main">
+      <div class="print-brand">{{if .Brand.PrintLogo}}<img src="{{.Brand.PrintLogo}}" alt="">{{end}}<span>{{if .CompanyPrint.Name}}{{.CompanyPrint.Name}}{{else}}{{or .Brand.AppName "PDH"}}{{end}} · {{.Title}}{{with .CompanyPrint.Address}}<small class="pb-addr">{{.}}</small>{{end}}</span><span class="pb-date" data-print-date></span></div>
+      {{template "content" .}}
+    </main>
+  </div>
+{{template "ui-context" .}}
+</div>
+{{template "ui-overlays" .}}
+{{template "ui-footer" .}}
+{{template "ui-scripts" .}}
+<script src="{{uiURL "pdh-frame.js"}}"></script>
+</body>
+</html>
+{{template "ui-tail" .}}
