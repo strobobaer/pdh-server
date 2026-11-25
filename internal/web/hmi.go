@@ -90,6 +90,20 @@ func (h *Handler) hmiRoutes(r chi.Router) {
 	r.Get("/infrastructure/{id}/hmi/{hmiID}", h.HMIViewerPage)
 	r.Get("/infrastructure/{id}/hmi/{hmiID}/ws", h.HMIWebSocket)
 	r.Get("/vendor/novnc/rfb.min.js", h.NoVNCScript)
+	r.Get("/vendor/hmi-mouse.js", h.HMIMouseScript)
+}
+
+// HMIMouseScript liefert die Maus-Emulation für Finger und Stift (web/static/hmi-mouse.js), gemeinsam für den
+// Web-Viewer und die HMI-Ansicht am Terminal. Die Seiten hängen ?v=<Version> an, damit ein Update sofort wirkt.
+func (h *Handler) HMIMouseScript(w http.ResponseWriter, r *http.Request) {
+	b, err := fs.ReadFile(pdh.Static, "web/static/hmi-mouse.js")
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
+	_, _ = w.Write(b)
 }
 
 // NoVNCScript liefert den eingebetteten noVNC-Client (web/static/vendor/novnc).

@@ -12,6 +12,10 @@ im Kapitel „Versionen & Updates“ an.
 
 ## [0.82.61] – 2026-11-25
 
+### Neu
+
+- **HMI: Maus mit dem Finger bedienen:** Beim Bedienen eines HMI (am Anlagenterminal und im Web-Viewer) steht über dem Bild eine Leiste mit **Links**, **Rechts**, **Doppel**, **Ziehen** und **Scrollen**. Antippen gilt für den nächsten Tipp, langes Drücken hält die Art fest. Der **Touchpad-Modus** zeigt einen Mauszeiger, den der Finger wie auf einem Laptop bewegt; zwei Finger scrollen. Beim reinen Ansehen und mit angeschlossener Maus ändert sich nichts.
+
 ### Geändert
 
 - **Rüstzeiten: alle Anlagen in einem Diagramm:** Die Auswertung (Seite „Rüstzeiten – Auswertung“ und Infobildschirm-Folie „Statistik Rüstzeiten“) zeigt einen Kreis, dessen Stücke die Anlagen sind – mit ihrem Anteil an der gesamten Rüstdauer. Jede Anlage hat ihre eigene Farbe, die immer gleich bleibt; die Legende nennt Dauer, Anteil und Anzahl der Rüstvorgänge. Auf der Seite zeigt Antippen eines Stücks oder Legendeneintrags die Rüstgründe dieser Anlage. Alle Anlagen erscheinen (keine „Sonstige“). Die Einzeldiagramme je Anlage entfallen.

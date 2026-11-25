@@ -40,17 +40,19 @@
 .hmi-tools{display:flex;gap:6px;flex-wrap:wrap}
 .hmi-screen{height:calc(100dvh - 190px);min-height:320px;background:#000;border:1px solid var(--border);border-radius:10px;overflow:auto;position:relative}
 .hmi-screen.view{border-color:var(--accent)}
+.hm-bar + .hmi-screen{height:calc(100dvh - 250px)}
 .hmi-screen:fullscreen{border-radius:0;height:100vh}
 .hmi-hint{font-size:11.5px;color:var(--muted);margin-top:6px}
-@media(max-width:700px){.hmi-screen{height:calc(100dvh - 230px)}}
+@media(max-width:700px){.hmi-screen{height:calc(100dvh - 230px)}.hm-bar + .hmi-screen{height:calc(100dvh - 290px)}}
 </style>
+{{if eq .Mode "control"}}<script src="/vendor/hmi-mouse.js?v={{appVersion}}"></script>{{end}}
 <script type="module">
 import { RFB } from '/vendor/novnc/rfb.min.js';
 
 const INFRA = '{{.HMI.InfraID}}', HMI = '{{.HMI.ID}}', MODE = '{{.Mode}}';
 const screen = document.getElementById('hmi-screen');
 const status = document.getElementById('hmi-status');
-let rfb = null, scale = true;
+let rfb = null, scale = true, mouse = null;
 
 function setStatus(text, kind){ status.textContent = text; status.className = 'hmi-status' + (kind ? ' ' + kind : ''); }
 
@@ -67,6 +69,7 @@ async function lastError(){
 
 function connect(){
   if(rfb){ try{ rfb.disconnect(); }catch(e){} }
+  if(mouse){ mouse.destroy(); mouse = null; }
   screen.replaceChildren();
   setStatus('Verbinde…');
   const url = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/infrastructure/' + INFRA + '/hmi/' + HMI + '/ws?mode=' + MODE;
@@ -76,8 +79,10 @@ function connect(){
   rfb.scaleViewport = scale;
   rfb.resizeSession = false;
   rfb.focusOnClick = MODE === 'control';
+  if (MODE === 'control' && window.PdhHmiMouse) mouse = PdhHmiMouse.attach(screen, rfb); // Leiste für Finger und Stift (hmi-mouse.js), die Maus bleibt wie sie ist
   rfb.addEventListener('connect', () => { setStatus('Verbunden', 'ok'); if(MODE === 'control') rfb.focus(); });
   rfb.addEventListener('disconnect', async e => {
+    if(mouse){ mouse.destroy(); mouse = null; }
     const why = await lastError();
     setStatus(why ? 'Getrennt: ' + why : (e.detail && e.detail.clean ? 'Getrennt' : 'Verbindung unterbrochen'), 'err');
   });
