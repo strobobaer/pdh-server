@@ -112,6 +112,7 @@ type BaseData struct {
 	// Neuer Rahmen (ui_frame.go): eigene Wahl ('' wie Firma, classic, new) und Ergebnis
 	UIFrame  string
 	NewFrame bool
+	Rail     areaView // Bereiche, Reiter, Favoriten – nur im neuen Rahmen gefüllt (nav_areas.go)
 }
 
 // Language: Sprache fuer die Template-Funktion t (siehe bindLang).
@@ -497,6 +498,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/account/terminal-pin", h.AccountTerminalPINWeb)
 	r.Post("/account/nav-layout", h.NavLayoutSaveWeb)
 	r.Post("/account/ui-frame", h.UIFrameSaveWeb) // Schalter „Neue Oberfläche“ (ui_frame.go)
+	r.Post("/account/ui-areas", h.UIAreasSaveWeb) // Bereiche ordnen, Favoriten (nav_areas.go)
 	r.Post("/account/microsoft/connect", h.MicrosoftConnectStart)
 	r.Post("/account/microsoft/connect-teams", h.MicrosoftTeamsConnectStart)
 	r.Get("/account/microsoft/callback", h.MicrosoftConnectCallback)
@@ -1066,6 +1068,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/admin/icons", h.IconsPage)
 	r.Get("/admin/gestaltung", h.UICatalogPage) // Bausteinkatalog (ui_catalog.go)
 	r.Post("/admin/gestaltung/frame", h.UIFrameDefaultSaveWeb) // Firmenvorgabe des Rahmens (ui_frame.go)
+	r.Post("/admin/gestaltung/areas", h.UIAreasDefaultSaveWeb) // Firmenvorgabe der Bereiche (nav_areas.go)
 	r.Get("/admin/icons/names", h.IconNamesWeb)
 	r.Post("/admin/icons", h.IconsSaveWeb)
 	r.Get("/core/settings/microsoft", h.MicrosoftAdminPage)
@@ -1587,6 +1590,9 @@ func (h *Handler) baseData(r *http.Request, page, title, ctxTitle string) BaseDa
 	b.Mirror = h.mirrorBanner(r)
 	b.UIFrame = h.userUIFrame(r.Context(), u.ID)
 	b.NewFrame = h.frameFor(r.Context(), b.UIFrame)
+	if b.NewFrame {
+		b.Rail = buildAreas(&b, h.areaPrefs(r.Context(), u.ID))
+	}
 	b.UserAvatar = h.userAvatarURL(r.Context(), u.ID)
 	if b.CanAppUse && h.db != nil {
 		b.AppStoreSet = h.appStoreConfigured(r.Context())

@@ -5,10 +5,30 @@ html.frame-ui body.frame-body{display:flex;flex-direction:column;height:100vh;ov
 .frame-main{display:flex;flex-direction:column;min-width:0;min-height:0;overflow:hidden}
 .frame-main .main{flex:1;min-height:0;overflow:auto}
 .rail{display:flex;flex-direction:column;align-items:center;gap:var(--sp-1);padding:var(--sp-2) 0;background:var(--bg2);border-right:1px solid var(--border);overflow-y:auto}
+.rail-area,.rail-fav{width:56px;min-height:44px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:var(--sp-1) 0;border-radius:var(--r-m);color:var(--muted);text-decoration:none;font-size:var(--fs-xs);background:none;border:0;cursor:pointer;font-family:inherit}
+.rail-area i,.rail-fav i{font-size:var(--fs-xl)}
+.rail-area:hover,.rail-fav:hover{background:var(--fill-hover);color:var(--text)}
+.rail-area.on{background:color-mix(in srgb,var(--accent) 12%,transparent);color:var(--accent);font-weight:600}
+.rail-area:focus-visible,.rail-fav:focus-visible,.frame-tabs a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.rail-sep{width:32px;height:1px;background:var(--border);margin:var(--sp-1) 0}
+.rail-more{display:none}
+/* Reiter der Unterseiten wie in Edge, über dem Menüband */
+.frame-tabs{display:flex;gap:2px;padding:var(--sp-1) var(--sp-3) 0;background:var(--bg);border-bottom:1px solid var(--border);overflow-x:auto;scrollbar-width:thin}
+.frame-tabs a{flex:0 0 auto;padding:var(--sp-2) var(--sp-3);border-radius:var(--r-m) var(--r-m) 0 0;color:var(--muted);text-decoration:none;font-size:var(--fs-sm);white-space:nowrap}
+.frame-tabs a:hover{background:var(--fill-hover);color:var(--text)}
+.frame-tabs a[aria-selected="true"]{background:var(--bg2);color:var(--text);font-weight:600;box-shadow:inset 0 -2px 0 var(--accent)}
+html.pdh-embedded .frame-tabs{display:none}
 /* Navigation des klassischen Rahmens gibt es hier nicht */
 html.frame-ui .topbar-burger{display:none}
 html.pdh-embedded .rail{display:none}
 html.pdh-embedded .frame-app{grid-template-columns:minmax(0,1fr)}
 @media (max-width:760px){
-  .frame-app{grid-template-columns:minmax(0,1fr)}
+  /* Handy: Bereichsleiste unten – die ersten 4 Bereiche und „Mehr“ */
+  .frame-app{grid-template-columns:minmax(0,1fr);padding-bottom:60px}
+  .rail{position:fixed;left:0;right:0;bottom:0;z-index:80;flex-direction:row;justify-content:space-around;height:60px;padding:0 var(--sp-1);border-right:0;border-top:1px solid var(--border);overflow:visible}
+  .rail .rail-fav,.rail .rail-sep{display:none}
+  .rail .rail-area:not(.rail-top):not(.rail-more){display:none}
+  .rail .rail-more{display:flex}
+  .rail.open{height:auto;flex-wrap:wrap;padding:var(--sp-2);box-shadow:var(--shadow-float);background:var(--bg2)}
+  .rail.open .rail-area{display:flex}
 }

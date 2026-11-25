@@ -33,7 +33,8 @@ var defaultsCache struct {
 	loaded  bool
 	nav     []navLayoutGroup
 	widgets []WidgetInstance
-	uiFrame string // Firmenvorgabe des Rahmens: classic oder new (ui_frame.go)
+	uiFrame string      // Firmenvorgabe des Rahmens: classic oder new (ui_frame.go)
+	uiAreas uiAreaPrefs // Firmenvorgabe der Bereiche (nav_areas.go)
 }
 
 func resetDefaultsCache() {
@@ -67,8 +68,9 @@ func (h *Handler) loadDefaults(ctx context.Context) {
 	if h.appSetting(ctx, keyDefaultUIFrame, "") == "new" {
 		uiFrame = "new"
 	}
+	uiAreas, _ := decodeAreaPrefs([]byte(h.appSetting(ctx, keyDefaultUIAreas, "")))
 	defaultsCache.Lock()
-	defaultsCache.nav, defaultsCache.widgets, defaultsCache.uiFrame, defaultsCache.loaded = nav, widgets, uiFrame, true
+	defaultsCache.nav, defaultsCache.widgets, defaultsCache.uiFrame, defaultsCache.uiAreas, defaultsCache.loaded = nav, widgets, uiFrame, uiAreas, true
 	defaultsCache.Unlock()
 }
 
