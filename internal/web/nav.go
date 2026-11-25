@@ -97,6 +97,7 @@ var navDefs = []navDef{
 	{navItem{"leitstaende", "/leitstaende", "ti-device-tv", "Leitstände", "leitstaende", false}, "admin", func(b *BaseData) bool { return b.CanManageLeitstand }},
 	{navItem{"costcenters", "/core/costcenters", "ti-building-bank", "Kostenstellen", "costcenters", false}, "admin", func(b *BaseData) bool { return b.CanCostCenters }},
 	{navItem{"icons", "/admin/icons", "ti-icons", "Symbole", "icons", false}, "admin", func(b *BaseData) bool { return b.CanManageRoles }},
+	{navItem{"ui-catalog", "/admin/gestaltung", "ti-palette", "Gestaltung", "ui-catalog", false}, "admin", needs(permUIDefaults)},
 	{navItem{"categories", "/categories", "ti-hash", "Kategorien", "categories", false}, "admin", always},
 	{navItem{"serverconfig", "/admin/server-config", "ti-adjustments-cog", "Server-Einstellungen", "server-config", false}, "admin", func(b *BaseData) bool { return b.CanServerConfig }},
 	{navItem{"network", "/admin/network", "ti-network", "Netzwerk", "network", false}, "admin", needs(permNetwork)},

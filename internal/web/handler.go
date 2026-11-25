@@ -1060,6 +1060,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/core/settings", h.CoreSettingsPage)
 	// Symbole (icons.go)
 	r.Get("/admin/icons", h.IconsPage)
+	r.Get("/admin/gestaltung", h.UICatalogPage) // Bausteinkatalog (ui_catalog.go)
 	r.Get("/admin/icons/names", h.IconNamesWeb)
 	r.Post("/admin/icons", h.IconsSaveWeb)
 	r.Get("/core/settings/microsoft", h.MicrosoftAdminPage)

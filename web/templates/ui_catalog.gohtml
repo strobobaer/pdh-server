@@ -1,0 +1,73 @@
+{{template "base" .}}
+{{define "content"}}
+<style>
+.uc{display:flex;flex-direction:column;gap:var(--sp-6);max-width:1100px}
+.uc h2{font-size:var(--fs-lg);margin:0 0 var(--sp-2)}
+.uc .rule{color:var(--muted);font-size:var(--fs-sm);margin:0 0 var(--sp-3)}
+.uc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:var(--sp-3)}
+.uc-sw{border:1px solid var(--border);border-radius:var(--r-m);overflow:hidden;background:var(--bg2)}
+.uc-sw i{display:block;height:44px;border-bottom:1px solid var(--border)}
+.uc-sw span{display:block;padding:var(--sp-2);font-family:monospace;font-size:var(--fs-xs)}
+.uc-row{display:flex;align-items:center;gap:var(--sp-3);padding:var(--sp-1) 0}
+.uc-row code{width:120px;font-size:var(--fs-xs);color:var(--muted)}
+.uc-bar{height:12px;background:var(--accent);border-radius:var(--r-s)}
+.uc-box{width:96px;height:56px;background:var(--bg2);border:1px solid var(--border)}
+.uc-demo{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2)}
+</style>
+<div class="rec-head">
+  <div class="t"><h1>Gestaltung</h1>
+    <div class="sub">Farben, Abstände, Schrift und Bausteine der Oberfläche – so, wie sie im gewählten Stil und Modus gerade aussehen. Neue Seiten nehmen nur diese Werte (web/static/ui/tokens.css).</div>
+  </div>
+</div>
+<div class="uc">
+  <section class="card">
+    <h2>Farben</h2>
+    <p class="rule">Farbe nur mit Bedeutung: Akzent für Auswahl und Hauptknopf, Statusfarben nur für Zustände. Flächen und Linien bleiben neutral.</p>
+    <div class="uc-grid">
+      {{range .Colors}}
+      <div class="uc-sw"><i style="{{.Style}}"></i><span>{{.Name}}</span></div>
+      {{end}}
+    </div>
+  </section>
+  <section class="card">
+    <h2>Abstände</h2>
+    <p class="rule">Abstände nur im 4/8-px-Raster.</p>
+    {{range .Spaces}}
+    <div class="uc-row"><code>{{.Name}}</code><div class="uc-bar" style="{{.Style}}"></div></div>
+    {{end}}
+  </section>
+  <section class="card">
+    <h2>Schrift</h2>
+    <p class="rule">Eine Schrift, wenige Größen: 12 für Hinweise, 13 für Nebentext, 14 für Text, 16 für Abschnitte, 20 für Seitentitel.</p>
+    {{range .Sizes}}
+    <div class="uc-row"><code>{{.Name}}</code><span style="{{.Style}}">Hydraulikdruck fällt ab</span></div>
+    {{end}}
+  </section>
+  <section class="card">
+    <h2>Ecken und Schatten</h2>
+    <p class="rule">Kleine Ecken; Schatten nur für Schwebendes (Menüs, Dialoge, Suchzeile), nie für Flächen auf der Seite.</p>
+    <div class="uc-demo">
+      <div class="uc-box" style="border-radius:var(--r-s)" title="--r-s"></div>
+      <div class="uc-box" style="border-radius:var(--r-m)" title="--r-m"></div>
+      <div class="uc-box" style="border-radius:var(--r-m);box-shadow:var(--shadow-card)" title="--shadow-card"></div>
+      <div class="uc-box" style="border-radius:var(--r-m);box-shadow:var(--shadow-float)" title="--shadow-float"></div>
+    </div>
+  </section>
+  <section class="card">
+    <h2>Bausteine</h2>
+    <p class="rule">Knöpfe: ein Hauptknopf je Bereich, Löschen rot und mit Rückfrage.</p>
+    <div class="uc-demo">
+      <button type="button" class="btn btn-primary">Speichern</button>
+      <button type="button" class="btn">Abbrechen</button>
+      <button type="button" class="btn btn-small">Klein</button>
+      <button type="button" class="btn btn-danger">Löschen</button>
+    </div>
+    <p class="rule">Schilder zeigen einen Zustand in einem Wort.</p>
+    <div class="uc-demo">
+      <span class="badge b-green">Erledigt</span><span class="badge b-amber">Wartet</span><span class="badge b-red">Hoch</span><span class="badge b-blue">In Arbeit</span><span class="badge b-gray">Offen</span>
+    </div>
+    <p class="rule">Reiter trennen Teile eines Datensatzes; der gewählte ist unterstrichen.</p>
+    <div class="rec-tabs"><a class="rec-tab active" href="#">Übersicht</a><a class="rec-tab" href="#">Arbeit</a><a class="rec-tab" href="#">Verlauf</a></div>
+  </section>
+</div>
+{{end}}
