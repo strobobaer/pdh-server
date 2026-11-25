@@ -47,10 +47,12 @@ reboot_info() {
   for f in "$ROOT"/boot/vmlinuz-*; do
     [ -e "$f" ] || continue
     v=${f##*/vmlinuz-}
+    [[ $v =~ ^[A-Za-z0-9.+_~-]+$ ]] || continue # nichts Fremdes in die Ausgabe
     latest=$(printf '%s\n' ${latest:+"$latest"} "$v" | sort -V | tail -n 1)
   done
   run=$(uname -r)
-  if [ -n "$latest" ] && [ "$latest" != "$run" ]; then
+  # nur ein strikt neuerer installierter Kernel zählt (nicht: bewusst älterer, anderer Zweig)
+  if [ -n "$latest" ] && [ "$latest" != "$run" ] && [ "$(printf '%s\n' "$latest" "$run" | sort -V | tail -n 1)" = "$latest" ]; then
     RB=true
     for x in ${RBP[@]+"${RBP[@]}"}; do
       if [ "$x" = "linux-image-$latest" ]; then have=1; fi
@@ -75,7 +77,7 @@ status_json() {
     return 1
   fi
   # zurückgehaltene Pakete (apt-mark hold) nicht einspielen und getrennt zählen; Fehler: keine
-  held=$(apt-mark showhold 2>/dev/null) || held=""
+  held=$(apt-mark showhold 2>/dev/null | sed 's/:.*//') || held="" # „libfoo:i386“ → „libfoo“
   held=$'\n'"$held"$'\n'
   while IFS= read -r line; do
     if [[ $line =~ ^([A-Za-z0-9.+_-]+)/([^[:space:]]+)[[:space:]]+([A-Za-z0-9.+:~_-]+)[[:space:]]+[^[:space:]]+[[:space:]]+\[upgradable\ from:\ ([A-Za-z0-9.+:~_-]+)\] ]]; then

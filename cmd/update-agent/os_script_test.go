@@ -325,7 +325,10 @@ func TestOSScriptRebootNewKernel(t *testing.T) {
 		t.Errorf("Neustart nach neuem Kernel: %+v", s)
 	}
 	// check meldet den Neustart ebenfalls
-	out, _, _ := e.run(nil, "check")
+	out, stderr, code := e.run(nil, "check")
+	if code != 0 {
+		t.Fatalf("check: Exit %d, stderr %s", code, stderr)
+	}
 	if !strings.Contains(out, "NEUSTART NÖTIG") || !strings.Contains(out, "linux-image-6.12.118+deb13-amd64") {
 		t.Errorf("check ohne Neustarthinweis: %q", out)
 	}
@@ -344,9 +347,36 @@ func TestOSScriptRebootKernelCurrent(t *testing.T) {
 	if s := e.status(); s.RebootRequired || len(s.RebootPkgs) != 0 {
 		t.Errorf("laufender = neuester: %+v", s)
 	}
-	out, _, _ := e.run(nil, "check")
+	out, stderr, code := e.run(nil, "check")
+	if code != 0 {
+		t.Fatalf("check: Exit %d, stderr %s", code, stderr)
+	}
 	if strings.Contains(out, "NEUSTART") {
 		t.Errorf("check meldet Neustart: %q", out)
+	}
+}
+
+// Laufender Kernel neuer als alle Abbilder in /boot, anderer Kernel-Zweig oder bewusst älterer
+// Kernel: kein Neustart durch die Kernel-Regel (nur ein strikt neuerer installierter Kernel zählt).
+func TestOSScriptRebootRunningNewerOrOlderInstalled(t *testing.T) {
+	e := osScriptEnv(t)
+	e.osKernels("6.12.200+deb13-amd64", "6.12.113+deb13-amd64", "6.12.118+deb13-amd64")
+	if s := e.status(); s.RebootRequired || len(s.RebootPkgs) != 0 {
+		t.Errorf("laufender Kernel neuer als alle Abbilder: %+v", s)
+	}
+	e.osKernels("6.12.113+deb13-amd64", "6.12.113+deb13-amd64", "6.12.118+deb13-amd64")
+	if s := e.status(); !s.RebootRequired || len(s.RebootPkgs) != 1 {
+		t.Errorf("laufender älter, neuerer installiert: %+v", s)
+	}
+}
+
+// Der Kernelname aus /boot muss einfache Zeichen haben, sonst wird die Datei ignoriert.
+func TestOSScriptRebootIgnoresOddKernelName(t *testing.T) {
+	e := osScriptEnv(t)
+	e.osKernels("6.12.118+deb13-amd64", "6.12.118+deb13-amd64", "6.12.200 x;y")
+	s := e.status()
+	if s.RebootRequired || len(s.RebootPkgs) != 0 {
+		t.Errorf("Datei mit ungültigem Namen darf nicht zählen: %+v", s)
 	}
 }
 
@@ -382,10 +412,17 @@ func TestOSScriptHeldPackages(t *testing.T) {
 			t.Errorf("zurückgehaltenes Paket in upgradable")
 		}
 	}
+	// Mehrarchitektur: showhold nennt „libfoo:i386“, apt list „libfoo/… i386“
+	e.write(filepath.Join(e.stubs, "apt"), osListStub+"echo \"libfoo/stable 1.1 i386 [upgradable from: 1.0]\"\n", 0o755)
+	e.write(filepath.Join(e.stubs, "apt-mark"), "#!/bin/bash\n[ \"$1\" = showhold ] || exit 1\necho libfoo:i386\n", 0o755)
+	s = e.status()
+	if s.HeldCount != 1 || len(s.Upgradable) != 3 {
+		t.Errorf("libfoo:i386: held %d, upgradable %d", s.HeldCount, len(s.Upgradable))
+	}
 	// apt-mark scheitert: held_count 0, Rest unverändert
 	e.write(filepath.Join(e.stubs, "apt-mark"), "#!/bin/bash\nexit 1\n", 0o755)
 	s = e.status()
-	if s.HeldCount != 0 || len(s.Upgradable) != 4 || s.SecurityCount != 3 {
+	if s.HeldCount != 0 || len(s.Upgradable) != 4 || s.SecurityCount != 2 {
 		t.Errorf("apt-mark-Fehler: held %d, upgradable %d, security %d", s.HeldCount, len(s.Upgradable), s.SecurityCount)
 	}
 }

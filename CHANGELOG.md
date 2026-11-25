@@ -14,7 +14,7 @@ im Kapitel „Versionen & Updates“ an.
 
 ### Behoben
 
-- **Betriebssystem: Neustart nach Kernel-Update unter Debian:** „Neustart nötig“ erscheint jetzt auch, wenn ein neuerer Kernel installiert ist als der laufende (Debian legt dafür keine Neustart-Datei an).
+- **Betriebssystem: Neustart nach Kernel-Update unter Debian:** „Neustart nötig“ erscheint jetzt auch, wenn ein neuerer Kernel installiert ist als der laufende (Debian legt dafür keine Neustart-Datei an); ein Neustart ohne neu eingespielte Pakete passiert nur über den Knopf „Betriebssystem aktualisieren“, nie beim PDH-Update oder im Wartungsfenster.
 
 ### Neu
 
