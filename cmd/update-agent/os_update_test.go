@@ -118,6 +118,21 @@ func TestOSStatusHandler(t *testing.T) {
 	}
 }
 
+// held_count wird durchgereicht; ein Skript mit script_version 2 (ohne held_count) ist nicht veraltet.
+func TestOSStatusHeldCount(t *testing.T) {
+	a, f := osTestAgent(t)
+	f.statusOut = strings.Replace(osStatusJSON, `"script_version":2`, `"script_version":3,"held_count":55`, 1)
+	code, m := osServe(t, a, http.MethodGet, "/v1/os/status", "", true)
+	if code != 200 || m["held_count"] != float64(55) || m["script_outdated"] != false || m["available"] != true {
+		t.Fatalf("Antwort %d: %v", code, m)
+	}
+	a2, _ := osTestAgent(t) // osStatusJSON hat script_version 2
+	code, m = osServe(t, a2, http.MethodGet, "/v1/os/status", "", true)
+	if code != 200 || m["held_count"] != float64(0) || m["script_outdated"] != false || m["available"] != true {
+		t.Fatalf("Skript Version 2: %d: %v", code, m)
+	}
+}
+
 func TestOSStatusDocker(t *testing.T) {
 	a, f := osTestAgent(t)
 	a.mode = "docker"

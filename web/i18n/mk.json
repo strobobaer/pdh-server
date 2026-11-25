@@ -1191,6 +1191,7 @@
  "aktuell": "ажурно",
  "beim PDH-Update mit aktualisieren": "ажурирај и при ажурирање на PDH",
  "davon %d Sicherheit": "од нив %d за безбедност",
+ "%d zurückgehalten": "%d задржани",
  "ok": "во ред",
  "Der Update-Agent hat nicht rechtzeitig geantwortet – bitte die Seite neu laden und den Stand prüfen.": "Агентот за ажурирање не одговори навреме – освежете ја страницата и проверете го статусот."
 }

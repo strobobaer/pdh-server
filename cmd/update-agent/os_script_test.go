@@ -100,6 +100,7 @@ type osScriptJSON struct {
 	SecurityCount  int           `json:"security_count"`
 	RebootRequired bool          `json:"reboot_required"`
 	RebootPkgs     []string      `json:"reboot_pkgs"`
+	HeldCount      int           `json:"held_count"`
 }
 
 func TestOSScriptSyntax(t *testing.T) {
@@ -138,7 +139,7 @@ func TestOSScriptStatusJSON(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &s); err != nil {
 		t.Fatalf("kein JSON: %v\n%s", err, out)
 	}
-	if !s.OK || s.ScriptVersion != 2 {
+	if !s.OK || s.ScriptVersion != 3 {
 		t.Errorf("ok/script_version: %+v", s)
 	}
 	if len(s.Upgradable) != 3 {
@@ -287,6 +288,105 @@ func TestOSScriptStatusPkgsWithoutNewline(t *testing.T) {
 	}
 	if len(s.RebootPkgs) != 2 || s.RebootPkgs[1] != "linux-image-b" {
 		t.Errorf("reboot_pkgs: %v", s.RebootPkgs)
+	}
+}
+
+// osKernels legt Kernel-Dateien unter <root>/boot an und lässt uname den laufenden Kernel melden.
+func (e *osScriptEnvT) osKernels(running string, installed ...string) {
+	e.t.Helper()
+	e.write(filepath.Join(e.stubs, "uname"), "#!/bin/bash\necho "+running+"\n", 0o755)
+	if err := os.MkdirAll(filepath.Join(e.root, "boot"), 0o755); err != nil {
+		e.t.Fatal(err)
+	}
+	for _, v := range installed {
+		e.write(filepath.Join(e.root, "boot", "vmlinuz-"+v), "x", 0o644)
+	}
+}
+
+func (e *osScriptEnvT) status() osScriptJSON {
+	e.t.Helper()
+	out, stderr, code := e.run(nil, "status")
+	if code != 0 {
+		e.t.Fatalf("Exit %d: %s", code, stderr)
+	}
+	var s osScriptJSON
+	if err := json.Unmarshal([]byte(out), &s); err != nil {
+		e.t.Fatalf("kein JSON: %v\n%s", err, out)
+	}
+	return s
+}
+
+// Debian legt /var/run/reboot-required nicht an: neuer Kernel installiert, anderer läuft => Neustart.
+func TestOSScriptRebootNewKernel(t *testing.T) {
+	e := osScriptEnv(t)
+	e.osKernels("6.12.113+deb13-amd64", "6.12.113+deb13-amd64", "6.12.118+deb13-amd64")
+	s := e.status()
+	if !s.RebootRequired || len(s.RebootPkgs) != 1 || s.RebootPkgs[0] != "linux-image-6.12.118+deb13-amd64" {
+		t.Errorf("Neustart nach neuem Kernel: %+v", s)
+	}
+	// check meldet den Neustart ebenfalls
+	out, _, _ := e.run(nil, "check")
+	if !strings.Contains(out, "NEUSTART NÖTIG") || !strings.Contains(out, "linux-image-6.12.118+deb13-amd64") {
+		t.Errorf("check ohne Neustarthinweis: %q", out)
+	}
+	// Datei nennt das Paket schon: keine Doppelung
+	e.write(filepath.Join(e.root, "var", "run", "reboot-required"), "x\n", 0o644)
+	e.write(filepath.Join(e.root, "var", "run", "reboot-required.pkgs"), "linux-image-6.12.118+deb13-amd64\n", 0o644)
+	s = e.status()
+	if !s.RebootRequired || len(s.RebootPkgs) != 1 {
+		t.Errorf("Doppelung: %v", s.RebootPkgs)
+	}
+}
+
+func TestOSScriptRebootKernelCurrent(t *testing.T) {
+	e := osScriptEnv(t)
+	e.osKernels("6.12.118+deb13-amd64", "6.12.113+deb13-amd64", "6.12.118+deb13-amd64")
+	if s := e.status(); s.RebootRequired || len(s.RebootPkgs) != 0 {
+		t.Errorf("laufender = neuester: %+v", s)
+	}
+	out, _, _ := e.run(nil, "check")
+	if strings.Contains(out, "NEUSTART") {
+		t.Errorf("check meldet Neustart: %q", out)
+	}
+}
+
+func TestOSScriptRebootNoKernelFiles(t *testing.T) {
+	e := osScriptEnv(t) // keine vmlinuz-Dateien: nur die Datei /var/run/reboot-required zählt
+	if s := e.status(); s.RebootRequired {
+		t.Errorf("ohne Kernel-Dateien: %+v", s)
+	}
+	e.write(filepath.Join(e.root, "var", "run", "reboot-required"), "x\n", 0o644)
+	if s := e.status(); !s.RebootRequired {
+		t.Errorf("Datei zählt nicht mehr: %+v", s)
+	}
+}
+
+func TestOSScriptRebootVersionSort(t *testing.T) {
+	e := osScriptEnv(t)
+	e.osKernels("6.12.118+deb13-amd64", "6.12.9+deb13-amd64", "6.12.118+deb13-amd64")
+	if s := e.status(); s.RebootRequired {
+		t.Errorf("6.12.9 darf nicht vor 6.12.118 gelten: %+v", s)
+	}
+}
+
+func TestOSScriptHeldPackages(t *testing.T) {
+	e := osScriptEnv(t)
+	e.write(filepath.Join(e.stubs, "apt"), osListStub+"echo \"nvidia-driver/stable-security 550.1-1 amd64 [upgradable from: 550.0-1]\"\n", 0o755)
+	e.write(filepath.Join(e.stubs, "apt-mark"), "#!/bin/bash\n[ \"$1\" = showhold ] || exit 1\necho nvidia-driver\n", 0o755)
+	s := e.status()
+	if s.HeldCount != 1 || len(s.Upgradable) != 3 || s.SecurityCount != 2 {
+		t.Errorf("zurückgehalten: held %d, upgradable %d, security %d", s.HeldCount, len(s.Upgradable), s.SecurityCount)
+	}
+	for _, p := range s.Upgradable {
+		if p.Name == "nvidia-driver" {
+			t.Errorf("zurückgehaltenes Paket in upgradable")
+		}
+	}
+	// apt-mark scheitert: held_count 0, Rest unverändert
+	e.write(filepath.Join(e.stubs, "apt-mark"), "#!/bin/bash\nexit 1\n", 0o755)
+	s = e.status()
+	if s.HeldCount != 0 || len(s.Upgradable) != 4 || s.SecurityCount != 3 {
+		t.Errorf("apt-mark-Fehler: held %d, upgradable %d, security %d", s.HeldCount, len(s.Upgradable), s.SecurityCount)
 	}
 }
 

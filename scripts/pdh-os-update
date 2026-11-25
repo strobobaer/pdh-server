@@ -6,7 +6,7 @@
 set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=l LC_ALL=C.UTF-8
 
-SCRIPT_VERSION=2
+SCRIPT_VERSION=3
 
 usage() { echo "Aufruf: pdh-os-update check|install|status" >&2; exit 2; }
 [ $# -le 1 ] || usage
@@ -29,10 +29,40 @@ json_escape() {
   printf '%s' "$s"
 }
 
+# Neustart nötig? Datei /var/run/reboot-required (Ubuntu) ODER neuester installierter Kernel
+# (/boot/vmlinuz-*, höchste Version) ist nicht der laufende – Debian legt die Datei nicht an.
+# Setzt RB (true/false) und RBP (Paketnamen, ohne Doppelung).
+reboot_info() {
+  RB=false; RBP=()
+  local pk f v latest="" run have=0 x
+  if [ -f "$REBOOT" ]; then
+    RB=true
+    if [ -r "$REBOOT.pkgs" ]; then
+      while IFS= read -r pk || [ -n "$pk" ]; do
+        [ -n "$pk" ] || continue
+        RBP+=("$pk")
+      done < "$REBOOT.pkgs"
+    fi
+  fi
+  for f in "$ROOT"/boot/vmlinuz-*; do
+    [ -e "$f" ] || continue
+    v=${f##*/vmlinuz-}
+    latest=$(printf '%s\n' ${latest:+"$latest"} "$v" | sort -V | tail -n 1)
+  done
+  run=$(uname -r)
+  if [ -n "$latest" ] && [ "$latest" != "$run" ]; then
+    RB=true
+    for x in ${RBP[@]+"${RBP[@]}"}; do
+      if [ "$x" = "linux-image-$latest" ]; then have=1; fi
+    done
+    if [ $have = 0 ]; then RBP+=("linux-image-$latest"); fi
+  fi
+}
+
 write_stamp() { date -Is > "$STAMP" 2>/dev/null || true; }
 
 status_json() {
-  local system="" kernel checked="" line name suites new old sec first=1 secn=0 pk
+  local system="" kernel checked="" line name suites new old sec first=1 secn=0 heldn=0 held=""
   if [ -r "$ROOT/etc/os-release" ]; then
     system=$(sed -n 's/^PRETTY_NAME=//p' "$ROOT/etc/os-release" | head -n 1)
     system=${system#\"}; system=${system%\"}
@@ -44,9 +74,13 @@ status_json() {
     echo '{"ok":false,"error":"Paketliste nicht lesbar"}'
     return 1
   fi
+  # zurückgehaltene Pakete (apt-mark hold) nicht einspielen und getrennt zählen; Fehler: keine
+  held=$(apt-mark showhold 2>/dev/null) || held=""
+  held=$'\n'"$held"$'\n'
   while IFS= read -r line; do
     if [[ $line =~ ^([A-Za-z0-9.+_-]+)/([^[:space:]]+)[[:space:]]+([A-Za-z0-9.+:~_-]+)[[:space:]]+[^[:space:]]+[[:space:]]+\[upgradable\ from:\ ([A-Za-z0-9.+:~_-]+)\] ]]; then
       name=${BASH_REMATCH[1]}; suites=${BASH_REMATCH[2]}; new=${BASH_REMATCH[3]}; old=${BASH_REMATCH[4]}
+      case "$held" in *$'\n'"$name"$'\n'*) heldn=$((heldn + 1)); continue ;; esac
       sec=false
       case ",$suites," in *-security,*) sec=true; secn=$((secn + 1)) ;; esac
       [ $first = 1 ] || pkgs+=","
@@ -54,20 +88,15 @@ status_json() {
       pkgs+="{\"name\":\"$name\",\"old\":\"$old\",\"new\":\"$new\",\"security\":$sec}"
     fi
   done < <(echo "$listing" | tail -n +2)
-  local reboot=false rp="" f=1
-  if [ -f "$REBOOT" ]; then
-    reboot=true
-    if [ -r "$REBOOT.pkgs" ]; then
-      while IFS= read -r pk || [ -n "$pk" ]; do
-        [ -n "$pk" ] || continue
-        [ $f = 1 ] || rp+=","
-        f=0
-        rp+="\"$(json_escape "$pk")\""
-      done < "$REBOOT.pkgs"
-    fi
-  fi
-  printf '{"ok":true,"script_version":%s,"system":"%s","kernel":"%s","checked_at":"%s","upgradable":[%s],"security_count":%s,"reboot_required":%s,"reboot_pkgs":[%s]}\n' \
-    "$SCRIPT_VERSION" "$(json_escape "$system")" "$(json_escape "$kernel")" "$(json_escape "$checked")" "$pkgs" "$secn" "$reboot" "$rp"
+  local rp="" f=1 pk
+  reboot_info
+  for pk in ${RBP[@]+"${RBP[@]}"}; do
+    [ $f = 1 ] || rp+=","
+    f=0
+    rp+="\"$(json_escape "$pk")\""
+  done
+  printf '{"ok":true,"script_version":%s,"system":"%s","kernel":"%s","checked_at":"%s","upgradable":[%s],"security_count":%s,"reboot_required":%s,"reboot_pkgs":[%s],"held_count":%s}\n' \
+    "$SCRIPT_VERSION" "$(json_escape "$system")" "$(json_escape "$kernel")" "$(json_escape "$checked")" "$pkgs" "$secn" "$RB" "$rp" "$heldn"
 }
 
 case "$1" in
@@ -89,4 +118,8 @@ case "$1" in
     } 2>&1 | tee -a "$PROTO"
     ;;
 esac
-if [ -f "$REBOOT" ]; then echo "NEUSTART NÖTIG"; cat "$REBOOT.pkgs" 2>/dev/null || true; fi
+reboot_info
+if [ "$RB" = true ]; then
+  echo "NEUSTART NÖTIG"
+  for pk in ${RBP[@]+"${RBP[@]}"}; do echo "$pk"; done
+fi

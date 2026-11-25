@@ -83,6 +83,17 @@ func TestOSRoutesNeedPermission(t *testing.T) {
 	}
 }
 
+func TestOSCardHeld(t *testing.T) {
+	h, _ := osHandler(t, osStatusBody(`,"held_count":55`))
+	if out := osRender(t, h); !strings.Contains(out, "19 Pakete offen") || !strings.Contains(out, "55 zurückgehalten") {
+		t.Errorf("Karte ohne „55 zurückgehalten“")
+	}
+	h, _ = osHandler(t, osStatusBody(""))
+	if out := osRender(t, h); strings.Contains(out, "zurückgehalten") {
+		t.Errorf("Hinweis ohne zurückgehaltene Pakete")
+	}
+}
+
 func TestOSCardRender(t *testing.T) {
 	h, _ := osHandler(t, osStatusBody(""))
 	out := osRender(t, h)

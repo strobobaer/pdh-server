@@ -77,6 +77,7 @@ type osScriptStatus struct {
 	SecurityCount  int         `json:"security_count"`
 	RebootRequired bool        `json:"reboot_required"`
 	RebootPkgs     []string    `json:"reboot_pkgs"`
+	HeldCount      int         `json:"held_count"` // ab Skript-Version 3: zurückgehaltene, aktualisierbare Pakete
 }
 
 // osLastRun: Ergebnis des letzten Laufs (os-state.json).
@@ -540,7 +541,8 @@ type osStatusResp struct {
 	Packages       []osPackage    `json:"packages"`
 	RebootRequired bool           `json:"reboot_required"`
 	RebootPkgs     []string       `json:"reboot_pkgs"`
-	CheckedAt      string         `json:"checked_at"`
+	HeldCount      int            `json:"held_count"`
+	CheckedAt     string         `json:"checked_at"`
 	WithPDHUpdate  bool           `json:"with_pdh_update"`
 	Job            *ha.UpdateView `json:"job"`
 	LastRun        *osLastRun     `json:"last_run"`
@@ -575,6 +577,7 @@ func (a *updateAgent) osBuildStatus(ctx context.Context) osStatusResp {
 	}
 	resp.System, resp.Kernel, resp.CheckedAt = ss.System, ss.Kernel, ss.CheckedAt
 	resp.PackageCount, resp.SecurityCount = len(ss.Upgradable), ss.SecurityCount
+	resp.HeldCount = ss.HeldCount
 	resp.Packages = ss.Upgradable
 	if len(resp.Packages) > osMaxPackages {
 		resp.Packages = resp.Packages[:osMaxPackages]
