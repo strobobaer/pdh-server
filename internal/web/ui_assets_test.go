@@ -62,6 +62,40 @@ func TestBaseLinksUIStylesheet(t *testing.T) {
 	}
 }
 
+var scriptBlockRe = regexp.MustCompile(`(?s)<script([^>]*)>(.*?)</script>`)
+
+// Skripte der Grundseite kommen als Dateien: jede Datei aus web/static/ui/*.js
+// wird eingebunden und ausgeliefert, im Quelltext bleibt kein großes Skript ohne
+// Vorlagen-Platzhalter.
+func TestBaseScriptsExternal(t *testing.T) {
+	files, _ := filepath.Glob(filepath.Join("..", "..", "web", "static", "ui", "*.js"))
+	if len(files) < 7 {
+		t.Fatalf("nur %d Skriptdateien in web/static/ui", len(files))
+	}
+	// Quelltext statt gerenderter Seite: manche Skripte stehen wie vorher in
+	// Bedingungen (Chat nur mit Chat-Recht, Push nur angemeldet).
+	src := baseSource(t)
+	if out := renderBaseForTest(t); !strings.Contains(out, `<script src="`+uiURL("pdh-viewer.js")+`"></script>`) {
+		t.Error("gerenderte Grundseite bindet pdh-viewer.js nicht ein")
+	}
+	r := iconTestRouter()
+	for _, f := range files {
+		name := filepath.Base(f)
+		if !strings.Contains(src, `<script src="{{uiURL "`+name+`"}}"></script>`) {
+			t.Errorf("base.gohtml bindet %s nicht ein", name)
+		}
+		rec := iconGet(r, uiURL(name), nil)
+		if rec.Code != 200 || !strings.HasPrefix(rec.Header().Get("Content-Type"), "text/javascript") || rec.Body.Len() == 0 {
+			t.Errorf("%s: HTTP %d, %q", name, rec.Code, rec.Header().Get("Content-Type"))
+		}
+	}
+	for _, m := range scriptBlockRe.FindAllStringSubmatch(baseSource(t), -1) {
+		if len(m[2]) > 1500 && !strings.Contains(m[2], "{{") {
+			t.Errorf("Inline-Skript ohne Platzhalter mit %d Byte: %.60q", len(m[2]), strings.TrimSpace(m[2]))
+		}
+	}
+}
+
 // baseWithUI: Quelltext von base.gohtml und aller ausgelagerten Dateien der
 // Oberfläche (web/static/ui/*.css, *.js, sortiert) – für Tests, die prüfen, ob
 // eine Regel oder Funktion im Rahmen vorhanden ist, egal ob inline oder ausgelagert.
