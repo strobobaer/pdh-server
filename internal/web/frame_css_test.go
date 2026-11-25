@@ -119,6 +119,9 @@ func TestFrameTopbarFits(t *testing.T) {
 		".frame-log{position:fixed;z-index:850;right:var(--sp-3);bottom:50px;",
 		".frame-dialog-bar{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:var(--sp-2);margin-top:var(--sp-3);position:sticky;bottom:calc(-1 * var(--sp-4));",
 		".frame-order li span{flex:1;min-width:0;overflow-wrap:anywhere}",
+		// Statusleiste bei 768 px und Größe 130–160 %: Mindestbreiten als Anteil der Leiste
+		"grid-template-columns:minmax(min(180px,30%),1fr) minmax(0,420px) auto minmax(min(140px,25%),1fr)",
+		"grid-template-columns:minmax(min(120px,22%),1fr) minmax(0,320px) minmax(min(160px,28%),auto) minmax(min(120px,22%),1fr)",
 	} {
 		if !strings.Contains(css, want) {
 			t.Errorf("frame.css ohne %q", want)
