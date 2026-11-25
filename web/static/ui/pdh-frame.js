@@ -176,6 +176,57 @@
   }
   window.pdhFrame.palette = palOpen;
 
+  // ── Statusleiste ───────────────────────────────────────────────
+  // Meldungen von setGlobalStatus merken (letzte 20, nur diese Sitzung); Tippen auf die
+  // Leiste zeigt sie. Update-Stand kommt aus pdh-maint-band.js (Ereignis pdh:maint).
+  var LOG_KEY = 'pdh_frame_log';
+  function logRead() { try { return JSON.parse(sessionStorage.getItem(LOG_KEY) || '[]'); } catch (e) { return []; } }
+  function logAdd(state, msg, err) {
+    if (!msg && !err) return;
+    var l = logRead();
+    l.unshift({ t: new Date().toLocaleTimeString(), s: state || '', m: String(msg || ''), e: String(err || '') });
+    try { sessionStorage.setItem(LOG_KEY, JSON.stringify(l.slice(0, 20))); } catch (e) {}
+  }
+  if (typeof window.setGlobalStatus === 'function') {
+    var origStatus = window.setGlobalStatus;
+    window.setGlobalStatus = function (state, message, progress, errorText) {
+      if (state !== 'busy') logAdd(state, message, errorText);
+      return origStatus.apply(this, arguments);
+    };
+  }
+  function logToggle(open) {
+    var box = $('#frame-log'), foot = $('#global-status-footer');
+    if (!box || !foot) return;
+    if (open) {
+      var ol = $('ol', box);
+      ol.innerHTML = '';
+      var l = logRead();
+      if (!l.length) { var e = document.createElement('li'); e.textContent = T('Keine Meldungen'); ol.appendChild(e); }
+      l.forEach(function (x) {
+        var li = document.createElement('li');
+        li.className = 'fl-' + x.s;
+        li.textContent = x.t + ' · ' + x.m + (x.e ? ' – ' + x.e : '');
+        ol.appendChild(li);
+      });
+    }
+    box.hidden = !open;
+    foot.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+  var mirrorText = ($('#frame-warn') || {}).textContent || '';
+  document.addEventListener('pdh:maint', function (e) {
+    var v = e.detail || {}, warn = $('#frame-warn');
+    if (!warn) return;
+    var parts = [];
+    if (v.locked || v.active && !v.countdown_until) parts.push(T('Update läuft – PDH ist gleich kurz weg'));
+    else if (v.countdown_until) {
+      var min = Math.max(0, Math.ceil((Date.parse(v.countdown_until) - Date.now()) / 60000));
+      parts.push(T('Automatische Wartung in %s min').replace('%s', String(min)) + (v.to_version ? ' (' + v.to_version + ')' : ''));
+    }
+    if (mirrorText) parts.push(mirrorText);
+    warn.textContent = parts.join(' · ');
+    warn.hidden = !parts.length;
+  });
+
   function ribbonSelect(key) {
     $$('[data-ribbon-tab]').forEach(function (t) { t.setAttribute('aria-selected', t.dataset.ribbonTab === key ? 'true' : 'false'); });
     $$('[data-ribbon-panel]').forEach(function (p) { p.hidden = p.dataset.ribbonPanel !== key; });
@@ -183,6 +234,8 @@
 
   document.addEventListener('click', function (e) {
     var t = e.target;
+    if (t.closest('#global-status-footer')) { logToggle($('#frame-log').hidden); return; }
+    if (!t.closest('#frame-log')) logToggle(false);
     if (t.closest('[data-palette-open]')) { palOpen(); return; }
     if (pal && !t.closest('.frame-palette')) palClose();
     if (t.closest('[data-rail-more]')) { railToggle(!$('.rail').classList.contains('open')); return; }
@@ -201,7 +254,8 @@
   });
   document.addEventListener('keydown', function (e) {
     if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 'k' || e.key === 'K')) { e.preventDefault(); palOpen(); return; }
-    if (e.key === 'Escape') railToggle(false);
+    if (e.key === 'Escape') { railToggle(false); logToggle(false); }
+    if ((e.key === 'Enter' || e.key === ' ') && e.target.id === 'global-status-footer') { e.preventDefault(); logToggle($('#frame-log').hidden); }
   });
   document.addEventListener('focusin', function (e) { if (e.target.matches && e.target.matches('[data-palette-open]')) palOpen(); });
 })();

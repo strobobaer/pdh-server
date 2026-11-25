@@ -89,6 +89,28 @@ func TestUIFrameFirmDefaultPerm(t *testing.T) {
 	}
 }
 
+// Statusleiste des neuen Rahmens: Meldungsliste, Spiegelserver-Warnung, Update-Stand.
+func TestFrameStatusbar(t *testing.T) {
+	d := frameTestData(true)
+	d.Mirror = &MirrorBanner{}
+	out := renderFrameForTest(t, "server_config", d)
+	for _, want := range []string{`id="global-status-footer"`, `role="button"`, `aria-label="Letzte Meldungen"`, `aria-controls="frame-log"`,
+		`id="frame-log"`, "Spiegelserver – nur lesen", `id="footer-status-text"`, `id="footer-progress-fill"`, `id="footer-status-error"`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("Statusleiste ohne %q", want)
+		}
+	}
+	if plain := renderFrameForTest(t, "server_config", frameTestData(true)); strings.Contains(plain, "Spiegelserver – nur lesen") || !strings.Contains(plain, `id="frame-warn"`) {
+		t.Error("Warnfeld ohne Spiegel falsch")
+	}
+	if strings.Contains(renderFrameForTest(t, "server_config", frameTestData(false)), `id="frame-log"`) {
+		t.Error("Meldungsliste im klassischen Rahmen")
+	}
+	if !strings.Contains(uiFile(t, "pdh-maint-band.js"), "'pdh:maint'") || !strings.Contains(uiFile(t, "pdh-frame.js"), "addEventListener('pdh:maint'") {
+		t.Error("Update-Stand kommt nicht in der Statusleiste an")
+	}
+}
+
 // renderFrameForTest: Seite wie im Betrieb über frameTemplateName rendern.
 func renderFrameForTest(t *testing.T, page string, data any) string {
 	t.Helper()
@@ -137,7 +159,7 @@ func TestFrameRenders(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, want := range []string{`{{template "ui-head" .}}`, `{{template "ui-bands" .}}`, `{{template "ui-overlays" .}}`,
-		`{{template "ui-context" .}}`, `{{template "ui-footer" .}}`, `{{template "ui-scripts" .}}`, `{{template "ui-tail" .}}`, `{{template "ui-topbar" .}}`} {
+		`{{template "ui-context" .}}`, `{{template "ui-scripts" .}}`, `{{template "ui-tail" .}}`, `{{template "ui-topbar" .}}`} {
 		if !strings.Contains(string(src), want) {
 			t.Errorf("frame.gohtml nutzt %s nicht", want)
 		}
