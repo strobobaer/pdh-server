@@ -282,7 +282,7 @@ und 3 drückt bis auf Weiteres der Anwender.
   Übernahmesperre weg ist), dann der aktive (Pakete, Neustart → der
   andere übernimmt) – vorher `pdh-ha update status`.
 
-### Offene Punkte (Stand 24.11.2026)
+### Offene Punkte (Stand 25.11.2026)
 
 1. **Netz-Abgleich im Browser mit zwei Quellen:** 0.80.25 ist auf `main`
    und dem Testverbund; die Vorschlagsliste mit zwei eingeschalteten
@@ -1122,6 +1122,45 @@ und 3 drückt bis auf Weiteres der Anwender.
     jedem PDH-Update mit Haken, Warten im Wartungsfenster hält `drTick` bis
     15 min, `StandardOutput=append:` braucht systemd ≥ 240. **Teil B
     (Verbund: nur am passiven Server mit Rollentausch) ist nicht begonnen.**
+    **0.82.60 Neustart unter Debian, zurückgehaltene Pakete** (Anwender
+    25.11.2026: „Ja, 0.82.60 bauen“, NVIDIA „Zurückhalten“; Anlass: Prüfung
+    von 10.10.0.202): Skript Version 3 meldet „Neustart nötig“ auch bei einem
+    strikt neueren installierten Kernel derselben Variante (Debian legt keine
+    `/var/run/reboot-required` an), zählt `apt-mark hold` getrennt
+    (`held_count`, je Architektur) und spielt sie nicht ein. Ohne eingespielte
+    Pakete startet nur der Knopf neu (`osSteps.AllowBareReboot`, Nullwert =
+    nie), nie das PDH-Update mit Haken oder das Wartungsfenster. Keine
+    Migration, kein neues Recht. Codex zweimal, alle wichtigen Befunde behoben;
+    zurückgestellt: `sort -V` wertet „045“ und „45“ gleich, Variante bei Namen
+    wie `6.12.118-rt2-amd64`. Ledger
+    `.superpowers/sdd/2026-11-25-os-neustart-debian/`. Auf `main`
+    (25.11.2026, Merge `a58186c6`) und dem Testverbund (beide Server und
+    Zeuge 0.82.60, aktiv jetzt `pdh` 10.10.0.14, Spiegelung läuft). Das Update hat
+    `/usr/local/sbin/pdh-os-update` Version 3 auf beiden Servern **von selbst**
+    eingespielt – ab einem Stand mit 0.82.59 entfällt die Handarbeit.
+27. **10.10.0.202 Stand 25.11.2026** (Prüfung auf Wunsch des Anwenders):
+    Port 443 ist im Haus wieder erreichbar (Firewall vom Anwender). Im Haus
+    zeigen `pdh.strobl-home.net` und `cloud.strobl-home.net` per DNS (IPv4)
+    direkt auf 202, IPv6 weiter auf Cloudflare. Die Seite `pdh` nutzt jetzt
+    das Let's-Encrypt-Zertifikat des PDH über
+    `/etc/nginx/snippets/pdh-le-ssl.conf` statt `cloudflare-ssl.conf`
+    (Origin-Zertifikat, Browser vertrauen ihm nicht; Gitea nutzt es weiter;
+    Sicherung `/root/nginx-pdh.bak-20261125`). Die Nextcloud-Seite
+    `nextcloud-cloudflare.conf` lauscht zusätzlich auf `443`/`[::]:443`
+    (Sicherung `/root/nginx-nextcloud.bak-20261125`) – im Haus ohne
+    Gerätezertifikat, nur Anmeldung; `scripts/repair-nextcloud-cloudflare-origin.sh`
+    würde die beiden Zeilen wieder entfernen. Beides vom Anwender eingetragen,
+    im Browser „sicher“. NVIDIA: Quadro P400 (Pascal) wird vom installierten
+    Treiber 620 (CUDA-Archiv, nur 615/620 verfügbar) nicht mehr unterstützt
+    („No such device“); `nvidia-persistenced` abgeschaltet, Ollama läuft auf
+    dem Prozessor. Debians Treiber 550 (Bereich `non-free`) könnte die Karte –
+    nur auf Wunsch. Offen: 0.82.60 einspielen (Anwender, mit Sicherung; 202
+    hat 0.82.59 und Skript Version 2 – das Update spielt Version 3 von selbst
+    ein), 57 offene Pakete (2
+    Sicherheitsupdates `zstd`, `libzstd1`; Docker-Pakete starten Container neu).
+    **Tests:** `TestITNetRunOnceNotConfigured` und
+    `TestTerminalGlobalSlidesJSON` sind auf `main` rot (auch einzeln, gegen die
+    Labor-Datenbank `pdh_test`; vermutlich Testdaten) – noch nicht untersucht.
 
 Docker Desktop startet nach einem Neustart des Windows-Rechners nicht von
 selbst – ohne ihn fehlen der Zeuge und die Labor-Datenbank für die Tests.
