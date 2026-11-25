@@ -1,0 +1,684 @@
+<title>PDH 0.90.0 – klickbare Vorschau</title>
+<style>
+/* Layout: Kopfzeile, Reiterleiste, Menüband, Inhalt; links Bereichsleiste, rechts Copilot, unten Statuszeile.
+   Farben und Maße stehen nur in den Variablen; Fiori/Fluent und hell/dunkel schalten nur diese um. */
+:root{--font:"DM Sans","Segoe UI",system-ui,sans-serif;--stage:#cfd4da;--bg:#f3f4f6;--bg2:#fff;--text:#1d2d3e;--muted:#5e6c7a;--border:#d9dde2;--accent:#0064d9;--on-accent:#fff;--shadow-card:0 6px 20px rgba(13,28,45,.2);--r:4px;--rl:8px;--rt:0px;--tint:#e5effc;--hov:#edf0f3;--crit:#b00020;--critbg:#fdeaec;--warn:#8a5300;--warnbg:#fff0d0;--ok:#146b34;--okbg:#e1f3e7;color-scheme:light}
+html[data-style="fluent"]{--font:"Segoe UI Variable","Segoe UI","DM Sans",system-ui,sans-serif;--bg:#f0f0f0;--bg2:#fcfcfc;--text:#1b1b1b;--muted:#616161;--border:#e0e0e0;--accent:#0f6cbd;--r:6px;--rl:8px;--rt:8px;--tint:#e3eef8;--hov:#ececec}
+html[data-mode="dark"]{--stage:#07090b;--bg:#12171c;--bg2:#1b2229;--text:#e6eaee;--muted:#9aa7b4;--border:#313c47;--accent:#5aa5ff;--on-accent:#06131f;--shadow-card:0 8px 24px rgba(0,0,0,.6);--tint:#1b3350;--hov:#26303a;--crit:#ff8f9a;--critbg:#3f1d24;--warn:#f3bb62;--warnbg:#3b2e13;--ok:#84d6a0;--okbg:#17331f;color-scheme:dark}
+html[data-style="fluent"][data-mode="dark"]{--bg:#202020;--bg2:#2b2b2b;--text:#f5f5f5;--muted:#a8a8a8;--border:#414141;--accent:#479ef5;--tint:#173a57;--hov:#383838}
+[hidden]{display:none!important}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--stage);color:var(--text);font:13px/1.4 var(--font);overflow:hidden}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+h1,h2,h3,p{margin:0}
+:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.ic{flex:none}
+.mut{color:var(--muted)}
+#stage{height:100%;display:flex;flex-direction:column}
+#app{position:relative;flex:1;min-height:0;width:100%;max-width:100%;margin:0 auto;display:flex;flex-direction:column;background:var(--bg);overflow:hidden}
+#app.frame{flex:0 1 860px;margin-top:12px;border:1px solid var(--border);border-radius:var(--rl)}
+#pv{flex:none;height:44px;display:flex;align-items:center;gap:8px;padding:0 max(16px,env(safe-area-inset-left,0px));color:var(--text);font-size:12px;overflow-x:auto;white-space:nowrap}
+#pv .seg button{height:28px}
+/* Kopfzeile */
+#top{flex:none;display:flex;align-items:center;gap:4px;height:48px;padding:0 8px;background:var(--bg2);border-bottom:1px solid var(--border)}
+.logo{flex:none;font-weight:700;font-size:16px;letter-spacing:.04em;padding:0 8px}
+.srch{flex:1;max-width:520px;margin:0 auto;height:32px;display:flex;align-items:center;gap:8px;padding:0 10px;background:var(--bg);border:1px solid var(--border);border-radius:var(--r);color:var(--muted);text-align:left}
+.srch span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+kbd{font:12px var(--font);border:1px solid var(--border);border-radius:3px;padding:0 5px;background:var(--bg2)}
+.sp{flex:1}
+.ib{flex:none;width:36px;height:36px;display:inline-flex;align-items:center;justify-content:center;background:transparent;border:0;border-radius:var(--r);position:relative}
+.ib:hover,.ib.on{background:var(--hov)}
+.ib.on{color:var(--accent)}
+.dot{position:absolute;top:6px;right:6px;width:8px;height:8px;border-radius:50%;background:var(--crit)}
+.clock{flex:none;font-size:13px;font-variant-numeric:tabular-nums;padding:0 8px;white-space:nowrap}
+.user{flex:none;height:36px;display:flex;align-items:center;gap:8px;padding:0 6px;background:transparent;border:0;border-radius:var(--r);white-space:nowrap}
+.user:hover{background:var(--hov)}
+.av{width:28px;height:28px;border-radius:50%;background:var(--tint);color:var(--accent);display:grid;place-items:center;font-size:12px;font-weight:600}
+/* Hauptbereich */
+#body{flex:1;min-height:0;display:flex;position:relative}
+#rail{flex:none;width:72px;background:var(--bg2);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:4px 0;overflow-y:auto}
+.ra{height:56px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;background:transparent;border:0;color:var(--muted);font-size:12px;margin:0 4px;border-radius:var(--r)}
+.ra:hover{background:var(--hov)}
+.ra.on{background:var(--tint);color:var(--accent);font-weight:600}
+#center{flex:1;min-width:0;display:flex;flex-direction:column}
+#tabs{flex:none;display:flex;align-items:flex-end;gap:2px;padding:6px 8px 0;overflow-x:auto;scrollbar-width:none}
+#tabs::-webkit-scrollbar{display:none}
+.tab{flex:none;height:34px;display:flex;align-items:center;border-radius:var(--rt) var(--rt) 0 0;color:var(--muted);border-bottom:2px solid transparent}
+.tab>button{height:100%;background:transparent;border:0;padding:0 12px;white-space:nowrap;color:inherit;display:flex;align-items:center;gap:6px}
+.tab>button.tx{padding:0 6px 0 0;width:28px;justify-content:center}
+.tab:hover{background:var(--hov)}
+.tab.on{background:var(--bg2);color:var(--text);font-weight:600;border-bottom-color:var(--accent)}
+.tsep{flex:none;width:1px;height:18px;background:var(--border);margin:0 6px 8px}
+#ribbon{flex:none;background:var(--bg2);border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
+.rtabs{display:flex;gap:2px;padding:0 8px}
+.rt{height:30px;padding:0 12px;background:transparent;border:0;border-bottom:2px solid transparent;color:var(--muted)}
+.rt.on{color:var(--accent);border-bottom-color:var(--accent);font-weight:600}
+.rbody{display:flex;overflow-x:auto;padding:2px 8px 4px;min-height:84px}
+.grp{flex:none;display:flex;flex-direction:column;justify-content:space-between;padding:0 6px;border-right:1px solid var(--border)}
+.grp:last-child{border-right:0}
+.gbtns{display:flex;gap:2px}
+.gl{text-align:center;font-size:12px;color:var(--muted);height:16px;line-height:16px}
+.rb{flex:none;min-width:60px;max-width:92px;min-height:56px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:4px 6px;background:transparent;border:1px solid transparent;border-radius:var(--r);font-size:12px;line-height:14px;text-align:center}
+.rb:hover{background:var(--hov)}
+.rb.on{background:var(--tint);border-color:var(--accent);color:var(--accent)}
+.rnote{padding:12px 8px;color:var(--muted)}
+.rph{display:flex;padding:2px 4px}
+.rph .rb{flex:1;max-width:none}
+#content{flex:1;min-height:0;overflow:auto;background:var(--bg)}
+#content.fit{overflow:hidden;background:var(--bg2)}
+/* Pillen */
+.pill{display:inline-flex;align-items:center;height:20px;padding:0 8px;border-radius:var(--r);font-size:12px;white-space:nowrap;background:var(--bg);border:1px solid var(--border);color:var(--text)}
+.p-hoch{background:var(--critbg);color:var(--crit);border-color:transparent;font-weight:600}
+.p-nie{background:transparent;border-color:transparent;color:var(--muted);padding:0 2px}
+.s-arb{background:var(--tint);color:var(--accent);border-color:transparent}
+.s-war{background:var(--warnbg);color:var(--warn);border-color:transparent}
+.s-erl{background:var(--okbg);color:var(--ok);border-color:transparent}
+.pills{display:flex;gap:4px;flex:none;align-items:center}
+/* Schaltflächen */
+.btn{height:32px;padding:0 12px;border:1px solid var(--border);background:var(--bg2);border-radius:var(--r);white-space:nowrap}
+.btn:hover{background:var(--hov)}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.seg{display:inline-flex;border:1px solid var(--border);border-radius:var(--r);overflow:hidden;background:var(--bg2);flex:none}
+.seg button{height:30px;padding:0 10px;border:0;background:transparent;border-right:1px solid var(--border);white-space:nowrap}
+.seg button:last-child{border-right:0}
+.seg button.on{background:var(--tint);color:var(--accent);font-weight:600}
+/* Arbeitsliste */
+.wk{display:flex;height:100%}
+.fold{flex:none;width:216px;border-right:1px solid var(--border);overflow:auto;padding:8px;background:var(--bg)}
+.fold h3,.fh{font-size:12px;color:var(--muted);font-weight:600;padding:8px 8px 4px;text-transform:uppercase;letter-spacing:.04em}
+.fi{width:100%;display:flex;align-items:center;gap:6px;height:32px;padding-right:8px;background:transparent;border:0;border-radius:var(--r);text-align:left;white-space:nowrap}
+.fi:hover{background:var(--hov)}
+.fi.on{background:var(--tint);color:var(--accent);font-weight:600}
+.fi span:first-of-type{flex:1;overflow:hidden;text-overflow:ellipsis}
+.fi small{font-size:12px;color:var(--muted)}
+.lp{flex:none;width:min(440px,42%);min-width:300px;display:flex;flex-direction:column;border-right:1px solid var(--border);background:var(--bg2)}
+.nar .lp,.vl .lp{width:100%;flex:1;border-right:0}
+.dp{flex:1;min-width:0;overflow:auto;container-type:inline-size}
+.ft{flex:none;display:flex;gap:2px;padding:0 8px;overflow-x:auto;border-bottom:1px solid var(--border)}
+.ft button{flex:none;height:36px;padding:0 10px;background:transparent;border:0;border-bottom:2px solid transparent;color:var(--muted);white-space:nowrap}
+.ft button.on{color:var(--text);border-bottom-color:var(--accent);font-weight:600}
+.ft b{font-weight:400;margin-left:4px;color:var(--muted)}
+.lt{flex:none;display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--border);flex-wrap:wrap}
+.lt select{height:30px;border:1px solid var(--border);background:var(--bg2);border-radius:var(--r);padding:0 6px;max-width:100%;min-width:0}
+.lscroll{flex:1;min-height:0;overflow:auto}
+.gh{width:100%;display:flex;align-items:center;gap:6px;height:32px;padding:0 12px;background:var(--bg);border:0;border-bottom:1px solid var(--border);text-align:left;font-size:12px;color:var(--muted)}
+.gh b{color:var(--text);font-weight:600}
+.gh .gp{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gh .cnt{flex:none;font-variant-numeric:tabular-nums}
+.gh svg{transition:transform .12s}
+.gh[aria-expanded="false"] svg{transform:rotate(-90deg)}
+.row{display:flex;flex-direction:column;gap:2px;padding:6px 12px;min-height:50px;border-bottom:1px solid var(--border);cursor:pointer;background:transparent;width:100%;text-align:left;border-left:0;border-right:0;border-top:0}
+.row:hover{background:var(--hov)}
+.row.sel{background:var(--tint)}
+.r1,.r2{display:flex;align-items:center;gap:8px;min-width:0}
+.rt1{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px;font-weight:500}
+.rtime{flex:none;font-size:12px;color:var(--muted)}
+.rid{flex:none;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.rpath{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:var(--muted)}
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:8px;padding:12px}
+.tiles .row{border:1px solid var(--border);border-radius:var(--rl)}
+.empty{padding:24px 16px;color:var(--muted)}
+/* Detail */
+.dh{padding:16px 16px 8px}
+.dno{font-size:12px;color:var(--muted)}
+.dh h2{font-size:20px;font-weight:600;margin:2px 0 8px;line-height:1.25}
+.facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px 16px;margin:12px 0 0}
+.facts dt{font-size:12px;color:var(--muted)}
+.facts dd{margin:0;font-size:14px}
+.dtabs{display:flex;gap:2px;padding:0 12px;overflow-x:auto;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--bg2);z-index:1}
+.dtabs button{flex:none;height:38px;padding:0 10px;background:transparent;border:0;border-bottom:2px solid transparent;color:var(--muted)}
+.dtabs button.on{color:var(--text);border-bottom-color:var(--accent);font-weight:600}
+.dbody{padding:16px;display:flex;flex-direction:column;gap:12px;max-width:760px}
+.dbody h3{font-size:14px;font-weight:600}
+.back{display:flex;align-items:center;gap:4px;height:44px;padding:0 8px;background:var(--bg2);border:0;border-bottom:1px solid var(--border);width:100%;text-align:left;color:var(--accent);font-size:14px}
+.chk{display:flex;align-items:center;gap:8px;min-height:32px}
+.chk input{width:18px;height:18px;accent-color:var(--accent)}
+.cm{display:flex;gap:8px}
+.cm .av{flex:none}
+.cm p{margin-top:2px}
+.tl{display:flex;flex-direction:column;gap:8px;border-left:1px solid var(--border);margin-left:6px;padding-left:12px}
+label.f{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted)}
+label.f select,label.f input,.dlg select,.dlg input{height:34px;border:1px solid var(--border);border-radius:var(--r);background:var(--bg2);padding:0 8px;font-size:14px;color:var(--text)}
+.lnk{background:transparent;border:0;padding:0;color:var(--accent);text-align:left;text-decoration:underline}
+/* Startseite */
+.pg{padding:16px;display:flex;flex-direction:column;gap:12px}
+.ph{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.ph h1{font-size:20px;font-weight:600}
+.tiles2{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px}
+.tile{display:flex;gap:12px;align-items:flex-start;text-align:left;padding:12px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--rl);min-height:64px}
+.tile:hover{background:var(--hov)}
+.tile svg{color:var(--accent);margin-top:2px}
+.tile b{display:block;font-size:14px;font-weight:600}
+.tile small{color:var(--muted);font-size:12px}
+.wg{display:grid;grid-template-columns:repeat(var(--cols,4),minmax(0,1fr));gap:12px}
+.w{background:var(--bg2);border:1px solid var(--border);border-radius:var(--rl);display:flex;flex-direction:column;min-height:176px;min-width:0}
+.cust .w{border-style:dashed;border-color:var(--accent)}
+.wh{display:flex;align-items:center;gap:4px;padding:8px 8px 8px 12px;border-bottom:1px solid var(--border);font-weight:600;font-size:14px}
+.wh span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wh .ib{width:28px;height:28px}
+.wb{padding:4px 0;flex:1;min-height:0;overflow:auto}
+.wi{display:flex;align-items:center;gap:8px;padding:6px 12px;min-height:34px;width:100%;background:transparent;border:0;text-align:left}
+button.wi:hover{background:var(--hov)}
+.wi span.g{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bar{height:6px;background:var(--bg);border-radius:3px;overflow:hidden;flex:none;width:72px;border:1px solid var(--border)}
+.bar i{display:block;height:100%;background:var(--crit)}
+.qs{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:6px;padding:8px 12px}
+.qa{padding:6px 8px;border:1px solid var(--border);border-radius:var(--r);font-size:12px;display:flex;flex-direction:column;background:var(--bg)}
+.qa b{font-size:13px;font-weight:600}
+.qa.crit{background:var(--critbg);color:var(--crit);border-color:transparent}
+.qa.warn{background:var(--warnbg);color:var(--warn);border-color:transparent}
+.cal{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:1px;background:var(--border);margin:8px 12px;border:1px solid var(--border)}
+.cal>div{background:var(--bg2);padding:6px;min-height:92px;font-size:12px;display:flex;flex-direction:column;gap:4px}
+.cal b{font-size:12px}
+.cal .ev{background:var(--tint);border-radius:3px;padding:2px 4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cal .today b{color:var(--accent)}
+.wb textarea{width:calc(100% - 24px);margin:8px 12px;height:100px;resize:vertical;border:1px solid var(--border);border-radius:var(--r);background:var(--bg);padding:8px;font-size:14px}
+.cbar{padding:8px 12px;background:var(--tint);border-radius:var(--r);color:var(--text)}
+/* Tabellen */
+.tw{overflow-x:auto;background:var(--bg2);border:1px solid var(--border);border-radius:var(--rl)}
+.tbl{width:100%;border-collapse:collapse;min-width:520px}
+.tbl th{text-align:left;font-size:12px;font-weight:600;color:var(--muted);padding:8px 12px;border-bottom:1px solid var(--border);white-space:nowrap}
+.tbl td{padding:0 12px;height:40px;border-bottom:1px solid var(--border);white-space:nowrap}
+.tbl tr:last-child td{border-bottom:0}
+.tbl tbody tr:hover{background:var(--hov)}
+.tree{background:var(--bg2);border:1px solid var(--border);border-radius:var(--rl);padding:4px 0}
+.tree div{display:flex;align-items:center;gap:8px;min-height:36px;padding-right:12px;border-bottom:1px solid var(--border)}
+.tree div:last-child{border-bottom:0}
+.tree .n{flex:1}
+/* Dienste */
+.ing{display:flex;flex-direction:column;height:100%;padding:12px;gap:8px}
+.ing-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.ing-fr{flex:1;min-height:240px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--rl);overflow:auto;transition:opacity .2s}
+.ing-fr.ld{opacity:.3}
+.pnl{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;padding:12px}
+.pnl>div{border:1px solid var(--border);border-radius:var(--r);padding:8px 12px}
+.pnl svg{width:100%;height:80px;color:var(--accent)}
+/* Copilot */
+#cop{flex:none;width:320px;background:var(--bg2);border-left:1px solid var(--border);display:flex;flex-direction:column;min-height:0}
+.wm #cop,.phn #cop{position:absolute;right:0;top:0;bottom:0;width:min(360px,100%);z-index:30;box-shadow:var(--shadow-card)}
+.ch{flex:none;display:flex;align-items:center;border-bottom:1px solid var(--border);padding-right:4px}
+.ch .tabsx{flex:1;display:flex;overflow-x:auto}
+.ch .tabsx button{flex:1;height:40px;background:transparent;border:0;border-bottom:2px solid transparent;color:var(--muted)}
+.ch .tabsx button.on{color:var(--text);border-bottom-color:var(--accent);font-weight:600}
+.cb{flex:1;min-height:0;overflow:auto;padding:12px;display:flex;flex-direction:column;gap:8px}
+.msg{max-width:92%;padding:8px 12px;border-radius:var(--rl);background:var(--bg);border:1px solid var(--border)}
+.msg.me{align-self:flex-end;background:var(--tint);border-color:transparent}
+.msg ul{margin:4px 0;padding-left:18px}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chips button{height:28px;padding:0 10px;border:1px solid var(--border);background:var(--bg2);border-radius:14px}
+.cin{flex:none;display:flex;gap:8px;padding:8px 12px;border-top:1px solid var(--border)}
+.cin input{flex:1;min-width:0;height:36px;border:1px solid var(--border);border-radius:var(--r);background:var(--bg);padding:0 10px}
+/* Status und Schnellwahl */
+#status{flex:none;display:flex;align-items:center;gap:12px;height:28px;padding:0 12px;background:var(--bg2);border-top:1px solid var(--border);font-size:12px}
+#stMsg{flex:0 1 auto;min-width:0;max-width:60%;height:100%;display:flex;align-items:center;background:transparent;border:0;padding:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left}
+#stText{overflow:hidden;text-overflow:ellipsis}
+#stProg{flex:1;max-width:240px;height:8px;border:1px solid var(--border);border-radius:4px;overflow:hidden;background:var(--bg)}
+#stProg i{display:block;height:100%;background:var(--accent);transition:width .5s}
+#stWarn{color:var(--warn);font-weight:600;white-space:nowrap;margin-left:auto}
+#stVer{color:var(--muted);white-space:nowrap}
+#bnav{display:none;flex:none;height:56px;background:var(--bg2);border-top:1px solid var(--border);padding-bottom:0}
+#bnav button{flex:1;min-width:0;background:transparent;border:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:12px;color:var(--muted)}
+#bnav button.on{color:var(--accent);font-weight:600}
+/* Überlagerungen */
+#ov{position:absolute;inset:0;z-index:50;pointer-events:none}
+#ov>*{pointer-events:auto}
+.scrim{position:absolute;inset:0;background:rgba(0,0,0,.28)}
+.scrim.clear{background:transparent}
+.pal,.dlg{position:absolute;left:50%;transform:translateX(-50%);width:min(560px,calc(100% - 16px));background:var(--bg2);border:1px solid var(--border);border-radius:var(--rl);box-shadow:var(--shadow-card)}
+.pal{top:56px;max-height:calc(100% - 72px);display:flex;flex-direction:column;overflow:hidden}
+.pal input{height:48px;border:0;border-bottom:1px solid var(--border);background:transparent;padding:0 16px;font-size:16px;outline:0}
+.pal .pl{overflow:auto;padding:4px}
+.pal .ph2{padding:8px 12px 2px;font-size:12px;color:var(--muted);font-weight:600}
+.pi{display:flex;align-items:center;gap:8px;width:100%;min-height:40px;padding:4px 12px;background:transparent;border:0;border-radius:var(--r);text-align:left}
+.pi.on{background:var(--tint)}
+.pi .g{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pi small{color:var(--muted);flex:none;max-width:45%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dlg{top:72px;padding:16px;display:flex;flex-direction:column;gap:12px;max-height:calc(100% - 88px);overflow:auto}
+.dlg h3{font-size:16px}
+.dlg label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted)}
+.dact{display:flex;justify-content:flex-end;gap:8px}
+.menu{position:absolute;min-width:200px;max-width:calc(100% - 8px);background:var(--bg2);border:1px solid var(--border);border-radius:var(--rl);box-shadow:var(--shadow-card);padding:4px;max-height:calc(100% - 16px);overflow:auto}
+.menu.sheet{left:0!important;right:0;bottom:0!important;top:auto!important;max-width:none;border-radius:var(--rl) var(--rl) 0 0}
+.mi{display:flex;align-items:center;gap:8px;width:100%;min-height:36px;padding:4px 12px;background:transparent;border:0;border-radius:var(--r);text-align:left}
+.mi:hover{background:var(--hov)}
+.mi.on{color:var(--accent);font-weight:600}
+.mh{padding:8px 12px 2px;font-size:12px;color:var(--muted);font-weight:600}
+.msep{height:1px;background:var(--border);margin:4px 0}
+.toast{position:absolute;left:50%;bottom:44px;transform:translateX(-50%);max-width:calc(100% - 24px);background:var(--text);color:var(--bg);padding:8px 14px;border-radius:var(--r);box-shadow:var(--shadow-card);z-index:60;pointer-events:none}
+/* Handy */
+.phn #rail{display:none}
+.phn #bnav{display:flex}
+.phn .ib{width:44px;height:44px}
+.phn .tab,.phn .tab>button{height:44px}
+.phn .tab{align-items:stretch}
+.phn .rb{min-height:44px}
+.phn .row,.phn .gh,.phn .fi,.phn .mi,.phn .pi,.phn .wi,.phn .chk{min-height:44px}
+.phn .ft button,.phn .dtabs button,.phn .rt,.phn .btn,.phn .seg button,.phn .ch .tabsx button{height:44px}
+.phn #top{gap:0;padding:0 4px}
+.phn .logo{padding:0 6px}
+.phn .user .nm,.phn .clock .dt{display:none}
+.phn .clock{padding:0 4px}
+.phn .pg{padding:12px}
+.phn #stVer{display:none}
+.phn #stProg{flex:0 0 48px}
+.phn #stWarn{max-width:38%;overflow:hidden;text-overflow:ellipsis}
+.phn #stMsg{max-width:none;flex:1}
+.wm .user .nm{display:none}
+.phn .dh h2{font-size:16px}
+.phn .dbody{padding:12px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+<div id="stage">
+ <div id="app" class="wl">
+  <header id="top">
+   <span class="logo">PDH</span>
+   <button class="srch" id="srch" data-act="pal" aria-label="Suche öffnen"></button>
+   <span class="sp" id="topsp"></span>
+   <button class="ib" id="bsrch" data-act="pal" aria-label="Suchen" hidden></button>
+   <button class="ib" id="bbell" data-act="bell" aria-label="Benachrichtigungen"></button>
+   <button class="ib" id="bcop" data-act="cop" aria-label="Copilot ein- oder ausblenden" aria-pressed="false"></button>
+   <span class="clock" id="clock"></span>
+   <button class="user" id="usr" data-act="user" aria-label="Benutzermenü"></button>
+  </header>
+  <div id="body">
+   <nav id="rail" aria-label="Bereiche"></nav>
+   <main id="center">
+    <div id="tabs" role="tablist" aria-label="Seiten und geöffnete Vorgänge"></div>
+    <div id="ribbon"></div>
+    <div id="content"></div>
+   </main>
+   <aside id="cop" hidden aria-label="Copilot"></aside>
+  </div>
+  <footer id="status">
+   <button id="stMsg" data-act="log" aria-label="Letzte Meldungen anzeigen"><span id="stText">Bereit</span></button>
+   <div id="stProg" hidden><i></i></div>
+   <span id="stWarn">Spiegelserver – nur lesen</span>
+   <span id="stVer">0.90.0 Vorschau</span>
+  </footer>
+  <nav id="bnav" aria-label="Bereiche"></nav>
+  <div id="ov"></div>
+ </div>
+ <div id="pv">
+  <b>Vorschau</b>
+  <span class="seg" role="group" aria-label="Breite">
+   <button data-act="aw" data-v="desktop">Desktop 1366</button><button data-act="aw" data-v="tablet">Tablet 768</button><button data-act="aw" data-v="phone">Handy 390</button>
+  </span>
+  <button class="btn" style="height:28px" data-act="upd">Update simulieren</button>
+  <span class="mut">Beispieldaten, nichts wird gespeichert.</span>
+ </div>
+</div>
+<script>
+(()=>{
+'use strict';
+const $=(s,r=document)=>r.querySelector(s),$$=(s,r=document)=>[...r.querySelectorAll(s)];
+const E=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const IC={
+home:'<path d="M3 11l9-8 9 8M5 10v10h5v-6h4v6h5V10"/>',list:'<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
+cal:'<path d="M4 6h16v14H4zM4 10h16M8 3v4M16 3v4"/>',fac:'<path d="M3 21V11l6 4v-4l6 4V5h6v16z"/>',box:'<path d="M12 3l9 4.5v9L12 21l-9-4.5v-9zM3 7.5l9 4.5 9-4.5M12 12v9"/>',
+book:'<path d="M5 4h11a3 3 0 013 3v13H8a3 3 0 01-3-3zM5 17a3 3 0 013-3h11"/>',chart:'<path d="M4 20V4M4 20h16M8 16v-5M12 16V8M16 16v-3"/>',
+gear:'<path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/>',grid:'<path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"/>',
+search:'<circle cx="11" cy="11" r="6.5"/><path d="M16 16l5 5"/>',bell:'<path d="M6 17V11a6 6 0 0112 0v6l1.5 2h-15zM10 21h4"/>',
+spark:'<path d="M12 3l2 6 6 2-6 2-2 6-2-6-6-2 6-2z"/>',plus:'<path d="M12 5v14M5 12h14"/>',save:'<path d="M5 4h12l2 2v14H5zM8 4v5h8V4M8 20v-6h8v6"/>',
+open:'<path d="M3 7h6l2 2h10v10H3z"/>',user:'<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/>',pause:'<path d="M8 5v14M16 5v14"/>',
+check:'<path d="M5 12l5 5 9-10"/>',x:'<path d="M6 6l12 12M18 6L6 18"/>',more:'<circle cx="5" cy="12" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="19" cy="12" r="1.2"/>',
+back:'<path d="M15 5l-7 7 7 7"/>',chev:'<path d="M6 9l6 6 6-6"/>',export:'<path d="M12 4v12M7 9l5-5 5 5M5 20h14"/>',print:'<path d="M7 9V3h10v6M7 17H4V9h16v8h-3M7 14h10v7H7z"/>',
+cols:'<path d="M4 5h16v14H4zM9 5v14M15 5v14"/>',filter:'<path d="M4 5h16l-6 8v6l-4-2v-4z"/>',reload:'<path d="M20 12a8 8 0 11-3-6.2M20 4v5h-5"/>',
+ext:'<path d="M14 4h6v6M20 4l-9 9M18 14v6H4V6h6"/>',sun:'<circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/>',
+moon:'<path d="M20 14a8 8 0 11-10-10 6 6 0 0010 10z"/>',warn:'<path d="M12 4l9 16H3zM12 10v4M12 17h.01"/>',split:'<path d="M4 5h16v14H4zM10 5v14"/>',
+tiles:'<path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"/>',tree:'<path d="M5 4v16M5 8h6M5 14h6M5 20h6"/>',doc:'<path d="M6 3h8l4 4v14H6zM14 3v4h4"/>',
+tool:'<path d="M14 6a4 4 0 005 5l-9 9-3-3 9-9a4 4 0 00-2-2z"/>',palette:'<circle cx="12" cy="12" r="9"/><path d="M12 3v18"/>',send:'<path d="M4 12l16-8-6 16-3-7z"/>',help:'<circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 115 0c0 2-2.5 2-2.5 4M12 17h.01"/>',
+chat:'<path d="M4 5h16v11H9l-5 4z"/>',dot:'<circle cx="12" cy="12" r="3"/>',clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'};
+const I=(n,s=20)=>`<svg class="ic" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${IC[n]||IC.dot}</svg>`;
+const NAV=[
+['Start','home',['Startseite','Leitstand','Zuweisung']],
+['Vorgänge','list',['Störungen','Tickets','Aufgaben','Wartung','Rüstzeiten','Stillstände','KVP','Projekte']],
+['Planung','cal',['Planer','Kalender','Zeiterfassung','Anwesenheit']],
+['Anlagen','fac',['Infrastruktur','Schnellübersicht','IT-Assets','VPN','ESPPDH','Messstellen']],
+['Material','box',['Ersatzteile','Lager','Beschaffung','Bestellvorgänge','Hersteller & Lieferanten']],
+['Wissen','book',['Dokumente','Vorlagen & Signaturen','Schulungen']],
+['Daten','chart',['Statistik','Import','Export','Abgleich','Datennetz']],
+['Verwaltung','gear',['Benutzer','Abteilungen','Organigramm','Rollen & Rechte','Einstellungen','Netzwerk','Datensicherung','Bereinigung','Drucker','Geräte','Leitstände','Infobildschirm','Kostenstellen','Kategorien','Symbole']],
+['Dienste','grid',['Nextcloud','Grafana']]];
+/* Anlagenbaum in Reihenfolge */
+const AS=[['Werk Nord',0],['Halle 1',1],['Presse 4',2],['Hydraulik',3],['Antrieb',3],['Säge 1',2],['Halle 2',1],['Linie 2',2],['Förderband',3],['Linie 3',2],['Kompressor 1',2],['Kühlanlage',2]];
+const PATH=[],END=[];{const st=[];AS.forEach(([n,d],i)=>{st[d]=n;st.length=d+1;PATH[i]=st.join(' › ')});AS.forEach(([n,d],i)=>{let j=i+1;while(j<AS.length&&AS[j][1]>d)j++;END[i]=j})}
+const ST=['Offen','In Arbeit','Wartet','Erledigt'],PR=['Hoch','Mittel','Niedrig'],SC=['','s-arb','s-war','s-erl'];
+const mk=(k,s)=>s.trim().split('\n').map(l=>{const a=l.split('|');return{k,id:a[0],t:a[1],a:+a[2],p:+a[3],s:+a[4],m:+a[5],who:a[6],due:+a[7]}});
+const F=mk('Störung',`
+ST-10483|Kühlwasser zu warm|11|0|0|8|–|1
+ST-10482|Hydraulikdruck fällt ab|3|0|1|12|K. Berger|0
+ST-10481|Presse 4 stoppt bei Hub 3|2|0|0|25|–|0
+ST-10480|Etikettendrucker meldet Fehler 12|7|1|0|47|–|2
+ST-10479|Sägeblatt läuft unrund|5|1|0|95|–|3
+ST-10478|Druckluft schwankt im Netz|10|1|0|140|–|3
+ST-10476|Motor Lager brummt|4|1|0|200|–|5
+ST-10475|Klimagerät im Schaltschrank schaltet ab|11|1|1|230|T. Novak|2
+ST-10474|Förderband läuft schief|8|1|0|260|–|4
+ST-10471|Greifer Vakuum zu niedrig|9|1|1|300|M. Yilmaz|2
+ST-10470|Lichtschranke löst ohne Grund aus|2|1|2|1500|K. Berger|7
+ST-10468|Sensor Vereinzelung spinnt|7|1|1|1700|S. Hartmann|1
+ST-10466|Kondensatablauf undicht|10|2|2|2900|L. Weber|9
+ST-10463|Absaugung verstopft|5|2|1|3000|M. Yilmaz|2
+ST-10459|Antriebsriemen gerissen|8|0|2|4300|L. Weber|6
+ST-10455|Schmierung Stößel geprüft|2|2|3|5800|K. Berger|0
+ST-10452|Filter Kühlkreis getauscht|11|2|3|7200|S. Hartmann|0
+ST-10449|Lichtvorhang justiert|7|1|3|8700|T. Novak|0`);
+const T=mk('Ticket',`
+TK-2241|Zugang zur Wartungsplanung fehlt|0|1|0|35|–|2
+TK-2240|Handscanner Halle 2 lädt nicht|6|0|1|80|S. Hartmann|1
+TK-2238|Neue Etiketten für Linie 2 bestellen|7|1|1|210|M. Yilmaz|3
+TK-2237|Staplerschein Auffrischung anfragen|1|2|0|400|–|14
+TK-2235|Terminal Halle 1 zeigt falsche Uhrzeit|1|1|2|1400|T. Novak|5
+TK-2233|Zugangskarte ersetzen|0|2|0|1600|–|7
+TK-2231|Druckerwarteschlange im Büro hängt|0|1|1|2900|T. Novak|1
+TK-2229|Schichtplan Dezember anpassen|6|1|2|4400|L. Weber|10
+TK-2226|Lieferantendaten Hydraulik prüfen|3|1|2|5700|K. Berger|6
+TK-2224|Neue Kategorie «Druckluft» anlegen|10|2|3|8800|S. Hartmann|0
+TK-2220|WLAN in Halle 2 ist schwach|6|0|3|11500|T. Novak|0
+TK-2218|Schulung Hydraulik terminieren|2|2|3|14000|L. Weber|0`);
+const DESC={'ST-10482':'Der Hydraulikdruck an Presse 4 fällt nach etwa 20 Hüben von 180 auf 140 bar. Die Presse läuft, aber die Presskraft reicht für Teil 4711 nicht mehr.','ST-10481':'Presse 4 bleibt bei Hub 3 stehen. Fehlermeldung am Bedienteil: Zwischenstellung nicht erreicht.','ST-10483':'Das Kühlwasser im Rücklauf liegt bei 41 °C, Soll sind höchstens 35 °C.'};
+const ALL=()=>F.concat(T),byId=id=>ALL().find(r=>r.id===id);
+const PEOPLE=['K. Berger','M. Yilmaz','S. Hartmann','L. Weber','T. Novak'];
+const STAMM={kat:['Mechanik','Elektrik','Hydraulik','Pneumatik','IT'],lief:['Hydrotec GmbH','Pneumo Süd','Elektro Lang','Sensorik Haas'],kst:['4100 Presswerk','4200 Montage','4300 Instandhaltung']};
+const D={
+'Leitstand':'Anlage|Zustand|Letzte Meldung|Schicht\nPresse 4|Störung|Hydraulikdruck fällt ab|Früh\nSäge 1|Achtung|Sägeblatt läuft unrund|Früh\nLinie 2|Läuft|Etikettendrucker Fehler 12|Früh\nLinie 3|Läuft|Greifer Vakuum zu niedrig|Früh',
+'Zuweisung':'Vorgang|Anlage|Vorschlag|Auslastung\nST-10481 Presse stoppt bei Hub 3|Presse 4|K. Berger|80 %\nST-10480 Etikettendrucker Fehler 12|Linie 2|M. Yilmaz|60 %\nST-10479 Sägeblatt läuft unrund|Säge 1|S. Hartmann|40 %',
+'Aufgaben':'Aufgabe|Anlage|Zuständig|Fällig\nHydraulikfilter wechseln|Presse 4|M. Yilmaz|Fr. 27.11.\nSicherheitsprüfung dokumentieren|Säge 1|K. Berger|Do. 26.11.\nSensor Vereinzelung kalibrieren|Linie 2|S. Hartmann|Mo. 30.11.\nKühlwasserprobe nehmen|Kühlanlage|L. Weber|Mi. 25.11.',
+'Wartung':'Auftrag|Anlage|Intervall|Fällig\nW-5521 Jahreswartung|Presse 4|12 Monate|heute\nW-5523 Sägeband kontrollieren|Säge 1|3 Monate|morgen\nW-5530 Ölwechsel|Kompressor 1|6 Monate|27.11.\nW-5534 Lichtvorhang prüfen|Linie 2|6 Monate|30.11.',
+'Rüstzeiten':'Rüstvorgang|Anlage|Dauer|Soll\nWerkzeugwechsel Teil 4711|Presse 4|38 Min|30 Min\nFormatwechsel 80 mm|Linie 2|22 Min|20 Min\nBlattwechsel|Säge 1|15 Min|15 Min',
+'Stillstände':'Beginn|Anlage|Dauer|Ursache\n25.11. 07:12|Presse 4|47 Min|Hydraulik\n24.11. 14:40|Linie 2|21 Min|Etikettendrucker\n24.11. 09:05|Kompressor 1|12 Min|Druckabfall',
+'KVP':'Idee|Einreicher|Status|Einsparung\nFarbmarkierung an Hydraulikventilen|K. Berger|In Prüfung|ca. 2 h/Monat\nSchattenbrett Werkzeugwagen|M. Yilmaz|Umgesetzt|ca. 1 h/Monat\nÖlstand-Schauglas ablesbar machen|T. Novak|Neu|offen',
+'Projekte':'Projekt|Leitung|Stand|Ende\nHydraulik Presse 4 erneuern|S. Hartmann|60 %|31.01.\nLinie 3 Greifer umrüsten|L. Weber|25 %|28.02.\nDruckluftnetz Halle 2|T. Novak|90 %|15.12.',
+'Planer':'Woche|Schicht|Besetzt|Offen\nKW 48|Früh|6 von 6|0\nKW 48|Spät|5 von 6|1\nKW 49|Früh|6 von 6|0\nKW 49|Spät|4 von 6|2',
+'Zeiterfassung':'Tag|Vorgang|Person|Dauer\nMo. 23.11.|ST-10471 Greifer Vakuum|M. Yilmaz|1:30\nMo. 23.11.|W-5518 Filter Linie 3|K. Berger|0:45\nDi. 24.11.|ST-10468 Sensor Vereinzelung|S. Hartmann|2:10',
+'Anwesenheit':'Person|Schicht|Status|Seit\nK. Berger|Früh|Anwesend|05:52\nM. Yilmaz|Früh|Anwesend|05:58\nS. Hartmann|Spät|Ab 14:00|\nL. Weber|Früh|Urlaub|',
+'IT-Assets':'Gerät|Typ|Standort|Adresse\nTerminal H1-02|Terminal|Halle 1|192.0.2.41\nHandscanner HS-07|Scanner|Halle 2|192.0.2.77\nSwitch SW-Halle2|Switch|Halle 2|192.0.2.12',
+'VPN':'Zugang|Benutzer|Zuletzt|Status\nService Hydrotec|extern|vor 2 Tagen|Gesperrt\nBereitschaft K. Berger|intern|gestern|Aktiv\nFernwartung Linie 3|extern|vor 5 Std.|Aktiv',
+'ESPPDH':'Gerät|Messwert|Netz|Firmware\nesp-presse4-temp|Öltemperatur 52 °C|Geräte-WLAN|aktuell\nesp-kuehl-01|Rücklauf 41 °C|Geräte-WLAN|aktuell\nesp-linie2-zaehler|Stückzahl 1 204|Geräte-WLAN|veraltet',
+'Messstellen':'Messstelle|Anlage|Wert|Einheit\nÖltemperatur|Presse 4|52|°C\nHydraulikdruck|Presse 4|141|bar\nRücklauf Kühlwasser|Kühlanlage|41|°C\nDruckluftnetz|Kompressor 1|6,4|bar',
+'Ersatzteile':'Teil|Nr.|Bestand|Lagerort\nHydraulikschlauch DN16|40-1187|1|Halle 1 › Regal 3\nLichtschranke SL-30|22-0455|6|Halle 2 › Fach 7\nAntriebsriemen 8M|31-0912|0|Halle 2 › Regal 1\nDichtungssatz Zylinder|40-0233|3|Halle 1 › Regal 3',
+'Lager':'Lagerort|Teile|Belegung|Letzte Inventur\nHalle 1 › Regal 3|42|78 %|10.11.\nHalle 2 › Regal 1|57|64 %|10.11.\nHalle 2 › Fach 7|18|91 %|03.11.',
+'Beschaffung':'Bedarf|Menge|Lieferant|Status\nHydraulikschlauch DN16|4|Hydrotec GmbH|Angefragt\nAntriebsriemen 8M|2|Pneumo Süd|Zu bestellen\nLichtschranke SL-30|3|Sensorik Haas|Freigabe offen',
+'Bestellvorgänge':'Bestellung|Lieferant|Summe|Lieferung\nB-7731|Hydrotec GmbH|412,00 €|27.11.\nB-7728|Elektro Lang|1 280,50 €|30.11.\nB-7722|Sensorik Haas|386,00 €|geliefert',
+'Hersteller & Lieferanten':'Name|Art|Ansprechpartner|Ort\nHydrotec GmbH|Lieferant|F. Maier|Augsburg\nPneumo Süd|Lieferant|R. Keller|Ulm\nElektro Lang|Lieferant|S. Lang|Neu-Ulm\nSensorik Haas|Hersteller|A. Haas|Stuttgart',
+'Dokumente':'Dokument|Anlage|Geändert|Von\nSchaltplan Hydraulik P4.pdf|Presse 4|12.11.|K. Berger\nBetriebsanleitung Säge 1.pdf|Säge 1|03.09.|L. Weber\nPrüfprotokoll Kompressor.xlsx|Kompressor 1|20.11.|T. Novak',
+'Vorlagen & Signaturen':'Vorlage|Verwendung|Geändert|Von\nStörungsbericht|Druck|18.11.|L. Weber\nWartungsprotokoll|Druck|18.11.|L. Weber\nMail-Signatur Instandhaltung|Mail|02.11.|S. Hartmann',
+'Schulungen':'Schulung|Datum|Plätze|Angemeldet\nLockout/Tagout|02.12.|12|9\nStaplerschein Auffrischung|09.12.|8|3\nHydraulik Grundlagen|15.12.|10|10',
+'Statistik':'Kennzahl|Dieser Monat|Vormonat|Ziel\nStillstand je Anlage|3,2 h|4,1 h|3,0 h\nMittlere Reparaturzeit|52 Min|61 Min|45 Min\nGeplante Wartung erledigt|94 %|91 %|95 %',
+'Import':'Quelle|Typ|Zuletzt|Ergebnis\nSAP Stammdaten|Datei|24.11. 02:00|1 204 Zeilen\nAnlagenliste|Excel|18.11.|12 neu\nLagerbestand Scanner|Schnittstelle|heute 06:00|ok',
+'Export':'Ziel|Inhalt|Zeitplan|Zuletzt\nBuchhaltung|Zeiten|monatlich|01.11.\nEfficio|Stückzahlen|täglich|heute 05:00\nQualitätsbericht|Störungen|wöchentlich|23.11.',
+'Abgleich':'Abgleich|Quelle|Abweichungen|Zuletzt\nAnlagen|ERP|2|heute 04:00\nLieferanten|ERP|0|heute 04:00\nKostenstellen|Buchhaltung|1|23.11.',
+'Datennetz':'Name|Art|Status|Teilnehmer\nWerk Nord Hauptnetz|Tailnet|verbunden|14\nPartner Hydrotec|Tailnet|verbunden|2\nProduktionsnetz Halle 2|VLAN|aktiv|31',
+'Benutzer':'Name|Abteilung|Rolle|Letzte Anmeldung\nK. Berger|Instandhaltung|Instandhalter|heute 05:52\nM. Yilmaz|Instandhaltung|Instandhalter|heute 05:58\nS. Hartmann|Produktion|Schichtleiter|gestern\nL. Weber|Einkauf|Einkauf|heute 07:10',
+'Abteilungen':'Abteilung|Leitung|Personen|Kostenstelle\nInstandhaltung|S. Hartmann|8|4300\nProduktion Halle 1|T. Novak|24|4100\nProduktion Halle 2|M. Brandt|19|4200',
+'Organigramm':'Einheit|Leitung|Darunter|Mitarbeitende\nWerk Nord|Werkleitung|3 Bereiche|74\nInstandhaltung|S. Hartmann|2 Teams|8\nEinkauf & Lager|L. Weber|1 Team|5',
+'Rollen & Rechte':'Rolle|Benutzer|Rechte|Bereich\nInstandhalter|14|38|Werk Nord\nSchichtleiter|6|57|Halle 1, Halle 2\nEinkauf|3|44|Werk Nord\nAdministrator|2|alle|Werk Nord',
+'Einstellungen':'Einstellung|Wert|Geändert|Von\nSprache|Deutsch|02.09.|L. Weber\nZeitzone|Europa/Berlin|02.09.|L. Weber\nMail-Absender|instandhaltung@beispiel.example|11.11.|S. Hartmann',
+'Netzwerk':'Netz|VLAN|Adressbereich|Zweck\nProduktion|20|192.0.2.0/24|Terminals, Scanner\nGeräte-WLAN|30|198.51.100.0/24|ESPPDH-Geräte\nBüro|10|203.0.113.0/24|Arbeitsplätze',
+'Datensicherung':'Sicherung|Art|Größe|Ergebnis\nheute 03:00|Voll|4,2 GB|erfolgreich\ngestern 03:00|Voll|4,1 GB|erfolgreich\n22.11. 03:00|Voll|4,1 GB|erfolgreich',
+'Bereinigung':'Regel|Betrifft|Älter als|Zuletzt\nErledigte Störungen archivieren|Störungen|24 Monate|01.11.\nAlte Anhänge verkleinern|Dokumente|12 Monate|01.11.\nProtokolle kürzen|System|6 Monate|01.11.',
+'Drucker':'Drucker|Standort|Format|Status\nEtiketten Halle 1|Halle 1|62 mm|bereit\nBüro Farbe|Büro|A4|bereit\nEtiketten Lager|Lager|100 mm|Papier fast leer',
+'Geräte':'Gerät|Art|Anlage|Zuletzt gesehen\nTerminal H1-02|Terminal|Presse 4|vor 1 Min\nTerminal H2-01|Terminal|Linie 2|vor 1 Min\nHandscanner HS-07|Scanner|–|vor 12 Min',
+'Leitstände':'Leitstand|Abteilung|Anlagen|Anzeige\nHalle 1|Produktion Halle 1|6|Bildschirm 1\nHalle 2|Produktion Halle 2|9|Bildschirm 2\nInstandhaltung|Instandhaltung|alle|Bildschirm 3',
+'Infobildschirm':'Anzeige|Inhalt|Wechsel|Standort\nHalle 1 Eingang|Störungen, Schichtinfo|20 s|Halle 1\nKantine|Mitteilungen|30 s|Kantine\nWerkstatt|Wartung heute|15 s|Werkstatt',
+'Kostenstellen':'Nummer|Name|Verantwortlich|Gültig ab\n4100|Presswerk|T. Novak|01.01.\n4200|Montage|M. Brandt|01.01.\n4300|Instandhaltung|S. Hartmann|01.01.',
+'Kategorien':'Kategorie|Verwendet in|Einträge|Angelegt\nMechanik|Störungen, Tickets|212|02.09.\nElektrik|Störungen, Tickets|168|02.09.\nHydraulik|Störungen, Tickets|97|02.09.\nIT|Tickets|58|02.09.',
+'Symbole':'Symbol|Verwendet für|Name|Geändert\nSchraubenschlüssel|Wartung|tool|02.09.\nGlocke|Meldungen|bell|02.09.\nKalender|Planung|calendar|02.09.'};
+const HELP={work:['Wähle links eine Anlage, um nur ihre Vorgänge zu sehen. Untergeordnete Anlagen gehören dazu.','Mit «Gruppieren: Infrastruktur» siehst du die Vorgänge nach Anlagen geordnet. Ein Klick auf die Gruppe klappt sie zu.','Doppelklick oder «Öffnen» im Menüband öffnet den Vorgang als eigenen Reiter.'],dash:['Wähle oben deine Rolle. Die Kacheln darunter passen sich an.','Im Menüband unter «Anpassen» änderst du Breite und Auswahl der Widgets.'],ingress:['Der Dienst läuft in diesem Rahmen. Du bist mit deiner PDH-Anmeldung dort angemeldet.'],generic:['Die Funktionen dieser Seite findest du im Menüband über der Liste.'],rec:['Alle Aktionen zum Vorgang liegen im Menüband. Reiter wie «Zeit» oder «Kommentare» wechselst du direkt unter dem Titel.']};
+/* Zustand */
+const S={area:0,cur:'Startseite',last:{},recs:[],rtab:'Start',role:'Instandhalter',grp:true,vm:'split',f:-1,asset:null,sel:{'Störungen':'ST-10482','Tickets':'TK-2241'},col:new Set(),dtab:'Übersicht',cop:false,ctab:'Copilot',cust:false,mob:false,style:'fiori',mode:'light',warn:true,upd:0,prog:0,msg:'Bereit',log:[],cls:'wl',nar:false,cw:true,note:'Übergabe Früh: Presse 4 Hydraulik beobachten, Ölstand nach 2 Std. erneut prüfen.',chat:[['me','Was ist an Presse 4 los?'],['ai','Presse 4 hat 3 Vorgänge und in der Hydraulik einen weiteren:<ul><li><button class="lnk" data-act="rec" data-id="ST-10482">ST-10482</button> Hydraulikdruck fällt ab (In Arbeit, K. Berger)</li><li><button class="lnk" data-act="rec" data-id="ST-10481">ST-10481</button> stoppt bei Hub 3 (Offen)</li><li><button class="lnk" data-act="rec" data-id="ST-10470">ST-10470</button> Lichtschranke (Wartet)</li></ul>Am dringendsten ist ST-10482. Der Druck fällt seit gestern.']],
+ widgets:[]};
+const WDEF=[{k:'aufg',w:1},{k:'stoer',w:2},{k:'wart',w:1},{k:'lager',w:1},{k:'schnell',w:2},{k:'notiz',w:1},{k:'kal',w:4}];
+S.widgets=WDEF.map(x=>({...x}));
+const WT={aufg:'Meine Aufgaben',stoer:'Offene Störungen',wart:'Wartung fällig',lager:'Lager rot',schnell:'Anlagen-Schnellübersicht',kal:'Kalender',notiz:'Notiz'};
+const ago=m=>m<60?`vor ${m} Min`:m<1440?`vor ${Math.round(m/60)} Std.`:`vor ${Math.round(m/1440)} Tagen`;
+const fd=(o,m)=>{const d=new Date(Date.now()+o*864e5-(m||0)*6e4);return d.toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit'})+(m!=null?' '+d.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'}):'')};
+const kind=()=>S.cur.startsWith('rec:')?'rec':['Störungen','Tickets'].includes(S.cur)?'work':S.cur==='Startseite'?'dash':['Nextcloud','Grafana'].includes(S.cur)?'ingress':'generic';
+const curRec=()=>{const k=kind();return k==='rec'?byId(S.cur.slice(4)):k==='work'?byId(S.sel[S.cur]):null};
+const short=(i)=>{const p=PATH[i].split(' › ');return S.cls==='phn'&&p.length>2?'… › '+p.slice(-2).join(' › '):p.join(' › ')};
+const opts=(a,s)=>a.map(x=>`<option${x===s?' selected':''}>${E(x)}</option>`).join('');
+const ov=$('#ov'),app=$('#app'),center=$('#center');
+/* Meldungen und Statuszeile */
+let msgT,toastT;
+function setStatus(){$('#stText').textContent=S.msg;$('#stProg').hidden=!S.upd;$('#stProg i').style.width=(S.prog/6*100)+'%';$('#stWarn').hidden=!S.warn}
+function note(t,toast){const n=new Date();S.log.unshift([n.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'}),t]);S.log.length=Math.min(S.log.length,10);if(!S.upd){S.msg=t;clearTimeout(msgT);msgT=setTimeout(()=>{if(!S.upd){S.msg='Bereit';setStatus()}},8000)}setStatus();
+ if(toast){$$('.toast',app).forEach(x=>x.remove());const d=document.createElement('div');d.className='toast';d.setAttribute('role','status');d.textContent=t;app.append(d);clearTimeout(toastT);toastT=setTimeout(()=>d.remove(),2600)}}
+const US=['Rückfallkopie wird angelegt','Server 1 von 2 wird aktualisiert','Server 1 von 2 startet neu','Server 2 von 2 startet neu','Server 2 von 2 wird geprüft','abgeschlossen – beide Server laufen'];
+function runUpd(){if(S.upd)return;S.upd=1;let i=0;const step=()=>{S.prog=i+1;S.msg=i<5?`Update auf 0.90.1: ${US[i]} – Schritt ${i+1} von 6`:`Update auf 0.90.1 ${US[5]}`;S.log.unshift([new Date().toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'}),S.msg]);S.log.length=10;setStatus();i++;if(i<6)setTimeout(step,1800);else setTimeout(()=>{S.upd=0;S.prog=0;S.msg='Bereit';setStatus()},3500)};step()}
+/* Navigation */
+function go(p){const a=NAV.findIndex(x=>x[2].includes(p));if(a<0)return;S.area=a;S.cur=p;S.last[a]=p;S.mob=false;closeOv();render()}
+function openRec(id){if(!byId(id))return;if(!S.recs.includes(id))S.recs.push(id);S.cur='rec:'+id;S.mob=false;S.dtab='Übersicht';closeOv();render()}
+function closeRec(id){S.recs=S.recs.filter(x=>x!==id);if(S.cur==='rec:'+id)S.cur=S.last[S.area]||NAV[S.area][2][0];render()}
+/* Menüband */
+function RB(){
+ const k=kind(),adm=S.role!=='Instandhalter',share=['Teilen',[['exp','Exportieren','export'],['prt','Drucken','print']]];
+ const stamm=adm?['Stammdaten',[['kat','Kategorie hinzufügen','plus'],['lief','Lieferant hinzufügen','plus'],['kst','Kostenstelle hinzufügen','plus']]]:null;
+ const edit=['Bearbeiten',[['zu','Zuweisen','user'],['wait','Warten','pause'],['done','Erledigt','check']]];
+ let st,an,ansicht;
+ if(k==='work')st=[['Vorgang',[['neu','Neu','plus'],['save','Speichern','save'],['open','Öffnen','open']]],edit,share,stamm];
+ else if(k==='rec')st=[['Vorgang',[['save','Speichern','save'],['closetab','Reiter schließen','x']]],edit,share,stamm];
+ else if(k==='dash')st=[['Seite',[['wadd','Widget hinzufügen','plus'],['save','Layout speichern','save']]],share,stamm];
+ else if(k==='ingress')st=[['Dienst',[['reload','Neu laden','reload'],['ext','In neuem Fenster öffnen','ext']]],share];
+ else st=[['Seite',[['neu','Neu','plus'],['save','Speichern','save'],['open','Öffnen','open']]],share,stamm];
+ const set=['Einstellungen',[['spalten','Spalten','cols'],['fmerk','Filter merken','filter']]];
+ ansicht=k==='work'?[['Ansichten',[['v-split','Detail daneben','split'],['v-list','Liste','list'],['v-tiles','Kacheln','tiles']]],['Gruppieren',[['g-on','Infrastruktur','tree'],['g-off','Keine','list']]],set]:[set];
+ an=k==='dash'?[['Startseite anpassen',[['cust','Anpassen-Modus','gear'],['wadd','Widget hinzufügen','plus'],['wreset','Zurücksetzen','reload']]]]:null;
+ return{Start:st.filter(Boolean),Ansicht:ansicht,Anpassen:an,Darstellung:[['Stil',[['st-fiori','Fiori','palette'],['st-fluent','Fluent','palette']]],['Modus',[['m-light','Hell','sun'],['m-dark','Dunkel','moon']]],['Vorschau',[['upd','Update simulieren','reload'],['warn','Warnung Spiegel','warn']]]]};
+}
+const pressed=id=>({'v-split':S.vm==='split','v-list':S.vm==='list','v-tiles':S.vm==='tiles','g-on':S.grp,'g-off':!S.grp,'st-fiori':S.style==='fiori','st-fluent':S.style==='fluent','m-light':S.mode==='light','m-dark':S.mode==='dark',cust:S.cust,warn:S.warn})[id];
+const btn=b=>`<button class="rb${pressed(b[0])?' on':''}" data-act="${b[0]}"${pressed(b[0])!==undefined?` aria-pressed="${!!pressed(b[0])}"`:''}>${I(b[2])}<span>${b[1]}</span></button>`;
+function ribbon(){const R=RB();
+ if(S.cls==='phn'){const fl=R.Start.flatMap(g=>g[1]).slice(0,3);return `<div class="rph">${fl.map(btn).join('')}<button class="rb" data-act="rmore" aria-label="Weitere Funktionen">${I('more')}<span>Mehr</span></button></div>`}
+ if(!R[S.rtab])S.rtab='Start';
+ const tabs=Object.keys(R).filter(t=>R[t]);if(!tabs.includes(S.rtab))S.rtab='Start';
+ const body=R[S.rtab];
+ return `<div class="rtabs" role="tablist" aria-label="Menüband">${Object.keys(R).map(t=>`<button class="rt${t===S.rtab?' on':''}" role="tab" aria-selected="${t===S.rtab}" data-act="rtab" data-v="${t}">${t}</button>`).join('')}</div><div class="rbody">${body?body.map(g=>`<div class="grp"><div class="gbtns">${g[1].map(btn).join('')}</div><div class="gl">${g[0]}</div></div>`).join(''):'<div class="rnote">Diese Seite hat nichts zum Anpassen. Wechsle zur Startseite, um Widgets zu ändern.</div>'}</div>`}
+function tabs(){const pg=NAV[S.area][2];
+ let h=pg.map(p=>`<div class="tab${S.cur===p?' on':''}" role="presentation"><button role="tab" aria-selected="${S.cur===p}" data-act="page" data-v="${E(p)}">${E(p)}</button></div>`).join('');
+ if(S.recs.length)h+='<span class="tsep"></span>'+S.recs.map(id=>{const r=byId(id),on=S.cur==='rec:'+id;return `<div class="tab${on?' on':''}" role="presentation"><button role="tab" aria-selected="${on}" data-act="rec" data-id="${id}">${I(r.k==='Ticket'?'doc':'warn',16)}${id}</button><button class="tx" data-act="tabx" data-id="${id}" aria-label="${id} schließen">${I('x',14)}</button></div>`}).join('');
+ return h}
+const rail=()=>NAV.map((a,i)=>`<button class="ra${i===S.area?' on':''}" data-act="area" data-i="${i}" title="${a[0]}" aria-label="${a[0]}"${i===S.area?' aria-current="page"':''}>${I(a[1],22)}<span>${a[0]}</span></button>`).join('');
+const bnav=()=>NAV.slice(0,4).map((a,i)=>`<button class="${i===S.area?'on':''}" data-act="area" data-i="${i}">${I(a[1],22)}<span>${a[0]}</span></button>`).join('')+`<button class="${S.area>3?'on':''}" data-act="mehr">${I('more',22)}<span>Mehr</span></button>`;
+/* Listen */
+const prio=r=>r.p===0?'<span class="pill p-hoch">Hoch</span>':r.p===1?'<span class="pill">Mittel</span>':'<span class="pill p-nie">Niedrig</span>';
+const sp=r=>`<span class="pill ${SC[r.s]}">${ST[r.s]}</span>`;
+function row(r,sel){return `<button class="row${sel?' sel':''}" data-act="sel" data-id="${r.id}" data-dbl="1"><span class="r1"><span class="rt1">${E(r.t)}</span><span class="rtime">${ago(r.m)}</span></span><span class="r2"><span class="rid">${r.id}</span><span class="rpath" title="${E(PATH[r.a])}">${E(short(r.a))}</span><span class="pills">${prio(r)}${sp(r)}</span></span></button>`}
+const items=()=>{let a=S.cur==='Tickets'?T:F;if(S.asset!=null)a=a.filter(r=>r.a>=S.asset&&r.a<END[S.asset]);return a};
+function listHTML(vis,sel){
+ if(!vis.length)return '<div class="empty">Keine Vorgänge in dieser Auswahl.</div>';
+ const srt=(a,b)=>a.p-b.p||a.m-b.m;
+ if(S.vm==='tiles')return `<div class="tiles">${vis.slice().sort(srt).map(r=>row(r,r.id===sel)).join('')}</div>`;
+ if(!S.grp)return vis.slice().sort((a,b)=>a.m-b.m).map(r=>row(r,r.id===sel)).join('');
+ const by={};vis.forEach(r=>(by[r.a]=by[r.a]||[]).push(r));let h='';
+ Object.keys(by).map(Number).sort((a,b)=>a-b).forEach(k=>{
+  if([...S.col].some(c=>c<k&&k<END[c]))return;
+  const open=!S.col.has(k),p=PATH[k].split(' › '),anc=p.slice(0,-1),last=p[p.length-1],sh=S.cls==='phn'&&p.length>2;
+  h+=`<button class="gh" data-act="gt" data-i="${k}" aria-expanded="${open}" style="padding-left:${12+Math.max(0,AS[k][1]-2)*16}px">${I('chev',16)}<span class="gp" title="${E(PATH[k])}">${sh?'… › '+E(anc.slice(-1)[0])+' › ':anc.length?E(anc.join(' › '))+' › ':''}<b>${E(last)}</b></span><span class="cnt">(${by[k].length})</span></button>`;
+  if(open)h+=by[k].sort(srt).map(r=>row(r,r.id===sel)).join('')});
+ return h}
+function folders(L0){
+ const all=S.cur==='Tickets'?T:F;
+ return `<aside class="fold" aria-label="Ordner"><div class="fh">Ordner</div><button class="fi${S.asset==null?' on':''}" data-act="asset" data-v="">${I('list',16)}<span>Alle Anlagen</span><small>${all.length}</small></button><div class="fh">Infrastruktur</div>${AS.map(([n,d],i)=>`<button class="fi${S.asset===i?' on':''}" data-act="asset" data-v="${i}" style="padding-left:${8+d*14}px" title="${E(PATH[i])}">${I(d<2?'fac':'dot',d<2?16:8)}<span>${E(n)}</span><small>${all.filter(r=>r.a>=i&&r.a<END[i]).length}</small></button>`).join('')}</aside>`}
+function work(){
+ const L=items(),cnt=[L.length,...ST.map((_,i)=>L.filter(r=>r.s===i).length)],vis=L.filter(r=>S.f<0||r.s===S.f),sel=S.sel[S.cur],r=byId(sel);
+ const fil=['Alle',...ST].map((n,i)=>`<button class="${S.f===i-1?'on':''}" data-act="filt" data-v="${i-1}">${n}<b>${cnt[i]}</b></button>`).join('');
+ const showL=!(S.nar&&S.mob),showD=S.vm==='split'&&(!S.nar||S.mob)&&r;
+ const infra=!S.cw?`<select id="infraSel" data-chg="asset" aria-label="Infrastruktur filtern"><option value="">Alle Anlagen</option>${AS.map(([n,d],i)=>`<option value="${i}"${S.asset===i?' selected':''}>${' '.repeat(Math.max(0,d-1))}${E(n)}</option>`).join('')}</select>`:'';
+ const list=`<section class="lp" aria-label="Liste ${S.cur}"><div class="ft" role="tablist">${fil}</div><div class="lt"><span class="mut">Gruppieren:</span><span class="seg" role="group" aria-label="Gruppieren"><button class="${S.grp?'on':''}" data-act="g-on">Infrastruktur</button><button class="${S.grp?'':'on'}" data-act="g-off">keine</button></span>${infra}</div><div class="lscroll">${listHTML(vis,sel)}</div></section>`;
+ const det=showD?`<section class="dp" aria-label="Detail">${S.nar?`<button class="back" data-act="back">${I('back')}${S.cur}</button>`:''}${detail(r)}</section>`:'';
+ return `<div class="wk${S.vm!=='split'?' vl':''}">${S.cw&&!S.nar?folders():''}${S.nar&&S.mob?'':list}${det}</div>`}
+const TABS=['Übersicht','Arbeit','Zeit','Kommentare','Felder','Dokumente','Verknüpfungen','Verlauf'];
+function detail(r){
+ const dt=S.dtab,rep=r.who==='–'?'Schichtleitung':r.who;
+ let b='';
+ if(dt==='Übersicht')b=`<h3>Beschreibung</h3><p>${E(DESC[r.id]||`${r.t}. Gemeldet an ${PATH[r.a]}.`)}</p><h3>Nächster Schritt</h3><p>${r.s===3?'Der Vorgang ist abgeschlossen.':r.who==='–'?'Noch niemand zugewiesen. Wähle im Menüband «Zuweisen».':r.s===2?'Wartet auf Ersatzteil oder Rückmeldung.':r.who+' arbeitet daran.'}</p><h3>Letzte Aktivität</h3><div class="tl"><div>${ago(Math.max(1,r.m-10))} · Kommentar von ${E(rep)}</div><div>${ago(r.m)} · Gemeldet</div></div>`;
+ else if(dt==='Arbeit')b=`<h3>Arbeitsschritte</h3>${['Anlage freischalten (Lockout/Tagout)','Ursache eingrenzen','Teil tauschen oder einstellen','Probelauf und Freigabe'].map((x,i)=>`<label class="chk"><input type="checkbox"${r.s===3||i<(r.s===1?2:0)?' checked':''}>${x}</label>`).join('')}<h3>Material</h3><div class="tw"><table class="tbl" style="min-width:0"><tbody><tr><td>Hydraulikschlauch DN16</td><td>2 Stück</td></tr><tr><td>Dichtungssatz Zylinder</td><td>1 Stück</td></tr></tbody></table></div>`;
+ else if(dt==='Zeit')b=`<div class="tw"><table class="tbl" style="min-width:0"><thead><tr><th>Datum</th><th>Person</th><th>Dauer</th></tr></thead><tbody><tr><td>${fd(0)}</td><td>${E(rep)}</td><td>0:45</td></tr><tr><td>${fd(-1)}</td><td>M. Yilmaz</td><td>1:15</td></tr><tr><td><b>Summe</b></td><td></td><td><b>2:00</b></td></tr></tbody></table></div>`;
+ else if(dt==='Kommentare')b=`<div class="cm"><span class="av">KB</span><div><b>K. Berger</b> <span class="mut">${ago(r.m+30)}</span><p>Druck fällt erst nach etwa 20 Hüben ab. Ölstand ist in Ordnung.</p></div></div><div class="cm"><span class="av">MY</span><div><b>M. Yilmaz</b> <span class="mut">${ago(r.m+90)}</span><p>Ventilblock sieht trocken aus. Ich prüfe den Speicher.</p></div></div><label class="f">Neuer Kommentar<input placeholder="Schreib etwas …"></label>`;
+ else if(dt==='Felder')b=`<label class="f">Kategorie<select>${opts(STAMM.kat,'Hydraulik')}</select></label><label class="f">Kostenstelle<select>${opts(STAMM.kst,STAMM.kst[0])}</select></label><label class="f">Lieferant<select>${opts(STAMM.lief)}</select></label><p class="mut">Neue Auswahlwerte legst du im Menüband unter Start › Stammdaten an. Sie stehen danach in allen Auswahlfeldern.</p>`;
+ else if(dt==='Dokumente')b=`<div class="tw"><table class="tbl" style="min-width:0"><tbody><tr><td>${I('doc',16)} Schaltplan Hydraulik P4.pdf</td><td>1,2 MB</td></tr><tr><td>${I('doc',16)} Foto Leckage.jpg</td><td>860 KB</td></tr></tbody></table></div>`;
+ else if(dt==='Verknüpfungen'){const rel=ALL().filter(x=>x.a===r.a&&x.id!==r.id).slice(0,2);b=`<h3>Verknüpft</h3>${rel.map(x=>`<div><button class="lnk" data-act="rec" data-id="${x.id}">${x.id}</button> ${E(x.t)}</div>`).join('')}<div><span class="mut">WA-5521</span> Wartungsauftrag Jahreswartung</div><div><span class="mut">40-1187</span> Ersatzteil Hydraulikschlauch DN16</div>`}
+ else b=`<div class="tl"><div><b>${fd(0,r.m)}</b> · Gemeldet</div>${r.who!=='–'?`<div><b>${fd(0,Math.max(1,r.m-20))}</b> · Zugewiesen an ${E(r.who)}</div>`:''}${r.s>0?`<div><b>${fd(0,Math.max(1,r.m-30))}</b> · Status ${ST[r.s]}</div>`:''}</div>`;
+ return `<div class="dh"><div class="dno">${r.id} · ${r.k}</div><h2>${E(r.t)}</h2><div class="pills">${prio(r)}${sp(r)}</div><dl class="facts"><div><dt>Anlage</dt><dd title="${E(PATH[r.a])}">${E(AS[r.a][0])}<br><span class="mut">${E(short(r.a))}</span></dd></div><div><dt>Gemeldet</dt><dd>${fd(0,r.m)}</dd></div><div><dt>Zuständig</dt><dd>${E(r.who)}</dd></div><div><dt>Fällig</dt><dd>${r.s===3?'–':fd(r.due)}</dd></div></dl></div><div class="dtabs" role="tablist">${TABS.map(t=>`<button role="tab" class="${t===dt?'on':''}" aria-selected="${t===dt}" data-act="dtab" data-v="${t}">${t}</button>`).join('')}</div><div class="dbody">${b}</div>`}
+/* Startseite */
+const TILES={Instandhalter:[['Störung melden','in 30 Sekunden','plus','fault'],['Meine Aufgaben','4 offen','check','p:Aufgaben'],['Wartung heute','1 fällig','tool','p:Wartung'],['Ersatzteil suchen','Bestand prüfen','box','p:Ersatzteile'],['Zeit buchen','Heute 2:00','clock','p:Zeiterfassung'],['Anlage scannen','Kamera öffnen','search','x:Scannen ist nur in der App möglich.']],
+Schichtleiter:[['Leitstand','Halle 1 und 2','chart','p:Leitstand'],['Zuweisung','3 ohne Zuständigen','user','p:Zuweisung'],['Anwesenheit','Früh: 6 von 6','cal','p:Anwesenheit'],['Stillstände','heute 2','warn','p:Stillstände'],['Störung melden','in 30 Sekunden','plus','fault'],['Übergabe schreiben','Notiz öffnen','doc','x:Die Übergabe steht in der Notiz auf der Startseite.']],
+Einkauf:[['Beschaffung','3 Bedarfe','box','p:Beschaffung'],['Bestellvorgänge','2 offen','list','p:Bestellvorgänge'],['Lager rot','3 Teile unter Minimum','warn','p:Lager'],['Lieferanten','4 Einträge','user','p:Hersteller & Lieferanten'],['Lieferant hinzufügen','Stammdaten','plus','lief'],['Ersatzteile','Bestand prüfen','search','p:Ersatzteile']],
+Administrator:[['Benutzer','Anlegen und sperren','user','p:Benutzer'],['Rollen & Rechte','4 Rollen','gear','p:Rollen & Rechte'],['Datensicherung','letzte heute 03:00','save','p:Datensicherung'],['Netzwerk','3 Netze','fac','p:Netzwerk'],['Einstellungen','System','gear','p:Einstellungen'],['Update prüfen','0.90.1 verfügbar','reload','upd']]};
+const crit=i=>{const f=F.filter(r=>r.a===i&&r.s<3);return f.some(r=>r.p===0)?2:f.length?1:0};
+const W={
+aufg:()=>['Hydraulikfilter wechseln · Fr.','Sicherheitsprüfung Säge 1 · Do.','Sensor Vereinzelung · Mo.','Kühlwasserprobe · heute'].map((x,i)=>`<label class="wi"><input type="checkbox"${i===3?' checked':''} style="width:18px;height:18px;accent-color:var(--accent)"><span class="g">${x}</span></label>`).join(''),
+stoer:()=>F.filter(r=>r.s<3).sort((a,b)=>a.p-b.p||a.m-b.m).slice(0,5).map(r=>`<button class="wi" data-act="rec" data-id="${r.id}"><span class="rid">${r.id}</span><span class="g">${E(r.t)}</span>${prio(r)}</button>`).join(''),
+wart:()=>[['Presse 4 · Jahreswartung','heute'],['Säge 1 · Sägeband','morgen'],['Kompressor 1 · Ölwechsel','27.11.'],['Linie 2 · Lichtvorhang','30.11.']].map(x=>`<div class="wi"><span class="g">${x[0]}</span><span class="${x[1]==='heute'?'pill s-war':'mut'}">${x[1]}</span></div>`).join(''),
+lager:()=>[['Hydraulikschlauch DN16',1,4],['Antriebsriemen 8M',0,2],['Dichtungssatz Zylinder',1,3]].map(x=>`<div class="wi"><span class="g">${x[0]}</span><span class="mut">${x[1]} / ${x[2]}</span><span class="bar" role="img" aria-label="Bestand ${x[1]} von mindestens ${x[2]}"><i style="width:${x[1]/x[2]*100}%"></i></span></div>`).join(''),
+schnell:()=>`<div class="qs">${AS.slice(2).filter(a=>a[1]>=2).map(a=>{const i=AS.indexOf(a),c=crit(i);return `<div class="qa${c===2?' crit':c===1?' warn':''}"><b>${a[0]}</b>${c===2?'Störung':c===1?'Achtung':'läuft'}</div>`}).join('')}</div>`,
+kal:()=>{const m=new Date();m.setDate(m.getDate()-((m.getDay()+6)%7));const ev=[['W-5521 Presse 4'],['Schulung LOTO','W-5523 Säge 1'],[],['W-5530 Kompressor'],['Inventur Lager']];const td=(new Date().getDay()+6)%7;return `<div class="cal">${['Mo','Di','Mi','Do','Fr'].map((d,i)=>{const x=new Date(m);x.setDate(m.getDate()+i);return `<div class="${i===td?'today':''}"><b>${d} ${x.getDate()}.</b>${(ev[i]||[]).map(e=>`<span class="ev">${e}</span>`).join('')}</div>`}).join('')}</div>`},
+notiz:()=>`<textarea id="note" aria-label="Notiz">${E(S.note)}</textarea>`};
+function dash(){
+ const cols=S.cls==='phn'?1:S.cls==='wm'?2:4;
+ const tl=TILES[S.role];
+ return `<div class="pg${S.cust?' cust':''}"><div class="ph"><h1>Startseite</h1><span class="seg" role="group" aria-label="Rolle">${Object.keys(TILES).map(r=>`<button class="${r===S.role?'on':''}" data-act="role" data-v="${r}">${r}</button>`).join('')}</span></div>
+ <div class="tiles2">${tl.map((t,i)=>`<button class="tile" data-act="tile" data-i="${i}">${I(t[2],22)}<span><b>${t[0]}</b><small>${t[1]}</small></span></button>`).join('')}</div>
+ ${S.cust?`<div class="cbar">Anpassen-Modus: Mit − und + änderst du die Breite, mit × entfernst du ein Widget. Unter «Widget hinzufügen» holst du es zurück.</div>`:''}
+ <div class="wg" style="--cols:${cols}">${S.widgets.map((w,i)=>`<section class="w" style="grid-column:span ${Math.min(w.w,cols)}" aria-label="${WT[w.k]}"><div class="wh"><span>${WT[w.k]}</span>${S.cust?`<button class="ib" data-act="wsh" data-i="${i}" aria-label="Schmaler">${I('chev',16).replace('M6 9l6 6 6-6','M15 6l-6 6 6 6')}</button><button class="ib" data-act="wgr" data-i="${i}" aria-label="Breiter">${I('chev',16).replace('M6 9l6 6 6-6','M9 6l6 6-6 6')}</button><button class="ib" data-act="wdel" data-i="${i}" aria-label="${WT[w.k]} entfernen">${I('x',16)}</button>`:''}</div><div class="wb">${W[w.k]()}</div></section>`).join('')||'<div class="empty">Keine Widgets. Füge im Menüband unter «Anpassen» eines hinzu.</div>'}</div></div>`}
+/* Weitere Seiten */
+function generic(p){
+ if(p==='Infrastruktur')return `<div class="pg"><div class="ph"><h1>Infrastruktur</h1><span class="mut">${AS.length} Einträge</span></div><div class="tree">${AS.map(([n,d],i)=>`<div style="padding-left:${12+d*20}px">${I(d<2?'fac':'dot',d<2?18:8)}<span class="n">${E(n)}</span><span class="mut">${F.filter(r=>r.a===i&&r.s<3).length?F.filter(r=>r.a===i&&r.s<3).length+' offen':''}</span></div>`).join('')}</div></div>`;
+ if(p==='Kalender'||p==='Schnellübersicht')return `<div class="pg"><div class="ph"><h1>${p}</h1></div><div class="w"><div class="wb">${p==='Kalender'?W.kal():W.schnell()}</div></div></div>`;
+ const d=(D[p]||'Name|Wert\n').split('\n'),cols=d[0].split('|'),rows=d.slice(1);
+ return `<div class="pg"><div class="ph"><h1>${E(p)}</h1><span class="mut">${rows.length} Einträge</span></div><div class="tw"><table class="tbl"><thead><tr>${cols.map(c=>`<th>${c}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${r.split('|').map(c=>`<td>${E(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div></div>`}
+const SVC=n=>n==='Nextcloud'?`<div class="pnl" style="display:block;padding:0"><table class="tbl"><thead><tr><th>Name</th><th>Geändert</th><th>Größe</th></tr></thead><tbody><tr><td>${I('open',16)} Wartung</td><td>heute</td><td>12 Dateien</td></tr><tr><td>${I('open',16)} Anleitungen</td><td>gestern</td><td>38 Dateien</td></tr><tr><td>${I('doc',16)} Schichtbuch November.xlsx</td><td>vor 2 Std.</td><td>84 KB</td></tr><tr><td>${I('doc',16)} Hallenplan Werk Nord.pdf</td><td>12.11.</td><td>2,1 MB</td></tr></tbody></table></div>`:`<div class="pnl">${[['Hydraulikdruck Presse 4','0,4,12,10,16,20,26,30,40,46,60,70,80'],['Öltemperatur','50,52,53,52,54,55,53,54,56,55,57,56,58'],['Stückzahl Linie 2','10,12,18,30,36,48,54,60,66,72,76,80,84'],['Kühlwasser Rücklauf','30,30,31,33,34,36,37,38,40,41,41,42,41']].map(([t,v])=>{const a=v.split(',').map(Number),mx=Math.max(...a),mn=Math.min(...a);return `<div><div class="mut">${t}</div><svg viewBox="0 0 120 40" preserveAspectRatio="none" role="img" aria-label="Verlauf ${t}"><polyline fill="none" stroke="currentColor" stroke-width="1.5" points="${a.map((y,i)=>`${i*10},${38-(y-mn)/((mx-mn)||1)*34}`).join(' ')}"/></svg></div>`}).join('')}</div>`;
+const ingress=n=>`<div class="ing"><div class="ing-bar"><span class="pill s-war">Platzhalter</span><b>${n==='Nextcloud'?'Nextcloud – Dateien':'Grafana – Dashboard'}</b><span class="mut">Der Dienst erscheint hier im PDH-Rahmen, angemeldet mit deinem PDH-Konto.</span></div><div class="ing-fr" id="ingfr">${SVC(n)}</div></div>`;
+function content(){const k=kind();
+ if(k==='work')return work();
+ if(k==='rec'){const r=byId(S.cur.slice(4));return `<div class="dp" style="height:100%;background:var(--bg2)">${detail(r)}</div>`}
+ if(k==='dash')return dash();
+ if(k==='ingress')return ingress(S.cur);
+ return generic(S.cur)}
+function render(){
+ $('#rail').innerHTML=rail();$('#bnav').innerHTML=bnav();$('#tabs').innerHTML=tabs();$('#ribbon').innerHTML=ribbon();
+ const c=$('#content'),k=kind(),sc=$('.lscroll',c)?.scrollTop||0;
+ c.classList.toggle('fit',k==='work'||k==='rec'||k==='ingress');center.classList.toggle('nar',S.nar);
+ c.innerHTML=content();const l=$('.lscroll',c);if(l)l.scrollTop=sc;
+ const ta=$('#note');if(ta)ta.oninput=()=>S.note=ta.value;
+ $$('.seg [data-v]',$('#pv')).forEach(b=>b.classList.toggle('on',b.dataset.v===S.aw));
+ setStatus();if(!$('#cop').hidden)copRender()}
+/* Kopfzeile */
+function top(){
+ $('#srch').innerHTML=`${I('search',16)}<span>Was möchtest du tun?</span><kbd>Strg K</kbd>`;
+ $('#bsrch').innerHTML=I('search');$('#bbell').innerHTML=I('bell')+'<i class="dot"></i>';$('#bcop').innerHTML=I('spark');
+ $('#usr').innerHTML=`<span class="av">KB</span><span class="nm">K. Berger</span>${I('chev',16)}`}
+function tick(){const d=new Date();$('#clock').innerHTML=`<span class="dt">${d.toLocaleDateString('de-DE',{weekday:'short',day:'2-digit',month:'2-digit'})} </span>${d.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})}`}
+/* Copilot */
+function copRender(){const c=$('#cop'),t=S.ctab;let b='';
+ if(t==='Copilot')b=`<div class="cb" id="cb">${S.chat.map(m=>`<div class="msg ${m[0]}">${m[0]==='me'?E(m[1]):m[1]}</div>`).join('')}<div class="chips"><button data-act="fault">Störung zu Presse 4 anlegen</button><button data-act="cq" data-v="Wann ist Presse 4 zuletzt gewartet worden?">Letzte Wartung?</button></div></div><form class="cin" id="cf"><input id="ci" placeholder="Frag den Copilot …" aria-label="Nachricht an den Copilot" autocomplete="off"><button class="btn pri" aria-label="Senden">${I('send',16)}</button></form>`;
+ else if(t==='Suche')b=`<div class="cb"><input id="cs" class="cin" style="padding:0 10px;height:36px;border:1px solid var(--border);border-radius:var(--r);background:var(--bg)" placeholder="Vorgänge und Seiten suchen" aria-label="Suchen" value="${E(S.cq||'')}"><div id="cr"></div></div>`;
+ else if(t==='Hilfe')b=`<div class="cb"><h3>Hilfe zu ${E(S.cur.startsWith('rec:')?S.cur.slice(4):S.cur)}</h3><ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:8px">${HELP[kind()].map(x=>`<li>${x}</li>`).join('')}</ul><p class="mut">Strg K öffnet die Suche «Was möchtest du tun?».</p></div>`;
+ else b=`<div class="cb"><button class="mi" data-act="x" data-t="Chat mit K. Berger (Vorschau)">${I('user')}<span><b>K. Berger</b><br><span class="mut">Ich bin an Presse 4, der Ölstand ist ok.</span></span></button><button class="mi" data-act="x" data-t="Chat mit M. Yilmaz (Vorschau)">${I('user')}<span><b>M. Yilmaz</b><br><span class="mut">Schlauch ist bestellt, kommt Freitag.</span></span></button><button class="mi" data-act="x" data-t="Chat Schichtgruppe (Vorschau)">${I('chat')}<span><b>Schichtgruppe Früh</b><br><span class="mut">S. Hartmann: Übergabe liegt in der Notiz.</span></span></button></div>`;
+ c.innerHTML=`<div class="ch"><div class="tabsx" role="tablist">${['Copilot','Suche','Hilfe','Chat'].map(x=>`<button role="tab" class="${x===t?'on':''}" aria-selected="${x===t}" data-act="ctab" data-v="${x}">${x}</button>`).join('')}</div><button class="ib" data-act="cop" aria-label="Seitenleiste schließen">${I('x',18)}</button></div>${b}`;
+ const cb=$('#cb');if(cb)cb.scrollTop=cb.scrollHeight;
+ const cf=$('#cf');if(cf)cf.onsubmit=e=>{e.preventDefault();const v=$('#ci').value.trim();if(v)ask(v)};
+ const cs=$('#cs');if(cs){const f=()=>{S.cq=cs.value;const q=cs.value.toLowerCase();$('#cr').innerHTML=q?ALL().filter(r=>(r.id+' '+r.t+' '+PATH[r.a]).toLowerCase().includes(q)).slice(0,8).map(r=>`<button class="mi" data-act="rec" data-id="${r.id}"><span class="mut">${r.id}</span><span>${E(r.t)}</span></button>`).join('')||'<p class="mut">Nichts gefunden.</p>':'<p class="mut">Tippe einen Begriff oder eine Nummer.</p>'};cs.oninput=f;f()}}
+function ask(v){S.chat.push(['me',v]);copRender();setTimeout(()=>{S.chat.push(['ai','Das ist eine Vorschau. Hier würde der Copilot mit Zugriff auf deine Vorgänge antworten. Beispiel: Presse 4 wurde zuletzt am 12.11. gewartet (W-5498).']);if(S.ctab==='Copilot')copRender()},500);}
+/* Überlagerungen */
+function closeOv(){ov.innerHTML=''}
+function menu(anchor,html,o={}){closeOv();const sheet=S.cls==='phn'&&o.sheet;ov.innerHTML=`<div class="scrim clear" data-act="closeov"></div><div class="menu${sheet?' sheet':''}" role="menu">${html}</div>`;const m=$('.menu',ov);if(!sheet&&anchor){const a=anchor.getBoundingClientRect(),p=app.getBoundingClientRect(),w=m.offsetWidth;let l=o.right?a.right-p.left-w:a.left-p.left;l=Math.max(4,Math.min(l,p.width-w-4));m.style.left=l+'px';if(o.up)m.style.bottom=(p.bottom-a.top+4)+'px';else m.style.top=(a.bottom-p.top+4)+'px'}}
+function dlg(title,body,ok,fn){closeOv();ov.innerHTML=`<div class="scrim" data-act="closeov"></div><form class="dlg" role="dialog" aria-modal="true" aria-label="${title}"><h3>${title}</h3>${body}<div class="dact"><button type="button" class="btn" data-act="closeov">Abbrechen</button><button class="btn pri">${ok}</button></div></form>`;const f=$('.dlg',ov);f.onsubmit=e=>{e.preventDefault();if(fn(f)!==false)closeOv()};(f.querySelector('input,select')||f).focus()}
+function dlgNew(isT){const T2=isT;
+ dlg(T2?'Ticket anlegen':'Störung melden',`<label>Anlage<select name="a">${AS.map((_,i)=>`<option value="${i}"${S.asset===i||(S.asset==null&&i===2)?' selected':''}>${E(PATH[i])}</option>`).join('')}</select></label><label>Titel<input name="t" required placeholder="${T2?'Was brauchst du?':'Was ist passiert?'}"></label><label>Priorität<select name="p"><option value="0">Hoch</option><option value="1" selected>Mittel</option><option value="2">Niedrig</option></select></label><label>Kategorie<select name="k">${opts(STAMM.kat)}</select></label>`,'Speichern',f=>{
+  const v=new FormData(f),L=T2?T:F,n=Math.max(...L.map(r=>+r.id.split('-')[1]))+1,id=(T2?'TK-':'ST-')+n;
+  L.unshift({k:T2?'Ticket':'Störung',id,t:v.get('t'),a:+v.get('a'),p:+v.get('p'),s:0,m:1,who:'–',due:3});
+  S.f=-1;S.asset=null;S.sel[T2?'Tickets':'Störungen']=id;go(T2?'Tickets':'Störungen');note(`Gespeichert: ${T2?'Ticket':'Störung'} ${id}`,1)})}
+function dlgStamm(key,label,what){dlg(label,`<label>Name<input name="n" required placeholder="z. B. ${key==='kat'?'Schmierung':key==='lief'?'Antrieb Weber KG':'4400 Logistik'}"></label><p class="mut">Der neue Eintrag steht danach in allen Auswahlfeldern für ${what}.</p>`,'Hinzufügen',f=>{const n=new FormData(f).get('n').trim();STAMM[key].push(n);render();note(`Gespeichert: ${what.replace(/n$/,'')} «${n}» angelegt`,1)})}
+function dlgAssign(r){dlg('Zuweisen',`<label>Person<select name="p">${opts(PEOPLE,r.who)}</select></label>`,'Zuweisen',f=>{r.who=new FormData(f).get('p');if(r.s===0)r.s=1;render();note(`Gespeichert: ${r.id} zugewiesen an ${r.who}`,1)})}
+function openPal(){closeOv();ov.innerHTML=`<div class="scrim" data-act="closeov"></div><div class="pal" role="dialog" aria-modal="true" aria-label="Was möchtest du tun?"><input id="pq" placeholder="Was möchtest du tun?" aria-label="Suchen" autocomplete="off"><div class="pl" id="pl" role="listbox"></div></div>`;const q=$('#pq');let items=[],ix=0;
+ const A=[['Störung melden','Aktion','plus',()=>dlgNew(false)],['Ticket anlegen','Aktion','plus',()=>dlgNew(true)],['Wartung planen','Aktion','cal',()=>{go('Wartung');note('Wartung planen: Plan wählen oder neu anlegen (Vorschau)',1)}],['Darstellung wechseln','Aktion','palette',()=>{S.rtab='Darstellung';closeOv();render()}]];
+ const calc=()=>{const s=q.value.trim().toLowerCase(),m=a=>!s||a.toLowerCase().includes(s);items=[];
+  A.filter(a=>m(a[0])).slice(0,4).forEach(a=>items.push({g:'Aktionen',t:a[0],s:a[1],i:a[2],f:a[3]}));
+  NAV.forEach(n=>n[2].forEach(p=>{if(s&&m(p+' '+n[0])&&items.filter(x=>x.g==='Seiten').length<5)items.push({g:'Seiten',t:p,s:'Bereich '+n[0],i:n[1],f:()=>go(p)})}));
+  if(!s)['Störungen','Tickets','Wartung'].forEach(p=>items.push({g:'Seiten',t:p,s:'zuletzt',i:'list',f:()=>go(p)}));
+  ALL().filter(r=>m(r.id+' '+r.t+' '+PATH[r.a])).slice(0,s?5:3).forEach(r=>items.push({g:'Vorgänge',t:r.id+' '+r.t,s:short(r.a),i:r.k==='Ticket'?'doc':'warn',f:()=>openRec(r.id)}));
+  AS.forEach((a,i)=>{if(s&&m(PATH[i])&&items.filter(x=>x.g==='Anlagen').length<4)items.push({g:'Anlagen',t:PATH[i],s:'Vorgänge anzeigen',i:'fac',f:()=>{S.asset=i;S.f=-1;go('Störungen')}})});
+  ix=Math.min(ix,Math.max(0,items.length-1));draw()};
+ const draw=()=>{let h='',g='';items.forEach((x,i)=>{if(x.g!==g){g=x.g;h+=`<div class="ph2">${g}</div>`}h+=`<button class="pi${i===ix?' on':''}" role="option" aria-selected="${i===ix}" data-pi="${i}">${I(x.i,18)}<span class="g">${E(x.t)}</span><small>${E(x.s)}</small></button>`});$('#pl').innerHTML=h||'<div class="empty">Nichts gefunden. Versuche eine Nummer, eine Anlage oder einen Seitennamen.</div>';$('#pl .on')?.scrollIntoView({block:'nearest'})};
+ const run=i=>{const x=items[i];if(x){closeOv();x.f()}};
+ q.oninput=()=>{ix=0;calc()};
+ q.onkeydown=e=>{if(e.key==='ArrowDown'){e.preventDefault();ix=Math.min(items.length-1,ix+1);draw()}else if(e.key==='ArrowUp'){e.preventDefault();ix=Math.max(0,ix-1);draw()}else if(e.key==='Enter'){e.preventDefault();run(ix)}};
+ $('#pl').onclick=e=>{const b=e.target.closest('[data-pi]');if(b)run(+b.dataset.pi)};calc();q.focus()}
+/* Aktionen */
+function applyTheme(){document.documentElement.dataset.style=S.style;document.documentElement.dataset.mode=S.mode}
+const dummy={exp:'Export wird vorbereitet (Vorschau)',prt:'Druckansicht öffnet sich (Vorschau)',spalten:'Spaltenauswahl öffnet sich (Vorschau)',fmerk:'Filter gemerkt: nur für dich, auf diesem Gerät (Vorschau)'};
+function act(a,b,e){
+ const id=b.dataset.id,v=b.dataset.v,i=+b.dataset.i;
+ switch(a){
+ case 'closeov':closeOv();break;
+ case 'pal':openPal();break;
+ case 'area':{closeOv();const t=S.last[i]||NAV[i][2][0];go(t);break}
+ case 'page':go(v);break;
+ case 'rec':openRec(id);break;
+ case 'tabx':closeRec(id);break;
+ case 'closetab':if(kind()==='rec')closeRec(S.cur.slice(4));break;
+ case 'sel':{S.sel[S.cur]=id;if(S.nar||e.detail>1&&0)S.mob=true;if(e.detail>1&&!S.nar){openRec(id);break}S.dtab='Übersicht';render();break}
+ case 'back':S.mob=false;render();break;
+ case 'gt':S.col.has(i)?S.col.delete(i):S.col.add(i);render();break;
+ case 'filt':S.f=+v;render();break;
+ case 'asset':S.asset=v===''?null:+v;S.mob=false;render();break;
+ case 'g-on':S.grp=true;render();break;case 'g-off':S.grp=false;render();break;
+ case 'v-split':case 'v-list':case 'v-tiles':S.vm=a.slice(2);render();break;
+ case 'dtab':S.dtab=v;render();break;
+ case 'rtab':S.rtab=v;render();break;
+ case 'rmore':{const R=RB();menu(b,Object.keys(R).filter(t=>R[t]).map(t=>`<div class="mh">${t}</div>`+R[t].flatMap(g=>g[1]).map(x=>`<button class="mi${pressed(x[0])?' on':''}" data-act="${x[0]}">${I(x[2],18)}${x[1]}</button>`).join('')).join('<div class="msep"></div>'),{sheet:1});break}
+ case 'mehr':menu(b,NAV.slice(4).map((n,k)=>`<button class="mi" data-act="area" data-i="${k+4}">${I(n[1],20)}${n[0]}</button>`).join(''),{sheet:1});break;
+ case 'neu':if(kind()==='work'&&S.cur==='Tickets')dlgNew(true);else if(kind()==='work')dlgNew(false);else note(`Neu: ${S.cur} – in der Vorschau nur angedeutet`,1);break;
+ case 'fault':dlgNew(false);break;
+ case 'save':{const r=curRec();note(r?`Gespeichert: ${r.k} ${r.id}`:`Gespeichert: ${S.cur}`,1);break}
+ case 'open':{const r=curRec();if(r)openRec(r.id);else note('Öffnen: Eintrag auswählen (Vorschau)',1);break}
+ case 'zu':{const r=curRec();r?dlgAssign(r):note('Erst einen Vorgang auswählen',1);break}
+ case 'wait':case 'done':{const r=curRec();if(!r){note('Erst einen Vorgang auswählen',1);break}r.s=a==='wait'?2:3;render();note(`Gespeichert: ${r.id} jetzt «${ST[r.s]}»`,1);break}
+ case 'exp':case 'prt':case 'spalten':case 'fmerk':note(dummy[a],1);break;
+ case 'kat':dlgStamm('kat','Kategorie hinzufügen','Kategorien');break;
+ case 'lief':dlgStamm('lief','Lieferant hinzufügen','Lieferanten');break;
+ case 'kst':dlgStamm('kst','Kostenstelle hinzufügen','Kostenstellen');break;
+ case 'cust':S.cust=!S.cust;render();break;
+ case 'wadd':{const have=S.widgets.map(w=>w.k),miss=Object.keys(WT).filter(k=>!have.includes(k));if(kind()!=='dash')go('Startseite');dlg('Widget hinzufügen',miss.length?`<label>Widget<select name="k">${miss.map(k=>`<option value="${k}">${WT[k]}</option>`).join('')}</select></label><label>Breite<select name="w"><option value="1">1 Spalte</option><option value="2" selected>2 Spalten</option><option value="3">3 Spalten</option><option value="4">4 Spalten</option></select></label>`:'<p>Alle Widgets sind schon auf der Seite.</p>','Hinzufügen',f=>{if(!miss.length)return;const x=new FormData(f);S.widgets.push({k:x.get('k'),w:+x.get('w')});S.cust=true;render();note('Widget hinzugefügt: '+WT[x.get('k')],1)});break}
+ case 'wreset':S.widgets=WDEF.map(x=>({...x}));render();note('Startseite zurückgesetzt',1);break;
+ case 'wdel':S.widgets.splice(i,1);render();break;
+ case 'wgr':S.widgets[i].w=Math.min(4,S.widgets[i].w+1);render();break;
+ case 'wsh':S.widgets[i].w=Math.max(1,S.widgets[i].w-1);render();break;
+ case 'role':S.role=v;render();break;
+ case 'tile':{const t=TILES[S.role][i][3];if(t==='fault')dlgNew(false);else if(t==='lief')dlgStamm('lief','Lieferant hinzufügen','Lieferanten');else if(t==='upd')runUpd();else if(t.startsWith('p:'))go(t.slice(2));else note(t.slice(2),1);break}
+ case 'st-fiori':S.style='fiori';applyTheme();render();break;case 'st-fluent':S.style='fluent';applyTheme();render();break;
+ case 'm-light':S.mode='light';applyTheme();render();break;case 'm-dark':S.mode='dark';applyTheme();render();break;
+ case 'upd':closeOv();runUpd();break;
+ case 'warn':S.warn=!S.warn;render();break;
+ case 'reload':{const f=$('#ingfr');if(f){f.classList.add('ld');setTimeout(()=>f.classList.remove('ld'),500)}note(S.cur+' wurde neu geladen',1);break}
+ case 'ext':note('Würde '+S.cur+' in einem neuen Fenster öffnen (Vorschau)',1);break;
+ case 'cop':S.cop=!S.cop;$('#cop').hidden=!S.cop;$('#bcop').classList.toggle('on',S.cop);$('#bcop').setAttribute('aria-pressed',S.cop);if(S.cop)copRender();break;
+ case 'ctab':S.ctab=v;copRender();break;
+ case 'cq':ask(v);break;
+ case 'x':note(b.dataset.t,1);closeOv();break;
+ case 'bell':menu(b,`<div class="mh">Benachrichtigungen</div><button class="mi" data-act="rec" data-id="ST-10483">${I('warn',18)}<span>ST-10483 Kühlwasser zu warm<br><span class="mut">vor 8 Min</span></span></button><button class="mi" data-act="rec" data-id="ST-10482">${I('user',18)}<span>K. Berger arbeitet an ST-10482<br><span class="mut">vor 12 Min</span></span></button><button class="mi" data-act="page" data-v="Wartung">${I('tool',18)}<span>W-5521 Jahreswartung heute fällig<br><span class="mut">06:00</span></span></button>`,{right:1,sheet:1});break;
+ case 'user':menu(b,`<div class="mh">K. Berger · ${S.role}</div><button class="mi" data-act="x" data-t="Profil (Vorschau)">${I('user',18)}Mein Profil</button><button class="mi" data-act="darst">${I('palette',18)}Darstellung</button><div class="msep"></div><button class="mi" data-act="x" data-t="Du wechselst zur klassischen Oberfläche (bis 0.90.0), nur in der Vorschau.">${I('back',18)}Klassische Oberfläche (bis 0.90.0)</button><button class="mi" data-act="x" data-t="Abmelden (Vorschau)">${I('x',18)}Abmelden</button>`,{right:1,sheet:1});break;
+ case 'darst':S.rtab='Darstellung';closeOv();render();break;
+ case 'log':menu(b,`<div class="mh">Letzte Meldungen</div>${S.log.length?S.log.map(l=>`<div class="mi" style="min-height:32px"><span class="mut">${l[0]}</span><span>${E(l[1])}</span></div>`).join(''):'<div class="mi mut">Noch keine Meldungen.</div>'}`,{up:1,sheet:1});break;
+ case 'aw':{S.aw=v;if(v!=='desktop'&&S.cop){S.cop=false;$('#cop').hidden=true;$('#bcop').classList.remove('on')}const w={desktop:'100%',tablet:'768px',phone:'390px'}[v];app.style.width=w;app.classList.toggle('frame',v!=='desktop');closeOv();measure();render();break}
+ }}
+document.addEventListener('click',e=>{const b=e.target.closest('[data-act]');if(!b)return;if(b.tagName==='A')e.preventDefault();act(b.dataset.act,b,e)});
+document.addEventListener('change',e=>{const s=e.target.closest('[data-chg]');if(s&&s.dataset.chg==='asset'){S.asset=s.value===''?null:+s.value;render()}});
+document.addEventListener('dblclick',e=>{});
+document.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault();openPal();return}if(e.key==='Escape')closeOv()});
+/* Größe */
+function measure(){const w=app.clientWidth,c=w>=1000?'wl':w>=600?'wm':'phn',cw=center.clientWidth,nar=cw<600,wide=cw>=1000;
+ const ch=c!==S.cls||nar!==S.nar||wide!==S.cw;S.cls=c;S.nar=nar;S.cw=wide;
+ app.classList.remove('wl','wm','phn');app.classList.add(c);$('#bsrch').hidden=c!=='phn';$('#srch').hidden=c==='phn';$('#topsp').hidden=c!=='phn';
+ if(ch){if(!nar)S.mob=false;render()}}
+S.aw='desktop';
+try{if(matchMedia('(prefers-color-scheme: dark)').matches)S.mode='dark'}catch(e){}
+applyTheme();top();tick();setInterval(tick,15000);
+new ResizeObserver(()=>measure()).observe(app);new ResizeObserver(()=>measure()).observe(center);
+setStatus();measure();render();
+S.log.unshift(['07:12','Anmeldung als K. Berger']);
+})();
+</script>
