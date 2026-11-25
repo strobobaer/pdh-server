@@ -97,6 +97,7 @@ func TestWorkBoardRenders(t *testing.T) {
 	items := renderPage(t, tmpl, "work_board", WorkBoardData{Area: workArea{Kind: k, Tab: "items", Chip: "open", Items: []workCard{card},
 		Chips: []workChip{{Key: "open", Label: "Alle offenen", Icon: "ti-list", URL: "/faults?tab=items&chip=open", Count: 1, Active: true}}}})
 	checkScripts(t, "work_board", items)
+	items = withUIScripts(t, items) // pdhComplete steht seit 0.82.61 in pdh-app.js
 	for _, want := range []string{"Alle offenen", "Presse steht", "pdhComplete(", `data-rx-done-label="Beheben"`, `data-rx-done="fault:f1"`,
 		`data-rx-view="/faults/f1"`, `data-rx-edit="/faults/f1"`} {
 		if !strings.Contains(items, want) {

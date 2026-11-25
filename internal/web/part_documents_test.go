@@ -59,7 +59,7 @@ func TestPartDocHelpers(t *testing.T) {
 func TestPartDocumentsUI(t *testing.T) {
 	tmpl := loadTestTemplates(t)
 	p := PartMaster{ID: "s1", Name: "Zylinder", ManufacturerName: "Festo", ManufacturerPart: "DSBC-32", Unit: "Stk", StatusKey: "ok", StatusClass: "b-green", StatusLabel: "OK"}
-	page := renderPage(t, tmpl, "inventory_detail", PartDetailData{Part: p, CanEdit: true, Tab: "docs"})
+	page := withUIScripts(t, renderPage(t, tmpl, "inventory_detail", PartDetailData{Part: p, CanEdit: true, Tab: "docs"})) // Anhang-Skript seit 0.82.61 als Datei
 	for _, want := range []string{"Datenblatt &amp; Handbuch suchen", `id="pd-modal"`, `value="Festo DSBC-32"`, "/doc-search?q=", "pdhRefreshDoc('s1','all',this)", "function pdhRefreshDoc", "attachment-badge doc"} {
 		if !strings.Contains(page, want) {
 			t.Errorf("Teileseite enthält %q nicht", want)
@@ -75,10 +75,14 @@ func TestPartDocumentsUI(t *testing.T) {
 // Seitenleisten in der Breite ziehbar: Griffe, Variablen, frueh geladene Breite.
 func TestSidebarResizers(t *testing.T) {
 	page := renderPage(t, loadTestTemplates(t), "work_board", WorkBoardData{Area: workArea{Kind: workKinds["ticket"], Tab: "dashboard"}})
-	for _, want := range []string{`class="pdh-resizer left"`, `class="pdh-resizer right"`, `role="separator"`, "--left-open-w", "pdh_sidebar_left_w", "pdh_sidebar_right_w", "max(380px, var(--right-open-w))"} {
+	for _, want := range []string{`class="pdh-resizer left"`, `class="pdh-resizer right"`, `role="separator"`, "--left-open-w", "pdh_sidebar_left_w", "pdh_sidebar_right_w"} {
 		if !strings.Contains(page, want) {
 			t.Errorf("Seite enthält %q nicht", want)
 		}
+	}
+	// Breitenregel steht seit 0.82.61 in der ausgelagerten Stildatei des Rahmens
+	if !strings.Contains(baseWithUI(t), "max(380px, var(--right-open-w))") {
+		t.Error("Rahmen ohne Breitenregel der rechten Leiste")
 	}
 	checkScripts(t, "resizer", page)
 }

@@ -139,15 +139,18 @@ func TestCopilotSidebarConn(t *testing.T) {
 	const hint = "Auf dieser Seite gehen Quellwerte und Anlagennamen an Anthropic – Kennwörter nie."
 	d := ConnectionDetailData{Direction: "import", ID: id, Name: "Broker", Kind: "mqtt", KindLabel: "MQTT", CanWrite: true, Tab: "mappings"}
 	d.CopilotConn = "import:" + id
-	page := renderPage(t, tmpl, "connection_detail", d)
-	for _, want := range []string{"conn: 'import:" + id + "'", "function copRenderProposal", "/copilot/proposals/", "/apply", hint, "Seite neu laden", "Quellen aus dem Internet"} {
+	page := withUIScripts(t, renderPage(t, tmpl, "connection_detail", d))
+	if got := bootValue(t, page, "copilotConn"); got != "import:"+id {
+		t.Errorf("Copilot-Verbindung im Datenblock: %q", got)
+	}
+	for _, want := range []string{"function copRenderProposal", "/copilot/proposals/", "/apply", hint, "Seite neu laden", "Quellen aus dem Internet"} {
 		if !strings.Contains(page, want) {
 			t.Errorf("%q fehlt", want)
 		}
 	}
 	checkScripts(t, "copilot-sidebar", page)
 	d.CopilotConn = ""
-	if page := renderPage(t, tmpl, "connection_detail", d); strings.Contains(page, hint) || !strings.Contains(page, "conn: ''") {
+	if page := renderPage(t, tmpl, "connection_detail", d); strings.Contains(page, hint) || bootValue(t, page, "copilotConn") != "" {
 		t.Error("ohne Verbindung: kein Hinweis, leere Kennung")
 	}
 }
@@ -215,7 +218,7 @@ func TestCopilotWebSearchIsOptIn(t *testing.T) {
 	const id = "11111111-1111-1111-1111-111111111111"
 	d := ConnectionDetailData{Direction: "import", ID: id, Name: "Broker", Kind: "mqtt", KindLabel: "MQTT", CanWrite: true, Tab: "mappings"}
 	d.CopilotConn = "import:" + id
-	page := renderPage(t, tmpl, "connection_detail", d)
+	page := withUIScripts(t, renderPage(t, tmpl, "connection_detail", d))
 	for _, want := range []string{`id="cop-web"`, "Im Internet nach einer Vorlage suchen", "Dabei geht nur deine Frage ins Internet", "web: (document.getElementById('cop-web') || {}).checked ? '1' : ''"} {
 		if !strings.Contains(page, want) {
 			t.Errorf("%q fehlt", want)

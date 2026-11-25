@@ -908,11 +908,7 @@ func TestMaintStatusCountdownOutsideLock(t *testing.T) {
 }
 
 func TestBaseHasMaintBand(t *testing.T) {
-	raw, err := os.ReadFile(filepath.Join("..", "..", "web", "templates", "base.gohtml"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	s := string(raw)
+	s := baseWithUI(t) // Rahmen samt ausgelagerter Stil- und Skriptdateien
 	for _, want := range []string{`id="maint-band"`, `/wartung/status`, `pdhQuiet`, `countdown_until`,
 		`html.pdh-embedded .maint-band`, `Automatische Wartung in`, `location.href='/wartung'`,
 		`.maint-band .mb-act .btn:not(.btn-primary)`} { // Hauptknopf behält seine weiße Schrift

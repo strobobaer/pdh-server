@@ -68,5 +68,6 @@ func RegisterVendorRoutes(r chi.Router, h *Handler) {
 	r.Get("/vendor/{ver}/icons-rest.css", h.IconCSSRestWeb)
 	r.Get("/vendor/{ver}/icons-{key}.css", h.IconCSSWeb)
 	r.Get("/vendor/{ver}/icons/{name}.svg", h.IconSVGWeb)
+	r.Get("/vendor/{ver}/ui/{file}", h.UIAssetWeb) // eigene Oberfläche (ui_assets.go)
 	r.Get("/vendor/{ver}/{lib}/{file}", h.VendorLibWeb)
 }

@@ -82,7 +82,11 @@ func TestCopilotSidebarRendersSuggestionHooks(t *testing.T) {
 	d.Page = "faults"
 	out := renderPage(t, tmpl, "fault_detail", d)
 	checkScripts(t, "fault_detail", out)
-	for _, want := range []string{`id="cop-suggest"`, `const PAGE_REF = 'fault:f1'`, "/copilot/suggest?type=", "cop-alert", "window.pdhCopilotFor"} {
+	out = withUIScripts(t, out) // Copilot-Skript seit 0.82.61 als Datei, Werte im Datenblock
+	if got := bootValue(t, out, "copilotRef"); got != "fault:f1" {
+		t.Errorf("Seitenbezug im Datenblock: %q", got)
+	}
+	for _, want := range []string{`id="cop-suggest"`, `const PAGE_REF = PDH_BOOT.copilotRef`, "/copilot/suggest?type=", "cop-alert", "window.pdhCopilotFor"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("Störungsseite ohne %q", want)
 		}

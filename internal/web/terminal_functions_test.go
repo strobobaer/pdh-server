@@ -62,11 +62,7 @@ func TestTerminalFnJSONDefaults(t *testing.T) {
 
 // Die Farben des Vertrags sind die von base.gohtml (dunkel :root, hell html[data-theme="light"]).
 func TestTerminalThemeMatchesBase(t *testing.T) {
-	b, err := os.ReadFile("../../web/templates/base.gohtml")
-	if err != nil {
-		t.Fatal(err)
-	}
-	base := strings.ReplaceAll(string(b), "\r", "")
+	base := baseWithUI(t) // Farben stehen seit 0.82.61 in web/static/ui/
 	i := strings.Index(base, `html[data-theme="light"]{`)
 	if i < 0 {
 		t.Fatal("hell-Block fehlt in base.gohtml")

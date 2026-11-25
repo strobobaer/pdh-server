@@ -106,6 +106,7 @@ func TestPartPagesRender(t *testing.T) {
 		Stock:        []PartStockRow{{NodeID: "n1", Path: "Regal R", Qty: "6", Reserved: "4"}},
 		Reservations: []PartReservationRow{{ID: "pp1", Kind: "fault", RefID: "f1", RefLabel: "Störung: Lagerschaden", RefURL: "/faults/f1", Path: "Regal R", Qty: "4", QtyRaw: 4}},
 	})
+	rd = withUIScripts(t, rd) // Reservierungs-Skript seit 0.82.61 als Datei
 	for _, want := range []string{"6 Stk (4 reserviert)", ">(4)</span>", "Störung: Lagerschaden", "pdhReturnReservation('fault','f1','pp1', 4 ,pdhPartReload)", "function pdhReservedTag"} {
 		if !strings.Contains(rd, want) {
 			t.Errorf("Detail (Reservierung) enthält %q nicht", want)

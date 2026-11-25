@@ -10,6 +10,20 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.82.62] – 2026-11-25
+
+### Neu
+
+- **Seite „Gestaltung“:** Unter Verwaltung → Gestaltung stehen alle Farben, Abstände, Schriftgrößen, Ecken und Grundbausteine der Oberfläche – so, wie sie im gewählten Stil und Modus aussehen.
+
+### Geändert
+
+- **Seiten bauen schneller auf:** Gestaltung und Skripte der Seiten kommen als zwischengespeicherte Dateien statt bei jedem Aufruf neu.
+
+### Sicherheit
+
+- **Neues Recht „Oberfläche: Vorgaben für Firma und Rollen“:** Es öffnet die Seite „Gestaltung“; es bekommen alle Rollen, die Rollen und Rechte überall verwalten dürfen (nicht nur in einer Abteilung).
+
 ## [0.82.61] – 2026-11-25
 
 ### Neu
