@@ -112,7 +112,8 @@ type BaseData struct {
 	// Neuer Rahmen (ui_frame.go): eigene Wahl ('' wie Firma, classic, new) und Ergebnis
 	UIFrame  string
 	NewFrame bool
-	Rail     areaView // Bereiche, Reiter, Favoriten – nur im neuen Rahmen gefüllt (nav_areas.go)
+	Rail     areaView    // Bereiche, Reiter, Favoriten – nur im neuen Rahmen gefüllt (nav_areas.go)
+	Ribbon   []ribbonTab // Menüband – nur im neuen Rahmen (ribbon.go)
 }
 
 // Language: Sprache fuer die Template-Funktion t (siehe bindLang).
@@ -1592,6 +1593,7 @@ func (h *Handler) baseData(r *http.Request, page, title, ctxTitle string) BaseDa
 	b.NewFrame = h.frameFor(r.Context(), b.UIFrame)
 	if b.NewFrame {
 		b.Rail = buildAreas(&b, h.areaPrefs(r.Context(), u.ID))
+		b.Ribbon = ribbonFor(&b)
 	}
 	b.UserAvatar = h.userAvatarURL(r.Context(), u.ID)
 	if b.CanAppUse && h.db != nil {
