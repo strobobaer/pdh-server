@@ -97,6 +97,11 @@
 /* Farben wie das übrige PDH (base.gohtml): dunkel = :root, hell = html[data-theme="light"]; das Feld theme der Geräte-Schnittstelle trägt dieselben Werte (terminal_functions.go) */
 :root{--bg:#202020;--bg2:#2b2b2b;--bg3:#323232;--accent:#4f8ef7;--on-accent:#fff;--text:#f3f3f3;--muted:#a3a3a3;--border:#3b3b3b;--red:#ef4444;--amber:#f59e0b;--green:#10b981;--font:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
 html[data-theme="light"]{--bg:#f3f3f3;--bg2:#ffffff;--bg3:#f9f9f9;--accent:#005fb8;--text:#1b1b1b;--muted:#5f5f5f;--border:#e2e2e2;--red:#dc2626;--amber:#d97706;--green:#059669}
+/* Kachelarten (Fläche, Rand, Schrift): dunkel = feste dunkle Fläche mit weißer Schrift, hell = helle Fläche derselben Farbfamilie mit dunkler Schrift
+   (Kontrast mindestens 4,5:1; TestTerminalTileThemes). Neue farbige Kacheln bekommen hier ihre Variablen und nie feste Farben in der Regel. */
+:root{--tile-fault-bg:#7f1d1d;--tile-fault-bd:var(--red);--tile-fault-fg:#fff;--tile-ticket-bg:#78350f;--tile-ticket-bd:var(--amber);--tile-ticket-fg:#fff;--tile-rz-bg:#064e3b;--tile-rz-bd:var(--green);--tile-rz-fg:#fff;--tile-v-bg:#14532d;--tile-v-bd:#22c55e;--tile-v-fg:#fff;--tile-hmi-bg:#1e3a8a;--tile-hmi-bd:var(--accent);--tile-hmi-fg:#fff;--tile-m-bg:#4c1d95;--tile-m-bd:#8b5cf6;--tile-m-fg:#fff;--tile-p-bg:#134e4a;--tile-p-bd:#14b8a6;--tile-p-fg:#fff;--tile-z-bg:#3b0764;--tile-z-bd:#a855f7;--tile-z-fg:#fff;--tile-yr-bg:#8a94a6;--tile-yr-bd:#8a94a6;--tile-yr-fg:#fff}
+html[data-theme="light"]{--tile-fault-bg:#fee2e2;--tile-fault-bd:#dc2626;--tile-fault-fg:#7f1d1d;--tile-ticket-bg:#fef3c7;--tile-ticket-bd:#b45309;--tile-ticket-fg:#78350f;--tile-rz-bg:#d1fae5;--tile-rz-bd:#047857;--tile-rz-fg:#064e3b;--tile-v-bg:#dcfce7;--tile-v-bd:#15803d;--tile-v-fg:#14532d;--tile-hmi-bg:#dbeafe;--tile-hmi-bd:#005fb8;--tile-hmi-fg:#1e3a8a;--tile-m-bg:#ede9fe;--tile-m-bd:#6d28d9;--tile-m-fg:#4c1d95;--tile-p-bg:#ccfbf1;--tile-p-bd:#0f766e;--tile-p-fg:#134e4a;--tile-z-bg:#f3e8ff;--tile-z-bd:#7e22ce;--tile-z-fg:#3b0764;--tile-yr-bg:#d5dbe6;--tile-yr-bd:#d5dbe6;--tile-yr-fg:#1f2937}
+html[data-theme="light"] .t-btn.ok{background:#047857;border-color:#047857}
 html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--font);font-size:clamp(18px,1.6vw,28px);line-height:1.3;overflow:hidden;
   -webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;touch-action:manipulation;cursor:default}
 body{display:flex;flex-direction:column;padding:max(2vh,12px) max(2vw,16px)}
@@ -147,8 +152,8 @@ a{color:inherit;text-decoration:none}
 .t-new{flex:1;min-height:0;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:minmax(0,1fr) auto;gap:1.6vw}
 .t-tilebtn{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1.2vh;border-radius:26px;border:2px solid var(--border);font-weight:800;font-size:1.7em;padding:3vh 2vw;min-height:64px;text-align:center}
 .t-tilebtn i{font-size:2.2em}
-.t-tilebtn.fault{background:#7f1d1d;border-color:var(--red);color:#fff}
-.t-tilebtn.ticket{background:#78350f;border-color:var(--amber);color:#fff}
+.t-tilebtn.fault{background:var(--tile-fault-bg);border-color:var(--tile-fault-bd);color:var(--tile-fault-fg)}
+.t-tilebtn.ticket{background:var(--tile-ticket-bg);border-color:var(--tile-ticket-bd);color:var(--tile-ticket-fg)}
 .t-tilebtn:active{filter:brightness(1.25)}
 .t-tilebtn.off{opacity:.35;filter:grayscale(1)}
 .t-tilebtn.off:active{filter:grayscale(1)}
@@ -257,7 +262,7 @@ body[data-mode="global"],body[data-saver-slides]{padding:0;-webkit-touch-callout
 .g-yr-name b{font-size:clamp(15px,1.7vw,30px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .g-yr-name small{font-size:clamp(12px,1.2vw,21px);color:var(--muted)}
 .g-yr-track{position:relative;min-width:0}
-.g-yr-bar{position:absolute;top:18%;bottom:18%;box-sizing:border-box;border-radius:8px;background:#8a94a6;color:#fff;font-size:clamp(12px,1.3vw,22px);font-weight:700;line-height:1;display:flex;align-items:center;padding:0 .5em;white-space:nowrap;overflow:hidden;min-width:3px}
+.g-yr-bar{position:absolute;top:18%;bottom:18%;box-sizing:border-box;border-radius:8px;background:var(--tile-yr-bg);color:var(--tile-yr-fg);font-size:clamp(12px,1.3vw,22px);font-weight:700;line-height:1;display:flex;align-items:center;padding:0 .5em;white-space:nowrap;overflow:hidden;min-width:3px}
 .g-yr-bar.cl{border-top-left-radius:0;border-bottom-left-radius:0}
 .g-yr-bar.cr{border-top-right-radius:0;border-bottom-right-radius:0}
 .g-yr-info{display:flex;gap:2vw;justify-content:center;font-size:clamp(14px,1.5vw,26px);color:var(--muted)}
@@ -270,7 +275,7 @@ body[data-mode="global"],body[data-saver-slides]{padding:0;-webkit-touch-callout
 body.has-gear .t-head{padding-right:56px}
 body.has-gear .g-vorg{padding-top:60px}
 /* Rüsten (terminal_setup.go): Kachel auf „Neu“, Seite /terminal/rusten – Raster folgt der Bildschirmgröße */
-.t-new .t-rzlink{grid-column:1/-1;flex-direction:row;font-size:1.3em;padding:2.2vh 2vw;background:#064e3b;border-color:var(--green);color:#fff}
+.t-new .t-rzlink{grid-column:1/-1;flex-direction:row;font-size:1.3em;padding:2.2vh 2vw;background:var(--tile-rz-bg);border-color:var(--tile-rz-bd);color:var(--tile-rz-fg)}
 .t-new .t-rzlink.off{color:var(--text)}
 .t-new.one .t-tilebtn.fault,.t-new.one .t-tilebtn.ticket{grid-column:1/-1}.t-new.nof{grid-template-rows:auto}
 .t-new .t-rzlink i{font-size:1.6em}.t-rzlink small{display:block;font-weight:600;font-size:.6em;color:inherit;opacity:.8}
@@ -299,7 +304,7 @@ body.has-gear .g-vorg{padding-top:60px}
 .t-pickgrid .t-btn.primary{grid-column:1/-1;justify-content:center}
 .t-picked{display:flex;align-items:center;justify-content:space-between;gap:2vw;padding:1.2vh 1.6vw;background:var(--bg2);border:2px solid var(--border);border-radius:18px}
 /* Vorgänge (terminal_vorgaenge.go): Liste, Fenster zum Vorgang, Abschluss-Assistent */
-.t-new .t-vlink{background:#14532d;border-color:#22c55e;color:#fff}
+.t-new .t-vlink{background:var(--tile-v-bg);border-color:var(--tile-v-bd);color:var(--tile-v-fg)}
 body[data-mode="vorgaenge"]{--accent-rgb:79,142,247}
 .v-sec{display:flex;flex-direction:column;gap:.4vh}
 .v-sec h2{font-size:1.15em;display:flex;align-items:center;gap:.5em}
@@ -361,8 +366,8 @@ a.v-row.v-nope{opacity:.7}
 /* HMI und Wartungen (terminal_hmi.go, terminal_wartung.go): Kacheln neben Rüsten, Listen, Viewer */
 .t-xrow{grid-column:1/-1;display:flex;gap:1.6vw}
 .t-new .t-xrow .t-rzlink{flex:1;grid-column:auto;min-width:0}
-.t-new .t-hmilink{background:#1e3a8a;border-color:var(--accent);color:#fff}
-.t-new .t-mlink{background:#4c1d95;border-color:#8b5cf6;color:#fff}
+.t-new .t-hmilink{background:var(--tile-hmi-bg);border-color:var(--tile-hmi-bd);color:var(--tile-hmi-fg)}
+.t-new .t-mlink{background:var(--tile-m-bg);border-color:var(--tile-m-bd);color:var(--tile-m-fg)}
 .t-mlist li.t-mrow{display:flex;align-items:center;gap:1.2vw;padding:1.1vh 0}
 .t-mrow .m-t{flex:1;min-width:0;display:flex;flex-direction:column}
 .t-mrow .m-t b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -376,9 +381,9 @@ a.v-row.v-nope{opacity:.7}
 .t-hmiscreen{flex:1;min-height:0;background:#000;border:2px solid var(--border);border-radius:14px;overflow:hidden;position:relative;touch-action:none}
 .t-card form{margin:0}
 /* Schichtplan (terminal_schichtplan.go) */
-.t-new .t-plink{background:#134e4a;border-color:#14b8a6;color:#fff}
-.t-new .t-zlink{background:#3b0764;border-color:#a855f7;color:#fff}
-.z-btns{display:grid;grid-template-columns:repeat(auto-fit,minmax(10em,1fr));gap:1vw}.z-btns form{margin:0}.z-btns .t-btn{width:100%}.z-work{display:flex;gap:1vw;align-items:center;flex-wrap:wrap;margin:1vh 0}.z-work form{margin:0}.z-names{display:flex;flex-wrap:wrap;gap:.6vw}.z-chip{padding:.4em .9em;border-radius:999px;background:var(--bg3);border:2px solid var(--border);font-weight:700}.t-rznote.bad{border-color:#ef4444}.z-btns .t-btn[disabled]{opacity:.35}
+.t-new .t-plink{background:var(--tile-p-bg);border-color:var(--tile-p-bd);color:var(--tile-p-fg)}
+.t-new .t-zlink{background:var(--tile-z-bg);border-color:var(--tile-z-bd);color:var(--tile-z-fg)}
+.z-btns{display:grid;grid-template-columns:repeat(auto-fit,minmax(10em,1fr));gap:1vw}.z-btns form{margin:0}.z-btns .t-btn{width:100%}.z-work{display:flex;gap:1vw;align-items:center;flex-wrap:wrap;margin:1vh 0}.z-work form{margin:0}.z-names{display:flex;flex-wrap:wrap;gap:.6vw}.z-chip{padding:.4em .9em;border-radius:999px;background:var(--bg3);border:2px solid var(--border);font-weight:700}.t-rznote.bad{border-color:var(--red)}.z-btns .t-btn[disabled]{opacity:.35}
 body[data-mode="zeit"]{--accent-rgb:168,85,247}
 .t-pdepts,.t-pweek{display:flex;flex-wrap:wrap;gap:1vw;align-items:center}
 .t-pdepts .t-btn.sel,.t-pweek .t-btn.sel{background:var(--accent);border-color:var(--accent);color:#fff}
@@ -606,11 +611,13 @@ connect();
 <div class="t-none"><i class="ti ti-lock" aria-hidden="true"></i><p>Keine Berechtigung</p><small>Für die Abteilungen dieses Terminals darf der Schichtplan hier nicht angezeigt werden.</small></div>
 {{else}}
 <div class="t-rz">
-  <h2 class="t-rzh"><i class="ti ti-calendar-week" aria-hidden="true"></i> Schichtplan {{.Plan.DeptName}}</h2>
-  {{if gt (len .Plan.Depts) 1}}<div class="t-pdepts">{{range .Plan.Depts}}<a class="t-btn{{if .Sel}} sel{{end}}" href="/terminal/schichtplan?abt={{.ID}}{{if $.Plan.Next}}&amp;woche=naechste{{end}}">{{.Name}}</a>{{end}}</div>{{end}}
+  <h2 class="t-rzh"><i class="ti ti-calendar-week" aria-hidden="true"></i> Schichtplan {{.Plan.DeptName}}{{if .Plan.PlanName}} · {{.Plan.PlanName}}{{end}}</h2>
+  {{if gt (len .Plan.Depts) 1}}<div class="t-pdepts">{{range .Plan.Depts}}<a class="t-btn{{if .Sel}} sel{{end}}" href="{{$.Plan.Href .ID $.Plan.Next $.Plan.PlanSel}}">{{.Name}}</a>{{end}}</div>{{end}}
+  {{if gt (len .Plan.Plans) 1}}<div class="t-pdepts t-pplans" role="group" aria-label="Schichtplan">
+    <a class="t-btn{{if not .Plan.PlanSel}} sel{{end}}" href="{{.Plan.Href .Plan.Dept .Plan.Next ""}}">Alle</a>{{range .Plan.Plans}}<a class="t-btn{{if .Sel}} sel{{end}}" href="{{$.Plan.Href $.Plan.Dept $.Plan.Next .ID}}">{{.Name}}</a>{{end}}</div>{{end}}
   <div class="t-pweek">
-    <a class="t-btn{{if not .Plan.Next}} sel{{end}}" href="/terminal/schichtplan?abt={{.Plan.Dept}}">Diese Woche</a>
-    <a class="t-btn{{if .Plan.Next}} sel{{end}}" href="/terminal/schichtplan?abt={{.Plan.Dept}}&amp;woche=naechste">Nächste Woche</a>
+    <a class="t-btn{{if not .Plan.Next}} sel{{end}}" href="{{.Plan.Href .Plan.Dept false .Plan.PlanSel}}">Diese Woche</a>
+    <a class="t-btn{{if .Plan.Next}} sel{{end}}" href="{{.Plan.Href .Plan.Dept true .Plan.PlanSel}}">Nächste Woche</a>
     <span class="t-mcount">{{.Plan.WeekLabel}}</span>
   </div>
   {{if .Plan.ShowToday}}

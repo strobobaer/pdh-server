@@ -10,6 +10,17 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.82.61] – 2026-11-25
+
+### Neu
+
+- **Schichtplan am Terminal: Plan wählen:** Gelten in der Woche mehrere veröffentlichte Pläne, erscheinen auf der Terminalseite Knöpfe für jeden Plan und „Alle“; gezeigt werden nur die Einteilungen des gewählten Plans. Entwürfe zeigt das Terminal nie.
+- **Schichtplan beim Öffnen:** In den Terminal-Einstellungen (Stammdaten des Terminal-Benutzers) legst du fest, welchen Plan die Seite zuerst zeigt – „Alle“ ist die Vorgabe. Gilt der Plan in der Woche nicht, erscheinen alle Pläne. Die Folie „Schichtplan“ im Infobildschirm hat dieselbe Auswahl.
+
+### Behoben
+
+- **Terminal im hellen Schema:** Die farbigen Kacheln (Störung, Ticket, Rüsten, Vorgänge, Wartungen, HMI, Schichtplan, Zeiterfassung) und die Balken des Jahresbands sind jetzt hell mit dunkler Schrift (Kontrast mindestens 4,5:1); im dunklen Schema bleibt alles wie bisher. Der grüne Knopf „ok“ ist im hellen Schema dunkler, damit die weiße Schrift lesbar bleibt.
+
 ## [0.82.60] – 2026-11-25
 
 ### Behoben

@@ -42,6 +42,8 @@ type userMaster struct {
 	TerminalScheme                                      string            // Farbschema der Terminalseiten: dark | light
 	TerminalDepts                                       terminalDeptsView // Abteilungen des Terminals (terminal_departments.go)
 	TerminalVorgModus                                   string            // Bearbeiten am Terminal: ohne_karte | nur_karte
+	TerminalShiftPlan                                   string            // Schichtplan beim Öffnen: Plan-ID, "" = alle (terminal_shiftplan.go)
+	TerminalShiftPlans                                  []shiftPlanChoice // Pläne zur Auswahl
 	TerminalFree                                        bool              // Freier Terminal-Benutzer (terminal_free.go)
 	TerminalPick                                        terminalPickView  // zusätzliche Quellen der Personenauswahl (terminal_pick.go)
 	TerminalIsTerminal                                  bool              // Standort gesetzt oder Gerät gekoppelt: Schalter anbieten
@@ -289,6 +291,8 @@ func (h *Handler) loadUserMasterErr(ctx context.Context, id string) (userMaster,
 			}
 			m.TerminalDepts = h.loadTerminalDeptsView(ctx, id)
 			m.TerminalVorgModus = h.terminalVorgaengeModus(ctx, id)
+			m.TerminalShiftPlan = h.terminalShiftPlan(ctx, id)
+			m.TerminalShiftPlans = h.shiftPlanOptions(ctx, m.TerminalShiftPlan)
 			m.TerminalFree = h.terminalFree(ctx, id)
 			m.TerminalPick = h.loadTerminalPickView(ctx, id)
 			m.TerminalIsTerminal, _ = h.isTerminalUser(ctx, id)
@@ -542,6 +546,17 @@ func (h *Handler) UserMasterSaveWeb(w http.ResponseWriter, r *http.Request) {
 		}
 		fnSent = sys
 	}
+	// Schichtplan beim Öffnen: eigener Marker, nur Benutzerverwaltung, nur Systembenutzer
+	shiftPlanSent := false
+	if _, sent := r.Form["terminal_shift_plan_sent"]; sent && h.canManageUsers(r) {
+		sys, err := h.isSystemUser(ctx, id)
+		if err != nil {
+			componentLog("terminal").Error().Err(err).Str("user", id).Msg("systembenutzer prüfen")
+			userRedirect(w, r, id, "master", "", errTerminalLoginSave)
+			return
+		}
+		shiftPlanSent = sys
+	}
 	old := h.loadUserMaster(ctx, id)
 	brokerT, brokerF, brokerA, brokerM := old.BrokerTickets, old.BrokerFaults, old.BrokerTasks, old.BrokerMaintenance
 	if h.canManageUsers(r) {
@@ -677,6 +692,17 @@ func (h *Handler) UserMasterSaveWeb(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		h.notifyTerminalSettings(id)
+	}
+	if shiftPlanSent {
+		if err := h.saveTerminalShiftPlan(ctx, id, r.FormValue("terminal_shift_plan"), getUser(r).ID); err != nil {
+			if errors.Is(err, errShiftPlanGone) {
+				userRedirect(w, r, id, "master", "", err)
+				return
+			}
+			componentLog("terminal").Error().Err(err).Str("user", id).Msg("schichtplan beim öffnen speichern")
+			userRedirect(w, r, id, "master", "", errTerminalLoginSave)
+			return
+		}
 	}
 	// Freier Terminal-Benutzer: eigener Marker, nur Benutzerverwaltung, nur Systembenutzer
 	if _, sent := r.Form["terminal_free_sent"]; sent && h.canManageUsers(r) {
