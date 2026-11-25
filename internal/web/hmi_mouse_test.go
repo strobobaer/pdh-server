@@ -51,6 +51,7 @@ for (const r of [rect, { left: 0, top: 0, width: 1280, height: 720 }, { left: 7,
   }
 }
 eq(M.clampToRect(-5, 9999, rect), { x: 100, y: 409 }, 'Zeiger bleibt im Bild');
+eq([M.inRect(100, 50, rect), M.inRect(739, 409, rect), M.inRect(740, 100, rect), M.inRect(99, 100, rect), M.inRect(300, 410, rect), M.inRect(1, 1, null)], [true, true, false, false, false, false], 'Punkt im Bild');
 
 // ── Beschleunigung
 eq(M.padGain(0) < 1 && M.padGain(0.1) < 1, true, 'langsam fein');
@@ -133,6 +134,44 @@ eq(sig(r.evs), 'move/0 down:0/1 up:0/0', 'zweiter Finger löst die Taste');
 // der übrig bleibende Finger klickt nicht
 r.evs.length = 0; r.eng.up(2, 50, 10, 50); r.eng.up(1, 10, 10, 60);
 eq(r.evs.length, 0, 'übriger Finger nach dem Scrollen tut nichts');
+
+// Schwarzer Rand: im Direktmodus ignoriert (kein Klick, kein Klemmen an den Bildrand)
+const inside = (x, y) => M.inRect(x, y, rect);
+function rig2(mode, kind) {
+  const r = { mode, kind, evs: [], used: 0 };
+  r.eng = M.createEngine({ mode: () => r.mode, kind: () => r.kind, used: () => { r.used++; }, emit: (e) => r.evs.push(e), clip: (x, y) => M.clampToRect(x, y, rect), inside });
+  return r;
+}
+for (const kd of ['left', 'right', 'double', 'drag', 'scroll']) {
+  r = rig2('direct', kd);
+  r.eng.down(1, 30, 200, 0); r.eng.move(1, 60, 220, 30); r.eng.up(1, 60, 220, 60);
+  eq(r.evs.length + '/' + r.used, '0/0', 'Rand ignoriert: ' + kd);
+}
+r = rig2('direct', 'left');
+r.eng.down(1, 300, 200, 0); r.eng.up(1, 300, 200, 60);
+eq(sig(r.evs), 'move/0 down:0/1 up:0/0', 'auf dem Bild klickt');
+r = rig2('direct', 'left');
+r.eng.down(1, 750, 200, 0); r.eng.up(1, 750, 200, 60);
+eq(r.evs.length, 0, 'rechts neben dem Bild kein Klick');
+// zwei Finger im Rand scrollen nicht, auf dem Bild schon
+r = rig2('direct', 'left');
+r.eng.down(1, 10, 200, 0); r.eng.down(2, 50, 200, 2); r.eng.move(1, 10, 150, 30); r.eng.move(2, 50, 150, 30);
+eq(r.evs.length, 0, 'zwei Finger im Rand scrollen nicht');
+r = rig2('direct', 'left');
+r.eng.down(1, 300, 200, 0); r.eng.down(2, 340, 200, 2); r.eng.move(1, 300, 150, 30); r.eng.move(2, 340, 150, 30);
+eq(r.evs.length > 0, true, 'zwei Finger auf dem Bild scrollen');
+// Touchpad: Tipp mit dem Finger außerhalb klickt trotzdem am Zeiger
+r = rig2('pad', 'left');
+r.eng.cursor = { x: 300, y: 200 };
+r.eng.down(1, 20, 20, 0); r.eng.up(1, 20, 20, 60);
+eq(sig(r.evs), 'move/0 down:0/1 up:0/0', 'Touchpad: Tipp außerhalb klickt am Zeiger');
+eq([r.evs[1].x, r.evs[1].y], [300, 200], 'Touchpad: Klick am Zeiger');
+// reset lässt eine gehaltene Taste los
+r = rig('direct', 'drag');
+r.eng.down(1, 10, 10, 0); r.evs.length = 0; r.eng.reset();
+eq(sig(r.evs), 'up:0/0', 'reset lässt die Taste los');
+r.evs.length = 0; r.eng.reset();
+eq(r.evs.length, 0, 'zweites reset tut nichts');
 
 // Touchpad: relative Bewegung, Tipp klickt am Zeiger
 r = rig('pad', 'left');
@@ -225,5 +264,38 @@ func TestTerminalHMIViewMouseScriptOnlyInControl(t *testing.T) {
 	}
 	if !strings.Contains(view, `rfb.viewOnly = MODE !== 'control'`) {
 		t.Error("Nur ansehen bleibt schreibgeschützt")
+	}
+}
+
+// Neu verbinden: das späte disconnect einer alten Verbindung darf die Leiste der neuen nicht zerstören, und
+// die Leiste wird vor der Verbindung abgebaut (lässt eine gehaltene Taste los).
+func TestHMIMouseReconnectGuard(t *testing.T) {
+	term := readStatic(t, "../../web/templates/terminal.gohtml")
+	i := strings.Index(term, `{{else if eq .Mode "hmiview"}}`)
+	j := strings.Index(term[i:], `{{else if eq .Mode "schichtplan"}}`)
+	for name, src := range map[string]string{"terminal.gohtml": term[i : i+j], "hmi_viewer.gohtml": readStatic(t, "../../web/templates/hmi_viewer.gohtml")} {
+		for _, want := range []string{"const r = rfb = new RFB(", "const m = mouse;", "if(m) m.destroy();", "if(mouse === m) mouse = null;", "if(rfb !== r) return;"} {
+			if !strings.Contains(src, want) {
+				t.Errorf("%s: %q fehlt", name, want)
+			}
+		}
+		if a, b := strings.Index(src, "mouse.destroy(); mouse = null; }"), strings.Index(src, "rfb.disconnect(); }catch"); a < 0 || b < 0 || a > b {
+			t.Errorf("%s: die Leiste muss vor rfb.disconnect() abgebaut werden", name)
+		}
+	}
+}
+
+// Das Skript hat dieselbe Zwischenspeicher-Regel wie das noVNC-Skript.
+func TestHMIMouseScriptCache(t *testing.T) {
+	h := &Handler{}
+	rec := httptest.NewRecorder()
+	h.HMIMouseScript(rec, httptest.NewRequest("GET", "/vendor/hmi-mouse.js?v=1", nil))
+	n := httptest.NewRecorder()
+	h.NoVNCScript(n, httptest.NewRequest("GET", "/vendor/novnc/rfb.min.js", nil))
+	if rec.Code != 200 || rec.Header().Get("Cache-Control") != n.Header().Get("Cache-Control") || rec.Header().Get("Cache-Control") == "" {
+		t.Errorf("Cache-Control %q gegen noVNC %q (HTTP %d)", rec.Header().Get("Cache-Control"), n.Header().Get("Cache-Control"), rec.Code)
+	}
+	if rec.Header().Get("Content-Type") != "text/javascript; charset=utf-8" || !strings.Contains(rec.Body.String(), "PdhHmiMouse") {
+		t.Errorf("Content-Type %q", rec.Header().Get("Content-Type"))
 	}
 }

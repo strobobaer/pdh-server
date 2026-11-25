@@ -102,7 +102,7 @@ func (h *Handler) HMIMouseScript(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
-	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Cache-Control", "public, max-age=86400") // wie noVNC; ?v=<Version> in den Seiten holt nach einem Update neu
 	_, _ = w.Write(b)
 }
 

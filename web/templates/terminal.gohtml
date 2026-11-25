@@ -585,15 +585,16 @@ const MODE = screen.dataset.hmiMode === 'control' ? 'control' : 'view';
 let rfb = null, mouse = null;
 function setStatus(t, k){ status.textContent = t; status.className = 't-hmistatus' + (k ? ' ' + k : ''); }
 function connect(){
-  if(rfb){ try{ rfb.disconnect(); }catch(e){} }
   if(mouse){ mouse.destroy(); mouse = null; }
+  if(rfb){ try{ rfb.disconnect(); }catch(e){} }
   screen.replaceChildren(); setStatus('Verbinde…');
   const url = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/terminal/hmi/' + screen.dataset.infra + '/' + screen.dataset.hmi + '/ws?mode=' + MODE;
-  rfb = new RFB(screen, url, {shared: true, wsProtocols: ['binary']});
+  const r = rfb = new RFB(screen, url, {shared: true, wsProtocols: ['binary']});
   rfb.viewOnly = MODE !== 'control'; rfb.showDotCursor = MODE !== 'control'; rfb.scaleViewport = true; rfb.resizeSession = false; rfb.focusOnClick = MODE === 'control';
   if (MODE === 'control' && window.PdhHmiMouse) mouse = PdhHmiMouse.attach(screen, rfb); // Leiste Links/Rechts/Doppel/Ziehen/Scrollen und Touchpad (hmi-mouse.js)
+  const m = mouse;
   rfb.addEventListener('connect', () => setStatus('Verbunden', 'ok'));
-  rfb.addEventListener('disconnect', e => { if(mouse){ mouse.destroy(); mouse = null; } setStatus(e.detail && e.detail.clean ? 'Getrennt' : 'Verbindung unterbrochen – zum Neuverbinden berühren', 'err'); screen.addEventListener('pointerdown', connect, {once: true}); });
+  rfb.addEventListener('disconnect', e => { if(m) m.destroy(); if(mouse === m) mouse = null; if(rfb !== r) return; setStatus(e.detail && e.detail.clean ? 'Getrennt' : 'Verbindung unterbrochen – zum Neuverbinden berühren', 'err'); screen.addEventListener('pointerdown', connect, {once: true}); });
   rfb.addEventListener('securityfailure', () => setStatus('Anmeldung am HMI fehlgeschlagen', 'err'));
 }
 window.addEventListener('beforeunload', () => { if(rfb) rfb.disconnect(); });

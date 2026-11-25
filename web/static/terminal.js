@@ -43,7 +43,7 @@
     var rnd = function (n) { return Math.round(n * 10) / 10; };
     var pt = function (a, rr) { return rnd(cx + rr * Math.cos(a)) + ' ' + rnd(cy + rr * Math.sin(a)); };
     var a0 = -Math.PI / 2;
-    list.forEach(function (s) {
+    list.forEach(function (s, idx) {
       var v = Number(s && s.value);
       if (!(v > 0)) return;
       var a1 = a0 + 2 * Math.PI * v / total, mid = (a0 + a1) / 2, d;
@@ -52,7 +52,7 @@
       } else {
         d = 'M ' + cx + ' ' + cy + ' L ' + pt(a0, r) + ' A ' + r + ' ' + r + ' 0 ' + (a1 - a0 > Math.PI ? 1 : 0) + ' 1 ' + pt(a1, r) + ' Z';
       }
-      out.push({ d: d, x: rnd(cx + r * 0.62 * Math.cos(mid)), y: rnd(cy + r * 0.62 * Math.sin(mid)), slice: s });
+      out.push({ d: d, x: rnd(cx + r * 0.62 * Math.cos(mid)), y: rnd(cy + r * 0.62 * Math.sin(mid)), slice: s, i: idx });
       a0 = a1;
     });
     return out;
@@ -65,6 +65,13 @@
   // Farbe nur als Hexwert, sonst Grau.
   function pieColor(c) {
     return typeof c === 'string' && /^#[0-9a-fA-F]{6}$/.test(c) ? c : '#94a3b8';
+  }
+  // Beschriftungsfarbe nach Helligkeit des Stücks: dunkle Schrift auf hellen, weiße auf dunklen Farben; das Kontrastverhältnis
+  // ist so immer mindestens 4,5 : 1, ohne auf einen Rand angewiesen zu sein.
+  function pieTextColor(c) {
+    var h = pieColor(c), lin = function (v) { v = v / 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+    var lum = 0.2126 * lin(parseInt(h.slice(1, 3), 16)) + 0.7152 * lin(parseInt(h.slice(3, 5), 16)) + 0.0722 * lin(parseInt(h.slice(5, 7), 16));
+    return lum > 0.179 ? '#000000' : '#ffffff';
   }
   // Eine Zeile der Legende: „Anlage – Dauer – Anteil % – Anzahl Rüstvorgänge“ (Dauer und Anzahl nur, wenn vorhanden).
   function pieLine(s) {
@@ -91,8 +98,9 @@
   }
   var pieSeq = 0;
   // Ein Kreisdiagramm samt Legende als DOM-Baum (div.pie-box). Mit onPick(Stück, Nummer) sind Stücke und
-  // Legendeneinträge antippbar; box.setPicked(Nummer oder -1) markiert das gewählte Stück.
-  function drawPie(pie, onPick) {
+  // Legendeneinträge antippbar; box.setPicked(Nummer oder -1) markiert das gewählte Stück. Die Legende nennt alle
+  // Einträge, auch solche ohne Stück (Anteil 0); mit maxLegend > 0 zeigt sie höchstens so viele und dann „+N weitere“.
+  function drawPie(pie, onPick, maxLegend) {
     var NS = 'http://www.w3.org/2000/svg', n = ++pieSeq;
     var box = document.createElement('div');
     box.className = 'pie-box';
@@ -105,12 +113,17 @@
       return box;
     }
     var pick = typeof onPick === 'function' ? onPick : null;
-    var paths = [], items = [];
+    var paths = {}, items = {};
     var svg = document.createElementNS(NS, 'svg');
     svg.setAttribute('viewBox', '0 0 300 300');
     svg.setAttribute('class', 'pie-svg');
-    svg.setAttribute('role', 'img');
-    svg.setAttribute('aria-labelledby', 'pie-t' + n + ' pie-d' + n);
+    if (pick) { // mit Schaltflächen darin: Gruppe mit Beschriftung statt Bild
+      svg.setAttribute('role', 'group');
+      svg.setAttribute('aria-label', 'Anteil der Anlagen an der Rüstdauer – ' + String((pie && pie.title) || '') + ': ' + pieText(pie));
+    } else {
+      svg.setAttribute('role', 'img');
+      svg.setAttribute('aria-labelledby', 'pie-t' + n + ' pie-d' + n);
+    }
     var t = document.createElementNS(NS, 'title');
     t.setAttribute('id', 'pie-t' + n);
     t.textContent = 'Anteil der Anlagen an der Rüstdauer – ' + String((pie && pie.title) || '');
@@ -119,16 +132,16 @@
     ds.textContent = pieText(pie);
     svg.appendChild(t);
     svg.appendChild(ds);
-    geo.forEach(function (g, k) {
+    geo.forEach(function (g) {
       var p = document.createElementNS(NS, 'path');
       p.setAttribute('d', g.d);
       p.setAttribute('fill', pieColor(g.slice.color));
       p.setAttribute('class', 'pie-slice');
       if (pick) {
-        pieBindPick(p, pieLine(g.slice), function () { pick(g.slice, k); });
+        pieBindPick(p, pieLine(g.slice), function () { pick(g.slice, g.i); });
         p.setAttribute('class', 'pie-slice pie-pick');
       }
-      paths.push(p);
+      paths[g.i] = p;
       svg.appendChild(p);
     });
     geo.forEach(function (g) {
@@ -138,35 +151,46 @@
       tx.setAttribute('y', g.y + 7);
       tx.setAttribute('class', 'pie-pct');
       tx.setAttribute('pointer-events', 'none');
+      tx.style.fill = pieTextColor(g.slice.color);
+      tx.style.stroke = 'none';
       tx.textContent = Number(g.slice.percent) + ' %';
       svg.appendChild(tx);
     });
     box.appendChild(svg);
     var ul = document.createElement('ul');
     ul.className = 'pie-legend';
-    geo.forEach(function (g, k) {
+    var entries = Array.isArray(pie.slices) ? pie.slices : [];
+    var shown = maxLegend > 0 ? Math.min(entries.length, maxLegend) : entries.length;
+    entries.slice(0, shown).forEach(function (s, k) {
       var li = document.createElement('li');
       var sw = document.createElement('span');
       sw.className = 'sw';
-      sw.style.backgroundColor = pieColor(g.slice.color);
+      sw.style.backgroundColor = pieColor(s.color);
       li.appendChild(sw);
-      li.appendChild(document.createTextNode(pieLine(g.slice)));
+      li.appendChild(document.createTextNode(pieLine(s)));
       if (pick) {
-        pieBindPick(li, pieLine(g.slice), function () { pick(g.slice, k); });
+        pieBindPick(li, pieLine(s), function () { pick(s, k); });
         li.setAttribute('class', 'pie-pick');
       }
-      items.push(li);
+      items[k] = li;
       ul.appendChild(li);
     });
+    if (shown < entries.length) {
+      var more = document.createElement('li');
+      more.textContent = '+' + (entries.length - shown) + ' weitere';
+      ul.appendChild(more);
+    }
     box.appendChild(ul);
     box.setPicked = function (k) {
-      paths.forEach(function (p, i) {
-        p.setAttribute('class', 'pie-slice' + (pick ? ' pie-pick' : '') + (i === k ? ' pie-on' : ''));
-        p.setAttribute('aria-pressed', i === k ? 'true' : 'false');
+      Object.keys(paths).forEach(function (key) {
+        var i = Number(key);
+        paths[i].setAttribute('class', 'pie-slice' + (pick ? ' pie-pick' : '') + (i === k ? ' pie-on' : ''));
+        paths[i].setAttribute('aria-pressed', i === k ? 'true' : 'false');
       });
-      items.forEach(function (li, i) {
-        li.setAttribute('class', (pick ? 'pie-pick' : '') + (i === k ? ' pie-on' : ''));
-        li.setAttribute('aria-pressed', i === k ? 'true' : 'false');
+      Object.keys(items).forEach(function (key) {
+        var i = Number(key);
+        items[i].setAttribute('class', (pick ? 'pie-pick' : '') + (i === k ? ' pie-on' : ''));
+        items[i].setAttribute('aria-pressed', i === k ? 'true' : 'false');
       });
     };
     return box;
@@ -219,7 +243,7 @@
       box.setPicked(cur);
       if (cur >= 0) detail.appendChild(drawPieReasons(slice));
     };
-    box = drawPie(pie, interactive ? onPick : null);
+    box = drawPie(pie, interactive ? onPick : null, interactive ? 0 : 10); // Folie: höchstens 10 Legendenzeilen
     holder.appendChild(box);
     set.appendChild(holder);
     if (interactive && typeof box.setPicked === 'function') {

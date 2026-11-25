@@ -62,6 +62,10 @@
     if (!rect || !(fbw > 0) || !(fbh > 0)) return { x: 0, y: 0 };
     return { x: rect.left + (rx + 0.5) * rect.width / fbw, y: rect.top + (ry + 0.5) * rect.height / fbh };
   }
+  // Liegt der Punkt im Rechteck? (Der schwarze Rand um das Bild gehört nicht dazu.)
+  function inRect(x, y, rect) {
+    return !!rect && x >= rect.left && x < rect.left + rect.width && y >= rect.top && y < rect.top + rect.height;
+  }
   // Seitenkoordinaten in das Rechteck zwingen (der Zeiger verlässt das Bild nicht).
   function clampToRect(x, y, rect) {
     return { x: clamp(x, rect.left, rect.left + rect.width - 1), y: clamp(y, rect.top, rect.top + rect.height - 1) };
@@ -92,7 +96,10 @@
   // ── Fingergesten -> Mausereignisse ──────────────────────────────────────────
   // cfg: mode() 'direct' | 'pad', kind() aktuelle Klick-Art, used() Rückruf nach ausgeführter Geste,
   // emit(ev) Ausgabe: {type:'move', x, y, buttons} | {type:'down'|'up', x, y, button, buttons} | {type:'wheel', x, y, dx, dy}
-  // (Koordinaten wie die Eingabe: Seitenkoordinaten), clip(x, y) -> {x, y} hält den Zeiger im Bild (optional).
+  // (Koordinaten wie die Eingabe: Seitenkoordinaten), clip(x, y) -> {x, y} hält den Zeiger im Bild (optional),
+  // inside(x, y) -> bool: liegt der Punkt auf dem Bild (optional). Im Direktmodus wird eine Berührung außerhalb des
+  // Bildes (schwarzer Rand) ignoriert: kein Klick, kein Klemmen an den Bildrand. Im Touchpad-Modus klickt ein Tipp
+  // wie bei einem Touchpad am Zeiger, wo auch immer der Finger war.
   // Zeiten (t) in Millisekunden vom Aufrufer. Im Modus 'pad' wirkt der Finger relativ auf engine.cursor.
   function createEngine(cfg) {
     var ptrs = {};       // id -> {x, y, t}
@@ -102,6 +109,7 @@
     var ignoreRest = false;
     var eng = { cursor: { x: 0, y: 0 } };
     var clip = cfg.clip || function (x, y) { return { x: x, y: y }; };
+    var inside = cfg.inside || function () { return true; };
 
     function center() {
       var a = ptrs[order[0]], b = ptrs[order[1]];
@@ -131,6 +139,7 @@
       }
       if (order.length > 2 || ignoreRest) return;
       var kind = cfg.kind();
+      if (cfg.mode() !== 'pad' && !inside(x, y)) return; // schwarzer Rand: keine Geste, kein Klick
       var at = cfg.mode() === 'pad' ? { x: eng.cursor.x, y: eng.cursor.y } : clip(x, y);
       g = { id: id, kind: kind, x0: x, y0: y, t0: t, lx: x, ly: y, lt: t, moved: false, held: false, at: at, ws: 0 };
       if (kind === 'drag') {
@@ -151,7 +160,9 @@
         var c = center(), sd = scrollDelta(c.x - sc.x, c.y - sc.y);
         sc.x = c.x; sc.y = c.y;
         if (sd.x !== 0 || sd.y !== 0) {
-          var wp = cfg.mode() === 'pad' ? eng.cursor : clip(c.x, c.y); // Touchpad: am Zeiger, sonst zwischen den Fingern
+          var pad2 = cfg.mode() === 'pad';
+          if (!pad2 && !inside(c.x, c.y)) return; // zwischen den Fingern nicht auf dem Bild
+          var wp = pad2 ? eng.cursor : clip(c.x, c.y); // Touchpad: am Zeiger, sonst zwischen den Fingern
           cfg.emit({ type: 'wheel', x: wp.x, y: wp.y, dx: sd.x, dy: sd.y });
         }
         return;
@@ -231,6 +242,11 @@
     };
 
     eng.active = function () { return order.length > 0; };
+    // Alles beenden (Verbindung weg, Leiste weg): eine gehaltene Taste wird losgelassen.
+    eng.reset = function () {
+      releaseHeld();
+      g = null; sc = null; ptrs = {}; order = []; ignoreRest = false;
+    };
     return eng;
   }
 
@@ -284,7 +300,7 @@
     var padOn = opts.mode === 'pad';
     var remote = null; // letzte Zeigerstellung im Bild des HMI {x, y} (unabhängig von der Skalierung)
     var buttons = {};
-    var holdTimer = null, holdFired = false;
+    var holdTimer = null, holdFired = false, destroyed = false;
 
     var bar = document.createElement('div');
     bar.className = 'hm-bar';
@@ -356,9 +372,14 @@
       kind: function () { return kindState.kind; },
       used: function () { kindState = nextKind(kindState, { type: 'used' }); render(); },
       emit: send,
-      clip: clip
+      clip: clip,
+      inside: function (x, y) { return inRect(x, y, dims().rect); }
     });
 
+    // Nach einem Tipp auf die Leiste bekommt noVNC den Tastaturfokus zurück (Leertaste, Enter usw. gehen sonst an den Knopf).
+    function refocus() {
+      if (rfb && typeof rfb.focus === 'function') { try { rfb.focus(); } catch (e) { /* ignorieren */ } }
+    }
     function syncCursor() { var c = pos(); engine.cursor = { x: c.x, y: c.y }; }
 
     // Pointer-Ereignisse von Finger und Stift (die Maus bleibt unberührt)
@@ -408,6 +429,7 @@
           kindState = nextKind(kindState, { type: 'hold', kind: k });
           if (navigator.vibrate) { try { navigator.vibrate(30); } catch (e) { /* ignorieren */ } }
           render();
+          refocus();
         }, HOLD_MS);
       });
       b.addEventListener('pointerup', stop);
@@ -418,13 +440,14 @@
         if (holdFired) { holdFired = false; return; } // das lange Drücken hat schon gewirkt
         kindState = nextKind(kindState, { type: 'select', kind: k });
         render();
+        refocus();
       });
     });
     var sep = document.createElement('span');
     sep.className = 'hm-sep';
     bar.appendChild(sep);
     var padBtn = addButton('pad', 'Touchpad', 'Touchpad-Modus: Finger bewegt den Zeiger wie auf einem Laptop');
-    padBtn.addEventListener('click', function () { padOn = !padOn; if (padOn) syncCursor(); render(); });
+    padBtn.addEventListener('click', function () { padOn = !padOn; if (padOn) syncCursor(); render(); refocus(); });
     bar.appendChild(stateEl);
     screen.parentNode.insertBefore(bar, screen);
     screen.appendChild(cursor);
@@ -434,6 +457,12 @@
       state: function () { return { kind: kindState.kind, sticky: kindState.sticky, pad: padOn }; },
       setMode: function (m) { padOn = m === 'pad'; render(); },
       destroy: function () {
+        if (destroyed) return;
+        destroyed = true;
+        engine.reset(); // gehaltene Taste loslassen
+        if (document.captureElement === canvas) { // noVNC hält die Maus noch eingefangen: Überlagerung freigeben
+          window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, view: window, clientX: 0, clientY: 0, button: 0, buttons: 0 }));
+        }
         handlers.forEach(function (h) { screen.removeEventListener(h[0], h[1], opt); });
         window.removeEventListener('resize', place);
         if (ro) ro.disconnect();
@@ -447,7 +476,7 @@
 
   var api = {
     KINDS: KINDS, TAP_SLOP: TAP_SLOP, TAP_MS: TAP_MS, HOLD_MS: HOLD_MS,
-    nextKind: nextKind, clientToRemote: clientToRemote, remoteToClient: remoteToClient, clampToRect: clampToRect,
+    nextKind: nextKind, inRect: inRect, clientToRemote: clientToRemote, remoteToClient: remoteToClient, clampToRect: clampToRect,
     padGain: padGain, padMove: padMove, scrollDelta: scrollDelta, isTap: isTap, createEngine: createEngine, attach: attach
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
