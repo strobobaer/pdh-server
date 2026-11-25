@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"pdh/internal/core/infrastructure"
 )
 
 // Befehlszeile Strg+K (0.90.0 Teil 2): Aktionen, Seiten, Anlagen – nur Erlaubtes.
@@ -30,7 +29,7 @@ func paletteHas(items []paletteItem, kind, label string) bool {
 }
 
 func TestPaletteSearch(t *testing.T) {
-	assets := []*infrastructure.Infrastructure{{ID: "a1", Name: "Netzpresse 4", Type: "plant"}}
+	assets := []paletteAsset{{ID: "a1", Name: "Netzpresse 4"}}
 	net := &BaseData{Page: "dashboard", navCan: func(p string) bool { return p == permNetwork || p == "faults.edit" }}
 	items := paletteItems(net, buildAreas(net, uiAreaPrefs{}), "netz", assets)
 	if !paletteHas(items, "page", "Netzwerk") {
@@ -58,7 +57,7 @@ func TestPaletteSearch(t *testing.T) {
 	if k["asset"] != 0 || !paletteHas(short, "action", "Störung melden") || !paletteHas(short, "page", "Netzwerk") {
 		t.Errorf("kurze Eingabe: nur Aktionen und Favoriten erwartet: %+v", short)
 	}
-	if paletteHas(short, "action", "Ticket anlegen") {
+	if paletteHas(short, "action", "Aufgabe anlegen") {
 		t.Error("Aktion ohne Anlegen-Recht")
 	}
 	for _, it := range paletteItems(net, buildAreas(net, uiAreaPrefs{}), "", nil) {

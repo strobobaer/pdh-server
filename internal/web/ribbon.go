@@ -91,8 +91,8 @@ func ribbonFor(b *BaseData) []ribbonTab {
 	return []ribbonTab{start, view, adjust, look}
 }
 
-// OrderKeys / FavKeys: aktuelle Reihenfolge und Favoriten als Liste mit Leerzeichen
-// (data-order / data-favs an der Leiste, für pdh-frame.js).
+// OrderKeys: aktuelle Reihenfolge als Liste mit Leerzeichen (data-order an der Leiste,
+// für pdh-frame.js: „Als Firmenvorgabe speichern“).
 func (v areaView) OrderKeys() string {
 	keys := make([]string, 0, len(v.Areas))
 	for _, a := range v.Areas {
@@ -101,10 +101,3 @@ func (v areaView) OrderKeys() string {
 	return strings.Join(keys, " ")
 }
 
-func (v areaView) FavKeys() string {
-	keys := make([]string, 0, len(v.Favorites))
-	for _, it := range v.Favorites {
-		keys = append(keys, it.Key)
-	}
-	return strings.Join(keys, " ")
-}

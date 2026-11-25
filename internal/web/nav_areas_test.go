@@ -119,8 +119,14 @@ func jsonPost(t *testing.T, fn http.HandlerFunc, path, body string, user bool) *
 func TestUIAreasSave(t *testing.T) {
 	ctx := context.Background()
 	h := &Handler{hasPermHook: func(*http.Request, string) bool { return false }}
-	if rec := jsonPost(t, h.UIAreasSaveWeb, "/account/ui-areas", `{"order":["material"],"favorites":["tickets"]}`, true); rec.Code != http.StatusOK {
+	if rec := jsonPost(t, h.UIAreasSaveWeb, "/account/ui-areas", `{"order":["material"]}`, true); rec.Code != http.StatusOK {
 		t.Fatalf("speichern: HTTP %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := jsonPost(t, h.UIAreasSaveWeb, "/account/ui-areas", `{"fav":"tickets"}`, true); rec.Code != http.StatusOK {
+		t.Fatalf("Favorit: HTTP %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := jsonPost(t, h.UIAreasSaveWeb, "/account/ui-areas", `{"fav":"gibt-es-nicht"}`, true); rec.Code != http.StatusBadRequest {
+		t.Errorf("unbekannter Favorit: HTTP %d", rec.Code)
 	}
 	if p := h.areaPrefs(ctx, "u1"); len(p.Order) != 1 || p.Order[0] != "material" || len(p.Favorites) != 1 {
 		t.Errorf("gespeichert: %+v", p)

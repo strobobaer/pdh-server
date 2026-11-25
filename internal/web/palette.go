@@ -21,15 +21,40 @@ type paletteItem struct {
 const paletteMax = 20
 
 // paletteActions: Anlegen über den vorhandenen Assistenten (#create:<art> → pdhCreate).
+// Perm wie die Anlege-Regel: Störung und Ticket darf jeder Angemeldete melden (wie im
+// Neu-anlegen-Assistenten), Aufgabe und Wartung nur mit Recht (Gate-Regeln).
 var paletteActions = []struct{ Type, Perm, Label string }{
-	{"fault", "faults.edit", "Störung melden"},
-	{"ticket", "tickets.edit", "Ticket anlegen"},
+	{"fault", "", "Störung melden"},
+	{"ticket", "", "Ticket anlegen"},
 	{"task", "tasks.edit", "Aufgabe anlegen"},
 	{"maintenance", "maintenance.edit", "Wartung planen"},
 }
 
+// paletteAssetMax: höchstens so viele Anlagen je Suche (je Treffer eine Rechteprüfung).
+const paletteAssetMax = 10
+
+// paletteAsset: Anlagen-Treffer, schon nach Recht gefiltert, mit Pfad.
+type paletteAsset struct{ ID, Name, Path string }
+
+// paletteAssets: Treffer der Anlagensuche, die allow (Recht am Datensatz) erlaubt, in
+// der Reihenfolge der Suche, mit Pfad aus paths.
+func paletteAssets(nodes []*infrastructure.Infrastructure, allow func(id string) bool, paths map[string]string) []paletteAsset {
+	var out []paletteAsset
+	for _, n := range nodes {
+		if len(out) >= paletteAssetMax {
+			break
+		}
+		if n == nil || (allow != nil && !allow(n.ID)) {
+			continue
+		}
+		out = append(out, paletteAsset{ID: n.ID, Name: n.Name, Path: paths[n.ID]})
+	}
+	return out
+}
+
 // paletteItems: Treffer für q. Unter 2 Zeichen nur Aktionen und Favoriten.
-func paletteItems(b *BaseData, v areaView, q string, assets []*infrastructure.Infrastructure) []paletteItem {
+
+func paletteItems(b *BaseData, v areaView, q string, assets []paletteAsset) []paletteItem {
 	q = strings.TrimSpace(q)
 	lq := strings.ToLower(q)
 	long := len([]rune(q)) >= 2
@@ -42,7 +67,7 @@ func paletteItems(b *BaseData, v areaView, q string, assets []*infrastructure.In
 	}
 	for _, a := range paletteActions {
 		label := tr(b.Lang, a.Label)
-		if b.navCan != nil && b.navCan(a.Perm) && match(label) {
+		if (a.Perm == "" || (b.navCan != nil && b.navCan(a.Perm))) && match(label) {
 			push(paletteItem{Kind: "action", Label: label, Href: "#create:" + a.Type})
 		}
 	}
@@ -60,10 +85,12 @@ func paletteItems(b *BaseData, v areaView, q string, assets []*infrastructure.In
 		}
 	}
 	if b.CanViewInfra {
-		for _, n := range assets {
-			if n != nil && match(n.Name) {
-				push(paletteItem{Kind: "asset", Label: n.Name, Href: "/infrastructure/" + n.ID, Hint: tr(b.Lang, "Anlage")})
+		for _, n := range assets { // schon von der Anlagensuche gefunden (auch über Seriennummer u. a.)
+			hint := n.Path
+			if hint == "" {
+				hint = tr(b.Lang, "Anlage")
 			}
+			push(paletteItem{Kind: "asset", Label: n.Name, Href: "/infrastructure/" + n.ID, Hint: hint})
 		}
 	}
 	return out
@@ -82,9 +109,23 @@ func (h *Handler) PaletteWeb(w http.ResponseWriter, r *http.Request) {
 	if !b.NewFrame { // Leiste ist nur im neuen Rahmen gefüllt
 		v = buildAreas(&b, h.areaPrefs(r.Context(), uid))
 	}
-	var assets []*infrastructure.Infrastructure
+	var nodes []*infrastructure.Infrastructure
 	if b.CanViewInfra && len([]rune(strings.TrimSpace(q))) >= 2 && h.infra != nil {
-		assets, _ = h.infra.Search(r.Context(), strings.TrimSpace(q))
+		nodes, _ = h.infra.Search(r.Context(), strings.TrimSpace(q))
+	}
+	assets := paletteAssets(nodes, func(id string) bool {
+		// wie canViewInfra, aber mit der Abteilung der Anlage (wie die Rüstzeit-Seite)
+		return h.hasPermRec(r, "infrastructure.view", "infrastructure", id) || h.hasPermRec(r, "infrastructure.edit", "infrastructure", id)
+	}, nil)
+	if len(assets) > 0 {
+		ids := make([]string, len(assets))
+		for i, a := range assets {
+			ids[i] = a.ID
+		}
+		paths := h.infraPaths(r.Context(), ids)
+		for i := range assets {
+			assets[i].Path = paths[assets[i].ID]
+		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": paletteItems(&b, v, q, assets)})
 }

@@ -82,23 +82,42 @@ func (h *Handler) setUserUIFrame(ctx context.Context, uid, v string) error {
 	return err
 }
 
+// localPath: s ist ein Pfad dieser Adresse („/…“ samt Abfrage) – ohne Backslash und
+// Steuerzeichen, die Browser zu „//fremd“ umdeuten, ohne Schema und ohne Rechner.
+func localPath(s string) (string, bool) {
+	if !strings.HasPrefix(s, "/") || strings.HasPrefix(s, "//") || strings.ContainsRune(s, '\\') {
+		return "", false
+	}
+	for i := 0; i < len(s); i++ {
+		if s[i] < 0x20 || s[i] == 0x7f {
+			return "", false
+		}
+	}
+	u, err := url.Parse(s)
+	if err != nil || u.Scheme != "" || u.Host != "" || u.Opaque != "" {
+		return "", false
+	}
+	return s, true
+}
+
 // backTo: zurück auf die Seite, von der das Formular kam – nur Pfad und Abfrage der
-// eigenen Adresse (kein Sprung auf fremde Seiten, keine „//“-Adressen).
+// eigenen Adresse (kein Sprung auf fremde Seiten).
 func backTo(r *http.Request) string {
-	if b := r.FormValue("back"); strings.HasPrefix(b, "/") && !strings.HasPrefix(b, "//") && !strings.HasPrefix(b, "/\\") {
+	if b, ok := localPath(r.FormValue("back")); ok {
 		return b // vom Formular mitgegeben (location.pathname + location.search)
 	}
 	u, err := url.Parse(r.Referer())
-	if err != nil || u.Path == "" || u.Path[0] != '/' || (len(u.Path) > 1 && u.Path[1] == '/') {
+	if err != nil || (u.Host != "" && u.Host != r.Host) {
 		return "/"
 	}
-	if u.Host != "" && u.Host != r.Host {
-		return "/"
-	}
+	p := u.EscapedPath()
 	if u.RawQuery != "" {
-		return u.Path + "?" + u.RawQuery
+		p += "?" + u.RawQuery
 	}
-	return u.Path
+	if b, ok := localPath(p); ok {
+		return b
+	}
+	return "/"
 }
 
 // UIFrameSaveWeb: POST /account/ui-frame – eigene Wahl (Formular frame=default|classic|new).

@@ -15,7 +15,7 @@
      widgets/frame_shared.gohtml. Wahl im Benutzermenü (ui_frame.go). */}}
 <body class="frame-body"{{if and (eq .Page "dashboard") (not .IsSystemUser) (not .IsBoardVisit) (not .IsOverrideSession)}} data-tour-offer="1"{{end}}{{if .LiveTranslate}} data-live-translate="{{.LiveTranslate}}"{{end}}>
 <div class="frame-app">
-  <nav class="rail" aria-label="{{t "Bereiche"}}" data-order="{{.Rail.OrderKeys}}" data-favs="{{.Rail.FavKeys}}">
+  <nav class="rail" aria-label="{{t "Bereiche"}}" data-order="{{.Rail.OrderKeys}}">
     {{range .Rail.Favorites}}<a class="rail-fav" href="{{.Href}}" title="{{.Label}}" aria-label="{{.Label}}"{{if .External}} target="_blank" rel="noopener"{{end}}><i class="ti {{.Icon}}"></i></a>{{end}}
     {{if .Rail.Favorites}}<span class="rail-sep" aria-hidden="true"></span>{{end}}
     {{range $i, $a := .Rail.Areas}}{{with $a}}<a class="rail-area{{if lt $i 4}} rail-top{{end}}{{if eq .Key $.Rail.Current}} on{{end}}" href="{{(index .Items 0).Href}}" data-area="{{.Key}}" title="{{.Label}}"{{if eq .Key $.Rail.Current}} aria-current="page"{{end}}{{if (index .Items 0).External}} target="_blank" rel="noopener"{{end}}><i class="ti {{.Icon}}"></i><span>{{.Label}}</span></a>{{end}}{{end}}
@@ -40,7 +40,7 @@
 {{template "ui-overlays" .}}
 {{/* Statusleiste des neuen Rahmens: dieselben Kennungen wie ui-footer (setGlobalStatus),
      dazu Warnfeld (Spiegelserver, Update) und die Liste der letzten Meldungen (pdh-frame.js) */}}
-<footer class="global-footer ok frame-footer" id="global-status-footer" aria-live="polite" role="button" tabindex="0" aria-label="{{t "Letzte Meldungen"}}" aria-controls="frame-log" aria-expanded="false">
+<footer class="global-footer ok" id="global-status-footer" aria-live="polite" role="button" tabindex="0" aria-label="{{t "Letzte Meldungen"}}" aria-controls="frame-log" aria-expanded="false">
   <div class="footer-status-left">
     <span class="footer-status-dot" id="footer-status-dot"></span>
     <span id="footer-status-text">Bereit</span>

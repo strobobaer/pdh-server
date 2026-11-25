@@ -18,10 +18,11 @@
   }
   try { if (localStorage.getItem('pdh_rail_narrow') === '1') document.documentElement.classList.add('rail-narrow'); } catch (e) {}
 
-  function prefs() {
+  // Reihenfolge der sichtbaren Bereiche (data-order). Favoriten schickt der Server
+  // nicht mit: „Favorit“ sendet nur den einen Eintrag, ausgeblendete bleiben erhalten.
+  function order() {
     var r = $('.rail');
-    var list = function (v) { return (v || '').split(' ').filter(Boolean); };
-    return { order: list(r && r.dataset.order), favorites: list(r && r.dataset.favs) };
+    return ((r && r.dataset.order) || '').split(' ').filter(Boolean);
   }
   function save(url, body, reload, okMsg) {
     return fetch(url, { method: 'POST', credentials: 'same-origin', pdhQuiet: true, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
@@ -66,10 +67,12 @@
       });
       box.appendChild(ul);
       var bar = document.createElement('div'); bar.className = 'frame-dialog-bar';
+      var firm = document.createElement('button'); firm.type = 'button'; firm.className = 'btn'; firm.textContent = T('Wie Firmenvorgabe');
+      firm.onclick = function () { save('/account/ui-areas', { reset_order: true }, true); };
       var cancel = document.createElement('button'); cancel.type = 'button'; cancel.className = 'btn'; cancel.textContent = T('Abbrechen'); cancel.onclick = close;
       var ok = document.createElement('button'); ok.type = 'button'; ok.className = 'btn btn-primary'; ok.textContent = T('Speichern');
-      ok.onclick = function () { var p = prefs(); p.order = items.map(function (it) { return it.key; }); save('/account/ui-areas', p, true); };
-      bar.appendChild(cancel); bar.appendChild(ok); box.appendChild(bar);
+      ok.onclick = function () { save('/account/ui-areas', { order: items.map(function (it) { return it.key; }) }, true); };
+      bar.appendChild(firm); bar.appendChild(cancel); bar.appendChild(ok); box.appendChild(bar);
     };
     draw();
     box.addEventListener('keydown', function (e) { if (e.key === 'Escape') close(); });
@@ -90,14 +93,11 @@
       if (document.fullscreenElement) document.exitFullscreen();
       else if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen();
     },
-    'fav': function (arg) {
-      var p = prefs(), i = p.favorites.indexOf(arg);
-      if (i >= 0) p.favorites.splice(i, 1); else p.favorites.push(arg);
-      save('/account/ui-areas', p, true);
-    },
+    'fav': function (arg) { save('/account/ui-areas', { fav: arg }, true); }, // anheften oder lösen
     'areas-order': function () { openOrder(); },
     'dashboard-edit': function () { if (typeof window.pdhDashboardEdit === 'function') window.pdhDashboardEdit(); },
-    'areas-firm': function () { save('/admin/gestaltung/areas', prefs(), false, T('Als Firmenvorgabe gespeichert')); },
+    // nur die Reihenfolge – eigene Favoriten gehen nicht an alle
+    'areas-firm': function () { save('/admin/gestaltung/areas', { order: order() }, false, T('Als Firmenvorgabe gespeichert')); },
     'style': function (arg) { if (typeof window.lookSet === 'function') { window.lookSet('style', arg); window.lookSave(); } },
     'mode': function (arg) { if (typeof window.applyThemeMode === 'function') window.applyThemeMode(arg); },
     'palette': function () { if (typeof window.toggleMenu === 'function') window.toggleMenu('user-menu'); },
@@ -106,12 +106,20 @@
   window.pdhFrame.run = function (action, arg) { var f = ACTIONS[action]; if (f) f(arg); };
 
   // ── Befehlszeile Strg+K ────────────────────────────────────────
-  var pal = null, palTimer = 0, palItems = [], palSel = 0, palSeq = 0;
-  function palClose() { if (pal) { pal.remove(); pal = null; } }
+  // palSeq macht ausstehende Antworten ungültig; palLoading: neue Treffer kommen noch
+  // (dann gibt es nichts zu wählen – Enter öffnet nie einen Treffer der vorigen Suche).
+  var pal = null, palTimer = 0, palItems = [], palSel = 0, palSeq = 0, palLoading = false, palReturn = null;
+  function palClose() {
+    clearTimeout(palTimer); palSeq++; palItems = []; palSel = 0; palLoading = false;
+    if (pal) { pal.remove(); pal = null; }
+    if (palReturn && document.contains(palReturn) && typeof palReturn.focus === 'function') palReturn.focus();
+    palReturn = null;
+  }
   function palRender() {
     if (!pal) return;
     var ul = $('.fp-list', pal), inp = $('.fp-input', pal);
     ul.innerHTML = '';
+    if (palLoading) { inp.removeAttribute('aria-activedescendant'); return; }
     if (!palItems.length) {
       var e = document.createElement('li'); e.className = 'fp-empty'; e.textContent = T('Keine Treffer'); ul.appendChild(e);
       inp.removeAttribute('aria-activedescendant');
@@ -133,8 +141,8 @@
     var seq = ++palSeq;
     fetch('/api/palette?q=' + encodeURIComponent(q), { credentials: 'same-origin', pdhQuiet: true })
       .then(function (r) { return r.ok ? r.json() : { items: [] }; })
-      .then(function (j) { if (seq !== palSeq) return; palItems = j.items || []; palSel = 0; palRender(); })
-      .catch(function () { if (seq !== palSeq) return; palItems = []; palRender(); });
+      .then(function (j) { if (seq !== palSeq) return; palLoading = false; palItems = (j && Array.isArray(j.items)) ? j.items : []; palSel = 0; palRender(); })
+      .catch(function () { if (seq !== palSeq) return; palLoading = false; palItems = []; palRender(); });
   }
   function palGo(i) {
     var it = palItems[i];
@@ -157,8 +165,9 @@
     }
     if (e.key === 'Enter') { e.preventDefault(); palGo(palSel); }
   }
-  function palOpen() {
+  function palOpen(initial) {
     if (pal) { $('.fp-input', pal).focus(); return; }
+    palReturn = document.activeElement;
     pal = document.createElement('div');
     pal.className = 'frame-palette';
     pal.setAttribute('role', 'dialog');
@@ -169,10 +178,15 @@
     var inp = $('.fp-input', pal);
     inp.placeholder = T('Was möchtest du tun?');
     inp.setAttribute('aria-label', T('Was möchtest du tun?'));
-    inp.addEventListener('input', function () { clearTimeout(palTimer); palTimer = setTimeout(function () { palQuery(inp.value); }, 200); });
+    inp.addEventListener('input', function () {
+      palItems = []; palSel = 0; palSeq++; palLoading = true; palRender();
+      clearTimeout(palTimer); palTimer = setTimeout(function () { palQuery(inp.value); }, 200);
+    });
     inp.addEventListener('keydown', palKey);
     inp.focus();
-    palQuery('');
+    inp.value = initial || '';
+    palLoading = true;
+    palQuery(inp.value);
   }
   window.pdhFrame.palette = palOpen;
 
@@ -180,17 +194,32 @@
   // Meldungen von setGlobalStatus merken (letzte 20, nur diese Sitzung); Tippen auf die
   // Leiste zeigt sie. Update-Stand kommt aus pdh-maint-band.js (Ereignis pdh:maint).
   var LOG_KEY = 'pdh_frame_log';
-  function logRead() { try { return JSON.parse(sessionStorage.getItem(LOG_KEY) || '[]'); } catch (e) { return []; } }
+  function logRead() {
+    try { var l = JSON.parse(sessionStorage.getItem(LOG_KEY) || '[]'); return Array.isArray(l) ? l : []; } catch (e) { return []; }
+  }
+  // logWorthy: nur Meldungen mit Aussage – nicht „Bereit“/„Fertig“ nach jedem Abruf und
+  // nicht „Ausgewaehlt: …“ bei jedem Listenklick (sonst verdrängen sie die Fehler).
+  function logWorthy(state, msg, err) {
+    if (state === 'busy') return false;
+    if (state === 'error' || state === 'warn') return true;
+    var m = String(msg || ''), e = String(err || '');
+    var noErr = !e || e === 'Keine Fehler' || e === T('Keine Fehler');
+    if (m === 'Bereit' || m === 'Fertig' || m === T('Bereit') || m === T('Fertig')) return !noErr;
+    if (m.indexOf('Ausgewaehlt:') === 0) return false;
+    return !!m || !noErr;
+  }
   function logAdd(state, msg, err) {
-    if (!msg && !err) return;
-    var l = logRead();
-    l.unshift({ t: new Date().toLocaleTimeString(), s: state || '', m: String(msg || ''), e: String(err || '') });
-    try { sessionStorage.setItem(LOG_KEY, JSON.stringify(l.slice(0, 20))); } catch (e) {}
+    try {
+      if (!logWorthy(state, msg, err)) return;
+      var l = logRead();
+      l.unshift({ t: new Date().toLocaleTimeString(), s: state || '', m: String(msg || ''), e: String(err || '') });
+      sessionStorage.setItem(LOG_KEY, JSON.stringify(l.slice(0, 20)));
+    } catch (e) {}
   }
   if (typeof window.setGlobalStatus === 'function') {
     var origStatus = window.setGlobalStatus;
     window.setGlobalStatus = function (state, message, progress, errorText) {
-      if (state !== 'busy') logAdd(state, message, errorText);
+      logAdd(state, message, errorText);
       return origStatus.apply(this, arguments);
     };
   }
@@ -256,6 +285,11 @@
     if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 'k' || e.key === 'K')) { e.preventDefault(); palOpen(); return; }
     if (e.key === 'Escape') { railToggle(false); logToggle(false); }
     if ((e.key === 'Enter' || e.key === ' ') && e.target.id === 'global-status-footer') { e.preventDefault(); logToggle($('#frame-log').hidden); }
+    // Suchzeile: Tab geht vorbei; Enter, Leertaste oder ein Buchstabe öffnet die Befehlszeile
+    if (e.target.matches && e.target.matches('[data-palette-open]') && !e.ctrlKey && !e.metaKey && !e.altKey &&
+        (e.key === 'Enter' || e.key === ' ' || e.key.length === 1)) {
+      e.preventDefault();
+      palOpen(e.key.length === 1 && e.key !== ' ' ? e.key : '');
+    }
   });
-  document.addEventListener('focusin', function (e) { if (e.target.matches && e.target.matches('[data-palette-open]')) palOpen(); });
 })();

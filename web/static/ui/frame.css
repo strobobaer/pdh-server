@@ -1,6 +1,7 @@
 /* Neuer Rahmen (0.90.0 Teil 2) – nur von frame.gohtml geladen. Werte nur aus
    tokens.css; der klassische Rahmen (base.gohtml) bleibt unberührt. */
-html.frame-ui body.frame-body{display:flex;flex-direction:column;height:100vh;overflow:hidden}
+/* Höhe kommt aus dem Kopf (ui-head: Ausgleich für „Größe“ über zoom), hier nicht setzen */
+html.frame-ui body.frame-body{display:flex;flex-direction:column;overflow:hidden}
 .frame-app{display:grid;grid-template-columns:64px minmax(0,1fr) var(--right-sidebar-w);flex:1;min-height:0;overflow:hidden}
 .frame-main{display:flex;flex-direction:column;min-width:0;min-height:0;overflow:hidden}
 .frame-main .main{flex:1;min-height:0;overflow:auto}
@@ -18,10 +19,13 @@ html.frame-ui body.frame-body{display:flex;flex-direction:column;height:100vh;ov
 .frame-tabs a:hover{background:var(--fill-hover);color:var(--text)}
 .frame-tabs a[aria-selected="true"]{background:var(--bg2);color:var(--text);font-weight:600;box-shadow:inset 0 -2px 0 var(--accent)}
 html.pdh-embedded .frame-tabs{display:none}
-/* Schmale Leiste (Menüband → Ansicht): nur Symbole */
-html.rail-narrow .frame-app{grid-template-columns:48px minmax(0,1fr) var(--right-sidebar-w)}
+/* Schmale Leiste (Menüband → Ansicht): nur Symbole – nur am breiten Bildschirm, am
+   Handy liegt die Leiste unten */
+@media (min-width:761px){html.rail-narrow .frame-app{grid-template-columns:48px minmax(0,1fr) var(--right-sidebar-w)}
 html.rail-narrow .rail-area,html.rail-narrow .rail-fav{width:40px}
-html.rail-narrow .rail-area span{display:none}
+html.rail-narrow .rail-area span{display:none}}
+/* 761–1180 px: rechte Leiste schwebt über dem Inhalt (pdh.css .context) – keine eigene Spalte */
+@media (min-width:761px) and (max-width:1180px){.frame-app{grid-template-columns:64px minmax(0,1fr)}html.rail-narrow .frame-app{grid-template-columns:48px minmax(0,1fr)}}
 /* Menüband: Reiter, beschriftete Gruppen, Knöpfe mit Symbol und Text */
 .ribbon{background:var(--bg2);border-bottom:1px solid var(--border)}
 .ribbon-tabs{display:flex;align-items:center;gap:2px;padding:0 var(--sp-3)}
@@ -57,8 +61,12 @@ html.frame-ui #um-nav-edit{display:none}
 .fp-action .fp-label{font-weight:600}
 .fp-empty{padding:var(--sp-3);color:var(--muted)}
 /* Statusleiste: antippbar, Warnfeld, Liste der letzten Meldungen */
-.frame-footer{cursor:pointer}
-.frame-footer:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+/* An der Kennung, nicht an einer Klasse: setGlobalStatus setzt className neu */
+html.frame-ui #global-status-footer{cursor:pointer}
+html.frame-ui #global-status-footer:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+/* breiter Bildschirm: Warnfeld als eigene dritte Spalte vor den Fehlern (pdh.css hat 3 Spalten) */
+@media (min-width:761px){html.frame-ui #global-status-footer{grid-template-columns:minmax(180px,1fr) minmax(220px,420px) auto minmax(140px,1fr)}
+html.frame-ui #frame-warn{grid-column:3}html.frame-ui #footer-status-error{grid-column:4}}
 .frame-warn{color:var(--warn);font-weight:600;font-size:var(--fs-xs);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .frame-log{position:fixed;z-index:850;right:var(--sp-3);bottom:40px;width:min(420px,calc(100vw - 24px));max-height:50vh;overflow:auto;padding:var(--sp-2);background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:var(--r-m);box-shadow:var(--shadow-float)}
 .frame-log ol{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:var(--sp-1);font-size:var(--fs-sm)}
@@ -81,8 +89,9 @@ html.pdh-embedded .frame-app{grid-template-columns:minmax(0,1fr)}
   .frame-app{grid-template-columns:minmax(0,1fr)}
   html.frame-ui body.frame-body{padding-bottom:60px} /* Statusleiste über der unteren Leiste */
   .rail{position:fixed;left:0;right:0;bottom:0;z-index:80;flex-direction:row;justify-content:space-around;height:60px;padding:0 var(--sp-1);border-right:0;border-top:1px solid var(--border);overflow:visible}
-  .rail .rail-fav,.rail .rail-sep{display:none}
-  .rail .rail-area:not(.rail-top):not(.rail-more){display:none}
+  /* zu: die ersten 4 und „Mehr“; offen: Favoriten und alle Bereiche */
+  .rail:not(.open) .rail-fav,.rail:not(.open) .rail-sep{display:none}
+  .rail:not(.open) .rail-area:not(.rail-top):not(.rail-more){display:none}
   .rail .rail-more{display:flex}
   .rail.open{height:auto;flex-wrap:wrap;padding:var(--sp-2);box-shadow:var(--shadow-float);background:var(--bg2)}
   .rail.open .rail-area{display:flex}

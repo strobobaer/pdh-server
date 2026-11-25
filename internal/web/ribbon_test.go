@@ -79,7 +79,7 @@ func TestFrameRibbon(t *testing.T) {
 	out := renderFrameForTest(t, "server_config", d)
 	for _, want := range []string{`role="tablist" aria-label="Menüband"`, `data-ribbon-tab="start"`, `data-ribbon-panel="darstellung"`,
 		`data-ribbon-action="create"`, `aria-label="Neu"`, `title="Neu"`, `data-ribbon-arg="network"`, `data-ribbon-more`,
-		`data-order="`, `data-favs="`} {
+		`data-order="`} {
 		if !strings.Contains(out, want) {
 			t.Errorf("Menüband ohne %q", want)
 		}
