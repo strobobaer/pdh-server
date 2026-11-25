@@ -77,7 +77,7 @@ func (h *Handler) PaletteWeb(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	q := r.URL.Query().Get("q")
-	b := h.baseData(r, "palette", "", "")
+	b := h.baseData(r, "", "", "") // keine eigene Seite (kein Handbuch-Kapitel), nur Rechte und Bereiche
 	v := b.Rail
 	if !b.NewFrame { // Leiste ist nur im neuen Rahmen gefüllt
 		v = buildAreas(&b, h.areaPrefs(r.Context(), uid))
