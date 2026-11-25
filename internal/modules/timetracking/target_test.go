@@ -41,3 +41,14 @@ func TestValidTarget(t *testing.T) {
 		}
 	}
 }
+
+func TestCsvCellSchuetztFormeln(t *testing.T) {
+	for in, want := range map[string]string{
+		"": "", "Rüsten": "Rüsten", "=HYPERLINK(\"x\")": "'=HYPERLINK(\"x\")", "+1": "'+1", "-1": "'-1", "@SUM(A1)": "'@SUM(A1)",
+		"\tx": "'\tx", "\rx": "'\rx", "a=b": "a=b",
+	} {
+		if got := csvCell(in); got != want {
+			t.Errorf("%q: %q, erwartet %q", in, got, want)
+		}
+	}
+}

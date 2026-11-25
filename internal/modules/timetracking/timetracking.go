@@ -824,13 +824,13 @@ func (h *Handler) ExportCSV(w http.ResponseWriter, r *http.Request) {
 			durStr = strconv.Itoa(*e.DurationMin)
 		}
 		cw.Write([]string{
-			e.StartedAt.Format("2006-01-02"),
-			e.StartedAt.Format("15:04"),
-			endedStr,
-			durStr,
-			e.TypeLabel(),
-			e.InfraName,
-			e.DisplayTitle(),
+			csvCell(e.StartedAt.Format("2006-01-02")),
+			csvCell(e.StartedAt.Format("15:04")),
+			csvCell(endedStr),
+			csvCell(durStr),
+			csvCell(e.TypeLabel()),
+			csvCell(e.InfraName),
+			csvCell(e.DisplayTitle()),
 		})
 	}
 	cw.Flush()
@@ -863,4 +863,13 @@ func formatDuration(min int) string {
 		return fmt.Sprintf("%dh %02dmin", h, m)
 	}
 	return fmt.Sprintf("%dmin", m)
+}
+
+// csvCell schützt eine Zelle vor Formeln in Tabellenkalkulationen: Beginnt sie mit = + - @ Tabulator oder
+// Zeilenumbruch, steht ein Apostroph davor.
+func csvCell(s string) string {
+	if s != "" && strings.ContainsAny(s[:1], "=+-@\t\r") {
+		return "'" + s
+	}
+	return s
 }

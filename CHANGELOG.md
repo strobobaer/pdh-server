@@ -18,6 +18,11 @@ im Kapitel „Versionen & Updates“ an.
 - **Terminal, Bereich „Arbeit ohne Vorgang“:** Anlage im Anlagenbaum wählen, IT-Asset suchen (nur Geräte aus der Anlage des Terminals) oder Sonstiges mit Text (höchstens 200 Zeichen); optional mit Tätigkeit.
 - **Schnittstelle /api/v1/time:** Beim Starten sind die Felder `target_kind` (`plant`, `it_asset`, `other`) und `it_asset_id` möglich; ohne sie arbeitet die Schnittstelle wie bisher.
 
+### Geändert
+
+- **Hinweis zum Update im Verbund:** Eine ältere Programmversion kann laufende Arbeiten der neuen Arten (IT-Asset, Sonstiges) am Terminal nicht beenden. Alle Server deshalb gemeinsam aktualisieren und vorher laufende Terminal-Arbeiten beenden.
+- **CSV-Export der Zeiterfassung:** Zellen, die mit =, +, - oder @ beginnen, bekommen ein Apostroph davor, damit Tabellenprogramme sie nicht als Formel ausführen.
+
 ### Behoben
 
 - **Arbeit an einer Anlage am Terminal wurde nicht als Zeit gebucht:** Beim Beenden entsteht jetzt ein Zeiteintrag. Frühere Anlagen-Sitzungen ohne Buchung bleiben, wie sie waren.

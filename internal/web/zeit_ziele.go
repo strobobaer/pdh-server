@@ -132,10 +132,11 @@ func (h *Handler) ResolveTimeTarget(r *http.Request, uid, role string, in *timet
 		if !found {
 			return http.StatusNotFound, "IT-Asset nicht gefunden."
 		}
-		if !h.recordInScope(ctx, h.deptScopeFor(ctx, uid, role), "it_asset", id) {
+		if !h.recordInScope(ctx, h.deptScopeFor(ctx, uid, role), "it_asset", id) || !h.zeitAssetAllowed(r, uid, role, h.recordDepartments(ctx, "it_asset", id)) {
 			return http.StatusForbidden, "Dieses IT-Asset gehört zu einer anderen Abteilung."
 		}
 		in.RefID, in.ITAssetID = id, &id
+		in.InfrastructureID = nil // die Anlage kommt vom Asset, nie vom Client
 		if infra != "" {
 			in.InfrastructureID = &infra
 		}
@@ -146,8 +147,11 @@ func (h *Handler) ResolveTimeTarget(r *http.Request, uid, role string, in *timet
 		}
 		in.RefID, in.ITAssetID = newRefUUID(), nil
 		in.Description = text
-		if in.InfrastructureID != nil && !isUUIDString(*in.InfrastructureID) {
+		if in.InfrastructureID != nil && *in.InfrastructureID == "" {
 			in.InfrastructureID = nil
+		}
+		if in.InfrastructureID != nil && !h.infraExists(ctx, *in.InfrastructureID) {
+			return http.StatusBadRequest, "Die gewählte Anlage oder Kostenstelle wurde nicht gefunden."
 		}
 	}
 	return 0, ""
@@ -182,9 +186,9 @@ func (h *Handler) TimeITAssets(w http.ResponseWriter, r *http.Request) {
 	}
 	cond, args := scopeSQL(h.deptScopeFor(r.Context(), u.ID, string(u.Role)), "it_asset", "a", 1)
 	args = append([]any{"%" + escapeLike(q) + "%"}, args...)
-	rows, err := h.db.Query(r.Context(), `SELECT a.id::text, a.name, COALESCE(i.name, '') FROM it_assets a LEFT JOIN infrastructure i ON i.id = a.infrastructure_id
+	rows, err := h.db.Query(r.Context(), `SELECT a.id::text, a.name, COALESCE(i.name, ''), COALESCE((SELECT array_agg(idp.department_id::text) FROM infrastructure_department idp WHERE idp.infrastructure_id = a.infrastructure_id), '{}') FROM it_assets a LEFT JOIN infrastructure i ON i.id = a.infrastructure_id
 		WHERE ($1 = '%%' OR a.name ILIKE $1 OR COALESCE(a.hostname,'') ILIKE $1 OR COALESCE(a.ip_address,'') ILIKE $1 OR COALESCE(a.serial_no,'') ILIKE $1 OR COALESCE(i.name,'') ILIKE $1)`+cond+`
-		ORDER BY a.name LIMIT 30`, args...)
+		ORDER BY a.name LIMIT 500`, args...)
 	if err != nil {
 		componentLog("zeit").Error().Err(err).Msg("it-assets lesen")
 		http.Error(w, `{"error":"Daten nicht verfügbar"}`, http.StatusInternalServerError)
@@ -194,7 +198,8 @@ func (h *Handler) TimeITAssets(w http.ResponseWriter, r *http.Request) {
 	out := []timeAssetOption{}
 	for rows.Next() {
 		var o timeAssetOption
-		if rows.Scan(&o.ID, &o.Title, &o.Infra) == nil {
+		var depts []string
+		if rows.Scan(&o.ID, &o.Title, &o.Infra, &depts) == nil && h.zeitAssetAllowed(r, u.ID, string(u.Role), depts) && len(out) < 30 {
 			out = append(out, o)
 		}
 	}
@@ -218,4 +223,25 @@ func (h *Handler) activityExists(ctx context.Context, id string) bool {
 	}
 	var ok bool
 	return h.db.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM cost_activities WHERE id = $1::uuid)`, id).Scan(&ok) == nil && ok
+}
+
+// infraExists: gibt es diesen Infrastruktur-Knoten (Anlage oder Kostenstelle)?
+func (h *Handler) infraExists(ctx context.Context, id string) bool {
+	if h.db == nil || !isUUIDString(id) {
+		return false
+	}
+	var ok bool
+	return h.db.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM infrastructure WHERE id = $1::uuid)`, id).Scan(&ok) == nil && ok
+}
+
+// zeitAssetAllowed: darf die Person IT-Assets mit diesen Abteilungen sehen? Wie hasPermRec gilt die Abteilungsebene
+// des Rechts selbst (Rolle und Einzelberechtigung, jeweils samt Unterabteilungen), nicht nur die der Rolle.
+func (h *Handler) zeitAssetAllowed(r *http.Request, uid, role string, depts []string) bool {
+	if h.hasPermHook != nil {
+		return h.hasPermHook(r, "it.view") || h.hasPermHook(r, "it.edit")
+	}
+	if h.rbac == nil {
+		return false
+	}
+	return h.rbac.HasPermissionInDepartment(uid, role, "it.view", depts) || h.rbac.HasPermissionInDepartment(uid, role, "it.edit", depts)
 }
