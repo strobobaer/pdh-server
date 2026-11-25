@@ -28,12 +28,20 @@ func TestHelpMentionsOSUpdate(t *testing.T) {
 
 // Änderungsprotokoll: oberster Eintrag nennt Karte und Recht.
 func TestChangelogMentionsOSUpdate(t *testing.T) {
-	rel := installedChangelog()
-	if len(rel) == 0 {
-		t.Fatal("kein Änderungsprotokoll")
+	// der Eintrag 0.82.59 (Einführung der Karte); neuere Einträge dürfen darüber stehen
+	var cur *ChangelogRelease
+	for _, r := range installedChangelog() {
+		if r.Version == "0.82.59" {
+			r := r
+			cur = &r
+			break
+		}
+	}
+	if cur == nil {
+		t.Fatal("kein Eintrag 0.82.59 im Änderungsprotokoll")
 	}
 	var neu, sicher string
-	for _, s := range rel[0].Sections {
+	for _, s := range cur.Sections {
 		var b strings.Builder
 		for _, it := range s.Items {
 			b.WriteString(string(it))

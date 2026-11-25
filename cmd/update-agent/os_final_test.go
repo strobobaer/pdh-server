@@ -456,7 +456,7 @@ func osRunWithReboot(t *testing.T, e *osStepsEnv, st *osSteps) {
 func TestOSStepsRebootOnlyWithoutPackages(t *testing.T) {
 	e := osStepsAgent(t, 0, false)
 	e.fake.statusOut = osStepsStatus(0, true) // kein Paket offen, aber „Neustart nötig“
-	var st osSteps
+	st := osSteps{AllowBareReboot: true} // nur der Knopf
 	osRunWithReboot(t, e, &st)
 	all := e.rec.all()
 	if strings.Contains(all, "os install") || strings.Count(all, "reboot") != 1 {
@@ -528,12 +528,37 @@ func TestSingleJobWithOSRebootOnly(t *testing.T) {
 		}
 		e.clk.add(time.Minute)
 	}
+	// PDH-Auftrag mit Haken: ohne neu eingespielte Pakete nie ein Neustart (nur der Knopf „Betriebssystem“)
 	rest := afterFinish(e.rec.all())
-	if strings.Contains(rest, "os install") || strings.Count(rest, "reboot") != 1 {
+	if strings.Contains(rest, "os install") || strings.Contains(rest, "reboot") || strings.Contains(rest, "stop-pdh") {
 		t.Fatalf("Ablauf: %s", e.rec.all())
 	}
-	if v := e.a.jobView(); v.Phase != string(ha.UpDone) || strings.Contains(v.Result, "nicht aktualisiert") {
+	if v := e.a.jobView(); v.Phase != string(ha.UpDone) {
 		t.Fatalf("Ende: %+v", v)
+	}
+}
+
+// Fenster (Zeitplan): der Betriebssystem-Auftrag startet ohne Pakete nicht, auch nicht wegen „Neustart nötig“.
+func TestOSJobWindowRebootOnlyRefused(t *testing.T) {
+	e := osJobEnv(t, 0, false)
+	e.fake.statusOut = osStepsStatus(0, true)
+	if _, err := e.a.startOSJob(context.Background(), srcWindow, false); err == nil || !strings.Contains(err.Error(), "Keine Pakete") {
+		t.Fatalf("Fehler: %v", err)
+	}
+	if strings.Contains(e.rec.all(), "reboot") {
+		t.Fatalf("Ablauf: %s", e.rec.all())
+	}
+}
+
+// Schrittmaschine mit Sperre für den reinen Neustart: 0 Pakete + „Neustart nötig“ ⇒ nichts tun.
+func TestOSStepsNoBareReboot(t *testing.T) {
+	e := osStepsAgent(t, 0, false)
+	e.fake.statusOut = osStepsStatus(0, true)
+	st := osSteps{} // Nullwert (z. B. alter gesicherter Auftrag): kein Neustart allein
+	e.run(t, &st, nil)
+	all := e.rec.all()
+	if st.Failed || st.Step != "done" || strings.Contains(all, "reboot") || strings.Contains(all, "stop-pdh") {
+		t.Fatalf("st=%+v ablauf=%s", st, all)
 	}
 }
 

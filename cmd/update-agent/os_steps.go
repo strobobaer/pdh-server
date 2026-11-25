@@ -34,6 +34,9 @@ type osSteps struct {
 	// Touched: der Betriebssystem-Teil hat pdh gestoppt bzw. am System etwas getan; ein Fehler danach
 	// ist „fehlgeschlagen“, davor „nicht aktualisiert“ (Ergebnistext des PDH-Auftrags)
 	Touched bool `json:"touched,omitempty"`
+	// AllowBareReboot: Neustart auch ohne neu eingespielte Pakete – nur der Knopf „Betriebssystem
+	// aktualisieren“ setzt das; der Nullwert (PDH-Auftrag, Wartungsfenster, alter Stand) startet nie allein neu
+	AllowBareReboot bool `json:"allow_bare_reboot,omitempty"`
 
 	// Neustart wartet auf eine Netz-Änderung: seit wann, und der Grund für die Anzeige
 	NetHoldAt time.Time `json:"net_hold_at,omitzero"`
@@ -113,7 +116,7 @@ func (a *updateAgent) osAdvance(ctx context.Context, st *osSteps, persist func()
 			return true
 		}
 		st.Pending = len(ss.Upgradable)
-		if st.Pending == 0 && !ss.RebootRequired {
+		if st.Pending == 0 && (!ss.RebootRequired || !st.AllowBareReboot) {
 			st.Msg, st.Step = "Keine Pakete zu aktualisieren", "done"
 			return true
 		}

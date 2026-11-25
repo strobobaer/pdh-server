@@ -40,7 +40,7 @@ func osScriptEnv(t *testing.T) *osScriptEnvT {
 	e.write(filepath.Join(e.stubs, "apt-get"), "#!/bin/bash\necho \"$*\" >> \"$LOG\"\necho \"DEBIAN_FRONTEND=$DEBIAN_FRONTEND NEEDRESTART_MODE=$NEEDRESTART_MODE\" >> \"$LOG\"\nexit \"${APT_RC:-0}\"\n", 0o755)
 	e.write(filepath.Join(e.stubs, "apt"), osListStub, 0o755)
 	e.write(filepath.Join(e.stubs, "uname"), "#!/bin/bash\necho 6.12.0-test\n", 0o755)
-	e.write(filepath.Join(e.stubs, "dpkg"), "#!/bin/bash\necho \"dpkg $*\" >> \"$LOG\"\n", 0o755)
+	e.write(filepath.Join(e.stubs, "dpkg"), "#!/bin/bash\n[ \"$1\" = --print-architecture ] && { echo amd64; exit 0; }\necho \"dpkg $*\" >> \"$LOG\"\n", 0o755)
 	e.write(filepath.Join(e.root, "etc", "os-release"), "PRETTY_NAME=\"Debian GNU/Linux 13 (trixie)\"\n", 0o644)
 	if err := os.WriteFile(e.log, nil, 0o644); err != nil {
 		t.Fatal(err)
@@ -100,6 +100,7 @@ type osScriptJSON struct {
 	SecurityCount  int           `json:"security_count"`
 	RebootRequired bool          `json:"reboot_required"`
 	RebootPkgs     []string      `json:"reboot_pkgs"`
+	HeldCount      int           `json:"held_count"`
 }
 
 func TestOSScriptSyntax(t *testing.T) {
@@ -138,7 +139,7 @@ func TestOSScriptStatusJSON(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &s); err != nil {
 		t.Fatalf("kein JSON: %v\n%s", err, out)
 	}
-	if !s.OK || s.ScriptVersion != 2 {
+	if !s.OK || s.ScriptVersion != 3 {
 		t.Errorf("ok/script_version: %+v", s)
 	}
 	if len(s.Upgradable) != 3 {
@@ -287,6 +288,179 @@ func TestOSScriptStatusPkgsWithoutNewline(t *testing.T) {
 	}
 	if len(s.RebootPkgs) != 2 || s.RebootPkgs[1] != "linux-image-b" {
 		t.Errorf("reboot_pkgs: %v", s.RebootPkgs)
+	}
+}
+
+// osKernels legt Kernel-Dateien unter <root>/boot an und lässt uname den laufenden Kernel melden.
+func (e *osScriptEnvT) osKernels(running string, installed ...string) {
+	e.t.Helper()
+	e.write(filepath.Join(e.stubs, "uname"), "#!/bin/bash\necho "+running+"\n", 0o755)
+	if err := os.MkdirAll(filepath.Join(e.root, "boot"), 0o755); err != nil {
+		e.t.Fatal(err)
+	}
+	for _, v := range installed {
+		e.write(filepath.Join(e.root, "boot", "vmlinuz-"+v), "x", 0o644)
+	}
+}
+
+func (e *osScriptEnvT) status() osScriptJSON {
+	e.t.Helper()
+	out, stderr, code := e.run(nil, "status")
+	if code != 0 {
+		e.t.Fatalf("Exit %d: %s", code, stderr)
+	}
+	var s osScriptJSON
+	if err := json.Unmarshal([]byte(out), &s); err != nil {
+		e.t.Fatalf("kein JSON: %v\n%s", err, out)
+	}
+	return s
+}
+
+// Debian legt /var/run/reboot-required nicht an: neuer Kernel installiert, anderer läuft => Neustart.
+func TestOSScriptRebootNewKernel(t *testing.T) {
+	e := osScriptEnv(t)
+	e.osKernels("6.12.113+deb13-amd64", "6.12.113+deb13-amd64", "6.12.118+deb13-amd64")
+	s := e.status()
+	if !s.RebootRequired || len(s.RebootPkgs) != 1 || s.RebootPkgs[0] != "linux-image-6.12.118+deb13-amd64" {
+		t.Errorf("Neustart nach neuem Kernel: %+v", s)
+	}
+	// check meldet den Neustart ebenfalls
+	out, stderr, code := e.run(nil, "check")
+	if code != 0 {
+		t.Fatalf("check: Exit %d, stderr %s", code, stderr)
+	}
+	if !strings.Contains(out, "NEUSTART NÖTIG") || !strings.Contains(out, "linux-image-6.12.118+deb13-amd64") {
+		t.Errorf("check ohne Neustarthinweis: %q", out)
+	}
+	// Datei nennt das Paket schon: keine Doppelung
+	e.write(filepath.Join(e.root, "var", "run", "reboot-required"), "x\n", 0o644)
+	e.write(filepath.Join(e.root, "var", "run", "reboot-required.pkgs"), "linux-image-6.12.118+deb13-amd64\n", 0o644)
+	s = e.status()
+	if !s.RebootRequired || len(s.RebootPkgs) != 1 {
+		t.Errorf("Doppelung: %v", s.RebootPkgs)
+	}
+}
+
+func TestOSScriptRebootKernelCurrent(t *testing.T) {
+	e := osScriptEnv(t)
+	e.osKernels("6.12.118+deb13-amd64", "6.12.113+deb13-amd64", "6.12.118+deb13-amd64")
+	if s := e.status(); s.RebootRequired || len(s.RebootPkgs) != 0 {
+		t.Errorf("laufender = neuester: %+v", s)
+	}
+	out, stderr, code := e.run(nil, "check")
+	if code != 0 {
+		t.Fatalf("check: Exit %d, stderr %s", code, stderr)
+	}
+	if strings.Contains(out, "NEUSTART") {
+		t.Errorf("check meldet Neustart: %q", out)
+	}
+}
+
+// Laufender Kernel neuer als alle Abbilder in /boot, anderer Kernel-Zweig oder bewusst älterer
+// Kernel: kein Neustart durch die Kernel-Regel (nur ein strikt neuerer installierter Kernel zählt).
+func TestOSScriptRebootRunningNewerOrOlderInstalled(t *testing.T) {
+	e := osScriptEnv(t)
+	e.osKernels("6.12.200+deb13-amd64", "6.12.113+deb13-amd64", "6.12.118+deb13-amd64")
+	if s := e.status(); s.RebootRequired || len(s.RebootPkgs) != 0 {
+		t.Errorf("laufender Kernel neuer als alle Abbilder: %+v", s)
+	}
+	e.osKernels("6.12.113+deb13-amd64", "6.12.113+deb13-amd64", "6.12.118+deb13-amd64")
+	if s := e.status(); !s.RebootRequired || len(s.RebootPkgs) != 1 {
+		t.Errorf("laufender älter, neuerer installiert: %+v", s)
+	}
+}
+
+// Der Kernelname aus /boot muss einfache Zeichen haben, sonst wird die Datei ignoriert.
+func TestOSScriptRebootIgnoresOddKernelName(t *testing.T) {
+	e := osScriptEnv(t)
+	// gleiche Variante (amd64) und neuer: nur die Zeichenprüfung schließt die Datei aus
+	e.osKernels("6.12.118+deb13-amd64", "6.12.118+deb13-amd64", "6.12.200;x+deb13-amd64")
+	s := e.status()
+	if s.RebootRequired || len(s.RebootPkgs) != 0 {
+		t.Errorf("Datei mit ungültigem Namen darf nicht zählen: %+v", s)
+	}
+}
+
+// Nur Abbilder der Variante des laufenden Kernels zählen (amd64, rt-amd64, generic …).
+func TestOSScriptRebootKernelFlavour(t *testing.T) {
+	e := osScriptEnv(t)
+	e.osKernels("6.12.118+deb13-amd64", "6.12.118+deb13-amd64", "6.12.118+deb13-rt-amd64")
+	if s := e.status(); s.RebootRequired || len(s.RebootPkgs) != 0 {
+		t.Errorf("andere Variante darf nicht zählen: %+v", s)
+	}
+	e.osKernels("6.12.118+deb13-amd64", "6.12.118+deb13-amd64", "6.12.118+deb13-rt-amd64", "6.12.120+deb13-amd64")
+	s := e.status()
+	if !s.RebootRequired || len(s.RebootPkgs) != 1 || s.RebootPkgs[0] != "linux-image-6.12.120+deb13-amd64" {
+		t.Errorf("neuere gleiche Variante: %+v", s)
+	}
+	e.osKernels("6.8.0-45-generic", "6.8.0-45-generic", "6.8.0-48-generic", "6.8.0-60-lowlatency")
+	s = e.status()
+	if !s.RebootRequired || len(s.RebootPkgs) != 1 || s.RebootPkgs[0] != "linux-image-6.8.0-48-generic" {
+		t.Errorf("generic: %+v", s)
+	}
+}
+
+func TestOSScriptRebootNoKernelFiles(t *testing.T) {
+	e := osScriptEnv(t) // keine vmlinuz-Dateien: nur die Datei /var/run/reboot-required zählt
+	if s := e.status(); s.RebootRequired {
+		t.Errorf("ohne Kernel-Dateien: %+v", s)
+	}
+	e.write(filepath.Join(e.root, "var", "run", "reboot-required"), "x\n", 0o644)
+	if s := e.status(); !s.RebootRequired {
+		t.Errorf("Datei zählt nicht mehr: %+v", s)
+	}
+}
+
+func TestOSScriptRebootVersionSort(t *testing.T) {
+	e := osScriptEnv(t)
+	e.osKernels("6.12.118+deb13-amd64", "6.12.9+deb13-amd64", "6.12.118+deb13-amd64")
+	if s := e.status(); s.RebootRequired {
+		t.Errorf("6.12.9 darf nicht vor 6.12.118 gelten: %+v", s)
+	}
+}
+
+func TestOSScriptHeldPackages(t *testing.T) {
+	e := osScriptEnv(t)
+	e.write(filepath.Join(e.stubs, "apt"), osListStub+"echo \"nvidia-driver/stable-security 550.1-1 amd64 [upgradable from: 550.0-1]\"\n", 0o755)
+	e.write(filepath.Join(e.stubs, "apt-mark"), "#!/bin/bash\n[ \"$1\" = showhold ] || exit 1\necho nvidia-driver\n", 0o755)
+	s := e.status()
+	if s.HeldCount != 1 || len(s.Upgradable) != 3 || s.SecurityCount != 2 {
+		t.Errorf("zurückgehalten: held %d, upgradable %d, security %d", s.HeldCount, len(s.Upgradable), s.SecurityCount)
+	}
+	for _, p := range s.Upgradable {
+		if p.Name == "nvidia-driver" {
+			t.Errorf("zurückgehaltenes Paket in upgradable")
+		}
+	}
+	// Mehrarchitektur: showhold nennt „libfoo:i386“, apt list „libfoo/… i386“
+	e.write(filepath.Join(e.stubs, "apt"), osListStub+"echo \"libfoo/stable 1.1 i386 [upgradable from: 1.0]\"\n", 0o755)
+	e.write(filepath.Join(e.stubs, "apt-mark"), "#!/bin/bash\n[ \"$1\" = showhold ] || exit 1\necho libfoo:i386\n", 0o755)
+	s = e.status()
+	if s.HeldCount != 1 || len(s.Upgradable) != 3 {
+		t.Errorf("libfoo:i386: held %d, upgradable %d", s.HeldCount, len(s.Upgradable))
+	}
+	// Ein Hold gilt nur für seine Architektur: „libfoo:i386“ hält libfoo amd64 nicht zurück,
+	// ein Hold ohne Zusatz gilt für die eigene Architektur (amd64) und „all“, nicht für i386.
+	e.write(filepath.Join(e.stubs, "apt"), osListStub+
+		"echo \"libfoo/stable 1.1 i386 [upgradable from: 1.0]\"\n"+
+		"echo \"libfoo/stable 1.1 amd64 [upgradable from: 1.0]\"\n"+
+		"echo \"libbar/stable 2.1 amd64 [upgradable from: 2.0]\"\n"+
+		"echo \"libbaz/stable 3.1 i386 [upgradable from: 3.0]\"\n"+
+		"echo \"docs/stable 4.1 all [upgradable from: 4.0]\"\n", 0o755)
+	e.write(filepath.Join(e.stubs, "apt-mark"), "#!/bin/bash\n[ \"$1\" = showhold ] || exit 1\nprintf 'libfoo:i386\\nlibbar:amd64\\nlibbaz\\ndocs\\n'\n", 0o755)
+	s = e.status()
+	got := map[string]bool{}
+	for _, p := range s.Upgradable {
+		got[p.Name] = true
+	}
+	if s.HeldCount != 3 || len(s.Upgradable) != 5 || !got["libfoo"] || !got["libbaz"] || got["libbar"] || got["docs"] {
+		t.Errorf("Architektur: held %d, upgradable %+v", s.HeldCount, s.Upgradable)
+	}
+	// apt-mark scheitert: held_count 0, Rest unverändert
+	e.write(filepath.Join(e.stubs, "apt-mark"), "#!/bin/bash\nexit 1\n", 0o755)
+	s = e.status()
+	if s.HeldCount != 0 || len(s.Upgradable) != 8 || s.SecurityCount != 2 {
+		t.Errorf("apt-mark-Fehler: held %d, upgradable %d, security %d", s.HeldCount, len(s.Upgradable), s.SecurityCount)
 	}
 }
 

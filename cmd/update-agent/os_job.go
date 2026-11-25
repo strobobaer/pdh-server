@@ -217,7 +217,8 @@ func (a *updateAgent) startOSJob(ctx context.Context, source string, force bool)
 	if err != nil {
 		return nil, err
 	}
-	if len(ss.Upgradable) == 0 && !ss.RebootRequired {
+	// nur der Knopf startet allein wegen „Neustart nötig“ (ohne Pakete) neu
+	if len(ss.Upgradable) == 0 && (!ss.RebootRequired || source != srcButton) {
 		return nil, errors.New("Keine Pakete zu aktualisieren")
 	}
 	if msg := a.osSpaceProblem(); msg != "" {
@@ -255,6 +256,7 @@ func (a *updateAgent) startOSJob(ctx context.Context, source string, force bool)
 			Phase: ha.UpPrepare, PhaseAt: now, StartedAt: now},
 		CountdownMin: win.CountdownMin, LockMaxMin: win.LockMaxMin, Source: source,
 		Dump: filepath.Join(drStateDir(), "vor-update-os.dump"),
+		OS:   osSteps{AllowBareReboot: source == srcButton},
 	}
 	a.osj.mu.Lock()
 	if !jobEnded(a.osj.job.Job) {

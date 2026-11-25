@@ -44,8 +44,8 @@ type osLastRunView struct {
 type osView struct {
 	Available, Docker, Cluster, ScriptOutdated, CanAct, WithPDHUpdate, RebootRequired bool
 	Reason, System, Kernel, CheckedAt                                                 string
-	PackageCount, SecurityCount                                                       int
-	Packages                                                                          []osPackageView
+	PackageCount, SecurityCount, HeldCount                                            int
+	Packages                                                                         []osPackageView
 	RebootPkgs                                                                        []string
 	LastRun                                                                           *osLastRunView
 	Job                                                                               *ha.UpdateView
@@ -67,7 +67,8 @@ type osAgentStatus struct {
 	Kernel         string `json:"kernel"`
 	PackageCount   int    `json:"package_count"`
 	SecurityCount  int    `json:"security_count"`
-	Packages       []struct {
+	HeldCount      int    `json:"held_count"`
+	Packages      []struct {
 		Name     string `json:"name"`
 		Old      string `json:"old"`
 		New      string `json:"new"`
@@ -132,7 +133,7 @@ func (h *Handler) osUpdateViewFor(ctx context.Context, r *http.Request) *osView 
 		v.Reason = tr(lang, "Im Verbund kommt das Betriebssystem-Update mit einer späteren Version.")
 	}
 	v.System, v.Kernel, v.CheckedAt = st.System, st.Kernel, osShowTime(st.CheckedAt)
-	v.PackageCount, v.SecurityCount = st.PackageCount, st.SecurityCount
+	v.PackageCount, v.SecurityCount, v.HeldCount = st.PackageCount, st.SecurityCount, st.HeldCount
 	v.RebootRequired, v.RebootPkgs, v.WithPDHUpdate = st.RebootRequired, st.RebootPkgs, st.WithPDHUpdate
 	for _, p := range st.Packages {
 		v.Packages = append(v.Packages, osPackageView{Name: p.Name, Old: p.Old, New: p.New, Security: p.Security})

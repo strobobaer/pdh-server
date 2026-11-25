@@ -10,6 +10,16 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.82.60] – 2026-11-25
+
+### Behoben
+
+- **Betriebssystem: Neustart nach Kernel-Update unter Debian:** „Neustart nötig“ erscheint jetzt auch, wenn ein neuerer Kernel installiert ist als der laufende (Debian legt dafür keine Neustart-Datei an); ein Neustart ohne neu eingespielte Pakete passiert nur über den Knopf „Betriebssystem aktualisieren“, nie beim PDH-Update oder im Wartungsfenster.
+
+### Neu
+
+- **Zurückgehaltene Pakete getrennt gezählt:** Mit `apt-mark hold` zurückgehaltene Pakete spielt das PDH nicht ein und zeigt sie auf der Karte „Betriebssystem“ als „· N zurückgehalten“.
+
 ## [0.82.59] – 2026-11-24
 
 ### Neu
