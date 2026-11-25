@@ -2,6 +2,7 @@ package web
 
 import (
 	"bytes"
+	"fmt"
 	"net/http/httptest"
 	"os"
 	"os/exec"
@@ -124,38 +125,169 @@ func TestSetupSharesAndPies(t *testing.T) {
 	if setupShares(nil, color) != nil || setupShares([]setupReasonSum{{Key: "a", Name: "A"}}, color) != nil {
 		t.Error("ohne Daten kein Kreisdiagramm")
 	}
-	if setupPies(nil) != nil {
+	if setupPies(nil, nil) != nil {
 		t.Error("setupPies ohne Gruppen muss nil sein")
 	}
+}
 
-	// Gesamt zuerst, dann je Anlage nach Pfad; Farben je Grund in allen Diagrammen gleich
-	paths := map[string]string{"p1": "Halle › B", "p2": "Halle › A"}
+// Ein Kuchen: Stücke = Anlagen, Anteil an der gesamten Rüstdauer, eigene Farbe je Anlage, Gründe je Anlage.
+func TestSetupPiesByPlant(t *testing.T) {
+	paths := map[string]string{"p1": "Halle › B", "p2": "Halle › A", "p3": "Halle › C"}
 	groups := setupGroupByPlant([]setupAgg{
 		{"p1", "r1", "Reinigung", 1, 30}, {"p1", "r2", "Umstellung", 1, 30},
 		{"p2", "r2", "Umstellung", 2, 90}, {"p2", "r3", "Hilfsmittel", 1, 7},
+		{"p3", "r1", "Reinigung", 3, 13},
 	}, func(id string) string { return paths[id] })
-	pies := setupPies(groups)
-	if len(pies) != 3 || pies[0].Key != "all" || pies[0].Title != "Alle Anlagen" || pies[1].Title != "Halle › A" || pies[2].Title != "Halle › B" {
+	allColors := plantColors([]string{"p1", "p2", "p3"})
+	pies := setupPies(groups, allColors)
+	if len(pies) != 1 || pies[0].Key != "plants" || pies[0].Title != "Alle Anlagen" {
 		t.Fatalf("Diagramme: %+v", pies)
 	}
-	col := map[string]string{}
-	for _, p := range pies {
-		if sumPercent(p.Slices) != 100 {
-			t.Errorf("%s: Summe %d", p.Title, sumPercent(p.Slices))
+	sl := pies[0].Slices
+	if len(sl) != 3 || sumPercent(sl) != 100 {
+		t.Fatalf("Stücke: %+v", sl)
+	}
+	// nach Dauer, größte zuerst: A 97, B 60, C 13 von 170
+	if sl[0].Label != "Halle › A" || sl[1].Label != "Halle › B" || sl[2].Label != "Halle › C" {
+		t.Errorf("Reihenfolge: %+v", sl)
+	}
+	if sl[0].Key != "p2" || sl[0].Count != 3 || sl[0].Percent != 57 || sl[0].Duration != "1 Std. 37 Min." {
+		t.Errorf("Anlage A: %+v", sl[0])
+	}
+	colors := map[string]bool{}
+	for _, s := range sl {
+		if !hexColor.MatchString(s.Color) || colors[s.Color] {
+			t.Errorf("Farbe %q ungültig oder doppelt", s.Color)
 		}
-		for _, s := range p.Slices {
-			if !regexp.MustCompile(`^#[0-9a-f]{6}$`).MatchString(s.Color) {
-				t.Errorf("Farbe %q", s.Color)
-			}
-			if old, ok := col[s.Label]; ok && old != s.Color {
-				t.Errorf("Grund %s hat zwei Farben", s.Label)
-			}
-			col[s.Label] = s.Color
+		colors[s.Color] = true
+	}
+	if sl[0].Color != allColors["p2"] {
+		t.Error("Farbe stammt nicht aus plantColors")
+	}
+	// Gründe der Anlage (setupShares): Summe 100, längster zuerst
+	if len(sl[0].Reasons) != 2 || sl[0].Reasons[0].Label != "Umstellung" || sumPercent(sl[0].Reasons) != 100 || sl[0].Reasons[0].Duration != "1 Std. 30 Min." {
+		t.Errorf("Gründe: %+v", sl[0].Reasons)
+	}
+	// dieselben Gruppen ergeben dieselben Farben (Seite und Folie)
+	again := setupPies(groups, allColors)
+	for i := range sl {
+		if again[0].Slices[i].Color != sl[i].Color {
+			t.Error("Farben nicht stabil")
 		}
 	}
-	// nur abgeschlossene Rüstzeiten mit Dauer 0: Anzahl entscheidet, kein Fehler
-	if p := setupPies(setupGroupByPlant([]setupAgg{{"p1", "r1", "R", 2, 0}}, func(string) string { return "X" })); len(p) != 2 || p[0].Slices[0].Percent != 100 {
+	// nur abgeschlossene Rüstzeiten mit Dauer 0: Anzahl entscheidet
+	p := setupPies(setupGroupByPlant([]setupAgg{{"p1", "r1", "R", 3, 0}, {"p2", "r1", "R", 1, 0}}, func(id string) string { return id }), nil)
+	if len(p) != 1 || len(p[0].Slices) != 2 || p[0].Slices[0].Percent != 75 || p[0].Slices[1].Percent != 25 {
 		t.Errorf("Dauer 0: %+v", p)
+	}
+	// unbekannte Anlage (ohne Pfad)
+	p = setupPies(setupGroupByPlant([]setupAgg{{"zz", "r1", "R", 1, 5}}, func(string) string { return "" }), nil)
+	if p[0].Slices[0].Label != "Unbekannte Anlage" || p[0].Slices[0].Percent != 100 {
+		t.Errorf("unbekannte Anlage: %+v", p)
+	}
+}
+
+// Mehr als acht Anlagen: alle erscheinen (keine „Sonstige“), jede mit eigener Farbe, Summe 100.
+func TestSetupPiesManyPlantsNoOther(t *testing.T) {
+	var aggs []setupAgg
+	for i := 0; i < 20; i++ {
+		id := fmt.Sprintf("0190a000-0000-7000-8000-%012d", i)
+		aggs = append(aggs, setupAgg{id, "r1", "Reinigung", 1, float64(10 + i)})
+	}
+	var all []string
+	for _, a := range aggs {
+		all = append(all, a.InfraID)
+	}
+	pies := setupPies(setupGroupByPlant(aggs, func(id string) string { return "A " + id }), plantColors(all))
+	sl := pies[0].Slices
+	if len(sl) != 20 || sumPercent(sl) != 100 {
+		t.Fatalf("Stücke %d, Summe %d", len(sl), sumPercent(sl))
+	}
+	seen := map[string]bool{}
+	for _, s := range sl {
+		if s.Label == "Sonstige" || seen[s.Color] {
+			t.Errorf("Sonstige oder Farbe doppelt: %+v", s)
+		}
+		seen[s.Color] = true
+	}
+}
+
+// Farben über alle Anlagen: dieselbe Anlage hat in jedem Ausschnitt und jedem Zeitraum dieselbe Farbe, und eine neu
+// angelegte (später sortierte) Anlage ändert keine vorhandene Farbe.
+func TestSetupPieColorsGloballyStable(t *testing.T) {
+	var all []string
+	for i := 0; i < 30; i++ {
+		all = append(all, fmt.Sprintf("0190a000-0000-7000-8000-%012d", i))
+	}
+	colors := plantColors(all)
+	agg := func(ids ...string) []setupAgg {
+		var out []setupAgg
+		for i, id := range ids {
+			out = append(out, setupAgg{id, "r", "R", 1, float64(10 + i)})
+		}
+		return out
+	}
+	path := func(id string) string { return id }
+	// verschiedene Ausschnitte (Zeitraum, Rechte, Folienauswahl)
+	for _, subset := range [][]string{all[:5], all[3:9], all[10:11], all[20:], all} {
+		for _, s := range setupPies(setupGroupByPlant(agg(subset...), path), colors)[0].Slices {
+			if s.Color != colors[s.Key] {
+				t.Fatalf("%s: Farbe %s statt %s im Ausschnitt", s.Key, s.Color, colors[s.Key])
+			}
+		}
+	}
+	// eine neue (UUIDv7: später sortierte) Anlage ändert keine vorhandene Farbe
+	newer := "0190a000-0000-7000-8000-999999999999"
+	with := plantColors(append(append([]string{}, all...), newer))
+	for _, id := range all {
+		if with[id] != colors[id] {
+			t.Errorf("%s ändert die Farbe von %s auf %s durch eine neue Anlage", id, colors[id], with[id])
+		}
+	}
+	// mit 30 Anlagen sind alle Farben verschieden
+	seen := map[string]bool{}
+	for _, id := range all {
+		if seen[colors[id]] {
+			t.Errorf("Farbe %s doppelt", colors[id])
+		}
+		seen[colors[id]] = true
+	}
+	// globalInfra liefert dieselbe Zuordnung wie plantColors über seine Anlagen
+	gi := &globalInfra{nodes: map[string]globalInfraNode{}}
+	for _, id := range all {
+		gi.nodes[id] = globalInfraNode{}
+	}
+	for _, id := range all {
+		if gi.plantColors()[id] != colors[id] {
+			t.Fatalf("globalInfra: andere Farbe für %s", id)
+		}
+	}
+}
+
+// Anlagen ohne Dauer stehen mit 0 % hinter den anderen (kein Stück, aber Legendenzeile).
+func TestSetupPiesZeroMinutePlantStays(t *testing.T) {
+	g := setupGroupByPlant([]setupAgg{{"a", "r", "R", 2, 0}, {"b", "r", "R", 1, 30}, {"c", "r", "R", 1, 10}}, func(id string) string { return id })
+	sl := setupPies(g, plantColors([]string{"a", "b", "c"}))[0].Slices
+	if len(sl) != 3 || sl[2].Key != "a" || sl[2].Percent != 0 || sl[2].Value != 0 || sumPercent(sl) != 100 || sl[0].Key != "b" {
+		t.Errorf("Anlage ohne Dauer: %+v", sl)
+	}
+}
+
+// Die Folie bekommt dieselben Stücke und Farben, aber ohne Gründe (kein Aufklappen).
+func TestSetupSlidePiesStripReasons(t *testing.T) {
+	groups := setupGroupByPlant([]setupAgg{{"p1", "r1", "R", 1, 5}, {"p2", "r1", "R", 1, 5}}, func(id string) string { return id })
+	cols := plantColors([]string{"p1", "p2"})
+	full, slide := setupPies(groups, cols), setupSlidePiesFrom(groups, cols)
+	if len(slide) != 1 || len(slide[0].Slices) != len(full[0].Slices) {
+		t.Fatalf("Folie: %+v", slide)
+	}
+	for i, s := range slide[0].Slices {
+		if s.Reasons != nil || s.Color != full[0].Slices[i].Color || s.Label != full[0].Slices[i].Label {
+			t.Errorf("Folienstück %d: %+v", i, s)
+		}
+	}
+	if full[0].Slices[0].Reasons == nil {
+		t.Error("die Seite braucht die Gründe")
 	}
 }
 
@@ -297,16 +429,16 @@ func TestPieDrawing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	names := []string{"pieGeometry", "pieText", "pieColor", "drawPie", "drawPieSet"}
+	names := []string{"pieGeometry", "pieText", "pieColor", "pieTextColor", "pieLine", "pieBindPick", "drawPie", "drawPieReasons", "drawPieSet"}
 	body := `
 var pieSeq = 0;
 %FUNCS%
 const out = [];
 const eq = (got, want, what) => { const g = JSON.stringify(got), w = JSON.stringify(want); if (g !== w) out.push(what + ': ' + g + ' statt ' + w); };
 const slices = [
-  { label: 'Umstellung', value: 60, percent: 60, color: '#3b82f6' },
-  { label: 'Reinigung', value: 39, percent: 39, color: '#f59e0b' },
-  { label: '<img src=x onerror=1>', value: 1, percent: 1, color: 'url(javascript:1)' }];
+  { label: 'Halle › A', value: 60, count: 3, percent: 60, color: '#3b82f6', duration: '1 Std. 0 Min.' },
+  { label: 'Halle › B', value: 39, count: 1, percent: 39, color: '#f59e0b', duration: '39 Min.' },
+  { label: '<img src=x onerror=1>', value: 1, count: 2, percent: 1, color: 'url(javascript:1)' }];
 const g = pieGeometry(slices, 150, 150, 140);
 eq(g.length, 3, 'Stücke');
 eq(g[0].d.startsWith('M 150 150 L 150 10 A 140 140 0 1 1'), true, 'erstes Stück beginnt oben, großer Bogen');
@@ -316,31 +448,94 @@ eq(pieGeometry([{ value: 5 }], 150, 150, 140)[0].d.split('A').length, 3, 'ganzer
 eq(pieGeometry([], 1, 1, 1), [], 'leer');
 eq(pieGeometry(null, 1, 1, 1), [], 'null');
 eq(pieGeometry([{ value: 0 }, { value: -1 }], 1, 1, 1), [], 'nur Nullen');
-eq(pieText({ slices: slices.slice(0, 2) }), 'Umstellung 60 %, Reinigung 39 %', 'Text');
+eq(pieText({ slices: slices.slice(0, 2) }), 'Halle › A 60 %, Halle › B 39 %', 'Text');
 eq(pieColor('#aBc123'), '#aBc123', 'Farbe gültig');
 eq(pieColor('red'), '#94a3b8', 'Farbe ungültig');
-const box = drawPie({ title: 'Halle A', slices });
+eq(pieLine(slices[0]), 'Halle › A – 1 Std. 0 Min. – 60 % – 3 Rüstvorgänge', 'Legendenzeile');
+eq(pieLine(slices[1]), 'Halle › B – 39 Min. – 39 % – 1 Rüstvorgang', 'Legendenzeile Einzahl');
+eq(pieLine({ label: 'X', percent: 5 }), 'X – 5 %', 'Legendenzeile ohne Dauer und Anzahl');
+const box = drawPie({ title: 'Alle Anlagen', slices });
 const svg = all(box, 'svg')[0];
-eq(svg.attrs.role, 'img', 'role');
-eq(all(svg, 'title')[0].textContent, 'Anteil der Rüstgründe – Halle A', 'title');
-eq(all(svg, 'desc')[0].textContent.startsWith('Umstellung 60 %, Reinigung 39 %'), true, 'desc');
+eq(svg.attrs.role, 'img', 'role ohne Schaltflächen');
+eq(all(svg, 'title')[0].textContent, 'Anteil der Anlagen an der Rüstdauer – Alle Anlagen', 'title');
+eq(all(svg, 'desc')[0].textContent.startsWith('Halle › A 60 %, Halle › B 39 %'), true, 'desc');
 eq(svg.attrs['aria-labelledby'], all(svg, 'title')[0].attrs.id + ' ' + all(svg, 'desc')[0].attrs.id, 'aria-labelledby');
 eq(all(svg, 'path').length, 3, 'Pfade');
 eq(all(svg, 'path')[2].attrs.fill, '#94a3b8', 'ungültige Farbe wird Grau');
 eq(all(svg, 'text').map(x => x.textContent), ['60 %', '39 %'], 'Prozentangaben (1 % nur in der Legende)');
 const lis = all(box, 'li');
 eq(lis.length, 3, 'Legende');
-eq(lis[2].textContent, '<img src=x onerror=1> – 1 %', 'Beschriftung bleibt Text');
+eq(lis[0].textContent, 'Halle › A – 1 Std. 0 Min. – 60 % – 3 Rüstvorgänge', 'Legende mit Dauer, Anteil, Anzahl');
+eq(lis[2].textContent, '<img src=x onerror=1> – 1 % – 2 Rüstvorgänge', 'Beschriftung bleibt Text');
+eq(all(svg, 'path')[0].listeners.click, undefined, 'ohne onPick nicht antippbar');
+eq(lis[0].attrs.role, undefined, 'ohne onPick keine Schaltfläche');
+// Beschriftungsfarbe nach Helligkeit, Kontrast mindestens 4,5 : 1
+const lum = (h) => { const f = v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }; return 0.2126 * f(parseInt(h.slice(1, 3), 16)) + 0.7152 * f(parseInt(h.slice(3, 5), 16)) + 0.0722 * f(parseInt(h.slice(5, 7), 16)); };
+const contrast = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+for (const c of ['#2563eb', '#ea580c', '#16a34a', '#dc2626', '#9333ea', '#0891b2', '#db2777', '#ca8a04', '#65a30d', '#7c2d12', '#475569', '#0f766e', '#ffffff', '#000000', '#ffff00', '#84cc16']) {
+  eq(contrast(c, pieTextColor(c)) >= 4.5, true, 'Kontrast ' + c);
+}
+eq(pieTextColor('#ffff00'), '#000000', 'dunkle Schrift auf hellem Gelb');
+eq(pieTextColor('#7c2d12'), '#ffffff', 'weiße Schrift auf Braun');
+eq(pieTextColor('url(x)'), '#000000', 'ungültige Farbe wird hellgrau, Schrift dunkel');
+eq(all(svg, 'text').map(x => x.style.fill), ['#000000', '#000000'], 'Schriftfarbe je Stück');
 const empty = drawPie({ title: 'x', slices: [] });
 eq(all(empty, 'svg').length, 0, 'leer ohne SVG');
 eq(empty.textContent, 'Keine abgeschlossenen Rüstzeiten', 'leer Text');
-const set = drawPieSet([{ title: 'Alle Anlagen', slices }, { title: 'Halle A', slices: [{ label: 'X', value: 1, percent: 100, color: '#10b981' }] }]);
-const sel = all(set, 'select')[0];
-eq(all(sel, 'option').map(o => o.textContent), ['Alle Anlagen', 'Halle A'], 'Auswahl');
-eq(!!sel.attrs['aria-label'], true, 'Auswahl beschriftet');
-sel.value = '1'; sel.listeners.change();
-eq(all(set, 'path').length, 1, 'Wechsel zeigt die gewählte Anlage');
-eq(all(set, 'li').length, 1, 'Wechsel ersetzt die Legende');
+
+// Folie: Stücke ohne Gründe, nichts zum Antippen, keine Hinweise
+const slide = drawPieSet([{ key: 'plants', title: 'Alle Anlagen', slices }]);
+eq(all(slide, 'path').length, 3, 'Folie zeigt alle Anlagen');
+eq(all(slide, 'path')[0].listeners.click, undefined, 'Folie nicht antippbar');
+eq(slide.children.length, 1, 'Folie ohne Hinweis und Einzelheiten');
+// Folie: höchstens 10 Legendenzeilen und „+N weitere“, der Kreis behält alle Stücke
+const many = []; for (let i = 0; i < 14; i++) many.push({ label: 'A' + i, value: 14 - i, count: 1, percent: 7, color: '#2563eb' });
+const slide14 = drawPieSet([{ key: 'plants', title: 'Alle Anlagen', slices: many }]);
+eq(all(slide14, 'path').length, 14, 'Folie: alle Stücke im Kreis');
+eq(all(slide14, 'li').length, 11, 'Folie: 10 Legendenzeilen plus Rest');
+eq(all(slide14, 'li')[10].textContent, '+4 weitere', 'Folie: Rest');
+// Anlage ohne Dauer: Legendenzeile mit 0 %, aber kein Stück
+const withZero = slices.concat([{ label: 'Leer', value: 0, count: 2, percent: 0, color: '#475569', duration: '0 Min.' }]);
+const bz = drawPie({ title: 't', slices: withZero });
+eq(all(bz, 'path').length, 3, 'Anlage ohne Dauer hat kein Stück');
+eq(all(bz, 'li').length, 4, 'Anlage ohne Dauer steht in der Legende');
+eq(all(bz, 'li')[3].textContent, 'Leer – 0 Min. – 0 % – 2 Rüstvorgänge', 'Legende 0 %');
+
+// Seite: Stücke mit Gründen, Antippen zeigt die Gründe der Anlage
+const withR = slices.map((s, i) => Object.assign({}, s, { key: 'p' + i, reasons: [
+  { label: 'Umstellung', value: 30, count: 2, percent: 75, duration: '30 Min.' },
+  { label: '<b>Reinigung</b>', value: 10, count: 1, percent: 25, duration: '10 Min.' }] }));
+const set = drawPieSet([{ key: 'plants', title: 'Alle Anlagen', slices: withR }]);
+eq(all(set, 'select').length, 0, 'keine Auswahl mehr (ein Diagramm für alle Anlagen)');
+eq(all(set, 'svg')[0].attrs.role, 'group', 'mit Schaltflächen eine Gruppe, kein Bild');
+eq(all(set, 'svg')[0].attrs['aria-label'].startsWith('Anteil der Anlagen an der Rüstdauer'), true, 'Gruppe beschriftet');
+eq(all(set, 'li').length, 3, 'Seite: Legende ohne Begrenzung');
+const detail = set.children[2];
+eq(detail.className, 'pie-detail', 'Einzelheiten-Bereich');
+eq(detail.children.length, 0, 'zunächst ohne Gründe');
+const p0 = all(set, 'path')[0], l1 = all(set, 'li')[1];
+eq(p0.attrs.role, 'button', 'Stück ist Schaltfläche');
+eq(p0.attrs.tabindex, '0', 'Stück per Tastatur erreichbar');
+eq(p0.attrs['aria-pressed'], 'false', 'nicht gewählt');
+p0.listeners.click();
+eq(detail.children.length, 1, 'Antippen zeigt die Gründe');
+eq(detail.children[0].children[0].textContent, 'Rüstgründe – Halle › A', 'Überschrift nennt die Anlage');
+const rl = all(detail, 'li');
+eq(rl.map(x => x.textContent), ['Umstellung – 30 Min. – 75 % – 2 Rüstvorgänge', '<b>Reinigung</b> – 10 Min. – 25 % – 1 Rüstvorgang'], 'Gründe als Text');
+eq(all(detail, 'span').filter(x => x.className === 'pie-rfill').map(x => x.style.width + '/' + x.style.backgroundColor), ['75%/#3b82f6', '25%/#3b82f6'], 'Balken in der Farbe der Anlage');
+eq(all(set, 'path')[0].attrs['aria-pressed'], 'true', 'gewähltes Stück markiert');
+eq(all(set, 'path')[0].attrs.class.includes('pie-on'), true, 'gewähltes Stück hat Klasse');
+l1.listeners.click();
+eq(all(detail, 'li').length === 2 && detail.children[0].children[0].textContent, 'Rüstgründe – Halle › B', 'Legendeneintrag wechselt die Anlage');
+eq(all(set, 'path')[0].attrs['aria-pressed'], 'false', 'vorige Wahl aufgehoben');
+l1.listeners.click();
+eq(detail.children.length, 0, 'nochmal Antippen blendet aus');
+let prevented = false;
+p0.listeners.keydown({ key: 'Enter', preventDefault() { prevented = true; } });
+eq(detail.children.length, 1, 'Enter wählt');
+eq(prevented, true, 'Enter verhindert Standardaktion');
+p0.listeners.keydown({ key: 'x' });
+eq(detail.children.length, 1, 'andere Taste tut nichts');
 eq(drawPieSet([]).children.length, 0, 'ohne Diagramme leer');
 if (out.length) console.log(out.join('\n'));
 `

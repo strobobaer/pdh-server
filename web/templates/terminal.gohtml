@@ -585,20 +585,24 @@ body[data-mode="zeit"]{--accent-rgb:168,85,247}
   <span id="hmi-status" class="t-hmistatus">Verbinde…</span>
 </div>
 <div id="hmi-screen" class="t-hmiscreen" data-infra="{{.HMI.Sel.InfraID}}" data-hmi="{{.HMI.Sel.ID}}" data-hmi-mode="{{.HMI.Mode}}"></div>
+{{if eq .HMI.Mode "control"}}<script src="/vendor/hmi-mouse.js?v={{appVersion}}"></script>{{end}}
 <script type="module">
 import { RFB } from '/vendor/novnc/rfb.min.js';
 const screen = document.getElementById('hmi-screen'), status = document.getElementById('hmi-status');
 const MODE = screen.dataset.hmiMode === 'control' ? 'control' : 'view';
-let rfb = null;
+let rfb = null, mouse = null;
 function setStatus(t, k){ status.textContent = t; status.className = 't-hmistatus' + (k ? ' ' + k : ''); }
 function connect(){
+  if(mouse){ mouse.destroy(); mouse = null; }
   if(rfb){ try{ rfb.disconnect(); }catch(e){} }
   screen.replaceChildren(); setStatus('Verbinde…');
   const url = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/terminal/hmi/' + screen.dataset.infra + '/' + screen.dataset.hmi + '/ws?mode=' + MODE;
-  rfb = new RFB(screen, url, {shared: true, wsProtocols: ['binary']});
+  const r = rfb = new RFB(screen, url, {shared: true, wsProtocols: ['binary']});
   rfb.viewOnly = MODE !== 'control'; rfb.showDotCursor = MODE !== 'control'; rfb.scaleViewport = true; rfb.resizeSession = false; rfb.focusOnClick = MODE === 'control';
+  if (MODE === 'control' && window.PdhHmiMouse) mouse = PdhHmiMouse.attach(screen, rfb); // Leiste Links/Rechts/Doppel/Ziehen/Scrollen und Touchpad (hmi-mouse.js)
+  const m = mouse;
   rfb.addEventListener('connect', () => setStatus('Verbunden', 'ok'));
-  rfb.addEventListener('disconnect', e => { setStatus(e.detail && e.detail.clean ? 'Getrennt' : 'Verbindung unterbrochen – zum Neuverbinden berühren', 'err'); screen.addEventListener('pointerdown', connect, {once: true}); });
+  rfb.addEventListener('disconnect', e => { if(m) m.destroy(); if(mouse === m) mouse = null; if(rfb !== r) return; setStatus(e.detail && e.detail.clean ? 'Getrennt' : 'Verbindung unterbrochen – zum Neuverbinden berühren', 'err'); screen.addEventListener('pointerdown', connect, {once: true}); });
   rfb.addEventListener('securityfailure', () => setStatus('Anmeldung am HMI fehlgeschlagen', 'err'));
 }
 window.addEventListener('beforeunload', () => { if(rfb) rfb.disconnect(); });
