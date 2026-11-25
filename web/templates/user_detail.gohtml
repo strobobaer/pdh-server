@@ -223,6 +223,14 @@
       <label style="font-size:13px;display:flex;gap:8px;align-items:center;margin-top:4px"><input type="hidden" name="orig_wartungen" value="{{if index $m.TerminalFn "wartungen"}}1{{else}}0{{end}}"><input type="checkbox" name="terminal_fn_wartungen" {{if index $m.TerminalFn "wartungen"}}checked{{end}}> Wartungen</label>
       <label style="font-size:13px;display:flex;gap:8px;align-items:center;margin-top:4px"><input type="hidden" name="orig_vorgaenge" value="{{if index $m.TerminalFn "vorgaenge"}}1{{else}}0{{end}}"><input type="checkbox" name="terminal_fn_vorgaenge" {{if index $m.TerminalFn "vorgaenge"}}checked{{end}}> Vorgänge</label>
       <label style="font-size:13px;display:flex;gap:8px;align-items:center;margin-top:4px"><input type="hidden" name="orig_schichtplan" value="{{if index $m.TerminalFn "schichtplan"}}1{{else}}0{{end}}"><input type="checkbox" name="terminal_fn_schichtplan" {{if index $m.TerminalFn "schichtplan"}}checked{{end}}> Schichtplan</label>
+      <input type="hidden" name="terminal_shift_plan_sent" value="1">
+      <label class="form-label" style="margin-top:8px" for="ud-shift-plan">Schichtplan beim Öffnen</label>
+      <select class="form-input" id="ud-shift-plan" name="terminal_shift_plan">
+        <option value="">Alle veröffentlichten Pläne</option>
+        {{range $m.TerminalShiftPlans}}<option value="{{.ID}}" {{if .Sel}}selected{{end}}>{{.Label}}</option>
+        {{end}}
+      </select>
+      <div class="rec-sub" style="margin-top:4px">Welchen Plan die Seite „Schichtplan“ beim Öffnen zeigt. Gilt der Plan in der gezeigten Woche nicht, erscheinen alle Pläne; am Terminal lässt sich der Plan jederzeit wechseln. Entwürfe zeigt das Terminal nie.</div>
       <label style="font-size:13px;display:flex;gap:8px;align-items:center;margin-top:4px"><input type="hidden" name="orig_zeiterfassung" value="{{if index $m.TerminalFn "zeiterfassung"}}1{{else}}0{{end}}"><input type="checkbox" name="terminal_fn_zeiterfassung" {{if index $m.TerminalFn "zeiterfassung"}}checked{{end}}> Zeiterfassung (nur in PDH einstellbar, Grundwert aus)</label>
       <div class="rec-sub" style="margin-top:4px">Ausgeschaltete Funktionen zeigt die Terminalseite nicht mehr (Kachel und Seite entfallen). Dieselben Schalter gibt es auf der Admin-Seite des Terminals (Reiter „Funktionen“); die jüngere Änderung gewinnt, bei gleichem Zeitpunkt PDH. Die Folienschau steht oben.</div>
       <div class="form-label" style="margin-top:12px">Abteilungen des Terminals</div>

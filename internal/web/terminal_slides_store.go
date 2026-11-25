@@ -66,6 +66,7 @@ type terminalSlide struct {
 	PlanRange                        string   // Planungsfolien: today, week, next_week, days
 	PlanDays                         int      // Planungsfolien, Zeitraum days: nächste N Tage (1 bis 31)
 	DepartmentIDs                    []string // Planungs-, Aufgaben- und Projektfolien: gewählte Abteilungen (leer = alle)
+	ShiftPlanID                      string   // Folie „Schichtplan“: ein veröffentlichter Plan, "" = alle (Migration 223)
 	TaskRange                        string   // Aufgabenfolie: week, 2w, 4w, 8w, 12w, date
 	TaskUntil                        string   // Aufgabenfolie, Zeitraum date: letzter Fälligkeitstag (JJJJ-MM-TT)
 	YearMode                         string   // Projektfolie: current, next, rolling
@@ -250,6 +251,13 @@ func validateTerminalSlide(s *terminalSlide) error {
 	} else {
 		s.PlanRange, s.PlanDays = planRangeToday, planDefaultDays
 	}
+	if s.Kind != slideKindPlanShifts {
+		s.ShiftPlanID = ""
+	} else if s.ShiftPlanID != "" {
+		if s.ShiftPlanID = normShiftPlanID(s.ShiftPlanID); s.ShiftPlanID == "" {
+			return errors.New("Ungültiger Schichtplan")
+		}
+	}
 	if err := validateWorkSlide(s); err != nil {
 		return err
 	}
@@ -270,13 +278,13 @@ func validateTerminalSlide(s *terminalSlide) error {
 
 const slideColumns = `id::text, position, kind, title, body, image_type, COALESCE(infra_ids, '{}')::text[],
 	show_faults, show_tickets, duration_seconds, active, stats_days, url, reload_minutes,
-	plan_range, plan_days, COALESCE(department_ids, '{}')::text[],
+	plan_range, plan_days, COALESCE(department_ids, '{}')::text[], COALESCE(shift_plan_id::text, ''),
 	task_range, COALESCE(task_until::text, ''), year_mode, only_active, updated_at`
 
 func scanSlide(row pgx.Row) (terminalSlide, error) {
 	var s terminalSlide
 	err := row.Scan(&s.ID, &s.Position, &s.Kind, &s.Title, &s.Body, &s.ImageType, &s.InfraIDs,
-		&s.ShowFaults, &s.ShowTickets, &s.DurationSeconds, &s.Active, &s.StatsDays, &s.URL, &s.ReloadMinutes, &s.PlanRange, &s.PlanDays, &s.DepartmentIDs,
+		&s.ShowFaults, &s.ShowTickets, &s.DurationSeconds, &s.Active, &s.StatsDays, &s.URL, &s.ReloadMinutes, &s.PlanRange, &s.PlanDays, &s.DepartmentIDs, &s.ShiftPlanID,
 		&s.TaskRange, &s.TaskUntil, &s.YearMode, &s.OnlyActive, &s.UpdatedAt)
 	return s, err
 }
@@ -328,6 +336,15 @@ func (h *Handler) saveTerminalSlide(ctx context.Context, s *terminalSlide) error
 	if s.ID == "" && s.Kind == slideKindImage && len(s.Image) == 0 {
 		return errSlideNeedsImage
 	}
+	if s.ShiftPlanID != "" {
+		ok, err := h.shiftPlanExists(ctx, s.ShiftPlanID)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return errShiftPlanGone
+		}
+	}
 	infra := s.InfraIDs
 	if infra == nil {
 		infra = []string{}
@@ -348,11 +365,11 @@ func (h *Handler) saveTerminalSlide(ctx context.Context, s *terminalSlide) error
 		err := h.db.QueryRow(ctx, `
 			INSERT INTO terminal_slides (position, kind, title, body, image, image_type, infra_ids,
 				show_faults, show_tickets, duration_seconds, active, stats_days, url, reload_minutes, plan_range, plan_days, department_ids,
-				task_range, task_until, year_mode, only_active)
-			VALUES ((SELECT COALESCE(MAX(position), 0) + 1 FROM terminal_slides), $1, $2, $3, $4, $5, $6::uuid[], $7, $8, $9, $10, $11, $12, $13, $14, $15, $16::uuid[], $17, NULLIF($18, '')::date, $19, $20)
+				task_range, task_until, year_mode, only_active, shift_plan_id)
+			VALUES ((SELECT COALESCE(MAX(position), 0) + 1 FROM terminal_slides), $1, $2, $3, $4, $5, $6::uuid[], $7, $8, $9, $10, $11, $12, $13, $14, $15, $16::uuid[], $17, NULLIF($18, '')::date, $19, $20, NULLIF($21, '')::uuid)
 			RETURNING id::text, position, updated_at`,
 			s.Kind, s.Title, s.Body, img, imgType, infra, s.ShowFaults, s.ShowTickets, s.DurationSeconds, s.Active, s.StatsDays, s.URL, s.ReloadMinutes,
-			s.PlanRange, s.PlanDays, depts, s.TaskRange, s.TaskUntil, s.YearMode, s.OnlyActive).
+			s.PlanRange, s.PlanDays, depts, s.TaskRange, s.TaskUntil, s.YearMode, s.OnlyActive, s.ShiftPlanID).
 			Scan(&s.ID, &s.Position, &s.UpdatedAt)
 		if err != nil {
 			return err
@@ -377,10 +394,10 @@ func (h *Handler) saveTerminalSlide(ctx context.Context, s *terminalSlide) error
 				image_type = CASE WHEN $2 <> 'image' THEN '' WHEN $5::bytea IS NOT NULL THEN $6 ELSE image_type END,
 				infra_ids = $7::uuid[], show_faults = $8, show_tickets = $9, duration_seconds = $10, active = $11,
 				stats_days = $12, url = $13, reload_minutes = $14, plan_range = $15, plan_days = $16, department_ids = $17::uuid[],
-				task_range = $18, task_until = NULLIF($19, '')::date, year_mode = $20, only_active = $21, updated_at = NOW()
+				task_range = $18, task_until = NULLIF($19, '')::date, year_mode = $20, only_active = $21, shift_plan_id = NULLIF($22, '')::uuid, updated_at = NOW()
 			WHERE id = $1::uuid`,
 			s.ID, s.Kind, s.Title, s.Body, img, imgType, infra, s.ShowFaults, s.ShowTickets, s.DurationSeconds, s.Active, s.StatsDays, s.URL, s.ReloadMinutes,
-			s.PlanRange, s.PlanDays, depts, s.TaskRange, s.TaskUntil, s.YearMode, s.OnlyActive)
+			s.PlanRange, s.PlanDays, depts, s.TaskRange, s.TaskUntil, s.YearMode, s.OnlyActive, s.ShiftPlanID)
 		if err != nil {
 			return err
 		}

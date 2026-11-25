@@ -14,6 +14,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -60,6 +61,13 @@ type terminalPlan struct {
 	Today     []terminalPlanGroup // nur diese Woche
 	ShowToday bool
 	Denied    bool // keine Abteilung mit Recht
+
+	// Auswahl des Plans (terminal_shiftplan.go)
+	Plans       []shiftPlanChoice // veröffentlichte Pläne, die die Woche schneiden
+	PlanSel     string            // gewählter Plan, "" = alle
+	PlanName    string
+	PlanReq     string // Parameter plan der Anfrage ("" = nicht angegeben, „alle“ = ausdrücklich alle, sonst UUID)
+	DefaultPlan string // Grundeinstellung des Terminals ("" = alle)
 }
 
 // terminalPlanDepts: Abteilungen des Terminals, für die der Terminal-Benutzer shifts.view hat.
@@ -100,7 +108,7 @@ func (h *Handler) terminalPlanDepts(ctx context.Context, uid string) ([]terminal
 	return out, rows.Err()
 }
 
-// TerminalSchichtplanPage: GET /terminal/schichtplan[?abt=<Abteilung>][&woche=naechste]
+// TerminalSchichtplanPage: GET /terminal/schichtplan[?abt=<Abteilung>][&woche=naechste][&plan=<Plan>|alle]
 func (h *Handler) TerminalSchichtplanPage(w http.ResponseWriter, r *http.Request) {
 	p, uid, ok := h.terminalSetupGate(w, r, "schichtplan")
 	if !ok {
@@ -113,6 +121,8 @@ func (h *Handler) TerminalSchichtplanPage(w http.ResponseWriter, r *http.Request
 		return
 	}
 	pl := terminalPlan{Next: r.URL.Query().Get("woche") == "naechste"}
+	pl.PlanReq = strings.ToLower(strings.TrimSpace(r.URL.Query().Get("plan")))
+	pl.DefaultPlan = h.terminalShiftPlan(r.Context(), uid)
 	if len(depts) == 0 {
 		pl.Denied = true
 		p.Plan = pl
@@ -159,6 +169,21 @@ func (h *Handler) terminalPlanFill(ctx context.Context, pl *terminalPlan) error 
 	_, wk := start.ISOWeek()
 	pl.WeekLabel = fmt.Sprintf("KW %d · %s – %s", wk, start.Format("02.01."), end.Format("02.01.2006"))
 	pl.ShowToday = !pl.Next
+	// Plan: Anfrage vor Grundeinstellung; gilt der Plan in dieser Woche nicht (oder ist er kein veröffentlichter), alle.
+	plans, err := h.publishedShiftPlans(ctx, start, end, []string{pl.Dept}, false)
+	if err != nil {
+		return err
+	}
+	want := pl.PlanReq
+	if want == "" {
+		want = pl.DefaultPlan
+	}
+	for i := range plans {
+		if plans[i].ID == want {
+			plans[i].Sel, pl.PlanSel, pl.PlanName = true, plans[i].ID, plans[i].Name
+		}
+	}
+	pl.Plans = plans
 	free := h.freeDays(ctx, start, end)
 	today := now.Format(dayISO)
 	idx := map[string]int{}
@@ -199,7 +224,8 @@ func (h *Handler) terminalPlanFill(ctx context.Context, pl *terminalPlan) error 
 		FROM shift_assignments sa
 		JOIN shift_definitions sd ON sd.id = sa.shift_id
 		LEFT JOIN shift_plans sp ON sp.id = sa.plan_id
-		WHERE sa.date BETWEEN $1 AND $2 AND sa.user_id = ANY($3::uuid[]) AND (sa.plan_id IS NULL OR sp.status = 'published')`, start, end, order)
+		WHERE sa.date BETWEEN $1 AND $2 AND sa.user_id = ANY($3::uuid[]) AND (sa.plan_id IS NULL OR sp.status = 'published')
+		  AND ($4::text = '' OR sa.plan_id = NULLIF($4::text, '')::uuid)`, start, end, order, pl.PlanSel)
 	if err != nil {
 		return err
 	}
