@@ -456,7 +456,7 @@ func osRunWithReboot(t *testing.T, e *osStepsEnv, st *osSteps) {
 func TestOSStepsRebootOnlyWithoutPackages(t *testing.T) {
 	e := osStepsAgent(t, 0, false)
 	e.fake.statusOut = osStepsStatus(0, true) // kein Paket offen, aber „Neustart nötig“
-	var st osSteps
+	st := osSteps{AllowBareReboot: true} // nur der Knopf
 	osRunWithReboot(t, e, &st)
 	all := e.rec.all()
 	if strings.Contains(all, "os install") || strings.Count(all, "reboot") != 1 {
@@ -554,7 +554,7 @@ func TestOSJobWindowRebootOnlyRefused(t *testing.T) {
 func TestOSStepsNoBareReboot(t *testing.T) {
 	e := osStepsAgent(t, 0, false)
 	e.fake.statusOut = osStepsStatus(0, true)
-	st := osSteps{NoBareReboot: true}
+	st := osSteps{} // Nullwert (z. B. alter gesicherter Auftrag): kein Neustart allein
 	e.run(t, &st, nil)
 	all := e.rec.all()
 	if st.Failed || st.Step != "done" || strings.Contains(all, "reboot") || strings.Contains(all, "stop-pdh") {

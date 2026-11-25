@@ -240,7 +240,6 @@ func (a *updateAgent) startSingleJob(ctx context.Context, source string, force b
 			Phase: ha.UpPrepare, PhaseAt: now, StartedAt: now},
 		CountdownMin: win.CountdownMin, LockMaxMin: win.LockMaxMin,
 		WithOS: a.osPlanned(ctx), // Haken gilt, wie er beim Start steht
-		OS:     osSteps{NoBareReboot: true},
 		Dump: filepath.Join(drStateDir(), "vor-update-"+target+".dump"),
 	}
 	a.sj.mu.Lock()

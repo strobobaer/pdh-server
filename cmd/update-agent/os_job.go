@@ -256,7 +256,7 @@ func (a *updateAgent) startOSJob(ctx context.Context, source string, force bool)
 			Phase: ha.UpPrepare, PhaseAt: now, StartedAt: now},
 		CountdownMin: win.CountdownMin, LockMaxMin: win.LockMaxMin, Source: source,
 		Dump: filepath.Join(drStateDir(), "vor-update-os.dump"),
-		OS:   osSteps{NoBareReboot: source != srcButton},
+		OS:   osSteps{AllowBareReboot: source == srcButton},
 	}
 	a.osj.mu.Lock()
 	if !jobEnded(a.osj.job.Job) {

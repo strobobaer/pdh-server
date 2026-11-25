@@ -34,7 +34,7 @@ json_escape() {
 # Setzt RB (true/false) und RBP (Paketnamen, ohne Doppelung).
 reboot_info() {
   RB=false; RBP=()
-  local pk f v latest="" run have=0 x
+  local pk f v latest="" run flavour have=0 x
   if [ -f "$REBOOT" ]; then
     RB=true
     if [ -r "$REBOOT.pkgs" ]; then
@@ -44,13 +44,15 @@ reboot_info() {
       done < "$REBOOT.pkgs"
     fi
   fi
+  run=$(uname -r)
+  flavour=${run##*[0-9]-} # Variante: 6.12.118+deb13-rt-amd64 → rt-amd64, 6.8.0-45-generic → generic
   for f in "$ROOT"/boot/vmlinuz-*; do
     [ -e "$f" ] || continue
     v=${f##*/vmlinuz-}
     [[ $v =~ ^[A-Za-z0-9.+_~-]+$ ]] || continue # nichts Fremdes in die Ausgabe
+    [ "${v##*[0-9]-}" = "$flavour" ] || continue # nur die Variante des laufenden Kernels
     latest=$(printf '%s\n' ${latest:+"$latest"} "$v" | sort -V | tail -n 1)
   done
-  run=$(uname -r)
   # nur ein strikt neuerer installierter Kernel zählt (nicht: bewusst älterer, anderer Zweig)
   if [ -n "$latest" ] && [ "$latest" != "$run" ] && [ "$(printf '%s\n' "$latest" "$run" | sort -V | tail -n 1)" = "$latest" ]; then
     RB=true

@@ -380,6 +380,25 @@ func TestOSScriptRebootIgnoresOddKernelName(t *testing.T) {
 	}
 }
 
+// Nur Abbilder der Variante des laufenden Kernels zählen (amd64, rt-amd64, generic …).
+func TestOSScriptRebootKernelFlavour(t *testing.T) {
+	e := osScriptEnv(t)
+	e.osKernels("6.12.118+deb13-amd64", "6.12.118+deb13-amd64", "6.12.118+deb13-rt-amd64")
+	if s := e.status(); s.RebootRequired || len(s.RebootPkgs) != 0 {
+		t.Errorf("andere Variante darf nicht zählen: %+v", s)
+	}
+	e.osKernels("6.12.118+deb13-amd64", "6.12.118+deb13-amd64", "6.12.118+deb13-rt-amd64", "6.12.120+deb13-amd64")
+	s := e.status()
+	if !s.RebootRequired || len(s.RebootPkgs) != 1 || s.RebootPkgs[0] != "linux-image-6.12.120+deb13-amd64" {
+		t.Errorf("neuere gleiche Variante: %+v", s)
+	}
+	e.osKernels("6.8.0-45-generic", "6.8.0-45-generic", "6.8.0-48-generic", "6.8.0-60-lowlatency")
+	s = e.status()
+	if !s.RebootRequired || len(s.RebootPkgs) != 1 || s.RebootPkgs[0] != "linux-image-6.8.0-48-generic" {
+		t.Errorf("generic: %+v", s)
+	}
+}
+
 func TestOSScriptRebootNoKernelFiles(t *testing.T) {
 	e := osScriptEnv(t) // keine vmlinuz-Dateien: nur die Datei /var/run/reboot-required zählt
 	if s := e.status(); s.RebootRequired {
