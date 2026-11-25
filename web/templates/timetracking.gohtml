@@ -39,7 +39,7 @@
     <line id="clock-second" x1="18" y1="18" x2="18" y2="5" stroke="var(--green)" stroke-width="1" stroke-linecap="round" opacity="0.7"/>
   </svg>
   <div style="flex:1">
-    <div style="font-weight:500;font-size:14px">{{.Running.Description}}</div>
+    <div style="font-weight:500;font-size:14px">{{.Running.Title}}</div>
     <div style="font-size:12px;color:var(--green);margin-top:2px">
       Gestartet {{.Running.StartedStr}} · <span id="live-timer" style="font-weight:600">…</span>
     </div>
@@ -70,7 +70,7 @@
   {{range .PendingEntries}}
   <div class="te-confirm-row" id="pend-{{.ID}}">
     <div class="act-dot {{.RefTypeDot}}"></div>
-    <div style="flex:1;min-width:0"><div style="font-weight:500">{{.Description}}</div><div style="font-size:11px;color:var(--muted)">{{.RefTypeLabel}} · {{.StartedStr}} – {{.EndedStr}} · <b>{{.DurationStr}}</b>{{if .PendingFrom}} · eingetragen von {{.PendingFrom}}{{end}}</div></div>
+    <div style="flex:1;min-width:0"><div style="font-weight:500">{{.Title}}</div><div style="font-size:11px;color:var(--muted)">{{.RefTypeLabel}} · {{.StartedStr}} – {{.EndedStr}} · <b>{{.DurationStr}}</b>{{if .PendingFrom}} · eingetragen von {{.PendingFrom}}{{end}}</div></div>
     <button type="button" class="btn te-ok" onclick="confirmTimeEntry('{{.ID}}')" title="Stimmt – bestätigen"><i class="ti ti-check"></i> Bestätigen</button>
     <button type="button" class="btn btn-icon" style="width:36px;height:36px" title="Bearbeiten" onclick="openEditEntry('{{.ID}}','{{.Description}}','{{.StartedISO}}','{{.EndedISO}}')"><i class="ti ti-edit"></i></button>
     <button type="button" class="btn btn-icon" style="width:36px;height:36px;color:var(--muted)" title="Nicht dabei gewesen – löschen" onclick="if(confirm('Eintrag löschen? Du warst nicht dabei.')){fetch('/time/{{.ID}}/delete-web',{method:'DELETE'}).then(()=>{document.getElementById('pend-{{.ID}}')?.remove();document.getElementById('entry-{{.ID}}')?.remove();})}"><i class="ti ti-trash"></i></button>
@@ -86,8 +86,8 @@
     </thead>
     <tbody>
     {{range .Entries}}
-    <tr id="entry-{{.ID}}"{{if or (not .Running) (and .Pending .Mine)}} data-rx data-rx-title="{{.Description}}"{{end}}{{if .Pending}} class="te-pending" title="Unbestätigt{{if .PendingFrom}} – eingetragen von {{.PendingFrom}}{{end}}"{{end}}>
-      <td><div style="font-weight:500">{{.Description}}</div>{{if .ActivityName}}<div style="font-size:11px;color:var(--muted)"><i class="ti ti-tool"></i> {{.ActivityName}}</div>{{end}}{{if .Pending}}<div style="font-size:11px;color:var(--amber)"><i class="ti ti-clock-exclamation"></i> unbestätigt{{if .PendingFrom}} · von {{.PendingFrom}}{{end}}</div>{{end}}</td>
+    <tr id="entry-{{.ID}}"{{if or (not .Running) (and .Pending .Mine)}} data-rx data-rx-title="{{.Title}}"{{end}}{{if .Pending}} class="te-pending" title="Unbestätigt{{if .PendingFrom}} – eingetragen von {{.PendingFrom}}{{end}}"{{end}}>
+      <td><div style="font-weight:500">{{.Title}}</div>{{if .ActivityName}}<div style="font-size:11px;color:var(--muted)"><i class="ti ti-tool"></i> {{.ActivityName}}</div>{{end}}{{if .Pending}}<div style="font-size:11px;color:var(--amber)"><i class="ti ti-clock-exclamation"></i> unbestätigt{{if .PendingFrom}} · von {{.PendingFrom}}{{end}}</div>{{end}}</td>
       {{if $.IsAdmin}}<td style="font-size:12px;color:var(--muted)">{{.UserName}}</td>{{end}}
       <td><div style="display:flex;align-items:center;gap:6px"><div class="act-dot {{.RefTypeDot}}"></div><span style="font-size:12px;color:var(--muted)">{{.RefTypeLabel}}</span></div></td>
       <td style="font-size:12px;color:var(--muted)">{{if .InfraName}}{{.InfraName}}{{else}}–{{end}}</td>
@@ -162,11 +162,13 @@
     <form id="start-form">
       <div class="form-group">
         <label class="form-label">Typ</label>
-        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px" id="start-type-btns">
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px" id="start-type-btns">
           <button type="button" class="type-btn active" onclick="setType(this,'fault')"><div style="font-size:18px">🔴</div><div style="font-size:10px;margin-top:3px">Störung</div></button>
           <button type="button" class="type-btn" onclick="setType(this,'ticket')"><div style="font-size:18px">🎫</div><div style="font-size:10px;margin-top:3px">Ticket</div></button>
           <button type="button" class="type-btn" onclick="setType(this,'maintenance')"><div style="font-size:18px">🔧</div><div style="font-size:10px;margin-top:3px">Wartung</div></button>
-          <button type="button" class="type-btn" onclick="setType(this,'production')"><div style="font-size:18px">⚙️</div><div style="font-size:10px;margin-top:3px">Sonstiges</div></button>
+          <button type="button" class="type-btn" onclick="setType(this,'plant')"><div style="font-size:18px">🏭</div><div style="font-size:10px;margin-top:3px">Anlage</div></button>
+          <button type="button" class="type-btn" onclick="setType(this,'it_asset')"><div style="font-size:18px">💻</div><div style="font-size:10px;margin-top:3px">IT-Asset</div></button>
+          <button type="button" class="type-btn" onclick="setType(this,'other')"><div style="font-size:18px">⚙️</div><div style="font-size:10px;margin-top:3px">Sonstiges</div></button>
         </div>
         <input type="hidden" id="start-ref-type" value="fault">
       </div>
@@ -174,13 +176,9 @@
         <label class="form-label">Aufgabe</label>
         <select id="start-ref-select" class="form-input"><option value="">Lädt…</option></select>
       </div>
-      <div class="form-group" id="start-text-grp" style="display:none">
-        <label class="form-label">Aktivität</label>
-        <input id="start-activity" class="form-input" placeholder="z.B. Rüsten, Reinigung…">
-        <input type="hidden" id="start-uuid">
-      </div>
+      {{template "te-target-groups" (dict "P" "start")}}
       <div class="form-group">
-        <label class="form-label">Beschreibung <span style="color:var(--muted)">(optional)</span></label>
+        <label class="form-label">Beschreibung <span id="start-desc-hint" style="color:var(--muted)">(optional)</span></label>
         <input id="start-desc" class="form-input" placeholder="Was wird gemacht?">
       </div>
       {{if .Activities}}<div class="form-group">
@@ -189,7 +187,7 @@
           {{range .Activities}}<optgroup label="{{.Label}}">{{range .Items}}<option value="{{.ID}}">{{.Label}}</option>{{end}}</optgroup>{{end}}
         </select>
       </div>{{end}}
-      {{template "infra-tree-picker" (dict "TargetID" "start-infra-id" "SelectedLabelID" "start-infra-selected" "Label" "Kostenstelle (optional)")}}
+      <div id="start-cc-grp">{{template "infra-tree-picker" (dict "TargetID" "start-infra-id" "SelectedLabelID" "start-infra-selected" "Label" "Kostenstelle (optional)")}}</div>
       <div id="start-error" style="display:none;color:var(--red);font-size:12px;padding:8px;background:rgba(239,68,68,.1);border-radius:6px;margin-bottom:12px"></div>
       {{template "icon-button-toolbar" (dict
         "Class" "end"
@@ -212,11 +210,13 @@
     <form id="manual-form">
       <div class="form-group">
         <label class="form-label">Typ</label>
-        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px">
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px">
           <button type="button" class="type-btn active" onclick="setTypeM(this,'fault')"><div style="font-size:18px">🔴</div><div style="font-size:10px;margin-top:3px">Störung</div></button>
           <button type="button" class="type-btn" onclick="setTypeM(this,'ticket')"><div style="font-size:18px">🎫</div><div style="font-size:10px;margin-top:3px">Ticket</div></button>
           <button type="button" class="type-btn" onclick="setTypeM(this,'maintenance')"><div style="font-size:18px">🔧</div><div style="font-size:10px;margin-top:3px">Wartung</div></button>
-          <button type="button" class="type-btn" onclick="setTypeM(this,'production')"><div style="font-size:18px">⚙️</div><div style="font-size:10px;margin-top:3px">Sonstiges</div></button>
+          <button type="button" class="type-btn" onclick="setTypeM(this,'plant')"><div style="font-size:18px">🏭</div><div style="font-size:10px;margin-top:3px">Anlage</div></button>
+          <button type="button" class="type-btn" onclick="setTypeM(this,'it_asset')"><div style="font-size:18px">💻</div><div style="font-size:10px;margin-top:3px">IT-Asset</div></button>
+          <button type="button" class="type-btn" onclick="setTypeM(this,'other')"><div style="font-size:18px">⚙️</div><div style="font-size:10px;margin-top:3px">Sonstiges</div></button>
         </div>
         <input type="hidden" id="manual-ref-type" value="fault">
       </div>
@@ -224,13 +224,9 @@
         <label class="form-label">Aufgabe</label>
         <select id="manual-ref-select" class="form-input"><option value="">Lädt…</option></select>
       </div>
-      <div class="form-group" id="manual-text-grp" style="display:none">
-        <label class="form-label">Aktivität</label>
-        <input id="manual-activity" class="form-input" placeholder="z.B. Rüsten, Reinigung…">
-        <input type="hidden" id="manual-uuid">
-      </div>
+      {{template "te-target-groups" (dict "P" "manual")}}
       <div class="form-group">
-        <label class="form-label">Beschreibung</label>
+        <label class="form-label">Beschreibung <span id="manual-desc-hint" style="color:var(--muted)"></span></label>
         <input id="manual-desc" class="form-input" placeholder="Was wurde gemacht?">
       </div>
       {{if .Activities}}<div class="form-group">
@@ -239,7 +235,7 @@
           {{range .Activities}}<optgroup label="{{.Label}}">{{range .Items}}<option value="{{.ID}}">{{.Label}}</option>{{end}}</optgroup>{{end}}
         </select>
       </div>{{end}}
-      {{template "infra-tree-picker" (dict "TargetID" "manual-infra-id" "SelectedLabelID" "manual-infra-selected" "Label" "Kostenstelle (optional)")}}
+      <div id="manual-cc-grp">{{template "infra-tree-picker" (dict "TargetID" "manual-infra-id" "SelectedLabelID" "manual-infra-selected" "Label" "Kostenstelle (optional)")}}</div>
       <div class="grid2">
         <div class="form-group"><label class="form-label">Start</label><input type="datetime-local" id="manual-start" class="form-input" required></div>
         <div class="form-group"><label class="form-label">Ende</label><input type="datetime-local" id="manual-end" class="form-input" required></div>
@@ -295,7 +291,7 @@
 {{range .Entries}}
 <div class="act-item">
   <div class="act-dot {{.RefTypeDot}}"></div>
-  <div class="act-text">{{.Description}}</div>
+  <div class="act-text">{{.Title}}</div>
   <span style="font-size:10px;color:var(--muted)">{{if .Running}}läuft{{else}}{{.DurationStr}}{{end}}</span>
 </div>
 {{else}}<div style="font-size:11px;color:var(--muted)">Keine Einträge</div>{{end}}
@@ -408,7 +404,7 @@ var RANGE_FROM = new Date('{{.RangeFromISO}}');
 var RANGE_TO = new Date('{{.RangeToISO}}');
 var timelineEntries = [
 {{range .Entries}}
-  {id:'{{.ID}}', name:'{{if $.IsAdmin}}{{.UserName}}: {{end}}{{.Description}}', desc:'{{.Description}}', start:'{{.StartedISO}}', end:'{{if .EndedISO}}{{.EndedISO}}{{else}}{{.StartedISO}}{{end}}', endedRaw:'{{.EndedISO}}', running: {{if .Running}}true{{else}}false{{end}} },
+  {id:'{{.ID}}', name:'{{if $.IsAdmin}}{{.UserName}}: {{end}}{{.Title}}', desc:'{{.Description}}', start:'{{.StartedISO}}', end:'{{if .EndedISO}}{{.EndedISO}}{{else}}{{.StartedISO}}{{end}}', endedRaw:'{{.EndedISO}}', running: {{if .Running}}true{{else}}false{{end}} },
 {{end}}
 ];
 
@@ -740,33 +736,87 @@ async function fillSelect(sel, type) {
   sel.innerHTML = items.length ? items.map(i=>`<option value="${i.id}">${i.title}</option>`).join('') : '<option value="">– Keine Einträge –</option>';
 }
 
+// ── Ziele ohne Vorgang (Anlage, IT-Asset, Sonstiges) ─────────
+var TE_TARGETS = ['plant','it_asset','other'];
+function teIsTarget(type){ return TE_TARGETS.indexOf(type) >= 0; }
+function teShow(id, on){ var el = document.getElementById(id); if(el) el.style.display = on ? 'block' : 'none'; }
+// Zeigt zum gewählten Typ die passenden Felder: Aufgabe (Vorgang), Anlage, IT-Asset; die Kostenstelle entfällt bei
+// Anlage und IT-Asset (die Anlage ist dann das Ziel bzw. kommt vom Asset); „Sonstiges“ braucht eine Beschreibung.
+async function teSetType(p, type){
+  teShow(p+'-select-grp', !teIsTarget(type));
+  teShow(p+'-plant-grp', type==='plant');
+  teShow(p+'-asset-grp', type==='it_asset');
+  teShow(p+'-cc-grp', type!=='plant' && type!=='it_asset');
+  var hint = document.getElementById(p+'-desc-hint');
+  if(hint) hint.textContent = type==='other' ? '(Pflicht)' : (p==='start' ? '(optional)' : '');
+  if(type==='it_asset') teLoadAssets(p);
+  else if(!teIsTarget(type)) await fillSelect(document.getElementById(p+'-ref-select'), type);
+}
+var teAssetTimers = {};
+async function teLoadAssets(p){
+  var sel = document.getElementById(p+'-asset-select'), q = document.getElementById(p+'-asset-q').value.trim();
+  try{
+    var res = await fetch('/time/it-assets?q='+encodeURIComponent(q), {credentials:'same-origin'});
+    if(!res.ok){ sel.innerHTML = '<option value="">– Keine Berechtigung für IT-Assets –</option>'; return; }
+    var items = (await res.json()).data || [];
+    sel.innerHTML = '';
+    if(!items.length){ sel.innerHTML = '<option value="">– Keine IT-Assets gefunden –</option>'; return; }
+    items.forEach(function(a){ var o = document.createElement('option'); o.value = a.id; o.textContent = a.title + (a.infra ? ' · ' + a.infra : ''); sel.appendChild(o); });
+  }catch(e){ sel.innerHTML = '<option value="">– Fehler beim Laden –</option>'; }
+}
+['start','manual'].forEach(function(p){
+  var q = document.getElementById(p+'-asset-q');
+  if(q) q.addEventListener('input', function(){ clearTimeout(teAssetTimers[p]); teAssetTimers[p] = setTimeout(function(){ teLoadAssets(p); }, 250); });
+});
+// Felder einer Buchung ohne Vorgang ins Formular schreiben; liefert eine Fehlermeldung oder ''.
+function teAppendTarget(fd, p, type){
+  fd.append('ref_type','production'); fd.append('target_kind', type);
+  if(type==='plant'){
+    var plant = document.getElementById(p+'-plant-id').value;
+    if(!plant) return 'Bitte eine Anlage wählen.';
+    fd.append('infrastructure_id', plant);
+  } else if(type==='it_asset'){
+    var asset = document.getElementById(p+'-asset-select').value;
+    if(!asset) return 'Bitte ein IT-Asset wählen.';
+    fd.append('it_asset_id', asset);
+    fd.append('infrastructure_id', '');
+  } else {
+    fd.append('infrastructure_id', document.getElementById(p+'-infra-id').value);
+  }
+  return '';
+}
+function teFail(p, msg, btn){
+  var err = document.getElementById(p+'-error'); err.textContent = msg || 'Fehler'; err.style.display = 'block';
+  if(btn){ btn.disabled = false; btn.innerHTML = '<i class="ti ti-player-play"></i>Starten'; }
+}
+
 // ── Start Modal ──────────────────────────────────────────────
-function openStart(){document.getElementById('start-modal').style.display='flex';loadStartRefs('fault');}
+function openStart(){document.getElementById('start-modal').style.display='flex';teSetType('start','fault');}
 function closeStart(){document.getElementById('start-modal').style.display='none';}
 function setType(btn,type){
   btn.closest('[id="start-type-btns"]').querySelectorAll('.type-btn').forEach(b=>b.classList.remove('active'));
   btn.classList.add('active');
   document.getElementById('start-ref-type').value=type;
-  loadStartRefs(type);
-}
-async function loadStartRefs(type){
-  const sg=document.getElementById('start-select-grp'),tg=document.getElementById('start-text-grp'),sel=document.getElementById('start-ref-select');
-  if(type==='production'){sg.style.display='none';tg.style.display='block';document.getElementById('start-uuid').value=crypto.randomUUID();}
-  else{sg.style.display='block';tg.style.display='none';await fillSelect(sel,type);}
+  teSetType('start', type);
 }
 document.getElementById('start-form').addEventListener('submit', async function(e){
   e.preventDefault();
   const btn=document.getElementById('start-btn'); btn.disabled=true; btn.textContent='…';
   const type=document.getElementById('start-ref-type').value;
-  let refId='', desc=document.getElementById('start-desc').value.trim();
-  if(type==='production'){refId=document.getElementById('start-uuid').value; if(!desc)desc=document.getElementById('start-activity').value||'Sonstiges';}
-  else{const sel=document.getElementById('start-ref-select'); refId=sel.value; if(!desc&&sel.selectedOptions[0])desc=sel.selectedOptions[0].text;}
-  const fd=new FormData(); fd.append('ref_type',type); fd.append('ref_id',refId); fd.append('description',desc);
-  fd.append('infrastructure_id', document.getElementById('start-infra-id').value);
+  let desc=document.getElementById('start-desc').value.trim();
+  const fd=new FormData(); fd.append('description',desc);
+  if(teIsTarget(type)){
+    const m=teAppendTarget(fd,'start',type); if(m){ teFail('start',m,btn); return; }
+  } else {
+    const sel=document.getElementById('start-ref-select'); if(!desc&&sel.selectedOptions[0]) fd.set('description', sel.selectedOptions[0].text);
+    fd.append('ref_type',type); fd.append('ref_id',sel.value);
+    fd.append('infrastructure_id', document.getElementById('start-infra-id').value);
+  }
   teAppendActivity(fd, 'start');
+  if(type==='other' && !fd.get('description').trim()){ teFail('start','Bitte beschreiben, woran gearbeitet wird.',btn); return; }
   const res=await fetch('/time/start-web',{method:'POST',body:fd});
   if(res.ok){closeStart();location.reload();}
-  else{const t=await res.text(); const err=document.getElementById('start-error'); err.textContent=t.replace(/<[^>]+>/g,'')||'Fehler'; err.style.display='block'; btn.disabled=false; btn.innerHTML='<i class="ti ti-player-play"></i>Starten';}
+  else{const t=await res.text(); teFail('start', t.replace(/<[^>]+>/g,''), btn);}
 });
 
 // ── Manuell Modal ────────────────────────────────────────────
@@ -776,17 +826,12 @@ function openManual(){
   const fmt=d=>`${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
   document.getElementById('manual-end').value=fmt(now);
   document.getElementById('manual-start').value=fmt(new Date(now-3600000));
-  updateDuration(); loadManualRefs('fault');
+  updateDuration(); teSetType('manual','fault');
 }
 function closeManual(){document.getElementById('manual-modal').style.display='none';}
 function setTypeM(btn,type){
   btn.closest('.form-group').querySelectorAll('.type-btn').forEach(b=>b.classList.remove('active'));
-  btn.classList.add('active'); document.getElementById('manual-ref-type').value=type; loadManualRefs(type);
-}
-async function loadManualRefs(type){
-  const sg=document.getElementById('manual-select-grp'),tg=document.getElementById('manual-text-grp'),sel=document.getElementById('manual-ref-select');
-  if(type==='production'){sg.style.display='none';tg.style.display='block';document.getElementById('manual-uuid').value=crypto.randomUUID();}
-  else{sg.style.display='block';tg.style.display='none';await fillSelect(sel,type);}
+  btn.classList.add('active'); document.getElementById('manual-ref-type').value=type; teSetType('manual', type);
 }
 function updateDuration(){
   const s=document.getElementById('manual-start').value, e=document.getElementById('manual-end').value, el=document.getElementById('manual-duration');
@@ -800,17 +845,22 @@ document.getElementById('manual-end').addEventListener('change',updateDuration);
 document.getElementById('manual-form').addEventListener('submit', async function(e){
   e.preventDefault();
   const type=document.getElementById('manual-ref-type').value;
-  let refId='', desc=document.getElementById('manual-desc').value.trim();
-  if(type==='production'){refId=document.getElementById('manual-uuid').value; if(!desc)desc=document.getElementById('manual-activity').value||'Sonstiges';}
-  else{const sel=document.getElementById('manual-ref-select'); refId=sel.value; if(!desc&&sel.selectedOptions[0])desc=sel.selectedOptions[0].text;}
-  const fd=new FormData(); fd.append('ref_type',type); fd.append('ref_id',refId); fd.append('description',desc);
+  let desc=document.getElementById('manual-desc').value.trim();
+  const fd=new FormData(); fd.append('description',desc);
+  if(teIsTarget(type)){
+    const m=teAppendTarget(fd,'manual',type); if(m){ teFail('manual',m); return; }
+  } else {
+    const sel=document.getElementById('manual-ref-select'); if(!desc&&sel.selectedOptions[0]) fd.set('description', sel.selectedOptions[0].text);
+    fd.append('ref_type',type); fd.append('ref_id',sel.value);
+    fd.append('infrastructure_id', document.getElementById('manual-infra-id').value);
+  }
   fd.append('started_at',document.getElementById('manual-start').value);
   fd.append('ended_at',document.getElementById('manual-end').value);
-  fd.append('infrastructure_id', document.getElementById('manual-infra-id').value);
   teAppendActivity(fd, 'manual');
+  if(type==='other' && !fd.get('description').trim()){ teFail('manual','Bitte beschreiben, was gemacht wurde.'); return; }
   const res=await fetch('/time/manual-web',{method:'POST',body:fd});
   if(res.ok){closeManual();location.reload();}
-  else{const t=await res.text(); const err=document.getElementById('manual-error'); err.textContent=t.replace(/<[^>]+>/g,'')||'Fehler'; err.style.display='block';}
+  else{const t=await res.text(); teFail('manual', t.replace(/<[^>]+>/g,''));}
 });
 
 // ── Tätigkeit (Kostenstellen) ───────────────────────────────
@@ -820,7 +870,8 @@ function teAppendActivity(fd, prefix) {
   if (!sel) return;
   fd.append('activity_id', sel.value);
   // „Sonstiges“ ohne Text: Tätigkeit als Beschreibung
-  if (sel.value && !fd.get('description').trim()) fd.set('description', sel.selectedOptions[0].text);
+  var tk = fd.get('target_kind');
+  if (sel.value && (!tk || tk === 'other') && !fd.get('description').trim()) fd.set('description', sel.selectedOptions[0].text);
 }
 
 // ── Bearbeiten Modal ─────────────────────────────────────────
@@ -872,4 +923,16 @@ document.getElementById('edit-modal').addEventListener('click', function(e){
   document.getElementById(id).addEventListener('click',e=>{if(e.target.id===id)document.getElementById(id).style.display='none';});
 });
 </script>
+{{end}}
+
+{{define "te-target-groups"}}
+      {{/* Ziele ohne Vorgang (0.82.64): Anlage (Baum), IT-Asset (Suche) – "Sonstiges" braucht nur die Beschreibung */}}
+      <div class="form-group" id="{{.P}}-plant-grp" style="display:none">
+        {{template "infra-tree-picker" (dict "TargetID" (printf "%s-plant-id" .P) "SelectedLabelID" (printf "%s-plant-selected" .P) "Label" "Anlage" "Required" true)}}
+      </div>
+      <div class="form-group" id="{{.P}}-asset-grp" style="display:none">
+        <label class="form-label">IT-Asset</label>
+        <input id="{{.P}}-asset-q" class="form-input" type="search" placeholder="Suchen: Name, Host, IP, Seriennummer …" autocomplete="off" aria-label="IT-Asset suchen">
+        <select id="{{.P}}-asset-select" class="form-input" size="5" style="margin-top:6px" aria-label="IT-Asset"><option value="">Lädt…</option></select>
+      </div>
 {{end}}

@@ -387,6 +387,7 @@ a.v-row.v-nope{opacity:.7}
 .t-new .t-plink{background:var(--tile-p-bg);border-color:var(--tile-p-bd);color:var(--tile-p-fg)}
 .t-new .t-zlink{background:var(--tile-z-bg);border-color:var(--tile-z-bd);color:var(--tile-z-fg)}
 .z-btns{display:grid;grid-template-columns:repeat(auto-fit,minmax(10em,1fr));gap:1vw}.z-btns form{margin:0}.z-btns .t-btn{width:100%}.z-work{display:flex;gap:1vw;align-items:center;flex-wrap:wrap;margin:1vh 0}.z-work form{margin:0}.z-names{display:flex;flex-wrap:wrap;gap:.6vw}.z-chip{padding:.4em .9em;border-radius:999px;background:var(--bg3);border:2px solid var(--border);font-weight:700}.t-rznote.bad{border-color:var(--red)}.z-btns .t-btn[disabled]{opacity:.35}
+.t-dialog select{min-height:64px;flex:1;min-width:8em;padding:0 .8em;border-radius:14px;border:2px solid var(--border);background:var(--bg);color:var(--text);font:inherit}.t-dialog select:focus{border-color:var(--accent);outline:none}.z-lbl{display:flex;flex-direction:column;gap:.4em;font-weight:700}.z-lbl input,.z-lbl select{font-weight:400}.vb-dlg .l-row input[type=search]{flex:2}
 body[data-mode="zeit"]{--accent-rgb:168,85,247}
 .t-pdepts,.t-pweek{display:flex;flex-wrap:wrap;gap:1vw;align-items:center}
 .t-pdepts .t-btn.sel,.t-pweek .t-btn.sel{background:var(--accent);border-color:var(--accent);color:#fff}
@@ -744,22 +745,80 @@ connect();
   <div class="v-meta">Hier steht nur der Stand, keine Uhrzeiten einzelner Personen. Die eigenen Zeiten zeigt das Terminal nur nach der Kartenanmeldung.</div>
 </div>
 {{if .Zeit.WorkDlg}}
+{{if .Zeit.Ziel.Kind}}
+<div class="t-dialog" role="dialog" aria-modal="true" aria-label="{{.Zeit.Ziel.Title}}">
+  <div class="v-dlg vb-dlg">
+    <h2>{{.Zeit.Ziel.Title}}</h2>
+    <div class="v-meta">Arbeitet: {{range $i, $p := .Zeit.WorkPeople}}{{if index $.Zeit.WorkOn $p.ID}}{{if $i}}, {{end}}{{$p.Name}}{{end}}{{end}}</div>
+    {{if eq .Zeit.Ziel.Kind "plant"}}
+      {{if .Zeit.Ziel.Sel}}
+      <div class="v-meta">Anlage: <b>{{.Zeit.Ziel.SelName}}</b>{{if not .Zeit.Ziel.Pick.Single}} · <a href="{{.Zeit.ZHref "ziel" "plant"}}">andere Anlage wählen</a>{{end}}</div>
+      {{else}}
+      <h3>Anlage wählen</h3>
+      <nav class="t-crumbs" aria-label="Ebene">{{range .Zeit.Ziel.Pick.Crumbs}}<a class="t-btn" href="{{$.Zeit.ZHref "ziel" "plant" "nav" .Value}}">{{.Label}}</a><span aria-hidden="true">›</span>{{end}}<b>{{.Zeit.Ziel.Pick.Here.Label}}</b></nav>
+      <div class="t-rzgrid t-pickgrid">
+        <a class="t-btn primary" href="{{.Zeit.ZHref "ziel" "plant" "infra" .Zeit.Ziel.Pick.Here.Value}}"><i class="ti ti-check" aria-hidden="true"></i> {{.Zeit.Ziel.Pick.Here.Label}} wählen</a>
+        {{range .Zeit.Ziel.Pick.Items}}{{if .Kids}}<a class="t-btn" href="{{$.Zeit.ZHref "ziel" "plant" "nav" .ID}}">{{.Name}} <i class="ti ti-chevron-right" aria-hidden="true"></i></a>{{else}}<a class="t-btn" href="{{$.Zeit.ZHref "ziel" "plant" "infra" .ID}}">{{.Name}}</a>{{end}}{{end}}
+      </div>
+      {{end}}
+    {{else if eq .Zeit.Ziel.Kind "it_asset"}}
+      <form class="vb-form" method="get" action="/terminal/zeit" role="search">
+        {{range .Zeit.Ziel.Hidden}}<input type="hidden" name="{{.Value}}" value="{{.Label}}">{{end}}
+        <div class="l-row">
+          <input type="search" name="q" value="{{.Zeit.Ziel.Q}}" maxlength="80" placeholder="IT-Asset suchen" aria-label="IT-Asset suchen" autocomplete="off">
+          <select name="infra" aria-label="Anlage"><option value="">Alle Anlagen</option>{{range .Zeit.Ziel.FilterOpts}}<option value="{{.Value}}"{{if eq .Value $.Zeit.Ziel.Filter}} selected{{end}}>{{.Label}}</option>{{end}}</select>
+          <button type="submit" class="t-btn"><i class="ti ti-search" aria-hidden="true"></i> Suchen</button>
+        </div>
+      </form>
+    {{end}}
+    {{if or (eq .Zeit.Ziel.Kind "other") (and (eq .Zeit.Ziel.Kind "plant") .Zeit.Ziel.Sel) (eq .Zeit.Ziel.Kind "it_asset")}}
+    <form class="vb-form" method="post" action="/terminal/zeit/arbeit/start">
+      {{range .Zeit.WorkPeople}}{{if index $.Zeit.WorkOn .ID}}<input type="hidden" name="who" value="{{.ID}}">{{end}}{{end}}
+      {{if eq .Zeit.Ziel.Kind "plant"}}<input type="hidden" name="sel" value="plant:{{.Zeit.Ziel.Sel}}">
+      {{else if eq .Zeit.Ziel.Kind "other"}}<input type="hidden" name="sel" value="other:">
+      <label class="z-lbl">Woran wird gearbeitet?<input type="text" name="text" maxlength="200" required autocomplete="off" aria-label="Woran wird gearbeitet"></label>
+      {{else}}
+      <div class="v-people">
+        {{range .Zeit.Ziel.Assets}}<label class="t-opt"><input type="radio" name="sel" value="it_asset:{{.ID}}" required><span>{{.Name}}{{if .Path}}<small>{{.Path}}</small>{{end}}</span></label>{{else}}<div class="t-empty">Kein IT-Asset gefunden. Es werden nur Geräte aus der Anlage dieses Terminals gezeigt.</div>{{end}}
+      </div>
+      {{if .Zeit.Ziel.More}}<div class="v-meta">Es gibt mehr Treffer – bitte die Suche oder die Anlage eingrenzen.</div>{{end}}
+      {{end}}
+      {{if ne .Zeit.Ziel.Kind "other"}}<label class="z-lbl">Notiz (freiwillig)<input type="text" name="text" maxlength="200" autocomplete="off" aria-label="Notiz"></label>{{end}}
+      {{if .Zeit.Ziel.Activities}}<label class="z-lbl">Tätigkeit (freiwillig)<select name="activity_id" aria-label="Tätigkeit"><option value="">– keine –</option>{{range .Zeit.Ziel.Activities}}<optgroup label="{{.Label}}">{{range .Items}}<option value="{{.ID}}">{{.Label}}</option>{{end}}</optgroup>{{end}}</select></label>{{end}}
+      <div class="l-row">
+        <a class="t-btn" href="{{.Zeit.ZHref}}">Zurück</a>
+        <button type="submit" class="t-btn primary"><i class="ti ti-player-play" aria-hidden="true"></i> Starten</button>
+      </div>
+    </form>
+    {{else}}
+    <div class="l-row"><a class="t-btn" href="{{.Zeit.ZHref}}">Zurück</a></div>
+    {{end}}
+  </div>
+</div>
+{{else}}
 <div class="t-dialog" role="dialog" aria-modal="true" aria-label="Arbeit beginnen">
   <form class="v-dlg" method="post" action="/terminal/zeit/arbeit/start">
     <h2>Arbeit beginnen</h2>
     <h3>Wer arbeitet?</h3>
     <div class="v-people">{{range .Zeit.WorkPeople}}{{$id := .ID}}<label class="t-opt"><input type="checkbox" name="who" value="{{.ID}}"{{if index $.Zeit.WorkOn $id}} checked{{end}}><span>{{.Name}}</span></label>{{end}}</div>
-    <h3>Woran?</h3>
+    {{if .Zeit.Items}}<h3>Woran?</h3>
     <div class="v-people">
       {{range .Zeit.Items}}<label class="t-opt"><input type="radio" name="sel" value="{{.Sel}}" required><span>{{.Label}}: {{.Title}}{{if .Path}}<small>{{.Path}}</small>{{end}}</span></label>{{end}}
-      {{range .Zeit.Plants}}<label class="t-opt"><input type="radio" name="sel" value="{{.Sel}}" required><span>Arbeit an Anlage<small>{{.Title}}</small></span></label>{{end}}
+    </div>{{end}}
+    <h3>Arbeit ohne Vorgang</h3>
+    <input type="hidden" name="arbeit" value="1">{{if .Zeit.Picked}}<input type="hidden" name="wer" value="{{.Zeit.PersonID}}">{{end}}
+    <div class="v-people">
+      <button type="submit" class="t-btn" formmethod="get" formaction="/terminal/zeit" formnovalidate name="ziel" value="plant"><i class="ti ti-building-factory-2" aria-hidden="true"></i> Anlage</button>
+      <button type="submit" class="t-btn" formmethod="get" formaction="/terminal/zeit" formnovalidate name="ziel" value="it_asset"><i class="ti ti-server-2" aria-hidden="true"></i> IT-Asset</button>
+      <button type="submit" class="t-btn" formmethod="get" formaction="/terminal/zeit" formnovalidate name="ziel" value="other"><i class="ti ti-dots" aria-hidden="true"></i> Sonstiges</button>
     </div>
     <div class="l-row">
       <a class="t-btn" href="/terminal/zeit{{if .Zeit.Picked}}?wer={{.Zeit.PersonID}}{{end}}">Abbrechen</a>
-      <button type="submit" class="t-btn primary"><i class="ti ti-player-play" aria-hidden="true"></i> Starten</button>
+      <button type="submit" class="t-btn primary"{{if not .Zeit.Items}} disabled{{end}}><i class="ti ti-player-play" aria-hidden="true"></i> Starten</button>
     </div>
   </form>
 </div>
+{{end}}
 {{end}}
 {{else if eq .Mode "wartung"}}
 <div class="t-head">

@@ -398,8 +398,13 @@ func (h *Handler) attLoad(r *http.Request, people []attPerson, from, to time.Tim
 }
 
 func zeitKindLabelWhat(rt, title string) string {
-	if rt == "plant" {
+	switch rt {
+	case "plant":
 		return "Anlage " + title
+	case "it_asset":
+		return "IT-Asset " + title
+	case "other":
+		return "Sonstiges: " + title
 	}
 	return zeitKindOf(rt).Label + ": " + title
 }
@@ -801,7 +806,9 @@ func (h *Handler) attEventChange(w http.ResponseWriter, r *http.Request, del boo
 }
 
 // AttendanceWorkEdit: POST /attendance/work/{id}/edit (start, end, reason)
-func (h *Handler) AttendanceWorkEdit(w http.ResponseWriter, r *http.Request) { h.attWorkChange(w, r, false) }
+func (h *Handler) AttendanceWorkEdit(w http.ResponseWriter, r *http.Request) {
+	h.attWorkChange(w, r, false)
+}
 
 // AttendanceWorkDelete: POST /attendance/work/{id}/delete (reason)
 func (h *Handler) AttendanceWorkDelete(w http.ResponseWriter, r *http.Request) {
@@ -835,9 +842,11 @@ func (h *Handler) attWorkChange(w http.ResponseWriter, r *http.Request, del bool
 	var en *time.Time
 	var entry *string
 	var forgotten, pending bool
+	var assetID, activityID, text string
 	if err := tx.QueryRow(ctx, `SELECT w.ref_type, w.title, w.ref_id::text, COALESCE(w.infrastructure_id::text, ''), w.started_at, w.ended_at, w.time_entry_id::text, w.forgotten, w.origin_via,
-			COALESCE((SELECT t.pending FROM time_entries t WHERE t.id = w.time_entry_id), false)
-		FROM work_sessions w WHERE w.id = $1::uuid FOR UPDATE OF w`, id).Scan(&rt, &title, &refID, &infra, &st, &en, &entry, &forgotten, &via, &pending); err != nil {
+			COALESCE((SELECT t.pending FROM time_entries t WHERE t.id = w.time_entry_id), false),
+			COALESCE(w.it_asset_id::text, ''), COALESCE(w.activity_id::text, ''), COALESCE(w.description, '')
+		FROM work_sessions w WHERE w.id = $1::uuid FOR UPDATE OF w`, id).Scan(&rt, &title, &refID, &infra, &st, &en, &entry, &forgotten, &via, &pending, &assetID, &activityID, &text); err != nil {
 		attBack(w, r, "gone")
 		return
 	}
@@ -847,7 +856,7 @@ func (h *Handler) attWorkChange(w http.ResponseWriter, r *http.Request, del bool
 		return
 	}
 	// Zeiteintrag am Vorgang: nur solange unbestätigt oder mit dem Recht am Vorgang (Abteilung der Anlage) änderbar
-	if rt != "plant" && (entry == nil || !pending) {
+	if zeitTargetKind(rt) == "" && (entry == nil || !pending) {
 		u := getUser(r)
 		if h.rbac == nil || u == nil || !h.rbac.HasPermissionInDepartment(u.ID, string(u.Role), zeitKindOf(rt).EditPerm, h.recordDepartments(ctx, rt, refID)) {
 			http.Error(w, "Diese Zeit gehört zu einem Vorgang und ist bestätigt – bitte direkt am Vorgang korrigieren (dort braucht es das Bearbeitungsrecht für den Vorgang).", http.StatusForbidden)
@@ -861,7 +870,7 @@ func (h *Handler) attWorkChange(w http.ResponseWriter, r *http.Request, del bool
 	}
 	by := getUser(r).ID
 	itemHist := func(action, newT string) {
-		if rt == "plant" {
+		if zeitTargetKind(rt) != "" {
 			return
 		}
 		msg := "Arbeitszeit in PDH " + action + ": " + oldT
@@ -926,7 +935,28 @@ func (h *Handler) attWorkChange(w http.ResponseWriter, r *http.Request, del bool
 			attBack(w, r, "err")
 			return
 		}
-	} else if rt != "plant" {
+	} else if tk := zeitTargetKind(rt); tk != "" {
+		// Anlage, IT-Asset, Sonstiges: nur eine vergessene Sitzung, nun geprüft, bekommt jetzt ihren Zeiteintrag
+		// (ältere Anlagen-Sitzungen ohne Buchung bleiben ohne)
+		if forgotten {
+			desc := h.zeitSessionDescription(ctx, tk, refID, title, text)
+			var eid string
+			if err := tx.QueryRow(ctx, `INSERT INTO time_entries (id, user_id, ref_type, ref_id, description, started_at, ended_at, duration_min, pending, infrastructure_id, origin_via, target_kind, it_asset_id)
+				VALUES (pdh_uuid_v7(), $1::uuid, 'production'::time_ref_type, $2::uuid, $3, $4, $5, $6, false, NULLIF($7, '')::uuid, $8, $9, NULLIF($10, '')::uuid) RETURNING id::text`,
+				owner, refID, desc, ns, ne, mins, infra, zeitViaPDH, tk, assetID).Scan(&eid); err != nil {
+				attBack(w, r, "err")
+				return
+			}
+			if err := setTimeActivityQ(ctx, tx, eid, activityID); err != nil {
+				attBack(w, r, "err")
+				return
+			}
+			if _, err := tx.Exec(ctx, `UPDATE work_sessions SET time_entry_id = $2::uuid WHERE id = $1::uuid`, id, eid); err != nil {
+				attBack(w, r, "err")
+				return
+			}
+		}
+	} else {
 		// vergessene Arbeit, nun geprüft: der Zeiteintrag am Vorgang entsteht jetzt
 		desc := "Arbeit am Terminal: " + zeitKindOf(rt).Label + ": " + title + " – in PDH geprüft und korrigiert"
 		var eid string

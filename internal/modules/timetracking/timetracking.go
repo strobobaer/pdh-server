@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -47,10 +48,68 @@ type TimeEntry struct {
 	Pending     bool   `json:"pending"`
 	PendingFrom string `json:"pending_from,omitempty"` // Name des Eintragenden
 
+	// Ziel ohne Vorgang (0.82.64): plant (Anlage), it_asset, other (Sonstiges); NULL bei Vorgangsbuchungen und
+	// älteren Einträgen. Solche Einträge haben ref_type production.
+	TargetKind *string `json:"target_kind,omitempty"`
+	ITAssetID  *string `json:"it_asset_id,omitempty"`
+
 	// Joined
 	UserName  string `json:"user_name,omitempty"`
 	InfraName string `json:"infra_name,omitempty"`
 }
+
+// Zielarten ohne Vorgang.
+const (
+	TargetPlant   = "plant"
+	TargetITAsset = "it_asset"
+	TargetOther   = "other"
+)
+
+// ValidTarget: ist das eine bekannte Zielart ohne Vorgang?
+func ValidTarget(k string) bool {
+	return k == TargetPlant || k == TargetITAsset || k == TargetOther
+}
+
+// TargetLabel: Kurzname der Zielart für Typ-Spalte und Liste.
+func TargetLabel(k string) string {
+	switch k {
+	case TargetPlant:
+		return "Anlage"
+	case TargetITAsset:
+		return "IT-Asset"
+	case TargetOther:
+		return "Sonstiges"
+	}
+	return ""
+}
+
+// DisplayTitle: Text einer Buchung für Liste, Zeitstrahl und Export – „Anlage: …“, „IT-Asset: …“, „Sonstiges: …“.
+// Ältere Einträge ohne Ziel zeigen unverändert ihre Beschreibung.
+func (e *TimeEntry) DisplayTitle() string {
+	if e.TargetKind == nil || !ValidTarget(*e.TargetKind) {
+		return e.Description
+	}
+	pre := TargetLabel(*e.TargetKind) + ": "
+	if strings.HasPrefix(e.Description, pre) {
+		return e.Description
+	}
+	if strings.TrimSpace(e.Description) == "" {
+		return strings.TrimSuffix(pre, ": ")
+	}
+	return pre + e.Description
+}
+
+// TypeLabel: Wert der Typ-Spalte im Export – bei Zielen ohne Vorgang deren Name, sonst die Art des Bezugs.
+func (e *TimeEntry) TypeLabel() string {
+	if e.TargetKind != nil && ValidTarget(*e.TargetKind) {
+		return TargetLabel(*e.TargetKind)
+	}
+	return string(e.RefType)
+}
+
+// TargetResolver prüft ein Ziel ohne Vorgang (Rechte, Existenz) und füllt RefType, RefID, Beschreibung,
+// Anlage und IT-Asset des Eintrags. Rückgabe: HTTP-Status ungleich 0 und Meldung bei Ablehnung.
+type TargetResolver func(r *http.Request, in *CreateEntryInput) (int, string)
 
 type CreateEntryInput struct {
 	RefType          RefType    `json:"ref_type"`
@@ -59,6 +118,9 @@ type CreateEntryInput struct {
 	StartedAt        time.Time  `json:"started_at"`
 	EndedAt          *time.Time `json:"ended_at,omitempty"`
 	InfrastructureID *string    `json:"infrastructure_id,omitempty"`
+	// Optional: Zeit ohne Vorgang (plant, it_asset, other); ohne Angabe verhält sich alles wie bisher.
+	TargetKind string  `json:"target_kind,omitempty"`
+	ITAssetID  *string `json:"it_asset_id,omitempty"`
 }
 
 type StopEntryInput struct {
@@ -97,13 +159,13 @@ func NewRepository(db *pgxpool.Pool) *Repository {
 
 func (r *Repository) Create(ctx context.Context, e *TimeEntry) error {
 	query := `
-		INSERT INTO time_entries (id, user_id, ref_type, ref_id, description, started_at, ended_at, duration_min, infrastructure_id)
-		VALUES (pdh_uuid_v7(), $1, $2, $3, $4, $5, $6, $7, $8)
+		INSERT INTO time_entries (id, user_id, ref_type, ref_id, description, started_at, ended_at, duration_min, infrastructure_id, target_kind, it_asset_id)
+		VALUES (pdh_uuid_v7(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		RETURNING id, created_at`
 	dur := calcDuration(e.StartedAt, e.EndedAt)
 	return r.db.QueryRow(ctx, query,
 		e.UserID, e.RefType, e.RefID, e.Description,
-		e.StartedAt, e.EndedAt, dur, e.InfrastructureID,
+		e.StartedAt, e.EndedAt, dur, e.InfrastructureID, e.TargetKind, e.ITAssetID,
 	).Scan(&e.ID, &e.CreatedAt)
 }
 
@@ -124,7 +186,7 @@ func (r *Repository) GetByID(ctx context.Context, id string) (*TimeEntry, error)
 		       te.started_at, te.ended_at, te.duration_min, te.created_at,
 		       te.infrastructure_id, COALESCE(i.name, ''),
 		       u.first_name || ' ' || u.last_name,
-		       te.pending, COALESCE(pf.first_name || ' ' || pf.last_name, '')
+		       te.pending, COALESCE(pf.first_name || ' ' || pf.last_name, ''), te.target_kind, te.it_asset_id
 		FROM time_entries te
 		JOIN users u ON te.user_id = u.id
 		LEFT JOIN infrastructure i ON te.infrastructure_id = i.id
@@ -132,7 +194,7 @@ func (r *Repository) GetByID(ctx context.Context, id string) (*TimeEntry, error)
 		WHERE te.id = $1`, id).Scan(
 		&e.ID, &e.UserID, &e.RefType, &e.RefID, &e.Description,
 		&e.StartedAt, &e.EndedAt, &e.DurationMin, &e.CreatedAt,
-		&e.InfrastructureID, &e.InfraName, &e.UserName, &e.Pending, &e.PendingFrom,
+		&e.InfrastructureID, &e.InfraName, &e.UserName, &e.Pending, &e.PendingFrom, &e.TargetKind, &e.ITAssetID,
 	)
 	return e, err
 }
@@ -142,7 +204,7 @@ func (r *Repository) ListByUser(ctx context.Context, userID, from, to string) ([
 		SELECT te.id, te.user_id, te.ref_type, te.ref_id, te.description,
 		       te.started_at, te.ended_at, te.duration_min, te.created_at,
 		       te.infrastructure_id, COALESCE(i.name, ''),
-		       te.pending, COALESCE(pf.first_name || ' ' || pf.last_name, '')
+		       te.pending, COALESCE(pf.first_name || ' ' || pf.last_name, ''), te.target_kind, te.it_asset_id
 		FROM time_entries te
 		LEFT JOIN infrastructure i ON te.infrastructure_id = i.id
 		LEFT JOIN users pf ON pf.id = te.pending_from
@@ -159,7 +221,7 @@ func (r *Repository) ListByUser(ctx context.Context, userID, from, to string) ([
 		e := &TimeEntry{}
 		rows.Scan(&e.ID, &e.UserID, &e.RefType, &e.RefID, &e.Description,
 			&e.StartedAt, &e.EndedAt, &e.DurationMin, &e.CreatedAt,
-			&e.InfrastructureID, &e.InfraName, &e.Pending, &e.PendingFrom)
+			&e.InfrastructureID, &e.InfraName, &e.Pending, &e.PendingFrom, &e.TargetKind, &e.ITAssetID)
 		entries = append(entries, e)
 	}
 	return entries, nil
@@ -172,7 +234,7 @@ func (r *Repository) ListPending(ctx context.Context, userID string) ([]*TimeEnt
 		SELECT te.id, te.user_id, te.ref_type, te.ref_id, te.description,
 		       te.started_at, te.ended_at, te.duration_min, te.created_at,
 		       te.infrastructure_id, COALESCE(i.name, ''),
-		       te.pending, COALESCE(pf.first_name || ' ' || pf.last_name, '')
+		       te.pending, COALESCE(pf.first_name || ' ' || pf.last_name, ''), te.target_kind, te.it_asset_id
 		FROM time_entries te
 		LEFT JOIN infrastructure i ON te.infrastructure_id = i.id
 		LEFT JOIN users pf ON pf.id = te.pending_from
@@ -187,7 +249,7 @@ func (r *Repository) ListPending(ctx context.Context, userID string) ([]*TimeEnt
 		e := &TimeEntry{}
 		if err := rows.Scan(&e.ID, &e.UserID, &e.RefType, &e.RefID, &e.Description,
 			&e.StartedAt, &e.EndedAt, &e.DurationMin, &e.CreatedAt,
-			&e.InfrastructureID, &e.InfraName, &e.Pending, &e.PendingFrom); err != nil {
+			&e.InfrastructureID, &e.InfraName, &e.Pending, &e.PendingFrom, &e.TargetKind, &e.ITAssetID); err != nil {
 			return nil, err
 		}
 		entries = append(entries, e)
@@ -202,7 +264,7 @@ func (r *Repository) ListAll(ctx context.Context, from, to string) ([]*TimeEntry
 		       te.started_at, te.ended_at, te.duration_min, te.created_at,
 		       te.infrastructure_id, COALESCE(i.name, ''),
 		       u.first_name || ' ' || u.last_name,
-		       te.pending, COALESCE(pf.first_name || ' ' || pf.last_name, '')
+		       te.pending, COALESCE(pf.first_name || ' ' || pf.last_name, ''), te.target_kind, te.it_asset_id
 		FROM time_entries te
 		JOIN users u ON te.user_id = u.id
 		LEFT JOIN infrastructure i ON te.infrastructure_id = i.id
@@ -220,7 +282,7 @@ func (r *Repository) ListAll(ctx context.Context, from, to string) ([]*TimeEntry
 		e := &TimeEntry{}
 		if err := rows.Scan(&e.ID, &e.UserID, &e.RefType, &e.RefID, &e.Description,
 			&e.StartedAt, &e.EndedAt, &e.DurationMin, &e.CreatedAt,
-			&e.InfrastructureID, &e.InfraName, &e.UserName, &e.Pending, &e.PendingFrom); err != nil {
+			&e.InfrastructureID, &e.InfraName, &e.UserName, &e.Pending, &e.PendingFrom, &e.TargetKind, &e.ITAssetID); err != nil {
 			return nil, err
 		}
 		entries = append(entries, e)
@@ -240,7 +302,7 @@ func (r *Repository) ListByUserIDs(ctx context.Context, userIDs []string, from, 
 		       te.started_at, te.ended_at, te.duration_min, te.created_at,
 		       te.infrastructure_id, COALESCE(i.name, ''),
 		       u.first_name || ' ' || u.last_name,
-		       te.pending, COALESCE(pf.first_name || ' ' || pf.last_name, '')
+		       te.pending, COALESCE(pf.first_name || ' ' || pf.last_name, ''), te.target_kind, te.it_asset_id
 		FROM time_entries te
 		JOIN users u ON te.user_id = u.id
 		LEFT JOIN infrastructure i ON te.infrastructure_id = i.id
@@ -258,7 +320,7 @@ func (r *Repository) ListByUserIDs(ctx context.Context, userIDs []string, from, 
 		e := &TimeEntry{}
 		if err := rows.Scan(&e.ID, &e.UserID, &e.RefType, &e.RefID, &e.Description,
 			&e.StartedAt, &e.EndedAt, &e.DurationMin, &e.CreatedAt,
-			&e.InfrastructureID, &e.InfraName, &e.UserName, &e.Pending, &e.PendingFrom); err != nil {
+			&e.InfrastructureID, &e.InfraName, &e.UserName, &e.Pending, &e.PendingFrom, &e.TargetKind, &e.ITAssetID); err != nil {
 			return nil, err
 		}
 		entries = append(entries, e)
@@ -302,7 +364,7 @@ func (r *Repository) ListByRef(ctx context.Context, refType RefType, refID strin
 		       te.started_at, te.ended_at, te.duration_min, te.created_at,
 		       te.infrastructure_id, COALESCE(i.name, ''),
 		       u.first_name || ' ' || u.last_name,
-		       te.pending, COALESCE(pf.first_name || ' ' || pf.last_name, '')
+		       te.pending, COALESCE(pf.first_name || ' ' || pf.last_name, ''), te.target_kind, te.it_asset_id
 		FROM time_entries te
 		JOIN users u ON te.user_id = u.id
 		LEFT JOIN infrastructure i ON te.infrastructure_id = i.id
@@ -320,7 +382,7 @@ func (r *Repository) ListByRef(ctx context.Context, refType RefType, refID strin
 		e := &TimeEntry{}
 		rows.Scan(&e.ID, &e.UserID, &e.RefType, &e.RefID, &e.Description,
 			&e.StartedAt, &e.EndedAt, &e.DurationMin, &e.CreatedAt,
-			&e.InfrastructureID, &e.InfraName, &e.UserName, &e.Pending, &e.PendingFrom)
+			&e.InfrastructureID, &e.InfraName, &e.UserName, &e.Pending, &e.PendingFrom, &e.TargetKind, &e.ITAssetID)
 		entries = append(entries, e)
 	}
 	return entries, nil
@@ -329,12 +391,12 @@ func (r *Repository) ListByRef(ctx context.Context, refType RefType, refID strin
 func (r *Repository) GetRunning(ctx context.Context, userID string) (*TimeEntry, error) {
 	e := &TimeEntry{}
 	err := r.db.QueryRow(ctx, `
-		SELECT id, user_id, ref_type, ref_id, description, started_at, created_at
+		SELECT id, user_id, ref_type, ref_id, description, started_at, created_at, target_kind, it_asset_id
 		FROM time_entries
 		WHERE user_id=$1 AND ended_at IS NULL
 		ORDER BY started_at DESC LIMIT 1`, userID).Scan(
 		&e.ID, &e.UserID, &e.RefType, &e.RefID, &e.Description,
-		&e.StartedAt, &e.CreatedAt,
+		&e.StartedAt, &e.CreatedAt, &e.TargetKind, &e.ITAssetID,
 	)
 	if err != nil {
 		return nil, err
@@ -402,7 +464,7 @@ func (r *Repository) MonthlyByCategory(ctx context.Context, userID, from, to str
 				WHEN 'ticket' THEN 'Ticket'
 				WHEN 'fault' THEN 'Störung'
 				WHEN 'maintenance' THEN 'Wartung'
-				WHEN 'production' THEN 'Sonstiges'
+				WHEN 'production' THEN CASE te.target_kind WHEN 'it_asset' THEN 'IT-Asset' WHEN 'plant' THEN 'Anlage' ELSE 'Sonstiges' END
 				ELSE te.ref_type::text
 			END) AS label,
 			COALESCE(SUM(te.duration_min), 0) AS total_min
@@ -464,6 +526,11 @@ func (s *Service) Start(ctx context.Context, in *CreateEntryInput, userID string
 		StartedAt:        in.StartedAt,
 		EndedAt:          in.EndedAt,
 		InfrastructureID: in.InfrastructureID,
+		ITAssetID:        in.ITAssetID,
+	}
+	if in.TargetKind != "" {
+		tk := in.TargetKind
+		e.TargetKind = &tk
 	}
 	if e.StartedAt.IsZero() {
 		e.StartedAt = time.Now()
@@ -561,6 +628,8 @@ func (s *Service) Update(ctx context.Context, id, userID string, isAdmin bool, i
 type Handler struct {
 	svc *Service
 	can func(r *http.Request, perm string) bool
+	// resolve prüft Ziele ohne Vorgang (target_kind); nil = nicht unterstützt
+	resolve TargetResolver
 }
 
 func NewHandler(svc *Service) *Handler {
@@ -569,6 +638,9 @@ func NewHandler(svc *Service) *Handler {
 
 // SetPermChecker verbindet den Handler mit Rollen & Rechte.
 func (h *Handler) SetPermChecker(f func(r *http.Request, perm string) bool) { h.can = f }
+
+// SetTargetResolver verbindet die Prüfung von Zielen ohne Vorgang (Anlage, IT-Asset, Sonstiges).
+func (h *Handler) SetTargetResolver(f TargetResolver) { h.resolve = f }
 
 // viewAll: Zeiten anderer sehen und bearbeiten (Recht timetracking.view_all;
 // ohne Prüfer wie früher nur admin und manager).
@@ -605,6 +677,23 @@ func (h *Handler) Start(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	userID, _ := r.Context().Value(middleware.UserIDKey).(string)
+	if in.TargetKind != "" { // Zeit ohne Vorgang: Anlage, IT-Asset oder Sonstiges
+		if !ValidTarget(in.TargetKind) {
+			response.Error(w, 400, "target_kind: erlaubt sind plant, it_asset, other")
+			return
+		}
+		if h.resolve == nil {
+			response.Error(w, 400, "Zeit ohne Vorgang wird hier nicht unterstützt")
+			return
+		}
+		if code, msg := h.resolve(r, &in); code != 0 {
+			response.Error(w, code, msg)
+			return
+		}
+	} else if in.ITAssetID != nil {
+		response.Error(w, 400, "it_asset_id gehört zu target_kind it_asset")
+		return
+	}
 	e, err := h.svc.Start(r.Context(), &in, userID)
 	if err != nil {
 		response.Error(w, 500, err.Error())
@@ -739,9 +828,9 @@ func (h *Handler) ExportCSV(w http.ResponseWriter, r *http.Request) {
 			e.StartedAt.Format("15:04"),
 			endedStr,
 			durStr,
-			string(e.RefType),
+			e.TypeLabel(),
 			e.InfraName,
-			e.Description,
+			e.DisplayTitle(),
 		})
 	}
 	cw.Flush()

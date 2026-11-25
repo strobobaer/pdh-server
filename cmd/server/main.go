@@ -315,7 +315,8 @@ func main() {
 
 	// Web Handler
 	webHandler := web.NewHandler(db.Pool, tmpl, userSvc, shiftSvc, storageSvc, infraSvc, ticketSvc, faultSvc, maintSvc, invSvc, itSvc, timeSvc, checkSvc, taskSvc, projectSvc, rbacSvc, cfg.Auth.JWTSecret)
-	taskHandler.ProjectAllowed = webHandler.MayLinkProject                                           // Aufgabe nur mit einem Projekt verknüpfen, das man sehen darf
+	timeHandler.SetTargetResolver(webHandler.TimeTargetResolverFor())                                   // Zeit ohne Vorgang über /api/v1/time (Anlage, IT-Asset, Sonstiges)
+	taskHandler.ProjectAllowed = webHandler.MayLinkProject                                          // Aufgabe nur mit einem Projekt verknüpfen, das man sehen darf
 	webHandler.SetMirror(web.MirrorInfo{On: mirrorOn, Restricted: restricted, Reason: mirrorReason}) // vor Routes(), danach unveränderlich
 	webHandler.RegisterMaintenanceProtocol()                                                         // Wartungsprotokoll (PDF) an der Anlage
 	webHandler.ConfigureUpdates(cfg.Update.AgentURL, cfg.Update.AgentToken, buildCommit)
