@@ -80,6 +80,8 @@ const (
 // bereits eine gueltige, ausreichend berechtigte Sitzung besteht.
 type GlobalDashboardPageData struct {
 	LoggedIn                  bool
+	Embedded                  bool // im Mittelfeld des neuen Rahmens (/leitstand): ohne eigenen Kopf
+	LoginCorner               bool // ohne Anmeldung, neuer Rahmen: links unten nur „Anmelden“
 	Title                     string
 	Subtitle                  string
 	Board                     *leitstand              // angezeigter Leitstand (leitstand_boards.go)
@@ -191,6 +193,8 @@ func (h *Handler) renderLeitstand(w http.ResponseWriter, r *http.Request, board 
 	brand := h.branding()
 	data := GlobalDashboardPageData{
 		LoggedIn:                  loggedIn,
+		Embedded:                  r.URL.Query().Get("eingebettet") == "1",
+		LoginCorner:               leitstandLoginCorner(loggedIn, h.frameFor(ctx, ""), r.URL.Query().Get("vollbild") == "1", r.URL.Query().Get("eingebettet") == "1"),
 		Title:                     board.Name,
 		Subtitle:                  board.Subtitle,
 		Board:                     board,

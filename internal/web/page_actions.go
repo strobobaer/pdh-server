@@ -38,8 +38,25 @@ func pageActions(b *BaseData) pageActs {
 			a.Band = append(a.Band, ribbonGroup{Label: l("Firma"), Items: []ribbonItem{it("dash-standard", "Als Standard für alle setzen", "ti-users", "idle")}})
 		}
 		return a
+	case "leitstand": // Vorlage Cockpit; die Bausteine bearbeitet die Verwaltungsseite des Leitstands
+		var a pageActs
+		if b.CanManageLeitstand && b.LeitstandID != "" {
+			a.Band = append(a.Band,
+				ribbonGroup{Label: l("Leitstand"), Items: []ribbonItem{{Key: "leit-edit", Label: l("Bearbeiten"), Icon: "ti-edit", Href: "/leitstaende/" + b.LeitstandID}}},
+				ribbonGroup{Label: l("Firma"), Items: []ribbonItem{{Key: "leit-standard", Label: l("Als Standard für alle setzen"), Icon: "ti-users", Action: "leit-standard", Arg: b.LeitstandID}}})
+			a.Start = []ribbonItem{{Key: "leit-edit", Label: l("Bearbeiten"), Icon: "ti-edit", Href: "/leitstaende/" + b.LeitstandID}}
+		}
+		a.Band = append(a.Band, ribbonGroup{Label: l("Anzeige"), Items: []ribbonItem{
+			{Key: "leit-full", Label: l("Vollbild (Wandbildschirm)"), Icon: "ti-arrows-maximize", Href: "/global/?vollbild=1", Blank: true}}})
+		return a
 	}
 	return pageActs{}
+}
+
+// leitstandLoginCorner: ohne Anmeldung zeigt der Leitstand im neuen Rahmen links unten nur
+// „Anmelden“ (Entwurf 11.4) – nicht im Vollbild am Wandbildschirm und nicht eingebettet.
+func leitstandLoginCorner(loggedIn, newFrame, full, embedded bool) bool {
+	return !loggedIn && newFrame && !full && !embedded
 }
 
 // timeGroup: Gruppe „Zeit“ im Band Start (Entwurf 11.9) – nicht am Terminal des

@@ -172,3 +172,5 @@ html.pdh-embedded .frame-app{grid-template-columns:minmax(0,1fr)}
   .ribbon:not(.open) .ribbon-item:nth-child(n+4){display:none}
   .ribbon:not(.open) .ribbon-glabel{display:none}
 }
+/* Leitstand im Mittelfeld (11.4) */
+.ft-embed{display:block;width:100%;height:calc(100vh - 210px);min-height:420px;border:0;border-radius:var(--r-m);background:var(--bg2)}
