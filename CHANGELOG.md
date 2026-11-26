@@ -10,6 +10,15 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.82.67] – 2026-11-26
+
+### Sicherheit
+
+- **IT-Assets nur noch aus der eigenen Abteilung:** Wer „IT-Infrastruktur ansehen“ oder „IT-Assets bearbeiten“ nur für eine Abteilung hat, sah bisher die IT-Assets aller Abteilungen. Jetzt gilt das Recht je Asset (Anlage des Assets, samt Unterabteilungen; Assets ohne Anlage sieht jeder mit IT-Recht). Das betrifft: die Liste „IT-Assets“ mit ihren Kennzahlen und Filtern, die Seite eines Assets, die QR-Seite (/a/…), den Scan in der App, die Etiketten, die Anzeige des Assets in Tickets, Störungen, Aufgaben und Wartungen, das Zuordnen eines Assets zu einem Vorgang, „Neu anlegen“ mit Asset, die IT-Assets und ihre Zahl bei Herstellern und Lieferanten, die SNMP-Geräteliste unter Netz-Abgleich, die Chat-Karten und die Schnittstelle (Liste und Kennzahlen). Fremde Assets erscheinen dort nicht mehr; im Chat zeigt die Karte nur „IT-Asset“ ohne Namen und Link. Wer die Rechte für alle Abteilungen hat, merkt nichts.
+- **Beteiligte bleiben drin:** Wer an einem IT-Asset beteiligt ist (angelegt, verantwortlich oder zugewiesen), sieht dieses Asset auch ohne IT-Recht, und die Seite „IT-Assets“ zeigt ihm genau diese Assets.
+- **Seite und Schnittstelle brauchen ein IT-Recht:** Die Seite „IT-Assets“, die Asset-Seiten und die Schnittstelle (Liste, Kennzahlen) waren bisher für jeden Angemeldeten offen.
+- **Anlegen, Verschieben, Zuweisen:** Ein IT-Asset lässt sich in der Oberfläche und über die Schnittstelle nur in einer Anlage anlegen oder dorthin verschieben, für deren Abteilung „IT-Assets bearbeiten“ gilt; ohne Anlage (oder die Anlage leeren) darf nur, wer das Recht für alle Abteilungen hat. Hersteller oder Lieferant eines Assets zuweisen oder lösen (Seite des Partners) braucht „IT-Assets bearbeiten“ für genau dieses Asset.
+
 ## [0.82.66] – 2026-11-26
 
 ### Sicherheit

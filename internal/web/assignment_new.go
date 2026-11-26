@@ -180,7 +180,7 @@ func (h *Handler) AssignmentNewPage(w http.ResponseWriter, r *http.Request) {
 			data.PresetInfraID = id
 		}
 	}
-	if id := q.Get("it"); uuidInPathRe.MatchString(id) && len(id) == 36 && h.canViewIT(r) {
+	if id := q.Get("it"); uuidInPathRe.MatchString(id) && len(id) == 36 && h.canViewITRec(r, id) {
 		if err := h.db.QueryRow(ctx, `SELECT name FROM it_assets WHERE id = $1::uuid`, id).Scan(&data.ITName); err == nil {
 			data.PresetITID = id
 		}

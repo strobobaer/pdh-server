@@ -258,7 +258,7 @@ func (h *Handler) AppScanAPI(w http.ResponseWriter, r *http.Request) {
 		notFound()
 		return
 	}
-	if kind == "it" && !h.canViewIT(r) {
+	if kind == "it" && !h.canViewITRec(r, id) {
 		appJSONErr(w, http.StatusForbidden, "app_no_permission", "app_no_permission")
 		return
 	}
