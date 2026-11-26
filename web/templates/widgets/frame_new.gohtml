@@ -20,7 +20,7 @@
 {{/* Benutzer immer fest links unten (Entwurf 11.2); das Menü öffnet rechts daneben nach oben. */}}
 {{define "frame-user"}}<div class="ft-user">
   <button type="button" class="ft-user-btn" onclick="toggleMenu('user-menu')" aria-haspopup="menu" aria-label="{{t "Benutzermenü"}}" title="{{.UserName}}">{{if .UserAvatar}}<img class="tu-av" src="{{.UserAvatar}}" alt="">{{else}}<i class="ti ti-user-circle" aria-hidden="true"></i>{{end}}<span class="ft-uname">{{.UserName}}</span></button>
-  <div id="user-menu" class="win11-menu ft-user-menu" style="display:none">{{template "ui-usermenu-items" .}}<div class="ft-lang">{{template "lang-switch"}}</div></div>
+  <div id="user-menu" class="win11-menu ft-user-menu" style="display:none"><a href="#" class="menu-item" data-app-install hidden><i class="ti ti-download"></i>{{t "Als App installieren"}}</a>{{template "ui-usermenu-items" .}}<div class="ft-lang">{{template "lang-switch"}}</div></div>
 </div>{{end}}
 
 {{/* Zeit manuell erfassen (Vorlage Aktion, Entwurf 11.9): dieselben Felder wie das Formular

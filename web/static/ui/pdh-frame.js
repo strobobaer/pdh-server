@@ -180,6 +180,20 @@
     setInterval(upd, 1000);
   })();
 
+  // Als App installieren (Entwurf 11.11): der Browser bietet die Installation nur über HTTPS an.
+  // Läuft das PDH schon als App (ohne Browserleisten), bleibt der Eintrag weg.
+  var installEv = null;
+  var standalone = window.matchMedia && window.matchMedia('(display-mode: standalone)').matches;
+  window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); installEv = e; });
+  document.querySelectorAll('[data-app-install]').forEach(function (a) { a.hidden = standalone; });
+  document.addEventListener('click', function (e) {
+    var a = e.target.closest('[data-app-install]');
+    if (!a) return;
+    e.preventDefault();
+    if (installEv) { installEv.prompt(); installEv = null; return; }
+    window.alert(T('Im Browser-Menü „App installieren“ wählen. Das geht nur über HTTPS mit gültigem Zertifikat.'));
+  });
+
   // Aufklappmenüs im Menüband (Neu, Darstellung, Anpassen)
   function menuClose(except) {
     $$('.ribbon-dd').forEach(function (dd) {
