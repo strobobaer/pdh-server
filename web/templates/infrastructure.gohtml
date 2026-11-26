@@ -127,7 +127,8 @@
 </div>
 
 <!-- Infrastruktur-Baum -->
-<div id="infra-tree" class="card" style="padding:16px;overflow-x:auto">
+<div id="infra-tree" class="card" style="padding:16px;overflow-x:auto"{{if .CanEditInfra}} data-tree-move="/infrastructure/"{{end}}>
+  {{if .CanEditInfra}}<div class="tree-top" data-tree-top><i class="ti ti-arrow-bar-to-up"></i> {{t "Hier ablegen: ganz oben"}}</div>{{end}}
   {{range .Tree}}
   {{template "infra_node" .}}
   {{else}}
@@ -180,9 +181,10 @@ if(location.hash === '#setup-catalog'){ const d = document.getElementById('setup
 {{end}}
 
 {{define "infra_node"}}
-<div class="infra-node" data-id="{{.ID}}" style="margin-bottom:6px">
-  <div class="infra-row" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;border:1px solid var(--border)"
+<div class="infra-node" data-id="{{.ID}}" data-tree-node="{{.ID}}" data-tree-parent="{{.ParentID}}" data-tree-name="{{.Name}}" style="margin-bottom:6px">
+  <div class="infra-row" data-tree-row style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;border:1px solid var(--border)"
     data-rx data-rx-title="{{.Name}}" data-rx-view="/infrastructure/{{.ID}}" data-rx-edit="/infrastructure/{{.ID}}?tab=master">
+    <button type="button" class="tree-grip" data-tree-grip onclick="event.stopPropagation()" title="{{t "Zum Verschieben ziehen"}}" aria-label="{{t "Zum Verschieben ziehen"}}"><i class="ti ti-grip-vertical"></i></button>
     {{if .Children}}
     <button type="button" class="infra-fold" onclick="toggleNode('{{.ID}}')" aria-label="Unteranlagen auf-/zuklappen" title="Unteranlagen auf-/zuklappen"><i id="toggle-{{.ID}}" class="ti ti-chevron-down" style="transform:rotate(-90deg)"></i></button>
     {{else}}
@@ -196,7 +198,8 @@ if(location.hash === '#setup-catalog'){ const d = document.getElementById('setup
     {{if .SerialNo}}<span style="font-size:10px;color:var(--muted);background:var(--bg);padding:2px 6px;border-radius:4px;flex-shrink:0">{{.SerialNo}}</span>{{end}}
     <template class="rx-more"><button type="button" class="btn btn-small" onclick="addChildNode('{{.ID}}')"><i class="ti ti-plus"></i> Unteranlage hinzufügen</button>
       <button type="button" class="btn btn-small" onclick="openInfraBulk('{{.ID}}')"><i class="ti ti-stack-push"></i> Sammelanlegen</button>
-      <button type="button" class="btn btn-small" data-name="{{.Name}}" onclick="openInfraCopy('{{.ID}}', this.dataset.name, '{{.ParentID}}')"><i class="ti ti-copy"></i> Kopieren</button></template>
+      <button type="button" class="btn btn-small" data-name="{{.Name}}" onclick="openInfraCopy('{{.ID}}', this.dataset.name, '{{.ParentID}}')"><i class="ti ti-copy"></i> Kopieren</button>
+      <button type="button" class="btn btn-small tree-move-btn" data-tree-id="{{.ID}}" onclick="pdhTreeMoveTo(this)"><i class="ti ti-arrows-move"></i> {{t "Verschieben nach …"}}</button></template>
   </div>
   {{if .Children}}
   <div id="children-{{.ID}}" style="display:none;margin-left:24px;margin-top:4px;padding-left:16px;border-left:2px solid var(--border)">
@@ -219,6 +222,7 @@ if(location.hash === '#setup-catalog'){ const d = document.getElementById('setup
 {{end}}
 
 {{block "scripts" .}}
+<script src="{{uiURL "pdh-tree-drag.js"}}"></script>
 <script>
 // Baum startet zugeklappt; offen ist nur der zuletzt geöffnete Ast (samt
 // seiner übergeordneten Knoten) – alle anderen Äste klappen dabei zu.

@@ -102,7 +102,8 @@
   </form>
 </div>
 
-<div class="card" style="padding:16px;overflow-x:auto">
+<div class="card" style="padding:16px;overflow-x:auto"{{if .CanEdit}} data-tree-move="/storage/"{{end}}>
+  {{if .CanEdit}}<div class="tree-top" data-tree-top><i class="ti ti-arrow-bar-to-up"></i> {{t "Hier ablegen: ganz oben"}}</div>{{end}}
   {{range .Tree}}
     {{template "storage-node" .}}
   {{else}}
@@ -121,8 +122,9 @@
   sondern beliebig tief (aktuell genutzt: lagerort -> regal -> fach -> platz).
 */}}
 {{define "storage-node"}}
-<div class="storage-node storage-{{.Type}}" data-storage-id="{{.ID}}" style="margin-bottom:8px">
-  <div class="storage-row" style="display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:8px;cursor:pointer;background:var(--bg3);border:1px solid var(--border)" onclick="toggleStorageNode('{{.ID}}')">
+<div class="storage-node storage-{{.Type}}" data-storage-id="{{.ID}}" data-tree-node="{{.ID}}" data-tree-parent="{{.ParentID}}" data-tree-name="{{.Name}}" style="margin-bottom:8px">
+  <div class="storage-row" data-tree-row style="display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:8px;cursor:pointer;background:var(--bg3);border:1px solid var(--border)" onclick="toggleStorageNode('{{.ID}}')">
+    <button type="button" class="tree-grip" data-tree-grip onclick="event.stopPropagation()" title="{{t "Zum Verschieben ziehen"}}" aria-label="{{t "Zum Verschieben ziehen"}}"><i class="ti ti-grip-vertical"></i></button>
     {{if .Children}}
     <i id="storage-icon-{{.ID}}" class="ti ti-chevron-down" style="font-size:14px;color:var(--muted);transition:transform .2s;flex-shrink:0"></i>
     {{else}}
@@ -141,6 +143,7 @@
       <button type="button" class="btn btn-icon" title="Sammelanlegen hier (von–bis)" aria-label="Sammelanlegen" onclick="openStorageBulk('{{.ID}}')"><i class="ti ti-stack-push"></i></button>
       {{end}}
       <button type="button" class="btn btn-icon" title="Kopieren (mit Unterknoten, auch mehrfach)" aria-label="Kopieren" data-name="{{.Name}}" onclick="openStorageCopy('{{.ID}}', this.dataset.name, '{{.Type}}')"><i class="ti {{icon "action.copy"}}"></i></button>
+      <button type="button" class="btn btn-icon tree-move-btn" onclick="pdhTreeMoveTo(this)" title="{{t "Verschieben nach …"}}" aria-label="{{t "Verschieben nach …"}}"><i class="ti ti-arrows-move"></i></button>
       <a class="btn btn-icon" href="/storage/{{.ID}}" title="Lagerplatz öffnen (Bestand, Bewegungen, Feldsätze)"><i class="ti ti-external-link"></i></a>
       <a class="btn btn-icon" href="/inventory/labels?node={{.ID}}" target="_blank" rel="noopener" title="Etiketten für alle Teile an diesem Lagerplatz drucken"><i class="ti ti-printer"></i></a>
       {{template "icon-button" (dict "Action" "edit" "OnClick" (printf "showEditNode('%s')" .ID))}}
@@ -209,6 +212,7 @@
 {{end}}
 
 {{block "scripts" .}}
+<script src="{{uiURL "pdh-tree-drag.js"}}"></script>
 <script>
 function showAddChild(id) { const el = document.getElementById('add-child-'+id); if(el) el.style.display = el.style.display === 'none' ? 'block' : 'none'; }
 function showEditNode(id) { const el = document.getElementById('edit-'+id); if(el) { storageEditPrep(id); el.style.display = el.style.display === 'none' ? 'block' : 'none'; } }

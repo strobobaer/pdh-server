@@ -38,8 +38,10 @@ Gestaltungsgrundlage: keine Vorlagen-Syntax, Texte über `pdhT`), in beiden Rahm
   speichert. Esc oder daneben klicken bricht ab.
 - **Ohne Ziehen** (Tastatur, Bildschirmleser, kleines Handy): im Menü jedes Knotens
   „Verschieben nach …“ mit Suche im Baum – dieselbe Nachfrage.
-- **Rückgängig**: Im neuen Rahmen setzt „Rückgängig“ im Band Start die letzte
-  Verschiebung zurück (eine neue Verschiebung zum alten Ort, mit Nachfrage).
+- **Rückgängig**: Nach dem Verschieben steht über dem Baum die Meldung mit
+  „Rückgängig“ (eine neue Verschiebung zum alten Ort) – in beiden Rahmen gleich.
+  Gebaut so statt im Band Start (Ruling beim Bau von Teil A: das Band kennt nur
+  ungespeicherte Bearbeitungsschritte; eine Verschiebung ist schon gespeichert).
   Verschiebungen sind keine ungespeicherten Änderungen – die Nachfrage beim
   Verlassen der Seite (11.12) erscheint dafür nicht.
 - **Verlauf**: jede Verschiebung steht im Verlauf des Knotens („verschoben von …
@@ -63,7 +65,9 @@ Der Server prüft alles selbst neu – das Skript ist nur die Bedienung:
 
 ## 3. Infrastruktur und Lager
 
-- Ziehen im Baum der Seite; die Detailseite bekommt im Menüband „Verschieben nach …“.
+- Ziehen im Baum der Seite; „Verschieben nach …“ in der Aufklappzeile (Infrastruktur)
+  bzw. als Knopf an der Zeile (Lager). Auf der Detailseite folgt es mit dem Menüband
+  der Bereiche (Teil 3 ff. der neuen Oberfläche).
 - Was mitwandert: alle Unterknoten. Bei Anlagen bleiben Vorgänge, Wartungspläne,
   IT-Geräte und Zuordnungen an der Anlage; bei Lagerorten der Bestand. Die
   Abteilung eines Knotens ändert sich durch das Verschieben nicht (sie hängt an
@@ -82,11 +86,11 @@ Neuer Reiter **„Netzplan“** auf der Seite IT (Vorlage „Baum“, 12.1):
   Gerät, beim Löschen des Uplinks leer) und `uplink_port` (Text, z. B. „Port 12“).
 - **Ziehen** eines Geräts auf ein anderes = hängt jetzt dort an. Die Nachfrage fragt
   zusätzlich den **Port** (freiwillig, vorbelegt mit dem bisherigen).
-- **Geräte aus UniFi/Omada** (*Vorschlag, Frage B*): Ihr Uplink kommt vom Controller
-  (`net_uplink`, über die Kennung dem Gerät im PDH zugeordnet) und wird beim
-  nächsten Abgleich wieder gesetzt. Deshalb sind sie **nicht ziehbar**, mit Hinweis
-  „Uplink kommt aus UniFi“. Wer sie trotzdem von Hand hängen will, löst sie vorher
-  vom Abgleich (vorhandener Knopf). Als Ziel (Uplink anderer Geräte) taugen sie.
+- **Geräte aus UniFi/Omada** (entschieden, siehe 6 B): Ein gelesener Uplink
+  (`net_uplink`, über die Kennung dem Gerät im PDH zugeordnet) bleibt fest, das
+  Gerät ist **nicht ziehbar**, Hinweis „Uplink aus UniFi gelesen“. Ohne gelesenen
+  Uplink von Hand; kommt später wieder ein gelesener, fragt das PDH nach. Als Ziel
+  (Uplink anderer Geräte) taugen alle Geräte.
 - **Störungsmeldungen** des Netz-Abgleichs bleiben in diesem Paket unverändert
   (sie lesen weiter `net_uplink`); „Folgestörung unterdrücken, wenn der Uplink weg
   ist“ für Geräte mit Uplink von Hand ist ein späterer Schritt.
@@ -101,12 +105,17 @@ Neuer Reiter **„Netzplan“** auf der Seite IT (Vorlage „Baum“, 12.1):
   Spiegel), Browserprüfung mit Maus und Touch in Fiori/Fluent, hell/dunkel,
   320–1366 px, Nachfrage und „Verschieben nach …“ per Tastatur.
 
-## 6. Fragen an den Anwender
+## 6. Entscheidungen (Anwender 26.11.2026: „C A schnell und B später uplink
+ausgelesen bleibt fix ist ja gelesen wenn lesen nicht geht manuell allerdings
+sollte lesen wieder gehen nachfragen“)
 
-- **A.** Reicht „unter einen anderen Knoten hängen“, oder sollen Geschwister auch
-  von Hand sortiert werden (dann statt Typ und Name eine eigene Reihenfolge)?
-  Vorschlag: nur umhängen.
-- **B.** Geräte aus UniFi/Omada im Netzplan nicht ziehbar (Vorschlag), oder darf der
-  Uplink von Hand den Controller überstimmen?
-- **C.** Reihenfolge: erst Teil A (Infrastruktur, Lager), dann Teil B (Netzplan) –
-  einverstanden?
+- **A.** Nur umhängen, kein Sortieren von Hand (keine Antwort → Vorschlag).
+- **B.** Ein vom Controller **gelesener Uplink bleibt fest** (nicht ziehbar). Kann
+  der Uplink **nicht gelesen** werden (kein Controller, Gerät nicht im Abgleich,
+  Controller liefert keinen), wird er **von Hand** gesetzt. Liest der Abgleich
+  später für ein Gerät mit Uplink von Hand wieder einen Uplink, überschreibt er ihn
+  **nicht still**, sondern **fragt nach**: Hinweis am Gerät und im Netzplan
+  „Gelesen: Switch 2 Port 7 – von Hand: Switch 1. Übernehmen / Von Hand behalten“.
+  Wer „Von Hand behalten“ wählt, wird für diesen gelesenen Wert nicht erneut
+  gefragt (erst wenn sich der gelesene Wert ändert).
+- **C.** Erst Teil A schnell, Teil B später.

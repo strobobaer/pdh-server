@@ -1278,5 +1278,17 @@
   "Letzten Bearbeitungsschritt zurücknehmen – bis zum Speichern (Strg+Z)": "Врати го последниот чекор – до зачувување (Ctrl+Z)",
   "Widget hinzufügen": "Додај виџет",
   "Reihenfolge als Firmenvorgabe": "Редослед како стандард на фирмата",
-  "Als Favorit": "Како омилено"
+  "Als Favorit": "Како омилено",
+  "Hier ablegen: ganz oben": "Пушти тука: највисоко ниво",
+  "Verschieben nach …": "Премести во …",
+  "Zum Verschieben ziehen": "Повлечи за преместување",
+  "Verschieben": "Премести",
+  "verschieben?": "да се премести?",
+  "unter": "под",
+  "ganz oben": "највисоко ниво",
+  "Ganz oben": "Највисоко ниво",
+  "ganz nach oben": "на највисоко ниво",
+  "Bisher": "Досега",
+  "Ziel suchen …": "Барај цел …",
+  "Nicht verschoben": "Не е преместено"
 }

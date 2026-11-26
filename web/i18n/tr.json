@@ -1278,5 +1278,17 @@
   "Letzten Bearbeitungsschritt zurücknehmen – bis zum Speichern (Strg+Z)": "Son düzenleme adımını geri al – kaydedene kadar (Ctrl+Z)",
   "Widget hinzufügen": "Widget ekle",
   "Reihenfolge als Firmenvorgabe": "Sırayı şirket varsayılanı yap",
-  "Als Favorit": "Favori olarak"
+  "Als Favorit": "Favori olarak",
+  "Hier ablegen: ganz oben": "Buraya bırak: en üst düzey",
+  "Verschieben nach …": "Şuraya taşı …",
+  "Zum Verschieben ziehen": "Taşımak için sürükle",
+  "Verschieben": "Taşı",
+  "verschieben?": "taşınsın mı?",
+  "unter": "altına",
+  "ganz oben": "en üst düzey",
+  "Ganz oben": "En üst düzey",
+  "ganz nach oben": "en üst düzeye",
+  "Bisher": "Önce",
+  "Ziel suchen …": "Hedef ara …",
+  "Nicht verschoben": "Taşınmadı"
 }
