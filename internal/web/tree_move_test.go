@@ -30,8 +30,8 @@ func TestTreeMoveWired(t *testing.T) {
 			t.Fatal(err)
 		}
 		src := string(b)
-		if !strings.Contains(src, `{{uiURL "pdh-tree-drag.js"}}`) {
-			t.Errorf("%s bindet pdh-tree-drag.js nicht ein", page)
+		if strings.Contains(src, `{{uiURL "pdh-tree-drag.js"}}`) {
+			t.Errorf("%s bindet pdh-tree-drag.js selbst ein – es kommt schon mit dem Rahmen (doppelt = doppelte Ereignisse)", page)
 		}
 		for _, a := range attrs {
 			if !strings.Contains(src, a) {

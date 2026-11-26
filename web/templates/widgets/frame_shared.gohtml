@@ -308,6 +308,7 @@ table,.li,.act-item,.rec-row{zoom:var(--row-scale,1)}
 {{/* Skripte am Seitenende samt Block "scripts" der Seiten */}}
 {{define "ui-scripts"}}<script src="{{uiURL "pdh-app.js"}}"></script>
 <script src="{{uiURL "pdh-viewer.js"}}"></script>
+<script src="{{uiURL "pdh-tree-drag.js"}}"></script>
 {{if and .CanChat (ne .Page "chat")}}
 <script src="{{uiURL "pdh-chat-sidebar.js"}}"></script>
 {{end}}

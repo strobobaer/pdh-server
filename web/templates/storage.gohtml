@@ -212,7 +212,6 @@
 {{end}}
 
 {{block "scripts" .}}
-<script src="{{uiURL "pdh-tree-drag.js"}}"></script>
 <script>
 function showAddChild(id) { const el = document.getElementById('add-child-'+id); if(el) el.style.display = el.style.display === 'none' ? 'block' : 'none'; }
 function showEditNode(id) { const el = document.getElementById('edit-'+id); if(el) { storageEditPrep(id); el.style.display = el.style.display === 'none' ? 'block' : 'none'; } }

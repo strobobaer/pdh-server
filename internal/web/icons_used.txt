@@ -28,6 +28,7 @@ ti-arrows-horizontal
 ti-arrows-left-right
 ti-arrows-maximize
 ti-arrows-minimize
+ti-arrows-move
 ti-arrows-right-left
 ti-arrows-sort
 ti-article

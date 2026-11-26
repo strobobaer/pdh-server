@@ -193,7 +193,7 @@ var historyFieldLabels = map[string]string{
 	"check_result": "Wirksamkeit", "act": "Ergebnis", "action": "Maßnahme", "file": "Datei",
 	"nextcloud_user_id": "Nextcloud-Konto", "nextcloud_admin": "Nextcloud-Administrator",
 	"nextcloud_password": "Nextcloud-Kennwort", "must_change_password": "Kennwortwechsel",
-	"infrastructure_id": "Anlage", "attachments": "Anhänge", "record_image_attachment_id": "Bild",
+	"infrastructure_id": "Anlage", "parent_id": "Lage im Baum", "attachments": "Anhänge", "record_image_attachment_id": "Bild",
 	"ticket_id": "Ticket", "locked": "Sperre", "active": "Aktivstatus", "hidden": "Ausgeblendet",
 	"deletion": "Löschvormerkung", "portal_link": "Zugangsdaten", "plant_stopped": "Anlage steht",
 	"mail_notifications": "Mail-Benachrichtigungen", "certificate": "Zertifikat",
