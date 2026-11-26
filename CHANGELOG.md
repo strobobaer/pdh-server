@@ -10,6 +10,17 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.82.72] – 2026-11-26
+
+### Neu
+
+- **Anlagen und Lagerplätze per Ziehen verschieben:** Im Baum der Infrastruktur und des Lagers lässt sich ein Knoten am Griff auf ein neues übergeordnetes Element ziehen – mit Maus oder Finger; alternativ „Verschieben nach …“ mit Suche.
+- **Nachfrage und Rückgängig:** Vor dem Verschieben fragt das PDH mit bisherigem und neuem Ort nach; danach steht über dem Baum „Rückgängig“, die Verschiebung steht im Verlauf.
+
+### Sicherheit
+
+- **Verschieben nur mit Bearbeiten-Recht am alten und neuen Ort:** Bei der Infrastruktur zählt die Abteilung beider Orte, ganz nach oben nur mit dem Recht überall; gleichzeitige Verschiebungen durch andere werden gemeldet statt überschrieben.
+
 ## [0.82.71] – 2026-11-26
 
 ### Behoben

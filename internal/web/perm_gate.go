@@ -310,6 +310,9 @@ var gateRules = []gateRule{
 	gr(wPost, "infrastructure.edit", "infrastructure", false, `^/infrastructure`+gID+`/downtime-reasons-web$`),
 	// Arbeitszeiten der Anlage (Schichten, Pausen, Ausnahmen): Infrastruktur bearbeiten in der Abteilung der Anlage
 	gr(wPost, "infrastructure.edit", "infrastructure", false, `^/infrastructure`+gID+`/work-times-web$`),
+	// Bäume per Ziehen umhängen (tree_move.go): Recht am Knoten hier, am Ziel prüft der Handler
+	gr(wPost, "infrastructure.edit", "infrastructure", false, `^/infrastructure`+gID+`/move$`),
+	gr(wPost, "inventory.edit", "storage", false, `^/storage`+gID+`/move$`),
 	gr(wPost, permCompanyEdit, "", false, `^/infrastructure/company$`), // überall: canEditCompany
 	// ── Beteiligte, Gruppe, Archiv an beliebigen Vorgängen ──
 	gr(wPost, "edit", "*", true, `^/records/([a-z_]+)`+gID+`/(?:people|group|parties)(?:/.*)?$`),

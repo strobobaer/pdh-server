@@ -661,6 +661,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/infrastructure", h.InfraCreate)
 	r.Post("/infrastructure/bulk", h.InfraBulkWeb)
 	r.Post("/infrastructure/{id}/copy", h.InfraCopyWeb)
+	r.Post("/infrastructure/{id}/move", h.InfraMoveWeb) // per Ziehen umhängen (tree_move.go)
 	// Easy-Mode-Meldetexte: Katalog und Zuordnung je Anlage (easy_texts.go)
 	r.Post("/infrastructure/easy-texts", h.EasyTextCreateWeb)
 	r.Post("/infrastructure/easy-texts/{tid}", h.EasyTextUpdateWeb)
@@ -732,6 +733,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/storage/{id}/children-web", h.StorageAddChild)
 	r.Post("/storage/bulk", h.StorageBulkWeb)
 	r.Post("/storage/{id}/copy", h.StorageCopyWeb)
+	r.Post("/storage/{id}/move", h.StorageMoveWeb) // per Ziehen umhängen (tree_move.go)
 	r.Post("/storage/{id}/edit-web", h.StorageEditWeb)     // Name, Art, Lage im Baum (storage_edit.go)
 	r.Post("/storage/{id}/delete-web", h.StorageDeleteWeb) // löschen bzw. ausblenden
 	r.Get("/checklists", h.ChecklistsPage)

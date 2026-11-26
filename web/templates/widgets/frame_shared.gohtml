@@ -36,6 +36,17 @@
       "Eingabe geändert" (t "Eingabe geändert")
       "Im Browser-Menü „App installieren“ wählen. Das geht nur über HTTPS mit gültigem Zertifikat." (t "Im Browser-Menü „App installieren“ wählen. Das geht nur über HTTPS mit gültigem Zertifikat.")
       "Woran arbeitest du?" (t "Woran arbeitest du?")
+      "Verschieben" (t "Verschieben")
+      "Verschieben nach …" (t "Verschieben nach …")
+      "verschieben?" (t "verschieben?")
+      "unter" (t "unter")
+      "ganz oben" (t "ganz oben")
+      "Ganz oben" (t "Ganz oben")
+      "ganz nach oben" (t "ganz nach oben")
+      "Bisher" (t "Bisher")
+      "Neu" (t "Neu")
+      "Ziel suchen …" (t "Ziel suchen …")
+      "Nicht verschoben" (t "Nicht verschoben")
       "Gebucht." (t "Gebucht.")
       "Zeit gestoppt und gebucht." (t "Zeit gestoppt und gebucht.")
       "Als Standard für alle gesetzt." (t "Als Standard für alle gesetzt.")
@@ -297,6 +308,7 @@ table,.li,.act-item,.rec-row{zoom:var(--row-scale,1)}
 {{/* Skripte am Seitenende samt Block "scripts" der Seiten */}}
 {{define "ui-scripts"}}<script src="{{uiURL "pdh-app.js"}}"></script>
 <script src="{{uiURL "pdh-viewer.js"}}"></script>
+<script src="{{uiURL "pdh-tree-drag.js"}}"></script>
 {{if and .CanChat (ne .Page "chat")}}
 <script src="{{uiURL "pdh-chat-sidebar.js"}}"></script>
 {{end}}

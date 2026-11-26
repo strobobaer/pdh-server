@@ -1278,5 +1278,17 @@
   "Letzten Bearbeitungsschritt zurücknehmen – bis zum Speichern (Strg+Z)": "Undo the last edit step – until you save (Ctrl+Z)",
   "Widget hinzufügen": "Add widget",
   "Reihenfolge als Firmenvorgabe": "Order as company default",
-  "Als Favorit": "As favourite"
+  "Als Favorit": "As favourite",
+  "Hier ablegen: ganz oben": "Drop here: top level",
+  "Verschieben nach …": "Move to …",
+  "Zum Verschieben ziehen": "Drag to move",
+  "Verschieben": "Move",
+  "verschieben?": "move?",
+  "unter": "under",
+  "ganz oben": "top level",
+  "Ganz oben": "Top level",
+  "ganz nach oben": "to the top level",
+  "Bisher": "Before",
+  "Ziel suchen …": "Search target …",
+  "Nicht verschoben": "Not moved"
 }

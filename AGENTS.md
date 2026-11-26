@@ -1422,11 +1422,23 @@ und 3 drückt bis auf Weiteres der Anwender.
     Verweise in den Abgleich-Vorlagen fest auf `/sync/{{$p.ID}}?tab=…`; Wächter
     `TestSyncLinksAbsolute`. Gleiches Muster kann es auf anderen Seiten geben, die
     nach einem Formular direkt rendern statt weiterzuleiten (nicht untersucht).
+    Auf `main` (Merge `2850a8fe`) und dem Testverbund (beide Server 0.82.71).
     Offen (Anwender): Quelle aus **mehreren Tabellen** (JOIN oder Sicht) – Abgleich
     liest weiter genau eine Tabelle; Spaltenliste vom Fremdsystem erbeten.
     Danach: Teil 3 „Vorgänge – Liste mit Detail“ (Entwurf
     `docs/superpowers/specs/2026-11-26-vorgaenge-liste-detail-design.md` auf Branch
     `feature/vorgaenge-liste`, lokal; Fragen A–C an den Anwender offen).
+34. **Bäume per Ziehen ordnen** (Wunsch des Anwenders 26.11.2026: „im
+    Infrastruktur, Lager und IT Stamm per Drag and drop die Topologie
+    verschieben“; entschieden: IT = Netzwerk-Topologie, „Sofort nach Nachfrage“,
+    „Wer bearbeiten darf“). Entwurf
+    `docs/superpowers/specs/2026-11-26-baum-ziehen-design.md` auf Branch
+    `feature/baum-ziehen` (lokal): gemeinsamer Baustein `pdh-tree-drag.js`,
+    Routen `…/move` bzw. `/it/{id}/uplink`, Rechte `infrastructure.edit`,
+    `inventory.edit`, `it.edit` am Knoten und am Ziel (`hasPermRec`); Teil A
+    Infrastruktur + Lager ohne Migration, Teil B IT-Netzplan mit `uplink_id`,
+    `uplink_port`. Offen: Fragen A (Geschwister sortieren?), B (Controller-Geräte
+    ziehbar?), C (Reihenfolge) an den Anwender.
 
 Docker Desktop startet nach einem Neustart des Windows-Rechners nicht von
 selbst – ohne ihn fehlen der Zeuge und die Labor-Datenbank für die Tests.
