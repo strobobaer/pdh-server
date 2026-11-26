@@ -1352,10 +1352,26 @@ und 3 drückt bis auf Weiteres der Anwender.
     Browserleisten (Entwurf 11.10–11.12). **Bauplan** `docs/superpowers/plans/2026-11-26-rahmen-start.md`
     (9 Aufgaben, keine Migration, kein neues Recht) – gebaut als **0.82.68**
     (main hatte inzwischen 0.82.67 IT-Abteilungsrechte) auf Branch
-    `feature/rahmen-start`, Ledger `.superpowers/sdd/2026-11-26-rahmen-start/`
-    (alle Rulings dort; u. a. „Zeit starten“ fragt „Woran arbeitest du?“ und bucht
-    als Zeit ohne Vorgang, weil der Server ein Ziel verlangt). Offen: Schlussprüfung,
-    Merge, Testverbund, Browserprüfung.
+    `feature/rahmen-start` („Zeit starten“ fragt „Woran arbeitest du?“ und bucht
+    als Zeit ohne Vorgang, weil der Server ein Ziel verlangt; Menüeintrag Leitstand
+    öffnet `/leitstand` im selben Fenster, klassisch weiter auf `/global/`).
+    Schlussprüfung durch Claude und Codex mit Korrekturrunde. **Auf `main`**
+    (26.11.2026, Merge `bd5330d5`) und dem Testverbund (beide Server und Zeuge
+    0.82.68, aktiv jetzt `pdh` 10.10.0.14, Spiegelung läuft). Am Testverbund im
+    Browser geprüft (196 Ansichten: Startseite, Zeiterfassung, Leitstand, Störungen,
+    Tickets, Core-Einstellungen, Netzwerk; 320–1366 px, Fiori/Fluent, hell/dunkel,
+    160 %): kein Überlauf, keine Skript- oder Konsolenfehler, Uhr und Benutzerknopf
+    immer ganz sichtbar, Fußzeile „V0.82.68 · 1/2“; Band Start mit Rückgängig, Neu,
+    Zeit starten, Manuell erfassen, Suchen, Copilot; Neu-anlegen-Assistent öffnet,
+    Fertigstellen vorhanden; Leitstand eingebettet ohne eigenen Kopf. Die Ecke
+    „Anmelden“ für Gäste erscheint erst mit der Firmenvorgabe „neu“ (am Testverbund
+    klassisch – nur automatisch getestet). Prüfkonto gesperrt, keine Testdaten.
+    Zurückgestellt (klein): Fehlertexte teils technisch, Startseiten-Vorgabe hängt am
+    Recht `manage_roles`, langer Firmenname bei 320 px, Zählung der Angemeldeten unter
+    Sperre, Schritttexte von Rückgängig nicht übersetzt, Anmelde-Ecke an
+    Wandbildschirmen ohne `vollbild=1`, Leerzustand nach Rückgängig, Benutzermenü bei
+    320 px und 160 %; nach Weiterblättern im eingebetteten Leitstand trifft „Als
+    Standard“ den zuerst gezeigten. Offen: 10.10.0.202 (Anwender, mit Sicherung).
     Als Abschnitt 11 im Entwurf
     `docs/superpowers/specs/2026-11-25-einheitliche-oberflaeche-design.md`
     (geht 5.2 vor), Branch `docs/oberflaeche-rahmen-nachtrag` (lokal). Folge:
