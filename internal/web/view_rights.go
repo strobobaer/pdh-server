@@ -54,6 +54,8 @@ func involvedSource(refType string) (table, cond string, ok bool) {
 		return scopeTables["project"].table, scopeTables["project"].people, true
 	case "kvp":
 		return "kvp_ideas", kvpPeopleCond, true
+	case "it_asset": // IT-Assets: Beteiligte (it_perm.go)
+		return scopeTables["it_asset"].table, scopeTables["it_asset"].people, true
 	}
 	return "", "", false
 }

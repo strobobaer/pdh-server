@@ -338,9 +338,18 @@ func (h *Handler) itNetSNMPCard(r *http.Request) ITNetSNMPCard {
 		c.Err = snmpErrText(err, "geräteliste lesen")
 		return c
 	}
+	visible := h.itVisibleIDs(r) // einmal je Anfrage
 	for _, t := range targets {
 		row := ITNetSNMPRow{SNMPTarget: t, CanRemove: c.CanRemove && h.snmpMayRemove(r, t.anyAssetID())}
-		row.StateLabel, row.StateClass = itNetSNMPState(t)
+		if visible != nil { // Name und Zustand fremder Assets nicht zeigen
+			if t.AssetID != "" && !visible[t.AssetID] {
+				row.AssetID, row.AssetName, row.NetState = "", "", ""
+			}
+			if t.DetachedAssetID != "" && !visible[t.DetachedAssetID] {
+				row.DetachedAssetID, row.DetachedAssetName = "", ""
+			}
+		}
+		row.StateLabel, row.StateClass = itNetSNMPState(row.SNMPTarget)
 		if t.LastOK != nil {
 			row.LastOKText = alarmTime(*t.LastOK)
 		}

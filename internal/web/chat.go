@@ -554,12 +554,15 @@ func (h *Handler) chatLoadMessagesByID(ctx context.Context, ids []string) ([]*ch
 	if err != nil {
 		return nil, err
 	}
-	h.chatEnrich(ctx, msgs)
+	h.chatEnrich(ctx, "", msgs) // Ereignis für alle Mitglieder: Namen von IT-Assets bleiben weg
 	return msgs, nil
 }
 
 // chatEnrich ergaenzt Reaktionen, Erwaehnungen, Dateien und Datensatz-Links.
-func (h *Handler) chatEnrich(ctx context.Context, msgs []*chatMessage) {
+//
+// viewer: wer die Nachrichten liest ("" = Ereignis an alle Mitglieder). Karten von IT-Assets
+// zeigen Namen und Link nur, wenn der Leser das Asset sehen darf (it_perm.go).
+func (h *Handler) chatEnrich(ctx context.Context, viewer string, msgs []*chatMessage) {
 	if len(msgs) == 0 {
 		return
 	}
@@ -612,6 +615,9 @@ func (h *Handler) chatEnrich(ctx context.Context, msgs []*chatMessage) {
 			if rows.Scan(&mid, &l.RefType, &l.RefID, &l.Title) == nil && byID[mid] != nil {
 				if def, ok := chatLinkTypeByRef(l.RefType); ok {
 					l.Label, l.Icon, l.URL = def.label, def.icon, "/"+def.path+"/"+l.RefID
+					if l.RefType == "it_asset" && (viewer == "" || !h.canViewITRecAs(ctx, viewer, l.RefID)) {
+						l.Title, l.URL = "", "" // neutrale Karte „IT-Asset“, ohne Namen und Link
+					}
 				}
 				byID[mid].Links = append(byID[mid].Links, l)
 			}
@@ -679,7 +685,7 @@ func (h *Handler) ChatMessages(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	h.chatEnrich(ctx, msgs)
+	h.chatEnrich(ctx, me, msgs)
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"messages": msgs, "has_more": hasMore, "reads": h.chatReads(ctx, []string{convID})[convID],
 	})
