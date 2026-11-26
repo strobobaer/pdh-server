@@ -48,7 +48,7 @@ func sqlToday(kind, col string) string {
 // gibt, welche Spalten, die ersten Zeilen und wie groß die Tabellen sind. Nur von Hand
 // (kein Abrufrhythmus); sie stehen vor den Vorlagen für Messwerte.
 func sqlReadTemplates(kind string) []builtinQueryTemplate {
-	tables, columns, rows := "", "", ""
+	var tables, columns, rows string
 	switch kind {
 	case "mssql":
 		tables = "SELECT TABLE_SCHEMA AS schema_name, TABLE_NAME AS tabelle, TABLE_TYPE AS art\nFROM INFORMATION_SCHEMA.TABLES\nORDER BY TABLE_SCHEMA, TABLE_NAME"
@@ -59,7 +59,7 @@ func sqlReadTemplates(kind string) []builtinQueryTemplate {
 		columns = "SELECT column_name AS spalte, data_type AS typ, character_maximum_length AS laenge, is_nullable AS leer_erlaubt\nFROM information_schema.columns\nWHERE table_schema = DATABASE() AND table_name = '<tabellenname>'\nORDER BY ordinal_position"
 		rows = "SELECT table_name AS tabelle, table_rows AS zeilen_ungefaehr\nFROM information_schema.tables\nWHERE table_schema = DATABASE()\nORDER BY table_rows DESC"
 	case "sqlite":
-		tables = "SELECT name AS tabelle, type AS art\nFROM sqlite_master\nWHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite_%'\nORDER BY name"
+		tables = "SELECT name AS tabelle, type AS art\nFROM sqlite_master\nWHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite\\_%' ESCAPE '\\'\nORDER BY name"
 		columns = "SELECT name AS spalte, type AS typ, \"notnull\" AS pflicht\nFROM pragma_table_info('<tabellenname>')"
 	default:
 		return nil

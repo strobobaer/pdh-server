@@ -249,12 +249,13 @@ func listSQLTables(db *sql.DB, kind string) ([]string, error) {
 	var query string
 	switch kind {
 	case "sqlite":
-		query = `SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name`
+		query = `SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite\_%' ESCAPE '\' ORDER BY name`
 	case "mysql":
 		query = `SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE() ORDER BY table_name`
 	case "mssql":
-		// Tabellen und Sichten; außerhalb von dbo mit Schema („erp.Artikel“), dbo zuerst
-		query = `SELECT CASE WHEN TABLE_SCHEMA = 'dbo' THEN TABLE_NAME ELSE TABLE_SCHEMA + '.' + TABLE_NAME END
+		// Tabellen und Sichten, immer mit Schema („dbo.Artikel“) – sonst entscheidet das
+		// Standardschema der Anmeldung, welche Tabelle gemeint ist; dbo zuerst
+		query = `SELECT TABLE_SCHEMA + '.' + TABLE_NAME
 			FROM INFORMATION_SCHEMA.TABLES
 			ORDER BY CASE WHEN TABLE_SCHEMA = 'dbo' THEN 0 ELSE 1 END, TABLE_SCHEMA, TABLE_NAME`
 	default:
@@ -361,15 +362,14 @@ func findOrderColumn(db *sql.DB, kind, table string) (column string, quoted bool
 		}
 		return col, true, nil
 	case "mssql":
-		schema, name := sqlSchemaAndName(table) // ohne Schema: Standardschema der Anmeldung
+		// OBJECT_ID löst den Namen auf wie die Abfrage selbst (Standardschema, dann dbo)
 		rows, err := db.Query(`
-			SELECT ku.column_name
-			FROM information_schema.table_constraints tc
-			JOIN information_schema.key_column_usage ku
-			  ON tc.constraint_name = ku.constraint_name AND tc.table_schema = ku.table_schema
-			WHERE tc.table_schema = COALESCE(NULLIF(@p1, ''), SCHEMA_NAME()) AND tc.table_name = @p2
-			  AND tc.constraint_type = 'PRIMARY KEY'
-			ORDER BY ku.ordinal_position`, schema, name)
+			SELECT c.name
+			FROM sys.indexes i
+			JOIN sys.index_columns ic ON ic.object_id = i.object_id AND ic.index_id = i.index_id
+			JOIN sys.columns c ON c.object_id = ic.object_id AND c.column_id = ic.column_id
+			WHERE i.object_id = OBJECT_ID(@p1) AND i.is_primary_key = 1
+			ORDER BY ic.key_ordinal`, quoteSQLTable(kind, table))
 		if err != nil {
 			return "", false, err
 		}
@@ -533,12 +533,16 @@ func (h *Handler) SQLRefreshValuesWeb(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var known map[string]bool // Tabellen der Datenbank: zerlegt „Schema.Tabelle.Spalte“ eindeutig
+	if tables, err := listSQLTables(db, kind); err == nil {
+		known = sqlKnownTables(kind, tables)
+	}
 	byTable := map[string][]ImportMappingView{}
 	for _, mp := range mappings {
 		if isQueryRef(mp.SourceRef) { // Werte aus Abfragen: connection_queries.go
 			continue
 		}
-		table, _, ok := splitSQLSourceRef(kind, mp.SourceRef)
+		table, _, ok := splitSQLSourceRef(kind, mp.SourceRef, known)
 		if !ok {
 			continue
 		}
@@ -549,7 +553,7 @@ func (h *Handler) SQLRefreshValuesWeb(w http.ResponseWriter, r *http.Request) {
 	for table, tableMappings := range byTable {
 		columns := make([]string, len(tableMappings))
 		for i, mp := range tableMappings {
-			_, col, _ := splitSQLSourceRef(kind, mp.SourceRef)
+			_, col, _ := splitSQLSourceRef(kind, mp.SourceRef, known)
 			columns[i] = col
 		}
 		values, err := readSQLLastRow(db, kind, table, columns)

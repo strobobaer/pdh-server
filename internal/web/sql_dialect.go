@@ -47,12 +47,30 @@ func sqlLastRowQuery(kind, table string, columns []string, orderExpr string) str
 	return fmt.Sprintf("SELECT %s FROM %s ORDER BY %s DESC LIMIT 1", cols, from, orderExpr)
 }
 
-// splitSQLSourceRef zerlegt die Quelle „Tabelle.Spalte“ einer Zuordnung. Bei SQL Server darf die
-// Tabelle ein Schema tragen („erp.Artikel.Bestand“); bei den anderen gilt wie bisher der erste Punkt.
-func splitSQLSourceRef(kind, ref string) (table, column string, ok bool) {
-	if kind == "mssql" {
-		if parts := strings.SplitN(ref, ".", 3); len(parts) == 3 && parts[0] != "" && parts[1] != "" && parts[2] != "" {
-			return parts[0] + "." + parts[1], parts[2], true
+// sqlKnownTables: die Tabellen der Datenbank als Menge; bei SQL Server zählen dbo-Tabellen auch
+// ohne Schema (so hießen sie in Zuordnungen vor 0.82.69).
+func sqlKnownTables(kind string, tables []string) map[string]bool {
+	out := make(map[string]bool, len(tables))
+	for _, t := range tables {
+		out[t] = true
+		if kind == "mssql" {
+			if s, n := sqlSchemaAndName(t); strings.EqualFold(s, "dbo") {
+				out[n] = true
+			}
+		}
+	}
+	return out
+}
+
+// splitSQLSourceRef zerlegt die Quelle „Tabelle.Spalte“ einer Zuordnung. Bei SQL Server ist die
+// Tabelle der längste Anfang, den es in der Datenbank gibt (Schema und Punkte im Namen); ist er
+// unbekannt, gilt wie bei den anderen Datenbanken der erste Punkt.
+func splitSQLSourceRef(kind, ref string, known map[string]bool) (table, column string, ok bool) {
+	if kind == "mssql" && len(known) > 0 {
+		for i := strings.LastIndex(ref, "."); i > 0; i = strings.LastIndex(ref[:i], ".") {
+			if known[ref[:i]] && i+1 < len(ref) {
+				return ref[:i], ref[i+1:], true
+			}
 		}
 	}
 	table, column, ok = strings.Cut(ref, ".")
@@ -82,6 +100,6 @@ func connErrorHint(kind string, config map[string]string, err error) string {
 			"2. Kennwort richtig, nicht abgelaufen, Konto nicht gesperrt; 3. die Domäne lässt die Anmeldung von diesem Server zu (IT: Ereignis 4625 am Domänencontroller). " +
 			"Sicherer Weg: einen eigenen SQL-Benutzer nur für das PDH anlegen lassen und ohne Domäne eintragen."
 	}
-	return "Der SQL Server lässt nur Windows-Anmeldungen zu. Die IT stellt in SQL Server Management Studio unter Server › Eigenschaften › Sicherheit " +
+	return "Möglicherweise lässt der SQL Server nur Windows-Anmeldungen zu, oder Benutzer bzw. Kennwort stimmen nicht. Gilt das Erste, stellt die IT in SQL Server Management Studio unter Server › Eigenschaften › Sicherheit " +
 		"„SQL Server- und Windows-Authentifizierungsmodus“ ein und startet den Dienst neu – oder es wird ein Windows-Konto im Format DOMÄNE\\name verwendet."
 }

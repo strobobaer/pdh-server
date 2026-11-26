@@ -44,22 +44,32 @@ func TestQuoteSQLTable(t *testing.T) {
 	}
 }
 
-// Quelle „Tabelle.Spalte“; bei SQL Server darf die Tabelle ein Schema tragen.
+// Quelle „Tabelle.Spalte“: Die Tabelle ist der längste Anfang, den es in der Datenbank gibt –
+// so bleiben alte Zuordnungen („Artikel.Bestand.Ist“ = Spalte „Bestand.Ist“) richtig, und
+// Tabellen mit Schema oder Punkt im Namen gehen auch.
 func TestSplitSQLSourceRef(t *testing.T) {
+	known := sqlKnownTables("mssql", []string{"dbo.Artikel", "erp.Artikel", "dbo.Teil.Nr", "dbo.FaultAreas"})
 	cases := []struct{ kind, ref, table, col string }{
 		{"mssql", "FaultAreas.Name", "FaultAreas", "Name"},
+		{"mssql", "dbo.FaultAreas.Name", "dbo.FaultAreas", "Name"},
 		{"mssql", "erp.Artikel.Bestand", "erp.Artikel", "Bestand"},
+		{"mssql", "Artikel.Bestand.Ist", "Artikel", "Bestand.Ist"},
+		{"mssql", "dbo.Teil.Nr.Wert", "dbo.Teil.Nr", "Wert"},
+		{"mssql", "Unbekannt.a.b", "Unbekannt", "a.b"}, // nicht in der Liste: wie bisher erster Punkt
 		{"sqlite", "sensors.wert", "sensors", "wert"},
 		{"mysql", "a.b.c", "a", "b.c"},
 	}
 	for _, c := range cases {
-		table, col, ok := splitSQLSourceRef(c.kind, c.ref)
+		table, col, ok := splitSQLSourceRef(c.kind, c.ref, known)
 		if !ok || table != c.table || col != c.col {
 			t.Errorf("%s %q: %q %q %v", c.kind, c.ref, table, col, ok)
 		}
 	}
-	if _, _, ok := splitSQLSourceRef("mssql", "ohnePunkt"); ok {
+	if _, _, ok := splitSQLSourceRef("mssql", "ohnePunkt", known); ok {
 		t.Error("Quelle ohne Spalte angenommen")
+	}
+	if table, col, ok := splitSQLSourceRef("mssql", "erp.Artikel.Bestand", nil); !ok || table != "erp" || col != "Artikel.Bestand" {
+		t.Errorf("ohne Tabellenliste wie bisher: %q %q", table, col)
 	}
 }
 
@@ -69,6 +79,17 @@ func TestSQLSchemaAndName(t *testing.T) {
 	}
 	if s, n := sqlSchemaAndName("Artikel"); s != "" || n != "Artikel" {
 		t.Errorf("ohne Schema: %q %q", s, n)
+	}
+	if s, n := sqlSchemaAndName("dbo.Teil.Nr"); s != "dbo" || n != "Teil.Nr" {
+		t.Errorf("Punkt im Tabellennamen: %q %q", s, n)
+	}
+}
+
+func TestSqlitePatternEscaped(t *testing.T) {
+	for _, tpl := range builtinQueryTemplates("sqlite") {
+		if strings.Contains(tpl.Spec["sql"], "'sqlite_%'") {
+			t.Errorf("%s: „_“ in LIKE ohne ESCAPE", tpl.Name)
+		}
 	}
 }
 
@@ -122,7 +143,7 @@ func TestConnErrorHintUntrustedDomain(t *testing.T) {
 			}
 		}
 	}
-	if h := connErrorHint("mssql", map[string]string{"username": "pdh_leser"}, de); !strings.Contains(h, "SQL Server- und Windows-Authentifizierungsmodus") {
+	if h := connErrorHint("mssql", map[string]string{"username": "pdh_leser"}, de); !strings.Contains(h, "SQL Server- und Windows-Authentifizierungsmodus") || !strings.Contains(h, "Möglicherweise") {
 		t.Errorf("ohne Domäne: %s", h)
 	}
 	if h := connErrorHint("mssql", nil, errors.New("connection refused")); h != "" {
@@ -151,9 +172,15 @@ func TestMssqlBrowseLab(t *testing.T) {
 	for _, x := range tables {
 		have[x] = true
 	}
-	for _, want := range []string{"Meldungen", "erp.Artikel", "MeldungenOffen"} {
+	// immer mit Schema – sonst entscheidet das Standardschema der Anmeldung, welche Tabelle gemeint ist
+	for _, want := range []string{"dbo.Meldungen", "erp.Artikel", "dbo.MeldungenOffen"} {
 		if !have[want] {
 			t.Errorf("Tabelle %q fehlt in %v", want, tables)
+		}
+	}
+	for _, ref := range []string{"MeldungenAlt", "dbo.MeldungenAlt"} { // alte Zuordnungen ohne Schema gehen weiter
+		if last, err := readSQLLastRow(db, "mssql", ref, []string{"Titel"}); err != nil || last["Titel"] != "Alt 10" {
+			t.Errorf("letzte Zeile %s: %v %v", ref, err, last)
 		}
 	}
 	cols, rows, err := readSQLPreview(db, "mssql", "erp.Artikel")
