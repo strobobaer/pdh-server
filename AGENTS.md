@@ -1437,8 +1437,30 @@ und 3 drückt bis auf Weiteres der Anwender.
     Routen `…/move` bzw. `/it/{id}/uplink`, Rechte `infrastructure.edit`,
     `inventory.edit`, `it.edit` am Knoten und am Ziel (`hasPermRec`); Teil A
     Infrastruktur + Lager ohne Migration, Teil B IT-Netzplan mit `uplink_id`,
-    `uplink_port`. Offen: Fragen A (Geschwister sortieren?), B (Controller-Geräte
-    ziehbar?), C (Reihenfolge) an den Anwender.
+    `uplink_port`. Entschieden (26.11.2026: „C A schnell und B später uplink
+    ausgelesen bleibt fix … wenn lesen nicht geht manuell … wieder gehen
+    nachfragen“): nur umhängen; gelesener Uplink fest, sonst von Hand, beim
+    Wiederlesen nachfragen; erst Teil A. **Teil A = 0.82.72 auf `main`** (Merge
+    `539fb18a`, Dauerfreigabe; Codex zwei Runden: Wettlauf über Kreuz → Sperre
+    `treeMoveMu` für Verschiebungen und die Bearbeiten-Formulare, per `defer`)
+    und dem Testverbund (beide Server 0.82.72, aktiv jetzt `pdh` 10.10.0.14). Am
+    Testverbund im Browser geprüft (Testknoten `ZZ-…`, danach gelöscht; Prüfkonto
+    gesperrt): Infrastruktur ziehen → Nachfrage → verschoben → „Rückgängig“ in
+    neuem und klassischem Rahmen; Lager „Verschieben nach …“ mit Suche bzw. Ziehen;
+    Fiori/Fluent, hell/dunkel, 390/1366 px. Zurückgestellt (klein): „Rückgängig“
+    prüft nur den jetzigen Elternknoten (weg- und zurückverschoben wird nicht
+    erkannt); Formular-Wege der Schnittstelle (`/api/v1/…`) nehmen die Sperre
+    nicht; nach Wechsel 1366 → 390 px auf derselben Seite kurz Überlauf durch die
+    eingeklappte rechte Leiste (frisch geladen keiner). Teil B (IT-Netzplan) später.
+35. **Abgleich mit Nachschlagetabellen** (Anwender 26.11.2026: Fault + Tabellen für
+    Anlage, Anlagenteil, Stillstandsgrund, Art, Kommentare; Ziel je Ja/Nein-Spalte;
+    Meldender als Text; „der Datenimport muss auch schnell durchgehen“). Entwurf
+    `docs/superpowers/specs/2026-11-26-abgleich-nachschlagen-design.md`, vom
+    Anwender bestätigt („Ok“): Nachschlagen, Ziel je Zeile, Zuordnungslisten für
+    Anlage/Anlagenteil/Kategorie/Stillstandsgrund mit Vorschlag, Meldender
+    (`reporter_name`), Kommentare herein, Vorlage, Tempo-Ziele (10 000 Zeilen
+    < 60 s, Folgelauf < 2 s). Drei Teile. Offen: echte Spaltennamen der fünf
+    Tabellen (Anwender); Bauplan Teil 1.
 
 Docker Desktop startet nach einem Neustart des Windows-Rechners nicht von
 selbst – ohne ihn fehlen der Zeuge und die Labor-Datenbank für die Tests.
