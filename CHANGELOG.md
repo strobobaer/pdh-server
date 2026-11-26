@@ -10,11 +10,12 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
-## [0.82.66] – 2026-11-25
+## [0.82.66] – 2026-11-26
 
 ### Sicherheit
 
-- **Abmelden beendet die Sitzung auch am Server:** Nach „Abmelden“ gilt die Sitzung dieses Geräts nicht mehr – auch nicht mit einer vorher kopierten Anmeldung. An anderen Geräten bleibt man angemeldet; die Rückkehr am Terminal ist nicht betroffen.
+- **Abmelden beendet die Sitzung auch am Server:** Nach „Abmelden“ gilt die Sitzung dieses Geräts nicht mehr – auch nicht mit einer vorher kopierten Anmeldung, weder in der Oberfläche noch an der Schnittstelle. An anderen Geräten bleibt man angemeldet; die Rückkehr am Terminal ist nicht betroffen.
+- **Auch die kurze Anmeldung am fremden Bildschirm endet am Server:** Wer am Terminal „Zurück zum Systemnutzer“ wählt oder nach dem Öffnen per Karte zum Leitstand zurückkehrt, dessen Sitzung gilt danach ebenfalls nicht mehr.
 
 ## [0.82.65] – 2026-11-25
 

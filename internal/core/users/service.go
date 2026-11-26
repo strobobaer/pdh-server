@@ -2,6 +2,8 @@ package users
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"time"
 
@@ -141,6 +143,14 @@ func (s *Service) IssueToken(u *User, ttl time.Duration, extraClaims map[string]
 		"exp":  time.Now().Add(ttl).Unix(),
 		"iat":  time.Now().Unix(),
 	}
+	// Zufällige Kennung: zwei Anmeldungen desselben Benutzers in derselben Sekunde ergäben
+	// sonst dasselbe Token – Abmelden an einem Gerät zöge dann auch das andere zurück
+	// (internal/web/session_revoke.go).
+	jti := make([]byte, 12)
+	if _, err := rand.Read(jti); err != nil {
+		return "", fmt.Errorf("token-kennung: %w", err)
+	}
+	claims["jti"] = hex.EncodeToString(jti)
 	for k, v := range extraClaims {
 		claims[k] = v
 	}

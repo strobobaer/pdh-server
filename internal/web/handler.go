@@ -2636,18 +2636,12 @@ func (h *Handler) LoginRFIDWeb(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 	h.pdhHandoffRevokeCookie(r) // PDH-Sitzung am Terminal serverseitig beenden (terminal_pdh.go)
-	if c, err := r.Cookie("pdh_token"); err == nil && c.Value != "" {
-		// genau dieses Token am Server zurückziehen – ein kopiertes Token gilt danach nicht
-		// mehr (session_revoke.go); das Rückkehr-Token des Terminals bleibt gültig
-		if s := h.parseSessionToken(c.Value); s.problem == "" {
-			var exp time.Time
-			if s.exp > 0 {
-				exp = time.Unix(s.exp, 0)
-			}
-			h.revokeSessionToken(r.Context(), c.Value, s.sub, exp)
-		}
-	}
-	if uid := h.requestActor(r); uid != "" {
+	// Benutzer vor dem Rückzug lesen – danach hat die Anfrage keinen mehr
+	uid := h.requestActor(r)
+	// genau dieses Token am Server zurückziehen – ein kopiertes Token gilt danach nicht
+	// mehr (session_revoke.go); das Rückkehr-Token des Terminals bleibt gültig
+	h.revokeRequestSession(r)
+	if uid != "" {
 		log.Info().Str("bereich", "auth").Str("user", uid).Str("user_name", h.cachedUserName(r.Context(), uid)).Str("ip", r.RemoteAddr).Msg("abmeldung")
 	}
 	http.SetCookie(w, &http.Cookie{Name: "pdh_token", Value: "", Path: "/", MaxAge: -1})
@@ -2728,7 +2722,7 @@ func (h *Handler) sessionToken(r *http.Request) (string, int64, string) {
 type sessionTok struct {
 	sub, device, scope, problem string
 	tsess, tdev                 string // PDH-Sitzung am Terminal (terminal_pdh.go): Sitzungs-ID und Geräte-ID
-	iat, exp                    int64 // Ausstellung und Ablauf (Unix-Sekunden; 0 = fehlt)
+	iat, exp                    int64  // Ausstellung und Ablauf (Unix-Sekunden; 0 = fehlt)
 	err                         error
 }
 
@@ -4387,6 +4381,12 @@ func (h *Handler) OverrideLogoutWeb(w http.ResponseWriter, r *http.Request) {
 	if !ok || userID == "" {
 		h.Logout(w, r)
 		return
+	}
+	// Die Sitzung der Person endet hier: ihr Token am Server zurückziehen (session_revoke.go) –
+	// nie das Token, zu dem zurückgekehrt wird (Vergleich über den Fingerabdruck: dasselbe
+	// Token kann in zwei Schreibweisen vorliegen).
+	if c, err := r.Cookie("pdh_token"); err == nil && tokenFingerprint(c.Value) != tokenFingerprint(returnCookie.Value) {
+		h.revokeRequestSession(r)
 	}
 	returnMaxAge, isDevice, target := 86400, false, "/"
 	if h.tokenDevice(returnCookie.Value) != "" {

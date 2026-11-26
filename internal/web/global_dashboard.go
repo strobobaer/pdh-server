@@ -184,6 +184,7 @@ func (h *Handler) renderLeitstand(w http.ResponseWriter, r *http.Request, board 
 	// damit die naechste Person nicht unter fremdem Namen weiterarbeitet.
 	loggedIn := h.sessionUser(r) != nil
 	if isBoardVisit(r) {
+		h.revokeRequestSession(r) // Token der Kurzsitzung gilt auch als Kopie nicht mehr (session_revoke.go)
 		endBoardVisit(w)
 		loggedIn = false
 	}

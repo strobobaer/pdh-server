@@ -67,6 +67,7 @@ func NextcloudSSOHandler(db *pgxpool.Pool, jwtSecret string) http.HandlerFunc {
 			"sub":  pdhUser.ID,
 			"role": pdhUser.Role,
 			"sso":  "nextcloud",
+			"jti":  randomHex(12), // jedes Token einmalig, damit Abmelden nur dieses Gerät trifft (session_revoke.go)
 			"exp":  time.Now().Add(24 * time.Hour).Unix(),
 			"iat":  time.Now().Unix(),
 		})

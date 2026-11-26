@@ -16,7 +16,9 @@ func TestSessionRevokeSharedAcrossServers(t *testing.T) {
 	e := newATEnv(t)
 	uid := e.user("abmelden", "viewer", false)
 	ctx := context.Background()
-	t.Cleanup(func() { e.pool.Exec(context.Background(), `DELETE FROM session_revocations WHERE user_id = $1::uuid`, uid) })
+	t.Cleanup(func() {
+		e.pool.Exec(context.Background(), `DELETE FROM session_revocations WHERE user_id = $1::uuid`, uid)
+	})
 	a := &Handler{db: e.pool, jwtSecret: "test-geheim"}
 	b := &Handler{db: e.pool, jwtSecret: "test-geheim"} // anderer Server, leerer Zwischenspeicher
 	tok := testSessionToken(t, a.jwtSecret, uid, "x", nil)
@@ -28,6 +30,11 @@ func TestSessionRevokeSharedAcrossServers(t *testing.T) {
 	b.sessRev.forget() // Zwischenspeicher von b wie nach Ablauf der Prüffrist
 	if sub, _ := b.sessionClaims(reqWithToken(tok)); sub != "" {
 		t.Error("anderer Server lässt das abgemeldete Token zu")
+	}
+	apiReq := httptest.NewRequest("GET", "/api/v1/tickets/", nil)
+	apiReq.Header.Set("Authorization", "Bearer "+tok)
+	if uid, present := b.requestCredentials(apiReq); uid != "" || !present {
+		t.Errorf("anderer Server: Schnittstelle erkennt das abgemeldete Token als %q", uid)
 	}
 	var old int
 	if err := e.pool.QueryRow(ctx, `SELECT count(*) FROM session_revocations WHERE token_hash = 'alt-'||$1`, uid).Scan(&old); err != nil || old != 0 {

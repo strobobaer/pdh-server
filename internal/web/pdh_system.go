@@ -212,6 +212,9 @@ func (h *Handler) webActor(r *http.Request) (string, bool) {
 	if s.sub == "" {
 		return "", true
 	}
+	if h.sessionTokenRevoked(r.Context(), c.Value) { // beim Abmelden zurückgezogen (session_revoke.go)
+		return "", true
+	}
 	if s.tsess != "" && !h.pdhHandoffCheck(r, s.tsess, s.sub, s.tdev) {
 		return "", true
 	}
