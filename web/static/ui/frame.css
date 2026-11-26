@@ -43,6 +43,26 @@ html.rail-narrow .rail-area span{display:none}}
 .ribbon-item:hover{background:var(--fill-hover)}
 .ribbon-item:focus-visible,.ribbon-tab:focus-visible,.ribbon-more:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .ribbon-glabel{font-size:var(--fs-xs);color:var(--muted)}
+/* 0.82.67: Kopfzeile nur Logo, Titel, Uhr (11.1); Uhr und Benutzerknopf schrumpfen nie */
+.ft-top{flex:none;display:flex;align-items:center;gap:var(--sp-3);height:44px;padding:0 var(--sp-3);background:var(--bg2);border-bottom:1px solid var(--border);min-width:0}
+.ft-logo{flex:none;display:flex;align-items:center;gap:var(--sp-2);color:var(--text);text-decoration:none;font-weight:700;letter-spacing:.04em}
+.ft-logo img{height:24px;width:auto}
+.ft-mark{width:24px;height:24px;border-radius:var(--r-m);background:var(--accent);color:var(--on-accent);display:grid;place-items:center;font-size:var(--fs-xs)}
+.ft-title{flex:1;min-width:0;margin:0;font-size:var(--fs-md);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ft-title[data-tpl]{cursor:help}
+.ft-top .topbar-clock{flex:none;display:flex;align-items:center;gap:var(--sp-1);white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--text);cursor:default}
+/* Benutzer links unten (11.2) */
+.rail-fill{flex:1}
+.ft-user{flex:none;position:relative;width:100%;display:flex;justify-content:center;padding-top:var(--sp-1);border-top:1px solid var(--border)}
+.ft-user-btn{width:56px;min-height:44px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;border:0;border-radius:var(--r-m);background:none;color:var(--text);font:inherit;font-size:var(--fs-xs);cursor:pointer}
+.ft-user-btn:hover{background:var(--fill-hover)}
+.ft-user-btn i{font-size:var(--fs-xl)}
+.ft-user-btn .tu-av{width:28px;height:28px;border-radius:50%}
+.ft-uname{max-width:56px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ft-user-menu{position:fixed;left:68px;bottom:36px;min-width:240px;max-height:80vh;overflow:auto;z-index:200}
+.ft-lang{padding:var(--sp-1) var(--sp-2)}
+/* Fußzeile: Version und Angemeldete rechts (11.6) */
+.ft-ver{flex:none;display:flex;align-items:center;gap:4px;margin-left:auto;padding-left:var(--sp-3);color:var(--muted);white-space:nowrap}
 /* 0.82.67: Bänder statt Reiterleiste, Aufklappmenüs, Zustände (Entwurf 11.3) */
 .ribbon-tabs{overflow-x:auto;scrollbar-width:none}
 .ribbon-tabs::-webkit-scrollbar{display:none}

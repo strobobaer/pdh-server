@@ -116,6 +116,8 @@ type BaseData struct {
 	Ribbon   []ribbonTab // Menüband – nur im neuen Rahmen (ribbon.go)
 	// Hinweis auf die Seitenvorlage, nur für system.ui_defaults (page_templates.go)
 	TemplateTip string
+	// Fußzeile des neuen Rahmens: angemeldet / aktive Benutzer (presence.go)
+	UsersOnline, UsersTotal int
 }
 
 // Language: Sprache fuer die Template-Funktion t (siehe bindLang).
@@ -1605,6 +1607,7 @@ func (h *Handler) baseData(r *http.Request, page, title, ctxTitle string) BaseDa
 		b.Rail = buildAreasIn(&b, h.areaPrefs(r.Context(), areasUID), r.URL.Query().Get("bereich"))
 		b.Ribbon = ribbonFor(&b)
 		b.TemplateTip = h.templateTipFor(r.Context(), &b)
+		b.UsersOnline, b.UsersTotal = h.presenceCounts(r.Context())
 	}
 	b.UserAvatar =h.userAvatarURL(r.Context(), u.ID)
 	if b.CanAppUse && h.db != nil {

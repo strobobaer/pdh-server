@@ -77,11 +77,14 @@ func TestPaletteSearch(t *testing.T) {
 }
 
 func TestFramePaletteHooks(t *testing.T) {
-	out := renderFrameForTest(t, "server_config", frameTestData(true))
-	for _, want := range []string{`data-palette-open`, `placeholder="Was möchtest du tun?  (Strg&#43;K)"`, `aria-label="Was möchtest du tun?"`} {
-		if !strings.Contains(out, want) {
-			t.Errorf("Kopfleiste des neuen Rahmens ohne %q", want)
-		}
+	// seit 0.82.67 öffnet „Suchen“ im Band Start die Befehlszeile (Entwurf 11.5), die Suchzeile
+	// in der Kopfleiste entfällt; Strg+K bleibt (pdh-frame.js)
+	out := renderFrameForTest(t, "server_config", frameData(t, nil))
+	if !strings.Contains(out, `data-ribbon-action="search"`) || strings.Contains(out, "data-palette-open") {
+		t.Error("Suchen nicht im Band Start oder Suchzeile noch in der Kopfleiste")
+	}
+	if !strings.Contains(uiFile(t, "pdh-frame.js"), "e.key === 'k'") {
+		t.Error("Strg+K fehlt")
 	}
 	if strings.Contains(renderFrameForTest(t, "server_config", frameTestData(false)), "data-palette-open") {
 		t.Error("Suchzeile im klassischen Rahmen")

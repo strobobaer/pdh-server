@@ -10,6 +10,40 @@ import (
 	"time"
 )
 
+// Fußzeile „12/40“: Systembenutzer der Terminals zählen weder als angemeldet noch insgesamt.
+func TestPresenceCounts(t *testing.T) {
+	e := newATEnv(t)
+	ctx := context.Background()
+	h := &Handler{db: e.pool}
+	presenceCountCache.Lock()
+	presenceCountCache.at = time.Time{}
+	presenceCountCache.Unlock()
+	_, before := h.presenceCounts(ctx)
+	person, term := e.user("pc-p", "viewer", false), e.user("pc-t", "viewer", true)
+	presence.mu.Lock()
+	presence.seen[person], presence.seen[term] = time.Now(), time.Now()
+	presence.mu.Unlock()
+	presenceCountCache.Lock()
+	presenceCountCache.at = time.Time{}
+	presenceCountCache.Unlock()
+	online, total := h.presenceCounts(ctx)
+	if total != before+1 {
+		t.Errorf("insgesamt %d, vorher %d – Systembenutzer mitgezählt?", total, before)
+	}
+	if online < 1 || online > total {
+		t.Errorf("angemeldet %d von %d", online, total)
+	}
+	presence.mu.Lock()
+	delete(presence.seen, person)
+	presence.mu.Unlock()
+	presenceCountCache.Lock()
+	presenceCountCache.at = time.Time{}
+	presenceCountCache.Unlock()
+	if o2, _ := h.presenceCounts(ctx); o2 != online-1 {
+		t.Errorf("Systembenutzer zählt als angemeldet: %d statt %d", o2, online-1)
+	}
+}
+
 func TestUIMetaRoundTrip(t *testing.T) {
 	e := newATEnv(t)
 	ctx := context.Background()
