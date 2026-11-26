@@ -580,7 +580,7 @@ func TestSyncTemplatesRender(t *testing.T) {
 					d.Maps = syncMapsView(p, m, table, all, true)
 				}
 				out := renderPage(t, tmpl, "sync_profile", d)
-				if !strings.Contains(out, p.Name) || !strings.Contains(out, `href="?tab=maps"`) {
+				if !strings.Contains(out, p.Name) || !strings.Contains(out, `?tab=maps"`) {
 					t.Errorf("Cockpit %s/%s (bearbeiten=%v): Kopf fehlt", p.Name, tab, edit)
 				}
 				if got := strings.Contains(out, "/delete-web"); got != edit {

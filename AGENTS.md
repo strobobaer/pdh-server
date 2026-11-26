@@ -1414,6 +1414,14 @@ und 3 drückt bis auf Weiteres der Anwender.
     verglichen mit `CAST(@p AS datetimeoffset(7))` (Zeitpunkt, nicht Uhrzeit der
     Zone); Anlagedatum nie über die Zeitzone des Profils umgerechnet
     (`createdInstant`). Labor: `dbo.MeldungenZone`, Test `TestDatetimeoffsetPagingLab`.
+    Auf `main` (Merge `221f63e2`) und dem Testverbund.
+    **0.82.71 Abgleich-Schritte nach dem Test** (Meldung des Anwenders 26.11.2026:
+    „von Test zurück zu Zuordnung … Seite nicht erreichbar“): Test und Schreibversuch
+    zeigen ihr Ergebnis unter der Formular-Adresse (`/sync/<id>/test-dry-web`), die
+    Reiter verwiesen relativ auf `?tab=…` → GET auf eine POST-Route. Alle 13
+    Verweise in den Abgleich-Vorlagen fest auf `/sync/{{$p.ID}}?tab=…`; Wächter
+    `TestSyncLinksAbsolute`. Gleiches Muster kann es auf anderen Seiten geben, die
+    nach einem Formular direkt rendern statt weiterzuleiten (nicht untersucht).
     Offen (Anwender): Quelle aus **mehreren Tabellen** (JOIN oder Sicht) – Abgleich
     liest weiter genau eine Tabelle; Spaltenliste vom Fremdsystem erbeten.
     Danach: Teil 3 „Vorgänge – Liste mit Detail“ (Entwurf

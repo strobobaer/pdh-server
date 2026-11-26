@@ -10,6 +10,12 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.82.71] – 2026-11-26
+
+### Behoben
+
+- **Abgleich: Schritte nach dem Test erreichbar:** Wer nach einem Trockenlauf oder Schreibversuch im Abgleich auf einen anderen Schritt (z. B. „Zuordnungen“) klickte, bekam „Seite nicht erreichbar“; die Schritte und Verweise führen jetzt immer zur richtigen Seite.
+
 ## [0.82.70] – 2026-11-26
 
 ### Neu

@@ -42,14 +42,14 @@
     <span><b>{{.Backfilled}}</b> rückwirkend – still als Historie{{if .Archived}}, davon {{.Archived}} gleich archiviert{{end}}</span>
     {{if .Failed}}<span style="color:var(--red)"><b>{{.Failed}}</b> Meldung(en) mit Fehler</span>{{end}}
   </div>
-  {{if .TooMany}}<div class="sy-warn" role="alert"><i class="ti ti-alert-triangle"></i> <span>Das sind mehr als die erlaubten {{.MaxNew}} neuen Meldungen je Lauf – das Profil würde sofort anhalten. Setze im Schritt <a href="?tab=target" style="color:var(--accent)">Ziel</a> das Zeitfenster oder den Filter enger oder erhöhe die Obergrenze.</span></div>{{end}}
+  {{if .TooMany}}<div class="sy-warn" role="alert"><i class="ti ti-alert-triangle"></i> <span>Das sind mehr als die erlaubten {{.MaxNew}} neuen Meldungen je Lauf – das Profil würde sofort anhalten. Setze im Schritt <a href="/sync/{{$p.ID}}?tab=target" style="color:var(--accent)">Ziel</a> das Zeitfenster oder den Filter enger oder erhöhe die Obergrenze.</span></div>{{end}}
   {{end}}
   <div style="display:flex;gap:10px;flex-wrap:wrap">
     {{if and (not .Error) (not .TooMany)}}
     <form method="POST" action="/sync/{{$p.ID}}/arm-web"><input type="hidden" name="confirm" value="1">
       <button class="btn btn-primary" type="submit"><i class="ti ti-bolt"></i> Ja, scharf schalten</button></form>
     {{end}}
-    <a class="btn" href="?tab=ops">Abbrechen</a>
+    <a class="btn" href="/sync/{{$p.ID}}?tab=ops">Abbrechen</a>
   </div>
 </div>
 {{end}}
@@ -70,7 +70,7 @@
       <form method="POST" action="/sync/{{$p.ID}}/pause-web"><button class="btn" type="submit"><i class="ti ti-player-pause"></i> Anhalten</button></form>
     {{else if $o.ArmBlock}}
       <button class="btn btn-primary" type="button" disabled><i class="ti ti-bolt"></i> Scharf schalten</button>
-      <span class="sy-note"><i class="ti ti-lock"></i> {{$o.ArmBlock}} – siehe Schritt <a href="?tab=test" style="color:var(--accent)">Test</a>.</span>
+      <span class="sy-note"><i class="ti ti-lock"></i> {{$o.ArmBlock}} – siehe Schritt <a href="/sync/{{$p.ID}}?tab=test" style="color:var(--accent)">Test</a>.</span>
     {{else}}
       <form method="POST" action="/sync/{{$p.ID}}/arm-web" onsubmit="this.querySelector('button').disabled=true">
         <button class="btn btn-primary" type="submit"><i class="ti ti-bolt"></i> {{if $o.Halted}}Fortsetzen (scharf schalten){{else}}Scharf schalten{{end}}</button></form>
