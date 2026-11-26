@@ -470,7 +470,14 @@ klassisch/neu bis 0.90.0, die Rechte aus Abschnitt 7.
 - Das Band „Einstellungen“ verweist in 2b auf die vorhandenen Abschnitte der
   Core- und Server-Einstellungen; das eigentliche Aufteilen der Seiten folgt
   Bereich für Bereich mit Teil 6.
-- **Offen (Anwender):**
+- **Entschieden (Anwender 26.11.2026: „die Punkte 1–5 sehen vernünftig aus“):**
+  Es gelten die Vorschläge – 1. geöffnete Vorgänge als Dropdown „Geöffnet“ im
+  Band „Start“; 2. Leitstand an Wandbildschirmen weiter als Vollbild ohne
+  Rahmen; 3. Benachrichtigungen, Chat und „Im Chat teilen“ im Band „Start“,
+  Sprache im Benutzermenü; 4. die Zahl der angemeldeten Benutzer sehen alle
+  Angemeldeten, wer es ist nur mit dem vorhandenen Recht; 5. „Zeit starten“
+  und „Manuell erfassen“ im Band „Start“ in jedem Bereich.
+- Ursprüngliche Fragen:
   1. Geöffnete Vorgänge als eigene, schließbare Reiter (Entscheidung „Beides“
      vom 24.11.2026): Wohin damit ohne Reiterleiste – Dropdown „Geöffnet“ im
      Band „Start“ (Vorschlag) oder eine schmale Zeile unter dem Menüband?
@@ -520,6 +527,12 @@ darin auf.
 | **Planung** (Kalender) | Kalender, Planer, Zeitstrahl, Jahresplan, Schichtplan | Heute, Tag/Woche/Monat, Neu, Besetzen |
 | **Baum** (Vorschlag) | Infrastruktur, Lagerorte, Organigramm – Baum links, Detail rechts | Neu, Unterknoten, Verschieben |
 | **Dienst** | Zusatzdienst im Mittelfeld (5.5) | Neu laden, In neuem Fenster öffnen |
+| **Aktion** (agieren) | Eine Tätigkeit ausführen: Zeit eintragen, Material buchen, Rüstzeit, Störung melden – große Bedienflächen, wenige Felder, auch am Terminal | Buchen, Abbrechen, Nachtragen |
+| **Druck** | Drucken mit Vorschau: Etiketten, Wartungsprotokoll, Kanban, Berichte | Drucken, Drucker wählen, Format, PDF |
+| **Tabelle/Zuordnung** | Tabellen- und Zuordnungsvorschau bearbeiten: Import, Export, Abgleich, Feldzuordnungen | Vorschau, Spalte zuordnen, Prüfen, Übernehmen |
+
+Weitere Vorlagen entstehen im Lauf der Umstellung (Anwender 26.11.2026);
+jede neue kommt in diese Tabelle.
 
 Die Assistenten (10.11) bleiben eigene Fenster über der Seite.
 
@@ -533,7 +546,7 @@ Die Assistenten (10.11) bleiben eigene Fenster über der Seite.
 | Anlagen | Schnellübersicht | IT-Assets, VPN, ESPPDH, Messstellen | – | – | Infrastruktur (Baum) |
 | Material | – | Ersatzteile, Beschaffung, Bestellvorgänge, Hersteller & Lieferanten | – | – | Lager (Baum) |
 | Wissen | – | Dokumente, Vorlagen & Signaturen, Schulungen | – | – | – |
-| Daten | Statistik | Import, Export, Abgleich, Datennetz | – | – | – |
+| Daten | Statistik | Datennetz (Import, Export, Abgleich: Vorlage Tabelle/Zuordnung) | – | – | – |
 | Verwaltung | – | Benutzer, Abteilungen, Drucker, Geräte, Leitstände, Infobildschirm, Kostenstellen, Kategorien, Symbole | – | Core, Server, Netzwerk, Datensicherung, Bereinigung, Rollen & Rechte | Organigramm (Baum) |
 | Dienste | – | – | – | – | Nextcloud, Grafana … (Dienst) |
 
@@ -541,24 +554,26 @@ Der Bauende prüft die Tabelle gegen `navDefs`; der Test „jede Seite
 erreichbar“ (Abschnitt 8) verlangt zusätzlich, dass jede Seite genau eine
 Vorlage hat.
 
-### 12.3 Zuordnen (Lesart von Claude – bitte bestätigen)
+### 12.3 Zuordnen (vom Anwender entschieden 26.11.2026: „wird durch die Firma festgelegt“)
 
-- **Unter „Ansicht › Anpassen“** öffnet ein Fenster wie „Menüband anpassen“
-  bei Microsoft: links alles, was es gibt (Seiten und Funktionen, nur das
-  Erlaubte), rechts die Bereiche und ihre Bänder; mit Pfeilen oder Ziehen
-  zuordnen, umbenennen, Reihenfolge ändern, „Zurücksetzen“.
-- **Unter „Ansicht“ eine Verwaltungsseite** legt dasselbe für alle fest
-  (Firmen-Vorgabe; Recht `system.ui_defaults`).
-- Rechte gehen immer vor: Zuordnen zeigt und verschiebt nur, was man darf;
-  niemand bekommt durch eine Zuordnung Zugriff.
-- Das **ändert die Festlegung 10.3** („Bereiche für alle gleich, nur
-  Reihenfolge und Favoriten“): Die Zuordnung der Seiten zu Bereichen und
-  Bändern wird einstellbar.
+- **Die Zuordnung legt die Firma fest**, nicht der einzelne Benutzer: auf der
+  Verwaltungsseite unter „Ansicht“ (Recht `system.ui_defaults`) – ein Fenster
+  wie „Menüband anpassen“ bei Microsoft: links alles, was es gibt (Seiten und
+  Funktionen), rechts die Bereiche und ihre Bänder; mit Pfeilen oder Ziehen
+  zuordnen, umbenennen, Reihenfolge ändern, „Zurücksetzen“ auf die Vorgabe des
+  PDH.
+- **Der einzelne Benutzer** ändert unter „Ansicht › Anpassen“ weiter nur
+  Reihenfolge der Bereiche und Favoriten (Festlegung 10.3 bleibt).
+- Rechte gehen immer vor: Jeder sieht nur, was er darf; niemand bekommt durch
+  eine Zuordnung Zugriff.
 
 ### 12.4 Vorgehen
 
 1. Klickbare Vorschau anpassen: Rahmen nach Abschnitt 11 und der Bereich
-   Start mit der Vorlage Cockpit – vom Anwender bestätigen lassen.
+   Start mit der Vorlage Cockpit – vom Anwender bestätigen lassen. Erstellt
+   am 26.11.2026: `docs/superpowers/specs/2026-11-26-rahmen-start-vorschau.html`
+   (zeigt dazu je eine Seite jeder Vorlage, die Zuordnung der Firma und den
+   Leitstand ohne Anmeldung; die untere Leiste am Handy fehlt noch).
 2. **Bereich Start zuerst** (Teilpaket 2b): Rahmen-Umbau, Vorlage Cockpit
    mit Dashboard und Leitstand, Tasten Neu, Zuweisen, Zeiterfassung, Suche,
    Copilot.
@@ -570,8 +585,6 @@ Vorlage hat.
 
 ### 12.5 Offene Fragen (Anwender)
 
-6. Zuordnen: Darf **jeder Benutzer** Seiten und Funktionen zwischen Bereichen
-   und Bändern umhängen (wie bei Microsoft), oder legt das nur die Firma fest
-   und der Einzelne ändert weiter nur Reihenfolge und Favoriten?
-7. Ist die Liste der Vorlagen so vollständig (Cockpit, Liste, Detail,
-   Einstellungen, Planung, Baum, Dienst)?
+6. ~~Zuordnen~~ – entschieden: die Firma legt fest.
+7. ~~Vorlagenliste~~ – ergänzt um Aktion, Druck, Tabelle/Zuordnung; weitere
+   entstehen im Lauf der Umstellung.
