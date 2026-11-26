@@ -1282,11 +1282,16 @@ und 3 drückt bis auf Weiteres der Anwender.
     Schreiber gewinnt), Zeit an drei Stellen (Timer, `work_sessions`, App).
     Offene Frage an den Anwender: macht nach der Pause nur dieselbe Person
     weiter oder auch ein Kollege (Schichtwechsel)?
-31. **Abmelden beendet die Sitzung nicht am Server (Bestand, Sicherheit):** Bei
-    der Abnahme von 0.82.65 gefunden: `/logout` löscht nur die Cookies; ein vorher
-    kopiertes Sitzungs-Token gilt weiter bis zum Ablauf (`GET /users/me` → 200).
-    Es verfällt nur, wenn das Konto gesperrt wird. Vorschlag: Token beim Abmelden
-    serverseitig zurückziehen (wie der Rückzug bei Wartung). Noch nicht besprochen.
+31. **0.82.66 Abmelden zieht das Token am Server zurück** (Anwender 25.11.2026:
+    „2 ok“; bei der Abnahme von 0.82.65 gefunden: `/logout` löschte nur die
+    Cookies, ein kopiertes Token galt bis zum Ablauf). Branch
+    `fix/abmelden-token`: Fingerabdruck (SHA-256) des Tokens in
+    `session_revocations` (Migration 227) bis zu dessen Ablauf, gemeinsam für beide
+    Server; Prüfung in `sessionToken` mit 30 s Zwischenspeicher je Server
+    (`session_revoke.go`). Nur dieses Gerät, andere bleiben angemeldet; das
+    Rückkehr-Token des Terminals bleibt gültig; am Spiegel (nur lesen) kennt nur
+    dieser Server den Rückzug. Kein neues Recht. „Überall abmelden“ wäre ein
+    eigener Wunsch.
 30. **Vorgabe Assistenten (Anwender 25.11.2026):** Neu-anlegen- und
     Fertigstellen-Assistent dürfen in keinem Teil der neuen Oberfläche fehlen
     (Entwurf 0.90.0 Abschnitt 10.11, `TestFrameHasWizards`).

@@ -156,6 +156,7 @@ func (h *Handler) terminalRoutes(r chi.Router) {
 	r.Post("/terminal/zeit/arbeit/stop", h.terminalFnRoute("zeiterfassung", h.TerminalZeitArbeitStop))
 	middleware.SetTerminalSessionCheck(func(r *http.Request, sub, tsess, tdev string) bool { return h.pdhHandoffCheck(r, tsess, sub, tdev) })
 	middleware.SetTerminalTokenCheck(func(r *http.Request, claims map[string]interface{}) bool { return h.terminalTokenValid(r, claims) })
+	middleware.SetSessionRevokedCheck(func(r *http.Request, raw string) bool { return h.sessionTokenRevoked(r.Context(), raw) }) // session_revoke.go
 	h.cardRoutes(r)
 }
 
