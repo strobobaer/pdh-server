@@ -129,7 +129,7 @@ html.frame-ui .footer-progress-label{display:block;line-height:22px;text-align:c
 /* Fenster hängen am Body mit zoom (Größe): vw/vh durch --ui-scale teilen wie pdh.css */
 /* breiter Bildschirm: Warnfeld als eigene dritte Spalte vor den Fehlern (pdh.css hat 3 Spalten);
    Mindestbreiten als Anteil, damit die Leiste auch bei 768 px und Größe 160 % passt */
-@media (min-width:761px){html.frame-ui #global-status-footer{grid-template-columns:minmax(min(140px,25%),1fr) minmax(0,1fr) auto minmax(min(180px,30%),1.2fr)}
+@media (min-width:761px){html.frame-ui #global-status-footer{grid-template-columns:minmax(min(140px,25%),1fr) minmax(0,1fr) auto minmax(min(180px,30%),1.2fr) auto}
 html.frame-ui #frame-warn{grid-column:3}html.frame-ui #footer-status-error{grid-column:4}
 /* Warnfeld sichtbar: es bekommt Platz vor Balken und Fehlertext */
 html.frame-ui #global-status-footer:has(#frame-warn:not([hidden])){grid-template-columns:minmax(min(110px,20%),1fr) minmax(0,.8fr) minmax(min(150px,26%),auto) minmax(min(140px,26%),1.2fr)}}
@@ -176,3 +176,6 @@ html.pdh-embedded .frame-app{grid-template-columns:minmax(0,1fr)}
 .ft-embed{display:block;width:100%;height:calc(100vh / var(--ui-scale, 1) - 210px);min-height:420px;border:0;border-radius:var(--r-m);background:var(--bg2)}
 /* Handy: Benutzerknopf ist der letzte Platz der unteren Leiste (11.2) */
 @media (max-width:760px){.rail-fill{display:none}.ft-user{position:static;width:auto;flex:1 1 0;border-top:0;padding:0;background:none}}
+/* Statusleiste: „nicht gespeichert“ neben dem Text, Version und Angemeldete in eigener Spalte */
+html.frame-ui .footer-status-left{min-width:0}
+html.frame-ui .frame-unsaved{margin-left:var(--sp-2)}

@@ -43,6 +43,7 @@
   <div class="footer-status-left">
     <span class="footer-status-dot" id="footer-status-dot"></span>
     <span id="footer-status-text">Bereit</span>
+    <span class="frame-unsaved" id="frame-unsaved" hidden></span>
   </div>
   <div class="footer-progress" role="progressbar" aria-label="Statusfortschritt" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="footer-progress">
     <div class="footer-progress-fill" id="footer-progress-fill"></div>
@@ -50,7 +51,6 @@
   </div>
   <span class="frame-warn" id="frame-warn"{{if .Mirror}} title="{{t "Spiegelserver – nur lesen"}}"{{else}} hidden{{end}}>{{if .Mirror}}{{t "Spiegelserver – nur lesen"}}{{end}}</span>
   <div class="footer-status-error" id="footer-status-error">Keine Fehler</div>
-  <span class="frame-unsaved" id="frame-unsaved" hidden></span>
   <span class="ft-ver"><span>V{{appVersion}}</span>{{if .UsersTotal}} · <i class="ti ti-users" aria-hidden="true"></i><span title="{{.UsersOnline}} angemeldet (Aktivität in den letzten 2 Minuten, ohne Terminals) von {{.UsersTotal}} aktiven Benutzern">{{.UsersOnline}}/{{.UsersTotal}}</span>{{end}}</span>
 </footer>
 <div class="frame-log" id="frame-log" role="log" aria-label="{{t "Letzte Meldungen"}}" hidden><ol></ol></div>
