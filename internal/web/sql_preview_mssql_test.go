@@ -44,11 +44,12 @@ func TestQuoteSQLTable(t *testing.T) {
 	}
 }
 
-// Quelle „Tabelle.Spalte“: Die Tabelle ist der längste Anfang, den es in der Datenbank gibt –
-// so bleiben alte Zuordnungen („Artikel.Bestand.Ist“ = Spalte „Bestand.Ist“) richtig, und
-// Tabellen mit Schema oder Punkt im Namen gehen auch.
+// Quelle „Tabelle.Spalte“: Die Tabelle ist der kürzeste Anfang, den es in der Datenbank gibt –
+// so lesen alte Zuordnungen („Artikel.Bestand.Ist“ = Tabelle Artikel, Spalte „Bestand.Ist“) genau
+// wie vor 0.82.69, auch wenn es zusätzlich eine Tabelle „Artikel.Bestand“ gibt; neue Zuordnungen
+// beginnen mit dem Schema.
 func TestSplitSQLSourceRef(t *testing.T) {
-	known := sqlKnownTables("mssql", []string{"dbo.Artikel", "erp.Artikel", "dbo.Teil.Nr", "dbo.FaultAreas"})
+	known := sqlKnownTables("mssql", []string{"dbo.Artikel", "erp.Artikel", "dbo.Teil.Nr", "dbo.FaultAreas", "dbo.Artikel.Bestand"})
 	cases := []struct{ kind, ref, table, col string }{
 		{"mssql", "FaultAreas.Name", "FaultAreas", "Name"},
 		{"mssql", "dbo.FaultAreas.Name", "dbo.FaultAreas", "Name"},

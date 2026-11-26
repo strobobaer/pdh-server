@@ -63,14 +63,20 @@ func sqlKnownTables(kind string, tables []string) map[string]bool {
 }
 
 // splitSQLSourceRef zerlegt die Quelle „Tabelle.Spalte“ einer Zuordnung. Bei SQL Server ist die
-// Tabelle der längste Anfang, den es in der Datenbank gibt (Schema und Punkte im Namen); ist er
-// unbekannt, gilt wie bei den anderen Datenbanken der erste Punkt.
+// Tabelle der kürzeste Anfang, den es in der Datenbank gibt: Alte Zuordnungen ohne Schema lesen
+// so genau wie vor 0.82.69 (erster Punkt), neue beginnen mit dem Schema („erp.Artikel.Bestand“).
+// Ist kein Anfang bekannt, gilt wie bei den anderen Datenbanken der erste Punkt.
 func splitSQLSourceRef(kind, ref string, known map[string]bool) (table, column string, ok bool) {
 	if kind == "mssql" && len(known) > 0 {
-		for i := strings.LastIndex(ref, "."); i > 0; i = strings.LastIndex(ref[:i], ".") {
-			if known[ref[:i]] && i+1 < len(ref) {
+		for i := strings.Index(ref, "."); i > 0 && i+1 < len(ref); {
+			if known[ref[:i]] {
 				return ref[:i], ref[i+1:], true
 			}
+			j := strings.Index(ref[i+1:], ".")
+			if j < 0 {
+				break
+			}
+			i += 1 + j
 		}
 	}
 	table, column, ok = strings.Cut(ref, ".")

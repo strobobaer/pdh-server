@@ -533,10 +533,13 @@ func (h *Handler) SQLRefreshValuesWeb(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var known map[string]bool // Tabellen der Datenbank: zerlegt „Schema.Tabelle.Spalte“ eindeutig
-	if tables, err := listSQLTables(db, kind); err == nil {
-		known = sqlKnownTables(kind, tables)
+	// Tabellen der Datenbank: zerlegen „Schema.Tabelle.Spalte“; ohne Liste nicht raten
+	tables, err := listSQLTables(db, kind)
+	if err != nil {
+		http.Redirect(w, r, base+"?notice="+url.QueryEscape("Aktualisierung fehlgeschlagen: Tabellen konnten nicht gelesen werden – "+err.Error()), http.StatusSeeOther)
+		return
 	}
+	known := sqlKnownTables(kind, tables)
 	byTable := map[string][]ImportMappingView{}
 	for _, mp := range mappings {
 		if isQueryRef(mp.SourceRef) { // Werte aus Abfragen: connection_queries.go
