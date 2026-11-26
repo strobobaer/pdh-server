@@ -447,7 +447,7 @@ ergänzt; der Anwender kann sie korrigieren.
 ### 11.6 Fußzeile
 
 - **Rechts neben der Versionsnummer steht die Zahl der gerade angemeldeten
-  Benutzer.** Die Versionsnummer kommt damit auch in den neuen Rahmen (bisher
+  Benutzer** (Form `V0.82.66 · 12/40`, siehe 11.10). Die Versionsnummer kommt damit auch in den neuen Rahmen (bisher
   fehlte sie dort).
 - Vorschlag: Die Zahl sehen alle Angemeldeten; gezählt werden Personen mit
   Aktivität in den letzten Minuten (die vorhandene Anwesenheit,
@@ -497,10 +497,37 @@ klassisch/neu bis 0.90.0, die Rechte aus Abschnitt 7.
   neben „Start“**, sichtbar **nur in den Bereichen Start und Planung** –
   gegebenenfalls nur als Verweis auf die Seite Zeiterfassung im Bereich
   Planung.
-- Vorschlag: Läuft eine Zeit, zeigt die Taste stattdessen „Zeit stoppen“ mit
-  der laufenden Dauer. Die Uhr in der Kopfzeile bleibt anklickbar (öffnet die
-  Übersicht). Sichtbar ist das alles nur mit den vorhandenen Rechten der
+- Läuft eine Zeit, zeigt die Taste stattdessen „Zeit stoppen“ mit der
+  laufenden Dauer. Die Uhr in der Kopfzeile ist **nicht mehr anklickbar**
+  (Anwender 26.11.2026: „muss nicht mehr über die Uhr zu öffnen sein“). Sichtbar ist das alles nur mit den vorhandenen Rechten der
   Zeiterfassung; kein neues Recht.
+
+### 11.10 Rückmeldung zur Vorschau (Anwender 26.11.2026)
+
+Zur Vorschau `2026-11-26-rahmen-start-vorschau.html`; bestätigt („ja“):
+Benutzermenü links unten, Bänder des Bereichs Start, Ansicht, Einstellungen
+und Hilfe. Geändert:
+
+- **Uhr** ohne Funktion (siehe 11.9).
+- **Band „Start“ ist nicht überall gleich**, sondern wächst mit Bereich, Seite
+  und Recht: Neben den Standardfunktionen stehen dort die Hauptaktionen der
+  offenen Seite – z. B. „Speichern“ und „Abbrechen“, während man in einer Liste
+  bearbeitet, oder „Buchen“ im Materialbeleg. Die Aktionen kommen aus der
+  einen Meldung je Seite (10.1); das Band der Seite zeigt weiter alle.
+- **Ohne Anmeldung** ist nur der Leitstand zu sehen und links unten
+  „Anmelden“ – kein Menüband, keine Bereiche, keine Benutzerzahl.
+- **Vorgangslisten:** In jeder Zeile stehen **ganz oben Anlage
+  (Infrastruktur) und Priorität**, darunter Titel und Nummer; innerhalb einer
+  Anlage nach Priorität sortiert (Lesart von Claude).
+- **Hinweis auf die Vorlage** sehen nur Gestaltungs-Administratoren (Recht
+  `system.ui_defaults`) und nur beim Darüberfahren über den Seitentitel: welche
+  Vorlage, wer sie zuletzt wann angepasst hat. Dafür wird bei jeder Zuordnung
+  und jeder Firmen-Vorgabe gespeichert, wer und wann.
+- **Fußzeile:** `V0.82.66 · 12/40` – angemeldet / aktive Benutzer (Lesart von
+  Claude für „12/xx“), Erklärung im Tooltip.
+- Die graue Leiste oben gehört nicht zum PDH: Sie steht für das Fenster
+  (Minimieren, Maximieren, Schließen); die Schalter der Vorschau stecken dort
+  im Knopf „Vorschau“.
 
 ## 12. Nachtrag 26.11.2026 – Seitenvorlagen und Zuordnung
 

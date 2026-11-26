@@ -22,12 +22,18 @@ h1,h2,h3,p{margin:0}
 :focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 .ic{flex:none}
 .mut{color:var(--muted)}
-/* Leiste der Vorschau (gehört nicht zum PDH) */
-#pv{flex:none;display:flex;align-items:center;gap:10px;padding:6px 12px;font-size:12px;flex-wrap:wrap}
-#pv b{font-weight:600}
+/* Fensterleiste: gehört nicht zum PDH (Browser bzw. Fenster); die Schalter der Vorschau stecken im Knopf „Vorschau“ */
+#pv{flex:none;display:flex;align-items:center;gap:8px;height:32px;padding:0 0 0 12px;font-size:12px}
+#pv .wt{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#pv .pvb{border:1px solid var(--border);background:var(--bg2);border-radius:var(--r);padding:2px 8px}
+#pv .wc{display:flex;height:100%}
+#pv .wc span{width:44px;display:grid;place-items:center;color:var(--muted)}
 .seg{display:inline-flex;border:1px solid var(--border);border-radius:var(--r);overflow:hidden;background:var(--bg2)}
 .seg button{border:0;background:none;padding:3px 10px}
 .seg button.on{background:var(--accent);color:var(--on-accent)}
+.pvm{display:grid;grid-template-columns:auto auto;gap:8px 10px;align-items:center;padding:10px}
+.ra2{display:flex;align-items:center;gap:6px;margin-bottom:2px}
+h2[data-tpl]{cursor:help}
 /* PDH */
 #app{flex:1;min-height:0;display:grid;grid-template-rows:44px minmax(0,1fr) 28px;grid-template-columns:minmax(0,1fr);background:var(--bg);margin:0 8px 8px;border:1px solid var(--border);border-radius:var(--rl);overflow:hidden}
 #top{display:flex;align-items:center;gap:12px;padding:0 12px;background:var(--bg2);border-bottom:1px solid var(--border);min-width:0}
@@ -35,8 +41,7 @@ h1,h2,h3,p{margin:0}
 .logo i{width:24px;height:24px;border-radius:var(--r);background:var(--accent);color:var(--on-accent);display:grid;place-items:center;font-style:normal;font-size:12px}
 #title{flex:1;min-width:0;font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #title span{color:var(--muted);font-weight:400}
-#clock{flex:none;display:flex;align-items:center;gap:6px;background:none;border:0;border-radius:var(--r);padding:4px 8px;font-variant-numeric:tabular-nums;white-space:nowrap}
-#clock:hover{background:var(--hov)}
+#clock{flex:none;display:flex;align-items:center;gap:6px;padding:4px 8px;font-variant-numeric:tabular-nums;white-space:nowrap}
 #clock .run{width:8px;height:8px;border-radius:50%;background:var(--ok)}
 #mid{display:flex;min-height:0;min-width:0}
 #rail{flex:none;width:86px;display:flex;flex-direction:column;background:var(--bg2);border-right:1px solid var(--border)}
@@ -130,7 +135,7 @@ h1,h2,h3,p{margin:0}
 .tree button.on{background:var(--tint);color:var(--accent);font-weight:600}
 .gh{display:flex;gap:8px;padding:7px 12px;background:var(--bg);border-top:1px solid var(--border);font-weight:600}
 .gh:first-child{border-top:0}
-.row{display:grid;grid-template-columns:minmax(0,1fr) auto auto 70px;gap:10px;align-items:center;padding:8px 12px;border-top:1px solid var(--border);cursor:pointer}
+.row{display:grid;grid-template-columns:minmax(0,1fr) auto 70px;gap:10px;align-items:center;padding:8px 12px;border-top:1px solid var(--border);cursor:pointer}
 .row:hover{background:var(--hov)}
 .row .nr{color:var(--muted);font-size:12px}
 .tbl{width:100%;border-collapse:collapse}
@@ -194,17 +199,21 @@ input[type=text],input[type=time],input[type=date],input[type=number],select,tex
 </head>
 <body>
 <div id="pv">
-  <b>Vorschau 26.11.2026</b><span class="mut">– Entwurf 0.90.0 Abschnitt 11/12, nichts davon ist gebaut.</span>
+  <span class="wt">PDH – Vorschau 26.11.2026 (Entwurf 0.90.0, nichts davon ist gebaut)</span>
+  <button class="pvb" id="pvbtn" title="Schalter der Vorschau – gehören nicht zum PDH">Vorschau ▾</button>
+  <span class="wc" aria-hidden="true"><span>—</span><span>☐</span><span>✕</span></span>
+</div>
+<template id="pvtpl"><div class="pvm" id="pvset">
   <span>Stil</span><span class="seg" data-pv="style"><button data-v="fiori">Fiori</button><button data-v="fluent">Fluent</button></span>
   <span>Modus</span><span class="seg" data-pv="mode"><button data-v="light">Hell</button><button data-v="dark">Dunkel</button></span>
-  <span>Rolle</span><span class="seg" data-pv="role"><button data-v="admin">Administrator</button><button data-v="ma">Mitarbeiter</button></span>
+  <span>Rolle</span><span class="seg" data-pv="role"><button data-v="admin">Administrator (Gestaltung)</button><button data-v="ma">Mitarbeiter</button></span>
   <span>Anmeldung</span><span class="seg" data-pv="logged"><button data-v="1">Angemeldet</button><button data-v="0">Nicht angemeldet</button></span>
-</div>
+</div></template>
 <div id="app">
   <header id="top">
     <div class="logo"><i>P</i>PDH</div>
     <h1 id="title"></h1>
-    <button id="clock" data-act="clock" title="Zeiterfassung – Übersicht"></button>
+    <div id="clock"></div>
   </header>
   <div id="mid">
     <nav id="rail" aria-label="Bereiche"><div id="areas"></div><div id="me"></div></nav>
@@ -252,7 +261,7 @@ const DEFAULT=[
  {k:'vorg',l:'Vorgänge',ic:'list',home:'stoer',bands:[B('stoer','Störungen','liste'),B('tick','Tickets','liste'),B('aufg','Aufgaben','liste'),B('wart','Wartung','liste'),B('ruest','Rüstzeiten','liste'),B('still','Stillstände','liste'),B('kvp','KVP','liste'),B('proj','Projekte','liste')]},
  {k:'plan',l:'Planung',ic:'cal',home:'planer',bands:[B('zeit','Zeiterfassung','liste'),B('planer','Planer','planung'),B('kal','Kalender','planung'),B('anw','Anwesenheit','liste')]},
  {k:'anl',l:'Anlagen',ic:'bld',home:'infra',bands:[B('infra','Infrastruktur','baum'),B('schnell','Schnellübersicht','cockpit'),B('itas','IT-Assets','liste'),B('esp','ESPPDH','liste'),B('mess','Messstellen','liste')]},
- {k:'mat',l:'Material',ic:'box',home:'ers',bands:[B('ers','Ersatzteile','liste'),B('lager','Lager','baum'),B('besch','Beschaffung','liste'),B('best','Bestellvorgänge','liste'),B('herst','Hersteller & Lieferanten','liste')]},
+ {k:'mat',l:'Material',ic:'box',home:'ers',bands:[B('ers','Ersatzteile','liste'),B('beleg','Materialbeleg','aktion'),B('lager','Lager','baum'),B('besch','Beschaffung','liste'),B('best','Bestellvorgänge','liste'),B('herst','Hersteller & Lieferanten','liste')]},
  {k:'wis',l:'Wissen',ic:'book',home:'dok',bands:[B('dok','Dokumente','liste'),B('vorl','Vorlagen & Signaturen','liste'),B('schul','Schulungen','liste')]},
  {k:'dat',l:'Daten',ic:'chart',home:'stat',bands:[B('stat','Statistik','cockpit'),B('imp','Import','tabelle'),B('exp','Export','tabelle'),B('abg','Abgleich','tabelle'),B('dnet','Datennetz','liste')]},
  {k:'verw',l:'Verwaltung',ic:'set',home:'ben',bands:[B('ben','Benutzer','liste'),B('abt','Abteilungen','liste'),B('org','Organigramm','baum'),B('rollen','Rollen & Rechte','einst'),B('netz','Netzwerk','einst'),B('sich','Datensicherung','einst'),B('druck','Drucker','liste'),B('leits','Leitstände','liste')]}
@@ -271,11 +280,11 @@ const pre={stoer:'ST',tick:'TK',aufg:'AU',wart:'WA',ruest:'RZ',still:'SL',kvp:'K
 /* ── Rendern ── */
 function render(){
  const h=document.documentElement;h.dataset.style=S.style;h.dataset.mode=S.mode;h.dataset.density=S.density;if(S.accent)h.style.setProperty('--accent',S.accent);else h.style.removeProperty('--accent');
- document.querySelectorAll('#pv .seg').forEach(g=>{const raw=S[g.dataset.pv];const v=raw===true?'1':raw===false?'0':String(raw);g.querySelectorAll('button').forEach(b=>b.classList.toggle('on',b.dataset.v===v))});
+ syncPv();
  const p=pageInfo();
  $('#title').innerHTML=S.logged?(area().l+' <span>›</span> '+p.l+(S.detail?' <span>›</span> '+pre[S.page]+'-10482':'')):'Leitstand';
  renderRail();renderRibbon();renderContent();renderSide();
- $('#who').innerHTML='PDH 0.82.66'+(S.logged?' · '+ic('users',14)+'<span title="Personen mit Aktivität in den letzten 5 Minuten, ohne Terminals">12 angemeldet</span>':'');
+ $('#who').innerHTML='V0.82.66'+(S.logged?' · '+ic('users',14)+'<span title="12 angemeldet (Aktivität in den letzten 5 Minuten, ohne Terminals) von 40 aktiven Benutzern">12/40</span>':'');
  tick();
 }
 function renderRail(){
@@ -294,7 +303,9 @@ function tabs(){
  t.push({sep:1},{k:'ansicht',l:'Ansicht'});if(admin())t.push({k:'einst',l:'Einstellungen',band:1});t.push({k:'hilfe',l:'Hilfe'});
  return t;
 }
+function syncPv(){document.querySelectorAll('#pvset .seg').forEach(g=>{const raw=S[g.dataset.pv];const v=raw===true?'1':raw===false?'0':String(raw);g.querySelectorAll('button').forEach(b=>b.classList.toggle('on',b.dataset.v===v))})}
 function renderRibbon(){
+ $('#ribbon').hidden=!S.logged;if(!S.logged)return;
  $('#rtabs').innerHTML=tabs().map(t=>t.sep?'<span class="rsep"></span>':'<button role="tab" class="rt'+(t.first?' first':'')+(t.band&&S.page===t.k?' page':'')+(S.tab===t.k?' on':'')+'" data-act="tab" data-k="'+t.k+'">'+t.l+'</button>').join('');
  $('#rbody').innerHTML=groups(S.tab).map(g=>'<div class="grp"><div class="gi">'+g.i.map(item).join('')+'</div><div class="gl">'+g.l+'</div></div>').join('');
 }
@@ -303,15 +314,28 @@ function item(x){
  const cls=(x.s?'rs':'rb')+(x.dd?' dd':'')+(x.on?' on':'')+(x.pri?' pri':'');
  return '<button class="'+cls+'" data-act="'+x.a+'"'+(x.d?' disabled':'')+(x.tip?' title="'+x.tip+'"':'')+'>'+ic(x.ic,x.s?16:24)+'<span'+(x.tm?' class="tmr"':'')+'>'+x.l+'</span>'+(x.n?'<i class="cnt">'+x.n+'</i>':'')+'</button>';
 }
+/* Band „Start“ wächst mit der Seite: deren Hauptaktionen, je nach Bereich, Zustand und Recht */
+function ctxGroup(){
+ const p=pageInfo(),it=[];
+ const sc=[{a:'save',l:'Speichern',ic:'save',pri:1},{a:'cancel',l:'Abbrechen',ic:'x'}];
+ if(p.k==='dash'||(p.k==='leit'&&admin()))it.push(...(S.editing?sc:[{a:'edit',l:'Bearbeiten',ic:'edit'}]));
+ else if(p.t==='aktion')it.push({a:'book-mat',l:'Buchen',ic:'pkg',pri:1},{a:'cancel',l:'Abbrechen',ic:'x'});
+ else if(p.t==='einst')it.push(...sc);
+ else if(p.t==='tabelle')it.push({a:'apply',l:'Übernehmen',ic:'save',pri:1},{a:'cancel',l:'Abbrechen',ic:'x'});
+ else if(pre[p.k]){if(S.detail)it.push(...sc,{a:'complete',l:'Fertigstellen',ic:'check'});else if(S.rowEdit)it.push(...sc);else it.push({a:'rowedit',l:'In der Liste bearbeiten',ic:'edit'})}
+ else if(p.t==='liste'&&p.k!=='zeit')it.push(...(S.rowEdit?sc:[{a:'rowedit',l:'In der Liste bearbeiten',ic:'edit'}]));
+ return it.length?{l:p.l+(S.detail?' – Vorgang':''),i:it}:null;
+}
 function timerLabel(){return S.timer?'Zeit stoppen<br>'+fmt(Date.now()-S.timer):'Zeit starten'}
 function groups(tab){
- if(!S.logged)return[{l:'Anzeige',i:[{a:'full',l:'Vollbild',ic:'max'}]},{l:'Anmeldung',i:[{a:'login',l:'Anmelden',ic:'login',pri:1}]}];
+ if(!S.logged)return[];
  if(tab==='start'){
-  return[{l:'Neu',i:[{a:'new',l:'Neu',ic:'plus',dd:1,pri:1}].concat(admin()?[{a:'assign',l:'Zuweisen',ic:'inbox',dd:1,n:3}]:[]).concat([{a:'opened',l:'Geöffnet',ic:'open',dd:1,n:S.open.length}])},
+  const cg=ctxGroup();
+  return[{l:'Neu',i:[{a:'new',l:'Neu',ic:'plus',dd:1,pri:1}].concat(admin()?[{a:'assign',l:'Zuweisen',ic:'inbox',dd:1,n:3}]:[]).concat([{a:'opened',l:'Geöffnet',ic:'open',dd:1,n:S.open.length}])}].concat(cg?[cg]:[]).concat([
    {l:'Zeit',i:[{a:'timer',l:timerLabel(),ic:S.timer?'stop':'play',on:!!S.timer,tm:1},{a:'manual',l:'Manuell erfassen',ic:'hist'}]},
    {l:'Finden',i:[{a:'search',l:'Suchen',ic:'search',tip:'Strg+K'},{a:'cop',l:'Copilot',ic:'spark',on:S.side==='cop'}]},
    {l:'Mitteilungen',i:[{col:[{s:1,a:'bell',l:'Benachrichtigungen (2)',ic:'bell'},{s:1,a:'chat',l:'Chat',ic:'chat'},{s:1,a:'share',l:'Im Chat teilen',ic:'share'}]}]},
-   {l:'Diese Seite',i:[{col:[{s:1,a:'refresh',l:'Aktualisieren',ic:'ref'},{s:1,a:'print',l:'Drucken …',ic:'print'},{s:1,a:'fav',l:isFav()?'Favorit entfernen':'Als Favorit',ic:'star',on:isFav()}]}]}];
+   {l:'Diese Seite',i:[{col:[{s:1,a:'refresh',l:'Aktualisieren',ic:'ref'},{s:1,a:'print',l:'Drucken …',ic:'print'},{s:1,a:'fav',l:isFav()?'Favorit entfernen':'Als Favorit',ic:'star',on:isFav()}]}]}]);
  }
  if(tab==='ansicht')return[{l:'Ansicht',i:[{a:'m-look',l:'Darstellung',ic:'eye',dd:1},{a:'m-adjust',l:'Anpassen',ic:'edit',dd:1}].concat(admin()?[{a:'assignfirm',l:'Zuordnung der Firma',ic:'arrows',tip:'Verwaltungsseite: Seiten und Funktionen den Bereichen und Bändern zuordnen'}]:[])}];
  if(tab==='hilfe')return[{l:'Hilfe',i:[{a:'help-page',l:'Hilfe zu dieser Seite',ic:'help',on:S.side==='help'},{a:'manual-book',l:'Handbuch',ic:'book'},{a:'versions',l:'Versionen & Updates',ic:'ref'},{a:'keys',l:'Tastenkürzel',ic:'key'}]}];
@@ -328,10 +352,13 @@ function groups(tab){
  if(b.t==='baum')return[{l:'Knoten',i:[{a:'new',l:'Neu',ic:'plus',pri:1},{a:'sub',l:'Unterknoten',ic:'tree'},{a:'move',l:'Verschieben',ic:'arrows'}]},{l:'Teilen',i:[{a:'print',l:'Drucken …',ic:'print'}]}];
  if(b.t==='tabelle')return[{l:'Datei',i:[{a:'file',l:'Datei wählen',ic:'file'},{a:'preview',l:'Vorschau',ic:'table',on:1}]},{l:'Zuordnung',i:[{a:'suggest',l:'Vorschlagen',ic:'spark'},{a:'checkimp',l:'Prüfen',ic:'check'}]},{l:'Übernehmen',i:[{a:'apply',l:'Übernehmen',ic:'save',pri:1}]}];
  if(b.t==='einst')return[{l:'Einstellungen',i:[{a:'save',l:'Speichern',ic:'save',pri:1},{a:'reset',l:'Zurücksetzen',ic:'ref'}]}];
+ if(b.t==='aktion')return[{l:'Beleg',i:[{a:'book-mat',l:'Buchen',ic:'pkg',pri:1},{a:'cancel',l:'Abbrechen',ic:'x'}]},{l:'Weitere',i:[{a:'scan',l:'Scannen',ic:'search'},{a:'history-mat',l:'Letzte Buchungen',ic:'hist'}]}];
  if(b.t==='cockpit')return[{l:'Ansicht',i:[{a:'edit',l:S.editing?'Bearbeiten beenden':'Bearbeiten',ic:'edit',on:S.editing},{a:'save',l:'Speichern',ic:'save',d:!S.dirty}]}];
  return[{l:'Eintrag',i:[{a:'new',l:'Neu',ic:'plus',pri:1},{a:'openrow',l:'Öffnen',ic:'open'},{a:'editrow',l:'Bearbeiten',ic:'edit'}]},{l:'Teilen',i:[{a:'export',l:'Exportieren',ic:'exp'},{a:'print',l:'Drucken …',ic:'print'}]}];
 }
-function ph(title,t,extra){return '<div class="ph"><h2>'+title+'</h2>'+(extra||'')+'<span class="sp"></span><span class="tpl" title="Seitenvorlage (Entwurf 12.1)">Vorlage: '+TPL[t]+'</span></div>'}
+/* Vorlage nur für Gestaltungs-Administratoren, nur beim Darüberfahren: welche Vorlage, wer wann angepasst */
+function tplAttr(t){return admin()?' data-tpl title="Vorlage: '+TPL[t]+' · zuletzt angepasst von K. Muster am 24.11.2026, 14:12"':''}
+function ph(title,t,extra){return '<div class="ph"><h2'+tplAttr(t)+'>'+title+'</h2>'+(extra||'')+'</div>'}
 function renderContent(){
  const c=$('#content');c.classList.toggle('editing',S.editing);
  if(!S.logged){c.innerHTML=leitstand(true);return}
@@ -339,6 +366,7 @@ function renderContent(){
  if(p.k==='dash'){c.innerHTML=dashboard();return}
  if(p.k==='leit'){c.innerHTML=leitstand(false);return}
  if(p.k==='zeit'){c.innerHTML=zeitUebersicht();return}
+ if(p.k==='beleg'){c.innerHTML=beleg();return}
  if(S.detail){c.innerHTML=detail();return}
  c.innerHTML=({liste:liste,planung:planung,baum:baum,einst:einst,tabelle:tabelle,cockpit:cockpit}[p.t]||liste)(p);
 }
@@ -359,7 +387,7 @@ function leitstand(pub){
  '<div class="grid">'+t.map(x=>'<div class="tile w card '+x[2]+'"><button class="wx" data-act="rmw">×</button><b>'+x[0]+'</b>'+x[1]+'</div>').join('')+
  '<div class="card w w4"><button class="wx" data-act="rmw">×</button><h3>Zeitstrahl heute</h3><div class="mut">06:00 Schichtbeginn · 08:12 Störung Linie 2 · 09:40 Rüsten Fräse 1 · 13:00 Wartung Kompressor (geplant)</div></div>'+
  '<button class="addw" data-act="addw">'+ic('plus')+'Kachel hinzufügen</button></div>'+
- (pub?'<p class="note">Der Leitstand erscheint immer ohne Anmeldung. Wandbildschirme zeigen ihn weiter als Vollbild ohne Rahmen. Anmelden links unten.</p>':'');
+ (pub?'<p class="note">Ohne Anmeldung gibt es nur den Leitstand und links unten „Anmelden“ – kein Menüband, keine Bereiche. Wandbildschirme zeigen ihn weiter als Vollbild ohne Rahmen.</p>':'');
 }
 function zeitUebersicht(){
  return ph('Zeiterfassung – Übersicht','liste','<span class="b">'+S.period+'</span>')+
@@ -367,13 +395,22 @@ function zeitUebersicht(){
  '<div class="card" style="padding:0;overflow:auto"><table class="tbl"><tr><th>Tag</th><th>Von</th><th>Bis</th><th>Dauer</th><th>Vorgang / Tätigkeit</th></tr>'+S.zeit.map(z=>'<tr><td>'+z.d+'</td><td>'+z.von+'</td><td>'+z.bis+'</td><td>'+z.dur+'</td><td>'+z.vg+'</td></tr>').join('')+'</table></div>'+
  '<p class="note">Diese Übersicht ist der Menüpunkt rechts neben „Start“ – nur in den Bereichen Start und Planung. „Zeit starten“ und „Manuell erfassen“ stehen im Band Start in jedem Bereich.</p>';
 }
+function beleg(){
+ return ph('Materialbeleg','aktion')+'<div class="card act" style="max-width:640px"><div class="fr"><span>Teil</span><select><option>Kette 1/2" 88 Glieder · ET-4471</option></select></div><div class="fr"><span>Menge</span><input type="number" value="1"></div><div class="fr"><span>Aus Lager</span><select><option>Lager › Halle 1 › Fach 7 (3 Stück)</option></select></div><div class="fr"><span>Für Vorgang</span><select><option>ST-10482 · Kettenriss am Auslaufband</option><option>ohne Vorgang (Kostenstelle)</option></select></div></div><p class="note">„Buchen“ und „Abbrechen“ stehen im Band „Materialbeleg“ und zusätzlich im Band „Start“, solange diese Seite offen ist.</p>';
+}
 function rows(p){
  const n=pre[p.k]||'NR';
  const g=[['Werk › Halle 1 › Linie 2',[[n+'-10482','Kettenriss am Auslaufband','crit','Hoch','In Arbeit','08:12'],[n+'-10479','Sensor B3 verschmutzt','warn','Mittel','Offen','gestern']]],['Werk › Halle 1 › Linie 2 › Auslaufband',[[n+'-10477','Gurt läuft schief','warn','Mittel','Wartet','Mo']]],['Werk › Halle 1 › Presse 4',[[n+'-10475','Hydraulikdruck schwankt','crit','Hoch','Offen','Mo']]],['Werk › Halle 3 › Fräse 1',[[n+'-10470','Kühlmittel nachfüllen','','Niedrig','Offen','23.11.']]]];
+ const rk={Hoch:0,Mittel:1,Niedrig:2};g.forEach(x=>x[1].sort((a,b)=>rk[a[3]]-rk[b[3]]));
  if(!S.grpInfra)return g.flatMap(x=>x[1].map(r=>row(r,x[0]))).join('');
- return g.map(x=>'<div class="gh">'+ic('bld',16)+x[0]+' <span class="mut">('+x[1].length+')</span></div>'+x[1].map(r=>row(r,'')).join('')).join('');
+ return g.map(x=>'<div class="gh">'+ic('bld',16)+x[0]+' <span class="mut">('+x[1].length+')</span></div>'+x[1].map(r=>row(r,x[0])).join('')).join('');
 }
-function row(r,path){return '<div class="row" data-act="openrow"><div><div>'+r[1]+'</div><div class="nr">'+r[0]+(path?' · '+path:'')+'</div></div><span class="b '+r[2]+'">'+r[3]+'</span><span class="b">'+r[4]+'</span><span class="mut">'+r[5]+'</span></div>'}
+/* Zeile: ganz oben Anlage und Priorität, darunter Titel und Nummer */
+function row(r,path){
+ const anl=S.grpInfra?path.split(' › ').pop():path;
+ const st=S.rowEdit?'<select data-act="noop">'+['Offen','In Arbeit','Wartet','Erledigt'].map(o=>'<option'+(o===r[4]?' selected':'')+'>'+o+'</option>').join('')+'</select>':'<span class="b">'+r[4]+'</span>';
+ return '<div class="row"'+(S.rowEdit?'':' data-act="openrow"')+'><div><div class="ra2"><b>'+anl+'</b><span class="b '+r[2]+'">'+r[3]+'</span></div><div>'+r[1]+' <span class="nr">· '+r[0]+'</span></div></div>'+st+'<span class="mut">'+r[5]+'</span></div>';
+}
 const TREE=['Werk','  Halle 1','    Linie 2','      Auslaufband','    Presse 4','  Halle 3','    Fräse 1'];
 function tree(sel){return TREE.map((t,i)=>'<button class="'+(i===sel?'on':'')+'" data-act="noop" style="padding-left:'+(6+(t.length-t.trimStart().length)*5)+'px">'+t.trim()+'</button>').join('')}
 function liste(p){
@@ -383,7 +420,7 @@ function liste(p){
 }
 function detail(){
  const n=pre[S.page]+'-10482';
- return '<div class="dh"><div class="ph" style="margin:0"><button class="btn" data-act="back">'+ic('back',16)+'Liste</button><span class="mut">'+n+' · '+pageInfo().l+'</span><span class="sp"></span><span class="tpl">Vorlage: Detail</span></div><h2 style="font-size:20px">Kettenriss am Auslaufband</h2><div><span class="b crit">Hoch</span> <span class="b info">In Arbeit</span></div><div class="k"><span>Anlage <b>Werk › Halle 1 › Linie 2 › Auslaufband</b></span><span>Gemeldet <b>heute 08:12</b></span><span>Zuständig <b>Alex B.</b></span><span>Fällig <b>heute 12:00</b></span></div></div>'+
+ return '<div class="dh"><div class="ph" style="margin:0"><button class="btn" data-act="back">'+ic('back',16)+'Liste</button><span class="mut">'+n+' · '+pageInfo().l+'</span></div><h2 style="font-size:20px"'+tplAttr('detail')+'>Kettenriss am Auslaufband</h2><div><span class="b crit">Hoch</span> <span class="b info">In Arbeit</span></div><div class="k"><span>Anlage <b>Werk › Halle 1 › Linie 2 › Auslaufband</b></span><span>Gemeldet <b>heute 08:12</b></span><span>Zuständig <b>Alex B.</b></span><span>Fällig <b>heute 12:00</b></span></div></div>'+
  '<div class="dtabs">'+['Übersicht','Arbeit','Zeit','Kommentare','Dokumente','Verlauf'].map(t=>'<button class="'+(S.dtab===t?'on':'')+'" data-act="dtab:'+t+'">'+t+'</button>').join('')+'</div>'+
  '<div class="card"><p>Kette am Auslaufband gerissen, Band steht. Ersatzkette aus Lager Halle 1 (Fach 7) geholt.</p><p class="note">Aktionen stehen nur im Menüband (Speichern, Zuweisen, Warten, Fertigstellen, Zeit und Material buchen, Drucken).</p></div>';
 }
@@ -424,13 +461,13 @@ const mi=(a,l,i,on)=>'<button class="mi'+(on?' on':'')+'" data-act="'+a+'">'+(i?
 function wizard(){dlg('<h3>Neu anlegen</h3><p class="mut">Was möchtest du anlegen? (Neu-anlegen-Assistent)</p><div class="tiles">'+[['Störung melden','bell'],['Ticket','inbox'],['Aufgabe','check'],['Rüstzeit','clock'],['Wartung','set'],['KVP-Idee','spark']].map(t=>'<button data-act="wiz:'+t[0]+'">'+ic(t[1],24)+t[0]+'</button>').join('')+'</div><div class="ft"><button class="btn" data-act="close">Abbrechen</button></div>')}
 function actionDlg(kind){
  const z=kind==='zeit';
- dlg('<div class="ph" style="margin:0"><h3>'+(z?'Zeit manuell erfassen':'Material buchen')+'</h3><span class="sp"></span><span class="tpl">Vorlage: Aktion</span></div><div class="act">'+(z?
+ dlg('<div class="ph" style="margin:0"><h3'+tplAttr('aktion')+'>'+(z?'Zeit manuell erfassen':'Material buchen')+'</h3></div><div class="act">'+(z?
  '<div class="fr"><span>Tag</span><input type="date" value="2026-11-26"></div><div class="fr"><span>Von – Bis</span><span style="display:flex;gap:6px"><input type="time" value="06:00"><input type="time" value="07:30"></span></div><div class="fr"><span>Vorgang</span><select><option>ohne Vorgang</option><option>ST-10482 · Kettenriss am Auslaufband</option></select></div><div class="fr"><span>Tätigkeit</span><input type="text" placeholder="z. B. Schichtübergabe"></div>'
  :'<div class="fr"><span>Teil</span><select><option>Kette 1/2" 88 Glieder · ET-4471</option></select></div><div class="fr"><span>Menge</span><input type="number" value="1"></div><div class="fr"><span>Aus Lager</span><select><option>Lager › Halle 1 › Fach 7 (3 Stück)</option></select></div><div class="fr"><span>Für</span><span>ST-10482 · Kettenriss am Auslaufband</span></div>')+
  '</div><div class="ft"><button class="btn big" data-act="close">Abbrechen</button><button class="btn pri big" data-act="'+(z?'book-time':'book-mat')+'">Buchen</button></div>');
 }
 function printDlg(){
- dlg('<div class="ph" style="margin:0"><h3>Drucken – '+pageInfo().l+'</h3><span class="sp"></span><span class="tpl">Vorlage: Druck</span></div><div class="prt"><div class="sheet"><h4>'+pageInfo().l+' · 26.11.2026</h4>'+Array.from({length:16},(_,i)=>'<div class="ln" style="width:'+(55+((i*37)%45))+'%"></div>').join('')+'</div><div><div class="fr"><span>Drucker</span><select><option>Büro Halle 1</option><option>Etiketten Lager</option></select></div><div class="fr"><span>Format</span><select><option>A4 hoch</option><option>A4 quer</option></select></div><div class="fr"><span>Kopien</span><input type="number" value="1" style="width:70px"></div></div></div><div class="ft"><button class="btn" data-act="close">Schließen</button><button class="btn" data-act="pdf">'+ic('exp',16)+'Als PDF</button><button class="btn pri" data-act="doprint">'+ic('print',16)+'Drucken</button></div>','wide');
+ dlg('<div class="ph" style="margin:0"><h3'+tplAttr('druck')+'>Drucken – '+pageInfo().l+'</h3></div><div class="prt"><div class="sheet"><h4>'+pageInfo().l+' · 26.11.2026</h4>'+Array.from({length:16},(_,i)=>'<div class="ln" style="width:'+(55+((i*37)%45))+'%"></div>').join('')+'</div><div><div class="fr"><span>Drucker</span><select><option>Büro Halle 1</option><option>Etiketten Lager</option></select></div><div class="fr"><span>Format</span><select><option>A4 hoch</option><option>A4 quer</option></select></div><div class="fr"><span>Kopien</span><input type="number" value="1" style="width:70px"></div></div></div><div class="ft"><button class="btn" data-act="close">Schließen</button><button class="btn" data-act="pdf">'+ic('exp',16)+'Als PDF</button><button class="btn pri" data-act="doprint">'+ic('print',16)+'Drucken</button></div>','wide');
 }
 const PAL=[['Störung melden','Aktion','new'],['Ticket anlegen','Aktion','new'],['Zeit starten','Aktion','timer'],['Zeit manuell erfassen','Aktion','manual'],['ST-10482 Kettenriss am Auslaufband','Vorgang','go:vorg:stoer:d'],['Linie 2 (Werk › Halle 1)','Anlage','go:anl:infra']];
 function palette(){
@@ -462,7 +499,7 @@ function orderDlg(){
 /* ── Handlungen ── */
 function say(t,prog){$('#stxt').textContent=t;const b=$('#sbar');if(prog){b.hidden=false;const i=b.firstChild;i.style.width='0';requestAnimationFrame(()=>requestAnimationFrame(()=>{i.style.width='100%'}));setTimeout(()=>{b.hidden=true},800)}}
 const isFav=()=>S.favs.some(f=>f.a===S.area&&f.p===S.page);
-function go(a,p,d){S.area=a;S.page=p||areaOf(a).home;S.tab=S.page;S.detail=!!d;S.editing=false;S.dirty=false;closeDlg();render()}
+function go(a,p,d){S.area=a;S.page=p||areaOf(a).home;S.tab=S.page;S.detail=!!d;S.editing=false;S.dirty=false;S.rowEdit=false;closeDlg();render()}
 function act(a,el){
  const i=a.indexOf(':');const k=i<0?a:a.slice(0,i),v=i<0?'':a.slice(i+1);
  closeMenu();
@@ -470,7 +507,7 @@ function act(a,el){
  case 'noop':return;
  case 'area':return go(el.dataset.a);
  case 'go':if(!v&&el&&el.dataset.a)return go(el.dataset.a,el.dataset.p);{const p=v.split(':');return go(p[0],p[1],p[2]==='d')}
- case 'tab':{const t=el.dataset.k;if(!S.logged)return;if(t==='einst'||area().bands.some(b=>b.k===t)){if(S.page!==t){S.page=t;S.detail=false;S.editing=false;S.dirty=false}}S.tab=t;return render()}
+ case 'tab':{const t=el.dataset.k;if(!S.logged)return;if(t==='einst'||area().bands.some(b=>b.k===t)){if(S.page!==t){S.page=t;S.detail=false;S.editing=false;S.dirty=false;S.rowEdit=false}}S.tab=t;return render()}
  case 'clock':if(!S.logged)return;return go('start','zeit');
  case 'login':S.logged=true;return go('start','dash');
  case 'logout':S.logged=false;S.side='';S.timer=0;S.page='leit';S.tab='leit';S.area='start';S.editing=false;S.detail=false;closeDlg();render();return say('Abgemeldet – die Sitzung gilt auch als Kopie nicht mehr.');
@@ -499,7 +536,9 @@ function act(a,el){
  case 'edit':S.editing=!S.editing;if(S.editing)S.dirty=true;render();return say(S.editing?'Bearbeiten: Widgets ziehen, × entfernt, „Widget hinzufügen“.':'Bearbeiten beendet – noch nicht gespeichert.');
  case 'addw':return say('Widget-Katalog öffnet (in der Vorschau nicht enthalten).');
  case 'rmw':el.closest('.card').remove();S.dirty=true;renderRibbon();return say('Widget entfernt – noch nicht gespeichert.');
- case 'save':S.dirty=false;S.editing=false;render();return say('Gespeichert: '+pageInfo().l+'.',1);
+ case 'cancel':S.editing=false;S.rowEdit=false;S.dirty=false;render();return say('Abgebrochen – nichts geändert.');
+ case 'rowedit':S.rowEdit=true;S.tab='start';render();return say('Bearbeiten in der Liste: „Speichern“ und „Abbrechen“ stehen jetzt im Band Start.');
+ case 'save':S.dirty=false;S.editing=false;S.rowEdit=false;render();return say('Gespeichert: '+pageInfo().l+'.',1);
  case 'reset':S.editing=false;S.dirty=false;render();return say('Auf die Vorgabe zurückgesetzt.');
  case 'standard':return dlg('<h3>Als Standard für alle setzen?</h3><p>Die jetzige Anordnung von „'+pageInfo().l+'“ wird die Vorgabe der Firma. Wer seine Seite schon angepasst hat, behält sie, bis er „Auf Vorgabe zurücksetzen“ drückt.</p><div class="ft"><button class="btn" data-act="close">Abbrechen</button><button class="btn pri" data-act="std-ok">Für alle setzen</button></div>');
  case 'std-ok':closeDlg();return say('Vorgabe der Firma gesetzt: '+pageInfo().l+'.',1);
@@ -530,8 +569,9 @@ function act(a,el){
  }
 }
 document.addEventListener('click',e=>{
- const pv=e.target.closest('#pv .seg button');
- if(pv){const g=pv.parentElement.dataset.pv,v=pv.dataset.v;if(g==='logged'){act(v==='1'?'login':'logout',null);return}S[g]=v;if(g==='role'&&v!=='admin'&&(S.area==='verw'||S.page==='einst'))go('start','dash');else render();return}
+ if(e.target.closest('#pvbtn')){if(menuEl&&menuEl.querySelector('#pvset')){closeMenu();return}menu($('#pvbtn'),$('#pvtpl').innerHTML);syncPv();return}
+ const pv=e.target.closest('#pvset .seg button');
+ if(pv){const g=pv.parentElement.dataset.pv,v=pv.dataset.v;if(g==='logged'){act(v==='1'?'login':'logout',null)}else{S[g]=v;if(g==='role'&&v!=='admin'&&(S.area==='verw'||S.page==='einst'))go('start','dash');else render()}menu($('#pvbtn'),$('#pvtpl').innerHTML);syncPv();return}
  const t=e.target.closest('[data-act]');
  if(menuEl&&!e.target.closest('.menu')&&!t)closeMenu();
  if(e.target.id==='ov'){closeDlg();draft=null;return}
