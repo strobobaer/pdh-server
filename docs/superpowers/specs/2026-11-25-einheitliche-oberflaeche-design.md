@@ -529,6 +529,45 @@ und Hilfe. Geändert:
   (Minimieren, Maximieren, Schließen); die Schalter der Vorschau stecken dort
   im Knopf „Vorschau“.
 
+### 11.11 PDH ohne Browserleisten (Anwender 26.11.2026)
+
+- „Die graue Leiste ist der Fensterrahmen, ansonsten ist nichts mehr – PDH soll
+  ohne Browserleisten starten.“ Über dem PDH steht nur noch der Rahmen des
+  Fensters mit Minimieren, Maximieren und Schließen – keine Adresszeile,
+  keine Browser-Reiter.
+- Weg (Vorschlag von Claude): das PDH als **installierbare Web-App** – eine
+  App-Beschreibung (`manifest.webmanifest`, `display: standalone`, Name, Symbol,
+  Startadresse) und ein kleiner Hintergrunddienst (Service Worker, nur für die
+  Installation, kein Arbeiten ohne Verbindung). In Edge und Chrome dann
+  „App installieren“; das PDH startet aus dem Startmenü bzw. vom Desktop als
+  eigenes Fenster. Kein eigenes Programm, das gepflegt werden müsste.
+- **Voraussetzung:** HTTPS mit gültigem Zertifikat (oder `localhost`). Über
+  `http://<Adresse>:8090` bietet der Browser die Installation nicht an – im
+  Testverbund heute nur so erreichbar, auf 10.10.0.202 über den Namen mit
+  Let's-Encrypt-Zertifikat möglich.
+- Terminals bleiben im Kioskbetrieb wie heute.
+- Das Handbuch bekommt „So installierst du das PDH als App“; der Eintrag
+  „App installieren“ im Benutzermenü (heute die Handy-App) nennt beides.
+
+### 11.12 Rückgängig, Speichern und Verwerfen (Anwender 26.11.2026)
+
+- **„Rückgängig“ im Band „Start“** nimmt den letzten Bearbeitungsschritt
+  zurück – Schritt für Schritt, bis zum endgültigen Speichern. Die Taste zeigt
+  die Zahl der Schritte; nach dem Speichern ist sie leer. Strg+Z wie gewohnt.
+- Ungespeicherte Änderungen werden **angezeigt** (Statusleiste „● 2 nicht
+  gespeichert“, „Speichern“ hervorgehoben).
+- **Beim Wechseln** (anderes Band, anderer Bereich, anderer Vorgang) **oder
+  Verlassen** (Abmelden, Fenster schließen) fragt das PDH „Änderungen
+  speichern?“ mit „Speichern“ und „Verwerfen“. **Wird nicht bestätigt**
+  (Esc, daneben geklickt, Fenster geschlossen), **werden die Eingaben
+  verworfen.** Lesart von Claude für „automatisches Speichern wird
+  signalisiert“: Es wird nichts still im Hintergrund übernommen; das PDH
+  meldet nur, dass etwas offen ist, und übernimmt erst mit Bestätigung.
+- Gilt für alle Vorlagen, in denen man bearbeitet (Cockpit, Liste beim
+  Bearbeiten in der Liste, Detail, Einstellungen, Tabelle/Zuordnung, Aktion).
+  Schritte, die sofort wirken müssen (Zeit starten/stoppen, Buchen,
+  Fertigstellen), sind keine Bearbeitungsschritte und bleiben wie heute.
+
 ## 12. Nachtrag 26.11.2026 – Seitenvorlagen und Zuordnung
 
 Vorgabe des Anwenders (26.11.2026): Es gibt **wenige Seitenvorlagen, die immer
