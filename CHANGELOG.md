@@ -10,6 +10,18 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.82.69] – 2026-11-26
+
+### Neu
+
+- **Vorlagen zum Auslesen einer Datenbank:** Unter „Abfragen“ einer SQL-Server-, MySQL- oder SQLite-Verbindung gibt es jetzt „Alle Tabellen und Sichten“, „Spalten einer Tabelle“, „Tabelle ansehen (20 Zeilen)“ und „Zeilen je Tabelle“.
+- **Hinweis bei abgelehnter Windows-Anmeldung:** Meldet der SQL Server „nicht vertrauenswürdige Domäne“, nennt die Prüfung die möglichen Gründe und den sicheren Weg mit einem eigenen SQL-Benutzer.
+
+### Behoben
+
+- **„Datenbank durchsuchen“ bei SQL Server:** Die Vorschau einer Tabelle scheiterte mit „Falsche Syntax in der Nähe von "20"“; ebenso „Werte aktualisieren“.
+- **Tabellen in eigenem Schema und Sichten:** „Datenbank durchsuchen“ zeigt bei SQL Server jetzt auch Tabellen außerhalb von `dbo` (z. B. `erp.Artikel`) und Sichten.
+
 ## [0.82.68] – 2026-11-26
 
 ### Neu

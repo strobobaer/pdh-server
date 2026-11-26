@@ -180,7 +180,15 @@ func TestQuerySpecAndRefs(t *testing.T) {
 			}
 		}
 	}
-	if !strings.Contains(builtinQueryTemplates("mssql")[0].Spec["sql"], "TOP 1") || !strings.Contains(builtinQueryTemplates("mysql")[0].Spec["sql"], "LIMIT 1") {
+	latest := func(kind string) string { // Vorlagen zum Auslesen stehen seit 0.82.69 davor
+		for _, tpl := range builtinQueryTemplates(kind) {
+			if tpl.Name == "Letzter Datensatz" {
+				return tpl.Spec["sql"]
+			}
+		}
+		return ""
+	}
+	if !strings.Contains(latest("mssql"), "TOP 1") || !strings.Contains(latest("mysql"), "LIMIT 1") {
 		t.Error("SQL-Dialekt der Vorlagen falsch")
 	}
 }

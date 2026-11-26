@@ -1390,6 +1390,24 @@ und 3 drückt bis auf Weiteres der Anwender.
 30. **Vorgabe Assistenten (Anwender 25.11.2026):** Neu-anlegen- und
     Fertigstellen-Assistent dürfen in keinem Teil der neuen Oberfläche fehlen
     (Entwurf 0.90.0 Abschnitt 10.11, `TestFrameHasWizards`).
+33. **0.82.69 Datenbank durchsuchen bei SQL Server** (Anwender 26.11.2026: „ja
+    bitte mach das sofort mit vorlagen zum auslesen“; Anlass: auf 202 scheiterte
+    die Vorschau von `FaultAreas` mit „Falsche Syntax in der Nähe von "20"“, die
+    Verbindung über VPN nach 10.1.3.13 meldete vorher Fehler 18452 „nicht
+    vertrauenswürdige Domäne“ mit Benutzer `DOMAIN\user`): TOP statt LIMIT
+    (Vorschau und „Werte aktualisieren“), Tabellen immer mit Schema
+    (`dbo.Artikel`) samt Sichten, Schlüssel über `OBJECT_ID`, Quelle „Tabelle.Spalte“
+    am kürzesten bekannten Anfang zerlegt (alte Zuordnungen lesen wie vorher),
+    vier Vorlagen zum Auslesen vorn unter Abfragen › Vorlagen, Hinweis bei 18452
+    (`sql_dialect.go`). Labor-SQL-Server: `erp.Artikel` und Sicht
+    `dbo.MeldungenOffen` (`deploy/lab/mssql/seed.sql`), Test `TestMssqlBrowseLab`.
+    Kein neues Recht, keine Migration. Codex zweimal; zurückgestellt (klein):
+    Schemanamen mit Punkt (`[erp.alt]`) bleiben mehrdeutig; neue Zuordnung an
+    einer Tabelle mit Punkt im Namen, wenn es zugleich eine Tabelle mit dem
+    Anfang davor gibt; MySQL-Vorlagen nur ohne echten MySQL-Server geprüft.
+    Danach: Teil 3 „Vorgänge – Liste mit Detail“ (Entwurf
+    `docs/superpowers/specs/2026-11-26-vorgaenge-liste-detail-design.md` auf Branch
+    `feature/vorgaenge-liste`, lokal; Fragen A–C an den Anwender offen).
 
 Docker Desktop startet nach einem Neustart des Windows-Rechners nicht von
 selbst – ohne ihn fehlen der Zeuge und die Labor-Datenbank für die Tests.

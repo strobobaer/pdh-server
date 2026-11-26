@@ -2665,6 +2665,14 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>Ein Intervall eintragen (0 = nur von Hand) und <b>Speichern &amp; ausführen</b>. Das Ergebnis erscheint als Tabelle.</li>
       <li>Neben der gewünschten Spalte auf <i class="ti ti-map-pin"></i> klicken und die Anlage wählen. Zugeordnet wird die erste bzw. letzte Zeile des Ergebnisses.</li>
     </ol></div>
+  <div class="hb-howto"><b><i class="ti ti-table"></i> So erkundest du eine unbekannte Datenbank</b>
+    <ol class="hb-steps">
+      <li>Verbindung (SQL Server, MySQL oder SQLite) öffnen, Reiter <b>Abfragen</b>.</li>
+      <li>Unter <b>Vorlagen</b> „<b>Alle Tabellen und Sichten</b>“ übernehmen, <b>Speichern &amp; ausführen</b>, dann <b>Ergebnis</b>. Du siehst jede Tabelle mit Schema (bei SQL Server meist <code>dbo</code>).</li>
+      <li>„<b>Spalten einer Tabelle</b>“ zeigt Namen und Typen: <code>&lt;schema&gt;</code> und <code>&lt;tabellenname&gt;</code> ersetzen. „<b>Tabelle ansehen (20 Zeilen)</b>“ zeigt die ersten Zeilen: <code>&lt;tabelle&gt;</code> durch z. B. <code>dbo.Artikel</code> ersetzen. „<b>Zeilen je Tabelle</b>“ zeigt, wo die meisten Daten liegen.</li>
+      <li>Die Erkundungs-Abfragen laufen nur von Hand. Wenn du weißt, was du brauchst, lösche sie wieder und lege die eigentliche Abfrage an.</li>
+    </ol>
+    Schneller zum Durchblättern: in der Liste der Verbindungen das Menü der Zeile › <b>Datenbank durchsuchen</b> – Tabellen und Sichten als Knöpfe, je 20 Zeilen Vorschau. Das PDH liest dabei nur.</div>
   <div class="hb-howto"><b><i class="ti ti-copy"></i> Mehrere gleiche Maschinen</b>Eine Maschine fertig einrichten, im Reiter <b>Vorlagen</b> als Vorlage speichern und auf der Verbindungsseite der nächsten Maschine <b>anwenden</b>. Abfragen und Zuordnungen entstehen dort genauso; schon Vorhandenes wird nicht doppelt angelegt.</div>
   {{template "hb-fig-zuordnen"}}
   <div class="hb-howto"><b><i class="ti ti-wand"></i> So lässt du Zuordnungen vorschlagen</b>
@@ -2773,6 +2781,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <p>Beim Export gibt es außerdem die Art <b>Efficio-CSV (Energiedaten)</b>: Sie liefert die Minutenwerte der <a href="#energiedaten">Messstellen</a> als CSV und legt sie zum Abholen, auf einem Netzlaufwerk oder per FTP/SFTP ab. Statt der Vorschau gibt es dort die Seite <b>Dateien &amp; Protokoll</b> (<a href="#energiedaten">Efficio-Export einrichten</a>).</p>
   <p><b>Kennwörter</b> von Verbindungen werden verschlüsselt gespeichert und nie wieder angezeigt. Beim Bearbeiten das Kennwortfeld <b>leer lassen</b> – dann bleibt das gespeicherte Kennwort.</p>
   <p>Bei <b>MSSQL</b>-Verbindungen gibt es zusätzlich: den <b>Weg</b> (Direkt, ein ausgehender VPN-Tunnel oder ein Client des <a href="#datennetz">Datennetzes</a>; über VPN und Datennetz mit eigenem Abfragetakt von 5 bis 30 Minuten und eigener Zeitgrenze – beim Datennetz bitte den Port eintragen, eine benannte Instanz geht dort nicht), den <b>Fingerabdruck</b> des Serverzertifikats (einmal lesen und bestätigen) und den Schalter <b>Schreiben erlaubt</b>. Ohne diesen Schalter schreibt das PDH nie in die Datenbank. Wird der Weg geändert, stehen scharfe Profile des <a href="#abgleich">Abgleichs</a> wieder auf „Getestet“.</p>
+  <p><b>Anmeldung am SQL Server:</b> Am einfachsten mit einem eigenen SQL-Benutzer nur für das PDH (Benutzer ohne Domäne). Ein Windows-Konto geht im Format <code>FIRMA\name</code> mit dem <b>kurzen</b> Domänennamen. Meldet die Prüfung „nicht vertrauenswürdige Domäne“, nennt sie die möglichen Gründe: falsch geschriebene Domäne, falsches oder abgelaufenes Kennwort, oder die Domäne lässt die Anmeldung von diesem Server nicht zu – dann hilft nur ein eigener SQL-Benutzer.</p>
   {{template "hb-shots" (dict "Ref" (index $s "connections") "Can" $can)}}
 </section>
 
