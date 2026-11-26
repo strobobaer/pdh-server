@@ -61,6 +61,11 @@ html.rail-narrow .rail-area span{display:none}}
 .ft-uname{max-width:56px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ft-user-menu{position:fixed;left:68px;bottom:36px;min-width:240px;max-height:80vh;overflow:auto;z-index:200}
 .ft-lang{padding:var(--sp-1) var(--sp-2)}
+/* Ungespeicherte Schritte und Nachfrage (11.12) */
+.frame-unsaved{flex:none;padding:1px var(--sp-2);border-radius:var(--r-m);background:var(--warn-soft);color:var(--warn);font-weight:600;white-space:nowrap}
+.frame-unsaved[hidden]{display:none}
+.fe-back{position:fixed;inset:0;z-index:299;background:color-mix(in srgb,var(--text) 35%,transparent)}
+.fe-ask{z-index:300}
 /* Fußzeile: Version und Angemeldete rechts (11.6) */
 .ft-ver{flex:none;display:flex;align-items:center;gap:4px;margin-left:auto;padding-left:var(--sp-3);color:var(--muted);white-space:nowrap}
 /* 0.82.67: Bänder statt Reiterleiste, Aufklappmenüs, Zustände (Entwurf 11.3) */

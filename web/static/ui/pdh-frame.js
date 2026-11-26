@@ -215,7 +215,8 @@
       if (typeof window.pdhCreate === 'function') window.pdhCreate(it.href.slice(8));
       return;
     }
-    location.href = it.href;
+    var go = function () { location.href = it.href; };
+    if (window.pdhEdit) window.pdhEdit.guard(go); else go(); // offene Bearbeitung: erst nachfragen
   }
   function palKey(e) {
     // Esc nicht weiterreichen: ein offener Assistent dahinter (Fertigstellen) bliebe sonst nicht offen

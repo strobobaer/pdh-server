@@ -49,11 +49,13 @@
   </div>
   <span class="frame-warn" id="frame-warn"{{if .Mirror}} title="{{t "Spiegelserver – nur lesen"}}"{{else}} hidden{{end}}>{{if .Mirror}}{{t "Spiegelserver – nur lesen"}}{{end}}</span>
   <div class="footer-status-error" id="footer-status-error">Keine Fehler</div>
+  <span class="frame-unsaved" id="frame-unsaved" hidden></span>
   <span class="ft-ver"><span>V{{appVersion}}</span>{{if .UsersTotal}} · <i class="ti ti-users" aria-hidden="true"></i><span title="{{.UsersOnline}} angemeldet (Aktivität in den letzten 2 Minuten, ohne Terminals) von {{.UsersTotal}} aktiven Benutzern">{{.UsersOnline}}/{{.UsersTotal}}</span>{{end}}</span>
 </footer>
 <div class="frame-log" id="frame-log" role="log" aria-label="{{t "Letzte Meldungen"}}" hidden><ol></ol></div>
 {{template "ui-scripts" .}}
 <script src="{{uiURL "pdh-frame.js"}}"></script>
+<script src="{{uiURL "pdh-edit.js"}}"></script>
 </body>
 </html>
 {{template "ui-tail" .}}
