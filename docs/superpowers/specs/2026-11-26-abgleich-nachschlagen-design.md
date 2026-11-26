@@ -114,6 +114,30 @@ Die echten Spaltennamen liefert der Anwender (Vorlage „Spalten einer Tabelle�
   des Profils wählbar; sie legt die Nachschlagetabellen, Zielfelder und Listen an,
   der Anwender wählt nur noch Tabellen und Spalten aus.
 
+## 3.9 Tempo (Anwender 26.11.2026: „der Datenimport muss auch schnell durchgehen“)
+
+Regeln:
+
+- **Keine Abfrage je Zeile ins Fremdsystem.** Nachschlagetabellen werden je Lauf
+  einmal ganz gelesen, wenn sie klein sind (bis 20 000 Zeilen), sonst je Seite mit
+  einer Abfrage für alle Nummern der Seite (`WHERE Nr IN (…)`). Kommentare je Seite
+  mit einer Abfrage für alle Störungsnummern der Seite.
+- **Zuordnungslisten, Benutzer und Kategorien** liegen je Lauf im Speicher.
+- **Im PDH je Seite statt je Zeile:** die Verknüpfungen (`sync_links`) einer Seite mit
+  einer Abfrage lesen; Anlegen und Ändern einer Seite in einer Transaktion.
+- Folgeläufe lesen dank Änderungsspalte nur geänderte Zeilen.
+- Über VPN oder Datennetz gilt wie heute eigener Takt und eigene Zeitgrenze.
+
+Ziele (gemessen im Labor mit 10 000 Zeilen in `Fault`, 5 Nachschlagetabellen und
+20 000 Kommentaren, Labor-SQL-Server auf demselben Rechner):
+
+- **Erstlauf** 10 000 Zeilen in **unter 60 Sekunden**.
+- **Folgelauf** mit 20 geänderten Zeilen in **unter 2 Sekunden**.
+- Der **Trockenlauf** einer Seite (200 Zeilen) in unter 3 Sekunden.
+
+Die Messung liegt als Test bei (`-tags perf`, nicht im normalen Lauf) und steht mit
+den Werten im Bericht des Pakets.
+
 ## 4. Test und Betrieb
 
 - Der vorhandene **Trockenlauf** zeigt je Zeile: Störung/Ticket, aufgelöste Texte,
@@ -129,12 +153,13 @@ Die echten Spaltennamen liefert der Anwender (Vorlage „Spalten einer Tabelle�
 2. Anlage/Anlagenteil, Kategorie, Stillstandsgrund mit Zuordnungslisten (3.3–3.5).
 3. Kommentare einlesen und Vorlage (3.7, 3.8).
 
-## 6. Fragen an den Anwender
+## 6. Entscheidungen (Anwender 26.11.2026: „Ok der Datenimport muss auch schnell
+durchgehen“ – die Vorschläge gelten)
 
-- **A.** Wenn sich der Ja/Nein-Wert später ändert: nur am vorhandenen Vorgang melden
-  (Vorschlag) oder den Vorgang umwandeln?
-- **B.** Soll eine Art wie „Rüstzeiten“ statt einer Störung eine **Rüstzeit** im PDH
-  anlegen, oder reicht die Kategorie?
-- **C.** Meldender ohne passenden Benutzer: als externer Name speichern (Vorschlag)
-  oder einen Benutzer „aus cybernetics“ verwenden?
-- **D.** Reihenfolge der drei Teile so?
+- **A.** Wechselt der Ja/Nein-Wert später: nur am vorhandenen Vorgang melden, nicht
+  umwandeln.
+- **B.** Die Art (auch „Rüstzeiten“, „Reinigung“) wird eine Kategorie; keine Rüstzeit.
+- **C.** Meldender ohne passenden Benutzer: externer Name (`reporter_name`).
+- **D.** Reihenfolge der drei Teile wie in 5.
+- Dazu Tempo nach 3.9.
+- Offen: die echten Spaltennamen der fünf Tabellen (vom Anwender erbeten).
