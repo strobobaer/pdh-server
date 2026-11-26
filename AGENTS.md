@@ -1330,6 +1330,11 @@ und 3 drückt bis auf Weiteres der Anwender.
     nach Recht; der Leitstand erscheint immer ohne Anmeldung und wird im
     mittleren Feld bearbeitet; Copilot und Suche aus „Start“; Zahl der
     angemeldeten Benutzer in der Fußzeile rechts neben der Versionsnummer.
+    Ergänzung Zeiterfassung (gleicher Tag): „Zeit starten“ und „Manuell
+    erfassen“ immer als Tasten im Band „Start“ (heute nur über die Uhr); die
+    Übersicht ist ein neuer Menüpunkt direkt rechts neben „Start“, nur in den
+    Bereichen Start und Planung, gegebenenfalls als Verweis (Entwurf 11.9;
+    offen: Tasten in jedem Bereich oder nur im Bereich Start).
     Als Abschnitt 11 im Entwurf
     `docs/superpowers/specs/2026-11-25-einheitliche-oberflaeche-design.md`
     (geht 5.2 vor), Branch `docs/oberflaeche-rahmen-nachtrag` (lokal). Folge:

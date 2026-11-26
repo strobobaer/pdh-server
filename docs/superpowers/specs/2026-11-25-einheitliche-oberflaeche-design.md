@@ -405,7 +405,8 @@ ergänzt; der Anwender kann sie korrigieren.
 - **Start** steht immer ganz links, in jedem Bereich. Dort stehen die
   Standardfunktionen, die jeder darf – als Taste oder als Dropdown: „Neu“
   (neuer Vorgang, öffnet den Neu-anlegen-Assistenten), Suche (Strg+K),
-  Copilot (Fenster rechts ein und aus). Dazu die Grundaktionen der Seite.
+  Copilot (Fenster rechts ein und aus), Zeiterfassung („Zeit starten“,
+  „Manuell erfassen“, siehe 11.9). Dazu die Grundaktionen der Seite.
 - **Bänder des Bereichs** (Beispiele des Anwenders):
   - Bereich Start: Bänder **Dashboard** und **Leitstand**, je nach Recht mit
     „Bearbeiten“, „Speichern“ und „Als Standard für alle setzen“.
@@ -476,3 +477,20 @@ klassisch/neu bis 0.90.0, die Rechte aus Abschnitt 7.
   2. Leitstand an Wandbildschirmen weiter als Vollbild ohne Rahmen?
   3. Benachrichtigungen, Chat und Sprache wie in 11.1 vorgeschlagen?
   4. Zahl der angemeldeten Benutzer für alle sichtbar?
+  5. Zeiterfassung (11.9): Tasten „Zeit starten“ und „Manuell erfassen“ im
+     Band „Start“ in jedem Bereich (Vorschlag, weil „immer zugänglich“) oder
+     nur im Bereich Start?
+
+### 11.9 Zeiterfassung (Ergänzung des Anwenders vom 26.11.2026)
+
+- Heute öffnet ein Klick auf die Uhr die Zeiterfassung (`/time`).
+- Neu: Die Zeiterfassung ist **immer zugänglich über Tasten im Band „Start“**:
+  **„Zeit starten“** und **„Manuell erfassen“**.
+- Die **Übersicht** der Zeiterfassung ist ein **neuer Menüpunkt direkt rechts
+  neben „Start“**, sichtbar **nur in den Bereichen Start und Planung** –
+  gegebenenfalls nur als Verweis auf die Seite Zeiterfassung im Bereich
+  Planung.
+- Vorschlag: Läuft eine Zeit, zeigt die Taste stattdessen „Zeit stoppen“ mit
+  der laufenden Dauer. Die Uhr in der Kopfzeile bleibt anklickbar (öffnet die
+  Übersicht). Sichtbar ist das alles nur mit den vorhandenen Rechten der
+  Zeiterfassung; kein neues Recht.
