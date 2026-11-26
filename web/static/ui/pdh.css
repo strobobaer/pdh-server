@@ -802,14 +802,15 @@ html.tb-off-1 .win11-menu a.tb-share-menu,html.tb-off-3 .win11-menu a.tb-theme-m
 .tree-grip:hover,.tree-grip:focus-visible{background:var(--bg2);color:var(--text)}
 [data-tree-move] .tree-grip{display:inline-flex}
 body:not(:has([data-tree-move])) .tree-move-btn{display:none}
-.tree-top{display:none;margin-bottom:var(--sp-2);padding:var(--sp-2) var(--sp-3);border:1px dashed var(--border);border-radius:var(--r-s);color:var(--muted);font-size:var(--fs-sm)}
+/* „ganz oben“ schwebt beim Ziehen oben im Bild – im Fluss würde sie den Baum unter dem Finger verschieben */
+.tree-top{display:none;position:fixed;z-index:999;top:var(--sp-3);left:50%;transform:translateX(-50%);max-width:calc(100vw - 32px);padding:var(--sp-2) var(--sp-4);border:1px dashed var(--accent);border-radius:var(--r-s);background:var(--bg2);color:var(--text);box-shadow:var(--shadow-float);font-size:var(--fs-sm);white-space:nowrap}
 .tree-drag-on .tree-top{display:block}
 .tree-drag-on{user-select:none}
 .tree-dragging>[data-tree-row]{opacity:.45}
 .tree-drop-ok{outline:2px solid var(--accent);outline-offset:1px;background:var(--info-soft)!important}
 .tree-drop-no{outline:2px dashed var(--err);outline-offset:1px;cursor:not-allowed}
 .tree-ghost{position:fixed;z-index:1000;pointer-events:none;padding:var(--sp-1) var(--sp-3);border-radius:var(--r-s);background:var(--bg2);color:var(--text);border:1px solid var(--border);box-shadow:var(--shadow-float);font-size:var(--fs-sm);white-space:nowrap}
-.tree-dlg{max-width:min(520px,calc(100vw - 32px));border:1px solid var(--border);border-radius:var(--r-m);background:var(--bg2);color:var(--text);box-shadow:var(--shadow-flyout);padding:var(--sp-4)}
+.tree-dlg{margin:auto;box-sizing:border-box;width:min(520px,calc(100vw - 32px));max-width:min(520px,calc(100vw - 32px));border:1px solid var(--border);border-radius:var(--r-m);background:var(--bg2);color:var(--text);box-shadow:var(--shadow-flyout);padding:var(--sp-4)}
 .tree-dlg::backdrop{background:color-mix(in srgb, var(--text) 35%, transparent)}
 .tree-dlg-title{font-size:var(--fs-md);margin:0 0 var(--sp-2)}
 .tree-dlg-from,.tree-dlg-to{margin:0 0 var(--sp-1);font-size:var(--fs-sm);color:var(--muted);overflow-wrap:anywhere}

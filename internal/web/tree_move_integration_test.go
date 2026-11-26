@@ -7,7 +7,9 @@ package web
 
 import (
 	"context"
+	"fmt"
 	"net/http/httptest"
+	"sync"
 	"net/url"
 	"strings"
 	"testing"
@@ -107,6 +109,29 @@ func TestTreeMoveInfra(t *testing.T) {
 			t.Fatalf("zurück: %d %s", rec.Code, rec.Body.String())
 		}
 	})
+}
+
+// Zwei Verschiebungen über Kreuz zur selben Zeit (A unter b, B unter a): höchstens eine
+// darf gelingen, sonst entsteht eine Schleife im Baum.
+func TestTreeMoveInfraCrossRace(t *testing.T) {
+	e := newTreeMoveEnv(t)
+	admin := &users.User{ID: e.user("tmrace", "admin", false), Role: "admin"}
+	e.warm()
+	for round := 0; round < 10; round++ {
+		a := e.infra(fmt.Sprintf("RA%d ", round), "", "")
+		b := e.infra(fmt.Sprintf("RB%d ", round), "", "")
+		ac := e.infra(fmt.Sprintf("RAk%d ", round), "", a)
+		bc := e.infra(fmt.Sprintf("RBk%d ", round), "", b)
+		var wg sync.WaitGroup
+		codes := make([]int, 2)
+		wg.Add(2)
+		go func() { defer wg.Done(); codes[0] = e.move(admin, "/infrastructure/"+a+"/move", bc, "").Code }()
+		go func() { defer wg.Done(); codes[1] = e.move(admin, "/infrastructure/"+b+"/move", ac, "").Code }()
+		wg.Wait()
+		if codes[0] == 200 && codes[1] == 200 {
+			t.Fatalf("Runde %d: beide Verschiebungen gelungen – Schleife A↔B", round)
+		}
+	}
 }
 
 // Recht nur in Abteilung A: innerhalb von A verschieben geht, in Abteilung B und auf die

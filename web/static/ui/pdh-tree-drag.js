@@ -205,7 +205,7 @@
 
   document.addEventListener('pointerdown', function (e) {
     var grip = e.target.closest && e.target.closest('[data-tree-grip]');
-    if (!grip || e.button > 0) return;
+    if (!grip || e.button > 0 || drag) return; // ein zweiter Finger übernimmt keinen laufenden Zug
     var node = nodeOf(grip), root = rootOf(grip);
     if (!node || !root) return;
     e.preventDefault();

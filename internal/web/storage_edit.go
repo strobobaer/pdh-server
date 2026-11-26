@@ -29,6 +29,8 @@ func (h *Handler) StorageEditWeb(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	id := chi.URLParam(r, "id")
 	_ = r.ParseForm()
+	treeMoveMu.Lock() // nicht zugleich mit einer Verschiebung im Baum (tree_move.go)
+	defer treeMoveMu.Unlock()
 	old, err := h.storage.GetSubtree(ctx, id)
 	if err != nil || old == nil {
 		storageFormError(w, http.StatusNotFound, "Knoten nicht gefunden")

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
@@ -24,6 +25,12 @@ import (
 //
 // Antwort 200 als JSON {"message": …, "from": …} – „from“ ist der alte Elternknoten (für
 // „Rückgängig“); Fehler als Text mit 400/403/404/409.
+
+// treeMoveMu: Verschiebungen laufen nacheinander. Sonst könnten zwei gleichzeitige
+// Verschiebungen über Kreuz (A unter B, B unter A) beide die Schleifenprüfung bestehen.
+// Ein Mutex im Programm reicht: geschrieben wird nur am aktiven Server (der Spiegel ist
+// für schreibende Wege gesperrt).
+var treeMoveMu sync.Mutex
 
 type treeMoveError struct {
 	status int
@@ -63,7 +70,9 @@ func (h *Handler) InfraMoveWeb(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	_ = r.ParseForm()
 	parent, from := strings.TrimSpace(r.FormValue("parent")), strings.TrimSpace(r.FormValue("from"))
+	treeMoveMu.Lock()
 	msg, err := h.infraMove(r, id, parent, from)
+	treeMoveMu.Unlock()
 	writeTreeMove(w, msg, from, err)
 }
 
@@ -145,7 +154,9 @@ func (h *Handler) StorageMoveWeb(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	_ = r.ParseForm()
 	parent, from := strings.TrimSpace(r.FormValue("parent")), strings.TrimSpace(r.FormValue("from"))
+	treeMoveMu.Lock()
 	msg, err := h.storageMove(r, id, parent, from)
+	treeMoveMu.Unlock()
 	writeTreeMove(w, msg, from, err)
 }
 
