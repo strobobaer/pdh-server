@@ -10,6 +10,24 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.82.68] – 2026-11-26
+
+### Neu
+
+- **Neue Oberfläche – Bereich Start:** Die Bänder Zeiterfassung, Dashboard und Leitstand stehen im Menüband; die Zuweisung erreichst du über „Zuweisen“ im Band Start.
+- **Rückgängig bis zum Speichern:** Beim Bearbeiten des Dashboards nimmt „Rückgängig“ (oder Strg+Z) jeden Schritt zurück, bis du speicherst; die Statusleiste zeigt, was noch nicht gespeichert ist.
+- **Nachfrage vor dem Verwerfen:** Willst du mit ungespeicherten Änderungen woandershin, fragt PDH „Änderungen speichern?“ – ohne Bestätigung wird verworfen.
+- **Zeit starten und manuell erfassen** gehen in der neuen Oberfläche direkt über das Band Start, in jedem Bereich; läuft eine Zeit, zeigt die Taste die Dauer.
+- **Leitstand im Rahmen:** Der Leitstand erscheint im Mittelfeld; Berechtigte setzen ihn mit „Als Standard für alle setzen“ als Leitstand für alle.
+- **PDH als App:** Über HTTPS lässt sich das PDH mit „Als App installieren“ als eigenes Fenster ohne Adresszeile starten.
+
+### Geändert
+
+- **Neue Oberfläche:** Oben stehen nur noch Logo, Seitentitel und Uhr; das Benutzermenü steht links unten; die Unterseiten eines Bereichs sind Bänder im Menüband statt Reiter darüber.
+- **Menüband:** Es beginnt immer mit Start (Rückgängig, Neu, Zeit, Suchen, Copilot und die Knöpfe der offenen Seite), am Ende stehen Ansicht, Einstellungen und Hilfe.
+- **Statusleiste:** Rechts stehen die Version und wie viele gerade angemeldet sind (z. B. 12/40).
+- **Ohne Anmeldung** zeigt die neue Oberfläche nur den Leitstand und links unten „Anmelden“.
+
 ## [0.82.67] – 2026-11-26
 
 ### Sicherheit

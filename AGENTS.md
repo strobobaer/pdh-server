@@ -133,12 +133,14 @@ allein in CSS über `html[data-style="fiori"]` bzw. `"fluent"`.
   der rechten Seitenleiste).
 - Änderungen an der Kopfleiste bei 320, 390, 768, 1024 und 1366 px Breite
   sowie mit 120–160 % Größe prüfen.
-- **Neuer Rahmen** (`frame.gohtml`, seit 0.82.65, Schalter im Benutzermenü):
-  dieselbe Kopfleiste (`ui-topbar` in `widgets/frame_shared.gohtml`), dazu
-  zwischen Titel und Uhr die Suchzeile „Was möchtest du tun?“ – sie
-  schrumpft vor allen Knöpfen, bis 760 px nur noch Symbol. Gemeinsame Teile
-  beider Rahmen nur in `frame_shared.gohtml` ändern; der klassische Rahmen
-  (`base.gohtml`) muss dabei unverändert aussehen.
+- **Neuer Rahmen** (`frame.gohtml`, Schalter im Benutzermenü; seit 0.82.68 nach
+  Entwurf 0.90.0 Abschnitt 11): Kopfzeile nur Logo, Seitentitel und Uhr
+  (`frame-top` in `widgets/frame_new.gohtml`), Benutzermenü fest links unten
+  (`frame-user`), alle Funktionen im Menüband (`ribbon.go`, Seitenaktionen in
+  `page_actions.go`). Uhr und Benutzerknopf schrumpfen nie, der Titel kürzt sich.
+  Keine neuen Knöpfe in die Kopfzeile – neue Funktionen gehören ins Menüband.
+  Gemeinsame Teile beider Rahmen nur in `frame_shared.gohtml`; der klassische
+  Rahmen (`base.gohtml`) muss unverändert aussehen (`TestClassicTopbarUnchanged`).
 
 ## Rechte mitpflegen
 
@@ -1348,8 +1350,12 @@ und 3 drückt bis auf Weiteres der Anwender.
     `docs/superpowers/specs/2026-11-26-rahmen-start-vorschau.html`; dazu
     Rückgängig im Band Start, Nachfrage vor dem Verwerfen, PDH als App ohne
     Browserleisten (Entwurf 11.10–11.12). **Bauplan** `docs/superpowers/plans/2026-11-26-rahmen-start.md`
-    (9 Aufgaben, 0.82.67, keine Migration, kein neues Recht) – Ausführungsart
-    noch offen (Anwender).
+    (9 Aufgaben, keine Migration, kein neues Recht) – gebaut als **0.82.68**
+    (main hatte inzwischen 0.82.67 IT-Abteilungsrechte) auf Branch
+    `feature/rahmen-start`, Ledger `.superpowers/sdd/2026-11-26-rahmen-start/`
+    (alle Rulings dort; u. a. „Zeit starten“ fragt „Woran arbeitest du?“ und bucht
+    als Zeit ohne Vorgang, weil der Server ein Ziel verlangt). Offen: Schlussprüfung,
+    Merge, Testverbund, Browserprüfung.
     Als Abschnitt 11 im Entwurf
     `docs/superpowers/specs/2026-11-25-einheitliche-oberflaeche-design.md`
     (geht 5.2 vor), Branch `docs/oberflaeche-rahmen-nachtrag` (lokal). Folge:
