@@ -494,3 +494,84 @@ klassisch/neu bis 0.90.0, die Rechte aus Abschnitt 7.
   der laufenden Dauer. Die Uhr in der Kopfzeile bleibt anklickbar (öffnet die
   Übersicht). Sichtbar ist das alles nur mit den vorhandenen Rechten der
   Zeiterfassung; kein neues Recht.
+
+## 12. Nachtrag 26.11.2026 – Seitenvorlagen und Zuordnung
+
+Vorgabe des Anwenders (26.11.2026): Es gibt **wenige Seitenvorlagen, die immer
+wieder verwendet werden** („ein Template für die Infocockpit-Seite, eine
+Listen-Seite, eine Einstellungs-Seite, eine Planungs-/Kalender-Seite …“). Jede
+Seite des PDH wird einer Vorlage zugeordnet. Zugeordnet wird **unter
+„Anpassen“ wie bei Microsoft**, dazu gibt es **unter „Ansicht“ eine
+Verwaltungsseite**, die die Zuordnung festlegt. Gebaut wird **mit dem Bereich
+Start zuerst**, nicht jede alte Seite einzeln vorab.
+
+### 12.1 Die Vorlagen
+
+Eine Vorlage ist das ganze mittlere Feld samt ihrem Menüband: gleiche Stellen,
+gleiche Tasten, gleiche Namen. Die Bausteine aus 5.3 (Liste, Detail) gehen
+darin auf.
+
+| Vorlage | Wofür | Tasten im Band (je nach Recht) |
+|---|---|---|
+| **Cockpit** (Infocockpit) | Kacheln und Widgets im Raster: Dashboard, Leitstand, Schnellübersicht, Statistik, Übersichten der Bereiche | Bearbeiten, Speichern, Als Standard für alle setzen, Widget hinzufügen |
+| **Liste** | Alle Listen mit Filter, Gruppierung nach Infrastruktur und Detail daneben: Vorgänge, Ersatzteile, IT-Assets, Benutzer … | Neu, Öffnen, Zuweisen, Exportieren, Drucken, Spalten |
+| **Detail** | Ein Vorgang oder Datensatz: Kopf und Reiter | Speichern, Zuweisen, Warten, Fertigstellen, Drucken |
+| **Einstellungen** | Optionen in Abschnitten: Core- und Server-Einstellungen je Bereich, Regeln | Speichern, Zurücksetzen, Testen (wo es eine Verbindung gibt) |
+| **Planung** (Kalender) | Kalender, Planer, Zeitstrahl, Jahresplan, Schichtplan | Heute, Tag/Woche/Monat, Neu, Besetzen |
+| **Baum** (Vorschlag) | Infrastruktur, Lagerorte, Organigramm – Baum links, Detail rechts | Neu, Unterknoten, Verschieben |
+| **Dienst** | Zusatzdienst im Mittelfeld (5.5) | Neu laden, In neuem Fenster öffnen |
+
+Die Assistenten (10.11) bleiben eigene Fenster über der Seite.
+
+### 12.2 Erste Zuordnung der heutigen Seiten (Vorschlag von Claude)
+
+| Bereich | Cockpit | Liste (+ Detail) | Planung | Einstellungen | Baum / Dienst |
+|---|---|---|---|---|---|
+| Start | Dashboard, Leitstand | Zuweisen, Zeiterfassung-Übersicht | – | – | – |
+| Vorgänge | – | Störungen, Tickets, Aufgaben, Wartung, Rüstzeiten, Stillstände, KVP, Projekte | – | Regeln je Vorgangsart | – |
+| Planung | – | Zeiterfassung, Anwesenheit | Planer, Kalender | – | – |
+| Anlagen | Schnellübersicht | IT-Assets, VPN, ESPPDH, Messstellen | – | – | Infrastruktur (Baum) |
+| Material | – | Ersatzteile, Beschaffung, Bestellvorgänge, Hersteller & Lieferanten | – | – | Lager (Baum) |
+| Wissen | – | Dokumente, Vorlagen & Signaturen, Schulungen | – | – | – |
+| Daten | Statistik | Import, Export, Abgleich, Datennetz | – | – | – |
+| Verwaltung | – | Benutzer, Abteilungen, Drucker, Geräte, Leitstände, Infobildschirm, Kostenstellen, Kategorien, Symbole | – | Core, Server, Netzwerk, Datensicherung, Bereinigung, Rollen & Rechte | Organigramm (Baum) |
+| Dienste | – | – | – | – | Nextcloud, Grafana … (Dienst) |
+
+Der Bauende prüft die Tabelle gegen `navDefs`; der Test „jede Seite
+erreichbar“ (Abschnitt 8) verlangt zusätzlich, dass jede Seite genau eine
+Vorlage hat.
+
+### 12.3 Zuordnen (Lesart von Claude – bitte bestätigen)
+
+- **Unter „Ansicht › Anpassen“** öffnet ein Fenster wie „Menüband anpassen“
+  bei Microsoft: links alles, was es gibt (Seiten und Funktionen, nur das
+  Erlaubte), rechts die Bereiche und ihre Bänder; mit Pfeilen oder Ziehen
+  zuordnen, umbenennen, Reihenfolge ändern, „Zurücksetzen“.
+- **Unter „Ansicht“ eine Verwaltungsseite** legt dasselbe für alle fest
+  (Firmen-Vorgabe; Recht `system.ui_defaults`).
+- Rechte gehen immer vor: Zuordnen zeigt und verschiebt nur, was man darf;
+  niemand bekommt durch eine Zuordnung Zugriff.
+- Das **ändert die Festlegung 10.3** („Bereiche für alle gleich, nur
+  Reihenfolge und Favoriten“): Die Zuordnung der Seiten zu Bereichen und
+  Bändern wird einstellbar.
+
+### 12.4 Vorgehen
+
+1. Klickbare Vorschau anpassen: Rahmen nach Abschnitt 11 und der Bereich
+   Start mit der Vorlage Cockpit – vom Anwender bestätigen lassen.
+2. **Bereich Start zuerst** (Teilpaket 2b): Rahmen-Umbau, Vorlage Cockpit
+   mit Dashboard und Leitstand, Tasten Neu, Zuweisen, Zeiterfassung, Suche,
+   Copilot.
+3. Zuordnen („Anpassen“ und Verwaltungsseite).
+4. Danach Bereich für Bereich, jeweils mit der Vorlage, die er braucht:
+   Vorgänge (Liste und Detail – bisher Teil 3), Planung (Kalender),
+   Verwaltung und die Einstellungen der Bereiche, dann der Rest. Die alten
+   Seiten werden dabei bereichsweise umgestellt.
+
+### 12.5 Offene Fragen (Anwender)
+
+6. Zuordnen: Darf **jeder Benutzer** Seiten und Funktionen zwischen Bereichen
+   und Bändern umhängen (wie bei Microsoft), oder legt das nur die Firma fest
+   und der Einzelne ändert weiter nur Reihenfolge und Favoriten?
+7. Ist die Liste der Vorlagen so vollständig (Cockpit, Liste, Detail,
+   Einstellungen, Planung, Baum, Dienst)?

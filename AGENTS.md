@@ -1335,6 +1335,15 @@ und 3 drückt bis auf Weiteres der Anwender.
     Übersicht ist ein neuer Menüpunkt direkt rechts neben „Start“, nur in den
     Bereichen Start und Planung, gegebenenfalls als Verweis (Entwurf 11.9;
     offen: Tasten in jedem Bereich oder nur im Bereich Start).
+    **Seitenvorlagen (gleicher Tag):** wenige Vorlagen, die immer wieder
+    verwendet werden – Cockpit (Infocockpit), Liste, Detail, Einstellungen,
+    Planung/Kalender, dazu als Vorschlag Baum und Dienst; jede Seite gehört
+    zu genau einer Vorlage (erste Zuordnung in Entwurf 12.2). Zuordnen unter
+    „Ansicht › Anpassen“ wie „Menüband anpassen“ bei Microsoft, dazu eine
+    Verwaltungsseite unter „Ansicht“ (Recht `system.ui_defaults`) – ändert
+    Festlegung 10.3. **Gebaut wird mit dem Bereich Start zuerst**, danach
+    Bereich für Bereich (Entwurf Abschnitt 12; offen: darf jeder Benutzer
+    umhängen oder nur die Firma; Vorlagenliste vollständig?).
     Als Abschnitt 11 im Entwurf
     `docs/superpowers/specs/2026-11-25-einheitliche-oberflaeche-design.md`
     (geht 5.2 vor), Branch `docs/oberflaeche-rahmen-nachtrag` (lokal). Folge:
