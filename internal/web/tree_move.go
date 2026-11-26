@@ -32,6 +32,13 @@ import (
 // für schreibende Wege gesperrt).
 var treeMoveMu sync.Mutex
 
+// withTreeLock: fn unter treeMoveMu; die Sperre wird auch bei einem Absturz in fn frei.
+func withTreeLock[T any](fn func() (T, error)) (T, error) {
+	treeMoveMu.Lock()
+	defer treeMoveMu.Unlock()
+	return fn()
+}
+
 type treeMoveError struct {
 	status int
 	msg    string
@@ -70,9 +77,7 @@ func (h *Handler) InfraMoveWeb(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	_ = r.ParseForm()
 	parent, from := strings.TrimSpace(r.FormValue("parent")), strings.TrimSpace(r.FormValue("from"))
-	treeMoveMu.Lock()
-	msg, err := h.infraMove(r, id, parent, from)
-	treeMoveMu.Unlock()
+	msg, err := withTreeLock(func() (string, error) { return h.infraMove(r, id, parent, from) })
 	writeTreeMove(w, msg, from, err)
 }
 
@@ -154,9 +159,7 @@ func (h *Handler) StorageMoveWeb(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	_ = r.ParseForm()
 	parent, from := strings.TrimSpace(r.FormValue("parent")), strings.TrimSpace(r.FormValue("from"))
-	treeMoveMu.Lock()
-	msg, err := h.storageMove(r, id, parent, from)
-	treeMoveMu.Unlock()
+	msg, err := withTreeLock(func() (string, error) { return h.storageMove(r, id, parent, from) })
 	writeTreeMove(w, msg, from, err)
 }
 

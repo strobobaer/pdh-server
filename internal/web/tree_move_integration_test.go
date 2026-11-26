@@ -128,8 +128,8 @@ func TestTreeMoveInfraCrossRace(t *testing.T) {
 		go func() { defer wg.Done(); codes[0] = e.move(admin, "/infrastructure/"+a+"/move", bc, "").Code }()
 		go func() { defer wg.Done(); codes[1] = e.move(admin, "/infrastructure/"+b+"/move", ac, "").Code }()
 		wg.Wait()
-		if codes[0] == 200 && codes[1] == 200 {
-			t.Fatalf("Runde %d: beide Verschiebungen gelungen – Schleife A↔B", round)
+		if (codes[0] == 200) == (codes[1] == 200) || codes[0]+codes[1] != 200+400 {
+			t.Fatalf("Runde %d: Antworten %v – erwartet genau eine 200 und eine 400 (Schleife)", round, codes)
 		}
 	}
 }

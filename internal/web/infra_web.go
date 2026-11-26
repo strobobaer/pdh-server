@@ -441,9 +441,8 @@ func (h *Handler) InfraUpdate(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	back := "/infrastructure/" + id + "?tab=master"
 	r.ParseForm()
-	treeMoveMu.Lock() // Übergeordnet und Abteilung ändern: nicht zugleich mit einer Verschiebung (tree_move.go)
-	err := h.saveInfraMaster(ctx, r, id)
-	treeMoveMu.Unlock()
+	// Übergeordnet und Abteilung ändern: nicht zugleich mit einer Verschiebung (tree_move.go)
+	_, err := withTreeLock(func() (struct{}, error) { return struct{}{}, h.saveInfraMaster(ctx, r, id) })
 	if err != nil {
 		infraRedirect(w, r, back, "", err)
 		return
