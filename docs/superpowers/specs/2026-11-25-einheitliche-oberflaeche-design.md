@@ -123,6 +123,13 @@ fehleranfällig).
 
 ### 5.2 Rahmen
 
+> **Geändert durch Abschnitt 11 (Vorgaben des Anwenders vom 26.11.2026):**
+> Kopfzeile nur noch Logo, Überschrift, Uhr; Benutzermenü und Anmelden links
+> unten; keine Reiterleiste über dem Menüband – die Unterseiten sind Bänder
+> des Menübands; Reiter des Menübands Start | Bänder des Bereichs | Ansicht |
+> Einstellungen | Hilfe; Copilot und Suche aus „Start“. Wo die folgenden
+> Punkte abweichen, gilt Abschnitt 11.
+
 - **Kopfleiste**: „PDH“, Suchzeile „Was möchtest du tun? (Strg+K)“,
   Benachrichtigungen, Copilot-Knopf, Uhr, Benutzermenü (mit dem Schalter „Neue
   Oberfläche“ bis 0.90.0).
@@ -244,6 +251,8 @@ Breiten.
    Reiterleiste, Menüband (Grundfunktionen), rechte Leiste, Statusleiste mit
    Update-Stand und Meldungen, Strg+K, Handy. Alle Seiten laufen unverändert im
    neuen Rahmen.
+   **2b. Rahmen-Umbau** nach den Vorgaben vom 26.11.2026 (Abschnitt 11,
+   Einordnung in 11.8) – vor Teil 3.
 3. **Vorgangslisten und Detail** – Störungen, Tickets, Aufgaben, Wartung,
    Rüstzeiten auf Liste und Detail nach 5.3, Vorgänge als Reiter, Aktionen ins
    Menüband.
@@ -356,3 +365,114 @@ Punkte hat Claude festgelegt; der Anwender kann sie beim Lesen korrigieren.
     am Terminal und in den Listen bleiben die vorhandenen Knöpfe. Jeder Teil
     hält das mit einem Test fest (`TestFrameHasWizards`), und jede
     Browserprüfung öffnet beide Assistenten.
+
+## 11. Nachtrag 26.11.2026 – Vorgaben des Anwenders zum Rahmen
+
+Der Anwender hat am 26.11.2026 festgelegt, wie der neue Rahmen aufgebaut sein
+muss („Was unbedingt in die neue Optik rein muss“). Diese Vorgaben gelten für
+die ganze neue Oberfläche und **gehen Abschnitt 5.2 vor**, wo sie abweichen
+(Kopfleiste, Reiterleiste, Reiter des Menübands, Ort des Benutzermenüs,
+Copilot-Knopf). Der mit 0.82.65 gebaute Rahmen wird danach umgebaut
+(Teilpaket 2b, siehe 11.8). Mit „Vorschlag“ markierte Punkte hat Claude
+ergänzt; der Anwender kann sie korrigieren.
+
+### 11.1 Kopfzeile
+
+- In der Kopfzeile stehen **nur noch Logo, Überschrift (Seitentitel) und Uhr**.
+- Alles andere zieht um: Suchzeile und Copilot in das Menüband „Start“,
+  Benutzermenü nach links unten (11.2), Stil und hell/dunkel nach
+  „Ansicht › Darstellung“.
+- Vorschlag: Benachrichtigungen, Chat und „Im Chat teilen“ stehen im Menüband
+  „Start“, die Sprache im Benutzermenü.
+- Die Uhr bleibt immer ganz sichtbar; wird es eng, kürzt sich nur der Titel.
+  Das Ausblenden von Knöpfen (`pdhTopbarFit`, `data-tb-hide`) braucht der neue
+  Rahmen dann nicht mehr. Der klassische Rahmen bleibt unverändert.
+
+### 11.2 Benutzermenü und Anmelden
+
+- **Immer fest links unten** (Fuß der Bereichsleiste): angemeldet das Bild mit
+  Namen, das Menü öffnet nach oben; nicht angemeldet der Knopf „Anmelden“.
+- Vorschlag: Bei eingeklappter Leiste nur das Bild bzw. das Symbol. Am Handy
+  ist es der letzte Platz der unteren Leiste.
+
+### 11.3 Menüband statt Reiterleiste
+
+- **Über dem Menüband gibt es keine Reiterleiste mehr.** Die Unterseiten eines
+  Bereichs sind Reiter des Menübands – eigene Menübänder mit den Funktionen
+  der Unterseite.
+- **Aufteilung von links nach rechts:**
+  `Start` | Bänder des Bereichs | `Ansicht` | `Einstellungen` | `Hilfe`.
+- **Start** steht immer ganz links, in jedem Bereich. Dort stehen die
+  Standardfunktionen, die jeder darf – als Taste oder als Dropdown: „Neu“
+  (neuer Vorgang, öffnet den Neu-anlegen-Assistenten), Suche (Strg+K),
+  Copilot (Fenster rechts ein und aus). Dazu die Grundaktionen der Seite.
+- **Bänder des Bereichs** (Beispiele des Anwenders):
+  - Bereich Start: Bänder **Dashboard** und **Leitstand**, je nach Recht mit
+    „Bearbeiten“, „Speichern“ und „Als Standard für alle setzen“.
+  - Der Reiter **„Zuweisung“ entfällt**: Im Band „Start“ steht neben „Neu“ das
+    Zuweisen („… zuweisen“, die offenen Vorgänge ohne Zuweisung) – sichtbar
+    nur für die, die heute die Seite „Zuweisung“ sehen.
+  - Bereich Vorgänge: Störungen, Tickets, Aufgaben, Wartung, Rüstzeiten,
+    Stillstände, KVP und Projekte sind Bänder mit ihren Funktionen.
+  - Die übrigen Bereiche entsprechend: Die Unterseiten der Tabelle in 5.2
+    werden Bänder.
+  - Ein Klick auf ein Band wechselt zur Unterseite und zeigt deren Funktionen
+    (Seitenwechsel wie in 10.2).
+- **Ansicht** hat zwei Dropdown-Unterpunkte: **Darstellung** (Stil, Modus,
+  Farbschema, Dichte) und **Anpassen** (Bereiche ordnen, Favoriten, Startseite,
+  Spalten). Die bisherigen eigenen Reiter „Anpassen“ und „Darstellung“
+  entfallen.
+- **Einstellungen**: die Einstellungen des jeweiligen Bereichs. Die heutigen
+  Core- und Server-Einstellungen werden dem passenden Bereich zugeordnet;
+  sichtbar ist nur, wofür das Recht da ist. Vorschlag: Der Bereich Verwaltung
+  behält die Gesamtübersicht aller Einstellungen.
+- **Hilfe**: Handbuch, Hilfe zu dieser Seite, Versionen & Updates.
+
+### 11.4 Leitstand
+
+- Der Leitstand ist ein **globales Fenster, das immer ohne Anmeldung
+  erscheint**.
+- Im Band „Leitstand“ bearbeiten die Berechtigten ihn **im mittleren Feld**
+  (dem Listenfeld), nicht auf einer getrennten Verwaltungsseite.
+- Vorschlag: Ohne Anmeldung zeigt der Rahmen den Leitstand im Mittelfeld,
+  dazu Kopfzeile und links unten „Anmelden“. Für Wandbildschirme bleibt die
+  Vollbild-Ansicht ohne Rahmen.
+
+### 11.5 Copilot und Suche
+
+- Das Copilot-Fenster (rechte Leiste) wird **aus dem Menüband „Start“**
+  ein- und ausgeschaltet, ebenso die Suche. Strg+K bleibt.
+
+### 11.6 Fußzeile
+
+- **Rechts neben der Versionsnummer steht die Zahl der gerade angemeldeten
+  Benutzer.** Die Versionsnummer kommt damit auch in den neuen Rahmen (bisher
+  fehlte sie dort).
+- Vorschlag: Die Zahl sehen alle Angemeldeten; gezählt werden Personen mit
+  Aktivität in den letzten Minuten (die vorhandene Anwesenheit,
+  `presence.go`), ohne Terminals. Wer das ist, zeigt weiter die Seitenleiste
+  „Aktivität“ mit ihrem Recht.
+
+### 11.7 Was bleibt
+
+Bereichsleiste mit 9 Bereichen und Favoriten (10.3), Strg+K, Statusleiste mit
+Meldungen und Update-Stand, beide Assistenten (10.11), der Schalter
+klassisch/neu bis 0.90.0, die Rechte aus Abschnitt 7.
+
+### 11.8 Einordnung und offene Fragen
+
+- **Teilpaket 2b „Rahmen-Umbau“** vor Teil 3: Kopfzeile, Benutzermenü links
+  unten, Menüband mit den Bändern der Bereiche statt der Reiterleiste,
+  Ansicht/Einstellungen/Hilfe, Copilot und Suche aus „Start“, Fußzeile mit
+  Version und Benutzerzahl, Leitstand im Rahmen. Vorher die klickbare Vorschau
+  anpassen und vom Anwender bestätigen lassen.
+- Das Band „Einstellungen“ verweist in 2b auf die vorhandenen Abschnitte der
+  Core- und Server-Einstellungen; das eigentliche Aufteilen der Seiten folgt
+  Bereich für Bereich mit Teil 6.
+- **Offen (Anwender):**
+  1. Geöffnete Vorgänge als eigene, schließbare Reiter (Entscheidung „Beides“
+     vom 24.11.2026): Wohin damit ohne Reiterleiste – Dropdown „Geöffnet“ im
+     Band „Start“ (Vorschlag) oder eine schmale Zeile unter dem Menüband?
+  2. Leitstand an Wandbildschirmen weiter als Vollbild ohne Rahmen?
+  3. Benachrichtigungen, Chat und Sprache wie in 11.1 vorgeschlagen?
+  4. Zahl der angemeldeten Benutzer für alle sichtbar?

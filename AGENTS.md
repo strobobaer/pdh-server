@@ -1317,6 +1317,29 @@ und 3 drückt bis auf Weiteres der Anwender.
     `TestITNetRecipientsFallback` waren nach einem abgebrochenen Testlauf
     einmal rot (Reste in `pdh_test`), danach auf Branch und `main` je dreimal
     grün.
+32. **Vorgaben zum neuen Rahmen (Anwender 26.11.2026, „Was unbedingt in die
+    neue Optik rein muss“):** Kopfzeile nur noch Logo, Überschrift, Uhr;
+    Benutzermenü und Anmelden immer fest links unten; keine Reiterleiste über
+    dem Menüband – die Unterseiten eines Bereichs sind Bänder des Menübands;
+    Aufteilung `Start` (immer links, Standardfunktionen für alle als Taste
+    oder Dropdown: Neu, Suche, Copilot) | Bänder des Bereichs | `Ansicht`
+    (Dropdowns Darstellung und Anpassen) | `Einstellungen` (Core- und
+    Server-Einstellungen dem Bereich zugeordnet) | `Hilfe`; Reiter
+    „Zuweisung“ entfällt (Zuweisen steht in „Start“); Dashboard und Leitstand
+    sind Bänder mit Bearbeiten, Speichern, „Als Standard für alle setzen“ je
+    nach Recht; der Leitstand erscheint immer ohne Anmeldung und wird im
+    mittleren Feld bearbeitet; Copilot und Suche aus „Start“; Zahl der
+    angemeldeten Benutzer in der Fußzeile rechts neben der Versionsnummer.
+    Als Abschnitt 11 im Entwurf
+    `docs/superpowers/specs/2026-11-25-einheitliche-oberflaeche-design.md`
+    (geht 5.2 vor), Branch `docs/oberflaeche-rahmen-nachtrag` (lokal). Folge:
+    **Teilpaket 2b „Rahmen-Umbau“ vor Teil 3**; vorher die klickbare Vorschau
+    anpassen und bestätigen lassen. Offen (Anwender): Wohin mit den
+    geöffneten Vorgängen als schließbare Reiter (Vorschlag: Dropdown
+    „Geöffnet“ in „Start“); Leitstand an Wandbildschirmen weiter Vollbild ohne
+    Rahmen?; Benachrichtigungen und Chat in „Start“, Sprache im Benutzermenü?;
+    Benutzerzahl für alle sichtbar? Die Regeln im Abschnitt „Kopfleiste“ oben
+    gelten bis zum Umbau weiter (klassischer Rahmen: dauerhaft).
 30. **Vorgabe Assistenten (Anwender 25.11.2026):** Neu-anlegen- und
     Fertigstellen-Assistent dürfen in keinem Teil der neuen Oberfläche fehlen
     (Entwurf 0.90.0 Abschnitt 10.11, `TestFrameHasWizards`).
