@@ -120,3 +120,22 @@ GO
 GRANT SELECT ON erp.Artikel TO pdh_sync;
 GRANT SELECT ON dbo.MeldungenOffen TO pdh_sync;
 GO
+-- Zeitstempel mit Zeitzone (datetimeoffset) für den Abgleich (0.82.70): gemischte Zonen,
+-- Zeitpunkt-Reihenfolge 1 = 3 (08:00Z), 4 (08:15Z), 2 (08:30Z); 5 ohne Zeit
+IF OBJECT_ID('dbo.MeldungenZone') IS NULL
+CREATE TABLE dbo.MeldungenZone (
+  Nr INT NOT NULL PRIMARY KEY,
+  Titel NVARCHAR(200) NOT NULL,
+  Geaendert DATETIMEOFFSET(7) NULL
+);
+GO
+IF NOT EXISTS (SELECT 1 FROM dbo.MeldungenZone)
+INSERT INTO dbo.MeldungenZone (Nr, Titel, Geaendert) VALUES
+ (1, N'Zone plus 2', '2026-11-13 10:00:00 +02:00'),
+ (2, N'Zone UTC', '2026-11-13 08:30:00 +00:00'),
+ (3, N'Zone minus 5', '2026-11-13 03:00:00 -05:00'),
+ (4, N'Zone plus 1', '2026-11-13 09:15:00 +01:00'),
+ (5, N'ohne Zeit', NULL);
+GO
+GRANT SELECT ON dbo.MeldungenZone TO pdh_sync;
+GO

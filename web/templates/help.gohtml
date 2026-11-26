@@ -3323,9 +3323,9 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <ol class="hb-steps">
       <li><b>Tabelle</b> mit den Meldungen wählen. Die Liste kommt direkt aus der Datenbank; <b>Erste Zeilen ansehen</b> zeigt bis zu 20 Zeilen zur Kontrolle.</li>
       <li><b>Schlüsselspalte(n)</b> ankreuzen – daran erkennt das PDH eine Meldung wieder. Vorgeschlagen wird der Primärschlüssel. Der Schlüssel muss eindeutig sein.</li>
-      <li><b>Änderungen erkennen über</b>: am besten eine <code>rowversion</code>-Spalte, sonst eine Spalte mit der Änderungszeit. Ohne solche Spalte vergleicht das PDH jede Zeile.</li>
+      <li><b>Änderungen erkennen über</b>: am besten eine <code>rowversion</code>-Spalte, sonst eine Spalte mit der Änderungszeit – Datum und Uhrzeit ohne Zone (<code>datetime</code>, <code>datetime2</code>, <code>smalldatetime</code>) oder mit Zone (<code>datetimeoffset</code>). Ohne solche Spalte vergleicht das PDH jede Zeile.</li>
       <li>Auf Wunsch das <b>Anlagedatum</b> wählen: Meldungen von früher werden dann still als Historie angelegt, ohne Benachrichtigung; abgeschlossene davon gleich erledigt und archiviert.</li>
-      <li>Die <b>Zeitzone</b> der Zeitangaben im Fremdsystem wählen, wenn sie von der des PDH-Servers abweicht.</li>
+      <li>Die <b>Zeitzone</b> der Zeitangaben im Fremdsystem wählen, wenn sie von der des PDH-Servers abweicht. Spalten mit Zone (<code>datetimeoffset</code>) bringen ihre Zeitzone selbst mit – für sie spielt diese Einstellung keine Rolle.</li>
       <li><b>Quelle speichern</b>. Sobald Meldungen verknüpft sind, sind Verbindung, Tabelle und Schlüssel fest.</li>
     </ol></div>
   <div class="hb-howto"><b><i class="ti ti-target-arrow"></i> Schritt 2 – Ziel</b>

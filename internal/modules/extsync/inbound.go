@@ -308,7 +308,8 @@ type inboundRun struct {
 	now         time.Time
 	loc         *time.Location
 	cutoff      time.Time
-	createdDate bool // Anlagedatum-Spalte ist reines Datum
+	createdDate  bool // Anlagedatum-Spalte ist reines Datum
+	createdZoned bool // Anlagedatum-Spalte trägt ihre Zone selbst (datetimeoffset)
 	fLoc        *time.Location
 	// wallCols: umzurechnende Spalten zugeordneter Zeitfelder – zonenlose
 	// Datums-/Zeitspalten und date (Mitternacht am Ort des Fremdsystems);
@@ -492,7 +493,8 @@ func (r *inboundRun) exec(ctx context.Context, f Foreign) error {
 			return fmt.Errorf("Anlagedatum-Spalte ‚%s‘ gibt es in der Tabelle nicht", p.CreatedColumn)
 		}
 		isTime, dateOnly := r.d.TimeColumn(*col)
-		if !isTime {
+		r.createdZoned = r.d.InstantColumn(*col) // Zeit mit Zone: nie umrechnen
+		if !isTime && !r.createdZoned {
 			return errors.New("Anlagedatum-Spalte ist keine Datumsspalte")
 		}
 		r.createdDate = dateOnly
@@ -822,9 +824,7 @@ func (r *inboundRun) handleRow(ctx context.Context, row map[string]any, pos int,
 	c.mark = RowMark(p.ChangeKind, changeVal, c.mapped)
 	if p.CreatedColumn != "" {
 		if tm, ok := row[p.CreatedColumn].(time.Time); ok {
-			if !r.createdDate {
-				tm = ForeignWallToInstant(tm, r.fLoc)
-			}
+			tm = createdInstant(tm, r.createdDate, r.createdZoned, r.fLoc)
 			if IsBackfill(tm, r.createdDate, r.cutoff, r.loc) {
 				c.backfill = true
 				// Datumsspalte: Mitternacht am Ort des Fremdsystems (R28; vorher am Ort des Servers).

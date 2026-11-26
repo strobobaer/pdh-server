@@ -321,6 +321,9 @@ func (d *mssqlDialect) selectList(t *TableInfo, cols, keyCols []string, changeCo
 		c, _ := findColumn(t, n)
 		if isGUID(c) {
 			list = append(list, "LOWER(CONVERT(nvarchar(36), "+d.Quote(n)+")) AS "+d.Quote(n))
+		} else if tsChange && n == changeCol && d.InstantColumn(*c) {
+			// Zeitpunkt mit Zone: auf UTC stellen, dann genau wie die zonenlosen Spalten lesen.
+			list = append(list, "CONVERT(datetime2(7), SWITCHOFFSET("+d.Quote(n)+", '+00:00')) AS "+d.Quote(n))
 		} else if tsChange && n == changeCol {
 			// Den genauen gespeicherten Wert lesen (datetime ist sonst auf Millisekunden gerundet).
 			list = append(list, "CONVERT(datetime2(7), "+d.Quote(n)+") AS "+d.Quote(n))
@@ -367,8 +370,16 @@ func tsCast(colType string) (string, bool) {
 		return "smalldatetime", true
 	case "date":
 		return "date", true
+	case "datetimeoffset":
+		// vergleicht und sortiert nach dem Zeitpunkt (UTC), egal in welcher Zone gespeichert
+		return "datetimeoffset(7)", true
 	}
 	return "", false
+}
+
+// InstantColumn: datetimeoffset hält einen Zeitpunkt samt Zone (0.82.70).
+func (*mssqlDialect) InstantColumn(c Column) bool {
+	return !c.IsRowVersion && strings.EqualFold(c.Type, "datetimeoffset")
 }
 
 // TruncateText kürzt nach dem Maß von SQL Server (R33): nchar/nvarchar zählen
@@ -420,10 +431,11 @@ func cutText(s string, max int, size func(rune) int) string {
 	return s
 }
 
-// TimeColumn: Zeitspalten sind genau die Typen, die auch als Zeitstempel-Spalte
-// erlaubt sind (tsCast); date ist reines Datum.
-func (*mssqlDialect) TimeColumn(c Column) (isTime, dateOnly bool) {
-	if c.IsRowVersion {
+// TimeColumn: Zeitspalten ohne Zone sind genau die Typen, die auch als
+// Zeitstempel-Spalte erlaubt sind (tsCast) – ohne datetimeoffset, das seine Zone
+// selbst trägt (InstantColumn); date ist reines Datum.
+func (d *mssqlDialect) TimeColumn(c Column) (isTime, dateOnly bool) {
+	if c.IsRowVersion || d.InstantColumn(c) {
 		return false, false
 	}
 	if _, ok := tsCast(c.Type); !ok {

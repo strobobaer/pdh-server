@@ -10,6 +10,12 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.82.70] – 2026-11-26
+
+### Neu
+
+- **Abgleich mit Zeitstempel samt Zeitzone:** Eine Spalte vom Typ `datetimeoffset` lässt sich jetzt als Änderungsspalte und als Anlagedatum wählen; das PDH vergleicht nach dem echten Zeitpunkt, auch wenn die Zeilen in verschiedenen Zeitzonen gespeichert sind.
+
 ## [0.82.69] – 2026-11-26
 
 ### Neu

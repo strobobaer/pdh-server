@@ -267,6 +267,10 @@ func (fakeDialect) TruncateText(c Column, s string) string {
 	return (&mssqlDialect{}).TruncateText(c, s)
 }
 
+func (fakeDialect) InstantColumn(c Column) bool {
+	return !c.IsRowVersion && strings.EqualFold(c.Type, "datetimeoffset")
+}
+
 func (fakeDialect) TimeColumn(c Column) (isTime, dateOnly bool) {
 	if c.IsRowVersion {
 		return false, false

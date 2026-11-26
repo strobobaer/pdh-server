@@ -275,7 +275,12 @@ func TestNextCursor(t *testing.T) {
 	// Nicht unterstützte Typen als Zeitstempel (auch hier, nicht erst beim Lesen).
 	ti := meldungenInfo()
 	ti.Columns = append(ti.Columns, Column{Name: "Off", Type: "datetimeoffset"}, Column{Name: "Txt", Type: "nvarchar"})
-	for _, col := range []string{"Off", "Txt", "RV"} {
+	// datetimeoffset (seit 0.82.70): Cursor in UTC, wie bei den zonenlosen Spalten
+	if c, err := d.NextCursor(ti, []string{"MeldungNr"}, "Off", "timestamp", map[string]any{"Off": tm, "MeldungNr": int64(5)}); err != nil ||
+		c != `{"t":"2026-11-13T11:00:00.1234567Z","k":["5"]}` {
+		t.Fatalf("datetimeoffset: %q %v", c, err)
+	}
+	for _, col := range []string{"Txt", "RV"} {
 		_, err := d.NextCursor(ti, []string{"MeldungNr"}, col, "timestamp", map[string]any{col: tm, "MeldungNr": int64(1)})
 		if err == nil {
 			t.Errorf("Spalte %s darf kein Zeitstempel sein", col)
@@ -534,6 +539,45 @@ func TestSelectRowsShapes(t *testing.T) {
 	}
 }
 
+// datetimeoffset als Änderungsspalte (0.82.70): gelesen als UTC-Zeitpunkt, verglichen mit
+// einem datetimeoffset-Parameter in UTC – SQL Server vergleicht und sortiert nach dem
+// Zeitpunkt, nicht nach der Uhrzeit der jeweiligen Zone.
+func TestSelectRowsDatetimeoffset(t *testing.T) {
+	d := mustDialect(t)
+	ti := meldungenInfo()
+	ti.Columns = append(ti.Columns, Column{Name: "Off", Type: "datetimeoffset"})
+	st, err := d.SelectRows(ti, []string{"Titel"}, []string{"MeldungNr"}, "Off", "timestamp", `{"t":"2026-11-13T10:00:00Z","k":["1"]}`, "", 7, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"CONVERT(datetime2(7), SWITCHOFFSET([Off], '+00:00')) AS [Off]",
+		"([Off] > CAST(@p1 AS datetimeoffset(7)) OR ([Off] = CAST(@p1 AS datetimeoffset(7)) AND",
+		"[Off] IS NOT NULL",
+		"[Off] >= DATEADD(day, -7, SYSUTCDATETIME())",
+		"ORDER BY [t].[Off]",
+	} {
+		if !strings.Contains(st.SQL, want) {
+			t.Errorf("SQL ohne %q:\n%s", want, st.SQL)
+		}
+	}
+	if tm, ok := st.Args[0].(time.Time); !ok || tm.Location() != time.UTC || tm.Hour() != 10 {
+		t.Errorf("Parameter %v", st.Args[0])
+	}
+}
+
+func TestInstantColumn(t *testing.T) {
+	d := mustDialect(t)
+	for typ, want := range map[string]bool{"datetimeoffset": true, "DateTimeOffset": true, "datetime2": false, "date": false, "nvarchar": false} {
+		if got := d.InstantColumn(Column{Name: "x", Type: typ}); got != want {
+			t.Errorf("%s: %v", typ, got)
+		}
+	}
+	if isTime, _ := d.TimeColumn(Column{Name: "x", Type: "datetimeoffset"}); isTime {
+		t.Error("datetimeoffset darf nie über die Zeitzone des Profils umgerechnet werden")
+	}
+}
+
 func TestSelectRowsRejects(t *testing.T) {
 	d := mustDialect(t)
 	ti := meldungenInfo()
@@ -564,7 +608,6 @@ func TestSelectRowsRejects(t *testing.T) {
 		{"Cursor bei none, falsche Schlüsselzahl", c, k, "", "none", `{"k":["1","2"]}`, "", 0, 10},
 		{"Cursor bei none, fremdes Feld", c, k, "", "none", `{"k":["1"],"t":"x"}`, "", 0, 10},
 		{"Zeitstempel auf Text", c, k, "Titel", "timestamp", "", "", 0, 10},
-		{"Zeitstempel auf datetimeoffset", c, k, "Off", "timestamp", "", "", 0, 10},
 		{"Cursor kein Hex", c, k, "RV", "rowversion", "zz'; DROP", "", 0, 10},
 		{"Cursor keine Zeit", c, k, "Geaendert", "timestamp", "gestern", "", 0, 10},
 		{"Cursor alter Aufbau (nur Zeit)", c, k, "Geaendert", "timestamp", "2026-11-13T10:00:00Z", "", 0, 10},

@@ -484,3 +484,37 @@ func TestVarcharKeyLab(t *testing.T) {
 		}
 	}
 }
+
+// datetimeoffset als Änderungsspalte (0.82.70): Reihenfolge nach dem Zeitpunkt, nicht nach
+// der Uhrzeit der jeweiligen Zone; Gleichstand (1 und 3 um 08:00Z) über den Schlüssel; die
+// Zeile ohne Zeit wird nicht gelesen; seitenweises Lesen verliert und doppelt nichts.
+func TestDatetimeoffsetPagingLab(t *testing.T) {
+	db := openLab(t)
+	d := mustDialect(t)
+	ti, err := d.Describe(context.Background(), db, "dbo", "MeldungenZone")
+	if err != nil {
+		t.Fatalf("dbo.MeldungenZone fehlt – deploy/lab/mssql/seed.sql neu einspielen: %v", err)
+	}
+	c, _ := findColumn(ti, "Geaendert")
+	if c == nil || !d.InstantColumn(*c) {
+		t.Fatalf("Geaendert: %+v", c)
+	}
+	for _, limit := range []int{1, 2, 3, 10} {
+		if got := strings.Join(pageAll(t, db, d, ti, []string{"Nr"}, "Geaendert", "timestamp", limit), ","); got != "1,3,4,2" {
+			t.Fatalf("limit %d: Reihenfolge %s, erwartet 1,3,4,2", limit, got)
+		}
+	}
+	// gelesener Wert ist der Zeitpunkt in UTC
+	st, err := d.SelectRows(ti, []string{"Titel"}, []string{"Nr"}, "Geaendert", "timestamp", "", "", 0, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rs, err := db.QueryContext(context.Background(), st.SQL, st.Args...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows := scanRows(t, rs)
+	if tm, ok := rows[0]["Geaendert"].(time.Time); !ok || !tm.Equal(time.Date(2026, 11, 13, 8, 0, 0, 0, time.UTC)) {
+		t.Fatalf("erste Zeile %v", rows[0])
+	}
+}
