@@ -434,6 +434,9 @@ func (h *Handler) apiTokenClaims(r *http.Request) (claims jwt.MapClaims, present
 	if err != nil || !token.Valid {
 		return nil, true, false
 	}
+	if h.sessionTokenRevoked(r.Context(), raw) { // beim Abmelden zurückgezogen (session_revoke.go)
+		return nil, true, false
+	}
 	claims, ok = token.Claims.(jwt.MapClaims)
 	return claims, true, ok
 }

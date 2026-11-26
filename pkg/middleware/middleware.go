@@ -37,6 +37,17 @@ func SetTerminalTokenCheck(f func(r *http.Request, claims map[string]interface{}
 	terminalTokenCheck.Store(&f)
 }
 
+// sessionRevokedCheck: wurde dieses Token beim Abmelden zurückgezogen (0.82.66)? Die
+// Schnittstelle nimmt dasselbe Token an wie die Web-Oberfläche (Bearer oder Cookie
+// pdh_token) – ohne diese Prüfung gälte ein kopiertes Token hier nach dem Abmelden weiter.
+// Gesetzt von internal/web; ohne gesetzte Prüfung gibt es keine zurückgezogenen Tokens.
+var sessionRevokedCheck atomic.Pointer[func(r *http.Request, raw string) bool]
+
+// SetSessionRevokedCheck setzt die Prüfung auf beim Abmelden zurückgezogene Tokens.
+func SetSessionRevokedCheck(f func(r *http.Request, raw string) bool) {
+	sessionRevokedCheck.Store(&f)
+}
+
 // statusRecorder merkt sich den geschriebenen HTTP-Statuscode, damit
 // Logger() ihn mitloggen kann - net/http gibt ihn sonst nicht her.
 type statusRecorder struct {
@@ -160,6 +171,13 @@ func Auth(jwtSecret string) func(http.Handler) http.Handler {
 						return
 					}
 				}
+			}
+
+			// Beim Abmelden zurückgezogen: gilt auch an der Schnittstelle nicht mehr. Zuletzt
+			// geprüft – was ohnehin abgewiesen wird, kostet keine Abfrage.
+			if chk := sessionRevokedCheck.Load(); chk != nil && (*chk)(r, tokenStr) {
+				response.Error(w, http.StatusUnauthorized, "ungültiger token")
+				return
 			}
 
 			ctx := context.WithValue(r.Context(), UserIDKey, claims["sub"])

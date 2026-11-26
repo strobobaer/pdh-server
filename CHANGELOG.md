@@ -10,7 +10,7 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
-## [0.82.66] – 2026-11-26
+## [0.82.67] – 2026-11-26
 
 ### Sicherheit
 
@@ -18,6 +18,13 @@ im Kapitel „Versionen & Updates“ an.
 - **Beteiligte bleiben drin:** Wer an einem IT-Asset beteiligt ist (angelegt, verantwortlich oder zugewiesen), sieht dieses Asset auch ohne IT-Recht, und die Seite „IT-Assets“ zeigt ihm genau diese Assets.
 - **Seite und Schnittstelle brauchen ein IT-Recht:** Die Seite „IT-Assets“, die Asset-Seiten und die Schnittstelle (Liste, Kennzahlen) waren bisher für jeden Angemeldeten offen.
 - **Anlegen, Verschieben, Zuweisen:** Ein IT-Asset lässt sich in der Oberfläche und über die Schnittstelle nur in einer Anlage anlegen oder dorthin verschieben, für deren Abteilung „IT-Assets bearbeiten“ gilt; ohne Anlage (oder die Anlage leeren) darf nur, wer das Recht für alle Abteilungen hat. Hersteller oder Lieferant eines Assets zuweisen oder lösen (Seite des Partners) braucht „IT-Assets bearbeiten“ für genau dieses Asset.
+
+## [0.82.66] – 2026-11-26
+
+### Sicherheit
+
+- **Abmelden beendet die Sitzung auch am Server:** Nach „Abmelden“ gilt die Sitzung dieses Geräts nicht mehr – auch nicht mit einer vorher kopierten Anmeldung, weder in der Oberfläche noch an der Schnittstelle. An anderen Geräten bleibt man angemeldet; die Rückkehr am Terminal ist nicht betroffen.
+- **Auch die kurze Anmeldung am fremden Bildschirm endet am Server:** Wer am Terminal „Zurück zum Systemnutzer“ wählt oder nach dem Öffnen per Karte zum Leitstand zurückkehrt, dessen Sitzung gilt danach ebenfalls nicht mehr.
 
 ## [0.82.65] – 2026-11-25
 
