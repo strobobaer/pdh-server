@@ -112,9 +112,10 @@ var ErrInsertIntoSource = errors.New("in die Meldungstabelle wird nichts eingef�
 //     ohne Änderungsspalte (none) gibt es einen Cursor: er hält die Schlüssel der
 //     letzten Zeile, damit sich die ganze Tabelle in Schlüsselfolge durchlesen lässt.
 //   - Zeitstempel-Spalten (Art timestamp) dürfen datetime, datetime2,
-//     smalldatetime oder date sein. Sie werden als genauer datetime2-Wert gelesen
-//     und mit einem Parameter des eigenen Spaltentyps verglichen. Zeilen ohne
-//     Änderungszeit (NULL) werden nicht gelesen.
+//     smalldatetime, date oder datetimeoffset sein. Sie werden als genauer
+//     datetime2-Wert gelesen (datetimeoffset vorher auf UTC gestellt) und mit einem
+//     Parameter des eigenen Spaltentyps verglichen. Zeilen ohne Änderungszeit
+//     (NULL) werden nicht gelesen.
 //   - Zeiten sind UTC: Parameter werden in UTC umgerechnet, gelesene Zeiten
 //     gelten als UTC.
 type Dialect interface {
@@ -146,6 +147,10 @@ type Dialect interface {
 	// datetimeoffset, time, Text) → nie umgerechnet und nicht als
 	// Anlagedatum-Spalte erlaubt.
 	TimeColumn(c Column) (isTime, dateOnly bool)
+	// InstantColumn sagt, ob die Spalte einen Zeitpunkt MIT Zone hält (SQL Server:
+	// datetimeoffset). Sie taugt als Änderungsspalte und als Anlagedatum, wird aber nie
+	// über die Zeitzone des Profils umgerechnet (0.82.70).
+	InstantColumn(c Column) bool
 	// TruncateText kürzt s so, dass es in die Textspalte c passt (Maß der
 	// Datenbankart); ohne Höchstlänge oder bei Nicht-Textspalten unverändert.
 	TruncateText(c Column, s string) string

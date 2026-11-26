@@ -46,7 +46,7 @@ func CheckSource(d Dialect, t *TableInfo, p *Profile) error {
 		if !ok {
 			return fmt.Errorf("Änderungsspalte ‚%s‘ gibt es in der Tabelle nicht", p.ChangeColumn)
 		}
-		if isTime, _ := d.TimeColumn(*c); !isTime {
+		if isTime, _ := d.TimeColumn(*c); !isTime && !d.InstantColumn(*c) {
 			return fmt.Errorf("Änderungsspalte ‚%s‘ ist keine Datums-/Zeitspalte", p.ChangeColumn)
 		}
 	default:
@@ -57,7 +57,7 @@ func CheckSource(d Dialect, t *TableInfo, p *Profile) error {
 		if !ok {
 			return fmt.Errorf("Anlagedatum-Spalte ‚%s‘ gibt es in der Tabelle nicht", p.CreatedColumn)
 		}
-		if isTime, _ := d.TimeColumn(*c); !isTime {
+		if isTime, _ := d.TimeColumn(*c); !isTime && !d.InstantColumn(*c) {
 			return fmt.Errorf("Anlagedatum-Spalte ‚%s‘ ist keine Datums-/Zeitspalte", p.CreatedColumn)
 		}
 	}
@@ -79,7 +79,7 @@ func ChangeOptions(d Dialect, t *TableInfo) []ChangeOption {
 		for _, c := range t.Columns {
 			if c.IsRowVersion {
 				rv = append(rv, ChangeOption{changeKindRowVersion, c.Name})
-			} else if isTime, dateOnly := d.TimeColumn(c); isTime && !dateOnly {
+			} else if isTime, dateOnly := d.TimeColumn(c); (isTime && !dateOnly) || d.InstantColumn(c) {
 				ts = append(ts, ChangeOption{changeKindTimestamp, c.Name})
 			}
 		}
@@ -94,7 +94,7 @@ func TimeColumns(d Dialect, t *TableInfo) []string {
 		return nil
 	}
 	for _, c := range t.Columns {
-		if isTime, _ := d.TimeColumn(c); isTime {
+		if isTime, _ := d.TimeColumn(c); isTime || d.InstantColumn(c) {
 			out = append(out, c.Name)
 		}
 	}

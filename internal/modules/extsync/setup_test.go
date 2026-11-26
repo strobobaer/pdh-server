@@ -3,6 +3,7 @@ package extsync
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 func setupProfile() *Profile {
@@ -74,6 +75,44 @@ func TestChangeOptionsAndTimeColumns(t *testing.T) {
 	}
 	if got := ChangeOptions(d, guidInfo()); len(got) != 1 || got[0].Kind != changeKindNone {
 		t.Fatalf("Tabelle ohne Änderungsspalte: %+v", got)
+	}
+	// datetimeoffset (Zeit mit Zone) taugt als Änderungsspalte und als Anlagedatum (0.82.70)
+	info := setupInfo()
+	info.Columns = append(info.Columns, Column{Name: "Zeitpunkt", Type: "datetimeoffset", Nullable: true})
+	found := false
+	for _, o := range ChangeOptions(d, info) {
+		found = found || o == (ChangeOption{changeKindTimestamp, "Zeitpunkt"})
+	}
+	if !found {
+		t.Errorf("datetimeoffset fehlt in der Auswahl: %+v", ChangeOptions(d, info))
+	}
+	if got := strings.Join(TimeColumns(d, info), ","); !strings.Contains(got, "Zeitpunkt") {
+		t.Errorf("datetimeoffset fehlt bei den Anlagedatum-Spalten: %s", got)
+	}
+	p := setupProfile()
+	p.ChangeKind, p.ChangeColumn, p.CreatedColumn = changeKindTimestamp, "Zeitpunkt", "Zeitpunkt"
+	if err := CheckSource(d, info, p); err != nil {
+		t.Errorf("Profil mit datetimeoffset abgelehnt: %v", err)
+	}
+}
+
+// Anlagedatum: zonenlose Spalten zeigen die Uhrzeit am Ort des Fremdsystems, datetimeoffset
+// bringt den Zeitpunkt selbst mit und wird nie umgerechnet.
+func TestCreatedInstant(t *testing.T) {
+	berlin, err := time.LoadLocation("Europe/Berlin")
+	if err != nil {
+		t.Skip("Zeitzonen fehlen")
+	}
+	wall := time.Date(2026, 11, 13, 10, 0, 0, 0, time.UTC) // so liefert der Treiber datetime2
+	if got := createdInstant(wall, false, false, berlin); !got.Equal(time.Date(2026, 11, 13, 9, 0, 0, 0, time.UTC)) {
+		t.Errorf("zonenlos: %v", got)
+	}
+	dto := time.Date(2026, 11, 13, 10, 0, 0, 0, time.FixedZone("", 2*3600))
+	if got := createdInstant(dto, false, true, berlin); !got.Equal(dto) {
+		t.Errorf("datetimeoffset umgerechnet: %v", got)
+	}
+	if got := createdInstant(wall, true, false, berlin); !got.Equal(wall) {
+		t.Errorf("reines Datum: %v", got)
 	}
 }
 

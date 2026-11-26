@@ -51,6 +51,17 @@ func ForeignWallToInstant(t time.Time, loc *time.Location) time.Time {
 	return time.Date(u.Year(), u.Month(), u.Day(), u.Hour(), u.Minute(), u.Second(), u.Nanosecond(), loc)
 }
 
+// createdInstant: Zeitpunkt des Anlagedatums einer Fremdzeile. Zonenlose Spalten zeigen
+// die Uhrzeit am Ort des Fremdsystems (ForeignWallToInstant); reine Datumsspalten bleiben
+// Mitternacht UTC (createdTime rechnet sie um); datetimeoffset bringt den Zeitpunkt selbst
+// mit und wird nie umgerechnet (0.82.70).
+func createdInstant(tm time.Time, dateOnly, zoned bool, loc *time.Location) time.Time {
+	if dateOnly || zoned {
+		return tm
+	}
+	return ForeignWallToInstant(tm, loc)
+}
+
 // InstantToForeignWall kehrt ForeignWallToInstant um: ein Zeitpunkt, dessen
 // UTC-Felder die Wanduhr am Ort loc sind (so erwartet ihn der Dialekt beim
 // Schreiben einer Spalte ohne Zone).

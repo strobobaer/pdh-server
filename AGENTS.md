@@ -1405,6 +1405,17 @@ und 3 drückt bis auf Weiteres der Anwender.
     Schemanamen mit Punkt (`[erp.alt]`) bleiben mehrdeutig; neue Zuordnung an
     einer Tabelle mit Punkt im Namen, wenn es zugleich eine Tabelle mit dem
     Anfang davor gibt; MySQL-Vorlagen nur ohne echten MySQL-Server geprüft.
+    **Auf `main`** (26.11.2026, Merge `eb661f3f`) und dem Testverbund; 202 hat der
+    Anwender selbst eingespielt (0.82.69, `eb661f3f`).
+    **0.82.70 Abgleich mit `datetimeoffset`** (Anwender 26.11.2026: „datetimeoffset
+    kann nicht verändert werden“ – die Zeitspalte des Fremdsystems auf 202 hat diesen
+    Typ, der Abgleich erkannte sie nicht): neue Dialekt-Eigenschaft `InstantColumn`;
+    Änderungsspalte gelesen als `CONVERT(datetime2(7), SWITCHOFFSET(…, '+00:00'))`,
+    verglichen mit `CAST(@p AS datetimeoffset(7))` (Zeitpunkt, nicht Uhrzeit der
+    Zone); Anlagedatum nie über die Zeitzone des Profils umgerechnet
+    (`createdInstant`). Labor: `dbo.MeldungenZone`, Test `TestDatetimeoffsetPagingLab`.
+    Offen (Anwender): Quelle aus **mehreren Tabellen** (JOIN oder Sicht) – Abgleich
+    liest weiter genau eine Tabelle; Spaltenliste vom Fremdsystem erbeten.
     Danach: Teil 3 „Vorgänge – Liste mit Detail“ (Entwurf
     `docs/superpowers/specs/2026-11-26-vorgaenge-liste-detail-design.md` auf Branch
     `feature/vorgaenge-liste`, lokal; Fragen A–C an den Anwender offen).
