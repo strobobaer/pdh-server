@@ -118,6 +118,7 @@ type BaseData struct {
 	TemplateTip string
 	// Fußzeile des neuen Rahmens: angemeldet / aktive Benutzer (presence.go)
 	UsersOnline, UsersTotal int
+	TimeRunning             *timeRunning // laufende Zeit – Taste „Zeit stoppen“ (page_actions.go)
 }
 
 // Language: Sprache fuer die Template-Funktion t (siehe bindLang).
@@ -1603,6 +1604,9 @@ func (h *Handler) baseData(r *http.Request, page, title, ctxTitle string) BaseDa
 		b.UIFrame = h.userUIFrame(r.Context(), u.ID)
 	}
 	b.NewFrame = h.frameFor(r.Context(), b.UIFrame)
+	if b.NewFrame && !u.IsSystemUser {
+		b.TimeRunning = h.timeRunningFor(r.Context(), u.ID)
+	}
 	if b.NewFrame {
 		b.Rail = buildAreasIn(&b, h.areaPrefs(r.Context(), areasUID), r.URL.Query().Get("bereich"))
 		b.Ribbon = ribbonFor(&b)

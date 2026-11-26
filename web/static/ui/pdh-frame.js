@@ -96,7 +96,11 @@
     'cancel-edit': function () { if (window.pdhEdit) window.pdhEdit.cancel(); },
     'dash-reset': function () { if (typeof window.dwReset === 'function') window.dwReset(); },
     'addw': function () { if (typeof window.dwOpenCatalog === 'function') window.dwOpenCatalog(); },
-    'time-start': function () { timePost('/time/start-web', null, T('Zeit läuft.')); },
+    // Zeit ohne Vorgang braucht einen kurzen Text (Zielart „Sonstiges“, zeit_ziele.go)
+    'time-start': function () {
+      var txt = window.prompt(T('Woran arbeitest du?'));
+      if (txt && txt.trim()) timePost('/time/start-web', { target_kind: 'other', description: txt.trim() }, T('Zeit läuft.'));
+    },
     'time-stop': function (arg) { if (arg) timePost('/time/' + encodeURIComponent(arg) + '/stop-web', null, T('Zeit gestoppt und gebucht.')); },
     'time-manual': function () { var d = document.getElementById('frame-time-manual'); if (d && typeof d.showModal === 'function') d.showModal(); },
     'dash-standard': function () { confirmPost('/core/settings/defaults', { what: 'dashboard', action: 'set' }, T('Die jetzige Anordnung wird die Vorgabe der Firma. Wer seine Startseite schon angepasst hat, behält sie, bis er „Auf Vorgabe zurücksetzen“ drückt.'), T('Als Standard für alle gesetzt.')); },
@@ -143,6 +147,38 @@
     var note = sessionStorage.getItem('pdh_frame_note');
     if (note) { sessionStorage.removeItem('pdh_frame_note'); window.addEventListener('load', function () { if (typeof window.setGlobalStatus === 'function') window.setGlobalStatus('ok', note); }); }
   } catch (e) {}
+
+  // Zeit manuell erfassen (frame-time-manual) und laufende Dauer an „Zeit stoppen“ (Entwurf 11.9).
+  // Die Dauer zählt mit der Serverzeit der Uhr, nicht mit der Uhr des Geräts.
+  document.addEventListener('submit', function (e) {
+    var f = e.target;
+    if (!f.matches || !f.matches('[data-time-manual]')) return;
+    e.preventDefault();
+    var fd = {};
+    new FormData(f).forEach(function (v, k) { fd[k] = v; });
+    timePost('/time/manual-web', fd, T('Gebucht.'));
+  });
+  document.addEventListener('click', function (e) {
+    if (!e.target.closest('[data-time-close]')) return;
+    var d = document.getElementById('frame-time-manual');
+    if (d && d.open) d.close();
+  });
+  (function () {
+    var c = document.getElementById('pdh-clock');
+    var off = c ? (parseInt(c.dataset.serverMs, 10) || Date.now()) - Date.now() : 0;
+    var two = function (n) { return (n < 10 ? '0' : '') + n; };
+    function upd() {
+      document.querySelectorAll('[data-since]').forEach(function (b) {
+        var s = Date.parse(b.dataset.since);
+        if (isNaN(s)) return;
+        var sec = Math.max(0, Math.floor((Date.now() + off - s) / 1000));
+        var sp = b.querySelector('span');
+        if (sp) sp.textContent = T('Zeit stoppen') + ' ' + Math.floor(sec / 3600) + ':' + two(Math.floor(sec / 60) % 60) + ':' + two(sec % 60);
+      });
+    }
+    upd();
+    setInterval(upd, 1000);
+  })();
 
   // Aufklappmenüs im Menüband (Neu, Darstellung, Anpassen)
   function menuClose(except) {

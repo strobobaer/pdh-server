@@ -23,4 +23,17 @@
   <div id="user-menu" class="win11-menu ft-user-menu" style="display:none">{{template "ui-usermenu-items" .}}<div class="ft-lang">{{template "lang-switch"}}</div></div>
 </div>{{end}}
 
+{{/* Zeit manuell erfassen (Vorlage Aktion, Entwurf 11.9): dieselben Felder wie das Formular
+     auf /time; pdh-frame.js schickt es an /time/manual-web. Nicht am Terminal. */}}
+{{define "frame-time-manual"}}{{if not .IsSystemUser}}<dialog class="frame-dialog ft-time" id="frame-time-manual" aria-label="{{t "Zeit manuell erfassen"}}" data-edit-keep>
+  <form method="dialog" class="ft-time-form" data-time-manual>
+    <h2>{{t "Zeit manuell erfassen"}}</h2>
+    <label>{{t "Von"}}<input type="datetime-local" name="started_at" required></label>
+    <label>{{t "Bis"}}<input type="datetime-local" name="ended_at" required></label>
+    <input type="hidden" name="target_kind" value="other">
+    <label>{{t "Woran gearbeitet?"}}<input type="text" name="description" maxlength="200" required placeholder="{{t "z. B. Schichtübergabe"}}"></label>
+    <div class="frame-dialog-bar"><button type="button" class="btn" data-time-close>{{t "Abbrechen"}}</button><button type="submit" class="btn btn-primary">{{t "Buchen"}}</button></div>
+  </form>
+</dialog>{{end}}{{end}}
+
 {{define "frame-ribbon-item"}}{{$tip := or .Tip .Label}}{{if .Menu}}<div class="ribbon-dd"{{with .When}} data-when="{{.}}"{{end}}><button type="button" class="ribbon-item ribbon-ddbtn{{if .Primary}} pri{{end}}" data-ribbon-menu aria-haspopup="menu" aria-expanded="false" title="{{$tip}}" aria-label="{{.Label}}"><i class="ti {{.Icon}}"></i><span>{{.Label}}</span></button><div class="ribbon-menu" role="menu" hidden>{{range .Menu}}{{template "frame-ribbon-item" .}}{{end}}</div></div>{{else if .Post}}<form class="ribbon-form" method="POST" action="{{.Post}}"{{with .When}} data-when="{{.}}"{{end}}><button type="submit" class="ribbon-item{{if .Primary}} pri{{end}}" title="{{$tip}}" aria-label="{{.Label}}"><i class="ti {{.Icon}}"></i><span>{{.Label}}</span></button></form>{{else if .Href}}<a class="ribbon-item{{if .Primary}} pri{{end}}" href="{{.Href}}"{{with .When}} data-when="{{.}}"{{end}}{{if .Blank}} target="_blank" rel="noopener"{{end}} title="{{$tip}}" aria-label="{{.Label}}"><i class="ti {{.Icon}}"></i><span>{{.Label}}</span>{{if .Count}}<b class="ribbon-count">{{.Count}}</b>{{end}}</a>{{else}}<button type="button" class="ribbon-item{{if .Primary}} pri{{end}}" data-ribbon-action="{{.Action}}"{{if .Arg}} data-ribbon-arg="{{.Arg}}"{{end}}{{with .Since}} data-since="{{.}}"{{end}}{{with .When}} data-when="{{.}}"{{end}}{{if .Disabled}} disabled{{end}} title="{{$tip}}" aria-label="{{.Label}}"><i class="ti {{.Icon}}"></i><span>{{.Label}}</span>{{if .Count}}<b class="ribbon-count">{{.Count}}</b>{{end}}</button>{{end}}{{end}}

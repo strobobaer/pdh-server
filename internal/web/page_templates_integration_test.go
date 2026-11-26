@@ -8,6 +8,8 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	"pdh/internal/modules/timetracking"
 )
 
 // Fußzeile „12/40“: Systembenutzer der Terminals zählen weder als angemeldet noch insgesamt.
@@ -41,6 +43,28 @@ func TestPresenceCounts(t *testing.T) {
 	presenceCountCache.Unlock()
 	if o2, _ := h.presenceCounts(ctx); o2 != online-1 {
 		t.Errorf("Systembenutzer zählt als angemeldet: %d statt %d", o2, online-1)
+	}
+}
+
+// „Zeit stoppen“ zeigt die laufende Zeit, auch wenn sie an einem anderen Gerät gestartet wurde.
+func TestTimeRunningFromServer(t *testing.T) {
+	e := newATEnv(t)
+	ctx := context.Background()
+	uid := e.user("tr", "viewer", false)
+	t.Cleanup(func() { e.pool.Exec(context.Background(), `DELETE FROM time_entries WHERE user_id = $1::uuid`, uid) })
+	svc := timetracking.NewService(timetracking.NewRepository(e.pool))
+	h := &Handler{db: e.pool, time: svc}
+	if h.timeRunningFor(ctx, uid) != nil {
+		t.Fatal("ohne laufende Zeit gemeldet")
+	}
+	started, err := svc.Start(ctx, &timetracking.CreateEntryInput{Description: "Test", RefType: timetracking.RefProduction, RefID: uid, TargetKind: timetracking.TargetOther}, uid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := h.timeRunningFor(ctx, uid)
+	// die Datenbank speichert auf Mikrosekunden genau
+	if r == nil || r.ID != started.ID || r.Since.Sub(started.StartedAt).Abs() > time.Millisecond {
+		t.Errorf("laufende Zeit %+v, gestartet %+v", r, started)
 	}
 }
 

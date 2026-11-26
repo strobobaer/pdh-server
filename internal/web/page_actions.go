@@ -1,5 +1,10 @@
 package web
 
+import (
+	"context"
+	"time"
+)
+
 // Seiteneigene Aktionen des neuen Rahmens (Entwurf 10.1, 11.10): jede umgestellte Seite
 // meldet ihre Aktionen hier einmal. Band = Gruppen im Band der Seite; Start = die
 // Hauptaktionen, die zusätzlich im Band Start stehen, solange die Seite offen ist.
@@ -44,7 +49,29 @@ func timeGroup(b *BaseData) (ribbonGroup, bool) {
 		return ribbonGroup{}, false
 	}
 	l := func(s string) string { return tr(b.Lang, s) }
-	start := ribbonItem{Key: "time-start", Label: l("Zeit starten"), Icon: "ti-player-play", Action: "time-start"}
+	first := ribbonItem{Key: "time-start", Label: l("Zeit starten"), Icon: "ti-player-play", Action: "time-start"}
+	if r := b.TimeRunning; r != nil {
+		first = ribbonItem{Key: "time-stop", Label: l("Zeit stoppen"), Icon: "ti-player-stop", Action: "time-stop", Arg: r.ID,
+			Since: r.Since.UTC().Format(time.RFC3339), Primary: true}
+	}
 	manual := ribbonItem{Key: "time-manual", Label: l("Manuell erfassen"), Icon: "ti-history", Action: "time-manual"}
-	return ribbonGroup{Label: l("Zeit"), Items: []ribbonItem{start, manual}}, true
+	return ribbonGroup{Label: l("Zeit"), Items: []ribbonItem{first, manual}}, true
+}
+
+// timeRunning: laufende Zeitbuchung des Benutzers (Taste „Zeit stoppen“ mit Dauer).
+type timeRunning struct {
+	ID    string
+	Since time.Time
+}
+
+// timeRunningFor: laufende Zeit des Benutzers, nil ohne (auch an einem anderen Gerät gestartet).
+func (h *Handler) timeRunningFor(ctx context.Context, uid string) *timeRunning {
+	if h.time == nil || uid == "" {
+		return nil
+	}
+	e, err := h.time.GetRunning(ctx, uid)
+	if err != nil || e == nil {
+		return nil
+	}
+	return &timeRunning{ID: e.ID, Since: e.StartedAt}
 }
