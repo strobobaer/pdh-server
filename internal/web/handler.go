@@ -1602,7 +1602,7 @@ func (h *Handler) baseData(r *http.Request, page, title, ctxTitle string) BaseDa
 	}
 	b.NewFrame = h.frameFor(r.Context(), b.UIFrame)
 	if b.NewFrame {
-		b.Rail = buildAreas(&b, h.areaPrefs(r.Context(), areasUID))
+		b.Rail = buildAreasIn(&b, h.areaPrefs(r.Context(), areasUID), r.URL.Query().Get("bereich"))
 		b.Ribbon = ribbonFor(&b)
 		b.TemplateTip = h.templateTipFor(r.Context(), &b)
 	}
