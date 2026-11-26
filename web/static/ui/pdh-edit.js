@@ -7,7 +7,7 @@
 (function () {
   'use strict';
   var T = function (k) { return typeof window.pdhT === 'function' ? window.pdhT(k) : k; };
-  var cur = null, steps = [];
+  var cur = null, steps = [], saving = null;
 
   function status(kind, msg) { if (typeof window.setGlobalStatus === 'function') window.setGlobalStatus(kind, msg); }
   function paint() {
@@ -40,15 +40,19 @@
       paint();
       status('ok', T('Rückgängig') + ': ' + s.label);
     },
+    // genau ein Speichervorgang zur Zeit (Doppelklick, Nachfrage und Band zugleich)
     save: function () {
       if (!cur) return Promise.resolve(true);
+      if (saving) return saving;
       var c = cur;
-      return Promise.resolve(c.save ? c.save() : true).then(function (ok) {
+      saving = Promise.resolve(c.save ? c.save() : true).then(function (ok) {
+        saving = null;
         if (ok === false) return false;
         cur = null; steps = []; paint();
         status('ok', T('Gespeichert') + ': ' + (c.name || '') + '.');
         return true;
-      });
+      }, function () { saving = null; return false; });
+      return saving;
     },
     cancel: function () {
       var c = cur;
@@ -82,7 +86,7 @@
     var done = false;
     var close = function () { box.remove(); back.remove(); document.removeEventListener('keydown', esc, true); };
     var discard = function () {
-      if (done) return;
+      if (done || saving) return; // während des Speicherns nicht verwerfen
       done = true; close(); api.cancel();
       status('ok', T('Nicht bestätigt – Eingaben verworfen.'));
       go();
@@ -90,7 +94,13 @@
     var esc = function (e) { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); discard(); } };
     no.onclick = discard;
     back.onclick = discard;
-    yes.onclick = function () { api.save().then(function (ok) { if (ok && !done) { done = true; close(); go(); } }); };
+    yes.onclick = function () {
+      no.disabled = yes.disabled = true;
+      api.save().then(function (ok) {
+        no.disabled = yes.disabled = false; // bei einem Fehler bleibt das Fenster mit allen Schritten offen
+        if (ok && !done) { done = true; close(); go(); }
+      });
+    };
     document.addEventListener('keydown', esc, true);
     document.body.appendChild(back); document.body.appendChild(box);
     yes.focus();
@@ -111,9 +121,30 @@
   document.addEventListener('submit', function (e) {
     if (!steps.length) return;
     var f = e.target;
-    if (!f || (f.closest && f.closest('[data-edit-keep]'))) return;
+    if (!f || (f.closest && f.closest('[data-edit-keep]')) || (f.getAttribute('method') || '').toLowerCase() === 'dialog') return;
     e.preventDefault(); e.stopPropagation();
-    api.guard(function () { HTMLFormElement.prototype.submit.call(f); });
+    var sub = e.submitter; // gedrückter Knopf mit Name, Wert und formaction
+    api.guard(function () {
+      if (typeof f.requestSubmit === 'function') f.requestSubmit(sub && sub.form === f ? sub : undefined);
+      else HTMLFormElement.prototype.submit.call(f);
+    });
+  }, true);
+  // Eingaben während einer Bearbeitung sind Schritte (Widget-Einstellungen, Filter, Farbe):
+  // Rückgängig stellt den vorigen Wert wieder her
+  document.addEventListener('focusin', function (e) {
+    var el = e.target;
+    if (cur && el && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) && !el.closest('[data-edit-keep]')) el._pdhOld = el.type === 'checkbox' ? el.checked : el.value;
+  }, true);
+  document.addEventListener('change', function (e) {
+    var el = e.target;
+    if (!cur || !el || !('_pdhOld' in el) || el.closest('[data-edit-keep]')) return;
+    var old = el._pdhOld;
+    el._pdhOld = el.type === 'checkbox' ? el.checked : el.value;
+    api.step(T('Eingabe geändert'), function () {
+      if (el.type === 'checkbox') el.checked = old; else el.value = old;
+      el._pdhOld = old;
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    });
   }, true);
   document.addEventListener('keydown', function (e) {
     if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey || (e.key !== 'z' && e.key !== 'Z')) return;

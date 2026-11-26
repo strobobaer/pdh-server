@@ -44,7 +44,7 @@ func renderGlobal(t *testing.T, d GlobalDashboardPageData) string {
 
 func TestGlobalEmbeddedHidesHeader(t *testing.T) {
 	out := renderGlobal(t, GlobalDashboardPageData{LoggedIn: true, Embedded: true})
-	if strings.Contains(out, "<header>") || strings.Contains(out, "gd-login-corner") {
+	if !strings.Contains(out, "html.gd-embedded header{display:none}") || strings.Contains(out, "gd-login-corner") {
 		t.Error("eingebettet mit eigenem Kopf oder Anmelde-Ecke")
 	}
 	if !strings.Contains(renderGlobal(t, GlobalDashboardPageData{LoggedIn: true}), "<header>") {

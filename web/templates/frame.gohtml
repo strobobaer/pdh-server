@@ -18,7 +18,7 @@
   <nav class="rail" aria-label="{{t "Bereiche"}}" data-order="{{.Rail.OrderKeys}}">
     {{range .Rail.Favorites}}<a class="rail-fav" href="{{.Href}}" title="{{.Label}}" aria-label="{{.Label}}"{{if .External}} target="_blank" rel="noopener"{{end}}><i class="ti {{.Icon}}"></i></a>{{end}}
     {{if .Rail.Favorites}}<span class="rail-sep" aria-hidden="true"></span>{{end}}
-    {{range $i, $a := .Rail.Areas}}{{with $a}}<a class="rail-area{{if lt $i 4}} rail-top{{end}}{{if eq .Key $.Rail.Current}} on{{end}}" href="{{(index .Items 0).Href}}" data-area="{{.Key}}" title="{{.Label}}"{{if eq .Key $.Rail.Current}} aria-current="page"{{end}}{{if (index .Items 0).External}} target="_blank" rel="noopener"{{end}}><i class="ti {{.Icon}}"></i><span>{{.Label}}</span></a>{{end}}{{end}}
+    {{range $i, $a := .Rail.Areas}}{{with $a}}<a class="rail-area{{if lt $i 4}} rail-top{{end}}{{if eq .Key $.Rail.Current}} on{{end}}" href="{{.Home.Href}}" data-area="{{.Key}}" title="{{.Label}}"{{if eq .Key $.Rail.Current}} aria-current="page"{{end}}{{if .Home.External}} target="_blank" rel="noopener"{{end}}><i class="ti {{.Icon}}"></i><span>{{.Label}}</span></a>{{end}}{{end}}
     <button type="button" class="rail-area rail-more" data-rail-more aria-expanded="false" title="{{t "Alle Bereiche"}}"><i class="ti ti-dots"></i><span>{{t "Mehr"}}</span></button>
   <span class="rail-fill" aria-hidden="true"></span>
     {{template "frame-user" .}}

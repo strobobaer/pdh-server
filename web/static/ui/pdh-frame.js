@@ -92,8 +92,9 @@
     'share-chat': function () { if (typeof window.pdhShareToChat === 'function') window.pdhShareToChat(); },
     'override-login': function () { var m = document.getElementById('override-login-modal'); if (m) m.style.display = 'flex'; },
     'undo': function () { if (window.pdhEdit) window.pdhEdit.undo(); },
-    'save-edit': function () { if (window.pdhEdit) window.pdhEdit.save(); },
-    'cancel-edit': function () { if (window.pdhEdit) window.pdhEdit.cancel(); },
+    // Band „Speichern“/„Abbrechen“: erst speichern bzw. verwerfen, dann die Seite neu (Bearbeiten endet)
+    'save-edit': function () { if (window.pdhEdit) window.pdhEdit.save().then(function (ok) { if (ok) location.reload(); }); },
+    'cancel-edit': function () { if (window.pdhEdit) { window.pdhEdit.cancel(); location.reload(); } },
     'dash-reset': function () { if (typeof window.dwReset === 'function') window.dwReset(); },
     'addw': function () { if (typeof window.dwOpenCatalog === 'function') window.dwOpenCatalog(); },
     // Zeit ohne Vorgang braucht einen kurzen Text (Zielart „Sonstiges“, zeit_ziele.go)
@@ -114,7 +115,7 @@
       if (document.fullscreenElement) document.exitFullscreen();
       else if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen();
     },
-    'fav': function (arg) { save('/account/ui-areas', { fav: arg }, true); }, // anheften oder lösen
+    'fav': function (arg) { withGuard(function () { save('/account/ui-areas', { fav: arg }, true); }); }, // anheften oder lösen
     'areas-order': function () { openOrder(); },
     'dashboard-edit': function () { if (typeof window.pdhDashboardEdit === 'function') window.pdhDashboardEdit(); },
     // nur die Reihenfolge – eigene Favoriten gehen nicht an alle
@@ -131,16 +132,23 @@
     var body = new URLSearchParams();
     Object.keys(fields || {}).forEach(function (k) { body.append(k, fields[k]); });
     return fetch(url, { method: 'POST', credentials: 'same-origin', pdhQuiet: true, body: body })
-      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); });
+      .then(function (r) {
+        // abgelaufene Anmeldung: fetch folgt der Weiterleitung zur Anmeldeseite – kein Erfolg
+        if (r.redirected && /\/login/.test(r.url)) throw new Error(T('Bitte neu anmelden'));
+        if (/nicht(%20|\+)gespeichert/.test(r.url)) throw new Error(T('Nicht gespeichert'));
+        if (!r.ok) return r.text().then(function (t) { throw new Error((t || '').trim().slice(0, 200) || ('HTTP ' + r.status)); });
+      });
   }
+  // offene Bearbeitung (pdh-edit.js): vor jeder Aktion, die neu lädt, nachfragen
+  function withGuard(fn) { if (window.pdhEdit) window.pdhEdit.guard(fn); else fn(); }
   function noteAfterReload(msg) { try { sessionStorage.setItem('pdh_frame_note', msg); } catch (e) {} }
   function failed(e) { if (typeof window.setGlobalStatus === 'function') window.setGlobalStatus('error', T('Nicht gespeichert'), null, String(e && e.message || e)); }
   function timePost(url, fields, okMsg) {
-    formPost(url, fields).then(function () { noteAfterReload(okMsg); location.reload(); }).catch(failed);
+    withGuard(function () { formPost(url, fields).then(function () { noteAfterReload(okMsg); location.reload(); }).catch(failed); });
   }
   function confirmPost(url, fields, question, okMsg) {
     if (!window.confirm(question)) return;
-    formPost(url, fields).then(function () { noteAfterReload(okMsg); location.reload(); }).catch(failed);
+    withGuard(function () { formPost(url, fields).then(function () { noteAfterReload(okMsg); location.reload(); }).catch(failed); });
   }
   window.pdhFrame.timePost = timePost;
   try {
@@ -209,9 +217,11 @@
     m.hidden = !open;
     btn.setAttribute('aria-expanded', open ? 'true' : 'false');
     if (open) { // fest positioniert: das Band scrollt waagerecht und würde das Menü abschneiden
+      // Größe der Oberfläche (zoom am body): Bildschirmmaße in CSS-Pixel umrechnen
+      var z = typeof window.pdhZoom === 'function' ? window.pdhZoom() : 1;
       var r = btn.getBoundingClientRect(), w = m.offsetWidth;
-      m.style.top = Math.round(r.bottom + 2) + 'px';
-      m.style.left = Math.round(Math.max(8, Math.min(r.left, window.innerWidth - w - 8))) + 'px';
+      m.style.top = Math.round((r.bottom + 2) / z) + 'px';
+      m.style.left = Math.round(Math.max(8, Math.min(r.left / z, window.innerWidth / z - w - 8))) + 'px';
     }
     if (open) { var first = $('.ribbon-item', m); if (first) first.focus(); }
   }

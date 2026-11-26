@@ -57,6 +57,20 @@ type uiAreaPrefs struct {
 	Favorites []string `json:"favorites,omitempty"`
 }
 
+// Home: Ziel des Bereichsknopfs – die erste Unterseite, die nicht in mehreren Bereichen
+// steht (Start → Dashboard statt Zeiterfassung).
+func (a navArea) Home() navItem {
+	for _, it := range a.Items {
+		if !navSharedItems[it.Key] {
+			return it
+		}
+	}
+	if len(a.Items) > 0 {
+		return a.Items[0]
+	}
+	return navItem{}
+}
+
 // areaView: was der neue Rahmen zeigt (BaseData.Rail).
 type areaView struct {
 	Areas     []navArea
