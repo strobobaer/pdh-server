@@ -1344,6 +1344,12 @@ und 3 drückt bis auf Weiteres der Anwender.
     Festlegung 10.3. **Gebaut wird mit dem Bereich Start zuerst**, danach
     Bereich für Bereich (Entwurf Abschnitt 12; offen: darf jeder Benutzer
     umhängen oder nur die Firma; Vorlagenliste vollständig?).
+    **Vorschau bestätigt (26.11.2026: „Passt“)**:
+    `docs/superpowers/specs/2026-11-26-rahmen-start-vorschau.html`; dazu
+    Rückgängig im Band Start, Nachfrage vor dem Verwerfen, PDH als App ohne
+    Browserleisten (Entwurf 11.10–11.12). **Bauplan** `docs/superpowers/plans/2026-11-26-rahmen-start.md`
+    (9 Aufgaben, 0.82.67, keine Migration, kein neues Recht) – Ausführungsart
+    noch offen (Anwender).
     Als Abschnitt 11 im Entwurf
     `docs/superpowers/specs/2026-11-25-einheitliche-oberflaeche-design.md`
     (geht 5.2 vor), Branch `docs/oberflaeche-rahmen-nachtrag` (lokal). Folge:

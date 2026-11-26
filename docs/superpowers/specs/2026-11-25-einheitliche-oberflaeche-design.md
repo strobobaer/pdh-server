@@ -535,10 +535,12 @@ und Hilfe. Geändert:
   ohne Browserleisten starten.“ Über dem PDH steht nur noch der Rahmen des
   Fensters mit Minimieren, Maximieren und Schließen – keine Adresszeile,
   keine Browser-Reiter.
-- Weg (Vorschlag von Claude): das PDH als **installierbare Web-App** – eine
-  App-Beschreibung (`manifest.webmanifest`, `display: standalone`, Name, Symbol,
-  Startadresse) und ein kleiner Hintergrunddienst (Service Worker, nur für die
-  Installation, kein Arbeiten ohne Verbindung). In Edge und Chrome dann
+- Weg (Vorschlag von Claude, vom Anwender am 26.11.2026 für das erste Paket
+  bestätigt): das PDH als **installierbare Web-App**. App-Beschreibung
+  (`web/static/site.webmanifest`, `display: standalone`) und Service Worker
+  (`web/static/sw.js`, für Push) gibt es schon; es fehlen `id`, `scope` und
+  `lang`, ein Knopf „Als App installieren“ und die Anleitung im Handbuch
+  (Plan `docs/superpowers/plans/2026-11-26-rahmen-start.md`, Task 9). In Edge und Chrome dann
   „App installieren“; das PDH startet aus dem Startmenü bzw. vom Desktop als
   eigenes Fenster. Kein eigenes Programm, das gepflegt werden müsste.
 - **Voraussetzung:** HTTPS mit gültigem Zertifikat (oder `localhost`). Über
