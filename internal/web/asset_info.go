@@ -366,14 +366,16 @@ func (h *Handler) assetLabelItems(r *http.Request, q url.Values) ([]labelItem, e
 			rows.Close()
 		}
 	}
+	itAllOK := map[string]bool{}
 	if q.Get("it_all") == "1" && h.canViewIT(r) {
 		sc, args := scopeSQL(h.requestScope(r), "it_asset", "r", 0)
-		visible := h.itVisibleIDs(r) // Recht samt Abteilung, wie die Liste
+		visible := h.itVisibleIDs(r) // Recht samt Abteilung, wie die Liste (einmal berechnet)
 		if rows, err := h.db.Query(ctx, `SELECT r.id::text FROM it_assets r WHERE r.status::text <> 'retired'`+sc+` ORDER BY r.name LIMIT 2000`, args...); err == nil {
 			for rows.Next() {
 				var id string
 				if rows.Scan(&id) == nil && (visible == nil || visible[id]) {
 					q["it"] = append(q["it"], id)
+					itAllOK[id] = true // schon geprüft, keine Einzelabfrage mehr
 				}
 			}
 			rows.Close()
@@ -408,15 +410,12 @@ func (h *Handler) assetLabelItems(r *http.Request, q url.Values) ([]labelItem, e
 		rows.Close()
 	}
 	if len(q["it"]) > 0 {
-		if !h.canViewIT(r) {
-			return items, fmt.Errorf("keine Berechtigung für IT-Assets")
-		}
 		_, itCatByKey := h.itCategories(ctx)
 		for _, id := range q["it"] {
 			if !uuidInPathRe.MatchString(id) || len(id) != 36 {
 				continue
 			}
-			if !h.canViewITRec(r, id) {
+			if !itAllOK[id] && !h.canViewITRec(r, id) {
 				return items, fmt.Errorf("keine Berechtigung für dieses IT-Asset")
 			}
 			a, err := h.it.GetByID(ctx, id)

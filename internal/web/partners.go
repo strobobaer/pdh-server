@@ -168,6 +168,14 @@ func (h *Handler) DirectoryPage(w http.ResponseWriter, r *http.Request) {
 	hiddenRefs, hiddenTypes := h.hiddenRecordRefs(r)
 	args = append(args, hiddenRefs, hiddenTypes)
 	pHidden, pTypes := "$"+strconv.Itoa(len(args)-1), "$"+strconv.Itoa(len(args))
+	// IT-Assets zählen nur, wenn die Person sie sehen darf (it_perm.go)
+	itVisible := h.itVisibleIDs(r)
+	itIDs := make([]string, 0, len(itVisible))
+	for id := range itVisible {
+		itIDs = append(itIDs, id)
+	}
+	args = append(args, itVisible != nil, itIDs)
+	pITRestrict, pITIDs := "$"+strconv.Itoa(len(args)-1), "$"+strconv.Itoa(len(args))
 	rows, err := h.db.Query(ctx, `
 		SELECT bp.id::text, bp.partner_no, bp.name, bp.short_name, bp.kind, bp.category, bp.approval_status, bp.rating,
 		       bp.city, bp.phone, bp.email, bp.active,
@@ -179,7 +187,8 @@ func (h *Handler) DirectoryPage(w http.ResponseWriter, r *http.Request) {
 		       (SELECT COUNT(*) FROM infrastructure i WHERE bp.id IN (i.manufacturer_id, i.supplier_id, i.service_partner_id)),
 		       (SELECT COUNT(*) FROM spare_parts sp WHERE sp.active AND (sp.manufacturer_id = bp.id
 		            OR EXISTS (SELECT 1 FROM spare_part_suppliers s WHERE s.part_id = sp.id AND s.partner_id = bp.id))),
-		       (SELECT COUNT(*) FROM it_assets a WHERE bp.id IN (a.manufacturer_id, a.supplier_id)),
+		       (SELECT COUNT(*) FROM it_assets a WHERE bp.id IN (a.manufacturer_id, a.supplier_id)
+		         AND (NOT `+pITRestrict+`::boolean OR a.id::text = ANY(`+pITIDs+`::text[]))),
 		       (SELECT COUNT(DISTINCT rp.ref_id) FROM record_external_parties rp WHERE rp.partner_id = bp.id
 		         AND rp.ref_type <> ALL(`+pTypes+`::text[]) AND (rp.ref_type || ':' || rp.ref_id::text) <> ALL(`+pHidden+`::text[]))
 		FROM business_partners bp
@@ -341,7 +350,8 @@ func (h *Handler) PartnerDetail(w http.ResponseWriter, r *http.Request) {
 	data.Contacts = h.partnerContacts(ctx, id)
 	data.Infra = h.partnerInfra(ctx, id)
 	data.Parts, data.PartSupplyCost = h.partnerParts(ctx, id)
-	data.IT = h.partnerITVisible(r, h.partnerIT(ctx, id))
+	itVisible := h.itVisibleIDs(r) // einmal je Anfrage (it_perm.go)
+	data.IT = partnerITVisible(itVisible, h.partnerIT(ctx, id))
 	data.Records = h.partnerRecords(r, id)
 	data.InfraFaults = h.partnerInfraFaults(ctx, id)
 	data.Links = h.partnerLinks(ctx, id)
@@ -352,7 +362,7 @@ func (h *Handler) PartnerDetail(w http.ResponseWriter, r *http.Request) {
 	}
 	if data.CanEdit {
 		data.PartOptions = h.partnerSimpleOptions(ctx, `SELECT id::text, part_number || ' · ' || name FROM spare_parts WHERE active ORDER BY name LIMIT 3000`)
-		data.ITOptions = h.partnerITOptionsVisible(r, h.partnerSimpleOptions(ctx, `SELECT id::text, name || COALESCE(' · ' || NULLIF(model, ''), '') FROM it_assets ORDER BY name LIMIT 3000`))
+		data.ITOptions = partnerITOptionsVisible(itVisible, h.partnerSimpleOptions(ctx, `SELECT id::text, name || COALESCE(' · ' || NULLIF(model, ''), '') FROM it_assets ORDER BY name LIMIT 3000`))
 		data.RecordOptions = h.partnerRecordOptions(r)
 	}
 	h.render(w, "partner_detail", data)
@@ -461,12 +471,8 @@ func (h *Handler) partnerParts(ctx context.Context, partnerID string) ([]Partner
 }
 
 // partnerITVisible: nur IT-Assets, die die Person sehen darf (Recht samt Abteilung).
-func (h *Handler) partnerITVisible(r *http.Request, list []PartnerITRow) []PartnerITRow {
-	if len(list) == 0 {
-		return list
-	}
-	visible := h.itVisibleIDs(r)
-	if visible == nil {
+func partnerITVisible(visible map[string]bool, list []PartnerITRow) []PartnerITRow {
+	if len(list) == 0 || visible == nil {
 		return list
 	}
 	var out []PartnerITRow
@@ -479,8 +485,7 @@ func (h *Handler) partnerITVisible(r *http.Request, list []PartnerITRow) []Partn
 }
 
 // partnerITOptionsVisible: wie partnerITVisible für die Auswahlliste.
-func (h *Handler) partnerITOptionsVisible(r *http.Request, list []partnerOption) []partnerOption {
-	visible := h.itVisibleIDs(r)
+func partnerITOptionsVisible(visible map[string]bool, list []partnerOption) []partnerOption {
 	if visible == nil {
 		return list
 	}
@@ -1052,6 +1057,10 @@ func (h *Handler) partnerAssignmentWeb(w http.ResponseWriter, r *http.Request, p
 	r.ParseForm()
 	target, role := r.FormValue("target"), r.FormValue("role")
 	targetID := r.FormValue("target_id")
+	if target == "it" && (!isUUIDString(strings.TrimSpace(targetID)) || !h.hasPermRec(r, "it.edit", "it_asset", strings.TrimSpace(targetID))) {
+		http.Error(w, "keine berechtigung für dieses IT-Asset", http.StatusForbidden) // it.edit für genau dieses Asset
+		return
+	}
 	if target == "infra" && targetID == "" {
 		targetID = r.FormValue("infrastructure_id") // aus dem Infrastruktur-Baum-Picker
 	}

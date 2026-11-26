@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"regexp"
 	"strings"
@@ -259,7 +260,8 @@ func (h *Handler) APIDepartmentScope(next http.Handler) http.Handler {
 		listType, isList := apiListModules[strings.TrimSuffix(path, "/")]
 		kvpID := kvpAttachmentTarget(path)
 		itStats := r.Method == http.MethodGet && strings.TrimSuffix(path, "/") == "/it/stats"
-		if !single && kvpID == "" && !itStats && !(isList && r.Method == http.MethodGet) {
+		itCreate := r.Method == http.MethodPost && strings.TrimSuffix(path, "/") == "/it"
+		if !single && kvpID == "" && !itStats && !itCreate && !(isList && r.Method == http.MethodGet) {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -291,9 +293,33 @@ func (h *Handler) APIDepartmentScope(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
+		req := r.WithContext(context.WithValue(r.Context(), "user", u))
+		// IT-Asset anlegen: it.edit für die Abteilung der Ziel-Anlage, ohne Anlage nur mit it.edit überall
+		// (wie ITCreate im Web, it_perm.go)
+		if itCreate {
+			raw, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+			if err != nil {
+				deny()
+				return
+			}
+			r.Body = io.NopCloser(bytes.NewReader(raw))
+			var in struct {
+				InfrastructureID *string `json:"infrastructure_id"`
+			}
+			_ = json.Unmarshal(raw, &in) // ungültiges JSON lehnt der Handler selbst ab
+			infra := ""
+			if in.InfrastructureID != nil {
+				infra = strings.TrimSpace(*in.InfrastructureID)
+			}
+			if !h.mayEditITIn(req, infra) {
+				http.Error(w, `{"success":false,"error":"kein zugriff: it.edit für diese anlage fehlt"}`, http.StatusForbidden)
+				return
+			}
+			next.ServeHTTP(w, r)
+			return
+		}
 		// IT-Assets: Liste und Kennzahlen nur mit it.view/it.edit und nur die Assets, die das Recht
 		// samt Abteilung zeigt (it_perm.go) – wie die Seite „IT-Assets“
-		req := r.WithContext(context.WithValue(r.Context(), "user", u))
 		if itList := !single && listType == "it_asset" && isList; itList || itStats {
 			if !h.canViewIT(req) {
 				http.Error(w, `{"success":false,"error":"kein zugriff"}`, http.StatusForbidden)
