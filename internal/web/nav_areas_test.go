@@ -205,8 +205,10 @@ func TestFrameRail(t *testing.T) {
 	d.Page = "network"
 	d.navCan = func(p string) bool { return p == permNetwork }
 	d.Rail = buildAreas(&d.BaseData, uiAreaPrefs{Favorites: []string{"network"}})
+	d.Ribbon = ribbonFor(&d.BaseData)
 	out := renderFrameForTest(t, "server_config", d)
-	for _, want := range []string{`data-area="start"`, `data-area="verwaltung"`, `class="frame-tabs"`, `aria-selected="true"`,
+	// Unterseiten sind seit 0.82.67 Bänder des Menübands (Entwurf 11.3), keine Reiterleiste mehr
+	for _, want := range []string{`data-area="start"`, `data-area="verwaltung"`, `class="ribbon-tab ribbon-band ribbon-page" data-ribbon-tab="network" aria-selected="true"`,
 		`class="rail-fav"`, `href="/admin/network"`, `data-rail-more`} {
 		if !strings.Contains(out, want) {
 			t.Errorf("Bereichsleiste ohne %q", want)

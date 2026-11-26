@@ -24,11 +24,7 @@
   <script src="{{uiURL "pdh-nav.js"}}"></script>
   <div class="frame-main">
 {{template "ui-topbar" .}}
-    {{if .Rail.Tabs}}<div class="frame-tabs" role="tablist" aria-label="{{t "Unterseiten"}}">{{range .Rail.Tabs}}<a role="tab" href="{{.Href}}" aria-selected="{{if eq .Page $.Page}}true{{else}}false{{end}}"{{if .External}} target="_blank" rel="noopener"{{end}}>{{.Label}}</a>{{end}}</div>{{end}}
-    {{if .Ribbon}}<section class="ribbon" aria-label="{{t "Menüband"}}">
-      <div class="ribbon-tabs" role="tablist" aria-label="{{t "Menüband"}}">{{range $i, $tab := .Ribbon}}<button type="button" role="tab" class="ribbon-tab" data-ribbon-tab="{{$tab.Key}}" aria-selected="{{if eq $i 0}}true{{else}}false{{end}}">{{$tab.Label}}</button>{{end}}<button type="button" class="ribbon-more" data-ribbon-more aria-expanded="false" title="{{t "Weitere Funktionen"}}" aria-label="{{t "Weitere Funktionen"}}"><i class="ti ti-dots"></i></button></div>
-      {{range $i, $tab := .Ribbon}}<div class="ribbon-panel" role="tabpanel" data-ribbon-panel="{{$tab.Key}}"{{if ne $i 0}} hidden{{end}}>{{range .Groups}}<div class="ribbon-group" role="group" aria-label="{{.Label}}"><div class="ribbon-items">{{range .Items}}{{if .Href}}<a class="ribbon-item" href="{{.Href}}" title="{{.Label}}" aria-label="{{.Label}}"><i class="ti {{.Icon}}"></i><span>{{.Label}}</span></a>{{else}}<button type="button" class="ribbon-item" data-ribbon-action="{{.Action}}"{{if .Arg}} data-ribbon-arg="{{.Arg}}"{{end}} title="{{.Label}}" aria-label="{{.Label}}"><i class="ti {{.Icon}}"></i><span>{{.Label}}</span></button>{{end}}{{end}}</div><span class="ribbon-glabel">{{.Label}}</span></div>{{end}}</div>{{end}}
-    </section>{{end}}
+{{template "frame-ribbon" .}}
 {{template "ui-bands" .}}
     <main class="main">
       <div class="print-brand">{{if .Brand.PrintLogo}}<img src="{{.Brand.PrintLogo}}" alt="">{{end}}<span>{{if .CompanyPrint.Name}}{{.CompanyPrint.Name}}{{else}}{{or .Brand.AppName "PDH"}}{{end}} · {{.Title}}{{with .CompanyPrint.Address}}<small class="pb-addr">{{.}}</small>{{end}}</span><span class="pb-date" data-print-date></span></div>

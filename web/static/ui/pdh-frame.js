@@ -82,8 +82,24 @@
 
   // ── Menüband ───────────────────────────────────────────────────
   var ACTIONS = {
-    'create': function () { if (typeof window.pdhCreate === 'function') window.pdhCreate(); },
-    'toggle-right': function () { if (typeof window.toggleSidebar === 'function') window.toggleSidebar('right'); },
+    'create': function (arg) { if (typeof window.pdhCreate === 'function') { if (arg) window.pdhCreate(arg); else window.pdhCreate(); } },
+    // mit Wert: diesen Reiter der rechten Leiste öffnen (Copilot, Chat, Hilfe), sonst Leiste ein/aus
+    'toggle-right': function (arg) {
+      if (arg && typeof window.activateContextTab === 'function') window.activateContextTab(arg);
+      else if (typeof window.toggleSidebar === 'function') window.toggleSidebar('right');
+    },
+    'search': function () { palOpen(''); },
+    'share-chat': function () { if (typeof window.pdhShareToChat === 'function') window.pdhShareToChat(); },
+    'override-login': function () { var m = document.getElementById('override-login-modal'); if (m) m.style.display = 'flex'; },
+    'undo': function () { if (window.pdhEdit) window.pdhEdit.undo(); },
+    'save-edit': function () { if (window.pdhEdit) window.pdhEdit.save(); },
+    'cancel-edit': function () { if (window.pdhEdit) window.pdhEdit.cancel(); },
+    'addw': function () { if (typeof window.dwOpenCatalog === 'function') window.dwOpenCatalog(); },
+    'time-start': function () { timePost('/time/start-web', null, T('Zeit läuft.')); },
+    'time-stop': function (arg) { if (arg) timePost('/time/' + encodeURIComponent(arg) + '/stop-web', null, T('Zeit gestoppt und gebucht.')); },
+    'time-manual': function () { var d = document.getElementById('frame-time-manual'); if (d && typeof d.showModal === 'function') d.showModal(); },
+    'dash-standard': function () { confirmPost('/core/settings/defaults', { what: 'dashboard', action: 'set' }, T('Die jetzige Anordnung wird die Vorgabe der Firma. Wer seine Startseite schon angepasst hat, behält sie, bis er „Auf Vorgabe zurücksetzen“ drückt.'), T('Als Standard für alle gesetzt.')); },
+    'leit-standard': function (arg) { if (arg) confirmPost('/leitstaende/' + encodeURIComponent(arg) + '/default', {}, T('Dieser Leitstand wird der Standard-Leitstand für alle.'), T('Als Standard für alle gesetzt.')); },
     'toggle-narrow': function () {
       var on = !document.documentElement.classList.contains('rail-narrow');
       document.documentElement.classList.toggle('rail-narrow', on);
@@ -104,6 +120,50 @@
     'density': function (arg) { if (typeof window.lookSet === 'function') { window.lookSet('row', parseInt(arg, 10)); window.lookSave(); } }
   };
   window.pdhFrame.run = function (action, arg) { var f = ACTIONS[action]; if (f) f(arg); };
+
+  // Formular-POST (Zeiterfassung, Firmenvorgaben): danach neu laden, Meldung über die Statusleiste
+  function formPost(url, fields) {
+    var body = new URLSearchParams();
+    Object.keys(fields || {}).forEach(function (k) { body.append(k, fields[k]); });
+    return fetch(url, { method: 'POST', credentials: 'same-origin', pdhQuiet: true, body: body })
+      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); });
+  }
+  function noteAfterReload(msg) { try { sessionStorage.setItem('pdh_frame_note', msg); } catch (e) {} }
+  function failed(e) { if (typeof window.setGlobalStatus === 'function') window.setGlobalStatus('error', T('Nicht gespeichert'), null, String(e && e.message || e)); }
+  function timePost(url, fields, okMsg) {
+    formPost(url, fields).then(function () { noteAfterReload(okMsg); location.reload(); }).catch(failed);
+  }
+  function confirmPost(url, fields, question, okMsg) {
+    if (!window.confirm(question)) return;
+    formPost(url, fields).then(function () { noteAfterReload(okMsg); location.reload(); }).catch(failed);
+  }
+  window.pdhFrame.timePost = timePost;
+  try {
+    var note = sessionStorage.getItem('pdh_frame_note');
+    if (note) { sessionStorage.removeItem('pdh_frame_note'); window.addEventListener('load', function () { if (typeof window.setGlobalStatus === 'function') window.setGlobalStatus('ok', note); }); }
+  } catch (e) {}
+
+  // Aufklappmenüs im Menüband (Neu, Darstellung, Anpassen)
+  function menuClose(except) {
+    $$('.ribbon-dd').forEach(function (dd) {
+      if (dd === except) return;
+      var m = $('.ribbon-menu', dd), b = $('[data-ribbon-menu]', dd);
+      if (m) m.hidden = true;
+      if (b) b.setAttribute('aria-expanded', 'false');
+    });
+  }
+  function menuToggle(btn) {
+    var dd = btn.closest('.ribbon-dd'), m = $('.ribbon-menu', dd), open = m.hidden;
+    menuClose(dd);
+    m.hidden = !open;
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (open) { // fest positioniert: das Band scrollt waagerecht und würde das Menü abschneiden
+      var r = btn.getBoundingClientRect(), w = m.offsetWidth;
+      m.style.top = Math.round(r.bottom + 2) + 'px';
+      m.style.left = Math.round(Math.max(8, Math.min(r.left, window.innerWidth - w - 8))) + 'px';
+    }
+    if (open) { var first = $('.ribbon-item', m); if (first) first.focus(); }
+  }
 
   // ── Befehlszeile Strg+K ────────────────────────────────────────
   // palSeq macht ausstehende Antworten ungültig; palLoading: neue Treffer kommen noch
@@ -281,6 +341,9 @@
     if (pal && !t.closest('.frame-palette')) palClose();
     if (t.closest('[data-rail-more]')) { railToggle(!$('.rail').classList.contains('open')); return; }
     if (!t.closest('.rail')) railToggle(false);
+    var mb = t.closest('[data-ribbon-menu]');
+    if (mb) { menuToggle(mb); return; }
+    if (!t.closest('.ribbon-menu')) menuClose(null);
     var tab = t.closest('[data-ribbon-tab]');
     if (tab) { ribbonSelect(tab.dataset.ribbonTab); return; }
     var more = t.closest('[data-ribbon-more]');
@@ -291,11 +354,11 @@
       return;
     }
     var act = t.closest('[data-ribbon-action]');
-    if (act) window.pdhFrame.run(act.dataset.ribbonAction, act.dataset.ribbonArg || '');
+    if (act && !act.disabled) { menuClose(null); window.pdhFrame.run(act.dataset.ribbonAction, act.dataset.ribbonArg || ''); }
   });
   document.addEventListener('keydown', function (e) {
     if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 'k' || e.key === 'K')) { e.preventDefault(); palOpen(); return; }
-    if (e.key === 'Escape') { railToggle(false); logToggle(false); }
+    if (e.key === 'Escape') { railToggle(false); logToggle(false); menuClose(null); }
     if ((e.key === 'Enter' || e.key === ' ') && e.target.id === 'global-status-footer') { e.preventDefault(); logToggle($('#frame-log').hidden); }
     // Suchzeile: Tab geht vorbei; Enter, Leertaste oder ein Buchstabe öffnet die Befehlszeile
     var altGr = e.getModifierState && e.getModifierState('AltGraph'); // @, € usw. auf deutscher Tastatur
