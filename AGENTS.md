@@ -310,7 +310,7 @@ und 3 drückt bis auf Weiteres der Anwender.
   Übernahmesperre weg ist), dann der aktive (Pakete, Neustart → der
   andere übernimmt) – vorher `pdh-ha update status`.
 
-### Offene Punkte (Stand 25.11.2026)
+### Offene Punkte (Stand 26.11.2026)
 
 1. **Netz-Abgleich im Browser mit zwei Quellen:** 0.80.25 ist auf `main`
    und dem Testverbund; die Vorschlagsliste mit zwei eingeschalteten
@@ -1182,9 +1182,8 @@ und 3 drückt bis auf Weiteres der Anwender.
     Treiber 620 (CUDA-Archiv, nur 615/620 verfügbar) nicht mehr unterstützt
     („No such device“); `nvidia-persistenced` abgeschaltet, Ollama läuft auf
     dem Prozessor. Debians Treiber 550 (Bereich `non-free`) könnte die Karte –
-    nur auf Wunsch. Offen: 0.82.60 einspielen (Anwender, mit Sicherung; 202
-    hat 0.82.59 und Skript Version 2 – das Update spielt Version 3 von selbst
-    ein), 57 offene Pakete (2
+    nur auf Wunsch. 202 steht inzwischen auf 0.82.65 (26.11.2026 gelesen, vom
+    Anwender eingespielt). Offen (Stand 25.11.2026): 57 offene Pakete (2
     Sicherheitsupdates `zstd`, `libzstd1`; Docker-Pakete starten Container neu).
     **Tests:** `TestITNetRunOnceNotConfigured` und
     `TestTerminalGlobalSlidesJSON` sind auf `main` rot (auch einzeln, gegen die
@@ -1262,8 +1261,9 @@ und 3 drückt bis auf Weiteres der Anwender.
     „Neu“ nicht per Esc (Fokus außerhalb, Bestand), Schatten der eingeklappten
     rechten Leiste ragt bis 1024 px in den Rand (Bestand). **Nächster Schritt: Teil 3** (Listen
     mit Detail, Vorgangs-Reiter, Vorgänge in Strg+K, „Fertigstellen“ im
-    Menüband – Punkt 10.11 des Entwurfs). Offen: 10.10.0.202 auf 0.82.65
-    (Anwender, mit Sicherung; bringt 0.82.60 und 0.82.61 mit).
+    Menüband – Punkt 10.11 des Entwurfs). 10.10.0.202 ist auf 0.82.65
+    (26.11.2026 gelesen: Commit `bf7da911`, `migrations_ok`; vom Anwender
+    eingespielt).
 
 29. **Rundgang/Wartung pausieren und auf anderem Gerät fortsetzen** (Wunsch des
     Anwenders vom 25.11.2026: „wenn dieses aus mehreren Stationen besteht
@@ -1284,14 +1284,39 @@ und 3 drückt bis auf Weiteres der Anwender.
     weiter oder auch ein Kollege (Schichtwechsel)?
 31. **0.82.66 Abmelden zieht das Token am Server zurück** (Anwender 25.11.2026:
     „2 ok“; bei der Abnahme von 0.82.65 gefunden: `/logout` löschte nur die
-    Cookies, ein kopiertes Token galt bis zum Ablauf). Branch
-    `fix/abmelden-token`: Fingerabdruck (SHA-256) des Tokens in
-    `session_revocations` (Migration 227) bis zu dessen Ablauf, gemeinsam für beide
-    Server; Prüfung in `sessionToken` mit 30 s Zwischenspeicher je Server
-    (`session_revoke.go`). Nur dieses Gerät, andere bleiben angemeldet; das
-    Rückkehr-Token des Terminals bleibt gültig; am Spiegel (nur lesen) kennt nur
-    dieser Server den Rückzug. Kein neues Recht. „Überall abmelden“ wäre ein
-    eigener Wunsch.
+    Cookies, ein kopiertes Token galt bis zum Ablauf). Fingerabdruck (SHA-256
+    über Kopf und Inhalt des Tokens, ohne Signatur) in `session_revocations`
+    (Migration 227) bis zu dessen Ablauf, gemeinsam für beide Server; 30 s
+    Zwischenspeicher je Server (`session_revoke.go`). Geprüft wird in der
+    Oberfläche (`sessionToken`, `webActor`) **und an der Schnittstelle**
+    (`middleware.Auth` über `SetSessionRevokedCheck`, angemeldet in
+    `terminalRoutes`; `apiTokenClaims`). Zurückgezogen wird bei „Abmelden“, bei
+    „Zurück zum Systemnutzer“ und am Ende der Kurzsitzung aus dem Leitstand;
+    das Token, zu dem zurückgekehrt wird, nie. Jedes Token hat seitdem eine
+    zufällige Kennung (`jti`). Nur dieses Gerät, andere bleiben angemeldet; am
+    Spiegel (nur lesen) kennt nur dieser Server den Rückzug. Kein neues Recht.
+    Schlussprüfung (26.11.2026, Claude und Codex in zwei Runden) fand drei
+    wichtige Lücken – Schnittstelle prüfte nicht, Fingerabdruck hing an der
+    Schreibweise der Signatur, Schutz des Rückkehr-Tokens verglich den ganzen
+    String – alle behoben. **Auf `main`** (26.11.2026, Merge `96d11792`,
+    Dauerfreigabe) und dem Testverbund (beide Server 0.82.66, Migration 227,
+    aktiv jetzt `pdh-server` 10.10.0.17, Spiegelung läuft, keine Fehler im
+    Protokoll). Am Testverbund abgenommen (ohne Browser, mit dem Prüfkonto):
+    zwei Anmeldungen ergeben verschiedene Tokens; nach dem Abmelden gilt das
+    kopierte Token weder in der Oberfläche (302) noch an der Schnittstelle
+    (401, als Bearer und als Cookie), auch nicht mit anderer Schreibweise der
+    Signatur und auch nicht direkt am Spiegel; das zweite Gerät bleibt
+    angemeldet; Handbuch zeigt den neuen Satz; Prüfkonto wieder gesperrt.
+    Zurückgestellt (klein): über 10 000 gleichzeitig geltende Rückzüge im
+    Zwischenspeicher eines Servers (dann fragt jede Prüfung die Datenbank);
+    Prüfung je Prozess statt je Handler (wie die Terminal-Prüfungen); vor dem
+    Update in derselben Sekunde ausgestellte gleiche Tokens; offene
+    Live-Verbindungen laufen nach dem Abmelden weiter, bis sie getrennt
+    werden. „Überall abmelden“ wäre ein eigener Wunsch. Offen: 10.10.0.202
+    (Anwender, mit Sicherung). Tests: `TestUpdateSaveFailsBacksOff` und
+    `TestITNetRecipientsFallback` waren nach einem abgebrochenen Testlauf
+    einmal rot (Reste in `pdh_test`), danach auf Branch und `main` je dreimal
+    grün.
 30. **Vorgabe Assistenten (Anwender 25.11.2026):** Neu-anlegen- und
     Fertigstellen-Assistent dürfen in keinem Teil der neuen Oberfläche fehlen
     (Entwurf 0.90.0 Abschnitt 10.11, `TestFrameHasWizards`).
