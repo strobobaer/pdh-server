@@ -317,7 +317,15 @@ func (h *Handler) RecordLinksWeb(w http.ResponseWriter, r *http.Request) {
 	switch m.Key {
 	case "ticket", "fault", "task", "maintenance_task":
 		if h.canViewIT(r) {
-			add(h.linkITAsset(ctx, m, id))
+			g := h.linkITAsset(ctx, m, id)
+			kept := g.Items[:0]
+			for _, li := range g.Items { // nur Assets, die die Person sehen darf (Abteilung des Assets)
+				if h.canViewITRec(r, strings.TrimPrefix(li.URL, "/it/")) {
+					kept = append(kept, li)
+				}
+			}
+			g.Items = kept
+			add(g)
 		}
 	}
 	add(h.linkRecords(ctx, m.Key, id))

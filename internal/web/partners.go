@@ -341,7 +341,7 @@ func (h *Handler) PartnerDetail(w http.ResponseWriter, r *http.Request) {
 	data.Contacts = h.partnerContacts(ctx, id)
 	data.Infra = h.partnerInfra(ctx, id)
 	data.Parts, data.PartSupplyCost = h.partnerParts(ctx, id)
-	data.IT = h.partnerIT(ctx, id)
+	data.IT = h.partnerITVisible(r, h.partnerIT(ctx, id))
 	data.Records = h.partnerRecords(r, id)
 	data.InfraFaults = h.partnerInfraFaults(ctx, id)
 	data.Links = h.partnerLinks(ctx, id)
@@ -352,7 +352,7 @@ func (h *Handler) PartnerDetail(w http.ResponseWriter, r *http.Request) {
 	}
 	if data.CanEdit {
 		data.PartOptions = h.partnerSimpleOptions(ctx, `SELECT id::text, part_number || ' · ' || name FROM spare_parts WHERE active ORDER BY name LIMIT 3000`)
-		data.ITOptions = h.partnerSimpleOptions(ctx, `SELECT id::text, name || COALESCE(' · ' || NULLIF(model, ''), '') FROM it_assets ORDER BY name LIMIT 3000`)
+		data.ITOptions = h.partnerITOptionsVisible(r, h.partnerSimpleOptions(ctx, `SELECT id::text, name || COALESCE(' · ' || NULLIF(model, ''), '') FROM it_assets ORDER BY name LIMIT 3000`))
 		data.RecordOptions = h.partnerRecordOptions(r)
 	}
 	h.render(w, "partner_detail", data)
@@ -458,6 +458,39 @@ func (h *Handler) partnerParts(ctx context.Context, partnerID string) ([]Partner
 		list = append(list, p)
 	}
 	return list, formatEuro(stockValue)
+}
+
+// partnerITVisible: nur IT-Assets, die die Person sehen darf (Recht samt Abteilung).
+func (h *Handler) partnerITVisible(r *http.Request, list []PartnerITRow) []PartnerITRow {
+	if len(list) == 0 {
+		return list
+	}
+	visible := h.itVisibleIDs(r)
+	if visible == nil {
+		return list
+	}
+	var out []PartnerITRow
+	for _, a := range list {
+		if visible[a.ID] {
+			out = append(out, a)
+		}
+	}
+	return out
+}
+
+// partnerITOptionsVisible: wie partnerITVisible für die Auswahlliste.
+func (h *Handler) partnerITOptionsVisible(r *http.Request, list []partnerOption) []partnerOption {
+	visible := h.itVisibleIDs(r)
+	if visible == nil {
+		return list
+	}
+	var out []partnerOption
+	for _, o := range list {
+		if visible[o.Value] {
+			out = append(out, o)
+		}
+	}
+	return out
 }
 
 func (h *Handler) partnerIT(ctx context.Context, partnerID string) []PartnerITRow {

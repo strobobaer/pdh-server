@@ -109,7 +109,7 @@ func (h *Handler) AssetInfoPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Zu diesem QR-Code gibt es keine Anlage und kein IT-Asset (mehr).", http.StatusNotFound)
 		return
 	}
-	if kind == "it" && !h.canViewIT(r) {
+	if kind == "it" && !h.canViewITRec(r, id) {
 		http.Error(w, "Keine Berechtigung für IT-Assets.", http.StatusForbidden)
 		return
 	}
@@ -325,6 +325,10 @@ func (h *Handler) RecordITAssetWeb(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 	u := getUser(r)
+	if assetID != "" && !h.canViewITRec(r, assetID) { // nur Geräte zuordnen, die die Person sehen darf
+		http.Error(w, "keine berechtigung für dieses IT-Asset", http.StatusForbidden)
+		return
+	}
 	var createdBy string
 	if err := h.db.QueryRow(ctx, `SELECT created_by::text FROM `+t.table+` WHERE id = $1::uuid`, id).Scan(&createdBy); err != nil {
 		http.Error(w, "Vorgang nicht gefunden", http.StatusNotFound)
@@ -364,10 +368,11 @@ func (h *Handler) assetLabelItems(r *http.Request, q url.Values) ([]labelItem, e
 	}
 	if q.Get("it_all") == "1" && h.canViewIT(r) {
 		sc, args := scopeSQL(h.requestScope(r), "it_asset", "r", 0)
+		visible := h.itVisibleIDs(r) // Recht samt Abteilung, wie die Liste
 		if rows, err := h.db.Query(ctx, `SELECT r.id::text FROM it_assets r WHERE r.status::text <> 'retired'`+sc+` ORDER BY r.name LIMIT 2000`, args...); err == nil {
 			for rows.Next() {
 				var id string
-				if rows.Scan(&id) == nil {
+				if rows.Scan(&id) == nil && (visible == nil || visible[id]) {
 					q["it"] = append(q["it"], id)
 				}
 			}
@@ -410,6 +415,9 @@ func (h *Handler) assetLabelItems(r *http.Request, q url.Values) ([]labelItem, e
 		for _, id := range q["it"] {
 			if !uuidInPathRe.MatchString(id) || len(id) != 36 {
 				continue
+			}
+			if !h.canViewITRec(r, id) {
+				return items, fmt.Errorf("keine Berechtigung für dieses IT-Asset")
 			}
 			a, err := h.it.GetByID(ctx, id)
 			if err != nil {

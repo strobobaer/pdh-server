@@ -79,11 +79,6 @@ func (h *Handler) hasPermFor(r *http.Request, uid, role, perm string) bool {
 	return h.rbac != nil && h.rbac.HasPermissionForUser(uid, role, perm)
 }
 
-// zeitAssetVisible: darf die Person IT-Assets sehen (it.view oder it.edit)?
-func (h *Handler) zeitAssetVisible(r *http.Request, uid, role string) bool {
-	return h.hasPermFor(r, uid, role, "it.view") || h.hasPermFor(r, uid, role, "it.edit")
-}
-
 // zeitAssetLookup liest ein IT-Asset: Name, Anlage (leer = keiner zugeordnet).
 func (h *Handler) zeitAssetLookup(ctx context.Context, id string) (name, infra string, found bool) {
 	if h.db == nil || !isUUIDString(id) {
@@ -125,14 +120,14 @@ func (h *Handler) ResolveTimeTarget(r *http.Request, uid, role string, in *timet
 		if !isUUIDString(id) {
 			return http.StatusBadRequest, "Bitte ein IT-Asset wählen."
 		}
-		if !h.zeitAssetVisible(r, uid, role) {
+		if !h.itViewAnyFor(r, uid, role) {
 			return http.StatusForbidden, "Keine Berechtigung für IT-Assets."
 		}
 		name, infra, found := h.zeitAssetLookup(ctx, id)
 		if !found {
 			return http.StatusNotFound, "IT-Asset nicht gefunden."
 		}
-		if !h.recordInScope(ctx, h.deptScopeFor(ctx, uid, role), "it_asset", id) || !h.zeitAssetAllowed(r, uid, role, h.recordDepartments(ctx, "it_asset", id)) {
+		if !h.recordInScope(ctx, h.deptScopeFor(ctx, uid, role), "it_asset", id) || !h.itViewIn(r, uid, role, h.recordDepartments(ctx, "it_asset", id)) {
 			return http.StatusForbidden, "Dieses IT-Asset gehört zu einer anderen Abteilung."
 		}
 		in.RefID, in.ITAssetID = id, &id
@@ -176,7 +171,7 @@ type timeAssetOption struct {
 func (h *Handler) TimeITAssets(w http.ResponseWriter, r *http.Request) {
 	u := getUser(r)
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	if h.db == nil || !h.zeitAssetVisible(r, u.ID, string(u.Role)) {
+	if h.db == nil || !h.itViewAnyFor(r, u.ID, string(u.Role)) {
 		http.Error(w, `{"error":"Keine Berechtigung für IT-Assets."}`, http.StatusForbidden)
 		return
 	}
@@ -199,7 +194,7 @@ func (h *Handler) TimeITAssets(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var o timeAssetOption
 		var depts []string
-		if rows.Scan(&o.ID, &o.Title, &o.Infra, &depts) == nil && h.zeitAssetAllowed(r, u.ID, string(u.Role), depts) && len(out) < 30 {
+		if rows.Scan(&o.ID, &o.Title, &o.Infra, &depts) == nil && h.itViewIn(r, u.ID, string(u.Role), depts) && len(out) < 30 {
 			out = append(out, o)
 		}
 	}
@@ -232,16 +227,4 @@ func (h *Handler) infraExists(ctx context.Context, id string) bool {
 	}
 	var ok bool
 	return h.db.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM infrastructure WHERE id = $1::uuid)`, id).Scan(&ok) == nil && ok
-}
-
-// zeitAssetAllowed: darf die Person IT-Assets mit diesen Abteilungen sehen? Wie hasPermRec gilt die Abteilungsebene
-// des Rechts selbst (Rolle und Einzelberechtigung, jeweils samt Unterabteilungen), nicht nur die der Rolle.
-func (h *Handler) zeitAssetAllowed(r *http.Request, uid, role string, depts []string) bool {
-	if h.hasPermHook != nil {
-		return h.hasPermHook(r, "it.view") || h.hasPermHook(r, "it.edit")
-	}
-	if h.rbac == nil {
-		return false
-	}
-	return h.rbac.HasPermissionInDepartment(uid, role, "it.view", depts) || h.rbac.HasPermissionInDepartment(uid, role, "it.edit", depts)
 }

@@ -10,6 +10,8 @@ import (
 	"strings"
 
 	"github.com/golang-jwt/jwt/v5"
+
+	"pdh/pkg/response"
 )
 
 // Rechte je Abteilung (migrations/087).
@@ -256,7 +258,8 @@ func (h *Handler) APIDepartmentScope(next http.Handler) http.Handler {
 		refType, id, single := scopeTarget(path)
 		listType, isList := apiListModules[strings.TrimSuffix(path, "/")]
 		kvpID := kvpAttachmentTarget(path)
-		if !single && kvpID == "" && !(isList && r.Method == http.MethodGet) {
+		itStats := r.Method == http.MethodGet && strings.TrimSuffix(path, "/") == "/it/stats"
+		if !single && kvpID == "" && !itStats && !(isList && r.Method == http.MethodGet) {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -288,6 +291,41 @@ func (h *Handler) APIDepartmentScope(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
+		// IT-Assets: Liste und Kennzahlen nur mit it.view/it.edit und nur die Assets, die das Recht
+		// samt Abteilung zeigt (it_perm.go) – wie die Seite „IT-Assets“
+		req := r.WithContext(context.WithValue(r.Context(), "user", u))
+		if itList := !single && listType == "it_asset" && isList; itList || itStats {
+			if !h.canViewIT(req) {
+				http.Error(w, `{"success":false,"error":"kein zugriff"}`, http.StatusForbidden)
+				return
+			}
+			if itStats {
+				if visible := h.itVisibleIDs(req); visible != nil {
+					all, err := h.it.List(r.Context(), "", "")
+					if err != nil {
+						http.Error(w, `{"success":false,"error":"it-assets nicht ladbar"}`, http.StatusInternalServerError)
+						return
+					}
+					response.JSON(w, http.StatusOK, itStatsOf(all, visible))
+					return
+				}
+				next.ServeHTTP(w, r)
+				return
+			}
+			rec := &bufferWriter{header: http.Header{}, status: http.StatusOK}
+			next.ServeHTTP(rec, r)
+			body := rec.buf.Bytes()
+			if rec.status == http.StatusOK {
+				body = filterJSONList(body, h.itVisibleIDs(req))
+			}
+			for k, v := range rec.header {
+				w.Header()[k] = v
+			}
+			w.Header().Del("Content-Length")
+			w.WriteHeader(rec.status)
+			_, _ = w.Write(body)
+			return
+		}
 		s := h.deptScopeFor(r.Context(), u.ID, string(u.Role))
 		// Projekte: zusätzlich das Ansichtsrecht (view_rights.go), auch ohne Abteilungssperre der Rolle
 		viewType := ""
@@ -300,7 +338,6 @@ func (h *Handler) APIDepartmentScope(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		req := r.WithContext(context.WithValue(r.Context(), "user", u))
 		if single {
 			if s != nil && !h.recordInScope(r.Context(), s, refType, id) {
 				http.Error(w, `{"success":false,"error":"kein zugriff: andere abteilung"}`, http.StatusForbidden)

@@ -10,6 +10,13 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.82.66] – 2026-11-26
+
+### Sicherheit
+
+- **IT-Assets nur noch aus der eigenen Abteilung:** Wer „IT-Infrastruktur ansehen“ oder „IT-Assets bearbeiten“ nur für eine Abteilung hat, sah bisher in der Liste, der Suche, der Kennzahl, den Etiketten und der Schnittstelle die IT-Assets aller Abteilungen und konnte ihre Seiten öffnen. Jetzt zeigen Liste, Kennzahlen, Etiketten und Schnittstelle nur die Assets der eigenen Abteilung (samt Unterabteilungen) und die ohne Abteilung; Detailseite, QR-Seite (/a/…), App-Scan und Verknüpfungen fremder Abteilungen sind gesperrt. Auch in Vorgängen, bei Herstellern und Lieferanten tauchen fremde Assets nicht mehr auf. Wer die Rechte für alle Abteilungen hat, merkt nichts. Die Seite „IT-Assets“ und die Schnittstelle verlangen jetzt überhaupt ein IT-Recht.
+- **Anlegen und Verschieben:** Ein IT-Asset lässt sich nur noch in einer Anlage anlegen oder dorthin verschieben, für deren Abteilung „IT-Assets bearbeiten“ gilt.
+
 ## [0.82.65] – 2026-11-25
 
 ### Neu

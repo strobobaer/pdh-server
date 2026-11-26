@@ -4592,6 +4592,10 @@ func (h *Handler) ChecklistsPage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) ITPage(w http.ResponseWriter, r *http.Request) {
+	if !h.canViewIT(r) {
+		http.Error(w, "Keine Berechtigung für IT-Assets.", http.StatusForbidden)
+		return
+	}
 	data := ITPageData{
 		BaseData: h.baseData(r, "it", "IT-Infrastruktur", "Übersicht"),
 		Filter:   r.URL.Query().Get("type"), Stats: map[string]int{},
@@ -4602,7 +4606,7 @@ func (h *Handler) ITPage(w http.ResponseWriter, r *http.Request) {
 	statusLabels := map[string]string{"active": "Aktiv", "inactive": "Inaktiv", "maintenance": "Wartung", "retired": "Außer Dienst"}
 	statusClasses := map[string]string{"active": "b-green", "inactive": "b-gray", "maintenance": "b-amber", "retired": "b-red"}
 	if list, err := h.it.List(r.Context(), it.AssetType(data.Filter), ""); err == nil {
-		scopeIDs := h.scopeAllowedIDs(r, "it_asset")
+		scopeIDs := h.itVisibleIDs(r) // Recht samt Abteilung und Abteilungssperre der Rolle (it_perm.go)
 		for _, a := range list {
 			if scopeIDs != nil && !scopeIDs[a.ID] {
 				continue
@@ -4623,8 +4627,12 @@ func (h *Handler) ITPage(w http.ResponseWriter, r *http.Request) {
 			})
 		}
 	}
-	if stats, err := h.it.GetStats(r.Context()); err == nil {
-		data.Stats = stats
+	if visible := h.itVisibleIDs(r); visible == nil {
+		if stats, err := h.it.GetStats(r.Context()); err == nil {
+			data.Stats = stats
+		}
+	} else if all, err := h.it.List(r.Context(), "", ""); err == nil { // Kennzahlen nur über die sichtbaren Assets
+		data.Stats = itStatsOf(all, visible)
 	}
 	data.NetCandidates = h.itNetOpenCandidates(r.Context())
 	h.render(w, "it", data)
@@ -4633,6 +4641,10 @@ func (h *Handler) ITPage(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) ITCreate(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	u := getUser(r)
+	if in := optionalID(r.FormValue("infrastructure_id")); in != nil && !h.mayEditITIn(r, *in) {
+		http.Error(w, "Keine Berechtigung: Für die Abteilung dieser Anlage fehlt das Recht „"+h.permLabel(r, "it.edit")+"“.", http.StatusForbidden)
+		return
+	}
 	in := &it.CreateAssetInput{
 		Name: r.FormValue("name"), Type: it.AssetType(r.FormValue("type")),
 		Hostname: r.FormValue("hostname"), IPAddress: r.FormValue("ip_address"),
@@ -4719,6 +4731,10 @@ func (h *Handler) ITDetail(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/it", http.StatusFound)
 		return
 	}
+	if !h.canViewITRec(r, id) {
+		http.Error(w, "Keine Berechtigung für dieses IT-Asset.", http.StatusForbidden)
+		return
+	}
 
 	cats, catByKey := h.itCategories(ctx)
 	data := ITDetailData{
@@ -4770,6 +4786,11 @@ func (h *Handler) ITEditWeb(w http.ResponseWriter, r *http.Request) {
 	current, err := h.it.GetByID(r.Context(), id)
 	if err != nil {
 		http.NotFound(w, r)
+		return
+	}
+	// Verschieben in eine andere Anlage: it.edit muss auch für deren Abteilung gelten
+	if in.InfrastructureID != nil && (current.InfrastructureID == nil || *current.InfrastructureID != *in.InfrastructureID) && !h.mayEditITIn(r, *in.InfrastructureID) {
+		http.Error(w, "Keine Berechtigung: Für die Abteilung dieser Anlage fehlt das Recht „"+h.permLabel(r, "it.edit")+"“.", http.StatusForbidden)
 		return
 	}
 	_, catByKey := h.itCategories(r.Context())
