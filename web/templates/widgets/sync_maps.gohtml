@@ -4,7 +4,7 @@
 {{$m := .Maps}}
 {{$edit := and .CanEdit (not .ReadErr)}}
 {{if not $p.SourceTable}}
-<div class="card"><div class="rec-sub"><i class="ti ti-info-circle"></i> Wähle zuerst im Schritt <a href="?tab=source" style="color:var(--accent)">Quelle</a> eine Tabelle. Danach ordnest du hier ihre Spalten den Feldern im PDH zu.</div></div>
+<div class="card"><div class="rec-sub"><i class="ti ti-info-circle"></i> Wähle zuerst im Schritt <a href="/sync/{{$p.ID}}?tab=source" style="color:var(--accent)">Quelle</a> eine Tabelle. Danach ordnest du hier ihre Spalten den Feldern im PDH zu.</div></div>
 {{else}}
 {{if $m.Missing}}<div class="sy-warn" role="alert" style="margin-bottom:14px"><i class="ti ti-alert-triangle"></i> Es fehlt noch eine Zuordnung für ein Pflichtfeld. Ohne sie besteht das Profil den Test nicht.</div>{{end}}
 <form method="POST" action="/sync/{{$p.ID}}/maps-web">

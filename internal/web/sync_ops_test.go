@@ -489,7 +489,7 @@ func TestSyncTestAndOpsTemplatesRender(t *testing.T) {
 
 	// Test: leer (nichts schreibt), mit Auswahl, mit Ergebnissen.
 	out := render(SyncProfileData{Tab: "test", CanEdit: true, Test: &SyncTestView{}})
-	for _, want := range []string{"Trockenlauf starten", "Stufe 2 ist nicht nötig", "noch nicht bestanden", `href="?tab=ops"`} {
+	for _, want := range []string{"Trockenlauf starten", "Stufe 2 ist nicht nötig", "noch nicht bestanden", `?tab=ops"`} {
 		if !strings.Contains(out, want) {
 			t.Errorf("Test (leer) ohne %q", want)
 		}

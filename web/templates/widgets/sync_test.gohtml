@@ -3,9 +3,9 @@
 {{$p := .P}}
 {{$t := .Test}}
 {{if not $p.SourceTable}}
-<div class="card"><div class="rec-sub"><i class="ti ti-info-circle"></i> Wähle zuerst im Schritt <a href="?tab=source" style="color:var(--accent)">Quelle</a> eine Tabelle und ordne im Schritt <a href="?tab=maps" style="color:var(--accent)">Zuordnungen</a> die Felder zu.</div></div>
+<div class="card"><div class="rec-sub"><i class="ti ti-info-circle"></i> Wähle zuerst im Schritt <a href="/sync/{{$p.ID}}?tab=source" style="color:var(--accent)">Quelle</a> eine Tabelle und ordne im Schritt <a href="/sync/{{$p.ID}}?tab=maps" style="color:var(--accent)">Zuordnungen</a> die Felder zu.</div></div>
 {{else}}
-{{if $t.Missing}}<div class="sy-warn" role="alert"><i class="ti ti-alert-triangle"></i> <span>Es fehlt noch eine <a href="?tab=maps" style="color:var(--accent)">Zuordnung für ein Pflichtfeld</a>. Der Trockenlauf wird deshalb Fehler zeigen.</span></div>{{end}}
+{{if $t.Missing}}<div class="sy-warn" role="alert"><i class="ti ti-alert-triangle"></i> <span>Es fehlt noch eine <a href="/sync/{{$p.ID}}?tab=maps" style="color:var(--accent)">Zuordnung für ein Pflichtfeld</a>. Der Trockenlauf wird deshalb Fehler zeigen.</span></div>{{end}}
 
 <div class="card" style="margin-bottom:14px">
   <div class="card-title"><span><i class="ti ti-flask"></i> Stufe 1 – Trockenlauf</span>
@@ -101,7 +101,7 @@
     {{range $t.OutFields}}<input type="hidden" name="sample_{{.Key}}" value="{{.Value}}">{{end}}
     <div style="display:flex;gap:10px;flex-wrap:wrap">
       <button class="btn btn-warning" type="submit"><i class="ti ti-alert-triangle"></i> Trotzdem versuchen</button>
-      <a class="btn" href="?tab=test">Abbrechen</a>
+      <a class="btn" href="/sync/{{$p.ID}}?tab=test">Abbrechen</a>
     </div>
   </form>
   {{end}}
@@ -148,6 +148,6 @@
   {{end}}
 </div>
 
-<div class="sy-note">Sind die nötigen Stufen bestanden, steht das Profil auf „Getestet“. Scharf geschaltet wird im Schritt <a href="?tab=ops" style="color:var(--accent)">Betrieb</a>.</div>
+<div class="sy-note">Sind die nötigen Stufen bestanden, steht das Profil auf „Getestet“. Scharf geschaltet wird im Schritt <a href="/sync/{{$p.ID}}?tab=ops" style="color:var(--accent)">Betrieb</a>.</div>
 {{end}}
 {{end}}
