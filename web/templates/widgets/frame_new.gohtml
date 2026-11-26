@@ -1,0 +1,39 @@
+{{/* Teile, die nur der neue Rahmen nutzt (frame.gohtml; 0.90.0, Entwurf 11). Der
+     klassische Rahmen (base.gohtml) nutzt sie nicht. */}}
+
+{{/* Menüband: Start | Bänder des Bereichs | Ansicht | Einstellungen | Hilfe (ribbon.go).
+     Bänder anderer Unterseiten sind Links; Start, das Band der offenen Seite, Ansicht,
+     Einstellungen und Hilfe schalten im Browser um (pdh-frame.js). */}}
+{{define "frame-ribbon"}}{{if .Ribbon}}<section class="ribbon" aria-label="{{t "Menüband"}}">
+  <div class="ribbon-tabs" role="tablist" aria-label="{{t "Menüband"}}">{{range $i, $tab := .Ribbon}}{{if eq $tab.Key "ansicht"}}<span class="ribbon-sep" aria-hidden="true"></span>{{end}}{{if and $tab.Band (not $tab.Page)}}<a role="tab" class="ribbon-tab ribbon-band" data-ribbon-band href="{{$tab.Href}}" aria-selected="false"{{if $tab.External}} target="_blank" rel="noopener"{{end}}>{{$tab.Label}}</a>{{else}}<button type="button" role="tab" class="ribbon-tab{{if eq $tab.Key "start"}} ribbon-start{{end}}{{if $tab.Page}} ribbon-band ribbon-page{{end}}" data-ribbon-tab="{{$tab.Key}}" aria-selected="{{if $tab.Selected}}true{{else}}false{{end}}">{{$tab.Label}}</button>{{end}}{{if eq $tab.Key "start"}}<span class="ribbon-sep" aria-hidden="true"></span>{{end}}{{end}}<button type="button" class="ribbon-more" data-ribbon-more aria-expanded="false" title="{{t "Weitere Funktionen"}}" aria-label="{{t "Weitere Funktionen"}}"><i class="ti ti-dots"></i></button></div>
+  {{range .Ribbon}}{{if .Panel}}<div class="ribbon-panel" role="tabpanel" data-ribbon-panel="{{.Key}}"{{if not .Selected}} hidden{{end}}>{{range .Groups}}<div class="ribbon-group" role="group" aria-label="{{.Label}}"><div class="ribbon-items">{{range .Items}}{{template "frame-ribbon-item" .}}{{end}}</div><span class="ribbon-glabel">{{.Label}}</span></div>{{end}}</div>{{end}}{{end}}
+</section>{{end}}{{end}}
+
+{{/* Kopfzeile (Entwurf 11.1): nur Logo, Überschrift und Uhr. Die Uhr öffnet nichts
+     mehr (11.9); Zeiterfassung, Suche, Copilot und Chat stehen im Band Start. */}}
+{{define "frame-top"}}<header class="ft-top">
+  <a class="ft-logo" href="/" aria-label="{{t "Startseite"}}">{{if .Brand.AppLogo}}<img src="{{.Brand.AppLogo}}" alt="">{{else}}<span class="ft-mark" aria-hidden="true">P</span>{{end}}<b>{{or .Brand.AppName "PDH"}}</b></a>
+  <h1 class="ft-title"{{with .TemplateTip}} title="{{.}}" data-tpl{{end}}>{{.Title}}</h1>
+  <div class="topbar-clock" id="pdh-clock" data-server-ms="{{serverNowMs}}" role="timer" aria-label="{{t "Uhrzeit"}}"><i class="ti ti-clock" aria-hidden="true"></i><span class="clk-day"></span><span class="clk-date"></span><span class="clk-time">--:--:--</span></div>
+</header>{{end}}
+
+{{/* Benutzer immer fest links unten (Entwurf 11.2); das Menü öffnet rechts daneben nach oben. */}}
+{{define "frame-user"}}<div class="ft-user">
+  <button type="button" class="ft-user-btn" onclick="toggleMenu('user-menu')" aria-haspopup="menu" aria-label="{{t "Benutzermenü"}}" title="{{.UserName}}">{{if .UserAvatar}}<img class="tu-av" src="{{.UserAvatar}}" alt="">{{else}}<i class="ti ti-user-circle" aria-hidden="true"></i>{{end}}<span class="ft-uname">{{.UserName}}</span></button>
+  <div id="user-menu" class="win11-menu ft-user-menu" style="display:none"><a href="#" class="menu-item" data-app-install hidden><i class="ti ti-download"></i>{{t "Als App installieren"}}</a>{{template "ui-usermenu-items" .}}<div class="ft-lang">{{template "lang-switch"}}</div></div>
+</div>{{end}}
+
+{{/* Zeit manuell erfassen (Vorlage Aktion, Entwurf 11.9): dieselben Felder wie das Formular
+     auf /time; pdh-frame.js schickt es an /time/manual-web. Nicht am Terminal. */}}
+{{define "frame-time-manual"}}{{if not .IsSystemUser}}<dialog class="frame-dialog ft-time" id="frame-time-manual" aria-label="{{t "Zeit manuell erfassen"}}" data-edit-keep>
+  <form method="dialog" class="ft-time-form" data-time-manual>
+    <h2>{{t "Zeit manuell erfassen"}}</h2>
+    <label>{{t "Von"}}<input type="datetime-local" name="started_at" required></label>
+    <label>{{t "Bis"}}<input type="datetime-local" name="ended_at" required></label>
+    <input type="hidden" name="target_kind" value="other">
+    <label>{{t "Woran gearbeitet?"}}<input type="text" name="description" maxlength="200" required placeholder="{{t "z. B. Schichtübergabe"}}"></label>
+    <div class="frame-dialog-bar"><button type="button" class="btn" data-time-close>{{t "Abbrechen"}}</button><button type="submit" class="btn btn-primary">{{t "Buchen"}}</button></div>
+  </form>
+</dialog>{{end}}{{end}}
+
+{{define "frame-ribbon-item"}}{{$tip := or .Tip .Label}}{{if .Menu}}<div class="ribbon-dd"{{with .When}} data-when="{{.}}"{{end}}><button type="button" class="ribbon-item ribbon-ddbtn{{if .Primary}} pri{{end}}" data-ribbon-menu aria-haspopup="menu" aria-expanded="false" title="{{$tip}}" aria-label="{{.Label}}"><i class="ti {{.Icon}}"></i><span>{{.Label}}</span></button><div class="ribbon-menu" role="menu" hidden>{{range .Menu}}{{template "frame-ribbon-item" .}}{{end}}</div></div>{{else if .Post}}<form class="ribbon-form" method="POST" action="{{.Post}}"{{with .When}} data-when="{{.}}"{{end}}><button type="submit" class="ribbon-item{{if .Primary}} pri{{end}}" title="{{$tip}}" aria-label="{{.Label}}"><i class="ti {{.Icon}}"></i><span>{{.Label}}</span></button></form>{{else if .Href}}<a class="ribbon-item{{if .Primary}} pri{{end}}" href="{{.Href}}"{{with .When}} data-when="{{.}}"{{end}}{{if .Blank}} target="_blank" rel="noopener"{{end}} title="{{$tip}}" aria-label="{{.Label}}"><i class="ti {{.Icon}}"></i><span>{{.Label}}</span>{{if .Count}}<b class="ribbon-count">{{.Count}}</b>{{end}}</a>{{else}}<button type="button" class="ribbon-item{{if .Primary}} pri{{end}}" data-ribbon-action="{{.Action}}"{{if .Arg}} data-ribbon-arg="{{.Arg}}"{{end}}{{with .Since}} data-since="{{.}}"{{end}}{{with .When}} data-when="{{.}}"{{end}}{{if .Disabled}} disabled{{end}} title="{{$tip}}" aria-label="{{.Label}}"><i class="ti {{.Icon}}"></i><span>{{.Label}}</span>{{if .Count}}<b class="ribbon-count">{{.Count}}</b>{{end}}</button>{{end}}{{end}}

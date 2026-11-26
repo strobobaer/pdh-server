@@ -82,8 +82,30 @@
 
   // ── Menüband ───────────────────────────────────────────────────
   var ACTIONS = {
-    'create': function () { if (typeof window.pdhCreate === 'function') window.pdhCreate(); },
-    'toggle-right': function () { if (typeof window.toggleSidebar === 'function') window.toggleSidebar('right'); },
+    'create': function (arg) { if (typeof window.pdhCreate === 'function') { if (arg) window.pdhCreate(arg); else window.pdhCreate(); } },
+    // mit Wert: diesen Reiter der rechten Leiste öffnen (Copilot, Chat, Hilfe), sonst Leiste ein/aus
+    'toggle-right': function (arg) {
+      if (arg && typeof window.activateContextTab === 'function') window.activateContextTab(arg);
+      else if (typeof window.toggleSidebar === 'function') window.toggleSidebar('right');
+    },
+    'search': function () { palOpen(''); },
+    'share-chat': function () { if (typeof window.pdhShareToChat === 'function') window.pdhShareToChat(); },
+    'override-login': function () { var m = document.getElementById('override-login-modal'); if (m) m.style.display = 'flex'; },
+    'undo': function () { if (window.pdhEdit) window.pdhEdit.undo(); },
+    // Band „Speichern“/„Abbrechen“: erst speichern bzw. verwerfen, dann die Seite neu (Bearbeiten endet)
+    'save-edit': function () { if (window.pdhEdit) window.pdhEdit.save().then(function (ok) { if (ok) location.reload(); }); },
+    'cancel-edit': function () { if (window.pdhEdit) { window.pdhEdit.cancel(); location.reload(); } },
+    'dash-reset': function () { if (typeof window.dwReset === 'function') window.dwReset(); },
+    'addw': function () { if (typeof window.dwOpenCatalog === 'function') window.dwOpenCatalog(); },
+    // Zeit ohne Vorgang braucht einen kurzen Text (Zielart „Sonstiges“, zeit_ziele.go)
+    'time-start': function () {
+      var txt = window.prompt(T('Woran arbeitest du?'));
+      if (txt && txt.trim()) timePost('/time/start-web', { target_kind: 'other', description: txt.trim() }, T('Zeit läuft.'));
+    },
+    'time-stop': function (arg) { if (arg) timePost('/time/' + encodeURIComponent(arg) + '/stop-web', null, T('Zeit gestoppt und gebucht.')); },
+    'time-manual': function () { var d = document.getElementById('frame-time-manual'); if (d && typeof d.showModal === 'function') d.showModal(); },
+    'dash-standard': function () { confirmPost('/core/settings/defaults', { what: 'dashboard', action: 'set' }, T('Die jetzige Anordnung wird die Vorgabe der Firma. Wer seine Startseite schon angepasst hat, behält sie, bis er „Auf Vorgabe zurücksetzen“ drückt.'), T('Als Standard für alle gesetzt.')); },
+    'leit-standard': function (arg) { if (arg) confirmPost('/leitstaende/' + encodeURIComponent(arg) + '/default', {}, T('Dieser Leitstand wird der Standard-Leitstand für alle.'), T('Als Standard für alle gesetzt.')); },
     'toggle-narrow': function () {
       var on = !document.documentElement.classList.contains('rail-narrow');
       document.documentElement.classList.toggle('rail-narrow', on);
@@ -93,7 +115,7 @@
       if (document.fullscreenElement) document.exitFullscreen();
       else if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen();
     },
-    'fav': function (arg) { save('/account/ui-areas', { fav: arg }, true); }, // anheften oder lösen
+    'fav': function (arg) { withGuard(function () { save('/account/ui-areas', { fav: arg }, true); }); }, // anheften oder lösen
     'areas-order': function () { openOrder(); },
     'dashboard-edit': function () { if (typeof window.pdhDashboardEdit === 'function') window.pdhDashboardEdit(); },
     // nur die Reihenfolge – eigene Favoriten gehen nicht an alle
@@ -104,6 +126,105 @@
     'density': function (arg) { if (typeof window.lookSet === 'function') { window.lookSet('row', parseInt(arg, 10)); window.lookSave(); } }
   };
   window.pdhFrame.run = function (action, arg) { var f = ACTIONS[action]; if (f) f(arg); };
+
+  // Formular-POST (Zeiterfassung, Firmenvorgaben): danach neu laden, Meldung über die Statusleiste
+  function formPost(url, fields) {
+    var body = new URLSearchParams();
+    Object.keys(fields || {}).forEach(function (k) { body.append(k, fields[k]); });
+    return fetch(url, { method: 'POST', credentials: 'same-origin', pdhQuiet: true, body: body })
+      .then(function (r) {
+        // abgelaufene Anmeldung: fetch folgt der Weiterleitung zur Anmeldeseite – kein Erfolg
+        if (r.redirected && /\/login/.test(r.url)) throw new Error(T('Bitte neu anmelden'));
+        if (/nicht(%20|\+)gespeichert/.test(r.url)) throw new Error(T('Nicht gespeichert'));
+        if (!r.ok) return r.text().then(function (t) { throw new Error((t || '').trim().slice(0, 200) || ('HTTP ' + r.status)); });
+      });
+  }
+  // offene Bearbeitung (pdh-edit.js): vor jeder Aktion, die neu lädt, nachfragen
+  function withGuard(fn) { if (window.pdhEdit) window.pdhEdit.guard(fn); else fn(); }
+  function noteAfterReload(msg) { try { sessionStorage.setItem('pdh_frame_note', msg); } catch (e) {} }
+  function failed(e) { if (typeof window.setGlobalStatus === 'function') window.setGlobalStatus('error', T('Nicht gespeichert'), null, String(e && e.message || e)); }
+  function timePost(url, fields, okMsg) {
+    withGuard(function () { formPost(url, fields).then(function () { noteAfterReload(okMsg); location.reload(); }).catch(failed); });
+  }
+  function confirmPost(url, fields, question, okMsg) {
+    if (!window.confirm(question)) return;
+    withGuard(function () { formPost(url, fields).then(function () { noteAfterReload(okMsg); location.reload(); }).catch(failed); });
+  }
+  window.pdhFrame.timePost = timePost;
+  try {
+    var note = sessionStorage.getItem('pdh_frame_note');
+    if (note) { sessionStorage.removeItem('pdh_frame_note'); window.addEventListener('load', function () { if (typeof window.setGlobalStatus === 'function') window.setGlobalStatus('ok', note); }); }
+  } catch (e) {}
+
+  // Zeit manuell erfassen (frame-time-manual) und laufende Dauer an „Zeit stoppen“ (Entwurf 11.9).
+  // Die Dauer zählt mit der Serverzeit der Uhr, nicht mit der Uhr des Geräts.
+  document.addEventListener('submit', function (e) {
+    var f = e.target;
+    if (!f.matches || !f.matches('[data-time-manual]')) return;
+    e.preventDefault();
+    var fd = {};
+    new FormData(f).forEach(function (v, k) { fd[k] = v; });
+    timePost('/time/manual-web', fd, T('Gebucht.'));
+  });
+  document.addEventListener('click', function (e) {
+    if (!e.target.closest('[data-time-close]')) return;
+    var d = document.getElementById('frame-time-manual');
+    if (d && d.open) d.close();
+  });
+  (function () {
+    var c = document.getElementById('pdh-clock');
+    var off = c ? (parseInt(c.dataset.serverMs, 10) || Date.now()) - Date.now() : 0;
+    var two = function (n) { return (n < 10 ? '0' : '') + n; };
+    function upd() {
+      document.querySelectorAll('[data-since]').forEach(function (b) {
+        var s = Date.parse(b.dataset.since);
+        if (isNaN(s)) return;
+        var sec = Math.max(0, Math.floor((Date.now() + off - s) / 1000));
+        var sp = b.querySelector('span');
+        if (sp) sp.textContent = T('Zeit stoppen') + ' ' + Math.floor(sec / 3600) + ':' + two(Math.floor(sec / 60) % 60) + ':' + two(sec % 60);
+      });
+    }
+    upd();
+    setInterval(upd, 1000);
+  })();
+
+  // Als App installieren (Entwurf 11.11): der Browser bietet die Installation nur über HTTPS an.
+  // Läuft das PDH schon als App (ohne Browserleisten), bleibt der Eintrag weg.
+  var installEv = null;
+  var standalone = window.matchMedia && window.matchMedia('(display-mode: standalone)').matches;
+  window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); installEv = e; });
+  document.querySelectorAll('[data-app-install]').forEach(function (a) { a.hidden = standalone; });
+  document.addEventListener('click', function (e) {
+    var a = e.target.closest('[data-app-install]');
+    if (!a) return;
+    e.preventDefault();
+    if (installEv) { installEv.prompt(); installEv = null; return; }
+    window.alert(T('Im Browser-Menü „App installieren“ wählen. Das geht nur über HTTPS mit gültigem Zertifikat.'));
+  });
+
+  // Aufklappmenüs im Menüband (Neu, Darstellung, Anpassen)
+  function menuClose(except) {
+    $$('.ribbon-dd').forEach(function (dd) {
+      if (dd === except) return;
+      var m = $('.ribbon-menu', dd), b = $('[data-ribbon-menu]', dd);
+      if (m) m.hidden = true;
+      if (b) b.setAttribute('aria-expanded', 'false');
+    });
+  }
+  function menuToggle(btn) {
+    var dd = btn.closest('.ribbon-dd'), m = $('.ribbon-menu', dd), open = m.hidden;
+    menuClose(dd);
+    m.hidden = !open;
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (open) { // fest positioniert: das Band scrollt waagerecht und würde das Menü abschneiden
+      // Größe der Oberfläche (zoom am body): Bildschirmmaße in CSS-Pixel umrechnen
+      var z = typeof window.pdhZoom === 'function' ? window.pdhZoom() : 1;
+      var r = btn.getBoundingClientRect(), w = m.offsetWidth;
+      m.style.top = Math.round((r.bottom + 2) / z) + 'px';
+      m.style.left = Math.round(Math.max(8, Math.min(r.left / z, window.innerWidth / z - w - 8))) + 'px';
+    }
+    if (open) { var first = $('.ribbon-item', m); if (first) first.focus(); }
+  }
 
   // ── Befehlszeile Strg+K ────────────────────────────────────────
   // palSeq macht ausstehende Antworten ungültig; palLoading: neue Treffer kommen noch
@@ -155,7 +276,8 @@
       if (typeof window.pdhCreate === 'function') window.pdhCreate(it.href.slice(8));
       return;
     }
-    location.href = it.href;
+    var go = function () { location.href = it.href; };
+    if (window.pdhEdit) window.pdhEdit.guard(go); else go(); // offene Bearbeitung: erst nachfragen
   }
   function palKey(e) {
     // Esc nicht weiterreichen: ein offener Assistent dahinter (Fertigstellen) bliebe sonst nicht offen
@@ -281,6 +403,9 @@
     if (pal && !t.closest('.frame-palette')) palClose();
     if (t.closest('[data-rail-more]')) { railToggle(!$('.rail').classList.contains('open')); return; }
     if (!t.closest('.rail')) railToggle(false);
+    var mb = t.closest('[data-ribbon-menu]');
+    if (mb) { menuToggle(mb); return; }
+    if (!t.closest('.ribbon-menu')) menuClose(null);
     var tab = t.closest('[data-ribbon-tab]');
     if (tab) { ribbonSelect(tab.dataset.ribbonTab); return; }
     var more = t.closest('[data-ribbon-more]');
@@ -291,11 +416,11 @@
       return;
     }
     var act = t.closest('[data-ribbon-action]');
-    if (act) window.pdhFrame.run(act.dataset.ribbonAction, act.dataset.ribbonArg || '');
+    if (act && !act.disabled) { menuClose(null); window.pdhFrame.run(act.dataset.ribbonAction, act.dataset.ribbonArg || ''); }
   });
   document.addEventListener('keydown', function (e) {
     if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 'k' || e.key === 'K')) { e.preventDefault(); palOpen(); return; }
-    if (e.key === 'Escape') { railToggle(false); logToggle(false); }
+    if (e.key === 'Escape') { railToggle(false); logToggle(false); menuClose(null); }
     if ((e.key === 'Enter' || e.key === ' ') && e.target.id === 'global-status-footer') { e.preventDefault(); logToggle($('#frame-log').hidden); }
     // Suchzeile: Tab geht vorbei; Enter, Leertaste oder ein Buchstabe öffnet die Befehlszeile
     var altGr = e.getModifierState && e.getModifierState('AltGraph'); // @, € usw. auf deutscher Tastatur

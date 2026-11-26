@@ -18,17 +18,15 @@
   <nav class="rail" aria-label="{{t "Bereiche"}}" data-order="{{.Rail.OrderKeys}}">
     {{range .Rail.Favorites}}<a class="rail-fav" href="{{.Href}}" title="{{.Label}}" aria-label="{{.Label}}"{{if .External}} target="_blank" rel="noopener"{{end}}><i class="ti {{.Icon}}"></i></a>{{end}}
     {{if .Rail.Favorites}}<span class="rail-sep" aria-hidden="true"></span>{{end}}
-    {{range $i, $a := .Rail.Areas}}{{with $a}}<a class="rail-area{{if lt $i 4}} rail-top{{end}}{{if eq .Key $.Rail.Current}} on{{end}}" href="{{(index .Items 0).Href}}" data-area="{{.Key}}" title="{{.Label}}"{{if eq .Key $.Rail.Current}} aria-current="page"{{end}}{{if (index .Items 0).External}} target="_blank" rel="noopener"{{end}}><i class="ti {{.Icon}}"></i><span>{{.Label}}</span></a>{{end}}{{end}}
+    {{range $i, $a := .Rail.Areas}}{{with $a}}<a class="rail-area{{if lt $i 4}} rail-top{{end}}{{if eq .Key $.Rail.Current}} on{{end}}" href="{{.Home.Href}}" data-area="{{.Key}}" title="{{.Label}}"{{if eq .Key $.Rail.Current}} aria-current="page"{{end}}{{if .Home.External}} target="_blank" rel="noopener"{{end}}><i class="ti {{.Icon}}"></i><span>{{.Label}}</span></a>{{end}}{{end}}
     <button type="button" class="rail-area rail-more" data-rail-more aria-expanded="false" title="{{t "Alle Bereiche"}}"><i class="ti ti-dots"></i><span>{{t "Mehr"}}</span></button>
+  <span class="rail-fill" aria-hidden="true"></span>
+    {{template "frame-user" .}}
   </nav>
   <script src="{{uiURL "pdh-nav.js"}}"></script>
   <div class="frame-main">
-{{template "ui-topbar" .}}
-    {{if .Rail.Tabs}}<div class="frame-tabs" role="tablist" aria-label="{{t "Unterseiten"}}">{{range .Rail.Tabs}}<a role="tab" href="{{.Href}}" aria-selected="{{if eq .Page $.Page}}true{{else}}false{{end}}"{{if .External}} target="_blank" rel="noopener"{{end}}>{{.Label}}</a>{{end}}</div>{{end}}
-    {{if .Ribbon}}<section class="ribbon" aria-label="{{t "Menüband"}}">
-      <div class="ribbon-tabs" role="tablist" aria-label="{{t "Menüband"}}">{{range $i, $tab := .Ribbon}}<button type="button" role="tab" class="ribbon-tab" data-ribbon-tab="{{$tab.Key}}" aria-selected="{{if eq $i 0}}true{{else}}false{{end}}">{{$tab.Label}}</button>{{end}}<button type="button" class="ribbon-more" data-ribbon-more aria-expanded="false" title="{{t "Weitere Funktionen"}}" aria-label="{{t "Weitere Funktionen"}}"><i class="ti ti-dots"></i></button></div>
-      {{range $i, $tab := .Ribbon}}<div class="ribbon-panel" role="tabpanel" data-ribbon-panel="{{$tab.Key}}"{{if ne $i 0}} hidden{{end}}>{{range .Groups}}<div class="ribbon-group" role="group" aria-label="{{.Label}}"><div class="ribbon-items">{{range .Items}}{{if .Href}}<a class="ribbon-item" href="{{.Href}}" title="{{.Label}}" aria-label="{{.Label}}"><i class="ti {{.Icon}}"></i><span>{{.Label}}</span></a>{{else}}<button type="button" class="ribbon-item" data-ribbon-action="{{.Action}}"{{if .Arg}} data-ribbon-arg="{{.Arg}}"{{end}} title="{{.Label}}" aria-label="{{.Label}}"><i class="ti {{.Icon}}"></i><span>{{.Label}}</span></button>{{end}}{{end}}</div><span class="ribbon-glabel">{{.Label}}</span></div>{{end}}</div>{{end}}
-    </section>{{end}}
+{{template "frame-top" .}}
+{{template "frame-ribbon" .}}
 {{template "ui-bands" .}}
     <main class="main">
       <div class="print-brand">{{if .Brand.PrintLogo}}<img src="{{.Brand.PrintLogo}}" alt="">{{end}}<span>{{if .CompanyPrint.Name}}{{.CompanyPrint.Name}}{{else}}{{or .Brand.AppName "PDH"}}{{end}} · {{.Title}}{{with .CompanyPrint.Address}}<small class="pb-addr">{{.}}</small>{{end}}</span><span class="pb-date" data-print-date></span></div>
@@ -38,12 +36,14 @@
 {{template "ui-context" .}}
 </div>
 {{template "ui-overlays" .}}
+{{template "frame-time-manual" .}}
 {{/* Statusleiste des neuen Rahmens: dieselben Kennungen wie ui-footer (setGlobalStatus),
      dazu Warnfeld (Spiegelserver, Update) und die Liste der letzten Meldungen (pdh-frame.js) */}}
 <footer class="global-footer ok" id="global-status-footer" aria-live="polite" role="button" tabindex="0" aria-label="{{t "Letzte Meldungen"}}" aria-controls="frame-log" aria-expanded="false">
   <div class="footer-status-left">
     <span class="footer-status-dot" id="footer-status-dot"></span>
     <span id="footer-status-text">Bereit</span>
+    <span class="frame-unsaved" id="frame-unsaved" hidden></span>
   </div>
   <div class="footer-progress" role="progressbar" aria-label="Statusfortschritt" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="footer-progress">
     <div class="footer-progress-fill" id="footer-progress-fill"></div>
@@ -51,10 +51,12 @@
   </div>
   <span class="frame-warn" id="frame-warn"{{if .Mirror}} title="{{t "Spiegelserver – nur lesen"}}"{{else}} hidden{{end}}>{{if .Mirror}}{{t "Spiegelserver – nur lesen"}}{{end}}</span>
   <div class="footer-status-error" id="footer-status-error">Keine Fehler</div>
+  <span class="ft-ver"><span>V{{appVersion}}</span>{{if .UsersTotal}} · <i class="ti ti-users" aria-hidden="true"></i><span title="{{.UsersOnline}} angemeldet (Aktivität in den letzten 2 Minuten, ohne Terminals) von {{.UsersTotal}} aktiven Benutzern">{{.UsersOnline}}/{{.UsersTotal}}</span>{{end}}</span>
 </footer>
 <div class="frame-log" id="frame-log" role="log" aria-label="{{t "Letzte Meldungen"}}" hidden><ol></ol></div>
 {{template "ui-scripts" .}}
 <script src="{{uiURL "pdh-frame.js"}}"></script>
+<script src="{{uiURL "pdh-edit.js"}}"></script>
 </body>
 </html>
 {{template "ui-tail" .}}

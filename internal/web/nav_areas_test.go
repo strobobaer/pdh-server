@@ -21,6 +21,10 @@ func TestNavAreasCoverAllDefs(t *testing.T) {
 		seen[k]++
 	}
 	for _, d := range navDefs {
+		if navSharedItems[d.Key] && seen[d.Key] > 1 {
+			delete(seen, d.Key)
+			continue
+		}
 		if seen[d.Key] != 1 {
 			t.Errorf("Menüeintrag %s steht %d-mal in den Bereichen", d.Key, seen[d.Key])
 		}
@@ -31,6 +35,47 @@ func TestNavAreasCoverAllDefs(t *testing.T) {
 	}
 	if len(navAreaDefs) != 9 {
 		t.Errorf("%d Bereiche statt 9", len(navAreaDefs))
+	}
+}
+
+// Bereich Start (Entwurf 11.3/11.9): Zeiterfassung, Dashboard, Leitstand; die
+// Zuweisung ist kein Band mehr; Zeiterfassung steht auch vorn in der Planung.
+func TestStartAreaBands(t *testing.T) {
+	defKeys := func(area string) []string {
+		for _, a := range navAreaDefs {
+			if a.Key == area {
+				return a.Items
+			}
+		}
+		return nil
+	}
+	if got := strings.Join(defKeys("start"), ","); got != "time,dashboard,leitstand" {
+		t.Fatalf("Start: %s", got)
+	}
+	if p := defKeys("planung"); len(p) == 0 || p[0] != "time" {
+		t.Errorf("Planung beginnt nicht mit Zeiterfassung: %v", p)
+	}
+	if !navOutsideAreas["assignments"] {
+		t.Error("Zuweisung ist noch ein Band")
+	}
+}
+
+// Eine Seite in zwei Bereichen bleibt in dem Bereich, aus dem man kommt (?bereich=).
+func TestSharedPageKeepsArea(t *testing.T) {
+	b := &BaseData{Page: "time", navCan: func(string) bool { return true }}
+	if v := buildAreasIn(b, uiAreaPrefs{}, "planung"); v.Current != "planung" {
+		t.Errorf("Bereich %q", v.Current)
+	}
+	if v := buildAreasIn(b, uiAreaPrefs{}, ""); v.Current != "start" {
+		t.Errorf("ohne Angabe %q", v.Current)
+	}
+	if v := buildAreasIn(b, uiAreaPrefs{}, "material"); v.Current != "start" {
+		t.Errorf("fremder Bereich %q", v.Current)
+	}
+	for _, it := range buildAreasIn(b, uiAreaPrefs{}, "planung").Tabs {
+		if it.Key == "time" && !strings.Contains(it.Href, "bereich=planung") {
+			t.Errorf("Band Zeiterfassung in der Planung ohne Bereich: %s", it.Href)
+		}
 	}
 }
 
@@ -61,7 +106,7 @@ func TestBuildAreasPermissions(t *testing.T) {
 	if got := strings.Join(areaItems(v, "verwaltung"), ","); got != "categories" {
 		t.Errorf("ohne Rechte in Verwaltung nur Kategorien, war %q", got)
 	}
-	if got := strings.Join(areaItems(v, "start"), ","); got != "dashboard,leitstand" || v.Areas[0].Key != "start" {
+	if got := strings.Join(areaItems(v, "start"), ","); got != "time,dashboard,leitstand" || v.Areas[0].Key != "start" {
 		t.Errorf("Start ohne Rechte: %q, erster Bereich %q", got, v.Areas[0].Key)
 	}
 	for _, k := range areaKeys(v) {
@@ -69,7 +114,7 @@ func TestBuildAreasPermissions(t *testing.T) {
 			t.Errorf("Bereich %s ohne sichtbaren Eintrag erscheint", k)
 		}
 	}
-	if v.Current != "start" || len(v.Tabs) != 2 {
+	if v.Current != "start" || len(v.Tabs) != 3 {
 		t.Errorf("aktueller Bereich %q, Reiter %d", v.Current, len(v.Tabs))
 	}
 	net := &BaseData{Page: "network", navCan: func(p string) bool { return p == permNetwork }}
@@ -160,8 +205,10 @@ func TestFrameRail(t *testing.T) {
 	d.Page = "network"
 	d.navCan = func(p string) bool { return p == permNetwork }
 	d.Rail = buildAreas(&d.BaseData, uiAreaPrefs{Favorites: []string{"network"}})
+	d.Ribbon = ribbonFor(&d.BaseData)
 	out := renderFrameForTest(t, "server_config", d)
-	for _, want := range []string{`data-area="start"`, `data-area="verwaltung"`, `class="frame-tabs"`, `aria-selected="true"`,
+	// Unterseiten sind seit 0.82.67 Bänder des Menübands (Entwurf 11.3), keine Reiterleiste mehr
+	for _, want := range []string{`data-area="start"`, `data-area="verwaltung"`, `class="ribbon-tab ribbon-band ribbon-page" data-ribbon-tab="network" aria-selected="true"`,
 		`class="rail-fav"`, `href="/admin/network"`, `data-rail-more`} {
 		if !strings.Contains(out, want) {
 			t.Errorf("Bereichsleiste ohne %q", want)

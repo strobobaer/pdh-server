@@ -20,6 +20,27 @@
       "Absagen" (t "Absagen")
       "Als Firmenvorgabe gespeichert" (t "Als Firmenvorgabe gespeichert")
       "Bereiche ordnen" (t "Bereiche ordnen")
+      "Änderungen speichern?" (t "Änderungen speichern?")
+      "Verwerfen" (t "Verwerfen")
+      "nicht gespeichert" (t "nicht gespeichert")
+      "noch nicht gespeichert." (t "noch nicht gespeichert.")
+      "Rückgängig" (t "Rückgängig")
+      "Gespeichert" (t "Gespeichert")
+      "Nicht bestätigt – Eingaben verworfen." (t "Nicht bestätigt – Eingaben verworfen.")
+      "1 Änderung ist noch nicht gespeichert." (t "1 Änderung ist noch nicht gespeichert.")
+      "Änderungen sind noch nicht gespeichert." (t "Änderungen sind noch nicht gespeichert.")
+      "Ohne Bestätigung werden die Eingaben verworfen." (t "Ohne Bestätigung werden die Eingaben verworfen.")
+      "Zeit läuft." (t "Zeit läuft.")
+      "Zeit stoppen" (t "Zeit stoppen")
+      "Bitte neu anmelden" (t "Bitte neu anmelden")
+      "Eingabe geändert" (t "Eingabe geändert")
+      "Im Browser-Menü „App installieren“ wählen. Das geht nur über HTTPS mit gültigem Zertifikat." (t "Im Browser-Menü „App installieren“ wählen. Das geht nur über HTTPS mit gültigem Zertifikat.")
+      "Woran arbeitest du?" (t "Woran arbeitest du?")
+      "Gebucht." (t "Gebucht.")
+      "Zeit gestoppt und gebucht." (t "Zeit gestoppt und gebucht.")
+      "Als Standard für alle gesetzt." (t "Als Standard für alle gesetzt.")
+      "Dieser Leitstand wird der Standard-Leitstand für alle." (t "Dieser Leitstand wird der Standard-Leitstand für alle.")
+      "Die jetzige Anordnung wird die Vorgabe der Firma. Wer seine Startseite schon angepasst hat, behält sie, bis er „Auf Vorgabe zurücksetzen“ drückt." (t "Die jetzige Anordnung wird die Vorgabe der Firma. Wer seine Startseite schon angepasst hat, behält sie, bis er „Auf Vorgabe zurücksetzen“ drückt.")
       "Wie Firmenvorgabe" (t "Wie Firmenvorgabe")
       "Nach oben" (t "Nach oben")
       "Nach unten" (t "Nach unten")
@@ -391,7 +412,14 @@ document.addEventListener('submit', function (e) {
       <span class="tb-sep" aria-hidden="true"></span>
       <div style="position:relative">
         <button type="button" class="topbar-user" onclick="toggleMenu('user-menu')" aria-label="{{t "Benutzermenü"}}" title="{{t "Mein Konto, Darstellung und Abmelden"}}">{{if .UserAvatar}}<img class="tu-av" src="{{.UserAvatar}}" alt="">{{else}}<i class="ti ti-user"></i>{{end}}<span class="tu-name">{{.UserName}}</span><i class="ti ti-chevron-down" style="font-size:11px;margin-left:2px;color:var(--muted)"></i></button>
-        <div id="user-menu" class="win11-menu" style="display:none;position:absolute;right:0;top:50px;min-width:160px;z-index:200">
+        <div id="user-menu" class="win11-menu" style="display:none;position:absolute;right:0;top:50px;min-width:160px;z-index:200">{{template "ui-usermenu-items" .}}
+        </div>
+      </div>
+      <div class="status-dot" title="{{t "API online"}}"></div>
+    </div>
+  </div>{{end}}
+{{/* Einträge des Benutzermenüs – klassisch in der Kopfleiste, neu links unten (frame_new.gohtml) */}}
+{{define "ui-usermenu-items"}}
           <a href="/users/me" class="menu-item"><i class="ti ti-user-cog"></i>{{t "Mein Konto"}}</a>
           {{if and .CanAppUse .AppStoreSet}}<a href="/app/install" class="menu-item"><i class="ti ti-device-mobile"></i>{{t "App installieren"}}</a>{{end}}
           <a href="/help" class="menu-item"><i class="ti ti-book"></i>{{t "Handbuch"}}</a>
@@ -433,9 +461,4 @@ document.addEventListener('submit', function (e) {
             </div>
             <div class="look-msg" id="look-msg"></div>
           </div>
-          <a href="/logout" class="menu-item"><i class="ti ti-logout"></i>{{t "Abmelden"}}</a>
-        </div>
-      </div>
-      <div class="status-dot" title="{{t "API online"}}"></div>
-    </div>
-  </div>{{end}}
+          <a href="/logout" class="menu-item"><i class="ti ti-logout"></i>{{t "Abmelden"}}</a>{{end}}

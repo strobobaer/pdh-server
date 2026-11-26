@@ -114,6 +114,12 @@ type BaseData struct {
 	NewFrame bool
 	Rail     areaView    // Bereiche, Reiter, Favoriten – nur im neuen Rahmen gefüllt (nav_areas.go)
 	Ribbon   []ribbonTab // Menüband – nur im neuen Rahmen (ribbon.go)
+	// Hinweis auf die Seitenvorlage, nur für system.ui_defaults (page_templates.go)
+	TemplateTip string
+	// Fußzeile des neuen Rahmens: angemeldet / aktive Benutzer (presence.go)
+	UsersOnline, UsersTotal int
+	TimeRunning             *timeRunning // laufende Zeit – Taste „Zeit stoppen“ (page_actions.go)
+	LeitstandID             string       // angezeigter Leitstand auf /leitstand (leitstand_frame.go)
 }
 
 // Language: Sprache fuer die Template-Funktion t (siehe bindLang).
@@ -490,6 +496,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/", h.Dashboard)
 	r.Get("/assignments/new", h.AssignmentNewPage)
 	r.Get("/assignments", h.AssignmentBoardPage)
+	r.Get("/leitstand", h.LeitstandFramePage) // Leitstand im neuen Rahmen (leitstand_frame.go)
 	r.Post("/assignments/{ref}/{id}", h.AssignmentBoardAssign)
 	r.Post("/work/{kind}/settings", h.WorkSettingsWeb) // Standard-Frist im Reiter „Regeln & Einstellungen“
 	r.Get("/account", h.AccountPage)
@@ -1137,6 +1144,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/core/settings/defaults", h.DefaultsSaveWeb)
 	r.Get("/leitstaende", h.LeitstaendePage)
 	r.Get("/leitstaende/{id}", h.LeitstaendePage)
+	r.Post("/leitstaende/{id}/default", h.LeitstandDefaultWeb) // Als Standard für alle (leitstand.manage)
 	r.Post("/leitstaende/{id}", h.LeitstandSaveWeb)
 	r.Post("/leitstaende/{id}/delete", h.LeitstandDeleteWeb)
 	r.Post("/core/settings/board-pick", h.BoardPickSettingsWeb)
@@ -1599,11 +1607,16 @@ func (h *Handler) baseData(r *http.Request, page, title, ctxTitle string) BaseDa
 		b.UIFrame = h.userUIFrame(r.Context(), u.ID)
 	}
 	b.NewFrame = h.frameFor(r.Context(), b.UIFrame)
-	if b.NewFrame {
-		b.Rail = buildAreas(&b, h.areaPrefs(r.Context(), areasUID))
-		b.Ribbon = ribbonFor(&b)
+	if b.NewFrame && !u.IsSystemUser {
+		b.TimeRunning = h.timeRunningFor(r.Context(), u.ID)
 	}
-	b.UserAvatar = h.userAvatarURL(r.Context(), u.ID)
+	if b.NewFrame {
+		b.Rail = buildAreasIn(&b, h.areaPrefs(r.Context(), areasUID), r.URL.Query().Get("bereich"))
+		b.Ribbon = ribbonFor(&b)
+		b.TemplateTip = h.templateTipFor(r.Context(), &b)
+		b.UsersOnline, b.UsersTotal = h.presenceCounts(r.Context())
+	}
+	b.UserAvatar =h.userAvatarURL(r.Context(), u.ID)
 	if b.CanAppUse && h.db != nil {
 		b.AppStoreSet = h.appStoreConfigured(r.Context())
 	}

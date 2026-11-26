@@ -133,12 +133,14 @@ allein in CSS über `html[data-style="fiori"]` bzw. `"fluent"`.
   der rechten Seitenleiste).
 - Änderungen an der Kopfleiste bei 320, 390, 768, 1024 und 1366 px Breite
   sowie mit 120–160 % Größe prüfen.
-- **Neuer Rahmen** (`frame.gohtml`, seit 0.82.65, Schalter im Benutzermenü):
-  dieselbe Kopfleiste (`ui-topbar` in `widgets/frame_shared.gohtml`), dazu
-  zwischen Titel und Uhr die Suchzeile „Was möchtest du tun?“ – sie
-  schrumpft vor allen Knöpfen, bis 760 px nur noch Symbol. Gemeinsame Teile
-  beider Rahmen nur in `frame_shared.gohtml` ändern; der klassische Rahmen
-  (`base.gohtml`) muss dabei unverändert aussehen.
+- **Neuer Rahmen** (`frame.gohtml`, Schalter im Benutzermenü; seit 0.82.68 nach
+  Entwurf 0.90.0 Abschnitt 11): Kopfzeile nur Logo, Seitentitel und Uhr
+  (`frame-top` in `widgets/frame_new.gohtml`), Benutzermenü fest links unten
+  (`frame-user`), alle Funktionen im Menüband (`ribbon.go`, Seitenaktionen in
+  `page_actions.go`). Uhr und Benutzerknopf schrumpfen nie, der Titel kürzt sich.
+  Keine neuen Knöpfe in die Kopfzeile – neue Funktionen gehören ins Menüband.
+  Gemeinsame Teile beider Rahmen nur in `frame_shared.gohtml`; der klassische
+  Rahmen (`base.gohtml`) muss unverändert aussehen (`TestClassicTopbarUnchanged`).
 
 ## Rechte mitpflegen
 
@@ -1317,6 +1319,53 @@ und 3 drückt bis auf Weiteres der Anwender.
     `TestITNetRecipientsFallback` waren nach einem abgebrochenen Testlauf
     einmal rot (Reste in `pdh_test`), danach auf Branch und `main` je dreimal
     grün.
+32. **Vorgaben zum neuen Rahmen (Anwender 26.11.2026, „Was unbedingt in die
+    neue Optik rein muss“):** Kopfzeile nur noch Logo, Überschrift, Uhr;
+    Benutzermenü und Anmelden immer fest links unten; keine Reiterleiste über
+    dem Menüband – die Unterseiten eines Bereichs sind Bänder des Menübands;
+    Aufteilung `Start` (immer links, Standardfunktionen für alle als Taste
+    oder Dropdown: Neu, Suche, Copilot) | Bänder des Bereichs | `Ansicht`
+    (Dropdowns Darstellung und Anpassen) | `Einstellungen` (Core- und
+    Server-Einstellungen dem Bereich zugeordnet) | `Hilfe`; Reiter
+    „Zuweisung“ entfällt (Zuweisen steht in „Start“); Dashboard und Leitstand
+    sind Bänder mit Bearbeiten, Speichern, „Als Standard für alle setzen“ je
+    nach Recht; der Leitstand erscheint immer ohne Anmeldung und wird im
+    mittleren Feld bearbeitet; Copilot und Suche aus „Start“; Zahl der
+    angemeldeten Benutzer in der Fußzeile rechts neben der Versionsnummer.
+    Ergänzung Zeiterfassung (gleicher Tag): „Zeit starten“ und „Manuell
+    erfassen“ immer als Tasten im Band „Start“ (heute nur über die Uhr); die
+    Übersicht ist ein neuer Menüpunkt direkt rechts neben „Start“, nur in den
+    Bereichen Start und Planung, gegebenenfalls als Verweis (Entwurf 11.9;
+    offen: Tasten in jedem Bereich oder nur im Bereich Start).
+    **Seitenvorlagen (gleicher Tag):** wenige Vorlagen, die immer wieder
+    verwendet werden – Cockpit (Infocockpit), Liste, Detail, Einstellungen,
+    Planung/Kalender, dazu als Vorschlag Baum und Dienst; jede Seite gehört
+    zu genau einer Vorlage (erste Zuordnung in Entwurf 12.2). Zuordnen unter
+    „Ansicht › Anpassen“ wie „Menüband anpassen“ bei Microsoft, dazu eine
+    Verwaltungsseite unter „Ansicht“ (Recht `system.ui_defaults`) – ändert
+    Festlegung 10.3. **Gebaut wird mit dem Bereich Start zuerst**, danach
+    Bereich für Bereich (Entwurf Abschnitt 12; offen: darf jeder Benutzer
+    umhängen oder nur die Firma; Vorlagenliste vollständig?).
+    **Vorschau bestätigt (26.11.2026: „Passt“)**:
+    `docs/superpowers/specs/2026-11-26-rahmen-start-vorschau.html`; dazu
+    Rückgängig im Band Start, Nachfrage vor dem Verwerfen, PDH als App ohne
+    Browserleisten (Entwurf 11.10–11.12). **Bauplan** `docs/superpowers/plans/2026-11-26-rahmen-start.md`
+    (9 Aufgaben, keine Migration, kein neues Recht) – gebaut als **0.82.68**
+    (main hatte inzwischen 0.82.67 IT-Abteilungsrechte) auf Branch
+    `feature/rahmen-start`, Ledger `.superpowers/sdd/2026-11-26-rahmen-start/`
+    (alle Rulings dort; u. a. „Zeit starten“ fragt „Woran arbeitest du?“ und bucht
+    als Zeit ohne Vorgang, weil der Server ein Ziel verlangt). Offen: Schlussprüfung,
+    Merge, Testverbund, Browserprüfung.
+    Als Abschnitt 11 im Entwurf
+    `docs/superpowers/specs/2026-11-25-einheitliche-oberflaeche-design.md`
+    (geht 5.2 vor), Branch `docs/oberflaeche-rahmen-nachtrag` (lokal). Folge:
+    **Teilpaket 2b „Rahmen-Umbau“ vor Teil 3**; vorher die klickbare Vorschau
+    anpassen und bestätigen lassen. Offen (Anwender): Wohin mit den
+    geöffneten Vorgängen als schließbare Reiter (Vorschlag: Dropdown
+    „Geöffnet“ in „Start“); Leitstand an Wandbildschirmen weiter Vollbild ohne
+    Rahmen?; Benachrichtigungen und Chat in „Start“, Sprache im Benutzermenü?;
+    Benutzerzahl für alle sichtbar? Die Regeln im Abschnitt „Kopfleiste“ oben
+    gelten bis zum Umbau weiter (klassischer Rahmen: dauerhaft).
 30. **Vorgabe Assistenten (Anwender 25.11.2026):** Neu-anlegen- und
     Fertigstellen-Assistent dürfen in keinem Teil der neuen Oberfläche fehlen
     (Entwurf 0.90.0 Abschnitt 10.11, `TestFrameHasWizards`).

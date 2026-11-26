@@ -54,6 +54,42 @@ func (h *Handler) presenceTouch(userID string) {
 	}
 }
 
+// presenceCountCache: Zahl der Angemeldeten für die Fußzeile (30 s je Server).
+var presenceCountCache struct {
+	sync.Mutex
+	at            time.Time
+	online, total int
+}
+
+// presenceCounts: angemeldet (gerade aktiv) und aktive Benutzer insgesamt, jeweils ohne
+// Systembenutzer der Terminals – Fußzeile „12/40“ (Entwurf 11.6/11.10).
+func (h *Handler) presenceCounts(ctx context.Context) (online, total int) {
+	presenceCountCache.Lock()
+	defer presenceCountCache.Unlock()
+	if time.Since(presenceCountCache.at) < 30*time.Second {
+		return presenceCountCache.online, presenceCountCache.total
+	}
+	if h.db == nil {
+		return 0, 0
+	}
+	rows, err := h.db.Query(ctx, `SELECT id::text FROM users WHERE active AND NOT is_system_user`)
+	if err != nil {
+		return presenceCountCache.online, presenceCountCache.total
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id string
+		if rows.Scan(&id) == nil {
+			total++
+			if h.presenceOnline(id) {
+				online++
+			}
+		}
+	}
+	presenceCountCache.at, presenceCountCache.online, presenceCountCache.total = time.Now(), online, total
+	return online, total
+}
+
 // presenceOnline: Benutzer ist gerade da (Live-Verbindung oder kuerzlich aktiv).
 func (h *Handler) presenceOnline(userID string) bool {
 	presence.mu.Lock()

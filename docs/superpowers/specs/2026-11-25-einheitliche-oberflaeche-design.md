@@ -123,6 +123,13 @@ fehleranfällig).
 
 ### 5.2 Rahmen
 
+> **Geändert durch Abschnitt 11 (Vorgaben des Anwenders vom 26.11.2026):**
+> Kopfzeile nur noch Logo, Überschrift, Uhr; Benutzermenü und Anmelden links
+> unten; keine Reiterleiste über dem Menüband – die Unterseiten sind Bänder
+> des Menübands; Reiter des Menübands Start | Bänder des Bereichs | Ansicht |
+> Einstellungen | Hilfe; Copilot und Suche aus „Start“. Wo die folgenden
+> Punkte abweichen, gilt Abschnitt 11.
+
 - **Kopfleiste**: „PDH“, Suchzeile „Was möchtest du tun? (Strg+K)“,
   Benachrichtigungen, Copilot-Knopf, Uhr, Benutzermenü (mit dem Schalter „Neue
   Oberfläche“ bis 0.90.0).
@@ -244,6 +251,8 @@ Breiten.
    Reiterleiste, Menüband (Grundfunktionen), rechte Leiste, Statusleiste mit
    Update-Stand und Meldungen, Strg+K, Handy. Alle Seiten laufen unverändert im
    neuen Rahmen.
+   **2b. Rahmen-Umbau** nach den Vorgaben vom 26.11.2026 (Abschnitt 11,
+   Einordnung in 11.8) – vor Teil 3.
 3. **Vorgangslisten und Detail** – Störungen, Tickets, Aufgaben, Wartung,
    Rüstzeiten auf Liste und Detail nach 5.3, Vorgänge als Reiter, Aktionen ins
    Menüband.
@@ -356,3 +365,294 @@ Punkte hat Claude festgelegt; der Anwender kann sie beim Lesen korrigieren.
     am Terminal und in den Listen bleiben die vorhandenen Knöpfe. Jeder Teil
     hält das mit einem Test fest (`TestFrameHasWizards`), und jede
     Browserprüfung öffnet beide Assistenten.
+
+## 11. Nachtrag 26.11.2026 – Vorgaben des Anwenders zum Rahmen
+
+Der Anwender hat am 26.11.2026 festgelegt, wie der neue Rahmen aufgebaut sein
+muss („Was unbedingt in die neue Optik rein muss“). Diese Vorgaben gelten für
+die ganze neue Oberfläche und **gehen Abschnitt 5.2 vor**, wo sie abweichen
+(Kopfleiste, Reiterleiste, Reiter des Menübands, Ort des Benutzermenüs,
+Copilot-Knopf). Der mit 0.82.65 gebaute Rahmen wird danach umgebaut
+(Teilpaket 2b, siehe 11.8). Mit „Vorschlag“ markierte Punkte hat Claude
+ergänzt; der Anwender kann sie korrigieren.
+
+### 11.1 Kopfzeile
+
+- In der Kopfzeile stehen **nur noch Logo, Überschrift (Seitentitel) und Uhr**.
+- Alles andere zieht um: Suchzeile und Copilot in das Menüband „Start“,
+  Benutzermenü nach links unten (11.2), Stil und hell/dunkel nach
+  „Ansicht › Darstellung“.
+- Vorschlag: Benachrichtigungen, Chat und „Im Chat teilen“ stehen im Menüband
+  „Start“, die Sprache im Benutzermenü.
+- Die Uhr bleibt immer ganz sichtbar; wird es eng, kürzt sich nur der Titel.
+  Das Ausblenden von Knöpfen (`pdhTopbarFit`, `data-tb-hide`) braucht der neue
+  Rahmen dann nicht mehr. Der klassische Rahmen bleibt unverändert.
+
+### 11.2 Benutzermenü und Anmelden
+
+- **Immer fest links unten** (Fuß der Bereichsleiste): angemeldet das Bild mit
+  Namen, das Menü öffnet nach oben; nicht angemeldet der Knopf „Anmelden“.
+- Vorschlag: Bei eingeklappter Leiste nur das Bild bzw. das Symbol. Am Handy
+  ist es der letzte Platz der unteren Leiste.
+
+### 11.3 Menüband statt Reiterleiste
+
+- **Über dem Menüband gibt es keine Reiterleiste mehr.** Die Unterseiten eines
+  Bereichs sind Reiter des Menübands – eigene Menübänder mit den Funktionen
+  der Unterseite.
+- **Aufteilung von links nach rechts:**
+  `Start` | Bänder des Bereichs | `Ansicht` | `Einstellungen` | `Hilfe`.
+- **Start** steht immer ganz links, in jedem Bereich. Dort stehen die
+  Standardfunktionen, die jeder darf – als Taste oder als Dropdown: „Neu“
+  (neuer Vorgang, öffnet den Neu-anlegen-Assistenten), Suche (Strg+K),
+  Copilot (Fenster rechts ein und aus), Zeiterfassung („Zeit starten“,
+  „Manuell erfassen“, siehe 11.9). Dazu die Grundaktionen der Seite.
+- **Bänder des Bereichs** (Beispiele des Anwenders):
+  - Bereich Start: Bänder **Dashboard** und **Leitstand**, je nach Recht mit
+    „Bearbeiten“, „Speichern“ und „Als Standard für alle setzen“.
+  - Der Reiter **„Zuweisung“ entfällt**: Im Band „Start“ steht neben „Neu“ das
+    Zuweisen („… zuweisen“, die offenen Vorgänge ohne Zuweisung) – sichtbar
+    nur für die, die heute die Seite „Zuweisung“ sehen.
+  - Bereich Vorgänge: Störungen, Tickets, Aufgaben, Wartung, Rüstzeiten,
+    Stillstände, KVP und Projekte sind Bänder mit ihren Funktionen.
+  - Die übrigen Bereiche entsprechend: Die Unterseiten der Tabelle in 5.2
+    werden Bänder.
+  - Ein Klick auf ein Band wechselt zur Unterseite und zeigt deren Funktionen
+    (Seitenwechsel wie in 10.2).
+- **Ansicht** hat zwei Dropdown-Unterpunkte: **Darstellung** (Stil, Modus,
+  Farbschema, Dichte) und **Anpassen** (Bereiche ordnen, Favoriten, Startseite,
+  Spalten). Die bisherigen eigenen Reiter „Anpassen“ und „Darstellung“
+  entfallen.
+- **Einstellungen**: die Einstellungen des jeweiligen Bereichs. Die heutigen
+  Core- und Server-Einstellungen werden dem passenden Bereich zugeordnet;
+  sichtbar ist nur, wofür das Recht da ist. Vorschlag: Der Bereich Verwaltung
+  behält die Gesamtübersicht aller Einstellungen.
+- **Hilfe**: Handbuch, Hilfe zu dieser Seite, Versionen & Updates.
+
+### 11.4 Leitstand
+
+- Der Leitstand ist ein **globales Fenster, das immer ohne Anmeldung
+  erscheint**.
+- Im Band „Leitstand“ bearbeiten die Berechtigten ihn **im mittleren Feld**
+  (dem Listenfeld), nicht auf einer getrennten Verwaltungsseite.
+- Vorschlag: Ohne Anmeldung zeigt der Rahmen den Leitstand im Mittelfeld,
+  dazu Kopfzeile und links unten „Anmelden“. Für Wandbildschirme bleibt die
+  Vollbild-Ansicht ohne Rahmen.
+
+### 11.5 Copilot und Suche
+
+- Das Copilot-Fenster (rechte Leiste) wird **aus dem Menüband „Start“**
+  ein- und ausgeschaltet, ebenso die Suche. Strg+K bleibt.
+
+### 11.6 Fußzeile
+
+- **Rechts neben der Versionsnummer steht die Zahl der gerade angemeldeten
+  Benutzer** (Form `V0.82.66 · 12/40`, siehe 11.10). Die Versionsnummer kommt damit auch in den neuen Rahmen (bisher
+  fehlte sie dort).
+- Vorschlag: Die Zahl sehen alle Angemeldeten; gezählt werden Personen mit
+  Aktivität in den letzten Minuten (die vorhandene Anwesenheit,
+  `presence.go`), ohne Terminals. Wer das ist, zeigt weiter die Seitenleiste
+  „Aktivität“ mit ihrem Recht.
+
+### 11.7 Was bleibt
+
+Bereichsleiste mit 9 Bereichen und Favoriten (10.3), Strg+K, Statusleiste mit
+Meldungen und Update-Stand, beide Assistenten (10.11), der Schalter
+klassisch/neu bis 0.90.0, die Rechte aus Abschnitt 7.
+
+### 11.8 Einordnung und offene Fragen
+
+- **Teilpaket 2b „Rahmen-Umbau“** vor Teil 3: Kopfzeile, Benutzermenü links
+  unten, Menüband mit den Bändern der Bereiche statt der Reiterleiste,
+  Ansicht/Einstellungen/Hilfe, Copilot und Suche aus „Start“, Fußzeile mit
+  Version und Benutzerzahl, Leitstand im Rahmen. Vorher die klickbare Vorschau
+  anpassen und vom Anwender bestätigen lassen.
+- Das Band „Einstellungen“ verweist in 2b auf die vorhandenen Abschnitte der
+  Core- und Server-Einstellungen; das eigentliche Aufteilen der Seiten folgt
+  Bereich für Bereich mit Teil 6.
+- **Entschieden (Anwender 26.11.2026: „die Punkte 1–5 sehen vernünftig aus“):**
+  Es gelten die Vorschläge – 1. geöffnete Vorgänge als Dropdown „Geöffnet“ im
+  Band „Start“; 2. Leitstand an Wandbildschirmen weiter als Vollbild ohne
+  Rahmen; 3. Benachrichtigungen, Chat und „Im Chat teilen“ im Band „Start“,
+  Sprache im Benutzermenü; 4. die Zahl der angemeldeten Benutzer sehen alle
+  Angemeldeten, wer es ist nur mit dem vorhandenen Recht; 5. „Zeit starten“
+  und „Manuell erfassen“ im Band „Start“ in jedem Bereich.
+- Ursprüngliche Fragen:
+  1. Geöffnete Vorgänge als eigene, schließbare Reiter (Entscheidung „Beides“
+     vom 24.11.2026): Wohin damit ohne Reiterleiste – Dropdown „Geöffnet“ im
+     Band „Start“ (Vorschlag) oder eine schmale Zeile unter dem Menüband?
+  2. Leitstand an Wandbildschirmen weiter als Vollbild ohne Rahmen?
+  3. Benachrichtigungen, Chat und Sprache wie in 11.1 vorgeschlagen?
+  4. Zahl der angemeldeten Benutzer für alle sichtbar?
+  5. Zeiterfassung (11.9): Tasten „Zeit starten“ und „Manuell erfassen“ im
+     Band „Start“ in jedem Bereich (Vorschlag, weil „immer zugänglich“) oder
+     nur im Bereich Start?
+
+### 11.9 Zeiterfassung (Ergänzung des Anwenders vom 26.11.2026)
+
+- Heute öffnet ein Klick auf die Uhr die Zeiterfassung (`/time`).
+- Neu: Die Zeiterfassung ist **immer zugänglich über Tasten im Band „Start“**:
+  **„Zeit starten“** und **„Manuell erfassen“**.
+- Die **Übersicht** der Zeiterfassung ist ein **neuer Menüpunkt direkt rechts
+  neben „Start“**, sichtbar **nur in den Bereichen Start und Planung** –
+  gegebenenfalls nur als Verweis auf die Seite Zeiterfassung im Bereich
+  Planung.
+- Läuft eine Zeit, zeigt die Taste stattdessen „Zeit stoppen“ mit der
+  laufenden Dauer. Die Uhr in der Kopfzeile ist **nicht mehr anklickbar**
+  (Anwender 26.11.2026: „muss nicht mehr über die Uhr zu öffnen sein“). Sichtbar ist das alles nur mit den vorhandenen Rechten der
+  Zeiterfassung; kein neues Recht.
+
+### 11.10 Rückmeldung zur Vorschau (Anwender 26.11.2026)
+
+Zur Vorschau `2026-11-26-rahmen-start-vorschau.html`; bestätigt („ja“):
+Benutzermenü links unten, Bänder des Bereichs Start, Ansicht, Einstellungen
+und Hilfe. Geändert:
+
+- **Uhr** ohne Funktion (siehe 11.9).
+- **Band „Start“ ist nicht überall gleich**, sondern wächst mit Bereich, Seite
+  und Recht: Neben den Standardfunktionen stehen dort die Hauptaktionen der
+  offenen Seite – z. B. „Speichern“ und „Abbrechen“, während man in einer Liste
+  bearbeitet, oder „Buchen“ im Materialbeleg. Die Aktionen kommen aus der
+  einen Meldung je Seite (10.1); das Band der Seite zeigt weiter alle.
+- **Ohne Anmeldung** ist nur der Leitstand zu sehen und links unten
+  „Anmelden“ – kein Menüband, keine Bereiche, keine Benutzerzahl.
+- **Vorgangslisten:** In jeder Zeile stehen **ganz oben Anlage
+  (Infrastruktur) und Priorität**, darunter Titel und Nummer; innerhalb einer
+  Anlage nach Priorität sortiert (Lesart von Claude).
+- **Hinweis auf die Vorlage** sehen nur Gestaltungs-Administratoren (Recht
+  `system.ui_defaults`) und nur beim Darüberfahren über den Seitentitel: welche
+  Vorlage, wer sie zuletzt wann angepasst hat. Dafür wird bei jeder Zuordnung
+  und jeder Firmen-Vorgabe gespeichert, wer und wann.
+- **Fußzeile:** `V0.82.66 · 12/40` – angemeldet / aktive Benutzer (Lesart von
+  Claude für „12/xx“), Erklärung im Tooltip.
+- Die graue Leiste oben gehört nicht zum PDH: Sie steht für das Fenster
+  (Minimieren, Maximieren, Schließen); die Schalter der Vorschau stecken dort
+  im Knopf „Vorschau“.
+
+### 11.11 PDH ohne Browserleisten (Anwender 26.11.2026)
+
+- „Die graue Leiste ist der Fensterrahmen, ansonsten ist nichts mehr – PDH soll
+  ohne Browserleisten starten.“ Über dem PDH steht nur noch der Rahmen des
+  Fensters mit Minimieren, Maximieren und Schließen – keine Adresszeile,
+  keine Browser-Reiter.
+- Weg (Vorschlag von Claude, vom Anwender am 26.11.2026 für das erste Paket
+  bestätigt): das PDH als **installierbare Web-App**. App-Beschreibung
+  (`web/static/site.webmanifest`, `display: standalone`) und Service Worker
+  (`web/static/sw.js`, für Push) gibt es schon; es fehlen `id`, `scope` und
+  `lang`, ein Knopf „Als App installieren“ und die Anleitung im Handbuch
+  (Plan `docs/superpowers/plans/2026-11-26-rahmen-start.md`, Task 9). In Edge und Chrome dann
+  „App installieren“; das PDH startet aus dem Startmenü bzw. vom Desktop als
+  eigenes Fenster. Kein eigenes Programm, das gepflegt werden müsste.
+- **Voraussetzung:** HTTPS mit gültigem Zertifikat (oder `localhost`). Über
+  `http://<Adresse>:8090` bietet der Browser die Installation nicht an – im
+  Testverbund heute nur so erreichbar, auf 10.10.0.202 über den Namen mit
+  Let's-Encrypt-Zertifikat möglich.
+- Terminals bleiben im Kioskbetrieb wie heute.
+- Das Handbuch bekommt „So installierst du das PDH als App“; der Eintrag
+  „App installieren“ im Benutzermenü (heute die Handy-App) nennt beides.
+
+### 11.12 Rückgängig, Speichern und Verwerfen (Anwender 26.11.2026)
+
+- **„Rückgängig“ im Band „Start“** nimmt den letzten Bearbeitungsschritt
+  zurück – Schritt für Schritt, bis zum endgültigen Speichern. Die Taste zeigt
+  die Zahl der Schritte; nach dem Speichern ist sie leer. Strg+Z wie gewohnt.
+- Ungespeicherte Änderungen werden **angezeigt** (Statusleiste „● 2 nicht
+  gespeichert“, „Speichern“ hervorgehoben).
+- **Beim Wechseln** (anderes Band, anderer Bereich, anderer Vorgang) **oder
+  Verlassen** (Abmelden, Fenster schließen) fragt das PDH „Änderungen
+  speichern?“ mit „Speichern“ und „Verwerfen“. **Wird nicht bestätigt**
+  (Esc, daneben geklickt, Fenster geschlossen), **werden die Eingaben
+  verworfen.** Lesart von Claude für „automatisches Speichern wird
+  signalisiert“: Es wird nichts still im Hintergrund übernommen; das PDH
+  meldet nur, dass etwas offen ist, und übernimmt erst mit Bestätigung.
+- Gilt für alle Vorlagen, in denen man bearbeitet (Cockpit, Liste beim
+  Bearbeiten in der Liste, Detail, Einstellungen, Tabelle/Zuordnung, Aktion).
+  Schritte, die sofort wirken müssen (Zeit starten/stoppen, Buchen,
+  Fertigstellen), sind keine Bearbeitungsschritte und bleiben wie heute.
+
+## 12. Nachtrag 26.11.2026 – Seitenvorlagen und Zuordnung
+
+Vorgabe des Anwenders (26.11.2026): Es gibt **wenige Seitenvorlagen, die immer
+wieder verwendet werden** („ein Template für die Infocockpit-Seite, eine
+Listen-Seite, eine Einstellungs-Seite, eine Planungs-/Kalender-Seite …“). Jede
+Seite des PDH wird einer Vorlage zugeordnet. Zugeordnet wird **unter
+„Anpassen“ wie bei Microsoft**, dazu gibt es **unter „Ansicht“ eine
+Verwaltungsseite**, die die Zuordnung festlegt. Gebaut wird **mit dem Bereich
+Start zuerst**, nicht jede alte Seite einzeln vorab.
+
+### 12.1 Die Vorlagen
+
+Eine Vorlage ist das ganze mittlere Feld samt ihrem Menüband: gleiche Stellen,
+gleiche Tasten, gleiche Namen. Die Bausteine aus 5.3 (Liste, Detail) gehen
+darin auf.
+
+| Vorlage | Wofür | Tasten im Band (je nach Recht) |
+|---|---|---|
+| **Cockpit** (Infocockpit) | Kacheln und Widgets im Raster: Dashboard, Leitstand, Schnellübersicht, Statistik, Übersichten der Bereiche | Bearbeiten, Speichern, Als Standard für alle setzen, Widget hinzufügen |
+| **Liste** | Alle Listen mit Filter, Gruppierung nach Infrastruktur und Detail daneben: Vorgänge, Ersatzteile, IT-Assets, Benutzer … | Neu, Öffnen, Zuweisen, Exportieren, Drucken, Spalten |
+| **Detail** | Ein Vorgang oder Datensatz: Kopf und Reiter | Speichern, Zuweisen, Warten, Fertigstellen, Drucken |
+| **Einstellungen** | Optionen in Abschnitten: Core- und Server-Einstellungen je Bereich, Regeln | Speichern, Zurücksetzen, Testen (wo es eine Verbindung gibt) |
+| **Planung** (Kalender) | Kalender, Planer, Zeitstrahl, Jahresplan, Schichtplan | Heute, Tag/Woche/Monat, Neu, Besetzen |
+| **Baum** (Vorschlag) | Infrastruktur, Lagerorte, Organigramm – Baum links, Detail rechts | Neu, Unterknoten, Verschieben |
+| **Dienst** | Zusatzdienst im Mittelfeld (5.5) | Neu laden, In neuem Fenster öffnen |
+| **Aktion** (agieren) | Eine Tätigkeit ausführen: Zeit eintragen, Material buchen, Rüstzeit, Störung melden – große Bedienflächen, wenige Felder, auch am Terminal | Buchen, Abbrechen, Nachtragen |
+| **Druck** | Drucken mit Vorschau: Etiketten, Wartungsprotokoll, Kanban, Berichte | Drucken, Drucker wählen, Format, PDF |
+| **Tabelle/Zuordnung** | Tabellen- und Zuordnungsvorschau bearbeiten: Import, Export, Abgleich, Feldzuordnungen | Vorschau, Spalte zuordnen, Prüfen, Übernehmen |
+
+Weitere Vorlagen entstehen im Lauf der Umstellung (Anwender 26.11.2026);
+jede neue kommt in diese Tabelle.
+
+Die Assistenten (10.11) bleiben eigene Fenster über der Seite.
+
+### 12.2 Erste Zuordnung der heutigen Seiten (Vorschlag von Claude)
+
+| Bereich | Cockpit | Liste (+ Detail) | Planung | Einstellungen | Baum / Dienst |
+|---|---|---|---|---|---|
+| Start | Dashboard, Leitstand | Zuweisen, Zeiterfassung-Übersicht | – | – | – |
+| Vorgänge | – | Störungen, Tickets, Aufgaben, Wartung, Rüstzeiten, Stillstände, KVP, Projekte | – | Regeln je Vorgangsart | – |
+| Planung | – | Zeiterfassung, Anwesenheit | Planer, Kalender | – | – |
+| Anlagen | Schnellübersicht | IT-Assets, VPN, ESPPDH, Messstellen | – | – | Infrastruktur (Baum) |
+| Material | – | Ersatzteile, Beschaffung, Bestellvorgänge, Hersteller & Lieferanten | – | – | Lager (Baum) |
+| Wissen | – | Dokumente, Vorlagen & Signaturen, Schulungen | – | – | – |
+| Daten | Statistik | Datennetz (Import, Export, Abgleich: Vorlage Tabelle/Zuordnung) | – | – | – |
+| Verwaltung | – | Benutzer, Abteilungen, Drucker, Geräte, Leitstände, Infobildschirm, Kostenstellen, Kategorien, Symbole | – | Core, Server, Netzwerk, Datensicherung, Bereinigung, Rollen & Rechte | Organigramm (Baum) |
+| Dienste | – | – | – | – | Nextcloud, Grafana … (Dienst) |
+
+Der Bauende prüft die Tabelle gegen `navDefs`; der Test „jede Seite
+erreichbar“ (Abschnitt 8) verlangt zusätzlich, dass jede Seite genau eine
+Vorlage hat.
+
+### 12.3 Zuordnen (vom Anwender entschieden 26.11.2026: „wird durch die Firma festgelegt“)
+
+- **Die Zuordnung legt die Firma fest**, nicht der einzelne Benutzer: auf der
+  Verwaltungsseite unter „Ansicht“ (Recht `system.ui_defaults`) – ein Fenster
+  wie „Menüband anpassen“ bei Microsoft: links alles, was es gibt (Seiten und
+  Funktionen), rechts die Bereiche und ihre Bänder; mit Pfeilen oder Ziehen
+  zuordnen, umbenennen, Reihenfolge ändern, „Zurücksetzen“ auf die Vorgabe des
+  PDH.
+- **Der einzelne Benutzer** ändert unter „Ansicht › Anpassen“ weiter nur
+  Reihenfolge der Bereiche und Favoriten (Festlegung 10.3 bleibt).
+- Rechte gehen immer vor: Jeder sieht nur, was er darf; niemand bekommt durch
+  eine Zuordnung Zugriff.
+
+### 12.4 Vorgehen
+
+1. Klickbare Vorschau anpassen: Rahmen nach Abschnitt 11 und der Bereich
+   Start mit der Vorlage Cockpit – vom Anwender bestätigen lassen. Erstellt
+   am 26.11.2026: `docs/superpowers/specs/2026-11-26-rahmen-start-vorschau.html`
+   (zeigt dazu je eine Seite jeder Vorlage, die Zuordnung der Firma und den
+   Leitstand ohne Anmeldung; die untere Leiste am Handy fehlt noch).
+2. **Bereich Start zuerst** (Teilpaket 2b): Rahmen-Umbau, Vorlage Cockpit
+   mit Dashboard und Leitstand, Tasten Neu, Zuweisen, Zeiterfassung, Suche,
+   Copilot.
+3. Zuordnen („Anpassen“ und Verwaltungsseite).
+4. Danach Bereich für Bereich, jeweils mit der Vorlage, die er braucht:
+   Vorgänge (Liste und Detail – bisher Teil 3), Planung (Kalender),
+   Verwaltung und die Einstellungen der Bereiche, dann der Rest. Die alten
+   Seiten werden dabei bereichsweise umgestellt.
+
+### 12.5 Offene Fragen (Anwender)
+
+6. ~~Zuordnen~~ – entschieden: die Firma legt fest.
+7. ~~Vorlagenliste~~ – ergänzt um Aktion, Druck, Tabelle/Zuordnung; weitere
+   entstehen im Lauf der Umstellung.

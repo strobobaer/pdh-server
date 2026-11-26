@@ -172,6 +172,9 @@ func (h *Handler) DefaultsSaveWeb(w http.ResponseWriter, r *http.Request) {
 		info = time.Now().Format("02.01.2006 15:04") + " von " + strings.TrimSpace(u.FirstName+" "+u.LastName)
 	}
 	_ = h.setAppSetting(ctx, defaultsInfoKey(what), info)
+	if what == "dashboard" && action == "set" { // Hinweis auf die Vorlage: wer zuletzt angepasst hat (page_templates.go)
+		_ = h.setUIMeta(ctx, "dashboard", strings.TrimSpace(u.FirstName+" "+u.LastName))
+	}
 	resetDefaultsCache()
 	msg := name + ": deine Einstellung ist jetzt Standard für alle"
 	if action == "reset" {

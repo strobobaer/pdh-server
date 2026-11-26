@@ -139,7 +139,7 @@ func frameTestData(newFrame bool) ServerConfigData {
 func TestFrameRenders(t *testing.T) {
 	out := renderFrameForTest(t, "server_config", frameTestData(true))
 	for _, want := range []string{`class="rail"`, `id="global-status-footer"`, `id="maint-band"`, `id="pdh-boot"`,
-		`href="/time" class="topbar-clock"`, `class="topbar-user"`, uiURL("frame.css"), uiURL("pdh-frame.js"),
+		`class="topbar-clock" id="pdh-clock"`, `class="ft-user"`, uiURL("frame.css"), uiURL("pdh-frame.js"),
 		`action="/account/ui-frame"`, `value="classic"`, "Klassische Oberfläche", `<aside class="context">`} {
 		if !strings.Contains(out, want) {
 			t.Errorf("neuer Rahmen ohne %q", want)
@@ -159,7 +159,7 @@ func TestFrameRenders(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, want := range []string{`{{template "ui-head" .}}`, `{{template "ui-bands" .}}`, `{{template "ui-overlays" .}}`,
-		`{{template "ui-context" .}}`, `{{template "ui-scripts" .}}`, `{{template "ui-tail" .}}`, `{{template "ui-topbar" .}}`} {
+		`{{template "ui-context" .}}`, `{{template "ui-scripts" .}}`, `{{template "ui-tail" .}}`, `{{template "frame-top" .}}`, `{{template "frame-user" .}}`} {
 		if !strings.Contains(string(src), want) {
 			t.Errorf("frame.gohtml nutzt %s nicht", want)
 		}

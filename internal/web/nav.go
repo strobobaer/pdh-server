@@ -58,7 +58,7 @@ func needs(perms ...string) func(*BaseData) bool {
 // navDefs: alle Eintraege in Vorgabe-Reihenfolge.
 var navDefs = []navDef{
 	{navItem{"dashboard", "/", "ti-dashboard", "Dashboard", "dashboard", false}, navTopKey, always},
-	{navItem{"leitstand", "/global/", "ti-layout-dashboard", "Leitstand", "", true}, navTopKey, always},
+	{navItem{"leitstand", "/leitstand", "ti-layout-dashboard", "Leitstand", "leitstand", false}, navTopKey, always},
 	{navItem{"assign", "/assignments/new", "ti-square-rounded-plus", "Neu anlegen", "assignments-new", false}, navTopKey, always},
 	{navItem{"assignments", "/assignments", "ti-inbox", "Zuweisung", "assignments", false}, navTopKey, func(b *BaseData) bool { return b.IsBroker || b.CanManageRoles }},
 

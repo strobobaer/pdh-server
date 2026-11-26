@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"strings"
 )
 
 // Bereichsleiste des neuen Rahmens (0.90.0 Teil 2, Entwurf 5.2): 9 Bereiche für alle
@@ -23,11 +24,11 @@ var navAreaDefs = []struct {
 	Key, Label, Icon string
 	Items            []string
 }{
-	{"start", "Start", "ti-home", []string{"dashboard", "leitstand", "assignments"}},
+	{"start", "Start", "ti-home", []string{"time", "dashboard", "leitstand"}},
 	{"vorgaenge", "Vorgänge", "ti-list-details", []string{"faults", "tickets", "tasks", "maintenance", "setup", "downtime", "kvp", "projects"}},
 	{"anlagen", "Anlagen", "ti-building-factory-2", []string{"infrastructure", "plantwatch", "it", "vpn", "esppdh", "energy"}},
 	{"material", "Material", "ti-package", []string{"inventory", "storage", "procurement", "purchases", "directory"}},
-	{"planung", "Planung", "ti-calendar", []string{"shifts", "calendar", "time", "attendance"}},
+	{"planung", "Planung", "ti-calendar", []string{"time", "shifts", "calendar", "attendance"}},
 	{"wissen", "Wissen", "ti-books", []string{"ms", "ms-handbook", "ms-process", "ms-instruction", "ms-form", "m365", "trainings"}},
 	{"daten", "Daten", "ti-chart-bar", []string{"statistics", "import", "export", "sync", "datanet"}},
 	{"verwaltung", "Verwaltung", "ti-settings", []string{"users", "orgunits", "orgchart", "roles", "core", "serverconfig", "network", "backup", "cleanup", "printers", "appdevices", "kiosk", "leitstaende", "terminal-slides", "costcenters", "categories", "icons", "ui-catalog"}},
@@ -35,8 +36,13 @@ var navAreaDefs = []struct {
 }
 
 // navOutsideAreas: Einträge außerhalb der Bereiche – „Neu anlegen“ (Menüband, Strg+K),
-// Chat und Handbuch (rechte Leiste, Benutzermenü).
-var navOutsideAreas = map[string]bool{"assign": true, "chat": true, "help": true}
+// Chat und Handbuch (rechte Leiste, Benutzermenü), Zuweisung („Zuweisen“ im Band Start,
+// Entwurf 11.3).
+var navOutsideAreas = map[string]bool{"assign": true, "chat": true, "help": true, "assignments": true}
+
+// navSharedItems: Einträge, die in mehreren Bereichen stehen (Zeiterfassung in Start
+// und Planung, Entwurf 11.9). Ihre Bänder tragen ?bereich=, damit der Bereich bleibt.
+var navSharedItems = map[string]bool{"time": true}
 
 const (
 	keyDefaultUIAreas = "defaults.ui_areas"
@@ -49,6 +55,20 @@ const (
 type uiAreaPrefs struct {
 	Order     []string `json:"order,omitempty"`
 	Favorites []string `json:"favorites,omitempty"`
+}
+
+// Home: Ziel des Bereichsknopfs – die erste Unterseite, die nicht in mehreren Bereichen
+// steht (Start → Dashboard statt Zeiterfassung).
+func (a navArea) Home() navItem {
+	for _, it := range a.Items {
+		if !navSharedItems[it.Key] {
+			return it
+		}
+	}
+	if len(a.Items) > 0 {
+		return a.Items[0]
+	}
+	return navItem{}
 }
 
 // areaView: was der neue Rahmen zeigt (BaseData.Rail).
@@ -86,7 +106,11 @@ func sanitizeAreaPrefs(p uiAreaPrefs) uiAreaPrefs {
 
 // buildAreas: Bereiche mit sichtbaren Einträgen in der gewünschten Reihenfolge, der
 // Bereich der aktuellen Seite mit seinen Reitern und die sichtbaren Favoriten.
-func buildAreas(b *BaseData, prefs uiAreaPrefs) areaView {
+func buildAreas(b *BaseData, prefs uiAreaPrefs) areaView { return buildAreasIn(b, prefs, "") }
+
+// buildAreasIn wie buildAreas; want ist der Bereich aus ?bereich= – er gilt nur, wenn er
+// die aktuelle Seite enthält, sonst der erste Bereich mit dieser Seite.
+func buildAreasIn(b *BaseData, prefs uiAreaPrefs, want string) areaView {
 	prefs = sanitizeAreaPrefs(prefs)
 	visible := func(key string) (navItem, bool) {
 		d, ok := navDefByKey(key)
@@ -100,6 +124,13 @@ func buildAreas(b *BaseData, prefs uiAreaPrefs) areaView {
 		a := navArea{Key: def.Key, Label: tr(b.Lang, def.Label), Icon: def.Icon}
 		for _, k := range def.Items {
 			if it, ok := visible(k); ok {
+				if navSharedItems[k] && !it.External {
+					sep := "?"
+					if strings.Contains(it.Href, "?") {
+						sep = "&"
+					}
+					it.Href += sep + "bereich=" + def.Key
+				}
 				a.Items = append(a.Items, it)
 			}
 		}
@@ -123,7 +154,7 @@ func buildAreas(b *BaseData, prefs uiAreaPrefs) areaView {
 	}
 	for _, a := range v.Areas {
 		for _, it := range a.Items {
-			if it.Page != "" && it.Page == b.Page && v.Current == "" {
+			if it.Page != "" && it.Page == b.Page && (v.Current == "" || a.Key == want) {
 				v.Current, v.Tabs = a.Key, a.Items
 			}
 		}
