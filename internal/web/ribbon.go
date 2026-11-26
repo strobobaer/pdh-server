@@ -44,7 +44,7 @@ func (t ribbonTab) Panel() bool { return !t.Band || t.Page }
 // ribbonActions: alle Aktionen, die pdh-frame.js ausführt (Test prüft beide Seiten).
 var ribbonActions = []string{"create", "toggle-right", "toggle-narrow", "fullscreen", "fav", "areas-order",
 	"dashboard-edit", "areas-firm", "style", "mode", "palette", "density", "search", "share-chat", "override-login",
-	"undo", "save-edit", "cancel-edit", "time-start", "time-stop", "time-manual", "dash-standard", "leit-standard", "addw"}
+	"undo", "save-edit", "cancel-edit", "time-start", "time-stop", "time-manual", "dash-standard", "leit-standard", "addw", "dash-reset"}
 
 // navKeyForPage: Menüeintrag der Seite (für „Als Favorit anheften“).
 func navKeyForPage(page string) string {

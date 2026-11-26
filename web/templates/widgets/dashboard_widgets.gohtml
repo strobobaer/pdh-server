@@ -153,9 +153,9 @@ html[data-theme="light"] .dw-stat.c-blue .v{color:#2563eb}
   <div class="dw-bar">
     <span class="grow"></span>
     <span id="dw-hint" class="sc-sub" style="display:none;font-size:12px;color:var(--muted)">{{th "Widgets aus dem Katalog ins Raster ziehen (oder <b>+</b>), im Raster verschieben · <i class='ti ti-arrows-horizontal'></i> Breite · <i class='ti ti-settings'></i> Einstellungen · <i class='ti ti-x'></i> entfernen"}}</span>
-    <button type="button" class="btn btn-small" id="dw-reset-btn" style="display:none" onclick="dwReset()" title="{{t "Standard-Zusammenstellung wiederherstellen"}}"><i class="ti ti-restore"></i> {{t "Standard"}}</button>
+{{if not .NewFrame}}    <button type="button" class="btn btn-small" id="dw-reset-btn" style="display:none" onclick="dwReset()" title="{{t "Standard-Zusammenstellung wiederherstellen"}}"><i class="ti ti-restore"></i> {{t "Standard"}}</button>
     <button type="button" class="btn btn-small" id="dw-cancel-btn" style="display:none" onclick="location.reload()">{{t "Abbrechen"}}</button>
-    <button type="button" class="btn btn-small btn-primary" id="dw-save-btn" style="display:none" onclick="dwSave()"><i class="ti ti-check"></i> {{t "Fertig"}}</button>
+    <button type="button" class="btn btn-small btn-primary" id="dw-save-btn" style="display:none" onclick="dwSave()"><i class="ti ti-check"></i> {{t "Fertig"}}</button>{{end}}
   </div>
 
   <div class="dw-cat" id="dw-cat">
@@ -241,15 +241,27 @@ html[data-theme="light"] .dw-stat.c-blue .v{color:#2563eb}
     const empty = document.getElementById('dw-empty'); if(empty) empty.remove();
     grid.appendChild(el); load(el);
     el.scrollIntoView({behavior: 'smooth', block: 'nearest'});
+    dwStep('Widget hinzugefügt', () => el.remove());
   };
+  // „Widget hinzufügen“ im Menüband: zum Katalog (im Bearbeiten-Modus sichtbar)
+  window.dwOpenCatalog = function(){ const c = document.getElementById('dw-cat'); if(c) c.scrollIntoView({behavior: 'smooth', block: 'nearest'}); };
   window.dwEdit = function(on){
     root.classList.toggle('dw-edit-on', on); grid.classList.toggle('dw-edit', on);
-    ['dw-reset-btn','dw-cancel-btn','dw-save-btn','dw-hint'].forEach(id => document.getElementById(id).style.display = on ? '' : 'none');
+    ['dw-reset-btn','dw-cancel-btn','dw-save-btn','dw-hint'].forEach(id => { const x = document.getElementById(id); if(x) x.style.display = on ? '' : 'none'; });
+    // neuer Rahmen: Speichern, Abbrechen und Rückgängig im Menüband (pdh-edit.js)
+    if(on && window.pdhEdit && !window.pdhEdit.active()) window.pdhEdit.begin({name: 'Dashboard', save: dwSave, discard: () => location.reload()});
+    if(!on && window.pdhEdit && window.pdhEdit.active()) window.pdhEdit.cancel();
     if(!on || !window.Sortable) return;
     sortGrid = Sortable.create(grid, {group: {name: 'dw', pull: false, put: true}, animation: 150, ghostClass: 'dw-ghost', delay: 180, delayOnTouchOnly: true, filter: '.dw-tools button, .dw-cfg, .dw-note', preventOnFilter: false,
       onAdd: function(e){
         const el = makeCard(e.item); e.item.replaceWith(el); load(el);
         const empty = document.getElementById('dw-empty'); if(empty) empty.remove();
+        dwStep('Widget hinzugefügt', () => el.remove());
+      },
+      onEnd: function(e){
+        if(e.from !== e.to || e.oldIndex === e.newIndex) return;
+        const it = e.item, from = e.oldIndex;
+        dwStep('Widget verschoben', () => { it.remove(); grid.insertBefore(it, grid.children[from] || null); });
       }});
     document.querySelectorAll('[data-dw-catalog]').forEach(list => sortCats.push(Sortable.create(list, {group: {name: 'dw', pull: 'clone', put: false}, sort: false, animation: 150, delay: 180, delayOnTouchOnly: true, filter: '.add', preventOnFilter: false})));
   };
@@ -261,8 +273,8 @@ html[data-theme="light"] .dw-stat.c-blue .v{color:#2563eb}
   grid.addEventListener('click', function(e){
     const btn = e.target.closest('[data-dw-act]'); if(!btn) return;
     const el = btn.closest('.dw'); const act = btn.dataset.dwAct;
-    if(act === 'remove') el.remove();
-    if(act === 'size') el.dataset.size = String((+el.dataset.size % 4) + 1);
+    if(act === 'remove'){ const parent = el.parentNode, next = el.nextSibling; el.remove(); dwStep('Widget entfernt', () => parent.insertBefore(el, next)); }
+    if(act === 'size'){ const old = el.dataset.size; el.dataset.size = String((+el.dataset.size % 4) + 1); dwStep('Breite geändert', () => { el.dataset.size = old; }); }
     if(act === 'cfg') el.classList.toggle('cfg-open');
   });
   // Notizzettel: immer beschreibbar, speichert kurz nach der letzten Eingabe
@@ -310,9 +322,11 @@ html[data-theme="light"] .dw-stat.c-blue .v{color:#2563eb}
     const json = await res.json().catch(() => ({}));
     if(!res.ok || !json.success) throw new Error(json.error || 'Speichern fehlgeschlagen');
   }
+  // Bearbeitungsschritt für Rückgängig im Menüband (neuer Rahmen, pdh-edit.js)
+  function dwStep(label, undo){ if(window.pdhEdit) window.pdhEdit.step(label, undo); }
   window.dwSave = async function(){
-    try { await post({widgets: collect()}); location.reload(); }
-    catch(e){ alert(e.message); }
+    try { await post({widgets: collect()}); setTimeout(() => location.reload(), 0); return true; }
+    catch(e){ alert(e.message); return false; }
   };
   window.dwReset = async function(){
     if(!confirm('Eigene Zusammenstellung verwerfen und die Standard-Widgets anzeigen?')) return;

@@ -94,6 +94,7 @@
     'undo': function () { if (window.pdhEdit) window.pdhEdit.undo(); },
     'save-edit': function () { if (window.pdhEdit) window.pdhEdit.save(); },
     'cancel-edit': function () { if (window.pdhEdit) window.pdhEdit.cancel(); },
+    'dash-reset': function () { if (typeof window.dwReset === 'function') window.dwReset(); },
     'addw': function () { if (typeof window.dwOpenCatalog === 'function') window.dwOpenCatalog(); },
     'time-start': function () { timePost('/time/start-web', null, T('Zeit läuft.')); },
     'time-stop': function (arg) { if (arg) timePost('/time/' + encodeURIComponent(arg) + '/stop-web', null, T('Zeit gestoppt und gebucht.')); },

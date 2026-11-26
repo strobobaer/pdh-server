@@ -9,7 +9,30 @@ type pageActs struct {
 }
 
 func pageActions(b *BaseData) pageActs {
+	l := func(s string) string { return tr(b.Lang, s) }
+	it := func(action, label, icon, when string) ribbonItem {
+		return ribbonItem{Key: action, Label: l(label), Icon: icon, Action: action, When: when}
+	}
+	can := func(p string) bool { return b.navCan != nil && b.navCan(p) }
 	switch b.Page {
+	case "dashboard": // Vorlage Cockpit (Entwurf 12.1): bearbeiten, speichern, als Standard
+		save := it("save-edit", "Speichern", "ti-device-floppy", "editing")
+		save.Primary = true
+		reset := ribbonItem{Key: "dash-reset", Label: l("Auf Vorgabe zurücksetzen"), Icon: "ti-restore", Action: "dash-reset", When: "idle"}
+		a := pageActs{
+			Band: []ribbonGroup{{Label: l("Startseite"), Items: []ribbonItem{
+				it("dashboard-edit", "Bearbeiten", "ti-edit", "idle"),
+				it("addw", "Widget hinzufügen", "ti-plus", "editing"),
+				save,
+				it("cancel-edit", "Abbrechen", "ti-x", "editing"),
+				reset,
+			}}},
+			Start: []ribbonItem{it("dashboard-edit", "Bearbeiten", "ti-edit", "idle"), save, it("cancel-edit", "Abbrechen", "ti-x", "editing")},
+		}
+		if can(permDefaults) {
+			a.Band = append(a.Band, ribbonGroup{Label: l("Firma"), Items: []ribbonItem{it("dash-standard", "Als Standard für alle setzen", "ti-users", "idle")}})
+		}
+		return a
 	}
 	return pageActs{}
 }
