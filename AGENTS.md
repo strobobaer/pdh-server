@@ -1282,8 +1282,8 @@ und 3 drückt bis auf Weiteres der Anwender.
     Stationen und ohne Zeitbuchung, Schritte werden bis zum ersten Wert bei
     jedem Öffnen neu angelegt (zweites Gerät, Spiegel), keine Sperre (letzter
     Schreiber gewinnt), Zeit an drei Stellen (Timer, `work_sessions`, App).
-    Offene Frage an den Anwender: macht nach der Pause nur dieselbe Person
-    weiter oder auch ein Kollege (Schichtwechsel)?
+    Entschieden (Anwender 26.11.2026): **jeder darf weitermachen**, nicht nur
+    dieselbe Person (Schichtwechsel). Nächster Schritt: Entwurf.
 31. **0.82.66 Abmelden zieht das Token am Server zurück** (Anwender 25.11.2026:
     „2 ok“; bei der Abnahme von 0.82.65 gefunden: `/logout` löschte nur die
     Cookies, ein kopiertes Token galt bis zum Ablauf). Fingerabdruck (SHA-256
@@ -1371,7 +1371,12 @@ und 3 drückt bis auf Weiteres der Anwender.
     Sperre, Schritttexte von Rückgängig nicht übersetzt, Anmelde-Ecke an
     Wandbildschirmen ohne `vollbild=1`, Leerzustand nach Rückgängig, Benutzermenü bei
     320 px und 160 %; nach Weiterblättern im eingebetteten Leitstand trifft „Als
-    Standard“ den zuerst gezeigten. Offen: 10.10.0.202 (Anwender, mit Sicherung).
+    Standard“ den zuerst gezeigten. Firmenvorgabe am Testverbund seit 26.11.2026
+    „neu“ (Anwender: „neu oberfläche ja“); Gäste sehen den Leitstand mit
+    „Anmelden“ links unten (390 und 1366 px geprüft). Befunde dabei (mit Teil 3):
+    Kopfleiste des Leitstands zeigt rechts noch den alten Knopf „Anmelden“; die
+    Ecke deckt am Rand die Legende des Zeitstrahls. 10.10.0.202: Update vom
+    Anwender am 26.11.2026 gestartet.
     Als Abschnitt 11 im Entwurf
     `docs/superpowers/specs/2026-11-25-einheitliche-oberflaeche-design.md`
     (geht 5.2 vor), Branch `docs/oberflaeche-rahmen-nachtrag` (lokal). Folge:
