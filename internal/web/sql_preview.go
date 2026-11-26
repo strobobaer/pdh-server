@@ -253,7 +253,10 @@ func listSQLTables(db *sql.DB, kind string) ([]string, error) {
 	case "mysql":
 		query = `SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE() ORDER BY table_name`
 	case "mssql":
-		query = `SELECT table_name FROM information_schema.tables WHERE table_type = 'BASE TABLE' ORDER BY table_name`
+		// Tabellen und Sichten; außerhalb von dbo mit Schema („erp.Artikel“), dbo zuerst
+		query = `SELECT CASE WHEN TABLE_SCHEMA = 'dbo' THEN TABLE_NAME ELSE TABLE_SCHEMA + '.' + TABLE_NAME END
+			FROM INFORMATION_SCHEMA.TABLES
+			ORDER BY CASE WHEN TABLE_SCHEMA = 'dbo' THEN 0 ELSE 1 END, TABLE_SCHEMA, TABLE_NAME`
 	default:
 		return nil, fmt.Errorf("nicht unterstützt")
 	}
@@ -288,8 +291,7 @@ func readSQLPreview(db *sql.DB, kind, table string) ([]string, [][]string, error
 	if table == "" {
 		return nil, nil, fmt.Errorf("keine Tabelle ausgewählt")
 	}
-	query := fmt.Sprintf(`SELECT * FROM %s LIMIT %d`, quoteIdent(kind, table), sqlPreviewMaxRows)
-	rows, err := db.Query(query)
+	rows, err := db.Query(sqlPreviewQuery(kind, table, sqlPreviewMaxRows))
 	if err != nil {
 		return nil, nil, fmt.Errorf("Tabelle '%s' konnte nicht gelesen werden: %w", table, err)
 	}
@@ -359,13 +361,15 @@ func findOrderColumn(db *sql.DB, kind, table string) (column string, quoted bool
 		}
 		return col, true, nil
 	case "mssql":
+		schema, name := sqlSchemaAndName(table) // ohne Schema: Standardschema der Anmeldung
 		rows, err := db.Query(`
 			SELECT ku.column_name
 			FROM information_schema.table_constraints tc
 			JOIN information_schema.key_column_usage ku
 			  ON tc.constraint_name = ku.constraint_name AND tc.table_schema = ku.table_schema
-			WHERE tc.table_name = ? AND tc.constraint_type = 'PRIMARY KEY'
-			ORDER BY ku.ordinal_position`, table)
+			WHERE tc.table_schema = COALESCE(NULLIF(@p1, ''), SCHEMA_NAME()) AND tc.table_name = @p2
+			  AND tc.constraint_type = 'PRIMARY KEY'
+			ORDER BY ku.ordinal_position`, schema, name)
 		if err != nil {
 			return "", false, err
 		}
@@ -388,13 +392,7 @@ func readSQLLastRow(db *sql.DB, kind, table string, columns []string) (map[strin
 	if quoted {
 		orderExpr = quoteIdent(kind, orderColumn)
 	}
-	quotedCols := make([]string, len(columns))
-	for i, c := range columns {
-		quotedCols[i] = quoteIdent(kind, c)
-	}
-	query := fmt.Sprintf(`SELECT %s FROM %s ORDER BY %s DESC LIMIT 1`,
-		strings.Join(quotedCols, ", "), quoteIdent(kind, table), orderExpr)
-	row := db.QueryRow(query)
+	row := db.QueryRow(sqlLastRowQuery(kind, table, columns, orderExpr))
 	values := make([]interface{}, len(columns))
 	pointers := make([]interface{}, len(columns))
 	for i := range values {
@@ -465,7 +463,7 @@ func (h *Handler) SQLBrowsePage(w http.ResponseWriter, r *http.Request) {
 	db, sourceLabel, err := openSQLConnection(kind, config)
 	data.SourceLabel = sourceLabel
 	if err != nil {
-		data.Error = err.Error()
+		data.Error = withHint(err.Error(), connErrorHint(kind, config, err))
 		h.render(w, "sql_browse", data)
 		return
 	}
@@ -540,7 +538,7 @@ func (h *Handler) SQLRefreshValuesWeb(w http.ResponseWriter, r *http.Request) {
 		if isQueryRef(mp.SourceRef) { // Werte aus Abfragen: connection_queries.go
 			continue
 		}
-		table, _, ok := strings.Cut(mp.SourceRef, ".")
+		table, _, ok := splitSQLSourceRef(kind, mp.SourceRef)
 		if !ok {
 			continue
 		}
@@ -551,7 +549,7 @@ func (h *Handler) SQLRefreshValuesWeb(w http.ResponseWriter, r *http.Request) {
 	for table, tableMappings := range byTable {
 		columns := make([]string, len(tableMappings))
 		for i, mp := range tableMappings {
-			_, col, _ := strings.Cut(mp.SourceRef, ".")
+			_, col, _ := splitSQLSourceRef(kind, mp.SourceRef)
 			columns[i] = col
 		}
 		values, err := readSQLLastRow(db, kind, table, columns)

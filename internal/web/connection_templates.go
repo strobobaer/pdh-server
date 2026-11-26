@@ -44,11 +44,50 @@ func sqlToday(kind, col string) string {
 	return col + " >= CURDATE()"
 }
 
+// sqlReadTemplates: Vorlagen zum Auslesen einer unbekannten Datenbank – welche Tabellen es
+// gibt, welche Spalten, die ersten Zeilen und wie groß die Tabellen sind. Nur von Hand
+// (kein Abrufrhythmus); sie stehen vor den Vorlagen für Messwerte.
+func sqlReadTemplates(kind string) []builtinQueryTemplate {
+	tables, columns, rows := "", "", ""
+	switch kind {
+	case "mssql":
+		tables = "SELECT TABLE_SCHEMA AS schema_name, TABLE_NAME AS tabelle, TABLE_TYPE AS art\nFROM INFORMATION_SCHEMA.TABLES\nORDER BY TABLE_SCHEMA, TABLE_NAME"
+		columns = "SELECT COLUMN_NAME AS spalte, DATA_TYPE AS typ, CHARACTER_MAXIMUM_LENGTH AS laenge, IS_NULLABLE AS leer_erlaubt\nFROM INFORMATION_SCHEMA.COLUMNS\nWHERE TABLE_SCHEMA = '<schema>' AND TABLE_NAME = '<tabellenname>'\nORDER BY ORDINAL_POSITION"
+		rows = "SELECT s.name AS schema_name, t.name AS tabelle, SUM(p.rows) AS zeilen\nFROM sys.tables t\nJOIN sys.schemas s ON s.schema_id = t.schema_id\nJOIN sys.partitions p ON p.object_id = t.object_id AND p.index_id IN (0, 1)\nGROUP BY s.name, t.name\nORDER BY zeilen DESC"
+	case "mysql":
+		tables = "SELECT table_name AS tabelle, table_type AS art\nFROM information_schema.tables\nWHERE table_schema = DATABASE()\nORDER BY table_name"
+		columns = "SELECT column_name AS spalte, data_type AS typ, character_maximum_length AS laenge, is_nullable AS leer_erlaubt\nFROM information_schema.columns\nWHERE table_schema = DATABASE() AND table_name = '<tabellenname>'\nORDER BY ordinal_position"
+		rows = "SELECT table_name AS tabelle, table_rows AS zeilen_ungefaehr\nFROM information_schema.tables\nWHERE table_schema = DATABASE()\nORDER BY table_rows DESC"
+	case "sqlite":
+		tables = "SELECT name AS tabelle, type AS art\nFROM sqlite_master\nWHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite_%'\nORDER BY name"
+		columns = "SELECT name AS spalte, type AS typ, \"notnull\" AS pflicht\nFROM pragma_table_info('<tabellenname>')"
+	default:
+		return nil
+	}
+	view := "SELECT TOP 20 *\nFROM <tabelle>"
+	if kind != "mssql" {
+		view = "SELECT *\nFROM <tabelle>\nLIMIT 20"
+	}
+	out := []builtinQueryTemplate{
+		{Name: "Alle Tabellen und Sichten", Desc: "Was es in der Datenbank gibt – zum Erkunden. Danach wieder löschen.",
+			Spec: map[string]string{"sql": tables, "row": "first"}},
+		{Name: "Spalten einer Tabelle", Desc: "Spaltennamen und Typen einer Tabelle aus der Liste oben.",
+			Spec: map[string]string{"sql": columns, "row": "first"}},
+		{Name: "Tabelle ansehen (20 Zeilen)", Desc: "Die ersten 20 Zeilen einer Tabelle oder Sicht – bei SQL Server mit Schema, z. B. dbo.Artikel.",
+			Spec: map[string]string{"sql": view, "row": "first"}},
+	}
+	if rows != "" {
+		out = append(out, builtinQueryTemplate{Name: "Zeilen je Tabelle", Desc: "Größte Tabellen zuerst – zeigt, wo die Daten liegen.",
+			Spec: map[string]string{"sql": rows, "row": "first"}})
+	}
+	return out
+}
+
 // builtinQueryTemplates: Vorlagen je Verbindungstyp.
 func builtinQueryTemplates(kind string) []builtinQueryTemplate {
 	switch {
 	case sqlBrowsableKind(kind):
-		return []builtinQueryTemplate{
+		return append(sqlReadTemplates(kind), []builtinQueryTemplate{
 			{Name: "Letzter Datensatz", Desc: "Neueste Zeile einer Tabelle – z. B. aktueller Zählerstand oder letzter Messwert.",
 				Spec: map[string]string{"sql": sqlLimit1(kind, "*", "<tabelle>", "<zeitstempel-spalte> DESC"), "row": "first"}, Interval: 5},
 			{Name: "Ausgewählte Messwerte", Desc: "Nur bestimmte Spalten des neuesten Eintrags einer Maschine.",
@@ -59,7 +98,7 @@ func builtinQueryTemplates(kind string) []builtinQueryTemplate {
 				Spec: map[string]string{"sql": "SELECT COUNT(*) AS anzahl\nFROM <tabelle>\nWHERE <status-spalte> = '<offen>'", "row": "first"}, Interval: 15},
 			{Name: "Kennzahlen je Gruppe", Desc: "Mehrere Zeilen, z. B. je Linie – zugeordnet wird die erste Zeile.",
 				Spec: map[string]string{"sql": "SELECT <gruppen-spalte>, COUNT(*) AS anzahl, MAX(<zeitstempel-spalte>) AS zuletzt\nFROM <tabelle>\nGROUP BY <gruppen-spalte>\nORDER BY <gruppen-spalte>", "row": "first"}},
-		}
+		}...)
 	case kind == "rest_api":
 		return []builtinQueryTemplate{
 			{Name: "Status-Endpunkt", Desc: "Einzelnes Objekt mit Werten, z. B. GET /status.", Spec: map[string]string{"path": "/status", "row": "first"}, Interval: 5},

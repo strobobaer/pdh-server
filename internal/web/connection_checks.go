@@ -350,14 +350,14 @@ func (h *Handler) checkProtocol(ctx context.Context, rep *checkReport, direction
 	case sqlBrowsableKind(kind):
 		db, label, err := openSQLConnection(kind, config)
 		if err != nil {
-			rep.add("Anmeldung", "Datenbank öffnen", "fail", err.Error(), ms())
+			rep.add("Anmeldung", "Datenbank öffnen", "fail", withHint(err.Error(), connErrorHint(kind, config, err)), ms())
 			return
 		}
 		defer db.Close()
 		pctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		defer cancel()
 		if err := db.PingContext(pctx); err != nil {
-			rep.add("Anmeldung", "Anmeldung an "+label, "fail", err.Error()+" – Benutzer, Passwort und Rechte prüfen.", ms())
+			rep.add("Anmeldung", "Anmeldung an "+label, "fail", withHint(err.Error()+" – Benutzer, Passwort und Rechte prüfen.", connErrorHint(kind, config, err)), ms())
 			return
 		}
 		rep.add("Anmeldung", "Anmeldung an "+label, "ok", "angemeldet", ms())

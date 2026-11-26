@@ -100,3 +100,23 @@ GRANT SELECT ON dbo.MeldungenText TO pdh_sync;
 GRANT UPDATE ON dbo.MeldungenText TO pdh_sync;
 GRANT INSERT ON dbo.MeldungKommentare TO pdh_sync;
 GO
+-- Tabelle in eigenem Schema und eine Sicht: Datenbank-Vorschau und Vorlagen zum Auslesen (0.82.69)
+IF SCHEMA_ID('erp') IS NULL EXEC('CREATE SCHEMA erp');
+GO
+IF OBJECT_ID('erp.Artikel') IS NULL
+CREATE TABLE erp.Artikel (
+  Nr INT NOT NULL PRIMARY KEY,
+  Bezeichnung NVARCHAR(200) NOT NULL,
+  Bestand INT NOT NULL
+);
+GO
+IF NOT EXISTS (SELECT 1 FROM erp.Artikel)
+INSERT INTO erp.Artikel (Nr, Bezeichnung, Bestand) VALUES
+ (1, N'Lager 6204', 12), (2, N'Keilriemen SPA 1250', 4), (3, N'Sicherung 16 A', 30);
+GO
+CREATE OR ALTER VIEW dbo.MeldungenOffen AS
+  SELECT Id, Werk, Titel FROM dbo.MeldungenGuid WHERE Zustand = N'offen';
+GO
+GRANT SELECT ON erp.Artikel TO pdh_sync;
+GRANT SELECT ON dbo.MeldungenOffen TO pdh_sync;
+GO
